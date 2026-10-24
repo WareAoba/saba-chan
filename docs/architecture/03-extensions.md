@@ -115,12 +115,12 @@
 - **env**:
   - `PYTHONIOENCODING=utf-8`, `PYTHONUNBUFFERED=1`
   - 데몬 연결 정보 `SABA_IPC_PORT`, `SABA_IPC_URL`, `SABA_TOKEN_PATH`(토큰 파일 경로, 토큰 자체는 넣지 않음), `SABA_LANG`(요청의 `Accept-Language`, 없으면 config.json `gui.language`) (`plg/:14-37`).
-  - `PYTHONPATH = <import 가드 폴더>:<extensions_dir의 부모>:<modules_dir>:<기존 PYTHONPATH>` (`plg/:191-233`). extensions 디렉토리의 **부모**를 넣으므로 `import extensions.steamcmd`가 동작한다. 단, 디렉토리명이 실제로 `extensions`일 때만 그렇다. `SABA_EXTENSIONS_DIR`을 다른 이름으로 지정하면 import가 깨진다.
+  - `PYTHONPATH = <import 가드 폴더>:<extensions_dir의 부모>:<data_dir>/python-shared:<기존 PYTHONPATH>`. extensions 디렉토리의 **부모**를 넣으므로 `import extensions.steamcmd`가 동작한다. `sitecustomize.py`는 표준 라이브러리 경로를 먼저 두고, 활성 익스텐션 외의 `extensions.<id>` import를 거부한다.
   - `SABA_ENABLED_EXTENSIONS=<콤마 목록>`: ~~`%APPDATA%`나 cwd의 `extensions_state.json`을 읽어 Linux/macOS에서 대개 설정되지 않는다.~~ → 해결: `config.json`의 `extensions.enabled`에서 읽고, 목록이 없으면 빈 값으로 항상 설정한다(`plg/:200-205`).
   - import 가드: 데이터 폴더의 `python-guard/sitecustomize.py`(`plg/:84-96`, `src/plugin/sitecustomize.py`)가 `SABA_ENABLED_EXTENSIONS`에 없는 `extensions.<이름>` import를 `ModuleNotFoundError`로 막는다(`-`와 `_`는 같게 본다).
   - 공용 모듈 `i18n.py`, `daemon_rcon.py`를 modules 디렉토리에 내장본과 같게 맞춘다(`plg/:98-116,217-224`).
 - **확인되지 않은 익스텐션**: 플랫폼과 관계없이 모듈과 같은 거부·동의 정책을 따른다(02 문서 §2.1). Windows는 AppContainer를 쓴다. Linux·macOS는 격리할 수 없으므로 현재 파일 지문에 대한 동의가 없으면 `sandbox_unavailable`·`isolation_unsupported`와 `component`를 돌려준다. 모듈이 import하는 익스텐션도 각각 자기 동의가 있어야 격리 없이 실행할 수 있다. 모듈의 동의로 다른 익스텐션까지 승인하지 않는다.
-  - hook은 확인된 모듈의 인스턴스에도 불리므로 config의 `instance_dir`·`working_dir`·`install_dir`은 읽기만 준다. 쓸 수 있는 곳은 익스텐션 전용 `<data_dir>/extension-data/<이름>`이고 경로는 환경 변수 `SABA_EXTENSION_DATA_DIR`로 받는다. 모듈이 익스텐션을 import해 쓸 때(SteamCMD 등)는 `SABA_EXTENSION_DATA_ROOT/<id>`에 쓴다(격리된 모듈은 그 모듈만의 뿌리를 받는다, 02 §2.1). 인스턴스 폴더에 써야 하는 익스텐션은 비격리 동의가 있어야 한다.
+  - hook은 확인된 모듈의 인스턴스에도 불리므로 config의 `instance_dir`·`working_dir`·`install_dir`은 읽기만 준다. 쓸 수 있는 곳은 익스텐션 전용 `<data_dir>/extension-data/<이름>`이고 경로는 환경 변수 `SABA_EXTENSION_DATA_DIR`로 받는다. 모듈이 익스텐션을 import해 쓸 때(SteamCMD 등)는 `SABA_EXTENSION_DATA_ROOT/<id>`에 쓴다(격리된 모듈은 그 모듈만의 뿌리를 받는다, 02 §2.1). 인스턴스 폴더에 써야 하는 익스텐션은 비격리 동의가 있어야 한다. 데몬의 비밀 파일과 `backups/`는 상속을 끊어 두어 이 읽기 권한이 닿지 않는다(02 §2.1).
   - `server.pre_start`가 돌려준 `log_follower.program`도 모듈의 실행 대상과 같이 검사한다(인스턴스 폴더·사용자가 정한 서버 폴더 안, 셸 거부, `env_vars`의 `PATH`·`PATHEXT` 버림). 막히면 시작 결과가 `launch_outside_instance`다.
 - **타임아웃과 자리**: 기본 `DEFAULT_PLUGIN_TIMEOUT_SECS = 120`이다. 함수 이름이 `install_server`면 설치 자리 2개를 쓰고, 훅을 포함한 나머지 호출은 일반 자리 8개를 쓴다. 기한은 자리 대기·내부 선조회·Python 환경 준비·실행 전체를 포함한다. 내부 선조회는 바깥 자리와 절대 기한을 재사용한다. 재진입은 바깥 자리를 빌리거나 캐시만 쓰고 캐시가 없으면 실패한다. 상한·정리 규칙은 [01 §7.1](01-daemon-core.md#71-srcpluginmodrs-python-모듈익스텐션-실행기-단발-프로세스)을 따른다.
 - **오류 필드**: 실행기와 훅은 [01 §7.1](01-daemon-core.md#71-srcpluginmodrs-python-모듈익스텐션-실행기-단발-프로세스)의 공통 오류를 유지한다. `error_code`·`module`·`function`·`phase`·`stderr_tail`을 문자열 하나로 바꾸지 않는다. 로컬은 stderr 끝을 보존하고 원격은 빼며, 원격 문자열의 IP·비밀값·절대 경로를 가린다. 모듈이 정한 실패 코드와 메시지는 유지한다.
@@ -192,7 +192,7 @@ ue4-ini는 hook을 선언하지 않는다. steamcmd의 condition은 `instance.ex
 
 ### 3.2 발견 (discover / rescan / mount)
 
-- `discover()`(`ext/:623-648`): 루트에 있는 `*.zip`을 먼저 푼 뒤 `scan()`을 실행한다. zip은 `.staging-<id>`에 풀어 manifest를 검사하고, 기존 폴더가 있으면 **새 내용으로 바꿔 끼운 뒤** zip을 삭제한다(`ext/:652-721`).
+- `discover()`(`ext/:623-648`): 루트에 있는 `*.zip`을 먼저 푼 뒤 `scan()`을 실행한다. 다운로드와 ZIP 파일은 128 MiB, 항목은 10,000개, 누적 해제 크기는 512 MiB로 제한한다. zip은 `.staging-<id>`에 풀어 manifest를 검사하고, 기존 폴더가 있으면 **새 내용으로 바꿔 끼운 뒤** zip을 삭제한다(`ext/:652-721`).
 - `scan()`(`ext/:737-783`): 하위 디렉토리 중 `manifest.json`이 있는 것(`.`으로 시작하는 임시 폴더 제외)을 등록한다. **폴더 이름이 manifest.id(또는 하이픈→밑줄)와 다르면 건너뛰고**, 로드 실패와 함께 `load_errors`에 남긴다. 이 목록은 `GET /api/extensions`의 `failed`로 나간다(`handlers/extension.rs:85-90`).
 - `rescan()`(`ext/:792-796`): `scan()`과 같다. 기존 항목의 manifest를 다시 읽고 새 항목을 추가한다. 디스크에서 사라진 항목은 그대로 남긴다.
 - `mount(id)`(`ext/:800-821`): `ext_dir_on_disk`(discovered → id 그대로 → 하이픈을 언더스코어로 바꾼 이름)로 디렉토리를 찾고, `manifest.id == id`를 검사한다.

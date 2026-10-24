@@ -215,6 +215,8 @@ pub fn create_excluding(dir: &Path, kind: BackupKind, paths: &[PathBuf], exclude
         bail!("nothing to back up: none of the module's backup paths exist");
     }
     fs::create_dir_all(dir).with_context(|| format!("create {}", dir.display()))?;
+    // 백업에는 모듈 밖 파일도 담긴다: 인스턴스 폴더에 준 격리 실행 권한이 이 폴더로 내려오지 않게 한다
+    saba_atomic_file::restrict_to_user(dir).with_context(|| format!("restrict {}", dir.display()))?;
     let lock = dir_lock(dir);
     let _held = lock.lock().unwrap_or_else(|e| e.into_inner());
     clear_stale_partials(dir);
@@ -758,13 +760,6 @@ pub fn restore(dir: &Path, name: &str) -> Result<Restored> {
             failed = Some(e.context(format!("restore {}", entry.path.display())));
             break;
         }
-        // 링크는 그 폴더 안에 있던 것만, 링크 자체로 되살린다. 만들지 못하면(Windows 권한 등) 알리고 나머지 복원은 이어 간다
-        for link in links.iter().filter(|l| !entry.is_file && is_inside(&l.path, std::slice::from_ref(&entry.path))) {
-            if let Err(e) = make_link(link) {
-                tracing::warn!("Could not restore link {} -> {}: {}", link.path.display(), link.target.display(), e);
-                links_missed += 1;
-            }
-        }
     }
     if let Some(e) = failed {
         // 되돌리지 못한 경로는 오류에 붙인다 (원래 내용은 `.saba-restore-old`와 복원 전 안전 백업에 남아 있다)
@@ -782,6 +777,16 @@ pub fn restore(dir: &Path, name: &str) -> Result<Restored> {
             return Err(e.context(format!("could not undo the restore; the original files are kept at {}", stuck.join(", "))));
         }
         return Err(e);
+    }
+    // 아카이브의 파일을 모두 쓴 뒤 링크를 만든다. 앞선 링크가 다음 파일의 출력 경로를 바꾸지 못한다.
+    for link in links.iter().filter(|l| touched.iter().any(|(path, _)| {
+        let root = PathBuf::from(path);
+        !root.is_file() && is_inside(&l.path, std::slice::from_ref(&root))
+    })) {
+        if let Err(e) = make_link(link) {
+            tracing::warn!("Could not restore link {} -> {}: {}", link.path.display(), link.target.display(), e);
+            links_missed += 1;
+        }
     }
     for (_, aside) in &touched {
         if let Some(aside) = aside {
@@ -994,6 +999,39 @@ mod tests {
         assert_eq!(fs::read_link(w.join("shared")).unwrap(), outside);
         assert_eq!(fs::read_link(w.join("region/latest")).unwrap(), Path::new("level.dat"));
         assert!(outside.is_dir(), "restoring a link never touches where it points");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_restored_link_cannot_redirect_a_later_entry() {
+        use std::io::Write;
+        let tmp = tempfile::tempdir().unwrap();
+        let w = world(tmp.path());
+        let outside = tmp.path().join("outside");
+        fs::create_dir_all(&outside).unwrap();
+        let dir = tmp.path().join("backups");
+        let backup = v1_backup(&dir, std::slice::from_ref(&w));
+        let crafted = dir.join("20000101-000001-000-manual.zip");
+        {
+            let mut source = zip::ZipArchive::new(File::open(dir.join(&backup.name)).unwrap()).unwrap();
+            let mut manifest: Manifest = serde_json::from_reader(source.by_name(MANIFEST).unwrap()).unwrap();
+            manifest.links.push(LinkEntry { path: w.join("jump"), target: outside.clone(), dir: true });
+            manifest.paths.push(ManifestEntry { entry: "1".into(), path: w.join("jump/payload"), is_file: true });
+            let mut output = zip::ZipWriter::new(File::create(&crafted).unwrap());
+            for index in 0..source.len() {
+                let file = source.by_index(index).unwrap();
+                if file.name() != MANIFEST { output.raw_copy_file(file).unwrap(); }
+            }
+            output.start_file("1", zip::write::FileOptions::default()).unwrap();
+            output.write_all(b"content").unwrap();
+            output.start_file(MANIFEST, zip::write::FileOptions::default()).unwrap();
+            output.write_all(&serde_json::to_vec(&manifest).unwrap()).unwrap();
+            output.finish().unwrap();
+        }
+        let restored = restore(&dir, "20000101-000001-000-manual.zip").unwrap();
+        assert!(!outside.join("payload").exists());
+        assert_eq!(fs::read(w.join("jump/payload")).unwrap(), b"content");
+        assert_eq!(restored.links_missed, 1);
     }
 
     /// 되살리지 못한 링크는 경고만 남기고 끝나지 않는다: 복원 결과에 그 수를 실어 사용자가 안다 (D-B14)

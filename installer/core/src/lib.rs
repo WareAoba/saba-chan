@@ -797,19 +797,19 @@ fn extract_zip(zip_path: &Path, target_dir: &Path) -> anyhow::Result<()> {
 }
 
 /// core zip에 포함된 공유 Python 모듈(i18n.py, daemon_rcon.py)을
-/// %APPDATA%/saba-chan/modules/로 복사한다.
+/// %APPDATA%/saba-chan/python-shared/로 복사한다.
 /// 게임 모듈(minecraft, palworld 등)의 lifecycle.py가 이 유틸리티를 import 한다.
 /// 실패한 것마다 안내 문장을 돌려준다 (완료 화면 경고)
 fn install_shared_modules(install_dir: &Path) -> Vec<String> {
     const SHARED_MODULES: &[&str] = &["i18n.py", "daemon_rcon.py"];
 
-    let modules_dir = constants::resolve_modules_dir();
-    let _ = std::fs::create_dir_all(&modules_dir);
+    let shared_dir = constants::resolve_data_dir().join("python-shared");
+    let _ = std::fs::create_dir_all(&shared_dir);
     let mut failures = Vec::new();
 
     for name in SHARED_MODULES {
         let src = install_dir.join(name);
-        let dst = modules_dir.join(name);
+        let dst = shared_dir.join(name);
         if src.exists() {
             match std::fs::copy(&src, &dst) {
                 Ok(_) => {

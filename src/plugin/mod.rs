@@ -1022,7 +1022,7 @@ async fn spawn_plugin(
     }
     // 공용 모듈 유틸리티 경로 (daemon_rcon.py, i18n.py 등). 익스텐션 폴더가 없어도 필요하다
     static SHARED: std::sync::Once = std::sync::Once::new();
-    let modules_lib_dir = resolve_modules_dir();
+    let modules_lib_dir = saba_chan_updater_lib::constants::resolve_data_dir().join("python-shared");
     SHARED.call_once(|| {
         if let Err(e) = ensure_shared_modules(&modules_lib_dir) {
             tracing::warn!("Cannot write shared Python modules to {}: {}", modules_lib_dir.display(), e);
@@ -1072,7 +1072,11 @@ async fn spawn_plugin(
     let host_dir = tempfile::Builder::new().prefix("host-").tempdir_in(&host_root)
         .map_err(|error| call_error(module_path, function, "module_execution_failed", "prepare", error, Vec::new()))?;
     cmd.env("SABA_HOST_DIR", host_dir.path());
-    let host_proxy = host::Proxy { dir: host_dir.path().into(), context: HOST_CONTEXT.try_with(Clone::clone).ok().flatten(), server };
+    let host_context = isolation.as_ref()
+        .filter(|iso| !crate::sandbox::unisolated_allowed(&iso.key, &iso.dir))
+        .map(|_| None)
+        .unwrap_or_else(|| HOST_CONTEXT.try_with(Clone::clone).ok().flatten());
+    let host_proxy = host::Proxy { dir: host_dir.path().into(), context: host_context, server };
 
     apply_creation_flags(&mut cmd);
 
@@ -2108,6 +2112,27 @@ print(json.dumps(codes))
             .output()
             .expect("detected python must run");
         assert_eq!(String::from_utf8_lossy(&out.stdout).replace("\r\n", "\n").trim(), "steamcmd blocked\nue4_ini ok");
+    }
+
+    #[tokio::test]
+    async fn pythonpath_entries_cannot_shadow_standard_library_modules() {
+        let Ok(python) = crate::python_env::detect_system_python().await else { return };
+        let tmp = tempfile::tempdir().unwrap();
+        let guard = tmp.path().join("guard");
+        let root = tmp.path().join("extensions");
+        std::fs::create_dir_all(&guard).unwrap();
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(guard.join("sitecustomize.py"), include_str!("sitecustomize.py")).unwrap();
+        std::fs::write(root.join("json.py"), "raise RuntimeError('shadowed')").unwrap();
+        let sep = if cfg!(windows) { ";" } else { ":" };
+        let pypath = format!("{}{}{}", guard.display(), sep, root.display());
+        let out = std::process::Command::new(&python)
+            .args(["-c", "import json, sys; print(not sys.argv[1] in json.__file__)"])
+            .arg(root.to_string_lossy().as_ref())
+            .env("PYTHONPATH", pypath)
+            .output()
+            .expect("detected python must run");
+        assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "True");
     }
 
     #[test]

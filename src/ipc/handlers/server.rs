@@ -19,7 +19,9 @@ use super::super::{
 pub async fn health_check(headers: axum::http::HeaderMap) -> impl IntoResponse {
     let version = env!("CARGO_PKG_VERSION");
     let token = super::super::auth::token_status(&headers);
-    (StatusCode::OK, Json(json!({ "ok": true, "version": version, "pid": std::process::id(), "token": token, "stops_with_launcher": stops_with_launcher() })))
+    let challenge = headers.get("X-Saba-Challenge").and_then(|v| v.to_str().ok());
+    let proof = challenge.and_then(|challenge| crate::ipc::auth::identity_proof(challenge));
+    (StatusCode::OK, Json(json!({ "ok": true, "version": version, "pid": std::process::id(), "token": token, "proof": proof, "stops_with_launcher": stops_with_launcher() })))
 }
 
 /// 데몬이 닫히면 함께 끝내는 job 안에 있는가 (L46). GUI가 job breakaway를 거절당해 그대로 띄우면, GUI를 띄운 프로그램이
@@ -689,7 +691,9 @@ async fn install_module_locked(state: IPCServer, module_id: String) -> axum::res
 
     let result: anyhow::Result<()> = async {
         let http = reqwest::Client::new();
-        saba_chan_updater_lib::download::download_verified(&http, &comp.url, &zip_path, Some(&comp.sha256), comp.size_bytes, None).await?;
+        const MODULE_DOWNLOAD_LIMIT: u64 = 128 * 1024 * 1024;
+        let max_bytes = Some(comp.size_bytes.unwrap_or(MODULE_DOWNLOAD_LIMIT).min(MODULE_DOWNLOAD_LIMIT));
+        saba_chan_updater_lib::download::download_verified(&http, &comp.url, &zip_path, Some(&comp.sha256), max_bytes, None).await?;
         let _ = std::fs::remove_dir_all(&staging);
         saba_chan_updater_lib::extract_zip(&zip_path, &staging, |_| Ok(()))?;
         install_staged_module(&staging, &target_dir)?;

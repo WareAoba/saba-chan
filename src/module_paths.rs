@@ -57,6 +57,14 @@ fn relative_to(path: &Path, root: &Path) -> Option<PathBuf> {
     Some(parts.collect())
 }
 
+fn is_daemon_data_path(path: &Path, data_dir: &Path) -> bool {
+    let Some(relative) = relative_to(path, data_dir) else { return false };
+    if relative.as_os_str().is_empty() { return true; }
+    relative.components().next().is_some_and(|part| {
+        ["config.json", "settings.json", ".ipc_token"].iter().any(|name| part.as_os_str().to_string_lossy().eq_ignore_ascii_case(name))
+    })
+}
+
 pub fn is_inside(path: &Path, roots: &[PathBuf]) -> bool {
     let Some(path) = checked_path(path) else { return false };
     roots
@@ -124,8 +132,14 @@ impl Boundary {
             let Some((key, suffix)) = data_root_parts(pattern) else {
                 continue;
             };
-            let root = if key == "home" {
+            let verified = metadata.is_some_and(|m| {
+                let entry = crate::plugin::resolve_modules_dir().join(&instance.module_name).join(&m.entry);
+                crate::sandbox::trust_of_entry(&entry) == saba_chan_updater_lib::integrity::Trust::Verified
+            });
+            let root = if key == "home" && verified {
                 std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" }).map(PathBuf::from)
+            } else if key == "home" {
+                None
             } else if instance.user_settings.contains(key) || instance.imported_settings.contains(key) {
                 instance
                     .module_settings
@@ -166,6 +180,11 @@ impl Boundary {
         };
         let path = std::path::absolute(path).ok()?;
         let real = checked_path(&path)?;
+        let data_dir = saba_chan_updater_lib::constants::resolve_data_dir();
+        let data_dir = checked_path(&data_dir)?;
+        if is_daemon_data_path(&real, &data_dir) {
+            return None;
+        }
         if let Some(instance_dir) = &self.instance_dir {
             let instance = checked_path(instance_dir)?;
             if let Some(relative) = relative_to(&real, &instance) {
@@ -205,6 +224,16 @@ mod tests {
     use super::*;
     use serde_json::json;
 
+    #[test]
+    fn daemon_data_files_are_never_in_a_component_boundary() {
+        let data = Path::new("C:/Users/test/AppData/Roaming/saba-chan");
+        assert!(is_daemon_data_path(data, data));
+        for name in ["config.json", "settings.json", ".ipc_token"] {
+            assert!(is_daemon_data_path(&data.join(name), data));
+        }
+        assert!(!is_daemon_data_path(&data.join("instances/id/server/world"), data));
+    }
+
     #[cfg(windows)]
     #[test]
     fn contract_paths_windows_does_not_merge_unicode_sibling_names() {
@@ -227,7 +256,7 @@ mod tests {
         let outside = tmp.path().join("chosen");
         std::fs::create_dir_all(&instance_dir).unwrap();
         std::fs::create_dir_all(&outside).unwrap();
-        let meta = crate::supervisor::module_loader::parse_module_toml("[module]\nschema_version = 1\nname = 'g'\nversion = '1'\nentry = 'lifecycle.py'\n\n[[settings.fields]]\nname = 'data'\ntype = 'file'\n\n[install]\nmethod = 'manual'\n\n[extensions.saba-core]\ndata_roots = ['{data}']\n").unwrap();
+        let meta = crate::supervisor::module_loader::parse_module_toml("[module]\nschema_version = 1\nname = 'g'\nversion = '1'\nentry = 'lifecycle.py'\n\n[[settings.fields]]\nname = 'data'\ntype = 'file'\n\n[install]\nmethod = 'manual'\n\n[extensions.saba-core]\ndata_roots = ['{data}', '{home}/Worlds']\n").unwrap();
         let mut instance = ServerInstance::new("g", "g");
         instance.module_settings.insert("data".into(), json!(&outside));
         let target = outside.join("deleted/world");
@@ -238,6 +267,10 @@ mod tests {
         assert!(Boundary::for_instance(&instance, &instance_dir, Some(&meta))
             .resolve(&target)
             .is_some());
+        let home = std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" }).map(PathBuf::from).unwrap();
+        assert!(Boundary::for_instance(&instance, &instance_dir, Some(&meta))
+            .resolve(&home.join("Worlds/secret"))
+            .is_none());
         instance.user_settings.clear();
         instance.imported_settings.insert("data".into());
         let boundary = Boundary::for_instance(&instance, &instance_dir, Some(&meta));

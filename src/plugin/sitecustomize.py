@@ -8,6 +8,17 @@ ModuleNotFoundError, which modules already treat as "extension missing".
 import os
 import sys
 
+_trusted_roots = {os.path.normcase(os.path.realpath(sys.base_prefix)), os.path.normcase(os.path.realpath(sys.exec_prefix))}
+_trusted = []
+_other = []
+for _path in sys.path:
+    _real = os.path.normcase(os.path.realpath(_path or os.curdir))
+    if any(_real == _root or _real.startswith(_root + os.sep) for _root in _trusted_roots):
+        _trusted.append(_path)
+    else:
+        _other.append(_path)
+sys.path[:] = _trusted + _other
+
 _ENABLED = os.environ.get("SABA_ENABLED_EXTENSIONS")
 # Enabled but unverified extensions a run outside the sandbox may not import
 # (a verified module would otherwise run their code unisolated).

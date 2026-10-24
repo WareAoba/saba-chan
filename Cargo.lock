@@ -4351,6 +4351,7 @@ name = "saba-atomic-file"
 version = "0.1.8"
 dependencies = [
  "tempfile",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -4364,6 +4365,8 @@ dependencies = [
  "comfy-table",
  "console 0.15.11",
  "dialoguer",
+ "hex",
+ "hmac",
  "indicatif",
  "libc",
  "ratatui",
@@ -4373,6 +4376,7 @@ dependencies = [
  "saba-chan-updater-lib",
  "serde",
  "serde_json",
+ "sha2",
  "shlex",
  "sys-locale",
  "tempfile",
@@ -4380,6 +4384,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "unicode-width 0.2.0",
+ "uuid",
  "windows-sys 0.59.0",
  "winreg 0.52.0",
  "winres",
@@ -4392,10 +4397,13 @@ dependencies = [
  "base64 0.21.7",
  "chrono",
  "futures-util",
+ "hex",
+ "hmac",
  "reqwest 0.11.27",
  "saba-chan-updater-lib",
  "serde",
  "serde_json",
+ "sha2",
  "sys-locale",
  "tauri",
  "tauri-build",
@@ -4407,6 +4415,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "uuid",
  "winreg 0.52.0",
 ]
 
@@ -4540,6 +4549,7 @@ dependencies = [
  "ureq",
  "uuid",
  "winapi",
+ "windows-sys 0.59.0",
  "winreg 0.52.0",
  "winres",
  "zip",

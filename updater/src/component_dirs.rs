@@ -273,9 +273,10 @@ pub fn move_to(
         Err(e) if e.code == "same_as_current" => return Ok(None),
         other => other?,
     };
-    let moved = relocate(layout.dir(kind), &target, || {
+    let is_default = crate::same_path(&target, &default_dir(kind, &layout.data_dir));
+    let moved = relocate_inner(layout.dir(kind), &target, || {
         commit_move(config, kind, layout.dir(kind), &target, &layout.data_dir)
-    })?;
+    }, true, !is_default)?;
     Ok(Some((target, moved)))
 }
 
@@ -292,7 +293,12 @@ pub struct Relocated {
 /// 새 폴더가 다 갖춰진 뒤에야 `commit`(설정 저장)을 부른다. 그 전에 실패하거나 `commit`이 실패하면 `src`는 그대로이고
 /// 만든 것은 지운다. `commit`이 끝난 뒤에만 `src`를 지운다
 pub fn relocate(src: &Path, dst: &Path, commit: impl FnOnce() -> std::io::Result<()>) -> Result<Relocated, PathError> {
-    relocate_inner(src, dst, commit, true)
+    relocate_inner(src, dst, commit, true, false)
+}
+
+/// 옮긴 구성요소 폴더는 사용자 지정 위치의 상속 ACL(다른 계정 수정 권한 등)을 잇지 않는다
+fn secure_component_dir(path: &Path) -> std::io::Result<()> {
+    saba_atomic_file::restrict_to_user(path)
 }
 
 fn relocate_inner(
@@ -300,6 +306,7 @@ fn relocate_inner(
     dst: &Path,
     commit: impl FnOnce() -> std::io::Result<()>,
     try_rename: bool,
+    secure_acl: bool,
 ) -> Result<Relocated, PathError> {
     let shown = dst.display().to_string();
     // 링크·정션을 푼 실제 경로로도 본다: 대상 위 폴더가 원본을 가리키면 원본 안에 복사해 끝없이 커진다
@@ -327,6 +334,12 @@ fn relocate_inner(
 
     if !src.exists() {
         std::fs::create_dir(dst).map_err(|e| PathError::new("not_writable", format!("{}: {}", shown, e)))?;
+        if secure_acl {
+            if let Err(e) = secure_component_dir(dst) {
+                let _ = std::fs::remove_dir_all(dst);
+                return Err(PathError::new("acl_failed", e.to_string()));
+            }
+        }
         let _ = mark_owned(dst);
         if let Err(e) = commit() {
             let _ = std::fs::remove_dir_all(dst);
@@ -340,6 +353,12 @@ fn relocate_inner(
 
     // 같은 드라이브: 원자적 이름 바꾸기. 잠긴 파일이 있거나 드라이브가 다르면 실패하므로 복사로 간다
     if try_rename && std::fs::rename(src, dst).is_ok() {
+        if secure_acl {
+            if let Err(e) = secure_component_dir(dst) {
+                let _ = std::fs::rename(dst, src);
+                return Err(PathError::new("acl_failed", e.to_string()));
+            }
+        }
         let _ = mark_owned(dst);
         if let Err(e) = commit() {
             if let Err(back) = std::fs::rename(dst, src) {
@@ -374,6 +393,13 @@ fn relocate_inner(
     if let Err(e) = std::fs::rename(&staging, dst) {
         let _ = std::fs::remove_dir_all(&staging);
         return Err(PathError::new("not_writable", format!("{}: {}", shown, e)));
+    }
+    if secure_acl {
+        if let Err(e) = secure_component_dir(dst) {
+            let _ = std::fs::rename(dst, &staging);
+            let _ = std::fs::remove_dir_all(&staging);
+            return Err(PathError::new("acl_failed", e.to_string()));
+        }
     }
     let _ = mark_owned(dst);
     if let Err(e) = commit() {
@@ -556,6 +582,15 @@ mod tests {
             modules: abs("home/me/.config/saba-chan/modules"),
             extensions: abs("home/me/.config/saba-chan/extensions"),
         }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn relocated_component_directory_has_a_protected_acl() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dst = tmp.path().join("modules");
+        std::fs::create_dir(&dst).unwrap();
+        super::secure_component_dir(&dst).unwrap();
     }
 
     #[test]
@@ -773,7 +808,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let (src, dst) = (tmp.path().join("old/modules"), tmp.path().join("new/modules"));
         tree(&src);
-        let r = relocate_inner(&src, &dst, || Ok(()), false).unwrap();
+        let r = relocate_inner(&src, &dst, || Ok(()), false, false).unwrap();
         assert!(r.left_behind.is_empty());
         assert!(!src.exists() && !staging_dir(&dst).exists());
         assert_eq!(
@@ -783,7 +818,7 @@ mod tests {
 
         let (src2, dst2) = (tmp.path().join("old2/modules"), tmp.path().join("new2/modules"));
         tree(&src2);
-        let err = relocate_inner(&src2, &dst2, || Err(std::io::Error::other("no")), false).unwrap_err();
+        let err = relocate_inner(&src2, &dst2, || Err(std::io::Error::other("no")), false, false).unwrap_err();
         assert_eq!(err.code, "commit_failed");
         assert!(src2.join("minecraft/module.toml").is_file());
         assert!(!dst2.exists() && !staging_dir(&dst2).exists());
@@ -798,14 +833,14 @@ mod tests {
         let staging = staging_dir(&dst);
         std::fs::create_dir_all(&staging).unwrap();
         std::fs::write(staging.join("mine.txt"), "user").unwrap();
-        let err = relocate_inner(&src, &dst, || panic!("must not commit"), false).unwrap_err();
+        let err = relocate_inner(&src, &dst, || panic!("must not commit"), false, false).unwrap_err();
         assert_eq!(err.code, "not_empty");
         assert_eq!(std::fs::read_to_string(staging.join("mine.txt")).unwrap(), "user");
         assert!(src.join("i18n.py").is_file());
 
         // 끊긴 옮기기가 남긴 것(표시 있음)은 지우고 다시 옮긴다
         std::fs::write(staging.join(STAGING_MARKER), "").unwrap();
-        relocate_inner(&src, &dst, || Ok(()), false).unwrap();
+        relocate_inner(&src, &dst, || Ok(()), false, false).unwrap();
         assert!(!staging.exists() && !dst.join("mine.txt").exists() && !dst.join(STAGING_MARKER).exists());
         assert!(dst.join("i18n.py").is_file() && !src.exists());
     }
@@ -820,7 +855,7 @@ mod tests {
         let alias = tmp.path().join("alias");
         let made = std::process::Command::new("cmd").args(["/c", "mklink", "/J"]).arg(&alias).arg(&src).output().unwrap();
         assert!(made.status.success(), "{}{}", String::from_utf8_lossy(&made.stdout), String::from_utf8_lossy(&made.stderr));
-        let err = relocate_inner(&src, &alias.join("modules"), || panic!("must not commit"), false).unwrap_err();
+        let err = relocate_inner(&src, &alias.join("modules"), || panic!("must not commit"), false, false).unwrap_err();
         assert_eq!(err.code, "overlaps_current");
         assert!(!src.join("modules").exists() && !src.join(".modules.saba-moving").exists());
         std::fs::remove_dir(&alias).unwrap();
@@ -908,7 +943,7 @@ mod tests {
                     }
                 }
                 written.retain(|rel, _| src.join(rel).is_file());
-                let r = relocate_inner(&src, &dst, || if fail { Err(std::io::Error::other("no")) } else { Ok(()) }, rename);
+                let r = relocate_inner(&src, &dst, || if fail { Err(std::io::Error::other("no")) } else { Ok(()) }, rename, false);
                 let (root, gone) = if fail { (&src, &dst) } else { (&dst, &src) };
                 prop_assert_eq!(r.is_ok(), !fail);
                 prop_assert!(!gone.exists());

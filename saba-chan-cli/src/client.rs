@@ -25,6 +25,8 @@ pub struct Api {
     /// 데몬 포트 (데몬을 띄울 때 그대로 넘긴다)
     pub port: u16,
     token: Arc<RwLock<Option<String>>>,
+    /// 데몬 신원 증명을 확인한 토큰. 같은 토큰이면 요청마다 다시 묻지 않는다
+    verified: Arc<RwLock<Option<String>>>,
     /// 요청마다 싣는 `Accept-Language` (`--lang`·`SABA_LANG`으로 고른 언어). 없으면 데몬이 자기 설정을 따른다
     pub lang: Option<String>,
     /// 이 실행에서 마지막으로 보인 포트 충돌 정지 알림 id (L50)
@@ -68,6 +70,7 @@ impl Api {
             base: format!("http://127.0.0.1:{}", port),
             port,
             token: Arc::new(RwLock::new(read_token())),
+            verified: Arc::default(),
             lang,
             notices_seen: Arc::default(),
         }
@@ -107,13 +110,39 @@ impl Api {
         })
     }
 
+    async fn daemon_identity_valid(&self) -> Result<bool> {
+        let token = self.token.read().ok().and_then(|t| t.clone()).unwrap_or_default();
+        if token.is_empty() { return Ok(false); }
+        if self.verified.read().ok().is_some_and(|v| v.as_deref() == Some(token.as_str())) { return Ok(true); }
+        let challenge = uuid::Uuid::new_v4().to_string();
+        let response = self.http.get(format!("{}/health", self.base)).timeout(QUICK)
+            .header("X-Saba-Challenge", &challenge).send().await?;
+        let body: Value = response.json().await?;
+        let Some(proof) = body.get("proof").and_then(Value::as_str) else { return Ok(false) };
+        use hmac::{Hmac, Mac};
+        let mut mac = Hmac::<sha2::Sha256>::new_from_slice(token.as_bytes())?;
+        mac.update(challenge.as_bytes());
+        let valid = mac.verify_slice(&hex::decode(proof)?).is_ok();
+        if valid {
+            if let Ok(mut verified) = self.verified.write() { *verified = Some(token); }
+        }
+        Ok(valid)
+    }
+
     pub async fn call(&self, method: Method, path: &str, body: Option<Value>, timeout: Duration) -> Result<Value> {
+        if self.token.read().ok().and_then(|t| t.clone()).is_some() && !self.daemon_identity_valid().await? {
+            if let Ok(mut token) = self.token.write() { *token = read_token(); }
+            if !self.daemon_identity_valid().await? { anyhow::bail!("IPC endpoint identity check failed"); }
+        }
         let mut resp = self.send(&method, path, body.as_ref(), timeout).await?;
         // 데몬이 다시 뜨면 토큰이 바뀐다 → 한 번 다시 읽고 재시도
         if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
             let fresh = read_token();
             if let Ok(mut t) = self.token.write() {
                 *t = fresh;
+            }
+            if self.token.read().ok().and_then(|t| t.clone()).is_some() && !self.daemon_identity_valid().await? {
+                anyhow::bail!("IPC endpoint identity check failed");
             }
             resp = self.send(&method, path, body.as_ref(), timeout).await?;
         }
@@ -1110,7 +1139,9 @@ mod tests {
             sock.write_all(b"HTTP/1.1 200 OK\r\ncontent-length: 2\r\n\r\n{}").await.unwrap();
             String::from_utf8_lossy(&head).to_ascii_lowercase()
         });
-        Api::new(port, lang.map(str::to_string)).call(Method::GET, "/api/servers", None, QUICK).await.unwrap();
+        let api = Api::new(port, lang.map(str::to_string));
+        *api.token.write().unwrap() = None;
+        api.call(Method::GET, "/api/servers", None, QUICK).await.unwrap();
         server.await.unwrap()
     }
 
@@ -1139,7 +1170,9 @@ mod tests {
                 }
             }
         });
-        send(Api::new(port, None)).await.unwrap();
+        let api = Api::new(port, None);
+        *api.token.write().unwrap() = None;
+        send(api).await.unwrap();
         server.await.unwrap()
     }
 

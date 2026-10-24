@@ -27,8 +27,10 @@ saba-chan-installer-core = { path = "../../core" }
 windows-sys = { version = "0.59", features = [
     "Win32_System_Console",
     "Win32_System_Threading",
+    "Win32_Security",
     "Win32_System_Registry",
     "Win32_Foundation",
+    "Win32_Security_Authorization",
     "Win32_UI_Shell",
     "Win32_UI_WindowsAndMessaging",
 ] }

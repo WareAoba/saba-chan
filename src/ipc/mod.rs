@@ -916,6 +916,21 @@ impl IPCServer {
             // 이미 리슨 중인 포트에도 바인드를 허용하므로 켜지 않는다.
             #[cfg(not(windows))]
             socket.set_reuse_address(true)?;
+            #[cfg(windows)]
+            {
+                use std::{mem::size_of, os::windows::io::AsRawSocket};
+                let enabled: i32 = 1;
+                let rc = unsafe {
+                    windows_sys::Win32::Networking::WinSock::setsockopt(
+                        socket.as_raw_socket() as _,
+                        windows_sys::Win32::Networking::WinSock::SOL_SOCKET,
+                        windows_sys::Win32::Networking::WinSock::SO_EXCLUSIVEADDRUSE,
+                        (&enabled as *const i32).cast(),
+                        size_of::<i32>() as i32,
+                    )
+                };
+                if rc != 0 { return Err(std::io::Error::last_os_error().into()); }
+            }
             socket.set_nonblocking(true)?;
             match socket.bind(&addr.into()) {
                 Ok(()) => {

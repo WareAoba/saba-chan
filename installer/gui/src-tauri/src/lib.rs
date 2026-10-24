@@ -347,13 +347,8 @@ fn elevate_create_dir(dir: &Path) -> Result<(), String> {
 
     let verb = to_wide("runas");
     let file = to_wide(&self_exe.to_string_lossy());
-    // 권한은 상승 전 사용자에게 준다 (상승된 쪽의 USERNAME은 관리자 계정일 수 있다)
-    let user = match (std::env::var("USERDOMAIN"), std::env::var("USERNAME")) {
-        (Ok(d), Ok(u)) => format!("{}\\{}", d, u),
-        (_, Ok(u)) => u,
-        _ => return Err("Cannot determine the current user".into()),
-    };
-    let params = to_wide(&format!("--elevate-mkdir {} --grant {}", quote_arg(&dir.to_string_lossy()), quote_arg(&user)));
+    let sid = current_user_sid()?;
+    let params = to_wide(&format!("--elevate-mkdir {} --grant-sid {}", quote_arg(&dir.to_string_lossy()), quote_arg(&sid)));
 
     let mut sei: SHELLEXECUTEINFOW = unsafe { zeroed() };
     sei.cbSize = size_of::<SHELLEXECUTEINFOW>() as u32;
@@ -387,6 +382,41 @@ fn elevate_create_dir(dir: &Path) -> Result<(), String> {
     }
 
     Err("Directory creation was cancelled or failed".into())
+}
+
+#[cfg(target_os = "windows")]
+fn current_user_sid() -> Result<String, String> {
+    use std::{os::windows::io::FromRawHandle, ptr::null_mut};
+    use windows_sys::Win32::{Foundation::LocalFree, Security::{GetTokenInformation, TOKEN_QUERY, TOKEN_USER, TokenUser}, Security::Authorization::ConvertSidToStringSidW, System::Threading::{GetCurrentProcess, OpenProcessToken}};
+    unsafe {
+        let mut token = null_mut();
+        if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) == 0 { return Err("Cannot open current process token".into()); }
+        let _token = std::fs::File::from_raw_handle(token);
+        let mut size = 0;
+        GetTokenInformation(token, TokenUser, null_mut(), 0, &mut size);
+        let mut data = vec![0u8; size as usize];
+        if GetTokenInformation(token, TokenUser, data.as_mut_ptr().cast(), size, &mut size) == 0 { return Err("Cannot read current user SID".into()); }
+        let user = &*(data.as_ptr() as *const TOKEN_USER);
+        let mut text = null_mut();
+        if ConvertSidToStringSidW(user.User.Sid, &mut text) == 0 { return Err("Cannot format current user SID".into()); }
+        let mut len = 0;
+        while *text.add(len) != 0 { len += 1; }
+        let sid = String::from_utf16_lossy(std::slice::from_raw_parts(text, len));
+        LocalFree(text.cast());
+        Ok(sid)
+    }
+}
+
+fn valid_user_sid(sid: &str) -> bool {
+    let mut parts = sid.split('-');
+    if parts.next() != Some("S") || parts.next() != Some("1") { return false; }
+    let decimal = |v: &str| !v.is_empty() && v.bytes().all(|b| b.is_ascii_digit());
+    let Some(authority) = parts.next().filter(|v| decimal(v)).and_then(|v| v.parse::<u64>().ok()) else { return false };
+    let subauthorities: Vec<_> = parts.collect();
+    authority <= 0x0000_ffff_ffff_ffff
+        && !subauthorities.is_empty()
+        && subauthorities.len() <= 15
+        && subauthorities.iter().all(|v| decimal(v) && v.parse::<u32>().is_ok())
 }
 
 /// 관리자 권한으로 만들 폴더 검사: 드라이브 절대 경로, `.`·`..` 없음, 두 단계 이상 깊이,
@@ -527,16 +557,19 @@ pub fn run() {
                 std::process::exit(1);
             }
             // 상승 전 사용자에게 전체 권한 부여
-            let Some(username) = args.iter().position(|a| a == "--grant").and_then(|i| args.get(i + 1)).cloned() else {
-                eprintln!("elevate-mkdir: missing --grant user");
+            let Some(sid) = args.iter().position(|a| a == "--grant-sid").and_then(|i| args.get(i + 1)).cloned().filter(|s| valid_user_sid(s)) else {
+                eprintln!("elevate-mkdir: missing or invalid user SID");
                 std::process::exit(1);
             };
+            if let Err(e) = check_elevated_target(dir).and_then(|_| check_elevated_contents(dir)) {
+                eprintln!("elevate-mkdir: {}", e);
+                std::process::exit(1);
+            }
             let icacls = saba_chan_updater_lib::process::hide_console(&mut std::process::Command::new(saba_chan_updater_lib::process::system_tool("icacls")))
                 .args([
                     dir_str.as_str(),
                     "/grant",
-                    &format!("{}:(OI)(CI)F", username),
-                    "/T",
+                    &format!("*{}:(OI)(CI)F", sid),
                     "/Q",
                 ])
                 .output();
@@ -661,6 +694,14 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn elevation_accepts_only_numeric_user_sids() {
+        assert!(valid_user_sid("S-1-5-21-123-456-789-1001"));
+        assert!(!valid_user_sid("DOMAIN\\user"));
+        assert!(!valid_user_sid("S-1-5-21-123-x"));
+        assert!(!valid_user_sid("S-1-5-21-4294967296"));
+    }
 
     #[test]
     fn only_one_install_or_uninstall_runs_at_a_time() {

@@ -404,28 +404,22 @@ async fn health_ok(app: &AppHandle, timeout_ms: u64) -> bool {
     app.state::<AppState>().client.get("/health", timeout_ms).await.is_ok()
 }
 
-/// 토큰 재로드 후 검증 (최대 3회, 500ms 간격). 실패해도 진행한다 (이후 401 재시도에 맡김)
+/// 토큰 재로드 후 challenge 응답을 검증한다 (최대 3회, 500ms 간격).
 async fn reload_token_until_valid(app: &AppHandle) -> bool {
     let client = app.state::<AppState>().client.clone();
     for retry in 0..3 {
         client.load_token();
-        match client.get("/health", 1000).await {
-            Ok(v) if token_valid(&v) => {
-                tracing::info!("Token refreshed and verified");
-                return true;
-            }
-            Ok(_) => {}
-            Err(e) => tracing::warn!("[Auth] Token verify attempt {} failed: {}", retry + 1, e.message),
+        if client.identity_valid(1000).await {
+            tracing::info!("Token refreshed and verified");
+            return true;
+        }
+        if let Err(e) = client.get("/health", 500).await {
+            tracing::warn!("[Auth] Token verify attempt {} failed: {}", retry + 1, e.message);
         }
         sleep(500).await;
     }
     tracing::warn!("[Auth] Token verification failed after 3 retries, proceeding anyway");
     false
-}
-
-/// /health가 보낸 토큰을 맞다고 했는가. 예전 데몬은 token 칸 없이 200 (토큰이 맞을 때만)
-pub(crate) fn token_valid(health: &Value) -> bool {
-    health.get("token").and_then(Value::as_str).unwrap_or("valid") == "valid"
 }
 
 /// 데몬이 새로 뜨는 동안 기다린다. 새 토큰을 만들므로 매번 다시 읽고, 토큰이 맞을 때까지 기다린다
@@ -436,16 +430,13 @@ async fn wait_for_new_daemon(app: &AppHandle) -> bool {
     for _ in 0..20 {
         sleep(500).await;
         client.load_token();
-        match client.get("/health", 800).await {
-            Ok(v) if token_valid(&v) => return true,
-            Ok(_) => alive = true,
-            Err(_) => {}
-        }
+        if client.identity_valid(800).await { return true; }
+        alive |= client.get("/health", 500).await.is_ok();
     }
     if alive {
         tracing::warn!("[Auth] New daemon is up but the token file did not match yet");
     }
-    alive
+    false
 }
 
 /// 떠 있는 데몬이 있으면 재사용하고, 없으면 띄운다. 데몬이 응답하지 않으면 false
@@ -454,14 +445,12 @@ async fn ensure_daemon(app: &AppHandle) -> bool {
     state.client.load_token();
     status_t(app, "daemon", "daemon.checking");
     match state.client.get("/health", 1000).await {
-        Ok(v) => {
-            // /health는 토큰 없이 답하고 보낸 토큰 상태를 알려 준다 (A6)
-            if !token_valid(&v) {
+        Ok(_) => {
+            if !state.client.identity_valid(1000).await && !reload_token_until_valid(app).await {
                 tracing::info!("Existing daemon detected (stale token). Reloading token...");
-                reload_token_until_valid(app).await;
-            } else {
-                tracing::info!("Existing daemon detected on IPC port. Skipping launch.");
+                return false;
             }
+            tracing::info!("Existing daemon identity verified on IPC port.");
             status_t(app, "daemon", "daemon.existing_running");
             state.life.attached_daemon.store(true, Ordering::SeqCst);
             sync_install_root(app).await;
@@ -470,7 +459,7 @@ async fn ensure_daemon(app: &AppHandle) -> bool {
         // 401 = 예전 데몬이 떠 있지만 토큰이 맞지 않음 (이전 세션 토큰)
         Err(e) if e.status == Some(401) => {
             tracing::info!("Existing daemon detected (auth failed — stale token). Reloading token...");
-            reload_token_until_valid(app).await;
+            if !reload_token_until_valid(app).await { return false; }
             status_t(app, "daemon", "daemon.existing_running");
             state.life.attached_daemon.store(true, Ordering::SeqCst);
             sync_install_root(app).await;
@@ -495,7 +484,7 @@ async fn ensure_daemon(app: &AppHandle) -> bool {
             tracing::warn!("Unexpected error checking daemon: {}", e.message);
             let msg = state.t("daemon.check_warning", &[("error", &e.message)]);
             send_status(app, "daemon", &msg);
-            true
+            state.client.identity_valid(1000).await
         }
     }
 }

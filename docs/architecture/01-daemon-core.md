@@ -124,7 +124,7 @@
   python-guard/sitecustomize.py   활성 익스텐션만 import하게 하는 가드    plugin/mod.rs:113-125
   installed-manifest.json, updater-state.json, update-complete.json (updater)
   modules/<module>/module.toml, lifecycle.py, locales/*.json
-  modules/i18n.py, daemon_rcon.py   데몬에 내장된 공용 Python 유틸리티 (plugin/mod.rs:127-147)
+  python-shared/i18n.py, daemon_rcon.py, saba_audit.py   데몬에 내장된 공용 Python 유틸리티 (plugin/mod.rs)
   extensions/<ext>/...
   instances/
     order.json
@@ -157,6 +157,7 @@
 - **경로 파라미터 표기**: axum 0.7의 `:param` 문법을 쓴다.
 - **인증 적용 범위**: `.layer(auth_middleware)`는 업데이트 라우터를 `.merge()`한 **뒤에** 달린다(`ipc/mod.rs:812-816`).
   - 따라서 `/api/updates/*`를 포함한 모든 라우트에 토큰이 필요하다. **`/health`만 예외**다(A6): 루프백 검사는 거치지만 토큰 없이 답한다. 토큰이 어긋나도 클라이언트가 데몬이 떠 있는지 알 수 있게 하려는 것이다.
+  - GUI와 CLI는 토큰을 보내기 전에 `/health`에 임의 challenge를 보내고, 데몬의 토큰 기반 HMAC 응답을 검증한다. Windows 리스너는 `SO_EXCLUSIVEADDRUSE`로 포트를 독점 바인드한다.
   - 미들웨어는 토큰보다 먼저 `Host` 헤더가 루프백(`127.0.0.1`, `localhost`, `::1`)인지 보고, 아니면 본문 없는 403을 돌려준다(`auth.rs:90-117`). DNS 리바인딩 방어다.
 - **에러 형식이 통일돼 있지 않다.** 다음 형식들이 섞여 있다.
   - `{"error": "..."}` (+ 선택적으로 `"error_code"`)
@@ -175,7 +176,7 @@
 
 | Method | Path | Handler | 요청 | 응답 |
 |---|---|---|---|---|
-| GET | `/health` | `server.rs:19` `health_check` | - | `{ok:true, version, pid, token, stops_with_launcher}`. 토큰 없이 부를 수 있다. `token`은 보낸 `X-Saba-Token`이 `valid`·`invalid`·`missing` 중 무엇인지(값은 드러내지 않는다). `stops_with_launcher`는 데몬이 닫히면 함께 끝내는 job(kill-on-close) 안에서 도는지다(Windows만 true가 될 수 있다. GUI가 job breakaway를 거절당해 그대로 띄운 경우나 CLI가 그런 job 안에서 띄운 경우, L46. 바로 위 job만 본다). 클라이언트가 true일 때 데몬이 띄운 프로그램과 함께 끝날 수 있음을 알리는 데 쓴다(CLI는 `daemon start`·`daemon status`·`status`와 데몬을 켜 준 직후에 경고로 알린다. GUI는 `daemon_status`의 `in_parent_job`으로 받아 상단 바에 경고한다(`ParentJobNotice`, 04 §1.1)) |
+| GET | `/health` | `server.rs:19` `health_check` | 선택: `X-Saba-Challenge` | `{ok:true, version, pid, token, proof?, stops_with_launcher}`. 토큰 없이 부를 수 있다. `token`은 보낸 `X-Saba-Token`이 `valid`·`invalid`·`missing` 중 무엇인지(값은 드러내지 않는다). challenge가 있으면 `proof`는 토큰 기반 HMAC 응답이며 클라이언트가 데몬 신원을 확인하는 데 쓴다. `stops_with_launcher`는 데몬이 닫히면 함께 끝내는 job(kill-on-close) 안에서 도는지다(Windows만 true가 될 수 있다. GUI가 job breakaway를 거절당해 그대로 띄운 경우나 CLI가 그런 job 안에서 띄운 경우, L46. 바로 위 job만 본다). 클라이언트가 true일 때 데몬이 띄운 프로그램과 함께 끝날 수 있음을 알리는 데 쓴다(CLI는 `daemon start`·`daemon status`·`status`와 데몬을 켜 준 직후에 경고로 알린다. GUI는 `daemon_status`의 `in_parent_job`으로 받아 상단 바에 경고한다(`ParentJobNotice`, 04 §1.1)) |
 | GET | `/api/diagnostics` | `diagnostics.rs:20` | - | A6, 인증 필요. `{ok, version, pid, uptime_secs, listen_addr, data_dir, token_file:{path, exists}, audit_log, extensions:{enabled, enabled_but_missing}, modules:{count}\|{error}, recent_problems:[최근 경고·오류 20개, 오래된 순]}` |
 | GET | `/api/onboarding` | `diagnostics.rs` `onboarding` | - | J1-a 다음 할 일. `{steps:[{id, done, optional}], next}`. 단계 `module`(모듈 있음)·`server`(서버 있음)·`discord`(노드 토큰 있음)·`chatbot`(챗봇 API 키, 선택). `next`는 안 한 첫 필수 단계 id, 다 했으면 null. 문구는 클라이언트가 id로 고른다. relay 하트비트 `metadata.onboarding`에도 같은 값이 실린다 |
 | GET | `/api/audit` | `diagnostics.rs` `audit` | `?limit=`(기본 100, 최대 1000)`&instance=<id>` | A10 감사 로그, 최신이 먼저: `{entries:[{ts, source, user?, userName?, guild?, guildName?, action, instanceId, instance?, command?, args?, ok, status}]}`. 비밀은 `***`로 가린다(아래 `audit.rs`). `action`은 `start`·`stop`·`restart`·`command`(`/command`·`/rcon`·`/rest`)·`stdin`·`properties`·`reset`, 예약 백업은 `backup`(출처 `schedule`, `status` 200 만듦·204 백업할 것 없음·409 서버가 꺼져 있어 건너뜀·그 밖은 실패), 액션 카탈로그의 관리 액션은 그 액션 id(예 `instance.settings.set`) |
@@ -699,18 +700,18 @@ Relay 서명 방식(`relay.rs:115-161`):
 | `instance.stdin` | `{command}` | 기존 인스턴스 stdin API와 같은 처리와 결과 |
 | `instance.rest` | `{method, path, body?}` | `path`를 REST API의 `endpoint`로 옮기고 기존 처리와 결과를 사용 |
 
-대상 인스턴스는 데몬이 만든 호출 문맥으로 정한다. 요청에서 인스턴스 id·PID·파일 경로를 받지 않는다. 인스턴스 문맥이 없으면 `no_instance`, 허용하지 않은 작업은 `op_not_allowed`다. 실행당 요청은 64건, 요청 시간은 30초, 보내기는 64 KiB, 받기는 1 MiB다. `LOOPBACK`과 요청 수를 함께 센다. 응답 상한을 넘으면 `response_too_large`로 실패하며 잘린 성공을 돌려주지 않는다. `HOST:` 줄과 그 연속 조각은 로그·stderr 진단에 남기지 않는다.
+대상 인스턴스는 데몬이 만든 호출 문맥으로 정한다. 격리된 구성요소(확인되지 않았고 비격리 동의도 없는 것)의 실행에는 인스턴스 문맥을 주지 않아 `no_instance`가 된다(`plugin/mod.rs` `host_context`). 요청에서 인스턴스 id·PID·파일 경로를 받지 않는다. 인스턴스 문맥이 없으면 `no_instance`, 허용하지 않은 작업은 `op_not_allowed`다. 실행당 요청은 64건, 요청 시간은 30초, 보내기는 64 KiB, 받기는 1 MiB다. `LOOPBACK`과 요청 수를 함께 센다. 응답 상한을 넘으면 `response_too_large`로 실패하며 잘린 성공을 돌려주지 않는다. `HOST:` 줄과 그 연속 조각은 로그·stderr 진단에 남기지 않는다.
 
 REST 자격증명 조회의 `get_credentials` 재진입은 바깥 호출의 자리와 절대 기한을 쓴다. 인스턴스 hook도 같은 문맥을 전달한다. 인스턴스 없는 목록·데몬 시작/종료 hook은 `no_instance`다. SDK의 HTTP 호환 경로와 일반 토큰 경로는 남아 있다.
 
 **자식 프로세스 환경**
 
-- `PYTHONPATH` = `<data_dir>/python-guard` + `<extensions_dir의 부모>` + `<modules_dir>` + 기존 값(`:313-350`). 앞의 둘은 `extensions_dir`가 디렉토리일 때만 넣는다. `python-guard/sitecustomize.py`는 활성 익스텐션만 import되게 막는다(`:113-125`).
+- `PYTHONPATH` = `<data_dir>/python-guard` + `<extensions_dir의 부모>` + `<data_dir>/python-shared` + 기존 값. `sitecustomize.py`는 표준 라이브러리 경로를 이 경로보다 먼저 두고 활성 익스텐션만 import되게 막는다.
 - `SABA_ENABLED_EXTENSIONS` = `config.json`의 `extensions.enabled`를 쉼표로 연결한 값. 목록이 없으면 빈 문자열이다(`:317-322`).
 - 데몬 연결 정보 `SABA_IPC_PORT`, `SABA_IPC_URL`, `SABA_TOKEN_PATH`, `SABA_LANG`(`daemon_env`, `:14-38`).
 - 확인되지 않은 구성요소는 격리를 요구한다. Windows는 AppContainer를 쓰며, Linux·macOS는 현재 파일 지문에 대한 비격리 동의가 없으면 실행을 거부한다(`sandbox::isolation_for`, 02 문서 §2.1). 격리를 요구한 실행은 `SABA_TOKEN_PATH`를 빼고 임시·캐시 폴더를 구성요소별로 나눈다.
 - `SABA_HOST_DIR`은 모든 호출에 있고, 실행 종료 후 정리한다. 대상 인스턴스는 이 환경 변수가 아니라 `PluginCall`의 데몬 측 문맥으로 정한다.
-- 첫 실행 때 내장 공용 유틸리티(`i18n.py`, `daemon_rcon.py`)를 모듈 폴더에 맞춰 쓴다(`:127-147, 335-341`).
+- 내장 공용 Python 유틸리티는 `<data_dir>/python-shared/`에 맞춰 쓴다. 모듈 폴더는 `PYTHONPATH`에 넣지 않는다. 익스텐션은 import 가드와 익스텐션 상위 폴더를 사용한다.
 
 **모듈의 `lifecycle.py`가 응답해야 하는 함수** (코어에서 직접 호출하는 것만)
 

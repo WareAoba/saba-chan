@@ -101,20 +101,21 @@ pub fn app_ready(app: AppHandle) {
 #[tauri::command]
 pub async fn daemon_status(app: AppHandle) -> Value {
     let client = &app.state::<AppState>().client;
-    let mut health = client.get("/health", 1000).await.map_err(|e| e.message);
+    let health = client.get("/health", 1000).await.map_err(|e| e.message);
+    let mut identity = client.identity_valid(1000).await;
     // 데몬이 다시 떠서 토큰이 바뀌었으면 한 번 다시 읽어 본다
-    if matches!(&health, Ok(v) if !lifecycle::token_valid(v)) {
+    if !identity && health.is_ok() {
         client.load_token();
-        health = client.get("/health", 1000).await.map_err(|e| e.message);
+        identity = client.identity_valid(1000).await;
     }
-    daemon_status_body(health, app.state::<AppState>().life.daemon_in_parent_job())
+    daemon_status_body(health, identity, app.state::<AppState>().life.daemon_in_parent_job())
 }
 
 /// `in_parent_job`: 데몬을 띄운 프로그램이 꺼지면 데몬도 함께 꺼질 수 있다. 데몬의 `/health` `stops_with_launcher`가
 /// 먼저이고, 그 키가 없는 옛 데몬이면 이 GUI가 띄울 때 job에서 떨어지지 못했는지(`launched_in_job`)를 쓴다
-fn daemon_status_body(health: Result<Value, String>, launched_in_job: bool) -> Value {
+fn daemon_status_body(health: Result<Value, String>, identity_valid: bool, launched_in_job: bool) -> Value {
     match health {
-        Ok(v) if lifecycle::token_valid(&v) => {
+        Ok(v) if identity_valid => {
             let in_parent_job = v["stops_with_launcher"].as_bool().unwrap_or(launched_in_job);
             json!({ "running": true, "message": "Daemon is running", "in_parent_job": in_parent_job })
         }
@@ -547,16 +548,16 @@ mod tests {
 
     use super::*;
 
-    /// `/health`는 토큰 없이도 200이다: 토큰이 맞을 때만 실행 중으로 본다 (L18 a)
+    /// `/health` 본문 문자열만으로 데몬 신원을 인정하지 않는다.
     #[test]
     fn the_daemon_counts_as_running_only_when_our_token_is_valid() {
-        let running = |r: Result<Value, String>| daemon_status_body(r, false)["running"].clone();
-        assert_eq!(running(Ok(json!({ "ok": true, "token": "valid" }))), json!(true));
-        assert_eq!(running(Ok(json!({ "ok": true, "token": "invalid" }))), json!(false));
-        assert_eq!(running(Ok(json!({ "ok": true, "token": "missing" }))), json!(false));
-        assert_eq!(running(Err("connection refused".into())), json!(false));
+        let running = |r: Result<Value, String>, identity| daemon_status_body(r, identity, false)["running"].clone();
+        assert_eq!(running(Ok(json!({ "ok": true, "token": "valid" })), false), json!(false));
+        assert_eq!(running(Ok(json!({ "ok": true, "token": "invalid" })), false), json!(false));
+        assert_eq!(running(Ok(json!({ "ok": true })), true), json!(true));
+        assert_eq!(running(Err("connection refused".into()), false), json!(false));
         assert_eq!(
-            daemon_status_body(Ok(json!({ "token": "invalid" })), false)["error_code"],
+            daemon_status_body(Ok(json!({ "token": "invalid" })), false, false)["error_code"],
             json!("token_invalid")
         );
     }
@@ -565,10 +566,10 @@ mod tests {
     #[test]
     fn the_status_says_when_the_daemon_runs_inside_the_launchers_job() {
         let valid = || Ok(json!({ "ok": true, "token": "valid" }));
-        assert_eq!(daemon_status_body(valid(), true)["in_parent_job"], json!(true));
-        assert_eq!(daemon_status_body(valid(), false)["in_parent_job"], json!(false));
+        assert_eq!(daemon_status_body(valid(), true, true)["in_parent_job"], json!(true));
+        assert_eq!(daemon_status_body(valid(), true, false)["in_parent_job"], json!(false));
         assert_eq!(
-            daemon_status_body(Err("connection refused".into()), true)["in_parent_job"],
+            daemon_status_body(Err("connection refused".into()), false, true)["in_parent_job"],
             Value::Null
         );
     }
@@ -579,16 +580,16 @@ mod tests {
     fn the_daemons_own_answer_decides_whether_it_stops_with_its_launcher() {
         let health = |stops: Value| Ok(json!({ "ok": true, "token": "valid", "stops_with_launcher": stops }));
         assert_eq!(
-            daemon_status_body(health(json!(true)), false)["in_parent_job"],
+            daemon_status_body(health(json!(true)), true, false)["in_parent_job"],
             json!(true)
         );
         assert_eq!(
-            daemon_status_body(health(json!(false)), true)["in_parent_job"],
+            daemon_status_body(health(json!(false)), true, true)["in_parent_job"],
             json!(false)
         );
         let old = || Ok(json!({ "ok": true, "token": "valid" }));
-        assert_eq!(daemon_status_body(old(), true)["in_parent_job"], json!(true));
-        assert_eq!(daemon_status_body(old(), false)["in_parent_job"], json!(false));
+        assert_eq!(daemon_status_body(old(), true, true)["in_parent_job"], json!(true));
+        assert_eq!(daemon_status_body(old(), true, false)["in_parent_job"], json!(false));
     }
 
     #[test]

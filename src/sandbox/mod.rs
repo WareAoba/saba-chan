@@ -512,6 +512,21 @@ fn instance_access(key: &str) -> appcontainer::Access {
     }
 }
 
+/// 인스턴스 폴더 안의 데몬 항목 중 비밀이 든 것. 격리 실행에 인스턴스 폴더 권한을 줄 때 상속을 끊어 둔다
+/// (비밀 파일은 저장할 때마다 `Mode::Secret`이 다시 끊는다. 여기서는 예전에 저장된 것과 백업 폴더를 막는다)
+const PROTECTED_INSTANCE_ENTRIES: [&str; 4] = ["instance.json", "settings.json", "rcon.json", "backups"];
+
+fn protect_daemon_entries(instance_dir: &Path) {
+    for name in PROTECTED_INSTANCE_ENTRIES {
+        let path = instance_dir.join(name);
+        if path.exists() {
+            if let Err(e) = saba_atomic_file::restrict_to_user(&path) {
+                tracing::warn!("[Sandbox] cannot restrict {}: {}", path.display(), e);
+            }
+        }
+    }
+}
+
 /// 익스텐션 키면 그 익스텐션 전용 데이터 폴더
 fn extension_data_dir(data_dir: &Path, key: &str) -> Option<PathBuf> {
     let name = key.strip_prefix(saba_chan_updater_lib::relay::EXTENSION_PREFIX)?;
@@ -827,22 +842,23 @@ pub fn isolation_for(entry: &Path, config: &Value, python_exe: &Path) -> Option<
     if let Some(base) = appcontainer::venv_home(python_exe) {
         grants.push_shared(&base, Access::Read, &data_dir, home);
     }
-    let modules = crate::plugin::resolve_modules_dir();
     let extensions = crate::plugin::resolve_extensions_dir();
-    grants.push_shared(&modules, Access::Read, &data_dir, home);
+    grants.push_shared(&raw_data_dir.join("python-shared"), Access::Read, &data_dir, home);
     grants.push_shared(&extensions, Access::Read, &data_dir, home);
     // PYTHONPATH의 익스텐션 상위 폴더: `import extensions.x`에 목록만 필요하다
     if let Some(parent) = extensions.parent() {
         grants.push_shared(parent, Access::List, &data_dir, home);
     }
     grants.push_shared(&data_dir.join("python-guard"), Access::Read, &data_dir, home);
-    let mut add = |path: &Path, access| grants.push(path, access, &data_dir, home);
-    add(&dir, Access::Read);
-    add(&pycache, Access::Write);
-    add(&temp, Access::Write);
+    grants.push(&dir, Access::Read, &data_dir, home);
+    grants.push(&pycache, Access::Write, &data_dir, home);
+    grants.push(&temp, Access::Write, &data_dir, home);
     // 인스턴스 폴더 쓰기는 그 인스턴스의 모듈에게만. 익스텐션 hook은 확인된 모듈의 인스턴스에도 불리므로
     // 읽기만 주고, 쓸 곳은 익스텐션 전용 데이터 폴더다
     let access = instance_access(&key);
+    if let Some(instance_dir) = config.get("instance_dir").and_then(Value::as_str).filter(|d| !d.is_empty()) {
+        protect_daemon_entries(Path::new(instance_dir));
+    }
     let data_dirs = config.get(INSTANCE_DATA_DIRS).and_then(Value::as_array).into_iter().flatten();
     // 데이터 폴더는 폴더일 때만 (데몬 파일 이름은 `insert_instance_fields`가 이미 뺐다)
     let data_dirs = data_dirs.filter_map(Value::as_str).filter(|p| !Path::new(p).is_file());
@@ -854,21 +870,21 @@ pub fn isolation_for(entry: &Path, config: &Value, python_exe: &Path) -> Option<
             if access == Access::Write {
                 let _ = std::fs::create_dir_all(path);
             }
-            add(path, access);
+            grants.push(path, access, &data_dir, home);
             // `os.makedirs(dir, exist_ok=True)`는 바로 위 폴더가 있는지부터 본다: 그 폴더의 목록만 준다
             if let Some(parent) = path.parent() {
-                add(parent, Access::List);
+                grants.push(parent, Access::List, &data_dir, home);
             }
         }
     }
     let data = extension_data_dir(&raw_data_dir, &key);
     if let Some(d) = &data {
         let _ = std::fs::create_dir_all(d);
-        add(d, Access::Write);
+        grants.push(d, Access::Write, &data_dir, home);
     }
     let extension_root = extension_data_root(&raw_data_dir, Some(&tag));
     let _ = std::fs::create_dir_all(&extension_root);
-    add(&extension_root, Access::Write);
+    grants.push(&extension_root, Access::Write, &data_dir, home);
     // 런타임은 없어도 되는 권한: 주지 못하면 그 폴더만 빼고 띄운다 (Java를 쓰지 않는 구성요소까지 막지 않게)
     for runtime in runtime_homes(None, std::env::var_os("JAVA_HOME").as_deref(), std::env::var_os("PATH").as_deref()) {
         let before = grants.entries.len();
@@ -1454,6 +1470,19 @@ mod tests {
         for key in ["module-minecraft", "ext-", "ext-../x", "ext-.hidden", "ext-a/b", "/somewhere/else"] {
             assert_eq!(extension_data_dir(data, key), None, "{key}");
         }
+    }
+
+    #[test]
+    fn daemon_secrets_in_an_instance_folder_are_restricted_before_a_grant() {
+        let tmp = tempfile::tempdir().unwrap();
+        for name in ["instance.json", "rcon.json"] {
+            std::fs::write(tmp.path().join(name), b"{}").unwrap();
+        }
+        std::fs::create_dir_all(tmp.path().join("backups")).unwrap();
+        protect_daemon_entries(tmp.path());
+        // 주인은 계속 읽고 쓴다
+        assert_eq!(std::fs::read(tmp.path().join("rcon.json")).unwrap(), b"{}");
+        std::fs::write(tmp.path().join("backups").join("a"), b"x").unwrap();
     }
 
     /// 익스텐션 폴더는 id의 '-'를 '_'로 바꾼 이름이다. 없는 폴더를 보면 기록에 없는 코드 검사가 빠진다
