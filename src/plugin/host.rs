@@ -146,7 +146,7 @@ async fn dispatch(proxy: &Proxy, request: &Value) -> Value {
     };
     // 모듈 설정으로 정해진 REST 주소가 그 인스턴스 서버의 것일 때만 잇는다 (LOOPBACK과 같은 규칙):
     // 아니면 확인되지 않은 모듈이 rest_port로 같은 PC의 다른 서비스에 데몬 권한으로 요청할 수 있다
-    let (rest_host, rest_port) = {
+    let (rest_host, rest_port, tracked) = {
         let sup = supervisor.read().await;
         let Some(instance) = sup.instance_store.get(&context.id) else {
             return failure("no_instance", "The instance is no longer available");
@@ -155,10 +155,12 @@ async fn dispatch(proxy: &Proxy, request: &Value) -> Value {
         (
             instance.rest_host.clone().or_else(|| module.as_ref().map(|m| m.metadata.default_rest_host())).unwrap_or_else(|| "127.0.0.1".to_string()),
             instance.rest_port.or_else(|| module.as_ref().map(|m| m.metadata.default_rest_port())).unwrap_or(8212),
+            sup.tracker.get_pid(&context.id).ok(),
         )
     };
     let local = matches!(rest_host.trim(), "127.0.0.1" | "localhost" | "::1" | "[::1]");
-    let server = proxy.server;
+    // 서버를 가리키는 호출(stop·status 등)은 그 PID를, 익스텐션 명령·hook처럼 PID 없이 온 호출은 데몬이 추적하는 서버 PID를 쓴다
+    let server = proxy.server.or(tracked);
     if !local || !tokio::task::spawn_blocking(move || loopback::served_by(rest_port, server)).await.unwrap_or(false) {
         tracing::warn!("[Host] refused REST to {}:{}: not the instance's server (PID {:?})", rest_host, rest_port, server);
         return failure("port_not_served", "The REST port is not held by this instance's server");
@@ -257,6 +259,12 @@ mod tests {
         serve(&proxy, &json!({"id":"r1","op":"instance.rest","args":{"method":"GET","path":"/x"}}).to_string()).await;
         let reply: serde_json::Value = serde_json::from_slice(&std::fs::read(dir.path().join("r1.json")).unwrap()).unwrap();
         assert_eq!(reply["error_code"], "port_not_served", "{reply}");
+        // Codex 재검증 #550: PID 없이 온 호출(익스텐션 명령)도 데몬이 추적하는 서버가 그 포트를 들으면 잇는다
+        supervisor.read().await.tracker.track(&id, std::process::id()).unwrap();
+        serve(&proxy, &json!({"id":"r2","op":"instance.rest","args":{"method":"GET","path":"/x"}}).to_string()).await;
+        let reply: serde_json::Value = serde_json::from_slice(&std::fs::read(dir.path().join("r2.json")).unwrap()).unwrap();
+        assert_ne!(reply["error_code"], "port_not_served", "{reply}");
+        drop(other);
     }
 
     #[tokio::test]
