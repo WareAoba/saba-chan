@@ -55,10 +55,23 @@
   "command": {
     "executing": "⏳ **{{name}}** - `{{command}}` executando...",
     "missing_required": "❌ Argumento obrigatório ausente: `{{arg_name}}`\nUso: `{{prefix}} {{alias}} {{command}} <{{arg_name}}>`\nDescrição: {{description}}",
-    "execute_complete": "📡 **{{name}}** - `{{command}}`\n{{response}}",
     "execute_failed": "❌ Falha na execução em **{{name}}**\n{{error}}",
     "unknown_command": "❓ Comando desconhecido: \"{{command}}\" ({{resolved}})",
-    "no_available": "❓ Comando desconhecido: \"{{command}}\" ({{resolved}})"
+    "no_available": "❓ Comando desconhecido: \"{{command}}\" ({{resolved}})",
+    "done": "✅ **{{name}}** · {{label}}",
+    "failed": "❌ **{{name}}** · {{label}}: {{reason}}",
+    "players": "Jogadores",
+    "invalid": {
+      "missing": "Informe {{label}}.",
+      "not_number": "{{label}} precisa ser um número. Recebido: {{value}}",
+      "out_of_range": "{{label}} precisa estar entre {{min}} e {{max}}. Recebido: {{value}}",
+      "not_option": "{{label}} precisa ser um destes: {{options}}. Recebido: {{value}}",
+      "not_boolean": "{{label}} precisa ser on ou off. Recebido: {{value}}",
+      "line_break": "{{label}} não pode ter quebras de linha.",
+      "one_word": "{{label}} precisa ser uma palavra sem espaços. Recebido: {{value}}",
+      "quote": "{{label}} não pode ter aspas duplas.",
+      "too_many": "Este comando não aceita palavras extras. Recebido: {{value}}"
+    }
   },
   "responses": {
     "info_title": "**Informações do Servidor**",
@@ -348,5 +361,24 @@
       "player_item": "• {{name}}",
       "players_more": "…e mais {{count}}"
     }
+  },
+  "reasons": {
+    "failed": "Não foi possível fazer",
+    "rejected": "O servidor não aceitou o comando",
+    "server_not_running": "O servidor está desligado",
+    "not_supported": "Este jogo não suporta isso",
+    "not_found": "Não encontrado",
+    "timeout": "O servidor não respondeu a tempo",
+    "auth_failed": "O servidor recusou o login",
+    "players_failed": "Não foi possível ler os jogadores",
+    "backup_file_locked": "O servidor está usando um arquivo ({{file}}), então o backup não foi feito. Desligue o servidor e tente de novo",
+    "backup_failed": "Não foi possível fazer o backup",
+    "backup_unsupported": "Este jogo não suporta backups",
+    "nothing_to_back_up": "Ainda não há mundo para fazer backup",
+    "backup_limit": "O limite de backups remotos está cheio. Apague backups antigos no PC",
+    "backup_busy": "Outro backup ou restauração está em andamento",
+    "server_running": "O servidor está ligado. Desligue-o primeiro",
+    "no_command_path": "O servidor foi iniciado fora do Saba-chan e não pode receber comandos",
+    "autosave_not_resumed": "O backup foi feito, mas não foi possível religar o salvamento automático do servidor. Reinicie o servidor"
   }
 }

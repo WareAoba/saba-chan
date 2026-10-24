@@ -960,3 +960,25 @@ async fn discord_restores_a_backup_picked_from_the_list() {
     assert!(plan_steps(&state, &forced, &relay("owner", false)).await.is_err());
     let _ = state.supervisor.read().await.tracker.untrack(&id);
 }
+
+/// 원격 실행이 실패하면 요청 언어의 짧은 이유(`reason`)를 함께 준다: 릴레이가 영어 원문 대신 보인다
+#[tokio::test]
+async fn a_failed_remote_action_carries_a_short_reason() {
+    let (state, id, _tmp) = server().await;
+    set_node(&state, json!({ "ownerDiscordId": "owner" })).await;
+    let out = query(&state, "server.query:players", Some(&id), &json!({}), &relay("owner", false)).await.unwrap();
+    assert_eq!(out["success"], false, "{out}");
+    assert_eq!(out["reason"], "이 게임은 지원하지 않아요", "{out}");
+    // 이 PC 화면은 원문을 그대로 쓴다
+    let local = query(&state, "server.query:players", Some(&id), &json!({}), &gui()).await.unwrap();
+    assert!(local.get("reason").is_none(), "{local}");
+}
+
+/// `remote = false` 명령은 디스코드·챗봇 액션으로도 부를 수 없다 (GUI·CLI에서만)
+#[test]
+fn a_command_kept_off_remote_surfaces_is_not_a_remote_action() {
+    let hidden = command_view(&json!({ "name": "save-off", "risk": "caution", "inputs": [], "remote": false })).unwrap();
+    assert_eq!(hidden["surfaces"], json!(["gui", "cli"]));
+    let shown = command_view(&json!({ "name": "say", "risk": "safe", "inputs": [] })).unwrap();
+    assert_eq!(shown["surfaces"], json!(["gui", "cli", "discord", "chatbot"]));
+}

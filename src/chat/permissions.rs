@@ -27,7 +27,8 @@ pub fn requirable(level: i64) -> bool {
 pub const PRESETS: [&str; 3] = ["loose", "default", "strict"];
 
 /// 액션(`server.<명령>`)이 따로 있는 내장 명령
-const BUILTIN_COMMANDS: [&str; 4] = ["start", "stop", "restart", "status"];
+// `players`는 `[status] players` 모듈의 채팅 접속자 조회 (`server.players`와 같은 키)
+const BUILTIN_COMMANDS: [&str; 5] = ["start", "stop", "restart", "status", "players"];
 
 /// 프리셋이 risk(safe/caution/danger)에 요구하는 레벨. 모르는 risk는 caution
 pub fn preset_level(preset: &str, risk: &str) -> i64 {
@@ -429,6 +430,14 @@ mod tests {
         assert!(via_chatbot(Some("other"), false));
         // 옛 릴레이 (두 필드 다 없음)
         assert!(!via_chatbot(None, false));
+    }
+
+    /// 채팅 `players`도 액션 `server.players`의 명령별 레벨을 따른다 (같은 조회에 같은 제한)
+    #[test]
+    fn chat_players_follows_the_server_players_level() {
+        let node = serde_json::json!({ "commandLevels": { "i/server.players": 3 } });
+        let perms = NodePermissions::from_node(Some(&node));
+        assert_eq!(perms.required("i", "players", "safe"), 3);
     }
 
     #[test]

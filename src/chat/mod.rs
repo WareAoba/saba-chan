@@ -385,9 +385,11 @@ impl<D: DaemonApi> Ctx<'_, D> {
             out.push_str(&format!("• `{} {} {}` - {}\n", prefix, alias, cmd, self.t(key, &[])));
         }
         if let Some(module) = self.module(&module_name) {
-            if !module.commands.is_empty() {
+            // 디스코드·챗봇에 내보내지 않는 명령은 원격 도움말에도 없다
+            let shown: Vec<&CommandField> = module.commands.iter().filter(|c| c.remote || self.req.remote.is_none()).collect();
+            if !shown.is_empty() {
                 out.push_str(&format!("\n{}\n", self.t("modules.help_rest_title", &[])));
-                for c in &module.commands {
+                for c in shown {
                     let inputs: Vec<String> = c
                         .inputs
                         .iter()
@@ -424,9 +426,10 @@ impl<D: DaemonApi> Ctx<'_, D> {
             .map(str::to_string)
             .unwrap_or_else(|| aliases::resolve_command(Some(module), cmd_alias));
 
-        // 내장 명령의 위험도: status는 safe, start·stop은 caution. 모듈 명령은 선언값 (없으면 caution)
+        // 내장 명령의 위험도: status·players는 safe, start·stop은 caution. 모듈 명령은 선언값 (없으면 caution)
         let risk = match command.as_str() {
             "status" => "safe",
+            "players" if module.players => "safe",
             "start" | "stop" => "caution",
             _ => crate::commands::risk_of(module.command(&command).and_then(|f| f.risk.as_deref())),
         };
@@ -442,7 +445,9 @@ impl<D: DaemonApi> Ctx<'_, D> {
             "start" => self.start(server).await,
             "stop" => self.stop(server).await.into(),
             "status" => self.status(server).into(),
-            _ => match module.command(&command) {
+            "players" if module.players => self.players(server).await.into(),
+            // 디스코드·챗봇에 내보내지 않는 명령은 거기서 없는 명령이다
+            _ => match module.command(&command).filter(|f| f.remote || self.req.remote.is_none()) {
                 Some(field) => self.run_defined(server, module, field, alias, cmd_alias, extra).await.into(),
                 // 없는 명령이면 이 모듈에서 쓸 수 있는 명령을 같이 보여준다
                 // 릴레이는 해석에 실패하면 자기 문구 뒤에 `args.help`를 붙인다
@@ -521,6 +526,18 @@ impl<D: DaemonApi> Ctx<'_, D> {
         self.t("server.stop_complete", &[("name", &server.name)])
     }
 
+    /// 접속자 조회 (`[status] players`). 이름은 액션 요약과 같은 모양
+    async fn players(&self, server: &ServerView) -> String {
+        let resp = self.remote_response(self.api.players(server).await);
+        let failed = !resp.is_success() || resp.body.get("success").and_then(Value::as_bool) == Some(false);
+        if failed {
+            let code = crate::commands::error_code(resp.status.as_u16(), &resp.body);
+            return self.failed_line(server, &self.t("command.players", &[]), &reason(self.cat, &code, &resp.body));
+        }
+        let summary = crate::actions::summary::text("server.players", &resp.body, self.cat).unwrap_or_default();
+        format!("**{}**\n{}", server.name, summary)
+    }
+
     fn status(&self, server: &ServerView) -> String {
         let status = if server.is_running() { self.t("status.running", &[]) } else { self.t("status.stopped", &[]) };
         let pid = server.pid.map(|p| format!("PID: {}", p)).unwrap_or_default();
@@ -541,17 +558,79 @@ impl<D: DaemonApi> Ctx<'_, D> {
         resp
     }
 
+    /// 명령의 보일 이름: 모듈 locales `commands.<이름>.label` → module.toml label → 이름
+    fn command_label(&self, module: &ModuleView, field: &CommandField) -> String {
+        module
+            .text(self.cat.language(), &format!("/commands/{}/label", field.name))
+            .unwrap_or_else(|| if field.label.is_empty() { field.name.clone() } else { field.label.clone() })
+    }
+
+    fn done_line(&self, server: &ServerView, text: &str) -> String {
+        self.t("command.done", &[("name", &server.name), ("label", text)])
+    }
+
+    fn failed_line(&self, server: &ServerView, label: &str, reason: &str) -> String {
+        self.t("command.failed", &[("name", &server.name), ("label", label), ("reason", reason)])
+    }
+
+    /// 성공한 명령의 답: 성공과 명령 이름만. 콘솔 원문은 싣지 않고, 모듈이 실패 모양·답 모양을 정했으면 그것을 따른다.
+    /// 모듈·익스텐션이 사람에게 쓴 `message`와 REST 조회 결과(값 줄)는 아래에 붙인다
+    fn success_text(&self, server: &ServerView, module: &ModuleView, field: &CommandField, resp: &InternalResponse) -> String {
+        let label = self.command_label(module, field);
+        let data = resp.body.get("data").filter(|d| !d.is_null());
+        let console = data.and_then(|d| d.get("response")).and_then(Value::as_str).unwrap_or("");
+        for pattern in &module.failure_patterns {
+            if let Some(caps) = regex::Regex::new(pattern).ok().and_then(|re| re.captures(console)) {
+                let reason = caps.name("reason").map(|m| m.as_str().trim().to_string()).unwrap_or_else(|| self.t("reasons.rejected", &[]));
+                return self.failed_line(server, &label, &reason);
+            }
+        }
+        if let Some(caps) = field.reply_pattern.as_deref().and_then(|p| regex::Regex::new(p).ok()).and_then(|re| re.captures(console)) {
+            if let Some(template) = module.text(self.cat.language(), &format!("/commands/{}/done", field.name)) {
+                let re = regex::Regex::new(field.reply_pattern.as_deref().unwrap_or_default()).expect("compiled above");
+                let vars: Vec<(&str, &str)> = re.capture_names().flatten().filter_map(|n| Some((n, caps.name(n)?.as_str()))).collect();
+                return self.done_line(server, &i18n::interpolate(&template, &vars));
+            }
+        }
+        // 모듈·익스텐션 명령은 답을 `message`로 준다 (stdin의 message는 내부 문구)
+        let message = match resp.str_field("protocol") {
+            Some("module" | "extension") => resp.body.get("message").filter(|m| m.as_str().is_some_and(|t| !t.trim().is_empty())),
+            _ => None,
+        };
+        let detail = match data.or(message) {
+            // 콘솔 명령의 답은 게임 서버 로그 줄이라 보이지 않는다
+            Some(d) if d.get("response").is_some() => None,
+            Some(d) => Some(format::format_response(d, self.cat)).filter(|t| !t.trim().is_empty() && *t != self.t("responses.command_complete", &[])),
+            None => None,
+        };
+        let head = self.done_line(server, &label);
+        match detail {
+            Some(detail) => format!("{}\n{}", head, detail),
+            None => head,
+        }
+    }
+
+    /// 틀린 인자의 이유 (`rule`·`params`, 데몬 검사가 준다). 칸 이름은 모듈 locales `commands.<명령>.inputs.<칸>.label`
+    fn invalid_text(&self, module: &ModuleView, field: &CommandField, resp: &InternalResponse) -> Option<String> {
+        let rule = resp.str_field("rule")?;
+        let params = resp.body.get("params").cloned().unwrap_or(Value::Null);
+        let name = resp.str_field("field").unwrap_or_default();
+        let label = module
+            .text(self.cat.language(), &format!("/commands/{}/inputs/{}/label", field.name, name))
+            .or_else(|| field.inputs.iter().find(|i| i.name == name).and_then(|i| i.label.clone()))
+            .unwrap_or_else(|| name.to_string());
+        let num = |key: &str| params.get(key).and_then(Value::as_f64).map(|n| n.to_string()).unwrap_or_else(|| "-".into());
+        let options = params.get("options").and_then(Value::as_array).map(|o| o.iter().filter_map(Value::as_str).collect::<Vec<_>>().join(", ")).unwrap_or_default();
+        let value = params.get("value").and_then(Value::as_str).unwrap_or_default();
+        let key = format!("command.invalid.{}", rule);
+        let text = self.t(&key, &[("label", &label), ("value", value), ("min", &num("min")), ("max", &num("max")), ("options", &options)]);
+        (text != key).then(|| format!("❌ {}", text))
+    }
+
     fn render_result(&self, server: &ServerView, module: &ModuleView, field: &CommandField, alias: &str, cmd_alias: &str, resp: InternalResponse) -> String {
         let failed = !resp.is_success() || resp.body.get("success").and_then(|v| v.as_bool()) == Some(false);
         if !failed {
-            // 모듈·익스텐션 명령은 답을 `message`로 준다 (stdin의 message는 내부 문구)
-            let message = match resp.str_field("protocol") {
-                Some("module" | "extension") => resp.body.get("message").filter(|m| m.as_str().is_some_and(|t| !t.trim().is_empty())),
-                _ => None,
-            };
-            let data = resp.body.get("data").filter(|d| !d.is_null()).or(message).unwrap_or(&Value::Null);
-            let text = format::format_response(data, self.cat);
-            return self.t("command.execute_complete", &[("name", &server.name), ("command", &field.name), ("response", &text)]);
+            return self.success_text(server, module, field, &resp);
         }
 
         let code = crate::commands::error_code(resp.status.as_u16(), &resp.body);
@@ -582,7 +661,9 @@ impl<D: DaemonApi> Ctx<'_, D> {
                 self.t("server.not_running", &[("name", &server.name), ("error", &error)])
             }
             "no_command_path" => format!("❌ {}", self.t("errors.no_command_path", &[("name", &server.name)])),
-            "invalid_argument" => error_line(&self.t("errors.error_title", &[]), resp.str_field("error").unwrap_or_default()),
+            "invalid_argument" => self
+                .invalid_text(module, field, &resp)
+                .unwrap_or_else(|| error_line(&self.t("errors.error_title", &[]), resp.str_field("error").unwrap_or_default())),
             "auth_failed" => format!("❌ {}: {}", self.t("errors.error_title", &[]), module_text.unwrap_or_else(|| self.t("errors.auth_failed", &[]))),
             "not_found" => format!(
                 "❌ {}: {}",
@@ -629,6 +710,19 @@ pub fn split_quoted(text: &str) -> Vec<String> {
         rest = rest[end..].trim_start();
     }
     out
+}
+
+/// 실패 코드의 짧은 이유 (응답 언어). 모르는 코드면 일반 문구. 액션 결과(`reason`)도 이것을 쓴다
+pub fn reason(cat: &Catalog, code: &str, body: &Value) -> String {
+    known_reason(cat, code, body).unwrap_or_else(|| cat.t("reasons.failed", &[]))
+}
+
+/// 문구가 있는 실패 코드만
+pub fn known_reason(cat: &Catalog, code: &str, body: &Value) -> Option<String> {
+    let file = body.get("file").and_then(Value::as_str).unwrap_or_default();
+    let key = format!("reasons.{}", code);
+    let text = cat.t(&key, &[("file", file)]);
+    (text != key).then_some(text)
 }
 
 fn error_line(title: &str, detail: &str) -> String {

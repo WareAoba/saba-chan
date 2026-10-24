@@ -55,10 +55,23 @@
   "command": {
     "executing": "⏳ **{{name}}** - `{{command}}` en cours d'exécution...",
     "missing_required": "❌ Argument obligatoire manquant: `{{arg_name}}`\nUtilisation: `{{prefix}} {{alias}} {{command}} <{{arg_name}}>`\nDescription: {{description}}",
-    "execute_complete": "📡 **{{name}}** - `{{command}}`\n{{response}}",
     "execute_failed": "❌ Échec de l'exécution sur **{{name}}**\n{{error}}",
     "unknown_command": "❓ Commande inconnue: \"{{command}}\" ({{resolved}})",
-    "no_available": "❓ Commande inconnue: \"{{command}}\" ({{resolved}})"
+    "no_available": "❓ Commande inconnue: \"{{command}}\" ({{resolved}})",
+    "done": "✅ **{{name}}** · {{label}}",
+    "failed": "❌ **{{name}}** · {{label}} : {{reason}}",
+    "players": "Joueurs",
+    "invalid": {
+      "missing": "Indiquez {{label}}.",
+      "not_number": "{{label}} doit être un nombre. Reçu : {{value}}",
+      "out_of_range": "{{label}} doit être entre {{min}} et {{max}}. Reçu : {{value}}",
+      "not_option": "{{label}} doit être l’un de : {{options}}. Reçu : {{value}}",
+      "not_boolean": "{{label}} doit être on ou off. Reçu : {{value}}",
+      "line_break": "{{label}} ne peut pas contenir de saut de ligne.",
+      "one_word": "{{label}} doit être un seul mot sans espace. Reçu : {{value}}",
+      "quote": "{{label}} ne peut pas contenir de guillemets doubles.",
+      "too_many": "Cette commande ne prend pas de mots en plus. Reçu : {{value}}"
+    }
   },
   "responses": {
     "info_title": "**Informations du serveur**",
@@ -348,5 +361,24 @@
       "player_item": "• {{name}}",
       "players_more": "…et {{count}} de plus"
     }
+  },
+  "reasons": {
+    "failed": "Impossible de le faire",
+    "rejected": "Le serveur n’a pas accepté la commande",
+    "server_not_running": "Le serveur est arrêté",
+    "not_supported": "Ce jeu ne le prend pas en charge",
+    "not_found": "Introuvable",
+    "timeout": "Le serveur n’a pas répondu à temps",
+    "auth_failed": "Le serveur a refusé la connexion",
+    "players_failed": "Impossible de lire les joueurs",
+    "backup_file_locked": "Le serveur utilise un fichier ({{file}}), la sauvegarde n’a pas pu être faite. Arrêtez le serveur et réessayez",
+    "backup_failed": "La sauvegarde n’a pas pu être faite",
+    "backup_unsupported": "Ce jeu ne prend pas en charge les sauvegardes",
+    "nothing_to_back_up": "Il n’y a pas encore de monde à sauvegarder",
+    "backup_limit": "La limite de sauvegardes à distance est atteinte. Supprimez d’anciennes sauvegardes sur le PC",
+    "backup_busy": "Une autre sauvegarde ou restauration est en cours",
+    "server_running": "Le serveur est allumé. Arrêtez-le d’abord",
+    "no_command_path": "Le serveur a été lancé hors de Saba-chan et ne peut pas recevoir de commandes",
+    "autosave_not_resumed": "La sauvegarde a été faite, mais la sauvegarde auto du serveur n’a pas pu être réactivée. Redémarrez le serveur"
   }
 }

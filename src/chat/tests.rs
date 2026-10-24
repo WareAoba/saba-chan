@@ -39,6 +39,9 @@ impl DaemonApi for FakeDaemon {
     async fn command(&self, id: &str, command: &str, args: Vec<String>) -> InternalResponse {
         self.respond(format!("command {} {} {:?}", id, command, args))
     }
+    async fn players(&self, server: &ServerView) -> InternalResponse {
+        self.respond(format!("players {}", server.id))
+    }
 }
 
 fn server(id: &str, name: &str, module: &str, status: &str) -> ServerView {
@@ -60,6 +63,8 @@ fn field(name: &str, method: &str) -> CommandField {
         console_template: None,
         risk: None,
         inputs: vec![],
+        remote: true,
+        reply_pattern: None,
     }
 }
 
@@ -480,4 +485,97 @@ async fn a_stop_that_cannot_save_explains_itself() {
     let cat = Catalog::for_language("en");
     assert_eq!(out, cat.t("server.graceful_stop_unavailable", &[("name", "survival")]));
     assert!(!out.contains("no console"), "{out}");
+}
+
+// ── 명령 결과 문구 (사용자 item 4) ──
+
+/// 모듈 locales를 담은 임시 폴더 (`<dir>/locales/<lang>.json`)
+fn module_texts(lang: &str, body: Value) -> tempfile::TempDir {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(dir.path().join("locales")).unwrap();
+    std::fs::write(dir.path().join("locales").join(format!("{lang}.json")), body.to_string()).unwrap();
+    dir
+}
+
+fn console_reply(response: &str) -> InternalResponse {
+    InternalResponse { status: StatusCode::OK, body: json!({ "success": true, "protocol": "stdin", "data": { "response": response, "executed": "x" } }) }
+}
+
+/// 서버 명령은 성공·실패와 명령 이름만 보인다. 콘솔 원문·명령 문법(백틱)은 싣지 않는다
+#[tokio::test]
+async fn a_console_command_reply_is_just_success_and_its_label() {
+    let mut api = fixture();
+    api.modules[0].commands[1].label = "Send Chat Message".into();
+    api.reply = Some(console_reply("[12:00:00] [Server thread/INFO]: [Server] hi"));
+    let out = run(&api, &settings(), "mc say hi").await;
+    assert!(out.starts_with('✅') && out.contains("survival") && out.contains("Send Chat Message"), "{out}");
+    assert!(!out.contains('`') && !out.contains("Server thread") && !out.contains('{'), "{out}");
+}
+
+/// 모듈은 명령 답을 자기 문구로 정할 수 있다: `reply_pattern`이 콘솔 답에서 뽑은 값을 locales `commands.<이름>.done`에 넣는다
+#[tokio::test]
+async fn a_module_defines_the_reply_from_the_console_answer() {
+    let mut api = fixture();
+    let texts = module_texts("en", json!({ "commands": { "say": { "label": "Chat", "done": "Seed is {{seed}}" } } }));
+    api.modules[0].locale_dir = Some(texts.path().to_path_buf());
+    api.modules[0].commands[1].reply_pattern = Some(r"Seed: \[(?P<seed>-?\d+)\]".into());
+    api.reply = Some(console_reply("[12:00:00] [Server thread/INFO]: Seed: [-42]"));
+    assert_eq!(run(&api, &settings(), "mc say hi").await, "✅ **survival** · Seed is -42");
+    // 답이 모양과 맞지 않으면 기본 성공 문구
+    api.reply = Some(console_reply("something else"));
+    assert!(run(&api, &settings(), "mc say hi").await.contains("Chat"));
+}
+
+/// 콘솔 답이 모듈의 실패 모양과 맞으면 실패로 알린다 (`[commands] failure_patterns`, `reason` 그룹이 이유)
+#[tokio::test]
+async fn a_console_answer_matching_a_failure_pattern_is_a_failure() {
+    let mut api = fixture();
+    api.modules[0].failure_patterns = vec![r"(?P<reason>No player was found)".into()];
+    api.reply = Some(console_reply("[12:00:00] [Server thread/INFO]: No player was found"));
+    let out = run(&api, &settings(), "mc kick Steve").await;
+    assert!(out.starts_with('❌') && out.contains("No player was found") && !out.contains("Server thread"), "{out}");
+}
+
+/// 틀린 인자는 무엇이 틀렸는지 응답 언어로 알린다 (데몬 검사 결과의 `rule`, 모델 해석 없이)
+#[tokio::test]
+async fn an_invalid_argument_is_explained_in_the_reply_language() {
+    let mut api = fixture();
+    api.reply = Some(InternalResponse {
+        status: StatusCode::BAD_REQUEST,
+        body: json!({ "error": "'amount' must be between 1 and 64", "error_code": "invalid_argument", "field": "reason", "rule": "out_of_range", "params": { "value": "99", "min": 1.0, "max": 64.0 } }),
+    });
+    let req = ChatRequest { text: "mc kick Steve 99".into(), guild_id: Some("g1".into()), user_id: Some("u1".into()), remote: discord("u1"), ..Default::default() };
+    let out = process(&api, &settings(), &Catalog::for_language("ko"), &req).await.text;
+    assert!(out.starts_with('❌') && out.contains("reason") && out.contains("99") && out.contains('1') && out.contains("64"), "{out}");
+    assert!(!out.contains("must be"), "the English check message stays out: {out}");
+}
+
+/// `[status] players`를 선언한 모듈은 `players`(별명 포함)가 접속자 조회다. 모듈의 목록 명령과 겹치지 않는다
+#[tokio::test]
+async fn players_is_a_built_in_query_for_modules_that_count_players() {
+    let mut api = fixture();
+    api.modules[0].players = true;
+    api.modules[0].command_aliases.push(("players".into(), vec!["플레이어".into()]));
+    api.reply = Some(InternalResponse { status: StatusCode::OK, body: json!({ "success": true, "online": 1, "max": 20, "players": [{ "name": "Steve" }] }) });
+    let out = run(&api, &settings(), "mc 플레이어").await;
+    assert_eq!(api.calls(), vec!["players i-mc"]);
+    assert!(out.contains("1/20") && out.contains("Steve"), "{out}");
+    // 꺼진 서버는 짧은 이유로
+    api.reply = Some(InternalResponse { status: StatusCode::CONFLICT, body: json!({ "success": false, "error_code": "server_not_running", "error": "The server is not running" }) });
+    let out = run(&api, &settings(), "mc players").await;
+    assert!(out.starts_with('❌') && !out.contains("The server is not running"), "{out}");
+}
+
+/// `remote = false` 명령은 디스코드·챗봇에서 부를 수 없다 (같은 일을 하는 데몬 기능이 있는 명령). PC에서는 그대로
+#[tokio::test]
+async fn a_command_kept_off_remote_surfaces_is_unknown_there() {
+    let mut api = fixture();
+    api.modules[0].commands[1].remote = false;
+    let r = process(&api, &settings(), &Catalog::for_language("en"), &ChatRequest { text: "mc say hi".into(), guild_id: Some("g1".into()), user_id: Some("u1".into()), remote: discord("u1"), ..Default::default() }).await;
+    assert_eq!(r.code, Some("UNKNOWN_COMMAND"));
+    assert!(api.calls().is_empty());
+    process(&api, &settings(), &Catalog::for_language("en"), &ChatRequest { text: "mc say hi".into(), ..Default::default() }).await;
+    assert_eq!(api.calls().len(), 1);
+    // 원격 도움말에도 보이지 않는다
+    assert!(!r.args["help"].as_str().unwrap_or_default().contains(" say"), "{}", r.args["help"]);
 }

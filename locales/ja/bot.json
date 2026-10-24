@@ -55,10 +55,23 @@
   "command": {
     "executing": "⏳ **{{name}}** - `{{command}}` 実行中...",
     "missing_required": "❌ 必須引数がありません: `{{arg_name}}`\n使用方法: `{{prefix}} {{alias}} {{command}} <{{arg_name}}>`\n説明: {{description}}",
-    "execute_complete": "📡 **{{name}}** - `{{command}}`\n{{response}}",
     "execute_failed": "❌ **{{name}}** 実行失敗\n{{error}}",
     "unknown_command": "❓ 不明なコマンド: \"{{command}}\" ({{resolved}})",
-    "no_available": "❓ 不明なコマンド: \"{{command}}\" ({{resolved}})"
+    "no_available": "❓ 不明なコマンド: \"{{command}}\" ({{resolved}})",
+    "done": "✅ **{{name}}** · {{label}}",
+    "failed": "❌ **{{name}}** · {{label}}: {{reason}}",
+    "players": "プレイヤー",
+    "invalid": {
+      "missing": "{{label}}を入力してください。",
+      "not_number": "{{label}}には数字を入力してください。入力: {{value}}",
+      "out_of_range": "{{label}}は{{min}}から{{max}}までです。入力: {{value}}",
+      "not_option": "{{label}}は次のいずれかです: {{options}}。入力: {{value}}",
+      "not_boolean": "{{label}}にはon(オン)かoff(オフ)を入力してください。入力: {{value}}",
+      "line_break": "{{label}}に改行は入れられません。",
+      "one_word": "{{label}}はスペースなしの一語で入力してください。入力: {{value}}",
+      "quote": "{{label}}にダブルクォートは入れられません。",
+      "too_many": "このコマンドは追加の言葉を受け付けません。入力: {{value}}"
+    }
   },
   "responses": {
     "info_title": "**サーバー情報**",
@@ -348,5 +361,24 @@
       "player_item": "• {{name}}",
       "players_more": "…ほか {{count}}人"
     }
+  },
+  "reasons": {
+    "failed": "実行できませんでした",
+    "rejected": "サーバーがコマンドを受け付けませんでした",
+    "server_not_running": "サーバーが停止しています",
+    "not_supported": "このゲームは対応していません",
+    "not_found": "見つかりません",
+    "timeout": "サーバーが時間内に応答しませんでした",
+    "auth_failed": "サーバーの認証に失敗しました",
+    "players_failed": "プレイヤーを読み取れませんでした",
+    "backup_file_locked": "サーバーが使用中のファイル({{file}})があるためバックアップできませんでした。サーバーを停止してからやり直してください",
+    "backup_failed": "バックアップできませんでした",
+    "backup_unsupported": "このゲームはバックアップに対応していません",
+    "nothing_to_back_up": "まだバックアップするワールドがありません",
+    "backup_limit": "リモートバックアップの上限に達しました。PCで古いバックアップを削除してください",
+    "backup_busy": "別のバックアップか復元が進行中です",
+    "server_running": "サーバーが起動中です。先に停止してください",
+    "no_command_path": "サバちゃんの外で起動したサーバーのためコマンドを送れません",
+    "autosave_not_resumed": "バックアップは作成しましたが、サーバーの自動保存を再開できませんでした。サーバーを再起動してください"
   }
 }

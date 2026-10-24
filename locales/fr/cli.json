@@ -75,7 +75,8 @@
     "pair_gui_hint": "Vous pouvez aussi voir la connexion Discord dans l'écran Discord de la GUI.",
     "no_paired_servers": "Aucun serveur Discord n'est encore associé à ce PC. Lancez : saba-chan-cli bot pair",
     "pick_server": "Plusieurs serveurs Discord sont associés. Indiquez l'id de celui à modifier : {{servers}}",
-    "words_not_used": "Ce serveur Discord n'utilise pas ce serveur."
+    "words_not_used": "Ce serveur Discord n'utilise pas ce serveur.",
+    "translate_commands": "Noms de commandes traduits"
   },
   "col": {
     "players": "Joueurs",
@@ -234,6 +235,8 @@
       "backup_unsupported": "Le module de ce jeu n'indique pas quoi sauvegarder. Un module plus récent le fait peut-être : saba-chan-cli update check",
       "nothing_to_back_up": "Le monde n'existe pas encore. Démarrez le serveur une fois pour le créer.",
       "backup_busy": "Une sauvegarde ou une restauration de ce serveur est déjà en cours. Réessayez quand elle sera terminée.",
+      "backup_file_locked": "Le serveur utilise un fichier ({{file}}). Arrêtez le serveur et réessayez : saba-chan-cli stop <nom>",
+      "autosave_not_resumed": "La sauvegarde a été faite, mais la sauvegarde auto du serveur n’a pas pu être réactivée. Redémarrez le serveur: saba-chan-cli restart <name>",
       "invalid_relay_url": "Seules les adresses de relais https:// sont autorisées (http uniquement pour localhost, 127.0.0.1 ou [::1] pour tester sur ce PC).",
       "module_busy": "Ce module est déjà en cours d'installation ou de suppression. Réessayez une fois l'opération terminée.",
       "schedule_changed": "La planification a été modifiée ailleurs. Vérifiez-la avec saba-chan-cli schedule show, puis réessayez.",

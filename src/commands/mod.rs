@@ -21,7 +21,7 @@
 //! 새 실행 방식은 `Plan`에 갈래 하나와 `plan()`의 match 한 줄을 더하면 된다(슬롯).
 
 use crate::supervisor::module_loader::{CommandField, CommandInput, ModuleMetadata};
-use serde_json::{Map, Value};
+use serde_json::{json, Map, Value};
 
 /// lifecycle `instance_commands()`가 준 인스턴스별 명령
 #[derive(Debug, Clone, Default)]
@@ -144,11 +144,32 @@ pub struct PlanError {
     pub code: &'static str,
     pub field: Option<String>,
     pub message: String,
+    /// 틀린 인자의 이유: `missing` | `not_number` | `out_of_range` | `not_option` | `not_boolean` | `line_break` |
+    /// `one_word` | `quote` | `too_many`. 받는 쪽(채팅·GUI)이 `params`와 함께 자기 언어로 쓴다
+    pub rule: Option<&'static str>,
+    /// 이유의 기준: `value`(받은 값), `min`·`max`, `options`
+    pub params: Value,
 }
 
 impl PlanError {
     fn new(code: &'static str, field: Option<&str>, message: String) -> Self {
-        Self { code, field: field.map(str::to_string), message }
+        Self { code, field: field.map(str::to_string), message, rule: None, params: Value::Null }
+    }
+
+    fn because(mut self, rule: &'static str, params: Value) -> Self {
+        self.rule = Some(rule);
+        self.params = params;
+        self
+    }
+
+    /// API 응답 본문 (`error`·`error_code`·`field`·`rule`·`params`)
+    pub fn body(&self) -> Value {
+        let mut body = json!({ "error": self.message, "error_code": self.code, "field": self.field });
+        if let Some(rule) = self.rule {
+            body["rule"] = json!(rule);
+            body["params"] = self.params.clone();
+        }
+        body
     }
 }
 
@@ -169,15 +190,23 @@ pub fn plan(module: &ModuleMetadata, req: &Request) -> Result<Plan, PlanError> {
     let Some(field) = find(module, &req.name) else {
         return Ok(Plan::Raw { line: req.line.clone() });
     };
+    if field.inputs.is_empty() {
+        if let Args::Positional(words) = &req.args {
+            if !words.is_empty() {
+                let extra = words.join(" ");
+                return Err(PlanError::new("invalid_argument", None, format!("'{}' takes no arguments", field.name)).because("too_many", json!({ "value": extra })));
+            }
+        }
+    }
     let inputs = bind(&field.inputs, &req.args)?;
     match field.method.as_deref().unwrap_or("module") {
         "console" | "rcon" => {
             let template = field.console_template.as_deref().unwrap_or(&field.name);
             for input in &field.inputs {
                 let Some(value) = inputs.get(&input.name).and_then(Value::as_str) else { continue };
-                if let Some(rule) = console_place_problem(template, &input.name, value) {
+                if let Some((rule, text)) = console_place_problem(template, &input.name, value) {
                     let label = input.label.as_deref().unwrap_or(&input.name);
-                    return Err(PlanError::new("invalid_argument", Some(&input.name), format!("'{}' {}", label, rule)));
+                    return Err(PlanError::new("invalid_argument", Some(&input.name), format!("'{}' {}", label, text)).because(rule, json!({ "value": value })));
                 }
             }
             Ok(Plan::Console { line: render_template(template, &inputs) })
@@ -235,7 +264,8 @@ pub fn bind(inputs: &[CommandInput], args: &Args) -> Result<Map<String, Value>, 
                         "missing_argument",
                         Some(&input.name),
                         format!("'{}' is required", label),
-                    ))
+                    )
+                    .because("missing", json!({})))
                 }
                 None => continue,
             },
@@ -250,7 +280,15 @@ fn is_blank(v: &Value) -> bool {
 }
 
 fn check(input: &CommandInput, label: &str, value: Value) -> Result<Value, PlanError> {
-    let invalid = |message: String| PlanError::new("invalid_argument", Some(&input.name), message);
+    let shown = match &value {
+        Value::String(s) => s.clone(),
+        other => other.to_string(),
+    };
+    let invalid = |rule: &'static str, message: String, params: Value| {
+        let mut params = params;
+        params["value"] = json!(shown);
+        PlanError::new("invalid_argument", Some(&input.name), message).because(rule, params)
+    };
 
     let value = if input.input_type.as_deref() == Some("number") {
         let n = match &value {
@@ -258,20 +296,37 @@ fn check(input: &CommandInput, label: &str, value: Value) -> Result<Value, PlanE
             Value::String(s) => s.trim().parse::<f64>().ok(),
             _ => None,
         }
-        .ok_or_else(|| invalid(format!("'{}' must be a number", label)))?;
+        // NaN·무한대는 범위 비교를 지나가므로 숫자로 보지 않는다
+        .filter(|n| n.is_finite())
+        .ok_or_else(|| invalid("not_number", format!("'{}' must be a number", label), json!({})))?;
         if input.min.is_some_and(|min| n < min) || input.max.is_some_and(|max| n > max) {
-            return Err(invalid(format!(
-                "'{}' must be between {} and {}",
-                label,
-                input.min.map(|v| v.to_string()).unwrap_or_else(|| "-∞".into()),
-                input.max.map(|v| v.to_string()).unwrap_or_else(|| "∞".into()),
-            )));
+            return Err(invalid(
+                "out_of_range",
+                format!(
+                    "'{}' must be between {} and {}",
+                    label,
+                    input.min.map(|v| v.to_string()).unwrap_or_else(|| "-∞".into()),
+                    input.max.map(|v| v.to_string()).unwrap_or_else(|| "∞".into()),
+                ),
+                json!({ "min": input.min, "max": input.max }),
+            ));
         }
         if n.fract() == 0.0 && n.abs() < 9.0e15 {
             Value::from(n as i64)
         } else {
             Value::from(n)
         }
+    } else if input.input_type.as_deref() == Some("boolean") {
+        let yes = match &value {
+            Value::Bool(b) => Some(*b),
+            Value::String(s) => match s.trim().to_lowercase().as_str() {
+                "true" | "on" | "yes" | "1" => Some(true),
+                "false" | "off" | "no" | "0" => Some(false),
+                _ => None,
+            },
+            _ => None,
+        };
+        Value::Bool(yes.ok_or_else(|| invalid("not_boolean", format!("'{}' must be true or false", label), json!({})))?)
     } else {
         match value {
             Value::String(s) => Value::String(s),
@@ -281,13 +336,13 @@ fn check(input: &CommandInput, label: &str, value: Value) -> Result<Value, PlanE
 
     // 값 안의 줄바꿈은 콘솔에서 두 번째 명령이 된다
     if value.as_str().is_some_and(has_line_break) {
-        return Err(invalid(format!("'{}' must not contain line breaks", label)));
+        return Err(invalid("line_break", format!("'{}' must not contain line breaks", label), json!({})));
     }
 
     if let Some(options) = &input.options {
         let text = value.as_str().map(str::to_string).unwrap_or_else(|| value.to_string());
         if !options.iter().any(|o| o == &text) {
-            return Err(invalid(format!("'{}' must be one of: {}", label, options.join(", "))));
+            return Err(invalid("not_option", format!("'{}' must be one of: {}", label, options.join(", ")), json!({ "options": options })));
         }
     }
     Ok(value)
@@ -314,17 +369,17 @@ pub fn has_line_break(text: &str) -> bool {
 
 /// 값이 콘솔 템플릿에서 자기 자리를 넘는가. 따옴표로 감싼 자리(`"{key}"`)는 따옴표를, 뒤에 템플릿 글자가 더 있는
 /// 자리는 공백을 받지 않는다 (값이 다음 인자가 되어 명령의 뜻을 바꾸지 않게). 마지막 자리는 남은 말을 모두 받는다
-fn console_place_problem(template: &str, key: &str, value: &str) -> Option<&'static str> {
+fn console_place_problem(template: &str, key: &str, value: &str) -> Option<(&'static str, &'static str)> {
     let place = format!("{{{}}}", key);
     for (start, _) in template.match_indices(&place) {
         let end = start + place.len();
         let quoted = template[..start].ends_with('"') && template[end..].starts_with('"');
         if quoted {
             if value.contains('"') {
-                return Some("must not contain quotes");
+                return Some(("quote", "must not contain quotes"));
             }
         } else if !template[end..].trim().is_empty() && value.contains(char::is_whitespace) {
-            return Some("must be one word");
+            return Some(("one_word", "must be one word"));
         }
     }
     None

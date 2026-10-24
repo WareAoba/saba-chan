@@ -7,7 +7,7 @@ use serde_json::Value;
 const MAX_ITEMS: usize = 10;
 
 /// 액션 결과(`execute`의 `result`) → 요약. 요약할 줄 모르는 액션이면 None
-pub(super) fn text(id: &str, result: &Value, cat: &Catalog) -> Option<String> {
+pub(crate) fn text(id: &str, result: &Value, cat: &Catalog) -> Option<String> {
     match id {
         "instance.list" => Some(servers(result, cat)),
         "backup.list" => Some(backups(result, cat)),

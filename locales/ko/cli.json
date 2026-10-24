@@ -111,7 +111,8 @@
     "words_bad_command": "{{spec}}: 명령=낱말,낱말 꼴로 적어 주세요 (지우려면 명령=).",
     "no_paired_servers": "이 PC와 페어링된 디스코드 서버가 아직 없어요. 실행: saba-chan-cli bot pair",
     "pick_server": "페어링된 디스코드 서버가 여럿이에요. 바꿀 서버의 id를 적어 주세요: {{servers}}",
-    "words_not_used": "이 디스코드 서버에서는 이 서버를 쓰지 않아요."
+    "words_not_used": "이 디스코드 서버에서는 이 서버를 쓰지 않아요.",
+    "translate_commands": "명령 이름 번역"
   },
   "col": {
     "players": "접속자",
@@ -291,6 +292,8 @@
       "backup_unsupported": "이 게임 모듈에는 무엇을 백업할지 적혀 있지 않아요. 새 모듈에는 있을 수 있어요: saba-chan-cli update check",
       "nothing_to_back_up": "아직 월드가 없어요. 서버를 한 번 켜면 만들어져요.",
       "backup_busy": "이 서버의 백업이나 되돌리기가 이미 진행 중이에요. 끝난 뒤 다시 해 주세요.",
+      "backup_file_locked": "서버가 쓰고 있는 파일({{file}})이 있어요. 서버를 끈 뒤 다시 하세요: saba-chan-cli stop 이름",
+      "autosave_not_resumed": "백업은 만들었지만 서버의 자동 저장을 다시 켜지 못했어요. 서버를 다시 시작해 주세요: saba-chan-cli restart <name>",
       "invalid_relay_url": "릴레이 주소는 https:// 주소만 쓸 수 있어요(이 PC에서 시험할 때만 localhost·127.0.0.1·[::1]의 http를 쓸 수 있어요).",
       "module_busy": "이 모듈을 이미 설치하거나 지우는 중이에요. 끝난 뒤 다시 해 주세요.",
       "schedule_changed": "다른 곳에서 예약 작업이 바뀌었어요. saba-chan-cli schedule show로 다시 확인한 뒤 해 주세요.",

@@ -109,7 +109,8 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 `log_files`(서버가 파일에 쓰는 로그, saba-runner가 따라 읽어 콘솔에 합친다. 줄은 출력과 같이 `MAX_LINE`(64 KiB)에서 끊고, 파일이 줄어들거나 읽은 자리 앞의 바이트(끝 64바이트와 끝나지 않은 조각 전체 중 긴 쪽)가 달라지면 새로 쓴 파일로 보고 처음부터 읽으며 끝나지 않았던 앞 조각은 버린다, `runner/src/main.rs` `read_new`), `console`(`pipe` 기본 / `pty`). palworld가 `console = "pty"`를 쓴다. pty에서 runner는 받은 출력을 줄 단위가 아니라 읽은 만큼 처리하고, Windows ConPTY가 보내는 커서 위치 질의(`ESC[6n`, 두 번에 나뉘어 와도)에 `ESC[1;1R`로 답한다(답이 없으면 콘솔 클라이언트가 멈춘다).
 
 #### `[backup]` (`ModuleBackup` `:215-230`)
-`paths`(`{설정 이름}` 치환. 경로 형식이 아닌 설정(`type="file"`·`format="path"`가 아닌 것) 값은 서버 폴더 안 상대 경로만 받고, 절대 경로나 `..`이면 그 경로를 백업·복원 범위에서 뺀다), `save_command`(백업 전에 실행할 명령 이름), `hook`(true면 lifecycle `backup_paths()`가 경로를 준다). 세 모듈 모두 선언한다.
+`paths`(`{설정 이름}` 치환. 경로 형식이 아닌 설정(`type="file"`·`format="path"`가 아닌 것) 값은 서버 폴더 안 상대 경로만 받고, 절대 경로나 `..`이면 그 경로를 백업·복원 범위에서 뺀다), `save_command`(백업 전에 실행할 명령 이름), `pause_command`·`resume_command`(켜진 서버에서 저장 전에 자동 저장을 멈추고 백업이 끝나면 실패해도 되돌리는 명령 이름. `pause_command`만 있으면 로드 실패), `exclude`(폴더 안에서 담지 않을 파일 이름 패턴, `*` 가능. 켜진 서버가 잠가 두는 파일용), `hook`(true면 lifecycle `backup_paths()`가 경로를 준다). 세 모듈 모두 선언한다. 세 명령 이름은 `[[commands.fields]]` 이름이어야 한다.
+- 켜진 서버가 잠근 파일(Windows 공유·잠금 위반 32·33)을 읽지 못하면 백업은 409 `backup_file_locked`(`file`: 파일 이름만)로 실패한다. 반쪽 백업을 만들지 않는다 (`backup::LockedFile`). 백업 뒤 `resume_command`가 실패하면 백업은 남기되 500 `autosave_not_resumed`(`backup`: 백업 이름)로 실패를 알린다(서버를 다시 시작해야 자동 저장이 돌아온다). `remote = false` 명령은 `GET /api/instance/:id/commands`에 `remote:false`로 실리고, 액션 `server.command:<이름>`의 표면이 GUI·CLI뿐이다.
 - `[backup]`이 없는 모듈: 수동 백업만 400 `backup_unsupported`이고, 자동 백업(업데이트 전·예약·복원 전)은 건너뛴다. 그래서 업데이트가 막히지 않는다 (`D:src/ipc/handlers/backup.rs:77-87, 141-148`).
 - `hook = true`인데 `backup_paths()`가 실패하면 500으로 멈추며 모듈 호출 오류 필드를 유지한다. 경로를 모른 채 안전 백업 없이 업데이트·복원이 진행되지 않게 하려는 것이다 (`backup.rs:115-126`).
 - 복원 전 백업은 지금 설정이 가리키는 경로와 함께 복원이 덮을 경로도 담는다(월드 이름을 바꾼 뒤 옛 백업을 복원해도 옛 월드의 진행분이 남는다). 서버 폴더를 옮겨 백업 경로가 지금 서버 폴더·인스턴스 폴더·백업 경로·훅의 `restore_roots` 밖이면 복원은 400 `restore_outside`다.
@@ -156,8 +157,14 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 | `console_template` | String | 예: `"kick {player}"`. 예전 이름 `rcon_template`도 별칭으로 읽는다 (`D:src/supervisor/module_loader.rs:362-363, 941`). 인자에 `\r`·`\n`·NUL이 있으면 400 `invalid_argument`로 거부하고, stdin 전송(`ManagedProcess::send_command`)도 여러 줄 명령을 거부한다. 값 하나가 콘솔 명령 두 줄이 되지 않게 한다. 값은 자기 자리만 채운다(`commands::console_place_problem`): 뒤에 템플릿 글자가 더 있는 자리의 값은 공백이 있으면 400 `invalid_argument`(`must be one word`), 따옴표로 감싼 자리(`"{player}"`)는 공백을 받되 따옴표가 있으면 400(`must not contain quotes`). 마지막 자리는 남은 말을 모두 받는다. 템플릿은 한 번만 채운다(`commands::render_template`): 값 안의 `{key}`는 다시 채우지 않는다. 중간 자리에 여러 단어가 필요하면 템플릿에서 따옴표로 감싼다 |
 | `risk` | String | `safe` / `caution` / `danger`, 없으면 caution |
 | `inputs` | Vec<CommandInput> | |
+| `remote` | bool | 기본 true. false면 heartbeat 명령 목록에 싣지 않고 디스코드·챗봇 채팅 명령에서 없는 명령(`UNKNOWN_COMMAND`)이다. 데몬 기능이 같은 일을 하는 명령용(접속자 목록은 채팅 `players`) |
+| `reply_pattern` | String | 콘솔 답에서 값을 뽑는 정규식(이름 있는 그룹). 맞고 모듈 locales `commands.<이름>.done`이 있으면 채팅 답이 그 문구에 그룹 값을 넣는다 (`{{그룹}}`) |
 
 `command_template` 별칭은 없어졌다.
+
+`[commands] failure_patterns`: 콘솔 답이 이 정규식과 맞으면 채팅 답이 실패로 알린다(`reason` 그룹이 있으면 그것이 이유). 정규식이 틀리면 로드 실패다.
+
+채팅 명령 답(디스코드·`POST /api/chat/command`, `D:src/chat/mod.rs`)은 성공·실패와 짧은 이유만 쓴다. 성공은 `✅ **서버** · <명령 이름>`(이름은 모듈 locales `commands.<이름>.label` → `label`)이고 콘솔 답 원문은 싣지 않는다. 모듈·익스텐션의 `message`와 REST 결과 값은 아래 줄에 붙인다. 틀린 인자는 데몬 검사 결과의 `rule`(`missing`·`not_number`·`out_of_range`·`not_option`·`not_boolean`·`line_break`·`one_word`·`quote`·`too_many`)과 `params`(`value`·`min`·`max`·`options`)로 응답 언어 문구(`bot.json` `command.invalid.*`)를 쓴다. `POST /api/instance/:id/command`의 400 본문에도 `rule`·`params`가 실린다. 입력이 없는 명령에 말을 붙이면 400 `invalid_argument`(`too_many`)이고, `boolean` 칸은 `true/false/on/off/yes/no/1/0`만 받는다. 숫자 칸은 NaN·무한대를 받지 않는다. `[status] players`를 선언한 모듈은 채팅 `players`(모듈 별명 포함)가 접속자 조회(`GET /api/instance/:id/players`)다.
 
 `[commands] hook = true`면 lifecycle `instance_commands()`가 인스턴스마다 명령을 더 준다(설치된 플러그인 명령처럼 서버 폴더에 따라 달라지는 것). 결과는 `{success, commands:[명령 필드와 같은 모양 + group?], components?}`이다. 데몬(`crate::commands::InstanceCommands`)은 module.toml 명령 뒤에 붙여 같은 방식으로 해석하고, module.toml의 이름·별명과 겹치는 것과 이름에 공백이 있는 것은 뺀다. 명령 실행은 module.toml에서 못 찾은 이름일 때만 이 목록을 보며 60초 동안 기억한 값을 쓰고, `GET /api/instance/:id/commands`는 매번 새로 읽는다(`D:src/ipc/handlers/command.rs` `instance_commands`). `fields` 없이 `hook`만 있어도 된다.
 

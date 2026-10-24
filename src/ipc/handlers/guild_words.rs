@@ -239,6 +239,8 @@ mod tests {
             console_template: Some("stop".into()),
             risk: Some("danger".into()),
             inputs: vec![],
+            remote: true,
+            reply_pattern: None,
         };
         let module = ModuleView { name: "minecraft".into(), commands: vec![stop], ..Default::default() };
         let rows = command_rows(Some(&module), &InstanceWords::default());

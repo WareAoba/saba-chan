@@ -183,6 +183,33 @@ fn dir_lock(dir: &Path) -> std::sync::Arc<std::sync::Mutex<()>> {
 
 /// 새 백업을 만든다. 같은 초에 두 번 만들면 이름 뒤에 번호를 붙인다
 pub fn create(dir: &Path, kind: BackupKind, paths: &[PathBuf]) -> Result<BackupInfo> {
+    create_excluding(dir, kind, paths, &[])
+}
+
+/// 서버가 쓰는 중이라 읽지 못한 파일 (Windows 공유·잠금 위반). 호출자는 `backup_file_locked`로 알린다
+#[derive(Debug)]
+pub struct LockedFile {
+    pub path: PathBuf,
+}
+
+impl std::fmt::Display for LockedFile {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} is in use by another process", self.path.display())
+    }
+}
+
+impl std::error::Error for LockedFile {}
+
+/// 읽기 오류. 다른 프로세스가 잠근 파일이면 `LockedFile` (ERROR_SHARING_VIOLATION 32, ERROR_LOCK_VIOLATION 33)
+fn read_error(e: io::Error, path: &Path) -> anyhow::Error {
+    if cfg!(windows) && matches!(e.raw_os_error(), Some(32 | 33)) {
+        return LockedFile { path: path.to_path_buf() }.into();
+    }
+    anyhow::Error::new(e).context(format!("read {}", path.display()))
+}
+
+/// `exclude`: 폴더 안에서 담지 않을 파일 이름 패턴 (`*` 가능. 예: 서버가 쥐고 있는 `session.lock`)
+pub fn create_excluding(dir: &Path, kind: BackupKind, paths: &[PathBuf], exclude: &[String]) -> Result<BackupInfo> {
     if paths.is_empty() {
         bail!("nothing to back up: none of the module's backup paths exist");
     }
@@ -195,7 +222,8 @@ pub fn create(dir: &Path, kind: BackupKind, paths: &[PathBuf]) -> Result<BackupI
     let name = unique_name(dir, &stamp, kind);
     let final_path = dir.join(&name);
     let partial = dir.join(format!("{}.partial", name));
-    let written = write_v2(dir, &partial, paths);
+    let exclude: Vec<glob::Pattern> = exclude.iter().filter_map(|p| glob::Pattern::new(p).ok()).collect();
+    let written = write_v2(dir, &partial, paths, &exclude);
     if let Err(e) = written {
         let _ = fs::remove_file(&partial);
         // 이번에 넣은 내용은 어느 백업도 쓰지 않는다
@@ -285,13 +313,13 @@ fn put_object(dir: &Path, path: &Path) -> Result<(String, u64, u64, Option<PathB
     let tmp = objects.join(format!(".tmp-{}", uuid::Uuid::new_v4().simple()));
     let written = (|| -> Result<(String, u64)> {
         // 서버가 쓰는 중이라 잠긴 파일(Windows)은 건너뛰지 않고 실패로 알린다: 반쪽 백업을 믿지 않게
-        let mut src = File::open(path).with_context(|| format!("read {}", path.display()))?;
+        let mut src = File::open(path).map_err(|e| read_error(e, path))?;
         let mut out = flate2::write::DeflateEncoder::new(File::create(&tmp)?, flate2::Compression::default());
         let mut hasher = sha2::Sha256::new();
         let mut buf = vec![0u8; 64 * 1024];
         let mut read = 0u64;
         loop {
-            let n = src.read(&mut buf).with_context(|| format!("read {}", path.display()))?;
+            let n = src.read(&mut buf).map_err(|e| read_error(e, path))?;
             if n == 0 {
                 break;
             }
@@ -332,6 +360,7 @@ struct V2Writer<'a> {
     /// 백업 폴더의 실제 경로. 백업할 폴더 안에 있으면 담지 않는다 (지난 백업을 다시 담아 백업마다 커지지 않게)
     own_dir: Option<PathBuf>,
     known: std::collections::HashMap<PathBuf, (u64, u64, String, u64)>,
+    exclude: &'a [glob::Pattern],
     /// 이번에 새로 쓴 내용 파일 (매니페스트를 쓰기 전에 한꺼번에 디스크에 내린다)
     written: Vec<PathBuf>,
     manifest: ManifestV2,
@@ -381,6 +410,9 @@ impl V2Writer<'_> {
                 let path = item.path();
                 self.manifest.links.push(LinkEntry { target: fs::read_link(&path)?, dir: path.is_dir(), path });
             } else if kind.is_file() {
+                if self.exclude.iter().any(|p| p.matches(&item.file_name().to_string_lossy())) {
+                    continue;
+                }
                 self.add_file(&item.path(), entry, &child)?;
             }
         }
@@ -388,12 +420,13 @@ impl V2Writer<'_> {
     }
 }
 
-fn write_v2(dir: &Path, target: &Path, paths: &[PathBuf]) -> Result<()> {
+fn write_v2(dir: &Path, target: &Path, paths: &[PathBuf], exclude: &[glob::Pattern]) -> Result<()> {
     let started = now_ns();
     let mut w = V2Writer {
         dir,
         own_dir: fs::canonicalize(dir).ok(),
         known: known_files(dir),
+        exclude,
         written: Vec::new(),
         manifest: ManifestV2 { version: 2, paths: Vec::new(), links: Vec::new(), files: Vec::new(), dirs: Vec::new(), started },
         summary: SummaryV2 { started, ..Default::default() },
@@ -905,6 +938,10 @@ mod tests {
         out
     }
 
+    fn backed_up_files(dir: &Path, name: &str) -> Vec<String> {
+        read_v2(&dir.join(name)).unwrap().unwrap().files.into_iter().map(|f| f.rel).collect()
+    }
+
     fn world(root: &Path) -> PathBuf {
         let w = root.join("world");
         fs::create_dir_all(w.join("region")).unwrap();
@@ -988,6 +1025,33 @@ mod tests {
         assert_eq!(done.paths, vec![w.clone()]);
         assert_eq!(done.links_missed, 1);
         assert_eq!(fs::read_link(w.join("latest")).unwrap(), Path::new("level.dat"), "the other link still comes back");
+    }
+
+    #[test]
+    fn excluded_file_names_are_left_out_of_the_backup() {
+        let tmp = tempfile::tempdir().unwrap();
+        let w = world(tmp.path());
+        fs::write(w.join("session.lock"), b"held by the server").unwrap();
+        fs::write(w.join("region/r.0.0.mca.tmp"), b"x").unwrap();
+        let dir = tmp.path().join("backups");
+        let b = create_excluding(&dir, BackupKind::Manual, std::slice::from_ref(&w), &["session.lock".into(), "*.tmp".into()]).unwrap();
+        let files = backed_up_files(&dir, &b.name);
+        assert!(files.iter().any(|f| f == "level.dat"), "{files:?}");
+        assert!(!files.iter().any(|f| f.ends_with("session.lock") || f.ends_with(".tmp")), "{files:?}");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_file_the_server_holds_open_fails_with_the_locked_error() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let tmp = tempfile::tempdir().unwrap();
+        let w = world(tmp.path());
+        let lock = w.join("session.lock");
+        // 다른 프로세스가 읽지도 못하게 연 파일 (게임 서버가 잠근 것과 같다)
+        let _held = fs::OpenOptions::new().write(true).create(true).truncate(true).share_mode(0).open(&lock).unwrap();
+        let err = create(&tmp.path().join("backups"), BackupKind::Manual, std::slice::from_ref(&w)).unwrap_err();
+        let locked = err.downcast_ref::<LockedFile>().expect("locked error");
+        assert_eq!(locked.path, lock);
     }
 
     #[test]

@@ -55,10 +55,23 @@
   "command": {
     "executing": "⏳ **{{name}}** - `{{command}}` executing...",
     "missing_required": "❌ Missing required argument: `{{arg_name}}`\nUsage: `{{prefix}} {{alias}} {{command}} <{{arg_name}}>`\nDescription: {{description}}",
-    "execute_complete": "📡 **{{name}}** - `{{command}}`\n{{response}}",
     "execute_failed": "❌ **{{name}}** execution failed\n{{error}}",
     "unknown_command": "❓ Unknown command: \"{{command}}\" ({{resolved}})",
-    "no_available": "❓ Unknown command: \"{{command}}\" ({{resolved}})"
+    "no_available": "❓ Unknown command: \"{{command}}\" ({{resolved}})",
+    "done": "✅ **{{name}}** · {{label}}",
+    "failed": "❌ **{{name}}** · {{label}}: {{reason}}",
+    "players": "Players",
+    "invalid": {
+      "missing": "Please enter {{label}}.",
+      "not_number": "{{label}} must be a number. Got: {{value}}",
+      "out_of_range": "{{label}} must be from {{min}} to {{max}}. Got: {{value}}",
+      "not_option": "{{label}} must be one of: {{options}}. Got: {{value}}",
+      "not_boolean": "{{label}} must be on or off. Got: {{value}}",
+      "line_break": "{{label}} cannot contain line breaks.",
+      "one_word": "{{label}} must be one word without spaces. Got: {{value}}",
+      "quote": "{{label}} cannot contain double quotes.",
+      "too_many": "This command takes no extra words. Got: {{value}}"
+    }
   },
   "responses": {
     "info_title": "**Server Info**",
@@ -348,5 +361,24 @@
       "player_item": "• {{name}}",
       "players_more": "…and {{count}} more"
     }
+  },
+  "reasons": {
+    "failed": "It could not be done",
+    "rejected": "The server did not accept the command",
+    "server_not_running": "The server is off",
+    "not_supported": "This game does not support it",
+    "not_found": "Not found",
+    "timeout": "The server did not answer in time",
+    "auth_failed": "The server rejected the login",
+    "players_failed": "Could not read the players",
+    "backup_file_locked": "The server is using a file ({{file}}), so the backup could not be made. Stop the server and try again",
+    "backup_failed": "The backup could not be made",
+    "backup_unsupported": "This game does not support backups",
+    "nothing_to_back_up": "There is no world to back up yet",
+    "backup_limit": "The remote backup limit is full. Delete old backups on the PC",
+    "backup_busy": "Another backup or restore is in progress",
+    "server_running": "The server is on. Stop it first",
+    "no_command_path": "The server was started outside Saba-chan, so it cannot take commands",
+    "autosave_not_resumed": "The backup was made, but the server’s autosave could not be turned back on. Restart the server"
   }
 }

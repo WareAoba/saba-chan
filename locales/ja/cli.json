@@ -101,7 +101,8 @@
     "words_bad_command": "{{spec}}: コマンド=語,語 の形で書いてください (消すには コマンド=)。",
     "no_paired_servers": "このPCとペアリングされたDiscordサーバーはまだありません。実行: saba-chan-cli bot pair",
     "pick_server": "ペアリングされたDiscordサーバーが複数あります。変更するサーバーのIDを指定してください: {{servers}}",
-    "words_not_used": "この Discord サーバーではこのサーバーを使っていません。"
+    "words_not_used": "この Discord サーバーではこのサーバーを使っていません。",
+    "translate_commands": "コマンド名の翻訳"
   },
   "col": {
     "players": "接続者",
@@ -281,6 +282,8 @@
       "backup_unsupported": "このゲームのモジュールはバックアップ対象を指定していません。新しいモジュールなら対応しているかもしれません: saba-chan-cli update check",
       "nothing_to_back_up": "ワールドがまだありません。一度サーバーを起動して作成してください。",
       "backup_busy": "このサーバーのバックアップまたは復元がすでに実行中です。終わってからもう一度試してください。",
+      "backup_file_locked": "サーバーが使用中のファイル({{file}})があります。サーバーを停止してからやり直してください: saba-chan-cli stop 名前",
+      "autosave_not_resumed": "バックアップは作成しましたが、サーバーの自動保存を再開できませんでした。サーバーを再起動してください: saba-chan-cli restart <name>",
       "invalid_relay_url": "リレーのアドレスは https:// のみ使えます(この PC でのテスト用に localhost・127.0.0.1・[::1] の http だけは使えます)。",
       "module_busy": "このモジュールはすでにインストールまたは削除中です。終わってからもう一度試してください。",
       "schedule_changed": "予約タスクが別の場所で変更されました。saba-chan-cli schedule show で確認してからやり直してください。",

@@ -27,6 +27,8 @@ fn field(name: &str, method: &str, inputs: Vec<CommandInput>) -> CommandField {
         console_template: None,
         risk: None,
         inputs,
+        remote: true,
+        reply_pattern: None,
     }
 }
 
@@ -61,6 +63,7 @@ fn module() -> ModuleMetadata {
     meta.commands = Some(ModuleCommands {
         fields: vec![give, say, announce, weather, field("kickall", "dual", vec![]), field("odd", "ftp", vec![])],
         hook: false,
+        failure_patterns: Vec::new(),
     });
     meta.command_aliases.insert(
         "say".into(),
@@ -233,4 +236,103 @@ fn unknown_risk_values_count_as_danger() {
     }
     let hooked = InstanceCommands::parse(&json!({ "commands": [{ "name": "wipe", "label": "Wipe", "method": "console", "console_template": "wipe", "risk": "DANGER" }] }));
     assert_eq!(hooked.fields[0].risk.as_deref(), Some("danger"));
+}
+
+/// 틀린 인자는 무엇이 틀렸는지(`rule`)와 그 기준(`params`)을 함께 준다. 문구는 받는 쪽이 자기 언어로 쓴다
+#[test]
+fn invalid_input_names_the_rule_and_its_bounds() {
+    let not_number = plan_of("give Steve stone lots", Value::Null).unwrap_err();
+    assert_eq!(not_number.rule, Some("not_number"));
+    assert_eq!(not_number.params["value"], "lots");
+    let out_of_range = plan_of("give Steve stone 65", Value::Null).unwrap_err();
+    assert_eq!(out_of_range.rule, Some("out_of_range"));
+    assert_eq!((out_of_range.params["min"].clone(), out_of_range.params["max"].clone()), (json!(1.0), json!(64.0)));
+    let not_option = plan_of("weather snow", Value::Null).unwrap_err();
+    assert_eq!(not_option.rule, Some("not_option"));
+    assert_eq!(not_option.params["options"], json!(["clear", "rain"]));
+    let missing = plan_of("give", Value::Null).unwrap_err();
+    assert_eq!(missing.rule, Some("missing"));
+}
+
+#[test]
+fn boolean_inputs_take_only_yes_or_no_words() {
+    let mut meta = module();
+    meta.commands.as_mut().unwrap().fields.push(field("pvp", "module", vec![input("on", "boolean", true)]));
+    let bind = |v: &str| plan(&meta, &Request::parse(&format!("pvp {}", v), &Value::Null));
+    for (word, value) in [("true", true), ("on", true), ("yes", true), ("false", false), ("off", false), ("no", false)] {
+        let args = match bind(word) {
+            Ok(Plan::Module { args, .. }) => args,
+            other => panic!("{word}: {other:?}"),
+        };
+        assert_eq!(args["on"], json!(value), "{word}");
+    }
+    assert_eq!(bind("maybe").unwrap_err().rule, Some("not_boolean"));
+}
+
+/// 인자를 받지 않는 명령에 붙인 말은 버리지 않고 알린다 (`save-all now`가 조용히 `save-all`이 되지 않게)
+#[test]
+fn words_after_a_command_without_inputs_are_rejected() {
+    let mut meta = module();
+    meta.commands.as_mut().unwrap().fields.push(field("save-all", "console", vec![]));
+    let err = plan(&meta, &Request::parse("save-all now", &Value::Null)).unwrap_err();
+    assert_eq!((err.code, err.rule), ("invalid_argument", Some("too_many")));
+    assert!(plan(&meta, &Request::parse("save-all", &Value::Null)).is_ok());
+}
+
+mod properties {
+    use super::*;
+    use proptest::prelude::*;
+
+    fn amount_plan(raw: &str) -> Result<Plan, PlanError> {
+        plan(&module(), &Request::parse("give", &json!({ "player": "Steve", "item": "stone", "amount": raw })))
+    }
+
+    fn weather_plan(raw: &str) -> Result<Plan, PlanError> {
+        plan(&module(), &Request::parse("weather", &json!({ "type": raw })))
+    }
+
+    proptest! {
+        /// 숫자 칸: 범위 안의 숫자만 통과하고(빈 칸은 기본값), 거절하면 늘 숫자 아님·범위 밖·줄바꿈 중 하나다
+        #[test]
+        fn number_inputs_pass_only_in_range_numbers(raw in r"\PC{0,12}|[-+]?[0-9]{1,3}(\.[0-9]{1,2})?|[-+]?(nan|NaN|inf|infinity)") {
+            let parsed = raw.trim().parse::<f64>().ok().filter(|n| n.is_finite());
+            match amount_plan(&raw) {
+                Ok(Plan::Console { line }) if raw.trim().is_empty() => prop_assert_eq!(line, "give Steve stone 1"),
+                Ok(Plan::Console { line }) => {
+                    let n = parsed.expect("accepted a non-number");
+                    prop_assert!((1.0..=64.0).contains(&n), "{:?} -> {}", raw, line);
+                }
+                Ok(other) => prop_assert!(false, "{:?}", other),
+                Err(e) => {
+                    prop_assert_eq!(e.code, "invalid_argument");
+                    let expected = match parsed {
+                        None => "not_number",
+                        Some(_) => "out_of_range",
+                    };
+                    prop_assert_eq!(e.rule, Some(expected), "{:?}", raw);
+                }
+            }
+        }
+
+        /// 고르는 칸: 목록에 있는 값만 통과한다
+        #[test]
+        fn select_inputs_pass_only_listed_values(raw in "[a-z]{1,6}") {
+            let listed = raw == "clear" || raw == "rain";
+            match weather_plan(&raw) {
+                Ok(_) => prop_assert!(listed, "{:?}", raw),
+                Err(e) => {
+                    prop_assert!(!listed);
+                    prop_assert_eq!(e.rule, Some("not_option"));
+                }
+            }
+        }
+
+        /// 통과한 콘솔 한 줄에는 줄바꿈이 없다 (두 번째 명령이 끼어들지 못한다)
+        #[test]
+        fn an_accepted_console_line_is_one_line(player in "[A-Za-z0-9_]{1,8}", item in "(?s).{1,10}") {
+            if let Ok(Plan::Console { line }) = plan(&module(), &Request::parse("give", &json!({ "player": player, "item": item }))) {
+                prop_assert!(!line.contains(['\n', '\r']), "{:?}", line);
+            }
+        }
+    }
 }

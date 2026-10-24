@@ -991,7 +991,9 @@
     "prefix_default_placeholder": "Leave empty to use {{prefix}}",
     "prefix_default_hint": "Using the default {{prefix}}. It follows the app language when you change it.",
     "prefix_err_count": "Up to {{max}} prefixes.",
-    "prefix_err_length": "Prefixes can be up to {{max}} characters: {{words}}"
+    "prefix_err_length": "Prefixes can be up to {{max}} characters: {{words}}",
+    "translate_commands_title": "Translated command names",
+    "translate_commands_desc": "Show translated names and descriptions of game commands in Discord slash commands. When off, only the names in the module (for example save-all) are shown."
   },
   "maintenance": {
     "load_failed": "Couldn't load backups and schedules.",
@@ -1047,7 +1049,9 @@
     "err_at": "Time must be HH:MM.",
     "err_message": "Enter a message to announce.",
     "backup_unreadable": "⚠ cannot be opened",
-    "backup_unreadable_hint": "This backup cannot be opened, so it cannot be restored. Unused backup content is not cleaned up until you delete it. Delete it."
+    "backup_unreadable_hint": "This backup cannot be opened, so it cannot be restored. Unused backup content is not cleaned up until you delete it. Delete it.",
+    "err_backup_file_locked": "The server is using a file ({{file}}), so the backup could not be made. Stop the server and try again.",
+    "err_autosave_not_resumed": "The backup was made, but the server’s autosave could not be turned back on. Restart the server."
   },
   "chatbot": {
     "nav": "Talking Saba-chan",

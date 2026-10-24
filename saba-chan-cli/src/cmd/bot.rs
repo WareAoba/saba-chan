@@ -174,6 +174,9 @@ async fn status(ctx: &Ctx) -> Result<()> {
         rows.push((t!("bot.relay_check"), relay_line(r)));
     }
     rows.push((t!("bot.prefix"), prefixes_line(cfg.get("prefixes").unwrap_or(&Value::Null))));
+    // 끄기: saba-chan-cli bot config translateCommands=false (GUI 디스코드 > 봇 설정과 같은 값)
+    let translate = cfg.get("translateCommands").and_then(Value::as_bool) != Some(false);
+    rows.push((t!("bot.translate_commands"), if translate { t!("bot.on") } else { t!("bot.off") }));
     let relay = s(&agent, "relayUrl");
     if !relay.is_empty() {
         rows.push((t!("bot.relay"), relay.to_string()));

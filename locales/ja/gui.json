@@ -991,7 +991,9 @@
     "prefix_default_placeholder": "空欄なら既定の {{prefix}}",
     "prefix_default_hint": "今は既定の {{prefix}} を使っています。アプリの言語を変えると既定値もその言語になります。",
     "prefix_err_count": "接頭辞は{{max}}個までです。",
-    "prefix_err_length": "接頭辞は{{max}}文字までです: {{words}}"
+    "prefix_err_length": "接頭辞は{{max}}文字までです: {{words}}",
+    "translate_commands_title": "コマンド名の翻訳",
+    "translate_commands_desc": "Discordのスラッシュコマンドにゲームコマンドの翻訳した名前と説明を付けます。オフにするとモジュールに書かれた元の名前(例: save-all)だけを表示します。"
   },
   "maintenance": {
     "load_failed": "バックアップ・予約の情報を読み込めませんでした。",
@@ -1047,7 +1049,9 @@
     "err_at": "時刻は HH:MM 形式で入力してください。",
     "err_message": "お知らせ内容を入力してください。",
     "backup_unreadable": "⚠ 開けません",
-    "backup_unreadable_hint": "開けないバックアップのため、復元できません。削除するまで、使われていないバックアップ内容は整理されません。削除してください。"
+    "backup_unreadable_hint": "開けないバックアップのため、復元できません。削除するまで、使われていないバックアップ内容は整理されません。削除してください。",
+    "err_backup_file_locked": "サーバーが使用中のファイル({{file}})があるためバックアップできませんでした。サーバーを停止してからやり直してください。",
+    "err_autosave_not_resumed": "バックアップは作成しましたが、サーバーの自動保存を再開できませんでした。サーバーを再起動してください."
   },
   "chatbot": {
     "nav": "おしゃべりサバちゃん",

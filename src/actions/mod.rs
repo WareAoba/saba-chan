@@ -459,8 +459,9 @@ fn view(def: &Def, cat: &crate::chat::i18n::Catalog) -> Value {
 fn command_view(cmd: &Value) -> Option<Value> {
     let name = cmd.get("name")?.as_str()?;
     let risk = crate::commands::risk_of(cmd.get("risk").and_then(Value::as_str));
-    // danger 명령도 챗봇이 고를 수 있다: 늘 확인 계획을 거치고 요청자가 확인한다 (`needs_confirm`)
-    let surfaces = vec!["gui", "cli", "discord", "chatbot"];
+    // danger 명령도 챗봇이 고를 수 있다: 늘 확인 계획을 거치고 요청자가 확인한다 (`needs_confirm`).
+    // `remote = false` 명령은 이 PC 화면에서만
+    let surfaces = if cmd.get("remote").and_then(Value::as_bool) == Some(false) { vec!["gui", "cli"] } else { vec!["gui", "cli", "discord", "chatbot"] };
     let inputs = cmd.get("inputs").cloned().unwrap_or(json!([]));
     let props: Map<String, Value> = inputs
         .as_array()
@@ -1357,11 +1358,15 @@ async fn execute(server: &IPCServer, r: &Resolved, caller: &Caller) -> Value {
         summary::label_backups(&mut result, &catalog(&caller.locale));
     }
     let mut out = json!({ "success": ok, "actionId": r.id, "status": resp.status.as_u16(), "result": result });
-    // 원격 화면은 JSON을 그리지 않으므로 요청 언어의 요약을 함께 준다
+    // 원격 화면은 JSON을 그리지 않으므로 요청 언어의 요약을 함께 준다. 실패면 짧은 이유 (`reason`)
     if let (true, Some(_)) = (ok, &caller.remote) {
         if let Some(text) = summary::text(&r.id, &out["result"], &catalog(&caller.locale)) {
             out["text"] = json!(text);
         }
+    }
+    if let (false, Some(_)) = (ok, &caller.remote) {
+        let code = crate::commands::error_code(resp.status.as_u16(), &out["result"]);
+        out["reason"] = json!(crate::chat::reason(&catalog(&caller.locale), &code, &out["result"]));
     }
     if let (true, Some((instance, before))) = (ok, previous) {
         if let Some(undo) = undo_plan(server, &instance, before, caller).await {

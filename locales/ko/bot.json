@@ -55,10 +55,23 @@
   "command": {
     "executing": "⏳ **{{name}}** - `{{command}}` 실행 중...",
     "missing_required": "❌ 필수 인자가 부족합니다: `{{arg_name}}`\n사용법: `{{prefix}} {{alias}} {{command}} <{{arg_name}}>`\n설명: {{description}}",
-    "execute_complete": "📡 **{{name}}** - `{{command}}`\n{{response}}",
     "execute_failed": "❌ **{{name}}** 실행 실패\n{{error}}",
     "unknown_command": "❓ 알 수 없는 명령어: \"{{command}}\" ({{resolved}})",
-    "no_available": "❓ 알 수 없는 명령어: \"{{command}}\" ({{resolved}})"
+    "no_available": "❓ 알 수 없는 명령어: \"{{command}}\" ({{resolved}})",
+    "done": "✅ **{{name}}** · {{label}}",
+    "failed": "❌ **{{name}}** · {{label}}: {{reason}}",
+    "players": "접속자",
+    "invalid": {
+      "missing": "{{label}} 값을 넣어 주세요.",
+      "not_number": "{{label}}에는 숫자를 넣어 주세요. 받은 값: {{value}}",
+      "out_of_range": "{{label}}은(는) {{min}}부터 {{max}}까지예요. 받은 값: {{value}}",
+      "not_option": "{{label}}은(는) 다음 중 하나여야 해요: {{options}}. 받은 값: {{value}}",
+      "not_boolean": "{{label}}에는 켜기(on)나 끄기(off)를 넣어 주세요. 받은 값: {{value}}",
+      "line_break": "{{label}}에는 줄바꿈을 넣을 수 없어요.",
+      "one_word": "{{label}}은(는) 띄어쓰기 없이 한 단어로 넣어 주세요. 받은 값: {{value}}",
+      "quote": "{{label}}에는 큰따옴표를 넣을 수 없어요.",
+      "too_many": "이 명령은 덧붙이는 말을 받지 않아요. 받은 말: {{value}}"
+    }
   },
   "responses": {
     "info_title": "**서버 정보**",
@@ -348,5 +361,24 @@
       "player_item": "• {{name}}",
       "players_more": "…외 {{count}}명"
     }
+  },
+  "reasons": {
+    "failed": "실행하지 못했어요",
+    "rejected": "서버가 명령을 받아들이지 않았어요",
+    "server_not_running": "서버가 꺼져 있어요",
+    "not_supported": "이 게임은 지원하지 않아요",
+    "not_found": "찾을 수 없어요",
+    "timeout": "서버가 제때 답하지 않았어요",
+    "auth_failed": "서버 인증에 실패했어요",
+    "players_failed": "접속자를 읽지 못했어요",
+    "backup_file_locked": "서버가 쓰고 있는 파일({{file}})이 있어 백업하지 못했어요. 서버를 끈 뒤 다시 해 주세요",
+    "backup_failed": "백업하지 못했어요",
+    "backup_unsupported": "이 게임은 백업을 지원하지 않아요",
+    "nothing_to_back_up": "아직 백업할 월드가 없어요",
+    "backup_limit": "원격 백업 개수가 가득 찼어요. PC에서 오래된 백업을 지워 주세요",
+    "backup_busy": "다른 백업이나 되돌리기가 진행 중이에요",
+    "server_running": "서버가 켜져 있어요. 먼저 꺼 주세요",
+    "no_command_path": "사바쨩 밖에서 켠 서버라 명령을 보낼 수 없어요",
+    "autosave_not_resumed": "백업은 만들었지만 서버의 자동 저장을 다시 켜지 못했어요. 서버를 다시 시작해 주세요"
   }
 }

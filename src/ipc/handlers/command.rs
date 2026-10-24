@@ -95,7 +95,7 @@ async fn run_command(id: &str, state: &IPCServer, req: CommandRequest) -> axum::
             return command_reply(
                 InternalResponse {
                     status: StatusCode::BAD_REQUEST,
-                    body: json!({ "error": e.message, "error_code": e.code, "field": e.field }),
+                    body: e.body(),
                 },
                 &request.name,
                 &errors,
@@ -142,7 +142,7 @@ async fn run_command(id: &str, state: &IPCServer, req: CommandRequest) -> axum::
             return command_reply(
                 InternalResponse {
                     status: StatusCode::BAD_REQUEST,
-                    body: json!({ "error": e.message, "error_code": e.code, "field": e.field }),
+                    body: e.body(),
                 },
                 &name,
                 &errors,
@@ -284,6 +284,8 @@ pub async fn list_instance_commands(Path(id): Path<String>, State(state): State<
                 "inputs": field.inputs,
                 "source": "module",
                 "aliases": aliases,
+                // false면 디스코드·챗봇 액션으로 부를 수 없다 (`actions::command_view`)
+                "remote": field.remote,
             }));
         }
     }
@@ -304,6 +306,7 @@ pub async fn list_instance_commands(Path(id): Path<String>, State(state): State<
                 "inputs": field.inputs,
                 "source": "module",
                 "group": extra.groups.get(&field.name),
+                "remote": field.remote,
             }));
         }
     }

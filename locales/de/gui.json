@@ -991,7 +991,9 @@
     "prefix_default_placeholder": "Leer lassen für {{prefix}}",
     "prefix_default_hint": "Derzeit wird der Standard {{prefix}} verwendet. Er folgt der App-Sprache.",
     "prefix_err_count": "Höchstens {{max}} Präfixe.",
-    "prefix_err_length": "Präfixe dürfen höchstens {{max}} Zeichen haben: {{words}}"
+    "prefix_err_length": "Präfixe dürfen höchstens {{max}} Zeichen haben: {{words}}",
+    "translate_commands_title": "Übersetzte Befehlsnamen",
+    "translate_commands_desc": "Zeigt übersetzte Namen und Beschreibungen der Spielbefehle in Discord-Slash-Befehlen. Wenn aus, werden nur die Namen aus dem Modul (z. B. save-all) gezeigt."
   },
   "maintenance": {
     "load_failed": "Backups und Zeitpläne konnten nicht geladen werden.",
@@ -1047,7 +1049,9 @@
     "err_at": "Die Uhrzeit muss im Format HH:MM sein.",
     "err_message": "Gib eine Nachricht für die Ankündigung ein.",
     "backup_unreadable": "⚠ kann nicht geöffnet werden",
-    "backup_unreadable_hint": "Dieses Backup kann nicht geöffnet und daher nicht wiederhergestellt werden. Ungenutzte Backup-Inhalte werden erst aufgeräumt, wenn du es löschst. Lösche es."
+    "backup_unreadable_hint": "Dieses Backup kann nicht geöffnet und daher nicht wiederhergestellt werden. Ungenutzte Backup-Inhalte werden erst aufgeräumt, wenn du es löschst. Lösche es.",
+    "err_backup_file_locked": "Der Server benutzt eine Datei ({{file}}), daher konnte kein Backup erstellt werden. Server stoppen und erneut versuchen.",
+    "err_autosave_not_resumed": "Das Backup wurde erstellt, aber das Autospeichern des Servers ließ sich nicht wieder einschalten. Server neu starten."
   },
   "chatbot": {
     "nav": "Sprechende Saba-chan",

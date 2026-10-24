@@ -55,10 +55,23 @@
   "command": {
     "executing": "⏳ **{{name}}** - `{{command}}` 執行中...",
     "missing_required": "❌ 缺少必要參數：`{{arg_name}}`\n用法：`{{prefix}} {{alias}} {{command}} <{{arg_name}}>`\n描述：{{description}}",
-    "execute_complete": "📡 **{{name}}** - `{{command}}`\n{{response}}",
     "execute_failed": "❌ **{{name}}** 執行失敗\n{{error}}",
     "unknown_command": "❓ 未知命令：\"{{command}}\"（{{resolved}}）",
-    "no_available": "❓ 未知命令：\"{{command}}\"（{{resolved}}）"
+    "no_available": "❓ 未知命令：\"{{command}}\"（{{resolved}}）",
+    "done": "✅ **{{name}}** · {{label}}",
+    "failed": "❌ **{{name}}** · {{label}}：{{reason}}",
+    "players": "玩家",
+    "invalid": {
+      "missing": "請輸入{{label}}。",
+      "not_number": "{{label}}必須是數字。收到：{{value}}",
+      "out_of_range": "{{label}}必須在{{min}}到{{max}}之間。收到：{{value}}",
+      "not_option": "{{label}}必須是以下之一：{{options}}。收到：{{value}}",
+      "not_boolean": "{{label}}必須是 on 或 off。收到：{{value}}",
+      "line_break": "{{label}}不能包含換行。",
+      "one_word": "{{label}}必須是不含空格的一個詞。收到：{{value}}",
+      "quote": "{{label}}不能包含雙引號。",
+      "too_many": "此指令不接受額外的內容。收到：{{value}}"
+    }
   },
   "responses": {
     "info_title": "**伺服器資訊**",
@@ -348,5 +361,24 @@
       "player_item": "• {{name}}",
       "players_more": "…另外 {{count}} 人"
     }
+  },
+  "reasons": {
+    "failed": "無法執行",
+    "rejected": "伺服器未接受該指令",
+    "server_not_running": "伺服器已關閉",
+    "not_supported": "此遊戲不支援",
+    "not_found": "找不到",
+    "timeout": "伺服器未及時回應",
+    "auth_failed": "伺服器驗證失敗",
+    "players_failed": "無法讀取玩家",
+    "backup_file_locked": "伺服器正在使用檔案（{{file}}），無法備份。請關閉伺服器後重試",
+    "backup_failed": "無法備份",
+    "backup_unsupported": "此遊戲不支援備份",
+    "nothing_to_back_up": "還沒有可備份的世界",
+    "backup_limit": "遠端備份數量已滿。請在電腦上刪除舊備份",
+    "backup_busy": "另一個備份或還原正在進行",
+    "server_running": "伺服器正在執行。請先關閉",
+    "no_command_path": "伺服器是在 Saba-chan 之外啟動的，無法接收指令",
+    "autosave_not_resumed": "備份已完成，但無法重新開啟伺服器的自動儲存。請重新啟動伺服器"
   }
 }
