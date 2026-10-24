@@ -354,8 +354,7 @@
     "list_empty": "No se encontraron módulos",
     "fetch_failed_toast": "Falló la búsqueda de módulos: {{error}}",
     "load_error_title": "Error al cargar el módulo",
-    "schema_invalid": "module.toml no cumple el formato: {{problems}}",
-    "schema_unsupported": "Este módulo necesita una versión más nueva de Saba-chan (formato de módulo {{required}}). Actualiza Saba-chan."
+    "schema_invalid": "module.toml no cumple el formato: {{problems}}"
   },
   "servers": {
     "fetch_failed_toast": "⚠️ {{error}}",
@@ -803,8 +802,6 @@
     "chain_discord": "Discord",
     "agent_desc": "Este PC recibe y ejecuta los comandos enviados desde Discord. Mientras esté apagada, el bot no responderá.",
     "agent_replaced": "La conexión de PC de esta cuenta de Discord se movió a otro PC, así que se detuvo aquí. Para volver a usar este PC, vuelve a emparejarlo desde este PC.",
-    "agent_too_old": "El servidor de retransmisión ya no acepta esta versión de la aplicación. Actualiza la aplicación a {{version}} o posterior.",
-    "agent_check_update": "Buscar actualizaciones",
     "agent_running": "Activada",
     "agent_connecting": "Iniciando",
     "agent_stopped": "Desactivada",
@@ -1362,7 +1359,9 @@
     "backup_done": "Copia de seguridad de {{name}} completada ({{kind}}).",
     "backup_failed": "Falló la copia de seguridad de {{name}}. {{error}}",
     "schedule_restart": "{{name}} se reiniciará según lo programado en {{minutes}} min.",
-    "schedule_update": "{{name}} se actualizará según lo programado en {{minutes}} min."
+    "schedule_update": "{{name}} se actualizará según lo programado en {{minutes}} min.",
+    "module_update": "{{name}}: ya está disponible la versión {{version}} del módulo {{module}}.",
+    "server_update": "{{name}}: hay una nueva versión del servidor de juego. Si no se puede entrar, actualiza el servidor."
   },
   "terminal": {
     "open": "Abrir en terminal",
@@ -1465,5 +1464,51 @@
     "accepted": "Conectado a {{guild}}.",
     "expired": "La solicitud caducó. Pídela de nuevo desde Discord.",
     "failed": "No se pudo procesar la solicitud."
+  },
+  "folder_paths": {
+    "title": "Carpetas",
+    "description": "Dónde guarda Saba-chan sus archivos. Puedes mover los módulos y extensiones a otra carpeta; los archivos instalados se mueven con ellos y hay que detener los servidores.",
+    "data": "Datos y ajustes",
+    "install": "Programa",
+    "default_install": "Carpeta de programa predeterminada",
+    "instances": "Servidores de juego",
+    "modules": "Módulos",
+    "extensions": "Extensiones",
+    "source_default": "Predeterminada",
+    "source_config": "Elegida",
+    "source_env": "Fijada por una variable de entorno",
+    "default_is": "predeterminada: {{path}}",
+    "move": "Mover…",
+    "cancel": "Cancelar",
+    "confirm_move": "Mover",
+    "confirm_modules": "¿Mover los módulos a la carpeta modules de {{dir}}? Los módulos instalados se copian, se comprueban y luego se borran de la carpeta anterior.",
+    "confirm_extensions": "¿Mover las extensiones a la carpeta extensions de {{dir}}? Las extensiones instaladas se copian, se comprueban y luego se borran de la carpeta anterior.",
+    "moved": "Movido a {{path}}.",
+    "left_behind": "No se pudieron borrar estos archivos antiguos. Bórralos tú: {{files}}",
+    "err_generic": "No se pudo mover la carpeta.",
+    "err_busy": "Hay una instalación, actualización, copia de seguridad u otra tarea en curso. Inténtalo cuando termine.",
+    "err_servers_running": "Detén primero estos servidores: {{detail}}",
+    "err_env_fixed": "Esta carpeta está fijada por una variable de entorno ({{detail}}).",
+    "err_not_absolute": "Elige una carpeta con la ruta completa.",
+    "err_root_or_home": "Elige una carpeta dentro de una unidad o de tu carpeta de usuario, no la unidad ni la carpeta de usuario.",
+    "err_contains_data_dir": "Esa carpeta contiene la carpeta de datos de Saba-chan. Elige otra.",
+    "err_same_as_current": "Ya está en esa carpeta.",
+    "err_overlaps_current": "Esa carpeta está dentro de la actual o la contiene. Elige otra.",
+    "err_overlaps_other": "Esa carpeta se solapa con la de módulos o extensiones. Elige otra.",
+    "err_not_empty": "Ya hay archivos ahí: {{detail}}. Elige un lugar vacío.",
+    "err_not_writable": "Saba-chan no puede escribir ahí: {{detail}}",
+    "err_has_link": "La carpeta contiene un enlace ({{detail}}). Quítalo e inténtalo de nuevo.",
+    "err_copy_failed": "La copia falló. No se cambió nada. Comprueba el espacio libre e inténtalo de nuevo.",
+    "err_verify_failed": "La copia no coincidía con el original. No se cambió nada. Inténtalo de nuevo.",
+    "err_commit_failed": "No se pudo guardar el ajuste. Los archivos volvieron a su sitio.",
+    "err_overlaps_install": "No puede ir dentro de la carpeta de instalación de Saba-chan. Elige una carpeta fuera de ella."
+  },
+  "update_required": {
+    "title": "Se necesita una actualización",
+    "relay": "Se necesita una actualización. El relé requiere Saba-chan {{version}} o posterior.",
+    "module": "Se necesita una actualización. El módulo {{name}} requiere Saba-chan {{version}} o posterior.",
+    "module_newer": "Se necesita una actualización. El módulo {{name}} requiere un Saba-chan más reciente.",
+    "extension": "Se necesita una actualización. La extensión {{name}} requiere Saba-chan {{version}} o posterior.",
+    "check": "Buscar actualizaciones"
   }
 }

@@ -31,6 +31,8 @@ pub struct InstallerState {
     pub progress: InstallProgress,
     /// 로드된 모듈 메타데이터 (required_extensions 해석용)
     pub module_metadata: Vec<ModuleInfo>,
+    /// 모듈·익스텐션을 둘 폴더. 지금 위치와 같으면 None (옮기지 않는다)
+    pub components_dir: Option<std::path::PathBuf>,
 }
 
 impl Default for InstallerState {
@@ -44,8 +46,15 @@ impl Default for InstallerState {
             release: None,
             progress: InstallProgress::default(),
             module_metadata: Vec::new(),
+            components_dir: None,
         }
     }
+}
+
+/// 모듈·익스텐션 폴더의 지금 위치 (고르는 칸에 보이는 값): 모듈 폴더의 상위
+fn current_components_dir() -> std::path::PathBuf {
+    let modules = saba_chan_updater_lib::constants::resolve_modules_dir();
+    modules.parent().map(Path::to_path_buf).unwrap_or(modules)
 }
 
 /// 앱 모드
@@ -72,6 +81,7 @@ async fn get_installer_state(state: State<'_, SharedState>) -> Result<serde_json
         "create_desktop_shortcut": s.create_desktop_shortcut,
         "create_start_menu_shortcut": s.create_start_menu_shortcut,
         "selected_modules": s.selected_modules,
+        "components_dir": s.components_dir.clone().unwrap_or_else(current_components_dir),
         "latest_release_tag": s.release.as_ref().map(|r| r.version.clone()),
         "progress": s.progress,
     }))
@@ -82,6 +92,21 @@ async fn set_install_path(state: State<'_, SharedState>, path: String) -> Result
     let path = saba_chan_installer_core::dedicated_install_dir(Path::new(&path)).to_string_lossy().into_owned();
     state.write().await.install_path = path.clone();
     Ok(path)
+}
+
+/// 모듈·익스텐션 폴더를 고른다. 쓸 수 없는 폴더면 이유 코드(`component_dirs::PathError::code`)로 거절한다
+#[tauri::command]
+async fn set_components_dir(state: State<'_, SharedState>, path: String) -> Result<String, String> {
+    use saba_chan_updater_lib::component_dirs::Layout;
+    let path = path.trim();
+    let chosen = std::path::PathBuf::from(path);
+    let unchanged = path.is_empty() || saba_chan_updater_lib::same_path(&chosen, &current_components_dir());
+    if !unchanged {
+        let install = std::path::PathBuf::from(state.read().await.install_path.clone());
+        saba_chan_installer_core::check_components_dir(&chosen, &Layout::current(), &install).map_err(|e| e.code.to_string())?;
+    }
+    state.write().await.components_dir = (!unchanged).then(|| chosen.clone());
+    Ok(if unchanged { current_components_dir() } else { chosen }.to_string_lossy().into_owned())
 }
 
 #[tauri::command]
@@ -199,6 +224,7 @@ async fn start_install(
             module_metadata: s.module_metadata.clone(),
             // 설치 폴더에 제거기로 남는다
             uninstaller_exe: std::env::current_exe().ok(),
+            components_dir: s.components_dir.clone(),
         }
     };
 
@@ -456,6 +482,14 @@ async fn browse_folder(app: AppHandle) -> Result<Option<String>, String> {
     Ok(path.map(|p| saba_chan_installer_core::dedicated_install_dir(Path::new(&p.to_string())).to_string_lossy().into_owned()))
 }
 
+/// 모듈·익스텐션 폴더 고르기 (고른 폴더 아래 `modules`·`extensions`를 만든다)
+#[tauri::command]
+async fn browse_components_folder(app: AppHandle) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let path = app.dialog().file().set_title("Select a folder for modules and extensions").blocking_pick_folder();
+    Ok(path.map(|p| p.to_string()))
+}
+
 // ═══════════════════════════════════════════════════════
 // 엔트리
 // ═══════════════════════════════════════════════════════
@@ -598,6 +632,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_installer_state,
             set_install_path,
+            set_components_dir,
             set_language,
             set_shortcut_options,
             set_selected_modules,
@@ -608,6 +643,7 @@ pub fn run() {
             get_app_mode,
             get_preferred_language,
             browse_folder,
+            browse_components_folder,
             launch_app,
         ])
         .run(tauri::generate_context!())

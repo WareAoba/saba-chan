@@ -354,8 +354,7 @@
     "list_empty": "模块列表为空",
     "fetch_failed_toast": "模块搜索失败：{{error}}",
     "load_error_title": "模块加载出错",
-    "schema_invalid": "module.toml 不符合格式：{{problems}}",
-    "schema_unsupported": "此模块需要更新版本的 Saba-chan（模块格式 {{required}}）。请更新 Saba-chan。"
+    "schema_invalid": "module.toml 不符合格式：{{problems}}"
   },
   "servers": {
     "fetch_failed_toast": "⚠️ {{error}}",
@@ -803,8 +802,6 @@
     "chain_discord": "Discord",
     "agent_desc": "由这台电脑接收并执行从 Discord 发来的命令。关闭时机器人不会回应。",
     "agent_replaced": "此 Discord 账号的 PC 连接已移到另一台 PC,因此这里已停止。要再次使用这台 PC,请在这台 PC 上重新配对。",
-    "agent_too_old": "中继服务器不再接受此应用版本。请将应用更新到 {{version}} 或更高版本。",
-    "agent_check_update": "检查更新",
     "agent_running": "已开启",
     "agent_connecting": "启动中",
     "agent_stopped": "已关闭",
@@ -1362,7 +1359,9 @@
     "backup_done": "{{name}} 已完成备份（{{kind}}）。",
     "backup_failed": "{{name}} 备份失败。{{error}}",
     "schedule_restart": "{{name}} 将在 {{minutes}} 分钟后按计划重启。",
-    "schedule_update": "{{name}} 将在 {{minutes}} 分钟后按计划更新。"
+    "schedule_update": "{{name}} 将在 {{minutes}} 分钟后按计划更新。",
+    "module_update": "{{name}}：{{module}} 模块的新版本 {{version}} 已发布。",
+    "server_update": "{{name}}：游戏服务器有新版本。如果玩家无法连接，请更新服务器。"
   },
   "terminal": {
     "open": "在终端中打开",
@@ -1465,5 +1464,51 @@
     "accepted": "已与 {{guild}} 连接。",
     "expired": "请求已过期，请在 Discord 中重新请求。",
     "failed": "无法处理该请求。"
+  },
+  "folder_paths": {
+    "title": "文件夹",
+    "description": "Saba-chan 存放文件的位置。模块和扩展可以移到其他文件夹；已安装的文件会一起移动，且必须先停止所有服务器。",
+    "data": "数据和设置",
+    "install": "程序",
+    "default_install": "默认程序文件夹",
+    "instances": "游戏服务器",
+    "modules": "模块",
+    "extensions": "扩展",
+    "source_default": "默认",
+    "source_config": "已选择",
+    "source_env": "由环境变量固定",
+    "default_is": "默认：{{path}}",
+    "move": "移动…",
+    "cancel": "取消",
+    "confirm_move": "移动",
+    "confirm_modules": "要把模块移到 {{dir}} 中的 modules 文件夹吗？已安装的模块会先复制并校验，然后从原文件夹删除。",
+    "confirm_extensions": "要把扩展移到 {{dir}} 中的 extensions 文件夹吗？已安装的扩展会先复制并校验，然后从原文件夹删除。",
+    "moved": "已移到 {{path}}。",
+    "left_behind": "以下旧文件无法删除，请手动删除：{{files}}",
+    "err_generic": "无法移动文件夹。",
+    "err_busy": "正在进行安装、更新、备份等任务。完成后再试。",
+    "err_servers_running": "请先停止这些服务器：{{detail}}",
+    "err_env_fixed": "此文件夹由环境变量（{{detail}}）固定。",
+    "err_not_absolute": "请选择完整路径的文件夹。",
+    "err_root_or_home": "请选择驱动器或用户文件夹内的文件夹，而不是它们本身。",
+    "err_contains_data_dir": "该文件夹包含 Saba-chan 的数据文件夹。请选择其他文件夹。",
+    "err_same_as_current": "已经在该文件夹中。",
+    "err_overlaps_current": "该文件夹位于当前文件夹内，或包含当前文件夹。请选择其他文件夹。",
+    "err_overlaps_other": "该文件夹与模块或扩展文件夹重叠。请选择其他文件夹。",
+    "err_not_empty": "那里已有文件：{{detail}}。请选择空的位置。",
+    "err_not_writable": "无法写入该文件夹：{{detail}}",
+    "err_has_link": "文件夹内有链接（{{detail}}）。删除后再试。",
+    "err_copy_failed": "复制失败，没有做任何更改。请检查剩余空间后重试。",
+    "err_verify_failed": "副本与原文件不一致，未移动，没有做任何更改。请重试。",
+    "err_commit_failed": "无法保存设置，文件已放回原处。",
+    "err_overlaps_install": "不能放在 Saba-chan 安装文件夹内。请选择安装文件夹以外的文件夹。"
+  },
+  "update_required": {
+    "title": "需要更新",
+    "relay": "需要更新。中继需要 Saba-chan {{version}} 或更高版本。",
+    "module": "需要更新。{{name}} 模块需要 Saba-chan {{version}} 或更高版本。",
+    "module_newer": "需要更新。{{name}} 模块需要更新版本的 Saba-chan。",
+    "extension": "需要更新。{{name}} 扩展需要 Saba-chan {{version}} 或更高版本。",
+    "check": "检查更新"
   }
 }

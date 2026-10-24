@@ -1,6 +1,7 @@
 import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useServerActions } from '../hooks/useServerActions';
+import { useUIStore } from '../stores/useUIStore';
 
 const blocked = (missing) => ({
     success: false,
@@ -50,13 +51,30 @@ describe('시작: 모듈 의존성이 안 맞을 때', () => {
         expect(open).toHaveBeenCalled();
     });
 
-    it('사바쨩 버전만 모자라면 실패 창으로 알린다', async () => {
+    it('사바쨩 버전이 모자라면 업데이트가 필요하다고 알리고 업데이트 화면을 연다', async () => {
         window.api.instanceStart = vi.fn().mockResolvedValue(blocked(['saba-core >=9.0.0 (installed 0.1.1)']));
         const { result, setModal } = setup(vi.fn());
         await act(async () => result.current.handleStart('A', 'game'));
         const modal = setModal.mock.calls.at(-1)[0];
-        expect(modal.type).toBe('failure');
-        expect(modal.message).toContain('saba-core >=9.0.0');
+        expect(modal.title).toBe('Update required');
+        expect(modal.message).toMatch(/^Update required/);
+        expect(modal.message).toContain('9.0.0');
+        act(() => modal.buttons[0].action());
+        expect(useUIStore.getState().settingsInitialView).toBe('update');
+    });
+
+    it('데몬보다 새 모듈 형식이어도 업데이트가 필요하다고 알린다', async () => {
+        window.api.instanceStart = vi.fn().mockResolvedValue({
+            success: false,
+            error: 'module_schema_unsupported',
+            error_code: 'module_schema_unsupported',
+            required: 3,
+        });
+        const { result, setModal } = setup(vi.fn());
+        await act(async () => result.current.handleStart('A', 'game'));
+        const modal = setModal.mock.calls.at(-1)[0];
+        expect(modal.title).toBe('Update required');
+        expect(modal.message).toContain('game');
     });
 });
 
@@ -128,7 +146,7 @@ describe('명령 답과 언어별 설명', () => {
 });
 
 describe('불러오지 못한 모듈의 이유', () => {
-    it('의존성 버전이 안 맞으면 필요한 것을 나열하고, 아니면 데몬 문구를 쓴다', async () => {
+    it('익스텐션 의존성이 안 맞으면 필요한 것을 나열하고, 아니면 데몬 문구를 쓴다 (사바쨩 버전은 update-required.test)', async () => {
         const { failedModuleReason } = await import('../utils/failedModules');
         const t = (k, o) => `${k}:${o?.deps}`;
         expect(
@@ -137,11 +155,11 @@ describe('불러오지 못한 모듈의 이유', () => {
                     path: 'modules/x',
                     error: 'raw',
                     error_code: 'module_dependency_unsatisfied',
-                    missing_dependencies: ['saba-core >=9.0.0 (installed 0.1.1)'],
+                    missing_dependencies: ['ext-steamcmd >=9.0.0 (installed 0.1.1)'],
                 },
                 t,
             ),
-        ).toBe('shell.module_needs:saba-core >=9.0.0 (installed 0.1.1)');
+        ).toBe('shell.module_needs:ext-steamcmd >=9.0.0 (installed 0.1.1)');
         expect(failedModuleReason({ path: 'modules/x', error: 'bad toml' }, t)).toBe('bad toml');
     });
 });

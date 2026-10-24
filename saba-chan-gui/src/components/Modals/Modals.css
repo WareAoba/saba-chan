@@ -3822,3 +3822,14 @@
 .trust-create-notice {
     margin-bottom: 0;
 }
+
+/* 설정 > 고급: 폴더 위치 (경로 · 출처 · 옮기기) */
+.folder-paths-dir {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--sp-2);
+}
+.folder-paths-dir code {
+    word-break: break-all;
+}

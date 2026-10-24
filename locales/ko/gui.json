@@ -354,8 +354,7 @@
     "list_empty": "모듈이 없습니다",
     "fetch_failed_toast": "모듈 검색 실패: {{error}}",
     "load_error_title": "모듈을 불러오는 중 오류",
-    "schema_invalid": "module.toml이 형식에 맞지 않습니다: {{problems}}",
-    "schema_unsupported": "이 모듈을 쓰려면 사바쨩을 업데이트해야 합니다 (필요한 모듈 형식: {{required}})."
+    "schema_invalid": "module.toml이 형식에 맞지 않습니다: {{problems}}"
   },
   "servers": {
     "fetch_failed_toast": "⚠️ {{error}}",
@@ -803,8 +802,6 @@
     "chain_discord": "디스코드",
     "agent_desc": "디스코드에서 보낸 명령을 이 PC가 받아서 실행해요. 꺼 두면 봇이 대답하지 않아요.",
     "agent_replaced": "이 디스코드 계정의 PC 연결이 다른 PC로 옮겨져서 여기서는 멈췄어요. 이 PC를 다시 쓰려면 이 PC에서 다시 페어링하세요.",
-    "agent_too_old": "릴레이 서버가 이 앱 버전을 받지 않아요. 앱을 {{version}} 이상으로 업데이트해 주세요.",
-    "agent_check_update": "업데이트 확인",
     "agent_running": "켜짐",
     "agent_connecting": "켜는 중",
     "agent_stopped": "꺼짐",
@@ -1362,7 +1359,9 @@
     "backup_done": "{{name}} 백업을 마쳤어요 ({{kind}}).",
     "backup_failed": "{{name}} 백업에 실패했어요. {{error}}",
     "schedule_restart": "{{name}} 서버가 {{minutes}}분 뒤 예약대로 다시 시작돼요.",
-    "schedule_update": "{{name}} 서버가 {{minutes}}분 뒤 예약대로 업데이트돼요."
+    "schedule_update": "{{name}} 서버가 {{minutes}}분 뒤 예약대로 업데이트돼요.",
+    "module_update": "{{name}}: {{module}} 모듈의 새 버전 {{version}}이(가) 나왔어요.",
+    "server_update": "{{name}}: 게임 서버의 새 버전이 나왔어요. 접속이 막히면 서버를 업데이트해 주세요."
   },
   "terminal": {
     "open": "터미널로 열기",
@@ -1465,5 +1464,51 @@
     "accepted": "{{guild}}와 연결했어요.",
     "expired": "요청이 만료됐어요. 디스코드에서 다시 요청해 주세요.",
     "failed": "요청을 처리하지 못했어요."
+  },
+  "folder_paths": {
+    "title": "폴더",
+    "description": "사바쨩이 파일을 두는 곳입니다. 모듈과 익스텐션은 다른 폴더로 옮길 수 있습니다. 설치된 파일도 함께 옮기며, 서버를 모두 꺼야 합니다.",
+    "data": "데이터·설정",
+    "install": "프로그램",
+    "default_install": "기본 프로그램 폴더",
+    "instances": "게임 서버",
+    "modules": "모듈",
+    "extensions": "익스텐션",
+    "source_default": "기본",
+    "source_config": "직접 고름",
+    "source_env": "환경 변수로 고정됨",
+    "default_is": "기본: {{path}}",
+    "move": "옮기기…",
+    "cancel": "취소",
+    "confirm_move": "옮기기",
+    "confirm_modules": "모듈을 {{dir}} 안의 modules 폴더로 옮길까요? 설치된 모듈을 복사하고 확인한 뒤 원래 폴더에서 지웁니다.",
+    "confirm_extensions": "익스텐션을 {{dir}} 안의 extensions 폴더로 옮길까요? 설치된 익스텐션을 복사하고 확인한 뒤 원래 폴더에서 지웁니다.",
+    "moved": "{{path}}(으)로 옮겼습니다.",
+    "left_behind": "원래 폴더의 이 파일은 지우지 못했습니다. 직접 지워 주세요: {{files}}",
+    "err_generic": "폴더를 옮기지 못했습니다.",
+    "err_busy": "설치·업데이트·백업 같은 작업이 진행 중입니다. 끝난 뒤 다시 시도해 주세요.",
+    "err_servers_running": "이 서버들을 먼저 꺼 주세요: {{detail}}",
+    "err_env_fixed": "환경 변수({{detail}})로 고정된 폴더입니다.",
+    "err_not_absolute": "전체 경로의 폴더를 골라 주세요.",
+    "err_root_or_home": "드라이브나 사용자 폴더 자체 말고, 그 안의 폴더를 골라 주세요.",
+    "err_contains_data_dir": "그 폴더 안에 사바쨩 데이터 폴더가 있습니다. 다른 폴더를 골라 주세요.",
+    "err_same_as_current": "이미 그 폴더에 있습니다.",
+    "err_overlaps_current": "지금 폴더 안이거나 지금 폴더를 품은 폴더입니다. 다른 폴더를 골라 주세요.",
+    "err_overlaps_other": "모듈 폴더나 익스텐션 폴더와 겹칩니다. 다른 폴더를 골라 주세요.",
+    "err_not_empty": "그 자리에 이미 파일이 있습니다: {{detail}}. 빈 곳을 골라 주세요.",
+    "err_not_writable": "그 폴더에 쓸 수 없습니다: {{detail}}",
+    "err_has_link": "폴더 안에 링크가 있습니다({{detail}}). 지운 뒤 다시 시도해 주세요.",
+    "err_copy_failed": "복사하지 못했습니다. 바뀐 것은 없습니다. 남은 공간을 확인하고 다시 시도해 주세요.",
+    "err_verify_failed": "복사본이 원본과 달라 옮기지 않았습니다. 바뀐 것은 없습니다. 다시 시도해 주세요.",
+    "err_commit_failed": "설정을 저장하지 못해 파일을 원래 자리로 되돌렸습니다.",
+    "err_overlaps_install": "사바쨩 설치 폴더 안에는 둘 수 없습니다. 설치 폴더 밖의 폴더를 골라 주세요."
+  },
+  "update_required": {
+    "title": "업데이트가 필요해요",
+    "relay": "업데이트가 필요해요. 릴레이가 사바쨩 {{version}} 이상을 요구해요.",
+    "module": "업데이트가 필요해요. {{name}} 모듈은 사바쨩 {{version}} 이상에서 돌아가요.",
+    "module_newer": "업데이트가 필요해요. {{name}} 모듈은 더 새 사바쨩에서 돌아가요.",
+    "extension": "업데이트가 필요해요. {{name}} 익스텐션은 사바쨩 {{version}} 이상에서 돌아가요.",
+    "check": "업데이트 확인"
   }
 }

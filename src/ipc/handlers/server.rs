@@ -634,6 +634,21 @@ pub async fn install_module_from_manifest(
     .unwrap_or_else(|e| fail(e.to_string()))
 }
 
+/// 카탈로그 모듈의 `requires`를 못 맞춘 거절. 로드 실패·시작 응답과 같은 코드와 목록 꼴(`"saba-core >=0.1.10 (installed 0.1.9)"`)
+fn unmet_requires_body(module_id: &str, unmet: &[saba_chan_updater_lib::DependencyIssue]) -> Value {
+    json!({
+        "ok": false,
+        "error": unmet.iter().map(|i| i.message.as_str()).collect::<Vec<_>>().join("; "),
+        "error_code": "module_dependency_unsatisfied",
+        "module": module_id,
+        "missing_dependencies": unmet
+            .iter()
+            .map(|i| format!("{} {} ({})", i.required_component, i.required_version,
+                i.installed_version.as_ref().map_or("not installed".to_string(), |v| format!("installed {v}"))))
+            .collect::<Vec<_>>(),
+    })
+}
+
 async fn install_module_locked(state: IPCServer, module_id: String) -> axum::response::Response {
     let fail = |error: String| (StatusCode::OK, Json(json!({ "ok": false, "error": error }))).into_response();
     let catalog = match saba_chan_updater_lib::relay::latest_catalog(None).await {
@@ -659,10 +674,12 @@ async fn install_module_locked(state: IPCServer, module_id: String) -> axum::res
         let key = format!("{}{}", saba_chan_updater_lib::relay::MODULE_PREFIX, module_id);
         let unmet = saba_chan_updater_lib::unmet_requires(&key, requires, &installed);
         if !unmet.is_empty() {
-            return fail(unmet.iter().map(|i| i.message.as_str()).collect::<Vec<_>>().join("; "));
+            return (StatusCode::OK, Json(unmet_requires_body(&module_id, &unmet))).into_response();
         }
     }
 
+    // 여기부터 모듈 폴더에 쓴다: 폴더를 옮기는 중이면 끝나기를 기다리고, 끝날 때까지 옮기지 못하게 한다
+    let _dirs = super::paths::components_in_use().await;
     let modules_dir = {
         let supervisor = state.supervisor.read().await;
         std::path::PathBuf::from(supervisor.module_loader.modules_dir())
@@ -736,6 +753,7 @@ pub async fn remove_module(
     let Some(_removing) = module_install_guard(&module_id) else {
         return module_busy(&module_id);
     };
+    let _dirs = super::paths::components_in_use().await;
     let modules_dir = {
         let supervisor = state.supervisor.read().await;
         std::path::PathBuf::from(supervisor.module_loader.modules_dir())
@@ -856,7 +874,7 @@ async fn start_checked(state: IPCServer, instance: crate::instance::ServerInstan
         }
     };
     body.insert("managed".into(), json!(managed));
-    (resp.status, Json(Value::Object(body))).into_response()
+    (resp.status, Json(announce_updates(&state, &instance.id, Value::Object(body)).await)).into_response()
 }
 
 /// 켜기 전 점검: 동의하지 않은 모듈 약관이 있거나, 모듈 validate가 critical 문제(EULA 미동의, 서버 파일 없음 등)를 내면 켜지 않는다.
@@ -1120,6 +1138,47 @@ pub async fn start_server_handler(
     super::audited(&state, "start", &name, None, None, resp).await
 }
 
+/// 받아 둔 업데이트 확인 결과에서 이 모듈의 새 버전 `{module, current, latest}`
+fn module_update_of(status: &saba_chan_updater_lib::UpdateStatus, module: &str) -> Option<Value> {
+    use saba_chan_updater_lib::Component;
+    status
+        .components
+        .iter()
+        .find(|c| c.update_available && matches!(&c.component, Component::Module(m) if m == module))
+        .map(|c| json!({ "module": module, "current": c.current_version, "latest": c.latest_version }))
+}
+
+/// 새로 켠 서버의 업데이트 알림 `instance.update_notice {instanceId, instance, kind, module?, latest?}`.
+/// - `module`: 모듈에 새 버전이 있다 (받아 둔 확인 결과라 바로 낸다). 시작 답에도 `module_update`로 싣는다
+/// - `server`: 게임 서버에 새 빌드가 있다 (`server.check_update` hook, 오래 걸릴 수 있어 뒤에서)
+async fn announce_updates(state: &IPCServer, id: &str, mut result: Value) -> Value {
+    let fresh = result.get("success").and_then(Value::as_bool) == Some(true)
+        && result.get("already_running").and_then(Value::as_bool) != Some(true);
+    if !fresh {
+        return result;
+    }
+    let Some((name, module)) = state.supervisor.read().await.instance_store.get(id).map(|i| (i.name.clone(), i.module_name.clone())) else {
+        return result;
+    };
+    // 받거나 적용하는 중이면 매니저가 잠겨 있다: 덧붙이는 안내 때문에 시작 답을 기다리게 하지 않는다
+    let status = state.update_state.manager.try_read().ok().map(|m| m.get_status());
+    if let Some(update) = status.as_ref().and_then(|s| module_update_of(s, &module)) {
+        crate::events::emit(
+            "instance.update_notice",
+            json!({ "instanceId": id, "instance": name, "kind": "module", "module": module, "latest": update["latest"] }),
+        );
+        result["module_update"] = update;
+    }
+    let (state, id) = (state.clone(), id.to_string());
+    tokio::spawn(async move {
+        let found = super::instance::server_update_status(&state, &id).await;
+        if found.and_then(|s| s.get("update_available").and_then(Value::as_bool)) == Some(true) {
+            crate::events::emit("instance.update_notice", json!({ "instanceId": id, "instance": name, "kind": "server" }));
+        }
+    });
+    result
+}
+
 /// POST /api/server/:name/stop - 서버 중지
 pub async fn stop_server_handler(
     Path(name): Path<String>,
@@ -1251,6 +1310,23 @@ mod tests {
         assert!(job_stops_with_it(true, KILL_ON_JOB_CLOSE));
         assert!(job_stops_with_it(true, KILL_ON_JOB_CLOSE | 0x800));
         assert!(job_stops_with_it(true, KILL_ON_JOB_CLOSE | 0x1000));
+    }
+
+    /// 켜려는 서버의 모듈에 새 버전이 있으면 시작 답과 알림에 싣는다 (받아 둔 업데이트 확인 결과, 다른 모듈·없는 새 버전은 아니다)
+    #[test]
+    fn a_newer_module_version_is_found_from_the_last_update_check() {
+        let component = |module: &str, available: bool| {
+            json!({ "component": { "module": module }, "current_version": "1.0.0", "latest_version": "1.1.0", "update_available": available,
+                    "download_url": null, "asset_name": null, "release_notes": null, "published_at": null, "downloaded": false, "downloaded_path": null, "installed": true })
+        };
+        let status: saba_chan_updater_lib::UpdateStatus = serde_json::from_value(json!({
+            "last_check": null, "next_check": null, "checking": false, "error": null,
+            "components": [component("palworld", true), component("minecraft", false)],
+        }))
+        .unwrap();
+        assert_eq!(module_update_of(&status, "palworld"), Some(json!({ "module": "palworld", "current": "1.0.0", "latest": "1.1.0" })));
+        assert_eq!(module_update_of(&status, "minecraft"), None);
+        assert_eq!(module_update_of(&status, "ark"), None);
     }
 
     /// GUI "비밀번호 자동 생성"을 끄면 시작할 때 빈 REST 비밀번호를 채우지 않는다. 켜져 있으면(기본) 채운다
@@ -1824,6 +1900,20 @@ mod tests {
         let kept = sup.drain_port_conflict_stops();
         assert_eq!(kept.len(), crate::supervisor::PORT_CONFLICT_STOPS_KEPT);
         assert_eq!(kept.last().unwrap().port, 29, "the newest is kept");
+    }
+
+    /// 새 코어를 요구하는 카탈로그 모듈은 로드 실패·시작 응답과 같은 코드와 목록으로 거절한다 (클라이언트가 "업데이트가 필요해요"로 보인다)
+    #[test]
+    fn catalog_module_needing_newer_core_is_refused_with_dependency_code() {
+        let requires = std::collections::HashMap::from([("saba-core".to_string(), ">=99.0.0".to_string())]);
+        let installed = std::collections::HashMap::from([("saba-core".to_string(), "0.1.9".to_string())]);
+        let unmet = saba_chan_updater_lib::unmet_requires("module-future", &requires, &installed);
+        let body = unmet_requires_body("future", &unmet);
+        assert_eq!((body["ok"].clone(), body["module"].clone()), (json!(false), json!("future")));
+        assert_eq!(body["error_code"], "module_dependency_unsatisfied", "{body}");
+        assert_eq!(body["missing_dependencies"], json!(["saba-core >=99.0.0 (installed 0.1.9)"]), "{body}");
+        let missing = saba_chan_updater_lib::unmet_requires("module-future", &requires, &Default::default());
+        assert_eq!(unmet_requires_body("future", &missing)["missing_dependencies"], json!(["saba-core >=99.0.0 (not installed)"]));
     }
 
     /// 같은 모듈을 동시에 두 번 설치하지 않고, 설치마다 다른 임시 경로를 쓴다 (D-S2)

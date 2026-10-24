@@ -257,7 +257,7 @@
       },
       "apply": {
         "title": "Aplicar actualización",
-        "description": "Instala la actualización descargada y reinicia la aplicación"
+        "description": "Descarga la nueva actualización, la instala y reinicia la aplicación"
       }
     },
     "discord": {

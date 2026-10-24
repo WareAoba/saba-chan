@@ -109,10 +109,9 @@
     "command_words": "명령 낱말",
     "words_saved": "{{server}}의 채팅 낱말을 저장했어요.",
     "words_bad_command": "{{spec}}: 명령=낱말,낱말 꼴로 적어 주세요 (지우려면 명령=).",
-    "words_not_used": "이 디스코드 서버에서는 이 서버를 쓰지 않아요.",
     "no_paired_servers": "이 PC와 페어링된 디스코드 서버가 아직 없어요. 실행: saba-chan-cli bot pair",
     "pick_server": "페어링된 디스코드 서버가 여럿이에요. 바꿀 서버의 id를 적어 주세요: {{servers}}",
-    "agent_too_old": "릴레이가 이 앱 버전을 받지 않아요. 앱을 {{min}} 이상으로 업데이트해 주세요."
+    "words_not_used": "이 디스코드 서버에서는 이 서버를 쓰지 않아요."
   },
   "col": {
     "players": "접속자",
@@ -179,7 +178,23 @@
       "name_taken": "같은 이름의 서버가 있음",
       "busy": "설치·업데이트·백업·복원 중"
     },
-    "import_token_moved": "봇 페어링도 옮겼어요. 옛 PC는 연결을 끊으세요 (옛 PC에서: saba-chan-cli bot unpair)."
+    "import_token_moved": "봇 페어링도 옮겼어요. 옛 PC는 연결을 끊으세요 (옛 PC에서: saba-chan-cli bot unpair).",
+    "paths": {
+      "data": "데이터·설정",
+      "install": "프로그램",
+      "default_install": "기본 프로그램 폴더",
+      "instances": "게임 서버",
+      "modules": "모듈",
+      "extensions": "익스텐션",
+      "source_default": "기본",
+      "source_config": "직접 고름",
+      "source_env": "환경 변수로 고정됨",
+      "default_is": "기본: {{path}}"
+    },
+    "confirm_move_modules": "모듈을 {{dir}}(으)로 옮길까요? 설치된 모듈을 복사하고 확인한 뒤 원래 폴더에서 지워요.",
+    "confirm_move_extensions": "익스텐션을 {{dir}}(으)로 옮길까요? 설치된 익스텐션을 복사하고 확인한 뒤 원래 폴더에서 지워요.",
+    "moved": "{{path}}(으)로 옮겼어요.",
+    "move_left_behind": "원래 폴더의 이 파일은 지우지 못했어요. 직접 지워 주세요: {{files}}"
   },
   "console": {
     "attach_help": "{{name}} 콘솔에 붙었어요. 명령을 입력하세요. 도움말 :help, 나가기 :q (서버는 계속 돌아요).",
@@ -250,8 +265,7 @@
       "forbidden": "그 디스코드 서버에서 이 작업을 할 권한이 없어요.",
       "expired": "코드가 만료됐어요. 처음부터 다시 시도하세요.",
       "rate_limited": "요청이 너무 잦아요. 1분쯤 뒤 다시 시도하세요.",
-      "other": "릴레이가 요청을 거절했어요 ({{code}}).",
-      "agent_too_old": "릴레이가 이 앱 버전을 받지 않아요. 앱을 {{min}} 이상으로 업데이트해 주세요."
+      "other": "릴레이가 요청을 거절했어요 ({{code}})."
     },
     "ambiguous": "\"{{query}}\"에 맞는 {{what}} 후보가 여럿이에요.",
     "ambiguous_hint": "더 정확히 적어 주세요: {{names}}",
@@ -293,7 +307,24 @@
       "not_supported": "지원하지 않는 명령은 saba-chan-cli module info에서 볼 수 있어요.",
       "agent_too_old": "업데이트 확인: saba-chan-cli update check",
       "install_backup_failed": "설치 전에 {{file}}을(를) 백업하지 못해 설치하지 않았어요. 디스크 공간과 같은 폴더의 .bak 파일을 확인해 주세요.",
-      "kept_backups": "되돌리지 못한 파일은 설치 전 사본을 남겨 뒀어요: {{files}}"
+      "kept_backups": "되돌리지 못한 파일은 설치 전 사본을 남겨 뒀어요: {{files}}",
+      "paths_busy": "설치·업데이트·백업 같은 작업이 진행 중이에요. 끝난 뒤 다시 시도하세요.",
+      "paths_servers_running": "이 서버들을 먼저 끄고 다시 시도하세요.",
+      "paths_env_fixed": "환경 변수로 고정된 폴더예요. 변수를 지워야 폴더를 고를 수 있어요.",
+      "paths_not_absolute": "D:\\Games\\Saba처럼 전체 경로를 적으세요.",
+      "paths_root_or_home": "드라이브나 사용자 폴더 자체 말고, 그 안의 폴더를 고르세요.",
+      "paths_contains_data_dir": "그 폴더 안에 사바쨩 데이터 폴더가 있어요. 다른 폴더를 고르세요.",
+      "paths_same_as_current": "이미 그 폴더에 있어요.",
+      "paths_overlaps_current": "지금 폴더 안이거나 지금 폴더를 품은 폴더예요. 다른 폴더를 고르세요.",
+      "paths_overlaps_other": "모듈 폴더나 익스텐션 폴더와 겹쳐요. 다른 폴더를 고르세요.",
+      "paths_not_empty": "그 자리의 modules나 extensions 폴더에 이미 파일이 있어요. 빈 곳을 고르세요.",
+      "paths_not_writable": "그 폴더에 쓸 수 없어요. 쓸 수 있는 폴더를 고르세요.",
+      "paths_has_link": "폴더 안에 링크(바로가기 폴더)가 있어요. 지운 뒤 다시 시도하세요.",
+      "paths_copy_failed": "복사하지 못했어요. 바뀐 것은 없어요. 남은 공간을 확인하고 다시 시도하세요.",
+      "paths_verify_failed": "복사본이 원본과 달라요. 바뀐 것은 없어요. 다시 시도하세요.",
+      "paths_commit_failed": "설정을 저장하지 못해 파일을 원래 자리로 되돌렸어요.",
+      "paths_unknown_kind": "modules 또는 extensions를 고르세요.",
+      "paths_overlaps_install": "설치 폴더 안에는 둘 수 없어요. 설치 폴더 밖의 폴더를 고르세요."
     },
     "not_a_bool": "\"{{value}}\"는 예/아니오 값이 아니에요 (true 또는 false).",
     "not_a_number": "\"{{value}}\"는 숫자가 아니에요.",
@@ -370,8 +401,7 @@
     "removed": "모듈 {{id}}를 지웠어요.",
     "unmet": "{{component}} {{required}} 필요 (설치됨: {{installed}})",
     "load_failed": {
-      "invalid": "{{module}} 모듈을 읽지 못했어요. module.toml이 형식에 맞지 않아요:",
-      "unsupported": "{{module}} 모듈을 읽지 못했어요. 모듈 형식 {{required}}을(를) 읽으려면 사바쨩을 업데이트하세요."
+      "invalid": "{{module}} 모듈을 읽지 못했어요. module.toml이 형식에 맞지 않아요:"
     }
   },
   "noun": {
@@ -485,6 +515,7 @@
     "provisioning": "{{name}}은(는) 아직 설치 중이에요.",
     "requested": "{{name}} 시작을 요청했어요.",
     "port_moved": "Windows가 관리용 REST 포트 {{from}}을(를) 예약해 두어 {{to}}(으)로 바꿨어요.",
+    "module_update": "{{module}} 모듈의 새 버전 {{version}}이(가) 나왔어요. `saba-chan-cli update`로 업데이트할 수 있어요.",
     "waiting": "{{name}} 켜는 중...",
     "exited": "{{name}}이(가) 켜지자마자 꺼졌어요. 위의 마지막 줄을 확인하세요."
   },
@@ -595,6 +626,7 @@
       "server.console": "콘솔 보면서 입력하기",
       "server.run": "게임 명령 실행 (명령을 안 주면 목록을 보여 줘요)",
       "server.commands": "이 서버가 알아듣는 게임 명령",
+      "server.discord": "디스코드 서버마다 이 서버와 그 명령을 채팅에서 부르는 낱말. 옵션 없이: 보기",
       "server.send": "콘솔에 한 줄 그대로 보내기",
       "server.settings": "서버 설정 보기",
       "server.set": "설정 바꾸기: 키=값 ... (익스텐션 데이터는 ext.키, 빈 값은 지우기)",
@@ -736,13 +768,14 @@
       "events": "데몬 이벤트를 실시간으로 따라가기 (--json이면 한 줄에 JSON 하나). Ctrl+C로 멈춰요",
       "tui": "전체 화면 메뉴 열기",
       "install": "창 인스톨러 없이 이 PC에 사바쨩 설치",
+      "uninstall": "이 PC에서 사바쨩 제거 (지정하지 않으면 설정과 서버는 남김)",
+      "config.paths": "데이터·모듈·익스텐션 폴더 위치와 기본 폴더",
+      "config.move": "모듈이나 익스텐션을 다른 폴더로 옮겨요. 설치된 파일도 옮기며, 서버를 모두 꺼야 해요",
       "server.players": "지금 접속한 사람",
       "server.rcon": "서버가 명령을 받는 길(콘솔, 없으면 RCON)로 한 줄 보내고 답 보기",
       "server.log": "지난 실행까지 저장된 로그 (콘솔은 지금 실행분만)",
       "server.query": "게임 모듈이 제공하는 조회 (이름이 없으면 목록)",
-      "daemon.clients": "데몬에 붙은 데스크톱 앱 창",
-      "server.discord": "디스코드 서버마다 이 서버와 그 명령을 채팅에서 부르는 낱말. 옵션 없이: 보기",
-      "uninstall": "이 PC에서 사바쨩 제거 (지정하지 않으면 설정과 서버는 남김)"
+      "daemon.clients": "데몬에 붙은 데스크톱 앱 창"
     },
     "arg": {
       "bot.channels.notify": "알림 채널(크래시·백업·업데이트·예약 재시작), 이름 또는 id",
@@ -847,6 +880,10 @@
       "bot.music.queue_lines": "플레이어 패널의 대기열 줄 수 (1-20)",
       "bot.music.refresh": "플레이어 패널 새로고침 간격, 밀리초 (2000-10000)",
       "bot.music.normalize": "곡마다 음량 고르게 (on 또는 off)",
+      "server.discord.guild": "디스코드 서버 이름이나 id (여럿이 페어링돼 있으면 바꿀 때 물어봐요)",
+      "server.discord.word": "서버를 부르는 낱말, 쉼표로 여러 개 (지금 낱말을 바꿈). --word \"\" 는 지우기",
+      "server.discord.command": "명령 하나의 낱말: 명령=낱말,낱말 (그 명령만 바꿈, 명령= 은 지우기). 여러 번 쓸 수 있어요",
+      "server.discord.clear": "이 서버의 낱말 모두 지우기",
       "bot.channels.guild": "디스코드 서버 이름이나 id. 없으면 페어링된 서버 전부 (바꾸기는 서버가 하나일 때만)",
       "help.command": "명령 경로 (예: `server start`)",
       "events.kind": "이 이벤트만. `instance`는 `instance.exit` 같은 아래 이벤트도 받아요",
@@ -857,6 +894,11 @@
       "install.modules": "설치할 게임 모듈, 쉼표로 구분 (없으면 물어봄)",
       "install.gui": "화면이 없어도 데스크톱 앱까지 설치",
       "install.no_gui": "화면이 있어도 데스크톱 앱 없이 설치",
+      "uninstall.remove_settings": "설정과 디스코드 연결도 지움",
+      "uninstall.remove_instances": "게임 서버도 지움 (서버 파일, 월드, 백업)",
+      "config.move.kind": "옮길 것: modules(모듈) 또는 extensions(익스텐션)",
+      "config.move.folder": "쓸 폴더. 그 안에 modules 또는 extensions 폴더를 만들어요",
+      "components_dir": "모듈·익스텐션을 둘 폴더. 그 안에 modules, extensions 폴더를 만들고 설치된 파일을 옮겨요",
       "server.log.source": "어느 실행 (`--runs`로 목록), 없으면 마지막",
       "server.log.lines": "마지막 N줄",
       "server.log.runs": "저장된 실행 목록",
@@ -867,13 +909,7 @@
       "do.action": "액션 id (예: server.restart, server.command:say)",
       "do.steps": "여러 단계를 JSON으로: [{\"id\": \"...\", \"instance\": \"...\", \"input\": {...}}, ...] (ACTION 대신)",
       "do.run_id": "뒤에서 이어 가는 여러 단계 실행의 진행",
-      "do.server": "액션을 적용할 서버",
-      "server.discord.guild": "디스코드 서버 이름이나 id (여럿이 페어링돼 있으면 바꿀 때 물어봐요)",
-      "server.discord.word": "서버를 부르는 낱말, 쉼표로 여러 개 (지금 낱말을 바꿈). --word \"\" 는 지우기",
-      "server.discord.command": "명령 하나의 낱말: 명령=낱말,낱말 (그 명령만 바꿈, 명령= 은 지우기). 여러 번 쓸 수 있어요",
-      "server.discord.clear": "이 서버의 낱말 모두 지우기",
-      "uninstall.remove_settings": "설정과 디스코드 연결도 지움",
-      "uninstall.remove_instances": "게임 서버도 지움 (서버 파일, 월드, 백업)"
+      "do.server": "액션을 적용할 서버"
     },
     "after": "이름은 일부만 적어도 돼요 (예: start pal). 인자 없이 터미널에서 실행하면 전체 화면 메뉴가 열려요(SABA_NO_TUI=1이면 대화형 셸).\n스크립트에서는 --json과 --yes를 쓰세요. 종료 코드: 0 성공 · 1 실패 · 2 사용법 · 3 데몬 연결 안 됨 · 4 없음 · 130 취소"
   },
@@ -1262,7 +1298,37 @@
     "failed": "설치하지 못했어요: {{reason}} (자세한 기록: {{log}})",
     "failed_no_log": "설치하지 못했어요: {{reason}}",
     "done": "{{dir}}에 설치했어요",
-    "next": "다음 명령으로 데몬을 켜세요:\n{{command}}"
+    "next": "다음 명령으로 데몬을 켜세요:\n{{command}}",
+    "components_dir": "모듈·익스텐션은 {{dir}}에 둬요.",
+    "components_dir_invalid": "{{dir}}은(는) 모듈·익스텐션 위치로 쓸 수 없어요: {{reason}}",
+    "invalid_dir": "{{dir}}에는 설치할 수 없어요. 드라이브 루트, 홈 폴더, 설정 폴더가 아닌 폴더를 고르세요"
+  },
+  "uninstall": {
+    "not_installed": "이 명령은 사바쨩 설치 폴더에서 실행되지 않아 지울 설치본이 없습니다.",
+    "confirm": "{{dir}}의 사바쨩을 제거할까요? 프로그램과 사바쨩이 만든 파일은 모두 지우고, {{kept}}.",
+    "kept_both": "설정과 게임 서버는 남깁니다",
+    "kept_settings": "설정은 남기고 게임 서버는 지웁니다",
+    "kept_instances": "게임 서버는 남기고 설정은 지웁니다",
+    "kept_nothing": "설정과 게임 서버도 지웁니다",
+    "done": "사바쨩을 제거했습니다. {{kept}}.",
+    "left": "사바쨩을 제거했지만 아래 항목을 지우지 못했습니다. 사용 중인 프로그램을 닫고 직접 지워 주세요:\n{{paths}}"
+  },
+  "update_required": {
+    "title": "업데이트가 필요해요",
+    "relay": "업데이트가 필요해요. 릴레이가 사바쨩 {{version}} 이상을 요구해요.",
+    "module": "업데이트가 필요해요. {{name}} 모듈은 사바쨩 {{version}} 이상에서 돌아가요.",
+    "module_newer": "업데이트가 필요해요. {{name}} 모듈은 더 새 사바쨩에서 돌아가요.",
+    "extension": "업데이트가 필요해요. {{name}} 익스텐션은 사바쨩 {{version}} 이상에서 돌아가요."
+  },
+  "uninstall": {
+    "not_installed": "이 명령은 사바쨩 설치 폴더에서 실행되지 않아 지울 설치본이 없습니다.",
+    "confirm": "{{dir}}의 사바쨩을 제거할까요? 프로그램과 사바쨩이 만든 파일은 모두 지우고, {{kept}}.",
+    "kept_both": "설정과 게임 서버는 남깁니다",
+    "kept_settings": "설정은 남기고 게임 서버는 지웁니다",
+    "kept_instances": "게임 서버는 남기고 설정은 지웁니다",
+    "kept_nothing": "설정과 게임 서버도 지웁니다",
+    "done": "사바쨩을 제거했습니다. {{kept}}.",
+    "left": "사바쨩을 제거했지만 아래 항목을 지우지 못했습니다. 사용 중인 프로그램을 닫고 직접 지워 주세요:\n{{paths}}"
   },
   "players": {
     "title": "{{server}} 접속자 {{count}}명",
@@ -1283,15 +1349,5 @@
       "about": "설명",
       "inputs": "입력"
     }
-  },
-  "uninstall": {
-    "not_installed": "이 명령은 사바쨩 설치 폴더에서 실행되지 않아 지울 설치본이 없습니다.",
-    "confirm": "{{dir}}의 사바쨩을 제거할까요? 프로그램과 사바쨩이 만든 파일은 모두 지우고, {{kept}}.",
-    "kept_both": "설정과 게임 서버는 남깁니다",
-    "kept_settings": "설정은 남기고 게임 서버는 지웁니다",
-    "kept_instances": "게임 서버는 남기고 설정은 지웁니다",
-    "kept_nothing": "설정과 게임 서버도 지웁니다",
-    "done": "사바쨩을 제거했습니다. {{kept}}.",
-    "left": "사바쨩을 제거했지만 아래 항목을 지우지 못했습니다. 사용 중인 프로그램을 닫고 직접 지워 주세요:\n{{paths}}"
   }
 }

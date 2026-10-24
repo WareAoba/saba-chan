@@ -1,5 +1,6 @@
 import { useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useUIStore } from '../stores/useUIStore';
 import {
     busyMessage,
     createTranslateError,
@@ -12,6 +13,7 @@ import {
 import { claimStopNotice, showPortMoved } from '../utils/daemonEvents';
 import { gameNameOf, reuseUnchanged } from '../utils/serverView';
 import { blockedText, canAskUnisolated, showTrustWarnings } from '../utils/trustNotice';
+import { updateRequiredText } from '../utils/updateRequired';
 
 /**
  * Manages server CRUD operations: fetch, start, stop, status, add, delete.
@@ -463,7 +465,29 @@ export function useServerActions({
                 return;
             }
 
-            // ── error_code: module_dependency_unsatisfied — 모듈이 요구하는 사바쨩·익스텐션 버전이 안 맞음 ──
+            // ── 모듈이 더 새 사바쨩을 요구함 (saba-core 의존성, 더 새 module.toml 스키마) — 업데이트 화면으로 ──
+            const updateText = updateRequiredText(t, result, srv?.module || module);
+            if (updateText) {
+                revertOptimistic(name);
+                setModal({
+                    type: 'question',
+                    title: t('update_required.title'),
+                    message: updateText,
+                    buttons: [
+                        {
+                            label: t('update_required.check'),
+                            action: () => {
+                                setModal(null);
+                                useUIStore.getState().openSettings('update');
+                            },
+                        },
+                        { label: t('modals.close'), action: () => setModal(null) },
+                    ],
+                });
+                return;
+            }
+
+            // ── error_code: module_dependency_unsatisfied — 모듈이 요구하는 익스텐션 버전이 안 맞음 ──
             if (result.error_code === 'module_dependency_unsatisfied') {
                 revertOptimistic(name);
                 const missing = result.missing_dependencies || [];

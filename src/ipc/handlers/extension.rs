@@ -58,6 +58,15 @@ fn extension_err_response(
     }
 }
 
+/// 켜기·설치 실패에 그 익스텐션 id를 싣는다 (`extension`). 설치는 의존성도 받으므로 요청한 것과 다를 수 있다
+fn naming_extension(
+    (status, Json(mut body)): (StatusCode, Json<serde_json::Value>),
+    ext_id: &str,
+) -> (StatusCode, Json<serde_json::Value>) {
+    body["extension"] = json!(ext_id);
+    (status, Json(body))
+}
+
 #[derive(serde::Deserialize, Default)]
 pub struct LangQuery {
     #[serde(default)]
@@ -101,7 +110,7 @@ pub async fn enable_extension(
     {
         let mut mgr = state.extension_manager.write().await;
         if let Err(e) = mgr.enable(&ext_id) {
-            return Err(extension_err_response(&e));
+            return Err(naming_extension(extension_err_response(&e), &ext_id));
         }
     }
 
@@ -430,6 +439,7 @@ pub async fn install_extension(
     let field = |k: &str| body.as_ref().and_then(|Json(b)| b.get(k)).and_then(|v| v.as_str()).map(str::to_string);
     let (explicit_url, explicit_sha) = (field("download_url"), field("sha256"));
 
+    let _dirs = super::paths::components_in_use().await;
     let extensions_dir = state.extension_manager.read().await.extensions_dir().to_path_buf();
     let remote = ExtensionManager::fetch_remote().await;
     let fail = |error: String, code: &str| Json(json!({ "success": false, "error": error, "error_code": code }));
@@ -459,6 +469,10 @@ pub async fn install_extension(
             ExtensionManager::stage_package(&extensions_dir, &id, &bytes, sha.as_deref())
         }) {
             Ok(p) => p,
+            // 더 새 앱을 요구하는 패키지는 구조화된 이유(app_version_unsatisfied)로 답한다
+            Err(e) if e.downcast_ref::<ExtensionError>().is_some_and(|x| x.error_code == "app_version_unsatisfied") => {
+                return naming_extension(extension_err_response(&e), &id).1
+            }
             Err(e) => return fail(format!("{:#}", e), "install_failed"),
         };
 
@@ -671,6 +685,29 @@ mod tests {
         let err = save_extension_config(State(state.clone()), Path(ghost.clone()), Json(json!({ "k": 1 }))).await.unwrap_err();
         assert_eq!((err.0, err.1["error_code"].as_str()), (StatusCode::NOT_FOUND, Some("not_found")));
         assert_eq!(state.extension_manager.read().await.get_extension_config(&ghost), Default::default(), "nothing is saved");
+    }
+
+    /// 더 새 앱을 요구하는 익스텐션을 켜면 구조화된 이유와 그 익스텐션 id를 준다 (CLI·GUI가 "업데이트가 필요해요"로 이름과 함께 보인다)
+    #[tokio::test]
+    async fn enabling_an_extension_needing_a_newer_app_names_it() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ext = tempfile::Builder::new().prefix("future").tempdir_in(crate::plugin::resolve_extensions_dir()).unwrap();
+        let id = ext.path().file_name().unwrap().to_string_lossy().into_owned();
+        std::fs::write(
+            ext.path().join("manifest.json"),
+            json!({ "id": id, "name": "t", "version": "0.1.0", "min_app_version": "999.0.0" }).to_string(),
+        )
+        .unwrap();
+        let sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            tmp.path().join("modules").to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        state.extension_manager.write().await.discover().unwrap();
+        let (status, Json(body)) = enable_extension(State(state), Path(id.clone())).await.unwrap_err();
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!((body["error_code"].as_str(), body["extension"].as_str()), (Some("app_version_unsatisfied"), Some(id.as_str())), "{body}");
+        assert_eq!(body["related"], json!(["999.0.0"]));
     }
 
     #[tokio::test]

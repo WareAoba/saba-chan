@@ -127,6 +127,39 @@ fn kept_backups(body: &Value) -> Option<String> {
     (!pairs.is_empty()).then(|| t!("err.hint.kept_backups", files = pairs.join(", ")))
 }
 
+/// 사바쨩 버전이 모자라 거절된 응답을 "업데이트가 필요해요" 문구로. 그런 거절이 아니면 None (GUI `utils/updateRequired.js`와 같은 규칙).
+/// 릴레이(`agent_too_old`·`AGENT_TOO_OLD` + minVersion), 모듈(saba-core 의존성·더 새 스키마), 익스텐션(min_app_version·saba-core 의존성).
+/// `name`이 비면 응답의 `module`·`extension`을 쓴다
+pub fn update_required(body: &Value, name: &str) -> Option<String> {
+    let s = |k: &str| body.get(k).and_then(Value::as_str).unwrap_or_default();
+    let version = |requirement: &str| match requirement.trim().trim_start_matches(">=").trim() {
+        "" => "?".to_string(),
+        v => v.to_string(),
+    };
+    let related = |i: usize| body.get("related").and_then(|r| r.get(i)).and_then(Value::as_str).unwrap_or_default();
+    let name = if name.is_empty() { [s("module"), s("extension")].into_iter().find(|n| !n.is_empty()).unwrap_or_default() } else { name };
+    if s("lastErrorCode") == "agent_too_old" || s("error").eq_ignore_ascii_case("AGENT_TOO_OLD") {
+        return Some(t!("update_required.relay", version = version(s("minVersion"))));
+    }
+    match s("error_code") {
+        // 항목 꼴: "saba-core >=0.1.10 (installed 0.1.9)"
+        "module_dependency_unsatisfied" => body
+            .get("missing_dependencies")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .find_map(|d| d.strip_prefix("saba-core "))
+            .map(|d| t!("update_required.module", name = name, version = version(d.split(" (").next().unwrap_or_default()))),
+        "module_schema_unsupported" => Some(t!("update_required.module_newer", name = name)),
+        "app_version_unsatisfied" => Some(t!("update_required.extension", name = name, version = version(related(0)))),
+        "component_version_unsatisfied" if related(0) == "saba-core" => {
+            Some(t!("update_required.extension", name = name, version = version(related(1))))
+        }
+        _ => None,
+    }
+}
+
 /// 데몬 오류 코드별 안내. 새 코드는 여기 한 줄.
 pub fn api_hint(code: &str, body: &Value) -> Option<String> {
     if code == "isolation_unsupported" {
@@ -200,8 +233,11 @@ pub fn api_hint(code: &str, body: &Value) -> Option<String> {
         "backup_failed" => body.get("file").and_then(Value::as_str).map(|f| t!("err.hint.install_backup_failed", file = f)),
         "no_command_path" => Some(t!("err.hint.no_command_path")),
         "invalid_relay_url" => Some(t!("err.hint.invalid_relay_url")),
-        "agent_too_old" => Some(t!("err.hint.agent_too_old")),
+        "agent_too_old" | "module_schema_unsupported" | "app_version_unsatisfied" => Some(t!("err.hint.agent_too_old")),
+        "component_version_unsatisfied" => update_required(body, "").map(|_| t!("err.hint.agent_too_old")),
         "module_busy" => Some(t!("err.hint.module_busy")),
+        // 폴더 옮기기 (`/api/system/paths/move`)
+        c if c.starts_with("paths_") => crate::i18n::try_t(&format!("err.hint.{}", c)),
         "schedule_changed" => Some(t!("err.hint.schedule_changed")),
         "not_supported" => Some(t!("err.hint.not_supported")),
         "invalid_command" => Some(t!("err.hint.invalid_command")),

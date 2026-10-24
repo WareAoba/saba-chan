@@ -128,6 +128,44 @@ pub fn retain_at(path: &Path, keep: impl Fn(&str) -> bool) -> Result<(), String>
     crate::write_atomic(path, json.as_bytes()).map_err(|e| e.to_string())
 }
 
+/// 폴더를 옮긴 뒤 `from` 아래 파일 기록을 `to` 아래로 바꾼다 (기록은 절대 경로라, 그대로 두면 옮긴 공식 구성요소가 "바뀜"이 된다).
+/// 바꾼 것이 없으면 쓰지 않는다
+pub fn rebase_at(path: &Path, from: &Path, to: &Path) -> Result<(), String> {
+    let mut records: InstalledFiles = crate::read_json_for_update(path)?.unwrap_or_default();
+    let mut changed = false;
+    for files in records.values_mut() {
+        let moved: BTreeMap<String, String> = std::mem::take(files)
+            .into_iter()
+            .map(|(file, hash)| match under(Path::new(&file), from) {
+                Some(rest) => {
+                    changed = true;
+                    (to.join(rest).to_string_lossy().into_owned(), hash)
+                }
+                None => (file, hash),
+            })
+            .collect();
+        *files = moved;
+    }
+    if !changed {
+        return Ok(());
+    }
+    let json = serde_json::to_string_pretty(&records).map_err(|e| e.to_string())?;
+    crate::write_atomic(path, json.as_bytes()).map_err(|e| e.to_string())
+}
+
+/// `file`이 `dir` 아래면 그 나머지 경로 (Windows는 대소문자를 가리지 않는다. ASCII 밖 글자도)
+fn under(file: &Path, dir: &Path) -> Option<PathBuf> {
+    if let Ok(rest) = file.strip_prefix(dir) {
+        return Some(rest.to_path_buf());
+    }
+    if !cfg!(windows) {
+        return None;
+    }
+    let (f, d): (Vec<_>, Vec<_>) = (file.components().collect(), dir.components().collect());
+    let same = |a: &std::path::Component, b: &std::path::Component| a.as_os_str().to_string_lossy().to_lowercase() == b.as_os_str().to_string_lossy().to_lowercase();
+    (f.len() > d.len() && d.iter().zip(&f).all(|(a, b)| same(a, b))).then(|| f[d.len()..].iter().collect())
+}
+
 /// 이 컴포넌트의 설치 기록이 있나
 pub fn is_recorded(component_key: &str) -> bool {
     load_records(&records_path()).contains_key(component_key)
@@ -452,6 +490,31 @@ mod tests {
         assert_ne!(cached_sha256(&f).unwrap(), fresh);
         std::fs::remove_file(&f).unwrap();
         assert!(cached_sha256(&f).is_err());
+    }
+
+    // PC 확인 #544: 모듈 폴더를 옮기면 절대 경로 기록이 옛 자리를 가리켜 공식 모듈이 "바뀜"(격리 실행)이 되었다
+    #[test]
+    fn a_moved_component_stays_verified_after_its_records_follow() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (records, official) = (tmp.path().join("installed-files.json"), tmp.path().join("official.json"));
+        let (old, new) = (tmp.path().join("data").join("modules"), tmp.path().join("games").join("modules"));
+        std::fs::create_dir_all(old.join("x")).unwrap();
+        std::fs::write(old.join("x").join("lifecycle.py"), b"one").unwrap();
+        record_install_at(&records, "module-x", &[old.join("x").join("lifecycle.py")]).unwrap();
+        set_official_at(&official, "module-x", true).unwrap();
+        std::fs::create_dir_all(new.parent().unwrap()).unwrap();
+        std::fs::rename(&old, &new).unwrap();
+        assert_eq!(trust_at(&records, &official, "module-x", &new.join("x")), Trust::Modified);
+        rebase_at(&records, &old, &new).unwrap();
+        assert_eq!(trust_at(&records, &official, "module-x", &new.join("x")), Trust::Verified);
+    }
+
+    /// Codex 재검증 #544: Windows는 ASCII 밖 글자도 대소문자를 가리지 않는다 (`Ä` = `ä`)
+    #[cfg(windows)]
+    #[test]
+    fn a_record_under_the_same_folder_in_other_case_moves_too() {
+        assert_eq!(under(Path::new(r"C:\Ä\modules\x\a.py"), Path::new(r"C:\ä\Modules")), Some(PathBuf::from(r"x\a.py")));
+        assert_eq!(under(Path::new(r"C:\Ä\modulesx\a.py"), Path::new(r"C:\ä\modules")), None);
     }
 
     #[test]

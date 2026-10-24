@@ -354,8 +354,7 @@
     "list_empty": "No modules found",
     "fetch_failed_toast": "Module search failed: {{error}}",
     "load_error_title": "Error loading module",
-    "schema_invalid": "module.toml does not match the format: {{problems}}",
-    "schema_unsupported": "This module needs a newer Saba-chan (module format {{required}}). Update Saba-chan."
+    "schema_invalid": "module.toml does not match the format: {{problems}}"
   },
   "servers": {
     "fetch_failed_toast": "⚠️ {{error}}",
@@ -803,8 +802,6 @@
     "chain_discord": "Discord",
     "agent_desc": "This PC receives and runs the commands sent from Discord. While it is off, the bot won't answer.",
     "agent_replaced": "This Discord account's PC connection moved to another PC, so it stopped here. To use this PC again, pair it again from this PC.",
-    "agent_too_old": "The relay server no longer accepts this app version. Update the app to {{version}} or later.",
-    "agent_check_update": "Check for updates",
     "agent_running": "On",
     "agent_connecting": "Starting",
     "agent_stopped": "Off",
@@ -1362,7 +1359,9 @@
     "backup_done": "Backed up {{name}} ({{kind}}).",
     "backup_failed": "Backup of {{name}} failed. {{error}}",
     "schedule_restart": "{{name}} will restart as scheduled in {{minutes}} min.",
-    "schedule_update": "{{name}} will update as scheduled in {{minutes}} min."
+    "schedule_update": "{{name}} will update as scheduled in {{minutes}} min.",
+    "module_update": "{{name}}: a new version {{version}} of the {{module}} module is out.",
+    "server_update": "{{name}}: a new game server version is out. If players can't join, update the server."
   },
   "terminal": {
     "open": "Open in terminal",
@@ -1465,5 +1464,51 @@
     "accepted": "Linked to {{guild}}.",
     "expired": "The request expired. Ask again from Discord.",
     "failed": "Couldn't handle the request."
+  },
+  "folder_paths": {
+    "title": "Folders",
+    "description": "Where Saba-chan keeps its files. You can move modules and extensions to another folder; installed files are moved with them and servers must be stopped.",
+    "data": "Data and settings",
+    "install": "Program",
+    "default_install": "Default program folder",
+    "instances": "Game servers",
+    "modules": "Modules",
+    "extensions": "Extensions",
+    "source_default": "Default",
+    "source_config": "Chosen",
+    "source_env": "Fixed by an environment variable",
+    "default_is": "default: {{path}}",
+    "move": "Move…",
+    "cancel": "Cancel",
+    "confirm_move": "Move",
+    "confirm_modules": "Move the modules to the modules folder in {{dir}}? Installed modules are copied, checked and then removed from the old folder.",
+    "confirm_extensions": "Move the extensions to the extensions folder in {{dir}}? Installed extensions are copied, checked and then removed from the old folder.",
+    "moved": "Moved to {{path}}.",
+    "left_behind": "These old files could not be removed. Delete them yourself: {{files}}",
+    "err_generic": "Could not move the folder.",
+    "err_busy": "An install, update, backup or other server task is running. Try again when it finishes.",
+    "err_servers_running": "Stop these servers first: {{detail}}",
+    "err_env_fixed": "This folder is fixed by an environment variable ({{detail}}).",
+    "err_not_absolute": "Choose a full folder path.",
+    "err_root_or_home": "Choose a folder inside a drive or your user folder, not the drive itself or your user folder.",
+    "err_contains_data_dir": "That folder contains Saba-chan's data folder. Choose another folder.",
+    "err_same_as_current": "It is already in that folder.",
+    "err_overlaps_current": "That folder is inside the current folder, or the other way around. Choose another folder.",
+    "err_overlaps_other": "That folder overlaps the modules or extensions folder. Choose another folder.",
+    "err_not_empty": "The folder there already has files: {{detail}}. Choose an empty place.",
+    "err_not_writable": "Saba-chan can't write there: {{detail}}",
+    "err_has_link": "The folder has a link inside ({{detail}}). Remove it, then try again.",
+    "err_copy_failed": "Copying failed. Nothing was changed. Check the free space and try again.",
+    "err_verify_failed": "The copy did not match the original. Nothing was changed. Try again.",
+    "err_commit_failed": "Saving the setting failed. The files were put back where they were.",
+    "err_overlaps_install": "It can't go inside the Saba-chan install folder. Choose a folder outside it."
+  },
+  "update_required": {
+    "title": "Update required",
+    "relay": "Update required. The relay needs Saba-chan {{version}} or later.",
+    "module": "Update required. The {{name}} module needs Saba-chan {{version}} or later.",
+    "module_newer": "Update required. The {{name}} module needs a newer Saba-chan.",
+    "extension": "Update required. The {{name}} extension needs Saba-chan {{version}} or later.",
+    "check": "Check for updates"
   }
 }

@@ -782,8 +782,21 @@ impl Supervisor {
     async fn unmet_dependencies_response(&self, module_name: &str, instance_name: &str) -> Option<Value> {
         // 데몬이 모자라 아예 로드하지 못한 모듈도 같은 응답을 준다
         let failed = self.module_loader.get_module(module_name).err().and_then(|_| self.module_loader.load_failure(module_name));
+        // 데몬보다 새 스키마는 그 이유 그대로 준다 (클라이언트가 "업데이트가 필요해요"로 보인다)
+        if let Some(f) = failed.as_ref().filter(|f| f.error_code.as_deref() == Some("module_schema_unsupported")) {
+            tracing::warn!("Module '{}' needs a newer saba-chan for '{}': {}", module_name, instance_name, f.error);
+            return Some(json!({
+                "success": false,
+                "error": "module_schema_unsupported",
+                "error_code": "module_schema_unsupported",
+                "message": format!("Cannot start '{}': {}", instance_name, f.error),
+                "module": module_name,
+                "required": f.required,
+            }));
+        }
         let unmet = match failed {
-            Some(f) if f.error_code.is_some() => f.missing_dependencies,
+            // 의존성 때문에 로드하지 못한 것만. 스키마가 틀린 모듈 등은 빈 의존성 오류로 바꾸지 않는다
+            Some(f) if f.error_code.as_deref() == Some("module_dependency_unsatisfied") => f.missing_dependencies,
             _ => self.unmet_module_dependencies(module_name).await?,
         };
         tracing::warn!("Module '{}' dependencies unmet for '{}': {}", module_name, instance_name, unmet.join(", "));
@@ -792,6 +805,7 @@ impl Supervisor {
             "error": "module_dependency_unsatisfied",
             "error_code": "module_dependency_unsatisfied",
             "message": format!("Cannot start '{}': module '{}' needs {}", instance_name, module_name, unmet.join(", ")),
+            "module": module_name,
             "missing_dependencies": unmet,
         }))
     }
@@ -2128,6 +2142,17 @@ impl Supervisor {
     /// "켜져 있으면 거절" 판정은 모두 이것을 쓴다 (재부착 때 추적표 등록이 실패해 managed에만 남은 경우도 켜진 것이다)
     pub async fn is_running(&self, instance_id: &str) -> bool {
         self.tracker.get_pid(instance_id).is_ok() || self.managed_store.running_instance_ids().await.iter().any(|id| id == instance_id)
+    }
+
+    /// 켜져 있는 서버 인스턴스 id (`is_running` 판정)
+    pub async fn running_instances(&self) -> Vec<String> {
+        let mut running = Vec::new();
+        for instance in self.instance_store.list() {
+            if self.is_running(&instance.id).await {
+                running.push(instance.id.clone());
+            }
+        }
+        running
     }
 
     pub async fn routes_commands_to_stdin(&self, instance_id: &str) -> bool {
@@ -3696,7 +3721,51 @@ mod tests {
         assert_eq!(failed.error_code.as_deref(), Some("module_dependency_unsatisfied"));
         let resp = supervisor.unmet_dependencies_response("future", "srv").await.unwrap();
         assert_eq!(resp["error_code"], "module_dependency_unsatisfied");
+        assert_eq!(resp["module"], "future", "clients name the module in \"update required\"");
         assert!(resp["missing_dependencies"][0].as_str().unwrap().starts_with("saba-core >=99.0.0"));
+    }
+
+    /// 데몬보다 새 스키마라 로드되지 못한 모듈은 시작 응답도 그 이유(module_schema_unsupported)를 준다.
+    /// 빈 의존성 목록의 module_dependency_unsatisfied로 바꾸지 않는다
+    #[tokio::test]
+    async fn module_with_newer_schema_reports_unsupported_on_start() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("modules").join("future");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "").unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nschema_version = 99\nname = \"future\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n",
+        )
+        .unwrap();
+        let supervisor = Supervisor::new_with_instances_dir(
+            tmp.path().join("modules").to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        let resp = supervisor.unmet_dependencies_response("future", "srv").await.unwrap();
+        assert_eq!(resp["error_code"], "module_schema_unsupported", "{resp}");
+        assert_eq!((resp["required"].clone(), resp["module"].clone()), (json!(99), json!("future")), "{resp}");
+    }
+
+    /// 스키마가 틀려 로드되지 못한 모듈(module_schema_invalid)은 빈 의존성 오류로 바꾸지 않는다
+    #[tokio::test]
+    async fn module_with_invalid_schema_is_not_reported_as_unmet_dependencies() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("modules").join("broken");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "").unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nschema_version = 1\nname = \"broken\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[[settings.fields]]\nname = \"admins\"\ntype = \"list\"\n",
+        )
+        .unwrap();
+        let mut supervisor = Supervisor::new_with_instances_dir(
+            tmp.path().join("modules").to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        let _ = supervisor.initialize().await;
+        assert_eq!(supervisor.module_loader.load_failure("broken").and_then(|f| f.error_code).as_deref(), Some("module_schema_invalid"));
+        assert_eq!(supervisor.unmet_dependencies_response("broken", "srv").await, None);
     }
 
     /// [module.dependencies]: 익스텐션이 없거나 낮으면 막고, 맞으면 통과. 데몬이 모르는 키(gui)는 넘긴다

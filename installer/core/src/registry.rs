@@ -59,7 +59,10 @@ pub fn register_uninstall_entry(
     key.set_value("Publisher", &saba_chan_updater_lib::constants::PUBLISHER)?;
     key.set_value("InstallLocation", &install_location)?;
     key.set_value("UninstallString", &uninstall_cmd)?;
-    let icon = saba_chan_updater_lib::find_gui_exe(install_dir).unwrap_or_else(|| install_dir.join("saba-chan-gui.exe"));
+    // 헤드리스 설치에는 GUI가 없다: 설치 폴더의 제거기 아이콘을 쓴다
+    let icon = saba_chan_updater_lib::find_gui_exe(install_dir)
+        .or_else(|| installer_copy.exists().then(|| installer_copy.clone()))
+        .unwrap_or_else(|| install_dir.join("saba-chan-gui.exe"));
     key.set_value("DisplayIcon", &icon.to_string_lossy().to_string())?;
     key.set_value("NoModify", &1u32)?;
     key.set_value("NoRepair", &1u32)?;

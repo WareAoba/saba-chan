@@ -13,6 +13,7 @@
 //! - `POST /api/updates/apply`               — 모듈 등은 데몬이 바로 적용, 재시작이 필요한 것은
 //!   `requires_updater`로 돌려주고 실제 적용은 `launch-updater`가 한다 (본문 없으면 전부)
 //! - `POST /api/updates/launch-updater`      — 데몬이 업데이터를 띄우고 스스로 종료 (U7)
+//! - `POST /api/updates/install`             — 확인 → 전부 받기 → 적용 → 필요하면 업데이터 띄우기를 한 번에 (액션 `update.apply`, 디스코드 `/사바쨩 업데이트`)
 //! - `GET  /api/updates/last-result`         — 마지막 업데이트 적용 결과 (DELETE로 확인 처리)
 //! - `GET  /api/updates/config`              — 업데이트 설정 조회
 //! - `PUT  /api/updates/config`              — 업데이트 설정 변경
@@ -114,6 +115,7 @@ pub fn updates_router(state: UpdateState) -> Router {
         .route("/api/updates/download/progress", get(get_download_progress))
         .route("/api/updates/apply", post(apply_updates))
         .route("/api/updates/launch-updater", post(launch_updater))
+        .route("/api/updates/install", post(install_updates))
         .route("/api/updates/last-result", get(get_last_result).delete(clear_last_result))
         .route("/api/updates/integrity", get(check_integrity))
         .route("/api/updates/config", get(get_config))
@@ -617,6 +619,37 @@ async fn apply_updates_with(state: UpdateState, body: ApplyRequest) -> impl Into
         "requires_updater": !needs_updater.is_empty(),
         "errors": errors,
     }))
+}
+
+/// POST /api/updates/install — 확인 → 받을 것 전부 받기 → 적용. 데몬·GUI처럼 재시작이 필요한 것이 있으면 업데이터를 띄운다
+/// (그 뒤 데몬은 꺼지고 업데이터가 GUI나 데몬을 다시 띄운다). GUI가 없는 원격(디스코드)에서도 끝까지 가게 하는 경로다.
+/// 답: apply의 답(`ok, applied, requires_updater, errors`)에 `downloaded`, 받지 못한 것 `download_errors`, 업데이터를 띄웠으면 `updater_launched: true`
+async fn install_updates(State(state): State<UpdateState>) -> axum::response::Response {
+    use crate::ipc::internal::into_internal;
+    if let Err(e) = check_and_follow_up(&state).await {
+        return Json(json!({ "ok": false, "error": format!("Update check failed: {}", e) })).into_response();
+    }
+    let downloaded = into_internal(download_components_with(state.clone(), DownloadRequest::default()).await).await.body;
+    if downloaded.get("ok").and_then(Value::as_bool) == Some(false) && downloaded.get("downloaded").is_none() {
+        return Json(downloaded).into_response();
+    }
+    let mut applied = into_internal(apply_updates_with(state.clone(), ApplyRequest::default()).await).await.body;
+    applied["downloaded"] = downloaded.get("downloaded").cloned().unwrap_or(Value::Null);
+    // 일부만 받았으면 받은 것은 적용하고 받지 못한 것을 함께 알린다
+    if let Some(failed) = downloaded.get("errors").and_then(Value::as_array).filter(|e| !e.is_empty()) {
+        applied["ok"] = json!(false);
+        applied["download_errors"] = json!(failed);
+    }
+    if applied.get("requires_updater").and_then(Value::as_bool) == Some(true) {
+        let launched = into_internal(launch_updater(State(state), None).await).await.body;
+        if launched.get("ok").and_then(Value::as_bool) == Some(false) {
+            applied["ok"] = json!(false);
+            applied["error"] = launched.get("error").cloned().unwrap_or(Value::Null);
+        } else {
+            applied["updater_launched"] = json!(true);
+        }
+    }
+    Json(applied).into_response()
 }
 
 /// POST /api/updates/launch-updater — 데몬이 업데이터를 띄우고 스스로 종료한다 (U7)

@@ -298,8 +298,7 @@
     "list_empty": "モジュールが見つかりません",
     "fetch_failed_toast": "モジュール検索失敗: {{error}}",
     "load_error_title": "モジュールの読み込み中にエラー",
-    "schema_invalid": "module.tomlが形式に合っていません: {{problems}}",
-    "schema_unsupported": "このモジュールには新しいサバちゃんが必要です(モジュール形式 {{required}})。サバちゃんを更新してください。"
+    "schema_invalid": "module.tomlが形式に合っていません: {{problems}}"
   },
   "servers": {
     "fetch_failed_toast": "⚠️ {{error}}",
@@ -803,8 +802,6 @@
     "chain_discord": "Discord",
     "agent_desc": "Discordから送られたコマンドをこのPCが受け取って実行します。オフの間はボットが応答しません。",
     "agent_replaced": "このDiscordアカウントのPC接続が別のPCに移ったため、ここでは停止しました。このPCをまた使うには、このPCで再度ペアリングしてください。",
-    "agent_too_old": "リレーサーバーがこのアプリのバージョンを受け付けません。アプリを {{version}} 以上に更新してください。",
-    "agent_check_update": "アップデートを確認",
     "agent_running": "オン",
     "agent_connecting": "起動中",
     "agent_stopped": "オフ",
@@ -1362,7 +1359,9 @@
     "backup_done": "{{name}} のバックアップが完了しました（{{kind}}）。",
     "backup_failed": "{{name}} のバックアップに失敗しました。{{error}}",
     "schedule_restart": "{{name}} は{{minutes}}分後に予約どおり再起動します。",
-    "schedule_update": "{{name}} は{{minutes}}分後に予約どおりアップデートします。"
+    "schedule_update": "{{name}} は{{minutes}}分後に予約どおりアップデートします。",
+    "module_update": "{{name}}: {{module}} モジュールの新しいバージョン {{version}} が出ました。",
+    "server_update": "{{name}}: ゲームサーバーの新しいバージョンが出ました。接続できない場合はサーバーをアップデートしてください。"
   },
   "terminal": {
     "open": "ターミナルで開く",
@@ -1465,5 +1464,51 @@
     "accepted": "{{guild}} と接続しました。",
     "expired": "リクエストの期限が切れました。Discord からもう一度リクエストしてください。",
     "failed": "リクエストを処理できませんでした。"
+  },
+  "folder_paths": {
+    "title": "フォルダー",
+    "description": "サバちゃんがファイルを置く場所です。モジュールと拡張機能は別のフォルダーへ移せます。インストール済みのファイルも一緒に移し、サーバーはすべて停止が必要です。",
+    "data": "データ・設定",
+    "install": "プログラム",
+    "default_install": "既定のプログラムフォルダー",
+    "instances": "ゲームサーバー",
+    "modules": "モジュール",
+    "extensions": "拡張機能",
+    "source_default": "既定",
+    "source_config": "選択",
+    "source_env": "環境変数で固定",
+    "default_is": "既定: {{path}}",
+    "move": "移動…",
+    "cancel": "キャンセル",
+    "confirm_move": "移動",
+    "confirm_modules": "モジュールを {{dir}} の modules フォルダーへ移しますか？インストール済みのモジュールをコピーして確認したあと、元のフォルダーから削除します。",
+    "confirm_extensions": "拡張機能を {{dir}} の extensions フォルダーへ移しますか？インストール済みの拡張機能をコピーして確認したあと、元のフォルダーから削除します。",
+    "moved": "{{path}} へ移しました。",
+    "left_behind": "元のフォルダーの次のファイルを削除できませんでした。手動で削除してください: {{files}}",
+    "err_generic": "フォルダーを移せませんでした。",
+    "err_busy": "インストール・更新・バックアップなどの作業中です。終わってからもう一度試してください。",
+    "err_servers_running": "先にこれらのサーバーを停止してください: {{detail}}",
+    "err_env_fixed": "環境変数（{{detail}}）で固定されたフォルダーです。",
+    "err_not_absolute": "フルパスのフォルダーを選んでください。",
+    "err_root_or_home": "ドライブやユーザーフォルダーそのものではなく、その中のフォルダーを選んでください。",
+    "err_contains_data_dir": "そのフォルダーにはサバちゃんのデータフォルダーが入っています。別のフォルダーを選んでください。",
+    "err_same_as_current": "すでにそのフォルダーにあります。",
+    "err_overlaps_current": "現在のフォルダーの中、または現在のフォルダーを含むフォルダーです。別のフォルダーを選んでください。",
+    "err_overlaps_other": "モジュールまたは拡張機能のフォルダーと重なっています。別のフォルダーを選んでください。",
+    "err_not_empty": "そこにはすでにファイルがあります: {{detail}}。空の場所を選んでください。",
+    "err_not_writable": "そのフォルダーに書き込めません: {{detail}}",
+    "err_has_link": "フォルダーの中にリンクがあります（{{detail}}）。削除してからもう一度試してください。",
+    "err_copy_failed": "コピーできませんでした。何も変更していません。空き容量を確認してもう一度試してください。",
+    "err_verify_failed": "コピーが元と一致しなかったため移していません。何も変更していません。もう一度試してください。",
+    "err_commit_failed": "設定を保存できなかったため、ファイルを元の場所に戻しました。",
+    "err_overlaps_install": "サバちゃんのインストール先フォルダーの中には置けません。その外のフォルダーを選んでください。"
+  },
+  "update_required": {
+    "title": "アップデートが必要です",
+    "relay": "アップデートが必要です。リレーはサバちゃん {{version}} 以上を必要としています。",
+    "module": "アップデートが必要です。{{name}} モジュールはサバちゃん {{version}} 以上で動きます。",
+    "module_newer": "アップデートが必要です。{{name}} モジュールはより新しいサバちゃんで動きます。",
+    "extension": "アップデートが必要です。{{name}} 拡張機能はサバちゃん {{version}} 以上で動きます。",
+    "check": "アップデートを確認"
   }
 }

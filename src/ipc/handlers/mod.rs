@@ -17,6 +17,7 @@ pub mod events;
 pub mod migration;
 pub mod diagnostics;
 pub mod system;
+pub mod paths;
 pub mod permissions;
 pub mod sandbox;
 pub mod actions;

@@ -13,6 +13,7 @@
 //! 경로는 모두 `install_root` 기준입니다.
 
 
+pub mod component_dirs;
 pub mod config_file;
 pub mod constants;
 pub mod download;
@@ -542,6 +543,14 @@ impl UpdateManager {
 
     fn resolve_staging_dir() -> PathBuf {
         crate::constants::resolve_staging_dir()
+    }
+
+    /// 모듈·익스텐션 폴더를 옮긴 뒤 새 폴더에 적용하게 한다 (데몬 `/api/system/paths/move`)
+    pub fn set_component_dir(&mut self, kind: component_dirs::Kind, dir: &Path) {
+        match kind {
+            component_dirs::Kind::Modules => self.modules_dir = dir.to_path_buf(),
+            component_dirs::Kind::Extensions => self.extensions_dir = dir.to_path_buf(),
+        }
     }
 
     /// 익스텐션 디렉터리 — constants 모듈에 위임

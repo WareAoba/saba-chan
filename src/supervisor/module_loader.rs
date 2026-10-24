@@ -1835,6 +1835,12 @@ impl ModuleLoader {
         &self.modules_dir
     }
 
+    /// 모듈 폴더를 옮긴 뒤 새 폴더를 보게 한다 (`/api/system/paths/move`). 캐시는 비운다
+    pub fn set_modules_dir(&mut self, modules_dir: &str) {
+        self.modules_dir = modules_dir.to_string();
+        self.invalidate_cache();
+    }
+
     /// 캐시를 무효화합니다 (새로운 모듈이 추가되었을 때 호출)
     pub fn invalidate_cache(&self) {
         *self.cached_modules.write().unwrap() = None;
@@ -1996,7 +2002,14 @@ impl ModuleLoader {
 
     /// 이름이 `name`인 모듈을 읽었지만 쓸 수 없었다면 그 기록
     pub fn load_failure(&self, name: &str) -> Option<ModuleLoadError> {
-        self.load_errors.read().unwrap().iter().find(|e| e.module.as_deref() == Some(name)).cloned()
+        // module.toml을 끝까지 읽지 못한 실패(더 새 스키마 등)는 이름이 없어 모듈 폴더 이름으로 찾는다
+        let folder = |e: &ModuleLoadError| Path::new(&e.path).file_name().is_some_and(|f| f == name);
+        self.load_errors
+            .read()
+            .unwrap()
+            .iter()
+            .find(|e| e.module.as_deref().map_or_else(|| folder(e), |m| m == name))
+            .cloned()
     }
 }
 

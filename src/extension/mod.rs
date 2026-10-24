@@ -1474,6 +1474,12 @@ impl ExtensionManager {
         &self.extensions_dir
     }
 
+    /// 익스텐션 폴더를 옮긴 뒤 새 폴더를 보게 하고 다시 읽는다 (`/api/system/paths/move`)
+    pub fn set_extensions_dir(&mut self, extensions_dir: PathBuf) -> Result<Vec<String>> {
+        self.extensions_dir = extensions_dir;
+        self.rescan()
+    }
+
     /// 받은 zip을 검사하고 `extensions/.staging-<id>-<uuid>`에 푼다. 락 없이 부르면 된다.
     /// sha256(있으면), manifest 스키마, manifest id, min_app_version을 여기서 확인하므로
     /// 실패해도 설치된 익스텐션은 그대로다. 폴더는 호출마다 새로 만들어, 같은 id를 겹쳐 설치해도
@@ -1507,8 +1513,8 @@ impl ExtensionManager {
             if manifest.id != ext_id {
                 return Err(ExtensionError::id_mismatch(&manifest.id, ext_id).into());
             }
-            if let Some(reason) = Self::incompatibility(&manifest) {
-                anyhow::bail!("Cannot install '{}': {}", ext_id, reason);
+            if let Some(required) = manifest.min_app_version.as_deref().filter(|v| !version_satisfies(APP_VERSION, v)) {
+                return Err(ExtensionError::app_too_old(ext_id, required).into());
             }
             Ok(())
         })();
@@ -1733,6 +1739,8 @@ pub async fn run_hook_timed(
     context: Value,
     timeout_secs: u64,
 ) -> Vec<(String, Result<Value>)> {
+    // 계획(옛 경로)부터 실행이 끝날 때까지 익스텐션 폴더를 옮기지 못하게 한다 (hook이 그 폴더의 파일을 실행하고 쓴다)
+    let _in_use = crate::ipc::handlers::paths::components_in_use().await;
     let plan = mgr.read().await.plan_hook(hook_name, context, None);
     plan.run(timeout_secs).await
 }
@@ -1744,6 +1752,7 @@ pub async fn run_hook_to(
     hook_name: &str,
     context: Value,
 ) -> Option<Result<Value>> {
+    let _in_use = crate::ipc::handlers::paths::components_in_use().await;
     let plan = mgr.read().await.plan_hook(hook_name, context, Some(ext_id));
     plan.run(crate::plugin::DEFAULT_PLUGIN_TIMEOUT_SECS).await.into_iter().next().map(|(_, r)| r)
 }
@@ -2149,6 +2158,16 @@ mod tests {
             {"id": "helper", "name": "H", "version": "0.1.0", "download_url": "x"}
         ])).unwrap();
         assert_eq!(mgr.missing_dependencies("box", &remote), ["helper"]);
+    }
+
+    /// 더 새 앱을 요구하는 패키지는 켤 때와 같은 app_version_unsatisfied로 거절한다 (클라이언트가 "업데이트가 필요해요"로 보인다)
+    #[test]
+    fn package_needing_newer_app_is_refused_with_version_code() {
+        let tmp = tempfile::tempdir().unwrap();
+        let pkg = zip_package(json!({"id": "future", "name": "F", "version": "0.1.0", "min_app_version": "999.0.0"}), "x");
+        let err = ExtensionManager::stage_package(tmp.path(), "future", &pkg, None).unwrap_err();
+        let ext = err.downcast_ref::<ExtensionError>().expect("structured error");
+        assert_eq!((ext.error_code.as_str(), ext.related.clone()), ("app_version_unsatisfied", vec!["999.0.0".to_string()]));
     }
 
     #[test]

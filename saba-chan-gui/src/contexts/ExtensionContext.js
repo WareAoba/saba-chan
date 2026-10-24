@@ -15,6 +15,7 @@ import i18n from '../i18n';
 import { useUIStore } from '../stores/useUIStore';
 import { safeShowToast } from '../utils/helpers';
 import { showTrustWarnings } from '../utils/trustNotice';
+import { updateRequiredText } from '../utils/updateRequired';
 
 const ExtensionContext = createContext(null);
 
@@ -341,6 +342,11 @@ export function ExtensionProvider({ children }) {
                     let msg;
 
                     switch (code) {
+                        // 사바쨩이 낮아 켤 수 없으면 업데이트가 필요하다고 알린다
+                        case 'app_version_unsatisfied':
+                        case 'component_version_unsatisfied':
+                            msg = updateRequiredText(t, result, extId) || result.error;
+                            break;
                         case 'not_found':
                             msg = t('extensions.error_not_found', {
                                 id: extId,
@@ -476,11 +482,14 @@ export function ExtensionProvider({ children }) {
             try {
                 const result = await window.api.extensionInstall?.(extId, opts);
                 if (result?.success === false) {
-                    const msg = t('extensions.install_failed', {
-                        id: extId,
-                        error: result.error,
-                        defaultValue: `Failed to install '${extId}': ${result.error}`,
-                    });
+                    const msg =
+                        // 함께 받는 의존 익스텐션이 거절되면 그 이름(result.extension)으로
+                        updateRequiredText(t, result, result.extension || extId) ||
+                        t('extensions.install_failed', {
+                            id: extId,
+                            error: result.error,
+                            defaultValue: `Failed to install '${extId}': ${result.error}`,
+                        });
                     safeShowToast(msg, 'error', 5000);
                     return false;
                 }
