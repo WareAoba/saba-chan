@@ -108,6 +108,7 @@ async fn server_list(state: &IPCServer, notices: Notices) -> axum::response::Res
         extension_data: std::collections::HashMap<String, serde_json::Value>,
         extra_args: Vec<String>,
         memory_limit_mb: Option<u64>,
+        revision: String,
         instance_dir: String,
         process_patterns: Vec<String>,
         // Native 모드 데이터
@@ -148,6 +149,7 @@ async fn server_list(state: &IPCServer, notices: Notices) -> axum::response::Res
                 extension_data: instance.extension_data.clone(),
                 extra_args: instance.extra_args.clone(),
                 memory_limit_mb: instance.memory_limit_mb,
+                revision: instance.settings_revision(),
                 instance_dir: supervisor.instance_store.instance_dir(&instance.id).to_string_lossy().to_string(),
                 process_patterns,
                 managed: supervisor.uses_managed_start(instance),
@@ -241,6 +243,7 @@ async fn server_list(state: &IPCServer, notices: Notices) -> axum::response::Res
                     extension_data: instance.extension_data.clone(),
                     extra_args: instance.extra_args.clone(),
                     memory_limit_mb: instance.memory_limit_mb,
+                    revision: instance.revision.clone(),
                     port_conflicts: vec![],
                     slots: Default::default(),
                     players: None,
@@ -296,6 +299,7 @@ async fn server_list(state: &IPCServer, notices: Notices) -> axum::response::Res
             extension_data: instance.extension_data.clone(),
             extra_args: instance.extra_args.clone(),
             memory_limit_mb: instance.memory_limit_mb,
+            revision: instance.revision.clone(),
             port_conflicts: vec![],
             slots: Default::default(),
             players: None,
@@ -710,8 +714,8 @@ async fn install_module_locked(state: IPCServer, module_id: String) -> axum::res
 
 /// 모듈 하나의 설치·제거는 한 번에 하나만 (같은 모듈을 GUI·CLI가 동시에 설치하면 서로의 파일을 지운다).
 /// 키는 소문자로: Windows에서는 대소문자만 다른 id가 같은 폴더다
-pub(crate) fn module_install_guard(module_id: &str) -> Option<super::backup::BusyGuard> {
-    super::backup::BusyGuard::take(&format!("module-install:{}", module_id.to_lowercase()))
+pub(crate) fn module_install_guard(module_id: &str) -> Option<super::backup::InstanceLock> {
+    super::backup::InstanceLock::take(&format!("module-install:{}", module_id.to_lowercase()))
 }
 
 pub(crate) fn module_busy(module_id: &str) -> axum::response::Response {
@@ -732,25 +736,7 @@ fn module_install_paths(modules_dir: &std::path::Path, module_id: &str) -> (std:
 /// 기존 폴더는 새 폴더가 자리를 잡을 때까지 옆에 두고, 바꾸다 실패하면 되돌린다
 fn install_staged_module(staging: &std::path::Path, target_dir: &std::path::Path) -> anyhow::Result<()> {
     crate::supervisor::module_loader::load_module_dir(staging).map_err(|e| e.context("package is not a loadable module"))?;
-    // 점으로 시작해 모듈 탐색이 건너뛴다. 남으면 다음 기동이 지운다 (제자리가 비었으면 되돌린다)
-    let mut old_name = std::ffi::OsString::from(".old-");
-    old_name.push(target_dir.file_name().unwrap_or_default());
-    let old = target_dir.with_file_name(old_name);
-    let _ = std::fs::remove_dir_all(&old);
-    let had_old = target_dir.exists();
-    if had_old {
-        std::fs::rename(target_dir, &old)?;
-    }
-    if let Err(e) = std::fs::rename(staging, target_dir) {
-        if had_old {
-            let _ = std::fs::rename(&old, target_dir);
-        }
-        return Err(e.into());
-    }
-    if had_old {
-        let _ = std::fs::remove_dir_all(&old);
-    }
-    Ok(())
+    crate::utils::swap_dir(staging, target_dir)
 }
 
 /// DELETE /api/modules/:id — 모듈 제거 (디렉토리 삭제 + 캐시 갱신)
@@ -893,7 +879,7 @@ async fn start_checked(state: IPCServer, instance: crate::instance::ServerInstan
 async fn preflight(state: &IPCServer, id: &str) -> Option<axum::response::Response> {
     {
         let supervisor = state.supervisor.read().await;
-        if supervisor.tracker.get_pid(id).is_ok() || supervisor.managed_store.running_instance_ids().await.contains(&id.to_string()) {
+        if supervisor.is_running(id).await {
             return None;
         }
     }
@@ -1022,7 +1008,7 @@ async fn restart_instance(
         for _ in 0..240 {
             let alive = {
                 let supervisor = state.supervisor.read().await;
-                supervisor.tracker.get_pid(&inst_id).is_ok() || supervisor.managed_store.running_instance_ids().await.contains(&inst_id)
+                supervisor.is_running(&inst_id).await
             };
             if !alive {
                 break;
@@ -1114,9 +1100,11 @@ pub async fn start_server_handler(
         id
     };
     // 백업·복원·업데이트가 서버 파일을 다루는 동안에는 켜지 않는다 (시작을 마칠 때까지 잡는다)
-    let _guard = match inst_id.as_deref().map(super::backup::BusyGuard::take) {
-        Some(None) => return super::audited(&state, "start", &name, None, None, super::backup::instance_busy()).await,
-        Some(guard) => guard,
+    let _guard = match inst_id.as_deref() {
+        Some(id) => match super::backup::InstanceLock::take_for_writes(id).await {
+            None => return super::audited(&state, "start", &name, None, None, super::backup::instance_busy()).await,
+            guard => guard,
+        },
         None => None,
     };
 

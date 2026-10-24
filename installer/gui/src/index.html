@@ -152,12 +152,22 @@
             </div>
             <div class="sheet-section">
                 <label class="checkbox-row">
-                    <input type="checkbox" id="chk-keep-settings" />
+                    <input type="checkbox" id="chk-keep-instances" checked />
                     <span class="check-mark"></span>
-                    <span id="label-keep-settings">Keep configuration files</span>
+                    <span id="label-keep-instances">Keep game servers</span>
+                </label>
+                <p class="sheet-hint" id="hint-keep-instances" style="margin:4px 0 0 28px;font-size:11px;opacity:0.6;">
+                    Keeps server files, worlds, backups and each server's settings so a reinstall picks them up.
+                </p>
+            </div>
+            <div class="sheet-section">
+                <label class="checkbox-row">
+                    <input type="checkbox" id="chk-keep-settings" checked />
+                    <span class="check-mark"></span>
+                    <span id="label-keep-settings">Keep settings</span>
                 </label>
                 <p class="sheet-hint" id="hint-keep-settings" style="margin:4px 0 0 28px;font-size:11px;opacity:0.6;">
-                    Preserves settings.json, instance configs and other configuration files for future reinstallation.
+                    Keeps app settings and the Discord connection so a reinstall picks them up.
                 </p>
             </div>
             <div class="sheet-section sheet-action" style="gap:10px; flex-direction:row;">

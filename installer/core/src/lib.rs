@@ -9,17 +9,18 @@ pub mod release;
 pub mod runtime_bootstrap;
 #[cfg(target_os = "windows")]
 pub mod shortcuts;
+pub mod traces;
 pub mod uninstall;
 
+pub use release::VerifiedRelease;
+use saba_chan_updater_lib::config_file::ConfigFile;
+use saba_chan_updater_lib::constants;
+pub use saba_chan_updater_lib::profile::Profile;
+use saba_chan_updater_lib::relay::{self, ReleaseManifest};
+use saba_chan_updater_lib::UpdateManager;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use saba_chan_updater_lib::config_file::ConfigFile;
-use saba_chan_updater_lib::constants;
-use saba_chan_updater_lib::relay::{self, ReleaseManifest};
-pub use release::VerifiedRelease;
-use saba_chan_updater_lib::UpdateManager;
-pub use saba_chan_updater_lib::profile::Profile;
 
 /// 설치기 버전 — 설치기 컴포넌트(`versions.toml` installer)와 같이 간다
 const INSTALLER_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -90,14 +91,20 @@ fn drop_parts_outside(
     if !profile.includes("gui") {
         #[cfg(target_os = "windows")]
         shortcuts::remove_shortcuts_into(install_dir, shortcuts::ALL_SHORTCUT_NAMES);
-        for exe in saba_chan_updater_lib::GUI_EXE_NAMES.iter().map(|name| install_dir.join(name)).filter(|exe| exe.is_file()) {
+        for exe in saba_chan_updater_lib::GUI_EXE_NAMES
+            .iter()
+            .map(|name| install_dir.join(name))
+            .filter(|exe| exe.is_file())
+        {
             std::fs::remove_file(&exe).map_err(|e| format!("Failed to remove {}: {}", exe.display(), e))?;
         }
     }
     installed.retain(|key, _| profile.includes(key));
-    Ok(saba_chan_updater_lib::integrity::retain_at(records, |key| profile.includes(key))
-        .err()
-        .map(|e| format!("Failed to update {}: {}", records.display(), e)))
+    Ok(
+        saba_chan_updater_lib::integrity::retain_at(records, |key| profile.includes(key))
+            .err()
+            .map(|e| format!("Failed to update {}: {}", records.display(), e)),
+    )
 }
 
 /// 설치 설정 (스냅샷)
@@ -126,7 +133,10 @@ pub trait InstallHooks: Send + Sync {
 
     /// 쓸 수 없는 설치 폴더를 권한 상승으로 만든다. 기본은 상승하지 않고 이유를 돌려준다
     fn elevate_create_dir(&self, dir: &Path) -> Result<(), String> {
-        Err(format!("{} is not writable; choose another folder or run with administrator rights", dir.display()))
+        Err(format!(
+            "{} is not writable; choose another folder or run with administrator rights",
+            dir.display()
+        ))
     }
 }
 
@@ -171,6 +181,16 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
     // Step 1: 설치 디렉토리 생성 + 쓰기 권한 확인 (0-5%)
     emit("prepare", "Creating install directory...", 2);
     let install_dir = config.install_path.clone();
+    // 한 PC에는 설치본 하나만 둔다: 설치본들이 사용자 데이터 폴더(설정·인스턴스·기록)를 함께 쓴다
+    if let Some(other) = other_install(&install_dir) {
+        return fail(
+            "installed_elsewhere",
+            &format!(
+                "Saba-chan is already installed in {}. Update or remove that install first.",
+                other.display()
+            ),
+        );
+    }
     // 설치기가 새로 만든 폴더만 전용 폴더로 표시한다 (제거기가 폴더째 지워도 되는 곳).
     // 원래 있던 빈 폴더(드라이브 루트, 문서 폴더 등)는 나중에 다른 파일이 생길 수 있어 표시하지 않는다
     let dedicated = !install_dir.is_dir() || install_dir.join(uninstall::INSTALL_MARKER).is_file();
@@ -180,7 +200,10 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
     let needs_elevation = {
         let probe = install_dir.join(".saba-write-test");
         match std::fs::write(&probe, b"test") {
-            Ok(_) => { let _ = std::fs::remove_file(&probe); false }
+            Ok(_) => {
+                let _ = std::fs::remove_file(&probe);
+                false
+            }
             Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => true,
             Err(_) => {
                 // 디렉토리 자체가 없는 경우 (create_dir_all도 실패)
@@ -238,20 +261,16 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
         }
     };
 
-    // 덮어쓰기 설치: 이 폴더의 데몬이 떠 있으면 먼저 끈다 (파일 잠금 방지)
-    uninstall::stop_daemon_before_install(&install_dir).await;
     let total = components.len().max(1);
     let mut installed = Vec::new();
-    let mut installed_versions = UpdateManager::load_installed_manifest();
     let temp_dir = release::work_dir();
     let _cleanup = RemoveOnDrop(temp_dir.clone());
     let _ = std::fs::create_dir_all(&temp_dir);
 
-    for (i, (key, info)) in components.iter().enumerate() {
-        let pct = 10 + (i * 35 / total) as i32;
+    // 모두 받고 검증한 뒤에야 설치 폴더를 건드린다: 받다 실패해도 있던 설치는 그대로 돈다
+    let fetched = fetch_all(&components, &temp_dir, |i, key, info, temp_file| {
+        let pct = 10 + (i * 30 / total) as i32;
         emit("download", &format!("Downloading {}...", key), pct);
-
-        let temp_file = temp_dir.join(&info.filename);
         let file_name = info.filename.clone();
         let key_name = key.to_string();
         let progress_cb = move |received: u64, total_bytes: Option<u64>| {
@@ -276,16 +295,33 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
                 ..Default::default()
             });
         };
+        async move { release::download(info, &temp_file, progress_cb).await }
+    })
+    .await;
+    let fetched = match fetched {
+        Ok(f) => f,
+        Err((code, msg)) => return fail(code, &msg),
+    };
 
-        if let Err(e) = release::download(info, &temp_file, progress_cb).await {
-            return fail("download_failed", &format!("Failed to download {}: {}", key, e));
-        }
-
-        emit("extract", &format!("Extracting {}...", key), pct + 3);
-        if let Err(e) = extract_zip(&temp_file, &release::target_dir(&install_dir, info)) {
+    // 덮어쓰기 설치: 이 폴더의 데몬이 떠 있으면 먼저 끈다 (파일 잠금 방지)
+    if let Err(e) = uninstall::stop_daemon_before_install(&install_dir).await {
+        return fail("daemon_running", &e);
+    }
+    // 깨진 기록은 사본으로 옮겨 두고 새로 쓴다 (빈 표로 읽어 덮어쓰면 그 내용이 흔적 없이 사라진다)
+    let mut installed_versions = UpdateManager::read_installed_manifest_for_update().unwrap_or_else(|e| {
+        tracing::warn!("installed-manifest.json could not be read: {}", e);
+        UpdateManager::load_installed_manifest()
+    });
+    for (i, ((key, info), zip)) in components.iter().zip(&fetched).enumerate() {
+        emit(
+            "extract",
+            &format!("Extracting {}...", key),
+            40 + (i * 5 / total) as i32,
+        );
+        if let Err(e) = extract_zip(zip, &release::target_dir(&install_dir, info)) {
             return fail("extract_failed", &format!("Failed to extract {}: {}", key, e));
         }
-        let _ = std::fs::remove_file(&temp_file);
+        let _ = std::fs::remove_file(zip);
         installed_versions.insert(key.to_string(), info.version.clone());
         installed.push(key.to_string());
     }
@@ -316,16 +352,10 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
 
         // ── Fix 3: 모듈 의존 익스텐션 자동 설치 ──
         emit("extensions", "Checking required extensions...", 54);
-        let required_extensions = collect_required_extensions(
-            &config.selected_modules,
-            &config.module_metadata,
-        );
+        let required_extensions = collect_required_extensions(&config.selected_modules, &config.module_metadata);
 
         if !required_extensions.is_empty() {
-            tracing::info!(
-                "선택된 모듈에 필요한 익스텐션: {:?}",
-                required_extensions
-            );
+            tracing::info!("선택된 모듈에 필요한 익스텐션: {:?}", required_extensions);
 
             let (ext_names, failed) = install_required_extensions(hooks, &manifest, &required_extensions).await;
             for name in ext_names {
@@ -350,7 +380,10 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
         }
         Err(e) => {
             // Python 설정 실패는 치명적이지 않음 — 메인 앱이 첫 실행 시 재시도
-            warn(format!("Python runtime was not prepared ({}); Saba-chan will retry on first start", e));
+            warn(format!(
+                "Python runtime was not prepared ({}); Saba-chan will retry on first start",
+                e
+            ));
         }
     }
 
@@ -364,15 +397,14 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
 
     // Step 9: 레지스트리 등록 (90-95%). 제거 항목이 없는 설치(CLI)도 폴더 목록에는 남겨, 다른 설치본을 지울 때 공용 데이터를 지키게 한다
     emit("registry", "Registering application...", 92);
-    if let Err(e) = saba_chan_updater_lib::uninstall_entry::remember_install(
-        &saba_chan_updater_lib::uninstall_entry::installs_file(),
-        &install_dir,
-    ) {
+    if let Err(e) = saba_chan_updater_lib::uninstall_entry::remember_install(&installs_file(), &install_dir) {
         warn(format!("Failed to record the install folder: {}", e));
     }
     #[cfg(target_os = "windows")]
     {
-        if let Err(e) = registry::register_uninstall_entry(&install_dir, &manifest.version, config.uninstaller_exe.as_deref()) {
+        if let Err(e) =
+            registry::register_uninstall_entry(&install_dir, &manifest.version, config.uninstaller_exe.as_deref())
+        {
             warn(format!("Failed to register in Installed apps: {}", e));
         }
     }
@@ -401,7 +433,10 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
                     }
                 }
             }
-            None => warn(format!("No GUI executable in {}; shortcuts not created", install_dir.display())),
+            None => warn(format!(
+                "No GUI executable in {}; shortcuts not created",
+                install_dir.display()
+            )),
         }
     }
 
@@ -410,11 +445,20 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
     // 설치 폴더에 남긴 제거기 사본도 기록한다. 업데이터가 이 버전을 보고 사본을 바꾼다
     // 복사가 실패해 옛 사본이 남았으면 기록하지 않는다 (새 버전으로 적으면 업데이터가 옛 사본을 안 바꾼다)
     let copy = install_dir.join(saba_chan_updater_lib::INSTALLER_EXE);
-    if config.uninstaller_exe.as_deref().is_some_and(|me| is_copy_of(&copy, me)) {
+    if config
+        .uninstaller_exe
+        .as_deref()
+        .is_some_and(|me| is_copy_of(&copy, me))
+    {
         installed_versions.insert("installer".to_string(), INSTALLER_VERSION.to_string());
     }
     // 데스크톱 설치 위에 헤드리스로 덮으면 남은 GUI와 그 기록을 지운다 (업데이터가 다시 손대지 않아 낡은 채 남는다)
-    match drop_parts_outside(config.profile, &install_dir, &saba_chan_updater_lib::integrity::records_path(), &mut installed_versions) {
+    match drop_parts_outside(
+        config.profile,
+        &install_dir,
+        &saba_chan_updater_lib::integrity::records_path(),
+        &mut installed_versions,
+    ) {
         Ok(problem) => problem.into_iter().for_each(&warn),
         Err(e) => return fail("profile_failed", &e),
     }
@@ -465,7 +509,11 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
 /// 설치에 쓸 폴더: 고른 폴더가 비어 있지 않고 사바쨩 설치도 아니면 그 아래 `Saba-chan` 폴더.
 /// 제거기가 설치 폴더를 지우므로 사용자 파일이 든 폴더에 바로 풀지 않는다
 pub fn dedicated_install_dir(chosen: &Path) -> PathBuf {
-    if chosen.as_os_str().is_empty() || !chosen.is_dir() || is_empty_dir(chosen) || uninstall::looks_like_install_dir(chosen) {
+    if chosen.as_os_str().is_empty()
+        || !chosen.is_dir()
+        || is_empty_dir(chosen)
+        || uninstall::looks_like_install_dir(chosen)
+    {
         chosen.to_path_buf()
     } else {
         chosen.join("Saba-chan")
@@ -473,10 +521,52 @@ pub fn dedicated_install_dir(chosen: &Path) -> PathBuf {
 }
 
 pub fn is_empty_dir(dir: &Path) -> bool {
-    std::fs::read_dir(dir).map(|mut it| it.next().is_none()).unwrap_or(false)
+    std::fs::read_dir(dir)
+        .map(|mut it| it.next().is_none())
+        .unwrap_or(false)
 }
 
+/// 이 PC에 이미 있는 설치 폴더: 설치 목록과 "설치된 앱" 항목 중 데몬 실행 파일이 남은 곳
+pub fn existing_install() -> Option<PathBuf> {
+    found_installs(&installs_file(), &install_entries()).next()
+}
+
+/// `chosen`에 설치하면 막히는지: 다른 폴더에 남은 설치본 (`install`도 같은 이유로 멈춘다)
+pub fn other_install(chosen: &Path) -> Option<PathBuf> {
+    install_elsewhere(chosen, &installs_file(), &install_entries())
+}
+
+/// `chosen` 말고 다른 곳에 남은 설치본
+fn install_elsewhere(chosen: &Path, installs: &Path, entries: &[(String, String)]) -> Option<PathBuf> {
+    found_installs(installs, entries).find(|dir| !saba_chan_updater_lib::same_path(dir, chosen))
+}
+
+fn found_installs<'a>(installs: &Path, entries: &'a [(String, String)]) -> impl Iterator<Item = PathBuf> + 'a {
+    let listed = saba_chan_updater_lib::uninstall_entry::listed_installs(installs);
+    listed
+        .into_iter()
+        .chain(entries.iter().map(|(_, loc)| loc.clone()))
+        .map(PathBuf::from)
+        .filter(|dir| dir.join(saba_chan_updater_lib::uninstall_entry::CORE_EXE).is_file())
+}
+
+fn installs_file() -> PathBuf {
+    saba_chan_updater_lib::uninstall_entry::installs_file()
+}
+
+/// "설치된 앱" 항목은 기본 데이터 폴더를 쓰는 설치본이다: 데이터 폴더를 따로 정한 설치(`SABA_DATA_DIR`)는 그 폴더의 설치 목록만 본다
+fn install_entries() -> Vec<(String, String)> {
+    if std::env::var_os("SABA_DATA_DIR").is_some_and(|d| !d.is_empty()) {
+        return Vec::new();
+    }
+    saba_chan_updater_lib::uninstall_entry::entries()
+}
+
+/// 기본 설치 폴더: 이미 설치돼 있으면 그 자리 (그 자리를 업데이트한다)
 pub fn default_install_path() -> String {
+    if let Some(dir) = existing_install() {
+        return dir.to_string_lossy().into_owned();
+    }
     #[cfg(target_os = "windows")]
     {
         r"C:\Program Files\Saba-chan".to_string()
@@ -562,6 +652,32 @@ fn normalize_language_tag(input: &str) -> Option<String> {
     Some(result)
 }
 
+/// 컴포넌트를 모두 `temp_dir`에 받고(`fetch`가 SHA-256까지 확인) 빈 폴더에 한 번 풀어 본다.
+/// 하나라도 받지 못하거나 깨졌으면 무엇도 적용하기 전에 실패 종류와 이유를 돌려준다. 받은 zip 경로를 같은 순서로 돌려준다
+async fn fetch_all<'a, F, Fut>(
+    components: &[(&'a String, &'a relay::ManifestComponent)],
+    temp_dir: &Path,
+    mut fetch: F,
+) -> Result<Vec<PathBuf>, (&'static str, String)>
+where
+    F: FnMut(usize, &'a String, &'a relay::ManifestComponent, PathBuf) -> Fut,
+    Fut: std::future::Future<Output = Result<(), String>>,
+{
+    let mut zips = Vec::new();
+    for (i, (key, info)) in components.iter().enumerate() {
+        let zip = temp_dir.join(&info.filename);
+        fetch(i, key, info, zip.clone())
+            .await
+            .map_err(|e| ("download_failed", format!("Failed to download {}: {}", key, e)))?;
+        let probe = temp_dir.join(format!(".check-{}", i));
+        let checked = saba_chan_updater_lib::extract_zip(&zip, &probe, |_| Ok(()));
+        let _ = std::fs::remove_dir_all(&probe);
+        checked.map_err(|e| ("extract_failed", format!("Failed to extract {}: {}", key, e)))?;
+        zips.push(zip);
+    }
+    Ok(zips)
+}
+
 fn extract_zip(zip_path: &Path, target_dir: &Path) -> anyhow::Result<()> {
     std::fs::create_dir_all(target_dir)?;
     // 덮어쓰기 설치 때 켜진 서버의 saba-runner처럼 잠긴 exe는 업데이터처럼 비켜 둔다
@@ -613,9 +729,7 @@ fn setup_config(install_dir: &Path, config: &InstallOptions) {
 /// 설치 시 고른 언어를 GUI 설정(`config.json`의 `gui.language`)에 넣는다. 다른 키는 보존.
 fn save_language_setting(language: &str) {
     let result = ConfigFile::default_location().update(|doc| {
-        let gui = doc
-            .entry("gui".to_string())
-            .or_insert_with(|| serde_json::json!({}));
+        let gui = doc.entry("gui".to_string()).or_insert_with(|| serde_json::json!({}));
         if !gui.is_object() {
             *gui = serde_json::json!({});
         }
@@ -657,10 +771,7 @@ fn version_compare(a: &str, b: &str) -> std::cmp::Ordering {
 // ═══════════════════════════════════════════════════════
 
 /// 선택된 모듈의 required_extensions를 수집 (중복 제거)
-fn collect_required_extensions(
-    selected_modules: &[String],
-    module_metadata: &[ModuleInfo],
-) -> Vec<String> {
+fn collect_required_extensions(selected_modules: &[String], module_metadata: &[ModuleInfo]) -> Vec<String> {
     let mut extensions: Vec<String> = Vec::new();
     for module_id in selected_modules {
         if let Some(meta) = module_metadata.iter().find(|m| m.id == *module_id) {
@@ -745,14 +856,22 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).unwrap();
         assert_eq!(dedicated_install_dir(&root), root, "an empty folder is used as is");
-        assert_eq!(dedicated_install_dir(&root.join("new")), root.join("new"), "a new folder is used as is");
+        assert_eq!(
+            dedicated_install_dir(&root.join("new")),
+            root.join("new"),
+            "a new folder is used as is"
+        );
 
         std::fs::write(root.join("notes.txt"), b"").unwrap();
         assert_eq!(dedicated_install_dir(&root), root.join("Saba-chan"));
 
         let core = format!("saba-core{}", std::env::consts::EXE_SUFFIX);
         std::fs::write(root.join(core), b"").unwrap();
-        assert_eq!(dedicated_install_dir(&root), root, "an existing install is updated in place");
+        assert_eq!(
+            dedicated_install_dir(&root),
+            root,
+            "an existing install is updated in place"
+        );
         std::fs::remove_dir_all(&root).unwrap();
     }
 
@@ -761,20 +880,122 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let gui = tmp.path().join(saba_chan_updater_lib::GUI_EXE_NAMES[0]);
         std::fs::write(&gui, b"").unwrap();
-        let mut installed: HashMap<String, String> =
-            [("gui", "0.1.8"), ("saba-core", "0.1.9")].into_iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
+        let mut installed: HashMap<String, String> = [("gui", "0.1.8"), ("saba-core", "0.1.9")]
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
         // 업데이터가 적용한 GUI는 파일 해시 기록이 있다: 남기면 무결성 검사가 지운 GUI를 "파일 없음"으로 보인다
         let records = tmp.path().join("installed-files.json");
         std::fs::write(&records, r#"{"gui":{"a":"0"},"saba-core":{"b":"1"}}"#).unwrap();
 
-        assert_eq!(drop_parts_outside(Profile::Desktop, tmp.path(), &records, &mut installed), Ok(None));
-        assert!(gui.is_file() && installed.contains_key("gui"), "a desktop install keeps the GUI");
+        assert_eq!(
+            drop_parts_outside(Profile::Desktop, tmp.path(), &records, &mut installed),
+            Ok(None)
+        );
+        assert!(
+            gui.is_file() && installed.contains_key("gui"),
+            "a desktop install keeps the GUI"
+        );
 
-        assert_eq!(drop_parts_outside(Profile::Headless, tmp.path(), &records, &mut installed), Ok(None));
+        assert_eq!(
+            drop_parts_outside(Profile::Headless, tmp.path(), &records, &mut installed),
+            Ok(None)
+        );
         assert!(!gui.exists());
         assert_eq!(installed.keys().collect::<Vec<_>>(), ["saba-core"]);
         let kept: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&records).unwrap()).unwrap();
         assert_eq!(kept.as_object().unwrap().keys().collect::<Vec<_>>(), ["saba-core"]);
+    }
+
+    // 둘째 컴포넌트가 깨졌으면 첫째도 적용하지 않는다: 받기·검증이 모두 끝나야 설치 폴더를 건드린다
+    #[tokio::test]
+    async fn a_broken_second_archive_stops_before_anything_is_applied() {
+        use std::io::Write;
+        let tmp = tempfile::tempdir().unwrap();
+        let comp = |file: &str| relay::ManifestComponent {
+            version: "0.1.10".into(),
+            filename: file.into(),
+            size_bytes: None,
+            sha256: "0".repeat(64),
+            url: "https://example.invalid/x.zip".into(),
+            install_dir: None,
+            requires: None,
+            meta: None,
+        };
+        let (core, gui) = (comp("core.zip"), comp("gui.zip"));
+        let (k1, k2) = ("saba-core".to_string(), "gui".to_string());
+        let components = vec![(&k1, &core), (&k2, &gui)];
+        let fake = |_: usize, _: &String, info: &relay::ManifestComponent, dest: PathBuf| {
+            let good = info.filename == "core.zip";
+            async move {
+                if good {
+                    let mut zip = zip::ZipWriter::new(std::fs::File::create(&dest).unwrap());
+                    zip.start_file("saba-core", zip::write::FileOptions::default()).unwrap();
+                    zip.write_all(b"bin").unwrap();
+                    zip.finish().unwrap();
+                } else {
+                    std::fs::write(&dest, b"not a zip").unwrap();
+                }
+                Ok(())
+            }
+        };
+
+        let err = fetch_all(&components, tmp.path(), fake).await.unwrap_err();
+        assert_eq!(err.0, "extract_failed", "{}", err.1);
+        assert!(err.1.contains("gui"), "{}", err.1);
+
+        let offline = |_: usize, key: &String, _: &relay::ManifestComponent, _: PathBuf| {
+            let fail = key == "gui";
+            async move {
+                if fail {
+                    Err("offline".to_string())
+                } else {
+                    Ok(())
+                }
+            }
+        };
+        let only_core = vec![(&k2, &gui)];
+        assert_eq!(
+            fetch_all(&only_core, tmp.path(), offline).await.unwrap_err().0,
+            "download_failed"
+        );
+
+        let left: Vec<_> = std::fs::read_dir(tmp.path())
+            .unwrap()
+            .flatten()
+            .filter(|e| e.path().is_dir())
+            .collect();
+        assert!(left.is_empty(), "no check folder is left behind");
+    }
+
+    // 한 PC 한 설치: 데몬 실행 파일이 남은 다른 폴더가 있으면 그곳을 알려 준다. 같은 폴더·지워진 폴더는 막지 않는다
+    #[test]
+    fn another_install_on_this_pc_is_found() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (here, there, gone) = (
+            tmp.path().join("here"),
+            tmp.path().join("there"),
+            tmp.path().join("gone"),
+        );
+        for dir in [&here, &there, &gone] {
+            std::fs::create_dir_all(dir).unwrap();
+        }
+        std::fs::write(here.join(saba_chan_updater_lib::uninstall_entry::CORE_EXE), b"").unwrap();
+        let installs = tmp.path().join("installs.json");
+        std::fs::write(&installs, serde_json::to_vec(&[&here, &gone]).unwrap()).unwrap();
+
+        assert_eq!(
+            install_elsewhere(&here, &installs, &[]),
+            None,
+            "updating in place is fine"
+        );
+        assert_eq!(install_elsewhere(&there, &installs, &[]), Some(here.clone()));
+
+        // 설치 목록에 없는 옛 설치도 "설치된 앱" 항목으로 찾는다
+        std::fs::write(&installs, b"[]").unwrap();
+        let entries = [("Saba-chan".to_string(), here.to_string_lossy().into_owned())];
+        assert_eq!(install_elsewhere(&there, &installs, &entries), Some(here.clone()));
+        assert_eq!(install_elsewhere(&there, &tmp.path().join("missing.json"), &[]), None);
     }
 
     #[cfg(unix)]
@@ -820,7 +1041,10 @@ mod tests {
 
         assert_eq!(last.error_code.as_deref(), Some("elevation_failed"), "{:?}", last);
         assert!(last.message.contains("not writable"), "{}", last.message);
-        assert_eq!(hooks.0.lock().unwrap().last().map(|p| p.step.clone()).as_deref(), Some("error"));
+        assert_eq!(
+            hooks.0.lock().unwrap().last().map(|p| p.step.clone()).as_deref(),
+            Some("error")
+        );
         std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o755)).unwrap();
         let _ = std::fs::remove_dir_all(&root);
     }

@@ -95,13 +95,9 @@ pub fn refuse(proxy: &Proxy, line: &str, error: &str) {
 }
 
 /// 다 쓴 뒤에 이름을 바꿔 둔다: 모듈이 반쯤 쓴 파일을 읽지 않게. 폴더는 격리 쪽도 쓸 수 있으므로
-/// 미리 놓인 `.part`(링크 등)를 따라 쓰지 않고 지운 뒤 새로 만든다
+/// 임시 파일은 늘 새로 만든다 (미리 놓인 링크를 따라 쓰지 않는다)
 fn write_reply(dir: &Path, id: &str, reply: &Value) -> std::io::Result<()> {
-    use std::io::Write;
-    let part = dir.join(format!("{id}.part"));
-    let _ = std::fs::remove_file(&part);
-    std::fs::OpenOptions::new().write(true).create_new(true).open(&part)?.write_all(&serde_json::to_vec(reply)?)?;
-    std::fs::rename(&part, dir.join(format!("{id}.json")))
+    saba_atomic_file::write(&dir.join(format!("{id}.json")), &serde_json::to_vec(reply)?, saba_atomic_file::Mode::Plain)
 }
 
 async fn exchange(proxy: &Proxy, request: &Value) -> Result<Vec<u8>, String> {

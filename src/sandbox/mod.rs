@@ -643,6 +643,47 @@ pub fn open_user_runtime(entry: &Path, java_path: &str) {
     let _ = key;
 }
 
+/// 제거기가 격리 실행의 흔적을 거둘 폴더 (`saba-core sandbox reset`): 인스턴스 폴더·작업 폴더·실행 파일 폴더(`dirs`)와
+/// 그 바로 위(목록 권한, `isolation_for`), 데몬 Python의 기반 설치. 인스턴스를 남겨도 그 폴더의 권한은 거둔다
+pub fn reset_targets(dirs: &[PathBuf], python_base: Option<PathBuf>) -> Vec<PathBuf> {
+    let mut out: Vec<PathBuf> = dirs.iter().flat_map(|d| [Some(d.clone()), d.parent().map(Path::to_path_buf)]).flatten().collect();
+    out.extend(python_base);
+    out.retain(|p| !p.as_os_str().is_empty());
+    out.sort();
+    out.dedup();
+    out
+}
+
+/// `saba-core sandbox reset`: 인스턴스 기록에서 폴더를 모아 격리 실행의 프로필·권한·표시를 거둔다. Windows만 할 일이 있다.
+/// 지운 프로필 수, 또는 거두지 못한 것
+pub fn reset() -> Result<usize, Vec<String>> {
+    let root = saba_chan_updater_lib::constants::resolve_instances_dir();
+    let mut dirs: Vec<PathBuf> = Vec::new();
+    // 기록 폴더가 없으면 만들지 않는다 (InstanceStore::load는 루트를 만든다)
+    if root.is_dir() {
+        let mut store = crate::instance::InstanceStore::new(&root.to_string_lossy());
+        if let Err(e) = store.load() {
+            return Err(vec![format!("read instances: {e:#}")]);
+        }
+        for instance in store.list() {
+            dirs.push(store.instance_dir(&instance.id));
+            dirs.extend(instance.working_dir.as_deref().filter(|d| !d.is_empty()).map(PathBuf::from));
+            dirs.extend(instance.executable_path.as_deref().and_then(|p| Path::new(p).parent()).map(Path::to_path_buf));
+        }
+    }
+    let base = crate::python_env::venv_python().and_then(|p| appcontainer::venv_home(&p));
+    let targets = reset_targets(&dirs, base);
+    #[cfg(windows)]
+    {
+        appcontainer::reset(&targets, &dirs)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = targets;
+        Ok(0)
+    }
+}
+
 /// 데몬이 시작할 때: 예전에 준 런타임 읽기 권한 중 지금 쓰지 않는 것을 거둔다. 지금 쓰는 것은 데몬이 아는 런타임과
 /// 인스턴스마다 사용자가 정한 `java_path`(`(모듈 진입 파일, java_path)`)다. Windows에서만 한다
 pub fn reconcile_runtimes(user_runtimes: &[(String, String)]) {
@@ -990,6 +1031,18 @@ pub fn sha256_of(bytes: &[u8]) -> String {
 
 #[cfg(test)]
 mod tests {
+
+    /// 제거기는 인스턴스·작업·실행 파일 폴더와 그 바로 위, Python 기반 설치에서 권한을 거둔다
+    #[test]
+    fn the_uninstaller_revokes_grants_on_instance_folders_their_parents_and_the_python_base() {
+        let dirs = [PathBuf::from("/data/instances/a"), PathBuf::from("/games/pal"), PathBuf::from("/games/pal")];
+        let got = reset_targets(&dirs, Some(PathBuf::from("/py")));
+        let want: Vec<PathBuf> = ["/data/instances", "/data/instances/a", "/games", "/games/pal", "/py"].iter().map(PathBuf::from).collect();
+        assert_eq!(got, want);
+        assert!(appcontainer::is_saba_profile("saba-chan.untrusted.0123456789abcdef"));
+        assert!(appcontainer::is_saba_profile("saba-chan.untrusted"), "the old shared profile");
+        assert!(!appcontainer::is_saba_profile("saba-chan.untrustedness") && !appcontainer::is_saba_profile("Microsoft.Photos"));
+    }
     use super::*;
 
     // 백로그 M7 (사용자 결정: 동기화 폴더 아래 서버는 계속 막는다). 막되 원인과 할 일을 알린다

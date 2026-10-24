@@ -28,19 +28,7 @@ pub fn generate_and_save_token() -> anyhow::Result<Arc<String>> {
     let token = uuid::Uuid::new_v4().to_string();
     let path = token_file_path();
 
-    // 부모 디렉토리 생성
-    if let Some(parent) = std::path::Path::new(&path).parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-
-    std::fs::write(&path, &token)?;
-
-    // 파일 퍼미션 제한 (Unix only)
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
-    }
+    saba_atomic_file::write(std::path::Path::new(&path), token.as_bytes(), saba_atomic_file::Mode::Secret)?;
 
     // 메모리에 캐시 (이후 auth_middleware는 파일을 읽지 않음)
     {

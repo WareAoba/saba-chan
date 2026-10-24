@@ -1,6 +1,7 @@
 import clsx from 'clsx';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useDiscordStore } from '../../stores/useDiscordStore';
 import { safeShowToast } from '../../utils/helpers';
 import { Icon } from '../Icon';
 import { SabaSpinner } from '../ui/SabaUI';
@@ -51,7 +52,8 @@ function ErrorLines({ details }) {
     );
 }
 
-function InstanceCard({ guildId, inst, onSaved }) {
+/** 한 디스코드 서버(길드)에서 이 서버를 부르는 말. 제목은 그 디스코드 서버 이름이다 */
+function InstanceCard({ guildId, title, inst, onSaved }) {
     const { t } = useTranslation('gui');
     const [draft, setDraft] = useState(() => draftOf(inst));
     const [errors, setErrors] = useState({});
@@ -92,8 +94,7 @@ function InstanceCard({ guildId, inst, onSaved }) {
     return (
         <section className="dc-card">
             <div className="dc-card-head">
-                <h2>{inst.name}</h2>
-                <code className="dc-code-tag">{inst.module}</code>
+                <h2>{title}</h2>
             </div>
 
             <div className="dc-word-table">
@@ -172,25 +173,36 @@ function draftToItem(inst, draft) {
 }
 
 /**
- * 디스코드 서버(길드) 하나에서 인스턴스마다 부르는 말과 명령마다 부르는 말을 정한다.
- * 데몬 `GET /api/guilds/:guild/instances`, `PUT /api/guilds/:guild/instances/:id/words`.
+ * 서버 상세의 디스코드 탭: 페어링된 디스코드 서버(길드)마다 이 서버를 부르는 말과 명령마다 부르는 말을 정한다.
+ * 데몬 `GET /api/relay/host/:host/nodes`, `GET /api/guilds/:guild/instances`, `PUT /api/guilds/:guild/instances/:id/words`.
  */
-export function InstanceWordsTab({ node }) {
+export function InstanceDiscordTab({ server }) {
     const { t } = useTranslation('gui');
-    const guildId = node.guildId;
-    const [items, setItems] = useState(null);
+    const hostId = useDiscordStore((s) => s.discordCloudHostId);
+    const relayUrl = useDiscordStore((s) => s.discordCloudRelayUrl);
+    // [{node, inst}] — inst가 null이면 그 디스코드 서버는 이 서버를 쓰지 않는다
+    const [rows, setRows] = useState(null);
     const [error, setError] = useState(null);
 
     const load = useCallback(async () => {
         setError(null);
+        if (!hostId) return setRows([]);
         try {
-            const res = await window.api.guildInstances(guildId);
-            if (!Array.isArray(res)) throw new Error(res?.error || '-');
-            setItems(res);
+            const data = await window.api.relayListHostNodes(hostId, relayUrl);
+            if (data?.error) throw new Error(data.error);
+            const nodes = Array.isArray(data) ? data : data?.nodes || [];
+            const found = await Promise.all(
+                nodes.map(async (node) => {
+                    const res = await window.api.guildInstances(node.guildId);
+                    if (!Array.isArray(res)) throw new Error(res?.error || '-');
+                    return { node, inst: res.find((i) => i.id === server.id) || null };
+                }),
+            );
+            setRows(found);
         } catch (e) {
             setError(e.message);
         }
-    }, [guildId]);
+    }, [hostId, relayUrl, server.id]);
     useEffect(() => {
         load();
     }, [load]);
@@ -207,25 +219,46 @@ export function InstanceWordsTab({ node }) {
             </div>
         );
     }
-    if (!items) {
+    if (!rows) {
         return (
             <div className="dc-tab">
                 <SabaSpinner size="sm" />
             </div>
         );
     }
+    if (!hostId) {
+        return (
+            <div className="dc-tab">
+                <p className="muted pad">{t('discord.iw_not_linked')}</p>
+            </div>
+        );
+    }
     return (
         <div className="dc-tab">
             <p className="dc-card-desc">{t('discord.iw_desc')}</p>
-            {items.length === 0 && <p className="muted pad">{t('discord.iw_none')}</p>}
-            {items.map((inst) => (
-                <InstanceCard
-                    key={inst.id}
-                    guildId={guildId}
-                    inst={inst}
-                    onSaved={(next) => setItems((list) => list.map((x) => (x.id === inst.id ? next : x)))}
-                />
-            ))}
+            {rows.length === 0 && <p className="muted pad">{t('discord.iw_no_guilds')}</p>}
+            {rows.map(({ node, inst }) =>
+                inst ? (
+                    <InstanceCard
+                        key={node.guildId}
+                        guildId={node.guildId}
+                        title={node.guildName || node.guildId}
+                        inst={inst}
+                        onSaved={(next) =>
+                            setRows((list) =>
+                                list.map((r) => (r.node.guildId === node.guildId ? { node, inst: next } : r)),
+                            )
+                        }
+                    />
+                ) : (
+                    <section key={node.guildId} className="dc-card">
+                        <div className="dc-card-head">
+                            <h2>{node.guildName || node.guildId}</h2>
+                        </div>
+                        <p className="muted">{t('discord.iw_not_used')}</p>
+                    </section>
+                ),
+            )}
         </div>
     );
 }

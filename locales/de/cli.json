@@ -74,7 +74,8 @@
     "link_declined": "Verbindungsanfrage abgelehnt.",
     "pair_gui_hint": "Die Discord-Verbindung siehst du auch im Discord-Bereich der GUI.",
     "no_paired_servers": "Mit diesem PC ist noch kein Discord-Server gekoppelt. Ausführen: saba-chan-cli bot pair",
-    "pick_server": "Mehrere Discord-Server sind gekoppelt. Gib die ID des zu ändernden Servers an: {{servers}}"
+    "pick_server": "Mehrere Discord-Server sind gekoppelt. Gib die ID des zu ändernden Servers an: {{servers}}",
+    "words_not_used": "Dieser Discord-Server verwendet diesen Server nicht."
   },
   "col": {
     "players": "Spieler",
@@ -504,7 +505,9 @@
     "cmd": {
       "help": "Hilfe zu einem Befehl anzeigen. Mit --json: Befehlsbaum, Argumente und Exit-Codes",
       "events": "Daemon-Ereignisse live verfolgen (mit --json: ein JSON pro Zeile). Mit Strg+C beenden",
-      "install": "Saba-chan ohne das Fenster-Installationsprogramm auf diesem PC installieren"
+      "install": "Saba-chan ohne das Fenster-Installationsprogramm auf diesem PC installieren",
+      "uninstall": "Saba-chan von diesem PC entfernen (Einstellungen und Server bleiben, sofern nicht anders angegeben)",
+      "server.discord": "Wie jeder Discord-Server diesen Server und seine Befehle im Chat nennt. Ohne Optionen: anzeigen"
     },
     "arg": {
       "bot.channels.notify": "Der Benachrichtigungskanal (Abstürze, Backups, Updates, geplante Neustarts), nach Name oder ID",
@@ -525,7 +528,13 @@
       "install.dir": "Installationsordner (wird gefragt, wenn weggelassen)",
       "install.modules": "Zu installierende Spielmodule, durch Kommas getrennt (wird gefragt, wenn weggelassen)",
       "install.gui": "Auch ohne Bildschirm die Desktop-App installieren",
-      "install.no_gui": "Auch mit Bildschirm ohne Desktop-App installieren"
+      "install.no_gui": "Auch mit Bildschirm ohne Desktop-App installieren",
+      "uninstall.remove_settings": "Auch Einstellungen und die Discord-Verbindung entfernen",
+      "uninstall.remove_instances": "Auch Server entfernen (Serverdateien, Welten, Backups)",
+      "server.discord.guild": "Discord-Server per Name oder ID (wird gefragt, wenn mehrere gekoppelt sind und sich etwas ändert)",
+      "server.discord.word": "Wörter für den Server, durch Kommas getrennt (ersetzt die aktuellen). --word \"\" entfernt sie",
+      "server.discord.command": "Wörter für einen Befehl: BEFEHL=WORT,WORT (ersetzt die Wörter dieses Befehls, BEFEHL= entfernt sie). Mehrfach möglich",
+      "server.discord.clear": "Alle Wörter dieses Servers entfernen"
     },
     "after": "Namen können abgekürzt werden (z. B. start pal). Ohne Argumente öffnet sich im Terminal das Vollbildmenü (SABA_NO_TUI=1: die interaktive Shell).\nIn Skripten --json und --yes verwenden. Exit-Codes: 0 ok · 1 fehlgeschlagen · 2 Verwendung · 3 Daemon nicht erreichbar · 4 nicht gefunden · 130 abgebrochen"
   },
@@ -692,6 +701,8 @@
     "installing": "Installiere",
     "not_writable": "In {{dir}} kann nicht geschrieben werden. Wähle mit --dir einen beschreibbaren Ordner (zum Beispiel im Benutzerordner)",
     "running_inside": "Diese CLI läuft innerhalb von {{dir}} und kann dort nicht installieren. Starte eine saba-chan-cli außerhalb des Installationsordners.",
+    "installed_elsewhere": "Saba-chan ist bereits in {{dir}} installiert. Aktualisiere diese Installation mit saba-chan-cli update oder entferne sie zuerst (eine Installation pro PC).",
+    "daemon_running": "Saba-chan läuft, und der Installer kann nicht erkennen, zu welcher Installation es gehört. Beende Saba-chan zuerst und versuche es erneut.",
     "empty_dir": "Der Installationsordner ist leer. Gib mit --dir einen Ordner an",
     "failed": "Installation fehlgeschlagen: {{reason}} (Details: {{log}})",
     "failed_no_log": "Installation fehlgeschlagen: {{reason}}",
@@ -704,5 +715,15 @@
     "module": "Update erforderlich. Das Modul {{name}} braucht Saba-chan {{version}} oder neuer.",
     "module_newer": "Update erforderlich. Das Modul {{name}} braucht ein neueres Saba-chan.",
     "extension": "Update erforderlich. Die Erweiterung {{name}} braucht Saba-chan {{version}} oder neuer."
+  },
+  "uninstall": {
+    "not_installed": "Dieser Befehl läuft nicht aus einem Saba-chan-Installationsordner, es gibt nichts zu entfernen.",
+    "confirm": "Saba-chan aus {{dir}} entfernen? Das Programm und alle seine Dateien werden gelöscht; {{kept}}.",
+    "kept_both": "Einstellungen und Server bleiben erhalten",
+    "kept_settings": "Einstellungen bleiben, Server werden entfernt",
+    "kept_instances": "Server bleiben, Einstellungen werden entfernt",
+    "kept_nothing": "Einstellungen und Server werden ebenfalls entfernt",
+    "done": "Saba-chan wurde entfernt; {{kept}}.",
+    "left": "Saba-chan wurde entfernt, aber diese Elemente ließen sich nicht löschen. Schließen Sie Programme, die sie verwenden, und löschen Sie sie selbst:\n{{paths}}"
   }
 }

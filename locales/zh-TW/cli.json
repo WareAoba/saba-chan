@@ -74,7 +74,8 @@
     "link_declined": "已拒絕連接請求。",
     "pair_gui_hint": "也可以在 GUI 的 Discord 頁面查看 Discord 連接狀態。",
     "no_paired_servers": "這台電腦尚未與任何 Discord 伺服器配對。執行: saba-chan-cli bot pair",
-    "pick_server": "已配對多個 Discord 伺服器。請指定要變更的伺服器 id: {{servers}}"
+    "pick_server": "已配對多個 Discord 伺服器。請指定要變更的伺服器 id: {{servers}}",
+    "words_not_used": "此 Discord 伺服器未使用此伺服器。"
   },
   "col": {
     "players": "線上玩家",
@@ -504,7 +505,9 @@
     "cmd": {
       "help": "顯示命令說明。加 --json 時輸出命令樹、參數與結束代碼",
       "events": "即時追蹤常駐程式事件（加 --json 時每行一個 JSON）。按 Ctrl+C 停止",
-      "install": "不使用視窗安裝程式，在這台電腦上安裝 Saba-chan"
+      "install": "不使用視窗安裝程式，在這台電腦上安裝 Saba-chan",
+      "uninstall": "從此電腦刪除 Saba-chan（除非指定，否則保留設定和伺服器）",
+      "server.discord": "每個 Discord 伺服器在聊天中用來稱呼此伺服器及其指令的詞。不帶選項：查看"
     },
     "arg": {
       "bot.channels.notify": "通知頻道(當機、備份、更新、排程重啟),名稱或 ID",
@@ -525,7 +528,13 @@
       "install.dir": "安裝資料夾（省略時會詢問）",
       "install.modules": "要安裝的遊戲模組，以逗號分隔（省略時會詢問）",
       "install.gui": "即使沒有螢幕也安裝桌面應用程式",
-      "install.no_gui": "即使有螢幕也不安裝桌面應用程式"
+      "install.no_gui": "即使有螢幕也不安裝桌面應用程式",
+      "uninstall.remove_settings": "同時刪除設定和 Discord 連線",
+      "uninstall.remove_instances": "同時刪除遊戲伺服器（伺服器檔案、世界、備份）",
+      "server.discord.guild": "Discord 伺服器名稱或 id（配對了多個且要修改時會詢問）",
+      "server.discord.word": "稱呼伺服器的詞，多個用逗號分隔（取代目前的詞）。--word \"\" 表示刪除",
+      "server.discord.command": "單一指令的稱呼：指令=稱呼,稱呼（只更改該指令，指令= 表示刪除）。可多次使用",
+      "server.discord.clear": "刪除此伺服器的所有稱呼"
     },
     "after": "名稱可以只寫一部分（例如 start pal）。在終端機中不帶參數執行會開啟全螢幕選單(SABA_NO_TUI=1 時為互動式 shell)。\n在指令碼中請使用 --json 和 --yes。結束代碼：0 成功 · 1 失敗 · 2 用法錯誤 · 3 無法連線常駐程式 · 4 找不到 · 130 已取消"
   },
@@ -692,6 +701,8 @@
     "installing": "正在安裝",
     "not_writable": "無法寫入 {{dir}}。請用 --dir 選擇可寫入的資料夾（例如使用者資料夾下）",
     "running_inside": "此 CLI 正在 {{dir}} 內執行，無法安裝到該資料夾。請使用安裝資料夾以外的 saba-chan-cli 執行。",
+    "installed_elsewhere": "Saba-chan 已安裝在 {{dir}}。請用 saba-chan-cli update 更新該安裝，或先將其移除（每台電腦只能安裝一份）。",
+    "daemon_running": "正在執行的 Saba-chan 無法確定屬於哪個安裝。請先結束 Saba-chan 後再試。",
     "empty_dir": "安裝資料夾為空。請用 --dir 指定資料夾",
     "failed": "安裝失敗：{{reason}}（詳細記錄：{{log}}）",
     "failed_no_log": "安裝失敗：{{reason}}",
@@ -704,5 +715,15 @@
     "module": "需要更新。{{name}} 模組需要 Saba-chan {{version}} 或更新版本。",
     "module_newer": "需要更新。{{name}} 模組需要更新版本的 Saba-chan。",
     "extension": "需要更新。{{name}} 擴充功能需要 Saba-chan {{version}} 或更新版本。"
+  },
+  "uninstall": {
+    "not_installed": "此命令不是從 Saba-chan 安裝資料夾執行的，沒有可刪除的安裝。",
+    "confirm": "要刪除 {{dir}} 中的 Saba-chan 嗎？程式及其建立的檔案將全部刪除，{{kept}}。",
+    "kept_both": "設定和遊戲伺服器將保留",
+    "kept_settings": "設定將保留，遊戲伺服器將刪除",
+    "kept_instances": "遊戲伺服器將保留，設定將刪除",
+    "kept_nothing": "設定和遊戲伺服器也將刪除",
+    "done": "已刪除 Saba-chan，{{kept}}。",
+    "left": "已刪除 Saba-chan，但無法刪除以下項目。請關閉正在使用它們的程式後手動刪除：\n{{paths}}"
   }
 }

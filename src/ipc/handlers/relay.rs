@@ -130,6 +130,15 @@ fn node_token_in(file: &ConfigFile) -> Option<String> {
         .filter(|t| !t.is_empty())
 }
 
+/// 토큰을 쓴 뒤 따라야 할 것: hostId를 토큰에 맞추고, 바뀌었으면 relay agent를 새 토큰으로 다시 띄운다.
+/// 토큰을 쓰는 곳(페어링 완료, 토큰 저장, 가져오기)이 모두 부른다
+pub(crate) async fn adopt_node_token(state: &IPCServer, token: &str, changed: bool) {
+    sync_host_id(state, Some(token)).await;
+    if changed {
+        crate::relay_agent::restart(state).await;
+    }
+}
+
 /// 노드 토큰을 바꾼다(`None`이나 빈 값이면 지운다). 값이 바뀌었으면 true
 pub(crate) fn write_node_token(token: Option<&str>) -> std::io::Result<bool> {
     write_node_token_in(&ConfigFile::default_location(), token)
@@ -558,10 +567,9 @@ pub async fn poll_pairing_status(
     if let Some("claimed") = data.get("status").and_then(|s| s.as_str()) {
         let token = data.get("nodeToken").and_then(|t| t.as_str()).map(str::to_string);
         let stored = store_node_token(&ConfigFile::default_location(), token.as_deref());
-        if stored.changed {
+        if let (true, Some(token)) = (stored.changed, token.as_deref()) {
             tracing::info!("Node token saved via pairing completion");
-            sync_host_id(&state, token.as_deref()).await;
-            crate::relay_agent::restart(&state).await;
+            adopt_node_token(&state, token, true).await;
         }
         if let Some(obj) = data.as_object_mut() {
             obj.insert("tokenSaved".into(), json!(stored.saved));
@@ -590,7 +598,7 @@ fn store_node_token(file: &ConfigFile, token: Option<&str>) -> StoredToken {
         return StoredToken { saved: true, changed: false };
     }
     match write_node_token_in(file, Some(token)) {
-        Ok(_) => StoredToken { saved: true, changed: true },
+        Ok(changed) => StoredToken { saved: true, changed },
         Err(e) => {
             tracing::warn!("Failed to auto-save node token: {}", e);
             StoredToken { saved: false, changed: false }

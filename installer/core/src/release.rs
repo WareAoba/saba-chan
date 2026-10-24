@@ -30,7 +30,7 @@ pub async fn fetch_latest() -> Result<VerifiedRelease, String> {
     let client = RelayClient::new(relay::DEFAULT_RELAY_URL);
     let platform = relay::current_platform();
     match client
-        .fetch_verified_release(relay::DEFAULT_CHANNEL, &platform, "", &relay::anon_client_id())
+        .fetch_verified_catalog(relay::DEFAULT_CHANNEL, &platform, &saba_chan_updater_lib::versions::bundled().release, &relay::anon_client_id())
         .await
     {
         Ok(Some(release)) => Ok(VerifiedRelease(release.manifest)),

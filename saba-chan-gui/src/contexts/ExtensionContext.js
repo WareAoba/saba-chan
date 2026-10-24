@@ -23,6 +23,10 @@ const ExtensionContext = createContext(null);
 const GUI_UNAPPROVED = Symbol('extension_gui_unapproved');
 // 번들을 받지 못했다(데몬 응답 없음 등): 로드됨으로 기억하지 않아 다음에 다시 받는다
 const LOAD_FAILED = Symbol('load_failed');
+// 오류 없이 실행된 번들이 남긴 전역 → 그 로드. 실패한 로드가 다른 로드의 전역을 자기 것으로 보지 않게 한다
+const executedBy = new WeakMap();
+// 전역 이름 → 마지막으로 오류 없이 실행된 번들의 전역. 늦게 실행돼 덮어쓴 뒤 실패한 번들은 이 값으로 되돌린다
+const lastExecuted = new Map();
 
 /**
  * 익스텐션 GUI 번들 동적 로드
@@ -42,6 +46,12 @@ async function loadExtensionBundle(ext) {
         return null;
     }
 
+    // 이 번들을 실행하기 직전의 전역과 이 번들이 남긴 전역. 실패하면 이 번들이 남긴 것만 되돌린다
+    // (같은 확장을 동시에 읽은 다른 로드가 이미 성공해 등록한 전역은 지우지 않는다)
+    let before;
+    let mine;
+    let executedBefore;
+    const load = {};
     try {
         // IPC를 통해 번들 JS 소스 가져오기 (인증 포함)
         const jsSource = await window.api.extensionGuiBundle(ext.id);
@@ -49,22 +59,47 @@ async function loadExtensionBundle(ext) {
         if (typeof jsSource !== 'string' || !jsSource) return LOAD_FAILED;
 
         // blob URL로 <script> 태그 삽입
+        // 번들 실행 중 throw는 window error로 오고 onload도 불린다: 그 오류를 실패로 본다
         await new Promise((resolve, reject) => {
             const blob = new Blob([jsSource], { type: 'application/javascript' });
             const url = URL.createObjectURL(blob);
             const script = document.createElement('script');
+            let thrown = null;
+            const onThrow = (ev) => {
+                if (ev.filename !== url) return;
+                thrown = ev.error || new Error(ev.message);
+                // 실행 중 오류는 실행과 같은 차례에 온다: 이때의 전역이 이 번들이 남긴 것이다
+                mine = window[globalName];
+            };
+            const done = () => {
+                window.removeEventListener('error', onThrow);
+                URL.revokeObjectURL(url);
+            };
+            window.addEventListener('error', onThrow);
+            before = window[globalName];
+            executedBefore = lastExecuted.get(globalName);
             script.src = url;
             script.async = true;
             script.onload = () => {
-                URL.revokeObjectURL(url);
+                done();
+                if (thrown) return reject(thrown);
+                // 실행 직후의 전역은 이 번들이 남긴 것이다 (onload는 실행과 같은 차례에 온다)
+                const value = window[globalName];
+                if (value && typeof value === 'object') {
+                    executedBy.set(value, load);
+                    lastExecuted.set(globalName, value);
+                }
                 resolve();
             };
             script.onerror = () => {
-                URL.revokeObjectURL(url);
+                done();
                 reject(new Error(`Failed to execute bundle for '${ext.id}'`));
             };
             document.head.appendChild(script);
         });
+        // 전역을 만들지 못한 번들도 실패다 (다음 목록에서 다시 읽는다)
+        if (!window[globalName]) throw new Error(`Bundle for '${ext.id}' did not register ${globalName}`);
+        mine = window[globalName];
 
         // CSS 로드 (있으면)
         const cssSource = await window.api.extensionGuiStyles(ext.id);
@@ -75,9 +110,21 @@ async function loadExtensionBundle(ext) {
             document.head.appendChild(style);
         }
 
-        return window[globalName] || null;
+        return window[globalName];
     } catch (e) {
         console.warn(`[Extension] Failed to load GUI bundle for '${ext.id}':`, e);
+        // 실행이 실패한 번들이 먼저 등록한 전역은 남기지 않는다 (다음 로드가 성공으로 보지 않게).
+        // 그 뒤 다른 로드가 바꾼 전역은 그 로드의 것이라 두고, 실행 전에 있던 전역은 되살린다
+        // 다른 로드가 오류 없이 실행해 남긴 전역이면 그 로드의 것이다 (이 번들이 등록 전에 throw한 경우)
+        const owner = mine !== undefined && typeof mine === 'object' ? executedBy.get(mine) : undefined;
+        if (mine !== undefined && window[globalName] === mine && (owner === undefined || owner === load)) {
+            // 이 번들을 넣은 뒤 다른 로드가 오류 없이 실행했으면 그 전역으로 되돌린다
+            const other = lastExecuted.get(globalName);
+            const restore = other !== undefined && other !== mine && other !== executedBefore ? other : before;
+            if (owner === load) lastExecuted.delete(globalName);
+            if (restore === undefined) delete window[globalName];
+            else window[globalName] = restore;
+        }
         return LOAD_FAILED;
     }
 }
@@ -114,6 +161,7 @@ export function ExtensionProvider({ children }) {
     const unloadBundle = (id) => {
         document.querySelectorAll(`style[data-extension="${id}"]`).forEach((el) => el.remove());
         delete window[`SabaExt${pascalCase(id)}`];
+        lastExecuted.delete(`SabaExt${pascalCase(id)}`);
         loadedRef.current.delete(id);
         delete loadedVersionsRef.current[id];
     };
@@ -204,6 +252,14 @@ export function ExtensionProvider({ children }) {
                     // 기존 <style> 태그 제거
                     document.querySelectorAll(`style[data-extension="${ext.id}"]`).forEach((el) => el.remove());
                     console.info(`[Extension] Bundle invalidated for '${ext.id}' (${prevVersion} → ${ext.version})`);
+                }
+
+                // 로드됨으로 기억했는데 전역이 없다(겹친 로드의 실패 정리 등): 다시 읽는다
+                if (ext.gui && loadedRef.current.has(ext.id) && !window[globalName]) {
+                    loadedRef.current.delete(ext.id);
+                    document.querySelectorAll(`style[data-extension="${ext.id}"]`).forEach((el) => {
+                        el.remove();
+                    });
                 }
 
                 // ① 이미 로드된 익스텐션 (버전 동일)

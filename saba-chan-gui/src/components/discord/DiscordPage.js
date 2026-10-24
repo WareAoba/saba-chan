@@ -100,8 +100,8 @@ function BotSettingsView({ prefixes, setPrefixes, nodes, sampleModuleWord }) {
 
 /**
  * 디스코드 페이지 (V1): 왼쪽 메뉴 | 오른쪽 화면. 서버 페이지와 같은 목록-상세 구조.
- * 메뉴: 연결 · 디스코드 서버(노드) 목록 · 명령어 단어 · 기본 설정 · AI 챗봇.
- * 노드 권한은 바꾸는 즉시 저장(잠깐 모아서)하고, 단어 편집은 저장 버튼으로 확정한다.
+ * 메뉴: 연결 · 디스코드 서버(노드) 목록 · 기본 설정 · AI 챗봇. 서버마다 부르는 말은 서버 상세의 디스코드 탭에서 고친다.
+ * 노드 권한은 바꾸는 즉시 저장(잠깐 모아서)한다.
  */
 export function DiscordPage({
     discordBotStatus,
@@ -149,14 +149,6 @@ export function DiscordPage({
     const [membersPartial, setMembersPartial] = useState({});
     const [saveState, setSaveState] = useState(null);
     const saveTimer = useRef(null);
-
-    // 서버 설정의 "명령어 단어" 링크 `{kind:'words', server}`: 노드 목록이 오면 그 서버를 쓰는
-    // 첫 길드의 부르는 말 탭으로 바꾼다. 그동안(또는 그런 길드가 없으면) 연결 화면을 보인다
-    useEffect(() => {
-        if (view.kind !== 'words' || !cloudNodes?.length) return;
-        const node = cloudNodes.find((n) => P.isInstanceAllowed(nodeSettings || {}, n.guildId, view.server));
-        setView(node ? { kind: 'node', id: node.guildId, tab: 'words' } : { kind: 'connection' });
-    }, [view, cloudNodes, nodeSettings]);
 
     // 화면을 열 때 데몬 설정을 다시 읽는다: GUI가 켜진 동안 CLI로 짝짓거나 가져온 설정을 보인다
     // (기동 때 읽기가 끝나기 전이면 그쪽이 읽는다. 화면에서 고친 값은 loadConfig가 덮지 않는다)
@@ -526,7 +518,7 @@ export function DiscordPage({
                                 <Icon name="chevronLeft" size="sm" /> {t('discord.back_to_menu')}
                             </button>
                         )}
-                        {(view.kind === 'connection' || view.kind === 'words') && (
+                        {view.kind === 'connection' && (
                             <ConnectionView
                                 cloudState={cloudState}
                                 hostId={discordCloudHostId}
@@ -561,7 +553,6 @@ export function DiscordPage({
                                 membersFailed={!!membersFailed[currentNode.guildId]}
                                 membersPartial={membersPartial[currentNode.guildId] || null}
                                 onRefreshMembers={() => loadMembers(currentNode.guildId)}
-                                initialTab={view.tab}
                                 memberId={view.member || null}
                                 onOpenMember={(id) => setView({ kind: 'node', id: currentNode.guildId, member: id })}
                                 commandsFor={commandsFor}

@@ -36,17 +36,16 @@ describe('켜져 있는 서버의 버전 설치·초기화', () => {
         };
     });
 
-    it('버전을 설치한 뒤 설정 저장이 실패하면 성공으로 알리지 않는다', async () => {
-        window.api.moduleInstallServer = vi.fn().mockResolvedValue({ success: true, jar_path: 'C:/s/server.jar' });
-        window.api.instanceUpdateSettings = vi.fn().mockResolvedValue({ success: false, error: 'disk full' });
+    // 설치는 데몬이 뒤에서 마친다: 시작만 시킨 때에 완료라고 알리지 않는다 (저장 실패도 데몬의 설치 표시로 온다)
+    it('버전 설치를 시작시킨 때에는 성공으로 알리지 않는다', async () => {
+        window.api.moduleInstallServer = vi.fn().mockResolvedValue({ success: true, provisioning: true, id: 's' });
         const { result, setModal } = setupHook([server('stopped')]);
         await open(result, server('stopped'));
         act(() => result.current.handleSettingChange('server_version', '1.0'));
         await act(async () => result.current.handleInstallVersion());
         await act(async () => setModal.mock.calls.at(-1)[0].buttons[0].action());
         expect(toasts('success')).toEqual([]);
-        expect(toasts('error')).toHaveLength(1);
-        expect(toasts('error')[0]).toContain('saving the settings failed');
+        expect(toasts('error')).toEqual([]);
     });
 
     it('데몬이 켜져 있어 설치를 거절하면(server_running) 그 이유를 알린다', async () => {

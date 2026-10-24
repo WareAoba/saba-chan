@@ -511,6 +511,10 @@ impl Api {
     pub async fn save_app_config(&self, full: Value) -> Result<Value> {
         self.put("/api/config/gui", full).await
     }
+    /// PATCH /api/config/gui — merge patch (null은 지운다). `revision`을 실으면 그사이 바뀐 설정에는 쓰지 않고 409 `settings_changed`
+    pub async fn patch_app_config(&self, patch: Value) -> Result<Value> {
+        self.patch("/api/config/gui", patch).await
+    }
     /// GET /api/audit — `{entries: [{ts, source, user?, guild?, action, instanceId, instance?, command?, args?, ok, status}]}` 최신이 먼저
     pub async fn audit(&self, instance: Option<&str>, limit: usize) -> Result<Value> {
         self.get(&with_query(
@@ -637,6 +641,10 @@ impl Api {
     }
     pub async fn save_bot_config(&self, full: Value) -> Result<Value> {
         self.put("/api/config/bot", full).await
+    }
+    /// PATCH /api/config/bot — merge patch (null은 지운다). `revision`을 실으면 그사이 바뀐 설정에는 쓰지 않고 409 `settings_changed`
+    pub async fn patch_bot_config(&self, patch: Value) -> Result<Value> {
+        self.patch("/api/config/bot", patch).await
     }
     pub async fn save_node_token(&self, token: &str) -> Result<Value> {
         self.put("/api/config/node-token", json!({ "token": token })).await

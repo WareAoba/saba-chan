@@ -23,6 +23,10 @@ pub async fn run(ctx: &Ctx, cmd: ServerCmd) -> Result<()> {
         ServerCmd::Console(a) => crate::cmd::console::run(ctx, a).await,
         ServerCmd::Run(a) => run_command(ctx, a).await,
         ServerCmd::Commands { server } => commands(ctx, server.as_deref()).await,
+        ServerCmd::Discord { server, guild, word, command, clear } => {
+            let change = crate::cmd::discord_words::WordsChange { words: word, commands: command, clear };
+            crate::cmd::discord_words::run(ctx, server.as_deref(), guild.as_deref(), change).await
+        }
         ServerCmd::Send { server, line } => send(ctx, &server, &line.join(" ")).await,
         ServerCmd::Settings { server } => settings(ctx, server.as_deref()).await,
         ServerCmd::Set { server, pairs } => set(ctx, &server, &pairs).await,
@@ -361,7 +365,7 @@ async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
     } else {
         s(&module, "display_name").to_string()
     };
-    if from.is_none() && !module.get("install").is_some_and(|i| !i.is_null()) {
+    if from.is_none() && module.get("install").is_none_or(|i| i.is_null()) {
         ctx.out.warn(&t!("add.no_installer", game = display));
     }
 

@@ -109,7 +109,7 @@ impl ReleaseManifest {
 pub async fn latest_catalog(relay_url: Option<&str>) -> Result<Option<ReleaseManifest>, RelayError> {
     let client = RelayClient::new(relay_url.unwrap_or(DEFAULT_RELAY_URL));
     let release = client
-        .fetch_verified_release(DEFAULT_CHANNEL, &current_platform(), "", &anon_client_id())
+        .fetch_verified_catalog(DEFAULT_CHANNEL, &current_platform(), &crate::versions::bundled().release, &anon_client_id())
         .await?;
     Ok(release.map(|r| r.manifest))
 }
@@ -213,6 +213,7 @@ impl RelayClient {
         let check = self.check(channel, platform, current, client_id).await?;
         // 코어가 최신이어도 같은 릴리즈의 다른 컴포넌트(GUI·CLI·모듈...)는 뒤처져 있을 수 있다:
         // 그 릴리즈 manifest를 받아 컴포넌트별로 비교하게 한다
+        let by_version = check.up_to_date && check.latest.is_none();
         let latest = match (check.up_to_date, check.latest) {
             (_, Some(latest)) => latest,
             (true, None) if !current.is_empty() => LatestRelease { version: current.to_string(), ..Default::default() },
@@ -226,17 +227,28 @@ impl RelayClient {
         };
         let manifest = match verify_release(&signed, platform, channel, current) {
             Ok(manifest) => manifest,
-            // 최신일 때는 버전만으로 manifest를 찾아서, 같은 버전이 다른 채널에도 있으면 그쪽 것이 온다.
-            // 지금 깔린 그 버전일 때만 컴포넌트 비교용으로 받는다. 다른 채널의 다른 버전은 받지 않는다
-            Err(RelayError::WrongChannel { expected, got }) if check.up_to_date => {
-                let other = verify_release(&signed, platform, &got, current)?;
-                if other.version != current {
-                    return Err(RelayError::WrongChannel { expected, got });
-                }
-                other
-            }
+            // 최신이고 릴리즈를 받지 않았으면 버전만으로 manifest를 찾는다. 같은 버전이 다른 채널에도 있으면 그쪽 것이 온다.
+            // 다른 채널의 구성요소는 같은 코어 버전이어도 다르다: 비교하지 않고 받을 것이 없다고 본다
+            Err(RelayError::WrongChannel { .. }) if by_version => return Ok(None),
             Err(e) => return Err(e),
         };
+        bind_release(latest, manifest).map(Some)
+    }
+
+    /// 아무것도 깔리지 않은 상태의 확인(모듈·익스텐션 카탈로그, 설치기): 릴레이에는 현재 버전 없이 묻되,
+    /// `floor`(이 빌드의 릴리즈 버전)보다 옛 manifest는 다운그레이드로 거절한다. 릴레이가 옛 서명 manifest를 내주어도
+    /// 새 설치가 옛 코어를, 처음 받는 모듈이 옛 판을 공식으로 받지 않게
+    pub async fn fetch_verified_catalog(
+        &self,
+        channel: &str,
+        platform: &str,
+        floor: &str,
+        client_id: &str,
+    ) -> Result<Option<VerifiedRelease>, RelayError> {
+        let check = self.check(channel, platform, "", client_id).await?;
+        let Some(latest) = check.latest else { return Ok(None) };
+        let signed = self.fetch_manifest(&latest).await?;
+        let manifest = verify_release(&signed, platform, channel, floor)?;
         bind_release(latest, manifest).map(Some)
     }
 
@@ -342,10 +354,7 @@ pub fn anon_client_id() -> String {
         }
     }
     let id = uuid::Uuid::new_v4().simple().to_string();
-    if let Some(parent) = path.parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
-    let _ = std::fs::write(&path, &id);
+    let _ = crate::write_atomic(&path, id.as_bytes());
     id
 }
 
@@ -425,11 +434,18 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn an_up_to_date_client_compares_against_its_version_from_another_channel() {
+    async fn an_up_to_date_client_does_not_compare_against_its_version_from_another_channel() {
         // 같은 버전이 stable·beta 둘 다에 있으면 버전만 든 manifest 주소는 다른 채널 것을 줄 수 있다.
-        // 그래도 받아서 뒤처진 GUI·모듈을 비교할 수 있어야 한다
+        // 다른 채널의 구성요소로 바꾸지 않는다: 받을 것이 없다 (외부 감사 10-23)
         let base = fake_relay(r#"{"upToDate":true}"#.into(), PRODUCTION_0_1_1.into()).await;
         let got = RelayClient::new(&base).fetch_verified_release("beta", "windows-x64", "0.1.1", "t").await;
+        assert!(matches!(got, Ok(None)), "{:?}", got.map(|r| r.map(|v| v.manifest.version)));
+    }
+
+    #[tokio::test]
+    async fn an_up_to_date_client_compares_against_its_version_from_its_own_channel() {
+        let base = fake_relay(r#"{"upToDate":true}"#.into(), PRODUCTION_0_1_1.into()).await;
+        let got = RelayClient::new(&base).fetch_verified_release("stable", "windows-x64", "0.1.1", "t").await;
         assert_eq!(got.unwrap().map(|v| v.manifest.version).as_deref(), Some("0.1.1"));
     }
 
@@ -439,6 +455,18 @@ mod tests {
         let base = fake_relay(r#"{"upToDate":true,"latest":{"version":"0.1.1"}}"#.into(), PRODUCTION_0_1_1.into()).await;
         let got = RelayClient::new(&base).fetch_verified_release("beta", "windows-x64", "0.1.0", "t").await;
         assert!(matches!(got, Err(RelayError::WrongChannel { .. })), "{:?}", got.map(|r| r.map(|v| v.manifest.version)));
+    }
+
+    // EE3: 아무것도 깔리지 않은 확인(카탈로그·설치기)도 이 빌드보다 옛 릴리즈는 받지 않는다
+    #[tokio::test]
+    async fn a_catalog_check_refuses_a_release_older_than_this_build() {
+        let check = r#"{"upToDate":false,"latest":{"version":"0.1.1"}}"#.to_string();
+        let base = fake_relay(check.clone(), PRODUCTION_0_1_1.into()).await;
+        let got = RelayClient::new(&base).fetch_verified_catalog("stable", "windows-x64", "0.2.0", "t").await;
+        assert!(matches!(got, Err(RelayError::Downgrade { .. })), "{:?}", got.map(|r| r.map(|v| v.manifest.version)));
+        let base = fake_relay(check, PRODUCTION_0_1_1.into()).await;
+        let got = RelayClient::new(&base).fetch_verified_catalog("stable", "windows-x64", "0.1.0", "t").await;
+        assert_eq!(got.unwrap().map(|v| v.manifest.version).as_deref(), Some("0.1.1"));
     }
 
     #[test]

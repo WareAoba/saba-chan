@@ -9,6 +9,8 @@
 //!     settings.json          ← 모듈별 동적 게임 설정
 //! ```
 
+pub mod lock;
+
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -92,6 +94,16 @@ pub fn install_method_key(method: &str) -> String {
 }
 
 impl ServerInstance {
+    /// 설정 저장의 revision: 인스턴스 기록의 지문 (일정·백업 보관 수는 일정 API의 revision이 따로 본다)
+    pub fn settings_revision(&self) -> String {
+        let mut value = serde_json::to_value(self).unwrap_or_default();
+        if let Some(map) = value.as_object_mut() {
+            map.remove("schedule");
+            map.remove("backup_keep");
+        }
+        crate::config_store::patch::revision(&value)
+    }
+
     pub fn new(name: &str, module_name: &str) -> Self {
         Self {
             id: uuid::Uuid::new_v4().to_string(),
@@ -461,14 +473,6 @@ impl InstanceStore {
             return Err(e);
         }
 
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            // instance.json·settings.json에 비밀번호가 들어 있을 수 있다
-            let _ = fs::set_permissions(dir.join("instance.json"), fs::Permissions::from_mode(0o600));
-            let _ = fs::set_permissions(dir.join("settings.json"), fs::Permissions::from_mode(0o600));
-        }
-
         Ok(())
     }
 
@@ -522,7 +526,7 @@ impl InstanceStore {
     /// order.json 저장
     fn save_order(&self) -> Result<()> {
         let content = serde_json::to_string_pretty(&self.order)?;
-        fs::write(self.root_dir.join("order.json"), &content)?;
+        saba_atomic_file::write(&self.root_dir.join("order.json"), content.as_bytes(), saba_atomic_file::Mode::Plain)?;
         Ok(())
     }
 }
@@ -577,20 +581,14 @@ fn drop_legacy_rcon_keys(settings: &mut HashMap<String, serde_json::Value>) -> b
     settings.len() != before
 }
 
-/// 임시 파일에 쓰고 rename: 쓰는 도중 꺼져도 예전 파일이나 새 파일 중 하나가 온전히 남는다
+/// 임시 파일에 쓰고 rename: 쓰는 도중 꺼져도 예전 파일이나 새 파일 중 하나가 온전히 남는다.
+/// instance.json·settings.json에 비밀번호가 들어 있을 수 있어 주인만 읽게 쓴다
 fn write_atomic(path: &Path, content: &str) -> Result<()> {
     write_atomic_bytes(path, content.as_bytes())
 }
 
 fn write_atomic_bytes(path: &Path, content: &[u8]) -> Result<()> {
-    use std::io::Write;
-    let tmp = path.with_extension("json.tmp");
-    {
-        let mut f = fs::File::create(&tmp)?;
-        f.write_all(content)?;
-        f.sync_all()?;
-    }
-    fs::rename(&tmp, path)?;
+    saba_atomic_file::write(path, content, saba_atomic_file::Mode::Secret)?;
     Ok(())
 }
 
@@ -755,14 +753,17 @@ mod tests {
         let id = inst.id.clone();
         store.add(inst).unwrap();
 
-        // settings.json을 쓸 수 없게 한다
-        let blocker = instances_dir.join(&id).join("settings.json.tmp");
-        fs::create_dir_all(blocker.join("x")).unwrap();
+        // settings.json을 쓸 수 없게 한다 (폴더 자리에는 파일로 바꿔 넣지 못한다)
+        let settings = instances_dir.join(&id).join("settings.json");
+        let original = fs::read(&settings).unwrap();
+        fs::remove_file(&settings).unwrap();
+        fs::create_dir_all(settings.join("x")).unwrap();
         let mut changed = store.get(&id).unwrap().clone();
         changed.name = "after".to_string();
         changed.module_settings.insert("difficulty".into(), serde_json::json!("easy"));
         assert!(store.update(&id, changed).is_err());
-        fs::remove_dir_all(&blocker).unwrap();
+        fs::remove_dir_all(&settings).unwrap();
+        fs::write(&settings, original).unwrap();
 
         let mut reloaded = InstanceStore::new(instances_dir.to_str().unwrap());
         reloaded.load().unwrap();
@@ -830,7 +831,8 @@ mod tests {
         assert_eq!(settings, serde_json::json!({ "motd": "hi" }));
         let meta: serde_json::Value = serde_json::from_str(&fs::read_to_string(dir.join("instance.json")).unwrap()).unwrap();
         assert!(meta.get("rcon_port").is_none() && meta.get("rcon_password").is_none());
-        assert!(!dir.join("settings.json.tmp").exists());
+        let temps: Vec<_> = fs::read_dir(&dir).unwrap().flatten().filter(|e| e.file_name().to_string_lossy().ends_with(".tmp")).collect();
+        assert!(temps.is_empty(), "no temp file left: {temps:?}");
     }
 
     /// 손으로 고치다 깨진 settings.json은 다음 저장이 덮기 전에 사본으로 남긴다 (D-S5)

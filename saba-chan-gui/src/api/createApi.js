@@ -59,11 +59,11 @@ export function createApi({ invoke, hub }) {
         return invoke('settings_local_load');
     }
 
-    // 데몬이 응답하면 바꾼 키만 PUT한다: 데몬이 잠근 채 최상위 키로 합치므로, 미리 읽어 통째로 보내면 그 사이 CLI가 바꾼 값을 되돌린다.
+    // 데몬이 응답하면 바꾼 키만 PATCH한다: 데몬이 잠근 채 합치므로, 미리 읽어 통째로 보내면 그 사이 CLI가 바꾼 값을 되돌린다.
     // 데몬이 아예 응답하지 않을 때만 로컬에 쓴다(셸이 저장 직전 상태에 합친다)
     async function saveSettings(settings) {
         try {
-            await put('/api/config/gui', settings, { timeout: 5000 });
+            await request('patch', '/api/config/gui', settings, { timeout: 5000 });
             return true;
         } catch (err) {
             if (err.response) {
@@ -497,7 +497,7 @@ export function createApi({ invoke, hub }) {
                                 }),
                             };
                         default:
-                            // 409(working_dir_in_use·instance_busy)는 이유를 넘겨 설정 화면이 문구로 보이게 한다
+                            // 409(working_dir_in_use·instance_busy·settings_changed)는 이유를 넘겨 설정 화면이 문구로 보이게 한다
                             return {
                                 error: t('errors.settings_http', {
                                     status: String(status),
@@ -905,11 +905,11 @@ export function createApi({ invoke, hub }) {
         },
         // 못 읽으면 던진다. 기본값을 돌려주면 호출한 쪽이 그 값을 저장해 디스크의 설정을 지운다
         botConfigLoad: async () => (await get('/api/config/bot')).data,
-        // 데몬이 bot-config의 원천. 최상위 키 단위로 병합되므로 부분 저장도 안전하다
+        // 데몬이 bot-config의 원천. `config`는 바뀐 칸만 담은 JSON Merge Patch다 (null은 지우기)
         botConfigSave: async (config) => {
             try {
                 // 데몬 본문을 그대로: 권한 키라 저장하지 않은 경로는 `ignored`로 온다 (L61)
-                return (await put('/api/config/bot', config || {})).data || { success: true };
+                return (await request('patch', '/api/config/bot', config || {})).data || { success: true };
             } catch (error) {
                 console.error('Failed to save bot config via daemon:', error.message);
                 // error_code(invalid_relay_url 등)를 렌더러가 쓸 수 있게 본문을 넘긴다

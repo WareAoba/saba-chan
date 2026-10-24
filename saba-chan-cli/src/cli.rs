@@ -160,6 +160,18 @@ pub enum Cmd {
     },
     /// Install Saba-chan on this PC without the window installer
     Install(InstallArgs),
+    /// Remove Saba-chan from this PC. Settings and servers are kept unless removed
+    Uninstall(UninstallArgs),
+}
+
+#[derive(Args, Debug)]
+pub struct UninstallArgs {
+    /// Remove settings and the Discord connection too
+    #[arg(long)]
+    pub remove_settings: bool,
+    /// Remove game servers too (server files, worlds, backups)
+    #[arg(long)]
+    pub remove_instances: bool,
 }
 
 #[derive(Args, Debug)]
@@ -362,6 +374,22 @@ pub enum ServerCmd {
     Run(RunArgs),
     /// Game commands this server understands
     Commands { server: Option<String> },
+    /// What each Discord server calls this server and its commands in chat. No options: show
+    Discord {
+        server: Option<String>,
+        /// Discord server by name or id (asked when several are paired and something changes)
+        #[arg(long)]
+        guild: Option<String>,
+        /// Words for the server, comma-separated or repeated (replace the current ones). `--word ""` removes them
+        #[arg(long, value_delimiter = ',', requires = "server", conflicts_with = "clear")]
+        word: Option<Vec<String>>,
+        /// Words for one command: COMMAND=WORD,WORD (replace that command's words, `COMMAND=` removes them). Repeatable
+        #[arg(long, value_name = "COMMAND=WORDS", requires = "server", conflicts_with = "clear")]
+        command: Vec<String>,
+        /// Remove every word of this server
+        #[arg(long, requires = "server")]
+        clear: bool,
+    },
     /// Send one raw line to the server console
     Send {
         server: String,
@@ -774,20 +802,6 @@ pub enum BotCmd {
         #[arg(long)]
         all: bool,
     },
-    /// What a Discord server calls this PC's servers and their commands in chat. No server: all. No options: show
-    Words {
-        guild: String,
-        server: Option<String>,
-        /// Words for the server, comma-separated or repeated (replace the current ones). `--word ""` removes them
-        #[arg(long, value_delimiter = ',', requires = "server", conflicts_with = "clear")]
-        word: Option<Vec<String>>,
-        /// Words for one command: COMMAND=WORD,WORD (replace that command's words, `COMMAND=` removes them). Repeatable
-        #[arg(long, value_name = "COMMAND=WORDS", requires = "server", conflicts_with = "clear")]
-        command: Vec<String>,
-        /// Remove every word of this server
-        #[arg(long, requires = "server")]
-        clear: bool,
-    },
     /// Bot settings back to their defaults (all when no key is named)
     Reset { keys: Vec<String> },
 
@@ -1065,15 +1079,18 @@ mod tests {
             }
             _ => panic!("run did not parse"),
         }
-        match p(&["bot", "words", "123", "mc", "--word", "크리,크", "--command", "start=켜,on", "--command", "stop="]).unwrap().cmd {
-            Some(Cmd::Bot(BotCmd::Words { server, word, command, .. })) => {
+        match p(&["server", "discord", "mc", "--guild", "123", "--word", "크리,크", "--command", "start=켜,on", "--command", "stop="]).unwrap().cmd {
+            Some(Cmd::Server(ServerCmd::Discord { server, guild, word, command, .. })) => {
                 assert_eq!(server.as_deref(), Some("mc"));
+                assert_eq!(guild.as_deref(), Some("123"));
                 assert_eq!(word, Some(vec!["크리".to_string(), "크".to_string()]));
                 assert_eq!(command, vec!["start=켜,on", "stop="]);
             }
-            _ => panic!("bot words did not parse"),
+            _ => panic!("server discord did not parse"),
         }
-        assert!(p(&["bot", "words", "123", "--word", "크리"]).is_err(), "--word needs a server");
+        assert!(p(&["server", "discord", "--word", "크리"]).is_err(), "--word needs a server");
+        // 서버마다 부르는 말은 서버 명령으로 옮겼다
+        assert!(p(&["bot", "words", "123"]).is_err());
         assert!(p(&["bot", "alias"]).is_err(), "old alias command is gone");
         assert!(matches!(p(&["bot", "channels"]).unwrap().cmd, Some(Cmd::Bot(BotCmd::Channels { guild: None, .. }))));
         assert!(matches!(p(&["bot", "members"]).unwrap().cmd, Some(Cmd::Bot(BotCmd::Members { guild: None }))));

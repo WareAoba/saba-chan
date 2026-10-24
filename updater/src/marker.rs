@@ -94,7 +94,7 @@ impl UpdateCompletionMarker {
         let json = serde_json::to_string_pretty(self)
             .map_err(|e| format!("Serialize error: {}", e))?;
 
-        std::fs::write(path, json)
+        crate::write_atomic(path, json.as_bytes())
             .map_err(|e| format!("Write error: {}", e))
     }
 
