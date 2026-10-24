@@ -163,17 +163,17 @@ pub async fn run(ctx: &Ctx, args: InstallArgs) -> Result<()> {
             modules.join(", ")
         }
     );
-    if let Some(dir) = &args.components_dir {
-        let dir = std::path::absolute(dir).unwrap_or_else(|_| dir.clone());
-        if let Err(e) = core::check_components_dir(&dir, &saba_chan_updater_lib::component_dirs::Layout::current()) {
+    if let Some(chosen) = &args.components_dir {
+        let chosen = std::path::absolute(chosen).unwrap_or_else(|_| chosen.clone());
+        if let Err(e) = core::check_components_dir(&chosen, &saba_chan_updater_lib::component_dirs::Layout::current(), &dir) {
             let hint = crate::i18n::try_t(&format!("err.hint.paths_{}", e.code)).unwrap_or(e.detail);
             return Err(usage(t!(
                 "install.components_dir_invalid",
-                dir = dir.display(),
+                dir = chosen.display(),
                 reason = hint
             )));
         }
-        ctx.out.hint(&t!("install.components_dir", dir = dir.display()));
+        ctx.out.hint(&t!("install.components_dir", dir = chosen.display()));
     }
     ctx.ask.ensure(&summary)?;
 

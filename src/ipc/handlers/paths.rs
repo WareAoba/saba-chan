@@ -68,7 +68,15 @@ pub async fn move_dir(State(state): State<IPCServer>, Json(req): Json<MoveReques
         return refused(PathError::new("env_fixed", kind.env_var()));
     }
     let config = saba_chan_updater_lib::config_file::ConfigFile::default_location();
-    match move_component_dir(&state, kind, Path::new(req.target.trim()), Layout::current(), config).await {
+    // 요청이 끊겨도(클라이언트 종료 등) 잠금부터 매니저 갱신까지 끝내도록 따로 돌린다:
+    // 파일과 설정만 옮겨지고 모듈·익스텐션·업데이터가 옛 폴더를 보는 일이 없게
+    let chosen = PathBuf::from(req.target.trim());
+    let task = tokio::spawn(async move { move_component_dir(&state, kind, &chosen, Layout::current(), config).await });
+    let moved = match task.await {
+        Ok(moved) => moved,
+        Err(e) => Err(PathError::new("copy_failed", e.to_string())),
+    };
+    match moved {
         Ok((path, moved)) => (
             StatusCode::OK,
             Json(json!({ "ok": true, "path": path, "left_behind": moved.left_behind })),

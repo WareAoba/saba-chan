@@ -255,7 +255,8 @@
       "paths_copy_failed": "La copie a échoué. Rien n'a été modifié. Vérifiez l'espace libre et réessayez.",
       "paths_verify_failed": "La copie ne correspond pas à l'original. Rien n'a été modifié. Réessayez.",
       "paths_commit_failed": "L'enregistrement du paramètre a échoué. Les fichiers ont été remis en place.",
-      "paths_unknown_kind": "Choisissez modules ou extensions."
+      "paths_unknown_kind": "Choisissez modules ou extensions.",
+      "paths_overlaps_install": "Impossible de le placer dans le dossier d'installation. Choisissez un dossier en dehors."
     },
     "not_a_bool": "« {{value}} » n'est pas oui/non (utilisez true ou false).",
     "not_a_number": "« {{value}} » n'est pas un nombre.",

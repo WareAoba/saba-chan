@@ -255,7 +255,8 @@
       "paths_copy_failed": "La copia falló. No se cambió nada. Comprueba el espacio libre y vuelve a intentarlo.",
       "paths_verify_failed": "La copia no coincidía con el original. No se cambió nada. Vuelve a intentarlo.",
       "paths_commit_failed": "No se pudo guardar el ajuste. Los archivos se devolvieron a su lugar.",
-      "paths_unknown_kind": "Elige modules o extensions."
+      "paths_unknown_kind": "Elige modules o extensions.",
+      "paths_overlaps_install": "No puede ir dentro de la carpeta de instalación. Elige una carpeta fuera de ella."
     },
     "not_a_bool": "«{{value}}» no es sí/no (usa true o false).",
     "not_a_number": "«{{value}}» no es un número.",

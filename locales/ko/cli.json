@@ -310,7 +310,8 @@
       "paths_copy_failed": "복사하지 못했어요. 바뀐 것은 없어요. 남은 공간을 확인하고 다시 시도하세요.",
       "paths_verify_failed": "복사본이 원본과 달라요. 바뀐 것은 없어요. 다시 시도하세요.",
       "paths_commit_failed": "설정을 저장하지 못해 파일을 원래 자리로 되돌렸어요.",
-      "paths_unknown_kind": "modules 또는 extensions를 고르세요."
+      "paths_unknown_kind": "modules 또는 extensions를 고르세요.",
+      "paths_overlaps_install": "설치 폴더 안에는 둘 수 없어요. 설치 폴더 밖의 폴더를 고르세요."
     },
     "not_a_bool": "\"{{value}}\"는 예/아니오 값이 아니에요 (true 또는 false).",
     "not_a_number": "\"{{value}}\"는 숫자가 아니에요.",

@@ -310,7 +310,8 @@
       "paths_copy_failed": "复制失败，未做任何更改。请检查可用空间后重试。",
       "paths_verify_failed": "副本与原件不一致，未做任何更改。请重试。",
       "paths_commit_failed": "保存设置失败，文件已放回原处。",
-      "paths_unknown_kind": "请选择 modules 或 extensions。"
+      "paths_unknown_kind": "请选择 modules 或 extensions。",
+      "paths_overlaps_install": "不能放在安装文件夹内。请选择安装文件夹以外的文件夹。"
     },
     "not_a_bool": "“{{value}}”不是是/否（请使用 true 或 false）。",
     "not_a_number": "“{{value}}”不是数字。",

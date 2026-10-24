@@ -102,7 +102,8 @@ async fn set_components_dir(state: State<'_, SharedState>, path: String) -> Resu
     let chosen = std::path::PathBuf::from(path);
     let unchanged = path.is_empty() || saba_chan_updater_lib::same_path(&chosen, &current_components_dir());
     if !unchanged {
-        saba_chan_installer_core::check_components_dir(&chosen, &Layout::current()).map_err(|e| e.code.to_string())?;
+        let install = std::path::PathBuf::from(state.read().await.install_path.clone());
+        saba_chan_installer_core::check_components_dir(&chosen, &Layout::current(), &install).map_err(|e| e.code.to_string())?;
     }
     state.write().await.components_dir = (!unchanged).then(|| chosen.clone());
     Ok(if unchanged { current_components_dir() } else { chosen }.to_string_lossy().into_owned())

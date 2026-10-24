@@ -17,6 +17,8 @@ pub const PATHS_SECTION: &str = "paths";
 
 /// 사바쨩이 만든 폴더라는 표시. 기본 위치 밖 폴더는 이 표시가 있을 때만 제거기가 지운다
 pub const OWNED_MARKER: &str = ".saba-chan-dir";
+/// 복사 중 폴더(`staging_dir`)에 처음 넣는 표시. 사본 검증에서는 빼고, 이름을 바꾸기 전에 지운다
+const STAGING_MARKER: &str = ".saba-chan-moving";
 
 /// 옮길 수 있는 폴더 종류
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -282,7 +284,8 @@ fn relocate_inner(
     try_rename: bool,
 ) -> Result<Relocated, PathError> {
     let shown = dst.display().to_string();
-    if crate::paths_overlap(src, dst) {
+    // 링크·정션을 푼 실제 경로로도 본다: 대상 위 폴더가 원본을 가리키면 원본 안에 복사해 끝없이 커진다
+    if crate::paths_overlap(src, dst) || crate::paths_overlap(&real_path(src), &real_path(dst)) {
         return Err(PathError::new("overlaps_current", shown));
     }
     match std::fs::symlink_metadata(dst) {
@@ -330,8 +333,23 @@ fn relocate_inner(
     }
 
     let staging = staging_dir(dst);
-    let _ = std::fs::remove_dir_all(&staging);
-    if let Err(e) = copy_tree(src, &staging).and_then(|_| verify_copy(src, &staging)) {
+    // 끊긴 옮기기가 남긴 복사 중 폴더만 지운다 (표시가 없는 같은 이름 폴더는 사용자 것일 수 있다)
+    if std::fs::symlink_metadata(&staging).is_ok() {
+        if !is_staging(&staging) {
+            return Err(PathError::new("not_empty", staging.display().to_string()));
+        }
+        let _ = std::fs::remove_dir_all(&staging);
+    }
+    let copied = std::fs::create_dir_all(&staging)
+        .and_then(|_| std::fs::write(staging.join(STAGING_MARKER), b""))
+        .map_err(|e| PathError::new("not_writable", format!("{}: {}", staging.display(), e)))
+        .and_then(|_| copy_tree(src, &staging))
+        .and_then(|_| verify_copy(src, &staging))
+        .and_then(|_| {
+            std::fs::remove_file(staging.join(STAGING_MARKER))
+                .map_err(|e| PathError::new("not_writable", format!("{}: {}", staging.display(), e)))
+        });
+    if let Err(e) = copied {
         let _ = std::fs::remove_dir_all(&staging);
         return Err(e);
     }
@@ -357,6 +375,29 @@ pub fn staging_dir(dst: &Path) -> PathBuf {
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
     dst.with_file_name(format!(".{}.saba-moving", name))
+}
+
+/// 있는 가장 가까운 위 폴더까지 링크를 풀고 나머지를 붙인 경로 (없는 경로도 비교할 수 있게)
+fn real_path(path: &Path) -> PathBuf {
+    let mut rest = Vec::new();
+    let mut cur = path;
+    loop {
+        if let Ok(real) = std::fs::canonicalize(cur) {
+            return rest.iter().rev().fold(real, |p, part| p.join(part));
+        }
+        match (cur.parent(), cur.file_name()) {
+            (Some(parent), Some(name)) => {
+                rest.push(name.to_os_string());
+                cur = parent;
+            }
+            _ => return path.to_path_buf(),
+        }
+    }
+}
+
+/// 복사 중 폴더 표시:사바쨩이 만든 복사 중 폴더인가 (끊긴 옮기기의 남은 것만 지우게)
+pub fn is_staging(dir: &Path) -> bool {
+    dir.join(STAGING_MARKER).is_file()
 }
 
 /// 사바쨩이 만든 폴더로 표시한다
@@ -418,7 +459,8 @@ fn copy_tree(src: &Path, dst: &Path) -> Result<(), PathError> {
 /// 원본의 모든 파일이 사본에 같은 크기·SHA-256으로 있고, 사본에 다른 파일이 없는가
 fn verify_copy(src: &Path, copy: &Path) -> Result<(), PathError> {
     let a = files_under(src).map_err(|e| PathError::new("verify_failed", e.to_string()))?;
-    let b = files_under(copy).map_err(|e| PathError::new("verify_failed", e.to_string()))?;
+    let mut b = files_under(copy).map_err(|e| PathError::new("verify_failed", e.to_string()))?;
+    b.retain(|rel| rel != Path::new(STAGING_MARKER));
     if a.len() != b.len() {
         return Err(PathError::new(
             "verify_failed",
@@ -727,6 +769,43 @@ mod tests {
         assert_eq!(err.code, "commit_failed");
         assert!(src2.join("minecraft/module.toml").is_file());
         assert!(!dst2.exists() && !staging_dir(&dst2).exists());
+    }
+
+    // Codex 리뷰 #544 P1: 대상 옆 복사 중 폴더 이름의 기존 폴더를 표시 없이도 통째로 지웠다
+    #[test]
+    fn a_staging_named_folder_is_removed_only_when_it_is_a_leftover_copy() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (src, dst) = (tmp.path().join("old/modules"), tmp.path().join("new/modules"));
+        tree(&src);
+        let staging = staging_dir(&dst);
+        std::fs::create_dir_all(&staging).unwrap();
+        std::fs::write(staging.join("mine.txt"), "user").unwrap();
+        let err = relocate_inner(&src, &dst, || panic!("must not commit"), false).unwrap_err();
+        assert_eq!(err.code, "not_empty");
+        assert_eq!(std::fs::read_to_string(staging.join("mine.txt")).unwrap(), "user");
+        assert!(src.join("i18n.py").is_file());
+
+        // 끊긴 옮기기가 남긴 것(표시 있음)은 지우고 다시 옮긴다
+        std::fs::write(staging.join(STAGING_MARKER), "").unwrap();
+        relocate_inner(&src, &dst, || Ok(()), false).unwrap();
+        assert!(!staging.exists() && !dst.join("mine.txt").exists() && !dst.join(STAGING_MARKER).exists());
+        assert!(dst.join("i18n.py").is_file() && !src.exists());
+    }
+
+    // Codex 리뷰 #544 P2: 대상 위 정션이 원본을 가리키면 이름 비교로는 겹치지 않아 원본 안에 복사했다
+    #[cfg(windows)]
+    #[test]
+    fn a_target_reached_through_a_junction_into_the_source_is_refused() {
+        let tmp = tempfile::tempdir().unwrap();
+        let src = tmp.path().join("old").join("modules");
+        tree(&src);
+        let alias = tmp.path().join("alias");
+        let made = std::process::Command::new("cmd").args(["/c", "mklink", "/J"]).arg(&alias).arg(&src).output().unwrap();
+        assert!(made.status.success(), "{}{}", String::from_utf8_lossy(&made.stdout), String::from_utf8_lossy(&made.stderr));
+        let err = relocate_inner(&src, &alias.join("modules"), || panic!("must not commit"), false).unwrap_err();
+        assert_eq!(err.code, "overlaps_current");
+        assert!(!src.join("modules").exists() && !src.join(".modules.saba-moving").exists());
+        std::fs::remove_dir(&alias).unwrap();
     }
 
     #[test]

@@ -255,7 +255,8 @@
       "paths_copy_failed": "Kopieren fehlgeschlagen. Nichts wurde geändert. Prüfe den freien Speicher und versuche es erneut.",
       "paths_verify_failed": "Die Kopie stimmte nicht mit dem Original überein. Nichts wurde geändert. Versuche es erneut.",
       "paths_commit_failed": "Die Einstellung konnte nicht gespeichert werden. Die Dateien wurden zurückgelegt.",
-      "paths_unknown_kind": "Wähle modules oder extensions."
+      "paths_unknown_kind": "Wähle modules oder extensions.",
+      "paths_overlaps_install": "Das geht nicht im Installationsordner. Wähle einen Ordner außerhalb davon."
     },
     "not_a_bool": "„{{value}}“ ist kein Ja/Nein (verwende true oder false).",
     "not_a_number": "„{{value}}“ ist keine Zahl.",

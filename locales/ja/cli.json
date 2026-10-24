@@ -310,7 +310,8 @@
       "paths_copy_failed": "コピーできませんでした。何も変更していません。空き容量を確認してもう一度試してください。",
       "paths_verify_failed": "コピーが元と一致しませんでした。何も変更していません。もう一度試してください。",
       "paths_commit_failed": "設定を保存できなかったため、ファイルを元の場所に戻しました。",
-      "paths_unknown_kind": "modules または extensions を選んでください。"
+      "paths_unknown_kind": "modules または extensions を選んでください。",
+      "paths_overlaps_install": "インストール先フォルダーの中には置けません。その外のフォルダーを選んでください。"
     },
     "not_a_bool": "「{{value}}」ははい/いいえではありません（true か false を使ってください）。",
     "not_a_number": "「{{value}}」は数値ではありません。",

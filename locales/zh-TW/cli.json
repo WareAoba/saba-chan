@@ -255,7 +255,8 @@
       "paths_copy_failed": "複製失敗，未做任何變更。請檢查可用空間後再試。",
       "paths_verify_failed": "複本與原件不一致，未做任何變更。請再試一次。",
       "paths_commit_failed": "儲存設定失敗，檔案已放回原處。",
-      "paths_unknown_kind": "請選擇 modules 或 extensions。"
+      "paths_unknown_kind": "請選擇 modules 或 extensions。",
+      "paths_overlaps_install": "不能放在安裝資料夾內。請選擇安裝資料夾以外的資料夾。"
     },
     "not_a_bool": "「{{value}}」不是是/否（請使用 true 或 false）。",
     "not_a_number": "「{{value}}」不是數字。",

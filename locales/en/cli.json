@@ -310,7 +310,8 @@
       "paths_copy_failed": "Copying failed. Nothing was changed. Check the free space and try again.",
       "paths_verify_failed": "The copy did not match the original. Nothing was changed. Try again.",
       "paths_commit_failed": "Saving the setting failed. The files were put back where they were.",
-      "paths_unknown_kind": "Choose modules or extensions."
+      "paths_unknown_kind": "Choose modules or extensions.",
+      "paths_overlaps_install": "It can't go inside the install folder. Choose a folder outside it."
     },
     "not_a_bool": "\"{{value}}\" is not yes/no (use true or false).",
     "not_a_number": "\"{{value}}\" is not a number.",

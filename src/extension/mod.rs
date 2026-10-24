@@ -1689,6 +1689,8 @@ impl HookPlan {
     /// 실패한 익스텐션은 기록만 하고 다음으로 넘어간다.
     pub async fn run(self, timeout_secs: u64) -> Vec<(String, Result<Value>)> {
         let mut results = Vec::new();
+        // 도는 동안 익스텐션 폴더를 옮기지 못하게 한다 (hook이 그 폴더에 파일을 쓸 수 있다)
+        let _in_use = if self.calls.is_empty() { None } else { Some(crate::ipc::handlers::paths::components_in_use().await) };
         for call in self.calls {
             let (module_path, function) = match call.target {
                 Ok(t) => t,

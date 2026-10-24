@@ -1157,7 +1157,7 @@ fn remove_moved_dirs(dirs: &[(PathBuf, saba_chan_updater_lib::component_dirs::So
         }
         // 끊긴 옮기기가 남긴 복사 중 폴더
         let staging = saba_chan_updater_lib::component_dirs::staging_dir(dir);
-        if staging.exists() {
+        if saba_chan_updater_lib::component_dirs::is_staging(&staging) {
             let _ = remove_dir_robust(&staging);
         }
         if !dir.exists() {
@@ -1394,6 +1394,11 @@ mod tests {
         std::fs::write(foreign.join("mine.txt"), "user").unwrap();
         let staging = saba_chan_updater_lib::component_dirs::staging_dir(&extensions);
         std::fs::create_dir_all(&staging).unwrap();
+        std::fs::write(staging.join(".saba-chan-moving"), "").unwrap();
+        // Codex 리뷰 #544 P1: 표시 없는 같은 이름 폴더는 사용자 것일 수 있어 남긴다
+        let unmarked = saba_chan_updater_lib::component_dirs::staging_dir(&foreign);
+        std::fs::create_dir_all(&unmarked).unwrap();
+        std::fs::write(unmarked.join("mine.txt"), "user").unwrap();
         let default = tmp.path().join("data").join("modules");
         std::fs::create_dir_all(&default).unwrap();
         mark_owned(&default).unwrap();
@@ -1407,6 +1412,7 @@ mod tests {
         assert!(left.is_empty(), "{:?}", left);
         assert!(!chosen.exists(), "the emptied chosen folder goes too");
         assert!(foreign.join("mine.txt").is_file(), "an unmarked folder is kept");
+        assert!(unmarked.join("mine.txt").is_file(), "an unmarked folder with the staging name is kept");
         assert!(default.is_dir(), "the data folder entries are left to remove_appdata_entries");
     }
 

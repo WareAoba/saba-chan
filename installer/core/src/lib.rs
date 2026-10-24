@@ -231,7 +231,7 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
 
     // 모듈·익스텐션 위치는 받기 전에 확인한다 (옮기기는 데몬을 끈 뒤)
     if let Some(chosen) = &config.components_dir {
-        if let Err(e) = check_components_dir(chosen, &component_dirs::Layout::current()) {
+        if let Err(e) = check_components_dir(chosen, &component_dirs::Layout::current(), &install_dir) {
             return fail(
                 "components_dir_invalid",
                 &format!("Cannot use {} for modules and extensions ({})", chosen.display(), e),
@@ -564,14 +564,27 @@ pub fn check_install_dir(dir: &Path, layout: &component_dirs::Layout) -> Result<
     Ok(())
 }
 
-/// 모듈·익스텐션 위치로 `chosen`을 쓸 수 있는가 (지금 위치와 같으면 된다)
-pub fn check_components_dir(chosen: &Path, layout: &component_dirs::Layout) -> Result<(), component_dirs::PathError> {
+/// 모듈·익스텐션 위치로 `chosen`을 쓸 수 있는가 (지금 위치와 같으면 된다).
+/// 둘을 다 옮긴 뒤의 배치로 본다: 두 폴더가 서로 겹치거나 설치 폴더와 겹치면 안 된다
+/// (설치 폴더 안이면 다음 설치에서 `check_install_dir`가 거절한다)
+pub fn check_components_dir(
+    chosen: &Path,
+    layout: &component_dirs::Layout,
+    install_dir: &Path,
+) -> Result<(), component_dirs::PathError> {
+    let mut finals = Vec::new();
     for kind in component_dirs::Kind::ALL {
         match component_dirs::target_for(kind, chosen, layout) {
-            Ok(_) => {}
-            Err(e) if e.code == "same_as_current" => {}
+            Ok(target) => finals.push(target),
+            Err(e) if e.code == "same_as_current" => finals.push(layout.dir(kind).to_path_buf()),
             Err(e) => return Err(e),
         }
+    }
+    if saba_chan_updater_lib::paths_overlap(&finals[0], &finals[1]) {
+        return Err(component_dirs::PathError::new("overlaps_other", finals[1].display().to_string()));
+    }
+    if let Some(inside) = finals.iter().find(|t| saba_chan_updater_lib::paths_overlap(t, install_dir)) {
+        return Err(component_dirs::PathError::new("overlaps_install", inside.display().to_string()));
     }
     Ok(())
 }
@@ -953,13 +966,21 @@ mod tests {
             modules: data.join("modules"),
             extensions: root.join("x").join("extensions"),
         };
-        assert_eq!(check_components_dir(&root.join("games"), &layout), Ok(()));
+        let install = root.join("Programs").join("Saba-chan");
+        assert_eq!(check_components_dir(&root.join("games"), &layout, &install), Ok(()));
         // 모듈은 이미 그 자리(기본)여도 익스텐션을 옮길 수 있으면 된다
-        assert_eq!(check_components_dir(&data, &layout), Ok(()));
+        assert_eq!(check_components_dir(&data, &layout, &install), Ok(()));
         assert_eq!(
-            check_components_dir(Path::new("relative"), &layout).unwrap_err().code,
+            check_components_dir(Path::new("relative"), &layout, &install).unwrap_err().code,
             "not_absolute"
         );
+        // Codex 리뷰 #544: 다 옮긴 뒤의 배치로 본다. `...\modules`를 고르면 익스텐션이 새 모듈 폴더 안에 들어간다
+        assert_eq!(
+            check_components_dir(&root.join("games").join("modules"), &layout, &install).unwrap_err().code,
+            "overlaps_other"
+        );
+        // 설치 폴더 안에 두면 다음 설치(같은 폴더)를 거절하게 된다
+        assert_eq!(check_components_dir(&install, &layout, &install).unwrap_err().code, "overlaps_install");
     }
 
     // M1: 설치 폴더 사본이 이 설치기와 다르면(복사 실패로 옛 사본이 남음) 새 버전으로 기록하지 않는다

@@ -255,7 +255,8 @@
       "paths_copy_failed": "Копирование не удалось. Ничего не изменено. Проверьте свободное место и повторите.",
       "paths_verify_failed": "Копия не совпала с оригиналом. Ничего не изменено. Повторите.",
       "paths_commit_failed": "Не удалось сохранить настройку. Файлы возвращены на место.",
-      "paths_unknown_kind": "Выберите modules или extensions."
+      "paths_unknown_kind": "Выберите modules или extensions.",
+      "paths_overlaps_install": "Нельзя размещать внутри папки установки. Выберите папку вне её."
     },
     "not_a_bool": "«{{value}}» — не да/нет (используйте true или false).",
     "not_a_number": "«{{value}}» — не число.",

@@ -255,7 +255,8 @@
       "paths_copy_failed": "A cópia falhou. Nada foi alterado. Verifique o espaço livre e tente de novo.",
       "paths_verify_failed": "A cópia não correspondeu ao original. Nada foi alterado. Tente de novo.",
       "paths_commit_failed": "Não foi possível salvar a configuração. Os arquivos foram devolvidos ao lugar.",
-      "paths_unknown_kind": "Escolha modules ou extensions."
+      "paths_unknown_kind": "Escolha modules ou extensions.",
+      "paths_overlaps_install": "Não pode ficar dentro da pasta de instalação. Escolha uma pasta fora dela."
     },
     "not_a_bool": "\"{{value}}\" não é sim/não (use true ou false).",
     "not_a_number": "\"{{value}}\" não é um número.",
