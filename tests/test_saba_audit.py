@@ -12,6 +12,24 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "modules"))
 import saba_audit
 
 
+class StdioEncodingTests(unittest.TestCase):
+    """CI(Windows, cp1252)에서 데몬이 넘긴 UTF-8 SDK 원문(한국어 주석)을 로캘 인코딩으로 읽어 깨졌다 (#550 CI).
+    데몬은 ``-I``로 띄워 PYTHONIOENCODING이 먹지 않는다: 표준 입출력을 바이트로 UTF-8 읽고 쓴다"""
+
+    def test_metadata_and_result_are_utf8_whatever_the_locale(self):
+        with tempfile.TemporaryDirectory() as directory:
+            (Path(directory) / "lifecycle.py").write_text("# 한국어 주석\nprint('안녕')\n", encoding="utf-8")
+            metadata = json.dumps({"sdk_source": "# 서버 주석 ✓\nSINCE = {}\n", "sdk_minimum": None}, ensure_ascii=False)
+            stdin = io.TextIOWrapper(io.BytesIO(metadata.encode("utf-8")), encoding="cp1252", errors="surrogateescape")
+            raw = io.BytesIO()
+            stdout = io.TextIOWrapper(raw, encoding="cp1252")
+            with patch.object(sys, "argv", ["saba_audit.py", directory, "--sdk-stdin"]), patch.object(sys, "stdin", stdin), patch.object(sys, "stdout", stdout):
+                saba_audit.main()
+                stdout.flush()
+            result = json.loads(raw.getvalue().decode("utf-8"))
+            self.assertTrue(result["success"], result)
+
+
 class SdkAuditTests(unittest.TestCase):
     def scan(self, source, minimum=None):
         with tempfile.TemporaryDirectory() as directory:

@@ -300,7 +300,8 @@ def main():
         print(json.dumps({"success": False, "message": f"not a folder: {sys.argv[1]}"}))
         return
     try:
-        metadata = json.load(sys.stdin) if len(sys.argv) == 3 else {}
+        # 데몬은 -I로 띄워 PYTHONIOENCODING이 먹지 않는다: 로캘(cp1252 등)과 상관없이 바이트를 UTF-8로 읽는다
+        metadata = json.loads(sys.stdin.buffer.read().decode("utf-8")) if len(sys.argv) == 3 else {}
         if not isinstance(metadata, dict):
             raise ValueError("SDK audit metadata must be an object")
         source, minimum = metadata.get("sdk_source"), metadata.get("sdk_minimum")
@@ -309,7 +310,14 @@ def main():
         result = {"success": True, "findings": scan(sys.argv[1], sdk_source=source, sdk_minimum=minimum)}
     except (OSError, UnicodeError, ValueError, RuntimeError) as error:
         result = {"success": False, "message": str(error)}
-    print(json.dumps(result, ensure_ascii=False))
+    text = json.dumps(result, ensure_ascii=False)
+    # 로캘 인코딩으로 내보내면 한국어 등이 깨진다: 바이트 출력이 있으면 UTF-8로 쓴다
+    if hasattr(sys.stdout, "buffer"):
+        sys.stdout.flush()
+        sys.stdout.buffer.write((text + "\n").encode("utf-8"))
+        sys.stdout.buffer.flush()
+    else:
+        print(text)
 
 
 if __name__ == "__main__":
