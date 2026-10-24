@@ -24,6 +24,8 @@ const GUI_UNAPPROVED = Symbol('extension_gui_unapproved');
 const LOAD_FAILED = Symbol('load_failed');
 // 오류 없이 실행된 번들이 남긴 전역 → 그 로드. 실패한 로드가 다른 로드의 전역을 자기 것으로 보지 않게 한다
 const executedBy = new WeakMap();
+// 전역 이름 → 마지막으로 오류 없이 실행된 번들의 전역. 늦게 실행돼 덮어쓴 뒤 실패한 번들은 이 값으로 되돌린다
+const lastExecuted = new Map();
 
 /**
  * 익스텐션 GUI 번들 동적 로드
@@ -47,6 +49,7 @@ async function loadExtensionBundle(ext) {
     // (같은 확장을 동시에 읽은 다른 로드가 이미 성공해 등록한 전역은 지우지 않는다)
     let before;
     let mine;
+    let executedBefore;
     const load = {};
     try {
         // IPC를 통해 번들 JS 소스 가져오기 (인증 포함)
@@ -73,6 +76,7 @@ async function loadExtensionBundle(ext) {
             };
             window.addEventListener('error', onThrow);
             before = window[globalName];
+            executedBefore = lastExecuted.get(globalName);
             script.src = url;
             script.async = true;
             script.onload = () => {
@@ -80,7 +84,10 @@ async function loadExtensionBundle(ext) {
                 if (thrown) return reject(thrown);
                 // 실행 직후의 전역은 이 번들이 남긴 것이다 (onload는 실행과 같은 차례에 온다)
                 const value = window[globalName];
-                if (value && typeof value === 'object') executedBy.set(value, load);
+                if (value && typeof value === 'object') {
+                    executedBy.set(value, load);
+                    lastExecuted.set(globalName, value);
+                }
                 resolve();
             };
             script.onerror = () => {
@@ -110,8 +117,12 @@ async function loadExtensionBundle(ext) {
         // 다른 로드가 오류 없이 실행해 남긴 전역이면 그 로드의 것이다 (이 번들이 등록 전에 throw한 경우)
         const owner = mine !== undefined && typeof mine === 'object' ? executedBy.get(mine) : undefined;
         if (mine !== undefined && window[globalName] === mine && (owner === undefined || owner === load)) {
-            if (before === undefined) delete window[globalName];
-            else window[globalName] = before;
+            // 이 번들을 넣은 뒤 다른 로드가 오류 없이 실행했으면 그 전역으로 되돌린다
+            const other = lastExecuted.get(globalName);
+            const restore = other !== undefined && other !== mine && other !== executedBefore ? other : before;
+            if (owner === load) lastExecuted.delete(globalName);
+            if (restore === undefined) delete window[globalName];
+            else window[globalName] = restore;
         }
         return LOAD_FAILED;
     }
@@ -149,6 +160,7 @@ export function ExtensionProvider({ children }) {
     const unloadBundle = (id) => {
         document.querySelectorAll(`style[data-extension="${id}"]`).forEach((el) => el.remove());
         delete window[`SabaExt${pascalCase(id)}`];
+        lastExecuted.delete(`SabaExt${pascalCase(id)}`);
         loadedRef.current.delete(id);
         delete loadedVersionsRef.current[id];
     };

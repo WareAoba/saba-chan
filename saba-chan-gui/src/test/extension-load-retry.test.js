@@ -144,6 +144,28 @@ describe('익스텐션 GUI 번들 실행이 실패했을 때', () => {
         expect(window.SabaExtDocker).toBe(loaded);
     });
 
+    // Codex 재검증 #549: 먼저 넣은 A가 겹친 B의 성공 뒤에 실행돼 전역을 덮어쓰고 throw하면 B의 전역까지 사라졌다
+    it('늦게 실행돼 전역을 덮어쓴 뒤 실패한 로드는 겹친 로드의 전역으로 되돌린다', async () => {
+        let runFirst;
+        runs.push((el) => {
+            runFirst = () => {
+                window.SabaExtDocker = { registerSlots: () => ({}) };
+                window.dispatchEvent(new ErrorEvent('error', { filename: el.src, error: new Error('late throw') }));
+                el.onload();
+            };
+        }, ok);
+        const { result } = renderHook(() => useExtensions(), { wrapper: ExtensionProvider });
+        await waitFor(() => expect(runFirst).toBeDefined());
+        await act(async () => result.current.refreshExtensions());
+        await waitFor(() => expect(result.current.slots['test.slot']).toEqual([Slot]));
+        const loaded = window.SabaExtDocker;
+        await act(async () => {
+            runFirst();
+            await new Promise((r) => setTimeout(r, 0));
+        });
+        expect(window.SabaExtDocker).toBe(loaded);
+    });
+
     it('로드됨으로 기억했는데 전역이 사라졌으면 다음 목록에서 다시 읽는다', async () => {
         runs.push(ok, ok);
         const { result } = renderHook(() => useExtensions(), { wrapper: ExtensionProvider });
