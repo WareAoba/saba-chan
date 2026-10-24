@@ -147,6 +147,8 @@ pub async fn do_uninstall(keep: Keep, on_progress: impl Fn(&UninstallProgress)) 
         } else {
             emit("data-keep", "Removing runtime environments (keeping what you chose)...", 55);
         }
+        // 데이터 폴더 밖으로 옮긴 모듈·익스텐션 폴더 (설정 파일을 지우기 전에 위치를 읽는다)
+        left.extend(remove_moved_component_dirs());
         left.extend(remove_appdata_entries(keep));
     }
 
@@ -1134,6 +1136,49 @@ fn owned_data_dir() -> Option<PathBuf> {
     Some(constants::resolve_data_dir())
 }
 
+/// 사용자가 데이터 폴더 밖으로 옮긴 모듈·익스텐션 폴더를 지운다 (모듈·익스텐션은 무엇을 남기든 지우는 런타임 항목이다).
+/// 데이터 폴더를 환경 변수로 바꿨으면 건드리지 않는다. 지우지 못한 것을 돌려준다
+fn remove_moved_component_dirs() -> Vec<PathBuf> {
+    use saba_chan_updater_lib::component_dirs::{resolve, Kind};
+    if owned_data_dir().is_none() {
+        return Vec::new();
+    }
+    remove_moved_dirs(&Kind::ALL.map(resolve))
+}
+
+/// 설정으로 고른 폴더(`Source::Config`) 중 사바쨩 표시가 있는 것만 지우고, 그래서 빈 상위 폴더도 지운다.
+/// 표시가 없는 폴더(손으로 고친 설정이 가리키는 남의 폴더일 수 있다)는 둔다
+fn remove_moved_dirs(dirs: &[(PathBuf, saba_chan_updater_lib::component_dirs::Source)]) -> Vec<PathBuf> {
+    use saba_chan_updater_lib::component_dirs::{is_owned, Source};
+    let mut left = Vec::new();
+    for (dir, source) in dirs {
+        if *source != Source::Config {
+            continue;
+        }
+        // 끊긴 옮기기가 남긴 복사 중 폴더
+        let staging = saba_chan_updater_lib::component_dirs::staging_dir(dir);
+        if saba_chan_updater_lib::component_dirs::is_staging(&staging) {
+            let _ = remove_dir_robust(&staging);
+        }
+        if !dir.exists() {
+            continue;
+        }
+        if !is_owned(dir) {
+            tracing::info!("[Uninstall] Keeping {:?}: not marked as made by Saba-chan", dir);
+            continue;
+        }
+        tracing::info!("[Uninstall] Removing moved folder: {:?}", dir);
+        let _ = remove_dir_robust(dir);
+        if dir.exists() {
+            left.push(dir.clone());
+        } else if let Some(parent) = dir.parent() {
+            // 모듈·익스텐션을 두려고 고른 폴더가 비었으면 같이 지운다 (다른 파일이 있으면 실패하고 남는다)
+            let _ = std::fs::remove_dir(parent);
+        }
+    }
+    left
+}
+
 /// 사용자 데이터 폴더에서 `keep`이 남기지 않는 항목을 지운다 (런타임·캐시는 늘 지운다).
 /// 앱이 만들지 않는 항목(업데이트 서명 키 등)은 어느 쪽이든 남는다
 /// 지우지 못한 항목을 돌려준다 (몇 번 다시 시도한 뒤에도 남은 것)
@@ -1332,6 +1377,44 @@ fn schedule_self_delete(install_dir: Option<&PathBuf>, dedicated: bool) {
 mod tests {
     use super::*;
     use std::time::{Duration, Instant};
+
+    #[test]
+    fn moved_component_folders_are_removed_only_when_marked() {
+        use saba_chan_updater_lib::component_dirs::{mark_owned, Source};
+        let tmp = tempfile::tempdir().unwrap();
+        let chosen = tmp.path().join("Games").join("Saba");
+        let (modules, extensions) = (chosen.join("modules"), chosen.join("extensions"));
+        std::fs::create_dir_all(modules.join("minecraft")).unwrap();
+        std::fs::write(modules.join("minecraft").join("module.toml"), "").unwrap();
+        mark_owned(&modules).unwrap();
+        std::fs::create_dir_all(&extensions).unwrap();
+        mark_owned(&extensions).unwrap();
+        let foreign = tmp.path().join("Other").join("modules");
+        std::fs::create_dir_all(&foreign).unwrap();
+        std::fs::write(foreign.join("mine.txt"), "user").unwrap();
+        let staging = saba_chan_updater_lib::component_dirs::staging_dir(&extensions);
+        std::fs::create_dir_all(&staging).unwrap();
+        std::fs::write(staging.join(".saba-chan-moving"), "").unwrap();
+        // Codex 리뷰 #544 P1: 표시 없는 같은 이름 폴더는 사용자 것일 수 있어 남긴다
+        let unmarked = saba_chan_updater_lib::component_dirs::staging_dir(&foreign);
+        std::fs::create_dir_all(&unmarked).unwrap();
+        std::fs::write(unmarked.join("mine.txt"), "user").unwrap();
+        let default = tmp.path().join("data").join("modules");
+        std::fs::create_dir_all(&default).unwrap();
+        mark_owned(&default).unwrap();
+
+        let left = remove_moved_dirs(&[
+            (modules.clone(), Source::Config),
+            (extensions.clone(), Source::Config),
+            (foreign.clone(), Source::Config),
+            (default.clone(), Source::Default),
+        ]);
+        assert!(left.is_empty(), "{:?}", left);
+        assert!(!chosen.exists(), "the emptied chosen folder goes too");
+        assert!(foreign.join("mine.txt").is_file(), "an unmarked folder is kept");
+        assert!(unmarked.join("mine.txt").is_file(), "an unmarked folder with the staging name is kept");
+        assert!(default.is_dir(), "the data folder entries are left to remove_appdata_entries");
+    }
 
     // M15: 끈 프로세스가 실제로 끝날 때까지 기다린다. 끝나기 전에 사용자 데이터를 지우면
     // 아직 살아 있던 데몬이 설정·토큰 파일을 다시 쓴다

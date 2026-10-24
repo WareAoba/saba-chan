@@ -169,7 +169,23 @@
       "name_taken": "同じ名前のサーバーがあります",
       "busy": "インストール・更新・バックアップ・復元の最中です"
     },
-    "import_token_moved": "ボットのペアリングも移しました。古い PC の接続を切ってください (古い PC で: saba-chan-cli bot unpair)。"
+    "import_token_moved": "ボットのペアリングも移しました。古い PC の接続を切ってください (古い PC で: saba-chan-cli bot unpair)。",
+    "paths": {
+      "data": "データ・設定",
+      "install": "プログラム",
+      "default_install": "既定のプログラムフォルダー",
+      "instances": "ゲームサーバー",
+      "modules": "モジュール",
+      "extensions": "拡張機能",
+      "source_default": "既定",
+      "source_config": "選択",
+      "source_env": "環境変数で固定",
+      "default_is": "既定: {{path}}"
+    },
+    "confirm_move_modules": "モジュールを {{dir}} へ移しますか？インストール済みのモジュールをコピーして確認したあと、元のフォルダーから削除します。",
+    "confirm_move_extensions": "拡張機能を {{dir}} へ移しますか？インストール済みの拡張機能をコピーして確認したあと、元のフォルダーから削除します。",
+    "moved": "{{path}} へ移しました。",
+    "move_left_behind": "元のフォルダーの次のファイルを削除できませんでした。手動で削除してください: {{files}}"
   },
   "console": {
     "attach_help": "{{name}} に接続しました。コマンドを入力してください。:help でヘルプ、:q で抜けます（サーバーは動き続けます）。",
@@ -283,7 +299,24 @@
       "not_supported": "未対応のコマンドは saba-chan-cli module info で確認できます。",
       "agent_too_old": "更新を確認: saba-chan-cli update check",
       "install_backup_failed": "インストール前に {{file}} をバックアップできなかったため、インストールしませんでした。ディスクの空き容量と同じフォルダーの .bak ファイルを確認してください。",
-      "kept_backups": "元に戻せなかったファイルは、インストール前のコピーを残しました: {{files}}"
+      "kept_backups": "元に戻せなかったファイルは、インストール前のコピーを残しました: {{files}}",
+      "paths_busy": "インストール・更新・バックアップなどの作業中です。終わってからもう一度試してください。",
+      "paths_servers_running": "先にこれらのサーバーを停止してから、もう一度試してください。",
+      "paths_env_fixed": "環境変数で固定されたフォルダーです。変数を消すとフォルダーを選べます。",
+      "paths_not_absolute": "D:\\Games\\Saba のようにフルパスで指定してください。",
+      "paths_root_or_home": "ドライブやユーザーフォルダーそのものではなく、その中のフォルダーを選んでください。",
+      "paths_contains_data_dir": "そのフォルダーにはサバちゃんのデータフォルダーが入っています。別のフォルダーを選んでください。",
+      "paths_same_as_current": "すでにそのフォルダーにあります。",
+      "paths_overlaps_current": "現在のフォルダーの中、または現在のフォルダーを含むフォルダーです。別のフォルダーを選んでください。",
+      "paths_overlaps_other": "モジュールまたは拡張機能のフォルダーと重なっています。別のフォルダーを選んでください。",
+      "paths_not_empty": "そこの modules または extensions フォルダーにはすでにファイルがあります。空の場所を選んでください。",
+      "paths_not_writable": "そのフォルダーに書き込めません。書き込めるフォルダーを選んでください。",
+      "paths_has_link": "フォルダーの中にリンク（ショートカットフォルダー）があります。削除してからもう一度試してください。",
+      "paths_copy_failed": "コピーできませんでした。何も変更していません。空き容量を確認してもう一度試してください。",
+      "paths_verify_failed": "コピーが元と一致しませんでした。何も変更していません。もう一度試してください。",
+      "paths_commit_failed": "設定を保存できなかったため、ファイルを元の場所に戻しました。",
+      "paths_unknown_kind": "modules または extensions を選んでください。",
+      "paths_overlaps_install": "インストール先フォルダーの中には置けません。その外のフォルダーを選んでください。"
     },
     "not_a_bool": "「{{value}}」ははい/いいえではありません（true か false を使ってください）。",
     "not_a_number": "「{{value}}」は数値ではありません。",
@@ -585,6 +618,7 @@
       "server.console": "コンソールを見ながら入力する",
       "server.run": "ゲームコマンドを実行 (コマンドを省くと一覧を表示)",
       "server.commands": "このサーバーが受け付けるゲームコマンド",
+      "server.discord": "Discord サーバーごとに、チャットでこのサーバーとそのコマンドを呼ぶ語。オプションなし: 表示",
       "server.send": "コンソールに 1 行そのまま送る",
       "server.settings": "サーバー設定を表示",
       "server.set": "設定を変える: キー=値 ... (エクステンションのデータは ext.キー、空の値は削除)",
@@ -726,13 +760,14 @@
       "events": "デーモンのイベントをリアルタイムで追う(--json なら 1 行に JSON 1 つ)。Ctrl+C で止めます",
       "tui": "全画面メニューを開く",
       "install": "ウィンドウのインストーラーなしでこのPCにサバちゃんをインストール",
+      "uninstall": "この PC からサバちゃんを削除（指定しなければ設定とサーバーは残す）",
+      "config.paths": "データ・モジュール・拡張機能フォルダーの場所と既定のフォルダー",
+      "config.move": "モジュールや拡張機能を別のフォルダーへ移す。インストール済みのファイルも移す。サーバーはすべて停止が必要",
       "server.players": "今接続している人",
       "server.rcon": "サーバーがコマンドを受け取る経路(コンソール、なければRCON)で1行送って応答を見る",
       "server.log": "過去の実行まで保存されたログ(コンソールは今回の実行分のみ)",
       "server.query": "ゲームモジュールが提供する照会(名前がなければ一覧)",
-      "daemon.clients": "デーモンに接続しているデスクトップアプリのウィンドウ",
-      "server.discord": "Discord サーバーごとに、チャットでこのサーバーとそのコマンドを呼ぶ語。オプションなし: 表示",
-      "uninstall": "この PC からサバちゃんを削除（指定しなければ設定とサーバーは残す）"
+      "daemon.clients": "デーモンに接続しているデスクトップアプリのウィンドウ"
     },
     "arg": {
       "bot.channels.notify": "通知チャンネル(クラッシュ・バックアップ・更新・予約再起動)、名前またはID",
@@ -837,6 +872,10 @@
       "bot.music.queue_lines": "プレイヤーパネルのキューの行数 (1-20)",
       "bot.music.refresh": "プレイヤーパネルの更新間隔 (ミリ秒、2000-10000)",
       "bot.music.normalize": "曲ごとの音量をそろえる (on または off)",
+      "server.discord.guild": "Discord サーバーの名前または id (複数ペアリングしていて変更するときは確認します)",
+      "server.discord.word": "サーバーを呼ぶ語をカンマ区切りで (今の語を置き換える)。--word \"\" で消す",
+      "server.discord.command": "1 つのコマンドの語: コマンド=語,語 (そのコマンドの語を置き換える。コマンド= で消す)。繰り返し可",
+      "server.discord.clear": "このサーバーの語をすべて消す",
       "bot.channels.guild": "Discord サーバーの名前か ID。省くとペアリングしたサーバーすべて (変更はサーバーが 1 つのときだけ)",
       "help.command": "コマンドのパス(例: `server start`)",
       "events.kind": "このイベントだけ。`instance` は `instance.exit` などの下位イベントも受け取ります",
@@ -847,14 +886,13 @@
       "install.modules": "インストールするゲームモジュール、カンマ区切り（省略時は質問）",
       "install.gui": "画面がなくてもデスクトップアプリまでインストール",
       "install.no_gui": "画面があってもデスクトップアプリなしでインストール",
-      "do.action": "アクション id (例: server.restart, server.command:say)",
-      "do.server": "アクションの対象サーバー",
-      "server.discord.guild": "Discord サーバーの名前または id (複数ペアリングしていて変更するときは確認します)",
-      "server.discord.word": "サーバーを呼ぶ語をカンマ区切りで (今の語を置き換える)。--word \"\" で消す",
-      "server.discord.command": "1 つのコマンドの語: コマンド=語,語 (そのコマンドの語を置き換える。コマンド= で消す)。繰り返し可",
-      "server.discord.clear": "このサーバーの語をすべて消す",
       "uninstall.remove_settings": "設定と Discord 連携も削除",
       "uninstall.remove_instances": "ゲームサーバーも削除（サーバーファイル、ワールド、バックアップ）",
+      "config.move.kind": "移すもの: modules（モジュール）または extensions（拡張機能）",
+      "config.move.folder": "使うフォルダー。その中に modules または extensions フォルダーを作る",
+      "components_dir": "モジュール・拡張機能を置くフォルダー。その中に modules と extensions を作り、インストール済みのファイルを移す",
+      "do.action": "アクション id (例: server.restart, server.command:say)",
+      "do.server": "アクションの対象サーバー",
       "server.log.source": "どの実行か（`--runs` で一覧）、省略すると最新",
       "server.log.lines": "最後の N 行",
       "server.log.runs": "保存された実行の一覧",
@@ -1249,7 +1287,20 @@
     "failed": "インストールできませんでした: {{reason}}（詳細: {{log}}）",
     "failed_no_log": "インストールできませんでした: {{reason}}",
     "done": "{{dir}} にインストールしました",
-    "next": "次のコマンドでデーモンを起動してください:\n{{command}}"
+    "next": "次のコマンドでデーモンを起動してください:\n{{command}}",
+    "components_dir": "モジュール・拡張機能は {{dir}} に置きます。",
+    "components_dir_invalid": "{{dir}} はモジュール・拡張機能の場所に使えません: {{reason}}",
+    "invalid_dir": "{{dir}} にはインストールできません。ドライブのルート、ホームフォルダー、設定フォルダー以外を選んでください"
+  },
+  "uninstall": {
+    "not_installed": "このコマンドはサバちゃんのインストールフォルダーから実行されていないため、削除するものがありません。",
+    "confirm": "{{dir}} のサバちゃんを削除しますか？プログラムとサバちゃんが作ったファイルはすべて削除し、{{kept}}。",
+    "kept_both": "設定とゲームサーバーは残します",
+    "kept_settings": "設定は残し、ゲームサーバーは削除します",
+    "kept_instances": "ゲームサーバーは残し、設定は削除します",
+    "kept_nothing": "設定とゲームサーバーも削除します",
+    "done": "サバちゃんを削除しました。{{kept}}。",
+    "left": "サバちゃんを削除しましたが、次の項目を削除できませんでした。使用中のプログラムを閉じて手動で削除してください:\n{{paths}}"
   },
   "players": {
     "title": "{{server}}: {{count}} 人接続中",
@@ -1270,15 +1321,5 @@
       "about": "説明",
       "inputs": "入力"
     }
-  },
-  "uninstall": {
-    "not_installed": "このコマンドはサバちゃんのインストールフォルダーから実行されていないため、削除するものがありません。",
-    "confirm": "{{dir}} のサバちゃんを削除しますか？プログラムとサバちゃんが作ったファイルはすべて削除し、{{kept}}。",
-    "kept_both": "設定とゲームサーバーは残します",
-    "kept_settings": "設定は残し、ゲームサーバーは削除します",
-    "kept_instances": "ゲームサーバーは残し、設定は削除します",
-    "kept_nothing": "設定とゲームサーバーも削除します",
-    "done": "サバちゃんを削除しました。{{kept}}。",
-    "left": "サバちゃんを削除しましたが、次の項目を削除できませんでした。使用中のプログラムを閉じて手動で削除してください:\n{{paths}}"
   }
 }

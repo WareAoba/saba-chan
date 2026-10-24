@@ -194,6 +194,9 @@ pub struct InstallArgs {
     /// Install without the desktop app, even with a display
     #[arg(long)]
     pub no_gui: bool,
+    /// Folder for modules and extensions (Saba-chan makes `modules` and `extensions` inside it). Installed files are moved
+    #[arg(long, value_name = "PATH")]
+    pub components_dir: Option<std::path::PathBuf>,
 }
 
 #[derive(Args, Debug)]
@@ -917,6 +920,17 @@ pub enum ConfigCmd {
         #[arg(long)]
         secrets: bool,
     },
+    /// Where Saba-chan keeps its data, modules and extensions, and the default folders
+    #[command(visible_alias = "dirs")]
+    Paths,
+    /// Move modules or extensions to another folder. Installed files are moved; servers must be stopped
+    Move {
+        /// What to move
+        #[arg(value_enum)]
+        kind: DirKind,
+        /// Folder to use. Saba-chan makes a `modules` or `extensions` folder inside it
+        folder: std::path::PathBuf,
+    },
     /// Bring in settings and servers from an export zip
     Import {
         file: std::path::PathBuf,
@@ -927,6 +941,22 @@ pub enum ConfigCmd {
         #[arg(long)]
         overwrite: bool,
     },
+}
+
+/// `config move`로 옮길 수 있는 폴더 (데몬 `/api/system/paths/move`의 `kind`)
+#[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DirKind {
+    Modules,
+    Extensions,
+}
+
+impl DirKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            DirKind::Modules => "modules",
+            DirKind::Extensions => "extensions",
+        }
+    }
 }
 
 /// 번역된 도움말을 끼운 clap 명령
@@ -1194,6 +1224,15 @@ mod tests {
         // 오타는 옮겨 읽지 않고 clap의 원래 오류(제안 포함)를 낸다
         let typo = parse(["saba-chan-cli", "server", "strat", "help"].map(Into::into).to_vec()).unwrap_err();
         assert_eq!(typo.kind(), clap::error::ErrorKind::InvalidSubcommand);
+    }
+
+    #[test]
+    fn folder_moves_and_install_location_parse() {
+        let cli = Cli::try_parse_from(["saba-chan-cli", "config", "move", "extensions", "D:/Games/Saba"]).unwrap();
+        assert!(matches!(cli.cmd, Some(Cmd::Config(ConfigCmd::Move { kind: DirKind::Extensions, folder })) if folder == std::path::Path::new("D:/Games/Saba")));
+        assert!(Cli::try_parse_from(["saba-chan-cli", "config", "move", "instances", "x"]).is_err(), "only modules and extensions move");
+        let cli = Cli::try_parse_from(["saba-chan-cli", "install", "--components-dir", "/srv/saba"]).unwrap();
+        assert!(matches!(cli.cmd, Some(Cmd::Install(a)) if a.components_dir.as_deref() == Some(std::path::Path::new("/srv/saba"))));
     }
 
     #[test]

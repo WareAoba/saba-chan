@@ -27,6 +27,7 @@ import { LANGUAGE_OPTIONS } from '../../utils/languages';
 import { SabaToggle } from '../ui/SabaUI';
 import { AuditLog, auditAvailable } from '../servers/AuditTab';
 import { DataTransferSection, dataTransferAvailable } from './DataTransferSection';
+import { FolderPathsSection, folderPathsAvailable } from './FolderPathsSection';
 import { ExtensionGuiSection, extensionGuiAvailable } from './ExtensionGuiSection';
 import { UnisolatedSection, unisolatedAvailable } from './UnisolatedSection';
 import SabaStorage from './SabaStorage';
@@ -907,6 +908,8 @@ function SettingsModal({
                                     ]}
                                 />
                             </div>
+
+                            {folderPathsAvailable() && <FolderPathsSection />}
 
                             {dataTransferAvailable() && <DataTransferSection />}
 

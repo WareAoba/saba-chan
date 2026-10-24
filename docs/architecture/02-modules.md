@@ -24,8 +24,8 @@
 
 | 항목 | 값 | 근거 |
 |---|---|---|
-| 모듈 루트 | `SABA_MODULES_PATH` 환경변수. 없으면 `resolve_data_dir()/modules`, 즉 Windows는 `%APPDATA%/saba-chan/modules`, Linux/macOS는 `$HOME/.config/saba-chan/modules` (`SABA_DATA_DIR`로 override 가능) | `D:updater/src/constants.rs:55-101`, `D:src/plugin/mod.rs:105-111` |
-| GUI가 데몬을 띄울 때 | GUI(Tauri 셸)가 `SABA_MODULES_PATH`를 명시적으로 주입(값은 `constants::resolve_modules_dir()`) | `D:saba-chan-gui/src-tauri/src/lifecycle.rs:173-183` |
+| 모듈 루트 | `SABA_MODULES_PATH` 환경변수 → `config.json` `paths.modules` → `resolve_data_dir()/modules`(Windows `%APPDATA%/saba-chan/modules`, Linux/macOS `$HOME/.config/saba-chan/modules`). 사용자가 GUI 설정·`saba-chan-cli config move modules`·설치기로 옮길 수 있다(01 §1.5) | `D:updater/src/component_dirs.rs` `resolve` |
+| GUI가 데몬을 띄울 때 | 모듈 폴더를 주입하지 않는다. 데몬이 위 순서로 정한다 | `D:saba-chan-gui/src-tauri/src/lifecycle.rs` |
 | 레거시 경로 | `Supervisor::run()`은 지워졌다. `"./modules"`는 테스트에만 남았다 | `D:src/supervisor/mod.rs:2633-` |
 
 `ModuleLoader::discover_modules()` (`D:src/supervisor/module_loader.rs:1481-1548`)의 동작은 다음과 같다.

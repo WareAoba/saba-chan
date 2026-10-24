@@ -184,7 +184,7 @@ ue4-ini는 hook을 선언하지 않는다. steamcmd의 condition은 `instance.ex
 
 ### 3.1 저장 위치
 
-- 익스텐션 디렉토리: `resolve_extensions_dir()` = `$SABA_EXTENSIONS_DIR` 또는 `resolve_data_dir()/extensions` (`updater/src/constants.rs:106-113`). data_dir은 `$SABA_DATA_DIR`, Windows는 `%APPDATA%/saba-chan`, Unix는 `~/.config/saba-chan`이다(`:55-77`).
+- 익스텐션 디렉토리: `resolve_extensions_dir()` = `$SABA_EXTENSIONS_DIR` → `config.json` `paths.extensions` → `resolve_data_dir()/extensions` (`updater/src/component_dirs.rs` `resolve`). 옮길 때도 폴더 이름은 `extensions`로 둔다(01 §1.5). data_dir은 `$SABA_DATA_DIR`, Windows는 `%APPDATA%/saba-chan`, Unix는 `~/.config/saba-chan`이다(`:55-77`).
 - 활성 상태: `<data_dir>/config.json`의 `extensions.enabled`. 형식은 정렬된 enabled id 배열이다(`ext/:1500-1521`).
 - 익스텐션 글로벌 설정: 같은 파일의 `extensions.settings`. 형식은 `{ext_id:{k:v}}`(`ext/:1523-1549`). 옛 `extensions_state.json`, `extensionConfig.json`은 한 번 이 두 키로 옮겨진다(`updater/src/config_file.rs:43-44`).
 - 테스트 생성자 `new_isolated`는 config.json을 extensions 디렉토리 안에 둔다(`ext/:557-560`).
