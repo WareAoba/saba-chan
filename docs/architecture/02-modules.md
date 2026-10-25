@@ -197,7 +197,7 @@ zomboid의 `beta_branch` 키는 지워졌다. lifecycle에는 `use_beta`를 보�
 
 `[extensions.saba-core]`는 데몬이 읽는 예약 표다(R39, 0.1.9). 이 이름은 데몬 몫이라 `saba-core`라는 id의 익스텐션은 설치·인식하지 않는다(`extension::is_valid_extension_id`). 0.1.8 로더도 `[extensions.*]`는 내용을 보지 않으므로 이 키가 있는 모듈을 그대로 로드한다.
 이 표는 버전 사이를 잇는 자리라, 이 데몬이 모르는 키(더 새 데몬의 키)가 있어도 모듈을 거부하지 않고 경고만 남긴다(`DAEMON_TABLE_KEYS`). 아는 키의 값이 틀리면 그 항목만 버리고 경고한다.
-- `ready_patterns` (Vec<String>, 정규식): 콘솔에 이 중 하나가 찍히면 서버가 준비된 것이다. 데몬이 콘솔을 읽는 시작(managed)에만 쓰인다. 정규식이 아니거나 목록이 아니면 그 항목만 버리고 모듈 경고(`warnings`)를 남긴다(로드는 실패하지 않는다).
+- `ready_patterns` (Vec<String>, 정규식): 콘솔에 이 중 하나가 찍히면 서버가 준비된 것이다. 데몬이 콘솔을 읽는 시작(managed)에만 쓰인다. 켜지는 중에 들어온 정지는 이 문구가 찍힌 뒤 `stop_command`를 보낸다(§3.4). 정규식이 아니거나 목록이 아니면 그 항목만 버리고 모듈 경고(`warnings`)를 남긴다(로드는 실패하지 않는다).
 - `ready_timeout` (u64, 초, 기본 600, 최대 900): 시작 뒤 이 시간 안에 준비 문구가 없으면 `ready_timeout`으로 닫는다. 0이거나 숫자가 아니면 경고를 남기고 기본값을 쓴다. 900보다 크면 경고를 남기고 900을 쓴다(디스코드가 시작을 시킨 채널을 15분 기억한다, 05 §4.4).
 - `player_join_patterns`·`player_leave_patterns` (Vec<String>, 정규식, MK8): 콘솔 줄이 맞으면 그 플레이어가 들어오거나 나간 것이다. 각 정규식에 이름 그룹 `(?P<name>…)`이 있어야 하고, 없거나 정규식이 아니면 그 항목만 버리고 경고한다.
 
@@ -531,7 +531,7 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 - **stdin**: `POST /api/instance/:id/stdin` `{command}`가 `/rcon`과 같은 `via_stdin`을 부르고, 보낸 뒤 찍힌 콘솔 줄을 `data.response`로 돌려준다 (`managed.rs:117-136`, `command.rs:432-`). 쓰기는 mpsc(256)를 거쳐 writer task가 개행을 붙여 쓴다 (`managed_process.rs:285, 344-351, 408-415`).
 - **managed stop** (`mod.rs:951-1026`):
   1. `force`이면 `force_kill`을 한다.
-  2. 모듈이 `stdin`을 지원하고 stdin이 열려 있으면 `stop_command`를 stdin으로 보낸다.
+  2. 모듈이 `stdin`을 지원하고 stdin이 열려 있으면 `stop_command`를 stdin으로 보낸다. 그 시작이 아직 `ready_patterns`를 기다리는 중이면(켜지는 중) 준비 문구가 찍히거나 프로세스가 끝날 때까지, 길어야 4번의 대기 시간만큼 들고 있다가 보낸다. 준비 전에 받은 명령을 실패하는 서버가 있어서다(minecraft 26.3은 `An unexpected error occurred while trying to execute that command`만 찍고 계속 돈다). 테스트 `a_stop_while_starting_waits_for_the_ready_line`.
   3. 그 밖(REST 전용 게임, stdin 없는 스텁)이면 모듈 `stop()`에 `pid`, `managed: true`, `force: false`를 넘긴다. 모듈이 `{success:false, error_code:"graceful_stop_unavailable"}`로 답하면 기다리거나 강제 종료하지 않고 그 응답을 돌려준다(아래).
   4. 0.5초 간격으로 `is_running`을 확인한다. 기다리는 시간은 graceful이면 인스턴스 설정 `stop_timeout`, 모듈 `stop_timeout`, 기본 30초 순이고, force면 5초다.
   5. 시간이 지나면 강제 종료하고 2초 더 기다린다.

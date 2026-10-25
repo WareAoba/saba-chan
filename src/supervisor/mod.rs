@@ -1374,6 +1374,16 @@ impl Supervisor {
                         tracing::warn!("Force kill of '{}' failed: {}", server_name, e);
                     }
                 } else if via_stdin {
+                    // 준비 문구 전에 받은 명령을 실패하는 서버가 있다 (마인크래프트 26.3은 오류만 찍고 계속 돈다).
+                    // 켜지는 중이면 준비될 때까지(정지 대기 시간 안에서) 들고 있다가 보낸다
+                    if ready::is_waiting(&instance.id) {
+                        tracing::info!("'{}' is still starting; holding '{}' until it is ready", server_name, stop_cmd);
+                        let hold = Duration::from_secs(stop_timeout_of(&instance, module.metadata.stop_timeout));
+                        let until = tokio::time::Instant::now() + hold;
+                        while ready::is_waiting(&instance.id) && managed.is_running() && tokio::time::Instant::now() < until {
+                            tokio::time::sleep(Duration::from_millis(250)).await;
+                        }
+                    }
                     tracing::info!("Sending '{}' to managed server '{}' via stdin", stop_cmd, server_name);
                     if let Err(e) = managed.send_command(&stop_cmd).await {
                         tracing::warn!("Failed to send stop command via stdin: {}", e);
@@ -4249,6 +4259,59 @@ mod tests {
         assert_eq!(result["success"], true, "{}", result);
         assert_eq!(std::fs::read_to_string(&got).unwrap(), "quit-now", "the stop command went over stdin");
         assert!(started.elapsed() < std::time::Duration::from_secs(10), "it exited on its own, not after the kill timeout");
+    }
+
+    /// 준비 문구 전에 받은 명령을 실패하는 서버(마인크래프트 26.3: "An unexpected error occurred")도
+    /// 켜지는 중에 정지하면 준비된 뒤 stop_command를 받아 스스로 저장하고 끝난다 (강제 종료로 넘어가지 않는다)
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_stop_while_starting_waits_for_the_ready_line() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("slow-console");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nschema_version = 1\nname = \"slow-console\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n\
+             [config]\nstop_command = \"quit-now\"\nstop_timeout = 4\n\n[protocols]\nsupported = [\"stdin\"]\n\n\
+             [extensions.saba-core]\nready_patterns = [\"^Done\"]\n",
+        )
+        .unwrap();
+        // 준비 전에 온 줄은 버리고(실패), 준비 뒤의 quit-now에만 저장 표시를 남기고 끝나는 서버
+        let saved = tmp.path().join("saved");
+        let game = format!(
+            "import os, select, sys, time\n\
+             print('booting', flush=True)\n\
+             time.sleep(1.5)\n\
+             while select.select([0], [], [], 0)[0] and os.read(0, 4096):\n    pass\n\
+             print('Done (1.5s)!', flush=True)\n\
+             for line in sys.stdin:\n    \
+             if line.strip() == 'quit-now':\n        open({saved:?}, 'w').write('saved')\n        sys.exit(0)\n",
+            saved = saved.display().to_string()
+        );
+        std::fs::write(
+            dir.join("lifecycle.py"),
+            format!(
+                "import json, sys\n\
+                 if sys.argv[1] == 'get_launch_command':\n    \
+                 print(json.dumps({{'success': True, 'program': 'python3', 'args': ['-c', {game:?}], 'working_dir': '.'}}))\n\
+                 else:\n    print(json.dumps({{'success': True}}))\n"
+            ),
+        )
+        .unwrap();
+        crate::sandbox::consent_test_component(&dir.join("lifecycle.py"));
+        let mut sup = Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let mut inst = crate::instance::ServerInstance::new("s-early", "slow-console");
+        inst.id = "s-early".into();
+        sup.instance_store.add(inst).unwrap();
+        let sup = std::sync::Arc::new(tokio::sync::RwLock::new(sup));
+        let started = Supervisor::start_managed_server(&sup, "s-early", "slow-console", json!({})).await.unwrap();
+        assert_eq!(started["success"], true, "{started}");
+
+        let stopped = Supervisor::stop_server(&sup, "s-early", "slow-console", false).await.unwrap();
+        assert_eq!(stopped["success"], true, "{stopped}");
+        assert_eq!(std::fs::read_to_string(&saved).ok().as_deref(), Some("saved"), "the stop command reached the ready server");
     }
 
     /// `?spans=1`: 디스크 로그 줄에도 모듈 규칙의 토큰 구간이 붙고, 없는 요청에는 안 붙는다
