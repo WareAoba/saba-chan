@@ -368,7 +368,8 @@ impl<D: DaemonApi> Ctx<'_, D> {
     }
 
     fn module_help(&self, alias: &str, servers: &[ServerView]) -> String {
-        if let Some(msg) = self.alias_conflict(alias) {
+        // 인스턴스 이름·id·서버 낱말이 맞으면 별명 충돌은 보지 않는다 (이름이 별명보다 먼저)
+        if let Some(msg) = self.alias_conflict(alias).filter(|_| self.named_servers(alias, servers).is_empty()) {
             return msg;
         }
         let prefix = &self.prefix();
@@ -412,7 +413,7 @@ impl<D: DaemonApi> Ctx<'_, D> {
     // ── 모듈 + 명령어 ──
 
     async fn module_command(&self, alias: &str, cmd_alias: &str, extra: &str, servers: &[ServerView]) -> Reply {
-        if let Some(msg) = self.alias_conflict(alias) {
+        if let Some(msg) = self.alias_conflict(alias).filter(|_| self.named_servers(alias, servers).is_empty()) {
             return msg.into();
         }
         let (server, by_name) = match self.find_server(alias, servers) {

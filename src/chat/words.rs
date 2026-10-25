@@ -255,7 +255,8 @@ pub fn migrate(
 /// 서버 수는 모든 서버로 센다. 채팅은 그 길드가 쓰는 서버로 세므로 길드에 따라 더 불릴 수는 있어도 덜 불리지는 않는다
 pub fn default_words(server: &ServerView, servers: &[ServerView], modules: &[ModuleView], others: &HashMap<String, InstanceWords>) -> Vec<String> {
     let mut out = vec![server.name.clone()];
-    if servers.iter().filter(|s| s.module == server.module).count() != 1 {
+    // `chat::find_server`와 같은 판정: 그 모듈 서버이거나 이름에 모듈 이름이 든 서버가 이것 하나여야 한다
+    if servers.iter().filter(|s| s.module == server.module || s.name.contains(&server.module)).count() != 1 {
         return out;
     }
     let aliases = super::aliases::ModuleAliases::build(modules);
@@ -300,6 +301,9 @@ mod tests {
         let named = vec![server("a", "survival", "minecraft"), server("p", "mc", "palworld")];
         let theirs = HashMap::from([("p".to_string(), InstanceWords { words: vec!["마인크래프트".into()], ..Default::default() })]);
         assert_eq!(default_words(&named[0], &named, &modules, &theirs), vec!["survival", "minecraft"]);
+        // 다른 게임 서버 이름에 모듈 이름이 들어 있으면 채팅이 둘 다 고르므로 (`find_server`) 인스턴스 이름뿐
+        let contains = vec![server("a", "survival", "minecraft"), server("p", "minecraft-backup", "palworld")];
+        assert_eq!(default_words(&contains[0], &contains, &modules, &HashMap::new()), vec!["survival"]);
         // 같은 게임의 서버가 둘이면 인스턴스 이름뿐
         let two = vec![server("a", "survival", "minecraft"), server("b", "creative", "minecraft")];
         assert_eq!(default_words(&two[0], &two, &modules, &HashMap::new()), vec!["survival"]);

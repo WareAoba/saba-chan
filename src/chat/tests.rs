@@ -453,6 +453,17 @@ async fn danger_commands_need_the_instance_name_not_the_game_name() {
     assert_eq!(api.calls()[3], "start i-mc");
 }
 
+/// 두 모듈이 같은 게임명을 가져도 인스턴스 이름이 정확히 맞으면 그 서버다 (이름이 별명보다 먼저)
+#[tokio::test]
+async fn an_instance_name_wins_over_a_game_name_two_modules_share() {
+    let mut api = fixture();
+    api.modules[0].game_names = vec!["Shared".into()];
+    api.modules[1].game_names = vec!["Shared".into()];
+    api.servers[1].name = "shared".into();
+    run(&api, &settings(), "Shared start").await;
+    assert_eq!(api.calls(), vec!["start i-pal"]);
+}
+
 #[tokio::test]
 async fn instance_words_pick_one_of_several_instances() {
     let mut api = fixture();
