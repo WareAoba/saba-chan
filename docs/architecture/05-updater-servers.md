@@ -372,7 +372,7 @@ Tauri 커맨드(`installer/gui/src-tauri/src/lib.rs`): `get_installer_state`, `s
 
 **(d) Sleep/Wake**: 원본은 데몬 `nodeSettings[g].discord.sleeping`이다. 슬래시 `/사바쨩 코코낸내`/`기상`은 데몬 액션 `discord.settings.set`을 부르고, 데몬이 `PATCH /api/nodes/:g/settings {sleeping}`으로 relay의 `nodes.is_sleep`과 메모리 `_pausedGuilds`를 맞춘다(`bot/commands/discordSettings.ts` `applyNodeSettings`). 잠든 길드는 `/사바쨩` 하위 명령을 뺀 명령과 알림을 받지 않는다. 메시지는 모두 무시하고, 상호작용은 `/사바쨩` 하위 명령만 받으며 길드 서버 명령·버튼·모달에는 잠들어 있다는 안내만 보인다(`bot/gateway/gateway.ts`). 옛 데몬(액션을 모름)이면 relay에만 쓴다.
 
-**(e) 슬래시 명령이 보이는 자리**: Discord 슬래시 목록은 길드마다 하나라서(사람마다 다르게 보일 수 없다) relay는 길드 상태로만 고른다. 전역 명령은 봇 DM에서만 보이는 `/사바쨩`(상태·연결·웹·도움말, `contexts:[BotDM]`)이다. 길드의 `/사바쨩`은 길드 명령으로, 서버 슬래시 루트와 같은 길드 범위 PUT에 담는다(`bot/commands/guildCommands.ts` `syncGuilds`). 자리는 노드가 없으면 `unbound`(연결·도움말), 있으면 `nodes.is_sleep`에 따라 `awake`(연결과 기상 뺀 전부)·`asleep`(연결과 코코낸내 뺀 전부)다. 서브커맨드마다 `places`(기본 `awake`·`asleep`)로 보이는 자리를 정하고, 서브커맨드가 하나도 남지 않은 그룹은 뺀다(`bot/gateway/contract.ts` `SlashPlace`, `slash.ts` `buildRootCommand`). 잠든 길드도 서버 슬래시 루트는 그대로 둔다(지웠다 다시 만들면 Discord의 길드당 하루 200개 만들기 한도를 깎는다. `/사바쨩` 하위 명령만 바뀌는 것은 고치기라 한도와 상관없다). 잠든 동안 부르면 게이트웨이가 잠들어 있다는 안내만 한다. 연결·연결해제·옮기기·코코낸내·기상 뒤에 그 길드만 다시 맞추고, 놓친 변화는 5분 전체 맞추기가 잡는다. `/사바쨩 도움말`도 그 자리의 목록만 보인다. 연결한 길드를 다른 PC로 옮기려면 연결해제 뒤 다시 연결한다. 목록에 없는 옛 정의로 불러도 각 핸들러가 노드·권한을 다시 확인한다.
+**(e) 슬래시 명령이 보이는 자리**: Discord 슬래시 목록은 길드마다 하나라서(사람마다 다르게 보일 수 없다) relay는 길드 상태로만 고른다. 전역 명령은 봇 DM에서만 보이는 `/사바쨩`(상태·연결·웹·도움말, `contexts:[BotDM]`)이다. 길드의 `/사바쨩`은 길드 명령으로, 서버 슬래시 루트와 같은 길드 범위 PUT에 담는다(`bot/commands/guildCommands.ts` `syncGuilds`). 자리는 노드가 없으면 `unbound`(연결·도움말), 있으면 `nodes.is_sleep`에 따라 `awake`(연결과 기상 뺀 전부)·`asleep`(연결과 코코낸내 뺀 전부)다. 서브커맨드마다 `places`(기본 `awake`·`asleep`)로 보이는 자리를 정하고, 서브커맨드가 하나도 남지 않은 그룹은 뺀다(`bot/gateway/contract.ts` `SlashPlace`, `slash.ts` `buildRootCommand`). 잠든 길드도 서버 슬래시 루트는 그대로 둔다(지웠다 다시 만들면 Discord의 길드당 하루 200개 만들기 한도를 깎는다. `/사바쨩` 하위 명령만 바뀌는 것은 고치기라 한도와 상관없다). 잠든 동안 부르면 게이트웨이가 잠들어 있다는 안내만 한다. 연결·연결해제·옮기기·코코낸내·기상 뒤에 그 길드만 다시 맞추고, 놓친 변화는 5분 전체 맞추기가 잡는다. `/사바쨩 도움말`도 그 자리의 목록만 보인다. 연결한 길드를 다른 PC로 옮기려면 연결해제 뒤 다시 연결한다. 목록에 없는 옛 정의로 불러도 각 핸들러가 노드·권한을 다시 확인한다. 서비스는 `BotService.guildRoots(guildId)`로 특정 길드에만 루트 명령을 더할 수 있다. 같은 PUT에 담고(서버 루트 이름이 겹치면 다른 이름을 붙인다), 처리는 그 서비스의 `guildCommands`가 하며, 릴레이가 처리하는 명령이라 잠든 길드에서도 받는다. 지금은 운영 서버의 `/운영`(§4.4 (g))뿐이다.
 
 **(f) 사바쨩 웹 중계** (`services/webHub.ts`, `routes/web.ts`, `bot/commands/webCommand.ts`): 메모리에만 둔다(단일 인스턴스, 재시작하면 다시 연다).
 
@@ -388,13 +388,13 @@ Tauri 커맨드(`installer/gui/src-tauri/src/lib.rs`): `get_installer_state`, `s
 
 - 원본은 `blocked_users`이고 릴레이가 시작할 때 메모리에 올린다(단일 인스턴스). 바꾸기는 아래 두 입구만 쓴다.
 - 차단된 사람: 그 사람의 호스트가 보내는 노드 요청은 403 `HOST_BLOCKED`(§4.1 노드 토큰). 봇 게이트웨이는 어느 길드·DM에서든 그 사람의 메시지를 무시하고, 슬래시·버튼에는 숨김 답 `blocked_account`만 한다. 페어링(`/사바쨩 연결`)도 같은 게이트웨이에서 막힌다. 다른 사람이 그 PC의 길드로 보내는 명령은 큐에 넣지 않고 `HOST_OFFLINE`이다(`submitCommand`). 차단하는 순간 그 PC의 웹 원격 연결(`/node/ws`)을 닫고 기다리던 긴 폴링을 깨운다. 기한이 지난 차단은 효력이 없다.
-- 관리: 관리자 API(§4.2 `/admin/api/blocklist`), 관리자 페이지(§4.4 (h)), 봇 DM의 `/사바쨩 운영 차단·해제·목록`(DM에만 보인다). 운영 명령은 `RELAY_OPERATOR_IDS`(쉼표 구분 디스코드 ID, 선택 env)의 사람만 쓰고, 비우면 아무도 못 쓴다. 운영자는 차단할 수 없다(400 `OPERATOR`). 기간은 일 단위(1~3650), 비우면 무기한.
+- 관리: 관리자 API(§4.2 `/admin/api/blocklist`), 관리자 페이지(§4.4 (h)), 운영 서버의 `/운영 차단·해제·목록`. `/운영`은 `RELAY_OPERATOR_GUILD_ID`(선택 env) 서버 한 곳에만 길드 명령으로 등록하고 `default_member_permissions:"0"`이라 그 서버 관리자에게만 보인다(봇 DM·다른 서버에는 없다, 사용자 결정 2026-10-25). 다른 서버에 남은 옛 정의로 부르면 실행하지 않는다. 운영 명령은 `RELAY_OPERATOR_IDS`(쉼표 구분 디스코드 ID, 선택 env)의 사람만 쓰고, 비우면 아무도 못 쓴다. 운영자는 차단할 수 없다(400 `OPERATOR`). 기간은 일 단위(1~3650), 비우면 무기한.
 - 감사: `audit_logs` `action='admin'`, `detail {op:'ban'|'unban', target, days?}`.
 - IP는 차단 기준으로 쓰지 않고 DB에 모으지 않는다. nginx 접근 로그는 날짜별 파일(`nginx-logs` 볼륨)로 남기고 `nginx-log-pruner`가 7일 지난 파일을 지운다.
 
 **(h) 관리자 페이지와 운영 통계** (`routes/adminConsole.ts`, `services/adminSession.ts`, `services/relayStats.ts`, 화면 `assets/admin/`):
 
-- 들어가기: 봇 DM `/사바쨩 운영 페이지` → `RELAY_OPERATOR_IDS`의 운영자에게만 `https://saba-chan.online/admin/#<링크>`(5분, 한 번만, 운영자당 하나). 페이지가 주소의 `#` 값을 지우고 `POST /admin/console/login`으로 바꾼다.
+- 들어가기: 운영 서버 `/운영 페이지` → `RELAY_OPERATOR_IDS`의 운영자에게만 `https://saba-chan.online/admin/#<링크>`(5분, 한 번만, 운영자당 하나). 페이지가 주소의 `#` 값을 지우고 `POST /admin/console/login`으로 바꾼다.
 - 세션: 쿠키 `__Host-saba_admin`(HttpOnly·Secure·SameSite=Strict, Path=/), 30분 고정(늘리지 않음), 운영자당 하나(새로 들어오면 예전 세션이 끝난다). 메모리에 링크·세션 값의 해시만 두고 재시작하면 사라진다. 요청마다 운영자 목록을 다시 보고, 빠졌으면 403 `NOT_OPERATOR`와 함께 세션을 끝낸다.
 - 쓰기(POST·DELETE)는 세션의 `x-csrf-token`(상수 시간 비교)과 `Origin == <proto>://<Host>`가 모두 맞아야 한다. `/admin/console/*`에는 CORS 헤더를 내지 않는다. `x-admin-key`는 이 경로에서, 쿠키는 `/admin/api`에서 받지 않는다.
 - 감사: 로그인·로그아웃은 `action='admin'` `detail.op` `login`·`logout`, 차단·해제는 (g)와 같고, 공지는 발송이 끝날 때 `announce_broadcast`(보낸 운영자 ID). 페이지의 기록 탭은 이 두 action 의 최근 50줄이다.
