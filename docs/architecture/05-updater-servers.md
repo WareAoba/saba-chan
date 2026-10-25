@@ -318,10 +318,14 @@ Tauri 커맨드(`installer/gui/src-tauri/src/lib.rs`): `get_installer_state`, `s
 | GET/POST | `/admin/api/broadcast` | 관리자 키(POST 5/10min) | POST `{message, deleteAfterSeconds?}` | 202 `{ok, job}` / 409 `BROADCAST_IN_PROGRESS` / 503 `BOT_OFFLINE` | `routes/announcement.ts` |
 | GET/POST | `/admin/api/blocklist` | 관리자 키 | POST `{discordId, reason?, days?}`(days 1~3650, 없으면 무기한) | GET `{blocked:[{discordId, reason, createdBy, createdAt, expiresAt}]}` / POST 201 `{ok, expiresAt}` / 400 `INVALID_DISCORD_ID`·`INVALID_DAYS`·`OPERATOR` | `routes/admin.ts` |
 | DELETE | `/admin/api/blocklist/:discordId` | 관리자 키 | — | `{ok}` / 404 `NOT_BLOCKED` | `routes/admin.ts` |
+| GET | `/admin/`, `/admin/app.js`, `/admin/app.css` | 없음(페이지는 문구만, 비밀값 없음) | `?lang=` 또는 Accept-Language | 관리자 페이지. CSP `default-src 'none'; script-src 'self'`, `no-store` | `routes/adminConsole.ts` |
+| POST | `/admin/console/login` | 1회용 링크 + 같은 Origin(10/10min, nginx 10r/m) | `{link}` | `{userId, expiresAt, csrf}` + 쿠키 `__Host-saba_admin` / 401 `LINK_INVALID` / 403 `NOT_OPERATOR`·`CSRF` | `routes/adminConsole.ts` |
+| GET | `/admin/console/session`·`overview`·`stats?range=day\|week\|month\|year`·`broadcast`·`blocklist`·`audit` | 관리자 세션 | — | 세션 `{userId, expiresAt, csrf}` / 상태 `{service, broadcast}` / 통계 `{range, bucketSeconds, points[]}` / 차단 `{rows}` / 최근 관리 기록 50줄 `{rows}`. 세션 없음 401 `NO_SESSION`, 운영자 아님 403 `NOT_OPERATOR` | `routes/adminConsole.ts` |
+| POST/DELETE | `/admin/console/logout`·`broadcast`(5/10min)·`blocklist`, `/admin/console/blocklist/:discordId` | 관리자 세션 + `x-csrf-token` + 같은 Origin | 공지·차단은 `/admin/api` 와 같은 본문(`days`는 숫자 문자열도 받고 숫자가 아니면 `INVALID_DAYS`) | `/admin/api` 와 같은 응답 / 403 `CSRF` | `routes/adminConsole.ts` |
 
 데몬이 명령을 넣는 HTTP 라우트는 없다. 큐 INSERT는 봇이 같은 프로세스에서 `services/commandSubmission.ts` `submitCommand`로 한다. 페어링 클레임도 봇의 `/사바쨩 연결`이 `services/pairing.ts` `claimPairingCode`를 직접 부른다.
 
-### 4.3 DB 스키마 (`relay-server/src/db/schema.ts`, migration 0000–0022)
+### 4.3 DB 스키마 (`relay-server/src/db/schema.ts`, migration 0000–0027)
 
 | 테이블 | 주요 컬럼 |
 |---|---|
@@ -337,8 +341,9 @@ Tauri 커맨드(`installer/gui/src-tauri/src/lib.rs`): `get_installer_state`, `s
 | `update_events` | host_id, anon_id, from/to_version, phase, error_code, platform |
 | `chatbot_settings` / `chatbot_memory` / `chatbot_records` | 길드 챗봇 설정(키는 `api_key_enc`로 암호화) / 채널별 요약 기억 / 길드별 기록(kind·key·value·만료) |
 | `blocked_users` | `discord_id` PK, reason, created_by(운영자 디스코드 ID 또는 `admin-api`), created_at, expires_at(NULL이면 무기한). §4.4 (g) |
+| `relay_stats` | `at` PK, hosts_total, hosts_online, guilds, bot_guilds, pollers, web_sessions, commands(지난 기록 뒤 큐에 들어온 수), chatbot_turns, music_voice, cpu_pct, rss_mb, load_pct, mem_used_pct, db_mb. 5분마다 한 줄, 사람·IP·길드 id 없음. §4.4 (h) |
 
-정리 스케줄러(`services/cleanup.ts`): 감사 30일, 끝난 큐 7일, 업데이트 이벤트 90일, 페어링 코드 24시간 뒤 삭제, 만료된 챗봇 도구 기록(`chatbot_records.expires_at`) 삭제. 수령 기한이 지난 페어링 토큰은 바로 지운다. 만료 큐는 timeout으로, heartbeat가 3분 넘게 없는 host는 offline으로 바꾼다.
+정리 스케줄러(`services/cleanup.ts`): 감사 30일, 운영 통계 365일, 끝난 큐 7일, 업데이트 이벤트 90일, 페어링 코드 24시간 뒤 삭제, 만료된 챗봇 도구 기록(`chatbot_records.expires_at`) 삭제. 수령 기한이 지난 페어링 토큰은 바로 지운다. 만료 큐는 timeout으로, heartbeat가 3분 넘게 없는 host는 offline으로 바꾼다.
 
 ### 4.4 프로토콜 흐름
 
@@ -367,7 +372,7 @@ Tauri 커맨드(`installer/gui/src-tauri/src/lib.rs`): `get_installer_state`, `s
 
 **(d) Sleep/Wake**: 원본은 데몬 `nodeSettings[g].discord.sleeping`이다. 슬래시 `/사바쨩 코코낸내`/`기상`은 데몬 액션 `discord.settings.set`을 부르고, 데몬이 `PATCH /api/nodes/:g/settings {sleeping}`으로 relay의 `nodes.is_sleep`과 메모리 `_pausedGuilds`를 맞춘다(`bot/commands/discordSettings.ts` `applyNodeSettings`). 잠든 길드는 `/사바쨩` 하위 명령을 뺀 명령과 알림을 받지 않는다. 메시지는 모두 무시하고, 상호작용은 `/사바쨩` 하위 명령만 받으며 길드 서버 명령·버튼·모달에는 잠들어 있다는 안내만 보인다(`bot/gateway/gateway.ts`). 옛 데몬(액션을 모름)이면 relay에만 쓴다.
 
-**(e) 슬래시 명령이 보이는 자리**: Discord 슬래시 목록은 길드마다 하나라서(사람마다 다르게 보일 수 없다) relay는 길드 상태로만 고른다. 전역 명령은 봇 DM에서만 보이는 `/사바쨩`(상태·연결·웹·도움말, `contexts:[BotDM]`)이다. 길드의 `/사바쨩`은 길드 명령으로, 서버 슬래시 루트와 같은 길드 범위 PUT에 담는다(`bot/commands/guildCommands.ts` `syncGuilds`). 자리는 노드가 없으면 `unbound`(연결·도움말), 있으면 `nodes.is_sleep`에 따라 `awake`(연결과 기상 뺀 전부)·`asleep`(연결과 코코낸내 뺀 전부)다. 서브커맨드마다 `places`(기본 `awake`·`asleep`)로 보이는 자리를 정하고, 서브커맨드가 하나도 남지 않은 그룹은 뺀다(`bot/gateway/contract.ts` `SlashPlace`, `slash.ts` `buildRootCommand`). 잠든 길드도 서버 슬래시 루트는 그대로 둔다(지웠다 다시 만들면 Discord의 길드당 하루 200개 만들기 한도를 깎는다. `/사바쨩` 하위 명령만 바뀌는 것은 고치기라 한도와 상관없다). 잠든 동안 부르면 게이트웨이가 잠들어 있다는 안내만 한다. 연결·연결해제·옮기기·코코낸내·기상 뒤에 그 길드만 다시 맞추고, 놓친 변화는 5분 전체 맞추기가 잡는다. `/사바쨩 도움말`도 그 자리의 목록만 보인다. 연결한 길드를 다른 PC로 옮기려면 연결해제 뒤 다시 연결한다. 목록에 없는 옛 정의로 불러도 각 핸들러가 노드·권한을 다시 확인한다.
+**(e) 슬래시 명령이 보이는 자리**: Discord 슬래시 목록은 길드마다 하나라서(사람마다 다르게 보일 수 없다) relay는 길드 상태로만 고른다. 전역 명령은 봇 DM에서만 보이는 `/사바쨩`(상태·연결·웹·도움말, `contexts:[BotDM]`)이다. 길드의 `/사바쨩`은 길드 명령으로, 서버 슬래시 루트와 같은 길드 범위 PUT에 담는다(`bot/commands/guildCommands.ts` `syncGuilds`). 자리는 노드가 없으면 `unbound`(연결·도움말), 있으면 `nodes.is_sleep`에 따라 `awake`(연결과 기상 뺀 전부)·`asleep`(연결과 코코낸내 뺀 전부)다. 서브커맨드마다 `places`(기본 `awake`·`asleep`)로 보이는 자리를 정하고, 서브커맨드가 하나도 남지 않은 그룹은 뺀다(`bot/gateway/contract.ts` `SlashPlace`, `slash.ts` `buildRootCommand`). 잠든 길드도 서버 슬래시 루트는 그대로 둔다(지웠다 다시 만들면 Discord의 길드당 하루 200개 만들기 한도를 깎는다. `/사바쨩` 하위 명령만 바뀌는 것은 고치기라 한도와 상관없다). 잠든 동안 부르면 게이트웨이가 잠들어 있다는 안내만 한다. 연결·연결해제·옮기기·코코낸내·기상 뒤에 그 길드만 다시 맞추고, 놓친 변화는 5분 전체 맞추기가 잡는다. `/사바쨩 도움말`도 그 자리의 목록만 보인다. 연결한 길드를 다른 PC로 옮기려면 연결해제 뒤 다시 연결한다. 목록에 없는 옛 정의로 불러도 각 핸들러가 노드·권한을 다시 확인한다. 서비스는 `BotService.guildRoots(guildId)`로 특정 길드에만 루트 명령을 더할 수 있다. 같은 PUT에 담고(서버 루트 이름이 겹치면 다른 이름을 붙인다), 처리는 그 서비스의 `guildCommands`가 하며, 릴레이가 처리하는 명령이라 잠든 길드에서도 받는다. 지금은 운영 서버의 `/운영`(§4.4 (g))뿐이다.
 
 **(f) 사바쨩 웹 중계** (`services/webHub.ts`, `routes/web.ts`, `bot/commands/webCommand.ts`): 메모리에만 둔다(단일 인스턴스, 재시작하면 다시 연다).
 
@@ -383,9 +388,18 @@ Tauri 커맨드(`installer/gui/src-tauri/src/lib.rs`): `get_installer_state`, `s
 
 - 원본은 `blocked_users`이고 릴레이가 시작할 때 메모리에 올린다(단일 인스턴스). 바꾸기는 아래 두 입구만 쓴다.
 - 차단된 사람: 그 사람의 호스트가 보내는 노드 요청은 403 `HOST_BLOCKED`(§4.1 노드 토큰). 봇 게이트웨이는 어느 길드·DM에서든 그 사람의 메시지를 무시하고, 슬래시·버튼에는 숨김 답 `blocked_account`만 한다. 페어링(`/사바쨩 연결`)도 같은 게이트웨이에서 막힌다. 다른 사람이 그 PC의 길드로 보내는 명령은 큐에 넣지 않고 `HOST_OFFLINE`이다(`submitCommand`). 차단하는 순간 그 PC의 웹 원격 연결(`/node/ws`)을 닫고 기다리던 긴 폴링을 깨운다. 기한이 지난 차단은 효력이 없다.
-- 관리: 관리자 API(§4.2 `/admin/api/blocklist`)와 봇 DM의 `/사바쨩 운영 차단·해제·목록`(DM에만 보인다). 운영 명령은 `RELAY_OPERATOR_IDS`(쉼표 구분 디스코드 ID, 선택 env)의 사람만 쓰고, 비우면 아무도 못 쓴다. 운영자는 차단할 수 없다(400 `OPERATOR`). 기간은 일 단위(1~3650), 비우면 무기한.
+- 관리: 관리자 API(§4.2 `/admin/api/blocklist`), 관리자 페이지(§4.4 (h)), 운영 서버의 `/운영 차단·해제·목록`. `/운영`은 `RELAY_OPERATOR_GUILD_ID`(선택 env) 서버 한 곳에만 길드 명령으로 등록하고 `default_member_permissions:"0"`이라 그 서버 관리자에게만 보인다(봇 DM·다른 서버에는 없다, 사용자 결정 2026-10-25). 다른 서버에 남은 옛 정의로 부르면 실행하지 않는다. 운영 명령은 `RELAY_OPERATOR_IDS`(쉼표 구분 디스코드 ID, 선택 env)의 사람만 쓰고, 비우면 아무도 못 쓴다. 운영자는 차단할 수 없다(400 `OPERATOR`). 기간은 일 단위(1~3650), 비우면 무기한.
 - 감사: `audit_logs` `action='admin'`, `detail {op:'ban'|'unban', target, days?}`.
 - IP는 차단 기준으로 쓰지 않고 DB에 모으지 않는다. nginx 접근 로그는 날짜별 파일(`nginx-logs` 볼륨)로 남기고 `nginx-log-pruner`가 7일 지난 파일을 지운다.
+
+**(h) 관리자 페이지와 운영 통계** (`routes/adminConsole.ts`, `services/adminSession.ts`, `services/relayStats.ts`, 화면 `assets/admin/`):
+
+- 들어가기: 운영 서버 `/운영 페이지` → `RELAY_OPERATOR_IDS`의 운영자에게만 `https://saba-chan.online/admin/#<링크>`(5분, 한 번만, 운영자당 하나). 페이지가 주소의 `#` 값을 지우고 `POST /admin/console/login`으로 바꾼다.
+- 세션: 쿠키 `__Host-saba_admin`(HttpOnly·Secure·SameSite=Strict, Path=/), 30분 고정(늘리지 않음), 운영자당 하나(새로 들어오면 예전 세션이 끝난다). 메모리에 링크·세션 값의 해시만 두고 재시작하면 사라진다. 요청마다 운영자 목록을 다시 보고, 빠졌으면 403 `NOT_OPERATOR`와 함께 세션을 끝낸다.
+- 쓰기(POST·DELETE)는 세션의 `x-csrf-token`(상수 시간 비교)과 `Origin == <proto>://<Host>`가 모두 맞아야 한다. `/admin/console/*`에는 CORS 헤더를 내지 않는다. `x-admin-key`는 이 경로에서, 쿠키는 `/admin/api`에서 받지 않는다.
+- 감사: 로그인·로그아웃은 `action='admin'` `detail.op` `login`·`logout`, 차단·해제는 (g)와 같고, 공지는 발송이 끝날 때 `announce_broadcast`(보낸 운영자 ID). 페이지의 기록 탭은 이 두 action 의 최근 50줄이다.
+- 문구는 `src/admin/text.ts`(10개 언어, 없는 언어는 en)를 페이지에 데이터 블록으로 넣는다.
+- 운영 통계: 5분마다 `relay_stats` 한 줄(365일 보관). 접속·자원은 그 순간 값, 명령 수는 지난 기록 뒤 큐에 들어온 수(기록이 15분보다 오래됐으면 5분), 챗봇 판단 수는 기록에 성공한 뒤에만 0으로 되돌린다. 조회는 하루 5분·일주일 1시간·한 달 6시간·일 년 1일 칸으로 묶고, 칸마다 명령·챗봇은 합계, 나머지는 최댓값이다.
 
 ### 4.5 daemon 쪽 호출과 relay 서버 비교 (검증 결과)
 
