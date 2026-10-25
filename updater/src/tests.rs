@@ -653,7 +653,7 @@ fn test_extract_zip_rejects_paths_outside_target() {
     let zip_path = tmp.path().join("evil.zip");
     {
         let mut zw = zip::ZipWriter::new(std::fs::File::create(&zip_path).unwrap());
-        let opts = zip::write::FileOptions::default();
+        let opts = zip::write::SimpleFileOptions::default();
         zw.start_file("ok/inner.txt", opts).unwrap();
         zw.write_all(b"fine").unwrap();
         zw.start_file("../escaped.txt", opts).unwrap();
@@ -675,7 +675,7 @@ fn test_extract_zip_writes_nested_files() {
     let zip_path = tmp.path().join("ok.zip");
     {
         let mut zw = zip::ZipWriter::new(std::fs::File::create(&zip_path).unwrap());
-        let opts = zip::write::FileOptions::default();
+        let opts = zip::write::SimpleFileOptions::default();
         zw.add_directory("a/", opts).unwrap();
         zw.start_file("a/b/c.txt", opts).unwrap();
         zw.write_all(b"hello").unwrap();
@@ -940,7 +940,7 @@ async fn a_failed_gui_extract_restores_the_previous_gui() {
     let zip_path = tmp.path().join("gui.zip");
     {
         let mut zw = zip::ZipWriter::new(std::fs::File::create(&zip_path).unwrap());
-        let opts = zip::write::FileOptions::default();
+        let opts = zip::write::SimpleFileOptions::default();
         zw.start_file(crate::GUI_EXE_NAMES[0], opts).unwrap();
         zw.write_all(b"new gui").unwrap();
         // 실행 파일이 아닌 기존 파일과 새로 생기는 파일도 실패하면 원래대로 돌아가야 한다
@@ -1007,7 +1007,7 @@ async fn components_applied_before_a_failure_are_recorded() {
     let ext_zip = tmp.path().join("ext.zip");
     {
         let mut zw = zip::ZipWriter::new(std::fs::File::create(&ext_zip).unwrap());
-        zw.start_file("manifest.json", zip::write::FileOptions::default()).unwrap();
+        zw.start_file("manifest.json", zip::write::SimpleFileOptions::default()).unwrap();
         zw.write_all(b"{}").unwrap();
         zw.finish().unwrap();
     }
@@ -1032,7 +1032,7 @@ fn a_failed_new_install_leaves_no_folder() {
     {
         use std::io::Write;
         let mut zw = zip::ZipWriter::new(std::fs::File::create(&bad).unwrap());
-        let opts = zip::write::FileOptions::default();
+        let opts = zip::write::SimpleFileOptions::default();
         zw.start_file("module.toml", opts).unwrap();
         zw.write_all(b"name = \"fresh\"").unwrap();
         zw.start_file("../escaped.txt", opts).unwrap();
@@ -1098,7 +1098,7 @@ fn extract_zip_does_not_write_through_links_in_the_target() {
         let zip_path = tmp.path().join("a.zip");
         {
             let mut zw = zip::ZipWriter::new(std::fs::File::create(&zip_path).unwrap());
-            zw.start_file(name, zip::write::FileOptions::default()).unwrap();
+            zw.start_file(name, zip::write::SimpleFileOptions::default()).unwrap();
             zw.write_all(b"bad").unwrap();
             zw.finish().unwrap();
         }
@@ -1161,7 +1161,7 @@ fn extract_zip_does_not_write_through_a_junction() {
     let zip_path = tmp.path().join("a.zip");
     {
         let mut zw = zip::ZipWriter::new(std::fs::File::create(&zip_path).unwrap());
-        zw.start_file("sub/new.txt", zip::write::FileOptions::default()).unwrap();
+        zw.start_file("sub/new.txt", zip::write::SimpleFileOptions::default()).unwrap();
         zw.write_all(b"bad").unwrap();
         zw.finish().unwrap();
     }
@@ -1178,7 +1178,7 @@ fn an_interrupted_write_leaves_the_backup_to_be_restored() {
     let zip_path = tmp.path().join("a.zip");
     {
         let mut zw = zip::ZipWriter::new(std::fs::File::create(&zip_path).unwrap());
-        zw.start_file("resources.pak", zip::write::FileOptions::default()).unwrap();
+        zw.start_file("resources.pak", zip::write::SimpleFileOptions::default()).unwrap();
         zw.write_all(b"new").unwrap();
         zw.finish().unwrap();
     }
@@ -1359,7 +1359,7 @@ fn extension_zip(dir: &std::path::Path) -> std::path::PathBuf {
     use std::io::Write;
     let path = dir.join("ext.zip");
     let mut zw = zip::ZipWriter::new(std::fs::File::create(&path).unwrap());
-    zw.start_file("manifest.json", zip::write::FileOptions::default()).unwrap();
+    zw.start_file("manifest.json", zip::write::SimpleFileOptions::default()).unwrap();
     zw.write_all(b"{}").unwrap();
     zw.finish().unwrap();
     path
@@ -1517,7 +1517,7 @@ async fn locales_are_replaced_with_a_backup() {
     let zip_path = tmp.path().join("locales.zip");
     {
         let mut zw = zip::ZipWriter::new(std::fs::File::create(&zip_path).unwrap());
-        zw.start_file("ko/gui.json", zip::write::FileOptions::default()).unwrap();
+        zw.start_file("ko/gui.json", zip::write::SimpleFileOptions::default()).unwrap();
         zw.write_all(b"{\"a\":1}").unwrap();
         zw.finish().unwrap();
     }

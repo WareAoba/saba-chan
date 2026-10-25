@@ -147,6 +147,11 @@ pub static ROUTES: &[Route] = &[
     deny("GET", "/api/config/node-token"),
     deny("PUT", "/api/config/node-token"),
     deny("DELETE", "/api/config/node-token"),
+    // 원격 데몬 포트와 짝 맺은 PC (D1)
+    deny("GET", "/api/remote/settings"),
+    deny("PUT", "/api/remote/settings"),
+    deny("GET", "/api/remote/clients"),
+    deny("DELETE", "/api/remote/clients/:host_id"),
     deny("GET", "/api/system/components"),
     allow("GET", "/api/system/metrics"),
     deny("GET", "/api/system/paths"),

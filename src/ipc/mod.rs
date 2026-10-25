@@ -715,6 +715,11 @@ impl IPCServer {
 
     /// 데몬 HTTP 라우터 전체 (인증·감사 미들웨어 포함). 액션 카탈로그도 이것을 안에서 부른다
     pub fn router(&self) -> Router {
+        self.routes().layer(axum::middleware::from_fn(auth::auth_middleware))
+    }
+
+    /// 인증층을 씌우기 전의 라우트 (감사 출처 포함). 로컬 IPC는 IPC 토큰, 원격 포트(`remote_daemon`)는 짝 맺은 PC 토큰을 씌운다
+    pub(crate) fn routes(&self) -> Router {
         Router::new()
             // ── 경량 ping (lock / 디스크 I/O 없음) ──
             .route("/health", get(handlers::server::health_check))
@@ -892,12 +897,14 @@ impl IPCServer {
             .route("/api/instance/:id/words", get(handlers::words::get).put(handlers::words::put))
             .route("/api/guilds/:guild/allowed-instances", put(handlers::words::put_allowed))
             .route("/api/chatbot/guilds/:guild", get(handlers::chatbot::get_guild).patch(handlers::chatbot::patch_guild))
+            // ── 원격 데몬 (D1): 원격 포트 설정과 짝 맺은 PC (로컬 전용, 원격 포트에서는 막는다) ──
+            .route("/api/remote/settings", get(handlers::remote_daemon::get_settings).put(handlers::remote_daemon::put_settings))
+            .route("/api/remote/clients", get(handlers::remote_daemon::list_clients))
+            .route("/api/remote/clients/:host_id", delete(handlers::remote_daemon::revoke_client))
             .with_state(self.clone())
             .merge(updates::updates_router(self.update_state.clone()))
-            // ── Auth middleware (token-based) — 업데이트 라우터까지 모든 라우트에 ──
-            // 감사 로그 출처 (A10): 요청마다 X-Saba-Client로 정한다
+            // 감사 로그 출처 (A10): 요청마다 X-Saba-Client로 정한다. 인증층은 이 바깥에 씌운다 (업데이트 라우터까지)
             .layer(axum::middleware::from_fn(crate::audit::layer))
-            .layer(axum::middleware::from_fn(auth::auth_middleware))
     }
 
     pub async fn start(self) -> Result<()> {
@@ -963,6 +970,9 @@ impl IPCServer {
                         crate::ipc::handlers::words::migrate_on_start(&agent_server).await;
                         crate::relay_agent::auto_start(&agent_server).await
                     });
+                    // 원격 포트 (D1): 켜져 있으면 열고 릴레이에 주소를 올린다
+                    let remote_server = self.clone();
+                    tokio::spawn(async move { crate::remote_daemon::apply(&remote_server).await });
 
                     let shutdown_signal = self.shutdown_token.clone();
                     axum::serve(listener, router)

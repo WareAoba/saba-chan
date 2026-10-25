@@ -11,6 +11,7 @@ pub mod scheduler;  // 인스턴스 예약 작업 (A3)
 pub mod process_monitor;
 pub mod system_monitor;
 pub mod utils;
+pub mod archive;  // 내려받은 ZIP(모듈·익스텐션)을 안전하게 풀기
 pub mod extension;  // 범용 익스텐션 시스템
 pub mod validator;  // 설정값 타입 검증 및 포트 충돌 검사
 pub mod boot_selector;  // BIOS 스타일 부트 선택기
@@ -26,3 +27,4 @@ pub mod actions;  // 데몬 액션 카탈로그 (P2): 모든 표면이 읽는 �
 pub mod launch_args;  // 실행 인자 미리보기: 추가 인자 ↔ 설정 필드
 pub mod relay_agent;  // 클라우드 릴레이 ↔ 데몬 에이전트
 pub mod remote;  // 사바쨩 웹: 릴레이 웹소켓으로 받는 원격 요청과 문지기
+pub mod remote_daemon;  // 원격 데몬 (D1): 같은 주인의 PC가 TLS로 직접 붙는 원격 포트

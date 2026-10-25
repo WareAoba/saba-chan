@@ -14,7 +14,7 @@ fn good_asset() -> &'static [u8] {
     ZIP.get_or_init(|| {
         use std::io::Write;
         let mut out = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
-        out.start_file("module.toml", zip::write::FileOptions::default()).unwrap();
+        out.start_file("module.toml", zip::write::SimpleFileOptions::default()).unwrap();
         out.write_all(b"[module]\nname = \"good\"\nversion = \"9.0.0\"\n").unwrap();
         out.finish().unwrap().into_inner()
     })

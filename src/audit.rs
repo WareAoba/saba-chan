@@ -78,7 +78,7 @@ fn accept_language(headers: &axum::http::HeaderMap) -> Option<String> {
 }
 
 /// 데몬이 스스로 정하는 출처: HTTP 헤더로 흉내 낼 수 없다
-const INTERNAL_SOURCES: [&str; 4] = ["discord", "schedule", "daemon", "web"];
+const INTERNAL_SOURCES: [&str; 5] = ["discord", "schedule", "daemon", "web", "remote"];
 
 tokio::task_local! {
     static ORIGIN: Origin;

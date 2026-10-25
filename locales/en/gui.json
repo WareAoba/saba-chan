@@ -1546,6 +1546,7 @@
     "err_not_writable": "Saba-chan can't write there: {{detail}}",
     "err_has_link": "The folder has a link inside ({{detail}}). Remove it, then try again.",
     "err_copy_failed": "Copying failed. Nothing was changed. Check the free space and try again.",
+    "err_acl_failed": "Could not set access permissions on the new folder. Nothing was changed. Please choose another folder.",
     "err_verify_failed": "The copy did not match the original. Nothing was changed. Try again.",
     "err_commit_failed": "Saving the setting failed. The files were put back where they were.",
     "err_overlaps_install": "It can't go inside the Saba-chan install folder. Choose a folder outside it."

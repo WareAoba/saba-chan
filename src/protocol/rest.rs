@@ -1,9 +1,6 @@
 use super::{ProtocolError, ServerResponse};
 use serde_json::{json, Value};
 use std::time::Duration;
-use ureq::AgentBuilder;
-use base64::Engine;
-use base64::engine::general_purpose::STANDARD as BASE64;
 
 /// REST API 클라이언트 (Palworld, 기타 게임)
 #[derive(Debug, Clone)]
@@ -81,34 +78,30 @@ impl RestClient {
     fn send_http_request(&self, url: &str, method: &str, body: Option<Value>) -> Result<ServerResponse, ProtocolError> {
         tracing::debug!("REST {} {}", method, url);
 
-        // 리다이렉트는 따라가지 않는다: 데몬은 이 주소의 포트만 확인했다 (host.rs)
-        let mut builder = AgentBuilder::new().timeout(Duration::from_secs(10)).redirects(0);
-        if self.use_https {
-            // TLS는 reqwest와 같은 native-tls를 쓴다 (rustls·webpki 루트를 따로 싣지 않는다)
-            let tls = native_tls::TlsConnector::new()
-                .map_err(|e| ProtocolError::Protocol(format!("TLS 초기화 실패: {}", e)))?;
-            builder = builder.tls_connector(std::sync::Arc::new(tls));
-        }
-        let agent = builder.build();
+        // 게임 서버는 이 PC나 같은 망에 있다: 시스템 프록시를 거치지 않는다. TLS는 OS 것(native-tls)을 쓴다
+        let agent = reqwest::blocking::Client::builder()
+            .timeout(Duration::from_secs(10))
+            .no_proxy()
+            // 리다이렉트는 따라가지 않는다: 데몬은 이 주소의 포트만 확인했다 (host.rs)
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .map_err(|e| ProtocolError::Protocol(format!("TLS 초기화 실패: {}", e)))?;
+        let http_method = reqwest::Method::from_bytes(method.as_bytes())
+            .map_err(|e| ProtocolError::Protocol(e.to_string()))?;
 
-        let mut req = agent.request(method, url).set("Content-Type", "application/json");
+        let mut req = agent.request(http_method, url).header("Content-Type", "application/json");
 
         if let (Some(user), Some(pass)) = (&self.username, &self.password) {
-            let token = BASE64.encode(format!("{}:{}", user, pass));
             tracing::debug!("REST auth: user={}", user);
-            req = req.set("Authorization", &format!("Basic {}", token));
+            req = req.basic_auth(user, Some(pass));
+        }
+        if let Some(ref body_val) = body {
+            req = req.body(body_val.to_string());
         }
 
-        let resp = if let Some(ref body_val) = body {
-            req.send_json(body_val.clone())
-        } else {
-            req.call()
-        };
-
-        let resp = match resp {
+        // 4xx·5xx도 응답이다: 아래에서 상태와 본문을 함께 알린다
+        let resp = match req.send() {
             Ok(r) => r,
-            // 4xx·5xx도 응답이다: 아래에서 상태와 본문을 함께 알린다
-            Err(ureq::Error::Status(_, r)) => r,
             Err(e) => {
                 // 응답 없이 연결이 닫히면(EOF·reset·abort) 서버가 요청을 처리했는지 알 수 없다.
                 // 종료 명령처럼 서버가 끊는 것이 자연스러운 경우도 있어 전송 오류와 나누되, 성공으로 보고하지 않는다
@@ -134,16 +127,15 @@ impl RestClient {
             }
         };
 
-        let status = resp.status();
-        let text = if let Some(limit) = self.response_limit {
+        let status = resp.status().as_u16();
+        let text = {
             use std::io::Read;
             let mut bytes = Vec::new();
-            resp.into_reader().take(limit as u64 + 1).read_to_end(&mut bytes)
+            let limit = self.response_limit.map_or(u64::MAX, |limit| limit as u64 + 1);
+            resp.take(limit).read_to_end(&mut bytes)
                 .map_err(|error| ProtocolError::Protocol(error.to_string()))?;
-            if bytes.len() > limit { return Err(ProtocolError::ResponseTooLarge); }
+            if self.response_limit.is_some_and(|limit| bytes.len() > limit) { return Err(ProtocolError::ResponseTooLarge); }
             String::from_utf8_lossy(&bytes).into_owned()
-        } else {
-            resp.into_string().unwrap_or_default()
         };
         let data_json: Option<Value> = serde_json::from_str(&text).ok();
         let response_json = data_json.unwrap_or_else(|| json!({"raw": &text}));
@@ -176,10 +168,10 @@ impl RestClient {
 }
 
 /// 연결은 됐는데 응답 없이 닫혔는지. 오류 종류로 본다: Windows는 os error 10053(abort)·10054(reset)로,
-/// Unix는 EOF·reset으로 온다. 종류로 가릴 수 없으면 ureq 문구로 본다
-fn closed_without_response(e: &ureq::Error) -> bool {
+/// Unix는 EOF·reset으로 온다. 종류로 가릴 수 없으면 원인 문구로 본다 (hyper: "connection closed before message completed")
+fn closed_without_response(e: &(dyn std::error::Error + 'static)) -> bool {
     use std::io::ErrorKind;
-    let mut source: Option<&(dyn std::error::Error + 'static)> = std::error::Error::source(e);
+    let mut source = Some(e);
     while let Some(err) = source {
         if let Some(io) = err.downcast_ref::<std::io::Error>() {
             if matches!(io.kind(), ErrorKind::ConnectionReset | ErrorKind::ConnectionAborted | ErrorKind::UnexpectedEof | ErrorKind::BrokenPipe) {
@@ -189,10 +181,13 @@ fn closed_without_response(e: &ureq::Error) -> bool {
                 return false;
             }
         }
+        let msg = err.to_string();
+        if msg.contains("connection closed") || msg.contains("EOF") || msg.contains("Connection reset") {
+            return true;
+        }
         source = err.source();
     }
-    let msg = e.to_string();
-    msg.contains("EOF") || msg.contains("connection closed") || msg.contains("Connection reset")
+    false
 }
 
 #[cfg(test)]
@@ -236,11 +231,11 @@ mod tests {
         let windows_abort = Error::new(ErrorKind::ConnectionAborted, "An established connection was aborted by the software in your host machine. (os error 10053)");
         let windows_reset = Error::new(ErrorKind::ConnectionReset, "An existing connection was forcibly closed by the remote host. (os error 10054)");
         for e in [windows_abort, windows_reset, Error::new(ErrorKind::UnexpectedEof, "eof")] {
-            assert!(closed_without_response(&ureq::Error::from(e)));
+            assert!(closed_without_response(&e));
         }
         // 서버가 없거나 닿지 않으면 요청이 가지 않았다: 전송 오류다
         for kind in [ErrorKind::ConnectionRefused, ErrorKind::TimedOut] {
-            assert!(!closed_without_response(&ureq::Error::from(Error::new(kind, "x"))));
+            assert!(!closed_without_response(&Error::new(kind, "x")));
         }
     }
 

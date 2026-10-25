@@ -166,18 +166,33 @@ impl DaemonClient {
     }
 
     pub async fn identity_valid(&self, timeout_ms: u64) -> bool {
+        if self.token().is_empty() || !self.base_is_loopback() { return false; }
+        self.verified_health(timeout_ms).await.1
+    }
+
+    /// `/health` 한 번: 본문(또는 연결 오류 문구)과, 그 응답이 이 토큰의 신원 증명을 실었는가
+    pub async fn verified_health(&self, timeout_ms: u64) -> (Result<Value, String>, bool) {
         let token = self.token();
-        if token.is_empty() || !self.base_is_loopback() { return false; }
         let challenge = uuid::Uuid::new_v4().to_string();
-        let result = self.http.get(format!("{}/health", self.base())).timeout(Duration::from_millis(timeout_ms))
+        let result = self.builder(reqwest::Method::GET, "/health").timeout(Duration::from_millis(timeout_ms))
             .header("X-Saba-Challenge", &challenge).send().await;
-        let Ok(response) = result else { return false };
-        let Ok(body) = response.json::<Value>().await else { return false };
-        let Some(proof) = body.get("proof").and_then(Value::as_str) else { return false };
-        use hmac::{Hmac, Mac};
-        let Ok(mut mac) = Hmac::<sha2::Sha256>::new_from_slice(token.as_bytes()) else { return false };
-        mac.update(challenge.as_bytes());
-        hex::decode(proof).ok().is_some_and(|bytes| mac.verify_slice(&bytes).is_ok())
+        let response = match result {
+            Ok(r) if r.status().is_success() => r,
+            Ok(r) => return (Err(format!("Request failed with status code {}", r.status().as_u16())), false),
+            Err(e) => return (Err(e.to_string()), false),
+        };
+        // JSON이 아닌 본문도 `get`처럼 글자로 받는다 (다른 프로그램이 포트를 쥔 경우 "토큰 불일치"로 보이게)
+        let body = match response.bytes().await {
+            Ok(bytes) => Resp { status: 200, body: bytes.to_vec() }.data(),
+            Err(e) => return (Err(e.to_string()), false),
+        };
+        let valid = !token.is_empty() && self.base_is_loopback() && body.get("proof").and_then(Value::as_str).is_some_and(|proof| {
+            use hmac::{Hmac, Mac};
+            let Ok(mut mac) = Hmac::<sha2::Sha256>::new_from_slice(token.as_bytes()) else { return false };
+            mac.update(challenge.as_bytes());
+            hex::decode(proof).ok().is_some_and(|bytes| mac.verify_slice(&bytes).is_ok())
+        });
+        (Ok(body), valid)
     }
 
     pub fn base(&self) -> String {
@@ -534,6 +549,38 @@ mod tests {
         assert!(!has_token("http://example.com:57474"));
         let local = DaemonClient::new("http://127.0.0.1:57474".into(), token_path);
         assert!(!local.builder(reqwest::Method::GET, "/health").build().unwrap().headers().contains_key("X-Saba-Token"));
+    }
+
+    /// 상태 확인 한 번에 /health 하나: 신원 증명이 실린 그 응답을 상태 본문으로도 쓴다 (폴링마다 두 번 묻지 않게)
+    #[tokio::test]
+    async fn one_health_request_gives_the_status_and_the_identity() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let count = Arc::new(Mutex::new(0));
+        let count2 = count.clone();
+        tokio::spawn(async move {
+            while let Ok((mut sock, _)) = listener.accept().await {
+                let mut buf = vec![0u8; 4096];
+                let n = sock.read(&mut buf).await.unwrap_or(0);
+                let req = String::from_utf8_lossy(&buf[..n]).to_ascii_lowercase();
+                let challenge = req.lines().find_map(|l| l.strip_prefix("x-saba-challenge: ")).unwrap_or("").to_string();
+                *count2.lock().unwrap() += 1;
+                use hmac::{Hmac, Mac};
+                let mut mac = Hmac::<sha2::Sha256>::new_from_slice(b"secret").unwrap();
+                mac.update(challenge.as_bytes());
+                let body = format!("{{\"status\":\"ok\",\"proof\":\"{}\"}}", hex::encode(mac.finalize().into_bytes()));
+                let resp = format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
+                let _ = sock.write_all(resp.as_bytes()).await;
+            }
+        });
+        let dir = tempfile::tempdir().unwrap();
+        let token_path = dir.path().join(".ipc_token");
+        std::fs::write(&token_path, "secret").unwrap();
+        let client = DaemonClient::new(format!("http://{addr}"), token_path);
+        let (health, identity) = client.verified_health(2000).await;
+        assert_eq!(health.unwrap()["status"], "ok");
+        assert!(identity);
+        assert_eq!(*count.lock().unwrap(), 1);
     }
 
     #[tokio::test]

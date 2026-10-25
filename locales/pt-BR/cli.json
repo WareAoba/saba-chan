@@ -324,6 +324,7 @@
       "paths_not_writable": "O Saba-chan não consegue gravar ali. Escolha uma pasta com permissão de gravação.",
       "paths_has_link": "A pasta tem um link (pasta de atalho) dentro. Remova-o e tente de novo.",
       "paths_copy_failed": "A cópia falhou. Nada foi alterado. Verifique o espaço livre e tente de novo.",
+      "paths_acl_failed": "Não foi possível definir as permissões da nova pasta. Nada foi alterado. Escolha outra pasta.",
       "paths_verify_failed": "A cópia não correspondeu ao original. Nada foi alterado. Tente de novo.",
       "paths_commit_failed": "Não foi possível salvar a configuração. Os arquivos foram devolvidos ao lugar.",
       "paths_unknown_kind": "Escolha modules ou extensions.",
@@ -679,7 +680,12 @@
       "server.log": "Log salvo das execuções anteriores (o console guarda só a atual)",
       "server.query": "Consultas somente leitura do módulo do jogo (sem nome: a lista)",
       "daemon.clients": "Janelas do app de desktop conectadas ao daemon",
-      "gui": "Mudar para o app de desktop: ele abre o mesmo servidor e o menu em tela cheia fecha"
+      "gui": "Mudar para o app de desktop: ele abre o mesmo servidor e o menu em tela cheia fecha",
+      "remote": "Porta do daemon remoto: seus outros PCs se conectam a este daemon diretamente por TLS",
+      "remote.status": "Configuração e estado da porta remota (aberta, endereço enviado ao relay, impressão digital do certificado)",
+      "remote.set": "Ligar ou desligar a porta remota, mudar a porta ou o endereço público enviado ao relay",
+      "remote.clients": "Seus PCs pareados com este daemon",
+      "remote.revoke": "Desfazer o pareamento com um PC: o token dele para de funcionar na hora"
     },
     "arg": {
       "module.maker.game": "Jogo para o primeiro pedido",
@@ -750,7 +756,12 @@
       "server.query.args": "Entrada como CHAVE=VALOR",
       "chatbot.show.guild": "Os valores que um servidor do Discord usa de fato (comuns + os dele), por nome ou id",
       "do.steps": "Vários passos em JSON: [{\"id\": \"...\", \"instance\": \"...\", \"input\": {...}}, ...] (em vez de ACTION)",
-      "do.run_id": "Progresso de uma execução de vários passos que continua em segundo plano"
+      "do.run_id": "Progresso de uma execução de vários passos que continua em segundo plano",
+      "remote.set.on": "Ligar a porta remota",
+      "remote.set.off": "Desligar a porta remota",
+      "remote.set.port": "Número da porta remota",
+      "remote.set.address": "Nome de host público ou IP deste PC (vazio apaga)",
+      "remote.revoke.host_id": "ID do PC a desparear (veja `remote clients`)"
     },
     "after": "Os nomes podem ser parciais (ex.: start pal). Sem argumentos em um terminal, abre o menu em tela cheia (SABA_NO_TUI=1: o shell interativo).\nEm scripts, use --json e --yes. Códigos de saída: 0 ok · 1 falha · 2 uso · 3 daemon inacessível · 4 não encontrado · 130 cancelado"
   },
@@ -1165,5 +1176,27 @@
   },
   "gui": {
     "opened": "O app do Saba-chan foi aberto."
+  },
+  "remote": {
+    "item": "Item",
+    "value": "Valor",
+    "listening": "Aberta",
+    "not_listening": "Não aberta",
+    "off": "Desligada",
+    "address": "Endereço público",
+    "no_address": "Nenhum (não enviado ao relay)",
+    "published": "Enviado ao relay",
+    "fingerprint": "Impressão digital do certificado",
+    "yes": "Sim",
+    "no": "Não",
+    "no_clients": "Nenhum PC está pareado com este daemon.",
+    "host_id": "ID do PC",
+    "paired_at": "Pareado em",
+    "revoked": "Pareamento com {{host}} desfeito. O token dele não funciona mais.",
+    "error": {
+      "certificate_failed": "Não foi possível preparar o certificado",
+      "port_in_use": "A porta já está em uso",
+      "bind_failed": "Não foi possível abrir a porta"
+    }
   }
 }
