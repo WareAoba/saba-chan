@@ -1067,7 +1067,14 @@
     "backup_unreadable": "⚠ 開けません",
     "backup_unreadable_hint": "開けないバックアップのため、復元できません。削除するまで、使われていないバックアップ内容は整理されません。削除してください。",
     "err_backup_file_locked": "サーバーが使用中のファイル({{file}})があるためバックアップできませんでした。サーバーを停止してからやり直してください。",
-    "err_autosave_not_resumed": "バックアップは作成しましたが、サーバーの自動保存を再開できませんでした。サーバーを再起動してください."
+    "err_autosave_not_resumed": "バックアップは作成しましたが、サーバーの自動保存を再開できませんでした。サーバーを再起動してください.",
+    "kind_snapshot": "ゲーム自動バックアップの保管",
+    "kind_game-snapshot": "ゲーム自動バックアップ",
+    "backup_keep_snapshot": "ゲームのバックアップを保管",
+    "backup_keep_snapshot_hint": "ゲームが作った最新の自動バックアップをサバちゃんのバックアップとして残します。サーバー起動中でも安全です。",
+    "backup_snapshot_kept": "ゲームの自動バックアップを保管しました",
+    "backup_game_snapshot": "ゲームが作った自動バックアップ · 復元のみ",
+    "err_snapshot_not_found": "ゲームが作った自動バックアップがありません."
   },
   "chatbot": {
     "nav": "おしゃべりサバちゃん",

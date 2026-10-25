@@ -7,6 +7,38 @@ import { Button, Empty, errorText, failed, Loading, Section } from './ui';
 /** 레벨 이름: 길드에 더한 단계는 그 이름, 기본 단계는 웹 문구 */
 const levelName = (t, perm, id) => L.ladderOf(perm).find((l) => l.id === id)?.name || t(`perm.level.${id}`);
 
+const nameOf = (m) => m.displayName || m.globalName || m.username || String(m.id);
+const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+
+/** 실제 레벨 높은 순(길드 사다리 순서, 주인 먼저, 따로 정하지 않았으면 기본 레벨), 같은 레벨은 이름순 */
+export function orderMembers(members, perm) {
+    const own = perm?.members || {};
+    const fallback = typeof perm?.defaultLevel === 'number' ? perm.defaultLevel : 1;
+    const ladder = L.ladderOf(perm || {});
+    const rankOf = (m) => {
+        const id = String(m.id);
+        const level = id === String(perm?.ownerDiscordId ?? '') ? 3 : Object.hasOwn(own, id) ? own[id] : fallback;
+        const at = ladder.findIndex((l) => l.id === level);
+        return at < 0 ? ladder.length : at;
+    };
+    return [...members].sort((a, b) => rankOf(a) - rankOf(b) || collator.compare(nameOf(a), nameOf(b)));
+}
+
+/** 디스코드 프로필 사진. 없거나 못 읽으면 이름 첫 글자 */
+function Avatar({ member }) {
+    const [broken, setBroken] = useState(false);
+    const url = member.avatarUrl || member.avatar;
+    return (
+        <span className="avatar" aria-hidden="true">
+            {typeof url === 'string' && url.startsWith('https://') && !broken ? (
+                <img src={url} alt="" loading="lazy" referrerPolicy="no-referrer" onError={() => setBroken(true)} />
+            ) : (
+                nameOf(member).trim().charAt(0).toUpperCase() || '?'
+            )}
+        </span>
+    );
+}
+
 function LevelSelect({ value, perm, onChange, withDefault, t, disabled }) {
     return (
         <select
@@ -156,10 +188,10 @@ function GuildPermissions({ api, guildId }) {
     const defaultLevel = typeof perm.defaultLevel === 'number' ? perm.defaultLevel : 1;
     const levelOf = (id) => (Object.hasOwn(perm.members || {}, id) ? perm.members[id] : null);
     const q = query.trim().toLowerCase();
-    const shown = members.filter(
+    const shown = orderMembers(members, perm).filter(
         (m) =>
             !q ||
-            [m.displayName, m.username, m.id].some((v) =>
+            [nameOf(m), m.username, m.id].some((v) =>
                 String(v ?? '')
                     .toLowerCase()
                     .includes(q),
@@ -199,10 +231,11 @@ function GuildPermissions({ api, guildId }) {
                     {shown.map((m) => {
                         const owner = String(m.id) === String(perm.ownerDiscordId);
                         return (
-                            <li key={m.id} className="row">
+                            <li key={m.id} className="row member-row">
+                                <Avatar member={m} />
                                 <div className="row-main">
-                                    <div className="row-title">{m.displayName || m.username || m.id}</div>
-                                    {m.username && <div className="row-sub">@{m.username}</div>}
+                                    <div className="row-title row-title-one">{nameOf(m)}</div>
+                                    {m.username && <div className="row-sub row-title-one">@{m.username}</div>}
                                 </div>
                                 {owner ? (
                                     <span className="pill">{t('perm.owner')}</span>

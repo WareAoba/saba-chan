@@ -1067,7 +1067,14 @@
     "backup_unreadable": "⚠ no se puede abrir",
     "backup_unreadable_hint": "Esta copia de seguridad no se puede abrir, así que no se puede restaurar. El contenido de copias sin usar no se limpia hasta que la elimines. Elimínala.",
     "err_backup_file_locked": "El servidor está usando un archivo ({{file}}), así que no se pudo hacer la copia. Detén el servidor e inténtalo de nuevo.",
-    "err_autosave_not_resumed": "La copia se hizo, pero no se pudo reactivar el autoguardado del servidor. Reinicia el servidor."
+    "err_autosave_not_resumed": "La copia se hizo, pero no se pudo reactivar el autoguardado del servidor. Reinicia el servidor.",
+    "kind_snapshot": "Copia del juego guardada",
+    "kind_game-snapshot": "Copia automática del juego",
+    "backup_keep_snapshot": "Guardar copia del juego",
+    "backup_keep_snapshot_hint": "Guarda la copia automática más reciente del juego como copia de Saba-chan. Es seguro aunque el servidor esté encendido.",
+    "backup_snapshot_kept": "Se guardó la copia automática del juego",
+    "backup_game_snapshot": "Hecha por el juego · solo restaurar",
+    "err_snapshot_not_found": "El juego no tiene copia automática."
   },
   "chatbot": {
     "nav": "Saba-chan parlante",

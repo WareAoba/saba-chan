@@ -1067,7 +1067,14 @@
     "backup_unreadable": "⚠ impossible à ouvrir",
     "backup_unreadable_hint": "Cette sauvegarde ne peut pas être ouverte, elle ne peut donc pas être restaurée. Le contenu de sauvegarde inutilisé n'est pas nettoyé tant que vous ne la supprimez pas. Supprimez-la.",
     "err_backup_file_locked": "Le serveur utilise un fichier ({{file}}), la sauvegarde n’a pas pu être faite. Arrêtez le serveur et réessayez.",
-    "err_autosave_not_resumed": "La sauvegarde a été faite, mais la sauvegarde auto du serveur n’a pas pu être réactivée. Redémarrez le serveur."
+    "err_autosave_not_resumed": "La sauvegarde a été faite, mais la sauvegarde auto du serveur n’a pas pu être réactivée. Redémarrez le serveur.",
+    "kind_snapshot": "Sauvegarde du jeu conservée",
+    "kind_game-snapshot": "Sauvegarde auto du jeu",
+    "backup_keep_snapshot": "Conserver la sauvegarde du jeu",
+    "backup_keep_snapshot_hint": "Conserve la sauvegarde automatique la plus récente du jeu comme sauvegarde Saba-chan. Sans risque même serveur allumé.",
+    "backup_snapshot_kept": "Sauvegarde automatique du jeu conservée",
+    "backup_game_snapshot": "Faite par le jeu · restauration seulement",
+    "err_snapshot_not_found": "Le jeu n’a pas de sauvegarde automatique."
   },
   "chatbot": {
     "nav": "Saba-chan qui parle",

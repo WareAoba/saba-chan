@@ -335,20 +335,189 @@ async fn backups_dir(state: &IPCServer, id: &str) -> Result<PathBuf, Response> {
 
 pub async fn list_backups(Path(id): Path<String>, State(state): State<IPCServer>) -> Response {
     match backups_dir(&state, &id).await {
-        Ok(dir) => Json(json!({ "success": true, "backups": backup::list(&dir) })).into_response(),
+        Ok(dir) => {
+            // 게임이 만든 자동 백업도 함께 (새것부터 사바쨩 백업 뒤에)
+            let mut items: Vec<Value> = backup::list(&dir).into_iter().map(|b| json!(b)).collect();
+            let snapshots = snapshot_items(&state, &id).await;
+            let snapshots_supported = has_snapshots(&state, &id).await;
+            items.extend(snapshots);
+            Json(json!({ "success": true, "backups": items, "snapshots_supported": snapshots_supported })).into_response()
+        }
         Err(r) => r,
     }
 }
 
-pub async fn create_backup(Path(id): Path<String>, State(state): State<IPCServer>) -> Response {
-    match take_backup(&state, &id, BackupKind::Manual).await {
-        Ok(Some(made)) => Json(json!({ "success": true, "backup": made })).into_response(),
-        Ok(None) => error(StatusCode::BAD_REQUEST, "nothing_to_back_up", "None of the module's backup paths exist yet"),
+/// 모듈이 게임 자동 백업을 알려 주는가 (`[backup] snapshots`)
+async fn has_snapshots(state: &IPCServer, id: &str) -> bool {
+    let supervisor = state.supervisor.read().await;
+    let Some(instance) = supervisor.instance_store.get(id) else { return false };
+    supervisor.module_loader.get_module(&instance.module_name).ok().and_then(|m| m.metadata.backup).is_some_and(|b| b.snapshots)
+}
+
+// ── 게임 자동 백업 (스냅샷) ──
+
+/// 백업 목록·복원 이름에서 게임 스냅샷을 가리키는 앞붙임 (`game-snapshot:<id>`)
+pub const SNAPSHOT_PREFIX: &str = "game-snapshot:";
+
+/// 백업할 원본: 지금 상태(저장 뒤 복사) 또는 게임이 만든 스냅샷 (None이면 가장 새것)
+pub enum Source {
+    Current,
+    Snapshot(Option<String>),
+}
+
+/// 게임이 만든 스냅샷 하나. `paths`는 (스냅샷 안의 경로, 그것이 되돌아갈 월드 자리)
+struct GameSnapshot {
+    id: String,
+    created: u64,
+    paths: Vec<(PathBuf, PathBuf)>,
+}
+
+/// 모듈 `[backup] snapshots`의 lifecycle `backup_snapshots()`. 선언하지 않았으면 빈 목록.
+/// 경로는 모두 이 인스턴스의 경계 안이어야 한다 (밖이면 `module_path_outside`)
+async fn game_snapshots(state: &IPCServer, id: &str) -> Result<Vec<GameSnapshot>, Response> {
+    let (call, boundary, module_name) = {
+        let supervisor = state.supervisor.read().await;
+        let Some(instance) = supervisor.instance_store.get(id).cloned() else {
+            return Err(error(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id)));
+        };
+        let Some(module) = supervisor.module_loader.get_module(&instance.module_name).ok().filter(|m| m.metadata.backup.as_ref().is_some_and(|b| b.snapshots)) else {
+            return Ok(Vec::new());
+        };
+        let instance_dir = supervisor.instance_store.instance_dir(id);
+        let base = server_base(&instance, &instance_dir, Some(&module.metadata));
+        let boundary = crate::module_paths::Boundary::for_instance(&instance, &instance_dir, Some(&module.metadata));
+        let mut cfg = serde_json::Map::new();
+        cfg.insert("working_dir".into(), json!(base.to_string_lossy()));
+        cfg.insert("extension_data".into(), json!(&instance.extension_data));
+        crate::supervisor::Supervisor::insert_instance_fields(&mut cfg, &instance, &instance_dir);
+        let call = crate::plugin::PluginCall::new(module.entry_path(), "backup_snapshots", Value::Object(cfg)).in_instance(Some(state.host_context(id)));
+        (call, boundary, instance.module_name)
+    };
+    let v = match call.run().await {
+        Ok(v) if v.get("success").and_then(Value::as_bool) == Some(true) => v,
+        Ok(v) => return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(v)).into_response()),
+        Err(e) => return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(crate::plugin::error_response(&e))).into_response()),
+    };
+    let mut out = Vec::new();
+    for s in v["snapshots"].as_array().into_iter().flatten() {
+        let Some(sid) = s["id"].as_str().filter(|i| !i.is_empty()) else { continue };
+        let mut paths = Vec::new();
+        for p in s["paths"].as_array().into_iter().flatten() {
+            let (Some(from), Some(to)) = (p["from"].as_str(), p["to"].as_str()) else { continue };
+            let resolve = |path: &str| {
+                boundary.resolve(FsPath::new(path)).ok_or_else(|| {
+                    (StatusCode::INTERNAL_SERVER_ERROR, Json(crate::plugin::error_response(&crate::module_paths::outside(&module_name, "backup_snapshots", path)))).into_response()
+                })
+            };
+            paths.push((resolve(from)?, resolve(to)?));
+        }
+        out.push(GameSnapshot { id: sid.to_string(), created: s["created"].as_u64().unwrap_or(0), paths });
+    }
+    Ok(out)
+}
+
+/// 백업 목록에 함께 보일 스냅샷 항목 (`kind: game-snapshot`, 지울 수 없다). 읽지 못하면 빼고 로그만 남긴다
+async fn snapshot_items(state: &IPCServer, id: &str) -> Vec<Value> {
+    match game_snapshots(state, id).await {
+        Ok(list) => list
+            .into_iter()
+            .map(|s| json!({ "name": format!("{}{}", SNAPSHOT_PREFIX, s.id), "kind": "game-snapshot", "created": s.created, "readable": true }))
+            .collect(),
+        Err(r) => {
+            tracing::warn!("Listing game snapshots of '{}' failed: {:?}", id, crate::ipc::internal::into_internal(r).await.body);
+            Vec::new()
+        }
+    }
+}
+
+/// 고른 스냅샷 (None이면 가장 새것). 없으면 404 `snapshot_not_found`
+async fn find_snapshot(state: &IPCServer, id: &str, which: Option<&str>) -> Result<GameSnapshot, Response> {
+    let list = game_snapshots(state, id).await?;
+    let found = match which {
+        Some(sid) => list.into_iter().find(|s| s.id == sid),
+        None => list.into_iter().next(),
+    };
+    found.ok_or_else(|| error(StatusCode::NOT_FOUND, "snapshot_not_found", "The game has no such automatic backup"))
+}
+
+/// 스냅샷을 사바쨩 백업으로 적는다 (작업 잠금을 쥔 채). 없는 경로는 뺀다
+async fn keep_snapshot_locked(state: &IPCServer, id: &str, snapshot: GameSnapshot, kind: BackupKind) -> Result<BackupInfo, Response> {
+    let dir = backups_dir(state, id).await?;
+    if kind == BackupKind::Snapshot && crate::audit::current().source == "discord" && backup::list(&dir).iter().filter(|b| b.kind == kind).count() >= REMOTE_BACKUP_CAP {
+        return Err(error(StatusCode::CONFLICT, "backup_limit", format!("This instance already has {} backups of this kind; delete old ones on this PC first", REMOTE_BACKUP_CAP)));
+    }
+    let entries: Vec<(PathBuf, PathBuf)> = snapshot.paths.into_iter().filter(|(from, _)| from.exists()).collect();
+    if entries.is_empty() {
+        return Err(error(StatusCode::NOT_FOUND, "snapshot_not_found", "The game's automatic backup has no files"));
+    }
+    let made = tokio::task::spawn_blocking(move || backup::create_from(&dir, kind, &entries, &[])).await;
+    match made {
+        Ok(Ok(made)) => Ok(made),
+        Ok(Err(e)) if e.downcast_ref::<backup::LockedFile>().is_some() => Err(error(StatusCode::CONFLICT, "backup_file_locked", e.to_string())),
+        Ok(Err(e)) => Err(error(StatusCode::INTERNAL_SERVER_ERROR, "backup_failed", e.to_string())),
+        Err(e) => Err(error(StatusCode::INTERNAL_SERVER_ERROR, "backup_failed", e.to_string())),
+    }
+}
+
+/// 백업 하나를 만든다: 지금 상태(`Current`, 수동 백업) 또는 게임 스냅샷 보관(`Snapshot`)
+pub async fn create_from(state: &IPCServer, id: &str, source: Source) -> Result<BackupInfo, Response> {
+    let which = match source {
+        Source::Current => {
+            return match take_backup(state, id, BackupKind::Manual).await? {
+                Some(made) => Ok(made),
+                None => Err(error(StatusCode::BAD_REQUEST, "nothing_to_back_up", "None of the module's backup paths exist yet")),
+            };
+        }
+        Source::Snapshot(which) => which,
+    };
+    let Some(guard) = InstanceLock::take(id) else {
+        return Err(error(StatusCode::CONFLICT, "backup_busy", "A backup or restore is already running for this instance"));
+    };
+    let (state, id) = (state.clone(), id.to_string());
+    detached(async move {
+        let _guard = guard;
+        let snapshot = find_snapshot(&state, &id, which.as_deref()).await?;
+        let made = keep_snapshot_locked(&state, &id, snapshot, BackupKind::Snapshot).await;
+        let instance = state.supervisor.read().await.instance_store.get(&id).map(|i| i.name.clone()).unwrap_or_default();
+        crate::events::emit("backup.done", match &made {
+            Ok(b) => json!({ "instanceId": id, "instance": instance, "kind": b.kind, "name": b.name, "ok": true }),
+            Err(_) => json!({ "instanceId": id, "instance": instance, "kind": BackupKind::Snapshot, "ok": false }),
+        });
+        made
+    })
+    .await
+}
+
+/// POST 본문 (없으면 지금 상태). `source`: `current` | `snapshot`, `snapshot`: 게임 스냅샷 id (없으면 가장 새것)
+#[derive(Deserialize, Default)]
+pub struct CreateBody {
+    #[serde(default)]
+    source: Option<String>,
+    #[serde(default)]
+    snapshot: Option<String>,
+    /// 원격 액션 `backup.create`의 칸: true면 `source: snapshot`과 같다
+    #[serde(default)]
+    from_snapshot: bool,
+}
+
+pub async fn create_backup(Path(id): Path<String>, State(state): State<IPCServer>, body: Option<Json<CreateBody>>) -> Response {
+    let body = body.map(|Json(b)| b).unwrap_or_default();
+    let source = match body.source.as_deref() {
+        None if body.from_snapshot => Source::Snapshot(body.snapshot),
+        None | Some("current") => Source::Current,
+        Some("snapshot") => Source::Snapshot(body.snapshot),
+        Some(other) => return error(StatusCode::BAD_REQUEST, "invalid_request", format!("Unknown backup source: {}", other)),
+    };
+    match create_from(&state, &id, source).await {
+        Ok(made) => Json(json!({ "success": true, "backup": made })).into_response(),
         Err(r) => r,
     }
 }
 
 pub async fn delete_backup(Path((id, name)): Path<(String, String)>, State(state): State<IPCServer>) -> Response {
+    if name.starts_with(SNAPSHOT_PREFIX) {
+        return error(StatusCode::BAD_REQUEST, "snapshot_not_deletable", "The game manages its own automatic backups");
+    }
     let dir = match backups_dir(&state, &id).await {
         Ok(d) => d,
         Err(r) => return r,
@@ -377,7 +546,20 @@ pub async fn restore_backup(Path((id, name)): Path<(String, String)>, State(stat
         return error(StatusCode::CONFLICT, "server_running", "Stop the server before restoring a backup");
     }
     let work = async move {
-        let response = restore_held(&state, &id, &name, &guard, true).await?;
+        // 게임 스냅샷은 잠깐 사바쨩 백업으로 적어 같은 복원 길(안전 백업·되돌리기)로 되돌린 뒤 그 백업을 지운다
+        let response = match name.strip_prefix(SNAPSHOT_PREFIX) {
+            Some(sid) => {
+                let snapshot = find_snapshot(&state, &id, Some(sid)).await?;
+                let staged = keep_snapshot_locked(&state, &id, snapshot, BackupKind::Manual).await?;
+                let restored = restore_held(&state, &id, &staged.name, &guard, true).await;
+                if let Ok(dir) = backups_dir(&state, &id).await {
+                    let staged = staged.name.clone();
+                    let _ = tokio::task::spawn_blocking(move || backup::delete(&dir, &staged)).await;
+                }
+                restored?
+            }
+            None => restore_held(&state, &id, &name, &guard, true).await?,
+        };
         drop(guard);
         Ok(Json(response).into_response())
     };
@@ -1238,6 +1420,78 @@ else:
         assert_eq!(std::fs::read(server.join("world/level.dat")).unwrap(), b"someone else");
     }
 
+    /// 게임이 스스로 만든 자동 백업(스냅샷)을 `[backup] snapshots`의 `backup_snapshots()`가 알려 준다.
+    /// 백업 목록에 함께 보이고, 사바쨩 백업으로 보관할 수 있고, 바로 복원할 수 있다 (사용자 2026-10-24)
+    const SNAPSHOT_HOOK: &str = r#"import json, os, sys
+c = json.load(sys.stdin)
+w = os.path.join(c['working_dir'], 'world')
+snap = os.path.join(w, 'backup', 'S1')
+print(json.dumps({'success': True, 'snapshots': [{'id': 'S1', 'created': 1792800000, 'paths': [
+    {'from': os.path.join(snap, 'Level.sav'), 'to': os.path.join(w, 'Level.sav')},
+    {'from': os.path.join(snap, 'Players'), 'to': os.path.join(w, 'Players')}]}]}))
+"#;
+
+    #[tokio::test]
+    async fn game_snapshots_are_listed_kept_and_restored() {
+        let toml = format!("{NO_BACKUP}\n[backup]\npaths = [\"world\"]\nsnapshots = true\n");
+        let (state, id, tmp) = server_with(&toml, Some(SNAPSHOT_HOOK)).await;
+        let world = tmp.path().join("server").join("world");
+        std::fs::create_dir_all(world.join("backup/S1/Players")).unwrap();
+        std::fs::create_dir_all(world.join("Players")).unwrap();
+        std::fs::write(world.join("Level.sav"), b"live").unwrap();
+        std::fs::write(world.join("Players/p.sav"), b"live player").unwrap();
+        std::fs::write(world.join("backup/S1/Level.sav"), b"snap").unwrap();
+        std::fs::write(world.join("backup/S1/Players/p.sav"), b"snap player").unwrap();
+
+        // 목록: 사바쨩 백업과 함께 게임 자동 백업이 보인다
+        let listed = crate::ipc::internal::into_internal(list_backups(Path(id.clone()), State(state.clone())).await).await.body;
+        let game = listed["backups"].as_array().unwrap().iter().find(|b| b["kind"] == "game-snapshot").cloned().expect("the game snapshot is listed");
+        assert_eq!((game["name"].as_str(), game["created"].as_u64()), (Some("game-snapshot:S1"), Some(1792800000)));
+
+        // 보관: 스냅샷 내용을 월드 자리 경로로 적은 사바쨩 백업
+        let kept = create_from(&state, &id, Source::Snapshot(None)).await.unwrap();
+        assert_eq!(kept.kind, BackupKind::Snapshot);
+        let dir = state.supervisor.read().await.instance_store.instance_dir(&id).join("backups");
+        assert!(backup::backed_up_paths(&dir, &kept.name).unwrap().contains(&world.join("Level.sav")));
+        // 원격 액션 backup.create 의 칸 from_snapshot 도 같은 길이다
+        let body: CreateBody = serde_json::from_value(json!({ "from_snapshot": true })).unwrap();
+        let via_action = crate::ipc::internal::into_internal(create_backup(Path(id.clone()), State(state.clone()), Some(Json(body))).await).await.body;
+        assert_eq!(via_action["backup"]["kind"], "snapshot", "{via_action}");
+
+        // 바로 복원: 지금 월드는 안전 백업으로 남기고 스냅샷으로 바꾼다
+        let done = crate::ipc::internal::into_internal(restore_backup(Path((id.clone(), "game-snapshot:S1".into())), State(state.clone())).await).await;
+        assert_eq!(done.body["success"], true, "{:?}", done.body);
+        assert!(done.body["pre_restore_backup"].is_string());
+        assert_eq!(std::fs::read(world.join("Level.sav")).unwrap(), b"snap");
+        assert_eq!(std::fs::read(world.join("Players/p.sav")).unwrap(), b"snap player");
+        assert_eq!(std::fs::read(world.join("backup/S1/Level.sav")).unwrap(), b"snap", "the game's own snapshot stays");
+
+        // 보관한 백업도 스냅샷 내용으로 되돌린다
+        std::fs::write(world.join("Level.sav"), b"later").unwrap();
+        let again = crate::ipc::internal::into_internal(restore_backup(Path((id.clone(), kept.name.clone())), State(state.clone())).await).await;
+        assert_eq!(again.body["success"], true, "{:?}", again.body);
+        assert_eq!(std::fs::read(world.join("Level.sav")).unwrap(), b"snap");
+
+        // 게임 자동 백업은 사바쨩이 지우지 않는다. 없는 스냅샷은 찾지 못한다
+        assert_eq!(code(delete_backup(Path((id.clone(), "game-snapshot:S1".into())), State(state.clone())).await).await, "snapshot_not_deletable");
+        assert_eq!(code(restore_backup(Path((id.clone(), "game-snapshot:nope".into())), State(state.clone())).await).await, "snapshot_not_found");
+        assert!(matches!(create_from(&state, &id, Source::Snapshot(Some("nope".into()))).await, Err(_)));
+    }
+
+    #[tokio::test]
+    async fn a_game_snapshot_outside_the_server_folder_is_refused() {
+        let hook = r#"import json, os, sys
+c = json.load(sys.stdin)
+print(json.dumps({'success': True, 'snapshots': [{'id': 'S1', 'created': 1, 'paths': [{'from': os.path.join(c['working_dir'], 'x'), 'to': os.path.abspath(os.path.join(c['working_dir'], '..', '..', 'elsewhere'))}]}]}))
+"#;
+        let toml = format!("{NO_BACKUP}\n[backup]\npaths = [\"world\"]\nsnapshots = true\n");
+        let (state, id, tmp) = server_with(&toml, Some(hook)).await;
+        std::fs::create_dir_all(tmp.path().join("server")).unwrap();
+        std::fs::write(tmp.path().join("server/x"), b"x").unwrap();
+        let err = create_from(&state, &id, Source::Snapshot(None)).await.err().expect("a snapshot that writes outside the server folder");
+        assert_eq!(code(err).await, "module_path_outside");
+    }
+
     /// 훅이 `restore_roots`로 넓힌 폴더 안의 옛 백업은 복원된다. 그 폴더는 새 백업 대상이 되지 않는다 (MA3)
     #[tokio::test]
     async fn restore_roots_let_an_older_backup_of_the_whole_data_folder_come_back() {
@@ -1610,7 +1864,7 @@ else:
         }
         let create = |origin: crate::audit::Origin| {
             let (state, id) = (state.clone(), id.clone());
-            crate::audit::with_origin(origin, async move { create_backup(Path(id), State(state)).await })
+            crate::audit::with_origin(origin, async move { create_backup(Path(id), State(state), None).await })
         };
         let refused = create(crate::audit::Origin::new("discord")).await;
         assert_eq!(refused.status(), StatusCode::CONFLICT);

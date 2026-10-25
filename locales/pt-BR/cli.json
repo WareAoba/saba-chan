@@ -237,6 +237,7 @@
       "backup_busy": "Já há um backup ou restauração deste servidor em andamento. Tente de novo quando terminar.",
       "backup_file_locked": "O servidor está usando um arquivo ({{file}}). Desligue o servidor e tente de novo: saba-chan-cli stop <nome>",
       "autosave_not_resumed": "O backup foi feito, mas não foi possível religar o salvamento automático do servidor. Reinicie o servidor: saba-chan-cli restart <name>",
+      "snapshot_not_found": "O jogo não tem backup automático.",
       "invalid_relay_url": "Só são permitidos endereços de relay https:// (http apenas para localhost, 127.0.0.1 ou [::1] ao testar neste PC).",
       "module_busy": "Este módulo já está sendo instalado ou removido. Tente de novo quando terminar.",
       "schedule_changed": "O agendamento foi alterado em outro lugar. Confira com saba-chan-cli schedule show e tente de novo.",
@@ -558,6 +559,7 @@
       "daemon.clients": "Janelas do app de desktop conectadas ao daemon"
     },
     "arg": {
+      "backup.create.from_snapshot": "Guardar o backup automático mais recente do jogo em vez de copiar o mundo agora (Palworld e outros)",
       "bot.channels.notify": "O canal de avisos (falhas, backups, atualizações, reinícios agendados), por nome ou id",
       "bot.channels.no_notify": "Remover o canal de avisos",
       "bot.link.decline": "Recusar este pedido de conexão",
@@ -622,10 +624,13 @@
       "manual": "manual",
       "scheduled": "agendado",
       "pre-update": "antes da atualização",
-      "pre-restore": "antes da restauração"
+      "pre-restore": "antes da restauração",
+      "snapshot": "Backup do jogo guardado",
+      "game-snapshot": "Backup automático do jogo"
     },
     "none": "{{name}} ainda não tem backups.",
     "creating": "Fazendo backup de {{name}}...",
+    "keeping_snapshot": "Guardando o backup do jogo de {{name}}…",
     "created": "Backup {{backup}} criado.",
     "confirm_delete": "Excluir o backup {{backup}} de {{name}}? Isso não pode ser desfeito.",
     "deleted": "Backup {{backup}} excluído.",

@@ -1,6 +1,8 @@
 import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { wordmarkFor } from '../art';
 import { useApp } from '../store';
+import { Icon } from './icons';
 
 /** 결과가 실패인지 (GUI 브리지는 실패를 {error} 또는 {success:false}·{ok:false}로 돌려준다) */
 export const failed = (res) => !res || !!res.error || res.success === false || res.ok === false;
@@ -34,8 +36,30 @@ export function StatusDot({ status }) {
     );
 }
 
-export function Empty({ children }) {
-    return <p className="empty">{children}</p>;
+/** 공식 글자 로고. 색은 글자색을 따른다 (그림을 가림막으로 쓴다) */
+export function Wordmark({ className = '' }) {
+    const { t, i18n } = useTranslation();
+    const mark = wordmarkFor(i18n.language);
+    return (
+        <span
+            className={`wordmark ${className}`}
+            style={{
+                '--wordmark': `url("${new URL(mark.src, document.baseURI).href}")`,
+                aspectRatio: String(mark.ratio),
+            }}
+        >
+            <span className="sr-only">{t('app_name')}</span>
+        </span>
+    );
+}
+
+export function Empty({ art, children }) {
+    return (
+        <div className="empty">
+            {art && <img className="empty-art" src={art} alt="" />}
+            <p>{children}</p>
+        </div>
+    );
 }
 
 export function Loading() {
@@ -135,7 +159,7 @@ export function Sheet({ title, onClose, children }) {
                 <header className="sheet-head">
                     <h3>{title}</h3>
                     <button type="button" className="icon-btn" onClick={onClose} aria-label={t('close')}>
-                        ✕
+                        <Icon name="close" />
                     </button>
                 </header>
                 <div className="sheet-body">{children}</div>

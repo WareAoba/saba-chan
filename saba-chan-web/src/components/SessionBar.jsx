@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { art } from '../art';
 import { useApp } from '../store';
+import { Icon } from './icons';
+import { Wordmark } from './ui';
 
 /** 남은 시간 "14:05" */
 export function remainingText(expiresAt, now) {
@@ -20,16 +23,23 @@ export function SessionBar({ session }) {
     return (
         <header className="topbar">
             <div className="topbar-row">
-                <h1 className="topbar-title">{t('app_name')}</h1>
+                <h1 className="topbar-title">
+                    <img className="topbar-logo" src={art.icon} alt="" />
+                    <Wordmark className="topbar-wordmark" />
+                </h1>
                 <div className={`timer${warning ? ' timer-warn' : ''}`} title={t('session.remaining')}>
-                    <span aria-hidden="true">⏱</span> {remainingText(expiresAt, now)}
+                    <Icon name="clock" size={14} /> {remainingText(expiresAt, now)}
                 </div>
                 <button type="button" className="btn btn-plain btn-small" onClick={() => session?.extend()}>
                     {t('session.extend')}
                 </button>
             </div>
             {warning && <p className="banner banner-warn">{t('session.ending_soon')}</p>}
-            {phase === 'reconnecting' && <p className="banner banner-info">{t('session.reconnecting')}</p>}
+            {phase === 'reconnecting' && (
+                <p className="banner banner-info">
+                    <span className="spinner" aria-hidden="true" /> {t('session.reconnecting')}
+                </p>
+            )}
         </header>
     );
 }

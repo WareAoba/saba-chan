@@ -330,7 +330,8 @@
       "memory": "記憶",
       "webSearch": "ウェブ検索",
       "disabledTools": "無効なツール",
-      "step": "ステップ"
+      "step": "ステップ",
+      "from_snapshot": "ゲーム自動バックアップから"
     },
     "summary": {
       "server_item": "• **{{name}}** ({{module}}) · {{status}}",
@@ -343,7 +344,9 @@
         "manual": "手動",
         "scheduled": "予約",
         "pre-update": "アップデート前",
-        "pre-restore": "復元前"
+        "pre-restore": "復元前",
+        "snapshot": "ゲーム自動バックアップの保管",
+        "game-snapshot": "ゲーム自動バックアップ"
       },
       "events": "📜 **最近の起動・停止記録**",
       "events_empty": "📭 記録がありません",
@@ -383,6 +386,8 @@
     "backup_busy": "別のバックアップか復元が進行中です",
     "server_running": "サーバーが起動中です。先に停止してください",
     "no_command_path": "サバちゃんの外で起動したサーバーのためコマンドを送れません",
-    "autosave_not_resumed": "バックアップは作成しましたが、サーバーの自動保存を再開できませんでした。サーバーを再起動してください"
+    "autosave_not_resumed": "バックアップは作成しましたが、サーバーの自動保存を再開できませんでした。サーバーを再起動してください",
+    "snapshot_not_found": "ゲームが作った自動バックアップがありません",
+    "snapshot_not_deletable": "ゲームが作った自動バックアップはサバちゃんから削除できません"
   }
 }
