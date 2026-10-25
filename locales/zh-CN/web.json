@@ -1,0 +1,189 @@
+{
+  "app_name": "Saba-chan 网页版",
+  "common_loading": "加载中…",
+  "confirm": "确定",
+  "cancel": "取消",
+  "close": "关闭",
+  "tabs": {
+    "label": "菜单",
+    "servers": "服务器",
+    "permissions": "权限",
+    "modules": "模块",
+    "more": "更多"
+  },
+  "gate": {
+    "connecting": "正在连接到你的电脑…",
+    "again": "请在 Discord 中用 /사바쨩 웹 获取新链接。",
+    "closed": "会话已结束。",
+    "no_link": "没有链接。",
+    "link_invalid": "此链接已被使用或已过期。",
+    "host_unreachable": "无法连接到你的电脑。请确认电脑和 Saba-chan 应用已开启并为最新版本。",
+    "session_gone": "会话已结束，无法重新连接。",
+    "expired": "已过 15 分钟，会话已结束。",
+    "left": "你离开了页面，会话已结束。",
+    "replaced": "已在其他地方打开新会话，此会话已结束。",
+    "host_gone": "与电脑的连接已断开。",
+    "relay_closing": "因服务器维护，会话已结束。",
+    "connection_lost": "连接中断，会话已结束。"
+  },
+  "session": {
+    "remaining": "剩余时间",
+    "extend": "延长",
+    "ending_soon": "会话即将结束。点击“延长”以继续。",
+    "reconnecting": "连接中断，正在重新连接…"
+  },
+  "status": {
+    "running": "运行中",
+    "stopped": "已停止",
+    "starting": "启动中",
+    "stopping": "停止中",
+    "provisioning": "安装中",
+    "missing": "无模块",
+    "provision_failed": "安装失败"
+  },
+  "provision": {
+    "running": "安装中 {{percent}}%",
+    "failed": "无法安装服务器。",
+    "pc_needed": "需要在电脑上的 Saba-chan 应用中确认。",
+    "dismiss": "关闭",
+    "dismiss_hint": "如果是正在新建的服务器，关闭时会一并删除。"
+  },
+  "servers": {
+    "add": "添加服务器",
+    "add_hint": "可执行文件位置等电脑设置请在 Saba-chan 应用中设置。",
+    "game": "游戏",
+    "name": "名称",
+    "create": "创建",
+    "created": "已创建 {{name}}。",
+    "no_modules": "尚未安装游戏模块。请先在“模块”标签中安装。",
+    "empty": "还没有服务器。",
+    "back": "服务器",
+    "start": "启动",
+    "stop": "停止",
+    "restart": "重启",
+    "delete": "删除服务器",
+    "started": "已启动 {{name}}。",
+    "stopped": "已停止 {{name}}。",
+    "restarted": "已重启 {{name}}。",
+    "deleted": "已删除 {{name}}。",
+    "stop_title": "要停止 {{name}} 吗？",
+    "stop_message": "已连接的玩家将被断开。",
+    "restart_title": "要重启 {{name}} 吗？",
+    "restart_message": "已连接的玩家将暂时断开。",
+    "delete_title": "要删除 {{name}} 吗？",
+    "delete_message": "服务器的设置和文件将被删除，且无法撤销。"
+  },
+  "detail": {
+    "console": "控制台",
+    "settings": "设置",
+    "backups": "备份"
+  },
+  "console": {
+    "empty": "暂无输出。",
+    "placeholder": "输入命令",
+    "send": "发送",
+    "danger_title": "这是危险命令",
+    "danger_message": "确定要发送 {{command}} 吗？"
+  },
+  "settings": {
+    "general": "常规",
+    "game": "游戏设置",
+    "rename": "重命名",
+    "renamed": "已重命名。",
+    "name_taken": "已存在同名的服务器。",
+    "none": "此游戏没有可更改的设置。",
+    "pc_only": "只能在电脑上的 Saba-chan 应用中更改。",
+    "restart_required": "需要重启",
+    "save": "保存",
+    "saved": "设置已保存。",
+    "saved_restart": "设置已保存。部分设置在服务器重启后生效。",
+    "changed_elsewhere": "期间设置已在其他地方被更改。请重新打开服务器。",
+    "danger_zone": "删除服务器",
+    "delete_hint": "删除服务器的设置和文件。",
+    "stop_first": "请先停止服务器。"
+  },
+  "backups": {
+    "create": "立即备份",
+    "created": "已创建备份。",
+    "empty": "还没有备份。",
+    "restore": "恢复",
+    "restored": "已恢复备份。",
+    "restore_title": "要恢复此备份吗？",
+    "restore_message": "当前文件将恢复为 {{name}}。",
+    "delete": "删除",
+    "deleted": "已删除备份。",
+    "delete_title": "要删除此备份吗？",
+    "delete_message": "删除 {{name}} 后无法撤销。",
+    "stop_first": "恢复前请先停止服务器。",
+    "kind": {
+      "manual": "手动",
+      "scheduled": "定时",
+      "pre-update": "更新前",
+      "pre-restore": "恢复前"
+    }
+  },
+  "agreements": {
+    "title": "需要同意",
+    "message": "要启动 {{name}}，需要同意以下条款。\n{{list}}",
+    "accept": "同意并启动"
+  },
+  "perm": {
+    "guild": "Discord 服务器",
+    "no_guilds": "没有与此电脑连接的 Discord 服务器。",
+    "default": "默认等级",
+    "default_hint": "下方未单独设置的所有人的等级。",
+    "search": "按名称搜索",
+    "no_members": "没有符合的人。",
+    "owner": "所有者",
+    "use_default": "使用默认等级",
+    "saved": "权限已更改。",
+    "level": {
+      "2": "管理员",
+      "1": "用户",
+      "0": "仅限会说话的 Saba-chan",
+      "-1": "已封禁"
+    }
+  },
+  "modules": {
+    "games": "游戏模块",
+    "plugins": "插件",
+    "installed_title": "已安装的模块",
+    "available_title": "可安装的模块",
+    "none_installed": "没有已安装的模块。",
+    "all_installed": "已发布的模块均已安装。",
+    "install": "安装",
+    "installed": "模块已安装。",
+    "busy": "此模块的其他操作尚未完成。请稍后再试。",
+    "official_only": "在网页上只能安装官方发布的版本。",
+    "catalog_failed": "无法获取已发布的列表。请稍后再打开。"
+  },
+  "plugins": {
+    "installed_title": "已安装的插件",
+    "available_title": "可安装的插件",
+    "none_installed": "没有已安装的插件。",
+    "all_installed": "已发布的插件均已安装。",
+    "installed": "插件已安装。",
+    "enabled": "插件已开启。",
+    "disabled": "插件已关闭。",
+    "toggle": "开/关"
+  },
+  "more": {
+    "metrics": "电脑状态",
+    "daemon_log": "守护进程日志",
+    "cpu": "CPU",
+    "memory": "内存",
+    "servers_usage": "各服务器使用量",
+    "none_running": "没有正在运行的服务器。",
+    "pc_only_note": "更新、路径、Discord 连接和会说话的 Saba-chan 设置请在电脑上的 Saba-chan 应用中进行。"
+  },
+  "errors": {
+    "generic": "无法完成请求。",
+    "remote_not_allowed": "只能在电脑上的 Saba-chan 应用中进行。",
+    "remote_field_blocked": "以下设置只能在电脑上更改：{{fields}}",
+    "remote_bad_path": "不接受此请求。",
+    "remote_bad_request": "不接受此请求。",
+    "remote_timeout": "未在 2 分钟内完成，已按失败处理。请在电脑上确认结果。",
+    "remote_host_gone": "请求完成前与电脑的连接已断开。",
+    "remote_busy": "请求过多。请稍后再试。"
+  }
+}

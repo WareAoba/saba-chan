@@ -1,0 +1,189 @@
+{
+  "app_name": "Saba-chan Web",
+  "common_loading": "Cargando…",
+  "confirm": "Aceptar",
+  "cancel": "Cancelar",
+  "close": "Cerrar",
+  "tabs": {
+    "label": "Menú",
+    "servers": "Servidores",
+    "permissions": "Permisos",
+    "modules": "Módulos",
+    "more": "Más"
+  },
+  "gate": {
+    "connecting": "Conectando con tu PC…",
+    "again": "Pide un enlace nuevo con /saba web en Discord.",
+    "closed": "La sesión ha terminado.",
+    "no_link": "No hay enlace.",
+    "link_invalid": "Este enlace ya se usó o ha caducado.",
+    "host_unreachable": "No se pudo conectar con tu PC. Comprueba que el PC y la app Saba-chan estén encendidos y actualizados.",
+    "session_gone": "La sesión terminó, así que no se pudo reconectar.",
+    "expired": "La sesión terminó tras 15 minutos.",
+    "left": "La sesión terminó porque saliste de la página.",
+    "replaced": "Se abrió una sesión nueva en otro lugar, así que esta terminó.",
+    "host_gone": "Se perdió la conexión con tu PC.",
+    "relay_closing": "La sesión terminó por mantenimiento del servidor.",
+    "connection_lost": "La sesión terminó porque se perdió la conexión."
+  },
+  "session": {
+    "remaining": "Tiempo restante",
+    "extend": "Ampliar",
+    "ending_soon": "La sesión terminará pronto. Toca Ampliar para continuar.",
+    "reconnecting": "Se perdió la conexión. Reconectando…"
+  },
+  "status": {
+    "running": "En marcha",
+    "stopped": "Detenido",
+    "starting": "Iniciando",
+    "stopping": "Deteniendo",
+    "provisioning": "Instalando",
+    "missing": "Sin módulo",
+    "provision_failed": "Error de instalación"
+  },
+  "provision": {
+    "running": "Instalando {{percent}}%",
+    "failed": "No se pudo instalar el servidor.",
+    "pc_needed": "Hay que confirmarlo en la app Saba-chan del PC.",
+    "dismiss": "Cerrar",
+    "dismiss_hint": "Si era un servidor nuevo, al cerrar también se elimina."
+  },
+  "servers": {
+    "add": "Añadir servidor",
+    "add_hint": "Los ajustes del PC, como la ubicación del ejecutable, se configuran en la app Saba-chan.",
+    "game": "Juego",
+    "name": "Nombre",
+    "create": "Crear",
+    "created": "Se creó {{name}}.",
+    "no_modules": "No hay módulos de juego instalados. Instala uno primero en la pestaña Módulos.",
+    "empty": "Aún no hay servidores.",
+    "back": "Servidores",
+    "start": "Iniciar",
+    "stop": "Detener",
+    "restart": "Reiniciar",
+    "delete": "Eliminar servidor",
+    "started": "Se inició {{name}}.",
+    "stopped": "Se detuvo {{name}}.",
+    "restarted": "Se reinició {{name}}.",
+    "deleted": "Se eliminó {{name}}.",
+    "stop_title": "¿Detener {{name}}?",
+    "stop_message": "Los jugadores conectados se desconectarán.",
+    "restart_title": "¿Reiniciar {{name}}?",
+    "restart_message": "Los jugadores conectados se desconectarán un momento.",
+    "delete_title": "¿Eliminar {{name}}?",
+    "delete_message": "Se eliminarán los ajustes y archivos del servidor. No se puede deshacer."
+  },
+  "detail": {
+    "console": "Consola",
+    "settings": "Ajustes",
+    "backups": "Copias"
+  },
+  "console": {
+    "empty": "Aún no hay salida.",
+    "placeholder": "Escribe un comando",
+    "send": "Enviar",
+    "danger_title": "Este comando es peligroso",
+    "danger_message": "¿Seguro que quieres enviar {{command}}?"
+  },
+  "settings": {
+    "general": "General",
+    "game": "Ajustes del juego",
+    "rename": "Cambiar nombre",
+    "renamed": "Nombre cambiado.",
+    "name_taken": "Ya existe un servidor con ese nombre.",
+    "none": "Este juego no tiene ajustes que cambiar.",
+    "pc_only": "Solo se puede cambiar en la app Saba-chan del PC.",
+    "restart_required": "Requiere reinicio",
+    "save": "Guardar",
+    "saved": "Ajustes guardados.",
+    "saved_restart": "Ajustes guardados. Algunos se aplican tras reiniciar el servidor.",
+    "changed_elsewhere": "Los ajustes se cambiaron en otro lugar mientras tanto. Vuelve a abrir el servidor.",
+    "danger_zone": "Eliminar servidor",
+    "delete_hint": "Elimina los ajustes y archivos del servidor.",
+    "stop_first": "Detén el servidor primero."
+  },
+  "backups": {
+    "create": "Copiar ahora",
+    "created": "Copia creada.",
+    "empty": "Aún no hay copias.",
+    "restore": "Restaurar",
+    "restored": "Copia restaurada.",
+    "restore_title": "¿Restaurar esta copia?",
+    "restore_message": "Los archivos actuales volverán a {{name}}.",
+    "delete": "Eliminar",
+    "deleted": "Copia eliminada.",
+    "delete_title": "¿Eliminar esta copia?",
+    "delete_message": "Eliminar {{name}} no se puede deshacer.",
+    "stop_first": "Detén el servidor antes de restaurar.",
+    "kind": {
+      "manual": "Manual",
+      "scheduled": "Programada",
+      "pre-update": "Antes de actualizar",
+      "pre-restore": "Antes de restaurar"
+    }
+  },
+  "agreements": {
+    "title": "Se requiere aceptación",
+    "message": "Para iniciar {{name}}, debes aceptar estos términos.\n{{list}}",
+    "accept": "Aceptar e iniciar"
+  },
+  "perm": {
+    "guild": "Servidor de Discord",
+    "no_guilds": "No hay servidores de Discord conectados a este PC.",
+    "default": "Nivel predeterminado",
+    "default_hint": "El nivel de todos los que no tengan uno asignado abajo.",
+    "search": "Buscar por nombre",
+    "no_members": "No hay coincidencias.",
+    "owner": "Propietario",
+    "use_default": "Usar nivel predeterminado",
+    "saved": "Permiso cambiado.",
+    "level": {
+      "2": "Administrador",
+      "1": "Usuario",
+      "0": "Solo Saba-chan parlante",
+      "-1": "Bloqueado"
+    }
+  },
+  "modules": {
+    "games": "Módulos de juego",
+    "plugins": "Plugins",
+    "installed_title": "Módulos instalados",
+    "available_title": "Módulos que puedes instalar",
+    "none_installed": "No hay módulos instalados.",
+    "all_installed": "Todos los módulos publicados están instalados.",
+    "install": "Instalar",
+    "installed": "Módulo instalado.",
+    "busy": "Otra tarea de este módulo no ha terminado. Inténtalo de nuevo en un momento.",
+    "official_only": "En la web solo puedes instalar versiones publicadas oficialmente.",
+    "catalog_failed": "No se pudo obtener la lista publicada. Vuelve a abrirla en un momento."
+  },
+  "plugins": {
+    "installed_title": "Plugins instalados",
+    "available_title": "Plugins que puedes instalar",
+    "none_installed": "No hay plugins instalados.",
+    "all_installed": "Todos los plugins publicados están instalados.",
+    "installed": "Plugin instalado.",
+    "enabled": "Plugin activado.",
+    "disabled": "Plugin desactivado.",
+    "toggle": "Activar/desactivar"
+  },
+  "more": {
+    "metrics": "Estado del PC",
+    "daemon_log": "Registro del daemon",
+    "cpu": "CPU",
+    "memory": "Memoria",
+    "servers_usage": "Uso por servidor",
+    "none_running": "No hay servidores en marcha.",
+    "pc_only_note": "Las actualizaciones, rutas, la conexión con Discord y los ajustes de Saba-chan parlante se hacen en la app Saba-chan del PC."
+  },
+  "errors": {
+    "generic": "No se pudo completar la solicitud.",
+    "remote_not_allowed": "Esto solo se puede hacer en la app Saba-chan del PC.",
+    "remote_field_blocked": "Estos ajustes solo se pueden cambiar en el PC: {{fields}}",
+    "remote_bad_path": "Esta solicitud no se acepta.",
+    "remote_bad_request": "Esta solicitud no se acepta.",
+    "remote_timeout": "No terminó en 2 minutos, así que se trató como un fallo. Comprueba el resultado en el PC.",
+    "remote_host_gone": "Se perdió la conexión con el PC antes de que terminara la solicitud.",
+    "remote_busy": "Demasiadas solicitudes. Inténtalo de nuevo en un momento."
+  }
+}

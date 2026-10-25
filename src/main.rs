@@ -25,6 +25,7 @@ mod sandbox;
 mod actions;
 mod launch_args;
 mod relay_agent;
+mod remote;
 
 use std::sync::Arc;
 use std::io::IsTerminal;

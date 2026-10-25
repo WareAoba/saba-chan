@@ -1,0 +1,189 @@
+{
+  "app_name": "Saba-chan 網頁版",
+  "common_loading": "載入中…",
+  "confirm": "確定",
+  "cancel": "取消",
+  "close": "關閉",
+  "tabs": {
+    "label": "選單",
+    "servers": "伺服器",
+    "permissions": "權限",
+    "modules": "模組",
+    "more": "更多"
+  },
+  "gate": {
+    "connecting": "正在連線到你的電腦…",
+    "again": "請在 Discord 中用 /사바쨩 웹 取得新連結。",
+    "closed": "工作階段已結束。",
+    "no_link": "沒有連結。",
+    "link_invalid": "此連結已被使用或已過期。",
+    "host_unreachable": "無法連線到你的電腦。請確認電腦和 Saba-chan 應用程式已開啟且為最新版本。",
+    "session_gone": "工作階段已結束，無法重新連線。",
+    "expired": "已過 15 分鐘，工作階段已結束。",
+    "left": "你離開了頁面，工作階段已結束。",
+    "replaced": "已在其他地方開啟新的工作階段，此工作階段已結束。",
+    "host_gone": "與電腦的連線已中斷。",
+    "relay_closing": "因伺服器維護，工作階段已結束。",
+    "connection_lost": "連線中斷，工作階段已結束。"
+  },
+  "session": {
+    "remaining": "剩餘時間",
+    "extend": "延長",
+    "ending_soon": "工作階段即將結束。點選「延長」以繼續。",
+    "reconnecting": "連線中斷，正在重新連線…"
+  },
+  "status": {
+    "running": "執行中",
+    "stopped": "已停止",
+    "starting": "啟動中",
+    "stopping": "停止中",
+    "provisioning": "安裝中",
+    "missing": "無模組",
+    "provision_failed": "安裝失敗"
+  },
+  "provision": {
+    "running": "安裝中 {{percent}}%",
+    "failed": "無法安裝伺服器。",
+    "pc_needed": "需要在電腦上的 Saba-chan 應用程式中確認。",
+    "dismiss": "關閉",
+    "dismiss_hint": "如果是正在新建的伺服器，關閉時會一併刪除。"
+  },
+  "servers": {
+    "add": "新增伺服器",
+    "add_hint": "執行檔位置等電腦設定請在 Saba-chan 應用程式中設定。",
+    "game": "遊戲",
+    "name": "名稱",
+    "create": "建立",
+    "created": "已建立 {{name}}。",
+    "no_modules": "尚未安裝遊戲模組。請先在「模組」分頁中安裝。",
+    "empty": "還沒有伺服器。",
+    "back": "伺服器",
+    "start": "啟動",
+    "stop": "停止",
+    "restart": "重新啟動",
+    "delete": "刪除伺服器",
+    "started": "已啟動 {{name}}。",
+    "stopped": "已停止 {{name}}。",
+    "restarted": "已重新啟動 {{name}}。",
+    "deleted": "已刪除 {{name}}。",
+    "stop_title": "要停止 {{name}} 嗎？",
+    "stop_message": "已連線的玩家將被中斷連線。",
+    "restart_title": "要重新啟動 {{name}} 嗎？",
+    "restart_message": "已連線的玩家將暫時中斷連線。",
+    "delete_title": "要刪除 {{name}} 嗎？",
+    "delete_message": "伺服器的設定和檔案將被刪除，且無法復原。"
+  },
+  "detail": {
+    "console": "主控台",
+    "settings": "設定",
+    "backups": "備份"
+  },
+  "console": {
+    "empty": "尚無輸出。",
+    "placeholder": "輸入指令",
+    "send": "傳送",
+    "danger_title": "這是危險指令",
+    "danger_message": "確定要傳送 {{command}} 嗎？"
+  },
+  "settings": {
+    "general": "一般",
+    "game": "遊戲設定",
+    "rename": "重新命名",
+    "renamed": "已重新命名。",
+    "name_taken": "已有同名的伺服器。",
+    "none": "此遊戲沒有可變更的設定。",
+    "pc_only": "只能在電腦上的 Saba-chan 應用程式中變更。",
+    "restart_required": "需要重新啟動",
+    "save": "儲存",
+    "saved": "設定已儲存。",
+    "saved_restart": "設定已儲存。部分設定在伺服器重新啟動後生效。",
+    "changed_elsewhere": "期間設定已在其他地方被變更。請重新開啟伺服器。",
+    "danger_zone": "刪除伺服器",
+    "delete_hint": "刪除伺服器的設定和檔案。",
+    "stop_first": "請先停止伺服器。"
+  },
+  "backups": {
+    "create": "立即備份",
+    "created": "已建立備份。",
+    "empty": "還沒有備份。",
+    "restore": "還原",
+    "restored": "已還原備份。",
+    "restore_title": "要還原此備份嗎？",
+    "restore_message": "目前的檔案將還原為 {{name}}。",
+    "delete": "刪除",
+    "deleted": "已刪除備份。",
+    "delete_title": "要刪除此備份嗎？",
+    "delete_message": "刪除 {{name}} 後無法復原。",
+    "stop_first": "還原前請先停止伺服器。",
+    "kind": {
+      "manual": "手動",
+      "scheduled": "定時",
+      "pre-update": "更新前",
+      "pre-restore": "還原前"
+    }
+  },
+  "agreements": {
+    "title": "需要同意",
+    "message": "要啟動 {{name}}，需要同意以下條款。\n{{list}}",
+    "accept": "同意並啟動"
+  },
+  "perm": {
+    "guild": "Discord 伺服器",
+    "no_guilds": "沒有與此電腦連線的 Discord 伺服器。",
+    "default": "預設等級",
+    "default_hint": "下方未個別設定的所有人的等級。",
+    "search": "依名稱搜尋",
+    "no_members": "沒有符合的人。",
+    "owner": "擁有者",
+    "use_default": "使用預設等級",
+    "saved": "權限已變更。",
+    "level": {
+      "2": "管理員",
+      "1": "使用者",
+      "0": "僅限會說話的 Saba-chan",
+      "-1": "已封鎖"
+    }
+  },
+  "modules": {
+    "games": "遊戲模組",
+    "plugins": "外掛",
+    "installed_title": "已安裝的模組",
+    "available_title": "可安裝的模組",
+    "none_installed": "沒有已安裝的模組。",
+    "all_installed": "已發佈的模組皆已安裝。",
+    "install": "安裝",
+    "installed": "模組已安裝。",
+    "busy": "此模組的其他作業尚未完成。請稍後再試。",
+    "official_only": "在網頁上只能安裝官方發佈的版本。",
+    "catalog_failed": "無法取得已發佈的清單。請稍後再開啟。"
+  },
+  "plugins": {
+    "installed_title": "已安裝的外掛",
+    "available_title": "可安裝的外掛",
+    "none_installed": "沒有已安裝的外掛。",
+    "all_installed": "已發佈的外掛皆已安裝。",
+    "installed": "外掛已安裝。",
+    "enabled": "外掛已開啟。",
+    "disabled": "外掛已關閉。",
+    "toggle": "開/關"
+  },
+  "more": {
+    "metrics": "電腦狀態",
+    "daemon_log": "常駐程式記錄",
+    "cpu": "CPU",
+    "memory": "記憶體",
+    "servers_usage": "各伺服器使用量",
+    "none_running": "沒有執行中的伺服器。",
+    "pc_only_note": "更新、路徑、Discord 連線和會說話的 Saba-chan 設定請在電腦上的 Saba-chan 應用程式中進行。"
+  },
+  "errors": {
+    "generic": "無法完成請求。",
+    "remote_not_allowed": "只能在電腦上的 Saba-chan 應用程式中進行。",
+    "remote_field_blocked": "以下設定只能在電腦上變更：{{fields}}",
+    "remote_bad_path": "不接受此請求。",
+    "remote_bad_request": "不接受此請求。",
+    "remote_timeout": "未在 2 分鐘內完成，已視為失敗。請在電腦上確認結果。",
+    "remote_host_gone": "請求完成前與電腦的連線已中斷。",
+    "remote_busy": "請求過多。請稍後再試。"
+  }
+}

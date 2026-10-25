@@ -9,6 +9,8 @@
 //!   6. POST /events            — 디스코드 알림 채널(I3)에 띄울 이벤트 (`relay_event`)
 //!
 //! 인증은 노드 토큰(`config.json` `node.token`, sbn_<id>.<secret>) HMAC 서명입니다.
+//!   7. `web_session` 명령    — 사바쨩 웹 세션이 열렸다: `crate::remote::link`가 릴레이 웹소켓에 붙는다
+//!
 //! 새 명령 종류는 `handle_payload`의 action 분기에 추가합니다.
 
 use crate::ipc::handlers::relay::{load_node_token, parse_node_token, resolve_relay_url, signed_headers_with};
@@ -217,6 +219,7 @@ impl RelayAgent {
     }
 
     pub fn stop(&self) {
+        crate::remote::link::stop();
         let mut inner = self.lock();
         if let Some(cancel) = inner.cancel.take() {
             cancel.cancel();
@@ -432,6 +435,7 @@ impl Session {
             s.last_error = Some("node token replaced by a newer pairing".into());
             s.last_error_code = Some("token_replaced");
         });
+        crate::remote::link::stop();
         self.cancel.cancel();
     }
 
@@ -839,6 +843,11 @@ impl Session {
                 };
                 let result = crate::audit::with_origin(origin, action_request(&self.server, action, &payload, &caller)).await;
                 action_result(result, &caller.locale)
+            }
+            // 사바쨩 웹: 릴레이에 웹 세션이 열렸다. 릴레이 웹소켓에 붙는다 (세션이 없어지면 데몬이 끊는다)
+            "web_session" => {
+                crate::remote::link::ensure(self.server.clone(), &self.base, &self.token);
+                json!({ "success": true, "data": { "connecting": true } })
             }
             // 디스코드에서 코드 없이 `/사바쨩 연결` (J1-b): PC 화면에 알리기만 한다. 수락은 PC에서 사람이 누른다
             "link_request" => match link_request_event(cmd, &payload) {
@@ -1874,6 +1883,27 @@ mod tests {
         assert_eq!(entry["inputs"][0]["titles"]["ko"], "바로 쓰기");
         assert!(entry["titles"].get("en").is_none(), "no text for a language → nothing (the relay shows the plain name)");
         assert!(relay_command_entry(&field, &[], None).get("titles").is_none(), "off → plain names only");
+    }
+
+    /// 사바쨩 웹: 릴레이가 세션을 열었다고 알리면 이 세션의 릴레이 주소·토큰으로 웹소켓을 연다
+    #[tokio::test]
+    async fn a_web_session_opens_the_relay_websocket() {
+        let _one = crate::remote::link::TEST_LOCK.lock().await;
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let tmp = tempfile::tempdir().unwrap();
+        let session = test_session(&RelayAgent::new(), &base, "sbn_host.secret", tmp.path()).await;
+        let result = session.handle_payload(&json!({ "id": "c1", "payload": { "action": "web_session", "sessionId": "s1" } })).await;
+        assert_eq!(result["success"], true, "{result:?}");
+        let (tcp, _) = tokio::time::timeout(Duration::from_secs(5), listener.accept()).await.expect("the daemon dials the relay").unwrap();
+        let mut path = String::new();
+        let _ = tokio_tungstenite::accept_hdr_async(tcp, |req: &tokio_tungstenite::tungstenite::handshake::server::Request, res| {
+            path = req.uri().path().to_string();
+            Ok(res)
+        })
+        .await;
+        assert_eq!(path, "/node/ws");
+        crate::remote::link::stop();
     }
 
     #[test]

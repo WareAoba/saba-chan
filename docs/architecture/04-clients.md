@@ -202,6 +202,18 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 - 상태 저장소(zustand): `useServerStore`, `useSettingsStore`(설정 변경 후 500ms debounce로 자동 저장, 154-163), `useDiscordStore`(에이전트 상태, 봇 설정, 시작/정지), `useUIStore`(모달 표시).
 - 테스트(`src/test/`): gui-e2e, settings-roundtrip, store-unit, discord-side-panel, console-window, theme-contrast. 모두 `window.api`를 mock한다(setupTests.js). `tauri-bridge.test.js`는 가짜 `window.__TAURI__`로 브리지 설치·응답 가공·이벤트를 검사한다.
 
+
+### 1.5 사바쨩 웹 (`saba-chan-web`, React + Vite)
+
+PC 주인이 폰 브라우저로 서버·인스턴스를 관리하는 원격 화면이다. 디스코드 `/사바쨩 웹`이 준 일회용 링크(`https://<릴레이>/remote/#<토큰>`)로 열고, 릴레이 웹소켓 `/remote/ws`로 데몬에 요청을 보낸다. 릴레이 쪽 계약은 05 §4.4(f), 데몬 쪽 문지기는 01 §1.4.1.
+
+- 배포: `npx vite build`의 `dist/`를 server-chan `deploy/`의 `../remote-web`에 두면 nginx가 `/remote/`로 낸다(`base: '/remote/'`).
+- 세션(`src/session.js`): `hello{link}` → `ready{sid,key,expiresAt,hostId}`. 끊기면 25초 안에 `resume{sid,key}`로 다시 붙고(릴레이 유예 30초), 페이지를 떠나면(`pagehide`) `bye`. 요청은 `req{id,method,path,body}` → `res{id,status,body}`, 130초가 지나면 `remote_timeout`으로 끝낸다. 연장은 `extend`.
+- 브리지(`src/api.js`): GUI `createApi({invoke, hub}).api`를 그대로 쓰고 `invoke('daemon_request')`만 세션 요청으로 바꾼다. 다른 Tauri 명령(창·파일 대화상자·프로세스)은 `not_supported`로 막는다. 응답 가공과 오류 문구는 GUI와 같다. 릴레이 `event{kind,data}`는 `onDaemonEvent`로 `{type,data}`가 되어 온다.
+- GUI에서 가져오는 것은 `createApi`, `events`, `serverView`, `localizedText`, `commandRisk`, `tokens.css`뿐이다(`src/test/guiImports.test.js`). 화면은 따로 만든다.
+- 화면: 서버(목록·추가·설치 진행과 실패(`provision-progress`, 실패를 닫으면 데몬이 새로 만들던 서버를 지운다)·시작/정지/재시작·EULA 동의·콘솔·설정·백업·삭제), 권한(`relayListHostNodes(hostId)` → 길드별 `permissionsGet`), 모듈(공식 매니페스트 설치, 플러그인 켜기/끄기/설치), 더보기(PC 사용량, 데몬 로그). 설정의 경로·파일·비밀번호 칸은 PC에서만 바꾼다(🔒, 비밀번호는 데몬이 응답에서 뺀다). 확인 창은 GUI와 같은 경우에만 띄운다.
+- 문구: `locales/<lang>/web.json`(`web` ns)과 `common.json`(`common` ns, 브리지 오류 문구). 10개 언어 키·자리 표시자 일치는 `src/test/locales.test.js`가 검사한다.
+
 ---
 
 ## 2. 공유 상수와 포트 (`updater/src/constants.rs`, `shared/constants.js`)
@@ -307,7 +319,7 @@ Discord ─ 릴레이의 사바쨩 봇 ─(롱폴링, HMAC 서명)─ 데몬 rel
 
 - `GET /api/relay/bot-invite`(query `relayUrl?`)가 릴레이의 공개 `/api/bot-invite` 응답 `{url}`을 그대로 돌려준다. 공개 엔드포인트라 서명하지 않지만, 주소는 서명 요청과 같이 설정한 릴레이나 루프백만 쓴다(`handlers/relay.rs:428-450`).
 
-## 5. 로케일 구조 (`locales/<lang>/{common,gui,bot,cli}.json`, 10개 언어)
+## 5. 로케일 구조 (`locales/<lang>/{common,gui,bot,cli,web}.json`, 10개 언어)
 
 | 파일 | 최상위 키(en) | 소비자 |
 |---|---|---|
@@ -315,6 +327,7 @@ Discord ─ 릴레이의 사바쨩 봇 ─(롱폴링, HMAC 서명)─ 데몬 rel
 | gui.json (en leaf 677개) | title, menu, title_bar, modals, settings_modal, add_instance_modal, migration_modal, command_modal, server_*, discord_bot, discord_modal, notice_modal, updates, extensions, saba_storage, validation, context_menu 등 29개 | GUI renderer(`gui` ns) |
 | bot.json | 채팅 응답 문구 | 데몬 채팅 처리기(`src/chat/i18n.rs`, 빌드 때 포함). GUI renderer도 import한다 |
 | cli.json (PR #6 기준 en leaf 402개) | server, daemon, module, ext, bot, backup, schedule, chatbot, err, prompt 등 39개 | CLI `i18n.rs`. 설치 폴더의 `locales/<lang>/cli.json`을 먼저 읽고, 없으면 내장 en/ko를 쓴다(`i18n.rs:11-12, 36-52`). ko만 도움말 번역 `help`(leaf 183개)가 더 있어 585개다. 나머지 언어의 도움말은 clap 기본 영어다. qcza9f에는 아직 예전 TUI용 cli.json(en 200개, `screen`·`menu` 등 16개)이 있다 |
+| web.json | app_name, tabs, gate, session, servers, console, settings, backups, perm, modules, plugins, more, errors 등 | 사바쨩 웹(`web` ns, §1.5). 10개 언어 모두 en과 같은 키 |
 
 - GUI renderer는 영어 common, gui, bot JSON만 번들에 넣고, 다른 언어는 그 언어로 바꿀 때 `import.meta.glob` 청크로 불러온다(i18n.js의 `localeBackend`). 첫 렌더는 캐시된 언어 파일을 읽은 뒤로 미룬다(`i18nReady`, index.js). 언어 소스는 `window.electron.getLanguage()`가 1순위, localStorage `i18nextLng`가 2순위다. 확장 i18n은 daemon `/api/extensions/:id/i18n/:locale`에서 받는다.
 - **업데이트가 필요해요**: 사바쨩이 낮아 거절된 경우(릴레이 `agent_too_old`, 모듈 `module_dependency_unsatisfied`의 `saba-core` 요구·`module_schema_unsupported`, 익스텐션 `app_version_unsatisfied`·`component_version_unsatisfied`의 `saba-core`)는 gui.json·cli.json의 `update_required.*`(title·relay·module·module_newer·extension, GUI는 check도) 한 벌로 보인다. 규칙은 GUI `utils/updateRequired.js`와 CLI `error::update_required`가 같다. 이름은 GUI는 부른 쪽이, CLI는 응답의 `module`·`extension`을 쓴다.

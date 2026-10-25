@@ -7,11 +7,7 @@ const MODULE: &str = "[module]\nschema_version = 1\nname = \"plain\"\nversion = 
 const MODULE_KO: &str = r#"{ "queries": { "players": { "label": "접속자 목록", "description": "지금 접속한 사람", "inputs": { "limit": { "label": "최대 인원" } } } } }"#;
 
 async fn server() -> (IPCServer, String, tempfile::TempDir) {
-    // 토큰은 한 번만 (병렬 테스트가 서로의 토큰을 바꾸지 않게)
-    static TOKEN: std::sync::Once = std::sync::Once::new();
-    TOKEN.call_once(|| {
-        crate::ipc::auth::generate_and_save_token().unwrap();
-    });
+    crate::ipc::auth::ensure_test_token();
     let tmp = tempfile::tempdir().unwrap();
     let modules = tmp.path().join("modules");
     let dir = modules.join("plain");
