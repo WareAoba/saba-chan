@@ -42,7 +42,6 @@ uuid = { version = "1.0", features = ["v4", "serde"] }
 glob = "0.3"
 regex = "1"
 reqwest = { version = "0.11", features = ["json"] }
-byteorder = "1.5"
 ureq = { version = "2.9", default-features = false, features = ["json", "native-tls"] }
 native-tls = "0.2"
 base64 = "0.21"
@@ -74,20 +73,13 @@ version = "0.4"
 # 액션 카탈로그가 데몬 라우터를 안에서 부른다 (`ServiceExt::oneshot`)
 features = ["util"]
 
-[dependencies.tower-http]
-version = "0.5"
-features = ["trace"]
 
-[dependencies.hyper]
-version = "1"
-features = ["full"]
 [features]
 # `cargo build --features mock-relay`: scripts/mock-release-server.js로 업데이트 흐름을 시험하는 개발 빌드
 mock-relay = ["saba-chan-updater-lib/mock-relay"]
 
 [dev-dependencies]
 proptest = "1"
-regex-lite = "0.1"
 saba-chan-updater-lib = { path = "updater", features = ["test-isolation"] }
 
 [profile.release]
