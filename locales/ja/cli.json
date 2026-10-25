@@ -783,7 +783,7 @@
       "bot.wake": "Discord サーバーでボットを起こす",
       "bot.music": "Discord サーバーの音楽プレイヤー設定。オプションなし: 表示",
       "bot.allow": "Discord サーバーが見て操作できるサーバー。サーバーなし: 表示。`--all`: すべてのサーバー",
-      "bot.link": "Discord でコードなしの /사바쨩 연결 から届いた接続要求。ID なし: 表示、ID: 承認、`--decline`: 拒否",
+      "bot.link": "Discord でコードなしの /saba connect から届いた接続要求。ID なし: 表示、ID: 承認、`--decline`: 拒否",
       "help": "コマンドのヘルプを表示。--json ならコマンドツリー・引数・終了コード",
       "events": "デーモンのイベントをリアルタイムで追う(--json なら 1 行に JSON 1 つ)。Ctrl+C で止めます",
       "tui": "全画面メニューを開く",

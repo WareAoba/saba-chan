@@ -98,7 +98,7 @@ const PAIR_FAILURE_TEXT = {
 /** 페어링 진행 카드: 코드 → 디스코드에서 입력 → 자동 확인 */
 export function PairingCard({ pairing, onCancel }) {
     const { t } = useTranslation('gui');
-    const command = `/사바쨩 연결 코드:${pairing.code}`;
+    const command = t('discord.pair_command', { code: pairing.code });
 
     if (pairing.status === 'issuing') {
         return (

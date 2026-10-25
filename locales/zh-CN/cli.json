@@ -783,7 +783,7 @@
       "bot.wake": "唤醒 Discord 服务器中的机器人",
       "bot.music": "Discord 服务器的音乐播放器设置。不带选项则查看",
       "bot.allow": "Discord 服务器可以查看和调用的服务器。不指定服务器：查看，`--all`：所有服务器",
-      "bot.link": "在 Discord 中不带代码使用 /사바쨩 연결 发来的连接请求。不带 ID：查看，ID：接受，`--decline`：拒绝",
+      "bot.link": "在 Discord 中不带代码使用 /saba connect 发来的连接请求。不带 ID：查看，ID：接受，`--decline`：拒绝",
       "help": "显示命令帮助。加 --json 时输出命令树、参数和退出码",
       "events": "实时跟踪守护进程事件（加 --json 时每行一个 JSON）。按 Ctrl+C 停止",
       "tui": "打开全屏菜单",
