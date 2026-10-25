@@ -101,6 +101,7 @@
     "no_command_path": "'{{name}}' has no saba-chan console attached, so it can't take commands. Restart it in managed mode from saba-chan on the PC.",
     "alias_conflict": "❌ Alias '{{alias}}' is ambiguous. It matches multiple modules: {{modules}}. Use a more specific alias.",
     "multiple_instances": "⚠️ Multiple '{{module}}' instances exist. Use an instance name instead of the module alias.",
+    "danger_needs_name": "⚠️ Dangerous commands don't run by game name. Call the server by its name '{{name}}'.",
     "auth_failed": "Authentication failed",
     "player_not_found": "Player not found",
     "internal_server_error": "Internal server error",

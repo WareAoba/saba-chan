@@ -107,7 +107,7 @@ pub fn validate(
                 let theirs = others.get(&s.id).map(|w| w.words.as_slice()).unwrap_or_default();
                 (same(&s.name, word) || same(&s.id, word) || theirs.iter().any(|w| same(w, word))).then(|| s.name.clone())
             })
-            .or_else(|| modules.iter().find(|m| same(&m.name, word) || m.module_aliases.iter().any(|a| same(a, word))).map(|m| m.name.clone()));
+            .or_else(|| modules.iter().find(|m| same(&m.name, word) || m.game_names.iter().chain(&m.module_aliases).any(|a| same(a, word))).map(|m| m.name.clone()));
         if let Some(with) = clash {
             out.push(Problem { field, reason: "conflict", word: Some(word.clone()), conflict_with: Some(with) });
         }
@@ -250,6 +250,29 @@ pub fn migrate(
     Some(Migrated { node_settings: Value::Object(nodes), server_words })
 }
 
+/// 이 서버의 기본 호출명: 인스턴스 이름, 그리고 이 게임의 서버가 이것 하나뿐이면 게임명·모듈 별명·모듈 이름.
+/// 다른 모듈과 다투는 별명, 다른 서버의 이름·id·낱말은 그 서버를 부르므로 뺀다 (`chat::find_server` 해석 순서).
+/// 서버 수는 모든 서버로 센다. 채팅은 그 길드가 쓰는 서버로 세므로 길드에 따라 더 불릴 수는 있어도 덜 불리지는 않는다
+pub fn default_words(server: &ServerView, servers: &[ServerView], modules: &[ModuleView], others: &HashMap<String, InstanceWords>) -> Vec<String> {
+    let mut out = vec![server.name.clone()];
+    // `chat::find_server`와 같은 판정: 그 모듈 서버이거나 이름에 모듈 이름이 든 서버가 이것 하나여야 한다
+    if servers.iter().filter(|s| s.module == server.module || s.name.contains(&server.module)).count() != 1 {
+        return out;
+    }
+    let aliases = super::aliases::ModuleAliases::build(modules);
+    let taken = |word: &str| {
+        servers.iter().filter(|s| s.id != server.id).any(|s| {
+            same(&s.name, word) || same(&s.id, word) || others.get(&s.id).is_some_and(|w| w.words.iter().any(|w| same(w, word)))
+        })
+    };
+    for word in aliases.words_of(&server.module) {
+        if !taken(word) && !out.iter().any(|w| same(w, word)) {
+            out.push(word.to_string());
+        }
+    }
+    out
+}
+
 /// heartbeat `serverWords` `{instanceId: {words, commands}}`: 낱말이 있는 인스턴스만 (id 순 200개까지, 릴레이 MAX_SERVERS)
 pub fn heartbeat(server_words: &HashMap<String, InstanceWords>) -> Value {
     let mut table: Vec<(&String, &InstanceWords)> = server_words.iter().filter(|(_, w)| !w.is_empty()).collect();
@@ -264,6 +287,35 @@ mod tests {
 
     fn server(id: &str, name: &str, module: &str) -> ServerView {
         ServerView { id: id.into(), name: name.into(), module: module.into(), status: "stopped".into(), pid: None }
+    }
+
+    #[test]
+    fn game_names_are_default_words_only_while_the_game_has_one_server() {
+        let mc = ModuleView { name: "minecraft".into(), module_aliases: vec!["mc".into(), "pw".into()], game_names: vec!["마인크래프트".into(), "Minecraft".into()], ..Default::default() };
+        let pal = ModuleView { name: "palworld".into(), module_aliases: vec!["pw".into()], ..Default::default() };
+        let modules = vec![mc, pal];
+        let servers = vec![server("a", "survival", "minecraft"), server("p", "pal1", "palworld")];
+        // 인스턴스 이름이 먼저, 게임명, module.toml 별명, 모듈 이름 (대소문자만 다르면 하나). 두 모듈이 다투는 별명(pw)은 빠진다
+        assert_eq!(default_words(&servers[0], &servers, &modules, &HashMap::new()), vec!["survival", "마인크래프트", "mc", "minecraft"]);
+        // 다른 서버의 이름·낱말이면 그 서버를 부르므로 빠진다
+        let named = vec![server("a", "survival", "minecraft"), server("p", "mc", "palworld")];
+        let theirs = HashMap::from([("p".to_string(), InstanceWords { words: vec!["마인크래프트".into()], ..Default::default() })]);
+        assert_eq!(default_words(&named[0], &named, &modules, &theirs), vec!["survival", "minecraft"]);
+        // 다른 게임 서버 이름에 모듈 이름이 들어 있으면 채팅이 둘 다 고르므로 (`find_server`) 인스턴스 이름뿐
+        let contains = vec![server("a", "survival", "minecraft"), server("p", "minecraft-backup", "palworld")];
+        assert_eq!(default_words(&contains[0], &contains, &modules, &HashMap::new()), vec!["survival"]);
+        // 같은 게임의 서버가 둘이면 인스턴스 이름뿐
+        let two = vec![server("a", "survival", "minecraft"), server("b", "creative", "minecraft")];
+        assert_eq!(default_words(&two[0], &two, &modules, &HashMap::new()), vec!["survival"]);
+    }
+
+    #[test]
+    fn a_game_name_is_not_a_user_word() {
+        let servers = vec![server("a", "survival", "minecraft")];
+        let mc = ModuleView { name: "minecraft".into(), game_names: vec!["마인크래프트".into()], ..Default::default() };
+        let want = InstanceWords { words: vec!["마인크래프트".into()], ..Default::default() };
+        let problems = validate(&servers[0], Some(&mc), &want, &servers, std::slice::from_ref(&mc), &HashMap::new());
+        assert_eq!(problems.iter().map(|p| p.reason).collect::<Vec<_>>(), vec!["conflict"]);
     }
 
     #[test]

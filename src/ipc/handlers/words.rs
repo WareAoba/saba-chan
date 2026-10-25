@@ -44,9 +44,10 @@ fn command_rows(module: Option<&ModuleView>, mine: &InstanceWords) -> Vec<Value>
         .collect()
 }
 
-/// 낱말 항목: `{id, name, module, words, commands:[{name, label, risk, builtin, moduleAliases, aliases}]}`
-fn entry(server: &ServerView, module: Option<&ModuleView>, mine: &InstanceWords) -> Value {
-    json!({ "id": server.id, "name": server.name, "module": server.module, "words": mine.words, "commands": command_rows(module, mine) })
+/// 낱말 항목: `{id, name, module, defaultWords, words, commands:[{name, label, risk, builtin, moduleAliases, aliases}]}`.
+/// `defaultWords`는 사용자가 정하지 않아도 이 서버를 부르는 낱말 (`words::default_words`)
+fn entry(server: &ServerView, default_words: Vec<String>, module: Option<&ModuleView>, mine: &InstanceWords) -> Value {
+    json!({ "id": server.id, "name": server.name, "module": server.module, "defaultWords": default_words, "words": mine.words, "commands": command_rows(module, mine) })
 }
 
 fn not_found(id: &str) -> Response {
@@ -63,7 +64,8 @@ pub async fn get(State(state): State<IPCServer>, Path(id): Path<String>) -> Resp
     let modules = state.modules().await;
     let bot = state.config_store.get_bot_config().await;
     let mine = bot.server_words.get(&id).cloned().unwrap_or_default();
-    Json(entry(server, modules.iter().find(|m| m.name == server.module), &mine)).into_response()
+    let defaults = words::default_words(server, &servers, &modules, &bot.server_words);
+    Json(entry(server, defaults, modules.iter().find(|m| m.name == server.module), &mine)).into_response()
 }
 
 /// `PUT /api/instance/:id/words` `{words, commands}`
@@ -304,6 +306,8 @@ mod tests {
         assert_eq!(r.status, StatusCode::OK, "{:?}", r.body);
         let got = crate::ipc::internal::into_internal(get(State(state.clone()), Path(ia.clone())).await).await;
         assert_eq!(got.body["words"], json!(["서바"]));
+        // 같은 모듈의 서버가 둘이라 기본 호출명은 인스턴스 이름뿐
+        assert_eq!(got.body["defaultWords"], json!(["survival"]));
         assert_eq!(got.body["commands"].as_array().unwrap().iter().find(|c| c["name"] == "start").unwrap()["aliases"], json!(["켜"]));
 
         // 다른 서버의 낱말·이름과 겹치면 거절한다 (어느 길드가 어느 서버를 쓰는지와 상관없다)

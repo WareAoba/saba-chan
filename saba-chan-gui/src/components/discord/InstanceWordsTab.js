@@ -96,7 +96,9 @@ function InstanceCard({ inst, onSaved }) {
                 <div className="dc-word-row">
                     <div className="dc-word-cmd">
                         <span className="dc-list-name">{t('discord.iw_server_words')}</span>
-                        <span className="muted">{t('discord.iw_default', { words: inst.name })}</span>
+                        <span className="muted">
+                            {t('discord.iw_default', { words: (inst.defaultWords || [inst.name]).join(', ') })}
+                        </span>
                     </div>
                     <TagInput
                         value={draft.words}

@@ -587,7 +587,8 @@ impl Session {
                 let texts: Option<&dyn Fn(&str) -> Value> = if translate { Some(&texts) } else { None };
                 json!({
                     "name": m.name,
-                    "module_aliases": m.module_aliases,
+                    // 게임명도 별명처럼 서버를 부른다: 릴레이가 위험 명령 확인에서 같은 서버를 찾도록 함께 보낸다
+                    "module_aliases": m.game_names.iter().chain(&m.module_aliases).collect::<Vec<_>>(),
                     // 디스코드·챗봇에 내보내지 않는 명령(`remote = false`)은 싣지 않는다
                     "commands": { "fields": m.commands.iter().filter(|c| c.remote).map(|c| relay_command_entry(c, m.aliases_of(&c.name), texts)).collect::<Vec<_>>() },
                     "presets": m.presets.iter().map(|p| json!({ "id": p.id, "label": p.label })).collect::<Vec<_>>(),

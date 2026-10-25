@@ -347,16 +347,17 @@ impl<D: DaemonApi> Ctx<'_, D> {
     }
 
     /// 별명/인스턴스 이름으로 대상 서버를 찾는다. 찾지 못하면 사용자에게 줄 응답을 Err로.
-    fn find_server<'s>(&self, alias: &str, servers: &'s [ServerView]) -> Result<&'s ServerView, Reply> {
+    /// bool은 그 서버만 가리키는 말(인스턴스 이름·id·그 서버 낱말)로 찾았는지다. 모듈 이름·게임명·모듈 별명이면 false
+    fn find_server<'s>(&self, alias: &str, servers: &'s [ServerView]) -> Result<(&'s ServerView, bool), Reply> {
         match self.named_servers(alias, servers).as_slice() {
-            [one] => return Ok(one),
+            [one] => return Ok((one, true)),
             [first, ..] => return Err(self.t("errors.multiple_instances", &[("module", &first.module)]).into()),
             [] => {}
         }
         let module = self.aliases.resolve(alias);
         let matched: Vec<&ServerView> = servers.iter().filter(|s| s.module == module || s.name.contains(&module)).collect();
         match matched.as_slice() {
-            [one] => Ok(one),
+            [one] => Ok((one, false)),
             [] => Err(Reply::unrecognized(
                 "INSTANCE_NOT_FOUND",
                 self.t("server.not_found", &[("alias", alias), ("resolved", &module)]),
@@ -367,7 +368,8 @@ impl<D: DaemonApi> Ctx<'_, D> {
     }
 
     fn module_help(&self, alias: &str, servers: &[ServerView]) -> String {
-        if let Some(msg) = self.alias_conflict(alias) {
+        // 인스턴스 이름·id·서버 낱말이 맞으면 별명 충돌은 보지 않는다 (이름이 별명보다 먼저)
+        if let Some(msg) = self.alias_conflict(alias).filter(|_| self.named_servers(alias, servers).is_empty()) {
             return msg;
         }
         let prefix = &self.prefix();
@@ -411,10 +413,10 @@ impl<D: DaemonApi> Ctx<'_, D> {
     // ── 모듈 + 명령어 ──
 
     async fn module_command(&self, alias: &str, cmd_alias: &str, extra: &str, servers: &[ServerView]) -> Reply {
-        if let Some(msg) = self.alias_conflict(alias) {
+        if let Some(msg) = self.alias_conflict(alias).filter(|_| self.named_servers(alias, servers).is_empty()) {
             return msg.into();
         }
-        let server = match self.find_server(alias, servers) {
+        let (server, by_name) = match self.find_server(alias, servers) {
             Ok(s) => s,
             Err(reply) => return reply,
         };
@@ -434,6 +436,10 @@ impl<D: DaemonApi> Ctx<'_, D> {
         };
         if let Err(denied) = self.permit(Some((&server.id, &command, risk))) {
             return self.permission_denied(denied);
+        }
+        // 위험 명령은 그 서버만 가리키는 말로 불러야 한다: 게임명·모듈 별명은 서버가 늘면 다른 서버를 가리킬 수 있다
+        if risk == "danger" && !by_name {
+            return self.t("errors.danger_needs_name", &[("name", &server.name)]).into();
         }
         // 챗봇 경로의 danger 명령은 요청자 본인이 확인한 것만 (릴레이 확인 버튼 → `confirmedBy`). 액션 경로는 확인 계획이 같은 일을 한다
         if risk == "danger" && self.req.remote.as_ref().is_some_and(|w| w.via_chatbot && !w.confirmed_by_requester()) {

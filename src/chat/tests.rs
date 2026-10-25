@@ -353,9 +353,9 @@ async fn discord_requests_are_judged_by_level_and_local_ones_are_not() {
 
     let r = reply("help", discord("banned")).await;
     assert_eq!((r.code, r.args["need"].clone(), r.args["level"].clone()), (Some("PERMISSION_DENIED"), json!(0), json!(-1)));
-    let r = reply("mc kick steve", discord("someone")).await;
+    let r = reply("survival kick steve", discord("someone")).await;
     assert_eq!((r.code, r.args["need"].clone()), (Some("PERMISSION_DENIED"), json!(2)));
-    assert_eq!(reply("mc kick steve", discord("admin")).await.code, None);
+    assert_eq!(reply("survival kick steve", discord("admin")).await.code, None);
 
     let mut bot = discord("owner");
     bot.as_mut().unwrap().via_chatbot = true;
@@ -363,7 +363,7 @@ async fn discord_requests_are_judged_by_level_and_local_ones_are_not() {
     assert_eq!((r.code, r.args["via"].clone()), (Some("PERMISSION_DENIED"), json!("chatbot")));
     assert_eq!(reply("mc status", discord("someone")).await.code, None);
 
-    assert_eq!(reply("mc kick steve", None).await.code, None);
+    assert_eq!(reply("survival kick steve", None).await.code, None);
     assert_eq!(api.calls().len(), 2);
 }
 
@@ -380,7 +380,7 @@ async fn the_chatbot_runs_danger_module_commands_only_when_the_requester_confirm
         let who = bot.as_mut().unwrap();
         who.via_chatbot = true;
         who.confirmed_by = confirmed_by.map(str::to_string);
-        ChatRequest { text: "mc kick steve".into(), guild_id: Some("g1".into()), remote: bot, ..Default::default() }
+        ChatRequest { text: "survival kick steve".into(), guild_id: Some("g1".into()), remote: bot, ..Default::default() }
     };
     for confirmed_by in [None, Some("someone-else")] {
         let r = process(&api, &s, &Catalog::for_language("en"), &ask(confirmed_by)).await;
@@ -409,6 +409,59 @@ async fn two_instances_of_one_module_need_instance_name() {
     assert_eq!(run(&api, &settings(), "mc start").await, cat.t("errors.multiple_instances", &[("module", "minecraft")]));
     run(&api, &settings(), "creative start").await;
     assert_eq!(api.calls(), vec!["start i-mc2"]);
+}
+
+/// 게임명(모듈 locales의 display_name)도 기본 호출명이다. 같은 게임의 서버가 둘이면 고르지 않는다
+#[tokio::test]
+async fn game_name_calls_the_only_instance_of_that_game() {
+    let mut api = fixture();
+    api.modules[1].game_names = vec!["Palworld".into(), "パルワールド".into()];
+    run(&api, &settings(), "パルワールド start").await;
+    run(&api, &settings(), "palworld start").await;
+    assert_eq!(api.calls(), vec!["start i-pal", "start i-pal"]);
+
+    api.servers.push(server("i-pal2", "pal2", "palworld", "stopped"));
+    let cat = Catalog::for_language("en");
+    assert_eq!(run(&api, &settings(), "パルワールド start").await, cat.t("errors.multiple_instances", &[("module", "palworld")]));
+    assert_eq!(api.calls().len(), 2);
+}
+
+/// 위험 명령은 게임명·모듈 별명으로 부르면 실행하지 않는다: 인스턴스 이름·id나 그 서버 낱말로 불러야 한다
+#[tokio::test]
+async fn danger_commands_need_the_instance_name_not_the_game_name() {
+    let mut api = fixture();
+    let mut wipe = field("wipe", "console");
+    wipe.console_template = Some("wipe".into());
+    wipe.risk = Some("danger".into());
+    api.modules[0].commands.push(wipe);
+    api.modules[0].game_names = vec!["마인크래프트".into()];
+    let mut s = settings();
+    s.node_settings = json!({ "g1": { "members": { "u1": 2 } } });
+    s.server_words = serde_json::from_value(serde_json::json!({ "i-mc": { "words": ["야생"] } })).unwrap();
+    let cat = Catalog::for_language("en");
+    let want = cat.t("errors.danger_needs_name", &[("name", "survival")]);
+    for by_game in ["마인크래프트 wipe", "mc wipe", "minecraft wipe"] {
+        assert_eq!(run(&api, &s, by_game).await, want, "{by_game}");
+    }
+    assert!(api.calls().is_empty());
+    run(&api, &s, "survival wipe").await;
+    run(&api, &s, "i-mc wipe").await;
+    run(&api, &s, "야생 wipe").await;
+    assert_eq!(api.calls().len(), 3, "{:?}", api.calls());
+    // 위험하지 않은 명령은 게임명으로도 된다
+    run(&api, &s, "마인크래프트 start").await;
+    assert_eq!(api.calls()[3], "start i-mc");
+}
+
+/// 두 모듈이 같은 게임명을 가져도 인스턴스 이름이 정확히 맞으면 그 서버다 (이름이 별명보다 먼저)
+#[tokio::test]
+async fn an_instance_name_wins_over_a_game_name_two_modules_share() {
+    let mut api = fixture();
+    api.modules[0].game_names = vec!["Shared".into()];
+    api.modules[1].game_names = vec!["Shared".into()];
+    api.servers[1].name = "shared".into();
+    run(&api, &settings(), "Shared start").await;
+    assert_eq!(api.calls(), vec!["start i-pal"]);
 }
 
 #[tokio::test]
