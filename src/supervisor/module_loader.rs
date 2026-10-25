@@ -2577,6 +2577,17 @@ entry = "lifecycle.py"
         assert!(issues.is_empty(), "Exact version match should satisfy >=");
     }
 
+    /// 시험판 데몬(`0.1.11-beta.1`)은 정식보다 낮다. 새 번호대를 시험판부터 받으려면 `-0`을 붙인다
+    #[test]
+    fn dependency_with_zero_prerelease_accepts_test_releases_of_that_version() {
+        let meta = parse_module_toml("[module]\nname = \"g\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[module.dependencies]\n\"saba-core\" = \">=0.1.11-0\"\n").unwrap();
+        let unmet = |core: &str| !meta.check_dependencies(&[("saba-core".to_string(), core.to_string())].into()).is_empty();
+        for accepted in ["0.1.11-beta.1", "0.1.11-rc.1", "0.1.11", "0.1.12"] {
+            assert!(!unmet(accepted), "{accepted}");
+        }
+        assert!(unmet("0.1.10"));
+    }
+
     #[test]
     fn launch_log_files_are_read() {
         let toml = "[module]\nname = \"g\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[launch]\nlog_files = [\"Pal/Saved/Logs/*.log\"]\n";
