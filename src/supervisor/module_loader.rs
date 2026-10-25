@@ -1418,15 +1418,15 @@ impl ModuleToml {
 pub(crate) fn parse_module_toml(content: &str) -> Result<ModuleMetadata> {
     let content = content.trim_start_matches('\u{feff}');
     let mut unknown = Vec::new();
-    let mut de = toml::Deserializer::new(content);
-    let toml_data: ModuleToml = serde_ignored::deserialize(&mut de, |path| {
+    let de = toml::Deserializer::parse(content).map_err(|e| anyhow::anyhow!("Failed to parse module.toml: {}", e))?;
+    let toml_data: ModuleToml = serde_ignored::deserialize(de, |path| {
         // serde_ignored는 Option 한 겹마다 `?`를 끼운다: "config.?.ram" → "config.ram"
         let key: Vec<String> = path.to_string().split('.').filter(|p| *p != "?").map(str::to_string).collect();
         unknown.push(key.join("."))
     })
     .map_err(|e| {
         // 스키마를 밝힌 모듈의 키 타입 오류도 `module_schema_invalid`로 알린다 (`failed[].problems`)
-        let declared = content.parse::<toml::Value>().ok().and_then(|v| v.get("module")?.get("schema_version")?.as_integer());
+        let declared = content.parse::<toml::Table>().ok().and_then(|v| v.get("module")?.get("schema_version")?.as_integer());
         match declared.and_then(|v| u32::try_from(v).ok()).filter(|v| (1..=MODULE_SCHEMA_VERSION).contains(v)) {
             Some(version) => SchemaInvalid { version, problems: vec![e.to_string()] }.into(),
             None => anyhow::anyhow!("Failed to parse module.toml: {}", e),

@@ -126,18 +126,14 @@ async fn connect_once(
         "X-Saba-Client",
         tokio_tungstenite::tungstenite::http::HeaderValue::from_static("1"),
     );
-    let config = WebSocketConfig {
-        max_message_size: Some(MAX_MESSAGE),
-        max_frame_size: Some(MAX_MESSAGE),
-        ..Default::default()
-    };
+    let config = WebSocketConfig::default().max_message_size(Some(MAX_MESSAGE)).max_frame_size(Some(MAX_MESSAGE));
     let (socket, _) = tokio_tungstenite::connect_async_with_config(request, Some(config), false)
         .await
         .map_err(|e| e.to_string())?;
     let (mut sink, mut stream) = socket.split();
 
     let hello = json!({ "t": "hello", "version": crate::relay_agent::AGENT_VERSION, "protocol": PROTOCOL });
-    sink.send(Message::Text(hello.to_string()))
+    sink.send(Message::Text(hello.to_string().into()))
         .await
         .map_err(|e| e.to_string())?;
     // 붙었으니 다시 붙기 횟수를 새로 센다 (몇 시간 붙어 있던 연결이 예전 끊김 때문에 포기하지 않게)
@@ -164,10 +160,10 @@ async fn connect_once(
                 return Ok(Ended::Idle);
             }
             _ = ping.tick() => {
-                sink.send(Message::Ping(Vec::new())).await.map_err(|e| e.to_string())?;
+                sink.send(Message::Ping(Default::default())).await.map_err(|e| e.to_string())?;
             }
             Some(out) = out_rx.recv() => {
-                sink.send(Message::Text(out.to_string())).await.map_err(|e| e.to_string())?;
+                sink.send(Message::Text(out.to_string().into())).await.map_err(|e| e.to_string())?;
             }
             event = events.recv() => {
                 let frame = match event {
@@ -179,7 +175,7 @@ async fn connect_once(
                     Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => json!({ "t": "event", "kind": "resync", "data": {} }),
                     Err(tokio::sync::broadcast::error::RecvError::Closed) => continue,
                 };
-                sink.send(Message::Text(frame.to_string())).await.map_err(|e| e.to_string())?;
+                sink.send(Message::Text(frame.to_string().into())).await.map_err(|e| e.to_string())?;
             }
             msg = stream.next() => {
                 let text = match msg {
@@ -346,24 +342,24 @@ mod tests {
             let (mut sink, mut stream) = ws.split();
             let hello = next_frame(&mut stream).await;
             sink.send(Message::Text(
-                json!({ "t": "open", "sid": "s1", "user": "u1" }).to_string(),
+                json!({ "t": "open", "sid": "s1", "user": "u1" }).to_string().into(),
             ))
             .await
             .unwrap();
             // 열지 않은 세션의 요청은 답하지 않는다
             sink.send(Message::Text(
-                json!({ "t": "req", "sid": "nope", "id": 1, "method": "GET", "path": "/api/instances" }).to_string(),
+                json!({ "t": "req", "sid": "nope", "id": 1, "method": "GET", "path": "/api/instances" }).to_string().into(),
             ))
             .await
             .unwrap();
             sink.send(Message::Text(
                 json!({ "t": "req", "sid": "s1", "id": 2, "method": "GET", "path": "/api/config/node-token" })
-                    .to_string(),
+                    .to_string().into(),
             ))
             .await
             .unwrap();
             sink.send(Message::Text(
-                json!({ "t": "req", "sid": "s1", "id": 3, "method": "GET", "path": "/api/instances" }).to_string(),
+                json!({ "t": "req", "sid": "s1", "id": 3, "method": "GET", "path": "/api/instances" }).to_string().into(),
             ))
             .await
             .unwrap();
@@ -385,7 +381,7 @@ mod tests {
                     _ => {}
                 }
             }
-            sink.send(Message::Text(json!({ "t": "close", "sid": "s1" }).to_string()))
+            sink.send(Message::Text(json!({ "t": "close", "sid": "s1" }).to_string().into()))
                 .await
                 .unwrap();
             // 다른 시험이 낸 이벤트가 끼어들 수 있다 (버스는 프로세스에 하나)
