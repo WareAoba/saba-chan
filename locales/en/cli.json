@@ -294,6 +294,7 @@
       "backup_busy": "A backup or restore of this server is already running. Try again when it finishes.",
       "backup_file_locked": "The server is using a file ({{file}}). Stop the server and try again: saba-chan-cli stop <name>",
       "autosave_not_resumed": "The backup was made, but the server’s autosave could not be turned back on. Restart the server: saba-chan-cli restart <name>",
+      "snapshot_not_found": "The game has no automatic backup.",
       "invalid_relay_url": "Only https:// relay addresses are allowed (http only for localhost, 127.0.0.1 or [::1] when testing on this PC).",
       "module_busy": "This module is already being installed or removed. Try again when it finishes.",
       "schedule_changed": "The schedule was changed elsewhere. Check it again with saba-chan-cli schedule show, then retry.",
@@ -649,6 +650,7 @@
       "server.discord": "What each Discord server calls this server and its commands in chat. No options: show"
     },
     "arg": {
+      "backup.create.from_snapshot": "Keep the game’s latest automatic backup instead of copying the world now (Palworld and others)",
       "bot.channels.notify": "The notification channel (crashes, backups, updates, scheduled restarts), by name or id",
       "bot.channels.no_notify": "Unassign the notification channel",
       "bot.link.decline": "Refuse this connection request",
@@ -729,10 +731,13 @@
       "manual": "manual",
       "scheduled": "scheduled",
       "pre-update": "before update",
-      "pre-restore": "before restore"
+      "pre-restore": "before restore",
+      "snapshot": "Kept game backup",
+      "game-snapshot": "Game auto-backup"
     },
     "none": "{{name}} has no backups yet.",
     "creating": "Backing up {{name}}...",
+    "keeping_snapshot": "Keeping the game backup of {{name}}…",
     "created": "Backup {{backup}} made.",
     "confirm_delete": "Delete backup {{backup}} of {{name}}? This cannot be undone.",
     "deleted": "Backup {{backup}} deleted.",

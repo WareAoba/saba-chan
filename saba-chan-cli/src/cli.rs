@@ -216,9 +216,14 @@ pub enum BackupCmd {
     /// Backups of a server, newest first
     #[command(visible_alias = "ls")]
     List { server: Option<String> },
-    /// Back up now
+    /// Back up now (`--from-snapshot`: keep the game's latest automatic backup instead)
     #[command(visible_alias = "new")]
-    Create { server: Option<String> },
+    Create {
+        server: Option<String>,
+        /// Keep the game's own latest automatic backup instead of copying the world now (modules with game snapshots)
+        #[arg(long)]
+        from_snapshot: bool,
+    },
     /// Delete one backup (no name: pick from the list)
     #[command(visible_alias = "rm")]
     Delete { server: String, backup: Option<String> },

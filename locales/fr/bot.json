@@ -330,7 +330,8 @@
       "memory": "Mémoire",
       "webSearch": "Recherche web",
       "disabledTools": "Outils désactivés",
-      "step": "Étape"
+      "step": "Étape",
+      "from_snapshot": "Depuis la sauvegarde auto du jeu"
     },
     "summary": {
       "server_item": "• **{{name}}** ({{module}}) · {{status}}",
@@ -343,7 +344,9 @@
         "manual": "manuelle",
         "scheduled": "planifiée",
         "pre-update": "avant mise à jour",
-        "pre-restore": "avant restauration"
+        "pre-restore": "avant restauration",
+        "snapshot": "Sauvegarde du jeu conservée",
+        "game-snapshot": "Sauvegarde auto du jeu"
       },
       "events": "📜 **Démarrages et arrêts récents**",
       "events_empty": "📭 Aucun enregistrement",
@@ -383,6 +386,8 @@
     "backup_busy": "Une autre sauvegarde ou restauration est en cours",
     "server_running": "Le serveur est allumé. Arrêtez-le d’abord",
     "no_command_path": "Le serveur a été lancé hors de Saba-chan et ne peut pas recevoir de commandes",
-    "autosave_not_resumed": "La sauvegarde a été faite, mais la sauvegarde auto du serveur n’a pas pu être réactivée. Redémarrez le serveur"
+    "autosave_not_resumed": "La sauvegarde a été faite, mais la sauvegarde auto du serveur n’a pas pu être réactivée. Redémarrez le serveur",
+    "snapshot_not_found": "Le jeu n’a pas de sauvegarde automatique",
+    "snapshot_not_deletable": "Saba-chan ne peut pas supprimer les sauvegardes automatiques du jeu"
   }
 }

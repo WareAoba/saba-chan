@@ -146,7 +146,8 @@ pub static ACTIONS: &[Def] = &[
     def("monitor.summary", Kind::Query, "safe", ALL, false, "GET", "/api/system/metrics?sizes=false"),
     // 디스코드 메뉴에서만 뺀다 (검수 4번). 챗봇 복원이 목록을 보고, 디스코드에서 부르는 것은 계속 받는다
     Def { remote_menu: false, ..def("backup.list", Kind::Query, "safe", ALL, true, "GET", "/api/instance/:id/backups") },
-    def("backup.create", Kind::Command, "caution", ALL, true, "POST", "/api/instance/:id/backups"),
+    // from_snapshot: 지금 상태 대신 게임이 만든 가장 새 자동 백업을 보관한다 (`[backup] snapshots` 모듈)
+    Def { fields: &[field("from_snapshot", "boolean", false)], ..def("backup.create", Kind::Command, "caution", ALL, true, "POST", "/api/instance/:id/backups") },
     // 디스코드에서도 복원한다 (검수 14번). 백업은 목록에서 고른다
     Def {
         fields: &[Field { options_from: Some(OptionsFrom { action: "backup.list", list: "backups", value: "name", label: "label" }), ..path_field("name") }],

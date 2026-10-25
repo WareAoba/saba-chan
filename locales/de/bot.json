@@ -330,7 +330,8 @@
       "memory": "Gedächtnis",
       "webSearch": "Websuche",
       "disabledTools": "Deaktivierte Werkzeuge",
-      "step": "Schritt"
+      "step": "Schritt",
+      "from_snapshot": "Aus Spiel-Autobackup"
     },
     "summary": {
       "server_item": "• **{{name}}** ({{module}}) · {{status}}",
@@ -343,7 +344,9 @@
         "manual": "manuell",
         "scheduled": "geplant",
         "pre-update": "vor Update",
-        "pre-restore": "vor Wiederherstellung"
+        "pre-restore": "vor Wiederherstellung",
+        "snapshot": "Behaltenes Spiel-Backup",
+        "game-snapshot": "Spiel-Autobackup"
       },
       "events": "📜 **Letzte Starts und Stopps**",
       "events_empty": "📭 Keine Einträge",
@@ -383,6 +386,8 @@
     "backup_busy": "Ein anderes Backup oder eine Wiederherstellung läuft",
     "server_running": "Der Server läuft. Zuerst stoppen",
     "no_command_path": "Der Server wurde außerhalb von Saba-chan gestartet und nimmt keine Befehle an",
-    "autosave_not_resumed": "Das Backup wurde erstellt, aber das Autospeichern des Servers ließ sich nicht wieder einschalten. Server neu starten"
+    "autosave_not_resumed": "Das Backup wurde erstellt, aber das Autospeichern des Servers ließ sich nicht wieder einschalten. Server neu starten",
+    "snapshot_not_found": "Das Spiel hat kein automatisches Backup",
+    "snapshot_not_deletable": "Saba-chan kann die eigenen Backups des Spiels nicht löschen"
   }
 }
