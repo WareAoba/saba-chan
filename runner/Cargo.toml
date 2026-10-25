@@ -18,7 +18,7 @@ required-features = ["bin"]
 # 데몬은 프로토콜(lib)만 쓴다: `default-features = false`
 [features]
 default = ["bin"]
-bin = ["dep:portable-pty", "dep:strip-ansi-escapes", "dep:windows-sys"]
+bin = ["dep:portable-pty", "dep:strip-ansi-escapes", "dep:windows-sys", "dep:regex"]
 
 [build-dependencies]
 # exe 아이콘·버전 정보 (Windows에서만 동작)
@@ -31,6 +31,8 @@ serde_json = "1.0"
 # --console pty: Windows ConPTY / unix pty
 portable-pty = { version = "0.9", optional = true }
 strip-ansi-escapes = { version = "0.2", optional = true }
+# --line-start: 데몬(module.toml 검증)과 같은 정규식 문법
+regex = { version = "1", optional = true }
 
 [target.'cfg(windows)'.dependencies]
 # Job Object: 러너가 끝나면(강제 종료 포함) 서버 프로세스 트리도 끝난다. 메모리 상한과 그 알림(완료 포트)

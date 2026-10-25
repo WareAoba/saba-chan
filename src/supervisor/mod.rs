@@ -2090,6 +2090,7 @@ impl Supervisor {
                         log_files: &module.metadata.log_files,
                         console: module.metadata.console,
                         memory_limit_mb: instance.memory_limit_mb,
+                        line_start: module.metadata.line_start.as_deref(),
                     },
                 ).await;
                 // 시작 중 상한에 걸린 것도 종료 이력에 시작 실패로 남긴다
