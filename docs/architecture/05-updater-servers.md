@@ -331,7 +331,7 @@ Tauri 커맨드(`installer/gui/src-tauri/src/lib.rs`): `get_installer_state`, `s
 |---|---|
 | `users` | `discord_id` PK, username, display_name, is_banned, created_at, last_seen |
 | `hosts` | `id` PK(nanoid12), `owner_discord_id` → users(고유하지 않다: 계정 하나에 PC 여러 대, 0028), name(64자, `/사바쨩 내pc`로 바꾼다), `token_hash`(argon2id), status(online/offline), last_heartbeat, agent_version, `metadata` jsonb(heartbeat 캐시와 botConfig, 서버 목록과 `permissionsAt`은 빼고), `servers` jsonb(heartbeat 서버 목록, `{id, name, module, status, usage?, players?, statusLine?}`만. 0025. null이면 읽는 쪽이 `metadata.servers`를 쓴다, `catalog.ts` `hostMetadata`), timestamps |
-| `guild_hosts` | (`guild_id` → nodes cascade, `host_id` → hosts cascade) PK, owner_discord_id(그 PC 주인), created_at. 대표 PC 뒤에 붙은 PC(길드 하나에 여러 PC, 0029, §4.4 (i)) |
+| `guild_hosts` | (`guild_id` → nodes cascade, `host_id` → hosts cascade) PK, created_at. 주인은 따로 적지 않고 `hosts.owner_discord_id`를 쓴다. 대표 PC 뒤에 붙은 PC(길드 하나에 여러 PC, 0029, §4.4 (i)) |
 | `nodes` | `guild_id` PK, `host_id` → hosts(cascade, 처음 연결한 대표 PC. 길드 공통 설정의 원본), owner_discord_id, guild_name, locale, `locale_source`(auto/manual), music_enabled, music_ui_enabled, music_settings jsonb, is_sleep, `default_level`(데몬 값의 캐시), `notify_channel_id`(I3), timestamps |
 | `node_permissions` | PK(guild_id, discord_id), level(-1=금지, 0=챗봇, 1=유저, 2=관리자, 10~999=길드에 더한 단계), granted_by. 데몬 `nodeSettings[guild].members`의 캐시(릴레이 바깥 검사용) |
 | `command_queue` | id PK, host_id, guild_id, payload jsonb, requested_by, channel_id, status(pending→delivered→acked→completed / timeout / error), created/delivered/completed/expires_at(+60s), result jsonb, `redeliveries`(ack 없이 다시 보낸 횟수, `0022_command_redeliveries`), `timeout_notified`(봇이 시간 초과를 알린 명령, `0023_command_timeout_notified`) |
@@ -405,9 +405,10 @@ Tauri 커맨드(`installer/gui/src-tauri/src/lib.rs`): `get_installer_state`, `s
 
 **(i) 길드 하나에 여러 PC** (원격 데몬 R2, `services/guildHosts.ts`, `bot/commands/guildRouting.ts`, 사용자 결정 2026-10-25): 한 디스코드 서버에 여러 사람의 PC(같은 사람의 집 PC와 원격 PC 포함)가 함께 붙는다. PC를 여러 사람이 함께 소유하지는 않는다.
 - 처음 연결한 PC가 대표(`nodes.host_id`)이고, 그 뒤에 연결한 PC는 `guild_hosts`에 붙는다. 길드 공통 설정(언어·접두사·잠자기·음악·챗봇·채널 배정)의 원본은 대표 PC 데몬이다. 붙은 PC는 그 길드의 설정·채널·디스코드 멤버를 읽기만 한다. 각 PC의 서버와 권한 사다리는 그 PC 주인의 것이고 판정은 그 PC 데몬이 한다(poll의 `ownerDiscordId`는 그 PC 주인). 릴레이의 미리 거르기(금지 멤버)는 대표 PC 사다리 캐시로 한다.
-- 서버 목록은 PC들의 카탈로그를 대표 먼저 합친다(`catalog.ts` `mergeCatalogs`, `loadCatalog`·길드 슬래시 맞추기·도움말·챗봇이 같은 목록을 쓴다). 서버마다 `hostId`가 붙고, 이름이 겹치면(대소문자 무시) 나중 PC의 서버 이름 뒤에 `-<PC 이름>`(공백·기호를 뺀 16자, 없으면 PC id 앞 6자)을 붙인다. 꺼진 PC의 서버 상태는 `unknown`이다. `/사바쨩 상태`는 길드의 PC마다 한 덩어리로 보인다.
-- 명령은 `sendToDaemon` 한 곳에서 보낼 PC를 고른다: `raw_command`는 첫 낱말의 서버가 있는 PC(서버 이름으로 불렀으면 첫 낱말을 서버 id로 바꾼다), 액션은 `instance`(계획이면 첫 단계의 `instance`)가 있는 PC, `run_plan`은 그 계획을 만든 PC(릴레이 메모리 10분)다. 서버를 가리키지 않는 길드 단위 명령(설정·권한·목록 등)은 대표 PC로 간다. PC가 하나인 길드는 payload를 바꾸지 않는다.
-- 붙은 PC가 보낸 알림·준비 이벤트·실행 결과(`plan.done`)도 그 길드의 알림 채널로 간다.
+- 서버 목록은 PC들의 카탈로그를 대표 먼저 합친다(`catalog.ts` `mergeCatalogs`, `loadCatalog`·길드 슬래시 맞추기·도움말·챗봇이 같은 목록을 쓴다). 서버마다 `hostId`가 붙고, 이름이 겹치면(대소문자 무시) 나중 PC의 서버 이름 뒤에 `-<PC 이름>`(공백·기호를 뺀 16자, 없으면 PC id 앞 6자)을 붙인다. 같은 서버 id를 뒤 PC가 또 내면 먼저 든 PC 것만 남는다. 꺼진 PC의 서버 상태는 `unknown`이다. `/사바쨩 상태`는 길드의 PC마다 한 덩어리로 보인다.
+- 명령은 `sendToDaemon` 한 곳에서 보낼 PC를 고른다: `raw_command`는 첫 낱말의 서버가 있는 PC(서버 이름으로 불렀으면 첫 낱말을 서버 id로 바꾼다), 액션은 `instance`(계획이면 첫 단계의 `instance`)가 있는 PC, `run_plan`은 그 계획을 만든 PC(릴레이 메모리 10분)다. 서버를 가리키지 않는 길드 단위 명령(설정·권한·목록 등)은 대표 PC로 간다. PC가 하나인 길드는 payload를 바꾸지 않는다. 그래서 `목록`·`도움말`은 대표 PC의 서버만 답하고, 모듈 이름·별명으로 부르면 합친 목록에서 먼저 나오는 서버(대표 PC 쪽)로 간다. 한 PC가 돌려준 결과의 `planId`·`undoPlanId`(단계마다 포함)·`runId`도 그 PC로 기억한다(`rememberResultIds`).
+- 붙은 PC가 보낸 알림·준비 이벤트·실행 결과(`plan.done`)도 그 길드의 알림 채널로 간다. PC가 여럿인 길드에서는 인스턴스가 있는 알림·준비·업데이트 알림을 합친 목록에서 그 PC의 서버일 때만 받고(`instanceCheck`), `plan.done`은 그 실행을 보낸 PC가 올렸을 때만 받는다.
+- 붙은 PC가 길드 경로를 부를 때도 그 PC 주인이 길드를 떠났는지 보고, 떠났으면 그 PC만 뗀다. `/사바쨩 연결해제`는 금지된 멤버도 칠 수 있다(자기 PC만 빠진다).
 - 대표 PC가 빠지면(연결해제·`/사바쨩 내pc` 지우기·주인이 서버를 떠남) 가장 먼저 붙은 PC가 대표가 되고, 옛 대표의 권한 캐시(`node_permissions`, `default_level`)는 비운다. 남은 PC가 없으면 노드를 지운다.
 - 아직 없는 것: 디스코드 서버 주인이 길드 공통 설정을 바꾸는 길(R2b, 데몬과 함께), 계획 한 개에 여러 PC의 서버를 섞는 것(첫 단계의 PC로 간다).
 
