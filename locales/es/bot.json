@@ -330,7 +330,8 @@
       "memory": "Memoria",
       "webSearch": "Búsqueda web",
       "disabledTools": "Herramientas desactivadas",
-      "step": "Paso"
+      "step": "Paso",
+      "from_snapshot": "Desde copia automática del juego"
     },
     "summary": {
       "server_item": "• **{{name}}** ({{module}}) · {{status}}",
@@ -343,7 +344,9 @@
         "manual": "manual",
         "scheduled": "programada",
         "pre-update": "antes de actualizar",
-        "pre-restore": "antes de restaurar"
+        "pre-restore": "antes de restaurar",
+        "snapshot": "Copia del juego guardada",
+        "game-snapshot": "Copia automática del juego"
       },
       "events": "📜 **Inicios y paradas recientes**",
       "events_empty": "📭 Sin registros",
@@ -383,6 +386,8 @@
     "backup_busy": "Hay otra copia o restauración en curso",
     "server_running": "El servidor está encendido. Detenlo primero",
     "no_command_path": "El servidor se inició fuera de Saba-chan y no puede recibir comandos",
-    "autosave_not_resumed": "La copia se hizo, pero no se pudo reactivar el autoguardado del servidor. Reinicia el servidor"
+    "autosave_not_resumed": "La copia se hizo, pero no se pudo reactivar el autoguardado del servidor. Reinicia el servidor",
+    "snapshot_not_found": "El juego no tiene copia automática",
+    "snapshot_not_deletable": "Saba-chan no puede borrar las copias automáticas del propio juego"
   }
 }

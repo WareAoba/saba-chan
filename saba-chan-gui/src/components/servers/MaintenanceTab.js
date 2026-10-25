@@ -4,11 +4,20 @@ import { useTranslation } from 'react-i18next';
 import { safeShowToast } from '../../utils/helpers';
 import CustomDropdown from '../CustomDropdown/CustomDropdown';
 import { Icon } from '../Icon';
-import { SabaSpinner, SabaToggle } from '../ui/SabaUI';
 import { SabaFail } from '../ui/SabaArt';
+import { SabaSpinner, SabaToggle } from '../ui/SabaUI';
 import { Segmented, StatusChip } from '../ui/StatusChip';
 
-const KIND_TONE = { manual: 'info', scheduled: 'idle', 'pre-update': 'warn', 'pre-restore': 'warn' };
+const KIND_TONE = {
+    manual: 'info',
+    scheduled: 'idle',
+    'pre-update': 'warn',
+    'pre-restore': 'warn',
+    snapshot: 'info',
+    'game-snapshot': 'idle',
+};
+// 게임이 스스로 만든 자동 백업 (데몬 `game-snapshot:<id>`). 복원만 하고 사바쨩이 지우지 않는다
+const GAME_SNAPSHOT = 'game-snapshot';
 const ACTIONS = ['backup', 'restart', 'announce', 'update'];
 
 /** 이 화면을 띄울 IPC가 있는지 (로드맵 쪽 preload가 먼저 들어와야 한다) */
@@ -34,6 +43,7 @@ const CODE_TEXT = {
     backup_file_locked: 'maintenance.err_backup_file_locked',
     // 백업은 만들었지만 자동 저장을 되돌리지 못했다 ([backup] resume_command)
     autosave_not_resumed: 'maintenance.err_autosave_not_resumed',
+    snapshot_not_found: 'maintenance.err_snapshot_not_found',
     schedule_changed: 'maintenance.err_schedule_changed',
     server_running: 'maintenance.restore_stop_first',
 };
@@ -41,7 +51,9 @@ const CODE_TEXT = {
 const errorText = (res, fallback, t) => {
     const details = Array.isArray(res?.details) ? res.details.filter(Boolean) : [];
     const known = CODE_TEXT[res?.error_code];
-    return [known ? t(known, { file: res?.file || '' }) : res?.error || fallback, ...details].filter(Boolean).join('\n');
+    return [known ? t(known, { file: res?.file || '' }) : res?.error || fallback, ...details]
+        .filter(Boolean)
+        .join('\n');
 };
 
 // ── 예약 작업 초안 ↔ 데몬 형식 ──
@@ -145,6 +157,8 @@ export function MaintenanceTab({ server }) {
 function BackupsCard({ server }) {
     const { t, i18n } = useTranslation('gui');
     const [backups, setBackups] = useState(null);
+    // 모듈이 게임 자동 백업을 알려 주는가 (`[backup] snapshots`)
+    const [snapshots, setSnapshots] = useState(false);
     const [busy, setBusy] = useState(null); // 'create' | `restore:${name}` | `delete:${name}`
     const [armed, setArmed] = useState(null); // 두 번 눌러 확정할 동작
     const alive = useRef(true);
@@ -160,6 +174,7 @@ function BackupsCard({ server }) {
             const res = await window.api.instanceBackups(server.id);
             if (!alive.current) return;
             setBackups(Array.isArray(res?.backups) ? res.backups : []);
+            setSnapshots(res?.snapshots_supported === true);
         } catch {
             if (alive.current) setBackups([]);
         }
@@ -207,6 +222,23 @@ function BackupsCard({ server }) {
         <section className="dc-card" aria-label={t('maintenance.backups_title')}>
             <div className="dc-card-head">
                 <h2>{t('maintenance.backups_title')}</h2>
+                {snapshots && (
+                    <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        disabled={!!busy}
+                        title={t('maintenance.backup_keep_snapshot_hint')}
+                        onClick={() =>
+                            run(
+                                'keep',
+                                () => window.api.instanceBackupCreate(server.id, { source: 'snapshot' }),
+                                () => t('maintenance.backup_snapshot_kept'),
+                            )
+                        }
+                    >
+                        {busy === 'keep' && <SabaSpinner size="sm" />} {t('maintenance.backup_keep_snapshot')}
+                    </button>
+                )}
                 <button
                     type="button"
                     className="btn btn-primary btn-sm"
@@ -240,6 +272,7 @@ function BackupsCard({ server }) {
                         const deleteKey = `delete:${b.name}`;
                         // zip으로 열리지 않는 백업: 복원할 수 없고 지울 때까지 데몬이 쓰지 않는 내용을 정리하지 못한다
                         const unreadable = b.readable === false;
+                        const game = b.kind === GAME_SNAPSHOT;
                         return (
                             <li key={b.name} className="dc-list-row">
                                 <span className="dc-list-text">
@@ -250,12 +283,14 @@ function BackupsCard({ server }) {
                                     >
                                         {unreadable
                                             ? t('maintenance.backup_unreadable')
-                                            : typeof b.stored === 'number' && b.stored !== b.size
-                                              ? t('maintenance.backup_size_stored', {
-                                                    size: formatBytes(b.size),
-                                                    stored: formatBytes(b.stored),
-                                                })
-                                              : formatBytes(b.size)}{' '}
+                                            : game
+                                              ? t('maintenance.backup_game_snapshot')
+                                              : typeof b.stored === 'number' && b.stored !== b.size
+                                                ? t('maintenance.backup_size_stored', {
+                                                      size: formatBytes(b.size),
+                                                      stored: formatBytes(b.stored),
+                                                  })
+                                                : formatBytes(b.size)}{' '}
                                         · {b.name}
                                     </span>
                                 </span>
@@ -295,18 +330,24 @@ function BackupsCard({ server }) {
                                     {busy === restoreKey && <SabaSpinner size="sm" />}
                                     {armed === restoreKey ? t('maintenance.restore_confirm') : t('maintenance.restore')}
                                 </button>
-                                <button
-                                    type="button"
-                                    className={clsx('btn btn-sm', armed === deleteKey ? 'btn-danger' : 'btn-ghost')}
-                                    disabled={!!busy}
-                                    onClick={() =>
-                                        armed === deleteKey
-                                            ? run(deleteKey, () => window.api.instanceBackupDelete(server.id, b.name))
-                                            : setArmed(deleteKey)
-                                    }
-                                >
-                                    {armed === deleteKey ? t('maintenance.delete_confirm') : t('maintenance.delete')}
-                                </button>
+                                {!game && (
+                                    <button
+                                        type="button"
+                                        className={clsx('btn btn-sm', armed === deleteKey ? 'btn-danger' : 'btn-ghost')}
+                                        disabled={!!busy}
+                                        onClick={() =>
+                                            armed === deleteKey
+                                                ? run(deleteKey, () =>
+                                                      window.api.instanceBackupDelete(server.id, b.name),
+                                                  )
+                                                : setArmed(deleteKey)
+                                        }
+                                    >
+                                        {armed === deleteKey
+                                            ? t('maintenance.delete_confirm')
+                                            : t('maintenance.delete')}
+                                    </button>
+                                )}
                             </li>
                         );
                     })}

@@ -241,3 +241,11 @@ describe('권한 화면', () => {
         expect(screen.getAllByText('All commands').length).toBeGreaterThan(0);
     });
 });
+
+describe('sortByName', () => {
+    it('sorts mixed Korean, English and numbered names like a dictionary', () => {
+        const items = [{ n: 'user10' }, { n: '하늘' }, { n: 'Bob' }, { n: 'alice' }, { n: 'user2' }, { n: '가람' }];
+        expect(L.sortByName(items, (i) => i.n).map((i) => i.n)).toEqual(['alice', 'Bob', 'user2', 'user10', '가람', '하늘']);
+        expect(items[0].n).toBe('user10');
+    });
+});

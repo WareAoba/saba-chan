@@ -7,6 +7,7 @@ import { Icon } from '../Icon';
 import { SabaCheckbox, SabaSpinner } from '../ui/SabaUI';
 import { SabaFail } from '../ui/SabaArt';
 import { Segmented } from '../ui/StatusChip';
+import { Avatar } from './Avatar';
 import * as L from './levels';
 
 /** 데몬 P1 권한 API가 preload에 있는지 (없으면 예전 명령별 차단 화면을 쓴다) */
@@ -179,7 +180,11 @@ export function MemberLevelsTab({ node, members, membersLoading, onRefreshMember
     const matches = (id) => !q || `${nameOf(id)} ${byId.get(id)?.username || ''} ${id}`.toLowerCase().includes(q);
     const defaultLevel = typeof perm.defaultLevel === 'number' ? perm.defaultLevel : 1;
     // 디스코드 멤버 중 레벨을 따로 받지 않은 사람: 여기서 바로 레벨을 줄 수 있다
-    const shownOthers = others.filter((m) => matches(String(m.id)));
+    const shownOthers = L.sortByName(
+        others.filter((m) => matches(String(m.id))),
+        (m) => nameOf(String(m.id)),
+    );
+    const avatarOf = (id) => byId.get(id)?.avatarUrl || byId.get(id)?.avatar;
     const preset = L.PRESETS.includes(perm.preset) ? perm.preset : 'default';
     const levelName = (l) => t(`discord.level_${L.levelKey(l)}`);
     const update = (patch) => write(() => window.api.permissionsUpdate(guildId, patch));
@@ -334,7 +339,7 @@ export function MemberLevelsTab({ node, members, membersLoading, onRefreshMember
             </div>
 
             {L.membersByLevel(perm).map(({ level, ids }) => {
-                const shown = ids.filter(matches);
+                const shown = L.sortByName(ids.filter(matches), nameOf);
                 if (!shown.length) return null;
                 return (
                     <section key={level} className="dc-level-group" aria-label={levelName(level)}>
@@ -344,6 +349,7 @@ export function MemberLevelsTab({ node, members, membersLoading, onRefreshMember
                         <ul className="dc-list">
                             {shown.map((id) => (
                                 <li key={id} className="dc-list-row">
+                                    <Avatar name={nameOf(id)} url={avatarOf(id)} size={32} />
                                     <span className="dc-list-text">
                                         <span className="dc-list-name">{nameOf(id)}</span>
                                         {nameOf(id) !== id && (
@@ -401,6 +407,7 @@ export function MemberLevelsTab({ node, members, membersLoading, onRefreshMember
                             const id = String(m.id);
                             return (
                                 <li key={id} className="dc-list-row">
+                                    <Avatar name={nameOf(id)} url={avatarOf(id)} size={32} />
                                     <span className="dc-list-text">
                                         <span className="dc-list-name">{nameOf(id)}</span>
                                         {m.username && <span className="dc-list-sub">@{m.username}</span>}

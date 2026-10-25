@@ -4,20 +4,14 @@ import { useTranslation } from 'react-i18next';
 import { Icon } from '../Icon';
 import { SabaSpinner, SabaToggle } from '../ui/SabaUI';
 import { Segmented } from '../ui/StatusChip';
+import { Avatar, initialOf } from './Avatar';
 import { BotSettingsTab, botSettingsAvailable } from './BotSettingsTab';
 import { ChannelsTab, channelsAvailable } from './ChannelsTab';
+import * as L from './levels';
 import * as P from './nodePermissions';
 import { PermissionPanel, permissionsAvailable } from './PermissionsTab';
 
-export const initialOf = (name) => (name || '?').trim().charAt(0).toUpperCase() || '?';
-
-export function Avatar({ name, url, size = 36 }) {
-    return (
-        <span className="dc-avatar" style={{ width: size, height: size }}>
-            {typeof url === 'string' && url.startsWith('http') ? <img src={url} alt="" /> : initialOf(name)}
-        </span>
-    );
-}
+export { Avatar, initialOf };
 
 /** 둘 중 하나 고르는 카드 (진짜 라디오 버튼이라 키보드로도 고를 수 있다) */
 function ChoiceCards({ name, value, onChange, options }) {
@@ -123,8 +117,9 @@ function MembersTab({ node, members, loading, settings, onRefresh, onOpenMember 
     const { t } = useTranslation('gui');
     const [query, setQuery] = useState('');
     const q = query.trim().toLowerCase();
-    const list = (members || []).filter(
-        (m) => !q || `${memberName(m)} ${m.username || ''} ${m.id}`.toLowerCase().includes(q),
+    const list = L.sortByName(
+        (members || []).filter((m) => !q || `${memberName(m)} ${m.username || ''} ${m.id}`.toLowerCase().includes(q)),
+        memberName,
     );
 
     return (

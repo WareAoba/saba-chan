@@ -368,13 +368,13 @@ Tauri 커맨드(`installer/gui/src-tauri/src/lib.rs`): `get_installer_state`, `s
 
 **(f) 사바쨩 웹 중계** (`services/webHub.ts`, `routes/web.ts`, `bot/commands/webCommand.ts`): 메모리에만 둔다(단일 인스턴스, 재시작하면 다시 연다).
 
-- `/사바쨩 웹`(DM·연결한 길드): 친 사람의 호스트(`hosts.owner_discord_id`)가 온라인이면 숨김 답으로 `<SELF_URL>/remote/#<링크>`를 준다. 링크는 nanoid 32자, sha256으로 두고 5분·한 번만 쓴다. 같은 PC의 예전 링크는 버린다. 호스트가 없으면 `status_no_host`, 오프라인이면 `cmd_host_offline`.
+- `/사바쨩 웹`(DM·연결한 길드): 친 사람의 호스트(`hosts.owner_discord_id`)가 온라인이면 숨김 답으로 `https://saba-chan.online/remote/#<링크>`를 준다(`SELF_URL`은 컨테이너 안 주소라 쓰지 않는다). 링크는 nanoid 32자, sha256으로 두고 5분·한 번만 쓴다. 같은 PC의 예전 링크는 버린다. 호스트가 없으면 `status_no_host`, 오프라인이면 `cmd_host_offline`.
 - `GET /node/ws`(노드 토큰, 10/min, nginx는 `X-Saba-Client` 요구): 데몬 연결. PC 하나에 하나이고 새로 붙으면 예전 것을 4000 `replaced`로 닫는다. 붙은 뒤 재페어링으로 그 PC의 토큰이 바뀌었으면(`generation`) 그 연결은 쓰지 않는다: 4003 `token_replaced`로 닫고 그 PC의 세션을 `host_gone`으로 끝내며, 새 세션은 `web_session`으로 데몬을 다시 깨운다. 붙으면 그 PC의 열린 세션을 `{t:'open'}`으로 다시 알린다.
 - `GET /remote/ws`(허용 Origin만, 아니면 403. CORS 대상이 아니다. 20/min): 브라우저. 첫 프레임(10초 안)은 `{t:'hello', link}` 또는 `{t:'resume', sid, key}`. 데몬이 없으면 `web_session` 명령으로 깨우고 40초 기다린다. 열리면 `{t:'ready', sid, key, expiresAt, hostId}`, 못 열면 `{t:'error', code:'link_invalid'|'host_unreachable'|'session_gone'}` 뒤 1008로 닫는다.
 - 브라우저 → 릴레이: `{t:'req', id, method, path, body?}`(id는 정수나 64자 이하 문자열, method는 GET·POST·PUT·PATCH·DELETE, path는 `/`로 시작하는 2048자 이하), `{t:'extend'}`, `{t:'bye'}`. 릴레이 → 브라우저: `{t:'res', id, status, body}`, `{t:'event', kind, data}`, `{t:'expiring', expiresAt}`(끝나기 2분 전), `{t:'extended', expiresAt}`, `{t:'closed', reason:'expired'|'left'|'replaced'|'host_gone'|'relay_closing'}`. 경로를 받을지는 데몬 문지기(01 §1.4.1)가 정한다.
-- 세션은 15분이고 `extend`는 지금부터 15분으로 다시 잡는다. PC 하나에 세션 하나라 새 링크로 열면 예전 세션은 `replaced`. 브라우저가 1000·1001로 닫거나 `bye`면 바로 끝, 그 밖의 끊김은 30초 안에 `resume`(열쇠는 붙을 때마다 바뀐다)으로 돌아올 수 있다. 데몬이 끊기면 답을 기다리던 요청은 502 `remote_host_gone`, 30초 안에 돌아오지 않으면 `host_gone`. 요청은 2분 안에 답이 없으면 504 `remote_timeout`, 세션마다 32건까지(넘으면 429 `remote_busy`). 프레임 한 개는 9 MiB까지. 양쪽 다 25초마다 ping한다.
+- 세션은 15분이고 `extend`는 지금부터 15분으로 다시 잡는다. PC 하나에 세션 하나라 새 링크로 열면 예전 세션은 `replaced`. 브라우저가 1000·1001로 닫거나 `bye`면 바로 끝, 그 밖의 끊김은 30초 안에 `resume`(열쇠는 붙을 때마다 바뀐다. 새 열쇠를 받기 전에 또 끊길 수 있어, 브라우저가 프레임을 보낼 때까지 직전 열쇠도 받는다)으로 돌아올 수 있다. 데몬이 끊기면 답을 기다리던 요청은 502 `remote_host_gone`, 30초 안에 돌아오지 않으면 `host_gone`. 요청은 2분 안에 답이 없으면 504 `remote_timeout`, 세션마다 32건까지(넘으면 429 `remote_busy`). 프레임 한 개는 9 MiB까지. 받는 쪽이 읽지 않아 보낼 것이 16 MiB 넘게 쌓이면 그 소켓을 1013으로 닫는다(`routes/web.ts`). 양쪽 다 25초마다 ping한다.
 - 감사: 열기·닫기를 `audit_logs` `action='web'`, `detail {event:'open'|'close', reason?}`로 남긴다. 요청 하나하나는 데몬 감사(source `web`)에 남는다.
-- 화면은 nginx `/remote/`(정적, 없는 경로는 `/remote/index.html`, 볼륨 `../remote-web`)이고, 두 웹소켓은 업그레이드 헤더와 함께 릴레이로 넘긴다(`test/nginxRoutes.test.ts`).
+- 화면은 nginx `/remote/`(정적, 없는 경로는 `/remote/index.html`, 볼륨 `../remote-web`. 이 경로만 CSP가 더 좁다: 스크립트는 `'self'`만, 그림은 `'self'`·`data:`·`https://cdn.discordapp.com`(프로필 사진), `Referrer-Policy: no-referrer`)이고, 두 웹소켓은 업그레이드 헤더와 함께 릴레이로 넘긴다(`test/nginxRoutes.test.ts`).
 
 ### 4.5 daemon 쪽 호출과 relay 서버 비교 (검증 결과)
 

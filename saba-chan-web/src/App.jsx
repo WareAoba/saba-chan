@@ -1,18 +1,21 @@
 import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import { art } from './art';
+import { Icon } from './components/icons';
 import { ModulesTab } from './components/ModulesTab';
 import { MoreTab } from './components/MoreTab';
 import { PermissionsTab } from './components/PermissionsTab';
+import { startPoll } from './components/poll';
 import { ServersTab } from './components/ServersTab';
 import { SessionBar } from './components/SessionBar';
-import { ConfirmHost, ToastHost } from './components/ui';
+import { ConfirmHost, ToastHost, Wordmark } from './components/ui';
 import { useApp, useData } from './store';
 
 const TABS = [
-    { id: 'servers', icon: '▶' },
-    { id: 'permissions', icon: '👥' },
-    { id: 'modules', icon: '🧩' },
-    { id: 'more', icon: '⋯' },
+    { id: 'servers', icon: 'servers' },
+    { id: 'permissions', icon: 'members' },
+    { id: 'modules', icon: 'modules' },
+    { id: 'more', icon: 'more' },
 ];
 
 /** 세션이 열린 동안 서버·모듈 목록을 맞춘다 (이벤트가 오면 바로, 아니면 4초마다) */
@@ -36,15 +39,14 @@ function useLiveData(api, ready) {
             const res = await api.moduleList();
             if (Array.isArray(res?.modules)) setModules(res.modules);
         };
-        loadServers();
         loadModules();
-        const timer = setInterval(loadServers, 4000);
+        const stopPoll = startPoll(loadServers, 4000);
         const off = api.onDaemonEvent((e) => {
             if (['action.run', 'resync'].includes(e?.type) || String(e?.type).startsWith('instance.')) loadServers();
             if (String(e?.type).startsWith('module.')) loadModules();
         });
         return () => {
-            clearInterval(timer);
+            stopPoll();
             off?.();
         };
     }, [api, ready]);
@@ -56,10 +58,14 @@ function Gate({ phase, reason }) {
     return (
         <main className="gate">
             <div className="gate-card">
-                <div className="brand-mark" aria-hidden="true">
-                    🐟
-                </div>
-                <h1>{t('app_name')}</h1>
+                <img
+                    className={closed ? 'gate-art' : 'gate-art gate-art-float'}
+                    src={closed ? art.sleepy : art.relay}
+                    alt=""
+                />
+                <h1 className="gate-title">
+                    <Wordmark className="gate-wordmark" />
+                </h1>
                 {closed ? (
                     <>
                         <p className="gate-text">{t(`gate.${reason}`, { defaultValue: t('gate.closed') })}</p>
@@ -96,18 +102,21 @@ export function App({ api, session }) {
                         aria-current={tab === x.id ? 'page' : undefined}
                         onClick={() => setTab(x.id)}
                     >
-                        <span className="tab-icon" aria-hidden="true">
-                            {x.icon}
+                        <span className="tab-icon">
+                            <Icon name={x.icon} />
                         </span>
                         <span>{t(`tabs.${x.id}`)}</span>
                     </button>
                 ))}
             </nav>
             <main className="content">
-                {tab === 'servers' && <ServersTab api={api} />}
-                {tab === 'permissions' && <PermissionsTab api={api} />}
-                {tab === 'modules' && <ModulesTab api={api} />}
-                {tab === 'more' && <MoreTab api={api} />}
+                {/* key: 탭을 바꿀 때마다 새로 그려서 들어오는 움직임을 다시 낸다 */}
+                <div className="view" key={tab}>
+                    {tab === 'servers' && <ServersTab api={api} />}
+                    {tab === 'permissions' && <PermissionsTab api={api} />}
+                    {tab === 'modules' && <ModulesTab api={api} />}
+                    {tab === 'more' && <MoreTab api={api} />}
+                </div>
             </main>
             <ConfirmHost />
             <ToastHost />
