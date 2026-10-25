@@ -727,7 +727,7 @@ Relay 서명 방식(`relay.rs:115-161`):
 | `instance.stdin` | `{command}` | 기존 인스턴스 stdin API와 같은 처리와 결과 |
 | `instance.rest` | `{method, path, body?}` | `path`를 REST API의 `endpoint`로 옮기고 기존 처리와 결과를 사용 |
 
-대상 인스턴스는 데몬이 만든 호출 문맥으로 정한다. 격리된 구성요소(확인되지 않았고 비격리 동의도 없는 것)의 실행에는 인스턴스 문맥을 주지 않아 `no_instance`가 된다(`plugin/mod.rs` `host_context`). 요청에서 인스턴스 id·PID·파일 경로를 받지 않는다. 인스턴스 문맥이 없으면 `no_instance`, 허용하지 않은 작업은 `op_not_allowed`다. 실행당 요청은 64건, 요청 시간은 30초, 보내기는 64 KiB, 받기는 1 MiB다. `LOOPBACK`과 요청 수를 함께 센다. 응답 상한을 넘으면 `response_too_large`로 실패하며 잘린 성공을 돌려주지 않는다. `HOST:` 줄과 그 연속 조각은 로그·stderr 진단에 남기지 않는다.
+대상 인스턴스는 데몬이 만든 호출 문맥으로 정한다. 격리된 구성요소(확인되지 않았고 비격리 동의도 없는 것)의 실행은 그 인스턴스 모듈 자신일 때(실행한 진입 파일과 그 모듈의 진입 파일의 실제 경로가 같을 때. zip 모듈은 `.extracted` 아래 파일) `instance.rest`만 쓸 수 있다. 콘솔(`instance.stdin`), 익스텐션 hook, 다른 모듈의 요청은 `op_not_allowed`다(`host.rs` `Proxy::sandboxed`, `own_module`). 그래서 REST로만 저장·정지하는 게임(팰월드)도 격리 실행에서 정상 정지한다. `instance.rest`는 대상이 127.0.0.1(`localhost`·`::1`)이고, 데몬 API 포트가 아니고(`port_not_allowed`), 그 포트를 듣는 프로세스가 그 인스턴스 서버이거나 그 자식일 때만(`port_not_served`) 잇는다. 요청에서 인스턴스 id·PID·파일 경로를 받지 않는다. 인스턴스 문맥이 없으면 `no_instance`, 허용하지 않은 작업은 `op_not_allowed`다. 실행당 요청은 64건, 요청 시간은 30초, 보내기는 64 KiB, 받기는 1 MiB다. `LOOPBACK`과 요청 수를 함께 센다. 응답 상한을 넘으면 `response_too_large`로 실패하며 잘린 성공을 돌려주지 않는다. `HOST:` 줄과 그 연속 조각은 로그·stderr 진단에 남기지 않는다.
 
 REST 자격증명 조회의 `get_credentials` 재진입은 바깥 호출의 자리와 절대 기한을 쓴다. 인스턴스 hook도 같은 문맥을 전달한다. 인스턴스 없는 목록·데몬 시작/종료 hook은 `no_instance`다. SDK의 HTTP 호환 경로와 일반 토큰 경로는 남아 있다.
 
