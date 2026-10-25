@@ -129,7 +129,7 @@ async fn move_component_dir(
 
     let (src, dst) = (source.clone(), target.clone());
     let moved = tokio::task::spawn_blocking(move || {
-        component_dirs::relocate(&src, &dst, || {
+        component_dirs::relocate_component(kind, &src, &dst, &layout.data_dir, || {
             component_dirs::commit_move(&config, kind, &src, &dst, &layout.data_dir)
         })
     })

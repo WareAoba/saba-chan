@@ -1546,6 +1546,7 @@
     "err_not_writable": "无法写入该文件夹：{{detail}}",
     "err_has_link": "文件夹内有链接（{{detail}}）。删除后再试。",
     "err_copy_failed": "复制失败，没有做任何更改。请检查剩余空间后重试。",
+    "err_acl_failed": "无法设置新文件夹的访问权限，没有做任何更改。请选择其他文件夹。",
     "err_verify_failed": "副本与原文件不一致，未移动，没有做任何更改。请重试。",
     "err_commit_failed": "无法保存设置，文件已放回原处。",
     "err_overlaps_install": "不能放在 Saba-chan 安装文件夹内。请选择安装文件夹以外的文件夹。"

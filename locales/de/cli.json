@@ -324,6 +324,7 @@
       "paths_not_writable": "Saba-chan kann dort nicht schreiben. Wähle einen beschreibbaren Ordner.",
       "paths_has_link": "Der Ordner enthält einen Link (Verknüpfungsordner). Entferne ihn und versuche es erneut.",
       "paths_copy_failed": "Kopieren fehlgeschlagen. Nichts wurde geändert. Prüfe den freien Speicher und versuche es erneut.",
+      "paths_acl_failed": "Zugriffsrechte für den neuen Ordner konnten nicht gesetzt werden. Nichts wurde geändert. Wähle einen anderen Ordner.",
       "paths_verify_failed": "Die Kopie stimmte nicht mit dem Original überein. Nichts wurde geändert. Versuche es erneut.",
       "paths_commit_failed": "Die Einstellung konnte nicht gespeichert werden. Die Dateien wurden zurückgelegt.",
       "paths_unknown_kind": "Wähle modules oder extensions.",

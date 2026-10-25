@@ -324,6 +324,7 @@
       "paths_not_writable": "그 폴더에 쓸 수 없어요. 쓸 수 있는 폴더를 고르세요.",
       "paths_has_link": "폴더 안에 링크(바로가기 폴더)가 있어요. 지운 뒤 다시 시도하세요.",
       "paths_copy_failed": "복사하지 못했어요. 바뀐 것은 없어요. 남은 공간을 확인하고 다시 시도하세요.",
+      "paths_acl_failed": "새 폴더의 접근 권한을 정하지 못했어요. 바뀐 것은 없어요. 다른 폴더를 고르세요.",
       "paths_verify_failed": "복사본이 원본과 달라요. 바뀐 것은 없어요. 다시 시도하세요.",
       "paths_commit_failed": "설정을 저장하지 못해 파일을 원래 자리로 되돌렸어요.",
       "paths_unknown_kind": "modules 또는 extensions를 고르세요.",
