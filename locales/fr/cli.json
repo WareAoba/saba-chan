@@ -679,7 +679,12 @@
       "server.log": "Journal enregistré des exécutions passées (la console ne garde que l'actuelle)",
       "server.query": "Consultations en lecture seule du module de jeu (sans nom : la liste)",
       "daemon.clients": "Fenêtres de l'application de bureau connectées au démon",
-      "gui": "Passer à l'application de bureau : elle ouvre le même serveur et le menu plein écran se ferme"
+      "gui": "Passer à l'application de bureau : elle ouvre le même serveur et le menu plein écran se ferme",
+      "remote": "Port du démon distant : vos autres PC se connectent directement à ce démon en TLS",
+      "remote.status": "Réglages et état du port distant (ouvert, adresse envoyée au relais, empreinte du certificat)",
+      "remote.set": "Activer ou désactiver le port distant, changer le port ou l’adresse publique envoyée au relais",
+      "remote.clients": "Vos PC associés à ce démon",
+      "remote.revoke": "Dissocier un PC : son jeton cesse de fonctionner immédiatement"
     },
     "arg": {
       "module.maker.game": "Jeu à mettre dans la première demande",
@@ -750,7 +755,12 @@
       "server.query.args": "Entrée sous forme CLÉ=VALEUR",
       "chatbot.show.guild": "Les valeurs qu'un serveur Discord utilise réellement (communes + les siennes), par nom ou id",
       "do.steps": "Plusieurs étapes en JSON : [{\"id\": \"...\", \"instance\": \"...\", \"input\": {...}}, ...] (à la place d'ACTION)",
-      "do.run_id": "Progression d'une exécution en plusieurs étapes qui continue en arrière-plan"
+      "do.run_id": "Progression d'une exécution en plusieurs étapes qui continue en arrière-plan",
+      "remote.set.on": "Activer le port distant",
+      "remote.set.off": "Désactiver le port distant",
+      "remote.set.port": "Numéro du port distant",
+      "remote.set.address": "Nom d’hôte public ou IP de ce PC (vide pour l’effacer)",
+      "remote.revoke.host_id": "ID du PC à dissocier (voir `remote clients`)"
     },
     "after": "Les noms peuvent être partiels (ex. start pal). Sans argument dans un terminal, le menu plein écran s'ouvre (SABA_NO_TUI=1 : le shell interactif).\nDans les scripts, utilisez --json et --yes. Codes de sortie : 0 ok · 1 échec · 2 utilisation · 3 daemon injoignable · 4 introuvable · 130 annulé"
   },
@@ -1165,5 +1175,27 @@
   },
   "gui": {
     "opened": "L'application Saba-chan est ouverte."
+  },
+  "remote": {
+    "item": "Élément",
+    "value": "Valeur",
+    "listening": "Ouvert",
+    "not_listening": "Non ouvert",
+    "off": "Désactivé",
+    "address": "Adresse publique",
+    "no_address": "Aucune (non envoyée au relais)",
+    "published": "Envoyée au relais",
+    "fingerprint": "Empreinte du certificat",
+    "yes": "Oui",
+    "no": "Non",
+    "no_clients": "Aucun PC n’est associé à ce démon.",
+    "host_id": "ID du PC",
+    "paired_at": "Associé le",
+    "revoked": "Association avec {{host}} supprimée. Son jeton ne fonctionne plus.",
+    "error": {
+      "certificate_failed": "Impossible de préparer le certificat",
+      "port_in_use": "Le port est déjà utilisé",
+      "bind_failed": "Impossible d’ouvrir le port"
+    }
   }
 }

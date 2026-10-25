@@ -679,7 +679,12 @@
       "server.log": "Registro guardado de ejecuciones anteriores (la consola solo guarda la actual)",
       "server.query": "Consultas de solo lectura del módulo del juego (sin nombre: la lista)",
       "daemon.clients": "Ventanas de la app de escritorio conectadas al daemon",
-      "gui": "Cambiar a la app de escritorio: abre el mismo servidor y el menú a pantalla completa se cierra"
+      "gui": "Cambiar a la app de escritorio: abre el mismo servidor y el menú a pantalla completa se cierra",
+      "remote": "Puerto del daemon remoto: tus otros PC se conectan a este daemon directamente por TLS",
+      "remote.status": "Ajustes y estado del puerto remoto (abierto, dirección enviada al relé, huella del certificado)",
+      "remote.set": "Activar o desactivar el puerto remoto, cambiar el puerto o la dirección pública enviada al relé",
+      "remote.clients": "Tus PC emparejados con este daemon",
+      "remote.revoke": "Deshacer el emparejamiento con un PC: su token deja de funcionar al instante"
     },
     "arg": {
       "module.maker.game": "Juego para la primera petición",
@@ -750,7 +755,12 @@
       "server.query.args": "Entrada como CLAVE=VALOR",
       "chatbot.show.guild": "Los valores que usa de verdad un servidor de Discord (comunes + los suyos), por nombre o id",
       "do.steps": "Varios pasos en JSON: [{\"id\": \"...\", \"instance\": \"...\", \"input\": {...}}, ...] (en lugar de ACTION)",
-      "do.run_id": "Progreso de una ejecución de varios pasos que sigue en segundo plano"
+      "do.run_id": "Progreso de una ejecución de varios pasos que sigue en segundo plano",
+      "remote.set.on": "Activar el puerto remoto",
+      "remote.set.off": "Desactivar el puerto remoto",
+      "remote.set.port": "Número del puerto remoto",
+      "remote.set.address": "Nombre de host público o IP de este PC (vacío la borra)",
+      "remote.revoke.host_id": "ID del PC que se desempareja (ver `remote clients`)"
     },
     "after": "Los nombres pueden ser parciales (p. ej. start pal). Sin argumentos en una terminal se abre el menú a pantalla completa (SABA_NO_TUI=1: la shell interactiva).\nEn scripts usa --json y --yes. Códigos de salida: 0 correcto · 1 error · 2 uso · 3 daemon inaccesible · 4 no encontrado · 130 cancelado"
   },
@@ -1165,5 +1175,27 @@
   },
   "gui": {
     "opened": "Se abrió la app de Saba-chan."
+  },
+  "remote": {
+    "item": "Elemento",
+    "value": "Valor",
+    "listening": "Abierto",
+    "not_listening": "No abierto",
+    "off": "Apagado",
+    "address": "Dirección pública",
+    "no_address": "Ninguna (no se envía al relé)",
+    "published": "Enviada al relé",
+    "fingerprint": "Huella del certificado",
+    "yes": "Sí",
+    "no": "No",
+    "no_clients": "Ningún PC está emparejado con este daemon.",
+    "host_id": "ID del PC",
+    "paired_at": "Emparejado el",
+    "revoked": "Se deshizo el emparejamiento con {{host}}. Su token ya no funciona.",
+    "error": {
+      "certificate_failed": "No se pudo preparar el certificado",
+      "port_in_use": "El puerto ya está en uso",
+      "bind_failed": "No se pudo abrir el puerto"
+    }
   }
 }

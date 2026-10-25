@@ -679,7 +679,12 @@
       "server.log": "Gespeichertes Protokoll früherer Läufe (die Konsole hält nur den aktuellen)",
       "server.query": "Nur lesende Abfragen des Spielmoduls (ohne Namen: Liste)",
       "daemon.clients": "Desktop-App-Fenster, die mit dem Daemon verbunden sind",
-      "gui": "Zur Desktop-App wechseln: Sie öffnet denselben Server und das Vollbildmenü schließt sich"
+      "gui": "Zur Desktop-App wechseln: Sie öffnet denselben Server und das Vollbildmenü schließt sich",
+      "remote": "Remote-Daemon-Port: Deine anderen PCs verbinden sich per TLS direkt mit diesem Daemon",
+      "remote.status": "Einstellungen und Zustand des Remote-Ports (offen, an das Relay gemeldete Adresse, Zertifikat-Fingerabdruck)",
+      "remote.set": "Remote-Port ein- oder ausschalten, Port oder öffentliche Adresse für das Relay ändern",
+      "remote.clients": "Deine mit diesem Daemon gekoppelten PCs",
+      "remote.revoke": "Kopplung mit einem PC aufheben: sein Token gilt sofort nicht mehr"
     },
     "arg": {
       "module.maker.game": "Spiel für die erste Anfrage",
@@ -750,7 +755,12 @@
       "server.query.args": "Eingabe als SCHLÜSSEL=WERT",
       "chatbot.show.guild": "Die Werte, die ein Discord-Server tatsächlich nutzt (gemeinsam + eigene), per Name oder ID",
       "do.steps": "Mehrere Schritte als JSON: [{\"id\": \"...\", \"instance\": \"...\", \"input\": {...}}, ...] (statt ACTION)",
-      "do.run_id": "Fortschritt eines im Hintergrund weiterlaufenden Mehrschrittlaufs"
+      "do.run_id": "Fortschritt eines im Hintergrund weiterlaufenden Mehrschrittlaufs",
+      "remote.set.on": "Remote-Port einschalten",
+      "remote.set.off": "Remote-Port ausschalten",
+      "remote.set.port": "Remote-Portnummer",
+      "remote.set.address": "Öffentlicher Hostname oder IP dieses PCs (leer entfernt sie)",
+      "remote.revoke.host_id": "PC-ID, deren Kopplung aufgehoben wird (siehe `remote clients`)"
     },
     "after": "Namen können abgekürzt werden (z. B. start pal). Ohne Argumente öffnet sich im Terminal das Vollbildmenü (SABA_NO_TUI=1: die interaktive Shell).\nIn Skripten --json und --yes verwenden. Exit-Codes: 0 ok · 1 fehlgeschlagen · 2 Verwendung · 3 Daemon nicht erreichbar · 4 nicht gefunden · 130 abgebrochen"
   },
@@ -1165,5 +1175,27 @@
   },
   "gui": {
     "opened": "Die Saba-chan-App wurde geöffnet."
+  },
+  "remote": {
+    "item": "Eintrag",
+    "value": "Wert",
+    "listening": "Offen",
+    "not_listening": "Nicht offen",
+    "off": "Aus",
+    "address": "Öffentliche Adresse",
+    "no_address": "Keine (nicht an das Relay gemeldet)",
+    "published": "An das Relay gemeldet",
+    "fingerprint": "Zertifikat-Fingerabdruck",
+    "yes": "Ja",
+    "no": "Nein",
+    "no_clients": "Kein PC ist mit diesem Daemon gekoppelt.",
+    "host_id": "PC-ID",
+    "paired_at": "Gekoppelt am",
+    "revoked": "Kopplung mit {{host}} aufgehoben. Sein Token gilt nicht mehr.",
+    "error": {
+      "certificate_failed": "Zertifikat konnte nicht vorbereitet werden",
+      "port_in_use": "Der Port wird bereits verwendet",
+      "bind_failed": "Der Port konnte nicht geöffnet werden"
+    }
   }
 }

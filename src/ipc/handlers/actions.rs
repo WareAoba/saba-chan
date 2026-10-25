@@ -6,7 +6,7 @@ use super::super::IPCServer;
 use crate::actions::{self, Caller, Surface};
 use axum::{
     extract::{Path, Query, State},
-    http::{HeaderMap, StatusCode},
+    http::StatusCode,
     response::{IntoResponse, Response},
     Json,
 };
@@ -57,21 +57,22 @@ pub async fn list_actions(State(state): State<IPCServer>, Query(q): Query<ListQu
     Json(actions::list(&state, surface, q.instance.as_deref(), &locale).await).into_response()
 }
 
-fn caller(headers: &HeaderMap, locale: String) -> Caller {
-    Caller::local(crate::audit::Origin::from_headers(headers), locale)
+/// 출처는 감사 미들웨어가 정한 것을 쓴다 (원격 포트에서는 인증층이 정한 짝 맺은 PC)
+fn caller(locale: String) -> Caller {
+    Caller::local(crate::audit::current(), locale)
 }
 
 /// POST /api/actions/:id/plan `{input, instance?, locale?}`
-pub async fn plan_action(State(state): State<IPCServer>, Path(id): Path<String>, headers: HeaderMap, body: Option<Json<ActionBody>>) -> Response {
+pub async fn plan_action(State(state): State<IPCServer>, Path(id): Path<String>, body: Option<Json<ActionBody>>) -> Response {
     let body = body.map(|Json(b)| b).unwrap_or_default();
-    let caller = caller(&headers, locale(&state, body.locale).await);
+    let caller = caller(locale(&state, body.locale).await);
     reply(actions::plan(&state, &id, body.instance.as_deref(), &body.input, &caller).await)
 }
 
 /// POST /api/actions/:id/run `{input, instance?}` 또는 `{planId}`
-pub async fn run_action(State(state): State<IPCServer>, Path(id): Path<String>, headers: HeaderMap, body: Option<Json<ActionBody>>) -> Response {
+pub async fn run_action(State(state): State<IPCServer>, Path(id): Path<String>, body: Option<Json<ActionBody>>) -> Response {
     let body = body.map(|Json(b)| b).unwrap_or_default();
-    let caller = caller(&headers, locale(&state, body.locale).await);
+    let caller = caller(locale(&state, body.locale).await);
     reply(actions::run(&state, &id, body.instance.as_deref(), &body.input, body.plan_id.as_deref(), &caller).await)
 }
 
@@ -83,14 +84,27 @@ pub struct StepsBody {
 }
 
 /// POST /api/actions/plan `{steps:[{id, instance?, input}], locale?}`: 여러 단계 계획 (실행은 `/api/actions/plan/run {planId}`)
-pub async fn plan_steps(State(state): State<IPCServer>, headers: HeaderMap, body: Option<Json<StepsBody>>) -> Response {
+pub async fn plan_steps(State(state): State<IPCServer>, body: Option<Json<StepsBody>>) -> Response {
     let body = body.map(|Json(b)| b).unwrap_or_default();
-    let caller = caller(&headers, locale(&state, body.locale).await);
+    let caller = caller(locale(&state, body.locale).await);
     reply(actions::plan_steps(&state, &body.steps, &caller).await)
 }
 
 /// GET /api/actions/runs/:runId: 여러 단계 실행의 진행
-pub async fn run_status(State(state): State<IPCServer>, Path(run_id): Path<String>, headers: HeaderMap) -> Response {
-    let caller = caller(&headers, locale(&state, None).await);
+pub async fn run_status(State(state): State<IPCServer>, Path(run_id): Path<String>) -> Response {
+    let caller = caller(locale(&state, None).await);
     reply(actions::run_status(&run_id, &caller))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 원격 포트 인증층이 정한 출처(짝 맺은 PC)가 액션 실행에도 그대로 남는다
+    #[tokio::test]
+    async fn an_action_caller_keeps_the_origin_set_before_the_handler() {
+        let origin = crate::audit::Origin { user_name: Some("집 PC".into()), ..crate::audit::Origin::new("remote") };
+        let caller = crate::audit::with_origin(origin, async { caller("ko".into()) }).await;
+        assert_eq!((caller.origin.source.as_str(), caller.origin.user_name.as_deref()), ("remote", Some("집 PC")));
+    }
 }
