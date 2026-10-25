@@ -51,6 +51,11 @@ export function ServersPage({
     const isDaemonDown = useUIStore((s) => daemonDown(s.backgroundDaemonStatus));
     const [query, setQuery] = useState('');
     const [showDetailNarrow, setShowDetailNarrow] = useState(false);
+    // 바깥에서 연 서버는 좁은 창에서도 상세로
+    const revealServerCount = useUIStore((s) => s.revealServerCount);
+    useEffect(() => {
+        if (revealServerCount > 0) setShowDetailNarrow(true);
+    }, [revealServerCount]);
 
     // 선택이 비었거나 사라졌으면 첫 서버를 고른다
     useEffect(() => {

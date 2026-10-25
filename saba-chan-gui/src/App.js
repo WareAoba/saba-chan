@@ -493,7 +493,7 @@ function App() {
 
         // 다른 인터페이스(CLI의 `gui`)가 이 창을 띄우며 고른 서버를 연다
         const offOpenServer = window.api.onOpenServer?.((p) => {
-            if (p?.instanceId) useUIStore.getState().showServerTab(p.instanceId);
+            if (p?.instanceId) useUIStore.getState().revealServer(p.instanceId);
         });
 
         // App close request handler

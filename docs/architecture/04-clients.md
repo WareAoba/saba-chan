@@ -151,7 +151,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 | getAppVersion (1004) | Rust `app_get_version` (패키지 버전) | n/a |
 | systemPaths / systemPathsMove | GET /api/system/paths · POST /api/system/paths/move `{kind, target}`(시간 제한 30분). 설정 > 고급의 폴더 위치(`FolderPathsSection.js`)가 쓴다. 폴더 고르기는 `openFolderDialog`, 실패 문구는 `error_code`(`paths_*`)로 `gui.json` `folder_paths.err_*`에서 고른다 | ✓ (01 §2.2) |
 | getComponentInfo (1005) | GET /api/system/components (실패하면 `app_get_version`만) | ✓ 714 |
-| onOpenServer | 셸의 `app:openServer {instanceId}`(다른 인터페이스가 고른 서버)를 받는다. App은 `showServerTab(instanceId)`로 그 서버를 연다. 구독자가 없을 때 온 요청은 첫 구독자에게 한 번 넘긴다(`events.js`) | n/a |
+| onOpenServer | 셸의 `app:openServer {instanceId}`(다른 인터페이스가 고른 서버)를 받는다. App은 `revealServer(instanceId)`로 그 서버를 연다(좁은 한 열 화면에서도 목록 대신 상세). 구독자가 없을 때 온 요청은 첫 구독자에게 한 번 넘긴다(`events.js`) | n/a |
 | onCloseRequest / closeResponse (1021-1025) | 셸의 `app:closeRequest`를 받고, Rust `app_close_response`로 답한다(기다리지 않음). App은 받자마자 `ack`를 보낸다. 돌려주는 함수로 그 구독만 해제 | n/a |
 | onStatusUpdate (1026) | 셸의 `status:update`. 브리지가 마지막 값을 기억해 늦게 붙은 콜백에도 준다(`events.js:137-177`). 돌려주는 함수로 그 구독만 해제 (채널 전체를 떼는 `off*`는 없다) | n/a |
 | daemonStatus (1030) | Rust `daemon_status` → GET /health. 응답의 `token`이 `valid`(필드가 없으면 예전 데몬이라 유효로 본다)일 때만 `running: true`. 어긋나면 토큰 파일을 한 번 다시 읽어 재시도하고, 그래도 어긋나면 `running: false, error_code: "token_invalid"`. 실행 중이면 `in_parent_job`(데몬을 띄운 프로그램과 함께 끝날 수 있는가: `/health` `stops_with_launcher`, 키가 없는 옛 데몬이면 이 GUI가 job breakaway 없이 띄운 데몬이 아직 살아 있는가)도 준다 | ✓ 637 |
