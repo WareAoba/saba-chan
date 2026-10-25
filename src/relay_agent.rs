@@ -898,6 +898,7 @@ impl Session {
             owner_id,
             via_chatbot: crate::chat::permissions::via_chatbot(payload.get("via").and_then(Value::as_str), reported.is_some()),
             confirmed_by: payload.get("confirmedBy").and_then(Value::as_str).map(str::to_string),
+            guild_owner_id: cmd.get("guildOwnerDiscordId").and_then(Value::as_str).filter(|s| !s.is_empty()).map(str::to_string),
         }
     }
 
@@ -1831,6 +1832,7 @@ mod tests {
             owner_id: Some("owner".into()),
             via_chatbot: false,
             confirmed_by: None,
+            guild_owner_id: None,
         };
         let before = now_ms();
         let res = permission_action(&server, &who, &json!({ "op": "default_level", "level": 1 })).await;
