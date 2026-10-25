@@ -366,7 +366,9 @@ fn relocate_inner(
     if try_rename && std::fs::rename(src, dst).is_ok() {
         if secure_acl {
             if let Err(e) = secure_component_dir(dst) {
-                let _ = std::fs::rename(dst, src);
+                if let Err(back) = std::fs::rename(dst, src) {
+                    tracing::error!("[Paths] Could not move {} back to {}: {}", shown, src.display(), back);
+                }
                 return Err(PathError::new("acl_failed", e.to_string()));
             }
         }
@@ -618,6 +620,12 @@ mod tests {
         let out = std::process::Command::new("icacls").arg(&dst).output().unwrap();
         let acl = String::from_utf8_lossy(&out.stdout);
         assert!(out.status.success() && !acl.contains("(I)"), "{acl}");
+        // 안의 파일은 새 폴더의 권한만 물려받는다 (옛 위 폴더에서 받은 항목이 남지 않는다)
+        let out = std::process::Command::new("icacls").arg(dst.join("m.txt")).output().unwrap();
+        let file_acl = String::from_utf8_lossy(&out.stdout);
+        assert!(out.status.success(), "{file_acl}");
+        let entries = |text: &str| text.lines().filter(|l| l.contains(":(")).count();
+        assert_eq!(entries(&file_acl), 3, "{file_acl}");
     }
 
     #[test]

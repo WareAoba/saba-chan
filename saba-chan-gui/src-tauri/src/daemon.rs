@@ -181,8 +181,9 @@ impl DaemonClient {
             Ok(r) => return (Err(format!("Request failed with status code {}", r.status().as_u16())), false),
             Err(e) => return (Err(e.to_string()), false),
         };
-        let body = match response.json::<Value>().await {
-            Ok(body) => body,
+        // JSON이 아닌 본문도 `get`처럼 글자로 받는다 (다른 프로그램이 포트를 쥔 경우 "토큰 불일치"로 보이게)
+        let body = match response.bytes().await {
+            Ok(bytes) => Resp { status: 200, body: bytes.to_vec() }.data(),
             Err(e) => return (Err(e.to_string()), false),
         };
         let valid = !token.is_empty() && self.base_is_loopback() && body.get("proof").and_then(Value::as_str).is_some_and(|proof| {

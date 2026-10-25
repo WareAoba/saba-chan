@@ -104,8 +104,10 @@ pub async fn daemon_status(app: AppHandle) -> Value {
     let (health, mut identity) = client.verified_health(1000).await;
     // 데몬이 다시 떠서 토큰이 바뀌었으면 한 번 다시 읽어 본다
     if !identity && health.is_ok() {
-        client.load_token();
-        identity = client.identity_valid(1000).await;
+        let before = client.token();
+        if client.load_token() && client.token() != before {
+            identity = client.identity_valid(1000).await;
+        }
     }
     daemon_status_body(health, identity, app.state::<AppState>().life.daemon_in_parent_job())
 }
