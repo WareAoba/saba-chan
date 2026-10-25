@@ -545,9 +545,17 @@ textarea {
 .member-row {
     padding: 8px 12px;
 }
-.member-row select {
+/* GUI 드롭다운(CustomDropdown). 칸에서는 줄을 다 채우고, 멤버 줄에서는 이름에 자리를 남긴다 */
+.dropdown {
+    width: 100%;
+}
+.dropdown .custom-dropdown-trigger {
+    min-height: 40px;
+}
+.member-row .level-select {
     flex: none;
     width: auto;
+    min-width: 120px;
     max-width: 48%;
 }
 .avatar {

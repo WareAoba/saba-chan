@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useApp } from '../store';
+import { Dropdown } from './Dropdown';
 import { Empty, errorText, failed, Loading, Section } from './ui';
 
 /** 길드에서 줄 수 있는 레벨 (주인 3은 고정). 0 은 말하는 사바쨩만 */
@@ -36,20 +37,19 @@ function Avatar({ member }) {
     );
 }
 
-function LevelSelect({ value, onChange, withDefault, t, disabled }) {
+function LevelSelect({ value, onChange, withDefault, t, disabled, label }) {
     return (
-        <select
+        <Dropdown
+            className="level-select"
             value={value === null ? 'default' : String(value)}
             disabled={disabled}
-            onChange={(e) => onChange(e.target.value === 'default' ? null : Number(e.target.value))}
-        >
-            {withDefault && <option value="default">{t('perm.use_default')}</option>}
-            {LEVELS.map((l) => (
-                <option key={l} value={l}>
-                    {t(`perm.level.${l}`)}
-                </option>
-            ))}
-        </select>
+            ariaLabel={label}
+            onChange={(v) => onChange(v === 'default' ? null : Number(v))}
+            options={[
+                ...(withDefault ? [{ value: 'default', label: t('perm.use_default') }] : []),
+                ...LEVELS.map((l) => ({ value: String(l), label: t(`perm.level.${l}`) })),
+            ]}
+        />
     );
 }
 
@@ -103,6 +103,7 @@ function GuildPermissions({ api, guildId }) {
                 <span>{t('perm.default')}</span>
                 <LevelSelect
                     value={defaultLevel}
+                    label={t('perm.default')}
                     t={t}
                     disabled={busy}
                     onChange={(l) => l !== null && write(() => api.permissionsUpdate(guildId, { defaultLevel: l }))}
@@ -134,6 +135,7 @@ function GuildPermissions({ api, guildId }) {
                                 ) : (
                                     <LevelSelect
                                         value={levelOf(String(m.id))}
+                                        label={nameOf(m)}
                                         withDefault
                                         t={t}
                                         disabled={busy}
@@ -179,16 +181,15 @@ export function PermissionsTab({ api }) {
             ) : (
                 <>
                     {guilds.length > 1 && (
-                        <label className="field">
+                        <div className="field">
                             <span>{t('perm.guild')}</span>
-                            <select value={guildId ?? ''} onChange={(e) => setGuildId(e.target.value)}>
-                                {guilds.map((g) => (
-                                    <option key={g.guildId} value={g.guildId}>
-                                        {g.guildName || g.guildId}
-                                    </option>
-                                ))}
-                            </select>
-                        </label>
+                            <Dropdown
+                                value={guildId ?? ''}
+                                onChange={setGuildId}
+                                ariaLabel={t('perm.guild')}
+                                options={guilds.map((g) => ({ value: g.guildId, label: g.guildName || g.guildId }))}
+                            />
+                        </div>
                     )}
                     {guildId && <GuildPermissions api={api} guildId={guildId} />}
                 </>

@@ -37,9 +37,12 @@ function CustomDropdown({ value, onChange, options = [], placeholder, className,
         const above = rect.top - MENU_GAP;
         const up = below < Math.min(MENU_MAX, options.length * 36 + 8) && above > below;
         setPlacement(up ? 'top' : 'bottom');
+        // 화면 오른쪽 절반에 있으면 메뉴를 오른쪽 끝에 맞춘다 (긴 항목이 좁은 화면 밖으로 나가지 않게)
+        const alignRight = rect.left + rect.width / 2 > window.innerWidth / 2;
         setMenuStyle({
             position: 'fixed',
-            left: rect.left,
+            ...(alignRight ? { right: window.innerWidth - rect.right } : { left: rect.left }),
+            maxWidth: (alignRight ? rect.right : window.innerWidth - rect.left) - MENU_GAP * 2,
             minWidth: rect.width,
             zIndex: 10000,
             ...(up ? { bottom: window.innerHeight - rect.top + MENU_GAP } : { top: rect.bottom + MENU_GAP }),

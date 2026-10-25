@@ -19,7 +19,7 @@ export default defineConfig({
             '@art': path.resolve(__dirname, '../saba-chan-gui/public'),
         },
         // GUI 파일이 부르는 라이브러리도 이 폴더의 것 하나만 쓴다
-        dedupe: ['react', 'react-dom', 'i18next', 'react-i18next', 'zustand'],
+        dedupe: ['react', 'react-dom', 'i18next', 'react-i18next', 'zustand', 'clsx'],
     },
     test: {
         globals: true,
