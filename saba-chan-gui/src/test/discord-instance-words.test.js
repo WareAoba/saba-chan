@@ -76,6 +76,18 @@ describe('InstanceDiscordTab', () => {
         expect(await screen.findByText(/daemon down/)).toBeTruthy();
     });
 
+    it('다른 서버로 바꾼 뒤 늦게 온 이전 서버 응답은 화면에 쓰지 않는다', async () => {
+        let resolveOld;
+        const other = { ...item(), id: 's2', name: '건축', words: [] };
+        window.api.instanceWords = vi.fn((id) => (id === 's1' ? new Promise((r) => (resolveOld = r)) : Promise.resolve(other)));
+        const view = await act(async () => render(<InstanceDiscordTab server={server} />));
+        await act(async () => view.rerender(<InstanceDiscordTab server={{ id: 's2', name: '건축', module: 'minecraft' }} />));
+        await screen.findByLabelText('Names for 건축');
+        await act(async () => resolveOld(item()));
+        expect(screen.queryByLabelText('Names for 야생')).toBeNull();
+        expect(screen.getByLabelText('Names for 건축')).toBeTruthy();
+    });
+
     it('details의 field를 칸별로 나눈다', () => {
         expect(
             Object.keys(

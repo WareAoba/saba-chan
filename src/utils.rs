@@ -27,7 +27,7 @@ pub fn new_console_program(program: &str, cwd: &std::path::Path, env: &[(String,
         return (is_exe(&full) && full.is_file()).then_some(full);
     }
     let search = env.iter().rev().find(|(k, _)| k.eq_ignore_ascii_case("PATH")).map(|(_, v)| std::ffi::OsString::from(v)).or_else(|| std::env::var_os("PATH"))?;
-    let name = if is_exe(path) { path.to_path_buf() } else { path.with_extension("exe") };
+    let name = if is_exe(path) { path.to_path_buf() } else { std::path::PathBuf::from(format!("{}.exe", path.display())) };
     std::env::split_paths(&search).map(|dir| dir.join(&name)).find(|p| p.is_file())
 }
 
@@ -202,6 +202,10 @@ mod tests {
         // 배치 파일·못 찾은 이름은 새 콘솔로 띄우지 않는다 (호출자가 예전 방식으로 띄운다)
         assert_eq!(new_console_program(&bin.join("start.bat").to_string_lossy(), tmp.path(), &env), None);
         assert_eq!(new_console_program("missing", tmp.path(), &env), None);
+        // 점이 든 이름은 끝을 바꾸지 않고 .exe를 덧붙인다 (`java.11`이 `java.exe`가 되지 않는다)
+        assert_eq!(new_console_program("java.11", tmp.path(), &env), None);
+        std::fs::write(bin.join("java.11.exe"), "").unwrap();
+        assert_eq!(new_console_program("java.11", tmp.path(), &env), Some(bin.join("java.11.exe")));
     }
 
     #[test]

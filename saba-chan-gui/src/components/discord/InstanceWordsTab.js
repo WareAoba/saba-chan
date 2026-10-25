@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { safeShowToast } from '../../utils/helpers';
 import { Icon } from '../Icon';
@@ -176,14 +176,20 @@ export function InstanceDiscordTab({ server }) {
     const [inst, setInst] = useState(null);
     const [error, setError] = useState(null);
 
+    const current = useRef(server.id);
+    current.current = server.id;
+
     const load = useCallback(async () => {
+        const id = server.id;
         setError(null);
+        setInst((prev) => (prev?.id === id ? prev : null));
         try {
-            const res = await window.api.instanceWords(server.id);
+            const res = await window.api.instanceWords(id);
+            if (current.current !== id) return; // 그사이 다른 서버로 바뀌었다
             if (failed(res) || !Array.isArray(res?.commands)) throw new Error(res?.error || '-');
             setInst(res);
         } catch (e) {
-            setError(e.message);
+            if (current.current === id) setError(e.message);
         }
     }, [server.id]);
     useEffect(() => {
@@ -212,7 +218,7 @@ export function InstanceDiscordTab({ server }) {
     return (
         <div className="dc-tab">
             <p className="dc-card-desc">{t('discord.iw_desc')}</p>
-            <InstanceCard inst={inst} onSaved={setInst} />
+            <InstanceCard key={inst.id} inst={inst} onSaved={setInst} />
         </div>
     );
 }
