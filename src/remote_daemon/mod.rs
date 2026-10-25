@@ -5,6 +5,7 @@
 //! 지금은 공인 주소가 있는 PC만 된다 (`Transport::Direct`). 붙는 쪽(내 PC에서 원격 데몬을 고르고 중계하기)은 다음 단계다
 
 pub mod config;
+pub mod peer;
 pub mod relay;
 pub mod server;
 pub mod tls;

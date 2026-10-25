@@ -61,8 +61,6 @@ impl Identity {
 }
 
 /// 인증서 사슬 대신 지문 하나만 믿는다. 서명 검사(핸드셰이크 소유 증명)는 그대로 한다
-// 붙는 쪽(D1b)이 쓴다. 그때까지는 테스트만 쓴다
-#[cfg_attr(not(test), allow(dead_code))]
 #[derive(Debug)]
 struct Pinned {
     sha256: String,
@@ -109,7 +107,6 @@ impl ServerCertVerifier for Pinned {
 }
 
 /// 지문이 `sha256`인 인증서에만 붙는 클라이언트 설정
-#[cfg_attr(not(test), allow(dead_code))]
 pub fn pinned_client_config(sha256: &str) -> anyhow::Result<rustls::ClientConfig> {
     let provider = provider();
     Ok(rustls::ClientConfig::builder_with_provider(provider.clone())

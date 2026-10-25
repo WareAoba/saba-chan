@@ -67,3 +67,63 @@ pub async fn publish(target: &Target, address: &str, port: u16, cert_sha256: &st
 pub async fn withdraw(target: &Target) -> bool {
     matches!(send(target, reqwest::Method::DELETE, "/api/remote/endpoint", None).await, Ok((204, _)))
 }
+
+/// 원격 PC의 직접 연결 주소와 고정할 지문
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Endpoint {
+    pub address: String,
+    pub port: u16,
+    pub cert_sha256: String,
+}
+
+/// 같은 주인의 다른 PC
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Peer {
+    pub host_id: String,
+    pub name: String,
+    #[serde(default)]
+    pub status: String,
+    pub endpoint: Option<Endpoint>,
+}
+
+pub async fn peers(target: &Target) -> Result<Vec<Peer>, Failure> {
+    #[derive(Deserialize)]
+    struct Peers {
+        peers: Vec<Peer>,
+    }
+    match send(target, reqwest::Method::GET, "/api/remote/peers", None).await? {
+        (200, data) => serde_json::from_value::<Peers>(data).map(|p| p.peers).map_err(|_| Failure::Unreachable),
+        _ => Err(Failure::Unreachable),
+    }
+}
+
+/// 원격 PC 앞으로 받은 연결표
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Ticket {
+    pub ticket_id: String,
+    pub secret: String,
+    pub name: String,
+    #[serde(flatten)]
+    pub endpoint: Endpoint,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TicketFailure {
+    /// 같은 주인의 다른 PC가 아니다 (없음·남의 것·자기 자신)
+    NotFound,
+    /// 그 PC가 주소를 올리지 않았다 (원격 포트가 꺼졌거나 공인 주소가 없다)
+    NoEndpoint,
+    Unreachable,
+}
+
+pub async fn ticket(target: &Target, to_host_id: &str) -> Result<Ticket, TicketFailure> {
+    match send(target, reqwest::Method::POST, "/api/remote/tickets", Some(&json!({ "toHostId": to_host_id }))).await {
+        Ok((201, data)) => serde_json::from_value(data).map_err(|_| TicketFailure::Unreachable),
+        Ok((404, _)) => Err(TicketFailure::NotFound),
+        Ok((409, _)) => Err(TicketFailure::NoEndpoint),
+        _ => Err(TicketFailure::Unreachable),
+    }
+}

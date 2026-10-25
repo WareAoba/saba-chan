@@ -1173,6 +1173,21 @@
       "certificate_failed": "Could not prepare the certificate",
       "port_in_use": "The port is already in use",
       "bind_failed": "Could not open the port"
+    },
+    "no_peers": "The relay has no other PC of yours.",
+    "reachable": "Remote port",
+    "saved": "Connected",
+    "connected": "Paired with the remote daemon on {{name}}.",
+    "no_daemons": "This daemon connects to no remote daemon. See your PCs with `remote peers` and connect with `remote connect <PC id>`.",
+    "forgotten": "Forgot the remote daemon on {{host}}.",
+    "connect_error": {
+      "remote_not_found": "That PC is not one of your other PCs",
+      "remote_no_endpoint": "That PC has not opened its remote port or sent its public address",
+      "remote_unreachable": "Could not reach the remote daemon (check its address and firewall)",
+      "remote_rejected": "The remote daemon did not accept the connection. Try again",
+      "remote_unknown": "Not a remote daemon you connected to. Check `remote daemons`",
+      "relay_not_paired": "This PC is not connected to the relay",
+      "relay_unreachable": "Could not reach the relay"
     }
   }
 }

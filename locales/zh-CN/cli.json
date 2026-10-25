@@ -812,7 +812,11 @@
       "remote.status": "远程端口设置和状态 (是否开启、通知中继的地址、证书指纹)",
       "remote.set": "开启或关闭远程端口, 更改端口或通知中继的公网地址",
       "remote.clients": "与此守护进程配对的我的电脑",
-      "remote.revoke": "解除与电脑的配对: 该电脑的令牌立即失效"
+      "remote.revoke": "解除与电脑的配对: 该电脑的令牌立即失效",
+      "remote.peers": "中继上此守护进程可连接的你的其他电脑",
+      "remote.connect": "与你其他电脑的远程守护进程配对（`remote peers` 中显示 id）",
+      "remote.daemons": "此守护进程连接的远程守护进程",
+      "remote.forget": "移除远程守护进程（重新连接用 `remote connect`）"
     },
     "arg": {
       "module.maker.game": "第一个请求中的游戏名",
@@ -956,7 +960,9 @@
       "remote.set.off": "关闭远程端口",
       "remote.set.port": "远程端口号",
       "remote.set.address": "此电脑的公网主机名或 IP (留空则清除)",
-      "remote.revoke.host_id": "要解除配对的电脑 id (见 `remote clients`)"
+      "remote.revoke.host_id": "要解除配对的电脑 id (见 `remote clients`)",
+      "remote.connect.host_id": "要连接的电脑 id（见 `remote peers`）",
+      "remote.forget.host_id": "要移除的电脑 id（见 `remote daemons`）"
     },
     "after": "名称可以只写一部分（例如 start pal）。在终端中不带参数运行会打开全屏菜单(SABA_NO_TUI=1 时为交互式 shell)。\n在脚本中请使用 --json 和 --yes。退出码：0 成功 · 1 失败 · 2 用法错误 · 3 无法连接守护进程 · 4 未找到 · 130 已取消"
   },
@@ -1392,6 +1398,21 @@
       "certificate_failed": "无法准备证书",
       "port_in_use": "端口已被占用",
       "bind_failed": "无法打开端口"
+    },
+    "no_peers": "中继上没有你的其他电脑。",
+    "reachable": "远程端口",
+    "saved": "已连接",
+    "connected": "已与 {{name}} 的远程守护进程配对。",
+    "no_daemons": "此守护进程未连接任何远程守护进程。用 `remote peers` 查看你的电脑，用 `remote connect <PC id>` 连接。",
+    "forgotten": "已移除 {{host}} 的远程守护进程。",
+    "connect_error": {
+      "remote_not_found": "该电脑不在你的其他电脑列表中",
+      "remote_no_endpoint": "该电脑未打开远程端口或未告知公网地址",
+      "remote_unreachable": "无法连接远程守护进程（请检查地址和防火墙）",
+      "remote_rejected": "远程守护进程未接受连接，请重试",
+      "remote_unknown": "这不是你已连接的远程守护进程。请查看 `remote daemons`",
+      "relay_not_paired": "此电脑未连接中继",
+      "relay_unreachable": "无法连接中继"
     }
   }
 }

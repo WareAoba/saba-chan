@@ -901,6 +901,17 @@ impl IPCServer {
             .route("/api/remote/settings", get(handlers::remote_daemon::get_settings).put(handlers::remote_daemon::put_settings))
             .route("/api/remote/clients", get(handlers::remote_daemon::list_clients))
             .route("/api/remote/clients/:host_id", delete(handlers::remote_daemon::revoke_client))
+            .route("/api/remote/peers", get(handlers::remote_daemon::list_peers))
+            .route("/api/remote/daemons", get(handlers::remote_daemon::list_daemons).post(handlers::remote_daemon::connect_daemon))
+            .route("/api/remote/daemons/:host_id", delete(handlers::remote_daemon::forget_daemon))
+            .route(
+                "/api/remote/daemons/:host_id/proxy/*rest",
+                get(handlers::remote_daemon::proxy)
+                    .post(handlers::remote_daemon::proxy)
+                    .put(handlers::remote_daemon::proxy)
+                    .patch(handlers::remote_daemon::proxy)
+                    .delete(handlers::remote_daemon::proxy),
+            )
             .with_state(self.clone())
             .merge(updates::updates_router(self.update_state.clone()))
             // 감사 로그 출처 (A10): 요청마다 X-Saba-Client로 정한다. 인증층은 이 바깥에 씌운다 (업데이트 라우터까지)
