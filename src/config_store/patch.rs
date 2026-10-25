@@ -22,11 +22,21 @@ pub fn merge_patch(target: &mut Value, patch: &Value) {
     }
 }
 
-/// 내용 지문. 같은 내용이면 같은 값이다 (serde_json 객체는 키 순서로 쓰인다)
+/// 내용 지문. 같은 내용이면 같은 값이다 (serde_json 객체는 키 순서로 쓰인다).
+/// 내용에 비밀번호가 들 수 있고 지문은 원격에도 보이므로, 데몬이 켤 때마다 새로 정하는 키로 서명한다
+/// (지문만으로 내용을 맞혀 볼 수 없게. 데몬이 다시 뜨면 지문이 바뀌어 한 번 다시 읽게 된다)
 pub fn revision(value: &Value) -> String {
-    use sha2::{Digest, Sha256};
-    let digest = Sha256::digest(value.to_string().as_bytes());
-    digest[..8].iter().map(|b| format!("{b:02x}")).collect()
+    use hmac::{Hmac, Mac};
+    static KEY: std::sync::OnceLock<[u8; 32]> = std::sync::OnceLock::new();
+    let key = KEY.get_or_init(|| {
+        let mut key = [0u8; 32];
+        key[..16].copy_from_slice(uuid::Uuid::new_v4().as_bytes());
+        key[16..].copy_from_slice(uuid::Uuid::new_v4().as_bytes());
+        key
+    });
+    let mut mac = Hmac::<sha2::Sha256>::new_from_slice(key).expect("any key length");
+    mac.update(value.to_string().as_bytes());
+    mac.finalize().into_bytes()[..8].iter().map(|b| format!("{b:02x}")).collect()
 }
 
 /// 요청 본문 최상위의 `revision`을 떼어 낸다 (설정 키가 아니라 저장 조건이다)
@@ -72,6 +82,16 @@ mod tests {
         let b: Value = serde_json::from_str(r#"{"y":{"a":1,"b":2},"x":1}"#).unwrap();
         assert_eq!(revision(&a), revision(&b));
         assert_ne!(revision(&a), revision(&json!({"x":2,"y":{"a":1,"b":2}})));
+    }
+
+    /// 지문은 내용만으로 다시 셀 수 없다: 원격에서 본 지문으로 비밀번호를 맞혀 볼 수 없게
+    #[test]
+    fn the_revision_cannot_be_recomputed_from_the_content_alone() {
+        use sha2::{Digest, Sha256};
+        let value = json!({"rest_password": "hunter2"});
+        let plain: String = Sha256::digest(value.to_string().as_bytes())[..8].iter().map(|b| format!("{b:02x}")).collect();
+        assert_ne!(revision(&value), plain);
+        assert_eq!(revision(&value).len(), 16);
     }
 
     #[test]
