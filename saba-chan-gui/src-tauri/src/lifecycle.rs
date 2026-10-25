@@ -272,7 +272,7 @@ pub fn start_daemon(app: &AppHandle) {
         .current_dir(&root)
         .env("RUST_LOG", "info")
         .env("SABA_LANG", settings::language(&s))
-        .env("SABA_IPC_PORT", settings::ipc_port(&s).to_string())
+        .env("SABA_IPC_PORT", settings::daemon_port(&s).to_string())
         .env("SABA_INSTANCES_PATH", state.data_dir.join("instances"))
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
