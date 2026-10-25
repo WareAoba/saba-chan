@@ -583,7 +583,7 @@ Relay 서명 방식(`relay.rs:115-161`):
 
 ### 5.2 REST (`protocol/rest.rs`)
 
-- `ureq`(동기)를 쓰고 timeout은 10초다. Basic Auth를 지원한다.
+- `reqwest::blocking`(동기)을 쓰고 timeout은 10초다. 시스템 프록시를 거치지 않고(`no_proxy`), TLS는 native-tls다. Basic Auth를 지원한다.
 - 응답 없이 연결이 끊기면(EOF·reset·abort. 오류 종류로 보므로 Windows의 os error 10053·10054도 같다) 결과를 알 수 없다고 본다: `success:false`, `data.outcome:"unknown"`, `error`(`rest.rs` `closed_without_response`). 종료 명령처럼 서버가 끊을 수 있는 요청도 성공으로 보고하지 않는다.
 - `verify_connection`은 실제 연결 없이 host와 port 유효성만 본다(`rest.rs:42-48`).
 - 인증 로그에는 사용자 이름만 debug 레벨로 남긴다(`rest.rs:91`). 토큰·비밀번호 길이는 남기지 않는다.
@@ -598,7 +598,7 @@ Relay 서명 방식(`relay.rs:115-161`):
 |---|---|
 | `POST /api/instance/:id/command` | 모든 인터페이스의 단일 명령 경로다. 요청 해석·검증은 `crate::commands`가 한다. 모듈에 없는 이름이면 활성 익스텐션 명령을 먼저 본다(`command.rs:80-124`). 그다음 모듈 정의대로 `/rcon`(stdin), `/rest`, `lifecycle.py command`, 원시 stdin 중 하나로 보낸다(`command.rs:158-183`). 꺼져 있고 콘솔도 없으면 409 `server_not_running`이다. `Supervisor::execute_command`(`supervisor/mod.rs:1220-1266`)는 config `{command,args,protocol_mode,working_dir,rest_host,rest_port,pid,instance_id}`를 락 안에서 만들고, 락을 놓은 뒤 Python을 실행한다 |
 | `POST /api/instance/:id/rcon` | 콘솔이 있으면 **stdin으로 보낸다.** 콘솔이 없고 모듈이 RCON만 받으면(`Supervisor::rcon_route`) 127.0.0.1 RCON으로 보낸다(02 RCON 정책). `routes_commands_to_stdin`(`supervisor/mod.rs:1704-1712`)이 콘솔 있는 서버(관리 모드, 재접속 후에도 saba-runner가 stdin 유지)를 확인하면 `via_stdin`(`command.rs:430-484`)이 한 줄을 쓰고 콘솔 출력을 최대 약 1.5초 모아 `data.response`로 돌려준다. 둘 다 없으면 409 `no_command_path`(`command.rs:392-`). 서버가 콘솔 입력을 읽지 않아 대기열(256줄)이 차 있으면 기다리지 않고 503 `console_input_full` |
-| `POST /api/instance/:id/rest` | 접속 정보는 `get_credentials`(게임 설정 파일)에서 읽고 인스턴스별로 캐시한다(`CredentialsCache`, `ipc/mod.rs:302-328`; `command.rs:661-689`). 실패하면 캐시를 지운다. host와 port는 payload, instance, 모듈 기본값 순으로 정하고, 동기 ureq 호출은 `spawn_blocking`으로 감싼다(`command.rs:614-621`) |
+| `POST /api/instance/:id/rest` | 접속 정보는 `get_credentials`(게임 설정 파일)에서 읽고 인스턴스별로 캐시한다(`CredentialsCache`, `ipc/mod.rs:302-328`; `command.rs:661-689`). 실패하면 캐시를 지운다. host와 port는 payload, instance, 모듈 기본값 순으로 정하고, 동기 `reqwest::blocking` 호출은 `spawn_blocking`으로 감싼다(`command.rs:614-621`) |
 | `POST /api/instance/:id/stdin` | `/rcon`과 같은 `via_stdin` 경로다(`managed.rs:118-137`) |
 
 ---
