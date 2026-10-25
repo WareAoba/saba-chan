@@ -120,6 +120,11 @@ async fn watch(id: String, name: String, token: u64, proc: Arc<ManagedProcess>, 
     }
 }
 
+/// 그 인스턴스의 시작이 아직 준비 문구를 기다리는가
+pub fn is_waiting(instance_id: &str) -> bool {
+    pending().lock().unwrap_or_else(|e| e.into_inner()).contains_key(instance_id)
+}
+
 /// managed 프로세스의 종료를 판정했을 때: 준비 전이었으면 닫는다
 pub fn exited(instance_id: &str, instance: &str, stop_requested: bool) {
     finish(instance_id, instance, None, Some(if stop_requested { "stopped_while_starting" } else { "start_failed" }));
