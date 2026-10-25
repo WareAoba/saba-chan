@@ -485,6 +485,10 @@
     "checking_message": "新しいアップデートがあるか確認しています...",
     "no_updates": "すべてのコンポーネントは最新です。",
     "auto_check": "更新を自動確認",
+    "channel": "アップデートチャンネル",
+    "channel_stable": "正式版",
+    "channel_rc": "プレビュー（リリース候補）",
+    "channel_beta": "ベータ（先行版・不安定な場合あり）",
     "found": "{{count}}件の更新が見つかりました: {{names}}",
     "check_required": "確認が必要",
     "completed": "アップデート完了"

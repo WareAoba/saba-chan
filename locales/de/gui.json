@@ -541,6 +541,10 @@
     "checking_message": "Suche nach neuen Updates...",
     "no_updates": "Alle Komponenten sind aktuell.",
     "auto_check": "Automatisch auf Updates prüfen",
+    "channel": "Update-Kanal",
+    "channel_stable": "Stabil",
+    "channel_rc": "Vorschau (Release Candidate)",
+    "channel_beta": "Beta (früh, evtl. instabil)",
     "found": "{{count}} Update(s) gefunden: {{names}}",
     "check_required": "Prüfung erforderlich",
     "completed": "Update abgeschlossen"

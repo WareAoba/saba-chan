@@ -541,6 +541,10 @@
     "checking_message": "Recherche de nouvelles mises à jour...",
     "no_updates": "Tous les composants sont à jour.",
     "auto_check": "Vérification automatique des mises à jour",
+    "channel": "Canal de mise à jour",
+    "channel_stable": "Stable",
+    "channel_rc": "Aperçu (version candidate)",
+    "channel_beta": "Bêta (en avance, peut être instable)",
     "found": "{{count}} mise(s) à jour trouvée(s) : {{names}}",
     "check_required": "Vérification requise",
     "completed": "Mise à jour terminée"

@@ -541,6 +541,10 @@
     "checking_message": "새 업데이트가 있는지 확인하는 중입니다...",
     "no_updates": "모든 컴포넌트가 최신 버전입니다.",
     "auto_check": "자동으로 업데이트 확인",
+    "channel": "업데이트 채널",
+    "channel_stable": "정식",
+    "channel_rc": "미리보기 (출시 후보)",
+    "channel_beta": "베타 (먼저 받기, 불안정할 수 있음)",
     "found": "{{count}}개 업데이트 발견: {{names}}",
     "check_required": "확인 필요",
     "completed": "업데이트를 마쳤습니다."

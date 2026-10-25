@@ -21,6 +21,18 @@ use crate::version::SemVer;
 pub const DEFAULT_RELAY_URL: &str = "https://saba-chan.online";
 /// 기본 채널
 pub const DEFAULT_CHANNEL: &str = "stable";
+/// 채널은 안정한 순서로 쌓인다: 정식(stable) ⊂ 미리보기(rc) ⊂ 베타(beta) ⊂ nightly.
+/// 위 채널을 고른 클라이언트는 아래 채널 릴리즈도 받는다 (릴레이 `routes/updates.ts` `CHANNEL_ORDER`와 같다)
+pub const CHANNELS: [&str; 4] = ["stable", "rc", "beta", "nightly"];
+
+/// `selected` 채널을 고른 클라이언트가 `release` 채널의 릴리즈를 받는가
+pub fn channel_includes(selected: &str, release: &str) -> bool {
+    let rank = |c: &str| CHANNELS.iter().position(|&x| x == c);
+    match (rank(selected), rank(release)) {
+        (Some(s), Some(r)) => r <= s,
+        _ => selected == release,
+    }
+}
 /// 릴레이가 외부 업데이트 요청에 요구하는 헤더
 pub const CLIENT_HEADER: (&str, &str) = ("X-Saba-Client", "1");
 
@@ -104,12 +116,12 @@ impl ReleaseManifest {
     }
 }
 
-/// 모듈·익스텐션 목록의 출처: 이 플랫폼 최신 릴리즈의 서명된 manifest (U9e).
-/// 데몬·설치기가 같은 함수를 쓴다. 게시된 릴리즈가 없으면 `Ok(None)`.
-pub async fn latest_catalog(relay_url: Option<&str>) -> Result<Option<ReleaseManifest>, RelayError> {
+/// 모듈·익스텐션 목록의 출처: 이 플랫폼, 고른 업데이트 채널의 최신 릴리즈 서명 manifest (U9e).
+/// 데몬이 쓴다. 게시된 릴리즈가 없으면 `Ok(None)`.
+pub async fn latest_catalog(relay_url: Option<&str>, channel: &str) -> Result<Option<ReleaseManifest>, RelayError> {
     let client = RelayClient::new(relay_url.unwrap_or(DEFAULT_RELAY_URL));
     let release = client
-        .fetch_verified_catalog(DEFAULT_CHANNEL, &current_platform(), &crate::versions::bundled().release, &anon_client_id())
+        .fetch_verified_catalog(channel, &current_platform(), &crate::versions::bundled().release, &anon_client_id())
         .await?;
     Ok(release.map(|r| r.manifest))
 }
@@ -260,7 +272,7 @@ impl RelayClient {
     }
 }
 
-/// 서명을 검증하고, 플랫폼·채널이 맞는지, 현재보다 낮은 버전이 아닌지 확인한다.
+/// 서명을 검증하고, 플랫폼이 맞는지, 고른 채널이 받는 채널인지, 현재보다 낮은 버전이 아닌지 확인한다.
 pub fn verify_release(
     signed: &SignedManifest,
     platform: &str,
@@ -273,7 +285,7 @@ pub fn verify_release(
     if manifest.platform != platform {
         return Err(RelayError::WrongTarget { expected: platform.into(), got: manifest.platform });
     }
-    if manifest.channel != channel {
+    if !channel_includes(channel, &manifest.channel) {
         return Err(RelayError::WrongChannel { expected: channel.into(), got: manifest.channel });
     }
     if let (Some(offered), Some(cur)) = (SemVer::parse(&manifest.version), SemVer::parse(current)) {
@@ -401,11 +413,27 @@ mod tests {
     }
 
     #[test]
-    fn a_manifest_for_another_channel_is_rejected() {
+    fn a_higher_channel_takes_lower_channel_releases_but_not_the_reverse() {
+        assert!(channel_includes("stable", "stable"));
+        assert!(channel_includes("rc", "stable"));
+        assert!(channel_includes("beta", "rc"));
+        assert!(channel_includes("beta", "stable"));
+        assert!(!channel_includes("stable", "rc"));
+        assert!(!channel_includes("stable", "beta"));
+        assert!(!channel_includes("rc", "beta"));
+        // 모르는 채널은 같은 이름끼리만
+        assert!(channel_includes("custom", "custom"));
+        assert!(!channel_includes("custom", "stable"));
+        assert!(!channel_includes("stable", "custom"));
+    }
+
+    #[test]
+    fn a_beta_client_accepts_a_stable_manifest() {
         let signed: SignedManifest = serde_json::from_str(PRODUCTION_0_1_1).unwrap();
         assert!(verify_release(&signed, "windows-x64", "stable", "0.1.0").is_ok());
+        assert!(verify_release(&signed, "windows-x64", "beta", "0.1.0").is_ok());
         assert!(matches!(
-            verify_release(&signed, "windows-x64", "beta", "0.1.0"),
+            verify_release(&signed, "windows-x64", "custom", "0.1.0"),
             Err(RelayError::WrongChannel { .. })
         ));
     }
@@ -434,11 +462,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn an_up_to_date_client_does_not_compare_against_its_version_from_another_channel() {
-        // 같은 버전이 stable·beta 둘 다에 있으면 버전만 든 manifest 주소는 다른 채널 것을 줄 수 있다.
-        // 다른 채널의 구성요소로 바꾸지 않는다: 받을 것이 없다 (외부 감사 10-23)
+    async fn an_up_to_date_client_does_not_compare_against_its_version_from_a_channel_it_does_not_take() {
+        // 같은 버전이 여러 채널에 있으면 버전만 든 manifest 주소는 다른 채널 것을 줄 수 있다.
+        // 고른 채널이 받지 않는 채널의 구성요소로 바꾸지 않는다: 받을 것이 없다 (외부 감사 10-23)
         let base = fake_relay(r#"{"upToDate":true}"#.into(), PRODUCTION_0_1_1.into()).await;
-        let got = RelayClient::new(&base).fetch_verified_release("beta", "windows-x64", "0.1.1", "t").await;
+        let got = RelayClient::new(&base).fetch_verified_release("custom", "windows-x64", "0.1.1", "t").await;
         assert!(matches!(got, Ok(None)), "{:?}", got.map(|r| r.map(|v| v.manifest.version)));
     }
 
@@ -449,11 +477,11 @@ mod tests {
         assert_eq!(got.unwrap().map(|v| v.manifest.version).as_deref(), Some("0.1.1"));
     }
 
-    // U-11: 최신이라는 답에 다른 버전이 붙어 와도, 다른 채널의 그 버전 manifest는 받지 않는다
+    // U-11: 최신이라는 답에 다른 버전이 붙어 와도, 고른 채널이 받지 않는 채널의 그 버전 manifest는 받지 않는다
     #[tokio::test]
     async fn an_up_to_date_answer_does_not_bring_another_channels_newer_version() {
         let base = fake_relay(r#"{"upToDate":true,"latest":{"version":"0.1.1"}}"#.into(), PRODUCTION_0_1_1.into()).await;
-        let got = RelayClient::new(&base).fetch_verified_release("beta", "windows-x64", "0.1.0", "t").await;
+        let got = RelayClient::new(&base).fetch_verified_release("custom", "windows-x64", "0.1.0", "t").await;
         assert!(matches!(got, Err(RelayError::WrongChannel { .. })), "{:?}", got.map(|r| r.map(|v| v.manifest.version)));
     }
 

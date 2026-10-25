@@ -541,6 +541,10 @@
     "checking_message": "正在检查新更新...",
     "no_updates": "所有组件均为最新。",
     "auto_check": "自动检查更新",
+    "channel": "更新渠道",
+    "channel_stable": "正式版",
+    "channel_rc": "预览版（候选发布）",
+    "channel_beta": "测试版（抢先体验，可能不稳定）",
     "found": "找到 {{count}} 个更新: {{names}}",
     "check_required": "需要检查",
     "completed": "更新完成。"
