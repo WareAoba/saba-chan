@@ -81,7 +81,8 @@ impl RestClient {
     fn send_http_request(&self, url: &str, method: &str, body: Option<Value>) -> Result<ServerResponse, ProtocolError> {
         tracing::debug!("REST {} {}", method, url);
 
-        let mut builder = AgentBuilder::new().timeout(Duration::from_secs(10));
+        // 리다이렉트는 따라가지 않는다: 데몬은 이 주소의 포트만 확인했다 (host.rs)
+        let mut builder = AgentBuilder::new().timeout(Duration::from_secs(10)).redirects(0);
         if self.use_https {
             // TLS는 reqwest와 같은 native-tls를 쓴다 (rustls·webpki 루트를 따로 싣지 않는다)
             let tls = native_tls::TlsConnector::new()
@@ -276,5 +277,27 @@ mod tests {
         let err = client.get("/v1/api/info").expect_err("a 401 is a failure");
         server.join().unwrap();
         assert!(matches!(err, ProtocolError::HttpStatus(401, _)), "{err:?}");
+    }
+
+    /// 게임 서버의 리다이렉트를 따라가지 않는다: 확인한 포트 밖(다른 로컬 서비스)으로 요청이 새지 않게
+    #[test]
+    fn a_redirect_is_not_followed() {
+        let other = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        other.set_nonblocking(true).unwrap();
+        let target = format!("http://127.0.0.1:{}/elsewhere", other.local_addr().unwrap().port());
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = std::thread::spawn(move || {
+            let (mut sock, _) = listener.accept().unwrap();
+            let mut buf = [0u8; 1024];
+            let _ = std::io::Read::read(&mut sock, &mut buf);
+            let answer = format!("HTTP/1.1 302 Found\r\nLocation: {target}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+            let _ = std::io::Write::write_all(&mut sock, answer.as_bytes());
+        });
+        let client = RestClient::new("127.0.0.1".to_string(), port, false);
+        let resp = client.post("/v1/api/save", None);
+        server.join().unwrap();
+        assert!(!resp.is_ok_and(|r| r.success), "a redirect is not a success");
+        assert!(other.accept().is_err(), "the redirect target was not contacted");
     }
 }
