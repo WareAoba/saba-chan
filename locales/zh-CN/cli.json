@@ -1,4 +1,14 @@
 {
+  "module_errors": {
+    "module_timeout": "模块调用超时。请检查模块状态。",
+    "module_execution_failed": "无法运行模块。请检查运行环境和模块日志。",
+    "module_crashed": "模块进程因错误退出。请检查模块日志。",
+    "module_bad_output": "模块返回了无效的结果。请更新模块或联系作者。",
+    "module_output_too_large": "模块输出超出了大小限制。请检查模块日志。",
+    "module_path_outside": "模块试图访问允许范围外的文件夹。请检查模块设置。",
+    "module_exception": "模块抛出了异常。请检查模块日志。",
+    "isolation_unsupported": "此操作系统不支持所需的隔离功能。"
+  },
   "add": {
     "created_settings_unsynced": "{{name}} 已创建且设置已保存，但未能写入游戏配置文件：{{error}}",
     "ask_folder": "服务器文件夹",
@@ -1058,6 +1068,9 @@
     }
   },
   "sandbox": {
+    "isolation_unsupported": {
+      "message": "此操作系统不支持隔离运行，因此未运行该组件。"
+    },
     "allowed": "{{component}} 将在无隔离的情况下运行。如果其文件发生变化，会再次询问你。",
     "confirm_allow": "要在无隔离的情况下运行 {{component}} 吗？未经验证的代码将不受限制地访问这台电脑的文件和网络。如果其文件发生变化，会再次询问你。",
     "confirm_gui": "要把 {{component}} 的 GUI 包加载到应用中吗？未经验证的代码将在应用窗口中运行。",
