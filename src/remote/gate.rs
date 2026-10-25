@@ -74,16 +74,18 @@ pub static ROUTES: &[Route] = &[
     allow("PATCH", "/api/instance/:id"),
     allow("DELETE", "/api/instance/:id"),
     allow("POST", "/api/instance/:id/rename"),
-    allow("POST", "/api/instance/:id/launch-preview"),
+    // 저장하지 않은 설정 초안으로 실행 줄을 만든다: 모듈이 초안의 경로로 프로그램을 부를 수 있다
+    deny("POST", "/api/instance/:id/launch-preview"),
     allow("GET", "/api/provision-progress/:name"),
     allow("DELETE", "/api/provision-progress/:name"),
     allow("GET", "/api/instance/:id/check-update"),
     allow("POST", "/api/instance/:id/apply-update"),
     allow("GET", "/api/instance/:id/installed-version"),
-    allow("GET", "/api/instance/:id/properties"),
+    // 게임 설정 원문 (관리자 비밀번호가 들어 있다). 웹은 인스턴스 설정(비밀값을 뺀다)으로 고친다
+    deny("GET", "/api/instance/:id/properties"),
     allow("PUT", "/api/instance/:id/properties"),
     allow("POST", "/api/instance/:id/properties/reset"),
-    allow("GET", "/api/instance/:id/settings/live"),
+    deny("GET", "/api/instance/:id/settings/live"),
     allow("POST", "/api/instance/:id/server/reset"),
     allow("POST", "/api/instance/:id/agreements"),
     // ── 백업·일정 ──
@@ -276,7 +278,7 @@ fn safe_segment(segment: &str) -> bool {
     }
 }
 
-fn percent_decode(s: &str) -> Option<String> {
+pub(crate) fn percent_decode(s: &str) -> Option<String> {
     let bytes = s.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
     let mut i = 0;
@@ -325,6 +327,12 @@ pub fn blocked_fields(method: &str, pattern: &str, body: Option<&Value>, file_fi
             }
             keys
         }
+        // 대상은 인스턴스 설정의 REST 주소만. 다른 호스트로 보내면 게임 관리자 비밀번호가 실려 나간다
+        ("POST", "/api/instance/:id/rest") => body
+            .keys()
+            .filter(|k| ["rest_host", "rest_port", "use_https"].contains(&k.as_str()))
+            .cloned()
+            .collect(),
         ("POST", "/api/extensions/:id/install") => body
             .keys()
             .filter(|k| ["download_url", "sha256"].contains(&k.as_str()))
@@ -444,6 +452,11 @@ mod tests {
             ("POST", "/api/actions/update.apply/run"),
             ("POST", "/api/modules/detect"),
             ("POST", "/api/module/minecraft/install"),
+            // 저장하지 않은 설정 초안으로 실행 줄을 만든다 (모듈이 그 경로의 프로그램을 부를 수 있다)
+            ("POST", "/api/instance/abc/launch-preview"),
+            // 게임 설정 원문에는 관리자 비밀번호가 들어 있다
+            ("GET", "/api/instance/abc/settings/live"),
+            ("GET", "/api/instance/abc/properties"),
         ] {
             assert_eq!(decide(method, path), Err(Refusal::NotAllowed), "{method} {path}");
         }
@@ -512,6 +525,16 @@ mod tests {
             blocked,
             vec!["migration_source", "module_settings.java_path", "working_dir"]
         );
+    }
+
+    #[test]
+    fn rest_calls_cannot_pick_another_host() {
+        let body = json!({ "endpoint": "/x", "rest_host": "attacker.example", "rest_port": 80, "use_https": true });
+        assert_eq!(
+            blocked_fields("POST", "/api/instance/:id/rest", Some(&body), &[]),
+            vec!["rest_host", "rest_port", "use_https"]
+        );
+        assert!(blocked_fields("POST", "/api/instance/:id/rest", Some(&json!({ "endpoint": "/x" })), &[]).is_empty());
     }
 
     #[test]

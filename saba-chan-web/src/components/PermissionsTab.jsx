@@ -6,6 +6,36 @@ import { Empty, errorText, failed, Loading, Section } from './ui';
 /** 길드에서 줄 수 있는 레벨 (주인 3은 고정). 0 은 말하는 사바쨩만 */
 const LEVELS = [2, 1, 0, -1];
 
+const nameOf = (m) => m.displayName || m.globalName || m.username || String(m.id);
+const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+
+/** 실제 레벨 높은 순(주인 3 먼저, 따로 정하지 않았으면 기본 레벨), 같은 레벨은 이름순 */
+export function orderMembers(members, perm) {
+    const own = perm?.members || {};
+    const fallback = typeof perm?.defaultLevel === 'number' ? perm.defaultLevel : 1;
+    const levelOf = (m) => {
+        const id = String(m.id);
+        if (id === String(perm?.ownerDiscordId ?? '')) return 3;
+        return Object.hasOwn(own, id) ? own[id] : fallback;
+    };
+    return [...members].sort((a, b) => levelOf(b) - levelOf(a) || collator.compare(nameOf(a), nameOf(b)));
+}
+
+/** 디스코드 프로필 사진. 없거나 못 읽으면 이름 첫 글자 */
+function Avatar({ member }) {
+    const [broken, setBroken] = useState(false);
+    const url = member.avatarUrl || member.avatar;
+    return (
+        <span className="avatar" aria-hidden="true">
+            {typeof url === 'string' && url.startsWith('https://') && !broken ? (
+                <img src={url} alt="" loading="lazy" referrerPolicy="no-referrer" onError={() => setBroken(true)} />
+            ) : (
+                nameOf(member).trim().charAt(0).toUpperCase() || '?'
+            )}
+        </span>
+    );
+}
+
 function LevelSelect({ value, onChange, withDefault, t, disabled }) {
     return (
         <select
@@ -57,10 +87,10 @@ function GuildPermissions({ api, guildId }) {
     const defaultLevel = typeof perm.defaultLevel === 'number' ? perm.defaultLevel : 1;
     const levelOf = (id) => (Object.hasOwn(perm.members || {}, id) ? perm.members[id] : null);
     const q = query.trim().toLowerCase();
-    const shown = members.filter(
+    const shown = orderMembers(members, perm).filter(
         (m) =>
             !q ||
-            [m.displayName, m.username, m.id].some((v) =>
+            [nameOf(m), m.username, m.id].some((v) =>
                 String(v ?? '')
                     .toLowerCase()
                     .includes(q),
@@ -93,10 +123,11 @@ function GuildPermissions({ api, guildId }) {
                     {shown.map((m) => {
                         const owner = String(m.id) === String(perm.ownerDiscordId);
                         return (
-                            <li key={m.id} className="row">
+                            <li key={m.id} className="row member-row">
+                                <Avatar member={m} />
                                 <div className="row-main">
-                                    <div className="row-title">{m.displayName || m.username || m.id}</div>
-                                    {m.username && <div className="row-sub">@{m.username}</div>}
+                                    <div className="row-title row-title-one">{nameOf(m)}</div>
+                                    {m.username && <div className="row-sub row-title-one">@{m.username}</div>}
                                 </div>
                                 {owner ? (
                                     <span className="pill">{t('perm.owner')}</span>

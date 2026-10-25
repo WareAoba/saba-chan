@@ -3,21 +3,31 @@ import './styles.css';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import { createWebApi } from './api';
+import { art } from './art';
 import { initI18n } from './i18n';
 import { createSession } from './session';
 import { useApp } from './store';
 
 /** 링크 비밀값은 주소의 # 뒤에 온다. 읽자마자 주소에서 지운다 (새로 고침·공유로 다시 쓰이지 않게) */
 function takeLink() {
-    const link = decodeURIComponent(window.location.hash.slice(1));
-    if (link) window.history.replaceState(null, '', window.location.pathname);
-    return link;
+    const raw = window.location.hash.slice(1);
+    if (raw) window.history.replaceState(null, '', window.location.pathname);
+    try {
+        return decodeURIComponent(raw);
+    } catch {
+        return ''; // 깨진 주소는 링크가 없는 것과 같다 (빈 화면 대신 안내)
+    }
 }
 
 const theme = window.matchMedia?.('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
 document.documentElement.dataset.theme = theme;
 
 const link = takeLink();
+
+const icon = document.createElement('link');
+icon.rel = 'icon';
+icon.href = art.favicon;
+document.head.append(icon);
 
 // 번역을 읽은 뒤 연결한다 (오래된 브라우저 대상이라 최상위 await 를 쓰지 않는다)
 initI18n().then(() => {

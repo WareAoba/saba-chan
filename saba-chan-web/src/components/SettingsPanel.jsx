@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useApp } from '../store';
+import { Icon } from './icons';
 import { Button, Empty, errorText, failed, Section } from './ui';
 
 /** 데몬 문지기(src/remote/gate.rs SETTINGS_PC_ONLY)가 원격으로 받지 않는 칸. 모듈의 비밀번호·file·path 칸도 같다 (비밀번호는 읽어 오지도 않는다) */
@@ -76,7 +77,9 @@ function FieldInput({ field, value, onChange, t, modNs }) {
         return (
             <div className="field field-locked">
                 <span>{label}</span>
-                <p className="locked">🔒 {t('settings.pc_only')}</p>
+                <p className="locked">
+                    <Icon name="lock" size={14} /> {t('settings.pc_only')}
+                </p>
             </div>
         );
     }

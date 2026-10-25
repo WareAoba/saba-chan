@@ -1,7 +1,9 @@
 import { gameNameOf, playersText, primaryAction, viewStatus } from '@gui/utils/serverView';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { art } from '../art';
 import { useApp, useData } from '../store';
+import { Icon } from './icons';
 import { ServerDetail } from './ServerDetail';
 import { Button, Empty, errorText, failed, Loading, Section, Sheet, StatusDot } from './ui';
 import { useProvision } from './useProvision';
@@ -77,7 +79,11 @@ function ServerCard({ api, server, moduleData, modulesLoaded }) {
                 <div className="card-title">{server.name}</div>
                 <div className="card-sub">
                     {gameNameOf(t, server.module, moduleData)}
-                    {players && <span className="pill">👥 {players}</span>}
+                    {players && (
+                        <span className="pill">
+                            <Icon name="user" size={12} /> {players}
+                        </span>
+                    )}
                 </div>
                 <StatusDot status={status} />
             </button>
@@ -113,7 +119,7 @@ export function ServersTab({ api }) {
             title={t('tabs.servers')}
             action={
                 <Button tone="accent" onClick={() => setAdding(true)}>
-                    + {t('servers.add')}
+                    <Icon name="plus" size={16} /> {t('servers.add')}
                 </Button>
             }
         >
@@ -121,7 +127,7 @@ export function ServersTab({ api }) {
             {!serversLoaded ? (
                 <Loading />
             ) : servers.length === 0 ? (
-                <Empty>{t('servers.empty')}</Empty>
+                <Empty art={art.sleep}>{t('servers.empty')}</Empty>
             ) : (
                 <div className="list">
                     {servers.map((s) => (
