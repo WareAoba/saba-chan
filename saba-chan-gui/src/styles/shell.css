@@ -1077,48 +1077,7 @@ button.activity-line:hover {
     border-top: 1px solid var(--line);
 }
 
-/* ── 박아 넣은 옛 화면들 (명령·서버 설정·설정·디스코드) ── */
-.command-embedded {
-    display: flex;
-    gap: var(--sp-4);
-    min-height: 420px;
-}
-.command-embedded .command-modal-main,
-.command-embedded .command-history-panel {
-    border-radius: var(--r-lg);
-    background: var(--surface-gradient);
-    border: 1px solid var(--line);
-    box-shadow: var(--shadow-raised);
-    padding: var(--sp-4);
-}
-.command-embedded .command-modal-main {
-    flex: 1.4;
-    display: flex;
-    flex-direction: column;
-}
-.command-embedded .command-history-panel {
-    flex: 1;
-    width: auto;
-    min-width: 0;
-    margin: 0;
-    padding: var(--sp-3) 0 0;
-}
-.command-embedded .cli-input-wrapper {
-    background: var(--inset);
-    border: 1px solid var(--line);
-    border-radius: var(--r-sm);
-    box-shadow: var(--shadow-inset);
-    padding-right: var(--sp-1);
-}
-.command-embedded .cli-input-wrapper:focus-within {
-    border-color: var(--accent);
-    box-shadow: var(--shadow-inset), var(--accent-ring);
-}
-.command-embedded .cli-input {
-    color: var(--text-1);
-    background: transparent;
-}
-
+/* ── 박아 넣은 옛 화면들 (서버 설정·설정·디스코드) ── */
 .server-settings-embedded {
     border-radius: var(--r-lg);
     background: var(--surface-gradient);
@@ -1188,8 +1147,14 @@ button.activity-line:hover {
     .server-detail {
         padding: var(--sp-4);
     }
-    .command-embedded {
+    .cmd-runner {
         flex-direction: column;
+        height: auto;
+    }
+    .cmd-list,
+    .cmd-history-list {
+        min-height: 120px;
+        max-height: 280px;
     }
 }
 
@@ -3297,3 +3262,238 @@ button.appbar-preflight {
 .link-request-text small {
     color: var(--text-secondary);
 }
+
+/* ── 명령 탭: 왼쪽 명령 목록 + 입력, 오른쪽 실행 기록. 카드·목록 항목·입력은 콘솔·명령 팔레트와 같은 모양 ── */
+.cmd-runner {
+    display: flex;
+    gap: var(--sp-4);
+    height: max(360px, calc(100vh - 330px));
+}
+.cmd-panel {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    background: var(--surface-gradient);
+    border: 1px solid var(--line);
+    border-radius: var(--r-lg);
+    box-shadow: var(--shadow-raised);
+    overflow: hidden;
+}
+.cmd-main {
+    flex: 1.5;
+}
+.cmd-history {
+    flex: 1;
+}
+.cmd-panel-head {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    padding: var(--sp-3) var(--sp-4);
+    border-bottom: 1px solid var(--line);
+    color: var(--text-2);
+}
+.cmd-panel-head h3 {
+    margin: 0;
+    font-size: var(--fs-md);
+    font-weight: 700;
+    color: var(--text-1);
+}
+.cmd-empty {
+    margin: 0;
+    padding: var(--sp-6) var(--sp-4);
+    text-align: center;
+    font-size: var(--fs-sm);
+    color: var(--text-3);
+}
+
+/* 명령 목록 (명령 팔레트 항목과 같은 모양) */
+.cmd-list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: var(--sp-2);
+}
+.cmd-item {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    min-height: 36px;
+    padding: var(--sp-1-5) var(--sp-3);
+    border-radius: var(--r-sm);
+    cursor: pointer;
+    transition: background-color var(--dur-fast) var(--ease);
+}
+.cmd-item:hover {
+    background: var(--surface-gradient-hover);
+}
+.cmd-item.active {
+    background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+.cmd-item-name {
+    flex: none;
+    font-family: var(--font-mono);
+    font-size: var(--fs-sm);
+    font-weight: 600;
+    color: var(--text-1);
+}
+.cmd-item-desc {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--fs-sm);
+    color: var(--text-3);
+}
+.cmd-item .cmd-source,
+.cmd-item .cmd-risk {
+    flex: none;
+    margin-left: 0;
+}
+
+/* 입력줄 (콘솔 입력줄과 같은 모양, 면만 테마를 따른다) */
+.cmd-compose {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+    padding: var(--sp-3);
+    border-top: 1px solid var(--line);
+}
+.cmd-compose .notice.risk-confirm {
+    margin-bottom: 0;
+}
+.cmd-input {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    height: 44px;
+    padding: 0 var(--sp-1-5) 0 var(--sp-3);
+    border-radius: var(--r-md);
+    border: 1px solid var(--line-strong);
+    background: var(--field);
+    box-shadow: var(--shadow-inset);
+    color: var(--accent);
+    transition:
+        border-color var(--dur-fast) var(--ease),
+        box-shadow var(--dur-fast) var(--ease);
+}
+.cmd-input:focus-within {
+    border-color: var(--accent);
+    box-shadow: var(--shadow-inset), var(--accent-ring);
+}
+.cmd-field {
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+    border: none;
+    outline: none;
+    background: transparent;
+    color: var(--text-1);
+    font-family: var(--font-mono);
+    font-size: var(--fs-sm);
+}
+.cmd-field:focus-visible {
+    /* 포커스는 바깥 칸의 링으로 보인다 */
+    outline: none;
+}
+.cmd-field::placeholder {
+    color: var(--text-3);
+}
+.cmd-tab-hint {
+    flex: none;
+    padding: var(--sp-0-5) var(--sp-1-5);
+    border-radius: var(--r-xs);
+    border: 1px solid var(--line);
+    background: var(--inset);
+    font-family: inherit;
+    font-size: var(--fs-xs);
+    color: var(--text-3);
+    white-space: nowrap;
+}
+.cmd-input .term-send:disabled {
+    background: var(--bg-3);
+    color: var(--text-3);
+}
+.cmd-compose .cli-line {
+    margin-right: 0;
+    padding: 0 var(--sp-1);
+    font-size: var(--fs-xs);
+}
+
+/* 실행 기록 */
+.cmd-history-list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: var(--sp-2);
+}
+.cmd-entry {
+    border-radius: var(--r-sm);
+}
+.cmd-entry + .cmd-entry {
+    margin-top: var(--sp-0-5);
+}
+.cmd-entry.expanded {
+    background: var(--surface-gradient-hover);
+}
+.cmd-entry-head {
+    --btn-height: 36px;
+    --btn-padding: 0 var(--sp-3);
+    --btn-font-size: var(--fs-sm);
+    width: 100%;
+    justify-content: flex-start;
+    gap: var(--sp-2);
+    border-radius: var(--r-sm);
+    background: transparent;
+    color: var(--text-1);
+    font-weight: 400;
+}
+.cmd-entry-head:hover {
+    background: var(--surface-gradient-hover);
+}
+.cmd-entry-head .status-chip-dot {
+    width: 6px;
+    height: 6px;
+}
+.cmd-entry-cmd {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: left;
+    font-family: var(--font-mono);
+    font-weight: 600;
+}
+.cmd-entry-status {
+    flex: none;
+    font-size: var(--fs-xs);
+    font-weight: 600;
+    color: var(--chip-color);
+}
+.cmd-entry-time {
+    flex: none;
+    font-size: var(--fs-xs);
+    color: var(--text-3);
+    font-variant-numeric: tabular-nums;
+}
+.cmd-entry-out {
+    margin: 0 var(--sp-3) var(--sp-2) var(--sp-6);
+    padding: var(--sp-2) var(--sp-3);
+    max-height: 160px;
+    overflow: auto;
+    border-radius: var(--r-xs);
+    border: 1px solid var(--line);
+    background: var(--inset);
+    font-family: var(--font-mono);
+    font-size: var(--fs-xs);
+    line-height: 1.5;
+    color: var(--text-2);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    -webkit-user-select: text;
+    user-select: text;
+}
+/* ── 명령 탭 끝 ── */

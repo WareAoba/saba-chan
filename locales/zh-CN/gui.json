@@ -669,6 +669,7 @@
     "tab_info": "信息",
     "console_offline": "服务器已停止。启动后日志会显示在这里。",
     "console_offline_input": "启动服务器后即可发送命令",
+    "console_read_only": "此服务器不接受控制台输入。请在命令标签页发送命令",
     "console_popped_out": "控制台已在单独的窗口中打开。",
     "console_popin": "移回这里",
     "commands_offline": "启动服务器后即可发送命令。",

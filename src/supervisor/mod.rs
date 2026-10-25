@@ -2277,7 +2277,8 @@ impl Supervisor {
                 "lines": lines,
                 "epoch": proc.console_epoch().await,
                 "running": proc.is_running(),
-                "stdin_available": proc.is_stdin_available(),
+                // `/stdin`과 같은 판정: REST 전용 모듈은 러너가 stdin을 쥐어도 입력을 받지 않는다
+                "stdin_available": self.module_accepts_stdin(instance_id) && proc.is_stdin_available(),
             }));
         }
 
@@ -4308,6 +4309,45 @@ mod tests {
         assert!(supervisor.tracker.get_pid("reused").is_err(), "a process that started after the record is someone else");
         assert!(!supervisor.instance_store.instance_dir("reused").join("managed.pid").exists());
         assert_eq!(supervisor.tracker.get_pid("same").unwrap(), std::process::id());
+    }
+
+    /// REST 전용 모듈의 서버는 러너가 stdin을 쥐어도(의사 콘솔) 콘솔 입력을 받지 않는다:
+    /// 콘솔 응답의 `stdin_available`은 `/stdin`이 받는지와 같다 (다르면 클라이언트가 입력칸을 열고 409를 받는다)
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn console_input_follows_the_module_protocols() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules_dir = tmp.path().join("modules");
+        for (name, supported) in [("rest-game", "[\"rest\"]"), ("stdin-game", "[\"stdin\"]")] {
+            let dir = modules_dir.join(name);
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join("lifecycle.py"), "").unwrap();
+            std::fs::write(
+                dir.join("module.toml"),
+                format!("[module]\nname = \"{name}\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[protocols]\nsupported = {supported}\n"),
+            )
+            .unwrap();
+        }
+        let mut supervisor = Supervisor::new_with_instances_dir(
+            modules_dir.to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        for (id, module) in [("rest", "rest-game"), ("stdin", "stdin-game")] {
+            let mut inst = crate::instance::ServerInstance::new(id, module);
+            inst.id = id.into();
+            supervisor.instance_store.add(inst).unwrap();
+            let proc = managed_process::ManagedProcess::spawn("/bin/sh", &["-c".into(), "sleep 30".into()], ".", Vec::new(), None, None)
+                .await
+                .unwrap();
+            supervisor.managed_store.insert(id, proc).await;
+        }
+        let rest = supervisor.get_console_output("rest", None, Some(10)).await.unwrap();
+        let stdin = supervisor.get_console_output("stdin", None, Some(10)).await.unwrap();
+        for id in ["rest", "stdin"] {
+            let _ = supervisor.managed_store.get(id).await.unwrap().force_kill();
+        }
+        assert_eq!(rest["stdin_available"], false, "{rest}");
+        assert_eq!(stdin["stdin_available"], true, "{stdin}");
     }
 
     /// 데몬이 다시 붙으면 콘솔 줄 번호가 0부터 다시 매겨진다. PID가 같아도 클라이언트가 이어 읽던 번호를
