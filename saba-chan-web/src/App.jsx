@@ -56,15 +56,16 @@ function Gate({ phase, reason }) {
     const { t } = useTranslation();
     const closed = phase === 'closed';
     return (
+        // 사이트의 "잘못된 접근" 화면(server-chan website/public/blocked.html)과 같은 모양
         <main className="gate">
-            <div className="gate-card">
+            <div className="gate-body">
                 <img
                     className={closed ? 'gate-art' : 'gate-art gate-art-float'}
-                    src={closed ? art.sleepy : art.relay}
+                    src={closed ? art.denied : art.relay}
                     alt=""
                 />
                 <h1 className="gate-title">
-                    <Wordmark className="gate-wordmark" />
+                    {closed ? <span className="gate-oops">Oops!</span> : <Wordmark className="gate-wordmark" />}
                 </h1>
                 {closed ? (
                     <>
