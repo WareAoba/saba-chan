@@ -33,8 +33,10 @@ use std::collections::HashMap;
 pub struct ChatSettings {
     /// 비어 있으면 응답 언어의 기본 접두사 (`default_prefix`)
     pub prefixes: Vec<String>,
-    /// 길드별 설정. 서버·명령을 부르는 낱말은 `nodeSettings[guild].instances` (`words`)
+    /// 길드별 설정
     pub node_settings: Value,
+    /// 인스턴스 id → 서버·명령을 부르는 낱말 (`words`, 어느 길드에서나 같다)
+    pub server_words: HashMap<String, words::InstanceWords>,
 }
 
 impl From<&BotConfig> for ChatSettings {
@@ -42,6 +44,7 @@ impl From<&BotConfig> for ChatSettings {
         Self {
             prefixes: cfg.prefixes.clone(),
             node_settings: cfg.node_settings.clone(),
+            server_words: cfg.server_words.clone(),
         }
     }
 }
@@ -94,8 +97,8 @@ struct Ctx<'a, D: DaemonApi> {
     req: &'a ChatRequest,
     modules: Vec<ModuleView>,
     aliases: ModuleAliases,
-    /// 요청한 길드의 인스턴스별 낱말 (로컬 요청이면 비어 있다)
-    words: HashMap<String, words::InstanceWords>,
+    /// 인스턴스별 낱말
+    words: &'a HashMap<String, words::InstanceWords>,
 }
 
 /// 처리 결과. `text`는 늘 사람이 읽을 문구다. 데몬이 입력을 알아보지 못했으면 `code`가 붙고,
@@ -124,11 +127,7 @@ impl From<String> for Reply {
 pub async fn process<D: DaemonApi>(api: &D, settings: &ChatSettings, cat: &Catalog, req: &ChatRequest) -> Reply {
     let modules = api.modules().await;
     let aliases = ModuleAliases::build(&modules);
-    let words = match (&req.remote, req.guild_id.as_deref()) {
-        (Some(_), Some(guild)) => words::of_guild(&settings.node_settings, guild),
-        _ => HashMap::new(),
-    };
-    let ctx = Ctx { api, settings, cat, req, modules, aliases, words };
+    let ctx = Ctx { api, settings, cat, req, modules, aliases, words: &settings.server_words };
 
     let text = strip_prefix(req.text.trim(), &ctx.prefixes());
     let args: Vec<&str> = text.split_whitespace().collect();

@@ -75,7 +75,6 @@
     "pair_gui_hint": "Vous pouvez aussi voir la connexion Discord dans l'écran Discord de la GUI.",
     "no_paired_servers": "Aucun serveur Discord n'est encore associé à ce PC. Lancez : saba-chan-cli bot pair",
     "pick_server": "Plusieurs serveurs Discord sont associés. Indiquez l'id de celui à modifier : {{servers}}",
-    "words_not_used": "Ce serveur Discord n'utilise pas ce serveur.",
     "translate_commands": "Noms de commandes traduits"
   },
   "col": {
@@ -549,7 +548,7 @@
       "events": "Suivre les événements du démon en direct (avec --json : un JSON par ligne). Ctrl+C pour arrêter",
       "install": "Installer Saba-chan sur ce PC sans le programme d'installation fenêtré",
       "uninstall": "Supprimer Saba-chan de ce PC (paramètres et serveurs conservés sauf indication contraire)",
-      "server.discord": "Les mots par lesquels chaque serveur Discord appelle ce serveur et ses commandes dans le chat. Sans option : afficher",
+      "server.discord": "Mots avec lesquels le chat Discord appelle ce serveur et ses commandes (les mêmes sur tous les serveurs Discord). Sans option : afficher",
       "config.paths": "Où Saba-chan garde ses données, modules et extensions, et les dossiers par défaut",
       "config.move": "Déplacer les modules ou les extensions vers un autre dossier. Les fichiers installés sont déplacés ; les serveurs doivent être arrêtés",
       "server.players": "Qui est connecté",
@@ -581,7 +580,6 @@
       "install.no_gui": "Installer sans l'application de bureau, même avec un écran",
       "uninstall.remove_settings": "Supprimer aussi les paramètres et la connexion Discord",
       "uninstall.remove_instances": "Supprimer aussi les serveurs (fichiers, mondes, copies)",
-      "server.discord.guild": "Serveur Discord par nom ou id (demandé si plusieurs sont associés et qu'une modification est faite)",
       "server.discord.word": "Mots pour le serveur, séparés par des virgules (remplacent les actuels). --word \"\" les supprime",
       "server.discord.command": "Mots pour une commande : COMMANDE=MOT,MOT (remplace les mots de cette commande, COMMANDE= les supprime). Répétable",
       "server.discord.clear": "Supprimer tous les mots de ce serveur",

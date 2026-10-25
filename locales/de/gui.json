@@ -820,10 +820,7 @@
     "disconnect_desc": "Trennt diesen PC von allen Discord-Servern.",
     "tab_instances": "Instanzen",
     "tab_members": "Mitglieder",
-    "iw_desc": "Lege fest, mit welchen Wörtern jeder Discord-Server diesen Server und seine Befehle aufruft. Andere Discord-Server sind nicht betroffen.",
-    "iw_not_linked": "Noch nicht mit Discord verbunden. Verbinde dich zuerst im Discord-Bereich.",
-    "iw_no_guilds": "Keine Discord-Server verknüpft.",
-    "iw_not_used": "Dieser Discord-Server nutzt diesen Server nicht. Du kannst ihn im Tab „Instanzen“ des Discord-Bereichs einschalten.",
+    "iw_desc": "Lege die Wörter fest, mit denen dieser Server und seine Befehle aufgerufen werden. Sie gelten in jedem verbundenen Discord-Server gleich.",
     "iw_server_words": "Namen für den Server",
     "iw_server_words_aria": "Namen für {{name}}",
     "iw_default": "Standard: {{words}}",
@@ -1313,6 +1310,7 @@
     "extra_placeholder": "z. B. -players=16 -useperfthreads",
     "unknown_args": "Argumente ohne passende Einstellung werden unverändert übergeben: {{args}}",
     "invalid_format": "Ungültiges Format.",
+    "invalid_fields": "Einige Werte haben nicht das richtige Format: {{fields}}",
     "unchecked": "Die zusätzlichen Startargumente konnten nicht geprüft werden, daher wurde nichts gespeichert"
   },
   "saba": {

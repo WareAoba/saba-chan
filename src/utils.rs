@@ -15,6 +15,88 @@ pub fn apply_creation_flags(cmd: &mut Command) -> &mut Command {
     cmd
 }
 
+/// 새 콘솔 창에 띄울 실행 파일 (non-managed 시작). 경로 없는 이름은 `env`의 PATH(없으면 데몬 PATH)에서 `.exe`로 찾고,
+/// 상대 경로는 작업 폴더(`cwd`) 기준이다. `.exe`·`.com`만 돌려준다: 배치 파일은 인자를 cmd가 다시 해석하므로
+/// `CreateProcessW`로 바로 띄우지 않는다 (None이면 호출자가 `std::process::Command`로 띄운다)
+#[cfg_attr(not(windows), allow(dead_code))]
+pub fn new_console_program(program: &str, cwd: &std::path::Path, env: &[(String, String)]) -> Option<std::path::PathBuf> {
+    let is_exe = |p: &std::path::Path| p.extension().is_some_and(|e| e.eq_ignore_ascii_case("exe") || e.eq_ignore_ascii_case("com"));
+    let path = std::path::Path::new(program.trim());
+    if path.components().count() > 1 || path.is_absolute() {
+        let full = cwd.join(path);
+        return (is_exe(&full) && full.is_file()).then_some(full);
+    }
+    let search = env.iter().rev().find(|(k, _)| k.eq_ignore_ascii_case("PATH")).map(|(_, v)| std::ffi::OsString::from(v)).or_else(|| std::env::var_os("PATH"))?;
+    let name = if is_exe(path) { path.to_path_buf() } else { std::path::PathBuf::from(format!("{}.exe", path.display())) };
+    std::env::split_paths(&search).map(|dir| dir.join(&name)).find(|p| p.is_file())
+}
+
+/// 데몬 환경 위에 `overrides`를 얹은 환경. 이름은 대소문자를 가리지 않고, 대소문자 무시 순서로 정렬한다 (Windows 환경 블록 규칙)
+#[cfg_attr(not(windows), allow(dead_code))]
+pub fn merged_env(base: impl IntoIterator<Item = (String, String)>, overrides: &[(String, String)]) -> Vec<(String, String)> {
+    let mut out: Vec<(String, String)> = Vec::new();
+    for (k, v) in base.into_iter().chain(overrides.iter().cloned()) {
+        out.retain(|(old, _)| !old.eq_ignore_ascii_case(&k));
+        out.push((k, v));
+    }
+    out.sort_by_key(|(k, _)| k.to_uppercase());
+    out
+}
+
+/// Windows: 프로그램을 새 콘솔 창에 띄운다 ("터미널로 열기" CLI, non-managed 게임 서버). 데몬의 표준 스트림(파이프·NUL·숨긴 콘솔)을
+/// 넘기지 않아야 프로그램이 새 창의 콘솔을 자기 입출력으로 쓴다. `std::process::Command`는 표준 핸들을 넘기므로
+/// `CreateProcessW`를 직접 부른다 (`STARTF_USESTDHANDLES` 없이, 핸들 상속 없이). `env`가 비면 데몬 환경을 물려준다. pid와 프로세스 핸들을 돌려준다
+/// (핸들은 taskkill이 실패할 때 직접 끝내는 데 쓴다)
+#[cfg(windows)]
+pub fn spawn_in_new_console(program: &std::path::Path, args: &[String], dir: Option<&std::path::Path>, env: &[(String, String)]) -> std::io::Result<(u32, std::os::windows::io::OwnedHandle)> {
+    use std::os::windows::io::FromRawHandle;
+    use std::os::windows::ffi::OsStrExt;
+    use winapi::um::handleapi::CloseHandle;
+    use winapi::um::processthreadsapi::{CreateProcessW, PROCESS_INFORMATION, STARTUPINFOW};
+    use winapi::um::winbase::{CREATE_NEW_CONSOLE, CREATE_UNICODE_ENVIRONMENT};
+
+    let wide = |s: &std::ffi::OsStr| s.encode_wide().collect::<Vec<u16>>();
+    let mut line = Vec::new();
+    crate::sandbox::appcontainer::push_arg(&wide(program.as_os_str()), &mut line);
+    for a in args {
+        crate::sandbox::appcontainer::push_arg(&wide(std::ffi::OsStr::new(a)), &mut line);
+    }
+    line.push(0);
+    let mut app = wide(program.as_os_str());
+    app.push(0);
+    let mut dir = dir.map(|d| wide(d.as_os_str())).unwrap_or_default();
+    dir.push(0);
+    // 환경 블록: `이름=값\0`을 잇고 끝에 \0 하나 더
+    let block: Option<Vec<u16>> = (!env.is_empty()).then(|| {
+        let base = std::env::vars_os().filter_map(|(k, v)| Some((k.into_string().ok()?, v.into_string().ok()?)));
+        let mut b: Vec<u16> = merged_env(base, env).iter().flat_map(|(k, v)| format!("{k}={v}\0").encode_utf16().collect::<Vec<_>>()).collect();
+        b.push(0);
+        b
+    });
+    unsafe {
+        let mut si: STARTUPINFOW = std::mem::zeroed();
+        si.cb = std::mem::size_of::<STARTUPINFOW>() as u32;
+        let mut pi: PROCESS_INFORMATION = std::mem::zeroed();
+        let ok = CreateProcessW(
+            app.as_ptr(),
+            line.as_mut_ptr(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            0,
+            CREATE_NEW_CONSOLE | CREATE_UNICODE_ENVIRONMENT,
+            block.as_ref().map_or(std::ptr::null_mut(), |b| b.as_ptr() as *mut _),
+            if dir.len() > 1 { dir.as_ptr() } else { std::ptr::null() },
+            &mut si,
+            &mut pi,
+        );
+        if ok == 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        CloseHandle(pi.hThread);
+        Ok((pi.dwProcessId, std::os::windows::io::OwnedHandle::from_raw_handle(pi.hProcess as _)))
+    }
+}
+
 /// 경로 한 칸으로만 쓸 수 있는 이름인지 (인스턴스 id, 모듈 이름, 로케일 등).
 /// 구분자·`.`/`..`·드라이브 표기(`C:`)·NUL이 있으면 다른 폴더를 가리킬 수 있어 거부한다.
 /// 끝의 `.`·공백도 거부한다: Windows가 버려서 `x.`가 `x` 폴더를 가리킨다
@@ -102,6 +184,37 @@ pub fn remove_install_leftovers(dir: &std::path::Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_new_console_runs_only_an_exe_found_like_the_shell_would() {
+        let tmp = tempfile::tempdir().unwrap();
+        let bin = tmp.path().join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        std::fs::write(bin.join("java.exe"), "").unwrap();
+        std::fs::write(bin.join("start.bat"), "").unwrap();
+        let path = std::env::join_paths([&bin]).unwrap().into_string().unwrap();
+        let env = vec![("Path".to_string(), path)];
+        // 경로 없는 이름은 모듈이 준 PATH(없으면 데몬 PATH)에서 .exe로 찾는다
+        assert_eq!(new_console_program("java", tmp.path(), &env), Some(bin.join("java.exe")));
+        assert_eq!(new_console_program(&bin.join("java.exe").to_string_lossy(), tmp.path(), &[]), Some(bin.join("java.exe")));
+        // 상대 경로는 작업 폴더 기준
+        assert_eq!(new_console_program("bin/java.exe", tmp.path(), &[]), Some(bin.join("java.exe")));
+        // 배치 파일·못 찾은 이름은 새 콘솔로 띄우지 않는다 (호출자가 예전 방식으로 띄운다)
+        assert_eq!(new_console_program(&bin.join("start.bat").to_string_lossy(), tmp.path(), &env), None);
+        assert_eq!(new_console_program("missing", tmp.path(), &env), None);
+        // 점이 든 이름은 끝을 바꾸지 않고 .exe를 덧붙인다 (`java.11`이 `java.exe`가 되지 않는다)
+        assert_eq!(new_console_program("java.11", tmp.path(), &env), None);
+        std::fs::write(bin.join("java.11.exe"), "").unwrap();
+        assert_eq!(new_console_program("java.11", tmp.path(), &env), Some(bin.join("java.11.exe")));
+    }
+
+    #[test]
+    fn the_new_console_environment_is_the_daemons_with_the_modules_values_on_top() {
+        let base = [("PATH", "a"), ("Temp", "t"), ("b", "1")].map(|(k, v)| (k.to_string(), v.to_string()));
+        let merged = merged_env(base, &[("path".to_string(), "x".to_string()), ("NEW".to_string(), "n".to_string())]);
+        // 이름은 대소문자를 가리지 않고 덮고, 대소문자 무시 순서로 정렬한다 (Windows 환경 블록)
+        assert_eq!(merged, [("b", "1"), ("NEW", "n"), ("path", "x"), ("Temp", "t")].map(|(k, v)| (k.to_string(), v.to_string())));
+    }
 
     #[test]
     fn only_plain_names_are_single_components() {

@@ -111,7 +111,6 @@
     "words_bad_command": "{{spec}}: write it as COMMAND=WORD,WORD (COMMAND= removes them).",
     "no_paired_servers": "No Discord server is paired with this PC yet. Run: saba-chan-cli bot pair",
     "pick_server": "Several Discord servers are paired. Give the id of the one to change: {{servers}}",
-    "words_not_used": "This Discord server doesn't use this server.",
     "translate_commands": "Translated command names"
   },
   "col": {
@@ -652,7 +651,7 @@
       "uninstall": "Remove Saba-chan from this PC (settings and servers are kept unless removed)",
       "config.paths": "Where Saba-chan keeps its data, modules and extensions, and the default folders",
       "config.move": "Move modules or extensions to another folder. Installed files are moved; servers must be stopped",
-      "server.discord": "What each Discord server calls this server and its commands in chat. No options: show"
+      "server.discord": "What Discord chat calls this server and its commands (the same in every Discord server). No options: show"
     },
     "arg": {
       "perm.level.add.above": "Put it right above this level (default: right below the owner)",
@@ -706,7 +705,6 @@
       "install.no_gui": "Install without the desktop app, even with a display",
       "do.action": "Action id, e.g. server.restart or server.command:say",
       "do.server": "Server the action works on",
-      "server.discord.guild": "Discord server by name or id (asked when several are paired and something changes)",
       "server.discord.word": "Words for the server, comma-separated (replace the current ones). --word \"\" removes them",
       "server.discord.command": "Words for one command: COMMAND=WORD,WORD (replace that command's words, COMMAND= removes them). Repeatable",
       "server.discord.clear": "Remove every word of this server",

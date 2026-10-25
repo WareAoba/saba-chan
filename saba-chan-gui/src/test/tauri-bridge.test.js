@@ -95,17 +95,6 @@ describe('데몬 응답 가공', () => {
         expect(await api.relayListLegacyMembers('g1')).toMatchObject({ error: 'relay_error' });
     });
 
-    it('길드 인스턴스 목록은 데몬 `{guildId, instances}`에서 목록만 돌려준다', async () => {
-        const { api } = await install({
-            daemon_request: daemon({
-                'GET /api/guilds/g1/instances': { status: 200, data: { guildId: 'g1', instances: [{ id: 's1' }] } },
-                'GET /api/guilds/g2/instances': { status: 500, data: { success: false, error: 'boom' } },
-            }),
-        });
-        expect(await api.guildInstances('g1')).toEqual([{ id: 's1' }]);
-        expect(await api.guildInstances('g2')).toMatchObject({ error: 'boom' });
-    });
-
     it('GUI 설정 저장은 부른 순서대로 한다 (앞 저장이 늦게 끝나 뒤 저장을 덮지 않게)', async () => {
         let releaseFirst;
         const puts = [];

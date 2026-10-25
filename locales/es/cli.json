@@ -75,7 +75,6 @@
     "pair_gui_hint": "También puedes ver la conexión de Discord en la pantalla de Discord de la GUI.",
     "no_paired_servers": "Aún no hay ningún servidor de Discord vinculado a este PC. Ejecuta: saba-chan-cli bot pair",
     "pick_server": "Hay varios servidores de Discord vinculados. Indica el id del que quieres cambiar: {{servers}}",
-    "words_not_used": "Este servidor de Discord no usa este servidor.",
     "translate_commands": "Nombres de comandos traducidos"
   },
   "col": {
@@ -549,7 +548,7 @@
       "events": "Sigue los eventos del daemon en vivo (con --json: un JSON por línea). Ctrl+C para parar",
       "install": "Instalar Saba-chan en este PC sin el instalador con ventana",
       "uninstall": "Eliminar Saba-chan de este PC (los ajustes y servidores se conservan salvo que se indique)",
-      "server.discord": "Cómo llama cada servidor de Discord a este servidor y a sus comandos en el chat. Sin opciones: mostrar",
+      "server.discord": "Palabras con las que el chat de Discord llama a este servidor y sus comandos (iguales en todos los servidores de Discord). Sin opciones: mostrar",
       "config.paths": "Dónde guarda Saba-chan sus datos, módulos y extensiones, y las carpetas predeterminadas",
       "config.move": "Mover los módulos o las extensiones a otra carpeta. Los archivos instalados se mueven; los servidores deben estar detenidos",
       "server.players": "Quién está conectado",
@@ -581,7 +580,6 @@
       "install.no_gui": "Instalar sin la app de escritorio aunque haya pantalla",
       "uninstall.remove_settings": "Eliminar también los ajustes y la conexión con Discord",
       "uninstall.remove_instances": "Eliminar también los servidores (archivos, mundos, copias)",
-      "server.discord.guild": "Servidor de Discord por nombre o id (se pregunta si hay varios vinculados y algo cambia)",
       "server.discord.word": "Palabras para el servidor, separadas por comas (reemplazan las actuales). --word \"\" las elimina",
       "server.discord.command": "Palabras para un comando: COMANDO=PALABRA,PALABRA (reemplaza las de ese comando, COMANDO= las elimina). Se puede repetir",
       "server.discord.clear": "Eliminar todas las palabras de este servidor",

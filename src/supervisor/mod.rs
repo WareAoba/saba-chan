@@ -1172,26 +1172,45 @@ impl Supervisor {
             return Ok(start_cancelled(server_name));
         }
 
-        // Spawn detached process (no stdin/stdout capture)
-        let mut cmd = TokioCommand::new(program);
-        cmd.args(&args)
-            .current_dir(working_dir)
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null());
+        // 데몬이 입출력을 잡지 않는다. Windows는 서버를 새 콘솔 창에 띄워 사용자가 그 창에서 보고 입력한다
+        // (`.exe`가 아니면 예전처럼 창 없이 띄운다, `utils::new_console_program`)
+        #[cfg(windows)]
+        let console = crate::utils::new_console_program(program, std::path::Path::new(working_dir), &env_vars);
+        #[cfg(not(windows))]
+        let console: Option<std::path::PathBuf> = None;
+        // 새 콘솔로 띄운 서버는 tokio Child가 없다. 정지 대비로 프로세스 핸들을 들고 있는다
+        #[cfg(windows)]
+        let mut console_handle: Option<std::os::windows::io::OwnedHandle> = None;
+        let (pid, mut child) = match console {
+            #[cfg(windows)]
+            Some(exe) => {
+                let spawned = crate::utils::spawn_in_new_console(&exe, &args, Some(std::path::Path::new(working_dir)), &env_vars);
+                drop(gate);
+                let (pid, handle) = spawned.map_err(|e| anyhow::anyhow!("Failed to spawn process '{}': {}", program, e))?;
+                console_handle = Some(handle);
+                (pid, None)
+            }
+            _ => {
+                let mut cmd = TokioCommand::new(program);
+                cmd.args(&args)
+                    .current_dir(working_dir)
+                    .stdin(std::process::Stdio::null())
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null());
 
-        for (key, value) in &env_vars {
-            cmd.env(key, value);
-        }
+                for (key, value) in &env_vars {
+                    cmd.env(key, value);
+                }
 
-        crate::utils::apply_creation_flags(&mut cmd);
+                crate::utils::apply_creation_flags(&mut cmd);
 
-        let child = cmd.spawn();
-        drop(gate);
-        let mut child = child.map_err(|e| anyhow::anyhow!("Failed to spawn process '{}': {}", program, e))?;
-
-        let pid = child.id()
-            .ok_or_else(|| anyhow::anyhow!("Failed to get PID of spawned process"))? ;
+                let child = cmd.spawn();
+                drop(gate);
+                let child = child.map_err(|e| anyhow::anyhow!("Failed to spawn process '{}': {}", program, e))?;
+                let pid = child.id().ok_or_else(|| anyhow::anyhow!("Failed to get PID of spawned process"))?;
+                (pid, Some(child))
+            }
+        };
 
         // 다른 경로(포트 충돌 검사·상태·정지)와 같은 키(인스턴스 id)로 추적한다.
         // managed 시작과 같이 정지 표시를 지우고 세대를 올린다 (기다리던 재시작이 이 시작 뒤에 또 켜지 않게)
@@ -1204,9 +1223,18 @@ impl Supervisor {
                 let killed = tokio::task::spawn_blocking(move || process::force_kill_tree(pid)).await;
                 if let Err(e) = killed.map_err(anyhow::Error::from).and_then(|r| r) {
                     tracing::warn!("Could not stop '{}' after a stop request during start: {}", server_name, e);
-                    let _ = child.kill().await;
+                    if let Some(child) = child.as_mut() {
+                        let _ = child.kill().await;
+                    }
+                    #[cfg(windows)]
+                    if let Some(handle) = console_handle.as_ref() {
+                        use std::os::windows::io::AsRawHandle;
+                        unsafe { winapi::um::processthreadsapi::TerminateProcess(handle.as_raw_handle() as _, 1) };
+                    }
                 }
-                let _ = child.wait().await;
+                if let Some(child) = child.as_mut() {
+                    let _ = child.wait().await;
+                }
                 return Ok(start_cancelled(server_name));
             }
             s.stop_requested.remove(&instance.id);

@@ -820,10 +820,7 @@
     "disconnect_desc": "このPCとすべてのDiscordサーバーとの接続を解除します。",
     "tab_instances": "インスタンス",
     "tab_members": "メンバー",
-    "iw_desc": "Discordサーバーごとに、このサーバーとコマンドを呼ぶ言葉を決めます。ほかのDiscordサーバーには影響しません。",
-    "iw_not_linked": "まだDiscordに接続していません。先にDiscord画面で接続してください。",
-    "iw_no_guilds": "接続しているDiscordサーバーがありません。",
-    "iw_not_used": "このDiscordサーバーではこのサーバーを使っていません。Discord画面のインスタンスタブで有効にできます。",
+    "iw_desc": "このサーバーとコマンドを呼ぶ言葉を決めます。接続したすべての Discord サーバーで同じ言葉で呼べます。",
     "iw_server_words": "サーバーの呼び方",
     "iw_server_words_aria": "{{name}}の呼び方",
     "iw_default": "既定: {{words}}",
@@ -1313,6 +1310,7 @@
     "extra_placeholder": "例: -players=16 -useperfthreads",
     "unknown_args": "設定にない引数はそのまま渡します: {{args}}",
     "invalid_format": "形式が正しくありません。",
+    "invalid_fields": "形式が正しくない値があります: {{fields}}",
     "unchecked": "追加の起動引数を確認できなかったため、保存しませんでした"
   },
   "saba": {

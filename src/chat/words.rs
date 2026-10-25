@@ -1,15 +1,16 @@
-//! 길드·인스턴스별 디스코드 낱말 (`nodeSettings[guild].instances[instanceId]`)
+//! 인스턴스별 디스코드 낱말 (봇 설정 `serverWords[instanceId]`)
 //!
-//! 한 길드에서 한 서버를 부르는 낱말(`words`)과, 그 서버의 명령을 부르는 낱말(`commands`)을
-//! 저장·검사한다. 해석은 `chat`이, 저장은 `/api/guilds/:guild/instances`가 한다.
+//! 한 서버를 부르는 낱말(`words`)과, 그 서버의 명령을 부르는 낱말(`commands`)을
+//! 저장·검사한다. 낱말은 인스턴스에 딸린다: 어느 디스코드 서버(길드)에서 불러도 같다.
+//! 해석은 `chat`이, 저장은 `/api/instance/:id/words`가 한다.
 
 use super::api::{ModuleView, ServerView};
 use super::aliases::BUILTIN_COMMANDS;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::Value;
 use std::collections::{BTreeMap, HashMap};
 
-/// `nodeSettings[guild]` 안의 키
+/// 0.1.10까지 길드마다 낱말을 두던 `nodeSettings[guild]` 안의 키. 시작할 때 `serverWords`로 옮긴다 (`migrate`)
 pub const INSTANCES_KEY: &str = "instances";
 /// 낱말 하나의 최대 글자 수와 항목마다의 최대 개수
 pub const WORD_MAX_CHARS: usize = 32;
@@ -31,8 +32,8 @@ impl InstanceWords {
     }
 }
 
-/// 한 길드의 인스턴스별 낱말
-pub fn of_guild(node_settings: &Value, guild: &str) -> HashMap<String, InstanceWords> {
+/// 0.1.10까지의 한 길드 인스턴스별 낱말
+fn of_guild(node_settings: &Value, guild: &str) -> HashMap<String, InstanceWords> {
     node_settings
         .get(guild)
         .and_then(|n| n.get(INSTANCES_KEY))
@@ -45,7 +46,7 @@ pub fn same(a: &str, b: &str) -> bool {
     a.eq_ignore_ascii_case(b) || a.to_lowercase() == b.to_lowercase()
 }
 
-/// 이 낱말로 부를 명령 (그 길드·인스턴스의 `commands`)
+/// 이 낱말로 부를 명령 (그 인스턴스의 `commands`)
 pub fn command_for<'a>(words: Option<&'a InstanceWords>, input: &str) -> Option<&'a str> {
     words?.commands.iter().find(|(_, list)| list.iter().any(|w| same(w, input))).map(|(cmd, _)| cmd.as_str())
 }
@@ -63,7 +64,7 @@ pub struct Problem {
     pub conflict_with: Option<String>,
 }
 
-/// 길드 안에서 이 인스턴스의 낱말을 검사한다. `servers`는 그 길드가 쓰는 서버들, `others`는 다른 인스턴스의 낱말
+/// 이 인스턴스의 낱말을 검사한다. `servers`는 모든 서버(낱말은 어느 길드에서나 쓰이므로), `others`는 다른 인스턴스의 낱말
 pub fn validate(
     instance: &ServerView,
     module: Option<&ModuleView>,
@@ -146,102 +147,114 @@ pub fn validate(
     out
 }
 
-/// 예전 전역 별명(`instanceAliases`, `moduleAliases`, `commandAliases`)을 길드·인스턴스 낱말로 옮긴다.
-/// `servers_of(guild)`는 그 길드가 쓰는 서버들. 옮긴 `nodeSettings`를 돌려준다(옮길 것이 없거나 길드가 없으면 None)
+/// 옮긴 결과: 길드에서 `instances`를 걷은 `nodeSettings`와 인스턴스별 낱말
+pub struct Migrated {
+    pub node_settings: Value,
+    pub server_words: HashMap<String, InstanceWords>,
+}
+
+/// 예전 낱말을 인스턴스 낱말(`serverWords`)로 옮긴다: 0.1.10의 길드별 낱말(`nodeSettings[guild].instances`)과
+/// 그 전의 전역 별명(`instanceAliases`, `moduleAliases`, `commandAliases`). `current`는 이미 옮긴 낱말(먼저 둔다).
+/// 같은 서버의 낱말은 길드 이름 순으로 합치고, 다른 서버 이름·id·낱말과 겹치는 낱말은 버린다 (낱말끼리는 id 순으로 먼저 온 서버가 갖는다).
+/// 옮길 것이 없으면 None
 pub fn migrate(
     node_settings: &Value,
-    guilds: &[String],
-    servers_of: impl Fn(&str) -> Vec<ServerView>,
+    servers: &[ServerView],
+    current: &HashMap<String, InstanceWords>,
     instance_aliases: &HashMap<String, String>,
     module_aliases: &HashMap<String, String>,
     command_aliases: &HashMap<String, Value>,
-) -> Option<Value> {
-    if guilds.is_empty() || (instance_aliases.is_empty() && module_aliases.is_empty() && command_aliases.is_empty()) {
+) -> Option<Migrated> {
+    let mut guilds: Vec<&String> = node_settings.as_object().into_iter().flatten().filter(|(_, n)| n.get(INSTANCES_KEY).is_some()).map(|(g, _)| g).collect();
+    guilds.sort();
+    if guilds.is_empty() && instance_aliases.is_empty() && module_aliases.is_empty() && command_aliases.is_empty() {
         return None;
     }
     let split = |s: &str| -> Vec<String> { s.split(',').map(str::trim).filter(|a| !a.is_empty()).map(str::to_string).collect() };
+    let mut table = current.clone();
+    let add_word = |list: &mut Vec<String>, w: String| {
+        let shape = !w.is_empty() && w.chars().count() <= WORD_MAX_CHARS && !w.chars().any(char::is_whitespace);
+        if shape && !list.iter().any(|e| same(e, &w)) && list.len() < WORDS_MAX {
+            list.push(w);
+        }
+    };
+    let known = |id: &str| servers.iter().any(|s| s.id == id);
+    for guild in &guilds {
+        let mut old: Vec<(String, InstanceWords)> = of_guild(node_settings, guild).into_iter().filter(|(id, _)| known(id)).collect();
+        old.sort_by(|a, b| a.0.cmp(&b.0));
+        for (id, w) in old {
+            let entry = table.entry(id).or_default();
+            for word in w.words {
+                add_word(&mut entry.words, word);
+            }
+            for (cmd, list) in w.commands {
+                let target = entry.commands.entry(cmd).or_default();
+                for word in list {
+                    add_word(target, word);
+                }
+            }
+        }
+    }
+    for s in servers {
+        let entry = table.entry(s.id.clone()).or_default();
+        let mut words: Vec<String> = instance_aliases.get(&s.id).map(|a| split(a)).unwrap_or_default();
+        // 모듈 별명은 그 모듈 인스턴스가 하나뿐일 때만 그 인스턴스 것이 된다
+        if servers.iter().filter(|o| o.module == s.module).count() == 1 {
+            words.extend(module_aliases.get(&s.module).map(|a| split(a)).unwrap_or_default());
+        } else if module_aliases.contains_key(&s.module) {
+            tracing::info!("[Chat] module aliases of {} dropped (several instances)", s.module);
+        }
+        for w in words {
+            add_word(&mut entry.words, w);
+        }
+        for (cmd, list) in command_aliases.get(&s.module).and_then(Value::as_object).into_iter().flatten() {
+            let target = entry.commands.entry(cmd.clone()).or_default();
+            for w in list.as_str().map(split).unwrap_or_default() {
+                add_word(target, w);
+            }
+        }
+    }
+    // 다른 서버 이름·id·낱말과 겹치는 낱말은 버린다 (낱말끼리는 먼저 온 서버가 갖는다)
+    let mut taken: Vec<String> = Vec::new();
+    let mut ids: Vec<String> = table.keys().cloned().collect();
+    ids.sort();
+    let mut server_words: HashMap<String, InstanceWords> = HashMap::new();
+    for id in ids {
+        let mut w = table.remove(&id).unwrap_or_default();
+        w.words.retain(|word| {
+            let other_server = servers.iter().filter(|s| s.id != id).any(|s| same(&s.name, word) || same(&s.id, word));
+            let free = !RESERVED.iter().any(|r| same(r, word)) && !other_server && !taken.iter().any(|t| same(t, word));
+            if !free {
+                tracing::info!("[Chat] word '{}' of instance {} dropped (conflict)", word, id);
+            }
+            free
+        });
+        taken.extend(w.words.iter().cloned());
+        w.commands.retain(|_, l| !l.is_empty());
+        if !w.is_empty() {
+            server_words.insert(id, w);
+        }
+    }
     let mut nodes = node_settings.as_object().cloned().unwrap_or_default();
     for guild in guilds {
-        let servers = servers_of(guild);
-        let mut table = of_guild(node_settings, guild);
-        for s in &servers {
-            let entry = table.entry(s.id.clone()).or_default();
-            let mut words: Vec<String> = instance_aliases.get(&s.id).map(|a| split(a)).unwrap_or_default();
-            // 모듈 별명은 그 모듈 인스턴스가 하나뿐일 때만 그 인스턴스 것이 된다
-            if servers.iter().filter(|o| o.module == s.module).count() == 1 {
-                words.extend(module_aliases.get(&s.module).map(|a| split(a)).unwrap_or_default());
-            } else if module_aliases.contains_key(&s.module) {
-                tracing::info!("[Chat] guild {}: module aliases of {} dropped (several instances)", guild, s.module);
-            }
-            for w in words {
-                if !entry.words.iter().any(|e| same(e, &w)) && entry.words.len() < WORDS_MAX {
-                    entry.words.push(w);
-                }
-            }
-            for (cmd, list) in command_aliases.get(&s.module).and_then(Value::as_object).into_iter().flatten() {
-                let target = entry.commands.entry(cmd.clone()).or_default();
-                for w in list.as_str().map(split).unwrap_or_default() {
-                    let shape = w.chars().count() <= WORD_MAX_CHARS && !w.chars().any(char::is_whitespace);
-                    if shape && !target.iter().any(|e| same(e, &w)) && target.len() < WORDS_MAX {
-                        target.push(w);
-                    }
-                }
-            }
-        }
-        // 다른 서버 이름·id·낱말과 겹치는 낱말은 버린다 (낱말끼리는 먼저 온 서버가 갖는다)
-        let mut taken: Vec<String> = Vec::new();
-        let mut ids: Vec<&String> = table.keys().collect();
-        ids.sort();
-        let mut cleaned: HashMap<String, InstanceWords> = HashMap::new();
-        for id in ids {
-            let mut w = table[id].clone();
-            w.words.retain(|word| {
-                let other_server = servers.iter().filter(|s| &s.id != id).any(|s| same(&s.name, word) || same(&s.id, word));
-                let shape = word.chars().count() <= WORD_MAX_CHARS && !word.chars().any(char::is_whitespace);
-                let free = shape && !RESERVED.iter().any(|r| same(r, word)) && !other_server && !taken.iter().any(|t| same(t, word));
-                if !free {
-                    tracing::info!("[Chat] guild {}: word '{}' of instance {} dropped (conflict)", guild, word, id);
-                }
-                free
-            });
-            taken.extend(w.words.iter().cloned());
-            w.commands.retain(|_, l| !l.is_empty());
-            if !w.is_empty() {
-                cleaned.insert(id.clone(), w);
-            }
-        }
-        let node = nodes.entry(guild.clone()).or_insert_with(|| json!({}));
-        if let Some(node) = node.as_object_mut() {
-            if cleaned.is_empty() {
-                node.remove(INSTANCES_KEY);
-            } else {
-                node.insert(INSTANCES_KEY.into(), serde_json::to_value(&cleaned).unwrap_or_default());
-            }
+        if let Some(node) = nodes.get_mut(guild.as_str()).and_then(Value::as_object_mut) {
+            node.remove(INSTANCES_KEY);
         }
     }
-    Some(Value::Object(nodes))
+    Some(Migrated { node_settings: Value::Object(nodes), server_words })
 }
 
-/// heartbeat `instanceWords`: 항목이 있는 길드만 (길드 50, 길드당 인스턴스 50까지)
-pub fn heartbeat(node_settings: &Value) -> Option<Value> {
-    let mut out = serde_json::Map::new();
-    let mut guilds: Vec<&String> = node_settings.as_object()?.keys().collect();
-    guilds.sort();
-    for guild in guilds.into_iter().take(50) {
-        let mut table: Vec<(String, InstanceWords)> = of_guild(node_settings, guild).into_iter().filter(|(_, w)| !w.is_empty()).collect();
-        if table.is_empty() {
-            continue;
-        }
-        table.sort_by(|a, b| a.0.cmp(&b.0));
-        let entries: serde_json::Map<String, Value> = table.into_iter().take(50).map(|(id, w)| (id, serde_json::to_value(w).unwrap_or_default())).collect();
-        out.insert(guild.clone(), Value::Object(entries));
-    }
-    (!out.is_empty()).then_some(Value::Object(out))
+/// heartbeat `serverWords` `{instanceId: {words, commands}}`: 낱말이 있는 인스턴스만 (id 순 200개까지, 릴레이 MAX_SERVERS)
+pub fn heartbeat(server_words: &HashMap<String, InstanceWords>) -> Value {
+    let mut table: Vec<(&String, &InstanceWords)> = server_words.iter().filter(|(_, w)| !w.is_empty()).collect();
+    table.sort_by(|a, b| a.0.cmp(b.0));
+    Value::Object(table.into_iter().take(200).map(|(id, w)| (id.clone(), serde_json::to_value(w).unwrap_or_default())).collect())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     fn server(id: &str, name: &str, module: &str) -> ServerView {
         ServerView { id: id.into(), name: name.into(), module: module.into(), status: "stopped".into(), pid: None }
@@ -274,26 +287,39 @@ mod tests {
     }
 
     #[test]
-    fn old_global_aliases_move_to_each_guild_instance() {
+    fn old_guild_words_and_global_aliases_move_to_the_instance() {
         let servers = vec![server("a", "survival", "minecraft"), server("b", "creative", "minecraft"), server("p", "pal", "palworld")];
-        let guilds = vec!["g1".to_string()];
+        let node_settings = json!({
+            "g1": { "defaultLevel": 1, "instances": { "b": { "words": ["크리"], "commands": { "kick": ["내보내"] } }, "gone": { "words": ["x"] } } },
+            "g2": { "instances": { "b": { "words": ["크리", "cr2"] }, "a": { "words": ["크리", "서바"] } } },
+        });
         let moved = migrate(
-            &json!({ "g1": { "defaultLevel": 1 } }),
-            &guilds,
-            |_| servers.clone(),
-            &HashMap::from([("b".to_string(), "크리, cr, p, 두 낱말".to_string())]),
+            &node_settings,
+            &servers,
+            &HashMap::new(),
+            &HashMap::from([("b".to_string(), "cr, p, 두 낱말".to_string())]),
             &HashMap::from([("minecraft".to_string(), "마크".to_string()), ("palworld".to_string(), "팰".to_string())]),
             &HashMap::from([("minecraft".to_string(), json!({ "kick": "추방, 킥" }))]),
         )
         .unwrap();
-        let table = of_guild(&moved, "g1");
-        // 다른 서버의 id("p")와 같은 낱말은 버린다: 옮긴 뒤 그 서버를 가리키게 되므로. 규칙에 맞지 않는 낱말도 버린다
-        assert_eq!(table["b"].words, vec!["크리", "cr"]);
+        let w = &moved.server_words;
+        // 길드마다 두었던 낱말을 길드 이름 순으로 합친다. 두 서버가 같은 낱말을 썼으면 id 순으로 먼저 온 서버("a")가 갖는다
+        assert_eq!(w["a"].words, vec!["크리", "서바"]);
+        // 다른 서버의 id("p")와 같은 낱말, 규칙에 맞지 않는 낱말도 버린다
+        assert_eq!(w["b"].words, vec!["cr2", "cr"]);
+        assert_eq!(w["b"].commands["kick"], vec!["내보내", "추방", "킥"]);
+        assert_eq!(w["a"].commands["kick"], vec!["추방", "킥"]);
         // 인스턴스가 둘인 모듈의 별명은 어느 쪽 것인지 몰라 버린다
-        assert!(table["a"].words.is_empty());
-        assert_eq!(table["p"].words, vec!["팰"]);
-        assert_eq!(table["a"].commands["kick"], vec!["추방", "킥"]);
-        assert_eq!(moved["g1"]["defaultLevel"], 1);
-        assert!(migrate(&moved, &[], |_| servers.clone(), &HashMap::new(), &HashMap::new(), &HashMap::new()).is_none());
+        assert_eq!(w["p"].words, vec!["팰"]);
+        // 지워진 인스턴스의 낱말은 옮기지 않고, 길드의 다른 설정은 남긴다
+        assert!(!w.contains_key("gone"));
+        assert_eq!(moved.node_settings, json!({ "g1": { "defaultLevel": 1 }, "g2": {} }));
+        assert!(migrate(&moved.node_settings, &servers, w, &HashMap::new(), &HashMap::new(), &HashMap::new()).is_none());
+    }
+
+    #[test]
+    fn heartbeat_carries_only_instances_with_words() {
+        let words = HashMap::from([("b".to_string(), InstanceWords { words: vec!["크리".into()], ..Default::default() }), ("a".to_string(), InstanceWords::default())]);
+        assert_eq!(heartbeat(&words), json!({ "b": { "words": ["크리"], "commands": {} } }));
     }
 }

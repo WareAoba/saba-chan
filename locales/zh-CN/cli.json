@@ -101,7 +101,6 @@
     "words_bad_command": "{{spec}}：请写成 命令=称呼,称呼（命令= 表示删除）。",
     "no_paired_servers": "此电脑尚未与任何 Discord 服务器配对。运行: saba-chan-cli bot pair",
     "pick_server": "已配对多个 Discord 服务器。请指定要更改的服务器 id: {{servers}}",
-    "words_not_used": "此 Discord 服务器未使用此服务器。",
     "translate_commands": "翻译命令名称"
   },
   "col": {
@@ -620,7 +619,7 @@
       "server.console": "边看控制台边输入",
       "server.run": "执行游戏命令（不指定命令则显示列表）",
       "server.commands": "此服务器能识别的游戏命令",
-      "server.discord": "每个 Discord 服务器在聊天中用来称呼此服务器及其命令的词。不带选项：查看",
+      "server.discord": "在 Discord 聊天中呼叫此服务器及其命令的词（所有 Discord 服务器中相同）。不带选项：查看",
       "server.send": "向控制台原样发送一行",
       "server.settings": "查看服务器设置",
       "server.set": "更改设置：键=值 ...（扩展数据用 ext.键，空值表示删除）",
@@ -884,7 +883,6 @@
       "bot.music.queue_lines": "播放器面板的队列行数（1-20）",
       "bot.music.refresh": "播放器面板刷新间隔，毫秒（2000-10000）",
       "bot.music.normalize": "使每首歌的音量一致（on 或 off）",
-      "server.discord.guild": "Discord 服务器名称或 id（配对了多个且要修改时会询问）",
       "server.discord.word": "称呼服务器的词，多个用逗号分隔（替换当前的词）。--word \"\" 表示删除",
       "server.discord.command": "单个命令的称呼：命令=称呼,称呼（只更改该命令，命令= 表示删除）。可多次使用",
       "server.discord.clear": "删除此服务器的所有称呼",
