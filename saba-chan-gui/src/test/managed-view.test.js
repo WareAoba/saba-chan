@@ -16,9 +16,15 @@ describe('managed 판단 (데몬 Supervisor::uses_managed_start와 같다)', () 
         expect(interactionOf({ module_settings: {} }, console).console).toBe(true);
         expect(interactionOf({ module_settings: { managed_start: false } }, console)).toEqual({
             console: false,
+            input: false,
             commands: true,
         });
-        expect(interactionOf({}, { protocols: { supported: ['rest'] } }).console).toBe(false);
+    });
+
+    it('REST 전용 서버도 managed면 러너가 받은 출력을 읽기 전용 콘솔로 보여 준다', () => {
+        const rest = { protocols: { supported: ['rest'] } };
+        expect(interactionOf({}, rest)).toEqual({ console: true, input: false, commands: true });
+        expect(interactionOf({ module_settings: { managed_start: false } }, rest).console).toBe(false);
     });
 });
 

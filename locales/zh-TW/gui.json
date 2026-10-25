@@ -669,6 +669,7 @@
     "tab_info": "資訊",
     "console_offline": "伺服器已停止。啟動後記錄會顯示在這裡。",
     "console_offline_input": "啟動伺服器後即可傳送命令",
+    "console_read_only": "此伺服器不接受主控台輸入。請在命令分頁傳送命令",
     "console_popped_out": "主控台已在獨立視窗中開啟。",
     "console_popin": "移回這裡",
     "commands_offline": "啟動伺服器後即可傳送命令。",

@@ -669,6 +669,7 @@
     "tab_info": "Info",
     "console_offline": "The server is stopped. Start it to see its log here.",
     "console_offline_input": "Start the server to send commands",
+    "console_read_only": "This server doesn't take console input. Send commands from the Commands tab",
     "console_popped_out": "The console is open in a separate window.",
     "console_popin": "Bring it back here",
     "commands_offline": "Start the server to send commands.",

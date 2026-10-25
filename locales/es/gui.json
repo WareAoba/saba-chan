@@ -669,6 +669,7 @@
     "tab_info": "Info",
     "console_offline": "El servidor está detenido. Inícialo para ver aquí su registro.",
     "console_offline_input": "Inicia el servidor para enviar comandos",
+    "console_read_only": "Este servidor no acepta entrada de consola. Envía comandos desde la pestaña Comandos",
     "console_popped_out": "La consola está abierta en una ventana aparte.",
     "console_popin": "Traerla de vuelta aquí",
     "commands_offline": "Inicia el servidor para enviar comandos.",

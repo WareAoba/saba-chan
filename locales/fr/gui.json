@@ -669,6 +669,7 @@
     "tab_info": "Infos",
     "console_offline": "Le serveur est arrêté. Démarrez-le pour voir son journal ici.",
     "console_offline_input": "Démarrez le serveur pour envoyer des commandes",
+    "console_read_only": "Ce serveur n'accepte pas la saisie console. Envoyez les commandes depuis l'onglet Commandes",
     "console_popped_out": "La console est ouverte dans une fenêtre séparée.",
     "console_popin": "La ramener ici",
     "commands_offline": "Démarrez le serveur pour envoyer des commandes.",

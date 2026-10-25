@@ -37,7 +37,7 @@ import { setServerI18n, useServerStore } from './stores/useServerStore';
 import { setSettingsI18n, useSettingsStore } from './stores/useSettingsStore';
 import { useUIStore } from './stores/useUIStore';
 import { eventsAvailable } from './utils/daemonEvents';
-import { consoleQuickCommands, isManaged } from './utils/serverView';
+import { consoleQuickCommands, interactionOf, isManaged } from './utils/serverView';
 import { openWithNotice } from './utils/helpers';
 import { syncUpdateNotice } from './utils/updateNotice';
 // 새 레이아웃 스타일은 화면별 옛 CSS(App.css, Modals.css)보다 뒤에 와야 이긴다
@@ -647,6 +647,7 @@ function App() {
             <PopoutConsoleView
                 popoutParams={popoutParams}
                 server={srv}
+                readOnly={!!mod && !interactionOf(srv, mod).input}
                 highlightRules={mod?.syntax_highlight?.rules || null}
                 quickCommands={consoleQuickCommands(mod?.commands?.fields, mod?.command_aliases)}
                 openConsole={openConsole}

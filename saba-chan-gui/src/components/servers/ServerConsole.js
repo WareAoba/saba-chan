@@ -52,6 +52,7 @@ const ConsoleLines = memo(function ConsoleLines({ lines, syntaxEnabled, compiled
 /**
  * 상세 화면에 박힌 콘솔. 창을 따로 열지 않아도 로그를 보고 명령을 보낼 수 있다(L).
  * 상태는 useMultiConsole이 들고 있고, 이 컴포넌트는 그 한 칸을 그린다.
+ * `readOnly`: 콘솔 입력을 받지 않는 서버(REST 전용). 출력만 보이고 명령은 명령 탭에서 보낸다.
  */
 export function ServerConsole({
     server,
@@ -65,6 +66,7 @@ export function ServerConsole({
     onPopout,
     onPopin,
     autoFocus = false,
+    readOnly = false,
 }) {
     const { t } = useTranslation('gui');
     const syntaxEnabled = useSettingsStore((s) => s.consoleSyntaxHighlight);
@@ -112,7 +114,7 @@ export function ServerConsole({
         );
     }
 
-    const stdinDisabled = state?.stdinDisabled || server.status !== 'running';
+    const stdinDisabled = readOnly || state?.stdinDisabled || server.status !== 'running';
 
     return (
         <div className="term">
@@ -222,11 +224,13 @@ export function ServerConsole({
                         setConsoleInput(server.id, next === -1 ? draftRef.current : hist[next]);
                     }}
                     placeholder={
-                        server.status !== 'running'
-                            ? t('shell.console_offline_input')
-                            : state?.stdinDisabled
-                              ? t('console.stdin_disabled')
-                              : t('console.input_placeholder')
+                        readOnly
+                            ? t('shell.console_read_only')
+                            : server.status !== 'running'
+                              ? t('shell.console_offline_input')
+                              : state?.stdinDisabled
+                                ? t('console.stdin_disabled')
+                                : t('console.input_placeholder')
                     }
                     disabled={stdinDisabled}
                     aria-label={t('console.input_placeholder')}
