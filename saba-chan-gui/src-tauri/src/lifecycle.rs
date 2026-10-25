@@ -237,6 +237,17 @@ fn should_follow_daemon_out(daemon_reached: bool, resident: bool, stopped_from_t
     !daemon_reached && resident && !stopped_from_tray
 }
 
+/// 종료 요청에도 프로세스를 남기는가: 마지막 창이 닫혀 온 요청(code 없음)은 트레이로 남는다. `app.exit()`는 code가 있다.
+/// 창 목록으로 가리지 않는다: 팝업을 없애는 사이 새 메인 창이 목록에 먼저 들어와 있을 수 있다
+pub fn keeps_running_on_exit_request(code: Option<i32>) -> bool {
+    code.is_none()
+}
+
+/// 트레이의 데몬 끄기 뒤 표시를 남기는가: 데몬이 종료 요청을 받아들였으면 남긴다 (꺼지는 동안 잠시 답할 수 있다)
+pub fn tray_stop_stands(shutdown_accepted: bool) -> bool {
+    shutdown_accepted
+}
+
 /// 트레이에서 데몬을 끄거나 켰다 (끈 동안에는 데몬이 없어도 상주 GUI가 남는다)
 pub fn note_tray_stop(app: &AppHandle, stopped: bool) {
     app.state::<AppState>()
@@ -432,17 +443,22 @@ fn force_kill(child: &mut Child) {
 
 /// API로 정상 종료를 요청하고, 시간 안에 안 끝나면 이 GUI가 띄운 PID만 강제 종료한다.
 /// 이름 기반 kill은 다른 사용자의 데몬까지 죽일 수 있어 쓰지 않는다
-pub async fn stop_daemon(app: &AppHandle) {
+/// 데몬이 종료 요청을 받아들였으면 true
+pub async fn stop_daemon(app: &AppHandle) -> bool {
     let state = app.state::<AppState>();
-    match state.client.post("/api/daemon/shutdown", &json!({}), 2000).await {
+    let accepted = match state.client.post("/api/daemon/shutdown", &json!({}), 2000).await {
         Ok(_) => {
             tracing::info!("Daemon shutdown requested via API");
             state.life.attached_daemon.store(false, Ordering::SeqCst);
+            true
         }
-        Err(e) => tracing::warn!("Daemon shutdown API failed: {}", e.message),
-    }
+        Err(e) => {
+            tracing::warn!("Daemon shutdown API failed: {}", e.message);
+            false
+        }
+    };
     if state.life.child.lock().unwrap().is_none() {
-        return;
+        return accepted;
     }
     let start = Instant::now();
     while own_daemon_alive(app) {
@@ -462,6 +478,7 @@ pub async fn stop_daemon(app: &AppHandle) {
         sleep(200).await;
     }
     tracing::info!("Daemon stopped");
+    true
 }
 
 async fn health_ok(app: &AppHandle, timeout_ms: u64) -> bool {
@@ -884,6 +901,23 @@ pub fn on_exit(app: &AppHandle) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn closing_the_last_window_never_ends_the_tray_app() {
+        // 팝업의 창 열기: 팝업을 없애는 사이 메인 창이 만들어지고 있어도 끝나지 않는다 (PC: 0.2초 만에 종료)
+        assert!(keeps_running_on_exit_request(None));
+        assert!(!keeps_running_on_exit_request(Some(0)), "app.exit() ends it");
+    }
+
+    #[test]
+    fn a_tray_stop_stands_once_the_daemon_accepted_it() {
+        // 받아들인 데몬은 잠시 /health에 답할 수 있다: 그것으로 표시를 지우면 상주 GUI가 데몬을 따라 끝난다 (PC)
+        assert!(tray_stop_stands(true));
+        assert!(
+            !tray_stop_stands(false),
+            "the daemon refused: it was not stopped from the tray"
+        );
+    }
 
     #[test]
     fn a_tray_only_gui_quits_with_the_daemon_unless_the_tray_stopped_it() {

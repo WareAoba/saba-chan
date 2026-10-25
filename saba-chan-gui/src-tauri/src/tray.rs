@@ -109,9 +109,9 @@ pub fn action(app: &AppHandle, id: &str) -> bool {
         "stop_daemon" => {
             lifecycle::note_tray_stop(&app, true);
             tauri::async_runtime::spawn(async move {
-                lifecycle::stop_daemon(&app).await;
                 // 끄지 못했으면 트레이에서 끈 것이 아니다
-                if app.state::<AppState>().client.get("/health", 1000).await.is_ok() {
+                let accepted = lifecycle::stop_daemon(&app).await;
+                if !lifecycle::tray_stop_stands(accepted) {
                     lifecycle::note_tray_stop(&app, false);
                 }
                 update_menu(&app);
