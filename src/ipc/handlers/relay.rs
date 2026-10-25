@@ -83,7 +83,7 @@ async fn signed_base(state: &IPCServer, requested: Option<&str>) -> String {
 
 /// Create an HTTP client with 5s timeout for relay requests.
 /// Automatically includes X-Saba-Client: 1 header required by nginx.
-fn relay_client() -> Result<reqwest::Client, reqwest::Error> {
+pub(crate) fn relay_client() -> Result<reqwest::Client, reqwest::Error> {
     let mut headers = reqwest::header::HeaderMap::new();
     headers.insert(
         "X-Saba-Client",
@@ -136,6 +136,8 @@ pub(crate) async fn adopt_node_token(state: &IPCServer, token: &str, changed: bo
     sync_host_id(state, Some(token)).await;
     if changed {
         crate::relay_agent::restart(state).await;
+        // 원격 포트 주소는 PC(노드 토큰)마다 올린다
+        crate::remote_daemon::apply(state).await;
     }
 }
 

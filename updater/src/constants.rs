@@ -34,6 +34,9 @@ pub const DEFAULT_IPC_PORT: u16 = 57474;
 /// 기본 Daemon API URL
 pub const DEFAULT_DAEMON_URL: &str = "http://127.0.0.1:57474";
 
+/// 원격 데몬 TLS 포트 기본값 (D1, 설정 `remote.port`로 바꾼다). 확정 전 임시 값
+pub const DEFAULT_REMOTE_PORT: u16 = 57480;
+
 // ══════════════════════════════════════════════════════
 //  인스턴스 설정 칸
 // ══════════════════════════════════════════════════════

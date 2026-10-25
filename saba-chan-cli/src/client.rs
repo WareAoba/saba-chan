@@ -691,6 +691,21 @@ impl Api {
             self.delete(&path).await
         }
     }
+    /// GET·PUT /api/remote/settings — 원격 데몬 포트 (D1)
+    pub async fn remote_settings(&self) -> Result<Value> {
+        self.get("/api/remote/settings").await
+    }
+    pub async fn set_remote_settings(&self, body: Value) -> Result<Value> {
+        self.put("/api/remote/settings", body).await
+    }
+    /// GET /api/remote/clients — 이 데몬에 짝 맺은 PC
+    pub async fn remote_clients(&self) -> Result<Value> {
+        self.get("/api/remote/clients").await
+    }
+    /// DELETE /api/remote/clients/:hostId
+    pub async fn revoke_remote_client(&self, host_id: &str) -> Result<Value> {
+        self.delete(&format!("/api/remote/clients/{}", seg(host_id))).await
+    }
     /// GET /api/actions?surface=cli&instance&locale (P2)
     pub async fn actions(&self, instance: Option<&str>) -> Result<Value> {
         let mut path = "/api/actions?surface=cli".to_string();

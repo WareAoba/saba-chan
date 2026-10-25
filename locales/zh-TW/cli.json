@@ -679,7 +679,12 @@
       "server.log": "儲存的歷次執行記錄（主控台只保留本次）",
       "server.query": "遊戲模組提供的查詢（不指定名稱則列出）",
       "daemon.clients": "連到常駐程式的桌面應用程式視窗",
-      "gui": "切換到桌面應用程式:開啟同一個伺服器,全螢幕選單隨之關閉"
+      "gui": "切換到桌面應用程式:開啟同一個伺服器,全螢幕選單隨之關閉",
+      "remote": "遠端常駐程式連接埠: 同一主人的其他電腦透過 TLS 直接連線此常駐程式",
+      "remote.status": "遠端連接埠設定與狀態 (是否開啟、通知中繼的位址、憑證指紋)",
+      "remote.set": "開啟或關閉遠端連接埠, 變更連接埠或通知中繼的公開位址",
+      "remote.clients": "與此常駐程式配對的我的電腦",
+      "remote.revoke": "解除與電腦的配對: 該電腦的權杖立即失效"
     },
     "arg": {
       "module.maker.game": "第一個請求中的遊戲名稱",
@@ -750,7 +755,12 @@
       "server.query.args": "輸入 鍵=值",
       "chatbot.show.guild": "某個 Discord 伺服器實際使用的值（共用值 + 該伺服器的值），名稱或 id",
       "do.steps": "用 JSON 寫多個步驟：[{\"id\": \"...\", \"instance\": \"...\", \"input\": {...}}, ...]（取代 ACTION）",
-      "do.run_id": "在背景繼續的多步驟執行的進度"
+      "do.run_id": "在背景繼續的多步驟執行的進度",
+      "remote.set.on": "開啟遠端連接埠",
+      "remote.set.off": "關閉遠端連接埠",
+      "remote.set.port": "遠端連接埠號碼",
+      "remote.set.address": "此電腦的公開主機名稱或 IP (留空則清除)",
+      "remote.revoke.host_id": "要解除配對的電腦 id (見 `remote clients`)"
     },
     "after": "名稱可以只寫一部分（例如 start pal）。在終端機中不帶參數執行會開啟全螢幕選單(SABA_NO_TUI=1 時為互動式 shell)。\n在指令碼中請使用 --json 和 --yes。結束代碼：0 成功 · 1 失敗 · 2 用法錯誤 · 3 無法連線常駐程式 · 4 找不到 · 130 已取消"
   },
@@ -1165,5 +1175,27 @@
   },
   "gui": {
     "opened": "已開啟 Saba-chan 應用程式。"
+  },
+  "remote": {
+    "item": "項目",
+    "value": "值",
+    "listening": "已開啟",
+    "not_listening": "未開啟",
+    "off": "關閉",
+    "address": "公開位址",
+    "no_address": "無 (不通知中繼)",
+    "published": "已通知中繼",
+    "fingerprint": "憑證指紋",
+    "yes": "是",
+    "no": "否",
+    "no_clients": "沒有與此常駐程式配對的電腦。",
+    "host_id": "電腦 id",
+    "paired_at": "配對時間",
+    "revoked": "已解除與 {{host}} 的配對。該電腦的權杖已失效。",
+    "error": {
+      "certificate_failed": "無法準備憑證",
+      "port_in_use": "連接埠已被使用",
+      "bind_failed": "無法開啟連接埠"
+    }
   }
 }
