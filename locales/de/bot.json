@@ -101,6 +101,7 @@
     "no_command_path": "'{{name}}' ist mit keiner saba-chan-Konsole verbunden und kann keine Befehle annehmen. Starte den Server in saba-chan auf dem PC im verwalteten Modus neu.",
     "alias_conflict": "❌ Alias '{{alias}}' ist mehrdeutig. Er passt auf mehrere Module: {{modules}}. Verwende einen spezifischeren Alias.",
     "multiple_instances": "⚠️ Mehrere '{{module}}'-Instanzen vorhanden. Verwende den Instanznamen statt des Modul-Alias.",
+    "danger_needs_name": "⚠️ Gefährliche Befehle laufen nicht über den Spielnamen. Rufe den Server mit seinem Namen '{{name}}' auf.",
     "auth_failed": "Authentifizierung fehlgeschlagen",
     "player_not_found": "Spieler nicht gefunden",
     "internal_server_error": "Interner Serverfehler",

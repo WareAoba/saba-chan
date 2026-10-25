@@ -313,7 +313,7 @@ Discord ─ 릴레이의 사바쨩 봇 ─(롱폴링, HMAC 서명)─ 데몬 rel
 ### 4.3 채팅 처리기 (`src/chat/`)
 
 - 디스코드 명령과 CLI `chat`, `POST /api/chat/command {text, guild_id?, user_id?} → {reply, code, args}`가 모두 같은 처리기를 쓴다(`handlers/chat.rs:9-16`).
-- 대상 서버 찾기: 인스턴스 이름·id → 그 서버를 부르는 낱말(`serverWords[id].words`) → 모듈 이름·게임명(모듈 locales `display_name`)·module.toml 별명 순이다. 같은 게임 서버가 여럿인데 하나로 좁혀지지 않으면 `errors.multiple_instances`로 답한다(`chat/mod.rs` `named_servers`·`find_server`, 01 §4).
+- 대상 서버 찾기: 인스턴스 이름·id → 그 서버를 부르는 낱말(`serverWords[id].words`) → 모듈 이름·게임명(모듈 locales `display_name`)·module.toml 별명 순이다. 같은 게임 서버가 여럿인데 하나로 좁혀지지 않으면 `errors.multiple_instances`로 답한다. 위험 명령은 모듈 이름·게임명·별명으로 부르면 `errors.danger_needs_name`으로 거절한다(`chat/mod.rs` `named_servers`·`find_server`, 01 §4).
 - 명령 낱말은 그 길드·서버의 `commands`, 그다음 module.toml 별명이고, 접두사는 `prefixes`다. 맞춰 볼 때 대소문자를 가리지 않고 긴 것부터 보며, 접두사 뒤가 공백·쉼표·쌍점이거나 글 끝이어야 한다. 도움말에는 첫 접두사를, 비어 있으면 언어별 `default_prefix`(bot.json)를 쓴다. 응답 문구는 `locales/<lang>/bot.json`을 바이너리에 넣어 쓴다(`chat/i18n.rs`).
 - 노드(디스코드 서버)별 허용 인스턴스와 멤버별 명령 권한은 `nodeSettings`에 있다.
 
