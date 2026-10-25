@@ -123,6 +123,9 @@ pub struct ModuleMetadata {
     /// [launch] console — 서버 콘솔을 잇는 방식. 기본 pipe
     #[serde(default)]
     pub console: ConsoleMode,
+    /// [launch] line_start — 줄바꿈 없이 이어 쓴 출력을 나눌 줄 머리 (정규식). saba-runner `--line-start`
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub line_start: Option<String>,
     /// [detection] graceful_exit_patterns — 정상 종료 때 콘솔에 찍히는 문구 (정규식). A1 크래시 판정용
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub graceful_exit_patterns: Vec<String>,
@@ -858,6 +861,10 @@ struct LaunchSection {
     /// "pty"로 의사 콘솔(Windows ConPTY)에 띄워 줄마다 받는다. stdout과 stderr가 한 갈래로 합쳐진다.
     #[serde(default)]
     console: ConsoleMode,
+    /// 줄 머리 정규식. 서버가 줄바꿈 없이 이어 쓴 출력(예: 팰월드 REST 접근 로그)을 맞는 자리마다 새 줄로 나눈다.
+    /// 없으면 나누지 않는다. 빈 글자에 맞는 정규식은 받지 않는다
+    #[serde(default)]
+    line_start: Option<String>,
 }
 
 /// saba-runner가 서버 콘솔을 잇는 방식 (`[launch] console`)
@@ -1330,6 +1337,7 @@ impl ModuleToml {
             icon: self.module.icon,
             log_pattern: self.module.log_pattern,
             console: self.launch.as_ref().map(|l| l.console).unwrap_or_default(),
+            line_start: self.launch.as_ref().and_then(|l| l.line_start.clone()),
             log_files: self.launch.map(|l| l.log_files).unwrap_or_default(),
             dependencies: self.module.dependencies,
             credential_map: self.credential_map.unwrap_or_default(),
@@ -1456,6 +1464,10 @@ pub(crate) fn parse_module_toml(content: &str) -> Result<ModuleMetadata> {
         // 잘못 선언한 함수는 부르지 않는다
         meta.players_function = None;
         problems.push(problem);
+    }
+    // 스키마 이전 모듈도 쓸 수 없는 줄 머리는 러너에 넘기지 않는다 (위 problems에 실렸다)
+    if meta.line_start.as_deref().is_some_and(|p| line_start_problem(p).is_some()) {
+        meta.line_start = None;
     }
     if meta.schema_version < 2 {
         // 스키마 2 키는 스키마 1·이전 모듈에서 켜지 않는다 (위 problems에 이미 실렸다)
@@ -1705,6 +1717,7 @@ impl ModuleToml {
                 }
             }
         }
+        problems.extend(self.launch.as_ref().and_then(|l| l.line_start.as_deref()).and_then(line_start_problem));
         if let Some(p) = &self.protocols {
             for value in p.supported.iter().flatten().chain(&p.default) {
                 if !PROTOCOLS.contains(&value.as_str()) {
@@ -1742,6 +1755,15 @@ impl ModuleToml {
             problems.push("backup.pause_command needs backup.resume_command".to_string());
         }
         problems
+    }
+}
+
+/// `[launch] line_start`가 쓸 수 없는 정규식이면 그 까닭. 빈 글자에 맞으면 모든 글자 사이에서 줄이 나뉜다
+fn line_start_problem(pattern: &str) -> Option<String> {
+    match regex::Regex::new(pattern) {
+        Err(e) => Some(format!("launch.line_start: invalid regex ({})", e)),
+        Ok(re) if re.is_match("") => Some("launch.line_start must not match the empty string".to_string()),
+        Ok(_) => None,
     }
 }
 
@@ -2564,6 +2586,21 @@ entry = "lifecycle.py"
         assert_eq!(parse_module_toml(plain).unwrap().console, ConsoleMode::Pipe);
         let pty = toml.replace("log_files", "console = \"pty\"\nlog_files");
         assert_eq!(parse_module_toml(&pty).unwrap().console, ConsoleMode::Pty);
+    }
+
+    /// [launch] line_start: 줄바꿈 없이 이어 쓴 출력을 나눌 줄 머리. 없으면 지금처럼 나누지 않는다.
+    /// 틀린 정규식과 빈 글자에 맞는 정규식(모든 글자 사이에서 나뉜다)은 모듈을 받지 않는다
+    #[test]
+    fn launch_line_start_is_read_and_checked() {
+        let toml = |line_start: &str| format!("[module]\nschema_version = 1\nname = \"g\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[launch]\nline_start = '{}'\n", line_start);
+        assert_eq!(parse_module_toml(&toml(r"\[LOG\]")).unwrap().line_start.as_deref(), Some(r"\[LOG\]"));
+        let plain = "[module]\nname = \"g\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n";
+        assert_eq!(parse_module_toml(plain).unwrap().line_start, None);
+        assert!(parse_module_toml(&toml("(")).is_err(), "invalid regex");
+        assert!(parse_module_toml(&toml("x*")).is_err(), "matches the empty string");
+        // 스키마 이전 모듈은 경고만 남기고 쓰지 않는다
+        let old = toml("(").replace("schema_version = 1\n", "");
+        assert_eq!(parse_module_toml(&old).unwrap().line_start, None);
     }
 
     const V1: &str = "[module]\nschema_version = 1\nname = \"g\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n";

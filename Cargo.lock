@@ -4568,6 +4568,7 @@ version = "0.1.10"
 dependencies = [
  "embed-resource",
  "portable-pty",
+ "regex",
  "saba-atomic-file",
  "serde",
  "serde_json",
