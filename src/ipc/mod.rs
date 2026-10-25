@@ -660,8 +660,22 @@ impl IPCServer {
         let stop_requested = tokio_util::sync::CancellationToken::new();
         let client_registry = ClientRegistry::new();
         let credentials = CredentialsCache::default();
-        if let Ok(sup) = supervisor.try_read() {
-            let _ = sup.host_runtime.set(crate::plugin::host::Runtime::new(&supervisor, credentials.clone()));
+        // 모듈의 HOST 통로. 시작 때 다른 작업(data_roots 보충)이 잠금을 쥐고 있으면 풀린 뒤 붙인다:
+        // 건너뛰면 감독자가 부르는 모듈(정지·접속자)이 데몬이 꺼질 때까지 `no_instance`로 실패한다
+        let runtime = crate::plugin::host::Runtime::new(&supervisor, credentials.clone());
+        match supervisor.try_read() {
+            Ok(sup) => {
+                let _ = sup.host_runtime.set(runtime);
+            }
+            Err(_) => match tokio::runtime::Handle::try_current() {
+                Ok(handle) => {
+                    let supervisor = supervisor.clone();
+                    handle.spawn(async move {
+                        let _ = supervisor.read().await.host_runtime.set(runtime);
+                    });
+                }
+                Err(_) => tracing::warn!("[Host] no async runtime to attach the module host channel"),
+            },
         }
         Self {
             supervisor: supervisor.clone(),
@@ -980,6 +994,29 @@ impl IPCServer {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    /// 데몬 시작 때 다른 작업(data_roots 보충)이 감독자 잠금을 쥐고 있어도 모듈의 HOST 통로(REST·콘솔 중계)가 붙는다.
+    /// 빠지면 감독자가 부르는 모듈(정지·접속자)이 내내 `no_instance`로 실패해, 팰월드가 일반 정지를 거절했다 (test-pal 실측 2026-10-26)
+    #[tokio::test]
+    async fn the_module_host_channel_is_attached_even_when_startup_work_holds_the_lock() {
+        let tmp = tempfile::tempdir().unwrap();
+        let supervisor = Arc::new(RwLock::new(crate::supervisor::Supervisor::new_with_instances_dir(
+            tmp.path().join("modules").to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        )));
+        let held = supervisor.clone().write_owned().await;
+        let _server = IPCServer::new(supervisor.clone(), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        drop(held);
+        let attached = async {
+            loop {
+                if supervisor.read().await.host_context("any").is_some() {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+        };
+        tokio::time::timeout(std::time::Duration::from_secs(5), attached).await.expect("the host channel must be attached once the lock is free");
+    }
 
     #[test]
     fn module_failure_fields_survive_provision_progress() {
