@@ -99,6 +99,7 @@ pub static ROUTES: &[Route] = &[
     allow("GET", "/api/modules"),
     allow("POST", "/api/modules/refresh"),
     allow("GET", "/api/modules/schema"),
+    deny("GET", "/api/maker"),
     deny("POST", "/api/modules/detect"),
     allow("GET", "/api/modules/manifest"),
     allow("POST", "/api/modules/manifest/:id/install"),

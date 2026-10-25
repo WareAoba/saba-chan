@@ -321,6 +321,25 @@
     "none": "Noch keine Stopps aufgezeichnet."
   },
   "module": {
+    "maker": {
+      "claude_how": "{{repo}} klonen und Claude Code in diesem Ordner öffnen; dort findet es den Skill",
+      "title": "Modul-Maker: ein neues Spielmodul mit deinem KI-Agenten bauen",
+      "intro": "Für ein Spiel, das nicht in der Liste steht, kann ein Agent wie Claude Code oder Codex das Modul bauen. Er folgt einem festen Ablauf, von offiziellen Quellen bis zum isolierten Test auf diesem PC.",
+      "install": "1. Skill im Agenten installieren",
+      "codex": "$skill-installer bitten: „installiere den Pfad maker aus dem Repository {{repo}}“",
+      "other_agents": "Andere Agenten",
+      "other_how": "{{repo}} klonen; AGENTS.md zeigt den Weg",
+      "prompt": "2. Den Agenten so bitten",
+      "prompt_text": "Baue mit dem Skill saba-module-maker ein Servermodul für {{game}}. Recherchiere offizielle Quellen und erfülle alle Prüfungen vor dem PR.",
+      "game_placeholder": "<Spielname>",
+      "paths": "Pfade auf diesem PC (Agenten lesen sie mit module maker --json)",
+      "runner": "Runner",
+      "shared_libs": "Gemeinsame Laufzeit",
+      "modules_dir": "Modulordner",
+      "not_ready": "noch nicht vorhanden",
+      "unverified": "Ein selbst gebautes Modul läuft isoliert als „nicht geprüft“. Zum Teilen einen PR an das Modul-Repository schicken.",
+      "guide": "Anleitung: {{url}}"
+    },
     "confirm_remove": "Modul {{id}} löschen?",
     "confirm_remove_used": "Modul {{id}} löschen? Diese Server verwenden es: {{servers}}",
     "detect_none": "In {{dir}} wurde kein bekanntes Spiel gefunden.",
@@ -544,6 +563,7 @@
   },
   "help": {
     "cmd": {
+      "module.maker": "Ein neues Spielmodul mit deinem KI-Agenten bauen: Installationsbefehle, erste Anfrage und die Pfade dieses PCs",
       "help": "Hilfe zu einem Befehl anzeigen. Mit --json: Befehlsbaum, Argumente und Exit-Codes",
       "events": "Daemon-Ereignisse live verfolgen (mit --json: ein JSON pro Zeile). Mit Strg+C beenden",
       "install": "Saba-chan ohne das Fenster-Installationsprogramm auf diesem PC installieren",
@@ -558,6 +578,7 @@
       "daemon.clients": "Desktop-App-Fenster, die mit dem Daemon verbunden sind"
     },
     "arg": {
+      "module.maker.game": "Spiel für die erste Anfrage",
       "backup.create.from_snapshot": "Statt die Welt jetzt zu kopieren, das neueste automatische Backup des Spiels behalten (Palworld u. a.)",
       "bot.channels.notify": "Der Benachrichtigungskanal (Abstürze, Backups, Updates, geplante Neustarts), nach Name oder ID",
       "bot.channels.no_notify": "Benachrichtigungskanal entfernen",

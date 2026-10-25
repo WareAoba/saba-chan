@@ -378,6 +378,25 @@
     "none": "暂无停止记录。"
   },
   "module": {
+    "maker": {
+      "claude_how": "克隆 {{repo}}，在该文件夹中打开 Claude Code 即可找到技能",
+      "title": "模块制作器：用你的 AI 代理制作新的游戏模块",
+      "intro": "列表中没有的游戏，可以交给 Claude Code、Codex 等代理制作模块。它按同一流程进行，从官方资料调查到在这台电脑上的隔离实测。",
+      "install": "1. 在代理中安装技能",
+      "codex": "请 $skill-installer “安装 {{repo}} 仓库的 maker 路径”",
+      "other_agents": "其他代理",
+      "other_how": "克隆 {{repo}}，AGENTS.md 会给出说明",
+      "prompt": "2. 这样请求代理",
+      "prompt_text": "用 saba-module-maker 技能制作 {{game}} 服务器模块。用官方资料调查，并通过 PR 前的全部检查。",
+      "game_placeholder": "<游戏名>",
+      "paths": "这台电脑上的路径（代理用 module maker --json 读取）",
+      "runner": "运行器",
+      "shared_libs": "共享运行时",
+      "modules_dir": "模块文件夹",
+      "not_ready": "还没有",
+      "unverified": "自己制作的模块会以“未验证”状态隔离运行。要分享给他人，请向模块仓库提交 PR。",
+      "guide": "详细说明：{{url}}"
+    },
     "confirm_remove": "要删除模块 {{id}} 吗？",
     "confirm_remove_used": "要删除模块 {{id}} 吗？以下服务器正在使用它：{{servers}}",
     "detect_none": "在 {{dir}} 中未找到已知游戏。",
@@ -606,6 +625,7 @@
   },
   "help": {
     "cmd": {
+      "module.maker": "用你的 AI 代理制作新的游戏模块：安装命令、第一个请求和这台电脑的路径",
       "_root": "操作 Saba-chan 守护进程的命令行工具",
       "status": "一览守护进程、服务器、Discord 和更新状态",
       "server": "管理游戏服务器",
@@ -776,6 +796,7 @@
       "daemon.clients": "连接到守护进程的桌面应用窗口"
     },
     "arg": {
+      "module.maker.game": "第一个请求中的游戏名",
       "perm.level.add.above": "放在此等级正上方（默认：所有者正下方）",
       "perm.level.move.above": "移到此等级正上方",
       "perm.level.add.name": "新等级名称（1–32 个字符）",

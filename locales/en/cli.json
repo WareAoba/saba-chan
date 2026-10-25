@@ -388,6 +388,25 @@
     "none": "No stops recorded yet."
   },
   "module": {
+    "maker": {
+      "claude_how": "Clone {{repo}} and open Claude Code in that folder; it finds the skill",
+      "title": "Module maker: make a new game module with your AI agent",
+      "intro": "For a game that is not in the list, an agent such as Claude Code or Codex can build the module. It follows one procedure, from official sources to a sandboxed test on this PC.",
+      "install": "1. Install the skill in your agent",
+      "codex": "Ask $skill-installer: \"install the maker path of the {{repo}} repository\"",
+      "other_agents": "Other agents",
+      "other_how": "Clone {{repo}}; AGENTS.md shows the way",
+      "prompt": "2. Ask your agent",
+      "prompt_text": "Use the saba-module-maker skill to make a {{game}} server module. Research official sources and pass every pre-PR gate.",
+      "game_placeholder": "<game name>",
+      "paths": "Paths on this PC (agents read them with module maker --json)",
+      "runner": "Runner",
+      "shared_libs": "Shared runtime",
+      "modules_dir": "Modules folder",
+      "not_ready": "not there yet",
+      "unverified": "A module you make runs sandboxed as 'unverified'. To share it, send a PR to the modules repository.",
+      "guide": "Guide: {{url}}"
+    },
     "confirm_remove": "Delete module {{id}}?",
     "confirm_remove_used": "Delete module {{id}}? These servers use it: {{servers}}",
     "detect_none": "No known game found in {{dir}}.",
@@ -616,6 +635,7 @@
   },
   "help": {
     "cmd": {
+      "module.maker": "Make a new game module with your AI agent: install commands, a first prompt, and this PC's paths",
       "config.export": "Save settings and the server list to a zip, to move to another PC (game files not included)",
       "config.import": "Bring in settings and servers from an export zip",
       "bot.channels": "Talking Saba-chan channels (several) and the music channel (one) of a paired Discord server. No options: show",
@@ -654,6 +674,7 @@
       "server.discord": "What Discord chat calls this server and its commands (the same in every Discord server). No options: show"
     },
     "arg": {
+      "module.maker.game": "Game to put in the first prompt",
       "perm.level.add.above": "Put it right above this level (default: right below the owner)",
       "perm.level.move.above": "Move it right above this level",
       "perm.level.add.name": "Name of the new level (1–32 characters)",

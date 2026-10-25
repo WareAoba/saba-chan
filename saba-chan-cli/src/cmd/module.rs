@@ -78,6 +78,7 @@ pub async fn run(ctx: &Ctx, cmd: ModuleCmd) -> Result<()> {
             });
             Ok(())
         }
+        ModuleCmd::Maker { game } => maker(ctx, game.as_deref()).await,
         ModuleCmd::Schema => {
             let r = ctx.api.module_schema().await?;
             say!("{}", serde_json::to_string_pretty(&r).unwrap_or_default());
@@ -197,6 +198,55 @@ fn failed_lines(f: &Value) -> Vec<String> {
             vec![t!("module.failed", path = what, error = s(f, "error"))]
         }
     }
+}
+
+/// `module maker` — 내 AI 에이전트로 새 모듈을 만드는 방법과 이 PC의 경로 (`--json`이면 데몬 응답 그대로)
+async fn maker(ctx: &Ctx, game: Option<&str>) -> Result<()> {
+    let m = ctx.api.maker().await?;
+    ctx.out.data(&m, |m| {
+        let repo = s(m, "repo");
+        let slug = repo.trim_start_matches("https://github.com/");
+        output::heading(&t!("module.maker.title"));
+        say!("{}", t!("module.maker.intro"));
+        say!();
+        output::heading(&t!("module.maker.install"));
+        output::print_kv(&[
+            ("Claude Code".to_string(), t!("module.maker.claude_how", repo = repo)),
+            ("Codex".to_string(), t!("module.maker.codex", repo = slug)),
+            (
+                t!("module.maker.other_agents"),
+                t!("module.maker.other_how", repo = repo),
+            ),
+        ]);
+        say!();
+        output::heading(&t!("module.maker.prompt"));
+        let game = game
+            .map(str::to_string)
+            .unwrap_or_else(|| t!("module.maker.game_placeholder"));
+        say!("  {}", t!("module.maker.prompt_text", game = game));
+        say!();
+        output::heading(&t!("module.maker.paths"));
+        let path = |v: &Value| {
+            v.as_str()
+                .map(str::to_string)
+                .unwrap_or_else(|| output::dim(&t!("module.maker.not_ready")))
+        };
+        let core = &m["saba_core"];
+        output::print_kv(&[
+            (
+                "saba-core".to_string(),
+                format!("{} ({})", path(&core["path"]), s(core, "version")),
+            ),
+            (t!("module.maker.runner"), path(&core["runner"])),
+            ("Python".to_string(), path(&m["python"]["path"])),
+            (t!("module.maker.shared_libs"), path(&m["shared_libs"])),
+            (t!("module.maker.modules_dir"), path(&m["modules_dir"])),
+        ]);
+        say!();
+        say!("  {}", output::dim(&t!("module.maker.unverified")));
+        say!("  {}", output::dim(&t!("module.maker.guide", url = s(m, "guide"))));
+    });
+    Ok(())
 }
 
 async fn info(ctx: &Ctx, q: Option<&str>) -> Result<()> {

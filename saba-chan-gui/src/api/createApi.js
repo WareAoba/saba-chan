@@ -336,6 +336,14 @@ export function createApi({ invoke, hub }) {
                 return errorBody(error);
             }
         },
+        /** GET /api/maker — 모듈 메이커 안내 (저장소·가이드 주소, 이 PC의 경로) */
+        makerInfo: async () => {
+            try {
+                return (await get('/api/maker')).data;
+            } catch (error) {
+                return errorBody(error, { ok: false });
+            }
+        },
         moduleManifest: async () => {
             try {
                 return (await get('/api/modules/manifest', { timeout: 15000 })).data;
