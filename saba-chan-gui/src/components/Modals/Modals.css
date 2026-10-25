@@ -2902,6 +2902,72 @@
     flex-shrink: 0;
 }
 
+/* 모듈 메이커 카드 (목록에 없는 게임 직접 만들기) */
+.ss-maker {
+    margin: var(--sp-3) 0;
+}
+
+.ss-maker > .ss-card {
+    background: var(--card-bg);
+    border-radius: 10px;
+}
+
+.ss-maker-desc {
+    white-space: normal;
+}
+
+.ss-maker-panel {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1-5);
+    padding: var(--sp-3) var(--sp-4);
+}
+
+.ss-maker-agents {
+    display: flex;
+    gap: var(--sp-1);
+}
+
+.ss-maker-agent {
+    padding: var(--sp-1) var(--sp-2-5);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: calc(12px * var(--font-scale));
+    cursor: pointer;
+}
+
+.ss-maker-agent.active {
+    border-color: var(--accent-color);
+    color: var(--text-primary);
+}
+
+.ss-maker-step {
+    margin: var(--sp-1-5) 0 0;
+    font-size: calc(12px * var(--font-scale));
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.ss-maker-game {
+    padding: var(--sp-1-5) var(--sp-2);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+}
+
+.ss-maker-note {
+    margin: 0;
+    font-size: calc(11.5px * var(--font-scale));
+    color: var(--text-tertiary);
+}
+
+.ss-maker-panel > .btn {
+    align-self: flex-start;
+}
+
 /* 아이콘 전용 버튼 */
 .ss-icon-btn {
     display: flex;

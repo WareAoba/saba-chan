@@ -379,6 +379,25 @@
     "none": "停止の記録はまだありません。"
   },
   "module": {
+    "maker": {
+      "claude_how": "{{repo}} をクローンし、そのフォルダーで Claude Code を開くとスキルが見つかります",
+      "title": "モジュールメーカー: 自分のAIエージェントで新しいゲームモジュールを作る",
+      "intro": "一覧にないゲームは、Claude CodeやCodexなどのエージェントにモジュール作りを任せられます。公式資料の調査からこのPCでの隔離テストまで、同じ手順で進めます。",
+      "install": "1. エージェントにスキルをインストール",
+      "codex": "$skill-installer に「{{repo}} リポジトリの maker をインストールして」と依頼",
+      "other_agents": "その他のエージェント",
+      "other_how": "{{repo}} をクローンすると AGENTS.md が案内します",
+      "prompt": "2. エージェントにこう頼みます",
+      "prompt_text": "saba-module-maker スキルで {{game}} のサーバーモジュールを作って。公式資料で調べて、PR 前のチェックをすべて通して。",
+      "game_placeholder": "<ゲーム名>",
+      "paths": "このPCのパス (エージェントは module maker --json で読みます)",
+      "runner": "ランナー",
+      "shared_libs": "共通ランタイム",
+      "modules_dir": "モジュールフォルダー",
+      "not_ready": "まだありません",
+      "unverified": "自作のモジュールは「未確認」として隔離実行されます。共有するにはモジュールリポジトリに PR を送ってください。",
+      "guide": "詳しい案内: {{url}}"
+    },
     "confirm_remove": "モジュール {{id}} を削除しますか？",
     "confirm_remove_used": "モジュール {{id}} を削除しますか？次のサーバーが使っています: {{servers}}",
     "detect_none": "{{dir}} に既知のゲームは見つかりませんでした。",
@@ -607,6 +626,7 @@
   },
   "help": {
     "cmd": {
+      "module.maker": "自分のAIエージェントで新しいゲームモジュールを作る: インストール方法、最初の依頼、このPCのパス",
       "_root": "サバちゃんデーモンを操作するコマンドラインツール",
       "status": "デーモン・サーバー・Discord・アップデートをひと目で",
       "server": "ゲームサーバーの管理",
@@ -777,6 +797,7 @@
       "daemon.clients": "デーモンに接続しているデスクトップアプリのウィンドウ"
     },
     "arg": {
+      "module.maker.game": "最初の依頼に入れるゲーム名",
       "perm.level.add.above": "この段階のすぐ上に入れる (省略時はオーナーのすぐ下)",
       "perm.level.move.above": "この段階のすぐ上へ移動",
       "perm.level.add.name": "新しい段階名 (1〜32文字)",

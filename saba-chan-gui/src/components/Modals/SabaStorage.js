@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useExtensions } from '../../contexts/ExtensionContext';
 import { Icon } from '../Icon';
+import { ModuleMakerCard } from '../ModuleMakerCard';
 import { SabaSpinner, SabaToggle } from '../ui/SabaUI';
 import { QuestionModal } from './Modals';
 import { localizedDescription } from '../../utils/localizedText';
@@ -961,6 +962,8 @@ function ModulesTab() {
                     </div>
                 </>
             )}
+
+            <ModuleMakerCard />
 
             {confirmRemoveId && (
                 <QuestionModal

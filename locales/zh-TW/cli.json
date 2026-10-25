@@ -322,6 +322,25 @@
     "none": "尚無停止記錄。"
   },
   "module": {
+    "maker": {
+      "claude_how": "複製 {{repo}}，在該資料夾中開啟 Claude Code 即可找到技能",
+      "title": "模組製作器：用你的 AI 代理製作新的遊戲模組",
+      "intro": "清單中沒有的遊戲，可以交給 Claude Code、Codex 等代理製作模組。它依同一流程進行，從官方資料調查到在這台電腦上的隔離實測。",
+      "install": "1. 在代理中安裝技能",
+      "codex": "請 $skill-installer「安裝 {{repo}} 儲存庫的 maker 路徑」",
+      "other_agents": "其他代理",
+      "other_how": "複製 {{repo}}，AGENTS.md 會說明接下來怎麼做",
+      "prompt": "2. 這樣請求代理",
+      "prompt_text": "用 saba-module-maker 技能製作 {{game}} 伺服器模組。用官方資料調查，並通過 PR 前的全部檢查。",
+      "game_placeholder": "<遊戲名稱>",
+      "paths": "這台電腦上的路徑（代理用 module maker --json 讀取）",
+      "runner": "執行器",
+      "shared_libs": "共用執行環境",
+      "modules_dir": "模組資料夾",
+      "not_ready": "尚未存在",
+      "unverified": "自己製作的模組會以「未驗證」狀態隔離執行。要分享給他人，請向模組儲存庫提交 PR。",
+      "guide": "詳細說明：{{url}}"
+    },
     "confirm_remove": "要刪除模組 {{id}} 嗎？",
     "confirm_remove_used": "要刪除模組 {{id}} 嗎？以下伺服器正在使用它：{{servers}}",
     "detect_none": "在 {{dir}} 中找不到已知的遊戲。",
@@ -545,6 +564,7 @@
   },
   "help": {
     "cmd": {
+      "module.maker": "用你的 AI 代理製作新的遊戲模組：安裝指令、第一個請求和這台電腦的路徑",
       "help": "顯示命令說明。加 --json 時輸出命令樹、參數與結束代碼",
       "events": "即時追蹤常駐程式事件（加 --json 時每行一個 JSON）。按 Ctrl+C 停止",
       "install": "不使用視窗安裝程式，在這台電腦上安裝 Saba-chan",
@@ -559,6 +579,7 @@
       "daemon.clients": "連到常駐程式的桌面應用程式視窗"
     },
     "arg": {
+      "module.maker.game": "第一個請求中的遊戲名稱",
       "backup.create.from_snapshot": "保留遊戲最新的自動備份，而不是現在複製世界（Palworld 等）",
       "bot.channels.notify": "通知頻道(當機、備份、更新、排程重啟),名稱或 ID",
       "bot.channels.no_notify": "取消通知頻道",

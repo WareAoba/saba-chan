@@ -229,6 +229,7 @@ PC 주인이 디스코드에서 받은 일회용 링크로 브라우저(사바�
 | GET | `/api/modules` | `server.rs:401` | - | `{modules:[ExtensionInfo], failed?:[...]}` (아래 설명). `failed[]` 항목은 `{path, error, module?, error_code?, missing_dependencies?, problems?, required?}`: 스키마에 맞지 않으면 `error_code:"module_schema_invalid"`와 `problems:[필드 이름과 이유]`, 데몬보다 새 스키마면 `"module_schema_unsupported"`와 `required:<스키마 버전>`(02 §1.2) |
 | POST | `/api/modules/refresh` | `server.rs:408` | - | 위와 같음 |
 | GET | `/api/modules/schema` | `server.rs:419` | - | module.toml JSON Schema |
+| GET | `/api/maker` | `handlers/maker.rs` | - | 모듈 메이커 안내 `{ok, saba_core:{version, path, runner}, python:{path, version}, shared_libs, modules_dir, schema_versions, repo, guide}`. 읽기만 한다. 원격 웹(`remote/gate.rs`)에는 열지 않는다 |
 | POST | `/api/modules/detect` | `server.rs:425` | `{path}` | `{matches:[{name, display_name}]}` (`dir_signatures`가 맞는 모듈) / 400 / 404 |
 | GET | `/api/modules/manifest` | `server.rs:502` | - | `{ok, manifest}` 또는 `{ok:false,error}`. 항상 200 |
 | POST | `/api/modules/manifest/:id/install` | `server.rs:525` | - | `{ok, module_id, version}` 또는 `{ok:false,error}`. 항상 200. 카탈로그 버전이 설치된 버전보다 낮으면 받지 않는다 |

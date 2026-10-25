@@ -322,6 +322,25 @@
     "none": "Aún no hay paradas registradas."
   },
   "module": {
+    "maker": {
+      "claude_how": "Clona {{repo}} y abre Claude Code en esa carpeta; ahí encuentra la skill",
+      "title": "Creador de módulos: crea un módulo de juego nuevo con tu agente de IA",
+      "intro": "Para un juego que no está en la lista, un agente como Claude Code o Codex puede crear el módulo. Sigue un mismo procedimiento, desde las fuentes oficiales hasta una prueba aislada en este PC.",
+      "install": "1. Instala la skill en tu agente",
+      "codex": "Pide a $skill-installer: «instala la ruta maker del repositorio {{repo}}»",
+      "other_agents": "Otros agentes",
+      "other_how": "Clona {{repo}}; AGENTS.md indica el camino",
+      "prompt": "2. Pídele a tu agente",
+      "prompt_text": "Usa la skill saba-module-maker para crear un módulo de servidor de {{game}}. Investiga fuentes oficiales y supera todas las comprobaciones previas al PR.",
+      "game_placeholder": "<nombre del juego>",
+      "paths": "Rutas de este PC (los agentes las leen con module maker --json)",
+      "runner": "Runner",
+      "shared_libs": "Runtime compartido",
+      "modules_dir": "Carpeta de módulos",
+      "not_ready": "aún no existe",
+      "unverified": "Un módulo hecho por ti se ejecuta aislado como «sin verificar». Para compartirlo, envía un PR al repositorio de módulos.",
+      "guide": "Guía: {{url}}"
+    },
     "confirm_remove": "¿Eliminar el módulo {{id}}?",
     "confirm_remove_used": "¿Eliminar el módulo {{id}}? Estos servidores lo usan: {{servers}}",
     "detect_none": "No se encontró ningún juego conocido en {{dir}}.",
@@ -545,6 +564,7 @@
   },
   "help": {
     "cmd": {
+      "module.maker": "Crear un módulo de juego nuevo con tu agente de IA: comandos de instalación, primera petición y rutas de este PC",
       "help": "Muestra la ayuda de un comando. Con --json: el árbol de comandos, los argumentos y los códigos de salida",
       "events": "Sigue los eventos del daemon en vivo (con --json: un JSON por línea). Ctrl+C para parar",
       "install": "Instalar Saba-chan en este PC sin el instalador con ventana",
@@ -559,6 +579,7 @@
       "daemon.clients": "Ventanas de la app de escritorio conectadas al daemon"
     },
     "arg": {
+      "module.maker.game": "Juego para la primera petición",
       "backup.create.from_snapshot": "Guardar la copia automática más reciente del juego en vez de copiar el mundo ahora (Palworld y otros)",
       "bot.channels.notify": "El canal de avisos (fallos, copias, actualizaciones, reinicios programados), por nombre o id",
       "bot.channels.no_notify": "Quitar el canal de avisos",

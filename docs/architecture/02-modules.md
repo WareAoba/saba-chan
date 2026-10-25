@@ -658,6 +658,12 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 - 무결성 검사는 업데이터가 적용할 때 zip에서 푼 파일마다 기록한 SHA-256(`<data_dir>/installed-files.json`)과 디스크 파일을 비교한다. manifest의 zip 해시와는 비교하지 않는다 (`D:updater/src/integrity.rs:1-6, 105-152, 235-239`). 설치기로 처음 깐 모듈은 기록이 없어 결과에 나오지 않는다.
 - **installer**: 모듈 목록도 같은 manifest의 `module-*`에서 만든다(`installer/gui/src-tauri/src/lib.rs` `get_available_modules`, `installer/core/src/release.rs` `modules`). 하드코딩 폴백은 없고, 받지 못하면 화면이 알린다.
 
+### 5.4 모듈 메이커 (새 모듈을 만드는 길)
+
+- 메이커 스킬과 도구는 모듈 저장소 `maker/`에 있고 앱에 싣지 않는다. 사용자는 에이전트별로 받는다: Claude Code는 받은 저장소의 `.claude/skills/`, Codex는 스킬 설치기, 그 밖은 저장소의 `AGENTS.md`. Claude Code 플러그인 마켓은 아직 열지 않았다(사용자 지시). 메이커 버전은 `maker/.claude-plugin/plugin.json`, 맞는 데몬은 `maker/SKILL.md` 머리의 `metadata.saba-core`다.
+- 데몬은 `GET /api/maker`(`D:src/ipc/handlers/maker.rs`)로 이 PC의 경로(`saba-core`·러너, 데몬 venv Python, 공용 런타임 `<data_dir>/python-shared`, 모듈 폴더)와 받는 스키마 버전, 저장소·가이드 주소만 알려 준다. CLI `module maker`(`--json`이면 그대로)와 GUI `ModuleMakerCard`가 이것을 쓰고, 메이커 `check.py`는 `saba-chan-cli module maker --json`으로 `--saba-core`·공용 런타임을 채운다.
+- 직접 만든 모듈은 모듈 폴더에 두면 확인되지 않은 모듈로 격리 실행된다(§5.2 신뢰 표시). 공개하려면 모듈 저장소 PR을 거쳐 다음 릴리스 manifest에 실린다(§5.1).
+
 ---
 
 ## 6. 불일치, 죽은 코드, 미완성, 원칙 위반

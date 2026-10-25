@@ -721,6 +721,7 @@ impl IPCServer {
             .route("/api/modules/refresh", post(handlers::server::refresh_modules))
             .route("/api/version", get(handlers::server::version_handler))
             .route("/api/modules/schema", get(handlers::server::module_schema))
+            .route("/api/maker", get(handlers::maker::get_maker))
             .route("/api/modules/detect", post(handlers::server::detect_module_dir))
             .route("/api/modules/manifest", get(handlers::server::fetch_module_manifest))
             .route("/api/modules/manifest/:id/install", post(handlers::server::install_module_from_manifest))

@@ -721,6 +721,11 @@ pub enum ModuleCmd {
     Detect { dir: String },
     /// JSON Schema for module.toml (for module authors)
     Schema,
+    /// Make a new game module with your AI agent: install commands, a first prompt, and this PC's paths
+    Maker {
+        /// Game to put in the first prompt
+        game: Option<String>,
+    },
     /// Check what a module's Python code can do against what it declares
     Audit { module: Option<String> },
     /// Download server files only, into a folder you choose

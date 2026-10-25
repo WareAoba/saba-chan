@@ -479,6 +479,10 @@ impl Api {
     pub async fn module_schema(&self) -> Result<Value> {
         self.get("/api/modules/schema").await
     }
+    /// GET /api/maker — 모듈 메이커 안내: 이 PC의 경로와 데몬 계약
+    pub async fn maker(&self) -> Result<Value> {
+        self.get("/api/maker").await
+    }
     /// POST /api/modules/detect — 폴더가 어떤 게임 서버인지
     pub async fn detect(&self, path: &str) -> Result<Value> {
         self.post("/api/modules/detect", json!({ "path": path })).await
