@@ -26,6 +26,19 @@
     "relay_closing": "Die Sitzung wurde wegen Serverwartung beendet.",
     "connection_lost": "Die Sitzung wurde beendet, weil die Verbindung abgebrochen ist."
   },
+  "gate_word": {
+    "closed": "Beendet",
+    "no_link": "Kein Link",
+    "link_invalid": "Link ungültig",
+    "host_unreachable": "Nicht erreichbar",
+    "session_gone": "Beendet",
+    "expired": "Zeitüberschreitung",
+    "left": "Verlassen",
+    "replaced": "Ersetzt",
+    "host_gone": "Getrennt",
+    "relay_closing": "Wartung",
+    "connection_lost": "Getrennt"
+  },
   "session": {
     "remaining": "Verbleibend",
     "extend": "Verlängern",

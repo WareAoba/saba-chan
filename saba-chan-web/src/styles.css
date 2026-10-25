@@ -111,8 +111,8 @@ textarea {
     object-fit: contain;
     filter: drop-shadow(0 0 40px rgb(124 58 237 / 0.25));
 }
-.gate-oops {
-    font-size: clamp(3rem, 8vw, 6rem);
+.gate-word {
+    font-size: clamp(2.25rem, 7vw, 4.5rem);
     font-weight: 900;
     line-height: 1;
     background: linear-gradient(135deg, #7c3aed, #3b82f6);

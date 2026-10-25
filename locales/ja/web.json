@@ -26,6 +26,19 @@
     "relay_closing": "サーバーのメンテナンスのため、セッションが終了しました。",
     "connection_lost": "接続が切れたため、セッションが終了しました。"
   },
+  "gate_word": {
+    "closed": "終了",
+    "no_link": "リンクなし",
+    "link_invalid": "リンク切れ",
+    "host_unreachable": "接続失敗",
+    "session_gone": "終了",
+    "expired": "タイムアウト",
+    "left": "退出",
+    "replaced": "切り替え",
+    "host_gone": "切断",
+    "relay_closing": "メンテナンス",
+    "connection_lost": "切断"
+  },
   "session": {
     "remaining": "残り時間",
     "extend": "延長",

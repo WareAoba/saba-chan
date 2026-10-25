@@ -26,6 +26,19 @@
     "relay_closing": "因伺服器維護，工作階段已結束。",
     "connection_lost": "連線中斷，工作階段已結束。"
   },
+  "gate_word": {
+    "closed": "已結束",
+    "no_link": "無連結",
+    "link_invalid": "連結失效",
+    "host_unreachable": "連線失敗",
+    "session_gone": "已結束",
+    "expired": "逾時",
+    "left": "已離開",
+    "replaced": "已取代",
+    "host_gone": "已中斷",
+    "relay_closing": "維護中",
+    "connection_lost": "已中斷"
+  },
   "session": {
     "remaining": "剩餘時間",
     "extend": "延長",

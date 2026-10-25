@@ -26,6 +26,19 @@
     "relay_closing": "Сеанс завершён из-за обслуживания сервера.",
     "connection_lost": "Сеанс завершён из-за потери связи."
   },
+  "gate_word": {
+    "closed": "Завершён",
+    "no_link": "Нет ссылки",
+    "link_invalid": "Ссылка истекла",
+    "host_unreachable": "Недоступен",
+    "session_gone": "Завершён",
+    "expired": "Тайм-аут",
+    "left": "Покинуто",
+    "replaced": "Заменён",
+    "host_gone": "Отключено",
+    "relay_closing": "Обслуживание",
+    "connection_lost": "Отключено"
+  },
   "session": {
     "remaining": "Осталось",
     "extend": "Продлить",

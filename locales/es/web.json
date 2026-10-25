@@ -26,6 +26,19 @@
     "relay_closing": "La sesión terminó por mantenimiento del servidor.",
     "connection_lost": "La sesión terminó porque se perdió la conexión."
   },
+  "gate_word": {
+    "closed": "Finalizada",
+    "no_link": "Sin enlace",
+    "link_invalid": "Enlace caducado",
+    "host_unreachable": "Sin conexión",
+    "session_gone": "Finalizada",
+    "expired": "Tiempo agotado",
+    "left": "Saliste",
+    "replaced": "Reemplazada",
+    "host_gone": "Desconectado",
+    "relay_closing": "Mantenimiento",
+    "connection_lost": "Desconectado"
+  },
   "session": {
     "remaining": "Tiempo restante",
     "extend": "Ampliar",

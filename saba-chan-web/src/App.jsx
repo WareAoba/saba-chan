@@ -56,7 +56,8 @@ function Gate({ phase, reason }) {
     const { t } = useTranslation();
     const closed = phase === 'closed';
     return (
-        // 사이트의 "잘못된 접근" 화면(server-chan website/public/blocked.html)과 같은 모양
+        // 사이트의 "잘못된 접근" 화면(server-chan website/public/blocked.html)과 같은 모양.
+        // Oops! 는 그 화면 몫이고, 여기서는 끝난 까닭을 한 단어로 크게 보인다
         <main className="gate">
             <div className="gate-body">
                 <img
@@ -65,7 +66,13 @@ function Gate({ phase, reason }) {
                     alt=""
                 />
                 <h1 className="gate-title">
-                    {closed ? <span className="gate-oops">Oops!</span> : <Wordmark className="gate-wordmark" />}
+                    {closed ? (
+                        <span className="gate-word">
+                            {t(`gate_word.${reason}`, { defaultValue: t('gate_word.closed') })}
+                        </span>
+                    ) : (
+                        <Wordmark className="gate-wordmark" />
+                    )}
                 </h1>
                 {closed ? (
                     <>
