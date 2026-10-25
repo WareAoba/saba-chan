@@ -284,7 +284,7 @@ impl ManagedProcess {
                                     if source == LogSource::Stderr && level == LogLevel::Info { LogLevel::Warn } else { level }
                                 }
                             };
-                            buf.lock().await.push(line.source, line.content, line.level);
+                            buf.lock().await.push_at(line.timestamp, line.source, line.content, line.level);
                         }
                     }
                     if stopped {
@@ -396,6 +396,30 @@ mod tests {
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
         false
+    }
+
+    /// 러너 로그에서 따라 읽은 줄은 러너가 쓴 시각을 지킨다. 데몬이 읽은 시각을 달면 서버가 꺼진 뒤
+    /// 디스크 기록과 겹치는 곳을 맞추지 못해(GUI `unseenDiskTail`) 직전 실행의 줄이 콘솔에 한 번 더 붙는다
+    #[tokio::test]
+    async fn followed_runner_lines_keep_the_time_the_runner_wrote() {
+        let tmp = tempfile::tempdir().unwrap();
+        let inst = tmp.path();
+        let run = run_dir(inst);
+        std::fs::create_dir_all(&run).unwrap();
+        let log = inst.join("session.log");
+        std::fs::write(&log, "").unwrap();
+        std::fs::write(run.join(TOKEN_FILE), "tok").unwrap();
+        // 살아 있는 러너 대신 이 테스트 프로세스
+        let info = RunnerInfo { runner_pid: std::process::id(), pid: std::process::id(), port: 1, log: log.clone(), started_at: saba_runner::now(), cwd: None };
+        saba_runner::write_json(&runner_file(&run), &info).unwrap();
+        let proc = ManagedProcess::attach_runner(inst, None).await.expect("attached");
+
+        let written = 1_700_000_000; // 2023-11-14 22:13:20 UTC
+        let mut f = std::fs::OpenOptions::new().append(true).open(&log).unwrap();
+        std::io::Write::write_all(&mut f, format!("{}\n", saba_runner::format_line(written, saba_runner::Stream::Stdout, "old news")).as_bytes()).unwrap();
+        assert!(wait_for(&proc, "old news").await);
+        let line = proc.get_recent_console(100).await.into_iter().find(|l| l.content == "old news").unwrap();
+        assert_eq!(line.timestamp, written);
     }
 
     /// 시간 안에 서버를 띄우지 못한 러너는 그 자식까지 끝낸다: 늦게 뜬 서버 옆에 두 번째 서버가 뜨지 않게 (D-S4)

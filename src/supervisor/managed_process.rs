@@ -114,9 +114,14 @@ impl LogBuffer {
 
     /// Push a new log line and return the created `LogLine`.
     fn push(&mut self, source: LogSource, content: String, level: LogLevel) -> LogLine {
+        self.push_at(current_timestamp(), source, content, level)
+    }
+
+    /// 시각을 정해서 넣는다 (러너 로그처럼 줄마다 쓴 시각이 이미 있을 때)
+    fn push_at(&mut self, timestamp: u64, source: LogSource, content: String, level: LogLevel) -> LogLine {
         let line = LogLine {
             id: self.next_id,
-            timestamp: current_timestamp(),
+            timestamp,
             source,
             content,
             level,
