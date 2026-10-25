@@ -136,7 +136,7 @@ pub async fn daemon_restart(app: AppHandle) -> Value {
 pub fn app_close_response(app: AppHandle, choice: String) {
     window::close_answered();
     match choice.as_str() {
-        // 인터페이스만 종료 — GUI 프로세스 종료, 데몬 유지
+        // 인터페이스만 종료 — 창을 모두 닫고 트레이로 남는다, 데몬 유지
         "exit-interface" => {
             tauri::async_runtime::spawn(async move { lifecycle::interface_only_quit(&app).await });
         }
@@ -148,6 +148,21 @@ pub fn app_close_response(app: AppHandle, choice: String) {
         }
         _ => {}
     }
+}
+
+/// 트레이 팝업 버튼: open_window | switch_to_cli | start_daemon | stop_daemon | quit_all, 닫기만은 close. 팝업은 늘 닫는다
+#[tauri::command]
+pub fn tray_action(app: AppHandle, action: String) -> Value {
+    if let Some(w) = app.get_webview_window(window::TRAY_POPUP) {
+        let _ = w.destroy();
+    }
+    json!({ "ok": action == "close" || tray::action(&app, &action) })
+}
+
+/// 트레이 팝업 렌더러가 잰 내용 높이(논리 px). 그 높이로 아이콘 옆에 놓고 보인다
+#[tauri::command]
+pub fn tray_popup_fit(app: AppHandle, height: f64) {
+    window::fit_tray_popup(&app, height);
 }
 
 /// 업데이트 적용 — 업데이터는 데몬이 띄운다 (U7). GUI는 다시 띄울 자기 경로만 알려 주고 종료한다
@@ -630,6 +645,7 @@ mod tests {
             install_root: dir.path().to_path_buf(),
             log_path: None,
             after_update: false,
+            tray_start: false,
             i18n: std::sync::RwLock::new(crate::i18n::I18n::load("ko", None)),
             life: crate::lifecycle::Lifecycle::default(),
         };

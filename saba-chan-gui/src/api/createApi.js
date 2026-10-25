@@ -1163,6 +1163,12 @@ export function createApi({ invoke, hub }) {
         daemonStatus: () => invoke('daemon_status'),
         daemonRestart: () => invoke('daemon_restart'),
 
+        // ── 트레이 팝업 ──
+        // open_window | switch_to_cli | start_daemon | stop_daemon | quit_all | close. 팝업은 닫힌다
+        trayAction: (action) => invoke('tray_action', { action }),
+        // 잰 내용 높이(px)에 맞춰 셸이 팝업을 아이콘 옆에 놓고 보인다
+        trayPopupFit: (height) => invoke('tray_popup_fit', { height }),
+
         // ── 창 제어 (호출한 창에 적용) ──
         minimizeWindow,
         maximizeWindow,

@@ -36,6 +36,8 @@ pub struct RegisteredClient {
     /// 클라이언트가 알려 준 자기 PID와 설치 폴더 (인스톨러가 이 설치의 GUI만 끌 때 쓴다)
     pub pid: Option<u32>,
     pub install_root: Option<String>,
+    /// 창 없이 트레이만 든 GUI (등록·heartbeat 본문의 `resident`)
+    pub resident: bool,
 }
 
 /// 클라이언트 레지스트리 — 여러 GUI/CLI 인스턴스의 생존 여부를 추적
@@ -67,6 +69,7 @@ impl ClientRegistry {
             last_heartbeat: std::time::Instant::now(),
             pid,
             install_root,
+            resident: false,
         });
         id
     }
@@ -84,6 +87,17 @@ impl ClientRegistry {
             true
         } else {
             false
+        }
+    }
+
+    /// 창 없이 트레이만 든 GUI인지 기록한다. 없는 id면 false
+    pub async fn set_resident(&self, client_id: &str, resident: bool) -> bool {
+        match self.inner.write().await.get_mut(client_id) {
+            Some(client) => {
+                client.resident = resident;
+                true
+            }
+            None => false,
         }
     }
 

@@ -26,6 +26,7 @@ mod actions;
 mod launch_args;
 mod relay_agent;
 mod remote;
+mod tray_host;
 
 use std::sync::Arc;
 use std::io::IsTerminal;
@@ -552,8 +553,8 @@ async fn main() -> anyhow::Result<()> {
         }
     });
 
-    // 인터페이스가 모두 떠나도 데몬은 남는다 (데몬이 서비스의 주체, C14). GUI를 다시 띄우거나 스스로 끝내지 않고,
-    // 다음에 켠 GUI·CLI가 다시 붙는다. 끄는 것은 /api/daemon/shutdown 또는 Ctrl+C·SIGTERM뿐이다.
+    // 인터페이스가 모두 떠나도 데몬은 남는다 (데몬이 서비스의 주체, C14). 스스로 끝내지 않고, 다음에 켠 GUI·CLI가
+    // 다시 붙는다. 끄는 것은 /api/daemon/shutdown 또는 Ctrl+C·SIGTERM뿐이다. 다시 띄우는 것은 트레이를 든 상주 GUI뿐이다.
     if daemon_only {
         // 데몬 온리 모드: 터미널 폴링 루프 시작 — 데몬 로그 + 프로세스 콘솔을 stderr에 표시
         let term_buf = daemon_log_buffer.clone();
@@ -638,6 +639,17 @@ async fn main() -> anyhow::Result<()> {
         // CancellationToken으로 모든 태스크에 종료 전파 (IPC 서버 포함)
         ctrl_c_cancel.cancel();
     });
+
+    // 트레이: 화면이 있으면 상주 GUI를 띄우고 데몬이 사는 동안 되살린다 (부트 모드와 상관없이, 데몬 온리 포함)
+    {
+        let tray_server = ipc_server.clone();
+        let port = ipc_port;
+        tokio::spawn(async move {
+            if boot_selector::wait_for_ipc_port(port, std::time::Duration::from_secs(15)).await {
+                tray_host::run(tray_server).await;
+            }
+        });
+    }
 
     // ── Interface Spawn (부트 선택기 모드에 따른 인터페이스 기동) ──
     // IPC 서버가 바인드된 후 인터페이스를 스폰하기 위해 백그라운드 태스크 사용.

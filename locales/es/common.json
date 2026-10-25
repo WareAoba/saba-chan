@@ -77,14 +77,12 @@
   },
   "tray": {
     "tooltip": "Saba-chan - Gestor de servidores de juegos",
-    "open_window": "🖥️ Abrir ventana",
-    "switch_to_cli": "💻 Cambiar a la CLI",
-    "daemon_running": "🟢 Daemon en ejecución",
-    "daemon_stopped": "⚪ Daemon detenido",
-    "stop_daemon": "🛑 Detener daemon",
-    "start_daemon": "▶️ Iniciar daemon",
-    "quit_interface": "🔌 Salir solo de la interfaz",
-    "quit_all": "❌ Salir por completo"
+    "open_window": "Abrir ventana",
+    "daemon_running": "Daemon en ejecución",
+    "daemon_stopped": "Daemon detenido",
+    "stop_daemon": "Detener daemon",
+    "start_daemon": "Iniciar daemon",
+    "quit_all": "Salir por completo"
   },
   "updates": {
     "notification_title": "Actualizaciones de Saba-chan",

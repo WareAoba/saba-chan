@@ -39,6 +39,7 @@ pub async fn client_register(
         .filter(|s| !s.is_empty())
         .map(String::from);
     let client_id = state.client_registry.register(kind.clone(), pid, install_root).await;
+    state.client_registry.set_resident(&client_id, resident_flag(&payload)).await;
     let count = state.client_registry.count().await;
     tracing::info!("[Heartbeat] Active clients: {}", count);
 
@@ -61,17 +62,25 @@ pub async fn client_list(State(state): State<IPCServer>) -> impl IntoResponse {
         .list()
         .await
         .into_iter()
-        .map(|(id, c)| json!({"id": id, "kind": c.kind, "pid": c.pid, "installRoot": c.install_root}))
+        .map(|(id, c)| json!({"id": id, "kind": c.kind, "pid": c.pid, "installRoot": c.install_root, "resident": c.resident}))
         .collect();
     Json(json!({"clients": clients}))
 }
 
-/// POST /api/client/:id/heartbeat — TTL 갱신 (본문은 무시)
+/// 등록·heartbeat 본문의 `resident`: 창 없이 트레이만 든 GUI (없으면 false)
+fn resident_flag(body: &serde_json::Value) -> bool {
+    body.get("resident").and_then(|v| v.as_bool()).unwrap_or(false)
+}
+
+/// POST /api/client/:id/heartbeat — TTL 갱신. 본문 `{resident?}`로 창 없이 트레이만 든 상태를 알린다
 pub async fn client_heartbeat(
     Path(client_id): Path<String>,
     State(state): State<IPCServer>,
+    body: Option<Json<serde_json::Value>>,
 ) -> impl IntoResponse {
+    let body = body.map(|Json(v)| v).unwrap_or_default();
     if state.client_registry.heartbeat(&client_id).await {
+        state.client_registry.set_resident(&client_id, resident_flag(&body)).await;
         (StatusCode::OK, Json(json!({"ok": true}))).into_response()
     } else {
         (
@@ -216,13 +225,13 @@ fn launch_args(body: &serde_json::Value) -> Result<LaunchLine, (&'static str, &'
 
 /// 띄울 GUI가 붙을 데몬 주소 (`IPC_BASE`). GUI는 설정 포트(`gui.ipcPort`)를 읽으므로, 이 데몬이 그와 다른 포트에서
 /// 들을 때만(`SABA_IPC_PORT`) 알려 준다. 같으면 넘기지 않아 GUI가 나중에 바꾼 포트 설정을 따른다
-fn gui_ipc_base(listen_addr: &str, configured: u16) -> Option<String> {
+pub(crate) fn gui_ipc_base(listen_addr: &str, configured: u16) -> Option<String> {
     let port = listen_addr.parse::<std::net::SocketAddr>().ok()?.port();
     (port != configured).then(|| format!("http://127.0.0.1:{port}"))
 }
 
 /// GUI가 읽는 설정 포트 (main.rs와 같은 자리, 없으면 기본값)
-fn configured_gui_port() -> u16 {
+pub(crate) fn configured_gui_port() -> u16 {
     saba_chan_updater_lib::config_file::ConfigFile::default_location()
         .section("gui")
         .get("ipcPort")
@@ -235,7 +244,7 @@ fn configured_gui_port() -> u16 {
 fn has_screen(kind: Interface) -> bool {
     match kind {
         Interface::Cli => cfg!(windows),
-        Interface::Gui => cfg!(any(windows, target_os = "macos")) || std::env::var_os("DISPLAY").is_some() || std::env::var_os("WAYLAND_DISPLAY").is_some(),
+        Interface::Gui => crate::tray_host::has_desktop(),
     }
 }
 

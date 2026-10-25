@@ -1554,5 +1554,20 @@
     "module_newer": "アップデートが必要です。{{name}} モジュールはより新しいサバちゃんで動きます。",
     "extension": "アップデートが必要です。{{name}} 拡張機能はサバちゃん {{version}} 以上で動きます。",
     "check": "アップデートを確認"
+  },
+  "tray_popup": {
+    "title": "サバちゃん",
+    "daemon_running": "デーモン実行中",
+    "daemon_stopped": "デーモン停止中",
+    "servers": "サーバー",
+    "no_servers": "サーバーはまだありません",
+    "action_failed": "失敗しました",
+    "start": "{{name}}を開始",
+    "stop": "{{name}}を停止",
+    "open_window": "ウィンドウを開く",
+    "switch_to_cli": "CLIに切り替え",
+    "start_daemon": "デーモンを開始",
+    "stop_daemon": "デーモンを停止",
+    "quit_all": "完全に終了"
   }
 }
