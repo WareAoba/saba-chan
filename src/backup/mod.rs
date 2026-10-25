@@ -222,7 +222,8 @@ pub fn stage_archive(archive: &Path, members: &[String], into: &Path) -> Result<
     let wanted = |name: &str| members.iter().any(|m| name == m || name.starts_with(&format!("{}/", m.trim_end_matches('/'))));
     for i in 0..zip.len() {
         let mut file = zip.by_index(i)?;
-        let Some(rel) = file.enclosed_name().map(Path::to_path_buf) else { continue };
+        // 이름 조각이 모두 보통 이름일 때만 (드라이브·루트·`..`가 섞이면 `into.join`이 임시 자리 밖을 가리킬 수 있다)
+        let Some(rel) = file.enclosed_name().map(Path::to_path_buf).filter(|r| r.components().all(|c| matches!(c, std::path::Component::Normal(_)))) else { continue };
         let name = rel.components().map(|c| c.as_os_str().to_string_lossy().into_owned()).collect::<Vec<_>>().join("/");
         if file.is_dir() || !wanted(&name) {
             continue;
