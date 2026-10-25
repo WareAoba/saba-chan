@@ -30,6 +30,7 @@ const MAX_CONNECTIONS: usize = 64;
 /// 짝 맺기 시도는 1분에 한 곳(IP)에서 이만큼, 모두 합쳐 이만큼 (릴레이에도 그만큼만 묻는다)
 const PAIR_PER_SOURCE: usize = 5;
 const PAIR_PER_MINUTE: usize = 20;
+const PAIR_BODY_LIMIT: usize = 1024;
 /// 요청 머리를 이 안에 다 보내지 않으면 끊는다 (TLS만 맺고 가만히 있는 연결이 자리를 쥐지 못하게)
 const HEADER_TIMEOUT: Duration = if cfg!(test) { Duration::from_secs(1) } else { Duration::from_secs(15) };
 
@@ -95,7 +96,16 @@ pub(crate) fn router(routes: Router, ctx: Ctx) -> Router {
 
 async fn remote_auth(State(ctx): State<Ctx>, mut req: Request<Body>, next: Next) -> Response {
     let path = req.uri().path();
-    if path == "/remote/pair" || path == "/health" {
+    if path == "/remote/pair" {
+        // 토큰 없이 받는 본문은 크기와 시간을 묶는다 (머리만 보내고 본문을 미루는 연결이 자리를 쥐지 못하게)
+        let (parts, body) = req.into_parts();
+        return match tokio::time::timeout(HEADER_TIMEOUT, axum::body::to_bytes(body, PAIR_BODY_LIMIT)).await {
+            Ok(Ok(bytes)) => next.run(Request::from_parts(parts, Body::from(bytes))).await,
+            Ok(Err(_)) => error(StatusCode::PAYLOAD_TOO_LARGE, "body_too_large"),
+            Err(_) => error(StatusCode::REQUEST_TIMEOUT, "request_timeout"),
+        };
+    }
+    if path == "/health" {
         return next.run(req).await;
     }
     if LOCAL_ONLY.iter().any(|p| path == p.trim_end_matches('/') || path.starts_with(p)) {
@@ -399,6 +409,32 @@ pub(crate) mod tests {
         let mut buf = [0u8; 64];
         let read = tokio::time::timeout(HEADER_TIMEOUT * 3, tls.read(&mut buf)).await;
         assert!(matches!(read, Ok(Ok(0)) | Ok(Err(_))), "the idle connection must be closed, got {read:?}");
+    }
+
+    /// 머리만 보내고 본문을 보내지 않는 요청도 자리를 오래 쥐지 못한다 (토큰 없는 짝 맺기와 거절될 요청 모두)
+    #[tokio::test]
+    async fn a_request_that_never_sends_its_body_is_closed() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let r = start(None).await;
+        for path in ["/remote/pair", "/api/instances"] {
+            let tcp = tokio::net::TcpStream::connect(r.addr).await.unwrap();
+            let connector = tokio_rustls::TlsConnector::from(Arc::new(pinned_client_config(&r.pin).unwrap()));
+            let mut tls = connector.connect(rustls::pki_types::ServerName::try_from(SERVER_NAME).unwrap(), tcp).await.unwrap();
+            let head = format!("POST {path} HTTP/1.1\r\nHost: remote\r\nContent-Type: application/json\r\nContent-Length: 100\r\n\r\n");
+            tls.write_all(head.as_bytes()).await.unwrap();
+            tls.flush().await.unwrap();
+            let closed = tokio::time::timeout(HEADER_TIMEOUT * 3, async {
+                let mut buf = [0u8; 1024];
+                loop {
+                    match tls.read(&mut buf).await {
+                        Ok(0) | Err(_) => return,
+                        Ok(_) => {}
+                    }
+                }
+            })
+            .await;
+            assert!(closed.is_ok(), "{path}: a request without its body must not hold the connection");
+        }
     }
 
     #[tokio::test]
