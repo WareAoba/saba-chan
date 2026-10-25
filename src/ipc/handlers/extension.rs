@@ -533,7 +533,29 @@ pub(crate) async fn prepare_for_module(
     let mut failed = Vec::new();
     let mut to_enable = Vec::new();
     for id in required {
-        let present = state.extension_manager.read().await.discovered(id).is_some();
+        let (present, unknown_deps) = {
+            let mgr = state.extension_manager.read().await;
+            let deps = mgr.discovered(id).map(|e| {
+                e.manifest.dependencies.keys().filter(|d| mgr.discovered(d).is_none()).cloned().collect::<Vec<_>>()
+            });
+            (deps.is_some(), deps.unwrap_or_default())
+        };
+        // 이미 있어도 의존 익스텐션이 빠졌을 수 있다 (꺼 둔 채 의존 익스텐션만 지운 경우): 카탈로그에 있는 것만 받는다
+        if !unknown_deps.is_empty() {
+            let missing = match ExtensionManager::fetch_remote().await {
+                Ok(remote) => state.extension_manager.read().await.missing_dependencies(id, &remote),
+                Err(_) => Vec::new(),
+            };
+            for dep in missing {
+                if installed.contains(&dep) {
+                    continue;
+                }
+                match install_with_dependencies(state, &dep, None, None).await {
+                    Ok(ids) => installed.extend(ids),
+                    Err(Json(body)) => failed.push(failure(&dep, &body)),
+                }
+            }
+        }
         if !present && !installed.contains(id) {
             match install_with_dependencies(state, id, None, None).await {
                 Ok(ids) => installed.extend(ids),
