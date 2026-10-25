@@ -666,7 +666,7 @@
       "bot.wake": "Wake the bot on a Discord server",
       "bot.music": "Music player settings of a Discord server. No options: show",
       "bot.allow": "Servers a Discord server can see and run. No servers: show. `--all`: every server",
-      "bot.link": "Connection requests sent from Discord with /사바쨩 연결 and no code. No id: show, ID: accept, `--decline`: refuse",
+      "bot.link": "Connection requests sent from Discord with /saba connect and no code. No id: show, ID: accept, `--decline`: refuse",
       "help": "Show help for a command. With --json: the command tree, arguments and exit codes",
       "events": "Follow daemon events as they happen (with --json: one JSON per line). Ctrl+C to stop",
       "install": "Install Saba-chan on this PC without the window installer",

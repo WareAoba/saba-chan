@@ -1,4 +1,14 @@
 {
+  "module_errors": {
+    "module_timeout": "模块调用超时。请检查模块状态。",
+    "module_execution_failed": "无法运行模块。请检查运行环境和模块日志。",
+    "module_crashed": "模块进程因错误退出。请检查模块日志。",
+    "module_bad_output": "模块返回了无效的结果。请更新模块或联系作者。",
+    "module_output_too_large": "模块输出超出了大小限制。请检查模块日志。",
+    "module_path_outside": "模块试图访问允许范围外的文件夹。请检查模块设置。",
+    "module_exception": "模块抛出了异常。请检查模块日志。",
+    "isolation_unsupported": "此操作系统不支持所需的隔离功能。"
+  },
   "add": {
     "created_settings_unsynced": "{{name}} 已创建且设置已保存，但未能写入游戏配置文件：{{error}}",
     "ask_folder": "服务器文件夹",
@@ -783,7 +793,7 @@
       "bot.wake": "唤醒 Discord 服务器中的机器人",
       "bot.music": "Discord 服务器的音乐播放器设置。不带选项则查看",
       "bot.allow": "Discord 服务器可以查看和调用的服务器。不指定服务器：查看，`--all`：所有服务器",
-      "bot.link": "在 Discord 中不带代码使用 /사바쨩 연결 发来的连接请求。不带 ID：查看，ID：接受，`--decline`：拒绝",
+      "bot.link": "在 Discord 中不带代码使用 /saba connect 发来的连接请求。不带 ID：查看，ID：接受，`--decline`：拒绝",
       "help": "显示命令帮助。加 --json 时输出命令树、参数和退出码",
       "events": "实时跟踪守护进程事件（加 --json 时每行一个 JSON）。按 Ctrl+C 停止",
       "tui": "打开全屏菜单",
@@ -1058,6 +1068,9 @@
     }
   },
   "sandbox": {
+    "isolation_unsupported": {
+      "message": "此操作系统不支持隔离运行，因此未运行该组件。"
+    },
     "allowed": "{{component}} 将在无隔离的情况下运行。如果其文件发生变化，会再次询问你。",
     "confirm_allow": "要在无隔离的情况下运行 {{component}} 吗？未经验证的代码将不受限制地访问这台电脑的文件和网络。如果其文件发生变化，会再次询问你。",
     "confirm_gui": "要把 {{component}} 的 GUI 包加载到应用中吗？未经验证的代码将在应用窗口中运行。",

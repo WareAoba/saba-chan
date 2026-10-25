@@ -39,6 +39,7 @@ export async function initI18n(language = pickLanguage()) {
         interpolation: { escapeValue: false },
     });
     document.documentElement.lang = language;
+    document.title = i18n.t('app_name');
     return i18n;
 }
 
