@@ -148,18 +148,15 @@ export function TrayPopup() {
             </div>
 
             <footer className="tray-popup-foot">
-                {daemonUp === false ? (
+                {/* 상태를 읽기 전(데몬이 꺼져 있으면 1~2초)에는 켜기·끄기를 그리지 않는다 */}
+                {daemonUp === false && (
                     <button type="button" className="tray-popup-link" onClick={() => act('start_daemon')}>
                         <Icon name="play" size={12} />
                         {t('tray_popup.start_daemon')}
                     </button>
-                ) : (
-                    <button
-                        type="button"
-                        className="tray-popup-link"
-                        disabled={daemonUp === null}
-                        onClick={() => act('stop_daemon')}
-                    >
+                )}
+                {daemonUp === true && (
+                    <button type="button" className="tray-popup-link" onClick={() => act('stop_daemon')}>
                         <Icon name="stop" size={12} />
                         {t('tray_popup.stop_daemon')}
                     </button>

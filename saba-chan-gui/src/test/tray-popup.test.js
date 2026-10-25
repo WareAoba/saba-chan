@@ -93,6 +93,15 @@ describe('트레이 팝업', () => {
         expect(window.api.trayAction).toHaveBeenLastCalledWith('start_daemon');
     });
 
+    it('데몬 상태를 모르는 동안에는 데몬 켜기·끄기를 그리지 않는다', async () => {
+        window.api.daemonStatus = vi.fn(() => new Promise(() => {}));
+        render(<TrayPopup />);
+        await flush();
+        expect(screen.queryByRole('button', { name: 'Stop daemon' })).toBeNull();
+        expect(screen.queryByRole('button', { name: 'Start daemon' })).toBeNull();
+        expect(screen.getByRole('button', { name: 'Quit completely' })).toBeTruthy();
+    });
+
     it('CLI를 띄울 수 없는 PC에서는 CLI로 전환을 그리지 않는다', async () => {
         window.api.clientsLaunchable = vi.fn().mockResolvedValue({ cli: false, gui: true });
         render(<TrayPopup />);
