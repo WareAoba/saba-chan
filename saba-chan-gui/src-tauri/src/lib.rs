@@ -6,6 +6,7 @@
 //! ## 인자
 //! - `--spawned-by-daemon` 데몬 boot_selector가 붙인다 (무시)
 //! - `--after-update`      업데이터가 다시 띄웠다 → 첫 ready 뒤 `updates:completed`
+//! - `--open-server=<id>`  CLI의 `gui`가 띄웠다 → 그 서버를 연다 (`app:openServer`). 이미 떠 있으면 그 창이 받는다
 
 pub mod daemon;
 pub mod events;
@@ -107,9 +108,12 @@ pub fn run() {
     let app = tauri::Builder::default()
         // 두 번째 실행은 창을 새로 띄우지 않고 떠 있는 창을 앞으로 가져온다.
         // 여러 GUI가 한 데몬을 함께 쓰다 한쪽의 완전히 종료가 다른 쪽의 데몬을 꺼뜨리던 것을 막는다
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             tracing::info!("Second instance launched; focusing the existing window");
             window::show_main(app);
+            if let Some(id) = lifecycle::open_server_arg(args) {
+                lifecycle::open_server(app, id);
+            }
         }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
@@ -153,6 +157,9 @@ pub fn run() {
             window::create_main_window(handle)?;
             if let Err(e) = tray::create(handle) {
                 tracing::warn!("[Tray] Failed to create tray: {}", e);
+            }
+            if let Some(id) = lifecycle::open_server_arg(std::env::args()) {
+                lifecycle::open_server(handle, id);
             }
             Ok(())
         })

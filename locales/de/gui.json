@@ -1391,12 +1391,9 @@
     "module_update": "{{name}}: Version {{version}} des Moduls {{module}} ist verfügbar.",
     "server_update": "{{name}}: Eine neue Spielserver-Version ist verfügbar. Wenn niemand beitreten kann, aktualisiere den Server."
   },
-  "terminal": {
-    "open": "Im Terminal öffnen",
-    "err_unsupported_platform": "Das Öffnen eines Terminals wird auf diesem Betriebssystem noch nicht unterstützt.",
-    "err_cli_not_found": "Das CLI-Programm wurde nicht gefunden, daher kann das Terminal nicht geöffnet werden.",
-    "err_not_found": "Der Daemon hat diesen Server nicht gefunden.",
-    "err_generic": "Das Terminal konnte nicht geöffnet werden."
+  "switch_cli": {
+    "label": "Zur CLI wechseln",
+    "failed": "Die CLI konnte nicht geöffnet werden. {{reason}}"
   },
   "memory_limit": {
     "title": "Speicherlimit",

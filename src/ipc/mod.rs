@@ -792,7 +792,7 @@ impl IPCServer {
             // ── Client heartbeat ──
             .route("/api/client/register", post(handlers::client::client_register))
             .route("/api/clients", get(handlers::client::client_list))
-            .route("/api/clients/launch", post(handlers::client::client_launch))
+            .route("/api/clients/launch", get(handlers::client::client_launchable).post(handlers::client::client_launch))
             // ── 디스코드 명령 권한 (P1) ──
             .route(
                 "/api/permissions/:guild_id",

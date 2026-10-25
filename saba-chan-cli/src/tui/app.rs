@@ -1,7 +1,8 @@
 //! 화면 상태와 키·마우스 처리. 그리기·터미널과 떨어져 있어 시험에서 키를 눌러 볼 수 있다
 //!
-//! 화면은 왼쪽 메뉴(쪽), 가운데 목록과 버튼, 아래 콘솔로 나뉜다. 버튼 하나는 같은 뜻의 명령 한 줄이고,
-//! 누르면 그 명령이 콘솔에 찍히며 실행된다. 그래서 버튼으로 되는 일은 콘솔에 쳐서도 된다.
+//! 화면은 위에서 아래로 쪽 탭, 쪽(목록 → 버튼 → 콘솔), 출력 창, 명령 줄이다. 화살표는 보이는 방향대로 옮긴다:
+//! 목록 맨 위에서 ↑는 탭으로, 목록에서 →는 버튼으로, 버튼에서 ↓는 서버 콘솔로.
+//! 버튼 하나는 같은 뜻의 명령 한 줄이라 버튼으로 되는 일은 `:` 명령 줄에 쳐서도 된다. 자주 쓰지 않는 것은 [더 보기]에 둔다.
 
 use super::data::{s, Snapshot};
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
@@ -10,90 +11,31 @@ use ratatui::widgets::ListState;
 use serde_json::Value;
 use std::collections::{BTreeMap, VecDeque};
 
-/// 콘솔에 남기는 최대 줄 수
+/// 출력 창에 남기는 최대 줄 수
 const MAX_LINES: usize = 2000;
 
-/// 명령 표의 맨 위 명령 하나 ("모든 명령" 쪽)
-#[derive(Debug, Clone)]
-pub struct MenuItem {
-    pub name: String,
-    pub about: String,
-    /// 하위 명령 (이름, 설명, 꼭 줘야 하는 인자가 있는가)
-    pub subs: Vec<Sub>,
-    /// 하위 명령 없이 바로 실행할 때 꼭 줘야 하는 인자가 있는가
-    pub needs_args: bool,
-}
-
-#[derive(Debug, Clone)]
-pub struct Sub {
-    pub name: String,
-    pub about: String,
-    pub needs_args: bool,
-}
-
-/// "모든 명령"에 두지 않는 명령: 화면을 따로 차지하거나(셸, 자동완성 스크립트) 메뉴 자체와 같은 것
-pub const NOT_IN_MENU: &[&str] = &["shell", "tui", "help", "completions", "install"];
-
-/// "모든 명령" = 명령 표. 새 명령을 더하면 여기에도 생긴다
-pub fn menu_from(cmd: &clap::Command) -> Vec<MenuItem> {
-    let needs = |c: &clap::Command| c.get_arguments().any(|a| a.is_required_set() && !a.is_global_set());
-    cmd.get_subcommands()
-        .filter(|c| !c.is_hide_set() && !NOT_IN_MENU.contains(&c.get_name()))
-        .map(|c| MenuItem {
-            name: c.get_name().to_string(),
-            about: c.get_about().map(|a| a.to_string()).unwrap_or_default(),
-            needs_args: needs(c),
-            subs: c
-                .get_subcommands()
-                .filter(|s| !s.is_hide_set() && s.get_name() != "help")
-                .map(|s| Sub {
-                    name: s.get_name().to_string(),
-                    about: s.get_about().map(|a| a.to_string()).unwrap_or_default(),
-                    needs_args: needs(s),
-                })
-                .collect(),
-        })
-        .collect()
-}
-
-/// 왼쪽 메뉴의 쪽
+/// 쪽 탭
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Page {
-    Dashboard,
     Servers,
     Modules,
     Extensions,
     Discord,
     Updates,
-    Settings,
-    DaemonLog,
-    Commands,
+    Daemon,
 }
 
 impl Page {
-    pub const ALL: [Page; 9] = [
-        Page::Dashboard,
-        Page::Servers,
-        Page::Modules,
-        Page::Extensions,
-        Page::Discord,
-        Page::Updates,
-        Page::Settings,
-        Page::DaemonLog,
-        Page::Commands,
-    ];
+    pub const ALL: [Page; 6] = [Page::Servers, Page::Modules, Page::Extensions, Page::Discord, Page::Updates, Page::Daemon];
 
     pub fn key(self) -> &'static str {
         match self {
-            Page::Dashboard => "dashboard",
             Page::Servers => "servers",
             Page::Modules => "modules",
             Page::Extensions => "extensions",
             Page::Discord => "discord",
             Page::Updates => "updates",
-            Page::Settings => "settings",
-            Page::DaemonLog => "daemon_log",
-            Page::Commands => "commands",
+            Page::Daemon => "daemon",
         }
     }
 
@@ -103,85 +45,105 @@ impl Page {
 
     /// 고를 목록이 있는 쪽
     pub fn has_list(self) -> bool {
-        matches!(self, Page::Servers | Page::Modules | Page::Extensions | Page::Commands)
+        matches!(self, Page::Servers | Page::Modules | Page::Extensions)
+    }
+
+    fn slot(self) -> usize {
+        Page::ALL.iter().position(|p| *p == self).unwrap_or(0)
     }
 }
 
-/// 쪽마다 버튼: (문구 키, 명령). `{}`는 목록에서 고른 것, 끝이 공백이면 콘솔 입력 줄을 채워 열어 나머지를 받는다
-pub fn page_buttons(page: Page) -> &'static [(&'static str, &'static str)] {
+/// 버튼이 보이는 때. `More`는 [더 보기] 창에만
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum When {
+    Always,
+    /// 고른 서버가 꺼져 있을 때
+    Stopped,
+    /// 고른 서버가 켜져 있거나 켜지는 중일 때
+    Running,
+    /// 고른 익스텐션이 켜져 있을 때
+    On,
+    Off,
+    /// 디스코드 릴레이가 붙어 있을 때
+    Linked,
+    Unlinked,
+    DaemonUp,
+    DaemonDown,
+    More,
+}
+
+/// 쪽마다 버튼: (문구 키, 명령, 보이는 때). `{}`는 목록에서 고른 것, 끝이 공백이면 명령 줄을 채워 열어 나머지를 받는다
+pub fn page_buttons(page: Page) -> &'static [(&'static str, &'static str, When)] {
+    use When::*;
     match page {
-        Page::Dashboard => &[("status", "status"), ("monitor", "monitor"), ("server_add", "server add"), ("audit", "audit")],
         Page::Servers => &[
-            ("start", "start {}"),
-            ("stop", "stop {}"),
-            ("restart", "restart {}"),
-            ("players", "server players {}"),
-            ("run", "run {} "),
-            ("send", "server send {} "),
-            ("info", "server info {}"),
-            ("settings", "server settings {}"),
-            ("backup_create", "backup create {}"),
-            ("backup_list", "backup list {}"),
-            ("schedule", "schedule show {}"),
-            ("log", "server log {} -n 100"),
-            ("validate", "server validate {}"),
-            ("server_add", "server add"),
-            ("remove", "server rm {}"),
+            ("start", "start {}", Stopped),
+            ("stop", "stop {}", Running),
+            ("restart", "restart {}", Running),
+            ("players", "server players {}", Running),
+            ("backup_create", "backup create {}", Always),
+            ("settings", "server settings {}", Always),
+            ("info", "server info {}", Always),
+            ("server_add", "server add", Always),
+            ("backup_list", "backup list {}", More),
+            ("schedule", "schedule show {}", More),
+            ("commands", "server commands {}", More),
+            ("log", "server log {} -n 100", More),
+            ("validate", "server validate {}", More),
+            ("remove", "server rm {}", More),
         ],
         Page::Modules => &[
-            ("info", "module info {}"),
-            ("commands", "module commands {}"),
-            ("versions", "module versions {}"),
-            ("available", "module available"),
-            ("refresh", "module refresh"),
-            ("remove", "module remove {}"),
+            ("info", "module info {}", Always),
+            ("versions", "module versions {}", Always),
+            ("available", "module available", Always),
+            ("refresh", "module refresh", Always),
+            ("commands", "module commands {}", More),
+            ("remove", "module remove {}", More),
         ],
         Page::Extensions => &[
-            ("enable", "extension enable {}"),
-            ("disable", "extension disable {}"),
-            ("info", "extension info {}"),
-            ("config", "extension config {}"),
-            ("ext_update", "extension update {}"),
-            ("available", "extension available"),
-            ("rescan", "extension rescan"),
+            ("enable", "extension enable {}", Off),
+            ("disable", "extension disable {}", On),
+            ("config", "extension config {}", Always),
+            ("ext_update", "extension update {}", Always),
+            ("available", "extension available", Always),
+            ("rescan", "extension rescan", Always),
+            ("info", "extension info {}", More),
         ],
         Page::Discord => &[
-            ("bot_status", "bot status"),
-            ("bot_pair", "bot pair"),
-            ("bot_start", "bot start"),
-            ("bot_stop", "bot stop"),
-            ("bot_nodes", "bot nodes"),
-            ("bot_channels", "bot channels"),
-            ("bot_invite", "bot invite"),
-            ("perm", "perm show"),
-            ("chatbot", "chatbot show"),
-            ("bot_config", "bot config"),
+            ("bot_start", "bot start", Unlinked),
+            ("bot_stop", "bot stop", Linked),
+            ("bot_pair", "bot pair", Always),
+            ("bot_nodes", "bot nodes", Always),
+            ("perm", "perm show", Always),
+            ("chatbot", "chatbot show", Always),
+            ("bot_status", "bot status", More),
+            ("bot_channels", "bot channels", More),
+            ("bot_invite", "bot invite", More),
+            ("bot_config", "bot config", More),
         ],
         Page::Updates => &[
-            ("update_status", "update status"),
-            ("update_check", "update check"),
-            ("update_download", "update download"),
-            ("update_last", "update last"),
-            ("update_integrity", "update integrity"),
-            ("update_config", "update config"),
+            ("update_check", "update check", Always),
+            ("update_download", "update download", Always),
+            ("update_last", "update last", Always),
+            ("update_status", "update status", More),
+            ("update_integrity", "update integrity", More),
+            ("update_config", "update config", More),
         ],
-        Page::Settings => &[
-            ("config_show", "config show"),
-            ("config_set", "config set "),
-            ("config_defaults", "config defaults"),
-            ("diagnostics", "daemon diagnostics"),
-            ("version", "version"),
-            ("sandbox", "sandbox list"),
-            ("audit", "audit"),
+        Page::Daemon => &[
+            ("daemon_start", "daemon start", DaemonDown),
+            ("daemon_restart", "daemon restart", DaemonUp),
+            ("daemon_stop", "daemon stop", DaemonUp),
+            ("diagnostics", "daemon diagnostics", DaemonUp),
+            ("config_set", "config set ", Always),
+            ("config_show", "config show", More),
+            ("config_defaults", "config defaults", More),
+            ("clients", "daemon clients", More),
+            ("sandbox", "sandbox list", More),
+            ("audit", "audit", More),
+            ("monitor", "monitor", More),
+            ("status", "status", More),
+            ("version", "version", More),
         ],
-        Page::DaemonLog => &[
-            ("daemon_start", "daemon start"),
-            ("daemon_restart", "daemon restart"),
-            ("daemon_stop", "daemon stop"),
-            ("clients", "daemon clients"),
-            ("events", "events"),
-        ],
-        Page::Commands => &[],
     }
 }
 
@@ -189,23 +151,28 @@ pub fn page_buttons(page: Page) -> &'static [(&'static str, &'static str)] {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Button {
     pub label: String,
-    /// 실행할 명령 한 줄 (앞에 `saba-chan-cli`를 붙이지 않는다)
+    /// 실행할 명령 한 줄 (앞에 `saba-chan-cli`를 붙이지 않는다). [더 보기]는 빈 줄
     pub line: String,
-    /// 콘솔 입력 줄을 채워 열고 나머지를 받는다
+    /// 명령 줄을 채워 열고 나머지를 받는다
     pub fill: bool,
     /// 목록에서 고른 것이 있어야 하는데 없으면 false
     pub enabled: bool,
+    /// [더 보기] 창을 연다
+    pub more: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Focus {
-    Nav,
+    Tabs,
     List,
-    Buttons,
+    Actions,
+    /// 서버 콘솔 입력 (친 줄을 그 서버로 보낸다)
     Console,
+    /// 아래 명령 줄 (`saba-chan-cli` 뒤에 쓰는 그대로)
+    Command,
 }
 
-/// 진행 표시 하나 (콘솔 위 작업 줄)
+/// 진행 표시 하나 (출력 창 위 작업 줄)
 #[derive(Debug, Clone, Default)]
 pub struct Job {
     pub message: String,
@@ -243,80 +210,166 @@ pub struct Dialog {
 pub enum Action {
     /// 명령 한 줄을 실행 (앞에 `saba-chan-cli`를 붙이지 않은 단어들)
     Run(String),
+    /// 서버 콘솔에 친 한 줄 (서버 id, 줄). `console`의 입력과 같게 보낸다
+    Send { server: String, text: String },
     /// 실행 중인 명령을 멈춤
     Cancel,
-    /// 쪽이 바뀌었다: 그 쪽에 필요한 것을 곧바로 읽는다
+    /// 쪽이나 고른 것이 바뀌었다: 그 화면에 필요한 것을 곧바로 읽는다
     Refresh,
+    /// 데스크톱 앱으로 바꾼다 (고른 서버를 넘긴다)
+    SwitchToGui,
     Quit,
 }
 
-/// 아래 콘솔: 명령 결과와 입력 줄
+/// 입력 줄 하나와 지난 입력
 #[derive(Default)]
-pub struct Console {
+pub struct LineInput {
+    pub text: String,
+    pub history: Vec<String>,
+    pos: Option<usize>,
+}
+
+impl LineInput {
+    /// 공통 편집 키. 처리했으면 true
+    fn edit(&mut self, key: KeyEvent) -> bool {
+        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+        match key.code {
+            KeyCode::Backspace => {
+                self.text.pop();
+            }
+            KeyCode::Up | KeyCode::Down if !self.history.is_empty() => {
+                let n = self.history.len();
+                let pos = match (self.pos, key.code) {
+                    (None, KeyCode::Up) => n - 1,
+                    (Some(p), KeyCode::Up) => p.saturating_sub(1),
+                    (Some(p), _) if p + 1 < n => p + 1,
+                    _ => {
+                        self.pos = None;
+                        self.text.clear();
+                        return true;
+                    }
+                };
+                self.pos = Some(pos);
+                self.text = self.history[pos].clone();
+            }
+            KeyCode::Char(ch) if !ctrl => self.text.push(ch),
+            _ => return false,
+        }
+        true
+    }
+
+    /// Enter: 친 줄을 꺼내고 지난 입력에 남긴다
+    fn take(&mut self) -> Option<String> {
+        let line = self.text.trim().to_string();
+        if line.is_empty() {
+            return None;
+        }
+        self.text.clear();
+        self.pos = None;
+        if self.history.last() != Some(&line) {
+            self.history.push(line.clone());
+        }
+        Some(line)
+    }
+
+    fn clear(&mut self) {
+        self.text.clear();
+        self.pos = None;
+    }
+}
+
+/// 명령 결과가 쌓이는 출력 창 (평소에는 닫혀 있고, 결과가 두 줄 이상이면 열린다)
+#[derive(Default)]
+pub struct Output {
     pub lines: VecDeque<String>,
     /// 아래에서 몇 줄 올려 보고 있는가 (접힌 줄 기준)
     pub scroll: usize,
-    pub input: String,
-    pub history: Vec<String>,
-    history_pos: Option<usize>,
-    /// 크게 펼침 (F2)
-    pub big: bool,
+    pub open: bool,
+    /// 지금 명령이 낸 줄 수
+    cmd_lines: usize,
+}
+
+/// 마지막으로 그린 자리 (마우스)
+#[derive(Default)]
+pub struct Areas {
+    /// 쪽 탭 (쪽 순서대로, 화면 밖이면 빈 칸)
+    pub tabs: Vec<Rect>,
+    pub gui: Rect,
+    pub list: Rect,
+    pub buttons: Vec<Rect>,
+    /// [더 보기] 창의 줄들
+    pub more: Vec<Rect>,
+    /// 서버 콘솔·데몬 로그
+    pub view: Rect,
+    pub output: Rect,
+    pub command: Rect,
+}
+
+impl Areas {
+    pub fn clear(&mut self) {
+        *self = Areas::default();
+    }
 }
 
 pub struct App {
     pub page: Page,
     pub focus: Focus,
-    /// 콘솔에서 Esc로 돌아갈 곳
+    /// 명령 줄에서 Esc로 돌아갈 곳
     back: Focus,
     pub list_state: ListState,
     /// 쪽마다 마지막으로 고른 항목 (Page::ALL 순서)
     picked: [usize; Page::ALL.len()],
     pub button: usize,
     pub snap: Snapshot,
-    pub menu: Vec<MenuItem>,
-    pub console: Console,
-    /// 마지막으로 실행한 명령 (콘솔 제목)
+    pub output: Output,
+    pub command: LineInput,
+    /// 서버 콘솔에 칠 줄
+    pub server_input: LineInput,
+    /// 서버 콘솔·데몬 로그를 아래에서 몇 줄 올려 보고 있는가
+    pub view_scroll: usize,
+    /// 마지막으로 실행한 명령 (출력 창 제목)
     pub last_command: Option<String>,
+    /// 맨 아래 줄에 잠깐 보이는 결과 한 줄
+    pub toast: Option<String>,
     pub dialog: Option<Dialog>,
+    /// [더 보기] 창에서 고른 줄
+    pub more: Option<usize>,
     pub jobs: BTreeMap<u64, Job>,
     pub running: bool,
     pub show_help: bool,
-    /// 지금 붙은 데몬의 포트 (설정 화면)
+    /// 처음에 열 서버 (`tui --server`, GUI에서 넘어올 때). 서버 목록을 받으면 고르고 지운다
+    pub open_server: Option<String>,
+    /// 지금 붙은 데몬의 포트 (데몬 쪽)
     pub port: u16,
-    /// 마지막으로 그린 자리 (마우스)
-    pub nav_area: Rect,
-    /// 좁은 화면의 탭 자리 (쪽 순서대로, 화면 밖이면 빈 칸)
-    pub tab_areas: Vec<Rect>,
-    pub list_area: Rect,
-    pub button_areas: Vec<Rect>,
-    pub console_area: Rect,
+    pub areas: Areas,
 }
 
 impl App {
-    pub fn new(menu: Vec<MenuItem>) -> Self {
+    pub fn new() -> Self {
         let mut list_state = ListState::default();
         list_state.select(Some(0));
         Self {
-            page: Page::Dashboard,
-            focus: Focus::Nav,
-            back: Focus::Nav,
+            page: Page::Servers,
+            focus: Focus::List,
+            back: Focus::List,
             list_state,
             picked: [0; Page::ALL.len()],
-            port: 0,
             button: 0,
             snap: Snapshot::default(),
-            menu,
-            console: Console::default(),
+            output: Output::default(),
+            command: LineInput::default(),
+            server_input: LineInput::default(),
+            view_scroll: 0,
             last_command: None,
+            toast: None,
             dialog: None,
+            more: None,
             jobs: BTreeMap::new(),
             running: false,
             show_help: false,
-            nav_area: Rect::default(),
-            tab_areas: Vec::new(),
-            list_area: Rect::default(),
-            button_areas: Vec::new(),
-            console_area: Rect::default(),
+            open_server: None,
+            port: 0,
+            areas: Areas::default(),
         }
     }
 
@@ -326,7 +379,6 @@ impl App {
             Page::Servers => self.snap.servers.iter().map(|v| s(v, "name").to_string()).collect(),
             Page::Modules => self.snap.modules.iter().map(|v| s(v, "name").to_string()).collect(),
             Page::Extensions => self.snap.extensions.iter().map(|v| s(v, "id").to_string()).collect(),
-            Page::Commands => self.menu.iter().map(|m| m.name.clone()).collect(),
             _ => Vec::new(),
         }
     }
@@ -345,42 +397,84 @@ impl App {
         (self.page == Page::Servers).then(|| self.snap.servers.get(self.selected_index())).flatten()
     }
 
-    /// 지금 쪽의 버튼
-    pub fn buttons(&self) -> Vec<Button> {
-        if self.page == Page::Commands {
-            let Some(item) = self.menu.get(self.selected_index()) else { return Vec::new() };
-            if item.subs.is_empty() {
-                return vec![Button { label: item.name.clone(), line: item.name.clone(), fill: item.needs_args, enabled: true }];
-            }
-            return item
-                .subs
-                .iter()
-                .map(|s| {
-                    let line = format!("{} {}", item.name, s.name);
-                    Button { label: s.name.clone(), line: if s.needs_args { format!("{line} ") } else { line }, fill: s.needs_args, enabled: true }
-                })
-                .collect();
+    /// 쪽이 어디든 서버 쪽에서 마지막으로 고른 서버의 id (GUI로 넘길 때)
+    pub fn current_server_id(&self) -> Option<String> {
+        let i = if self.page == Page::Servers { self.selected_index() } else { self.picked[Page::Servers.slot()] };
+        self.snap.servers.get(i).map(|v| s(v, "id").to_string())
+    }
+
+    /// GUI로 전환할 수 있는가 (데몬이 이 PC에서 GUI를 띄울 수 있다고 할 때만)
+    pub fn can_switch_to_gui(&self) -> bool {
+        self.snap.health.is_some() && self.snap.launchable.as_ref().and_then(|l| l.get("gui")).and_then(Value::as_bool) == Some(true)
+    }
+
+    /// 처음에 열 서버를 고른다 (id나 이름)
+    pub fn apply_open_server(&mut self) {
+        let Some(want) = self.open_server.clone() else { return };
+        if self.snap.servers.is_empty() {
+            return;
         }
+        self.open_server = None;
+        if let Some(i) = self.snap.servers.iter().position(|v| s(v, "id") == want || s(v, "name") == want) {
+            self.go(Page::Servers);
+            self.list_state.select(Some(i));
+            self.focus = Focus::Actions;
+        }
+    }
+
+    fn when(&self, w: When) -> bool {
+        let server = || self.selected_server().map(|v| s(v, "status")).unwrap_or("");
+        let enabled = || self.snap.extensions.get(self.selected_index()).and_then(|v| v.get("enabled")).and_then(Value::as_bool) == Some(true);
+        let linked = || self.snap.agent.as_ref().and_then(|a| a.get("running")).and_then(Value::as_bool) == Some(true);
+        match w {
+            When::Always => true,
+            When::Running => matches!(server(), "running" | "starting" | "provisioning"),
+            When::Stopped => !matches!(server(), "running" | "starting" | "provisioning" | "stopping"),
+            When::On => enabled(),
+            When::Off => !enabled(),
+            When::Linked => linked(),
+            When::Unlinked => !linked(),
+            When::DaemonUp => self.snap.health.is_some(),
+            When::DaemonDown => self.snap.health.is_none(),
+            When::More => false,
+        }
+    }
+
+    fn button_of(&self, key: &str, template: &str) -> Button {
         let picked = self.selected().map(|n| shlex::try_quote(&n).map(|q| q.into_owned()).unwrap_or(n));
+        let needs_item = template.contains("{}");
+        Button {
+            label: t!(&format!("tui.btn.{key}")),
+            line: template.replace("{}", picked.as_deref().unwrap_or("")),
+            fill: template.ends_with(' '),
+            enabled: !needs_item || picked.is_some(),
+            more: false,
+        }
+    }
+
+    /// 지금 쪽의 버튼 (지금 상태에 맞는 것만, 끝에 [더 보기])
+    pub fn buttons(&self) -> Vec<Button> {
+        let mut out: Vec<Button> = page_buttons(self.page)
+            .iter()
+            .filter(|(_, _, w)| self.when(*w))
+            .map(|(key, template, _)| self.button_of(key, template))
+            .collect();
+        if page_buttons(self.page).iter().any(|(_, _, w)| *w == When::More) {
+            out.push(Button { label: t!("tui.btn.more"), line: String::new(), fill: false, enabled: true, more: true });
+        }
+        out
+    }
+
+    /// [더 보기] 창의 버튼
+    pub fn more_buttons(&self) -> Vec<Button> {
         page_buttons(self.page)
             .iter()
-            .map(|(key, template)| {
-                let needs_item = template.contains("{}");
-                let line = match &picked {
-                    Some(n) => template.replace("{}", n),
-                    None => template.replace("{}", ""),
-                };
-                Button {
-                    label: t!(&format!("tui.btn.{key}")),
-                    line,
-                    fill: template.ends_with(' '),
-                    enabled: !needs_item || picked.is_some(),
-                }
-            })
+            .filter(|(_, _, w)| *w == When::More)
+            .map(|(key, template, _)| self.button_of(key, template))
             .collect()
     }
 
-    /// 결과 한 줄(여러 줄도). 터미널용 안내의 `saba-chan-cli ` 머리는 뗀다: 콘솔에는 그 뒤만 치면 된다
+    /// 출력 창에 한 줄(여러 줄도). 터미널용 안내의 `saba-chan-cli ` 머리는 뗀다: 명령 줄에는 그 뒤만 치면 된다
     pub fn push_line(&mut self, line: &str) {
         for l in line.split('\n') {
             let indent = l.len() - l.trim_start().len();
@@ -388,76 +482,123 @@ impl App {
                 Some(rest) => format!("{}{}", &l[..indent], rest),
                 None => l.to_string(),
             };
-            self.console.lines.push_back(shown);
+            self.output.lines.push_back(shown);
         }
-        while self.console.lines.len() > MAX_LINES {
-            self.console.lines.pop_front();
+        while self.output.lines.len() > MAX_LINES {
+            self.output.lines.pop_front();
         }
+    }
+
+    /// 명령이 낸 결과. 한 줄이면 맨 아래 줄에 잠깐, 두 줄째부터는 출력 창을 연다
+    pub fn command_output(&mut self, line: &str) {
+        self.push_line(line);
+        self.output.scroll = 0;
+        self.output.cmd_lines += line.split('\n').count();
+        if self.output.cmd_lines >= 2 {
+            self.output.open = true;
+        }
+        if let Some(last) = self.output.lines.back() {
+            self.toast = Some(last.clone());
+        }
+    }
+
+    /// 화면이 알리는 한 줄 (출력 창은 열지 않는다)
+    pub fn notify(&mut self, line: &str) {
+        self.push_line(line);
+        self.toast = Some(line.to_string());
+    }
+
+    /// 명령을 시작한다: 출력 창 제목과 줄 수를 새로
+    pub fn begin_command(&mut self, shown: &str) {
+        self.push_line("");
+        self.push_line(&format!("› {shown}"));
+        self.last_command = Some(shown.to_string());
+        self.output.cmd_lines = 0;
+        self.output.scroll = 0;
+        self.toast = None;
+        self.running = true;
     }
 
     fn go(&mut self, page: Page) -> Option<Action> {
         if self.page == page {
             return None;
         }
-        let slot = |p: Page| Page::ALL.iter().position(|x| *x == p).unwrap_or(0);
-        self.picked[slot(self.page)] = self.list_state.selected().unwrap_or(0);
+        self.picked[self.page.slot()] = self.list_state.selected().unwrap_or(0);
         self.page = page;
-        self.list_state.select(Some(self.picked[slot(page)]));
+        self.list_state.select(Some(self.picked[page.slot()]));
         self.button = 0;
+        self.view_scroll = 0;
+        if matches!(self.focus, Focus::List | Focus::Actions | Focus::Console) {
+            self.focus = Focus::Tabs;
+        }
         Some(Action::Refresh)
     }
 
-    fn move_page(&mut self, down: bool) -> Option<Action> {
+    fn move_page(&mut self, right: bool) -> Option<Action> {
         let n = Page::ALL.len();
-        let i = Page::ALL.iter().position(|p| *p == self.page).unwrap_or(0);
-        self.go(Page::ALL[if down { (i + 1) % n } else { (i + n - 1) % n }])
+        let i = self.page.slot();
+        self.go(Page::ALL[if right { (i + 1) % n } else { (i + n - 1) % n }])
     }
 
-    fn move_list(&mut self, down: bool) -> Option<Action> {
-        let n = self.list_names().len().max(1);
-        let i = self.selected_index().min(n - 1);
-        self.list_state.select(Some(if down { (i + 1) % n } else { (i + n - 1) % n }));
-        self.button = self.button.min(self.buttons().len().saturating_sub(1));
+    /// 쪽 안으로 들어가는 첫 칸
+    fn enter_page(&mut self) {
+        self.focus = if self.page.has_list() && !self.list_names().is_empty() { Focus::List } else { Focus::Actions };
+    }
+
+    fn select(&mut self, i: usize) -> Option<Action> {
+        let n = self.list_names().len();
+        if n == 0 {
+            return None;
+        }
+        let i = i.min(n - 1);
+        if i == self.selected_index() {
+            return None;
+        }
+        self.list_state.select(Some(i));
+        self.button = 0;
+        self.view_scroll = 0;
         // 서버를 바꾸면 그 서버의 콘솔을 읽는다
         (self.page == Page::Servers).then_some(Action::Refresh)
     }
 
-    fn focus_console(&mut self) {
-        if self.focus != Focus::Console {
+    fn open_command(&mut self) {
+        if self.focus != Focus::Command {
             self.back = self.focus;
         }
-        self.focus = Focus::Console;
+        self.focus = Focus::Command;
     }
 
-    /// Tab 순서: 메뉴 → 목록(있으면) → 버튼(있으면) → 콘솔
+    fn can_type_to_server(&self) -> bool {
+        self.page == Page::Servers && self.selected_server().is_some()
+    }
+
+    /// Tab 순서: 탭 → 목록(있으면) → 버튼 → 서버 콘솔(서버 쪽)
     fn cycle(&mut self, forward: bool) {
-        let mut order = vec![Focus::Nav];
-        if self.page.has_list() {
+        let mut order = vec![Focus::Tabs];
+        if self.page.has_list() && !self.list_names().is_empty() {
             order.push(Focus::List);
         }
-        if !self.buttons().is_empty() {
-            order.push(Focus::Buttons);
+        order.push(Focus::Actions);
+        if self.can_type_to_server() {
+            order.push(Focus::Console);
         }
-        order.push(Focus::Console);
         let i = order.iter().position(|f| *f == self.focus).unwrap_or(0);
-        let next = order[if forward { (i + 1) % order.len() } else { (i + order.len() - 1) % order.len() }];
-        if next == Focus::Console {
-            self.focus_console();
-        } else {
-            self.focus = next;
-        }
+        self.focus = order[if forward { (i + 1) % order.len() } else { (i + order.len() - 1) % order.len() }];
     }
 
-    /// 버튼 누르기: 채울 것이 있으면 콘솔 입력 줄로, 아니면 바로 실행
-    fn press(&mut self, i: usize) -> Option<Action> {
-        let b = self.buttons().get(i)?.clone();
+    /// 버튼 누르기: [더 보기]는 창을, 채울 것이 있으면 명령 줄을, 아니면 바로 실행
+    fn press(&mut self, b: Button) -> Option<Action> {
+        if b.more {
+            self.more = Some(0);
+            return None;
+        }
         if !b.enabled {
-            self.push_line(&t!("tui.pick_first"));
+            self.notify(&t!("tui.pick_first"));
             return None;
         }
         if b.fill {
-            self.console.input = b.line;
-            self.focus_console();
+            self.command.text = b.line;
+            self.open_command();
             return None;
         }
         self.run_line(b.line)
@@ -466,10 +607,16 @@ impl App {
     /// 한 줄 실행 요청. 다른 명령이 도는 중이면 버리지 않고 알린다
     fn run_line(&mut self, line: String) -> Option<Action> {
         if self.running {
-            self.push_line(&t!("tui.busy"));
+            self.notify(&t!("tui.busy"));
             return None;
         }
         Some(Action::Run(line))
+    }
+
+    /// 지금 보이는 서버 콘솔·데몬 로그·출력 창을 넘긴다
+    fn scroll(&mut self, up: bool, by: usize) {
+        let target = if self.output.open { &mut self.output.scroll } else { &mut self.view_scroll };
+        *target = if up { *target + by } else { target.saturating_sub(by) };
     }
 
     pub fn on_key(&mut self, key: KeyEvent) -> Option<Action> {
@@ -480,12 +627,19 @@ impl App {
         }
         if ctrl && key.code == KeyCode::Char('c') {
             // 쓰던 줄이 있으면 그 줄만 지운다
-            if self.focus == Focus::Console && !self.console.input.is_empty() {
-                self.console.input.clear();
-                self.console.history_pos = None;
+            let input = match self.focus {
+                Focus::Command => Some(&mut self.command),
+                Focus::Console => Some(&mut self.server_input),
+                _ => None,
+            };
+            if let Some(input) = input.filter(|i| !i.text.is_empty()) {
+                input.clear();
                 return None;
             }
             return Some(if self.running { Action::Cancel } else { Action::Quit });
+        }
+        if self.more.is_some() {
+            return self.more_key(key);
         }
         if self.show_help {
             self.show_help = false;
@@ -493,18 +647,19 @@ impl App {
         }
         match key.code {
             KeyCode::F(2) => {
-                self.console.big = !self.console.big;
+                self.output.open = !self.output.open;
                 return None;
             }
+            KeyCode::F(9) if self.can_switch_to_gui() => return Some(Action::SwitchToGui),
             KeyCode::PageUp => {
-                self.console.scroll += 10;
+                self.scroll(true, 10);
                 return None;
             }
             KeyCode::PageDown => {
-                self.console.scroll = self.console.scroll.saturating_sub(10);
+                self.scroll(false, 10);
                 return None;
             }
-            KeyCode::Tab => {
+            KeyCode::Tab if self.focus != Focus::Command => {
                 self.cycle(true);
                 return None;
             }
@@ -514,96 +669,136 @@ impl App {
             }
             _ => {}
         }
+        if self.focus == Focus::Command {
+            return self.command_key(key);
+        }
         if self.focus == Focus::Console {
             return self.console_key(key);
         }
         match key.code {
             KeyCode::Char('q') if !self.running => return Some(Action::Quit),
-            KeyCode::Char(':') | KeyCode::Char('/') => self.focus_console(),
-            KeyCode::Char('?') => self.show_help = true,
+            KeyCode::Char(':') | KeyCode::Char('/') => {
+                self.open_command();
+                return None;
+            }
+            KeyCode::Char('?') => {
+                self.show_help = true;
+                return None;
+            }
             KeyCode::Char(c @ '1'..='9') => {
                 let page = Page::ALL.get(c as usize - '1' as usize).copied()?;
-                self.focus = Focus::Nav;
                 return self.go(page);
+            }
+            KeyCode::Esc => {
+                if self.output.open {
+                    self.output.open = false;
+                } else {
+                    self.toast = None;
+                    self.focus = match self.focus {
+                        Focus::Actions if self.page.has_list() && !self.list_names().is_empty() => Focus::List,
+                        _ => Focus::Tabs,
+                    };
+                }
+                return None;
             }
             _ => {}
         }
         match self.focus {
-            Focus::Nav => match key.code {
-                KeyCode::Up => return self.move_page(false),
-                KeyCode::Down => return self.move_page(true),
-                KeyCode::Right | KeyCode::Enter => {
-                    self.focus = if self.page.has_list() { Focus::List } else { Focus::Buttons };
-                }
+            Focus::Tabs => match key.code {
+                KeyCode::Left => return self.move_page(false),
+                KeyCode::Right => return self.move_page(true),
+                KeyCode::Down | KeyCode::Enter => self.enter_page(),
                 _ => {}
             },
             Focus::List => match key.code {
-                KeyCode::Up => return self.move_list(false),
-                KeyCode::Down => return self.move_list(true),
-                KeyCode::Left => self.focus = Focus::Nav,
-                KeyCode::Right | KeyCode::Enter => self.focus = Focus::Buttons,
+                KeyCode::Up if self.selected_index() == 0 => self.focus = Focus::Tabs,
+                KeyCode::Up => return self.select(self.selected_index() - 1),
+                KeyCode::Down => return self.select(self.selected_index() + 1),
+                KeyCode::Right | KeyCode::Enter => self.focus = Focus::Actions,
                 _ => {}
             },
-            Focus::Buttons => {
+            Focus::Actions => {
                 let n = self.buttons().len();
+                self.button = self.button.min(n.saturating_sub(1));
                 match key.code {
-                    KeyCode::Left if self.button == 0 => self.focus = if self.page.has_list() { Focus::List } else { Focus::Nav },
-                    KeyCode::Left => self.button -= 1,
+                    KeyCode::Left if self.button == 0 && self.page.has_list() && !self.list_names().is_empty() => self.focus = Focus::List,
+                    KeyCode::Left => self.button = self.button.saturating_sub(1),
                     KeyCode::Right if n > 0 => self.button = (self.button + 1).min(n - 1),
-                    KeyCode::Up => self.focus = if self.page.has_list() { Focus::List } else { Focus::Nav },
-                    KeyCode::Down => self.focus_console(),
-                    KeyCode::Enter => return self.press(self.button),
+                    KeyCode::Up => self.focus = Focus::Tabs,
+                    KeyCode::Down if self.can_type_to_server() => self.focus = Focus::Console,
+                    KeyCode::Enter => {
+                        let b = self.buttons().get(self.button)?.clone();
+                        return self.press(b);
+                    }
                     _ => {}
                 }
             }
-            Focus::Console => {}
+            Focus::Console | Focus::Command => {}
         }
         None
     }
 
-    fn console_key(&mut self, key: KeyEvent) -> Option<Action> {
-        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
-        let c = &mut self.console;
+    /// 아래 명령 줄
+    fn command_key(&mut self, key: KeyEvent) -> Option<Action> {
         match key.code {
-            KeyCode::Esc => {
-                self.focus = self.back;
+            KeyCode::Esc => self.focus = self.back,
+            KeyCode::Tab => {
+                if let Some(done) = complete(&self.command.text) {
+                    self.command.text = done;
+                }
             }
             KeyCode::Enter => {
-                let line = c.input.trim().to_string();
-                if line.is_empty() {
+                if self.command.text.trim().is_empty() {
                     return None;
                 }
                 if self.running {
                     // 줄은 남겨 둔다: 지금 명령이 끝나면 다시 Enter
-                    self.push_line(&t!("tui.busy"));
+                    self.notify(&t!("tui.busy"));
                     return None;
                 }
-                c.input.clear();
-                c.history_pos = None;
-                if c.history.last() != Some(&line) {
-                    c.history.push(line.clone());
+                return self.command.take().map(Action::Run);
+            }
+            _ => {
+                self.command.edit(key);
+            }
+        }
+        None
+    }
+
+    /// 서버 콘솔 입력: 친 줄을 그 서버로
+    fn console_key(&mut self, key: KeyEvent) -> Option<Action> {
+        match key.code {
+            KeyCode::Esc => self.focus = Focus::Actions,
+            KeyCode::Enter => {
+                let server = self.selected_server().map(|v| s(v, "id").to_string())?;
+                if self.server_input.text.trim().is_empty() {
+                    return None;
                 }
-                return Some(Action::Run(line));
+                if self.running {
+                    self.notify(&t!("tui.busy"));
+                    return None;
+                }
+                self.view_scroll = 0;
+                return self.server_input.take().map(|text| Action::Send { server, text });
             }
-            KeyCode::Backspace => {
-                c.input.pop();
+            _ => {
+                self.server_input.edit(key);
             }
-            KeyCode::Up | KeyCode::Down if !c.history.is_empty() => {
-                let n = c.history.len();
-                let pos = match (c.history_pos, key.code) {
-                    (None, KeyCode::Up) => n - 1,
-                    (Some(p), KeyCode::Up) => p.saturating_sub(1),
-                    (Some(p), _) if p + 1 < n => p + 1,
-                    _ => {
-                        c.history_pos = None;
-                        c.input.clear();
-                        return None;
-                    }
-                };
-                c.history_pos = Some(pos);
-                c.input = c.history[pos].clone();
+        }
+        None
+    }
+
+    fn more_key(&mut self, key: KeyEvent) -> Option<Action> {
+        let items = self.more_buttons();
+        let i = self.more.unwrap_or(0).min(items.len().saturating_sub(1));
+        match key.code {
+            KeyCode::Esc | KeyCode::Char('q') => self.more = None,
+            KeyCode::Up => self.more = Some(i.checked_sub(1).unwrap_or(items.len().saturating_sub(1))),
+            KeyCode::Down => self.more = Some(if i + 1 < items.len() { i + 1 } else { 0 }),
+            KeyCode::Enter => {
+                self.more = None;
+                return self.press(items.get(i)?.clone());
             }
-            KeyCode::Char(ch) if !ctrl => c.input.push(ch),
             _ => {}
         }
         None
@@ -661,41 +856,63 @@ impl App {
         let row_in = |r: Rect| (m.row > r.y && m.row + 1 < r.y + r.height).then(|| (m.row - r.y - 1) as usize);
         match m.kind {
             MouseEventKind::Down(MouseButton::Left) => {
-                if let Some(i) = self.button_areas.iter().position(|r| inside(*r)) {
-                    self.focus = Focus::Buttons;
-                    self.button = i;
-                    return self.press(i);
+                if self.more.is_some() {
+                    let picked = self.areas.more.iter().position(|r| inside(*r));
+                    self.more = None;
+                    return self.press(self.more_buttons().get(picked?)?.clone());
                 }
-                if let Some(i) = self.tab_areas.iter().position(|r| inside(*r)) {
-                    self.focus = Focus::Nav;
+                if inside(self.areas.gui) && self.can_switch_to_gui() {
+                    return Some(Action::SwitchToGui);
+                }
+                if let Some(i) = self.areas.buttons.iter().position(|r| inside(*r)) {
+                    self.focus = Focus::Actions;
+                    self.button = i;
+                    return self.press(self.buttons().get(i)?.clone());
+                }
+                if let Some(i) = self.areas.tabs.iter().position(|r| inside(*r)) {
+                    self.focus = Focus::Tabs;
                     return self.go(Page::ALL[i]);
                 }
-                if inside(self.nav_area) {
-                    let page = row_in(self.nav_area).and_then(|i| Page::ALL.get(i).copied())?;
-                    self.focus = Focus::Nav;
-                    return self.go(page);
-                }
-                if inside(self.list_area) {
-                    let i = row_in(self.list_area)? + self.list_state.offset();
+                if inside(self.areas.list) {
+                    let i = row_in(self.areas.list)? + self.list_state.offset();
                     if i < self.list_names().len() {
-                        let again = self.focus == Focus::List && self.selected_index() == i;
-                        self.list_state.select(Some(i));
-                        self.focus = if again { Focus::Buttons } else { Focus::List };
-                        return (self.page == Page::Servers).then_some(Action::Refresh);
+                        self.focus = Focus::List;
+                        return self.select(i);
                     }
                 }
-                if inside(self.console_area) {
-                    self.focus_console();
+                if inside(self.areas.view) && self.can_type_to_server() {
+                    self.focus = Focus::Console;
+                }
+                if inside(self.areas.command) {
+                    self.open_command();
                 }
             }
-            MouseEventKind::ScrollUp if inside(self.console_area) => self.console.scroll += 3,
-            MouseEventKind::ScrollDown if inside(self.console_area) => self.console.scroll = self.console.scroll.saturating_sub(3),
-            MouseEventKind::ScrollUp if inside(self.list_area) => return self.move_list(false),
-            MouseEventKind::ScrollDown if inside(self.list_area) => return self.move_list(true),
+            MouseEventKind::ScrollUp if inside(self.areas.output) => self.output.scroll += 3,
+            MouseEventKind::ScrollDown if inside(self.areas.output) => self.output.scroll = self.output.scroll.saturating_sub(3),
+            MouseEventKind::ScrollUp if inside(self.areas.view) => self.view_scroll += 3,
+            MouseEventKind::ScrollDown if inside(self.areas.view) => self.view_scroll = self.view_scroll.saturating_sub(3),
+            MouseEventKind::ScrollUp if inside(self.areas.list) => return self.select(self.selected_index().saturating_sub(1)),
+            MouseEventKind::ScrollDown if inside(self.areas.list) => return self.select(self.selected_index() + 1),
             _ => {}
         }
         None
     }
+}
+
+/// 명령 줄 자동 완성: 친 만큼과 같은 깊이의 명령 중 앞이 같은 것들의 공통 부분까지. 하나뿐이면 뒤에 공백
+pub fn complete(input: &str) -> Option<String> {
+    let depth = input.matches(' ').count();
+    let words: Vec<String> = crate::cli::command_words()
+        .into_iter()
+        .chain(["help".to_string()])
+        .filter(|w| w.matches(' ').count() == depth && w.starts_with(input))
+        .collect();
+    let first = words.first()?;
+    if words.len() == 1 {
+        return Some(format!("{first} "));
+    }
+    let common: String = words.iter().fold(first.clone(), |acc, w| acc.chars().zip(w.chars()).take_while(|(a, b)| a == b).map(|(a, _)| a).collect());
+    (common.len() > input.len()).then_some(common)
 }
 
 /// 한 줄을 명령 표로 읽는다. 전역 옵션이 앞에 오거나 별칭으로 불러도 같은 명령으로 본다
@@ -712,14 +929,15 @@ fn parsed(words: &[String]) -> Option<crate::cli::Cli> {
 pub fn refuse(words: &[String]) -> Option<String> {
     use crate::cli::{Cmd, UpdateCmd};
     match parsed(words)?.cmd? {
-        Cmd::Shell | Cmd::Tui | Cmd::Completions { .. } | Cmd::Install(_) => Some(t!("tui.not_here")),
+        Cmd::Shell | Cmd::Tui { .. } | Cmd::Completions { .. } | Cmd::Install(_) => Some(t!("tui.not_here")),
+        Cmd::Gui { .. } => Some(t!("tui.use_switch")),
         Cmd::Monitor(a) if a.watch => Some(t!("tui.not_here")),
         Cmd::Update(UpdateCmd::Apply { .. }) => Some(t!("tui.not_here")),
         _ => None,
     }
 }
 
-/// TUI에서 쓰도록 고친 명령: 콘솔은 입력 줄을 열지 않고 따라 읽는다 (명령은 `run`으로 보낸다)
+/// TUI에서 쓰도록 고친 명령: 콘솔은 입력 줄을 열지 않고 따라 읽는다 (서버에 칠 줄은 서버 콘솔에)
 pub fn adapt(mut words: Vec<String>) -> Vec<String> {
     use crate::cli::{Cmd, ServerCmd};
     let Some(cli) = parsed(&words) else { return words };
@@ -736,7 +954,6 @@ pub fn adapt(mut words: Vec<String>) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use clap::CommandFactory;
     use ratatui::crossterm::event::KeyEventState;
     use serde_json::json;
 
@@ -750,8 +967,12 @@ mod tests {
 
     fn app() -> App {
         crate::i18n::init("ko");
-        let mut a = App::new(menu_from(&crate::cli::localized()));
-        a.snap.servers = vec![json!({ "name": "my server", "status": "stopped" }), json!({ "name": "pal", "status": "running" })];
+        let mut a = App::new();
+        a.snap.health = Some(json!({ "version": "0.1.10" }));
+        a.snap.servers = vec![
+            json!({ "id": "s1", "name": "my server", "status": "stopped" }),
+            json!({ "id": "s2", "name": "pal", "status": "running" }),
+        ];
         a
     }
 
@@ -761,24 +982,16 @@ mod tests {
         }
     }
 
-    /// "모든 명령" = 명령 표: 빼 둔 몇 개 말고는 모든 맨 위 명령이 있다
-    #[test]
-    fn every_command_is_on_the_all_commands_page() {
-        let a = app();
-        let names: Vec<&str> = a.menu.iter().map(|m| m.name.as_str()).collect();
-        for c in crate::cli::Cli::command().get_subcommands() {
-            if !NOT_IN_MENU.contains(&c.get_name()) {
-                assert!(names.contains(&c.get_name()), "{} is missing from the menu", c.get_name());
-            }
-        }
+    fn lines(a: &App) -> Vec<String> {
+        a.buttons().into_iter().map(|b| b.line).collect()
     }
 
-    /// 쪽 버튼의 명령은 모두 실제 명령이다 (명령 표가 바뀌어 버튼이 깨지지 않게)
+    /// 쪽 버튼의 명령은 모두 실제 명령이고 문구가 있다 (명령 표가 바뀌어 버튼이 깨지지 않게)
     #[test]
     fn every_page_button_is_a_real_command() {
         crate::i18n::init("ko");
         for page in Page::ALL {
-            for (key, template) in page_buttons(page) {
+            for (key, template, _) in page_buttons(page) {
                 let line = template.replace("{}", "x");
                 let mut words = shlex::split(line.trim()).unwrap();
                 // 채워 여는 버튼은 사용자가 마저 쓴다: 인자 하나를 더해 읽어 본다
@@ -790,82 +1003,154 @@ mod tests {
             }
             assert!(crate::i18n::try_t(&format!("tui.page.{}", page.key())).is_some(), "{page:?} has no title");
         }
+        assert!(crate::i18n::try_t("tui.btn.more").is_some());
     }
 
-    /// 마우스 없이 숫자 키·화살표·Tab만으로 모든 쪽과 버튼에 닿는다
+    /// 서버를 고르고 → 버튼 → ↓ 서버 콘솔. 보이는 방향대로 옮긴다
     #[test]
-    fn every_page_and_button_is_reachable_by_keyboard() {
+    fn arrows_move_the_way_the_screen_is_laid_out() {
         let mut a = app();
-        let mut seen = Vec::new();
-        for _ in 0..Page::ALL.len() {
-            seen.push(a.page);
+        assert_eq!((a.page, a.focus), (Page::Servers, Focus::List));
+        // 목록 맨 위에서 ↑는 탭으로, 탭에서 →는 다음 쪽, ↓는 쪽 안으로
+        a.on_key(key(KeyCode::Up));
+        assert_eq!(a.focus, Focus::Tabs);
+        assert_eq!(a.on_key(key(KeyCode::Right)), Some(Action::Refresh));
+        assert_eq!(a.page, Page::Modules);
+        a.on_key(key(KeyCode::Left));
+        a.on_key(key(KeyCode::Down));
+        assert_eq!(a.focus, Focus::List);
+        // 두 번째 서버 → 버튼 (켜진 서버라 정지가 맨 앞)
+        assert_eq!(a.on_key(key(KeyCode::Down)), Some(Action::Refresh));
+        a.on_key(key(KeyCode::Right));
+        assert_eq!(a.focus, Focus::Actions);
+        assert_eq!(a.on_key(key(KeyCode::Enter)), Some(Action::Run("stop pal".into())));
+        // 버튼에서 ↓는 서버 콘솔, Esc는 버튼으로, 버튼 첫 칸에서 ←는 목록으로
+        a.on_key(key(KeyCode::Down));
+        assert_eq!(a.focus, Focus::Console);
+        a.on_key(key(KeyCode::Esc));
+        assert_eq!(a.focus, Focus::Actions);
+        a.on_key(key(KeyCode::Left));
+        assert_eq!(a.focus, Focus::List);
+        // 숫자 키로 쪽 바로 가기
+        assert_eq!(a.on_key(key(KeyCode::Char('6'))), Some(Action::Refresh));
+        assert_eq!(a.page, Page::Daemon);
+    }
+
+    /// 버튼은 서버 상태에 맞는 것만: 꺼진 서버는 시작, 켜진 서버는 정지·재시작. 덜 쓰는 것은 [더 보기]에
+    #[test]
+    fn buttons_follow_the_server_state_and_rare_ones_go_under_more() {
+        let mut a = app();
+        let stopped = lines(&a);
+        assert_eq!(stopped[0], "start 'my server'");
+        assert!(!stopped.iter().any(|l| l.starts_with("stop") || l.starts_with("restart")));
+        assert!(!stopped.iter().any(|l| l.starts_with("server rm")), "rare buttons live under more");
+        a.list_state.select(Some(1));
+        let running = lines(&a);
+        assert_eq!(&running[..2], ["stop pal", "restart pal"]);
+        // [더 보기] → 창 → 지우기
+        a.focus = Focus::Actions;
+        a.button = a.buttons().iter().position(|b| b.more).unwrap();
+        assert_eq!(a.on_key(key(KeyCode::Enter)), None);
+        assert_eq!(a.more, Some(0));
+        let rm = a.more_buttons().iter().position(|b| b.line == "server rm pal").unwrap();
+        for _ in 0..rm {
             a.on_key(key(KeyCode::Down));
         }
-        assert_eq!(seen, Page::ALL.to_vec());
-        assert_eq!(a.on_key(key(KeyCode::Char('2'))), Some(Action::Refresh));
-        assert_eq!(a.page, Page::Servers);
-        // 서버 목록 → 두 번째 서버 → 버튼 → 정지
-        a.on_key(key(KeyCode::Right));
-        assert_eq!(a.focus, Focus::List);
-        a.on_key(key(KeyCode::Down));
-        a.on_key(key(KeyCode::Enter));
-        assert_eq!(a.focus, Focus::Buttons);
-        a.on_key(key(KeyCode::Right));
-        assert_eq!(a.on_key(key(KeyCode::Enter)), Some(Action::Run("stop pal".into())));
+        assert_eq!(a.on_key(key(KeyCode::Enter)), Some(Action::Run("server rm pal".into())));
+        assert_eq!(a.more, None);
     }
 
-    /// 이름에 공백이 있어도 한 단어로. 채워 여는 버튼은 콘솔 입력 줄로 간다
+    /// 서버 콘솔에 친 줄은 그 서버로 간다. ↑는 지난 입력
     #[test]
-    fn buttons_run_the_same_command_or_fill_the_console() {
+    fn the_server_console_sends_lines_to_the_selected_server() {
         let mut a = app();
-        a.on_key(key(KeyCode::Char('2')));
-        let b = a.buttons();
-        assert_eq!(b[0].line, "start 'my server'");
-        let run = b.iter().position(|b| b.fill).unwrap();
-        a.focus = Focus::Buttons;
-        a.button = run;
-        assert_eq!(a.on_key(key(KeyCode::Enter)), None);
-        assert_eq!(a.focus, Focus::Console);
-        assert_eq!(a.console.input, "run 'my server' ");
-        typed(&mut a, "say hi");
-        assert_eq!(a.on_key(key(KeyCode::Enter)), Some(Action::Run("run 'my server' say hi".into())));
-        // Esc는 버튼으로 돌아간다
-        a.on_key(key(KeyCode::Esc));
-        assert_eq!(a.focus, Focus::Buttons);
+        a.list_state.select(Some(1));
+        a.focus = Focus::Console;
+        typed(&mut a, "say \"hi there\"");
+        assert_eq!(a.on_key(key(KeyCode::Enter)), Some(Action::Send { server: "s2".into(), text: "say \"hi there\"".into() }));
+        // 콘솔에서는 q도 :도 글자다
+        typed(&mut a, "q:");
+        assert_eq!(a.server_input.text, "q:");
+        a.server_input.clear();
+        a.on_key(key(KeyCode::Up));
+        assert_eq!(a.server_input.text, "say \"hi there\"");
     }
 
-    /// 고를 서버가 없으면 서버가 필요한 버튼은 실행하지 않고 알린다
+    /// 채워 여는 버튼은 명령 줄로 간다. Esc는 원래 자리로
+    #[test]
+    fn fill_buttons_open_the_command_line() {
+        let mut a = app();
+        a.go(Page::Daemon);
+        a.focus = Focus::Actions;
+        a.button = a.buttons().iter().position(|b| b.fill).unwrap();
+        assert_eq!(a.on_key(key(KeyCode::Enter)), None);
+        assert_eq!(a.focus, Focus::Command);
+        assert_eq!(a.command.text, "config set ");
+        typed(&mut a, "language=ko");
+        assert_eq!(a.on_key(key(KeyCode::Enter)), Some(Action::Run("config set language=ko".into())));
+        a.on_key(key(KeyCode::Esc));
+        assert_eq!(a.focus, Focus::Actions);
+    }
+
+    /// 고를 서버가 없으면 서버가 필요한 버튼은 실행하지 않고 알린다. [새 서버]는 된다
     #[test]
     fn a_button_that_needs_a_server_waits_for_one() {
         let mut a = app();
         a.snap.servers.clear();
-        a.on_key(key(KeyCode::Char('2')));
-        a.focus = Focus::Buttons;
+        a.focus = Focus::Actions;
+        a.button = 0;
         assert_eq!(a.on_key(key(KeyCode::Enter)), None);
-        assert_eq!(a.console.lines.back().map(String::as_str), Some(t!("tui.pick_first").as_str()));
-        let add = a.buttons().iter().position(|b| b.line == "server add").unwrap();
-        a.button = add;
+        assert_eq!(a.toast.as_deref(), Some(t!("tui.pick_first").as_str()));
+        a.button = a.buttons().iter().position(|b| b.line == "server add").unwrap();
         assert_eq!(a.on_key(key(KeyCode::Enter)), Some(Action::Run("server add".into())));
+        // 서버가 없으면 ↓로 콘솔에 가지 않는다
+        a.on_key(key(KeyCode::Down));
+        assert_eq!(a.focus, Focus::Actions);
     }
 
-    /// 콘솔: `:`로 들어가 치고 Enter. 다른 명령이 도는 중이면 줄을 남기고 알린다
+    /// 명령 줄: `:`로 열고 Enter. 다른 명령이 도는 중이면 줄을 남기고 알린다. Tab은 자동 완성
     #[test]
-    fn the_console_runs_lines_and_says_when_it_is_busy() {
+    fn the_command_line_runs_completes_and_says_when_it_is_busy() {
         let mut a = app();
         a.on_key(key(KeyCode::Char(':')));
-        assert_eq!(a.focus, Focus::Console);
-        typed(&mut a, "status");
+        assert_eq!(a.focus, Focus::Command);
+        typed(&mut a, "stat");
+        a.on_key(key(KeyCode::Tab));
+        assert_eq!(a.command.text, "status ");
         a.running = true;
         assert_eq!(a.on_key(key(KeyCode::Enter)), None);
-        assert_eq!(a.console.input, "status");
-        assert_eq!(a.console.lines.back().map(String::as_str), Some(t!("tui.busy").as_str()));
+        assert_eq!(a.command.text, "status ");
+        assert_eq!(a.toast.as_deref(), Some(t!("tui.busy").as_str()));
         a.running = false;
         assert_eq!(a.on_key(key(KeyCode::Enter)), Some(Action::Run("status".into())));
-        // 콘솔에서는 q도 글자다
-        typed(&mut a, "q");
-        assert_eq!(a.console.input, "q");
-        assert_eq!(a.on_key(key(KeyCode::Up)), None);
-        assert_eq!(a.console.input, "status");
+        a.on_key(key(KeyCode::Up));
+        assert_eq!(a.command.text, "status");
+    }
+
+    #[test]
+    fn completion_goes_as_far_as_the_candidates_agree() {
+        assert_eq!(complete("serv").as_deref(), Some("server"));
+        assert_eq!(complete("server inf").as_deref(), Some("server info "));
+        assert_eq!(complete("zzz"), None);
+    }
+
+    /// 한 줄 결과는 맨 아래 줄에만, 두 줄째부터 출력 창이 열린다. Esc로 닫는다
+    #[test]
+    fn short_results_toast_and_long_ones_open_the_output() {
+        let mut a = app();
+        a.begin_command("start pal");
+        a.command_output("✓ 시작했어요");
+        assert!(!a.output.open);
+        assert_eq!(a.toast.as_deref(), Some("✓ 시작했어요"));
+        a.running = false;
+        a.begin_command("server info pal");
+        a.command_output("이름  pal");
+        a.command_output("상태  실행 중");
+        assert!(a.output.open);
+        a.focus = Focus::Actions;
+        a.on_key(key(KeyCode::Esc));
+        assert!(!a.output.open);
+        assert_eq!(a.focus, Focus::Actions, "the first Esc only closes the output");
     }
 
     /// 묻는 창은 키로 답하고 Esc는 취소. 명령이 돌 때 Ctrl+C는 끝내지 않고 멈춘다
@@ -887,20 +1172,47 @@ mod tests {
         assert_eq!(a.on_key(ctrl_c()), Some(Action::Cancel));
         assert_eq!(a.on_key(key(KeyCode::Char('q'))), None);
         a.running = false;
-        // 콘솔에 쓰던 줄이 있으면 Ctrl+C는 줄만 지운다
+        // 명령 줄에 쓰던 줄이 있으면 Ctrl+C는 줄만 지운다
         a.on_key(key(KeyCode::Char(':')));
         typed(&mut a, "server");
         assert_eq!(a.on_key(ctrl_c()), None);
-        assert!(a.console.input.is_empty());
+        assert!(a.command.text.is_empty());
         assert_eq!(a.on_key(ctrl_c()), Some(Action::Quit));
     }
 
-    /// 콘솔의 안내에는 `saba-chan-cli` 머리가 붙지 않는다 (콘솔에는 그 뒤만 친다)
+    /// GUI로 전환은 데몬이 GUI를 띄울 수 있다고 할 때만, 고른 서버를 넘긴다
     #[test]
-    fn hints_in_the_console_drop_the_program_name() {
+    fn switching_to_the_gui_needs_a_gui_and_carries_the_server() {
+        let mut a = app();
+        assert_eq!(a.on_key(key(KeyCode::F(9))), None);
+        a.snap.launchable = Some(json!({ "cli": true, "gui": true }));
+        a.list_state.select(Some(1));
+        a.go(Page::Daemon);
+        assert_eq!(a.on_key(key(KeyCode::F(9))), Some(Action::SwitchToGui));
+        assert_eq!(a.current_server_id().as_deref(), Some("s2"));
+    }
+
+    /// `tui --server`·GUI에서 넘겨받은 서버를 목록이 오면 고른다
+    #[test]
+    fn the_server_handed_over_is_selected_when_the_list_arrives() {
+        let mut a = app();
+        let servers = std::mem::take(&mut a.snap.servers);
+        a.open_server = Some("s2".into());
+        a.go(Page::Daemon);
+        a.apply_open_server();
+        assert!(a.open_server.is_some(), "waits for the list");
+        a.snap.servers = servers;
+        a.apply_open_server();
+        assert_eq!((a.page, a.selected_index(), a.focus), (Page::Servers, 1, Focus::Actions));
+        assert!(a.open_server.is_none());
+    }
+
+    /// 출력 창의 안내에는 `saba-chan-cli` 머리가 붙지 않는다 (명령 줄에는 그 뒤만 친다)
+    #[test]
+    fn hints_in_the_output_drop_the_program_name() {
         let mut a = app();
         a.push_line("다음 할 일\n  saba-chan-cli bot pair");
-        assert_eq!(a.console.lines.back().map(String::as_str), Some("  bot pair"));
+        assert_eq!(a.output.lines.back().map(String::as_str), Some("  bot pair"));
     }
 
     #[test]
@@ -908,6 +1220,8 @@ mod tests {
         crate::i18n::init("ko");
         let w = |s: &str| shlex::split(s).unwrap();
         assert!(refuse(&w("shell")).is_some());
+        assert!(refuse(&w("tui --server pal")).is_some());
+        assert!(refuse(&w("gui")).is_some());
         assert!(refuse(&w("monitor --watch")).is_some());
         assert!(refuse(&w("update apply")).is_some());
         assert!(refuse(&w("install --dir x")).is_some());
@@ -933,15 +1247,13 @@ mod tests {
     /// 다른 쪽에 다녀와도 쪽마다 고른 항목이 남는다
     #[test]
     fn each_page_keeps_its_selection() {
-        crate::i18n::init("ko");
-        let mut app = App::new(menu_from(&crate::cli::localized()));
-        app.snap.servers = vec![serde_json::json!({ "id": "a" }), serde_json::json!({ "id": "b" }), serde_json::json!({ "id": "c" })];
-        app.go(Page::Servers);
-        app.list_state.select(Some(2));
-        app.go(Page::Dashboard);
-        app.go(Page::Servers);
-        assert_eq!(app.list_state.selected(), Some(2));
-        app.go(Page::Modules);
-        assert_eq!(app.list_state.selected(), Some(0));
+        let mut a = app();
+        a.snap.servers.push(json!({ "id": "c" }));
+        a.list_state.select(Some(2));
+        a.go(Page::Discord);
+        a.go(Page::Servers);
+        assert_eq!(a.list_state.selected(), Some(2));
+        a.go(Page::Modules);
+        assert_eq!(a.list_state.selected(), Some(0));
     }
 }

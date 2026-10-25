@@ -65,7 +65,8 @@ pub async fn dispatch(ctx: &Ctx, cmd: Cmd) -> Result<()> {
             Ok(())
         }
         Cmd::Shell => Box::pin(crate::shell::run(ctx)).await,
-        Cmd::Tui => Box::pin(crate::tui::run(ctx)).await,
+        Cmd::Tui { server } => Box::pin(crate::tui::run(ctx, server.as_deref())).await,
+        Cmd::Gui { server } => gui(ctx, server.as_deref()).await,
         Cmd::Install(a) => install::run(ctx, a).await,
         Cmd::Uninstall(a) => uninstall::run(ctx, a).await,
     }
@@ -101,11 +102,22 @@ fn needs_daemon(cmd: &Cmd) -> bool {
             | Cmd::Completions { .. }
             | Cmd::Help { .. }
             | Cmd::Shell
-            | Cmd::Tui
+            | Cmd::Tui { .. }
             | Cmd::Install(_)
             | Cmd::Uninstall(_)
             | Cmd::Daemon(DaemonCmd::Start | DaemonCmd::Status | DaemonCmd::Stop { .. } | DaemonCmd::Restart { .. })
     )
+}
+
+/// `gui [서버]`: 데몬이 데스크톱 앱을 띄운다 (그 서버를 골라 연다). TUI의 GUI로 전환 버튼도 이것을 쓴다
+pub async fn gui(ctx: &Ctx, server: Option<&str>) -> Result<()> {
+    let id = match server {
+        Some(q) => Some(crate::resolve::server(ctx, Some(q)).await?.id),
+        None => None,
+    };
+    let r = ctx.api.launch("gui", id.as_deref()).await?;
+    ctx.out.done(&t!("gui.opened"), &r);
+    Ok(())
 }
 
 /// POST /api/chat/command — 디스코드와 같은 처리기

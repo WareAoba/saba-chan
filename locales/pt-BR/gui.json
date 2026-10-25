@@ -1391,12 +1391,9 @@
     "module_update": "{{name}}: saiu a versão {{version}} do módulo {{module}}.",
     "server_update": "{{name}}: saiu uma nova versão do servidor do jogo. Se não der para entrar, atualize o servidor."
   },
-  "terminal": {
-    "open": "Abrir no terminal",
-    "err_unsupported_platform": "Abrir um terminal ainda não é compatível com este sistema.",
-    "err_cli_not_found": "O programa CLI não foi encontrado, então o terminal não pode ser aberto.",
-    "err_not_found": "O daemon não encontrou este servidor.",
-    "err_generic": "Não foi possível abrir o terminal."
+  "switch_cli": {
+    "label": "Mudar para a CLI",
+    "failed": "Não foi possível abrir a CLI. {{reason}}"
   },
   "memory_limit": {
     "title": "Limite de memória",

@@ -11,6 +11,7 @@ export const EVENT_CHANNELS = [
     'console:popoutOpened',
     'console:popoutClosed',
     'console:popinRequest',
+    'app:openServer',
 ];
 
 export function createEventHub() {
@@ -19,6 +20,8 @@ export function createEventHub() {
     let lastStatus = null;
     // 구독자가 없을 때 온 닫기 요청 (로드 중 Alt+F4). 첫 구독자에게 넘겨야 셸이 받음 확인을 받는다
     let pendingClose = false;
+    // 화면이 뜨기 전에 온 "이 서버를 열어라" (`--open-server`로 뜬 GUI). 첫 구독자에게 넘긴다
+    let pendingOpenServer = null;
 
     const listenersOf = (name) => {
         if (!channels.has(name)) channels.set(name, new Set());
@@ -43,6 +46,8 @@ export function createEventHub() {
         } else if (name === 'app:closeRequest') {
             if (listenersOf(name).size === 0) pendingClose = true;
             else dispatch(name);
+        } else if (name === 'app:openServer' && listenersOf(name).size === 0) {
+            pendingOpenServer = payload;
         } else {
             dispatch(name, payload);
         }
@@ -61,6 +66,13 @@ export function createEventHub() {
             pendingClose = false;
             queueMicrotask(() => {
                 if (set.has(cb)) cb();
+            });
+        }
+        if (name === 'app:openServer' && pendingOpenServer) {
+            const payload = pendingOpenServer;
+            pendingOpenServer = null;
+            queueMicrotask(() => {
+                if (set.has(cb)) cb(payload);
             });
         }
         return () => set.delete(cb);

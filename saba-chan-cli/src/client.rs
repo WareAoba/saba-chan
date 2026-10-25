@@ -223,14 +223,30 @@ impl Api {
     }
     /// GET /api/daemon/console?since=&count=
     pub async fn daemon_console(&self, since: Option<u64>, count: Option<usize>) -> Result<Value> {
+        self.daemon_console_tokens(since, count, console::colors_enabled()).await
+    }
+
+    /// 데몬 로그. `spans`면 줄마다 구문 강조 토큰을 붙여 받는다 (TUI는 색 코드를 끄고도 칠한다)
+    pub async fn daemon_console_tokens(&self, since: Option<u64>, count: Option<usize>, spans: bool) -> Result<Value> {
         self.get(&with_query(
             "/api/daemon/console",
             &[
                 ("since", since.map(|v| v.to_string())),
                 ("count", count.map(|v| v.to_string())),
+                ("spans", spans.then(|| "1".to_string())),
             ],
         ))
         .await
+    }
+
+    /// 이 PC에서 띄울 수 있는 인터페이스 `{cli, gui}` (GUI로 전환 버튼을 보일지)
+    pub async fn launchable(&self) -> Result<Value> {
+        self.get("/api/clients/launch").await
+    }
+
+    /// 데몬이 다른 인터페이스(`cli`·`gui`)를 띄운다. `instance`면 그 서버를 골라 연다
+    pub async fn launch(&self, kind: &str, instance: Option<&str>) -> Result<Value> {
+        self.post("/api/clients/launch", serde_json::json!({ "kind": kind, "instance": instance })).await
     }
 
     // ── 서버 (런타임 상태) ──
@@ -380,12 +396,17 @@ impl Api {
     }
     /// GET /api/instance/:id/console?since=&count=&spans=1 (색을 쓸 때만 하이라이팅 구간을 받는다)
     pub async fn console(&self, id: &str, since: Option<u64>, count: Option<usize>) -> Result<Value> {
+        self.console_tokens(id, since, count, console::colors_enabled()).await
+    }
+
+    /// 서버 콘솔. `spans`면 줄마다 구문 강조 토큰을 붙여 받는다
+    pub async fn console_tokens(&self, id: &str, since: Option<u64>, count: Option<usize>, spans: bool) -> Result<Value> {
         self.get(&with_query(
             &format!("/api/instance/{}/console", seg(id)),
             &[
                 ("since", since.map(|v| v.to_string())),
                 ("count", count.map(|v| v.to_string())),
-                ("spans", console::colors_enabled().then(|| "1".to_string())),
+                ("spans", spans.then(|| "1".to_string())),
             ],
         ))
         .await
@@ -1410,7 +1431,6 @@ mod route_coverage {
         ("/api/updates/install", "원격(디스코드 `/사바쨩 업데이트`)용 한 번에 받고 적용 (CLI `update`는 단계마다 진행을 보인다)"),
         ("/api/client/:id/heartbeat", "GUI 창 수명"),
         ("/api/client/:id/unregister", "GUI 창 수명"),
-        ("/api/clients/launch", "GUI가 새 터미널에 CLI를 띄우는 길"),
         ("/api/extensions/:id/gui", "GUI 번들"),
         ("/api/extensions/:id/gui/styles", "GUI 번들"),
         ("/api/extensions/:id/icon", "GUI 그림"),

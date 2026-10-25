@@ -1391,12 +1391,9 @@
     "module_update": "{{name}}: {{module}} モジュールの新しいバージョン {{version}} が出ました。",
     "server_update": "{{name}}: ゲームサーバーの新しいバージョンが出ました。接続できない場合はサーバーをアップデートしてください。"
   },
-  "terminal": {
-    "open": "ターミナルで開く",
-    "err_unsupported_platform": "このOSではまだターミナルで開けません。",
-    "err_cli_not_found": "CLIの実行ファイルが見つからないため、ターミナルで開けません。",
-    "err_not_found": "デーモンでこのサーバーが見つかりませんでした。",
-    "err_generic": "ターミナルを開けませんでした。"
+  "switch_cli": {
+    "label": "CLIに切り替え",
+    "failed": "CLIを開けませんでした。{{reason}}"
   },
   "memory_limit": {
     "title": "メモリ上限",

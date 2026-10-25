@@ -521,8 +521,9 @@ const impl = {
         Object.assign(mockChannels, patch);
         return ok({ guildId, ...mockChannels });
     },
-    // 터미널로 열기 (I4: POST /api/clients/launch)
-    openInTerminal: () => ok({ success: true, pid: 4242 }),
+    // GUI ⇄ CLI 전환 (GET·POST /api/clients/launch)
+    clientsLaunchable: () => ok({ cli: true, gui: true }),
+    clientLaunch: () => ok({ success: true, pid: 4242 }),
     // 데몬 이벤트 스트림 (P4): 잠시 뒤 디스코드에서 실행한 명령 한 건
     onDaemonEvent: (cb) => {
         const timer = setTimeout(

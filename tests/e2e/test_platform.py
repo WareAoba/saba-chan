@@ -120,9 +120,9 @@ def test_metrics_include_running_server_share(mc):
 
 
 @pytest.mark.windows
-def test_open_in_terminal_spawns_cli_console(mc):
+def test_switch_to_cli_spawns_the_menu_in_a_terminal(mc):
     daemon, iid, *_ = mc
-    r = daemon.api.ok("POST", "/api/clients/launch", {"kind": "cli", "view": "console", "instance": iid})
+    r = daemon.api.ok("POST", "/api/clients/launch", {"kind": "cli", "instance": iid})
     pid = r["pid"]
     try:
         assert procs.pid_alive(pid), "터미널 창의 CLI가 바로 끝남"
@@ -130,13 +130,16 @@ def test_open_in_terminal_spawns_cli_console(mc):
         procs.kill_pid(pid)
 
 
-def test_open_in_terminal_input_validation(mc):
+def test_switch_input_validation(mc):
     daemon, iid, *_ = mc
-    assert daemon.api.post("/api/clients/launch", {"kind": "gui", "view": "shell"}).status_code == 400
-    assert daemon.api.post("/api/clients/launch", {"kind": "cli", "view": "console"}).status_code == 400
-    assert daemon.api.post("/api/clients/launch", {"kind": "cli", "view": "console", "instance": "nope"}).status_code == 404
+    can = daemon.api.ok("GET", "/api/clients/launch")
+    assert isinstance(can["cli"], bool) and isinstance(can["gui"], bool), can
+    assert daemon.api.post("/api/clients/launch", {"kind": "web"}).status_code == 400
+    assert daemon.api.post("/api/clients/launch", {"kind": "cli", "instance": 5}).status_code == 400
+    assert daemon.api.post("/api/clients/launch", {"kind": "cli", "instance": "nope"}).status_code == 404
     if not IS_WINDOWS:
-        assert daemon.api.post("/api/clients/launch", {"kind": "cli", "view": "shell"}).status_code == 501
+        assert not can["cli"], can
+        assert daemon.api.post("/api/clients/launch", {"kind": "cli"}).status_code == 501
 
 
 ESCAPE_TOML = """[module]

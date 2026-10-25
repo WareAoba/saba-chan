@@ -135,7 +135,7 @@ pub async fn reap_expired_clients(registry: &ClientRegistry) {
     }
 }
 
-/// GET /api/daemon/console?since=0&count=200 — 데몬 자체 tracing 로그 조회
+/// GET /api/daemon/console?since=0&count=200&spans=1 — 데몬 자체 tracing 로그 조회 (`spans=1`이면 구문 강조 토큰을 붙인다)
 pub async fn daemon_console(
     State(state): State<IPCServer>,
     axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
@@ -143,47 +143,95 @@ pub async fn daemon_console(
     let since_id = params.get("since").and_then(|s| s.parse::<u64>().ok());
     let count = params.get("count").and_then(|c| c.parse::<usize>().ok());
 
-    let lines = state.daemon_log_buffer.get_since(since_id, count);
+    let entries = state.daemon_log_buffer.get_since(since_id, count);
+    let count = entries.len();
+    let mut lines = serde_json::to_value(entries).unwrap_or_else(|_| json!([]));
+    // `spans=1`: 줄마다 구문 강조 토큰 구간 (인스턴스 콘솔과 같은 토큰, UTF-16 오프셋)
+    if params.get("spans").is_some_and(|v| v == "1" || v == "true") {
+        let hl = crate::supervisor::highlight::daemon_log();
+        for line in lines.as_array_mut().into_iter().flatten() {
+            let spans: Vec<serde_json::Value> = line
+                .get("message")
+                .and_then(|m| m.as_str())
+                .map(|m| hl.spans(m).into_iter().map(|(s, e, t)| json!([s, e, t])).collect())
+                .unwrap_or_default();
+            if let Some(obj) = line.as_object_mut() {
+                obj.insert("spans".to_string(), serde_json::Value::Array(spans));
+            }
+        }
+    }
 
     (
         StatusCode::OK,
         Json(json!({
             "lines": lines,
-            "count": lines.len(),
+            "count": count,
             "epoch": state.daemon_log_buffer.epoch(),
         })),
     )
         .into_response()
 }
 
-/// `POST /api/clients/launch` 본문에서 CLI 실행 인자를 만든다 (I4 "터미널로 열기").
-/// 실행 줄은 여기서 정한 모양뿐이다: 본문 문자열을 인자로 그대로 넘기지 않는다. 틀리면 `(field, reason)`
-/// CLI 인자와 그 줄이 가리키는 인스턴스 id
-type LaunchLine = (Vec<String>, Option<String>);
+/// 띄울 수 있는 인터페이스 (`POST /api/clients/launch`의 `kind`)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Interface {
+    Cli,
+    Gui,
+}
 
-fn launch_args(body: &serde_json::Value) -> Result<LaunchLine, (&'static str, &'static str)> {
-    match body.get("kind").and_then(|v| v.as_str()) {
-        Some("cli") => {}
-        Some(_) => return Err(("kind", "only \"cli\" can be launched")),
-        None => return Err(("kind", "required")),
+impl Interface {
+    fn binary(self) -> &'static str {
+        match self {
+            Interface::Cli => "saba-chan-cli",
+            Interface::Gui => "saba-chan-gui",
+        }
     }
+}
+
+/// 띄울 인터페이스, 실행 인자, 그 줄이 가리키는 인스턴스 id
+type LaunchLine = (Interface, Vec<String>, Option<String>);
+
+/// `POST /api/clients/launch` 본문에서 실행 줄을 만든다 (GUI ↔ CLI 전환).
+/// 실행 줄은 여기서 정한 모양뿐이다: 본문 문자열을 인자로 그대로 넘기지 않는다. 틀리면 `(field, reason)`.
+/// 인스턴스는 `--옵션=값` 한 칸으로 넘겨 id가 다른 옵션으로 읽히지 않는다
+fn launch_args(body: &serde_json::Value) -> Result<LaunchLine, (&'static str, &'static str)> {
+    let kind = match body.get("kind").and_then(|v| v.as_str()) {
+        Some("cli") => Interface::Cli,
+        Some("gui") => Interface::Gui,
+        Some(_) => return Err(("kind", "must be \"cli\" or \"gui\"")),
+        None => return Err(("kind", "required")),
+    };
     let instance = match body.get("instance") {
         None | Some(serde_json::Value::Null) => None,
         Some(v) => Some(v.as_str().filter(|s| !s.is_empty()).ok_or(("instance", "must be an instance id"))?.to_string()),
     };
-    match (body.get("view").and_then(|v| v.as_str()), instance) {
-        // `--` 뒤라 id가 옵션으로 읽히지 않는다
-        (Some("console"), Some(id)) => Ok((vec!["console".into(), "--".into(), id.clone()], Some(id))),
-        (Some("console"), None) => Err(("instance", "required for the console view")),
-        (Some("shell"), None) => Ok((Vec::new(), None)),
-        (Some("shell"), Some(_)) => Err(("instance", "the shell view takes no instance")),
-        _ => Err(("view", "must be \"console\" or \"shell\"")),
-    }
+    let args = match (kind, &instance) {
+        (Interface::Cli, None) => vec!["tui".to_string()],
+        (Interface::Cli, Some(id)) => vec!["tui".to_string(), format!("--server={id}")],
+        (Interface::Gui, None) => Vec::new(),
+        (Interface::Gui, Some(id)) => vec![format!("--open-server={id}")],
+    };
+    Ok((kind, args, instance))
 }
 
-/// POST /api/clients/launch — 새 터미널 창에 CLI를 띄운다 (I4). 로컬 전용: 액션 카탈로그에 없다
+/// CLI는 새 콘솔 창이 있어야 하므로 지금은 Windows만. GUI는 데스크톱 화면이 있어야 한다
+fn can_launch(kind: Interface) -> bool {
+    let desktop = match kind {
+        Interface::Cli => cfg!(windows),
+        Interface::Gui => cfg!(any(windows, target_os = "macos")) || std::env::var_os("DISPLAY").is_some() || std::env::var_os("WAYLAND_DISPLAY").is_some(),
+    };
+    desktop && crate::boot_selector::find_interface_binary(kind.binary()).is_some()
+}
+
+/// GET /api/clients/launch — 이 PC에서 띄울 수 있는 인터페이스 `{cli, gui}` (전환 버튼을 보일지)
+pub async fn client_launchable() -> impl IntoResponse {
+    Json(json!({ "cli": can_launch(Interface::Cli), "gui": can_launch(Interface::Gui) }))
+}
+
+/// POST /api/clients/launch — 다른 인터페이스를 띄운다 (GUI ↔ CLI 전환). 띄운 뒤 부른 쪽이 스스로 닫는다.
+/// CLI는 새 터미널 창에 전체 화면 메뉴로, GUI는 창으로. 로컬 전용: 액션 카탈로그에 없다
 pub async fn client_launch(State(state): State<IPCServer>, Json(body): Json<serde_json::Value>) -> impl IntoResponse {
-    let (args, instance) = match launch_args(&body) {
+    let (kind, args, instance) = match launch_args(&body) {
         Ok(v) => v,
         Err((field, reason)) => {
             return (
@@ -198,22 +246,30 @@ pub async fn client_launch(State(state): State<IPCServer>, Json(body): Json<serd
             return (StatusCode::NOT_FOUND, Json(json!({ "success": false, "error": format!("Instance not found: {}", id), "error_code": "not_found" }))).into_response();
         }
     }
-    if !cfg!(windows) {
+    if kind == Interface::Cli && !cfg!(windows) {
         return (
             StatusCode::NOT_IMPLEMENTED,
             Json(json!({ "success": false, "error": "Opening a terminal is only supported on Windows for now", "error_code": "unsupported_platform" })),
         )
             .into_response();
     }
-    let Some(cli) = crate::boot_selector::find_interface_binary("saba-chan-cli") else {
-        return (StatusCode::NOT_FOUND, Json(json!({ "success": false, "error": "saba-chan-cli was not found next to the daemon", "error_code": "cli_not_found" }))).into_response();
+    let Some(binary) = crate::boot_selector::find_interface_binary(kind.binary()) else {
+        let code = match kind {
+            Interface::Cli => "cli_not_found",
+            Interface::Gui => "gui_not_found",
+        };
+        return (StatusCode::NOT_FOUND, Json(json!({ "success": false, "error": format!("{} was not found next to the daemon", kind.binary()), "error_code": code }))).into_response();
     };
-    match spawn_in_new_console(&cli, &args) {
+    let spawned = match kind {
+        Interface::Cli => spawn_in_new_console(&binary, &args),
+        Interface::Gui => crate::boot_selector::spawn_gui_with(&binary, &args),
+    };
+    match spawned {
         Ok(pid) => {
-            tracing::info!("[Launch] Opened CLI {:?} (pid {})", args, pid);
+            tracing::info!("[Launch] Opened {} {:?} (pid {})", kind.binary(), args, pid);
             (StatusCode::OK, Json(json!({ "success": true, "pid": pid }))).into_response()
         }
-        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "error": format!("Could not start saba-chan-cli: {}", e), "error_code": "launch_failed" }))).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "error": format!("Could not start {}: {}", kind.binary(), e), "error_code": "launch_failed" }))).into_response(),
     }
 }
 
@@ -229,22 +285,28 @@ fn spawn_in_new_console(_cli: &std::path::Path, _args: &[String]) -> std::io::Re
 
 #[cfg(test)]
 mod launch_tests {
-    use super::launch_args;
+    use super::{launch_args, Interface};
     use serde_json::json;
 
+    /// 전환에 쓰는 실행 줄은 정해진 모양뿐: CLI는 전체 화면 메뉴, GUI는 창. 인스턴스는 `--옵션=값` 한 칸
     #[test]
     fn only_fixed_command_lines_are_built() {
-        let console = launch_args(&json!({ "kind": "cli", "view": "console", "instance": "abc" })).unwrap();
-        assert_eq!(console, (vec!["console".to_string(), "--".to_string(), "abc".to_string()], Some("abc".to_string())));
-        assert_eq!(launch_args(&json!({ "kind": "cli", "view": "shell" })).unwrap(), (vec![], None));
+        let line = |b| launch_args(&b).unwrap();
+        assert_eq!(line(json!({ "kind": "cli" })), (Interface::Cli, vec!["tui".to_string()], None));
+        assert_eq!(
+            line(json!({ "kind": "cli", "instance": "-abc" })),
+            (Interface::Cli, vec!["tui".to_string(), "--server=-abc".to_string()], Some("-abc".to_string()))
+        );
+        assert_eq!(line(json!({ "kind": "gui" })), (Interface::Gui, vec![], None));
+        assert_eq!(line(json!({ "kind": "gui", "instance": "abc" })), (Interface::Gui, vec!["--open-server=abc".to_string()], Some("abc".to_string())));
+        // 예전 본문(`view`)도 받는다: 더는 콘솔 창 하나만 띄우지 않고 메뉴를 연다
+        assert_eq!(line(json!({ "kind": "cli", "view": "console", "instance": "abc" })).1, vec!["tui".to_string(), "--server=abc".to_string()]);
 
         let field = |b| launch_args(&b).unwrap_err().0;
-        assert_eq!(field(json!({ "kind": "gui", "view": "shell" })), "kind");
+        assert_eq!(field(json!({ "kind": "web" })), "kind");
         assert_eq!(field(json!({ "view": "shell" })), "kind");
-        assert_eq!(field(json!({ "kind": "cli", "view": "console" })), "instance");
-        assert_eq!(field(json!({ "kind": "cli", "view": "console", "instance": 5 })), "instance");
-        assert_eq!(field(json!({ "kind": "cli", "view": "shell", "instance": "abc" })), "instance");
-        assert_eq!(field(json!({ "kind": "cli", "view": "run", "instance": "abc" })), "view");
+        assert_eq!(field(json!({ "kind": "cli", "instance": 5 })), "instance");
+        assert_eq!(field(json!({ "kind": "gui", "instance": "" })), "instance");
     }
 }
 
@@ -274,5 +336,32 @@ mod console_tests {
         let again = read(crate::daemon_log::DaemonLogBuffer::new()).await;
         let (a, b) = (first["epoch"].as_u64().expect("epoch"), again["epoch"].as_u64().expect("epoch"));
         assert!(b > a, "a restarted daemon's buffer has a newer epoch: {a} then {b}");
+    }
+
+    /// `spans=1`이면 데몬 로그 줄마다 구문 강조 토큰을 붙인다 (CLI·GUI가 같은 규칙으로 칠한다)
+    #[tokio::test]
+    async fn the_daemon_console_can_carry_highlight_spans() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            tmp.path().join("modules").to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        sup.initialize().await.unwrap();
+        let sup = std::sync::Arc::new(tokio::sync::RwLock::new(sup));
+        let buffer = crate::daemon_log::DaemonLogBuffer::new();
+        buffer.push("info".into(), "saba_core::ipc".into(), "[Heartbeat] Active clients: 2".into());
+        let read = |query: &[(&str, &str)]| {
+            let state = IPCServer::new(sup.clone(), "127.0.0.1:0", buffer.clone());
+            let query = query.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
+            async move {
+                let res = daemon_console(State(state), axum::extract::Query(query)).await.into_response();
+                crate::ipc::internal::into_internal(res).await.body
+            }
+        };
+        let with = read(&[("spans", "1")]).await;
+        assert_eq!(with["lines"][0]["spans"][0], json!([0, 11, "keyword"]), "{with}");
+        assert_eq!(with["lines"][0]["message"], "[Heartbeat] Active clients: 2");
+        let without = read(&[]).await;
+        assert!(without["lines"][0].get("spans").is_none(), "{without}");
     }
 }
