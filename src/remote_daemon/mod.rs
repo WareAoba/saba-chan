@@ -9,6 +9,7 @@ pub mod relay;
 pub mod server;
 pub mod tls;
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock, RwLock};
 
 use saba_chan_updater_lib::config_file::ConfigFile;
@@ -33,11 +34,13 @@ pub struct Status {
 #[derive(Default)]
 struct Runtime {
     cancel: Option<(CancellationToken, tokio::task::JoinHandle<()>)>,
+    /// 실패한 주소 올리기를 다시 하는 작업과, 그 작업이 올렸는지
+    retry: Option<(tokio::task::JoinHandle<()>, Arc<AtomicBool>)>,
     published: bool,
     status: Status,
 }
 
-static RUNTIME: tokio::sync::Mutex<Runtime> = tokio::sync::Mutex::const_new(Runtime { cancel: None, published: false, status: Status { listening: false, cert_sha256: None, published: false, error: None } });
+static RUNTIME: tokio::sync::Mutex<Runtime> = tokio::sync::Mutex::const_new(Runtime { cancel: None, retry: None, published: false, status: Status { listening: false, cert_sha256: None, published: false, error: None } });
 
 /// 짝 맺은 PC 목록 (원격 포트의 인증층이 요청마다 본다). 설정 파일에서 채우고, 짝 맺기·풀기가 고친다
 pub(crate) fn clients() -> Arc<RwLock<Vec<config::Client>>> {
@@ -50,7 +53,10 @@ pub(crate) fn reload_clients(file: &ConfigFile) {
 }
 
 pub async fn status() -> Status {
-    RUNTIME.lock().await.status.clone()
+    let rt = RUNTIME.lock().await;
+    let mut status = rt.status.clone();
+    status.published |= rt.retry.as_ref().is_some_and(|(_, done)| done.load(Ordering::SeqCst));
+    status
 }
 
 /// 릴레이에 올릴 주소: 호스트 이름(RFC 1123) 또는 IP 리터럴 (릴레이 `isValidRemoteAddress`와 같은 규칙)
@@ -95,7 +101,8 @@ fn bind(port: u16) -> std::io::Result<tokio::net::TcpListener> {
 const RETRY_MAX: std::time::Duration = std::time::Duration::from_secs(300);
 
 /// `first`만큼 기다렸다가 주소를 올린다. 실패하면 간격을 두 배씩 늘려(상한 5분) 올릴 때까지 다시 한다.
-/// `cancel`(포트를 닫거나 설정을 다시 적용함)이면 멈추고 false
+/// 올렸으면 true. `cancel`(포트를 닫거나 설정을 다시 적용함)이면 기다림 중에 멈추고 false.
+/// 보내는 중인 요청은 끝까지 기다린다: 다시 적용하는 쪽이 이 작업이 끝난 뒤에 새 주소를 올리도록 (늦게 닿은 예전 주소가 덮지 않게)
 async fn publish_with_retry(
     relay: &server::RelaySource,
     address: &str,
@@ -112,7 +119,7 @@ async fn publish_with_retry(
         }
         if let Some(t) = relay.target().await {
             if relay::publish(&t, address, port, sha).await {
-                return !cancel.is_cancelled();
+                return true;
             }
         }
         wait = (wait * 2).min(RETRY_MAX);
@@ -129,6 +136,12 @@ pub async fn apply(server: &IPCServer) -> Status {
     if let Some((cancel, task)) = rt.cancel.take() {
         cancel.cancel();
         let _ = task.await;
+    }
+    // 다시 올리기도 같은 취소로 멈춘다. 보내던 요청이 끝나야 새 주소를 올린다
+    let mut was_published = rt.published;
+    if let Some((task, done)) = rt.retry.take() {
+        let _ = task.await;
+        was_published |= done.load(Ordering::SeqCst);
     }
     reload_clients(&file);
     let mut status = Status::default();
@@ -175,19 +188,17 @@ pub async fn apply(server: &IPCServer) -> Status {
             tracing::warn!("Failed to publish the remote daemon address to the relay; retrying");
             let (cancel, address, sha) = (cancel.clone(), address.to_string(), sha.to_string());
             let port = settings.port;
-            tokio::spawn(async move {
+            let done = Arc::new(AtomicBool::new(false));
+            let flag = done.clone();
+            let task = tokio::spawn(async move {
                 if publish_with_retry(&relay, &address, port, &sha, &cancel, std::time::Duration::from_secs(5)).await {
-                    let mut rt = RUNTIME.lock().await;
-                    // 그사이 설정을 다시 적용했으면 그쪽 상태를 덮지 않는다 (다시 적용은 잠근 채 예전 것을 취소한다)
-                    if !cancel.is_cancelled() {
-                        rt.published = true;
-                        rt.status.published = true;
-                        tracing::info!("Published the remote daemon address to the relay");
-                    }
+                    flag.store(true, Ordering::SeqCst);
+                    tracing::info!("Published the remote daemon address to the relay");
                 }
             });
+            rt.retry = Some((task, done));
         }
-    } else if let (true, Some(t)) = (rt.published || !address.is_empty(), target.as_ref()) {
+    } else if let (true, Some(t)) = (was_published || !address.is_empty(), target.as_ref()) {
         // 데몬이 다시 뜬 뒤에는 전에 올렸는지 모르므로, 주소를 적어 둔 PC면 내린다
         if !relay::withdraw(t).await {
             tracing::warn!("Failed to withdraw the remote daemon address from the relay");
@@ -260,6 +271,37 @@ mod tests {
         cancel.cancel();
         task.await.unwrap();
         super::bind(port).expect("rebind after stop");
+    }
+
+    /// 다시 적용(취소)할 때 보내던 요청은 끝까지 기다린다: 뒤에 올리는 새 주소를 늦게 닿은 예전 주소가 덮지 않게
+    #[tokio::test]
+    async fn a_cancelled_retry_finishes_the_request_it_was_sending() {
+        let handled = super::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let seen = handled.clone();
+        let app = axum::Router::new().route(
+            "/api/remote/endpoint",
+            axum::routing::put(move || {
+                let seen = seen.clone();
+                async move {
+                    tokio::time::sleep(Duration::from_millis(300)).await;
+                    seen.store(true, Ordering::SeqCst);
+                    axum::http::StatusCode::NO_CONTENT
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let relay = super::server::RelaySource::Fixed(super::relay::Target { base, token: "sbn_host-b.secret".into() });
+        let cancel = super::CancellationToken::new();
+        let stop = cancel.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            stop.cancel();
+        });
+        let published = super::publish_with_retry(&relay, "saba.example.com", 57480, &"ab".repeat(32), &cancel, Duration::from_millis(10)).await;
+        assert!(handled.load(Ordering::SeqCst), "returns only after the relay handled the request");
+        assert!(published);
     }
 
     #[test]
