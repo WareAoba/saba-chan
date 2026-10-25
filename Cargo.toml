@@ -33,7 +33,7 @@ anyhow = "1.0"
 toml = "0.9"
 serde_ignored = "0.1"
 schemars = "0.8"
-axum = "0.7"
+axum = "0.8"
 # 사용자가 직접 넣는 모듈·익스텐션 zip은 7-Zip 등에서 bzip2·zstd로 묶었을 수 있다 (암호 zip만 뺀다)
 zip = { version = "9", default-features = false, features = ["deflate", "bzip2", "zstd", "time"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
@@ -67,7 +67,7 @@ winapi = { version = "0.3", features = ["processthreadsapi", "winnt", "handleapi
 nix = { version = "0.31", features = ["signal"] }
 
 [dependencies.tower]
-version = "0.4"
+version = "0.5"
 # 액션 카탈로그가 데몬 라우터를 안에서 부른다 (`ServiceExt::oneshot`)
 features = ["util"]
 

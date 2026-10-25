@@ -94,7 +94,7 @@ async fn start_mock_relay(state: Shared) -> String {
         .route("/info", get(info))
         .route("/heartbeat", post(heartbeat))
         .route("/poll", get(poll))
-        .route("/result/:id", post(result))
+        .route("/result/{id}", post(result))
         .with_state(state);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();

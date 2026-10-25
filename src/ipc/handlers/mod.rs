@@ -23,6 +23,22 @@ pub mod permissions;
 pub mod sandbox;
 pub mod actions;
 
+/// 본문이 없거나 JSON으로 읽히지 않으면 None인 본문. axum 0.7의 `Option<Json<T>>`와 같다
+/// (0.8의 `Option<Json<T>>`는 Content-Type이 있는데 본문이 비었거나 틀리면 400으로 거절한다)
+pub struct LooseJson<T>(pub Option<axum::Json<T>>);
+
+impl<T, S> axum::extract::FromRequest<S> for LooseJson<T>
+where
+    T: serde::de::DeserializeOwned,
+    S: Send + Sync,
+{
+    type Rejection = std::convert::Infallible;
+
+    async fn from_request(req: axum::extract::Request, state: &S) -> Result<Self, Self::Rejection> {
+        Ok(Self(axum::Json::<T>::from_request(req, state).await.ok()))
+    }
+}
+
 /// 감사 로그 (A10): 응답은 그대로 돌려주고, 출처(`crate::audit::current`)와 함께 한 건 남긴다.
 /// `key`는 인스턴스 id나 이름. 성공은 2xx이면서 본문의 `success`가 false가 아닐 때
 pub(crate) async fn audited(

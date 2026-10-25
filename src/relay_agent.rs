@@ -1562,7 +1562,7 @@ mod tests {
                 _ => axum::http::StatusCode::OK,
             }
         }
-        let app = axum::Router::new().route("/result/:id", post(result));
+        let app = axum::Router::new().route("/result/{id}", post(result));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let base = format!("http://{}", listener.local_addr().unwrap());
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
@@ -1639,7 +1639,7 @@ mod tests {
             *BODY.lock().unwrap() = body;
             axum::http::StatusCode::OK
         }
-        let app = axum::Router::new().route("/result/:id", post(result));
+        let app = axum::Router::new().route("/result/{id}", post(result));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let base = format!("http://{}", listener.local_addr().unwrap());
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
@@ -1669,7 +1669,7 @@ mod tests {
             }
             axum::http::StatusCode::OK
         }
-        let app = axum::Router::new().route("/result/:id", post(result));
+        let app = axum::Router::new().route("/result/{id}", post(result));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let base = format!("http://{}", listener.local_addr().unwrap());
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
@@ -1699,7 +1699,7 @@ mod tests {
             OTHER.fetch_add(1, Ordering::SeqCst);
             axum::http::StatusCode::OK
         }
-        let app = axum::Router::new().route("/result/:id", post(result));
+        let app = axum::Router::new().route("/result/{id}", post(result));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let base = format!("http://{}", listener.local_addr().unwrap());
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
@@ -1721,7 +1721,7 @@ mod tests {
         use std::sync::atomic::{AtomicUsize, Ordering};
         static CALLS: AtomicUsize = AtomicUsize::new(0);
         let app = axum::Router::new().route(
-            "/result/:id",
+            "/result/{id}",
             post(|| async {
                 CALLS.fetch_add(1, Ordering::SeqCst);
                 axum::http::StatusCode::OK
@@ -1788,7 +1788,7 @@ mod tests {
                 }),
             )
             .route(
-                "/result/:id",
+                "/result/{id}",
                 post(|| async {
                     RESULTS.fetch_add(1, Ordering::SeqCst);
                     axum::http::StatusCode::OK

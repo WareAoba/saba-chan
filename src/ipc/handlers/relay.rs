@@ -748,7 +748,7 @@ mod tests {
             .route("/api/hosts/h1", get(|| async { Json(json!({ "online": true })) }))
             .route("/api/hosts/h2", get(|| async { (StatusCode::NOT_FOUND, "nope") }))
             .route("/api/bot-invite", get(|| async { Json(json!({ "url": "https://discord.com/x" })) }))
-            .route("/api/link-requests/:id", post(|Path(id): Path<String>, Json(b): Json<Value>| async move { Json(json!({ "id": id, "accept": b["accept"] })) }));
+            .route("/api/link-requests/{id}", post(|Path(id): Path<String>, Json(b): Json<Value>| async move { Json(json!({ "id": id, "accept": b["accept"] })) }));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });

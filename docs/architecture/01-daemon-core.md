@@ -164,8 +164,8 @@ PC 주인이 디스코드에서 받은 일회용 링크로 브라우저(사바�
 
 ### 2.1 공통 규약
 
-- **라우터 정의 위치**: `src/ipc/mod.rs:640-817` (axum 0.7), 업데이트 라우트는 `src/ipc/updates.rs:106-117`.
-- **경로 파라미터 표기**: axum 0.7의 `:param` 문법을 쓴다.
+- **라우터 정의 위치**: `src/ipc/mod.rs:640-817` (axum 0.8), 업데이트 라우트는 `src/ipc/updates.rs:106-117`.
+- **경로 파라미터 표기**: 코드는 axum 0.8의 `{param}` 문법을 쓴다(원격 문지기 `remote/gate.rs`의 표도 같다). 이 문서의 표는 예전처럼 `:param`으로 적는다.
 - **인증 적용 범위**: `.layer(auth_middleware)`는 업데이트 라우터를 `.merge()`한 **뒤에** 달린다(`ipc/mod.rs:812-816`).
   - 따라서 `/api/updates/*`를 포함한 모든 라우트에 토큰이 필요하다. **`/health`만 예외**다(A6): 루프백 검사는 거치지만 토큰 없이 답한다. 토큰이 어긋나도 클라이언트가 데몬이 떠 있는지 알 수 있게 하려는 것이다.
   - GUI와 CLI는 토큰을 보내기 전에 `/health`에 임의 challenge를 보내고, 데몬의 토큰 기반 HMAC 응답을 검증한다. Windows 리스너는 `SO_EXCLUSIVEADDRUSE`로 포트를 독점 바인드한다.
@@ -176,7 +176,7 @@ PC 주인이 디스코드에서 받은 일회용 링크로 브라우저(사바�
   - `{"success": false, "error", "error_code", ...}` (익스텐션, 백업, 이름 변경 등)
   - 인증 실패: 본문 없는 401, Host 거부: 본문 없는 403
   - 일부 핸들러는 실패해도 HTTP 200을 돌려준다(modules manifest/install/remove, extensions manifest/install).
-- **JSON 바디 파싱 실패**: axum 기본 거부 응답(400/415/422, 텍스트 본문)이 나간다. `/api/updates/download`·`apply`만 본문을 직접 읽어 `{ok:false, error, error_code:"invalid_body"}` 400을 준다.
+- **JSON 바디 파싱 실패**: axum 기본 거부 응답(400/415/422, 텍스트 본문)이 나간다. 본문을 생략할 수 있는 라우트(`LooseJson`, `ipc/handlers/mod.rs`)는 본문이 없거나 읽히지 않으면 본문 없이 처리한다. `/api/updates/download`·`apply`만 본문을 직접 읽어 `{ok:false, error, error_code:"invalid_body"}` 400을 준다.
 - **식별자 혼용**: 예전 경로는 서버를 **이름**(`/api/server/:name/*`, `/api/provision-progress/:name`)으로, 나머지는 인스턴스 **UUID**(`/api/instance/:id/*`)로 가리킨다. `/api/instance/:id/start|stop|restart`는 id가 없으면 이름으로도 찾는다(`server.rs:667-671, 767-774`).
 
 ### 2.2 라우트 표
