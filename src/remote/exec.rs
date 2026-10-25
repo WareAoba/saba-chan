@@ -108,7 +108,9 @@ async fn pc_only_fields(server: &IPCServer, pattern: &str, req: &Request) -> Vec
             .split('?')
             .next()
             .and_then(|p| p.split('/').nth(3))
-            .and_then(|id| supervisor.instance_store.get(id))
+            // 라우터는 id 를 풀어서 찾으므로 여기서도 풀어서 찾는다 (%61bc 로 모듈 칸 검사를 비켜 가지 않게)
+            .and_then(super::gate::percent_decode)
+            .and_then(|id| supervisor.instance_store.get(&id))
             .map(|i| i.module_name.clone()),
         "/api/instances" => req
             .body

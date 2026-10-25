@@ -56,7 +56,7 @@ pub fn ensure(server: IPCServer, relay_base: &str, token: &str) {
     tokio::spawn(async move {
         let mut failures = 0;
         while !cancel.is_cancelled() {
-            match connect_once(&server, &url, &token, &cancel).await {
+            match connect_once(&server, &url, &token, &cancel, &mut failures).await {
                 Ok(Ended::Idle) | Ok(Ended::Cancelled) => break,
                 Ok(Ended::Dropped) | Err(_) if failures < RECONNECTS => {
                     failures += 1;
@@ -90,6 +90,20 @@ pub fn ws_url(relay_base: &str) -> String {
     format!("{}/node/ws", base.unwrap_or_else(|| relay_base.to_string()))
 }
 
+/// 웹으로 보내는 이벤트. 화면은 목록을 다시 읽을 때만 쓰므로 종류와 인스턴스 id만 담는다
+/// (경로·콘솔 줄·오류 원문은 PC 밖으로 내보내지 않는다, I3)
+fn web_event(event: &crate::events::Event) -> Option<Value> {
+    let kind = event.kind.as_str();
+    if !(kind.starts_with("instance.") || kind.starts_with("module.") || kind == "action.run") {
+        return None;
+    }
+    let mut data = serde_json::Map::new();
+    if let Some(id) = event.data.get("instanceId").filter(|v| v.is_string()) {
+        data.insert("instanceId".into(), id.clone());
+    }
+    Some(json!({ "t": "event", "id": event.id, "kind": kind, "data": data }))
+}
+
 #[derive(Debug, PartialEq)]
 enum Ended {
     Idle,
@@ -98,7 +112,13 @@ enum Ended {
     Dropped,
 }
 
-async fn connect_once(server: &IPCServer, url: &str, token: &str, cancel: &CancellationToken) -> Result<Ended, String> {
+async fn connect_once(
+    server: &IPCServer,
+    url: &str,
+    token: &str,
+    cancel: &CancellationToken,
+    failures: &mut u32,
+) -> Result<Ended, String> {
     let mut request = url.into_client_request().map_err(|e| e.to_string())?;
     let auth = format!("Bearer {token}").parse().map_err(|_| "bad token".to_string())?;
     request.headers_mut().insert("Authorization", auth);
@@ -120,6 +140,8 @@ async fn connect_once(server: &IPCServer, url: &str, token: &str, cancel: &Cance
     sink.send(Message::Text(hello.to_string()))
         .await
         .map_err(|e| e.to_string())?;
+    // 붙었으니 다시 붙기 횟수를 새로 센다 (몇 시간 붙어 있던 연결이 예전 끊김 때문에 포기하지 않게)
+    *failures = 0;
 
     let (out_tx, mut out_rx) = mpsc::unbounded_channel::<Value>();
     let sessions: Arc<Mutex<HashMap<String, Option<String>>>> = Arc::default();
@@ -149,7 +171,10 @@ async fn connect_once(server: &IPCServer, url: &str, token: &str, cancel: &Cance
             }
             event = events.recv() => {
                 let frame = match event {
-                    Ok(e) => json!({ "t": "event", "id": e.id, "kind": e.kind, "data": e.data }),
+                    Ok(e) => match web_event(&e) {
+                        Some(frame) => frame,
+                        None => continue,
+                    },
                     // 뒤처졌다: 브라우저가 목록을 다시 읽게 한다
                     Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => json!({ "t": "event", "kind": "resync", "data": {} }),
                     Err(tokio::sync::broadcast::error::RecvError::Closed) => continue,
@@ -253,6 +278,23 @@ mod tests {
     }
 
     #[test]
+    fn web_events_carry_only_the_kind_and_instance() {
+        let event = |kind: &str, data: Value| crate::events::Event { id: 9, kind: kind.into(), data, replay: false };
+        let exit = event(
+            "instance.exit",
+            json!({ "at": 1, "instanceId": "i1", "evidence": "console: C:/Users/me/crash.txt" }),
+        );
+        assert_eq!(
+            web_event(&exit),
+            Some(json!({ "t": "event", "id": 9, "kind": "instance.exit", "data": { "instanceId": "i1" } }))
+        );
+        assert!(web_event(&event("module.installed", json!({ "path": "C:/x" }))).is_some());
+        // 화면이 쓰지 않는 이벤트는 보내지 않는다 (백업 오류 원문, 디스코드 연결 요청 등)
+        assert_eq!(web_event(&event("backup.done", json!({ "error": "C:/x" }))), None);
+        assert_eq!(web_event(&event("relay.link_request", json!({}))), None);
+    }
+
+    #[test]
     fn relay_urls_become_websocket_urls() {
         assert_eq!(ws_url("https://saba.example/"), "wss://saba.example/node/ws");
         assert_eq!(ws_url("http://127.0.0.1:9000"), "ws://127.0.0.1:9000/node/ws");
@@ -333,17 +375,26 @@ mod tests {
                     Some("res") => {
                         answers.insert(frame["id"].as_i64().unwrap(), frame);
                         if answers.len() == 2 {
-                            crate::events::emit("remote.test", json!({ "n": 1 }));
+                            crate::events::emit("instance.remote_test", json!({ "instanceId": "i1", "path": "C:/x" }));
                         }
                     }
-                    Some("event") if frame["kind"] == "remote.test" => saw_event = true,
+                    Some("event") if frame["kind"] == "instance.remote_test" => {
+                        assert_eq!(frame["data"], json!({ "instanceId": "i1" }), "no paths in web events");
+                        saw_event = true;
+                    }
                     _ => {}
                 }
             }
             sink.send(Message::Text(json!({ "t": "close", "sid": "s1" }).to_string()))
                 .await
                 .unwrap();
-            let after_close = next_frame(&mut stream).await;
+            // 다른 시험이 낸 이벤트가 끼어들 수 있다 (버스는 프로세스에 하나)
+            let after_close = loop {
+                let frame = next_frame(&mut stream).await;
+                if frame["t"] != "event" {
+                    break frame;
+                }
+            };
             (auth, hello, answers, after_close)
         });
 

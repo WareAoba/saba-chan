@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useApp, useData } from '../store';
 import { BackupsPanel } from './BackupsPanel';
+import { Icon } from './icons';
+import { startPoll } from './poll';
 import { SettingsPanel } from './SettingsPanel';
 import { Button, errorText, failed, Segments, StatusDot } from './ui';
 import { useProvision } from './useProvision';
@@ -34,11 +36,10 @@ function ConsolePanel({ api, server, moduleData }) {
                 setLines((prev) => [...prev, ...res.lines].slice(-MAX_LINES));
             }
         };
-        poll();
-        const timer = setInterval(poll, 1500);
+        const stop = startPoll(poll, 1500);
         return () => {
             stopped = true;
-            clearInterval(timer);
+            stop();
         };
     }, [api, server.id]);
 
@@ -109,7 +110,8 @@ function ConsolePanel({ api, server, moduleData }) {
 export function ServerDetail({ api, server }) {
     const { t } = useTranslation();
     const openServer = useApp((s) => s.openServer);
-    const { modules, modulesLoaded } = useData();
+    const modules = useData((s) => s.modules);
+    const modulesLoaded = useData((s) => s.modulesLoaded);
     const control = useServerControl(api);
     const [view, setView] = useState('console');
     const moduleData = modules.find((m) => m.name === server.module);
@@ -122,7 +124,7 @@ export function ServerDetail({ api, server }) {
     return (
         <div className="detail">
             <button type="button" className="back" onClick={() => openServer(null)}>
-                ← {t('servers.back')}
+                <Icon name="back" size={16} /> {t('servers.back')}
             </button>
             <header className="detail-head">
                 <div>
@@ -130,7 +132,11 @@ export function ServerDetail({ api, server }) {
                     <p className="card-sub">
                         {gameNameOf(t, server.module, moduleData)}
                         {server.port ? <span className="pill">:{server.port}</span> : null}
-                        {players && <span className="pill">👥 {players}</span>}
+                        {players && (
+                            <span className="pill">
+                                <Icon name="user" size={12} /> {players}
+                            </span>
+                        )}
                     </p>
                 </div>
                 <StatusDot status={status} />

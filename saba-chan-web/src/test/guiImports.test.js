@@ -2,7 +2,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-/** 웹이 GUI 에서 가져다 쓰는 것. 화면(컴포넌트)은 가져오지 않는다 — 웹은 할 수 있는 일이 달라 따로 만든다 */
+/** 웹이 GUI 에서 가져다 쓰는 것. 아이콘 말고 화면(컴포넌트)은 가져오지 않는다 — 웹은 할 수 있는 일이 달라 따로 만든다 */
 const ALLOWED = new Set([
     '@gui/api/createApi',
     '@gui/api/events',
@@ -10,6 +10,8 @@ const ALLOWED = new Set([
     '@gui/utils/localizedText',
     '@gui/utils/commandRisk',
     '@gui/styles/tokens.css',
+    // 아이콘은 GUI 와 같은 것을 쓴다 (화면이 아니라 그림 하나)
+    '@gui/components/Icon',
 ]);
 
 function sources(dir) {

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { sizeText } from './BackupsPanel';
+import { startPoll } from './poll';
 import { Empty, Loading, Section, Segments } from './ui';
 
 function Meter({ label, percent, detail }) {
@@ -28,11 +29,10 @@ function Metrics({ api }) {
             const res = await api.systemMetrics({ sizes: false });
             if (!stopped && res?.cpu) setSnap(res);
         };
-        load();
-        const timer = setInterval(load, 3000);
+        const stop = startPoll(load, 3000);
         return () => {
             stopped = true;
-            clearInterval(timer);
+            stop();
         };
     }, [api]);
 
@@ -81,11 +81,10 @@ function DaemonLog({ api }) {
             if (res.lines.length) next.current = res.lines[res.lines.length - 1].id + 1;
             setLines((prev) => [...(prev ?? []), ...res.lines].slice(-300));
         };
-        load();
-        const timer = setInterval(load, 3000);
+        const stop = startPoll(load, 3000);
         return () => {
             stopped = true;
-            clearInterval(timer);
+            stop();
         };
     }, [api]);
     // biome-ignore lint/correctness/useExhaustiveDependencies: 새 줄이 올 때마다 맨 아래로 내린다

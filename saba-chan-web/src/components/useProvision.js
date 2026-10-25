@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { startPoll } from './poll';
 
 /** 데몬 설치 진행(`/api/provision-progress/:name`) → 화면 상태. 설치 중이 아니면 null */
 export function provisionView(p) {
@@ -21,11 +22,10 @@ export function useProvision(api, server) {
             setView(v);
             if (v?.state === 'done') api.instanceDismissProvision(name);
         };
-        load();
-        const timer = setInterval(load, 2000);
+        const stop = startPoll(load, 2000);
         return () => {
             stopped = true;
-            clearInterval(timer);
+            stop();
         };
     }, [api, name]);
     return { view, dismiss: () => name && api.instanceDismissProvision(name).then(() => setView(null)) };

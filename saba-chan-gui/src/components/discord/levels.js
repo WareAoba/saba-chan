@@ -60,6 +60,13 @@ export function membersByLevel(perm) {
     return groups;
 }
 
+const nameCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+
+/** 이름순 새 배열 (대소문자 무시, 숫자는 크기 순). 멤버 목록이 디스코드 캐시 순서로 섞여 보이지 않게 */
+export function sortByName(items, nameOf) {
+    return [...items].sort((a, b) => nameCollator.compare(String(nameOf(a) ?? ''), String(nameOf(b) ?? '')));
+}
+
 /** 디스코드 멤버 중 따로 레벨이 없는 사람 (소유자 제외): 길드 기본 레벨을 쓴다 */
 export function defaultMembers(perm, discordMembers) {
     const members = perm?.members || {};

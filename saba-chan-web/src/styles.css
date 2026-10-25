@@ -12,6 +12,10 @@ body,
     margin: 0;
     min-height: 100%;
 }
+/* 스크롤바가 생기고 없어질 때 화면이 옆으로 밀리지 않게 자리를 늘 비워 둔다 */
+html {
+    scrollbar-gutter: stable;
+}
 
 body {
     background: var(--bg-0);
@@ -53,6 +57,7 @@ textarea {
     padding: 24px 16px;
 }
 .gate-card {
+    animation: pop-in 420ms var(--ease) both;
     width: min(400px, 100%);
     padding: 32px 24px;
     border-radius: 20px;
@@ -62,8 +67,22 @@ textarea {
     display: grid;
     gap: 12px;
 }
-.brand-mark {
-    font-size: 40px;
+.gate-art {
+    width: 168px;
+    height: 168px;
+    margin: -8px auto 0;
+    object-fit: contain;
+    filter: drop-shadow(0 8px 16px rgb(0 0 0 / 0.18));
+}
+.gate-art-float {
+    animation: float 3.2s var(--ease) infinite alternate;
+}
+.gate-title {
+    display: flex;
+    justify-content: center;
+}
+.gate-wordmark {
+    height: 32px;
 }
 .gate-text {
     margin: 0;
@@ -96,10 +115,40 @@ textarea {
     gap: 8px;
 }
 .topbar-title {
-    font-size: 17px;
     flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.topbar-logo {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    box-shadow: 0 0 0 2px var(--line-strong);
+    transition: transform var(--dur-fast) var(--ease);
+}
+.topbar-title:hover .topbar-logo {
+    transform: rotate(-8deg) scale(1.06);
+}
+.topbar-wordmark {
+    height: 16px;
+}
+/* 글자 로고: 그림을 가림막으로 써서 테마 글자색으로 칠한다 (GUI .appbar-wordmark 와 같다) */
+.wordmark {
+    display: block;
+    background-color: var(--text-1);
+    -webkit-mask: var(--wordmark) center / contain no-repeat;
+    mask: var(--wordmark) center / contain no-repeat;
+    flex-shrink: 0;
 }
 .timer {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    transition:
+        background-color var(--dur-fast) var(--ease),
+        color var(--dur-fast) var(--ease);
     font-variant-numeric: tabular-nums;
     padding: 4px 12px;
     border-radius: 999px;
@@ -110,8 +159,13 @@ textarea {
 .timer-warn {
     background: var(--warn-soft);
     color: var(--warn);
+    animation: pulse 1.6s ease-in-out infinite;
 }
 .banner {
+    animation: slide-down 240ms var(--ease) both;
+    display: flex;
+    align-items: center;
+    gap: 8px;
     margin: 8px 0 0;
     padding: 8px 12px;
     border-radius: 12px;
@@ -143,6 +197,9 @@ textarea {
     padding-bottom: env(safe-area-inset-bottom);
 }
 .tabs button {
+    position: relative;
+    cursor: pointer;
+    transition: color var(--dur-fast) var(--ease);
     display: grid;
     justify-items: center;
     gap: 2px;
@@ -157,7 +214,20 @@ textarea {
     color: var(--accent);
 }
 .tab-icon {
-    font-size: 18px;
+    display: grid;
+    place-items: center;
+    width: 48px;
+    height: 28px;
+    border-radius: 999px;
+    transition:
+        background-color var(--dur-fast) var(--ease),
+        transform var(--dur-fast) var(--ease);
+}
+.tabs button.on .tab-icon {
+    background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+.tabs button:active .tab-icon {
+    transform: scale(0.9);
 }
 
 .content {
@@ -171,6 +241,7 @@ textarea {
 /* ── 공통 ── */
 .section {
     display: grid;
+    grid-template-columns: minmax(0, 1fr); /* 긴 이름이 칸을 넓히지 않게 */
     gap: 12px;
     margin-bottom: 24px;
 }
@@ -189,6 +260,9 @@ textarea {
     margin-top: 8px;
 }
 .empty {
+    display: grid;
+    justify-items: center;
+    gap: 8px;
     margin: 0;
     padding: 24px 16px;
     text-align: center;
@@ -203,7 +277,9 @@ textarea {
     font-size: 12px;
 }
 .pill {
-    display: inline-block;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
     margin-left: 8px;
     padding: 0 8px;
     border-radius: 999px;
@@ -218,7 +294,22 @@ textarea {
     color: var(--warn);
 }
 
+.empty p {
+    margin: 0;
+}
+.empty-art {
+    width: 120px;
+    height: 120px;
+    object-fit: contain;
+    opacity: 0.92;
+}
 .btn {
+    transition:
+        background-color var(--dur-fast) var(--ease),
+        border-color var(--dur-fast) var(--ease),
+        transform var(--dur-fast) var(--ease),
+        box-shadow var(--dur-fast) var(--ease),
+        opacity var(--dur-fast) var(--ease);
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -231,6 +322,14 @@ textarea {
     color: var(--text-1);
     font-weight: 600;
     cursor: pointer;
+}
+.btn > span {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+.btn:not(:disabled):active {
+    transform: scale(0.97);
 }
 .btn:disabled {
     opacity: 0.5;
@@ -257,6 +356,10 @@ textarea {
     border-color: var(--stop-soft);
 }
 .icon-btn {
+    display: grid;
+    place-items: center;
+    border-radius: 999px;
+    transition: background-color var(--dur-fast) var(--ease);
     background: none;
     border: 0;
     color: var(--text-2);
@@ -322,6 +425,11 @@ textarea {
     overflow-x: auto;
 }
 .segments button {
+    cursor: pointer;
+    transition:
+        background-color var(--dur-fast) var(--ease),
+        color var(--dur-fast) var(--ease),
+        box-shadow var(--dur-fast) var(--ease);
     flex: 1;
     min-height: 36px;
     border: 0;
@@ -334,10 +442,12 @@ textarea {
 .segments button.on {
     background: var(--bg-4);
     color: var(--text-1);
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.16);
 }
 
 /* ── 카드·줄 ── */
 .list {
+    grid-template-columns: minmax(0, 1fr);
     display: grid;
     gap: 12px;
 }
@@ -345,6 +455,22 @@ textarea {
     background: var(--bg-1);
     border: 1px solid var(--line);
     border-radius: 16px;
+    transition:
+        transform var(--dur-fast) var(--ease),
+        box-shadow var(--dur-fast) var(--ease),
+        border-color var(--dur-fast) var(--ease);
+}
+.list > * {
+    animation: rise 320ms var(--ease) both;
+}
+.list > :nth-child(2) {
+    animation-delay: 40ms;
+}
+.list > :nth-child(3) {
+    animation-delay: 80ms;
+}
+.list > :nth-child(n + 4) {
+    animation-delay: 120ms;
 }
 .server-card {
     display: flex;
@@ -376,6 +502,7 @@ textarea {
     font-size: 13px;
 }
 .rows {
+    grid-template-columns: minmax(0, 1fr);
     list-style: none;
     margin: 0;
     padding: 0;
@@ -383,6 +510,9 @@ textarea {
     gap: 8px;
 }
 .row {
+    transition:
+        border-color var(--dur-fast) var(--ease),
+        background-color var(--dur-fast) var(--ease);
     display: flex;
     align-items: center;
     gap: 12px;
@@ -403,6 +533,43 @@ textarea {
     color: var(--text-3);
     font-size: 12px;
 }
+/* 이름은 한 줄. 넘치면 …으로 줄인다 */
+.row-title-one {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    overflow-wrap: normal;
+}
+
+/* ── 멤버 ── */
+.member-row {
+    padding: 8px 12px;
+}
+.member-row select {
+    flex: none;
+    width: auto;
+    max-width: 48%;
+}
+.avatar {
+    flex: none;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+    background: var(--bg-3);
+    border: 1px solid var(--line);
+    color: var(--text-2);
+    font-weight: 800;
+    font-size: 14px;
+}
+.avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    animation: fade-in 240ms var(--ease) both;
+}
 .row-actions {
     display: flex;
     gap: 8px;
@@ -412,6 +579,10 @@ textarea {
 
 /* ── 서버 상세 ── */
 .back {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    transition: color var(--dur-fast) var(--ease);
     background: none;
     border: 0;
     color: var(--text-2);
@@ -444,6 +615,7 @@ textarea {
     gap: 8px;
 }
 .console-lines {
+    scrollbar-gutter: stable;
     margin: 0;
     height: 50vh;
     min-height: 240px;
@@ -501,6 +673,9 @@ textarea {
     grid-column: 1 / -1;
 }
 .field-locked .locked {
+    display: flex;
+    align-items: center;
+    gap: 6px;
     margin: 0;
     color: var(--text-3);
     font-size: 13px;
@@ -571,10 +746,13 @@ textarea {
 .meter-fill {
     height: 100%;
     background: var(--accent);
+    border-radius: inherit;
+    transition: width 600ms var(--ease);
 }
 
 /* ── 겹치는 창 ── */
 .scrim {
+    animation: fade-in 180ms var(--ease) both;
     position: fixed;
     inset: 0;
     z-index: 20;
@@ -584,6 +762,7 @@ textarea {
 }
 .dialog,
 .sheet {
+    animation: sheet-up 280ms var(--ease) both;
     width: 100%;
     max-width: 520px;
     max-height: 88vh;
@@ -626,6 +805,7 @@ textarea {
     pointer-events: none;
 }
 .toast {
+    animation: toast-in 260ms var(--ease) both;
     padding: 12px 16px;
     border-radius: 12px;
     background: var(--bg-4);
@@ -643,6 +823,109 @@ textarea {
 .toast-info {
     border-left: 4px solid var(--info);
 }
+
+/* ── 상태 점: 바뀌는 중이면 깜빡인다 ── */
+.status-dot {
+    transition: background-color var(--dur-fast) var(--ease);
+}
+.status-running .status-dot {
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 22%, transparent);
+}
+.status-starting .status-dot,
+.status-stopping .status-dot,
+.status-provisioning .status-dot {
+    animation: pulse 1.2s ease-in-out infinite;
+}
+
+/* ── 움직임 ── */
+.view {
+    animation: rise 260ms var(--ease) both;
+}
+@keyframes rise {
+    from {
+        opacity: 0;
+        transform: translateY(8px);
+    }
+}
+@keyframes fade-in {
+    from {
+        opacity: 0;
+    }
+}
+@keyframes pop-in {
+    from {
+        opacity: 0;
+        transform: scale(0.96) translateY(8px);
+    }
+}
+@keyframes slide-down {
+    from {
+        opacity: 0;
+        transform: translateY(-4px);
+    }
+}
+@keyframes sheet-up {
+    from {
+        transform: translateY(24px);
+        opacity: 0;
+    }
+}
+@keyframes toast-in {
+    from {
+        opacity: 0;
+        transform: translateY(12px) scale(0.98);
+    }
+}
+@keyframes float {
+    to {
+        transform: translateY(-8px);
+    }
+}
+@keyframes pulse {
+    50% {
+        opacity: 0.45;
+    }
+}
+
+/* 마우스가 있는 화면에서만 올려 둘 때 반응한다 (휴대폰은 누른 뒤 남지 않게) */
+@media (hover: hover) {
+    .btn:not(:disabled):hover {
+        box-shadow: 0 2px 8px rgb(0 0 0 / 0.14);
+        border-color: var(--text-3);
+    }
+    .btn-accent:not(:disabled):hover,
+    .btn-danger:not(:disabled):hover {
+        border-color: transparent;
+        filter: brightness(1.08);
+    }
+    .card:hover {
+        transform: translateY(-2px);
+        border-color: var(--line-strong);
+        box-shadow: var(--shadow-float);
+    }
+    .row:hover {
+        border-color: var(--line-strong);
+    }
+    .tabs button:not(.on):hover,
+    .back:hover {
+        color: var(--text-1);
+    }
+    .icon-btn:hover {
+        background: var(--bg-3);
+    }
+}
+
+/* biome-ignore-start lint/complexity/noImportantStyles: 움직임을 줄인 사람에게는 모든 규칙보다 먼저다 */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 1ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 1ms !important;
+    }
+}
+/* biome-ignore-end lint/complexity/noImportantStyles: 위와 같다 */
 
 /* ── 넓은 화면: 탭은 위로, 창은 가운데 ── */
 @media (min-width: 768px) {
@@ -669,17 +952,26 @@ textarea {
         font-size: 14px;
         border-bottom: 2px solid transparent;
     }
+    .tabs button {
+        transition:
+            color var(--dur-fast) var(--ease),
+            border-color var(--dur-fast) var(--ease);
+    }
     .tabs button.on {
         border-bottom-color: var(--accent);
     }
     .tab-icon {
-        font-size: 14px;
+        width: auto;
+        height: auto;
+    }
+    .tabs button.on .tab-icon {
+        background: none;
     }
     .content {
         padding: 24px;
     }
     .list {
-        grid-template-columns: repeat(2, 1fr);
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
     .scrim {
         place-items: center;
