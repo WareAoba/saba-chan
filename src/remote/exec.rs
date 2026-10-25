@@ -103,7 +103,7 @@ fn module_fields(
 async fn pc_only_fields(server: &IPCServer, pattern: &str, req: &Request) -> Vec<String> {
     let supervisor = server.supervisor.read().await;
     let module = match pattern {
-        "/api/instance/:id" => req
+        "/api/instance/:id" | "/api/instance/:id/properties" => req
             .path
             .split('?')
             .next()

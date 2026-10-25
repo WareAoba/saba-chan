@@ -13,6 +13,7 @@ const PC_ONLY = new Set([
     'process_name',
     'auto_detect',
     'rest_host',
+    'rest_port',
     'rest_password',
     'extension_data',
 ]);

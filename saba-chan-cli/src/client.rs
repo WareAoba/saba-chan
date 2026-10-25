@@ -99,15 +99,17 @@ impl Api {
         if let Some(b) = body {
             req = req.json(b);
         }
-        req.send().await.map_err(|e| {
-            if e.is_connect() {
-                CliError::DaemonDown { url: self.base.clone() }.into()
-            } else if e.is_timeout() {
-                CliError::Failed(t!("err.timeout", path = path)).into()
-            } else {
-                anyhow::anyhow!(e)
-            }
-        })
+        req.send().await.map_err(|e| self.send_error(e, path))
+    }
+
+    fn send_error(&self, e: reqwest::Error, path: &str) -> anyhow::Error {
+        if e.is_connect() {
+            CliError::DaemonDown { url: self.base.clone() }.into()
+        } else if e.is_timeout() {
+            CliError::Failed(t!("err.timeout", path = path)).into()
+        } else {
+            anyhow::anyhow!(e)
+        }
     }
 
     async fn daemon_identity_valid(&self) -> Result<bool> {
@@ -116,7 +118,7 @@ impl Api {
         if self.verified.read().ok().is_some_and(|v| v.as_deref() == Some(token.as_str())) { return Ok(true); }
         let challenge = uuid::Uuid::new_v4().to_string();
         let response = self.http.get(format!("{}/health", self.base)).timeout(QUICK)
-            .header("X-Saba-Challenge", &challenge).send().await?;
+            .header("X-Saba-Challenge", &challenge).send().await.map_err(|e| self.send_error(e, "/health"))?;
         let body: Value = response.json().await?;
         let Some(proof) = body.get("proof").and_then(Value::as_str) else { return Ok(false) };
         use hmac::{Hmac, Mac};
@@ -1147,6 +1149,16 @@ mod tests {
         *api.token.write().unwrap() = None;
         api.call(Method::GET, "/api/servers", None, QUICK).await.unwrap();
         server.await.unwrap()
+    }
+
+    /// 토큰 파일이 남은 채 데몬이 꺼져 있으면 신원 확인의 연결 실패도 "데몬 꺼짐"이다 (자동 시작·안내가 그것을 본다)
+    #[tokio::test]
+    async fn a_stopped_daemon_with_a_leftover_token_is_reported_as_down() {
+        let port = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
+        let api = Api::new(port, None);
+        *api.token.write().unwrap() = Some("leftover".into());
+        let e = api.call(Method::GET, "/api/servers", None, QUICK).await.unwrap_err();
+        assert!(matches!(e.downcast_ref::<CliError>(), Some(CliError::DaemonDown { .. })), "{e:#}");
     }
 
     /// 한 번 받은 요청의 본문 (JSON)
