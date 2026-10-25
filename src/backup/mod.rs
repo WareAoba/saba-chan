@@ -215,6 +215,27 @@ fn read_error(e: io::Error, path: &Path) -> anyhow::Error {
     anyhow::Error::new(e).context(format!("read {}", path.display()))
 }
 
+/// zip `archive`에서 `members`(zip 안의 경로, `/`로 잇는다. 파일이나 폴더) 아래 항목만 `into`에 푼다.
+/// 위로 올라가거나 절대 경로인 이름(zip slip)은 풀지 않는다. zip 하나로 된 게임 자동 백업을 보관·복원할 때 쓴다
+pub fn stage_archive(archive: &Path, members: &[String], into: &Path) -> Result<()> {
+    let mut zip = zip::ZipArchive::new(File::open(archive).with_context(|| format!("read {}", archive.display()))?)?;
+    let wanted = |name: &str| members.iter().any(|m| name == m || name.starts_with(&format!("{}/", m.trim_end_matches('/'))));
+    for i in 0..zip.len() {
+        let mut file = zip.by_index(i)?;
+        let Some(rel) = file.enclosed_name().map(Path::to_path_buf) else { continue };
+        let name = rel.components().map(|c| c.as_os_str().to_string_lossy().into_owned()).collect::<Vec<_>>().join("/");
+        if file.is_dir() || !wanted(&name) {
+            continue;
+        }
+        let out = into.join(&rel);
+        if let Some(parent) = out.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        io::copy(&mut file, &mut File::create(&out)?)?;
+    }
+    Ok(())
+}
+
 /// `exclude`: 폴더 안에서 담지 않을 파일 이름 패턴 (`*` 가능. 예: 서버가 쥐고 있는 `session.lock`)
 pub fn create_excluding(dir: &Path, kind: BackupKind, paths: &[PathBuf], exclude: &[String]) -> Result<BackupInfo> {
     let entries: Vec<(PathBuf, PathBuf)> = paths.iter().map(|p| (p.clone(), p.clone())).collect();
