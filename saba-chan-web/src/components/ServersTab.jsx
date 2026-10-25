@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { art } from '../art';
 import { useApp, useData } from '../store';
+import { Dropdown } from './Dropdown';
 import { Icon } from './icons';
 import { ServerDetail } from './ServerDetail';
 import { Button, Empty, errorText, failed, Loading, Section, Sheet, StatusDot } from './ui';
@@ -39,16 +40,15 @@ function AddServerSheet({ api, onClose }) {
                         create();
                     }}
                 >
-                    <label className="field">
+                    <div className="field">
                         <span>{t('servers.game')}</span>
-                        <select value={module} onChange={(e) => setModule(e.target.value)}>
-                            {modules.map((m) => (
-                                <option key={m.name} value={m.name}>
-                                    {gameNameOf(t, m.name, m)}
-                                </option>
-                            ))}
-                        </select>
-                    </label>
+                        <Dropdown
+                            value={module}
+                            onChange={setModule}
+                            ariaLabel={t('servers.game')}
+                            options={modules.map((m) => ({ value: m.name, label: gameNameOf(t, m.name, m) }))}
+                        />
+                    </div>
                     <label className="field">
                         <span>{t('servers.name')}</span>
                         <input value={name} onChange={(e) => setName(e.target.value)} maxLength={64} required />

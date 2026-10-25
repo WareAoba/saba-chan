@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useApp } from '../store';
+import { Dropdown } from './Dropdown';
 import { Icon } from './icons';
 import { Button, Empty, errorText, failed, Section } from './ui';
 
@@ -95,13 +96,14 @@ function FieldInput({ field, value, onChange, t, modNs }) {
         );
     } else if (type === 'select' && Array.isArray(field.options)) {
         input = (
-            <select value={String(value)} onChange={(e) => onChange(e.target.value)}>
-                {field.options.map((o) => (
-                    <option key={o} value={o}>
-                        {t(`${modNs}:settings.${field.name}.options.${o}`, { defaultValue: o })}
-                    </option>
-                ))}
-            </select>
+            <Dropdown
+                value={String(value)}
+                onChange={onChange}
+                options={field.options.map((o) => ({
+                    value: o,
+                    label: t(`${modNs}:settings.${field.name}.options.${o}`, { defaultValue: o }),
+                }))}
+            />
         );
     } else if (type === 'multiline' || type === 'list') {
         const text = Array.isArray(value) ? value.join('\n') : String(value ?? '');

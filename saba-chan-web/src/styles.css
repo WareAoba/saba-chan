@@ -50,29 +50,75 @@ textarea {
 }
 
 /* ── 들어가기 전 화면 ── */
+/* 사이트의 "잘못된 접근" 화면(server-chan website/public/blocked.html)과 같은 색·빛·그림 크기 */
 .gate {
     min-height: 100vh;
     display: grid;
     place-items: center;
     padding: 24px 16px;
+    background: #0b0f1a;
+    color: #f1f5f9;
+    overflow: hidden;
+    position: relative;
 }
-.gate-card {
+.gate::before,
+.shell::before,
+.gate::after,
+.shell::after {
+    content: "";
+    position: fixed;
+    border-radius: 50%;
+    filter: blur(120px);
+    opacity: 0.2;
+    pointer-events: none;
+}
+.gate::before,
+.shell::before {
+    width: 400px;
+    height: 400px;
+    background: #7c3aed;
+    top: -150px;
+    right: -100px;
+}
+.gate::after,
+.shell::after {
+    width: 350px;
+    height: 350px;
+    background: #3b82f6;
+    bottom: -100px;
+    left: -80px;
+}
+/* 들어온 뒤에도 같은 빛을 뒤에 옅게 깐다 */
+.shell::before,
+.shell::after {
+    z-index: -1;
+    opacity: 0.12;
+}
+.gate-body {
     animation: pop-in 420ms var(--ease) both;
-    width: min(400px, 100%);
-    padding: 32px 24px;
-    border-radius: 20px;
-    background: var(--bg-1);
-    border: 1px solid var(--line);
+    position: relative;
+    z-index: 1;
+    max-width: 640px;
     text-align: center;
     display: grid;
+    justify-items: center;
     gap: 12px;
 }
 .gate-art {
-    width: 168px;
-    height: 168px;
-    margin: -8px auto 0;
+    width: clamp(300px, 45vw, 570px);
+    max-width: 90vw;
+    margin-bottom: clamp(12px, 3vh, 36px);
     object-fit: contain;
-    filter: drop-shadow(0 8px 16px rgb(0 0 0 / 0.18));
+    filter: drop-shadow(0 0 40px rgb(124 58 237 / 0.25));
+}
+.gate-word {
+    font-size: clamp(2.25rem, 7vw, 4.5rem);
+    font-weight: 900;
+    line-height: 1;
+    background: linear-gradient(135deg, #7c3aed, #3b82f6);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
 }
 .gate-art-float {
     animation: float 3.2s var(--ease) infinite alternate;
@@ -82,20 +128,25 @@ textarea {
     justify-content: center;
 }
 .gate-wordmark {
-    height: 32px;
+    height: clamp(32px, 6vw, 48px);
+    background-color: #f1f5f9;
 }
 .gate-text {
     margin: 0;
-    color: var(--text-1);
+    color: #94a3b8;
+    font-size: clamp(1.1rem, 2.5vw, 1.6rem);
+    line-height: 1.5;
 }
 .gate-hint {
     margin: 0;
-    color: var(--text-3);
-    font-size: 13px;
+    color: #64748b;
+    font-size: 14px;
 }
 
 /* ── 틀 ── */
 .shell {
+    position: relative;
+    isolation: isolate;
     min-height: 100vh;
     display: flex;
     flex-direction: column;
@@ -545,9 +596,17 @@ textarea {
 .member-row {
     padding: 8px 12px;
 }
-.member-row select {
+/* GUI 드롭다운(CustomDropdown). 칸에서는 줄을 다 채우고, 멤버 줄에서는 이름에 자리를 남긴다 */
+.dropdown {
+    width: 100%;
+}
+.dropdown .custom-dropdown-trigger {
+    min-height: 40px;
+}
+.member-row .level-select {
     flex: none;
     width: auto;
+    min-width: 120px;
     max-width: 48%;
 }
 .avatar {

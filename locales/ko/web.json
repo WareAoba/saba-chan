@@ -26,6 +26,19 @@
     "relay_closing": "서버 점검으로 세션이 끝났어요.",
     "connection_lost": "연결이 끊겨 세션이 끝났어요."
   },
+  "gate_word": {
+    "closed": "세션 종료",
+    "no_link": "링크 없음",
+    "link_invalid": "링크 만료",
+    "host_unreachable": "연결 실패",
+    "session_gone": "세션 종료",
+    "expired": "타임아웃",
+    "left": "페이지 이탈",
+    "replaced": "중복 접속",
+    "host_gone": "연결 끊김",
+    "relay_closing": "서버 점검",
+    "connection_lost": "연결 끊김"
+  },
   "session": {
     "remaining": "남은 시간",
     "extend": "연장",

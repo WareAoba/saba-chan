@@ -26,6 +26,19 @@
     "relay_closing": "因服务器维护，会话已结束。",
     "connection_lost": "连接中断，会话已结束。"
   },
+  "gate_word": {
+    "closed": "已结束",
+    "no_link": "无链接",
+    "link_invalid": "链接失效",
+    "host_unreachable": "连接失败",
+    "session_gone": "已结束",
+    "expired": "超时",
+    "left": "已离开",
+    "replaced": "已替换",
+    "host_gone": "已断开",
+    "relay_closing": "维护中",
+    "connection_lost": "已断开"
+  },
   "session": {
     "remaining": "剩余时间",
     "extend": "延长",

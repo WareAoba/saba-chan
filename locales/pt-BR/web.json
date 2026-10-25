@@ -26,6 +26,19 @@
     "relay_closing": "A sessão terminou por manutenção do servidor.",
     "connection_lost": "A sessão terminou porque a conexão foi perdida."
   },
+  "gate_word": {
+    "closed": "Encerrada",
+    "no_link": "Sem link",
+    "link_invalid": "Link expirado",
+    "host_unreachable": "Sem conexão",
+    "session_gone": "Encerrada",
+    "expired": "Tempo esgotado",
+    "left": "Saiu",
+    "replaced": "Substituída",
+    "host_gone": "Desconectado",
+    "relay_closing": "Manutenção",
+    "connection_lost": "Desconectado"
+  },
   "session": {
     "remaining": "Tempo restante",
     "extend": "Estender",

@@ -6,9 +6,10 @@ import logoJp from '@art/logo-jp.png';
 import logoKr from '@art/logo-kr.png';
 import relay from '@art/saba/relay.webp';
 import sleep from '@art/saba/sleep.webp';
-import sleepy from '@art/saba/sleepy.webp';
 
-export const art = { favicon, icon, relay, sleep, sleepy };
+import denied from './assets/denied-900.webp';
+
+export const art = { favicon, icon, relay, sleep, denied };
 
 /** 공식 글자 로고 (GUI AppBar 와 같은 규칙: 한국어·일본어·영어, 나머지는 영어). ratio = 가로/세로 */
 export function wordmarkFor(lang) {

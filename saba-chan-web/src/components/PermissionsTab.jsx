@@ -2,6 +2,8 @@ import * as L from '@gui/components/discord/levels';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useApp } from '../store';
+import { Dropdown } from './Dropdown';
+import { Icon } from './icons';
 import { Button, Empty, errorText, failed, Loading, Section } from './ui';
 
 /** 레벨 이름: 길드에 더한 단계는 그 이름, 기본 단계는 웹 문구 */
@@ -39,20 +41,19 @@ function Avatar({ member }) {
     );
 }
 
-function LevelSelect({ value, perm, onChange, withDefault, t, disabled }) {
+function LevelSelect({ value, perm, onChange, withDefault, t, disabled, label }) {
     return (
-        <select
+        <Dropdown
+            className="level-select"
             value={value === null ? 'default' : String(value)}
             disabled={disabled}
-            onChange={(e) => onChange(e.target.value === 'default' ? null : Number(e.target.value))}
-        >
-            {withDefault && <option value="default">{t('perm.use_default')}</option>}
-            {L.grantable(perm).map((l) => (
-                <option key={l} value={l}>
-                    {levelName(t, perm, l)}
-                </option>
-            ))}
-        </select>
+            ariaLabel={label}
+            onChange={(v) => onChange(v === 'default' ? null : Number(v))}
+            options={[
+                ...(withDefault ? [{ value: 'default', label: t('perm.use_default') }] : []),
+                ...L.grantable(perm).map((l) => ({ value: String(l), label: levelName(t, perm, l) })),
+            ]}
+        />
     );
 }
 
@@ -99,14 +100,14 @@ function LadderEditor({ perm, busy, onSave, t }) {
                                         aria-label={t('perm.ladder_up', { name: label(l) })}
                                         onClick={() => setDraft((d) => L.moveLevel(d, i, i - 1))}
                                     >
-                                        ↑
+                                        <Icon name="chevronUp" size={16} />
                                     </Button>
                                     <Button
                                         disabled={i >= last - 1}
                                         aria-label={t('perm.ladder_down', { name: label(l) })}
                                         onClick={() => setDraft((d) => L.moveLevel(d, i, i + 1))}
                                     >
-                                        ↓
+                                        <Icon name="chevronDown" size={16} />
                                     </Button>
                                     <Button
                                         tone="ghost-danger"
@@ -114,7 +115,7 @@ function LadderEditor({ perm, busy, onSave, t }) {
                                         aria-label={t('perm.ladder_delete', { name: label(l) })}
                                         onClick={() => setDraft((d) => L.removeLevel(d, i))}
                                     >
-                                        ✕
+                                        <Icon name="close" size={16} />
                                     </Button>
                                 </>
                             )}
@@ -205,6 +206,7 @@ function GuildPermissions({ api, guildId }) {
                 <LevelSelect
                     value={defaultLevel}
                     perm={perm}
+                    label={t('perm.default')}
                     t={t}
                     disabled={busy}
                     onChange={(l) => l !== null && write(() => api.permissionsUpdate(guildId, { defaultLevel: l }))}
@@ -243,6 +245,7 @@ function GuildPermissions({ api, guildId }) {
                                     <LevelSelect
                                         value={levelOf(String(m.id))}
                                         perm={perm}
+                                        label={nameOf(m)}
                                         withDefault
                                         t={t}
                                         disabled={busy}
@@ -288,16 +291,15 @@ export function PermissionsTab({ api }) {
             ) : (
                 <>
                     {guilds.length > 1 && (
-                        <label className="field">
+                        <div className="field">
                             <span>{t('perm.guild')}</span>
-                            <select value={guildId ?? ''} onChange={(e) => setGuildId(e.target.value)}>
-                                {guilds.map((g) => (
-                                    <option key={g.guildId} value={g.guildId}>
-                                        {g.guildName || g.guildId}
-                                    </option>
-                                ))}
-                            </select>
-                        </label>
+                            <Dropdown
+                                value={guildId ?? ''}
+                                onChange={setGuildId}
+                                ariaLabel={t('perm.guild')}
+                                options={guilds.map((g) => ({ value: g.guildId, label: g.guildName || g.guildId }))}
+                            />
+                        </div>
                     )}
                     {guildId && <GuildPermissions api={api} guildId={guildId} />}
                 </>
