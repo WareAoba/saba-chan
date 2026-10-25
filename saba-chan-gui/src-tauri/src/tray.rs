@@ -58,12 +58,12 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         true,
         None::<&str>,
     )?)?;
-    // 터미널로 열기 (I4-e): 데몬이 새 콘솔 창에 CLI 셸을 띄운다 (지금은 Windows만)
+    // CLI로 전환: 데몬이 새 콘솔 창에 CLI 메뉴를 띄우고 이 GUI는 인터페이스만 끝낸다 (지금은 Windows만)
     if cfg!(windows) {
         menu.append(&MenuItem::with_id(
             app,
-            "open_terminal",
-            t("tray.open_terminal"),
+            "switch_to_cli",
+            t("tray.switch_to_cli"),
             true,
             None::<&str>,
         )?)?;
@@ -111,15 +111,17 @@ fn on_menu(app: &AppHandle, id: &str) {
     let app = app.clone();
     match id {
         "open_window" => window::show_main(&app),
-        "open_terminal" => {
+        "switch_to_cli" => {
             tauri::async_runtime::spawn(async move {
                 let state = app.state::<AppState>();
-                let body = json!({ "kind": "cli", "view": "shell" });
+                let body = json!({ "kind": "cli" });
                 let res = state.client.post("/api/clients/launch", &body, 30000).await;
                 let ok = res.as_ref().is_ok_and(|v| v["success"].as_bool().unwrap_or(false));
-                if !ok {
+                if ok {
+                    lifecycle::interface_only_quit(&app).await;
+                } else {
                     tracing::warn!(
-                        "[Tray] Could not open terminal: {:?}",
+                        "[Tray] Could not switch to the CLI: {:?}",
                         res.map_err(|e| e.error_body(json!({})))
                     );
                 }

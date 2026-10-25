@@ -152,7 +152,13 @@ pub enum Cmd {
     /// Open the interactive shell
     Shell,
     /// Open the full-screen menu (the default when run without a command in a terminal)
-    Tui,
+    Tui {
+        /// Server to open first
+        #[arg(long)]
+        server: Option<String>,
+    },
+    /// Switch to the desktop app: it opens on the same server and the full-screen menu closes
+    Gui { server: Option<String> },
     /// Show help for a command. With --json: the command tree, arguments and exit codes
     Help {
         /// Command path, e.g. `server start`

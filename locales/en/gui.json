@@ -79,6 +79,8 @@
     "about_license": "License",
     "about_back": "Back",
     "made_by": "Made by",
+    "dev_nickname": "WareAoba",
+    "dev_bio": "AI tamer",
     "github_repo": "GitHub repository",
     "accent_color_label": "Accent Color",
     "accent_color_description": "Choose the color for buttons and highlights",
@@ -541,6 +543,10 @@
     "checking_message": "Checking for new updates...",
     "no_updates": "All components are up to date.",
     "auto_check": "Auto-check for updates",
+    "channel": "Update channel",
+    "channel_stable": "Stable",
+    "channel_rc": "Preview (release candidate)",
+    "channel_beta": "Beta (early, may be unstable)",
     "found": "{{count}} update(s) found: {{names}}",
     "check_required": "Check required",
     "completed": "Update complete."
@@ -791,6 +797,7 @@
     "pair_issuing": "Getting a code…",
     "pair_step_code": "Connection code",
     "pair_step_command": "Type this command in a Discord channel",
+    "pair_command": "/saba connect code:{{code}}",
     "pair_step_wait": "It connects automatically once you send it",
     "pair_waiting": "Waiting for the command in Discord",
     "pair_success": "Connected!",
@@ -1406,12 +1413,9 @@
     "module_update": "{{name}}: a new version {{version}} of the {{module}} module is out.",
     "server_update": "{{name}}: a new game server version is out. If players can't join, update the server."
   },
-  "terminal": {
-    "open": "Open in terminal",
-    "err_unsupported_platform": "Opening a terminal isn't supported on this OS yet.",
-    "err_cli_not_found": "Couldn't find the CLI program, so the terminal can't be opened.",
-    "err_not_found": "The daemon couldn't find this server.",
-    "err_generic": "Couldn't open the terminal."
+  "switch_cli": {
+    "label": "Switch to CLI",
+    "failed": "Couldn't open the CLI. {{reason}}"
   },
   "memory_limit": {
     "title": "Memory limit",

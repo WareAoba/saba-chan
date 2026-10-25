@@ -666,14 +666,15 @@
       "bot.wake": "Wake the bot on a Discord server",
       "bot.music": "Music player settings of a Discord server. No options: show",
       "bot.allow": "Servers a Discord server can see and run. No servers: show. `--all`: every server",
-      "bot.link": "Connection requests sent from Discord with /사바쨩 연결 and no code. No id: show, ID: accept, `--decline`: refuse",
+      "bot.link": "Connection requests sent from Discord with /saba connect and no code. No id: show, ID: accept, `--decline`: refuse",
       "help": "Show help for a command. With --json: the command tree, arguments and exit codes",
       "events": "Follow daemon events as they happen (with --json: one JSON per line). Ctrl+C to stop",
       "install": "Install Saba-chan on this PC without the window installer",
       "uninstall": "Remove Saba-chan from this PC (settings and servers are kept unless removed)",
       "config.paths": "Where Saba-chan keeps its data, modules and extensions, and the default folders",
       "config.move": "Move modules or extensions to another folder. Installed files are moved; servers must be stopped",
-      "server.discord": "What Discord chat calls this server and its commands (the same in every Discord server). No options: show"
+      "server.discord": "What Discord chat calls this server and its commands (the same in every Discord server). No options: show",
+      "gui": "Switch to the desktop app: it opens on the same server and the full-screen menu closes"
     },
     "arg": {
       "module.maker.game": "Game to put in the first prompt",
@@ -962,15 +963,13 @@
     "daemon_up": "● daemon v{{version}}",
     "daemon_down": "○ daemon off · type daemon start",
     "servers_running": "{{running}}/{{total}} servers running",
-    "menu": "Menu",
     "running_hint": "(running · Ctrl+C to stop)",
-    "keys": "Tab next · ↑↓ pick · Enter press · 1-9 pages · : console · F2 bigger console · ? help · q quit",
     "yes": "Yes",
     "no": "No",
     "question": "Confirm",
     "dialog_keys": "Enter choose · Esc cancel",
     "help_title": "Keys",
-    "help": "Tab / Shift+Tab  move menu → list → buttons → console\n↑↓  pick,  ←→  move between buttons\nEnter  press a button (buttons with … fill the console for you)\n1-9  jump to a page\n: or /  type a command (what you'd write after saba-chan-cli, ↑↓ history)\nPgUp/PgDn, mouse wheel  scroll the console,  F2  bigger console\nCtrl+C  stop the running command\nMouse  click the menu, lists and buttons\nq  quit (the daemon and servers keep running)",
+    "help": "←→↑↓  move the way the screen is laid out (tabs → list → buttons → console)\nTab / Shift+Tab  next / previous area\nEnter  press a button (… fills the command line for you, ▾ opens more)\n1-6  jump to a page\nServer console  press ↓ to get there, type, Enter sends it to the server (↑↓ history)\n: or /  command line (what you'd write after saba-chan-cli, Tab completes, ↑↓ history)\nF2  open or close the output,  PgUp/PgDn, mouse wheel  scroll\nF9  switch to the GUI (when it can open)\nCtrl+C  stop the running command,  Esc  step back\nq  quit (the daemon and servers keep running)",
     "too_narrow": "Make the window at least 60 columns wide.",
     "not_here": "This command can't run inside the full-screen menu. Quit with q and run it in the terminal.",
     "cancelled": "Stopped.",
@@ -985,15 +984,12 @@
     "updates_checking": "checking…",
     "updates_error": "The last check failed. Press Check for updates again.",
     "page": {
-      "dashboard": "Dashboard",
       "servers": "Servers",
       "modules": "Game modules",
       "extensions": "Extensions",
       "discord": "Discord",
       "updates": "Updates",
-      "settings": "Settings",
-      "daemon_log": "Daemon log",
-      "commands": "All commands"
+      "daemon": "Daemon"
     },
     "btn": {
       "status": "Overview",
@@ -1004,8 +1000,6 @@
       "stop": "Stop",
       "restart": "Restart",
       "players": "Players",
-      "run": "Game command",
-      "send": "Send to console",
       "info": "Info",
       "settings": "Settings",
       "backup_create": "Back up",
@@ -1049,28 +1043,18 @@
       "daemon_restart": "Restart daemon",
       "daemon_stop": "Stop daemon",
       "clients": "App windows",
-      "events": "Follow events"
+      "more": "More"
     },
     "col": {
       "name": "Name",
       "game": "Game",
-      "status": "Status",
       "players": "Players",
       "port": "Port",
       "uptime": "Up",
       "about": "About",
       "enabled": "Enabled"
     },
-    "card": {
-      "servers": "Servers",
-      "servers_sub": "on / all",
-      "players": "Players",
-      "players_sub": "across running servers",
-      "memory": "Memory"
-    },
-    "no_servers": "No servers yet. Press [New server] or type server add",
-    "feed": "Recent",
-    "feed_empty": "Starts and stops show up here as they happen.",
+    "no_servers": "No servers yet. Press [New server] or press : and type server add",
     "empty": "(none)",
     "detail": "Details",
     "server_console": "Console",
@@ -1086,31 +1070,23 @@
     "settings": {
       "daemon": "Daemon",
       "port": "Daemon port",
-      "language": "Language",
-      "hint": "To change a value press [Change a setting] and type key=value (e.g. language=en)."
+      "language": "Language"
     },
-    "console": "Console",
-    "console_hint": "press : to type a command here (e.g. start pal, help)",
-    "keys_console": "Enter run · ↑↓ history · PgUp/PgDn scroll · Esc leave · F2 bigger console",
-    "keys_running": "Command running · Ctrl+C stop · PgUp/PgDn scroll · other pages still work",
+    "keys_console": "Enter send to the server · ↑↓ history · PgUp/PgDn scroll · Esc back to buttons",
+    "keys_running": "Command running · Ctrl+C stop · F2 output · other pages still work",
     "choose": "Choose",
     "enter_text": "Enter",
-    "welcome": "Welcome to Saba-chan. Press a button, or press : to type a command.",
     "busy": "Another command is still running. Wait for it, or stop it with Ctrl+C, then try again.",
     "pick_first": "Pick one from the list first.",
-    "event": {
-      "instance_ready": "ready",
-      "instance_exit": "stopped",
-      "instance_player": "players changed",
-      "instance_port_moved": "port changed",
-      "instance_restart_failed": "auto restart failed",
-      "backup_done": "backup done",
-      "plan_done": "multi-step run done",
-      "action_run": "command run",
-      "relay_link_request": "Discord link request",
-      "update_available": "update available"
-    },
-    "enter_to_run": "Enter to run"
+    "gui_switch": "Switch to GUI",
+    "output": "Output",
+    "daemon_log": "Daemon log",
+    "use_switch": "Here, press F9 (Switch to GUI).",
+    "console_input_hint": "Type a server command here · Enter to send",
+    "keys_tabs": "←→ pages · ↓ enter · 1-6 page · : command · F2 output · ? help · q quit",
+    "keys_list": "↑↓ pick · → buttons · : command · F2 output · ? help · q quit",
+    "keys_actions": "←→ pick a button · Enter press · ↓ console · Esc list · F2 output · ? help · q quit",
+    "keys_command": "Enter run · Tab complete · ↑↓ history · Esc close"
   },
   "install": {
     "fetching": "Checking the latest release…",
@@ -1172,5 +1148,8 @@
       "about": "About",
       "inputs": "Inputs"
     }
+  },
+  "gui": {
+    "opened": "Opened the Saba-chan app."
   }
 }

@@ -78,7 +78,7 @@
   "tray": {
     "tooltip": "Saba-chan - Gameserver-Verwaltung",
     "open_window": "🖥️ Fenster öffnen",
-    "open_terminal": "💻 Terminal öffnen",
+    "switch_to_cli": "💻 Zur CLI wechseln",
     "daemon_running": "🟢 Daemon läuft",
     "daemon_stopped": "⚪ Daemon gestoppt",
     "stop_daemon": "🛑 Daemon stoppen",

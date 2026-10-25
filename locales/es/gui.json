@@ -79,6 +79,8 @@
     "about_license": "Licencia",
     "about_back": "Volver",
     "made_by": "Hecho por",
+    "dev_nickname": "WareAoba",
+    "dev_bio": "Domador de IA",
     "github_repo": "Repositorio de GitHub",
     "accent_color_label": "Color de acento",
     "accent_color_description": "Elige el color de los botones y los resaltados",
@@ -541,6 +543,10 @@
     "checking_message": "Buscando nuevas actualizaciones...",
     "no_updates": "Todos los componentes están actualizados.",
     "auto_check": "Verificar actualizaciones automáticamente",
+    "channel": "Canal de actualizaciones",
+    "channel_stable": "Estable",
+    "channel_rc": "Vista previa (candidata)",
+    "channel_beta": "Beta (anticipada, puede ser inestable)",
     "found": "Se encontraron {{count}} actualización(es): {{names}}",
     "check_required": "Verificación requerida",
     "completed": "Actualización completada"
@@ -791,6 +797,7 @@
     "pair_issuing": "Obteniendo un código…",
     "pair_step_code": "Código de conexión",
     "pair_step_command": "Escribe este comando en un canal de Discord",
+    "pair_command": "/saba connect code:{{code}}",
     "pair_step_wait": "Se conecta automáticamente en cuanto lo envíes",
     "pair_waiting": "Esperando el comando en Discord",
     "pair_success": "¡Conectado!",
@@ -1406,12 +1413,9 @@
     "module_update": "{{name}}: ya está disponible la versión {{version}} del módulo {{module}}.",
     "server_update": "{{name}}: hay una nueva versión del servidor de juego. Si no se puede entrar, actualiza el servidor."
   },
-  "terminal": {
-    "open": "Abrir en terminal",
-    "err_unsupported_platform": "Abrir una terminal aún no es compatible con este sistema.",
-    "err_cli_not_found": "No se encontró el programa CLI, así que no se puede abrir la terminal.",
-    "err_not_found": "El daemon no encontró este servidor.",
-    "err_generic": "No se pudo abrir la terminal."
+  "switch_cli": {
+    "label": "Cambiar a la CLI",
+    "failed": "No se pudo abrir la CLI. {{reason}}"
   },
   "memory_limit": {
     "title": "Límite de memoria",

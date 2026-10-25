@@ -57,6 +57,8 @@ struct Args {
     tails: Vec<String>,
     /// MiB
     memory_limit: Option<u64>,
+    /// 줄 머리 (`[launch] line_start`). 줄바꿈 없이 이어 쓴 출력을 맞는 자리마다 나눈다
+    line_start: Option<regex::Regex>,
     program: String,
     program_args: Vec<String>,
 }
@@ -67,6 +69,7 @@ fn parse_args() -> Result<Args, String> {
     let mut console = Console::Pipe;
     let mut tails = Vec::new();
     let mut memory_limit = None;
+    let mut line_start = None;
     while let Some(arg) = it.next() {
         match arg.as_str() {
             "--run-dir" => run_dir = it.next().map(PathBuf::from),
@@ -84,6 +87,10 @@ fn parse_args() -> Result<Args, String> {
                 let value = it.next().unwrap_or_default();
                 memory_limit = Some(value.parse::<u64>().ok().filter(|m| *m > 0 && m.checked_mul(1024 * 1024).is_some()).ok_or_else(|| format!("--memory-limit takes MiB, got '{}'", value))?);
             }
+            "--line-start" => {
+                let value = it.next().unwrap_or_default();
+                line_start = Some(regex::Regex::new(&value).ok().filter(|re| !re.is_match("")).ok_or_else(|| format!("--line-start takes a regex that does not match the empty string, got '{}'", value))?);
+            }
             "--" => break,
             other => return Err(format!("unknown argument '{}'", other)),
         }
@@ -96,6 +103,7 @@ fn parse_args() -> Result<Args, String> {
         console,
         tails,
         memory_limit,
+        line_start,
         program,
         program_args: it.collect(),
     })
@@ -122,8 +130,28 @@ const CURSOR_REPLY: &[u8] = b"\x1b[1;1R";
 /// 팰월드 REST 접근 로그처럼 줄바꿈 없이 쓰는 서버의 출력이 끝날 때까지 쌓이지 않게
 const PARTIAL_LINE_IDLE: Duration = Duration::from_millis(500);
 
+/// 한 줄을 `line_start`가 맞는 자리마다 나눈다. 줄 처음과 빈 맞음에서는 나누지 않는다
+fn split_at_line_starts<'a>(line: &'a str, line_start: Option<&regex::Regex>) -> Vec<&'a str> {
+    let Some(re) = line_start else { return vec![line] };
+    let mut parts = Vec::new();
+    let mut from = 0;
+    for m in re.find_iter(line).filter(|m| m.start() > 0 && !m.is_empty()) {
+        parts.push(&line[from..m.start()]);
+        from = m.start();
+    }
+    parts.push(&line[from..]);
+    parts
+}
+
 /// 줄 끝 없이 온 요청도 바로 보게, 줄 단위가 아니라 읽은 만큼 본다
-fn pump(reader: impl Read + Send + 'static, log: Log, stream: Stream, console: Console, reply: Option<Arc<Stdin>>) -> std::thread::JoinHandle<()> {
+fn pump(
+    reader: impl Read + Send + 'static,
+    log: Log,
+    stream: Stream,
+    console: Console,
+    reply: Option<Arc<Stdin>>,
+    line_start: Option<regex::Regex>,
+) -> std::thread::JoinHandle<()> {
     // 읽기는 막히므로 따로 읽어 넘겨받고, 기다리는 동안 조각을 내보낼 수 있게 한다
     let (tx, rx) = std::sync::mpsc::sync_channel::<Vec<u8>>(16);
     std::thread::spawn(move || {
@@ -148,11 +176,16 @@ fn pump(reader: impl Read + Send + 'static, log: Log, stream: Stream, console: C
                 let line = decode_line(&strip_ansi_escapes::strip(line));
                 // 화면을 다시 그린 자리(\r)는 마지막 내용만 남긴다
                 let line = line.rsplit('\r').next().unwrap_or_default();
-                if !line.trim().is_empty() {
-                    write_log(&log, stream, line);
+                for part in split_at_line_starts(line, line_start.as_ref()) {
+                    if !part.trim().is_empty() {
+                        write_log(&log, stream, part);
+                    }
                 }
             } else {
-                write_log(&log, stream, &lines.decode(line));
+                let line = lines.decode(line);
+                for part in split_at_line_starts(&line, line_start.as_ref()) {
+                    write_log(&log, stream, part);
+                }
             }
         };
         loop {
@@ -473,7 +506,7 @@ fn run(args: Args) -> Result<i32, String> {
     let stdin: Arc<Stdin> = Arc::new(Mutex::new(Some(stdin)));
     // 의사 콘솔의 커서 위치 요청에는 runner가 답한다 (파이프에는 그런 요청이 없다)
     let reply = (args.console == Console::Pty).then(|| stdin.clone());
-    let readers: Vec<_> = outputs.into_iter().map(|(r, stream)| pump(r, log.clone(), stream, args.console, reply.clone())).collect();
+    let readers: Vec<_> = outputs.into_iter().map(|(r, stream)| pump(r, log.clone(), stream, args.console, reply.clone(), args.line_start.clone())).collect();
     if !args.tails.is_empty() {
         let base = args.cwd.clone().unwrap_or_else(|| PathBuf::from("."));
         follow_files(args.tails.iter().map(|t| base.join(t)).collect(), log.clone());
@@ -631,7 +664,7 @@ mod tests {
             }
         }
         let reader = Chunks(vec![b"\x1b[", b"6n", b"REST API started\r\n\x1b[6n"]);
-        super::pump(reader, log, super::Stream::Stdout, super::Console::Pty, Some(stdin)).join().unwrap();
+        super::pump(reader, log, super::Stream::Stdout, super::Console::Pty, Some(stdin), None).join().unwrap();
         assert_eq!(sink.0.lock().unwrap().as_slice(), b"\x1b[1;1R\x1b[1;1R");
         let text = std::fs::read_to_string(&path).unwrap();
         let _ = std::fs::remove_file(&path);
@@ -657,7 +690,7 @@ mod tests {
             }
         }
         let (close, held) = std::sync::mpsc::channel();
-        let pump = super::pump(Held(Some(b"[LOG] REST accessed /v1/api/info"), held), log, super::Stream::Stdout, super::Console::Pty, None);
+        let pump = super::pump(Held(Some(b"[LOG] REST accessed /v1/api/info"), held), log, super::Stream::Stdout, super::Console::Pty, None, None);
         let mut text = String::new();
         for _ in 0..30 {
             std::thread::sleep(Duration::from_millis(100));
@@ -672,6 +705,34 @@ mod tests {
         let _ = std::fs::remove_file(&path);
         assert!(text.contains("[LOG] REST accessed /v1/api/info"), "logged while the server still runs: {text:?}");
         assert_eq!(after.matches("REST accessed").count(), 1, "{after}");
+    }
+
+    // 실제 PC: 팰월드는 save·shutdown 응답 로그를 줄바꿈 없이 0.5초 안에 이어 써서 한 줄로 붙었다.
+    // 모듈이 선언한 줄 머리(`--line-start`)가 맞는 자리마다 새 줄로 나눈다 (줄 처음의 맞음은 나누지 않는다)
+    #[test]
+    fn output_is_split_where_the_declared_line_start_matches() {
+        struct Chunks(Vec<&'static [u8]>);
+        impl std::io::Read for Chunks {
+            fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+                if self.0.is_empty() {
+                    return Ok(0);
+                }
+                let c = self.0.remove(0);
+                buf[..c.len()].copy_from_slice(c);
+                Ok(c.len())
+            }
+        }
+        let split = regex::Regex::new(r"\[LOG\] REST").unwrap();
+        for console in [super::Console::Pty, super::Console::Pipe] {
+            let path = std::env::temp_dir().join(format!("saba-runner-split-{}-{:?}.log", std::process::id(), console));
+            let log: super::Log = std::sync::Arc::new(std::sync::Mutex::new(std::fs::File::create(&path).unwrap()));
+            let reader = Chunks(vec![b"[LOG] REST accessed /v1/api/save[LOG] REST accessed /v1/api/shutdown\nplain [LOG] stays\n"]);
+            super::pump(reader, log, super::Stream::Stdout, console, None, Some(split.clone())).join().unwrap();
+            let text = std::fs::read_to_string(&path).unwrap();
+            let _ = std::fs::remove_file(&path);
+            let contents: Vec<&str> = text.lines().map(|l| l.splitn(3, "] ").nth(2).unwrap_or_default()).collect();
+            assert_eq!(contents, ["[LOG] REST accessed /v1/api/save", "[LOG] REST accessed /v1/api/shutdown", "plain [LOG] stays"], "{console:?}");
+        }
     }
 
     // 외부 감사: 따라 읽는 로그 파일의 끝나지 않은 줄이 끝없이 쌓였고, 파일을 새로 쓰기 시작해도 옛 조각이 새 줄 앞에 붙었다

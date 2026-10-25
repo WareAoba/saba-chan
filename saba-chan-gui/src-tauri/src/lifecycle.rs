@@ -39,6 +39,10 @@ pub struct Lifecycle {
     heartbeat_task: Mutex<Option<JoinHandle<()>>>,
     events_task: Mutex<Option<JoinHandle<()>>>,
     update_task: Mutex<Option<JoinHandle<()>>>,
+    /// 다른 인터페이스(CLI의 `gui`)가 이 GUI를 띄우며 고른 서버. 렌더러가 준비되면(app_ready) 넘긴다
+    open_server: Mutex<Option<String>>,
+    /// 렌더러가 리스너를 달았다 (app_ready를 한 번 받았다). open_server 잠금 안에서만 바꾼다
+    renderer_ready: AtomicBool,
     /// 데몬 재시작은 한 번에 하나만. 겹치면 child가 이미 죽은 프로세스를 가리킬 수 있다 (G-U10)
     restart_lock: tokio::sync::Mutex<()>,
 }
@@ -67,11 +71,28 @@ fn status_t(app: &AppHandle, step: &str, key: &str) {
     send_status(app, step, &msg);
 }
 
+/// `--open-server=<id>`: 다른 인터페이스(CLI의 `gui`)가 고른 서버
+pub fn open_server_arg<I: IntoIterator<Item = String>>(args: I) -> Option<String> {
+    args.into_iter()
+        .find_map(|a| a.strip_prefix("--open-server=").map(str::to_string))
+        .filter(|id| !id.is_empty())
+}
+
+/// 그 서버를 화면에 연다. 렌더러가 아직 준비 전이면 app_ready 때 연다
+pub fn open_server(app: &AppHandle, id: String) {
+    if let Some(id) = app.state::<AppState>().life.want_server(id) {
+        emit_main(app, "app:openServer", json!({ "instanceId": id }));
+    }
+}
+
 /// 렌더러가 리스너를 단 뒤 부른다. 처음이면 초기화 시작, 다시 부르면(새로고침) 마지막 상태를 다시 보낸다
 pub fn app_ready(app: &AppHandle) {
     // 새로 뜬(재로드한) 렌더러는 그 전 닫기 요청을 받지 못했다: 멈춘 것으로 보지 않는다
     crate::window::close_answered();
     let life = &app.state::<AppState>().life;
+    if let Some(id) = life.renderer_ready() {
+        emit_main(app, "app:openServer", json!({ "instanceId": id }));
+    }
     if life.init_started.swap(true, Ordering::SeqCst) {
         if let Some(last) = life.last_status.lock().unwrap().clone() {
             emit_main(app, "status:update", last);
@@ -146,6 +167,23 @@ fn daemon_path(install_root: &Path) -> PathBuf {
 }
 
 impl Lifecycle {
+    /// 서버를 열라는 요청. 렌더러가 이미 준비됐으면 지금 보낼 id를, 아니면 맡아 두고 None
+    fn want_server(&self, id: String) -> Option<String> {
+        let mut pending = self.open_server.lock().unwrap();
+        if self.renderer_ready.load(Ordering::SeqCst) {
+            return Some(id);
+        }
+        *pending = Some(id);
+        None
+    }
+
+    /// 렌더러가 준비됐다: 맡아 둔 서버 열기 요청을 꺼낸다
+    fn renderer_ready(&self) -> Option<String> {
+        let mut pending = self.open_server.lock().unwrap();
+        self.renderer_ready.store(true, Ordering::SeqCst);
+        pending.take()
+    }
+
     fn shows_running(&self, own_alive: bool) -> bool {
         own_alive || self.attached_daemon.load(Ordering::SeqCst)
     }
@@ -234,7 +272,7 @@ pub fn start_daemon(app: &AppHandle) {
         .current_dir(&root)
         .env("RUST_LOG", "info")
         .env("SABA_LANG", settings::language(&s))
-        .env("SABA_IPC_PORT", settings::ipc_port(&s).to_string())
+        .env("SABA_IPC_PORT", settings::daemon_port(&s).to_string())
         .env("SABA_INSTANCES_PATH", state.data_dir.join("instances"))
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -782,6 +820,25 @@ pub fn on_exit(app: &AppHandle) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// CLI의 `gui`가 붙인 서버 id만 읽는다
+    #[test]
+    fn the_open_server_argument_is_read() {
+        let args = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert_eq!(open_server_arg(args(&["gui", "--open-server=inst-1"])), Some("inst-1".into()));
+        assert_eq!(open_server_arg(args(&["gui", "--open-server="])), None);
+        assert_eq!(open_server_arg(args(&["gui", "--after-update"])), None);
+    }
+
+    /// 렌더러가 준비되기 전에 온 서버 열기는 맡아 뒀다가 준비될 때 한 번 넘기고, 그 뒤로는 바로 넘긴다
+    #[test]
+    fn an_open_server_request_waits_for_the_renderer() {
+        let life = Lifecycle::default();
+        assert_eq!(life.want_server("a".into()), None);
+        assert_eq!(life.renderer_ready(), Some("a".into()));
+        assert_eq!(life.renderer_ready(), None);
+        assert_eq!(life.want_server("b".into()), Some("b".into()));
+    }
 
     #[test]
     fn a_daemon_found_already_running_shows_as_running_until_stopped() {

@@ -110,7 +110,7 @@ updater-lib 파일 구성(859c3fd에서 나눔): `lib.rs`는 컴포넌트 정의
 - 컴포넌트 키는 `saba-core`, `cli`, `gui`, `updater`, `installer`, `locales`, `module-<name>`, `ext-<id>`다. 업데이터가 모르는 키는 건너뛴다.
 - `installer`는 0.1.5부터 zip이 아닌 `saba-chan-installer.exe` 그대로다(`versions.toml`, `.github/scripts/package-release.py`). 소개 페이지 다운로드(relay `/v1/updates/download/installer`)가 최신 stable manifest의 이 `url`로 보낸다. 설치기는 이 항목의 `version`만 읽고(2.5단계) 자기 자신을 설치 폴더에 복사하며 그 버전을 installed-manifest의 `installer`로 적는다. 업데이터는 이 기록이 manifest보다 낮으면 사본을 바꾼다. 0.1.4 이전 릴리스는 zip 그대로 둔다.
 - `requires`(다른 컴포넌트 최소 버전)와 `meta`(목록 화면용)는 선택이다. `scripts/versions.py`가 모듈은 `[module.dependencies] saba-core`에서, 익스텐션은 `dependencies."saba-core"`(없거나 `"*"`이면 `min_app_version`을 `>=`로)에서 `requires.saba-core`를 만든다(`extension_core_requirement`). 0.1.9부터 지킨다: `check_for_updates`가 `requires`를 `ComponentVersion.requires`에 싣고 `pending.json`에도 실어(없으면 생략, 옛 업데이터는 무시) 업데이터 `--apply`도 네트워크 없이 본다. `apply_single_component`는 적용 전에 `check_dependencies`(앱 컴포넌트는 installed-manifest와 번들 버전, 모듈·익스텐션은 디스크에 실제로 있는 버전만. 설치 구성에 들지 않는 키(헤드리스의 `gui`)는 빼므로 그 키를 requires하면 not installed로 실패한다. 카탈로그 설치·삭제는 installed-manifest를 고치지 않기 때문이다. `dependency_versions`, `unmet_requires`)로 확인하고, 못 미치면 `"<key> requires saba-core >=0.1.9 but 0.1.8 is installed"`로 실패한다(첫 실패에서 멈추는 규칙에 따라 뒤는 건너뛴다). 데몬의 카탈로그 설치(`POST /api/modules/manifest/:id/install`)도 같은 함수로 데몬이 아는 버전(`component_versions`)과 비교해 받기 전에 `{ok:false, error}`로 거절한다. 0.1.8 이하 업데이터·데몬은 `requires`를 보지 않으므로 이 검사는 0.1.10 적용부터 효과가 있다.
-- 서명 검증 공개키는 바이너리에 들어 있다(`signature.rs:21`). 검증을 통과하지 못하거나, 플랫폼이나 채널이 요청과 다르거나, 현재보다 낮은 버전이면 거부한다(`relay.rs` `verify_release`). 서명이 맞아도 컴포넌트 키, `asset` 파일 이름, `install_dir`의 각 칸이 영문·숫자·`.`·`_`·`-`만으로 되어 있지 않거나 `.`으로 시작하면(`..`, 절대 경로, 드라이브 `:`) manifest 전체를 거부한다(`check_manifest_paths`). `module-`·`ext-` 키는 접두사를 뗀 이름도 같은 규칙을 지켜야 한다(`module-..`, `ext-` 거부). 이 값들은 그대로 모듈·익스텐션 폴더, 받을 파일, 설치 폴더 경로에 붙는다. 단 이미 최신이라 버전만으로 manifest를 받은 경우에는 채널이 달라도(같은 버전이 stable·beta 둘 다에 있으면 릴레이는 늦게 등록한 행을 준다) 그 버전이 지금 깔린 버전과 같으면 받아서 컴포넌트를 비교한다. check 응답의 `latest`는 서명 밖이라, 그 `version`이 서명된 manifest의 `version`과 다르면 거부한다(`bind_release`). 그래서 적용 결과에 싣는 릴리즈 버전은 서명된 값이다. 패치노트(`notes`)는 릴레이에 등록하는 값이라 서명 밖에 있다.
+- 서명 검증 공개키는 바이너리에 들어 있다(`signature.rs:21`). 검증을 통과하지 못하거나, 플랫폼이 요청과 다르거나 고른 채널이 받지 않는 채널이거나, 현재보다 낮은 버전이면 거부한다(`relay.rs` `verify_release`). 서명이 맞아도 컴포넌트 키, `asset` 파일 이름, `install_dir`의 각 칸이 영문·숫자·`.`·`_`·`-`만으로 되어 있지 않거나 `.`으로 시작하면(`..`, 절대 경로, 드라이브 `:`) manifest 전체를 거부한다(`check_manifest_paths`). `module-`·`ext-` 키는 접두사를 뗀 이름도 같은 규칙을 지켜야 한다(`module-..`, `ext-` 거부). 이 값들은 그대로 모듈·익스텐션 폴더, 받을 파일, 설치 폴더 경로에 붙는다. 단 이미 최신이라 버전만으로 manifest를 받은 경우에는 채널이 달라도(같은 버전이 stable·beta 둘 다에 있으면 릴레이는 늦게 등록한 행을 준다) 그 버전이 지금 깔린 버전과 같으면 받아서 컴포넌트를 비교한다. check 응답의 `latest`는 서명 밖이라, 그 `version`이 서명된 manifest의 `version`과 다르면 거부한다(`bind_release`). 그래서 적용 결과에 싣는 릴리즈 버전은 서명된 값이다. 패치노트(`notes`)는 릴레이에 등록하는 값이라 서명 밖에 있다.
 
 ### 1.4 어디서 가져오는가
 
@@ -122,7 +122,7 @@ updater-lib 파일 구성(859c3fd에서 나눔): `lib.rs`는 컴포넌트 정의
 | 진행 이벤트 | `POST /v1/updates/event` (익명, 실패해도 무시) | `relay.rs:191-196` |
 | 모듈·익스텐션 목록 | 같은 manifest의 `module-*`/`ext-*` (`relay::latest_catalog`) | `relay.rs:109-115` |
 
-- 기본 릴레이 주소는 `relay::DEFAULT_RELAY_URL`, 채널은 `stable`이다(`relay.rs:21-23`). `relay_url`에 `scripts/mock-release-server.js` 주소를 넣으면 모의 릴레이로 시험할 수 있다(`lib.rs:246-249`). 다만 모의 릴레이 서명 키는 `mock-relay` 기능으로 빌드한 개발용 바이너리만 믿는다(`signature.rs:26-28`, `updater/Cargo.toml` `[features]`).
+- 기본 릴레이 주소는 `relay::DEFAULT_RELAY_URL`, 채널은 `stable`이다(`relay.rs:21-23`). 채널은 정식(`stable`) ⊂ 미리보기(`rc`) ⊂ 베타(`beta`) ⊂ `nightly` 순으로 쌓이고, 위 채널을 고른 클라이언트는 아래 채널 릴리즈도 받는다(`relay::CHANNELS`·`channel_includes`, 릴레이 `routes/updates.ts` `CHANNEL_ORDER`와 같은 규칙). 앱에서는 정식·미리보기·베타만 고른다(GUI 사바 스토리지의 업데이트 채널, CLI `update config channel=beta`, 데몬 `PUT /api/updates/config`). 모듈·익스텐션 카탈로그(`relay::latest_catalog`)도 고른 채널을 쓴다. 같은 번호대의 시험판은 프리릴리스 번호로 낸다(`0.1.11-beta.1` < `0.1.11-rc.1` < `0.1.11`). `versions.toml`의 `[release] channel`은 이 셋 중 하나여야 하고 정식은 프리릴리스 번호를 쓸 수 없다(`scripts/versions.py` `load`). 채널 규칙이 없는 0.1.10 이하 업데이터는 고른 채널의 manifest만 받는다. `relay_url`에 `scripts/mock-release-server.js` 주소를 넣으면 모의 릴레이로 시험할 수 있다(`lib.rs:246-249`). 다만 모의 릴레이 서명 키는 `mock-relay` 기능으로 빌드한 개발용 바이너리만 믿는다(`signature.rs:26-28`, `updater/Cargo.toml` `[features]`).
 - 코어가 최신이어도 같은 릴리즈 manifest를 받아 컴포넌트별로 비교한다(GUI·CLI·모듈이 뒤처졌을 수 있으므로, `relay.rs:198-223`).
 
 ### 1.5 무결성 검증
@@ -308,7 +308,7 @@ Tauri 커맨드(`installer/gui/src-tauri/src/lib.rs`): `get_installer_state`, `s
 | POST | `/events` | 노드(60/min), 256KB | `{events:[{id, type, data}]}`(20건까지) | `{accepted}`. 같은 호스트의 같은 `id`·`data.at`은 한 번만 받는다. 길드마다 따로 보내고, 디스코드 전송이 실패하면 2초·10초 뒤 다시 해 본다. 데몬은 2xx를 받은 이벤트를 다시 보내지 않으므로 끝내 실패한 길드는 그 알림을 놓친다(로그만) | `routes/events.ts`, `bot/notify.ts` |
 | GET | `/api/link-requests` | 노드 | — | `{requests:[{requestId, guildId, guildName, requestedBy, userName, expiresAt}]}`(이 호스트의 대기 요청, `expiresAt`은 ISO 8601 UTC). 코드 없는 연결(J1-b) | `linkRequests.ts` |
 | POST | `/api/link-requests/:id` | 노드 | `{accept: boolean}` | 수락 `{ok:true, guildId, guildName}`, 거절 `{ok:true, declined:true}`. 남의 것·없음 404 `NOT_FOUND`, 만료 410 `EXPIRED`, 묶을 수 없으면 409 `GUILD_TAKEN`·`HOST_NOT_FOUND`. 한 번만 쓴다(묶다가 DB 오류로 500이면 요청이 남아 다시 답할 수 있다) | `linkRequests.ts` |
-| GET | `/v1/updates/check` | — | `channel`(stable·beta·nightly), `platform`, `current`, `client_id` | `{upToDate:false, latest:{version, channel, isCritical, releasedAt, minSupported, manifestUrl, notes}}` / `{upToDate:true, latest?}` (최신이면 `latest`는 요청한 채널에서 지금 버전의 릴리스를 가리킨다 — 업데이터가 컴포넌트를 비교한다. 그 채널에 지금 버전이 없으면 `{upToDate:true}`. `latest`가 없으면 업데이터는 `/v1/updates/manifest/<지금 버전>`을 받는다. 그 manifest가 다른 채널 것이면 코어 버전이 같아도 구성요소를 비교하지 않고 받을 것이 없다고 본다, `updater/src/relay.rs` `fetch_verified_release`) | `routes/updates.ts`, §1.4 |
+| GET | `/v1/updates/check` | — | `channel`(stable·rc·beta·nightly, 위 채널은 아래 채널 릴리즈도 후보로 본다), `platform`, `current`, `client_id` | `{upToDate:false, latest:{version, channel, isCritical, releasedAt, minSupported, manifestUrl, notes}}` / `{upToDate:true, latest?}` (최신이면 `latest`는 받는 채널들에서 지금 버전의 릴리스를 가리키고, 여럿이면 요청한 채널의 것을 고른다 — 업데이터가 컴포넌트를 비교한다. 그 채널에 지금 버전이 없으면 `{upToDate:true}`. `latest`가 없으면 업데이터는 `/v1/updates/manifest/<지금 버전>`을 받는다. 그 manifest가 다른 채널 것이면 코어 버전이 같아도 구성요소를 비교하지 않고 받을 것이 없다고 본다, `updater/src/relay.rs` `fetch_verified_release`) | `routes/updates.ts`, §1.4 |
 | GET | `/v1/updates/manifest/:version` | — | `release?` | 서명된 manifest 원문 | `updates.ts` |
 | POST | `/v1/updates/event` | —(IP당 20/min), 4KB | `{anonId, phase, hostId?, fromVersion?, toVersion?, errorCode?, platform?}` | 204(익명 업데이트 텔레메트리). 필드는 문자열이어야 하고 길이 상한(anonId 128, hostId·fromVersion·toVersion 64, phase·platform 32, errorCode 128)을 넘으면 400 `INVALID_FIELD` | `updates.ts` |
 | GET | `/v1/updates/download/installer` | — (브라우저, 게이트 예외) | 없음 | 302 → 가장 높은 stable(전원 롤아웃, yanked 제외, manifest `platform`이 없거나 `windows-x64`) manifest의 `components.installer.url`(https만). 없으면 302 → `/not-found.html`. `cache-control: no-store`. 웹사이트 다운로드 버튼이 쓴다 | `updates.ts` |
@@ -318,10 +318,14 @@ Tauri 커맨드(`installer/gui/src-tauri/src/lib.rs`): `get_installer_state`, `s
 | GET/POST | `/admin/api/broadcast` | 관리자 키(POST 5/10min) | POST `{message, deleteAfterSeconds?}` | 202 `{ok, job}` / 409 `BROADCAST_IN_PROGRESS` / 503 `BOT_OFFLINE` | `routes/announcement.ts` |
 | GET/POST | `/admin/api/blocklist` | 관리자 키 | POST `{discordId, reason?, days?}`(days 1~3650, 없으면 무기한) | GET `{blocked:[{discordId, reason, createdBy, createdAt, expiresAt}]}` / POST 201 `{ok, expiresAt}` / 400 `INVALID_DISCORD_ID`·`INVALID_DAYS`·`OPERATOR` | `routes/admin.ts` |
 | DELETE | `/admin/api/blocklist/:discordId` | 관리자 키 | — | `{ok}` / 404 `NOT_BLOCKED` | `routes/admin.ts` |
+| GET | `/admin/`, `/admin/app.js`, `/admin/app.css` | 없음(페이지는 문구만, 비밀값 없음) | `?lang=` 또는 Accept-Language | 관리자 페이지. CSP `default-src 'none'; script-src 'self'`, `no-store` | `routes/adminConsole.ts` |
+| POST | `/admin/console/login` | 1회용 링크 + 같은 Origin(10/10min, nginx 10r/m) | `{link}` | `{userId, expiresAt, csrf}` + 쿠키 `__Host-saba_admin` / 401 `LINK_INVALID` / 403 `NOT_OPERATOR`·`CSRF` | `routes/adminConsole.ts` |
+| GET | `/admin/console/session`·`overview`·`stats?range=day\|week\|month\|year`·`broadcast`·`blocklist`·`audit` | 관리자 세션 | — | 세션 `{userId, expiresAt, csrf}` / 상태 `{service, broadcast}` / 통계 `{range, bucketSeconds, points[]}` / 차단 `{rows}` / 최근 관리 기록 50줄 `{rows}`. 세션 없음 401 `NO_SESSION`, 운영자 아님 403 `NOT_OPERATOR` | `routes/adminConsole.ts` |
+| POST/DELETE | `/admin/console/logout`·`broadcast`(5/10min)·`blocklist`, `/admin/console/blocklist/:discordId` | 관리자 세션 + `x-csrf-token` + 같은 Origin | 공지·차단은 `/admin/api` 와 같은 본문(`days`는 숫자 문자열도 받고 숫자가 아니면 `INVALID_DAYS`) | `/admin/api` 와 같은 응답 / 403 `CSRF` | `routes/adminConsole.ts` |
 
 데몬이 명령을 넣는 HTTP 라우트는 없다. 큐 INSERT는 봇이 같은 프로세스에서 `services/commandSubmission.ts` `submitCommand`로 한다. 페어링 클레임도 봇의 `/사바쨩 연결`이 `services/pairing.ts` `claimPairingCode`를 직접 부른다.
 
-### 4.3 DB 스키마 (`relay-server/src/db/schema.ts`, migration 0000–0022)
+### 4.3 DB 스키마 (`relay-server/src/db/schema.ts`, migration 0000–0027)
 
 | 테이블 | 주요 컬럼 |
 |---|---|
@@ -337,8 +341,9 @@ Tauri 커맨드(`installer/gui/src-tauri/src/lib.rs`): `get_installer_state`, `s
 | `update_events` | host_id, anon_id, from/to_version, phase, error_code, platform |
 | `chatbot_settings` / `chatbot_memory` / `chatbot_records` | 길드 챗봇 설정(키는 `api_key_enc`로 암호화) / 채널별 요약 기억 / 길드별 기록(kind·key·value·만료) |
 | `blocked_users` | `discord_id` PK, reason, created_by(운영자 디스코드 ID 또는 `admin-api`), created_at, expires_at(NULL이면 무기한). §4.4 (g) |
+| `relay_stats` | `at` PK, hosts_total, hosts_online, guilds, bot_guilds, pollers, web_sessions, commands(지난 기록 뒤 큐에 들어온 수), chatbot_turns, music_voice, cpu_pct, rss_mb, load_pct, mem_used_pct, db_mb. 5분마다 한 줄, 사람·IP·길드 id 없음. §4.4 (h) |
 
-정리 스케줄러(`services/cleanup.ts`): 감사 30일, 끝난 큐 7일, 업데이트 이벤트 90일, 페어링 코드 24시간 뒤 삭제, 만료된 챗봇 도구 기록(`chatbot_records.expires_at`) 삭제. 수령 기한이 지난 페어링 토큰은 바로 지운다. 만료 큐는 timeout으로, heartbeat가 3분 넘게 없는 host는 offline으로 바꾼다.
+정리 스케줄러(`services/cleanup.ts`): 감사 30일, 운영 통계 365일, 끝난 큐 7일, 업데이트 이벤트 90일, 페어링 코드 24시간 뒤 삭제, 만료된 챗봇 도구 기록(`chatbot_records.expires_at`) 삭제. 수령 기한이 지난 페어링 토큰은 바로 지운다. 만료 큐는 timeout으로, heartbeat가 3분 넘게 없는 host는 offline으로 바꾼다.
 
 ### 4.4 프로토콜 흐름
 
@@ -367,7 +372,7 @@ Tauri 커맨드(`installer/gui/src-tauri/src/lib.rs`): `get_installer_state`, `s
 
 **(d) Sleep/Wake**: 원본은 데몬 `nodeSettings[g].discord.sleeping`이다. 슬래시 `/사바쨩 코코낸내`/`기상`은 데몬 액션 `discord.settings.set`을 부르고, 데몬이 `PATCH /api/nodes/:g/settings {sleeping}`으로 relay의 `nodes.is_sleep`과 메모리 `_pausedGuilds`를 맞춘다(`bot/commands/discordSettings.ts` `applyNodeSettings`). 잠든 길드는 `/사바쨩` 하위 명령을 뺀 명령과 알림을 받지 않는다. 메시지는 모두 무시하고, 상호작용은 `/사바쨩` 하위 명령만 받으며 길드 서버 명령·버튼·모달에는 잠들어 있다는 안내만 보인다(`bot/gateway/gateway.ts`). 옛 데몬(액션을 모름)이면 relay에만 쓴다.
 
-**(e) 슬래시 명령이 보이는 자리**: Discord 슬래시 목록은 길드마다 하나라서(사람마다 다르게 보일 수 없다) relay는 길드 상태로만 고른다. 전역 명령은 봇 DM에서만 보이는 `/사바쨩`(상태·연결·웹·도움말, `contexts:[BotDM]`)이다. 길드의 `/사바쨩`은 길드 명령으로, 서버 슬래시 루트와 같은 길드 범위 PUT에 담는다(`bot/commands/guildCommands.ts` `syncGuilds`). 자리는 노드가 없으면 `unbound`(연결·도움말), 있으면 `nodes.is_sleep`에 따라 `awake`(연결과 기상 뺀 전부)·`asleep`(연결과 코코낸내 뺀 전부)다. 서브커맨드마다 `places`(기본 `awake`·`asleep`)로 보이는 자리를 정하고, 서브커맨드가 하나도 남지 않은 그룹은 뺀다(`bot/gateway/contract.ts` `SlashPlace`, `slash.ts` `buildRootCommand`). 잠든 길드도 서버 슬래시 루트는 그대로 둔다(지웠다 다시 만들면 Discord의 길드당 하루 200개 만들기 한도를 깎는다. `/사바쨩` 하위 명령만 바뀌는 것은 고치기라 한도와 상관없다). 잠든 동안 부르면 게이트웨이가 잠들어 있다는 안내만 한다. 연결·연결해제·옮기기·코코낸내·기상 뒤에 그 길드만 다시 맞추고, 놓친 변화는 5분 전체 맞추기가 잡는다. `/사바쨩 도움말`도 그 자리의 목록만 보인다. 연결한 길드를 다른 PC로 옮기려면 연결해제 뒤 다시 연결한다. 목록에 없는 옛 정의로 불러도 각 핸들러가 노드·권한을 다시 확인한다.
+**(e) 슬래시 명령이 보이는 자리**: Discord 슬래시 목록은 길드마다 하나라서(사람마다 다르게 보일 수 없다) relay는 길드 상태로만 고른다. 전역 명령은 봇 DM에서만 보이는 `/사바쨩`(상태·연결·웹·도움말, `contexts:[BotDM]`)이다. 길드의 `/사바쨩`은 길드 명령으로, 서버 슬래시 루트와 같은 길드 범위 PUT에 담는다(`bot/commands/guildCommands.ts` `syncGuilds`). 자리는 노드가 없으면 `unbound`(연결·도움말), 있으면 `nodes.is_sleep`에 따라 `awake`(연결과 기상 뺀 전부)·`asleep`(연결과 코코낸내 뺀 전부)다. 서브커맨드마다 `places`(기본 `awake`·`asleep`)로 보이는 자리를 정하고, 서브커맨드가 하나도 남지 않은 그룹은 뺀다(`bot/gateway/contract.ts` `SlashPlace`, `slash.ts` `buildRootCommand`). 잠든 길드도 서버 슬래시 루트는 그대로 둔다(지웠다 다시 만들면 Discord의 길드당 하루 200개 만들기 한도를 깎는다. `/사바쨩` 하위 명령만 바뀌는 것은 고치기라 한도와 상관없다). 잠든 동안 부르면 게이트웨이가 잠들어 있다는 안내만 한다. 연결·연결해제·옮기기·코코낸내·기상 뒤에 그 길드만 다시 맞추고, 놓친 변화는 5분 전체 맞추기가 잡는다. `/사바쨩 도움말`도 그 자리의 목록만 보인다. 연결한 길드를 다른 PC로 옮기려면 연결해제 뒤 다시 연결한다. 목록에 없는 옛 정의로 불러도 각 핸들러가 노드·권한을 다시 확인한다. 서비스는 `BotService.guildRoots(guildId)`로 특정 길드에만 루트 명령을 더할 수 있다. 같은 PUT에 담고(서버 루트 이름이 겹치면 다른 이름을 붙인다), 처리는 그 서비스의 `guildCommands`가 하며, 릴레이가 처리하는 명령이라 잠든 길드에서도 받는다. 지금은 운영 서버의 `/운영`(§4.4 (g))뿐이다.
 
 **(f) 사바쨩 웹 중계** (`services/webHub.ts`, `routes/web.ts`, `bot/commands/webCommand.ts`): 메모리에만 둔다(단일 인스턴스, 재시작하면 다시 연다).
 
@@ -384,9 +389,18 @@ Tauri 커맨드(`installer/gui/src-tauri/src/lib.rs`): `get_installer_state`, `s
 
 - 원본은 `blocked_users`이고 릴레이가 시작할 때 메모리에 올린다(단일 인스턴스). 바꾸기는 아래 두 입구만 쓴다.
 - 차단된 사람: 그 사람의 모든 호스트(계정 하나에 PC 여러 대)가 보내는 노드 요청은 403 `HOST_BLOCKED`(§4.1 노드 토큰). 봇 게이트웨이는 어느 길드·DM에서든 그 사람의 메시지를 무시하고, 슬래시·버튼에는 숨김 답 `blocked_account`만 한다. 페어링(`/사바쨩 연결`)도 같은 게이트웨이에서 막힌다. 다른 사람이 그 PC의 길드로 보내는 명령은 큐에 넣지 않고 `HOST_OFFLINE`이다(`submitCommand`). 차단하는 순간 그 PC들의 웹 원격 연결(`/node/ws`)을 닫고 기다리던 긴 폴링을 깨운다. 기한이 지난 차단은 효력이 없다.
-- 관리: 관리자 API(§4.2 `/admin/api/blocklist`)와 봇 DM의 `/사바쨩 운영 차단·해제·목록`(DM에만 보인다). 운영 명령은 `RELAY_OPERATOR_IDS`(쉼표 구분 디스코드 ID, 선택 env)의 사람만 쓰고, 비우면 아무도 못 쓴다. 운영자는 차단할 수 없다(400 `OPERATOR`). 기간은 일 단위(1~3650), 비우면 무기한.
+- 관리: 관리자 API(§4.2 `/admin/api/blocklist`), 관리자 페이지(§4.4 (h)), 운영 서버의 `/운영 차단·해제·목록`. `/운영`은 `RELAY_OPERATOR_GUILD_ID`(선택 env) 서버 한 곳에만 길드 명령으로 등록하고 `default_member_permissions:"0"`이라 그 서버 관리자에게만 보인다(봇 DM·다른 서버에는 없다, 사용자 결정 2026-10-25). 다른 서버에 남은 옛 정의로 부르면 실행하지 않는다. 운영 명령은 `RELAY_OPERATOR_IDS`(쉼표 구분 디스코드 ID, 선택 env)의 사람만 쓰고, 비우면 아무도 못 쓴다. 운영자는 차단할 수 없다(400 `OPERATOR`). 기간은 일 단위(1~3650), 비우면 무기한.
 - 감사: `audit_logs` `action='admin'`, `detail {op:'ban'|'unban', target, days?}`.
 - IP는 차단 기준으로 쓰지 않고 DB에 모으지 않는다. nginx 접근 로그는 날짜별 파일(`nginx-logs` 볼륨)로 남기고 `nginx-log-pruner`가 7일 지난 파일을 지운다.
+
+**(h) 관리자 페이지와 운영 통계** (`routes/adminConsole.ts`, `services/adminSession.ts`, `services/relayStats.ts`, 화면 `assets/admin/`):
+
+- 들어가기: 운영 서버 `/운영 페이지` → `RELAY_OPERATOR_IDS`의 운영자에게만 `https://saba-chan.online/admin/#<링크>`(5분, 한 번만, 운영자당 하나). 페이지가 주소의 `#` 값을 지우고 `POST /admin/console/login`으로 바꾼다.
+- 세션: 쿠키 `__Host-saba_admin`(HttpOnly·Secure·SameSite=Strict, Path=/), 30분 고정(늘리지 않음), 운영자당 하나(새로 들어오면 예전 세션이 끝난다). 메모리에 링크·세션 값의 해시만 두고 재시작하면 사라진다. 요청마다 운영자 목록을 다시 보고, 빠졌으면 403 `NOT_OPERATOR`와 함께 세션을 끝낸다.
+- 쓰기(POST·DELETE)는 세션의 `x-csrf-token`(상수 시간 비교)과 `Origin == <proto>://<Host>`가 모두 맞아야 한다. `/admin/console/*`에는 CORS 헤더를 내지 않는다. `x-admin-key`는 이 경로에서, 쿠키는 `/admin/api`에서 받지 않는다.
+- 감사: 로그인·로그아웃은 `action='admin'` `detail.op` `login`·`logout`, 차단·해제는 (g)와 같고, 공지는 발송이 끝날 때 `announce_broadcast`(보낸 운영자 ID). 페이지의 기록 탭은 이 두 action 의 최근 50줄이다.
+- 문구는 `src/admin/text.ts`(10개 언어, 없는 언어는 en)를 페이지에 데이터 블록으로 넣는다.
+- 운영 통계: 5분마다 `relay_stats` 한 줄(365일 보관). 접속·자원은 그 순간 값, 명령 수는 지난 기록 뒤 큐에 들어온 수(기록이 15분보다 오래됐으면 5분), 챗봇 판단 수는 기록에 성공한 뒤에만 0으로 되돌린다. 조회는 하루 5분·일주일 1시간·한 달 6시간·일 년 1일 칸으로 묶고, 칸마다 명령·챗봇은 합계, 나머지는 최댓값이다.
 
 ### 4.5 daemon 쪽 호출과 relay 서버 비교 (검증 결과)
 

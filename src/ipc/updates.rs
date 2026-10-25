@@ -967,6 +967,9 @@ async fn get_config(
     }))
 }
 
+/// 앱에서 고를 수 있는 업데이트 채널 (위 채널은 아래 채널 릴리즈도 받는다, updater `relay::CHANNELS`)
+const SELECTABLE_CHANNELS: [&str; 3] = ["stable", "rc", "beta"];
+
 /// PUT /api/updates/config
 async fn set_config(
     State(state): State<UpdateState>,
@@ -1004,7 +1007,19 @@ async fn set_config(
         }
         cfg.relay_url = if v.is_empty() { None } else { Some(v.to_string()) };
     }
+    // 채널은 정식(stable)·미리보기(rc)·베타(beta)만 고른다 (nightly는 쓰지 않는다)
     if let Some(v) = body.get("channel").and_then(|v| v.as_str()) {
+        if !SELECTABLE_CHANNELS.contains(&v) {
+            return (
+                axum::http::StatusCode::BAD_REQUEST,
+                Json(json!({
+                    "ok": false,
+                    "error": format!("Unknown update channel '{}' (stable, rc, beta)", v),
+                    "error_code": "invalid_channel",
+                })),
+            )
+                .into_response();
+        }
         cfg.channel = v.to_string();
     }
 
@@ -1216,6 +1231,17 @@ mod tests {
             .into_response();
         assert_eq!(resp.status(), axum::http::StatusCode::FORBIDDEN);
         assert_eq!(state.manager.read().await.get_config().relay_url, before);
+    }
+
+    /// 모르는 채널은 저장하지 않는다
+    #[tokio::test]
+    async fn an_unknown_update_channel_is_refused() {
+        let state = UpdateState::new();
+        let before = state.manager.read().await.get_config().channel;
+        let resp = set_config(State(state.clone()), Json(json!({ "channel": "nightly" }))).await.into_response();
+        assert_eq!(resp.status(), axum::http::StatusCode::BAD_REQUEST);
+        assert_eq!(state.manager.read().await.get_config().channel, before);
+        assert!(SELECTABLE_CHANNELS.iter().all(|c| saba_chan_updater_lib::relay::CHANNELS.contains(c)));
     }
 
     /// A5: 적용 결과에 릴리즈 버전과 고른 언어의 패치노트가 붙는다. 예전 마커(릴리즈 없음)는 null

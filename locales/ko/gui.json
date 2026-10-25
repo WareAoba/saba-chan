@@ -79,6 +79,8 @@
     "about_license": "라이선스",
     "about_back": "돌아가기",
     "made_by": "제작자",
+    "dev_nickname": "와레아오바",
+    "dev_bio": "인공지능 조련사",
     "github_repo": "GitHub 리포지토리",
     "accent_color_label": "강조 색상",
     "accent_color_description": "버튼과 강조 표시에 쓸 색을 고르세요",
@@ -541,6 +543,10 @@
     "checking_message": "새 업데이트가 있는지 확인하는 중입니다...",
     "no_updates": "모든 컴포넌트가 최신 버전입니다.",
     "auto_check": "자동으로 업데이트 확인",
+    "channel": "업데이트 채널",
+    "channel_stable": "정식",
+    "channel_rc": "미리보기 (출시 후보)",
+    "channel_beta": "베타 (먼저 받기, 불안정할 수 있음)",
     "found": "{{count}}개 업데이트 발견: {{names}}",
     "check_required": "확인 필요",
     "completed": "업데이트를 마쳤습니다."
@@ -791,6 +797,7 @@
     "pair_issuing": "연결 코드를 받는 중…",
     "pair_step_code": "연결 코드",
     "pair_step_command": "디스코드 채팅창에 이 명령을 입력하세요",
+    "pair_command": "/사바쨩 연결 코드:{{code}}",
     "pair_step_wait": "입력하면 자동으로 연결돼요",
     "pair_waiting": "디스코드에서 입력하기를 기다리는 중",
     "pair_success": "연결됐어요!",
@@ -1406,12 +1413,9 @@
     "module_update": "{{name}}: {{module}} 모듈의 새 버전 {{version}}이(가) 나왔어요.",
     "server_update": "{{name}}: 게임 서버의 새 버전이 나왔어요. 접속이 막히면 서버를 업데이트해 주세요."
   },
-  "terminal": {
-    "open": "터미널로 열기",
-    "err_unsupported_platform": "이 운영체제에서는 아직 터미널로 열 수 없어요.",
-    "err_cli_not_found": "CLI 실행 파일을 찾지 못해 터미널로 열 수 없어요.",
-    "err_not_found": "이 서버를 데몬에서 찾지 못했어요.",
-    "err_generic": "터미널을 열지 못했어요."
+  "switch_cli": {
+    "label": "CLI로 전환",
+    "failed": "CLI를 열지 못했어요. {{reason}}"
   },
   "memory_limit": {
     "title": "메모리 상한",

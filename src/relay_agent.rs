@@ -566,10 +566,9 @@ impl Session {
             }
             _ => Vec::new(),
         };
-        let modules: Vec<Value> = self
-            .server
-            .modules()
-            .await
+        // 모듈 locales 파일은 하트비트마다 읽으므로 async 작업자 밖에서 읽는다
+        let views = self.server.modules().await;
+        let modules: Vec<Value> = tokio::task::spawn_blocking(move || views
             .into_iter()
             .map(|m| {
                 // 번역한 명령 이름 (봇 설정 `translateCommands`, 기본 켬): 모듈 locales를 언어마다 한 번 읽는다
@@ -594,7 +593,9 @@ impl Session {
                     "presets": m.presets.iter().map(|p| json!({ "id": p.id, "label": p.label })).collect::<Vec<_>>(),
                 })
             })
-            .collect();
+            .collect())
+        .await
+        .unwrap_or_else(|e| if e.is_panic() { std::panic::resume_unwind(e.into_panic()) } else { Vec::new() });
 
         // 권한을 읽기 직전의 시각 (권한 변경 응답의 `permissionsAt`과 같은 PC 시계)
         let permissions_at = now_ms();

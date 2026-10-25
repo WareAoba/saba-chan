@@ -491,6 +491,11 @@ function App() {
         if (!isTest) console.log('App mounted, fetching initial data...');
         fetchServers();
 
+        // 다른 인터페이스(CLI의 `gui`)가 이 창을 띄우며 고른 서버를 연다
+        const offOpenServer = window.api.onOpenServer?.((p) => {
+            if (p?.instanceId) useUIStore.getState().revealServer(p.instanceId);
+        });
+
         // App close request handler
         let offClose;
         if (window.api.onCloseRequest) {
@@ -578,6 +583,7 @@ function App() {
         return () => {
             clearInterval(interval);
             if (typeof offClose === 'function') offClose();
+            if (typeof offOpenServer === 'function') offOpenServer();
         };
     }, [autoRefresh, refreshInterval, daemonReady]);
 

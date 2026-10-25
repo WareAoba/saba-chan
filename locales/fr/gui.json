@@ -79,6 +79,8 @@
     "about_license": "Licence",
     "about_back": "Retour",
     "made_by": "Créé par",
+    "dev_nickname": "WareAoba",
+    "dev_bio": "Dompteur d'IA",
     "github_repo": "Dépôt GitHub",
     "accent_color_label": "Couleur d'accentuation",
     "accent_color_description": "Choisissez la couleur des boutons et des surlignages",
@@ -541,6 +543,10 @@
     "checking_message": "Recherche de nouvelles mises à jour...",
     "no_updates": "Tous les composants sont à jour.",
     "auto_check": "Vérification automatique des mises à jour",
+    "channel": "Canal de mise à jour",
+    "channel_stable": "Stable",
+    "channel_rc": "Aperçu (version candidate)",
+    "channel_beta": "Bêta (en avance, peut être instable)",
     "found": "{{count}} mise(s) à jour trouvée(s) : {{names}}",
     "check_required": "Vérification requise",
     "completed": "Mise à jour terminée"
@@ -791,6 +797,7 @@
     "pair_issuing": "Obtention d'un code…",
     "pair_step_code": "Code de connexion",
     "pair_step_command": "Tapez cette commande dans un salon Discord",
+    "pair_command": "/saba connect code:{{code}}",
     "pair_step_wait": "La connexion se fait automatiquement après l'envoi",
     "pair_waiting": "En attente de la commande sur Discord",
     "pair_success": "Connecté !",
@@ -1406,12 +1413,9 @@
     "module_update": "{{name}} : la version {{version}} du module {{module}} est disponible.",
     "server_update": "{{name}} : une nouvelle version du serveur de jeu est disponible. Si personne ne peut se connecter, mettez le serveur à jour."
   },
-  "terminal": {
-    "open": "Ouvrir dans le terminal",
-    "err_unsupported_platform": "L'ouverture d'un terminal n'est pas encore prise en charge sur ce système.",
-    "err_cli_not_found": "Programme CLI introuvable, impossible d'ouvrir le terminal.",
-    "err_not_found": "Le démon n'a pas trouvé ce serveur.",
-    "err_generic": "Impossible d'ouvrir le terminal."
+  "switch_cli": {
+    "label": "Passer à la CLI",
+    "failed": "Impossible d'ouvrir la CLI. {{reason}}"
   },
   "memory_limit": {
     "title": "Limite de mémoire",

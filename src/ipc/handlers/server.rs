@@ -594,7 +594,7 @@ pub async fn get_module_metadata(
 ///
 /// `{ok, manifest: {modules: {<이름>: {version, display_name, description, ...}}}}`
 pub async fn fetch_module_manifest() -> impl IntoResponse {
-    match saba_chan_updater_lib::relay::latest_catalog(None).await {
+    match saba_chan_updater_lib::relay::latest_catalog(None, &crate::ipc::updates::load_updater_config().channel).await {
         Ok(catalog) => {
             let mut modules = serde_json::Map::new();
             if let Some(manifest) = &catalog {
@@ -653,7 +653,7 @@ fn unmet_requires_body(module_id: &str, unmet: &[saba_chan_updater_lib::Dependen
 
 async fn install_module_locked(state: IPCServer, module_id: String) -> axum::response::Response {
     let fail = |error: String| (StatusCode::OK, Json(json!({ "ok": false, "error": error }))).into_response();
-    let catalog = match saba_chan_updater_lib::relay::latest_catalog(None).await {
+    let catalog = match saba_chan_updater_lib::relay::latest_catalog(None, &crate::ipc::updates::load_updater_config().channel).await {
         Ok(Some(m)) => m,
         Ok(None) => return fail("No release is published".into()),
         Err(e) => return fail(e.to_string()),

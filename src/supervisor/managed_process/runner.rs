@@ -109,6 +109,8 @@ pub struct RunnerLaunch<'a> {
     pub console: ConsoleMode,
     /// 인스턴스 메모리 상한(MiB) → `--memory-limit`
     pub memory_limit_mb: Option<u64>,
+    /// `[launch] line_start` → `--line-start`
+    pub line_start: Option<&'a str>,
 }
 
 impl ManagedProcess {
@@ -146,6 +148,9 @@ impl ManagedProcess {
         }
         if let Some(mb) = launch.memory_limit_mb {
             cmd.arg("--memory-limit").arg(mb.to_string());
+        }
+        if let Some(pattern) = launch.line_start {
+            cmd.arg("--line-start").arg(pattern);
         }
         cmd.arg("--")
             .arg(program)
@@ -521,6 +526,28 @@ mod tests {
         assert!(wait_for(&proc, "from the log file").await);
         assert!(!proc.get_recent_console(100).await.iter().any(|l| l.content == "old line"), "only new lines");
         crate::supervisor::process::force_kill_pid(proc.pid).unwrap();
+    }
+
+    /// [launch] line_start: 서버가 줄바꿈 없이 이어 쓴 출력이 줄 머리마다 따로 보인다
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn declared_line_starts_split_the_console() {
+        let Some(runner) = runner_binary() else {
+            eprintln!("SKIP: saba-runner binary not built (cargo build -p saba-runner)");
+            return;
+        };
+        let tmp = tempfile::tempdir().unwrap();
+        let inst = tmp.path();
+        let script = "printf '[LOG] save OK[LOG] shutdown OK\\n'; sleep 5".to_string();
+        let proc = ManagedProcess::spawn_with_runner(
+            &runner, "sh", &["-c".into(), script], inst.to_str().unwrap(), Vec::new(), None, inst, 3,
+            RunnerLaunch { line_start: Some(r"\[LOG\]"), ..Default::default() },
+        )
+        .await
+        .unwrap();
+        assert!(wait_for(&proc, "[LOG] shutdown OK").await);
+        assert!(wait_for(&proc, "[LOG] save OK").await);
+        let _ = proc.force_kill();
     }
 
     /// [launch] console = "pty": 파이프면 출력을 모아 두는 서버도 줄마다 나오고, stdin도 의사 콘솔로 간다

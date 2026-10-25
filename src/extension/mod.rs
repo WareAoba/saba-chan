@@ -1481,7 +1481,7 @@ impl ExtensionManager {
     /// 받을 수 있는 익스텐션 목록: 최신 릴리즈의 서명된 manifest에 든 `ext-*` 컴포넌트 (U9e).
     /// 네트워크 요청이므로 매니저 락을 놓고 부른다 (C12)
     pub async fn fetch_remote() -> Result<Vec<RemoteExtensionInfo>> {
-        let catalog = saba_chan_updater_lib::relay::latest_catalog(None)
+        let catalog = saba_chan_updater_lib::relay::latest_catalog(None, &crate::ipc::updates::load_updater_config().channel)
             .await
             .context("Failed to fetch the release manifest")?;
         let mut list = catalog.map(|m| Self::from_release(&m)).unwrap_or_default();

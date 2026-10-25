@@ -154,6 +154,7 @@ pub static ROUTES: &[Route] = &[
     // ── 클라이언트·데몬 제어: 콘솔 읽기만 ──
     deny("POST", "/api/client/register"),
     deny("GET", "/api/clients"),
+    deny("GET", "/api/clients/launch"),
     deny("POST", "/api/clients/launch"),
     deny("POST", "/api/client/:id/heartbeat"),
     deny("DELETE", "/api/client/:id/unregister"),
@@ -322,12 +323,21 @@ pub fn blocked_fields(method: &str, pattern: &str, body: Option<&Value>, file_fi
                 keys.extend(
                     settings
                         .keys()
-                        .filter(|k| file_fields.contains(k))
+                        .filter(|k| file_fields.contains(k) || SETTINGS_PC_ONLY.contains(&k.as_str()))
                         .map(|k| format!("module_settings.{k}")),
                 );
             }
             keys
         }
+        // 게임 설정 파일 쓰기도 인스턴스 설정과 같은 칸을 막는다 (같은 값이 파일을 거쳐 인스턴스 설정으로 돌아온다)
+        ("PUT", "/api/instance/:id/properties") => body
+            .get("settings")
+            .and_then(Value::as_object)
+            .into_iter()
+            .flat_map(|settings| settings.keys())
+            .filter(|k| SETTINGS_PC_ONLY.contains(&k.as_str()) || file_fields.contains(k))
+            .map(|k| format!("settings.{k}"))
+            .collect(),
         // 대상은 인스턴스 설정의 REST 주소만. 다른 호스트로 보내면 게임 관리자 비밀번호가 실려 나간다
         ("POST", "/api/instance/:id/rest") => body
             .keys()
@@ -354,6 +364,7 @@ const SETTINGS_PC_ONLY: &[&str] = &[
     "process_name",
     "auto_detect",
     "rest_host",
+    "rest_port",
     "rest_password",
     "extension_data",
 ];
@@ -516,6 +527,13 @@ mod tests {
             vec!["executable_path", "extra_args", "java_path", "working_dir"]
         );
         assert!(blocked_fields("PATCH", "/api/instance/:id", Some(&json!({ "port": 1 })), &[]).is_empty());
+        // 게임 설정 파일 쓰기로 같은 칸을 비켜 가지 못한다
+        let body = json!({ "settings": { "rest_password": "x", "java_path": "/bin/sh", "motd": "hi" } });
+        assert_eq!(
+            blocked_fields("PUT", "/api/instance/:id/properties", Some(&body), &["java_path".to_string()]),
+            vec!["settings.java_path", "settings.rest_password"]
+        );
+        assert!(blocked_fields("PUT", "/api/instance/:id/properties", Some(&json!({ "settings": { "motd": "hi" } })), &[]).is_empty());
     }
 
     #[test]
@@ -525,6 +543,20 @@ mod tests {
         assert_eq!(
             blocked,
             vec!["migration_source", "module_settings.java_path", "working_dir"]
+        );
+    }
+
+    /// REST 대상(주소·포트)은 PC에서만 정한다: 인스턴스 설정·만들기·게임 설정 파일 어느 쪽으로도
+    #[test]
+    fn the_rest_target_is_set_only_on_the_pc() {
+        let patch = json!({ "rest_port": 1, "port": 2 });
+        assert_eq!(blocked_fields("PATCH", "/api/instance/:id", Some(&patch), &[]), vec!["rest_port"]);
+        let file = json!({ "settings": { "rest_port": 1 } });
+        assert_eq!(blocked_fields("PUT", "/api/instance/:id/properties", Some(&file), &[]), vec!["settings.rest_port"]);
+        let create = json!({ "name": "s", "module_name": "palworld", "module_settings": { "rest_host": "h", "rest_port": 1, "motd": "hi" } });
+        assert_eq!(
+            blocked_fields("POST", "/api/instances", Some(&create), &[]),
+            vec!["module_settings.rest_host", "module_settings.rest_port"]
         );
     }
 

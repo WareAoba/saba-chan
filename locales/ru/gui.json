@@ -79,6 +79,8 @@
     "about_license": "Лицензия",
     "about_back": "Назад",
     "made_by": "Создано",
+    "dev_nickname": "WareAoba",
+    "dev_bio": "Укротитель ИИ",
     "github_repo": "Репозиторий на GitHub",
     "accent_color_label": "Цвет акцента",
     "accent_color_description": "Выберите цвет для кнопок и выделений",
@@ -541,6 +543,10 @@
     "checking_message": "Проверка новых обновлений...",
     "no_updates": "Все компоненты актуальны.",
     "auto_check": "Автоматически проверять обновления",
+    "channel": "Канал обновлений",
+    "channel_stable": "Стабильный",
+    "channel_rc": "Предварительный (кандидат в релиз)",
+    "channel_beta": "Бета (раньше всех, может быть нестабильной)",
     "found": "Найдено {{count}} обновление(й): {{names}}",
     "check_required": "Требуется проверка",
     "completed": "Обновление завершено."
@@ -791,6 +797,7 @@
     "pair_issuing": "Получаем код…",
     "pair_step_code": "Код подключения",
     "pair_step_command": "Введите эту команду в канале Discord",
+    "pair_command": "/saba connect code:{{code}}",
     "pair_step_wait": "Подключение произойдёт автоматически после отправки",
     "pair_waiting": "Ждём команду в Discord",
     "pair_success": "Подключено!",
@@ -1406,12 +1413,9 @@
     "module_update": "{{name}}: вышла новая версия {{version}} модуля {{module}}.",
     "server_update": "{{name}}: вышла новая версия игрового сервера. Если не удаётся подключиться, обновите сервер."
   },
-  "terminal": {
-    "open": "Открыть в терминале",
-    "err_unsupported_platform": "Открытие терминала пока не поддерживается в этой ОС.",
-    "err_cli_not_found": "Не найдена программа CLI, поэтому терминал не открыть.",
-    "err_not_found": "Демон не нашёл этот сервер.",
-    "err_generic": "Не удалось открыть терминал."
+  "switch_cli": {
+    "label": "Перейти в CLI",
+    "failed": "Не удалось открыть CLI. {{reason}}"
   },
   "memory_limit": {
     "title": "Лимит памяти",

@@ -79,6 +79,8 @@
     "about_license": "Licença",
     "about_back": "Voltar",
     "made_by": "Feito por",
+    "dev_nickname": "WareAoba",
+    "dev_bio": "Domador de IA",
     "github_repo": "Repositório no GitHub",
     "accent_color_label": "Cor de destaque",
     "accent_color_description": "Escolha a cor dos botões e dos destaques",
@@ -541,6 +543,10 @@
     "checking_message": "Verificando novas atualizações...",
     "no_updates": "Todos os componentes estão atualizados.",
     "auto_check": "Verificar atualizações automaticamente",
+    "channel": "Canal de atualizações",
+    "channel_stable": "Estável",
+    "channel_rc": "Prévia (candidata)",
+    "channel_beta": "Beta (antecipada, pode ser instável)",
     "found": "{{count}} atualização(ões) encontrada(s): {{names}}",
     "check_required": "Verificação necessária",
     "completed": "Atualização concluída."
@@ -791,6 +797,7 @@
     "pair_issuing": "Gerando código…",
     "pair_step_code": "Código de conexão",
     "pair_step_command": "Digite este comando em um canal do Discord",
+    "pair_command": "/saba connect code:{{code}}",
     "pair_step_wait": "A conexão acontece automaticamente após o envio",
     "pair_waiting": "Aguardando o comando no Discord",
     "pair_success": "Conectado!",
@@ -1406,12 +1413,9 @@
     "module_update": "{{name}}: saiu a versão {{version}} do módulo {{module}}.",
     "server_update": "{{name}}: saiu uma nova versão do servidor do jogo. Se não der para entrar, atualize o servidor."
   },
-  "terminal": {
-    "open": "Abrir no terminal",
-    "err_unsupported_platform": "Abrir um terminal ainda não é compatível com este sistema.",
-    "err_cli_not_found": "O programa CLI não foi encontrado, então o terminal não pode ser aberto.",
-    "err_not_found": "O daemon não encontrou este servidor.",
-    "err_generic": "Não foi possível abrir o terminal."
+  "switch_cli": {
+    "label": "Mudar para a CLI",
+    "failed": "Não foi possível abrir a CLI. {{reason}}"
   },
   "memory_limit": {
     "title": "Limite de memória",

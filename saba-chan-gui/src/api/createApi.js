@@ -986,10 +986,11 @@ export function createApi({ invoke, hub }) {
             daemonCall('put', `/api/guilds/${encodeURIComponent(guild)}/allowed-instances`, { instances }),
         discordSettingsGet: (guild) => daemonCall('get', discordSettingsPath(guild)),
         discordSettingsSet: (guild, patch) => daemonCall('patch', discordSettingsPath(guild), patch || {}),
-        // 터미널로 열기: 데몬이 새 콘솔 창에 CLI를 띄운다
-        openInTerminal: (opts) => {
-            const { view, instance } = opts || {};
-            return daemonCall('post', '/api/clients/launch', { kind: 'cli', view, instance });
+        // GUI ⇄ CLI 전환: 데몬이 이 PC에서 띄울 수 있는 인터페이스 `{cli, gui}`, 그리고 띄우기 (고른 서버로 연다)
+        clientsLaunchable: () => daemonCall('get', '/api/clients/launch'),
+        clientLaunch: (opts) => {
+            const { kind, instance } = opts || {};
+            return daemonCall('post', '/api/clients/launch', { kind, instance });
         },
         // 데몬 이벤트 스트림: cb({id, type, data}). 돌려주는 함수로 해제
         onDaemonEvent: (callback) => hub.on('events:message', callback),
@@ -1155,6 +1156,8 @@ export function createApi({ invoke, hub }) {
 
         // ── 앱 수명 ──
         onCloseRequest: (callback) => hub.on('app:closeRequest', callback),
+        // 다른 인터페이스가 이 GUI를 띄우며 고른 서버 `{instanceId}`
+        onOpenServer: (callback) => hub.on('app:openServer', callback),
         closeResponse: (choice) => send('app_close_response', { choice }),
         onStatusUpdate: (callback) => hub.on('status:update', callback),
         daemonStatus: () => invoke('daemon_status'),

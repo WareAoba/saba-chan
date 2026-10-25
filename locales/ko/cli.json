@@ -805,7 +805,8 @@
       "server.rcon": "서버가 명령을 받는 길(콘솔, 없으면 RCON)로 한 줄 보내고 답 보기",
       "server.log": "지난 실행까지 저장된 로그 (콘솔은 지금 실행분만)",
       "server.query": "게임 모듈이 제공하는 조회 (이름이 없으면 목록)",
-      "daemon.clients": "데몬에 붙은 데스크톱 앱 창"
+      "daemon.clients": "데몬에 붙은 데스크톱 앱 창",
+      "gui": "데스크톱 앱으로 전환 (같은 서버를 열고 전체 화면 메뉴는 닫혀요)"
     },
     "arg": {
       "module.maker.game": "첫 부탁에 넣을 게임 이름",
@@ -1171,15 +1172,13 @@
     "daemon_up": "● 데몬 v{{version}}",
     "daemon_down": "○ 데몬 꺼짐 · 콘솔에 daemon start",
     "servers_running": "서버 {{running}}/{{total}} 실행",
-    "menu": "메뉴",
     "running_hint": "(실행 중 · Ctrl+C로 멈춤)",
-    "keys": "Tab 다음 칸 · ↑↓ 고르기 · Enter 누르기 · 1-9 쪽 · : 콘솔 · F2 콘솔 크게 · ? 도움말 · q 나가기",
     "yes": "예",
     "no": "아니오",
     "question": "확인",
     "dialog_keys": "Enter 고르기 · Esc 취소",
     "help_title": "단축키",
-    "help": "Tab / Shift+Tab  메뉴 → 목록 → 버튼 → 콘솔 순서로 옮기기\n↑↓  고르기,  ←→  버튼 옮기기\nEnter  버튼 누르기 (… 이 붙은 버튼은 콘솔에 명령을 채워 줘요)\n1-9  쪽 바로 가기\n: 또는 /  콘솔에 명령 치기 (saba-chan-cli 뒤에 쓰는 그대로, ↑↓ 지난 명령)\nPgUp/PgDn, 마우스 휠  콘솔 넘기기,  F2  콘솔 크게\nCtrl+C  실행 중인 명령 멈추기\n마우스  메뉴·목록·버튼을 눌러도 돼요\nq  나가기 (데몬과 서버는 계속 돌아요)",
+    "help": "←→↑↓  보이는 방향대로 옮기기 (탭 → 목록 → 버튼 → 콘솔)\nTab / Shift+Tab  다음·이전 칸\nEnter  버튼 누르기 (… 이 붙은 버튼은 명령 줄을 채워 줘요, ▾ 는 더 보기)\n1-6  쪽 바로 가기\n서버 콘솔  ↓로 들어가 치고 Enter로 서버에 보내기 (↑↓ 지난 입력)\n: 또는 /  명령 줄 (saba-chan-cli 뒤에 쓰는 그대로, Tab 자동 완성, ↑↓ 지난 명령)\nF2  출력 창 열기·닫기,  PgUp/PgDn, 마우스 휠  넘기기\nF9  GUI로 전환 (GUI를 쓸 수 있을 때)\nCtrl+C  실행 중인 명령 멈추기,  Esc  한 칸 뒤로\nq  나가기 (데몬과 서버는 계속 돌아요)",
     "too_narrow": "창을 60칸 이상으로 넓혀 주세요.",
     "not_here": "이 명령은 전체 화면 메뉴 안에서는 실행할 수 없어요. q로 나간 뒤 터미널에서 실행하세요.",
     "cancelled": "멈췄어요.",
@@ -1194,15 +1193,12 @@
     "updates_checking": "확인하는 중…",
     "updates_error": "마지막 확인이 실패했어요. 업데이트 확인을 다시 눌러 보세요.",
     "page": {
-      "dashboard": "대시보드",
       "servers": "서버",
       "modules": "게임 모듈",
       "extensions": "익스텐션",
       "discord": "디스코드",
       "updates": "업데이트",
-      "settings": "설정",
-      "daemon_log": "데몬 로그",
-      "commands": "모든 명령"
+      "daemon": "데몬"
     },
     "btn": {
       "status": "전체 상태",
@@ -1213,8 +1209,6 @@
       "stop": "정지",
       "restart": "재시작",
       "players": "접속자",
-      "run": "게임 명령",
-      "send": "콘솔에 보내기",
       "info": "정보",
       "settings": "설정",
       "backup_create": "백업",
@@ -1258,31 +1252,21 @@
       "daemon_restart": "데몬 다시 켜기",
       "daemon_stop": "데몬 끄기",
       "clients": "붙은 앱 창",
-      "events": "이벤트 따라가기"
+      "more": "더 보기"
     },
     "col": {
       "name": "이름",
       "game": "게임",
-      "status": "상태",
       "players": "접속",
       "port": "포트",
       "uptime": "가동",
       "about": "설명",
       "enabled": "켜짐"
     },
-    "card": {
-      "servers": "서버",
-      "servers_sub": "켜짐 / 전체",
-      "players": "접속자",
-      "players_sub": "켜진 서버의 합",
-      "memory": "메모리"
-    },
-    "no_servers": "아직 서버가 없어요. [새 서버]를 누르거나 콘솔에 server add",
-    "feed": "최근 일",
-    "feed_empty": "서버를 켜고 끄면 여기에 바로 보여요.",
+    "no_servers": "아직 서버가 없어요. [새 서버]를 누르거나 : 를 눌러 server add",
     "empty": "(없음)",
     "detail": "자세히",
-    "server_console": "콘솔 최근 줄",
+    "server_console": "콘솔",
     "console_empty": "아직 출력이 없어요.",
     "discord": {
       "relay": "릴레이",
@@ -1295,31 +1279,23 @@
     "settings": {
       "daemon": "데몬",
       "port": "데몬 포트",
-      "language": "언어",
-      "hint": "값 바꾸기: [설정 바꾸기]를 누르고 키=값을 이어 쓰세요 (예: language=ko)."
+      "language": "언어"
     },
-    "console": "콘솔",
-    "console_hint": ": 를 누르면 여기에 명령을 쳐요 (예: start pal, help)",
-    "keys_console": "Enter 실행 · ↑↓ 지난 명령 · PgUp/PgDn 넘기기 · Esc 나가기 · F2 콘솔 크게",
-    "keys_running": "명령 실행 중 · Ctrl+C 멈추기 · PgUp/PgDn 넘기기 · 다른 쪽은 계속 볼 수 있어요",
+    "keys_console": "Enter 서버로 보내기 · ↑↓ 지난 입력 · PgUp/PgDn 넘기기 · Esc 버튼으로",
+    "keys_running": "명령 실행 중 · Ctrl+C 멈추기 · F2 출력 · 다른 쪽은 계속 볼 수 있어요",
     "choose": "고르기",
     "enter_text": "입력",
-    "welcome": "사바쨩에 오신 걸 환영해요. 버튼을 누르거나 : 를 눌러 명령을 치세요.",
     "busy": "다른 명령이 아직 실행 중이에요. 끝나기를 기다리거나 Ctrl+C로 멈춘 뒤 다시 해 주세요.",
     "pick_first": "먼저 목록에서 하나를 고르세요.",
-    "event": {
-      "instance_ready": "준비 완료",
-      "instance_exit": "멈춤",
-      "instance_player": "접속자 변화",
-      "instance_port_moved": "포트 바뀜",
-      "instance_restart_failed": "자동 재시작 실패",
-      "backup_done": "백업 끝",
-      "plan_done": "여러 단계 실행 끝",
-      "action_run": "명령 실행",
-      "relay_link_request": "디스코드 연결 요청",
-      "update_available": "새 업데이트"
-    },
-    "enter_to_run": "Enter로 실행"
+    "gui_switch": "GUI로 전환",
+    "output": "출력",
+    "daemon_log": "데몬 로그",
+    "use_switch": "여기서는 F9(GUI로 전환)를 누르세요.",
+    "console_input_hint": "여기에 서버 명령을 쳐요 · Enter로 보내기",
+    "keys_tabs": "←→ 쪽 옮기기 · ↓ 들어가기 · 1-6 쪽 · : 명령 · F2 출력 · ? 도움말 · q 나가기",
+    "keys_list": "↑↓ 고르기 · → 버튼 · : 명령 · F2 출력 · ? 도움말 · q 나가기",
+    "keys_actions": "←→ 버튼 고르기 · Enter 누르기 · ↓ 콘솔 · Esc 목록 · F2 출력 · ? 도움말 · q 나가기",
+    "keys_command": "Enter 실행 · Tab 자동 완성 · ↑↓ 지난 명령 · Esc 닫기"
   },
   "install": {
     "fetching": "최신 릴리스를 확인하고 있어요…",
@@ -1362,16 +1338,6 @@
     "module_newer": "업데이트가 필요해요. {{name}} 모듈은 더 새 사바쨩에서 돌아가요.",
     "extension": "업데이트가 필요해요. {{name}} 익스텐션은 사바쨩 {{version}} 이상에서 돌아가요."
   },
-  "uninstall": {
-    "not_installed": "이 명령은 사바쨩 설치 폴더에서 실행되지 않아 지울 설치본이 없습니다.",
-    "confirm": "{{dir}}의 사바쨩을 제거할까요? 프로그램과 사바쨩이 만든 파일은 모두 지우고, {{kept}}.",
-    "kept_both": "설정과 게임 서버는 남깁니다",
-    "kept_settings": "설정은 남기고 게임 서버는 지웁니다",
-    "kept_instances": "게임 서버는 남기고 설정은 지웁니다",
-    "kept_nothing": "설정과 게임 서버도 지웁니다",
-    "done": "사바쨩을 제거했습니다. {{kept}}.",
-    "left": "사바쨩을 제거했지만 아래 항목을 지우지 못했습니다. 사용 중인 프로그램을 닫고 직접 지워 주세요:\n{{paths}}"
-  },
   "players": {
     "title": "{{server}} 접속자 {{count}}명",
     "none": "지금 접속한 사람이 없어요."
@@ -1391,5 +1357,8 @@
       "about": "설명",
       "inputs": "입력"
     }
+  },
+  "gui": {
+    "opened": "사바쨩 앱을 열었어요."
   }
 }

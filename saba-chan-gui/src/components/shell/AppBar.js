@@ -7,6 +7,7 @@ import { Icon } from '../Icon';
 import { ConnectionRail } from './ConnectionRail';
 import { ParentJobNotice } from './ParentJobNotice';
 import { RuntimePreflight } from './RuntimePreflight';
+import { SwitchToCliButton } from './SwitchToCli';
 import { TaskIndicator } from './TaskIndicator';
 
 /** 공식 글자 로고: 한국어·일본어·영어는 각자, 나머지 언어는 영어. ratio = 가로/세로 */
@@ -117,6 +118,7 @@ export function AppBar({
                     </button>
                     <NoticeModal {...noticeProps} isOpen={showNotice} />
                 </div>
+                <SwitchToCliButton />
             </div>
 
             <WindowControls />

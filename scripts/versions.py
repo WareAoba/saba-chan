@@ -33,6 +33,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 SOURCE = ROOT / "versions.toml"
 SEMVER = re.compile(r"^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$")
+# 발행 채널: 정식·미리보기(rc)·베타. 위 채널은 아래 채널 릴리즈도 받는다 (updater relay.rs `CHANNELS`)
+CHANNELS = ("stable", "rc", "beta")
 
 
 def load() -> dict:
@@ -41,6 +43,11 @@ def load() -> dict:
     release = data.get("release", {}).get("version", "")
     if not SEMVER.match(release):
         errors.append(f"[release] version {release!r} is not semver")
+    channel = data.get("release", {}).get("channel", "stable")
+    if channel not in CHANNELS:
+        errors.append(f"[release] channel {channel!r} is not one of {', '.join(CHANNELS)}")
+    elif channel == "stable" and "-" in release:
+        errors.append(f"[release] stable channel cannot carry a prerelease version ({release})")
     for key, comp in data.get("components", {}).items():
         if not SEMVER.match(comp.get("version", "")):
             errors.append(f"[components.{key}] version {comp.get('version')!r} is not semver")

@@ -78,7 +78,7 @@
   "tray": {
     "tooltip": "Saba酱 - 游戏服务器管理",
     "open_window": "🖥️ 打开窗口",
-    "open_terminal": "💻 打开终端",
+    "switch_to_cli": "💻 切换到 CLI",
     "daemon_running": "🟢 守护进程运行中",
     "daemon_stopped": "⚪ 守护进程已停止",
     "stop_daemon": "🛑 停止守护进程",
