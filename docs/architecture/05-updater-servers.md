@@ -273,7 +273,7 @@ Tauri 커맨드(`installer/gui/src-tauri/src/lib.rs`): `get_installer_state`, `s
 - 프로덕션 필수 env: `RELAY_INTERNAL_SECRET`, `RELEASE_REGISTER_SECRET`, `ADMIN_PAGE_KEY`, `DISCORD_TOKEN`, `DATABASE_URL`, `SELF_URL`, `RELEASE_SIGNING_KEYS`(릴리즈 manifest 서명 공개키 `keyId:base64,…`. 운영 compose 기본값은 업데이터 `TRUSTED_KEYS`와 같은 `saba-updater-v1` 키). 없거나, 이 값들이나 `MUSIC_API_KEY`에 예시 자리표시 `CHANGE_ME`가 남았거나, `RELEASE_SIGNING_KEYS`에서 공개키를 하나도 읽지 못하거나, `RELEASE_REGISTER_SECRET`이 `RELAY_INTERNAL_SECRET`과 같으면 기동하지 않는다.
 - 프로덕션의 5xx 응답은 내부 메시지 없이 `INTERNAL_SERVER_ERROR`만 돌려준다.
 - **인증 5종**
-  - 노드 토큰 `authenticateNode`(`middleware/auth.ts`): `Authorization: Bearer sbn_<hostId>.<secret>`를 DB `hosts.token_hash`(argon2id)로 검증하고 5분 캐시한다. 틀린 토큰은 60초 기억해 같은 토큰으로 argon2를 다시 돌리지 않는다(그 호스트의 토큰을 새로 발급하면 지운다). argon2 검증은 프로세스 전체에서 동시에 4개까지 돌고 256개까지 기다리며, 줄이 차면 503 `SERVICE_BUSY`(`retry-after: 5`)다(`services/nodeToken.ts`). `req.node = {id: hostId, generation}`(`generation`은 그 호스트의 토큰을 바꾼 횟수, 메모리 기록). 검증하는 사이에 토큰이 바뀌었으면 DB를 한 번 다시 읽고 예전 결과는 캐시하지 않는다. 본문이 큰 `/heartbeat`·`/result/:id`는 레이트리밋 뒤, 본문을 읽기 전(`preParsing`)에 토큰을 보고, 본문을 받는 사이 재페어링으로 토큰이 바뀌었으면 401 `TOKEN_REPLACED`로 거절한다(`rejectReplacedToken`). 실패는 401 `MISSING_TOKEN`·`INVALID_TOKEN_FORMAT`·`NODE_NOT_FOUND`·`INVALID_TOKEN`이고, 같은 계정의 재페어링으로 토큰이 바뀐 지 7일 안이면 `INVALID_TOKEN` 대신 `TOKEN_REPLACED`다(메모리 기록이라 relay를 다시 켜면 `INVALID_TOKEN`으로 돌아간다). 데몬은 heartbeat나 poll에서 `TOKEN_REPLACED`를 받으면 에이전트를 멈추고 상태에 `lastErrorCode: "token_replaced"`를 남긴다(`relay_agent.rs`, CLI `bot status`가 현지화해 보인다). 요청마다 디스크의 토큰으로 서명하고 이 PC에서 다시 페어링하면 새 토큰 저장이 에이전트를 다시 띄우므로, 같은 PC의 재페어링은 따로 다루지 않는다. 다른 401은 기록하고 재시도한다. 데몬이 함께 보내는 `x-request-timestamp`·`x-request-nonce`·`x-request-signature`는 받아들이되 검증하지 않는다(키가 같은 요청의 토큰이라 TLS 위에서 더하는 보호가 없다).
+  - 노드 토큰 `authenticateNode`(`middleware/auth.ts`): `Authorization: Bearer sbn_<hostId>.<secret>`를 DB `hosts.token_hash`(argon2id)로 검증하고 5분 캐시한다. 틀린 토큰은 60초 기억해 같은 토큰으로 argon2를 다시 돌리지 않는다(그 호스트의 토큰을 새로 발급하면 지운다). argon2 검증은 프로세스 전체에서 동시에 4개까지 돌고 256개까지 기다리며, 줄이 차면 503 `SERVICE_BUSY`(`retry-after: 5`)다(`services/nodeToken.ts`). `req.node = {id: hostId, generation}`(`generation`은 그 호스트의 토큰을 바꾼 횟수, 메모리 기록). 검증하는 사이에 토큰이 바뀌었으면 DB를 한 번 다시 읽고 예전 결과는 캐시하지 않는다. 본문이 큰 `/heartbeat`·`/result/:id`는 레이트리밋 뒤, 본문을 읽기 전(`preParsing`)에 토큰을 보고, 본문을 받는 사이 재페어링으로 토큰이 바뀌었으면 401 `TOKEN_REPLACED`로 거절한다(`rejectReplacedToken`). 실패는 401 `MISSING_TOKEN`·`INVALID_TOKEN_FORMAT`·`NODE_NOT_FOUND`·`INVALID_TOKEN`이고, 같은 계정의 재페어링으로 토큰이 바뀐 지 7일 안이면 `INVALID_TOKEN` 대신 `TOKEN_REPLACED`다(메모리 기록이라 relay를 다시 켜면 `INVALID_TOKEN`으로 돌아간다). 데몬은 heartbeat나 poll에서 `TOKEN_REPLACED`를 받으면 에이전트를 멈추고 상태에 `lastErrorCode: "token_replaced"`를 남긴다(`relay_agent.rs`, CLI `bot status`가 현지화해 보인다). 요청마다 디스크의 토큰으로 서명하고 이 PC에서 다시 페어링하면 새 토큰 저장이 에이전트를 다시 띄우므로, 같은 PC의 재페어링은 따로 다루지 않는다. 토큰이 맞아도 그 호스트 주인이 릴레이 차단 목록(§4.4 (g))에 있으면 403 `HOST_BLOCKED`이고(토큰을 확인한 뒤에 가린다), 데몬은 다른 연결 오류처럼 기록하고 재시도한다. 다른 401은 기록하고 재시도한다. 데몬이 함께 보내는 `x-request-timestamp`·`x-request-nonce`·`x-request-signature`는 받아들이되 검증하지 않는다(키가 같은 요청의 토큰이라 TLS 위에서 더하는 보호가 없다).
   - 내부 시크릿 `verifyInternal`(`middleware/internalAuth.ts`): `x-internal-secret`을 `RELAY_INTERNAL_SECRET`과 상수시간 비교한다. 봇 상태 조회(`/bot-status`)·운영 점검용.
   - 릴리즈 등록 `verifyReleaseRegister`(`middleware/internalAuth.ts`): `x-internal-secret`을 `RELEASE_REGISTER_SECRET`과 상수시간 비교한다. `/admin/releases` 전용이고, 릴리즈 CI(`release.yml`, GitHub secret 이름은 `RELAY_INTERNAL_SECRET`)가 이 값을 보낸다.
   - 노드 API `authenticateNodeApi`: 노드 토큰만 받는다(내부 시크릿은 받지 않는다). 자기 호스트(`isForeignHost`)와 그 호스트의 길드만 다룬다. 길드 경로(`routes/node.ts` `loadAuthorizedNode`, `chatbot/routes.ts` `authorizedGuild`)는 노드 주인이 길드를 떠났으면(디스코드가 Unknown Member로 답할 때만) 연결을 풀고 404 `NODE_NOT_FOUND`로 답한다. 봇도 게이트웨이 `GUILD_MEMBER_REMOVE`(캐시에 없던 멤버 포함)에서 떠난 사람이 그 길드 노드의 주인이면 연결을 푼다(`services/nodeOwner.ts`, `/사바쨩 연결해제`와 같은 `unbindGuild`). 떠난 사람의 PC가 길드 멤버의 명령·멤버 목록을 계속 받지 않게 하려는 것이다.
@@ -316,6 +316,8 @@ Tauri 커맨드(`installer/gui/src-tauri/src/lib.rs`): `get_installer_state`, `s
 | PATCH | `/admin/releases/:id` | 릴리즈 등록 | `{rolloutPercent?, yanked?, isCritical?, notes?}` | 바뀐 릴리즈 | `updates.ts` |
 | GET | `/admin/api/service` | 관리자 키 | — | `{bot, connections, hosts, nodes, db}` | `routes/admin.ts` |
 | GET/POST | `/admin/api/broadcast` | 관리자 키(POST 5/10min) | POST `{message, deleteAfterSeconds?}` | 202 `{ok, job}` / 409 `BROADCAST_IN_PROGRESS` / 503 `BOT_OFFLINE` | `routes/announcement.ts` |
+| GET/POST | `/admin/api/blocklist` | 관리자 키 | POST `{discordId, reason?, days?}`(days 1~3650, 없으면 무기한) | GET `{blocked:[{discordId, reason, createdBy, createdAt, expiresAt}]}` / POST 201 `{ok, expiresAt}` / 400 `INVALID_DISCORD_ID`·`INVALID_DAYS`·`OPERATOR` | `routes/admin.ts` |
+| DELETE | `/admin/api/blocklist/:discordId` | 관리자 키 | — | `{ok}` / 404 `NOT_BLOCKED` | `routes/admin.ts` |
 
 데몬이 명령을 넣는 HTTP 라우트는 없다. 큐 INSERT는 봇이 같은 프로세스에서 `services/commandSubmission.ts` `submitCommand`로 한다. 페어링 클레임도 봇의 `/사바쨩 연결`이 `services/pairing.ts` `claimPairingCode`를 직접 부른다.
 
@@ -334,6 +336,7 @@ Tauri 커맨드(`installer/gui/src-tauri/src/lib.rs`): `get_installer_state`, `s
 | `releases` / `release_assets` | 버전·채널(채널·버전 쌍은 유일, `0021_releases_unique`)·롤아웃·isCritical·minSupported·signed_manifest·notes·yanked / 컴포넌트·플랫폼·파일·크기·sha256 (§1.3) |
 | `update_events` | host_id, anon_id, from/to_version, phase, error_code, platform |
 | `chatbot_settings` / `chatbot_memory` / `chatbot_records` | 길드 챗봇 설정(키는 `api_key_enc`로 암호화) / 채널별 요약 기억 / 길드별 기록(kind·key·value·만료) |
+| `blocked_users` | `discord_id` PK, reason, created_by(운영자 디스코드 ID 또는 `admin-api`), created_at, expires_at(NULL이면 무기한). §4.4 (g) |
 
 정리 스케줄러(`services/cleanup.ts`): 감사 30일, 끝난 큐 7일, 업데이트 이벤트 90일, 페어링 코드 24시간 뒤 삭제, 만료된 챗봇 도구 기록(`chatbot_records.expires_at`) 삭제. 수령 기한이 지난 페어링 토큰은 바로 지운다. 만료 큐는 timeout으로, heartbeat가 3분 넘게 없는 host는 offline으로 바꾼다.
 
@@ -375,6 +378,14 @@ Tauri 커맨드(`installer/gui/src-tauri/src/lib.rs`): `get_installer_state`, `s
 - 세션은 15분이고 `extend`는 지금부터 15분으로 다시 잡는다. PC 하나에 세션 하나라 새 링크로 열면 예전 세션은 `replaced`. 브라우저가 1000·1001로 닫거나 `bye`면 바로 끝, 그 밖의 끊김은 30초 안에 `resume`(열쇠는 붙을 때마다 바뀐다. 새 열쇠를 받기 전에 또 끊길 수 있어, 브라우저가 프레임을 보낼 때까지 직전 열쇠도 받는다)으로 돌아올 수 있다. 데몬이 끊기면 답을 기다리던 요청은 502 `remote_host_gone`, 30초 안에 돌아오지 않으면 `host_gone`. 요청은 2분 안에 답이 없으면 504 `remote_timeout`, 세션마다 32건까지(넘으면 429 `remote_busy`). 프레임 한 개는 9 MiB까지. 받는 쪽이 읽지 않아 보낼 것이 16 MiB 넘게 쌓이면 그 소켓을 1013으로 닫는다(`routes/web.ts`). 양쪽 다 25초마다 ping한다.
 - 감사: 열기·닫기를 `audit_logs` `action='web'`, `detail {event:'open'|'close', reason?}`로 남긴다. 요청 하나하나는 데몬 감사(source `web`)에 남는다.
 - 화면은 nginx `/remote/`(정적, 없는 경로는 `/remote/index.html`, 볼륨 `../remote-web`. `deploy-remote.ps1`이 옆 저장소 `saba-chan/saba-chan-web`을 커밋한 그대로 빌드해 올리고 `release.sh`가 다른 관리 경로와 함께 교체·롤백한다. 이 경로만 CSP가 더 좁다: 스크립트는 `'self'`만, 그림은 `'self'`·`data:`·`https://cdn.discordapp.com`(프로필 사진), `Referrer-Policy: no-referrer`)이고, 두 웹소켓은 업그레이드 헤더와 함께 릴레이로 넘긴다(`test/nginxRoutes.test.ts`).
+
+**(g) 차단 목록** (`services/blocklist.ts`, `bot/commands/operatorCommands.ts`): 악성 사용자를 디스코드 ID 하나로 막는다. 공개 저장소라 공식 바이너리인지는 가릴 수 없어 사람을 막는다.
+
+- 원본은 `blocked_users`이고 릴레이가 시작할 때 메모리에 올린다(단일 인스턴스). 바꾸기는 아래 두 입구만 쓴다.
+- 차단된 사람: 그 사람의 호스트가 보내는 노드 요청은 403 `HOST_BLOCKED`(§4.1 노드 토큰). 봇 게이트웨이는 어느 길드·DM에서든 그 사람의 메시지를 무시하고, 슬래시·버튼에는 숨김 답 `blocked_account`만 한다. 페어링(`/사바쨩 연결`)도 같은 게이트웨이에서 막힌다. 다른 사람이 그 PC의 길드로 보내는 명령은 큐에 넣지 않고 `HOST_OFFLINE`이다(`submitCommand`). 차단하는 순간 그 PC의 웹 원격 연결(`/node/ws`)을 닫고 기다리던 긴 폴링을 깨운다. 기한이 지난 차단은 효력이 없다.
+- 관리: 관리자 API(§4.2 `/admin/api/blocklist`)와 봇 DM의 `/사바쨩 운영 차단·해제·목록`(DM에만 보인다). 운영 명령은 `RELAY_OPERATOR_IDS`(쉼표 구분 디스코드 ID, 선택 env)의 사람만 쓰고, 비우면 아무도 못 쓴다. 운영자는 차단할 수 없다(400 `OPERATOR`). 기간은 일 단위(1~3650), 비우면 무기한.
+- 감사: `audit_logs` `action='admin'`, `detail {op:'ban'|'unban', target, days?}`.
+- IP는 차단 기준으로 쓰지 않고 DB에 모으지 않는다. nginx 접근 로그는 날짜별 파일(`nginx-logs` 볼륨)로 남기고 `nginx-log-pruner`가 7일 지난 파일을 지운다.
 
 ### 4.5 daemon 쪽 호출과 relay 서버 비교 (검증 결과)
 

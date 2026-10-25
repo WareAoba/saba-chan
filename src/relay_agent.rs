@@ -1265,8 +1265,12 @@ fn backoff(failures: u32) -> Duration {
     (RETRY_BASE * factor).min(RETRY_MAX)
 }
 
-/// a < b (x.y.z, 빠진 자리는 0)
+/// a < b (x.y.z, 빠진 자리는 0). 프리릴리스(0.1.11-beta.1)는 업데이터와 같은 SemVer 순서로 비교한다
 fn semver_lt(a: &str, b: &str) -> bool {
+    use saba_chan_updater_lib::version::SemVer;
+    if let (Some(x), Some(y)) = (SemVer::parse(a), SemVer::parse(b)) {
+        return x < y;
+    }
     let parse = |s: &str| -> Vec<u64> { s.split('.').map(|p| p.trim().parse().unwrap_or(0)).collect() };
     let (pa, pb) = (parse(a), parse(b));
     for i in 0..3 {
@@ -2210,6 +2214,14 @@ mod tests {
         assert!(!semver_lt("0.1.1", "0.1.0"));
         assert!(!semver_lt("1.0", "1.0.0"));
         assert!(semver_lt("0.9.9", "1"));
+    }
+
+    #[test]
+    fn prerelease_agent_is_not_older_than_previous_release() {
+        assert!(!semver_lt("0.1.11-beta.1", "0.1.10"));
+        assert!(semver_lt("0.1.11-beta.1", "0.1.11"));
+        assert!(semver_lt("0.1.11-beta.1", "0.1.11-beta.2"));
+        assert!(!semver_lt("0.1.11-rc.1", "0.1.11-beta.2"));
     }
 
     #[test]
