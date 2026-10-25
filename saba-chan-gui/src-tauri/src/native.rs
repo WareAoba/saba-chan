@@ -150,9 +150,10 @@ pub fn app_close_response(app: AppHandle, choice: String) {
     }
 }
 
-/// 트레이 팝업 버튼: open_window | switch_to_cli | start_daemon | stop_daemon | quit_all, 닫기만은 close. 팝업은 늘 닫는다
+/// 트레이 팝업 버튼: open_window | switch_to_cli | start_daemon | stop_daemon | quit_all, 닫기만은 close. 팝업은 늘 닫는다.
+/// async: 창 열기가 창을 새로 만들 수 있다 (동기 명령에서 창을 만들면 Windows에서 교착한다)
 #[tauri::command]
-pub fn tray_action(app: AppHandle, action: String) -> Value {
+pub async fn tray_action(app: AppHandle, action: String) -> Value {
     if let Some(w) = app.get_webview_window(window::TRAY_POPUP) {
         let _ = w.destroy();
     }

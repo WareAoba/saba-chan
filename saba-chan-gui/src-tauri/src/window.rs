@@ -180,9 +180,12 @@ pub fn create_main_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     }
     let win = lock_navigation(app, builder).build()?;
     apply_icon(&win);
+    // 상주 여부는 업데이트 뒤 다시 띄울 모양을 정한다: 30초 heartbeat를 기다리지 않고 바로 알린다
+    crate::lifecycle::report_resident(app, false);
 
     let handle = app.clone();
     win.on_window_event(move |event| match event {
+        WindowEvent::Destroyed => crate::lifecycle::report_resident(&handle, tray_only_without(&handle, Some(MAIN))),
         // 닫기는 React 확인 창으로 (app_close_response가 답한다)
         WindowEvent::CloseRequested { api, .. } => {
             api.prevent_close();
@@ -223,9 +226,19 @@ pub fn show_main(app: &AppHandle) {
     }
 }
 
-/// 메인 창이 있는가 (없으면 트레이만 든 상태)
-pub fn main_open(app: &AppHandle) -> bool {
-    app.get_webview_window(MAIN).is_some()
+/// 사용자가 보는 창이 없고 트레이만 들었는가 (트레이 팝업은 창으로 세지 않는다)
+pub fn tray_only_now(app: &AppHandle) -> bool {
+    tray_only_without(app, None)
+}
+
+/// 막 사라지는 창(`gone`)을 빼고 본다 (Destroyed 이벤트 중에는 아직 목록에 있을 수 있다)
+fn tray_only_without(app: &AppHandle, gone: Option<&str>) -> bool {
+    let labels: Vec<String> = app.webview_windows().into_keys().collect();
+    tray_only(labels.iter().map(String::as_str).filter(|l| Some(*l) != gone))
+}
+
+fn tray_only<'a>(mut labels: impl Iterator<Item = &'a str>) -> bool {
+    labels.all(|l| l == TRAY_POPUP)
 }
 
 /// 창을 모두 없앤다 (닫기 확인을 거치지 않는다). 웹뷰가 내려가고 트레이만 남는다
@@ -298,9 +311,16 @@ pub fn popup_position(icon: PxRect, size: (f64, f64), work: PxRect, gap: f64) ->
     let (w, h) = size;
     let x = icon.x + icon.w / 2.0 - w / 2.0;
     let below_middle = icon.y + icon.h / 2.0 > work.y + work.h / 2.0;
-    let y = if below_middle { icon.y - h - gap } else { icon.y + icon.h + gap };
+    let y = if below_middle {
+        icon.y - h - gap
+    } else {
+        icon.y + icon.h + gap
+    };
     let clamp = |v: f64, lo: f64, hi: f64| v.min(hi).max(lo);
-    (clamp(x, work.x, work.x + work.w - w), clamp(y, work.y, work.y + work.h - h))
+    (
+        clamp(x, work.x, work.x + work.w - w),
+        clamp(y, work.y, work.y + work.h - h),
+    )
 }
 
 /// 트레이 아이콘을 눌렀다: 팝업이 있으면 닫고, 없으면 아이콘 옆에 연다
@@ -347,13 +367,16 @@ pub fn fit_tray_popup(app: &AppHandle, height: f64) {
     let Some(win) = app.get_webview_window(TRAY_POPUP) else {
         return;
     };
-    let scale = win.scale_factor().unwrap_or(1.0);
-    let size = (TRAY_POPUP_WIDTH * scale, height.clamp(120.0, 640.0) * scale);
     let anchor = *TRAY_ANCHOR.lock().unwrap();
     let monitor = anchor
         .and_then(|a| app.monitor_from_point(a.x, a.y).ok().flatten())
         .or_else(|| app.primary_monitor().ok().flatten());
-    let _ = win.set_size(tauri::PhysicalSize::new(size.0, size.1));
+    // 배율은 팝업이 처음 뜬 모니터가 아니라 아이콘이 있는 모니터의 것 (모니터마다 배율이 다를 수 있다)
+    let scale = monitor
+        .as_ref()
+        .map(|m| m.scale_factor())
+        .unwrap_or_else(|| win.scale_factor().unwrap_or(1.0));
+    let size = (TRAY_POPUP_WIDTH * scale, height.clamp(120.0, 640.0) * scale);
     if let Some(m) = monitor {
         let area = m.work_area();
         let work = PxRect {
@@ -363,10 +386,17 @@ pub fn fit_tray_popup(app: &AppHandle, height: f64) {
             h: area.size.height as f64,
         };
         // 아이콘 자리를 모르면(키보드로 연 경우 등) 작업 영역 오른쪽 아래
-        let icon = anchor.unwrap_or(PxRect { x: work.x + work.w, y: work.y + work.h, w: 0.0, h: 0.0 });
+        let icon = anchor.unwrap_or(PxRect {
+            x: work.x + work.w,
+            y: work.y + work.h,
+            w: 0.0,
+            h: 0.0,
+        });
         let (x, y) = popup_position(icon, size, work, TRAY_POPUP_GAP * scale);
+        // 먼저 옮기고 크기를 준다: 배율이 다른 모니터로 옮기면 창 크기가 그 배율로 다시 잡힌다
         let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
     }
+    let _ = win.set_size(tauri::PhysicalSize::new(size.0, size.1));
     let _ = win.show();
     let _ = win.set_focus();
 }
@@ -469,6 +499,54 @@ mod tests {
     use super::*;
 
     #[test]
+    fn the_tray_popup_may_call_what_it_needs_and_nothing_that_notifies() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("capabilities");
+        let mut granted: Vec<String> = Vec::new();
+        for entry in std::fs::read_dir(dir).unwrap() {
+            let cap: serde_json::Value =
+                serde_json::from_str(&std::fs::read_to_string(entry.unwrap().path()).unwrap()).unwrap();
+            let windows = cap["windows"].as_array().cloned().unwrap_or_default();
+            if windows.iter().any(|w| w == TRAY_POPUP) {
+                granted.extend(
+                    cap["permissions"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .filter_map(|p| p.as_str().map(String::from)),
+                );
+            }
+        }
+        for need in [
+            "allow-daemon-request",
+            "allow-daemon-status",
+            "allow-language-get",
+            "allow-tray-action",
+            "allow-tray-popup-fit",
+        ] {
+            assert!(granted.iter().any(|g| g == need), "the tray popup cannot call {need}");
+        }
+        assert!(
+            !granted.iter().any(|g| g == "allow-notify"),
+            "every new popup would repeat old notices"
+        );
+        let build = include_str!("../build.rs");
+        for cmd in ["\"tray_action\"", "\"tray_popup_fit\""] {
+            assert!(build.contains(cmd), "{cmd} is missing from the app manifest");
+        }
+    }
+
+    #[test]
+    fn only_the_tray_popup_left_means_tray_only() {
+        assert!(tray_only([].into_iter()));
+        assert!(tray_only([TRAY_POPUP].into_iter()));
+        assert!(!tray_only([MAIN].into_iter()));
+        assert!(
+            !tray_only(["popout-abc"].into_iter()),
+            "a console pop-out is a window the user sees"
+        );
+    }
+
+    #[test]
     fn close_falls_through_only_when_the_renderer_never_answered() {
         // 묻지 않았거나 답을 받았으면(0) 렌더러가 묻는다
         assert!(!renderer_unresponsive(0, 1_000_000));
@@ -488,16 +566,41 @@ mod tests {
 
     #[test]
     fn the_tray_popup_sits_next_to_the_icon_inside_the_work_area() {
-        let work = PxRect { x: 0.0, y: 0.0, w: 1920.0, h: 1040.0 };
+        let work = PxRect {
+            x: 0.0,
+            y: 0.0,
+            w: 1920.0,
+            h: 1040.0,
+        };
         // 아래 작업 표시줄: 아이콘 위에, 가운데를 맞춘다 (작업 표시줄을 덮지 않게 작업 영역 끝까지)
-        let icon = PxRect { x: 1700.0, y: 1050.0, w: 24.0, h: 24.0 };
+        let icon = PxRect {
+            x: 1700.0,
+            y: 1050.0,
+            w: 24.0,
+            h: 24.0,
+        };
         assert_eq!(popup_position(icon, (320.0, 400.0), work, 8.0), (1552.0, 640.0));
         // 오른쪽 끝 아이콘: 화면 밖으로 나가지 않게 당긴다
-        let corner = PxRect { x: 1900.0, y: 1050.0, w: 24.0, h: 24.0 };
+        let corner = PxRect {
+            x: 1900.0,
+            y: 1050.0,
+            w: 24.0,
+            h: 24.0,
+        };
         assert_eq!(popup_position(corner, (320.0, 400.0), work, 8.0).0, 1600.0);
         // 위 작업 표시줄: 아이콘 아래에
-        let top = PxRect { x: 0.0, y: 40.0, w: 1920.0, h: 1040.0 };
-        let icon = PxRect { x: 1700.0, y: 8.0, w: 24.0, h: 24.0 };
+        let top = PxRect {
+            x: 0.0,
+            y: 40.0,
+            w: 1920.0,
+            h: 1040.0,
+        };
+        let icon = PxRect {
+            x: 1700.0,
+            y: 8.0,
+            w: 24.0,
+            h: 24.0,
+        };
         assert_eq!(popup_position(icon, (320.0, 400.0), top, 8.0), (1552.0, 40.0));
     }
 

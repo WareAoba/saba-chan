@@ -239,7 +239,10 @@ fn should_follow_daemon_out(daemon_reached: bool, resident: bool, stopped_from_t
 
 /// 트레이에서 데몬을 끄거나 켰다 (끈 동안에는 데몬이 없어도 상주 GUI가 남는다)
 pub fn note_tray_stop(app: &AppHandle, stopped: bool) {
-    app.state::<AppState>().life.stopped_from_tray.store(stopped, Ordering::SeqCst);
+    app.state::<AppState>()
+        .life
+        .stopped_from_tray
+        .store(stopped, Ordering::SeqCst);
 }
 
 /// 연결이 거부된 것만 데몬이 없다고 본다. 시간 초과는 바쁜 데몬일 수 있다
@@ -566,6 +569,22 @@ async fn sync_install_root(app: &AppHandle) {
 
 // ── 클라이언트 등록·heartbeat (데몬이 GUI 생존 여부를 추적) ──
 
+/// 창이 열리거나 닫혀 상주 여부가 바뀌었다: 다음 heartbeat를 기다리지 않고 데몬에 알린다 (등록 전이면 등록이 알린다)
+pub fn report_resident(app: &AppHandle, resident: bool) {
+    let Some(id) = app.state::<AppState>().life.client_id.lock().unwrap().clone() else {
+        return;
+    };
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let body = json!({ "resident": resident });
+        let _ = app
+            .state::<AppState>()
+            .client
+            .post(&format!("/api/client/{id}/heartbeat"), &body, 3000)
+            .await;
+    });
+}
+
 async fn register_with_daemon(app: &AppHandle) -> bool {
     let state = app.state::<AppState>();
     // PID·설치 폴더: 인스톨러가 이 설치의 GUI를 찾아 끌 수 있게. resident: 창 없이 트레이만 들었다
@@ -573,7 +592,7 @@ async fn register_with_daemon(app: &AppHandle) -> bool {
         "kind": "gui",
         "pid": std::process::id(),
         "installRoot": state.install_root.to_string_lossy(),
-        "resident": !crate::window::main_open(app),
+        "resident": crate::window::tray_only_now(app),
     });
     match state.client.post("/api/client/register", &body, 3000).await {
         Ok(v) => {
@@ -604,14 +623,23 @@ fn start_heartbeat(app: &AppHandle) {
                 register_with_daemon(&app2).await;
                 continue;
             };
-            let resident = !crate::window::main_open(&app2);
+            let resident = crate::window::tray_only_now(&app2);
+            tray::refresh_icon(&app2);
             let res = state
                 .client
-                .post(&format!("/api/client/{id}/heartbeat"), &json!({ "resident": resident }), 3000)
+                .post(
+                    &format!("/api/client/{id}/heartbeat"),
+                    &json!({ "resident": resident }),
+                    3000,
+                )
                 .await;
             // 연결이 안 되면 데몬이 없다: 이 GUI 밖에서 꺼진 데몬을 트레이가 실행 중으로 보이지 않게
             let reached = heartbeat_reached(&res);
             if state.life.note_reachable(reached) {
+                // 트레이에서 끈 데몬이 (어디서든) 다시 떴다: 이제 밖에서 꺼지면 함께 끝난다
+                if reached {
+                    note_tray_stop(&app2, false);
+                }
                 tray::update_menu(&app2);
             }
             // 창 없이 트레이만 든 GUI는 데몬이 밖에서 꺼지면(CLI의 완전히 종료 등) 함께 끝난다.
@@ -860,9 +888,15 @@ mod tests {
     #[test]
     fn a_tray_only_gui_quits_with_the_daemon_unless_the_tray_stopped_it() {
         assert!(should_follow_daemon_out(false, true, false));
-        assert!(!should_follow_daemon_out(true, true, false), "the daemon is still there");
+        assert!(
+            !should_follow_daemon_out(true, true, false),
+            "the daemon is still there"
+        );
         assert!(!should_follow_daemon_out(false, false, false), "a window is open");
-        assert!(!should_follow_daemon_out(false, true, true), "stopped from the tray: stay to start it again");
+        assert!(
+            !should_follow_daemon_out(false, true, true),
+            "stopped from the tray: stay to start it again"
+        );
     }
 
     #[test]

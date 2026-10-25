@@ -14,12 +14,15 @@ const ICON_DARK: &[u8] = include_bytes!("../../public/favicon-dark.png");
 
 /// 테마별 favicon (어두운 테마면 favicon-dark). Windows는 작업 표시줄 테마를, 그 밖에는 메인 창 테마를 따른다
 fn theme_icon(app: &AppHandle) -> Option<Image<'static>> {
-    let dark = system_dark().unwrap_or_else(|| {
+    Image::from_bytes(if is_dark(app) { ICON_DARK } else { ICON_LIGHT }).ok()
+}
+
+fn is_dark(app: &AppHandle) -> bool {
+    system_dark().unwrap_or_else(|| {
         app.get_webview_window(window::MAIN)
             .and_then(|w| w.theme().ok())
             .is_some_and(|t| t == Theme::Dark)
-    });
-    Image::from_bytes(if dark { ICON_DARK } else { ICON_LIGHT }).ok()
+    })
 }
 
 /// Windows 작업 표시줄이 어두운가 (`SystemUsesLightTheme`). 창이 없을 때도 읽을 수 있다
@@ -42,7 +45,12 @@ fn system_dark() -> Option<bool> {
 fn icon_rect(rect: &tauri::Rect) -> window::PxRect {
     let pos = rect.position.to_physical::<f64>(1.0);
     let size = rect.size.to_physical::<f64>(1.0);
-    window::PxRect { x: pos.x, y: pos.y, w: size.width, h: size.height }
+    window::PxRect {
+        x: pos.x,
+        y: pos.y,
+        w: size.width,
+        h: size.height,
+    }
 }
 
 pub fn create(app: &AppHandle) -> tauri::Result<()> {
@@ -102,6 +110,10 @@ pub fn action(app: &AppHandle, id: &str) -> bool {
             lifecycle::note_tray_stop(&app, true);
             tauri::async_runtime::spawn(async move {
                 lifecycle::stop_daemon(&app).await;
+                // 끄지 못했으면 트레이에서 끈 것이 아니다
+                if app.state::<AppState>().client.get("/health", 1000).await.is_ok() {
+                    lifecycle::note_tray_stop(&app, false);
+                }
                 update_menu(&app);
             });
         }
@@ -145,20 +157,54 @@ mod linux_menu {
         let t = |k: &str| state.t(k, &[]);
         let running = lifecycle::daemon_running(app);
         let menu = Menu::new(app)?;
-        menu.append(&MenuItem::with_id(app, "open_window", t("tray.open_window"), true, None::<&str>)?)?;
+        menu.append(&MenuItem::with_id(
+            app,
+            "open_window",
+            t("tray.open_window"),
+            true,
+            None::<&str>,
+        )?)?;
         menu.append(&PredefinedMenuItem::separator(app)?)?;
-        let status = if running { t("tray.daemon_running") } else { t("tray.daemon_stopped") };
+        let status = if running {
+            t("tray.daemon_running")
+        } else {
+            t("tray.daemon_stopped")
+        };
         menu.append(&MenuItem::with_id(app, "daemon_status", status, false, None::<&str>)?)?;
-        menu.append(&MenuItem::with_id(app, "stop_daemon", t("tray.stop_daemon"), running, None::<&str>)?)?;
-        menu.append(&MenuItem::with_id(app, "start_daemon", t("tray.start_daemon"), !running, None::<&str>)?)?;
+        menu.append(&MenuItem::with_id(
+            app,
+            "stop_daemon",
+            t("tray.stop_daemon"),
+            running,
+            None::<&str>,
+        )?)?;
+        menu.append(&MenuItem::with_id(
+            app,
+            "start_daemon",
+            t("tray.start_daemon"),
+            !running,
+            None::<&str>,
+        )?)?;
         menu.append(&PredefinedMenuItem::separator(app)?)?;
-        menu.append(&MenuItem::with_id(app, "quit_all", t("tray.quit_all"), true, None::<&str>)?)?;
+        menu.append(&MenuItem::with_id(
+            app,
+            "quit_all",
+            t("tray.quit_all"),
+            true,
+            None::<&str>,
+        )?)?;
         Ok(menu)
     }
 }
 
 /// 시스템 테마가 바뀌면 아이콘도 바꾼다
+/// 창이 없으면 테마 이벤트가 오지 않아 heartbeat마다도 부른다: 바뀌었을 때만 아이콘을 다시 넣는다
 pub fn refresh_icon(app: &AppHandle) {
+    static SHOWN: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+    let shown = if is_dark(app) { 2 } else { 1 };
+    if SHOWN.swap(shown, std::sync::atomic::Ordering::SeqCst) == shown {
+        return;
+    }
     if let (Some(tray), Some(icon)) = (app.tray_by_id(TRAY_ID), theme_icon(app)) {
         let _ = tray.set_icon(Some(icon));
     }

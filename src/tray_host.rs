@@ -31,7 +31,9 @@ pub fn has_desktop() -> bool {
     }
     #[cfg(all(not(windows), not(target_os = "macos")))]
     {
-        ["DISPLAY", "WAYLAND_DISPLAY"].iter().any(|k| std::env::var_os(k).is_some_and(|v| !v.is_empty()))
+        ["DISPLAY", "WAYLAND_DISPLAY"]
+            .iter()
+            .any(|k| std::env::var_os(k).is_some_and(|v| !v.is_empty()))
     }
 }
 
@@ -75,7 +77,9 @@ fn disabled_by_env() -> bool {
 
 /// 연속 실패 n번째 뒤 다음 시도까지 기다릴 시간 (5s, 10s, 20s … 최대 5분)
 fn backoff(fails: u32) -> Duration {
-    BACKOFF_BASE.saturating_mul(1u32 << fails.saturating_sub(1).min(16)).min(BACKOFF_MAX)
+    BACKOFF_BASE
+        .saturating_mul(1u32 << fails.saturating_sub(1).min(16))
+        .min(BACKOFF_MAX)
 }
 
 /// 되살리기 판단 상태
@@ -90,7 +94,10 @@ struct Respawn {
 impl Respawn {
     /// 트레이를 든 GUI가 있다: 띄운 것이 충분히 살았으면 실패 기록을 지운다
     fn host_seen(&mut self, now: Instant) {
-        if self.spawned.is_some_and(|(_, at)| now.duration_since(at) >= STABLE_AFTER) {
+        if self
+            .spawned
+            .is_some_and(|(_, at)| now.duration_since(at) >= STABLE_AFTER)
+        {
             self.spawned = None;
             self.fails = 0;
             self.not_before = None;
@@ -121,15 +128,19 @@ impl Respawn {
         self.fails += 1;
         self.not_before = Some(now + backoff(self.fails));
     }
-
-    fn spawned_pid(&self) -> Option<u32> {
-        self.spawned.map(|(pid, _)| pid)
-    }
 }
 
-/// 트레이를 든 GUI가 살아 있는가: 등록된 GUI 중 프로세스가 살아 있는 것, 또는 방금 띄워 아직 등록 전인 것
-async fn host_alive(registry: &crate::ipc::ClientRegistry, spawned: Option<u32>) -> bool {
-    use crate::supervisor::process::is_process_alive;
+fn unix_now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
+
+/// 트레이를 든 GUI가 살아 있는가: 등록된 GUI 중 프로세스가 살아 있는 것, 또는 이 감독이 띄운 그 프로세스
+/// (`started`: PID와 띄운 시각. 등록 전이거나 등록을 잃었어도 센다. 같은 PID를 다른 프로세스가 받았으면 세지 않는다)
+async fn host_alive(registry: &crate::ipc::ClientRegistry, started: Option<(u32, u64)>) -> bool {
+    use crate::supervisor::process::{is_process_alive, is_same_process};
     let guis: Vec<u32> = registry
         .list()
         .await
@@ -137,7 +148,7 @@ async fn host_alive(registry: &crate::ipc::ClientRegistry, spawned: Option<u32>)
         .filter(|(_, c)| c.kind == crate::ipc::ClientKind::Gui)
         .filter_map(|(_, c)| c.pid)
         .collect();
-    guis.into_iter().chain(spawned).any(is_process_alive)
+    guis.into_iter().any(is_process_alive) || started.is_some_and(|(pid, at)| is_same_process(pid, at))
 }
 
 /// 감독 루프. 화면이 없거나 GUI 실행 파일이 없으면 바로 끝난다
@@ -152,6 +163,8 @@ pub async fn run(server: crate::ipc::IPCServer) {
     };
     let stop = server.stop_requested.clone();
     let mut state = Respawn::default();
+    // 마지막으로 띄운 상주 GUI (PID, 띄운 시각)
+    let mut started: Option<(u32, u64)> = None;
     tokio::select! {
         _ = stop.cancelled() => return,
         _ = tokio::time::sleep(FIRST_CHECK_DELAY) => {}
@@ -161,7 +174,7 @@ pub async fn run(server: crate::ipc::IPCServer) {
             return;
         }
         let now = Instant::now();
-        if host_alive(&server.client_registry, state.spawned_pid()).await {
+        if host_alive(&server.client_registry, started).await {
             state.host_seen(now);
         } else if state.may_spawn(now) {
             let env: Vec<(&str, String)> = crate::ipc::handlers::client::gui_ipc_base(
@@ -175,6 +188,7 @@ pub async fn run(server: crate::ipc::IPCServer) {
                 Ok(pid) => {
                     tracing::info!("[Tray] Started the tray app (pid {})", pid);
                     state.did_spawn(pid, now);
+                    started = Some((pid, unix_now()));
                 }
                 Err(e) => {
                     tracing::warn!("[Tray] Could not start the tray app: {}", e);
@@ -238,6 +252,17 @@ mod tests {
         assert_eq!(r.fails, 0);
         // 그 뒤 사라지면 바로 다시 띄운다
         assert!(r.may_spawn(t0 + Duration::from_secs(600)));
+    }
+
+    #[tokio::test]
+    async fn the_started_host_counts_while_it_lives_even_unregistered() {
+        let registry = crate::ipc::ClientRegistry::new();
+        let me = std::process::id();
+        // 등록하지 못했거나(토큰 어긋남) 레지스트리에서 빠졌어도(절전 뒤) 살아 있으면 또 띄우지 않는다
+        assert!(host_alive(&registry, Some((me, unix_now()))).await);
+        // 그 PID를 나중에 다른 프로세스가 받았으면(시작 시각이 띄운 때보다 늦다) 없는 것이다
+        assert!(!host_alive(&registry, Some((me, 0))).await);
+        assert!(!host_alive(&registry, None).await);
     }
 
     #[test]
