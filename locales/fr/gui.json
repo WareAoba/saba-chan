@@ -623,6 +623,8 @@
     "restart_required_title": "Redémarrage requis",
     "apply": "Appliquer",
     "module_busy": "Une autre installation ou suppression de ce module est encore en cours. Réessayez quand elle sera terminée.",
+    "extensions_enabled": "Les extensions utilisées par ce module ont été activées : {{ids}}",
+    "extension_failed": "Impossible de préparer l’extension {{id}} : {{error}}",
     "remove_failed": "Impossible de supprimer le module : {{error}}"
   },
   "validation": {

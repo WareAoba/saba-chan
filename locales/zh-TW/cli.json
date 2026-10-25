@@ -330,6 +330,8 @@
     "fetching_versions": "正在取得版本...",
     "files_installed": "伺服器檔案已安裝到 {{dir}}。",
     "installed": "已安裝模組 {{id}}。",
+    "extensions_enabled": "已啟用此模組使用的擴充功能：{{ids}}",
+    "extension_failed": "無法準備擴充功能 {{id}}：{{error}}",
     "installing": "正在安裝模組 {{id}}...",
     "latest": "最新",
     "needs": "需要擴充功能：{{ids}}",

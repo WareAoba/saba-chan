@@ -623,6 +623,8 @@
     "restart_required_title": "Neustart erforderlich",
     "apply": "Anwenden",
     "module_busy": "Eine andere Installation oder Entfernung dieses Moduls läuft noch. Versuche es erneut, wenn sie fertig ist.",
+    "extensions_enabled": "Die Erweiterungen dieses Moduls wurden aktiviert: {{ids}}",
+    "extension_failed": "Erweiterung {{id}} konnte nicht eingerichtet werden: {{error}}",
     "remove_failed": "Modul konnte nicht entfernt werden: {{error}}"
   },
   "validation": {

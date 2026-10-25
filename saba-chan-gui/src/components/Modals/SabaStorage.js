@@ -674,6 +674,7 @@ function ModuleCardIcon({ icon }) {
 // ─────────────────────────────────────────────────────────────
 function ModulesTab() {
     const { t } = useTranslation('gui');
+    const { refreshExtensions } = useExtensions();
     const [installedModules, setInstalledModules] = useState([]);
     const [manifestModules, setManifestModules] = useState(null); // null = 미로드, [] = 로드됨
     const [manifestLoading, setManifestLoading] = useState(false);
@@ -772,6 +773,16 @@ function ModulesTab() {
             const res = await window.api?.moduleInstallFromManifest?.(moduleId);
             if (res?.ok) {
                 setInstallResults((prev) => ({ ...prev, [moduleId]: 'ok' }));
+                // 데몬이 이 모듈이 쓰는 익스텐션을 받고 켰다: 알리고 익스텐션 목록도 새로
+                const ext = res.extensions;
+                if (ext?.enabled?.length) {
+                    safeShowToast(t('saba_storage.extensions_enabled', { ids: ext.enabled.join(', ') }), 'info', 4000);
+                }
+                for (const f of ext?.failed || []) {
+                    const error = createTranslateError(t)(f.error);
+                    safeShowToast(t('saba_storage.extension_failed', { id: f.id, error }), 'warning', 6000);
+                }
+                if (ext?.installed?.length || ext?.enabled?.length) refreshExtensions?.();
                 // 설치 후 로컬 모듈 목록 갱신
                 clearModuleAuditCache();
                 const listRes = await window.api?.moduleRefresh?.();
@@ -790,7 +801,7 @@ function ModulesTab() {
             n.delete(moduleId);
             return n;
         });
-    }, [t]);
+    }, [t, refreshExtensions]);
 
     const handleConfirmRemove = useCallback(async () => {
         const id = confirmRemoveId;

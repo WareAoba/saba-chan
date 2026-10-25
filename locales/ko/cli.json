@@ -397,6 +397,8 @@
     "fetching_versions": "버전을 가져오는 중...",
     "files_installed": "{{dir}}에 서버 파일을 설치했어요.",
     "installed": "모듈 {{id}}를 설치했어요.",
+    "extensions_enabled": "이 모듈이 쓰는 익스텐션을 켰어요: {{ids}}",
+    "extension_failed": "익스텐션 {{id}}를 준비하지 못했어요: {{error}}",
     "installing": "모듈 {{id}} 설치 중...",
     "latest": "최신",
     "needs": "필요한 익스텐션: {{ids}}",

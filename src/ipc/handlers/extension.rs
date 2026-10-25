@@ -114,7 +114,24 @@ pub async fn enable_extension(
         }
     }
 
-    // 활성화 성공 → daemon.startup 훅이 있으면 비동기 디스패치 (npm install 등)
+    let has_startup_hook = dispatch_startup(&state, &ext_id).await;
+
+    // 미검증·변경된 익스텐션을 켜면 알림만 싣는다 (실행은 막지 않는다)
+    let trust = state.extension_manager.read().await.discovered(&ext_id).map(|ext| {
+        saba_chan_updater_lib::integrity::trust_of(&format!("ext-{}", ext_id), &ext.dir)
+    });
+    let warnings = trust.map(|t| super::server::trust_warnings("extension", &ext_id, t)).unwrap_or_default();
+    Ok(Json(json!({
+        "success": true,
+        "id": ext_id,
+        "startup_dispatched": has_startup_hook,
+        "trust": trust,
+        "warnings": warnings,
+    })))
+}
+
+/// 방금 켠 익스텐션에 daemon.startup 훅이 있으면 비동기로 돌린다 (npm install 등). 돌렸는지 돌려준다
+async fn dispatch_startup(state: &IPCServer, ext_id: &str) -> bool {
     let has_startup_hook = {
         let mgr = state.extension_manager.read().await;
         mgr.hooks_for("daemon.startup")
@@ -125,7 +142,7 @@ pub async fn enable_extension(
     if has_startup_hook {
         let ext_mgr = state.extension_manager.clone();
         let init_tracker = state.extension_init_tracker.clone();
-        let ext_id_clone = ext_id.clone();
+        let ext_id_clone = ext_id.to_string();
         tokio::spawn(async move {
             init_tracker.mark_started(&ext_id_clone, "Initializing...").await;
             // 방금 켠 익스텐션에만 보낸다 (다른 익스텐션의 startup을 다시 돌리지 않게)
@@ -152,19 +169,7 @@ pub async fn enable_extension(
             }
         });
     }
-
-    // 미검증·변경된 익스텐션을 켜면 알림만 싣는다 (실행은 막지 않는다)
-    let trust = state.extension_manager.read().await.discovered(&ext_id).map(|ext| {
-        saba_chan_updater_lib::integrity::trust_of(&format!("ext-{}", ext_id), &ext.dir)
-    });
-    let warnings = trust.map(|t| super::server::trust_warnings("extension", &ext_id, t)).unwrap_or_default();
-    Ok(Json(json!({
-        "success": true,
-        "id": ext_id,
-        "startup_dispatched": has_startup_hook,
-        "trust": trust,
-        "warnings": warnings,
-    })))
+    has_startup_hook
 }
 
 /// POST /api/extensions/:id/disable — 익스텐션 비활성화
@@ -439,12 +444,25 @@ pub async fn install_extension(
     body: Option<Json<serde_json::Value>>,
 ) -> Json<serde_json::Value> {
     let field = |k: &str| body.as_ref().and_then(|Json(b)| b.get(k)).and_then(|v| v.as_str()).map(str::to_string);
-    let (explicit_url, explicit_sha) = (field("download_url"), field("sha256"));
-
     let _dirs = super::paths::components_in_use().await;
+    match install_with_dependencies(&state, &ext_id, field("download_url"), field("sha256")).await {
+        Ok(installed) => Json(json!({ "success": true, "id": ext_id, "installed": installed })),
+        Err(body) => body,
+    }
+}
+
+/// 익스텐션 하나를 (없는 의존 익스텐션과 함께) 받아 설치한다. 돌려주는 값은 설치한 id들.
+/// 부르는 쪽이 `components_in_use`를 쥐고 있어야 한다
+async fn install_with_dependencies(
+    state: &IPCServer,
+    ext_id: &str,
+    explicit_url: Option<String>,
+    explicit_sha: Option<String>,
+) -> Result<Vec<String>, Json<serde_json::Value>> {
+    let ext_id = ext_id.to_string();
     let extensions_dir = state.extension_manager.read().await.extensions_dir().to_path_buf();
     let remote = ExtensionManager::fetch_remote().await;
-    let fail = |error: String, code: &str| Json(json!({ "success": false, "error": error, "error_code": code }));
+    let fail = |error: String, code: &str| Err(Json(json!({ "success": false, "error": error, "error_code": code })));
 
     let mut queue = vec![ext_id.clone()];
     let mut installed: Vec<String> = Vec::new();
@@ -473,12 +491,12 @@ pub async fn install_extension(
             Ok(p) => p,
             // 더 새 앱을 요구하는 패키지는 구조화된 이유(app_version_unsatisfied)로 답한다
             Err(e) if e.downcast_ref::<ExtensionError>().is_some_and(|x| x.error_code == "app_version_unsatisfied") => {
-                return naming_extension(extension_err_response(&e), &id).1
+                return Err(naming_extension(extension_err_response(&e), &id).1)
             }
             Err(e) => return fail(format!("{:#}", e), "install_failed"),
         };
 
-        let running = instance_ext_data(&state, true).await;
+        let running = instance_ext_data(state, true).await;
         let refs: Vec<(&str, &std::collections::HashMap<String, serde_json::Value>)> =
             running.iter().map(|(n, d)| (n.as_str(), d)).collect();
         let mut mgr = state.extension_manager.write().await;
@@ -489,14 +507,51 @@ pub async fn install_extension(
             if body.get("error_code").and_then(|c| c.as_str()) == Some("internal") {
                 return fail(e.to_string(), "install_failed");
             }
-            return Json(body);
+            return Err(Json(body));
         }
         installed.push(id.clone());
         if let Ok(r) = &remote {
             queue.extend(mgr.missing_dependencies(&id, r));
         }
     }
-    Json(json!({ "success": true, "id": ext_id, "installed": installed }))
+    Ok(installed)
+}
+
+/// 모듈을 설치한 뒤 그 모듈이 요구하는 익스텐션을 맞춘다: 없으면 카탈로그에서 받고, 켠다 (`ExtensionManager::enable_for_module`).
+/// 모듈 설치는 이미 끝났으므로 실패는 `failed`로만 알린다. 부르는 쪽이 `components_in_use`를 쥐고 있어야 한다
+pub(crate) async fn prepare_for_module(
+    state: &IPCServer,
+    required: &[String],
+    previously_required: &[String],
+) -> serde_json::Value {
+    let failure = |id: &str, body: &serde_json::Value| {
+        json!({ "id": id, "error": body.get("error").cloned().unwrap_or_default(), "error_code": body.get("error_code").cloned().unwrap_or_default() })
+    };
+    let mut installed: Vec<String> = Vec::new();
+    let mut failed = Vec::new();
+    let mut to_enable = Vec::new();
+    for id in required {
+        let present = state.extension_manager.read().await.discovered(id).is_some();
+        if !present && !installed.contains(id) {
+            match install_with_dependencies(state, id, None, None).await {
+                Ok(ids) => installed.extend(ids),
+                Err(Json(body)) => {
+                    failed.push(failure(id, &body));
+                    continue;
+                }
+            }
+        }
+        to_enable.push(id.clone());
+    }
+    let (enabled, not_enabled) =
+        state.extension_manager.write().await.enable_for_module(&to_enable, previously_required, &installed);
+    for (id, e) in not_enabled {
+        failed.push(failure(&id, &extension_err_response(&e).1 .0));
+    }
+    for id in &enabled {
+        dispatch_startup(state, id).await;
+    }
+    json!({ "installed": installed, "enabled": enabled, "failed": failed })
 }
 
 /// GET /api/extensions/updates — 설치된 익스텐션 업데이트 체크 (매니페스트 비교)

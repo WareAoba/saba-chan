@@ -231,7 +231,7 @@ PC 주인이 디스코드에서 받은 일회용 링크로 브라우저(사바�
 | GET | `/api/modules/schema` | `server.rs:419` | - | module.toml JSON Schema |
 | POST | `/api/modules/detect` | `server.rs:425` | `{path}` | `{matches:[{name, display_name}]}` (`dir_signatures`가 맞는 모듈) / 400 / 404 |
 | GET | `/api/modules/manifest` | `server.rs:502` | - | `{ok, manifest}` 또는 `{ok:false,error}`. 항상 200 |
-| POST | `/api/modules/manifest/:id/install` | `server.rs:525` | - | `{ok, module_id, version}` 또는 `{ok:false,error}`. 항상 200. 카탈로그 버전이 설치된 버전보다 낮으면 받지 않는다 |
+| POST | `/api/modules/manifest/:id/install` | `server.rs:525` | - | `{ok, module_id, version, extensions:{installed, enabled, failed}}` 또는 `{ok:false,error}`. 항상 200. 카탈로그 버전이 설치된 버전보다 낮으면 받지 않는다. 모듈이 요구하는 익스텐션을 받고 켠다(02-modules §5.2) |
 | DELETE | `/api/modules/:id` | `server.rs:593` | - | `{ok, id}`. 항상 200 |
 | GET | `/api/module/:name` | `server.rs:467` | - | `{name, version, description, path, metadata}` / 404 |
 | GET | `/api/module/:name/versions` | `managed.rs:375` | query `include_snapshots, page=1, per_page=25` | supervisor 결과 |

@@ -623,6 +623,8 @@
     "mock_server_label": "Mock 서버 (테스트)",
     "real_api_label": "실제 GitHub API",
     "module_busy": "이 모듈의 다른 설치나 제거가 아직 진행 중이에요. 끝난 뒤 다시 시도해 주세요.",
+    "extensions_enabled": "이 모듈이 쓰는 익스텐션을 켰어요: {{ids}}",
+    "extension_failed": "익스텐션 {{id}}를 준비하지 못했어요: {{error}}",
     "remove_failed": "모듈을 제거하지 못했어요: {{error}}"
   },
   "validation": {

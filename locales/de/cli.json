@@ -330,6 +330,8 @@
     "fetching_versions": "Versionen werden abgerufen...",
     "files_installed": "Serverdateien in {{dir}} installiert.",
     "installed": "Modul {{id}} installiert.",
+    "extensions_enabled": "Die Erweiterungen dieses Moduls wurden aktiviert: {{ids}}",
+    "extension_failed": "Erweiterung {{id}} konnte nicht eingerichtet werden: {{error}}",
     "installing": "Modul {{id}} wird installiert...",
     "latest": "neueste",
     "needs": "Benötigt Erweiterungen: {{ids}}",
