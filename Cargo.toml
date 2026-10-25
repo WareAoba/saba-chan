@@ -41,9 +41,7 @@ tempfile = "3.8"
 uuid = { version = "1.0", features = ["v4", "serde"] }
 glob = "0.3"
 regex = "1"
-reqwest = { version = "0.11", features = ["json"] }
-ureq = { version = "2.9", default-features = false, features = ["json", "native-tls"] }
-native-tls = "0.2"
+reqwest = { version = "0.13", default-features = false, features = ["native-tls", "json", "system-proxy", "blocking"] }
 base64 = "0.21"
 sysinfo = "0.30"
 socket2 = "0.5"

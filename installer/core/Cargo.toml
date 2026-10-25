@@ -11,7 +11,7 @@ serde_json = "1"
 tokio = { version = "1", features = ["full"] }
 anyhow = "1"
 tracing = "0.1"
-reqwest = { version = "0.11", features = ["json", "stream"] }
+reqwest = { version = "0.13", default-features = false, features = ["native-tls", "json", "system-proxy", "stream"] }
 sys-locale = "0.3"
 saba-chan-updater-lib = { path = "../../updater" }
 futures-util = "0.3"
