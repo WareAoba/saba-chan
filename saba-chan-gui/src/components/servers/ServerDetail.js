@@ -55,7 +55,6 @@ export function ServerDetail({
     onRename,
     onDelete,
     onBack,
-    setModal,
     consoleProps,
     settingsProps,
 }) {
@@ -314,13 +313,7 @@ export function ServerDetail({
                         )}
                         {activeTab === 'commands' &&
                             (server.status === 'running' ? (
-                                <CommandModal
-                                    server={server}
-                                    modules={modules}
-                                    onClose={() => {}}
-                                    onExecute={setModal}
-                                    embedded
-                                />
+                                <CommandModal server={server} modules={modules} />
                             ) : (
                                 <div className="empty-inline">
                                     <Icon name="command" size="lg" />
