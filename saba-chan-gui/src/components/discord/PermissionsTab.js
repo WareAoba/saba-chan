@@ -187,10 +187,10 @@ export function MemberLevelsTab({ node, members, membersLoading, onRefreshMember
     // 고른 단계를 지웠으면 맨 위 단계로
     const addLevel = grantable.includes(newLevel) ? newLevel : grantable[0];
     const update = (patch) => write(() => window.api.permissionsUpdate(guildId, patch));
-    // 프리셋은 한 번 적용하는 틀이다: 명령별 레벨이 있으면 다시 맞춘다고 먼저 묻는다
+    // 프리셋은 한 번 적용하는 틀이다: 명령별 레벨이 있으면 다시 맞춘다고 먼저 묻는다 (지금 프리셋을 다시 눌러도)
     const overrides = Object.keys(perm.commandLevels || {}).length;
     const pickPreset = (p) => {
-        if (busy || p === preset) return;
+        if (busy || (p === preset && !overrides)) return;
         if (overrides) setPresetDraft(p);
         else update({ preset: p });
     };

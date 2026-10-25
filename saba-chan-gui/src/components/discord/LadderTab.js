@@ -4,11 +4,8 @@ import { useTranslation } from 'react-i18next';
 import { Icon } from '../Icon';
 import * as L from './levels';
 
-const MAX_NAME = 32;
-const MAX_CUSTOM = 20;
-
 const keyOf = (level) => (level.id !== undefined ? `id-${level.id}` : level.key);
-const isCustom = (level) => level.id === undefined || level.id >= 10;
+const isCustom = L.isCustomLevel;
 
 // ── 단계: 블록을 끌어 순서를 정한다 (위가 높은 단계). 소유자·금지는 고정, 나머지는 옮기고 지울 수 있다 ──
 export function LadderTab({ node, permissions }) {
@@ -30,10 +27,7 @@ export function LadderTab({ node, permissions }) {
     const patch = L.ladderPatch(draft);
     const changed = JSON.stringify(patch) !== JSON.stringify(L.ladderPatch(saved));
     const removed = saved.some((s) => !draft.some((d) => d.id === s.id));
-    const customs = draft.filter(isCustom);
-    const valid =
-        customs.length <= MAX_CUSTOM &&
-        patch.every((p) => p.name === undefined || (p.name && p.name.length <= MAX_NAME));
+    const valid = L.ladderValid(draft);
     const movable = (i) => i > 0 && i < draft.length - 1;
     const name = newName.trim();
 
@@ -87,7 +81,7 @@ export function LadderTab({ node, permissions }) {
                                     <input
                                         className="input dc-ladder-name"
                                         value={level.name}
-                                        maxLength={MAX_NAME}
+                                        maxLength={L.MAX_NAME}
                                         aria-label={t('discord.perm_ladder_name')}
                                         onChange={(e) => setDraft((d) => L.renameLevel(d, i, e.target.value))}
                                     />
@@ -150,7 +144,7 @@ export function LadderTab({ node, permissions }) {
                     <input
                         className="input"
                         value={newName}
-                        maxLength={MAX_NAME}
+                        maxLength={L.MAX_NAME}
                         onChange={(e) => setNewName(e.target.value)}
                         placeholder={t('discord.perm_ladder_new')}
                         aria-label={t('discord.perm_ladder_new')}
@@ -158,7 +152,7 @@ export function LadderTab({ node, permissions }) {
                     <button
                         type="button"
                         className="btn btn-secondary"
-                        disabled={!name || customs.length >= MAX_CUSTOM}
+                        disabled={!name || !L.canAddLevel(draft)}
                         onClick={() => {
                             setDraft((d) => L.addLevel(d, name));
                             setNewName('');

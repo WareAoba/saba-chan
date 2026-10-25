@@ -1076,6 +1076,7 @@
     "level_fixed": "{{level}} 不能移动或删除（所有者固定在最上，禁止固定在最下）。",
     "level_builtin": "{{level}} 是基本等级，不能重命名。",
     "saved": "已保存 {{guild}} 的权限",
+    "preset_reset": "选择预设会把 {{count}} 个按命令的等级重置为 {{preset}} 预设的值。要继续吗？",
     "bad_level": "未知等级：{{level}}（admin、user、chatbot、banned 或此服务器添加的等级名称）",
     "import_none": "中继上没有可导入的等级。",
     "import_confirm": "要把上面 {{count}} 名成员的等级导入这台电脑吗？",

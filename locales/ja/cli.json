@@ -1076,6 +1076,7 @@
     "level_fixed": "{{level}}は移動・削除できません (オーナーは一番上、禁止は一番下に固定)。",
     "level_builtin": "{{level}}は基本段階なので名前を変えられません。",
     "saved": "{{guild}} の権限を保存しました",
+    "preset_reset": "プリセットを選ぶと、コマンドごとのレベル {{count}} 件が {{preset}} プリセットの値に戻ります。続けますか?",
     "bad_level": "不明なレベルです: {{level}} (admin、user、chatbot、banned、またはこのサーバーに追加した段階名)",
     "import_none": "リレーから取り込める権限はありません。",
     "import_confirm": "上の {{count}} 人のレベルをこの PC に取り込みますか?",

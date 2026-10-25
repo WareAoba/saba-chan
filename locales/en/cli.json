@@ -880,6 +880,7 @@
     "level_fixed": "{{level}} can't be moved or removed (the owner stays on top, banned at the bottom).",
     "level_builtin": "{{level}} is a built-in level, so it can't be renamed.",
     "saved": "Saved permissions for {{guild}}",
+    "preset_reset": "Choosing the preset resets {{count}} command level(s) to the {{preset}} preset. Continue?",
     "bad_level": "Unknown level: {{level}} (admin, user, chatbot, banned or a level added to this server)",
     "import_none": "No levels left on the relay to bring in.",
     "import_confirm": "Bring the levels of the {{count}} member(s) above into this PC?",

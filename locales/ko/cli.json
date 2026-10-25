@@ -1089,6 +1089,7 @@
     "level_fixed": "{{level}}은(는) 옮기거나 지울 수 없어요 (소유자는 맨 위, 금지는 맨 아래 고정).",
     "level_builtin": "{{level}}은(는) 기본 단계라 이름을 바꿀 수 없어요.",
     "saved": "{{guild}} 권한을 저장했어요",
+    "preset_reset": "프리셋을 고르면 명령별 레벨 {{count}}개가 {{preset}} 프리셋 값으로 돌아가요. 계속할까요?",
     "bad_level": "모르는 레벨이에요: {{level}} (admin, user, chatbot, banned 또는 이 서버에 더한 단계 이름)",
     "import_none": "릴레이에서 가져올 권한이 없어요.",
     "import_confirm": "위 {{count}}명의 레벨을 이 PC로 가져올까요?",

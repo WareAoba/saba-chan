@@ -78,6 +78,18 @@ describe('권한 레벨 계산', () => {
         expect(L.ladderPatch(L.addLevel(ladder, ' Mod ')).slice(0, 2)).toEqual([{ id: 3 }, { name: 'Mod' }]);
     });
 
+    it('사다리 검사: 이름은 1~32자, 더한 단계는 20개까지 (데몬 invalid_ladder 와 같은 규칙)', () => {
+        const ladder = L.ladderOf(base());
+        expect(L.ladderValid(ladder)).toBe(true);
+        expect(L.ladderValid(L.addLevel(ladder, '  '))).toBe(false);
+        expect(L.ladderValid(L.addLevel(ladder, 'x'.repeat(33)))).toBe(false);
+        let many = ladder;
+        for (let i = 0; i < 20; i++) many = L.addLevel(many, `L${i}`);
+        expect(L.ladderValid(many)).toBe(true);
+        expect(L.canAddLevel(many)).toBe(false);
+        expect(L.ladderValid(L.addLevel(many, 'one more'))).toBe(false);
+    });
+
     it('기본 레벨 멤버는 디스코드 멤버 중 소유자도 아니고 레벨도 없는 사람', () => {
         expect(L.defaultMembers(base(), relayMembers).map((m) => m.id)).toEqual(['1003']);
         expect(L.defaultMembers(base(), undefined)).toEqual([]);
@@ -251,6 +263,18 @@ describe('권한 화면', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
         await flush();
         expect(window.api.permissionsUpdate).toHaveBeenCalledWith('g1', { preset: 'strict' });
+    });
+
+    it('지금 프리셋을 다시 누르면 명령별 레벨을 그 프리셋으로 되돌린다', async () => {
+        perm = base({ commandLevels: { 'mc-1/say': 3 } });
+        renderPanel();
+        await flush();
+        fireEvent.click(screen.getByRole('tab', { name: 'Default' }));
+        await flush();
+        expect(screen.getByRole('alert')).toHaveTextContent('1 command level(s) will be reset to the Default preset.');
+        fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+        await flush();
+        expect(window.api.permissionsUpdate).toHaveBeenCalledWith('g1', { preset: 'default' });
     });
 
     it('더한 단계도 멤버 레벨로 고를 수 있다', async () => {

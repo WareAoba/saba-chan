@@ -64,6 +64,23 @@ export const removeLevel = (ladder, index) => (movable(ladder, index) ? ladder.f
 
 export const renameLevel = (ladder, index, name) => ladder.map((l, i) => (i === index ? { ...l, name } : l));
 
+export const MAX_NAME = 32;
+export const MAX_CUSTOM = 20;
+export const isCustomLevel = (l) => l.id === undefined || !BUILTIN.includes(l.id);
+export const canAddLevel = (ladder) => ladder.filter(isCustomLevel).length < MAX_CUSTOM;
+
+/** 데몬 check_ladder 와 같은 규칙: 더한 단계 이름 1~32자, 20개까지 */
+export function ladderValid(ladder) {
+    const customs = ladder.filter(isCustomLevel);
+    return (
+        customs.length <= MAX_CUSTOM &&
+        customs.every((l) => {
+            const name = String(l.name ?? '').trim();
+            return name.length > 0 && name.length <= MAX_NAME;
+        })
+    );
+}
+
 /** 데몬에 보낼 모양: 기본 단계는 {id}, 더한 단계는 {id?, name} */
 export function ladderPatch(ladder) {
     return ladder.map((l) => {

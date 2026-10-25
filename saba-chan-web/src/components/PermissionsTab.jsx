@@ -33,8 +33,8 @@ function LadderEditor({ perm, busy, onSave, t }) {
     const patch = L.ladderPatch(draft);
     const changed = JSON.stringify(patch) !== JSON.stringify(L.ladderPatch(saved));
     const removed = saved.some((s) => !draft.some((d) => d.id === s.id));
-    const valid = patch.every((p) => p.name === undefined || (p.name && p.name.length <= 32));
-    const label = (l) => (l.id === undefined || l.id >= 10 ? l.name : levelName(t, perm, l.id));
+    const valid = L.ladderValid(draft);
+    const label = (l) => (L.isCustomLevel(l) ? l.name : levelName(t, perm, l.id));
     const last = draft.length - 1;
     return (
         <div className="field">
@@ -43,14 +43,14 @@ function LadderEditor({ perm, busy, onSave, t }) {
             <ul className="rows">
                 {draft.map((l, i) => {
                     const fixed = i === 0 || i === last;
-                    const custom = l.id === undefined || l.id >= 10;
+                    const custom = L.isCustomLevel(l);
                     return (
                         <li key={l.id ?? l.key} className="row" aria-label={label(l)}>
                             <div className="row-main">
                                 {custom ? (
                                     <input
                                         value={l.name}
-                                        maxLength={32}
+                                        maxLength={L.MAX_NAME}
                                         aria-label={t('perm.ladder_name')}
                                         onChange={(e) => setDraft((d) => L.renameLevel(d, i, e.target.value))}
                                     />
@@ -93,13 +93,13 @@ function LadderEditor({ perm, busy, onSave, t }) {
             <div className="field-row">
                 <input
                     value={name}
-                    maxLength={32}
+                    maxLength={L.MAX_NAME}
                     placeholder={t('perm.ladder_new')}
                     aria-label={t('perm.ladder_new')}
                     onChange={(e) => setName(e.target.value)}
                 />
                 <Button
-                    disabled={!name.trim()}
+                    disabled={!name.trim() || !L.canAddLevel(draft)}
                     onClick={() => {
                         setDraft((d) => L.addLevel(d, name));
                         setName('');

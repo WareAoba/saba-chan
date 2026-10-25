@@ -58,12 +58,10 @@ fn changes_from(body: &Map<String, Value>) -> Result<Vec<Change>, &'static str> 
     let mut out = Vec::new();
     for (key, v) in body {
         match key.as_str() {
-            // 주인을 먼저 바꿔 같은 요청의 다른 항목이 새 주인 기준으로 검사되게
-            "ownerDiscordId" => out.insert(0, Change::Owner(v.as_str().ok_or("invalid_member")?.to_string())),
+            "ownerDiscordId" => out.push(Change::Owner(v.as_str().ok_or("invalid_member")?.to_string())),
             "defaultLevel" => out.push(Change::DefaultLevel(level(v)?)),
             "chatbotCap" => out.push(Change::ChatbotCap(level(v)?)),
             "preset" => out.push(Change::Preset(v.as_str().ok_or("invalid_preset")?.to_string())),
-            // 사다리를 먼저 바꿔 같은 요청의 레벨이 새 단계를 쓸 수 있게 (주인 다음)
             "ladder" => {
                 let levels = v
                     .as_array()
@@ -81,8 +79,7 @@ fn changes_from(body: &Map<String, Value>) -> Result<Vec<Change>, &'static str> 
                         Ok(LevelInput { id, name })
                     })
                     .collect::<Result<Vec<_>, &'static str>>()?;
-                let at = usize::from(matches!(out.first(), Some(Change::Owner(_))));
-                out.insert(at, Change::Ladder(levels));
+                out.push(Change::Ladder(levels));
             }
             "commandLevels" => {
                 for (k, l) in v.as_object().ok_or("invalid_command")? {
@@ -93,6 +90,14 @@ fn changes_from(body: &Map<String, Value>) -> Result<Vec<Change>, &'static str> 
             _ => return Err("unknown_key"),
         }
     }
+    // 주인 → 사다리 → 프리셋 → 나머지: 다른 항목이 새 주인·새 단계로 검사되고,
+    // 명령별 레벨을 지우는 프리셋이 같은 요청의 명령 레벨을 지우지 않게
+    out.sort_by_key(|c| match c {
+        Change::Owner(_) => 0,
+        Change::Ladder(_) => 1,
+        Change::Preset(_) => 2,
+        _ => 3,
+    });
     Ok(out)
 }
 
@@ -141,5 +146,11 @@ mod tests {
             LevelInput { id: Some(-1), name: None },
         ]));
         assert_eq!(changes_from(json!({ "ladder": [{ "id": "3" }] }).as_object().unwrap()), Err("invalid_ladder"));
+        // 프리셋은 명령별 레벨을 지우므로, 같은 요청의 명령 레벨보다 먼저 (키 순서와 무관)
+        let body = json!({ "commandLevels": { "i/kick": 3 }, "preset": "strict", "ladder": [{ "id": 3 }, { "id": -1 }, { "id": 1 }] });
+        let changes = changes_from(body.as_object().unwrap()).unwrap();
+        assert!(matches!(changes[0], Change::Ladder(_)));
+        assert_eq!(changes[1], Change::Preset("strict".into()));
+        assert_eq!(changes[2], Change::CommandLevel { key: "i/kick".into(), level: Some(3) });
     }
 }

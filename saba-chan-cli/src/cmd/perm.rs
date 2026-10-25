@@ -58,7 +58,13 @@ fn parse_level(raw: &str, ladder: &[Rung]) -> Result<i64> {
         n => n.parse().ok(),
     };
     let named = || ladder.iter().find(|r| r.name.as_deref().is_some_and(|n| n.to_lowercase() == q)).and_then(|r| r.id);
-    builtin.or_else(named).filter(|id| ladder.iter().any(|r| r.id == Some(*id))).ok_or_else(|| usage(t!("perm.bad_level", level = raw)))
+    // 기본 단계 낱말이 이 사다리에 없으면 같은 이름으로 더한 단계를 본다
+    builtin.filter(|id| ladder.iter().any(|r| r.id == Some(*id))).or_else(named).ok_or_else(|| usage(t!("perm.bad_level", level = raw)))
+}
+
+/// 프리셋을 고르면 지워질 명령별 레벨 수
+fn overrides(perm: &Value) -> usize {
+    perm["commandLevels"].as_object().map_or(0, |m| m.len())
 }
 
 fn level_name(level: i64, ladder: &[Rung]) -> String {
@@ -157,6 +163,11 @@ pub async fn run(ctx: &Ctx, cmd: PermCmd) -> Result<()> {
         }
         PermCmd::Preset { guild, preset } => {
             let guild = resolve::guild(ctx, Some(&guild)).await?;
+            // GUI 처럼: 프리셋은 명령별 레벨을 지우므로 있으면 먼저 묻는다
+            let count = overrides(&ctx.api.permissions(&guild).await?);
+            if count > 0 && !ctx.ask.confirm(&t!("perm.preset_reset", count = count, preset = preset), false)? {
+                return Err(CliError::Cancelled.into());
+            }
             let r = ctx.api.update_permissions(&guild, json!({ "preset": preset })).await?;
             (guild, r)
         }
@@ -417,6 +428,9 @@ mod tests {
         assert_eq!(level_name(10, &ladder), "VIP");
         let gone = edit_ladder(ladder.clone(), &LevelCmd::Remove { guild: "g".into(), level: "user".into() }).unwrap();
         assert!(parse_level("user", &gone).is_err(), "지운 단계는 고를 수 없다");
+        // 지운 기본 단계와 같은 이름으로 더한 단계는 그 이름으로 고른다
+        let renamed = ladder_of(&json!({ "ladder": [{ "id": 3 }, { "id": 2 }, { "id": 11, "name": "User" }, { "id": 0 }, { "id": -1 }] }));
+        assert_eq!(parse_level("user", &renamed).unwrap(), 11);
 
         let added = edit_ladder(ladder.clone(), &LevelCmd::Add { guild: "g".into(), name: " Mod ".into(), above: Some("user".into()) }).unwrap();
         let moved = edit_ladder(added, &LevelCmd::Move { guild: "g".into(), level: "vip".into(), above: "admin".into() }).unwrap();
