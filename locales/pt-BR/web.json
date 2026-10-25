@@ -138,11 +138,25 @@
     "use_default": "Usar nível padrão",
     "saved": "Permissão alterada.",
     "level": {
+      "3": "Dono",
       "2": "Administrador",
       "1": "Usuário",
       "0": "Só a Saba-chan falante",
       "-1": "Banido"
-    }
+    },
+    "ladder": "Níveis de permissão",
+    "ladder_hint": "Quanto mais alto, mais forte o nível. Dono e Bloqueado ficam fixos.",
+    "ladder_name": "Nome do nível",
+    "ladder_fixed": "Fixo",
+    "ladder_up": "Subir {{name}}",
+    "ladder_down": "Descer {{name}}",
+    "ladder_delete": "Excluir {{name}}",
+    "ladder_new": "Nome do novo nível",
+    "ladder_add": "Adicionar",
+    "ladder_removed": "Quem estiver em níveis excluídos vai para o nível logo abaixo. Comandos que os exigiam vão para o nível logo acima.",
+    "ladder_invalid": "Os nomes de nível precisam ter de 1 a 32 caracteres.",
+    "ladder_revert": "Desfazer",
+    "ladder_save": "Salvar níveis"
   },
   "modules": {
     "games": "Módulos de jogo",

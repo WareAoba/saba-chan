@@ -247,10 +247,43 @@ pub enum PermCmd {
     Cap { guild: String, level: String },
     /// Level one command needs (`<server>/<command>`, server by name or id); leave the level out to go back to the preset
     Command { guild: String, key: String, level: Option<String> },
+    /// Add, rename, remove or move a permission level of one Discord server (`perm show` lists them)
+    #[command(subcommand)]
+    Level(LevelCmd),
     /// Change the pinned owner of this Discord server
     Owner { guild: String, member: String },
     /// Bring levels still kept on the relay (from before) into this PC. No members: all of them, after asking
     Import { guild: String, members: Vec<String> },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum LevelCmd {
+    /// Add a level (right below the owner, or right above `--above`)
+    Add {
+        guild: String,
+        name: String,
+        #[arg(long, value_name = "LEVEL")]
+        above: Option<String>,
+    },
+    /// Rename an added level
+    Rename { guild: String, level: String, name: String },
+    /// Remove a level: its members move one level down, commands that needed it one level up
+    Remove { guild: String, level: String },
+    /// Put a level right above another one (the owner stays on top, banned at the bottom)
+    Move {
+        guild: String,
+        level: String,
+        #[arg(long, value_name = "LEVEL")]
+        above: String,
+    },
+}
+
+impl LevelCmd {
+    pub fn guild(&self) -> &str {
+        match self {
+            LevelCmd::Add { guild, .. } | LevelCmd::Rename { guild, .. } | LevelCmd::Remove { guild, .. } | LevelCmd::Move { guild, .. } => guild,
+        }
+    }
 }
 
 #[derive(Subcommand, Debug)]

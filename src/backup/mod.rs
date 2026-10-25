@@ -1044,7 +1044,7 @@ mod tests {
             let mut source = zip::ZipArchive::new(File::open(dir.join(&backup.name)).unwrap()).unwrap();
             let mut manifest: Manifest = serde_json::from_reader(source.by_name(MANIFEST).unwrap()).unwrap();
             manifest.links.push(LinkEntry { path: w.join("jump"), target: outside.clone(), dir: true });
-            manifest.paths.push(ManifestEntry { entry: "1".into(), path: w.join("jump/payload"), is_file: true });
+            manifest.paths.push(ManifestEntry { entry: "1".into(), path: w.join("jump/payload"), is_file: true, from: None });
             let mut output = zip::ZipWriter::new(File::create(&crafted).unwrap());
             for index in 0..source.len() {
                 let file = source.by_index(index).unwrap();

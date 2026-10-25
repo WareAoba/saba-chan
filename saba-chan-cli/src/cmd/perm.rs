@@ -1,6 +1,6 @@
 //! `perm` — 디스코드에서 누가 어떤 명령을 쓸 수 있는지 (데몬 권한 설정, P1)
 
-use crate::cli::PermCmd;
+use crate::cli::{LevelCmd, PermCmd};
 use crate::ctx::Ctx;
 use crate::error::{usage, CliError, Result};
 use crate::output::{self, s};
@@ -8,20 +8,69 @@ use crate::resolve;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 
-/// 레벨 이름(영어·한국어) 또는 숫자 → -1..3
-fn parse_level(raw: &str) -> Result<i64> {
-    let level = match raw.trim().to_lowercase().as_str() {
-        "owner" | "소유자" => 3,
-        "admin" | "관리자" => 2,
-        "user" | "유저" => 1,
-        "chatbot" | "챗봇" | "말하는 사바쨩" | "talking saba-chan" => 0,
-        "banned" | "금지" => -1,
-        n => n.parse().map_err(|_| usage(t!("perm.bad_level", level = raw)))?,
-    };
-    Ok(level)
+const OWNER: i64 = 3;
+
+/// 단계 사다리 한 칸 (높은 것부터). 기본 단계는 이름이 없고, 새로 더할 단계는 id가 없다 (데몬이 번호를 준다)
+#[derive(Debug, Clone, PartialEq)]
+struct Rung {
+    id: Option<i64>,
+    name: Option<String>,
 }
 
-fn level_name(level: i64) -> String {
+/// 권한 응답의 `ladder` (없으면 기본 다섯 단계)
+fn ladder_of(perm: &Value) -> Vec<Rung> {
+    let rungs: Vec<Rung> = perm
+        .get("ladder")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|l| Some(Rung { id: Some(l.get("id")?.as_i64()?), name: l.get("name").and_then(Value::as_str).map(str::to_string) }))
+        .collect();
+    if rungs.len() >= 3 {
+        return rungs;
+    }
+    [3, 2, 1, 0, -1].into_iter().map(|id| Rung { id: Some(id), name: None }).collect()
+}
+
+/// 데몬에 보낼 사다리: 기본 단계는 `{id}`, 더한 단계는 `{id?, name}`
+fn ladder_patch(ladder: &[Rung]) -> Value {
+    Value::Array(
+        ladder
+            .iter()
+            .map(|r| match (r.id, &r.name) {
+                (Some(id), None) => json!({ "id": id }),
+                (Some(id), Some(name)) => json!({ "id": id, "name": name }),
+                (None, name) => json!({ "name": name.clone().unwrap_or_default() }),
+            })
+            .collect(),
+    )
+}
+
+/// 레벨 이름(영어·한국어, 이 서버에 더한 단계 이름) 또는 숫자 → 이 서버 사다리의 id
+fn parse_level(raw: &str, ladder: &[Rung]) -> Result<i64> {
+    let q = raw.trim().to_lowercase();
+    let builtin = match q.as_str() {
+        "owner" | "소유자" => Some(3),
+        "admin" | "관리자" => Some(2),
+        "user" | "유저" => Some(1),
+        "chatbot" | "챗봇" | "말하는 사바쨩" | "talking saba-chan" => Some(0),
+        "banned" | "금지" => Some(-1),
+        n => n.parse().ok(),
+    };
+    let named = || ladder.iter().find(|r| r.name.as_deref().is_some_and(|n| n.to_lowercase() == q)).and_then(|r| r.id);
+    // 기본 단계 낱말이 이 사다리에 없으면 같은 이름으로 더한 단계를 본다
+    builtin.filter(|id| ladder.iter().any(|r| r.id == Some(*id))).or_else(named).ok_or_else(|| usage(t!("perm.bad_level", level = raw)))
+}
+
+/// 프리셋을 고르면 지워질 명령별 레벨 수
+fn overrides(perm: &Value) -> usize {
+    perm["commandLevels"].as_object().map_or(0, |m| m.len())
+}
+
+fn level_name(level: i64, ladder: &[Rung]) -> String {
+    if let Some(name) = ladder.iter().find(|r| r.id == Some(level)).and_then(|r| r.name.clone()) {
+        return name;
+    }
     let key = match level {
         3 => "owner",
         2 => "admin",
@@ -30,6 +79,58 @@ fn level_name(level: i64) -> String {
         _ => "banned",
     };
     t!(&format!("perm.level.{}", key))
+}
+
+/// 사다리 칸 위치. 소유자·금지는 움직이거나 지울 수 없다
+fn movable_at(ladder: &[Rung], raw: &str) -> Result<usize> {
+    let id = parse_level(raw, ladder)?;
+    match ladder.iter().position(|r| r.id == Some(id)) {
+        Some(i) if i > 0 && i < ladder.len() - 1 => Ok(i),
+        _ => Err(usage(t!("perm.level_fixed", level = raw))),
+    }
+}
+
+/// `above` 바로 위에 넣을 자리 (없으면 소유자 바로 아래). 소유자 위는 안 된다
+fn slot_above(ladder: &[Rung], above: Option<&str>) -> Result<usize> {
+    let Some(raw) = above else { return Ok(1) };
+    let id = parse_level(raw, ladder)?;
+    match ladder.iter().position(|r| r.id == Some(id)) {
+        Some(i) if i > 0 => Ok(i),
+        _ => Err(usage(t!("perm.level_fixed", level = raw))),
+    }
+}
+
+/// 사다리 편집 하나. 이름 규칙(1~32자)과 개수는 데몬이 다시 검사한다
+fn edit_ladder(mut ladder: Vec<Rung>, cmd: &LevelCmd) -> Result<Vec<Rung>> {
+    match cmd {
+        LevelCmd::Add { name, above, .. } => {
+            let at = slot_above(&ladder, above.as_deref())?;
+            ladder.insert(at, Rung { id: None, name: Some(name.trim().to_string()) });
+        }
+        LevelCmd::Rename { level, name, .. } => {
+            let at = movable_at(&ladder, level)?;
+            if ladder[at].name.is_none() {
+                return Err(usage(t!("perm.level_builtin", level = level)));
+            }
+            ladder[at].name = Some(name.trim().to_string());
+        }
+        LevelCmd::Remove { level, .. } => {
+            let at = movable_at(&ladder, level)?;
+            ladder.remove(at);
+        }
+        LevelCmd::Move { level, above, .. } => {
+            let from = movable_at(&ladder, level)?;
+            let rung = ladder.remove(from);
+            let to = slot_above(&ladder, Some(above))?;
+            ladder.insert(to, rung);
+        }
+    }
+    Ok(ladder)
+}
+
+/// 레벨 인자를 이 서버 사다리로 읽는다 (더한 단계 이름도 받게 권한을 먼저 읽는다)
+async fn level_in(ctx: &Ctx, guild: &str, raw: &str) -> Result<i64> {
+    parse_level(raw, &ladder_of(&ctx.api.permissions(guild).await?))
 }
 
 pub async fn run(ctx: &Ctx, cmd: PermCmd) -> Result<()> {
@@ -42,8 +143,8 @@ pub async fn run(ctx: &Ctx, cmd: PermCmd) -> Result<()> {
             return Ok(());
         }
         PermCmd::Grant { guild, member, level } => {
-            let level = parse_level(&level)?;
             let guild = resolve::guild(ctx, Some(&guild)).await?;
+            let level = level_in(ctx, &guild, &level).await?;
             let member = resolve::member(ctx, &guild, &member).await?;
             let r = ctx.api.set_member_level(&guild, &member, Some(level)).await?;
             (guild, r)
@@ -55,28 +156,33 @@ pub async fn run(ctx: &Ctx, cmd: PermCmd) -> Result<()> {
             (guild, r)
         }
         PermCmd::Default { guild, level } => {
-            let level = parse_level(&level)?;
             let guild = resolve::guild(ctx, Some(&guild)).await?;
+            let level = level_in(ctx, &guild, &level).await?;
             let r = ctx.api.update_permissions(&guild, json!({ "defaultLevel": level })).await?;
             (guild, r)
         }
         PermCmd::Preset { guild, preset } => {
             let guild = resolve::guild(ctx, Some(&guild)).await?;
+            // GUI 처럼: 프리셋은 명령별 레벨을 지우므로 있으면 먼저 묻는다
+            let count = overrides(&ctx.api.permissions(&guild).await?);
+            if count > 0 && !ctx.ask.confirm(&t!("perm.preset_reset", count = count, preset = preset), false)? {
+                return Err(CliError::Cancelled.into());
+            }
             let r = ctx.api.update_permissions(&guild, json!({ "preset": preset })).await?;
             (guild, r)
         }
         PermCmd::Cap { guild, level } => {
-            let level = parse_level(&level)?;
             let guild = resolve::guild(ctx, Some(&guild)).await?;
+            let level = level_in(ctx, &guild, &level).await?;
             let r = ctx.api.update_permissions(&guild, json!({ "chatbotCap": level })).await?;
             (guild, r)
         }
         PermCmd::Command { guild, key, level } => {
+            let guild = resolve::guild(ctx, Some(&guild)).await?;
             let level = match level {
-                Some(l) => json!(parse_level(&l)?),
+                Some(l) => json!(level_in(ctx, &guild, &l).await?),
                 None => Value::Null,
             };
-            let guild = resolve::guild(ctx, Some(&guild)).await?;
             let key = command_key(ctx, &key).await?;
             let r = ctx.api.update_permissions(&guild, json!({ "commandLevels": { key: level } })).await?;
             (guild, r)
@@ -84,6 +190,12 @@ pub async fn run(ctx: &Ctx, cmd: PermCmd) -> Result<()> {
         PermCmd::Import { guild, members } => {
             let guild = resolve::guild(ctx, Some(&guild)).await?;
             return import(ctx, &guild, &members).await;
+        }
+        PermCmd::Level(cmd) => {
+            let guild = resolve::guild(ctx, Some(cmd.guild())).await?;
+            let ladder = edit_ladder(ladder_of(&ctx.api.permissions(&guild).await?), &cmd)?;
+            let r = ctx.api.update_permissions(&guild, json!({ "ladder": ladder_patch(&ladder) })).await?;
+            (guild, r)
         }
         PermCmd::Owner { guild, member } => {
             let guild = resolve::guild(ctx, Some(&guild)).await?;
@@ -104,6 +216,7 @@ async fn import(ctx: &Ctx, guild: &str, wanted: &[String]) -> Result<()> {
         ctx.api.legacy_members(guild, crate::cmd::bot::relay_of(&cfg))
     )?;
     let candidates = import_candidates(&perm, &legacy);
+    let ladder = ladder_of(&perm);
     if candidates.is_empty() {
         ctx.out.done(&t!("perm.import_none"), &json!({ "imported": [] }));
         return Ok(());
@@ -114,7 +227,7 @@ async fn import(ctx: &Ctx, guild: &str, wanted: &[String]) -> Result<()> {
     let chosen: Vec<(String, i64)> = if wanted.is_empty() {
         if !ctx.out.json {
             for (id, level) in &candidates {
-                tell!("  {}: {}", label(id), level_name(*level));
+                tell!("  {}: {}", label(id), level_name(*level, &ladder));
             }
         }
         ctx.ask.ensure(&t!("perm.import_confirm", count = candidates.len()))?;
@@ -174,18 +287,20 @@ fn member_id(m: &Value) -> String {
     }
 }
 
-/// 가져오기 후보 `(id, level)`: 릴레이에 남은 부여값 중 데몬 것과 다른 것. 주인과 줄 수 없는 레벨(소유자 등)은 뺀다
+/// 가져오기 후보 `(id, level)`: 릴레이에 남은 부여값 중 데몬 것과 다른 것. 주인과 줄 수 없는 레벨(소유자, 이 서버에 없는 단계)은 뺀다
 fn import_candidates(perm: &Value, legacy: &Value) -> Vec<(String, i64)> {
     let owner = match perm.get("ownerDiscordId") {
         Some(v) if !v.is_null() => member_id(&json!({ "id": v })),
         _ => String::new(),
     };
+    let ladder = ladder_of(perm);
+    let grantable = |l: &i64| *l != OWNER && ladder.iter().any(|r| r.id == Some(*l));
     legacy
         .as_array()
         .into_iter()
         .flatten()
         .filter_map(|m| {
-            let level = m.get("level")?.as_i64().filter(|l| (-1..=2).contains(l))?;
+            let level = m.get("level")?.as_i64().filter(grantable)?;
             let id = member_id(m);
             let same = perm.pointer(&format!("/members/{}", id)).and_then(Value::as_i64) == Some(level);
             (!id.is_empty() && id != owner && !same).then_some((id, level))
@@ -242,10 +357,15 @@ fn show(ctx: &Ctx, r: &Value, names: &Names) {
         if let Some(conflict) = r.get("relayOwnerDiscordId").and_then(Value::as_str) {
             ctx.out.warn(&t!("perm.owner_conflict", id = conflict));
         }
+        let ladder = ladder_of(r);
         let level = |k: &str| r.get(k).and_then(Value::as_i64).unwrap_or(1);
-        say!("{}: {}", t!("perm.default"), level_name(level("defaultLevel")));
+        let order: Vec<String> = ladder.iter().filter_map(|l| l.id).map(|id| level_name(id, &ladder)).collect();
+        say!("{}: {}", t!("perm.ladder"), order.join(" > "));
+        say!("{}: {}", t!("perm.default"), level_name(level("defaultLevel"), &ladder));
         say!("{}: {}", t!("perm.preset"), s(r, "preset"));
-        say!("{}: {}", t!("perm.cap"), level_name(level("chatbotCap")));
+        say!("{}: {}", t!("perm.cap"), level_name(level("chatbotCap"), &ladder));
+        // 높은 단계부터 (사다리 순서)
+        let rank = |l: i64| ladder.iter().position(|r| r.id == Some(l)).unwrap_or(usize::MAX);
 
         let mut members: Vec<(String, i64)> = r
             .get("members")
@@ -254,11 +374,11 @@ fn show(ctx: &Ctx, r: &Value, names: &Names) {
             .flatten()
             .map(|(id, l)| (id.clone(), l.as_i64().unwrap_or(1)))
             .collect();
-        members.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+        members.sort_by(|a, b| rank(a.1).cmp(&rank(b.1)).then(a.0.cmp(&b.0)));
         if !members.is_empty() {
             let mut t = output::table(&[t!("perm.member"), t!("perm.level_col")]);
             for (id, l) in members {
-                t.add_row(vec![member_name(names, &id), level_name(l)]);
+                t.add_row(vec![member_name(names, &id), level_name(l, &ladder)]);
             }
             output::print_table(t);
         }
@@ -272,7 +392,7 @@ fn show(ctx: &Ctx, r: &Value, names: &Names) {
         if !overrides.is_empty() {
             let mut t = output::table(&[t!("perm.command"), t!("perm.level_col")]);
             for (k, l) in overrides {
-                t.add_row(vec![command_name(names, &k), level_name(l)]);
+                t.add_row(vec![command_name(names, &k), level_name(l, &ladder)]);
             }
             output::print_table(t);
         }
@@ -283,16 +403,46 @@ fn show(ctx: &Ctx, r: &Value, names: &Names) {
 mod tests {
     use super::*;
 
+    fn vip_ladder() -> Vec<Rung> {
+        ladder_of(&json!({ "ladder": [{ "id": 3 }, { "id": 2 }, { "id": 10, "name": "VIP" }, { "id": 1 }, { "id": 0 }, { "id": -1 }] }))
+    }
+
     #[test]
     fn level_names_in_either_language_or_numbers() {
-        assert_eq!(parse_level("admin").unwrap(), 2);
-        assert_eq!(parse_level("금지").unwrap(), -1);
-        assert_eq!(parse_level("0").unwrap(), 0);
-        assert!(parse_level("boss").is_err());
+        let ladder = ladder_of(&json!({}));
+        assert_eq!(parse_level("admin", &ladder).unwrap(), 2);
+        assert_eq!(parse_level("금지", &ladder).unwrap(), -1);
+        assert_eq!(parse_level("0", &ladder).unwrap(), 0);
+        assert!(parse_level("boss", &ladder).is_err());
         // 서비스 이름이 바뀌어도(말하는 사바쨩) 예전 입력 낱말은 그대로 받는다
         for name in ["chatbot", "챗봇", "말하는 사바쨩", "Talking Saba-chan"] {
-            assert_eq!(parse_level(name).unwrap(), 0, "{name}");
+            assert_eq!(parse_level(name, &ladder).unwrap(), 0, "{name}");
         }
+    }
+
+    /// 사용자 지정 2026-10-25: 디스코드 서버마다 단계를 더하고 옮기고 지운다 (GUI 단계 탭과 같은 규칙)
+    #[test]
+    fn added_levels_are_named_and_the_ladder_can_be_edited() {
+        let ladder = vip_ladder();
+        assert_eq!(parse_level("vip", &ladder).unwrap(), 10);
+        assert_eq!(level_name(10, &ladder), "VIP");
+        let gone = edit_ladder(ladder.clone(), &LevelCmd::Remove { guild: "g".into(), level: "user".into() }).unwrap();
+        assert!(parse_level("user", &gone).is_err(), "지운 단계는 고를 수 없다");
+        // 지운 기본 단계와 같은 이름으로 더한 단계는 그 이름으로 고른다
+        let renamed = ladder_of(&json!({ "ladder": [{ "id": 3 }, { "id": 2 }, { "id": 11, "name": "User" }, { "id": 0 }, { "id": -1 }] }));
+        assert_eq!(parse_level("user", &renamed).unwrap(), 11);
+
+        let added = edit_ladder(ladder.clone(), &LevelCmd::Add { guild: "g".into(), name: " Mod ".into(), above: Some("user".into()) }).unwrap();
+        let moved = edit_ladder(added, &LevelCmd::Move { guild: "g".into(), level: "vip".into(), above: "admin".into() }).unwrap();
+        let renamed = edit_ladder(moved, &LevelCmd::Rename { guild: "g".into(), level: "vip".into(), name: "단골".into() }).unwrap();
+        assert_eq!(
+            ladder_patch(&renamed),
+            json!([{ "id": 3 }, { "id": 10, "name": "단골" }, { "id": 2 }, { "name": "Mod" }, { "id": 1 }, { "id": 0 }, { "id": -1 }])
+        );
+        // 소유자·금지는 고정, 기본 단계는 이름을 바꾸지 않는다
+        assert!(edit_ladder(ladder.clone(), &LevelCmd::Remove { guild: "g".into(), level: "owner".into() }).is_err());
+        assert!(edit_ladder(ladder.clone(), &LevelCmd::Move { guild: "g".into(), level: "vip".into(), above: "owner".into() }).is_err());
+        assert!(edit_ladder(ladder, &LevelCmd::Rename { guild: "g".into(), level: "admin".into(), name: "x".into() }).is_err());
     }
 
     /// 권한 표는 디스코드 id 대신 멤버·서버 이름을 보인다 (C8). 모르는 id는 그대로

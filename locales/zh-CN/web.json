@@ -138,11 +138,25 @@
     "use_default": "使用默认等级",
     "saved": "权限已更改。",
     "level": {
+      "3": "所有者",
       "2": "管理员",
       "1": "用户",
       "0": "仅限会说话的 Saba-chan",
       "-1": "已封禁"
-    }
+    },
+    "ladder": "权限等级",
+    "ladder_hint": "越靠上等级越高。所有者和屏蔽不能移动。",
+    "ladder_name": "等级名称",
+    "ladder_fixed": "固定",
+    "ladder_up": "将 {{name}} 上移",
+    "ladder_down": "将 {{name}} 下移",
+    "ladder_delete": "删除 {{name}}",
+    "ladder_new": "新等级名称",
+    "ladder_add": "添加",
+    "ladder_removed": "被删除等级的人会移到下一级，需要该等级的命令会移到上一级。",
+    "ladder_invalid": "等级名称需为 1–32 个字符。",
+    "ladder_revert": "还原",
+    "ladder_save": "保存等级"
   },
   "modules": {
     "games": "游戏模块",

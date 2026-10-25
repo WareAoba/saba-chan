@@ -138,11 +138,25 @@
     "use_default": "기본 레벨 따르기",
     "saved": "권한을 바꿨어요.",
     "level": {
+      "3": "주인",
       "2": "관리자",
       "1": "사용자",
       "0": "말하는 사바쨩만",
       "-1": "차단"
-    }
+    },
+    "ladder": "권한 단계",
+    "ladder_hint": "위에 있을수록 높은 단계예요. 주인과 차단은 움직일 수 없어요.",
+    "ladder_name": "단계 이름",
+    "ladder_fixed": "고정",
+    "ladder_up": "{{name}} 위로",
+    "ladder_down": "{{name}} 아래로",
+    "ladder_delete": "{{name}} 지우기",
+    "ladder_new": "새 단계 이름",
+    "ladder_add": "추가",
+    "ladder_removed": "지운 단계의 사람은 바로 아래 단계로, 그 단계가 필요하던 명령은 바로 위 단계로 옮겨져요.",
+    "ladder_invalid": "단계 이름은 1~32자로 써 주세요.",
+    "ladder_revert": "되돌리기",
+    "ladder_save": "단계 저장"
   },
   "modules": {
     "games": "게임 모듈",

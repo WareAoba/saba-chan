@@ -138,11 +138,25 @@
     "use_default": "Utiliser le niveau par défaut",
     "saved": "Droit modifié.",
     "level": {
+      "3": "Propriétaire",
       "2": "Admin",
       "1": "Utilisateur",
       "0": "Saba-chan qui parle uniquement",
       "-1": "Banni"
-    }
+    },
+    "ladder": "Niveaux de permission",
+    "ladder_hint": "Plus une ligne est haute, plus le niveau est élevé. Propriétaire et Bloqué restent en place.",
+    "ladder_name": "Nom du niveau",
+    "ladder_fixed": "Fixe",
+    "ladder_up": "Monter {{name}}",
+    "ladder_down": "Descendre {{name}}",
+    "ladder_delete": "Supprimer {{name}}",
+    "ladder_new": "Nom du nouveau niveau",
+    "ladder_add": "Ajouter",
+    "ladder_removed": "Les personnes des niveaux supprimés passent au niveau juste en dessous. Les commandes qui les demandaient passent au niveau juste au-dessus.",
+    "ladder_invalid": "Les noms de niveau doivent faire 1 à 32 caractères.",
+    "ladder_revert": "Annuler",
+    "ladder_save": "Enregistrer les niveaux"
   },
   "modules": {
     "games": "Modules de jeu",

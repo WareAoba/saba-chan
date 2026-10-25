@@ -9,6 +9,8 @@ const ALLOWED = new Set([
     '@gui/utils/serverView',
     '@gui/utils/localizedText',
     '@gui/utils/commandRisk',
+    // 권한 단계 계산과 사다리 편집 (화면 없는 순수 함수)
+    '@gui/components/discord/levels',
     '@gui/styles/tokens.css',
     // 아이콘은 GUI 와 같은 것을 쓴다 (화면이 아니라 그림 하나)
     '@gui/components/Icon',

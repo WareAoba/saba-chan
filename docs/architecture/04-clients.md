@@ -116,7 +116,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 | saveNodeToken / loadNodeToken / deleteNodeToken (835-853) | PUT/GET/DELETE /api/config/node-token. DELETE는 데몬이 에이전트를 멈추고 토큰을 지운다 | ✓ 710 |
 | auditList (855) | GET /api/audit?limit&instance (A10). `{entries}` 최신이 먼저 | ✓ 640 |
 | permissionsGet (860) | GET /api/permissions/:guildId (P1) | ✓ 723-726 |
-| permissionsUpdate (861) | PATCH /api/permissions/:guildId `{defaultLevel?, preset?, chatbotCap?, ownerDiscordId?, commandLevels?}` | ✓ 723-726 |
+| permissionsUpdate (861) | PATCH /api/permissions/:guildId `{defaultLevel?, preset?, chatbotCap?, ownerDiscordId?, commandLevels?, ladder?}` | ✓ 723-726 |
 | permissionsSetMember (862) | PUT /api/permissions/:guildId/members/:discordId `{level}` | ✓ 727-730 |
 | permissionsRemoveMember (863) | DELETE /api/permissions/:guildId/members/:discordId | ✓ 727-730 |
 | sandboxListUnisolated (864) | GET /api/sandbox/unisolated `{components:[{component, fingerprint, current}]}` | ✓ 737 |
@@ -210,9 +210,9 @@ PC 주인이 폰 브라우저로 서버·인스턴스를 관리하는 원격 화
 - 배포: `npx vite build`의 `dist/`를 server-chan `deploy/`의 `../remote-web`에 두면 nginx가 `/remote/`로 낸다(`base: '/remote/'`).
 - 세션(`src/session.js`): `hello{link}` → `ready{sid,key,expiresAt,hostId}`. 끊기면 25초 안에 `resume{sid,key}`로 다시 붙고(릴레이 유예 30초), 페이지를 떠나면(`pagehide`) `bye`. 요청은 `req{id,method,path,body}` → `res{id,status,body}`, 130초가 지나면 `remote_timeout`으로 끝낸다. 연장은 `extend`.
 - 브리지(`src/api.js`): GUI `createApi({invoke, hub}).api`를 그대로 쓰고 `invoke('daemon_request')`만 세션 요청으로 바꾼다. 다른 Tauri 명령(창·파일 대화상자·프로세스)은 `not_supported`로 막는다. 응답 가공과 오류 문구는 GUI와 같다. 릴레이 `event{kind,data}`는 `onDaemonEvent`로 `{type,data}`가 되어 온다.
-- GUI에서 가져오는 것은 `createApi`, `events`, `serverView`, `localizedText`, `commandRisk`, `tokens.css`, 아이콘 `components/Icon`뿐이다(`src/test/guiImports.test.js`). 화면은 따로 만든다. GUI에 없는 아이콘만 `src/components/icons.jsx`에 둔다. 로고·사바쨩 그림은 GUI `public/`의 파일을 `@art` 별칭으로 가져온다(`src/art.js`의 목록만 빌드에 들어간다).
+- GUI에서 가져오는 것은 `createApi`, `events`, `serverView`, `localizedText`, `commandRisk`, 권한 단계 계산 `components/discord/levels`, `tokens.css`, 아이콘 `components/Icon`뿐이다(`src/test/guiImports.test.js`). 화면은 따로 만든다. GUI에 없는 아이콘만 `src/components/icons.jsx`에 둔다. 로고·사바쨩 그림은 GUI `public/`의 파일을 `@art` 별칭으로 가져온다(`src/art.js`의 목록만 빌드에 들어간다).
 - 주기 읽기(서버 목록 4초, 콘솔 1.5초, PC 사용량·데몬 로그 3초, 설치 진행 2초)는 `components/poll.js` `startPoll`로 한다: 앞 요청이 끝난 뒤에 다음을 잡고, 탭이 숨어 있으면 쉬었다가 보이면 바로 읽는다.
-- 화면: 서버(목록·추가·설치 진행과 실패(`provision-progress`, 실패를 닫으면 데몬이 새로 만들던 서버를 지운다)·시작/정지/재시작·EULA 동의·콘솔·설정·백업·삭제), 권한(`relayListHostNodes(hostId)` → 길드별 `permissionsGet`, 멤버는 실제 레벨 높은 순·같은 레벨은 이름순, 디스코드 프로필 사진), 모듈(공식 매니페스트 설치, 플러그인 켜기/끄기/설치), 더보기(PC 사용량, 데몬 로그). 설정의 경로·파일·비밀번호 칸은 PC에서만 바꾼다(열쇠 아이콘, 비밀번호는 데몬이 응답에서 뺀다). 확인 창은 GUI와 같은 경우에만 띄운다.
+- 화면: 서버(목록·추가·설치 진행과 실패(`provision-progress`, 실패를 닫으면 데몬이 새로 만들던 서버를 지운다)·시작/정지/재시작·EULA 동의·콘솔·설정·백업·삭제), 권한(`relayListHostNodes(hostId)` → 길드별 `permissionsGet`, 기본 레벨·멤버 레벨과 단계 사다리 편집(위·아래 버튼), 멤버는 실제 레벨 높은 순(사다리 순서)·같은 레벨은 이름순, 디스코드 프로필 사진), 모듈(공식 매니페스트 설치, 플러그인 켜기/끄기/설치), 더보기(PC 사용량, 데몬 로그). 설정의 경로·파일·비밀번호 칸은 PC에서만 바꾼다(열쇠 아이콘, 비밀번호는 데몬이 응답에서 뺀다). 확인 창은 GUI와 같은 경우에만 띄운다.
 - 문구: `locales/<lang>/web.json`(`web` ns)과 `common.json`(`common` ns, 브리지 오류 문구). 10개 언어 키·자리 표시자 일치는 `src/test/locales.test.js`가 검사한다.
 
 ---
