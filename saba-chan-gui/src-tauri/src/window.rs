@@ -5,7 +5,7 @@
 use crate::{emit_main, AppState};
 use serde_json::{json, Value};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::time::Instant;
 use tauri::webview::NewWindowResponse;
@@ -304,6 +304,13 @@ pub struct PxRect {
 static TRAY_ANCHOR: Mutex<Option<PxRect>> = Mutex::new(None);
 /// 팝업이 포커스를 잃어 닫힌 시각 (`monotonic_ms`)
 static TRAY_POPUP_CLOSED_AT: AtomicU64 = AtomicU64::new(0);
+/// 지금 팝업이 보였는가 (`fit_tray_popup`이 보인 뒤 true, 새로 만들 때 false)
+static TRAY_POPUP_SHOWN: AtomicBool = AtomicBool::new(false);
+
+/// 숨긴 채 만들어지는 동안에도 포커스 잃음이 온다: 보인 뒤에만 그것으로 닫는다
+fn popup_closes_on_blur(shown: bool) -> bool {
+    shown
+}
 
 /// 아이콘 옆에 팝업을 놓을 자리 (물리 px). 가로는 아이콘 가운데, 아이콘이 작업 영역 아래쪽이면 위로,
 /// 위쪽이면 아래로 띄운다. 작업 영역(작업 표시줄을 뺀 화면) 밖으로 나가지 않게 당긴다
@@ -334,6 +341,7 @@ pub fn toggle_tray_popup(app: &AppHandle, anchor: Option<PxRect>) {
         return;
     }
     *TRAY_ANCHOR.lock().unwrap() = anchor;
+    TRAY_POPUP_SHOWN.store(false, Ordering::SeqCst);
     let builder = WebviewWindowBuilder::new(app, TRAY_POPUP, WebviewUrl::App("index.html?tray-popup=1".into()))
         .title("Saba-chan")
         .inner_size(TRAY_POPUP_WIDTH, TRAY_POPUP_INITIAL_HEIGHT)
@@ -356,6 +364,9 @@ pub fn toggle_tray_popup(app: &AppHandle, anchor: Option<PxRect>) {
     let popup = win.clone();
     win.on_window_event(move |event| {
         if let WindowEvent::Focused(false) = event {
+            if !popup_closes_on_blur(TRAY_POPUP_SHOWN.load(Ordering::SeqCst)) {
+                return;
+            }
             TRAY_POPUP_CLOSED_AT.store(monotonic_ms(), Ordering::SeqCst);
             let _ = popup.destroy();
         }
@@ -399,6 +410,7 @@ pub fn fit_tray_popup(app: &AppHandle, height: f64) {
     let _ = win.set_size(tauri::PhysicalSize::new(size.0, size.1));
     let _ = win.show();
     let _ = win.set_focus();
+    TRAY_POPUP_SHOWN.store(true, Ordering::SeqCst);
 }
 
 // ── 콘솔 팝아웃 ──
@@ -533,6 +545,13 @@ mod tests {
         for cmd in ["\"tray_action\"", "\"tray_popup_fit\""] {
             assert!(build.contains(cmd), "{cmd} is missing from the app manifest");
         }
+    }
+
+    #[test]
+    fn a_tray_popup_closes_on_blur_only_after_it_is_shown() {
+        // 숨긴 채 만들어지는 동안 받은 포커스 잃음으로 닫히면 팝업이 보이기도 전에 사라진다 (PC 실측 80ms)
+        assert!(!popup_closes_on_blur(false));
+        assert!(popup_closes_on_blur(true));
     }
 
     #[test]
