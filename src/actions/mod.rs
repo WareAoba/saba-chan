@@ -109,6 +109,8 @@ pub struct Def {
     /// 디스코드 작업 메뉴에 싣는가 (heartbeat `surfaces`에 discord를 넣는가). 전용 명령이 같은 액션을 부르는
     /// 것(길드 설정은 "/사바쨩")과 메뉴에서 뺀 것은 false다. 챗봇 목록에는 그대로 남고, 액션 자체도 디스코드에서 계속 부를 수 있다
     pub remote_menu: bool,
+    /// 디스코드 서버 주인도 `discord_level` 주인으로 본다 (길드 공통 설정, 원격 데몬 R2b). 챗봇 경로는 아니다
+    pub guild_owner: bool,
 }
 
 use Surface::{Chatbot, Cli, Discord, Gui};
@@ -118,7 +120,7 @@ const LOCAL_AND_CHATBOT: &[Surface] = &[Gui, Cli, Chatbot];
 const LOCAL_AND_DISCORD: &[Surface] = &[Gui, Cli, Discord];
 
 const fn def(id: &'static str, kind: Kind, risk: &'static str, surfaces: &'static [Surface], instance: bool, method: &'static str, path: &'static str) -> Def {
-    Def { id, kind, risk, surfaces, instance, method, path, fields: &[], open_input: false, discord_level: None, remote_menu: true }
+    Def { id, kind, risk, surfaces, instance, method, path, fields: &[], open_input: false, discord_level: None, remote_menu: true, guild_owner: false }
 }
 
 /// 첫 판 액션. 새 기능은 여기 한 줄을 더하면 모든 표면에 퍼진다.
@@ -188,6 +190,7 @@ pub static ACTIONS: &[Def] = &[
         fields: &[path_field("guild"), field("locale", "string", false), field("sleeping", "boolean", false), field("music", "object", false)],
         discord_level: Some(crate::chat::permissions::OWNER),
         remote_menu: false,
+        guild_owner: true,
         ..def("discord.settings.set", Kind::Admin, "caution", LOCAL_AND_DISCORD, false, "PATCH", "/api/discord/:guild/settings")
     },
     def("update.check", Kind::Query, "safe", LOCAL_AND_DISCORD, false, "POST", "/api/updates/check"),
@@ -770,6 +773,7 @@ struct Resolved {
     risk: String,
     surfaces: Vec<Surface>,
     discord_level: Option<i64>,
+    guild_owner: bool,
     method: &'static str,
     uri: String,
     body: Option<Value>,
@@ -837,6 +841,7 @@ async fn resolve_in(server: &IPCServer, id: &str, instance: Option<&str>, input:
             risk: "safe".into(),
             surfaces: ALL.to_vec(),
             discord_level: None,
+            guild_owner: false,
             method: "POST",
             uri: format!("/api/instance/{}/query/{}", seg(instance), seg(name)),
             body: Some(json!({ "args": Value::Object(args) })),
@@ -861,6 +866,7 @@ async fn resolve_in(server: &IPCServer, id: &str, instance: Option<&str>, input:
             risk: view["risk"].as_str().unwrap_or("caution").to_string(),
             surfaces,
             discord_level: None,
+            guild_owner: false,
             method: "POST",
             uri: format!("/api/instance/{}/command", seg(instance)),
             body: Some(json!({ "command": name, "args": Value::Object(input.clone()) })),
@@ -963,6 +969,7 @@ async fn resolve_in(server: &IPCServer, id: &str, instance: Option<&str>, input:
         risk: def.risk.to_string(),
         surfaces: def.surfaces.to_vec(),
         discord_level: def.discord_level,
+        guild_owner: def.guild_owner,
         method: def.method,
         uri,
         body,
@@ -1002,6 +1009,10 @@ async fn authorize(server: &IPCServer, r: &Resolved, caller: &Caller) -> Result<
             ..ActionError::new(403, "PERMISSION_DENIED", "Permission denied")
         }
     };
+    // 디스코드 서버 주인은 길드 공통 설정에서 PC 주인과 같다 (사다리·금지와 상관없이, 직접 명령만)
+    if r.guild_owner && !who.via_chatbot && who.user_id.is_some() && who.guild_owner_id == who.user_id {
+        return Ok(());
+    }
     perms.check_basic(who).map_err(|d| denied(d.need))?;
     let instance = r.instance.as_deref().unwrap_or("");
     // 이 길드에 열리지 않은 인스턴스

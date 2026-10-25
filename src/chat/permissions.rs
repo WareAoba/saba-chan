@@ -110,6 +110,8 @@ pub struct Requester {
     pub user_id: Option<String>,
     /// 릴레이가 알려 준 노드 주인. 없으면 소유자가 없는 것으로 본다
     pub owner_id: Option<String>,
+    /// 릴레이가 알려 준 디스코드 서버 주인 (대표 PC 에만 싣는다). 길드 공통 설정 액션에서만 주인으로 본다
+    pub guild_owner_id: Option<String>,
     pub via_chatbot: bool,
     /// 챗봇이 올린 확인을 누른 사람 (릴레이 `confirmedBy`, 누른 사람이 요청자일 때만 싣는다)
     pub confirmed_by: Option<String>,
