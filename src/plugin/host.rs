@@ -44,6 +44,9 @@ pub struct Proxy {
     pub context: Option<Context>,
     /// 이 호출이 가리키는 인스턴스의 서버 PID (REST 대상 포트가 그 서버 것인지 본다)
     pub server: Option<u32>,
+    /// 격리된(확인되지 않은) 실행이면 그 진입 파일. 그 인스턴스 모듈의 진입 파일일 때 `instance.rest`만 잇는다:
+    /// 콘솔 명령과 익스텐션 hook의 요청은 받지 않는다
+    pub sandboxed: Option<PathBuf>,
 }
 
 fn failure(code: &str, error: impl std::fmt::Display) -> Value {
@@ -113,6 +116,12 @@ async fn dispatch(proxy: &Proxy, request: &Value) -> Value {
     if supervisor.read().await.instance_store.get(&context.id).is_none() {
         return failure("no_instance", "The instance is no longer available");
     }
+    if let Some(component) = &proxy.sandboxed {
+        if op != "instance.rest" || !own_module(&supervisor, &context.id, component).await {
+            tracing::warn!("[Host] sandboxed {} refused: only the instance's own module may use REST", component.display());
+            return failure("op_not_allowed", "Host operation is not allowed");
+        }
+    }
     let Some(args) = request.get("args").and_then(Value::as_object) else {
         return failure("invalid_request", "Host args must be an object");
     };
@@ -158,6 +167,10 @@ async fn dispatch(proxy: &Proxy, request: &Value) -> Value {
             sup.tracker.get_pid(&context.id).ok(),
         )
     };
+    if rest_port == super::ipc_port() {
+        tracing::warn!("[Host] refused REST to the daemon port {}", rest_port);
+        return failure("port_not_allowed", "The REST port is the daemon's own port");
+    }
     let local = matches!(rest_host.trim(), "127.0.0.1" | "localhost" | "::1" | "[::1]");
     // 서버를 가리키는 호출(stop·status 등)은 그 PID를, 익스텐션 명령·hook처럼 PID 없이 온 호출은 데몬이 추적하는 서버 PID를 쓴다
     let server = proxy.server.or(tracked);
@@ -180,6 +193,26 @@ async fn dispatch(proxy: &Proxy, request: &Value) -> Value {
         .await,
     )
     .await
+}
+
+/// 격리 실행의 진입 파일이 그 인스턴스 모듈의 진입 파일인가 (익스텐션·다른 모듈이면 false).
+/// 폴더가 아니라 파일로 본다: zip 모듈은 `.extracted/<이름>`에서 돌아 구성요소 폴더로는 가릴 수 없다
+async fn own_module(supervisor: &RwLock<Supervisor>, id: &str, component: &std::path::Path) -> bool {
+    let module = {
+        let sup = supervisor.read().await;
+        let Some(instance) = sup.instance_store.get(id) else { return false };
+        match sup.module_loader.get_module(&instance.module_name) {
+            Ok(module) => PathBuf::from(module.entry_path()),
+            Err(_) => return false,
+        }
+    };
+    let component = component.to_path_buf();
+    tokio::task::spawn_blocking(move || match (std::fs::canonicalize(module), std::fs::canonicalize(component)) {
+        (Ok(module), Ok(component)) => module == component,
+        _ => false,
+    })
+    .await
+    .unwrap_or(false)
 }
 
 async fn response(value: impl IntoResponse) -> Value {
@@ -218,6 +251,7 @@ mod tests {
             dir: dir.path().into(),
             context: None,
             server: None,
+            sandboxed: None,
         };
         for (id, op, args, code) in [
             ("missing", "instance.stdin", json!({"command":"say hi"}), "no_instance"),
@@ -255,7 +289,7 @@ mod tests {
         let runtime = Runtime::new(&supervisor, CredentialsCache::default());
         let dir = tempfile::tempdir().unwrap();
         // 서버가 꺼져 있다(PID 없음): 다른 프로그램이 그 포트를 들어도 잇지 않는다
-        let proxy = Proxy { dir: dir.path().into(), context: Some(runtime.for_instance(&id)), server: None };
+        let proxy = Proxy { dir: dir.path().into(), context: Some(runtime.for_instance(&id)), server: None, sandboxed: None };
         serve(&proxy, &json!({"id":"r1","op":"instance.rest","args":{"method":"GET","path":"/x"}}).to_string()).await;
         let reply: serde_json::Value = serde_json::from_slice(&std::fs::read(dir.path().join("r1.json")).unwrap()).unwrap();
         assert_eq!(reply["error_code"], "port_not_served", "{reply}");
@@ -265,6 +299,62 @@ mod tests {
         let reply: serde_json::Value = serde_json::from_slice(&std::fs::read(dir.path().join("r2.json")).unwrap()).unwrap();
         assert_ne!(reply["error_code"], "port_not_served", "{reply}");
         drop(other);
+    }
+
+    async fn probe_supervisor(rest_port: u16) -> (tempfile::TempDir, Arc<RwLock<Supervisor>>, String, PathBuf) {
+        let tmp = tempfile::tempdir().unwrap();
+        let module = tmp.path().join("modules").join("host-probe");
+        std::fs::create_dir_all(&module).unwrap();
+        std::fs::write(module.join("module.toml"), "[module]\nschema_version=1\nname='host-probe'\nversion='1.0.0'\nentry='lifecycle.py'\n[protocols]\nsupported=['rest']\n").unwrap();
+        std::fs::write(module.join("lifecycle.py"), "").unwrap();
+        let mut supervisor = Supervisor::new_with_instances_dir(tmp.path().join("modules").to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        supervisor.initialize().await.unwrap();
+        let mut instance = crate::instance::ServerInstance::new("host", "host-probe");
+        instance.rest_port = Some(rest_port);
+        let id = instance.id.clone();
+        supervisor.instance_store.add(instance).unwrap();
+        supervisor.tracker.track(&id, std::process::id()).unwrap();
+        (tmp, Arc::new(RwLock::new(supervisor)), id, module.join("lifecycle.py"))
+    }
+
+    fn ask(dir: &std::path::Path, id: &str) -> Value {
+        serde_json::from_slice(&std::fs::read(dir.join(format!("{id}.json"))).unwrap()).unwrap()
+    }
+
+    /// 격리된(확인되지 않은) 모듈도 자기 인스턴스 서버의 REST로 저장·정지를 요청할 수 있다 (REST 게임의 정상 정지).
+    /// 콘솔 명령과 다른 구성요소(익스텐션 hook)의 요청은 지금처럼 받지 않는다
+    /// (포트를 듣는 프로세스는 Windows·Linux에서만 읽는다)
+    #[cfg(any(windows, target_os = "linux"))]
+    #[tokio::test]
+    async fn a_sandboxed_module_reaches_only_its_own_instance_rest() {
+        let server = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let (_tmp, supervisor, id, module) = probe_supervisor(server.local_addr().unwrap().port()).await;
+        let runtime = Runtime::new(&supervisor, CredentialsCache::default());
+        let dir = tempfile::tempdir().unwrap();
+        let rest = json!({"method":"POST","path":"/v1/api/shutdown","body":{}});
+        let own = Proxy { dir: dir.path().into(), context: Some(runtime.for_instance(&id)), server: None, sandboxed: Some(module.clone()) };
+        serve(&own, &json!({"id":"rest","op":"instance.rest","args":rest}).to_string()).await;
+        let reply = ask(dir.path(), "rest");
+        assert!(!matches!(reply["error_code"].as_str(), Some("op_not_allowed" | "no_instance" | "port_not_served")), "{reply}");
+        serve(&own, &json!({"id":"stdin","op":"instance.stdin","args":{"command":"op someone"}}).to_string()).await;
+        assert_eq!(ask(dir.path(), "stdin")["error_code"], "op_not_allowed");
+        let extension = tempfile::tempdir().unwrap();
+        std::fs::write(extension.path().join("hooks.py"), "").unwrap();
+        let other = Proxy { sandboxed: Some(extension.path().join("hooks.py")), ..own };
+        serve(&other, &json!({"id":"ext","op":"instance.rest","args":rest}).to_string()).await;
+        assert_eq!(ask(dir.path(), "ext")["error_code"], "op_not_allowed");
+        drop(server);
+    }
+
+    /// 인스턴스 REST 포트가 데몬 API 포트면 그 포트를 듣는 프로세스와 상관없이 잇지 않는다
+    #[tokio::test]
+    async fn host_rest_never_targets_the_daemon_port() {
+        let (_tmp, supervisor, id, _module) = probe_supervisor(super::super::ipc_port()).await;
+        let runtime = Runtime::new(&supervisor, CredentialsCache::default());
+        let dir = tempfile::tempdir().unwrap();
+        let proxy = Proxy { dir: dir.path().into(), context: Some(runtime.for_instance(&id)), server: None, sandboxed: None };
+        serve(&proxy, &json!({"id":"d","op":"instance.rest","args":{"method":"GET","path":"/api/instances"}}).to_string()).await;
+        assert_eq!(ask(dir.path(), "d")["error_code"], "port_not_allowed");
     }
 
     #[tokio::test]

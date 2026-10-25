@@ -110,6 +110,10 @@ async fn exchange(proxy: &Proxy, request: &Value) -> Result<Vec<u8>, String> {
         tracing::warn!("[Loopback] refused port {} (allowed: {:?})", port, proxy.ports);
         return Err("port_not_allowed".into());
     }
+    if port == crate::plugin::ipc_port() {
+        tracing::warn!("[Loopback] refused the daemon port {}", port);
+        return Err("port_not_allowed".into());
+    }
     let data = BASE64
         .decode(request.get("data").and_then(Value::as_str).unwrap_or(""))
         .map_err(|_| "data_not_base64".to_string())?;
@@ -327,6 +331,15 @@ mod tests {
         serve(&proxy, &json!({ "id": "f", "port": port, "data": "" }).to_string()).await;
         assert_eq!(reply(&proxy, "f")["error"], "port_not_served", "no running server, nothing to reach");
         assert!(tokio::time::timeout(Duration::from_millis(100), listener.accept()).await.is_err(), "no connection was made");
+    }
+
+    /// 데몬 API 포트는 인스턴스 포트로 적혀 있어도 잇지 않는다
+    #[tokio::test]
+    async fn the_daemon_port_is_never_relayed() {
+        let port = crate::plugin::ipc_port();
+        let (_dir, proxy) = proxy(vec![port]);
+        serve(&proxy, &json!({ "id": "g", "port": port, "data": "" }).to_string()).await;
+        assert_eq!(reply(&proxy, "g")["error"], "port_not_allowed");
     }
 
     #[test]
