@@ -1569,5 +1569,16 @@
     "start_daemon": "啟動常駐程式",
     "stop_daemon": "停止常駐程式",
     "quit_all": "完全結束"
+  },
+  "autostart": {
+    "label": "登入時自動啟動",
+    "description": "登入此電腦時啟動 Saba-chan。僅常駐程式時沒有視窗，在系統匣中執行。",
+    "off": "關閉",
+    "daemon": "僅常駐程式",
+    "full": "包含 GUI 全部",
+    "err_gui_missing": "未安裝 GUI，無法選擇「包含 GUI 全部」。",
+    "err_write_failed": "無法加入啟動程式。請重試。",
+    "err_unsupported": "此作業系統暫不支援此設定。",
+    "err_generic": "無法變更自動啟動。"
   }
 }

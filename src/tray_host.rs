@@ -7,7 +7,7 @@
 use std::time::{Duration, Instant};
 
 /// 상주 GUI를 띄우는 인자
-pub const TRAY_ARG: &str = "--tray";
+pub const TRAY_ARG: &str = saba_chan_updater_lib::autostart::TRAY_ARG;
 /// 확인 간격
 const CHECK_INTERVAL: Duration = Duration::from_secs(5);
 /// 데몬이 뜬 뒤 첫 확인까지 (데몬을 띄운 GUI가 먼저 등록할 틈)

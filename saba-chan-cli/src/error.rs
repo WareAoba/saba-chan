@@ -242,6 +242,8 @@ pub fn api_hint(code: &str, body: &Value) -> Option<String> {
         "module_busy" => Some(t!("err.hint.module_busy")),
         // 폴더 옮기기 (`/api/system/paths/move`)
         c if c.starts_with("paths_") => crate::i18n::try_t(&format!("err.hint.{}", c)),
+        // 로그인할 때 자동 실행 (`/api/system/autostart`)
+        c if c.starts_with("autostart_") => crate::i18n::try_t(&format!("err.hint.{}", c)),
         "schedule_changed" => Some(t!("err.hint.schedule_changed")),
         "not_supported" => Some(t!("err.hint.not_supported")),
         "invalid_command" => Some(t!("err.hint.invalid_command")),

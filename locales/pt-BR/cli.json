@@ -137,7 +137,15 @@
     "confirm_move_modules": "Mover os módulos para {{dir}}? Os módulos instalados são copiados, conferidos e depois removidos da pasta antiga.",
     "confirm_move_extensions": "Mover as extensões para {{dir}}? As extensões instaladas são copiadas, conferidas e depois removidas da pasta antiga.",
     "moved": "Movido para {{path}}.",
-    "move_left_behind": "Não foi possível remover estes arquivos antigos. Apague-os você mesmo: {{files}}"
+    "move_left_behind": "Não foi possível remover estes arquivos antigos. Apague-os você mesmo: {{files}}",
+    "autostart": {
+      "off": "Desligado",
+      "daemon": "Só o daemon",
+      "full": "Tudo com a GUI",
+      "current": "Iniciar ao entrar: {{mode}}",
+      "set": "Iniciar ao entrar agora é: {{mode}}.",
+      "unsupported": "Ainda não é possível configurar o início ao entrar neste sistema operacional."
+    }
   },
   "console": {
     "attach_help": "Conectado a {{name}}. Digite um comando, :help para ajuda, :q para sair (o servidor continua rodando).",
@@ -262,7 +270,11 @@
       "paths_verify_failed": "A cópia não correspondeu ao original. Nada foi alterado. Tente de novo.",
       "paths_commit_failed": "Não foi possível salvar a configuração. Os arquivos foram devolvidos ao lugar.",
       "paths_unknown_kind": "Escolha modules ou extensions.",
-      "paths_overlaps_install": "Não pode ficar dentro da pasta de instalação. Escolha uma pasta fora dela."
+      "paths_overlaps_install": "Não pode ficar dentro da pasta de instalação. Escolha uma pasta fora dela.",
+      "autostart_gui_missing": "A GUI não está instalada. Instale-a para iniciar tudo com a GUI.",
+      "autostart_write_failed": "Não foi possível adicionar o Saba-chan aos programas de inicialização. Verifique as permissões e tente de novo.",
+      "autostart_unsupported": "Ainda não é possível configurar o início ao entrar neste sistema operacional.",
+      "autostart_unknown_mode": "Escolha off, daemon ou full."
     },
     "not_a_bool": "\"{{value}}\" não é sim/não (use true ou false).",
     "not_a_number": "\"{{value}}\" não é um número.",
@@ -578,7 +590,8 @@
       "server.log": "Log salvo das execuções anteriores (o console guarda só a atual)",
       "server.query": "Consultas somente leitura do módulo do jogo (sem nome: a lista)",
       "daemon.clients": "Janelas do app de desktop conectadas ao daemon",
-      "gui": "Mudar para o app de desktop: ele abre o mesmo servidor e o menu em tela cheia fecha"
+      "gui": "Mudar para o app de desktop: ele abre o mesmo servidor e o menu em tela cheia fecha",
+      "config.autostart": "O que inicia quando você entra neste PC: off, daemon (só o daemon e a bandeja) ou full (com a janela da GUI). Sem modo mostra o valor atual"
     },
     "arg": {
       "module.maker.game": "Jogo para o primeiro pedido",
@@ -620,7 +633,8 @@
       "server.query.args": "Entrada como CHAVE=VALOR",
       "chatbot.show.guild": "Os valores que um servidor do Discord usa de fato (comuns + os dele), por nome ou id",
       "do.steps": "Vários passos em JSON: [{\"id\": \"...\", \"instance\": \"...\", \"input\": {...}}, ...] (em vez de ACTION)",
-      "do.run_id": "Progresso de uma execução de vários passos que continua em segundo plano"
+      "do.run_id": "Progresso de uma execução de vários passos que continua em segundo plano",
+      "config.autostart.mode": "off, daemon ou full"
     },
     "after": "Os nomes podem ser parciais (ex.: start pal). Sem argumentos em um terminal, abre o menu em tela cheia (SABA_NO_TUI=1: o shell interativo).\nEm scripts, use --json e --yes. Códigos de saída: 0 ok · 1 falha · 2 uso · 3 daemon inacessível · 4 não encontrado · 130 cancelado"
   },

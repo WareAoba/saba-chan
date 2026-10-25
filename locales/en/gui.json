@@ -1569,5 +1569,16 @@
     "start_daemon": "Start daemon",
     "stop_daemon": "Stop daemon",
     "quit_all": "Quit completely"
+  },
+  "autostart": {
+    "label": "Start at sign-in",
+    "description": "Starts Saba-chan when you sign in to this PC. Daemon only runs in the tray without a window.",
+    "off": "Off",
+    "daemon": "Daemon only",
+    "full": "Everything with the GUI",
+    "err_gui_missing": "The GUI is not installed, so everything with the GUI cannot be chosen.",
+    "err_write_failed": "Could not add Saba-chan to the startup programs. Try again.",
+    "err_unsupported": "This cannot be set on this OS yet.",
+    "err_generic": "Could not change start at sign-in."
   }
 }

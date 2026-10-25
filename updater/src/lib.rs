@@ -32,6 +32,7 @@ pub mod versions;
 pub mod window_icon;
 mod apply;
 pub mod apply_session;
+pub mod autostart;
 mod state;
 mod time;
 

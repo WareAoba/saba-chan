@@ -184,7 +184,15 @@
     "confirm_move_modules": "要把模块移到 {{dir}} 吗？已安装的模块会先复制、校验，然后从旧文件夹删除。",
     "confirm_move_extensions": "要把扩展移到 {{dir}} 吗？已安装的扩展会先复制、校验，然后从旧文件夹删除。",
     "moved": "已移到 {{path}}。",
-    "move_left_behind": "无法删除以下旧文件，请手动删除：{{files}}"
+    "move_left_behind": "无法删除以下旧文件，请手动删除：{{files}}",
+    "autostart": {
+      "off": "关闭",
+      "daemon": "仅守护进程",
+      "full": "包括 GUI 全部",
+      "current": "登录时自动启动：{{mode}}",
+      "set": "登录时自动启动已改为{{mode}}。",
+      "unsupported": "此操作系统暂不支持设置登录时自动启动。"
+    }
   },
   "console": {
     "attach_help": "已连接到 {{name}}。输入命令，:help 查看帮助，:q 退出（服务器会继续运行）。",
@@ -317,7 +325,11 @@
       "paths_verify_failed": "副本与原件不一致，未做任何更改。请重试。",
       "paths_commit_failed": "保存设置失败，文件已放回原处。",
       "paths_unknown_kind": "请选择 modules 或 extensions。",
-      "paths_overlaps_install": "不能放在安装文件夹内。请选择安装文件夹以外的文件夹。"
+      "paths_overlaps_install": "不能放在安装文件夹内。请选择安装文件夹以外的文件夹。",
+      "autostart_gui_missing": "未安装 GUI。要使用“包括 GUI 全部”，请先安装 GUI。",
+      "autostart_write_failed": "无法添加到启动程序。请检查权限后重试。",
+      "autostart_unsupported": "此操作系统暂不支持设置登录时自动启动。",
+      "autostart_unknown_mode": "请选择 off、daemon 或 full。"
     },
     "not_a_bool": "“{{value}}”不是是/否（请使用 true 或 false）。",
     "not_a_number": "“{{value}}”不是数字。",
@@ -796,7 +808,8 @@
       "server.log": "保存的历次运行日志（控制台只保留本次）",
       "server.query": "游戏模块提供的查询（不指定名称则列出）",
       "daemon.clients": "连接到守护进程的桌面应用窗口",
-      "gui": "切换到桌面应用:打开同一个服务器,全屏菜单随之关闭"
+      "gui": "切换到桌面应用:打开同一个服务器,全屏菜单随之关闭",
+      "config.autostart": "登录此电脑时启动的内容：off（关闭）、daemon（仅守护进程和托盘）、full（包括 GUI 窗口）。不带模式时显示当前值"
     },
     "arg": {
       "module.maker.game": "第一个请求中的游戏名",
@@ -935,7 +948,8 @@
       "server.query.args": "输入 键=值",
       "chatbot.show.guild": "某个 Discord 服务器实际使用的值（公共值 + 该服务器的值），名称或 id",
       "do.steps": "用 JSON 写多个步骤：[{\"id\": \"...\", \"instance\": \"...\", \"input\": {...}}, ...]（代替 ACTION）",
-      "do.run_id": "在后台继续的多步骤运行的进度"
+      "do.run_id": "在后台继续的多步骤运行的进度",
+      "config.autostart.mode": "off、daemon 或 full"
     },
     "after": "名称可以只写一部分（例如 start pal）。在终端中不带参数运行会打开全屏菜单(SABA_NO_TUI=1 时为交互式 shell)。\n在脚本中请使用 --json 和 --yes。退出码：0 成功 · 1 失败 · 2 用法错误 · 3 无法连接守护进程 · 4 未找到 · 130 已取消"
   },

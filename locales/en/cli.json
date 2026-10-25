@@ -194,7 +194,15 @@
     "confirm_move_modules": "Move the modules to {{dir}}? Installed modules are copied, checked and then removed from the old folder.",
     "confirm_move_extensions": "Move the extensions to {{dir}}? Installed extensions are copied, checked and then removed from the old folder.",
     "moved": "Moved to {{path}}.",
-    "move_left_behind": "These old files could not be removed. Delete them yourself: {{files}}"
+    "move_left_behind": "These old files could not be removed. Delete them yourself: {{files}}",
+    "autostart": {
+      "off": "Off",
+      "daemon": "Daemon only",
+      "full": "Everything with the GUI",
+      "current": "Start at sign-in: {{mode}}",
+      "set": "Start at sign-in is now {{mode}}.",
+      "unsupported": "Start at sign-in cannot be set on this OS yet."
+    }
   },
   "console": {
     "attach_help": "Attached to {{name}}. Type a command, :help for help, :q to leave (the server keeps running).",
@@ -327,7 +335,11 @@
       "paths_verify_failed": "The copy did not match the original. Nothing was changed. Try again.",
       "paths_commit_failed": "Saving the setting failed. The files were put back where they were.",
       "paths_unknown_kind": "Choose modules or extensions.",
-      "paths_overlaps_install": "It can't go inside the install folder. Choose a folder outside it."
+      "paths_overlaps_install": "It can't go inside the install folder. Choose a folder outside it.",
+      "autostart_gui_missing": "The GUI is not installed. Install it to start everything with the GUI.",
+      "autostart_write_failed": "Could not add Saba-chan to the startup programs. Check permissions and try again.",
+      "autostart_unsupported": "Start at sign-in cannot be set on this OS yet.",
+      "autostart_unknown_mode": "Pick off, daemon or full."
     },
     "not_a_bool": "\"{{value}}\" is not yes/no (use true or false).",
     "not_a_number": "\"{{value}}\" is not a number.",
@@ -674,7 +686,8 @@
       "config.paths": "Where Saba-chan keeps its data, modules and extensions, and the default folders",
       "config.move": "Move modules or extensions to another folder. Installed files are moved; servers must be stopped",
       "server.discord": "What Discord chat calls this server and its commands (the same in every Discord server). No options: show",
-      "gui": "Switch to the desktop app: it opens on the same server and the full-screen menu closes"
+      "gui": "Switch to the desktop app: it opens on the same server and the full-screen menu closes",
+      "config.autostart": "What starts when you sign in to this PC: off, daemon (daemon and tray only) or full (with the GUI window). Shows the current value without a mode"
     },
     "arg": {
       "module.maker.game": "Game to put in the first prompt",
@@ -736,7 +749,8 @@
       "uninstall.remove_instances": "Remove game servers too (server files, worlds, backups)",
       "config.move.kind": "What to move: modules or extensions",
       "config.move.folder": "Folder to use. Saba-chan makes a modules or extensions folder inside it",
-      "components_dir": "Folder for modules and extensions. Saba-chan makes modules and extensions folders inside it and moves installed files"
+      "components_dir": "Folder for modules and extensions. Saba-chan makes modules and extensions folders inside it and moves installed files",
+      "config.autostart.mode": "off, daemon or full"
     },
     "after": "Names can be partial (e.g. start pal). Run with no arguments in a terminal to open the full-screen menu (SABA_NO_TUI=1: the interactive shell).\nIn scripts use --json and --yes. Exit codes: 0 ok · 1 failed · 2 usage · 3 daemon unreachable · 4 not found · 130 cancelled"
   },

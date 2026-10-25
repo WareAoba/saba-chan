@@ -1569,5 +1569,16 @@
     "start_daemon": "Démarrer le démon",
     "stop_daemon": "Arrêter le démon",
     "quit_all": "Quitter complètement"
+  },
+  "autostart": {
+    "label": "Démarrer à la connexion",
+    "description": "Démarre Saba-chan quand vous vous connectez à ce PC. Le démon seul tourne dans la zone de notification, sans fenêtre.",
+    "off": "Désactivé",
+    "daemon": "Démon seul",
+    "full": "Tout avec la GUI",
+    "err_gui_missing": "La GUI n’est pas installée : « Tout avec la GUI » ne peut pas être choisi.",
+    "err_write_failed": "Impossible d’ajouter Saba-chan aux programmes de démarrage. Réessayez.",
+    "err_unsupported": "Pas encore réglable sur ce système.",
+    "err_generic": "Impossible de modifier le démarrage à la connexion."
   }
 }

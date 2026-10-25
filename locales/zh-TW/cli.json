@@ -137,7 +137,15 @@
     "confirm_move_modules": "要把模組移到 {{dir}} 嗎？已安裝的模組會先複製、驗證，然後從舊資料夾刪除。",
     "confirm_move_extensions": "要把擴充移到 {{dir}} 嗎？已安裝的擴充會先複製、驗證，然後從舊資料夾刪除。",
     "moved": "已移到 {{path}}。",
-    "move_left_behind": "無法刪除以下舊檔案，請手動刪除：{{files}}"
+    "move_left_behind": "無法刪除以下舊檔案，請手動刪除：{{files}}",
+    "autostart": {
+      "off": "關閉",
+      "daemon": "僅常駐程式",
+      "full": "包含 GUI 全部",
+      "current": "登入時自動啟動：{{mode}}",
+      "set": "登入時自動啟動已改為{{mode}}。",
+      "unsupported": "此作業系統暫不支援設定登入時自動啟動。"
+    }
   },
   "console": {
     "attach_help": "已連接到 {{name}}。輸入指令，:help 查看說明，:q 離開（伺服器會繼續運作）。",
@@ -262,7 +270,11 @@
       "paths_verify_failed": "複本與原件不一致，未做任何變更。請再試一次。",
       "paths_commit_failed": "儲存設定失敗，檔案已放回原處。",
       "paths_unknown_kind": "請選擇 modules 或 extensions。",
-      "paths_overlaps_install": "不能放在安裝資料夾內。請選擇安裝資料夾以外的資料夾。"
+      "paths_overlaps_install": "不能放在安裝資料夾內。請選擇安裝資料夾以外的資料夾。",
+      "autostart_gui_missing": "未安裝 GUI。要使用「包含 GUI 全部」，請先安裝 GUI。",
+      "autostart_write_failed": "無法加入啟動程式。請檢查權限後重試。",
+      "autostart_unsupported": "此作業系統暫不支援設定登入時自動啟動。",
+      "autostart_unknown_mode": "請選擇 off、daemon 或 full。"
     },
     "not_a_bool": "「{{value}}」不是是/否（請使用 true 或 false）。",
     "not_a_number": "「{{value}}」不是數字。",
@@ -578,7 +590,8 @@
       "server.log": "儲存的歷次執行記錄（主控台只保留本次）",
       "server.query": "遊戲模組提供的查詢（不指定名稱則列出）",
       "daemon.clients": "連到常駐程式的桌面應用程式視窗",
-      "gui": "切換到桌面應用程式:開啟同一個伺服器,全螢幕選單隨之關閉"
+      "gui": "切換到桌面應用程式:開啟同一個伺服器,全螢幕選單隨之關閉",
+      "config.autostart": "登入此電腦時啟動的內容：off（關閉）、daemon（僅常駐程式和系統匣）、full（包含 GUI 視窗）。不帶模式時顯示目前的值"
     },
     "arg": {
       "module.maker.game": "第一個請求中的遊戲名稱",
@@ -620,7 +633,8 @@
       "server.query.args": "輸入 鍵=值",
       "chatbot.show.guild": "某個 Discord 伺服器實際使用的值（共用值 + 該伺服器的值），名稱或 id",
       "do.steps": "用 JSON 寫多個步驟：[{\"id\": \"...\", \"instance\": \"...\", \"input\": {...}}, ...]（取代 ACTION）",
-      "do.run_id": "在背景繼續的多步驟執行的進度"
+      "do.run_id": "在背景繼續的多步驟執行的進度",
+      "config.autostart.mode": "off、daemon 或 full"
     },
     "after": "名稱可以只寫一部分（例如 start pal）。在終端機中不帶參數執行會開啟全螢幕選單(SABA_NO_TUI=1 時為互動式 shell)。\n在指令碼中請使用 --json 和 --yes。結束代碼：0 成功 · 1 失敗 · 2 用法錯誤 · 3 無法連線常駐程式 · 4 找不到 · 130 已取消"
   },

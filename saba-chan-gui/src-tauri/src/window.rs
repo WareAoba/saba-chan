@@ -171,8 +171,9 @@ pub fn create_main_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         .visible(false) // 페이지가 뜰 때까지 보이지 않음
         .background_color(Color(0xf0, 0xf0, 0xf2, 0xff)) // CSS 로드 전 흰 화면 방지
         .on_page_load(|w, payload| {
-            if matches!(payload.event(), tauri::webview::PageLoadEvent::Finished) {
-                let _ = w.show();
+            // 처음 뜰 때만 앞으로 올린다 (보이는 창을 새로고침했을 때 다른 앱의 포커스를 뺏지 않게)
+            if matches!(payload.event(), tauri::webview::PageLoadEvent::Finished) && !w.is_visible().unwrap_or(false) {
+                bring_to_front(&w);
             }
         });
     if let (Some(x), Some(y)) = (bounds["x"].as_f64(), bounds["y"].as_f64()) {
@@ -210,19 +211,24 @@ pub fn create_main_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     Ok(win)
 }
 
-/// 메인 창을 앞으로. 트레이만 남아 창이 없으면 새로 만든다 (페이지가 뜨면 보인다)
+/// 창을 보이고 다른 앱 창들 앞으로 올려 포커스를 준다.
+/// Windows는 다른 앱이 앞에 있으면 포커스 요청을 막고 작업 표시줄만 깜빡일 수 있어, 잠깐 항상 위로 두었다 풀어 맨 앞에 놓는다
+fn bring_to_front(w: &WebviewWindow) {
+    let _ = w.unminimize();
+    let _ = w.show();
+    let _ = w.set_always_on_top(true);
+    let _ = w.set_always_on_top(false);
+    let _ = w.set_focus();
+}
+
+/// 메인 창을 앞으로. 트레이만 남아 창이 없으면 새로 만든다 (페이지가 뜨면 앞으로 올라온다)
 pub fn show_main(app: &AppHandle) {
     if let Some(w) = app.get_webview_window(MAIN) {
-        let _ = w.unminimize();
-        let _ = w.show();
-        let _ = w.set_focus();
+        bring_to_front(&w);
         return;
     }
-    match create_main_window(app) {
-        Ok(w) => {
-            let _ = w.set_focus();
-        }
-        Err(e) => tracing::warn!("[Window] Failed to open the main window: {}", e),
+    if let Err(e) = create_main_window(app) {
+        tracing::warn!("[Window] Failed to open the main window: {}", e);
     }
 }
 

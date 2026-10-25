@@ -18,6 +18,7 @@ pub mod migration;
 pub mod diagnostics;
 pub mod system;
 pub mod paths;
+pub mod autostart;
 pub mod maker;
 pub mod permissions;
 pub mod sandbox;
