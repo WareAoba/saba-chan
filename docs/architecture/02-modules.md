@@ -648,6 +648,7 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
   3. R2 URL에서 `<modules>/.tmp-module-<id>.zip`로 받으며 SHA-256을 확인한다(`download_verified`).
   4. `.staging-<id>`에 풀고 데몬과 같은 규칙(`load_module_dir`: `module.toml` 파싱, 진입 파일, `saba-core` 요구 버전)으로 읽힐 때만 기존 `<modules>/<id>`와 바꾼다(`install_staged_module`). 기존 폴더는 `.old-<id>`로 옮겨 두었다가 새 폴더가 자리를 잡으면 지우고, 옮기다 실패하면 되돌린다. 모듈 탐색은 점으로 시작하는 항목을 건너뛰고, 데몬은 기동할 때 모듈·익스텐션 폴더의 `.staging-*`·`.old-*`·`.tmp-*`를 지운다(`utils::remove_install_leftovers`, 설치 도중 끝났을 때 남은 것). 단일 실행 잠금을 못 잡고 계속 가는 경우에는 정리하지 않는다. 또 `.old-<id>`가 있는데 `<id>`가 없으면(옛 폴더를 옮긴 뒤 새 폴더를 두기 전에 끝났다) 지우지 않고 `<id>`로 되돌린다. 그래서 업데이트해도 지워진 파일이 남지 않는다.
   - manifest의 `requires`(예: `{"saba-core": ">=0.1.10"}`)를 못 맞추면 받지 않고 `{ok:false, error, error_code:"module_dependency_unsatisfied", module, missing_dependencies:["saba-core >=0.1.10 (installed 0.1.9)"]}`로 답한다(로드 실패·시작 응답과 같은 꼴, `unmet_requires_body`).
+  5. 새 모듈이 `[install] requires_extensions`로 요구하는 익스텐션을 맞춘다(`handlers/extension.rs` `prepare_for_module`). 디스크에 없으면 카탈로그에서 의존 익스텐션과 함께 받고(`POST /api/extensions/:id/install`과 같은 경로), 의존 익스텐션부터 켠다(`ExtensionManager::enable_for_module`). 설치 전 판도 요구하던 익스텐션은 사용자가 일부러 껐을 수 있으므로 다시 켜지 않는다(이번에 새로 받은 것은 켠다). 처음 설치면 요구하는 것을 모두 켜고, 업데이트면 새로 필요해진 것만 켠다. 켠 것마다 그 익스텐션의 `daemon.startup`을 돌린다. 결과는 응답의 `extensions:{installed:[id], enabled:[id], failed:[{id, error, error_code, related}]}`다. 모듈 설치는 이미 끝났으므로 익스텐션 실패는 `ok:true`인 채 `failed`로만 알린다. GUI는 켠 것을 알림으로, 실패를 경고로 보이고 익스텐션 목록을 새로 받는다. CLI `module install`도 같은 문구를 낸다.
   - 실패도 HTTP 200 `{ok:false, error}`로 돌려준다.
 - **신뢰 표시 알림**: 서명된 카탈로그에서 받지 않았거나(`unverified`) 받은 뒤 바뀐(`modified`) 모듈로 인스턴스를 만들면 `POST /api/instances` 응답에 `module_trust`와 `warnings[{code, module}]`가 실린다. 알림일 뿐 만들기·실행은 막지 않는다(`server.rs` `trust_warnings`). CLI는 경고 줄로 보인다.
 - **`DELETE /api/modules/:id`**: `..`·`/`·`\`가 든 `id`는 거부하고, `<modules>/<id>`를 `remove_dir_all`로 지운다. 여기서 `id`는 **디렉터리명**이다 (`server.rs:593-617`).
@@ -656,7 +657,7 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 
 - `check_for_updates`가 같은 manifest에서 **설치된 모듈만** 골라 버전을 비교한다(`D:updater/src/lib.rs:482-557`). 새 모듈 설치는 목록 화면(§5.2)의 몫이다.
 - 무결성 검사는 업데이터가 적용할 때 zip에서 푼 파일마다 기록한 SHA-256(`<data_dir>/installed-files.json`)과 디스크 파일을 비교한다. manifest의 zip 해시와는 비교하지 않는다 (`D:updater/src/integrity.rs:1-6, 105-152, 235-239`). 설치기로 처음 깐 모듈은 기록이 없어 결과에 나오지 않는다.
-- **installer**: 모듈 목록도 같은 manifest의 `module-*`에서 만든다(`installer/gui/src-tauri/src/lib.rs` `get_available_modules`, `installer/core/src/release.rs` `modules`). 하드코딩 폴백은 없고, 받지 못하면 화면이 알린다.
+- **installer**: 고른 모듈의 `requires_extensions`를 `ext-<id>`에서 받아 설치하고, 받은 것을 `config.json`의 `extensions.enabled`에 더해 켜 둔다(`installer/core/src/lib.rs` `enable_extensions`, 있던 항목은 그대로). 데몬은 시작할 때 이 목록을 읽는다. 모듈 목록도 같은 manifest의 `module-*`에서 만든다(`installer/gui/src-tauri/src/lib.rs` `get_available_modules`, `installer/core/src/release.rs` `modules`). 하드코딩 폴백은 없고, 받지 못하면 화면이 알린다.
 
 ### 5.4 모듈 메이커 (새 모듈을 만드는 길)
 

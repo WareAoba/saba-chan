@@ -415,6 +415,8 @@
     "fetching_versions": "Fetching versions...",
     "files_installed": "Server files installed in {{dir}}.",
     "installed": "Module {{id}} installed.",
+    "extensions_enabled": "Enabled the extensions this module uses: {{ids}}",
+    "extension_failed": "Could not set up extension {{id}}: {{error}}",
     "installing": "Installing module {{id}}...",
     "latest": "latest",
     "needs": "Needs extensions: {{ids}}",

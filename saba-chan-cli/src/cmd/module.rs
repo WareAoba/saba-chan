@@ -30,6 +30,16 @@ pub async fn run(ctx: &Ctx, cmd: ModuleCmd) -> Result<()> {
             spin.finish_and_clear();
             let r = r?;
             ctx.out.done(&t!("module.installed", id = id), &r);
+            // JSON 모드면 응답의 `extensions`에 다 있다
+            if !ctx.out.json {
+                let (enabled, failed) = extension_notes(&r);
+                if let Some(text) = enabled {
+                    ctx.out.note(&text);
+                }
+                for text in failed {
+                    ctx.out.warn(&text);
+                }
+            }
             Ok(())
         }
         ModuleCmd::Remove { id } => {
@@ -104,6 +114,26 @@ pub async fn run(ctx: &Ctx, cmd: ModuleCmd) -> Result<()> {
 }
 
 /// `POST /api/module/:name/install` 본문. 실행 파일 이름을 주지 않으면 모듈 `server_executable`로 받는다
+/// 모듈 설치 응답의 `extensions`(데몬이 받고 켠 익스텐션): 켠 것 한 줄, 준비하지 못한 것마다 한 줄 (GUI 알림과 같은 문구)
+fn extension_notes(r: &Value) -> (Option<String>, Vec<String>) {
+    let ext = r.get("extensions");
+    let ids = |k: &str| -> Vec<&str> { ext.and_then(|e| e.get(k)).and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str).collect() };
+    let enabled = ids("enabled");
+    let enabled = (!enabled.is_empty()).then(|| t!("module.extensions_enabled", ids = enabled.join(", ")));
+    let failed = ext
+        .and_then(|e| e.get("failed"))
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .map(|f| {
+            let id = s(f, "id");
+            let error = crate::error::update_required(f, id).unwrap_or_else(|| s(f, "error").to_string());
+            t!("module.extension_failed", id = id, error = error)
+        })
+        .collect();
+    (enabled, failed)
+}
+
 fn install_files_body(version: &str, dir: &str, executable: Option<&str>, accept: &[String]) -> Value {
     let mut body = json!({ "version": version, "install_dir": dir, "accept_agreements": accept });
     if let Some(e) = executable {
@@ -477,6 +507,22 @@ mod tests {
             failed_lines(&other),
             vec![t!("module.failed", path = "/m/zz", error = "boom")]
         );
+    }
+
+    /// 모듈 설치 때 데몬이 켠 익스텐션과 준비하지 못한 것을 알린다. 익스텐션이 필요 없는 모듈은 아무 말도 없다
+    #[test]
+    fn module_install_reports_the_extensions_the_daemon_set_up() {
+        let r = json!({ "ok": true, "extensions": {
+            "installed": ["ue4-ini"], "enabled": ["steamcmd", "ue4-ini"],
+            "failed": [{ "id": "rcon", "error": "Cannot enable 'rcon'", "error_code": "app_version_unsatisfied", "related": ["999.0.0"] }]
+        }});
+        let (enabled, failed) = extension_notes(&r);
+        assert_eq!(enabled, Some(t!("module.extensions_enabled", ids = "steamcmd, ue4-ini")));
+        let why = t!("update_required.extension", name = "rcon", version = "999.0.0");
+        assert_eq!(failed, vec![t!("module.extension_failed", id = "rcon", error = why)]);
+
+        assert_eq!(extension_notes(&json!({ "ok": true, "extensions": { "installed": [], "enabled": [], "failed": [] } })), (None, vec![]));
+        assert_eq!(extension_notes(&json!({ "ok": true })), (None, vec![]), "older daemon");
     }
 
     /// 모듈이 밝힌 함수 목록(MK1)에 없는 선택 함수의 명령만 지원하지 않음으로 보인다. 목록을 모르면(null·없음) 아무것도 숨기지 않는다

@@ -394,6 +394,10 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
             tracing::info!("선택된 모듈에 필요한 익스텐션: {:?}", required_extensions);
 
             let (ext_names, failed) = install_required_extensions(hooks, &manifest, &required_extensions).await;
+            // 고른 모듈이 쓰는 것이니 켜 둔다 (데몬이 시작할 때 `extensions.enabled`를 읽는다)
+            if let Err(e) = enable_extensions(&ConfigFile::default_location(), &ext_names) {
+                warn(format!("Installed extensions could not be enabled ({}); enable them in Settings → Extensions", e));
+            }
             for name in ext_names {
                 installed.push(format!("extension:{}", name));
             }
@@ -930,6 +934,29 @@ async fn install_required_extensions(
     (installed, failed)
 }
 
+/// 익스텐션을 켠 것으로 적는다: `config.json`의 `extensions.enabled`에 더한다 (있던 것은 그대로, 데몬처럼 정렬)
+fn enable_extensions(config: &ConfigFile, ids: &[String]) -> std::io::Result<()> {
+    if ids.is_empty() {
+        return Ok(());
+    }
+    config
+        .update(|doc| {
+            let section = doc.entry("extensions".to_string()).or_insert_with(|| serde_json::json!({}));
+            if !section.is_object() {
+                *section = serde_json::json!({});
+            }
+            let mut enabled: Vec<String> = section
+                .get("enabled")
+                .and_then(|v| serde_json::from_value(v.clone()).ok())
+                .unwrap_or_default();
+            enabled.extend(ids.iter().cloned());
+            enabled.sort_unstable();
+            enabled.dedup();
+            section["enabled"] = serde_json::json!(enabled);
+        })
+        .map(|_| ())
+}
+
 /// 익스텐션을 풀 폴더: 익스텐션 폴더 아래, manifest `install_dir`(`extensions/<이름>`)의 마지막 이름이나 id.
 /// Python이 `import extensions.<이름>`으로 부르므로 하이픈은 밑줄로 (업데이터 `resolve_install_dir`와 같은 규칙)
 fn extension_target(extensions_dir: &Path, ext_id: &str, install_dir: Option<&str>) -> PathBuf {
@@ -951,6 +978,21 @@ fn is_copy_of(copy: &Path, original: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn installed_extensions_are_enabled_next_to_the_ones_already_on() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = ConfigFile::at(dir.path());
+        config
+            .set_section("extensions", serde_json::json!({ "enabled": ["zeta"], "settings": { "zeta": { "k": 1 } } }))
+            .unwrap();
+
+        enable_extensions(&config, &["ue4-ini".to_string(), "steamcmd".to_string(), "zeta".to_string()]).unwrap();
+
+        let section = config.section("extensions");
+        assert_eq!(section["enabled"], serde_json::json!(["steamcmd", "ue4-ini", "zeta"]));
+        assert_eq!(section["settings"]["zeta"]["k"], 1, "other keys stay");
+    }
 
     #[test]
     fn extensions_land_in_the_chosen_extensions_folder() {

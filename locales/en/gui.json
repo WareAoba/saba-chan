@@ -637,6 +637,8 @@
     "mock_server_label": "Mock server (test)",
     "real_api_label": "Real GitHub API",
     "module_busy": "Another install or removal of this module is still in progress. Try again when it finishes.",
+    "extensions_enabled": "Enabled the extensions this module uses: {{ids}}",
+    "extension_failed": "Could not set up extension {{id}}: {{error}}",
     "remove_failed": "Couldn't remove the module: {{error}}"
   },
   "validation": {

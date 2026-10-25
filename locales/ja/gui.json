@@ -581,6 +581,8 @@
     "restart_required_title": "再起動必要",
     "apply": "適用",
     "module_busy": "このモジュールの別のインストールまたは削除がまだ進行中です。終わってからもう一度お試しください。",
+    "extensions_enabled": "このモジュールが使う拡張機能を有効にしました: {{ids}}",
+    "extension_failed": "拡張機能 {{id}} を準備できませんでした: {{error}}",
     "remove_failed": "モジュールを削除できませんでした: {{error}}"
   },
   "add_instance_modal": {

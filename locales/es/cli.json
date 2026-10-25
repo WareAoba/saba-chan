@@ -348,6 +348,8 @@
     "fetching_versions": "Obteniendo versiones...",
     "files_installed": "Archivos del servidor instalados en {{dir}}.",
     "installed": "Módulo {{id}} instalado.",
+    "extensions_enabled": "Se activaron las extensiones que usa este módulo: {{ids}}",
+    "extension_failed": "No se pudo preparar la extensión {{id}}: {{error}}",
     "installing": "Instalando el módulo {{id}}...",
     "latest": "más reciente",
     "needs": "Requiere extensiones: {{ids}}",

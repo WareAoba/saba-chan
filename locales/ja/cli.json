@@ -405,6 +405,8 @@
     "fetching_versions": "バージョンを取得しています...",
     "files_installed": "サーバーファイルを {{dir}} にインストールしました。",
     "installed": "モジュール {{id}} をインストールしました。",
+    "extensions_enabled": "このモジュールが使う拡張機能を有効にしました: {{ids}}",
+    "extension_failed": "拡張機能 {{id}} を準備できませんでした: {{error}}",
     "installing": "モジュール {{id}} をインストールしています...",
     "latest": "最新",
     "needs": "必要な拡張機能: {{ids}}",

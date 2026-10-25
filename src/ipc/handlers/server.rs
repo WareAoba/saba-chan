@@ -666,7 +666,9 @@ async fn install_module_locked(state: IPCServer, module_id: String) -> axum::res
         return fail(format!("Module '{}' is not in the latest release", module_id));
     };
     // 설치된 것보다 낮은 버전은 받지 않는다
-    let installed = state.supervisor.read().await.module_loader.get_module(&module_id).ok().map(|m| m.metadata.version.clone());
+    let previous = state.supervisor.read().await.module_loader.get_module(&module_id).ok();
+    let previously_required = previous.as_ref().map(required_extensions).unwrap_or_default();
+    let installed = previous.map(|m| m.metadata.version.clone());
     if let Some(installed) = installed.filter(|v| saba_chan_updater_lib::version::is_downgrade(v, &comp.version)) {
         return fail(format!("Module '{}' {} is older than the installed {}", module_id, comp.version, installed));
     }
@@ -712,10 +714,21 @@ async fn install_module_locked(state: IPCServer, module_id: String) -> axum::res
     if let Err(e) = result {
         return fail(format!("{:#}", e));
     }
-    let mut supervisor = state.supervisor.write().await;
-    let _ = supervisor.refresh_modules();
-    supervisor.migrate_list_settings();
-    (StatusCode::OK, Json(json!({ "ok": true, "module_id": module_id, "version": comp.version }))).into_response()
+    let required = {
+        let mut supervisor = state.supervisor.write().await;
+        let _ = supervisor.refresh_modules();
+        supervisor.migrate_list_settings();
+        supervisor.module_loader.get_module(&module_id).ok().as_ref().map(required_extensions).unwrap_or_default()
+    };
+    // 이 모듈이 쓰는 익스텐션을 받고 켠다 (새로 필요해진 것만 켠다: 예전 판부터 쓰던 것은 사용자가 껐을 수 있다)
+    let extensions = super::extension::prepare_for_module(&state, &required, &previously_required).await;
+    (StatusCode::OK, Json(json!({ "ok": true, "module_id": module_id, "version": comp.version, "extensions": extensions })))
+        .into_response()
+}
+
+/// 모듈 `[install] requires_extensions`
+fn required_extensions(module: &crate::supervisor::module_loader::LoadedModule) -> Vec<String> {
+    module.metadata.install.as_ref().map(|i| i.requires_extensions.clone()).unwrap_or_default()
 }
 
 /// 모듈 하나의 설치·제거는 한 번에 하나만 (같은 모듈을 GUI·CLI가 동시에 설치하면 서로의 파일을 지운다).
