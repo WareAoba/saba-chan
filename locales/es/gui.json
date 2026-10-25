@@ -570,6 +570,20 @@
     "error_network": "Error al {{action}} la extensión '{{id}}'. Verifique la conexión con el daemon."
   },
   "saba_storage": {
+    "maker_claude_note": "Abre Claude Code en la carpeta clonada; encuentra la skill por sí solo.",
+    "maker_other_note": "En la carpeta clonada, pide a tu agente: «lee maker/SKILL.md y síguelo».",
+    "maker_title": "Crea un módulo para un juego que no está en la lista",
+    "maker_desc": "Tu agente de IA, como Claude Code o Codex, crea el módulo con un mismo procedimiento, desde las fuentes oficiales hasta una prueba aislada en este PC.",
+    "maker_open": "Crear el mío",
+    "maker_other": "Otros agentes",
+    "maker_step_install": "1. Instala la skill del creador de módulos en tu agente",
+    "maker_codex_line": "$skill-installer instala la ruta maker del repositorio {{repo}}",
+    "maker_game_label": "2. Escribe el juego y pídeselo a tu agente",
+    "maker_game_placeholder": "<nombre del juego>",
+    "maker_prompt_text": "Usa la skill saba-module-maker para crear un módulo de servidor de {{game}}. Investiga fuentes oficiales y supera todas las comprobaciones previas al PR.",
+    "maker_unverified": "Un módulo hecho por ti se ejecuta aislado como «sin verificar». Para compartirlo, envía un PR al repositorio de módulos.",
+    "maker_guide": "Abrir la guía",
+    "maker_unavailable": "No se pudo obtener la guía del creador de módulos del daemon.",
     "title": "Saba Storage",
     "setting_description": "Gestiona actualizaciones de componentes, módulos y extensiones",
     "tab_components": "Componentes",
@@ -623,6 +637,8 @@
     "restart_required_title": "Reinicio requerido",
     "apply": "Aplicar",
     "module_busy": "Otra instalación o eliminación de este módulo sigue en curso. Vuelve a intentarlo cuando termine.",
+    "extensions_enabled": "Se activaron las extensiones que usa este módulo: {{ids}}",
+    "extension_failed": "No se pudo preparar la extensión {{id}}: {{error}}",
     "remove_failed": "No se pudo eliminar el módulo: {{error}}"
   },
   "validation": {
@@ -669,6 +685,7 @@
     "tab_info": "Info",
     "console_offline": "El servidor está detenido. Inícialo para ver aquí su registro.",
     "console_offline_input": "Inicia el servidor para enviar comandos",
+    "console_read_only": "Este servidor no acepta entrada de consola. Envía comandos desde la pestaña Comandos",
     "console_popped_out": "La consola está abierta en una ventana aparte.",
     "console_popin": "Traerla de vuelta aquí",
     "commands_offline": "Inicia el servidor para enviar comandos.",
@@ -819,10 +836,7 @@
     "disconnect_desc": "Desconecta este PC de todos los servidores de Discord.",
     "tab_instances": "Instancias",
     "tab_members": "Miembros",
-    "iw_desc": "Define las palabras con las que cada servidor de Discord llama a este servidor y a sus comandos. No afecta a otros servidores de Discord.",
-    "iw_not_linked": "Aún no está conectado a Discord. Conéctate primero en la pantalla de Discord.",
-    "iw_no_guilds": "No hay servidores de Discord vinculados.",
-    "iw_not_used": "Este servidor de Discord no usa este servidor. Puedes activarlo en la pestaña Instancias de la pantalla de Discord.",
+    "iw_desc": "Elige las palabras que llaman a este servidor y a sus comandos. Funcionan igual en todos los servidores de Discord conectados.",
     "iw_server_words": "Nombres del servidor",
     "iw_server_words_aria": "Nombres de {{name}}",
     "iw_default": "Predeterminado: {{words}}",
@@ -1312,6 +1326,7 @@
     "extra_placeholder": "p. ej. -players=16 -useperfthreads",
     "unknown_args": "Los argumentos sin ajuste correspondiente se pasan tal cual: {{args}}",
     "invalid_format": "Formato no válido.",
+    "invalid_fields": "Algunos valores no tienen el formato correcto: {{fields}}",
     "unchecked": "No se pudieron comprobar los argumentos de inicio adicionales, así que no se guardó nada"
   },
   "saba": {

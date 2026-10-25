@@ -570,6 +570,20 @@
     "update_to": "v{{version}}으로 업데이트"
   },
   "saba_storage": {
+    "maker_claude_note": "받은 폴더에서 Claude Code를 열면 스킬을 스스로 찾아요.",
+    "maker_other_note": "받은 폴더에서 에이전트에게 \"maker/SKILL.md를 읽고 따라 줘\"라고 부탁하세요.",
+    "maker_title": "목록에 없는 게임은 직접 만들 수 있어요",
+    "maker_desc": "Claude Code·Codex 같은 내 AI 에이전트가 공식 자료 조사부터 이 PC의 격리 실측까지 같은 절차로 모듈을 만들어요.",
+    "maker_open": "직접 만들기",
+    "maker_other": "그 밖의 에이전트",
+    "maker_step_install": "1. 에이전트에 모듈 메이커 스킬 설치",
+    "maker_codex_line": "$skill-installer {{repo}} 저장소의 maker 경로를 설치해 줘",
+    "maker_game_label": "2. 만들 게임 이름을 넣고 에이전트에게 부탁하기",
+    "maker_game_placeholder": "<게임 이름>",
+    "maker_prompt_text": "saba-module-maker 스킬로 {{game}} 서버 모듈을 만들어 줘. 공식 자료로 조사하고 PR 전 관문을 모두 지켜 줘.",
+    "maker_unverified": "직접 만든 모듈은 '확인 안 됨'으로 격리 실행돼요. 다른 사람과 나누려면 모듈 저장소에 PR을 보내 주세요.",
+    "maker_guide": "자세한 안내 보기",
+    "maker_unavailable": "데몬에서 모듈 메이커 안내를 받지 못했어요.",
     "title": "사바 스토리지",
     "setting_description": "업데이트, 모듈, 익스텐션 관리",
     "tab_components": "컴포넌트",
@@ -623,6 +637,8 @@
     "mock_server_label": "Mock 서버 (테스트)",
     "real_api_label": "실제 GitHub API",
     "module_busy": "이 모듈의 다른 설치나 제거가 아직 진행 중이에요. 끝난 뒤 다시 시도해 주세요.",
+    "extensions_enabled": "이 모듈이 쓰는 익스텐션을 켰어요: {{ids}}",
+    "extension_failed": "익스텐션 {{id}}를 준비하지 못했어요: {{error}}",
     "remove_failed": "모듈을 제거하지 못했어요: {{error}}"
   },
   "validation": {
@@ -669,6 +685,7 @@
     "tab_info": "정보",
     "console_offline": "서버가 꺼져 있어요. 켜면 여기에 로그가 보여요.",
     "console_offline_input": "서버를 켜면 명령을 보낼 수 있어요",
+    "console_read_only": "이 서버는 콘솔 입력을 받지 않아요. 명령은 명령 탭에서 보내 주세요",
     "console_popped_out": "콘솔이 별도 창에서 열려 있어요.",
     "console_popin": "이 화면으로 가져오기",
     "commands_offline": "서버를 켜면 명령을 보낼 수 있어요.",
@@ -819,10 +836,7 @@
     "disconnect_desc": "이 PC와 모든 디스코드 서버의 연결을 끊어요.",
     "tab_instances": "인스턴스",
     "tab_members": "멤버",
-    "iw_desc": "디스코드 서버마다 이 서버와 명령을 부를 말을 따로 정해요. 다른 디스코드 서버에는 영향이 없어요.",
-    "iw_not_linked": "디스코드에 아직 연결하지 않았어요. 디스코드 화면에서 먼저 연결하세요.",
-    "iw_no_guilds": "연결된 디스코드 서버가 없어요.",
-    "iw_not_used": "이 디스코드 서버에서는 이 서버를 쓰지 않아요. 디스코드 화면의 인스턴스 탭에서 켤 수 있어요.",
+    "iw_desc": "이 서버와 명령을 부를 말을 정해요. 연결된 모든 디스코드 서버에서 같은 말로 불러요.",
     "iw_server_words": "서버를 부르는 말",
     "iw_server_words_aria": "{{name}}을(를) 부르는 말",
     "iw_default": "기본: {{words}}",
@@ -1312,6 +1326,7 @@
     "extra_placeholder": "예: -players=16 -useperfthreads",
     "unknown_args": "설정에 없는 인자는 그대로 넘겨요: {{args}}",
     "invalid_format": "잘못된 형식입니다.",
+    "invalid_fields": "형식이 맞지 않는 값이 있어요: {{fields}}",
     "unchecked": "추가 인자를 확인하지 못해 저장하지 않았어요"
   },
   "saba": {

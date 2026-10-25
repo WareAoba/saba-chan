@@ -721,6 +721,7 @@ impl IPCServer {
             .route("/api/modules/refresh", post(handlers::server::refresh_modules))
             .route("/api/version", get(handlers::server::version_handler))
             .route("/api/modules/schema", get(handlers::server::module_schema))
+            .route("/api/maker", get(handlers::maker::get_maker))
             .route("/api/modules/detect", post(handlers::server::detect_module_dir))
             .route("/api/modules/manifest", get(handlers::server::fetch_module_manifest))
             .route("/api/modules/manifest/:id/install", post(handlers::server::install_module_from_manifest))
@@ -873,10 +874,9 @@ impl IPCServer {
             // AI 챗봇 설정 (원본은 데몬, 릴레이에 맞춘다)
             .route("/api/chatbot", get(handlers::chatbot::get_chatbot).put(handlers::chatbot::put_chatbot).delete(handlers::chatbot::delete_chatbot))
             .route("/api/chatbot/memory", delete(handlers::chatbot::delete_memory))
-            // 길드·인스턴스별 디스코드 낱말 (로컬 전용)
-            .route("/api/guilds/:guild/instances", get(handlers::guild_words::list))
-            .route("/api/guilds/:guild/instances/:id/words", put(handlers::guild_words::put))
-            .route("/api/guilds/:guild/allowed-instances", put(handlers::guild_words::put_allowed))
+            // 인스턴스별 디스코드 낱말, 길드가 쓸 서버 (로컬 전용)
+            .route("/api/instance/:id/words", get(handlers::words::get).put(handlers::words::put))
+            .route("/api/guilds/:guild/allowed-instances", put(handlers::words::put_allowed))
             .route("/api/chatbot/guilds/:guild", get(handlers::chatbot::get_guild).patch(handlers::chatbot::patch_guild))
             .with_state(self.clone())
             .merge(updates::updates_router(self.update_state.clone()))
@@ -945,8 +945,8 @@ impl IPCServer {
                     // 릴레이 에이전트 자동 시작 (노드 토큰 + autoStart일 때)
                     let agent_server = self.clone();
                     tokio::spawn(async move {
-                        // 예전 전역 별명은 첫 하트비트 전에 길드·인스턴스 낱말로 옮긴다
-                        crate::ipc::handlers::guild_words::migrate_on_start(&agent_server).await;
+                        // 예전 낱말은 첫 하트비트 전에 인스턴스 낱말로 옮긴다
+                        crate::ipc::handlers::words::migrate_on_start(&agent_server).await;
                         crate::relay_agent::auto_start(&agent_server).await
                     });
 

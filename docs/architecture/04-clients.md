@@ -69,6 +69,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 | moduleListVersions (248) | GET /api/module/:name/versions?… | ✓ 695 |
 | moduleInstallServer (260) | POST /api/module/:name/install. 설정 창의 버전 설치는 `instance_id`·`background:true`로 시작만 시키고 창을 닫는다(진행은 서버 목록의 설치 표시). 받은 실행 파일·작업 폴더 기록은 데몬이 한다 | ✓ 697 |
 | instanceGetInstalledVersion (268) | GET /api/instance/:id/installed-version | ✓ 698 |
+| makerInfo | GET /api/maker | ✓ |
 | moduleManifest (275) | GET /api/modules/manifest | ✓ 656 |
 | moduleInstallFromManifest (282) | POST /api/modules/manifest/:id/install | ✓ 657 |
 | moduleRemove (289) | DELETE /api/modules/:id | ✓ 658 |
@@ -126,8 +127,8 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 | actionsList (867) | GET /api/actions?surface=gui&instance?&locale? (P2) | ✓ 743 |
 | actionsPlan (872) | POST /api/actions/:id/plan `{input, instance?}` | ✓ 746 |
 | actionsRun (873) | POST /api/actions/:id/run `{input, instance?}` 또는 `{planId}` | ✓ 747 |
-| guildInstances | GET /api/guilds/:guild/instances (길드·인스턴스별 부르는 말, 서버 상세의 디스코드 탭 `InstanceDiscordTab`이 페어링된 길드마다 부른다). `{guildId, instances:[{id, name, module, words, commands:[…]}]}`에서 `instances`만 돌려준다 | ✓ |
-| guildInstanceWordsSave | PUT /api/guilds/:guild/instances/:id/words `{words, commands}`. 400 `validation_failed {details:[{field, reason, word?, conflictWith?}]}`를 그대로 넘긴다. 성공하면 `{success, id, words, commands:{<명령>:[..]}}` | ✓ |
+| instanceWords | GET /api/instance/:id/words (인스턴스별 부르는 말, 서버 상세의 디스코드 탭 `InstanceDiscordTab`이 부른다). `{id, name, module, words, commands:[…]}`를 그대로 돌려준다 | ✓ |
+| instanceWordsSave | PUT /api/instance/:id/words `{words, commands}`. 400 `validation_failed {details:[{field, reason, word?, conflictWith?}]}`를 그대로 넘긴다. 성공하면 `{success, id, words, commands:{<명령>:[..]}}` | ✓ |
 | guildAllowedInstancesSave | PUT /api/guilds/:guild/allowed-instances `{instances: [id] \| null}`(null = 제한 없음) → `{guildId, allowedInstances}`. 디스코드 화면의 인스턴스 탭이 바로 부른다(bot-config 일괄 저장으로는 바뀌지 않는다) | ✓ |
 | discordSettingsGet (874) | GET /api/discord/:guild/settings (I2). `loaded:false`면 릴레이 값을 못 읽은 기본값이라 GUI는 편집을 막는다 | ✓ 732-735 |
 | discordSettingsSet (875) | PATCH /api/discord/:guild/settings `{locale?, sleeping?, music?}` | ✓ 732-735 |
@@ -192,7 +193,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 - **SettingsModal.js**: 탭은 `general / appearance / extensions / advanced`(335-353)이다. 버전과 컴포넌트 정보(`getComponentInfo`), 언어, 테마, IPC 포트, 언인스톨(`launchUninstaller`)이 있고, SabaStorage로 들어가는 진입점이 있다.
 - **SabaStorage.js**(구 업데이트 센터, 1197줄): 탭은 `components / modules / extensions`(53-70)이다.
   - components 탭: updater check/download/progress/apply/launchApply.
-  - modules 탭: 설치된 모듈과 `saba-chan-modules` 레지스트리(`moduleManifest`, `moduleInstallFromManifest`, `moduleRemove`).
+  - modules 탭: 설치된 모듈과 `saba-chan-modules` 레지스트리(`moduleManifest`, `moduleInstallFromManifest`, `moduleRemove`). 맨 아래 `ModuleMakerCard`("직접 만들기")는 `makerInfo`가 준 저장소로 에이전트별 설치 줄과 첫 부탁을 보여 준다. 서버 추가 창의 게임 고르기에도 같은 카드가 있다.
   - extensions 탭: 확장 레지스트리.
   - devMode의 Mock 릴리스 서버 토글(`handleToggleMock`): qcza9f의 옛 renderer는 L3에서 없어진 `api_base_url`/`github_*`를 보내 효과가 없다. GUI 리메이크(PR #5, fd26f4e)에서 고쳤다: `relay_url`만 보내고, `mock_relay`로 빌드한 개발판에서만 보인다.
 - **DiscordBotModal.js**(1134줄): 클라우드 릴레이 전용이다(local 모드, 봇 토큰, 음악 설정은 없어졌다). prefix, 노드(길드)별 `allowedInstances`와 멤버별 차단 명령(`memberPermissions`, 멤버 목록은 `relayListNodeMembers`, 125)을 다룬다. 페어링은 `relayInitiatePairing`(351)으로 시작해 `relayPollPairingStatus`(364)로 진행 상황을 확인하고 `saveNodeToken`(373)으로 마무리한다. 기본 relay는 `https://saba-chan.online`(9)이다. side-panel 모드가 있다(845-848). 명령 별명은 ServerSettingsModal에서 편집한다.
@@ -268,7 +269,7 @@ PC 주인이 폰 브라우저로 서버·인스턴스를 관리하는 원격 화
 - `bot channels GUILD [--chatbot 이름,…] [--no-chatbot] [--music 이름] [--no-music] [--notify 이름] [--no-notify]`: 채널 이름이나 id를 GET 응답의 `channels`로 id로 바꿔 PUT한다. `--notify`는 알림 채널(I3: 크래시·백업·업데이트·예약 예고)이다. 음악 채널을 새로 정할 때는 메시지가 지워진다고 확인을 받는다.
 - `bot link [ID] [--decline]`: 디스코드에서 코드 없이 `/사바쨩 연결`로 온 연결 요청(J1-b). ID 없이 부르면 목록(`GET /api/relay/link-requests`), ID면 수락, `--decline`이면 거절(`POST /api/relay/link-requests/:id`). `bot pair`는 끝에 GUI 디스코드 화면에서도 볼 수 있다는 안내를 붙인다(J1-c).
 - `bot allow GUILD [서버…] [--all]`: 그 디스코드 서버가 보고 부를 수 있는 서버(`nodeSettings[guild].allowedInstances`, Q-4). 서버 없이 부르면 보기, `--all`은 키를 지워 제한 없음. `PUT /api/guilds/:guild/allowed-instances`로 저장한다(`--all`이면 `instances:null`). 없는 서버 id는 데몬이 400으로 거절한다.
-- `server discord [SERVER] [--guild 디스코드 서버] [--word 낱말,…] [--command 명령=낱말,…] [--clear]`: 디스코드 서버(길드)마다 이 서버와 그 명령을 부르는 낱말(`nodeSettings[guild].instances[id]`, `cmd/discord_words.rs`). GUI 서버 상세의 디스코드 탭과 같다. 옵션 없이 부르면 페어링된 디스코드 서버(`GET /api/relay/host/:host/nodes`)마다 `GET /api/guilds/:guild/instances`에서 이 서버를 찾아 보여 주고, 그 디스코드 서버가 쓰지 않으면(`allowedInstances`) 그렇다고 적는다. `--guild`만 주면 그 디스코드 서버의 명령별 낱말을 보여 준다. 바꿀 때는 디스코드 서버를 정하고(`--guild`, 페어링이 하나면 그것, 터미널이면 고르기) 지금 값에서 시작해 `--word`(서버 낱말 통째, `--word ""`는 지움)와 `--command`(그 명령만, `명령=`은 지움)만 바꾸고 `{words, commands}` 전체를 `PUT /api/guilds/:guild/instances/:id/words`로 보낸다. `--clear`는 둘 다 비운다. 낱말 규칙·충돌은 데몬이 검사하고, 400 `validation_failed`의 `details`는 칸마다 한 줄로 보인다(`error.rs` `api_hint`). 예전 `bot words`와 전역 별명 명령 `bot alias`·`bot server-alias`·`bot word`는 없앴다.
+- `server discord [SERVER] [--word 낱말,…] [--command 명령=낱말,…] [--clear]`: 디스코드에서 이 서버와 그 명령을 부르는 낱말(봇 설정 `serverWords[id]`, 인스턴스에 딸려 어느 디스코드 서버에서나 같다, `cmd/discord_words.rs`). GUI 서버 상세의 디스코드 탭과 같다. 옵션 없이 부르면 `GET /api/instance/:id/words`의 서버 낱말과 명령별 낱말(괄호는 module.toml 별명)을 보여 준다. 바꿀 때는 지금 값에서 시작해 `--word`(서버 낱말 통째, `--word ""`는 지움)와 `--command`(그 명령만, `명령=`은 지움)만 바꾸고 `{words, commands}` 전체를 `PUT /api/instance/:id/words`로 보낸다. `--clear`는 둘 다 비운다. 낱말 규칙·충돌은 데몬이 검사하고, 400 `validation_failed`의 `details`는 칸마다 한 줄로 보인다(`error.rs` `api_hint`). 0.1.10의 `--guild`(디스코드 서버마다 따로 정하기)는 없앴다. 예전 `bot words`와 전역 별명 명령 `bot alias`·`bot server-alias`·`bot word`도 없다.
 - `bot lang GUILD [auto|코드]`,
  `bot sleep GUILD`, `bot wake GUILD`, `bot music GUILD [--on|--off] [--ui on|off] [--queue-lines N] [--refresh MS] [--normalize on|off]`: 디스코드 길드 설정(I2) `GET/PATCH /api/discord/:guild/settings`. 값이 없으면 보기만 한다. 봇에 닿지 않아 `sync.ok:false`면 다음 연결 때 보낸다고 알린다.
 - `server launch-preview [SERVER] [--args "..."]`: `POST /api/instance/:id/launch-preview`의 `command_line`을 보여 주고, 형식이 틀린 인자는 "잘못된 형식입니다"로 알린다. `--args`가 없으면 저장된 추가 인자로 본다.

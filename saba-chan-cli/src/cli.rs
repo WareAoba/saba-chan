@@ -458,12 +458,9 @@ pub enum ServerCmd {
         #[arg(value_name = "KEY=VALUE")]
         args: Vec<String>,
     },
-    /// What each Discord server calls this server and its commands in chat. No options: show
+    /// What Discord chat calls this server and its commands (the same in every Discord server). No options: show
     Discord {
         server: Option<String>,
-        /// Discord server by name or id (asked when several are paired and something changes)
-        #[arg(long)]
-        guild: Option<String>,
         /// Words for the server, comma-separated or repeated (replace the current ones). `--word ""` removes them
         #[arg(long, value_delimiter = ',', requires = "server", conflicts_with = "clear")]
         word: Option<Vec<String>>,
@@ -721,6 +718,11 @@ pub enum ModuleCmd {
     Detect { dir: String },
     /// JSON Schema for module.toml (for module authors)
     Schema,
+    /// Make a new game module with your AI agent: install commands, a first prompt, and this PC's paths
+    Maker {
+        /// Game to put in the first prompt
+        game: Option<String>,
+    },
     /// Check what a module's Python code can do against what it declares
     Audit { module: Option<String> },
     /// Download server files only, into a folder you choose
@@ -1192,16 +1194,17 @@ mod tests {
             }
             _ => panic!("run did not parse"),
         }
-        match p(&["server", "discord", "mc", "--guild", "123", "--word", "크리,크", "--command", "start=켜,on", "--command", "stop="]).unwrap().cmd {
-            Some(Cmd::Server(ServerCmd::Discord { server, guild, word, command, .. })) => {
+        match p(&["server", "discord", "mc", "--word", "크리,크", "--command", "start=켜,on", "--command", "stop="]).unwrap().cmd {
+            Some(Cmd::Server(ServerCmd::Discord { server, word, command, .. })) => {
                 assert_eq!(server.as_deref(), Some("mc"));
-                assert_eq!(guild.as_deref(), Some("123"));
                 assert_eq!(word, Some(vec!["크리".to_string(), "크".to_string()]));
                 assert_eq!(command, vec!["start=켜,on", "stop="]);
             }
             _ => panic!("server discord did not parse"),
         }
         assert!(p(&["server", "discord", "--word", "크리"]).is_err(), "--word needs a server");
+        // 낱말은 인스턴스에 딸린다: 디스코드 서버를 고르지 않는다
+        assert!(p(&["server", "discord", "mc", "--guild", "123"]).is_err());
         // 서버마다 부르는 말은 서버 명령으로 옮겼다
         assert!(p(&["bot", "words", "123"]).is_err());
         assert!(p(&["bot", "alias"]).is_err(), "old alias command is gone");

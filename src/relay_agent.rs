@@ -631,10 +631,9 @@ impl Session {
         if let Some(allowed) = allowed_instances_by_guild(&bot.node_settings) {
             meta["allowedInstances"] = allowed;
         }
-        // 길드·인스턴스별로 서버와 명령을 부르는 낱말. 항목이 있는 길드만 (릴레이는 찾기·위험 확인에 쓴다)
-        if let Some(words) = crate::chat::words::heartbeat(&bot.node_settings) {
-            meta["instanceWords"] = words;
-        }
+        // 인스턴스별로 서버와 명령을 부르는 낱말 (어느 길드에서나 같다, 릴레이는 찾기·위험 확인에 쓴다).
+        // 비어도 싣는다: 이 키가 있으면 릴레이는 옛 길드별 `instanceWords`·전역 별명을 보지 않는다
+        meta["serverWords"] = crate::chat::words::heartbeat(&bot.server_words);
         // 권한 원본은 데몬이다: 릴레이는 이 값으로 바깥 검사용 캐시를 맞춘다
         meta["permissions"] = permissions_by_guild(&bot.node_settings);
         meta["permissionsAt"] = json!(permissions_at);

@@ -38,10 +38,12 @@ export function previewLine(res) {
  * extraArgs가 undefined면 저장된 추가 인자로 계산하고, 응답의 extra_args_text로 입력칸을 채운다(onExtraArgsLoaded).
  * 설정이나 추가 인자를 바꾸면 잠깐 뒤 저장하지 않은 값으로 다시 묻는다. 비밀번호는 데몬이 가려서 준다.
  * 추가 인자 중 설정에 해당하는 것은 그 칸에 바로 반영한다(onSettingsFromArgs). 남는 인자는 저장할 때 다시 나눈다.
- * 형식이 틀리면 칸마다 따로 알리지 않고 "잘못된 형식" 토스트 하나로 알린다 (모듈마다 형식이 달라서).
+ * 형식이 틀리면 칸마다 따로 알리지 않고 토스트 하나로 알린다: 틀린 칸의 이름표만 싣는다 (모듈마다 형식이 달라서).
+ * `modNs`는 모듈 번역 이름공간(`mod_<모듈>`)이다.
  */
 export function LaunchPreview({
     serverId,
+    modNs,
     fields,
     values,
     extraArgs,
@@ -88,7 +90,19 @@ export function LaunchPreview({
             const errors = Array.isArray(next?.errors) ? next.errors : [];
             const errorKey = errors.length ? JSON.stringify(errors) : '';
             if (errorKey && errorKey !== toasted.current) {
-                safeShowToast(t('launch_preview.invalid_format'), 'warning', 4000);
+                // 어느 칸인지는 이름표로만 알린다 (모듈마다 형식이 달라 형식 설명은 붙이지 않는다)
+                const names = [...new Set(errors.map((e) => e?.field).filter(Boolean))];
+                const labels = names.map((name) => {
+                    const field = (fields || []).find((f) => f.name === name);
+                    return t(`${modNs}:settings.${name}.label`, { defaultValue: field?.label || name });
+                });
+                safeShowToast(
+                    labels.length
+                        ? t('launch_preview.invalid_fields', { fields: labels.join(', ') })
+                        : t('launch_preview.invalid_format'),
+                    'warning',
+                    4000,
+                );
             }
             toasted.current = errorKey;
         }, DEBOUNCE_MS);

@@ -1172,26 +1172,45 @@ impl Supervisor {
             return Ok(start_cancelled(server_name));
         }
 
-        // Spawn detached process (no stdin/stdout capture)
-        let mut cmd = TokioCommand::new(program);
-        cmd.args(&args)
-            .current_dir(working_dir)
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null());
+        // 데몬이 입출력을 잡지 않는다. Windows는 서버를 새 콘솔 창에 띄워 사용자가 그 창에서 보고 입력한다
+        // (`.exe`가 아니면 예전처럼 창 없이 띄운다, `utils::new_console_program`)
+        #[cfg(windows)]
+        let console = crate::utils::new_console_program(program, std::path::Path::new(working_dir), &env_vars);
+        #[cfg(not(windows))]
+        let console: Option<std::path::PathBuf> = None;
+        // 새 콘솔로 띄운 서버는 tokio Child가 없다. 정지 대비로 프로세스 핸들을 들고 있는다
+        #[cfg(windows)]
+        let mut console_handle: Option<std::os::windows::io::OwnedHandle> = None;
+        let (pid, mut child) = match console {
+            #[cfg(windows)]
+            Some(exe) => {
+                let spawned = crate::utils::spawn_in_new_console(&exe, &args, Some(std::path::Path::new(working_dir)), &env_vars);
+                drop(gate);
+                let (pid, handle) = spawned.map_err(|e| anyhow::anyhow!("Failed to spawn process '{}': {}", program, e))?;
+                console_handle = Some(handle);
+                (pid, None)
+            }
+            _ => {
+                let mut cmd = TokioCommand::new(program);
+                cmd.args(&args)
+                    .current_dir(working_dir)
+                    .stdin(std::process::Stdio::null())
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null());
 
-        for (key, value) in &env_vars {
-            cmd.env(key, value);
-        }
+                for (key, value) in &env_vars {
+                    cmd.env(key, value);
+                }
 
-        crate::utils::apply_creation_flags(&mut cmd);
+                crate::utils::apply_creation_flags(&mut cmd);
 
-        let child = cmd.spawn();
-        drop(gate);
-        let mut child = child.map_err(|e| anyhow::anyhow!("Failed to spawn process '{}': {}", program, e))?;
-
-        let pid = child.id()
-            .ok_or_else(|| anyhow::anyhow!("Failed to get PID of spawned process"))? ;
+                let child = cmd.spawn();
+                drop(gate);
+                let child = child.map_err(|e| anyhow::anyhow!("Failed to spawn process '{}': {}", program, e))?;
+                let pid = child.id().ok_or_else(|| anyhow::anyhow!("Failed to get PID of spawned process"))?;
+                (pid, Some(child))
+            }
+        };
 
         // 다른 경로(포트 충돌 검사·상태·정지)와 같은 키(인스턴스 id)로 추적한다.
         // managed 시작과 같이 정지 표시를 지우고 세대를 올린다 (기다리던 재시작이 이 시작 뒤에 또 켜지 않게)
@@ -1204,9 +1223,18 @@ impl Supervisor {
                 let killed = tokio::task::spawn_blocking(move || process::force_kill_tree(pid)).await;
                 if let Err(e) = killed.map_err(anyhow::Error::from).and_then(|r| r) {
                     tracing::warn!("Could not stop '{}' after a stop request during start: {}", server_name, e);
-                    let _ = child.kill().await;
+                    if let Some(child) = child.as_mut() {
+                        let _ = child.kill().await;
+                    }
+                    #[cfg(windows)]
+                    if let Some(handle) = console_handle.as_ref() {
+                        use std::os::windows::io::AsRawHandle;
+                        unsafe { winapi::um::processthreadsapi::TerminateProcess(handle.as_raw_handle() as _, 1) };
+                    }
                 }
-                let _ = child.wait().await;
+                if let Some(child) = child.as_mut() {
+                    let _ = child.wait().await;
+                }
                 return Ok(start_cancelled(server_name));
             }
             s.stop_requested.remove(&instance.id);
@@ -2249,7 +2277,8 @@ impl Supervisor {
                 "lines": lines,
                 "epoch": proc.console_epoch().await,
                 "running": proc.is_running(),
-                "stdin_available": proc.is_stdin_available(),
+                // `/stdin`과 같은 판정: REST 전용 모듈은 러너가 stdin을 쥐어도 입력을 받지 않는다
+                "stdin_available": self.module_accepts_stdin(instance_id) && proc.is_stdin_available(),
             }));
         }
 
@@ -4280,6 +4309,45 @@ mod tests {
         assert!(supervisor.tracker.get_pid("reused").is_err(), "a process that started after the record is someone else");
         assert!(!supervisor.instance_store.instance_dir("reused").join("managed.pid").exists());
         assert_eq!(supervisor.tracker.get_pid("same").unwrap(), std::process::id());
+    }
+
+    /// REST 전용 모듈의 서버는 러너가 stdin을 쥐어도(의사 콘솔) 콘솔 입력을 받지 않는다:
+    /// 콘솔 응답의 `stdin_available`은 `/stdin`이 받는지와 같다 (다르면 클라이언트가 입력칸을 열고 409를 받는다)
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn console_input_follows_the_module_protocols() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules_dir = tmp.path().join("modules");
+        for (name, supported) in [("rest-game", "[\"rest\"]"), ("stdin-game", "[\"stdin\"]")] {
+            let dir = modules_dir.join(name);
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join("lifecycle.py"), "").unwrap();
+            std::fs::write(
+                dir.join("module.toml"),
+                format!("[module]\nname = \"{name}\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[protocols]\nsupported = {supported}\n"),
+            )
+            .unwrap();
+        }
+        let mut supervisor = Supervisor::new_with_instances_dir(
+            modules_dir.to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        for (id, module) in [("rest", "rest-game"), ("stdin", "stdin-game")] {
+            let mut inst = crate::instance::ServerInstance::new(id, module);
+            inst.id = id.into();
+            supervisor.instance_store.add(inst).unwrap();
+            let proc = managed_process::ManagedProcess::spawn("/bin/sh", &["-c".into(), "sleep 30".into()], ".", Vec::new(), None, None)
+                .await
+                .unwrap();
+            supervisor.managed_store.insert(id, proc).await;
+        }
+        let rest = supervisor.get_console_output("rest", None, Some(10)).await.unwrap();
+        let stdin = supervisor.get_console_output("stdin", None, Some(10)).await.unwrap();
+        for id in ["rest", "stdin"] {
+            let _ = supervisor.managed_store.get(id).await.unwrap().force_kill();
+        }
+        assert_eq!(rest["stdin_available"], false, "{rest}");
+        assert_eq!(stdin["stdin_available"], true, "{stdin}");
     }
 
     /// 데몬이 다시 붙으면 콘솔 줄 번호가 0부터 다시 매겨진다. PID가 같아도 클라이언트가 이어 읽던 번호를

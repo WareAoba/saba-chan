@@ -118,11 +118,29 @@ const CURSOR_QUERY: &[u8] = b"\x1b[6n";
 /// 그 답: 1행 1열
 const CURSOR_REPLY: &[u8] = b"\x1b[1;1R";
 
+/// 의사 콘솔에서 줄 끝 없이 쓴 조각을 이만큼 더 오는 것이 없으면 한 줄로 내보낸다.
+/// 팰월드 REST 접근 로그처럼 줄바꿈 없이 쓰는 서버의 출력이 끝날 때까지 쌓이지 않게
+const PARTIAL_LINE_IDLE: Duration = Duration::from_millis(500);
+
 /// 줄 끝 없이 온 요청도 바로 보게, 줄 단위가 아니라 읽은 만큼 본다
 fn pump(reader: impl Read + Send + 'static, log: Log, stream: Stream, console: Console, reply: Option<Arc<Stdin>>) -> std::thread::JoinHandle<()> {
+    // 읽기는 막히므로 따로 읽어 넘겨받고, 기다리는 동안 조각을 내보낼 수 있게 한다
+    let (tx, rx) = std::sync::mpsc::sync_channel::<Vec<u8>>(16);
     std::thread::spawn(move || {
         let mut reader = reader;
         let mut chunk = [0u8; 8192];
+        loop {
+            match reader.read(&mut chunk) {
+                Ok(0) | Err(_) => break,
+                Ok(n) => {
+                    if tx.send(chunk[..n].to_vec()).is_err() {
+                        break;
+                    }
+                }
+            }
+        }
+    });
+    std::thread::spawn(move || {
         // UTF-16LE 출력은 글자 안의 0A 바이트에서 자르지 않는다 (D-S13)
         let mut lines = Lines::default();
         let emit = |line: &[u8], lines: &Lines| {
@@ -138,13 +156,26 @@ fn pump(reader: impl Read + Send + 'static, log: Log, stream: Stream, console: C
             }
         };
         loop {
-            let n = match reader.read(&mut chunk) {
-                Ok(0) | Err(_) => break,
-                Ok(n) => n,
+            let chunk = if console == Console::Pty && !lines.pending().is_empty() {
+                match rx.recv_timeout(PARTIAL_LINE_IDLE) {
+                    Ok(chunk) => chunk,
+                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                        if let Some(rest) = lines.finish() {
+                            emit(&rest, &lines);
+                        }
+                        continue;
+                    }
+                    Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+                }
+            } else {
+                match rx.recv() {
+                    Ok(chunk) => chunk,
+                    Err(_) => break,
+                }
             };
             // 요청이 두 번 읽기에 걸쳐 올 수 있어 남은 앞부분과 이어서 찾는다
             let scan_from = lines.pending().len().saturating_sub(CURSOR_QUERY.len() - 1);
-            lines.push(&chunk[..n]);
+            lines.push(&chunk);
             if let Some(stdin) = &reply {
                 let asked = lines.pending()[scan_from..].windows(CURSOR_QUERY.len()).filter(|w| *w == CURSOR_QUERY).count();
                 if asked > 0 {
@@ -605,6 +636,42 @@ mod tests {
         let text = std::fs::read_to_string(&path).unwrap();
         let _ = std::fs::remove_file(&path);
         assert!(text.contains("REST API started"), "{text}");
+    }
+
+    // 실제 PC: 팰월드는 REST 접근 로그(`[LOG] REST accessed ...`)를 줄바꿈 없이 써서 서버가 꺼질 때까지
+    // 한 줄로 쌓였다. 의사 콘솔은 출력이 잠시 멈추면 남은 조각을 한 줄로 내보낸다
+    #[test]
+    fn a_pseudo_console_line_without_a_newline_is_logged_once_output_pauses() {
+        let path = std::env::temp_dir().join(format!("saba-runner-partial-{}.log", std::process::id()));
+        let log: super::Log = std::sync::Arc::new(std::sync::Mutex::new(std::fs::File::create(&path).unwrap()));
+        // 한 조각을 주고 나서는 테스트가 닫을 때까지 아무것도 주지 않는다 (살아 있는 서버)
+        struct Held(Option<&'static [u8]>, std::sync::mpsc::Receiver<()>);
+        impl std::io::Read for Held {
+            fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+                if let Some(c) = self.0.take() {
+                    buf[..c.len()].copy_from_slice(c);
+                    return Ok(c.len());
+                }
+                let _ = self.1.recv();
+                Ok(0)
+            }
+        }
+        let (close, held) = std::sync::mpsc::channel();
+        let pump = super::pump(Held(Some(b"[LOG] REST accessed /v1/api/info"), held), log, super::Stream::Stdout, super::Console::Pty, None);
+        let mut text = String::new();
+        for _ in 0..30 {
+            std::thread::sleep(Duration::from_millis(100));
+            text = std::fs::read_to_string(&path).unwrap();
+            if !text.is_empty() {
+                break;
+            }
+        }
+        drop(close);
+        pump.join().unwrap();
+        let after = std::fs::read_to_string(&path).unwrap();
+        let _ = std::fs::remove_file(&path);
+        assert!(text.contains("[LOG] REST accessed /v1/api/info"), "logged while the server still runs: {text:?}");
+        assert_eq!(after.matches("REST accessed").count(), 1, "{after}");
     }
 
     // 외부 감사: 따라 읽는 로그 파일의 끝나지 않은 줄이 끝없이 쌓였고, 파일을 새로 쓰기 시작해도 옛 조각이 새 줄 앞에 붙었다

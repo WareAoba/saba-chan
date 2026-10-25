@@ -274,683 +274,6 @@
     background: var(--border-default);
 }
 
-/* ===== Command Modal 스타일 ===== */
-.command-modal {
-    min-width: 500px;
-    max-height: 80vh;
-    overflow-y: auto;
-}
-
-/* 고정 크기 2열 레이아웃 */
-.command-modal-fixed {
-    position: relative;
-    display: flex;
-    flex-direction: row;
-    min-width: 680px;
-    max-width: 860px;
-    width: 90%;
-    height: 360px;
-    max-height: 70vh;
-    overflow: hidden;
-    text-align: left;
-    gap: 0;
-    -webkit-user-select: text;
-    user-select: text;
-}
-
-/* 좌측: 메인 입력 영역 */
-.command-modal-main {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    padding: 0;
-    overflow: hidden;
-}
-
-.command-modal-main .modal-title {
-    text-align: left;
-    flex-shrink: 0;
-}
-
-/* 힌트 칩 인라인 영역 */
-.cmd-hints-inline {
-    flex: 1;
-    min-height: 0;
-    overflow-y: auto;
-    padding: var(--sp-1) 0 var(--sp-1);
-    display: flex;
-    flex-direction: column;
-    gap: var(--sp-0-5);
-}
-
-.cmd-hint-chip {
-    display: flex;
-    align-items: center;
-    gap: var(--sp-2);
-    padding: var(--sp-1) var(--sp-2-5);
-    border-radius: 4px;
-    cursor: pointer;
-    transition: background-color 0.12s;
-    flex-shrink: 0;
-}
-
-.cmd-hint-chip:hover,
-.cmd-hint-chip.cmd-hint-active {
-    background-color: var(--cli-suggestion-hover);
-}
-
-.cmd-hint-chip.cmd-hint-active {
-    outline: 1px solid var(--brand-primary);
-}
-
-.cmd-hint-name {
-    font-family: "Courier New", monospace;
-    font-weight: bold;
-    font-size: calc(13px * var(--font-scale));
-    color: var(--cli-text);
-    flex-shrink: 0;
-}
-
-.cmd-hint-desc {
-    font-size: calc(11px * var(--font-scale));
-    color: var(--text-disabled);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    min-width: 0;
-}
-
-.cmd-hints-empty {
-    color: var(--text-disabled);
-    font-size: calc(12px * var(--font-scale));
-    padding: var(--sp-2) var(--sp-1);
-}
-
-/* 하단 고정 입력 영역 */
-.cmd-input-fixed {
-    flex-shrink: 0;
-    border-top: 1px solid var(--border-light);
-    padding-top: var(--sp-1-5);
-}
-
-/* 우상단 닫기 버튼 */
-.cmd-modal-close {
-    position: absolute;
-    top: 8px;
-    right: 10px;
-    background: none;
-    border: none;
-    font-size: calc(20px * var(--font-scale));
-    color: var(--text-disabled);
-    cursor: pointer;
-    padding: 0;
-    width: 28px;
-    height: 28px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 4px;
-    transition: all 0.15s;
-    z-index: 1;
-}
-
-.cmd-modal-close:hover {
-    background: var(--modal-detail-bg);
-    color: var(--text-primary);
-}
-
-.cmd-input-meta {
-    display: flex;
-    align-items: center;
-    margin-top: var(--sp-1);
-}
-
-.cmd-tab-hint {
-    font-size: calc(11px * var(--font-scale));
-    color: var(--text-disabled);
-    font-family: "Courier New", monospace;
-}
-
-/* ===== 우측 실행 히스토리 패널 ===== */
-.command-history-panel {
-    width: 240px;
-    flex-shrink: 0;
-    border-left: 1px solid var(--border-light);
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    margin: calc(-1 * var(--sp-8)) calc(-1 * var(--sp-8)) calc(-1 * var(--sp-8)) 0;
-    padding: 0;
-    background-color: var(--bg-surface);
-    border-radius: 0 12px 12px 0;
-}
-
-.cmd-history-list {
-    flex: 1;
-    overflow-y: auto;
-    padding: var(--sp-1) 0;
-}
-
-.cmd-history-item {
-    padding: var(--sp-2) var(--sp-4);
-    cursor: pointer;
-    border-left: 3px solid transparent;
-    transition: background-color 0.12s;
-}
-
-.cmd-history-item:hover {
-    background-color: var(--cli-suggestion-hover);
-}
-
-.cmd-history-item.cmd-history-success {
-    border-left-color: var(--ok);
-}
-
-.cmd-history-item.cmd-history-failure {
-    border-left-color: var(--stop);
-}
-
-.cmd-history-top {
-    display: flex;
-    align-items: center;
-    gap: var(--sp-1-5);
-}
-
-.cmd-history-dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    flex-shrink: 0;
-}
-
-.cmd-history-dot.dot-success {
-    background-color: var(--ok);
-}
-
-.cmd-history-dot.dot-failure {
-    background-color: var(--stop);
-}
-
-.cmd-history-cmd {
-    font-family: "Courier New", monospace;
-    font-size: calc(12px * var(--font-scale));
-    font-weight: bold;
-    color: var(--cli-text);
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.cmd-history-time {
-    font-size: calc(10px * var(--font-scale));
-    color: var(--text-disabled);
-    flex-shrink: 0;
-    white-space: nowrap;
-}
-
-.cmd-history-msg {
-    font-size: calc(11px * var(--font-scale));
-    color: var(--text-secondary);
-    margin-top: var(--sp-1);
-    padding-left: var(--sp-3);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    -webkit-user-select: text;
-    user-select: text;
-    cursor: text;
-}
-
-.cmd-history-status-label {
-    font-size: calc(10px * var(--font-scale));
-    font-weight: 600;
-    padding: 1px var(--sp-1-5);
-    border-radius: 3px;
-    flex-shrink: 0;
-    white-space: nowrap;
-}
-
-.cmd-history-status-label.status-success {
-    color: var(--ok);
-    background: color-mix(in srgb, var(--ok) 10%, transparent);
-}
-
-.cmd-history-status-label.status-failure {
-    color: var(--stop);
-    background: color-mix(in srgb, var(--stop) 10%, transparent);
-}
-
-.cmd-history-detail {
-    font-size: calc(10.5px * var(--font-scale));
-    color: var(--text-secondary);
-    margin-top: var(--sp-1-5);
-    padding: var(--sp-2) var(--sp-2-5);
-    padding-left: var(--sp-3);
-    background: var(--bg-surface-tertiary);
-    border-radius: 4px;
-    white-space: pre-wrap;
-    word-break: break-all;
-    max-height: 160px;
-    overflow-y: auto;
-    font-family: "Courier New", monospace;
-    line-height: 1.4;
-    -webkit-user-select: text;
-    user-select: text;
-    cursor: text;
-}
-
-.cmd-history-toggle {
-    display: inline-block;
-    font-size: calc(10px * var(--font-scale));
-    color: var(--brand-primary);
-    background: none;
-    border: none;
-    cursor: pointer;
-    padding: var(--sp-0-5) 0;
-    margin-top: var(--sp-0-5);
-    margin-left: var(--sp-3);
-    font-family: inherit;
-    opacity: 0.7;
-    transition: opacity 0.15s;
-}
-
-.cmd-history-toggle:hover {
-    opacity: 1;
-    text-decoration: underline;
-}
-
-.cmd-history-expanded {
-    background-color: var(--cli-suggestion-hover);
-}
-
-.cli-section {
-    margin-bottom: var(--sp-5);
-    flex-shrink: 0;
-}
-
-.cli-label {
-    display: block;
-    font-size: calc(12px * var(--font-scale));
-    font-weight: 700;
-    color: var(--text-disabled);
-    margin-bottom: var(--sp-2);
-    text-transform: uppercase;
-    letter-spacing: 1px;
-}
-
-.cli-input-wrapper {
-    display: flex;
-    align-items: center;
-    background-color: var(--cli-bg);
-    border: 2px solid var(--brand-primary);
-    border-radius: 4px;
-    padding: 0;
-    transition: border-color 0.2s;
-}
-
-.cli-input-wrapper:focus-within {
-    border-color: var(--accent);
-    box-shadow: 0 0 8px var(--brand-shadow-medium);
-}
-
-.cli-prompt {
-    color: var(--brand-primary);
-    font-weight: bold;
-    padding: var(--sp-3) var(--sp-3);
-    font-family: "Courier New", monospace;
-    font-size: calc(14px * var(--font-scale));
-    user-select: none;
-    flex-shrink: 0;
-}
-
-/* Syntax Highlighting 오버레이 컨테이너 */
-.cli-hl-container {
-    position: relative;
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-}
-
-.cli-hl-layer {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    pointer-events: none;
-    font-family: "Courier New", monospace;
-    font-size: calc(14px * var(--font-scale));
-    padding: var(--sp-3) 0 var(--sp-3) var(--sp-1);
-    white-space: pre;
-    overflow: hidden;
-    color: transparent;
-    line-height: normal;
-}
-
-.cli-input {
-    flex: 1;
-    width: 100%;
-    background-color: transparent;
-    border: none;
-    color: var(--cli-text);
-    font-family: "Courier New", monospace;
-    font-size: calc(14px * var(--font-scale));
-    padding: var(--sp-3) 0 var(--sp-3) var(--sp-1);
-    outline: none;
-}
-
-/* 하이라이트 모드에서는 원래 텍스트를 투명하게 */
-.cli-input-transparent {
-    color: transparent;
-    caret-color: var(--cli-text);
-}
-
-.cli-input::placeholder {
-    color: var(--text-tertiary);
-}
-
-/* Syntax Highlighting 토큰 */
-.cmd-hl {
-    font-weight: bold;
-}
-
-.cmd-hl-valid {
-    color: var(--ok);
-}
-
-.cmd-hl-partial {
-    color: var(--warn);
-}
-
-.cmd-hl-unknown {
-    color: var(--cli-text);
-    opacity: 0.7;
-}
-
-.cmd-hl-args {
-    color: var(--cli-text);
-}
-
-/* 매칭된 명령어 사용법 힌트 (항상 공간 확보하여 입력창이 움직이지 않음) */
-.cmd-usage-hint {
-    display: flex;
-    align-items: center;
-    gap: var(--sp-2);
-    margin-top: var(--sp-2);
-    padding: var(--sp-1-5) var(--sp-2-5);
-    border-left: 3px solid transparent;
-    border-radius: 0 4px 4px 0;
-    font-size: calc(12px * var(--font-scale));
-    color: var(--text-secondary);
-    min-height: 20px;
-    transition:
-        opacity 0.15s,
-        background-color 0.15s,
-        border-color 0.15s;
-}
-
-.cmd-usage-hint.cmd-usage-visible {
-    background-color: var(--command-info-bg);
-    border-left-color: var(--brand-primary);
-    opacity: 1;
-}
-
-.cmd-usage-hint.cmd-usage-hidden {
-    opacity: 0;
-}
-
-.cmd-usage-desc {
-    flex-shrink: 1;
-    min-width: 0;
-}
-
-.cmd-usage-tpl {
-    margin-left: auto;
-    padding: var(--sp-0-5) var(--sp-2);
-    background-color: var(--cli-bg);
-    border-radius: 3px;
-    font-family: "Courier New", monospace;
-    font-size: calc(11px * var(--font-scale));
-    color: var(--text-tertiary);
-    white-space: nowrap;
-    flex-shrink: 0;
-}
-
-/* ===== 우측 명령어 힌트 패널 ===== */
-.command-hints-panel {
-    width: 220px;
-    flex-shrink: 0;
-    border-left: 1px solid var(--border-light);
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    margin: calc(-1 * var(--sp-8)) calc(-1 * var(--sp-8)) calc(-1 * var(--sp-8)) 0;
-    padding: 0;
-    background-color: var(--bg-surface);
-    border-radius: 0 12px 12px 0;
-}
-
-.hints-panel-header {
-    display: flex;
-    align-items: center;
-    gap: var(--sp-1-5);
-    padding: var(--sp-4) var(--sp-4) var(--sp-2-5);
-    font-size: calc(11px * var(--font-scale));
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.8px;
-    color: var(--text-disabled);
-    border-bottom: 1px solid var(--border-light);
-    flex-shrink: 0;
-}
-
-.hints-panel-list {
-    flex: 1;
-    overflow-y: auto;
-    padding: var(--sp-1) 0;
-}
-
-.hint-item {
-    padding: var(--sp-2) var(--sp-4);
-    cursor: pointer;
-    display: flex;
-    flex-direction: column;
-    gap: var(--sp-0-5);
-    transition: background-color 0.15s;
-    border-left: 3px solid transparent;
-}
-
-.hint-item:hover {
-    background-color: var(--cli-suggestion-hover);
-}
-
-.hint-item.hint-active {
-    background-color: var(--cli-suggestion-hover);
-    border-left-color: var(--brand-primary);
-}
-
-.hint-name {
-    color: var(--cli-text);
-    font-family: "Courier New", monospace;
-    font-weight: bold;
-    font-size: calc(13px * var(--font-scale));
-}
-
-.hint-desc {
-    color: var(--text-disabled);
-    font-size: calc(11px * var(--font-scale));
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.hints-empty {
-    padding: var(--sp-4) var(--sp-4);
-    color: var(--text-disabled);
-    font-size: calc(12px * var(--font-scale));
-    text-align: center;
-}
-
-/* 이전 suggestions 스타일 (레거시 호환) */
-.suggestions-list {
-    background-color: var(--cli-suggestion-bg);
-    border: 1px solid var(--cli-border);
-    border-top: none;
-    border-radius: 0 0 4px 4px;
-    max-height: 200px;
-    overflow-y: auto;
-    margin-top: calc(-1 * var(--sp-1));
-    margin-bottom: var(--sp-4);
-}
-
-.suggestion-item {
-    padding: var(--sp-2-5) var(--sp-3);
-    border-bottom: 1px solid var(--cli-suggestion-border);
-    cursor: pointer;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    transition: background-color 0.2s;
-}
-
-.suggestion-item:hover {
-    background-color: var(--cli-suggestion-hover);
-}
-
-.suggestion-item:last-child {
-    border-bottom: none;
-}
-
-.suggestion-name {
-    color: var(--cli-text);
-    font-family: "Courier New", monospace;
-    font-weight: bold;
-    min-width: 100px;
-}
-
-.suggestion-desc {
-    color: var(--text-disabled);
-    font-size: calc(12px * var(--font-scale));
-    margin-left: var(--sp-2-5);
-    flex: 1;
-    text-align: right;
-}
-
-.command-label {
-    display: block;
-    font-size: calc(14px * var(--font-scale));
-    font-weight: 600;
-    color: var(--text-primary);
-    margin-bottom: var(--sp-2);
-}
-
-.command-select {
-    width: 100%;
-    padding: var(--sp-2-5);
-    border: 1px solid var(--input-border);
-    border-radius: 6px;
-    font-size: calc(14px * var(--font-scale));
-    background-color: var(--input-bg);
-    color: var(--text-primary);
-    cursor: pointer;
-    transition: border-color 0.2s;
-}
-
-.command-select:hover,
-.command-select:focus {
-    border-color: var(--input-focus-border);
-    outline: none;
-}
-
-.command-info {
-    background-color: var(--command-info-bg);
-    border-left: 4px solid var(--brand-primary);
-    padding: var(--sp-3);
-    border-radius: 4px;
-    margin-bottom: var(--sp-5);
-}
-
-.command-description {
-    font-size: calc(13px * var(--font-scale));
-    color: var(--text-secondary);
-    margin: 0;
-}
-
-.command-inputs {
-    margin-bottom: var(--sp-5);
-    padding: var(--sp-4);
-    background-color: var(--command-inputs-bg);
-    border-radius: 6px;
-    border: 1px solid var(--border-light);
-}
-
-.input-group {
-    margin-bottom: var(--sp-4);
-}
-
-.input-group:last-child {
-    margin-bottom: 0;
-}
-
-.input-label {
-    display: block;
-    font-size: calc(13px * var(--font-scale));
-    font-weight: 600;
-    color: var(--text-primary);
-    margin-bottom: var(--sp-1-5);
-}
-
-.required {
-    color: var(--stop);
-    margin-left: var(--sp-1);
-}
-
-.command-input {
-    width: 100%;
-    padding: var(--sp-2-5);
-    border: 1px solid var(--input-border);
-    border-radius: 6px;
-    font-size: calc(13px * var(--font-scale));
-    background-color: var(--input-bg);
-    color: var(--text-primary);
-    transition: border-color 0.2s;
-    box-sizing: border-box;
-}
-
-.command-input:hover,
-.command-input:focus {
-    border-color: var(--input-focus-border);
-    outline: none;
-}
-
-.command-execute {
-    background-color: var(--brand-primary);
-    color: var(--brand-text);
-    flex: 1;
-}
-
-.command-execute:hover:not(:disabled) {
-    background-color: var(--accent);
-}
-
-.command-execute:disabled {
-    background-color: var(--command-disabled-bg);
-    cursor: not-allowed;
-}
-
-.command-cancel {
-    background-color: var(--bg-4);
-    color: var(--text-1);
-    flex: 1;
-}
-
-.command-cancel:hover {
-    background-color: var(--bg-4);
-}
-
 /* ===== Settings Modal 스타일 ===== */
 .settings-modal-overlay {
     position: fixed;
@@ -1639,8 +962,7 @@
 }
 
 .modal-overlay.closing .modal,
-.modal-overlay.closing .modal-content,
-.modal-overlay.closing .command-modal {
+.modal-overlay.closing .modal-content {
     animation: slideDown 0.22s ease-in forwards;
 }
 
@@ -2902,6 +2224,72 @@
     flex-shrink: 0;
 }
 
+/* 모듈 메이커 카드 (목록에 없는 게임 직접 만들기) */
+.ss-maker {
+    margin: var(--sp-3) 0;
+}
+
+.ss-maker > .ss-card {
+    background: var(--card-bg);
+    border-radius: 10px;
+}
+
+.ss-maker-desc {
+    white-space: normal;
+}
+
+.ss-maker-panel {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1-5);
+    padding: var(--sp-3) var(--sp-4);
+}
+
+.ss-maker-agents {
+    display: flex;
+    gap: var(--sp-1);
+}
+
+.ss-maker-agent {
+    padding: var(--sp-1) var(--sp-2-5);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: calc(12px * var(--font-scale));
+    cursor: pointer;
+}
+
+.ss-maker-agent.active {
+    border-color: var(--accent-color);
+    color: var(--text-primary);
+}
+
+.ss-maker-step {
+    margin: var(--sp-1-5) 0 0;
+    font-size: calc(12px * var(--font-scale));
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.ss-maker-game {
+    padding: var(--sp-1-5) var(--sp-2);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+}
+
+.ss-maker-note {
+    margin: 0;
+    font-size: calc(11.5px * var(--font-scale));
+    color: var(--text-tertiary);
+}
+
+.ss-maker-panel > .btn {
+    align-self: flex-start;
+}
+
 /* 아이콘 전용 버튼 */
 .ss-icon-btn {
     display: flex;
@@ -3713,18 +3101,6 @@
 }
 
 
-.cmd-history-reply {
-    margin: var(--sp-1) 0 0 var(--sp-3);
-    max-height: 7.5em;
-    overflow: auto;
-    font-family: var(--font-mono);
-    font-size: calc(11px * var(--font-scale));
-    color: var(--text-secondary);
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
-    -webkit-user-select: text;
-    user-select: text;
-}
 
 /* 신뢰 배지: 확인됨은 조용히, 변경됨·확인 안 됨은 눈에 띄게 */
 .trust-badge {

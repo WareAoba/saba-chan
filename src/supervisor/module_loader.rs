@@ -705,6 +705,11 @@ pub const MODULE_SCHEMA_VERSION: u32 = 2;
 /// 스키마 표시가 없는 모듈에게 권하는 버전. 0.1.8 데몬도 읽는 1이다 (06 §7)
 const BASE_SCHEMA_VERSION: u32 = 1;
 
+/// 이 데몬이 받는 module.toml 스키마 버전들 (모듈 메이커 안내 `GET /api/maker`)
+pub fn supported_schema_versions() -> [u32; 2] {
+    [BASE_SCHEMA_VERSION, MODULE_SCHEMA_VERSION]
+}
+
 /// 명령 위험도로 쓸 수 있는 값
 /// 모듈 `[module.dependencies]`에서 데몬을 가리키는 키
 pub const CORE_COMPONENT: &str = "saba-core";
