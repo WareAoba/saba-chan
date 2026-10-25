@@ -367,7 +367,7 @@ PC 주인이 디스코드에서 받은 일회용 링크로 브라우저(사바�
 | POST | `/api/client/:id/heartbeat` | `client.rs:70` | 본문은 무시 | `{ok}` / 404 |
 | DELETE | `/api/client/:id/unregister` | `client.rs:88` | query `shutdown=true\|false` | `{ok}` / 404 |
 | POST | `/api/daemon/shutdown` | `client.rs:12` | - | `{ok, message}`. 200ms 뒤 `stop_requested` cancel |
-| GET | `/api/daemon/console` | `client.rs` `daemon_console` | `since, count=200, spans` | `{lines:[{id,timestamp,level,target,message,spans?}], count, epoch}`. `spans=1`이면 `message`에 데몬 로그 규칙(`highlight.rs` `daemon_log`: 맨 앞 `[태그]`, 주소·IP·UUID·경로, 따옴표 이름, `키=`, 실패·성공 낱말, 단위 붙은 수·수, 화살표)으로 토큰 구간 `[[시작,끝,토큰]]`(UTF-16)을 붙인다. 토큰은 02 §`HighlightRuleToml`과 같은 이름이다. `id`는 데몬을 켤 때마다 1부터 다시 센다. `epoch`(버퍼를 만든 시각 밀리초, 데몬을 다시 켜면 커진다)가 바뀌면 클라이언트는 이어 읽던 `since`를 버리고 처음부터 읽는다(L55) |
+| GET | `/api/daemon/console` | `client.rs` `daemon_console` | `since, count=200, spans` | `{lines:[{id,timestamp,level,target,message,spans?}], count, epoch}`. `spans=1`이면 `message`에 데몬 로그 규칙(`highlight.rs` `daemon_log`: 맨 앞 `[태그]`, 주소·IP·UUID, 한 덩어리 버전 번호(`v0.1.5`·`1.0.5.102999`·`0.1.11-beta.2`), 경로, 따옴표 이름, `키=`, 실패·성공 낱말, 단위 붙은 수·수, 화살표)으로 토큰 구간 `[[시작,끝,토큰]]`(UTF-16)을 붙인다. 토큰은 02 §`HighlightRuleToml`과 같은 이름이다. `id`는 데몬을 켤 때마다 1부터 다시 센다. `epoch`(버퍼를 만든 시각 밀리초, 데몬을 다시 켜면 커진다)가 바뀌면 클라이언트는 이어 읽던 `since`를 버리고 처음부터 읽는다(L55) |
 
 `unregister`에 `shutdown=true`를 주고 남은 클라이언트가 0이면 데몬도 종료한다(`client.rs:99-103`). 둘 다 `request_shutdown`(`ipc/mod.rs:630-636`)을 거쳐 §1.1의 종료 경로로 간다.
 

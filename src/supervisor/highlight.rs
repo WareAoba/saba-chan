@@ -195,11 +195,13 @@ pub fn for_module(module: &str, highlight: Option<&SyntaxHighlight>) -> Arc<High
 
 /// 데몬 로그 규칙: (이름, 패턴, 토큰). daemon_log.rs가 tracing 메시지에 `키=값` 필드를 이어 붙인 줄을 칠한다.
 /// 레벨·시각은 줄의 따로 있는 칸이라 여기서 칠하지 않는다. 앞에 둔 규칙이 이긴다
-const DAEMON_LOG_RULES: [(&str, &str, &str); 13] = [
+const DAEMON_LOG_RULES: [(&str, &str, &str); 14] = [
     ("tag", r"^\[[A-Za-z][\w .:/-]{0,40}\]", "keyword"),
     ("url", r"\bhttps?://[^\s'\x22]+", "path"),
     ("ip", r"\b(?P<hl>\d{1,3}(?:\.\d{1,3}){3}(?::\d{1,5})?)\b", "ip"),
     ("uuid", r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b", "uuid"),
+    // 버전은 한 덩어리 (`v0.1.5`, `1.0.5.102999`, `0.1.11-beta.2`). 점 하나짜리 소수(`12.5 ms`)는 아래 measure·number가 맡는다
+    ("version", r"\b(?:[vV]\d+(?:\.\d+)+|\d+(?:\.\d+){2,})(?:-[0-9A-Za-z]+(?:\.[0-9A-Za-z]+)*)?\b", "number"),
     ("windows_path", r"\b[A-Za-z]:\\[^\s'\x22,;)]*", "path"),
     ("unix_path", r"(?:^|[\s(=\x22'])(?P<hl>/(?:[\w.@+-]+/)*[\w.@+-]+)", "path"),
     ("name", r"(?:^|[\s(=:,\[])(?P<hl>'[^'\n]{1,120}')", "string"),
@@ -354,6 +356,22 @@ mod tests {
         assert_eq!(token_of("[Updates] fetched https://example.com/a.json", "https://example.com/a.json"), Some("path"));
         // 낱말 속 작은따옴표는 이름이 아니다
         assert_eq!(token_of("the user's choice (it's fine)", "'s choice (it'"), None);
+    }
+
+    /// 버전 번호는 한 덩어리다: `v0.1.5`, `v1.0.5.102999`, `0.1.10-beta.2`가 중간에 끊기지 않는다 (IP로 읽지도 않는다)
+    #[test]
+    fn daemon_log_versions_are_one_token() {
+        let hl = daemon_log();
+        let whole = |line: &str, part: &str| {
+            let at = line.find(part).expect("part");
+            let units = |b: usize| line[..b].encode_utf16().count();
+            let (st, en) = (units(at), units(at + part.len()));
+            hl.spans(line).into_iter().any(|(a, b, t)| a == st && b == en && t == "number")
+        };
+        assert!(whole("Loaded module palworld v0.1.5", "v0.1.5"));
+        assert!(whole("server version v1.0.5.102999 ready", "v1.0.5.102999"));
+        assert!(whole("[Updates] core 0.1.10 -> 0.1.11-beta.2", "0.1.11-beta.2"));
+        assert!(!whole("IPC on 127.0.0.1:57474", "127.0.0.1:57474"), "an address is still an ip");
     }
 
     #[test]
