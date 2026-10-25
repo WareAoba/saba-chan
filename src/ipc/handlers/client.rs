@@ -214,6 +214,12 @@ fn launch_args(body: &serde_json::Value) -> Result<LaunchLine, (&'static str, &'
     Ok((kind, args, instance))
 }
 
+/// 띄울 GUI가 붙을 데몬 주소 (`IPC_BASE`). GUI는 `SABA_IPC_PORT`를 읽지 않고 설정 포트를 쓰므로 지금 듣는 포트를 알려 준다
+fn gui_ipc_base(listen_addr: &str) -> Option<String> {
+    let port = listen_addr.parse::<std::net::SocketAddr>().ok()?.port();
+    Some(format!("http://127.0.0.1:{port}"))
+}
+
 /// CLI는 새 콘솔 창이 있어야 하므로 지금은 Windows만. GUI는 데스크톱 화면이 있어야 한다
 fn can_launch(kind: Interface) -> bool {
     let desktop = match kind {
@@ -262,7 +268,10 @@ pub async fn client_launch(State(state): State<IPCServer>, Json(body): Json<serd
     };
     let spawned = match kind {
         Interface::Cli => spawn_in_new_console(&binary, &args),
-        Interface::Gui => crate::boot_selector::spawn_gui_with(&binary, &args),
+        Interface::Gui => {
+            let env: Vec<(&str, String)> = gui_ipc_base(&state.listen_addr).map(|b| ("IPC_BASE", b)).into_iter().collect();
+            crate::boot_selector::spawn_gui_with(&binary, &args, &env)
+        }
     };
     match spawned {
         Ok(pid) => {
@@ -307,6 +316,14 @@ mod launch_tests {
         assert_eq!(field(json!({ "view": "shell" })), "kind");
         assert_eq!(field(json!({ "kind": "cli", "instance": 5 })), "instance");
         assert_eq!(field(json!({ "kind": "gui", "instance": "" })), "instance");
+    }
+
+    /// 띄운 GUI는 설정 포트가 아니라 지금 이 데몬에 붙는다 (`SABA_IPC_PORT`로 다른 포트에서 돌 때도)
+    #[test]
+    fn a_launched_gui_is_pointed_at_this_daemon() {
+        assert_eq!(super::gui_ipc_base("127.0.0.1:61234").as_deref(), Some("http://127.0.0.1:61234"));
+        assert_eq!(super::gui_ipc_base("0.0.0.0:61234").as_deref(), Some("http://127.0.0.1:61234"));
+        assert_eq!(super::gui_ipc_base("nope"), None);
     }
 }
 

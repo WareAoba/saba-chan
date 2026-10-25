@@ -469,14 +469,15 @@ pub fn spawn_gui() -> std::io::Result<()> {
             "saba-chan-gui binary not found next to daemon executable",
         )
     })?;
-    spawn_gui_with(&gui_path, &["--spawned-by-daemon".to_string()])?;
+    spawn_gui_with(&gui_path, &["--spawned-by-daemon".to_string()], &[])?;
     Ok(())
 }
 
 /// GUI를 표준 입출력 없이 띄운다. pid를 돌려준다 (CLI에서 GUI로 전환할 때도 쓴다)
-pub fn spawn_gui_with(gui: &std::path::Path, args: &[String]) -> std::io::Result<u32> {
+pub fn spawn_gui_with(gui: &std::path::Path, args: &[String], env: &[(&str, String)]) -> std::io::Result<u32> {
     let child = std::process::Command::new(gui)
         .args(args)
+        .envs(env.iter().map(|(k, v)| (*k, v.as_str())))
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
