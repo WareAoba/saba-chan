@@ -525,7 +525,9 @@ pub(crate) async fn prepare_for_module(
     previously_required: &[String],
 ) -> serde_json::Value {
     let failure = |id: &str, body: &serde_json::Value| {
-        json!({ "id": id, "error": body.get("error").cloned().unwrap_or_default(), "error_code": body.get("error_code").cloned().unwrap_or_default() })
+        let field = |k: &str| body.get(k).cloned().unwrap_or_default();
+        // `related`: 켜기 실패의 관련 항목 (`app_version_unsatisfied`면 요구 버전, CLI·GUI의 "업데이트가 필요해요" 문구)
+        json!({ "id": id, "error": field("error"), "error_code": field("error_code"), "related": field("related") })
     };
     let mut installed: Vec<String> = Vec::new();
     let mut failed = Vec::new();
