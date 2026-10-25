@@ -336,6 +336,14 @@ export function createApi({ invoke, hub }) {
                 return errorBody(error);
             }
         },
+        /** GET /api/maker — 모듈 메이커 안내 (저장소·가이드 주소, 이 PC의 경로) */
+        makerInfo: async () => {
+            try {
+                return (await get('/api/maker')).data;
+            } catch (error) {
+                return errorBody(error, { ok: false });
+            }
+        },
         moduleManifest: async () => {
             try {
                 return (await get('/api/modules/manifest', { timeout: 15000 })).data;
@@ -969,18 +977,10 @@ export function createApi({ invoke, hub }) {
         },
         actionsPlan: (id, body) => daemonCall('post', `/api/actions/${encodeURIComponent(id)}/plan`, body || {}),
         actionsRun: (id, body) => daemonCall('post', `/api/actions/${encodeURIComponent(id)}/run`, body || {}),
-        // 길드·인스턴스별 디스코드 부르는 말 (계약 integration/discord-instance-commands.md)
-        // 데몬 `{guildId, instances}` → 목록 (실패하면 데몬 본문 그대로)
-        guildInstances: async (guild) => {
-            const res = await daemonCall('get', `/api/guilds/${encodeURIComponent(guild)}/instances`);
-            return Array.isArray(res?.instances) ? res.instances : res;
-        },
-        guildInstanceWordsSave: (guild, id, body) =>
-            daemonCall(
-                'put',
-                `/api/guilds/${encodeURIComponent(guild)}/instances/${encodeURIComponent(id)}/words`,
-                body || {},
-            ),
+        // 인스턴스별 디스코드 부르는 말 (어느 디스코드 서버에서나 같다)
+        instanceWords: (id) => daemonCall('get', `/api/instance/${encodeURIComponent(id)}/words`),
+        instanceWordsSave: (id, body) =>
+            daemonCall('put', `/api/instance/${encodeURIComponent(id)}/words`, body || {}),
         // 길드가 쓸 서버 제한 `{instances: [id] | null}` (null = 제한 없음) → `{guildId, allowedInstances}`
         guildAllowedInstancesSave: (guild, instances) =>
             daemonCall('put', `/api/guilds/${encodeURIComponent(guild)}/allowed-instances`, { instances }),

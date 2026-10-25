@@ -7,7 +7,6 @@ vi.mock('../components/servers/ServerConsole', () => ({ ServerConsole: () => nul
 vi.mock('../components/Modals/CommandModal', () => ({ default: () => null }));
 
 import { ServerDetail } from '../components/servers/ServerDetail';
-import { useDiscordStore } from '../stores/useDiscordStore';
 import { useServerStore } from '../stores/useServerStore';
 
 const server = { id: 's1', name: '야생', module: 'minecraft', status: 'stopped' };
@@ -33,20 +32,18 @@ describe('서버 상세의 디스코드 탭', () => {
         window.api = undefined;
     });
 
-    it('페어링된 디스코드 서버마다 이 서버의 부르는 말을 보인다', async () => {
+    it('이 서버의 부르는 말을 보인다', async () => {
         useServerStore.setState({ modulesLoaded: true });
-        useDiscordStore.setState({ discordCloudHostId: 'host-1' });
         window.api = {
-            relayListHostNodes: vi.fn().mockResolvedValue([{ guildId: 'g1', guildName: '사바 마을' }]),
-            guildInstances: vi
+            instanceWords: vi
                 .fn()
-                .mockResolvedValue([{ id: 's1', name: '야생', module: 'minecraft', words: [], commands: [] }]),
-            guildInstanceWordsSave: vi.fn(),
+                .mockResolvedValue({ id: 's1', name: '야생', module: 'minecraft', words: [], commands: [] }),
+            instanceWordsSave: vi.fn(),
         };
         detail();
         await act(async () => fireEvent.click(screen.getByText('Discord')));
-        expect(await screen.findByText('사바 마을')).toBeTruthy();
-        expect(window.api.guildInstances).toHaveBeenCalledWith('g1');
+        expect(await screen.findByLabelText('Names for 야생')).toBeTruthy();
+        expect(window.api.instanceWords).toHaveBeenCalledWith('s1');
     });
 
     it('데몬이 낱말 API를 모르면 탭을 두지 않는다', () => {

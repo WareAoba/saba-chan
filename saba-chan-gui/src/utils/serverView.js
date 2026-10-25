@@ -73,12 +73,17 @@ export function isManaged(server) {
     return true;
 }
 
-/** 이 서버에 콘솔(stdin)과 명령 목록 중 무엇을 보여줄지 */
+/**
+ * 이 서버에 콘솔과 명령 목록 중 무엇을 보여줄지.
+ * managed면 러너가 출력을 받으므로 콘솔은 늘 보인다. 입력(`input`)은 모듈이 stdin을 받을 때만이고,
+ * REST 전용 서버는 읽기 전용 콘솔에 명령 탭을 함께 둔다.
+ */
 export function interactionOf(server, moduleData) {
     const supported = moduleData?.protocols?.supported || [];
     const hasCommands = (moduleData?.commands?.fields || []).length > 0;
-    const hasConsole = isManaged(server) && supported.includes('stdin');
-    return { console: hasConsole, commands: hasCommands || !hasConsole };
+    const hasConsole = isManaged(server);
+    const hasInput = hasConsole && supported.includes('stdin');
+    return { console: hasConsole, input: hasInput, commands: hasCommands || !hasInput };
 }
 
 /**

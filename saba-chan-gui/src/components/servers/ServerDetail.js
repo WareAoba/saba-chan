@@ -54,7 +54,6 @@ export function ServerDetail({
     onRename,
     onDelete,
     onBack,
-    setModal,
     consoleProps,
     settingsProps,
 }) {
@@ -109,8 +108,8 @@ export function ServerDetail({
         setTab(requestedTab);
         useUIStore.getState().clearRequestedServerTab();
     }, [requestedTab]);
-    // 기본 탭: 콘솔이 있으면 콘솔, 켜져 있으면 명령, 꺼져 있으면 정보 (쓸 수 있는 것부터)
-    const defaultTab = interaction.console
+    // 기본 탭: 입력을 받는 콘솔이면 콘솔, 켜져 있으면 명령, 꺼져 있으면 정보 (쓸 수 있는 것부터)
+    const defaultTab = interaction.input
         ? 'console'
         : server.status === 'running' && interaction.commands
           ? 'commands'
@@ -287,6 +286,7 @@ export function ServerDetail({
                         {activeTab === 'console' && (
                             <LiveServerConsole
                                 server={server}
+                                readOnly={!interaction.input}
                                 highlightRules={moduleData?.syntax_highlight?.rules || null}
                                 quickCommands={consoleQuickCommands(moduleData?.commands?.fields, moduleData?.command_aliases)}
                                 openConsole={consoleProps.openConsole}
@@ -311,13 +311,7 @@ export function ServerDetail({
                         )}
                         {activeTab === 'commands' &&
                             (server.status === 'running' ? (
-                                <CommandModal
-                                    server={server}
-                                    modules={modules}
-                                    onClose={() => {}}
-                                    onExecute={setModal}
-                                    embedded
-                                />
+                                <CommandModal server={server} modules={modules} />
                             ) : (
                                 <div className="empty-inline">
                                     <Icon name="command" size="lg" />

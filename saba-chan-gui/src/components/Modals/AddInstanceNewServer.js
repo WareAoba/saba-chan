@@ -6,6 +6,7 @@ import { AddServerOptions, addServerExtensionData } from '../DataSlots';
 import ExtensionSlot from '../ExtensionSlot';
 import { useExtensions } from '../../contexts/ExtensionContext';
 import Icon from '../Icon';
+import { ModuleMakerCard } from '../ModuleMakerCard';
 import { Segmented } from '../ui/StatusChip';
 import { TrustCreateNotice } from '../ui/TrustBadge';
 
@@ -166,6 +167,7 @@ export function AddInstanceNewServer({
                                 </div>
                             </div>
                         )}
+                        <ModuleMakerCard />
                     </div>
                 </div>
 

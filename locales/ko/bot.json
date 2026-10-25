@@ -101,6 +101,7 @@
     "no_command_path": "'{{name}}'에는 사바쨩 콘솔이 연결되어 있지 않아 명령을 받을 수 없습니다. PC의 사바쨩에서 관리 모드로 서버를 다시 켜 주세요.",
     "alias_conflict": "❌ 별명 '{{alias}}'이(가) 여러 모듈에 중복 등록되어 있습니다: {{modules}}. 더 구체적인 별명을 사용해 주세요.",
     "multiple_instances": "⚠️ '{{module}}' 모듈이 여러 개라 별명으로 구분이 안 돼요. 인스턴스 이름을 사용해 주세요.",
+    "danger_needs_name": "⚠️ 위험한 명령은 게임 이름으로 실행하지 않아요. 서버 이름 '{{name}}'(으)로 불러 주세요.",
     "auth_failed": "인증 실패",
     "player_not_found": "플레이어를 찾을 수 없습니다",
     "internal_server_error": "내부 서버 오류",

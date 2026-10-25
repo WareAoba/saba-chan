@@ -570,6 +570,20 @@
     "error_network": "Failed to {{action}} extension '{{id}}'. Check daemon connection."
   },
   "saba_storage": {
+    "maker_claude_note": "Open Claude Code in the cloned folder; it finds the skill by itself.",
+    "maker_other_note": "In the cloned folder, ask your agent: \"read maker/SKILL.md and follow it\".",
+    "maker_title": "Make a module for a game that is not listed",
+    "maker_desc": "Your AI agent, such as Claude Code or Codex, builds the module with one procedure, from official sources to a sandboxed test on this PC.",
+    "maker_open": "Make my own",
+    "maker_other": "Other agents",
+    "maker_step_install": "1. Install the module maker skill in your agent",
+    "maker_codex_line": "$skill-installer install the maker path of the {{repo}} repository",
+    "maker_game_label": "2. Enter the game and ask your agent",
+    "maker_game_placeholder": "<game name>",
+    "maker_prompt_text": "Use the saba-module-maker skill to make a {{game}} server module. Research official sources and pass every pre-PR gate.",
+    "maker_unverified": "A module you make runs sandboxed as 'unverified'. To share it, send a PR to the modules repository.",
+    "maker_guide": "Open the guide",
+    "maker_unavailable": "Could not get the module maker guide from the daemon.",
     "title": "Saba Storage",
     "setting_description": "Manage updates, modules, and extensions",
     "tab_components": "Components",
@@ -623,6 +637,8 @@
     "mock_server_label": "Mock server (test)",
     "real_api_label": "Real GitHub API",
     "module_busy": "Another install or removal of this module is still in progress. Try again when it finishes.",
+    "extensions_enabled": "Enabled the extensions this module uses: {{ids}}",
+    "extension_failed": "Could not set up extension {{id}}: {{error}}",
     "remove_failed": "Couldn't remove the module: {{error}}"
   },
   "validation": {
@@ -669,6 +685,7 @@
     "tab_info": "Info",
     "console_offline": "The server is stopped. Start it to see its log here.",
     "console_offline_input": "Start the server to send commands",
+    "console_read_only": "This server doesn't take console input. Send commands from the Commands tab",
     "console_popped_out": "The console is open in a separate window.",
     "console_popin": "Bring it back here",
     "commands_offline": "Start the server to send commands.",
@@ -819,10 +836,7 @@
     "disconnect_desc": "Disconnects this PC from every Discord server.",
     "tab_instances": "Instances",
     "tab_members": "Members",
-    "iw_desc": "Set the words each Discord server uses to call this server and its commands. Other Discord servers are not affected.",
-    "iw_not_linked": "Not connected to Discord yet. Connect on the Discord screen first.",
-    "iw_no_guilds": "No Discord servers are linked.",
-    "iw_not_used": "This Discord server doesn't use this server. Turn it on in the Instances tab of the Discord screen.",
+    "iw_desc": "Choose the words that call this server and its commands. They work the same in every connected Discord server.",
     "iw_server_words": "Names for the server",
     "iw_server_words_aria": "Names for {{name}}",
     "iw_default": "Default: {{words}}",
@@ -1312,6 +1326,7 @@
     "extra_placeholder": "e.g. -players=16 -useperfthreads",
     "unknown_args": "Arguments without a matching setting are passed as is: {{args}}",
     "invalid_format": "Invalid format.",
+    "invalid_fields": "Some values are not in the right format: {{fields}}",
     "unchecked": "Couldn't check the extra launch arguments, so nothing was saved"
   },
   "saba": {

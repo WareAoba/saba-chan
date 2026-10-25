@@ -1,7 +1,6 @@
-//! 길드·인스턴스별 디스코드 낱말 API (`nodeSettings[guild].instances`)
+//! 인스턴스별 디스코드 낱말 API (봇 설정 `serverWords`)와 길드가 쓸 서버 API
 //!
-//! `GET /api/guilds/:guild/instances`, `PUT /api/guilds/:guild/instances/:id/words`,
-//! 길드가 쓸 서버 목록 `PUT /api/guilds/:guild/allowed-instances`.
+//! `GET`·`PUT /api/instance/:id/words`, 길드가 쓸 서버 목록 `PUT /api/guilds/:guild/allowed-instances`.
 //! 로컬 클라이언트(GUI·CLI)용이다. 릴레이 에이전트는 이 라우트를 부르지 않고, 액션 카탈로그에도 없다.
 
 use axum::{
@@ -15,18 +14,8 @@ use std::collections::HashMap;
 
 use crate::chat::api::{DaemonApi, ModuleView, ServerView};
 use crate::chat::aliases::BUILTIN_COMMANDS;
-use crate::chat::words::{self, InstanceWords, INSTANCES_KEY};
+use crate::chat::words::{self, InstanceWords};
 use super::super::IPCServer;
-
-/// 길드가 쓰는 서버: `allowedInstances`가 있으면 그것만, 없으면 전부
-fn guild_servers(node_settings: &Value, guild: &str, servers: &[ServerView]) -> Vec<ServerView> {
-    let allowed: Option<Vec<&str>> = node_settings
-        .get(guild)
-        .and_then(|n| n.get("allowedInstances"))
-        .and_then(Value::as_array)
-        .map(|a| a.iter().filter_map(Value::as_str).collect());
-    servers.iter().filter(|s| allowed.as_ref().is_none_or(|a| a.contains(&s.id.as_str()))).cloned().collect()
-}
 
 fn command_rows(module: Option<&ModuleView>, mine: &InstanceWords) -> Vec<Value> {
     // 모듈이 내장과 같은 이름을 정의하면 한 줄로: 이름표·위험도는 모듈 선언을 쓴다
@@ -55,28 +44,32 @@ fn command_rows(module: Option<&ModuleView>, mine: &InstanceWords) -> Vec<Value>
         .collect()
 }
 
-/// `GET /api/guilds/:guild/instances`
-pub async fn list(State(state): State<IPCServer>, Path(guild): Path<String>) -> Response {
+/// 낱말 항목: `{id, name, module, defaultWords, words, commands:[{name, label, risk, builtin, moduleAliases, aliases}]}`.
+/// `defaultWords`는 사용자가 정하지 않아도 이 서버를 부르는 낱말 (`words::default_words`)
+fn entry(server: &ServerView, default_words: Vec<String>, module: Option<&ModuleView>, mine: &InstanceWords) -> Value {
+    json!({ "id": server.id, "name": server.name, "module": server.module, "defaultWords": default_words, "words": mine.words, "commands": command_rows(module, mine) })
+}
+
+fn not_found(id: &str) -> Response {
+    (StatusCode::NOT_FOUND, Json(json!({ "success": false, "error": format!("Instance not found: {}", id), "error_code": "not_found" }))).into_response()
+}
+
+/// `GET /api/instance/:id/words`
+pub async fn get(State(state): State<IPCServer>, Path(id): Path<String>) -> Response {
     let servers = match state.servers().await {
         Ok(s) => s,
         Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "error": e }))).into_response(),
     };
+    let Some(server) = servers.iter().find(|s| s.id == id) else { return not_found(&id) };
     let modules = state.modules().await;
     let bot = state.config_store.get_bot_config().await;
-    let table = words::of_guild(&bot.node_settings, &guild);
-    let rows: Vec<Value> = guild_servers(&bot.node_settings, &guild, &servers)
-        .iter()
-        .map(|s| {
-            let mine = table.get(&s.id).cloned().unwrap_or_default();
-            let module = modules.iter().find(|m| m.name == s.module);
-            json!({ "id": s.id, "name": s.name, "module": s.module, "words": mine.words, "commands": command_rows(module, &mine) })
-        })
-        .collect();
-    Json(json!({ "guildId": guild, "instances": rows })).into_response()
+    let mine = bot.server_words.get(&id).cloned().unwrap_or_default();
+    let defaults = words::default_words(server, &servers, &modules, &bot.server_words);
+    Json(entry(server, defaults, modules.iter().find(|m| m.name == server.module), &mine)).into_response()
 }
 
-/// `PUT /api/guilds/:guild/instances/:id/words` `{words, commands}`
-pub async fn put(State(state): State<IPCServer>, Path((guild, id)): Path<(String, String)>, Json(body): Json<Value>) -> Response {
+/// `PUT /api/instance/:id/words` `{words, commands}`
+pub async fn put(State(state): State<IPCServer>, Path(id): Path<String>, Json(body): Json<Value>) -> Response {
     let Ok(mut want) = serde_json::from_value::<InstanceWords>(body) else {
         return validation(vec![json!({ "field": "input", "reason": "invalid" })]);
     };
@@ -90,45 +83,26 @@ pub async fn put(State(state): State<IPCServer>, Path((guild, id)): Path<(String
         Ok(s) => s,
         Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "error": e }))).into_response(),
     };
+    let Some(instance) = servers.iter().find(|s| s.id == id).cloned() else { return not_found(&id) };
     let modules = state.modules().await;
-    let value = serde_json::to_value(&want).unwrap_or_default();
-    // 검사와 저장을 설정 잠금 안에서 한다: 동시에 온 두 요청이 같은 낱말을 둘 다 통과시키지 않게
+    let module = modules.iter().find(|m| m.name == instance.module);
+    // 검사와 저장을 설정 잠금 안에서 한다: 동시에 온 두 요청이 같은 낱말을 둘 다 통과시키지 않게.
+    // 낱말은 어느 길드에서나 쓰이므로 모든 서버와 겹치지 않아야 한다
     let saved = state
         .config_store
-        .update_node_settings(&guild, |node| {
-            let node_settings = json!({ guild.as_str(): Value::Object(node.clone()) });
-            let in_guild = guild_servers(&node_settings, &guild, &servers);
-            let Some(instance) = in_guild.iter().find(|s| s.id == id) else {
-                return (Err(None), false);
-            };
-            let module = modules.iter().find(|m| m.name == instance.module);
-            let others: HashMap<String, InstanceWords> = words::of_guild(&node_settings, &guild).into_iter().filter(|(k, _)| k != &id).collect();
-            let problems = words::validate(instance, module, &want, &in_guild, &modules, &others);
+        .update_server_words(|table| {
+            let others: HashMap<String, InstanceWords> = table.iter().filter(|(k, _)| *k != &id).map(|(k, v)| (k.clone(), v.clone())).collect();
+            let problems = words::validate(&instance, module, &want, &servers, &modules, &others);
             if !problems.is_empty() {
-                return (Err(Some(problems)), false);
+                return (Err(problems), false);
             }
-            let table = node.entry(INSTANCES_KEY).or_insert_with(|| json!({}));
-            if !table.is_object() {
-                *table = json!({});
-            }
-            let table = table.as_object_mut().expect("object");
-            let changed = if want.is_empty() { table.remove(&id).is_some() } else { table.insert(id.clone(), value.clone()).as_ref() != Some(&value) };
-            if table.is_empty() {
-                node.remove(INSTANCES_KEY);
-            }
+            let changed = if want.is_empty() { table.remove(&id).is_some() } else { table.insert(id.clone(), want.clone()).as_ref() != Some(&want) };
             (Ok(()), changed)
         })
         .await;
-    let saved = match saved {
-        Ok(Err(None)) => {
-            return (StatusCode::NOT_FOUND, Json(json!({ "success": false, "error": "instance not used in this guild", "error_code": "not_found" }))).into_response();
-        }
-        Ok(Err(Some(problems))) => return validation(problems.into_iter().map(|p| serde_json::to_value(p).unwrap_or_default()).collect()),
-        Ok(Ok(())) => Ok(()),
-        Err(e) => Err(e),
-    };
     match saved {
-        Ok(()) => Json(json!({ "success": true, "id": id, "words": want.words, "commands": want.commands })).into_response(),
+        Ok(Ok(())) => Json(json!({ "success": true, "id": id, "words": want.words, "commands": want.commands })).into_response(),
+        Ok(Err(problems)) => validation(problems.into_iter().map(|p| serde_json::to_value(p).unwrap_or_default()).collect()),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "error": e.to_string(), "error_code": "save_failed" }))).into_response(),
     }
 }
@@ -181,10 +155,11 @@ fn validation(details: Vec<Value>) -> Response {
     (StatusCode::BAD_REQUEST, Json(json!({ "success": false, "error": "invalid words", "error_code": "validation_failed", "details": details }))).into_response()
 }
 
-/// 시작할 때 한 번: 예전 전역 별명을 길드·인스턴스 낱말로 옮긴다 (길드를 아직 모르면 다음 시작에 다시)
+/// 시작할 때 한 번: 예전 낱말(0.1.10의 길드별 낱말, 그 전의 전역 별명)을 인스턴스 낱말로 옮긴다
 pub async fn migrate_on_start(state: &IPCServer) {
     let bot = state.config_store.get_bot_config().await;
-    if bot.module_aliases.is_empty() && bot.command_aliases.is_empty() && bot.instance_aliases.is_empty() {
+    let guild_words = bot.node_settings.as_object().is_some_and(|m| m.values().any(|n| n.get(words::INSTANCES_KEY).is_some()));
+    if !guild_words && bot.module_aliases.is_empty() && bot.command_aliases.is_empty() && bot.instance_aliases.is_empty() {
         return;
     }
     let servers = match state.servers().await {
@@ -198,25 +173,13 @@ pub async fn migrate_on_start(state: &IPCServer) {
     let moved = state
         .config_store
         .finish_words_migration(|bot| {
-            let mut guilds: Vec<String> = bot.node_settings.as_object().map(|m| m.keys().cloned().collect()).unwrap_or_default();
-            for g in bot.cloud_nodes.iter().filter_map(|n| n.get("guildId").and_then(Value::as_str)) {
-                if !guilds.iter().any(|x| x == g) {
-                    guilds.push(g.to_string());
-                }
-            }
-            let node_settings = words::migrate(
-                &bot.node_settings,
-                &guilds,
-                |g| guild_servers(&bot.node_settings, g, &servers),
-                &bot.instance_aliases,
-                &bot.module_aliases,
-                &bot.command_aliases,
-            )?;
-            Some((node_settings, guilds.len()))
+            let moved = words::migrate(&bot.node_settings, &servers, &bot.server_words, &bot.instance_aliases, &bot.module_aliases, &bot.command_aliases)?;
+            let count = moved.server_words.len();
+            Some((moved, count))
         })
         .await;
     match moved {
-        Ok(Some(guilds)) => tracing::info!("[Chat] moved global aliases to {} guild(s)", guilds),
+        Ok(Some(count)) => tracing::info!("[Chat] moved old discord words to {} instance(s)", count),
         Ok(None) => {}
         Err(e) => tracing::warn!("[Chat] word migration not saved: {}", e),
     }
@@ -318,5 +281,47 @@ mod tests {
         assert_eq!(stored().await, Some(json!([])));
         assert_eq!(put(json!({ "instances": null })).await.body["allowedInstances"], Value::Null);
         assert_eq!(stored().await, None);
+    }
+
+    /// 낱말은 인스턴스에 딸린다: 길드 없이 저장하고, 모든 서버와 겹치지 않아야 하며, 봇 설정 일괄 저장이 덮지 않는다
+    #[tokio::test]
+    async fn words_belong_to_the_instance() {
+        use std::sync::Arc;
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        std::fs::create_dir_all(&modules).unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let (a, b) = (crate::instance::ServerInstance::new("survival", "plain"), crate::instance::ServerInstance::new("creative", "plain"));
+        let (ia, ib) = (a.id.clone(), b.id.clone());
+        sup.instance_store.add(a).unwrap();
+        sup.instance_store.add(b).unwrap();
+        let state = IPCServer::new(Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let put_words = |id: String, body: Value| {
+            let state = state.clone();
+            async move { crate::ipc::internal::into_internal(put(State(state), Path(id), Json(body)).await).await }
+        };
+
+        let r = put_words(ia.clone(), json!({ "words": [" 서바 "], "commands": { "start": ["켜"] } })).await;
+        assert_eq!(r.status, StatusCode::OK, "{:?}", r.body);
+        let got = crate::ipc::internal::into_internal(get(State(state.clone()), Path(ia.clone())).await).await;
+        assert_eq!(got.body["words"], json!(["서바"]));
+        // 같은 모듈의 서버가 둘이라 기본 호출명은 인스턴스 이름뿐
+        assert_eq!(got.body["defaultWords"], json!(["survival"]));
+        assert_eq!(got.body["commands"].as_array().unwrap().iter().find(|c| c["name"] == "start").unwrap()["aliases"], json!(["켜"]));
+
+        // 다른 서버의 낱말·이름과 겹치면 거절한다 (어느 길드가 어느 서버를 쓰는지와 상관없다)
+        let r = put_words(ib.clone(), json!({ "words": ["서바", "survival"] })).await;
+        assert_eq!(r.status, StatusCode::BAD_REQUEST);
+        let reasons: Vec<&str> = r.body["details"].as_array().unwrap().iter().map(|d| d["reason"].as_str().unwrap()).collect();
+        assert_eq!(reasons, ["conflict", "conflict"]);
+        assert_eq!(put_words("nope".into(), json!({ "words": [] })).await.status, StatusCode::NOT_FOUND);
+
+        // 봇 설정을 통째로 저장해도 낱말은 낱말 API로만 바뀐다
+        state.config_store.set_bot_config_from_json(json!({ "serverWords": {} })).await.unwrap();
+        assert_eq!(state.config_store.get_bot_config().await.server_words[&ia].words, vec!["서바"]);
+        // 빈 값이면 항목을 지운다
+        assert_eq!(put_words(ia.clone(), json!({ "words": [], "commands": {} })).await.status, StatusCode::OK);
+        assert!(!state.config_store.get_bot_config().await.server_words.contains_key(&ia));
     }
 }

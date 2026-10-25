@@ -570,6 +570,20 @@
     "error_network": "擴充功能 '{{id}}' 的 {{action}} 失敗。請檢查守護程式連線。"
   },
   "saba_storage": {
+    "maker_claude_note": "在複製的資料夾中開啟 Claude Code，它會自己找到技能。",
+    "maker_other_note": "在複製的資料夾中請代理「閱讀 maker/SKILL.md 並照做」。",
+    "maker_title": "清單中沒有的遊戲，可以自己製作模組",
+    "maker_desc": "Claude Code、Codex 等 AI 代理會依同一流程製作模組，從官方資料調查到在這台電腦上的隔離實測。",
+    "maker_open": "自己製作",
+    "maker_other": "其他代理",
+    "maker_step_install": "1. 在代理中安裝模組製作器技能",
+    "maker_codex_line": "$skill-installer 安裝 {{repo}} 儲存庫的 maker 路徑",
+    "maker_game_label": "2. 輸入遊戲名稱並請求代理",
+    "maker_game_placeholder": "<遊戲名稱>",
+    "maker_prompt_text": "用 saba-module-maker 技能製作 {{game}} 伺服器模組。用官方資料調查，並通過 PR 前的全部檢查。",
+    "maker_unverified": "自己製作的模組會以「未驗證」狀態隔離執行。要分享給他人，請向模組儲存庫提交 PR。",
+    "maker_guide": "查看詳細說明",
+    "maker_unavailable": "無法從守護程序取得模組製作器說明。",
     "title": "Saba 儲存",
     "setting_description": "管理元件更新、模組與擴充套件",
     "tab_components": "元件",
@@ -623,6 +637,8 @@
     "restart_required_title": "需要重新啟動",
     "apply": "套用",
     "module_busy": "此模組的另一個安裝或移除仍在進行中。請在完成後再試一次。",
+    "extensions_enabled": "已啟用此模組使用的擴充功能：{{ids}}",
+    "extension_failed": "無法準備擴充功能 {{id}}：{{error}}",
     "remove_failed": "無法移除模組：{{error}}"
   },
   "validation": {
@@ -669,6 +685,7 @@
     "tab_info": "資訊",
     "console_offline": "伺服器已停止。啟動後記錄會顯示在這裡。",
     "console_offline_input": "啟動伺服器後即可傳送命令",
+    "console_read_only": "此伺服器不接受主控台輸入。請在命令分頁傳送命令",
     "console_popped_out": "主控台已在獨立視窗中開啟。",
     "console_popin": "移回這裡",
     "commands_offline": "啟動伺服器後即可傳送命令。",
@@ -819,10 +836,7 @@
     "disconnect_desc": "中斷這台電腦與所有 Discord 伺服器的連線。",
     "tab_instances": "實例",
     "tab_members": "成員",
-    "iw_desc": "為每個 Discord 伺服器分別設定呼叫此伺服器及其指令的詞語。不會影響其他 Discord 伺服器。",
-    "iw_not_linked": "尚未連線 Discord。請先在 Discord 頁面連線。",
-    "iw_no_guilds": "沒有已連結的 Discord 伺服器。",
-    "iw_not_used": "此 Discord 伺服器未使用此伺服器。可在 Discord 頁面的實例分頁中開啟。",
+    "iw_desc": "設定呼叫此伺服器及其指令的詞。在所有已連線的 Discord 伺服器中都一樣。",
     "iw_server_words": "伺服器的稱呼",
     "iw_server_words_aria": "{{name}} 的稱呼",
     "iw_default": "預設：{{words}}",
@@ -1312,6 +1326,7 @@
     "extra_placeholder": "例如：-players=16 -useperfthreads",
     "unknown_args": "沒有對應設定的參數將原樣傳遞：{{args}}",
     "invalid_format": "格式無效。",
+    "invalid_fields": "部分值格式不正確：{{fields}}",
     "unchecked": "無法檢查額外啟動參數，因此未儲存"
   },
   "saba": {

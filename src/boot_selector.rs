@@ -507,50 +507,10 @@ pub fn spawn_cli() -> std::io::Result<std::process::Child> {
         .spawn()
 }
 
-/// Windows: CLI를 새 콘솔 창에 띄운다 ("터미널로 열기", I4). 데몬의 표준 스트림(파이프·NUL)을 넘기지 않아야
-/// CLI가 새 창의 콘솔을 자기 입출력으로 쓰고 대화형이 된다. `std::process::Command`는 늘 표준 핸들을 넘기므로
-/// `CreateProcessW`를 직접 부른다 (`STARTF_USESTDHANDLES` 없이, 핸들 상속 없이). pid를 돌려준다
+/// Windows: CLI를 새 콘솔 창에 띄운다 ("터미널로 열기", I4). CLI가 새 창의 콘솔을 자기 입출력으로 쓰고 대화형이 된다. pid를 돌려준다
 #[cfg(windows)]
 pub fn spawn_cli_in_new_console(cli: &std::path::Path, args: &[String]) -> std::io::Result<u32> {
-    use std::os::windows::ffi::OsStrExt;
-    use winapi::um::handleapi::CloseHandle;
-    use winapi::um::processthreadsapi::{CreateProcessW, PROCESS_INFORMATION, STARTUPINFOW};
-    use winapi::um::winbase::{CREATE_NEW_CONSOLE, CREATE_UNICODE_ENVIRONMENT};
-
-    let wide = |s: &std::ffi::OsStr| s.encode_wide().collect::<Vec<u16>>();
-    let mut line = Vec::new();
-    crate::sandbox::appcontainer::push_arg(&wide(cli.as_os_str()), &mut line);
-    for a in args {
-        crate::sandbox::appcontainer::push_arg(&wide(std::ffi::OsStr::new(a)), &mut line);
-    }
-    line.push(0);
-    let mut app = wide(cli.as_os_str());
-    app.push(0);
-    let mut dir = cli.parent().map(|d| wide(d.as_os_str())).unwrap_or_default();
-    dir.push(0);
-    unsafe {
-        let mut si: STARTUPINFOW = std::mem::zeroed();
-        si.cb = std::mem::size_of::<STARTUPINFOW>() as u32;
-        let mut pi: PROCESS_INFORMATION = std::mem::zeroed();
-        let ok = CreateProcessW(
-            app.as_ptr(),
-            line.as_mut_ptr(),
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-            0,
-            CREATE_NEW_CONSOLE | CREATE_UNICODE_ENVIRONMENT,
-            std::ptr::null_mut(),
-            if dir.len() > 1 { dir.as_ptr() } else { std::ptr::null() },
-            &mut si,
-            &mut pi,
-        );
-        if ok == 0 {
-            return Err(std::io::Error::last_os_error());
-        }
-        CloseHandle(pi.hThread);
-        CloseHandle(pi.hProcess);
-        Ok(pi.dwProcessId)
-    }
+    crate::utils::spawn_in_new_console(cli, args, cli.parent(), &[]).map(|(pid, _)| pid)
 }
 
 /// Windows: 데몬 콘솔 창 숨기기 (GUI 모드에서 사용)

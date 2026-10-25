@@ -500,6 +500,10 @@ impl Api {
     pub async fn module_schema(&self) -> Result<Value> {
         self.get("/api/modules/schema").await
     }
+    /// GET /api/maker — 모듈 메이커 안내: 이 PC의 경로와 데몬 계약
+    pub async fn maker(&self) -> Result<Value> {
+        self.get("/api/maker").await
+    }
     /// POST /api/modules/detect — 폴더가 어떤 게임 서버인지
     pub async fn detect(&self, path: &str) -> Result<Value> {
         self.post("/api/modules/detect", json!({ "path": path })).await
@@ -860,13 +864,13 @@ impl Api {
     pub async fn set_discord_settings(&self, guild_id: &str, patch: Value) -> Result<Value> {
         self.patch(&format!("/api/discord/{}/settings", seg(guild_id)), patch).await
     }
-    /// GET /api/guilds/:guild/instances — `[{id, name, module, words, commands: [{name, label, risk, builtin, moduleAliases, aliases}]}]`
-    pub async fn guild_instances(&self, guild_id: &str) -> Result<Value> {
-        self.get(&format!("/api/guilds/{}/instances", seg(guild_id))).await
+    /// GET /api/instance/:id/words — `{id, name, module, words, commands: [{name, label, risk, builtin, moduleAliases, aliases}]}`
+    pub async fn instance_words(&self, id: &str) -> Result<Value> {
+        self.get(&format!("/api/instance/{}/words", seg(id))).await
     }
-    /// PUT /api/guilds/:guild/instances/:id/words — `{words, commands}`. 규칙 위반은 400 `validation_failed {details}`
-    pub async fn save_instance_words(&self, guild_id: &str, id: &str, body: Value) -> Result<Value> {
-        self.put(&format!("/api/guilds/{}/instances/{}/words", seg(guild_id), seg(id)), body).await
+    /// PUT /api/instance/:id/words — `{words, commands}`. 규칙 위반은 400 `validation_failed {details}`
+    pub async fn save_instance_words(&self, id: &str, body: Value) -> Result<Value> {
+        self.put(&format!("/api/instance/{}/words", seg(id)), body).await
     }
     /// PUT /api/guilds/:guild/allowed-instances — `{instances: [id] | null}` (null은 제한 없음)
     pub async fn save_allowed_instances(&self, guild_id: &str, instances: Option<&[String]>) -> Result<Value> {

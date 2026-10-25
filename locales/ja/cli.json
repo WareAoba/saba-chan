@@ -101,7 +101,6 @@
     "words_bad_command": "{{spec}}: コマンド=語,語 の形で書いてください (消すには コマンド=)。",
     "no_paired_servers": "このPCとペアリングされたDiscordサーバーはまだありません。実行: saba-chan-cli bot pair",
     "pick_server": "ペアリングされたDiscordサーバーが複数あります。変更するサーバーのIDを指定してください: {{servers}}",
-    "words_not_used": "この Discord サーバーではこのサーバーを使っていません。",
     "translate_commands": "コマンド名の翻訳"
   },
   "col": {
@@ -379,6 +378,25 @@
     "none": "停止の記録はまだありません。"
   },
   "module": {
+    "maker": {
+      "claude_how": "{{repo}} をクローンし、そのフォルダーで Claude Code を開くとスキルが見つかります",
+      "title": "モジュールメーカー: 自分のAIエージェントで新しいゲームモジュールを作る",
+      "intro": "一覧にないゲームは、Claude CodeやCodexなどのエージェントにモジュール作りを任せられます。公式資料の調査からこのPCでの隔離テストまで、同じ手順で進めます。",
+      "install": "1. エージェントにスキルをインストール",
+      "codex": "$skill-installer に「{{repo}} リポジトリの maker をインストールして」と依頼",
+      "other_agents": "その他のエージェント",
+      "other_how": "{{repo}} をクローンすると AGENTS.md が案内します",
+      "prompt": "2. エージェントにこう頼みます",
+      "prompt_text": "saba-module-maker スキルで {{game}} のサーバーモジュールを作って。公式資料で調べて、PR 前のチェックをすべて通して。",
+      "game_placeholder": "<ゲーム名>",
+      "paths": "このPCのパス (エージェントは module maker --json で読みます)",
+      "runner": "ランナー",
+      "shared_libs": "共通ランタイム",
+      "modules_dir": "モジュールフォルダー",
+      "not_ready": "まだありません",
+      "unverified": "自作のモジュールは「未確認」として隔離実行されます。共有するにはモジュールリポジトリに PR を送ってください。",
+      "guide": "詳しい案内: {{url}}"
+    },
     "confirm_remove": "モジュール {{id}} を削除しますか？",
     "confirm_remove_used": "モジュール {{id}} を削除しますか？次のサーバーが使っています: {{servers}}",
     "detect_none": "{{dir}} に既知のゲームは見つかりませんでした。",
@@ -387,6 +405,8 @@
     "fetching_versions": "バージョンを取得しています...",
     "files_installed": "サーバーファイルを {{dir}} にインストールしました。",
     "installed": "モジュール {{id}} をインストールしました。",
+    "extensions_enabled": "このモジュールが使う拡張機能を有効にしました: {{ids}}",
+    "extension_failed": "拡張機能 {{id}} を準備できませんでした: {{error}}",
     "installing": "モジュール {{id}} をインストールしています...",
     "latest": "最新",
     "needs": "必要な拡張機能: {{ids}}",
@@ -607,6 +627,7 @@
   },
   "help": {
     "cmd": {
+      "module.maker": "自分のAIエージェントで新しいゲームモジュールを作る: インストール方法、最初の依頼、このPCのパス",
       "_root": "サバちゃんデーモンを操作するコマンドラインツール",
       "status": "デーモン・サーバー・Discord・アップデートをひと目で",
       "server": "ゲームサーバーの管理",
@@ -620,7 +641,7 @@
       "server.console": "コンソールを見ながら入力する",
       "server.run": "ゲームコマンドを実行 (コマンドを省くと一覧を表示)",
       "server.commands": "このサーバーが受け付けるゲームコマンド",
-      "server.discord": "Discord サーバーごとに、チャットでこのサーバーとそのコマンドを呼ぶ語。オプションなし: 表示",
+      "server.discord": "Discord のチャットでこのサーバーとそのコマンドを呼ぶ言葉 (どの Discord サーバーでも同じ)。オプションなし: 表示",
       "server.send": "コンソールに 1 行そのまま送る",
       "server.settings": "サーバー設定を表示",
       "server.set": "設定を変える: キー=値 ... (エクステンションのデータは ext.キー、空の値は削除)",
@@ -778,6 +799,7 @@
       "gui": "デスクトップアプリに切り替え (同じサーバーを開き、全画面メニューは閉じます)"
     },
     "arg": {
+      "module.maker.game": "最初の依頼に入れるゲーム名",
       "perm.level.add.above": "この段階のすぐ上に入れる (省略時はオーナーのすぐ下)",
       "perm.level.move.above": "この段階のすぐ上へ移動",
       "perm.level.add.name": "新しい段階名 (1〜32文字)",
@@ -885,7 +907,6 @@
       "bot.music.queue_lines": "プレイヤーパネルのキューの行数 (1-20)",
       "bot.music.refresh": "プレイヤーパネルの更新間隔 (ミリ秒、2000-10000)",
       "bot.music.normalize": "曲ごとの音量をそろえる (on または off)",
-      "server.discord.guild": "Discord サーバーの名前または id (複数ペアリングしていて変更するときは確認します)",
       "server.discord.word": "サーバーを呼ぶ語をカンマ区切りで (今の語を置き換える)。--word \"\" で消す",
       "server.discord.command": "1 つのコマンドの語: コマンド=語,語 (そのコマンドの語を置き換える。コマンド= で消す)。繰り返し可",
       "server.discord.clear": "このサーバーの語をすべて消す",

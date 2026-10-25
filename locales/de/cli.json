@@ -75,7 +75,6 @@
     "pair_gui_hint": "Die Discord-Verbindung siehst du auch im Discord-Bereich der GUI.",
     "no_paired_servers": "Mit diesem PC ist noch kein Discord-Server gekoppelt. Ausführen: saba-chan-cli bot pair",
     "pick_server": "Mehrere Discord-Server sind gekoppelt. Gib die ID des zu ändernden Servers an: {{servers}}",
-    "words_not_used": "Dieser Discord-Server verwendet diesen Server nicht.",
     "translate_commands": "Übersetzte Befehlsnamen"
   },
   "col": {
@@ -322,6 +321,25 @@
     "none": "Noch keine Stopps aufgezeichnet."
   },
   "module": {
+    "maker": {
+      "claude_how": "{{repo}} klonen und Claude Code in diesem Ordner öffnen; dort findet es den Skill",
+      "title": "Modul-Maker: ein neues Spielmodul mit deinem KI-Agenten bauen",
+      "intro": "Für ein Spiel, das nicht in der Liste steht, kann ein Agent wie Claude Code oder Codex das Modul bauen. Er folgt einem festen Ablauf, von offiziellen Quellen bis zum isolierten Test auf diesem PC.",
+      "install": "1. Skill im Agenten installieren",
+      "codex": "$skill-installer bitten: „installiere den Pfad maker aus dem Repository {{repo}}“",
+      "other_agents": "Andere Agenten",
+      "other_how": "{{repo}} klonen; AGENTS.md zeigt den Weg",
+      "prompt": "2. Den Agenten so bitten",
+      "prompt_text": "Baue mit dem Skill saba-module-maker ein Servermodul für {{game}}. Recherchiere offizielle Quellen und erfülle alle Prüfungen vor dem PR.",
+      "game_placeholder": "<Spielname>",
+      "paths": "Pfade auf diesem PC (Agenten lesen sie mit module maker --json)",
+      "runner": "Runner",
+      "shared_libs": "Gemeinsame Laufzeit",
+      "modules_dir": "Modulordner",
+      "not_ready": "noch nicht vorhanden",
+      "unverified": "Ein selbst gebautes Modul läuft isoliert als „nicht geprüft“. Zum Teilen einen PR an das Modul-Repository schicken.",
+      "guide": "Anleitung: {{url}}"
+    },
     "confirm_remove": "Modul {{id}} löschen?",
     "confirm_remove_used": "Modul {{id}} löschen? Diese Server verwenden es: {{servers}}",
     "detect_none": "In {{dir}} wurde kein bekanntes Spiel gefunden.",
@@ -330,6 +348,8 @@
     "fetching_versions": "Versionen werden abgerufen...",
     "files_installed": "Serverdateien in {{dir}} installiert.",
     "installed": "Modul {{id}} installiert.",
+    "extensions_enabled": "Die Erweiterungen dieses Moduls wurden aktiviert: {{ids}}",
+    "extension_failed": "Erweiterung {{id}} konnte nicht eingerichtet werden: {{error}}",
     "installing": "Modul {{id}} wird installiert...",
     "latest": "neueste",
     "needs": "Benötigt Erweiterungen: {{ids}}",
@@ -545,11 +565,12 @@
   },
   "help": {
     "cmd": {
+      "module.maker": "Ein neues Spielmodul mit deinem KI-Agenten bauen: Installationsbefehle, erste Anfrage und die Pfade dieses PCs",
       "help": "Hilfe zu einem Befehl anzeigen. Mit --json: Befehlsbaum, Argumente und Exit-Codes",
       "events": "Daemon-Ereignisse live verfolgen (mit --json: ein JSON pro Zeile). Mit Strg+C beenden",
       "install": "Saba-chan ohne das Fenster-Installationsprogramm auf diesem PC installieren",
       "uninstall": "Saba-chan von diesem PC entfernen (Einstellungen und Server bleiben, sofern nicht anders angegeben)",
-      "server.discord": "Wie jeder Discord-Server diesen Server und seine Befehle im Chat nennt. Ohne Optionen: anzeigen",
+      "server.discord": "Wörter, mit denen der Discord-Chat diesen Server und seine Befehle aufruft (in jedem Discord-Server gleich). Ohne Optionen: anzeigen",
       "config.paths": "Wo Saba-chan Daten, Module und Erweiterungen ablegt, und die Standardordner",
       "config.move": "Module oder Erweiterungen in einen anderen Ordner verschieben. Installierte Dateien werden verschoben; Server müssen gestoppt sein",
       "server.players": "Wer gerade online ist",
@@ -560,6 +581,7 @@
       "gui": "Zur Desktop-App wechseln: Sie öffnet denselben Server und das Vollbildmenü schließt sich"
     },
     "arg": {
+      "module.maker.game": "Spiel für die erste Anfrage",
       "backup.create.from_snapshot": "Statt die Welt jetzt zu kopieren, das neueste automatische Backup des Spiels behalten (Palworld u. a.)",
       "bot.channels.notify": "Der Benachrichtigungskanal (Abstürze, Backups, Updates, geplante Neustarts), nach Name oder ID",
       "bot.channels.no_notify": "Benachrichtigungskanal entfernen",
@@ -582,7 +604,6 @@
       "install.no_gui": "Auch mit Bildschirm ohne Desktop-App installieren",
       "uninstall.remove_settings": "Auch Einstellungen und die Discord-Verbindung entfernen",
       "uninstall.remove_instances": "Auch Server entfernen (Serverdateien, Welten, Backups)",
-      "server.discord.guild": "Discord-Server per Name oder ID (wird gefragt, wenn mehrere gekoppelt sind und sich etwas ändert)",
       "server.discord.word": "Wörter für den Server, durch Kommas getrennt (ersetzt die aktuellen). --word \"\" entfernt sie",
       "server.discord.command": "Wörter für einen Befehl: BEFEHL=WORT,WORT (ersetzt die Wörter dieses Befehls, BEFEHL= entfernt sie). Mehrfach möglich",
       "server.discord.clear": "Alle Wörter dieses Servers entfernen",

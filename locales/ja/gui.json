@@ -514,6 +514,20 @@
     "error_network": "拡張機能 '{{id}}' の{{action}}に失敗しました。デーモンの接続を確認してください。"
   },
   "saba_storage": {
+    "maker_claude_note": "クローンしたフォルダーで Claude Code を開くと、スキルを自動で見つけます。",
+    "maker_other_note": "クローンしたフォルダーで、エージェントに「maker/SKILL.md を読んで従って」と頼んでください。",
+    "maker_title": "一覧にないゲームは自分で作れます",
+    "maker_desc": "Claude CodeやCodexなどのAIエージェントが、公式資料の調査からこのPCでの隔離テストまで同じ手順でモジュールを作ります。",
+    "maker_open": "自分で作る",
+    "maker_other": "その他のエージェント",
+    "maker_step_install": "1. エージェントにモジュールメーカーのスキルをインストール",
+    "maker_codex_line": "$skill-installer {{repo}} リポジトリの maker をインストールして",
+    "maker_game_label": "2. ゲーム名を入れてエージェントに頼む",
+    "maker_game_placeholder": "<ゲーム名>",
+    "maker_prompt_text": "saba-module-maker スキルで {{game}} のサーバーモジュールを作って。公式資料で調べて、PR 前のチェックをすべて通して。",
+    "maker_unverified": "自作のモジュールは「未確認」として隔離実行されます。共有するにはモジュールリポジトリに PR を送ってください。",
+    "maker_guide": "詳しい案内を見る",
+    "maker_unavailable": "デーモンからモジュールメーカーの案内を取得できませんでした。",
     "title": "サバ ストレージ",
     "setting_description": "コンポーネントのアップデートとモジュール・拡張機能の管理",
     "tab_components": "コンポーネント",
@@ -567,6 +581,8 @@
     "restart_required_title": "再起動必要",
     "apply": "適用",
     "module_busy": "このモジュールの別のインストールまたは削除がまだ進行中です。終わってからもう一度お試しください。",
+    "extensions_enabled": "このモジュールが使う拡張機能を有効にしました: {{ids}}",
+    "extension_failed": "拡張機能 {{id}} を準備できませんでした: {{error}}",
     "remove_failed": "モジュールを削除できませんでした: {{error}}"
   },
   "add_instance_modal": {
@@ -669,6 +685,7 @@
     "tab_info": "情報",
     "console_offline": "サーバーは停止しています。起動するとここにログが表示されます。",
     "console_offline_input": "サーバーを起動するとコマンドを送信できます",
+    "console_read_only": "このサーバーはコンソール入力を受け付けません。コマンドはコマンドタブから送信してください",
     "console_popped_out": "コンソールは別ウィンドウで開いています。",
     "console_popin": "この画面に戻す",
     "commands_offline": "サーバーを起動するとコマンドを送信できます。",
@@ -819,10 +836,7 @@
     "disconnect_desc": "このPCとすべてのDiscordサーバーとの接続を解除します。",
     "tab_instances": "インスタンス",
     "tab_members": "メンバー",
-    "iw_desc": "Discordサーバーごとに、このサーバーとコマンドを呼ぶ言葉を決めます。ほかのDiscordサーバーには影響しません。",
-    "iw_not_linked": "まだDiscordに接続していません。先にDiscord画面で接続してください。",
-    "iw_no_guilds": "接続しているDiscordサーバーがありません。",
-    "iw_not_used": "このDiscordサーバーではこのサーバーを使っていません。Discord画面のインスタンスタブで有効にできます。",
+    "iw_desc": "このサーバーとコマンドを呼ぶ言葉を決めます。接続したすべての Discord サーバーで同じ言葉で呼べます。",
     "iw_server_words": "サーバーの呼び方",
     "iw_server_words_aria": "{{name}}の呼び方",
     "iw_default": "既定: {{words}}",
@@ -1312,6 +1326,7 @@
     "extra_placeholder": "例: -players=16 -useperfthreads",
     "unknown_args": "設定にない引数はそのまま渡します: {{args}}",
     "invalid_format": "形式が正しくありません。",
+    "invalid_fields": "形式が正しくない値があります: {{fields}}",
     "unchecked": "追加の起動引数を確認できなかったため、保存しませんでした"
   },
   "saba": {

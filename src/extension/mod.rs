@@ -1089,6 +1089,47 @@ impl ExtensionManager {
         Ok(())
     }
 
+    /// 모듈을 설치할 때 그 모듈이 요구하는 익스텐션을 켠다 (의존 익스텐션부터).
+    /// `previously_required`(설치 전 판이 요구하던 것)는 사용자가 일부러 껐을 수 있으므로 다시 켜지 않는다.
+    /// 다만 `newly_installed`(이번에 받은 것)는 켠다. 돌려주는 값: (새로 켠 것, 켜지 못한 것과 이유)
+    pub fn enable_for_module(
+        &mut self,
+        required: &[String],
+        previously_required: &[String],
+        newly_installed: &[String],
+    ) -> (Vec<String>, Vec<(String, anyhow::Error)>) {
+        let mut enabled = Vec::new();
+        let mut failed = Vec::new();
+        for id in required {
+            if previously_required.contains(id) && !newly_installed.contains(id) {
+                continue;
+            }
+            if let Err(e) = self.enable_with_dependencies(id, &mut enabled, &mut Vec::new()) {
+                failed.push((id.clone(), e));
+            }
+        }
+        (enabled, failed)
+    }
+
+    /// 의존 익스텐션을 먼저 켜고 이것을 켠다. 새로 켠 것을 `enabled`에 차례대로 더한다
+    fn enable_with_dependencies(&mut self, ext_id: &str, enabled: &mut Vec<String>, visiting: &mut Vec<String>) -> Result<()> {
+        if self.enabled.contains(ext_id) || visiting.iter().any(|v| v == ext_id) {
+            return Ok(());
+        }
+        visiting.push(ext_id.to_string());
+        let deps: Vec<String> = self
+            .discovered
+            .get(ext_id)
+            .map(|e| e.manifest.dependencies.keys().filter(|d| self.discovered.contains_key(*d)).cloned().collect())
+            .unwrap_or_default();
+        for dep in deps {
+            self.enable_with_dependencies(&dep, enabled, visiting)?;
+        }
+        self.enable(ext_id)?;
+        enabled.push(ext_id.to_string());
+        Ok(())
+    }
+
     /// 익스텐션 비활성화 — 역의존성 검사 + 인스턴스 사용 여부 검사
     pub fn disable(
         &mut self,
@@ -3328,5 +3369,65 @@ mod tests {
         assert_eq!(gui.builtin, Some(true));
         assert!(gui.slots.is_empty());
         assert!(manifest.i18n_dir.is_none()); // null → None
+    }
+
+    // ── 모듈 설치 때 필요한 익스텐션 켜기 ──
+
+    fn ids(v: &[&str]) -> Vec<String> {
+        v.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn module_install_enables_required_extensions_and_their_dependencies_first() {
+        let tmp = tempfile::tempdir().unwrap();
+        write_ext(tmp.path(), "base", json!({"id": "base", "name": "B", "version": "0.1.0"}));
+        write_ext(tmp.path(), "steamcmd", json!({"id": "steamcmd", "name": "S", "version": "0.1.0", "dependencies": ["base"]}));
+        write_ext(tmp.path(), "ue4_ini", json!({"id": "ue4-ini", "name": "U", "version": "0.1.0"}));
+        let mut mgr = ExtensionManager::new_isolated(tmp.path().to_str().unwrap());
+        mgr.discover().unwrap();
+        mgr.enable("ue4-ini").unwrap();
+
+        let (enabled, failed) = mgr.enable_for_module(&ids(&["steamcmd", "ue4-ini"]), &[], &[]);
+
+        assert!(failed.is_empty(), "{:?}", failed.iter().map(|(id, e)| format!("{id}: {e}")).collect::<Vec<_>>());
+        assert_eq!(enabled, ids(&["base", "steamcmd"]), "already-on ue4-ini is not reported");
+        assert!(mgr.is_enabled("base") && mgr.is_enabled("steamcmd") && mgr.is_enabled("ue4-ini"));
+        let reloaded = ExtensionManager::new_isolated(tmp.path().to_str().unwrap());
+        assert!(reloaded.is_enabled("steamcmd"), "saved to the config file");
+    }
+
+    #[test]
+    fn module_update_keeps_an_extension_the_user_turned_off_but_enables_new_needs() {
+        let tmp = tempfile::tempdir().unwrap();
+        write_ext(tmp.path(), "steamcmd", json!({"id": "steamcmd", "name": "S", "version": "0.1.0"}));
+        write_ext(tmp.path(), "ue4_ini", json!({"id": "ue4-ini", "name": "U", "version": "0.1.0"}));
+        write_ext(tmp.path(), "rcon", json!({"id": "rcon", "name": "R", "version": "0.1.0"}));
+        let mut mgr = ExtensionManager::new_isolated(tmp.path().to_str().unwrap());
+        mgr.discover().unwrap();
+
+        // 예전 판도 steamcmd·ue4-ini를 요구했다. ue4-ini는 지웠다가 이번에 다시 받았고, rcon은 새로 필요해졌다
+        let (enabled, failed) =
+            mgr.enable_for_module(&ids(&["steamcmd", "ue4-ini", "rcon"]), &ids(&["steamcmd", "ue4-ini"]), &ids(&["ue4-ini"]));
+
+        assert!(failed.is_empty());
+        assert_eq!(enabled, ids(&["ue4-ini", "rcon"]));
+        assert!(!mgr.is_enabled("steamcmd"), "the user had turned it off");
+    }
+
+    #[test]
+    fn module_install_reports_extensions_it_cannot_enable() {
+        let tmp = tempfile::tempdir().unwrap();
+        write_ext(tmp.path(), "future", json!({"id": "future", "name": "F", "version": "0.1.0", "min_app_version": "999.0.0"}));
+        let mut mgr = ExtensionManager::new_isolated(tmp.path().to_str().unwrap());
+        mgr.discover().unwrap();
+
+        let (enabled, failed) = mgr.enable_for_module(&ids(&["future", "missing"]), &[], &[]);
+
+        assert!(enabled.is_empty());
+        let codes: Vec<(String, String)> = failed
+            .iter()
+            .map(|(id, e)| (id.clone(), e.downcast_ref::<ExtensionError>().unwrap().error_code.clone()))
+            .collect();
+        assert_eq!(codes, vec![("future".into(), "app_version_unsatisfied".into()), ("missing".into(), "not_found".into())]);
     }
 }

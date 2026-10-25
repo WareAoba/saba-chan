@@ -570,6 +570,20 @@
     "error_network": "扩展插件 '{{id}}' 的 {{action}} 失败。请检查守护进程连接。"
   },
   "saba_storage": {
+    "maker_claude_note": "在克隆的文件夹中打开 Claude Code，它会自己找到技能。",
+    "maker_other_note": "在克隆的文件夹中请代理“阅读 maker/SKILL.md 并照做”。",
+    "maker_title": "列表中没有的游戏，可以自己制作模块",
+    "maker_desc": "Claude Code、Codex 等 AI 代理会按同一流程制作模块，从官方资料调查到在这台电脑上的隔离实测。",
+    "maker_open": "自己制作",
+    "maker_other": "其他代理",
+    "maker_step_install": "1. 在代理中安装模块制作器技能",
+    "maker_codex_line": "$skill-installer 安装 {{repo}} 仓库的 maker 路径",
+    "maker_game_label": "2. 输入游戏名并请求代理",
+    "maker_game_placeholder": "<游戏名>",
+    "maker_prompt_text": "用 saba-module-maker 技能制作 {{game}} 服务器模块。用官方资料调查，并通过 PR 前的全部检查。",
+    "maker_unverified": "自己制作的模块会以“未验证”状态隔离运行。要分享给他人，请向模块仓库提交 PR。",
+    "maker_guide": "查看详细说明",
+    "maker_unavailable": "未能从守护进程获取模块制作器说明。",
     "title": "Saba 存储",
     "setting_description": "管理组件更新、模块和扩展插件",
     "tab_components": "组件",
@@ -623,6 +637,8 @@
     "restart_required_title": "需要重启",
     "apply": "应用",
     "module_busy": "此模块的另一个安装或移除仍在进行中。请在完成后重试。",
+    "extensions_enabled": "已启用此模块使用的扩展：{{ids}}",
+    "extension_failed": "无法准备扩展 {{id}}：{{error}}",
     "remove_failed": "无法移除模块：{{error}}"
   },
   "validation": {
@@ -669,6 +685,7 @@
     "tab_info": "信息",
     "console_offline": "服务器已停止。启动后日志会显示在这里。",
     "console_offline_input": "启动服务器后即可发送命令",
+    "console_read_only": "此服务器不接受控制台输入。请在命令标签页发送命令",
     "console_popped_out": "控制台已在单独的窗口中打开。",
     "console_popin": "移回这里",
     "commands_offline": "启动服务器后即可发送命令。",
@@ -819,10 +836,7 @@
     "disconnect_desc": "断开这台电脑与所有 Discord 服务器的连接。",
     "tab_instances": "实例",
     "tab_members": "成员",
-    "iw_desc": "为每个 Discord 服务器分别设置呼叫此服务器及其命令的词语。不会影响其他 Discord 服务器。",
-    "iw_not_linked": "尚未连接 Discord。请先在 Discord 页面连接。",
-    "iw_no_guilds": "没有已关联的 Discord 服务器。",
-    "iw_not_used": "此 Discord 服务器未使用此服务器。可在 Discord 页面的实例标签中开启。",
+    "iw_desc": "设置呼叫此服务器及其命令的词。在所有已连接的 Discord 服务器中都一样。",
     "iw_server_words": "服务器的称呼",
     "iw_server_words_aria": "{{name}} 的称呼",
     "iw_default": "默认：{{words}}",
@@ -1312,6 +1326,7 @@
     "extra_placeholder": "例如：-players=16 -useperfthreads",
     "unknown_args": "没有对应设置的参数将原样传递：{{args}}",
     "invalid_format": "格式无效。",
+    "invalid_fields": "部分值格式不正确：{{fields}}",
     "unchecked": "无法检查附加启动参数，因此未保存"
   },
   "saba": {

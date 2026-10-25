@@ -125,10 +125,12 @@ pub struct BotConfig {
     pub(crate) legacy_prefix: Option<String>,
     pub cloud: CloudConfig,
     /// 예전 전역 별명 (모듈 → "a, b", 모듈 → 명령 → "a, b", 인스턴스 → "a, b").
-    /// 길드가 있으면 시작할 때 `nodeSettings[guild].instances`로 옮기고 비운다 (`chat::words::migrate`)
+    /// 시작할 때 `serverWords`로 옮기고 비운다 (`chat::words::migrate`)
     pub module_aliases: HashMap<String, String>,
     pub command_aliases: HashMap<String, Value>,
     pub instance_aliases: HashMap<String, String>,
+    /// 인스턴스 id → 디스코드에서 그 서버와 명령을 부르는 낱말. 길드와 상관없다. 낱말 API(`/api/instance/:id/words`)만 바꾼다
+    pub server_words: HashMap<String, crate::chat::words::InstanceWords>,
     pub node_settings: Value,
     pub cloud_nodes: Vec<Value>,
     pub cloud_members: HashMap<String, Value>,
@@ -154,6 +156,7 @@ impl Default for BotConfig {
             module_aliases: HashMap::new(),
             command_aliases: HashMap::new(),
             instance_aliases: HashMap::new(),
+            server_words: HashMap::new(),
             node_settings: Value::Object(serde_json::Map::new()),
             cloud_nodes: Vec::new(),
             cloud_members: HashMap::new(),
@@ -266,7 +269,7 @@ const LOCAL_SECTIONS: &[&str] = &["schemaVersion", "updates", "boot", "extension
 const RESERVED_SECTIONS: &[&str] = &["schemaVersion", "gui", "relay", "updates", "boot", "extensions", "chatbot", "sandbox", "node", "paths"];
 
 /// `nodeSettings[guild]`에서 전용 API만 바꾸는 키: 권한 API(P1), 디스코드 설정 API(I2, `discord`),
-/// 길드·인스턴스 낱말 API(`instances`), 길드가 쓸 서버 API(`allowedInstances`)
+/// 0.1.10까지의 길드·인스턴스 낱말(`instances`, 시작할 때 `serverWords`로 옮긴다), 길드가 쓸 서버 API(`allowedInstances`)
 pub const PERMISSION_KEYS: &[&str] = &[
     "instances",
     "allowedInstances",
@@ -312,6 +315,19 @@ fn keep_permission_keys(merged: &mut Value, current: &Value) -> Vec<String> {
                     node.remove(*key);
                 }
             }
+        }
+    }
+    // 인스턴스 낱말도 낱말 API만 바꾼다
+    let words = current.get("serverWords").cloned();
+    if merged.get("serverWords").is_some_and(|v| Some(v) != words.as_ref()) {
+        reverted.push("serverWords".to_string());
+    }
+    match words {
+        Some(v) => {
+            merged.insert("serverWords".into(), v);
+        }
+        None => {
+            merged.remove("serverWords");
         }
     }
     reverted.sort();
@@ -496,14 +512,31 @@ impl ConfigStore {
         Ok(out)
     }
 
-    /// 예전 전역 별명을 길드·인스턴스 낱말로 옮긴 결과를 저장한다: `nodeSettings`를 바꾸고 옛 세 키를 비운다
-    /// `migrate`는 쓰기 잠금 안에서 지금 설정으로 옮긴 `nodeSettings`를 만든다: 그사이 바뀐 길드 권한을 덮지 않게 (D-F5).
-    /// 옮길 것이 없으면(None) 아무것도 바꾸지 않는다
-    pub async fn finish_words_migration<T>(&self, migrate: impl FnOnce(&BotConfig) -> Option<(Value, T)>) -> Result<Option<T>, ConfigStoreError> {
+    /// 인스턴스 낱말 표를 고친다 (낱말 API). `f`가 true를 돌려주면 저장한다. 검사와 저장을 한 잠금 안에서 해
+    /// 동시에 온 두 요청이 같은 낱말을 둘 다 통과시키지 않게 한다
+    pub async fn update_server_words<R>(
+        &self,
+        f: impl FnOnce(&mut HashMap<String, crate::chat::words::InstanceWords>) -> (R, bool),
+    ) -> Result<R, ConfigStoreError> {
         let mut config = self.bot_config.write().await;
-        let Some((node_settings, out)) = migrate(&config) else { return Ok(None) };
         let mut next = config.clone();
-        next.node_settings = node_settings;
+        let (out, changed) = f(&mut next.server_words);
+        if changed {
+            self.file.set_section("relay", serde_json::to_value(&next)?)?;
+            *config = next;
+        }
+        Ok(out)
+    }
+
+    /// 예전 낱말을 인스턴스 낱말로 옮긴 결과를 저장한다: `nodeSettings`·`serverWords`를 바꾸고 옛 세 키를 비운다
+    /// `migrate`는 쓰기 잠금 안에서 지금 설정으로 옮긴 값을 만든다: 그사이 바뀐 길드 권한을 덮지 않게 (D-F5).
+    /// 옮길 것이 없으면(None) 아무것도 바꾸지 않는다
+    pub async fn finish_words_migration<T>(&self, migrate: impl FnOnce(&BotConfig) -> Option<(crate::chat::words::Migrated, T)>) -> Result<Option<T>, ConfigStoreError> {
+        let mut config = self.bot_config.write().await;
+        let Some((moved, out)) = migrate(&config) else { return Ok(None) };
+        let mut next = config.clone();
+        next.node_settings = moved.node_settings;
+        next.server_words = moved.server_words;
         next.module_aliases.clear();
         next.command_aliases.clear();
         next.instance_aliases.clear();

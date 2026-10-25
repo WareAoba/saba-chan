@@ -587,7 +587,8 @@ impl Session {
                 let texts: Option<&dyn Fn(&str) -> Value> = if translate { Some(&texts) } else { None };
                 json!({
                     "name": m.name,
-                    "module_aliases": m.module_aliases,
+                    // 게임명도 별명처럼 서버를 부른다: 릴레이가 위험 명령 확인에서 같은 서버를 찾도록 함께 보낸다
+                    "module_aliases": m.game_names.iter().chain(&m.module_aliases).collect::<Vec<_>>(),
                     // 디스코드·챗봇에 내보내지 않는 명령(`remote = false`)은 싣지 않는다
                     "commands": { "fields": m.commands.iter().filter(|c| c.remote).map(|c| relay_command_entry(c, m.aliases_of(&c.name), texts)).collect::<Vec<_>>() },
                     "presets": m.presets.iter().map(|p| json!({ "id": p.id, "label": p.label })).collect::<Vec<_>>(),
@@ -631,10 +632,9 @@ impl Session {
         if let Some(allowed) = allowed_instances_by_guild(&bot.node_settings) {
             meta["allowedInstances"] = allowed;
         }
-        // 길드·인스턴스별로 서버와 명령을 부르는 낱말. 항목이 있는 길드만 (릴레이는 찾기·위험 확인에 쓴다)
-        if let Some(words) = crate::chat::words::heartbeat(&bot.node_settings) {
-            meta["instanceWords"] = words;
-        }
+        // 인스턴스별로 서버와 명령을 부르는 낱말 (어느 길드에서나 같다, 릴레이는 찾기·위험 확인에 쓴다).
+        // 비어도 싣는다: 이 키가 있으면 릴레이는 옛 길드별 `instanceWords`·전역 별명을 보지 않는다
+        meta["serverWords"] = crate::chat::words::heartbeat(&bot.server_words);
         // 권한 원본은 데몬이다: 릴레이는 이 값으로 바깥 검사용 캐시를 맞춘다
         meta["permissions"] = permissions_by_guild(&bot.node_settings);
         meta["permissionsAt"] = json!(permissions_at);
@@ -1266,8 +1266,12 @@ fn backoff(failures: u32) -> Duration {
     (RETRY_BASE * factor).min(RETRY_MAX)
 }
 
-/// a < b (x.y.z, 빠진 자리는 0)
+/// a < b (x.y.z, 빠진 자리는 0). 프리릴리스(0.1.11-beta.1)는 업데이터와 같은 SemVer 순서로 비교한다
 fn semver_lt(a: &str, b: &str) -> bool {
+    use saba_chan_updater_lib::version::SemVer;
+    if let (Some(x), Some(y)) = (SemVer::parse(a), SemVer::parse(b)) {
+        return x < y;
+    }
     let parse = |s: &str| -> Vec<u64> { s.split('.').map(|p| p.trim().parse().unwrap_or(0)).collect() };
     let (pa, pb) = (parse(a), parse(b));
     for i in 0..3 {
@@ -2211,6 +2215,14 @@ mod tests {
         assert!(!semver_lt("0.1.1", "0.1.0"));
         assert!(!semver_lt("1.0", "1.0.0"));
         assert!(semver_lt("0.9.9", "1"));
+    }
+
+    #[test]
+    fn prerelease_agent_is_not_older_than_previous_release() {
+        assert!(!semver_lt("0.1.11-beta.1", "0.1.10"));
+        assert!(semver_lt("0.1.11-beta.1", "0.1.11"));
+        assert!(semver_lt("0.1.11-beta.1", "0.1.11-beta.2"));
+        assert!(!semver_lt("0.1.11-rc.1", "0.1.11-beta.2"));
     }
 
     #[test]

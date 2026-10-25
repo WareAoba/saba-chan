@@ -101,6 +101,7 @@
     "no_command_path": "'{{name}}' não tem um console do saba-chan conectado, então não pode receber comandos. Reinicie-o no modo gerenciado pelo saba-chan no PC.",
     "alias_conflict": "❌ O alias '{{alias}}' é ambíguo. Ele corresponde a vários módulos: {{modules}}. Use um alias mais específico.",
     "multiple_instances": "⚠️ Existem múltiplas instâncias de '{{module}}'. Use o nome da instância em vez do alias do módulo.",
+    "danger_needs_name": "⚠️ Comandos perigosos não rodam pelo nome do jogo. Chame o servidor pelo nome '{{name}}'.",
     "auth_failed": "Falha na autenticação",
     "player_not_found": "Jogador não encontrado",
     "internal_server_error": "Erro interno do servidor",

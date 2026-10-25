@@ -1,13 +1,12 @@
 import clsx from 'clsx';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useDiscordStore } from '../../stores/useDiscordStore';
 import { safeShowToast } from '../../utils/helpers';
 import { Icon } from '../Icon';
 import { SabaSpinner } from '../ui/SabaUI';
 import { TagInput } from './TagInput';
 
-export const instanceWordsAvailable = () => Boolean(window.api?.guildInstances && window.api?.guildInstanceWordsSave);
+export const instanceWordsAvailable = () => Boolean(window.api?.instanceWords && window.api?.instanceWordsSave);
 
 const failed = (res) => !res || res.success === false || Boolean(res.error_code) || Boolean(res.error);
 const sameList = (a = [], b = []) => a.length === b.length && a.every((w, i) => w === b[i]);
@@ -52,8 +51,8 @@ function ErrorLines({ details }) {
     );
 }
 
-/** 한 디스코드 서버(길드)에서 이 서버를 부르는 말. 제목은 그 디스코드 서버 이름이다 */
-function InstanceCard({ guildId, title, inst, onSaved }) {
+/** 이 서버를 부르는 말과 명령마다 부르는 말 (어느 디스코드 서버에서나 같다) */
+function InstanceCard({ inst, onSaved }) {
     const { t } = useTranslation('gui');
     const [draft, setDraft] = useState(() => draftOf(inst));
     const [errors, setErrors] = useState({});
@@ -69,7 +68,7 @@ function InstanceCard({ guildId, title, inst, onSaved }) {
     const save = async () => {
         setBusy(true);
         try {
-            const res = await window.api.guildInstanceWordsSave(guildId, inst.id, draft);
+            const res = await window.api.instanceWordsSave(inst.id, draft);
             if (res?.error_code === 'validation_failed') {
                 const byField = errorsByField(res.details);
                 setErrors(byField);
@@ -93,15 +92,13 @@ function InstanceCard({ guildId, title, inst, onSaved }) {
 
     return (
         <section className="dc-card">
-            <div className="dc-card-head">
-                <h2>{title}</h2>
-            </div>
-
             <div className="dc-word-table">
                 <div className="dc-word-row">
                     <div className="dc-word-cmd">
                         <span className="dc-list-name">{t('discord.iw_server_words')}</span>
-                        <span className="muted">{t('discord.iw_default', { words: inst.name })}</span>
+                        <span className="muted">
+                            {t('discord.iw_default', { words: (inst.defaultWords || [inst.name]).join(', ') })}
+                        </span>
                     </div>
                     <TagInput
                         value={draft.words}
@@ -173,36 +170,30 @@ function draftToItem(inst, draft) {
 }
 
 /**
- * 서버 상세의 디스코드 탭: 페어링된 디스코드 서버(길드)마다 이 서버를 부르는 말과 명령마다 부르는 말을 정한다.
- * 데몬 `GET /api/relay/host/:host/nodes`, `GET /api/guilds/:guild/instances`, `PUT /api/guilds/:guild/instances/:id/words`.
+ * 서버 상세의 디스코드 탭: 이 서버를 부르는 말과 명령마다 부르는 말을 정한다. 낱말은 인스턴스에 딸려 어느 디스코드 서버에서나 같다.
+ * 데몬 `GET`·`PUT /api/instance/:id/words`.
  */
 export function InstanceDiscordTab({ server }) {
     const { t } = useTranslation('gui');
-    const hostId = useDiscordStore((s) => s.discordCloudHostId);
-    const relayUrl = useDiscordStore((s) => s.discordCloudRelayUrl);
-    // [{node, inst}] — inst가 null이면 그 디스코드 서버는 이 서버를 쓰지 않는다
-    const [rows, setRows] = useState(null);
+    const [inst, setInst] = useState(null);
     const [error, setError] = useState(null);
 
+    const current = useRef(server.id);
+    current.current = server.id;
+
     const load = useCallback(async () => {
+        const id = server.id;
         setError(null);
-        if (!hostId) return setRows([]);
+        setInst((prev) => (prev?.id === id ? prev : null));
         try {
-            const data = await window.api.relayListHostNodes(hostId, relayUrl);
-            if (data?.error) throw new Error(data.error);
-            const nodes = Array.isArray(data) ? data : data?.nodes || [];
-            const found = await Promise.all(
-                nodes.map(async (node) => {
-                    const res = await window.api.guildInstances(node.guildId);
-                    if (!Array.isArray(res)) throw new Error(res?.error || '-');
-                    return { node, inst: res.find((i) => i.id === server.id) || null };
-                }),
-            );
-            setRows(found);
+            const res = await window.api.instanceWords(id);
+            if (current.current !== id) return; // 그사이 다른 서버로 바뀌었다
+            if (failed(res) || !Array.isArray(res?.commands)) throw new Error(res?.error || '-');
+            setInst(res);
         } catch (e) {
-            setError(e.message);
+            if (current.current === id) setError(e.message);
         }
-    }, [hostId, relayUrl, server.id]);
+    }, [server.id]);
     useEffect(() => {
         load();
     }, [load]);
@@ -219,46 +210,17 @@ export function InstanceDiscordTab({ server }) {
             </div>
         );
     }
-    if (!rows) {
+    if (!inst) {
         return (
             <div className="dc-tab">
                 <SabaSpinner size="sm" />
             </div>
         );
     }
-    if (!hostId) {
-        return (
-            <div className="dc-tab">
-                <p className="muted pad">{t('discord.iw_not_linked')}</p>
-            </div>
-        );
-    }
     return (
         <div className="dc-tab">
             <p className="dc-card-desc">{t('discord.iw_desc')}</p>
-            {rows.length === 0 && <p className="muted pad">{t('discord.iw_no_guilds')}</p>}
-            {rows.map(({ node, inst }) =>
-                inst ? (
-                    <InstanceCard
-                        key={node.guildId}
-                        guildId={node.guildId}
-                        title={node.guildName || node.guildId}
-                        inst={inst}
-                        onSaved={(next) =>
-                            setRows((list) =>
-                                list.map((r) => (r.node.guildId === node.guildId ? { node, inst: next } : r)),
-                            )
-                        }
-                    />
-                ) : (
-                    <section key={node.guildId} className="dc-card">
-                        <div className="dc-card-head">
-                            <h2>{node.guildName || node.guildId}</h2>
-                        </div>
-                        <p className="muted">{t('discord.iw_not_used')}</p>
-                    </section>
-                ),
-            )}
+            <InstanceCard key={inst.id} inst={inst} onSaved={setInst} />
         </div>
     );
 }

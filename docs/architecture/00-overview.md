@@ -116,7 +116,7 @@
 ### 기능
 - ~~업데이터 무결성 검사가 항상 "Tampered"~~, ~~GUI `updater:setConfig` 405~~, ~~모듈 역호출 401~~, ~~`FUNCTIONS` 표 누락~~, ~~`SABA_ENABLED_EXTENSIONS` 경로~~, ~~크래시 감지 없음~~, ~~명령이 꺼진 RCON으로 감~~, ~~업데이트 직후 인스턴스 삭제 위험~~, ~~GUI 종료 시 봇 정지 오류~~ → 모두 해결(각 문서의 해결 표시 참고).
 - ~~`server.post_create`가 발화되지 않는다~~, ~~`auto_apply`가 동작하지 않는다~~(설정이 지워졌다), ~~CLI의 본문 없는 `apply`·`download` 요청이 거부된다~~ → 해결(03 §2.3, 05 §1.7).
-- 데몬은 `/api/servers`의 `managed`로 관리 모드 여부를 알려 주지만, GUI는 아직 `interaction_mode = "console"`일 때만 관리 모드로 본다. 그래서 palworld를 데몬은 관리 모드로, GUI는 비관리로 다룬다(02 §1.2).
+- 데몬은 `/api/servers`의 `managed`로 관리 모드 여부를 알려 주고 GUI는 그 값을 따른다. REST 전용 서버(palworld)도 관리 모드라 GUI가 읽기 전용 콘솔로 서버 출력을 보인다(02 §1.2).
 - 정지: 콘솔이 있는 managed 서버는 데몬이 `stop_command`를 stdin으로 보내고 기다린다. 모듈 `stop()`은 콘솔이 없을 때만 불린다(02 §6.3 #8).
 
 ### 구조 정리 대상

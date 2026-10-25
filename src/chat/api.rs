@@ -34,6 +34,8 @@ impl ServerView {
 pub struct ModuleView {
     pub name: String,
     pub module_aliases: Vec<String>,
+    /// 게임명: module.toml `display_name`과 모듈 locales마다의 `display_name` (`game_names`). 모듈 별명처럼 서버를 부른다
+    pub game_names: Vec<String>,
     /// 명령어 이름 → 별명 목록 (module.toml [aliases.commands])
     pub command_aliases: Vec<(String, Vec<String>)>,
     pub commands: Vec<CommandField>,
@@ -68,6 +70,23 @@ impl ModuleView {
         };
         read(lang).or_else(|| read("en"))
     }
+}
+
+/// 모듈의 게임명: module.toml `display_name`, 그다음 언어마다 모듈 locales의 `display_name`.
+/// 명령의 첫 낱말로 부르므로 띄어 쓴 이름은 빼고, 대소문자만 다른 이름은 하나로 둔다
+pub fn game_names(display_name: Option<&str>, module_dir: Option<&std::path::Path>) -> Vec<String> {
+    let localized = crate::chat::i18n::languages().into_iter().filter_map(|lang| {
+        let raw = std::fs::read_to_string(module_dir?.join("locales").join(format!("{}.json", lang))).ok()?;
+        serde_json::from_str::<serde_json::Value>(&raw).ok()?.get("display_name")?.as_str().map(str::to_string)
+    });
+    let mut out: Vec<String> = Vec::new();
+    for name in display_name.map(str::to_string).into_iter().chain(localized) {
+        let name = name.trim();
+        if !name.is_empty() && !name.chars().any(char::is_whitespace) && !out.iter().any(|n| crate::chat::words::same(n, name)) {
+            out.push(name.to_string());
+        }
+    }
+    out
 }
 
 /// 처리기가 쓰는 데몬 기능. 응답은 HTTP 핸들러와 같은 (상태, JSON) 형태.
@@ -115,6 +134,7 @@ impl DaemonApi for IPCServer {
                     .collect();
                 command_aliases.sort_by(|a, b| a.0.cmp(&b.0));
                 ModuleView {
+                    game_names: game_names(meta.display_name.as_deref(), locale_dir.as_deref()),
                     name: meta.name,
                     module_aliases: meta.module_aliases,
                     command_aliases,
@@ -157,4 +177,24 @@ pub async fn run_with_daemon_settings(server: &IPCServer, req: &super::ChatReque
     };
     let catalog = super::i18n::Catalog::for_language(&language);
     super::process(server, &super::ChatSettings::from(&bot), &catalog, req).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn game_names_come_from_each_locale_display_name() {
+        let tmp = tempfile::tempdir().unwrap();
+        let locales = tmp.path().join("locales");
+        std::fs::create_dir_all(&locales).unwrap();
+        std::fs::write(locales.join("ko.json"), r#"{"display_name": "마인크래프트"}"#).unwrap();
+        std::fs::write(locales.join("en.json"), r#"{"display_name": "Minecraft"}"#).unwrap();
+        std::fs::write(locales.join("ja.json"), r#"{"display_name": "minecraft"}"#).unwrap();
+        std::fs::write(locales.join("de.json"), r#"{"display_name": "Mine Craft"}"#).unwrap();
+        // 띄어 쓴 이름은 명령 첫 낱말이 될 수 없어 뺀다. 대소문자만 다르면 하나로
+        let got = game_names(Some("Minecraft"), Some(tmp.path()));
+        assert_eq!(got, vec!["Minecraft", "마인크래프트"]);
+        assert_eq!(game_names(Some("Terraria"), None), vec!["Terraria"]);
+    }
 }

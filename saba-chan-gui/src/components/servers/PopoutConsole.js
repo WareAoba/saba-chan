@@ -16,6 +16,7 @@ export function PopoutConsole({
     openConsole,
     setConsoleInput,
     sendConsoleCommand,
+    readOnly,
 }) {
     const { t } = useTranslation('gui');
     const [pinned, setPinned] = useState(true); // 처음엔 항상 위 (셸이 항상 위로 연다)
@@ -95,6 +96,7 @@ export function PopoutConsole({
                     openConsole={openConsole}
                     setConsoleInput={setConsoleInput}
                     sendConsoleCommand={sendConsoleCommand}
+                    readOnly={readOnly}
                     autoFocus
                 />
             </div>

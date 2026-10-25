@@ -1,9 +1,9 @@
-//! `server discord`: 디스코드 서버(길드)마다 이 서버와 그 명령을 채팅에서 부르는 낱말 (`nodeSettings[guild].instances[id]`)
+//! `server discord`: 디스코드에서 이 서버와 그 명령을 채팅으로 부르는 낱말 (인스턴스에 딸린다, 봇 설정 `serverWords[id]`)
 //!
-//! 데몬 `GET /api/guilds/:guild/instances`, `PUT /api/guilds/:guild/instances/:id/words`. 낱말 규칙·충돌은 데몬이 검사한다.
+//! 데몬 `GET`·`PUT /api/instance/:id/words`. 낱말 규칙·충돌은 데몬이 검사한다.
 
 use crate::ctx::Ctx;
-use crate::error::{failed, usage, Result};
+use crate::error::{usage, Result};
 use crate::output::{self, s};
 use crate::resolve;
 use serde_json::{json, Map, Value};
@@ -71,64 +71,19 @@ fn words_body(entry: &Value, change: &WordsChange) -> Result<Value> {
     Ok(json!({ "words": words, "commands": commands }))
 }
 
-/// 목록은 배열 그대로이거나 `{instances: [...]}`
-fn instance_list(r: &Value) -> Vec<Value> {
-    r.get("instances").or(Some(r)).and_then(Value::as_array).cloned().unwrap_or_default()
-}
-
-/// `명령: 낱말, 낱말` — 사용자 낱말만 (module.toml 별명은 기본값이라 뺀다)
-fn command_words_line(entry: &Value) -> String {
-    entry
-        .get("commands")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(|c| {
-            let a = str_list(c.get("aliases"));
-            (!a.is_empty()).then(|| format!("{}: {}", s(c, "name"), a.join(", ")))
-        })
-        .collect::<Vec<_>>()
-        .join("; ")
-}
-
-/// 그 디스코드 서버가 쓰는 서버 중 이 서버 (`allowedInstances`에 없으면 None)
-async fn entry_in(ctx: &Ctx, guild: &str, id: &str) -> Result<Option<Value>> {
-    Ok(instance_list(&ctx.api.guild_instances(guild).await?).into_iter().find(|i| s(i, "id") == id))
-}
-
-/// 옵션 없이: 페어링된 디스코드 서버마다 보기. `--guild`만: 그 디스코드 서버의 명령별 낱말. 바꿀 것이 있으면 저장한다
-pub async fn run(ctx: &Ctx, server: Option<&str>, guild: Option<&str>, change: WordsChange) -> Result<()> {
+/// 옵션 없이: 이 서버의 낱말과 명령별 낱말을 보여 준다. 바꿀 것이 있으면 지금 값에서 시작해 저장한다
+pub async fn run(ctx: &Ctx, server: Option<&str>, change: WordsChange) -> Result<()> {
     let sv = resolve::server(ctx, server).await?;
-    if guild.is_none() && change.is_empty() {
-        let mut rows = Vec::new();
-        for (id, name) in resolve::guild_items(&crate::cmd::bot::paired_nodes(ctx).await?) {
-            let entry = entry_in(ctx, &id, &sv.id).await?;
-            rows.push(json!({ "guildId": id, "guildName": name, "instance": entry }));
-        }
-        ctx.out.data(&Value::Array(rows.clone()), |_| {
-            if rows.is_empty() {
-                say!("{}", output::dim(&t!("bot.list_empty")));
-                return;
-            }
-            let mut t = output::table(&[t!("noun.guild"), t!("bot.words"), t!("bot.command_words")]);
-            for r in &rows {
-                let name = [s(r, "guildName"), s(r, "guildId")].into_iter().find(|n| !n.is_empty()).unwrap_or("").to_string();
-                match r.get("instance").filter(|e| !e.is_null()) {
-                    Some(e) => t.add_row(vec![name, str_list(e.get("words")).join(", "), command_words_line(e)]),
-                    None => t.add_row(vec![name, output::dim(&t!("bot.words_not_used")), String::new()]),
-                };
-            }
-            output::print_table(t);
-        });
-        return Ok(());
-    }
-    let guild = resolve::guild(ctx, guild).await?;
-    let Some(entry) = entry_in(ctx, &guild, &sv.id).await? else {
-        return Err(failed(t!("bot.words_not_used")));
-    };
+    let entry = ctx.api.instance_words(&sv.id).await?;
     if change.is_empty() {
         ctx.out.data(&entry, |e| {
-            let mut rows = vec![(t!("bot.words"), str_list(e.get("words")).join(", "))];
+            // 정하지 않아도 부르는 낱말(인스턴스 이름, 게임이 하나뿐이면 게임명)은 GUI처럼 흐리게 덧붙인다
+            let mut words = str_list(e.get("words")).join(", ");
+            let defaults = str_list(e.get("defaultWords"));
+            if !defaults.is_empty() {
+                words = format!("{} {}", words, output::dim(&format!("({})", defaults.join(", ")))).trim().to_string();
+            }
+            let mut rows = vec![(t!("bot.words"), words)];
             for c in e.get("commands").and_then(Value::as_array).into_iter().flatten() {
                 let mut line = str_list(c.get("aliases")).join(", ");
                 let defaults = str_list(c.get("moduleAliases"));
@@ -142,7 +97,7 @@ pub async fn run(ctx: &Ctx, server: Option<&str>, guild: Option<&str>, change: W
         return Ok(());
     }
     let body = words_body(&entry, &change)?;
-    let r = ctx.api.save_instance_words(&guild, s(&entry, "id"), body).await?;
+    let r = ctx.api.save_instance_words(&sv.id, body).await?;
     ctx.out.done(&t!("bot.words_saved", server = s(&entry, "name")), &r);
     Ok(())
 }
@@ -197,11 +152,5 @@ mod tests {
             other => panic!("expected NotFound, got {:?}", other),
         }
         assert!(words_body(&entry(), &change(None, &["kick"], false)).is_err());
-    }
-
-    #[test]
-    fn the_list_comes_bare_or_wrapped() {
-        assert_eq!(instance_list(&json!([entry()])).len(), 1);
-        assert_eq!(instance_list(&json!({ "instances": [entry()] })).len(), 1);
     }
 }
