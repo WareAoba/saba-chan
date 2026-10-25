@@ -308,6 +308,10 @@ Tauri 커맨드(`installer/gui/src-tauri/src/lib.rs`): `get_installer_state`, `s
 | POST | `/events` | 노드(60/min), 256KB | `{events:[{id, type, data}]}`(20건까지) | `{accepted}`. 같은 호스트의 같은 `id`·`data.at`은 한 번만 받는다. 길드마다 따로 보내고, 디스코드 전송이 실패하면 2초·10초 뒤 다시 해 본다. 데몬은 2xx를 받은 이벤트를 다시 보내지 않으므로 끝내 실패한 길드는 그 알림을 놓친다(로그만) | `routes/events.ts`, `bot/notify.ts` |
 | GET | `/api/link-requests` | 노드 | — | `{requests:[{requestId, guildId, guildName, requestedBy, userName, expiresAt}]}`(이 호스트의 대기 요청, `expiresAt`은 ISO 8601 UTC). 코드 없는 연결(J1-b) | `linkRequests.ts` |
 | POST | `/api/link-requests/:id` | 노드 | `{accept: boolean}` | 수락 `{ok:true, guildId, guildName}`, 거절 `{ok:true, declined:true}`. 남의 것·없음 404 `NOT_FOUND`, 만료 410 `EXPIRED`, 그 PC가 요청한 사람 것이 아니게 됐으면 409 `HOST_NOT_FOUND`. 다른 PC가 대표인 길드면 이 PC를 붙인다(§4.4 (i)). 한 번만 쓴다(묶다가 DB 오류로 500이면 요청이 남아 다시 답할 수 있다) | `linkRequests.ts` |
+| PUT / DELETE | `/api/remote/endpoint` | 노드(PUT 10/min) | PUT `{address, port, certSha256}`(호스트 이름 또는 IP, 1~65535, 소문자 hex 64자) | 204. 이 PC의 직접 연결 주소와 TLS 인증서 지문. §4.4 (j) | `routes/remote.ts` |
+| GET | `/api/remote/peers` | 노드(20/min) | — | `{peers:[{hostId, name, status, endpoint:{address, port, certSha256}\|null}]}`. 같은 주인의 다른 PC(만든 순서) | `routes/remote.ts` |
+| POST | `/api/remote/tickets` | 노드(10/min) | `{toHostId}` | 201 `{ticketId, secret, expiresAt(ms), address, port, certSha256, name}`. 남의 PC·없는 PC·자기 자신 404 `NOT_FOUND`, 주소 없음 409 `NO_ENDPOINT` | `routes/remote.ts` |
+| POST | `/api/remote/tickets/:id/redeem` | 노드(20/min) | `{secret}` | `{fromHostId, fromHostName}`. 대상 PC 토큰과 비밀이 맞을 때 한 번만. 그 밖 404 `NOT_FOUND`, 410 `EXPIRED`·`USED` | `routes/remote.ts` |
 | GET | `/v1/updates/check` | — | `channel`(stable·rc·beta·nightly, 위 채널은 아래 채널 릴리즈도 후보로 본다), `platform`, `current`, `client_id` | `{upToDate:false, latest:{version, channel, isCritical, releasedAt, minSupported, manifestUrl, notes}}` / `{upToDate:true, latest?}` (최신이면 `latest`는 받는 채널들에서 지금 버전의 릴리스를 가리키고, 여럿이면 요청한 채널의 것을 고른다 — 업데이터가 컴포넌트를 비교한다. 그 채널에 지금 버전이 없으면 `{upToDate:true}`. `latest`가 없으면 업데이터는 `/v1/updates/manifest/<지금 버전>`을 받는다. 그 manifest가 다른 채널 것이면 코어 버전이 같아도 구성요소를 비교하지 않고 받을 것이 없다고 본다, `updater/src/relay.rs` `fetch_verified_release`) | `routes/updates.ts`, §1.4 |
 | GET | `/v1/updates/manifest/:version` | — | `release?` | 서명된 manifest 원문 | `updates.ts` |
 | POST | `/v1/updates/event` | —(IP당 20/min), 4KB | `{anonId, phase, hostId?, fromVersion?, toVersion?, errorCode?, platform?}` | 204(익명 업데이트 텔레메트리). 필드는 문자열이어야 하고 길이 상한(anonId 128, hostId·fromVersion·toVersion 64, phase·platform 32, errorCode 128)을 넘으면 400 `INVALID_FIELD` | `updates.ts` |
@@ -325,13 +329,15 @@ Tauri 커맨드(`installer/gui/src-tauri/src/lib.rs`): `get_installer_state`, `s
 
 데몬이 명령을 넣는 HTTP 라우트는 없다. 큐 INSERT는 봇이 같은 프로세스에서 `services/commandSubmission.ts` `submitCommand`로 한다. 페어링 클레임도 봇의 `/사바쨩 연결`이 `services/pairing.ts` `claimPairingCode`를 직접 부른다.
 
-### 4.3 DB 스키마 (`relay-server/src/db/schema.ts`, migration 0000–0027)
+### 4.3 DB 스키마 (`relay-server/src/db/schema.ts`, migration 0000–0030)
 
 | 테이블 | 주요 컬럼 |
 |---|---|
 | `users` | `discord_id` PK, username, display_name, is_banned, created_at, last_seen |
 | `hosts` | `id` PK(nanoid12), `owner_discord_id` → users(고유하지 않다: 계정 하나에 PC 여러 대, 0028), name(64자, `/사바쨩 내pc`로 바꾼다), `token_hash`(`sha256:<hex>`, 예전 행은 argon2id), status(online/offline), last_heartbeat, agent_version, `metadata` jsonb(heartbeat 캐시와 botConfig, 서버 목록과 `permissionsAt`은 빼고), `servers` jsonb(heartbeat 서버 목록, `{id, name, module, status, usage?, players?, statusLine?}`만. 0025. null이면 읽는 쪽이 `metadata.servers`를 쓴다, `catalog.ts` `hostMetadata`), timestamps |
 | `guild_hosts` | (`guild_id` → nodes cascade, `host_id` → hosts cascade) PK, created_at. 주인은 따로 적지 않고 `hosts.owner_discord_id`를 쓴다. 대표 PC 뒤에 붙은 PC(길드 하나에 여러 PC, 0029, §4.4 (i)) |
+| `remote_endpoints` | `host_id` PK → hosts cascade, address, port, cert_sha256, updated_at. 원격 PC의 직접 연결 주소(0030, §4.4 (j)) |
+| `remote_tickets` | id PK(nanoid21), `from_host_id`·`to_host_id` → hosts cascade, secret_hash(SHA-256 hex, 원문은 두지 않는다), expires_at(+2분), used_at, created_at. 발급할 때 그 대상 PC의 만료·사용한 표를 지운다(0030, §4.4 (j)) |
 | `nodes` | `guild_id` PK, `host_id` → hosts(cascade, 처음 연결한 대표 PC. 길드 공통 설정의 원본), owner_discord_id, guild_name, locale, `locale_source`(auto/manual), music_enabled, music_ui_enabled, music_settings jsonb, is_sleep, `default_level`(데몬 값의 캐시), `notify_channel_id`(I3), timestamps |
 | `node_permissions` | PK(guild_id, discord_id), level(-1=금지, 0=챗봇, 1=유저, 2=관리자, 10~999=길드에 더한 단계), granted_by. 데몬 `nodeSettings[guild].members`의 캐시(릴레이 바깥 검사용) |
 | `command_queue` | id PK, host_id, guild_id, payload jsonb, requested_by, channel_id, status(pending→delivered→acked→completed / timeout / error), created/delivered/completed/expires_at(+60s), result jsonb, `redeliveries`(ack 없이 다시 보낸 횟수, `0022_command_redeliveries`), `timeout_notified`(봇이 시간 초과를 알린 명령, `0023_command_timeout_notified`) |
@@ -412,6 +418,12 @@ Tauri 커맨드(`installer/gui/src-tauri/src/lib.rs`): `get_installer_state`, `s
 - 대표 PC가 빠지면(연결해제·`/사바쨩 내pc` 지우기·주인이 서버를 떠남) 가장 먼저 붙은 PC가 대표가 되고, 옛 대표의 권한 캐시(`node_permissions`, `default_level`)는 비운다. 남은 PC가 없으면 노드를 지운다.
 - 디스코드 서버 주인도 길드 공통 설정(언어·코코낸내·기상·음악 기능·채널 배정)을 바꾼다(R2b, 사용자 결정 2026-10-25 "처음 연결한 사람 + 서버 주인", `commandAccess.ts` `mayChangeGuildSettings`). 채널 배정은 릴레이가 바로 쓰고, 나머지는 대표 PC 데몬의 `discord.settings.set`이 `guildOwnerDiscordId`로 판정한다(01 §액션). 권한 사다리·업데이트·말하는 사바쨩 설정은 PC 주인만이다.
 - 아직 없는 것: 계획 한 개에 여러 PC의 서버를 섞는 것(첫 단계의 PC로 간다).
+
+**(j) 원격 데몬 직접 연결 중계** (원격 데몬 R4, `services/remoteConnect.ts`, `routes/remote.ts`, 사용자 결정 2026-10-25 "직접 TLS 연결, 릴레이는 연결될 때까지만 중계"): 같은 주인의 PC 끼리만 쓴다.
+- 원격 PC(B)는 자기 직접 연결 주소와 TLS 인증서 SHA-256 지문을 올린다(`PUT /api/remote/endpoint`). 내 PC(A)는 `GET /api/remote/peers`로 같은 주인의 다른 PC와 주소를 본다.
+- A는 B 앞으로 연결표를 받는다(`POST /api/remote/tickets`). 비밀은 32바이트이고 릴레이에는 SHA-256만 남는다. 2분 동안 한 번만 쓴다. 남의 PC는 있는지도 알리지 않는다(404).
+- A는 B에 TLS로 붙어 받은 지문을 고정하고 연결표를 내민다. B는 그것을 릴레이에 한 번 확인하고(`redeem`, 대상 PC 토큰만) 누가 붙는지(`fromHostId`) 안다. 그 뒤의 접속 토큰은 B 데몬이 스스로 내고, 연결된 뒤에는 릴레이를 거치지 않는다.
+- 아직 없는 것: 데몬 쪽 TLS 원격 포트·장기 토큰·redeem 호출(D1), 공인 주소가 없는 PC(NAT 뒤) 지원.
 
 ### 4.5 daemon 쪽 호출과 relay 서버 비교 (검증 결과)
 
