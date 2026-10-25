@@ -21,7 +21,19 @@ struct Paths {
     modules_dir: PathBuf,
 }
 
+/// venv가 실제로 쓰는 Python 버전 (`pyvenv.cfg`의 `version`/`version_info`). venv가 시스템 Python으로
+/// 만들어졌을 수도 있으니 내려받기용 고정 버전을 대신 쓰지 않는다. 모르면 None
+fn venv_python_version(python: &Path) -> Option<String> {
+    let cfg = std::fs::read_to_string(python.parent()?.parent()?.join("pyvenv.cfg")).ok()?;
+    cfg.lines().find_map(|line| {
+        let (key, value) = line.split_once('=')?;
+        matches!(key.trim(), "version" | "version_info").then(|| value.trim().to_string())
+    })
+}
+
 fn maker_info(paths: Paths) -> Value {
+    let python = paths.python.filter(|p| p.is_file());
+    let python_version = python.as_deref().and_then(venv_python_version);
     json!({
         "ok": true,
         "saba_core": {
@@ -30,8 +42,8 @@ fn maker_info(paths: Paths) -> Value {
             "runner": paths.runner,
         },
         "python": {
-            "path": paths.python.filter(|p| p.is_file()),
-            "version": saba_chan_updater_lib::python_pin::PYTHON_VERSION,
+            "path": python,
+            "version": python_version,
         },
         "shared_libs": paths.shared_libs,
         "modules_dir": paths.modules_dir,
@@ -74,10 +86,35 @@ mod tests {
 
         assert_eq!(info["saba_core"]["version"], env!("CARGO_PKG_VERSION"));
         assert_eq!(info["saba_core"]["runner"], Value::Null);
-        // 아직 준비되지 않은 Python 경로는 알려 주지 않는다
+        // 아직 준비되지 않은 Python 경로와 버전은 알려 주지 않는다
         assert_eq!(info["python"]["path"], Value::Null);
+        assert_eq!(info["python"]["version"], Value::Null);
         assert_eq!(info["shared_libs"], json!(dir.join("python-shared")));
         assert!(info["schema_versions"].as_array().is_some_and(|v| !v.is_empty()));
         assert_eq!(info["repo"], MAKER_REPO);
+    }
+
+    #[test]
+    fn python_version_comes_from_the_venv_not_the_download_pin() {
+        let venv = std::env::temp_dir().join(format!("saba-maker-venv-{}", std::process::id()));
+        let python = venv.join("Scripts").join("python.exe");
+        std::fs::create_dir_all(python.parent().unwrap()).unwrap();
+        std::fs::write(&python, b"").unwrap();
+        std::fs::write(
+            venv.join("pyvenv.cfg"),
+            "home = C:\\Python310\ninclude-system-site-packages = false\nversion = 3.10.11\n",
+        )
+        .unwrap();
+
+        let info = maker_info(Paths {
+            saba_core: None,
+            runner: None,
+            python: Some(python),
+            shared_libs: shared_libs_dir(&venv),
+            modules_dir: venv.join("modules"),
+        });
+        std::fs::remove_dir_all(&venv).ok();
+
+        assert_eq!(info["python"]["version"], "3.10.11");
     }
 }
