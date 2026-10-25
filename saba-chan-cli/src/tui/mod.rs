@@ -300,7 +300,7 @@ pub async fn run(ctx: &Ctx, server: Option<&str>) -> Result<()> {
             Msg::ViewRefreshed(v) => {
                 viewing = false;
                 if let Some(v) = v {
-                    app.snap.apply_view(v);
+                    app.apply_view(v);
                 }
             }
         }

@@ -214,19 +214,33 @@ fn launch_args(body: &serde_json::Value) -> Result<LaunchLine, (&'static str, &'
     Ok((kind, args, instance))
 }
 
-/// 띄울 GUI가 붙을 데몬 주소 (`IPC_BASE`). GUI는 `SABA_IPC_PORT`를 읽지 않고 설정 포트를 쓰므로 지금 듣는 포트를 알려 준다
-fn gui_ipc_base(listen_addr: &str) -> Option<String> {
+/// 띄울 GUI가 붙을 데몬 주소 (`IPC_BASE`). GUI는 설정 포트(`gui.ipcPort`)를 읽으므로, 이 데몬이 그와 다른 포트에서
+/// 들을 때만(`SABA_IPC_PORT`) 알려 준다. 같으면 넘기지 않아 GUI가 나중에 바꾼 포트 설정을 따른다
+fn gui_ipc_base(listen_addr: &str, configured: u16) -> Option<String> {
     let port = listen_addr.parse::<std::net::SocketAddr>().ok()?.port();
-    Some(format!("http://127.0.0.1:{port}"))
+    (port != configured).then(|| format!("http://127.0.0.1:{port}"))
+}
+
+/// GUI가 읽는 설정 포트 (main.rs와 같은 자리, 없으면 기본값)
+fn configured_gui_port() -> u16 {
+    saba_chan_updater_lib::config_file::ConfigFile::default_location()
+        .section("gui")
+        .get("ipcPort")
+        .and_then(|v| v.as_u64())
+        .and_then(|p| u16::try_from(p).ok())
+        .unwrap_or(saba_chan_updater_lib::constants::DEFAULT_IPC_PORT)
 }
 
 /// CLI는 새 콘솔 창이 있어야 하므로 지금은 Windows만. GUI는 데스크톱 화면이 있어야 한다
-fn can_launch(kind: Interface) -> bool {
-    let desktop = match kind {
+fn has_screen(kind: Interface) -> bool {
+    match kind {
         Interface::Cli => cfg!(windows),
         Interface::Gui => cfg!(any(windows, target_os = "macos")) || std::env::var_os("DISPLAY").is_some() || std::env::var_os("WAYLAND_DISPLAY").is_some(),
-    };
-    desktop && crate::boot_selector::find_interface_binary(kind.binary()).is_some()
+    }
+}
+
+fn can_launch(kind: Interface) -> bool {
+    has_screen(kind) && crate::boot_selector::find_interface_binary(kind.binary()).is_some()
 }
 
 /// GET /api/clients/launch — 이 PC에서 띄울 수 있는 인터페이스 `{cli, gui}` (전환 버튼을 보일지)
@@ -252,12 +266,13 @@ pub async fn client_launch(State(state): State<IPCServer>, Json(body): Json<serd
             return (StatusCode::NOT_FOUND, Json(json!({ "success": false, "error": format!("Instance not found: {}", id), "error_code": "not_found" }))).into_response();
         }
     }
-    if kind == Interface::Cli && !cfg!(windows) {
-        return (
-            StatusCode::NOT_IMPLEMENTED,
-            Json(json!({ "success": false, "error": "Opening a terminal is only supported on Windows for now", "error_code": "unsupported_platform" })),
-        )
-            .into_response();
+    // 띄울 화면이 없으면(CLI는 Windows 밖, GUI는 데스크톱 화면 없음) 띄운 척하지 않는다: 부른 쪽이 닫히지 않게
+    if !has_screen(kind) {
+        let error = match kind {
+            Interface::Cli => "Opening a terminal is only supported on Windows for now",
+            Interface::Gui => "This PC has no desktop screen to open the app on",
+        };
+        return (StatusCode::NOT_IMPLEMENTED, Json(json!({ "success": false, "error": error, "error_code": "unsupported_platform" }))).into_response();
     }
     let Some(binary) = crate::boot_selector::find_interface_binary(kind.binary()) else {
         let code = match kind {
@@ -269,7 +284,7 @@ pub async fn client_launch(State(state): State<IPCServer>, Json(body): Json<serd
     let spawned = match kind {
         Interface::Cli => spawn_in_new_console(&binary, &args),
         Interface::Gui => {
-            let env: Vec<(&str, String)> = gui_ipc_base(&state.listen_addr).map(|b| ("IPC_BASE", b)).into_iter().collect();
+            let env: Vec<(&str, String)> = gui_ipc_base(&state.listen_addr, configured_gui_port()).map(|b| ("IPC_BASE", b)).into_iter().collect();
             crate::boot_selector::spawn_gui_with(&binary, &args, &env)
         }
     };
@@ -318,12 +333,14 @@ mod launch_tests {
         assert_eq!(field(json!({ "kind": "gui", "instance": "" })), "instance");
     }
 
-    /// 띄운 GUI는 설정 포트가 아니라 지금 이 데몬에 붙는다 (`SABA_IPC_PORT`로 다른 포트에서 돌 때도)
+    /// 띄운 GUI는 이 데몬에 붙는다: 설정 포트와 다른 포트에서 돌 때(`SABA_IPC_PORT`)만 주소를 넘기고,
+    /// 같으면 넘기지 않아 GUI가 나중에 바꾼 포트 설정을 따른다
     #[test]
     fn a_launched_gui_is_pointed_at_this_daemon() {
-        assert_eq!(super::gui_ipc_base("127.0.0.1:61234").as_deref(), Some("http://127.0.0.1:61234"));
-        assert_eq!(super::gui_ipc_base("0.0.0.0:61234").as_deref(), Some("http://127.0.0.1:61234"));
-        assert_eq!(super::gui_ipc_base("nope"), None);
+        assert_eq!(super::gui_ipc_base("127.0.0.1:61234", 57474).as_deref(), Some("http://127.0.0.1:61234"));
+        assert_eq!(super::gui_ipc_base("0.0.0.0:61234", 57474).as_deref(), Some("http://127.0.0.1:61234"));
+        assert_eq!(super::gui_ipc_base("127.0.0.1:57474", 57474), None);
+        assert_eq!(super::gui_ipc_base("nope", 57474), None);
     }
 }
 

@@ -397,6 +397,16 @@ impl App {
         (self.page == Page::Servers).then(|| self.snap.servers.get(self.selected_index())).flatten()
     }
 
+    /// 읽어 온 콘솔을 화면에 둔다. 그사이 다른 서버를 골랐으면 늦게 온 앞 서버 것은 버린다
+    pub fn apply_view(&mut self, v: super::data::View) {
+        if let super::data::View::Console(id, _) = &v {
+            if self.selected_server().map(|s| super::data::s(s, "id")) != Some(id.as_str()) {
+                return;
+            }
+        }
+        self.snap.apply_view(v);
+    }
+
     /// 쪽이 어디든 서버 쪽에서 마지막으로 고른 서버의 id (GUI로 넘길 때)
     pub fn current_server_id(&self) -> Option<String> {
         let i = if self.page == Page::Servers { self.selected_index() } else { self.picked[Page::Servers.slot()] };
@@ -1007,6 +1017,19 @@ mod tests {
     }
 
     /// 서버를 고르고 → 버튼 → ↓ 서버 콘솔. 보이는 방향대로 옮긴다
+    /// 서버를 빨리 바꾸면 앞 서버의 늦은 콘솔 응답이 온다: 지금 고른 서버 것만 화면에 둔다
+    #[test]
+    fn a_late_console_for_another_server_is_dropped() {
+        use super::super::data::View;
+        let mut a = app();
+        a.list_state.select(Some(1));
+        a.apply_view(View::Console("s2".into(), vec![json!({ "content": "pal" })]));
+        a.apply_view(View::Console("s1".into(), vec![json!({ "content": "old" })]));
+        assert_eq!(a.snap.console.as_ref().map(|(id, l)| (id.as_str(), l.len())), Some(("s2", 1)));
+        a.apply_view(View::DaemonLog(vec![json!({ "message": "x" })]));
+        assert_eq!(a.snap.daemon_log.len(), 1, "the daemon log is one view: always kept");
+    }
+
     #[test]
     fn arrows_move_the_way_the_screen_is_laid_out() {
         let mut a = app();

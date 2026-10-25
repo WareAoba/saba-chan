@@ -482,7 +482,13 @@ pub fn spawn_gui_with(gui: &std::path::Path, args: &[String], env: &[(&str, Stri
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .spawn()?;
-    Ok(child.id())
+    let pid = child.id();
+    // 오래 사는 데몬이 띄우므로 끝난 GUI를 거둔다 (유닉스에서 좀비로 남지 않게)
+    std::thread::spawn(move || {
+        let mut child = child;
+        let _ = child.wait();
+    });
+    Ok(pid)
 }
 
 /// CLI 프로세스를 현재 콘솔에 마운트 (stdio 상속)

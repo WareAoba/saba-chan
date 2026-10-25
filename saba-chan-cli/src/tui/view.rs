@@ -239,6 +239,7 @@ fn button_text(b: &Button) -> String {
 fn with_buttons(f: &mut Frame, app: &mut App, area: Rect) -> Rect {
     let buttons = app.buttons();
     if buttons.is_empty() || area.height == 0 {
+        app.areas.buttons.clear();
         return area;
     }
     let (rows, rects) = layout_buttons(&buttons, area);
@@ -260,9 +261,14 @@ fn with_buttons(f: &mut Frame, app: &mut App, area: Rect) -> Rect {
         let label = format!("{}{label}{}", " ".repeat(pad / 2), " ".repeat(pad - pad / 2));
         f.render_widget(Paragraph::new(Span::styled(label, style)), *r);
     }
-    app.areas.buttons = rects;
+    app.areas.buttons = clickable(rects, area);
     let used = (rows + 1).min(area.height);
     Rect { y: area.y + used, height: area.height - used, ..area }
+}
+
+/// 넘쳐 그리지 못한 버튼은 누를 자리도 없다 (아래 칸 위에 겹쳐 눌리지 않게). 순서는 버튼 번호라 빈 자리로 남긴다
+fn clickable(rects: Vec<Rect>, area: Rect) -> Vec<Rect> {
+    rects.into_iter().map(|r| if r.y >= area.y + area.height { Rect::default() } else { r }).collect()
 }
 
 fn kv_lines(rows: &[(String, String)]) -> Vec<Line<'static>> {
@@ -963,6 +969,14 @@ mod tests {
         assert!(!app.areas.buttons.is_empty() && !app.areas.tabs.is_empty());
         screen(&mut app, 50, 20);
         assert!(app.areas.buttons.is_empty() && app.areas.list == Rect::default() && app.areas.view == Rect::default() && app.areas.tabs.is_empty());
+    }
+
+    /// 넘쳐 그리지 못한 버튼은 누를 자리도 없다 (아래 칸 위에 겹치지 않는다). 버튼 번호는 그대로다
+    #[test]
+    fn buttons_that_do_not_fit_cannot_be_clicked() {
+        let area = Rect::new(0, 2, 60, 1);
+        let rects = vec![Rect::new(0, 2, 6, 1), Rect::new(0, 3, 6, 1)];
+        assert_eq!(clickable(rects, area), vec![Rect::new(0, 2, 6, 1), Rect::default()]);
     }
 
     /// 80칸에서도 보이는 탭을 누르면 그 쪽으로 간다

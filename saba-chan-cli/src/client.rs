@@ -223,7 +223,7 @@ impl Api {
     }
     /// GET /api/daemon/console?since=&count=
     pub async fn daemon_console(&self, since: Option<u64>, count: Option<usize>) -> Result<Value> {
-        self.daemon_console_tokens(since, count, console::colors_enabled()).await
+        self.daemon_console_tokens(since, count, false).await
     }
 
     /// 데몬 로그. `spans`면 줄마다 구문 강조 토큰을 붙여 받는다 (TUI는 색 코드를 끄고도 칠한다)
