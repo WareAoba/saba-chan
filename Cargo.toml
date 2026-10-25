@@ -54,6 +54,13 @@ sha2 = "0.10"
 # 증분 백업의 내용 저장소 (MK16). zip이 이미 쓰는 판
 flate2 = "1"
 hex = "0.4"
+# 원격 데몬 (D1, `crate::remote_daemon`): 자체 서명 인증서 + 지문 고정 TLS. 암호 구현은 ring 하나
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12", "logging"] }
+rcgen = { version = "0.13", default-features = false, features = ["crypto", "ring"] }
+hyper = { version = "1", features = ["http1", "client", "server"] }
+hyper-util = { version = "0.1", features = ["tokio", "service"] }
+http-body-util = "0.1"
 saba-chan-updater-lib = { path = "updater" }
 saba-atomic-file = { path = "atomic-file" }
 saba-runner = { path = "runner", default-features = false }

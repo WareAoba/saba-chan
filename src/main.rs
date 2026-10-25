@@ -27,6 +27,7 @@ mod actions;
 mod launch_args;
 mod relay_agent;
 mod remote;
+mod remote_daemon;
 
 use std::sync::Arc;
 use std::io::IsTerminal;

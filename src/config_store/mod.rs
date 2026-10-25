@@ -262,11 +262,11 @@ pub struct ConfigStore {
 }
 
 /// 이 PC에만 맞는 네임스페이스. 내보내기에서 뺀다 (`sandbox`: 이 PC 사용자가 확인한 동의,
-/// `node`: 노드 토큰. 비밀값까지 내보낼 때만 zip의 `node_token`으로 따로 옮긴다)
-const LOCAL_SECTIONS: &[&str] = &["schemaVersion", "updates", "boot", "extensions", "sandbox", "node", "paths"];
+/// `node`: 노드 토큰. 비밀값까지 내보낼 때만 zip의 `node_token`으로 따로 옮긴다, `remote`: 원격 포트와 이 PC에 짝 맺은 PC)
+const LOCAL_SECTIONS: &[&str] = &["schemaVersion", "updates", "boot", "extensions", "sandbox", "node", "paths", "remote"];
 
 /// 클라이언트 네임스페이스로 쓸 수 없는 키 (각자 전용 API가 있다)
-const RESERVED_SECTIONS: &[&str] = &["schemaVersion", "gui", "relay", "updates", "boot", "extensions", "chatbot", "sandbox", "node", "paths"];
+const RESERVED_SECTIONS: &[&str] = &["schemaVersion", "gui", "relay", "updates", "boot", "extensions", "chatbot", "sandbox", "node", "paths", "remote"];
 
 /// `nodeSettings[guild]`에서 전용 API만 바꾸는 키: 권한 API(P1), 디스코드 설정 API(I2, `discord`),
 /// 0.1.10까지의 길드·인스턴스 낱말(`instances`, 시작할 때 `serverWords`로 옮긴다), 길드가 쓸 서버 API(`allowedInstances`)
@@ -857,6 +857,9 @@ mod tests {
         store.file.set_section("node", serde_json::json!({"token": "sbn_a.x"})).unwrap();
         assert!(!store.portable_sections(true).contains_key("node"));
         assert!(!ConfigStore::is_client_section("node"));
+        store.file.set_section("remote", serde_json::json!({"enabled": true, "clients": []})).unwrap();
+        assert!(!store.portable_sections(true).contains_key("remote"));
+        assert!(!ConfigStore::is_client_section("remote"));
         // Codex 리뷰 #544: 모듈·익스텐션 폴더(PC마다 다른 절대 경로)는 옮기기 API로만 바뀌고 내보내지 않는다
         store.file.set_section("paths", serde_json::json!({"modules": "D:\\Games\\modules"})).unwrap();
         assert!(!store.portable_sections(true).contains_key("paths"));
