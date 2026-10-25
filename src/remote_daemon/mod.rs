@@ -91,6 +91,34 @@ fn bind(port: u16) -> std::io::Result<tokio::net::TcpListener> {
     tokio::net::TcpListener::from_std(std_listener)
 }
 
+/// 다시 올리기 간격의 상한
+const RETRY_MAX: std::time::Duration = std::time::Duration::from_secs(300);
+
+/// `first`만큼 기다렸다가 주소를 올린다. 실패하면 간격을 두 배씩 늘려(상한 5분) 올릴 때까지 다시 한다.
+/// `cancel`(포트를 닫거나 설정을 다시 적용함)이면 멈추고 false
+async fn publish_with_retry(
+    relay: &server::RelaySource,
+    address: &str,
+    port: u16,
+    sha: &str,
+    cancel: &CancellationToken,
+    first: std::time::Duration,
+) -> bool {
+    let mut wait = first;
+    loop {
+        tokio::select! {
+            _ = cancel.cancelled() => return false,
+            _ = tokio::time::sleep(wait) => {}
+        }
+        if let Some(t) = relay.target().await {
+            if relay::publish(&t, address, port, sha).await {
+                return !cancel.is_cancelled();
+            }
+        }
+        wait = (wait * 2).min(RETRY_MAX);
+    }
+}
+
 /// 설정대로 원격 포트를 연다·닫는다·다시 연다. 설정을 바꾼 뒤, 데몬이 뜰 때, 노드 토큰이 바뀔 때 부른다
 pub async fn apply(server: &IPCServer) -> Status {
     let file = ConfigFile::default_location();
@@ -142,8 +170,22 @@ pub async fn apply(server: &IPCServer) -> Status {
     let address = settings.address.trim();
     if let (true, Some(sha), Some(t)) = (status.listening && !address.is_empty(), status.cert_sha256.as_deref(), target.as_ref()) {
         status.published = relay::publish(t, address, settings.port, sha).await;
-        if !status.published {
-            tracing::warn!("Failed to publish the remote daemon address to the relay");
+        if let (false, Some((cancel, _))) = (status.published, rt.cancel.as_ref()) {
+            // 부팅 직후 네트워크가 아직이거나 릴레이가 잠시 받지 않으면, 포트가 열려 있는 동안 다시 올린다
+            tracing::warn!("Failed to publish the remote daemon address to the relay; retrying");
+            let (cancel, address, sha) = (cancel.clone(), address.to_string(), sha.to_string());
+            let port = settings.port;
+            tokio::spawn(async move {
+                if publish_with_retry(&relay, &address, port, &sha, &cancel, std::time::Duration::from_secs(5)).await {
+                    let mut rt = RUNTIME.lock().await;
+                    // 그사이 설정을 다시 적용했으면 그쪽 상태를 덮지 않는다 (다시 적용은 잠근 채 예전 것을 취소한다)
+                    if !cancel.is_cancelled() {
+                        rt.published = true;
+                        rt.status.published = true;
+                        tracing::info!("Published the remote daemon address to the relay");
+                    }
+                }
+            });
         }
     } else if let (true, Some(t)) = (rt.published || !address.is_empty(), target.as_ref()) {
         // 데몬이 다시 뜬 뒤에는 전에 올렸는지 모르므로, 주소를 적어 둔 PC면 내린다
@@ -158,6 +200,53 @@ pub async fn apply(server: &IPCServer) -> Status {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::time::Duration;
+
+    /// 릴레이 흉내: 처음 `fail`번은 503, 그 뒤로 204
+    async fn flaky_relay(fail: usize) -> (super::server::RelaySource, super::Arc<AtomicUsize>) {
+        let calls = super::Arc::new(AtomicUsize::new(0));
+        let seen = calls.clone();
+        let app = axum::Router::new().route(
+            "/api/remote/endpoint",
+            axum::routing::put(move || {
+                let n = seen.fetch_add(1, Ordering::SeqCst);
+                async move { if n < fail { axum::http::StatusCode::SERVICE_UNAVAILABLE } else { axum::http::StatusCode::NO_CONTENT } }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        (super::server::RelaySource::Fixed(super::relay::Target { base, token: "sbn_host-b.secret".into() }), calls)
+    }
+
+    /// 부팅 직후처럼 릴레이가 잠시 받지 않아도, 포트가 열려 있는 동안 다시 올려 결국 올린다
+    #[tokio::test]
+    async fn a_failed_publish_is_retried_until_the_relay_takes_it() {
+        let (relay, calls) = flaky_relay(2).await;
+        let cancel = super::CancellationToken::new();
+        let published = super::publish_with_retry(&relay, "saba.example.com", 57480, &"ab".repeat(32), &cancel, Duration::from_millis(10)).await;
+        assert!(published);
+        assert_eq!(calls.load(Ordering::SeqCst), 3);
+    }
+
+    /// 포트를 닫거나 설정을 다시 적용하면 다시 올리기를 멈춘다
+    #[tokio::test]
+    async fn retrying_stops_once_the_port_closes() {
+        let (relay, calls) = flaky_relay(usize::MAX).await;
+        let cancel = super::CancellationToken::new();
+        let stop = cancel.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            stop.cancel();
+        });
+        let published = super::publish_with_retry(&relay, "saba.example.com", 57480, &"ab".repeat(32), &cancel, Duration::from_millis(10)).await;
+        assert!(!published);
+        let after = calls.load(Ordering::SeqCst);
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert_eq!(calls.load(Ordering::SeqCst), after, "no more attempts after the port closed");
+    }
+
     /// 설정을 바꿔 같은 포트로 다시 열 때: 예전 리스너가 끝나면 포트가 바로 비어 있다
     #[tokio::test]
     async fn the_port_is_free_again_once_the_listener_stops() {
