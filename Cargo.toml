@@ -35,7 +35,7 @@ serde_ignored = "0.1"
 schemars = "0.8"
 axum = "0.7"
 # 사용자가 직접 넣는 모듈·익스텐션 zip은 7-Zip 등에서 bzip2·zstd로 묶었을 수 있다 (암호 zip만 뺀다)
-zip = { version = "0.6", default-features = false, features = ["deflate", "bzip2", "zstd", "time"] }
+zip = { version = "9", default-features = false, features = ["deflate", "bzip2", "zstd", "time"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 tempfile = "3.8"
 uuid = { version = "1.0", features = ["v4", "serde"] }

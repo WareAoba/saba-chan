@@ -1548,7 +1548,7 @@ print(json.dumps({'success': True, 'snapshots': [{'id': 'startup/backup_1', 'cre
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         let mut z = zip::ZipWriter::new(std::fs::File::create(path).unwrap());
         for (name, body) in files {
-            z.start_file(*name, zip::write::FileOptions::default()).unwrap();
+            z.start_file(*name, zip::write::SimpleFileOptions::default()).unwrap();
             std::io::Write::write_all(&mut z, body).unwrap();
         }
         z.finish().unwrap();

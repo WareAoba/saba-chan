@@ -11,6 +11,7 @@ pub mod scheduler;  // 인스턴스 예약 작업 (A3)
 pub mod process_monitor;
 pub mod system_monitor;
 pub mod utils;
+pub mod archive;  // 내려받은 ZIP(모듈·익스텐션)을 안전하게 풀기
 pub mod extension;  // 범용 익스텐션 시스템
 pub mod validator;  // 설정값 타입 검증 및 포트 충돌 검사
 pub mod boot_selector;  // BIOS 스타일 부트 선택기
