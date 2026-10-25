@@ -595,7 +595,7 @@ impl Session {
             })
             .collect())
         .await
-        .unwrap_or_else(|e| std::panic::resume_unwind(e.into_panic()));
+        .unwrap_or_else(|e| if e.is_panic() { std::panic::resume_unwind(e.into_panic()) } else { Vec::new() });
 
         // 권한을 읽기 직전의 시각 (권한 변경 응답의 `permissionsAt`과 같은 PC 시계)
         let permissions_at = now_ms();
