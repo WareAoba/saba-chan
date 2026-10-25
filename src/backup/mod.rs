@@ -452,20 +452,22 @@ fn write_v2(dir: &Path, target: &Path, entries: &[(PathBuf, PathBuf)], exclude: 
         } else {
             w.add_dir(source, &entry, "")?;
         }
-        // 다른 자리에서 읽은 폴더 안의 링크는 복원 자리 아래로 옮겨 적는다 (그 안을 가리키는 대상도)
+        // 다른 자리에서 읽은 폴더 안의 링크는 복원 자리 아래로 옮겨 적는다
         if source != path {
-            let moved = |p: &Path| p.strip_prefix(source).ok().map(|rel| path.join(rel));
             for link in &mut w.manifest.links[links_before..] {
-                if let Some(p) = moved(&link.path) {
-                    link.path = p;
-                }
-                if let Some(t) = moved(&link.target) {
-                    link.target = t;
+                if let Ok(rel) = link.path.strip_prefix(source) {
+                    link.path = path.join(rel);
                 }
             }
         }
         let from = (source != path).then(|| source.clone());
         w.manifest.paths.push(ManifestEntry { entry, path: path.clone(), is_file, from });
+    }
+    // 링크 대상이 다른 자리에서 읽은 어느 항목 안이면 그 항목의 복원 자리로 (스냅샷을 지워도 끊기지 않게)
+    for link in &mut w.manifest.links {
+        if let Some(t) = entries.iter().filter(|(s, p)| s != p).find_map(|(s, p)| link.target.strip_prefix(s).ok().map(|rel| p.join(rel))) {
+            link.target = t;
+        }
     }
     sync_all(&w.written)?;
     let mut zip = zip::ZipWriter::new(File::create(target)?);
@@ -1104,6 +1106,25 @@ mod tests {
         let done = restore(&dir, &b.name).unwrap();
         assert_eq!(done.links_missed, 0);
         assert!(fs::symlink_metadata(live.join("latest")).is_ok(), "the link comes back under the restore place");
+    }
+
+    /// 링크가 같은 스냅샷의 다른 항목을 가리키면 그 대상도 그 항목의 복원 자리로 옮긴다 (스냅샷을 지워도 끊기지 않게, Codex 재검토 P2)
+    #[cfg(windows)]
+    #[test]
+    fn a_link_to_another_entry_of_the_same_snapshot_points_to_its_restore_place() {
+        let tmp = tempfile::tempdir().unwrap();
+        let snap = tmp.path().join("snap");
+        fs::create_dir_all(snap.join("Players")).unwrap();
+        fs::create_dir_all(snap.join("Shared")).unwrap();
+        assert!(std::process::Command::new("cmd").args(["/c", "mklink", "/J"]).arg(snap.join("Players").join("latest")).arg(snap.join("Shared")).output().unwrap().status.success());
+        let world = tmp.path().join("world");
+        fs::create_dir_all(&world).unwrap();
+        let dir = tmp.path().join("backups");
+        let entries = [(snap.join("Players"), world.join("Players")), (snap.join("Shared"), world.join("Shared"))];
+        let b = create_from(&dir, BackupKind::Snapshot, &entries, &[]).unwrap();
+        let m = read_v2(&dir.join(&b.name)).unwrap().unwrap();
+        assert_eq!(m.links.len(), 1);
+        assert_eq!((m.links[0].path.clone(), m.links[0].target.clone()), (world.join("Players").join("latest"), world.join("Shared")));
     }
 
     #[cfg(windows)]
