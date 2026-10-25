@@ -804,7 +804,7 @@ impl Api {
         .await
     }
     /// GET /api/relay/node/:guild/chatbot/models — `{provider, models: [이름], selected, effectiveModel}`
-    /// (409 NO_API_KEY, 422 INVALID_API_KEY·QUOTA_EXCEEDED, 503 PROVIDER_UNAVAILABLE)
+    /// (409 NO_API_KEY, 422 INVALID_API_KEY·KEY_PERMISSION·QUOTA_EXCEEDED, 503 PROVIDER_UNAVAILABLE)
     pub async fn chatbot_models(&self, guild_id: &str, relay_url: Option<&str>) -> Result<Value> {
         self.get(&with_query(
             &format!("/api/relay/node/{}/chatbot/models", seg(guild_id)),
@@ -857,9 +857,9 @@ impl Api {
     pub async fn backups(&self, id: &str) -> Result<Value> {
         self.get(&format!("/api/instance/{}/backups", seg(id))).await
     }
-    /// POST /api/instance/:id/backups — `{backup}`
-    pub async fn create_backup(&self, id: &str) -> Result<Value> {
-        self.post_long(&format!("/api/instance/{}/backups", seg(id)), json!({}))
+    /// POST /api/instance/:id/backups — `{backup}`. `body`: `{}`(지금 상태) 또는 `{source: "snapshot", snapshot?}`(게임 자동 백업 보관)
+    pub async fn create_backup(&self, id: &str, body: Value) -> Result<Value> {
+        self.post_long(&format!("/api/instance/{}/backups", seg(id)), body)
             .await
     }
     pub async fn delete_backup(&self, id: &str, name: &str) -> Result<Value> {

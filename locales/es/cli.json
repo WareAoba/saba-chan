@@ -236,6 +236,7 @@
       "backup_busy": "Ya hay una copia de seguridad o restauración de este servidor en curso. Inténtalo de nuevo cuando termine.",
       "backup_file_locked": "El servidor está usando un archivo ({{file}}). Detén el servidor e inténtalo de nuevo: saba-chan-cli stop <nombre>",
       "autosave_not_resumed": "La copia se hizo, pero no se pudo reactivar el autoguardado del servidor. Reinicia el servidor: saba-chan-cli restart <name>",
+      "snapshot_not_found": "El juego no tiene copia automática.",
       "invalid_relay_url": "Solo se permiten direcciones de relay https:// (http solo para localhost, 127.0.0.1 o [::1] al probar en este PC).",
       "module_busy": "Este módulo ya se está instalando o eliminando. Inténtalo de nuevo cuando termine.",
       "schedule_changed": "La programación se cambió en otro lugar. Revísala con saba-chan-cli schedule show y vuelve a intentarlo.",
@@ -557,6 +558,7 @@
       "daemon.clients": "Ventanas de la app de escritorio conectadas al daemon"
     },
     "arg": {
+      "backup.create.from_snapshot": "Guardar la copia automática más reciente del juego en vez de copiar el mundo ahora (Palworld y otros)",
       "bot.channels.notify": "El canal de avisos (fallos, copias, actualizaciones, reinicios programados), por nombre o id",
       "bot.channels.no_notify": "Quitar el canal de avisos",
       "bot.link.decline": "Rechazar esta solicitud de conexión",
@@ -620,10 +622,13 @@
       "manual": "manual",
       "scheduled": "programada",
       "pre-update": "antes de actualizar",
-      "pre-restore": "antes de restaurar"
+      "pre-restore": "antes de restaurar",
+      "snapshot": "Copia del juego guardada",
+      "game-snapshot": "Copia automática del juego"
     },
     "none": "{{name}} aún no tiene copias de seguridad.",
     "creating": "Haciendo copia de seguridad de {{name}}...",
+    "keeping_snapshot": "Guardando la copia del juego de {{name}}…",
     "created": "Copia de seguridad {{backup}} creada.",
     "confirm_delete": "¿Eliminar la copia de seguridad {{backup}} de {{name}}? Esto no se puede deshacer.",
     "deleted": "Copia de seguridad {{backup}} eliminada.",

@@ -280,6 +280,7 @@ pub const PERMISSION_KEYS: &[&str] = &[
     "preset",
     "commandLevels",
     "chatbotCap",
+    "ladder",
     "memberPermissions",
     "discord",
 ];

@@ -41,7 +41,12 @@ export function createApi({ invoke, hub }) {
     const extensionFailure = (extId, verb, error, related) => {
         const data = error.response?.data;
         console.warn(`[Extension] Failed to ${verb} '${extId}':`, data || error.message);
-        const body = { ...data, success: false, error: data?.error || error.message, error_code: data?.error_code || 'network' };
+        const body = {
+            ...data,
+            success: false,
+            error: data?.error || error.message,
+            error_code: data?.error_code || 'network',
+        };
         if (related) body.related = data?.related || [];
         return body;
     };
@@ -1075,7 +1080,8 @@ export function createApi({ invoke, hub }) {
         systemPathsMove: (kind, target) =>
             daemonJson('post', '/api/system/paths/move', { kind, target }, PATHS_MOVE_TIMEOUT),
         instanceBackups: (id) => daemonJson('get', instancePath(id, '/backups')),
-        instanceBackupCreate: (id) => daemonJson('post', instancePath(id, '/backups'), undefined, BACKUP_TIMEOUT),
+        // body: 없으면 지금 상태, `{ source: 'snapshot', snapshot? }`이면 게임 자동 백업 보관
+        instanceBackupCreate: (id, body) => daemonJson('post', instancePath(id, '/backups'), body, BACKUP_TIMEOUT),
         instanceBackupDelete: (id, name) =>
             daemonJson('delete', instancePath(id, `/backups/${encodeURIComponent(name)}`)),
         instanceBackupRestore: (id, name) =>

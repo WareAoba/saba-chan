@@ -3,7 +3,7 @@
 //! 판정은 `crate::chat::permissions`가 한다. 봇 설정 저장(`PATCH /api/config/bot`)은 이 키들을 바꾸지 않는다.
 
 use super::super::IPCServer;
-use crate::chat::permissions::{apply, Change, NodePermissions};
+use crate::chat::permissions::{apply, Change, LevelInput, NodePermissions};
 use axum::{
     extract::{Path, State},
     http::StatusCode,
@@ -52,17 +52,35 @@ pub async fn get_permissions(State(state): State<IPCServer>, Path(guild_id): Pat
     Json(view(&state, &guild_id).await).into_response()
 }
 
-/// `{defaultLevel?, preset?, chatbotCap?, ownerDiscordId?, commandLevels?: {key: level|null}}` → 바꾸기 목록
+/// `{defaultLevel?, preset?, chatbotCap?, ownerDiscordId?, commandLevels?: {key: level|null}, ladder?: [{id?, name?}]}` → 바꾸기 목록
 fn changes_from(body: &Map<String, Value>) -> Result<Vec<Change>, &'static str> {
     let level = |v: &Value| v.as_i64().ok_or("invalid_level");
     let mut out = Vec::new();
     for (key, v) in body {
         match key.as_str() {
-            // 주인을 먼저 바꿔 같은 요청의 다른 항목이 새 주인 기준으로 검사되게
-            "ownerDiscordId" => out.insert(0, Change::Owner(v.as_str().ok_or("invalid_member")?.to_string())),
+            "ownerDiscordId" => out.push(Change::Owner(v.as_str().ok_or("invalid_member")?.to_string())),
             "defaultLevel" => out.push(Change::DefaultLevel(level(v)?)),
             "chatbotCap" => out.push(Change::ChatbotCap(level(v)?)),
             "preset" => out.push(Change::Preset(v.as_str().ok_or("invalid_preset")?.to_string())),
+            "ladder" => {
+                let levels = v
+                    .as_array()
+                    .ok_or("invalid_ladder")?
+                    .iter()
+                    .map(|l| {
+                        let id = match l.get("id") {
+                            None | Some(Value::Null) => None,
+                            Some(id) => Some(id.as_i64().ok_or("invalid_ladder")?),
+                        };
+                        let name = match l.get("name") {
+                            None | Some(Value::Null) => None,
+                            Some(n) => Some(n.as_str().ok_or("invalid_ladder")?.to_string()),
+                        };
+                        Ok(LevelInput { id, name })
+                    })
+                    .collect::<Result<Vec<_>, &'static str>>()?;
+                out.push(Change::Ladder(levels));
+            }
             "commandLevels" => {
                 for (k, l) in v.as_object().ok_or("invalid_command")? {
                     let level = if l.is_null() { None } else { Some(level(l)?) };
@@ -72,6 +90,14 @@ fn changes_from(body: &Map<String, Value>) -> Result<Vec<Change>, &'static str> 
             _ => return Err("unknown_key"),
         }
     }
+    // 주인 → 사다리 → 프리셋 → 나머지: 다른 항목이 새 주인·새 단계로 검사되고,
+    // 명령별 레벨을 지우는 프리셋이 같은 요청의 명령 레벨을 지우지 않게
+    out.sort_by_key(|c| match c {
+        Change::Owner(_) => 0,
+        Change::Ladder(_) => 1,
+        Change::Preset(_) => 2,
+        _ => 3,
+    });
     Ok(out)
 }
 
@@ -111,5 +137,20 @@ mod tests {
         assert!(changes.contains(&Change::CommandLevel { key: "i/op".into(), level: None }));
         assert_eq!(changes_from(json!({ "members": {} }).as_object().unwrap()), Err("unknown_key"));
         assert_eq!(changes_from(json!({ "defaultLevel": "1" }).as_object().unwrap()), Err("invalid_level"));
+        // 사다리는 주인 다음, 다른 항목보다 먼저
+        let body = json!({ "defaultLevel": 10, "ladder": [{ "id": 3 }, { "name": "VIP" }, { "id": -1 }], "ownerDiscordId": "o" });
+        let changes = changes_from(body.as_object().unwrap()).unwrap();
+        assert_eq!(changes[1], Change::Ladder(vec![
+            LevelInput { id: Some(3), name: None },
+            LevelInput { id: None, name: Some("VIP".into()) },
+            LevelInput { id: Some(-1), name: None },
+        ]));
+        assert_eq!(changes_from(json!({ "ladder": [{ "id": "3" }] }).as_object().unwrap()), Err("invalid_ladder"));
+        // 프리셋은 명령별 레벨을 지우므로, 같은 요청의 명령 레벨보다 먼저 (키 순서와 무관)
+        let body = json!({ "commandLevels": { "i/kick": 3 }, "preset": "strict", "ladder": [{ "id": 3 }, { "id": -1 }, { "id": 1 }] });
+        let changes = changes_from(body.as_object().unwrap()).unwrap();
+        assert!(matches!(changes[0], Change::Ladder(_)));
+        assert_eq!(changes[1], Change::Preset("strict".into()));
+        assert_eq!(changes[2], Change::CommandLevel { key: "i/kick".into(), level: Some(3) });
     }
 }

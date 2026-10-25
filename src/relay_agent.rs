@@ -9,6 +9,8 @@
 //!   6. POST /events            — 디스코드 알림 채널(I3)에 띄울 이벤트 (`relay_event`)
 //!
 //! 인증은 노드 토큰(`config.json` `node.token`, sbn_<id>.<secret>) HMAC 서명입니다.
+//!   7. `web_session` 명령    — 사바쨩 웹 세션이 열렸다: `crate::remote::link`가 릴레이 웹소켓에 붙는다
+//!
 //! 새 명령 종류는 `handle_payload`의 action 분기에 추가합니다.
 
 use crate::ipc::handlers::relay::{load_node_token, parse_node_token, resolve_relay_url, signed_headers_with};
@@ -217,6 +219,7 @@ impl RelayAgent {
     }
 
     pub fn stop(&self) {
+        crate::remote::link::stop();
         let mut inner = self.lock();
         if let Some(cancel) = inner.cancel.take() {
             cancel.cancel();
@@ -432,6 +435,7 @@ impl Session {
             s.last_error = Some("node token replaced by a newer pairing".into());
             s.last_error_code = Some("token_replaced");
         });
+        crate::remote::link::stop();
         self.cancel.cancel();
     }
 
@@ -838,6 +842,11 @@ impl Session {
                 };
                 let result = crate::audit::with_origin(origin, action_request(&self.server, action, &payload, &caller)).await;
                 action_result(result, &caller.locale)
+            }
+            // 사바쨩 웹: 릴레이에 웹 세션이 열렸다. 릴레이 웹소켓에 붙는다 (세션이 없어지면 데몬이 끊는다)
+            "web_session" => {
+                crate::remote::link::ensure(self.server.clone(), &self.base, &self.token);
+                json!({ "success": true, "data": { "connecting": true } })
             }
             // 디스코드에서 코드 없이 `/사바쨩 연결` (J1-b): PC 화면에 알리기만 한다. 수락은 PC에서 사람이 누른다
             "link_request" => match link_request_event(cmd, &payload) {
@@ -1347,17 +1356,16 @@ fn permissions_by_guild(node_settings: &Value) -> Value {
 
 /// 한 길드의 권한 스냅샷 (heartbeat `permissions[guild]`, `permission` action 응답이 같은 모양)
 fn permission_entry(p: &crate::chat::permissions::NodePermissions) -> Value {
-    use crate::chat::permissions::preset_level;
     let mut keys: Vec<&String> = p.command_levels.keys().collect();
     keys.sort();
     let command_levels: serde_json::Map<String, Value> =
         keys.iter().take(COMMAND_LEVELS_PER_GUILD).map(|k| ((*k).clone(), json!(p.command_levels[*k]))).collect();
     let levels = json!({
-        "safe": preset_level(&p.preset, "safe"),
-        "caution": preset_level(&p.preset, "caution"),
-        "danger": preset_level(&p.preset, "danger"),
+        "safe": p.preset_need("safe"),
+        "caution": p.preset_need("caution"),
+        "danger": p.preset_need("danger"),
         // 관리(Kind::Admin) 액션은 risk 대신 이 레벨이다 (`actions::authorize`)
-        "admin": crate::actions::admin_level(&p.preset),
+        "admin": p.admin_need(),
     });
     let mut entry = json!({
         "defaultLevel": p.default_level,
@@ -1365,6 +1373,8 @@ fn permission_entry(p: &crate::chat::permissions::NodePermissions) -> Value {
         "chatbotCap": p.chatbot_cap,
         "levels": levels,
         "commandLevels": command_levels,
+        // 단계 순서 (높은 것부터). 릴레이는 숫자가 아니라 이 순서로 견준다
+        "ladder": p.ladder,
     });
     if keys.len() > COMMAND_LEVELS_PER_GUILD {
         entry["commandLevelsTruncated"] = json!(true);
@@ -1822,7 +1832,7 @@ mod tests {
         let at = res["data"]["permissionsAt"].as_u64().unwrap_or_else(|| panic!("no permissionsAt: {res}"));
         assert!(at >= before && at <= now_ms());
         // 응답은 heartbeat `permissions[guild]`와 같은 모양이다
-        for key in ["defaultLevel", "members", "chatbotCap", "levels", "commandLevels"] {
+        for key in ["defaultLevel", "members", "chatbotCap", "levels", "commandLevels", "ladder"] {
             assert!(res["data"].get(key).is_some(), "no {key}: {res}");
         }
     }
@@ -1873,6 +1883,27 @@ mod tests {
         assert_eq!(entry["inputs"][0]["titles"]["ko"], "바로 쓰기");
         assert!(entry["titles"].get("en").is_none(), "no text for a language → nothing (the relay shows the plain name)");
         assert!(relay_command_entry(&field, &[], None).get("titles").is_none(), "off → plain names only");
+    }
+
+    /// 사바쨩 웹: 릴레이가 세션을 열었다고 알리면 이 세션의 릴레이 주소·토큰으로 웹소켓을 연다
+    #[tokio::test]
+    async fn a_web_session_opens_the_relay_websocket() {
+        let _one = crate::remote::link::TEST_LOCK.lock().await;
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let tmp = tempfile::tempdir().unwrap();
+        let session = test_session(&RelayAgent::new(), &base, "sbn_host.secret", tmp.path()).await;
+        let result = session.handle_payload(&json!({ "id": "c1", "payload": { "action": "web_session", "sessionId": "s1" } })).await;
+        assert_eq!(result["success"], true, "{result:?}");
+        let (tcp, _) = tokio::time::timeout(Duration::from_secs(5), listener.accept()).await.expect("the daemon dials the relay").unwrap();
+        let mut path = String::new();
+        let _ = tokio_tungstenite::accept_hdr_async(tcp, |req: &tokio_tungstenite::tungstenite::handshake::server::Request, res| {
+            path = req.uri().path().to_string();
+            Ok(res)
+        })
+        .await;
+        assert_eq!(path, "/node/ws");
+        crate::remote::link::stop();
     }
 
     #[test]
@@ -1929,12 +1960,13 @@ mod tests {
         });
         // 릴레이가 요구 레벨을 미리 셀 수 있게 프리셋을 푼 risk별 레벨, 챗봇 상한, 명령별 덮어쓰기도 싣는다
         let default_levels = json!({ "safe": 0, "caution": 1, "danger": 2, "admin": 2 });
+        let ladder = json!([{ "id": 3 }, { "id": 2 }, { "id": 1 }, { "id": 0 }, { "id": -1 }]);
         assert_eq!(
             permissions_by_guild(&nodes),
             json!({
-                "g1": { "defaultLevel": 1, "members": { "a": 2 }, "chatbotCap": 1, "levels": default_levels, "commandLevels": { "i/stop": 3 } },
-                "g2": { "defaultLevel": 1, "members": {}, "chatbotCap": 0, "levels": { "safe": 1, "caution": 2, "danger": 3, "admin": 3 }, "commandLevels": {} },
-                "g3": { "defaultLevel": -1, "members": {}, "chatbotCap": 0, "levels": default_levels, "commandLevels": {} }
+                "g1": { "defaultLevel": 1, "members": { "a": 2 }, "chatbotCap": 1, "levels": default_levels, "commandLevels": { "i/stop": 3 }, "ladder": ladder },
+                "g2": { "defaultLevel": 1, "members": {}, "chatbotCap": 0, "levels": { "safe": 1, "caution": 2, "danger": 3, "admin": 3 }, "commandLevels": {}, "ladder": ladder },
+                "g3": { "defaultLevel": -1, "members": {}, "chatbotCap": 0, "levels": default_levels, "commandLevels": {}, "ladder": ladder }
             })
         );
         let many: serde_json::Map<String, Value> = (0..COMMAND_LEVELS_PER_GUILD + 5).map(|i| (format!("i/c{i:04}"), json!(2))).collect();

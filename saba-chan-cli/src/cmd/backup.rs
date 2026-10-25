@@ -15,7 +15,7 @@ use serde_json::Value;
 pub async fn run(ctx: &Ctx, cmd: BackupCmd) -> Result<()> {
     match cmd {
         BackupCmd::List { server } => list(ctx, server.as_deref()).await,
-        BackupCmd::Create { server } => create(ctx, server.as_deref()).await,
+        BackupCmd::Create { server, from_snapshot } => create(ctx, server.as_deref(), from_snapshot).await,
         BackupCmd::Delete { server, backup } => {
             let sv = resolve::server(ctx, Some(&server)).await?;
             let name = pick(ctx, &sv, backup.as_deref()).await?;
@@ -79,10 +79,16 @@ async fn list(ctx: &Ctx, server: Option<&str>) -> Result<()> {
     Ok(())
 }
 
-async fn create(ctx: &Ctx, server: Option<&str>) -> Result<()> {
+/// `from_snapshot`: 지금 월드 대신 게임이 만든 가장 새 자동 백업을 보관한다 (GUI "게임 자동 백업 보관")
+async fn create(ctx: &Ctx, server: Option<&str>, from_snapshot: bool) -> Result<()> {
     let sv = resolve::server(ctx, server).await?;
-    let spin = crate::progress::spinner(&t!("backup.creating", name = sv.name));
-    let r = ctx.api.create_backup(&sv.id).await;
+    let (msg, body) = if from_snapshot {
+        (t!("backup.keeping_snapshot", name = sv.name), serde_json::json!({ "source": "snapshot" }))
+    } else {
+        (t!("backup.creating", name = sv.name), serde_json::json!({}))
+    };
+    let spin = crate::progress::spinner(&msg);
+    let r = ctx.api.create_backup(&sv.id, body).await;
     spin.finish_and_clear();
     let r = r?;
     ctx.out

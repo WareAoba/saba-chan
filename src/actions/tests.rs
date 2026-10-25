@@ -7,11 +7,7 @@ const MODULE: &str = "[module]\nschema_version = 1\nname = \"plain\"\nversion = 
 const MODULE_KO: &str = r#"{ "queries": { "players": { "label": "접속자 목록", "description": "지금 접속한 사람", "inputs": { "limit": { "label": "최대 인원" } } } } }"#;
 
 async fn server() -> (IPCServer, String, tempfile::TempDir) {
-    // 토큰은 한 번만 (병렬 테스트가 서로의 토큰을 바꾸지 않게)
-    static TOKEN: std::sync::Once = std::sync::Once::new();
-    TOKEN.call_once(|| {
-        crate::ipc::auth::generate_and_save_token().unwrap();
-    });
+    crate::ipc::auth::ensure_test_token();
     let tmp = tempfile::tempdir().unwrap();
     let modules = tmp.path().join("modules");
     let dir = modules.join("plain");
@@ -340,6 +336,10 @@ fn summaries_read_like_sentences() {
     // 시각을 모르면 1970년으로 찍지 않는다
     let unknown = summary::text("backup.list", &json!({ "backups": [{ "name": "old", "kind": "manual", "size": 0 }] }), &ko).unwrap();
     assert!(!unknown.contains("1970"), "{unknown}");
+
+    // 게임 자동 백업은 크기를 재지 않는다: 0 B로 쓰지 않는다
+    let game = summary::text("backup.list", &json!({ "backups": [{ "name": "game-snapshot:S1", "kind": "game-snapshot", "created": 1_700_000_000 }] }), &ko).unwrap();
+    assert!(!game.contains("0 B") && !game.trim_end().ends_with('·'), "{game}");
 
     // 열지 못하는 백업은 복원할 수 없다고 함께 알린다 (603 P3-8)
     let mut broken = json!({ "backups": [{ "name": "bad", "kind": "manual", "created": 1_700_000_000, "size": 9, "readable": false }, { "name": "ok", "kind": "manual", "created": 1_699_000_000, "size": 9, "readable": true }] });

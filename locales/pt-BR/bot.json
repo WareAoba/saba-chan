@@ -330,7 +330,8 @@
       "memory": "Memória",
       "webSearch": "Busca na web",
       "disabledTools": "Ferramentas desativadas",
-      "step": "Etapa"
+      "step": "Etapa",
+      "from_snapshot": "Do backup automático do jogo"
     },
     "summary": {
       "server_item": "• **{{name}}** ({{module}}) · {{status}}",
@@ -343,7 +344,9 @@
         "manual": "manual",
         "scheduled": "agendado",
         "pre-update": "antes da atualização",
-        "pre-restore": "antes da restauração"
+        "pre-restore": "antes da restauração",
+        "snapshot": "Backup do jogo guardado",
+        "game-snapshot": "Backup automático do jogo"
       },
       "events": "📜 **Inícios e paradas recentes**",
       "events_empty": "📭 Nenhum registro",
@@ -383,6 +386,8 @@
     "backup_busy": "Outro backup ou restauração está em andamento",
     "server_running": "O servidor está ligado. Desligue-o primeiro",
     "no_command_path": "O servidor foi iniciado fora do Saba-chan e não pode receber comandos",
-    "autosave_not_resumed": "O backup foi feito, mas não foi possível religar o salvamento automático do servidor. Reinicie o servidor"
+    "autosave_not_resumed": "O backup foi feito, mas não foi possível religar o salvamento automático do servidor. Reinicie o servidor",
+    "snapshot_not_found": "O jogo não tem backup automático",
+    "snapshot_not_deletable": "O Saba-chan não pode apagar os backups automáticos do próprio jogo"
   }
 }

@@ -146,7 +146,8 @@ pub static ACTIONS: &[Def] = &[
     def("monitor.summary", Kind::Query, "safe", ALL, false, "GET", "/api/system/metrics?sizes=false"),
     // 디스코드 메뉴에서만 뺀다 (검수 4번). 챗봇 복원이 목록을 보고, 디스코드에서 부르는 것은 계속 받는다
     Def { remote_menu: false, ..def("backup.list", Kind::Query, "safe", ALL, true, "GET", "/api/instance/:id/backups") },
-    def("backup.create", Kind::Command, "caution", ALL, true, "POST", "/api/instance/:id/backups"),
+    // from_snapshot: 지금 상태 대신 게임이 만든 가장 새 자동 백업을 보관한다 (`[backup] snapshots` 모듈)
+    Def { fields: &[field("from_snapshot", "boolean", false)], ..def("backup.create", Kind::Command, "caution", ALL, true, "POST", "/api/instance/:id/backups") },
     // 디스코드에서도 복원한다 (검수 14번). 백업은 목록에서 고른다
     Def {
         fields: &[Field { options_from: Some(OptionsFrom { action: "backup.list", list: "backups", value: "name", label: "label" }), ..path_field("name") }],
@@ -1022,18 +1023,18 @@ async fn authorize(server: &IPCServer, r: &Resolved, caller: &Caller) -> Result<
             let command_key = builtin_command(&r.id).filter(|_| !instance.is_empty()).map(|cmd| format!("{}/{}", instance, cmd));
             match command_key.and_then(|k| perms.override_level(&k)).or_else(|| perms.override_level(&key)) {
                 Some(level) => level,
-                None if r.kind == Kind::Admin => admin_level(&perms.preset),
-                None => crate::chat::permissions::preset_level(&perms.preset, &r.risk),
+                None if r.kind == Kind::Admin => perms.admin_need(),
+                None => perms.preset_need(&r.risk),
             }
         }
     };
     // GUI에서 이 사람에게 막아 둔 명령은 채팅 경로와 같이 주인만 (액션 메뉴·확인 버튼으로 돌아가지 않게)
     let command = r.command.as_deref().or_else(|| builtin_command(&r.id));
     let need = match command {
-        Some(cmd) if !instance.is_empty() && perms.member_denied(who, instance, cmd) => need.max(crate::chat::permissions::OWNER),
+        Some(cmd) if !instance.is_empty() && perms.member_denied(who, instance, cmd) => crate::chat::permissions::OWNER,
         _ => need,
     };
-    if perms.effective_level(who) < need {
+    if !perms.meets(perms.effective_level(who), need) {
         return Err(denied(need));
     }
     Ok(())
@@ -1494,7 +1495,7 @@ async fn call(server: &IPCServer, method: &str, uri: &str, body: Option<Value>) 
 }
 
 /// 데몬 라우터를 안에서 부른다 (인증·감사 미들웨어를 그대로 거친다). `origin`이 있으면 감사 출처로 쓴다
-async fn call_as(server: &IPCServer, method: &str, uri: &str, body: Option<Value>, origin: Option<crate::audit::Origin>) -> InternalResponse {
+pub(crate) async fn call_as(server: &IPCServer, method: &str, uri: &str, body: Option<Value>, origin: Option<crate::audit::Origin>) -> InternalResponse {
     use tower::ServiceExt;
     let mut req = axum::http::Request::builder()
         .method(method)
