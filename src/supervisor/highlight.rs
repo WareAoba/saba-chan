@@ -193,6 +193,48 @@ pub fn for_module(module: &str, highlight: Option<&SyntaxHighlight>) -> Arc<High
     hl
 }
 
+/// 데몬 로그 규칙: (이름, 패턴, 토큰). daemon_log.rs가 tracing 메시지에 `키=값` 필드를 이어 붙인 줄을 칠한다.
+/// 레벨·시각은 줄의 따로 있는 칸이라 여기서 칠하지 않는다. 앞에 둔 규칙이 이긴다
+const DAEMON_LOG_RULES: [(&str, &str, &str); 13] = [
+    ("tag", r"^\[[A-Za-z][\w .:/-]{0,40}\]", "keyword"),
+    ("url", r"\bhttps?://[^\s'\x22]+", "path"),
+    ("ip", r"\b(?P<hl>\d{1,3}(?:\.\d{1,3}){3}(?::\d{1,5})?)\b", "ip"),
+    ("uuid", r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b", "uuid"),
+    ("windows_path", r"\b[A-Za-z]:\\[^\s'\x22,;)]*", "path"),
+    ("unix_path", r"(?:^|[\s(=\x22'])(?P<hl>/(?:[\w.@+-]+/)*[\w.@+-]+)", "path"),
+    ("name", r"(?:^|[\s(=:,\[])(?P<hl>'[^'\n]{1,120}')", "string"),
+    ("field", r"(?:^|\s)(?P<hl>[a-z_][a-z0-9_]*)=", "dim"),
+    ("failure", r"\b(?:[Ff]ailed|[Ee]rror|[Cc]annot|[Cc]ould not|panicked|denied|refused|timed out|[Uu]nable to)\b", "error"),
+    ("success", r"\b(?:[Ss]uccessfully|[Cc]ompleted|[Rr]eady|[Ss]tarted|[Cc]onnected|[Ll]oaded)\b", "success"),
+    ("measure", r"\b\d+(?:\.\d+)?\s?(?:ms|s|KB|MB|GB|B|%)(?:\b|$)", "number"),
+    ("number", r"\b\d+(?:\.\d+)*\b", "number"),
+    ("arrow", r"→|->", "dim"),
+];
+
+/// 데몬 자체 로그(`GET /api/daemon/console?spans=1`)의 하이라이터
+pub fn daemon_log() -> Arc<Highlighter> {
+    static HL: OnceLock<Arc<Highlighter>> = OnceLock::new();
+    HL.get_or_init(|| {
+        let n = DAEMON_LOG_RULES.len() as i32;
+        let rules: Vec<HighlightRule> = DAEMON_LOG_RULES
+            .iter()
+            .enumerate()
+            .map(|(i, (name, pattern, token))| HighlightRule {
+                name: (*name).into(),
+                pattern: (*pattern).into(),
+                color: (*token).into(),
+                background: None,
+                bold: false,
+                italic: false,
+                underline: false,
+                priority: n - i as i32,
+            })
+            .collect();
+        Arc::new(Highlighter::new("daemon", &rules))
+    })
+    .clone()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -278,6 +320,40 @@ mod tests {
         // 경계가 글자 중간이어도 자르기가 안전하다
         let multibyte = "가".repeat(MAX_LINE_BYTES);
         assert!(hl.spans(&multibyte).is_empty());
+    }
+
+    /// 데몬 로그는 `[태그] 글 'id' 경로 키=값 숫자` 모양이다 (daemon_log.rs가 tracing 메시지와 필드를 이어 붙인다)
+    #[test]
+    fn daemon_log_lines_are_tokenized() {
+        let hl = daemon_log();
+        let span = |line: &str, part: &str| {
+            let at = line.find(part).expect("part");
+            let units = |b: usize| line[..b].encode_utf16().count();
+            (units(at), units(at + part.len()))
+        };
+        let token_of = |line: &str, part: &str| {
+            let (st, en) = span(line, part);
+            hl.spans(line).into_iter().find(|(a, b, _)| *a <= st && en <= *b).map(|(_, _, t)| t)
+        };
+        let l = "[Heartbeat] Active clients: 2";
+        assert_eq!(token_of(l, "[Heartbeat]"), Some("keyword"));
+        assert_eq!(token_of(l, "2"), Some("number"));
+        let l = "Managed server 'pal-1' started with PID 4242";
+        assert_eq!(token_of(l, "'pal-1'"), Some("string"));
+        assert_eq!(token_of(l, "4242"), Some("number"));
+        let l = r"Failed to save exit history for 'mc': C:\Users\me\saba\x.json is busy";
+        assert_eq!(token_of(l, "Failed"), Some("error"));
+        assert_eq!(token_of(l, r"C:\Users\me\saba\x.json"), Some("path"));
+        let l = "IPC HTTP server starting on 127.0.0.1:57474 instance=3f2a0b1c-1111-2222-3333-444455556666";
+        assert_eq!(token_of(l, "127.0.0.1:57474"), Some("ip"));
+        assert_eq!(token_of(l, "instance"), Some("dim"));
+        assert_eq!(token_of(l, "3f2a0b1c-1111-2222-3333-444455556666"), Some("uuid"));
+        let l = "[Sandbox] granting \"x\" on /srv/saba/instances/a took 12 ms";
+        assert_eq!(token_of(l, "/srv/saba/instances/a"), Some("path"));
+        assert_eq!(token_of(l, "12 ms"), Some("number"));
+        assert_eq!(token_of("[Updates] fetched https://example.com/a.json", "https://example.com/a.json"), Some("path"));
+        // 낱말 속 작은따옴표는 이름이 아니다
+        assert_eq!(token_of("the user's choice (it's fine)", "'s choice (it'"), None);
     }
 
     #[test]

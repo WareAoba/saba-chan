@@ -190,6 +190,26 @@ describe('서버 페이지', () => {
         await waitFor(() => expect(document.querySelector('.server-list-pane')).not.toBeNull());
     }, 20000);
 
+    /** CLI에서 GUI로 전환하며 고른 서버(`app:openServer`)는 좁은 창에서도 목록이 아니라 그 서버 상세로 연다 */
+    it('바깥에서 연 서버는 좁은 창에서도 상세로 보인다', async () => {
+        let openServer;
+        await boot(
+            {
+                serverList: vi.fn().mockResolvedValue(twoServers),
+                moduleList: vi.fn().mockResolvedValue(palworld),
+                onOpenServer: vi.fn((cb) => {
+                    openServer = cb;
+                    return () => {};
+                }),
+            },
+            SINGLE_COLUMN_MAX_WIDTH - 100,
+        );
+        await waitFor(() => expect(document.querySelectorAll('.server-row')).toHaveLength(2), { timeout: 8000 });
+        await act(async () => openServer({ instanceId: 'srv-2' }));
+        await waitFor(() => expect(document.querySelector('.server-detail h1')?.textContent).toBe('Beta'));
+        expect(document.querySelector('.server-list-pane')).toBeNull();
+    }, 20000);
+
     it('서버가 없으면 빈 화면 안내와 서버 추가 버튼을 보여준다', async () => {
         await boot();
         await waitFor(() => expect(document.querySelector('.empty-state')).not.toBeNull(), { timeout: 8000 });

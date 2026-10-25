@@ -795,7 +795,8 @@
       "server.rcon": "サーバーがコマンドを受け取る経路(コンソール、なければRCON)で1行送って応答を見る",
       "server.log": "過去の実行まで保存されたログ(コンソールは今回の実行分のみ)",
       "server.query": "ゲームモジュールが提供する照会(名前がなければ一覧)",
-      "daemon.clients": "デーモンに接続しているデスクトップアプリのウィンドウ"
+      "daemon.clients": "デーモンに接続しているデスクトップアプリのウィンドウ",
+      "gui": "デスクトップアプリに切り替え (同じサーバーを開き、全画面メニューは閉じます)"
     },
     "arg": {
       "module.maker.game": "最初の依頼に入れるゲーム名",
@@ -1158,15 +1159,13 @@
     "daemon_up": "● デーモン v{{version}}",
     "daemon_down": "○ デーモン停止中 · daemon start と入力",
     "servers_running": "サーバー {{running}}/{{total}} 稼働",
-    "menu": "メニュー",
     "running_hint": "(実行中 · Ctrl+C で停止)",
-    "keys": "Tab 次へ · ↑↓ 選択 · Enter 押す · 1-9 ページ · : コンソール · F2 コンソール拡大 · ? ヘルプ · q 終了",
     "yes": "はい",
     "no": "いいえ",
     "question": "確認",
     "dialog_keys": "Enter 選択 · Esc キャンセル",
     "help_title": "キー操作",
-    "help": "Tab / Shift+Tab  メニュー → リスト → ボタン → コンソールへ移動\n↑↓  選択、 ←→  ボタン間を移動\nEnter  ボタンを押す (… の付いたボタンはコンソールに入力を用意します)\n1-9  ページへ移動\n: または /  コマンドを入力 (saba-chan-cli の後ろに書く部分、↑↓ で履歴)\nPgUp/PgDn、マウスホイール  コンソールをスクロール、 F2  コンソール拡大\nCtrl+C  実行中のコマンドを止める\nマウス  メニュー・リスト・ボタンをクリック\nq  終了 (デーモンとサーバーは動き続けます)",
+    "help": "←→↑↓  画面の並びどおりに移動 (タブ → リスト → ボタン → コンソール)\nTab / Shift+Tab  次・前の欄\nEnter  ボタンを押す (… はコマンド行に入力を用意、▾ はその他)\n1-6  ページへ移動\nサーバーコンソール  ↓ で入って入力し Enter でサーバーへ送信 (↑↓ 履歴)\n: または /  コマンド行 (saba-chan-cli の後ろに書く部分、Tab 補完、↑↓ 履歴)\nF2  出力の開閉、 PgUp/PgDn、マウスホイール  スクロール\nF9  GUIに切り替え (GUIが使えるとき)\nCtrl+C  実行中のコマンドを止める、 Esc  一つ戻る\nq  終了 (デーモンとサーバーは動き続けます)",
     "too_narrow": "ウィンドウを 60 桁以上に広げてください。",
     "not_here": "このコマンドは全画面メニューの中では実行できません。q で終了してから端末で実行してください。",
     "cancelled": "停止しました。",
@@ -1179,24 +1178,17 @@
     "updates_n": "更新 {{count}} 件",
     "updates_none": "最新",
     "page": {
-      "dashboard": "ダッシュボード",
       "servers": "サーバー",
       "modules": "ゲームモジュール",
       "extensions": "拡張機能",
       "discord": "Discord",
       "updates": "アップデート",
-      "settings": "設定",
-      "daemon_log": "デーモンログ",
-      "commands": "すべてのコマンド"
+      "daemon": "デーモン"
     },
-    "console": "コンソール",
-    "console_hint": ": を押すとここにコマンドを入力できます (例: start pal, help)",
-    "keys_console": "Enter 実行 · ↑↓ 履歴 · PgUp/PgDn スクロール · Esc 戻る · F2 コンソール拡大",
-    "keys_running": "コマンド実行中 · Ctrl+C 停止 · PgUp/PgDn スクロール · 他のページは使えます",
-    "welcome": "サバちゃんへようこそ。ボタンを押すか、: を押してコマンドを入力してください。",
+    "keys_console": "Enter サーバーへ送信 · ↑↓ 履歴 · PgUp/PgDn スクロール · Esc ボタンへ",
+    "keys_running": "コマンド実行中 · Ctrl+C 停止 · F2 出力 · 他のページは引き続き見られます",
     "busy": "別のコマンドがまだ実行中です。終わるのを待つか Ctrl+C で止めてから、もう一度試してください。",
     "pick_first": "先にリストから選んでください。",
-    "enter_to_run": "Enterで実行",
     "updates_checking": "確認中…",
     "updates_error": "前回の確認に失敗しました。[更新を確認] をもう一度押してください。",
     "btn": {
@@ -1208,8 +1200,6 @@
       "stop": "停止",
       "restart": "再起動",
       "players": "接続者",
-      "run": "ゲームコマンド",
-      "send": "コンソールに送る",
       "info": "情報",
       "settings": "設定",
       "backup_create": "バックアップ",
@@ -1253,28 +1243,18 @@
       "daemon_restart": "デーモン再起動",
       "daemon_stop": "デーモン停止",
       "clients": "アプリのウィンドウ",
-      "events": "イベントを見る"
+      "more": "その他"
     },
     "col": {
       "name": "名前",
       "game": "ゲーム",
-      "status": "状態",
       "players": "接続",
       "port": "ポート",
       "uptime": "稼働",
       "about": "説明",
       "enabled": "有効"
     },
-    "card": {
-      "servers": "サーバー",
-      "servers_sub": "稼働 / 全体",
-      "players": "接続者",
-      "players_sub": "稼働中サーバーの合計",
-      "memory": "メモリ"
-    },
-    "no_servers": "サーバーはまだありません。[新しいサーバー] を押すか server add と入力してください",
-    "feed": "最近の出来事",
-    "feed_empty": "サーバーの起動・停止がここにすぐ表示されます。",
+    "no_servers": "まだサーバーがありません。[新しいサーバー] を押すか : を押して server add",
     "empty": "(なし)",
     "detail": "詳細",
     "server_console": "コンソール",
@@ -1290,23 +1270,19 @@
     "settings": {
       "daemon": "デーモン",
       "port": "デーモンのポート",
-      "language": "言語",
-      "hint": "値を変えるには [設定を変更] を押して キー=値 を入力します (例: language=ja)。"
+      "language": "言語"
     },
     "choose": "選択",
     "enter_text": "入力",
-    "event": {
-      "instance_ready": "準備完了",
-      "instance_exit": "停止",
-      "instance_player": "接続者が変化",
-      "instance_port_moved": "ポート変更",
-      "instance_restart_failed": "自動再起動に失敗",
-      "backup_done": "バックアップ完了",
-      "plan_done": "複数ステップの実行が完了",
-      "action_run": "コマンド実行",
-      "relay_link_request": "Discord 連携の要求",
-      "update_available": "アップデートあり"
-    }
+    "gui_switch": "GUIに切り替え",
+    "output": "出力",
+    "daemon_log": "デーモンログ",
+    "use_switch": "ここでは F9 (GUIに切り替え) を押してください。",
+    "console_input_hint": "ここにサーバーコマンドを入力 · Enter で送信",
+    "keys_tabs": "←→ ページ移動 · ↓ 入る · 1-6 ページ · : コマンド · F2 出力 · ? ヘルプ · q 終了",
+    "keys_list": "↑↓ 選択 · → ボタン · : コマンド · F2 出力 · ? ヘルプ · q 終了",
+    "keys_actions": "←→ ボタン選択 · Enter 押す · ↓ コンソール · Esc リスト · F2 出力 · ? ヘルプ · q 終了",
+    "keys_command": "Enter 実行 · Tab 補完 · ↑↓ 履歴 · Esc 閉じる"
   },
   "install": {
     "fetching": "最新リリースを確認しています…",
@@ -1349,16 +1325,6 @@
     "module_newer": "アップデートが必要です。{{name}} モジュールはより新しいサバちゃんで動きます。",
     "extension": "アップデートが必要です。{{name}} 拡張機能はサバちゃん {{version}} 以上で動きます。"
   },
-  "uninstall": {
-    "not_installed": "このコマンドはサバちゃんのインストールフォルダーから実行されていないため、削除するものがありません。",
-    "confirm": "{{dir}} のサバちゃんを削除しますか？プログラムとサバちゃんが作ったファイルはすべて削除し、{{kept}}。",
-    "kept_both": "設定とゲームサーバーは残します",
-    "kept_settings": "設定は残し、ゲームサーバーは削除します",
-    "kept_instances": "ゲームサーバーは残し、設定は削除します",
-    "kept_nothing": "設定とゲームサーバーも削除します",
-    "done": "サバちゃんを削除しました。{{kept}}。",
-    "left": "サバちゃんを削除しましたが、次の項目を削除できませんでした。使用中のプログラムを閉じて手動で削除してください:\n{{paths}}"
-  },
   "players": {
     "title": "{{server}}: {{count}} 人接続中",
     "none": "接続している人はいません。"
@@ -1378,5 +1344,8 @@
       "about": "説明",
       "inputs": "入力"
     }
+  },
+  "gui": {
+    "opened": "サバちゃんアプリを開きました。"
   }
 }

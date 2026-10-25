@@ -78,7 +78,7 @@
   "tray": {
     "tooltip": "Saba-chan - Gestion de serveurs de jeu",
     "open_window": "🖥️ Ouvrir la fenêtre",
-    "open_terminal": "💻 Ouvrir le terminal",
+    "switch_to_cli": "💻 Passer à la CLI",
     "daemon_running": "🟢 Démon en cours d'exécution",
     "daemon_stopped": "⚪ Démon arrêté",
     "stop_daemon": "🛑 Arrêter le démon",

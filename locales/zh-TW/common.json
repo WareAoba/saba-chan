@@ -78,7 +78,7 @@
   "tray": {
     "tooltip": "Saba醬 - 遊戲伺服器管理",
     "open_window": "🖥️ 開啟視窗",
-    "open_terminal": "💻 開啟終端機",
+    "switch_to_cli": "💻 切換到 CLI",
     "daemon_running": "🟢 常駐程式執行中",
     "daemon_stopped": "⚪ 常駐程式已停止",
     "stop_daemon": "🛑 停止常駐程式",

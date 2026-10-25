@@ -36,7 +36,6 @@ import { InstanceDiscordTab, instanceWordsAvailable } from '../discord/InstanceW
 import { AuditLog, auditAvailable } from './AuditTab';
 import { MaintenanceTab, maintenanceAvailable } from './MaintenanceTab';
 import { ModuleAuditNotice } from './ModuleAuditNotice';
-import { OpenInTerminalButton } from './OpenInTerminal';
 import { ServerConsole } from './ServerConsole';
 
 /**
@@ -212,7 +211,6 @@ export function ServerDetail({
                         detail={uptime}
                         pulse={status === 'starting' || status === 'stopping'}
                     />
-                    {status !== 'missing' && <OpenInTerminalButton server={server} />}
                     {primaryButton}
                 </div>
             </header>

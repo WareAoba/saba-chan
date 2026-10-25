@@ -577,7 +577,8 @@
       "server.rcon": "Enviar una línea como el servidor recibe comandos (consola, si no RCON) y ver la respuesta",
       "server.log": "Registro guardado de ejecuciones anteriores (la consola solo guarda la actual)",
       "server.query": "Consultas de solo lectura del módulo del juego (sin nombre: la lista)",
-      "daemon.clients": "Ventanas de la app de escritorio conectadas al daemon"
+      "daemon.clients": "Ventanas de la app de escritorio conectadas al daemon",
+      "gui": "Cambiar a la app de escritorio: abre el mismo servidor y el menú a pantalla completa se cierra"
     },
     "arg": {
       "module.maker.game": "Juego para la primera petición",
@@ -747,7 +748,6 @@
     }
   },
   "tui": {
-    "menu": "Menú",
     "running_hint": "(en curso · Ctrl+C para detener)",
     "yes": "Sí",
     "no": "No",
@@ -761,8 +761,7 @@
     "daemon_up": "● daemon v{{version}}",
     "daemon_down": "○ daemon apagado · escribe daemon start",
     "servers_running": "{{running}}/{{total}} servidores en marcha",
-    "keys": "Tab siguiente · ↑↓ elegir · Enter pulsar · 1-9 páginas · : consola · F2 consola grande · ? ayuda · q salir",
-    "help": "Tab / Shift+Tab  pasar de menú → lista → botones → consola\n↑↓  elegir,  ←→  moverse entre botones\nEnter  pulsar un botón (los botones con … rellenan la consola por ti)\n1-9  saltar a una página\n: o /  escribir un comando (lo que escribirías tras saba-chan-cli, ↑↓ historial)\nRePág/AvPág, rueda del ratón  desplazar la consola,  F2  consola grande\nCtrl+C  detener el comando en curso\nRatón  haz clic en el menú, las listas y los botones\nq  salir (el daemon y los servidores siguen funcionando)",
+    "help": "←→↑↓  moverse según la disposición de la pantalla (pestañas → lista → botones → consola)\nTab / Shift+Tab  zona siguiente / anterior\nEnter  pulsar un botón (… rellena la línea de comandos, ▾ abre más)\n1-6  ir a una página\nConsola del servidor  entra con ↓, escribe y Enter lo envía al servidor (↑↓ historial)\n: o /  línea de comandos (lo que escribirías tras saba-chan-cli, Tab completa, ↑↓ historial)\nF2  abrir o cerrar la salida,  PgUp/PgDn, rueda del ratón  desplazar\nF9  cambiar a la GUI (si puede abrirse)\nCtrl+C  detener el comando en curso,  Esc  volver un paso\nq  salir (el daemon y los servidores siguen funcionando)",
     "brand": "Saba-chan {{version}}",
     "memory_of": "memoria {{used}} / {{total}}",
     "discord_on": "Discord ● conectado",
@@ -772,15 +771,12 @@
     "updates_checking": "comprobando…",
     "updates_error": "La última comprobación falló. Pulsa de nuevo [Buscar actualizaciones].",
     "page": {
-      "dashboard": "Panel",
       "servers": "Servidores",
       "modules": "Módulos de juego",
       "extensions": "Extensiones",
       "discord": "Discord",
       "updates": "Actualizaciones",
-      "settings": "Ajustes",
-      "daemon_log": "Registro del daemon",
-      "commands": "Todos los comandos"
+      "daemon": "Daemon"
     },
     "btn": {
       "status": "Estado general",
@@ -791,8 +787,6 @@
       "stop": "Detener",
       "restart": "Reiniciar",
       "players": "Jugadores",
-      "run": "Comando de juego",
-      "send": "Enviar a la consola",
       "info": "Info",
       "settings": "Ajustes",
       "backup_create": "Copia de seguridad",
@@ -836,28 +830,18 @@
       "daemon_restart": "Reiniciar daemon",
       "daemon_stop": "Detener daemon",
       "clients": "Ventanas de la app",
-      "events": "Seguir eventos"
+      "more": "Más"
     },
     "col": {
       "name": "Nombre",
       "game": "Juego",
-      "status": "Estado",
       "players": "Jugadores",
       "port": "Puerto",
       "uptime": "Activo",
       "about": "Descripción",
       "enabled": "Activo"
     },
-    "card": {
-      "servers": "Servidores",
-      "servers_sub": "en marcha / total",
-      "players": "Jugadores",
-      "players_sub": "en servidores en marcha",
-      "memory": "Memoria"
-    },
-    "no_servers": "Aún no hay servidores. Pulsa [Nuevo servidor] o escribe server add",
-    "feed": "Reciente",
-    "feed_empty": "Los arranques y paradas aparecen aquí en cuanto ocurren.",
+    "no_servers": "Aún no hay servidores. Pulsa [Nuevo servidor] o pulsa : y escribe server add",
     "empty": "(ninguno)",
     "detail": "Detalles",
     "server_console": "Consola",
@@ -873,32 +857,24 @@
     "settings": {
       "daemon": "Daemon",
       "port": "Puerto del daemon",
-      "language": "Idioma",
-      "hint": "Para cambiar un valor pulsa [Cambiar un ajuste] y escribe clave=valor (p. ej. language=es)."
+      "language": "Idioma"
     },
-    "console": "Consola",
-    "console_hint": "pulsa : para escribir aquí un comando (p. ej. start pal, help)",
-    "keys_console": "Enter ejecutar · ↑↓ historial · RePág/AvPág desplazar · Esc salir · F2 consola grande",
-    "keys_running": "Comando en curso · Ctrl+C detener · RePág/AvPág desplazar · las demás páginas siguen funcionando",
+    "keys_console": "Enter enviar al servidor · ↑↓ historial · PgUp/PgDn desplazar · Esc volver a los botones",
+    "keys_running": "Comando en curso · Ctrl+C detener · F2 salida · las demás páginas siguen disponibles",
     "choose": "Elegir",
     "enter_text": "Escribir",
-    "welcome": "Bienvenido a Saba-chan. Pulsa un botón o pulsa : para escribir un comando.",
     "busy": "Otro comando sigue en curso. Espera a que termine o detenlo con Ctrl+C y vuelve a intentarlo.",
     "pick_first": "Elige primero un elemento de la lista.",
-    "event": {
-      "instance_ready": "listo",
-      "instance_exit": "detenido",
-      "instance_player": "cambiaron los jugadores",
-      "instance_port_moved": "cambió el puerto",
-      "instance_restart_failed": "falló el reinicio automático",
-      "backup_done": "copia terminada",
-      "plan_done": "ejecución de varios pasos terminada",
-      "action_run": "comando ejecutado",
-      "relay_link_request": "solicitud de vínculo de Discord",
-      "update_available": "actualización disponible"
-    },
-    "enter_to_run": "Enter para ejecutar",
-    "question": "Confirmar"
+    "question": "Confirmar",
+    "gui_switch": "Cambiar a la GUI",
+    "output": "Salida",
+    "daemon_log": "Registro del daemon",
+    "use_switch": "Aquí, pulsa F9 (Cambiar a la GUI).",
+    "console_input_hint": "Escribe aquí un comando del servidor · Enter para enviar",
+    "keys_tabs": "←→ páginas · ↓ entrar · 1-6 página · : comando · F2 salida · ? ayuda · q salir",
+    "keys_list": "↑↓ elegir · → botones · : comando · F2 salida · ? ayuda · q salir",
+    "keys_actions": "←→ elegir botón · Enter pulsar · ↓ consola · Esc lista · F2 salida · ? ayuda · q salir",
+    "keys_command": "Enter ejecutar · Tab completar · ↑↓ historial · Esc cerrar"
   },
   "install": {
     "fetching": "Comprobando la última versión…",
@@ -941,16 +917,6 @@
     "module_newer": "Se necesita una actualización. El módulo {{name}} requiere un Saba-chan más reciente.",
     "extension": "Se necesita una actualización. La extensión {{name}} requiere Saba-chan {{version}} o posterior."
   },
-  "uninstall": {
-    "not_installed": "Este comando no se ejecuta desde una carpeta de instalación de Saba-chan; no hay nada que eliminar.",
-    "confirm": "¿Eliminar Saba-chan de {{dir}}? Se borran el programa y todos sus archivos; {{kept}}.",
-    "kept_both": "se conservan los ajustes y los servidores",
-    "kept_settings": "se conservan los ajustes y se eliminan los servidores",
-    "kept_instances": "se conservan los servidores y se eliminan los ajustes",
-    "kept_nothing": "también se eliminan los ajustes y los servidores",
-    "done": "Se eliminó Saba-chan; {{kept}}.",
-    "left": "Se eliminó Saba-chan, pero no se pudieron borrar estos elementos. Cierre los programas que los usan y bórrelos usted:\n{{paths}}"
-  },
   "do": {
     "steps_array": "--steps debe ser una lista de pasos (un array JSON).",
     "confirm_steps": "¿Ejecutar estos pasos?",
@@ -979,5 +945,8 @@
       "about": "Descripción",
       "inputs": "Entradas"
     }
+  },
+  "gui": {
+    "opened": "Se abrió la app de Saba-chan."
   }
 }

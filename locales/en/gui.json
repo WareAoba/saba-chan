@@ -1406,12 +1406,9 @@
     "module_update": "{{name}}: a new version {{version}} of the {{module}} module is out.",
     "server_update": "{{name}}: a new game server version is out. If players can't join, update the server."
   },
-  "terminal": {
-    "open": "Open in terminal",
-    "err_unsupported_platform": "Opening a terminal isn't supported on this OS yet.",
-    "err_cli_not_found": "Couldn't find the CLI program, so the terminal can't be opened.",
-    "err_not_found": "The daemon couldn't find this server.",
-    "err_generic": "Couldn't open the terminal."
+  "switch_cli": {
+    "label": "Switch to CLI",
+    "failed": "Couldn't open the CLI. {{reason}}"
   },
   "memory_limit": {
     "title": "Memory limit",

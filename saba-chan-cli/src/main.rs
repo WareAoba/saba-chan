@@ -102,7 +102,7 @@ async fn run() {
             if std::env::var_os("SABA_NO_TUI").is_some_and(|v| !v.is_empty() && v != "0") {
                 cli::Cmd::Shell
             } else {
-                cli::Cmd::Tui
+                cli::Cmd::Tui { server: None }
             }
         }
         None => cli::Cmd::Status,

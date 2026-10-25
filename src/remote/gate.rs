@@ -154,6 +154,7 @@ pub static ROUTES: &[Route] = &[
     // ── 클라이언트·데몬 제어: 콘솔 읽기만 ──
     deny("POST", "/api/client/register"),
     deny("GET", "/api/clients"),
+    deny("GET", "/api/clients/launch"),
     deny("POST", "/api/clients/launch"),
     deny("POST", "/api/client/:id/heartbeat"),
     deny("DELETE", "/api/client/:id/unregister"),

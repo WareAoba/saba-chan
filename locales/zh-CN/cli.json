@@ -795,7 +795,8 @@
       "server.rcon": "按服务器接收命令的方式（控制台，没有则用 RCON）发送一行并查看回复",
       "server.log": "保存的历次运行日志（控制台只保留本次）",
       "server.query": "游戏模块提供的查询（不指定名称则列出）",
-      "daemon.clients": "连接到守护进程的桌面应用窗口"
+      "daemon.clients": "连接到守护进程的桌面应用窗口",
+      "gui": "切换到桌面应用:打开同一个服务器,全屏菜单随之关闭"
     },
     "arg": {
       "module.maker.game": "第一个请求中的游戏名",
@@ -1158,16 +1159,13 @@
     "daemon_up": "● 守护进程 v{{version}}",
     "daemon_down": "○ 守护进程未运行 · 输入 daemon start",
     "servers_running": "{{running}}/{{total}} 台服务器运行中",
-    "menu": "菜单",
-    "enter_to_run": "按 Enter 运行",
     "running_hint": "(运行中 · Ctrl+C 停止)",
-    "keys": "Tab 下一个 · ↑↓ 选择 · Enter 按下 · 1-9 页面 · : 控制台 · F2 放大控制台 · ? 帮助 · q 退出",
     "yes": "是",
     "no": "否",
     "question": "确认",
     "dialog_keys": "Enter 选择 · Esc 取消",
     "help_title": "快捷键",
-    "help": "Tab / Shift+Tab  在 菜单 → 列表 → 按钮 → 控制台 之间移动\n↑↓  选择， ←→  在按钮间移动\nEnter  按下按钮（带 … 的按钮会把命令填进控制台）\n1-9  跳到页面\n: 或 /  输入命令（写在 saba-chan-cli 后面的部分，↑↓ 历史）\nPgUp/PgDn、鼠标滚轮  滚动控制台， F2  放大控制台\nCtrl+C  停止正在运行的命令\n鼠标  点击菜单、列表和按钮\nq  退出（守护进程和服务器会继续运行）",
+    "help": "←→↑↓  按画面布局移动 (标签 → 列表 → 按钮 → 控制台)\nTab / Shift+Tab  下一个 / 上一个区域\nEnter  按下按钮 (… 会填好命令行,▾ 打开更多)\n1-6  跳到页面\n服务器控制台  按 ↓ 进入,输入后 Enter 发送到服务器 (↑↓ 历史)\n: 或 /  命令行 (saba-chan-cli 后面要写的内容,Tab 补全,↑↓ 历史)\nF2  打开或关闭输出,  PgUp/PgDn、鼠标滚轮  滚动\nF9  切换到 GUI (可以打开时)\nCtrl+C  停止正在运行的命令,  Esc  后退一步\nq  退出 (守护进程和服务器会继续运行)",
     "too_narrow": "请将窗口加宽到至少 60 列。",
     "not_here": "此命令无法在全屏菜单中运行。按 q 退出后在终端中运行。",
     "cancelled": "已停止。",
@@ -1182,15 +1180,12 @@
     "updates_checking": "正在检查…",
     "updates_error": "上次检查失败。请再按一次 [检查更新]。",
     "page": {
-      "dashboard": "仪表盘",
       "servers": "服务器",
       "modules": "游戏模块",
       "extensions": "扩展",
       "discord": "Discord",
       "updates": "更新",
-      "settings": "设置",
-      "daemon_log": "守护进程日志",
-      "commands": "全部命令"
+      "daemon": "守护进程"
     },
     "btn": {
       "status": "总体状态",
@@ -1201,8 +1196,6 @@
       "stop": "停止",
       "restart": "重启",
       "players": "在线玩家",
-      "run": "游戏命令",
-      "send": "发送到控制台",
       "info": "信息",
       "settings": "设置",
       "backup_create": "备份",
@@ -1246,28 +1239,18 @@
       "daemon_restart": "重启守护进程",
       "daemon_stop": "停止守护进程",
       "clients": "应用窗口",
-      "events": "查看事件"
+      "more": "更多"
     },
     "col": {
       "name": "名称",
       "game": "游戏",
-      "status": "状态",
       "players": "在线",
       "port": "端口",
       "uptime": "运行",
       "about": "说明",
       "enabled": "启用"
     },
-    "card": {
-      "servers": "服务器",
-      "servers_sub": "运行 / 全部",
-      "players": "在线玩家",
-      "players_sub": "运行中服务器的合计",
-      "memory": "内存"
-    },
-    "no_servers": "还没有服务器。按 [新服务器] 或输入 server add",
-    "feed": "最近动态",
-    "feed_empty": "服务器启动和停止会立即显示在这里。",
+    "no_servers": "还没有服务器。按 [新服务器] 或按 : 输入 server add",
     "empty": "（无）",
     "detail": "详情",
     "server_console": "控制台",
@@ -1283,30 +1266,23 @@
     "settings": {
       "daemon": "守护进程",
       "port": "守护进程端口",
-      "language": "语言",
-      "hint": "要修改值，请按 [修改设置] 并输入 键=值（例如 language=zh-CN）。"
+      "language": "语言"
     },
-    "console": "控制台",
-    "console_hint": "按 : 在这里输入命令（例如 start pal、help）",
-    "keys_console": "Enter 运行 · ↑↓ 历史 · PgUp/PgDn 滚动 · Esc 离开 · F2 放大控制台",
-    "keys_running": "命令运行中 · Ctrl+C 停止 · PgUp/PgDn 滚动 · 其他页面仍可使用",
+    "keys_console": "Enter 发送到服务器 · ↑↓ 历史 · PgUp/PgDn 滚动 · Esc 回到按钮",
+    "keys_running": "命令运行中 · Ctrl+C 停止 · F2 输出 · 其他页面仍可查看",
     "choose": "选择",
     "enter_text": "输入",
-    "welcome": "欢迎使用 Saba-chan。按按钮，或按 : 输入命令。",
     "busy": "另一个命令仍在运行。请等待它结束，或用 Ctrl+C 停止后再试。",
     "pick_first": "请先从列表中选择一项。",
-    "event": {
-      "instance_ready": "已就绪",
-      "instance_exit": "已停止",
-      "instance_player": "玩家变动",
-      "instance_port_moved": "端口已更改",
-      "instance_restart_failed": "自动重启失败",
-      "backup_done": "备份完成",
-      "plan_done": "多步骤运行完成",
-      "action_run": "已运行命令",
-      "relay_link_request": "Discord 关联请求",
-      "update_available": "有可用更新"
-    }
+    "gui_switch": "切换到 GUI",
+    "output": "输出",
+    "daemon_log": "守护进程日志",
+    "use_switch": "在这里请按 F9(切换到 GUI)。",
+    "console_input_hint": "在此输入服务器命令 · Enter 发送",
+    "keys_tabs": "←→ 切换页面 · ↓ 进入 · 1-6 页面 · : 命令 · F2 输出 · ? 帮助 · q 退出",
+    "keys_list": "↑↓ 选择 · → 按钮 · : 命令 · F2 输出 · ? 帮助 · q 退出",
+    "keys_actions": "←→ 选择按钮 · Enter 按下 · ↓ 控制台 · Esc 列表 · F2 输出 · ? 帮助 · q 退出",
+    "keys_command": "Enter 运行 · Tab 补全 · ↑↓ 历史 · Esc 关闭"
   },
   "install": {
     "fetching": "正在检查最新版本…",
@@ -1349,16 +1325,6 @@
     "module_newer": "需要更新。{{name}} 模块需要更新版本的 Saba-chan。",
     "extension": "需要更新。{{name}} 扩展需要 Saba-chan {{version}} 或更高版本。"
   },
-  "uninstall": {
-    "not_installed": "此命令不是从 Saba-chan 安装文件夹运行的，没有可删除的安装。",
-    "confirm": "要删除 {{dir}} 中的 Saba-chan 吗？程序及其创建的文件将全部删除，{{kept}}。",
-    "kept_both": "设置和游戏服务器将保留",
-    "kept_settings": "设置将保留，游戏服务器将删除",
-    "kept_instances": "游戏服务器将保留，设置将删除",
-    "kept_nothing": "设置和游戏服务器也将删除",
-    "done": "已删除 Saba-chan，{{kept}}。",
-    "left": "已删除 Saba-chan，但无法删除以下项目。请关闭正在使用它们的程序后手动删除：\n{{paths}}"
-  },
   "players": {
     "title": "{{server}}：{{count}} 人在线",
     "none": "没有人在线。"
@@ -1378,5 +1344,8 @@
       "about": "说明",
       "inputs": "输入"
     }
+  },
+  "gui": {
+    "opened": "已打开 Saba-chan 应用。"
   }
 }

@@ -1406,12 +1406,9 @@
     "module_update": "{{name}} : la version {{version}} du module {{module}} est disponible.",
     "server_update": "{{name}} : une nouvelle version du serveur de jeu est disponible. Si personne ne peut se connecter, mettez le serveur à jour."
   },
-  "terminal": {
-    "open": "Ouvrir dans le terminal",
-    "err_unsupported_platform": "L'ouverture d'un terminal n'est pas encore prise en charge sur ce système.",
-    "err_cli_not_found": "Programme CLI introuvable, impossible d'ouvrir le terminal.",
-    "err_not_found": "Le démon n'a pas trouvé ce serveur.",
-    "err_generic": "Impossible d'ouvrir le terminal."
+  "switch_cli": {
+    "label": "Passer à la CLI",
+    "failed": "Impossible d'ouvrir la CLI. {{reason}}"
   },
   "memory_limit": {
     "title": "Limite de mémoire",

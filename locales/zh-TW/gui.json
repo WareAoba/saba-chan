@@ -1406,12 +1406,9 @@
     "module_update": "{{name}}：{{module}} 模組的新版本 {{version}} 已發布。",
     "server_update": "{{name}}：遊戲伺服器有新版本。如果玩家無法連線，請更新伺服器。"
   },
-  "terminal": {
-    "open": "在終端機中開啟",
-    "err_unsupported_platform": "此作業系統暫不支援在終端機中開啟。",
-    "err_cli_not_found": "找不到 CLI 程式，無法開啟終端機。",
-    "err_not_found": "常駐程式中找不到此伺服器。",
-    "err_generic": "無法開啟終端機。"
+  "switch_cli": {
+    "label": "切換到 CLI",
+    "failed": "無法開啟 CLI。{{reason}}"
   },
   "memory_limit": {
     "title": "記憶體上限",

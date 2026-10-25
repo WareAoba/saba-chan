@@ -1406,12 +1406,9 @@
     "module_update": "{{name}}: {{module}} 모듈의 새 버전 {{version}}이(가) 나왔어요.",
     "server_update": "{{name}}: 게임 서버의 새 버전이 나왔어요. 접속이 막히면 서버를 업데이트해 주세요."
   },
-  "terminal": {
-    "open": "터미널로 열기",
-    "err_unsupported_platform": "이 운영체제에서는 아직 터미널로 열 수 없어요.",
-    "err_cli_not_found": "CLI 실행 파일을 찾지 못해 터미널로 열 수 없어요.",
-    "err_not_found": "이 서버를 데몬에서 찾지 못했어요.",
-    "err_generic": "터미널을 열지 못했어요."
+  "switch_cli": {
+    "label": "CLI로 전환",
+    "failed": "CLI를 열지 못했어요. {{reason}}"
   },
   "memory_limit": {
     "title": "메모리 상한",

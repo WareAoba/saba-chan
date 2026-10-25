@@ -7,6 +7,8 @@ export const useUIStore = create((set, _get) => ({
     activeServerId: null,
     // 서버 상세에 "이 탭을 열어 달라"는 요청 (우클릭 메뉴 등). 상세가 읽고 비운다.
     requestedServerTab: null,
+    // 바깥(CLI의 `gui`)에서 서버를 연 횟수. 좁은 창에서도 목록 대신 그 서버 상세를 보인다
+    revealServerCount: 0,
 
     // ── Modal ──
     modal: null,
@@ -61,6 +63,12 @@ export const useUIStore = create((set, _get) => ({
     showServerTab: (serverId, tab) =>
         set({ activeTab: 'servers', activeServerId: serverId, requestedServerTab: tab }),
     clearRequestedServerTab: () => set({ requestedServerTab: null }),
+    revealServer: (serverId) =>
+        set((state) => ({
+            activeTab: 'servers',
+            activeServerId: serverId,
+            revealServerCount: state.revealServerCount + 1,
+        })),
 
     setShowCommandModal: (val) => set({ showCommandModal: val }),
     setCommandServer: (server) => set({ commandServer: server }),

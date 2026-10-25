@@ -222,7 +222,7 @@ pub fn format_line(l: &Value) -> String {
     out
 }
 
-fn strip_terminal_controls(input: &str) -> String {
+pub(crate) fn strip_terminal_controls(input: &str) -> String {
     let mut chars = input.chars().peekable();
     let mut out = String::with_capacity(input.len());
     while let Some(ch) = chars.next() {

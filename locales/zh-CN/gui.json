@@ -1406,12 +1406,9 @@
     "module_update": "{{name}}：{{module}} 模块的新版本 {{version}} 已发布。",
     "server_update": "{{name}}：游戏服务器有新版本。如果玩家无法连接，请更新服务器。"
   },
-  "terminal": {
-    "open": "在终端中打开",
-    "err_unsupported_platform": "此操作系统暂不支持在终端中打开。",
-    "err_cli_not_found": "找不到 CLI 程序，无法打开终端。",
-    "err_not_found": "守护进程中找不到此服务器。",
-    "err_generic": "无法打开终端。"
+  "switch_cli": {
+    "label": "切换到 CLI",
+    "failed": "无法打开 CLI。{{reason}}"
   },
   "memory_limit": {
     "title": "内存上限",

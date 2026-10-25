@@ -112,6 +112,17 @@ pub fn ipc_base(settings: &Value) -> String {
     }
 }
 
+/// 새로 띄울 데몬의 포트: 연결 주소(`IPC_BASE`가 있으면 그것)와 같게 한다.
+/// 데몬이 다른 포트로 띄운 GUI도 데몬을 다시 켠 뒤 같은 주소로 붙는다
+pub fn daemon_port(settings: &Value) -> u16 {
+    port_of_base(&ipc_base(settings)).unwrap_or_else(|| ipc_port(settings))
+}
+
+fn port_of_base(base: &str) -> Option<u16> {
+    let host = base.trim_end_matches('/').rsplit("//").next()?;
+    host.rsplit_once(':')?.1.parse().ok().filter(|p| *p != 0)
+}
+
 pub fn language(settings: &Value) -> String {
     match settings["language"].as_str() {
         Some(l) if !l.is_empty() => l.to_string(),
@@ -152,6 +163,14 @@ pub fn match_language(locale: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// GUI가 붙는 주소의 포트로 데몬을 띄운다 (데몬이 `IPC_BASE`로 띄운 GUI가 데몬을 다시 켤 때)
+    #[test]
+    fn the_daemon_port_follows_the_connection_address() {
+        assert_eq!(port_of_base("http://127.0.0.1:61234"), Some(61234));
+        assert_eq!(port_of_base("http://127.0.0.1:61234/"), Some(61234));
+        assert_eq!(port_of_base("http://localhost"), None);
+    }
 
     #[test]
     fn local_save_preserves_other_namespaces_and_keeps_backup() {
