@@ -356,6 +356,18 @@ async fn has_snapshots(state: &IPCServer, id: &str) -> bool {
 
 // ── 게임 자동 백업 (스냅샷) ──
 
+/// zip 스냅샷을 잠깐 푸는 자리 (백업 폴더 안, `.snapshot-<uuid>`)
+const STAGING_PREFIX: &str = ".snapshot-";
+
+/// 강제 종료로 남은 임시 자리를 지운다 (호출자가 작업 잠금을 쥐고 있다)
+fn clear_stale_staging(dir: &FsPath) {
+    for e in std::fs::read_dir(dir).into_iter().flatten().flatten() {
+        if e.file_name().to_string_lossy().starts_with(STAGING_PREFIX) {
+            let _ = std::fs::remove_dir_all(e.path());
+        }
+    }
+}
+
 /// 백업 목록·복원 이름에서 게임 스냅샷을 가리키는 앞붙임 (`game-snapshot:<id>`)
 pub const SNAPSHOT_PREFIX: &str = "game-snapshot:";
 
@@ -369,6 +381,8 @@ pub enum Source {
 struct GameSnapshot {
     id: String,
     created: u64,
+    /// 스냅샷이 zip 하나면 그 파일. 그때 `paths`의 앞쪽은 zip 안의 상대 경로다
+    archive: Option<PathBuf>,
     paths: Vec<(PathBuf, PathBuf)>,
 }
 
@@ -401,17 +415,25 @@ async fn game_snapshots(state: &IPCServer, id: &str) -> Result<Vec<GameSnapshot>
     let mut out = Vec::new();
     for s in v["snapshots"].as_array().into_iter().flatten() {
         let Some(sid) = s["id"].as_str().filter(|i| !i.is_empty()) else { continue };
+        let outside = |path: &str| (StatusCode::INTERNAL_SERVER_ERROR, Json(crate::plugin::error_response(&crate::module_paths::outside(&module_name, "backup_snapshots", path)))).into_response();
+        let resolve = |path: &str| boundary.resolve(FsPath::new(path)).ok_or_else(|| outside(path));
+        // zip 하나로 된 스냅샷: 그 파일은 경계 안, zip 안의 경로는 위로 올라가지 않는 상대 경로
+        let archive = match s["archive"].as_str() {
+            Some(a) => Some(resolve(a)?),
+            None => None,
+        };
+        let inner = |path: &str| {
+            let p = FsPath::new(path);
+            let plain = !path.is_empty() && p.components().all(|c| matches!(c, std::path::Component::Normal(_)));
+            if plain { Ok(p.to_path_buf()) } else { Err(outside(path)) }
+        };
         let mut paths = Vec::new();
         for p in s["paths"].as_array().into_iter().flatten() {
             let (Some(from), Some(to)) = (p["from"].as_str(), p["to"].as_str()) else { continue };
-            let resolve = |path: &str| {
-                boundary.resolve(FsPath::new(path)).ok_or_else(|| {
-                    (StatusCode::INTERNAL_SERVER_ERROR, Json(crate::plugin::error_response(&crate::module_paths::outside(&module_name, "backup_snapshots", path)))).into_response()
-                })
-            };
-            paths.push((resolve(from)?, resolve(to)?));
+            let from = if archive.is_some() { inner(from)? } else { resolve(from)? };
+            paths.push((from, resolve(to)?));
         }
-        out.push(GameSnapshot { id: sid.to_string(), created: s["created"].as_u64().unwrap_or(0), paths });
+        out.push(GameSnapshot { id: sid.to_string(), created: s["created"].as_u64().unwrap_or(0), archive, paths });
     }
     Ok(out)
 }
@@ -446,11 +468,31 @@ async fn keep_snapshot_locked(state: &IPCServer, id: &str, snapshot: GameSnapsho
     if kind == BackupKind::Snapshot && crate::audit::current().source == "discord" && backup::list(&dir).iter().filter(|b| b.kind == kind).count() >= REMOTE_BACKUP_CAP {
         return Err(error(StatusCode::CONFLICT, "backup_limit", format!("This instance already has {} backups of this kind; delete old ones on this PC first", REMOTE_BACKUP_CAP)));
     }
-    let entries: Vec<(PathBuf, PathBuf)> = snapshot.paths.into_iter().filter(|(from, _)| from.exists()).collect();
-    if entries.is_empty() {
+    if snapshot.archive.as_ref().is_some_and(|a| !a.is_file()) || (snapshot.archive.is_none() && !snapshot.paths.iter().any(|(from, _)| from.exists())) {
         return Err(error(StatusCode::NOT_FOUND, "snapshot_not_found", "The game's automatic backup has no files"));
     }
-    let made = tokio::task::spawn_blocking(move || backup::create_from(&dir, kind, &entries, &[])).await;
+    let made = tokio::task::spawn_blocking(move || match &snapshot.archive {
+        None => {
+            let entries: Vec<(PathBuf, PathBuf)> = snapshot.paths.into_iter().filter(|(from, _)| from.exists()).collect();
+            backup::create_from(&dir, kind, &entries, &[])
+        }
+        // zip 하나로 된 스냅샷: 고른 항목만 백업 폴더 안의 임시 자리에 풀어 적고, 그 자리는 지운다
+        Some(archive) => {
+            clear_stale_staging(&dir);
+            let staging = dir.join(format!("{}{}", STAGING_PREFIX, uuid::Uuid::new_v4().simple()));
+            let members: Vec<String> = snapshot.paths.iter().map(|(from, _)| from.components().map(|c| c.as_os_str().to_string_lossy().into_owned()).collect::<Vec<_>>().join("/")).collect();
+            let made = backup::stage_archive(archive, &members, &staging).and_then(|()| {
+                let entries: Vec<(PathBuf, PathBuf)> = snapshot.paths.iter().map(|(from, to)| (staging.join(from), to.clone())).filter(|(from, _)| from.exists()).collect();
+                if entries.is_empty() {
+                    anyhow::bail!("the archive has none of the listed entries");
+                }
+                backup::create_from(&dir, kind, &entries, &[])
+            });
+            let _ = std::fs::remove_dir_all(&staging);
+            made
+        }
+    })
+    .await;
     match made {
         Ok(Ok(made)) => Ok(made),
         Ok(Err(e)) if e.downcast_ref::<backup::LockedFile>().is_some() => Err(error(StatusCode::CONFLICT, "backup_file_locked", e.to_string())),
@@ -1489,6 +1531,67 @@ print(json.dumps({'success': True, 'snapshots': [{'id': 'S1', 'created': 1, 'pat
         std::fs::create_dir_all(tmp.path().join("server")).unwrap();
         std::fs::write(tmp.path().join("server/x"), b"x").unwrap();
         let err = create_from(&state, &id, Source::Snapshot(None)).await.err().expect("a snapshot that writes outside the server folder");
+        assert_eq!(code(err).await, "module_path_outside");
+    }
+
+    /// zip 하나로 된 게임 자동 백업(좀보이드 등): `archive`와 zip 안의 경로(`from`)를 주면 데몬이 그 항목만 풀어 보관·복원한다
+    const ZIP_SNAPSHOT_HOOK: &str = r#"import json, os, sys
+c = json.load(sys.stdin)
+w = c['working_dir']
+print(json.dumps({'success': True, 'snapshots': [{'id': 'startup/backup_1', 'created': 1792800000,
+    'archive': os.path.join(w, 'backups', 'startup', 'backup_1.zip'),
+    'paths': [{'from': 'Saves/Multiplayer/srv', 'to': os.path.join(w, 'Saves', 'Multiplayer', 'srv')},
+              {'from': 'db/srv.db', 'to': os.path.join(w, 'db', 'srv.db')}]}]}))
+"#;
+
+    fn write_zip(path: &FsPath, files: &[(&str, &[u8])]) {
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let mut z = zip::ZipWriter::new(std::fs::File::create(path).unwrap());
+        for (name, body) in files {
+            z.start_file(*name, zip::write::FileOptions::default()).unwrap();
+            std::io::Write::write_all(&mut z, body).unwrap();
+        }
+        z.finish().unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_zipped_game_snapshot_is_kept_and_restored_from_inside_the_archive() {
+        let toml = format!("{NO_BACKUP}\n[backup]\npaths = [\"Saves\"]\nsnapshots = true\n");
+        let (state, id, tmp) = server_with(&toml, Some(ZIP_SNAPSHOT_HOOK)).await;
+        let server = tmp.path().join("server");
+        let world = server.join("Saves/Multiplayer/srv");
+        std::fs::create_dir_all(&world).unwrap();
+        std::fs::create_dir_all(server.join("db")).unwrap();
+        std::fs::write(world.join("map_0_0.bin"), b"live").unwrap();
+        std::fs::write(server.join("db/srv.db"), b"live db").unwrap();
+        write_zip(&server.join("backups/startup/backup_1.zip"), &[
+            ("Saves/Multiplayer/srv/map_0_0.bin", b"zipped"),
+            ("Saves/Multiplayer/srv/players.db", b"zipped players"),
+            ("Saves/Multiplayer/other/map_9_9.bin", b"another server"),
+            ("db/srv.db", b"zipped db"),
+        ]);
+
+        let kept = create_from(&state, &id, Source::Snapshot(None)).await.unwrap();
+        assert_eq!(kept.kind, BackupKind::Snapshot);
+        let done = crate::ipc::internal::into_internal(restore_backup(Path((id.clone(), "game-snapshot:startup/backup_1".into())), State(state.clone())).await).await;
+        assert_eq!(done.body["success"], true, "{:?}", done.body);
+        assert_eq!(std::fs::read(world.join("map_0_0.bin")).unwrap(), b"zipped");
+        assert_eq!(std::fs::read(world.join("players.db")).unwrap(), b"zipped players");
+        assert_eq!(std::fs::read(server.join("db/srv.db")).unwrap(), b"zipped db");
+        assert!(!server.join("Saves/Multiplayer/other").exists(), "only the listed entries come out of the archive");
+        // 풀어 둔 자리는 남기지 않는다
+        let dir = state.supervisor.read().await.instance_store.instance_dir(&id).join("backups");
+        assert!(std::fs::read_dir(&dir).unwrap().flatten().all(|e| !e.file_name().to_string_lossy().starts_with(".snapshot-")));
+    }
+
+    /// zip 안의 경로가 위로 올라가면(`..`) 받지 않는다 (zip slip)
+    #[tokio::test]
+    async fn a_zipped_snapshot_path_that_climbs_out_is_refused() {
+        let hook = ZIP_SNAPSHOT_HOOK.replace("'from': 'db/srv.db'", "'from': '../../evil'");
+        let toml = format!("{NO_BACKUP}\n[backup]\npaths = [\"Saves\"]\nsnapshots = true\n");
+        let (state, id, tmp) = server_with(&toml, Some(&hook)).await;
+        write_zip(&tmp.path().join("server/backups/startup/backup_1.zip"), &[("Saves/Multiplayer/srv/a", b"a")]);
+        let err = create_from(&state, &id, Source::Snapshot(None)).await.err().expect("a climbing path inside the archive");
         assert_eq!(code(err).await, "module_path_outside");
     }
 
