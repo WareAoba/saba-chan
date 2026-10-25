@@ -142,6 +142,9 @@ struct ManifestEntry {
     entry: String,
     path: PathBuf,
     is_file: bool,
+    /// 다른 자리에서 읽어 `path`로 되돌리는 항목(게임 스냅샷)이면 읽은 곳. 그 크기·시각은 `path` 파일의 재사용 기록이 아니다
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    from: Option<PathBuf>,
 }
 
 /// 백업 폴더
@@ -304,7 +307,7 @@ fn known_files(dir: &Path) -> std::collections::HashMap<PathBuf, (u64, u64, Stri
     let Some(m) = newest else { return Default::default() };
     let mut out = std::collections::HashMap::new();
     for f in m.files.iter().filter(|f| f.mtime.saturating_add(MTIME_SLACK_NS) < m.started) {
-        let Some(entry) = m.paths.iter().find(|p| p.entry == f.entry) else { continue };
+        let Some(entry) = m.paths.iter().find(|p| p.entry == f.entry && p.from.is_none()) else { continue };
         let path = if f.rel.is_empty() { entry.path.clone() } else if let Ok(p) = inner_path(&entry.path, &f.rel) { p } else { continue };
         out.insert(path, (f.size, f.mtime, f.hash.clone(), f.stored_size));
     }
@@ -443,12 +446,26 @@ fn write_v2(dir: &Path, target: &Path, entries: &[(PathBuf, PathBuf)], exclude: 
     for (i, (source, path)) in entries.iter().enumerate() {
         let entry = i.to_string();
         let is_file = source.is_file();
+        let links_before = w.manifest.links.len();
         if is_file {
             w.add_file(source, &entry, "")?;
         } else {
             w.add_dir(source, &entry, "")?;
         }
-        w.manifest.paths.push(ManifestEntry { entry, path: path.clone(), is_file });
+        // 다른 자리에서 읽은 폴더 안의 링크는 복원 자리 아래로 옮겨 적는다 (그 안을 가리키는 대상도)
+        if source != path {
+            let moved = |p: &Path| p.strip_prefix(source).ok().map(|rel| path.join(rel));
+            for link in &mut w.manifest.links[links_before..] {
+                if let Some(p) = moved(&link.path) {
+                    link.path = p;
+                }
+                if let Some(t) = moved(&link.target) {
+                    link.target = t;
+                }
+            }
+        }
+        let from = (source != path).then(|| source.clone());
+        w.manifest.paths.push(ManifestEntry { entry, path: path.clone(), is_file, from });
     }
     sync_all(&w.written)?;
     let mut zip = zip::ZipWriter::new(File::create(target)?);
@@ -567,7 +584,7 @@ fn write_zip(target: &Path, paths: &[PathBuf]) -> Result<()> {
             zip.add_directory(format!("{}/", entry), opts)?;
             add_dir(&mut zip, path, &entry, opts, &mut manifest.links)?;
         }
-        manifest.paths.push(ManifestEntry { entry, path: path.clone(), is_file });
+        manifest.paths.push(ManifestEntry { entry, path: path.clone(), is_file, from: None });
     }
     zip.start_file(MANIFEST, opts)?;
     serde_json::to_writer_pretty(&mut zip, &manifest)?;
@@ -1047,6 +1064,46 @@ mod tests {
         let files = backed_up_files(&dir, &b.name);
         assert!(files.iter().any(|f| f == "level.dat"), "{files:?}");
         assert!(!files.iter().any(|f| f.ends_with("session.lock") || f.ends_with(".tmp")), "{files:?}");
+    }
+
+    /// 다른 자리에서 읽은 백업(게임 스냅샷)의 크기·시각은 복원 자리 파일의 재사용 기록이 아니다:
+    /// 다음 백업이 지금 파일 대신 스냅샷 내용을 적으면 안전 백업으로도 되돌릴 수 없다 (Codex P1)
+    #[test]
+    fn a_backup_read_from_elsewhere_is_not_reused_for_the_live_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let w = world(tmp.path());
+        let snap = tmp.path().join("snap");
+        fs::create_dir_all(&snap).unwrap();
+        fs::write(snap.join("level.dat"), b"SNAP!").unwrap();
+        fs::write(w.join("level.dat"), b"LIVE!").unwrap();
+        // 같은 크기·같은 수정 시각 (오래전)
+        let old = std::time::SystemTime::now() - std::time::Duration::from_secs(3600);
+        for p in [snap.join("level.dat"), w.join("level.dat")] {
+            File::options().write(true).open(&p).unwrap().set_modified(old).unwrap();
+        }
+        let dir = tmp.path().join("backups");
+        create_from(&dir, BackupKind::Snapshot, &[(snap.join("level.dat"), w.join("level.dat"))], &[]).unwrap();
+        let live = create(&dir, BackupKind::PreRestore, std::slice::from_ref(&w)).unwrap();
+        fs::write(w.join("level.dat"), b"other").unwrap();
+        restore(&dir, &live.name).unwrap();
+        assert_eq!(fs::read(w.join("level.dat")).unwrap(), b"LIVE!");
+    }
+
+    /// 다른 자리에서 읽은 폴더 안의 링크도 복원 자리에 되살린다 (Codex P2)
+    #[cfg(windows)]
+    #[test]
+    fn links_inside_a_folder_read_from_elsewhere_come_back_at_the_restore_place() {
+        let tmp = tempfile::tempdir().unwrap();
+        let snap = tmp.path().join("snap").join("Players");
+        fs::create_dir_all(snap.join("real")).unwrap();
+        assert!(std::process::Command::new("cmd").args(["/c", "mklink", "/J"]).arg(snap.join("latest")).arg(snap.join("real")).output().unwrap().status.success());
+        let live = tmp.path().join("world").join("Players");
+        fs::create_dir_all(&live).unwrap();
+        let dir = tmp.path().join("backups");
+        let b = create_from(&dir, BackupKind::Snapshot, &[(snap.clone(), live.clone())], &[]).unwrap();
+        let done = restore(&dir, &b.name).unwrap();
+        assert_eq!(done.links_missed, 0);
+        assert!(fs::symlink_metadata(live.join("latest")).is_ok(), "the link comes back under the restore place");
     }
 
     #[cfg(windows)]

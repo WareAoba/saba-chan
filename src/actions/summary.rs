@@ -72,8 +72,11 @@ fn backups(result: &Value, cat: &Catalog) -> String {
         .map(|b| {
             let kind = cat.t(&format!("actions.summary.backup_kind.{}", str_of(b, "kind")), &[]);
             let when = local_time(b.get("created").and_then(Value::as_u64).unwrap_or(0));
-            let size = bytes(b.get("size").and_then(Value::as_u64).unwrap_or(0));
-            cat.t("actions.summary.backup_item", &[("name", str_of(b, "name")), ("kind", &kind), ("when", &when), ("size", &size)]) + &unreadable_note(b, cat)
+            // 게임 자동 백업(game-snapshot)은 크기를 재지 않는다: 크기 자리와 그 앞 구분자를 뺀다
+            let size = b.get("size").and_then(Value::as_u64).map(bytes);
+            let line = cat.t("actions.summary.backup_item", &[("name", str_of(b, "name")), ("kind", &kind), ("when", &when), ("size", size.as_deref().unwrap_or(""))]);
+            let line = if size.is_none() { line.trim_end().trim_end_matches('·').trim_end().to_string() } else { line };
+            line + &unreadable_note(b, cat)
         })
         .collect();
     with_rest(cat.t("actions.summary.backups", &[("count", &backups.len().to_string())]), lines, cat)

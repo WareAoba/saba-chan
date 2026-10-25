@@ -325,6 +325,10 @@ fn summaries_read_like_sentences() {
     let unknown = summary::text("backup.list", &json!({ "backups": [{ "name": "old", "kind": "manual", "size": 0 }] }), &ko).unwrap();
     assert!(!unknown.contains("1970"), "{unknown}");
 
+    // 게임 자동 백업은 크기를 재지 않는다: 0 B로 쓰지 않는다
+    let game = summary::text("backup.list", &json!({ "backups": [{ "name": "game-snapshot:S1", "kind": "game-snapshot", "created": 1_700_000_000 }] }), &ko).unwrap();
+    assert!(!game.contains("0 B") && !game.trim_end().ends_with('·'), "{game}");
+
     // 열지 못하는 백업은 복원할 수 없다고 함께 알린다 (603 P3-8)
     let mut broken = json!({ "backups": [{ "name": "bad", "kind": "manual", "created": 1_700_000_000, "size": 9, "readable": false }, { "name": "ok", "kind": "manual", "created": 1_699_000_000, "size": 9, "readable": true }] });
     let text = summary::text("backup.list", &broken, &ko).unwrap();
