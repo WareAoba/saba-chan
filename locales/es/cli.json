@@ -259,6 +259,7 @@
       "paths_not_writable": "Saba-chan no puede escribir ahí. Elige una carpeta en la que se pueda escribir.",
       "paths_has_link": "La carpeta tiene un enlace (carpeta de acceso directo) dentro. Quítalo y vuelve a intentarlo.",
       "paths_copy_failed": "La copia falló. No se cambió nada. Comprueba el espacio libre y vuelve a intentarlo.",
+      "paths_acl_failed": "No se pudieron establecer los permisos de la nueva carpeta. No se cambió nada. Elige otra carpeta.",
       "paths_verify_failed": "La copia no coincidía con el original. No se cambió nada. Vuelve a intentarlo.",
       "paths_commit_failed": "No se pudo guardar el ajuste. Los archivos se devolvieron a su lugar.",
       "paths_unknown_kind": "Elige modules o extensions.",

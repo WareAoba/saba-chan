@@ -101,8 +101,7 @@ pub fn app_ready(app: AppHandle) {
 #[tauri::command]
 pub async fn daemon_status(app: AppHandle) -> Value {
     let client = &app.state::<AppState>().client;
-    let health = client.get("/health", 1000).await.map_err(|e| e.message);
-    let mut identity = client.identity_valid(1000).await;
+    let (health, mut identity) = client.verified_health(1000).await;
     // 데몬이 다시 떠서 토큰이 바뀌었으면 한 번 다시 읽어 본다
     if !identity && health.is_ok() {
         client.load_token();

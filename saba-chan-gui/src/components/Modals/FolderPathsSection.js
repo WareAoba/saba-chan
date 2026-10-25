@@ -24,6 +24,7 @@ const MOVE_ERRORS = [
     'copy_failed',
     'verify_failed',
     'commit_failed',
+    'acl_failed',
 ];
 
 const failed = (res) => !res || res.ok === false || res.success === false;

@@ -314,6 +314,7 @@
       "paths_not_writable": "Saba-chan 无法写入该位置。请选择可写入的文件夹。",
       "paths_has_link": "文件夹内有链接（快捷方式文件夹）。删除后重试。",
       "paths_copy_failed": "复制失败，未做任何更改。请检查可用空间后重试。",
+      "paths_acl_failed": "无法设置新文件夹的访问权限，未做任何更改。请选择其他文件夹。",
       "paths_verify_failed": "副本与原件不一致，未做任何更改。请重试。",
       "paths_commit_failed": "保存设置失败，文件已放回原处。",
       "paths_unknown_kind": "请选择 modules 或 extensions。",

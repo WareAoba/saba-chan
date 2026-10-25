@@ -273,11 +273,22 @@ pub fn move_to(
         Err(e) if e.code == "same_as_current" => return Ok(None),
         other => other?,
     };
-    let is_default = crate::same_path(&target, &default_dir(kind, &layout.data_dir));
-    let moved = relocate_inner(layout.dir(kind), &target, || {
+    let moved = relocate_component(kind, layout.dir(kind), &target, &layout.data_dir, || {
         commit_move(config, kind, layout.dir(kind), &target, &layout.data_dir)
-    }, true, !is_default)?;
+    })?;
     Ok(Some((target, moved)))
+}
+
+/// 구성요소 폴더를 [`relocate`]처럼 옮긴다. 기본 위치가 아닌 곳이면 옮긴 폴더의 상속 ACL을 끊는다 (설치기·데몬 공통)
+pub fn relocate_component(
+    kind: Kind,
+    src: &Path,
+    dst: &Path,
+    data_dir: &Path,
+    commit: impl FnOnce() -> std::io::Result<()>,
+) -> Result<Relocated, PathError> {
+    let is_default = crate::same_path(dst, &default_dir(kind, data_dir));
+    relocate_inner(src, dst, commit, true, !is_default)
 }
 
 /// 옮긴 결과
@@ -591,6 +602,22 @@ mod tests {
         let dst = tmp.path().join("modules");
         std::fs::create_dir(&dst).unwrap();
         super::secure_component_dir(&dst).unwrap();
+    }
+
+    /// 데몬의 폴더 옮기기도 설치기처럼, 기본 위치가 아닌 곳으로 옮긴 폴더는 위 폴더의 권한을 물려받지 않는다
+    #[cfg(windows)]
+    #[test]
+    fn a_component_folder_moved_out_of_the_default_place_does_not_inherit_permissions() {
+        let tmp = tempfile::tempdir().unwrap();
+        let data = tmp.path().join("data");
+        let src = data.join("modules");
+        std::fs::create_dir_all(&src).unwrap();
+        std::fs::write(src.join("m.txt"), "x").unwrap();
+        let dst = tmp.path().join("custom").join("modules");
+        relocate_component(Kind::Modules, &src, &dst, &data, || Ok(())).unwrap();
+        let out = std::process::Command::new("icacls").arg(&dst).output().unwrap();
+        let acl = String::from_utf8_lossy(&out.stdout);
+        assert!(out.status.success() && !acl.contains("(I)"), "{acl}");
     }
 
     #[test]

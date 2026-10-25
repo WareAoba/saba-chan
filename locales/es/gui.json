@@ -1543,6 +1543,7 @@
     "err_not_writable": "Saba-chan no puede escribir ahí: {{detail}}",
     "err_has_link": "La carpeta contiene un enlace ({{detail}}). Quítalo e inténtalo de nuevo.",
     "err_copy_failed": "La copia falló. No se cambió nada. Comprueba el espacio libre e inténtalo de nuevo.",
+    "err_acl_failed": "No se pudieron establecer los permisos de acceso de la nueva carpeta. No se cambió nada. Elige otra carpeta.",
     "err_verify_failed": "La copia no coincidía con el original. No se cambió nada. Inténtalo de nuevo.",
     "err_commit_failed": "No se pudo guardar el ajuste. Los archivos volvieron a su sitio.",
     "err_overlaps_install": "No puede ir dentro de la carpeta de instalación de Saba-chan. Elige una carpeta fuera de ella."

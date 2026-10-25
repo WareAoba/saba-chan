@@ -1543,6 +1543,7 @@
     "err_not_writable": "Saba-chan kann dort nicht schreiben: {{detail}}",
     "err_has_link": "Im Ordner liegt eine Verknüpfung ({{detail}}). Entferne sie und versuche es erneut.",
     "err_copy_failed": "Das Kopieren ist fehlgeschlagen. Nichts wurde geändert. Prüfe den freien Speicher und versuche es erneut.",
+    "err_acl_failed": "Die Zugriffsrechte für den neuen Ordner konnten nicht gesetzt werden. Nichts wurde geändert. Bitte wähle einen anderen Ordner.",
     "err_verify_failed": "Die Kopie stimmte nicht mit dem Original überein. Nichts wurde geändert. Versuche es erneut.",
     "err_commit_failed": "Die Einstellung konnte nicht gespeichert werden. Die Dateien wurden zurückgelegt.",
     "err_overlaps_install": "Das geht nicht im Installationsordner von Saba-chan. Wähle einen Ordner außerhalb davon."

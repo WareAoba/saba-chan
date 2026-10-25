@@ -259,6 +259,7 @@
       "paths_not_writable": "Saba-chan 無法寫入該位置。請選擇可寫入的資料夾。",
       "paths_has_link": "資料夾內有連結（捷徑資料夾）。移除後再試。",
       "paths_copy_failed": "複製失敗，未做任何變更。請檢查可用空間後再試。",
+      "paths_acl_failed": "無法設定新資料夾的存取權限，未做任何變更。請選擇其他資料夾。",
       "paths_verify_failed": "複本與原件不一致，未做任何變更。請再試一次。",
       "paths_commit_failed": "儲存設定失敗，檔案已放回原處。",
       "paths_unknown_kind": "請選擇 modules 或 extensions。",

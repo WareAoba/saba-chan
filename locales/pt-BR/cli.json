@@ -259,6 +259,7 @@
       "paths_not_writable": "O Saba-chan não consegue gravar ali. Escolha uma pasta com permissão de gravação.",
       "paths_has_link": "A pasta tem um link (pasta de atalho) dentro. Remova-o e tente de novo.",
       "paths_copy_failed": "A cópia falhou. Nada foi alterado. Verifique o espaço livre e tente de novo.",
+      "paths_acl_failed": "Não foi possível definir as permissões da nova pasta. Nada foi alterado. Escolha outra pasta.",
       "paths_verify_failed": "A cópia não correspondeu ao original. Nada foi alterado. Tente de novo.",
       "paths_commit_failed": "Não foi possível salvar a configuração. Os arquivos foram devolvidos ao lugar.",
       "paths_unknown_kind": "Escolha modules ou extensions.",
