@@ -1357,17 +1357,16 @@ fn permissions_by_guild(node_settings: &Value) -> Value {
 
 /// 한 길드의 권한 스냅샷 (heartbeat `permissions[guild]`, `permission` action 응답이 같은 모양)
 fn permission_entry(p: &crate::chat::permissions::NodePermissions) -> Value {
-    use crate::chat::permissions::preset_level;
     let mut keys: Vec<&String> = p.command_levels.keys().collect();
     keys.sort();
     let command_levels: serde_json::Map<String, Value> =
         keys.iter().take(COMMAND_LEVELS_PER_GUILD).map(|k| ((*k).clone(), json!(p.command_levels[*k]))).collect();
     let levels = json!({
-        "safe": preset_level(&p.preset, "safe"),
-        "caution": preset_level(&p.preset, "caution"),
-        "danger": preset_level(&p.preset, "danger"),
+        "safe": p.preset_need("safe"),
+        "caution": p.preset_need("caution"),
+        "danger": p.preset_need("danger"),
         // 관리(Kind::Admin) 액션은 risk 대신 이 레벨이다 (`actions::authorize`)
-        "admin": crate::actions::admin_level(&p.preset),
+        "admin": p.admin_need(),
     });
     let mut entry = json!({
         "defaultLevel": p.default_level,
@@ -1375,6 +1374,8 @@ fn permission_entry(p: &crate::chat::permissions::NodePermissions) -> Value {
         "chatbotCap": p.chatbot_cap,
         "levels": levels,
         "commandLevels": command_levels,
+        // 단계 순서 (높은 것부터). 릴레이는 숫자가 아니라 이 순서로 견준다
+        "ladder": p.ladder,
     });
     if keys.len() > COMMAND_LEVELS_PER_GUILD {
         entry["commandLevelsTruncated"] = json!(true);
@@ -1832,7 +1833,7 @@ mod tests {
         let at = res["data"]["permissionsAt"].as_u64().unwrap_or_else(|| panic!("no permissionsAt: {res}"));
         assert!(at >= before && at <= now_ms());
         // 응답은 heartbeat `permissions[guild]`와 같은 모양이다
-        for key in ["defaultLevel", "members", "chatbotCap", "levels", "commandLevels"] {
+        for key in ["defaultLevel", "members", "chatbotCap", "levels", "commandLevels", "ladder"] {
             assert!(res["data"].get(key).is_some(), "no {key}: {res}");
         }
     }
@@ -1960,12 +1961,13 @@ mod tests {
         });
         // 릴레이가 요구 레벨을 미리 셀 수 있게 프리셋을 푼 risk별 레벨, 챗봇 상한, 명령별 덮어쓰기도 싣는다
         let default_levels = json!({ "safe": 0, "caution": 1, "danger": 2, "admin": 2 });
+        let ladder = json!([{ "id": 3 }, { "id": 2 }, { "id": 1 }, { "id": 0 }, { "id": -1 }]);
         assert_eq!(
             permissions_by_guild(&nodes),
             json!({
-                "g1": { "defaultLevel": 1, "members": { "a": 2 }, "chatbotCap": 1, "levels": default_levels, "commandLevels": { "i/stop": 3 } },
-                "g2": { "defaultLevel": 1, "members": {}, "chatbotCap": 0, "levels": { "safe": 1, "caution": 2, "danger": 3, "admin": 3 }, "commandLevels": {} },
-                "g3": { "defaultLevel": -1, "members": {}, "chatbotCap": 0, "levels": default_levels, "commandLevels": {} }
+                "g1": { "defaultLevel": 1, "members": { "a": 2 }, "chatbotCap": 1, "levels": default_levels, "commandLevels": { "i/stop": 3 }, "ladder": ladder },
+                "g2": { "defaultLevel": 1, "members": {}, "chatbotCap": 0, "levels": { "safe": 1, "caution": 2, "danger": 3, "admin": 3 }, "commandLevels": {}, "ladder": ladder },
+                "g3": { "defaultLevel": -1, "members": {}, "chatbotCap": 0, "levels": default_levels, "commandLevels": {}, "ladder": ladder }
             })
         );
         let many: serde_json::Map<String, Value> = (0..COMMAND_LEVELS_PER_GUILD + 5).map(|i| (format!("i/c{i:04}"), json!(2))).collect();

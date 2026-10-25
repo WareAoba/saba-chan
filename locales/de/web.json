@@ -138,11 +138,25 @@
     "use_default": "Standardstufe verwenden",
     "saved": "Recht geändert.",
     "level": {
+      "3": "Besitzer",
       "2": "Admin",
       "1": "Benutzer",
       "0": "Nur Sprechende Saba-chan",
       "-1": "Gesperrt"
-    }
+    },
+    "ladder": "Berechtigungsstufen",
+    "ladder_hint": "Weiter oben bedeutet eine höhere Stufe. Besitzer und Gesperrt bleiben fest.",
+    "ladder_name": "Stufenname",
+    "ladder_fixed": "Fest",
+    "ladder_up": "{{name}} nach oben",
+    "ladder_down": "{{name}} nach unten",
+    "ladder_delete": "{{name}} löschen",
+    "ladder_new": "Name der neuen Stufe",
+    "ladder_add": "Hinzufügen",
+    "ladder_removed": "Personen auf gelöschten Stufen rutschen eine Stufe nach unten. Befehle, die sie brauchten, eine Stufe nach oben.",
+    "ladder_invalid": "Stufennamen brauchen 1–32 Zeichen.",
+    "ladder_revert": "Zurücksetzen",
+    "ladder_save": "Stufen speichern"
   },
   "modules": {
     "games": "Spielmodule",

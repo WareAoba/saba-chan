@@ -7,6 +7,7 @@ import { Icon } from '../Icon';
 import { SabaCheckbox, SabaSpinner } from '../ui/SabaUI';
 import { SabaFail } from '../ui/SabaArt';
 import { Segmented } from '../ui/StatusChip';
+import { LadderTab } from './LadderTab';
 import * as L from './levels';
 
 /** 데몬 P1 권한 API가 preload에 있는지 (없으면 예전 명령별 차단 화면을 쓴다) */
@@ -29,6 +30,8 @@ export function permissionsErrorText(res, t) {
             return t('discord.perm_err_owner_fixed');
         case 'invalid_level':
             return t('discord.perm_err_invalid_level');
+        case 'invalid_ladder':
+            return t('discord.perm_err_invalid_ladder');
         default:
             return res?.error || t('discord.perm_err_generic');
     }
@@ -93,19 +96,16 @@ export function usePermissions(guildId) {
 
 const memberName = (m) => m?.displayName || m?.globalName || m?.username;
 
-function LevelSelect({ value, levels, onChange, label, disabled, presetLabel }) {
+function LevelSelect({ value, levels, perm, onChange, label, disabled }) {
     const { t } = useTranslation('gui');
     return (
         <CustomDropdown
             className="dc-level-select"
-            value={value === null ? '' : String(value)}
+            value={String(value)}
             ariaLabel={label}
             disabled={disabled}
-            onChange={(v) => onChange(v === '' ? null : Number(v))}
-            options={[
-                ...(presetLabel ? [{ value: '', label: presetLabel }] : []),
-                ...levels.map((l) => ({ value: String(l), label: t(`discord.level_${L.levelKey(l)}`) })),
-            ]}
+            onChange={(v) => onChange(Number(v))}
+            options={levels.map((l) => ({ value: String(l), label: L.levelLabel(t, perm, l) }))}
         />
     );
 }
@@ -133,6 +133,7 @@ export function MemberLevelsTab({ node, members, membersLoading, onRefreshMember
     const [picked, setPicked] = useState([]);
     const [ownerDraft, setOwnerDraft] = useState(null); // null = 편집 안 함
     const [ownerArmed, setOwnerArmed] = useState(false); // 릴레이 값은 덜 믿으므로 한 번 더 누르게 한다
+    const [presetDraft, setPresetDraft] = useState(null); // 명령별 레벨을 덮을 프리셋 (확인 전)
 
     // 가져오기 후보는 릴레이에 남은 부여값(legacy-members)에서 고른다. 디스코드 멤버 목록에는 레벨이 없다
     // 새로고침 때도 다시 읽는다 (옛 레벨을 가져오지 않게). 늦게 온 옛 응답은 버린다
@@ -181,8 +182,18 @@ export function MemberLevelsTab({ node, members, membersLoading, onRefreshMember
     // 디스코드 멤버 중 레벨을 따로 받지 않은 사람: 여기서 바로 레벨을 줄 수 있다
     const shownOthers = others.filter((m) => matches(String(m.id)));
     const preset = L.PRESETS.includes(perm.preset) ? perm.preset : 'default';
-    const levelName = (l) => t(`discord.level_${L.levelKey(l)}`);
+    const levelName = (l) => L.levelLabel(t, perm, l);
+    const grantable = L.grantable(perm);
+    // 고른 단계를 지웠으면 맨 위 단계로
+    const addLevel = grantable.includes(newLevel) ? newLevel : grantable[0];
     const update = (patch) => write(() => window.api.permissionsUpdate(guildId, patch));
+    // 프리셋은 한 번 적용하는 틀이다: 명령별 레벨이 있으면 다시 맞춘다고 먼저 묻는다
+    const overrides = Object.keys(perm.commandLevels || {}).length;
+    const pickPreset = (p) => {
+        if (busy || p === preset) return;
+        if (overrides) setPresetDraft(p);
+        else update({ preset: p });
+    };
     const setMember = (id, level) => write(() => window.api.permissionsSetMember(guildId, id, level));
     const trimmedId = newId.trim();
     const owner = perm.ownerDiscordId ? String(perm.ownerDiscordId) : null;
@@ -271,7 +282,8 @@ export function MemberLevelsTab({ node, members, membersLoading, onRefreshMember
                     </span>
                     <LevelSelect
                         value={defaultLevel}
-                        levels={L.GRANTABLE}
+                        levels={grantable}
+                        perm={perm}
                         label={t('discord.perm_default_level')}
                         disabled={busy}
                         onChange={(level) => update({ defaultLevel: level })}
@@ -291,10 +303,36 @@ export function MemberLevelsTab({ node, members, membersLoading, onRefreshMember
                     <Segmented
                         ariaLabel={t('discord.perm_preset')}
                         value={preset}
-                        onChange={(p) => !busy && p !== preset && update({ preset: p })}
+                        onChange={pickPreset}
                         items={L.PRESETS.map((p) => ({ id: p, label: t(`discord.preset_${p}`) }))}
                     />
                 </div>
+                {presetDraft && (
+                    <div className="notice tone-warn" role="alert">
+                        <Icon name="alertTriangle" size="sm" />
+                        <span>
+                            {t('discord.perm_preset_reset', {
+                                count: overrides,
+                                preset: t(`discord.preset_${presetDraft}`),
+                            })}
+                        </span>
+                        <button
+                            type="button"
+                            className="btn btn-primary btn-sm"
+                            disabled={busy}
+                            onClick={async () => {
+                                const p = presetDraft;
+                                setPresetDraft(null);
+                                await update({ preset: p });
+                            }}
+                        >
+                            {t('discord.perm_preset_apply')}
+                        </button>
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPresetDraft(null)}>
+                            {t('modals.cancel')}
+                        </button>
+                    </div>
+                )}
                 <div className="dc-field-row">
                     <span className="dc-field-label">
                         <strong>{t('discord.perm_chatbot_cap')}</strong>
@@ -302,7 +340,8 @@ export function MemberLevelsTab({ node, members, membersLoading, onRefreshMember
                     </span>
                     <LevelSelect
                         value={typeof perm.chatbotCap === 'number' ? perm.chatbotCap : 0}
-                        levels={L.GRANTABLE}
+                        levels={grantable}
+                        perm={perm}
                         label={t('discord.perm_chatbot_cap')}
                         disabled={busy}
                         onChange={(level) => update({ chatbotCap: level })}
@@ -358,7 +397,8 @@ export function MemberLevelsTab({ node, members, membersLoading, onRefreshMember
                                         <>
                                             <LevelSelect
                                                 value={level}
-                                                levels={L.GRANTABLE}
+                                                levels={grantable}
+                                                perm={perm}
                                                 label={t('discord.perm_member_level', { name: nameOf(id) })}
                                                 disabled={busy}
                                                 onChange={(l) => setMember(id, l)}
@@ -407,7 +447,8 @@ export function MemberLevelsTab({ node, members, membersLoading, onRefreshMember
                                     </span>
                                     <LevelSelect
                                         value={defaultLevel}
-                                        levels={L.GRANTABLE}
+                                        levels={grantable}
+                                        perm={perm}
                                         label={t('discord.perm_member_level', { name: nameOf(id) })}
                                         disabled={busy}
                                         onChange={(l) => l !== defaultLevel && setMember(id, l)}
@@ -432,8 +473,9 @@ export function MemberLevelsTab({ node, members, membersLoading, onRefreshMember
                         aria-label={t('discord.perm_add_id')}
                     />
                     <LevelSelect
-                        value={newLevel}
-                        levels={L.GRANTABLE}
+                        value={addLevel}
+                        levels={grantable}
+                        perm={perm}
                         label={t('discord.perm_add_level')}
                         onChange={setNewLevel}
                     />
@@ -442,7 +484,7 @@ export function MemberLevelsTab({ node, members, membersLoading, onRefreshMember
                         className="btn btn-primary"
                         disabled={busy || !isId(trimmedId)}
                         onClick={async () => {
-                            if (await setMember(trimmedId, newLevel)) setNewId('');
+                            if (await setMember(trimmedId, addLevel)) setNewId('');
                         }}
                     >
                         {t('discord.perm_add_button')}
@@ -507,13 +549,12 @@ export function MemberLevelsTab({ node, members, membersLoading, onRefreshMember
     );
 }
 
-// ── 명령: 프리셋을 따르거나 명령별로 덮어쓰기 ──
+// ── 명령: 명령마다 실제 요구 레벨 (프리셋 값이거나 따로 고른 값) ──
 export function CommandLevelsTab({ node, servers, commandsFor, riskOf, permissions }) {
     const { t } = useTranslation('gui');
     const { perm, loading, error, busy, load, write } = permissions;
     if (!perm) return <PermState loading={loading} error={error} onRetry={load} />;
 
-    const levelName = (l) => t(`discord.level_${L.levelKey(l)}`);
     const setLevel = (key, level) =>
         write(() => window.api.permissionsUpdate(node.guildId, { commandLevels: { [key]: level } }));
 
@@ -564,14 +605,12 @@ export function CommandLevelsTab({ node, servers, commandsFor, riskOf, permissio
                                             {t(`discord.risk_${c.risk}`)}
                                         </span>
                                         <LevelSelect
-                                            value={overridden ? level : null}
-                                            levels={L.REQUIRABLE}
+                                            value={level}
+                                            levels={L.requirable(perm)}
+                                            perm={perm}
                                             label={t('discord.perm_command_level', { command: c.label })}
                                             disabled={busy}
-                                            presetLabel={t('discord.perm_follow_preset', {
-                                                level: levelName(L.presetLevel(perm, c.risk)),
-                                            })}
-                                            onChange={(l) => setLevel(key, l)}
+                                            onChange={(l) => l !== level && setLevel(key, l)}
                                         />
                                     </li>
                                 );
@@ -584,12 +623,14 @@ export function CommandLevelsTab({ node, servers, commandsFor, riskOf, permissio
     );
 }
 
-/** 멤버·명령 탭이 같은 권한 상태를 나눠 쓴다 (탭을 바꿔도 다시 읽지 않는다) */
+/** 멤버·명령·단계 탭이 같은 권한 상태를 나눠 쓴다 (탭을 바꿔도 다시 읽지 않는다) */
 export function PermissionPanel({ tab, node, ...rest }) {
     const permissions = usePermissions(node.guildId);
-    return tab === 'commands' ? (
-        <CommandLevelsTab node={node} permissions={permissions} {...rest} />
-    ) : (
-        <MemberLevelsTab node={node} permissions={permissions} {...rest} />
-    );
+    if (tab === 'commands') return <CommandLevelsTab node={node} permissions={permissions} {...rest} />;
+    if (tab === 'levels') {
+        const { perm, loading, error, load } = permissions;
+        if (!perm) return <PermState loading={loading} error={error} onRetry={load} />;
+        return <LadderTab node={node} permissions={permissions} />;
+    }
+    return <MemberLevelsTab node={node} permissions={permissions} {...rest} />;
 }

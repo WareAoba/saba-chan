@@ -138,11 +138,25 @@
     "use_default": "Usar nivel predeterminado",
     "saved": "Permiso cambiado.",
     "level": {
+      "3": "Propietario",
       "2": "Administrador",
       "1": "Usuario",
       "0": "Solo Saba-chan parlante",
       "-1": "Bloqueado"
-    }
+    },
+    "ladder": "Niveles de permiso",
+    "ladder_hint": "Cuanto más arriba, más alto el nivel. Propietario y Bloqueado no se mueven.",
+    "ladder_name": "Nombre del nivel",
+    "ladder_fixed": "Fijo",
+    "ladder_up": "Subir {{name}}",
+    "ladder_down": "Bajar {{name}}",
+    "ladder_delete": "Eliminar {{name}}",
+    "ladder_new": "Nombre del nuevo nivel",
+    "ladder_add": "Añadir",
+    "ladder_removed": "Quienes estén en niveles eliminados bajan al nivel de abajo. Los comandos que los necesitaban suben al nivel de arriba.",
+    "ladder_invalid": "Los nombres de nivel deben tener de 1 a 32 caracteres.",
+    "ladder_revert": "Deshacer",
+    "ladder_save": "Guardar niveles"
   },
   "modules": {
     "games": "Módulos de juego",

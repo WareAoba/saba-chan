@@ -2040,6 +2040,69 @@ button.activity-line:hover {
 .dc-level-title.level-banned {
     color: var(--stop);
 }
+.dc-level-title.level-custom {
+    color: var(--accent);
+}
+/* 권한 단계 사다리: 위가 높은 단계. 끌어서 순서를 바꾼다 (LadderTab.js) */
+.dc-ladder {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+.dc-ladder-block {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    min-height: 40px;
+    padding: var(--sp-1) var(--sp-2);
+    border: 1px solid var(--line);
+    border-left: 4px solid var(--text-3);
+    border-radius: var(--r-md);
+    background: var(--bg-1);
+    cursor: grab;
+}
+.dc-ladder-block.is-fixed {
+    cursor: default;
+    opacity: 0.8;
+}
+.dc-ladder-block.is-dragging {
+    opacity: 0.4;
+}
+.dc-ladder-block.is-over {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent);
+}
+.dc-ladder-block.level-owner {
+    border-left-color: var(--info);
+}
+.dc-ladder-block.level-admin {
+    border-left-color: var(--ok);
+}
+.dc-ladder-block.level-banned {
+    border-left-color: var(--stop);
+}
+.dc-ladder-block.level-custom {
+    border-left-color: var(--accent);
+}
+.dc-ladder-rank {
+    width: 24px;
+    color: var(--text-3);
+    font-size: var(--fs-sm);
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+}
+.dc-ladder-label,
+.dc-ladder-name {
+    flex: 1;
+    min-width: 0;
+    font-weight: 600;
+}
+.dc-ladder-block .dc-mini-actions {
+    margin-left: auto;
+}
 .dc-overridden .dc-level-select .custom-dropdown-trigger {
     border-color: var(--accent);
 }

@@ -57,6 +57,27 @@ describe('권한 레벨 계산', () => {
         ]);
     });
 
+    it('길드 사다리: 더한 단계는 이름으로, 지운 기본 단계는 프리셋에서 더 엄한 단계로 푼다', () => {
+        const perm = base({
+            ladder: [{ id: 3 }, { id: 10, name: 'VIP' }, { id: 2 }, { id: 0 }, { id: -1 }],
+            members: { 1002: 10, 1004: -1 },
+        });
+        expect(L.grantable(perm)).toEqual([10, 2, 0, -1]);
+        expect(L.requirable(perm)).toEqual([3, 10, 2, 0]);
+        expect(L.presetLevel(perm, 'caution')).toBe(2);
+        expect(L.membersByLevel(perm).map((g) => g.level)).toEqual([3, 10, -1]);
+        expect(L.ladderOf(base()).map((l) => l.id)).toEqual([3, 2, 1, 0, -1]);
+    });
+
+    it('사다리 편집: 소유자는 맨 위, 금지는 맨 아래에 남는다', () => {
+        const ladder = L.ladderOf(base());
+        expect(L.moveLevel(ladder, 3, 1).map((l) => l.id)).toEqual([3, 0, 2, 1, -1]);
+        expect(L.moveLevel(ladder, 3, 0)).toBe(ladder);
+        expect(L.moveLevel(ladder, 0, 2)).toBe(ladder);
+        expect(L.moveLevel(ladder, 1, 4)).toBe(ladder);
+        expect(L.ladderPatch(L.addLevel(ladder, ' Mod ')).slice(0, 2)).toEqual([{ id: 3 }, { name: 'Mod' }]);
+    });
+
     it('기본 레벨 멤버는 디스코드 멤버 중 소유자도 아니고 레벨도 없는 사람', () => {
         expect(L.defaultMembers(base(), relayMembers).map((m) => m.id)).toEqual(['1003']);
         expect(L.defaultMembers(base(), undefined)).toEqual([]);
@@ -205,20 +226,67 @@ describe('권한 화면', () => {
         expect(window.api.permissionsUpdate).toHaveBeenCalledWith('g1', { ownerDiscordId: '123456789012345678' });
     });
 
-    it('명령 탭: 기본은 프리셋을 따르고, 고르면 그 명령만 덮어쓰며, 프리셋으로 되돌리면 지운다', async () => {
+    it('명령 탭: 실제 레벨만 보이고, 고르면 그 명령을 덮어쓴다', async () => {
         perm = base({ commandLevels: { 'mc-1/say': 3 } });
         renderPanel('commands');
         await flush();
         const stop = screen.getByLabelText('Level needed for Stop');
-        expect(stop).toHaveTextContent('Preset (User)');
+        expect(stop).toHaveTextContent('User');
         expect(screen.getByLabelText('Level needed for Say')).toHaveTextContent('Owner');
-
-        pickOption(stop, 'Admin');
+        fireEvent.click(stop);
+        expect(screen.queryByRole('option', { name: /Preset/ })).toBeNull();
+        pickOption(screen.getByLabelText('Level needed for Stop'), 'Admin');
         await flush();
         expect(window.api.permissionsUpdate).toHaveBeenCalledWith('g1', { commandLevels: { 'mc-1/stop': 2 } });
-        pickOption(screen.getByLabelText('Level needed for Say'), 'Preset (User)');
+    });
+
+    it('명령별 레벨이 있으면 프리셋을 바꾸기 전에 다시 맞춘다고 묻는다', async () => {
+        perm = base({ commandLevels: { 'mc-1/say': 3 } });
+        renderPanel();
         await flush();
-        expect(window.api.permissionsUpdate).toHaveBeenCalledWith('g1', { commandLevels: { 'mc-1/say': null } });
+        fireEvent.click(screen.getByRole('tab', { name: 'Strict' }));
+        await flush();
+        expect(window.api.permissionsUpdate).not.toHaveBeenCalled();
+        expect(screen.getByRole('alert')).toHaveTextContent('1 command level(s) will be reset to the Strict preset.');
+        fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+        await flush();
+        expect(window.api.permissionsUpdate).toHaveBeenCalledWith('g1', { preset: 'strict' });
+    });
+
+    it('더한 단계도 멤버 레벨로 고를 수 있다', async () => {
+        perm = base({
+            ladder: [{ id: 3 }, { id: 2 }, { id: 10, name: 'VIP' }, { id: 1 }, { id: 0 }, { id: -1 }],
+            members: { 1002: 10 },
+        });
+        renderPanel();
+        await flush();
+        expect(within(screen.getByRole('region', { name: 'VIP' })).getByText('Mint')).toBeInTheDocument();
+        pickOption(screen.getByLabelText('Level for Newbie'), 'VIP');
+        await flush();
+        expect(window.api.permissionsSetMember).toHaveBeenCalledWith('g1', '1003', 10);
+    });
+
+    it('단계 탭: 블록을 끌어 순서를 바꾸고, 더하고 지운 뒤 저장한다', async () => {
+        perm = base({ ladder: [{ id: 3 }, { id: 2 }, { id: 10, name: 'VIP' }, { id: 1 }, { id: 0 }, { id: -1 }] });
+        renderPanel('levels');
+        await flush();
+        const block = (name) => screen.getByRole('listitem', { name });
+        expect(within(block('Owner')).queryByRole('button', { name: /Delete/ })).toBeNull();
+        expect(block('Banned')).not.toHaveAttribute('draggable', 'true');
+
+        fireEvent.dragStart(block('VIP'));
+        fireEvent.dragOver(block('Admin'));
+        fireEvent.drop(block('Admin'));
+        fireEvent.click(screen.getByRole('button', { name: 'Delete User' }));
+        expect(screen.getByText(/Members of deleted levels move/)).toBeInTheDocument();
+        fireEvent.change(screen.getByRole('textbox', { name: 'New level name' }), { target: { value: 'Mod' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Move Mod down' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+        await flush();
+        expect(window.api.permissionsUpdate).toHaveBeenCalledWith('g1', {
+            ladder: [{ id: 3 }, { id: 10, name: 'VIP' }, { name: 'Mod' }, { id: 2 }, { id: 0 }, { id: -1 }],
+        });
     });
 
     it('preload에 권한 채널이 없으면 예전 멤버 화면을 쓰고 명령 탭이 없다', () => {

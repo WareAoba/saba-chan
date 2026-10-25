@@ -1022,18 +1022,18 @@ async fn authorize(server: &IPCServer, r: &Resolved, caller: &Caller) -> Result<
             let command_key = builtin_command(&r.id).filter(|_| !instance.is_empty()).map(|cmd| format!("{}/{}", instance, cmd));
             match command_key.and_then(|k| perms.override_level(&k)).or_else(|| perms.override_level(&key)) {
                 Some(level) => level,
-                None if r.kind == Kind::Admin => admin_level(&perms.preset),
-                None => crate::chat::permissions::preset_level(&perms.preset, &r.risk),
+                None if r.kind == Kind::Admin => perms.admin_need(),
+                None => perms.preset_need(&r.risk),
             }
         }
     };
     // GUI에서 이 사람에게 막아 둔 명령은 채팅 경로와 같이 주인만 (액션 메뉴·확인 버튼으로 돌아가지 않게)
     let command = r.command.as_deref().or_else(|| builtin_command(&r.id));
     let need = match command {
-        Some(cmd) if !instance.is_empty() && perms.member_denied(who, instance, cmd) => need.max(crate::chat::permissions::OWNER),
+        Some(cmd) if !instance.is_empty() && perms.member_denied(who, instance, cmd) => crate::chat::permissions::OWNER,
         _ => need,
     };
-    if perms.effective_level(who) < need {
+    if !perms.meets(perms.effective_level(who), need) {
         return Err(denied(need));
     }
     Ok(())

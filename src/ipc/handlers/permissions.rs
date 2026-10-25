@@ -3,7 +3,7 @@
 //! 판정은 `crate::chat::permissions`가 한다. 봇 설정 저장(`PATCH /api/config/bot`)은 이 키들을 바꾸지 않는다.
 
 use super::super::IPCServer;
-use crate::chat::permissions::{apply, Change, NodePermissions};
+use crate::chat::permissions::{apply, Change, LevelInput, NodePermissions};
 use axum::{
     extract::{Path, State},
     http::StatusCode,
@@ -52,7 +52,7 @@ pub async fn get_permissions(State(state): State<IPCServer>, Path(guild_id): Pat
     Json(view(&state, &guild_id).await).into_response()
 }
 
-/// `{defaultLevel?, preset?, chatbotCap?, ownerDiscordId?, commandLevels?: {key: level|null}}` → 바꾸기 목록
+/// `{defaultLevel?, preset?, chatbotCap?, ownerDiscordId?, commandLevels?: {key: level|null}, ladder?: [{id?, name?}]}` → 바꾸기 목록
 fn changes_from(body: &Map<String, Value>) -> Result<Vec<Change>, &'static str> {
     let level = |v: &Value| v.as_i64().ok_or("invalid_level");
     let mut out = Vec::new();
@@ -63,6 +63,27 @@ fn changes_from(body: &Map<String, Value>) -> Result<Vec<Change>, &'static str> 
             "defaultLevel" => out.push(Change::DefaultLevel(level(v)?)),
             "chatbotCap" => out.push(Change::ChatbotCap(level(v)?)),
             "preset" => out.push(Change::Preset(v.as_str().ok_or("invalid_preset")?.to_string())),
+            // 사다리를 먼저 바꿔 같은 요청의 레벨이 새 단계를 쓸 수 있게 (주인 다음)
+            "ladder" => {
+                let levels = v
+                    .as_array()
+                    .ok_or("invalid_ladder")?
+                    .iter()
+                    .map(|l| {
+                        let id = match l.get("id") {
+                            None | Some(Value::Null) => None,
+                            Some(id) => Some(id.as_i64().ok_or("invalid_ladder")?),
+                        };
+                        let name = match l.get("name") {
+                            None | Some(Value::Null) => None,
+                            Some(n) => Some(n.as_str().ok_or("invalid_ladder")?.to_string()),
+                        };
+                        Ok(LevelInput { id, name })
+                    })
+                    .collect::<Result<Vec<_>, &'static str>>()?;
+                let at = usize::from(matches!(out.first(), Some(Change::Owner(_))));
+                out.insert(at, Change::Ladder(levels));
+            }
             "commandLevels" => {
                 for (k, l) in v.as_object().ok_or("invalid_command")? {
                     let level = if l.is_null() { None } else { Some(level(l)?) };
@@ -111,5 +132,14 @@ mod tests {
         assert!(changes.contains(&Change::CommandLevel { key: "i/op".into(), level: None }));
         assert_eq!(changes_from(json!({ "members": {} }).as_object().unwrap()), Err("unknown_key"));
         assert_eq!(changes_from(json!({ "defaultLevel": "1" }).as_object().unwrap()), Err("invalid_level"));
+        // 사다리는 주인 다음, 다른 항목보다 먼저
+        let body = json!({ "defaultLevel": 10, "ladder": [{ "id": 3 }, { "name": "VIP" }, { "id": -1 }], "ownerDiscordId": "o" });
+        let changes = changes_from(body.as_object().unwrap()).unwrap();
+        assert_eq!(changes[1], Change::Ladder(vec![
+            LevelInput { id: Some(3), name: None },
+            LevelInput { id: None, name: Some("VIP".into()) },
+            LevelInput { id: Some(-1), name: None },
+        ]));
+        assert_eq!(changes_from(json!({ "ladder": [{ "id": "3" }] }).as_object().unwrap()), Err("invalid_ladder"));
     }
 }

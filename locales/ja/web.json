@@ -138,11 +138,25 @@
     "use_default": "既定のレベルを使う",
     "saved": "権限を変更しました。",
     "level": {
+      "3": "オーナー",
       "2": "管理者",
       "1": "ユーザー",
       "0": "おしゃべりサバちゃんのみ",
       "-1": "禁止"
-    }
+    },
+    "ladder": "権限の段階",
+    "ladder_hint": "上にあるほど高い段階です。オーナーとブロックは動かせません。",
+    "ladder_name": "段階名",
+    "ladder_fixed": "固定",
+    "ladder_up": "{{name}}を上へ",
+    "ladder_down": "{{name}}を下へ",
+    "ladder_delete": "{{name}}を削除",
+    "ladder_new": "新しい段階名",
+    "ladder_add": "追加",
+    "ladder_removed": "削除した段階の人はすぐ下の段階へ、その段階が必要だったコマンドはすぐ上の段階へ移ります。",
+    "ladder_invalid": "段階名は1〜32文字にしてください。",
+    "ladder_revert": "元に戻す",
+    "ladder_save": "段階を保存"
   },
   "modules": {
     "games": "ゲームモジュール",

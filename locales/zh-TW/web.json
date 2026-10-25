@@ -138,11 +138,25 @@
     "use_default": "使用預設等級",
     "saved": "權限已變更。",
     "level": {
+      "3": "擁有者",
       "2": "管理員",
       "1": "使用者",
       "0": "僅限會說話的 Saba-chan",
       "-1": "已封鎖"
-    }
+    },
+    "ladder": "權限等級",
+    "ladder_hint": "越上面等級越高。擁有者和封鎖無法移動。",
+    "ladder_name": "等級名稱",
+    "ladder_fixed": "固定",
+    "ladder_up": "將 {{name}} 上移",
+    "ladder_down": "將 {{name}} 下移",
+    "ladder_delete": "刪除 {{name}}",
+    "ladder_new": "新等級名稱",
+    "ladder_add": "新增",
+    "ladder_removed": "被刪除等級的人會移到下一級，需要該等級的指令會移到上一級。",
+    "ladder_invalid": "等級名稱需為 1–32 個字元。",
+    "ladder_revert": "還原",
+    "ladder_save": "儲存等級"
   },
   "modules": {
     "games": "遊戲模組",

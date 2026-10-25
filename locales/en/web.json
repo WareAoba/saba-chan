@@ -138,11 +138,25 @@
     "use_default": "Use default level",
     "saved": "Permission changed.",
     "level": {
+      "3": "Owner",
       "2": "Admin",
       "1": "User",
       "0": "Talking Saba-chan only",
       "-1": "Banned"
-    }
+    },
+    "ladder": "Permission levels",
+    "ladder_hint": "Higher rows are stronger levels. Owner and Blocked stay in place.",
+    "ladder_name": "Level name",
+    "ladder_fixed": "Fixed",
+    "ladder_up": "Move {{name}} up",
+    "ladder_down": "Move {{name}} down",
+    "ladder_delete": "Delete {{name}}",
+    "ladder_new": "New level name",
+    "ladder_add": "Add",
+    "ladder_removed": "People on deleted levels move to the level just below. Commands that needed them move to the level just above.",
+    "ladder_invalid": "Level names need 1–32 characters.",
+    "ladder_revert": "Revert",
+    "ladder_save": "Save levels"
   },
   "modules": {
     "games": "Game modules",

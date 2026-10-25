@@ -387,6 +387,7 @@ export function NodeView({
                                   label: t('discord.tab_commands'),
                                   icon: <Icon name="terminal" size="sm" />,
                               },
+                              { id: 'levels', label: t('discord.tab_levels'), icon: <Icon name="key" size="sm" /> },
                           ]
                         : []),
                     ...(channelsAvailable()
@@ -425,7 +426,7 @@ export function NodeView({
             )}
             {activeTab === 'channels' && <ChannelsTab key={node.guildId} node={node} />}
             {activeTab === 'bot' && <BotSettingsTab key={node.guildId} node={node} />}
-            {levels && (activeTab === 'members' || activeTab === 'commands') && (
+            {levels && (activeTab === 'members' || activeTab === 'commands' || activeTab === 'levels') && (
                 <PermissionPanel
                     key={node.guildId}
                     tab={activeTab}
