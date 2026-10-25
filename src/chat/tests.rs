@@ -411,6 +411,21 @@ async fn two_instances_of_one_module_need_instance_name() {
     assert_eq!(api.calls(), vec!["start i-mc2"]);
 }
 
+/// 게임명(모듈 locales의 display_name)도 기본 호출명이다. 같은 게임의 서버가 둘이면 고르지 않는다
+#[tokio::test]
+async fn game_name_calls_the_only_instance_of_that_game() {
+    let mut api = fixture();
+    api.modules[1].game_names = vec!["Palworld".into(), "パルワールド".into()];
+    run(&api, &settings(), "パルワールド start").await;
+    run(&api, &settings(), "palworld start").await;
+    assert_eq!(api.calls(), vec!["start i-pal", "start i-pal"]);
+
+    api.servers.push(server("i-pal2", "pal2", "palworld", "stopped"));
+    let cat = Catalog::for_language("en");
+    assert_eq!(run(&api, &settings(), "パルワールド start").await, cat.t("errors.multiple_instances", &[("module", "palworld")]));
+    assert_eq!(api.calls().len(), 2);
+}
+
 #[tokio::test]
 async fn instance_words_pick_one_of_several_instances() {
     let mut api = fixture();

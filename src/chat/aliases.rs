@@ -1,6 +1,6 @@
 //! 모듈/명령어 별명 해석
 //!
-//! 모듈 별명: 모듈 이름 → module.toml [aliases].module_aliases 순으로
+//! 모듈 별명: 모듈 이름 → 게임명(locales `display_name`) → module.toml [aliases].module_aliases 순으로
 //! 등록하고, 같은 별명을 두 모듈이 가지면 먼저 등록한 쪽을 쓰되 충돌로 기록합니다.
 //! 명령어 별명은 모듈 단위로 해석합니다 (다른 모듈의 별명과 섞이지 않음).
 //! 사용자가 정하는 낱말은 인스턴스별이다 (`words`).
@@ -25,7 +25,7 @@ impl ModuleAliases {
             me.register(&m.name, &m.name);
         }
         for m in modules {
-            for alias in &m.module_aliases {
+            for alias in m.game_names.iter().chain(&m.module_aliases) {
                 me.register(alias, &m.name);
             }
         }
@@ -69,6 +69,15 @@ impl ModuleAliases {
             .iter()
             .find(|(a, _)| a.eq_ignore_ascii_case_unicode(input))
             .map(|(_, mods)| mods.as_slice())
+    }
+
+    /// 이 모듈을 부르는 낱말: 다른 모듈과 다투지 않는 것만, 모듈 이름은 맨 뒤
+    pub fn words_of(&self, module: &str) -> Vec<&str> {
+        let mut out: Vec<&str> = self.aliases_of(module).into_iter().filter(|a| self.conflict(a).is_none()).collect();
+        if let Some((name, _)) = self.entries.iter().find(|(a, m)| a == module && m == module).filter(|_| self.conflict(module).is_none()) {
+            out.push(name);
+        }
+        out
     }
 
     /// 모듈 이름 자신을 뺀 별명 목록 (도움말 표시용)

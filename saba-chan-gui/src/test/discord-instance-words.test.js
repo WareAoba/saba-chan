@@ -70,6 +70,12 @@ describe('InstanceDiscordTab', () => {
         expect(document.querySelector('.word-chip.bad').textContent).toContain('팰');
     });
 
+    it('기본 호출명은 데몬이 정한 것(게임명 포함)을 보인다', async () => {
+        window.api.instanceWords = vi.fn().mockResolvedValue({ ...item(), defaultWords: ['야생', '마인크래프트', 'mc'] });
+        await act(async () => render(<InstanceDiscordTab server={server} />));
+        expect(await screen.findByText('Default: 야생, 마인크래프트, mc')).toBeTruthy();
+    });
+
     it('못 받으면 이유와 다시 시도를 보인다', async () => {
         window.api.instanceWords = vi.fn().mockResolvedValue({ ok: false, error: 'daemon down' });
         await act(async () => render(<InstanceDiscordTab server={server} />));

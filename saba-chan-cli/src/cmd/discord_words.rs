@@ -77,7 +77,13 @@ pub async fn run(ctx: &Ctx, server: Option<&str>, change: WordsChange) -> Result
     let entry = ctx.api.instance_words(&sv.id).await?;
     if change.is_empty() {
         ctx.out.data(&entry, |e| {
-            let mut rows = vec![(t!("bot.words"), str_list(e.get("words")).join(", "))];
+            // 정하지 않아도 부르는 낱말(인스턴스 이름, 게임이 하나뿐이면 게임명)은 GUI처럼 흐리게 덧붙인다
+            let mut words = str_list(e.get("words")).join(", ");
+            let defaults = str_list(e.get("defaultWords"));
+            if !defaults.is_empty() {
+                words = format!("{} {}", words, output::dim(&format!("({})", defaults.join(", ")))).trim().to_string();
+            }
+            let mut rows = vec![(t!("bot.words"), words)];
             for c in e.get("commands").and_then(Value::as_array).into_iter().flatten() {
                 let mut line = str_list(c.get("aliases")).join(", ");
                 let defaults = str_list(c.get("moduleAliases"));

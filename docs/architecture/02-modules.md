@@ -209,7 +209,7 @@ zomboid의 `beta_branch` 키는 지워졌다. lifecycle에는 `use_beta`를 보�
 데몬 키(`rest_password` / `rest_username`) → 게임 설정 키. 사용처는 managed start 후 동기화(`mod.rs:1554-1619`), import_settings 결과 반영(`D:src/instance/mod.rs:172-206`), 설정 PATCH 때 역동기화(`instance.rs:1162-1189`)다. **non-managed `start_server`에서는 동기화하지 않는다**.
 
 #### `[aliases]`
-`module_aliases: Vec<String>`, `[aliases.commands.<cmd>] = { aliases = [...], description = "..." }`.
+`module_aliases: Vec<String>`, `[aliases.commands.<cmd>] = { aliases = [...], description = "..." }`. 디스코드에서는 `module_aliases` 말고도 module.toml `display_name`과 모듈 locales마다의 `display_name`(띄어 쓰지 않은 것)이 게임명으로 서버를 부른다. 그 게임의 서버가 하나일 때만이다(01 §4 `serverWords`).
 
 #### `[errors]`
 오류 코드 → 사용자 문구. 메타데이터 `errors`에 실리고(`:94-97`), `POST /api/instance/:id/command`가 실패 응답에 `error_message`로 붙인다 (`D:src/ipc/handlers/command.rs:11-15`). 문구는 GUI 언어의 모듈 locales `errors.<code>`가 있으면 그것을, 없으면 module.toml 값을 쓴다 (`module_errors`).
