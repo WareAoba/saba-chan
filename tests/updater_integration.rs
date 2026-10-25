@@ -31,7 +31,7 @@ use saba_chan_updater_lib::version::SemVer;
 fn create_test_zip(files: &HashMap<&str, &[u8]>) -> Vec<u8> {
     let buf = std::io::Cursor::new(Vec::new());
     let mut zip_writer = zip::ZipWriter::new(buf);
-    let options = zip::write::FileOptions::default()
+    let options = zip::write::SimpleFileOptions::default()
         .compression_method(zip::CompressionMethod::Stored);
 
     for (name, content) in files {

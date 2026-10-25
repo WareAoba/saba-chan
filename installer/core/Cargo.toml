@@ -19,7 +19,7 @@ toml = "0.8"
 dirs = "5"
 
 [dev-dependencies]
-zip = { version = "0.6", default-features = false, features = ["deflate", "time"] }
+zip = { version = "9", default-features = false, features = ["deflate", "time"] }
 tempfile = "3.8"
 
 [target.'cfg(windows)'.dependencies]

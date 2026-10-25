@@ -11,6 +11,7 @@ mod process_monitor;
 mod system_monitor;
 mod python_env;
 mod utils;
+mod archive;
 mod extension;
 mod validator;
 mod boot_selector;

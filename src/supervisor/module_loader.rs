@@ -1,28 +1,17 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::RwLock;
-use std::io::{Read, Seek};
+use std::io::Read;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use zip::ZipArchive;
 
 const MODULE_ARCHIVE_DOWNLOAD_LIMIT: u64 = 128 * 1024 * 1024;
-const MODULE_ARCHIVE_ENTRY_LIMIT: usize = 20_000;
-const MODULE_ARCHIVE_EXPANDED_LIMIT: u64 = 1024 * 1024 * 1024;
-
-fn check_module_archive<R: Read + Seek>(archive: &mut ZipArchive<R>) -> Result<()> {
-    if archive.len() > MODULE_ARCHIVE_ENTRY_LIMIT {
-        anyhow::bail!("Module archive has too many files");
-    }
-    let mut expanded = 0u64;
-    for index in 0..archive.len() {
-        expanded = expanded.saturating_add(archive.by_index(index)?.size());
-        if expanded > MODULE_ARCHIVE_EXPANDED_LIMIT {
-            anyhow::bail!("Module archive expands beyond the size limit");
-        }
-    }
-    Ok(())
-}
+const MODULE_ARCHIVE_LIMITS: crate::archive::Limits = crate::archive::Limits {
+    what: "Module archive",
+    entries: 20_000,
+    expanded: 1024 * 1024 * 1024,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModuleMetadata {
@@ -2031,13 +2020,13 @@ impl ModuleLoader {
         }
         let file = fs::File::open(zip_path)?;
         let mut archive = ZipArchive::new(file)?;
-        check_module_archive(&mut archive)?;
+        crate::archive::check(&mut archive, &MODULE_ARCHIVE_LIMITS)?;
 
         // ZIP 내부에서 가장 얕은 위치의 module.toml을 고른다
         // (`ends_with`로 고르면 `foo_module.toml`이나 하위 폴더 것이 먼저 잡힌다)
         let toml_index = (0..archive.len())
             .filter_map(|i| {
-                let name = archive.by_index(i).ok()?.name().to_string();
+                let name = archive.by_index(i).ok()?.name().ok()?.into_owned();
                 let depth = name.trim_end_matches('/').matches('/').count();
                 (name.rsplit('/').next() == Some("module.toml")).then_some((depth, i))
             })
@@ -2059,10 +2048,7 @@ impl ModuleLoader {
         let temp_dir = tempfile::tempdir()?;
         let extract_path = temp_dir.path().to_path_buf();
         
-        let file = fs::File::open(zip_path)?;
-        let mut archive = ZipArchive::new(file)?;
-        check_module_archive(&mut archive)?;
-        archive.extract(&extract_path)?;
+        crate::archive::extract(archive, &extract_path, &MODULE_ARCHIVE_LIMITS)?;
 
         // 임시 디렉토리 경로를 영구적으로 유지 (tempdir는 Drop시 삭제되므로)
         // 대신 modules/.extracted/ 디렉토리 사용
@@ -3025,6 +3011,25 @@ player_leave_patterns = ['^\[\d{2}:\d{2}:\d{2}(?:\] \[[^\]]*/| )INFO\](?: \[[^\]
         assert!(!m.matches_dir(&good));
         m.metadata.dir_signatures = vec!["../*".into()];
         assert!(!m.matches_dir(&good), "patterns stay inside the folder");
+    }
+
+    /// 내려받은 모듈 ZIP 안의 링크는 풀지 않고 이유를 남긴다 (폴더 밖 파일을 가리킬 수 있다)
+    #[test]
+    fn module_zip_with_a_link_is_refused() {
+        use std::io::Write;
+        let dir = tempfile::tempdir().unwrap();
+        let mut writer = zip::ZipWriter::new(std::fs::File::create(dir.path().join("linked.zip")).unwrap());
+        let options = zip::write::SimpleFileOptions::default();
+        writer.start_file("module.toml", options).unwrap();
+        writer.write_all(V1.replace("\"g\"", "\"linked\"").as_bytes()).unwrap();
+        writer.start_file("lifecycle.py", options).unwrap();
+        writer.add_symlink("escape", "/etc/passwd", options).unwrap();
+        writer.finish().unwrap();
+        let loader = ModuleLoader::new(dir.path().to_str().unwrap());
+        assert!(loader.discover_modules().unwrap().is_empty());
+        let errors = loader.load_errors();
+        assert!(errors[0].error.contains("contains a link"), "{:?}", errors);
+        assert!(!dir.path().join(".extracted/linked").exists());
     }
 
     /// 모듈이 더 새 saba-core를 요구하면 로드하지 않고 이유를 남긴다 (M9)
