@@ -178,6 +178,14 @@ pub fn migrate(
             list.push(w);
         }
     };
+    // 명령 낱말은 같은 인스턴스의 다른 명령이 이미 가졌으면 버린다 (먼저 둔 명령이 갖는다)
+    let add_command_word = |commands: &mut BTreeMap<String, Vec<String>>, cmd: &str, w: String| {
+        if commands.iter().any(|(c, l)| c != cmd && l.iter().any(|e| same(e, &w))) {
+            tracing::info!("[Chat] word '{}' of command {} dropped (another command has it)", w, cmd);
+            return;
+        }
+        add_word(commands.entry(cmd.to_string()).or_default(), w);
+    };
     let known = |id: &str| servers.iter().any(|s| s.id == id);
     for guild in &guilds {
         let mut old: Vec<(String, InstanceWords)> = of_guild(node_settings, guild).into_iter().filter(|(id, _)| known(id)).collect();
@@ -188,9 +196,8 @@ pub fn migrate(
                 add_word(&mut entry.words, word);
             }
             for (cmd, list) in w.commands {
-                let target = entry.commands.entry(cmd).or_default();
                 for word in list {
-                    add_word(target, word);
+                    add_command_word(&mut entry.commands, &cmd, word);
                 }
             }
         }
@@ -208,9 +215,8 @@ pub fn migrate(
             add_word(&mut entry.words, w);
         }
         for (cmd, list) in command_aliases.get(&s.module).and_then(Value::as_object).into_iter().flatten() {
-            let target = entry.commands.entry(cmd.clone()).or_default();
             for w in list.as_str().map(split).unwrap_or_default() {
-                add_word(target, w);
+                add_command_word(&mut entry.commands, cmd, w);
             }
         }
     }
@@ -315,6 +321,20 @@ mod tests {
         assert!(!w.contains_key("gone"));
         assert_eq!(moved.node_settings, json!({ "g1": { "defaultLevel": 1 }, "g2": {} }));
         assert!(migrate(&moved.node_settings, &servers, w, &HashMap::new(), &HashMap::new(), &HashMap::new()).is_none());
+    }
+
+    #[test]
+    fn one_word_never_ends_up_on_two_commands_of_an_instance() {
+        let servers = vec![server("a", "survival", "minecraft")];
+        let node_settings = json!({
+            "g1": { "instances": { "a": { "commands": { "stop": ["토글"] } } } },
+            "g2": { "instances": { "a": { "commands": { "start": ["토글", "켜"] } } } },
+        });
+        let moved = migrate(&node_settings, &servers, &HashMap::new(), &HashMap::new(), &HashMap::new(), &HashMap::from([("minecraft".to_string(), json!({ "start": "켜", "stop": "켜, 꺼" }))])).unwrap();
+        let w = &moved.server_words["a"];
+        // 길드 이름 순으로 먼저 둔 명령이 낱말을 갖는다
+        assert_eq!(w.commands["stop"], vec!["토글", "꺼"]);
+        assert_eq!(w.commands["start"], vec!["켜"]);
     }
 
     #[test]
