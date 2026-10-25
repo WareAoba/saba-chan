@@ -2095,6 +2095,12 @@
 
 /* update-auto-toggle — replaced by SabaToggle */
 
+/* 업데이트 채널 드롭다운: 가장 긴 설명 라벨(베타)이 잘리지 않게 */
+.update-channel-select {
+    width: 240px;
+    flex-shrink: 0;
+}
+
 .update-panel-actions {
     padding: var(--sp-4) var(--sp-6);
     display: flex;

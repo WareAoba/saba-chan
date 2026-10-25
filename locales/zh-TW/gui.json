@@ -541,6 +541,10 @@
     "checking_message": "正在檢查新更新...",
     "no_updates": "所有元件均為最新。",
     "auto_check": "自動檢查更新",
+    "channel": "更新頻道",
+    "channel_stable": "正式版",
+    "channel_rc": "預覽版（候選發布）",
+    "channel_beta": "測試版（搶先體驗，可能不穩定）",
     "found": "找到 {{count}} 個更新：{{names}}",
     "check_required": "需要檢查",
     "completed": "更新完成。"

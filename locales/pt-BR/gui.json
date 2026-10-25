@@ -541,6 +541,10 @@
     "checking_message": "Verificando novas atualizações...",
     "no_updates": "Todos os componentes estão atualizados.",
     "auto_check": "Verificar atualizações automaticamente",
+    "channel": "Canal de atualizações",
+    "channel_stable": "Estável",
+    "channel_rc": "Prévia (candidata)",
+    "channel_beta": "Beta (antecipada, pode ser instável)",
     "found": "{{count}} atualização(ões) encontrada(s): {{names}}",
     "check_required": "Verificação necessária",
     "completed": "Atualização concluída."

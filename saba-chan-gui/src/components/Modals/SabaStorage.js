@@ -2,6 +2,7 @@ import clsx from 'clsx';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useExtensions } from '../../contexts/ExtensionContext';
+import CustomDropdown from '../CustomDropdown/CustomDropdown';
 import { Icon } from '../Icon';
 import { ModuleMakerCard } from '../ModuleMakerCard';
 import { SabaSpinner, SabaToggle } from '../ui/SabaUI';
@@ -169,6 +170,7 @@ function ComponentsTab({ devMode }) {
     // 데몬이 모의 릴레이 서명을 믿는 개발 빌드(--features mock-relay)인가. 아니면 MOCK으로 바꿔도 검증에서 막힌다
     const [mockRelayBuild, setMockRelayBuild] = useState(false);
     const [autoCheckEnabled, setAutoCheckEnabled] = useState(true);
+    const [updateChannel, setUpdateChannel] = useState('stable');
     const [downloadProgress, setDownloadProgress] = useState({ component: null, percent: 0, active: false });
     const pollRef = useRef(null);
     const progressPollRef = useRef(null);
@@ -431,6 +433,23 @@ function ComponentsTab({ devMode }) {
         }
     }, [t]);
 
+    // 위 채널은 아래 채널 릴리즈도 받는다 (정식 ⊂ 미리보기 ⊂ 베타). 고를 수 있는 값은 데몬이 다시 확인한다
+    const handleChannelChange = useCallback(
+        async (channel) => {
+            const previous = updateChannel;
+            if (channel === previous) return;
+            setUpdateChannel(channel);
+            try {
+                throwIfRejected(await window.api?.updaterSetConfig?.({ channel }));
+            } catch (e) {
+                console.error('Failed to set update channel:', e);
+                setUpdateChannel(previous);
+                setError(t('saba_storage.switch_failed', { error: e.message }));
+            }
+        },
+        [t, updateChannel],
+    );
+
     useEffect(() => {
         mountedRef.current = true;
         (async () => {
@@ -442,6 +461,7 @@ function ComponentsTab({ devMode }) {
                     setMockMode(isMock);
                     setMockRelayBuild(cfgRes?.mock_relay === true);
                     setAutoCheckEnabled(cfg?.enabled !== false);
+                    if (cfg?.channel) setUpdateChannel(cfg.channel);
                 }
             } catch (_) {
                 if (mountedRef.current) setMockMode(false);
@@ -633,6 +653,22 @@ function ComponentsTab({ devMode }) {
                     </span>
                     <SabaToggle checked={autoCheckEnabled} onChange={(checked) => handleAutoCheckToggle(checked)} />
                 </label>
+                <div className="update-panel-setting-row">
+                    <span className="update-panel-setting-label">
+                        <Icon name="antenna" size="sm" />
+                        {t('updates.channel')}
+                    </span>
+                    <CustomDropdown
+                        className="update-channel-select"
+                        ariaLabel={t('updates.channel')}
+                        value={updateChannel}
+                        onChange={handleChannelChange}
+                        options={['stable', 'rc', 'beta'].map((value) => ({
+                            value,
+                            label: t(`updates.channel_${value}`),
+                        }))}
+                    />
+                </div>
             </div>
 
             <div className="update-panel-actions" />
