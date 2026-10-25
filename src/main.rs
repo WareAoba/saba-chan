@@ -391,9 +391,6 @@ async fn main() -> anyhow::Result<()> {
     if let Ok(modules) = supervisor.read().await.list_modules() {
         plugin::prefetch_module_functions(modules.iter().map(|m| m.entry_path()).collect());
     }
-    // server_version이 비어 있는 인스턴스의 버전 감지 (모듈 Python 호출이라 기동을 막지 않게 뒤에서)
-    tokio::spawn(supervisor::Supervisor::backfill_server_versions(supervisor.clone()));
-    tokio::spawn(supervisor::Supervisor::backfill_data_roots(supervisor.clone()));
 
     // Generate IPC auth token
     match ipc::auth::generate_and_save_token() {
@@ -403,6 +400,11 @@ async fn main() -> anyhow::Result<()> {
 
     // Start IPC HTTP server
     let ipc_server = ipc::IPCServer::new(supervisor.clone(), &ipc_addr, daemon_log_buffer.clone());
+
+    // server_version이 비어 있는 인스턴스의 버전 감지 (모듈 Python 호출이라 기동을 막지 않게 뒤에서).
+    // IPC 서버(모듈 HOST 통로)를 만든 뒤에 띄운다: 이 작업이 감독자 잠금을 먼저 쥐면 통로가 늦게 붙는다
+    tokio::spawn(supervisor::Supervisor::backfill_server_versions(supervisor.clone()));
+    tokio::spawn(supervisor::Supervisor::backfill_data_roots(supervisor.clone()));
 
     // Supervisor에 ExtensionManager 연결
     {
