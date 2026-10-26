@@ -902,6 +902,11 @@ pub fn isolation_for(entry: &Path, config: &Value, python_exe: &Path) -> Option<
         grants.push_shared(venv, Access::Read, &data_dir, home);
     }
     if let Some(base) = appcontainer::venv_home(python_exe) {
+        // 유닉스의 `home`은 `<설치 루트>/bin`이다: 표준 라이브러리(`<루트>/lib/pythonX.Y`)도 보이게 루트를 준다
+        let base = match base.parent() {
+            Some(root) if cfg!(not(windows)) && base.file_name().is_some_and(|n| n == "bin") => root.to_path_buf(),
+            _ => base,
+        };
         grants.push_shared(&base, Access::Read, &data_dir, home);
     }
     let extensions = crate::plugin::resolve_extensions_dir();
@@ -1192,6 +1197,23 @@ mod tests {
         assert_eq!(field_access("instance_dir", Access::Write, &import), Access::Write);
         assert_eq!(field_access("instance_dir", Access::Read, &import), Access::Read, "extensions only read");
         assert!(grants_write(MIGRATION_IMPORT));
+    }
+
+    /// 유닉스 venv의 `home`은 `<설치 루트>/bin`이다: 표준 라이브러리(`<루트>/lib/pythonX.Y`)까지 보이게 루트를 준다
+    #[cfg(not(windows))]
+    #[test]
+    fn a_unix_base_python_is_granted_from_its_install_root() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let (base, venv) = (root.join("py"), root.join("venv"));
+        for d in [base.join("bin"), base.join("lib/python3.13"), venv.join("bin")] {
+            std::fs::create_dir_all(d).unwrap();
+        }
+        std::fs::write(venv.join("pyvenv.cfg"), format!("home = {}\n", base.join("bin").display())).unwrap();
+        let entry = root.join("lifecycle.py");
+        std::fs::write(&entry, "").unwrap();
+        let iso = isolation_for(&entry, &serde_json::json!({}), &venv.join("bin").join("python")).unwrap();
+        assert!(iso.grants.entries.contains(&(base, appcontainer::Access::Read)), "{:?}", iso.grants.entries);
     }
 
     #[test]
