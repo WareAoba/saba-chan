@@ -5,6 +5,7 @@ import NoticeModal from '../Modals/NoticeModal';
 import ExtensionSlot from '../ExtensionSlot';
 import { Icon } from '../Icon';
 import { ConnectionRail } from './ConnectionRail';
+import { DaemonSwitcher } from './DaemonSwitcher';
 import { ParentJobNotice } from './ParentJobNotice';
 import { RuntimePreflight } from './RuntimePreflight';
 import { SwitchToCliButton } from './SwitchToCli';
@@ -94,6 +95,7 @@ export function AppBar({
                         <span className="spinner" aria-hidden="true" />
                     </span>
                 )}
+                {typeof window.api?.daemonTarget === 'function' && <DaemonSwitcher />}
                 <div className="popover-anchor">
                     <ConnectionRail
                         daemonStatus={daemonStatus}

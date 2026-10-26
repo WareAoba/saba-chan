@@ -111,7 +111,8 @@
     "path_missing": "Aucun chemin indiqué",
     "path_not_folder": "Ce n'est pas un dossier",
     "no_log_folder": "Aucun dossier de journaux",
-    "open_folder_failed": "Impossible d'ouvrir le dossier"
+    "open_folder_failed": "Impossible d'ouvrir le dossier",
+    "remote_local_path": "Impossible de choisir un chemin sur ce PC pendant que vous utilisez un daemon distant. Revenez à ce PC dans la barre du haut puis réessayez"
   },
   "consent": {
     "allow": "Autoriser",

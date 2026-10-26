@@ -111,7 +111,8 @@
     "path_missing": "No se indicó la ruta",
     "path_not_folder": "No es una carpeta",
     "no_log_folder": "No hay carpeta de registros",
-    "open_folder_failed": "No se pudo abrir la carpeta"
+    "open_folder_failed": "No se pudo abrir la carpeta",
+    "remote_local_path": "No puedes elegir una ruta de este PC mientras usas un daemon remoto. Cambia a este PC en la barra superior e inténtalo de nuevo"
   },
   "consent": {
     "allow": "Permitir",

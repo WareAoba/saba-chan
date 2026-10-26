@@ -3200,6 +3200,36 @@
     color: var(--text-2);
 }
 
+/* 설정 > 고급: 원격 데몬 */
+.remote-daemon-subtitle {
+    margin: var(--sp-2) 0 0;
+    font-size: 13px;
+    font-weight: 600;
+}
+.remote-daemon-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1);
+}
+.remote-daemon-row {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    padding: var(--sp-1) var(--sp-2);
+    border-radius: var(--r-md);
+    background: var(--inset);
+}
+.remote-daemon-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 /* 서버 만들기·가져오기의 신뢰 안내 (as-body-stack이 간격을 준다) */
 .trust-create-notice {
     margin-bottom: 0;

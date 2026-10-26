@@ -21,6 +21,8 @@
     "allow-refresh-ipc-base",
     "allow-language-get",
     "allow-language-set",
+    "allow-daemon-target-get",
+    "allow-daemon-target-set",
     "allow-dialog-open-file",
     "allow-dialog-open-folder",
     "allow-dialog-save-file",

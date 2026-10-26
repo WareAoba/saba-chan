@@ -227,7 +227,7 @@ async fn one(ctx: &Ctx, words: &[String]) -> Result<()> {
         ctx = ctx.on_port(port);
     }
     // `--daemon`도 이 줄에만 (`local`이면 이 PC)
-    if let Some(daemon) = cli.global.daemon {
+    if let Some(daemon) = crate::cli::line_daemon(&matches) {
         ctx.api.target = Some(daemon).filter(|d| !d.trim().is_empty());
     }
     if cli.global.lang.as_deref().is_some_and(|l| crate::i18n::normalize(l) != crate::i18n::lang()) {

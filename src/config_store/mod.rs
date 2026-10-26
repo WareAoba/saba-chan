@@ -57,6 +57,9 @@ pub struct GuiSettings {
     pub window_bounds: Option<WindowBounds>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub language: Option<String>,
+    /// GUI가 다루는 원격 데몬 hostId (G1, 01 §1.4.2 7). 없으면 이 PC. 셸이 데몬 요청마다 `X-Saba-Target`으로 싣는다
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub daemon_target: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -105,6 +108,7 @@ impl Default for GuiSettings {
             system_monitor_open: true,
             window_bounds: None,
             language: None,
+            daemon_target: None,
         }
     }
 }
@@ -1194,6 +1198,17 @@ mod tests {
         store.write_gui(json!({"language": "ja"}), Apply::MergePatch, Some(&gui_seen)).await.unwrap();
         assert!(matches!(store.write_gui(json!({"language": "ko"}), Apply::MergePatch, Some(&gui_seen)).await, Err(ConfigStoreError::RevisionConflict(_))));
         assert_eq!(store.get_gui_settings().await.language.as_deref(), Some("ja"));
+    }
+
+    /// GUI가 고른 원격 데몬 (G1, `gui.daemonTarget`)은 저장되고, null이면 이 PC로 돌아간다
+    #[tokio::test]
+    async fn the_chosen_remote_daemon_is_kept_and_cleared_by_null() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = ConfigStore::new(dir.path());
+        store.write_gui(serde_json::json!({"daemonTarget": "host-b"}), Apply::Overlay, None).await.unwrap();
+        assert_eq!(store.get_gui_settings().await.daemon_target.as_deref(), Some("host-b"));
+        store.write_gui(serde_json::json!({"daemonTarget": null}), Apply::Overlay, None).await.unwrap();
+        assert_eq!(store.get_gui_settings().await.daemon_target, None);
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
