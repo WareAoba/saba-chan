@@ -44,7 +44,7 @@ pub async fn run(server: &IPCServer, req: Request, user: Option<String>) -> Resp
     let blocked = {
         let segments = gate::path_segments(&req.path).unwrap_or_default();
         let supervisor = server.supervisor.read().await;
-        blocked_fields(&supervisor, &req.method, pattern, &segments, req.body.as_ref()).0
+        blocked_fields(&supervisor, &req.method, pattern, &segments, req.body.as_ref(), None).0
     };
     if !blocked.is_empty() {
         return Response {
@@ -172,16 +172,21 @@ fn edited_instance<'a>(
 }
 
 /// 이 요청 본문에서 원격이 바꾸지 못하는 칸(`gate::blocked_fields`, 그 인스턴스 모듈의 PC 전용 설정 포함)과
-/// 요청이 고치는 인스턴스. 웹 원격과 원격 포트가 같이 쓴다 (원격 포트는 저장된 값과 같은 칸을 더 뺀다)
+/// 요청이 고치는 인스턴스. 웹 원격과 원격 포트가 같이 쓴다 (원격 포트는 저장된 값과 같은 칸을 더 뺀다).
+/// `new_server_module`은 아직 없는 서버(같은 계획에서 앞서 만들 서버)를 고치는 요청일 때 그 서버의 모듈이다
 pub(crate) fn blocked_fields<'a>(
     supervisor: &'a crate::supervisor::Supervisor,
     method: &str,
     pattern: &str,
     segments: &[String],
     body: Option<&Value>,
+    new_server_module: Option<&str>,
 ) -> (Vec<String>, Option<&'a crate::instance::ServerInstance>) {
     let instance = edited_instance(supervisor, pattern, segments);
-    let pc_only = pc_only_fields(supervisor, pattern, instance, body);
+    let pc_only = match (instance, new_server_module) {
+        (None, Some(module)) => new_server_pc_only_fields(supervisor, module, body),
+        _ => pc_only_fields(supervisor, pattern, instance, body),
+    };
     (gate::blocked_fields(method, pattern, body, &pc_only), instance)
 }
 
@@ -197,6 +202,16 @@ fn pc_only_fields(
         _ => instance.map(|i| i.module_name.as_str()),
     };
     module.map(|m| module_fields(supervisor, m, is_pc_only)).unwrap_or_default()
+}
+
+/// 아직 없는 서버 모듈(`module`)의 PC 전용 설정 키. 그 모듈을 찾지 못하면 본문의 설정 칸을 모두 PC 전용으로 본다
+fn new_server_pc_only_fields(supervisor: &crate::supervisor::Supervisor, module: &str, body: Option<&Value>) -> Vec<String> {
+    if supervisor.module_loader.get_module(module).is_ok() {
+        return module_fields(supervisor, module, is_pc_only);
+    }
+    let body = body.and_then(Value::as_object);
+    let settings = body.and_then(|b| b.get("settings")).and_then(Value::as_object);
+    body.into_iter().chain(settings).flat_map(|m| m.keys().cloned()).collect()
 }
 
 /// 인스턴스를 담은 응답에서 비밀값(REST 비밀번호, 모듈의 비밀번호 칸)을 뺀다.

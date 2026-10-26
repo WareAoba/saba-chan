@@ -154,7 +154,7 @@ pub(crate) async fn rules(State(server): State<crate::ipc::IPCServer>, req: Requ
         return error(StatusCode::PAYLOAD_TOO_LARGE, "body_too_large");
     };
     let json = serde_json::from_slice::<Value>(&bytes).ok();
-    let blocked = blocked_fields(&server, &method, pattern, &segments, json.as_ref()).await;
+    let blocked = blocked_fields(&server, &method, pattern, &segments, json.as_ref(), None).await;
     if !blocked.is_empty() {
         return Refused::Fields(blocked).into_response();
     }
@@ -207,20 +207,20 @@ fn route_rules(method: &str, path: &str) -> Result<(Vec<String>, Option<&'static
 
 /// 짝 맺은 PC가 `method uri`(본문 `body`)를 부를 수 있는지 미리 본다 (`rules` 층과 같은 판정).
 /// 액션 계획은 실행 전에 이것으로 각 단계를 본다: 여러 단계 계획이 앞 단계만 돌고 멈추지 않게
-pub(crate) async fn refusal(server: &crate::ipc::IPCServer, method: &str, uri: &str, body: Option<&Value>) -> Option<Refused> {
+pub(crate) async fn refusal(server: &crate::ipc::IPCServer, method: &str, uri: &str, body: Option<&Value>, new_server_module: Option<&str>) -> Option<Refused> {
     let (segments, pattern) = match route_rules(method, uri) {
         Ok(found) => found,
         Err(refused) => return Some(refused),
     };
     let pattern = pattern.filter(|p| crate::remote::gate::checks_fields(method, p))?;
-    let blocked = blocked_fields(server, method, pattern, &segments, body).await;
+    let blocked = blocked_fields(server, method, pattern, &segments, body, new_server_module).await;
     (!blocked.is_empty()).then_some(Refused::Fields(blocked))
 }
 
 /// 짝 맺은 PC가 바꾸지 못하는 본문 칸. 웹 원격과 같은 PC 전용 칸 규칙(`gate::blocked_fields`)에서
 /// 저장된 값과 같은 칸(바꾸지 않는 칸)은 뺀다: GUI는 설정 창의 칸을 바꾸지 않아도 함께 보낸다.
 /// 플러그인 설치는 해시를 함께 줄 때만 막는다 (주소만 주면 데몬이 공식 목록의 주소인지 본다)
-async fn blocked_fields(server: &crate::ipc::IPCServer, method: &str, pattern: &str, segments: &[String], body: Option<&Value>) -> Vec<String> {
+async fn blocked_fields(server: &crate::ipc::IPCServer, method: &str, pattern: &str, segments: &[String], body: Option<&Value>, new_server_module: Option<&str>) -> Vec<String> {
     // 만들 때 켜진 익스텐션이 물은 칸(`AddServer.options`)의 답: GUI는 칸을 건드리지 않아도 기본값을 싣는다.
     // 선언한 칸·종류에 맞는 값이면 받는다 (`exec::create_option_answers_allowed`. 익스텐션 잠금은 인스턴스 잠금보다 먼저 놓는다)
     let create_options_only = match body.and_then(|b| b.get("extension_data")).and_then(Value::as_object) {
@@ -231,7 +231,7 @@ async fn blocked_fields(server: &crate::ipc::IPCServer, method: &str, pattern: &
         _ => false,
     };
     let supervisor = server.supervisor.read().await;
-    let (mut blocked, instance) = crate::remote::exec::blocked_fields(&supervisor, method, pattern, segments, body);
+    let (mut blocked, instance) = crate::remote::exec::blocked_fields(&supervisor, method, pattern, segments, body, new_server_module);
     if create_options_only {
         blocked.retain(|k| k != "extension_data");
     }

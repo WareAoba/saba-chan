@@ -112,6 +112,21 @@ async fn a_paired_pc_cannot_reach_routes_the_remote_port_refuses_through_actions
     let err = plan(&state, "instance.settings.set", Some(&id), &json!({ "java_path": "/bin/sh" }), &paired).await.unwrap_err();
     assert_eq!((err.status, err.code), (403, "remote_field_blocked"), "{err:?}");
     assert_eq!(err.data["fields"], json!(["java_path"]));
+    // 같은 계획에서 만들 서버(`@N`)도 그 모듈의 PC 전용 칸으로 본다
+    let on_new = json!([
+        { "id": "instance.create", "input": { "name": "new-srv", "module_name": "plain" } },
+        { "id": "instance.settings.set", "instance": "@1", "input": { "java_path": "/bin/sh" } },
+    ]);
+    let err = plan_steps(&state, &on_new, &paired).await.unwrap_err();
+    assert_eq!((err.status, err.code, err.data["step"].as_i64()), (403, "remote_field_blocked", Some(2)), "{err:?}");
+    assert_eq!(err.data["fields"], json!(["java_path"]));
+    // 그 모듈을 찾지 못하면 설정 칸은 모두 막는다
+    let unknown = json!([
+        { "id": "instance.create", "input": { "name": "new-srv", "module_name": "missing" } },
+        { "id": "instance.settings.set", "instance": "@1", "input": { "players": 6 } },
+    ]);
+    let err = plan_steps(&state, &unknown, &paired).await.unwrap_err();
+    assert_eq!((err.code, err.data["step"].as_i64()), ("remote_field_blocked", Some(2)), "{err:?}");
     // 액션이 아닌 안쪽 호출도 같은 층을 지난다
     let res = call_as(&state, "GET", "/api/updates/status", None, Some(remote.clone())).await;
     assert_eq!((res.status.as_u16(), res.body["error_code"].as_str()), (403, Some("remote_local_only")), "{:?}", res.body);
