@@ -155,8 +155,9 @@ async fn server_list(state: &IPCServer, notices: Notices) -> axum::response::Res
                 memory_limit_mb: instance.memory_limit_mb,
                 revision: instance.settings_revision(),
                 instance_dir: supervisor.instance_store.instance_dir(&instance.id).to_string_lossy().to_string(),
-                linked_folder: crate::instance::migration::linked_folder(instance.working_dir.as_deref(), &supervisor.instance_store.instance_dir(&instance.id)),
-                restorable_settings: crate::instance::migration::saved(&supervisor.instance_store.instance_dir(&instance.id)),
+                // 폴더 판정은 아래 락 밖에서
+                linked_folder: None,
+                restorable_settings: false,
                 process_patterns,
                 managed: supervisor.uses_managed_start(instance),
                 pid,
@@ -167,6 +168,25 @@ async fn server_list(state: &IPCServer, notices: Notices) -> axum::response::Res
     };
     // supervisor read lock 해제됨 — 이후 extension dispatch에 의해 블로킹되어도
     // 다른 API 핸들러가 supervisor write lock을 획득할 수 있음
+
+    // 가져온 서버 폴더 판정은 실제 경로를 찾는 막는 호출이라(꺼진 네트워크 드라이브면 오래 걸린다) 데몬 락 밖, 런타임 밖에서
+    let snapshots = match tokio::task::spawn_blocking(move || {
+        let mut snapshots = snapshots;
+        for s in &mut snapshots {
+            let instance_dir = std::path::Path::new(&s.instance_dir);
+            s.linked_folder = crate::instance::migration::linked_folder(s.working_dir.as_deref(), instance_dir);
+            s.restorable_settings = crate::instance::migration::saved(instance_dir);
+        }
+        snapshots
+    })
+    .await
+    {
+        Ok(snapshots) => snapshots,
+        Err(e) => {
+            let error = json!({ "success": false, "error": format!("Could not read the server folders: {}", e) });
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(error)).into_response();
+        }
+    };
 
     // ── Phase 2: Extension hooks (lock 없이 실행) ──
     let mut servers = Vec::new();
@@ -1854,6 +1874,35 @@ mod tests {
         };
         assert_eq!(managed("default"), json!(true), "managed is the default (C8b)");
         assert_eq!(managed("direct"), json!(false));
+    }
+
+    /// 목록은 인스턴스 폴더 밖 서버 폴더(가져온 서버)와 되돌릴 원래 설정이 있는지를 알린다
+    #[tokio::test]
+    async fn server_list_reports_linked_folders() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            tmp.path().join("modules").to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        sup.initialize().await.unwrap();
+        let outside = tmp.path().join("server");
+        let mut linked = crate::instance::ServerInstance::new("linked", "plain");
+        linked.working_dir = Some(outside.to_string_lossy().into_owned());
+        let mut inside = crate::instance::ServerInstance::new("inside", "plain");
+        inside.working_dir = Some(sup.instance_store.instance_dir(&inside.id).join("server").to_string_lossy().into_owned());
+        let linked_id = linked.id.clone();
+        sup.instance_store.add(linked).unwrap();
+        sup.instance_store.add(inside).unwrap();
+        std::fs::create_dir_all(sup.instance_store.instance_dir(&linked_id).join(crate::instance::migration::DIR)).unwrap();
+        std::fs::write(sup.instance_store.instance_dir(&linked_id).join(crate::instance::migration::DIR).join(crate::instance::migration::MANIFEST), "{\"files\":[]}").unwrap();
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+
+        let body = crate::ipc::internal::into_internal(list_servers(State(state), Query(ListServersQuery::default())).await).await.body;
+        let server = |name: &str| body["servers"].as_array().unwrap().iter().find(|s| s["name"] == name).unwrap().clone();
+        assert_eq!(server("linked")["linked_folder"], json!(outside.to_string_lossy()));
+        assert_eq!(server("linked")["restorable_settings"], json!(true));
+        assert!(server("inside").get("linked_folder").is_none_or(|v| v.is_null()));
+        assert_eq!(server("inside")["restorable_settings"], json!(false));
     }
 
     /// 포트 충돌 강제 정지 알림은 클라이언트가 읽을 몫이다: 데몬 안 호출(릴레이 하트비트·채팅)은 비우지 않는다 (D-S3)
