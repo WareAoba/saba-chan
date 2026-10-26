@@ -1,6 +1,6 @@
 //! 렌더러가 부르는 Rust 명령 (계약 §2). 결과 모양은 main.js 각 핸들러와 같다
 
-use crate::daemon::{is_allowed_request, parse_method};
+use crate::daemon::{is_allowed_request, parse_method, DaemonClient};
 use crate::{lifecycle, settings, tray, window, AppState};
 use base64::Engine;
 use serde::Deserialize;
@@ -22,13 +22,16 @@ pub async fn daemon_request(
     body: Option<Value>,
     timeout_ms: Option<u64>,
     response_type: Option<String>,
+    target: Option<String>,
 ) -> Value {
     let Some(method) = parse_method(&method).filter(|m| is_allowed_request(m, &path)) else {
         return json!({ "status": 0, "error": format!("Invalid daemon request: {path}"), "code": "EINVAL" });
     };
     let client = app.state::<AppState>().client.clone();
     let timeout = Duration::from_millis(timeout_ms.unwrap_or(5000));
-    match client.send(method, &path, body.as_ref(), timeout).await {
+    // 합쳐 보기(G1c)는 요청마다 데몬을 고른다 (`local`이면 이 PC). 없으면 상단 바에서 고른 데몬
+    let target = DaemonClient::normalize_target(target);
+    match client.send_to(method, &path, body.as_ref(), timeout, target.as_deref()).await {
         Ok(res) => {
             let data = match response_type.as_deref() {
                 Some("base64") => Value::String(base64::engine::general_purpose::STANDARD.encode(&res.body)),

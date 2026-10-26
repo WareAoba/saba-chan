@@ -320,6 +320,25 @@ describe('원격 데몬 (G1)', () => {
         expect(await api.openFileDialog({})).toBe('/srv/game/server.jar');
     });
 
+    it('합쳐 보기는 모든 데몬의 서버를 이 PC에 묻고, 서버 하나는 그 데몬에 바로 켜고 끈다', async () => {
+        const calls = [];
+        const { api } = await install({
+            daemon_request: (args) => {
+                calls.push(args);
+                if (args.path === '/api/remote/servers') return { status: 200, data: { daemons: [] } };
+                return { status: 200, data: { success: true } };
+            },
+        });
+        expect(await api.remoteServers()).toEqual({ daemons: [] });
+        expect(calls[0].target).toBeUndefined();
+        expect(await api.remoteInstanceAction('host-b', 'id 1', 'start')).toEqual({ success: true });
+        expect(await api.remoteInstanceAction(null, 'id-2', 'stop')).toEqual({ success: true });
+        expect(calls[1]).toMatchObject({ method: 'POST', path: '/api/instance/id%201/start', target: 'host-b' });
+        expect(calls[2]).toMatchObject({ method: 'POST', path: '/api/instance/id-2/stop', target: 'local', body: { force: false } });
+        expect(await api.remoteInstanceAction('host-b', 'x', 'delete')).toMatchObject({ success: false });
+        expect(calls).toHaveLength(3);
+    });
+
     it('고른 원격 데몬에 닿지 못한 오류는 어느 화면에서든 문구로 온다', async () => {
         const { api } = await install({
             daemon_request: daemon({

@@ -325,6 +325,8 @@ pub enum RemoteCmd {
     Connect { host_id: String },
     /// Remote daemons this daemon connects to
     Daemons,
+    /// Servers on this PC and on every remote daemon, by daemon (use one with `--daemon <name>`)
+    Servers,
     /// Forget a remote daemon (pair again with `remote connect`)
     Forget { host_id: String },
 }

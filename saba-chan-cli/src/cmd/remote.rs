@@ -81,6 +81,17 @@ pub async fn run(ctx: &Ctx, cmd: RemoteCmd) -> Result<()> {
             });
             Ok(())
         }
+        RemoteCmd::Servers => {
+            let v = ctx.api.remote_servers().await?;
+            ctx.out.data(&v, |v| {
+                let mut t = output::table(&[t!("remote.daemon"), t!("col.name"), t!("col.game"), t!("col.state")]);
+                for row in server_rows(v) {
+                    t.add_row(row.to_vec());
+                }
+                output::print_table(t);
+            });
+            Ok(())
+        }
         RemoteCmd::Forget { host_id } => {
             let r = ctx.api.forget_remote_daemon(&host_id).await?;
             ctx.out.done(&t!("remote.forgotten", host = host_id), &r);
@@ -93,6 +104,34 @@ async fn status(ctx: &Ctx) -> Result<()> {
     let v = ctx.api.remote_settings().await?;
     ctx.out.data(&v, print_status);
     Ok(())
+}
+
+fn state_label(status: &str) -> String {
+    crate::i18n::try_t(&format!("status.{status}")).unwrap_or_else(|| status.to_string())
+}
+
+/// 합쳐 보기 (G1c): 데몬마다 서버 한 줄씩. 서버가 없거나 닿지 않는 데몬도 한 줄로 이유를 남긴다
+fn server_rows(v: &Value) -> Vec<[String; 4]> {
+    let mut rows = Vec::new();
+    for d in v.get("daemons").and_then(Value::as_array).into_iter().flatten() {
+        let daemon = match (d.get("hostId").and_then(Value::as_str), s(d, "name")) {
+            (None, _) => t!("remote.this_pc"),
+            (Some(host), "") => host.to_string(),
+            (Some(_), name) => name.to_string(),
+        };
+        let servers = d.get("servers").and_then(Value::as_array).cloned().unwrap_or_default();
+        if d.get("ok").and_then(Value::as_bool) != Some(true) {
+            let why = t!(&format!("remote.connect_error.{}", s(d, "error_code")));
+            rows.push([daemon, "-".into(), String::new(), why]);
+        } else if servers.is_empty() {
+            rows.push([daemon, "-".into(), String::new(), t!("remote.no_servers")]);
+        } else {
+            for srv in &servers {
+                rows.push([daemon.clone(), s(srv, "name").to_string(), s(srv, "module").to_string(), state_label(s(srv, "status"))]);
+            }
+        }
+    }
+    rows
 }
 
 fn yes_no(v: &Value, key: &str) -> String {
@@ -153,6 +192,19 @@ mod tests {
         assert!(patch(false, false, None, None).is_empty());
         assert_eq!(Value::Object(patch(true, false, Some(7443), None)), json!({ "enabled": true, "port": 7443 }));
         assert_eq!(Value::Object(patch(false, true, None, Some(String::new()))), json!({ "enabled": false, "address": "" }));
+    }
+
+    #[test]
+    fn every_daemons_servers_are_one_table_and_an_unreachable_daemon_says_why() {
+        let v = json!({ "daemons": [
+            { "hostId": null, "name": "", "ok": true, "servers": [{ "id": "a", "name": "test-pal", "module": "palworld", "status": "running" }] },
+            { "hostId": "host-b", "name": "게임 PC", "ok": true, "servers": [] },
+            { "hostId": "host-c", "name": "", "ok": false, "error_code": "remote_unreachable", "servers": [] },
+        ] });
+        let rows = server_rows(&v);
+        assert_eq!(rows[0], [t!("remote.this_pc"), "test-pal".into(), "palworld".into(), state_label("running")]);
+        assert_eq!(rows[1], ["게임 PC".to_string(), "-".into(), String::new(), t!("remote.no_servers")]);
+        assert_eq!(rows[2], ["host-c".to_string(), "-".into(), String::new(), t!("remote.connect_error.remote_unreachable")]);
     }
 
     #[test]

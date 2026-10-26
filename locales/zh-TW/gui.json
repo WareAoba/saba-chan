@@ -1628,10 +1628,18 @@
     "err_remote_bad_path": "該路徑不能傳給遠端常駐程式",
     "err_remote_unauthorized": "遠端常駐程式不再接受本機。請重新連線",
     "err_remote_local_only": "這只能在那台電腦上直接操作",
-    "local_only_sections": "資料夾位置和資料匯出/匯入會在本機選擇路徑，因此管理遠端常駐程式時會隱藏。"
+    "local_only_sections": "資料夾位置和資料匯出/匯入會在本機選擇路徑，因此管理遠端常駐程式時會隱藏。",
+    "view": "伺服器列表顯示",
+    "view_description": "合併顯示會在所選守護程式的伺服器下方依守護程式列出其他守護程式(包括本機)的伺服器，並可直接啟動和停止",
+    "view_switch": "僅所選守護程式",
+    "view_unified": "合併顯示所有守護程式"
   },
   "daemon_switcher": {
     "label": "常駐程式",
     "local": "本機"
+  },
+  "other_daemons": {
+    "open": "開啟此守護程式",
+    "empty": "沒有伺服器"
   }
 }

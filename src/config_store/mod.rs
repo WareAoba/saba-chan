@@ -60,6 +60,9 @@ pub struct GuiSettings {
     /// GUI가 다루는 원격 데몬 hostId (G1, 01 §1.4.2 7). 없으면 이 PC. 셸이 데몬 요청마다 `X-Saba-Target`으로 싣는다
     #[serde(skip_serializing_if = "Option::is_none")]
     pub daemon_target: Option<String>,
+    /// 서버 목록 보기 (G1c): "switch"(고른 데몬만) | "unified"(다른 데몬의 서버도 데몬별로). 없으면 switch
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub daemon_view: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -109,6 +112,7 @@ impl Default for GuiSettings {
             window_bounds: None,
             language: None,
             daemon_target: None,
+            daemon_view: None,
         }
     }
 }
@@ -1209,6 +1213,9 @@ mod tests {
         assert_eq!(store.get_gui_settings().await.daemon_target.as_deref(), Some("host-b"));
         store.write_gui(serde_json::json!({"daemonTarget": null}), Apply::Overlay, None).await.unwrap();
         assert_eq!(store.get_gui_settings().await.daemon_target, None);
+        // 서버 목록 보기 (G1c): 없으면 고른 데몬만
+        store.write_gui(serde_json::json!({"daemonView": "unified"}), Apply::Overlay, None).await.unwrap();
+        assert_eq!(store.get_gui_settings().await.daemon_view.as_deref(), Some("unified"));
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

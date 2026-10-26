@@ -828,6 +828,7 @@
       "remote.peers": "中继上此守护进程可连接的你的其他电脑",
       "remote.connect": "与你其他电脑的远程守护进程配对（`remote peers` 中显示 id）",
       "remote.daemons": "此守护进程连接的远程守护进程",
+      "remote.servers": "按守护进程列出本机和每个远程守护进程的服务器（要操作某个请用`--daemon <名称>`）",
       "remote.forget": "移除远程守护进程（重新连接用 `remote connect`）",
       "config.autostart": "登录此电脑时启动的内容：off（关闭）、daemon（仅守护进程和托盘）、full（包括 GUI 窗口）。不带模式时显示当前值"
     },
@@ -1430,6 +1431,9 @@
       "relay_unreachable": "无法连接中继",
       "remote_ambiguous": "有多个同名的远程守护进程。请用 host id 选择",
       "remote_timeout": "远程守护进程未及时回应。请求可能仍在处理中"
-    }
+    },
+    "daemon": "守护进程",
+    "this_pc": "本机",
+    "no_servers": "没有服务器"
   }
 }

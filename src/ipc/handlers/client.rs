@@ -217,12 +217,21 @@ fn launch_args(body: &serde_json::Value) -> Result<LaunchLine, (&'static str, &'
         None | Some(serde_json::Value::Null) => None,
         Some(v) => Some(v.as_str().filter(|s| !s.is_empty()).ok_or(("instance", "must be an instance id"))?.to_string()),
     };
-    let args = match (kind, &instance) {
+    // GUI가 고른 원격 데몬 (G1, CLI 전역 `--daemon`). GUI를 띄울 때는 받지 않는다: GUI는 설정 `gui.daemonTarget`을 따른다
+    let daemon = match body.get("daemon") {
+        None | Some(serde_json::Value::Null) => None,
+        Some(_) if kind == Interface::Gui => return Err(("daemon", "only for the cli")),
+        Some(v) => Some(v.as_str().filter(|s| !s.is_empty()).ok_or(("daemon", "must be a saved remote daemon"))?.to_string()),
+    };
+    let mut args = match (kind, &instance) {
         (Interface::Cli, None) => vec!["tui".to_string()],
         (Interface::Cli, Some(id)) => vec!["tui".to_string(), format!("--server={id}")],
         (Interface::Gui, None) => Vec::new(),
         (Interface::Gui, Some(id)) => vec![format!("--open-server={id}")],
     };
+    if let Some(d) = daemon {
+        args.push(format!("--daemon={d}"));
+    }
     Ok((kind, args, instance))
 }
 
@@ -273,7 +282,14 @@ pub async fn client_launch(State(state): State<IPCServer>, Json(body): Json<serd
                 .into_response()
         }
     };
-    if let Some(id) = &instance {
+    // 원격 데몬의 서버는 그 데몬에 있다: 저장한 원격 데몬인지만 보고, 인스턴스는 띄운 CLI가 그 데몬에 묻는다
+    let remote = body.get("daemon").and_then(|v| v.as_str());
+    if let Some(wanted) = remote {
+        if let Err(code) = crate::remote_daemon::target::resolve(&saba_chan_updater_lib::config_file::ConfigFile::default_location(), wanted) {
+            return (StatusCode::NOT_FOUND, Json(json!({ "success": false, "error": format!("Remote daemon not found: {wanted}"), "error_code": code }))).into_response();
+        }
+    }
+    if let Some(id) = instance.as_ref().filter(|_| remote.is_none()) {
         if state.supervisor.read().await.instance_store.get(id).is_none() {
             return (StatusCode::NOT_FOUND, Json(json!({ "success": false, "error": format!("Instance not found: {}", id), "error_code": "not_found" }))).into_response();
         }
@@ -343,6 +359,14 @@ mod launch_tests {
         assert_eq!(field(json!({ "view": "shell" })), "kind");
         assert_eq!(field(json!({ "kind": "cli", "instance": 5 })), "instance");
         assert_eq!(field(json!({ "kind": "gui", "instance": "" })), "instance");
+
+        // GUI에서 고른 원격 데몬(G1)은 CLI에도 넘긴다: 한 칸 `--daemon=값`
+        assert_eq!(
+            line(json!({ "kind": "cli", "instance": "abc", "daemon": "host-b" })).1,
+            vec!["tui".to_string(), "--server=abc".to_string(), "--daemon=host-b".to_string()]
+        );
+        assert_eq!(field(json!({ "kind": "cli", "daemon": "" })), "daemon");
+        assert_eq!(field(json!({ "kind": "gui", "daemon": "host-b" })), "daemon");
     }
 
     /// 띄운 GUI는 이 데몬에 붙는다: 설정 포트와 다른 포트에서 돌 때(`SABA_IPC_PORT`)만 주소를 넘기고,
