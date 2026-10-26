@@ -1627,7 +1627,7 @@
     "save": "Enregistrer",
     "status_off": "Désactivé",
     "status_listening": "À l'écoute sur le port {{port}}",
-    "status_published": "Adresse communiquée à vos autres PC",
+    "status_published": "Vos autres PC connaissent maintenant ce PC",
     "clients": "PC connectés à celui-ci",
     "no_clients": "Aucun PC n'est connecté à celui-ci.",
     "revoke": "Déconnecter",

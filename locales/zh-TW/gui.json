@@ -1627,7 +1627,7 @@
     "save": "儲存",
     "status_off": "關閉",
     "status_listening": "正在連接埠 {{port}} 接收",
-    "status_published": "已把位址告訴你的其他電腦",
+    "status_published": "已把本機告訴你的其他電腦",
     "clients": "已連到本機的電腦",
     "no_clients": "沒有電腦連到本機。",
     "revoke": "中斷連線",

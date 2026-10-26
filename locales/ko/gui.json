@@ -1627,7 +1627,7 @@
     "save": "저장",
     "status_off": "꺼짐",
     "status_listening": "{{port}} 포트에서 받는 중",
-    "status_published": "내 다른 PC에 주소를 알렸어요",
+    "status_published": "내 다른 PC에 이 PC를 알렸어요",
     "clients": "이 PC에 붙은 PC",
     "no_clients": "이 PC에 붙은 PC가 없어요.",
     "revoke": "연결 끊기",

@@ -1627,7 +1627,7 @@
     "save": "Save",
     "status_off": "Off",
     "status_listening": "Listening on port {{port}}",
-    "status_published": "Address shared with your other PCs",
+    "status_published": "Your other PCs know about this PC",
     "clients": "PCs connected to this one",
     "no_clients": "No PC is connected to this one.",
     "revoke": "Disconnect",

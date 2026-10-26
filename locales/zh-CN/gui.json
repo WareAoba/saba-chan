@@ -1627,7 +1627,7 @@
     "save": "保存",
     "status_off": "关闭",
     "status_listening": "正在端口 {{port}} 监听",
-    "status_published": "已把地址告诉你的其他电脑",
+    "status_published": "已把本机告诉你的其他电脑",
     "clients": "已连接到本机的电脑",
     "no_clients": "没有电脑连接到本机。",
     "revoke": "断开",

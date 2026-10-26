@@ -1627,7 +1627,7 @@
     "save": "保存",
     "status_off": "オフ",
     "status_listening": "ポート {{port}} で受付中",
-    "status_published": "他のPCにアドレスを知らせました",
+    "status_published": "他のPCにこのPCを知らせました",
     "clients": "このPCにつないだPC",
     "no_clients": "このPCにつないだPCはありません。",
     "revoke": "接続を切る",

@@ -1627,7 +1627,7 @@
     "save": "Guardar",
     "status_off": "Apagado",
     "status_listening": "Escuchando en el puerto {{port}}",
-    "status_published": "Dirección compartida con tus otros PC",
+    "status_published": "Tus otros PC ya conocen este PC",
     "clients": "PC conectados a este",
     "no_clients": "Ningún PC está conectado a este.",
     "revoke": "Desconectar",

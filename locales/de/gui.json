@@ -1627,7 +1627,7 @@
     "save": "Speichern",
     "status_off": "Aus",
     "status_listening": "Wartet auf Port {{port}}",
-    "status_published": "Adresse an deine anderen PCs weitergegeben",
+    "status_published": "Deine anderen PCs kennen diesen PC jetzt",
     "clients": "Mit diesem PC verbundene PCs",
     "no_clients": "Kein PC ist mit diesem verbunden.",
     "revoke": "Trennen",

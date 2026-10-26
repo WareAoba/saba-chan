@@ -1627,7 +1627,7 @@
     "save": "Salvar",
     "status_off": "Desligado",
     "status_listening": "Ouvindo na porta {{port}}",
-    "status_published": "Endereço compartilhado com seus outros PCs",
+    "status_published": "Seus outros PCs já conhecem este PC",
     "clients": "PCs conectados a este",
     "no_clients": "Nenhum PC está conectado a este.",
     "revoke": "Desconectar",
