@@ -467,6 +467,17 @@ async fn main() -> anyhow::Result<()> {
         });
     }
 
+    // 업데이트로 바뀐 모듈이 쓰는 익스텐션을 맞춘다: 업데이터가 적용하고 다시 띄운 기동 때 한 번, 데몬이 바로 적용할 때마다
+    {
+        let server = ipc_server.clone();
+        tokio::spawn(async move {
+            loop {
+                ipc::handlers::extension::prepare_after_update(&server, &saba_chan_updater_lib::UpdateCompletionMarker::path()).await;
+                server.update_state.modules_updated.notified().await;
+            }
+        });
+    }
+
     // ── CancellationToken: 모든 백그라운드 태스크에 graceful shutdown 전파 ──
     let shutdown_token = ipc_server.shutdown_token.clone();
     let stop_requested_token = ipc_server.stop_requested.clone();
