@@ -117,6 +117,7 @@ html[data-tray-popup] body {
     background: var(--surface-gradient-hover);
 }
 .tray-popup-link.danger {
+    margin-left: auto;
     color: var(--stop);
 }
 .tray-popup-link.danger:hover:not(:disabled) {

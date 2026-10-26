@@ -6,7 +6,7 @@ use serde_json::{json, Value};
 use std::io::BufRead;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tauri::async_runtime::JoinHandle;
@@ -25,8 +25,8 @@ pub struct Lifecycle {
     attached_daemon: AtomicBool,
     /// 이 GUI가 띄운 데몬이 job breakaway를 거절당해 GUI를 띄운 프로그램의 job 안에서 돈다
     daemon_in_parent_job: AtomicBool,
-    /// 사용자가 트레이에서 데몬을 껐다: 데몬이 없어도 상주 GUI는 남아 다시 켤 수 있게 한다
-    stopped_from_tray: AtomicBool,
+    /// 사용자가 트레이에서 데몬을 껐다: 데몬이 없어도 상주 GUI는 남아 다시 켤 수 있게 한다 (`TRAY_STOP_*`)
+    stopped_from_tray: AtomicU8,
     init_started: AtomicBool,
     /// 초기화를 아직 마치지 않았는가. 데몬 단계에서 실패하거나 끊기면 daemon_restart가 성공한 뒤 나머지를 마친다
     init_pending_daemon: AtomicBool,
@@ -237,12 +237,38 @@ fn should_follow_daemon_out(daemon_reached: bool, resident: bool, stopped_from_t
     !daemon_reached && resident && !stopped_from_tray
 }
 
+/// 종료 요청에도 프로세스를 남기는가: 마지막 창이 닫혀 온 요청(code 없음)은 트레이로 남는다. `app.exit()`는 code가 있다.
+/// 창 목록으로 가리지 않는다: 팝업을 없애는 사이 새 메인 창이 목록에 먼저 들어와 있을 수 있다
+pub fn keeps_running_on_exit_request(code: Option<i32>) -> bool {
+    code.is_none()
+}
+
+/// 트레이의 데몬 끄기 뒤 표시를 남기는가: 데몬이 종료 요청을 받아들였으면 남긴다 (꺼지는 동안 잠시 답할 수 있다)
+pub fn tray_stop_stands(shutdown_accepted: bool) -> bool {
+    shutdown_accepted
+}
+
+/// 트레이에서 끈 표시: 없음 → 끄기 요청함 → 데몬이 사라진 것을 봄 → (다시 닿으면) 없음
+const TRAY_STOP_NONE: u8 = 0;
+const TRAY_STOP_ASKED: u8 = 1;
+const TRAY_STOP_GONE: u8 = 2;
+
+/// heartbeat 한 번 뒤의 트레이에서 끈 표시. 끄는 중인 데몬은 잠시 답하므로, 사라진 것을 본 뒤 다시 닿아야 지운다
+fn tray_stop_after_heartbeat(stop: u8, reached: bool) -> u8 {
+    match (stop, reached) {
+        (TRAY_STOP_ASKED, false) => TRAY_STOP_GONE,
+        (TRAY_STOP_GONE, true) => TRAY_STOP_NONE,
+        (s, _) => s,
+    }
+}
+
 /// 트레이에서 데몬을 끄거나 켰다 (끈 동안에는 데몬이 없어도 상주 GUI가 남는다)
 pub fn note_tray_stop(app: &AppHandle, stopped: bool) {
+    let stop = if stopped { TRAY_STOP_ASKED } else { TRAY_STOP_NONE };
     app.state::<AppState>()
         .life
         .stopped_from_tray
-        .store(stopped, Ordering::SeqCst);
+        .store(stop, Ordering::SeqCst);
 }
 
 /// 연결이 거부된 것만 데몬이 없다고 본다. 시간 초과는 바쁜 데몬일 수 있다
@@ -432,17 +458,22 @@ fn force_kill(child: &mut Child) {
 
 /// API로 정상 종료를 요청하고, 시간 안에 안 끝나면 이 GUI가 띄운 PID만 강제 종료한다.
 /// 이름 기반 kill은 다른 사용자의 데몬까지 죽일 수 있어 쓰지 않는다
-pub async fn stop_daemon(app: &AppHandle) {
+/// 데몬이 종료 요청을 받아들였으면 true
+pub async fn stop_daemon(app: &AppHandle) -> bool {
     let state = app.state::<AppState>();
-    match state.client.post("/api/daemon/shutdown", &json!({}), 2000).await {
+    let accepted = match state.client.post("/api/daemon/shutdown", &json!({}), 2000).await {
         Ok(_) => {
             tracing::info!("Daemon shutdown requested via API");
             state.life.attached_daemon.store(false, Ordering::SeqCst);
+            true
         }
-        Err(e) => tracing::warn!("Daemon shutdown API failed: {}", e.message),
-    }
+        Err(e) => {
+            tracing::warn!("Daemon shutdown API failed: {}", e.message);
+            false
+        }
+    };
     if state.life.child.lock().unwrap().is_none() {
-        return;
+        return accepted;
     }
     let start = Instant::now();
     while own_daemon_alive(app) {
@@ -462,6 +493,7 @@ pub async fn stop_daemon(app: &AppHandle) {
         sleep(200).await;
     }
     tracing::info!("Daemon stopped");
+    true
 }
 
 async fn health_ok(app: &AppHandle, timeout_ms: u64) -> bool {
@@ -636,17 +668,19 @@ fn start_heartbeat(app: &AppHandle) {
             // 연결이 안 되면 데몬이 없다: 이 GUI 밖에서 꺼진 데몬을 트레이가 실행 중으로 보이지 않게
             let reached = heartbeat_reached(&res);
             if state.life.note_reachable(reached) {
-                // 트레이에서 끈 데몬이 (어디서든) 다시 떴다: 이제 밖에서 꺼지면 함께 끝난다
-                if reached {
-                    note_tray_stop(&app2, false);
-                }
                 tray::update_menu(&app2);
             }
+            // 트레이에서 끈 데몬이 사라진 뒤 (어디서든) 다시 떴으면 표시를 지운다: 이제 밖에서 꺼지면 함께 끝난다
+            let _ = state
+                .life
+                .stopped_from_tray
+                .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |s| {
+                    Some(tray_stop_after_heartbeat(s, reached))
+                });
             // 창 없이 트레이만 든 GUI는 데몬이 밖에서 꺼지면(CLI의 완전히 종료 등) 함께 끝난다.
             // 트레이에서 직접 끈 것이면 다시 켤 수 있게 남는다
-            if should_follow_daemon_out(reached, resident, state.life.stopped_from_tray.load(Ordering::SeqCst))
-                && !own_daemon_alive(&app2)
-            {
+            let tray_stopped = state.life.stopped_from_tray.load(Ordering::SeqCst) != TRAY_STOP_NONE;
+            if should_follow_daemon_out(reached, resident, tray_stopped) && !own_daemon_alive(&app2) {
                 tracing::info!("[Tray] The daemon is gone and no window is open; quitting");
                 state.life.quitting.store(true, Ordering::SeqCst);
                 stop_background(&state);
@@ -884,6 +918,39 @@ pub fn on_exit(app: &AppHandle) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_tray_stop_clears_only_when_the_daemon_comes_back_after_it_was_gone() {
+        // 끄는 중인 데몬은 잠시 heartbeat에 답한다: 그것은 다시 뜬 것이 아니다 (Codex 리뷰)
+        let s = tray_stop_after_heartbeat(TRAY_STOP_ASKED, true);
+        assert_eq!(s, TRAY_STOP_ASKED);
+        let s = tray_stop_after_heartbeat(s, false);
+        assert_eq!(s, TRAY_STOP_GONE);
+        assert_eq!(tray_stop_after_heartbeat(s, false), TRAY_STOP_GONE);
+        assert_eq!(
+            tray_stop_after_heartbeat(s, true),
+            TRAY_STOP_NONE,
+            "started again from elsewhere"
+        );
+        assert_eq!(tray_stop_after_heartbeat(TRAY_STOP_NONE, true), TRAY_STOP_NONE);
+    }
+
+    #[test]
+    fn closing_the_last_window_never_ends_the_tray_app() {
+        // 팝업의 창 열기: 팝업을 없애는 사이 메인 창이 만들어지고 있어도 끝나지 않는다 (PC: 0.2초 만에 종료)
+        assert!(keeps_running_on_exit_request(None));
+        assert!(!keeps_running_on_exit_request(Some(0)), "app.exit() ends it");
+    }
+
+    #[test]
+    fn a_tray_stop_stands_once_the_daemon_accepted_it() {
+        // 받아들인 데몬은 잠시 /health에 답할 수 있다: 그것으로 표시를 지우면 상주 GUI가 데몬을 따라 끝난다 (PC)
+        assert!(tray_stop_stands(true));
+        assert!(
+            !tray_stop_stands(false),
+            "the daemon refused: it was not stopped from the tray"
+        );
+    }
 
     #[test]
     fn a_tray_only_gui_quits_with_the_daemon_unless_the_tray_stopped_it() {

@@ -186,9 +186,10 @@ pub fn run() {
         .expect("error while building saba-chan-gui");
 
     app.run(|app, event| match event {
-        // 마지막 창이 닫혀도(code 없음) 끝나지 않고 트레이로 남는다. app.exit()는 code가 있다.
-        // 창이 남아 있는데 온 종료 요청(macOS Cmd+Q·로그아웃 등)은 막지 않는다
-        RunEvent::ExitRequested { code: None, api, .. } if window::tray_only_now(app) => api.prevent_exit(),
+        // 마지막 창이 닫혀도 끝나지 않고 트레이로 남는다
+        RunEvent::ExitRequested { code, api, .. } if lifecycle::keeps_running_on_exit_request(code) => {
+            api.prevent_exit()
+        }
         RunEvent::Exit => lifecycle::on_exit(app),
         _ => {}
     });
