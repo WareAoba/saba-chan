@@ -152,8 +152,9 @@ pub async fn forget_daemon(Path(host_id): Path<String>) -> Response {
 }
 
 
-/// 원격 데몬 하나의 서버 목록을 기다리는 시간. 하나가 늦어도 합쳐 보기 전체가 멈추지 않게
-const REMOTE_LIST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(8);
+/// 원격 데몬 하나의 서버 목록을 기다리는 시간. 하나가 늦어도 합쳐 보기 전체가 멈추지 않게.
+/// 옛 주소 붙기(10초) → 릴레이에서 새 주소 → 다시 붙기(10초)까지는 끝나야 한다 (`peer::forward`)
+const REMOTE_LIST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
 pub async fn list_all_servers(State(state): State<IPCServer>) -> Json<Value> {
     Json(all_servers_with(&ConfigFile::default_location(), &state, REMOTE_LIST_TIMEOUT).await)

@@ -85,7 +85,7 @@ export function ServersPage({
 
     if (servers.length === 0) {
         return (
-            <div className="page page-empty">
+            <div className={clsx('page page-empty', { 'with-other-daemons': unified })}>
                 <div className="empty-state">
                     <SabaArt kind="cleaning" size={280} />
                     <h2>{t('saba.empty_title')}</h2>
@@ -94,6 +94,8 @@ export function ServersPage({
                         <Icon name="plus" size="sm" /> {t('shell.add_server')}
                     </button>
                 </div>
+                {/* 고른 데몬에 서버가 없어도 다른 데몬의 서버는 보인다 */}
+                {unified && daemonTarget !== undefined && <OtherDaemons currentTarget={daemonTarget} />}
             </div>
         );
     }

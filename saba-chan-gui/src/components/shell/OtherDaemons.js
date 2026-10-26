@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { safeShowToast } from '../../utils/helpers';
 import { STATUS_TONE, primaryAction } from '../../utils/serverView';
@@ -20,9 +20,18 @@ export function OtherDaemons({ currentTarget, onSwitched = reloadWindow }) {
     const [daemons, setDaemons] = useState([]);
     const [busy, setBusy] = useState(null);
 
+    const loading = useRef(false);
+
+    // 닿지 않는 데몬은 답이 30초까지 늦다: 앞 조회가 끝나기 전에는 다시 묻지 않는다
     const load = useCallback(async () => {
-        const res = await window.api.remoteServers().catch(() => null);
-        if (Array.isArray(res?.daemons)) setDaemons(res.daemons);
+        if (loading.current) return;
+        loading.current = true;
+        try {
+            const res = await window.api.remoteServers().catch(() => null);
+            if (Array.isArray(res?.daemons)) setDaemons(res.daemons);
+        } finally {
+            loading.current = false;
+        }
     }, []);
 
     useEffect(() => {

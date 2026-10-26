@@ -753,7 +753,8 @@ impl Api {
     }
     /// GET /api/remote/servers — 이 PC와 원격 데몬마다의 서버 (G1c 합쳐 보기)
     pub async fn remote_servers(&self) -> Result<Value> {
-        self.get("/api/remote/servers").await
+        // 데몬이 원격 데몬 하나를 30초까지 기다린다
+        self.get_slow("/api/remote/servers").await
     }
     /// DELETE /api/remote/daemons/:hostId
     pub async fn forget_remote_daemon(&self, host_id: &str) -> Result<Value> {

@@ -1111,7 +1111,8 @@ export function createApi({ invoke, hub }) {
         remoteForget: async (hostId) =>
             (await daemonJson('delete', `/api/remote/daemons/${encodeURIComponent(hostId)}`)) || { ok: true },
         // 합쳐 보기 (G1c): 이 PC와 원격 데몬마다의 서버 {daemons:[{hostId(이 PC는 null), name, ok, error_code?, servers}]}
-        remoteServers: () => daemonJson('get', '/api/remote/servers', undefined, 20000),
+        // 데몬이 원격 데몬 하나를 30초까지 기다린다 (01 §1.4.2 8)
+        remoteServers: () => daemonJson('get', '/api/remote/servers', undefined, 40000),
         // 합쳐 보기에서 다른 데몬의 서버 하나를 켜고 끈다. hostId가 없으면 이 PC
         remoteInstanceAction: async (hostId, id, action) => {
             if (!['start', 'stop', 'restart'].includes(action)) return { success: false, error: `unknown action ${action}` };

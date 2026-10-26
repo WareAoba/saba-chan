@@ -1,6 +1,9 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ServersPage } from '../components/servers/ServersPage';
 import { OtherDaemons } from '../components/shell/OtherDaemons';
+import { useSettingsStore } from '../stores/useSettingsStore';
+import { useUIStore } from '../stores/useUIStore';
 
 const LIST = {
     daemons: [
@@ -64,5 +67,17 @@ describe('합쳐 보기: 다른 데몬의 서버 (G1c)', () => {
         expect(window.api.remoteServers).toHaveBeenCalledTimes(1);
         await act(async () => vi.advanceTimersByTime(10_000));
         expect(window.api.remoteServers).toHaveBeenCalledTimes(2);
+    });
+
+    it('고른 데몬에 서버가 없어도 다른 데몬의 서버를 보인다', async () => {
+        useSettingsStore.setState({ daemonView: 'unified' });
+        useUIStore.setState({ backgroundDaemonStatus: 'running' });
+        window.api.daemonTarget = vi.fn().mockResolvedValue({ target: null });
+        await act(async () =>
+            render(<ServersPage servers={[]} modules={[]} onAddServer={vi.fn()} drag={{ cardRefs: { current: {} } }} />),
+        );
+        expect(screen.getByText('Nothing added yet')).toBeTruthy();
+        expect(screen.getByRole('region', { name: '게임 PC' })).toHaveTextContent('test-pal');
+        useSettingsStore.setState({ daemonView: 'switch' });
     });
 });
