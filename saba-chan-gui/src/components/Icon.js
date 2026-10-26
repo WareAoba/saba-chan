@@ -471,6 +471,20 @@ export const Icon = ({ name, size = 'md', color = 'currentColor' }) => {
                 />
             </svg>
         ),
+        volume: (
+            <svg width="24" height="24" fill="none" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path
+                    d="M11.4 4.2A1 1 0 0 1 13 5v14a1 1 0 0 1-1.6.8L7.65 17H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h3.65l3.75-2.8ZM11 7 8.6 8.8A1 1 0 0 1 8 9H5v6h3a1 1 0 0 1 .6.2L11 17V7Z"
+                    fill="currentColor"
+                />
+                <path
+                    d="M16 9a4 4 0 0 1 0 6M18.5 6.5a7.5 7.5 0 0 1 0 11"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                />
+            </svg>
+        ),
         bellOff: (
             <svg width="24" height="24" fill="none" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                 <path
@@ -601,6 +615,40 @@ export const Icon = ({ name, size = 'md', color = 'currentColor' }) => {
                     d="M368 448H144"
                 />
                 <path d="M32 304v48a32.09 32.09 0 0032 32h384a32.09 32.09 0 0032-32v-48zm224 64a16 16 0 1116-16 16 16 0 01-16 16z" fill="currentColor" />
+            </svg>
+        ),
+        // 사바 스토리지 컴포넌트 목록 (사용자 10-26 고른 세트)
+        componentUpdater: (
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M17.5 19H7a5 5 0 1 1 1.6-9.74A6 6 0 0 1 20 11a4 4 0 0 1-2.5 8z" />
+                <path d="M12 16v-6M9.5 12.5 12 10l2.5 2.5" />
+            </svg>
+        ),
+        componentGui: (
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M20 11V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h7" />
+                <path d="M2 8h18" />
+                <path d="m14 13 7 3-3 1-1 3z" />
+            </svg>
+        ),
+        componentCore: (
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="5" y="5" width="14" height="14" rx="2" />
+                <rect x="9" y="9" width="6" height="6" rx="1" />
+                <path d="M9 1v4M15 1v4M9 19v4M15 19v4M1 9h4M1 15h4M19 9h4M19 15h4" />
+            </svg>
+        ),
+        componentCli: (
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="2" y="4" width="20" height="16" rx="2" />
+                <path d="m6 10 3 2.5L6 15M12 15h5" />
+            </svg>
+        ),
+        componentInstaller: (
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 11l9-4 9 4v8l-9 4-9-4z" />
+                <path d="M3 11l9 4 9-4M12 15v8" />
+                <path d="M12 1v6M9.5 4.5 12 7l2.5-2.5" />
             </svg>
         ),
         cloud: (

@@ -9,7 +9,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useDiscordStore } from '../stores/useDiscordStore';
-import { useSettingsStore } from '../stores/useSettingsStore';
+import { DEFAULT_SOUNDS, useSettingsStore } from '../stores/useSettingsStore';
 import { useUIStore } from '../stores/useUIStore';
 
 // ── Helpers ──────────────────────────────────────────────────
@@ -187,6 +187,22 @@ describe('settings.json 라운드트립 (settingsLoad ↔ settingsSave)', () => 
         expect(s.refreshInterval).toBe(2000);
         expect(s.ipcPort).toBe(57474);
         expect(s.consoleBufferSize).toBe(2000);
+    });
+
+    it('효과음: 빠진 종류는 켬으로 채우고, 한 종류를 끄면 전체 묶음을 저장한다', async () => {
+        mockApi({
+            settingsLoad: vi.fn().mockResolvedValue({ sounds: { enabled: true, crash: false } }),
+            settingsGetPath: vi.fn().mockResolvedValue('/s.json'),
+        });
+        await useSettingsStore.getState().load();
+        const { sounds } = useSettingsStore.getState();
+        expect(sounds).toEqual({ ...DEFAULT_SOUNDS, crash: false });
+
+        useSettingsStore.getState().update({ sounds: { ...sounds, update: false } });
+        await useSettingsStore.getState().save();
+        expect(window.api.settingsSave).toHaveBeenCalledWith({
+            sounds: { ...DEFAULT_SOUNDS, crash: false, update: false },
+        });
     });
 
     // ── settingsPath 미초기화 시 save 스킵 ──

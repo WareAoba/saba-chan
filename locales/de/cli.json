@@ -126,7 +126,12 @@
     "words_bad_command": "{{spec}}: Schreibe es als BEFEHL=WORT,WORT (BEFEHL= entfernt sie).",
     "no_paired_servers": "Mit diesem PC ist noch kein Discord-Server gekoppelt. Ausführen: saba-chan-cli bot pair",
     "pick_server": "Mehrere Discord-Server sind gekoppelt. Gib die ID des zu ändernden Servers an: {{servers}}",
-    "translate_commands": "Übersetzte Befehlsnamen"
+    "translate_commands": "Übersetzte Befehlsnamen",
+    "notice_none": "Für keinen Server ist der Start-Hinweis an. Startet Saba-chan einen Server, wird nichts gemeldet.",
+    "notice_is_on": "{{server}}: Start-Hinweis an",
+    "notice_is_off": "{{server}}: Start-Hinweis aus",
+    "notice_on_saved": "Der Hinweiskanal von {{guild}} erfährt, wenn {{server}} startet.",
+    "notice_off_saved": "{{guild}} erfährt nicht mehr, wenn {{server}} startet."
   },
   "col": {
     "players": "Spieler",
@@ -742,7 +747,8 @@
       "remote.servers": "Server auf diesem PC und auf jedem Remote-Daemon, nach Daemon (einen bedienen mit `--daemon <Name>`)",
       "remote.forget": "Remote-Daemon entfernen (erneut verbinden mit `remote connect`)",
       "config.autostart": "Was beim Anmelden an diesem PC startet: off, daemon (nur Daemon und Tray) oder full (mit GUI-Fenster). Ohne Modus wird der aktuelle Wert gezeigt",
-      "config.browse": "Ordner und Dateien auf dem PC des Daemons (mit --daemon der entfernte PC). Ohne Pfad Laufwerke oder /"
+      "config.browse": "Ordner und Dateien auf dem PC des Daemons (mit --daemon der entfernte PC). Ohne Pfad Laufwerke oder /",
+      "bot.notice": "Im Hinweiskanal des Discord-Servers melden, wenn Saba-chan einen Server startet (standardmäßig aus). Ohne Server: anzeigen. Server mit `--on`/`--off`: ändern"
     },
     "arg": {
       "module.maker.game": "Spiel für die erste Anfrage",
@@ -825,7 +831,9 @@
       "keep_settings": "Beim Löschen der Instanz die Spieleinstellungsdateien nicht auf den Stand vor dem Import zurücksetzen, sondern so lassen",
       "move_folder": "Den --from-Ordner nicht an Ort und Stelle verknüpfen, sondern in den saba-chan-Ordner verschieben (nur auf demselben Laufwerk)",
       "config.browse.path": "Vollständiger Pfad des Ordners",
-      "config.browse.files": "Auch Dateien mit diesen Endungen zeigen (kommagetrennt, * für alle)"
+      "config.browse.files": "Auch Dateien mit diesen Endungen zeigen (kommagetrennt, * für alle)",
+      "bot.notice.on": "Start-Hinweis einschalten",
+      "bot.notice.off": "Start-Hinweis ausschalten"
     },
     "after": "Namen können abgekürzt werden (z. B. start pal). Ohne Argumente öffnet sich im Terminal das Vollbildmenü (SABA_NO_TUI=1: die interaktive Shell).\nIn Skripten --json und --yes verwenden. Exit-Codes: 0 ok · 1 fehlgeschlagen · 2 Verwendung · 3 Daemon nicht erreichbar · 4 nicht gefunden · 130 abgebrochen"
   },

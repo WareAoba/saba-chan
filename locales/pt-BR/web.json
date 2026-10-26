@@ -169,7 +169,12 @@
     "ladder_removed": "Quem estiver em níveis excluídos vai para o nível logo abaixo. Comandos que os exigiam vão para o nível logo acima.",
     "ladder_invalid": "Os nomes de nível precisam ter de 1 a 32 caracteres.",
     "ladder_revert": "Desfazer",
-    "ladder_save": "Salvar níveis"
+    "ladder_save": "Salvar níveis",
+    "notice": "Alertas de início",
+    "notice_hint": "Servidores ligados aqui são anunciados no canal de alertas deste servidor do Discord quando a Saba-chan os inicia. Inícios pelo Discord e fora da Saba-chan ficam de fora.",
+    "notice_empty": "Este servidor do Discord não usa nenhum servidor.",
+    "notice_on": "Alerta de início ligado.",
+    "notice_off": "Alerta de início desligado."
   },
   "modules": {
     "games": "Módulos de jogo",

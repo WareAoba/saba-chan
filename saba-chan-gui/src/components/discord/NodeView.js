@@ -45,11 +45,12 @@ function visibleServers(settings, guildId, servers) {
 }
 
 // ── 인스턴스 탭 ──
-function InstancesTab({ node, nodes, servers, settings, update }) {
+function InstancesTab({ node, nodes, servers, settings, update, updateStartNotice }) {
     const { t } = useTranslation('gui');
     const mode = P.instanceMode(settings, node.guildId);
     const nodeIds = nodes.map((n) => n.guildId);
     const nameOf = (id) => nodes.find((n) => n.guildId === id)?.guildName || id;
+    const noticed = P.nodeConfig(settings, node.guildId).startNotice;
 
     return (
         <div className="dc-tab">
@@ -74,6 +75,7 @@ function InstancesTab({ node, nodes, servers, settings, update }) {
                 }))}
             />
 
+            {servers.length > 0 && <p className="dc-hint">{t('discord.start_notice_hint')}</p>}
             {servers.length === 0 ? (
                 <p className="muted pad">{t('discord.no_instances')}</p>
             ) : (
@@ -82,6 +84,7 @@ function InstancesTab({ node, nodes, servers, settings, update }) {
                         const owner = P.instanceOwner(settings, nodeIds, srv.id, node.guildId);
                         const allowed = P.isInstanceAllowed(settings, node.guildId, srv.id);
                         const locked = mode === 'all' || !!owner;
+                        const notice = Array.isArray(noticed) && noticed.includes(srv.id);
                         return (
                             <li key={srv.id} className={clsx('dc-list-row', { dim: !allowed })}>
                                 <span className="dc-srv-icon">{initialOf(srv.name)}</span>
@@ -97,6 +100,17 @@ function InstancesTab({ node, nodes, servers, settings, update }) {
                                         )}
                                     </span>
                                 </span>
+                                <button
+                                    type="button"
+                                    className={clsx('icon-btn dc-notice-btn', { active: notice })}
+                                    aria-pressed={notice}
+                                    aria-label={t('discord.start_notice', { name: srv.name })}
+                                    data-tooltip={t('discord.start_notice', { name: srv.name })}
+                                    disabled={!notice && (!allowed || !!owner)}
+                                    onClick={() => updateStartNotice(node.guildId, srv.id, !notice)}
+                                >
+                                    <Icon name="bell" size="sm" />
+                                </button>
                                 <SabaToggle
                                     checked={allowed && !owner}
                                     disabled={locked}
@@ -316,6 +330,7 @@ export function NodeView({
     settings,
     update,
     updateAllowed,
+    updateStartNotice,
     members,
     membersLoading,
     membersFailed,
@@ -417,6 +432,7 @@ export function NodeView({
                     servers={servers}
                     settings={settings}
                     update={(fn) => updateAllowed(node.guildId, fn)}
+                    updateStartNotice={updateStartNotice}
                 />
             )}
             {activeTab === 'channels' && <ChannelsTab key={node.guildId} node={node} />}

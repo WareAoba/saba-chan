@@ -32,6 +32,7 @@
 
 use serde_json::{Map, Value};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 
 pub const FILE_NAME: &str = "config.json";
@@ -52,6 +53,40 @@ const LEGACY_FILES: &[(&str, &[&str])] = &[
 const LEGACY_NODE_TOKEN: &str = ".node_token";
 
 static WRITE_LOCK: Mutex<()> = Mutex::new(());
+
+/// 이 프로세스가 저장한 횟수. 수정 시각이 거친 파일 시스템에서도 같은 크기로 다시 쓴 것을 놓치지 않게 `Stamp`에 넣는다
+static SAVES: AtomicU64 = AtomicU64::new(0);
+
+/// `peek_section`이 마지막으로 읽은 문서. 그 뒤로 이 프로세스가 저장하지 않았고 파일 크기·수정 시각이 같으면 그대로 쓴다
+static PEEKED: Mutex<Option<Peeked>> = Mutex::new(None);
+
+struct Peeked {
+    path: PathBuf,
+    stamp: Stamp,
+    doc: Map<String, Value>,
+}
+
+#[derive(PartialEq, Eq)]
+struct Stamp {
+    saves: u64,
+    len: u64,
+    modified: std::time::SystemTime,
+}
+
+impl Stamp {
+    /// 저장 횟수를 먼저 읽는다: 그 사이 저장하면 다음 번에 다시 읽게 된다
+    fn of(path: &Path) -> Option<Self> {
+        let saves = SAVES.load(Ordering::SeqCst);
+        let meta = std::fs::metadata(path).ok()?;
+        Some(Self { saves, len: meta.len(), modified: meta.modified().ok()? })
+    }
+}
+
+fn peeked(path: &Path, stamp: &Stamp, key: &str) -> Option<Value> {
+    let cache = PEEKED.lock().unwrap_or_else(|e| e.into_inner());
+    let hit = cache.as_ref().filter(|p| p.path == path && p.stamp == *stamp)?;
+    Some(hit.doc.get(key).cloned().unwrap_or(Value::Null))
+}
 
 #[derive(Debug, Clone)]
 pub struct ConfigFile {
@@ -90,7 +125,19 @@ impl ConfigFile {
 
     /// 한 네임스페이스를 읽기만 한다: 잠그지 않고 이관·복구·저장도 하지 않는다 (경로 해석처럼 자주, 어디서나 부르는 곳).
     /// `config.json`을 못 읽으면 `.bak`을 본다. 둘 다 없거나 깨졌으면 `Value::Null`
+    /// 바뀌지 않은 `config.json`은 다시 읽지 않는다(`PEEKED`)
     pub fn peek_section(&self, key: &str) -> Value {
+        let path = self.path();
+        if let Some(stamp) = Stamp::of(&path) {
+            if let Some(hit) = peeked(&path, &stamp, key) {
+                return hit;
+            }
+            if let Ok(Some(doc)) = read_object(&path) {
+                let value = doc.get(key).cloned().unwrap_or(Value::Null);
+                *PEEKED.lock().unwrap_or_else(|e| e.into_inner()) = Some(Peeked { path, stamp, doc });
+                return value;
+            }
+        }
         [self.path(), self.backup_path()]
             .iter()
             .find_map(|p| read_object(p).ok().flatten())
@@ -239,11 +286,20 @@ impl ConfigFile {
             let _ = std::fs::copy(&path, self.backup_path());
         }
         // 챗봇 API 키 같은 비밀값이 들어 있다
-        saba_atomic_file::write(&path, text.as_bytes(), saba_atomic_file::Mode::Secret)
+        let written = saba_atomic_file::write(&path, text.as_bytes(), saba_atomic_file::Mode::Secret);
+        SAVES.fetch_add(1, Ordering::SeqCst);
+        written
     }
 }
 
+#[cfg(test)]
+thread_local! {
+    static READS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 fn read_value(path: &Path) -> Result<Option<Value>, String> {
+    #[cfg(test)]
+    READS.with(|r| r.set(r.get() + 1));
     let text = match std::fs::read_to_string(path) {
         Ok(t) => t,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
@@ -270,6 +326,23 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let cfg = ConfigFile::at(dir.path());
         (dir, cfg)
+    }
+
+    /// 자주 부르는 읽기(원격 중계는 요청마다)는 바뀌지 않은 파일을 다시 읽지 않는다. 이 프로세스의 저장과 밖에서 고친 것은 바로 보인다
+    #[test]
+    fn peeking_an_unchanged_file_does_not_read_it_again() {
+        let (_d, cfg) = file();
+        cfg.set_section("remote", json!({ "port": 1 })).unwrap();
+        assert_eq!(cfg.peek_section("remote")["port"], 1);
+        let before = READS.with(|r| r.get());
+        assert_eq!(cfg.peek_section("remote")["port"], 1);
+        assert_eq!(cfg.peek_section("node"), Value::Null);
+        assert_eq!(READS.with(|r| r.get()), before, "an unchanged file is not read again");
+
+        cfg.set_section("remote", json!({ "port": 2 })).unwrap();
+        assert_eq!(cfg.peek_section("remote")["port"], 2, "a save in this process is seen");
+        std::fs::write(cfg.path(), r#"{"remote":{"port":30}}"#).unwrap();
+        assert_eq!(cfg.peek_section("remote")["port"], 30, "an edit from outside is seen");
     }
 
     #[test]

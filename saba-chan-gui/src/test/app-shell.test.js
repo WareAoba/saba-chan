@@ -109,8 +109,9 @@ describe('상단 탭 페이지 전환', () => {
     it('디스코드 · 설정 탭이 같은 창 안의 페이지로 열린다', async () => {
         await boot({ serverList: vi.fn().mockResolvedValue(twoServers), moduleList: vi.fn().mockResolvedValue(palworld) });
 
+        // 서버 · 디스코드 · 작업 기록 · 설정
         const tabs = document.querySelectorAll('.appbar-tab');
-        expect(tabs).toHaveLength(3);
+        expect(tabs).toHaveLength(4);
 
         await act(async () => fireEvent.click(tabs[1]));
         await waitFor(() => expect(document.querySelector('.discord-page')).not.toBeNull());
@@ -119,6 +120,9 @@ describe('상단 탭 페이지 전환', () => {
         expect(document.querySelector('.dc-hero')).not.toBeNull();
 
         await act(async () => fireEvent.click(tabs[2]));
+        await waitFor(() => expect(document.querySelector('.activity-page')).not.toBeNull());
+
+        await act(async () => fireEvent.click(tabs[3]));
         await waitFor(() => expect(document.querySelector('.settings-page')).not.toBeNull());
         expect(document.querySelector('.settings-modal-overlay')).toBeNull();
     }, 20000);

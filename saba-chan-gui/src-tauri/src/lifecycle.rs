@@ -1,7 +1,7 @@
 //! 데몬 수명 — 기동·재사용·종료, 클라이언트 등록·heartbeat, 백그라운드 초기화, 앱 종료 경로
 
 use crate::events::{self, SseEvent};
-use crate::{emit_main, settings, tray, AppState};
+use crate::{emit_main, settings, sounds, tray, AppState};
 use serde_json::{json, Value};
 use std::io::BufRead;
 use std::path::{Path, PathBuf};
@@ -731,9 +731,18 @@ fn start_events(app: &AppHandle) {
     let state = app.state::<AppState>();
     state.life.events_stop.store(false, Ordering::SeqCst);
     let (client, stop, app2) = (state.client.clone(), state.life.events_stop.clone(), app.clone());
+    let cues = Mutex::new(sounds::EventCues::default());
     let task = tauri::async_runtime::spawn(async move {
         events::run_event_stream(client, stop, move |ev: SseEvent| {
             notify_critical(&app2, &ev);
+            if let Some(cue) = cues.lock().unwrap().cue_for(&ev) {
+                sounds::play(&app2, cue);
+            }
+            if ev.kind == "update.available" {
+                // 데몬이 새 업데이트를 찾았다: 10분 주기를 기다리지 않고 바로 알린다
+                let app3 = app2.clone();
+                tauri::async_runtime::spawn(async move { check_for_updates(&app3).await });
+            }
             emit_main(&app2, "events:message", &ev)
         })
         .await;
@@ -777,7 +786,15 @@ async fn check_for_updates(app: &AppHandle) {
         notice.names.len(),
         notice.names.join(", ")
     );
-    let is_new = state.life.last_update_key.lock().unwrap().as_deref() != Some(notice.key.as_str());
+    // 확인과 기록을 한 잠금 안에서: 이벤트로 부른 확인과 주기 확인이 겹쳐도 한 번만 알린다
+    let is_new = {
+        let mut last = state.life.last_update_key.lock().unwrap();
+        let is_new = last.as_deref() != Some(notice.key.as_str());
+        if is_new {
+            *last = Some(notice.key.clone());
+        }
+        is_new
+    };
     if is_new {
         let count = notice.names.len().to_string();
         let names = notice.names.join(", ");
@@ -786,7 +803,8 @@ async fn check_for_updates(app: &AppHandle) {
             &state.t("updates.notification_title", &[]),
             &state.t("updates.notification_body", &[("count", &count), ("names", &names)]),
         );
-        *state.life.last_update_key.lock().unwrap() = Some(notice.key.clone());
+        sounds::play(app, sounds::Cue::UpdateAvailable);
+        sounds::request_attention(app);
     } else {
         tracing::info!("[UpdateChecker] Skipping OS notification — same updates already notified");
     }

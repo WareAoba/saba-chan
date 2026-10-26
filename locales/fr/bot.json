@@ -197,6 +197,13 @@
       },
       "delete": {
         "title": "Supprimer le serveur"
+      },
+      "start_notice": {
+        "set": {
+          "title": "Alerte de démarrage",
+          "description": "Prévenir dans le canal d’alertes de ce serveur Discord quand Saba-chan démarre ce serveur",
+          "name": "Alerte de démarrage"
+        }
       }
     },
     "server": {
