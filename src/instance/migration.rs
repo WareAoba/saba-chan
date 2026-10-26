@@ -41,6 +41,11 @@ pub fn save(instance_dir: &Path, files: &[PathBuf]) -> std::io::Result<usize> {
 }
 
 fn keep_originals(dir: &Path, instance_dir: &Path, files: &[PathBuf]) -> std::io::Result<usize> {
+    // 되돌리기는 데몬이 이번에 쓴 목록만 믿는다: 전에 있던 목록은 보관할 원본이 없어도 남기지 않는다
+    match std::fs::remove_file(dir.join(MANIFEST)) {
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e),
+        _ => {}
+    }
     let mut originals = Vec::new();
     for (n, path) in files.iter().filter(|p| p.is_file() && !inside_instance(p, instance_dir)).enumerate() {
         if originals.iter().any(|o: &Original| o.path == *path) {
@@ -49,6 +54,8 @@ fn keep_originals(dir: &Path, instance_dir: &Path, files: &[PathBuf]) -> std::io
         std::fs::create_dir_all(dir)?;
         // 한 파일을 못 보관해도(잠긴 파일 등) 나머지는 되돌릴 수 있게 남긴다
         let copy = n.to_string();
+        // 그 자리에 있던 것(링크 등)을 거치지 않고 새 파일로 쓴다
+        let _ = std::fs::remove_file(dir.join(&copy));
         if let Err(e) = std::fs::copy(path, dir.join(&copy)) {
             tracing::warn!("Could not keep the original of {}: {}", path.display(), e);
             let _ = std::fs::remove_file(dir.join(&copy));
@@ -69,10 +76,14 @@ pub fn saved(instance_dir: &Path) -> bool {
 }
 
 /// 보관한 내용으로 원래 자리를 되돌린다. `allowed`가 거절한 자리(지금 그 서버의 폴더 밖)와
-/// 상위 폴더가 사라진 자리는 건드리지 않고 실패로 센다
+/// 상위 폴더가 사라진 자리, 보통 파일이 아닌 사본(링크 등)은 건드리지 않고 실패로 센다
 pub fn restore(instance_dir: &Path, allowed: impl Fn(&Path) -> bool) -> Restored {
     let dir = instance_dir.join(DIR);
     let mut out = Restored::default();
+    let plain_file = |p: &Path| std::fs::symlink_metadata(p).is_ok_and(|m| m.is_file());
+    if !std::fs::symlink_metadata(&dir).is_ok_and(|m| m.is_dir()) || !plain_file(&dir.join(MANIFEST)) {
+        return out;
+    }
     let Ok(body) = std::fs::read(dir.join(MANIFEST)) else { return out };
     let Ok(originals) = serde_json::from_slice::<Vec<Original>>(&body) else {
         tracing::warn!("Migration originals list is unreadable: {}", dir.display());
@@ -81,7 +92,7 @@ pub fn restore(instance_dir: &Path, allowed: impl Fn(&Path) -> bool) -> Restored
     for original in originals {
         let copy = dir.join(&original.copy);
         let ok = crate::utils::is_single_path_component(&original.copy)
-            && copy.is_file()
+            && plain_file(&copy)
             && original.path.parent().is_some_and(Path::is_dir)
             && allowed(&original.path)
             && std::fs::copy(&copy, &original.path).is_ok();
@@ -231,6 +242,46 @@ mod tests {
         std::fs::create_dir_all(other.join(DIR).join(MANIFEST)).unwrap();
         assert!(save(&other, &[a]).is_err());
         assert!(!other.join(DIR).exists(), "copies without a list are not left behind");
+    }
+
+    /// 되돌리기는 데몬이 보관한 것만 믿는다: 보관 폴더에 미리 놓여 있던 목록·사본은 보관할 원본이 없어도 남지 않는다
+    #[test]
+    fn a_list_the_daemon_did_not_write_is_not_restored() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (server, instance) = (tmp.path().join("server"), tmp.path().join("instance"));
+        std::fs::create_dir_all(&server).unwrap();
+        std::fs::create_dir_all(instance.join(DIR)).unwrap();
+        let target = server.join("server.properties");
+        std::fs::write(&target, "motd=mine\n").unwrap();
+        std::fs::write(instance.join(DIR).join("9"), "motd=other\n").unwrap();
+        let listed = serde_json::to_vec(&[Original { path: target.clone(), copy: "9".into() }]).unwrap();
+        std::fs::write(instance.join(DIR).join(MANIFEST), listed).unwrap();
+
+        assert_eq!(save(&instance, &[server.join("missing.ini")]).unwrap(), 0);
+
+        assert!(!saved(&instance));
+        assert_eq!(restore(&instance, |_| true), Restored::default());
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "motd=mine\n");
+    }
+
+    /// 사본 자리가 링크면 되돌리지 않는다 (링크가 가리키는 다른 파일의 내용을 서버 폴더에 옮기지 않게)
+    #[cfg(unix)]
+    #[test]
+    fn a_copy_replaced_by_a_link_is_not_restored() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (server, instance) = (tmp.path().join("server"), tmp.path().join("instance"));
+        std::fs::create_dir_all(&server).unwrap();
+        let props = server.join("server.properties");
+        std::fs::write(&props, "motd=mine\n").unwrap();
+        assert_eq!(save(&instance, std::slice::from_ref(&props)).unwrap(), 1);
+        let elsewhere = tmp.path().join("elsewhere");
+        std::fs::write(&elsewhere, "not a copy\n").unwrap();
+        std::fs::remove_file(instance.join(DIR).join("0")).unwrap();
+        std::os::unix::fs::symlink(&elsewhere, instance.join(DIR).join("0")).unwrap();
+        std::fs::write(&props, "motd=changed\n").unwrap();
+
+        assert_eq!(restore(&instance, |_| true), Restored { restored: 0, failed: vec![props.clone()] });
+        assert_eq!(std::fs::read_to_string(&props).unwrap(), "motd=changed\n");
     }
 
     /// 인스턴스 폴더 안의 파일(옮겨 온 서버)은 인스턴스와 함께 지워지므로 보관하지 않고, 밖의 파일만 보관한다

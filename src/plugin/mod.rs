@@ -1132,6 +1132,9 @@ async fn spawn_plugin(
         },
     };
     let status = drive(&mut child, config_json.as_bytes(), on_progress, loopback, Some(host_proxy), deadline.remaining()).await;
+    if let Some(iso) = &isolation {
+        iso.clear_daemon_entries();
+    }
 
     match status {
         Ok(Ok((exit_status, stdout_str, stderr_str))) => {

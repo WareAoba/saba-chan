@@ -493,6 +493,15 @@ pub struct Isolation {
     pub data: Option<PathBuf>,
     /// 이 실행이 import한 익스텐션들이 쓸 폴더의 뿌리 (`extension_data_root`, 환경 변수 `SABA_EXTENSION_DATA_ROOT`)
     pub extension_root: PathBuf,
+    /// 인스턴스 폴더에 쓰기를 줄 때 아직 없던 데몬 항목 자리. 실행이 끝나면 `clear_daemon_entries`가 치운다
+    pub absent_daemon_entries: Vec<PathBuf>,
+}
+
+impl Isolation {
+    /// 격리 실행이 끝난 뒤: 인스턴스 폴더에 쓰기를 받은 실행이 데몬 항목 자리에 만든 것을 치운다
+    pub fn clear_daemon_entries(&self) {
+        remove_created(&self.absent_daemon_entries);
+    }
 }
 
 /// 데몬이 lifecycle 호출에 넣는 인스턴스 폴더 키 (설치·업데이트 호출은 `install_dir`만 넣는다)
@@ -529,16 +538,35 @@ fn instance_access(key: &str) -> appcontainer::Access {
     }
 }
 
-/// 인스턴스 폴더 안의 데몬 항목 중 비밀이 든 것. 격리 실행에 인스턴스 폴더 권한을 줄 때 상속을 끊어 둔다
-/// (비밀 파일은 저장할 때마다 `Mode::Secret`이 다시 끊는다. 여기서는 예전에 저장된 것과 백업 폴더,
+/// 인스턴스 폴더 안의 데몬 항목 (`instance::DAEMON_ENTRIES`). 격리 실행에 인스턴스 폴더 권한을 줄 때 상속을 끊어 둔다
+/// (비밀 파일은 저장할 때마다 `Mode::Secret`이 다시 끊는다. 여기서는 예전에 저장된 것과 로그·백업 폴더,
 /// 가져온 서버의 원래 설정 보관본을 막는다)
-const PROTECTED_INSTANCE_ENTRIES: [&str; 5] = ["instance.json", "settings.json", "rcon.json", "backups", crate::instance::migration::DIR];
+const PROTECTED_INSTANCE_ENTRIES: &[&str] = crate::instance::DAEMON_ENTRIES;
 
-/// 하나라도 끊지 못하면 false: 그때는 인스턴스 폴더 권한을 주지 않는다 (상속으로 비밀이 열리지 않게)
-fn protect_daemon_entries(instance_dir: &Path) -> bool {
+/// 데몬 항목 중 폴더. 인스턴스 폴더에 쓰기를 줄 때는 없으면 먼저 만들어 막는다
+/// (없는 자리는 막을 수 없다: 격리 실행이 먼저 만들면 데몬이 그 안의 것을 제 것으로 읽는다)
+const DAEMON_DIRS: [&str; 3] = ["logs", "backups", crate::instance::migration::DIR];
+
+/// 하나라도 막지 못하면 false: 그때는 인스턴스 폴더 권한을 주지 않는다 (상속으로 비밀이 열리지 않게).
+/// `writable`: 인스턴스 폴더 자체에 쓰기를 준다 (가져오기의 `import_settings`)
+fn protect_daemon_entries(instance_dir: &Path, writable: bool) -> bool {
     let mut protected = true;
+    if writable {
+        for name in DAEMON_DIRS {
+            let path = instance_dir.join(name);
+            // 링크(정션 포함)는 폴더로 보지 않는다: 그 자리를 막아도 가리키는 곳은 막히지 않는다
+            if std::fs::create_dir_all(&path).is_err() || !std::fs::symlink_metadata(&path).is_ok_and(|m| m.is_dir()) {
+                tracing::warn!("[Sandbox] cannot prepare {}, not granting the instance folder", path.display());
+                protected = false;
+            }
+        }
+    }
     for name in PROTECTED_INSTANCE_ENTRIES {
         let path = instance_dir.join(name);
+        if writable && std::fs::symlink_metadata(&path).is_ok_and(|m| m.file_type().is_symlink()) {
+            tracing::warn!("[Sandbox] {} is a link, not granting the instance folder", path.display());
+            protected = false;
+        }
         if path.exists() {
             if let Err(e) = saba_atomic_file::restrict_to_user(&path) {
                 tracing::warn!("[Sandbox] cannot restrict {}, not granting the instance folder: {}", path.display(), e);
@@ -547,6 +575,23 @@ fn protect_daemon_entries(instance_dir: &Path) -> bool {
         }
     }
     protected
+}
+
+/// 아직 없는 데몬 항목 자리. 인스턴스 폴더에 쓰기를 받은 실행이 끝나면 이 자리에 생긴 것을 치운다 (`remove_created`)
+fn absent_daemon_entries(instance_dir: &Path) -> Vec<PathBuf> {
+    PROTECTED_INSTANCE_ENTRIES.iter().map(|name| instance_dir.join(name)).filter(|p| std::fs::symlink_metadata(p).is_err()).collect()
+}
+
+/// 격리 실행이 데몬 항목 자리에 만든 것을 치운다 (링크는 링크만 지운다)
+fn remove_created(paths: &[PathBuf]) {
+    for path in paths {
+        let Ok(meta) = std::fs::symlink_metadata(path) else { continue };
+        let removed = if meta.is_dir() { std::fs::remove_dir_all(path) } else { std::fs::remove_file(path) };
+        match removed {
+            Ok(()) => tracing::warn!("[Sandbox] removed {} that an isolated run created in a daemon entry", path.display()),
+            Err(e) => tracing::warn!("[Sandbox] cannot remove {} that an isolated run created: {}", path.display(), e),
+        }
+    }
 }
 
 /// 익스텐션 키면 그 익스텐션 전용 데이터 폴더
@@ -923,11 +968,16 @@ pub fn isolation_for(entry: &Path, config: &Value, python_exe: &Path) -> Option<
     // 인스턴스 폴더 쓰기는 그 인스턴스의 모듈에게만. 익스텐션 hook은 확인된 모듈의 인스턴스에도 불리므로
     // 읽기만 주고, 쓸 곳은 익스텐션 전용 데이터 폴더다
     let access = instance_access(&key);
+    let instance_writable = field_access("instance_dir", access, config) == Access::Write;
     let instance_protected = config
         .get("instance_dir")
         .and_then(Value::as_str)
         .filter(|d| !d.is_empty())
-        .is_none_or(|dir| protect_daemon_entries(Path::new(dir)));
+        .is_none_or(|dir| protect_daemon_entries(Path::new(dir), instance_writable));
+    let absent_daemon_entries = match config.get("instance_dir").and_then(Value::as_str).filter(|d| !d.is_empty()) {
+        Some(dir) if instance_writable && instance_protected => absent_daemon_entries(Path::new(dir)),
+        _ => Vec::new(),
+    };
     // 리눅스는 같은 사용자라 상속을 끊어도 읽힌다: bwrap이 덮도록 적어 둔다
     if let Some(dir) = config.get("instance_dir").and_then(Value::as_str).filter(|d| !d.is_empty()) {
         grants.hidden = PROTECTED_INSTANCE_ENTRIES.iter().filter_map(|name| std::fs::canonicalize(Path::new(dir).join(name)).ok()).collect();
@@ -984,7 +1034,7 @@ pub fn isolation_for(entry: &Path, config: &Value, python_exe: &Path) -> Option<
         }
     }
     let profile = appcontainer::profile_for(&key);
-    Some(Isolation { key, dir, profile, grants, pycache, temp, data, extension_root })
+    Some(Isolation { key, dir, profile, grants, pycache, temp, data, extension_root, absent_daemon_entries })
 }
 
 /// 격리 실행을 띄운 결과
@@ -1271,6 +1321,7 @@ mod tests {
             key: "module-no-platform-consent".into(), dir: tmp.path().to_path_buf(),
             profile: String::new(), grants: appcontainer::Grants::default(),
             pycache: PathBuf::new(), temp: PathBuf::new(), data: None, extension_root: PathBuf::new(),
+            absent_daemon_entries: Vec::new(),
         };
         let blocked = spawn_isolated(&std::process::Command::new("python"), &iso).await.err().unwrap();
         let response = blocked.to_json(message(&blocked));
@@ -1289,6 +1340,7 @@ mod tests {
             key: "module-bwrap-test".into(), dir: tmp.path().to_path_buf(),
             profile: String::new(), grants: appcontainer::Grants::default(),
             pycache: PathBuf::new(), temp: PathBuf::new(), data: None, extension_root: PathBuf::new(),
+            absent_daemon_entries: Vec::new(),
         };
         let mut cmd = std::process::Command::new("python");
         cmd.arg("lifecycle.py").env("SABA_X", "1");
@@ -1330,6 +1382,7 @@ mod tests {
             temp: PathBuf::new(),
             data: None,
             extension_root: PathBuf::new(),
+            absent_daemon_entries: Vec::new(),
         };
         let call = tokio::spawn(async move { spawn_isolated(&std::process::Command::new("python"), &iso).await.is_ok() });
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -1662,7 +1715,7 @@ mod tests {
             std::fs::write(tmp.path().join(name), b"{}").unwrap();
         }
         std::fs::create_dir_all(tmp.path().join("backups")).unwrap();
-        assert!(protect_daemon_entries(tmp.path()));
+        assert!(protect_daemon_entries(tmp.path(), false));
         // 주인은 계속 읽고 쓴다
         assert_eq!(std::fs::read(tmp.path().join("rcon.json")).unwrap(), b"{}");
         std::fs::write(tmp.path().join("backups").join("a"), b"x").unwrap();
@@ -1672,6 +1725,52 @@ mod tests {
     #[test]
     fn the_kept_originals_of_an_imported_server_are_protected_too() {
         assert!(PROTECTED_INSTANCE_ENTRIES.contains(&crate::instance::migration::DIR));
+        assert!(DAEMON_DIRS.contains(&crate::instance::migration::DIR));
+    }
+
+    /// 인스턴스 폴더에 쓰기를 줄 때는 아직 없는 데몬 폴더도 먼저 만들어 막는다 (없는 자리는 모듈이 먼저 만들 수 있다).
+    /// 읽기만 줄 때는 만들지 않는다
+    #[test]
+    fn daemon_folders_exist_before_the_instance_folder_is_granted_for_writing() {
+        let tmp = tempfile::tempdir().unwrap();
+        assert!(protect_daemon_entries(tmp.path(), false));
+        assert_eq!(std::fs::read_dir(tmp.path()).unwrap().count(), 0);
+        assert!(protect_daemon_entries(tmp.path(), true));
+        for name in ["logs", "backups", crate::instance::migration::DIR] {
+            assert!(tmp.path().join(name).is_dir(), "{name}");
+        }
+    }
+
+    /// 데몬 폴더 자리가 이미 링크면 막을 수 없다: 인스턴스 폴더 쓰기를 주지 않는다
+    #[cfg(unix)]
+    #[test]
+    fn a_daemon_folder_that_is_a_link_keeps_the_instance_folder_closed() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (instance, elsewhere) = (tmp.path().join("instance"), tmp.path().join("elsewhere"));
+        std::fs::create_dir_all(&instance).unwrap();
+        std::fs::create_dir_all(&elsewhere).unwrap();
+        std::os::unix::fs::symlink(&elsewhere, instance.join(crate::instance::migration::DIR)).unwrap();
+        assert!(!protect_daemon_entries(&instance, true));
+    }
+
+    /// 인스턴스 폴더에 쓰기를 받은 실행이 데몬 항목 자리에 새로 만든 것은 끝난 뒤 치운다.
+    /// 데몬이 전에 만든 항목과 모듈 파일은 둔다
+    #[test]
+    fn daemon_entries_a_run_created_are_removed_after_it() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("instance.json"), b"{}").unwrap();
+        let absent = absent_daemon_entries(tmp.path());
+        assert!(!absent.contains(&tmp.path().join("instance.json")));
+        for name in ["rcon.json", "managed.pid", "server.properties"] {
+            std::fs::write(tmp.path().join(name), b"x").unwrap();
+        }
+        std::fs::create_dir_all(tmp.path().join("run").join("x")).unwrap();
+        remove_created(&absent);
+        for gone in ["rcon.json", "managed.pid", "run"] {
+            assert!(std::fs::symlink_metadata(tmp.path().join(gone)).is_err(), "{gone}");
+        }
+        assert!(tmp.path().join("instance.json").is_file());
+        assert!(tmp.path().join("server.properties").is_file());
     }
 
     /// 익스텐션 폴더는 id의 '-'를 '_'로 바꾼 이름이다. 없는 폴더를 보면 기록에 없는 코드 검사가 빠진다
