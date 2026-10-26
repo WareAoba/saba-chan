@@ -3,11 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <!-- JS 번들 로드 전에 배경색을 미리 적용하여 흰 화면 플래시 방지 -->
+    <!-- JS 번들 로드 전에 테마 바탕색(tokens.css --bg-0)을 미리 칠해 흰 화면 플래시 방지 -->
     <style>
-      html, body { margin: 0; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
-      @media (prefers-color-scheme: dark) {
-        html, body { background: linear-gradient(135deg, #1a1a1f 0%, #141418 100%); }
+      html, body { margin: 0; background: #0d0e10; }
+      @media (prefers-color-scheme: light) {
+        html, body { background: #e6e8ed; }
       }
     </style>
     <link rel="preconnect" href="https://fonts.googleapis.com" />

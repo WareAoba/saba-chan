@@ -169,6 +169,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 | daemonStatus (1030) | Rust `daemon_status` → GET /health. 응답의 `token`이 `valid`(필드가 없으면 예전 데몬이라 유효로 본다)일 때만 `running: true`. 어긋나면 토큰 파일을 한 번 다시 읽어 재시도하고, 그래도 어긋나면 `running: false, error_code: "token_invalid"`. 실행 중이면 `in_parent_job`(데몬을 띄운 프로그램과 함께 끝날 수 있는가: `/health` `stops_with_launcher`, 키가 없는 옛 데몬이면 이 GUI가 job breakaway 없이 띄운 데몬이 아직 살아 있는가)도 준다 | ✓ 637 |
 | daemonRestart (1031) | Rust `daemon_restart`: `stop_daemon()`(API 종료, 안 되면 자기 PID만 kill) 후 `/health`가 멎을 때까지 기다렸다가 **`start_daemon()`으로 직접 spawn**(`lifecycle.rs:592-618`) | 부분 |
 | minimize/maximize/closeWindow (1034-1036, electron 1040-1042) | Rust `window_minimize` / `window_maximize`(토글) / `window_close`. 호출한 창에 적용한다 | n/a |
+| windowSetBackground | Rust `window_set_background`(`#rrggbb`). 호출한 창의 창·웹뷰 바탕을 테마 `--bg-0`으로 칠한다(크기를 바꾸는 중 흰 바탕 방지). 마지막 색을 기억해 새 창도 그 색으로 연다. 트레이 팝업(투명)은 칠하지 않는다. `themeManager`가 테마 적용·시스템 테마 변경 때 부른다 | n/a |
 | electron.getLanguage/setLanguage (1043-1044) | Rust `language_get`(config.json `gui.language`를 직접 읽는다) / `language_set`(`save_settings`로 API 우선 저장, 셸 번역·트레이 갱신. 데몬은 재시작하지 않는다, `native.rs:241-257`) | 부분 |
 | electron.shell.openExternal (1046) | Rust `shell_open_external` (http(s)만) | n/a |
 
