@@ -3,6 +3,7 @@ import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'rea
 import { useTranslation } from 'react-i18next';
 import { useSettingsStore } from '../../stores/useSettingsStore';
 import { needsConfirm } from '../../utils/commandRisk';
+import { commandText } from '../../utils/serverView';
 import { getCachedRules } from '../../utils/syntaxHighlight';
 import { HighlightedContent } from '../ConsoleView';
 import { Icon } from '../Icon';
@@ -142,14 +143,14 @@ export function ServerConsole({
                             key={c.name}
                             type="button"
                             className={clsx('term-chip', c.risk && `risk-${c.risk}`)}
-                            title={c.description || c.name}
+                            title={commandText(t, server.module, c).description || c.name}
                             onClick={() => {
                                 // 바로 보내지 않고 채워만 둔다: 인자가 필요하거나 위험한 명령도 있으니까
                                 setConsoleInput(server.id, c.inputs?.length ? `${c.name} ` : c.name);
                                 inputRef.current?.focus();
                             }}
                         >
-                            {c.label || c.name}
+                            {commandText(t, server.module, c).label}
                         </button>
                     ))}
                 </div>
