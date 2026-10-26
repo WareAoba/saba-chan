@@ -54,6 +54,11 @@ pub struct Grants {
     /// 모든 구성요소가 함께 읽는 폴더(Python·모듈·익스텐션·Java 런타임): 프로필 SID가 아니라 ALL APPLICATION PACKAGES에 한 번 준다.
     /// 프로필마다 주면 그 폴더 DACL에 구성요소 수만큼 ACE가 쌓여, 64KB 한도를 넘으면 ACL을 쓰지 못한다(os error 87)
     pub shared: Vec<(PathBuf, Access)>,
+    /// 받은 폴더 안에서 가리는 데몬 항목(실제 경로). 리눅스는 bwrap이 빈 파일(`empty_file`)·빈 폴더로 덮는다.
+    /// Windows는 상속을 끊어 막으므로 쓰지 않는다
+    pub hidden: Vec<PathBuf>,
+    /// 데몬 파일을 덮는 빈 파일 (없으면 /dev/null: 읽으면 권한 거부이고 `is_file()`이 거짓이다)
+    pub empty_file: Option<PathBuf>,
 }
 
 /// 권한을 줄 수 없는 위치인가: 데이터 폴더와 그 위, 드라이브 루트, 사용자 폴더와 그 위

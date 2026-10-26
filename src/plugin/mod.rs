@@ -2324,17 +2324,21 @@ print(json.dumps(codes))
         let server = instance.path().join("server");
         std::fs::create_dir(&server).unwrap();
         std::fs::write(other.path().join("secret"), "token").unwrap();
+        // 인스턴스 폴더의 데몬 파일(토큰·설정)은 읽기 권한을 받은 인스턴스 폴더 안에서도 비어 보인다
+        std::fs::write(instance.path().join("rcon.json"), "{\"password\": \"pw\"}").unwrap();
         let entry = module.path().join("lifecycle.py");
         // 공용 모듈(python-shared)도 보여야 한다
         std::fs::write(&entry, "import json, os, sys\nimport i18n\nconfig = json.loads(sys.stdin.read())\n\
              open(os.path.join(config['working_dir'], 'out'), 'w').write('ok')\n\
              try:\n    open(config['secret']).read(); seen = True\nexcept OSError:\n    seen = False\n\
-             print(json.dumps({'success': True, 'seen': seen}))\n").unwrap();
+             daemon = open(os.path.join(config['instance_dir'], 'rcon.json')).read()\n\
+             print(json.dumps({'success': True, 'seen': seen, 'daemon': daemon}))\n").unwrap();
         let config = json!({ "instance_dir": instance.path(), "working_dir": server, "secret": other.path().join("secret") });
         let result = run_plugin(entry.to_str().unwrap(), "probe", config).await.map_err(|e| error_response(&e)).expect("the isolated module ran");
         assert_eq!(result["success"], true, "{result}");
         assert_eq!(std::fs::read_to_string(server.join("out")).unwrap(), "ok", "writes its server folder");
         assert_eq!(result["seen"], false, "an ungranted folder is not visible: {result}");
+        assert_eq!(result["daemon"], "", "a daemon file in the instance folder looks empty: {result}");
     }
 
     #[tokio::test]

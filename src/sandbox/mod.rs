@@ -923,6 +923,14 @@ pub fn isolation_for(entry: &Path, config: &Value, python_exe: &Path) -> Option<
         .and_then(Value::as_str)
         .filter(|d| !d.is_empty())
         .is_none_or(|dir| protect_daemon_entries(Path::new(dir)));
+    // 리눅스는 같은 사용자라 상속을 끊어도 읽힌다: bwrap이 덮도록 적어 둔다
+    if let Some(dir) = config.get("instance_dir").and_then(Value::as_str).filter(|d| !d.is_empty()) {
+        grants.hidden = PROTECTED_INSTANCE_ENTRIES.iter().filter_map(|name| std::fs::canonicalize(Path::new(dir).join(name)).ok()).collect();
+        let empty = raw_data_dir.join("sandbox-temp").join("empty");
+        if !grants.hidden.is_empty() && (empty.is_file() || std::fs::write(&empty, "").is_ok()) {
+            grants.empty_file = Some(empty);
+        }
+    }
     let data_dirs = config.get(INSTANCE_DATA_DIRS).and_then(Value::as_array).into_iter().flatten();
     // 데이터 폴더는 폴더일 때만 (데몬 파일 이름은 `insert_instance_fields`가 이미 뺐다)
     let data_dirs = data_dirs.filter_map(Value::as_str).filter(|p| !Path::new(p).is_file()).map(|p| (p, access));

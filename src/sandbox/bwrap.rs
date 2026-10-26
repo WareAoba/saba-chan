@@ -115,6 +115,16 @@ pub fn args(grants: &Grants, cwd: Option<&Path>) -> Vec<OsString> {
         };
         push(&[flag.as_ref(), path.as_os_str(), path.as_os_str()]);
     }
+    // 받은 폴더 위에 덮는다: 같은 사용자라 파일 권한으로는 막지 못한다. 파일은 읽기 전용 빈 파일, 폴더는 빈 폴더로 보인다
+    // (모듈이 `instance.json`이 있는지는 볼 수 있다). 덮은 자리는 지우거나 바꿔 넣지도 못한다
+    let empty = grants.empty_file.as_deref().unwrap_or(Path::new("/dev/null"));
+    for path in &grants.hidden {
+        match std::fs::symlink_metadata(path) {
+            Ok(m) if m.is_dir() => push(&["--tmpfs".as_ref(), path.as_os_str()]),
+            Ok(m) if m.is_file() => push(&["--ro-bind".as_ref(), empty.as_os_str(), path.as_os_str()]),
+            _ => {}
+        }
+    }
     if let Some(cwd) = cwd {
         push(&["--chdir".as_ref(), cwd.as_os_str()]);
     }
@@ -186,6 +196,25 @@ mod tests {
     }
 
     #[test]
+    fn hidden_daemon_entries_are_covered_after_the_grants() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (file, dir) = (tmp.path().join("instance.json"), tmp.path().join("backups"));
+        std::fs::write(&file, "{}").unwrap();
+        std::fs::create_dir(&dir).unwrap();
+        let grants = Grants {
+            entries: vec![(tmp.path().to_path_buf(), Access::Write)],
+            hidden: vec![file.clone(), dir.clone()],
+            empty_file: Some(PathBuf::from("/data/empty")),
+            ..Default::default()
+        };
+        let args = args(&grants, None);
+        let (root, file, dir) = (tmp.path().to_str().unwrap(), file.to_str().unwrap(), dir.to_str().unwrap());
+        let bind = pos(&args, &["--bind", root, root]).unwrap();
+        assert!(pos(&args, &["--ro-bind", "/data/empty", file]).unwrap() > bind, "a file is covered");
+        assert!(pos(&args, &["--tmpfs", dir]).unwrap() > bind, "a folder is covered by an empty one");
+    }
+
+    #[test]
     fn an_isolated_run_sees_only_its_grants() {
         use_in_this_test();
         let Some(bwrap) = program() else {
@@ -221,6 +250,25 @@ mod tests {
             !ok(&format!("cat {}/secret", hidden.display())),
             "cannot read an ungranted folder"
         );
+        // 받은 폴더 안의 데몬 항목은 가린다: 파일·폴더는 비어 보이고 바꿔도 남지 않는다
+        let (daemon_file, daemon_dir) = (granted.join("instance.json"), granted.join("backups"));
+        std::fs::write(&daemon_file, "secret").unwrap();
+        std::fs::create_dir(&daemon_dir).unwrap();
+        std::fs::write(daemon_dir.join("old.zip"), "backup").unwrap();
+        let empty = root.join("empty");
+        std::fs::write(&empty, "").unwrap();
+        let grants = Grants { hidden: vec![daemon_file.clone(), daemon_dir.clone()], empty_file: Some(empty), ..grants.clone() };
+        let run_hidden = |script: &str| {
+            let mut cmd = std::process::Command::new("/bin/sh");
+            cmd.args(["-c", script]).current_dir(&granted);
+            wrap(bwrap, &cmd, &grants).output().unwrap()
+        };
+        let ok_hidden = |script: &str| run_hidden(script).status.success();
+        let out = run_hidden("cat instance.json; ls backups; echo x > instance.json; echo y > backups/new; rm -f backups/old.zip; true");
+        assert_eq!(String::from_utf8_lossy(&out.stdout), "", "daemon entries look empty");
+        assert!(ok_hidden("test -f instance.json"), "a daemon file is still a file (modules check it)");
+        assert_eq!(std::fs::read_to_string(&daemon_file).unwrap(), "secret", "a daemon file is not changed");
+        assert!(daemon_dir.join("old.zip").is_file() && !daemon_dir.join("new").exists(), "a daemon folder is not changed");
         let home = std::env::var("HOME").unwrap_or_else(|_| "/root".into());
         assert!(!ok(&format!("ls {home}")), "the home folder is not visible");
         assert!(!ok("echo x > /usr/saba-bwrap-test"), "system folders are read-only");
