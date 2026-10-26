@@ -20,8 +20,9 @@ use super::relay::{self, Endpoint, Target, TicketFailure};
 use super::tls;
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
-/// 원격 데몬이 답의 머리를 보낼 때까지 (본문은 스트림이라 제한하지 않는다: 이벤트 스트림)
-const RESPONSE_TIMEOUT: Duration = Duration::from_secs(120);
+/// 원격 데몬이 답의 머리를 보낼 때까지. 정지는 인스턴스 `stop_timeout`(3600초까지)을 기다린 뒤 답하므로 CLI의 정지 대기와 같게 둔다.
+/// 본문은 스트림이라 제한하지 않는다 (이벤트 스트림)
+const RESPONSE_TIMEOUT: Duration = if cfg!(test) { Duration::from_secs(1) } else { Duration::from_secs(3600 + 600) };
 /// 중계하는 요청 본문 상한 (다시 보내려고 모아 둔다)
 const BODY_LIMIT: usize = 16 * 1024 * 1024;
 /// 원격 데몬에 넘기는 요청 머리. 이 PC의 IPC 토큰·쿠키 같은 것은 넘기지 않는다
@@ -88,10 +89,20 @@ async fn open(endpoint: &Endpoint) -> Option<Sender> {
     tokio::time::timeout(CONNECT_TIMEOUT, connect).await.ok().flatten()
 }
 
-/// 요청 하나를 보낸다. 붙지 못했거나 답 머리가 오지 않으면 None
-async fn send(endpoint: &Endpoint, req: Request<Body>) -> Option<hyper::Response<hyper::body::Incoming>> {
-    let mut sender = open(endpoint).await?;
-    tokio::time::timeout(RESPONSE_TIMEOUT, sender.send_request(req)).await.ok()?.ok()
+enum Sent {
+    Answered(hyper::Response<hyper::body::Incoming>),
+    /// 붙지 못했다: 요청은 원격 데몬에 닿지 않았다 (다른 주소로 다시 보내도 된다)
+    NotConnected,
+    /// 붙은 뒤 답이 오지 않았다: 원격 데몬이 이미 처리하고 있을 수 있다 (다시 보내지 않는다)
+    NoAnswer,
+}
+
+async fn send(endpoint: &Endpoint, req: Request<Body>) -> Sent {
+    let Some(mut sender) = open(endpoint).await else { return Sent::NotConnected };
+    match tokio::time::timeout(RESPONSE_TIMEOUT, sender.send_request(req)).await {
+        Ok(Ok(res)) => Sent::Answered(res),
+        _ => Sent::NoAnswer,
+    }
 }
 
 /// `host_id` 원격 데몬과 짝을 맺고 저장한다
@@ -108,7 +119,7 @@ pub async fn connect(file: &ConfigFile, relay: Option<Target>, host_id: &str) ->
         .header(header::CONTENT_TYPE, "application/json")
         .body(Body::from(body))
         .expect("pair request");
-    let res = send(&ticket.endpoint, req).await.ok_or(ConnectError::RemoteUnreachable)?;
+    let Sent::Answered(res) = send(&ticket.endpoint, req).await else { return Err(ConnectError::RemoteUnreachable) };
     if !res.status().is_success() {
         return Err(if res.status() == StatusCode::UNAUTHORIZED { ConnectError::Rejected } else { ConnectError::RemoteUnreachable });
     }
@@ -164,7 +175,7 @@ pub async fn forward(file: &ConfigFile, relay: Option<Target>, host_id: &str, pa
     };
     let mut endpoint = endpoint_of(&daemon);
     let mut res = send(&endpoint, first).await;
-    if res.is_none() {
+    if matches!(res, Sent::NotConnected) {
         // 주소가 바뀌었거나 원격 데몬이 인증서를 새로 만들었을 수 있다: 릴레이가 아는 지금 값으로 한 번 더
         if let Some(fresh) = fresh_endpoint(relay.as_ref(), host_id).await.filter(|e| *e != endpoint) {
             let _ = config::update_endpoint_in(file, host_id, &fresh.address, fresh.port, &fresh.cert_sha256);
@@ -174,8 +185,10 @@ pub async fn forward(file: &ConfigFile, relay: Option<Target>, host_id: &str, pa
             }
         }
     }
-    let Some(res) = res else {
-        return error(StatusCode::BAD_GATEWAY, "remote_unreachable");
+    let res = match res {
+        Sent::Answered(res) => res,
+        Sent::NotConnected => return error(StatusCode::BAD_GATEWAY, "remote_unreachable"),
+        Sent::NoAnswer => return error(StatusCode::GATEWAY_TIMEOUT, "remote_timeout"),
     };
     let (mut head, incoming) = res.into_parts();
     for hop in [header::CONNECTION, header::TRANSFER_ENCODING, HeaderName::from_static("keep-alive")] {
@@ -260,6 +273,13 @@ mod tests {
                     Json(json!({ "lang": h("accept-language"), "ipcToken": h("x-saba-token"), "cookie": h("cookie") }))
                 })
                 .post(|body: String| async move { body }),
+            )
+            .route(
+                "/api/slow",
+                get(|| async {
+                    tokio::time::sleep(RESPONSE_TIMEOUT * 3).await;
+                    "late"
+                }),
             )
             .route(
                 "/api/stream",
@@ -356,6 +376,22 @@ mod tests {
         let after = config::daemons_in(&file).remove(0);
         assert_ne!((after.port, &after.cert_sha256), (before.port, &before.cert_sha256), "the saved endpoint follows the relay");
         assert_eq!(after.token, before.token);
+    }
+
+    /// 원격 데몬에 닿아 처리 중인 요청(정지 같은 긴 요청)은 답이 늦어도 다른 주소로 다시 보내지 않는다
+    #[tokio::test]
+    async fn a_slow_answer_is_not_sent_again_elsewhere() {
+        let state = Relay::default();
+        let relay = fake_relay(state.clone()).await;
+        let (_b, _stop) = remote_daemon(&relay, &state, None).await;
+        let dir = tempfile::tempdir().unwrap();
+        let file = ConfigFile::at(dir.path());
+        let before = connect(&file, Some(relay.clone()), "host-b").await.unwrap();
+        // 릴레이가 다른 주소를 알게 됐다
+        *state.endpoint.lock().unwrap() = json!({ "address": "127.0.0.1", "port": 9, "certSha256": "cd".repeat(32) });
+        let (status, body) = json_of(forward(&file, Some(relay), "host-b", "/api/slow", get_req(&[])).await).await;
+        assert_eq!((status, body["error_code"].as_str()), (504, Some("remote_timeout")));
+        assert_eq!(config::daemons_in(&file).remove(0), before, "the saved endpoint stays");
     }
 
     /// 이벤트 스트림처럼 끝나지 않는 답도 오는 대로 넘긴다

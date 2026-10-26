@@ -10,7 +10,7 @@
 //!   GET    /api/remote/daemons                       {daemons:[{hostId, name, address, port, pairedAt}]} 이 PC가 붙는 원격 데몬
 //!   POST   /api/remote/daemons {hostId}              짝을 맺고 저장한다 → {hostId, name}
 //!   DELETE /api/remote/daemons/:hostId               잊는다
-//!   *      /api/remote/daemons/:hostId/proxy/*path   원격 데몬의 `/path`(`api/…`·`health`)에 그대로 보낸다
+//!   ANY    /api/remote/daemons/:hostId/proxy/*path   원격 데몬의 `/path`(`api/…`·`health`)에 그대로 보낸다
 
 use axum::{
     body::Body,
@@ -164,7 +164,12 @@ fn forward_path(rest: &str, query: Option<&str>) -> Option<String> {
 
 pub async fn proxy(State(state): State<IPCServer>, Path((host_id, _)): Path<(String, String)>, req: Request<Body>) -> Response {
     // 풀지 않은 경로 그대로 넘긴다 (원격 데몬이 다시 푼다)
-    let rest = req.uri().path().split_once("/proxy/").map_or("", |(_, r)| r);
+    // `/api/remote/daemons/<hostId>/proxy/<rest>`
+    let mut parts = req.uri().path().splitn(7, '/').skip(5);
+    let rest = match (parts.next(), parts.next()) {
+        (Some("proxy"), Some(rest)) => rest,
+        _ => "",
+    };
     let Some(path) = forward_path(rest, req.uri().query()) else {
         return peer::error(StatusCode::NOT_FOUND, "not_found");
     };
