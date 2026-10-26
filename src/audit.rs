@@ -298,9 +298,9 @@ impl AuditLog {
                 if f.until.is_some_and(|u| ts >= u) {
                     continue;
                 }
-                // 최신부터 읽으므로 시작보다 이른 줄이 나오면 그 뒤는 모두 더 이르다
+                // 시각은 잠금 전에 정하고 시계도 바뀔 수 있어 파일 순서가 시각 순서라고 볼 수 없다: 끝까지 본다
                 if f.since.is_some_and(|s| ts < s) {
-                    return out;
+                    continue;
                 }
                 if f.instance_id.is_some_and(|id| v.get("instanceId").and_then(Value::as_str) != Some(id)) {
                     continue;
@@ -489,6 +489,18 @@ mod tests {
         assert_eq!(actions(Filter { since: Some(150), ..Filter::default() }), ["backup", "restart", "stop"]);
         assert_eq!(actions(Filter { until: Some(300), instance_id: Some("a"), ..Filter::default() }), ["start"]);
         assert_eq!(actions(Filter { since: Some(100), limit: 2, ..Filter::default() }), ["backup", "restart"]);
+    }
+
+    /// 동시 기록이나 시계 보정으로 파일 순서와 시각이 어긋나도 기간 안의 기록을 빠뜨리지 않는다
+    #[test]
+    fn a_period_keeps_records_written_out_of_time_order() {
+        let dir = tempfile::tempdir().unwrap();
+        let log = AuditLog::at(dir.path().join("audit.log"));
+        line_at(&log, 200, "stop", "a");
+        line_at(&log, 100, "start", "a");
+        line_at(&log, 300, "restart", "a");
+        let actions: Vec<_> = log.query(&Filter { since: Some(150), ..Filter::default() }).iter().map(|v| v["action"].as_str().unwrap().to_string()).collect();
+        assert_eq!(actions, ["restart", "stop"]);
     }
 
     #[test]

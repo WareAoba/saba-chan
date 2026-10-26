@@ -56,7 +56,10 @@ pub async fn run(ctx: &Ctx, o: Opts<'_>) -> Result<()> {
         match stream.next().await {
             Ok(Some(event)) => {
                 last = event.id.or(last);
-                if event.kind != "action.run" || id.as_deref().is_some_and(|id| s(&event.data, "instanceId") != id) {
+                if event.kind != "action.run"
+                    || id.as_deref().is_some_and(|id| s(&event.data, "instanceId") != id)
+                    || !in_period(&event.data, since, until)
+                {
                     continue;
                 }
                 if ctx.out.json {
@@ -75,6 +78,12 @@ pub async fn run(ctx: &Ctx, o: Opts<'_>) -> Result<()> {
             },
         }
     }
+}
+
+/// 기록·이벤트의 시각(`ts`·`at`)이 `since` 이상 `until` 미만인가
+fn in_period(e: &Value, since: Option<u64>, until: Option<u64>) -> bool {
+    let at = e.get("ts").or_else(|| e.get("at")).and_then(Value::as_u64).unwrap_or(0);
+    since.is_none_or(|s| at >= s) && until.is_none_or(|u| at < u)
 }
 
 /// `2026-10-01`·`today`·`7d`(오늘 포함 7일) → 그날 0시(이 PC 시간대, unix 초). `end`면 그날 끝(다음 날 0시)
@@ -142,6 +151,15 @@ mod tests {
         let today = day("today", false).unwrap();
         assert!(today <= now && now - today < 86_400);
         assert!((today - day("7d", false).unwrap()).abs_diff(6 * 86_400) <= 3_600);
+    }
+
+    #[test]
+    fn followed_events_keep_to_the_period() {
+        let e = |at: u64| serde_json::json!({ "at": at });
+        assert!(in_period(&e(150), Some(100), Some(200)));
+        assert!(!in_period(&e(250), Some(100), Some(200)));
+        assert!(!in_period(&e(50), Some(100), None));
+        assert!(in_period(&e(50), None, None));
     }
 
     #[test]
