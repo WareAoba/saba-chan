@@ -118,7 +118,8 @@ export function MatrixRain({ className, tokens }) {
         // 열마다 한 줄씩 내려가되 빠르기(몇 걸음마다 한 줄)가 다르다
         const fresh = (anywhere) => ({
             x: Math.random() * w,
-            row: anywhere ? -Math.floor(Math.random() * rows) : -Math.floor(Math.random() * 12),
+            // 처음에는 화면 높이 전체에 흩어 둔다 (모두 위에서 시작하면 짧은 로딩 동안 위쪽에만 몰린다)
+            row: anywhere ? Math.floor(Math.random() * rows) : -Math.floor(Math.random() * 12),
             every: 1 + Math.floor(Math.random() * 3),
             tick: 0,
         });

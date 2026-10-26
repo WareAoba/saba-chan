@@ -43,6 +43,18 @@ function useDaemonLog(active) {
 }
 
 const LOG_POLL_MS = 600;
+
+/**
+ * 글자 로고 주소를 문서 기준 절대 주소로. CSS 변수 속 url()은 그 변수를 쓰는 CSS 파일 기준으로 풀려서
+ * ./logo-kr.png가 /assets/logo-kr.png가 되고, 셸은 없는 파일에 HTML을 돌려줘 마스크가 투명해진다
+ */
+function wordmarkUrl(src) {
+    try {
+        return new URL(src, document.baseURI).href;
+    } catch {
+        return src;
+    }
+}
 const LOG_TOKEN_LINES = 50;
 
 export function LoadingScreen({ logoSrc, initStatus, initProgress, failed, onRetry, onContinue, leaving = false }) {
@@ -71,7 +83,7 @@ export function LoadingScreen({ logoSrc, initStatus, initProgress, failed, onRet
                     className="loading-logo-text"
                     role="img"
                     aria-label={t('common:app_name')}
-                    style={{ '--wordmark': `url("${logoSrc}")` }}
+                    style={{ '--wordmark': `url("${wordmarkUrl(logoSrc)}")` }}
                 />
                 {failed ? (
                     <div className="loading-failed" role="alert">
