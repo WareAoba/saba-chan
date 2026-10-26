@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 /// 인스턴스 폴더 안의 보관 폴더 (`DAEMON_ENTRIES`: 격리된 모듈이 쓰지 못한다)
 pub const DIR: &str = "migration";
-const MANIFEST: &str = "originals.json";
+pub(crate) const MANIFEST: &str = "originals.json";
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Original {
