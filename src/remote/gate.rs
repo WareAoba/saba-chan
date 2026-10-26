@@ -354,11 +354,6 @@ pub(crate) fn path_segments(path: &str) -> Option<Vec<String>> {
     path.strip_prefix('/')?.split('/').map(|s| percent_decode(s).filter(|d| safe_segment(d))).collect()
 }
 
-/// 푼 조각 목록이 `prefix` 조각들로 시작하는지 (조각끼리 비교한다)
-pub(crate) fn starts_with(segments: &[String], prefix: &[&str]) -> bool {
-    segments.len() >= prefix.len() && segments.iter().zip(prefix).all(|(s, p)| s == p)
-}
-
 pub(crate) fn percent_decode(s: &str) -> Option<String> {
     let bytes = s.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
@@ -634,10 +629,7 @@ mod tests {
         assert_eq!(decide("GET", "/api/server/a%5Cb/status"), Ok("/api/server/{name}/status"));
         // 리터럴 조각을 인코딩한 `/`로 이어 붙여도 그 라우트가 아니다
         assert_eq!(decide("GET", "/api/config%2Fnode-token"), Err(Refusal::NotAllowed));
-        let segments = path_segments("/api/remote%2Fclients").unwrap();
-        assert!(!starts_with(&segments, &["api", "remote"]));
-        assert!(starts_with(&path_segments("/api/remote/clients").unwrap(), &["api", "remote"]));
-        assert!(!starts_with(&path_segments("/api/remotex").unwrap(), &["api", "remote"]));
+        assert_eq!(path_segments("/api/remote%2Fclients"), Some(vec!["api".into(), "remote/clients".into()]));
     }
 
     #[test]
