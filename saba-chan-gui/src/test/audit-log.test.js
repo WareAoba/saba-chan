@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AuditLog } from '../components/servers/AuditTab';
+import i18n from '../i18n';
 
 const entry = (over) => ({
     ts: 1760000000,
@@ -156,5 +157,22 @@ describe('AuditLog', () => {
         await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Export' })));
         expect(window.api.auditExport).toHaveBeenCalledWith({});
         expect(window.showToast).not.toHaveBeenCalled();
+    });
+
+    it('내보내기 실패는 데몬의 영문 오류 대신 번역된 문구로 알린다', async () => {
+        window.showToast = vi.fn();
+        window.api.auditList = vi.fn().mockResolvedValue({ entries: [entry()] });
+        window.api.auditExport = vi.fn().mockResolvedValue({
+            success: false,
+            error: 'Could not write the audit export: denied',
+            error_code: 'WRITE_FAILED',
+        });
+        render(<AuditLog />);
+        await screen.findByText(/Minecraft/);
+        await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Export' })));
+        const [message, type] = window.showToast.mock.calls[0];
+        expect(type).toBe('error');
+        expect(message).toContain(i18n.t('gui:data_transfer.err_write_failed'));
+        expect(message).not.toContain('Could not write');
     });
 });

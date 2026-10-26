@@ -12,6 +12,7 @@ const PAGE = 100;
 const MAX = 1000; // 데몬 상한
 const SOURCES = ['gui', 'cli', 'api', 'discord', 'schedule', 'daemon', 'web', 'remote', 'restart'];
 const ACTIONS = ['start', 'stop', 'restart', 'command', 'stdin', 'backup'];
+const EXPORT_ERRORS = ['INVALID_PATH', 'WRITE_FAILED']; // data_transfer.err_* 문구를 같이 쓴다
 const PERIODS = ['all', 'today', '7d', '30d', 'custom'];
 const DAYS_BACK = { today: 0, '7d': 6, '30d': 29 }; // 오늘을 포함해 며칠
 
@@ -126,10 +127,16 @@ export function AuditLog({ instanceId }) {
         try {
             const res = await window.api.auditExport({ ...(instanceId ? { instance: instanceId } : {}), ...range });
             if (!alive.current || res?.canceled) return;
-            if (!res || res.success === false || res.error) throw new Error(res?.error || t('audit.export_failed'));
+            if (!res || res.success === false || res.error || res.error_code) {
+                // 데몬 문구는 영문이다: 아는 오류 코드만 번역해 덧붙인다
+                const known = EXPORT_ERRORS.includes(res?.error_code);
+                const detail = known ? ` ${t(`data_transfer.err_${res.error_code.toLowerCase()}`)}` : '';
+                safeShowToast(`${t('audit.export_failed')}${detail}`, 'error', 5000);
+                return;
+            }
             safeShowToast(t('audit.exported', { count: res.count ?? 0 }), 'success', 4000);
-        } catch (err) {
-            safeShowToast(`${t('audit.export_failed')} ${err.message || ''}`.trim(), 'error', 5000);
+        } catch {
+            safeShowToast(t('audit.export_failed'), 'error', 5000);
         } finally {
             if (alive.current) setExporting(false);
         }
