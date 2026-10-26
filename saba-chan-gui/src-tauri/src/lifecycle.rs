@@ -795,7 +795,7 @@ async fn check_for_updates(app: &AppHandle) {
 }
 
 /// 크래시처럼 꼭 알아야 할 일은 OS 알림으로도 (설정 `osNotifications`, 기본 켬).
-/// 앱 창이 앞에 있으면 앱 안 알림으로 충분하다. 트레이에만 떠 있어도 이벤트 스트림은 받으므로 알린다
+/// 앱 창이 앞에 있으면(보이고, 최소화되지 않고, 포커스) 앱 안 알림으로 충분하다. 트레이에만 떠 있어도 이벤트 스트림은 받으므로 알린다
 fn notify_critical(app: &AppHandle, ev: &SseEvent) {
     let state = app.state::<AppState>();
     let Some(body) = events::critical_notice(ev, &state.i18n.read().unwrap()) else { return };
@@ -805,7 +805,9 @@ fn notify_critical(app: &AppHandle, ev: &SseEvent) {
     }
     let in_front = app
         .get_webview_window(crate::window::MAIN)
-        .is_some_and(|w| w.is_visible().unwrap_or(false) && w.is_focused().unwrap_or(false));
+        .is_some_and(|w| {
+            w.is_visible().unwrap_or(false) && !w.is_minimized().unwrap_or(true) && w.is_focused().unwrap_or(false)
+        });
     if in_front {
         tracing::info!("[Notify] {} — window in front, in-app notice only", ev.kind);
     } else {

@@ -3333,8 +3333,10 @@ impl Supervisor {
                                     }));
                                 } // if !skip_port_check
                                 }
-                                // 사바쨩이 띄우지 않은 서버가 켜졌다. 데몬이 켜질 때 이미 돌던 것은 빼고, 포트 충돌로 끈 것도 뺀다
-                                if self.first_scan_done && self.tracker.get_pid(&instance.id).is_ok() {
+                                // 사바쨩이 띄우지 않은 서버가 켜졌다. 데몬이 켜질 때 이미 돌던 것은 빼고, 포트 충돌로 끈 것도 뺀다.
+                                // 사바쨩이 띄우는 중(추적 전)에 먼저 본 것도 뺀다
+                                let starting = self.starting.lock().unwrap_or_else(|e| e.into_inner()).contains(&instance.id);
+                                if self.first_scan_done && !starting && self.tracker.get_pid(&instance.id).is_ok() {
                                     announce_started(&instance.id, &instance.name, &crate::audit::Origin::new("external"), true);
                                 }
                             }
@@ -4348,6 +4350,13 @@ mod tests {
         let started = seen("instance.started", "w-ext");
         assert_eq!(started.len(), 1, "{started:?}");
         assert_eq!((started[0]["source"].as_str(), started[0]["unexpected"].as_bool()), (Some("external"), Some(true)));
+        // 사바쨩이 띄우는 중(아직 추적 전)에 모니터가 먼저 본 프로세스는 밖에서 켠 것이 아니다
+        sup.write().await.monitor_processes_taken_at(&[], u64::MAX).await.unwrap();
+        seen("instance.exit", "w-ext");
+        sup.read().await.starting.lock().unwrap().insert("w-ext".into());
+        sup.write().await.monitor_processes_taken_at(std::slice::from_ref(&ext), u64::MAX).await.unwrap();
+        sup.read().await.starting.lock().unwrap().remove("w-ext");
+        assert!(seen("instance.started", "w-ext").is_empty(), "a server saba-chan is starting is not unexpected");
 
         // 끝까지 판정한 정지 뒤의 모니터 순회가 같은 실행을 원인 모를 종료로 다시 보지 않는다
         sup.write().await.monitor_processes_taken_at(&[], u64::MAX).await.unwrap();
