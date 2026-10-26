@@ -1,0 +1,125 @@
+/* 트레이 팝업 (components/shell/TrayPopup.js). 창은 투명하고 이 판만 보인다 */
+
+html[data-tray-popup],
+html[data-tray-popup] body {
+    background: transparent;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.tray-popup {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+    padding: var(--sp-3);
+    background: var(--bg-1);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--r-md);
+    color: var(--text-1);
+    font-size: var(--fs-sm);
+}
+
+.tray-popup-head {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    padding: var(--sp-1);
+}
+.tray-popup-logo {
+    width: 24px;
+    height: 24px;
+    border-radius: var(--r-xs);
+}
+.tray-popup-title {
+    flex: 1;
+    font-size: var(--fs-md);
+    font-weight: 700;
+}
+.tray-popup-head .status-chip {
+    font-size: var(--fs-xs);
+}
+
+.tray-popup-servers {
+    list-style: none;
+    max-height: 240px;
+    overflow-y: auto;
+    background: var(--bg-2);
+    border: 1px solid var(--line);
+    border-radius: var(--r-sm);
+}
+.tray-popup-server {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    padding: var(--sp-1) var(--sp-1) var(--sp-1) var(--sp-3);
+    border-bottom: 1px solid var(--line);
+}
+.tray-popup-server:last-child {
+    border-bottom: none;
+}
+.tray-popup-dot {
+    width: 8px;
+    height: 8px;
+    flex: none;
+    border-radius: 50%;
+    background: var(--chip-color);
+}
+.tray-popup-server-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.tray-popup-server-meta {
+    color: var(--text-3);
+    font-size: var(--fs-xs);
+    font-variant-numeric: tabular-nums;
+}
+.tray-popup-server-meta.failed {
+    color: var(--stop);
+}
+.tray-popup-server-action {
+    --btn-height: 28px;
+    width: 28px;
+}
+
+.tray-popup-empty {
+    padding: var(--sp-3);
+    color: var(--text-3);
+    text-align: center;
+    background: var(--bg-2);
+    border: 1px solid var(--line);
+    border-radius: var(--r-sm);
+}
+
+.tray-popup-actions {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+    gap: var(--sp-2);
+}
+
+.tray-popup-foot {
+    display: flex;
+    justify-content: space-between;
+    padding: 0 var(--sp-1);
+}
+.tray-popup-link {
+    --btn-height: 28px;
+    --btn-padding: 0 var(--sp-2);
+    --btn-font-size: var(--fs-xs);
+    --btn-font-weight: 500;
+    color: var(--text-2);
+}
+.tray-popup-link:hover:not(:disabled) {
+    color: var(--text-1);
+    background: var(--surface-gradient-hover);
+}
+.tray-popup-link.danger {
+    margin-left: auto;
+    color: var(--stop);
+}
+.tray-popup-link.danger:hover:not(:disabled) {
+    background: var(--stop-soft);
+}

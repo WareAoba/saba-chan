@@ -77,14 +77,12 @@
   },
   "tray": {
     "tooltip": "Saba-chan - Game server manager",
-    "open_window": "🖥️ Open window",
-    "switch_to_cli": "💻 Switch to CLI",
-    "daemon_running": "🟢 Daemon running",
-    "daemon_stopped": "⚪ Daemon stopped",
-    "stop_daemon": "🛑 Stop daemon",
-    "start_daemon": "▶️ Start daemon",
-    "quit_interface": "🔌 Quit interface only",
-    "quit_all": "❌ Quit completely"
+    "open_window": "Open window",
+    "daemon_running": "Daemon running",
+    "daemon_stopped": "Daemon stopped",
+    "stop_daemon": "Stop daemon",
+    "start_daemon": "Start daemon",
+    "quit_all": "Quit completely"
   },
   "updates": {
     "notification_title": "Saba-chan updates",

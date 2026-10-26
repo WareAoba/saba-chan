@@ -36,18 +36,23 @@ pub struct RegisteredClient {
     /// 클라이언트가 알려 준 자기 PID와 설치 폴더 (인스톨러가 이 설치의 GUI만 끌 때 쓴다)
     pub pid: Option<u32>,
     pub install_root: Option<String>,
+    /// 창 없이 트레이만 든 GUI (등록·heartbeat 본문의 `resident`)
+    pub resident: bool,
 }
 
 /// 클라이언트 레지스트리 — 여러 GUI/CLI 인스턴스의 생존 여부를 추적
 #[derive(Debug, Clone)]
 pub struct ClientRegistry {
     inner: Arc<RwLock<HashMap<String, RegisteredClient>>>,
+    /// `clients/launch`로 띄운 CLI (PID, 띄운 시각). 등록하지 않는 CLI도 완전히 종료할 때 닫는다
+    launched_clis: Arc<std::sync::Mutex<Vec<(u32, u64)>>>,
 }
 
 impl Default for ClientRegistry {
     fn default() -> Self {
         Self {
             inner: Arc::new(RwLock::new(HashMap::new())),
+            launched_clis: Arc::default(),
         }
     }
 }
@@ -55,6 +60,29 @@ impl Default for ClientRegistry {
 impl ClientRegistry {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// 데몬이 CLI를 띄웠다 (GUI의 CLI로 전환)
+    pub fn note_launched_cli(&self, pid: u32) {
+        let at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        self.launched_clis.lock().unwrap().push((pid, at));
+    }
+
+    /// 띄운 CLI 가운데 아직 그 프로세스인 것을 닫는다 (같은 PID를 다른 프로세스가 받았으면 건드리지 않는다)
+    pub fn close_launched_clis(&self) {
+        use crate::supervisor::process::{force_kill_pid, is_same_process};
+        let launched = std::mem::take(&mut *self.launched_clis.lock().unwrap());
+        for (pid, at) in launched {
+            if is_same_process(pid, at) {
+                match force_kill_pid(pid) {
+                    Ok(()) => tracing::info!("[Shutdown] Closed the CLI the daemon opened (pid {})", pid),
+                    Err(e) => tracing::warn!("[Shutdown] Could not close the CLI (pid {}): {}", pid, e),
+                }
+            }
+        }
     }
 
     /// 새 클라이언트 등록, client_id 반환
@@ -67,6 +95,7 @@ impl ClientRegistry {
             last_heartbeat: std::time::Instant::now(),
             pid,
             install_root,
+            resident: false,
         });
         id
     }
@@ -84,6 +113,17 @@ impl ClientRegistry {
             true
         } else {
             false
+        }
+    }
+
+    /// 창 없이 트레이만 든 GUI인지 기록한다. 없는 id면 false
+    pub async fn set_resident(&self, client_id: &str, resident: bool) -> bool {
+        match self.inner.write().await.get_mut(client_id) {
+            Some(client) => {
+                client.resident = resident;
+                true
+            }
+            None => false,
         }
     }
 

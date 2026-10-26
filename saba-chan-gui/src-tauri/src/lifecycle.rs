@@ -6,7 +6,7 @@ use serde_json::{json, Value};
 use std::io::BufRead;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tauri::async_runtime::JoinHandle;
@@ -25,8 +25,8 @@ pub struct Lifecycle {
     attached_daemon: AtomicBool,
     /// 이 GUI가 띄운 데몬이 job breakaway를 거절당해 GUI를 띄운 프로그램의 job 안에서 돈다
     daemon_in_parent_job: AtomicBool,
-    /// 인터페이스만 종료: 데몬을 남긴다
-    keep_daemon_alive: AtomicBool,
+    /// 사용자가 트레이에서 데몬을 껐다: 데몬이 없어도 상주 GUI는 남아 다시 켤 수 있게 한다 (`TRAY_STOP_*`)
+    stopped_from_tray: AtomicU8,
     init_started: AtomicBool,
     /// 초기화를 아직 마치지 않았는가. 데몬 단계에서 실패하거나 끊기면 daemon_restart가 성공한 뒤 나머지를 마친다
     init_pending_daemon: AtomicBool,
@@ -85,7 +85,12 @@ pub fn open_server(app: &AppHandle, id: String) {
     }
 }
 
-/// 렌더러가 리스너를 단 뒤 부른다. 처음이면 초기화 시작, 다시 부르면(새로고침) 마지막 상태를 다시 보낸다
+/// `--tray`: 데몬이 띄운 상주 GUI (창 없이 트레이만)
+pub fn tray_arg<I: IntoIterator<Item = String>>(args: I) -> bool {
+    args.into_iter().any(|a| a == "--tray")
+}
+
+/// 렌더러가 리스너를 단 뒤 부른다. 처음이면 초기화 시작, 다시 부르면(새로고침·트레이에서 다시 연 창) 마지막 상태를 다시 보낸다
 pub fn app_ready(app: &AppHandle) {
     // 새로 뜬(재로드한) 렌더러는 그 전 닫기 요청을 받지 못했다: 멈춘 것으로 보지 않는다
     crate::window::close_answered();
@@ -93,15 +98,23 @@ pub fn app_ready(app: &AppHandle) {
     if let Some(id) = life.renderer_ready() {
         emit_main(app, "app:openServer", json!({ "instanceId": id }));
     }
-    if life.init_started.swap(true, Ordering::SeqCst) {
+    if !begin_init(app) {
         if let Some(last) = life.last_status.lock().unwrap().clone() {
             emit_main(app, "status:update", last);
         }
-        return;
+    }
+}
+
+/// 백그라운드 초기화(데몬 확인·기동, 등록, heartbeat)를 한 번만 시작한다. 이미 시작했으면 false.
+/// 창이 있으면 렌더러의 app_ready가, `--tray`로 떴으면 setup이 부른다
+pub fn begin_init(app: &AppHandle) -> bool {
+    if app.state::<AppState>().life.init_started.swap(true, Ordering::SeqCst) {
+        return false;
     }
     status_t(app, "ui", "init.ui_loaded");
     let app = app.clone();
     tauri::async_runtime::spawn(async move { run_background_init(&app).await });
+    true
 }
 
 async fn run_background_init(app: &AppHandle) {
@@ -217,6 +230,45 @@ impl Lifecycle {
     pub fn daemon_in_parent_job(&self) -> bool {
         self.daemon_in_parent_job.load(Ordering::SeqCst) && self.child.lock().unwrap().is_some()
     }
+}
+
+/// 트레이만 든 GUI가 데몬을 따라 끝날 때: 데몬이 없고, 창이 없고, 트레이에서 끈 것이 아니다
+fn should_follow_daemon_out(daemon_reached: bool, resident: bool, stopped_from_tray: bool) -> bool {
+    !daemon_reached && resident && !stopped_from_tray
+}
+
+/// 종료 요청에도 프로세스를 남기는가: 마지막 창이 닫혀 온 요청(code 없음)은 트레이로 남는다. `app.exit()`는 code가 있다.
+/// 창 목록으로 가리지 않는다: 팝업을 없애는 사이 새 메인 창이 목록에 먼저 들어와 있을 수 있다
+pub fn keeps_running_on_exit_request(code: Option<i32>) -> bool {
+    code.is_none()
+}
+
+/// 트레이의 데몬 끄기 뒤 표시를 남기는가: 데몬이 종료 요청을 받아들였으면 남긴다 (꺼지는 동안 잠시 답할 수 있다)
+pub fn tray_stop_stands(shutdown_accepted: bool) -> bool {
+    shutdown_accepted
+}
+
+/// 트레이에서 끈 표시: 없음 → 끄기 요청함 → 데몬이 사라진 것을 봄 → (다시 닿으면) 없음
+const TRAY_STOP_NONE: u8 = 0;
+const TRAY_STOP_ASKED: u8 = 1;
+const TRAY_STOP_GONE: u8 = 2;
+
+/// heartbeat 한 번 뒤의 트레이에서 끈 표시. 끄는 중인 데몬은 잠시 답하므로, 사라진 것을 본 뒤 다시 닿아야 지운다
+fn tray_stop_after_heartbeat(stop: u8, reached: bool) -> u8 {
+    match (stop, reached) {
+        (TRAY_STOP_ASKED, false) => TRAY_STOP_GONE,
+        (TRAY_STOP_GONE, true) => TRAY_STOP_NONE,
+        (s, _) => s,
+    }
+}
+
+/// 트레이에서 데몬을 끄거나 켰다 (끈 동안에는 데몬이 없어도 상주 GUI가 남는다)
+pub fn note_tray_stop(app: &AppHandle, stopped: bool) {
+    let stop = if stopped { TRAY_STOP_ASKED } else { TRAY_STOP_NONE };
+    app.state::<AppState>()
+        .life
+        .stopped_from_tray
+        .store(stop, Ordering::SeqCst);
 }
 
 /// 연결이 거부된 것만 데몬이 없다고 본다. 시간 초과는 바쁜 데몬일 수 있다
@@ -406,17 +458,22 @@ fn force_kill(child: &mut Child) {
 
 /// API로 정상 종료를 요청하고, 시간 안에 안 끝나면 이 GUI가 띄운 PID만 강제 종료한다.
 /// 이름 기반 kill은 다른 사용자의 데몬까지 죽일 수 있어 쓰지 않는다
-pub async fn stop_daemon(app: &AppHandle) {
+/// 데몬이 종료 요청을 받아들였으면 true
+pub async fn stop_daemon(app: &AppHandle) -> bool {
     let state = app.state::<AppState>();
-    match state.client.post("/api/daemon/shutdown", &json!({}), 2000).await {
+    let accepted = match state.client.post("/api/daemon/shutdown", &json!({}), 2000).await {
         Ok(_) => {
             tracing::info!("Daemon shutdown requested via API");
             state.life.attached_daemon.store(false, Ordering::SeqCst);
+            true
         }
-        Err(e) => tracing::warn!("Daemon shutdown API failed: {}", e.message),
-    }
+        Err(e) => {
+            tracing::warn!("Daemon shutdown API failed: {}", e.message);
+            false
+        }
+    };
     if state.life.child.lock().unwrap().is_none() {
-        return;
+        return accepted;
     }
     let start = Instant::now();
     while own_daemon_alive(app) {
@@ -436,6 +493,7 @@ pub async fn stop_daemon(app: &AppHandle) {
         sleep(200).await;
     }
     tracing::info!("Daemon stopped");
+    true
 }
 
 async fn health_ok(app: &AppHandle, timeout_ms: u64) -> bool {
@@ -543,10 +601,31 @@ async fn sync_install_root(app: &AppHandle) {
 
 // ── 클라이언트 등록·heartbeat (데몬이 GUI 생존 여부를 추적) ──
 
+/// 창이 열리거나 닫혀 상주 여부가 바뀌었다: 다음 heartbeat를 기다리지 않고 데몬에 알린다 (등록 전이면 등록이 알린다)
+pub fn report_resident(app: &AppHandle, resident: bool) {
+    let Some(id) = app.state::<AppState>().life.client_id.lock().unwrap().clone() else {
+        return;
+    };
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let body = json!({ "resident": resident });
+        let _ = app
+            .state::<AppState>()
+            .client
+            .post(&format!("/api/client/{id}/heartbeat"), &body, 3000)
+            .await;
+    });
+}
+
 async fn register_with_daemon(app: &AppHandle) -> bool {
     let state = app.state::<AppState>();
-    // PID·설치 폴더: 인스톨러가 이 설치의 GUI를 찾아 끌 수 있게
-    let body = json!({ "kind": "gui", "pid": std::process::id(), "installRoot": state.install_root.to_string_lossy() });
+    // PID·설치 폴더: 인스톨러가 이 설치의 GUI를 찾아 끌 수 있게. resident: 창 없이 트레이만 들었다
+    let body = json!({
+        "kind": "gui",
+        "pid": std::process::id(),
+        "installRoot": state.install_root.to_string_lossy(),
+        "resident": crate::window::tray_only_now(app),
+    });
     match state.client.post("/api/client/register", &body, 3000).await {
         Ok(v) => {
             let id = v
@@ -576,13 +655,41 @@ fn start_heartbeat(app: &AppHandle) {
                 register_with_daemon(&app2).await;
                 continue;
             };
+            let resident = crate::window::tray_only_now(&app2);
+            tray::refresh_icon(&app2);
             let res = state
                 .client
-                .post(&format!("/api/client/{id}/heartbeat"), &json!({}), 3000)
+                .post(
+                    &format!("/api/client/{id}/heartbeat"),
+                    &json!({ "resident": resident }),
+                    3000,
+                )
                 .await;
             // 연결이 안 되면 데몬이 없다: 이 GUI 밖에서 꺼진 데몬을 트레이가 실행 중으로 보이지 않게
-            if state.life.note_reachable(heartbeat_reached(&res)) {
+            let reached = heartbeat_reached(&res);
+            if state.life.note_reachable(reached) {
                 tray::update_menu(&app2);
+            }
+            // 트레이에서 끈 데몬이 사라진 뒤 (어디서든) 다시 떴으면 표시를 지운다: 이제 밖에서 꺼지면 함께 끝난다
+            // 그 사이 트레이가 표시를 바꿨으면(끄기·켜기) 트레이 쪽을 둔다
+            let stop = state.life.stopped_from_tray.load(Ordering::SeqCst);
+            let next = tray_stop_after_heartbeat(stop, reached);
+            if next != stop {
+                let _ = state
+                    .life
+                    .stopped_from_tray
+                    .compare_exchange(stop, next, Ordering::SeqCst, Ordering::SeqCst);
+            }
+            // 창 없이 트레이만 든 GUI는 데몬이 밖에서 꺼지면(CLI의 완전히 종료 등) 함께 끝난다.
+            // 트레이에서 직접 끈 것이면 다시 켤 수 있게 남는다
+            let tray_stopped = state.life.stopped_from_tray.load(Ordering::SeqCst) != TRAY_STOP_NONE;
+            if should_follow_daemon_out(reached, resident, tray_stopped) && !own_daemon_alive(&app2) {
+                tracing::info!("[Tray] The daemon is gone and no window is open; quitting");
+                state.life.quitting.store(true, Ordering::SeqCst);
+                stop_background(&state);
+                tray::remove(&app2);
+                exit_app(&app2);
+                return;
             }
             if let Err(e) = res {
                 // 데몬이 재시작되었을 수 있으므로 재등록
@@ -732,21 +839,17 @@ fn stop_background(state: &AppState) {
     replace_task(&state.life.heartbeat_task, None);
 }
 
-/// 인터페이스만 종료 — 클라이언트만 해제(shutdown=false)하고 데몬은 그대로 둔다
+/// 인터페이스만 종료 — 창(메인·팝아웃)을 모두 닫아 웹뷰를 내리고 트레이로 남는다. 데몬과 등록은 그대로
 pub async fn interface_only_quit(app: &AppHandle) {
     let state = app.state::<AppState>();
-    if state.life.quitting.swap(true, Ordering::SeqCst) {
+    if state.life.quitting.load(Ordering::SeqCst) {
         return;
     }
-    tracing::info!("Starting interface-only quit sequence...");
-    state.life.keep_daemon_alive.store(true, Ordering::SeqCst);
-    unregister_from_daemon(app, false).await;
-    stop_background(&state);
-    // 자식 핸들만 놓는다 (Child를 버려도 프로세스는 끝나지 않는다)
-    state.life.child.lock().unwrap().take();
-    tray::remove(app);
-    tracing::info!("Interface-only quit sequence completed (daemon kept alive)");
-    exit_app(app);
+    tracing::info!("Closing every window; staying in the tray");
+    // 다음 창의 렌더러가 준비될 때까지 서버 열기 요청을 맡아 둔다
+    state.life.renderer_ready.store(false, Ordering::SeqCst);
+    crate::window::close_answered();
+    crate::window::close_all(app);
 }
 
 /// 완전히 종료 — 클라이언트 해제·데몬 종료 요청 후 데몬이 끝나길 기다린다
@@ -806,12 +909,10 @@ pub fn on_exit(app: &AppHandle) {
             .await
         });
     }
-    if !state.life.keep_daemon_alive.load(Ordering::SeqCst) {
-        if let Some(mut child) = state.life.child.lock().unwrap().take() {
-            if matches!(child.try_wait(), Ok(None)) {
-                tracing::info!("Force killing own daemon process at exit");
-                force_kill(&mut child);
-            }
+    if let Some(mut child) = state.life.child.lock().unwrap().take() {
+        if matches!(child.try_wait(), Ok(None)) {
+            tracing::info!("Force killing own daemon process at exit");
+            force_kill(&mut child);
         }
     }
     tracing::info!("Cleanup completed");
@@ -820,6 +921,60 @@ pub fn on_exit(app: &AppHandle) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_tray_stop_clears_only_when_the_daemon_comes_back_after_it_was_gone() {
+        // 끄는 중인 데몬은 잠시 heartbeat에 답한다: 그것은 다시 뜬 것이 아니다 (Codex 리뷰)
+        let s = tray_stop_after_heartbeat(TRAY_STOP_ASKED, true);
+        assert_eq!(s, TRAY_STOP_ASKED);
+        let s = tray_stop_after_heartbeat(s, false);
+        assert_eq!(s, TRAY_STOP_GONE);
+        assert_eq!(tray_stop_after_heartbeat(s, false), TRAY_STOP_GONE);
+        assert_eq!(
+            tray_stop_after_heartbeat(s, true),
+            TRAY_STOP_NONE,
+            "started again from elsewhere"
+        );
+        assert_eq!(tray_stop_after_heartbeat(TRAY_STOP_NONE, true), TRAY_STOP_NONE);
+    }
+
+    #[test]
+    fn closing_the_last_window_never_ends_the_tray_app() {
+        // 팝업의 창 열기: 팝업을 없애는 사이 메인 창이 만들어지고 있어도 끝나지 않는다 (PC: 0.2초 만에 종료)
+        assert!(keeps_running_on_exit_request(None));
+        assert!(!keeps_running_on_exit_request(Some(0)), "app.exit() ends it");
+    }
+
+    #[test]
+    fn a_tray_stop_stands_once_the_daemon_accepted_it() {
+        // 받아들인 데몬은 잠시 /health에 답할 수 있다: 그것으로 표시를 지우면 상주 GUI가 데몬을 따라 끝난다 (PC)
+        assert!(tray_stop_stands(true));
+        assert!(
+            !tray_stop_stands(false),
+            "the daemon refused: it was not stopped from the tray"
+        );
+    }
+
+    #[test]
+    fn a_tray_only_gui_quits_with_the_daemon_unless_the_tray_stopped_it() {
+        assert!(should_follow_daemon_out(false, true, false));
+        assert!(
+            !should_follow_daemon_out(true, true, false),
+            "the daemon is still there"
+        );
+        assert!(!should_follow_daemon_out(false, false, false), "a window is open");
+        assert!(
+            !should_follow_daemon_out(false, true, true),
+            "stopped from the tray: stay to start it again"
+        );
+    }
+
+    #[test]
+    fn the_tray_argument_is_read() {
+        let args = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert!(tray_arg(args(&["gui", "--tray"])));
+        assert!(!tray_arg(args(&["gui", "--spawned-by-daemon"])));
+    }
 
     /// CLI의 `gui`가 붙인 서버 id만 읽는다
     #[test]

@@ -1558,5 +1558,20 @@
     "module_newer": "Mise à jour nécessaire. Le module {{name}} demande un Saba-chan plus récent.",
     "extension": "Mise à jour nécessaire. L'extension {{name}} demande Saba-chan {{version}} ou plus récent.",
     "check": "Rechercher des mises à jour"
+  },
+  "tray_popup": {
+    "title": "Saba-chan",
+    "daemon_running": "Démon en cours d'exécution",
+    "daemon_stopped": "Démon arrêté",
+    "servers": "Serveurs",
+    "no_servers": "Aucun serveur pour l'instant",
+    "action_failed": "Échec",
+    "start": "Démarrer {{name}}",
+    "stop": "Arrêter {{name}}",
+    "open_window": "Ouvrir la fenêtre",
+    "switch_to_cli": "Passer à la CLI",
+    "start_daemon": "Démarrer le démon",
+    "stop_daemon": "Arrêter le démon",
+    "quit_all": "Quitter complètement"
   }
 }

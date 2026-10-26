@@ -507,6 +507,18 @@
           "markdownDescription": "Enables the shell_open_path command without any pre-configured scope."
         },
         {
+          "description": "Enables the tray_action command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-tray-action",
+          "markdownDescription": "Enables the tray_action command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the tray_popup_fit command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-tray-popup-fit",
+          "markdownDescription": "Enables the tray_popup_fit command without any pre-configured scope."
+        },
+        {
           "description": "Enables the updater_launch_apply command without any pre-configured scope.",
           "type": "string",
           "const": "allow-updater-launch-apply",
@@ -691,6 +703,18 @@
           "type": "string",
           "const": "deny-shell-open-path",
           "markdownDescription": "Denies the shell_open_path command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the tray_action command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-tray-action",
+          "markdownDescription": "Denies the tray_action command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the tray_popup_fit command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-tray-popup-fit",
+          "markdownDescription": "Denies the tray_popup_fit command without any pre-configured scope."
         },
         {
           "description": "Denies the updater_launch_apply command without any pre-configured scope.",

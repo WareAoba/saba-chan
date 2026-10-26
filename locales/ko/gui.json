@@ -1558,5 +1558,20 @@
     "module_newer": "업데이트가 필요해요. {{name}} 모듈은 더 새 사바쨩에서 돌아가요.",
     "extension": "업데이트가 필요해요. {{name}} 익스텐션은 사바쨩 {{version}} 이상에서 돌아가요.",
     "check": "업데이트 확인"
+  },
+  "tray_popup": {
+    "title": "사바쨩",
+    "daemon_running": "데몬 실행 중",
+    "daemon_stopped": "데몬 꺼짐",
+    "servers": "서버",
+    "no_servers": "아직 서버가 없어요",
+    "action_failed": "실패했어요",
+    "start": "{{name}} 시작",
+    "stop": "{{name}} 정지",
+    "open_window": "창 열기",
+    "switch_to_cli": "CLI로 전환",
+    "start_daemon": "데몬 켜기",
+    "stop_daemon": "데몬 끄기",
+    "quit_all": "완전히 종료"
   }
 }
