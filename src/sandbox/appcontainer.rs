@@ -251,7 +251,6 @@ pub fn stale_runtimes(
         .collect()
 }
 
-#[cfg_attr(not(windows), allow(dead_code))]
 /// 런타임 기록에서 데몬이 ALL APPLICATION PACKAGES에 더한 함께 읽는 권한의 키. 런타임(없어도 되는 것)은 쓰지 않게 되면 거두고,
 /// 나머지(Python·모듈·익스텐션 폴더)는 제거기(`reset`)만 거둔다
 #[cfg_attr(not(windows), allow(dead_code))]
