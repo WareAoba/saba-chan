@@ -659,12 +659,23 @@ impl Api {
         self.patch("/api/config/gui", patch).await
     }
     /// GET /api/audit — `{entries: [{ts, source, user?, guild?, action, instanceId, instance?, command?, args?, ok, status}]}` 최신이 먼저
-    pub async fn audit(&self, instance: Option<&str>, limit: usize) -> Result<Value> {
+    /// `since`부터 `until` 전까지 (unix 초)
+    pub async fn audit(&self, instance: Option<&str>, limit: usize, since: Option<u64>, until: Option<u64>) -> Result<Value> {
         self.get(&with_query(
             "/api/audit",
-            &[("limit", Some(limit.to_string())), ("instance", instance.map(str::to_string))],
+            &[
+                ("limit", Some(limit.to_string())),
+                ("instance", instance.map(str::to_string)),
+                ("since", since.map(|v| v.to_string())),
+                ("until", until.map(|v| v.to_string())),
+            ],
         ))
         .await
+    }
+    /// POST /api/audit/export — 데몬이 기간의 기록을 모두 `path`에 CSV로 쓴다. `{success, path, count}`
+    pub async fn export_audit(&self, path: &str, instance: Option<&str>, since: Option<u64>, until: Option<u64>) -> Result<Value> {
+        self.post_long("/api/audit/export", json!({ "path": path, "instance": instance, "since": since, "until": until }))
+            .await
     }
     /// GET /api/events — 데몬 이벤트 스트림 (P4, SSE). `since`는 마지막으로 받은 번호
     pub async fn events(&self, since: Option<u64>) -> Result<Events> {

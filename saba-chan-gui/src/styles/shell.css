@@ -2836,8 +2836,39 @@ button.appbar-preflight {
 .audit-more {
     align-self: center;
 }
+/* 머리·기간·더 보기는 제자리에 두고 목록만 스크롤한다 */
+.audit-card {
+    flex: 1;
+    min-height: 0;
+}
+.audit-scroll {
+    flex: 1;
+    min-height: calc(var(--sp-6) * 5);
+    overflow-y: auto;
+}
+.audit-period {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--sp-2);
+}
+.audit-dates {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    color: var(--text-3);
+}
+.audit-dates .input {
+    width: auto;
+}
+.page-activity {
+    align-items: stretch;
+}
 .activity-page {
     width: 100%;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
 }
 
 /* 서버 설정 맨 위: 최종 실행 인자 미리보기 (읽기 전용) */

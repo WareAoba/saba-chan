@@ -977,9 +977,19 @@ export function createApi({ invoke, hub }) {
         deleteNodeToken: () => daemonCall('delete', '/api/config/node-token'),
 
         auditList: (opts) => {
-            const { limit, instance } = opts || {};
-            const qs = queryString({ limit: limit || undefined, instance: instance || undefined });
+            const { limit, instance, since, until } = opts || {};
+            const qs = queryString({ limit: limit || undefined, instance: instance || undefined, since, until });
             return daemonCall('get', `/api/audit${qs}`, undefined, 10000);
+        },
+        // 기간({since, until} unix 초)의 기록을 데몬이 CSV로 쓴다. 저장 창을 닫으면 {canceled:true}
+        auditExport: async (opts = {}) => {
+            const { instance, since, until } = opts;
+            const filePath = await pickLocal('dialog_save_file', {
+                defaultPath: `saba-chan-activity-${new Date().toISOString().slice(0, 10)}.csv`,
+                filters: [{ name: 'CSV', extensions: ['csv'] }],
+            });
+            if (!filePath) return { canceled: true };
+            return daemonCall('post', '/api/audit/export', { path: filePath, instance, since, until }, 60000);
         },
         permissionsGet: (guildId) => daemonCall('get', permPath(guildId)),
         permissionsUpdate: (guildId, patch) => daemonCall('patch', permPath(guildId), patch || {}),

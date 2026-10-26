@@ -785,6 +785,7 @@ impl IPCServer {
             .route("/api/diagnostics", get(handlers::diagnostics::diagnostics))
             .route("/api/onboarding", get(handlers::diagnostics::onboarding))
             .route("/api/audit", get(handlers::diagnostics::audit))
+            .route("/api/audit/export", post(handlers::diagnostics::audit_export))
             .route("/api/events", get(handlers::events::stream))
             // ── Server query/control ──
             .route("/api/servers", get(handlers::server::list_servers))

@@ -119,7 +119,8 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 | botConfigLoad (817) | GET /api/config/bot. 못 읽으면 기본값 대신 예외를 던진다(호출한 쪽이 기본값을 저장해 설정을 지우지 않게) | ✓ 700 |
 | botConfigSave (826) | PATCH /api/config/bot. 디스코드 저장은 마지막으로 저장한 값과 비교한 merge patch(`utils/mergePatch.js` `mergePatchDiff`, 지운 키는 `null`)만 보낸다. 칸마다 자동 저장하므로 `revision`은 싣지 않는다. 데몬 본문을 그대로 돌려준다: 권한 키라 저장하지 않은 경로는 `ignored`로 오고 화면이 알린다(CLI와 같다). 릴레이 동기화는 에이전트 하트비트가 맡는다 | ✓ 700 |
 | saveNodeToken / loadNodeToken / deleteNodeToken (835-853) | PUT/GET/DELETE /api/config/node-token. DELETE는 데몬이 에이전트를 멈추고 토큰을 지운다 | ✓ 710 |
-| auditList (855) | GET /api/audit?limit&instance (A10). `{entries}` 최신이 먼저 | ✓ 640 |
+| auditList (855) | GET /api/audit?limit&instance&since&until (A10). `{entries}` 최신이 먼저 | ✓ 640 |
+| auditExport | 저장 창(`dialog_save_file`, csv)에서 고른 경로로 POST /api/audit/export `{path, instance?, since?, until?}`. 창을 닫으면 `{canceled:true}` | - |
 | permissionsGet (860) | GET /api/permissions/:guildId (P1) | ✓ 723-726 |
 | permissionsUpdate (861) | PATCH /api/permissions/:guildId `{defaultLevel?, preset?, chatbotCap?, ownerDiscordId?, commandLevels?, ladder?}` | ✓ 723-726 |
 | permissionsSetMember (862) | PUT /api/permissions/:guildId/members/:discordId `{level}` | ✓ 727-730 |
@@ -203,7 +204,8 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 - **ServerSettingsModal.js + useServerSettings.js**: 모듈 `settings.fields` 스키마로 필드를 렌더링하고(`instanceUpdateSettings`), 버전 선택과 설치(`moduleListVersions`, `moduleInstallServer`, `instanceGetInstalledVersion`), 서버 리셋(`instanceResetServer`)을 제공한다. 인스턴스별 bot alias와 권한 편집도 여기서 하는데, bot-config을 직접 load/save한다(515-592).
 - **CommandModal.js**: 모듈 `commands.fields` 기반 명령 힌트, 자동완성, 입력 폼. `executeCommand`(82)로 실행한다.
 - **SettingsModal.js**: 탭은 `general / appearance / advanced`이다. 버전과 컴포넌트 정보(`getComponentInfo`), 언어, 테마, IPC 포트, 언인스톨(`launchUninstaller`)이 있고, SabaStorage로 들어가는 진입점이 있다. `openSettings('extensions')`는 SabaStorage 익스텐션 탭을 연다(`initialTab`). 익스텐션 켜기·끄기와 전역 설정은 설정에 두지 않고 SabaStorage에서만 한다.
-- **작업 기록 페이지**: 상단 탭 `activity`(`AppBar.js` `APP_PAGES`, `auditList`가 있을 때만)가 모든 서버의 감사 로그(`AuditLog`, `auditList`)를 보인다. 서버별 기록은 서버 상세의 기록 탭이다.
+- **작업 기록 페이지**: 상단 탭 `activity`(`AppBar.js` `APP_PAGES`, `auditList`가 있을 때만)가 모든 서버의 감사 로그(`AuditLog`, `auditList`)를 보인다. 서버별 기록은 서버 상세의 기록 탭이다. 머리(새로고침·내보내기·기간)와 더 보기는 제자리에 있고 목록(`.audit-scroll`)만 스크롤한다. 기간은 전체·오늘·최근 7일·30일·직접 고르기(이 PC 시간대 날짜, 끝 날짜는 그날 끝까지, `auditRange`)이고, 내보내기(`auditExport`)는 보고 있는 기간·서버 그대로 쓴다.
+- **사바 스토리지 목록 순서**: 컴포넌트는 사바 코어·GUI·CLI·업데이터·인스톨러 순(`parseComponents`), 모듈·익스텐션은 이름순이다. 처음 불러오는 동안에는 빈 화면 그림을 보이지 않는다.
 - **SabaStorage.js**(구 업데이트 센터, 1197줄): 탭은 `components / modules / extensions`(53-70)이다.
   - components 탭: updater check/download/progress/apply/launchApply.
   - modules 탭: 설치된 모듈과 `saba-chan-modules` 레지스트리(`moduleManifest`, `moduleInstallFromManifest`, `moduleRemove`). 맨 아래 `ModuleMakerCard`("직접 만들기")는 `makerInfo`가 준 저장소로 에이전트별 설치 줄과 첫 부탁을 보여 준다. 서버 추가 창의 게임 고르기에도 같은 카드가 있다.
@@ -288,7 +290,7 @@ PC 주인이 폰 브라우저로 서버·인스턴스를 관리하는 원격 화
 - `bot lang GUILD [auto|코드]`,
  `bot sleep GUILD`, `bot wake GUILD`, `bot music GUILD [--on|--off] [--ui on|off] [--queue-lines N] [--refresh MS] [--normalize on|off]`: 디스코드 길드 설정(I2) `GET/PATCH /api/discord/:guild/settings`. 값이 없으면 보기만 한다. 봇에 닿지 않아 `sync.ok:false`면 다음 연결 때 보낸다고 알린다.
 - `server launch-preview [SERVER] [--args "..."]`: `POST /api/instance/:id/launch-preview`의 `command_line`을 보여 주고, 형식이 틀린 인자는 "잘못된 형식입니다"로 알린다. `--args`가 없으면 저장된 추가 인자로 본다.
-- `audit [SERVER] [--limit N] [-f]`(A10, 별명 `activity`): `GET /api/audit`를 표로 보여 준다. `-f`는 목록을 읽기 전에 `GET /api/events`에 붙고, 이어서 `action.run`을 한 줄씩 따라간다(서버를 주면 그 서버 것만, `--json`이면 data 한 줄씩). 끊기면 2초 뒤 마지막 번호로 다시 붙는다. CLI 요청에는 `X-Saba-Client: cli`가 붙는다.
+- `audit [SERVER] [--limit N] [--since DATE] [--until DATE] [--export FILE] [-f]`(A10, 별명 `activity`): `GET /api/audit`를 표로 보여 준다. 날짜는 `YYYY-MM-DD`·`today`·`7d`(오늘 포함 7일)이고 이 PC 시간대로 읽으며 `--until`은 그날 끝까지다. `--export`는 표 대신 그 기간의 기록을 모두 `POST /api/audit/export`로 CSV에 쓴다(경로는 `config export`와 같은 규칙, `-f`와 함께 쓸 수 없다). `-f`는 목록을 읽기 전에 `GET /api/events`에 붙고, 이어서 `action.run`을 한 줄씩 따라간다(서버를 주면 그 서버 것만, `--json`이면 data 한 줄씩). 끊기면 2초 뒤 마지막 번호로 다시 붙는다. CLI 요청에는 `X-Saba-Client: cli`가 붙는다.
 - `events [--kind EVENT…] [--server S] [--since ID]`: `GET /api/events`를 한 줄씩 흘려보낸다(`--json`이면 `{id, event, data}` 한 줄씩, NDJSON). `--kind instance`는 `instance.exit` 같은 아래 이벤트도 받는다. 서버를 주면 `data.instanceId`를 id와, `instanceId`가 없는 `provision.progress`는 `instance`(인스턴스 이름)를 이름과 비교해 거른다. `resync`는 거르지 않는다(받은 쪽이 목록을 다시 읽는다). 끊기면 2초 뒤 마지막 번호로 다시 붙는다.
 - `do [ACTION] [--server S] [--plan] [KEY=VALUE…]`(P2): 액션 카탈로그. 액션 없이 부르면 `GET /api/actions?surface=cli` 표. 있으면 `plan`을 부르고, `needsConfirm`이면 요약을 보이고 묻은 뒤 `planId`로 `run`한다. `--plan`은 요약만. 값이 JSON으로 읽히면(숫자·참거짓·배열·객체) 그대로 보낸다.
 - `config set KEY=VALUE…`(앱 칸)·`bot config KEY=VALUE…`: 고친 경로만 담은 merge patch(빈 값은 `null`로 지우기)를 읽은 때의 `revision`과 함께 `PATCH /api/config/gui`·`PATCH /api/config/bot`으로 보낸다(`cmd/mod.rs` `config_patch`). 같은 최상위 키 아래 다른 값(다른 길드의 `nodeSettings` 등)을 읽은 때의 값으로 덮지 않고, 그사이 바뀌었으면 409 `settings_changed`로 끝난다. `cli.` 칸은 그대로 `PUT /api/config/client/cli`. 목록 출력에서 `revision`은 뺀다
