@@ -1,6 +1,9 @@
 //! 접속자 수 (Q-5). 모듈이 `[status] players`로 lifecycle 함수를 선언하면 데몬이 켜진 서버마다
 //! 주기적으로 불러 마지막 값을 기억한다. 서버 목록(`ServerInfo.players`)과 relay 하트비트가 이 값을 읽는다.
 //! 함수는 `{"success": true, "online": <정수>, "max": <정수>?}`를 돌려준다 (02-modules §2.3)
+//!
+//! 모듈이 수를 주지 않으면(함수가 없거나 `online` 없이 답함) 접속·퇴장 문구로 센 수(`player_events`)를 쓴다.
+//! 그 수는 데몬이 콘솔을 처음부터 읽은 프로세스에서만 세고, 프로세스가 끝나면 지운다
 
 use serde::{Deserialize, Serialize};
 use futures_util::StreamExt;
@@ -29,9 +32,61 @@ fn counts() -> &'static Mutex<HashMap<String, PlayerCount>> {
     COUNTS.get_or_init(Default::default)
 }
 
-/// 인스턴스의 마지막 접속자 수. 꺼져 있거나 모듈이 알려 주지 않으면 None
+/// 인스턴스의 마지막 접속자 수. 모듈이 알려 준 수가 먼저고, 없으면 접속·퇴장 문구로 센 수. 둘 다 없으면 None
 pub fn get(instance_id: &str) -> Option<PlayerCount> {
-    counts().lock().unwrap_or_else(|e| e.into_inner()).get(instance_id).copied()
+    if let Some(count) = counts().lock().unwrap_or_else(|e| e.into_inner()).get(instance_id).copied() {
+        return Some(count);
+    }
+    // 모듈 함수가 실패한 동안에는 세지 않은 것처럼 비운다(두 출처 사이를 오가지 않게)
+    let max = *fallbacks().lock().unwrap_or_else(|e| e.into_inner()).get(instance_id)?;
+    let online = rosters().lock().unwrap_or_else(|e| e.into_inner()).get(instance_id).map(|r| u32::try_from(r.names.len()).unwrap_or(u32::MAX))?;
+    Some(PlayerCount { online, max })
+}
+
+/// 접속·퇴장 문구로 센 접속자 이름. 같은 이름이 다시 들어오면 하나로 본다(퇴장 줄을 놓쳐도 다시 들어오면 바로잡힌다).
+/// `generation`은 그 프로세스를 지켜보는 쪽 표시다
+struct Roster {
+    generation: u64,
+    names: std::collections::HashSet<String>,
+}
+
+fn rosters() -> &'static Mutex<HashMap<String, Roster>> {
+    static ROSTERS: OnceLock<Mutex<HashMap<String, Roster>>> = OnceLock::new();
+    ROSTERS.get_or_init(Default::default)
+}
+
+/// 센 수를 써도 되는 인스턴스와 붙일 최대 인원: 모듈에 접속자 함수가 없거나(None), 함수가 수 없이 답했다
+/// (`{"success": true, "max": 8}` → Some(8)). 함수가 실패하면 빠진다. 락은 한 번에 하나만 잡는다
+fn fallbacks() -> &'static Mutex<HashMap<String, Option<u32>>> {
+    static FALLBACKS: OnceLock<Mutex<HashMap<String, Option<u32>>>> = OnceLock::new();
+    FALLBACKS.get_or_init(Default::default)
+}
+
+/// 새 프로세스의 콘솔을 처음부터 보기 시작한다: 0명에서 센다. 돌려준 값을 `roster_change`·`roster_end`에 넘긴다
+pub fn roster_start(instance_id: &str) -> u64 {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    let generation = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    rosters().lock().unwrap_or_else(|e| e.into_inner()).insert(instance_id.to_string(), Roster { generation, names: Default::default() });
+    generation
+}
+
+/// 접속(`joined`)·퇴장 한 줄. 모르는 이름의 퇴장은 무시한다. 다른 프로세스의 것이면 무시한다
+pub fn roster_change(instance_id: &str, generation: u64, name: &str, joined: bool) {
+    let mut map = rosters().lock().unwrap_or_else(|e| e.into_inner());
+    let Some(roster) = map.get_mut(instance_id).filter(|r| r.generation == generation) else { return };
+    if joined {
+        roster.names.insert(name.to_string());
+    } else {
+        roster.names.remove(name);
+    }
+}
+
+/// 프로세스가 끝났다. 그 사이 새 프로세스가 세기 시작했으면 그대로 둔다
+pub fn roster_end(instance_id: &str, generation: u64) {
+    let mut map = rosters().lock().unwrap_or_else(|e| e.into_inner());
+    if map.get(instance_id).is_some_and(|r| r.generation == generation) {
+        map.remove(instance_id);
+    }
 }
 
 fn set(instance_id: &str, count: Option<PlayerCount>) {
@@ -98,8 +153,12 @@ pub fn parse(result: &Value) -> Option<PlayerCount> {
     }
     let int = |key: &str| result.get(key).and_then(Value::as_u64).and_then(|n| u32::try_from(n).ok());
     let online = int("online")?;
-    let max = int("max").filter(|m| *m > 0);
-    Some(PlayerCount { online, max })
+    Some(PlayerCount { online, max: max_of(result) })
+}
+
+/// 답의 `max`. 0이거나 정수가 아니면 모른다
+fn max_of(result: &Value) -> Option<u32> {
+    result.get("max").and_then(Value::as_u64).and_then(|n| u32::try_from(n).ok()).filter(|m| *m > 0)
 }
 
 /// 켜진 서버 중 모듈이 접속자 함수를 선언한 것만 묻고, 나머지는 기억을 지운다
@@ -124,6 +183,7 @@ pub async fn refresh(sup: &tokio::sync::RwLock<Supervisor>) {
     for id in idle {
         set(&id, None);
         forget(&id);
+        fallbacks().lock().unwrap_or_else(|e| e.into_inner()).insert(id, None);
     }
     static START: Mutex<usize> = Mutex::new(0);
     calls.sort_by(|a, b| a.0.cmp(&b.0));
@@ -155,6 +215,13 @@ fn apply_refresh(id: &str, pid: Option<u32>, result: anyhow::Result<Option<Value
         tracing::debug!("player count for {} failed: {}", id, e);
     }
     set(id, result.as_ref().ok().and_then(parse));
+    {
+        let mut fallbacks = fallbacks().lock().unwrap_or_else(|e| e.into_inner());
+        match result.as_ref() {
+            Ok(value) if answered_without_count(value) => fallbacks.insert(id.to_string(), max_of(value)),
+            _ => fallbacks.remove(id),
+        };
+    }
     record(id, pid, result.as_ref().map_err(|e| e.to_string()), now);
 }
 
@@ -162,6 +229,59 @@ fn apply_refresh(id: &str, pid: Option<u32>, result: anyhow::Result<Option<Value
 mod tests {
     use super::*;
     use serde_json::json;
+
+    // 테라리아처럼 조회 API가 없는 게임: 콘솔 접속·퇴장 문구로 센 수를 쓴다
+    #[test]
+    fn join_and_leave_lines_count_players_when_the_module_gives_no_count() {
+        let id = "roster-count-test";
+        assert_eq!(get(id), None);
+        let generation = roster_start(id);
+        assert_eq!(get(id), None, "not used until the module is known to give no count");
+        fallbacks().lock().unwrap().insert(id.to_string(), None);
+        assert_eq!(get(id), Some(PlayerCount { online: 0, max: None }));
+        roster_change(id, generation, "Bob", true);
+        roster_change(id, generation, "사바쨩", true);
+        roster_change(id, generation, "Ghost", false);
+        assert_eq!(get(id), Some(PlayerCount { online: 2, max: None }));
+        roster_change(id, generation, "Bob", true);
+        assert_eq!(get(id).unwrap().online, 2, "a rejoin after a missed leave is one player");
+        roster_change(id, generation, "Bob", false);
+        roster_change(id, generation, "Bob", false);
+        assert_eq!(get(id).unwrap().online, 1, "a second leave does not go below zero");
+
+        // 모듈이 수 없이 최대 인원만 알려 주면 그 값을 붙인다
+        apply_refresh(id, Some(1), Ok(Some(json!({ "success": true, "max": 8 }))), std::time::Instant::now());
+        assert_eq!(get(id), Some(PlayerCount { online: 1, max: Some(8) }));
+        // 모듈이 준 수가 먼저다
+        apply_refresh(id, Some(1), Ok(Some(json!({ "success": true, "online": 5, "max": 8 }))), std::time::Instant::now());
+        assert_eq!(get(id), Some(PlayerCount { online: 5, max: Some(8) }));
+        // 모듈 함수가 실패하면 센 수로 바꿔 보이지 않는다
+        apply_refresh(id, Some(1), Err(anyhow::anyhow!("timeout")), std::time::Instant::now());
+        assert_eq!(get(id), None);
+        apply_refresh(id, Some(1), Ok(Some(json!({ "success": true }))), std::time::Instant::now());
+        assert_eq!(get(id), Some(PlayerCount { online: 1, max: None }));
+
+        roster_end(id, generation);
+        assert_eq!(get(id), None, "a stopped server has no count");
+        forget(id);
+        fallbacks().lock().unwrap().remove(id);
+    }
+
+    #[test]
+    fn a_restart_starts_from_zero_and_the_old_watch_cannot_touch_it() {
+        let id = "roster-restart-test";
+        fallbacks().lock().unwrap().insert(id.to_string(), None);
+        let old = roster_start(id);
+        roster_change(id, old, "Bob", true);
+        let new = roster_start(id);
+        assert_eq!(get(id).unwrap().online, 0);
+        roster_change(id, old, "Alex", true);
+        roster_end(id, old);
+        assert_eq!(get(id), Some(PlayerCount { online: 0, max: None }));
+        roster_end(id, new);
+        assert_eq!(get(id), None);
+        fallbacks().lock().unwrap().remove(id);
+    }
 
     #[test]
     fn each_refresh_rotates_the_first_instance() {
