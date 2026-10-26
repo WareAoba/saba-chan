@@ -530,8 +530,29 @@
     gap: var(--sp-4);
     min-height: 100%;
 }
-.server-detail.fill-pane {
-    height: 100%;
+/* 서버 상세: 칸 → 감싸개 → 상세를 세로 flex로 이어, 기록 탭은 칸 높이에 맞춰 목록만 스크롤한다.
+   다른 탭은 줄지 않고(flex-shrink 0) 칸이 스크롤한다 */
+.server-detail-flex {
+    display: flex;
+    flex-direction: column;
+}
+.server-detail-flex > * {
+    flex: none;
+}
+.server-detail-flex > .server-detail-host {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+}
+.server-detail-host > .server-detail {
+    flex: 1 0 auto;
+    width: 100%;
+}
+.server-detail-host > .server-detail.fill-pane {
+    flex: 1 1 0;
+}
+.server-detail.fill-pane > .detail-body {
+    min-height: auto;
 }
 .detail-head {
     display: flex;
@@ -2842,12 +2863,13 @@ button.appbar-preflight {
 /* 머리·기간·더 보기는 제자리에 두고 목록만 스크롤한다 */
 .audit-card {
     flex: 1;
-    min-height: 0;
 }
+/* 크기 격리: 목록 길이가 바깥 칸의 최소 높이로 번지지 않게 한다. 칸이 아주 작으면 이 높이까지만 줄고 바깥이 스크롤한다 */
 .audit-scroll {
     flex: 1;
     min-height: calc(var(--sp-6) * 5);
     overflow-y: auto;
+    contain: size;
 }
 .audit-period {
     display: flex;
