@@ -26,6 +26,17 @@ fn pending() -> &'static Mutex<HashMap<String, u64>> {
     PENDING.get_or_init(Default::default)
 }
 
+/// 이번 실행에서 준비 문구가 찍힌 인스턴스. 종료 판정(`take_ready`)이 가져가며 지운다
+fn seen() -> &'static Mutex<std::collections::HashSet<String>> {
+    static SEEN: OnceLock<Mutex<std::collections::HashSet<String>>> = OnceLock::new();
+    SEEN.get_or_init(Default::default)
+}
+
+/// 이번 실행에서 준비 문구가 찍혔는가. 한 번 읽으면 지운다 (다음 실행은 새로 센다)
+pub fn take_ready(instance_id: &str) -> bool {
+    seen().lock().unwrap_or_else(|e| e.into_inner()).remove(instance_id)
+}
+
 fn next_token() -> u64 {
     static NEXT: AtomicU64 = AtomicU64::new(1);
     NEXT.fetch_add(1, Ordering::Relaxed)
@@ -81,6 +92,8 @@ pub fn after_start(instance_id: &str, instance: &str, result: &anyhow::Result<Va
         return emit(instance_id, instance, managed.then_some("start_failed"));
     };
     let token = next_token();
+    // 판정을 거치지 않고 끝난 지난 실행의 표시는 이번 실행의 것이 아니다
+    seen().lock().unwrap_or_else(|e| e.into_inner()).remove(instance_id);
     pending().lock().unwrap_or_else(|e| e.into_inner()).insert(instance_id.to_string(), token);
     let (id, name) = (instance_id.to_string(), instance.to_string());
     tokio::spawn(async move { watch(id, name, token, proc, regexes, timeout).await });
@@ -102,6 +115,7 @@ async fn watch(id: String, name: String, token: u64, proc: Arc<ManagedProcess>, 
         for line in proc.get_console_since(next_line).await {
             next_line = line.id + 1;
             if line.source != LogSource::System && patterns.iter().any(|p| p.is_match(&line.content)) {
+                seen().lock().unwrap_or_else(|e| e.into_inner()).insert(id.clone());
                 finish(&id, &name, Some(token), None);
                 return;
             }

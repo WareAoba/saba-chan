@@ -1610,6 +1610,21 @@ pub async fn server_update_status(state: &IPCServer, id: &str) -> Option<Value> 
     let supervisor = state.supervisor.read().await;
     let instance = supervisor.instance_store.get(id)?.clone();
 
+    // 모듈에서 install config 가져오기 (install_subdir, app_id 등)
+    let install_config = supervisor
+        .module_loader
+        .get_module(&instance.module_name)
+        .ok()
+        .and_then(|m| m.metadata.install.clone());
+
+    // 다운로드·수동 설치 서버는 사바쨩이 업데이트를 확인하지 않는다 (적용 `begin_server_update`과 같은 조건)
+    if !install_config.as_ref().is_some_and(|cfg| installed_by_extension(&instance, &cfg.method)) {
+        return Some(json!({
+            "update_available": false,
+            "reason": "update_unsupported",
+        }));
+    }
+
     // extension_data 가 비어 있으면 hook 이 동작하지 않으므로 조기 반환
     if instance.extension_data.is_empty() {
         return Some(json!({
@@ -1619,13 +1634,6 @@ pub async fn server_update_status(state: &IPCServer, id: &str) -> Option<Value> 
     }
 
     let instance_dir = supervisor.instance_store.instance_dir(id);
-
-    // 모듈에서 install config 가져오기 (install_subdir, app_id 등)
-    let install_config = supervisor
-        .module_loader
-        .get_module(&instance.module_name)
-        .ok()
-        .and_then(|m| m.metadata.install.clone());
 
     let install_dir = install_dir_of(&instance, &instance_dir, install_config.as_ref());
     let install_dir_str = install_dir.to_string_lossy().to_string();
@@ -1666,6 +1674,11 @@ pub async fn server_update_status(state: &IPCServer, id: &str) -> Option<Value> 
         "update_available": false,
         "reason": "no_hook_handled",
     }))
+}
+
+/// 설치 방식 익스텐션(`install_method_<방식>`)으로 설치한 인스턴스인가. 이런 서버만 사바쨩이 업데이트를 확인·적용한다
+fn installed_by_extension(instance: &crate::instance::ServerInstance, method: &str) -> bool {
+    !crate::instance::BUILTIN_INSTALL_METHODS.contains(&method) && instance.ext_enabled(&crate::instance::install_method_key(method))
 }
 
 /// POST /api/instance/:id/apply-update - 게임 서버 업데이트 적용
@@ -1748,9 +1761,7 @@ pub async fn begin_server_update(state: &IPCServer, id: &str) -> Result<tokio::t
 
     // 익스텐션이 설치한 인스턴스만 이 경로로 업데이트한다 (설치 방식 슬롯)
     let method = install_config.method.clone();
-    let by_extension = !crate::instance::BUILTIN_INSTALL_METHODS.contains(&method.as_str())
-        && instance.ext_enabled(&crate::instance::install_method_key(&method));
-    if !by_extension {
+    if !installed_by_extension(&instance, &method) {
         return Err((
             StatusCode::BAD_REQUEST,
             Json(json!({
@@ -3172,5 +3183,40 @@ mod tests {
         assert!(memory_limit_from(&json!("4T")).is_err());
         assert!(memory_limit_from(&json!("B")).is_err());
         assert!(memory_limit_from(&json!(true)).is_err());
+    }
+
+    /// 다운로드·수동 설치 서버는 사바쨩이 업데이트를 확인하지 않는다: "설치 방법 기록이 없다"가 아니라 그렇다고 답한다
+    /// (테라리아 점검). 설치 방식 익스텐션으로 설치한 서버만 hook으로 확인한다
+    #[tokio::test]
+    async fn only_servers_installed_by_an_extension_check_for_updates() {
+        use std::sync::Arc;
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        for (name, method) in [("dl", "download"), ("sc", "steamcmd")] {
+            let dir = modules.join(name);
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join("module.toml"), format!("[module]\nschema_version = 1\nname = '{name}'\nversion = '1.0.0'\nentry = 'lifecycle.py'\n\n[install]\nmethod = '{method}'\n")).unwrap();
+            std::fs::write(dir.join("lifecycle.py"), "").unwrap();
+        }
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let state = crate::ipc::IPCServer::new(Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let add = |name: &str, module: &str, by_extension: bool| {
+            let mut inst = crate::instance::ServerInstance::new(name, module);
+            if by_extension {
+                inst.apply_install_extension_data("steamcmd", &[]);
+            }
+            let id = inst.id.clone();
+            state.supervisor.try_write().unwrap().instance_store.add(inst).unwrap();
+            id
+        };
+        let (terra, imported, steam) = (add("terra", "dl", false), add("imported", "sc", false), add("pal", "sc", true));
+        let reason = |id: String| {
+            let state = state.clone();
+            async move { super::server_update_status(&state, &id).await.unwrap()["reason"].clone() }
+        };
+        assert_eq!(reason(terra).await, json!("update_unsupported"));
+        assert_eq!(reason(imported).await, json!("update_unsupported"), "not installed through the extension");
+        assert_eq!(reason(steam).await, json!("no_hook_handled"), "no steamcmd extension in this test");
     }
 }

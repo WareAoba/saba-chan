@@ -1687,6 +1687,9 @@ async fn update(ctx: &Ctx, query: Option<&str>, check_only: bool) -> Result<()> 
                 say!("{}", t!("server.update_available", name = sv.name));
                 ctx.out
                     .hint(&format!("saba-chan-cli server update {}", shell_word(&sv.name)));
+            } else if s(r, "reason") == "update_unsupported" {
+                // 다운로드·수동 설치 서버: 최신인지 알 수 없다
+                say!("{}", t!("err.hint.update_unsupported"));
             } else {
                 let reason = s(r, "reason");
                 let tail = crate::i18n::try_t(&format!("server.update_reason.{}", reason)).unwrap_or_default();

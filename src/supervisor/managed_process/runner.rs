@@ -111,6 +111,8 @@ pub struct RunnerLaunch<'a> {
     pub memory_limit_mb: Option<u64>,
     /// `[launch] line_start` → `--line-start`
     pub line_start: Option<&'a str>,
+    /// `[extensions.saba-core] progress_patterns` → `--progress`
+    pub progress_patterns: &'a [String],
 }
 
 impl ManagedProcess {
@@ -151,6 +153,9 @@ impl ManagedProcess {
         }
         if let Some(pattern) = launch.line_start {
             cmd.arg("--line-start").arg(pattern);
+        }
+        for pattern in launch.progress_patterns {
+            cmd.arg("--progress").arg(pattern);
         }
         cmd.arg("--")
             .arg(program)
@@ -547,6 +552,30 @@ mod tests {
         .unwrap();
         assert!(wait_for(&proc, "[LOG] shutdown OK").await);
         assert!(wait_for(&proc, "[LOG] save OK").await);
+        let _ = proc.force_kill();
+    }
+
+    /// [extensions.saba-core] progress_patterns: 숫자만 바뀌며 이어지는 진행 줄은 첫 줄과 마지막 줄만 보인다
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn declared_progress_lines_fold_in_the_console() {
+        let Some(runner) = runner_binary() else {
+            eprintln!("SKIP: saba-runner binary not built (cargo build -p saba-runner)");
+            return;
+        };
+        let tmp = tempfile::tempdir().unwrap();
+        let inst = tmp.path();
+        let script = "for p in 1 2 3 4 5; do echo \"Saving $p%\"; done; echo saved; sleep 5".to_string();
+        let progress = vec![r"^Saving \d+%$".to_string()];
+        let proc = ManagedProcess::spawn_with_runner(
+            &runner, "sh", &["-c".into(), script], inst.to_str().unwrap(), Vec::new(), None, inst, 3,
+            RunnerLaunch { progress_patterns: &progress, ..Default::default() },
+        )
+        .await
+        .unwrap();
+        assert!(wait_for(&proc, "saved").await);
+        let lines: Vec<String> = proc.get_console_since(0).await.into_iter().filter(|l| l.source != LogSource::System).map(|l| l.content).collect();
+        assert_eq!(lines, ["Saving 1%", "Saving 5%", "saved"]);
         let _ = proc.force_kill();
     }
 

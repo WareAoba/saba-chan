@@ -18,7 +18,7 @@ required-features = ["bin"]
 # 데몬은 프로토콜(lib)만 쓴다: `default-features = false`
 [features]
 default = ["bin"]
-bin = ["dep:portable-pty", "dep:strip-ansi-escapes", "dep:windows-sys", "dep:regex"]
+bin = ["dep:portable-pty", "dep:unicode-width", "dep:windows-sys", "dep:regex"]
 
 [build-dependencies]
 # exe 아이콘·버전 정보 (Windows에서만 동작)
@@ -30,7 +30,8 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 # --console pty: Windows ConPTY / unix pty
 portable-pty = { version = "0.9", optional = true }
-strip-ansi-escapes = { version = "0.2", optional = true }
+# 의사 콘솔 줄을 화면 모양으로 옮길 때 넓은 글자(한자·한글)는 두 칸 (`screen.rs`)
+unicode-width = { version = "0.2", optional = true }
 # --line-start: 데몬(module.toml 검증)과 같은 정규식 문법
 regex = { version = "1", optional = true }
 

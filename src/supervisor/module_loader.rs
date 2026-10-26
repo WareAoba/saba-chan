@@ -124,6 +124,9 @@ pub struct ModuleMetadata {
     /// [extensions.saba-core] ready_patterns — 서버가 접속을 받기 시작할 때 콘솔에 찍히는 문구 (정규식). R39 `instance.ready`용
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub ready_patterns: Vec<String>,
+    /// [extensions.saba-core] progress_patterns — 갱신마다 새 줄로 찍히는 진행 표시 (정규식). 러너가 단계마다 첫·마지막 줄로 접는다
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub progress_patterns: Vec<String>,
     /// [extensions.saba-core] ready_timeout — 준비 문구를 기다리는 시간(초). 없으면 600
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ready_timeout: Option<u64>,
@@ -690,7 +693,7 @@ pub struct UnmetCoreDependency {
 //
 // 이 구조체들이 module.toml 계약 그 자체다. 키를 더하거나 빼면 `module_json_schema()`가
 // 내보내는 JSON Schema(saba-chan-modules/schema/module.schema.json)도 같이 바뀐다.
-// 모르는 키: schema_version = 1 이면 로드 거부, 없으면(스키마 이전 모듈) 경고만 남긴다.
+// 모르는 키: 로드는 하고 경고만 남긴다 (JSON Schema는 모듈을 쓰는 쪽을 위해 모르는 키를 막는다).
 
 /// 이 데몬이 아는 가장 새 module.toml 스키마 버전. 1과 2를 받는다 (2는 1에 06 §8의 설정 타입·키를 더한 것)
 pub const MODULE_SCHEMA_VERSION: u32 = 2;
@@ -1379,6 +1382,7 @@ impl ModuleToml {
                 .map(|d| d.crash_artifacts)
                 .unwrap_or_default(),
             ready_patterns: Vec::new(),
+            progress_patterns: Vec::new(),
             ready_timeout: None,
             player_join_patterns: Vec::new(),
             player_leave_patterns: Vec::new(),
@@ -1413,8 +1417,9 @@ impl ModuleToml {
 /// TOML 문자열에서 ModuleMetadata를 파싱합니다.
 ///
 /// - `schema_version`이 이 데몬보다 새로우면 거부한다 (모듈을 먼저 업데이트한 경우).
-/// - `schema_version = 1`이면 모르는 키와 잘못된 값을 오류로 낸다 (오타가 조용히 사라지지 않게).
-/// - `schema_version`이 없으면 스키마 이전 모듈로 보고 같은 문제를 `warnings`에만 남긴다.
+/// - `schema_version = 1`이면 잘못된 값을 오류로 낸다. 모르는 키는 `warnings`에 남기고 무시한다
+///   (더 새 데몬의 키를 쓴 모듈도 읽게. `module validate`가 경고로 보여 준다).
+/// - `schema_version`이 없으면 스키마 이전 모듈로 보고 잘못된 값도 `warnings`에만 남긴다.
 pub(crate) fn parse_module_toml(content: &str) -> Result<ModuleMetadata> {
     let content = content.trim_start_matches('\u{feff}');
     let mut unknown = Vec::new();
@@ -1433,8 +1438,9 @@ pub(crate) fn parse_module_toml(content: &str) -> Result<ModuleMetadata> {
         }
     })?;
 
-    let mut problems: Vec<String> = unknown.into_iter().map(|k| format!("unknown key '{}'", k)).collect();
-    problems.extend(toml_data.value_problems());
+    // 모르는 키(더 새 데몬의 키나 오타)는 거부하지 않고 경고만 남긴다. 꼭 필요한 기능은 `saba-core` 버전 조건으로 막는다
+    let unknown: Vec<String> = unknown.into_iter().map(|k| format!("unknown key '{}' (ignored)", k)).collect();
+    let mut problems: Vec<String> = toml_data.value_problems();
 
     let mut meta = toml_data.into_metadata();
     let daemon_warnings = read_daemon_table(&mut meta);
@@ -1490,9 +1496,10 @@ pub(crate) fn parse_module_toml(content: &str) -> Result<ModuleMetadata> {
     for f in meta.settings.iter().flat_map(|s| &s.fields).filter(|f| RESERVED_CALL_KEYS.contains(&f.name.as_str())) {
         meta.warnings.push(format!("settings field '{}' is a name saba-chan sets on each call; its value is not passed to the module", f.name));
     }
-    for w in &daemon_warnings {
+    for w in unknown.iter().chain(&daemon_warnings) {
         tracing::warn!("module '{}': {}", meta.name, w);
     }
+    meta.warnings.extend(unknown);
     meta.warnings.extend(daemon_warnings);
     Ok(meta)
 }
@@ -1501,7 +1508,7 @@ pub(crate) fn parse_module_toml(content: &str) -> Result<ModuleMetadata> {
 /// 그래서 이 이름의 익스텐션은 만들 수 없다 (`extension::is_valid_extension_id`)
 pub const DAEMON_TABLE: &str = "saba-core";
 /// 이 데몬이 읽는 `[extensions.saba-core]` 키
-const DAEMON_TABLE_KEYS: &[&str] = &["ready_patterns", "ready_timeout", "player_join_patterns", "player_leave_patterns", "data_roots"];
+const DAEMON_TABLE_KEYS: &[&str] = &["ready_patterns", "ready_timeout", "player_join_patterns", "player_leave_patterns", "data_roots", "progress_patterns"];
 /// `ready_timeout` 상한(초)
 pub const READY_TIMEOUT_MAX_SECS: u64 = 900;
 
@@ -1525,7 +1532,7 @@ fn read_pattern_list(table: &serde_json::Value, key: &str, needs_name: bool, war
     out
 }
 
-/// `[extensions.saba-core]`의 `ready_patterns`·`ready_timeout`(R39), `player_join_patterns`·`player_leave_patterns`(MK8)를 읽는다.
+/// `[extensions.saba-core]`의 `ready_patterns`·`ready_timeout`(R39), `player_join_patterns`·`player_leave_patterns`(MK8), `progress_patterns`를 읽는다.
 /// 틀린 값은 그 값만 빼고 경고로 남긴다
 fn read_daemon_table(meta: &mut ModuleMetadata) -> Vec<String> {
     let Some(table) = meta.extensions.get(DAEMON_TABLE).cloned() else { return Vec::new() };
@@ -1539,6 +1546,7 @@ fn read_daemon_table(meta: &mut ModuleMetadata) -> Vec<String> {
     meta.ready_patterns.extend(read_pattern_list(&table, "ready_patterns", false, &mut warnings));
     meta.player_join_patterns.extend(read_pattern_list(&table, "player_join_patterns", true, &mut warnings));
     meta.player_leave_patterns.extend(read_pattern_list(&table, "player_leave_patterns", true, &mut warnings));
+    meta.progress_patterns.extend(read_pattern_list(&table, "progress_patterns", false, &mut warnings));
     match table.get("data_roots") {
         None => {}
         Some(serde_json::Value::Array(items)) => {
@@ -2602,15 +2610,18 @@ entry = "lifecycle.py"
 
     const V1: &str = "[module]\nschema_version = 1\nname = \"g\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n";
 
+    /// 0.1.11: 더 새 데몬의 키를 쓴 모듈도 예전 데몬이 읽는다. 모르는 키는 경고로 남기고 무시한다
+    /// (꼭 필요한 기능은 `saba-core` 버전 조건으로 막는다)
     #[test]
-    fn schema_v1_rejects_unknown_keys() {
-        let err = parse_module_toml(&format!("{V1}\n[config]\nram = \"4G\"\n")).unwrap_err().to_string();
-        assert!(err.contains("config.ram"), "{err}");
-        let err = parse_module_toml(&format!("{V1}\n[[commands.fields]]\nname = \"kick\"\nrcon_templat = \"kick\"\n"))
-            .unwrap_err()
-            .to_string();
-        assert!(err.contains("rcon_templat"), "{err}");
+    fn schema_v1_ignores_unknown_keys_with_a_warning() {
+        let meta = parse_module_toml(&format!("{V1}\n[config]\nram = \"4G\"\n")).unwrap();
+        assert!(meta.warnings.iter().any(|w| w.contains("config.ram")), "{:?}", meta.warnings);
+        let meta = parse_module_toml(&format!("{V1}\n[[commands.fields]]\nname = \"kick\"\nrcon_templat = \"kick\"\n")).unwrap();
+        assert!(meta.warnings.iter().any(|w| w.contains("rcon_templat")), "{:?}", meta.warnings);
+        assert_eq!(meta.commands.map(|c| c.fields.len()), Some(1));
         assert!(parse_module_toml(V1).unwrap().warnings.is_empty());
+        // 알려진 키의 잘못된 값은 여전히 로드 실패다
+        assert!(parse_module_toml(&format!("{V1}\n[config]\nstop_timeout = \"long\"\n")).is_err());
     }
 
     #[test]
@@ -2775,6 +2786,15 @@ entry = "lifecycle.py"
     }
 
     /// R39: 준비 문구는 `[extensions.saba-core]`에 둔다 (0.1.8 로더가 거부하지 않는 자리). 틀린 값은 그 값만 빼고 경고다
+    /// 테라리아 점검: 갱신마다 새 줄을 쓰는 진행 표시는 모듈이 모양을 선언하면 러너가 단계마다 첫·마지막 줄로 접는다
+    #[test]
+    fn schema_v1_reads_progress_patterns_from_the_daemon_table() {
+        let meta = parse_module_toml(&format!("{V1}\n[extensions.saba-core]\nprogress_patterns = ['^Saving \\d+%$', '(']\n")).unwrap();
+        assert_eq!(meta.progress_patterns, vec!["^Saving \\d+%$".to_string()]);
+        assert!(meta.warnings.iter().any(|w| w.contains("progress_patterns") && w.contains("'('")), "{:?}", meta.warnings);
+        assert!(parse_module_toml(V1).unwrap().progress_patterns.is_empty());
+    }
+
     #[test]
     fn schema_v1_reads_ready_patterns_from_the_daemon_table() {
         let toml = format!("{V1}\n[extensions.saba-core]\nready_patterns = ['Done \\(', '(']\nready_timeout = 120\n");
@@ -2934,8 +2954,9 @@ player_leave_patterns = ['^\[\d{2}:\d{2}:\d{2}(?:\] \[[^\]]*/| )INFO\](?: \[[^\]
             let broken = toml.replacen(bad, why, 1);
             assert!(parse_module_toml(&broken).unwrap_err().to_string().contains("queries"), "{why}");
         }
-        let err = parse_module_toml(&format!("{V1}\n[[queries]]\nname = \"p\"\nfunction = \"f\"\nrisk = \"safe\"\n")).unwrap_err().to_string();
-        assert!(err.contains("risk"), "{err}");
+        // 조회에는 위험도가 없다: 모르는 키로 경고만 남긴다
+        let meta = parse_module_toml(&format!("{V1}\n[[queries]]\nname = \"p\"\nfunction = \"f\"\nrisk = \"safe\"\n")).unwrap();
+        assert!(meta.warnings.iter().any(|w| w.contains("risk")), "{:?}", meta.warnings);
         let legacy = toml.replacen("schema_version = 1\n", "", 1).replacen("function = \"list_players\"", "function = \"reset_server\"", 1);
         assert_ne!(legacy, toml);
         let meta = parse_module_toml(&legacy).unwrap();
@@ -2960,9 +2981,11 @@ player_leave_patterns = ['^\[\d{2}:\d{2}:\d{2}(?:\] \[[^\]]*/| )INFO\](?: \[[^\]
         let toml = format!("{V1}\n[[agreements]]\nid = \"eula\"\nurl = \"https://example.com/eula\"\n");
         let meta = parse_module_toml(&toml).unwrap();
         assert_eq!(meta.agreements, vec![ModuleAgreement { id: "eula".into(), url: "https://example.com/eula".into() }]);
-        for (bad, why) in [("id = \"eula\"", "id = \"EULA\""), ("https://", "http://"), ("url = ", "title = \"x\"\nurl = ")] {
+        for (bad, why) in [("id = \"eula\"", "id = \"EULA\""), ("https://", "http://")] {
             assert!(parse_module_toml(&toml.replacen(bad, why, 1)).is_err(), "{why}");
         }
+        let titled = parse_module_toml(&toml.replacen("url = ", "title = \"x\"\nurl = ", 1)).unwrap();
+        assert!(titled.warnings.iter().any(|w| w.contains("title")), "{:?}", titled.warnings);
         let twice = format!("{toml}\n[[agreements]]\nid = \"eula\"\nurl = \"https://example.com/2\"\n");
         assert!(parse_module_toml(&twice).unwrap_err().to_string().contains("duplicate"));
     }

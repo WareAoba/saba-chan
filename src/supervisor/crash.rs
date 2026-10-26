@@ -7,7 +7,8 @@
 //!    - unix 크래시 시그널 (SIGSEGV, SIGABRT, SIGBUS, SIGFPE, SIGILL)
 //!    - 모듈 `[detection] crash_artifacts`에 맞는 파일이 이번 실행 중에 생겼다
 //! 3. 모듈 `[detection] graceful_exit_patterns`가 콘솔 끝부분에 있다 → `in_game_stop`
-//! 4. 시작하고 `STARTUP_GRACE` 안에 끝났다 (포트 충돌·설정 오류 같은 시작 실패) → `start_failed`. 다시 띄워도 같으므로 재시작하지 않는다
+//! 4. 시작하고 `STARTUP_GRACE` 안에, 준비 문구가 찍히기 전에 끝났다 (포트 충돌·설정 오류 같은 시작 실패) → `start_failed`.
+//!    다시 띄워도 같으므로 재시작하지 않는다. 준비 문구를 선언하지 않은 모듈은 시간만 본다
 //! 5. 종료 코드 0 → `in_game_stop`
 //! 6. 그 밖 (작업 관리자 강제 종료, 창 닫기, 원인 모를 종료) → `unknown_exit`
 //!
@@ -67,6 +68,8 @@ pub struct ExitFacts<'a> {
     pub new_crash_files: &'a [PathBuf],
     /// 시작부터 끝날 때까지 (초)
     pub ran_secs: u64,
+    /// 모듈이 선언한 준비 문구(`ready_patterns`)가 찍혔는가. 선언이 없거나 알 수 없으면 None
+    pub ready: Option<bool>,
 }
 
 pub fn classify(f: &ExitFacts) -> ExitVerdict {
@@ -97,7 +100,7 @@ pub fn classify(f: &ExitFacts) -> ExitVerdict {
             return verdict(ExitKind::InGameStop, format!("console: {}", line.trim()));
         }
     }
-    if f.ran_secs < STARTUP_GRACE.as_secs() {
+    if f.ran_secs < STARTUP_GRACE.as_secs() && f.ready != Some(true) {
         let last = f.console_tail.iter().rev().map(|l| l.trim()).find(|l| !l.is_empty());
         let evidence = match last {
             Some(line) => format!("ended {}s after start: {}", f.ran_secs, line),
@@ -178,6 +181,7 @@ mod tests {
             graceful_patterns: PATTERNS.get_or_init(|| vec!["Stopping the server".into()]),
             new_crash_files: files,
             ran_secs: 600,
+            ready: None,
         }
     }
 
@@ -218,6 +222,13 @@ mod tests {
         assert_eq!(k(early(code(0xC000_0005u32 as i32), &bind)), ExitKind::Crash, "crash evidence still wins");
         assert_eq!(k(early(code(0), &stopped)), ExitKind::InGameStop, "an in-game stop right after start is still a stop");
         assert!(!wants_restart(ExitKind::StartFailed, true, true), "restarting would fail the same way");
+
+        // 준비 문구가 찍힌 뒤에 끝났으면 시작은 성공했다: 테라리아 exit-nosave(코드 0)는 정지, 강제 종료는 원인 모를 종료
+        let started = |exit| ExitFacts { ready: Some(true), ..early(exit, &none) };
+        assert_eq!(k(started(code(0))), ExitKind::InGameStop, "exit-nosave right after the ready line");
+        assert_eq!(k(started(code(1))), ExitKind::UnknownExit, "a kill right after the ready line");
+        let waiting = |exit| ExitFacts { ready: Some(false), ..early(exit, &none) };
+        assert_eq!(k(waiting(code(0))), ExitKind::StartFailed, "ended before the ready line");
     }
 
     #[test]

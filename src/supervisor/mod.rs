@@ -2101,6 +2101,7 @@ impl Supervisor {
                         console: module.metadata.console,
                         memory_limit_mb: instance.memory_limit_mb,
                         line_start: module.metadata.line_start.as_deref(),
+                        progress_patterns: &module.metadata.progress_patterns,
                     },
                 ).await;
                 // 시작 중 상한에 걸린 것도 종료 이력에 시작 실패로 남긴다
@@ -2923,10 +2924,11 @@ impl Supervisor {
         let Some(instance) = self.instance_store.get(instance_id).cloned() else { return };
         // 준비되기 전에 끝났으면 그 시작의 준비 알림을 닫는다 (R39)
         ready::exited(instance_id, &instance.name, stop_requested);
-        let (graceful, artifacts) = self
+        let became_ready = ready::take_ready(instance_id);
+        let (graceful, artifacts, declares_ready) = self
             .module_loader
             .get_module(&instance.module_name)
-            .map(|m| (m.metadata.graceful_exit_patterns.clone(), m.metadata.crash_artifacts.clone()))
+            .map(|m| (m.metadata.graceful_exit_patterns.clone(), m.metadata.crash_artifacts.clone(), !m.metadata.ready_patterns.is_empty()))
             .unwrap_or_default();
         let tail: Vec<String> = proc
             .get_recent_console(crash::CONSOLE_TAIL_LINES)
@@ -2947,6 +2949,7 @@ impl Supervisor {
             graceful_patterns: &graceful,
             new_crash_files: &crash_files,
             ran_secs: if proc.reattached { u64::MAX } else { saba_runner::now().saturating_sub(proc.started_at) },
+            ready: declares_ready.then_some(became_ready),
         });
 
         let auto_restart = setting_flag(&instance, "auto_restart", true);
@@ -3458,9 +3461,14 @@ mod tests {
         let ready = ready_event(&mut sub, "r-ready").await;
         assert_eq!((ready["ok"].clone(), ready["instance"].clone(), ready.get("code").cloned()), (json!(true), json!("r-ready"), None));
 
+        // 종료 판정이 준비 뒤의 종료를 시작 실패로 보지 않게 남긴다 (한 번 읽으면 지운다)
+        assert!(ready::take_ready("r-ready"));
+        assert!(!ready::take_ready("r-ready"));
+
         let code = |e: Value| (e["ok"].clone(), e["code"].clone());
         start("r-dies", "dies").await;
         assert_eq!(code(ready_event(&mut sub, "r-dies").await), (json!(false), json!("start_failed")));
+        assert!(!ready::take_ready("r-dies"));
 
         start("r-slow", "slow").await;
         assert_eq!(code(ready_event(&mut sub, "r-slow").await), (json!(false), json!("ready_timeout")));

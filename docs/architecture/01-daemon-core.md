@@ -273,7 +273,7 @@ PC 주인이 디스코드에서 받은 일회용 링크로 브라우저(사바�
 | POST | `/api/instance/:id/rename` | `instance.rs:878` | `{name}` | `{success, id, name, previous}`. 설치 진행 표시(이름 기준)도 새 이름으로 옮기고, 새 이름에 남아 있던 옛 표시는 버린다. 인스턴스를 지울 때도 그 이름의 표시를 지운다(`ProvisionTracker::forget`) / 409 `name_taken`·`server_running`·`instance_busy`(설치·업데이트·백업·복원 중) / 404 |
 | GET | `/api/provision-progress/:name` | `instance.rs:760` | - | `{active:false}` 또는 `{active:true, step,total,label,message,done,error,percent?,steps?}`. `error`는 모듈이 돌려준 `message`이거나, 스크립트가 비정상 종료·시간 초과면 `provision.script_failed` 문구다(스크립트 출력은 데몬 로그에만) |
 | DELETE | `/api/provision-progress/:name` | `instance.rs:719` | - | `{success, rolled_back}`. **신규 생성**의 프로비저닝이 실패한 상태였을 때만 그 설치를 시작한 인스턴스를 ID로 찾아 삭제한다(그 사이 이름이 바뀌어도 같은 이름의 다른 인스턴스는 지우지 않는다. 다른 작업이 그 인스턴스를 쥐고 있으면 지우지 않는다). 아직 끝나지 않은 설치는 닫지 않는다(`rolled_back:false`, 아무것도 바꾸지 않음). 이름을 바꾸면 진행 표시도 새 이름으로 옮겨 간다 |
-| GET | `/api/instance/:id/check-update` | `instance.rs:1384` | - | 훅 결과 또는 `{update_available:false, reason}` |
+| GET | `/api/instance/:id/check-update` | `instance.rs` `server_update_status` | - | 훅 결과 또는 `{update_available:false, reason}`. `reason`: `update_unsupported`(설치 방식 익스텐션이 설치한 인스턴스가 아님: 다운로드·수동 설치. `apply-update`와 같은 조건 `installed_by_extension`), `no_extension_data`, `no_hook_handled` |
 | POST | `/api/instance/:id/apply-update` | `instance.rs:1481` | - | `{success,id,provisioning:true}`. 409 `server_running`·`instance_busy`(백업·복원·업데이트 중, 업데이트는 끝날 때까지 작업 잠금을 잡는다), 400 `no_install_config`/`update_unsupported`(설치 방식 익스텐션이 설치한 인스턴스가 아님) |
 
 `POST /api/instances` 동작 세부:
@@ -516,7 +516,7 @@ Relay 서명 방식(`relay.rs:115-161`):
 | `backup_keep` | Option<u32> | 자동 백업 보관 개수 (기본 10). 예약·업데이트 전·복원 전 백업을 종류마다 따로 센다. 수동 백업은 지우지 않는다. 원격(디스코드·챗봇) 요청이 만든 백업은 정리를 하지 않는다(원격 복원을 거듭해도 앞서 남긴 안전 백업이 밀려 지워지지 않는다. 넘친 것은 이 PC에서 만드는 다음 백업이 정리한다, D-B11) |
 
 - RCON 필드(`rcon_port`, `rcon_password`)는 없다. 예전 `instance.json`·`settings.json`에 남은 RCON 키는 로드할 때 한 번 지우고 다시 쓴다(`instance/mod.rs:439-468, 483-500`).
-- 시작할 때(`server.rs` `fill_passwords`, 두 시작 경로 공용) `ensure_passwords(generate)`가 비어 있는 REST 비밀번호를 16자 영숫자로 채운다. `generate`는 `GuiSettings.autoGeneratePasswords`(기본 true)다. 꺼져 있으면 비워 두고, 모듈이 게임 설정의 값을 쓰거나 스스로 만들어 `credential_map`으로 데몬에 돌려준다(Palworld는 INI `AdminPassword`가 비면 임의 값을 써 넣는다). 이미 있는 비밀번호는 켜져 있어도 바꾸지 않는다.
+- 시작할 때(`server.rs` `fill_passwords`, 두 시작 경로 공용) 모듈 `[protocols] supported`에 `rest`가 있으면 `ensure_passwords(generate)`가 비어 있는 REST 비밀번호를 16자 영숫자로 채운다. REST를 지원하지 않는 모듈의 서버에는 REST 계정을 만들지 않는다. `generate`는 `GuiSettings.autoGeneratePasswords`(기본 true)다. 꺼져 있으면 비워 두고, 모듈이 게임 설정의 값을 쓰거나 스스로 만들어 `credential_map`으로 데몬에 돌려준다(Palworld는 INI `AdminPassword`가 비면 임의 값을 써 넣는다). 이미 있는 비밀번호는 켜져 있어도 바꾸지 않는다.
 - 비밀번호 생성은 `constants::generate_random_password`가 uuid v4 바이트에 `% 62`를 적용하는 방식이다(`constants.rs:188-201`). 모듈로 편향이 있고, 두 번째 uuid는 계산만 하고 쓰지 않는다.
 
 ### 4.2 영속화 (`InstanceStore`, `instance/mod.rs:238-477`)
@@ -863,7 +863,7 @@ REST 자격증명 조회의 `get_credentials` 재진입은 바깥 호출의 자�
   - 존재하지 않는 인스턴스: `GET /api/instance/:id`와 `POST .../command`가 **404**를 주고 `error` 필드를 포함해야 한다(`:426-462`).
   - 생성한 인스턴스가 `/api/servers`에 나타나야 한다.
   - 삭제한 뒤 GET하면 404여야 한다.
-  - `check-update`: 없는 인스턴스는 404, `extension_data`가 비어 있으면 `update_available:false`.
+  - `check-update`: 없는 인스턴스는 404, 설치 방식 익스텐션이 설치하지 않은 인스턴스는 `reason:"update_unsupported"`, `extension_data`가 비어 있으면 `update_available:false`.
 - 인증은 `tests/api_contract.rs`가 실제 서버로 모든 라우트가 토큰 없이 401인지 확인한다. 단일 인스턴스는 `tests/single_instance.rs`, 릴레이 에이전트 왕복은 `tests/relay_agent_e2e.rs`가 본다.
 
 ## 10. 시스템 모니터 (`system_monitor.rs`)
