@@ -90,7 +90,7 @@ pub(super) fn blocked_ports(ports: &[(u16, Protocol)]) -> Vec<(u16, Protocol)> {
         let Some((enabled, rules)) = windows::read() else { return Vec::new() };
         let Some(exe) = std::env::current_exe().ok().map(|p| p.to_string_lossy().into_owned()) else { return Vec::new() };
         let env = |name: &str| std::env::var(name).ok();
-        return ports.iter().copied().filter(|&(port, protocol)| blocks(enabled, &rules, &exe, port, protocol, &env)).collect();
+        ports.iter().copied().filter(|&(port, protocol)| blocks(enabled, &rules, &exe, port, protocol, &env)).collect()
     }
     #[cfg(not(windows))]
     {
