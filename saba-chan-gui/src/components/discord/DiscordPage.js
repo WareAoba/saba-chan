@@ -335,6 +335,11 @@ export function DiscordPage({
                 return;
             }
         }
+        clearConnection();
+    };
+
+    // 연결이 끊긴 뒤 화면을 비운다 (연결 해제, 또는 개인정보 지우기를 마친 데몬이 끊었을 때)
+    const clearConnection = () => {
         pairing.reset();
         setDiscordCloudHostId('');
         setCloudError('');
@@ -552,6 +557,7 @@ export function DiscordPage({
                                 onCancelPairing={pairing.reset}
                                 onReload={relayConnected ? loadNodes : () => useDiscordStore.getState().checkStatus()}
                                 onDisconnect={disconnect}
+                                onErased={clearConnection}
                                 onStartAgent={handleStartDiscordBot}
                                 nodes={cloudNodes}
                                 onInviteBot={inviteBot}

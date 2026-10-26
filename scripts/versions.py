@@ -5,6 +5,7 @@
   check     어긋난 파일이 있으면 목록을 출력하고 1로 끝난다 (CI)
   manifest  빌드된 에셋 폴더로 릴레이용 릴리즈 manifest(서명 전 JSON)를 만든다.
             서명은 `cargo run -p saba-chan-updater-lib --example release_signing -- sign`.
+  signing   빌드된 exe 폴더를 versions.toml(`exes`)과 SignPath 제약에 대조하고 서명 요청 매개변수를 낸다
   registration  서명된 봉투로 릴레이 `POST /admin/releases` 본문을 만든다.
             `release-notes/<version>.json`({언어: 본문})을 notes로 같이 싣는다(stable은 필수).
 
@@ -24,6 +25,7 @@ import hashlib
 import json
 import io
 import re
+import shutil
 import struct
 import sys
 import tomllib
@@ -369,22 +371,107 @@ def check_exe_versions(key: str, name: str, blob: bytes, version: str) -> None:
         sys.exit(f"{key}: {name} was built as {wrong}, not {version}")
 
 
-def cmd_manifest(data: dict, args: argparse.Namespace) -> int:
-    """에셋 폴더에서 각 컴포넌트의 `asset` 파일을 찾아 manifest를 만든다. 없는 컴포넌트는 빠진다."""
-    assets = Path(args.assets)
+# SignPath Foundation 조건: 서명하는 모든 실행 파일의 제품 이름은 프로젝트 이름이다
+PRODUCT_NAME = "Saba-chan"
+
+
+def exe_version_string(blob: bytes, key: str) -> str | None:
+    """exe 버전 리소스 StringFileInfo의 `key` 값. 값 길이는 구조체 머리(wValueLength)에서 읽는다
+    (rc.exe는 값 끝에 NUL을 넣지 않을 수 있다)"""
+    needle = key.encode("utf-16-le") + b"\0\0"
+    # 코드·데이터 영역의 같은 문자열을 읽지 않게 버전 리소스(VS_FIXEDFILEINFO 서명) 뒤에서 찾는다
+    start = blob.find(b"\xbd\x04\xef\xfe")
+    if start < 0:
+        return None
+    while (i := blob.find(needle, start)) >= 0:
+        start = i + 2
+        head = i - 6
+        if head < 0:
+            continue
+        _, value_len, kind = struct.unpack_from("<HHH", blob, head)
+        if kind != 1:
+            continue
+        pos = i + len(needle)
+        pos += (4 - (pos - head) % 4) % 4
+        return blob[pos:pos + value_len * 2].decode("utf-16-le", errors="replace").split("\0")[0]
+    return None
+
+
+def signing_parameters(data: dict, exes: Path) -> dict[str, str]:
+    """서명 요청 전에 빌드된 exe 폴더를 대조한다: 컴포넌트가 선언한 exe가 모두 있고, 다른 exe는 없고,
+    파일 버전·제품 버전은 그 컴포넌트 버전, 제품 이름은 PRODUCT_NAME이어야 한다.
+    SignPath 산출물 설정의 매개변수(`<키>_version`)를 돌려준다"""
+    problems = []
+    params = {}
+    declared = set()
+    for key, comp in data["components"].items():
+        names = comp.get("exes", [])
+        if not names:
+            continue
+        version = comp["version"]
+        params[key.replace("-", "_") + "_version"] = version
+        numeric = ".".join(str(int(p)) for p in re.findall(r"\d+", version.split("-")[0])[:3])
+        for name in names:
+            declared.add(name.lower())
+            path = exes / name
+            if not path.is_file():
+                problems.append(f"{key}: {name} is missing")
+                continue
+            blob = path.read_bytes()
+            found = {
+                "file version": (exe_file_version(blob), numeric),
+                "ProductVersion": (exe_version_string(blob, "ProductVersion"), version),
+                "ProductName": (exe_version_string(blob, "ProductName"), PRODUCT_NAME),
+            }
+            for what, (got, want) in found.items():
+                if got != want:
+                    problems.append(f"{key}: {name} {what} is {got!r}, not {want!r}")
+    for path in sorted(exes.glob("*.exe")):
+        if path.name.lower() not in declared:
+            problems.append(f"{path.name} is not declared by any component's exes")
+    if problems:
+        sys.exit("signing check:\n  " + "\n  ".join(problems))
+    return params
+
+
+def collect_exes(data: dict, src: Path, dest: Path) -> None:
+    """빌드 폴더(target/release)에서 컴포넌트가 선언한 exe만 서명할 폴더로 모은다"""
+    dest.mkdir(parents=True, exist_ok=True)
+    for comp in data["components"].values():
+        for name in comp.get("exes", []):
+            if (src / name).is_file():
+                shutil.copy2(src / name, dest / name)
+
+
+def cmd_signing(data: dict, args: argparse.Namespace) -> int:
+    if args.collect:
+        collect_exes(data, Path(args.collect), Path(args.exes))
+    # signpath/github-action-submit-signing-request의 parameters 형식: 한 줄에 `<이름>: "<JSON 문자열>"`
+    params = signing_parameters(data, Path(args.exes))
+    text = "".join(f"{name}: {json.dumps(value)}\n" for name, value in params.items())
+    if args.out:
+        # Windows 러너에서도 줄 끝을 LF로 둔다 (워크플로 출력으로 그대로 넘긴다)
+        Path(args.out).write_text(text, encoding="utf-8", newline="\n")
+    else:
+        sys.stdout.write(text)
+    return 0
+
+
+def platform_components(data: dict, args: argparse.Namespace, assets: Path, platform: str, packaged: dict) -> dict:
+    """이 플랫폼의 앱 컴포넌트. `{platform}`이 든 asset은 그 플랫폼 파일이 있을 때만, 없는 asset은
+    `platforms`(없으면 모든 플랫폼)에 들 때만 싣는다"""
     base = args.base_url.rstrip("/")
     release = data["release"]["version"]
-    # 패키저(package-release.py)가 남긴 manifest.json: 이전 릴리즈에서 가져온 에셋은 실제 버전이 적혀 있다
-    packaged_path = assets / "manifest.json"
-    packaged = json.loads(packaged_path.read_text(encoding="utf-8")).get("components", {}) if packaged_path.is_file() else {}
     components = {}
     for key, comp in data["components"].items():
         if "asset" not in comp:
             continue
-        name = comp["asset"].format(platform=args.platform)
+        if "{platform}" not in comp["asset"] and platform not in comp.get("platforms", [platform]):
+            continue
+        name = comp["asset"].format(platform=platform)
         path = assets / name
         if not path.is_file():
-            print(f"skip {key}: {path} not found", file=sys.stderr)
+            print(f"skip {key} ({platform}): {path} not found", file=sys.stderr)
             continue
         blob = path.read_bytes()
         sha = hashlib.sha256(blob).hexdigest()
@@ -405,20 +492,36 @@ def cmd_manifest(data: dict, args: argparse.Namespace) -> int:
             "url": f"{base}/{r2_key(release, name)}",
             "version": version,
         }
+    return components
+
+
+def cmd_manifest(data: dict, args: argparse.Namespace) -> int:
+    """에셋 폴더에서 각 컴포넌트의 `asset` 파일을 찾아 manifest를 만든다. 없는 컴포넌트는 빠진다.
+    `--also-platform`의 플랫폼은 `platforms.<플랫폼>.components`에 그 플랫폼의 목록 전체를 싣는다 (D3c)."""
+    assets = Path(args.assets)
+    base = args.base_url.rstrip("/")
+    release = data["release"]["version"]
+    # 패키저(package-release.py)가 남긴 manifest.json: 이전 릴리즈에서 가져온 에셋은 실제 버전이 적혀 있다.
+    # 패키저는 맨 위 플랫폼(windows-x64)만 다룬다
+    packaged_path = assets / "manifest.json"
+    packaged = json.loads(packaged_path.read_text(encoding="utf-8")).get("components", {}) if packaged_path.is_file() else {}
+    components = platform_components(data, args, assets, args.platform, packaged)
     addons = addon_components(args, assets)
     if getattr(args, "previous", None):
         previous = json.loads(Path(args.previous).read_text(encoding="utf-8"))
         problems = addon_version_problems(addons, assets, previous.get("manifest", previous), fetch_url)
         if problems:
             sys.exit("modules/extensions:\n  " + "\n  ".join(problems))
+    addon_entries = {}
     for key, comp in addons.items():
         blob = (assets / comp["asset"]).read_bytes()
-        components[key] = {
+        addon_entries[key] = {
             **comp,
             "sha256": hashlib.sha256(blob).hexdigest(),
             "size_bytes": len(blob),
             "url": f"{base}/{r2_key(release, comp['asset'])}",
         }
+    components.update(addon_entries)
     if not components:
         sys.exit(f"no assets found in {assets}")
     manifest = {
@@ -427,6 +530,14 @@ def cmd_manifest(data: dict, args: argparse.Namespace) -> int:
         "platform": args.platform,
         "version": release,
     }
+    platforms = {}
+    for other in getattr(args, "also_platform", None) or []:
+        own = platform_components(data, args, assets, other, {})
+        if "saba-core" not in own:
+            sys.exit(f"{other}: no saba-core asset in {assets}")
+        platforms[other] = {"components": {**own, **addon_entries}}
+    if platforms:
+        manifest["platforms"] = platforms
     write_json(manifest, args.out)
     return 0
 
@@ -451,13 +562,16 @@ def cmd_registration(args: argparse.Namespace) -> int:
         "assets": [
             {
                 "component": key,
-                "platform": manifest["platform"],
+                "platform": platform,
                 "filename": comp["asset"],
                 "sizeBytes": comp["size_bytes"],
                 "sha256": comp["sha256"],
                 "r2Key": r2_key(release, comp["asset"]),
             }
-            for key, comp in sorted(manifest["components"].items())
+            # 릴레이는 에셋의 플랫폼으로 그 플랫폼의 릴리즈를 고른다. 같은 파일(모듈·locales)은 플랫폼마다 한 줄씩
+            for platform, listed in [(manifest["platform"], manifest["components"])]
+            + [(p, v["components"]) for p, v in sorted(manifest.get("platforms", {}).items())]
+            for key, comp in sorted(listed.items())
         ],
     }
     write_json(body, args.out)
@@ -500,12 +614,17 @@ def main() -> int:
     m.add_argument("--assets", required=True, help="빌드된 zip 폴더")
     m.add_argument("--base-url", required=True, help="R2 공개 URL 접두사 (<base>/<version>/<file>)")
     m.add_argument("--platform", required=True, help="windows-x64, linux-x64 ...")
+    m.add_argument("--also-platform", action="append", default=[], help="platforms.<플랫폼>에 함께 실을 플랫폼 (여러 번)")
     m.add_argument("--channel")
     m.add_argument("--out")
     m.add_argument("--modules-repo", help="saba-chan-modules 체크아웃 (모듈을 같이 싣는다)")
     m.add_argument("--extensions-repo", help="saba-chan-extensions 체크아웃")
     m.add_argument("--addons-ref", help="아이콘 URL에 쓸 모듈 저장소 커밋")
     m.add_argument("--previous", help="지난 릴리즈의 (서명된) manifest. 바뀐 모듈·익스텐션의 버전이 오르지 않았으면 멈춘다")
+    s = sub.add_parser("signing")
+    s.add_argument("--exes", required=True, help="서명할 exe 폴더")
+    s.add_argument("--collect", help="먼저 이 빌드 폴더에서 선언된 exe를 --exes로 모은다")
+    s.add_argument("--out", help="SignPath 매개변수 파일 (기본: 표준 출력)")
     r = sub.add_parser("registration")
     r.add_argument("--signed", required=True, help="release_signing sign 출력")
     r.add_argument("--rollout", type=int, default=100)
@@ -522,6 +641,8 @@ def main() -> int:
         return cmd_check(data)
     if args.cmd == "sync":
         return cmd_sync(data)
+    if args.cmd == "signing":
+        return cmd_signing(data, args)
     return cmd_manifest(data, args)
 
 

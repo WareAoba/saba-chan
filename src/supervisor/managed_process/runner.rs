@@ -306,7 +306,10 @@ impl ManagedProcess {
                                     if source == LogSource::Stderr && level == LogLevel::Info { LogLevel::Warn } else { level }
                                 }
                             };
-                            buf.lock().await.push_at(line.timestamp, line.source, line.content, line.level);
+                            let mut buf = buf.lock().await;
+                            if !(line.source == LogSource::Stdout && buf.take_echo(&line.content)) {
+                                buf.push_at(line.timestamp, line.source, line.content, line.level);
+                            }
                         }
                     }
                     if stopped {
@@ -495,11 +498,13 @@ mod tests {
         let inst = &tmp.path().join("inst");
         let state = &tmp.path().join("state");
 
-        let proc = ManagedProcess::spawn_with_runner(&runner, "cat", &[], tmp.path().to_str().unwrap(), Vec::new(), None, inst, state, 3, RunnerLaunch::default())
+        // 입력을 되풀이하는 줄은 콘솔에서 빠지므로(`take_echo`) 답에 머리를 붙이는 서버로 본다
+        let args = ["-u".to_string(), "s/^/got /".to_string()];
+        let proc = ManagedProcess::spawn_with_runner(&runner, "sed", &args, tmp.path().to_str().unwrap(), Vec::new(), None, inst, state, 3, RunnerLaunch::default())
             .await
             .unwrap();
         proc.send_command("before restart").await.unwrap();
-        assert!(wait_for(&proc, "before restart").await);
+        assert!(wait_for(&proc, "got before restart").await);
         let pid = proc.pid;
         drop(proc); // 데몬 재시작 흉내
 
@@ -507,10 +512,10 @@ mod tests {
         assert!(!inst.join("run").exists());
         let again = ManagedProcess::attach_runner(state, None).await.expect("runner still alive");
         assert_eq!(again.pid, pid);
-        assert!(wait_for(&again, "before restart").await, "history comes back from the session log");
+        assert!(wait_for(&again, "got before restart").await, "history comes back from the session log");
         assert!(again.is_stdin_available());
         again.send_command("after restart").await.unwrap();
-        assert!(wait_for(&again, "after restart").await);
+        assert!(wait_for(&again, "got after restart").await);
 
         crate::supervisor::process::force_kill_pid(pid).unwrap();
         for _ in 0..50 {

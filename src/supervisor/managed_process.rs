@@ -81,7 +81,12 @@ struct LogBuffer {
     file_tx: Option<mpsc::UnboundedSender<String>>,
     /// 이 버퍼의 세대. 줄 번호는 버퍼마다 0부터라, 클라이언트는 세대가 바뀌면 이어 읽던 번호를 버린다
     epoch: u64,
+    /// 방금 stdin으로 보낸 명령과 보낸 시각: 서버가 그 줄을 되풀이해 찍으면 한 번만 버린다 (`take_echo`)
+    echo: Option<(String, std::time::Instant)>,
 }
+
+/// 보낸 명령의 되풀이 줄을 기다리는 시간
+const ECHO_WINDOW: std::time::Duration = std::time::Duration::from_secs(2);
 
 /// 버퍼 세대: 만든 시각(밀리초). 데몬을 다시 켜도 앞 세대보다 크고, 한 프로세스 안에서도 겹치지 않는다
 pub(crate) fn next_epoch() -> u64 {
@@ -109,7 +114,27 @@ impl LogBuffer {
             max_size,
             file_tx: None,
             epoch: next_epoch(),
+            echo: None,
         }
+    }
+
+    /// stdin으로 보낸 명령을 적어 둔다
+    fn expect_echo(&mut self, command: &str) {
+        self.echo = Some((command.trim().to_string(), std::time::Instant::now()));
+    }
+
+    /// stdout 줄이 방금 보낸 명령을 되풀이한 것인가. 맞으면 한 번만 참이다 (클라이언트가 보낸 명령을 이미 보인다)
+    fn take_echo(&mut self, line: &str) -> bool {
+        let Some((command, at)) = &self.echo else { return false };
+        if at.elapsed() > ECHO_WINDOW {
+            self.echo = None;
+            return false;
+        }
+        let echoed = !command.is_empty() && line.trim() == command;
+        if echoed {
+            self.echo = None;
+        }
+        echoed
     }
 
     /// Push a new log line and return the created `LogLine`.
@@ -356,7 +381,10 @@ impl ManagedProcess {
                 let mut lines = saba_runner::Lines::default();
                 while let Some(line) = next_line(&mut reader, &mut lines).await {
                     let level = parse_log_level(&line, re.as_deref());
-                    buf.lock().await.push(LogSource::Stdout, line, level);
+                    let mut buf = buf.lock().await;
+                    if !buf.take_echo(&line) {
+                        buf.push(LogSource::Stdout, line, level);
+                    }
                 }
             }));
         }
@@ -447,6 +475,8 @@ impl ManagedProcess {
         if crate::commands::has_line_break(command) {
             anyhow::bail!("command must be a single line");
         }
+        // 서버가 읽기 전에 적어 둔다: 되풀이 줄이 보내기보다 먼저 버퍼에 닿을 수 있다
+        self.log_buffer.lock().await.expect_echo(command);
         self.stdin_tx.try_send(command.to_string()).map_err(|e| match e {
             mpsc::error::TrySendError::Full(_) => anyhow::Error::new(StdinFull),
             mpsc::error::TrySendError::Closed(_) => anyhow::anyhow!("stdin channel closed"),
@@ -1130,6 +1160,26 @@ mod tests {
         }
         assert!(seen.iter().any(|l| l == "after") && seen.iter().any(|l| l == "err-after"), "{seen:?}");
         assert!(seen.iter().any(|l| l.starts_with("bad ") && l.contains('\u{fffd}')), "{seen:?}");
+        let _ = proc.force_kill();
+    }
+
+    /// 입력을 되풀이해 찍는 서버(리눅스 테라리아 등)의 그 줄은 콘솔에 남기지 않는다: 클라이언트가 보낸 명령을 이미 보인다.
+    /// 같은 글자라도 명령에 대한 답(두 번째 줄)은 남긴다
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn the_server_echo_of_a_sent_command_is_not_shown_twice() {
+        let script = r"read l; echo booted; echo $l; echo $l; echo reply; sleep 5";
+        let proc = ManagedProcess::spawn("/bin/sh", &["-c".into(), script.into()], ".", Vec::new(), None, None).await.unwrap();
+        proc.send_command("help").await.unwrap();
+        let mut seen = Vec::new();
+        for _ in 0..50 {
+            seen = proc.get_recent_console(10).await.into_iter().filter(|l| l.source == LogSource::Stdout).map(|l| l.content).collect();
+            if seen.iter().any(|l| l == "reply") {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+        assert_eq!(seen, ["booted", "help", "reply"]);
         let _ = proc.force_kill();
     }
 

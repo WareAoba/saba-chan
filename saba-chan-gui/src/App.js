@@ -775,7 +775,12 @@ function App() {
                     <RemotePathPicker />
                     <AppBar
                         page={page}
-                        onNavigate={setPage}
+                        onNavigate={(next) => {
+                            // 팝오버는 그 자리의 상태라 페이지를 옮기면 닫는다
+                            if (showBackgroundSection) requestBackgroundClose();
+                            if (showNoticeSection) requestNoticeClose();
+                            setPage(next);
+                        }}
                         daemonStatus={backgroundDaemonStatus}
                         daemonInParentJob={daemonInParentJob}
                         discordStatus={discordBotStatus}

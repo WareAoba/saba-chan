@@ -79,3 +79,20 @@ class RequiredComponents(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class OtherPlatformAssets(unittest.TestCase):
+    """D3c: 같은 릴리즈에 붙은 리눅스 zip을 Windows 원본으로 집지 않는다 (edited 재실행)"""
+
+    def test_linux_zips_are_not_taken_as_windows_raw_assets(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            staging = Path(d)
+            for name in ("saba-core-linux-x64.zip", "saba-core-windows-x64.zip"):
+                (staging / name).write_bytes(b"PK")
+            old, pr.STAGING_DIR = pr.STAGING_DIR, staging
+            try:
+                found = pr.find_raw_file(pr.COMPONENTS[0]["raw_patterns"])
+            finally:
+                pr.STAGING_DIR = old
+        self.assertEqual(found.name, "saba-core-windows-x64.zip")

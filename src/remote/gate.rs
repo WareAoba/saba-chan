@@ -202,6 +202,8 @@ pub static ROUTES: &[Route] = &[
     deny("GET", "/api/relay/pair/{code}/status"),
     deny("GET", "/api/relay/link-requests"),
     deny("POST", "/api/relay/link-requests/{request_id}"),
+    deny("GET", "/api/relay/privacy/erase"),
+    deny("POST", "/api/relay/privacy/erase"),
     deny("GET", "/api/relay/agent"),
     deny("POST", "/api/relay/agent/start"),
     deny("POST", "/api/relay/agent/stop"),

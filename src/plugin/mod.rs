@@ -999,7 +999,20 @@ async fn spawn_plugin(
         .env("PYTHONUNBUFFERED", "1")
         .envs(daemon_env());
 
-    // 확인되지 않은 구성요소: AppContainer 안에서 돌린다 (Windows). 토큰 파일 경로는 주지 않는다
+    // 공용 모듈 유틸리티 경로 (daemon_rcon.py, i18n.py 등). 익스텐션 폴더가 없어도 필요하다.
+    // 격리 권한은 있는 폴더에만 주므로 격리 계획보다 먼저 쓴다 (첫 실행에 import i18n이 실패하지 않게)
+    static SHARED: std::sync::Once = std::sync::Once::new();
+    let modules_lib_dir = saba_chan_updater_lib::constants::resolve_data_dir().join("python-shared");
+    SHARED.call_once(|| {
+        if let Err(e) = ensure_shared_modules(&modules_lib_dir) {
+            tracing::warn!("Cannot write shared Python modules to {}: {}", modules_lib_dir.display(), e);
+        }
+    });
+
+    // 활성 익스텐션만 import되게 하는 가드 (M6, sitecustomize.py). 공용 모듈처럼 격리 계획보다 먼저 쓴다
+    let import_guard = import_guard_dir();
+
+    // 확인되지 않은 구성요소: AppContainer(Windows)·bubblewrap(리눅스) 안에서 돌린다. 토큰 파일 경로는 주지 않는다
     let isolation = crate::sandbox::isolation_for(std::path::Path::new(module_path), &config, &python_exe);
 
     // PYTHONPATH 경로 리스트 구분자 (Windows: ';', Unix: ':')
@@ -1025,20 +1038,11 @@ async fn spawn_plugin(
             .unwrap_or(&extensions_dir)
             .to_string_lossy()
             .into_owned();
-        // 활성 익스텐션만 import되게 하는 가드 (M6, sitecustomize.py)
-        if let Some(guard) = import_guard_dir() {
+        if let Some(guard) = &import_guard {
             pypath = format!("{}{}{}", guard.display(), PYPATH_SEP, pypath);
         }
         paths.push(pypath);
     }
-    // 공용 모듈 유틸리티 경로 (daemon_rcon.py, i18n.py 등). 익스텐션 폴더가 없어도 필요하다
-    static SHARED: std::sync::Once = std::sync::Once::new();
-    let modules_lib_dir = saba_chan_updater_lib::constants::resolve_data_dir().join("python-shared");
-    SHARED.call_once(|| {
-        if let Err(e) = ensure_shared_modules(&modules_lib_dir) {
-            tracing::warn!("Cannot write shared Python modules to {}: {}", modules_lib_dir.display(), e);
-        }
-    });
     if modules_lib_dir.is_dir() {
         paths.push(modules_lib_dir.display().to_string());
     }
@@ -1065,6 +1069,7 @@ async fn spawn_plugin(
         cmd.env("PYTHONPYCACHEPREFIX", &iso.pycache)
             .env("TEMP", &iso.temp)
             .env("TMP", &iso.temp)
+            .env("TMPDIR", &iso.temp)
             .env_remove("SABA_TOKEN_PATH");
         if let Some(data) = &iso.data {
             cmd.env("SABA_EXTENSION_DATA_DIR", data);
@@ -1110,6 +1115,15 @@ async fn spawn_plugin(
             }
             #[cfg(windows)]
             Ok(crate::sandbox::Spawned::Contained(contained)) => Process::Contained(contained),
+            #[cfg(not(windows))]
+            Ok(crate::sandbox::Spawned::Wrapped(wrapped)) => {
+                let mut wrapped = Command::from(wrapped);
+                wrapped.process_group(0)
+                    .stdin(std::process::Stdio::piped())
+                    .stdout(std::process::Stdio::piped())
+                    .stderr(std::process::Stdio::piped());
+                plain(&mut wrapped).map_err(|error| call_error(module_path, function, "module_execution_failed", "run", error, Vec::new()))?
+            }
             Err(blocked) => {
                 return Ok(sandbox_failure(module_path, function, &iso.key, &blocked));
             }
@@ -1548,14 +1562,14 @@ print(json.dumps(codes))
         let blocked = crate::sandbox::Blocked { code: "sandbox_unavailable", file: None, detail: Some("permission denied".into()) };
         let value = sandbox_failure("game/lifecycle.py", "start", "module-game", &blocked);
         assert_eq!(value["success"], false);
-        assert_eq!(value["error_code"], if crate::sandbox::ENFORCED { "module_execution_failed" } else { "isolation_unsupported" });
+        assert_eq!(value["error_code"], if crate::sandbox::enforced() { "module_execution_failed" } else { "isolation_unsupported" });
         assert_eq!(value["phase"], "prepare");
         assert_eq!(value["module"], "game");
         assert_eq!(value["function"], "start");
         assert_eq!(value["action_required"], "sandbox_unavailable");
         assert_eq!(value["component"], "module-game");
         assert_eq!(value["stderr_tail"], serde_json::json!([]));
-        assert!(value["error"].as_str().unwrap().contains(if crate::sandbox::ENFORCED { "permission denied" } else { "operating system" }));
+        assert!(value["error"].as_str().unwrap().contains(if crate::sandbox::enforced() { "permission denied" } else { "operating system" }));
     }
 
     #[tokio::test]
@@ -2294,6 +2308,39 @@ print(json.dumps(codes))
             parse_plugin_output(&String::from_utf8_lossy(&out.stdout)).unwrap(),
             json!({ "success": true, "functions": ["validate", "reset_server"] })
         );
+    }
+
+    /// 리눅스(D3b): 확인되지 않은 모듈은 bubblewrap 안에서 돈다. 서버 폴더는 쓰고, 받지 않은 폴더는 보지 못한다
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn an_unverified_module_runs_inside_bubblewrap_on_linux() {
+        crate::sandbox::bwrap::use_in_this_test();
+        if crate::sandbox::bwrap::program().is_none() {
+            eprintln!("bubblewrap is not usable here; skipping");
+            return;
+        }
+        crate::python_env::get_python_path().await.expect("test Python ready");
+        // 모듈 폴더 아래에 있어야 모듈로 보고 서버 폴더 쓰기를 준다 (인스턴스 폴더 자체는 가져오기 때만 쓴다)
+        let module = tempfile::Builder::new().prefix("bwrap-probe-").tempdir_in(resolve_modules_dir()).unwrap();
+        let (instance, other) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+        let server = instance.path().join("server");
+        std::fs::create_dir(&server).unwrap();
+        std::fs::write(other.path().join("secret"), "token").unwrap();
+        // 인스턴스 폴더의 데몬 파일(토큰·설정)은 읽기 권한을 받은 인스턴스 폴더 안에서도 비어 보인다
+        std::fs::write(instance.path().join("rcon.json"), "{\"password\": \"pw\"}").unwrap();
+        let entry = module.path().join("lifecycle.py");
+        // 공용 모듈(python-shared)과 익스텐션 import 가드(python-guard)도 보여야 한다
+        std::fs::write(&entry, "import json, os, sys\nimport i18n\nassert 'sitecustomize' in sys.modules, sys.path\nconfig = json.loads(sys.stdin.read())\n\
+             open(os.path.join(config['working_dir'], 'out'), 'w').write('ok')\n\
+             try:\n    open(config['secret']).read(); seen = True\nexcept OSError:\n    seen = False\n\
+             daemon = open(os.path.join(config['instance_dir'], 'rcon.json')).read()\n\
+             print(json.dumps({'success': True, 'seen': seen, 'daemon': daemon}))\n").unwrap();
+        let config = json!({ "instance_dir": instance.path(), "working_dir": server, "secret": other.path().join("secret") });
+        let result = run_plugin(entry.to_str().unwrap(), "probe", config).await.map_err(|e| error_response(&e)).expect("the isolated module ran");
+        assert_eq!(result["success"], true, "{result}");
+        assert_eq!(std::fs::read_to_string(server.join("out")).unwrap(), "ok", "writes its server folder");
+        assert_eq!(result["seen"], false, "an ungranted folder is not visible: {result}");
+        assert_eq!(result["daemon"], "", "a daemon file in the instance folder looks empty: {result}");
     }
 
     #[tokio::test]

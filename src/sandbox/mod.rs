@@ -1,4 +1,4 @@
-//! 확인되지 않은 모듈·익스텐션 실행 제한 (Windows)
+//! 확인되지 않은 모듈·익스텐션 실행 제한 (Windows: AppContainer, 리눅스: bubblewrap `bwrap.rs`)
 //!
 //! 신뢰 표시(`integrity::trust_of`)가 `verified`가 아닌 구성요소에만 적용한다. 공식 카탈로그에서 받아
 //! 그대로인 것은 지금처럼 실행한다.
@@ -15,9 +15,12 @@ use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
 pub mod appcontainer;
+pub mod bwrap;
 
-/// 이 플랫폼에서 제한을 거는가
-pub const ENFORCED: bool = cfg!(windows);
+/// 이 플랫폼에서 제한을 거는가 (Windows, bubblewrap을 쓸 수 있는 리눅스)
+pub fn enforced() -> bool {
+    cfg!(windows) || bwrap::program().is_some()
+}
 
 /// 모듈·익스텐션 진입 파일(`<modules>/<이름>/lifecycle.py`, `<modules>/<이름>/scripts/lifecycle.py` 등)의
 /// 설치 기록 키와 폴더
@@ -70,9 +73,9 @@ pub fn trust_of_entry(entry: &Path) -> Trust {
     }
 }
 
-/// 제한을 거는가 (Windows이고 공식·그대로가 아닌 것)
+/// 제한을 거는가 (격리하는 플랫폼이고 공식·그대로가 아닌 것)
 pub fn restricted(trust: Trust) -> bool {
-    ENFORCED && trust != Trust::Verified
+    trust != Trust::Verified && enforced()
 }
 
 pub fn python_isolation_required(trust: Trust) -> bool {
@@ -186,7 +189,7 @@ impl Blocked {
             "file": self.file,
             "detail": self.detail,
         });
-        if !ENFORCED && self.code == "sandbox_unavailable" {
+        if self.code == "sandbox_unavailable" && !enforced() {
             response["error_code"] = serde_json::json!("isolation_unsupported");
         }
         response
@@ -200,7 +203,7 @@ pub fn message(blocked: &Blocked) -> String {
         "launch_outside_instance" => format!("This unverified module tried to run a program outside the server folder: {}. If you set the Java path yourself, choose it again in the server settings.", file),
         "server_in_sync_folder" => format!("The server folder is inside a sync folder such as OneDrive, so saba-chan cannot check it: {}. Move the server folder outside the sync folder.", file),
         "server_folder_label" => format!("Could not remove the low integrity mark from the server folder: {}. Check that this account can change the permissions of that folder.", file),
-        "sandbox_unavailable" if !ENFORCED => "This operating system cannot isolate this unverified component. Consent is required to run it without isolation.".to_string(),
+        "sandbox_unavailable" if !enforced() => "This operating system cannot isolate this unverified component. Consent is required to run it without isolation.".to_string(),
         "sandbox_unavailable" => format!("Could not prepare the isolated environment for this unverified component: {}", blocked.detail.as_deref().unwrap_or("")),
         other => other.to_string(),
     }
@@ -319,7 +322,7 @@ pub async fn guard_launch_for(trust: impl FnOnce() -> Trust, program: &str, args
     let gate = LaunchGate(LABEL_GATE.lock().await);
     let target = Path::new(&resolve_program(program, cwd)).to_path_buf();
     restore_server_folders(roots.dirs.clone(), target.is_absolute().then_some(target)).await?;
-    if !ENFORCED || !restricted(trust()) {
+    if !restricted(trust()) {
         return Ok((program.to_string(), gate));
     }
     strip_search_path(env);
@@ -669,7 +672,7 @@ pub fn plain_local_path(path: &Path) -> bool {
 /// 사용자가 설정에서 정한 런타임(`java_path`)을 그 구성요소의 격리 실행에 연다 (Windows, 확인되지 않은 것만).
 /// 설정을 저장할 때 데몬이 부른다: 실행 때 받는 config의 값은 모듈 기본값과 구별할 수 없다
 pub fn open_user_runtime(entry: &Path, java_path: &str) {
-    if !ENFORCED || !restricted(trust_of_entry(entry)) {
+    if !cfg!(windows) || !restricted(trust_of_entry(entry)) {
         return;
     }
     let Some((key, _)) = component_of(entry) else { return };
@@ -775,7 +778,7 @@ pub fn reset() -> Result<usize, Vec<String>> {
 /// 데몬이 시작할 때: 예전에 준 런타임 읽기 권한 중 지금 쓰지 않는 것을 거둔다. 지금 쓰는 것은 데몬이 아는 런타임과
 /// 인스턴스마다 사용자가 정한 `java_path`(`(모듈 진입 파일, java_path)`)다. Windows에서만 한다
 pub fn reconcile_runtimes(user_runtimes: &[(String, String)]) {
-    if !ENFORCED {
+    if !cfg!(windows) {
         return;
     }
     let path = std::env::var_os("PATH");
@@ -899,6 +902,11 @@ pub fn isolation_for(entry: &Path, config: &Value, python_exe: &Path) -> Option<
         grants.push_shared(venv, Access::Read, &data_dir, home);
     }
     if let Some(base) = appcontainer::venv_home(python_exe) {
+        // 유닉스의 `home`은 `<설치 루트>/bin`이다: 표준 라이브러리(`<루트>/lib/pythonX.Y`)도 보이게 루트를 준다
+        let base = match base.parent() {
+            Some(root) if cfg!(not(windows)) && base.file_name().is_some_and(|n| n == "bin") => root.to_path_buf(),
+            _ => base,
+        };
         grants.push_shared(&base, Access::Read, &data_dir, home);
     }
     let extensions = crate::plugin::resolve_extensions_dir();
@@ -920,6 +928,14 @@ pub fn isolation_for(entry: &Path, config: &Value, python_exe: &Path) -> Option<
         .and_then(Value::as_str)
         .filter(|d| !d.is_empty())
         .is_none_or(|dir| protect_daemon_entries(Path::new(dir)));
+    // 리눅스는 같은 사용자라 상속을 끊어도 읽힌다: bwrap이 덮도록 적어 둔다
+    if let Some(dir) = config.get("instance_dir").and_then(Value::as_str).filter(|d| !d.is_empty()) {
+        grants.hidden = PROTECTED_INSTANCE_ENTRIES.iter().filter_map(|name| std::fs::canonicalize(Path::new(dir).join(name)).ok()).collect();
+        let empty = raw_data_dir.join("sandbox-temp").join("empty");
+        if !grants.hidden.is_empty() && (empty.is_file() || std::fs::write(&empty, "").is_ok()) {
+            grants.empty_file = Some(empty);
+        }
+    }
     let data_dirs = config.get(INSTANCE_DATA_DIRS).and_then(Value::as_array).into_iter().flatten();
     // 데이터 폴더는 폴더일 때만 (데몬 파일 이름은 `insert_instance_fields`가 이미 뺐다)
     let data_dirs = data_dirs.filter_map(Value::as_str).filter(|p| !Path::new(p).is_file()).map(|p| (p, access));
@@ -954,6 +970,19 @@ pub fn isolation_for(entry: &Path, config: &Value, python_exe: &Path) -> Option<
             grants.shared.push(entry);
         }
     }
+    // 설정한 Java: Windows는 설정을 저장할 때 연다(`open_user_runtime`). 리눅스는 실행마다 붙이므로 여기서 붙인다.
+    // 모듈 기본값과 구별할 수 없지만 Java 설치 모양인 폴더(`runtime_home`)를 읽기로만 붙인다
+    #[cfg(not(windows))]
+    if let Some(java) = config.get("java_path").and_then(Value::as_str) {
+        let runtimes = runtime_homes_in(Some(java), None, std::env::var_os("PATH").as_deref(), &[]);
+        for runtime in &runtimes {
+            grants.push_optional(runtime, Access::Read, &data_dir, home);
+        }
+        // `runtime_home`은 실제 경로를 돌려준다: 모듈은 설정한 경로로 실행하므로 그 경로가 거친 링크(`current` 등)도 남긴다
+        if !runtimes.is_empty() {
+            grants.note_links(Path::new(java.trim()));
+        }
+    }
     let profile = appcontainer::profile_for(&key);
     Some(Isolation { key, dir, profile, grants, pycache, temp, data, extension_root })
 }
@@ -962,6 +991,9 @@ pub fn isolation_for(entry: &Path, config: &Value, python_exe: &Path) -> Option<
 pub enum Spawned {
     #[cfg(windows)]
     Contained(appcontainer::Contained),
+    /// bwrap 안에서 띄울 명령 (리눅스). 입출력·프로세스 그룹은 부르는 쪽이 정하고 띄운다
+    #[cfg(not(windows))]
+    Wrapped(std::process::Command),
     /// 사용자가 이 구성요소를 격리 없이 돌리기로 했다
     Unisolated,
 }
@@ -990,8 +1022,10 @@ pub async fn spawn_isolated(cmd: &std::process::Command, iso: &Isolation) -> Res
     #[cfg(not(windows))]
     let error = {
         drop(gate);
-        let _ = cmd;
-        "AppContainer is only available on Windows".to_string()
+        match bwrap::program() {
+            Some(program) => return Ok(Spawned::Wrapped(bwrap::wrap(program, cmd, &iso.grants))),
+            None => "bubblewrap (bwrap) is not available".to_string(),
+        }
     };
     if unisolated_allowed(&iso.key, &iso.dir) {
         tracing::warn!("[Sandbox] {} runs without isolation by the user's choice ({})", iso.key, error);
@@ -1178,6 +1212,47 @@ mod tests {
         assert!(grants_write(MIGRATION_IMPORT));
     }
 
+    /// 유닉스 venv의 `home`은 `<설치 루트>/bin`이다: 표준 라이브러리(`<루트>/lib/pythonX.Y`)까지 보이게 루트를 준다
+    #[cfg(not(windows))]
+    #[test]
+    fn a_unix_base_python_is_granted_from_its_install_root() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let (base, venv) = (root.join("py"), root.join("venv"));
+        for d in [base.join("bin"), base.join("lib/python3.13"), venv.join("bin")] {
+            std::fs::create_dir_all(d).unwrap();
+        }
+        std::fs::write(venv.join("pyvenv.cfg"), format!("home = {}\n", base.join("bin").display())).unwrap();
+        let entry = root.join("lifecycle.py");
+        std::fs::write(&entry, "").unwrap();
+        let iso = isolation_for(&entry, &serde_json::json!({}), &venv.join("bin").join("python")).unwrap();
+        assert!(iso.grants.entries.contains(&(base, appcontainer::Access::Read)), "{:?}", iso.grants.entries);
+    }
+
+    /// 리눅스는 실행마다 붙이므로, 설정한 Java(`java_path`)도 그 실행에 읽기로 붙인다 (Java 설치 모양인 폴더만)
+    #[cfg(not(windows))]
+    #[test]
+    fn a_configured_java_is_mounted_for_the_run() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let jdk = root.join("jdk-21");
+        std::fs::create_dir_all(jdk.join("bin")).unwrap();
+        std::fs::write(jdk.join("bin").join("java"), "").unwrap();
+        std::fs::write(jdk.join("release"), "JAVA_VERSION=\"21\"\n").unwrap();
+        let entry = root.join("lifecycle.py");
+        std::fs::write(&entry, "").unwrap();
+        let config = serde_json::json!({ "java_path": jdk.join("bin").join("java") });
+        let iso = isolation_for(&entry, &config, Path::new("python")).unwrap();
+        assert!(iso.grants.entries.contains(&(jdk.clone(), appcontainer::Access::Read)), "{:?}", iso.grants.entries);
+        // `~/.sdkman/.../current/bin/java`처럼 링크를 거친 설정 경로도 격리 안에서 그대로 실행되게 링크를 남긴다
+        let current = root.join("current");
+        std::os::unix::fs::symlink(&jdk, &current).unwrap();
+        let config = serde_json::json!({ "java_path": current.join("bin").join("java") });
+        let iso = isolation_for(&entry, &config, Path::new("python")).unwrap();
+        assert!(iso.grants.entries.contains(&(jdk, appcontainer::Access::Read)), "{:?}", iso.grants.entries);
+        assert!(iso.grants.links.contains(&current), "{:?}", iso.grants.links);
+    }
+
     #[test]
     fn python_isolation_policy_is_independent_of_launch_guard_platform() {
         assert!(!python_isolation_required(Trust::Verified));
@@ -1201,6 +1276,28 @@ mod tests {
         let response = blocked.to_json(message(&blocked));
         assert_eq!(response["action_required"], "sandbox_unavailable");
         assert_eq!(response["error_code"], "isolation_unsupported");
+    }
+
+    #[cfg(not(windows))]
+    #[tokio::test]
+    async fn an_isolated_run_on_linux_is_wrapped_in_bubblewrap() {
+        bwrap::use_in_this_test();
+        let Some(program) = bwrap::program() else { return };
+        assert!(restricted(Trust::Unverified) && !restricted(Trust::Verified));
+        let tmp = tempfile::tempdir().unwrap();
+        let iso = Isolation {
+            key: "module-bwrap-test".into(), dir: tmp.path().to_path_buf(),
+            profile: String::new(), grants: appcontainer::Grants::default(),
+            pycache: PathBuf::new(), temp: PathBuf::new(), data: None, extension_root: PathBuf::new(),
+        };
+        let mut cmd = std::process::Command::new("python");
+        cmd.arg("lifecycle.py").env("SABA_X", "1");
+        let Ok(Spawned::Wrapped(wrapped)) = spawn_isolated(&cmd, &iso).await else { panic!("expected a bwrap command") };
+        assert_eq!(wrapped.get_program(), program.as_os_str());
+        let args: Vec<_> = wrapped.get_args().collect();
+        let sep = args.iter().position(|a| *a == "--").unwrap();
+        assert_eq!(&args[sep + 1..], ["python", "lifecycle.py"]);
+        assert!(wrapped.get_envs().any(|(k, v)| k == "SABA_X" && v == Some("1".as_ref())));
     }
 
     // 백로그 M7 (사용자 결정: 동기화 폴더 아래 서버는 계속 막는다). 막되 원인과 할 일을 알린다

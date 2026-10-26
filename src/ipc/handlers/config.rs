@@ -179,19 +179,15 @@ pub async fn save_node_token(
     }
 }
 
-/// DELETE /api/config/node-token
-/// 연결 해제: 토큰을 지우기 전에 릴레이 에이전트를 멈춰 더는 원격 명령을 받지 않는다.
-/// 토큰이 없으면 다음 기동 때도 자동 시작하지 않는다.
+/// DELETE /api/config/node-token — 연결 해제 (`relay::disconnect`)
 pub async fn delete_node_token(State(state): State<IPCServer>) -> impl IntoResponse {
-    state.relay_agent.stop();
-    if let Err(e) = super::relay::write_node_token(None) {
+    if let Err(e) = super::relay::disconnect(&state).await {
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({ "error": format!("Failed to delete node token: {}", e) })),
         )
             .into_response();
     }
-    super::relay::sync_host_id(&state, None).await;
     (StatusCode::OK, Json(json!({ "ok": true }))).into_response()
 }
 

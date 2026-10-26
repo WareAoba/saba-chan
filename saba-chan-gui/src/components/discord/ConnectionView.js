@@ -8,6 +8,7 @@ import { Icon } from '../Icon';
 import '../ui/SabaArt.css';
 import { SabaSpinner } from '../ui/SabaUI';
 import { StatusChip } from '../ui/StatusChip';
+import { PrivacyErase, privacyEraseAvailable } from './PrivacyErase';
 
 const failedRes = (res) => !res || res.success === false || Boolean(res.error_code) || Boolean(res.error);
 
@@ -233,6 +234,7 @@ export function ConnectionView({
     onCancelPairing,
     onReload,
     onDisconnect,
+    onErased,
     onStartAgent,
     nodes,
     onInviteBot,
@@ -460,6 +462,7 @@ export function ConnectionView({
                         {confirmDisconnect ? t('discord.disconnect_confirm') : t('discord.disconnect')}
                     </button>
                 </div>
+                {onErased && privacyEraseAvailable() && <PrivacyErase onErased={onErased} />}
             </section>
         </div>
     );

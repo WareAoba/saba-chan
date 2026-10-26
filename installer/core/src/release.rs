@@ -256,6 +256,7 @@ mod tests {
             released_at: None,
             is_critical: false,
             components,
+            platforms: Default::default(),
         };
         let keys: Vec<_> = installable(&manifest, Profile::Desktop).unwrap().into_iter().map(|(k, _)| k.as_str()).collect();
         assert_eq!(keys, ["cli", "gui", "locales", "saba-core", "updater"], "installer, the legacy bot and add-ons are skipped");
@@ -298,6 +299,7 @@ mod tests {
             released_at: None,
             is_critical: false,
             components,
+            platforms: Default::default(),
         };
         assert_eq!(installable(&manifest, Profile::Desktop).unwrap_err(), ["gui", "updater"]);
         assert_eq!(installable(&manifest, Profile::Headless).unwrap_err(), ["updater"]);

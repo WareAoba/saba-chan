@@ -24,8 +24,8 @@ use tokio_util::sync::CancellationToken;
 use super::config::{self, Client};
 use super::relay::{self, Failure, Target};
 
-/// 원격에서 부르지 못하는 라우트: 이 PC의 릴레이 토큰, 원격 포트 설정과 짝 관리
-const LOCAL_ONLY: &[&str] = &["/api/config/node-token", "/api/remote/"];
+/// 원격에서 부르지 못하는 라우트: 이 PC의 릴레이 토큰, 개인정보 지우기, 원격 포트 설정과 짝 관리
+const LOCAL_ONLY: &[&str] = &["/api/config/node-token", "/api/relay/privacy/erase", "/api/remote/"];
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
 const MAX_CONNECTIONS: usize = 64;
 /// 한 곳(IP)이 쥘 수 있는 연결 (인증 전에 잡으므로 한 곳이 짝 맺은 PC의 자리를 다 쥐지 못하게)
@@ -507,6 +507,7 @@ pub(crate) mod tests {
         let token = body["token"].as_str().unwrap().to_string();
         for path in [
             "/api/config/node-token",
+            "/api/relay/privacy/erase",
             "/api/remote/clients",
             "/api/system/autostart",
             "/api/daemon/shutdown",

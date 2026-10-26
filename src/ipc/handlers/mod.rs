@@ -7,6 +7,7 @@ pub mod bot;
 pub mod config;
 pub mod extension;
 pub mod relay;
+pub mod privacy;
 pub mod remote_daemon;
 pub mod chat;
 pub mod backup;

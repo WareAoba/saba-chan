@@ -26,6 +26,18 @@ pub const LEGACY_ADOPTED: &str = "legacy-adopted";
 /// 인스턴스 기록 폴더 안: 업데이트 전에 띄운 러너가 아직 예전 자리(`<instance>/run/`)에 쓴다는 표시. 그 러너가 끝나거나 새로 띄우면 지운다
 pub const LEGACY_RUN: &str = "legacy-run";
 pub const MANAGED_PID: &str = "managed.pid";
+/// `STATE_DIR` 바로 아래: 지우는 중인 인스턴스 폴더를 옮겨 두는 곳 (`detach_dir`). 남은 것은 다음 로드 때
+/// 연결 해제를 마쳤으면(`UNLINKED`) 지우고, 아니면 제자리로 돌려놓는다 (보관한 원래 설정을 잃지 않게)
+const DELETING: &str = "deleting";
+/// 옮겨 둔 인스턴스 폴더 옆(`<폴더 이름>.unlinked`): 연결 해제(설정 되돌리기·권한 거두기)를 마쳤다는 표시 (`mark_unlinked`).
+/// 폴더 안에 두면 지우다 만 폴더에서 표시만 먼저 사라질 수 있다
+const UNLINKED: &str = "unlinked";
+
+fn unlinked_mark(detached: &Path) -> PathBuf {
+    let mut name = detached.file_name().unwrap_or_default().to_os_string();
+    name.push(format!(".{UNLINKED}"));
+    detached.with_file_name(name)
+}
 
 /// 인스턴스 폴더 바로 아래에서 데몬이 쓰는 항목. 격리된 모듈에게 쓰기를 주지 않는다
 /// (instance.json을 고칠 수 있으면 다음 로드 때 실행 파일·사용자 설정까지 바꾼다)
@@ -305,6 +317,9 @@ impl InstanceStore {
             Vec::new()
         };
 
+        // 지우다 남은 인스턴스 폴더 (`detach_dir`)
+        self.settle_deleting();
+
         // ── 각 인스턴스 디렉토리에서 로드 ──
         let mut loaded = Vec::new();
         if let Ok(entries) = fs::read_dir(&self.root_dir) {
@@ -380,10 +395,12 @@ impl InstanceStore {
     pub fn remove(&mut self, id: &str) -> Result<()> {
         // 디렉토리 삭제
         let dir = self.checked_dir(id)?;
+        // 기록 폴더는 데몬만 쓰는 PID·러너 기록이라, 지우지 못해도 인스턴스 삭제를 막지 않는다
         let state = self.state_dir(id);
-        if state.exists() {
-            fs::remove_dir_all(&state)
-                .with_context(|| format!("인스턴스 기록 폴더 삭제 실패: {}", state.display()))?;
+        if let Err(e) = fs::remove_dir_all(&state) {
+            if e.kind() != std::io::ErrorKind::NotFound {
+                tracing::warn!("인스턴스 기록 폴더 삭제 실패: {}: {}", state.display(), e);
+            }
         }
         if dir.exists() {
             fs::remove_dir_all(&dir)
@@ -450,6 +467,71 @@ impl InstanceStore {
     /// 인스턴스의 데몬 전용 기록 폴더
     pub fn state_dir(&self, id: &str) -> PathBuf {
         self.state_root().join(id)
+    }
+
+    /// 지울 인스턴스 폴더를 데몬 전용 자리(`<STATE_DIR>/deleting/<id>-<uuid>`)로 옮긴다. 다른 프로세스가 연 파일이 있으면
+    /// 옮겨지지 않으므로, 되돌릴 수 없는 단계(원래 설정 되돌리기 등) 전에 지울 수 있는지 본다. 폴더가 없으면 None
+    pub fn detach_dir(&self, id: &str) -> Result<Option<PathBuf>> {
+        let dir = self.checked_dir(id)?;
+        if !dir.exists() {
+            return Ok(None);
+        }
+        let to = self.state_root().join(DELETING).join(format!("{}-{}", id, uuid::Uuid::new_v4()));
+        fs::create_dir_all(self.state_root().join(DELETING))?;
+        fs::rename(&dir, &to).with_context(|| format!("인스턴스 디렉토리를 옮기지 못함: {}", dir.display()))?;
+        Ok(Some(to))
+    }
+
+    /// 옮겨 둔 인스턴스 폴더(`detach_dir`)의 연결 해제를 마쳤다고 표시한다. 표시가 있어야 다음 로드 때 지운다
+    pub fn mark_unlinked(detached: &Path) -> Result<()> {
+        let mark = unlinked_mark(detached);
+        fs::write(&mark, b"").with_context(|| format!("삭제 표시 실패: {}", mark.display()))
+    }
+
+    /// 옮겨 둔 폴더를 다 지운 뒤 그 표시도 지운다
+    pub fn forget_unlinked(detached: &Path) {
+        let _ = fs::remove_file(unlinked_mark(detached));
+    }
+
+    /// 지우다 남은 폴더: 연결 해제를 마친 것은 지우고, 마치기 전에 멈춘 것은 제자리로 돌려놓아 다시 지울 수 있게 한다
+    fn settle_deleting(&self) {
+        let Ok(entries) = fs::read_dir(self.state_root().join(DELETING)) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !entry.file_type().is_ok_and(|t| t.is_dir()) {
+                // 폴더를 다 지운 뒤 남은 표시
+                let name = entry.file_name().to_string_lossy().into_owned();
+                if name.strip_suffix(&format!(".{UNLINKED}")).is_none_or(|dir| !path.with_file_name(dir).exists()) {
+                    let _ = fs::remove_file(&path);
+                }
+                continue;
+            }
+            let mark = unlinked_mark(&path);
+            if !mark.exists() {
+                // `<id>-<uuid>`: uuid는 36자
+                let name = entry.file_name().to_string_lossy().into_owned();
+                let back = name.len().checked_sub(37).and_then(|n| name.get(..n)).and_then(|id| self.checked_dir(id).ok());
+                match back {
+                    Some(back) if !back.exists() => match fs::rename(&path, &back) {
+                        Ok(()) => {
+                            tracing::warn!("지우다 멈춘 인스턴스를 되돌림: {}", back.display());
+                            continue;
+                        }
+                        Err(e) => tracing::warn!("지우다 멈춘 인스턴스를 되돌리지 못함: {}: {}", path.display(), e),
+                    },
+                    _ => tracing::warn!("지우다 멈춘 인스턴스 폴더를 그대로 둠: {}", path.display()),
+                }
+                continue;
+            }
+            match fs::remove_dir_all(&path) {
+                Ok(()) => {
+                    let _ = fs::remove_file(&mark);
+                }
+                Err(e) => tracing::warn!("지우다 남은 인스턴스 폴더 삭제 실패: {}: {}", path.display(), e),
+            }
+        }
     }
 
     /// 데몬이 직접 띄운 서버의 PID 기록. 파일 시각이 기록 시각이다 (재부팅 뒤 PID 재사용 판별)
@@ -784,6 +866,30 @@ mod tests {
         assert_eq!(again.list().len(), 1);
         store.remove(&id).unwrap();
         assert!(!state.exists());
+    }
+
+    /// 지우다 멈춘 인스턴스(연결 해제 전)는 다음 로드 때 제자리로 돌아오고, 연결 해제까지 마친 것만 지워진다
+    #[test]
+    fn a_delete_cut_off_before_it_finished_brings_the_instance_back() {
+        let tmp = TempDir::new().unwrap();
+        let instances_dir = tmp.path().join("instances");
+        let mut store = InstanceStore::new(instances_dir.to_str().unwrap());
+        store.load().unwrap();
+        let (cut, done) = (make_test_instance("cut", "palworld"), make_test_instance("done", "palworld"));
+        let (cut_id, done_id) = (cut.id.clone(), done.id.clone());
+        store.add(cut).unwrap();
+        store.add(done).unwrap();
+        store.detach_dir(&cut_id).unwrap().unwrap();
+        let finished = store.detach_dir(&done_id).unwrap().unwrap();
+        InstanceStore::mark_unlinked(&finished).unwrap();
+        store.remove(&done_id).unwrap();
+
+        let mut again = InstanceStore::new(instances_dir.to_str().unwrap());
+        again.load().unwrap();
+        let ids: Vec<_> = again.list().iter().map(|i| i.id.clone()).collect();
+        assert_eq!(ids, vec![cut_id.clone()]);
+        assert!(again.instance_dir(&cut_id).join("instance.json").exists());
+        assert!(!again.state_root().join(DELETING).exists() || std::fs::read_dir(again.state_root().join(DELETING)).unwrap().next().is_none());
     }
 
     #[test]

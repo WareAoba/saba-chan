@@ -127,11 +127,17 @@ def read_bundled_version(key: str) -> str | None:
     return data.get("components", {}).get(key, {}).get("version")
 
 
+OTHER_PLATFORM_ASSET = re.compile(r"-(linux|macos)-(x64|arm64)\.zip$", re.IGNORECASE)
+
+
 def find_raw_file(patterns: list[str]) -> Path | None:
     """staging/ 에서 패턴에 매치되는 파일 찾기"""
     if not STAGING_DIR.exists():
         return None
     for f in sorted(STAGING_DIR.iterdir()):
+        # 다른 플랫폼 zip(release.yml이 빌드해 붙인 linux-x64 등)은 Windows 원본이 아니다
+        if OTHER_PLATFORM_ASSET.search(f.name):
+            continue
         for pat in patterns:
             if re.search(pat, f.name, re.IGNORECASE):
                 return f

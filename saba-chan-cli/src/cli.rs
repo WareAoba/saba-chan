@@ -861,6 +861,8 @@ pub enum BotCmd {
     },
     /// Forget this PC's pairing
     Unpair,
+    /// Erase everything the relay keeps about your Discord account (opens a consent page), then disconnect this PC
+    Erase,
     /// Set the node token by hand (from a pairing done elsewhere). Asked for without showing it, or one line on stdin; never an argument
     Token,
     /// Show or change the chat prefixes: `prefix`, `prefix A B`, `prefix --default`
@@ -1313,6 +1315,7 @@ mod tests {
         // 토큰은 셸 기록에 남지 않게 인자로 받지 않는다 (C15)
         assert!(p(&["bot", "token", "secret-token"]).is_err());
         assert!(matches!(p(&["bot", "token"]).unwrap().cmd, Some(Cmd::Bot(BotCmd::Token))));
+        assert!(matches!(p(&["bot", "erase"]).unwrap().cmd, Some(Cmd::Bot(BotCmd::Erase))));
         assert!(p(&["--json", "status"]).unwrap().global.json);
         assert!(p(&["status", "--json"]).unwrap().global.json);
     }

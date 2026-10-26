@@ -54,6 +54,14 @@ pub struct Grants {
     /// 모든 구성요소가 함께 읽는 폴더(Python·모듈·익스텐션·Java 런타임): 프로필 SID가 아니라 ALL APPLICATION PACKAGES에 한 번 준다.
     /// 프로필마다 주면 그 폴더 DACL에 구성요소 수만큼 ACE가 쌓여, 64KB 한도를 넘으면 ACL을 쓰지 못한다(os error 87)
     pub shared: Vec<(PathBuf, Access)>,
+    /// 받은 폴더 안에서 가리는 데몬 항목(실제 경로). 리눅스는 bwrap이 빈 파일(`empty_file`)·빈 폴더로 덮는다.
+    /// Windows는 상속을 끊어 막으므로 쓰지 않는다
+    pub hidden: Vec<PathBuf>,
+    /// 데몬 파일을 덮는 빈 파일 (없으면 /dev/null: 읽으면 권한 거부이고 `is_file()`이 거짓이다)
+    pub empty_file: Option<PathBuf>,
+    /// 준 폴더의 원래 경로가 거친 링크(`/home -> /var/home` 같은). 리눅스는 bwrap이 격리 안에 같은 링크를 만든다
+    /// (명령·설정은 원래 경로를 쓰고 권한은 실제 경로에 붙으므로)
+    pub links: Vec<PathBuf>,
 }
 
 /// 권한을 줄 수 없는 위치인가: 데이터 폴더와 그 위, 드라이브 루트, 사용자 폴더와 그 위
@@ -73,6 +81,16 @@ fn through_link(path: &Path) -> bool {
     path.ancestors().any(|p| std::fs::symlink_metadata(p).is_ok_and(|m| m.file_type().is_symlink()))
 }
 
+/// 쓰기를 주면 안 되는 링크를 거치는가 (리눅스). 데몬의 뿌리(데이터·인스턴스 폴더)와 그 위가 거치는 링크는 사용자가 둔 것이다
+/// (`/home -> /var/home` 등. 격리된 구성요소는 거기에 쓰지 못한다). 그 밖의 링크는 쓰기를 받은 폴더 안에 구성요소가 만들어 둔
+/// 것일 수 있다: 다음 실행에 그 경로의 쓰기가 링크가 가리키는 다른 폴더로 간다
+#[cfg_attr(windows, allow(dead_code))]
+fn planted_link(path: &Path, roots: &[PathBuf]) -> bool {
+    path.ancestors()
+        .filter(|p| std::fs::symlink_metadata(p).is_ok_and(|m| m.file_type().is_symlink()))
+        .any(|link| !roots.iter().any(|root| root.starts_with(link)))
+}
+
 impl Grants {
     /// 넣으려는 폴더를 실제 경로로 바꾸고, 줄 수 없는 위치는 버린다
     pub fn push(&mut self, path: &Path, access: Access, data_dir: &Path, home: Option<&Path>) {
@@ -83,11 +101,15 @@ impl Grants {
         // List는 목록만이라 데이터 폴더 자신에도 줄 수 있다 (안의 파일은 상속받지 않는다).
         // 쓰기는 링크를 거친 경로에 주지 않는다: 격리된 구성요소가 쓰기를 받은 폴더 안에 정션을 만들어 두면,
         // 다음 실행 때 그 경로의 쓰기 권한과 낮은 수준 표시가 정션이 가리키는 다른 폴더로 간다.
-        // 읽기는 정션 아래 Python 설치(scoop 등)도 쓰므로 막지 않는다
+        // 읽기는 정션 아래 Python 설치(scoop 등)도 쓰므로 막지 않는다. 리눅스는 데몬 뿌리가 거치는 링크만 받는다(`planted_link`)
         let blocked = match access {
             Access::List => root_or_home(&real, home),
             Access::Read => forbidden(&real, data_dir, home),
-            Access::Write => forbidden(&real, data_dir, home) || through_link(path),
+            Access::Write if cfg!(windows) => forbidden(&real, data_dir, home) || through_link(path),
+            Access::Write => {
+                let roots = [saba_chan_updater_lib::constants::resolve_data_dir(), saba_chan_updater_lib::constants::resolve_instances_dir()];
+                forbidden(&real, data_dir, home) || planted_link(path, &roots)
+            }
         };
         if blocked {
             tracing::warn!("[Sandbox] not granting {:?} on {}", access, real.display());
@@ -95,6 +117,18 @@ impl Grants {
         }
         if !self.entries.iter().any(|(p, a)| p == &real && *a == access) {
             self.entries.push((real, access));
+        }
+        self.note_links(path);
+    }
+
+    /// 원래 경로가 거친 링크를 남긴다 (`links`). 권한은 실제 경로에 붙으므로 원래 경로로 쓰는 쪽을 위해서다
+    pub fn note_links(&mut self, path: &Path) {
+        if path.is_absolute() {
+            for link in path.ancestors().filter(|p| std::fs::symlink_metadata(p).is_ok_and(|m| m.file_type().is_symlink())) {
+                if !self.links.iter().any(|l| l == link) {
+                    self.links.push(link.to_path_buf());
+                }
+            }
         }
     }
 
@@ -251,7 +285,6 @@ pub fn stale_runtimes(
         .collect()
 }
 
-#[cfg_attr(not(windows), allow(dead_code))]
 /// 런타임 기록에서 데몬이 ALL APPLICATION PACKAGES에 더한 함께 읽는 권한의 키. 런타임(없어도 되는 것)은 쓰지 않게 되면 거두고,
 /// 나머지(Python·모듈·익스텐션 폴더)는 제거기(`reset`)만 거둔다
 #[cfg_attr(not(windows), allow(dead_code))]
@@ -260,6 +293,7 @@ const SHARED_RUNTIMES: &str = "*all-app-packages*";
 const SHARED_FIXED: &str = "*all-app-packages-fixed*";
 
 /// 런타임 읽기 권한 기록 (`<data_dir>/sandbox-grants.json`: 프로필 → 폴더)
+#[cfg_attr(not(windows), allow(dead_code))]
 fn runtime_record_path() -> PathBuf {
     saba_chan_updater_lib::constants::resolve_data_dir().join("sandbox-grants.json")
 }
@@ -2269,6 +2303,24 @@ mod tests {
         g.push(Path::new("/"), Access::List, &data, Some(&home));
         g.push(&inst, Access::Write, &data, Some(&home));
         assert_eq!(g.entries, vec![(inst.clone(), Access::Write), (modules.clone(), Access::Read), (data.clone(), Access::List)]);
+    }
+
+    /// 리눅스 쓰기: 데이터·인스턴스 폴더가 거치는 링크(`/home -> /var/home`)는 받고, 그 안에 생긴 링크(격리된 구성요소가 만들 수
+    /// 있다)는 받지 않는다
+    #[cfg(unix)]
+    #[test]
+    fn only_links_above_the_daemon_roots_carry_a_write_grant() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let (real, link) = (root.join("var-home"), root.join("home"));
+        std::fs::create_dir_all(real.join("data").join("server")).unwrap();
+        std::fs::create_dir_all(root.join("elsewhere")).unwrap();
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+        std::os::unix::fs::symlink(root.join("elsewhere"), real.join("data").join("server").join("world")).unwrap();
+        let roots = [link.join("data")];
+        assert!(!planted_link(&link.join("data").join("server"), &roots), "a link above the data folder is the user's");
+        assert!(planted_link(&link.join("data").join("server").join("world"), &roots), "a link inside it may be planted");
+        assert!(planted_link(&link.join("other"), &[root.join("unrelated")]), "a link no root goes through");
     }
 
     #[test]

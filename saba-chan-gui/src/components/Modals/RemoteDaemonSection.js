@@ -272,9 +272,7 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow }) {
                     <li key={d.hostId} className="remote-daemon-row">
                         <Icon name="cloud" size="sm" />
                         <span className="remote-daemon-name">{d.name || d.hostId}</span>
-                        <code className="muted">
-                            {d.address}:{d.port}
-                        </code>
+                        <code className="muted">{d.address ? `${d.address}:${d.port}` : t('remote_daemon.via_relay')}</code>
                         {button(`forget:${d.hostId}`, t('remote_daemon.forget'), () => forget(d.hostId), 'trash')}
                     </li>
                 ))}

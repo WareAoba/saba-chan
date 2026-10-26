@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  SignPath 산출물 설정 (SignPath 프로젝트의 Artifact Configuration에 이 내용을 그대로 넣는다).
+  build-windows.yml이 올리는 GitHub 아티팩트(zip) 루트의 exe 여섯 개에 Authenticode 서명을 한다.
+  제품 이름은 프로젝트 이름, 제품 버전은 컴포넌트 버전(versions.toml)으로 묶는다.
+  매개변수 값은 `python scripts/versions.py signing`이 만든다.
+-->
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <parameters>
+    <parameter name="saba_core_version" required="true" />
+    <parameter name="cli_version" required="true" />
+    <parameter name="gui_version" required="true" />
+    <parameter name="updater_version" required="true" />
+    <parameter name="installer_version" required="true" />
+  </parameters>
+  <zip-file>
+    <pe-file path="saba-core.exe" product-name="Saba-chan" product-version="${saba_core_version}">
+      <authenticode-sign />
+    </pe-file>
+    <pe-file path="saba-runner.exe" product-name="Saba-chan" product-version="${saba_core_version}">
+      <authenticode-sign />
+    </pe-file>
+    <pe-file path="saba-chan-cli.exe" product-name="Saba-chan" product-version="${cli_version}">
+      <authenticode-sign />
+    </pe-file>
+    <pe-file path="saba-chan-gui.exe" product-name="Saba-chan" product-version="${gui_version}">
+      <authenticode-sign />
+    </pe-file>
+    <pe-file path="saba-chan-updater.exe" product-name="Saba-chan" product-version="${updater_version}">
+      <authenticode-sign />
+    </pe-file>
+    <pe-file path="saba-chan-installer.exe" product-name="Saba-chan" product-version="${installer_version}">
+      <authenticode-sign />
+    </pe-file>
+  </zip-file>
+</artifact-configuration>

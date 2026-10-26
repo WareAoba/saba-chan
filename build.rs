@@ -55,7 +55,7 @@ BLOCK "StringFileInfo"
 {{
 BLOCK "000004b0"
 {{
-VALUE "ProductName", "Saba-chan Core Daemon"
+VALUE "ProductName", "Saba-chan"
 VALUE "CompanyName", "Saba-chan"
 VALUE "FileVersion", "{version}"
 VALUE "ProductVersion", "{version}"
@@ -160,7 +160,7 @@ fn compile_with_winres(icon: Option<&std::path::Path>) {
     if let Some(ico_path) = icon {
         res.set_icon(ico_path.to_str().unwrap());
     }
-    res.set("ProductName", "Saba-chan Core Daemon");
+    res.set("ProductName", "Saba-chan");
     res.set("CompanyName", "Saba-chan");
     res.set("FileVersion", env!("CARGO_PKG_VERSION"));
     res.set("ProductVersion", env!("CARGO_PKG_VERSION"));

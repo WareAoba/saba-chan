@@ -693,6 +693,8 @@ const impl = {
         }),
     relayLinkRequestRespond: (id, accept) =>
         ok(accept ? { ok: true, guildId: '900', guildName: '마크 친구들' } : { ok: true, declined: true }),
+    relayPrivacyErase: () => ok({ url: 'https://saba-chan.online/legal/erase#mock.secret' }),
+    relayPrivacyEraseStatus: () => ok({ status: 'pending' }),
     onboarding: () =>
         ok({
             steps: [
