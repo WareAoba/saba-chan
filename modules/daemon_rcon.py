@@ -911,7 +911,7 @@ class ChecksumMismatch(ValueError):
 def download(url, dest, *, on_progress=None, timeout=60, checksums=None, user_agent="saba-chan"):
     """url을 dest에 받는다. on_progress(받은 바이트, 전체 바이트 또는 0)를 덩어리마다 부른다.
     checksums={"sha256": "...", "sha1": "...", "md5": "..."}가 있으면 받은 뒤 비교하고 다르면
-    ChecksumMismatch(파일은 지운다). 반환: {알고리즘: hex} (sha1·sha256은 늘 계산한다).
+    ChecksumMismatch(파일은 지운다). Content-Length보다 적게 받고 끝나면 IOError. 반환: {알고리즘: hex} (sha1·sha256은 늘 계산한다).
     urlopen의 timeout은 읽기 한 번의 한도라서, 느리게 이어지는 받기도 전체로 timeout*10 안에 끊는다"""
     import hashlib
     wanted = {k.lower(): v.lower() for k, v in (checksums or {}).items() if v}
@@ -934,6 +934,9 @@ def download(url, dest, *, on_progress=None, timeout=60, checksums=None, user_ag
                 done += len(chunk)
                 if on_progress:
                     on_progress(done, total)
+            # 연결이 일찍 정상 종료되면 read()는 오류 없이 끝난다
+            if total and done != total:
+                raise IOError(f"incomplete download: {done}/{total} bytes")
         digests = {name: h.hexdigest() for name, h in hashes.items()}
         for name, expected in wanted.items():
             if digests[name] != expected:

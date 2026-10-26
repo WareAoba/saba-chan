@@ -312,6 +312,24 @@ class DownloadTests(unittest.TestCase):
             self.assertFalse(dest.exists())
 
 
+    def test_a_connection_that_ends_early_is_a_failure(self):
+        class Short(io.BytesIO):
+            headers = {"Content-Length": "10"}
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+        with tempfile.TemporaryDirectory() as d, \
+                patch.object(daemon_rcon.urllib.request, "urlopen", return_value=Short(b"abc")):
+            dest = Path(d) / "dest.bin"
+            with self.assertRaises(IOError):
+                daemon_rcon.download("https://example.invalid/x", dest)
+            self.assertFalse(dest.exists())
+
+
 class ProgressAndLocaleTests(ModuleDirTest):
     def test_progress_line(self):
         with patch("sys.stderr", new_callable=io.StringIO) as err:
