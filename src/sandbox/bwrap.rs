@@ -210,6 +210,7 @@ mod tests {
     }
 
     /// 링크를 거친 경로(`/home -> /var/home` 같은)로 준 폴더는 그 경로로도 닿는다: 링크를 격리 안에 그대로 만든다
+    #[cfg(unix)]
     #[test]
     fn a_grant_reached_through_a_link_keeps_the_link() {
         use_in_this_test();
