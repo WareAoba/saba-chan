@@ -453,10 +453,9 @@ def _replace_keeping_access(tmp, path):
         # 원래 파일(원래 ACL)을 제자리로 되돌린다. 새 값은 쓰지 못한 것으로 알린다
         os.replace(backup, path)
     elif err == _ERROR_ACCESS_DENIED and os.path.isfile(path) and not os.path.exists(backup):
-        access = _access_of(path)
         # 원래 파일과 임시 파일이 같은 폴더에서 같은 권한을 물려받았다: 바꿔도 권한이 넓어지지 않는다.
         # EFS 암호화도 ReplaceFileW만 옮기므로 같아야 한다
-        if access is not None and access == _access_of(tmp) and _encrypted(path) == _encrypted(tmp):
+        if _same_access(_access_of(path), _access_of(tmp)) and _encrypted(path) == _encrypted(tmp):
             os.replace(tmp, path)
             return
     raise ctypes.WinError(err) if err > 0 else OSError(f"ReplaceFileW failed: {path}")
@@ -475,6 +474,15 @@ def _replace_file(path, tmp, backup):
 
 def _encrypted(path):
     return bool(getattr(os.stat(path), "st_file_attributes", 0) & 0x4000)  # FILE_ATTRIBUTE_ENCRYPTED
+
+
+def _same_access(a, b):
+    """두 SDDL이 같은 권한인지. 무결성 표시 SACL의 자동 상속 제어 플래그(AI·AR)는 보지 않는다:
+    데몬이 기존 하위 파일에 맞춘 상속 표시에는 없고, OS가 새 파일에 붙인 표시에는 있다 (ACE는 같다)"""
+    if a is None or b is None:
+        return False
+    plain = lambda sddl: re.sub(r"S:(?:AI|AR)*", "S:", sddl)
+    return plain(a) == plain(b)
 
 
 def _access_of(path):
