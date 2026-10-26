@@ -15,6 +15,25 @@ function BackgroundModal({ isOpen, onClose, isClosing, ipcPort }) {
     const [daemonStatus, setDaemonStatus] = useState('checking');
     const [uptime, setUptime] = useState(t('background_modal.uptime_checking'));
     const [restarting, setRestarting] = useState(false);
+    // 원격 데몬을 고른 동안 이 PC의 서비스가 중계하는 데몬 ("이름 · 주소"), 이 PC면 null
+    const [remote, setRemote] = useState(null);
+
+    useEffect(() => {
+        if (!isOpen || typeof window.api?.daemonTarget !== 'function') return;
+        let alive = true;
+        Promise.all([window.api.daemonTarget(), window.api.remoteDaemons?.()])
+            .then(([current, list]) => {
+                const d = current?.target && list?.daemons?.find((x) => x.hostId === current.target);
+                if (!alive) return;
+                if (!current?.target) return setRemote(null);
+                const where = d?.address ? `${d.address}:${d.port}` : t('remote_daemon.via_relay');
+                setRemote(`${d?.name || current.target} · ${where}`);
+            })
+            .catch(() => alive && setRemote(null));
+        return () => {
+            alive = false;
+        };
+    }, [isOpen, t]);
 
     useEffect(() => {
         if (!isOpen) return;
@@ -128,6 +147,12 @@ function BackgroundModal({ isOpen, onClose, isClosing, ipcPort }) {
 
             {/* 3. 연결 정보 (개발·문제 해결용) */}
             <dl className="bg-pop-facts">
+                {remote && (
+                    <div>
+                        <dt>{t('shell.daemon_target')}</dt>
+                        <dd>{remote}</dd>
+                    </div>
+                )}
                 <div>
                     <dt>{t('shell.daemon_address')}</dt>
                     <dd className="mono">
