@@ -259,6 +259,17 @@ class ExtractTests(unittest.TestCase):
         self.assertFalse((self.root / "evil").exists())
         self.assertFalse((self.dest / "bin" / "java").exists())
 
+    def test_keep_existing_matches_dot_slash_entries(self):
+        path = self.root / "a.tar"
+        with tarfile.open(path, "w") as tf:
+            info = tarfile.TarInfo("./serverconfig.txt")
+            info.size = 7
+            tf.addfile(info, io.BytesIO(b"default"))
+        self.dest.mkdir()
+        (self.dest / "serverconfig.txt").write_text("mine")
+        daemon_rcon.safe_extract(path, self.dest, keep_existing={"serverconfig.txt"})
+        self.assertEqual((self.dest / "serverconfig.txt").read_text(), "mine")
+
     def test_strip_top_prefix_and_keep_existing(self):
         archive = self._zip({"jdk-21/bin/java": "x", "jdk-21/release": "r"})
         daemon_rcon.safe_extract(archive, self.dest, strip_top=True)
@@ -371,6 +382,32 @@ class DownloadTests(unittest.TestCase):
             with self.assertRaises(OSError):
                 daemon_rcon.download((Path(d) / "missing").as_uri(), dest)
             self.assertEqual(dest.read_bytes(), b"working")
+
+    def test_a_slow_trickle_still_hits_the_overall_deadline(self):
+        # 읽기 한 번이 1MiB를 기다리면 전체 한도를 넘겨도 끊지 못한다
+        class Trickle:
+            headers = {"Content-Length": "100"}
+            sent = 0
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def read1(self, n):
+                self.sent += 1
+                return b"x" if self.sent <= 100 else b""
+
+            def read(self, n):
+                raise AssertionError("read() waits for the full chunk")
+
+        clock = iter(range(0, 10_000))
+        with tempfile.TemporaryDirectory() as d, \
+                patch.object(daemon_rcon.urllib.request, "urlopen", return_value=Trickle()), \
+                patch.object(daemon_rcon.time, "monotonic", lambda: next(clock)):
+            with self.assertRaises(TimeoutError):
+                daemon_rcon.download("https://example.invalid/x", Path(d) / "dest.bin", timeout=1)
 
     def test_a_connection_that_ends_early_is_a_failure(self):
         class Short(io.BytesIO):

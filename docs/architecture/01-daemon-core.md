@@ -646,7 +646,7 @@ Relay 서명 방식(`relay.rs:115-161`):
 
 ### 6.1 Python (`src/python_env/mod.rs`)
 
-- 버전: 포터블 CPython **3.12.8**(python-build-standalone 태그 `20250106`, `install_only_stripped`)이다(`updater/src/python_pin.rs:7-8`). 시스템 Python을 쓸 경우 3.10 이상이어야 한다(`python_env/mod.rs:45`).
+- 버전: 포터블 CPython **3.12.8**(python-build-standalone 태그 `20250106`, `install_only_stripped`)이다(`updater/src/python_pin.rs:7-8`). 시스템 Python을 쓸 경우 3.11 이상이어야 한다(`python_env/mod.rs:45`, 모듈 공용 도우미가 표준 `tomllib`으로 module.toml을 읽는다). 기존 venv도 버전을 확인해 그보다 낮으면 다시 만든다(`verify_python`).
 - 탐색 순서: 이미 받은 포터블 Python, 시스템 Python, 자동 다운로드 순이다(`find_base_python`, `:209`). 찾은 인터프리터로 `<pyroot>/python-env` venv를 만들고 pip를 업그레이드한다(`ensure_venv`, `:114`).
 - 시스템 Python은 `sys.executable`로 확인한 실제 인터프리터 파일 경로를 사용한다.
 - 성공한 결과는 `OnceCell`에 캐시하고, 실패는 캐시하지 않아 다음 호출이 다시 시도한다(`get_python_path`, `:56`). 모든 `run_plugin` 호출이 여기를 거친다(`plugin/mod.rs:282`). 데몬은 기동하자마자 미리 준비를 시작하고(`main.rs:320-324`), 진행은 `/api/runtime/preflight`(`preflight_snapshot`, `python_env/mod.rs:86-106`)로 보인다.
