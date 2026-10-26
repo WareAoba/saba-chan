@@ -2201,6 +2201,11 @@
     margin-bottom: var(--sp-4);
 }
 
+/* 아직 받지 못한 목록은 빈 테두리를 그리지 않는다 */
+.ss-cards:empty {
+    display: none;
+}
+
 .ss-cards .ss-card {
     background: transparent;
 }
