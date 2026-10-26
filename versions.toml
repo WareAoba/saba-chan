@@ -11,6 +11,7 @@
 # (saba-core, cli, gui, updater, installer, locales, module-<이름>, ext-<이름>).
 # 새 컴포넌트는 [components.<키>] 하나만 추가하면 된다. files 가 없으면 버전만 기록한다.
 # asset 은 릴리즈 zip 이름({platform} 치환), install_dir 은 설치 루트 기준 폴더.
+# exes 는 이 컴포넌트로 빌드·서명하는 Windows 실행 파일 (build-windows.yml, versions.py signing).
 # R2 경로는 releases/<release version>/<asset> (운영 0.1.1과 같은 규칙).
 
 [release]
@@ -19,6 +20,7 @@ channel = "stable"
 
 [components.saba-core]
 version = "0.1.10"
+exes = ["saba-core.exe", "saba-runner.exe"]
 asset = "saba-core-{platform}.zip"
 install_dir = "."
 # 빠지면 앱이 돌지 않는다: 패키징이 실패하고 설치기가 설치하지 않는다
@@ -28,12 +30,14 @@ files = ["Cargo.toml", "runner/Cargo.toml"]
 
 [components.cli]
 version = "0.1.10"
+exes = ["saba-chan-cli.exe"]
 asset = "saba-chan-cli-{platform}.zip"
 install_dir = "."
 files = ["saba-chan-cli/Cargo.toml"]
 
 [components.gui]
 version = "0.1.10"
+exes = ["saba-chan-gui.exe"]
 asset = "saba-chan-gui-{platform}.zip"
 install_dir = "."
 required = true
@@ -48,6 +52,7 @@ files = [
 
 [components.updater]
 version = "0.1.10"
+exes = ["saba-chan-updater.exe"]
 asset = "saba-chan-updater-{platform}.zip"
 install_dir = "."
 required = true
@@ -59,6 +64,7 @@ files = [
 
 [components.installer]
 version = "0.1.10"
+exes = ["saba-chan-installer.exe"]
 asset = "saba-chan-installer.exe"
 install_dir = "."
 # asset 이름에 {platform}이 없는 것 중 이 플랫폼에만 싣는 것 (없으면 모든 플랫폼의 manifest에 싣는다)
