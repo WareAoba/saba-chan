@@ -121,8 +121,10 @@ export function useServerActions({
                         const isKnownOp = isGuiOp || isApiOp || inBootGrace || hasPendingOptimistic;
 
                         // 데몬 이벤트를 받으면 켜짐·꺼짐은 이벤트가 출처와 함께 알린다 (instance.started·stopped·exit).
-                        // 폴링은 이벤트를 못 받을 때만, 사바쨩을 거치지 않은 변화만 알린다
-                        const pollNotices = !eventsAvailable() && !isKnownOp;
+                        // 폴링은 이벤트를 못 받을 때만, 사바쨩을 거치지 않은 변화만 알린다.
+                        // 익스텐션이 상태를 알려 주는 서버(server.list_enrich)는 데몬이 종료를 판정하지 않아 이벤트가 없다
+                        const extensionStatus = Object.keys(newServer.extension_status || {}).length > 0;
+                        const pollNotices = (!eventsAvailable() || extensionStatus) && !isKnownOp;
                         if (pollNotices && wasRunning && nowStopped) {
                             // Crash / unexpected stop — genuinely important.
                             // instance.exit 이벤트가 이미 알렸으면 건너뛴다 (G-S6)

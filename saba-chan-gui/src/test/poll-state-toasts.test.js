@@ -52,6 +52,20 @@ describe('목록 폴링의 상태 변화 알림', () => {
         expect(window.showToast).not.toHaveBeenCalled();
     });
 
+    it('익스텐션이 상태를 알려 주는 서버는 데몬 이벤트가 없으니 밖에서 꺼진 것을 폴링이 알린다', async () => {
+        window.api.onDaemonEvent = vi.fn(() => () => {});
+        const ext = { extension_status: { default: { handled: true } } };
+        const { result } = hook();
+        list(ext);
+        await act(async () => result.current.fetchServers());
+        await act(async () => vi.advanceTimersByTime(31_000));
+        list({ ...ext, status: 'running' });
+        await act(async () => result.current.fetchServers());
+        list({ ...ext, status: 'stopped' });
+        await act(async () => result.current.fetchServers());
+        expect(window.showToast).toHaveBeenCalledWith(expect.any(String), 'error', 5000, expect.anything());
+    });
+
     it('이벤트가 없어도 사바쨩을 거쳐 켜고 끈 것은 밖에서 켰다거나 예기치 않게 꺼졌다고 하지 않는다', async () => {
         const { result } = hook();
         await flip(result);
