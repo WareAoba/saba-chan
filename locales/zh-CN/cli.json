@@ -855,6 +855,7 @@
       "no_color": "关闭颜色",
       "lang": "消息语言（en、ko ...）",
       "port": "守护进程端口（默认：设置文件）",
+      "daemon": "通过本机守护进程使用已保存的远程守护进程（名称或 host id，见 `remote daemons`）",
       "server": "服务器名称（部分即可）",
       "extra_args": "要试用的额外启动参数（用引号括起，省略则使用已保存的）",
       "name": "新服务器的名称",
@@ -1426,7 +1427,9 @@
       "remote_rejected": "远程守护进程未接受连接，请重试",
       "remote_unknown": "这不是你已连接的远程守护进程。请查看 `remote daemons`",
       "relay_not_paired": "此电脑未连接中继",
-      "relay_unreachable": "无法连接中继"
+      "relay_unreachable": "无法连接中继",
+      "remote_ambiguous": "有多个同名的远程守护进程。请用 host id 选择",
+      "remote_timeout": "远程守护进程未及时回应。请求可能仍在处理中"
     }
   }
 }

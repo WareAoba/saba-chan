@@ -26,7 +26,7 @@ impl Ctx {
     /// 이 포트의 데몬에 붙고, 데몬을 띄울 때도 이 포트에 띄운다 (`--port`)
     pub fn on_port(&self, port: u16) -> Ctx {
         Ctx {
-            api: Api::new(port, self.api.lang.clone()),
+            api: self.api.on_port(port),
             spawn_port: port,
             port_fixed: true,
             ..self.clone()
@@ -41,7 +41,7 @@ impl Ctx {
         self.spawn_port = bootstrap::ipc_port();
         let port = bootstrap::live_port(self.spawn_port);
         if port != self.api.port {
-            self.api = Api::new(port, self.api.lang.clone());
+            self.api = self.api.on_port(port);
         }
     }
 
@@ -78,7 +78,7 @@ impl Ctx {
         let api = if self.spawn_port == self.api.port {
             self.api.clone()
         } else {
-            Api::new(self.spawn_port, self.api.lang.clone())
+            self.api.on_port(self.spawn_port)
         };
         let spin = crate::progress::spinner(&t!("daemon.starting"));
         let deadline = Instant::now() + bootstrap::START_TIMEOUT;

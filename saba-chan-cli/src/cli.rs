@@ -40,6 +40,9 @@ pub struct Global {
     /// Daemon port (default: from settings)
     #[arg(long, global = true, display_order = 900, value_name = "PORT")]
     pub port: Option<u16>,
+    /// Use a saved remote daemon (name or host id; `remote daemons`) through this PC's daemon
+    #[arg(long, global = true, display_order = 900, value_name = "NAME", env = "SABA_DAEMON")]
+    pub daemon: Option<String>,
 }
 
 #[derive(Subcommand, Debug)]

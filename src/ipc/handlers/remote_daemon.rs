@@ -150,17 +150,6 @@ pub async fn forget_daemon(Path(host_id): Path<String>) -> Response {
     }
 }
 
-/// 원격 데몬에 넘길 경로: 데몬 API와 상태 확인만 (짝 맺기 같은 원격 포트 자체의 길은 넘기지 않는다)
-fn forward_path(rest: &str, query: Option<&str>) -> Option<String> {
-    let rest = rest.trim_start_matches('/');
-    if !(rest == "health" || rest.starts_with("api/")) || rest.split('/').any(|s| s == ".." || s == ".") {
-        return None;
-    }
-    Some(match query {
-        Some(q) => format!("/{rest}?{q}"),
-        None => format!("/{rest}"),
-    })
-}
 
 pub async fn proxy(State(state): State<IPCServer>, Path((host_id, _)): Path<(String, String)>, req: Request<Body>) -> Response {
     // 풀지 않은 경로 그대로 넘긴다 (원격 데몬이 다시 푼다)
@@ -170,7 +159,7 @@ pub async fn proxy(State(state): State<IPCServer>, Path((host_id, _)): Path<(Str
         (Some("proxy"), Some(rest)) => rest,
         _ => "",
     };
-    let Some(path) = forward_path(rest, req.uri().query()) else {
+    let Some(path) = peer::forward_path(rest, req.uri().query()) else {
         return peer::error(StatusCode::NOT_FOUND, "not_found");
     };
     peer::forward(&ConfigFile::default_location(), relay_target(&state).await, &host_id, &path, req, state.shutdown_token.clone()).await
@@ -180,10 +169,10 @@ pub async fn proxy(State(state): State<IPCServer>, Path((host_id, _)): Path<(Str
 mod tests {
     #[test]
     fn only_daemon_api_paths_are_forwarded() {
-        assert_eq!(super::forward_path("api/instances", Some("a=1")).as_deref(), Some("/api/instances?a=1"));
-        assert_eq!(super::forward_path("health", None).as_deref(), Some("/health"));
+        assert_eq!(crate::remote_daemon::peer::forward_path("api/instances", Some("a=1")).as_deref(), Some("/api/instances?a=1"));
+        assert_eq!(crate::remote_daemon::peer::forward_path("health", None).as_deref(), Some("/health"));
         for bad in ["remote/pair", "api/../remote/pair", "", "apix"] {
-            assert_eq!(super::forward_path(bad, None), None, "{bad}");
+            assert_eq!(crate::remote_daemon::peer::forward_path(bad, None), None, "{bad}");
         }
     }
 }

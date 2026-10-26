@@ -1231,7 +1231,9 @@
       "remote_rejected": "遠端常駐程式未接受連線，請再試一次",
       "remote_unknown": "這不是你已連線的遠端常駐程式。請查看 `remote daemons`",
       "relay_not_paired": "此電腦未連線中繼",
-      "relay_unreachable": "無法連上中繼"
+      "relay_unreachable": "無法連上中繼",
+      "remote_ambiguous": "有多個同名的遠端常駐程式。請用 host id 選擇",
+      "remote_timeout": "遠端常駐程式未及時回應。請求可能仍在處理中"
     }
   }
 }

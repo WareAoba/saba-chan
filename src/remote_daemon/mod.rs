@@ -8,6 +8,7 @@ pub mod config;
 pub mod peer;
 pub mod relay;
 pub mod server;
+pub mod target;
 pub mod tls;
 
 use std::sync::atomic::{AtomicBool, Ordering};
