@@ -118,6 +118,63 @@ describe('예약 작업 화면', () => {
         expect(window.api.instanceScheduleSave.mock.calls[1][1].schedule[1].command).toBe('wipe');
     });
 
+    it('한 번 작업은 돌고 나면 끝났다고 보이고, 돈 뒤 다음 실행 시각만 다시 읽는다', async () => {
+        vi.useFakeTimers({ shouldAdvanceTime: true });
+        try {
+            const now = Math.floor(Date.now() / 1000);
+            const schedule = [
+                { action: 'start', at: '04:00', date: '2026-10-27', enabled: true },
+                { action: 'restart', at: '05:00', enabled: true },
+            ];
+            const reply = (runs) => ({ success: true, schedule, next_runs: runs, backup_keep: 5, revision: 'r1' });
+            window.api.instanceScheduleGet = vi
+                .fn()
+                .mockResolvedValueOnce(reply([now + 60, now + 3600]))
+                .mockResolvedValue(reply([null, now + 3600]));
+            render(<MaintenanceTab server={server} moduleCommands={commands} />);
+            await screen.findByRole('tablist', { name: 'Task 1 type' });
+            await act(async () => {});
+            const prefix = t('maintenance.next_run').split('{{')[0];
+            expect(screen.getAllByText((text) => text.startsWith(prefix))).toHaveLength(2);
+            // 작업 바로 뒤 시각을 지나면 다음 실행만 다시 읽는다 (고치던 내용은 그대로)
+            fireEvent.change(screen.getAllByLabelText(t('maintenance.at_time'))[1], { target: { value: '06:00' } });
+            await act(async () => {
+                await vi.advanceTimersByTimeAsync(2 * 60 * 1000);
+            });
+            expect(window.api.instanceScheduleGet).toHaveBeenCalledTimes(2);
+            expect(screen.getByText(t('maintenance.date_done'))).toBeTruthy();
+            expect(screen.getAllByLabelText(t('maintenance.at_time'))[1].value).toBe('06:00');
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('명령 목록과 입력은 모듈 locales의 문구를 쓴다', async () => {
+        i18n.addResourceBundle(
+            'en',
+            'mod_mcl',
+            {
+                commands: {
+                    say: { label: 'Broadcast', description: 'Tell everyone', inputs: { message: { label: 'Text' } } },
+                },
+            },
+            true,
+            true,
+        );
+        window.api.instanceScheduleGet = vi.fn().mockResolvedValue({
+            success: true,
+            schedule: [{ action: 'command', at: '04:00', command: 'say', args: { message: 'hi' }, enabled: true }],
+            backup_keep: 5,
+        });
+        render(<MaintenanceTab server={{ ...server, module: 'mcl' }} moduleCommands={commands} />);
+        await screen.findByRole('tablist', { name: 'Task 1 type' });
+        await act(async () => {});
+        expect(screen.getByRole('textbox', { name: /Text/ })).toBeTruthy();
+        fireEvent.click(screen.getByRole('button', { name: /Broadcast/ }));
+        const dialog = await screen.findByRole('dialog', { name: t('maintenance.command_pick') });
+        expect(within(dialog).getByText('Tell everyone')).toBeTruthy();
+    });
+
     it('별명·대문자로 저장된 꺼진 위험 명령을 켜도 한 번 더 확인한다', async () => {
         window.showToast = vi.fn();
         window.api.instanceScheduleGet = vi.fn().mockResolvedValue({

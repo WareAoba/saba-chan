@@ -1150,6 +1150,7 @@
     "server_clock": "Times follow the server PC's clock ({{zone}}). Next runs are shown in this device's time.",
     "command_danger": "This command is hard to undo. It runs at the set time without asking.",
     "next_run": "Next run: {{time}}",
+    "date_done": "Done (won’t run again)",
     "danger_confirm": "You're scheduling a command that is hard to undo. Press again to save.",
     "danger_save": "Press to save",
     "command_pick": "Game command to schedule",

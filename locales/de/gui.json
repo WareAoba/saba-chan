@@ -1150,6 +1150,7 @@
     "server_clock": "Zeiten richten sich nach der Uhr des Server-PCs ({{zone}}). Nächste Läufe werden in der Zeit dieses Geräts angezeigt.",
     "command_danger": "Dieser Befehl lässt sich schwer rückgängig machen. Er läuft zur festgelegten Zeit ohne Nachfrage.",
     "next_run": "Nächster Lauf: {{time}}",
+    "date_done": "Erledigt (läuft nicht erneut)",
     "danger_confirm": "Du planst einen schwer rückgängig zu machenden Befehl. Zum Speichern erneut drücken.",
     "danger_save": "Zum Speichern drücken",
     "command_pick": "Zu planender Spielbefehl",

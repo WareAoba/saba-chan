@@ -602,6 +602,9 @@
 }
 .server-detail > .segmented {
     align-self: flex-start;
+    /* 좁은 창에서는 줄을 바꾼다 (가로 스크롤 없이) */
+    flex-wrap: wrap;
+    max-width: 100%;
 }
 .detail-body {
     flex: 1;
@@ -2616,8 +2619,8 @@ button.appbar-preflight {
 }
 .mt-task-head .segmented {
     flex-shrink: 1;
+    flex-wrap: wrap;
     min-width: 0;
-    overflow-x: auto;
     margin-right: auto;
 }
 .mt-task-fields {

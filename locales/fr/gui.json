@@ -1150,6 +1150,7 @@
     "server_clock": "Les heures suivent l'horloge du PC serveur ({{zone}}). Les prochaines exécutions sont affichées à l'heure de cet appareil.",
     "command_danger": "Cette commande est difficile à annuler. Elle s'exécute à l'heure prévue sans confirmation.",
     "next_run": "Prochaine exécution : {{time}}",
+    "date_done": "Terminée (ne sera plus relancée)",
     "danger_confirm": "Tu programmes une commande difficile à annuler. Appuie encore pour enregistrer.",
     "danger_save": "Appuyer pour enregistrer",
     "command_pick": "Commande de jeu à programmer",

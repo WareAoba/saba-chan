@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useInstanceCommands } from '../../hooks/useInstanceCommands';
 import { safeShowToast } from '../../utils/helpers';
+import { commandText } from '../../utils/serverView';
 import CustomDropdown from '../CustomDropdown/CustomDropdown';
 import { Icon } from '../Icon';
 import { SabaFail } from '../ui/SabaArt';
@@ -468,7 +469,28 @@ function ScheduleCard({ server, info, onSaved, moduleCommands }) {
     const [picking, setPicking] = useState(null);
     // 새로 넣은 위험 명령: 한 번 더 눌러 저장한다
     const [armed, setArmed] = useState(false);
-    const commands = useInstanceCommands(server, moduleCommands) || [];
+    const commands = localizeCommands(t, server.module, useInstanceCommands(server, moduleCommands) || []);
+    // 다음 실행 시각: 작업이 돈 뒤에는 이것만 다시 읽는다 (고치던 내용은 그대로 둔다)
+    const [nextRuns, setNextRuns] = useState(info.nextRuns);
+    useEffect(() => setNextRuns(info.nextRuns), [info]);
+    useEffect(() => {
+        const nowSecs = Date.now() / 1000;
+        const soonest = Math.min(...nextRuns.filter((s) => typeof s === 'number' && s > nowSecs));
+        if (!Number.isFinite(soonest)) return undefined;
+        // 실행기는 30초마다 본다: 그 뒤에 읽는다
+        const wait = Math.min((soonest - nowSecs + 40) * 1000, 2 ** 31 - 1);
+        const timer = setTimeout(async () => {
+            try {
+                const res = await window.api.instanceScheduleGet(server.id);
+                if (res?.success !== false && res?.revision === info.revision && Array.isArray(res?.next_runs)) {
+                    setNextRuns(res.next_runs);
+                }
+            } catch {
+                // 다음에 탭을 열 때 다시 읽는다
+            }
+        }, wait);
+        return () => clearTimeout(timer);
+    }, [nextRuns, info.revision, server.id]);
 
     useEffect(() => {
         const next = info.schedule.map(toDraft);
@@ -497,11 +519,14 @@ function ScheduleCard({ server, info, onSaved, moduleCommands }) {
         fromDraft(d, { announce: info.announceSupported, inputs: findCommand(commands, d.command)?.inputs });
     const saved = info.schedule.map(sameKey);
 
-    // 저장된 그대로인 켜진 작업만 다음 실행 시각을 보인다 (고친 작업은 저장해야 정해진다)
+    // 저장된 그대로인 켜진 작업만 다음 실행을 보인다 (고친 작업은 저장해야 정해진다).
+    // 시각이 지났거나 다시 돌 일이 없는 날짜 한 번 작업은 끝났다고 보인다
     const nextRunOf = (d) => {
         const i = saved.indexOf(sameKey(toTask(d)));
-        const at = i >= 0 ? info.nextRuns[i] : null;
-        return typeof at === 'number' ? at : null;
+        if (i < 0) return null;
+        const at = nextRuns[i];
+        if (typeof at === 'number' && at > Date.now() / 1000) return { at };
+        return d.mode === 'date' ? { done: true } : null;
     };
     const fmtRun = (secs) =>
         new Date(secs * 1000).toLocaleString(i18n.language, {
@@ -769,9 +794,12 @@ function ScheduleCard({ server, info, onSaved, moduleCommands }) {
                                         <Icon name="alertTriangle" size="xs" /> {t('maintenance.command_danger')}
                                     </p>
                                 )}
-                                {next !== null && (
-                                    <p className="muted mt-next">{t('maintenance.next_run', { time: fmtRun(next) })}</p>
+                                {next?.at && (
+                                    <p className="muted mt-next">
+                                        {t('maintenance.next_run', { time: fmtRun(next.at) })}
+                                    </p>
                                 )}
+                                {next?.done && <p className="muted mt-next">{t('maintenance.date_done')}</p>}
                                 {problems[i].length > 0 && (
                                     <p className="dc-field-error">
                                         <Icon name="alertTriangle" size="xs" /> {problems[i].join(' · ')}
@@ -862,6 +890,22 @@ function ScheduleCard({ server, info, onSaved, moduleCommands }) {
             )}
         </section>
     );
+}
+
+/** 명령과 입력에 모듈 locales 문구를 입힌다 (`mod_<모듈>:commands.<이름>`) */
+function localizeCommands(t, moduleName, list) {
+    return list.map((c) => {
+        const ns = `mod_${moduleName}:commands.${c.name}.inputs`;
+        return {
+            ...c,
+            ...commandText(t, moduleName, c),
+            inputs: c.inputs?.map((input) => ({
+                ...input,
+                label: t(`${ns}.${input.name}.label`, { defaultValue: input.label || input.name }),
+                placeholder: t(`${ns}.${input.name}.placeholder`, { defaultValue: input.placeholder || '' }),
+            })),
+        };
+    });
 }
 
 /** 게임 명령 입력 하나 (module.toml `[[commands.fields.inputs]]`) */

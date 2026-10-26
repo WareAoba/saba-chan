@@ -1150,6 +1150,7 @@
     "server_clock": "Os horários seguem o relógio do PC servidor ({{zone}}). As próximas execuções aparecem no horário deste dispositivo.",
     "command_danger": "Este comando é difícil de desfazer. Ele roda no horário definido sem perguntar.",
     "next_run": "Próxima execução: {{time}}",
+    "date_done": "Concluída (não será repetida)",
     "danger_confirm": "Você está agendando um comando difícil de desfazer. Pressione de novo para salvar.",
     "danger_save": "Pressione para salvar",
     "command_pick": "Comando do jogo para agendar",

@@ -1150,6 +1150,7 @@
     "server_clock": "时间以服务器电脑的时钟（{{zone}}）为准。下次执行时间按本设备时间显示。",
     "command_danger": "此命令难以撤销，将在设定时间不经确认直接执行。",
     "next_run": "下次执行：{{time}}",
+    "date_done": "已结束（不会再执行）",
     "danger_confirm": "你正在预约难以撤销的命令。再按一次保存。",
     "danger_save": "按下保存",
     "command_pick": "要预约的游戏命令",

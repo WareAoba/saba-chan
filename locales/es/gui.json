@@ -1150,6 +1150,7 @@
     "server_clock": "Las horas siguen el reloj del PC servidor ({{zone}}). Las próximas ejecuciones se muestran en la hora de este dispositivo.",
     "command_danger": "Este comando es difícil de deshacer. Se ejecuta a la hora fijada sin preguntar.",
     "next_run": "Próxima ejecución: {{time}}",
+    "date_done": "Terminada (no se repetirá)",
     "danger_confirm": "Vas a programar un comando difícil de deshacer. Pulsa otra vez para guardar.",
     "danger_save": "Pulsa para guardar",
     "command_pick": "Comando del juego a programar",

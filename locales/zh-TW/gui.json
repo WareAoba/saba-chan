@@ -1150,6 +1150,7 @@
     "server_clock": "時間以伺服器電腦的時鐘（{{zone}}）為準。下次執行時間依本裝置時間顯示。",
     "command_danger": "此指令難以復原，會在設定時間不經確認直接執行。",
     "next_run": "下次執行：{{time}}",
+    "date_done": "已結束（不會再執行）",
     "danger_confirm": "你正在預約難以復原的指令。再按一次儲存。",
     "danger_save": "按下儲存",
     "command_pick": "要預約的遊戲指令",
