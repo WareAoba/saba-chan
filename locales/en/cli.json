@@ -766,7 +766,9 @@
       "config.move.kind": "What to move: modules or extensions",
       "config.move.folder": "Folder to use. Saba-chan makes a modules or extensions folder inside it",
       "components_dir": "Folder for modules and extensions. Saba-chan makes modules and extensions folders inside it and moves installed files",
-      "config.autostart.mode": "off, daemon or full"
+      "config.autostart.mode": "off, daemon or full",
+      "keep_settings": "Keep the game settings files as they are instead of restoring them to their state before the import when the instance is deleted",
+      "move_folder": "Move the --from folder into the saba-chan folder instead of linking it in place (same drive only)"
     },
     "after": "Names can be partial (e.g. start pal). Run with no arguments in a terminal to open the full-screen menu (SABA_NO_TUI=1: the interactive shell).\nIn scripts use --json and --yes. Exit codes: 0 ok · 1 failed · 2 usage · 3 daemon unreachable · 4 not found · 130 cancelled"
   },

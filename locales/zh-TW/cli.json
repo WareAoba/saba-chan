@@ -797,7 +797,9 @@
       "remote.revoke.host_id": "要解除配對的電腦 id (見 `remote clients`)",
       "remote.connect.host_id": "要連線的電腦 id（見 `remote peers`）",
       "remote.forget.host_id": "要移除的電腦 id（見 `remote daemons`）",
-      "config.autostart.mode": "off、daemon 或 full"
+      "config.autostart.mode": "off、daemon 或 full",
+      "keep_settings": "刪除實例時不將遊戲設定檔還原到匯入前的狀態，保持現狀",
+      "move_folder": "將 --from 資料夾移到 saba-chan 資料夾，而不是在原處連結（僅限同一磁碟）"
     },
     "after": "名稱可以只寫一部分（例如 start pal）。在終端機中不帶參數執行會開啟全螢幕選單(SABA_NO_TUI=1 時為互動式 shell)。\n在指令碼中請使用 --json 和 --yes。結束代碼：0 成功 · 1 失敗 · 2 用法錯誤 · 3 無法連線常駐程式 · 4 找不到 · 130 已取消"
   },

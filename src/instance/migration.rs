@@ -33,8 +33,7 @@ pub struct Restored {
 pub fn save(instance_dir: &Path, files: &[PathBuf]) -> std::io::Result<usize> {
     let dir = instance_dir.join(DIR);
     let mut originals = Vec::new();
-    let instance_root = [instance_dir.to_path_buf()];
-    for path in files.iter().filter(|p| p.is_file() && !crate::module_paths::is_inside(p, &instance_root)) {
+    for path in files.iter().filter(|p| p.is_file() && !inside_instance(p, instance_dir)) {
         if originals.iter().any(|o: &Original| o.path == *path) {
             continue;
         }
@@ -85,7 +84,15 @@ pub fn restore(instance_dir: &Path, allowed: impl Fn(&Path) -> bool) -> Restored
 /// 인스턴스 폴더 밖에 있는 서버 폴더 (가져온 서버 등). 인스턴스를 지워도 남는다
 pub fn linked_folder(working_dir: Option<&str>, instance_dir: &Path) -> Option<String> {
     let dir = working_dir.map(str::trim).filter(|d| !d.is_empty())?;
-    (!crate::module_paths::is_inside(Path::new(dir), &[instance_dir.to_path_buf()])).then(|| dir.to_string())
+    (!inside_instance(Path::new(dir), instance_dir)).then(|| dir.to_string())
+}
+
+/// 인스턴스 폴더 안인가. 모르면 안으로 본다: 링크(정션 등) 아래 데이터 폴더처럼 `is_inside`가 판정하지 못하는 경로도
+/// 글자 그대로나 실제 경로로 안이면 안이다 (밖으로 잘못 보면 인스턴스와 함께 지울 서버 폴더를 "남는다"고 안내한다)
+fn inside_instance(path: &Path, instance_dir: &Path) -> bool {
+    let lexical = || std::path::absolute(path).ok().zip(std::path::absolute(instance_dir).ok()).is_some_and(|(p, i)| p.starts_with(i));
+    let real = || std::fs::canonicalize(path).ok().zip(std::fs::canonicalize(instance_dir).ok()).is_some_and(|(p, i)| p.starts_with(i));
+    crate::module_paths::is_inside(path, &[instance_dir.to_path_buf()]) || lexical() || real()
 }
 
 /// 옮겨 온 서버 폴더가 놓일 자리: 인스턴스 폴더 안의 `subdir`(모듈 `install_subdir`). 상대 경로의 보통 이름만 받고,
@@ -289,5 +296,21 @@ mod tests {
         assert_eq!(linked_folder(Some(&instance.join("server").to_string_lossy()), &instance), None);
         assert_eq!(linked_folder(None, &instance), None);
         assert_eq!(linked_folder(Some(" "), &instance), None);
+    }
+
+    /// 데이터 폴더가 링크(정션·심볼릭 링크) 아래 있어도 인스턴스 폴더 안의 서버는 연결된 폴더가 아니다
+    /// (연결로 잘못 보면 "서버 파일은 남는다"고 안내하고 인스턴스와 함께 지운다)
+    #[cfg(unix)]
+    #[test]
+    fn a_server_folder_inside_an_instance_under_a_link_is_not_linked() {
+        let tmp = tempfile::tempdir().unwrap();
+        let real = tmp.path().join("real");
+        std::fs::create_dir_all(real.join("instance").join("server")).unwrap();
+        let link = tmp.path().join("link");
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+        let instance = link.join("instance");
+        assert_eq!(linked_folder(Some(&instance.join("server").to_string_lossy()), &instance), None);
+        let through_real = real.join("instance").join("server");
+        assert_eq!(linked_folder(Some(&through_real.to_string_lossy()), &instance), None);
     }
 }

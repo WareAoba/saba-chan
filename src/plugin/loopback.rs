@@ -154,7 +154,13 @@ pub(super) fn served_by(port: u16, server: Option<u32>) -> bool {
     let mut system = sysinfo::System::new();
     system.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
     let parent = |pid: u32| system.process(sysinfo::Pid::from_u32(pid)).and_then(|p| p.parent()).map(|p| p.as_u32());
-    owners.into_iter().any(|pid| descends_from(pid, root, parent))
+    owned_by(&owners, root, parent)
+}
+
+/// 그 포트를 듣는 프로세스가 모두 `root`이거나 그 자식인가. 다른 프로세스가 같은 포트를 다른 주소로 듣고 있으면
+/// 127.0.0.1로 간 연결이 그쪽에 닿을 수 있으므로 하나라도 남이면 잇지 않는다
+fn owned_by(owners: &[u32], root: u32, parent: impl Fn(u32) -> Option<u32>) -> bool {
+    !owners.is_empty() && owners.iter().all(|pid| descends_from(*pid, root, &parent))
 }
 
 /// `pid`에서 부모를 따라 올라가 `root`를 만나는가 (서버 런처 아래의 실제 서버 프로세스도 센다)
@@ -350,6 +356,17 @@ mod tests {
         assert!(descends_from(30, 20, parent));
         assert!(!descends_from(10, 20, parent), "the server's parent is not the server");
         assert!(!descends_from(5, 20, parent));
+    }
+
+    /// 그 포트를 듣는 프로세스가 모두 그 서버(또는 자식)여야 잇는다: 다른 프로세스가 같은 포트를 다른 주소로
+    /// 듣고 있으면 127.0.0.1로 간 연결이 그쪽에 닿을 수 있다
+    #[test]
+    fn every_listener_on_the_port_must_be_the_server() {
+        let parents = [(30, 20), (20, 10), (40, 1)];
+        let parent = |pid| parents.iter().find(|(p, _)| *p == pid).map(|(_, pp)| *pp);
+        assert!(owned_by(&[20, 30], 20, parent));
+        assert!(!owned_by(&[30, 40], 20, parent), "another process shares the port");
+        assert!(!owned_by(&[], 20, parent), "nobody listens");
     }
 
     /// 모듈 설정의 `*_port` 값은 모듈이 정할 수 있으므로 넣지 않는다: 데몬 인스턴스 값 `port`·`rest_port`만

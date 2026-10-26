@@ -797,7 +797,9 @@
       "remote.revoke.host_id": "ID do PC a desparear (veja `remote clients`)",
       "remote.connect.host_id": "Id do PC ao qual conectar (veja `remote peers`)",
       "remote.forget.host_id": "Id do PC a esquecer (veja `remote daemons`)",
-      "config.autostart.mode": "off, daemon ou full"
+      "config.autostart.mode": "off, daemon ou full",
+      "keep_settings": "Ao excluir a instância, não restaurar os arquivos de configuração do jogo ao estado anterior à importação e mantê-los como estão",
+      "move_folder": "Mover a pasta --from para a pasta do saba-chan em vez de vinculá-la no lugar (somente na mesma unidade)"
     },
     "after": "Os nomes podem ser parciais (ex.: start pal). Sem argumentos em um terminal, abre o menu em tela cheia (SABA_NO_TUI=1: o shell interativo).\nEm scripts, use --json e --yes. Códigos de saída: 0 ok · 1 falha · 2 uso · 3 daemon inacessível · 4 não encontrado · 130 cancelado"
   },
