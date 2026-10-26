@@ -356,7 +356,9 @@ pub async fn daemon_target_set(app: AppHandle, target: Option<String>) -> Value 
     let state = app.state::<AppState>();
     let target = crate::daemon::DaemonClient::normalize_target(target);
     let success = save_settings(&state, &json!({ "daemonTarget": target })).await;
-    if success {
+    if success && state.client.target() != target {
+        // 팝아웃 콘솔은 메인 창처럼 다시 읽히지 않으니 닫는다 (남기면 이전 데몬의 instanceId로 새 데몬에 명령한다)
+        window::close_popouts(&app);
         state.client.set_target(target.clone());
     }
     json!({ "success": success, "target": state.client.target() })

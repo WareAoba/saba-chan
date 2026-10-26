@@ -303,6 +303,23 @@ describe('원격 데몬 (G1)', () => {
         expect(tauri.invoke).toHaveBeenCalledWith('daemon_target_set', { target: null });
     });
 
+    it('원격 데몬을 다루는 중에는 이 PC의 경로를 고르지 않는다 (그 데몬에 가면 엉뚱한 곳을 가리킨다)', async () => {
+        let target = 'host-b';
+        const { api, tauri } = await install({
+            daemon_target_get: () => ({ target }),
+            dialog_open_folder: () => '/srv/game',
+            dialog_open_file: () => '/srv/game/server.jar',
+        });
+        expect(await api.openFolderDialog()).toBeNull();
+        expect(await api.openFileDialog({})).toBeNull();
+        expect(await api.dataImport({ dryRun: true })).toEqual({ canceled: true });
+        expect(tauri.invoke.mock.calls.some(([cmd]) => cmd.startsWith('dialog_'))).toBe(false);
+
+        target = null;
+        expect(await api.openFolderDialog()).toBe('/srv/game');
+        expect(await api.openFileDialog({})).toBe('/srv/game/server.jar');
+    });
+
     it('고른 원격 데몬에 닿지 못한 오류는 어느 화면에서든 문구로 온다', async () => {
         const { api } = await install({
             daemon_request: daemon({

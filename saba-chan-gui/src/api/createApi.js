@@ -3,6 +3,7 @@
  * 응답 가공은 main.js의 각 ipcMain 핸들러를 그대로 옮겼다. 네이티브 작업은 Rust 명령(계약 §2)으로 간다.
  */
 import i18n from 'i18next';
+import { safeShowToast } from '../utils/helpers';
 import { createDaemonClient, queryString } from './daemon';
 
 /** 서버 시작 요청을 기다리는 시간 (CLI `post_long`과 같다) */
@@ -20,6 +21,16 @@ export function createApi({ invoke, hub }) {
     const post = (path, body, opts) => request('post', path, body, opts);
     const put = (path, body, opts) => request('put', path, body, opts);
     const del = (path, opts) => request('delete', path, undefined, opts);
+
+    // 이 PC의 파일 대화상자. 원격 데몬을 다루는 중이면 열지 않는다: 고른 경로가 그 PC 데몬에 가서 엉뚱한 곳을 가리킨다 (G1)
+    const pickLocal = async (cmd, args) => {
+        const current = await Promise.resolve(invoke('daemon_target_get')).catch(() => null);
+        if (current?.target) {
+            safeShowToast(t('errors.remote_local_path'), 'warning', 5000);
+            return null;
+        }
+        return invoke(cmd, args);
+    };
 
     // ipcRenderer.send처럼 기다리지 않는 호출
     const send = (cmd, args) => {
@@ -873,8 +884,8 @@ export function createApi({ invoke, hub }) {
         settingsGetPath: () => invoke('settings_get_path'),
 
         // ── 대화상자 ──
-        openFileDialog: (options) => invoke('dialog_open_file', { filters: options?.filters ?? null }),
-        openFolderDialog: () => invoke('dialog_open_folder'),
+        openFileDialog: (options) => pickLocal('dialog_open_file', { filters: options?.filters ?? null }),
+        openFolderDialog: () => pickLocal('dialog_open_folder'),
 
         // 고른 폴더가 어느 게임 서버 폴더인지 (데몬의 게임 폴더 판정만 쓴다)
         migrationScanDir: async (dirPath) => {
@@ -997,7 +1008,7 @@ export function createApi({ invoke, hub }) {
 
         // 내보내기/가져오기: 파일은 데몬이 읽고 쓴다. 여기서는 경로만 고른다
         dataExport: async (opts = {}) => {
-            const filePath = await invoke('dialog_save_file', {
+            const filePath = await pickLocal('dialog_save_file', {
                 defaultPath: `saba-chan-export-${new Date().toISOString().slice(0, 10)}.zip`,
                 filters: [{ name: 'Zip', extensions: ['zip'] }],
             });
@@ -1008,7 +1019,7 @@ export function createApi({ invoke, hub }) {
         dataImport: async (opts = {}) => {
             let filePath = typeof opts?.path === 'string' && opts.path ? opts.path : null;
             if (!filePath) {
-                filePath = await invoke('dialog_open_file', { filters: [{ name: 'Zip', extensions: ['zip'] }] });
+                filePath = await pickLocal('dialog_open_file', { filters: [{ name: 'Zip', extensions: ['zip'] }] });
                 if (!filePath) return { canceled: true };
             }
             const body = await daemonCall(

@@ -463,6 +463,15 @@ pub fn popout_list(app: &AppHandle) -> Vec<String> {
         .collect()
 }
 
+/// 팝아웃 콘솔을 모두 닫는다. 다룰 데몬을 바꾸면 그 창들의 instanceId는 다른 PC의 것이 된다
+pub fn close_popouts(app: &AppHandle) {
+    for (label, win) in app.webview_windows() {
+        if popout_instance_id(&label).is_some() {
+            let _ = win.close();
+        }
+    }
+}
+
 pub fn focus_popout(app: &AppHandle, instance_id: &str) -> Value {
     let Some(win) = popout(app, instance_id) else {
         return json!({ "ok": false });

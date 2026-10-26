@@ -111,7 +111,8 @@
     "path_missing": "Nenhum caminho informado",
     "path_not_folder": "Não é uma pasta",
     "no_log_folder": "Nenhuma pasta de logs",
-    "open_folder_failed": "Não foi possível abrir a pasta"
+    "open_folder_failed": "Não foi possível abrir a pasta",
+    "remote_local_path": "Não é possível escolher um caminho deste PC enquanto você usa um daemon remoto. Mude para este PC na barra superior e tente de novo"
   },
   "consent": {
     "allow": "Permitir",
