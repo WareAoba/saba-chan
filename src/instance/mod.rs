@@ -18,6 +18,15 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+/// 인스턴스 루트 아래 데몬만 쓰는 폴더. 인스턴스마다 서버를 다시 잡는 기록(PID·러너 파일)을 둔다.
+/// 인스턴스 폴더는 서버와 격리된 모듈도 쓸 수 있어서 그 안의 기록은 믿지 않는다
+pub const STATE_DIR: &str = ".saba-state";
+/// `STATE_DIR` 바로 아래: 예전 배치(인스턴스 폴더의 managed.pid·run/)를 옮겨 받았다는 표시. 그 뒤로는 예전 자리의 PID 기록을 보지 않는다
+pub const LEGACY_ADOPTED: &str = "legacy-adopted";
+/// 인스턴스 기록 폴더 안: 업데이트 전에 띄운 러너가 아직 예전 자리(`<instance>/run/`)에 쓴다는 표시. 그 러너가 끝나거나 새로 띄우면 지운다
+pub const LEGACY_RUN: &str = "legacy-run";
+pub const MANAGED_PID: &str = "managed.pid";
+
 /// 인스턴스 폴더 바로 아래에서 데몬이 쓰는 항목. 격리된 모듈에게 쓰기를 주지 않는다
 /// (instance.json을 고칠 수 있으면 다음 로드 때 실행 파일·사용자 설정까지 바꾼다)
 pub const DAEMON_ENTRIES: &[&str] = &["instance.json", "settings.json", "settings.json.tmp", "managed.pid", "run", "logs", "backups", "rcon.json", "rcon.json.tmp", "migration"];
@@ -306,7 +315,7 @@ impl InstanceStore {
                     continue;
                 }
                 let instance_json = path.join("instance.json");
-                if !instance_json.exists() {
+                if entry.file_name() == STATE_DIR || !instance_json.exists() {
                     continue;
                 }
                 match self.load_instance_from_dir(&path) {
@@ -371,6 +380,11 @@ impl InstanceStore {
     pub fn remove(&mut self, id: &str) -> Result<()> {
         // 디렉토리 삭제
         let dir = self.checked_dir(id)?;
+        let state = self.state_dir(id);
+        if state.exists() {
+            fs::remove_dir_all(&state)
+                .with_context(|| format!("인스턴스 기록 폴더 삭제 실패: {}", state.display()))?;
+        }
         if dir.exists() {
             fs::remove_dir_all(&dir)
                 .with_context(|| format!("인스턴스 디렉토리 삭제 실패: {}", dir.display()))?;
@@ -428,6 +442,31 @@ impl InstanceStore {
         self.root_dir.join(id)
     }
 
+    /// 데몬 전용 기록 폴더들의 루트 (`STATE_DIR`)
+    pub fn state_root(&self) -> PathBuf {
+        self.root_dir.join(STATE_DIR)
+    }
+
+    /// 인스턴스의 데몬 전용 기록 폴더
+    pub fn state_dir(&self, id: &str) -> PathBuf {
+        self.state_root().join(id)
+    }
+
+    /// 데몬이 직접 띄운 서버의 PID 기록. 파일 시각이 기록 시각이다 (재부팅 뒤 PID 재사용 판별)
+    pub fn managed_pid_file(&self, id: &str) -> PathBuf {
+        self.state_dir(id).join(MANAGED_PID)
+    }
+
+    /// 러너 기록(`run/`)을 둔 폴더. 업데이트 전에 띄운 러너는 끝날 때까지 인스턴스 폴더에 쓴다 (`LEGACY_RUN`)
+    pub fn runner_home(&self, id: &str) -> PathBuf {
+        let state = self.state_dir(id);
+        if state.join(LEGACY_RUN).exists() {
+            self.instance_dir(id)
+        } else {
+            state
+        }
+    }
+
     /// `dir`과 겹치는 폴더(서버 폴더나 인스턴스 폴더, 그 안이나 바깥)를 쓰는 다른 인스턴스.
     /// 한 폴더에 서버 둘을 두면 서로의 파일을 덮어쓰고, 한쪽의 복원·삭제가 다른 쪽 파일까지 치운다
     pub fn folder_user(&self, dir: &Path, except: &str) -> Option<&ServerInstance> {
@@ -440,7 +479,7 @@ impl InstanceStore {
 
     /// 쓰거나 지울 인스턴스 폴더: id가 경로 한 칸이고, 폴더가 심볼릭 링크가 아니어야 한다
     fn checked_dir(&self, id: &str) -> Result<PathBuf> {
-        if !crate::utils::is_single_path_component(id) {
+        if !crate::utils::is_single_path_component(id) || id == STATE_DIR {
             anyhow::bail!("invalid instance id: {:?}", id);
         }
         let dir = self.root_dir.join(id);
@@ -721,6 +760,30 @@ mod tests {
         let mut store = InstanceStore::new(instances_dir.to_str().unwrap());
         store.load().unwrap();
         assert!(store.list().is_empty(), "the link was followed");
+    }
+
+    /// 서버를 다시 잡는 기록(PID·러너 파일)은 인스턴스 폴더 밖, 인스턴스 루트의 데몬 전용 폴더에 둔다
+    #[test]
+    fn the_server_record_lives_outside_the_instance_folder() {
+        let tmp = TempDir::new().unwrap();
+        let mut store = InstanceStore::new(tmp.path().join("instances").to_str().unwrap());
+        store.load().unwrap();
+        let inst = make_test_instance("srv", "palworld");
+        let id = inst.id.clone();
+        store.add(inst).unwrap();
+
+        let state = store.state_dir(&id);
+        assert!(!state.starts_with(store.instance_dir(&id)));
+        assert!(store.managed_pid_file(&id).starts_with(&state));
+        std::fs::create_dir_all(&state).unwrap();
+        std::fs::write(store.managed_pid_file(&id), "1").unwrap();
+
+        // 기록 폴더는 인스턴스로 읽히지 않고, 인스턴스와 함께 지워진다
+        let mut again = InstanceStore::new(tmp.path().join("instances").to_str().unwrap());
+        again.load().unwrap();
+        assert_eq!(again.list().len(), 1);
+        store.remove(&id).unwrap();
+        assert!(!state.exists());
     }
 
     #[test]
