@@ -91,8 +91,8 @@
   curl -fsSL https://raw.githubusercontent.com/WareAoba/saba-chan/main/install.sh | sh
   ```
 
-  설치기가 최신 정식 릴리즈의 서명과 해시를 확인하고, 데몬을 systemd 사용자 서비스로 켭니다. 앱 화면은 Windows PC의 사바쨩에서 원격 데몬으로 써요. 자세히: [원격 데몬 사용법](https://saba-chan.online/ko/guide/remote-daemon)
-- **데이터 위치**: 설정, 게임 서버 파일, 월드, 백업은 `%APPDATA%\saba-chan`에 저장돼요. 프로그램 폴더를 지워도 서버는 남아요.
+  설치기가 최신 정식 릴리즈를 받아 릴리즈 해시와 서명된 매니페스트로 파일을 확인하고, 데몬을 systemd 사용자 서비스로 켭니다. 앱 화면은 Windows PC의 사바쨩에서 원격 데몬으로 써요. 자세히: [원격 데몬 사용법](https://saba-chan.online/ko/guide/remote-daemon)
+- **데이터 위치**: 설정, 게임 서버 파일, 월드, 백업은 `%APPDATA%\saba-chan`(리눅스는 `~/.config/saba-chan`)에 저장돼요. 프로그램 폴더를 지워도 서버는 남아요.
 - **업데이트**: 앱이 새 버전을 알려 주면 설정 화면에서 바로 적용합니다. 서명이 확인된 릴리즈만 받아요.
 - **제거**: Windows 설정의 "설치된 앱"이나 앱의 설정 화면에서 제거합니다. "게임 서버와 설정 남기기"를 고르면 서버·월드·백업·설정이 남아서 다시 설치하면 그대로 이어져요. 고르지 않으면 모두 지워집니다.
 
