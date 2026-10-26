@@ -222,13 +222,11 @@ pub(crate) async fn refusal(server: &crate::ipc::IPCServer, method: &str, uri: &
 /// 플러그인 설치는 해시를 함께 줄 때만 막는다 (주소만 주면 데몬이 공식 목록의 주소인지 본다)
 async fn blocked_fields(server: &crate::ipc::IPCServer, method: &str, pattern: &str, segments: &[String], body: Option<&Value>) -> Vec<String> {
     // 만들 때 켜진 익스텐션이 물은 칸(`AddServer.options`)의 답: GUI는 칸을 건드리지 않아도 기본값을 싣는다.
-    // 모든 키가 그런 칸이고 경로·파일·비밀번호 칸이 아니면 받는다 (익스텐션 잠금은 인스턴스 잠금보다 먼저 놓는다)
+    // 선언한 칸·종류에 맞는 값이면 받는다 (`exec::create_option_answers_allowed`. 익스텐션 잠금은 인스턴스 잠금보다 먼저 놓는다)
     let create_options_only = match body.and_then(|b| b.get("extension_data")).and_then(Value::as_object) {
         Some(given) if pattern == "/api/instances" && method == "POST" => {
             let options = server.extension_manager.read().await.create_options();
-            given.keys().all(|k| {
-                options.iter().any(|(field, kind, format)| field == k && !crate::remote::exec::pc_only_type(kind, format.as_deref()))
-            })
+            crate::remote::exec::create_option_answers_allowed(&options, given)
         }
         _ => false,
     };
@@ -853,7 +851,7 @@ pub(crate) mod tests {
         std::fs::create_dir_all(exts.join("box")).unwrap();
         let manifest = json!({ "id": "box", "name": "box", "version": "0.1.0", "cli": { "slots": { "AddServer.options": [
             { "field": "boxed", "type": "boolean", "label": "Box" },
-            { "field": "box_dir", "type": "path", "label": "Dir" }
+            { "field": "box_dir", "type": "path", "label": "Dir", "default": "boxes" }
         ] } } });
         std::fs::write(exts.join("box").join("manifest.json"), manifest.to_string()).unwrap();
         {
@@ -862,9 +860,9 @@ pub(crate) mod tests {
             mgr.enable("box").unwrap();
             *server.extension_manager.write().await = mgr;
         }
-        let (_, body) = send("POST", "/api/instances".into(), Some(json!({ "name": "c", "module_name": "plain", "extension_data": { "boxed": true } }))).await;
+        let (_, body) = send("POST", "/api/instances".into(), Some(json!({ "name": "c", "module_name": "plain", "extension_data": { "boxed": true, "box_dir": "boxes" } }))).await;
         assert_ne!(body["error_code"].as_str(), Some("remote_field_blocked"), "{body}");
-        for data in [json!({ "boxed": true, "box_dir": "/etc" }), json!({ "boxed": true, "other": 1 })] {
+        for data in [json!({ "boxed": true, "box_dir": "/etc" }), json!({ "boxed": true, "other": 1 }), json!({ "boxed": "yes" })] {
             let (s, body) = send("POST", "/api/instances".into(), Some(json!({ "name": "d", "module_name": "plain", "extension_data": data }))).await;
             assert_eq!((s, body["fields"].clone()), (403, json!(["extension_data"])), "{data} {body}");
         }

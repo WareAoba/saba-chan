@@ -1286,15 +1286,14 @@ impl ExtensionManager {
         }))
     }
 
-    /// 켜진 익스텐션이 서버를 만들 때 묻는 칸 (`AddServer.options`): `(field, type, format)`, priority·id 순
-    pub fn create_options(&self) -> Vec<(String, String, Option<String>)> {
+    /// 켜진 익스텐션이 서버를 만들 때 묻는 칸 (`AddServer.options`의 선언 그대로, `field`가 있는 것만), priority·id 순
+    pub fn create_options(&self) -> Vec<Value> {
         let mut exts: Vec<&DiscoveredExtension> = self.discovered.values().filter(|e| self.enabled.contains(&e.manifest.id)).collect();
         exts.sort_by(|a, b| (a.manifest.priority, &a.manifest.id).cmp(&(b.manifest.priority, &b.manifest.id)));
-        let text = |v: &Value, key: &str| v.get(key).and_then(Value::as_str).map(str::to_string);
         exts.iter()
             .filter_map(|e| e.manifest.cli.as_ref())
             .flat_map(|cli| normalized_slots(cli).remove(SLOT_OPTIONS).and_then(|v| v.as_array().cloned()).unwrap_or_default())
-            .filter_map(|f| Some((text(&f, "field")?, text(&f, "type").unwrap_or_default(), text(&f, "format"))))
+            .filter(|f| f.get("field").and_then(Value::as_str).is_some())
             .collect()
     }
 
@@ -2087,7 +2086,7 @@ mod tests {
         mgr.discover().unwrap();
         mgr.enabled.insert("box".to_string());
         // 만들 때 물을 칸은 켜진 익스텐션의 것만 (옛 이름 포함)
-        assert_eq!(mgr.create_options(), vec![("boxed".to_string(), "boolean".to_string(), None)]);
+        assert_eq!(mgr.create_options(), vec![json!({ "field": "boxed", "type": "boolean", "label": "Box" })]);
 
         let cli = mgr.discovered("box").unwrap().manifest.cli.clone().unwrap();
         let slots = normalized_slots(&cli);

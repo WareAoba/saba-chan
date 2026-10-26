@@ -116,6 +116,35 @@ fn module_fields(
         .collect()
 }
 
+/// 서버를 만들 때 켜진 익스텐션이 물은 칸(`AddServer.options`, `options`는 그 선언)의 답(`given`)을 원격에서 받는가.
+/// 모든 키가 선언한 칸이고 값이 선언한 종류에 맞아야 한다(boolean은 참거짓, number는 수, select는 선언한 선택지, 그 밖은 글자.
+/// 객체·목록은 받지 않는다). 경로·파일·비밀번호 칸(`pc_only_type`)은 선언한 기본값 그대로일 때만 받는다 (GUI는 손대지 않은 칸도 기본값을 싣는다)
+pub(crate) fn create_option_answers_allowed(options: &[Value], given: &serde_json::Map<String, Value>) -> bool {
+    given.iter().all(|(key, value)| {
+        let Some(option) = options.iter().find(|o| o.get("field").and_then(Value::as_str) == Some(key)) else {
+            return false;
+        };
+        if value.is_object() || value.is_array() {
+            return false;
+        }
+        if value.is_null() || option.get("default") == Some(value) {
+            return true;
+        }
+        let kind = option.get("type").and_then(Value::as_str).unwrap_or("text");
+        if pc_only_type(kind, option.get("format").and_then(Value::as_str)) {
+            return false;
+        }
+        match kind {
+            "boolean" => value.is_boolean(),
+            "number" => value.is_number(),
+            "select" => option.get("options").and_then(Value::as_array).is_some_and(|choices| {
+                choices.iter().any(|c| c == value || c.get("value") == Some(value))
+            }),
+            _ => value.is_string(),
+        }
+    })
+}
+
 /// 요청이 설정을 고치는 인스턴스 (인스턴스 설정, 게임 설정 파일 쓰기). `segments`는 푼 경로 조각이다
 /// (라우터는 id를 풀어서 찾으므로 여기서도 푼 id로 찾는다: %61bc로 모듈 칸 검사를 비켜 가지 않게)
 pub(crate) fn edited_instance<'a>(
@@ -201,6 +230,34 @@ mod tests {
             method: method.into(),
             path: path.into(),
             body,
+        }
+    }
+
+    /// 서버를 만들 때 켜진 익스텐션이 물은 칸의 답: 선언한 종류에 맞는 값만, 경로·파일·비밀번호 칸은 선언한 기본값일 때만
+    #[test]
+    fn create_option_answers_match_what_the_extension_declared() {
+        let options = vec![
+            json!({ "field": "boxed", "type": "boolean" }),
+            json!({ "field": "slots", "type": "number" }),
+            json!({ "field": "tier", "type": "select", "options": ["small", "large"] }),
+            json!({ "field": "label", "type": "text" }),
+            json!({ "field": "box_dir", "type": "path", "default": "boxes" }),
+            json!({ "field": "key", "type": "password" }),
+        ];
+        let ok = |v: Value| create_option_answers_allowed(&options, v.as_object().unwrap());
+        assert!(ok(json!({ "boxed": true, "slots": 3, "tier": "large", "label": "hi", "box_dir": "boxes" })));
+        for bad in [
+            json!({ "boxed": "yes" }),
+            json!({ "slots": "3" }),
+            json!({ "tier": "huge" }),
+            json!({ "label": 1 }),
+            json!({ "label": ["a"] }),
+            json!({ "boxed": { "x": 1 } }),
+            json!({ "box_dir": "/etc" }),
+            json!({ "key": "x" }),
+            json!({ "other": 1 }),
+        ] {
+            assert!(!ok(bad.clone()), "{bad}");
         }
     }
 
