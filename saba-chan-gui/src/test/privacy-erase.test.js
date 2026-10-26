@@ -30,6 +30,20 @@ describe('개인정보 모두 지우기', () => {
         expect(onErased).toHaveBeenCalledTimes(1);
     });
 
+    it('상태를 한 번 못 받아도(오류 본문) 계속 묻는다', async () => {
+        window.api.relayPrivacyEraseStatus = vi
+            .fn()
+            .mockResolvedValueOnce({ success: false, error: 'connect ECONNREFUSED' })
+            .mockResolvedValue({ status: 'done' });
+        const onErased = vi.fn();
+        render(<PrivacyErase onErased={onErased} />);
+        await act(async () => fireEvent.click(screen.getByRole('button', { name: /Erase all my data/i })));
+        await act(async () => vi.advanceTimersByTimeAsync(3000));
+        expect(window.showToast).not.toHaveBeenCalled();
+        await act(async () => vi.advanceTimersByTimeAsync(3000));
+        expect(onErased).toHaveBeenCalledTimes(1);
+    });
+
     it('기한이 지나면 연결은 그대로 두고 다시 누를 수 있다', async () => {
         window.api.relayPrivacyEraseStatus = vi.fn().mockResolvedValue({ status: 'expired' });
         const onErased = vi.fn();

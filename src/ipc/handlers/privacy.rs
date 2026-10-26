@@ -128,9 +128,9 @@ pub struct EraseRequest {
 
 /// POST /api/relay/privacy/erase
 pub async fn start_erase(State(state): State<IPCServer>, body: super::LooseJson<EraseRequest>) -> axum::response::Response {
-    if load_node_token().is_none() {
+    let Some(issued_with) = load_node_token() else {
         return (StatusCode::CONFLICT, Json(json!({ "error": "not paired", "error_code": "node_token_missing" }))).into_response();
-    }
+    };
     let locale = body.0.and_then(|Json(b)| b.locale).filter(|l| !l.is_empty() && l.len() <= 16);
     let configured = state.config_store.get_bot_config().await.cloud.relay_url;
     let base = signed_relay_url(&configured, None);
@@ -149,7 +149,8 @@ pub async fn start_erase(State(state): State<IPCServer>, body: super::LooseJson<
     let reply = json!({ "url": ticket.url, "expiresAt": ticket.expires_at });
     tokio::spawn(async move {
         let Some(outcome) = wait_done(&base, &ticket, &cancel, GIVE_UP).await else { return };
-        if outcome == "done" {
+        // 그사이 연결을 끊고 다른 계정으로 다시 페어링했으면 새 연결은 건드리지 않는다
+        if outcome == "done" && load_node_token().as_deref() == Some(issued_with.as_str()) {
             // 릴레이에서는 이미 지워졌다. 이 PC 의 연결도 끊는다 (연결 해제와 같다)
             if let Err(e) = super::relay::disconnect(&state).await {
                 tracing::warn!("[Privacy] erased on the relay but could not remove the node token: {}", e);

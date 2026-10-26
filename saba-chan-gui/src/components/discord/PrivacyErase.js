@@ -31,7 +31,8 @@ export function PrivacyErase({ onErased }) {
             } catch {
                 return;
             }
-            if (status === 'pending') return;
+            // 데몬에 잠깐 닿지 않으면(오류 본문, status 없음) 다시 묻는다. 데몬은 그동안에도 계속 묻는다
+            if (!['done', 'expired', 'failed', 'none'].includes(status)) return;
             setPhase(null);
             if (status === 'done') {
                 safeShowToast(t('discord.erase_done'), 'success', 5000);
