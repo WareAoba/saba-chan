@@ -33,8 +33,10 @@ impl Line {
             }
             return;
         }
+        // 줄 끝을 넘으면 터미널처럼 다음 줄로 넘긴다 (긴 출력도 버리지 않는다)
         if self.col + width > MAX_COLUMNS {
-            return;
+            self.next_row();
+            self.col = 0;
         }
         if self.cells.len() < self.col + width {
             self.cells.resize(self.col + width, " ".to_string());
@@ -200,7 +202,10 @@ mod tests {
     /// 커서를 아주 멀리 보내도 줄이 끝없이 늘지 않는다
     #[test]
     fn far_cursor_moves_stay_bounded() {
-        assert!(render("x\x1b[999999999Cy").len() < 8);
+        assert_eq!(super::render("x\x1b[999999999Cy"), ["x", "y"]);
+        // 폭보다 긴 출력은 다음 줄로 넘어갈 뿐 잃지 않는다 (리뷰 #605)
+        let long = format!("{}END", "a".repeat(5000));
+        assert_eq!(super::render(&long).concat(), long);
         assert_eq!(render("\x1b[999999999;1Hok"), "ok");
     }
 }
