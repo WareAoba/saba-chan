@@ -10,6 +10,7 @@
 //!
 //! 인증은 노드 토큰(`config.json` `node.token`, sbn_<id>.<secret>) HMAC 서명입니다.
 //!   7. `web_session` 명령    — 사바쨩 웹 세션이 열렸다: `crate::remote::link`가 릴레이 웹소켓에 붙는다
+//!      `remote_tunnel` 명령  — 같은 주인의 PC가 터널을 열었다: `crate::remote_daemon::tunnel::accept`가 원격 포트에 잇는다
 //!
 //! 새 명령 종류는 `handle_payload`의 action 분기에 추가합니다.
 
@@ -848,6 +849,20 @@ impl Session {
             // 사바쨩 웹: 릴레이에 웹 세션이 열렸다. 릴레이 웹소켓에 붙는다 (세션이 없어지면 데몬이 끊는다)
             "web_session" => {
                 crate::remote::link::ensure(self.server.clone(), &self.base, &self.token);
+                json!({ "success": true, "data": { "connecting": true } })
+            }
+            // 원격 데몬 터널 (T1): 같은 주인의 PC가 릴레이를 거쳐 이 PC의 원격 포트에 붙는다
+            "remote_tunnel" => {
+                let id = payload.get("tunnelId").and_then(Value::as_str).unwrap_or("");
+                if !crate::remote_daemon::relay::valid_ticket_id(id) {
+                    return json!({ "success": false, "data": { "error": "invalid remote_tunnel" } });
+                }
+                if !crate::remote_daemon::status().await.listening {
+                    return json!({ "success": false, "data": { "error": "remote_off" } });
+                }
+                let port = crate::remote_daemon::config::settings_in(&saba_chan_updater_lib::config_file::ConfigFile::default_location()).port;
+                let relay = crate::remote_daemon::relay::Target { base: self.base.clone(), token: self.token.clone() };
+                tokio::spawn(crate::remote_daemon::tunnel::accept(relay, id.to_string(), port));
                 json!({ "success": true, "data": { "connecting": true } })
             }
             // 디스코드에서 코드 없이 `/사바쨩 연결` (J1-b): PC 화면에 알리기만 한다. 수락은 PC에서 사람이 누른다
@@ -1912,6 +1927,17 @@ mod tests {
         .await;
         assert_eq!(path, "/node/ws");
         crate::remote::link::stop();
+    }
+
+    /// 원격 데몬 터널: 원격 포트가 꺼져 있거나 터널 id가 이상하면 받지 않는다
+    #[tokio::test]
+    async fn a_tunnel_is_refused_while_the_remote_port_is_off() {
+        let tmp = tempfile::tempdir().unwrap();
+        let session = test_session(&RelayAgent::new(), "http://127.0.0.1:9", "sbn_host.secret", tmp.path()).await;
+        let bad = session.handle_payload(&json!({ "id": "c1", "payload": { "action": "remote_tunnel", "tunnelId": "../x" } })).await;
+        assert_eq!(bad["success"], false);
+        let off = session.handle_payload(&json!({ "id": "c2", "payload": { "action": "remote_tunnel", "tunnelId": "t1" } })).await;
+        assert_eq!((off["success"].as_bool(), off["data"]["error"].as_str()), (Some(false), Some("remote_off")));
     }
 
     #[test]

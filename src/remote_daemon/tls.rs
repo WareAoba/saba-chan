@@ -15,6 +15,11 @@ const KEY_FILE: &str = "remote-key.der";
 /// 붙는 쪽이 SNI로 보내는 이름. 인증서 검사는 지문으로만 하므로 주소와 상관없다
 pub const SERVER_NAME: &str = "saba-chan";
 
+/// 이 데이터 폴더에 원격 포트 인증서가 있는가 (원격 포트를 연 적이 있다)
+pub fn exists(dir: &Path) -> bool {
+    dir.join(CERT_FILE).is_file()
+}
+
 pub fn fingerprint(der: &[u8]) -> String {
     hex::encode(Sha256::digest(der))
 }
@@ -53,10 +58,13 @@ impl Identity {
     }
 
     pub fn server_config(&self) -> anyhow::Result<rustls::ServerConfig> {
-        Ok(rustls::ServerConfig::builder_with_provider(provider())
+        let mut config = rustls::ServerConfig::builder_with_provider(provider())
             .with_safe_default_protocol_versions()?
             .with_no_client_auth()
-            .with_single_cert(vec![self.cert.clone()], PrivateKeyDer::Pkcs8(self.key.clone_key()))?)
+            .with_single_cert(vec![self.cert.clone()], PrivateKeyDer::Pkcs8(self.key.clone_key()))?;
+        // 릴레이 터널은 HTTP/2로 붙는다 (`tunnel.rs`). 직접 연결은 ALPN 없이 HTTP/1.1
+        config.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
+        Ok(config)
     }
 }
 

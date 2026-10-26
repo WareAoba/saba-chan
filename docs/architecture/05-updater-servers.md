@@ -309,9 +309,10 @@ Tauri 커맨드(`installer/gui/src-tauri/src/lib.rs`): `get_installer_state`, `s
 | POST | `/events` | 노드(60/min), 256KB | `{events:[{id, type, data}]}`(20건까지) | `{accepted}`. 같은 호스트의 같은 `id`·`data.at`은 한 번만 받는다. 길드마다 따로 보내고, 디스코드 전송이 실패하면 2초·10초 뒤 다시 해 본다. 데몬은 2xx를 받은 이벤트를 다시 보내지 않으므로 끝내 실패한 길드는 그 알림을 놓친다(로그만) | `routes/events.ts`, `bot/notify.ts` |
 | GET | `/api/link-requests` | 노드 | — | `{requests:[{requestId, guildId, guildName, requestedBy, userName, expiresAt}]}`(이 호스트의 대기 요청, `expiresAt`은 ISO 8601 UTC). 코드 없는 연결(J1-b) | `linkRequests.ts` |
 | POST | `/api/link-requests/:id` | 노드 | `{accept: boolean}` | 수락 `{ok:true, guildId, guildName}`, 거절 `{ok:true, declined:true}`. 남의 것·없음 404 `NOT_FOUND`, 만료 410 `EXPIRED`, 그 PC가 요청한 사람 것이 아니게 됐으면 409 `HOST_NOT_FOUND`. 다른 PC가 대표인 길드면 이 PC를 붙인다(§4.4 (i)). 한 번만 쓴다(묶다가 DB 오류로 500이면 요청이 남아 다시 답할 수 있다) | `linkRequests.ts` |
-| PUT / DELETE | `/api/remote/endpoint` | 노드(PUT 10/min) | PUT `{address, port, certSha256}`(호스트 이름 또는 IP, 1~65535, 소문자 hex 64자) | 204. 이 PC의 직접 연결 주소와 TLS 인증서 지문. §4.4 (j) | `routes/remote.ts` |
+| PUT / DELETE | `/api/remote/endpoint` | 노드(PUT 10/min) | PUT `{address, port, certSha256}`(호스트 이름 또는 IP, 공인 주소가 없으면 `null`, 1~65535, 소문자 hex 64자) | 204. 이 PC의 직접 연결 주소와 TLS 인증서 지문. §4.4 (j) | `routes/remote.ts` |
+| GET (WS) | `/node/tunnel?to=<hostId>` · `?accept=<tunnelId>` | 노드 | 바이너리 프레임만 | 공인 주소 없는 PC 터널. `to`: 같은 주인의 원격 포트를 켠 PC 앞으로 연다(남의 PC·없는 PC 404, 원격 포트 꺼짐 409 `REMOTE_OFF`, 한도 429 `TOO_MANY_TUNNELS`). `accept`: 그 PC 앞으로 기다리는 터널만(그 밖 404). §4.4 (k) | `routes/remoteTunnel.ts` |
 | GET | `/api/remote/peers` | 노드(20/min) | — | `{peers:[{hostId, name, status, endpoint:{address, port, certSha256}\|null}]}`. 같은 주인의 다른 PC(만든 순서) | `routes/remote.ts` |
-| POST | `/api/remote/tickets` | 노드(10/min) | `{toHostId}` | 201 `{ticketId, secret, expiresAt(ms), address, port, certSha256, name}`. 남의 PC·없는 PC·자기 자신 404 `NOT_FOUND`, 주소 없음 409 `NO_ENDPOINT` | `routes/remote.ts` |
+| POST | `/api/remote/tickets` | 노드(10/min) | `{toHostId}` | 201 `{ticketId, secret, expiresAt(ms), address, port, certSha256, name}`(`address`가 `null`이면 터널로만 붙는다). 남의 PC·없는 PC·자기 자신 404 `NOT_FOUND`, 원격 포트를 올리지 않음 409 `NO_ENDPOINT` | `routes/remote.ts` |
 | POST | `/api/remote/tickets/:id/redeem` | 노드(20/min) | `{secret}` | `{fromHostId, fromHostName}`. 대상 PC 토큰과 비밀이 맞을 때 한 번만. 그 밖 404 `NOT_FOUND`, 410 `EXPIRED`·`USED` | `routes/remote.ts` |
 | GET | `/v1/updates/check` | — | `channel`(stable·rc·beta·nightly, 위 채널은 아래 채널 릴리즈도 후보로 본다), `platform`, `current`, `client_id` | `{upToDate:false, latest:{version, channel, isCritical, releasedAt, minSupported, manifestUrl, notes}}` / `{upToDate:true, latest?}` (최신이면 `latest`는 받는 채널들에서 지금 버전의 릴리스를 가리키고, 여럿이면 요청한 채널의 것을 고른다 — 업데이터가 컴포넌트를 비교한다. 그 채널에 지금 버전이 없으면 `{upToDate:true}`. `latest`가 없으면 업데이터는 `/v1/updates/manifest/<지금 버전>`을 받는다. 그 manifest가 다른 채널 것이면 코어 버전이 같아도 구성요소를 비교하지 않고 받을 것이 없다고 본다, `updater/src/relay.rs` `fetch_verified_release`) | `routes/updates.ts`, §1.4 |
 | GET | `/v1/updates/manifest/:version` | — | `release?` | 서명된 manifest 원문 | `updates.ts` |
@@ -330,14 +331,14 @@ Tauri 커맨드(`installer/gui/src-tauri/src/lib.rs`): `get_installer_state`, `s
 
 데몬이 명령을 넣는 HTTP 라우트는 없다. 큐 INSERT는 봇이 같은 프로세스에서 `services/commandSubmission.ts` `submitCommand`로 한다. 페어링 클레임도 봇의 `/사바쨩 연결`이 `services/pairing.ts` `claimPairingCode`를 직접 부른다.
 
-### 4.3 DB 스키마 (`relay-server/src/db/schema.ts`, migration 0000–0030)
+### 4.3 DB 스키마 (`relay-server/src/db/schema.ts`, migration 0000–0032)
 
 | 테이블 | 주요 컬럼 |
 |---|---|
 | `users` | `discord_id` PK, username, display_name, is_banned, created_at, last_seen |
 | `hosts` | `id` PK(nanoid12), `owner_discord_id` → users(고유하지 않다: 계정 하나에 PC 여러 대, 0028), name(64자, `/사바쨩 내pc`로 바꾼다), `token_hash`(`sha256:<hex>`, 예전 행은 argon2id), status(online/offline), last_heartbeat, agent_version, `metadata` jsonb(heartbeat 캐시와 botConfig, 서버 목록과 `permissionsAt`은 빼고), `servers` jsonb(heartbeat 서버 목록, `{id, name, module, status, usage?, players?, statusLine?}`만. 0025. null이면 읽는 쪽이 `metadata.servers`를 쓴다, `catalog.ts` `hostMetadata`), timestamps |
 | `guild_hosts` | (`guild_id` → nodes cascade, `host_id` → hosts cascade) PK, created_at. 주인은 따로 적지 않고 `hosts.owner_discord_id`를 쓴다. 대표 PC 뒤에 붙은 PC(길드 하나에 여러 PC, 0029, §4.4 (i)) |
-| `remote_endpoints` | `host_id` PK → hosts cascade, address, port, cert_sha256, updated_at. 원격 PC의 직접 연결 주소(0030, §4.4 (j)) |
+| `remote_endpoints` | `host_id` PK → hosts cascade, address(NULL이면 공인 주소 없음, 0032), port, cert_sha256, updated_at. 원격 PC의 직접 연결 주소(0030, §4.4 (j)) |
 | `remote_tickets` | id PK(nanoid21), `from_host_id`·`to_host_id` → hosts cascade, secret_hash(SHA-256 hex, 원문은 두지 않는다), expires_at(+2분), used_at, created_at. 발급할 때 그 대상 PC의 만료·사용한 표를 지운다(0030, §4.4 (j)) |
 | `nodes` | `guild_id` PK, `host_id` → hosts(cascade, 처음 연결한 대표 PC. 길드 공통 설정의 원본), owner_discord_id, guild_name, locale, `locale_source`(auto/manual), music_enabled, music_ui_enabled, music_settings jsonb, is_sleep, `default_level`(데몬 값의 캐시), `notify_channel_id`(I3), timestamps |
 | `node_permissions` | PK(guild_id, discord_id), level(-1=금지, 0=챗봇, 1=유저, 2=관리자, 10~999=길드에 더한 단계), granted_by. 데몬 `nodeSettings[guild].members`의 캐시(릴레이 바깥 검사용) |
@@ -426,7 +427,15 @@ Tauri 커맨드(`installer/gui/src-tauri/src/lib.rs`): `get_installer_state`, `s
 - A는 B에 TLS로 붙어 받은 지문을 고정하고 연결표를 내민다. B는 그것을 릴레이에 한 번 확인하고(`redeem`, 대상 PC 토큰만) 누가 붙는지(`fromHostId`) 안다. 그 뒤의 접속 토큰은 B 데몬이 스스로 내고, 연결된 뒤에는 릴레이를 거치지 않는다.
 - 원격 PC(B) 데몬 쪽(원격 포트, 주소 올리기, 짝 맺기와 토큰)은 01 §1.4.2(D1). 기본 포트 57480(사용자 확정 2026-10-26).
 - 붙는 쪽 데몬(A)이 목록·연결표를 받아 원격 데몬에 붙고 요청을 중계하는 것은 01 §1.4.2 5~6(D1b). A는 원격 데몬에 닿지 못하면 `peers`의 지금 주소·지문으로 한 번 다시 붙는다.
-- 아직 없는 것: GUI·CLI에서 원격 데몬 고르기(G1), 공인 주소가 없는 PC(NAT 뒤) 지원(연결 방식 `transport`에 자리만 있다).
+- 공인 주소가 없는 PC(NAT 뒤)는 `address:null`로 올리고, A는 (k) 터널로 붙는다.
+
+**(k) 공인 주소 없는 PC 터널** (원격 데몬 T1, `services/remoteTunnel.ts`, `routes/remoteTunnel.ts`, 사용자 결정 2026-10-26 "직접 연결 먼저, 안 되면 릴레이 터널"): 직접 연결이 안 되는 B 에 릴레이가 바이트를 이어 준다.
+- A는 `/node/tunnel?to=<B>` 웹소켓을 연다. 릴레이는 B 앞으로 명령 `{action:'remote_tunnel', tunnelId}`를 큐에 넣고 poll을 깨운다(웹 원격 `web_session`과 같은 길). 넣지 못하면(B 오프라인 등) A를 4503으로 닫는다.
+- B 데몬은 `/node/tunnel?accept=<tunnelId>`로 붙어 자기 원격 포트에 잇는다. 15초 안에 받지 않으면 A를 4408로 닫는다.
+- 오가는 것은 A와 B의 TLS(지문 고정) 암호문이라 릴레이는 내용을 모른다. 바이너리 프레임만 넘기고 글자 프레임은 1003으로 닫는다. B가 받기 전에 A가 보낸 것은 256 KiB까지 모아 두었다가 넘긴다(넘으면 1009).
+- 받는 쪽이 4 MiB 넘게 밀리면 보내는 쪽 읽기를 멈추고 512 KiB 아래로 줄면 다시 읽는다. 한 PC가 동시에 여는 터널 8개, 한 PC 앞으로 열린 터널 16개까지(429). 한쪽이 닫으면 다른 쪽도 닫는다. 25초 ping, 토큰이 바뀌었거나 차단되면 4503으로 닫는다.
+- 연결표·짝 맺기·접속 토큰은 (j)와 같다(터널 위의 TLS 안에서 한다). 데몬 쪽은 01 §1.4.2 9.
+- nginx `location = /node/tunnel`(노드 경로라 `X-Saba-Client` 필요). 상태는 릴레이 메모리에만 있어 다시 켜면 열린 터널이 닫히고 A가 다시 연다.
 
 ### 4.5 daemon 쪽 호출과 relay 서버 비교 (검증 결과)
 

@@ -197,12 +197,27 @@ pub(crate) async fn serve(
                 req
             });
             let service = hyper_util::service::TowerToHyperService::new(app);
-            let mut builder = hyper::server::conn::http1::Builder::new();
-            builder.timer(hyper_util::rt::TokioTimer::new()).header_read_timeout(HEADER_TIMEOUT);
-            let conn = builder.serve_connection(hyper_util::rt::TokioIo::new(stream), service).with_upgrades();
-            tokio::select! {
-                _ = conn => {}
-                _ = cancel.cancelled() => {}
+            // 릴레이 터널(T1)은 이 PC 안에서 붙고 ALPN h2로 HTTP/2 연결 하나에 요청을 여러 개 싣는다.
+            // 그 밖은 HTTP/1.1만: 요청 머리 시간 제한이 HTTP/2에는 없다
+            let h2 = ip.0.is_loopback() && stream.get_ref().1.alpn_protocol() == Some(b"h2");
+            let io = hyper_util::rt::TokioIo::new(stream);
+            if h2 {
+                let mut builder = hyper::server::conn::http2::Builder::new(hyper_util::rt::TokioExecutor::new());
+                builder
+                    .timer(hyper_util::rt::TokioTimer::new())
+                    .keep_alive_interval(Duration::from_secs(25))
+                    .keep_alive_timeout(Duration::from_secs(20));
+                tokio::select! {
+                    _ = builder.serve_connection(io, service) => {}
+                    _ = cancel.cancelled() => {}
+                }
+            } else {
+                let mut builder = hyper::server::conn::http1::Builder::new();
+                builder.timer(hyper_util::rt::TokioTimer::new()).header_read_timeout(HEADER_TIMEOUT);
+                tokio::select! {
+                    _ = builder.serve_connection(io, service).with_upgrades() => {}
+                    _ = cancel.cancelled() => {}
+                }
             }
         });
     }

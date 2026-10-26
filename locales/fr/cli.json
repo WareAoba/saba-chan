@@ -778,7 +778,7 @@
       "remote.set.on": "Activer le port distant",
       "remote.set.off": "Désactiver le port distant",
       "remote.set.port": "Numéro du port distant",
-      "remote.set.address": "Nom d’hôte public ou IP de ce PC (vide pour l’effacer)",
+      "remote.set.address": "Nom d'hôte ou IP publique de ce PC (vide l'efface et passe par le relais)",
       "remote.revoke.host_id": "ID du PC à dissocier (voir `remote clients`)",
       "remote.connect.host_id": "Id du PC auquel se connecter (voir `remote peers`)",
       "remote.forget.host_id": "Id du PC à oublier (voir `remote daemons`)",
@@ -1205,7 +1205,7 @@
     "not_listening": "Non ouvert",
     "off": "Désactivé",
     "address": "Adresse publique",
-    "no_address": "Aucune (non envoyée au relais)",
+    "no_address": "Aucune (connexion via le relais)",
     "published": "Envoyée au relais",
     "fingerprint": "Empreinte du certificat",
     "yes": "Oui",
@@ -1227,8 +1227,8 @@
     "forgotten": "Démon distant de {{host}} oublié.",
     "connect_error": {
       "remote_not_found": "Ce PC ne fait pas partie de vos autres PC",
-      "remote_no_endpoint": "Ce PC n'a pas ouvert son port distant ni envoyé son adresse publique",
-      "remote_unreachable": "Impossible de joindre le démon distant (vérifiez l'adresse et le pare-feu)",
+      "remote_no_endpoint": "Ce PC n'a pas ouvert son port distant",
+      "remote_unreachable": "Impossible de joindre le démon distant (vérifiez que le PC est allumé)",
       "remote_rejected": "Le démon distant n'a pas accepté la connexion. Réessayez",
       "remote_unknown": "Ce n'est pas un démon distant auquel vous êtes connecté. Voyez `remote daemons`",
       "relay_not_paired": "Ce PC n'est pas connecté au relais",
@@ -1238,6 +1238,7 @@
     },
     "daemon": "Démon",
     "this_pc": "Ce PC",
-    "no_servers": "Aucun serveur"
+    "no_servers": "Aucun serveur",
+    "via_relay": "Via le relais"
   }
 }

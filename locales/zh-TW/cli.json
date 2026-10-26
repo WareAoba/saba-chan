@@ -778,7 +778,7 @@
       "remote.set.on": "開啟遠端連接埠",
       "remote.set.off": "關閉遠端連接埠",
       "remote.set.port": "遠端連接埠號碼",
-      "remote.set.address": "此電腦的公開主機名稱或 IP (留空則清除)",
+      "remote.set.address": "本機的公網主機名稱或 IP（留空則清除並透過中繼連線）",
       "remote.revoke.host_id": "要解除配對的電腦 id (見 `remote clients`)",
       "remote.connect.host_id": "要連線的電腦 id（見 `remote peers`）",
       "remote.forget.host_id": "要移除的電腦 id（見 `remote daemons`）",
@@ -1205,7 +1205,7 @@
     "not_listening": "未開啟",
     "off": "關閉",
     "address": "公開位址",
-    "no_address": "無 (不通知中繼)",
+    "no_address": "無（透過中繼連線）",
     "published": "已通知中繼",
     "fingerprint": "憑證指紋",
     "yes": "是",
@@ -1227,8 +1227,8 @@
     "forgotten": "已移除 {{host}} 的遠端常駐程式。",
     "connect_error": {
       "remote_not_found": "該電腦不在你的其他電腦清單中",
-      "remote_no_endpoint": "該電腦未開啟遠端連接埠或未告知公開位址",
-      "remote_unreachable": "無法連上遠端常駐程式（請檢查位址與防火牆）",
+      "remote_no_endpoint": "那台電腦沒有開啟遠端連接埠",
+      "remote_unreachable": "無法連到遠端常駐程式（請確認那台電腦已開機）",
       "remote_rejected": "遠端常駐程式未接受連線，請再試一次",
       "remote_unknown": "這不是你已連線的遠端常駐程式。請查看 `remote daemons`",
       "relay_not_paired": "此電腦未連線中繼",
@@ -1238,6 +1238,7 @@
     },
     "daemon": "守護程式",
     "this_pc": "本機",
-    "no_servers": "沒有伺服器"
+    "no_servers": "沒有伺服器",
+    "via_relay": "透過中繼"
   }
 }

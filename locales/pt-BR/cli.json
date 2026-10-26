@@ -778,7 +778,7 @@
       "remote.set.on": "Ligar a porta remota",
       "remote.set.off": "Desligar a porta remota",
       "remote.set.port": "Número da porta remota",
-      "remote.set.address": "Nome de host público ou IP deste PC (vazio apaga)",
+      "remote.set.address": "Nome de host ou IP público deste PC (vazio apaga e conecta pelo relay)",
       "remote.revoke.host_id": "ID do PC a desparear (veja `remote clients`)",
       "remote.connect.host_id": "Id do PC ao qual conectar (veja `remote peers`)",
       "remote.forget.host_id": "Id do PC a esquecer (veja `remote daemons`)",
@@ -1205,7 +1205,7 @@
     "not_listening": "Não aberta",
     "off": "Desligada",
     "address": "Endereço público",
-    "no_address": "Nenhum (não enviado ao relay)",
+    "no_address": "Nenhum (conecta pelo relay)",
     "published": "Enviado ao relay",
     "fingerprint": "Impressão digital do certificado",
     "yes": "Sim",
@@ -1227,8 +1227,8 @@
     "forgotten": "O daemon remoto de {{host}} foi esquecido.",
     "connect_error": {
       "remote_not_found": "Esse PC não é um dos seus outros PCs",
-      "remote_no_endpoint": "Esse PC não abriu a porta remota nem enviou o endereço público",
-      "remote_unreachable": "Não foi possível alcançar o daemon remoto (verifique o endereço e o firewall)",
+      "remote_no_endpoint": "Esse PC não abriu a porta remota",
+      "remote_unreachable": "Não foi possível alcançar o daemon remoto (verifique se o PC está ligado)",
       "remote_rejected": "O daemon remoto não aceitou a conexão. Tente de novo",
       "remote_unknown": "Não é um daemon remoto ao qual você se conectou. Veja `remote daemons`",
       "relay_not_paired": "Este PC não está conectado ao relay",
@@ -1238,6 +1238,7 @@
     },
     "daemon": "Daemon",
     "this_pc": "Este PC",
-    "no_servers": "Sem servidores"
+    "no_servers": "Sem servidores",
+    "via_relay": "Pelo relay"
   }
 }

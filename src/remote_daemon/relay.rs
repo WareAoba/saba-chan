@@ -59,22 +59,40 @@ pub async fn redeem(target: &Target, ticket_id: &str, secret: &str) -> Result<Re
     }
 }
 
-pub async fn publish(target: &Target, address: &str, port: u16, cert_sha256: &str) -> bool {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Published {
+    Done,
+    /// 릴레이가 받지 않는다 (주소 없는 endpoint를 모르는 예전 릴레이): 다시 보내지 않는다
+    Refused,
+    Failed,
+}
+
+/// 주소가 없으면(`None`) 터널로만 붙는 PC로 올린다 (T1)
+pub async fn publish(target: &Target, address: Option<&str>, port: u16, cert_sha256: &str) -> Published {
     let body = json!({ "address": address, "port": port, "certSha256": cert_sha256 });
-    matches!(send(target, reqwest::Method::PUT, "/api/remote/endpoint", Some(&body)).await, Ok((204, _)))
+    match send(target, reqwest::Method::PUT, "/api/remote/endpoint", Some(&body)).await {
+        Ok((204, _)) => Published::Done,
+        Ok((400, _)) => Published::Refused,
+        _ => Published::Failed,
+    }
 }
 
 pub async fn withdraw(target: &Target) -> bool {
     matches!(send(target, reqwest::Method::DELETE, "/api/remote/endpoint", None).await, Ok((204, _)))
 }
 
-/// 원격 PC의 직접 연결 주소와 고정할 지문
+/// 원격 PC의 직접 연결 주소와 고정할 지문. 주소가 비었으면(릴레이의 `null`) 터널로만 붙는다
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Endpoint {
+    #[serde(default, deserialize_with = "null_as_empty")]
     pub address: String,
     pub port: u16,
     pub cert_sha256: String,
+}
+
+fn null_as_empty<'de, D: serde::Deserializer<'de>>(d: D) -> Result<String, D::Error> {
+    Ok(Option::<String>::deserialize(d)?.unwrap_or_default())
 }
 
 /// 같은 주인의 다른 PC
@@ -114,7 +132,7 @@ pub struct Ticket {
 pub enum TicketFailure {
     /// 같은 주인의 다른 PC가 아니다 (없음·남의 것·자기 자신)
     NotFound,
-    /// 그 PC가 주소를 올리지 않았다 (원격 포트가 꺼졌거나 공인 주소가 없다)
+    /// 그 PC가 원격 포트를 올리지 않았다 (꺼졌거나, 공인 주소가 없는데 예전 릴레이다)
     NoEndpoint,
     Unreachable,
 }
