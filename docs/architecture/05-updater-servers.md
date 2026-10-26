@@ -435,6 +435,7 @@ Tauri 커맨드(`installer/gui/src-tauri/src/lib.rs`): `get_installer_state`, `s
 - 오가는 것은 A와 B의 TLS(지문 고정) 암호문이라 릴레이는 내용을 모른다. 바이너리 프레임만 넘기고 글자 프레임은 1003으로 닫는다. B가 받기 전에 A가 보낸 것은 256 KiB까지 모아 두었다가 넘긴다(넘으면 1009).
 - 받는 쪽이 4 MiB 넘게 밀리면 보내는 쪽 읽기를 멈추고 512 KiB 아래로 줄면 다시 읽는다. 한 PC가 동시에 여는 터널 8개, 한 PC 앞으로 열린 터널 16개까지(429). 한쪽이 닫으면 다른 쪽도 닫는다. 25초 ping, 토큰이 바뀌었거나 차단되면 4503으로 닫는다. PC를 지우거나(`removeOwnHost`) 다시 페어링해 토큰이 바뀌거나 주인을 차단하면(`blockUser`) 그 PC가 낀 터널을 바로 닫는다(`TunnelHub.closeHost`, 4503 `host_gone`).
 - 연결표·짝 맺기·접속 토큰은 (j)와 같다(터널 위의 TLS 안에서 한다). 데몬 쪽은 01 §1.4.2 9.
+- 데몬은 두 쪽 모두 프록시 환경을 따른다(`tunnel::proxy_for`: wss는 `HTTPS_PROXY`, 그다음 `ALL_PROXY`, `NO_PROXY`와 루프백은 직접. http 프록시에 `CONNECT`로 연다). 웹소켓은 reqwest를 거치지 않아 따로 따른다.
 - nginx `location = /node/tunnel`(노드 경로라 `X-Saba-Client` 필요). 상태는 릴레이 메모리에만 있어 다시 켜면 열린 터널이 닫히고 A가 다시 연다.
 
 ### 4.5 daemon 쪽 호출과 relay 서버 비교 (검증 결과)
