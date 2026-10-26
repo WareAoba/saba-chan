@@ -117,7 +117,14 @@
     "reset_gui_done": "GUI 설정을 처음 값으로 되돌렸어요",
     "reset_gui_failed": "설정을 초기화하지 못했어요",
     "os_notifications_label": "OS 알림",
-    "os_notifications_description": "크래시, 예기치 않은 시작·종료처럼 꼭 알아야 할 일을 Windows·macOS 알림으로도 보내요. 앱 창이 앞에 있으면 앱 안에서만 알려요."
+    "os_notifications_description": "크래시, 예기치 않은 시작·종료처럼 꼭 알아야 할 일을 Windows·macOS 알림으로도 보내요. 앱 창이 앞에 있으면 앱 안에서만 알려요.",
+    "sound_effects_label": "효과음",
+    "sound_effects_description": "밖(디스코드·웹 등)에서 켜고 끈 일, 예기치 않은 종료, 설치 결과, 업데이트 발견을 소리로 알려요. 앱에서 직접 켜고 끈 것은 울리지 않아요.",
+    "sound_server_start": "서버 켜짐",
+    "sound_server_stop": "서버 꺼짐",
+    "sound_crash": "예기치 않은 종료",
+    "sound_install": "설치 결과",
+    "sound_update": "업데이트 발견"
   },
   "add_server_modal": {
     "title": "새 서버 추가",

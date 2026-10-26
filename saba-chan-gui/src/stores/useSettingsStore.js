@@ -16,6 +16,16 @@ let applyingLoad = false;
 
 export const DEFAULT_IPC_PORT = 57474; // shared/constants.js와 동일 — renderer는 CJS require 불가하므로 상수 선언
 
+// 효과음 스위치 — 데몬 GuiSettings.sounds와 같은 모양. 전체(enabled)와 종류가 모두 켜져야 울린다
+export const DEFAULT_SOUNDS = Object.freeze({
+    enabled: true,
+    serverStart: true,
+    serverStop: true,
+    crash: true,
+    install: true,
+    update: true,
+});
+
 export const useSettingsStore = create((set, get) => ({
     // ── State ──
     autoRefresh: true,
@@ -26,6 +36,8 @@ export const useSettingsStore = create((set, get) => ({
     portConflictCheck: true,
     // 크래시처럼 꼭 알아야 할 일을 OS 알림으로도 (창이 앞에 있으면 앱 안 알림만)
     osNotifications: true,
+    // 밖에서 켜고 끈 것·크래시·설치 결과·업데이트 발견 때 효과음 (셸이 낸다). 전체·종류별 스위치
+    sounds: DEFAULT_SOUNDS,
     settingsPath: '',
     settingsReady: false,
 
@@ -63,6 +75,7 @@ export const useSettingsStore = create((set, get) => ({
                 patch.autoGeneratePasswords = settings.autoGeneratePasswords ?? true;
                 patch.portConflictCheck = settings.portConflictCheck ?? true;
                 patch.osNotifications = settings.osNotifications ?? true;
+                patch.sounds = { ...DEFAULT_SOUNDS, ...settings.sounds };
 
                 // Theme customization
                 patch.theme = settings.theme ?? getTheme();
@@ -175,6 +188,7 @@ export const useSettingsStore = create((set, get) => ({
             autoGeneratePasswords: true,
             portConflictCheck: true,
             osNotifications: true,
+            sounds: DEFAULT_SOUNDS,
             settingsPath: '',
             settingsReady: false,
             theme: 'auto',
@@ -205,6 +219,7 @@ const _settingsKeys = [
     'autoGeneratePasswords',
     'portConflictCheck',
     'osNotifications',
+    'sounds',
     // Theme customization
     'theme',
     'accentColor',
@@ -246,6 +261,7 @@ if (import.meta.hot) {
             autoGeneratePasswords: s.autoGeneratePasswords,
             portConflictCheck: s.portConflictCheck,
             osNotifications: s.osNotifications,
+            sounds: s.sounds,
             settingsPath: s.settingsPath,
             settingsReady: s.settingsReady,
             theme: s.theme,

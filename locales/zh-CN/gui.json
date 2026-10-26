@@ -117,7 +117,14 @@
     "reset_gui_done": "GUI 设置已恢复为默认值",
     "reset_gui_failed": "无法重置设置",
     "os_notifications_label": "系统通知",
-    "os_notifications_description": "崩溃、意外启动或停止等必须知道的事件也会通过 Windows、macOS 通知发送。应用窗口在前台时只在应用内提示。"
+    "os_notifications_description": "崩溃、意外启动或停止等必须知道的事件也会通过 Windows、macOS 通知发送。应用窗口在前台时只在应用内提示。",
+    "sound_effects_label": "音效",
+    "sound_effects_description": "从应用外（Discord、网页等）启动或停止服务器、意外停止、安装结果以及发现更新时播放提示音。在应用内直接启动或停止时不播放。",
+    "sound_server_start": "服务器启动",
+    "sound_server_stop": "服务器停止",
+    "sound_crash": "意外停止",
+    "sound_install": "安装结果",
+    "sound_update": "发现更新"
   },
   "add_server_modal": {
     "title": "添加新服务器",

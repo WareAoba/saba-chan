@@ -18,6 +18,7 @@ pub mod lifecycle;
 pub mod logging;
 pub mod native;
 pub mod settings;
+pub mod sounds;
 pub mod tray;
 pub mod window;
 

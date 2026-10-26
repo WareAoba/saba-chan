@@ -575,7 +575,7 @@ Relay 서명 방식(`relay.rs:115-161`):
 
 | 그룹 | 필드 (기본값) |
 |---|---|
-| 동작 | `autoRefresh`(true), `refreshInterval`(2000), `ipcPort`(57474), `consoleBufferSize`(2000), `autoGeneratePasswords`(true), `portConflictCheck`(true), `osNotifications`(true, GUI 셸의 중대 알림 OS 알림) |
+| 동작 | `autoRefresh`(true), `refreshInterval`(2000), `ipcPort`(57474), `consoleBufferSize`(2000), `autoGeneratePasswords`(true), `portConflictCheck`(true), `osNotifications`(true, GUI 셸의 중대 알림 OS 알림), `sounds`({enabled, serverStart, serverStop, crash, install, update} 모두 true, GUI 셸의 효과음 전체·종류별 스위치) |
 | 테마 | `theme?`, `accentColor`("#667eea"), `accentSecondary`("#764ba2"), `useGradient`(true), `fontScale`(100), `enableTransitions`(true), `consoleSyntaxHighlight`(true), `consoleBgColor`, `consoleTextColor`, `sidebarCompact`(false), `windowOpacity`(100), `consoleFontScale`(100), `systemMonitorOpen`(true, 서버 페이지 시스템 모니터 펼침) |
 | 창/언어 | `windowBounds?{width:1200,height:840,x?,y?}`, `language?` |
 | 다룰 데몬 | `daemonTarget?`(GUI가 고른 원격 데몬 hostId, 없으면 이 PC. §1.4.2 7, 04 §1.1) |

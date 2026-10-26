@@ -117,7 +117,14 @@
     "reset_gui_done": "Configurações da interface restauradas para o padrão",
     "reset_gui_failed": "Não foi possível redefinir as configurações",
     "os_notifications_label": "Notificações do sistema",
-    "os_notifications_description": "Envia também como notificações do Windows ou macOS os eventos importantes, como falhas e inícios ou paradas inesperados. Com a janela do app em primeiro plano, aparecem só no app."
+    "os_notifications_description": "Envia também como notificações do Windows ou macOS os eventos importantes, como falhas e inícios ou paradas inesperados. Com a janela do app em primeiro plano, aparecem só no app.",
+    "sound_effects_label": "Efeitos sonoros",
+    "sound_effects_description": "Toca um som quando um servidor é iniciado ou parado de fora do app (Discord, web etc.), para inesperadamente, termina de instalar ou quando uma atualização é encontrada. Iniciar ou parar pelo próprio app não toca som.",
+    "sound_server_start": "Servidor iniciado",
+    "sound_server_stop": "Servidor parado",
+    "sound_crash": "Parada inesperada",
+    "sound_install": "Resultado da instalação",
+    "sound_update": "Atualização encontrada"
   },
   "add_server_modal": {
     "title": "Adicionar Novo Servidor",
