@@ -14,6 +14,14 @@ command with ``daemon_post(f"/api/instance/{id}/rcon", {"command": ...})``.
     config_value()                               top level -> module_settings -> settings lookup
     load_setting_types() / coerce_setting()      cast file values by module.toml field type
     atomic_write()                               replace a whole file without leaving it half written
+    setting_file_keys() / settings_to_file() / settings_from_file()
+                                                 setting name <-> game file key from module.toml `file_key`
+    read_key_values() / update_key_values()      `key=value` config files, keeping comments, order, newlines, encoding
+    graceful_stop() / request_console() / request_terminate() / stop_timeout()
+                                                 the save-then-stop procedure of a module `stop()`
+    load_diagnose_rules() / diagnose_lines() / tail_lines()
+                                                 log diagnosis from module.toml `[[diagnose]]`
+    progress() / download() / safe_extract()     install progress, verified downloads, contained archive extraction
     run_lifecycle()                              the `python lifecycle.py <function>` entry point
 
 Environment (the daemon sets these for every Python run):
@@ -59,6 +67,23 @@ SINCE = {
     "PathOutside": "0.1.10",
     "daemon_rest": "0.1.10",
     "atomic_write": "0.1.10",
+    "setting_file_keys": "0.1.11-0",
+    "format_setting": "0.1.11-0",
+    "settings_to_file": "0.1.11-0",
+    "settings_from_file": "0.1.11-0",
+    "read_key_values": "0.1.11-0",
+    "update_key_values": "0.1.11-0",
+    "stop_timeout": "0.1.11-0",
+    "request_console": "0.1.11-0",
+    "request_terminate": "0.1.11-0",
+    "graceful_stop": "0.1.11-0",
+    "load_diagnose_rules": "0.1.11-0",
+    "diagnose_lines": "0.1.11-0",
+    "tail_lines": "0.1.11-0",
+    "progress": "0.1.11-0",
+    "download": "0.1.11-0",
+    "ChecksumMismatch": "0.1.11-0",
+    "safe_extract": "0.1.11-0",
 }
 
 
@@ -577,6 +602,397 @@ def coerce_setting(value, field_type):
     if not math.isfinite(number):
         return text
     return int(number) if number.is_integer() and "." not in text and "e" not in text.lower() else number
+
+
+def _module_toml(module_dir):
+    """모듈의 module.toml (dict). 없거나 읽지 못하면 {}"""
+    try:
+        import tomllib
+        return tomllib.loads((Path(module_dir) / "module.toml").read_bytes().decode("utf-8-sig"))
+    except (ImportError, OSError, UnicodeError, ValueError):
+        return {}
+
+
+def _setting_fields(module_dir):
+    fields = _module_toml(module_dir).get("settings", {}).get("fields", [])
+    return [f for f in fields if isinstance(f, dict) and isinstance(f.get("name"), str)]
+
+
+def setting_file_keys(module_dir):
+    """module.toml `[[settings.fields]] file_key`: {설정 이름: 게임 설정 파일의 키}.
+    이름과 파일 키를 한 곳(module.toml)에만 적는다. file_key가 없는 설정은 파일에 쓰지 않는다"""
+    return {f["name"]: f["file_key"] for f in _setting_fields(module_dir) if isinstance(f.get("file_key"), str) and f["file_key"]}
+
+
+def format_setting(value, *, true="true", false="false", name=""):
+    """설정 값 → 게임 설정 파일의 한 줄 값. 줄바꿈이 든 값은 다른 키를 만들어 내므로 거절한다(ValueError)"""
+    if isinstance(value, bool):
+        return true if value else false
+    if isinstance(value, float) and value.is_integer():
+        value = int(value)
+    text = str(value)
+    if "\n" in text or "\r" in text:
+        raise ValueError(f"line break in setting value: {name or text[:20]!r}")
+    return text
+
+
+def settings_to_file(module_dir, settings, *, true="true", false="false"):
+    """설정 화면 값 {이름: 값} → {파일 키: 문자열}. file_key가 없는 설정과 None 값은 뺀다"""
+    keys = setting_file_keys(module_dir)
+    return {keys[name]: format_setting(value, true=true, false=false, name=name)
+            for name, value in (settings or {}).items() if name in keys and value is not None}
+
+
+def settings_from_file(module_dir, values, *, true="true", false="false", case_insensitive=False):
+    """게임 설정 파일 값 {파일 키: 문자열} → {설정 이름: 화면 형식}. 타입은 module.toml을 따른다.
+    boolean은 true/false 표기가 맞을 때만 넣는다(모르는 표기는 짐작하지 않고 뺀다)"""
+    fields = {f["name"]: f.get("type", "text") for f in _setting_fields(module_dir)}
+    fold = (lambda k: k.lower()) if case_insensitive else (lambda k: k)
+    by_key = {fold(key): name for name, key in setting_file_keys(module_dir).items()}
+    out = {}
+    for key, raw in (values or {}).items():
+        name = by_key.get(fold(key))
+        if name is None:
+            continue
+        if fields.get(name) == "boolean":
+            text = str(raw).strip().lower()
+            if text in (true.lower(), false.lower()):
+                out[name] = text == true.lower()
+            continue
+        out[name] = coerce_setting(raw, fields.get(name))
+    return out
+
+
+# ─── `키=값` 설정 파일 ─────────────────────────────────────────
+
+# UTF-8이 아니면 ANSI 편집기·게임이 쓴 cp949 등. cp949가 로캘보다 먼저다:
+# 영문 Windows의 cp1252는 거의 모든 바이트를 받아 한글을 깨진 글자로 읽는다
+_KV_ENCODINGS = ("utf-8", "cp949", None, "latin-1")
+
+
+def _kv_text(path, encodings):
+    """(줄 목록, 줄바꿈, 인코딩, BOM 여부). 파일이 없으면 빈 UTF-8 파일로 본다"""
+    try:
+        raw = Path(path).read_bytes()
+    except FileNotFoundError:
+        return [], "\n", "utf-8", False
+    bom = raw.startswith(b"\xef\xbb\xbf")
+    if bom:
+        raw = raw[3:]
+    for encoding in encodings:
+        encoding = encoding or __import__("locale").getpreferredencoding(False)
+        try:
+            text = raw.decode(encoding)
+            break
+        except (UnicodeDecodeError, LookupError):
+            continue
+    else:
+        encoding, text = "latin-1", raw.decode("latin-1")
+    newline = "\r\n" if "\r\n" in text else "\n"
+    return text.splitlines(), newline, encoding, bom
+
+
+def _kv_parse(line, comments):
+    """`키=값` → (키, 값). 주석·빈 줄·`=` 없는 줄은 None. 값은 첫 `=` 뒤 그대로(앞뒤 공백도 값이다)"""
+    stripped = line.strip()
+    if not stripped or stripped.startswith(comments) or "=" not in stripped:
+        return None
+    key, _, value = line.partition("=")
+    return key.strip(), value
+
+
+def read_key_values(path, *, encodings=_KV_ENCODINGS, case_insensitive=False, first_wins=False,
+                    strip_values=False, comments=("#",)):
+    """`키=값` 줄 파일(server.properties, serverconfig.txt, 좀보이드 ini 등) → {키: 값}.
+    없으면 {}. case_insensitive면 키를 소문자로 돌려준다. 같은 키가 여러 줄이면 마지막(first_wins면 첫) 줄"""
+    lines, _, _, _ = _kv_text(path, encodings)
+    out = {}
+    for line in lines:
+        parsed = _kv_parse(line, tuple(comments))
+        if not parsed:
+            continue
+        key, value = parsed
+        if case_insensitive:
+            key = key.lower()
+        if first_wins and key in out:
+            continue
+        out[key] = value.strip() if strip_values else value
+    return out
+
+
+def update_key_values(path, updates, *, encodings=_KV_ENCODINGS, case_insensitive=False, delete_empty=False,
+                      comments=("#",)):
+    """바뀐 키만 고친다. 주석·다른 줄·순서·줄바꿈 표기·인코딩(BOM 포함)은 그대로 둔다.
+    값이 None이면(delete_empty면 ""도) 그 키 줄을 지운다. 같은 키의 둘째 줄부터는 지운다(어느 줄을 읽을지
+    애매하지 않게). 파일에 없는 키는 끝에 붙인다. 원래 인코딩으로 못 쓰는 글자가 들어오면 UTF-8로 쓴다"""
+    fold = (lambda k: k.lower()) if case_insensitive else (lambda k: k)
+    pending = {}
+    for key, value in updates.items():
+        if value is not None and not isinstance(value, str):
+            value = format_setting(value, name=key)
+        elif isinstance(value, str) and ("\n" in value or "\r" in value):
+            raise ValueError(f"line break in value of {key!r}")
+        pending[fold(key)] = (key, None if value is None or (delete_empty and value == "") else value)
+    lines, newline, encoding, bom = _kv_text(path, encodings)
+    out, seen = [], set()
+    for line in lines:
+        parsed = _kv_parse(line, tuple(comments))
+        folded = fold(parsed[0]) if parsed else None
+        if folded in pending:
+            if folded not in seen and pending[folded][1] is not None:
+                out.append(f"{parsed[0]}={pending[folded][1]}")
+            seen.add(folded)
+            continue
+        out.append(line)
+    for folded, (key, value) in pending.items():
+        if folded not in seen and value is not None:
+            out.append(f"{key}={value}")
+    text = (newline.join(out) + newline) if out else ""
+    try:
+        data = text.encode(encoding)
+    except UnicodeEncodeError:
+        data, bom = text.encode("utf-8"), False
+    atomic_write(path, (b"\xef\xbb\xbf" if bom else b"") + data)
+
+
+# ─── 정지 ─────────────────────────────────────────────────────
+
+# 데몬이 호출 제한(stop_call_limit)을 알려 주지 않으면(0.1.8) 120초 제한 안에서 끝낸다
+_STOP_TIMEOUT_MAX = 90
+_STOP_CALL_MARGIN = 30
+
+
+def stop_timeout(config, module_dir=None, default=30):
+    """정지 대기(초): 인스턴스 stop_timeout → module.toml [config] stop_timeout → default.
+    상한은 데몬의 호출 제한(stop_call_limit)보다 30초 앞이다"""
+    value = config.get("stop_timeout")
+    if value in (None, "") and module_dir:
+        value = _module_toml(module_dir).get("config", {}).get("stop_timeout")
+    try:
+        value = int(value)
+    except (TypeError, ValueError):
+        value = default
+    cap = _STOP_TIMEOUT_MAX
+    try:
+        cap = int(config["stop_call_limit"]) - _STOP_CALL_MARGIN
+    except (KeyError, TypeError, ValueError):
+        pass
+    return max(1, min(value, cap))
+
+
+def request_console(config, command, *, timeout=10):
+    """데몬을 거쳐 서버 콘솔(stdin)에 정지 명령을 보낸다. 콘솔이 없으면(409, 데몬 없음) False"""
+    instance_id = config.get("instance_id")
+    if not instance_id:
+        return False
+    try:
+        daemon_stdin_command(instance_id, command, timeout=timeout)
+        return True
+    except PathOutside:
+        raise
+    except Exception as e:
+        print(f"[saba] console stop unavailable: {e}", file=sys.stderr)
+        return False
+
+
+def request_terminate(pid):
+    """POSIX: SIGTERM으로 저장 후 종료를 요청한다. Windows 콘솔 앱에는 보낼 정상 종료 신호가 없어 False"""
+    if os.name == "nt":
+        return False
+    import signal
+    try:
+        os.kill(int(pid), signal.SIGTERM)
+        return True
+    except (OSError, ValueError) as e:
+        print(f"[saba] SIGTERM failed: {e}", file=sys.stderr)
+        return False
+
+
+def graceful_stop(config, request, i18n, *, module_dir=None):
+    """모듈 `stop()`의 공용 절차. request()는 저장 후 종료를 요청하고 요청이 들어갔으면 True를 돌려준다.
+
+    force: 그 PID(와 자식)만 강제 종료. 아니면 request() → 요청할 길이 없으면 끄지 않고
+    `graceful_stop_unavailable`(데몬이 사용자에게 묻는다) → managed면 바로 반환(기다림·강제 종료는 데몬) →
+    stop_timeout만큼 기다린 뒤에만 강제 종료. 문구 키는 공용 문구(common_locales.json)에 있다"""
+    pid = config.get("pid")
+    if not pid:
+        return {"success": True, "message": i18n.t("messages.no_process_running")}
+    if not config.get("force"):
+        if not request():
+            return {"success": False, "error_code": "graceful_stop_unavailable",
+                    "message": i18n.t("errors.graceful_stop_unavailable")}
+        if config.get("managed"):
+            return {"success": True, "message": i18n.t("messages.shutdown_signal_sent", pid=pid)}
+        if wait_for_exit(pid, timeout=stop_timeout(config, module_dir)):
+            return {"success": True, "message": i18n.t("messages.graceful_stop", pid=pid)}
+        print(i18n.t("messages.graceful_stop_timeout"), file=sys.stderr)
+    ok, error = force_kill(pid)
+    if ok:
+        return {"success": True, "message": i18n.t("messages.force_killed", pid=pid)}
+    return {"success": False, "message": i18n.t("errors.failed_to_kill", error=error)}
+
+
+# ─── 로그 진단 ─────────────────────────────────────────────────
+
+_SEVERITIES = ("critical", "error", "warning", "info")
+
+
+def load_diagnose_rules(module_dir):
+    """module.toml `[[diagnose]]` (code, severity, patterns) → 컴파일한 규칙 목록. 정규식은 대소문자를 가리지 않는다.
+    틀린 정규식이 든 규칙은 그 규칙만 빼고 stderr에 알린다"""
+    rules = []
+    for entry in _module_toml(module_dir).get("diagnose", []):
+        if not isinstance(entry, dict) or not isinstance(entry.get("code"), str):
+            continue
+        try:
+            patterns = [re.compile(p, re.IGNORECASE) for p in entry.get("patterns", [])]
+        except (re.error, TypeError) as e:
+            print(f"[saba] diagnose rule {entry['code']} skipped: {e}", file=sys.stderr)
+            continue
+        severity = entry.get("severity") if entry.get("severity") in _SEVERITIES else "error"
+        rules.append({"code": entry["code"], "severity": severity, "patterns": patterns})
+    return rules
+
+
+def diagnose_lines(lines, rules, i18n, *, message="errors.detect.{code}", solution="errors.solutions.{code}"):
+    """콘솔 줄에서 규칙마다 처음 맞는 줄 하나를 문제로 돌려준다. 문구 키의 {code}는 소문자 코드다"""
+    if isinstance(lines, str):
+        lines = lines.splitlines()
+    issues, seen = [], set()
+    for line in lines:
+        for rule in rules:
+            if rule["code"] in seen or not any(p.search(line) for p in rule["patterns"]):
+                continue
+            seen.add(rule["code"])
+            code = rule["code"].lower()
+            issues.append({
+                "code": rule["code"],
+                "severity": rule["severity"],
+                "matched_line": line.strip()[:200],
+                "message": i18n.t(message.format(code=code)),
+                "solution": i18n.t(solution.format(code=code)),
+            })
+    return issues
+
+
+def tail_lines(path, limit=500, max_bytes=1024 * 1024):
+    """파일의 마지막 limit줄 (끝 max_bytes만 읽는다). 없거나 못 읽으면 []"""
+    try:
+        with open(path, "rb") as f:
+            f.seek(0, os.SEEK_END)
+            f.seek(max(0, f.tell() - max_bytes))
+            data = f.read()
+    except OSError:
+        return []
+    return data.decode("utf-8", errors="replace").splitlines()[-limit:]
+
+
+# ─── 진행률·내려받기·압축 풀기 ─────────────────────────────────
+
+def progress(percent, message):
+    """데몬이 읽는 진행률 줄 (stderr `PROGRESS:{json}`, 설치 진행률 표시)"""
+    print("PROGRESS:" + json.dumps({"percent": percent, "message": message}, ensure_ascii=True),
+          file=sys.stderr, flush=True)
+
+
+class ChecksumMismatch(ValueError):
+    """받은 파일의 해시가 공식 값과 다르다"""
+
+    def __init__(self, algorithm, expected, actual):
+        super().__init__(f"{algorithm} mismatch: expected {expected}, got {actual}")
+        self.algorithm, self.expected, self.actual = algorithm, expected, actual
+
+
+def download(url, dest, *, on_progress=None, timeout=60, checksums=None, user_agent="saba-chan"):
+    """url을 dest에 받는다. on_progress(받은 바이트, 전체 바이트 또는 0)를 덩어리마다 부른다.
+    checksums={"sha256": "...", "sha1": "...", "md5": "..."}가 있으면 받은 뒤 비교하고 다르면
+    ChecksumMismatch(파일은 지운다). 반환: {알고리즘: hex} (sha1·sha256은 늘 계산한다).
+    urlopen의 timeout은 읽기 한 번의 한도라서, 느리게 이어지는 받기도 전체로 timeout*10 안에 끊는다"""
+    import hashlib
+    wanted = {k.lower(): v.lower() for k, v in (checksums or {}).items() if v}
+    hashes = {name: hashlib.new(name) for name in {"sha1", "sha256", *wanted}}
+    deadline = time.monotonic() + timeout * 10
+    req = urllib.request.Request(url, headers={"User-Agent": user_agent})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp, open(dest, "wb") as out:
+            total = int(resp.headers.get("Content-Length") or 0)
+            done = 0
+            while True:
+                if time.monotonic() > deadline:
+                    raise TimeoutError(f"download took longer than {timeout * 10}s")
+                chunk = resp.read(1 << 20)
+                if not chunk:
+                    break
+                out.write(chunk)
+                for h in hashes.values():
+                    h.update(chunk)
+                done += len(chunk)
+                if on_progress:
+                    on_progress(done, total)
+        digests = {name: h.hexdigest() for name, h in hashes.items()}
+        for name, expected in wanted.items():
+            if digests[name] != expected:
+                raise ChecksumMismatch(name.upper(), expected, digests[name])
+    except BaseException:
+        try:
+            os.remove(dest)
+        except OSError:
+            pass
+        raise
+    return digests
+
+
+def safe_extract(archive, dest, *, prefix=None, strip_top=False, keep_existing=()):
+    """zip·tar(.gz) 압축을 dest에 푼다. 모든 항목을 먼저 검사하고 나서 쓴다: dest 밖으로 나가는 항목이
+    하나라도 있으면 아무것도 풀지 않고 PathOutside. 링크·장치 같은 특수 항목은 풀지 않는다.
+    prefix: 그 폴더 안의 항목만 풀고 그 앞부분을 뗀다. strip_top: 맨 위 폴더 하나를 뗀다(그 폴더가 하나뿐일 때).
+    keep_existing: 이미 있으면 덮지 않을 상대 경로('/' 구분). zip은 CRC를 먼저 검사한다. 반환: 쓴 파일 경로 목록"""
+    import tarfile
+    import zipfile
+    archive = os.fspath(archive)
+    if zipfile.is_zipfile(archive):
+        handle = zipfile.ZipFile(archive)
+        bad = handle.testzip()
+        if bad is not None:
+            handle.close()
+            raise zipfile.BadZipFile(f"bad CRC: {bad}")
+        entries = [(i.filename, i) for i in handle.infolist() if not i.is_dir()]
+        opener = handle.open
+    else:
+        handle = tarfile.open(archive, "r:*")
+        entries = [(m.name, m) for m in handle.getmembers() if m.isfile()]
+        opener = handle.extractfile
+    try:
+        names = [name.replace("\\", "/") for name, _ in entries]
+        cut = ""
+        if prefix:
+            cut = prefix.strip("/") + "/"
+        elif strip_top:
+            tops = {n.split("/", 1)[0] for n in names if "/" in n}
+            if len(tops) == 1 and all("/" in n for n in names):
+                cut = tops.pop() + "/"
+        planned = []
+        for name, (_, info) in zip(names, entries):
+            if cut and not name.startswith(cut):
+                continue
+            rel = name[len(cut):]
+            if not rel:
+                continue
+            planned.append((rel, safe_join(dest, *[p for p in rel.split("/") if p]), info))
+        written = []
+        for rel, target, info in planned:
+            if rel in keep_existing and target.exists():
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with opener(info) as src, open(target, "wb") as out:
+                shutil.copyfileobj(src, out)
+            mode = getattr(info, "mode", None) if not isinstance(info, zipfile.ZipInfo) else (info.external_attr >> 16)
+            if os.name != "nt" and mode and mode & 0o111:
+                os.chmod(target, 0o755)
+            written.append(str(target))
+        return written
+    finally:
+        handle.close()
 
 
 # ─── CLI 진입점 ───────────────────────────────────────────────

@@ -52,7 +52,7 @@ COMPONENTS = [
         "install_dir": ".",
         "exe_name": "saba-core.exe",
         # 공유 모듈 유틸리티 — %APPDATA%/saba-chan/modules/ 에 설치됨
-        "extra_files": ["modules/i18n.py", "modules/daemon_rcon.py"],
+        "extra_files": ["modules/i18n.py", "modules/daemon_rcon.py", "modules/common_locales.json"],
         # 데몬 옆에 함께 설치되는 실행 파일 (staging/에서 찾는다). saba-runner: 서버 콘솔 감시 (C8b)
         "extra_staged": [r"saba-runner\.exe$"],
         # 이 컴포넌트 zip에 함께 든 다른 exe: 재포장할 때 빼지 않는다 (staging에 따로 없을 때 대비)
