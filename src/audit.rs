@@ -284,7 +284,8 @@ impl AuditLog {
         writeln!(f, "{}", line)
     }
 
-    /// 최근 기록 (최신이 먼저). `instance_id`가 있으면 그 서버 것만
+    /// 최근 기록 (최신이 먼저). `instance_id`가 있으면 그 서버 것만 (시험에서만 쓴다)
+    #[cfg(test)]
     pub fn recent(&self, limit: usize, instance_id: Option<&str>) -> Vec<Value> {
         self.query(&Filter { limit, instance_id, ..Filter::default() })
     }
