@@ -1,7 +1,7 @@
 use super::*;
 use crate::supervisor::module_loader::SettingField;
 use axum::{extract::State, http::StatusCode, routing::post, Json, Router};
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 fn field(name: &str, public: Option<&str>, default: Option<i64>) -> SettingField {
     SettingField {
@@ -183,6 +183,26 @@ async fn ports_past_the_relay_limit_are_unknown_not_closed() {
     let got = statuses(&reports[0]);
     assert_eq!(got[..MAX_PORTS], vec![PortStatus::Closed; MAX_PORTS][..]);
     assert_eq!(got[MAX_PORTS], PortStatus::Unknown);
+}
+
+#[tokio::test]
+async fn a_connection_left_open_does_not_keep_the_port() {
+    // 확인값 없이 연결만 붙잡고 있는 상대가 있어도, 확인이 끝나면 서버가 그 포트를 열 수 있다
+    let port = free_port();
+    let seen: Seen = Arc::default();
+    let stop = CancellationToken::new();
+    let (_, tasks) = open_listeners(&[(port, Protocol::Tcp)], LOOPBACK, "abc", &seen, &stop).await;
+    let mut idle = tokio::net::TcpStream::connect(("127.0.0.1", port)).await.unwrap();
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    stop.cancel();
+    for task in tasks {
+        task.await.unwrap();
+    }
+    // 받은 연결이 확인과 함께 닫혔다 (남아 있으면 3초 동안 읽기를 기다린다)
+    let mut buf = [0u8; 1];
+    let read = tokio::time::timeout(Duration::from_millis(500), idle.read(&mut buf)).await.expect("the accepted connection is closed");
+    assert!(matches!(read, Ok(0) | Err(_)));
+    std::net::TcpListener::bind(("127.0.0.1", port)).expect("port free after the check");
 }
 
 #[tokio::test]

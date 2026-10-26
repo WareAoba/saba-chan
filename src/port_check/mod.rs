@@ -332,13 +332,18 @@ async fn open_listeners(
             Protocol::Tcp => match tokio::net::TcpListener::bind(addr).await {
                 Ok(listener) => {
                     tasks.push(tokio::spawn(async move {
+                        // 받은 연결도 확인이 끝나면 닫는다 (남은 연결이 포트를 잡아 이어지는 서버 시작이 실패하지 않게)
+                        let mut conns = tokio::task::JoinSet::new();
                         loop {
                             let (mut sock, _) = tokio::select! {
-                                _ = stop.cancelled() => return,
+                                _ = stop.cancelled() => {
+                                    conns.shutdown().await;
+                                    return;
+                                }
                                 accepted = listener.accept() => match accepted { Ok(a) => a, Err(_) => continue },
                             };
                             let (seen, line) = (seen.clone(), line.clone());
-                            tokio::spawn(async move {
+                            conns.spawn(async move {
                                 let mut buf = Vec::with_capacity(64);
                                 let read = tokio::time::timeout(Duration::from_secs(3), async {
                                     let mut chunk = [0u8; 64];
