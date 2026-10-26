@@ -72,7 +72,8 @@ concurrency:
 jobs:
   package-and-manifest:
     name: Package assets & generate manifest
-    runs-on: ubuntu-latest
+    # 리눅스 실행 파일은 이 러너의 glibc 판을 요구한다 — 문서가 약속한 Ubuntu 22.04·Debian 12에서 돌게 22.04로 빌드한다
+    runs-on: ubuntu-22.04
     timeout-minutes: 40
 
     env:
@@ -241,6 +242,14 @@ jobs:
         run: |
           cargo build --release --locked -p saba-core -p saba-runner -p saba-chan-cli --bins
           cargo build --release --locked -p saba-chan-updater --no-default-features
+          # Debian 12(glibc 2.36)보다 새 glibc 기호를 요구하면 멈춘다
+          for b in saba-core saba-runner saba-chan-cli saba-chan-updater; do
+            need=$(objdump -T "target/release/$b" | grep -o 'GLIBC_[0-9.]*' | sed 's/GLIBC_//' | sort -V | tail -1)
+            echo "$b needs glibc $need"
+            if [ "$(printf '%s\n' "$need" 2.35 | sort -V | tail -1)" != "2.35" ]; then
+              echo "::error::$b requires glibc $need (> 2.35)"; exit 1
+            fi
+          done
           python .github/scripts/package-linux.py --bin target/release --out output
 
       # 선언하지 않은 능력을 쓰는 모듈·익스텐션은 싣지 않는다 (M12)

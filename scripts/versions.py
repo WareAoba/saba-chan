@@ -325,7 +325,9 @@ def versions_semver(version: str) -> tuple:
 def fetch_url(url: str) -> bytes:
     import urllib.request
 
-    with urllib.request.urlopen(url, timeout=60) as resp:
+    # r2.dev 는 urllib 기본 User-Agent 에 403 을 준다
+    req = urllib.request.Request(url, headers={"User-Agent": "saba-chan-release"})
+    with urllib.request.urlopen(req, timeout=60) as resp:
         return resp.read()
 
 
