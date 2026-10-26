@@ -163,7 +163,14 @@ async fn relaunch_now(relaunch_exe: Option<String>, relaunch_extra: Vec<String>,
     // 받은 인자는 받은 프로그램의 것이다. --relaunch 없이 찾은 GUI에는 넘기지 않는다
     let extra: &[String] = if requested { &relaunch_extra } else { &[] };
     wait_for_exe(&cmd).await;
-    launch_with_retry(&cmd, extra, applied).await
+    let after_update = applied && marks_update(&cmd, resolve_install_root_from_exe().as_deref());
+    launch_with_retry(&cmd, extra, after_update).await
+}
+
+/// 다시 띄우는 것에 `--after-update`를 붙이는가: 설치 폴더의 사바쨩 프로그램만. 서비스 관리자(`systemctl`) 같은
+/// 바깥 프로그램은 그 인자를 모른다. 설치 폴더를 모르면 예전처럼 붙인다
+fn marks_update(cmd: &str, install_root: Option<&Path>) -> bool {
+    install_root.is_none_or(|root| Path::new(cmd).starts_with(root))
 }
 
 /// GUI 설정(`config.json`의 `gui`)에서 키 값 읽기
@@ -507,5 +514,14 @@ mod tests {
         assert_eq!(relaunch_command(Some(cli.clone()), Some(installed.clone())), Some(cli));
         assert_eq!(relaunch_command(None, Some(installed.clone())).as_deref(), Some(installed.to_string_lossy().as_ref()));
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// `--after-update`는 사바쨩 프로그램에만 붙인다 (서비스로 돈 데몬은 `systemctl --user start`로 다시 띄운다)
+    #[test]
+    fn only_saba_chan_programs_are_told_they_follow_an_update() {
+        let root = Path::new("/opt/saba");
+        assert!(marks_update("/opt/saba/saba-core", Some(root)));
+        assert!(!marks_update("/usr/bin/systemctl", Some(root)));
+        assert!(marks_update("/usr/bin/systemctl", None), "an unknown install folder keeps the old behaviour");
     }
 }

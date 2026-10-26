@@ -258,8 +258,8 @@ fn unit_quote(s: &str) -> String {
                 out.push('\\');
                 out.push(c);
             }
+            // 실행 파일 경로에서 systemd는 `%` 지정자만 푼다 (`$` 변수는 인자에서만 풀어 그대로 둔다)
             '%' => out.push_str("%%"),
-            '$' => out.push_str("$$"),
             _ => out.push(c),
         }
     }
@@ -290,7 +290,7 @@ pub fn parse_systemd_unit(text: &str) -> Option<Entry> {
         while let Some((i, c)) = chars.next() {
             match c {
                 '\\' => program.push(chars.next()?.1),
-                '%' | '$' if chars.peek().is_some_and(|(_, n)| *n == c) => {
+                '%' if chars.peek().is_some_and(|(_, n)| *n == c) => {
                     chars.next();
                     program.push(c);
                 }
@@ -627,7 +627,8 @@ mod tests {
     fn the_systemd_unit_reads_back_and_restarts_only_after_a_crash() {
         let e = Entry { program: PathBuf::from("/home/a b/$sa\"ba%/saba-core"), args: vec![] };
         let text = systemd_unit(&e);
-        assert!(text.contains(r#"ExecStart="/home/a b/$$sa\"ba%%/saba-core""#), "{}", text);
+        // 실행 파일 경로에서 systemd는 `%`만 풀고 `$`는 그대로 둔다
+        assert!(text.contains(r#"ExecStart="/home/a b/$sa\"ba%%/saba-core""#), "{}", text);
         assert!(text.contains("Restart=on-failure\n"), "{}", text);
         assert!(text.contains("WantedBy=default.target\n"), "{}", text);
         // 데몬이 끝나도 업데이터·게임 서버는 남는다 (업데이터가 데몬 종료를 기다린 뒤 적용한다)
