@@ -153,7 +153,8 @@
   },
   "schedule": {
     "restart_warning": "伺服器將在 {{minutes}} 分鐘後重新啟動。",
-    "update_warning": "伺服器將在 {{minutes}} 分鐘後重新啟動以進行更新。"
+    "update_warning": "伺服器將在 {{minutes}} 分鐘後重新啟動以進行更新。",
+    "stop_warning": "伺服器將在 {{minutes}} 分鐘後停止。"
   },
   "provision": {
     "installing": "正在安裝伺服器…",

@@ -7,12 +7,16 @@ const MODULE: &str = "[module]\nschema_version = 1\nname = \"plain\"\nversion = 
 const MODULE_KO: &str = r#"{ "queries": { "players": { "label": "접속자 목록", "description": "지금 접속한 사람", "inputs": { "limit": { "label": "최대 인원" } } } } }"#;
 
 async fn server() -> (IPCServer, String, tempfile::TempDir) {
+    server_with(MODULE).await
+}
+
+async fn server_with(module: &str) -> (IPCServer, String, tempfile::TempDir) {
     crate::ipc::auth::ensure_test_token();
     let tmp = tempfile::tempdir().unwrap();
     let modules = tmp.path().join("modules");
     let dir = modules.join("plain");
     std::fs::create_dir_all(&dir).unwrap();
-    std::fs::write(dir.join("module.toml"), MODULE).unwrap();
+    std::fs::write(dir.join("module.toml"), module).unwrap();
     std::fs::write(dir.join("lifecycle.py"), r#"import json, sys
 json.load(sys.stdin)
 function = sys.argv[1]
@@ -895,6 +899,26 @@ async fn commands_denied_to_a_member_stay_denied_through_actions() {
     assert_eq!(err.data["args"]["need"], 3);
     assert!(plan(&state, "server.start", Some(&id), &json!({}), &admin).await.is_ok(), "only the denied command");
     assert!(plan(&state, "server.stop", Some(&id), &json!({}), &relay("someone", false)).await.is_ok(), "only that member");
+}
+
+/// 예약 작업은 나중에 요청자 없이 돈다: 새로 넣거나 켜는 서버 명령은 요청자가 지금 그 명령을 쓸 수 있어야 한다
+#[tokio::test]
+async fn scheduling_a_command_needs_the_requesters_permission_for_it() {
+    let module = format!("{MODULE}\n[[commands.fields]]\nname = \"say\"\nrisk = \"safe\"\n\n[aliases.commands]\nsay = {{ aliases = [\"broadcast\"] }}\n");
+    let (state, id, _tmp) = server_with(&module).await;
+    let levels = json!({ format!("{}/say", id): 3 });
+    set_node(&state, json!({ "ownerDiscordId": "owner", "preset": "loose", "chatbotCap": 2, "defaultLevel": 2, "commandLevels": levels, "memberPermissions": { "admin": { id.clone(): ["stop"] } } })).await;
+    let task = |action: &str, command: Option<&str>| {
+        json!({ "schedule": [{ "action": action, "at": "04:00", "command": command, "enabled": true }] })
+    };
+    let admin = relay("admin", true);
+    for (input, what) in [(task("command", Some("say")), "say"), (task("command", Some("BROADCAST")), "alias"), (task("stop", None), "stop")] {
+        let err = plan(&state, "instance.schedule.set", Some(&id), &input, &admin).await.unwrap_err();
+        assert_eq!((err.code, &err.data["args"]["need"]), ("PERMISSION_DENIED", &json!(3)), "{}", what);
+    }
+    assert!(plan(&state, "instance.schedule.set", Some(&id), &task("start", None), &admin).await.is_ok(), "only the limited commands");
+    let off = json!({ "schedule": [{ "action": "command", "at": "04:00", "command": "say", "enabled": false }] });
+    assert!(plan(&state, "instance.schedule.set", Some(&id), &off, &admin).await.is_ok(), "a disabled task never runs");
 }
 
 #[test]

@@ -12,6 +12,7 @@ import { useSettingsStore } from '../../stores/useSettingsStore';
 import { failedModuleReason, failureForModule } from '../../utils/failedModules';
 import { openWithNotice, safeShowToast } from '../../utils/helpers';
 import { useUIStore } from '../../stores/useUIStore';
+import { withCommandAliases } from '../../utils/commandRisk';
 import {
     STATUS_TONE,
     consoleQuickCommands,
@@ -172,7 +173,11 @@ export function ServerDetail({
     })();
 
     return (
-        <section className="server-detail" aria-label={server.name}>
+        <section
+            // 기록 탭은 목록만 스크롤하고 머리는 제자리에 둔다: 상세 칸 높이에 맞춘다
+            className={activeTab === 'audit' ? 'server-detail fill-pane' : 'server-detail'}
+            aria-label={server.name}
+        >
             <header className="detail-head">
                 {onBack && (
                     <button
@@ -329,7 +334,15 @@ export function ServerDetail({
                                 servers={servers}
                             />
                         )}
-                        {activeTab === 'maintenance' && <MaintenanceTab server={server} />}
+                        {activeTab === 'maintenance' && (
+                            <MaintenanceTab
+                                server={server}
+                                moduleCommands={withCommandAliases(
+                                    moduleData?.commands?.fields,
+                                    moduleData?.command_aliases,
+                                )}
+                            />
+                        )}
                         {activeTab === 'discord' && <InstanceDiscordTab server={server} />}
                         {activeTab === 'audit' && <AuditLog instanceId={server.id} />}
                         {activeTab === 'info' && (

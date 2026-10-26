@@ -686,6 +686,27 @@ fn schedule_revision(instance: &crate::instance::ServerInstance) -> String {
     crate::config_store::patch::revision(&json!({ "schedule": instance.schedule, "backup_keep": instance.backup_keep }))
 }
 
+/// 실행기의 시계와 데몬 시작 시각 (화면에 다음 실행 시각을 보일 때 읽는다)
+static RUNNER: std::sync::OnceLock<(chrono::NaiveDateTime, std::sync::Arc<Mutex<Clock>>)> = std::sync::OnceLock::new();
+
+/// 작업마다 다음 실행 시각 (유닉스 초, 꺼졌거나 다시 돌 일이 없으면 null). 보는 쪽이 자기 시간대로 보인다
+fn next_runs(id: &str, schedule: &[ScheduledTask]) -> Vec<Option<i64>> {
+    let now = chrono::Local::now().naive_local();
+    let fresh = Clock::default();
+    let (started, guard) = match RUNNER.get() {
+        Some((started, clock)) => (*started, Some(clock.lock().unwrap_or_else(|e| e.into_inner()))),
+        None => (now, None),
+    };
+    let clock = guard.as_deref().unwrap_or(&fresh);
+    schedule
+        .iter()
+        .map(|task| {
+            let wall = clock.peek(&crate::scheduler::task_key(id, task), task, started, now)?;
+            crate::scheduler::instant(&chrono::Local, wall).map(|t| t.timestamp())
+        })
+        .collect()
+}
+
 pub async fn get_schedule(Path(id): Path<String>, State(state): State<IPCServer>) -> Response {
     let supervisor = state.supervisor.read().await;
     let Some(instance) = supervisor.instance_store.get(&id) else {
@@ -699,11 +720,24 @@ pub async fn get_schedule(Path(id): Path<String>, State(state): State<IPCServer>
         "revision": schedule_revision(instance),
         "backup_supported": meta.as_ref().is_some_and(|m| m.backup.is_some()),
         "announce_supported": meta.as_ref().is_some_and(|m| m.announce_command.is_some()),
+        "save_supported": meta.as_ref().is_some_and(|m| save_command_of(m).is_some()),
+        "next_runs": next_runs(&id, &instance.schedule),
+        // 작업 시각(`at`·`date`)은 데몬 PC의 벽시계다: 다른 시간대에서 보는 화면이 그 차이를 알린다
+        "utc_offset_minutes": chrono::Local::now().offset().local_minus_utc() / 60,
     }))
     .into_response()
 }
 
-pub async fn put_schedule(Path(id): Path<String>, State(state): State<IPCServer>, Json(body): Json<ScheduleBody>) -> Response {
+fn save_command_of(meta: &crate::supervisor::module_loader::ModuleMetadata) -> Option<String> {
+    meta.backup.as_ref().and_then(|b| b.save_command.clone())
+}
+
+pub async fn put_schedule(Path(id): Path<String>, State(state): State<IPCServer>, Json(mut body): Json<ScheduleBody>) -> Response {
+    // N일마다는 세기 시작할 날이 있어야 같은 날에 돈다: 없으면 오늘부터
+    let today = chrono::Local::now().date_naive().to_string();
+    for task in body.schedule.iter_mut().filter(|t| t.every_days.is_some() && t.start_date.is_none()) {
+        task.start_date = Some(today.clone());
+    }
     let mut supervisor = state.supervisor.write().await;
     let Some(mut instance) = supervisor.instance_store.get(&id).cloned() else {
         return error(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id));
@@ -722,6 +756,9 @@ pub async fn put_schedule(Path(id): Path<String>, State(state): State<IPCServer>
         }
         if (task.action == TaskAction::Announce || !task.warn_minutes.is_empty()) && !can_announce {
             p.push("this module has no announce command".into());
+        }
+        if task.action == TaskAction::Save && !meta.as_ref().is_some_and(|m| save_command_of(m).is_some()) {
+            p.push("this module has no save command".into());
         }
         problems.extend(p.into_iter().map(|m| format!("schedule[{}]: {}", i, m)));
     }
@@ -755,6 +792,18 @@ pub async fn put_schedule(Path(id): Path<String>, State(state): State<IPCServer>
             // 끈 업데이트 작업은 돌지 않으므로 끄는 것은 원격에서도 된다
             if task.action == TaskAction::Update && task.enabled {
                 problems.push(format!("schedule[{}]: updates can only be scheduled on this PC", i));
+            }
+            // 위험한 게임 명령과 디스코드에 내보내지 않는 명령(`remote = false`)은 이 PC에서 확인하고 정한다
+            // (모르는 명령도 막는다: 인스턴스별 명령은 저장할 때 알 수 없다)
+            if task.action == TaskAction::Command && task.enabled {
+                let risk = meta
+                    .as_ref()
+                    .and_then(|m| crate::commands::find(m, task.command.as_deref().unwrap_or("")))
+                    .filter(|f| f.remote)
+                    .map(|f| crate::commands::risk_of(f.risk.as_deref()));
+                if !matches!(risk, Some("safe" | "caution")) {
+                    problems.push(format!("schedule[{}]: dangerous or unknown commands can only be scheduled on this PC", i));
+                }
             }
             if task.every_minutes.is_some_and(|m| m < REMOTE_MIN_EVERY_MINUTES) {
                 problems.push(format!("schedule[{}]: every_minutes must be at least {} from Discord", i, REMOTE_MIN_EVERY_MINUTES));
@@ -803,7 +852,7 @@ pub async fn put_schedule(Path(id): Path<String>, State(state): State<IPCServer>
 pub fn spawn_scheduler(state: IPCServer) {
     tokio::spawn(async move {
         let started = chrono::Local::now().naive_local();
-        let clock = std::sync::Arc::new(Mutex::new(Clock::default()));
+        let clock = RUNNER.get_or_init(|| (started, std::sync::Arc::new(Mutex::new(Clock::default())))).1.clone();
         loop {
             tokio::select! {
                 _ = state.shutdown_token.cancelled() => break,
@@ -959,6 +1008,54 @@ async fn run_task_now(state: &IPCServer, id: &str, task: &ScheduledTask, fire: c
             }
         }
         TaskAction::Update => run_update(state, id, task, fire, key).await,
+        TaskAction::Start if !running => {
+            tracing::info!("Scheduled start of '{}'", id);
+            let resp = crate::ipc::internal::into_internal(
+                super::server::start_instance_handler(Path(id.to_string()), State(state.clone())).await,
+            )
+            .await;
+            if !resp.status.is_success() || resp.body.get("success").and_then(Value::as_bool) == Some(false) {
+                tracing::warn!("Scheduled start of '{}' failed: {}", id, resp.body);
+            }
+        }
+        // 예고 시작 때 꺼져 있었어도 정지 시각에 켜져 있으면 끈다 (같은 시각 앞의 예약 시작 등)
+        TaskAction::Stop => {
+            if !count_down(state, id, task, fire, key, "schedule.stop_warning", running).await || !is_running(state, id).await {
+                return;
+            }
+            tracing::info!("Scheduled stop of '{}'", id);
+            // 예약 작업은 강제 종료하지 않는다 (저장 후 종료를 못 하는 서버는 그대로 둔다)
+            let resp = crate::ipc::internal::into_internal(
+                super::server::stop_instance_handler(Path(id.to_string()), State(state.clone()), LooseJson(None)).await,
+            )
+            .await;
+            if !resp.status.is_success() || resp.body.get("success").and_then(Value::as_bool) == Some(false) {
+                tracing::warn!("Scheduled stop of '{}' failed: {}", id, resp.body);
+            }
+        }
+        TaskAction::Save if running => {
+            let cmd = {
+                let supervisor = state.supervisor.read().await;
+                supervisor
+                    .instance_store
+                    .get(id)
+                    .and_then(|i| supervisor.module_loader.get_module(&i.module_name).ok())
+                    .and_then(|m| save_command_of(&m.metadata))
+            };
+            if let Some(cmd) = cmd {
+                if !run_command(state, id, &cmd, json!({})).await {
+                    tracing::warn!("Scheduled save of '{}' failed", id);
+                }
+            }
+        }
+        // 익스텐션 명령은 서버가 꺼져 있어도 돈다: 켜짐 여부는 명령 실행이 판단하고, 결과는 감사 로그에 남는다
+        TaskAction::Command => {
+            let name = task.command.as_deref().unwrap_or_default();
+            let args = task.args.clone().map(Value::Object).unwrap_or(Value::Null);
+            if !run_command(state, id, name, args).await {
+                tracing::warn!("Scheduled command '{}' on '{}' failed", name, id);
+            }
+        }
         _ => {}
     }
 }
@@ -1811,6 +1908,42 @@ print(json.dumps({'success': True, 'snapshots': [{'id': 'startup/backup_1', 'cre
 
     /// 챗봇은 보관할 백업 수를 줄이지 못한다(줄이면 다음 백업이 옛 백업을 지운다). 쓰기 잠금 안에서 지금 값과 견주므로,
     /// 계획을 확인하는 사이 이 PC에서 값을 올렸어도 챗봇이 그 값을 다시 내리지 못한다
+    #[tokio::test]
+    async fn new_schedule_actions_are_checked_against_the_module_and_discord() {
+        let module = format!(
+            "{NO_BACKUP}\n[[commands.fields]]\nname = \"say\"\nrisk = \"safe\"\n\n[[commands.fields]]\nname = \"wipe\"\nrisk = \"danger\"\n\n[[commands.fields]]\nname = \"op\"\nrisk = \"safe\"\nremote = false\n"
+        );
+        let (state, id, _tmp) = server_with(&module, None).await;
+        let put = |body: Value| {
+            let state = state.clone();
+            let id = id.clone();
+            async move {
+                let body: ScheduleBody = serde_json::from_value(body).unwrap();
+                put_schedule(Path(id), State(state), Json(body)).await.status()
+            }
+        };
+        let remote = |body: Value| crate::audit::with_origin(crate::audit::Origin::new("discord"), put(body));
+        let cmd = |name: &str| json!({ "action": "command", "at": "04:00", "weekdays": ["mon"], "command": name });
+
+        // 저장 명령이 없는 모듈은 저장 작업을 받지 않는다
+        assert_eq!(put(json!({ "schedule": [{ "action": "save", "at": "04:00" }] })).await, StatusCode::BAD_REQUEST);
+        // 위험하거나 모르는 명령은 이 PC에서만
+        assert_eq!(remote(json!({ "schedule": [cmd("say")] })).await, StatusCode::OK);
+        assert_eq!(remote(json!({ "schedule": [cmd("wipe")] })).await, StatusCode::BAD_REQUEST);
+        assert_eq!(remote(json!({ "schedule": [cmd("nope")] })).await, StatusCode::BAD_REQUEST);
+        assert_eq!(remote(json!({ "schedule": [cmd("op")] })).await, StatusCode::BAD_REQUEST, "not for Discord");
+        assert_eq!(put(json!({ "schedule": [cmd("wipe")] })).await, StatusCode::OK);
+        assert_eq!(remote(json!({ "schedule": [cmd("wipe")] })).await, StatusCode::OK, "resending what this PC set");
+
+        // N일마다는 세기 시작할 날을 오늘로 채운다
+        let every = json!({ "action": "start", "at": "04:00", "every_days": 2 });
+        assert_eq!(put(json!({ "schedule": [every] })).await, StatusCode::OK);
+        let got = crate::ipc::internal::into_internal(get_schedule(Path(id.clone()), State(state.clone())).await).await.body;
+        assert_eq!(got["schedule"][0]["start_date"], json!(chrono::Local::now().date_naive().to_string()));
+        assert!(got["next_runs"][0].as_i64().is_some(), "{got}");
+        assert_eq!(got["save_supported"], json!(false));
+    }
+
     #[tokio::test]
     async fn the_chatbot_cannot_lower_how_many_backups_are_kept() {
         let (state, id, _tmp) = server_with(NO_BACKUP, None).await;

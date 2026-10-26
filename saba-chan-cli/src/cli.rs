@@ -109,8 +109,17 @@ pub enum Cmd {
         #[arg(long, default_value_t = 30)]
         limit: usize,
         /// Keep printing new entries as they happen (Ctrl+C to stop)
-        #[arg(short, long)]
+        #[arg(short, long, conflicts_with = "export")]
         follow: bool,
+        /// From this day: YYYY-MM-DD, today, or 7d (the last 7 days)
+        #[arg(long, value_name = "DATE")]
+        since: Option<String>,
+        /// Up to the end of this day: YYYY-MM-DD or today
+        #[arg(long, value_name = "DATE")]
+        until: Option<String>,
+        /// Save every entry of the period to this CSV file instead of listing them
+        #[arg(long, value_name = "FILE")]
+        export: Option<std::path::PathBuf>,
     },
     /// Follow daemon events as they happen (with --json: one JSON per line). Ctrl+C to stop
     Events {
@@ -351,40 +360,64 @@ pub enum SandboxCmd {
     },
 }
 
+/// 예약 작업의 때 (`schedule add`·`edit`)
+#[derive(clap::Args, Debug, Default, Clone)]
+pub struct ScheduleWhen {
+    /// Repeat every N minutes (30, 30m, 2h)
+    #[arg(long, value_name = "TIME")]
+    pub every: Option<String>,
+    /// At this time (HH:MM, the server PC's clock). Alone: every day
+    #[arg(long, value_name = "HH:MM")]
+    pub at: Option<String>,
+    /// With --at: every N days
+    #[arg(long, value_name = "DAYS", conflicts_with_all = ["on", "date", "daily"])]
+    pub every_days: Option<u32>,
+    /// With --every-days: count from this day (YYYY-MM-DD, default: today)
+    #[arg(long, value_name = "YYYY-MM-DD")]
+    pub from: Option<String>,
+    /// With --at: on these weekdays, e.g. mon,wed,fri
+    #[arg(long, value_name = "DAYS", value_delimiter = ',', conflicts_with_all = ["date", "daily"])]
+    pub on: Vec<String>,
+    /// With --at: once on this day (YYYY-MM-DD)
+    #[arg(long, value_name = "YYYY-MM-DD", conflicts_with = "daily")]
+    pub date: Option<String>,
+    /// With --at: every day (drops --every-days, --on and --date in `edit`)
+    #[arg(long)]
+    pub daily: bool,
+}
+
 #[derive(Subcommand, Debug)]
 pub enum ScheduleCmd {
     /// Show the schedule
     #[command(visible_alias = "ls")]
     Show { server: Option<String> },
-    /// Add a task: backup, restart, announce or update
+    /// Add a task: start, stop, restart, save, backup, announce, update or command
     Add {
         server: String,
-        /// backup | restart | announce | update
+        /// start | stop | restart | save | backup | announce | update | command
         action: String,
-        /// Repeat every N minutes (30, 30m, 2h)
-        #[arg(long, value_name = "TIME")]
-        every: Option<String>,
-        /// Every day at this time (HH:MM, this PC's clock)
-        #[arg(long, value_name = "HH:MM")]
-        at: Option<String>,
-        /// Warn players this many minutes before (restart/update), e.g. 10,5,1
+        #[command(flatten)]
+        when: ScheduleWhen,
+        /// Warn players this many minutes before (restart/update/stop), e.g. 10,5,1
         #[arg(long, value_name = "MINUTES", value_delimiter = ',')]
         warn: Vec<u32>,
         /// Message to announce
         #[arg(long)]
         message: Option<String>,
+        /// Game command to run (command; see `server commands`)
+        #[arg(long, value_name = "NAME")]
+        command: Option<String>,
+        /// Game command input, NAME=VALUE (repeat for more)
+        #[arg(long = "arg", value_name = "NAME=VALUE")]
+        args: Vec<String>,
     },
     /// Change task number N in place: only the options given change (see `schedule show`)
     Edit {
         server: String,
         number: usize,
-        /// Repeat every N minutes instead (30, 30m, 2h)
-        #[arg(long, value_name = "TIME", conflicts_with = "at")]
-        every: Option<String>,
-        /// Every day at this time instead (HH:MM, this PC's clock)
-        #[arg(long, value_name = "HH:MM")]
-        at: Option<String>,
-        /// New warnings in minutes before (restart/update), e.g. 10,5,1
+        #[command(flatten)]
+        when: ScheduleWhen,
+        /// New warnings in minutes before (restart/update/stop), e.g. 10,5,1
         #[arg(long, value_name = "MINUTES", value_delimiter = ',', conflicts_with = "no_warn")]
         warn: Vec<u32>,
         /// Remove the warnings
@@ -393,6 +426,9 @@ pub enum ScheduleCmd {
         /// New message to announce
         #[arg(long)]
         message: Option<String>,
+        /// New game command inputs, NAME=VALUE (replaces all inputs)
+        #[arg(long = "arg", value_name = "NAME=VALUE")]
+        args: Vec<String>,
     },
     /// Remove task number N (see `schedule show`)
     #[command(visible_alias = "rm")]

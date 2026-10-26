@@ -55,6 +55,7 @@ pub static ROUTES: &[Route] = &[
     // 다음 할 일 단계만 담는다
     not_on_web("GET", "/api/onboarding"),
     deny("GET", "/api/audit"),
+    deny("POST", "/api/audit/export"),
     // 이벤트는 원격 연결이 따로 밀어 준다 (SSE는 요청·응답 한 번으로 끝나지 않는다)
     not_on_web("GET", "/api/events"),
     // ── 서버 ──
