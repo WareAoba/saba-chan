@@ -177,11 +177,14 @@ async fn all_servers_with(file: &ConfigFile, state: &IPCServer, timeout: std::ti
         let relay = relay.clone();
         async move {
             let req = Request::get("/api/servers").body(Body::empty()).unwrap_or_default();
-            let res = tokio::time::timeout(timeout, peer::forward(file, relay, &d.host_id, "/api/servers?notices=keep", req, state.shutdown_token.clone())).await;
-            let (ok, body) = match res {
-                Ok(res) => (res.status().is_success(), body_json(res).await),
-                Err(_) => (false, json!({ "error_code": "remote_timeout" })),
+            // 본문까지 시간 안에 받는다 (머리만 오고 연결이 끊기면 본문을 기다리며 매달린다)
+            let ask = async {
+                let res = peer::forward(file, relay, &d.host_id, "/api/servers?notices=keep", req, state.shutdown_token.clone()).await;
+                (res.status().is_success(), body_json(res).await)
             };
+            let (ok, body) = tokio::time::timeout(timeout, ask)
+                .await
+                .unwrap_or_else(|_| (false, json!({ "error_code": "remote_timeout" })));
             let mut entry = json!({ "hostId": d.host_id, "name": d.name, "ok": ok, "servers": [] });
             if ok {
                 entry["servers"] = Value::Array(body["servers"].as_array().cloned().unwrap_or_default());
