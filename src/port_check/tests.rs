@@ -48,9 +48,11 @@ fn nat_is_read_from_the_gateway_and_the_route() {
     let lan: IpAddr = "192.168.0.10".parse().unwrap();
     assert_eq!(classify_nat(observed, Some(observed), None), Nat::Direct);
     assert_eq!(classify_nat(observed, Some(lan), Some(observed)), Nat::Router);
-    // 공유기가 받은 바깥 주소가 통신사 공유 대역이거나 사설이면 CGNAT
+    // 공유기가 받은 바깥 주소가 통신사 공유 대역이면 CGNAT
     assert_eq!(classify_nat(observed, Some(lan), Some("100.72.1.2".parse().unwrap())), Nat::Cgnat);
-    assert_eq!(classify_nat(observed, Some(lan), Some("10.1.2.3".parse().unwrap())), Nat::Cgnat);
+    // 사설 주소면 공유기 아래 공유기(이중 NAT)일 수 있어 단정하지 않는다: 바깥 공유기에서 포트포워딩하면 열린다
+    assert_eq!(classify_nat(observed, Some(lan), Some("10.1.2.3".parse().unwrap())), Nat::Unknown);
+    assert_eq!(classify_nat(observed, Some(lan), Some("192.168.1.2".parse().unwrap())), Nat::Unknown);
     // 공인 주소지만 릴레이가 본 주소와 다르면 한 번 더 바깥에서 묶였다
     assert_eq!(classify_nat(observed, Some(lan), Some("198.51.101.1".parse().unwrap())), Nat::Cgnat);
     assert_eq!(classify_nat(observed, Some(lan), None), Nat::Unknown);
@@ -60,7 +62,10 @@ fn nat_is_read_from_the_gateway_and_the_route() {
 fn the_verdict_puts_cgnat_and_closed_first() {
     let p = |status| PortResult { field: "port".into(), port: 1, protocol: Protocol::Tcp, status };
     assert_eq!(verdict(Nat::Router, &[]), "no_ports");
-    assert_eq!(verdict(Nat::Cgnat, &[p(PortStatus::Open)]), "cgnat");
+    // 확인값을 실제로 받았으면 NAT 추정보다 앞선다
+    assert_eq!(verdict(Nat::Cgnat, &[p(PortStatus::Open)]), "open");
+    assert_eq!(verdict(Nat::Cgnat, &[p(PortStatus::Open), p(PortStatus::Closed)]), "cgnat");
+    assert_eq!(verdict(Nat::Cgnat, &[p(PortStatus::Closed)]), "cgnat");
     assert_eq!(verdict(Nat::Router, &[p(PortStatus::Open), p(PortStatus::Closed)]), "closed");
     assert_eq!(verdict(Nat::Unknown, &[p(PortStatus::Open), p(PortStatus::Open)]), "open");
     assert_eq!(verdict(Nat::Router, &[p(PortStatus::Open), p(PortStatus::Unknown)]), "unknown");
