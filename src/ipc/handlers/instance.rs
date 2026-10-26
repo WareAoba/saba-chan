@@ -784,10 +784,8 @@ pub async fn create_instance(
                     // 마이그레이션 변경사항 저장 (executable_path, import된 설정 등)
                     let _ = state.supervisor.write().await.instance_store.update(&id, instance.clone());
                     // 해제할 때 되돌릴 원래 게임 설정 파일. 약관 반영·첫 시작이 파일을 고치기 전에 보관한다
-                    // (옮긴 서버는 인스턴스와 함께 지워지므로 되돌릴 자리가 없다)
-                    if moved_from.is_none() {
-                        save_migration_originals(&state, &instance, &instance_dir, metadata.as_ref()).await;
-                    }
+                    // (옮긴 서버도 서버 폴더 밖 데이터 폴더의 설정은 남으므로 보관한다)
+                    save_migration_originals(&state, &instance, &instance_dir, metadata.as_ref()).await;
                     // 가져온 서버는 설치를 거치지 않으므로, 만들 때 동의한 약관을 모듈이 지금 반영한다 (예: eula.txt)
                     if !instance.accepted_agreements.is_empty() {
                         let ids: Vec<String> = instance.accepted_agreements.keys().cloned().collect();

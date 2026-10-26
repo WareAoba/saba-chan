@@ -513,8 +513,9 @@ fn instance_access(key: &str) -> appcontainer::Access {
 }
 
 /// 인스턴스 폴더 안의 데몬 항목 중 비밀이 든 것. 격리 실행에 인스턴스 폴더 권한을 줄 때 상속을 끊어 둔다
-/// (비밀 파일은 저장할 때마다 `Mode::Secret`이 다시 끊는다. 여기서는 예전에 저장된 것과 백업 폴더를 막는다)
-const PROTECTED_INSTANCE_ENTRIES: [&str; 4] = ["instance.json", "settings.json", "rcon.json", "backups"];
+/// (비밀 파일은 저장할 때마다 `Mode::Secret`이 다시 끊는다. 여기서는 예전에 저장된 것과 백업 폴더,
+/// 가져온 서버의 원래 설정 보관본을 막는다)
+const PROTECTED_INSTANCE_ENTRIES: [&str; 5] = ["instance.json", "settings.json", "rcon.json", "backups", crate::instance::migration::DIR];
 
 /// 하나라도 끊지 못하면 false: 그때는 인스턴스 폴더 권한을 주지 않는다 (상속으로 비밀이 열리지 않게)
 fn protect_daemon_entries(instance_dir: &Path) -> bool {
@@ -1526,6 +1527,12 @@ mod tests {
         // 주인은 계속 읽고 쓴다
         assert_eq!(std::fs::read(tmp.path().join("rcon.json")).unwrap(), b"{}");
         std::fs::write(tmp.path().join("backups").join("a"), b"x").unwrap();
+    }
+
+    /// 가져오기 전 원래 설정 보관본은 격리된 모듈이 고치지 못해야 한다 (해제할 때 그대로 되돌린다)
+    #[test]
+    fn the_kept_originals_of_an_imported_server_are_protected_too() {
+        assert!(PROTECTED_INSTANCE_ENTRIES.contains(&crate::instance::migration::DIR));
     }
 
     /// 익스텐션 폴더는 id의 '-'를 '_'로 바꾼 이름이다. 없는 폴더를 보면 기록에 없는 코드 검사가 빠진다

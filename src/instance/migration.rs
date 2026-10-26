@@ -28,11 +28,13 @@ pub struct Restored {
     pub failed: Vec<PathBuf>,
 }
 
-/// 원래 파일을 보관한다. 없는 파일은 건너뛴다(가져오기 전에 없던 파일은 되돌릴 내용이 없다). 보관한 수
+/// 원래 파일을 보관한다. 없는 파일은 건너뛴다(가져오기 전에 없던 파일은 되돌릴 내용이 없다).
+/// 인스턴스 폴더 안의 파일(옮겨 온 서버)은 인스턴스와 함께 지워지므로 건너뛴다. 보관한 수
 pub fn save(instance_dir: &Path, files: &[PathBuf]) -> std::io::Result<usize> {
     let dir = instance_dir.join(DIR);
     let mut originals = Vec::new();
-    for path in files.iter().filter(|p| p.is_file()) {
+    let instance_root = [instance_dir.to_path_buf()];
+    for path in files.iter().filter(|p| p.is_file() && !crate::module_paths::is_inside(p, &instance_root)) {
         if originals.iter().any(|o: &Original| o.path == *path) {
             continue;
         }
@@ -167,6 +169,25 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&props).unwrap(), "enable-rcon=true\nmotd=mine\n");
         // 가져오기 전에 없던 파일은 보관하지 않았다: 서버가 쓰는 파일일 수 있어 지우지 않는다
         assert!(absent.exists());
+    }
+
+    /// 인스턴스 폴더 안의 파일(옮겨 온 서버)은 인스턴스와 함께 지워지므로 보관하지 않고, 밖의 파일만 보관한다
+    #[test]
+    fn only_files_outside_the_instance_folder_are_kept() {
+        let tmp = tempfile::tempdir().unwrap();
+        let instance = tmp.path().join("instance");
+        std::fs::create_dir_all(instance.join("server")).unwrap();
+        let inside = instance.join("server").join("server.properties");
+        std::fs::write(&inside, "motd=mine\n").unwrap();
+        let data = tmp.path().join("Zomboid");
+        std::fs::create_dir_all(&data).unwrap();
+        let outside = data.join("pvp.ini");
+        std::fs::write(&outside, "PVP=true\n").unwrap();
+
+        assert_eq!(save(&instance, &[inside, outside.clone()]).unwrap(), 1);
+        std::fs::write(&outside, "PVP=false\n").unwrap();
+        assert_eq!(restore(&instance, |_| true), Restored { restored: 1, failed: vec![] });
+        assert_eq!(std::fs::read_to_string(&outside).unwrap(), "PVP=true\n");
     }
 
     #[test]
