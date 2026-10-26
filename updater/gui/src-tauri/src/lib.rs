@@ -27,8 +27,11 @@
 
 use saba_chan_updater_lib::{UpdateManager, UpdateCompletionMarker};
 use std::path::{Path, PathBuf};
+#[cfg(feature = "window")]
 use std::sync::Arc;
+#[cfg(feature = "window")]
 use tauri::{AppHandle, Emitter, Manager};
+#[cfg(feature = "window")]
 use tokio::sync::RwLock;
 use saba_chan_updater_lib::constants;
 
@@ -38,8 +41,10 @@ pub mod config;
 // 타입
 // ═══════════════════════════════════════════════════════
 
+#[cfg(feature = "window")]
 type ManagerState = Arc<RwLock<UpdateManager>>;
 
+#[cfg(feature = "window")]
 /// 재실행 설정 (Tauri managed state)
 #[derive(Debug, Clone, Default)]
 struct ApplyConfig {
@@ -51,6 +56,7 @@ struct ApplyConfig {
 // Tauri 커맨드
 // ═══════════════════════════════════════════════════════
 
+#[cfg(feature = "window")]
 /// Apply 모드 정보 — 프론트엔드 `init()` 에서 호출
 /// 항상 `enabled: true`를 반환 (apply 전용 바이너리)
 #[tauri::command]
@@ -62,6 +68,7 @@ async fn get_apply_mode(config: tauri::State<'_, ApplyConfig>) -> Result<serde_j
     }))
 }
 
+#[cfg(feature = "window")]
 /// Apply 실행 — 매니페스트 로드 → 파일 적용 → 완료 마커 → 재실행
 #[tauri::command]
 async fn start_apply(
@@ -89,6 +96,7 @@ async fn start_apply(
     }
 }
 
+#[cfg(feature = "window")]
 /// 업데이트를 띄운 프로그램(없으면 GUI)을 다시 띄운다. 적용이 실패해도 띄운다:
 /// 업데이터가 뜰 때 데몬·GUI는 이미 끝났으니 그대로 두면 아무것도 남지 않는다.
 /// `applied`면 `--after-update`를 붙이고(받는 쪽이 완료 알림을 띄운다) 띄운 뒤 업데이터를 닫는다.
@@ -110,6 +118,7 @@ fn relaunch(app: &AppHandle, apply_config: &ApplyConfig, applied: bool) {
     });
 }
 
+#[cfg(feature = "window")]
 /// 언어 설정 조회 — settings.json → 시스템 로케일 → "en"
 #[tauri::command]
 async fn get_preferred_language() -> Result<String, String> {
@@ -126,6 +135,7 @@ async fn get_preferred_language() -> Result<String, String> {
     Ok("en".to_string())
 }
 
+#[cfg(feature = "window")]
 /// 테마 조회 — settings.json → "auto"
 /// CSS `data-theme` + `prefers-color-scheme` 미디어 쿼리로 자동 처리되므로
 /// 대부분 "auto"가 반환됨 (향후 GUI가 settings.json에 theme 저장 시 자동 대응)
@@ -134,6 +144,7 @@ async fn get_theme() -> Result<String, String> {
     Ok(load_setting("theme").unwrap_or_else(|| "auto".to_string()))
 }
 
+#[cfg(feature = "window")]
 /// 업데이트 완료 마커 확인 (프론트엔드 호환용)
 #[tauri::command]
 async fn check_after_update() -> Result<serde_json::Value, String> {
@@ -173,6 +184,7 @@ fn marks_update(cmd: &str, install_root: Option<&Path>) -> bool {
     install_root.is_none_or(|root| Path::new(cmd).starts_with(root))
 }
 
+#[cfg(feature = "window")]
 /// GUI 설정(`config.json`의 `gui`)에서 키 값 읽기
 fn load_setting(key: &str) -> Option<String> {
     saba_chan_updater_lib::config_file::ConfigFile::default_location()
@@ -182,6 +194,7 @@ fn load_setting(key: &str) -> Option<String> {
         .map(|s| s.to_string())
 }
 
+#[cfg(feature = "window")]
 fn normalize_tag(input: &str) -> Option<String> {
     if input.trim().is_empty() { return None; }
     Some(constants::resolve_locale(input))
@@ -192,6 +205,7 @@ fn resolve_install_root_from_exe() -> Option<PathBuf> {
     std::env::current_exe().ok()?.parent().map(|p| p.to_path_buf())
 }
 
+#[cfg(feature = "window")]
 /// GUI exe 경로 추론 (install_root 바로 안)
 fn resolve_gui_exe() -> Option<PathBuf> {
     saba_chan_updater_lib::find_gui_exe(&resolve_install_root_from_exe()?)
@@ -391,7 +405,9 @@ pub fn run() {
     }
 
     // --relaunch 앞의 인자만 업데이터의 것이다
-    let headless = after_apply.iter().take(relaunch_pos.unwrap_or(after_apply.len())).any(|a| a == "--headless");
+    // 창 없이 빌드한 업데이터(`window` 기능 없음)는 늘 창 없이 적용한다
+    let headless = cfg!(not(feature = "window"))
+        || after_apply.iter().take(relaunch_pos.unwrap_or(after_apply.len())).any(|a| a == "--headless");
 
     // install_root: exe 위치에서 자동 추론
     let mut cfg = config::load_config_for_gui();
@@ -406,66 +422,69 @@ pub fn run() {
         std::process::exit(run_headless(UpdateManager::new(cfg, &modules_dir), relaunch_exe, relaunch_extra));
     }
 
-    let apply_config = ApplyConfig { relaunch_exe, relaunch_extra };
+    #[cfg(feature = "window")]
+    {
+        let apply_config = ApplyConfig { relaunch_exe, relaunch_extra };
 
-    let manager: ManagerState = Arc::new(RwLock::new(UpdateManager::new(cfg, &modules_dir)));
+        let manager: ManagerState = Arc::new(RwLock::new(UpdateManager::new(cfg, &modules_dir)));
 
-    tauri::Builder::default()
-        .plugin(tauri_plugin_shell::init())
-        .manage(manager)
-        .manage(apply_config)
-        .setup(|app| {
-            if let Some(win) = app.get_webview_window("main") {
-                // 작업 표시줄·제목 표시줄 아이콘을 창 DPI에 맞는 크기로. 배율이 바뀌면 다시 건다
-                #[cfg(windows)]
-                {
-                    if let Ok(hwnd) = win.hwnd() {
-                        saba_chan_updater_lib::window_icon::apply_exe_icon(hwnd.0 as isize);
-                    }
-                    let w = win.clone();
-                    win.on_window_event(move |event| {
-                        if let (tauri::WindowEvent::ScaleFactorChanged { .. }, Ok(hwnd)) = (event, w.hwnd()) {
+        tauri::Builder::default()
+            .plugin(tauri_plugin_shell::init())
+            .manage(manager)
+            .manage(apply_config)
+            .setup(|app| {
+                if let Some(win) = app.get_webview_window("main") {
+                    // 작업 표시줄·제목 표시줄 아이콘을 창 DPI에 맞는 크기로. 배율이 바뀌면 다시 건다
+                    #[cfg(windows)]
+                    {
+                        if let Ok(hwnd) = win.hwnd() {
                             saba_chan_updater_lib::window_icon::apply_exe_icon(hwnd.0 as isize);
                         }
+                        let w = win.clone();
+                        win.on_window_event(move |event| {
+                            if let (tauri::WindowEvent::ScaleFactorChanged { .. }, Ok(hwnd)) = (event, w.hwnd()) {
+                                saba_chan_updater_lib::window_icon::apply_exe_icon(hwnd.0 as isize);
+                            }
+                        });
+                    }
+                    // 사용자 언어에 맞는 타이틀
+                    let title = match load_setting("language").as_deref() {
+                        Some("ko") => "사바쨩 — 업데이트중!",
+                        Some("ja") => "Saba-chan — 更新中...",
+                        Some("zh-CN") | Some("zh-TW") => "Saba-chan — 更新中...",
+                        Some("es") => "Saba-chan — Actualizando...",
+                        Some("pt-BR") => "Saba-chan — Atualizando...",
+                        Some("ru") => "Saba-chan — Обновление...",
+                        Some("de") => "Saba-chan — Aktualisierung...",
+                        Some("fr") => "Saba-chan — Mise à jour...",
+                        _ => "Saba-chan — Updating...",
+                    };
+                    win.set_title(title).ok();
+                    // JS의 appWindow.show()가 블로킹되는 문제를 회피:
+                    // Rust setup에서 직접 윈도우를 표시하고 포커스 강제 획득
+                    win.show().ok();
+                    win.set_always_on_top(true).ok();
+                    win.set_focus().ok();
+                    win.request_user_attention(Some(tauri::UserAttentionType::Critical)).ok();
+                    // always-on-top 해제는 별도 스레드에서 딜레이 후 수행
+                    let win_clone = win.clone();
+                    std::thread::spawn(move || {
+                        std::thread::sleep(std::time::Duration::from_millis(800));
+                        win_clone.set_always_on_top(false).ok();
                     });
                 }
-                // 사용자 언어에 맞는 타이틀
-                let title = match load_setting("language").as_deref() {
-                    Some("ko") => "사바쨩 — 업데이트중!",
-                    Some("ja") => "Saba-chan — 更新中...",
-                    Some("zh-CN") | Some("zh-TW") => "Saba-chan — 更新中...",
-                    Some("es") => "Saba-chan — Actualizando...",
-                    Some("pt-BR") => "Saba-chan — Atualizando...",
-                    Some("ru") => "Saba-chan — Обновление...",
-                    Some("de") => "Saba-chan — Aktualisierung...",
-                    Some("fr") => "Saba-chan — Mise à jour...",
-                    _ => "Saba-chan — Updating...",
-                };
-                win.set_title(title).ok();
-                // JS의 appWindow.show()가 블로킹되는 문제를 회피:
-                // Rust setup에서 직접 윈도우를 표시하고 포커스 강제 획득
-                win.show().ok();
-                win.set_always_on_top(true).ok();
-                win.set_focus().ok();
-                win.request_user_attention(Some(tauri::UserAttentionType::Critical)).ok();
-                // always-on-top 해제는 별도 스레드에서 딜레이 후 수행
-                let win_clone = win.clone();
-                std::thread::spawn(move || {
-                    std::thread::sleep(std::time::Duration::from_millis(800));
-                    win_clone.set_always_on_top(false).ok();
-                });
-            }
-            Ok(())
-        })
-        .invoke_handler(tauri::generate_handler![
-            get_apply_mode,
-            start_apply,
-            get_preferred_language,
-            get_theme,
-            check_after_update,
-        ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+                Ok(())
+            })
+            .invoke_handler(tauri::generate_handler![
+                get_apply_mode,
+                start_apply,
+                get_preferred_language,
+                get_theme,
+                check_after_update,
+            ])
+            .run(tauri::generate_context!())
+            .expect("error while running tauri application");
+    }
 }
 
 /// 창 없이 적용한다 (Tauri를 시작하지 않는다). 결과는 창 업데이터와 같은 완료 마커에 남는다

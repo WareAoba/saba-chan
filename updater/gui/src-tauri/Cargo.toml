@@ -9,12 +9,18 @@ description = "Standalone updater/installer GUI for Saba-chan (Tauri)"
 name = "saba_chan_updater_app"
 crate-type = ["lib", "cdylib", "staticlib"]
 
+# `window`(기본)를 빼고 빌드하면 창 없이 적용만 하는(`--headless`) 업데이터가 된다:
+# 화면 없는 리눅스 서버에 GTK·WebKit 없이 들어간다 (D3c, `cargo build -p saba-chan-updater --no-default-features`)
+[features]
+default = ["window"]
+window = ["dep:tauri", "dep:tauri-plugin-shell", "dep:tauri-build"]
+
 [build-dependencies]
-tauri-build = { version = "2", features = [] }
+tauri-build = { version = "2", features = [], optional = true }
 
 [dependencies]
-tauri = { version = "2", features = [] }
-tauri-plugin-shell = "2"
+tauri = { version = "2", features = [], optional = true }
+tauri-plugin-shell = { version = "2", optional = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["full"] }

@@ -462,6 +462,15 @@ pub fn extract_zip(
             }
             f.sync_all()
         });
+        // 리눅스 zip의 실행 파일은 실행 권한을 지닌다 (zip에 적힌 권한 중 실행 비트만 옮긴다)
+        #[cfg(unix)]
+        let wrote = wrote.and_then(|_| {
+            use std::os::unix::fs::PermissionsExt;
+            match entry.unix_mode() {
+                Some(mode) if mode & 0o111 != 0 => std::fs::set_permissions(&partial, std::fs::Permissions::from_mode(0o755)),
+                _ => Ok(()),
+            }
+        });
         if let Err(e) = wrote.and_then(|_| std::fs::rename(&partial, &out_path)) {
             let _ = std::fs::remove_file(&partial);
             return Err(e.into());

@@ -692,6 +692,29 @@ fn test_extract_zip_writes_nested_files() {
     assert_eq!(seen, vec![target.join("a/b/c.txt")]);
 }
 
+// D3c: 리눅스 zip의 실행 파일(saba-core, saba-runner 등)은 실행 권한을 지닌 채 풀린다
+#[cfg(unix)]
+#[test]
+fn extract_zip_keeps_the_executable_bit() {
+    use std::io::Write;
+    use std::os::unix::fs::PermissionsExt;
+    let tmp = tempfile::tempdir().unwrap();
+    let zip_path = tmp.path().join("core.zip");
+    {
+        let mut zw = zip::ZipWriter::new(std::fs::File::create(&zip_path).unwrap());
+        zw.start_file("saba-runner", zip::write::SimpleFileOptions::default().unix_permissions(0o755)).unwrap();
+        zw.write_all(b"\x7fELF").unwrap();
+        zw.start_file("i18n.py", zip::write::SimpleFileOptions::default().unix_permissions(0o644)).unwrap();
+        zw.write_all(b"x = 1").unwrap();
+        zw.finish().unwrap();
+    }
+    let target = tmp.path().join("out");
+    crate::extract_zip(&zip_path, &target, |_| Ok(())).unwrap();
+    let mode = |name: &str| std::fs::metadata(target.join(name)).unwrap().permissions().mode() & 0o777;
+    assert_eq!(mode("saba-runner") & 0o111, 0o111);
+    assert_eq!(mode("i18n.py") & 0o111, 0);
+}
+
 // C13: 모듈 폴더 교체가 실패하면 원래 내용으로 되돌린다
 #[test]
 fn replace_dir_restores_backup_when_extract_fails() {
@@ -1337,6 +1360,7 @@ async fn a_failed_download_keeps_the_ones_already_downloaded() {
     manager.cached_manifest = Some(crate::relay::ReleaseManifest {
         version: "0.2.0".into(), channel: "stable".into(), platform: "windows-x64".into(), released_at: None, is_critical: false,
         components: [("gui".to_string(), entry("gui.zip", bad, &sha)), ("cli".to_string(), entry("cli.zip", good, &sha))].into_iter().collect(),
+        platforms: Default::default(),
     });
     let pending = |component: Component, asset: &str| crate::ComponentVersion {
         asset_name: Some(asset.into()), downloaded: false, downloaded_path: None,
