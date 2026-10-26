@@ -315,9 +315,10 @@ impl Api {
     pub async fn create_instance(&self, body: Value) -> Result<Value> {
         self.post_long("/api/instances", body).await
     }
-    /// DELETE /api/instance/:id
-    pub async fn delete_instance(&self, id: &str) -> Result<Value> {
-        self.delete(&format!("/api/instance/{}", seg(id))).await
+    /// DELETE /api/instance/:id (`keep_settings`: 가져온 서버의 게임 설정 파일을 되돌리지 않는다)
+    pub async fn delete_instance(&self, id: &str, keep_settings: bool) -> Result<Value> {
+        let query = if keep_settings { "?keep_settings=true" } else { "" };
+        self.delete(&format!("/api/instance/{}{}", seg(id), query)).await
     }
     /// PATCH /api/instance/:id — 공통 필드·모듈 설정·`extension_data` 부분 변경
     pub async fn update_instance(&self, id: &str, patch: Value) -> Result<Value> {

@@ -231,6 +231,8 @@ describe('데몬 응답 가공', () => {
         await api.instanceDelete('i1');
         expect(seen[0]).toMatchObject({ method: 'DELETE', path: '/api/instance/i1' });
         expect(seen[0].timeoutMs).toBeGreaterThanOrEqual(60000);
+        await api.instanceDelete('i1', { keepSettings: true });
+        expect(seen[1]).toMatchObject({ method: 'DELETE', path: '/api/instance/i1?keep_settings=true' });
     });
 
     it('격리 해제·확장 GUI 허락은 셸 명령(네이티브 확인 창)으로만 기록하고, 철회는 데몬에 바로 보낸다', async () => {

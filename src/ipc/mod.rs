@@ -253,6 +253,12 @@ pub struct ServerInfo {
     /// REST로 명령을 보내는 서버라면 명령·정상 종료도 닿지 않는다 (`supervisor::players::unresponsive`)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub unresponsive: Option<String>,
+    /// 인스턴스 폴더 밖의 서버 폴더(가져온 서버). 삭제해도 남는다 (`instance::migration::linked_folder`)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub linked_folder: Option<String>,
+    /// 가져오기 전 게임 설정 파일을 보관해 두어, 삭제(연결 해제)할 때 되돌릴 수 있는가
+    #[serde(default)]
+    pub restorable_settings: bool,
 }
 
 /// 포트 충돌 요약 (서버 목록 API에서 반환)

@@ -199,7 +199,11 @@
     "category_important": "Important",
     "close": "Fermer",
     "done": "Fait",
-    "new_server": "Aller à la liste des serveurs"
+    "new_server": "Aller à la liste des serveurs",
+    "mode_label": "Dossier du serveur",
+    "mode_link": "Le laisser en place",
+    "mode_move": "Le déplacer dans saba-chan",
+    "migrate_hint_move": "Le dossier choisi est déplacé dans le dossier d'instance de saba-chan. Cela ne fonctionne que sur le même lecteur. Les données que le jeu garde hors du dossier du serveur (comme le dossier de sauvegarde de Zomboid) ne sont pas déplacées. Supprimer un serveur déplacé supprime aussi ses fichiers."
   },
   "command_modal": {
     "title": "Exécuter une commande - {{name}}",
@@ -274,7 +278,17 @@
     "click_to_stop": "Cliquer pour arrêter",
     "click_to_start": "Cliquer pour démarrer",
     "delete_still_running": "'{{name}}' est encore en cours de suppression. Revérifiez la liste des serveurs dans un instant.",
-    "delete_unconfirmed": "Impossible de confirmer la suppression de '{{name}}'. Vérifiez la liste des serveurs dès que le daemon répond."
+    "delete_unconfirmed": "Impossible de confirmer la suppression de '{{name}}'. Vérifiez la liste des serveurs dès que le daemon répond.",
+    "unlink_confirm_title": "Retirer le serveur importé",
+    "unlink_confirm_message": "Retirer « {{name}} » de saba-chan ?",
+    "unlink_detail": "Les fichiers du dossier du serveur ({{path}}) restent en place. Seuls les enregistrements, journaux et sauvegardes de saba-chan sont supprimés.",
+    "unlink_detail_restorable": "Les fichiers du dossier du serveur ({{path}}) restent en place. Les enregistrements, journaux et sauvegardes de saba-chan sont supprimés, et les fichiers de paramètres du jeu peuvent revenir à leur état d'avant l'import.",
+    "unlink_restore": "Restaurer les paramètres et retirer",
+    "unlink_keep_settings": "Garder les paramètres actuels et retirer",
+    "server_unlinked": "« {{name}} » a été retiré de saba-chan. Les fichiers du serveur sont toujours dans {{path}}.",
+    "unlink_restore_failed": "{{n}} fichier(s) de paramètres du jeu n'ont pas pu être restaurés.",
+    "migrate_notice_folder_not_writable": "saba-chan ne peut pas écrire dans ce dossier. L'enregistrement des paramètres et le démarrage du serveur peuvent échouer ; déplacez-le vers un emplacement accessible en écriture.",
+    "migrate_notice_server_running": "Le serveur de ce dossier tourne en dehors de saba-chan. Arrêtez-le puis redémarrez-le depuis saba-chan."
   },
   "server_settings": {
     "title": "Paramètres",
@@ -420,7 +434,10 @@
     "preflight_failed_title": "La vérification avant démarrage de '{{name}}' a trouvé un problème",
     "working_dir_in_use": "Le serveur '{{instance}}' utilise déjà ce dossier. Deux serveurs dans un même dossier écrasent le monde et les réglages l'un de l'autre. Choisissez un autre dossier.",
     "no_command_path": "Ce serveur n'a pas de console pour recevoir des commandes. Démarrez-le depuis Saba-chan pour envoyer des commandes.",
-    "stdin_unconfirmed": "Impossible de confirmer l'envoi de la commande. Vérifiez la console avant de réessayer."
+    "stdin_unconfirmed": "Impossible de confirmer l'envoi de la commande. Vérifiez la console avant de réessayer.",
+    "move_cross_volume": "Un dossier situé sur un autre lecteur ne peut pas être déplacé. Importez-le plutôt avec « Le laisser en place ».",
+    "move_in_use": "Impossible de déplacer le dossier. Arrêtez le serveur de ce dossier, fermez les programmes qui l'ont ouvert, puis réessayez.",
+    "move_failed": "Impossible de déplacer le dossier. Importez-le plutôt avec « Le laisser en place »."
   },
   "settings": {
     "save_failed_title": "Échec de l'enregistrement des paramètres",

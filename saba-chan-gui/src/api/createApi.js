@@ -435,10 +435,12 @@ export function createApi({ invoke, hub }) {
                 return errorBody(error, { success: false });
             }
         },
-        instanceDelete: async (id) => {
+        instanceDelete: async (id, { keepSettings = false } = {}) => {
             try {
-                // 데몬은 정지 대기·pre_delete 훅·폴더 삭제(재시도 포함)를 마치고 답한다
-                return (await del(`/api/instance/${encodeURIComponent(id)}`, { timeout: 120000 })).data;
+                // 데몬은 정지 대기·pre_delete 훅·폴더 삭제(재시도 포함)를 마치고 답한다.
+                // keepSettings: 가져온 서버의 게임 설정 파일을 가져오기 전 내용으로 되돌리지 않는다
+                const query = keepSettings ? '?keep_settings=true' : '';
+                return (await del(`/api/instance/${encodeURIComponent(id)}${query}`, { timeout: 120000 })).data;
             } catch (error) {
                 if (error.response) {
                     const status = error.response.status;

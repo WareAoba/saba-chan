@@ -37,7 +37,14 @@
     "folder_is": "{{dir}} 看起來是 {{game}} 伺服器。",
     "pick_game": "請用 --module 選擇遊戲。",
     "folder_in_use": "{{dir}} 已被 {{name}} 使用。兩個伺服器放在同一資料夾會互相覆寫。",
-    "created_settings_failed": "{{name}} 已建立，但其設定未能儲存：{{error}}"
+    "created_settings_failed": "{{name}} 已建立，但其設定未能儲存：{{error}}",
+    "notice": {
+      "folder_not_writable": "無法寫入此資料夾。儲存設定和啟動伺服器可能會失敗，請將它移到可寫入的位置。",
+      "server_running": "此資料夾中的伺服器正在 saba-chan 之外執行。請先停止，再從 saba-chan 啟動。"
+    },
+    "ask_mode": "伺服器資料夾要怎麼處理？",
+    "mode_link": "保留在原位置",
+    "mode_move": "移入 saba-chan（僅限同一磁碟機；刪除已移入的伺服器會刪除其檔案）"
   },
   "bot": {
     "ask_token": "節點權杖",
@@ -340,7 +347,10 @@
       "autostart_gui_missing": "未安裝 GUI。要使用「包含 GUI 全部」，請先安裝 GUI。",
       "autostart_write_failed": "無法加入啟動程式。請檢查權限後重試。",
       "autostart_unsupported": "此作業系統暫不支援設定登入時自動啟動。",
-      "autostart_unknown_mode": "請選擇 off、daemon 或 full。"
+      "autostart_unknown_mode": "請選擇 off、daemon 或 full。",
+      "move_cross_volume": "無法移動其他磁碟機上的資料夾。請改用「保留在原位置」匯入。",
+      "move_in_use": "無法移動資料夾。請停止此資料夾中的伺服器，關閉開啟該資料夾的程式後再試一次。",
+      "move_failed": "無法移動資料夾。請改用「保留在原位置」匯入。"
     },
     "not_a_bool": "「{{value}}」不是是/否（請使用 true 或 false）。",
     "not_a_number": "「{{value}}」不是數字。",
@@ -471,7 +481,12 @@
   "remove": {
     "confirm": "要刪除伺服器 {{name}} 嗎？",
     "confirm_running": "{{name}} 正在執行。要停止並刪除嗎？",
-    "done": "已刪除 {{name}}。"
+    "done": "已刪除 {{name}}。",
+    "unlink_folder_kept": "伺服器資料夾（{{path}}）中的檔案會保留，只刪除 saba-chan 的紀錄、日誌和備份。",
+    "unlink_restores": "遊戲設定檔會還原到匯入前的狀態（要保留目前設定請加 --keep-settings）。",
+    "unlink_keeps_settings": "遊戲設定檔保持現狀。",
+    "unlinked": "已從 saba-chan 移除「{{name}}」。伺服器檔案仍在 {{path}}。",
+    "unlink_restore_failed": "有 {{n}} 個遊戲設定檔未能還原。"
   },
   "reorder": {
     "done": "順序已儲存。"

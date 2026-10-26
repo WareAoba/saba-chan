@@ -37,7 +37,14 @@
     "folder_is": "{{dir}} parece un servidor de {{game}}.",
     "pick_game": "Elige el juego con --module.",
     "folder_in_use": "{{dir}} ya lo usa {{name}}. Dos servidores en una misma carpeta se sobrescribirían.",
-    "created_settings_failed": "Se creó {{name}}, pero no se guardaron sus ajustes: {{error}}"
+    "created_settings_failed": "Se creó {{name}}, pero no se guardaron sus ajustes: {{error}}",
+    "notice": {
+      "folder_not_writable": "saba-chan no puede escribir en esta carpeta. Guardar ajustes e iniciar el servidor pueden fallar; muévela a un lugar con permiso de escritura.",
+      "server_running": "El servidor de esta carpeta se está ejecutando fuera de saba-chan. Detenlo e inícialo de nuevo desde saba-chan."
+    },
+    "ask_mode": "¿Qué hacemos con la carpeta del servidor?",
+    "mode_link": "Dejarla donde está",
+    "mode_move": "Mover a saba-chan (solo en la misma unidad; al eliminar un servidor movido se eliminan sus archivos)"
   },
   "bot": {
     "ask_token": "Token del nodo",
@@ -340,7 +347,10 @@
       "autostart_gui_missing": "La GUI no está instalada. Instálala para iniciar todo con la GUI.",
       "autostart_write_failed": "No se pudo añadir Saba-chan a los programas de inicio. Revisa los permisos e inténtalo de nuevo.",
       "autostart_unsupported": "Todavía no se puede configurar el inicio al iniciar sesión en este sistema operativo.",
-      "autostart_unknown_mode": "Elige off, daemon o full."
+      "autostart_unknown_mode": "Elige off, daemon o full.",
+      "move_cross_volume": "No se puede mover una carpeta de otra unidad. Impórtala con «Dejarla donde está».",
+      "move_in_use": "No se pudo mover la carpeta. Detén el servidor de esta carpeta, cierra los programas que la tengan abierta e inténtalo de nuevo.",
+      "move_failed": "No se pudo mover la carpeta. Impórtala con «Dejarla donde está»."
     },
     "not_a_bool": "«{{value}}» no es sí/no (usa true o false).",
     "not_a_number": "«{{value}}» no es un número.",
@@ -471,7 +481,12 @@
   "remove": {
     "confirm": "¿Eliminar el servidor {{name}}?",
     "confirm_running": "{{name}} está en marcha. ¿Detenerlo y eliminarlo?",
-    "done": "{{name}} eliminado."
+    "done": "{{name}} eliminado.",
+    "unlink_folder_kept": "Los archivos de la carpeta del servidor ({{path}}) se quedan; solo se borran los registros, logs y copias de seguridad de saba-chan.",
+    "unlink_restores": "Los archivos de ajustes del juego vuelven a como estaban antes de importar (añade --keep-settings para mantener los actuales).",
+    "unlink_keeps_settings": "Los archivos de ajustes del juego se quedan como están ahora.",
+    "unlinked": "Se quitó '{{name}}' de saba-chan. Los archivos del servidor siguen en {{path}}.",
+    "unlink_restore_failed": "No se pudieron restaurar {{n}} archivo(s) de ajustes del juego."
   },
   "reorder": {
     "done": "Orden guardado."

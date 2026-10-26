@@ -298,7 +298,7 @@ fn same_final_path(final_path: &str, requested: &str) -> bool {
 }
 
 #[cfg(windows)]
-pub use imp::{clear_low_label_of, clear_low_labels, grant, reset, revoke_stale_runtimes, spawn, Contained};
+pub use imp::{clear_low_label_of, clear_low_labels, grant, release, reset, revoke_stale_runtimes, spawn, Contained};
 #[cfg(windows)]
 pub(crate) use imp::check_existing_path;
 
@@ -995,6 +995,29 @@ mod imp {
         Ok(flags & windows_sys::Win32::System::SystemServices::FILE_PERSISTENT_ACLS != 0)
     }
 
+    /// 폴더에 직접 붙인 낮은 수준 표시(`label_low`)를 떼어 표시가 없던 처음 상태로 둔다 (상속은 하위로 다시 계산된다).
+    /// 직접 붙은 표시가 없으면 아무것도 하지 않는다. 떼었으면 true
+    fn unlabel_low(path: &Path) -> Result<bool, String> {
+        use std::os::windows::io::AsRawHandle;
+        if low_label(path)? != Some(false) {
+            return Ok(false);
+        }
+        // ACE 없는 ACL 머리만
+        let mut buf = [0u32; 4];
+        let acl = buf.as_mut_ptr() as *mut ACL;
+        unsafe {
+            if InitializeAcl(acl, std::mem::size_of_val(&buf) as DWORD, DWORD::from(ACL_REVISION)) == 0 {
+                return Err(last_error("InitializeAcl"));
+            }
+        }
+        let handle = open_for_relabel(path)?;
+        let rc = unsafe { SetSecurityInfo(handle.as_raw_handle() as HANDLE, SE_FILE_OBJECT, LABEL_SECURITY_INFORMATION, null_mut(), null_mut(), null_mut(), acl) };
+        if rc != 0 {
+            return Err(format!("remove label of {}: {}", path.display(), std::io::Error::from_raw_os_error(rc as i32)));
+        }
+        Ok(true)
+    }
+
     /// 이 파일에만 중간 수준 표시를 직접 붙인다. 직접 붙인 표시가 상속받은 표시보다 앞에 와서 그 파일의 수준이 되고,
     /// 위 폴더 표시가 다시 퍼져도 남는다. 상속받은 낮은 수준 표시는 그 뒤에 그대로 있다
     fn label_medium(path: &Path) -> Result<(), String> {
@@ -1479,6 +1502,43 @@ mod imp {
         } else {
             Err(failed)
         }
+    }
+
+    /// 인스턴스를 지울 때 (`super::release`): `labeled` 폴더의 낮은 무결성 표시를 덮고, 사바쨩 프로필마다
+    /// `targets`에서 그 SID의 명시 ACE를 거둔다. 프로필과 런타임 기록은 그대로 둔다
+    pub fn release(targets: &[PathBuf], labeled: &[PathBuf]) -> Result<(), Vec<String>> {
+        let mut failed: Vec<String> = Vec::new();
+        for dir in labeled.iter().filter(|d| d.is_dir()) {
+            if let Err(errs) = clear_low_labels(dir) {
+                failed.extend(errs.into_iter().map(|(p, e)| format!("{}: {}", p.display(), e)));
+            }
+            let _guard = acl_lock();
+            if let Err(e) = std::fs::canonicalize(dir).map_err(|e| format!("{}: resolve: {e}", dir.display())).and_then(|d| unlabel_low(&d)) {
+                failed.push(e);
+            }
+        }
+        let _guard = acl_lock();
+        for profile in saba_profiles() {
+            let sid = match container_sid(&profile) {
+                Ok(sid) => sid,
+                Err(e) => {
+                    failed.push(format!("{}: {}", profile, e));
+                    continue;
+                }
+            };
+            for path in targets.iter().filter(|p| p.exists()) {
+                match has_own_ace(path, sid) {
+                    Ok(false) => {}
+                    Ok(true) => {
+                        if let Err(e) = remove_ace(path, sid) {
+                            failed.push(e);
+                        }
+                    }
+                    Err(e) => failed.push(e),
+                }
+            }
+        }
+        if failed.is_empty() { Ok(()) } else { Err(failed) }
     }
 
     /// 이 사용자의 AppContainer 매핑 중 사바쨩 프로필 이름 (`HKCU\...\AppContainer\Mappings\<SID>`의 `Moniker`)

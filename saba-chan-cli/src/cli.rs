@@ -448,9 +448,14 @@ pub enum ServerCmd {
     /// Add a new server (asks what it needs)
     #[command(visible_alias = "new", alias = "create")]
     Add(AddArgs),
-    /// Delete a server
+    /// Delete a server (an imported server only loses its link; its folder stays)
     #[command(visible_alias = "rm", alias = "delete")]
-    Remove { server: Option<String> },
+    Remove {
+        server: Option<String>,
+        /// Imported server: keep the game settings files as they are now instead of restoring them to before the import
+        #[arg(long)]
+        keep_settings: bool,
+    },
     /// Start a server
     Start(StartArgs),
     /// Stop a server
@@ -614,6 +619,9 @@ pub struct AddArgs {
     /// Use an existing server folder instead of installing
     #[arg(long, value_name = "DIR")]
     pub from: Option<String>,
+    /// With `--from`: move the folder into saba-chan instead of linking it in place (same drive only)
+    #[arg(long = "move", requires = "from")]
+    pub move_folder: bool,
     /// Game port (`--port` is the daemon's)
     #[arg(long = "game-port", value_name = "PORT")]
     pub game_port: Option<u16>,

@@ -66,6 +66,13 @@ pub fn process_under_any(process: &RunningProcess, roots: &[String]) -> bool {
     paths.into_iter().any(|p| roots.iter().any(|r| under(p, r)))
 }
 
+/// 프로세스의 실행 파일이나 작업 폴더가 `folder` 아래인가 (그 폴더에서 도는 서버). 인수는 보지 않는다:
+/// 그 폴더의 파일을 연 편집기까지 서버로 보지 않게
+pub fn runs_from(process: &RunningProcess, folder: &std::path::Path) -> bool {
+    let root = folder.to_string_lossy();
+    process.executable_path.iter().chain(process.cwd.iter()).any(|p| under(p, &root))
+}
+
 /// 여러 인스턴스가 함께 쓰는 폴더(예: 같은 설치 폴더의 실행 파일)는 주인을 가리는 근거가 못 된다: 양쪽에서 뺀다
 pub fn drop_shared_roots(own: Vec<String>, other: Vec<String>) -> (Vec<String>, Vec<String>) {
     let own_n: Vec<String> = own.iter().map(|r| normalize_path(r)).collect();
@@ -171,6 +178,15 @@ mod tests {
             cmd: vec!["java".into(), "-jar".into(), "server.jar".into()],
             cwd: Some(cwd.into()),
         }
+    }
+
+    #[test]
+    fn a_server_runs_from_its_folder_but_an_editor_with_a_file_open_there_does_not() {
+        let folder = std::path::Path::new(r"D:\게임 서버\pal");
+        assert!(runs_from(&proc(1, r"D:\게임 서버\pal\Pal\Binaries"), folder));
+        let editor = RunningProcess { cmd: vec!["notepad.exe".into(), r"D:\게임 서버\pal\a.ini".into()], cwd: Some(r"C:\Users\me".into()), ..proc(2, "") };
+        assert!(!runs_from(&editor, folder));
+        assert!(!runs_from(&proc(3, r"D:\게임 서버\palworld"), folder));
     }
 
     #[test]

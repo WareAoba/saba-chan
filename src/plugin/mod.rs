@@ -786,7 +786,7 @@ fn explain_unverified_extensions(result: &mut Value, unverified: &[String]) {
 /// `not_supported`로 답하고, 클라이언트는 `GET /api/modules`의 `functions`를 보고 그 기능을 숨긴다
 pub const OPTIONAL_MODULE_FUNCTIONS: &[&str] = &[
     "reset_server", "list_versions", "get_version_details", "get_installed_version", "diagnose_log",
-    "read_properties", "reset_properties", "configure", "import_settings", "install_server", "validate",
+    "read_properties", "reset_properties", "configure", "import_settings", "install_server", "validate", "config_files",
 ];
 
 /// 예약 함수: 모듈이 구현한 lifecycle 함수 이름(자신 제외)을 `{"success": true, "functions": [...]}`로 답한다

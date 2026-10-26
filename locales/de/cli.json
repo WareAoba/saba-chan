@@ -37,7 +37,14 @@
     "folder_is": "{{dir}} sieht nach einem {{game}}-Server aus.",
     "pick_game": "Wähle das Spiel mit --module.",
     "folder_in_use": "{{dir}} wird bereits von {{name}} verwendet. Zwei Server in einem Ordner würden sich gegenseitig überschreiben.",
-    "created_settings_failed": "{{name}} wurde erstellt, aber die Einstellungen wurden nicht gespeichert: {{error}}"
+    "created_settings_failed": "{{name}} wurde erstellt, aber die Einstellungen wurden nicht gespeichert: {{error}}",
+    "notice": {
+      "folder_not_writable": "saba-chan kann in diesen Ordner nicht schreiben. Das Speichern von Einstellungen und der Serverstart können fehlschlagen. Verschiebe ihn an einen beschreibbaren Ort.",
+      "server_running": "Der Server in diesem Ordner läuft außerhalb von saba-chan. Beende ihn und starte ihn in saba-chan neu."
+    },
+    "ask_mode": "Was soll mit dem Serverordner passieren?",
+    "mode_link": "Am Ort lassen",
+    "mode_move": "In saba-chan verschieben (nur selbes Laufwerk; beim Löschen eines verschobenen Servers werden seine Dateien gelöscht)"
   },
   "bot": {
     "ask_token": "Node-Token",
@@ -340,7 +347,10 @@
       "autostart_gui_missing": "Die GUI ist nicht installiert. Installiere sie, um alles mit GUI zu starten.",
       "autostart_write_failed": "Saba-chan konnte nicht zu den Autostart-Programmen hinzugefügt werden. Prüfe die Berechtigungen und versuche es erneut.",
       "autostart_unsupported": "Der Start beim Anmelden kann auf diesem Betriebssystem noch nicht eingestellt werden.",
-      "autostart_unknown_mode": "Wähle off, daemon oder full."
+      "autostart_unknown_mode": "Wähle off, daemon oder full.",
+      "move_cross_volume": "Ein Ordner auf einem anderen Laufwerk kann nicht verschoben werden. Importiere ihn stattdessen mit „Am Ort lassen“.",
+      "move_in_use": "Der Ordner konnte nicht verschoben werden. Stoppe den Server in diesem Ordner, schließe Programme, die ihn geöffnet haben, und versuche es erneut.",
+      "move_failed": "Der Ordner konnte nicht verschoben werden. Importiere ihn stattdessen mit „Am Ort lassen“."
     },
     "not_a_bool": "„{{value}}“ ist kein Ja/Nein (verwende true oder false).",
     "not_a_number": "„{{value}}“ ist keine Zahl.",
@@ -471,7 +481,12 @@
   "remove": {
     "confirm": "Server {{name}} löschen?",
     "confirm_running": "{{name}} läuft. Stoppen und löschen?",
-    "done": "{{name}} gelöscht."
+    "done": "{{name}} gelöscht.",
+    "unlink_folder_kept": "Die Dateien im Serverordner ({{path}}) bleiben; nur die Einträge, Protokolle und Sicherungen von saba-chan werden gelöscht.",
+    "unlink_restores": "Die Spieleinstellungsdateien werden auf den Stand vor dem Import zurückgesetzt (mit --keep-settings bleiben die aktuellen).",
+    "unlink_keeps_settings": "Die Spieleinstellungsdateien bleiben, wie sie jetzt sind.",
+    "unlinked": "'{{name}}' wurde aus saba-chan entfernt. Die Serverdateien liegen weiterhin in {{path}}.",
+    "unlink_restore_failed": "{{n}} Spieleinstellungsdatei(en) konnten nicht zurückgesetzt werden."
   },
   "reorder": {
     "done": "Reihenfolge gespeichert."

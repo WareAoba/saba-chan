@@ -199,7 +199,11 @@
     "category_important": "重要",
     "close": "關閉",
     "done": "完成",
-    "new_server": "前往伺服器列表"
+    "new_server": "前往伺服器列表",
+    "mode_label": "伺服器資料夾",
+    "mode_link": "保留在原位置",
+    "mode_move": "移入 saba-chan",
+    "migrate_hint_move": "所選資料夾會移入 saba-chan 的執行個體資料夾。只能在同一磁碟機內移動。遊戲放在伺服器資料夾之外的資料（例如 Zomboid 存檔資料夾）不會移動。刪除已移入的伺服器時，其檔案也會一併刪除。"
   },
   "command_modal": {
     "title": "執行命令 - {{name}}",
@@ -274,7 +278,17 @@
     "click_to_stop": "點擊以停止",
     "click_to_start": "點擊以啟動",
     "delete_still_running": "仍在刪除「{{name}}」。請稍後再查看伺服器列表。",
-    "delete_unconfirmed": "無法確認 '{{name}}' 是否已刪除。守護程式回應後請再查看伺服器清單。"
+    "delete_unconfirmed": "無法確認 '{{name}}' 是否已刪除。守護程式回應後請再查看伺服器清單。",
+    "unlink_confirm_title": "移除匯入的伺服器",
+    "unlink_confirm_message": "要從 saba-chan 移除「{{name}}」嗎？",
+    "unlink_detail": "伺服器資料夾（{{path}}）中的檔案會原樣保留，只刪除 saba-chan 的紀錄、日誌和備份。",
+    "unlink_detail_restorable": "伺服器資料夾（{{path}}）中的檔案會原樣保留。saba-chan 的紀錄、日誌和備份會被刪除，遊戲設定檔可以還原到匯入前的狀態。",
+    "unlink_restore": "還原設定並移除",
+    "unlink_keep_settings": "保留目前設定並移除",
+    "server_unlinked": "已從 saba-chan 移除「{{name}}」。伺服器檔案仍在 {{path}}。",
+    "unlink_restore_failed": "有 {{n}} 個遊戲設定檔未能還原。",
+    "migrate_notice_folder_not_writable": "無法寫入此資料夾。儲存設定和啟動伺服器可能會失敗，請將它移到可寫入的位置。",
+    "migrate_notice_server_running": "此資料夾中的伺服器正在 saba-chan 之外執行。請先停止，再從 saba-chan 啟動。"
   },
   "server_settings": {
     "title": "設定",
@@ -420,7 +434,10 @@
     "preflight_failed_title": "'{{name}}' 的啟動前檢查發現了問題",
     "working_dir_in_use": "伺服器 '{{instance}}' 已在使用此資料夾。同一資料夾中的兩個伺服器會互相覆蓋世界和設定。請選擇其他資料夾。",
     "no_command_path": "此伺服器沒有可接收命令的主控台。請從薩巴醬啟動伺服器後再傳送命令。",
-    "stdin_unconfirmed": "無法確認指令是否已送出。重試前請先查看主控台。"
+    "stdin_unconfirmed": "無法確認指令是否已送出。重試前請先查看主控台。",
+    "move_cross_volume": "無法移動其他磁碟機上的資料夾。請改用「保留在原位置」匯入。",
+    "move_in_use": "無法移動資料夾。請停止此資料夾中的伺服器，關閉開啟該資料夾的程式後再試一次。",
+    "move_failed": "無法移動資料夾。請改用「保留在原位置」匯入。"
   },
   "settings": {
     "save_failed_title": "設定儲存失敗",
