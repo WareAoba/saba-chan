@@ -91,6 +91,12 @@ impl Feed {
         }
     }
 
+    /// 다룰 데몬이 `chosen`으로 바뀌었을 때 붙어 있던 데몬(`source`, None = 이 PC)을 떠나야 하는가.
+    /// 이 PC 감시는 원격 데몬끼리 바꿔도 이 PC에 그대로 붙어 있다 (끊지 않고 번호를 이어 받는다)
+    pub fn moves(self, source: &Option<String>, chosen: Option<String>) -> bool {
+        self.source(chosen).as_ref() != Some(source)
+    }
+
     /// 이 스트림의 이벤트로 낼 소리. 이 PC 감시는 크래시(예기치 않은 종료)만
     pub fn plays(self, cue: crate::sounds::Cue) -> bool {
         self == Feed::Chosen || cue == crate::sounds::Cue::Crashed
@@ -117,7 +123,7 @@ pub async fn run_event_stream<F: Fn(SseEvent, Option<&str>)>(
     emit: F,
 ) {
     let mut last_id: Option<u64> = None;
-    // 다룰 데몬(G1)이 바뀌면 끊고 바로 새 대상에 붙는다. 번호는 데몬마다 따로라 처음부터 받는다
+    // 다룰 데몬(G1)이 바뀌어 붙을 데몬이 달라지면 끊고 바로 새 대상에 붙는다. 번호는 데몬마다 따로라 처음부터 받는다
     let mut target = client.watch_target();
     while !stop.load(Ordering::SeqCst) {
         let mut switched = false;
@@ -134,10 +140,18 @@ pub async fn run_event_stream<F: Fn(SseEvent, Option<&str>)>(
         if let Some(id) = last_id {
             req = req.header("Last-Event-ID", id.to_string());
         }
-        // 머리가 늦는 원격 데몬에 붙는 중에도 대상을 바꾸면 바로 놓는다
-        let sent = tokio::select! {
-            r = req.send() => Some(r),
-            _ = target.changed() => None,
+        // 머리가 늦는 원격 데몬에 붙는 중에도 붙을 데몬이 바뀌면 바로 놓는다
+        let send = req.send();
+        tokio::pin!(send);
+        let sent = loop {
+            tokio::select! {
+                r = &mut send => break Some(r),
+                _ = target.changed() => {
+                    if feed.moves(&source, client.target()) {
+                        break None;
+                    }
+                }
+            }
         };
         let Some(sent) = sent else {
             last_id = None;
@@ -151,6 +165,10 @@ pub async fn run_event_stream<F: Fn(SseEvent, Option<&str>)>(
                     let chunk = tokio::select! {
                         c = stream.next() => c,
                         _ = target.changed() => {
+                            // 원격 데몬끼리 바꿔도 이 PC 감시는 같은 데몬이다: 끊지 않는다
+                            if !feed.moves(&source, client.target()) {
+                                continue;
+                            }
                             switched = true;
                             break;
                         }
@@ -179,7 +197,7 @@ pub async fn run_event_stream<F: Fn(SseEvent, Option<&str>)>(
         if !switched {
             tokio::select! {
                 _ = tokio::time::sleep(EVENTS_RETRY) => {}
-                _ = target.changed() => switched = true,
+                _ = target.changed() => switched = feed.moves(&source, client.target()),
             }
         }
         if switched {
@@ -376,6 +394,18 @@ mod tests {
         // 붙을 때 정한 데몬에 묻는다 (그사이 고른 데몬이 바뀌어도)
         client.set_target(Some("host-c".into()));
         assert_eq!(target(Some("host-b")).as_deref(), Some("host-b"));
+    }
+
+    /// 다룰 데몬이 바뀌어도 붙은 데몬이 그대로면 스트림을 잇는다: 이 PC 감시는 원격 데몬끼리 바꿔도 이 PC에 붙어 있다
+    #[test]
+    fn a_stream_moves_only_when_its_daemon_changes() {
+        let local: Option<String> = None;
+        let b = Some("host-b".to_string());
+        assert!(!Feed::LocalWhileRemote.moves(&local, Some("host-c".into())), "remote to remote keeps the local watch");
+        assert!(Feed::LocalWhileRemote.moves(&local, None), "choosing this PC rests the local watch");
+        assert!(Feed::Chosen.moves(&b, Some("host-c".into())));
+        assert!(!Feed::Chosen.moves(&b, Some("host-b".into())));
+        assert!(Feed::Chosen.moves(&local, Some("host-b".into())));
     }
 
     /// 이 PC 감시 스트림은 소리 중 크래시(예기치 않은 종료)만 낸다. 고른 스트림은 지금 규칙 그대로
