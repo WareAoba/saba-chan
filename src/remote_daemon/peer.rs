@@ -466,9 +466,13 @@ mod tests {
         let res = forward(&file, Some(relay.clone()), "host-b", "/api/stream", get_req(&[]), CancellationToken::new()).await;
         let mut stream = res.into_body().into_data_stream();
         assert_eq!(stream.next().await.unwrap().unwrap(), "first\n");
-        let (status, _) = json_of(forward(&file, Some(relay), "host-b", "/api/echo", get_req(&[]), CancellationToken::new()).await).await;
+        let (status, _) = json_of(forward(&file, Some(relay.clone()), "host-b", "/api/echo", get_req(&[]), CancellationToken::new()).await).await;
         assert_eq!(status, 200);
         assert_eq!(state.tunnels.load(std::sync::atomic::Ordering::SeqCst), 1, "one tunnel carries every request");
+        // 원격 데몬을 잊으면 열어 둔 터널을 놓는다 (릴레이의 터널 수 한도를 쥐고 있지 않게)
+        assert!(tunnel::is_open(Some(&relay), "host-b"));
+        tunnel::close("host-b");
+        assert!(!tunnel::is_open(Some(&relay), "host-b"));
     }
 
     /// 주소가 있어도 직접 닿지 않으면(공유기가 포트를 넘기지 않음) 터널로 붙는다
