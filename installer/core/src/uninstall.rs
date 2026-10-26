@@ -173,6 +173,12 @@ pub async fn do_uninstall(keep: Keep, on_progress: impl Fn(&UninstallProgress)) 
             tracing::warn!("Failed to remove registry entry: {}", e);
         }
     }
+    // 알림 앱 등록은 설치본들이 함께 쓴다
+    if last_install {
+        if let Err(e) = saba_chan_updater_lib::notify_app_id::remove(saba_chan_updater_lib::notify_app_id::GUI_APP_ID) {
+            tracing::warn!("Failed to remove notification app id: {}", e);
+        }
+    }
 
     // Step 9: 자기 자신 삭제 (cleanup 스크립트)
     emit("self-delete", "Scheduling self-deletion...", 95);

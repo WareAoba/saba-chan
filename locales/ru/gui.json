@@ -115,7 +115,9 @@
     "reset_gui_button": "Сбросить",
     "reset_gui_confirm": "Нажмите ещё раз для сброса",
     "reset_gui_done": "Настройки интерфейса сброшены",
-    "reset_gui_failed": "Не удалось сбросить настройки"
+    "reset_gui_failed": "Не удалось сбросить настройки",
+    "os_notifications_label": "Системные уведомления",
+    "os_notifications_description": "Важные события, например сбои и неожиданные запуски или остановки, также отправляются уведомлениями Windows или macOS. Пока окно приложения на переднем плане, они показываются только в приложении."
   },
   "add_server_modal": {
     "title": "Добавить новый сервер",
@@ -1344,7 +1346,10 @@
     "source_api": "API",
     "source_discord": "Discord",
     "source_schedule": "Расписание",
-    "source_daemon": "Демон"
+    "source_daemon": "Демон",
+    "source_web": "Saba-chan веб",
+    "source_remote": "Удалённый ПК",
+    "source_restart": "Автоперезапуск"
   },
   "launch_preview": {
     "title": "Предпросмотр аргументов запуска",
@@ -1432,7 +1437,11 @@
     "schedule_restart": "{{name}} перезапустится по расписанию через {{minutes}} мин.",
     "schedule_update": "{{name}} обновится по расписанию через {{minutes}} мин.",
     "module_update": "{{name}}: вышла новая версия {{version}} модуля {{module}}.",
-    "server_update": "{{name}}: вышла новая версия игрового сервера. Если не удаётся подключиться, обновите сервер."
+    "server_update": "{{name}}: вышла новая версия игрового сервера. Если не удаётся подключиться, обновите сервер.",
+    "instance_started": "{{name}} запущен ({{source}}).",
+    "instance_stopped": "{{name}} остановлен ({{source}}).",
+    "instance_stopped_in_game": "{{name}} остановлен из игры.",
+    "instance_started_external": "{{name}} запущен вне Saba-chan. Этот процесс запустил не Saba-chan."
   },
   "switch_cli": {
     "label": "Перейти в CLI",

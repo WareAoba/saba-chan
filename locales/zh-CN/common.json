@@ -124,5 +124,15 @@
       "title": "要加载扩展界面吗？",
       "message": "{{component}} 的界面代码未经验证。加载后它将在 Saba-chan 窗口内运行。仅在信任时允许。"
     }
+  },
+  "notify": {
+    "title": "Saba-chan",
+    "crash": "{{name}} 崩溃并停止了。",
+    "unknown_exit": "{{name}} 意外停止了。",
+    "restart_in": "{{secs}} 秒后重新启动。",
+    "gave_up": "已放弃自动重启，请检查服务器。",
+    "restart_failed": "无法重新启动 {{name}}。",
+    "external_start": "{{name}} 在 Saba-chan 之外启动。这不是 Saba-chan 启动的进程。",
+    "backup_failed": "{{name}} 自动备份失败。"
   }
 }

@@ -115,7 +115,9 @@
     "reset_gui_button": "Zurücksetzen",
     "reset_gui_confirm": "Zum Zurücksetzen erneut klicken",
     "reset_gui_done": "GUI-Einstellungen auf Standard zurückgesetzt",
-    "reset_gui_failed": "Einstellungen konnten nicht zurückgesetzt werden"
+    "reset_gui_failed": "Einstellungen konnten nicht zurückgesetzt werden",
+    "os_notifications_label": "Systembenachrichtigungen",
+    "os_notifications_description": "Wichtige Ereignisse wie Abstürze und unerwartete Starts oder Stopps auch als Windows- oder macOS-Benachrichtigung senden. Solange das App-Fenster vorne ist, nur in der App."
   },
   "add_server_modal": {
     "title": "Neuen Server hinzufügen",
@@ -1344,7 +1346,10 @@
     "source_api": "API",
     "source_discord": "Discord",
     "source_schedule": "Zeitplan",
-    "source_daemon": "Daemon"
+    "source_daemon": "Daemon",
+    "source_web": "Saba-chan Web",
+    "source_remote": "Entfernter PC",
+    "source_restart": "Automatischer Neustart"
   },
   "launch_preview": {
     "title": "Vorschau der Startargumente",
@@ -1432,7 +1437,11 @@
     "schedule_restart": "{{name}} startet planmäßig in {{minutes}} Min. neu.",
     "schedule_update": "{{name}} wird planmäßig in {{minutes}} Min. aktualisiert.",
     "module_update": "{{name}}: Version {{version}} des Moduls {{module}} ist verfügbar.",
-    "server_update": "{{name}}: Eine neue Spielserver-Version ist verfügbar. Wenn niemand beitreten kann, aktualisiere den Server."
+    "server_update": "{{name}}: Eine neue Spielserver-Version ist verfügbar. Wenn niemand beitreten kann, aktualisiere den Server.",
+    "instance_started": "{{name}} wurde gestartet ({{source}}).",
+    "instance_stopped": "{{name}} wurde beendet ({{source}}).",
+    "instance_stopped_in_game": "{{name}} wurde im Spiel beendet.",
+    "instance_started_external": "{{name}} wurde außerhalb von Saba-chan gestartet. Saba-chan hat diesen Prozess nicht gestartet."
   },
   "switch_cli": {
     "label": "Zur CLI wechseln",

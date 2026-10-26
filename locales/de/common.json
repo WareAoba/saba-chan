@@ -124,5 +124,15 @@
       "title": "Erweiterungsansicht laden?",
       "message": "Der Ansichtscode von {{component}} ist nicht verifiziert. Wenn er geladen wird, läuft er im Saba-chan-Fenster. Nur erlauben, wenn Sie ihm vertrauen."
     }
+  },
+  "notify": {
+    "title": "Saba-chan",
+    "crash": "{{name}} ist abgestürzt.",
+    "unknown_exit": "{{name}} wurde unerwartet beendet.",
+    "restart_in": "Neustart in {{secs}} s.",
+    "gave_up": "Der automatische Neustart wurde aufgegeben. Bitte den Server prüfen.",
+    "restart_failed": "{{name}} konnte nicht neu gestartet werden.",
+    "external_start": "{{name}} wurde außerhalb von Saba-chan gestartet. Saba-chan hat diesen Prozess nicht gestartet.",
+    "backup_failed": "Automatische Sicherung von {{name}} fehlgeschlagen."
   }
 }

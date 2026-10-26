@@ -653,6 +653,15 @@ async fn main() -> anyhow::Result<()> {
         ctrl_c_cancel.cancel();
     });
 
+    // Windows가 GUI 알림(크래시 등 중대 알림)을 바로가기 없이도 띄우도록 앱 ID를 등록한다
+    tokio::task::spawn_blocking(|| {
+        if let Err(e) =
+            saba_chan_updater_lib::notify_app_id::ensure(include_bytes!("../saba-chan-gui/public/favicon.png"))
+        {
+            tracing::warn!("[Notify] Failed to register notification app id: {}", e);
+        }
+    });
+
     // 트레이: 화면이 있으면 상주 GUI를 띄우고 데몬이 사는 동안 되살린다 (부트 모드와 상관없이, 데몬 온리 포함)
     {
         let tray_server = ipc_server.clone();

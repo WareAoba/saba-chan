@@ -1143,6 +1143,9 @@ fn relay_event(event: &crate::events::Event) -> Option<Value> {
         "update.available" => pick(&["at", "components"]),
         "schedule.warn" => pick(&["at", "instanceId", "instance", "action", "minutesLeft"]),
         "instance.ready" => pick(&["at", "instanceId", "instance", "ok", "code"]),
+        // 서버가 켜지고 꺼진 것과 시킨 쪽. 사바쨩 밖의 시작은 unexpected (크래시·원인 모를 종료는 instance.exit)
+        "instance.started" => pick(&["at", "instanceId", "instance", "source", "userName", "unexpected"]),
+        "instance.stopped" => pick(&["at", "instanceId", "instance", "source", "userName", "kind"]),
         // 켠 서버의 모듈 새 버전·게임 서버 새 빌드 (시작을 시킨 사람에게만 알린다)
         "instance.update_notice" => pick(&["at", "instanceId", "instance", "kind", "module", "latest"]),
         // 디스코드에서 시작해 뒤에서 마친 여러 단계 실행 (I1). 원격 실행의 단계 줄에는 오류 원문이 없다(코드만)
@@ -2130,6 +2133,11 @@ mod tests {
         // 켠 서버의 업데이트 알림은 종류·모듈·새 버전만
         let notice = ev("instance.update_notice", json!({"at": 1, "instanceId": "i", "instance": "pal", "kind": "module", "module": "palworld", "latest": "1.1.0", "path": "C:\\x"}));
         assert_eq!(relay_event(&notice).unwrap()["data"], json!({"at": 1, "instanceId": "i", "instance": "pal", "kind": "module", "module": "palworld", "latest": "1.1.0"}));
+        // 시작·정상 정지는 누가 시켰는지만 (사바쨩 밖의 시작은 unexpected)
+        let started = ev("instance.started", json!({"at": 1, "instanceId": "i", "instance": "mc1", "source": "external", "unexpected": true, "path": "C:\\x"}));
+        assert_eq!(relay_event(&started).unwrap()["data"], json!({"at": 1, "instanceId": "i", "instance": "mc1", "source": "external", "unexpected": true}));
+        let stopped = ev("instance.stopped", json!({"at": 1, "instanceId": "i", "instance": "mc1", "source": "gui", "userName": "집 PC", "kind": "user_stop"}));
+        assert_eq!(relay_event(&stopped).unwrap()["data"], json!({"at": 1, "instanceId": "i", "instance": "mc1", "source": "gui", "userName": "집 PC", "kind": "user_stop"}));
         // 여러 단계 실행은 디스코드에서 시작한 것만
         assert!(relay_event(&ev("plan.done", json!({"runId": "r", "ok": true}))).is_none());
         assert_eq!(relay_event(&ev("plan.done", json!({"runId": "r", "guildId": "g", "ok": true}))).unwrap()["data"]["guildId"], "g");

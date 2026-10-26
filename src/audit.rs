@@ -5,6 +5,7 @@
 //! - HTTP 요청: `layer`가 `X-Saba-Client` 헤더(GUI는 `gui`, CLI는 `cli`, 없으면 `api`)로 정한다
 //! - 디스코드(릴레이 에이전트): `discord` + 요청한 사용자·길드 id
 //! - 예약 작업: `schedule`
+//! - 크래시 뒤 자동 재시작: `restart`
 //! - 사바쨩 웹(릴레이 웹소켓, `crate::remote`): `web` + 링크를 받은 사용자 id
 //!
 //! 로컬 클라이언트는 같은 토큰을 쓰므로 출처 헤더는 보안 경계가 아니라 기록용이다.
@@ -78,7 +79,7 @@ fn accept_language(headers: &axum::http::HeaderMap) -> Option<String> {
 }
 
 /// 데몬이 스스로 정하는 출처: HTTP 헤더로 흉내 낼 수 없다
-const INTERNAL_SOURCES: [&str; 5] = ["discord", "schedule", "daemon", "web", "remote"];
+const INTERNAL_SOURCES: [&str; 8] = ["discord", "schedule", "daemon", "web", "remote", "restart", "game", "external"];
 
 tokio::task_local! {
     static ORIGIN: Origin;

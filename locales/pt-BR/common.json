@@ -124,5 +124,15 @@
       "title": "Carregar a tela da extensão?",
       "message": "O código de tela de {{component}} não foi verificado. Se carregado, ele roda dentro da janela do Saba-chan. Permita apenas se confiar nele."
     }
+  },
+  "notify": {
+    "title": "Saba-chan",
+    "crash": "{{name}} travou e parou.",
+    "unknown_exit": "{{name}} parou inesperadamente.",
+    "restart_in": "Reiniciando em {{secs}} s.",
+    "gave_up": "O reinício automático desistiu. Verifique o servidor.",
+    "restart_failed": "Não foi possível reiniciar {{name}}.",
+    "external_start": "{{name}} foi iniciado fora do Saba-chan. O Saba-chan não iniciou este processo.",
+    "backup_failed": "O backup automático de {{name}} falhou."
   }
 }

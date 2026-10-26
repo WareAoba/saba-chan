@@ -138,6 +138,33 @@ pub async fn run_event_stream<F: Fn(SseEvent)>(client: Arc<DaemonClient>, stop: 
     }
 }
 
+/// 꼭 알아야 할 데몬 이벤트 → OS 알림 본문 (`notify.*` 문구). 크래시·원인 모를 종료·재시작 실패·
+/// 사바쨩 밖의 시작·자동 백업 실패만. 이름만 싣고 경로·오류 원문은 싣지 않는다
+pub fn critical_notice(ev: &SseEvent, i18n: &crate::i18n::I18n) -> Option<String> {
+    let d = &ev.data;
+    let name = d["instance"].as_str().filter(|n| !n.is_empty()).or_else(|| d["instanceId"].as_str())?;
+    let text = |key: &str| i18n.t(key, &[("name", name)]);
+    match ev.kind.as_str() {
+        "instance.exit" => {
+            let head = match d["kind"].as_str()? {
+                "crash" => text("notify.crash"),
+                "unknown_exit" => text("notify.unknown_exit"),
+                _ => return None,
+            };
+            let tail = match (d["restartInSecs"].as_u64(), d["noteCode"].as_str()) {
+                (Some(secs), _) => Some(i18n.t("notify.restart_in", &[("secs", &secs.to_string())])),
+                (None, Some("gave_up")) => Some(i18n.t("notify.gave_up", &[])),
+                _ => None,
+            };
+            Some(tail.map_or(head.clone(), |t| format!("{head} {t}")))
+        }
+        "instance.restart_failed" => Some(text("notify.restart_failed")),
+        "instance.started" if d["unexpected"].as_bool() == Some(true) => Some(text("notify.external_start")),
+        "backup.done" if d["ok"].as_bool() == Some(false) && d["kind"] != "manual" => Some(text("notify.backup_failed")),
+        _ => None,
+    }
+}
+
 /// 알릴 업데이트 (Locales는 백그라운드 자동 적용이라 뺀다)
 #[derive(Debug, PartialEq)]
 pub struct UpdateNotice {
@@ -201,6 +228,48 @@ pub fn updates_cleared(data: &Value) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 꼭 알아야 할 일만 OS 알림으로: 크래시·원인 모를 종료·재시작 실패·사바쨩 밖의 시작·자동 백업 실패.
+    /// 사바쨩을 거친 시작·정지, 게임 안 정지, 시작 실패(시킨 쪽이 이미 본다)는 알리지 않는다
+    #[test]
+    fn only_critical_events_become_os_notifications() {
+        let i18n = crate::i18n::I18n::load("en", None);
+        let ev = |kind: &str, data: Value| SseEvent { id: Some(1), kind: kind.into(), data };
+        let body = |kind: &str, data: Value| critical_notice(&ev(kind, data), &i18n);
+        assert_eq!(
+            body("instance.exit", json!({"instance": "Survival", "kind": "crash", "restartInSecs": 5})).as_deref(),
+            Some("Survival crashed and stopped. Restarting in 5s.")
+        );
+        assert_eq!(
+            body("instance.exit", json!({"instance": "Survival", "kind": "unknown_exit", "noteCode": "gave_up"})).as_deref(),
+            Some("Survival stopped unexpectedly. Auto restart gave up. Please check the server.")
+        );
+        assert_eq!(
+            body("instance.restart_failed", json!({"instance": "Survival", "noteArgs": {"reason": "C:\\x"}})).as_deref(),
+            Some("Could not restart Survival.")
+        );
+        assert_eq!(
+            body("instance.started", json!({"instance": "Survival", "source": "external", "unexpected": true})).as_deref(),
+            Some("Survival was started outside Saba-chan. Saba-chan did not start this process.")
+        );
+        assert_eq!(
+            body("backup.done", json!({"instance": "Survival", "kind": "scheduled", "ok": false, "error": "D:\\x"})).as_deref(),
+            Some("Automatic backup of Survival failed.")
+        );
+        for (kind, data) in [
+            ("instance.exit", json!({"instance": "Survival", "kind": "user_stop"})),
+            ("instance.exit", json!({"instance": "Survival", "kind": "in_game_stop"})),
+            ("instance.exit", json!({"instance": "Survival", "kind": "start_failed"})),
+            ("instance.started", json!({"instance": "Survival", "source": "discord", "unexpected": false})),
+            ("instance.stopped", json!({"instance": "Survival", "source": "gui", "kind": "user_stop"})),
+            ("backup.done", json!({"instance": "Survival", "kind": "manual", "ok": false})),
+            ("backup.done", json!({"instance": "Survival", "kind": "scheduled", "ok": true})),
+        ] {
+            assert_eq!(body(kind, data.clone()), None, "{kind} {data}");
+        }
+        // 이름이 없으면 id
+        assert_eq!(body("instance.exit", json!({"instanceId": "i-1", "kind": "crash"})).as_deref(), Some("i-1 crashed and stopped."));
+    }
 
     #[test]
     fn comment_or_ping_is_ignored() {

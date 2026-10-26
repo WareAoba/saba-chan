@@ -115,7 +115,9 @@
     "reset_gui_button": "重置",
     "reset_gui_confirm": "再点一次即可重置",
     "reset_gui_done": "GUI 设置已恢复为默认值",
-    "reset_gui_failed": "无法重置设置"
+    "reset_gui_failed": "无法重置设置",
+    "os_notifications_label": "系统通知",
+    "os_notifications_description": "崩溃、意外启动或停止等必须知道的事件也会通过 Windows、macOS 通知发送。应用窗口在前台时只在应用内提示。"
   },
   "add_server_modal": {
     "title": "添加新服务器",
@@ -1344,7 +1346,10 @@
     "source_api": "API",
     "source_discord": "Discord",
     "source_schedule": "计划任务",
-    "source_daemon": "守护进程"
+    "source_daemon": "守护进程",
+    "source_web": "Saba-chan 网页",
+    "source_remote": "远程电脑",
+    "source_restart": "自动重启"
   },
   "launch_preview": {
     "title": "启动参数预览",
@@ -1432,7 +1437,11 @@
     "schedule_restart": "{{name}} 将在 {{minutes}} 分钟后按计划重启。",
     "schedule_update": "{{name}} 将在 {{minutes}} 分钟后按计划更新。",
     "module_update": "{{name}}：{{module}} 模块的新版本 {{version}} 已发布。",
-    "server_update": "{{name}}：游戏服务器有新版本。如果玩家无法连接，请更新服务器。"
+    "server_update": "{{name}}：游戏服务器有新版本。如果玩家无法连接，请更新服务器。",
+    "instance_started": "{{name}} 已启动（{{source}}）。",
+    "instance_stopped": "{{name}} 已停止（{{source}}）。",
+    "instance_stopped_in_game": "{{name}} 已在游戏内停止。",
+    "instance_started_external": "{{name}} 在 Saba-chan 之外启动。这不是 Saba-chan 启动的进程。"
   },
   "switch_cli": {
     "label": "切换到 CLI",

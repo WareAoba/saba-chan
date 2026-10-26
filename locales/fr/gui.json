@@ -115,7 +115,9 @@
     "reset_gui_button": "Réinitialiser",
     "reset_gui_confirm": "Cliquez à nouveau pour réinitialiser",
     "reset_gui_done": "Paramètres de l'interface restaurés par défaut",
-    "reset_gui_failed": "Impossible de réinitialiser les paramètres"
+    "reset_gui_failed": "Impossible de réinitialiser les paramètres",
+    "os_notifications_label": "Notifications système",
+    "os_notifications_description": "Envoie aussi les événements importants, comme les plantages et les démarrages ou arrêts inattendus, en notification Windows ou macOS. Quand la fenêtre de l'app est au premier plan, ils ne s'affichent que dans l'app."
   },
   "add_server_modal": {
     "title": "Ajouter un nouveau serveur",
@@ -1344,7 +1346,10 @@
     "source_api": "API",
     "source_discord": "Discord",
     "source_schedule": "Planification",
-    "source_daemon": "Démon"
+    "source_daemon": "Démon",
+    "source_web": "Saba-chan web",
+    "source_remote": "PC distant",
+    "source_restart": "Redémarrage auto"
   },
   "launch_preview": {
     "title": "Aperçu des arguments de lancement",
@@ -1432,7 +1437,11 @@
     "schedule_restart": "{{name}} redémarrera comme prévu dans {{minutes}} min.",
     "schedule_update": "{{name}} sera mis à jour comme prévu dans {{minutes}} min.",
     "module_update": "{{name}} : la version {{version}} du module {{module}} est disponible.",
-    "server_update": "{{name}} : une nouvelle version du serveur de jeu est disponible. Si personne ne peut se connecter, mettez le serveur à jour."
+    "server_update": "{{name}} : une nouvelle version du serveur de jeu est disponible. Si personne ne peut se connecter, mettez le serveur à jour.",
+    "instance_started": "{{name}} a démarré ({{source}}).",
+    "instance_stopped": "{{name}} s'est arrêté ({{source}}).",
+    "instance_stopped_in_game": "{{name}} a été arrêté depuis le jeu.",
+    "instance_started_external": "{{name}} a été démarré en dehors de Saba-chan. Saba-chan n'a pas lancé ce processus."
   },
   "switch_cli": {
     "label": "Passer à la CLI",

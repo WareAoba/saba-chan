@@ -40,6 +40,8 @@ saba-chan-updater-lib = { path = "../../updater" }
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.52"
+# 알림 플러그인과 같은 토스트 구현. 결과를 받아 기록하려고 직접 부른다
+tauri-winrt-notification = "0.8"
 
 [dev-dependencies]
 tempfile = "3.8"
