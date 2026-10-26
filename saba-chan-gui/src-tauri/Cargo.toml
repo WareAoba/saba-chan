@@ -17,8 +17,8 @@ path = "src/main.rs"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-hmac = "0.12"
-sha2 = "0.10"
+hmac = "0.13"
+sha2 = "0.11"
 uuid = { version = "1", features = ["v4"] }
 hex = "0.4"
 tauri = { version = "2", features = ["tray-icon", "image-png"] }
@@ -33,13 +33,13 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter", "registry"] }
 reqwest = { version = "0.13", default-features = false, features = ["native-tls", "json", "system-proxy", "stream"] }
 futures-util = "0.3"
-base64 = "0.22"
+base64 = "0.23"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 sys-locale = "0.3"
 saba-chan-updater-lib = { path = "../../updater" }
 
 [target.'cfg(windows)'.dependencies]
-winreg = "0.52"
+winreg = "0.55"
 # 알림 플러그인과 같은 토스트 구현. 결과를 받아 기록하려고 직접 부른다
 tauri-winrt-notification = "0.8"
 # 효과음 (PlaySound, 실행 파일에 실은 wav)
