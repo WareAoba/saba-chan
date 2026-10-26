@@ -159,7 +159,8 @@ PC 주인이 디스코드에서 받은 일회용 링크로 브라우저(사바�
   extensions/<ext>/...
   instances/
     order.json
-    <uuid>/instance.json, settings.json, managed.pid, logs/console.log, backups/, server/ (설치 대상)
+    <uuid>/instance.json, settings.json, logs/console.log, backups/, server/ (설치 대상)
+    .saba-state/<uuid>/managed.pid, run/ (데몬만 쓰는 서버 실행 기록), .saba-state/legacy-adopted (예전 배치를 옮겨 받은 표시, 02 PID 영속화)
 <exe_dir>/
   saba-chan-gui[.exe], saba-chan-cli[.exe]   부트 선택기가 스폰
   saba-chan-updater[.exe]   /api/updates/launch-updater가 스폰

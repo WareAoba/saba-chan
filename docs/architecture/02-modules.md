@@ -486,7 +486,7 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 | 사전 검사 | 중복 실행 방지(managed_store와 tracker PID 생존 확인), 모듈 의존성, 포트 충돌, 시작 중 표시(`StartGuard`), extension `server.pre_start` hook | 포트 충돌, 모듈 의존성, `requires_extensions` 검증, 시작 중 표시, `server.pre_start` hook |
 | spawn | saba-runner가 있으면 `ManagedProcess::spawn_with_runner`(러너가 10초 안에 `runner.json`을 쓰지 못하면 러너와 그 자식을 끝내고 시작 실패), 없으면 `ManagedProcess::spawn`(stdin, stdout, stderr 파이프) (`mod.rs:1622-1660`) | `TokioCommand` — stdio 모두 `null`, 콘솔 없음 |
 | 추적 키 | `tracker.track(instance.id, pid)` | `tracker.track(instance.id, pid)` (`mod.rs:846-847`) |
-| PID 영속화 | `<instance_dir>/managed.pid`, runner면 `<instance_dir>/run/` | 없음 |
+| PID 영속화 | `<instances>/.saba-state/<id>/managed.pid`, runner면 `<instances>/.saba-state/<id>/run/` (`InstanceStore::state_dir`. 인스턴스 폴더는 서버와 격리 실행도 쓰므로 그 안의 기록은 믿지 않는다. 인스턴스를 지우면 함께 지운다). 예전 배치(`<instance_dir>/managed.pid`·`run/`)는 처음 시작 때 한 번만 옮겨 받는다(`Supervisor::adopt_legacy_records`): `managed.pid`는 이름만 바꿔 옮기고(파일 시각 유지), 예전 자리에 `runner.json`이 있으면 그 러너가 끝날 때까지 예전 자리에서 읽는다는 표시 `<id>/legacy-run`을 둔다(`InstanceStore::runner_home`. 다시 붙지 못하거나 서버를 새로 띄우면 지우고, 인스턴스 폴더의 예전 `run/`에서 러너가 남긴 파일과 빈 폴더를 치운다, `clear_run_dir`. 링크는 따라가지 않는다. 러너가 이미 끝난 예전 `run/`은 옮겨 받을 때 치운다). 다 옮기면 `.saba-state/legacy-adopted`를 남기고, 그 뒤로는 예전 자리의 PID 기록을 보지 않는다(이 표시가 있는 PC를 예전 버전으로 되돌려 서버를 띄운 뒤 다시 올리면 그 서버에는 다시 붙지 않는다) | 없음 |
 | 자격증명 동기화 | `rest_credentials` 또는 `credential_map` | 없음 |
 
 - `requires_extensions` 검증은 **non-managed 경로에만 있다** (`mod.rs:572-629`). managed 경로는 `[module.dependencies]`의 `ext-<id>` 검사만 한다.

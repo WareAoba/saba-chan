@@ -18,7 +18,7 @@ use anyhow::Result;
 use regex::Regex;
 
 mod runner;
-pub use runner::runner_server_pid;
+pub use runner::{clear_run_dir, run_dir, runner_server_pid};
 pub use runner::{MemoryLimitAtStart, RunnerLaunch};
 pub use runner::{latest_session_log, runner_binary, sessions_dir, DEFAULT_LOG_SESSIONS};
 

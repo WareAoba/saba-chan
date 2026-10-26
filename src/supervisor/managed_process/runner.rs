@@ -24,14 +24,25 @@ const CREATE_BREAKAWAY_FROM_JOB: u32 = 0x0100_0000;
 /// 세션 로그 기본 보관 개수
 pub const DEFAULT_LOG_SESSIONS: usize = 20;
 
-/// `<instance>/run/`
-pub fn run_dir(instance_dir: &Path) -> PathBuf {
-    instance_dir.join(RUN_DIR)
+/// `<state_dir>/run/`. `state_dir`은 인스턴스의 데몬 전용 기록 폴더(`InstanceStore::state_dir`)다
+pub fn run_dir(state_dir: &Path) -> PathBuf {
+    state_dir.join(RUN_DIR)
 }
 
 /// 러너가 지금 서버로 보는 PID. 런처가 끝나고 남긴 서버를 따라가면 러너가 runner.json을 고친다
-pub fn runner_server_pid(instance_dir: &Path) -> Option<u32> {
-    read_json::<RunnerInfo>(&runner_file(&run_dir(instance_dir))).map(|i| i.pid)
+pub fn runner_server_pid(state_dir: &Path) -> Option<u32> {
+    read_json::<RunnerInfo>(&runner_file(&run_dir(state_dir))).map(|i| i.pid)
+}
+
+/// 더 따라가지 않는 러너 기록 폴더를 치운다: 러너가 남기는 파일만 지우고 비면 폴더도 지운다. 링크는 따라가지 않는다
+pub fn clear_run_dir(run: &Path) {
+    if !std::fs::symlink_metadata(run).is_ok_and(|m| m.is_dir()) {
+        return;
+    }
+    for file in [runner_file(run), exit_file(run), run.join(TOKEN_FILE)] {
+        let _ = std::fs::remove_file(file);
+    }
+    let _ = std::fs::remove_dir(run);
 }
 
 /// 시작 중 서버가 메모리 상한에 걸려 끝났다. 호출 쪽이 `downcast_ref`로 알아본다
@@ -126,10 +137,11 @@ impl ManagedProcess {
         env_vars: Vec<(String, String)>,
         log_pattern: Option<&str>,
         instance_dir: &Path,
+        state_dir: &Path,
         keep_sessions: usize,
         launch: RunnerLaunch<'_>,
     ) -> Result<Self> {
-        let run = run_dir(instance_dir);
+        let run = run_dir(state_dir);
         std::fs::create_dir_all(&run)?;
         let _ = std::fs::remove_file(runner_file(&run));
         let _ = std::fs::remove_file(exit_file(&run));
@@ -223,8 +235,8 @@ impl ManagedProcess {
     }
 
     /// 데몬 재시작 뒤, 아직 살아 있는 러너에 다시 붙는다. 러너가 없거나 끝났으면 None.
-    pub async fn attach_runner(instance_dir: &Path, log_pattern: Option<&str>) -> Option<Self> {
-        let run = run_dir(instance_dir);
+    pub async fn attach_runner(state_dir: &Path, log_pattern: Option<&str>) -> Option<Self> {
+        let run = run_dir(state_dir);
         let info: RunnerInfo = read_json(&runner_file(&run))?;
         // 재부팅 뒤 그 PID를 다른 프로세스가 쓰면 시작 시각이 기록보다 늦다: 그것에 붙거나 그것을 끄지 않는다
         if exit_file(&run).exists() || !crate::supervisor::process::is_same_process(info.runner_pid, info.started_at) {
@@ -443,7 +455,7 @@ mod tests {
         std::fs::write(&fake, format!("#!/bin/sh\nsleep 60 &\necho \"$$ $!\" > '{}'\nwait\n", pids.display())).unwrap();
         std::fs::set_permissions(&fake, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
 
-        let started = ManagedProcess::spawn_with_runner(&fake, "server", &[], inst.to_str().unwrap(), Vec::new(), None, inst, 3, RunnerLaunch::default()).await;
+        let started = ManagedProcess::spawn_with_runner(&fake, "server", &[], inst.to_str().unwrap(), Vec::new(), None, inst, inst, 3, RunnerLaunch::default()).await;
         assert!(started.is_err());
         let ids: Vec<u32> = std::fs::read_to_string(&pids).unwrap().split_whitespace().map(|p| p.parse().unwrap()).collect();
         tokio::time::sleep(Duration::from_millis(300)).await;
@@ -464,7 +476,7 @@ mod tests {
         std::fs::write(&fake, format!("#!/bin/sh\nsleep 60 &\necho \"$!\" > '{}'\nexit 0\n", pids.display())).unwrap();
         std::fs::set_permissions(&fake, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
 
-        let started = ManagedProcess::spawn_with_runner(&fake, "server", &[], inst.to_str().unwrap(), Vec::new(), None, inst, 3, RunnerLaunch::default()).await;
+        let started = ManagedProcess::spawn_with_runner(&fake, "server", &[], inst.to_str().unwrap(), Vec::new(), None, inst, inst, 3, RunnerLaunch::default()).await;
         assert!(started.is_err());
         let server: u32 = std::fs::read_to_string(&pids).unwrap().trim().parse().unwrap();
         tokio::time::sleep(Duration::from_millis(300)).await;
@@ -480,9 +492,10 @@ mod tests {
             return;
         };
         let tmp = tempfile::tempdir().unwrap();
-        let inst = tmp.path();
+        let inst = &tmp.path().join("inst");
+        let state = &tmp.path().join("state");
 
-        let proc = ManagedProcess::spawn_with_runner(&runner, "cat", &[], inst.to_str().unwrap(), Vec::new(), None, inst, 3, RunnerLaunch::default())
+        let proc = ManagedProcess::spawn_with_runner(&runner, "cat", &[], tmp.path().to_str().unwrap(), Vec::new(), None, inst, state, 3, RunnerLaunch::default())
             .await
             .unwrap();
         proc.send_command("before restart").await.unwrap();
@@ -490,7 +503,9 @@ mod tests {
         let pid = proc.pid;
         drop(proc); // 데몬 재시작 흉내
 
-        let again = ManagedProcess::attach_runner(inst, None).await.expect("runner still alive");
+        // 러너 기록은 데몬 전용 폴더에만 있다
+        assert!(!inst.join("run").exists());
+        let again = ManagedProcess::attach_runner(state, None).await.expect("runner still alive");
         assert_eq!(again.pid, pid);
         assert!(wait_for(&again, "before restart").await, "history comes back from the session log");
         assert!(again.is_stdin_available());
@@ -505,9 +520,9 @@ mod tests {
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
         assert!(!again.is_running());
-        let exit: ExitInfo = read_json(&exit_file(&run_dir(inst))).expect("exit.json");
+        let exit: ExitInfo = read_json(&exit_file(&run_dir(state))).expect("exit.json");
         assert!(!exit.success);
-        assert!(ManagedProcess::attach_runner(inst, None).await.is_none());
+        assert!(ManagedProcess::attach_runner(state, None).await.is_none());
         assert!(latest_session_log(inst).is_some());
     }
 
@@ -523,7 +538,7 @@ mod tests {
         std::fs::write(inst.join("game.log"), "old line\n").unwrap();
         let script = "sleep 1; echo 'from the log file' >> game.log; sleep 5".to_string();
         let proc = ManagedProcess::spawn_with_runner(
-            &runner, "sh", &["-c".into(), script], inst.to_str().unwrap(), Vec::new(), None, inst, 3,
+            &runner, "sh", &["-c".into(), script], inst.to_str().unwrap(), Vec::new(), None, inst, inst, 3,
             RunnerLaunch { log_files: &["*.log".into()], console: ConsoleMode::Pipe, ..Default::default() },
         )
         .await
@@ -545,7 +560,7 @@ mod tests {
         let inst = tmp.path();
         let script = "printf '[LOG] save OK[LOG] shutdown OK\\n'; sleep 5".to_string();
         let proc = ManagedProcess::spawn_with_runner(
-            &runner, "sh", &["-c".into(), script], inst.to_str().unwrap(), Vec::new(), None, inst, 3,
+            &runner, "sh", &["-c".into(), script], inst.to_str().unwrap(), Vec::new(), None, inst, inst, 3,
             RunnerLaunch { line_start: Some(r"\[LOG\]"), ..Default::default() },
         )
         .await
@@ -568,7 +583,7 @@ mod tests {
         let script = "for p in 1 2 3 4 5; do echo \"Saving $p%\"; done; echo saved; sleep 5".to_string();
         let progress = vec![r"^Saving \d+%$".to_string()];
         let proc = ManagedProcess::spawn_with_runner(
-            &runner, "sh", &["-c".into(), script], inst.to_str().unwrap(), Vec::new(), None, inst, 3,
+            &runner, "sh", &["-c".into(), script], inst.to_str().unwrap(), Vec::new(), None, inst, inst, 3,
             RunnerLaunch { progress_patterns: &progress, ..Default::default() },
         )
         .await
@@ -593,7 +608,7 @@ mod tests {
         let script = "import sys, time\nprint('early line')\nfor line in sys.stdin:\n    print('got ' + line.strip())\n    time.sleep(30)".to_string();
         let env = vec![("PYTHONUNBUFFERED".to_string(), String::new())];
         let proc = ManagedProcess::spawn_with_runner(
-            &runner, "python3", &["-c".into(), script], inst.to_str().unwrap(), env, None, inst, 3,
+            &runner, "python3", &["-c".into(), script], inst.to_str().unwrap(), env, None, inst, inst, 3,
             RunnerLaunch { log_files: &[], console: ConsoleMode::Pty, ..Default::default() },
         )
         .await

@@ -350,18 +350,26 @@ impl Supervisor {
     ///    console history loaded from `logs/console.log`
     /// 3. If dead: clean up the stale PID file
     async fn reattach_orphaned_managed(&mut self) {
+        self.adopt_legacy_records();
         let instances: Vec<_> = self.instance_store.list().to_vec();
         let mut reattached = 0u32;
 
         for instance in &instances {
             let inst_dir = self.instance_store.instance_dir(&instance.id);
-            let pid_file = inst_dir.join("managed.pid");
+            let pid_file = self.instance_store.managed_pid_file(&instance.id);
 
             // saba-runner가 쥔 서버면 콘솔·stdin까지 그대로 다시 붙는다 (C8b)
             let log_pattern = self.module_loader.get_module(&instance.module_name)
                 .ok()
                 .and_then(|m| m.metadata.log_pattern.clone());
-            if let Some(proc) = managed_process::ManagedProcess::attach_runner(&inst_dir, log_pattern.as_deref()).await {
+            let attached = managed_process::ManagedProcess::attach_runner(&self.instance_store.runner_home(&instance.id), log_pattern.as_deref()).await;
+            if attached.is_none() {
+                // 업데이트 전에 띄운 러너가 끝났다: 그 뒤로는 인스턴스 폴더의 러너 기록을 보지 않는다
+                if let Err(e) = forget_legacy_run(&self.instance_store, &instance.id) {
+                    tracing::warn!("Could not stop following the old runner record of '{}': {}", instance.name, e);
+                }
+            }
+            if let Some(proc) = attached {
                 let pid = proc.pid;
                 // 가동 시간은 데몬이 다시 붙은 때가 아니라 러너가 서버를 띄운 때부터
                 if let Err(e) = self.tracker.track_since(&instance.id, pid, proc.started_at) {
@@ -429,6 +437,44 @@ impl Supervisor {
 
         if reattached > 0 {
             tracing::info!("Reattached {} orphaned managed process(es)", reattached);
+        }
+    }
+
+    /// 예전 배치(인스턴스 폴더의 managed.pid·run/)를 처음 한 번만 옮겨 받는다. 업데이트 전에 띄운 서버에 다시 붙기 위해서다.
+    /// managed.pid는 기록 시각(파일 시각)을 지키려고 이름만 바꾼다. 아직 도는 러너는 띄울 때 받은 폴더에 계속 쓰므로
+    /// 옮기지 않고 그 러너가 끝날 때까지 거기서 읽는다(`LEGACY_RUN`). 다 옮겨야 표시를 남긴다 (못 옮긴 것은 다음 시작 때 다시)
+    fn adopt_legacy_records(&self) {
+        use crate::instance::{LEGACY_ADOPTED, LEGACY_RUN, MANAGED_PID};
+        let store = &self.instance_store;
+        let marker = store.state_root().join(LEGACY_ADOPTED);
+        if marker.exists() {
+            return;
+        }
+        let mut adopted = true;
+        for instance in store.list() {
+            let dir = store.instance_dir(&instance.id);
+            let state = store.state_dir(&instance.id);
+            let legacy_pid = dir.join(MANAGED_PID);
+            if legacy_pid.is_file() {
+                if let Err(e) = std::fs::create_dir_all(&state).and_then(|_| std::fs::rename(&legacy_pid, store.managed_pid_file(&instance.id))) {
+                    tracing::warn!("Could not move the server record of '{}': {}", instance.name, e);
+                    adopted = false;
+                }
+            }
+            let legacy_run = managed_process::run_dir(&dir);
+            if saba_runner::runner_file(&legacy_run).is_file() {
+                if let Err(e) = saba_atomic_file::write(&state.join(LEGACY_RUN), b"", saba_atomic_file::Mode::Plain) {
+                    tracing::warn!("Could not keep following the runner of '{}': {}", instance.name, e);
+                    adopted = false;
+                }
+            } else {
+                managed_process::clear_run_dir(&legacy_run);
+            }
+        }
+        if adopted {
+            if let Err(e) = saba_atomic_file::write(&marker, b"", saba_atomic_file::Mode::Plain) {
+                tracing::warn!("Could not mark the server records as moved: {}", e);
+            }
         }
     }
 
@@ -1452,7 +1498,7 @@ impl Supervisor {
                 }
 
                 // Clean up managed.pid
-                let pid_file = s.instance_store.instance_dir(&instance.id).join("managed.pid");
+                let pid_file = s.instance_store.managed_pid_file(&instance.id);
                 let _ = std::fs::remove_file(&pid_file);
 
                 tracing::info!("Managed server '{}' stopped", server_name);
@@ -1477,7 +1523,7 @@ impl Supervisor {
                 if let Some(proc) = s.managed_store.remove(&instance.id).await {
                     s.judge_exit(&instance.id, &proc, false).await;
                 }
-                let pid_file = s.instance_store.instance_dir(&instance.id).join("managed.pid");
+                let pid_file = s.instance_store.managed_pid_file(&instance.id);
                 let _ = std::fs::remove_file(&pid_file);
                 s.stop_cooldowns.insert(instance.id.clone(), Instant::now());
 
@@ -2101,7 +2147,14 @@ impl Supervisor {
 
         // Spawn managed process
         let log_pattern = module.metadata.log_pattern.as_deref();
-        let inst_dir = sup.read().await.instance_store.instance_dir(&instance.id);
+        let (inst_dir, state_dir, pid_file) = {
+            let s = sup.read().await;
+            (s.instance_store.instance_dir(&instance.id), s.instance_store.state_dir(&instance.id), s.instance_store.managed_pid_file(&instance.id))
+        };
+        // 새로 띄우는 서버의 기록은 데몬 전용 폴더에만 둔다
+        if let Err(e) = forget_legacy_run(&sup.read().await.instance_store, &instance.id) {
+            tracing::warn!("Could not stop following the old runner record of '{}': {}", instance.name, e);
+        }
         // saba-runner가 서버를 쥐면 데몬이 재시작해도 콘솔·stdin·종료 코드가 이어진다 (C8b)
         let managed = match managed_process::runner_binary() {
             Some(runner) => {
@@ -2110,7 +2163,7 @@ impl Supervisor {
                     .map(|n| n.max(1) as usize)
                     .unwrap_or(managed_process::DEFAULT_LOG_SESSIONS);
                 let spawned = ManagedProcess::spawn_with_runner(
-                    &runner, program, &args, working_dir, env_vars, log_pattern, &inst_dir, keep,
+                    &runner, program, &args, working_dir, env_vars, log_pattern, &inst_dir, &state_dir, keep,
                     managed_process::RunnerLaunch {
                         log_files: &module.metadata.log_files,
                         console: module.metadata.console,
@@ -2161,7 +2214,6 @@ impl Supervisor {
         }
 
         // Persist PID to disk for orphan reattachment on daemon restart
-        let pid_file = inst_dir.join("managed.pid");
         if let Err(e) = saba_atomic_file::write(&pid_file, pid.to_string().as_bytes(), saba_atomic_file::Mode::Plain) {
             tracing::warn!("Failed to write managed.pid for '{}': {}", instance.name, e);
         }
@@ -3168,7 +3220,7 @@ impl Supervisor {
         let dead = self.managed_store.cleanup_dead().await;
         for (dead_id, proc) in &dead {
             self.judge_exit(dead_id, proc, true).await;
-            let pid_file = self.instance_store.instance_dir(dead_id).join("managed.pid");
+            let pid_file = self.instance_store.managed_pid_file(dead_id);
             let _ = std::fs::remove_file(&pid_file);
             // 죽은 managed process에 대해 stop cooldown 등록 → auto_detect 재탐색 억제
             // 이전 세션에서 실행되어 reattach된 프로세스가 종료된 경우,
@@ -3191,7 +3243,7 @@ impl Supervisor {
                     // 러너가 아직 서버를 돌리고 있으면(런처가 끝나고 진짜 서버가 남은 경우) 러너가 보는 PID로 옮긴다
                     // 로그만 따라 읽는 익스텐션 follower는 서버 수명을 말해 주지 않는다: 러너일 때만
                     if matches!(self.managed_store.get(&instance.id).await, Some(p) if p.is_running() && p.runner_pid.is_some()) {
-                        let dir = self.instance_store.instance_dir(&instance.id);
+                        let dir = self.instance_store.runner_home(&instance.id);
                         match managed_process::runner_server_pid(&dir)
                             .filter(|p| *p != pid && process_monitor::is_running_in(process_snapshot, *p))
                         {
@@ -3440,6 +3492,16 @@ pub(crate) fn is_daemon_entry(name: &str) -> bool {
     // 원자적 저장의 임시 파일 `.<항목>.<pid>-<n>.tmp`
     let temp = name.len() > 5 && name.starts_with('.') && name.is_char_boundary(name.len() - 4) && same(&name[name.len() - 4..], ".tmp");
     temp || crate::instance::DAEMON_ENTRIES.iter().any(|e| same(e, name))
+}
+
+/// 업데이트 전에 띄운 러너를 더 따라가지 않는다: 표시(`LEGACY_RUN`)를 지우고 인스턴스 폴더에 남은 그 러너의 기록을 치운다
+fn forget_legacy_run(store: &crate::instance::InstanceStore, id: &str) -> std::io::Result<()> {
+    match std::fs::remove_file(store.state_dir(id).join(crate::instance::LEGACY_RUN)) {
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e),
+        _ => {}
+    }
+    managed_process::clear_run_dir(&managed_process::run_dir(&store.instance_dir(id)));
+    Ok(())
 }
 
 /// 시작·정지를 시킨 쪽: `source`(gui·cli·discord·chatbot·web·remote·schedule·restart·daemon·game·external)와 사람·PC 이름.
@@ -4575,9 +4637,8 @@ mod tests {
             let mut inst = crate::instance::ServerInstance::new(id, "minecraft");
             inst.id = id.into();
             supervisor.instance_store.add(inst).unwrap();
-            let inst_dir = supervisor.instance_store.instance_dir(id);
-            std::fs::create_dir_all(&inst_dir).unwrap();
-            let pid_file = inst_dir.join("managed.pid");
+            let pid_file = supervisor.instance_store.managed_pid_file(id);
+            std::fs::create_dir_all(pid_file.parent().unwrap()).unwrap();
             std::fs::write(&pid_file, std::process::id().to_string()).unwrap();
             if before_start {
                 // 이 프로세스가 뜨기 한 시간 전에 기록한 PID
@@ -4588,8 +4649,54 @@ mod tests {
         }
         supervisor.reattach_orphaned_managed().await;
         assert!(supervisor.tracker.get_pid("reused").is_err(), "a process that started after the record is someone else");
-        assert!(!supervisor.instance_store.instance_dir("reused").join("managed.pid").exists());
+        assert!(!supervisor.instance_store.managed_pid_file("reused").exists());
         assert_eq!(supervisor.tracker.get_pid("same").unwrap(), std::process::id());
+    }
+
+    /// 인스턴스 폴더에 새로 생긴 PID 기록은 믿지 않는다 (그 폴더는 서버·모듈도 쓴다)
+    #[tokio::test]
+    async fn a_pid_record_in_the_instance_folder_is_not_reattached() {
+        let tmp = tempfile::tempdir().unwrap();
+        let instances_dir = tmp.path().join("instances");
+        let mut supervisor = Supervisor::new_with_instances_dir("./modules", instances_dir.to_str().unwrap());
+        let mut inst = crate::instance::ServerInstance::new("srv", "minecraft");
+        inst.id = "srv".into();
+        supervisor.instance_store.add(inst).unwrap();
+        supervisor.reattach_orphaned_managed().await;
+
+        let inst_dir = supervisor.instance_store.instance_dir("srv");
+        std::fs::write(inst_dir.join("managed.pid"), std::process::id().to_string()).unwrap();
+        supervisor.reattach_orphaned_managed().await;
+        assert!(supervisor.tracker.get_pid("srv").is_err());
+    }
+
+    /// 업데이트 전 배치의 PID 기록은 처음 시작 때 한 번만 옮겨 받는다 (그때 돌던 서버에 다시 붙는다)
+    #[tokio::test]
+    async fn a_server_record_from_before_the_update_is_adopted_once() {
+        let tmp = tempfile::tempdir().unwrap();
+        let instances_dir = tmp.path().join("instances");
+        let mut supervisor = Supervisor::new_with_instances_dir("./modules", instances_dir.to_str().unwrap());
+        let mut inst = crate::instance::ServerInstance::new("srv", "minecraft");
+        inst.id = "srv".into();
+        supervisor.instance_store.add(inst).unwrap();
+        let inst_dir = supervisor.instance_store.instance_dir("srv");
+        std::fs::write(inst_dir.join("managed.pid"), std::process::id().to_string()).unwrap();
+        // 끝난 러너의 기록: 따라가지 않는다
+        std::fs::create_dir_all(inst_dir.join("run")).unwrap();
+        std::fs::write(inst_dir.join("run").join("runner.json"), "{}").unwrap();
+
+        supervisor.reattach_orphaned_managed().await;
+        assert_eq!(supervisor.tracker.get_pid("srv").unwrap(), std::process::id());
+        assert!(supervisor.instance_store.managed_pid_file("srv").exists());
+        assert!(!inst_dir.join("managed.pid").exists());
+        assert_eq!(supervisor.instance_store.runner_home("srv"), supervisor.instance_store.state_dir("srv"));
+        assert!(!inst_dir.join("run").exists(), "the old runner record is cleared once it is not followed");
+
+        supervisor.tracker.untrack("srv").unwrap();
+        std::fs::remove_file(supervisor.instance_store.managed_pid_file("srv")).unwrap();
+        std::fs::write(inst_dir.join("managed.pid"), std::process::id().to_string()).unwrap();
+        supervisor.reattach_orphaned_managed().await;
+        assert!(supervisor.tracker.get_pid("srv").is_err());
     }
 
     /// REST 전용 모듈의 서버는 러너가 stdin을 쥐어도(의사 콘솔) 콘솔 입력을 받지 않는다:
