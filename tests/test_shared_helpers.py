@@ -286,6 +286,59 @@ class ExtractTests(unittest.TestCase):
         if os.name != "nt":
             self.assertTrue(os.access(self.dest / "bin" / "java", os.X_OK))
 
+    @unittest.skipIf(os.name == "nt", "symlinks need POSIX")
+    def test_links_that_stay_inside_are_kept(self):
+        # Adoptium JRE tar에는 lib/... -> ../... 같은 상대 링크와 하드 링크가 있다
+        path = self.root / "a.tar.gz"
+        with tarfile.open(path, "w:gz") as tf:
+            info = tarfile.TarInfo("jre/lib/libjsig.so")
+            info.size = 3
+            tf.addfile(info, io.BytesIO(b"lib"))
+            link = tarfile.TarInfo("jre/lib/server/libjsig.so")
+            link.type, link.linkname = tarfile.SYMTYPE, "../libjsig.so"
+            tf.addfile(link)
+            hard = tarfile.TarInfo("jre/lib/copy.so")
+            hard.type, hard.linkname = tarfile.LNKTYPE, "jre/lib/libjsig.so"
+            tf.addfile(hard)
+            out = tarfile.TarInfo("jre/lib/out")
+            out.type, out.linkname = tarfile.SYMTYPE, "../../../outside"
+            tf.addfile(out)
+        daemon_rcon.safe_extract(path, self.dest, strip_top=True)
+        self.assertEqual(os.readlink(self.dest / "lib" / "server" / "libjsig.so"), "../libjsig.so")
+        self.assertEqual((self.dest / "lib" / "server" / "libjsig.so").read_bytes(), b"lib")
+        self.assertEqual((self.dest / "lib" / "copy.so").read_bytes(), b"lib")
+        self.assertFalse(os.path.lexists(self.dest / "lib" / "out"))
+
+    @unittest.skipIf(os.name == "nt", "symlinks need POSIX")
+    def test_a_zip_symlink_is_not_written_as_a_file(self):
+        path = self.root / "a.zip"
+        with zipfile.ZipFile(path, "w") as zf:
+            zf.writestr("a/real", "x")
+            link = zipfile.ZipInfo("a/link")
+            link.external_attr = (0o120777 << 16)
+            zf.writestr(link, "real")
+            out = zipfile.ZipInfo("a/out")
+            out.external_attr = (0o120777 << 16)
+            zf.writestr(out, "/etc/passwd")
+        daemon_rcon.safe_extract(path, self.dest)
+        self.assertTrue(os.path.islink(self.dest / "a" / "link"))
+        self.assertEqual((self.dest / "a" / "link").read_text(), "x")
+        self.assertFalse(os.path.lexists(self.dest / "a" / "out"))
+
+    @unittest.skipIf(os.name == "nt", "symlinks need POSIX")
+    def test_chained_links_cannot_reach_outside(self):
+        path = self.root / "a.tar"
+        with tarfile.open(path, "w") as tf:
+            here = tarfile.TarInfo("here")
+            here.type, here.linkname = tarfile.SYMTYPE, "."
+            tf.addfile(here)
+            up = tarfile.TarInfo("sub/up")
+            up.type, up.linkname = tarfile.SYMTYPE, "../here/.."
+            tf.addfile(up)
+        daemon_rcon.safe_extract(path, self.dest)
+        self.assertTrue(os.path.islink(self.dest / "here"))
+        self.assertFalse(os.path.lexists(self.dest / "sub" / "up"))
+
     def test_a_bad_crc_is_refused_before_writing(self):
         archive = self._zip({"a/x": "X" * 64})
         data = bytearray(archive.read_bytes())
@@ -308,9 +361,16 @@ class DownloadTests(unittest.TestCase):
             self.assertEqual(digests["sha256"], sha256)
             self.assertEqual(seen[-1], (3000, 3000))
             with self.assertRaises(daemon_rcon.ChecksumMismatch):
-                daemon_rcon.download(src.as_uri(), dest, checksums={"sha1": "00"})
-            self.assertFalse(dest.exists())
+                daemon_rcon.download(src.as_uri(), Path(d) / "other.bin", checksums={"sha1": "00"})
+            self.assertEqual(sorted(p.name for p in Path(d).iterdir()), ["dest.bin", "src.bin"])
 
+    def test_a_failed_download_keeps_the_existing_file(self):
+        with tempfile.TemporaryDirectory() as d:
+            dest = Path(d) / "server.jar"
+            dest.write_bytes(b"working")
+            with self.assertRaises(OSError):
+                daemon_rcon.download((Path(d) / "missing").as_uri(), dest)
+            self.assertEqual(dest.read_bytes(), b"working")
 
     def test_a_connection_that_ends_early_is_a_failure(self):
         class Short(io.BytesIO):

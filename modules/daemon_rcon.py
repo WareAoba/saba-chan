@@ -911,15 +911,17 @@ class ChecksumMismatch(ValueError):
 def download(url, dest, *, on_progress=None, timeout=60, checksums=None, user_agent="saba-chan"):
     """url을 dest에 받는다. on_progress(받은 바이트, 전체 바이트 또는 0)를 덩어리마다 부른다.
     checksums={"sha256": "...", "sha1": "...", "md5": "..."}가 있으면 받은 뒤 비교하고 다르면
-    ChecksumMismatch(파일은 지운다). Content-Length보다 적게 받고 끝나면 IOError. 반환: {알고리즘: hex} (sha1·sha256은 늘 계산한다).
+    ChecksumMismatch. Content-Length보다 적게 받고 끝나면 IOError. dest 옆 `.part`에 받고 성공해야 dest로 바꾸므로
+    실패하면 dest에 있던 파일은 그대로다. 반환: {알고리즘: hex} (sha1·sha256은 늘 계산한다).
     urlopen의 timeout은 읽기 한 번의 한도라서, 느리게 이어지는 받기도 전체로 timeout*10 안에 끊는다"""
     import hashlib
     wanted = {k.lower(): v.lower() for k, v in (checksums or {}).items() if v}
     hashes = {name: hashlib.new(name) for name in {"sha1", "sha256", *wanted}}
     deadline = time.monotonic() + timeout * 10
     req = urllib.request.Request(url, headers={"User-Agent": user_agent})
+    part = os.fspath(dest) + ".part"
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp, open(dest, "wb") as out:
+        with urllib.request.urlopen(req, timeout=timeout) as resp, open(part, "wb") as out:
             total = int(resp.headers.get("Content-Length") or 0)
             done = 0
             while True:
@@ -941,20 +943,40 @@ def download(url, dest, *, on_progress=None, timeout=60, checksums=None, user_ag
         for name, expected in wanted.items():
             if digests[name] != expected:
                 raise ChecksumMismatch(name.upper(), expected, digests[name])
+        os.replace(part, dest)
     except BaseException:
         try:
-            os.remove(dest)
+            os.remove(part)
         except OSError:
             pass
         raise
     return digests
 
 
+def _link_inside(dest, link_rel, target):
+    """압축 속 심볼릭 링크 target이 dest 안을 가리키면 True. 절대 경로·드라이브는 거부한다."""
+    if not target or target.startswith(("/", "\\")) or ":" in target:
+        return False
+    parts = [p for p in link_rel.split("/")[:-1] if p]
+    for p in target.replace("\\", "/").split("/"):
+        if p in ("", "."):
+            continue
+        if p == "..":
+            if not parts:
+                return False
+            parts.pop()
+        else:
+            parts.append(p)
+    return True
+
+
 def safe_extract(archive, dest, *, prefix=None, strip_top=False, keep_existing=()):
     """zip·tar(.gz) 압축을 dest에 푼다. 모든 항목을 먼저 검사하고 나서 쓴다: dest 밖으로 나가는 항목이
-    하나라도 있으면 아무것도 풀지 않고 PathOutside. 링크·장치 같은 특수 항목은 풀지 않는다.
+    하나라도 있으면 아무것도 풀지 않고 PathOutside. 장치 같은 특수 항목은 풀지 않는다. 심볼릭 링크는 상대 경로로
+    dest 안을 가리킬 때만 POSIX에서 만들고(밖을 가리키면 건너뛴다), tar 하드 링크는 푼 대상 파일을 복사한다.
     prefix: 그 폴더 안의 항목만 풀고 그 앞부분을 뗀다. strip_top: 맨 위 폴더 하나를 뗀다(그 폴더가 하나뿐일 때).
     keep_existing: 이미 있으면 덮지 않을 상대 경로('/' 구분). zip은 CRC를 먼저 검사한다. 반환: 쓴 파일 경로 목록"""
+    import stat
     import tarfile
     import zipfile
     archive = os.fspath(archive)
@@ -964,14 +986,28 @@ def safe_extract(archive, dest, *, prefix=None, strip_top=False, keep_existing=(
         if bad is not None:
             handle.close()
             raise zipfile.BadZipFile(f"bad CRC: {bad}")
-        entries = [(i.filename, i) for i in handle.infolist() if not i.is_dir()]
+        entries = []
+        for i in handle.infolist():
+            if i.is_dir():
+                continue
+            if stat.S_ISLNK(i.external_attr >> 16):
+                entries.append((i.filename, "symlink", handle.read(i).decode("utf-8", "replace"), i))
+            else:
+                entries.append((i.filename, "file", None, i))
         opener = handle.open
     else:
         handle = tarfile.open(archive, "r:*")
-        entries = [(m.name, m) for m in handle.getmembers() if m.isfile()]
+        entries = []
+        for m in handle.getmembers():
+            if m.isfile():
+                entries.append((m.name, "file", None, m))
+            elif m.issym():
+                entries.append((m.name, "symlink", m.linkname, m))
+            elif m.islnk():
+                entries.append((m.name, "hardlink", m.linkname.replace("\\", "/"), m))
         opener = handle.extractfile
     try:
-        names = [name.replace("\\", "/") for name, _ in entries]
+        names = [e[0].replace("\\", "/") for e in entries]
         cut = ""
         if prefix:
             cut = prefix.strip("/") + "/"
@@ -980,24 +1016,63 @@ def safe_extract(archive, dest, *, prefix=None, strip_top=False, keep_existing=(
             if len(tops) == 1 and all("/" in n for n in names):
                 cut = tops.pop() + "/"
         planned = []
-        for name, (_, info) in zip(names, entries):
+        for name, (_, kind, link, info) in zip(names, entries):
             if cut and not name.startswith(cut):
                 continue
             rel = name[len(cut):]
             if not rel:
                 continue
-            planned.append((rel, safe_join(dest, *[p for p in rel.split("/") if p]), info))
+            if kind == "hardlink":
+                if not link.startswith(cut) or not link[len(cut):]:
+                    continue
+                link = link[len(cut):]
+                safe_join(dest, *[p for p in link.split("/") if p])
+            planned.append((rel, kind, link, safe_join(dest, *[p for p in rel.split("/") if p]), info))
         written = []
-        for rel, target, info in planned:
-            if rel in keep_existing and target.exists():
+        files = {}
+        links = []
+        for rel, kind, link, target, info in planned:
+            if rel in keep_existing and os.path.lexists(target):
+                continue
+            if kind == "symlink":
+                if os.name != "nt" and _link_inside(dest, rel, link):
+                    links.append((link, target))
                 continue
             target.parent.mkdir(parents=True, exist_ok=True)
-            with opener(info) as src, open(target, "wb") as out:
-                shutil.copyfileobj(src, out)
-            mode = getattr(info, "mode", None) if not isinstance(info, zipfile.ZipInfo) else (info.external_attr >> 16)
-            if os.name != "nt" and mode and mode & 0o111:
-                os.chmod(target, 0o755)
+            if os.path.islink(target):
+                os.remove(target)
+            if kind == "hardlink":
+                source = files.get(link)
+                if source is None:
+                    continue
+                shutil.copyfile(source, target)
+                shutil.copymode(source, target)
+            else:
+                with opener(info) as src, open(target, "wb") as out:
+                    shutil.copyfileobj(src, out)
+                mode = getattr(info, "mode", None) if not isinstance(info, zipfile.ZipInfo) else (info.external_attr >> 16)
+                if os.name != "nt" and mode and mode & 0o111:
+                    os.chmod(target, 0o755)
+                files[rel] = target
             written.append(str(target))
+        # 링크는 파일을 다 쓴 뒤에 만든다(파일 쓰기가 압축 속 링크를 타지 않게). 링크끼리 이어져
+        # 밖으로 나가는 경우(`a -> .`, `b -> a/..`)는 글자만으로 못 막으므로 다 만든 뒤 실제 경로로 다시 본다
+        root = os.path.realpath(dest)
+        made = []
+        for link, target in links:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            if os.path.lexists(target):
+                if os.path.isdir(target) and not os.path.islink(target):
+                    continue
+                os.remove(target)
+            os.symlink(link, target)
+            made.append(target)
+        for target in made:
+            real = os.path.realpath(target)
+            if real != root and not real.startswith(root + os.sep):
+                os.remove(target)
+            else:
+                written.append(str(target))
         return written
     finally:
         handle.close()
