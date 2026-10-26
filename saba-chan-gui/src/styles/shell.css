@@ -530,6 +530,9 @@
     gap: var(--sp-4);
     min-height: 100%;
 }
+.server-detail.fill-pane {
+    height: 100%;
+}
 .detail-head {
     display: flex;
     align-items: center;

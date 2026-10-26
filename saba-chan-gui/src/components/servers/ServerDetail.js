@@ -171,7 +171,11 @@ export function ServerDetail({
     })();
 
     return (
-        <section className="server-detail" aria-label={server.name}>
+        <section
+            // 기록 탭은 목록만 스크롤하고 머리는 제자리에 둔다: 상세 칸 높이에 맞춘다
+            className={activeTab === 'audit' ? 'server-detail fill-pane' : 'server-detail'}
+            aria-label={server.name}
+        >
             <header className="detail-head">
                 {onBack && (
                     <button

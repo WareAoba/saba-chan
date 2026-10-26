@@ -7,6 +7,10 @@ import { safeShowToast } from '../utils/helpers';
 import { createDaemonClient, queryString } from './daemon';
 import { hasRemotePathPicker, pickRemotePath } from './remotePathPicker';
 
+// 저장 파일 이름의 날짜는 이 PC 시간대로 (toISOString은 UTC라 한국 오전 9시 전에는 어제가 된다)
+const localDate = (d = new Date()) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
 /** 서버 시작 요청을 기다리는 시간 (CLI `post_long`과 같다) */
 const START_TIMEOUT_MS = 30 * 60_000;
 
@@ -985,7 +989,7 @@ export function createApi({ invoke, hub }) {
         auditExport: async (opts = {}) => {
             const { instance, since, until } = opts;
             const filePath = await pickLocal('dialog_save_file', {
-                defaultPath: `saba-chan-activity-${new Date().toISOString().slice(0, 10)}.csv`,
+                defaultPath: `saba-chan-activity-${localDate()}.csv`,
                 filters: [{ name: 'CSV', extensions: ['csv'] }],
             });
             if (!filePath) return { canceled: true };
@@ -1030,7 +1034,7 @@ export function createApi({ invoke, hub }) {
         // 내보내기/가져오기: 파일은 데몬이 읽고 쓴다. 여기서는 경로만 고른다
         dataExport: async (opts = {}) => {
             const filePath = await pickLocal('dialog_save_file', {
-                defaultPath: `saba-chan-export-${new Date().toISOString().slice(0, 10)}.zip`,
+                defaultPath: `saba-chan-export-${localDate()}.zip`,
                 filters: [{ name: 'Zip', extensions: ['zip'] }],
             });
             if (!filePath) return { canceled: true };
