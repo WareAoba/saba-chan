@@ -90,7 +90,12 @@ fn is_secret(f: &crate::supervisor::module_loader::SettingField) -> bool {
 
 /// 모듈 설정 중 원격에서 바꾸지 않는 칸: 비밀값과 경로(실행 파일·런타임·폴더를 고르는 칸)
 fn is_pc_only(f: &crate::supervisor::module_loader::SettingField) -> bool {
-    is_secret(f) || matches!(f.field_type.as_str(), "file" | "path") || f.format.as_deref() == Some("path")
+    pc_only_type(&f.field_type, f.format.as_deref())
+}
+
+/// 원격에서 바꾸지 않는 칸 종류: 비밀번호, 파일·경로, 경로 형식 글 (모듈 설정과 익스텐션이 묻는 칸이 같은 규칙)
+pub(crate) fn pc_only_type(field_type: &str, format: Option<&str>) -> bool {
+    matches!(field_type, "password" | "file" | "path") || format == Some("path")
 }
 
 fn module_fields(
