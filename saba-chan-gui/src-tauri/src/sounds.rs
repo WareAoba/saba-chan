@@ -101,7 +101,7 @@ pub fn play(app: &AppHandle, cue: Cue) {
         return tracing::info!("[Sound] {:?} — turned off in settings", cue);
     }
     tracing::info!("[Sound] {:?}", cue);
-    play_bytes(cue);
+    play_bytes(app, cue);
 }
 
 /// 업데이트를 찾았다: 작업 표시줄 단추를 깜박이고(Windows, 창을 앞으로 가져올 때까지) Dock 아이콘을 튀긴다(macOS).
@@ -122,7 +122,7 @@ pub fn request_attention(app: &AppHandle) {
 }
 
 #[cfg(windows)]
-fn play_bytes(cue: Cue) {
+fn play_bytes(_app: &AppHandle, cue: Cue) {
     use windows_sys::Win32::Media::Audio::{PlaySoundW, SND_ASYNC, SND_MEMORY, SND_NODEFAULT};
     // SND_MEMORY + SND_ASYNC는 다 울릴 때까지 버퍼가 살아 있어야 한다: 실행 파일에 실은 'static 바이트다.
     // 새 소리는 울리던 소리를 끊는다
@@ -138,11 +138,15 @@ fn play_bytes(cue: Cue) {
     }
 }
 
-/// macOS는 afplay, 리눅스는 paplay(없으면 aplay)로 임시 폴더에 풀어 둔 파일을 튼다
+/// macOS는 afplay, 리눅스는 paplay(없으면 aplay)로 앱 캐시 폴더에 풀어 둔 파일을 튼다.
+/// 여러 사용자가 함께 쓰는 임시 폴더는 쓰지 않는다 (남이 미리 만든 링크를 따라 덮어쓸 수 있다)
 #[cfg(not(windows))]
-fn play_bytes(cue: Cue) {
+fn play_bytes(app: &AppHandle, cue: Cue) {
+    let dir = match app.path().app_cache_dir() {
+        Ok(d) => d.join("sounds"),
+        Err(e) => return tracing::warn!("[Sound] No cache folder: {}", e),
+    };
     std::thread::spawn(move || {
-        let dir = std::env::temp_dir().join("saba-chan-sounds");
         let path = dir.join(cue.file_name());
         let fresh = std::fs::metadata(&path).is_ok_and(|m| m.len() == cue.bytes().len() as u64);
         if !fresh {
