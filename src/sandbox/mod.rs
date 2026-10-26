@@ -493,14 +493,24 @@ pub struct Isolation {
     pub data: Option<PathBuf>,
     /// 이 실행이 import한 익스텐션들이 쓸 폴더의 뿌리 (`extension_data_root`, 환경 변수 `SABA_EXTENSION_DATA_ROOT`)
     pub extension_root: PathBuf,
-    /// 인스턴스 폴더에 쓰기를 줄 때 아직 없던 데몬 항목 자리. 실행이 끝나면 `clear_daemon_entries`가 치운다
+    /// 인스턴스 폴더에 쓰기를 줄 때 아직 없던 데몬 항목 자리. 실행이 끝나면 `clear_daemon_entries_on_drop`이 치운다
     pub absent_daemon_entries: Vec<PathBuf>,
 }
 
 impl Isolation {
-    /// 격리 실행이 끝난 뒤: 인스턴스 폴더에 쓰기를 받은 실행이 데몬 항목 자리에 만든 것을 치운다
-    pub fn clear_daemon_entries(&self) {
-        remove_created(&self.absent_daemon_entries);
+    /// 격리 실행이 끝나면(놓을 때): 인스턴스 폴더에 쓰기를 받은 실행이 데몬 항목 자리에 만든 것을 치운다.
+    /// 실행을 기다리던 쪽이 버려져도(요청이 끊겨도) 치우도록 놓을 때 한다
+    pub fn clear_daemon_entries_on_drop(&self) -> ClearDaemonEntries<'_> {
+        ClearDaemonEntries(self)
+    }
+}
+
+/// 놓을 때 데몬 항목 자리를 치우는 표 (`Isolation::clear_daemon_entries_on_drop`)
+pub struct ClearDaemonEntries<'a>(&'a Isolation);
+
+impl Drop for ClearDaemonEntries<'_> {
+    fn drop(&mut self) {
+        remove_created(&self.0.absent_daemon_entries);
     }
 }
 
@@ -1751,6 +1761,26 @@ mod tests {
         std::fs::create_dir_all(&elsewhere).unwrap();
         std::os::unix::fs::symlink(&elsewhere, instance.join(crate::instance::migration::DIR)).unwrap();
         assert!(!protect_daemon_entries(&instance, true));
+    }
+
+    /// 실행이 어떻게 끝나든(요청이 끊겨 실행을 기다리던 쪽이 버려져도) 데몬 항목 자리를 치운다
+    #[tokio::test]
+    async fn daemon_entries_are_cleared_even_when_the_run_is_dropped() {
+        let tmp = tempfile::tempdir().unwrap();
+        let iso = Isolation {
+            key: "module-x".into(), dir: tmp.path().to_path_buf(),
+            profile: String::new(), grants: appcontainer::Grants::default(),
+            pycache: PathBuf::new(), temp: PathBuf::new(), data: None, extension_root: PathBuf::new(),
+            absent_daemon_entries: absent_daemon_entries(tmp.path()),
+        };
+        let planted = tmp.path().join("rcon.json");
+        let run = async {
+            let _clear = iso.clear_daemon_entries_on_drop();
+            std::fs::write(&planted, b"x").unwrap();
+            std::future::pending::<()>().await
+        };
+        assert!(tokio::time::timeout(std::time::Duration::from_millis(20), run).await.is_err());
+        assert!(std::fs::symlink_metadata(&planted).is_err());
     }
 
     /// 인스턴스 폴더에 쓰기를 받은 실행이 데몬 항목 자리에 새로 만든 것은 끝난 뒤 치운다.

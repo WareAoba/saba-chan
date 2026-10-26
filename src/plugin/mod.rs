@@ -1102,6 +1102,8 @@ async fn spawn_plugin(
     if deadline.remaining().is_zero() {
         return Err(call_error(module_path, function, "module_timeout", "prepare", "Process preparation exceeded the deadline", Vec::new()));
     }
+    // 실행이 어떻게 끝나든(이 호출을 기다리던 요청이 끊겨 버려져도) 데몬 항목 자리를 치운다
+    let clear_entries = isolation.as_ref().map(crate::sandbox::Isolation::clear_daemon_entries_on_drop);
     let mut child = match &isolation {
         None => plain(&mut cmd).map_err(|error| call_error(module_path, function, "module_execution_failed", "run", error, Vec::new()))?,
         Some(iso) => match deadline.paused(crate::sandbox::spawn_isolated(cmd.as_std(), iso)).await {
@@ -1132,9 +1134,7 @@ async fn spawn_plugin(
         },
     };
     let status = drive(&mut child, config_json.as_bytes(), on_progress, loopback, Some(host_proxy), deadline.remaining()).await;
-    if let Some(iso) = &isolation {
-        iso.clear_daemon_entries();
-    }
+    drop(clear_entries);
 
     match status {
         Ok(Ok((exit_status, stdout_str, stderr_str))) => {
