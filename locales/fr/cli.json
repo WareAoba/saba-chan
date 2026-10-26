@@ -208,7 +208,9 @@
       "full": "Tout avec la GUI",
       "current": "Démarrer à la connexion : {{mode}}",
       "set": "Démarrer à la connexion est maintenant : {{mode}}.",
-      "unsupported": "Le démarrage à la connexion ne peut pas encore être réglé sur ce système."
+      "unsupported": "Le démarrage à la connexion ne peut pas encore être réglé sur ce système.",
+      "service": "Le démon tourne comme service utilisateur systemd (saba-chan.service) et redémarre s'il plante.",
+      "linger_hint": "Pour le lancer au démarrage sans ouvrir de session, exécutez une fois : sudo loginctl enable-linger $USER"
     },
     "browse": {
       "roots": "Lecteurs",

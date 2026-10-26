@@ -208,7 +208,9 @@
       "full": "GUI까지 전체",
       "current": "로그인할 때 자동 실행: {{mode}}",
       "set": "로그인할 때 자동 실행을 {{mode}}(으)로 바꿨어요.",
-      "unsupported": "이 OS에서는 아직 로그인할 때 자동 실행을 설정할 수 없어요."
+      "unsupported": "이 OS에서는 아직 로그인할 때 자동 실행을 설정할 수 없어요.",
+      "service": "데몬을 systemd 사용자 서비스(saba-chan.service)로 돌려요. 꺼지면 다시 띄워요.",
+      "linger_hint": "로그인하지 않아도 부팅할 때 켜려면 한 번 실행해 주세요: sudo loginctl enable-linger $USER"
     },
     "browse": {
       "roots": "드라이브",

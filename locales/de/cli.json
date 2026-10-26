@@ -208,7 +208,9 @@
       "full": "Alles mit GUI",
       "current": "Beim Anmelden starten: {{mode}}",
       "set": "Beim Anmelden starten ist jetzt: {{mode}}.",
-      "unsupported": "Der Start beim Anmelden kann auf diesem Betriebssystem noch nicht eingestellt werden."
+      "unsupported": "Der Start beim Anmelden kann auf diesem Betriebssystem noch nicht eingestellt werden.",
+      "service": "Der Daemon läuft als systemd-Benutzerdienst (saba-chan.service) und wird nach einem Absturz neu gestartet.",
+      "linger_hint": "Damit er beim Booten ohne Anmeldung startet, einmal ausführen: sudo loginctl enable-linger $USER"
     },
     "browse": {
       "roots": "Laufwerke",

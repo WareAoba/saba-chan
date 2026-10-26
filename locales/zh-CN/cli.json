@@ -208,7 +208,9 @@
       "full": "包括 GUI 全部",
       "current": "登录时自动启动：{{mode}}",
       "set": "登录时自动启动已改为{{mode}}。",
-      "unsupported": "此操作系统暂不支持设置登录时自动启动。"
+      "unsupported": "此操作系统暂不支持设置登录时自动启动。",
+      "service": "守护进程作为 systemd 用户服务（saba-chan.service）运行，崩溃后会重新启动。",
+      "linger_hint": "若要不登录也在开机时启动，请运行一次：sudo loginctl enable-linger $USER"
     },
     "browse": {
       "roots": "驱动器",

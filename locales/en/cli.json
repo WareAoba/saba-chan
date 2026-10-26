@@ -208,7 +208,9 @@
       "full": "Everything with the GUI",
       "current": "Start at sign-in: {{mode}}",
       "set": "Start at sign-in is now {{mode}}.",
-      "unsupported": "Start at sign-in cannot be set on this OS yet."
+      "unsupported": "Start at sign-in cannot be set on this OS yet.",
+      "service": "The daemon runs as a systemd user service (saba-chan.service) and is restarted if it crashes.",
+      "linger_hint": "To start it at boot without signing in, run once: sudo loginctl enable-linger $USER"
     },
     "browse": {
       "roots": "Drives",
