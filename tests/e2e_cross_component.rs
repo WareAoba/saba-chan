@@ -665,6 +665,18 @@ fn e2e_python_sdk_contract() {
     assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
 }
 
+/// 모듈 공용 도우미 (정지 절차, `키=값` 설정 파일, 설정 키 표, 로그 진단, 내려받기·압축 풀기, 공용 문구)
+#[test]
+fn e2e_python_shared_helpers() {
+    let python = find_python().expect("Python 3 is required for the shared helpers");
+    let output = std::process::Command::new(python)
+        .arg(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/test_shared_helpers.py"))
+        .env("PYTHONDONTWRITEBYTECODE", "1")
+        .output()
+        .expect("run shared helper tests");
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+}
+
 #[tokio::test]
 async fn e2e_python_lifecycle_direct_call() {
     let python = match find_python() {

@@ -210,7 +210,7 @@ if (Test-Path $localeSrc) {
 }
 
 # 공유 모듈 유틸리티 (i18n.py, daemon_rcon.py) — 인스톨러가 APPDATA/modules/로 설치
-$sharedModules = @("i18n.py", "daemon_rcon.py")
+$sharedModules = @("i18n.py", "daemon_rcon.py", "common_locales.json")
 $modulesSrc = Join-Path $ProjectRoot "modules"
 foreach ($mod in $sharedModules) {
     $src = Join-Path $modulesSrc $mod

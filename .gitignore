@@ -52,6 +52,7 @@ Thumbs.db
 modules/
 !modules/i18n.py
 !modules/daemon_rcon.py
+!modules/common_locales.json
 *.log
 
 # User data (개인 설정)

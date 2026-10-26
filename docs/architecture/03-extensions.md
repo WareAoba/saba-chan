@@ -303,6 +303,7 @@ ue4-ini는 hook을 선언하지 않는다. steamcmd의 condition은 `instance.ex
 
 - `SteamCMD` 클래스(`steamcmd.py:151-622`): 포터블 SteamCMD 탐색/설치, `install(...)`, `update`, buildid·브랜치 비교로 `check_update`. 압축 해제는 경로 탈출을 막는다(`:799-827`).
 - daemon hook으로 실제로 쓰이는 것은 `server.check_update` 하나뿐이다. 설치는 module의 `lifecycle.py install_server`가 `from extensions.steamcmd import SteamCMD`로 직접 수행한다(`M:palworld/lifecycle.py:1175`, `M:zomboid/lifecycle.py:1457`).
+- `install_for_module(module_dir, install_dir, beta=None)`(steamcmd 다음 판): 모듈 module.toml `[install]`(`method = "steamcmd"`, `app_id`, `anonymous`, `beta`)을 읽어 SteamCMD를 준비하고 설치·업데이트한다. 앱 ID를 모듈 코드에 다시 적지 않는다. `[install]`에 steamcmd 앱 ID가 없으면 `ValueError`. 반환은 `SteamCMD.install`과 같다.
 - instance_fields `install_method_steamcmd`, `steamcmd_app_id` 등은 daemon이 module의 `[install] method`를 보고 **범용 규칙**(`install_method_<방식>`, `<방식>_<이름>`)으로 채운다(`src/instance/mod.rs:142-166` `apply_install_extension_data`). core에 steamcmd 이름은 없다.
 
 ### 5.3 music
@@ -318,8 +319,8 @@ ue4-ini는 hook을 선언하지 않는다. steamcmd의 condition은 `instance.ex
 
 1. `module.toml [install] requires_extensions = [...]`. 모듈을 설치하면(데몬 `POST /api/modules/manifest/:id/install`, 설치기) 요구하는 익스텐션을 받고 켠다(02-modules §5.2). 앱 업데이트로 모듈이 바뀌어도 새로 필요해진 것 중 없는 것을 받고 켠다(02-modules §5.3). 인스턴스 생성 시 `instance.required_extensions`에 복사된다(`handlers/instance.rs:233-240`). 생성 시점에 검증하고(`:242-272`), 시작 시점에 다시 검증한다(`supervisor/mod.rs:572-630`, `installed_and_enabled_set`). module 기능 엔드포인트에서도 검사한다(`handlers/managed.rs:527-562`). `[module.dependencies]`의 `ext-<id>` 버전 요구도 시작 시 검사한다(`supervisor/mod.rs:519-539`).
 2. `module.toml [extensions.<id>]` 섹션은 `metadata.extensions["<id>"]`로 그대로 파싱된다(`supervisor/module_loader.rs:618-622`). settings_changed context의 `module_extensions`로 전달된다.
-3. Python 레벨: `from extensions.<pkg> import …`. PYTHONPATH 주입과 import 가드에 의존하고, module은 `SABA_ENABLED_EXTENSIONS`로 자체 검사도 한다(`M:palworld/lifecycle.py:1165`, `M:zomboid/lifecycle.py:1447`).
-4. ~~`__example__lifecycle.py`의 `from extensions.steamcmd import install_game`은 존재하지 않는 함수다.~~ → 해결: 예제는 `from extensions.steamcmd import SteamCMD`를 쓴다(`M:__example/__example__lifecycle.py:405`).
+3. Python 레벨: `from extensions.<pkg> import …`. PYTHONPATH 주입과 import 가드에 의존한다. 모듈은 `SABA_ENABLED_EXTENSIONS`를 따로 읽지 않고, import가 실패하면(없음·꺼짐, 가드의 `ModuleNotFoundError`) `error_code: "extension_required"`, `missing_extensions`로 답한다(palworld·zomboid `install_server`).
+4. ~~`__example__lifecycle.py`의 `from extensions.steamcmd import install_game`은 존재하지 않는 함수다.~~ → 해결: 예제는 `from extensions.steamcmd import install_for_module`을 쓴다(§5.2, `M:__example/__example__lifecycle.py` `install_server`).
 
 ---
 

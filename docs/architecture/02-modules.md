@@ -138,6 +138,7 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 | `max_length` | u32 | 스키마 2, `multiline`만. 글자 수 상한 |
 | `restart_required` | bool | 스키마 2, `false`. 켜져 있을 때 바꾸면 다시 켜야 적용된다. PATCH 응답 `restart_required`에 실린다(01) |
 | `visible_when` | `{field, equals}` 또는 `{field, in=[...]}` | 스키마 2. 다른 설정 값에 따라 보일지. `field`는 같은 모듈의 설정이고 자기 자신·순환·`list`·`multiline`·`password`·`file` 설정이면 로드 오류, 값은 그 설정 타입에 맞아야 한다. 비교는 타입으로 바꾼 값끼리(`number`는 "25565"와 25565가 같다), 값이 없으면 `default`로. 숨긴 설정은 값을 지우지 않고 `required`를 보지 않는다. `GET /api/instance/:id`의 `hidden`(CLI)과 GUI의 같은 계산이 쓴다(`validator::hidden_fields`) |
+| `file_key` | String | — 이 설정이 게임 설정 파일에서 쓰는 키(예: `max-players`, `MaxPlayers`). 데몬은 읽지 않고 공용 도우미 `settings_to_file`·`settings_from_file`(§2.5)이 설정 이름과 파일 키를 이 한 곳에서 잇는다. 비었거나 `=`·줄바꿈이 들었거나 다른 설정과 겹치면 로드 오류(saba-core 0.1.11, 0.1.10 데몬은 모르는 키로 경고만 한다) |
 
 - `fields`가 비어 있으면 `settings = None`이 된다.
 - 옮기기(06 §8.1): 문자열로 저장된 값의 설정이 모듈 업데이트로 `list`가 되면, 데몬이 인스턴스를 읽을 때(시작, 모듈 다시 읽기) 쉼표로 나누고 앞뒤 공백·빈 항목을 버려 배열로 바꾼다(`validator::migrate_list_values`, `Supervisor::migrate_list_settings`). 파일에는 다음 저장 때 쓴다.
@@ -272,6 +273,16 @@ spawn_process = true
 ```toml
 [status]
 players = "player_count"
+```
+
+#### `[[diagnose]]` (`DiagnoseRule`, saba-core 0.1.11)
+콘솔 줄에서 알려진 문제를 찾는 규칙. 키: `code`(모듈 안에서 겹치지 않음), `severity`(`critical`·`error`·`warning`·`info`, 없으면 `error`), `patterns`(Python 정규식 목록, 대소문자 무시, 비면 안 됨). 어기면 로드 오류다. 데몬은 검사만 하고, 모듈 `diagnose_log()`가 공용 도우미 `load_diagnose_rules`·`diagnose_lines`(§2.5)로 데몬이 준 `log_lines`에 맞춘다. 규칙마다 처음 맞는 줄 하나가 `{code, severity, matched_line, message, solution}`이 되고, 문구는 모듈 locales의 `errors.detect.<소문자 code>`·`errors.solutions.<소문자 code>`다(모듈이 다른 키 모양을 넘길 수 있다).
+
+```toml
+[[diagnose]]
+code = "PORT_IN_USE"
+severity = "critical"
+patterns = ["FAILED TO BIND TO PORT", "Address already in use"]
 ```
 ---
 
@@ -445,6 +456,13 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
   - `SABA_TOKEN_PATH` 파일의 토큰을 `X-Saba-Token` 헤더로 보낸다 (`:49-61`). palworld(`execute_rest_via_daemon` `M:palworld/lifecycle.py:1414-`)는 `daemon_post`를, minecraft·zomboid·__example은 공용 `daemon_stdin_command`(`/stdin`에 `{"command"}`, `D:modules/daemon_rcon.py:87-89`)와 PID 헬퍼 `is_process_alive`·`wait_for_exit`·`force_kill`을 쓴다 (`M:zomboid/lifecycle.py:36`).
   - `atomic_write(path, data)`(saba-core 0.1.10부터)는 같은 폴더의 고유 임시 파일(`.<이름>.*.tmp`)에 쓰고 fsync한 뒤 바꾼다. 원래 파일이 있으면 그 권한을 잇는다(Windows `ReplaceFileW`로 DACL, POSIX는 권한 비트). 격리된 모듈처럼 DACL을 옮길 권한이 없어 `ReplaceFileW`가 거부되면, 같은 폴더에 만든 임시 파일과 원래 파일의 소유자·DACL·무결성 표시와 EFS 암호화 여부가 똑같을 때만 `os.replace`로 바꾼다(둘 다 폴더 권한만 물려받은 경우. 무결성 표시 SACL의 자동 상속 제어 플래그 `AI`·`AR`은 비교하지 않는다: 데몬이 기존 하위 파일에 맞춘 상속 표시에는 없고 OS가 새 파일에 붙인 표시에는 있다, `_same_access`). 다르면 거부한다. 모듈이 게임 설정 파일을 쓸 때 쓴다.
   - payload의 `rcon_port`와 `rcon_password`는 데몬 `/rcon` 핸들러가 무시한다. RCON 접속에는 데몬이 만든 `rcon.json` 값만 쓴다(RCON 정책).
+- 공용 문구 `common_locales.json`(saba-core 0.1.11부터): `i18n.t`가 모듈 locales(지금 언어 → `en`)에 없는 키를 이 파일의 지금 언어 → `en`에서 찾는다. 정지·설치처럼 어느 게임에나 같은 문구(`messages.force_killed`, `errors.graceful_stop_unavailable`, `errors.install_failed` 등 16개, 10개 언어)를 모듈마다 두지 않는다. 모듈에 같은 키가 있으면 모듈 것이 앞선다.
+- 0.1.11 공용 도우미 (모듈마다 따로 구현하던 것, `SINCE` `0.1.11-0`):
+  - 설정 키 표: `setting_file_keys(module_dir)`, `settings_to_file(module_dir, settings, true=, false=)`(줄바꿈이 든 값은 `ValueError`: 다른 키를 만들어 낸다), `settings_from_file(module_dir, values, true=, false=, case_insensitive=)`(module.toml 타입대로, 모르는 참·거짓 표기는 뺀다), `format_setting`. 이름 ↔ 파일 키는 `[[settings.fields]] file_key` 한 곳이다.
+  - `키=값` 설정 파일: `read_key_values(path, encodings=, case_insensitive=, first_wins=, strip_values=)`, `update_key_values(path, updates, encodings=, case_insensitive=, delete_empty=, write_encoding=)`. 바뀐 키만 고치고 주석·순서·줄바꿈 표기·인코딩(BOM 포함)을 지키며, 같은 키의 둘째 줄부터 지우고, 원래 인코딩으로 못 쓰는 값이면 UTF-8로 쓴다(`atomic_write`). 게임이 한 인코딩으로만 읽으면 `write_encoding`으로 그 인코딩(BOM 없이)으로 바꿔 쓴다. 값은 첫 `=` 뒤 그대로다(앞뒤 공백도 값이다). 인코딩 추측 기본 순서는 UTF-8 → cp949 → 시스템 로캘 → latin-1이고, 준 `encodings` 어느 것으로도 못 읽으면 `UnicodeDecodeError`를 내고 쓰지 않는다.
+  - 정지: `graceful_stop(config, request, i18n, module_dir=)`가 모듈 `stop()`의 절차(§3.4: force면 그 PID만 강제 종료 → 아니면 `request()` → 요청할 길이 없으면 `graceful_stop_unavailable` → managed면 바로 반환 → `stop_timeout`만큼 기다린 뒤에만 강제 종료)다. 모듈은 저장 후 종료를 요청하는 방법만 넘긴다: `request_console(config, command)`(데몬 `/stdin`), `request_terminate(pid)`(POSIX SIGTERM), REST 등. `stop_timeout(config, module_dir)`는 인스턴스 값 → module.toml `[config] stop_timeout` → 30초, 상한은 `stop_call_limit - 30`(없으면 90).
+  - 로그 진단: `load_diagnose_rules(module_dir)`, `diagnose_lines(lines, rules, i18n, message=, solution=)`, `tail_lines(path, limit)`(데몬이 `log_lines`를 주지 않는 non-managed용).
+  - 설치: `progress(percent, message)`(stderr `PROGRESS:` 줄), `download(url, dest, on_progress=, timeout=, checksums=)`(sha1·sha256을 늘 계산하고 주어진 값과 다르면 `ChecksumMismatch`, `Content-Length`보다 적게 받고 끝나면 `IOError`. `dest.part`에 받고 성공해야 dest로 바꾸므로 실패해도 dest에 있던 파일은 그대로다), `safe_extract(archive, dest, prefix=, strip_top=, keep_existing=)`(zip·tar. 모든 항목을 먼저 `safe_join`으로 검사해 하나라도 밖으로 나가면 아무것도 풀지 않는다. 장치 항목은 풀지 않는다. 심볼릭 링크는 상대 경로로 dest 안을 가리킬 때만 POSIX에서 파일을 다 쓴 뒤 만들고, 다 만든 뒤 실제 경로가 dest 밖이면 지운다. tar 하드 링크는 푼 대상을 복사한다. zip은 CRC를 먼저 본다).
 - 배포: 데몬 실행 파일에 공용 파일이 들어 있다. 첫 lifecycle 실행 때 데몬 전용 `<data_dir>/python-shared/`에 쓴다. 이 경로만 공용 유틸리티의 import 경로로 쓴다. 모듈 폴더는 `PYTHONPATH`에 넣지 않는다. 적합성 키트의 `--shared-libs`에는 `<data_dir>/python-shared/`를 지정한다.
 
 **경로 도우미와 SDK 버전 (0.1.10)**
@@ -463,6 +481,7 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 | `safe_join` | `0.1.10` |
 | `PathOutside` | `0.1.10` |
 | `daemon_rest` | `0.1.10` |
+| `setting_file_keys`, `format_setting`, `settings_to_file`, `settings_from_file`, `read_key_values`, `update_key_values`, `stop_timeout`, `request_console`, `request_terminate`, `graceful_stop`, `load_diagnose_rules`, `diagnose_lines`, `tail_lines`, `progress`, `download`, `ChecksumMismatch`, `safe_extract` | `0.1.11-0` (0.1.11 미리보기부터 받도록 `-0`) |
 
 이력 근거: 공개 태그 `test23`(`f493b78e`, 코어 `0.1.1`)에 `i18n.I18n`이 있다. 기존 통신·설정·프로세스 함수는 `97db8a0e`(`0.1.2` 릴리스 커밋)에 있다. 루프백 함수는 `1862c5c0`(`0.1.7` 릴리스 커밋)에는 없고 `77333cab`(`0.1.8` 릴리스 커밋)에 있다. 공개 origin에는 `test`~`test23` 태그만 있다. 따라서 `0.1.2`·`0.1.8` 값은 릴리스 커밋에 근거한 보수적 값이며 최초 공개 배포 태그로 확정한 값은 아니다. 이 미확정 부분은 07 §4에 남긴다.
 
@@ -584,12 +603,12 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 | protocols | `supported=["stdin"]`, default stdin, `interaction_mode=console` |
 | 서버 종류 | 설정 `server_type`(`install = true`): vanilla, paper, folia, purpur, pufferfish, spigot, craftbukkit, fabric, quilt, forge, neoforge. 판정·설치 소스·실행 대상은 `M:minecraft/server_types.py`의 표(`SERVER_TYPES`, versions.list 접두사, Main-Class, 폴더 흔적)만 읽는다. 판정은 jar 안의 `META-INF/versions.list`(번들된 서버 jar 이름)와 MANIFEST Main-Class, 그다음 폴더 흔적(`config/paper-global.yml`, `purpur.yml`, `.fabric/`, `libraries/net/neoforged/neoforge/<버전>/` 등)으로 한다. 설치는 vanilla(Mojang), paper·folia(PaperMC Fill v3, 안정 채널, sha256 검사), purpur(Purpur API, md5), fabric(Fabric meta 서버 런처 → `fabric-server-launch.jar`)만 되고 나머지는 가져오기로 추가한다. 1.17+ Forge/NeoForge는 `@libraries/…/<버전>/win_args.txt`(또는 unix)로 띄운다. 고른 종류와 서버 파일이 다르면 `validate`가 `SERVER_TYPE_MISMATCH` 경고를 낸다 |
 | 플러그인·모드 | `M:minecraft/plugins.py`가 `plugins/*.jar`·`mods/*.jar`의 `paper-plugin.yml`·`plugin.yml`·`fabric.mod.json`·`quilt.mod.json`·`META-INF/(neoforge.)mods.toml`을 읽어 판정한다(파일 이름은 보지 않는다, `.jar.disabled`는 꺼짐). `instance_commands()`가 plugin.yml에 선언된 명령을 자유 입력 한 칸(`{args}`)으로, `M:minecraft/plugin_catalog/<slug>.json`(플러그인 id `match`가 키, 공식 문서·소스 기준)의 명령을 입력 칸까지 준다. 한국어 문구는 `plugin_catalog/locales/ko.json`, 없으면 데이터의 영어. 카탈로그 22종 740개(EssentialsX·Spawn·Chat·Discord, LuckPerms, WorldEdit, WorldGuard, Multiverse Core·Portals·NetherPortals·Inventories, CoreProtect, GriefPrevention, Geyser, Floodgate, ViaVersion, PlaceholderAPI, Vault, spark, Chunky, ChunkyBorder, Citizens). 콘솔에서 못 쓰는 명령은 각 파일 `player_only`에 이름만 적는다 |
-| 설치 | `install.method="download"`. `ServerInstaller`(`:1480-1750`)가 Mojang `version_manifest_v2`(`:1477`)에서 버전 목록을 받아 jar를 내려받는다. Java는 `JavaDetector`와 `JavaDownloader`(Adoptium API `:284`)로 감지하거나 `<working_dir>/java/`에 번들로 받는다 |
+| 설치 | `install.method="download"`. `ServerInstaller`가 Mojang `version_manifest_v2`에서 버전 목록을 받아 jar를 내려받는다. Java는 `JavaDetector`와 `JavaDownloader`(Adoptium API)로 감지하거나 `<working_dir>/java/`에 번들로 받는다. 내려받기·체크섬·압축 풀기는 공용 `download`·`safe_extract`(§2.5)를 쓴다 |
 | 실행 | `get_launch_command`가 `java -Xmx/-Xms{ram}`, 선택적 Aikar flags, `jvm_args`, 실행 대상(`server_types.launch_target`: `-jar <서버 jar> nogui` 또는 Forge/NeoForge 인자 파일)을 만든다. 시작 전에 `enable-rcon=false`를 강제한다(모든 모드) |
-| 설정 | `ServerPropertiesManager`가 `server.properties`를 읽고 쓴다. 모듈 폴더에 동봉된 `server.properties`를 기본값으로 쓴다 (`_load_default_properties` `:507`). settings 66개(saba-chan 5 / advanced 40 / basic 21) |
+| 설정 | `ServerPropertiesManager`가 공용 `read_key_values`·`update_key_values`(§2.5)로 `server.properties`를 읽고 쓴다(UTF-8로 쓴다). saba 키와 파일 키는 settings 필드의 `file_key`, 변환은 `settings_to_file`·`settings_from_file`이 한다. 모듈 폴더에 동봉된 `server.properties`를 기본값으로 쓴다 (`_load_default_properties`) |
 | 명령 | `[commands] hook = true`(설치된 플러그인·모드 명령은 위 행). module.toml에는 17개, 전부 `method="console"`(콘솔 stdin): say, give, save-all, list, weather, difficulty, gamemode, time, tp, kick, ban, pardon, op, deop, whitelist, seed, stop |
-| 정지 | managed는 데몬이 stdin으로 `stop`을 보낸다. 모듈 `stop()`은 force가 아니면 콘솔 `stop`(`instance_id` 필요) → SIGTERM(POSIX) 순서로 요청하고, non-managed면 `stop_timeout`만큼 기다린 뒤에만 `force_kill`한다. 콘솔 없이 다시 붙은 managed 서버(`managed:true`)면 요청만 보내고 바로 돌려준다(기다림과 강제 종료는 데몬). 둘 다 보낼 수 없으면(콘솔 없는 Windows) 끝내지 않고 `graceful_stop_unavailable`로 답한다(§3.4). ~~RCON `stop` 시도 후 실패하면 바로 강제 종료~~ → 해결. `command()`도 `daemon_stdin_command`로 콘솔에 보낸다 (`:1425-`) |
-| 기타 | `EulaManager`(accept_agreements), `ErrorDetector`(diagnose_log), `MinecraftPing`(SLP 기반 status), `get_installed_version`(jar 내부 `version.json` 파싱), syntax_highlight 규칙 40개(Vanilla·Forge `[시각] [스레드/레벨]`과 Paper 콘솔 `[시각 레벨]`을 모두 받는다). 색은 모두 GUI 팔레트 토큰이다(`saba-chan-gui/src/utils/syntaxHighlight.js:24-41`). ~~팔레트에 없는 `notice`·`critical`을 써서 색이 안 나왔다~~ → 해결: `info`·`error`로 바꿨다 (zomboid의 `duration`도 `number`로) |
+| 정지 | managed는 데몬이 stdin으로 `stop`을 보낸다. 모듈 `stop()`은 공용 `graceful_stop`(§2.5)에 요청 함수만 넘긴다. force가 아니면 콘솔 `stop`(`instance_id` 필요) → SIGTERM(POSIX) 순서로 요청하고, non-managed면 `stop_timeout`만큼 기다린 뒤에만 `force_kill`한다. 콘솔 없이 다시 붙은 managed 서버(`managed:true`)면 요청만 보내고 바로 돌려준다(기다림과 강제 종료는 데몬). 둘 다 보낼 수 없으면(콘솔 없는 Windows) 끝내지 않고 `graceful_stop_unavailable`로 답한다(§3.4). ~~RCON `stop` 시도 후 실패하면 바로 강제 종료~~ → 해결. `command()`도 `daemon_stdin_command`로 콘솔에 보낸다 (`:1425-`) |
+| 기타 | `EulaManager`(accept_agreements), diagnose_log(module.toml `[[diagnose]]` 규칙 + 공용 `diagnose_lines`), `MinecraftPing`(SLP 기반 status), `get_installed_version`(jar 내부 `version.json` 파싱), syntax_highlight 규칙 40개(Vanilla·Forge `[시각] [스레드/레벨]`과 Paper 콘솔 `[시각 레벨]`을 모두 받는다). 색은 모두 GUI 팔레트 토큰이다(`saba-chan-gui/src/utils/syntaxHighlight.js:24-41`). ~~팔레트에 없는 `notice`·`critical`을 써서 색이 안 나왔다~~ → 해결: `info`·`error`로 바꿨다 (zomboid의 `duration`도 `number`로) |
 | 미등록 | `get_credentials`만 없다(RCON 값만 돌려주던 것이라 지웠다). `import_settings`, `reset_properties`, `reset_server`는 등록됨 |
 | 동봉 파일 | `_sample_log.txt`, `test_lifecycle.py`가 리포에 있고 zip에도 들어간다. 패키저는 `__pycache__`·`tests` 폴더와 `.pyc`만 뺀다 (`D:scripts/versions.py:196-208`) |
 
@@ -598,11 +617,11 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 | 항목 | 내용 |
 |---|---|
 | protocols | `supported=["rest"]`, `interaction_mode=commands`, `credential_map.rest_password="AdminPassword"` |
-| 설치 | `steamcmd`, app_id 2394010, `requires_extensions=["steamcmd","ue4-ini"]`. `extensions.steamcmd.SteamCMD`를 사용한다 |
+| 설치 | `steamcmd`, app_id 2394010, `requires_extensions=["steamcmd","ue4-ini"]`. steamcmd 익스텐션의 `install_for_module`이 `[install]`을 읽어 설치한다. 익스텐션을 불러올 수 없으면 `extension_required`를 돌려준다 |
 | 실행 | `--port=<port>`. 실제 서버 `Pal/Binaries/Win64/PalServer-Win64-Shipping-Cmd.exe`가 있으면 런처 대신 그것을 직접 띄운다(`:322-331`). `[launch] console = "pty"`. 시작 전 `_enforce_rest_policy`로 INI에 RESTAPIEnabled와 AdminPassword를 보장하고, `AdminPassword`를 최상위로 돌려주어 데몬이 rest_password를 동기화하게 한다 (`:216-346`) |
-| 정지 | stdin이 없어 데몬이 모듈 `stop()`을 부른다. REST로 저장·종료를 요청하고 60초 안에 안 끝나면 강제 종료한다 (`:399-426`). REST를 쓸 수 없으면 끝내지 않고 `graceful_stop_unavailable`로 답한다(§3.4) |
-| 설정 | `PalWorldSettings.ini`의 `OptionSettings=(...)`를 **`extensions.ue4_ini`** 익스텐션으로 파싱한다. 동봉된 `DefaultPalWorldSettings.ini`가 기본값이다. settings 117개. 목록 값 키(`_LIST_KEYS`, 지금은 `DenyTechnologyList`)는 화면의 `PALBOX,RepairBench`를 INI에 `("PALBOX","RepairBench")`로 쓰고 읽을 때 쉼표 형태로 되돌린다 (`:884-904, 927-928, 975-977`). `configure()`는 저장마다 `RCONEnabled=False`를 쓴다 (`:933`) |
-| 명령 | 10개, 전부 `method="rest"`(`/v1/api/...`): announce, info, players, metrics, settings, save, shutdown, kick, ban, unban. `resolve_player_id`가 닉네임을 SteamID로 해석한다 (`:112`). `protocol_mode`와 상관없이 늘 REST로 보낸다. ~~`protocol_mode=rcon`이면 데몬 `/rcon`으로 보내는 RCON 명령 경로~~ → 해결: 지워졌다 (`:1224-`) |
+| 정지 | stdin이 없어 데몬이 모듈 `stop()`을 부른다. 공용 `graceful_stop`(§2.5)으로 REST 정지를 요청하고 `stop_timeout` 안에 안 끝나면 강제 종료한다. REST를 쓸 수 없으면 끝내지 않고 `graceful_stop_unavailable`로 답한다(§3.4) |
+| 설정 | `PalWorldSettings.ini`의 `OptionSettings=(...)`를 **`extensions.ue4_ini`** 익스텐션으로 파싱한다. 파일 키는 settings 필드의 `file_key`이다. 로그 진단은 `[[diagnose]]` 규칙이다. 동봉된 `DefaultPalWorldSettings.ini`가 기본값이다. settings 117개. 목록 값 키(`_LIST_KEYS`, 지금은 `DenyTechnologyList`)는 화면의 `PALBOX,RepairBench`를 INI에 `("PALBOX","RepairBench")`로 쓰고 읽을 때 쉼표 형태로 되돌린다 (`:884-904, 927-928, 975-977`). `configure()`는 저장마다 `RCONEnabled=False`를 쓴다 (`:933`) |
+| 명령 | 10개, 전부 `method="rest"`(`/v1/api/...`): announce, info, players, metrics, settings, save, shutdown, kick, ban, unban. 표시 이름은 다른 모듈과 맞춘다(shutdown → 정지, announce → 공지). `resolve_player_id`가 닉네임을 SteamID로 해석한다 (`:112`). `protocol_mode`와 상관없이 늘 REST로 보낸다. ~~`protocol_mode=rcon`이면 데몬 `/rcon`으로 보내는 RCON 명령 경로~~ → 해결: 지워졌다 (`:1224-`) |
 | 의존성 | `extensions.ue4_ini`는 `try`로 불러온다(`:33-36`). 익스텐션이 없으면 모듈은 로드되고, INI를 만지는 함수만 `extension_required`를 돌려준다 (`:742-757, 1494-1502`) |
 | 미등록 | `get_installed_version` |
 | 기타 | `list_versions`는 Steam 단일 버전 |
@@ -612,11 +631,11 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 | 항목 | 내용 |
 |---|---|
 | protocols | `supported=["stdin"]`, console, `stop_command="quit"`. `RCONPassword`를 비워 RCON을 끈다 |
-| 설치 | `steamcmd`, app_id 380870. steamcmd 익스텐션이 켜져 있지 않으면 `extension_required`를 돌려준다(`:1255-1261`). 익스텐션을 쓰고, 없으면 시스템 steamcmd(`_find_steamcmd`)로 대체한다 |
+| 설치 | `steamcmd`, app_id 380870. steamcmd 익스텐션의 `install_for_module`로 설치하고(`use_beta`면 `beta="unstable"`), 익스텐션을 불러올 수 없으면 `extension_required`를 돌려준다 |
 | 실행 | `StartServer64.bat`나 `start-server.sh`를 **파싱**해서(`_parse_bat`, `_parse_sh`, `_parse_java_cmdline` `:607-741`) 번들 Java, classpath, native lib을 찾는다. 그다음 `java ... zombie.network.GameServer -servername <name> -cachedir=...`를 직접 구성한다 |
-| 설정 | `IniManager`가 `Zomboid/Server/<servername>.ini`를 다룬다. `_INI_KEY_MAP`(saba 키 → INI 키). settings 117개. `[backup] hook = true`라 `backup_paths()`가 세이브 위치를 계산한다 |
+| 설정 | `IniManager`가 공용 `read_key_values`·`update_key_values`로 `Zomboid/Server/<servername>.ini`를 다룬다. saba 키 → INI 키는 settings 필드의 `file_key`이다. 로그 진단은 `[[diagnose]]` 규칙으로 `server-console.txt`를 본다. settings 117개. `[backup] hook = true`라 `backup_paths()`가 세이브 위치를 계산한다 |
 | 명령 | 23개, 전부 `console`(콘솔 stdin): servermsg, players, save, kick, banuser, unbanuser, adduser, setaccesslevel, teleport, teleportto, createhorde, godmod, invisible, startrain, stoprain, chopper, gunshot, additem, addxp, showoptions, reloadoptions, changeoption, quit |
-| 정지 | managed는 데몬이 stdin으로 `quit`을 보낸다. 모듈 `stop()`(non-managed, stdin 없는 managed)은 force가 아니면 콘솔 `save`→`quit`(`instance_id` 필요) → SIGTERM(POSIX) 순서로 요청하고, non-managed면 `stop_timeout`만큼 기다린 뒤에만 강제 종료한다. managed(`managed:true`)면 요청만 보내고 바로 돌려준다(기다림과 강제 종료는 데몬). 둘 다 보낼 수 없으면(콘솔 없는 Windows) 끝내지 않고 `graceful_stop_unavailable`로 답한다(§3.4). PID 확인·종료는 공용 헬퍼를 쓰고, `status()`는 PID 생존만 본다 (`:1020-1092`). ~~예전 버그(managed 기본 True, `input` 키, 토큰 없음)~~ → 해결. ~~`tasklist`·`os.kill`로 직접 확인·종료, RCON 폴백(stop·status·command)~~ → 해결: 지워졌다 |
+| 정지 | managed는 데몬이 stdin으로 `quit`을 보낸다. 모듈 `stop()`(non-managed, stdin 없는 managed)은 공용 `graceful_stop`으로 force가 아니면 콘솔 `quit`(`instance_id` 필요) → SIGTERM(POSIX) 순서로 요청하고, non-managed면 `stop_timeout`만큼 기다린 뒤에만 강제 종료한다. managed(`managed:true`)면 요청만 보내고 바로 돌려준다(기다림과 강제 종료는 데몬). 둘 다 보낼 수 없으면(콘솔 없는 Windows) 끝내지 않고 `graceful_stop_unavailable`로 답한다(§3.4). PID 확인·종료는 공용 헬퍼를 쓰고, `status()`는 PID 생존만 본다 (`:1020-1092`). ~~예전 버그(managed 기본 True, `input` 키, 토큰 없음)~~ → 해결. ~~`tasklist`·`os.kill`로 직접 확인·종료, RCON 폴백(stop·status·command)~~ → 해결: 지워졌다 |
 | 미구현 | `list_versions`, `get_version_details`, `get_installed_version`, `reset_properties` |
 
 ### 4.4 __example (`M:__example/`)
