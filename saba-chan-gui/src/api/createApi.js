@@ -1110,6 +1110,23 @@ export function createApi({ invoke, hub }) {
         remoteConnect: (hostId) => daemonJson('post', '/api/remote/daemons', { hostId }, 30000),
         remoteForget: async (hostId) =>
             (await daemonJson('delete', `/api/remote/daemons/${encodeURIComponent(hostId)}`)) || { ok: true },
+        // 합쳐 보기 (G1c): 이 PC와 원격 데몬마다의 서버 {daemons:[{hostId(이 PC는 null), name, ok, error_code?, servers}]}
+        remoteServers: () => daemonJson('get', '/api/remote/servers', undefined, 20000),
+        // 합쳐 보기에서 다른 데몬의 서버 하나를 켜고 끈다. hostId가 없으면 이 PC
+        remoteInstanceAction: async (hostId, id, action) => {
+            if (!['start', 'stop', 'restart'].includes(action)) return { success: false, error: `unknown action ${action}` };
+            const body = action === 'start' ? {} : { force: false };
+            try {
+                return (
+                    await request('post', `/api/instance/${encodeURIComponent(id)}/${action}`, body, {
+                        timeout: action === 'start' ? START_TIMEOUT_MS : STOP_TIMEOUT_MS,
+                        target: hostId || 'local',
+                    })
+                ).data;
+            } catch (error) {
+                return error.response ? errorBody(error) : connectionError(error);
+            }
+        },
         // 다룰 데몬 (G1): 셸이 데몬 요청마다 X-Saba-Target을 싣고 설정 gui.daemonTarget에 저장한다
         daemonTarget: () => invoke('daemon_target_get'),
         daemonTargetSet: (target) => invoke('daemon_target_set', { target: target || null }),

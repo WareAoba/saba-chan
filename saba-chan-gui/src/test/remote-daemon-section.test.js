@@ -1,6 +1,8 @@
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { RemoteDaemonSection } from '../components/Modals/RemoteDaemonSection';
+import { useSettingsStore } from '../stores/useSettingsStore';
+import { pickOption } from './dropdown';
 
 const settings = { enabled: false, port: 57480, address: '', transport: 'direct', status: { listening: false, published: false } };
 
@@ -21,6 +23,20 @@ describe('설정 > 고급: 원격 데몬 (/api/remote/*)', () => {
             remoteConnect: vi.fn(),
             remoteForget: vi.fn().mockResolvedValue({ ok: true }),
         };
+    });
+
+    it('원격 데몬을 연결했으면 서버 목록 보기(고른 데몬만 / 합쳐 보기)를 고른다', async () => {
+        useSettingsStore.setState({ daemonView: 'switch' });
+        await act(async () => render(<RemoteDaemonSection />));
+        expect(screen.queryByRole('combobox', { name: 'Server list' })).toBeNull();
+        cleanup();
+        window.api.remoteDaemons.mockResolvedValue({ daemons: [{ hostId: 'host-b', name: '게임 PC', address: 'g', port: 57480 }] });
+        await act(async () => render(<RemoteDaemonSection />));
+        const view = screen.getByRole('combobox', { name: 'Server list' });
+        expect(view).toHaveTextContent('Chosen daemon only');
+        pickOption(view, 'All daemons combined');
+        await act(async () => {});
+        expect(useSettingsStore.getState().daemonView).toBe('unified');
     });
 
     it('이 PC를 열면 켬·포트·주소를 함께 저장하고 데몬이 준 상태를 보인다', async () => {

@@ -11,6 +11,7 @@
 //!   POST   /api/remote/daemons {hostId}              짝을 맺고 저장한다 → {hostId, name}
 //!   DELETE /api/remote/daemons/:hostId               잊는다
 //!   ANY    /api/remote/daemons/:hostId/proxy/*path   원격 데몬의 `/path`(`api/…`·`health`)에 그대로 보낸다
+//!   GET    /api/remote/servers                       {daemons:[{hostId, name, ok, error_code?, servers}]} 이 PC(hostId null)와 원격 데몬마다의 서버 (G1c 합쳐 보기)
 
 use axum::{
     body::Body,
@@ -151,6 +152,45 @@ pub async fn forget_daemon(Path(host_id): Path<String>) -> Response {
 }
 
 
+/// 원격 데몬 하나의 서버 목록을 기다리는 시간. 하나가 늦어도 합쳐 보기 전체가 멈추지 않게
+const REMOTE_LIST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(8);
+
+pub async fn list_all_servers(State(state): State<IPCServer>) -> Json<Value> {
+    Json(all_servers_with(&ConfigFile::default_location(), &state, REMOTE_LIST_TIMEOUT).await)
+}
+
+async fn body_json(res: Response) -> Value {
+    let bytes = axum::body::to_bytes(res.into_body(), 16 * 1024 * 1024).await.unwrap_or_default();
+    serde_json::from_slice(&bytes).unwrap_or(Value::Null)
+}
+
+/// 이 PC와 저장한 원격 데몬마다의 서버 목록. 원격 데몬은 동시에 묻고, 포트 충돌 알림은 비우지 않는다(`notices=keep`)
+async fn all_servers_with(file: &ConfigFile, state: &IPCServer, timeout: std::time::Duration) -> Value {
+    let local = body_json(crate::ipc::handlers::server::list_servers_internal(state).await).await;
+    let mut daemons = vec![json!({ "hostId": null, "name": "", "ok": true, "servers": local["servers"].as_array().cloned().unwrap_or_default() })];
+    let relay = relay_target(state).await;
+    let asks = config::daemons_in(file).into_iter().map(|d| {
+        let relay = relay.clone();
+        async move {
+            let req = Request::get("/api/servers").body(Body::empty()).unwrap_or_default();
+            let res = tokio::time::timeout(timeout, peer::forward(file, relay, &d.host_id, "/api/servers?notices=keep", req, state.shutdown_token.clone())).await;
+            let (ok, body) = match res {
+                Ok(res) => (res.status().is_success(), body_json(res).await),
+                Err(_) => (false, json!({ "error_code": "remote_timeout" })),
+            };
+            let mut entry = json!({ "hostId": d.host_id, "name": d.name, "ok": ok, "servers": [] });
+            if ok {
+                entry["servers"] = Value::Array(body["servers"].as_array().cloned().unwrap_or_default());
+            } else {
+                entry["error_code"] = body.get("error_code").cloned().unwrap_or_else(|| json!("remote_unreachable"));
+            }
+            entry
+        }
+    });
+    daemons.extend(futures_util::future::join_all(asks).await);
+    json!({ "daemons": daemons })
+}
+
 pub async fn proxy(State(state): State<IPCServer>, Path((host_id, _)): Path<(String, String)>, req: Request<Body>) -> Response {
     // 풀지 않은 경로 그대로 넘긴다 (원격 데몬이 다시 푼다)
     // `/api/remote/daemons/<hostId>/proxy/<rest>`
@@ -167,6 +207,9 @@ pub async fn proxy(State(state): State<IPCServer>, Path((host_id, _)): Path<(Str
 
 #[cfg(test)]
 mod tests {
+    use saba_chan_updater_lib::config_file::ConfigFile;
+    use serde_json::{json, Value};
+
     #[test]
     fn only_daemon_api_paths_are_forwarded() {
         assert_eq!(crate::remote_daemon::peer::forward_path("api/instances", Some("a=1")).as_deref(), Some("/api/instances?a=1"));
@@ -174,5 +217,47 @@ mod tests {
         for bad in ["remote/pair", "api/../remote/pair", "", "apix"] {
             assert_eq!(crate::remote_daemon::peer::forward_path(bad, None), None, "{bad}");
         }
+    }
+
+    /// 합쳐 보기 (G1c): 이 PC 서버와 저장한 원격 데몬마다의 서버. 닿지 않는 데몬은 ok:false와 오류 코드로 남는다
+    #[tokio::test]
+    async fn every_daemons_servers_come_in_one_list_and_an_unreachable_one_says_why() {
+        use crate::remote_daemon::config;
+        let tmp = tempfile::tempdir().unwrap();
+        let file = ConfigFile::at(tmp.path());
+        let supervisor = std::sync::Arc::new(tokio::sync::RwLock::new(crate::supervisor::Supervisor::new_with_instances_dir(
+            tmp.path().join("modules").to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        )));
+        let state = crate::ipc::IPCServer::new(supervisor, "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+
+        let all = super::all_servers_with(&file, &state, std::time::Duration::from_secs(5)).await;
+        assert_eq!(all["daemons"].as_array().unwrap().len(), 1, "{all}");
+        assert_eq!(all["daemons"][0]["hostId"], Value::Null);
+        assert_eq!(all["daemons"][0]["ok"], true);
+        assert!(all["daemons"][0]["servers"].is_array());
+
+        // 아무도 받지 않는 포트
+        let port = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
+        config::save_daemon_in(
+            &file,
+            config::Daemon {
+                host_id: "host-b".into(),
+                name: "게임 PC".into(),
+                address: "127.0.0.1".into(),
+                port,
+                cert_sha256: "ab".repeat(32),
+                token: "sbr_x".into(),
+                paired_at: String::new(),
+            },
+        )
+        .unwrap();
+        let all = super::all_servers_with(&file, &state, std::time::Duration::from_secs(5)).await;
+        let remote = &all["daemons"][1];
+        assert_eq!(remote["hostId"], "host-b");
+        assert_eq!(remote["name"], "게임 PC");
+        assert_eq!(remote["ok"], false);
+        assert_eq!(remote["error_code"], "remote_unreachable");
+        assert_eq!(remote["servers"], json!([]));
     }
 }

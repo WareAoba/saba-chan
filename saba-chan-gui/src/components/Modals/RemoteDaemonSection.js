@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSettingsStore } from '../../stores/useSettingsStore';
+import CustomDropdown from '../CustomDropdown/CustomDropdown';
 import { Icon } from '../Icon';
 import { SabaSpinner, SabaToggle } from '../ui/SabaUI';
 import { REMOTE_DAEMONS_CHANGED, reloadWindow } from '../shell/DaemonSwitcher';
@@ -51,6 +53,8 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow }) {
     const [daemons, setDaemons] = useState([]);
     const [busy, setBusy] = useState(null); // 진행 중인 동작 이름
     const [error, setError] = useState(null);
+    const daemonView = useSettingsStore((st) => st.daemonView);
+    const updateSettings = useSettingsStore((st) => st.update);
 
     const loadSettings = useCallback(async () => {
         const res = await window.api.remoteSettings();
@@ -275,6 +279,26 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow }) {
                     </li>
                 ))}
             </ul>
+
+            {daemons.length > 0 && (
+                <div className="setting-item">
+                    <span className="setting-label">
+                        <span className="setting-title">
+                            <Icon name="server" size="sm" /> {t('remote_daemon.view')}
+                        </span>
+                        <span className="setting-description">{t('remote_daemon.view_description')}</span>
+                    </span>
+                    <CustomDropdown
+                        ariaLabel={t('remote_daemon.view')}
+                        value={daemonView === 'unified' ? 'unified' : 'switch'}
+                        onChange={(value) => updateSettings({ daemonView: value })}
+                        options={[
+                            { value: 'switch', label: t('remote_daemon.view_switch') },
+                            { value: 'unified', label: t('remote_daemon.view_unified') },
+                        ]}
+                    />
+                </div>
+            )}
 
             {error && (
                 <div className="setting-validation-error" role="alert">

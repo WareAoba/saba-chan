@@ -327,6 +327,40 @@
     gap: var(--sp-1-5);
 }
 
+/* 합쳐 보기 (G1c): 목록 아래 다른 데몬의 서버. 목록과 따로 스크롤한다 */
+.other-daemons {
+    flex: none;
+    max-height: 45%;
+    overflow-y: auto;
+    border-top: 1px solid var(--line);
+    padding: var(--sp-2) var(--sp-3) var(--sp-4);
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-3);
+}
+.other-daemon {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1);
+}
+.other-daemon-head {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    color: var(--text-muted);
+}
+.other-daemon-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 600;
+}
+.other-daemon-row {
+    cursor: default;
+}
+
 .server-row {
     position: relative;
     display: flex;

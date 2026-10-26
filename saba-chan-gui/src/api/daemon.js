@@ -20,10 +20,12 @@ function moduleErrorBody(body) {
  * 연결 실패면 err.code(ECONNREFUSED·ETIMEDOUT·…)가 있는 오류를 던진다.
  */
 export function createDaemonClient(invoke) {
-    async function request(method, path, body, { timeout = 5000, responseType } = {}) {
+    // target: 이 요청만 그 데몬에 보낸다 (원격 데몬 hostId, 이 PC는 'local'). 없으면 상단 바에서 고른 데몬
+    async function request(method, path, body, { timeout = 5000, responseType, target } = {}) {
         const args = { method: method.toUpperCase(), path, timeoutMs: timeout };
         if (body !== undefined) args.body = body;
         if (responseType) args.responseType = responseType;
+        if (target) args.target = target;
         let res;
         try {
             res = await invoke('daemon_request', args);

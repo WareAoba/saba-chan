@@ -1628,10 +1628,18 @@
     "err_remote_bad_path": "Dieser Pfad kann nicht an einen Remote-Daemon gesendet werden",
     "err_remote_unauthorized": "Der Remote-Daemon akzeptiert diesen PC nicht mehr. Verbinde ihn erneut",
     "err_remote_local_only": "Das geht nur direkt auf diesem PC",
-    "local_only_sections": "Ordnerorte und Datenexport/-import wählen Pfade auf diesem PC und sind daher ausgeblendet, solange du einen Remote-Daemon verwaltest."
+    "local_only_sections": "Ordnerorte und Datenexport/-import wählen Pfade auf diesem PC und sind daher ausgeblendet, solange du einen Remote-Daemon verwaltest.",
+    "view": "Serverliste",
+    "view_description": "Die kombinierte Ansicht zeigt unter den Servern des gewählten Daemons die Server der anderen Daemons (auch dieses PCs), nach Daemon gruppiert, und du kannst sie dort starten und stoppen",
+    "view_switch": "Nur gewählter Daemon",
+    "view_unified": "Alle Daemons kombiniert"
   },
   "daemon_switcher": {
     "label": "Daemon",
     "local": "Dieser PC"
+  },
+  "other_daemons": {
+    "open": "Diesen Daemon öffnen",
+    "empty": "Keine Server"
   }
 }

@@ -280,6 +280,11 @@ impl DaemonClient {
 
     /// 토큰·출처 헤더를 붙인 요청. 시간 제한은 부르는 쪽이 정한다 (SSE는 없음)
     pub fn builder(&self, method: reqwest::Method, path: &str) -> reqwest::RequestBuilder {
+        self.builder_for(method, path, None)
+    }
+
+    /// `target`이 있으면 이 요청만 그 데몬(`local`이면 이 PC)에 보낸다 (합쳐 보기, G1c). 없으면 고른 데몬
+    pub fn builder_for(&self, method: reqwest::Method, path: &str, target: Option<&str>) -> reqwest::RequestBuilder {
         let mut req = self
             .http
             .request(method, format!("{}{}", self.base(), path))
@@ -290,7 +295,8 @@ impl DaemonClient {
             req = req.header("X-Saba-Token", token);
         }
         // 고른 원격 데몬은 이 PC의 데몬이 중계한다 (01 §1.4.2 7). 데몬이 살아 있는지는 늘 이 PC에 묻는다
-        if let Some(target) = self.target().filter(|_| !path.starts_with("/health")) {
+        let target = target.map(str::to_string).or_else(|| self.target());
+        if let Some(target) = target.filter(|_| !path.starts_with("/health")) {
             req = req.header("X-Saba-Target", encode_target(&target));
         }
         req
@@ -314,8 +320,9 @@ impl DaemonClient {
         path: &str,
         body: Option<&Value>,
         timeout: Duration,
+        target: Option<&str>,
     ) -> Result<Resp, NetError> {
-        let mut req = self.builder(method.clone(), path).timeout(timeout);
+        let mut req = self.builder_for(method.clone(), path, target).timeout(timeout);
         if let Some(b) = body {
             req = req.json(b);
         }
@@ -334,7 +341,19 @@ impl DaemonClient {
         body: Option<&Value>,
         timeout: Duration,
     ) -> Result<Resp, NetError> {
-        let res = self.send_once(&method, path, body, timeout).await?;
+        self.send_to(method, path, body, timeout, None).await
+    }
+
+    /// `send`와 같고, `target`이 있으면 이 요청만 그 데몬에 보낸다 (`builder_for`)
+    pub async fn send_to(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        body: Option<&Value>,
+        timeout: Duration,
+        target: Option<&str>,
+    ) -> Result<Resp, NetError> {
+        let res = self.send_once(&method, path, body, timeout, target).await?;
         if res.status != 401 || path.contains("/api/relay/") {
             return Ok(res);
         }
@@ -346,7 +365,7 @@ impl DaemonClient {
             return Ok(res);
         }
         tracing::info!("[Auth] Token reloaded after 401, retrying {}", path);
-        self.send_once(&method, path, body, timeout).await
+        self.send_once(&method, path, body, timeout, target).await
     }
 
     /// axios처럼 2xx만 성공으로 본다
@@ -655,6 +674,22 @@ mod tests {
         client.set_target(Some("  ".into()));
         assert_eq!(client.target(), None);
         assert_eq!(target("/api/servers"), None);
+    }
+
+    /// 합쳐 보기(G1c)는 요청 하나만 다른 데몬에 보낸다: 고른 데몬은 그대로 두고 그 요청에만 그 대상을 싣는다
+    #[test]
+    fn one_request_can_name_its_own_daemon() {
+        let dir = tempfile::tempdir().unwrap();
+        let client = DaemonClient::new("http://127.0.0.1:57474".into(), dir.path().join(".ipc_token"));
+        client.set_target(Some("host-b".into()));
+        let target = |over: Option<&str>| {
+            let req = client.builder_for(reqwest::Method::GET, "/api/instance/x/start", over).build().unwrap();
+            req.headers().get("X-Saba-Target").map(|v| v.to_str().unwrap().to_string())
+        };
+        assert_eq!(target(None).as_deref(), Some("host-b"));
+        assert_eq!(target(Some("local")).as_deref(), Some("local"));
+        assert_eq!(target(Some("host-c")).as_deref(), Some("host-c"));
+        assert_eq!(client.target().as_deref(), Some("host-b"));
     }
 
     /// 상태 확인 한 번에 /health 하나: 신원 증명이 실린 그 응답을 상태 본문으로도 쓴다 (폴링마다 두 번 묻지 않게)

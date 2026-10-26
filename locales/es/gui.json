@@ -1628,10 +1628,18 @@
     "err_remote_bad_path": "Esa ruta no se puede enviar a un daemon remoto",
     "err_remote_unauthorized": "El daemon remoto ya no acepta este PC. Conéctalo de nuevo",
     "err_remote_local_only": "Esto solo se puede hacer en ese PC",
-    "local_only_sections": "La ubicación de carpetas y la exportación/importación de datos eligen rutas en este PC, así que se ocultan mientras gestionas un daemon remoto."
+    "local_only_sections": "La ubicación de carpetas y la exportación/importación de datos eligen rutas en este PC, así que se ocultan mientras gestionas un daemon remoto.",
+    "view": "Lista de servidores",
+    "view_description": "La vista combinada muestra, bajo los servidores del daemon elegido, los servidores de los demás daemons (incluido este PC) agrupados por daemon, y permite iniciarlos y detenerlos ahí",
+    "view_switch": "Solo el daemon elegido",
+    "view_unified": "Todos los daemons combinados"
   },
   "daemon_switcher": {
     "label": "Daemon",
     "local": "Este PC"
+  },
+  "other_daemons": {
+    "open": "Abrir este daemon",
+    "empty": "No hay servidores"
   }
 }

@@ -751,6 +751,10 @@ impl Api {
     pub async fn connect_remote_daemon(&self, host_id: &str) -> Result<Value> {
         self.post("/api/remote/daemons", json!({ "hostId": host_id })).await
     }
+    /// GET /api/remote/servers — 이 PC와 원격 데몬마다의 서버 (G1c 합쳐 보기)
+    pub async fn remote_servers(&self) -> Result<Value> {
+        self.get("/api/remote/servers").await
+    }
     /// DELETE /api/remote/daemons/:hostId
     pub async fn forget_remote_daemon(&self, host_id: &str) -> Result<Value> {
         self.delete(&format!("/api/remote/daemons/{}", seg(host_id))).await

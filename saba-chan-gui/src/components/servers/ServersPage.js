@@ -10,6 +10,8 @@ import { failedModuleName, failedModuleReason } from '../../utils/failedModules'
 import { Icon } from '../Icon';
 import { SabaArt } from '../ui/SabaArt';
 import { SystemMonitor, systemMonitorAvailable } from '../monitor/SystemMonitor';
+import { useDaemonTarget } from '../shell/DaemonSwitcher';
+import { OtherDaemons } from '../shell/OtherDaemons';
 import { DaemonDownNotice, DaemonDownState, daemonDown } from './DaemonDown';
 import { OnboardingCard } from './OnboardingCard';
 import { ServerDetail } from './ServerDetail';
@@ -45,6 +47,9 @@ export function ServersPage({
     const singleColumn = width < SINGLE_COLUMN_MAX_WIDTH;
     const monitorOpen = useSettingsStore((s) => s.systemMonitorOpen);
     const monitorSide = monitorOpen && width >= MONITOR_SIDE_MIN_WIDTH;
+    // 합쳐 보기 (G1c): 다른 데몬의 서버를 목록 아래에 데몬별로
+    const unified = useSettingsStore((s) => s.daemonView) === 'unified' && typeof window.api?.remoteServers === 'function';
+    const daemonTarget = useDaemonTarget();
     const selectedId = useUIStore((s) => s.activeServerId);
     const setSelectedId = useUIStore((s) => s.setActiveServerId);
     const setContextMenu = useUIStore((s) => s.setContextMenu);
@@ -162,6 +167,7 @@ export function ServersPage({
                             />
                         ))}
                     </div>
+                    {unified && daemonTarget !== undefined && <OtherDaemons currentTarget={daemonTarget} />}
                 </aside>
             )}
             {!detailHidden && selected && (

@@ -948,6 +948,7 @@ impl IPCServer {
             .route("/api/remote/peers", get(handlers::remote_daemon::list_peers))
             .route("/api/remote/daemons", get(handlers::remote_daemon::list_daemons).post(handlers::remote_daemon::connect_daemon))
             .route("/api/remote/daemons/{host_id}", delete(handlers::remote_daemon::forget_daemon))
+            .route("/api/remote/servers", get(handlers::remote_daemon::list_all_servers))
             .route("/api/remote/daemons/{host_id}/proxy/{*rest}", get(handlers::remote_daemon::proxy).post(handlers::remote_daemon::proxy).put(handlers::remote_daemon::proxy).patch(handlers::remote_daemon::proxy).delete(handlers::remote_daemon::proxy))
             .with_state(self.clone())
             .merge(updates::updates_router(self.update_state.clone()))
