@@ -710,7 +710,11 @@ impl IPCServer {
         let extension_manager = Arc::new(RwLock::new(ext_mgr));
 
         // ConfigStore 초기화 (기존 JSON 파일에서 로드)
+        #[cfg(not(test))]
         let data_dir = saba_chan_updater_lib::constants::resolve_data_dir();
+        // 시험은 실제 설정 파일을 건드리지 않는다: 데몬마다 빈 데이터 폴더
+        #[cfg(test)]
+        let data_dir = tempfile::tempdir().expect("test data dir").keep();
         let config_store = Arc::new(crate::config_store::ConfigStore::new(&data_dir));
 
         let stop_requested = tokio_util::sync::CancellationToken::new();
@@ -1103,6 +1107,28 @@ mod tests {
             }
         };
         tokio::time::timeout(std::time::Duration::from_secs(5), attached).await.expect("the host channel must be attached once the lock is free");
+    }
+
+    /// 시험이 만든 데몬은 이 PC의 실제 설정 파일을 읽거나 쓰지 않는다 (PC 관문 2026-10-26: 시험이 data 폴더 config.json에 길드 설정을 남김)
+    #[tokio::test]
+    async fn test_daemons_keep_their_settings_out_of_the_real_data_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let server = || {
+            let sup = crate::supervisor::Supervisor::new_with_instances_dir(tmp.path().join("modules").to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+            IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new())
+        };
+        let guild = "settings-isolation-guild";
+        let (a, b) = (server(), server());
+        a.config_store
+            .update_node_settings(guild, |n| {
+                n.insert("x".into(), json!(1));
+                ((), true)
+            })
+            .await
+            .unwrap();
+        assert!(b.config_store.get_bot_config().await.node_settings.get(guild).is_none(), "another test daemon must not see it");
+        let real = saba_chan_updater_lib::constants::resolve_data_dir().join("config.json");
+        assert!(!std::fs::read_to_string(real).unwrap_or_default().contains(guild), "the real config.json must stay untouched");
     }
 
     #[test]
