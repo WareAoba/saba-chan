@@ -92,7 +92,7 @@ pub async fn client_heartbeat(
 }
 
 /// DELETE /api/client/:id/unregister — 클라이언트 명시적 해제
-/// Query: ?shutdown=true → 마지막 클라이언트 해제 후 데몬도 종료
+/// Query: ?shutdown=true → 완전히 종료: 데몬이 띄운 CLI 창을 닫고, 마지막 클라이언트면 데몬도 종료
 ///        ?shutdown=false → 데몬 유지 (인터페이스만 종료)
 pub async fn client_unregister(
     Path(client_id): Path<String>,
@@ -102,6 +102,9 @@ pub async fn client_unregister(
     let wants_shutdown = params.get("shutdown").map(|v| v == "true").unwrap_or(false);
 
     if state.client_registry.unregister(&client_id).await.is_some() {
+        if wants_shutdown {
+            state.client_registry.close_launched_clis();
+        }
         let count = state.client_registry.count().await;
         tracing::info!("[Heartbeat] Active clients after unregister: {}", count);
 
@@ -291,7 +294,7 @@ pub async fn client_launch(State(state): State<IPCServer>, Json(body): Json<serd
         return (StatusCode::NOT_FOUND, Json(json!({ "success": false, "error": format!("{} was not found next to the daemon", kind.binary()), "error_code": code }))).into_response();
     };
     let spawned = match kind {
-        Interface::Cli => spawn_in_new_console(&binary, &args),
+        Interface::Cli => spawn_in_new_console(&binary, &args).inspect(|&pid| state.client_registry.note_launched_cli(pid)),
         Interface::Gui => {
             let env: Vec<(&str, String)> = gui_ipc_base(&state.listen_addr, configured_gui_port()).map(|b| ("IPC_BASE", b)).into_iter().collect();
             crate::boot_selector::spawn_gui_with(&binary, &args, &env)
@@ -406,5 +409,37 @@ mod console_tests {
         assert_eq!(with["lines"][0]["message"], "[Heartbeat] Active clients: 2");
         let without = read(&[]).await;
         assert!(without["lines"][0].get("spans").is_none(), "{without}");
+    }
+}
+
+#[cfg(test)]
+mod quit_tests {
+    use super::*;
+
+    /// "완전히 종료"(unregister?shutdown=true)는 데몬이 "CLI로 전환"으로 띄운 CLI 창도 닫는다 (PC 확인)
+    #[tokio::test]
+    async fn a_full_quit_closes_the_cli_the_daemon_opened() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            tmp.path().join("modules").to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        sup.initialize().await.unwrap();
+        let sup = std::sync::Arc::new(tokio::sync::RwLock::new(sup));
+        let state = IPCServer::new(sup, "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        #[cfg(windows)]
+        let mut cli = std::process::Command::new("ping").args(["-n", "60", "127.0.0.1"]).spawn().unwrap();
+        #[cfg(not(windows))]
+        let mut cli = std::process::Command::new("sleep").arg("60").spawn().unwrap();
+        state.client_registry.note_launched_cli(cli.id());
+        let id = state.client_registry.register(ClientKind::Gui, None, None).await;
+        let quit = [("shutdown".to_string(), "true".to_string())].into_iter().collect();
+        let res = client_unregister(Path(id), axum::extract::Query(quit), State(state)).await.into_response();
+        assert_eq!(res.status(), StatusCode::OK);
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while cli.try_wait().unwrap().is_none() {
+            assert!(std::time::Instant::now() < deadline, "the CLI the daemon opened is still running");
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
     }
 }

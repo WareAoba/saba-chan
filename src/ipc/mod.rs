@@ -44,12 +44,15 @@ pub struct RegisteredClient {
 #[derive(Debug, Clone)]
 pub struct ClientRegistry {
     inner: Arc<RwLock<HashMap<String, RegisteredClient>>>,
+    /// `clients/launch`로 띄운 CLI (PID, 띄운 시각). 등록하지 않는 CLI도 완전히 종료할 때 닫는다
+    launched_clis: Arc<std::sync::Mutex<Vec<(u32, u64)>>>,
 }
 
 impl Default for ClientRegistry {
     fn default() -> Self {
         Self {
             inner: Arc::new(RwLock::new(HashMap::new())),
+            launched_clis: Arc::default(),
         }
     }
 }
@@ -57,6 +60,29 @@ impl Default for ClientRegistry {
 impl ClientRegistry {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// 데몬이 CLI를 띄웠다 (GUI의 CLI로 전환)
+    pub fn note_launched_cli(&self, pid: u32) {
+        let at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        self.launched_clis.lock().unwrap().push((pid, at));
+    }
+
+    /// 띄운 CLI 가운데 아직 그 프로세스인 것을 닫는다 (같은 PID를 다른 프로세스가 받았으면 건드리지 않는다)
+    pub fn close_launched_clis(&self) {
+        use crate::supervisor::process::{force_kill_pid, is_same_process};
+        let launched = std::mem::take(&mut *self.launched_clis.lock().unwrap());
+        for (pid, at) in launched {
+            if is_same_process(pid, at) {
+                match force_kill_pid(pid) {
+                    Ok(()) => tracing::info!("[Shutdown] Closed the CLI the daemon opened (pid {})", pid),
+                    Err(e) => tracing::warn!("[Shutdown] Could not close the CLI (pid {}): {}", pid, e),
+                }
+            }
+        }
     }
 
     /// 새 클라이언트 등록, client_id 반환
