@@ -115,7 +115,7 @@ fn module_fields(
 }
 
 /// 서버를 만들 때 켜진 익스텐션이 물은 칸(`AddServer.options`, `options`는 그 선언)의 답(`given`)을 원격에서 받는가.
-/// 모든 키가 선언한 칸이고 값이 선언한 종류에 맞아야 한다(boolean은 참거짓, number는 수, select는 선언한 선택지, 그 밖은 글자.
+/// 모든 키가 선언한 칸이고 값이 선언한 종류에 맞아야 한다(boolean은 참거짓, number는 수나 수로 읽히는 글자(GUI·CLI는 글자로 싣는다), select는 선언한 선택지, 그 밖은 글자.
 /// 객체·목록은 받지 않는다). 경로·파일·비밀번호 칸(`pc_only_type`)은 선언한 기본값 그대로일 때만 받는다 (GUI는 손대지 않은 칸도 기본값을 싣는다)
 pub(crate) fn create_option_answers_allowed(options: &[Value], given: &serde_json::Map<String, Value>) -> bool {
     given.iter().all(|(key, value)| {
@@ -134,7 +134,7 @@ pub(crate) fn create_option_answers_allowed(options: &[Value], given: &serde_jso
         }
         match kind {
             "boolean" => value.is_boolean(),
-            "number" => value.is_number(),
+            "number" => value.is_number() || value.as_str().is_some_and(|n| n.trim().parse::<f64>().is_ok_and(f64::is_finite)),
             "select" => option.get("options").and_then(Value::as_array).is_some_and(|choices| {
                 choices.iter().any(|c| c == value || c.get("value") == Some(value))
             }),
@@ -258,9 +258,13 @@ mod tests {
         ];
         let ok = |v: Value| create_option_answers_allowed(&options, v.as_object().unwrap());
         assert!(ok(json!({ "boxed": true, "slots": 3, "tier": "large", "label": "hi", "box_dir": "boxes" })));
+        // GUI·CLI는 숫자 칸 답을 글자로 싣는다
+        assert!(ok(json!({ "slots": "3" })));
+        assert!(ok(json!({ "slots": "2.5" })));
         for bad in [
             json!({ "boxed": "yes" }),
-            json!({ "slots": "3" }),
+            json!({ "slots": "three" }),
+            json!({ "slots": "" }),
             json!({ "tier": "huge" }),
             json!({ "label": 1 }),
             json!({ "label": ["a"] }),
