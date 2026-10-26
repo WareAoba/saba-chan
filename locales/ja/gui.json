@@ -1067,7 +1067,10 @@
     "prefix_err_count": "接頭辞は{{max}}個までです。",
     "prefix_err_length": "接頭辞は{{max}}文字までです: {{words}}",
     "translate_commands_title": "コマンド名の翻訳",
-    "translate_commands_desc": "Discordのスラッシュコマンドにゲームコマンドの翻訳した名前と説明を付けます。オフにするとモジュールに書かれた元の名前(例: save-all)だけを表示します。"
+    "translate_commands_desc": "Discordのスラッシュコマンドにゲームコマンドの翻訳した名前と説明を付けます。オフにするとモジュールに書かれた元の名前(例: save-all)だけを表示します。",
+    "start_notice": "{{name}} の起動通知",
+    "start_notice_hint": "ベルをオンにしたサーバーは、サバちゃんが起動したときにこのDiscordサーバーの通知チャンネルで知らせます。Discordから起動したものと、サバちゃんの外で起動したものは除きます。通知チャンネルはチャンネルタブで選びます。",
+    "start_notice_save_failed": "起動通知を保存できませんでした: {{error}}"
   },
   "maintenance": {
     "load_failed": "バックアップ・予約の情報を読み込めませんでした。",

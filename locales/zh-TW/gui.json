@@ -1067,7 +1067,10 @@
     "prefix_err_count": "前綴最多 {{max}} 個。",
     "prefix_err_length": "前綴最多 {{max}} 個字元：{{words}}",
     "translate_commands_title": "翻譯指令名稱",
-    "translate_commands_desc": "在 Discord 斜線指令中顯示遊戲指令的翻譯名稱和說明。關閉時只顯示模組中的原始名稱（例如 save-all）。"
+    "translate_commands_desc": "在 Discord 斜線指令中顯示遊戲指令的翻譯名稱和說明。關閉時只顯示模組中的原始名稱（例如 save-all）。",
+    "start_notice": "{{name}} 啟動通知",
+    "start_notice_hint": "開啟鈴鐺的伺服器在 Saba-chan 啟動時會在此 Discord 伺服器的通知頻道告知。從 Discord 啟動的和在 Saba-chan 之外啟動的除外。通知頻道在「頻道」分頁中設定。",
+    "start_notice_save_failed": "無法儲存啟動通知：{{error}}"
   },
   "maintenance": {
     "load_failed": "無法載入備份與排程資訊。",

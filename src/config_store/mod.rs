@@ -308,10 +308,12 @@ const LOCAL_SECTIONS: &[&str] = &["schemaVersion", "updates", "boot", "extension
 const RESERVED_SECTIONS: &[&str] = &["schemaVersion", "gui", "relay", "updates", "boot", "extensions", "chatbot", "sandbox", "node", "paths", "remote"];
 
 /// `nodeSettings[guild]`에서 전용 API만 바꾸는 키: 권한 API(P1), 디스코드 설정 API(I2, `discord`),
-/// 0.1.10까지의 길드·인스턴스 낱말(`instances`, 시작할 때 `serverWords`로 옮긴다), 길드가 쓸 서버 API(`allowedInstances`)
+/// 0.1.10까지의 길드·인스턴스 낱말(`instances`, 시작할 때 `serverWords`로 옮긴다), 길드가 쓸 서버 API(`allowedInstances`),
+/// 켜짐 알림 API(`startNotice`)
 pub const PERMISSION_KEYS: &[&str] = &[
     "instances",
     "allowedInstances",
+    "startNotice",
     "ownerDiscordId",
     "relayOwnerDiscordId",
     "defaultLevel",

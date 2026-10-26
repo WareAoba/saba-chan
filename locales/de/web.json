@@ -169,7 +169,12 @@
     "ladder_removed": "Personen auf gelöschten Stufen rutschen eine Stufe nach unten. Befehle, die sie brauchten, eine Stufe nach oben.",
     "ladder_invalid": "Stufennamen brauchen 1–32 Zeichen.",
     "ladder_revert": "Zurücksetzen",
-    "ladder_save": "Stufen speichern"
+    "ladder_save": "Stufen speichern",
+    "notice": "Start-Hinweise",
+    "notice_hint": "Hier aktivierte Server werden im Hinweiskanal dieses Discord-Servers gemeldet, wenn Saba-chan sie startet. Starts aus Discord und außerhalb von Saba-chan werden nicht gemeldet.",
+    "notice_empty": "Dieser Discord-Server nutzt keine Server.",
+    "notice_on": "Start-Hinweis an.",
+    "notice_off": "Start-Hinweis aus."
   },
   "modules": {
     "games": "Spielmodule",
