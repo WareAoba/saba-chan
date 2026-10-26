@@ -209,6 +209,18 @@
       "current": "Iniciar ao entrar: {{mode}}",
       "set": "Iniciar ao entrar agora é: {{mode}}.",
       "unsupported": "Ainda não é possível configurar o início ao entrar neste sistema operacional."
+    },
+    "browse": {
+      "roots": "Unidades",
+      "empty": "  (vazio)",
+      "truncated": "Itens demais; mostrando os primeiros 5000",
+      "home": "Pasta pessoal: {{path}}",
+      "remote_full_path": "Para um daemon remoto, informe um caminho completo naquele PC (por exemplo /srv/game ou D:\\Games)",
+      "err_browse_bad_path": "Digite um caminho completo",
+      "err_browse_not_found": "Essa pasta não existe",
+      "err_browse_denied": "Não é possível abrir essa pasta",
+      "err_browse_not_a_folder": "Isso não é uma pasta",
+      "err_browse_failed": "Não foi possível ler a pasta. Tente novamente"
     }
   },
   "console": {
@@ -718,7 +730,8 @@
       "remote.daemons": "Daemons remotos aos quais este daemon se conecta",
       "remote.servers": "Servidores deste PC e de cada daemon remoto, por daemon (para usar um, `--daemon <nome>`)",
       "remote.forget": "Esquecer um daemon remoto (conecte de novo com `remote connect`)",
-      "config.autostart": "O que inicia quando você entra neste PC: off, daemon (só o daemon e a bandeja) ou full (com a janela da GUI). Sem modo mostra o valor atual"
+      "config.autostart": "O que inicia quando você entra neste PC: off, daemon (só o daemon e a bandeja) ou full (com a janela da GUI). Sem modo mostra o valor atual",
+      "config.browse": "Pastas e arquivos no PC do daemon (com --daemon, o PC remoto). Sem caminho, unidades ou /"
     },
     "arg": {
       "module.maker.game": "Jogo para o primeiro pedido",
@@ -797,7 +810,9 @@
       "remote.revoke.host_id": "ID do PC a desparear (veja `remote clients`)",
       "remote.connect.host_id": "Id do PC ao qual conectar (veja `remote peers`)",
       "remote.forget.host_id": "Id do PC a esquecer (veja `remote daemons`)",
-      "config.autostart.mode": "off, daemon ou full"
+      "config.autostart.mode": "off, daemon ou full",
+      "config.browse.path": "Caminho completo da pasta",
+      "config.browse.files": "Mostrar também arquivos com estas extensões (separadas por vírgula, * para todos)"
     },
     "after": "Os nomes podem ser parciais (ex.: start pal). Sem argumentos em um terminal, abre o menu em tela cheia (SABA_NO_TUI=1: o shell interativo).\nEm scripts, use --json e --yes. Códigos de saída: 0 ok · 1 falha · 2 uso · 3 daemon inacessível · 4 não encontrado · 130 cancelado"
   },

@@ -1024,6 +1024,15 @@ pub enum ConfigCmd {
         /// Folder to use. Saba-chan makes a `modules` or `extensions` folder inside it
         folder: std::path::PathBuf,
     },
+    /// Folders and files on the daemon's PC (with --daemon, the remote PC), to pick paths there. Drives or `/` without a path
+    #[command(visible_alias = "ls")]
+    Browse {
+        /// Full path of the folder to show
+        path: Option<String>,
+        /// Also show files with these extensions (comma separated, `*` for all)
+        #[arg(long, value_name = "EXT")]
+        files: Option<String>,
+    },
     /// What starts when you sign in to this PC: off, daemon (daemon and tray only) or full (with the GUI window). Shows the current value without a mode
     Autostart {
         #[arg(value_enum)]
@@ -1363,6 +1372,8 @@ mod tests {
         let cli = Cli::try_parse_from(["saba-chan-cli", "config", "move", "extensions", "D:/Games/Saba"]).unwrap();
         assert!(matches!(cli.cmd, Some(Cmd::Config(ConfigCmd::Move { kind: DirKind::Extensions, folder })) if folder == std::path::Path::new("D:/Games/Saba")));
         assert!(Cli::try_parse_from(["saba-chan-cli", "config", "move", "instances", "x"]).is_err(), "only modules and extensions move");
+        let cli = Cli::try_parse_from(["saba-chan-cli", "--daemon", "srv", "config", "ls", "/srv/game", "--files", "jar,zip"]).unwrap();
+        assert!(matches!(cli.cmd, Some(Cmd::Config(ConfigCmd::Browse { path: Some(p), files: Some(f) })) if p == "/srv/game" && f == "jar,zip"));
         let cli = Cli::try_parse_from(["saba-chan-cli", "install", "--components-dir", "/srv/saba"]).unwrap();
         assert!(matches!(cli.cmd, Some(Cmd::Install(a)) if a.components_dir.as_deref() == Some(std::path::Path::new("/srv/saba"))));
     }

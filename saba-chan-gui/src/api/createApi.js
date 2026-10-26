@@ -5,6 +5,7 @@
 import i18n from 'i18next';
 import { safeShowToast } from '../utils/helpers';
 import { createDaemonClient, queryString } from './daemon';
+import { hasRemotePathPicker, pickRemotePath } from './remotePathPicker';
 
 /** 서버 시작 요청을 기다리는 시간 (CLI `post_long`과 같다) */
 const START_TIMEOUT_MS = 30 * 60_000;
@@ -22,12 +23,18 @@ export function createApi({ invoke, hub }) {
     const put = (path, body, opts) => request('put', path, body, opts);
     const del = (path, opts) => request('delete', path, undefined, opts);
 
-    // 이 PC의 파일 대화상자. 원격 데몬을 다루는 중이면 열지 않는다: 고른 경로가 그 PC 데몬에 가서 엉뚱한 곳을 가리킨다 (G1)
+    // 경로 고르기. 원격 데몬을 다루는 중이면 이 PC의 대화상자 대신 그 데몬의 폴더에서 고른다:
+    // 이 PC의 경로는 그 PC 데몬에 가면 엉뚱한 곳을 가리킨다 (G1, D2)
+    const KINDS = { dialog_open_file: 'file', dialog_open_folder: 'folder', dialog_save_file: 'save' };
     const pickLocal = async (cmd, args) => {
         const current = await Promise.resolve(invoke('daemon_target_get')).catch(() => null);
         if (current?.target) {
-            safeShowToast(t('errors.remote_local_path'), 'warning', 5000);
-            return null;
+            if (!hasRemotePathPicker()) {
+                safeShowToast(t('errors.remote_local_path'), 'warning', 5000);
+                return null;
+            }
+            const extensions = args?.filters ? args.filters.flatMap((f) => f.extensions || []) : null;
+            return pickRemotePath({ kind: KINDS[cmd], extensions, defaultName: args?.defaultPath ?? null });
         }
         return invoke(cmd, args);
     };
@@ -1100,6 +1107,9 @@ export function createApi({ invoke, hub }) {
         daemonDiagnostics: () => daemonJson('get', '/api/diagnostics'),
         // 폴더 위치: 데이터·프로그램·인스턴스·모듈·익스텐션 폴더와 기본값
         systemPaths: () => daemonJson('get', '/api/system/paths'),
+        // 고른 데몬 PC의 폴더 보기 (원격 경로 고르기, D2): path가 비면 드라이브·루트. extensions 없으면 폴더만, ['*']면 모든 파일
+        systemBrowse: (path, extensions) =>
+            daemonJson('get', `/api/system/browse${queryString({ path: path || undefined, files: extensions?.length ? extensions.join(',') : undefined })}`),
         // 모듈·익스텐션 폴더 옮기기: 데몬이 복사·검증 뒤 옮긴다 (큰 폴더는 오래 걸린다)
         systemPathsMove: (kind, target) =>
             daemonJson('post', '/api/system/paths/move', { kind, target }, PATHS_MOVE_TIMEOUT),

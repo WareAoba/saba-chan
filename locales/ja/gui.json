@@ -1649,7 +1649,6 @@
     "err_remote_bad_path": "そのパスはリモートデーモンに送れません",
     "err_remote_unauthorized": "リモートデーモンがこのPCを受け付けなくなりました。もう一度接続してください",
     "err_remote_local_only": "そのPCで直接行う必要があります",
-    "local_only_sections": "フォルダーの場所とデータの書き出し・読み込みはこのPCでパスを選ぶため、リモートデーモンを管理している間は隠します。",
     "view": "サーバー一覧の表示",
     "view_description": "まとめて表示では、選んだデーモンのサーバーの下に他のデーモン(このPCを含む)のサーバーをデーモンごとに表示し、そこから起動・停止できます",
     "view_switch": "選んだデーモンのみ",
@@ -1662,5 +1661,26 @@
   "other_daemons": {
     "open": "このデーモンを開く",
     "empty": "サーバーがありません"
+  },
+  "remote_picker": {
+    "title_file": "リモートPCのファイルを選ぶ",
+    "title_folder": "リモートPCのフォルダーを選ぶ",
+    "title_save": "リモートPCに保存",
+    "up": "上へ",
+    "home": "ホーム",
+    "path": "パス",
+    "roots": "ドライブ",
+    "file_name": "ファイル名",
+    "choose": "選ぶ",
+    "choose_folder": "このフォルダーを選ぶ",
+    "save": "ここに保存",
+    "cancel": "キャンセル",
+    "empty": "何もありません",
+    "truncated": "項目が多すぎるため最初の5000件だけ表示しています",
+    "err_browse_bad_path": "フルパスを入力してください",
+    "err_browse_not_found": "そのフォルダーはありません",
+    "err_browse_denied": "そのフォルダーは開けません",
+    "err_browse_not_a_folder": "フォルダーではありません",
+    "err_generic": "フォルダーを読めませんでした。もう一度お試しください"
   }
 }

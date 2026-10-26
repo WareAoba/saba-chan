@@ -209,6 +209,18 @@
       "current": "로그인할 때 자동 실행: {{mode}}",
       "set": "로그인할 때 자동 실행을 {{mode}}(으)로 바꿨어요.",
       "unsupported": "이 OS에서는 아직 로그인할 때 자동 실행을 설정할 수 없어요."
+    },
+    "browse": {
+      "roots": "드라이브",
+      "empty": "  (비어 있어요)",
+      "truncated": "항목이 너무 많아 앞의 5000개만 보여요",
+      "home": "홈 폴더: {{path}}",
+      "remote_full_path": "원격 데몬에는 그 PC의 전체 경로를 적어 주세요 (예: /srv/game, D:\\Games)",
+      "err_browse_bad_path": "전체 경로를 적어 주세요",
+      "err_browse_not_found": "그 폴더가 없어요",
+      "err_browse_denied": "그 폴더는 열 수 없어요",
+      "err_browse_not_a_folder": "폴더가 아니에요",
+      "err_browse_failed": "폴더를 읽지 못했어요. 다시 해 주세요"
     }
   },
   "console": {
@@ -845,7 +857,8 @@
       "remote.daemons": "이 데몬이 붙는 원격 데몬",
       "remote.servers": "이 PC와 원격 데몬마다의 서버를 데몬별로 (하나를 다루려면 `--daemon <이름>`)",
       "remote.forget": "원격 데몬 잊기 (다시 붙으려면 `remote connect`)",
-      "config.autostart": "PC에 로그인할 때 켤 것: off(끔), daemon(데몬과 트레이만), full(GUI 창까지). 모드 없이 쓰면 지금 값을 보여요"
+      "config.autostart": "PC에 로그인할 때 켤 것: off(끔), daemon(데몬과 트레이만), full(GUI 창까지). 모드 없이 쓰면 지금 값을 보여요",
+      "config.browse": "데몬 PC의 폴더와 파일 보기 (--daemon이면 그 원격 PC). 경로가 없으면 드라이브나 /"
     },
     "arg": {
       "module.maker.game": "첫 부탁에 넣을 게임 이름",
@@ -995,7 +1008,9 @@
       "remote.forget.host_id": "잊을 PC id (`remote daemons`에 보여요)",
       "config.autostart.mode": "off, daemon 또는 full",
       "keep_settings": "인스턴스를 지울 때 게임 설정 파일을 가져오기 전으로 되돌리지 않고 지금 그대로 두기",
-      "move_folder": "--from 폴더를 그 자리에 연결하지 않고 사바쨩 폴더로 옮기기 (같은 드라이브만)"
+      "move_folder": "--from 폴더를 그 자리에 연결하지 않고 사바쨩 폴더로 옮기기 (같은 드라이브만)",
+      "config.browse.path": "보일 폴더의 전체 경로",
+      "config.browse.files": "이 확장자의 파일도 보이기 (쉼표로, *면 모두)"
     },
     "after": "이름은 일부만 적어도 돼요 (예: start pal). 인자 없이 터미널에서 실행하면 전체 화면 메뉴가 열려요(SABA_NO_TUI=1이면 대화형 셸).\n스크립트에서는 --json과 --yes를 쓰세요. 종료 코드: 0 성공 · 1 실패 · 2 사용법 · 3 데몬 연결 안 됨 · 4 없음 · 130 취소"
   },

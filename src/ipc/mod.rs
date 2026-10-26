@@ -856,6 +856,7 @@ impl IPCServer {
             .route("/api/system/metrics", get(handlers::system::get_metrics))
             .route("/api/system/paths", get(handlers::paths::get_paths))
             .route("/api/system/paths/move", post(handlers::paths::move_dir))
+            .route("/api/system/browse", get(handlers::paths::browse))
             .route("/api/system/autostart", get(handlers::autostart::get_autostart).put(handlers::autostart::put_autostart))
             // ── Directory scan (migration etc.) ──
             // ── Extension process management (범용) ──

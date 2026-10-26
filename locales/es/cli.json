@@ -209,6 +209,18 @@
       "current": "Iniciar al iniciar sesión: {{mode}}",
       "set": "Iniciar al iniciar sesión ahora es: {{mode}}.",
       "unsupported": "Todavía no se puede configurar el inicio al iniciar sesión en este sistema operativo."
+    },
+    "browse": {
+      "roots": "Unidades",
+      "empty": "  (vacío)",
+      "truncated": "Demasiados elementos; se muestran los primeros 5000",
+      "home": "Carpeta personal: {{path}}",
+      "remote_full_path": "Para un daemon remoto, indica una ruta completa en ese PC (por ejemplo /srv/game o D:\\Games)",
+      "err_browse_bad_path": "Escribe una ruta completa",
+      "err_browse_not_found": "Esa carpeta no existe",
+      "err_browse_denied": "No se puede abrir esa carpeta",
+      "err_browse_not_a_folder": "No es una carpeta",
+      "err_browse_failed": "No se pudo leer la carpeta. Inténtalo de nuevo"
     }
   },
   "console": {
@@ -718,7 +730,8 @@
       "remote.daemons": "Daemons remotos a los que se conecta este daemon",
       "remote.servers": "Servidores de este PC y de cada daemon remoto, por daemon (para usar uno, `--daemon <nombre>`)",
       "remote.forget": "Olvidar un daemon remoto (vuelve a conectar con `remote connect`)",
-      "config.autostart": "Qué se inicia al iniciar sesión en este PC: off, daemon (solo el daemon y la bandeja) o full (con la ventana de la GUI). Sin modo muestra el valor actual"
+      "config.autostart": "Qué se inicia al iniciar sesión en este PC: off, daemon (solo el daemon y la bandeja) o full (con la ventana de la GUI). Sin modo muestra el valor actual",
+      "config.browse": "Carpetas y archivos en el PC del daemon (con --daemon, el PC remoto). Sin ruta, unidades o /"
     },
     "arg": {
       "module.maker.game": "Juego para la primera petición",
@@ -797,7 +810,9 @@
       "remote.revoke.host_id": "ID del PC que se desempareja (ver `remote clients`)",
       "remote.connect.host_id": "Id del PC al que conectarse (ver `remote peers`)",
       "remote.forget.host_id": "Id del PC que olvidar (ver `remote daemons`)",
-      "config.autostart.mode": "off, daemon o full"
+      "config.autostart.mode": "off, daemon o full",
+      "config.browse.path": "Ruta completa de la carpeta",
+      "config.browse.files": "Mostrar también archivos con estas extensiones (separadas por comas, * para todos)"
     },
     "after": "Los nombres pueden ser parciales (p. ej. start pal). Sin argumentos en una terminal se abre el menú a pantalla completa (SABA_NO_TUI=1: la shell interactiva).\nEn scripts usa --json y --yes. Códigos de salida: 0 correcto · 1 error · 2 uso · 3 daemon inaccesible · 4 no encontrado · 130 cancelado"
   },
