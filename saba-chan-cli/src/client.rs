@@ -841,6 +841,14 @@ impl Api {
     pub async fn delete_node_token(&self) -> Result<Value> {
         self.delete("/api/config/node-token").await
     }
+    /// POST /api/relay/privacy/erase — `{url, expiresAt}`. 동의는 웹사이트에서, 끝나면 데몬이 연결을 끊는다
+    pub async fn privacy_erase(&self, locale: &str) -> Result<Value> {
+        self.post("/api/relay/privacy/erase", json!({ "locale": locale })).await
+    }
+    /// GET /api/relay/privacy/erase — `{status}`: none | pending | done | expired | failed
+    pub async fn privacy_erase_status(&self) -> Result<Value> {
+        self.get("/api/relay/privacy/erase").await
+    }
 
     // ── 디스코드 릴레이 ──
 
