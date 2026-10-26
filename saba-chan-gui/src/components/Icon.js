@@ -612,9 +612,9 @@ export const Icon = ({ name, size = 'md', color = 'currentColor' }) => {
         ),
         componentGui: (
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="2" y="3" width="20" height="14" rx="2" />
-                <path d="M8 21h8M12 17v4" />
-                <path d="m10 7 5 3-2 .6-.9 2.1z" />
+                <path d="M20 11V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h7" />
+                <path d="M2 8h18" />
+                <path d="m14 13 7 3-3 1-1 3z" />
             </svg>
         ),
         componentCore: (
