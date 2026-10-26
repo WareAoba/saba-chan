@@ -3,24 +3,31 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Icon } from './Icon';
 import { WindowControls } from './shell/AppBar';
-import { MatrixRain } from './shell/MatrixRain';
+import { logTokens, MatrixRain } from './shell/MatrixRain';
 
 /**
  * LoadingScreen — displayed while daemon is initializing.
  * failed가 있으면 데몬을 못 띄운 것: 진행 막대 대신 이유와 [다시 시도]·[그대로 열기]를 보인다.
  */
-/** 로딩 중 데몬이 남긴 최신 로그 한 줄 (GET /api/daemon/console). 데몬이 아직 없으면 비어 있다 */
-function useLatestDaemonLog(active) {
+/**
+ * 로딩 중 데몬이 남긴 최신 로그 한 줄과, 최근 로그에서 뽑은 매트릭스 낱말 (GET /api/daemon/console).
+ * 데몬이 아직 없으면 둘 다 비어 있다
+ */
+function useDaemonLog(active) {
     const [line, setLine] = useState(null);
+    const [tokens, setTokens] = useState([]);
     useEffect(() => {
         if (!active || !window.api?.daemonConsole) return undefined;
         let alive = true;
         let timer;
         const poll = async () => {
             try {
-                const res = await window.api.daemonConsole({ count: 1 });
-                const last = res?.lines?.[res.lines.length - 1];
+                const res = await window.api.daemonConsole({ count: LOG_TOKEN_LINES });
+                const lines = res?.lines || [];
+                const last = lines[lines.length - 1];
                 if (alive && last?.message) setLine(last);
+                const words = logTokens(lines);
+                if (alive && words.length) setTokens(words);
             } catch {
                 // 데몬이 아직 안 떴으면 다음에
             }
@@ -32,20 +39,33 @@ function useLatestDaemonLog(active) {
             clearTimeout(timer);
         };
     }, [active]);
-    return line;
+    return { line, tokens };
 }
 
 const LOG_POLL_MS = 600;
 
+/**
+ * 글자 로고 주소를 문서 기준 절대 주소로. CSS 변수 속 url()은 그 변수를 쓰는 CSS 파일 기준으로 풀려서
+ * ./logo-kr.png가 /assets/logo-kr.png가 되고, 셸은 없는 파일에 HTML을 돌려줘 마스크가 투명해진다
+ */
+function wordmarkUrl(src) {
+    try {
+        return new URL(src, document.baseURI).href;
+    } catch {
+        return src;
+    }
+}
+const LOG_TOKEN_LINES = 50;
+
 export function LoadingScreen({ logoSrc, initStatus, initProgress, failed, onRetry, onContinue, leaving = false }) {
     const { t } = useTranslation('gui');
     const [retrying, setRetrying] = useState(false);
-    const log = useLatestDaemonLog(!failed && !leaving);
+    const { line: log, tokens } = useDaemonLog(!failed && !leaving);
 
     return (
         <div className={clsx('loading-screen', { leaving })} aria-hidden={leaving || undefined}>
             {/* 뒤에서 흐르는 서버 콘솔 (가운데는 비워 둔다) */}
-            <MatrixRain className="loading-matrix" />
+            <MatrixRain className="loading-matrix" tokens={tokens} />
             <div className="loading-vignette" aria-hidden="true" />
             <div className="appbar appbar-bare">
                 <div className="appbar-spacer" />
@@ -63,7 +83,7 @@ export function LoadingScreen({ logoSrc, initStatus, initProgress, failed, onRet
                     className="loading-logo-text"
                     role="img"
                     aria-label={t('common:app_name')}
-                    style={{ '--wordmark': `url("${logoSrc}")` }}
+                    style={{ '--wordmark': `url("${wordmarkUrl(logoSrc)}")` }}
                 />
                 {failed ? (
                     <div className="loading-failed" role="alert">

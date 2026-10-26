@@ -18,6 +18,12 @@ const POPOUT_PREFIX: &str = "popout-";
 const MIN_WIDTH: f64 = 780.0;
 const BOUNDS_DEBOUNCE_MS: u64 = 500;
 
+/// 렌더러가 테마의 바탕색을 알리기 전에 쓰는 창 바탕색 (tokens.css의 --bg-0과 같은 값)
+const BG_DARK: Color = Color(0x0d, 0x0e, 0x10, 0xff);
+const BG_LIGHT: Color = Color(0xe6, 0xe8, 0xed, 0xff);
+/// 렌더러가 마지막으로 알린 바탕색. 새로 여는 창이 처음부터 이 색으로 뜬다
+static WINDOW_BG: Mutex<Option<Color>> = Mutex::new(None);
+
 /// 창 크기 저장 디바운스용 세대 번호
 static BOUNDS_GEN: AtomicU64 = AtomicU64::new(0);
 
@@ -113,6 +119,48 @@ fn apply_icon(_win: &WebviewWindow) {
     }
 }
 
+/// 창 바탕색: 렌더러가 알린 색 > 테마 설정 > 시스템 테마 (모르면 기본 테마인 다크)
+fn pick_background(reported: Option<Color>, theme: Option<&str>, system: Option<tauri::Theme>) -> Color {
+    if let Some(c) = reported {
+        return c;
+    }
+    match (theme, system) {
+        (Some("light"), _) => BG_LIGHT,
+        (Some("dark"), _) => BG_DARK,
+        (_, Some(tauri::Theme::Light)) => BG_LIGHT,
+        _ => BG_DARK,
+    }
+}
+
+fn background_for(app: &AppHandle, system: Option<tauri::Theme>) -> Color {
+    let reported = *WINDOW_BG.lock().unwrap();
+    let settings = app.state::<AppState>().settings();
+    pick_background(reported, settings["theme"].as_str(), system)
+}
+
+/// `#rrggbb` → 불투명 색
+fn parse_hex_color(css: &str) -> Option<Color> {
+    let hex = css.trim().strip_prefix('#')?;
+    if hex.len() != 6 || !hex.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return None;
+    }
+    let ch = |i: usize| u8::from_str_radix(&hex[i..i + 2], 16).ok();
+    Some(Color(ch(0)?, ch(2)?, ch(4)?, 0xff))
+}
+
+/// 렌더러가 테마의 바탕색을 알린다. 창 크기를 바꾸는 사이 웹뷰가 아직 못 그린 자리가 이 색으로 보인다 (기본은 흰색)
+pub fn set_background(win: &WebviewWindow, css: &str) {
+    // 트레이 팝업은 투명 창이라 바탕을 칠하지 않는다
+    if win.label() == TRAY_POPUP {
+        return;
+    }
+    let Some(color) = parse_hex_color(css) else {
+        return;
+    };
+    *WINDOW_BG.lock().unwrap() = Some(color);
+    let _ = win.set_background_color(Some(color));
+}
+
 /// 창이 앱 화면 밖으로 이동하거나 새 창을 열지 못하게 한다. 웹 링크는 바깥 브라우저로
 fn lock_navigation<'a>(
     app: &AppHandle,
@@ -169,7 +217,7 @@ pub fn create_main_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         .min_inner_size(MIN_WIDTH, min_height)
         .decorations(false)
         .visible(false) // 페이지가 뜰 때까지 보이지 않음
-        .background_color(Color(0xf0, 0xf0, 0xf2, 0xff)) // CSS 로드 전 흰 화면 방지
+        .background_color(background_for(app, None)) // CSS 로드 전·크기 바꾸는 중 흰 화면 방지
         .on_page_load(|w, payload| {
             // 처음 뜰 때만 앞으로 올린다 (보이는 창을 새로고침했을 때 다른 앱의 포커스를 뺏지 않게)
             if matches!(payload.event(), tauri::webview::PageLoadEvent::Finished) && !w.is_visible().unwrap_or(false) {
@@ -180,6 +228,8 @@ pub fn create_main_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         builder = builder.position(x, y);
     }
     let win = lock_navigation(app, builder).build()?;
+    // 테마가 "시스템 따라"면 창이 생긴 뒤에야 시스템 테마를 안다
+    let _ = win.set_background_color(Some(background_for(app, win.theme().ok())));
     apply_icon(&win);
     // 상주 여부는 업데이트 뒤 다시 띄울 모양을 정한다: 30초 heartbeat를 기다리지 않고 바로 알린다
     crate::lifecycle::report_resident(app, false);
@@ -435,11 +485,13 @@ pub fn open_popout(app: &AppHandle, instance_id: &str, server_name: &str) -> tau
         encode_component(instance_id),
         encode_component(server_name)
     );
+    let background = background_for(app, app.get_webview_window(MAIN).and_then(|w| w.theme().ok()));
     let builder = WebviewWindowBuilder::new(app, popout_label(instance_id), WebviewUrl::App(PathBuf::from(query)))
         .title(format!("Console — {server_name}"))
         .inner_size(700.0, 450.0)
         .min_inner_size(400.0, 250.0)
         .decorations(false)
+        .background_color(background)
         .always_on_top(true);
     let win = lock_navigation(app, builder).build()?;
     apply_icon(&win);
@@ -524,6 +576,26 @@ pub fn toggle_always_on_top(app: &AppHandle, instance_id: &str, pinned: bool) ->
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_window_background_follows_the_reported_color_then_the_theme() {
+        let reported = Color(1, 2, 3, 0xff);
+        assert_eq!(pick_background(Some(reported), Some("light"), None), reported);
+        assert_eq!(pick_background(None, Some("light"), Some(tauri::Theme::Dark)), BG_LIGHT);
+        assert_eq!(pick_background(None, Some("dark"), Some(tauri::Theme::Light)), BG_DARK);
+        assert_eq!(pick_background(None, Some("auto"), Some(tauri::Theme::Light)), BG_LIGHT);
+        assert_eq!(pick_background(None, None, Some(tauri::Theme::Dark)), BG_DARK);
+        assert_eq!(pick_background(None, Some("auto"), None), BG_DARK);
+    }
+
+    #[test]
+    fn only_six_digit_hex_colors_are_accepted() {
+        assert_eq!(parse_hex_color(" #0d0E10"), Some(Color(0x0d, 0x0e, 0x10, 0xff)));
+        assert_eq!(parse_hex_color("#fff"), None);
+        assert_eq!(parse_hex_color("rgb(1, 2, 3)"), None);
+        assert_eq!(parse_hex_color("#gg0000"), None);
+        assert_eq!(parse_hex_color("#ééé"), None);
+    }
 
     #[test]
     fn the_tray_popup_may_call_what_it_needs_and_nothing_that_notifies() {

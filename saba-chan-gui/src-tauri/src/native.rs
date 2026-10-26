@@ -570,6 +570,12 @@ pub fn window_maximize(window: WebviewWindow) {
     }
 }
 
+/// 테마 바탕색(`#rrggbb`)을 창과 웹뷰 바탕에 칠한다 (크기를 바꾸는 중 흰 바탕이 비치지 않게)
+#[tauri::command]
+pub fn window_set_background(window: WebviewWindow, color: String) {
+    window::set_background(&window, &color);
+}
+
 /// 메인 창이면 닫기 요청이 가로채여 app:closeRequest가 된다
 #[tauri::command]
 pub fn window_close(window: WebviewWindow) {

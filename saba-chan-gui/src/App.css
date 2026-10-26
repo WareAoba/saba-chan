@@ -19,7 +19,7 @@
 .loading-matrix {
     position: absolute;
     inset: 0;
-    opacity: 0.28;
+    opacity: var(--loading-matrix-opacity);
     pointer-events: none;
 }
 .loading-matrix canvas {
