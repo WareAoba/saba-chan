@@ -721,10 +721,11 @@ def read_key_values(path, *, encodings=_KV_ENCODINGS, case_insensitive=False, fi
 
 
 def update_key_values(path, updates, *, encodings=_KV_ENCODINGS, case_insensitive=False, delete_empty=False,
-                      comments=("#",)):
+                      comments=("#",), write_encoding=None):
     """바뀐 키만 고친다. 주석·다른 줄·순서·줄바꿈 표기·인코딩(BOM 포함)은 그대로 둔다.
     값이 None이면(delete_empty면 ""도) 그 키 줄을 지운다. 같은 키의 둘째 줄부터는 지운다(어느 줄을 읽을지
-    애매하지 않게). 파일에 없는 키는 끝에 붙인다. 원래 인코딩으로 못 쓰는 글자가 들어오면 UTF-8로 쓴다"""
+    애매하지 않게). 파일에 없는 키는 끝에 붙인다. 원래 인코딩으로 못 쓰는 글자가 들어오면 UTF-8로 쓴다.
+    write_encoding을 주면(게임이 한 인코딩으로만 읽을 때) 원래 인코딩과 상관없이 그것으로 쓴다(BOM 없이)"""
     fold = (lambda k: k.lower()) if case_insensitive else (lambda k: k)
     pending = {}
     for key, value in updates.items():
@@ -748,6 +749,8 @@ def update_key_values(path, updates, *, encodings=_KV_ENCODINGS, case_insensitiv
         if folded not in seen and value is not None:
             out.append(f"{key}={value}")
     text = (newline.join(out) + newline) if out else ""
+    if write_encoding:
+        encoding, bom = write_encoding, False
     try:
         data = text.encode(encoding)
     except UnicodeEncodeError:
