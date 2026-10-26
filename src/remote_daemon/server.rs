@@ -646,6 +646,11 @@ pub(crate) mod tests {
             let (s, body) = call(addr, &pin, "GET", path, Some(&token), None).await.unwrap();
             assert_ne!(body["error_code"].as_str(), Some("remote_local_only"), "{path} {s}");
         }
+        // 라우터는 HEAD를 GET 처리기로 답한다: HEAD도 GET과 같게 판정한다
+        for path in ["/api/config/node-token", "/api/extensions/x/config", "/api/updates/status"] {
+            let (s, _) = call(addr, &pin, "HEAD", path, Some(&token), None).await.unwrap();
+            assert_eq!(s, 403, "HEAD {path}");
+        }
         let (s, _) = call(addr, &pin, "GET", "/health", None, None).await.unwrap();
         assert_eq!(s, 200);
         cancel.cancel();

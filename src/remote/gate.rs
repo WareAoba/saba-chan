@@ -288,8 +288,9 @@ pub fn decide(method: &str, path: &str) -> Result<&'static str, Refusal> {
 }
 
 /// 짝 맺은 PC(원격 포트)도 부르지 못하는 라우트: 웹 원격이 PC에서만 하는 일로 거부한 것 (`Access::Deny`).
-/// 표에 없는 메서드는 라우터가 405로 답한다
+/// 표에 없는 메서드는 라우터가 405로 답한다. 라우터는 HEAD를 GET 처리기로 답하므로 HEAD는 GET으로 본다
 pub fn pc_only(method: &str, pattern: &str) -> bool {
+    let method = if method == "HEAD" { "GET" } else { method };
     ROUTES.iter().any(|r| r.pattern == pattern && r.method == method && r.access == Access::Deny)
 }
 
@@ -570,6 +571,10 @@ mod tests {
 
     #[test]
     fn refuses_unknown_routes_and_methods() {
+        // 라우터는 HEAD를 GET 처리기로 답한다: 웹은 표에 없는 HEAD를 받지 않는다
+        assert_eq!(decide("HEAD", "/api/config/node-token"), Err(Refusal::NotAllowed));
+        assert_eq!(decide("HEAD", "/api/servers"), Err(Refusal::NotAllowed));
+        assert!(pc_only("HEAD", "/api/config/node-token"), "the paired PC treats HEAD as GET");
         assert_eq!(decide("GET", "/api/brand-new"), Err(Refusal::NotAllowed));
         assert_eq!(decide("PUT", "/api/instance/abc/start"), Err(Refusal::NotAllowed));
         assert_eq!(
