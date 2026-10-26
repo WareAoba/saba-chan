@@ -78,6 +78,8 @@
     --series-8: #e66767;
     /* 원형 그래프의 유휴 몫 (카드 면과 구분되는 바탕) */
     --chart-idle: #2e3036;
+    /* 로딩 화면 뒤 매트릭스 진하기: 밝은 바탕에서는 같은 투명도면 글자가 묻힌다 */
+    --loading-matrix-opacity: 0.28;
 }
 
 /* ── 라이트 ── */
@@ -139,6 +141,7 @@
     --series-7: #6250d6;
     --series-8: #e34948;
     --chart-idle: #e2e5eb;
+    --loading-matrix-opacity: 0.7;
 }
 
 /* ── 시스템 따라가기: 라이트일 때만 라이트 값으로 덮는다 ── */
@@ -194,6 +197,7 @@
         --series-7: #6250d6;
         --series-8: #e34948;
         --chart-idle: #e2e5eb;
+        --loading-matrix-opacity: 0.7;
     }
 }
 
