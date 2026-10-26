@@ -298,7 +298,7 @@ fn same_final_path(final_path: &str, requested: &str) -> bool {
 }
 
 #[cfg(windows)]
-pub use imp::{clear_low_label_of, clear_low_labels, grant, release, reset, revoke_stale_runtimes, spawn, Contained};
+pub use imp::{adopt_parent, clear_low_label_of, clear_low_labels, grant, release, reset, revoke_stale_runtimes, spawn, Contained};
 #[cfg(windows)]
 pub(crate) use imp::check_existing_path;
 
@@ -315,15 +315,15 @@ mod imp {
     use std::ptr::null_mut;
     use windows_sys::Win32::Foundation::{LocalFree, SetHandleInformation, FALSE, HANDLE, HANDLE_FLAG_INHERIT, TRUE};
     use windows_sys::Win32::Security::Authorization::{
-        GetSecurityInfo, SetEntriesInAclW, SetSecurityInfo, EXPLICIT_ACCESS_W, GRANT_ACCESS, REVOKE_ACCESS, SE_FILE_OBJECT, TRUSTEE_IS_SID,
+        GetSecurityInfo, SetEntriesInAclW, SetNamedSecurityInfoW, SetSecurityInfo, EXPLICIT_ACCESS_W, GRANT_ACCESS, REVOKE_ACCESS, SE_FILE_OBJECT, TRUSTEE_IS_SID,
         TRUSTEE_IS_WELL_KNOWN_GROUP,
     };
     use windows_sys::Win32::Security::{
-        AclSizeInformation, AddAce, AddMandatoryAce, AllocateAndInitializeSid, EqualSid, GetAce, GetAclInformation, GetLengthSid, GetTokenInformation,
+        AclSizeInformation, AddAce, AddMandatoryAce, AllocateAndInitializeSid, EqualSid, GetAce, GetAclInformation, GetLengthSid, GetSecurityDescriptorControl, GetTokenInformation,
         InitializeAcl, InitializeSecurityDescriptor, SetKernelObjectSecurity, SetSecurityDescriptorSacl, TokenUser, ACCESS_ALLOWED_ACE, ACE_HEADER, ACL, ACL_REVISION, ACL_SIZE_INFORMATION, CONTAINER_INHERIT_ACE,
         DACL_SECURITY_INFORMATION, INHERITED_ACE, LABEL_SECURITY_INFORMATION, NO_INHERITANCE, OBJECT_INHERIT_ACE, OWNER_SECURITY_INFORMATION,
         PSECURITY_DESCRIPTOR, PSID, SECURITY_ATTRIBUTES, SECURITY_CAPABILITIES, SECURITY_DESCRIPTOR, SECURITY_CREATOR_SID_AUTHORITY, SECURITY_MANDATORY_LABEL_AUTHORITY,
-        SID_AND_ATTRIBUTES, SID_IDENTIFIER_AUTHORITY, SUB_CONTAINERS_AND_OBJECTS_INHERIT, SYSTEM_MANDATORY_LABEL_ACE, TOKEN_QUERY, TOKEN_USER,
+        SE_DACL_PROTECTED, SID_AND_ATTRIBUTES, SID_IDENTIFIER_AUTHORITY, SUB_CONTAINERS_AND_OBJECTS_INHERIT, UNPROTECTED_DACL_SECURITY_INFORMATION, SYSTEM_MANDATORY_LABEL_ACE, TOKEN_QUERY, TOKEN_USER,
     };
     use windows_sys::Win32::Storage::FileSystem::{
         CreateFileW, GetFileInformationByHandle, GetFinalPathNameByHandleW, BY_HANDLE_FILE_INFORMATION, DELETE, FILE_ATTRIBUTE_REPARSE_POINT,
@@ -1266,6 +1266,37 @@ mod imp {
             }
         }
 
+        /// 다른 위 폴더 아래 있다가 원래 자리로 옮겨 온 폴더(가져오기를 거둔 서버 폴더)는 예전 위 폴더의 권한·낮은 수준 표시를
+        /// 남기지 않고 지금 위 폴더에서 다시 물려받는다
+        #[test]
+        fn a_folder_moved_back_inherits_from_its_new_parent_again() {
+            use super::*;
+            let tmp = tempfile::tempdir().unwrap();
+            let root = std::fs::canonicalize(tmp.path()).unwrap();
+            let (instance, home) = (root.join("instance"), root.join("home"));
+            std::fs::create_dir_all(instance.join("server").join("Config")).unwrap();
+            std::fs::create_dir_all(home.join("fresh")).unwrap();
+            std::fs::write(home.join("fresh.ini"), b"x").unwrap();
+            let file = instance.join("server").join("Config").join("settings.ini");
+            std::fs::write(&file, b"x").unwrap();
+            let sid = all_app_packages().unwrap();
+            allow(&instance, sid, FILE_GENERIC_READ, true).unwrap();
+            label_low(&instance).unwrap();
+
+            let back = home.join("server");
+            std::fs::rename(instance.join("server"), &back).unwrap();
+            let file = back.join("Config").join("settings.ini");
+            // 지금 위 폴더 아래 새로 만든 것이 물려받는 만큼이 기준이다 (임시 폴더 자체의 ACE와 상관없이)
+            let fresh = |dir: bool| ace_flags(&home.join(if dir { "fresh" } else { "fresh.ini" }), sid).unwrap().len();
+            assert!(ace_flags(&file, sid).unwrap().len() > fresh(false), "the rename kept the old inherited ACE");
+
+            adopt_parent(&back).unwrap();
+            for (path, dir) in [(&back, true), (&back.join("Config"), true), (&file, false)] {
+                assert_eq!(ace_flags(path, sid).unwrap().len(), fresh(dir), "{}", path.display());
+                assert_eq!(low_label(path).unwrap(), low_label(&home.join("fresh.ini")).unwrap(), "{}", path.display());
+            }
+        }
+
         /// 폴더를 읽은 뒤 지워진 파일(서버 로그 회전 등) 때문에 시작이 막히지 않는다
         #[test]
         fn a_path_gone_during_the_walk_is_not_a_failure() {
@@ -1814,6 +1845,11 @@ mod imp {
 
     /// 폴더 DACL에 `sid`의 명시(상속받지 않은) ACE가 있는가
     fn has_own_ace(path: &Path, sid: PSID) -> Result<bool, String> {
+        Ok(ace_flags(path, sid)?.iter().any(|flags| flags & super::ACE_INHERITED == 0))
+    }
+
+    /// 경로 DACL에서 `sid` 허용 ACE들의 플래그 (상속받은 것 포함)
+    fn ace_flags(path: &Path, sid: PSID) -> Result<Vec<u8>, String> {
         use std::os::windows::io::AsRawHandle;
         unsafe {
             let dir = open_checked(path, 0)?;
@@ -1823,7 +1859,7 @@ mod imp {
             if rc != 0 {
                 return Err(format!("read ACL of {}: {}", path.display(), std::io::Error::from_raw_os_error(rc as i32)));
             }
-            let mut found = false;
+            let mut found = Vec::new();
             let mut info: ACL_SIZE_INFORMATION = std::mem::zeroed();
             if !dacl.is_null()
                 && GetAclInformation(dacl, &mut info as *mut _ as *mut c_void, std::mem::size_of::<ACL_SIZE_INFORMATION>() as DWORD, AclSizeInformation) != 0
@@ -1834,19 +1870,84 @@ mod imp {
                         continue;
                     }
                     let header = &*(ace as *const ACE_HEADER);
-                    if header.AceType != ACCESS_ALLOWED_ACE_TYPE as u8 || header.AceFlags & super::ACE_INHERITED != 0 {
+                    if header.AceType != ACCESS_ALLOWED_ACE_TYPE as u8 {
                         continue;
                     }
                     let allowed = &*(ace as *const ACCESS_ALLOWED_ACE);
                     if EqualSid(&allowed.SidStart as *const DWORD as PSID, sid) != 0 {
-                        found = true;
-                        break;
+                        found.push(header.AceFlags);
                     }
                 }
             }
             LocalFree(sd);
             Ok(found)
         }
+    }
+
+    /// 다른 위 폴더 아래 있다가 옮겨 온 폴더가 지금 위 폴더에서 다시 물려받게 한다. 같은 볼륨 안 이름 바꾸기는 예전 위 폴더에서
+    /// 물려받은 ACE·낮은 수준 표시를 그대로 들고 오고 원래 자리의 상속 ACE는 잃는다. 직접 붙은 ACE만 남긴 DACL을 상속을 열어
+    /// 경로로 쓰면(SetNamedSecurityInfoW) 지금 위 폴더의 상속 ACE가 하위까지 다시 계산된다(핸들로 쓰면 위 폴더를 보지 않는다).
+    /// 상속을 끊은 폴더(보호 DACL)는 DACL을 그대로 둔다. 낮은 수준 표시는 지금 위 폴더에 있을 때만 물려받은 모양으로 둔다
+    pub fn adopt_parent(path: &Path) -> Result<(), String> {
+        use std::os::windows::io::AsRawHandle;
+        let _guard = acl_lock();
+        unsafe {
+            let read = open_checked(path, 0)?;
+            let mut dacl: PACL = null_mut();
+            let mut sd: PSECURITY_DESCRIPTOR = null_mut();
+            let rc = GetSecurityInfo(read.as_raw_handle() as HANDLE, SE_FILE_OBJECT, DACL_SECURITY_INFORMATION, null_mut(), null_mut(), &mut dacl, null_mut(), &mut sd);
+            if rc != 0 {
+                return Err(format!("read ACL of {}: {}", path.display(), std::io::Error::from_raw_os_error(rc as i32)));
+            }
+            let (mut control, mut revision): (u16, u32) = (0, 0);
+            let protected = GetSecurityDescriptorControl(sd, &mut control, &mut revision) != 0 && control & SE_DACL_PROTECTED != 0;
+            let mut keep: Vec<Vec<u8>> = Vec::new();
+            let mut info: ACL_SIZE_INFORMATION = std::mem::zeroed();
+            if !dacl.is_null()
+                && GetAclInformation(dacl, &mut info as *mut _ as *mut c_void, std::mem::size_of::<ACL_SIZE_INFORMATION>() as DWORD, AclSizeInformation) != 0
+            {
+                for i in 0..info.AceCount {
+                    let mut ace: *mut c_void = null_mut();
+                    if GetAce(dacl, i, &mut ace) == 0 || ace.is_null() {
+                        continue;
+                    }
+                    let header = &*(ace as *const ACE_HEADER);
+                    if DWORD::from(header.AceFlags) & INHERITED_ACE == 0 {
+                        keep.push(std::slice::from_raw_parts(ace as *const u8, usize::from(header.AceSize)).to_vec());
+                    }
+                }
+            }
+            LocalFree(sd);
+            if !protected {
+                let size = std::mem::size_of::<ACL>() + keep.iter().map(Vec::len).sum::<usize>();
+                let mut buf = vec![0u64; size.div_ceil(8)];
+                let acl = buf.as_mut_ptr() as *mut ACL;
+                if InitializeAcl(acl, (buf.len() * 8) as DWORD, DWORD::from(ACL_REVISION)) == 0 {
+                    return Err(last_error("InitializeAcl"));
+                }
+                for ace in &keep {
+                    if AddAce(acl, DWORD::from(ACL_REVISION), u32::MAX, ace.as_ptr() as *const c_void, ace.len() as DWORD) == 0 {
+                        return Err(last_error("AddAce"));
+                    }
+                }
+                let name = wide(path.as_os_str());
+                let rc = SetNamedSecurityInfoW(name.as_ptr(), SE_FILE_OBJECT, DACL_SECURITY_INFORMATION | UNPROTECTED_DACL_SECURITY_INFORMATION, null_mut(), null_mut(), acl, null_mut());
+                if rc != 0 {
+                    return Err(format!("inherit ACL of {}: {}", path.display(), std::io::Error::from_raw_os_error(rc as i32)));
+                }
+            }
+            drop(read);
+        }
+        let low = match path.parent() {
+            Some(parent) => low_label(parent)?.is_some(),
+            None => false,
+        };
+        set_inherited_low(path, true, low)?;
+        let failed = sync_inherited_low(path, low);
+        if let Some((p, e)) = failed.first() {
+            return Err(format!("{} item(s) under {} kept the old label (first: {}: {e})", failed.len(), path.display(), p.display()));
+        }
+        Ok(())
     }
 
     /// AppContainer 프로필을 지운다 (userenv `DeleteAppContainerProfile`. 없으면 이미 지워진 것)

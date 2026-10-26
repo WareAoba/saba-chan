@@ -997,9 +997,16 @@ async fn undo_import(state: &IPCServer, instance: &crate::instance::ServerInstan
         });
         let dirs: Vec<std::path::PathBuf> = std::iter::once(folder.clone()).chain(exe_dir.filter(|d| d != &folder && crate::module_paths::is_inside(d, std::slice::from_ref(&folder)))).collect();
         let name = instance.name.clone();
+        let moved_back = moved_from.is_some().then(|| folder.clone());
         let _ = tokio::task::spawn_blocking(move || {
             if let Err(failed) = crate::sandbox::release(&dirs, &others) {
                 tracing::warn!("Could not take back sandbox permissions on the server folder of '{}': {}", name, failed.join("; "));
+            }
+            // 인스턴스 폴더 안에서 물려받은 권한·표시를 걷고 원래 자리의 권한을 되찾는다
+            if let Some(folder) = moved_back {
+                if let Err(e) = crate::sandbox::adopt_parent(&folder) {
+                    tracing::warn!("Could not restore the permissions of the server folder of '{}': {}", name, e);
+                }
             }
         })
         .await;
