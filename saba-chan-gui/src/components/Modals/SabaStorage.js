@@ -2,6 +2,7 @@ import clsx from 'clsx';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useExtensions } from '../../contexts/ExtensionContext';
+import { ExtensionConfigForm } from '../ExtensionConfigForm';
 import CustomDropdown from '../CustomDropdown/CustomDropdown';
 import { Icon } from '../Icon';
 import { ModuleMakerCard } from '../ModuleMakerCard';
@@ -24,15 +25,16 @@ import { createTranslateError, safeShowToast } from '../../utils/helpers';
 // @param {function} onBack  - 설정 일반 탭으로 돌아가기
 // @param {boolean}  isExiting - 나가기 애니메이션 여부
 // @param {boolean}  devMode   - 개발자 모드
+// @param {string}   initialTab - 처음 보일 탭 (components | modules | extensions)
 // ─────────────────────────────────────────────────────────────
 /** updaterCall은 던지지 않고 {ok:false, error}로 실패를 알린다 */
 function throwIfRejected(res) {
     if (res?.ok === false || res?.error) throw new Error(res.error || 'failed');
 }
 
-function SabaStorage({ onBack, isExiting, devMode }) {
+function SabaStorage({ onBack, isExiting, devMode, initialTab = 'components' }) {
     const { t } = useTranslation('gui');
-    const [activeTab, setActiveTab] = useState('components');
+    const [activeTab, setActiveTab] = useState(initialTab);
     const tabsRef = useRef(null);
     const indicatorRef = useRef(null);
     const syncIndicator = useCallback(() => {
@@ -92,7 +94,15 @@ function SabaStorage({ onBack, isExiting, devMode }) {
 // 컴포넌트 데이터 파싱 — 순수 함수이므로 컴포넌트 밖에 정의
 // 모듈/익스텐션은 별도 탭이라 카드로 보이지 않지만(hidden), 모두 업데이트가 함께 받고 적용한다 (UP1).
 // locales는 백그라운드 자동 업데이트 — 다루지 않는다
-const parseComponents = (comps) =>
+const COMPONENT_ICONS = {
+    updater: 'componentUpdater',
+    gui: 'componentGui',
+    'saba-core': 'componentCore',
+    cli: 'componentCli',
+    installer: 'componentInstaller',
+};
+
+export const parseComponents = (comps) =>
     (comps || [])
         .filter((c) => {
             const k = typeof c.component === 'string' ? c.component : String(c.component);
@@ -104,15 +114,7 @@ const parseComponents = (comps) =>
                 key,
                 hidden: key.startsWith('module-') || key.startsWith('ext-'),
                 display: c.display_name || key,
-                icon: key.startsWith('module-')
-                    ? 'gamepad'
-                    : key === 'gui'
-                      ? 'monitor'
-                      : key === 'cli'
-                        ? 'terminal'
-                        : key === 'updater'
-                          ? 'refresh'
-                          : 'server',
+                icon: key.startsWith('module-') ? 'gamepad' : COMPONENT_ICONS[key] || 'server',
                 current_version: c.current_version || '—',
                 latest_version: c.latest_version || null,
                 update_available: !!c.update_available,
@@ -1042,9 +1044,11 @@ function ExtensionsTab() {
         fetchManifest,
         installExtension,
         removeExtension,
+        toggleExtension,
     } = useExtensions();
 
     const [confirmRemoveId, setConfirmRemoveId] = useState(null);
+    const [togglingIds, setTogglingIds] = useState(new Set());
     const [removingIds, setRemovingIds] = useState(new Set());
     const [rescanning, setRescanning] = useState(false);
     const [iconUrls, setIconUrls] = useState({}); // { extId: dataUrl }
@@ -1113,6 +1117,19 @@ function ExtensionsTab() {
         });
     }, [confirmRemoveId, removeExtension]);
 
+    const handleToggle = useCallback(
+        async (id, enable) => {
+            setTogglingIds((prev) => new Set(prev).add(id));
+            await toggleExtension(id, enable);
+            setTogglingIds((prev) => {
+                const n = new Set(prev);
+                n.delete(id);
+                return n;
+            });
+        },
+        [toggleExtension],
+    );
+
     const installedIds = new Set(extensions.map((e) => e.id));
     const uninstalled = manifestExtensions.filter((r) => !installedIds.has(r.id));
 
@@ -1162,6 +1179,7 @@ function ExtensionsTab() {
                                         <span className="ss-card-desc">{localizedDescription(ext, i18n.language) || ext.id}</span>
                                     )}
                                     <ExtensionAuditNotice extId={ext.id} name={ext.name} />
+                                    {ext.enabled && <ExtensionConfigForm ext={ext} />}
                                 </div>
                                 <div className="ss-card-actions">
                                     {updateInfo && (
@@ -1183,6 +1201,13 @@ function ExtensionsTab() {
                                             )}
                                         </button>
                                     )}
+                                    <SabaToggle
+                                        size="sm"
+                                        checked={!!ext.enabled}
+                                        disabled={isBusy || togglingIds.has(ext.id)}
+                                        onChange={(checked) => handleToggle(ext.id, checked)}
+                                        aria-label={ext.name || ext.id}
+                                    />
                                     <button
                                         className="ss-icon-btn danger"
                                         disabled={isBusy}

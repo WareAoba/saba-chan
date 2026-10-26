@@ -2825,7 +2825,7 @@ button.appbar-preflight {
     opacity: 0.55;
 }
 
-/* 감사 로그 (A10): 서버별 기록 탭과 설정 > 고급의 전체 기록 */
+/* 감사 로그 (A10): 서버별 기록 탭과 상단 탭의 작업 기록 페이지 */
 .audit-time {
     flex: none;
     min-width: 9.5em;
@@ -2836,8 +2836,8 @@ button.appbar-preflight {
 .audit-more {
     align-self: center;
 }
-.settings-audit {
-    margin-top: var(--sp-5);
+.activity-page {
+    width: 100%;
 }
 
 /* 서버 설정 맨 위: 최종 실행 인자 미리보기 (읽기 전용) */

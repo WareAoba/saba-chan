@@ -2025,8 +2025,8 @@
 .update-panel-header {
     display: flex;
     align-items: center;
-    gap: var(--sp-2-5);
-    padding: var(--sp-6);
+    gap: var(--sp-2);
+    padding: var(--sp-6) var(--sp-6) var(--sp-4);
     flex-shrink: 0;
 }
 
@@ -2034,20 +2034,22 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 28px;
-    height: 28px;
+    width: 32px;
+    height: 32px;
     background: transparent;
-    border: none;
-    border-radius: 6px;
-    color: var(--text-secondary);
+    border: 1px solid transparent;
+    border-radius: var(--r-xs);
+    color: var(--text-2);
     cursor: pointer;
-    transition: all 0.15s;
+    transition:
+        color var(--dur-fast) var(--ease),
+        background var(--dur-fast) var(--ease);
     flex-shrink: 0;
 }
 
 .update-panel-back:hover {
-    background: var(--bg-hover);
-    color: var(--text-primary);
+    background: var(--bg-2);
+    color: var(--text-1);
 }
 
 .update-panel-title {
@@ -2069,19 +2071,26 @@
 }
 
 .update-panel .update-modal-status-bar {
-    margin: 0;
-    border-radius: 0;
+    margin: 0 0 var(--sp-3);
+    border: 1px solid var(--line);
+    border-radius: var(--r-sm);
     flex-shrink: 0;
-    padding: var(--sp-2-5) var(--sp-6);
+    padding: var(--sp-2) var(--sp-3);
 }
 
 .update-panel .update-modal-status {
     flex-shrink: 0;
-    padding: var(--sp-3) var(--sp-6);
+    padding: var(--sp-2) 0;
 }
 
 .update-panel-settings {
-    padding: var(--sp-3) var(--sp-6);
+    display: flex;
+    flex-direction: column;
+    margin: 0 var(--sp-6) var(--sp-6);
+    padding: 0 var(--sp-4);
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
+    background: var(--bg-1);
     flex-shrink: 0;
 }
 
@@ -2089,16 +2098,21 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: var(--sp-3);
     cursor: pointer;
-    padding: var(--sp-1-5) 0;
+    padding: var(--sp-3) 0;
+}
+
+.update-panel-setting-row + .update-panel-setting-row {
+    border-top: 1px solid var(--line);
 }
 
 .update-panel-setting-label {
     display: flex;
     align-items: center;
     gap: var(--sp-2);
-    font-size: calc(13px * var(--font-scale));
-    color: var(--text-secondary);
+    font-size: var(--fs-sm);
+    color: var(--text-1);
 }
 
 /* update-auto-toggle — replaced by SabaToggle */
@@ -2110,11 +2124,7 @@
 }
 
 .update-panel-actions {
-    padding: var(--sp-4) var(--sp-6);
-    display: flex;
-    justify-content: center;
-    gap: var(--sp-2);
-    flex-shrink: 0;
+    display: none;
 }
 
 /* 업데이트 패널 나가기 애니메이션 */
@@ -2150,19 +2160,23 @@
 /* ── Extension Store & Version Management ───────────────────── */
 
 .ss-section-label {
-    font-size: 0.68rem;
+    font-size: var(--fs-md);
     font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--text-tertiary);
-    margin: var(--sp-5) 0 var(--sp-1-5);
+    color: var(--text-1);
+    margin: var(--sp-6) 0 var(--sp-2);
 }
 
 .ss-store-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin: var(--sp-5) 0 var(--sp-1-5);
+    gap: var(--sp-2);
+    margin: var(--sp-6) 0 var(--sp-2);
+}
+
+.saba-storage-tab-content > .ss-store-header:first-child,
+.saba-storage-tab-content > .update-modal-status-bar + .ss-store-header {
+    margin-top: 0;
 }
 
 .ss-store-header .ss-section-label {
@@ -2172,31 +2186,46 @@
 .ss-card {
     display: flex;
     align-items: center;
-    gap: var(--sp-2-5);
+    gap: var(--sp-3);
     padding: var(--sp-3) var(--sp-4);
-    background: var(--bg-secondary);
-    border-radius: 0;
-    margin-bottom: 0;
-    transition: background 0.12s;
+    transition: background var(--dur-fast) var(--ease);
 }
 
 .ss-cards {
     display: flex;
     flex-direction: column;
-    gap: var(--sp-1-5);
-    background: var(--card-hover-shadow);
-    border-radius: 0;
-    overflow: visible;
-    margin-bottom: var(--sp-3);
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
+    background: var(--bg-1);
+    overflow: hidden;
+    margin-bottom: var(--sp-4);
+}
+
+/* 아직 받지 못한 목록은 빈 테두리를 그리지 않는다 */
+.ss-cards:empty {
+    display: none;
 }
 
 .ss-cards .ss-card {
-    background: var(--card-bg);
-    border-radius: 10px;
+    background: transparent;
+}
+
+.ss-cards .ss-card + .ss-card {
+    border-top: 1px solid var(--line);
+}
+
+/* 펼친 익스텐션 설정이 있으면 아이콘·버튼은 위에 붙인다 */
+.ss-card:has(.extension-config-form) {
+    align-items: flex-start;
+}
+
+.ss-card-body .extension-config {
+    padding: 0;
+    margin-top: var(--sp-1);
 }
 
 .ss-card:hover {
-    background: var(--hover-bg);
+    background: var(--bg-2);
 }
 
 .ss-card-body {
@@ -2204,28 +2233,28 @@
     flex-direction: column;
     flex: 1;
     min-width: 0;
-    gap: var(--sp-0-5);
-}
-
-.ss-card-name {
-    font-size: calc(13px * var(--font-scale));
-    font-weight: 600;
-    color: var(--text-primary);
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
     gap: var(--sp-1);
 }
 
+.ss-card-name {
+    font-size: var(--fs-md);
+    font-weight: 600;
+    color: var(--text-1);
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--sp-2);
+}
+
 .ss-card-version {
-    font-size: calc(11px * var(--font-scale));
+    font-size: var(--fs-xs);
     font-weight: 400;
-    color: var(--text-tertiary);
+    color: var(--text-3);
 }
 
 .ss-card-desc {
-    font-size: calc(11.5px * var(--font-scale));
-    color: var(--text-secondary);
+    font-size: var(--fs-xs);
+    color: var(--text-2);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -2234,18 +2263,19 @@
 .ss-card-actions {
     display: flex;
     align-items: center;
-    gap: var(--sp-0-5);
+    gap: var(--sp-1);
     flex-shrink: 0;
 }
 
 /* 모듈 메이커 카드 (목록에 없는 게임 직접 만들기) */
 .ss-maker {
-    margin: var(--sp-3) 0;
+    margin: var(--sp-4) 0;
 }
 
 .ss-maker > .ss-card {
-    background: var(--card-bg);
-    border-radius: 10px;
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
+    background: var(--bg-1);
 }
 
 .ss-maker-desc {
@@ -2255,7 +2285,7 @@
 .ss-maker-panel {
     display: flex;
     flex-direction: column;
-    gap: var(--sp-1-5);
+    gap: var(--sp-2);
     padding: var(--sp-3) var(--sp-4);
 }
 
@@ -2265,39 +2295,39 @@
 }
 
 .ss-maker-agent {
-    padding: var(--sp-1) var(--sp-2-5);
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
+    padding: var(--sp-1) var(--sp-3);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--r-xs);
     background: transparent;
-    color: var(--text-secondary);
-    font-size: calc(12px * var(--font-scale));
+    color: var(--text-2);
+    font-size: var(--fs-xs);
     cursor: pointer;
 }
 
 .ss-maker-agent.active {
     border-color: var(--accent-color);
-    color: var(--text-primary);
+    color: var(--text-1);
 }
 
 .ss-maker-step {
-    margin: var(--sp-1-5) 0 0;
-    font-size: calc(12px * var(--font-scale));
+    margin: var(--sp-2) 0 0;
+    font-size: var(--fs-xs);
     font-weight: 600;
-    color: var(--text-primary);
+    color: var(--text-1);
 }
 
 .ss-maker-game {
-    padding: var(--sp-1-5) var(--sp-2);
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    background: var(--bg-secondary);
-    color: var(--text-primary);
+    padding: var(--sp-2);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--r-xs);
+    background: var(--field);
+    color: var(--text-1);
 }
 
 .ss-maker-note {
     margin: 0;
-    font-size: calc(11.5px * var(--font-scale));
-    color: var(--text-tertiary);
+    font-size: var(--fs-xs);
+    color: var(--text-3);
 }
 
 .ss-maker-panel > .btn {
@@ -2309,22 +2339,25 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 28px;
-    height: 28px;
-    background: none;
-    border: none;
-    border-radius: 6px;
-    color: var(--text-tertiary);
+    width: 32px;
+    height: 32px;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--r-xs);
+    color: var(--text-2);
     cursor: pointer;
     transition:
-        color 0.15s,
-        background 0.15s;
+        color var(--dur-fast) var(--ease),
+        background var(--dur-fast) var(--ease);
     flex-shrink: 0;
     padding: 0;
 }
 
 .ss-icon-btn:hover:not(:disabled) {
-    color: var(--text-primary);
+    color: var(--text-1);
+    background: var(--surface-gradient-hover);
+    border-color: var(--line);
+    box-shadow: var(--shadow-raised);
 }
 
 .ss-icon-btn.danger:hover:not(:disabled) {
@@ -2348,8 +2381,8 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 28px;
-    height: 28px;
+    width: 32px;
+    height: 32px;
     color: var(--ok);
 }
 
@@ -2357,8 +2390,8 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 28px;
-    height: 28px;
+    width: 32px;
+    height: 32px;
     color: var(--stop);
 }
 
@@ -2368,8 +2401,8 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 28px;
-    height: 28px;
+    width: 32px;
+    height: 32px;
     flex-shrink: 0;
 }
 
@@ -2432,13 +2465,16 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    color: var(--text-secondary);
+    border-radius: var(--r-xs);
+    background: var(--bg-3);
+    border: 1px solid var(--line);
+    color: var(--text-2);
+    overflow: hidden;
 }
 
 .ss-card-icon img {
-    width: 28px;
-    height: 28px;
-    border-radius: 6px;
+    width: 24px;
+    height: 24px;
     object-fit: contain;
 }
 
@@ -2451,83 +2487,72 @@
 .ss-update-badge {
     display: inline-flex;
     align-items: center;
-    background: color-mix(in srgb, var(--accent) 18%, transparent);
+    height: 20px;
+    background: color-mix(in srgb, var(--accent) 16%, transparent);
     color: var(--brand-primary);
-    font-size: 0.6rem;
-    font-weight: 700;
-    letter-spacing: 0.04em;
-    padding: 1px var(--sp-1);
-    border-radius: 4px;
-    text-transform: uppercase;
+    font-size: var(--fs-xs);
+    font-weight: 600;
+    padding: 0 var(--sp-2);
+    border-radius: 999px;
     white-space: nowrap;
 }
 
 .ss-empty {
-    font-size: calc(12.5px * var(--font-scale));
-    color: var(--text-tertiary);
-    padding: var(--sp-2) var(--sp-0-5);
+    font-size: var(--fs-sm);
+    color: var(--text-3);
+    padding: var(--sp-2) 0;
     margin: 0;
 }
 
 /* 사바 스토리지 내부 탭 */
 
 .saba-storage-tabs {
-    display: flex;
+    display: inline-flex;
+    align-self: flex-start;
+    gap: var(--sp-1);
     padding: var(--sp-1);
-    border-radius: 8px;
-    position: relative;
-    margin: 0 var(--sp-6) var(--sp-3);
-    background: var(--bg-surface-tertiary);
-    height: 36px;
-    box-sizing: border-box;
+    margin: 0 var(--sp-6) var(--sp-4);
+    border-radius: var(--r-md);
+    background: var(--inset);
+    box-shadow: var(--shadow-inset);
+    border: 1px solid var(--line);
     flex-shrink: 0;
 }
 
 .saba-storage-tab-indicator {
-    position: absolute;
-    top: 3px;
-    height: calc(100% - 6px);
-    background-color: var(--brand-primary);
-    border-radius: 6px;
-    transition:
-        left 0.35s cubic-bezier(0.4, 0, 0.2, 1),
-        width 0.35s cubic-bezier(0.4, 0, 0.2, 1);
-    box-shadow: 0 1px 3px color-mix(in srgb, var(--shadow-ink) 10%, transparent);
-    z-index: 0;
-    pointer-events: none;
+    display: none;
 }
 
 .saba-storage-tab {
-    flex: 1;
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 0;
-    background: none;
-    border: none;
+    height: 32px;
+    padding: 0 var(--sp-4);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--r-sm);
     cursor: pointer;
-    font-size: calc(13px * var(--font-scale));
-    font-weight: 500;
-    color: var(--text-secondary);
-    transition: all 0.2s ease;
-    position: relative;
-    z-index: 1;
-    border-radius: 6px;
     font-family: inherit;
-    opacity: 0.6;
-    height: 100%;
+    font-size: var(--fs-sm);
+    font-weight: 500;
+    color: var(--text-2);
     line-height: 1;
+    transition:
+        color var(--dur-fast) var(--ease),
+        background var(--dur-fast) var(--ease);
 }
 
 .saba-storage-tab:hover {
-    opacity: 0.85;
+    color: var(--text-1);
 }
 
 .saba-storage-tab.active {
-    opacity: 1;
-    color: var(--text-on-primary);
+    color: var(--text-1);
     font-weight: 600;
-    transition: all 0.3s ease;
+    background: var(--surface-gradient);
+    border-color: var(--line);
+    box-shadow: var(--shadow-raised);
 }
 
 .saba-storage-content {
@@ -2540,7 +2565,7 @@
 .saba-storage-tab-content {
     flex: 1;
     overflow-y: auto;
-    padding: var(--sp-4) var(--sp-5) var(--sp-4);
+    padding: 0 var(--sp-6) var(--sp-4);
 }
 
 /* ===== Settings About Button (header) ===== */

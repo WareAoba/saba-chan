@@ -4,6 +4,7 @@ import BackgroundModal from '../Modals/BackgroundModal';
 import NoticeModal from '../Modals/NoticeModal';
 import ExtensionSlot from '../ExtensionSlot';
 import { Icon } from '../Icon';
+import { auditAvailable } from '../servers/AuditTab';
 import { ConnectionRail } from './ConnectionRail';
 import { DaemonSwitcher } from './DaemonSwitcher';
 import { ParentJobNotice } from './ParentJobNotice';
@@ -24,10 +25,11 @@ export function wordmarkFor(lang) {
     return WORDMARKS.en;
 }
 
-/** 상단 탭 = 큰 기능 한 개 = 한 페이지 (A7). 새 페이지는 여기에 한 줄 추가한다. */
+/** 상단 탭 = 큰 기능 한 개 = 한 페이지 (A7). 새 페이지는 여기에 한 줄 추가한다. available이 있으면 그 IPC가 있을 때만 보인다 */
 export const APP_PAGES = [
     { id: 'servers', icon: 'server', labelKey: 'shell.nav_servers' },
     { id: 'discord', icon: 'discord', labelKey: 'shell.nav_discord' },
+    { id: 'activity', icon: 'clock', labelKey: 'shell.nav_activity', available: auditAvailable },
     { id: 'settings', icon: 'cog', labelKey: 'shell.nav_settings' },
 ];
 
@@ -69,7 +71,7 @@ export function AppBar({
             </div>
 
             <nav className="appbar-tabs" aria-label={t('shell.nav_label')}>
-                {APP_PAGES.map((p) => (
+                {APP_PAGES.filter((p) => !p.available || p.available()).map((p) => (
                     <button
                         key={p.id}
                         type="button"
