@@ -268,7 +268,8 @@ Tauri 커맨드(`installer/gui/src-tauri/src/lib.rs`): `get_installer_state`, `s
 
 ### 4.1 전역 동작
 
-- 클라이언트 게이트(`app.ts` `clientGate`): `X-Saba-Client: 1`이 없는 브라우저 접속에 안내 페이지(403/404 HTML)를 보여 준다. 보안 장치가 아니라 안내용이다. `/admin`, `/api/bot-invite`, 컨테이너 프로브용 `/health`, 내부 스크립트 호출은 통과한다.
+- 클라이언트 게이트(`app.ts` `clientGate`): 클라이언트(`X-Saba-Client: 1`, 맞는 `x-internal-secret`, 맞는 `x-admin-key`)가 아닌 접속은 Oops 페이지다. 보안 장치가 아니라 안내용이다. 브라우저도 쓰는 `/admin*`, `/api/bot-invite`, `/remote/ws`, `/v1/updates/download/installer`, 컨테이너 프로브용 `/health`는 통과한다.
+- 잘못된 요청은 모두 Oops 페이지(`app.ts` `oopsOnError`, 사용자 결정 2026-10-26): 클라이언트가 아닌 요청이 4xx·5xx로 끝나면 권한 없음·틀린 링크·한도 초과·값 오류 모두 없는 주소와 똑같은 404 HTML(웹사이트 `not-found.html`과 같은 그림·문구, 10개 언어)로 바꾸고 경로마다 다른 레이트리밋 헤더도 지운다. 사바쨩 웹(`/remote/`)과 컨테이너 프로브용 `/health`는 바꾸지 않는다. 클라이언트는 지금처럼 JSON 오류를 받는다. nginx도 `/health`는 404, 직접 거절한 405·429는 404 `not-found.html`로 준다.
 - CORS는 `app://`, `tauri://`, 웹사이트 origin, dev 모드의 localhost, `CORS_ORIGINS`만 허용한다.
 - 레이트리밋은 전역 100/min이고 라우트별 값은 `middleware/rateLimit.ts` `ROUTE_RATE_LIMITS`에 있다. 노드 경로(`/poll`, `/heartbeat`, `/events`, `/ack`, `/result/:id`)는 한 번 검증된 토큰이면 노드 단위로, 아니면 IP로 센다.
 - 프로덕션 필수 env: `RELAY_INTERNAL_SECRET`, `RELEASE_REGISTER_SECRET`, `ADMIN_PAGE_KEY`, `DISCORD_TOKEN`, `DATABASE_URL`, `SELF_URL`, `RELEASE_SIGNING_KEYS`(릴리즈 manifest 서명 공개키 `keyId:base64,…`. 운영 compose 기본값은 업데이터 `TRUSTED_KEYS`와 같은 `saba-updater-v1` 키). 없거나, 이 값들이나 `MUSIC_API_KEY`에 예시 자리표시 `CHANGE_ME`가 남았거나, `RELEASE_SIGNING_KEYS`에서 공개키를 하나도 읽지 못하거나, `RELEASE_REGISTER_SECRET`이 `RELAY_INTERNAL_SECRET`과 같으면 기동하지 않는다.
@@ -324,8 +325,8 @@ Tauri 커맨드(`installer/gui/src-tauri/src/lib.rs`): `get_installer_state`, `s
 | GET/POST | `/admin/api/broadcast` | 관리자 키(POST 5/10min) | POST `{message, deleteAfterSeconds?}` | 202 `{ok, job}` / 409 `BROADCAST_IN_PROGRESS` / 503 `BOT_OFFLINE` | `routes/announcement.ts` |
 | GET/POST | `/admin/api/blocklist` | 관리자 키 | POST `{discordId, reason?, days?}`(days 1~3650, 없으면 무기한) | GET `{blocked:[{discordId, reason, createdBy, createdAt, expiresAt}]}` / POST 201 `{ok, expiresAt}` / 400 `INVALID_DISCORD_ID`·`INVALID_DAYS`·`OPERATOR` | `routes/admin.ts` |
 | DELETE | `/admin/api/blocklist/:discordId` | 관리자 키 | — | `{ok}` / 404 `NOT_BLOCKED` | `routes/admin.ts` |
-| GET | `/admin/`, `/admin/app.js`, `/admin/app.css` | 없음(페이지는 문구만, 비밀값 없음) | `?lang=` 또는 Accept-Language | 관리자 페이지. CSP `default-src 'none'; script-src 'self'`, `no-store` | `routes/adminConsole.ts` |
-| POST | `/admin/console/login` | 1회용 링크 + 같은 Origin(10/10min, nginx 10r/m) | `{link}` | `{userId, expiresAt, csrf}` + 쿠키 `__Host-saba_admin` / 401 `LINK_INVALID` / 403 `NOT_OPERATOR`·`CSRF` | `routes/adminConsole.ts` |
+| GET | `/admin/login/:link` | 1회용 링크(10/10min, nginx 10r/m, 요청·접근·오류 로그 없음, HEAD 는 없는 주소) | — | 302 `/admin/` + 쿠키 `__Host-saba_admin` / 틀린 링크·운영자 아님은 없는 주소(404 Oops) | `routes/adminConsole.ts` |
+| GET | `/admin`, `/admin/`, `/admin/app.js`, `/admin/app.css` | 관리자 세션(없으면 없는 주소, 404 Oops) | `?lang=` 또는 Accept-Language | 관리자 페이지(문구만, 비밀값 없음). CSP `default-src 'none'; script-src 'self'`, `no-store` | `routes/adminConsole.ts` |
 | GET | `/admin/console/session`·`overview`·`stats?range=day\|week\|month\|year`·`broadcast`·`blocklist`·`audit` | 관리자 세션 | — | 세션 `{userId, expiresAt, csrf}` / 상태 `{service, broadcast}` / 통계 `{range, bucketSeconds, points[]}` / 차단 `{rows}` / 최근 관리 기록 50줄 `{rows}`. 세션 없음 401 `NO_SESSION`, 운영자 아님 403 `NOT_OPERATOR` | `routes/adminConsole.ts` |
 | POST/DELETE | `/admin/console/logout`·`broadcast`(5/10min)·`blocklist`, `/admin/console/blocklist/:discordId` | 관리자 세션 + `x-csrf-token` + 같은 Origin | 공지·차단은 `/admin/api` 와 같은 본문(`days`는 숫자 문자열도 받고 숫자가 아니면 `INVALID_DAYS`) | `/admin/api` 와 같은 응답 / 403 `CSRF` | `routes/adminConsole.ts` |
 
@@ -404,8 +405,8 @@ Tauri 커맨드(`installer/gui/src-tauri/src/lib.rs`): `get_installer_state`, `s
 
 **(h) 관리자 페이지와 운영 통계** (`routes/adminConsole.ts`, `services/adminSession.ts`, `services/relayStats.ts`, 화면 `assets/admin/`):
 
-- 들어가기: 운영 서버 `/운영 페이지` → `RELAY_OPERATOR_IDS`의 운영자에게만 `https://saba-chan.online/admin/#<링크>`(5분, 한 번만, 운영자당 하나). 페이지가 주소의 `#` 값을 지우고 `POST /admin/console/login`으로 바꾼다.
-- 세션: 쿠키 `__Host-saba_admin`(HttpOnly·Secure·SameSite=Strict, Path=/), 30분 고정(늘리지 않음), 운영자당 하나(새로 들어오면 예전 세션이 끝난다). 메모리에 링크·세션 값의 해시만 두고 재시작하면 사라진다. 요청마다 운영자 목록을 다시 보고, 빠졌으면 403 `NOT_OPERATOR`와 함께 세션을 끝낸다.
+- 들어가기: 운영 서버 `/운영 페이지` → `RELAY_OPERATOR_IDS`의 운영자에게만 `https://saba-chan.online/admin/login/<링크>`(5분, 한 번만, 운영자당 하나. 링크 미리보기가 먼저 열지 않게 미리보기를 끄고 보낸다). 이 주소를 열면 세션 쿠키를 받고 `/admin/`으로 간다. 세션이 없으면 페이지·스크립트·세션 API가 모두 없는 주소와 같은 Oops 페이지라 들어오는 방법을 알리지 않는다. 페이지 스크립트는 `X-Saba-Client: 1`을 붙여 오류를 JSON으로 받는다.
+- 세션: 쿠키 `__Host-saba_admin`(HttpOnly·Secure·SameSite=Lax, Path=/. 디스코드에서 연 첫 이동의 리다이렉트에도 실려야 해서 Lax이고, 쓰기는 CSRF 토큰·Origin이 막는다), 30분 고정(늘리지 않음), 운영자당 하나(새로 들어오면 예전 세션이 끝난다). 메모리에 링크·세션 값의 해시만 두고 재시작하면 사라진다. 요청마다 운영자 목록을 다시 보고, 빠졌으면 403 `NOT_OPERATOR`와 함께 세션을 끝낸다.
 - 쓰기(POST·DELETE)는 세션의 `x-csrf-token`(상수 시간 비교)과 `Origin == <proto>://<Host>`가 모두 맞아야 한다. `/admin/console/*`에는 CORS 헤더를 내지 않는다. `x-admin-key`는 이 경로에서, 쿠키는 `/admin/api`에서 받지 않는다.
 - 감사: 로그인·로그아웃은 `action='admin'` `detail.op` `login`·`logout`, 차단·해제는 (g)와 같고, 공지는 발송이 끝날 때 `announce_broadcast`(보낸 운영자 ID). 페이지의 기록 탭은 이 두 action 의 최근 50줄이다.
 - 문구는 `src/admin/text.ts`(10개 언어, 없는 언어는 en)를 페이지에 데이터 블록으로 넣는다.
