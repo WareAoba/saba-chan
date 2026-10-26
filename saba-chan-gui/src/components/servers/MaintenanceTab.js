@@ -437,7 +437,15 @@ function BackupsCard({ server }) {
     );
 }
 
-const findCommand = (commands, name) => commands.find((c) => c.name === name);
+// 데몬 `commands::find`와 같이 이름은 대소문자를 가리지 않고, 별명으로 저장한 것도 찾는다
+const findCommand = (commands, name) => {
+    const want = String(name || '').toLowerCase();
+    if (!want) return undefined;
+    return (
+        commands.find((c) => c.name?.toLowerCase() === want) ||
+        commands.find((c) => (c.aliases || []).some((a) => String(a).toLowerCase() === want))
+    );
+};
 // 키 순서와 상관없이 같은 작업인지 견줄 문자열
 const sameKey = (v) =>
     v && typeof v === 'object' && !Array.isArray(v)

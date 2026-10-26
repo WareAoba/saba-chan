@@ -16,7 +16,7 @@ const commands = [
         risk: 'safe',
         inputs: [{ name: 'message', label: 'Message', type: 'text', required: true }],
     },
-    { name: 'wipe', label: 'Wipe world', risk: 'danger', inputs: [] },
+    { name: 'wipe', label: 'Wipe world', risk: 'danger', aliases: ['erase'], inputs: [] },
 ];
 
 afterEach(() => {
@@ -113,5 +113,23 @@ describe('예약 작업 화면', () => {
         fireEvent.click(screen.getByRole('button', { name: t('maintenance.danger_save') }));
         await waitFor(() => expect(window.api.instanceScheduleSave).toHaveBeenCalledTimes(2));
         expect(window.api.instanceScheduleSave.mock.calls[1][1].schedule[1].command).toBe('wipe');
+    });
+
+    it('별명·대문자로 저장된 꺼진 위험 명령을 켜도 한 번 더 확인한다', async () => {
+        window.showToast = vi.fn();
+        window.api.instanceScheduleGet = vi.fn().mockResolvedValue({
+            success: true,
+            schedule: [{ action: 'command', at: '04:00', command: 'ERASE', enabled: false }],
+            backup_keep: 5,
+        });
+        window.api.instanceScheduleSave = vi.fn().mockResolvedValue({ success: true });
+        render(<MaintenanceTab server={server} moduleCommands={commands} />);
+        await screen.findByRole('tablist', { name: 'Task 1 type' });
+        await act(async () => {});
+        expect(screen.getByText(t('maintenance.command_danger'))).toBeTruthy();
+        fireEvent.click(screen.getByRole('checkbox', { name: t('maintenance.task_enabled') }));
+        fireEvent.click(screen.getByRole('button', { name: /Save/ }));
+        await screen.findByText(t('maintenance.danger_confirm'));
+        expect(window.api.instanceScheduleSave).not.toHaveBeenCalled();
     });
 });

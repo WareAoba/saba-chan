@@ -1018,8 +1018,9 @@ async fn run_task_now(state: &IPCServer, id: &str, task: &ScheduledTask, fire: c
                 tracing::warn!("Scheduled start of '{}' failed: {}", id, resp.body);
             }
         }
-        TaskAction::Stop if running => {
-            if !count_down(state, id, task, fire, key, "schedule.stop_warning", true).await || !is_running(state, id).await {
+        // 예고 시작 때 꺼져 있었어도 정지 시각에 켜져 있으면 끈다 (같은 시각 앞의 예약 시작 등)
+        TaskAction::Stop => {
+            if !count_down(state, id, task, fire, key, "schedule.stop_warning", running).await || !is_running(state, id).await {
                 return;
             }
             tracing::info!("Scheduled stop of '{}'", id);
