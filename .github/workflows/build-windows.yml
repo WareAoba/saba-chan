@@ -99,15 +99,12 @@ jobs:
       - name: Build Rust workspace
         run: cargo build --release --locked --workspace
 
+      # 서명할 exe 목록은 versions.toml `[components.<키>] exes` 하나에서 읽는다.
+      # 제품 이름·버전이 SignPath 산출물 설정과 versions.toml에 맞는지 서명 요청 전에 본다
       - name: Collect executables
         run: |
-          mkdir dist
-          for exe in saba-core saba-runner saba-chan-cli saba-chan-gui saba-chan-updater saba-chan-installer; do
-            cp "target/release/$exe.exe" dist/
-          done
+          python scripts/versions.py signing --collect target/release --exes dist --out signpath-parameters.txt
           ls -l dist
-          # 제품 이름·버전이 SignPath 산출물 설정과 versions.toml에 맞는지 서명 요청 전에 본다
-          python scripts/versions.py signing --exes dist --out signpath-parameters.txt
           cat signpath-parameters.txt
 
       - name: Check signing settings
@@ -171,6 +168,11 @@ jobs:
         run: |
           dir=dist
           if [ "$SIGNED" = "true" ]; then dir=signed; fi
+          # 빌드·승인을 기다리는 동안 발행됐으면 붙이지 않는다 (release.yml이 이미 그 에셋으로 패키징했다)
+          draft=$(gh release view "$TARGET_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft -q .isDraft)
+          if [ "$draft" != "true" ]; then
+            echo "::error::$TARGET_TAG was published while building; not replacing its assets"; exit 1
+          fi
           gh release upload "$TARGET_TAG" "$dir"/*.exe --repo "$GITHUB_REPOSITORY" --clobber
           {
             echo "### $TARGET_TAG Windows executables ($([ "$SIGNED" = "true" ] && echo signed || echo UNSIGNED))"

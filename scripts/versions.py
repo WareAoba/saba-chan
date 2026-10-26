@@ -25,6 +25,7 @@ import hashlib
 import json
 import io
 import re
+import shutil
 import struct
 import sys
 import tomllib
@@ -378,7 +379,10 @@ def exe_version_string(blob: bytes, key: str) -> str | None:
     """exe 버전 리소스 StringFileInfo의 `key` 값. 값 길이는 구조체 머리(wValueLength)에서 읽는다
     (rc.exe는 값 끝에 NUL을 넣지 않을 수 있다)"""
     needle = key.encode("utf-16-le") + b"\0\0"
-    start = 0
+    # 코드·데이터 영역의 같은 문자열을 읽지 않게 버전 리소스(VS_FIXEDFILEINFO 서명) 뒤에서 찾는다
+    start = blob.find(b"\xbd\x04\xef\xfe")
+    if start < 0:
+        return None
     while (i := blob.find(needle, start)) >= 0:
         start = i + 2
         head = i - 6
@@ -389,7 +393,7 @@ def exe_version_string(blob: bytes, key: str) -> str | None:
             continue
         pos = i + len(needle)
         pos += (4 - (pos - head) % 4) % 4
-        return blob[pos:pos + value_len * 2].decode("utf-16-le", errors="replace").rstrip("\0")
+        return blob[pos:pos + value_len * 2].decode("utf-16-le", errors="replace").split("\0")[0]
     return None
 
 
@@ -430,7 +434,18 @@ def signing_parameters(data: dict, exes: Path) -> dict[str, str]:
     return params
 
 
+def collect_exes(data: dict, src: Path, dest: Path) -> None:
+    """빌드 폴더(target/release)에서 컴포넌트가 선언한 exe만 서명할 폴더로 모은다"""
+    dest.mkdir(parents=True, exist_ok=True)
+    for comp in data["components"].values():
+        for name in comp.get("exes", []):
+            if (src / name).is_file():
+                shutil.copy2(src / name, dest / name)
+
+
 def cmd_signing(data: dict, args: argparse.Namespace) -> int:
+    if args.collect:
+        collect_exes(data, Path(args.collect), Path(args.exes))
     # signpath/github-action-submit-signing-request의 parameters 형식: 한 줄에 `<이름>: "<JSON 문자열>"`
     params = signing_parameters(data, Path(args.exes))
     text = "".join(f"{name}: {json.dumps(value)}\n" for name, value in params.items())
@@ -608,6 +623,7 @@ def main() -> int:
     m.add_argument("--previous", help="지난 릴리즈의 (서명된) manifest. 바뀐 모듈·익스텐션의 버전이 오르지 않았으면 멈춘다")
     s = sub.add_parser("signing")
     s.add_argument("--exes", required=True, help="서명할 exe 폴더")
+    s.add_argument("--collect", help="먼저 이 빌드 폴더에서 선언된 exe를 --exes로 모은다")
     s.add_argument("--out", help="SignPath 매개변수 파일 (기본: 표준 출력)")
     r = sub.add_parser("registration")
     r.add_argument("--signed", required=True, help="release_signing sign 출력")
