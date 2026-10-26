@@ -1189,6 +1189,9 @@ export function createApi({ invoke, hub }) {
         relayLinkRequests: () => daemonJson('get', '/api/relay/link-requests'),
         relayLinkRequestRespond: (requestId, accept) =>
             daemonJson('post', `/api/relay/link-requests/${encodeURIComponent(requestId)}`, { accept: !!accept }),
+        // 개인정보 모두 지우기: `{url}`(웹사이트 동의 페이지)을 받고, 끝났는지는 `{status}`로 묻는다
+        relayPrivacyErase: (locale) => daemonJson('post', '/api/relay/privacy/erase', { locale }),
+        relayPrivacyEraseStatus: () => daemonJson('get', '/api/relay/privacy/erase'),
 
         // ── 셸·로그·앱 ──
         shellOpenPath: async (folderPath) => {

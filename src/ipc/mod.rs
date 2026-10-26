@@ -945,6 +945,8 @@ impl IPCServer {
             .route("/api/relay/pair/{code}/status", get(handlers::relay::poll_pairing_status))
             .route("/api/relay/link-requests", get(handlers::relay::list_link_requests))
             .route("/api/relay/link-requests/{request_id}", post(handlers::relay::answer_link_request))
+            // 개인정보 모두 지우기: 웹사이트에서 동의하면 릴레이가 지우고, 데몬이 연결을 끊는다
+            .route("/api/relay/privacy/erase", get(handlers::privacy::erase_status).post(handlers::privacy::start_erase))
             // ── Relay agent (cloud Discord bot ↔ daemon) ──
             .route("/api/relay/agent", get(handlers::chat::agent_status))
             .route("/api/relay/agent/start", post(handlers::chat::agent_start))

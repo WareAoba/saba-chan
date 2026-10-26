@@ -312,6 +312,10 @@ Tauri 커맨드(`installer/gui/src-tauri/src/lib.rs`): `get_installer_state`, `s
 | POST | `/events` | 노드(60/min), 256KB | `{events:[{id, type, data}]}`(20건까지) | `{accepted}`. 같은 호스트의 같은 `id`·`data.at`은 한 번만 받는다. 길드마다 따로 보내고, 디스코드 전송이 실패하면 2초·10초 뒤 다시 해 본다. 데몬은 2xx를 받은 이벤트를 다시 보내지 않으므로 끝내 실패한 길드는 그 알림을 놓친다(로그만) | `routes/events.ts`, `bot/notify.ts` |
 | GET | `/api/link-requests` | 노드 | — | `{requests:[{requestId, guildId, guildName, requestedBy, userName, expiresAt}]}`(이 호스트의 대기 요청, `expiresAt`은 ISO 8601 UTC). 코드 없는 연결(J1-b) | `linkRequests.ts` |
 | POST | `/api/link-requests/:id` | 노드 | `{accept: boolean}` | 수락 `{ok:true, guildId, guildName}`, 거절 `{ok:true, declined:true}`. 남의 것·없음 404 `NOT_FOUND`, 만료 410 `EXPIRED`, 그 PC가 요청한 사람 것이 아니게 됐으면 409 `HOST_NOT_FOUND`. 다른 PC가 대표인 길드면 이 PC를 붙인다(§4.4 (i)). 한 번만 쓴다(묶다가 DB 오류로 500이면 요청이 남아 다시 답할 수 있다) | `linkRequests.ts` |
+| POST | `/api/privacy/erasures` | 노드(5/min) | `{locale?}` | 201 `{id, url, pollSecret, expiresAt}`. 개인정보 모두 지우기 삭제표(30분). `url`은 웹사이트 동의 페이지 `https://saba-chan.online[/<locale>]/legal/erase#<id>.<secret>`(비밀은 `#` 뒤라 서버 로그에 남지 않는다). 비밀은 해시만 둔다 | `privacy.ts` |
+| POST | `/api/privacy/erasures/:id/preview` | —(20/min) | `{secret}` | `{username, pcs, servers}` / 404 `NOT_FOUND` / 410 `EXPIRED`·`DONE`. 웹사이트가 동의 화면에 보인다 | `privacy.ts` |
+| POST | `/api/privacy/erasures/:id/confirm` | —(10/min) | `{secret}` | `{ok:true}` / 404 / 410. 그 디스코드 계정의 PC(`removeOwnHost`, 데몬은 `TOKEN_REPLACED`를 받는다)·남은 노드(`unbindGuild`)·권한(0 이상)·명령·페어링 코드·감사 기록·챗봇 도구 기록과 그 사람이 든 채널 기억을 지운다. 운영자 차단과 서버 안 금지(-1)는 남기고, 그것이 가리키는 사용자 행은 이름만 지운다. 지운 뒤에 끝난 것으로 표시하고 삭제표의 디스코드 ID도 지운다(`services/privacyErasure.ts`) | `privacy.ts` |
+| POST | `/api/privacy/erasures/:id/status` | —(60/min) | `{pollSecret}` | `{status: pending\|done\|expired}` / 404. 앱이 끝났는지 묻는다(지운 뒤에는 노드 토큰이 없다) | `privacy.ts` |
 | PUT / DELETE | `/api/remote/endpoint` | 노드(PUT 10/min) | PUT `{address, port, certSha256}`(호스트 이름 또는 IP, 공인 주소가 없으면 `null`, 1~65535, 소문자 hex 64자) | 204. 이 PC의 직접 연결 주소와 TLS 인증서 지문. §4.4 (j) | `routes/remote.ts` |
 | GET (WS) | `/node/tunnel?to=<hostId>` · `?accept=<tunnelId>` | 노드 | 바이너리 프레임만 | 공인 주소 없는 PC 터널. `to`: 같은 주인의 원격 포트를 켠 PC 앞으로 연다(남의 PC·없는 PC 404, 원격 포트 꺼짐 409 `REMOTE_OFF`, 한도 429 `TOO_MANY_TUNNELS`). `accept`: 그 PC 앞으로 기다리는 터널만(그 밖 404). §4.4 (k) | `routes/remoteTunnel.ts` |
 | GET | `/api/remote/peers` | 노드(20/min) | — | `{peers:[{hostId, name, status, endpoint:{address, port, certSha256}\|null}]}`. 같은 주인의 다른 PC(만든 순서) | `routes/remote.ts` |
@@ -355,7 +359,7 @@ Tauri 커맨드(`installer/gui/src-tauri/src/lib.rs`): `get_installer_state`, `s
 | `blocked_users` | `discord_id` PK, reason, created_by(운영자 디스코드 ID 또는 `admin-api`), created_at, expires_at(NULL이면 무기한). §4.4 (g) |
 | `relay_stats` | `at` PK, hosts_total, hosts_online, guilds, bot_guilds, pollers, web_sessions, commands(지난 기록 뒤 큐에 들어온 수), chatbot_turns, chatbot_input_tokens·chatbot_cached_tokens·chatbot_cache_write_tokens·chatbot_output_tokens(bigint, 0031), music_voice, cpu_pct, rss_mb, load_pct, mem_used_pct, db_mb. 5분마다 한 줄, 사람·IP·길드 id 없음. §4.4 (h) |
 
-정리 스케줄러(`services/cleanup.ts`): 감사 30일, 운영 통계 365일, 끝난 큐 7일, 업데이트 이벤트 90일, 페어링 코드 24시간 뒤 삭제, 만료된 챗봇 도구 기록(`chatbot_records.expires_at`) 삭제. 수령 기한이 지난 페어링 토큰은 바로 지운다. 만료 큐는 timeout으로, heartbeat가 3분 넘게 없는 host는 offline으로 바꾼다.
+정리 스케줄러(`services/cleanup.ts`): 감사 30일, 운영 통계 365일, 끝난 큐 7일, 업데이트 이벤트 90일, 페어링 코드 24시간 뒤 삭제, 만료된 챗봇 도구 기록(`chatbot_records.expires_at`)과 기한 없이 180일 안 바뀐 기록 삭제, 90일 안 바뀐 챗봇 장기 기억 삭제, 기한이 지난 운영자 차단(`blocked_users`) 삭제, 끝났거나 기한이 지나고 하루 지난 개인정보 삭제표 삭제. 사용자(`users`)는 30일 넘게 안 보였고 호스트·노드·권한·페어링 코드가 가리키지 않고 `isBanned`가 아닐 때만 지운다(서버 안 금지 -1도 권한 행이라 남는다). 봇이 길드에서 빠지면(`guildDelete`, 기동 때 봇이 없는 길드도) 그 길드를 `unbindGuild`로 푼다(`nodeOwner.ts` `forgetRemovedGuild`·`forgetGuildsBotLeft`). 수령 기한이 지난 페어링 토큰은 바로 지운다. 만료 큐는 timeout으로, heartbeat가 3분 넘게 없는 host는 offline으로 바꾼다.
 
 ### 4.4 프로토콜 흐름
 

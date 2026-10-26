@@ -141,6 +141,15 @@ pub(crate) async fn adopt_node_token(state: &IPCServer, token: &str, changed: bo
     }
 }
 
+/// 연결 해제: 토큰을 지우기 전에 릴레이 에이전트를 멈춰 더는 원격 명령을 받지 않는다.
+/// 토큰이 없으면 다음 기동 때도 자동 시작하지 않는다. 연결 해제 API와 개인정보 지우기가 부른다
+pub(crate) async fn disconnect(state: &IPCServer) -> std::io::Result<()> {
+    state.relay_agent.stop();
+    write_node_token(None)?;
+    sync_host_id(state, None).await;
+    Ok(())
+}
+
 /// 노드 토큰을 바꾼다(`None`이나 빈 값이면 지운다). 값이 바뀌었으면 true
 pub(crate) fn write_node_token(token: Option<&str>) -> std::io::Result<bool> {
     write_node_token_in(&ConfigFile::default_location(), token)

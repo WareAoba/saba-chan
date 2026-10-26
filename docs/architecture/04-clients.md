@@ -150,6 +150,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 | chatbotModels | GET /api/relay/node/:guildId/chatbot/models (릴레이 답 그대로: `{models, selected, effectiveModel}`, 409 NO_API_KEY·422·503) | ✓ 챗봇 화면 모델 드롭다운. 고른 모델을 대신 쓰는 중이면(`effectiveModel`≠`model`) 알리고 그 모델을 고른 상태로 둔다 |
 | relayInitiatePairing / relayPollPairingStatus (976-990) | POST /api/relay/pair/initiate, GET /api/relay/pair/:code/status | ✓ 782-783 |
 | relayLinkRequests / relayLinkRequestRespond (992-994) | GET /api/relay/link-requests, POST /api/relay/link-requests/:id `{accept}`. 디스코드에서 코드 없이 온 연결 요청(J1-b). 데몬 본문을 그대로 돌려준다(`daemonJson`) | ✓ 784-785 |
+| relayPrivacyErase / relayPrivacyEraseStatus | POST `/api/relay/privacy/erase` `{locale}` → `{url}`, GET → `{status}`. 개인정보 모두 지우기(`daemonJson`) | ✓ 디스코드 연결 화면 `PrivacyErase`: 동의 페이지를 열고 3초마다 묻는다. `done`이면 연결 해제처럼 화면을 비운다(끊기는 데몬이 한다) |
 | shellOpenPath (997) | Rust `shell_open_path`. 디렉터리가 아니면 열지 않는다(`errors.path_not_folder`) | n/a |
 | logsGetPath / logsOpenFolder (1001-1002) | Rust `logs_get_path` / `logs_open_folder` | n/a (logsGetPath 미사용) |
 | launchUninstaller (1003) | Rust `launch_uninstaller` (installer 직접 spawn) | n/a |
@@ -280,6 +281,7 @@ PC 주인이 폰 브라우저로 서버·인스턴스를 관리하는 원격 화
 - `bot pair [--relay-url URL]`: 페어링 코드를 받아 보여 주고(디스코드 `/사바쨩 연결`·`/saba connect`에 넣는다) claimed까지 기다린다. 데몬은 설정한 릴레이와만 페어링하므로, `--relay-url`이 설정과 다르면 봇 설정 `cloud.relayUrl`을 먼저 바꾼 뒤 페어링한다. `--json`만 주면 코드만 내고 끝, `--yes`면 기다린다.
 - `bot channels GUILD [--chatbot 이름,…] [--no-chatbot] [--music 이름] [--no-music] [--notify 이름] [--no-notify]`: 채널 이름이나 id를 GET 응답의 `channels`로 id로 바꿔 PUT한다. `--notify`는 알림 채널(I3: 크래시·백업·업데이트·예약 예고)이다. 음악 채널을 새로 정할 때는 메시지가 지워진다고 확인을 받는다.
 - `bot link [ID] [--decline]`: 디스코드에서 코드 없이 `/사바쨩 연결`로 온 연결 요청(J1-b). ID 없이 부르면 목록(`GET /api/relay/link-requests`), ID면 수락, `--decline`이면 거절(`POST /api/relay/link-requests/:id`). `bot pair`는 끝에 GUI 디스코드 화면에서도 볼 수 있다는 안내를 붙인다(J1-c).
+- `bot erase`: 개인정보 모두 지우기(`POST /api/relay/privacy/erase`). 동의 페이지 주소를 보이고 데몬이 끝났다고 할 때까지 3초마다 묻는다(`GET`). Ctrl+C로 그만둬도 데몬은 계속 묻고 동의하면 연결을 끊는다. `--json`만 주면 주소만 낸다.
 - `bot allow GUILD [서버…] [--all]`: 그 디스코드 서버가 보고 부를 수 있는 서버(`nodeSettings[guild].allowedInstances`, Q-4). 서버 없이 부르면 보기, `--all`은 키를 지워 제한 없음. `PUT /api/guilds/:guild/allowed-instances`로 저장한다(`--all`이면 `instances:null`). 없는 서버 id는 데몬이 400으로 거절한다.
 - `server discord [SERVER] [--word 낱말,…] [--command 명령=낱말,…] [--clear]`: 디스코드에서 이 서버와 그 명령을 부르는 낱말(봇 설정 `serverWords[id]`, 인스턴스에 딸려 어느 디스코드 서버에서나 같다, `cmd/discord_words.rs`). GUI 서버 상세의 디스코드 탭과 같다. 옵션 없이 부르면 `GET /api/instance/:id/words`의 서버 낱말(괄호는 기본 호출명 `defaultWords`)과 명령별 낱말(괄호는 module.toml 별명)을 보여 준다. GUI 디스코드 탭도 서버 낱말 칸에 `defaultWords`를 "기본:"으로 보인다. 바꿀 때는 지금 값에서 시작해 `--word`(서버 낱말 통째, `--word ""`는 지움)와 `--command`(그 명령만, `명령=`은 지움)만 바꾸고 `{words, commands}` 전체를 `PUT /api/instance/:id/words`로 보낸다. `--clear`는 둘 다 비운다. 낱말 규칙·충돌은 데몬이 검사하고, 400 `validation_failed`의 `details`는 칸마다 한 줄로 보인다(`error.rs` `api_hint`). 0.1.10의 `--guild`(디스코드 서버마다 따로 정하기)는 없앴다. 예전 `bot words`와 전역 별명 명령 `bot alias`·`bot server-alias`·`bot word`도 없다.
 - `bot lang GUILD [auto|코드]`,

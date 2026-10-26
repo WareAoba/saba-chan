@@ -34,6 +34,7 @@ pub async fn run(ctx: &Ctx, cmd: BotCmd) -> Result<()> {
             ctx.out.done(&t!("bot.unpaired"), &r);
             Ok(())
         }
+        BotCmd::Erase => erase(ctx).await,
         BotCmd::Token => {
             // 셸 기록에 남지 않게 인자로 받지 않는다 (터미널이 아니면 표준 입력 한 줄)
             let token = ctx.ask.secret_or_stdin(&t!("bot.ask_token"))?;
@@ -238,6 +239,51 @@ async fn pair(ctx: &Ctx, relay_url: Option<String>) -> Result<()> {
     match claimed? {
         Some(result) => finish_pair(ctx, result, cloud).await,
         None => Ok(()),
+    }
+}
+
+/// 개인정보 모두 지우기: 데몬이 받은 웹사이트 동의 페이지를 보여 주고, 동의해서 데몬이 연결을 끊을 때까지 기다린다.
+/// 기다리기를 그만둬도(Ctrl+C) 데몬은 계속 묻고, 동의하면 연결을 끊는다
+async fn erase(ctx: &Ctx) -> Result<()> {
+    let r = ctx.api.privacy_erase(crate::i18n::lang()).await?;
+    let url = s(&r, "url").to_string();
+    if url.is_empty() {
+        return Err(failed(t!("bot.erase_no_url")));
+    }
+    if ctx.out.json && !ctx.ask.yes {
+        ctx.out.data(&r, |_| {});
+        return Ok(());
+    }
+    tell!();
+    tell!("  {}", t!("bot.erase_open"));
+    tell!();
+    tell!("      {}", console::style(&url).cyan().underlined());
+    tell!();
+    tell!("  {}", output::dim(&t!("bot.erase_waiting")));
+    let spin = crate::progress::spinner(&t!("bot.erase_polling"));
+    let status = loop {
+        tokio::select! {
+            _ = tokio::time::sleep(Duration::from_secs(3)) => {}
+            _ = tokio::signal::ctrl_c() => {
+                spin.finish_and_clear();
+                return Err(crate::error::CliError::Cancelled.into());
+            }
+        }
+        // 데몬에 잠깐 닿지 않아도 다시 묻는다 (기한은 데몬이 센다)
+        let Ok(st) = ctx.api.privacy_erase_status().await else { continue };
+        match s(&st, "status") {
+            "pending" => {}
+            other => break (other.to_string(), st),
+        }
+    };
+    spin.finish_and_clear();
+    match status.0.as_str() {
+        "done" => {
+            ctx.out.done(&t!("bot.erase_done"), &status.1);
+            Ok(())
+        }
+        "failed" => Err(failed(t!("bot.erase_failed"))),
+        _ => Err(failed(t!("bot.erase_expired"))),
     }
 }
 
