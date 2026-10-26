@@ -1623,7 +1623,11 @@
     "switch_to_cli": "Перейти в CLI",
     "start_daemon": "Запустить демон",
     "stop_daemon": "Остановить демон",
-    "quit_all": "Выйти полностью"
+    "quit_all": "Выйти полностью",
+    "remote_connected": "{{name}} подключён",
+    "remote_unreachable": "{{name}} недоступен",
+    "stop_confirm": "Остановить?",
+    "stop_confirm_aria": "Подтвердить остановку {{name}}"
   },
   "autostart": {
     "label": "Запуск при входе",

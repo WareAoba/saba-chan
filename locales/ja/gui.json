@@ -1623,7 +1623,11 @@
     "switch_to_cli": "CLIに切り替え",
     "start_daemon": "デーモンを開始",
     "stop_daemon": "デーモンを停止",
-    "quit_all": "完全に終了"
+    "quit_all": "完全に終了",
+    "remote_connected": "{{name}} に接続中",
+    "remote_unreachable": "{{name}} に届きません",
+    "stop_confirm": "停止しますか？",
+    "stop_confirm_aria": "{{name}} の停止を確認"
   },
   "autostart": {
     "label": "サインイン時に自動起動",

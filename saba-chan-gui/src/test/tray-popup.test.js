@@ -44,6 +44,8 @@ describe('트레이 팝업', () => {
             'instanceStop',
             'trayAction',
             'trayPopupFit',
+            'daemonTarget',
+            'remoteDaemons',
         ])
             delete window.api[k];
     });
@@ -114,5 +116,47 @@ describe('트레이 팝업', () => {
         await flush();
         fireEvent.keyDown(window, { key: 'Escape' });
         expect(window.api.trayAction).toHaveBeenLastCalledWith('close');
+    });
+    describe('원격 데몬을 고른 동안', () => {
+        beforeEach(() => {
+            window.api.daemonTarget = vi.fn().mockResolvedValue({ target: 'host-1' });
+            window.api.remoteDaemons = vi.fn().mockResolvedValue({ daemons: [{ hostId: 'host-1', name: '거실 PC' }] });
+        });
+
+        it('상태 칩은 목록을 준 원격 데몬의 이름과 상태를 보인다', async () => {
+            render(<TrayPopup />);
+            await flush();
+            expect(screen.getByText('거실 PC connected')).toBeTruthy();
+            expect(screen.queryByText('Daemon running')).toBeNull();
+            expect(screen.getByText('야생 서버')).toBeTruthy();
+        });
+
+        it('원격 데몬에 닿지 않으면 그렇게 보이고 지난 목록을 남기지 않는다', async () => {
+            window.api.serverList = vi.fn().mockResolvedValue({ error: 'unreachable' });
+            render(<TrayPopup />);
+            await flush();
+            expect(screen.getByText("Can't reach 거실 PC")).toBeTruthy();
+            expect(screen.queryByText('야생 서버')).toBeNull();
+            expect(screen.queryByText('No servers yet')).toBeNull();
+        });
+
+        it('원격 서버 정지는 한 번 더 눌러야 보낸다', async () => {
+            render(<TrayPopup />);
+            await flush();
+            fireEvent.click(screen.getByRole('button', { name: 'Stop 야생 서버' }));
+            await flush();
+            expect(window.api.instanceStop).not.toHaveBeenCalled();
+            fireEvent.click(screen.getByRole('button', { name: 'Confirm stop 야생 서버' }));
+            await flush();
+            expect(window.api.instanceStop).toHaveBeenCalledWith('a');
+        });
+
+        it('원격 서버 시작은 확인 없이 보낸다', async () => {
+            render(<TrayPopup />);
+            await flush();
+            fireEvent.click(screen.getByRole('button', { name: 'Start 팰월드' }));
+            await flush();
+            expect(window.api.instanceStart).toHaveBeenCalledWith('b');
+        });
     });
 });

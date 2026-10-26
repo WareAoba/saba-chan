@@ -1623,7 +1623,11 @@
     "switch_to_cli": "Switch to CLI",
     "start_daemon": "Start daemon",
     "stop_daemon": "Stop daemon",
-    "quit_all": "Quit completely"
+    "quit_all": "Quit completely",
+    "remote_connected": "{{name}} connected",
+    "remote_unreachable": "Can't reach {{name}}",
+    "stop_confirm": "Stop?",
+    "stop_confirm_aria": "Confirm stop {{name}}"
   },
   "autostart": {
     "label": "Start at sign-in",

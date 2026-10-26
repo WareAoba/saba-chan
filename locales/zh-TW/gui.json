@@ -1623,7 +1623,11 @@
     "switch_to_cli": "切換到 CLI",
     "start_daemon": "啟動常駐程式",
     "stop_daemon": "停止常駐程式",
-    "quit_all": "完全結束"
+    "quit_all": "完全結束",
+    "remote_connected": "已連線 {{name}}",
+    "remote_unreachable": "無法連線 {{name}}",
+    "stop_confirm": "停止？",
+    "stop_confirm_aria": "確認停止 {{name}}"
   },
   "autostart": {
     "label": "登入時自動啟動",

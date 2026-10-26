@@ -1623,7 +1623,11 @@
     "switch_to_cli": "Passer à la CLI",
     "start_daemon": "Démarrer le démon",
     "stop_daemon": "Arrêter le démon",
-    "quit_all": "Quitter complètement"
+    "quit_all": "Quitter complètement",
+    "remote_connected": "{{name}} connecté",
+    "remote_unreachable": "Impossible de joindre {{name}}",
+    "stop_confirm": "Arrêter ?",
+    "stop_confirm_aria": "Confirmer l'arrêt de {{name}}"
   },
   "autostart": {
     "label": "Démarrer à la connexion",

@@ -1623,7 +1623,11 @@
     "switch_to_cli": "Mudar para a CLI",
     "start_daemon": "Iniciar daemon",
     "stop_daemon": "Parar daemon",
-    "quit_all": "Sair completamente"
+    "quit_all": "Sair completamente",
+    "remote_connected": "{{name}} conectado",
+    "remote_unreachable": "Não foi possível alcançar {{name}}",
+    "stop_confirm": "Parar?",
+    "stop_confirm_aria": "Confirmar parada de {{name}}"
   },
   "autostart": {
     "label": "Iniciar ao entrar",

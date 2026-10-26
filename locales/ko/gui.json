@@ -1623,7 +1623,11 @@
     "switch_to_cli": "CLI로 전환",
     "start_daemon": "데몬 켜기",
     "stop_daemon": "데몬 끄기",
-    "quit_all": "완전히 종료"
+    "quit_all": "완전히 종료",
+    "remote_connected": "{{name}} 연결됨",
+    "remote_unreachable": "{{name}}에 닿지 않아요",
+    "stop_confirm": "정지할까요?",
+    "stop_confirm_aria": "{{name}} 정지 확인"
   },
   "autostart": {
     "label": "로그인할 때 자동 실행",

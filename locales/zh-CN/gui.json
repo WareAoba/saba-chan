@@ -1623,7 +1623,11 @@
     "switch_to_cli": "切换到 CLI",
     "start_daemon": "启动守护进程",
     "stop_daemon": "停止守护进程",
-    "quit_all": "完全退出"
+    "quit_all": "完全退出",
+    "remote_connected": "已连接 {{name}}",
+    "remote_unreachable": "无法连接 {{name}}",
+    "stop_confirm": "停止？",
+    "stop_confirm_aria": "确认停止 {{name}}"
   },
   "autostart": {
     "label": "登录时自动启动",

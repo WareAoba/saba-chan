@@ -1,13 +1,14 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "tray-popup",
-  "description": "트레이 팝업: 데몬 상태·서버 목록 읽기와 시작·정지, 셸의 트레이 동작. 알림은 보내지 않는다 (팝업은 열 때마다 새로 떠서 지난 알림을 다시 받는다)",
+  "description": "트레이 팝업: 데몬 상태·고른 데몬·서버 목록 읽기와 시작·정지, 셸의 트레이 동작. 알림은 보내지 않는다 (팝업은 열 때마다 새로 떠서 지난 알림을 다시 받는다)",
   "windows": [
     "tray-popup"
   ],
   "permissions": [
     "allow-daemon-request",
     "allow-daemon-status",
+    "allow-daemon-target-get",
     "allow-language-get",
     "allow-tray-action",
     "allow-tray-popup-fit"

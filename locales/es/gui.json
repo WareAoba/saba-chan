@@ -1623,7 +1623,11 @@
     "switch_to_cli": "Cambiar a la CLI",
     "start_daemon": "Iniciar daemon",
     "stop_daemon": "Detener daemon",
-    "quit_all": "Salir por completo"
+    "quit_all": "Salir por completo",
+    "remote_connected": "{{name}} conectado",
+    "remote_unreachable": "No se puede contactar con {{name}}",
+    "stop_confirm": "¿Detener?",
+    "stop_confirm_aria": "Confirmar detener {{name}}"
   },
   "autostart": {
     "label": "Iniciar al iniciar sesión",
