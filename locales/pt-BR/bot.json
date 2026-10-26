@@ -374,6 +374,7 @@
       "players_more": "…e mais {{count}}",
       "port_check": {
         "open": "✅ Acessível pela internet",
+        "firewall": "🧱 Bloqueado pelo firewall do PC",
         "closed": "🚫 Não acessível pela internet",
         "cgnat": "⚠️ Seu roteador não tem IP público (CGNAT)",
         "unknown": "❔ Algumas portas não puderam ser verificadas",
@@ -383,11 +384,13 @@
         "open": "Aberta",
         "closed": "Fechada",
         "unknown": "Não verificada",
-        "in_use": "Em uso por outro programa"
+        "in_use": "Em uso por outro programa",
+        "firewall": "Bloqueado pelo firewall"
       },
       "port_item": "• {{port}}/{{protocol}} · {{status}}",
       "port_hint": {
         "closed": "Confira se o roteador redireciona esta porta para este PC e se o firewall do PC a permite.",
+        "firewall": "O Firewall do Windows está bloqueando o Saba-chan (saba-core). Permita no aviso que aparece durante a verificação ou permita o saba-core nas configurações do Firewall do Windows e verifique novamente.",
         "cgnat": "Sua operadora divide um IP público entre várias casas, então o redirecionamento de portas não consegue abri-lo. Peça um IP público à operadora ou use uma VPN como o Tailscale.",
         "unknown": "Não é possível verificar portas UDP de um servidor ligado nem portas usadas por outro programa. Pare o servidor e verifique de novo."
       }

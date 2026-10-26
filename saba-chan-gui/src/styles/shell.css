@@ -3151,6 +3151,7 @@ button.appbar-preflight {
 .port-check-verdict.verdict-open {
     color: var(--success);
 }
+.port-check-verdict.verdict-firewall,
 .port-check-verdict.verdict-closed,
 .port-check-verdict.verdict-cgnat {
     color: var(--warning);
@@ -3158,7 +3159,8 @@ button.appbar-preflight {
 .server-check-issue.port-open {
     color: var(--success);
 }
-.server-check-issue.port-closed {
+.server-check-issue.port-closed,
+.server-check-issue.port-firewall {
     color: var(--danger);
 }
 .server-check-issue.port-in_use {

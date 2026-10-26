@@ -67,6 +67,13 @@ describe('포트포워딩 확인', () => {
         expect(container).toBeEmptyDOMElement();
     });
 
+    it('방화벽이 막은 결과도 상세 위에 알린다', async () => {
+        window.api.instancePortCheck = vi.fn();
+        window.api.instancePortCheckLast = vi.fn().mockResolvedValue({ ...closedReport, verdict: 'firewall' });
+        render(<PortCheckNotice server={server} />);
+        expect(await screen.findByRole('status')).toHaveTextContent(/Blocked by the PC firewall/);
+    });
+
     it('도움말 주소는 웹사이트 언어 경로를 따른다 (영어는 앞에 언어가 없다)', () => {
         expect(portHelpUrl('en')).toBe('https://saba-chan.online/docs/server-management');
         expect(portHelpUrl('ko')).toBe('https://saba-chan.online/ko/docs/server-management');

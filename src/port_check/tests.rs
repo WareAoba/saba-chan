@@ -65,6 +65,7 @@ fn the_verdict_puts_cgnat_and_closed_first() {
     assert_eq!(verdict(Nat::Unknown, &[p(PortStatus::Open), p(PortStatus::Open)]), "open");
     assert_eq!(verdict(Nat::Router, &[p(PortStatus::Open), p(PortStatus::Unknown)]), "unknown");
     assert_eq!(verdict(Nat::Router, &[p(PortStatus::InUse)]), "unknown");
+    assert_eq!(verdict(Nat::Router, &[p(PortStatus::Closed), p(PortStatus::Firewall)]), "firewall");
 }
 
 // ── 릴레이 흉내: 실제 릴레이처럼 요청이 온 주소(루프백)의 그 포트로 확인값을 보낸다 ──
@@ -158,6 +159,20 @@ async fn a_stopped_server_is_closed_when_nothing_arrives() {
     let reports = run(&relay, &[target("pc-closed", false, &[(tcp, Protocol::Tcp), (udp, Protocol::Udp)])], LOOPBACK).await.unwrap();
     assert_eq!(statuses(&reports[0]), vec![PortStatus::Closed, PortStatus::Closed]);
     assert_eq!(reports[0].verdict, "closed");
+}
+
+#[tokio::test]
+async fn a_port_the_pc_firewall_blocks_is_reported_as_the_firewall() {
+    let relay = mock_relay(Mode::Drop).await;
+    let (tcp, udp) = (free_port(), free_port());
+    fn blocks_tcp(ports: &[(u16, Protocol)]) -> Vec<(u16, Protocol)> {
+        ports.iter().copied().filter(|p| p.1 == Protocol::Tcp).collect()
+    }
+    let reports =
+        run_with(&relay, &[target("pc-firewall", false, &[(tcp, Protocol::Tcp), (udp, Protocol::Udp)])], LOOPBACK, blocks_tcp).await.unwrap();
+    assert_eq!(statuses(&reports[0]), vec![PortStatus::Firewall, PortStatus::Closed]);
+    // 방화벽부터 풀어야 공유기 설정을 확인할 수 있다
+    assert_eq!(reports[0].verdict, "firewall");
 }
 
 #[tokio::test]

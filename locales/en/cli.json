@@ -1263,6 +1263,7 @@
     "address": "Public IP {{address}} (friends join with this address and the port)",
     "verdict": {
       "open": "Reachable from the internet",
+      "firewall": "Blocked by the PC firewall",
       "closed": "Not reachable from the internet",
       "cgnat": "Your router has no public IP (CGNAT)",
       "unknown": "Some ports could not be checked",
@@ -1272,10 +1273,12 @@
       "open": "Open",
       "closed": "Closed",
       "unknown": "Not checked",
-      "in_use": "Used by another program"
+      "in_use": "Used by another program",
+      "firewall": "Blocked by firewall"
     },
     "hint": {
       "closed": "Check that your router forwards this port to this PC and that the PC firewall allows it.",
+      "firewall": "Windows Firewall is blocking Saba-chan (saba-core). Allow it in the prompt that appears during the check, or allow saba-core in Windows Firewall settings, then check again.",
       "cgnat": "Your provider shares one public IP among many homes, so port forwarding cannot open it. Ask your provider for a public IP or use a VPN such as Tailscale.",
       "unknown": "UDP ports of a running server and ports another program uses cannot be checked. Stop the server and check again."
     }

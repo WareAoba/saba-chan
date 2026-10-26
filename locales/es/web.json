@@ -220,6 +220,7 @@
     "help": "Guía de reenvío de puertos",
     "verdict": {
       "open": "Accesible desde internet",
+      "firewall": "Bloqueado por el firewall del PC",
       "closed": "No accesible desde internet",
       "cgnat": "Tu router no tiene IP pública (CGNAT)",
       "unknown": "Algunos puertos no se pudieron comprobar",
@@ -229,10 +230,12 @@
       "open": "Abierto",
       "closed": "Cerrado",
       "unknown": "Sin comprobar",
-      "in_use": "En uso por otro programa"
+      "in_use": "En uso por otro programa",
+      "firewall": "Bloqueado por el firewall"
     },
     "hint": {
       "closed": "Comprueba que el router reenvía este puerto a este PC y que el cortafuegos del PC lo permite.",
+      "firewall": "El Firewall de Windows está bloqueando Saba-chan (saba-core). Permítelo en el aviso que aparece durante la comprobación o permite saba-core en la configuración del Firewall de Windows y vuelve a comprobar.",
       "cgnat": "Tu proveedor comparte una IP pública entre muchos hogares, así que el reenvío de puertos no puede abrirlo. Pide una IP pública a tu proveedor o usa una VPN como Tailscale.",
       "unknown": "No se pueden comprobar los puertos UDP de un servidor en marcha ni los puertos que usa otro programa. Detén el servidor y vuelve a comprobar."
     },

@@ -1283,7 +1283,7 @@ async fn port_check(ctx: &Ctx, query: Option<&str>) -> Result<()> {
             let status = t!(&format!("port_check.status.{}", s(p, "status")));
             say!("  {}/{}  {}", port, s(p, "protocol").to_uppercase(), status);
         }
-        if matches!(verdict, "closed" | "cgnat" | "unknown") {
+        if matches!(verdict, "firewall" | "closed" | "cgnat" | "unknown") {
             say!("{}", output::dim(&t!(&format!("port_check.hint.{}", verdict))));
         }
     });

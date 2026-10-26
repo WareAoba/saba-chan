@@ -102,6 +102,8 @@ pub enum PortStatus {
     Unknown,
     /// 서버가 꺼져 있는데 다른 프로그램이 그 포트를 쓰고 있다
     InUse,
+    /// 닿지 않았고, 이 PC 방화벽(Windows)에 사바쨩을 허용하는 규칙이 없다
+    Firewall,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -167,7 +169,7 @@ pub struct Report {
     pub public_address: bool,
     pub nat: Nat,
     pub running: bool,
-    /// open: 모두 열림, closed: 닫힌 포트가 있다, cgnat: 공유기에 공인 주소가 없다, unknown: 닫힌 것은 없지만 모두 확인하지 못했다,
+    /// open: 모두 열림, firewall: 이 PC 방화벽이 막는 포트가 있다, closed: 닫힌 포트가 있다, cgnat: 공유기에 공인 주소가 없다, unknown: 닫힌 것은 없지만 모두 확인하지 못했다,
     /// no_ports: 모듈이 밖에 여는 포트를 선언하지 않았다
     pub verdict: &'static str,
     pub ports: Vec<PortResult>,
@@ -178,6 +180,8 @@ fn verdict(nat: Nat, ports: &[PortResult]) -> &'static str {
         "no_ports"
     } else if nat == Nat::Cgnat {
         "cgnat"
+    } else if ports.iter().any(|p| p.status == PortStatus::Firewall) {
+        "firewall"
     } else if ports.iter().any(|p| p.status == PortStatus::Closed) {
         "closed"
     } else if ports.iter().all(|p| p.status == PortStatus::Open) {
@@ -453,6 +457,16 @@ async fn gateway_external_ip() -> Option<IpAddr> {
 
 /// 인스턴스들의 포트를 한 번에 확인한다. `bind_ip`는 시험 리스너 주소 (데몬은 모든 주소, 시험은 루프백)
 pub async fn run(relay: &Relay, targets: &[Target], bind_ip: IpAddr) -> Result<Vec<Report>, CheckError> {
+    run_with(relay, targets, bind_ip, firewall::blocked_ports).await
+}
+
+/// `firewall`: 이 PC 방화벽이 막는 시험 리스너 포트 (닿지 않은 포트를 닫힘 대신 방화벽으로 알린다)
+async fn run_with(
+    relay: &Relay,
+    targets: &[Target],
+    bind_ip: IpAddr,
+    firewall: fn(&[(u16, Protocol)]) -> Vec<(u16, Protocol)>,
+) -> Result<Vec<Report>, CheckError> {
     let ids: Vec<String> = targets.iter().map(|t| t.instance_id.clone()).collect();
     let (_hold, starting) = Hold::take(&ids).ok_or(CheckError::Busy)?;
     // 시작하는 중인 서버는 켜진 것으로 본다: 포트를 잡지 않고, 아직 열리지 않았을 수 있어 접속 결과도 쓰지 않는다
@@ -467,6 +481,7 @@ pub async fn run(relay: &Relay, targets: &[Target], bind_ip: IpAddr) -> Result<V
     // 꺼진 서버는 시험 리스너로, 켜진 서버는 TCP만 릴레이 접속 결과로 본다
     let listen: Vec<(u16, Protocol)> = unique(targets.iter().filter(|t| !t.running).flat_map(|t| t.ports.iter()));
     let (busy, listeners) = open_listeners(&listen, bind_ip, &nonce, &seen, &stop).await;
+    let firewalled = firewall(&listen);
     let live_tcp = unique(targets.iter().filter(|t| t.running && !starting.contains(&t.instance_id)).flat_map(|t| t.ports.iter()).filter(|p| p.protocol == Protocol::Tcp));
     let mut ask: Vec<(u16, Protocol)> = listen.iter().filter(|p| !busy.contains(p)).copied().collect();
     for p in live_tcp {
@@ -512,7 +527,13 @@ pub async fn run(relay: &Relay, targets: &[Target], bind_ip: IpAddr) -> Result<V
                     } else if !public_address {
                         PortStatus::Unknown
                     } else if !t.running {
-                        if seen.contains(&key) { PortStatus::Open } else { PortStatus::Closed }
+                        if seen.contains(&key) {
+                            PortStatus::Open
+                        } else if firewalled.contains(&key) {
+                            PortStatus::Firewall
+                        } else {
+                            PortStatus::Closed
+                        }
                     } else if p.protocol == Protocol::Udp {
                         PortStatus::Unknown
                     } else {
@@ -665,6 +686,8 @@ pub async fn auto_on_start(state: crate::ipc::IPCServer) {
     let ids: Vec<String> = state.supervisor.read().await.instance_store.list().iter().map(|i| i.id.clone()).collect();
     auto_check(&state, ids).await;
 }
+
+mod firewall;
 
 #[cfg(test)]
 mod tests;

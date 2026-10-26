@@ -8,7 +8,13 @@ import { Icon } from '../Icon';
 /** 데몬에 포트포워딩 확인이 있을 때만 (예전 브리지면 숨긴다) */
 export const portCheckAvailable = () => typeof window.api?.instancePortCheck === 'function';
 
-const STATUS_ICON = { open: 'checkCircle', closed: 'alertCircle', unknown: 'info', in_use: 'alertTriangle' };
+const STATUS_ICON = {
+    open: 'checkCircle',
+    closed: 'alertCircle',
+    unknown: 'info',
+    in_use: 'alertTriangle',
+    firewall: 'alertCircle',
+};
 
 /** 마지막 확인 결과. 자동 확인이 끝나면(`instance.port_check`) 다시 읽는다 */
 function useLastPortCheck(serverId) {
