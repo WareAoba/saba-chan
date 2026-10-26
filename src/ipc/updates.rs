@@ -18,6 +18,7 @@
 //! - `GET  /api/updates/config`              — 업데이트 설정 조회
 //! - `PUT  /api/updates/config`              — 업데이트 설정 변경
 
+use super::handlers::LooseJson;
 use axum::{
     extract::{Query, State},
     response::IntoResponse,
@@ -88,6 +89,11 @@ impl UpdateState {
     pub fn with_stop_signal(mut self, stop_requested: tokio_util::sync::CancellationToken) -> Self {
         self.stop_requested = Some(stop_requested);
         self
+    }
+
+    /// 업데이터를 띄웠다 (데몬이 곧 끝나고 업데이터가 실행 파일을 바꾼다)
+    pub fn updater_launched(&self) -> bool {
+        self.updater_launched.load(std::sync::atomic::Ordering::SeqCst)
     }
 
     pub fn with_clients(mut self, clients: crate::ipc::ClientRegistry) -> Self {
@@ -641,7 +647,7 @@ async fn install_updates(State(state): State<UpdateState>) -> axum::response::Re
         applied["download_errors"] = json!(failed);
     }
     if applied.get("requires_updater").and_then(Value::as_bool) == Some(true) {
-        let launched = into_internal(launch_updater(State(state), None).await).await.body;
+        let launched = into_internal(launch_updater(State(state), LooseJson(None)).await).await.body;
         if launched.get("ok").and_then(Value::as_bool) == Some(false) {
             applied["ok"] = json!(false);
             applied["error"] = launched.get("error").cloned().unwrap_or(Value::Null);
@@ -665,7 +671,7 @@ struct LaunchUpdaterRequest {
 
 async fn launch_updater(
     State(state): State<UpdateState>,
-    body: Option<Json<LaunchUpdaterRequest>>,
+    LooseJson(body): LooseJson<LaunchUpdaterRequest>,
 ) -> axum::response::Response {
     let body = body.map(|Json(b)| b).unwrap_or_default();
     let Some(updater) = updater_binary() else {
@@ -705,11 +711,14 @@ async fn launch_updater(
     };
     // 떠 있는 GUI는 실행 파일을 쥐고 있어 바꿀 수 없다. GUI가 부른 게 아니면(CLI·자동 업데이트) 데몬이 끄고
     // 업데이터가 같은 GUI를 다시 띄우게 한다(GUI가 뜨면서 데몬도 띄운다). GUI가 불렀으면 그 GUI는 스스로 끝난다
-    let guis = match &state.clients {
-        Some(clients) => running_guis(&clients.list().await),
-        None => Vec::new(),
+    let (guis, resident) = match &state.clients {
+        Some(clients) => {
+            let list = clients.list().await;
+            (running_guis(&list), only_resident_guis(&list))
+        }
+        None => (Vec::new(), false),
     };
-    let relaunch = relaunch_target(body.relaunch, &guis);
+    let relaunch = relaunch_target(body.relaunch, &guis, resident);
     let args = updater_args(ticket, saba_chan_updater_lib::profile::Profile::load(), relaunch);
     if let Err(e) = spawn_detached(&updater, &args) {
         state.updater_launched.store(false, Ordering::SeqCst);
@@ -778,14 +787,27 @@ fn running_guis(clients: &[(String, crate::ipc::RegisteredClient)]) -> Vec<(u32,
         .collect()
 }
 
-/// 업데이터가 다시 띄울 것: 떠 있던 GUI가 있으면 그 GUI(요청이 이미 GUI면 그대로), 없으면 요청대로
-fn relaunch_target(requested: Vec<String>, guis: &[(u32, std::path::PathBuf)]) -> Vec<String> {
+/// 등록된 GUI가 모두 창 없이 트레이만 들고 있다 (다시 띄울 때도 창을 열지 않는다)
+fn only_resident_guis(clients: &[(String, crate::ipc::RegisteredClient)]) -> bool {
+    let mut guis = clients.iter().filter(|(_, c)| c.kind == crate::ipc::ClientKind::Gui).peekable();
+    guis.peek().is_some() && guis.all(|(_, c)| c.resident)
+}
+
+/// 업데이터가 다시 띄울 것: 떠 있던 GUI가 있으면 그 GUI(요청이 이미 GUI면 그대로), 없으면 요청대로.
+/// 떠 있던 GUI가 트레이만 들고 있었으면(`resident`) 트레이 모드로 다시 띄운다
+fn relaunch_target(requested: Vec<String>, guis: &[(u32, std::path::PathBuf)], resident: bool) -> Vec<String> {
     let is_gui = |exe: &str| {
         let name = std::path::Path::new(exe).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
         saba_chan_updater_lib::GUI_EXE_NAMES.iter().any(|g| g.eq_ignore_ascii_case(&name))
     };
     match guis.first() {
-        Some((_, exe)) if !requested.first().is_some_and(|r| is_gui(r)) => vec![exe.to_string_lossy().into_owned()],
+        Some((_, exe)) if !requested.first().is_some_and(|r| is_gui(r)) => {
+            let mut line = vec![exe.to_string_lossy().into_owned()];
+            if resident {
+                line.push(crate::tray_host::TRAY_ARG.to_string());
+            }
+            line
+        }
         _ => requested,
     }
 }
@@ -1139,11 +1161,11 @@ mod tests {
 
         let state = UpdateState::new();
         state.manager.write().await.load_pending_manifest().unwrap();
-        let first = super::launch_updater(State(state.clone()), None).await;
+        let first = super::launch_updater(State(state.clone()), crate::ipc::handlers::LooseJson(None)).await;
         assert_eq!(first.status(), axum::http::StatusCode::OK);
         let ticket = std::fs::read_to_string(staging.join("apply-ticket")).unwrap();
 
-        let second = super::launch_updater(State(state.clone()), None).await;
+        let second = super::launch_updater(State(state.clone()), crate::ipc::handlers::LooseJson(None)).await;
         assert_eq!(second.status(), axum::http::StatusCode::CONFLICT);
         let body = axum::body::to_bytes(second.into_body(), usize::MAX).await.unwrap();
         let body: Value = serde_json::from_slice(&body).unwrap();
@@ -1157,11 +1179,33 @@ mod tests {
         let gui = std::path::PathBuf::from("/opt/saba/saba-chan-gui");
         let guis = vec![(42, gui.clone())];
         let daemon = vec!["/opt/saba/saba-core".to_string(), "--spawned".to_string()];
-        assert_eq!(super::relaunch_target(daemon.clone(), &guis), vec![gui.to_string_lossy().into_owned()]);
-        assert_eq!(super::relaunch_target(Vec::new(), &guis), vec![gui.to_string_lossy().into_owned()]);
-        assert_eq!(super::relaunch_target(daemon.clone(), &[]), daemon);
+        assert_eq!(super::relaunch_target(daemon.clone(), &guis, false), vec![gui.to_string_lossy().into_owned()]);
+        assert_eq!(super::relaunch_target(Vec::new(), &guis, false), vec![gui.to_string_lossy().into_owned()]);
+        assert_eq!(super::relaunch_target(daemon.clone(), &[], false), daemon);
         let own = vec![format!("/other/{}", saba_chan_updater_lib::GUI_EXE_NAMES[0])];
-        assert_eq!(super::relaunch_target(own.clone(), &guis), own);
+        assert_eq!(super::relaunch_target(own.clone(), &guis, false), own);
+    }
+
+    /// 트레이만 든 GUI는 업데이트 뒤에도 창 없이 트레이로 다시 뜬다 (자동 업데이트마다 창이 튀어나오지 않게)
+    #[tokio::test]
+    async fn a_tray_only_gui_is_relaunched_as_a_tray() {
+        let gui = std::path::PathBuf::from("/opt/saba/saba-chan-gui");
+        let guis = vec![(42, gui.clone())];
+        let daemon = vec!["/opt/saba/saba-core".to_string(), "--spawned".to_string()];
+        assert_eq!(
+            super::relaunch_target(daemon, &guis, true),
+            vec![gui.to_string_lossy().into_owned(), "--tray".to_string()]
+        );
+
+        let registry = crate::ipc::ClientRegistry::new();
+        assert!(!super::only_resident_guis(&registry.list().await), "no GUI at all is not a tray");
+        let tray = registry.register(crate::ipc::ClientKind::Gui, Some(1), None).await;
+        registry.register(crate::ipc::ClientKind::Cli, Some(2), None).await;
+        assert!(!super::only_resident_guis(&registry.list().await));
+        registry.set_resident(&tray, true).await;
+        assert!(super::only_resident_guis(&registry.list().await), "CLIs do not count");
+        registry.register(crate::ipc::ClientKind::Gui, Some(3), None).await;
+        assert!(!super::only_resident_guis(&registry.list().await), "a GUI with a window is relaunched with its window");
     }
 
     /// 헤드리스 설치는 창 없이 적용하고, 다시 띄울 것을 받지 않았으면 데몬 자신을 다시 띄운다. 데스크톱은 그대로

@@ -77,14 +77,12 @@
   },
   "tray": {
     "tooltip": "Saba酱 - 游戏服务器管理",
-    "open_window": "🖥️ 打开窗口",
-    "switch_to_cli": "💻 切换到 CLI",
-    "daemon_running": "🟢 守护进程运行中",
-    "daemon_stopped": "⚪ 守护进程已停止",
-    "stop_daemon": "🛑 停止守护进程",
-    "start_daemon": "▶️ 启动守护进程",
-    "quit_interface": "🔌 仅退出界面",
-    "quit_all": "❌ 完全退出"
+    "open_window": "打开窗口",
+    "daemon_running": "守护进程运行中",
+    "daemon_stopped": "守护进程已停止",
+    "stop_daemon": "停止守护进程",
+    "start_daemon": "启动守护进程",
+    "quit_all": "完全退出"
   },
   "updates": {
     "notification_title": "Saba酱 更新通知",

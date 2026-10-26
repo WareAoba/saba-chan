@@ -77,14 +77,12 @@
   },
   "tray": {
     "tooltip": "Saba-chan - управление игровыми серверами",
-    "open_window": "🖥️ Открыть окно",
-    "switch_to_cli": "💻 Перейти в CLI",
-    "daemon_running": "🟢 Демон работает",
-    "daemon_stopped": "⚪ Демон остановлен",
-    "stop_daemon": "🛑 Остановить демон",
-    "start_daemon": "▶️ Запустить демон",
-    "quit_interface": "🔌 Закрыть только интерфейс",
-    "quit_all": "❌ Выйти полностью"
+    "open_window": "Открыть окно",
+    "daemon_running": "Демон работает",
+    "daemon_stopped": "Демон остановлен",
+    "stop_daemon": "Остановить демон",
+    "start_daemon": "Запустить демон",
+    "quit_all": "Выйти полностью"
   },
   "updates": {
     "notification_title": "Обновления Saba-chan",

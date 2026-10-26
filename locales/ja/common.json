@@ -77,14 +77,12 @@
   },
   "tray": {
     "tooltip": "サバちゃん - ゲームサーバー管理",
-    "open_window": "🖥️ ウィンドウを開く",
-    "switch_to_cli": "💻 CLIに切り替え",
-    "daemon_running": "🟢 デーモン実行中",
-    "daemon_stopped": "⚪ デーモン停止中",
-    "stop_daemon": "🛑 デーモンを停止",
-    "start_daemon": "▶️ デーモンを開始",
-    "quit_interface": "🔌 インターフェースのみ終了",
-    "quit_all": "❌ 完全に終了"
+    "open_window": "ウィンドウを開く",
+    "daemon_running": "デーモン実行中",
+    "daemon_stopped": "デーモン停止中",
+    "stop_daemon": "デーモンを停止",
+    "start_daemon": "デーモンを開始",
+    "quit_all": "完全に終了"
   },
   "updates": {
     "notification_title": "サバちゃん 更新のお知らせ",

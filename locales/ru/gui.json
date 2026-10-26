@@ -1558,5 +1558,20 @@
     "module_newer": "Нужно обновление. Модулю {{name}} нужна более новая версия Saba-chan.",
     "extension": "Нужно обновление. Расширению {{name}} нужен Saba-chan {{version}} или новее.",
     "check": "Проверить обновления"
+  },
+  "tray_popup": {
+    "title": "Saba-chan",
+    "daemon_running": "Демон работает",
+    "daemon_stopped": "Демон остановлен",
+    "servers": "Серверы",
+    "no_servers": "Серверов пока нет",
+    "action_failed": "Не удалось",
+    "start": "Запустить {{name}}",
+    "stop": "Остановить {{name}}",
+    "open_window": "Открыть окно",
+    "switch_to_cli": "Перейти в CLI",
+    "start_daemon": "Запустить демон",
+    "stop_daemon": "Остановить демон",
+    "quit_all": "Выйти полностью"
   }
 }

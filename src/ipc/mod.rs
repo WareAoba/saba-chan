@@ -36,18 +36,23 @@ pub struct RegisteredClient {
     /// 클라이언트가 알려 준 자기 PID와 설치 폴더 (인스톨러가 이 설치의 GUI만 끌 때 쓴다)
     pub pid: Option<u32>,
     pub install_root: Option<String>,
+    /// 창 없이 트레이만 든 GUI (등록·heartbeat 본문의 `resident`)
+    pub resident: bool,
 }
 
 /// 클라이언트 레지스트리 — 여러 GUI/CLI 인스턴스의 생존 여부를 추적
 #[derive(Debug, Clone)]
 pub struct ClientRegistry {
     inner: Arc<RwLock<HashMap<String, RegisteredClient>>>,
+    /// `clients/launch`로 띄운 CLI (PID, 띄운 시각). 등록하지 않는 CLI도 완전히 종료할 때 닫는다
+    launched_clis: Arc<std::sync::Mutex<Vec<(u32, u64)>>>,
 }
 
 impl Default for ClientRegistry {
     fn default() -> Self {
         Self {
             inner: Arc::new(RwLock::new(HashMap::new())),
+            launched_clis: Arc::default(),
         }
     }
 }
@@ -55,6 +60,29 @@ impl Default for ClientRegistry {
 impl ClientRegistry {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// 데몬이 CLI를 띄웠다 (GUI의 CLI로 전환)
+    pub fn note_launched_cli(&self, pid: u32) {
+        let at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        self.launched_clis.lock().unwrap().push((pid, at));
+    }
+
+    /// 띄운 CLI 가운데 아직 그 프로세스인 것을 닫는다 (같은 PID를 다른 프로세스가 받았으면 건드리지 않는다)
+    pub fn close_launched_clis(&self) {
+        use crate::supervisor::process::{force_kill_pid, is_same_process};
+        let launched = std::mem::take(&mut *self.launched_clis.lock().unwrap());
+        for (pid, at) in launched {
+            if is_same_process(pid, at) {
+                match force_kill_pid(pid) {
+                    Ok(()) => tracing::info!("[Shutdown] Closed the CLI the daemon opened (pid {})", pid),
+                    Err(e) => tracing::warn!("[Shutdown] Could not close the CLI (pid {}): {}", pid, e),
+                }
+            }
+        }
     }
 
     /// 새 클라이언트 등록, client_id 반환
@@ -67,6 +95,7 @@ impl ClientRegistry {
             last_heartbeat: std::time::Instant::now(),
             pid,
             install_root,
+            resident: false,
         });
         id
     }
@@ -84,6 +113,17 @@ impl ClientRegistry {
             true
         } else {
             false
+        }
+    }
+
+    /// 창 없이 트레이만 든 GUI인지 기록한다. 없는 id면 false
+    pub async fn set_resident(&self, client_id: &str, resident: bool) -> bool {
+        match self.inner.write().await.get_mut(client_id) {
+            Some(client) => {
+                client.resident = resident;
+                true
+            }
+            None => false,
         }
     }
 
@@ -729,13 +769,13 @@ impl IPCServer {
             .route("/api/events", get(handlers::events::stream))
             // ── Server query/control ──
             .route("/api/servers", get(handlers::server::list_servers))
-            .route("/api/server/:name/status", get(handlers::server::get_server_status))
-            .route("/api/server/:name/start", post(handlers::server::start_server_handler))
-            .route("/api/instance/:id/start", post(handlers::server::start_instance_handler))
-            .route("/api/instance/:id/events", get(handlers::server::instance_events_handler))
-            .route("/api/instance/:id/stop", post(handlers::server::stop_instance_handler))
-            .route("/api/instance/:id/restart", post(handlers::server::restart_instance_handler))
-            .route("/api/server/:name/stop", post(handlers::server::stop_server_handler))
+            .route("/api/server/{name}/status", get(handlers::server::get_server_status))
+            .route("/api/server/{name}/start", post(handlers::server::start_server_handler))
+            .route("/api/instance/{id}/start", post(handlers::server::start_instance_handler))
+            .route("/api/instance/{id}/events", get(handlers::server::instance_events_handler))
+            .route("/api/instance/{id}/stop", post(handlers::server::stop_instance_handler))
+            .route("/api/instance/{id}/restart", post(handlers::server::restart_instance_handler))
+            .route("/api/server/{name}/stop", post(handlers::server::stop_server_handler))
             .route("/api/modules", get(handlers::server::list_modules))
             .route("/api/modules/refresh", post(handlers::server::refresh_modules))
             .route("/api/version", get(handlers::server::version_handler))
@@ -743,65 +783,65 @@ impl IPCServer {
             .route("/api/maker", get(handlers::maker::get_maker))
             .route("/api/modules/detect", post(handlers::server::detect_module_dir))
             .route("/api/modules/manifest", get(handlers::server::fetch_module_manifest))
-            .route("/api/modules/manifest/:id/install", post(handlers::server::install_module_from_manifest))
-            .route("/api/modules/:id", delete(handlers::server::remove_module))
-            .route("/api/module/:name", get(handlers::server::get_module_metadata))
-            .route("/api/module/:name/audit", get(handlers::server::audit_module))
+            .route("/api/modules/manifest/{id}/install", post(handlers::server::install_module_from_manifest))
+            .route("/api/modules/{id}", delete(handlers::server::remove_module))
+            .route("/api/module/{name}", get(handlers::server::get_module_metadata))
+            .route("/api/module/{name}/audit", get(handlers::server::audit_module))
             // ── Instance CRUD ──
             .route("/api/instances", get(handlers::instance::list_instances).post(handlers::instance::create_instance))
             .route("/api/instances/reorder", put(handlers::instance::reorder_instances))
-            .route("/api/instance/:id/rename", post(handlers::instance::rename_instance))
-            .route("/api/instance/:id", get(handlers::instance::get_instance).delete(handlers::instance::delete_instance).patch(handlers::instance::update_instance_settings))
-            .route("/api/instance/:id/launch-preview", post(handlers::instance::launch_preview))
+            .route("/api/instance/{id}/rename", post(handlers::instance::rename_instance))
+            .route("/api/instance/{id}", get(handlers::instance::get_instance).delete(handlers::instance::delete_instance).patch(handlers::instance::update_instance_settings))
+            .route("/api/instance/{id}/launch-preview", post(handlers::instance::launch_preview))
             // ── Provision progress ──
-            .route("/api/provision-progress/:name", get(handlers::instance::get_provision_progress).delete(handlers::instance::dismiss_provision_progress))
+            .route("/api/provision-progress/{name}", get(handlers::instance::get_provision_progress).delete(handlers::instance::dismiss_provision_progress))
             // ── Command execution ──
-            .route("/api/instance/:id/check-update", get(handlers::instance::check_server_update))
-            .route("/api/instance/:id/apply-update", post(handlers::instance::apply_server_update))
+            .route("/api/instance/{id}/check-update", get(handlers::instance::check_server_update))
+            .route("/api/instance/{id}/apply-update", post(handlers::instance::apply_server_update))
             // ── Command execution ──
-            .route("/api/instance/:id/command", post(handlers::command::execute_command))
-            .route("/api/instance/:id/commands", get(handlers::command::list_instance_commands))
-            .route("/api/instance/:id/rcon", post(handlers::command::rcon_route))
-            .route("/api/instance/:id/rest", post(handlers::command::rest_route))
+            .route("/api/instance/{id}/command", post(handlers::command::execute_command))
+            .route("/api/instance/{id}/commands", get(handlers::command::list_instance_commands))
+            .route("/api/instance/{id}/rcon", post(handlers::command::rcon_route))
+            .route("/api/instance/{id}/rest", post(handlers::command::rest_route))
             // ── Managed-process & module-feature endpoints ──
-            .route("/api/instance/:id/managed/start", post(handlers::managed::start_managed_route))
-            .route("/api/instance/:id/console", get(handlers::managed::get_console_handler))
-            .route("/api/instance/:id/logs", get(handlers::logs::logs_handler))
-            .route("/api/instance/:id/logs/export", get(handlers::logs::export_handler))
-            .route("/api/instance/:id/stdin", post(handlers::managed::send_stdin_handler))
-            .route("/api/instance/:id/validate", post(handlers::managed::validate_instance_handler))
-            .route("/api/instance/:id/query/:name", post(handlers::managed::query_instance_handler))
-            .route("/api/instance/:id/players", get(handlers::managed::players_handler))
-            .route("/api/instance/:id/properties", get(handlers::managed::read_properties_handler).put(handlers::managed::write_properties_handler))
-            .route("/api/instance/:id/properties/reset", post(handlers::managed::reset_properties_handler))
-            .route("/api/instance/:id/settings/live", get(handlers::managed::read_live_settings_handler))
-            .route("/api/instance/:id/server/reset", post(handlers::managed::reset_server_handler))
-            .route("/api/instance/:id/agreements", post(handlers::managed::accept_agreements_handler))
-            .route("/api/instance/:id/diagnose", post(handlers::managed::diagnose_handler))
+            .route("/api/instance/{id}/managed/start", post(handlers::managed::start_managed_route))
+            .route("/api/instance/{id}/console", get(handlers::managed::get_console_handler))
+            .route("/api/instance/{id}/logs", get(handlers::logs::logs_handler))
+            .route("/api/instance/{id}/logs/export", get(handlers::logs::export_handler))
+            .route("/api/instance/{id}/stdin", post(handlers::managed::send_stdin_handler))
+            .route("/api/instance/{id}/validate", post(handlers::managed::validate_instance_handler))
+            .route("/api/instance/{id}/query/{name}", post(handlers::managed::query_instance_handler))
+            .route("/api/instance/{id}/players", get(handlers::managed::players_handler))
+            .route("/api/instance/{id}/properties", get(handlers::managed::read_properties_handler).put(handlers::managed::write_properties_handler))
+            .route("/api/instance/{id}/properties/reset", post(handlers::managed::reset_properties_handler))
+            .route("/api/instance/{id}/settings/live", get(handlers::managed::read_live_settings_handler))
+            .route("/api/instance/{id}/server/reset", post(handlers::managed::reset_server_handler))
+            .route("/api/instance/{id}/agreements", post(handlers::managed::accept_agreements_handler))
+            .route("/api/instance/{id}/diagnose", post(handlers::managed::diagnose_handler))
             // 백업 (A2)·예약 작업 (A3)
-            .route("/api/instance/:id/backups", get(handlers::backup::list_backups).post(handlers::backup::create_backup))
-            .route("/api/instance/:id/backups/:name", delete(handlers::backup::delete_backup))
-            .route("/api/instance/:id/backups/:name/restore", post(handlers::backup::restore_backup))
-            .route("/api/instance/:id/schedule", get(handlers::backup::get_schedule).put(handlers::backup::put_schedule))
+            .route("/api/instance/{id}/backups", get(handlers::backup::list_backups).post(handlers::backup::create_backup))
+            .route("/api/instance/{id}/backups/{name}", delete(handlers::backup::delete_backup))
+            .route("/api/instance/{id}/backups/{name}/restore", post(handlers::backup::restore_backup))
+            .route("/api/instance/{id}/schedule", get(handlers::backup::get_schedule).put(handlers::backup::put_schedule))
             // ── Server installation endpoints ──
-            .route("/api/module/:name/versions", get(handlers::managed::list_versions_handler))
-            .route("/api/module/:name/version/:version", get(handlers::managed::get_version_details_handler))
-            .route("/api/module/:name/install", post(handlers::managed::install_server_handler))
-            .route("/api/instance/:id/installed-version", get(handlers::managed::get_installed_version_handler))
+            .route("/api/module/{name}/versions", get(handlers::managed::list_versions_handler))
+            .route("/api/module/{name}/version/{version}", get(handlers::managed::get_version_details_handler))
+            .route("/api/module/{name}/install", post(handlers::managed::install_server_handler))
+            .route("/api/instance/{id}/installed-version", get(handlers::managed::get_installed_version_handler))
             // ── Bot config ──
             .route("/api/config/bot", get(handlers::bot::get_bot_config).put(handlers::bot::save_bot_config).patch(handlers::bot::patch_bot_config))
             // ── GUI config (settings.json) ──
             .route("/api/config/gui", get(handlers::config::get_gui_config).put(handlers::config::save_gui_config).patch(handlers::config::patch_gui_config))
-            .route("/api/config/client/:kind", get(handlers::config::get_client_config).put(handlers::config::save_client_config))
-            .route("/api/config/:kind/defaults", get(handlers::config::get_config_defaults))
-            .route("/api/config/:kind/reset", post(handlers::config::reset_config))
+            .route("/api/config/client/{kind}", get(handlers::config::get_client_config).put(handlers::config::save_client_config))
+            .route("/api/config/{kind}/defaults", get(handlers::config::get_config_defaults))
+            .route("/api/config/{kind}/reset", post(handlers::config::reset_config))
             // ── 설정·인스턴스 내보내기/가져오기 (A9) ──
             .route("/api/migration/export", post(handlers::migration::export))
             .route("/api/migration/import", post(handlers::migration::import))
             // ── Node token (cloud relay auth) ──
             .route("/api/config/node-token", get(handlers::config::get_node_token).put(handlers::config::save_node_token).delete(handlers::config::delete_node_token))
             // ── Module locales ──
-            .route("/api/module/:name/locales", get(handlers::config::get_module_locales))
+            .route("/api/module/{name}/locales", get(handlers::config::get_module_locales))
             // ── System components (release manifest) ──
             .route("/api/system/components", get(handlers::config::get_system_components))
             .route("/api/system/metrics", get(handlers::system::get_metrics))
@@ -815,37 +855,37 @@ impl IPCServer {
             .route("/api/clients/launch", get(handlers::client::client_launchable).post(handlers::client::client_launch))
             // ── 디스코드 명령 권한 (P1) ──
             .route(
-                "/api/permissions/:guild_id",
+                "/api/permissions/{guild_id}",
                 get(handlers::permissions::get_permissions).patch(handlers::permissions::update_permissions),
             )
             .route(
-                "/api/permissions/:guild_id/members/:discord_id",
+                "/api/permissions/{guild_id}/members/{discord_id}",
                 axum::routing::put(handlers::permissions::set_member).delete(handlers::permissions::remove_member),
             )
             // ── 디스코드 길드 설정 (I2) ──
             .route(
-                "/api/discord/:guild_id/settings",
+                "/api/discord/{guild_id}/settings",
                 get(handlers::discord::get_settings).patch(handlers::discord::patch_settings),
             )
             // ── 확인되지 않은 구성요소를 격리 없이 돌리기 동의 ──
             .route("/api/sandbox/unisolated", get(handlers::sandbox::list_unisolated))
             .route(
-                "/api/sandbox/unisolated/:component",
+                "/api/sandbox/unisolated/{component}",
                 post(handlers::sandbox::allow_unisolated).delete(handlers::sandbox::revoke_unisolated),
             )
             .route("/api/sandbox/extension-gui", get(handlers::sandbox::list_extension_gui))
             .route(
-                "/api/sandbox/extension-gui/:component",
+                "/api/sandbox/extension-gui/{component}",
                 post(handlers::sandbox::allow_extension_gui).delete(handlers::sandbox::revoke_extension_gui),
             )
             // ── 액션 카탈로그 (P2) ──
             .route("/api/actions", get(handlers::actions::list_actions))
             .route("/api/actions/plan", post(handlers::actions::plan_steps))
-            .route("/api/actions/runs/:run_id", get(handlers::actions::run_status))
-            .route("/api/actions/:id/plan", post(handlers::actions::plan_action))
-            .route("/api/actions/:id/run", post(handlers::actions::run_action))
-            .route("/api/client/:id/heartbeat", post(handlers::client::client_heartbeat))
-            .route("/api/client/:id/unregister", delete(handlers::client::client_unregister))
+            .route("/api/actions/runs/{run_id}", get(handlers::actions::run_status))
+            .route("/api/actions/{id}/plan", post(handlers::actions::plan_action))
+            .route("/api/actions/{id}/run", post(handlers::actions::run_action))
+            .route("/api/client/{id}/heartbeat", post(handlers::client::client_heartbeat))
+            .route("/api/client/{id}/unregister", delete(handlers::client::client_unregister))
             // ── Daemon lifecycle ──
             .route("/api/daemon/shutdown", post(handlers::client::daemon_shutdown))
             .route("/api/daemon/console", get(handlers::client::daemon_console))
@@ -856,34 +896,34 @@ impl IPCServer {
             .route("/api/extensions/rescan", post(handlers::extension::rescan_extensions))
             .route("/api/extensions/manifest", get(handlers::extension::fetch_manifest))
             .route("/api/extensions/updates", get(handlers::extension::check_extension_updates))
-            .route("/api/extensions/:id/enable", post(handlers::extension::enable_extension))
-            .route("/api/extensions/:id/disable", post(handlers::extension::disable_extension))
-            .route("/api/extensions/:id/mount", post(handlers::extension::mount_extension))
-            .route("/api/extensions/:id/unmount", post(handlers::extension::unmount_extension))
-            .route("/api/extensions/:id/install", post(handlers::extension::install_extension))
-            .route("/api/extensions/:id", delete(handlers::extension::remove_extension))
-            .route("/api/extensions/:id/config", get(handlers::extension::get_extension_config).put(handlers::extension::save_extension_config))
-            .route("/api/extensions/:id/gui", get(handlers::extension::serve_gui_bundle))
-            .route("/api/extensions/:id/gui/styles", get(handlers::extension::serve_gui_styles))
-            .route("/api/extensions/:id/icon", get(handlers::extension::serve_icon))
-            .route("/api/extensions/:id/audit", get(handlers::extension::audit_extension))
-            .route("/api/extensions/:id/i18n/:locale", get(handlers::extension::serve_i18n))
+            .route("/api/extensions/{id}/enable", post(handlers::extension::enable_extension))
+            .route("/api/extensions/{id}/disable", post(handlers::extension::disable_extension))
+            .route("/api/extensions/{id}/mount", post(handlers::extension::mount_extension))
+            .route("/api/extensions/{id}/unmount", post(handlers::extension::unmount_extension))
+            .route("/api/extensions/{id}/install", post(handlers::extension::install_extension))
+            .route("/api/extensions/{id}", delete(handlers::extension::remove_extension))
+            .route("/api/extensions/{id}/config", get(handlers::extension::get_extension_config).put(handlers::extension::save_extension_config))
+            .route("/api/extensions/{id}/gui", get(handlers::extension::serve_gui_bundle))
+            .route("/api/extensions/{id}/gui/styles", get(handlers::extension::serve_gui_styles))
+            .route("/api/extensions/{id}/icon", get(handlers::extension::serve_icon))
+            .route("/api/extensions/{id}/audit", get(handlers::extension::audit_extension))
+            .route("/api/extensions/{id}/i18n/{locale}", get(handlers::extension::serve_i18n))
             // ── Node.js portable environment ──
             // ── Relay server proxy (cloud mode) ──
-            .route("/api/relay/host/:host_id/status", get(handlers::relay::check_host_status))
-            .route("/api/relay/host/:host_id/nodes", get(handlers::relay::list_host_nodes))
-            .route("/api/relay/node/:guild_id/members", get(handlers::relay::list_node_members))
-            .route("/api/relay/node/:guild_id/legacy-members", get(handlers::relay::list_node_legacy_members))
+            .route("/api/relay/host/{host_id}/status", get(handlers::relay::check_host_status))
+            .route("/api/relay/host/{host_id}/nodes", get(handlers::relay::list_host_nodes))
+            .route("/api/relay/node/{guild_id}/members", get(handlers::relay::list_node_members))
+            .route("/api/relay/node/{guild_id}/legacy-members", get(handlers::relay::list_node_legacy_members))
             .route(
-                "/api/relay/node/:guild_id/channels",
+                "/api/relay/node/{guild_id}/channels",
                 get(handlers::relay::get_node_channels).put(handlers::relay::put_node_channels),
             )
-            .route("/api/relay/node/:guild_id/chatbot/models", get(handlers::relay::get_node_chatbot_models))
+            .route("/api/relay/node/{guild_id}/chatbot/models", get(handlers::relay::get_node_chatbot_models))
             .route("/api/relay/bot-invite", get(handlers::relay::get_bot_invite))
             .route("/api/relay/pair/initiate", post(handlers::relay::initiate_pairing))
-            .route("/api/relay/pair/:code/status", get(handlers::relay::poll_pairing_status))
+            .route("/api/relay/pair/{code}/status", get(handlers::relay::poll_pairing_status))
             .route("/api/relay/link-requests", get(handlers::relay::list_link_requests))
-            .route("/api/relay/link-requests/:request_id", post(handlers::relay::answer_link_request))
+            .route("/api/relay/link-requests/{request_id}", post(handlers::relay::answer_link_request))
             // ── Relay agent (cloud Discord bot ↔ daemon) ──
             .route("/api/relay/agent", get(handlers::chat::agent_status))
             .route("/api/relay/agent/start", post(handlers::chat::agent_start))
@@ -894,17 +934,17 @@ impl IPCServer {
             .route("/api/chatbot", get(handlers::chatbot::get_chatbot).put(handlers::chatbot::put_chatbot).delete(handlers::chatbot::delete_chatbot))
             .route("/api/chatbot/memory", delete(handlers::chatbot::delete_memory))
             // 인스턴스별 디스코드 낱말, 길드가 쓸 서버 (로컬 전용)
-            .route("/api/instance/:id/words", get(handlers::words::get).put(handlers::words::put))
-            .route("/api/guilds/:guild/allowed-instances", put(handlers::words::put_allowed))
-            .route("/api/chatbot/guilds/:guild", get(handlers::chatbot::get_guild).patch(handlers::chatbot::patch_guild))
+            .route("/api/instance/{id}/words", get(handlers::words::get).put(handlers::words::put))
+            .route("/api/guilds/{guild}/allowed-instances", put(handlers::words::put_allowed))
+            .route("/api/chatbot/guilds/{guild}", get(handlers::chatbot::get_guild).patch(handlers::chatbot::patch_guild))
             // ── 원격 데몬 (D1): 원격 포트 설정과 짝 맺은 PC (로컬 전용, 원격 포트에서는 막는다) ──
             .route("/api/remote/settings", get(handlers::remote_daemon::get_settings).put(handlers::remote_daemon::put_settings))
             .route("/api/remote/clients", get(handlers::remote_daemon::list_clients))
-            .route("/api/remote/clients/:host_id", delete(handlers::remote_daemon::revoke_client))
+            .route("/api/remote/clients/{host_id}", delete(handlers::remote_daemon::revoke_client))
             .route("/api/remote/peers", get(handlers::remote_daemon::list_peers))
             .route("/api/remote/daemons", get(handlers::remote_daemon::list_daemons).post(handlers::remote_daemon::connect_daemon))
-            .route("/api/remote/daemons/:host_id", delete(handlers::remote_daemon::forget_daemon))
-            .route("/api/remote/daemons/:host_id/proxy/*rest", get(handlers::remote_daemon::proxy).post(handlers::remote_daemon::proxy).put(handlers::remote_daemon::proxy).patch(handlers::remote_daemon::proxy).delete(handlers::remote_daemon::proxy))
+            .route("/api/remote/daemons/{host_id}", delete(handlers::remote_daemon::forget_daemon))
+            .route("/api/remote/daemons/{host_id}/proxy/{*rest}", get(handlers::remote_daemon::proxy).post(handlers::remote_daemon::proxy).put(handlers::remote_daemon::proxy).patch(handlers::remote_daemon::proxy).delete(handlers::remote_daemon::proxy))
             .with_state(self.clone())
             .merge(updates::updates_router(self.update_state.clone()))
             // 감사 로그 출처 (A10): 요청마다 X-Saba-Client로 정한다. 인증층은 이 바깥에 씌운다 (업데이트 라우터까지)

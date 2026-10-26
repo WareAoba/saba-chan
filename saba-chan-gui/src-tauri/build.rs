@@ -33,6 +33,8 @@ const COMMANDS: &[&str] = &[
     "window_maximize",
     "window_close",
     "sandbox_consent_allow",
+    "tray_action",
+    "tray_popup_fit",
 ];
 
 /// 자리표시 index.html에만 있는 문구

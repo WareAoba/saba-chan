@@ -254,7 +254,7 @@ pub(crate) mod tests {
     async fn fake_relay() -> String {
         use axum::extract::Path;
         let app = Router::new().route(
-            "/api/remote/tickets/:id/redeem",
+            "/api/remote/tickets/{id}/redeem",
             post(|Path(id): Path<String>, Json(b): Json<Value>| async move {
                 if id == "good" && b["secret"] == "s3cret" {
                     (StatusCode::OK, Json(json!({ "fromHostId": "host-a", "fromHostName": "집 PC" })))

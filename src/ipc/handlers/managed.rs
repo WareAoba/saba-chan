@@ -1,3 +1,4 @@
+use super::LooseJson;
 use axum::{
     extract::{Path, State},
     http::StatusCode,
@@ -14,9 +15,9 @@ use crate::supervisor::Supervisor;
 pub async fn start_managed_route(
     Path(id): Path<String>,
     State(state): State<IPCServer>,
-    payload: Option<Json<serde_json::Value>>,
+    LooseJson(payload): LooseJson<serde_json::Value>,
 ) -> axum::response::Response {
-    let resp = start_managed_handler(Path(id.clone()), State(state.clone()), payload).await.into_response();
+    let resp = start_managed_handler(Path(id.clone()), State(state.clone()), LooseJson(payload)).await.into_response();
     super::audited(&state, "start", &id, None, None, resp).await
 }
 
@@ -24,7 +25,7 @@ pub async fn start_managed_route(
 pub async fn start_managed_handler(
     Path(id): Path<String>,
     State(state): State<IPCServer>,
-    payload: Option<Json<serde_json::Value>>,
+    LooseJson(payload): LooseJson<serde_json::Value>,
 ) -> impl IntoResponse {
     // 백업·복원·업데이트가 서버 파일을 다루는 동안에는 켜지 않는다 (시작을 마칠 때까지 잡는다)
     let Some(_guard) = super::backup::InstanceLock::take_for_writes(&id).await else {
@@ -139,7 +140,7 @@ pub async fn validate_instance_handler(
 pub async fn query_instance_handler(
     Path((id, name)): Path<(String, String)>,
     State(state): State<IPCServer>,
-    payload: Option<Json<serde_json::Value>>,
+    LooseJson(payload): LooseJson<serde_json::Value>,
 ) -> impl IntoResponse {
     let fail = |status: StatusCode, code: &str, error: String, field: Option<&str>| {
         (status, Json(json!({ "success": false, "error_code": code, "error": error, "field": field }))).into_response()

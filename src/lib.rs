@@ -28,3 +28,4 @@ pub mod launch_args;  // 실행 인자 미리보기: 추가 인자 ↔ 설정 �
 pub mod relay_agent;  // 클라우드 릴레이 ↔ 데몬 에이전트
 pub mod remote;  // 사바쨩 웹: 릴레이 웹소켓으로 받는 원격 요청과 문지기
 pub mod remote_daemon;  // 원격 데몬 (D1): 같은 주인의 PC가 TLS로 직접 붙는 원격 포트
+pub mod tray_host;  // 상주 GUI(트레이) 감독: 화면이 있을 때만 띄우고 죽으면 되살린다

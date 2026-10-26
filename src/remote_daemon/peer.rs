@@ -236,7 +236,7 @@ mod tests {
                 }),
             )
             .route(
-                "/api/remote/tickets/:id/redeem",
+                "/api/remote/tickets/{id}/redeem",
                 axum::routing::post(|axum::extract::Path(id): axum::extract::Path<String>, Json(b): Json<Value>| async move {
                     if id == "good" && b["secret"] == "s3cret" {
                         (StatusCode::OK, Json(json!({ "fromHostId": "host-a", "fromHostName": "집 PC" })))

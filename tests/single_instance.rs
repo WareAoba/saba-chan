@@ -6,6 +6,7 @@ use std::time::{Duration, Instant};
 fn spawn_daemon(data_dir: &std::path::Path, port: u16, stderr: Stdio) -> std::process::Child {
     Command::new(env!("CARGO_BIN_EXE_saba-core"))
         .arg("--spawned")
+        .env("SABA_NO_TRAY", "1")
         .env("SABA_DATA_DIR", data_dir)
         .env("SABA_IPC_PORT", port.to_string())
         .env("SABA_MODULES_PATH", data_dir.join("modules"))

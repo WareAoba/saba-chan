@@ -553,7 +553,11 @@ async fn e2e_client_registration_heartbeat() {
                 .send().await.unwrap()
                 .json().await.unwrap();
             let me = list["clients"].as_array().unwrap().iter().find(|c| c["id"] == cid).cloned();
-            assert_eq!(me, Some(json!({"id": cid, "kind": "gui", "pid": 4321, "installRoot": "C:\\Saba"})));
+            // resident: 창 없이 트레이만 든 GUI인가 (등록·heartbeat가 알린다. 알리지 않았으면 false)
+            assert_eq!(
+                me,
+                Some(json!({"id": cid, "kind": "gui", "pid": 4321, "installRoot": "C:\\Saba", "resident": false}))
+            );
 
             // ── 3) 등록 해제
             let unreg_resp = client

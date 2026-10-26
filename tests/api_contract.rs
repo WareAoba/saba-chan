@@ -123,7 +123,7 @@ fn matches(call: &str, pattern: &str) -> bool {
         && a.iter().zip(&b).all(|(x, y)| {
             // 마지막 세그먼트 끝에 붙은 `${qs}` 같은 보간은 쿼리로 본다
             let x = x.trim_end_matches('\u{1}');
-            y.starts_with(':') || x == *y || (x.is_empty() && !y.is_empty())
+            y.starts_with('{') || x == *y || (x.is_empty() && !y.is_empty())
         })
 }
 
@@ -155,7 +155,7 @@ fn clients_only_call_existing_routes_with_the_right_method() {
 
 fn concrete(path: &str) -> String {
     path.split('/')
-        .map(|s| if s.starts_with(':') { "contract-test" } else { s })
+        .map(|s| if s.starts_with('{') { "contract-test" } else { s })
         .collect::<Vec<_>>()
         .join("/")
 }

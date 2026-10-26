@@ -90,7 +90,8 @@ class Daemon:
 
     # ── 수명 ──
     def env(self) -> dict[str, str]:
-        return self.sb.env(SABA_RUNNER_PATH=str(binary("saba-runner")), **self.extra_env)
+        # 상주 GUI(트레이)를 띄우지 않는다: 시험 GUI는 하네스가 따로 띄운다
+        return self.sb.env(SABA_RUNNER_PATH=str(binary("saba-runner")), SABA_NO_TRAY="1", **self.extra_env)
 
     def spawn(self) -> subprocess.Popen:
         log = open(self.log_path, "ab")
