@@ -260,6 +260,7 @@ const SHARED_RUNTIMES: &str = "*all-app-packages*";
 const SHARED_FIXED: &str = "*all-app-packages-fixed*";
 
 /// 런타임 읽기 권한 기록 (`<data_dir>/sandbox-grants.json`: 프로필 → 폴더)
+#[cfg_attr(not(windows), allow(dead_code))]
 fn runtime_record_path() -> PathBuf {
     saba_chan_updater_lib::constants::resolve_data_dir().join("sandbox-grants.json")
 }
