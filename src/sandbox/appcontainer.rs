@@ -59,6 +59,9 @@ pub struct Grants {
     pub hidden: Vec<PathBuf>,
     /// 데몬 파일을 덮는 빈 파일 (없으면 /dev/null: 읽으면 권한 거부이고 `is_file()`이 거짓이다)
     pub empty_file: Option<PathBuf>,
+    /// 준 폴더의 원래 경로가 거친 링크(`/home -> /var/home` 같은). 리눅스는 bwrap이 격리 안에 같은 링크를 만든다
+    /// (명령·설정은 원래 경로를 쓰고 권한은 실제 경로에 붙으므로)
+    pub links: Vec<PathBuf>,
 }
 
 /// 권한을 줄 수 없는 위치인가: 데이터 폴더와 그 위, 드라이브 루트, 사용자 폴더와 그 위
@@ -100,6 +103,13 @@ impl Grants {
         }
         if !self.entries.iter().any(|(p, a)| p == &real && *a == access) {
             self.entries.push((real, access));
+        }
+        if path.is_absolute() {
+            for link in path.ancestors().filter(|p| std::fs::symlink_metadata(p).is_ok_and(|m| m.file_type().is_symlink())) {
+                if !self.links.iter().any(|l| l == link) {
+                    self.links.push(link.to_path_buf());
+                }
+            }
         }
     }
 

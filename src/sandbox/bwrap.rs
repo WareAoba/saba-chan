@@ -91,6 +91,12 @@ pub fn args(grants: &Grants, cwd: Option<&Path>) -> Vec<OsString> {
             _ => {}
         }
     }
+    // `/etc/resolv.conf`가 가리키는 파일 (NetworkManager·resolvconf는 `/run` 아래에 둔다)
+    if let Ok(resolver) = std::fs::canonicalize("/etc/resolv.conf") {
+        if !SYSTEM_DIRS.iter().any(|d| resolver.starts_with(d)) {
+            push(&["--ro-bind".as_ref(), resolver.as_os_str(), resolver.as_os_str()]);
+        }
+    }
     for flag in [
         "--dev",
         "/dev",
@@ -104,6 +110,14 @@ pub fn args(grants: &Grants, cwd: Option<&Path>) -> Vec<OsString> {
         "--new-session",
     ] {
         push(&[flag.as_ref()]);
+    }
+    // 원래 경로가 거친 링크는 격리 안에도 같은 링크로 둔다 (위 폴더의 링크부터. 시스템 폴더의 링크는 위에서 만들었다)
+    let mut links: Vec<&PathBuf> = grants.links.iter().filter(|l| !SYSTEM_DIRS.iter().any(|d| l.as_path() == Path::new(d))).collect();
+    links.sort_by_key(|l| l.components().count());
+    for link in links {
+        if let Ok(target) = std::fs::read_link(link) {
+            push(&["--symlink".as_ref(), target.as_os_str(), link.as_os_str()]);
+        }
     }
     let mut entries: Vec<&(PathBuf, Access)> = grants.entries.iter().filter(|(_, a)| *a != Access::List).collect();
     entries.sort_by_key(|(p, a)| (p.components().count(), *a == Access::Write));
@@ -193,6 +207,40 @@ mod tests {
             "grants under /tmp must land on top of the empty /tmp"
         );
         assert!(pos(&args, &["--chdir", "/srv/mods/x"]).is_some());
+    }
+
+    /// 링크를 거친 경로(`/home -> /var/home` 같은)로 준 폴더는 그 경로로도 닿는다: 링크를 격리 안에 그대로 만든다
+    #[test]
+    fn a_grant_reached_through_a_link_keeps_the_link() {
+        use_in_this_test();
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let (real, link) = (root.join("real"), root.join("link"));
+        std::fs::create_dir_all(real.join("sub")).unwrap();
+        std::fs::write(real.join("sub").join("a"), "read").unwrap();
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+        let mut grants = Grants::default();
+        grants.push(&link.join("sub"), Access::Read, Path::new("/nonexistent-data"), None);
+        let args = args(&grants, None);
+        let (real_sub, link_s, real_s) = (real.join("sub"), link.to_str().unwrap(), real.to_str().unwrap());
+        let real_sub = real_sub.to_str().unwrap();
+        assert!(pos(&args, &["--symlink", real_s, link_s]).is_some(), "{args:?}");
+        assert!(pos(&args, &["--ro-bind", real_sub, real_sub]).is_some());
+        let Some(bwrap) = program() else { return };
+        let mut cmd = std::process::Command::new("/bin/cat");
+        cmd.arg(link.join("sub").join("a"));
+        let out = wrap(bwrap, &cmd, &grants).output().unwrap();
+        assert_eq!(String::from_utf8_lossy(&out.stdout), "read", "{}", String::from_utf8_lossy(&out.stderr));
+    }
+
+    /// `/etc/resolv.conf`가 `/etc` 밖(NetworkManager 등)을 가리키면 그 파일도 붙인다
+    #[test]
+    fn the_resolver_file_is_mounted_where_resolv_conf_points() {
+        let Ok(real) = std::fs::canonicalize("/etc/resolv.conf") else { return };
+        let args = args(&Grants::default(), None);
+        let real = real.to_str().unwrap();
+        let covered = SYSTEM_DIRS.iter().any(|d| Path::new(real).starts_with(d));
+        assert!(covered || pos(&args, &["--ro-bind", real, real]).is_some(), "{args:?}");
     }
 
     #[test]
