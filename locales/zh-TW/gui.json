@@ -1342,6 +1342,7 @@
     "action_command": "指令",
     "action_stdin": "主控台輸入",
     "action_backup": "備份",
+    "action_remote": "遠端常駐程式操作",
     "skipped_stopped": "已略過 (伺服器未執行)",
     "source_gui": "應用程式",
     "source_cli": "CLI",

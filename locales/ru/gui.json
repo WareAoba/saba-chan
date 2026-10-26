@@ -1342,6 +1342,7 @@
     "action_command": "Команда",
     "action_stdin": "Ввод в консоль",
     "action_backup": "Резервная копия",
+    "action_remote": "Удалённый демон",
     "skipped_stopped": "Пропущено (сервер выключен)",
     "source_gui": "Приложение",
     "source_cli": "CLI",

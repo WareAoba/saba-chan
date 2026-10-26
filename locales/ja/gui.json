@@ -1342,6 +1342,7 @@
     "action_command": "コマンド",
     "action_stdin": "コンソール入力",
     "action_backup": "バックアップ",
+    "action_remote": "リモートデーモン操作",
     "skipped_stopped": "スキップ (サーバー停止中)",
     "source_gui": "アプリ",
     "source_cli": "CLI",

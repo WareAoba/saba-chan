@@ -1342,6 +1342,7 @@
     "action_command": "命令",
     "action_stdin": "控制台输入",
     "action_backup": "备份",
+    "action_remote": "远程守护进程操作",
     "skipped_stopped": "已跳过 (服务器未运行)",
     "source_gui": "应用",
     "source_cli": "CLI",

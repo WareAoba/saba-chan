@@ -3,6 +3,7 @@
 //!   POST /remote/pair {ticketId, secret}   토큰 없이 받는다. 릴레이에 연결표를 한 번 확인하고 그 PC 앞으로 토큰을 낸다
 //!   그 밖                                  `Authorization: Bearer sbr_…`. 노드 토큰·원격 설정 라우트는 원격에서 막는다
 
+use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 
@@ -42,7 +43,7 @@ const HEADER_TIMEOUT: Duration = if cfg!(test) { Duration::from_secs(1) } else {
 #[derive(Clone, Copy)]
 struct Peer(std::net::IpAddr);
 
-/// 릴레이 주소·노드 토큰은 부를 때마다 읽는다 (그동안 다시 연결했을 수 있다)
+/// 릴레이 주소·노드 토큰은 부를 때마다 본다 (그동안 다시 연결했을 수 있다). 설정 파일은 바뀌었을 때만 다시 읽는다
 #[derive(Clone)]
 pub(crate) enum RelaySource {
     Configured(crate::ipc::IPCServer),
@@ -55,7 +56,7 @@ impl RelaySource {
         match self {
             Self::Configured(server) => {
                 let configured = server.config_store.get_bot_config().await.cloud.relay_url;
-                let token = crate::ipc::handlers::relay::load_node_token()?;
+                let token = crate::ipc::handlers::relay::peek_node_token()?;
                 Some(Target { base: crate::ipc::handlers::relay::signed_relay_url(&configured, None), token })
             }
             #[cfg(test)]
@@ -64,16 +65,50 @@ impl RelaySource {
     }
 }
 
+/// 짝 맺은 PC 목록 (인증층이 요청마다 본다)과, 토큰마다 그 토큰으로 연 응답을 끝낼 표.
+/// 목록에서 빠진 토큰(짝을 풀었거나 다시 맺어 바뀐 토큰)으로 열어 둔 스트림은 목록을 바꿀 때 끝낸다
+#[derive(Clone, Default)]
+pub(crate) struct Clients(Arc<RwLock<Paired>>);
+
+#[derive(Default)]
+struct Paired {
+    list: Vec<Client>,
+    /// 토큰 해시 → 그 토큰으로 연 응답
+    open: HashMap<String, CancellationToken>,
+}
+
+impl Clients {
+    pub(crate) fn set(&self, list: Vec<Client>) {
+        let mut paired = self.0.write().unwrap_or_else(|e| e.into_inner());
+        paired.open.retain(|hash, cancel| {
+            let kept = list.iter().any(|c| &c.token_hash == hash);
+            if !kept {
+                cancel.cancel();
+            }
+            kept
+        });
+        paired.list = list;
+    }
+
+    /// 토큰의 주인 PC와, 짝이 풀리면 끝날 표지
+    fn verify(&self, token: &str) -> Option<(Client, CancellationToken)> {
+        let mut paired = self.0.write().unwrap_or_else(|e| e.into_inner());
+        let client = config::verify(&paired.list, token)?;
+        let ended = paired.open.entry(client.token_hash.clone()).or_default().clone();
+        Some((client, ended))
+    }
+}
+
 #[derive(Clone)]
 pub(crate) struct Ctx {
     pub file: ConfigFile,
-    pub clients: Arc<RwLock<Vec<Client>>>,
+    pub clients: Clients,
     pub relay: RelaySource,
     pairs: Arc<std::sync::Mutex<Vec<(Instant, std::net::IpAddr)>>>,
 }
 
 impl Ctx {
-    pub(crate) fn new(file: ConfigFile, clients: Arc<RwLock<Vec<Client>>>, relay: RelaySource) -> Self {
+    pub(crate) fn new(file: ConfigFile, clients: Clients, relay: RelaySource) -> Self {
         Self { file, clients, relay, pairs: Arc::default() }
     }
 
@@ -126,15 +161,30 @@ async fn remote_auth(State(ctx): State<Ctx>, mut req: Request<Body>, next: Next)
         .and_then(|v| v.strip_prefix("Bearer "))
         .unwrap_or("")
         .trim();
-    let known = config::verify(&ctx.clients.read().unwrap_or_else(|e| e.into_inner()), token);
-    let Some(client) = known else {
+    let Some((client, revoked)) = ctx.clients.verify(token) else {
         return error(StatusCode::UNAUTHORIZED, "remote_unauthorized");
     };
     let mut origin = crate::audit::Origin::from_headers(req.headers());
     origin.source = "remote".into();
+    origin.user = Some(client.host_id);
     origin.user_name = Some(client.name);
     req.extensions_mut().insert(origin);
-    next.run(req).await
+    // 짝이 풀리면 이 응답의 본문(이벤트 스트림, 내려받기)도 오류로 끊는다(받던 쪽이 다 받은 것으로 알지 않게). 새 요청은 위에서 바로 막힌다.
+    // 길이를 아는 본문은 그대로 둔다
+    let res = next.run(req).await;
+    if axum::body::HttpBody::size_hint(res.body()).exact().is_some() {
+        return res;
+    }
+    let (head, body) = res.into_parts();
+    let cut = futures_util::stream::unfold((body.into_data_stream(), Some(revoked)), |(mut body, revoked)| async move {
+        let revoked = revoked?;
+        tokio::select! {
+            biased;
+            () = revoked.cancelled() => Some((Err(axum::Error::new(std::io::Error::other("remote client revoked"))), (body, None))),
+            next = futures_util::StreamExt::next(&mut body) => next.map(|item| (item, (body, Some(revoked)))),
+        }
+    });
+    Response::from_parts(head, Body::from_stream(cut))
 }
 
 #[derive(Deserialize)]
@@ -167,7 +217,7 @@ async fn pair(State(ctx): State<Ctx>, peer: Option<axum::Extension<Peer>>, Json(
             return error(StatusCode::INTERNAL_SERVER_ERROR, "save_failed");
         }
     };
-    *ctx.clients.write().unwrap_or_else(|e| e.into_inner()) = config::clients_in(&ctx.file);
+    ctx.clients.set(config::clients_in(&ctx.file));
     tracing::info!("Remote daemon paired with host {}", from.from_host_id);
     Json(json!({ "token": token })).into_response()
 }
@@ -335,6 +385,8 @@ pub(crate) mod tests {
         pin: String,
         _dir: tempfile::TempDir,
         cancel: CancellationToken,
+        file: ConfigFile,
+        clients: Clients,
     }
 
     async fn start(relay_base: Option<String>) -> Remote {
@@ -342,9 +394,17 @@ pub(crate) mod tests {
         let id = Identity::load_or_create(dir.path()).unwrap();
         let file = ConfigFile::at(dir.path());
         let relay = RelaySource::Fixed(Target { base: relay_base.unwrap_or_else(|| "http://127.0.0.1:9".into()), token: "sbn_host-b.secret".into() });
-        let ctx = Ctx::new(file, Arc::default(), relay);
+        let clients = Clients::default();
+        let ctx = Ctx::new(file.clone(), clients.clone(), relay);
         let routes = Router::new()
             .route("/health", axum::routing::get(|| async { Json(json!({ "ok": true })) }))
+            .route(
+                "/api/events",
+                axum::routing::get(|| async {
+                    let first = futures_util::stream::once(async { Ok::<_, std::io::Error>(axum::body::Bytes::from("first\n")) });
+                    Body::from_stream(futures_util::StreamExt::chain(first, futures_util::stream::pending()))
+                }),
+            )
             .route("/api/instances", axum::routing::get(|| async { Json(json!([])) }))
             .route("/api/config/node-token", axum::routing::get(|| async { Json(json!({ "token": "leak" })) }))
             .route("/api/remote/clients", axum::routing::get(|| async { Json(json!([])) }));
@@ -352,7 +412,7 @@ pub(crate) mod tests {
         let addr = listener.local_addr().unwrap();
         let cancel = CancellationToken::new();
         tokio::spawn(serve(listener, Arc::new(id.server_config().unwrap()), router(routes, ctx), cancel.clone()));
-        Remote { addr, pin: id.sha256.clone(), _dir: dir, cancel }
+        Remote { addr, pin: id.sha256.clone(), _dir: dir, cancel, file, clients }
     }
 
     #[tokio::test]
@@ -367,6 +427,56 @@ pub(crate) mod tests {
         let (s, body) = call(r.addr, &r.pin, "GET", "/api/instances", Some(&token), None).await.unwrap();
         assert_eq!((s, body), (200, json!([])));
         let (s, _) = call(r.addr, &r.pin, "GET", "/api/instances", Some("sbr_guess"), None).await.unwrap();
+        assert_eq!(s, 401);
+        r.cancel.cancel();
+    }
+
+    /// 짝을 풀면(다시 맺어 토큰이 바뀌어도) 그 토큰으로 열어 둔 이벤트 스트림도 끝난다. 다른 PC의 스트림은 그대로다
+    #[tokio::test]
+    async fn revoking_a_pc_ends_the_streams_it_has_open() {
+        use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
+        let r = start(Some(fake_relay().await)).await;
+        let open = |token: String| {
+            let (addr, pin) = (r.addr, r.pin.clone());
+            async move {
+                let tcp = tokio::net::TcpStream::connect(addr).await.unwrap();
+                let connector = tokio_rustls::TlsConnector::from(Arc::new(pinned_client_config(&pin).unwrap()));
+                let mut tls = connector.connect(rustls::pki_types::ServerName::try_from(SERVER_NAME).unwrap(), tcp).await.unwrap();
+                let head = format!("GET /api/events HTTP/1.1\r\nHost: remote\r\nAuthorization: Bearer {token}\r\n\r\n");
+                tls.write_all(head.as_bytes()).await.unwrap();
+                let mut lines = tokio::io::BufReader::new(tls).lines();
+                while let Some(line) = lines.next_line().await.unwrap() {
+                    if line.ends_with("first") {
+                        return lines;
+                    }
+                }
+                panic!("the stream did not start");
+            }
+        };
+        let ended = |mut lines: tokio::io::Lines<tokio::io::BufReader<tokio_rustls::client::TlsStream<tokio::net::TcpStream>>>| async move {
+            tokio::time::timeout(Duration::from_secs(3), async {
+                loop {
+                    match lines.next_line().await {
+                        // 청크 끝(`0`)이나 연결 끊김
+                        Ok(Some(l)) if l.trim() == "0" => return,
+                        Ok(Some(_)) => {}
+                        Ok(None) | Err(_) => return,
+                    }
+                }
+            })
+            .await
+            .is_ok()
+        };
+        let a = config::issue_in(&r.file, "host-a", "집 PC").unwrap();
+        let c = config::issue_in(&r.file, "host-c", "노트북").unwrap();
+        r.clients.set(config::clients_in(&r.file));
+        let (stream_a, stream_c) = (open(a.clone()).await, open(c).await);
+
+        config::revoke_in(&r.file, "host-a").unwrap();
+        r.clients.set(config::clients_in(&r.file));
+        assert!(ended(stream_a).await, "the revoked PC's stream ends");
+        assert!(!ended(stream_c).await, "another PC's stream stays open");
+        let (s, _) = call(r.addr, &r.pin, "GET", "/api/instances", Some(&a), None).await.unwrap();
         assert_eq!(s, 401);
         r.cancel.cancel();
     }
@@ -451,7 +561,8 @@ pub(crate) mod tests {
         let id = Identity::load_or_create(tmp.path()).unwrap();
         let file = ConfigFile::at(tmp.path());
         let token = config::issue_in(&file, "host-a", "집 PC").unwrap();
-        let clients = Arc::new(RwLock::new(config::clients_in(&file)));
+        let clients = Clients::default();
+        clients.set(config::clients_in(&file));
         let ctx = Ctx::new(file, clients, RelaySource::Fixed(Target { base: "http://127.0.0.1:9".into(), token: "sbn_b.s".into() }));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
@@ -470,7 +581,7 @@ pub(crate) mod tests {
 
     #[test]
     fn one_source_cannot_use_up_everyone_elses_pairing_attempts() {
-        let ctx = Ctx::new(ConfigFile::at(std::path::Path::new(".")), Arc::default(), RelaySource::Fixed(Target { base: String::new(), token: String::new() }));
+        let ctx = Ctx::new(ConfigFile::at(std::path::Path::new(".")), Clients::default(), RelaySource::Fixed(Target { base: String::new(), token: String::new() }));
         let (a, b) = (std::net::IpAddr::from([198, 51, 100, 1]), std::net::IpAddr::from([198, 51, 100, 2]));
         for _ in 0..PAIR_PER_SOURCE {
             assert!(ctx.pair_allowed(a));

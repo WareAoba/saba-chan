@@ -1342,6 +1342,7 @@
     "action_command": "Command",
     "action_stdin": "Console input",
     "action_backup": "Backup",
+    "action_remote": "Remote daemon",
     "skipped_stopped": "Skipped (server off)",
     "source_gui": "App",
     "source_cli": "CLI",

@@ -122,9 +122,17 @@ pub(crate) fn load_node_token() -> Option<String> {
     node_token_in(&ConfigFile::default_location())
 }
 
+/// 요청마다 부르는 곳(원격 데몬 중계)용: 잠그거나 이관하지 않고, 바뀌지 않은 설정 파일은 다시 읽지 않는다
+pub(crate) fn peek_node_token() -> Option<String> {
+    token_of(&ConfigFile::default_location().peek_section("node"))
+}
+
 fn node_token_in(file: &ConfigFile) -> Option<String> {
-    file.section("node")
-        .get("token")
+    token_of(&file.section("node"))
+}
+
+fn token_of(node: &Value) -> Option<String> {
+    node.get("token")
         .and_then(Value::as_str)
         .map(|t| t.trim().to_string())
         .filter(|t| !t.is_empty())

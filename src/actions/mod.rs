@@ -1425,6 +1425,7 @@ async fn record_admin(server: &IPCServer, r: &Resolved, caller: &Caller, ok: boo
         instance: name.as_deref(),
         command: None,
         args: args.as_ref(),
+        daemon: None,
         ok,
         status,
     };

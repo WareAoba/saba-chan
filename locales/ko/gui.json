@@ -1342,6 +1342,7 @@
     "action_command": "명령",
     "action_stdin": "콘솔 입력",
     "action_backup": "백업",
+    "action_remote": "원격 데몬 조작",
     "skipped_stopped": "건너뜀 (서버 꺼짐)",
     "source_gui": "앱",
     "source_cli": "CLI",

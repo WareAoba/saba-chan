@@ -233,6 +233,48 @@ async fn forward_once(file: &ConfigFile, relay: Option<Target>, host_id: &str, p
     let Some(daemon) = config::daemons_in(file).into_iter().find(|d| d.host_id == host_id) else {
         return error(StatusCode::NOT_FOUND, "remote_unknown");
     };
+    // 원격 데몬도 출처 `remote`로 남기지만, 이 PC에서 누가 시켰는지는 이 PC에만 있다. 읽기는 남기지 않는다
+    let mut line = (!matches!(*req.method(), Method::GET | Method::HEAD | Method::OPTIONS) && !crate::audit::is_quiet())
+        .then(|| AuditLine::new(req.method(), path, &daemon.name));
+    let res = send_saved(file, relay, &daemon, path, req).await;
+    if let Some(line) = line.as_mut() {
+        line.status = res.status().as_u16();
+    }
+    res
+}
+
+/// 원격 데몬에 보낸 조작 한 줄 (이 PC 감사 로그). 쿼리·본문은 비밀을 가릴 모듈 정보가 원격에 있어 남기지 않는다.
+/// 답을 받기 전에 끝나도(요청이 끊기거나 이 데몬이 멈춤) 이미 원격에 닿았을 수 있으므로 결과 모름(`status` 0)으로 남긴다
+struct AuditLine {
+    origin: crate::audit::Origin,
+    daemon: String,
+    command: String,
+    status: u16,
+}
+
+impl AuditLine {
+    fn new(method: &Method, path: &str, daemon: &str) -> Self {
+        let command = format!("{method} {}", path.split('?').next().unwrap_or(path));
+        Self { origin: crate::audit::current(), daemon: daemon.to_string(), command, status: 0 }
+    }
+}
+
+impl Drop for AuditLine {
+    fn drop(&mut self) {
+        let event = crate::audit::Event {
+            action: "remote",
+            daemon: Some(&self.daemon),
+            command: Some(&self.command),
+            ok: (200..300).contains(&self.status),
+            status: self.status,
+            ..Default::default()
+        };
+        crate::audit::log().record(&self.origin, &event);
+    }
+}
+
+async fn send_saved(file: &ConfigFile, relay: Option<Target>, daemon: &Daemon, path: &str, req: Request<Body>) -> Response {
+    let host_id = daemon.host_id.as_str();
     let (parts, body) = req.into_parts();
     let Ok(body) = axum::body::to_bytes(body, BODY_LIMIT).await else {
         return error(StatusCode::PAYLOAD_TOO_LARGE, "body_too_large");
@@ -241,7 +283,7 @@ async fn forward_once(file: &ConfigFile, relay: Option<Target>, host_id: &str, p
     if request().is_none() {
         return error(StatusCode::BAD_REQUEST, "bad_request");
     }
-    let endpoint = endpoint_of(&daemon);
+    let endpoint = endpoint_of(daemon);
     let mut res = send_to(relay.as_ref(), host_id, &endpoint, &request).await;
     if matches!(res, Sent::NotConnected) {
         // 주소가 바뀌었거나 원격 데몬이 인증서를 새로 만들었을 수 있다: 릴레이가 아는 지금 값으로 한 번 더
@@ -386,6 +428,10 @@ mod tests {
                 get(|| async {
                     tokio::time::sleep(RESPONSE_TIMEOUT * 3).await;
                     "late"
+                })
+                .post(|| async {
+                    tokio::time::sleep(RESPONSE_TIMEOUT * 3).await;
+                    "late"
                 }),
             )
             .route(
@@ -399,7 +445,8 @@ mod tests {
                     Body::from_stream(chunks)
                 }),
             );
-        let clients = Arc::new(std::sync::RwLock::new(config::clients_in(&file)));
+        let clients = server::Clients::default();
+        clients.set(config::clients_in(&file));
         let ctx = Ctx::new(file, clients, RelaySource::Fixed(relay.clone()));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
@@ -450,6 +497,53 @@ mod tests {
 
         let (status, body) = json_of(forward(&file, Some(relay), "host-x", "/api/echo", get_req(&[]), CancellationToken::new()).await).await;
         assert_eq!((status, body["error_code"].as_str()), (404, Some("remote_unknown")));
+    }
+
+    /// 원격 데몬에 보낸 조작(읽기가 아닌 요청)은 이 PC의 감사 로그에도 시킨 쪽·데몬·경로로 남는다. 쿼리와 본문은 남기지 않는다
+    #[tokio::test]
+    async fn a_forwarded_change_is_also_in_this_pcs_audit_log() {
+        use crate::audit::{with_origin, Origin};
+        let state = Relay::default();
+        let relay = fake_relay(state.clone()).await;
+        let (_b, _stop) = remote_daemon(&relay, &state, None).await;
+        let dir = tempfile::tempdir().unwrap();
+        let file = ConfigFile::at(dir.path());
+        connect(&file, Some(relay.clone()), "host-b").await.unwrap();
+
+        let marker = uuid::Uuid::new_v4().to_string();
+        let origin = Origin { user_name: Some(marker.clone()), ..Origin::new("cli") };
+        let origin_b = Origin { user_name: Some(format!("{marker}-cut")), ..Origin::new("gui") };
+        let relay_b = relay.clone();
+        let post = Request::post("/ignored").body(Body::from("secret-body")).unwrap();
+        let forwarded = forward(&file, Some(relay.clone()), "host-b", "/api/echo?token=secret-query", post, CancellationToken::new());
+        assert_eq!(with_origin(origin.clone(), forwarded).await.status(), StatusCode::OK);
+        let read = forward(&file, Some(relay.clone()), "host-b", "/api/echo", get_req(&[]), CancellationToken::new());
+        assert_eq!(with_origin(origin.clone(), read).await.status(), StatusCode::OK);
+        let missing = forward(&file, Some(relay), "host-b", "/api/missing", Request::delete("/ignored").body(Body::empty()).unwrap(), CancellationToken::new());
+        assert_eq!(with_origin(origin, missing).await.status(), StatusCode::NOT_FOUND);
+
+        let mine: Vec<Value> = crate::audit::log().recent(1000, None).into_iter().filter(|e| e["userName"] == marker.as_str()).collect();
+        assert_eq!(mine.len(), 2, "only the changes are recorded: {mine:?}");
+        assert_eq!(mine[1]["source"], "cli");
+        assert_eq!(mine[1]["action"], "remote");
+        assert_eq!(mine[1]["daemon"], "원격 PC");
+        assert_eq!(mine[1]["command"], "POST /api/echo");
+        assert_eq!((mine[1]["ok"].as_bool(), mine[1]["status"].as_u64()), (Some(true), Some(200)));
+        assert_eq!(mine[0]["command"], "DELETE /api/missing");
+        assert_eq!((mine[0]["ok"].as_bool(), mine[0]["status"].as_u64()), (Some(false), Some(404)));
+        assert!(!mine.iter().any(|e| e.to_string().contains("secret")), "{mine:?}");
+
+        // 답을 기다리다 이 데몬이 멈춰도 원격에 닿았을 수 있으므로 결과 모름으로 남는다
+        let stop = CancellationToken::new();
+        let slow = forward(&file, Some(relay_b.clone()), "host-b", "/api/slow", Request::post("/ignored").body(Body::empty()).unwrap(), stop.clone());
+        let (res, ()) = tokio::join!(with_origin(origin_b, slow), async {
+            tokio::time::sleep(Duration::from_millis(300)).await;
+            stop.cancel();
+        });
+        assert_eq!(res.status(), StatusCode::SERVICE_UNAVAILABLE);
+        let cut: Vec<Value> = crate::audit::log().recent(1000, None).into_iter().filter(|e| e["userName"] == format!("{marker}-cut").as_str()).collect();
+        assert_eq!(cut.len(), 1, "{cut:?}");
+        assert_eq!((cut[0]["command"].as_str(), cut[0]["ok"].as_bool(), cut[0]["status"].as_u64()), (Some("POST /api/slow"), Some(false), Some(0)));
     }
 
     /// 공인 주소가 없는 PC(NAT 뒤)는 릴레이 터널로 짝을 맺고 요청을 보낸다. 터널 하나를 계속 쓴다
