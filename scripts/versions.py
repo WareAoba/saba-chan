@@ -369,22 +369,21 @@ def check_exe_versions(key: str, name: str, blob: bytes, version: str) -> None:
         sys.exit(f"{key}: {name} was built as {wrong}, not {version}")
 
 
-def cmd_manifest(data: dict, args: argparse.Namespace) -> int:
-    """에셋 폴더에서 각 컴포넌트의 `asset` 파일을 찾아 manifest를 만든다. 없는 컴포넌트는 빠진다."""
-    assets = Path(args.assets)
+def platform_components(data: dict, args: argparse.Namespace, assets: Path, platform: str, packaged: dict) -> dict:
+    """이 플랫폼의 앱 컴포넌트. `{platform}`이 든 asset은 그 플랫폼 파일이 있을 때만, 없는 asset은
+    `platforms`(없으면 모든 플랫폼)에 들 때만 싣는다"""
     base = args.base_url.rstrip("/")
     release = data["release"]["version"]
-    # 패키저(package-release.py)가 남긴 manifest.json: 이전 릴리즈에서 가져온 에셋은 실제 버전이 적혀 있다
-    packaged_path = assets / "manifest.json"
-    packaged = json.loads(packaged_path.read_text(encoding="utf-8")).get("components", {}) if packaged_path.is_file() else {}
     components = {}
     for key, comp in data["components"].items():
         if "asset" not in comp:
             continue
-        name = comp["asset"].format(platform=args.platform)
+        if "{platform}" not in comp["asset"] and platform not in comp.get("platforms", [platform]):
+            continue
+        name = comp["asset"].format(platform=platform)
         path = assets / name
         if not path.is_file():
-            print(f"skip {key}: {path} not found", file=sys.stderr)
+            print(f"skip {key} ({platform}): {path} not found", file=sys.stderr)
             continue
         blob = path.read_bytes()
         sha = hashlib.sha256(blob).hexdigest()
@@ -405,20 +404,36 @@ def cmd_manifest(data: dict, args: argparse.Namespace) -> int:
             "url": f"{base}/{r2_key(release, name)}",
             "version": version,
         }
+    return components
+
+
+def cmd_manifest(data: dict, args: argparse.Namespace) -> int:
+    """에셋 폴더에서 각 컴포넌트의 `asset` 파일을 찾아 manifest를 만든다. 없는 컴포넌트는 빠진다.
+    `--also-platform`의 플랫폼은 `platforms.<플랫폼>.components`에 그 플랫폼의 목록 전체를 싣는다 (D3c)."""
+    assets = Path(args.assets)
+    base = args.base_url.rstrip("/")
+    release = data["release"]["version"]
+    # 패키저(package-release.py)가 남긴 manifest.json: 이전 릴리즈에서 가져온 에셋은 실제 버전이 적혀 있다.
+    # 패키저는 맨 위 플랫폼(windows-x64)만 다룬다
+    packaged_path = assets / "manifest.json"
+    packaged = json.loads(packaged_path.read_text(encoding="utf-8")).get("components", {}) if packaged_path.is_file() else {}
+    components = platform_components(data, args, assets, args.platform, packaged)
     addons = addon_components(args, assets)
     if getattr(args, "previous", None):
         previous = json.loads(Path(args.previous).read_text(encoding="utf-8"))
         problems = addon_version_problems(addons, assets, previous.get("manifest", previous), fetch_url)
         if problems:
             sys.exit("modules/extensions:\n  " + "\n  ".join(problems))
+    addon_entries = {}
     for key, comp in addons.items():
         blob = (assets / comp["asset"]).read_bytes()
-        components[key] = {
+        addon_entries[key] = {
             **comp,
             "sha256": hashlib.sha256(blob).hexdigest(),
             "size_bytes": len(blob),
             "url": f"{base}/{r2_key(release, comp['asset'])}",
         }
+    components.update(addon_entries)
     if not components:
         sys.exit(f"no assets found in {assets}")
     manifest = {
@@ -427,6 +442,14 @@ def cmd_manifest(data: dict, args: argparse.Namespace) -> int:
         "platform": args.platform,
         "version": release,
     }
+    platforms = {}
+    for other in getattr(args, "also_platform", None) or []:
+        own = platform_components(data, args, assets, other, {})
+        if "saba-core" not in own:
+            sys.exit(f"{other}: no saba-core asset in {assets}")
+        platforms[other] = {"components": {**own, **addon_entries}}
+    if platforms:
+        manifest["platforms"] = platforms
     write_json(manifest, args.out)
     return 0
 
@@ -451,13 +474,16 @@ def cmd_registration(args: argparse.Namespace) -> int:
         "assets": [
             {
                 "component": key,
-                "platform": manifest["platform"],
+                "platform": platform,
                 "filename": comp["asset"],
                 "sizeBytes": comp["size_bytes"],
                 "sha256": comp["sha256"],
                 "r2Key": r2_key(release, comp["asset"]),
             }
-            for key, comp in sorted(manifest["components"].items())
+            # 릴레이는 에셋의 플랫폼으로 그 플랫폼의 릴리즈를 고른다. 같은 파일(모듈·locales)은 플랫폼마다 한 줄씩
+            for platform, listed in [(manifest["platform"], manifest["components"])]
+            + [(p, v["components"]) for p, v in sorted(manifest.get("platforms", {}).items())]
+            for key, comp in sorted(listed.items())
         ],
     }
     write_json(body, args.out)
@@ -500,6 +526,7 @@ def main() -> int:
     m.add_argument("--assets", required=True, help="빌드된 zip 폴더")
     m.add_argument("--base-url", required=True, help="R2 공개 URL 접두사 (<base>/<version>/<file>)")
     m.add_argument("--platform", required=True, help="windows-x64, linux-x64 ...")
+    m.add_argument("--also-platform", action="append", default=[], help="platforms.<플랫폼>에 함께 실을 플랫폼 (여러 번)")
     m.add_argument("--channel")
     m.add_argument("--out")
     m.add_argument("--modules-repo", help="saba-chan-modules 체크아웃 (모듈을 같이 싣는다)")

@@ -72,6 +72,16 @@ pub struct ReleaseManifest {
     #[serde(default)]
     pub is_critical: bool,
     pub components: HashMap<String, ManifestComponent>,
+    /// `platform` 밖의 플랫폼 몫 (D3c). 키는 플랫폼 이름, 값은 그 플랫폼의 컴포넌트 목록 전체다.
+    /// 0.1.10까지의 업데이터는 이 칸을 모르고 맨 위 `components`만 읽는다
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub platforms: HashMap<String, PlatformComponents>,
+}
+
+/// manifest `platforms.<플랫폼>`
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PlatformComponents {
+    pub components: HashMap<String, ManifestComponent>,
 }
 
 /// manifest 컴포넌트 항목. 필드 이름은 운영 중인 manifest(0.1.1~)를 따른다:
@@ -104,6 +114,19 @@ pub const MODULE_PREFIX: &str = "module-";
 pub const EXTENSION_PREFIX: &str = "ext-";
 
 impl ReleaseManifest {
+    /// 이 플랫폼의 manifest: 맨 위 `platform`이면 그대로, `platforms`에 있으면 그 목록으로 바꾼다
+    pub fn for_platform(mut self, platform: &str) -> Result<Self, RelayError> {
+        if self.platform != platform {
+            let Some(own) = self.platforms.remove(platform) else {
+                return Err(RelayError::WrongTarget { expected: platform.into(), got: self.platform });
+            };
+            self.platform = platform.into();
+            self.components = own.components;
+        }
+        self.platforms.clear();
+        Ok(self)
+    }
+
     /// 키가 `prefix`로 시작하는 컴포넌트를 `(접두사 뗀 이름, 항목)`으로, 이름 순으로
     pub fn addons(&self, prefix: &str) -> Vec<(&str, &ManifestComponent)> {
         let mut list: Vec<_> = self
@@ -282,9 +305,7 @@ pub fn verify_release(
     signature::verify(signed)?;
     let manifest: ReleaseManifest =
         serde_json::from_value(signed.manifest.clone()).map_err(|e| RelayError::Parse(e.to_string()))?;
-    if manifest.platform != platform {
-        return Err(RelayError::WrongTarget { expected: platform.into(), got: manifest.platform });
-    }
+    let manifest = manifest.for_platform(platform)?;
     if !channel_includes(channel, &manifest.channel) {
         return Err(RelayError::WrongChannel { expected: channel.into(), got: manifest.channel });
     }
@@ -574,6 +595,31 @@ mod tests {
                 "{key} {field}={value}"
             );
         }
+    }
+
+    /// 한 서명 manifest에 다른 플랫폼 몫을 싣는다 (D3c): 맨 위는 windows-x64 그대로(0.1.10 업데이터가 읽는다),
+    /// `platforms.<플랫폼>.components`가 그 플랫폼의 목록이다
+    #[test]
+    fn another_platform_takes_its_own_component_list() {
+        let mut v = manifest("1.0.0", "windows-x64");
+        v["platforms"] = json!({ "linux-x64": { "components": {
+            "saba-core": {
+                "version": "1.0.0",
+                "asset": "saba-core-linux-x64.zip",
+                "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                "url": "https://cdn.example/saba-core-linux-x64.zip"
+            }
+        }}});
+        let m: ReleaseManifest = serde_json::from_value(v).unwrap();
+
+        let linux = m.clone().for_platform("linux-x64").unwrap();
+        assert_eq!(linux.platform, "linux-x64");
+        assert_eq!(linux.components["saba-core"].filename, "saba-core-linux-x64.zip");
+        assert!(linux.platforms.is_empty());
+
+        let windows = m.clone().for_platform("windows-x64").unwrap();
+        assert_eq!(windows.components["saba-core"].filename, "saba-core.zip");
+        assert!(matches!(m.for_platform("macos-arm64"), Err(RelayError::WrongTarget { .. })));
     }
 
     #[test]

@@ -61,6 +61,8 @@ files = [
 version = "0.1.10"
 asset = "saba-chan-installer.exe"
 install_dir = "."
+# asset 이름에 {platform}이 없는 것 중 이 플랫폼에만 싣는 것 (없으면 모든 플랫폼의 manifest에 싣는다)
+platforms = ["windows-x64"]
 files = [
     "installer/gui/src-tauri/Cargo.toml",
     "installer/core/Cargo.toml",
