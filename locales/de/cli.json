@@ -1290,7 +1290,8 @@
       "remote_timeout": "Der Remote-Daemon hat nicht rechtzeitig geantwortet. Er bearbeitet die Anfrage eventuell noch",
       "remote_bad_path": "Dieser Pfad kann nicht an einen Remote-Daemon gesendet werden",
       "remote_unauthorized": "Der Remote-Daemon akzeptiert diesen PC nicht mehr. Verbinde ihn erneut",
-      "remote_local_only": "Das geht nur direkt auf diesem PC"
+      "remote_local_only": "Das geht nur direkt auf diesem PC",
+      "remote_field_blocked": "Diese Einstellungen lassen sich nur direkt auf diesem PC ändern: {{fields}}"
     },
     "daemon": "Daemon",
     "this_pc": "Dieser PC",

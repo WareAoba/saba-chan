@@ -41,4 +41,12 @@ describe('모듈 호출 실패 안내', () => {
             expect(result.error).toContain('The module call timed out.');
         }
     });
+
+    it('원격 데몬이 PC 전용 칸을 거절하면 막힌 칸 이름과 함께 안내한다', async () => {
+        const body = { ok: false, success: false, error_code: 'remote_field_blocked', error: 'These settings can only be changed on the PC', fields: ['executable_path', 'java_path'] };
+        const { api } = createApi({ invoke: vi.fn().mockResolvedValue({ status: 403, data: body }), hub: { dispatch: vi.fn(), on: vi.fn() } });
+        const result = await api.instanceUpdateSettings('id', { executable_path: '/x' });
+        expect(result.error).toContain('These settings can only be changed on that PC itself: executable_path, java_path');
+        expect(result.error).not.toContain('{{');
+    });
 });

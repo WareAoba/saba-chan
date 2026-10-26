@@ -41,11 +41,13 @@ pub async fn run(server: &IPCServer, req: Request, user: Option<String>) -> Resp
             )
         }
     };
-    let pc_only = pc_only_fields(server, pattern, &req).await;
+    let pc_only = pc_only_fields(server, pattern, &req.path, req.body.as_ref()).await;
     let blocked = gate::blocked_fields(&req.method, pattern, req.body.as_ref(), &pc_only);
     if !blocked.is_empty() {
-        let msg = "These settings can only be changed on the PC";
-        return refusal(StatusCode::FORBIDDEN, "remote_field_blocked", msg, Some(blocked));
+        return Response {
+            status: StatusCode::FORBIDDEN.as_u16(),
+            body: field_refusal(blocked),
+        };
     }
     let mut origin = crate::audit::Origin::new("web");
     origin.user = user;
@@ -58,6 +60,11 @@ pub async fn run(server: &IPCServer, req: Request, user: Option<String>) -> Resp
         status: res.status.as_u16(),
         body,
     }
+}
+
+/// PC에서만 바꾸는 칸을 담은 요청의 거절 본문 (원격 포트도 같은 모양으로 거절한다)
+pub(crate) fn field_refusal(fields: Vec<String>) -> Value {
+    refusal(StatusCode::FORBIDDEN, "remote_field_blocked", "These settings can only be changed on the PC", Some(fields)).body
 }
 
 fn refusal(status: StatusCode, code: &str, error: &str, fields: Option<Vec<String>>) -> Response {
@@ -99,12 +106,11 @@ fn module_fields(
         .collect()
 }
 
-/// 이 요청이 고치는 인스턴스 모듈의 PC 전용 설정 키
-async fn pc_only_fields(server: &IPCServer, pattern: &str, req: &Request) -> Vec<String> {
+/// 이 요청(`path`, `body`)이 고치는 인스턴스 모듈의 PC 전용 설정 키
+pub(crate) async fn pc_only_fields(server: &IPCServer, pattern: &str, path: &str, body: Option<&Value>) -> Vec<String> {
     let supervisor = server.supervisor.read().await;
     let module = match pattern {
-        "/api/instance/{id}" | "/api/instance/{id}/properties" => req
-            .path
+        "/api/instance/{id}" | "/api/instance/{id}/properties" => path
             .split('?')
             .next()
             .and_then(|p| p.split('/').nth(3))
@@ -112,9 +118,7 @@ async fn pc_only_fields(server: &IPCServer, pattern: &str, req: &Request) -> Vec
             .and_then(super::gate::percent_decode)
             .and_then(|id| supervisor.instance_store.get(&id))
             .map(|i| i.module_name.clone()),
-        "/api/instances" => req
-            .body
-            .as_ref()
+        "/api/instances" => body
             .and_then(|b| b.get("module_name"))
             .and_then(Value::as_str)
             .map(str::to_string),

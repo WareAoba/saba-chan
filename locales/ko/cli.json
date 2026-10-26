@@ -1487,7 +1487,8 @@
       "remote_timeout": "원격 데몬이 제때 답하지 않았어요. 요청은 이미 처리 중일 수 있어요",
       "remote_bad_path": "그 경로는 원격 데몬에 보낼 수 없어요",
       "remote_unauthorized": "원격 데몬이 이 PC를 더는 받지 않아요. 다시 연결해 주세요",
-      "remote_local_only": "그 PC에서 직접 해야 하는 일이에요"
+      "remote_local_only": "그 PC에서 직접 해야 하는 일이에요",
+      "remote_field_blocked": "이 설정은 그 PC에서 직접 바꿔야 해요: {{fields}}"
     },
     "daemon": "데몬",
     "this_pc": "이 PC",

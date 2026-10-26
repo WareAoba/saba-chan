@@ -1012,6 +1012,13 @@ async fn authorize(server: &IPCServer, r: &Resolved, caller: &Caller) -> Result<
         if let Some((status, code)) = crate::remote_daemon::server::refused_path(&r.uri) {
             return Err(ActionError::new(status.as_u16(), code, "This can only be done on that PC itself"));
         }
+        let blocked = crate::remote_daemon::server::blocked_fields(Some(server), r.method, &r.uri, r.body.as_ref()).await;
+        if !blocked.is_empty() {
+            return Err(ActionError {
+                data: json!({ "fields": blocked }),
+                ..ActionError::new(403, "remote_field_blocked", "These settings can only be changed on the PC")
+            });
+        }
     }
     if !r.surfaces.contains(&caller.surface) {
         return Err(ActionError::new(403, "action_not_allowed", format!("'{}' is not available from {}", r.id, caller.surface.name())));

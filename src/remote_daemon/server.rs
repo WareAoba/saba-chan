@@ -18,14 +18,18 @@ use axum::{
 };
 use saba_chan_updater_lib::config_file::ConfigFile;
 use serde::Deserialize;
-use serde_json::json;
+use serde_json::{json, Value};
 use tokio_util::sync::CancellationToken;
 
 use super::config::{self, Client};
 use super::relay::{self, Failure, Target};
 
-/// 원격에서 부르지 못하는 라우트: 이 PC의 릴레이 토큰, 개인정보 지우기, 원격 포트 설정과 짝 관리
-const LOCAL_ONLY: &[&str] = &["/api/config/node-token", "/api/relay/privacy/erase", "/api/remote/"];
+/// 원격에서 부르지 못하는 라우트: 이 PC의 릴레이 토큰, 개인정보 지우기, 원격 포트 설정과 짝 관리,
+/// 이 PC의 아무 경로에 쓰거나 읽는 옮기기(설정 내보내기·들이기, 저장 폴더 옮기기)
+const LOCAL_ONLY: &[&str] =
+    &["/api/config/node-token", "/api/relay/privacy/erase", "/api/remote/", "/api/migration/", "/api/system/paths/move"];
+/// PC 전용 칸을 보려고 받아 두는 본문 (axum `Json`의 기본 한도와 같다)
+const FIELDS_BODY_LIMIT: usize = 2 * 1024 * 1024;
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
 const MAX_CONNECTIONS: usize = 64;
 /// 한 곳(IP)이 쥘 수 있는 연결 (인증 전에 잡으므로 한 곳이 짝 맺은 PC의 자리를 다 쥐지 못하게)
@@ -104,12 +108,19 @@ pub(crate) struct Ctx {
     pub file: ConfigFile,
     pub clients: Clients,
     pub relay: RelaySource,
+    /// PC 전용 칸 판정에 쓰는 이 데몬 (모듈의 PC 전용 설정, 저장된 값)
+    server: Option<crate::ipc::IPCServer>,
     pairs: Arc<std::sync::Mutex<Vec<(Instant, std::net::IpAddr)>>>,
 }
 
 impl Ctx {
     pub(crate) fn new(file: ConfigFile, clients: Clients, relay: RelaySource) -> Self {
-        Self { file, clients, relay, pairs: Arc::default() }
+        Self { file, clients, relay, server: None, pairs: Arc::default() }
+    }
+
+    pub(crate) fn with_server(mut self, server: crate::ipc::IPCServer) -> Self {
+        self.server = Some(server);
+        self
     }
 
     fn pair_allowed(&self, from: std::net::IpAddr) -> bool {
@@ -146,6 +157,65 @@ pub(crate) fn refused_path(path: &str) -> Option<(StatusCode, &'static str)> {
     .then_some((StatusCode::FORBIDDEN, "remote_local_only"))
 }
 
+/// 짝 맺은 PC가 바꾸지 못하는 본문 칸. 웹 원격과 같은 PC 전용 칸 규칙(`gate::blocked_fields`)에서
+/// 저장된 값과 같은 칸(바꾸지 않는 칸)은 뺀다: GUI는 설정 창의 칸을 바꾸지 않아도 함께 보낸다.
+/// 플러그인 설치는 해시를 함께 줄 때만 막는다 (주소만 주면 데몬이 공식 목록의 주소인지 본다)
+pub(crate) async fn blocked_fields(server: Option<&crate::ipc::IPCServer>, method: &str, path: &str, body: Option<&Value>) -> Vec<String> {
+    let Ok(pattern) = crate::remote::gate::route_of(path) else { return Vec::new() };
+    if !crate::remote::gate::checks_fields(method, pattern) {
+        return Vec::new();
+    }
+    let pc_only = match server {
+        Some(server) => crate::remote::exec::pc_only_fields(server, pattern, path, body).await,
+        None => Vec::new(),
+    };
+    let mut blocked = crate::remote::gate::blocked_fields(method, pattern, body, &pc_only);
+    if blocked.is_empty() {
+        return blocked;
+    }
+    if pattern == "/api/extensions/{id}/install" {
+        let sha = body.and_then(|b| b.get("sha256")).and_then(Value::as_str).is_some_and(|s| !s.is_empty());
+        return if sha { blocked } else { Vec::new() };
+    }
+    let (Some(server), Some(body), "/api/instance/{id}" | "/api/instance/{id}/properties") = (server, body, pattern) else {
+        return blocked;
+    };
+    // 라우터처럼 id를 풀어서 찾는다
+    let id = path.split('?').next().and_then(|p| p.split('/').nth(3)).and_then(crate::remote::gate::percent_decode);
+    let supervisor = server.supervisor.read().await;
+    let Some(instance) = id.and_then(|id| supervisor.instance_store.get(&id)) else { return blocked };
+    let view = serde_json::to_value(instance).unwrap_or_default();
+    blocked.retain(|key| {
+        let (sent, key) = match key.strip_prefix("settings.") {
+            Some(k) => (body.get("settings").and_then(|s| s.get(k)), k),
+            None => (body.get(key.as_str()), key.as_str()),
+        };
+        let Some(sent) = sent else { return true };
+        // 익스텐션 값은 키마다 합친다
+        if key == "extension_data" {
+            return sent.as_object().is_none_or(|m| m.iter().any(|(k, v)| !same_value(v, instance.extension_data.get(k))));
+        }
+        !same_value(sent, crate::ipc::handlers::instance::stored_setting(&view, instance, key).as_ref())
+    });
+    blocked
+}
+
+/// 보낸 값이 저장된 값과 같은지. 비운 값(null·빈 글자·빈 목록)은 같고, 숫자·참거짓은 글자로 보낸 것과 같다
+fn same_value(sent: &Value, stored: Option<&Value>) -> bool {
+    fn norm(v: &Value) -> Value {
+        match v {
+            Value::String(s) if s.is_empty() => Value::Null,
+            Value::Array(a) if a.is_empty() => Value::Null,
+            Value::Number(n) => Value::String(n.to_string()),
+            Value::Bool(b) => Value::String(b.to_string()),
+            Value::Array(a) => Value::Array(a.iter().map(norm).collect()),
+            Value::Object(o) => Value::Object(o.iter().map(|(k, v)| (k.clone(), norm(v))).collect()),
+            v => v.clone(),
+        }
+    }
+    norm(sent) == stored.map_or(Value::Null, norm)
+}
+
 async fn remote_auth(State(ctx): State<Ctx>, mut req: Request<Body>, next: Next) -> Response {
     let path = req.uri().path();
     if path == "/remote/pair" {
@@ -178,6 +248,20 @@ async fn remote_auth(State(ctx): State<Ctx>, mut req: Request<Body>, next: Next)
     origin.user = Some(client.host_id);
     origin.user_name = Some(client.name);
     req.extensions_mut().insert(origin);
+    // 웹 원격과 같이 PC 전용 칸은 바꾸지 못한다. 하나라도 있으면 요청 전체를 거절한다 (일부만 쓰지 않게)
+    let method = req.method().as_str().to_string();
+    if crate::remote::gate::route_of(req.uri().path()).is_ok_and(|p| crate::remote::gate::checks_fields(&method, p)) {
+        let (parts, body) = req.into_parts();
+        let Ok(bytes) = axum::body::to_bytes(body, FIELDS_BODY_LIMIT).await else {
+            return error(StatusCode::PAYLOAD_TOO_LARGE, "body_too_large");
+        };
+        let json = serde_json::from_slice::<Value>(&bytes).ok();
+        let blocked = blocked_fields(ctx.server.as_ref(), &method, parts.uri.path(), json.as_ref()).await;
+        if !blocked.is_empty() {
+            return (StatusCode::FORBIDDEN, Json(crate::remote::exec::field_refusal(blocked))).into_response();
+        }
+        req = Request::from_parts(parts, Body::from(bytes));
+    }
     // 짝이 풀리면 이 응답의 본문(이벤트 스트림, 내려받기)도 오류로 끊는다(받던 쪽이 다 받은 것으로 알지 않게). 새 요청은 위에서 바로 막힌다.
     // 길이를 아는 본문은 그대로 둔다
     let res = next.run(req).await;
@@ -606,6 +690,72 @@ pub(crate) mod tests {
         assert_eq!(s, 403);
         let (s, _) = call(addr, &id.sha256, "GET", "/api/instances", None, None).await.unwrap();
         assert_eq!(s, 401);
+        cancel.cancel();
+    }
+
+    /// 짝 맺은 PC도 웹 원격과 같이 PC 전용 칸을 바꾸지 못한다. 바꾸지 않는 칸(저장된 값과 같은 칸)은 GUI가 함께 보내도 받는다.
+    /// 바뀐 PC 전용 칸이 하나라도 있으면 요청 전체를 거절한다 (나머지 칸도 쓰지 않는다)
+    #[tokio::test]
+    async fn a_paired_pc_cannot_change_pc_only_values() {
+        let tmp = tempfile::tempdir().unwrap();
+        crate::ipc::auth::ensure_test_token();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            tmp.path().join("modules").to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        sup.initialize().await.unwrap();
+        let mut inst = crate::instance::ServerInstance::new("srv", "plain");
+        inst.executable_path = Some("/srv/game/run".into());
+        inst.port = Some(25565);
+        let id = inst.id.clone();
+        sup.instance_store.add(inst).unwrap();
+        let server = crate::ipc::IPCServer::new(
+            Arc::new(tokio::sync::RwLock::new(sup)),
+            "127.0.0.1:0",
+            crate::daemon_log::DaemonLogBuffer::new(),
+        );
+        let ident = Identity::load_or_create(tmp.path()).unwrap();
+        let file = ConfigFile::at(tmp.path());
+        let token = config::issue_in(&file, "host-a", "집 PC").unwrap();
+        let clients = Clients::default();
+        clients.set(config::clients_in(&file));
+        let ctx = Ctx::new(file, clients, RelaySource::Fixed(Target { base: "http://127.0.0.1:9".into(), token: "sbn_b.s".into() }))
+            .with_server(server.clone());
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let cancel = CancellationToken::new();
+        tokio::spawn(serve(listener, Arc::new(ident.server_config().unwrap()), router(server.routes(), ctx), cancel.clone()));
+        let send = |method: &'static str, path: String, body: Option<Value>| {
+            let (pin, token) = (ident.sha256.clone(), token.clone());
+            async move { call(addr, &pin, method, &path, Some(&token), body).await.unwrap() }
+        };
+        let port = || async { server.supervisor.read().await.instance_store.get(&id).unwrap().port };
+
+        let (s, body) = send("PATCH", format!("/api/instance/{id}"), Some(json!({ "port": 1234, "executable_path": "/bin/sh" }))).await;
+        assert_eq!((s, body["error_code"].as_str()), (403, Some("remote_field_blocked")), "{body}");
+        assert_eq!(body["fields"], json!(["executable_path"]));
+        assert_eq!(port().await, Some(25565), "a refused request changes nothing");
+        // 인코딩한 id로도 같은 판정
+        let encoded: String = id.chars().map(|c| format!("%{:02X}", c as u32)).collect();
+        let (s, body) = send("PATCH", format!("/api/instance/{encoded}"), Some(json!({ "executable_path": "/bin/sh" }))).await;
+        assert_eq!((s, body["error_code"].as_str()), (403, Some("remote_field_blocked")), "{body}");
+        // 저장된 값과 같은 PC 전용 칸은 받는다
+        let (s, body) = send("PATCH", format!("/api/instance/{id}"), Some(json!({ "port": 1234, "executable_path": "/srv/game/run", "extra_args": [] }))).await;
+        assert_ne!(body["error_code"].as_str(), Some("remote_field_blocked"), "{s} {body}");
+        assert_eq!(port().await, Some(1234));
+
+        let (s, body) = send("POST", "/api/extensions/x/install".into(), Some(json!({ "download_url": "https://h.example/x.zip", "sha256": "00" }))).await;
+        assert_eq!((s, body["error_code"].as_str()), (403, Some("remote_field_blocked")), "{body}");
+        // 주소만 주면 데몬이 카탈로그 주소인지 본다
+        let (_, body) = send("POST", "/api/extensions/x/install".into(), Some(json!({ "download_url": "https://h.example/x.zip" }))).await;
+        assert_ne!(body["error_code"].as_str(), Some("remote_field_blocked"), "{body}");
+        let (s, body) = send("POST", "/api/instances".into(), Some(json!({ "name": "b", "module_name": "plain", "migration_source": "/home" }))).await;
+        assert_eq!((s, body["fields"].clone()), (403, json!(["migration_source"])), "{body}");
+
+        for path in ["/api/migration/export", "/api/migration/import", "/api/system/paths/move"] {
+            let (s, body) = send("POST", path.into(), Some(json!({}))).await;
+            assert_eq!((s, body["error_code"].as_str()), (403, Some("remote_local_only")), "{path}");
+        }
         cancel.cancel();
     }
 

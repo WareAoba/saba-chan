@@ -1684,6 +1684,7 @@
     "err_remote_bad_path": "そのパスはリモートデーモンに送れません",
     "err_remote_unauthorized": "リモートデーモンがこのPCを受け付けなくなりました。もう一度接続してください",
     "err_remote_local_only": "そのPCで直接行う必要があります",
+    "err_remote_field_blocked": "次の設定はそのPCで直接変更する必要があります: {{fields}}",
     "view": "サーバー一覧の表示",
     "view_description": "まとめて表示では、選んだデーモンのサーバーの下に他のデーモン(このPCを含む)のサーバーをデーモンごとに表示し、そこから起動・停止できます",
     "view_switch": "選んだデーモンのみ",

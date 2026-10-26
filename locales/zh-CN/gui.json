@@ -1684,6 +1684,7 @@
     "err_remote_bad_path": "该路径不能发送给远程守护进程",
     "err_remote_unauthorized": "远程守护进程不再接受本机。请重新连接",
     "err_remote_local_only": "这只能在那台电脑上直接操作",
+    "err_remote_field_blocked": "以下设置只能在那台电脑上直接更改：{{fields}}",
     "view": "服务器列表显示",
     "view_description": "合并显示会在所选守护进程的服务器下方按守护进程列出其他守护进程(包括本机)的服务器，并可直接启动和停止",
     "view_switch": "仅所选守护进程",

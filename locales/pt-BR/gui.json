@@ -1684,6 +1684,7 @@
     "err_remote_bad_path": "Esse caminho não pode ser enviado a um daemon remoto",
     "err_remote_unauthorized": "O daemon remoto não aceita mais este PC. Conecte de novo",
     "err_remote_local_only": "Isso só pode ser feito naquele PC",
+    "err_remote_field_blocked": "Estas configurações só podem ser alteradas naquele PC: {{fields}}",
     "view": "Lista de servidores",
     "view_description": "A visão combinada mostra, abaixo dos servidores do daemon escolhido, os servidores dos outros daemons (incluindo este PC) agrupados por daemon, e permite iniciá-los e pará-los ali",
     "view_switch": "Só o daemon escolhido",

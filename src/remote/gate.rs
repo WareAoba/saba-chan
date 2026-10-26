@@ -260,22 +260,27 @@ pub enum Refusal {
 
 /// `path`(쿼리 포함 가능)를 받을지. 받으면 그 라우트의 패턴을 돌려준다
 pub fn decide(method: &str, path: &str) -> Result<&'static str, Refusal> {
+    let pattern = route_of(path)?;
+    match ROUTES.iter().find(|r| r.pattern == pattern && r.method == method) {
+        Some(r) if r.access == Access::Allow => Ok(r.pattern),
+        _ => Err(Refusal::NotAllowed),
+    }
+}
+
+/// `path`(쿼리 포함 가능)에 맞는 라우트 패턴 (허용·거부와 상관없이)
+pub fn route_of(path: &str) -> Result<&'static str, Refusal> {
     normalized_path(path).ok_or(Refusal::BadPath)?;
     let path = path.split_once('?').map_or(path, |(p, _)| p);
     // 패턴은 라우터처럼 풀지 않은 조각과 맞춘다 (라우터는 리터럴 조각을 풀지 않는다)
     let segments: Vec<&str> = path[1..].split('/').collect();
     // 라우터처럼 리터럴 조각이 많이 맞는 패턴을 고른 뒤 그 패턴의 메서드를 본다
     // (매개변수 패턴의 허용으로 리터럴 라우트의 다른 처리기에 닿지 않게)
-    let pattern = ROUTES
+    ROUTES
         .iter()
         .filter_map(|r| match_score(r.pattern, &segments).map(|score| (score, r.pattern)))
         .max_by(|a, b| a.0.cmp(&b.0))
         .map(|(_, p)| p)
-        .ok_or(Refusal::NotAllowed)?;
-    match ROUTES.iter().find(|r| r.pattern == pattern && r.method == method) {
-        Some(r) if r.access == Access::Allow => Ok(r.pattern),
-        _ => Err(Refusal::NotAllowed),
-    }
+        .ok_or(Refusal::NotAllowed)
 }
 
 /// 패턴이 조각들과 맞으면 리터럴이 맞은 자리 (앞쪽 리터럴이 클수록 앞선다)
@@ -340,6 +345,18 @@ pub(crate) fn percent_decode(s: &str) -> Option<String> {
 /// 응답에 인스턴스 설정을 담는 라우트 (비밀값을 빼고 돌려준다, `exec::hide_secrets`)
 pub fn shows_instances(method: &str, pattern: &str) -> bool {
     method == "GET" && matches!(pattern, "/api/instances" | "/api/instance/{id}" | "/api/servers")
+}
+
+/// 본문 칸을 보는 라우트 (`blocked_fields`가 막는 칸이 있을 수 있다)
+pub fn checks_fields(method: &str, pattern: &str) -> bool {
+    matches!(
+        (method, pattern),
+        ("PATCH", "/api/instance/{id}")
+            | ("POST", "/api/instances")
+            | ("PUT", "/api/instance/{id}/properties")
+            | ("POST", "/api/instance/{id}/rest")
+            | ("POST", "/api/extensions/{id}/install")
+    )
 }
 
 /// 허용된 라우트라도 원격에서 바꾸면 안 되는 본문 키. `file_fields`는 그 인스턴스 모듈의 PC 전용 설정 키(비밀값·경로)다

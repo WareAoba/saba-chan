@@ -1684,6 +1684,7 @@
     "err_remote_bad_path": "該路徑不能傳給遠端常駐程式",
     "err_remote_unauthorized": "遠端常駐程式不再接受本機。請重新連線",
     "err_remote_local_only": "這只能在那台電腦上直接操作",
+    "err_remote_field_blocked": "以下設定只能在那台電腦上直接變更：{{fields}}",
     "view": "伺服器列表顯示",
     "view_description": "合併顯示會在所選守護程式的伺服器下方依守護程式列出其他守護程式(包括本機)的伺服器，並可直接啟動和停止",
     "view_switch": "僅所選守護程式",
