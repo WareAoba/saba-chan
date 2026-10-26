@@ -671,12 +671,15 @@ fn start_heartbeat(app: &AppHandle) {
                 tray::update_menu(&app2);
             }
             // 트레이에서 끈 데몬이 사라진 뒤 (어디서든) 다시 떴으면 표시를 지운다: 이제 밖에서 꺼지면 함께 끝난다
-            let _ = state
-                .life
-                .stopped_from_tray
-                .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |s| {
-                    Some(tray_stop_after_heartbeat(s, reached))
-                });
+            // 그 사이 트레이가 표시를 바꿨으면(끄기·켜기) 트레이 쪽을 둔다
+            let stop = state.life.stopped_from_tray.load(Ordering::SeqCst);
+            let next = tray_stop_after_heartbeat(stop, reached);
+            if next != stop {
+                let _ = state
+                    .life
+                    .stopped_from_tray
+                    .compare_exchange(stop, next, Ordering::SeqCst, Ordering::SeqCst);
+            }
             // 창 없이 트레이만 든 GUI는 데몬이 밖에서 꺼지면(CLI의 완전히 종료 등) 함께 끝난다.
             // 트레이에서 직접 끈 것이면 다시 켤 수 있게 남는다
             let tray_stopped = state.life.stopped_from_tray.load(Ordering::SeqCst) != TRAY_STOP_NONE;
