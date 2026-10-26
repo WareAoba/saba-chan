@@ -60,6 +60,8 @@
     "auto_generate_passwords_description": "服务器的 REST 密码为空时，启动时随机填入。已有的密码不会更改。",
     "port_conflict_check_label": "端口冲突检测",
     "port_conflict_check_description": "当多个服务器实例使用相同端口时显示警告。",
+    "auto_port_check_label": "自动检查端口转发",
+    "auto_port_check_description": "创建服务器时和 Saba-chan 启动时，通过中继悄悄检查朋友能否从外网连接。端口关闭时会在服务器页面提示。",
     "uninstall_label": "卸载 Saba-chan",
     "uninstall_description": "从此计算机完全删除 Saba-chan。会先正常关闭正在运行的服务器，然后安装程序以卸载模式运行。",
     "uninstall_confirm_title": "卸载 Saba-chan",
@@ -1703,5 +1705,36 @@
     "exists": "{{name}} 已存在。再按一次即可替换",
     "replace": "替换",
     "bad_name": "名称不能包含 / 或 \\"
+  },
+  "port_check": {
+    "button": "检查端口转发",
+    "running": "正在检查…",
+    "address": "公网 IP {{address}}（朋友用这个地址和端口连接）",
+    "help": "端口转发指南",
+    "verdict": {
+      "open": "可以从外网连接",
+      "closed": "无法从外网连接",
+      "cgnat": "路由器没有获得公网 IP（CGNAT）",
+      "unknown": "部分端口无法检查",
+      "no_ports": "此游戏没有声明要检查的端口"
+    },
+    "status": {
+      "open": "开放",
+      "closed": "关闭",
+      "unknown": "未检查",
+      "in_use": "被其他程序占用"
+    },
+    "hint": {
+      "closed": "请确认路由器已将此端口转发到这台电脑，并且电脑防火墙已放行。",
+      "cgnat": "运营商让多户共用一个公网 IP，无法通过端口转发开放。请向运营商申请公网 IP，或使用 Tailscale 等 VPN。",
+      "unknown": "无法检查正在运行的服务器的 UDP 端口和其他程序占用的端口。请停止服务器后再检查。"
+    },
+    "error": {
+      "node_token_missing": "请先连接 Discord（配对）。检查由中继完成。",
+      "port_check_busy": "已经在检查中，请稍后再试。",
+      "rate_limited": "检查过于频繁，请一分钟后再试。",
+      "relay_unreachable": "无法连接中继，请检查网络连接。",
+      "failed": "检查失败。"
+    }
   }
 }

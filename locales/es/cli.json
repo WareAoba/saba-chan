@@ -372,7 +372,8 @@
       "autostart_unknown_mode": "Elige off, daemon o full.",
       "move_cross_volume": "No se puede mover una carpeta de otra unidad. Impórtala con «Dejarla donde está».",
       "move_in_use": "No se pudo mover la carpeta. Detén el servidor de esta carpeta, cierra los programas que la tengan abierta e inténtalo de nuevo.",
-      "move_failed": "No se pudo mover la carpeta. Impórtala con «Dejarla donde está»."
+      "move_failed": "No se pudo mover la carpeta. Impórtala con «Dejarla donde está».",
+      "port_check_busy": "Ya hay una comprobación en curso. Inténtalo de nuevo en un momento"
     },
     "not_a_bool": "«{{value}}» no es sí/no (usa true o false).",
     "not_a_number": "«{{value}}» no es un número.",
@@ -726,6 +727,7 @@
       "config.paths": "Dónde guarda Saba-chan sus datos, módulos y extensiones, y las carpetas predeterminadas",
       "config.move": "Mover los módulos o las extensiones a otra carpeta. Los archivos instalados se mueven; los servidores deben estar detenidos",
       "server.players": "Quién está conectado",
+      "server.port-check": "Comprueba si tus amigos pueden conectarse a este servidor desde internet (reenvío de puertos)",
       "server.rcon": "Enviar una línea como el servidor recibe comandos (consola, si no RCON) y ver la respuesta",
       "server.log": "Registro guardado de ejecuciones anteriores (la consola solo guarda la actual)",
       "server.query": "Consultas de solo lectura del módulo del juego (sin nombre: la lista)",
@@ -1286,5 +1288,27 @@
     "this_pc": "Este PC",
     "no_servers": "Sin servidores",
     "via_relay": "A través del relay"
+  },
+  "port_check": {
+    "title": "Comprobación de puertos de {{server}}",
+    "address": "IP pública {{address}} (tus amigos se conectan con esta dirección y el puerto)",
+    "verdict": {
+      "open": "Accesible desde internet",
+      "closed": "No accesible desde internet",
+      "cgnat": "Tu router no tiene IP pública (CGNAT)",
+      "unknown": "Algunos puertos no se pudieron comprobar",
+      "no_ports": "Este juego no indica qué puertos comprobar"
+    },
+    "status": {
+      "open": "Abierto",
+      "closed": "Cerrado",
+      "unknown": "Sin comprobar",
+      "in_use": "En uso por otro programa"
+    },
+    "hint": {
+      "closed": "Comprueba que el router reenvía este puerto a este PC y que el cortafuegos del PC lo permite.",
+      "cgnat": "Tu proveedor comparte una IP pública entre muchos hogares, así que el reenvío de puertos no puede abrirlo. Pide una IP pública a tu proveedor o usa una VPN como Tailscale.",
+      "unknown": "No se pueden comprobar los puertos UDP de un servidor en marcha ni los puertos que usa otro programa. Detén el servidor y vuelve a comprobar."
+    }
   }
 }

@@ -212,5 +212,36 @@
     "remote_timeout": "未在 2 分鐘內完成，已視為失敗。請在電腦上確認結果。",
     "remote_host_gone": "請求完成前與電腦的連線已中斷。",
     "remote_busy": "請求過多。請稍後再試。"
+  },
+  "port_check": {
+    "button": "檢查連接埠轉發",
+    "running": "正在檢查…",
+    "address": "公用 IP {{address}}（朋友用這個位址和連接埠連線）",
+    "help": "連接埠轉發說明",
+    "verdict": {
+      "open": "可以從外部連線",
+      "closed": "無法從外部連線",
+      "cgnat": "路由器沒有取得公用 IP（CGNAT）",
+      "unknown": "部分連接埠無法檢查",
+      "no_ports": "此遊戲沒有標示要檢查的連接埠"
+    },
+    "status": {
+      "open": "開放",
+      "closed": "關閉",
+      "unknown": "未檢查",
+      "in_use": "被其他程式使用中"
+    },
+    "hint": {
+      "closed": "請確認路由器已將此連接埠轉發到這台電腦，且電腦防火牆已允許。",
+      "cgnat": "電信業者讓多戶共用一個公用 IP，無法透過連接埠轉發開放。請向業者申請公用 IP，或使用 Tailscale 等 VPN。",
+      "unknown": "無法檢查執行中伺服器的 UDP 連接埠和其他程式使用的連接埠。請停止伺服器後再檢查。"
+    },
+    "error": {
+      "node_token_missing": "請先連結 Discord（配對）。檢查由中繼完成。",
+      "port_check_busy": "已經在檢查中，請稍後再試。",
+      "rate_limited": "檢查太頻繁，請一分鐘後再試。",
+      "relay_unreachable": "無法連線到中繼，請檢查網路連線。",
+      "failed": "檢查失敗。"
+    }
   }
 }

@@ -372,7 +372,8 @@
       "autostart_unknown_mode": "Choisissez off, daemon ou full.",
       "move_cross_volume": "Un dossier situé sur un autre lecteur ne peut pas être déplacé. Importez-le plutôt avec « Le laisser en place ».",
       "move_in_use": "Impossible de déplacer le dossier. Arrêtez le serveur de ce dossier, fermez les programmes qui l'ont ouvert, puis réessayez.",
-      "move_failed": "Impossible de déplacer le dossier. Importez-le plutôt avec « Le laisser en place »."
+      "move_failed": "Impossible de déplacer le dossier. Importez-le plutôt avec « Le laisser en place ».",
+      "port_check_busy": "Une vérification est déjà en cours. Réessayez dans un instant"
     },
     "not_a_bool": "« {{value}} » n'est pas oui/non (utilisez true ou false).",
     "not_a_number": "« {{value}} » n'est pas un nombre.",
@@ -726,6 +727,7 @@
       "config.paths": "Où Saba-chan garde ses données, modules et extensions, et les dossiers par défaut",
       "config.move": "Déplacer les modules ou les extensions vers un autre dossier. Les fichiers installés sont déplacés ; les serveurs doivent être arrêtés",
       "server.players": "Qui est connecté",
+      "server.port-check": "Vérifier si vos amis peuvent joindre ce serveur depuis Internet (redirection de ports)",
       "server.rcon": "Envoyer une ligne comme le serveur reçoit les commandes (console, sinon RCON) et afficher la réponse",
       "server.log": "Journal enregistré des exécutions passées (la console ne garde que l'actuelle)",
       "server.query": "Consultations en lecture seule du module de jeu (sans nom : la liste)",
@@ -1286,5 +1288,27 @@
     "this_pc": "Ce PC",
     "no_servers": "Aucun serveur",
     "via_relay": "Via le relais"
+  },
+  "port_check": {
+    "title": "Vérification des ports de {{server}}",
+    "address": "IP publique {{address}} (vos amis se connectent avec cette adresse et le port)",
+    "verdict": {
+      "open": "Accessible depuis Internet",
+      "closed": "Inaccessible depuis Internet",
+      "cgnat": "Votre routeur n’a pas d’IP publique (CGNAT)",
+      "unknown": "Certains ports n’ont pas pu être vérifiés",
+      "no_ports": "Ce jeu n’indique pas quels ports vérifier"
+    },
+    "status": {
+      "open": "Ouvert",
+      "closed": "Fermé",
+      "unknown": "Non vérifié",
+      "in_use": "Utilisé par un autre programme"
+    },
+    "hint": {
+      "closed": "Vérifiez que le routeur redirige ce port vers ce PC et que le pare-feu du PC l’autorise.",
+      "cgnat": "Votre fournisseur partage une IP publique entre plusieurs foyers : la redirection de ports ne peut pas l’ouvrir. Demandez une IP publique à votre fournisseur ou utilisez un VPN comme Tailscale.",
+      "unknown": "Impossible de vérifier les ports UDP d’un serveur en marche ni les ports utilisés par un autre programme. Arrêtez le serveur et vérifiez à nouveau."
+    }
   }
 }

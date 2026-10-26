@@ -60,6 +60,8 @@
     "auto_generate_passwords_description": "Si la contraseña REST de un servidor está vacía, se rellena con una aleatoria al iniciarlo. Las contraseñas existentes no se cambian.",
     "port_conflict_check_label": "Detección de conflicto de puertos",
     "port_conflict_check_description": "Muestra advertencias cuando múltiples instancias de servidor utilizan el mismo puerto.",
+    "auto_port_check_label": "Comprobación automática de puertos",
+    "auto_port_check_description": "Al crear un servidor y al iniciar Saba-chan, comprueba en silencio a través del relé si tus amigos pueden conectarse desde fuera. Si está cerrado, se avisa en la página del servidor.",
     "uninstall_label": "Desinstalar Saba-chan",
     "uninstall_description": "Eliminar completamente Saba-chan de este equipo. Primero se apagan correctamente los servidores en ejecución y luego el instalador se ejecuta en modo de desinstalación.",
     "uninstall_confirm_title": "Desinstalar Saba-chan",
@@ -1703,5 +1705,36 @@
     "exists": "{{name}} ya existe. Pulsa otra vez para reemplazarlo",
     "replace": "Reemplazar",
     "bad_name": "El nombre no puede contener / ni \\"
+  },
+  "port_check": {
+    "button": "Comprobar reenvío de puertos",
+    "running": "Comprobando…",
+    "address": "IP pública {{address}} (tus amigos se conectan con esta dirección y el puerto)",
+    "help": "Guía de reenvío de puertos",
+    "verdict": {
+      "open": "Accesible desde internet",
+      "closed": "No accesible desde internet",
+      "cgnat": "Tu router no tiene IP pública (CGNAT)",
+      "unknown": "Algunos puertos no se pudieron comprobar",
+      "no_ports": "Este juego no indica qué puertos comprobar"
+    },
+    "status": {
+      "open": "Abierto",
+      "closed": "Cerrado",
+      "unknown": "Sin comprobar",
+      "in_use": "En uso por otro programa"
+    },
+    "hint": {
+      "closed": "Comprueba que el router reenvía este puerto a este PC y que el cortafuegos del PC lo permite.",
+      "cgnat": "Tu proveedor comparte una IP pública entre muchos hogares, así que el reenvío de puertos no puede abrirlo. Pide una IP pública a tu proveedor o usa una VPN como Tailscale.",
+      "unknown": "No se pueden comprobar los puertos UDP de un servidor en marcha ni los puertos que usa otro programa. Detén el servidor y vuelve a comprobar."
+    },
+    "error": {
+      "node_token_missing": "Conecta primero con Discord (emparejamiento). La comprobación la hace el relé.",
+      "port_check_busy": "Ya hay una comprobación en curso. Inténtalo de nuevo en un momento.",
+      "rate_limited": "Demasiadas comprobaciones. Inténtalo de nuevo en un minuto.",
+      "relay_unreachable": "No se pudo conectar con el relé. Revisa tu conexión a internet.",
+      "failed": "No se pudo comprobar."
+    }
   }
 }

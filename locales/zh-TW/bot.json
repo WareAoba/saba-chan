@@ -235,6 +235,10 @@
       "players": {
         "title": "玩家",
         "description": "在線玩家及名字"
+      },
+      "port_check": {
+        "title": "連接埠轉發檢查",
+        "description": "中繼檢查能否從外部連線到此伺服器"
       }
     },
     "monitor": {
@@ -367,7 +371,26 @@
       "players": "👥 在線 {{online}} 人",
       "players_max": "👥 在線 {{online}}/{{max}} 人",
       "player_item": "• {{name}}",
-      "players_more": "…另外 {{count}} 人"
+      "players_more": "…另外 {{count}} 人",
+      "port_check": {
+        "open": "✅ 可以從外部連線",
+        "closed": "🚫 無法從外部連線",
+        "cgnat": "⚠️ 路由器沒有取得公用 IP（CGNAT）",
+        "unknown": "❔ 部分連接埠無法檢查",
+        "no_ports": "📭 此遊戲沒有標示要檢查的連接埠"
+      },
+      "port_status": {
+        "open": "開放",
+        "closed": "關閉",
+        "unknown": "未檢查",
+        "in_use": "被其他程式使用中"
+      },
+      "port_item": "• {{port}}/{{protocol}} · {{status}}",
+      "port_hint": {
+        "closed": "請確認路由器已將此連接埠轉發到這台電腦，且電腦防火牆已允許。",
+        "cgnat": "電信業者讓多戶共用一個公用 IP，無法透過連接埠轉發開放。請向業者申請公用 IP，或使用 Tailscale 等 VPN。",
+        "unknown": "無法檢查執行中伺服器的 UDP 連接埠和其他程式使用的連接埠。請停止伺服器後再檢查。"
+      }
     }
   },
   "reasons": {

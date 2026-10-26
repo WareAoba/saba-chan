@@ -3135,6 +3135,36 @@ button.appbar-preflight {
     font-size: 0.92em;
 }
 
+/* 포트포워딩 확인 결과: 정보 탭 */
+.port-check-result {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1-5);
+}
+.port-check-verdict {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-1-5);
+    margin: 0;
+    font-weight: 600;
+}
+.port-check-verdict.verdict-open {
+    color: var(--success);
+}
+.port-check-verdict.verdict-closed,
+.port-check-verdict.verdict-cgnat {
+    color: var(--warning);
+}
+.server-check-issue.port-open {
+    color: var(--success);
+}
+.server-check-issue.port-closed {
+    color: var(--danger);
+}
+.server-check-issue.port-in_use {
+    color: var(--warning);
+}
+
 /* 진단 정보 (설정 > 고급) */
 .setting-item.setting-item-stack {
     flex-direction: column;

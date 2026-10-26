@@ -212,5 +212,36 @@
     "remote_timeout": "It didn't finish within 2 minutes, so it was treated as a failure. Check the result on the PC.",
     "remote_host_gone": "The connection to the PC was lost before the request finished.",
     "remote_busy": "Too many requests. Try again in a moment."
+  },
+  "port_check": {
+    "button": "Check port forwarding",
+    "running": "Checking…",
+    "address": "Public IP {{address}} (friends join with this address and the port)",
+    "help": "Port forwarding guide",
+    "verdict": {
+      "open": "Reachable from the internet",
+      "closed": "Not reachable from the internet",
+      "cgnat": "Your router has no public IP (CGNAT)",
+      "unknown": "Some ports could not be checked",
+      "no_ports": "This game does not say which ports to check"
+    },
+    "status": {
+      "open": "Open",
+      "closed": "Closed",
+      "unknown": "Not checked",
+      "in_use": "Used by another program"
+    },
+    "hint": {
+      "closed": "Check that your router forwards this port to this PC and that the PC firewall allows it.",
+      "cgnat": "Your provider shares one public IP among many homes, so port forwarding cannot open it. Ask your provider for a public IP or use a VPN such as Tailscale.",
+      "unknown": "UDP ports of a running server and ports another program uses cannot be checked. Stop the server and check again."
+    },
+    "error": {
+      "node_token_missing": "Connect to Discord (pairing) first. The relay does the check.",
+      "port_check_busy": "A check is already running. Try again in a moment.",
+      "rate_limited": "Too many checks. Try again in a minute.",
+      "relay_unreachable": "Could not reach the relay. Check your internet connection.",
+      "failed": "The check failed."
+    }
   }
 }

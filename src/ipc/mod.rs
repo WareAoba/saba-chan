@@ -837,6 +837,7 @@ impl IPCServer {
             .route("/api/instance/{id}/server/reset", post(handlers::managed::reset_server_handler))
             .route("/api/instance/{id}/agreements", post(handlers::managed::accept_agreements_handler))
             .route("/api/instance/{id}/diagnose", post(handlers::managed::diagnose_handler))
+            .route("/api/instance/{id}/port-check", get(handlers::port_check::last).post(handlers::port_check::check))
             // 백업 (A2)·예약 작업 (A3)
             .route("/api/instance/{id}/backups", get(handlers::backup::list_backups).post(handlers::backup::create_backup))
             .route("/api/instance/{id}/backups/{name}", delete(handlers::backup::delete_backup))
@@ -1041,6 +1042,8 @@ impl IPCServer {
                     // 원격 포트 (D1): 켜져 있으면 열고 릴레이에 주소를 올린다
                     let remote_server = self.clone();
                     tokio::spawn(async move { crate::remote_daemon::apply(&remote_server).await });
+                    // 자동 포트포워딩 확인 (설정이 켜져 있을 때만, 자동 시작한 서버가 포트를 연 뒤)
+                    tokio::spawn(crate::port_check::auto_on_start(self.clone()));
 
                     let shutdown_signal = self.shutdown_token.clone();
                     axum::serve(listener, router)

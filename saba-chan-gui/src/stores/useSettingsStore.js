@@ -24,6 +24,8 @@ export const useSettingsStore = create((set, get) => ({
     consoleBufferSize: 2000,
     autoGeneratePasswords: true,
     portConflictCheck: true,
+    // 서버를 만들 때·데몬이 켜질 때 포트포워딩을 조용히 확인한다 (데몬이 한다)
+    autoPortCheck: false,
     // 크래시처럼 꼭 알아야 할 일을 OS 알림으로도 (창이 앞에 있으면 앱 안 알림만)
     osNotifications: true,
     settingsPath: '',
@@ -62,6 +64,7 @@ export const useSettingsStore = create((set, get) => ({
                 patch.consoleBufferSize = settings.consoleBufferSize ?? 2000;
                 patch.autoGeneratePasswords = settings.autoGeneratePasswords ?? true;
                 patch.portConflictCheck = settings.portConflictCheck ?? true;
+                patch.autoPortCheck = settings.autoPortCheck ?? false;
                 patch.osNotifications = settings.osNotifications ?? true;
 
                 // Theme customization
@@ -174,6 +177,7 @@ export const useSettingsStore = create((set, get) => ({
             consoleBufferSize: 2000,
             autoGeneratePasswords: true,
             portConflictCheck: true,
+            autoPortCheck: false,
             osNotifications: true,
             settingsPath: '',
             settingsReady: false,
@@ -204,6 +208,7 @@ const _settingsKeys = [
     'consoleBufferSize',
     'autoGeneratePasswords',
     'portConflictCheck',
+    'autoPortCheck',
     'osNotifications',
     // Theme customization
     'theme',
@@ -245,6 +250,7 @@ if (import.meta.hot) {
             consoleBufferSize: s.consoleBufferSize,
             autoGeneratePasswords: s.autoGeneratePasswords,
             portConflictCheck: s.portConflictCheck,
+            autoPortCheck: s.autoPortCheck,
             osNotifications: s.osNotifications,
             settingsPath: s.settingsPath,
             settingsReady: s.settingsReady,

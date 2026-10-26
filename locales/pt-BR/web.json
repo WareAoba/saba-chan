@@ -212,5 +212,36 @@
     "remote_timeout": "Não terminou em 2 minutos, então foi tratado como falha. Confira o resultado no PC.",
     "remote_host_gone": "A conexão com o PC foi perdida antes de a solicitação terminar.",
     "remote_busy": "Solicitações demais. Tente de novo em instantes."
+  },
+  "port_check": {
+    "button": "Verificar redirecionamento de portas",
+    "running": "Verificando…",
+    "address": "IP público {{address}} (os amigos entram com este endereço e a porta)",
+    "help": "Guia de redirecionamento de portas",
+    "verdict": {
+      "open": "Acessível pela internet",
+      "closed": "Não acessível pela internet",
+      "cgnat": "Seu roteador não tem IP público (CGNAT)",
+      "unknown": "Algumas portas não puderam ser verificadas",
+      "no_ports": "Este jogo não informa quais portas verificar"
+    },
+    "status": {
+      "open": "Aberta",
+      "closed": "Fechada",
+      "unknown": "Não verificada",
+      "in_use": "Em uso por outro programa"
+    },
+    "hint": {
+      "closed": "Confira se o roteador redireciona esta porta para este PC e se o firewall do PC a permite.",
+      "cgnat": "Sua operadora divide um IP público entre várias casas, então o redirecionamento de portas não consegue abri-lo. Peça um IP público à operadora ou use uma VPN como o Tailscale.",
+      "unknown": "Não é possível verificar portas UDP de um servidor ligado nem portas usadas por outro programa. Pare o servidor e verifique de novo."
+    },
+    "error": {
+      "node_token_missing": "Conecte ao Discord (pareamento) primeiro. Quem verifica é o relay.",
+      "port_check_busy": "Já há uma verificação em andamento. Tente de novo em instantes.",
+      "rate_limited": "Verificações demais. Tente de novo em um minuto.",
+      "relay_unreachable": "Não foi possível alcançar o relay. Verifique sua conexão com a internet.",
+      "failed": "Não foi possível verificar."
+    }
   }
 }

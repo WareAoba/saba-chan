@@ -331,6 +331,7 @@ PC 주인이 디스코드에서 받은 일회용 링크로 브라우저(사바�
 | POST | `/api/instance/:id/server/reset` | `managed.rs:289` | - | `"reset_server"` (월드, 설정 삭제). 작업 잠금을 잡고, 다른 작업 중이면 409 `instance_busy`, 켜져 있으면 409 `server_running` |
 | POST | `/api/instance/:id/agreements` | `managed.rs` `accept_agreements_handler` | `{accept:[id]}` | `{success, agreements:[{id, label, url, accepted, accepted_at}]}`. 설정 파일 작업 한 줄에 서고(§작업 잠금), 서버 파일을 바꾸는 작업 중이면 409 `instance_busy`. 모듈 `[[agreements]]` 동의를 기록하고 lifecycle `accept_agreements`를 부른다(02 문서). 400 `invalid_format`(선언 안 된 id), 403 `agreement_local_only`(원격), 404 `not_found` |
 | POST | `/api/instance/:id/diagnose` | `managed.rs:357` | - | supervisor 결과 |
+| POST·GET | `/api/instance/:id/port-check` | `port_check.rs` `check`·`last` (엔진 `src/port_check`) | POST `{}` | 포트포워딩 확인. 모듈 설정 칸 중 `public`(02 §settings)이 붙은 포트만 본다. 서버가 꺼져 있으면 그 포트에 시험 리스너(TCP·UDP, 모든 주소)를 열고 일회용 확인값과 함께 relay `POST /api/port-check`(05)를 노드 토큰으로 부른다. 리스너가 확인값 한 줄(`saba-chan-port-check <nonce>\n`)을 그대로 받았으면 `open`, 아니면 `closed`, 다른 프로그램이 잡은 포트는 `in_use`. 서버가 켜져 있으면 TCP는 relay의 접속 결과(`connected`면 `open`), UDP는 `unknown`. relay가 본 주소가 공인 주소가 아니면 모두 `unknown`. 확인하는 동안(최대 몇 초) 그 인스턴스의 시작은 리스너를 닫을 때까지 기다린다(`start_checked` → `wait_released`). NAT는 relay가 본 주소, 이 PC가 그 주소로 가는 길의 주소, 공유기가 UPnP로 알려 준 바깥 주소로 `direct`·`router`·`cgnat`·`unknown`을 가른다. 응답 `{instanceId, checkedAt, address, publicAddress, nat, running, verdict, ports:[{field, port, protocol, status}]}`, `verdict`: `open`·`closed`·`cgnat`·`unknown`·`no_ports`(공개 포트가 없으면 relay를 부르지 않는다). 마지막 결과는 메모리에 두고 GET이 돌려준다(없으면 `{instanceId, verdict:"not_checked"}`), 끝나면 `instance.port_check` 이벤트 `{instanceId, verdict}`. 409 `node_token_missing`·`port_check_busy`, 429 `rate_limited`, 502 `relay_unreachable`, 404 `not_found` |
 | GET | `/api/instance/:id/installed-version` | `managed.rs:420` | - | 결과 + `revision`(저장한 뒤의 인스턴스 revision). 감지에 성공하면 `server_version`에 자동 저장 |
 
 #### 백업과 예약 작업 (handlers/backup.rs)
@@ -575,7 +576,7 @@ Relay 서명 방식(`relay.rs:115-161`):
 
 | 그룹 | 필드 (기본값) |
 |---|---|
-| 동작 | `autoRefresh`(true), `refreshInterval`(2000), `ipcPort`(57474), `consoleBufferSize`(2000), `autoGeneratePasswords`(true), `portConflictCheck`(true), `osNotifications`(true, GUI 셸의 중대 알림 OS 알림) |
+| 동작 | `autoRefresh`(true), `refreshInterval`(2000), `ipcPort`(57474), `consoleBufferSize`(2000), `autoGeneratePasswords`(true), `portConflictCheck`(true), `autoPortCheck`(false, 켜면 인스턴스를 만들 때와 데몬을 켜고 90초 뒤 포트포워딩 확인을 조용히 한다. 노드 토큰이 없으면 하지 않는다), `osNotifications`(true, GUI 셸의 중대 알림 OS 알림) |
 | 테마 | `theme?`, `accentColor`("#667eea"), `accentSecondary`("#764ba2"), `useGradient`(true), `fontScale`(100), `enableTransitions`(true), `consoleSyntaxHighlight`(true), `consoleBgColor`, `consoleTextColor`, `sidebarCompact`(false), `windowOpacity`(100), `consoleFontScale`(100), `systemMonitorOpen`(true, 서버 페이지 시스템 모니터 펼침) |
 | 창/언어 | `windowBounds?{width:1200,height:840,x?,y?}`, `language?` |
 | 다룰 데몬 | `daemonTarget?`(GUI가 고른 원격 데몬 hostId, 없으면 이 PC. §1.4.2 7, 04 §1.1) |

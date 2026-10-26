@@ -247,6 +247,7 @@ pub fn api_hint(code: &str, body: &Value) -> Option<String> {
         "agent_too_old" | "module_schema_unsupported" | "app_version_unsatisfied" => Some(t!("err.hint.agent_too_old")),
         "component_version_unsatisfied" => update_required(body, "").map(|_| t!("err.hint.agent_too_old")),
         "module_busy" => Some(t!("err.hint.module_busy")),
+        "port_check_busy" => Some(t!("err.hint.port_check_busy")),
         // 폴더 옮기기 (`/api/system/paths/move`)
         c if c.starts_with("paths_") => crate::i18n::try_t(&format!("err.hint.{}", c)),
         // 로그인할 때 자동 실행 (`/api/system/autostart`)

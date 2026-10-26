@@ -372,7 +372,8 @@
       "autostart_unknown_mode": "Escolha off, daemon ou full.",
       "move_cross_volume": "Não é possível mover uma pasta de outra unidade. Importe-a com \"Deixar onde está\".",
       "move_in_use": "Não foi possível mover a pasta. Pare o servidor desta pasta, feche os programas que a estão usando e tente de novo.",
-      "move_failed": "Não foi possível mover a pasta. Importe-a com \"Deixar onde está\"."
+      "move_failed": "Não foi possível mover a pasta. Importe-a com \"Deixar onde está\".",
+      "port_check_busy": "Já há uma verificação em andamento. Tente de novo em instantes"
     },
     "not_a_bool": "\"{{value}}\" não é sim/não (use true ou false).",
     "not_a_number": "\"{{value}}\" não é um número.",
@@ -726,6 +727,7 @@
       "config.paths": "Onde o Saba-chan guarda dados, módulos e extensões, e as pastas padrão",
       "config.move": "Mover módulos ou extensões para outra pasta. Os arquivos instalados são movidos; os servidores devem estar parados",
       "server.players": "Quem está online",
+      "server.port-check": "Verifica se os amigos conseguem entrar neste servidor pela internet (redirecionamento de portas)",
       "server.rcon": "Enviar uma linha do jeito que o servidor recebe comandos (console, senão RCON) e ver a resposta",
       "server.log": "Log salvo das execuções anteriores (o console guarda só a atual)",
       "server.query": "Consultas somente leitura do módulo do jogo (sem nome: a lista)",
@@ -1286,5 +1288,27 @@
     "this_pc": "Este PC",
     "no_servers": "Sem servidores",
     "via_relay": "Pelo relay"
+  },
+  "port_check": {
+    "title": "Verificação de portas de {{server}}",
+    "address": "IP público {{address}} (os amigos entram com este endereço e a porta)",
+    "verdict": {
+      "open": "Acessível pela internet",
+      "closed": "Não acessível pela internet",
+      "cgnat": "Seu roteador não tem IP público (CGNAT)",
+      "unknown": "Algumas portas não puderam ser verificadas",
+      "no_ports": "Este jogo não informa quais portas verificar"
+    },
+    "status": {
+      "open": "Aberta",
+      "closed": "Fechada",
+      "unknown": "Não verificada",
+      "in_use": "Em uso por outro programa"
+    },
+    "hint": {
+      "closed": "Confira se o roteador redireciona esta porta para este PC e se o firewall do PC a permite.",
+      "cgnat": "Sua operadora divide um IP público entre várias casas, então o redirecionamento de portas não consegue abri-lo. Peça um IP público à operadora ou use uma VPN como o Tailscale.",
+      "unknown": "Não é possível verificar portas UDP de um servidor ligado nem portas usadas por outro programa. Pare o servidor e verifique de novo."
+    }
   }
 }

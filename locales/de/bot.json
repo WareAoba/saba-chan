@@ -235,6 +235,10 @@
       "players": {
         "title": "Spieler",
         "description": "Wer gerade online ist"
+      },
+      "port_check": {
+        "title": "Portweiterleitung prüfen",
+        "description": "Das Relay prüft, ob dieser Server aus dem Internet erreichbar ist"
       }
     },
     "monitor": {
@@ -367,7 +371,26 @@
       "players": "👥 {{online}} online",
       "players_max": "👥 {{online}}/{{max}} online",
       "player_item": "• {{name}}",
-      "players_more": "…und {{count}} weitere"
+      "players_more": "…und {{count}} weitere",
+      "port_check": {
+        "open": "✅ Aus dem Internet erreichbar",
+        "closed": "🚫 Aus dem Internet nicht erreichbar",
+        "cgnat": "⚠️ Dein Router hat keine öffentliche IP (CGNAT)",
+        "unknown": "❔ Einige Ports konnten nicht geprüft werden",
+        "no_ports": "📭 Dieses Spiel gibt keine zu prüfenden Ports an"
+      },
+      "port_status": {
+        "open": "Offen",
+        "closed": "Geschlossen",
+        "unknown": "Nicht geprüft",
+        "in_use": "Von einem anderen Programm belegt"
+      },
+      "port_item": "• {{port}}/{{protocol}} · {{status}}",
+      "port_hint": {
+        "closed": "Prüfe, ob der Router diesen Port an diesen PC weiterleitet und die PC-Firewall ihn erlaubt.",
+        "cgnat": "Dein Anbieter teilt eine öffentliche IP unter vielen Haushalten, daher lässt sie sich nicht per Portweiterleitung öffnen. Frag deinen Anbieter nach einer öffentlichen IP oder nutze ein VPN wie Tailscale.",
+        "unknown": "UDP-Ports eines laufenden Servers und Ports, die ein anderes Programm belegt, lassen sich nicht prüfen. Stoppe den Server und prüfe erneut."
+      }
     }
   },
   "reasons": {

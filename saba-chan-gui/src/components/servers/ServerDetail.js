@@ -26,6 +26,7 @@ import {
 import { dataStatusRows } from '../DataSlots';
 import ExtensionSlot from '../ExtensionSlot';
 import { Icon } from '../Icon';
+import { PortCheck, PortCheckNotice } from './PortCheck';
 import { ServerCheck } from './ServerCheck';
 import CommandModal from '../Modals/CommandModal';
 import { NativeProvision } from '../NativeProvision';
@@ -240,6 +241,8 @@ export function ServerDetail({
                     <span>{t('server_status.unresponsive', { reason: server.unresponsive })}</span>
                 </div>
             )}
+
+            {status !== 'missing' && <PortCheckNotice server={server} />}
 
             {conflicts.length > 0 && (
                 <div className="notice tone-warn">
@@ -487,6 +490,7 @@ function InfoTab({ server, moduleData, gameName, uptime, onDelete }) {
             <ExtensionSlot slotId="ServerCard.expandedStats" server={server} t={t} />
             <ExtensionSlot slotId="ServerDetail.section" server={server} t={t} />
             <ServerCheck server={server} />
+            <PortCheck server={server} />
             <div className="info-actions">
                 {workingDir && (
                     <button

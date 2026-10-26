@@ -1046,3 +1046,47 @@ textarea {
         width: 360px;
     }
 }
+
+/* 포트포워딩 확인 (설정 보기 위) */
+.port-check {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 12px 0 0;
+}
+.port-check-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+.port-check-result {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px 12px;
+    border-radius: 12px;
+    background: var(--bg-3);
+    font-size: 13px;
+}
+.port-check-verdict {
+    margin: 0;
+    font-weight: 600;
+}
+.verdict-open .port-check-verdict {
+    color: var(--ok);
+}
+.verdict-closed .port-check-verdict,
+.verdict-cgnat .port-check-verdict {
+    color: var(--warn);
+}
+.port-check-ports {
+    margin: 0;
+    padding-left: 16px;
+}
+.port-check-ports .port-open {
+    color: var(--ok);
+}
+.port-check-ports .port-closed {
+    color: var(--stop);
+}

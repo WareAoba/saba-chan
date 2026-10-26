@@ -418,10 +418,15 @@ async fn create_instance_inner(state: IPCServer, payload: Value) -> impl IntoRes
         let id = instance.id.clone();
         // 미검증·변경된 모듈로 만들면 알림만 싣는다 (`module_trust`, `warnings`)
         let module_name_owned = instance.module_name.clone();
+        let check_state = state.clone();
         let created = move |mut body: Value| {
             if let Some(trust) = module_trust {
                 body["module_trust"] = json!(trust);
                 body["warnings"] = json!(super::server::trust_warnings("module", &module_name_owned, trust));
+            }
+            // 자동 포트포워딩 확인 (설정이 켜져 있을 때만). 만들기 잠금이 풀린 뒤에 돈다
+            if let Some(id) = body["id"].as_str().map(str::to_string) {
+                tokio::spawn(async move { crate::port_check::auto_check(&check_state, vec![id]).await });
             }
             (StatusCode::CREATED, Json(body)).into_response()
         };
@@ -1126,6 +1131,7 @@ pub async fn delete_instance(
     // 요청이 끊겨도 정지·삭제를 끝까지 한다: 추적을 뺀 채 멈추면 돌던 서버가 추적 밖에 남는다
     let work = crate::audit::spawn(async move {
         let _guard = guard;
+        crate::port_check::forget(&id);
         delete_instance_held(state, id, query.keep_settings).await
     });
     work.await.unwrap_or_else(|e| {

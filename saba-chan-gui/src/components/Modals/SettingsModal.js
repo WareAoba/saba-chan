@@ -106,6 +106,7 @@ function SettingsModal({
     const devMode = useDevMode();
     const autoGeneratePasswords = useSettingsStore((s) => s.autoGeneratePasswords);
     const portConflictCheck = useSettingsStore((s) => s.portConflictCheck);
+    const autoPortCheck = useSettingsStore((s) => s.autoPortCheck);
     const osNotifications = useSettingsStore((s) => s.osNotifications);
 
     // 외부에서 initialView 지정으로 열렸을 때 해당 탭 자동 진입
@@ -761,6 +762,23 @@ function SettingsModal({
                                 <SabaToggle
                                     checked={portConflictCheck}
                                     onChange={(checked) => useSettingsStore.getState().update({ portConflictCheck: checked })}
+                                />
+                            </div>
+
+                            {/* 자동 포트포워딩 확인 (데몬이 서버를 만들 때·켜질 때) */}
+                            <div className="setting-item">
+                                <label className="setting-label">
+                                    <span className="setting-title">
+                                        <Icon name="globe" size="sm" />{' '}
+                                        {t('gui:settings_modal.auto_port_check_label', 'Automatic Port Forwarding Check')}
+                                    </span>
+                                    <span className="setting-description">
+                                        {t('gui:settings_modal.auto_port_check_description', 'When a server is created and when Saba-chan starts, quietly check through the relay whether friends can reach your servers.')}
+                                    </span>
+                                </label>
+                                <SabaToggle
+                                    checked={autoPortCheck}
+                                    onChange={(checked) => useSettingsStore.getState().update({ autoPortCheck: checked })}
                                 />
                             </div>
 
