@@ -435,21 +435,53 @@ def atomic_write(path, data):
     서로의 임시 파일을 건드리지 않는다. 원래 파일의 접근 권한을 지킨다 (비밀번호가 든 설정이 넓게 열리지 않게).
     Windows: ReplaceFileW가 원래 파일의 DACL 등을 옮긴다. 백업 이름을 주어 어느 단계에서 실패해도 원래 파일이 남는다.
     격리된 모듈은 DACL을 옮길 권한이 없어 거부되는데, 원래 파일과 같은 폴더의 임시 파일이 소유자·DACL·무결성
-    표시가 똑같으면(둘 다 폴더 권한만 물려받은 흔한 경우) os.replace로 바꾼다. 다르면 그대로 거부한다.
+    표시가 똑같으면(둘 다 폴더 권한만 물려받은 흔한 경우) os.replace로 바꾼다. 다르면(격리 실행이 만든 임시 파일은
+    무결성 표시가 다르다) 원래 파일에 제자리로 쓴다: 권한·무결성 표시가 그대로 남는다. 폴더에 새 파일을 만들 권한이
+    없을 때도 제자리로 쓴다. 제자리 쓰기가 실패하면 원래 내용을 되돌려 쓴다.
     POSIX: 권한 비트를 옮긴 뒤 os.replace"""
     path = os.fspath(path)
     folder = os.path.dirname(os.path.abspath(path))
     os.makedirs(folder, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(prefix=f".{os.path.basename(path)}.", suffix=".tmp", dir=folder)
+    try:
+        fd, tmp = tempfile.mkstemp(prefix=f".{os.path.basename(path)}.", suffix=".tmp", dir=folder)
+    except PermissionError:
+        if not os.path.isfile(path):
+            raise
+        _overwrite_in_place(path, data)
+        return
     try:
         with os.fdopen(fd, "wb") as f:
             f.write(data)
             f.flush()
             os.fsync(f.fileno())
-        _replace_keeping_access(tmp, path)
+        try:
+            _replace_keeping_access(tmp, path)
+        except _ReplaceDenied:
+            _overwrite_in_place(path, data)
     finally:
         if os.path.exists(tmp):
             os.remove(tmp)
+
+
+class _ReplaceDenied(Exception):
+    """원래 파일의 권한을 옮길 수 없어 교체하지 않았다 (원래 파일은 그대로)"""
+
+
+def _overwrite_in_place(path, data):
+    with open(path, "r+b") as f:
+        original = f.read()
+        try:
+            f.seek(0)
+            f.write(data)
+            f.truncate()
+            f.flush()
+            os.fsync(f.fileno())
+        except BaseException:
+            f.seek(0)
+            f.write(original)
+            f.truncate()
+            f.flush()
+            raise
 
 
 def _replace_keeping_access(tmp, path):
@@ -483,6 +515,7 @@ def _replace_keeping_access(tmp, path):
         if _same_access(_access_of(path), _access_of(tmp)) and _encrypted(path) == _encrypted(tmp):
             os.replace(tmp, path)
             return
+        raise _ReplaceDenied(path)
     raise ctypes.WinError(err) if err > 0 else OSError(f"ReplaceFileW failed: {path}")
 
 

@@ -100,6 +100,15 @@ export function consoleQuickCommands(fields = [], commandAliases = null) {
     });
 }
 
+/** 명령 표시 문구: 모듈 locales(`mod_<모듈>:commands.<이름>`)가 앞서고, 없으면 모듈이 준 문구, 그다음 명령 이름 */
+export function commandText(t, moduleName, cmd) {
+    const ns = `mod_${moduleName}:commands.${cmd.name}`;
+    return {
+        label: t(`${ns}.label`, { defaultValue: cmd.label || cmd.name }),
+        description: t(`${ns}.description`, { defaultValue: cmd.description || '' }),
+    };
+}
+
 /** 이름 첫 글자로 만든 아이콘 대체 글자 */
 export function initials(name = '') {
     const trimmed = String(name).trim();
