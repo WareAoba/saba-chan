@@ -8,6 +8,7 @@ pub mod config;
 pub mod extension;
 pub mod relay;
 pub mod privacy;
+pub mod port_check;
 pub mod remote_daemon;
 pub mod chat;
 pub mod backup;

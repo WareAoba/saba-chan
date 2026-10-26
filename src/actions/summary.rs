@@ -15,6 +15,7 @@ pub(crate) fn text(id: &str, result: &Value, cat: &Catalog) -> Option<String> {
         "instance.events" => Some(events(result, cat)),
         "update.check" => updates(result, cat),
         "monitor.summary" => monitor(result, cat),
+        "server.port_check" => Some(port_check(result, cat)),
         // 모듈 조회(접속자 목록 등)는 모양이 모듈마다 달라 채팅 명령 결과와 같은 범용 포맷으로
         _ if id.starts_with(super::QUERY_PREFIX) => {
             let mut shown = result.clone();
@@ -98,6 +99,21 @@ fn players(result: &Value, cat: &Catalog) -> String {
     out.extend(lines.into_iter().take(MAX_ITEMS));
     if rest > 0 {
         out.push(cat.t("actions.summary.players_more", &[("count", &rest.to_string())]));
+    }
+    out.join("\n")
+}
+
+/// 판정 한 줄 + 포트마다 상태 + 닫혔으면 무엇을 볼지. 공인 주소는 싣지 않는다 (채널의 다른 사람도 본다)
+fn port_check(result: &Value, cat: &Catalog) -> String {
+    let verdict = str_of(result, "verdict");
+    let mut out = vec![cat.t(&format!("actions.summary.port_check.{}", verdict), &[])];
+    for p in items(result, "ports") {
+        let status = cat.t(&format!("actions.summary.port_status.{}", str_of(&p, "status")), &[]);
+        let port = p.get("port").and_then(Value::as_u64).unwrap_or(0).to_string();
+        out.push(cat.t("actions.summary.port_item", &[("port", &port), ("protocol", &str_of(&p, "protocol").to_uppercase()), ("status", &status)]));
+    }
+    if matches!(verdict, "firewall" | "closed" | "cgnat" | "unknown") {
+        out.push(cat.t(&format!("actions.summary.port_hint.{}", verdict), &[]));
     }
     out.join("\n")
 }

@@ -377,7 +377,8 @@
       "autostart_unknown_mode": "Wähle off, daemon oder full.",
       "move_cross_volume": "Ein Ordner auf einem anderen Laufwerk kann nicht verschoben werden. Importiere ihn stattdessen mit „Am Ort lassen“.",
       "move_in_use": "Der Ordner konnte nicht verschoben werden. Stoppe den Server in diesem Ordner, schließe Programme, die ihn geöffnet haben, und versuche es erneut.",
-      "move_failed": "Der Ordner konnte nicht verschoben werden. Importiere ihn stattdessen mit „Am Ort lassen“."
+      "move_failed": "Der Ordner konnte nicht verschoben werden. Importiere ihn stattdessen mit „Am Ort lassen“.",
+      "port_check_busy": "Es läuft bereits eine Prüfung. Versuch es gleich noch einmal"
     },
     "not_a_bool": "„{{value}}“ ist kein Ja/Nein (verwende true oder false).",
     "not_a_number": "„{{value}}“ ist keine Zahl.",
@@ -731,6 +732,7 @@
       "config.paths": "Wo Saba-chan Daten, Module und Erweiterungen ablegt, und die Standardordner",
       "config.move": "Module oder Erweiterungen in einen anderen Ordner verschieben. Installierte Dateien werden verschoben; Server müssen gestoppt sein",
       "server.players": "Wer gerade online ist",
+      "server.port-check": "Prüfen, ob Freunde diesen Server aus dem Internet erreichen (Portweiterleitung)",
       "server.rcon": "Eine Zeile so senden, wie der Server Befehle annimmt (Konsole, sonst RCON), und die Antwort zeigen",
       "server.log": "Gespeichertes Protokoll früherer Läufe (die Konsole hält nur den aktuellen)",
       "server.query": "Nur lesende Abfragen des Spielmoduls (ohne Namen: Liste)",
@@ -1294,5 +1296,30 @@
     "this_pc": "Dieser PC",
     "no_servers": "Keine Server",
     "via_relay": "Über das Relay"
+  },
+  "port_check": {
+    "title": "Portprüfung für {{server}}",
+    "address": "Öffentliche IP {{address}} (Freunde verbinden sich mit dieser Adresse und dem Port)",
+    "verdict": {
+      "open": "Aus dem Internet erreichbar",
+      "firewall": "Von der PC-Firewall blockiert",
+      "closed": "Aus dem Internet nicht erreichbar",
+      "cgnat": "Dein Router hat keine öffentliche IP (CGNAT)",
+      "unknown": "Einige Ports konnten nicht geprüft werden",
+      "no_ports": "Dieses Spiel gibt keine zu prüfenden Ports an"
+    },
+    "status": {
+      "open": "Offen",
+      "closed": "Geschlossen",
+      "unknown": "Nicht geprüft",
+      "in_use": "Von einem anderen Programm belegt",
+      "firewall": "Von der Firewall blockiert"
+    },
+    "hint": {
+      "closed": "Prüfe, ob der Router diesen Port an diesen PC weiterleitet und die PC-Firewall ihn erlaubt.",
+      "firewall": "Die Windows-Firewall blockiert Saba-chan (saba-core). Erlaube es in der Abfrage, die bei der Prüfung erscheint, oder erlaube saba-core in den Einstellungen der Windows-Firewall und prüfe erneut.",
+      "cgnat": "Dein Anbieter teilt eine öffentliche IP unter vielen Haushalten, daher lässt sie sich nicht per Portweiterleitung öffnen. Frag deinen Anbieter nach einer öffentlichen IP oder nutze ein VPN wie Tailscale.",
+      "unknown": "UDP-Ports eines laufenden Servers und Ports, die ein anderes Programm belegt, lassen sich nicht prüfen. Stoppe den Server und prüfe erneut."
+    }
   }
 }

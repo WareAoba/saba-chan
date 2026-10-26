@@ -477,6 +477,9 @@ pub enum ServerCmd {
     Commands { server: Option<String> },
     /// Who is online
     Players { server: Option<String> },
+    /// Check from the internet whether friends can reach this server (port forwarding)
+    #[command(name = "port-check", visible_alias = "ports")]
+    PortCheck { server: Option<String> },
     /// Send one line the way the server takes commands (console, else RCON) and show its reply
     Rcon {
         server: String,

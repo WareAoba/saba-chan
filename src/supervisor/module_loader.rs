@@ -504,6 +504,9 @@ pub struct SettingField {
     /// 네트워크 포트 값인가. 같은 게임을 여러 개 만들 때 데몬이 겹치지 않게 옮긴다
     #[serde(default)]
     pub port: bool,
+    /// 친구가 밖에서 붙는 포트면 그 프로토콜: "tcp" | "udp" | "both". 포트포워딩 확인이 이 포트만 본다 (`crate::port_check`)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub public: Option<String>,
     /// 서버를 만들 때 고르는 설정 (받을 서버 파일이 달라지는 값. 예: 마인크래프트 서버 종류).
     /// GUI·CLI가 만들기 화면에서 묻고 `POST /api/instances`의 `module_settings`로 보낸다
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -1011,6 +1014,9 @@ struct SettingFieldToml {
     /// 네트워크 포트 값이면 true. 인스턴스를 만들 때 다른 인스턴스와 겹치지 않게 옮겨진다
     #[serde(default)]
     port: bool,
+    /// 밖에서 붙는 포트의 프로토콜 `tcp`·`udp`·`both` (`SettingField::public`). `port = true`인 필드만
+    #[serde(default)]
+    public: Option<String>,
     /// 서버를 만들 때 고르는 설정이면 true (설치할 파일이 달라지는 값)
     #[serde(default)]
     install: bool,
@@ -1303,6 +1309,7 @@ impl ModuleToml {
                 options: f.options,
                 group: f.group,
                 port: f.port,
+                public: f.public,
                 install: f.install,
                 arg: f.arg.map(OneOrMany::into_vec).unwrap_or_default(),
                 format: f.format,
@@ -1753,6 +1760,13 @@ impl ModuleToml {
             }
             if let Some(format) = field.format.as_deref().filter(|f| !SETTING_FORMATS.contains(f)) {
                 problems.push(format!("settings field '{}': unknown format '{}' (one of {})", field.name, format, SETTING_FORMATS.join(", ")));
+            }
+            if let Some(public) = field.public.as_deref() {
+                if crate::port_check::protocols_of(public).is_none() {
+                    problems.push(format!("settings field '{}': public '{}' must be one of tcp, udp, both", field.name, public));
+                } else if !field.port {
+                    problems.push(format!("settings field '{}': public needs port = true", field.name));
+                }
             }
             if let Some(Err(e)) = field.pattern.as_deref().map(regex::Regex::new) {
                 problems.push(format!("settings field '{}': pattern is not a valid regex: {}", field.name, e));
@@ -2826,6 +2840,18 @@ entry = "lifecycle.py"
         for bad in ["\"a\"", "[\"c\"]", "[\"a\", \"a\"]"] {
             let err = preset(bad).unwrap_err().to_string();
             assert!(err.contains("presets 'p'"), "{bad}: {err}");
+        }
+    }
+
+    /// 포트포워딩 확인 (2026-10-26): 밖에서 붙는 포트는 `public`으로 프로토콜을 밝힌다. 포트 필드에만 쓴다
+    #[test]
+    fn public_declares_the_protocol_of_a_port_field() {
+        let field = |keys: &str| parse_module_toml(&format!("{V1}\n[[settings.fields]]\nname = \"port\"\ntype = \"number\"\n{keys}\n"));
+        let meta = field("port = true\npublic = \"udp\"").unwrap();
+        assert_eq!(meta.settings.unwrap().fields[0].public.as_deref(), Some("udp"));
+        for (keys, needle) in [("port = true\npublic = \"icmp\"", "must be one of"), ("public = \"tcp\"", "port = true")] {
+            let err = field(keys).unwrap_err().to_string();
+            assert!(err.contains("public") && err.contains(needle), "{keys}: {err}");
         }
     }
 

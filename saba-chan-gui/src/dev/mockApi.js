@@ -253,6 +253,8 @@ const impl = {
             ],
         }),
     instanceDiagnose: () => ok({ success: true, issues: [] }),
+    instancePortCheck: (id) => ok({ instanceId: id, verdict: 'open', address: '203.0.113.7', publicAddress: true, nat: 'router', running: false, checkedAt: new Date().toISOString(), ports: [{ field: 'port', port: 25565, protocol: 'tcp', status: 'open' }] }),
+    instancePortCheckLast: (id) => ok({ instanceId: id, verdict: 'not_checked' }),
     daemonDiagnostics: () =>
         ok({
             ok: true,

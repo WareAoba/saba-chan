@@ -60,6 +60,8 @@
     "auto_generate_passwords_description": "If a server's REST password is empty, fill it with a random one when the server starts. Existing passwords are never changed.",
     "port_conflict_check_label": "Port Conflict Detection",
     "port_conflict_check_description": "Shows a warning when several servers use the same port.",
+    "auto_port_check_label": "Automatic Port Forwarding Check",
+    "auto_port_check_description": "When a server is created and when Saba-chan starts, quietly check through the relay whether friends can reach it from outside. Closed ports show up on the server page.",
     "uninstall_label": "Uninstall Saba-chan",
     "uninstall_description": "Completely removes Saba-chan from this computer. First, running servers shut down cleanly. Then the installer starts in uninstall mode.",
     "uninstall_confirm_title": "Uninstall Saba-chan",
@@ -1714,5 +1716,39 @@
     "exists": "{{name}} already exists. Press again to replace it",
     "replace": "Replace",
     "bad_name": "A name cannot contain / or \\"
+  },
+  "port_check": {
+    "button": "Check port forwarding",
+    "running": "Checking…",
+    "address": "Public IP {{address}} (friends join with this address and the port)",
+    "help": "Port forwarding guide",
+    "verdict": {
+      "open": "Reachable from the internet",
+      "firewall": "Blocked by the PC firewall",
+      "closed": "Not reachable from the internet",
+      "cgnat": "Your router has no public IP (CGNAT)",
+      "unknown": "Some ports could not be checked",
+      "no_ports": "This game does not say which ports to check"
+    },
+    "status": {
+      "open": "Open",
+      "closed": "Closed",
+      "unknown": "Not checked",
+      "in_use": "Used by another program",
+      "firewall": "Blocked by firewall"
+    },
+    "hint": {
+      "closed": "Check that your router forwards this port to this PC and that the PC firewall allows it.",
+      "firewall": "Windows Firewall is blocking Saba-chan (saba-core). Allow it in the prompt that appears during the check, or allow saba-core in Windows Firewall settings, then check again.",
+      "cgnat": "Your provider shares one public IP among many homes, so port forwarding cannot open it. Ask your provider for a public IP or use a VPN such as Tailscale.",
+      "unknown": "UDP ports of a running server and ports another program uses cannot be checked. Stop the server and check again."
+    },
+    "error": {
+      "node_token_missing": "Connect to Discord (pairing) first. The relay does the check.",
+      "port_check_busy": "A check is already running. Try again in a moment.",
+      "rate_limited": "Too many checks. Try again in a minute.",
+      "relay_unreachable": "Could not reach the relay. Check your internet connection.",
+      "failed": "The check failed."
+    }
   }
 }

@@ -130,6 +130,7 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 | `options` | **Vec<String>** | 문자열만 허용 |
 | `group` | String | `saba-chan` / `advanced` / 없음(basic) 등. `saba-chan`은 사바쨩 설정(실행 방식·Java 경로·메모리·실행 인자처럼 게임 설정 파일에 없는 값)이라는 선언이다: 설정 PATCH 뒤 `configure`의 `settings`로 넘기지 않는다(MK6). 그 밖의 묶음은 표시용이다 |
 | `port` | bool | `false`. 네트워크 포트 값이면 true. 같은 게임 인스턴스를 여럿 만들 때 데몬이 겹치지 않게 옮긴다 |
+| `public` | string? | `"tcp"`·`"udp"`·`"both"`. 친구가 밖에서 접속하는 포트이면 그 프로토콜. 포트포워딩 확인(01 `/api/instance/:id/port-check`)이 이 칸만 본다. `port = true`가 필요하다. 옛 데몬은 모르는 칸 키로 무시한다 |
 | `install` | bool | `false`. 서버를 만들 때 고르는 설정(받을 서버 파일이 달라지는 값). GUI 새 서버 화면과 CLI `server add`가 묻고 `POST /api/instances`의 `module_settings`로 보낸다. GUI는 select만 보인다 |
 | `arg` | String 또는 Vec<String> | — 이 값이 실행 인자로 들어가는 모양. 공백으로 나눈 토큰, `{value}`는 많아야 한 번(`"-port={value}"`, `"-servername {value}"`, `["-Xmx{value}", "-Xms{value}"]`). `{value}`가 없으면 boolean 플래그(있으면 true). `{value}`뿐인 모양은 로드 오류. 실행 인자 미리보기가 사용자가 친 추가 인자를 이 필드로 되돌릴 때 쓴다(`src/launch_args.rs`). 실제 실행 줄은 여전히 `get_launch_command`가 만든다 |
 | `format` | String | — 값 형식: `memory_size`(숫자+K/M/G 한 글자, `4G`·`1024M`), `port`(1~65535 정수), `integer`, `path`(비어 있지 않고 줄바꿈 없음). 모르는 이름은 로드 오류 |

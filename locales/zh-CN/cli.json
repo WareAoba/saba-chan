@@ -377,7 +377,8 @@
       "autostart_unknown_mode": "请选择 off、daemon 或 full。",
       "move_cross_volume": "无法移动其他驱动器上的文件夹。请改用“保留在原位置”导入。",
       "move_in_use": "无法移动文件夹。请停止此文件夹中的服务器，关闭打开该文件夹的程序后重试。",
-      "move_failed": "无法移动文件夹。请改用“保留在原位置”导入。"
+      "move_failed": "无法移动文件夹。请改用“保留在原位置”导入。",
+      "port_check_busy": "已经在检查中，请稍后再试"
     },
     "not_a_bool": "“{{value}}”不是是/否（请使用 true 或 false）。",
     "not_a_number": "“{{value}}”不是数字。",
@@ -859,6 +860,7 @@
       "config.paths": "Saba-chan 存放数据、模块和扩展的位置，以及默认文件夹",
       "config.move": "把模块或扩展移到其他文件夹。已安装的文件会一起移动；必须先停止服务器",
       "server.players": "当前在线的人",
+      "server.port-check": "检查朋友能否从外网连接此服务器（端口转发）",
       "server.rcon": "按服务器接收命令的方式（控制台，没有则用 RCON）发送一行并查看回复",
       "server.log": "保存的历次运行日志（控制台只保留本次）",
       "server.query": "游戏模块提供的查询（不指定名称则列出）",
@@ -1491,5 +1493,30 @@
     "this_pc": "本机",
     "no_servers": "没有服务器",
     "via_relay": "通过中继"
+  },
+  "port_check": {
+    "title": "{{server}} 的端口转发检查",
+    "address": "公网 IP {{address}}（朋友用这个地址和端口连接）",
+    "verdict": {
+      "open": "可以从外网连接",
+      "firewall": "被电脑防火墙阻止",
+      "closed": "无法从外网连接",
+      "cgnat": "路由器没有获得公网 IP（CGNAT）",
+      "unknown": "部分端口无法检查",
+      "no_ports": "此游戏没有声明要检查的端口"
+    },
+    "status": {
+      "open": "开放",
+      "closed": "关闭",
+      "unknown": "未检查",
+      "in_use": "被其他程序占用",
+      "firewall": "被防火墙阻止"
+    },
+    "hint": {
+      "closed": "请确认路由器已将此端口转发到这台电脑，并且电脑防火墙已放行。",
+      "firewall": "Windows 防火墙正在阻止 Saba-chan（saba-core）的连接。请在检查时弹出的提示中允许，或在 Windows 防火墙设置中允许 saba-core，然后再检查。",
+      "cgnat": "运营商让多户共用一个公网 IP，无法通过端口转发开放。请向运营商申请公网 IP，或使用 Tailscale 等 VPN。",
+      "unknown": "无法检查正在运行的服务器的 UDP 端口和其他程序占用的端口。请停止服务器后再检查。"
+    }
   }
 }

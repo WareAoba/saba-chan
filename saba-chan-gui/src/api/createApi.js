@@ -617,6 +617,9 @@ export function createApi({ invoke, hub }) {
         // 서버 점검: 모듈 validate(켜기 전 점검)·diagnose(최근 로그 진단). 모듈 Python을 돌리므로 넉넉히 기다린다
         instanceValidate: (id) => daemonCall('post', `/api/instance/${encodeURIComponent(id)}/validate`, {}, 60000),
         instanceDiagnose: (id) => daemonCall('post', `/api/instance/${encodeURIComponent(id)}/diagnose`, {}, 60000),
+        // 포트포워딩 확인: 릴레이가 밖에서 게임 포트에 접속해 본다 (몇 초). 마지막 결과는 자동 확인 것도 같이 본다
+        instancePortCheck: (id) => daemonCall('post', `/api/instance/${encodeURIComponent(id)}/port-check`, {}, 30000),
+        instancePortCheckLast: (id) => daemonCall('get', `/api/instance/${encodeURIComponent(id)}/port-check`),
         // 설정 화면용: 디스크의 실제 설정 (실패하면 success:false)
         instanceReadLiveSettings: (id) =>
             daemonCall('get', `/api/instance/${encodeURIComponent(id)}/settings/live`, undefined, 60000),

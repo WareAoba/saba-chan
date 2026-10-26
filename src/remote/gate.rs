@@ -66,6 +66,9 @@ pub static ROUTES: &[Route] = &[
     allow("POST", "/api/instance/{id}/query/{name}"),
     allow("POST", "/api/instance/{id}/validate"),
     allow("POST", "/api/instance/{id}/diagnose"),
+    // 포트포워딩 확인: 릴레이가 요청한 PC의 공인 주소로만 확인한다
+    allow("GET", "/api/instance/{id}/port-check"),
+    allow("POST", "/api/instance/{id}/port-check"),
     // ── 인스턴스 ──
     allow("GET", "/api/instances"),
     allow("POST", "/api/instances"),

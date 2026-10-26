@@ -32,6 +32,8 @@ pub struct GuiSettings {
     pub console_buffer_size: u32,
     pub auto_generate_passwords: bool,
     pub port_conflict_check: bool,
+    /// 서버를 만들 때와 데몬이 켜질 때 포트포워딩을 조용히 확인한다 (`crate::port_check::auto_check`)
+    pub auto_port_check: bool,
     /// 크래시 같은 중대 알림을 OS 알림으로도 (GUI 셸이 읽는다)
     pub os_notifications: bool,
     /// 밖에서 켜고 끈 것·크래시·설치 결과·업데이트 발견 때 효과음 (GUI 셸이 낸다)
@@ -125,6 +127,7 @@ impl Default for GuiSettings {
             console_buffer_size: 2000,
             auto_generate_passwords: true,
             port_conflict_check: true,
+            auto_port_check: false,
             os_notifications: true,
             sounds: SoundSettings::default(),
             theme: None,

@@ -956,6 +956,36 @@ async fn players_read_as_a_count_and_names_for_supporting_modules() {
     assert_eq!((item["modules"].clone(), item["title"]["ko"].clone(), item["surfaces"].clone()), (json!(["plain"]), json!("플레이어"), json!(["discord", "chatbot"])));
 }
 
+/// 포트포워딩 확인: 디스코드 요약은 판정·포트·안내만 (공인 주소는 채널에 싣지 않는다), heartbeat 항목은 `public` 포트를 선언한 모듈만,
+/// 챗봇에는 열지 않는다
+#[tokio::test]
+async fn port_check_reads_as_a_verdict_without_the_address() {
+    let ko = crate::chat::i18n::Catalog::for_language("ko");
+    let report = json!({
+        "verdict": "closed", "address": "203.0.114.7", "publicAddress": true, "nat": "router",
+        "ports": [{ "field": "port", "port": 8211, "protocol": "udp", "status": "closed" }, { "field": "port", "port": 8211, "protocol": "tcp", "status": "open" }],
+    });
+    let text = summary::text("server.port_check", &report, &ko).unwrap();
+    let lines: Vec<&str> = text.lines().collect();
+    assert_eq!(lines[0], "🚫 밖에서 접속할 수 없어요");
+    assert_eq!(lines[1], "• 8211/UDP · 닫힘");
+    assert_eq!(lines[2], "• 8211/TCP · 열림");
+    assert!(lines[3].contains("포트포워딩"), "{text}");
+    assert!(!text.contains("203.0.114.7"));
+    assert_eq!(summary::text("server.port_check", &json!({ "verdict": "open", "ports": [] }), &ko).unwrap(), "✅ 밖에서 접속할 수 있어요");
+
+    assert_eq!(find("server.port_check").unwrap().surfaces, &[Gui, Cli, Discord]);
+    let (state, _id, _tmp) = server().await;
+    let mut modules = state.supervisor.read().await.module_loader.discover_modules().unwrap();
+    let (actions, _) = heartbeat_actions(&["ko"], &modules);
+    assert_eq!(actions.iter().find(|a| a["id"] == "server.port_check").unwrap()["modules"], json!([]));
+    let settings = modules[0].metadata.settings.get_or_insert_with(|| crate::supervisor::module_loader::ModuleSettings { fields: Vec::new() });
+    settings.fields.push(crate::supervisor::module_loader::SettingField { name: "port".into(), port: true, public: Some("udp".into()), ..Default::default() });
+    let (actions, _) = heartbeat_actions(&["ko"], &modules);
+    let item = actions.iter().find(|a| a["id"] == "server.port_check").unwrap();
+    assert_eq!((item["modules"].clone(), item["title"]["ko"].clone(), item["surfaces"].clone()), (json!(["plain"]), json!("포트포워딩 확인"), json!(["discord"])));
+}
+
 /// 디스코드에서 백업 복원 (사용자 디스코드 검수 14번): 디스코드 메뉴에 싣고, 이름 칸은 백업 목록에서 고르며(`optionsFrom`),
 /// 목록 항목에는 사람이 읽을 이름(`label`)이 붙는다. 켜진 서버는 복원 계획만으로는 409이고, 먼저 끄는 단계가 앞에 있으면 계획된다
 #[tokio::test]

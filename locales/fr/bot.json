@@ -242,6 +242,10 @@
       "players": {
         "title": "Joueurs",
         "description": "Qui est connecté"
+      },
+      "port_check": {
+        "title": "Vérifier la redirection de ports",
+        "description": "Le relais vérifie si ce serveur est accessible depuis Internet"
       }
     },
     "monitor": {
@@ -374,7 +378,29 @@
       "players": "👥 {{online}} connectés",
       "players_max": "👥 {{online}}/{{max}} connectés",
       "player_item": "• {{name}}",
-      "players_more": "…et {{count}} de plus"
+      "players_more": "…et {{count}} de plus",
+      "port_check": {
+        "open": "✅ Accessible depuis Internet",
+        "firewall": "🧱 Bloqué par le pare-feu du PC",
+        "closed": "🚫 Inaccessible depuis Internet",
+        "cgnat": "⚠️ Votre routeur n’a pas d’IP publique (CGNAT)",
+        "unknown": "❔ Certains ports n’ont pas pu être vérifiés",
+        "no_ports": "📭 Ce jeu n’indique pas quels ports vérifier"
+      },
+      "port_status": {
+        "open": "Ouvert",
+        "closed": "Fermé",
+        "unknown": "Non vérifié",
+        "in_use": "Utilisé par un autre programme",
+        "firewall": "Bloqué par le pare-feu"
+      },
+      "port_item": "• {{port}}/{{protocol}} · {{status}}",
+      "port_hint": {
+        "closed": "Vérifiez que le routeur redirige ce port vers ce PC et que le pare-feu du PC l’autorise.",
+        "firewall": "Le pare-feu Windows bloque Saba-chan (saba-core). Autorisez-le dans la fenêtre qui s’affiche pendant la vérification, ou autorisez saba-core dans les paramètres du pare-feu Windows, puis vérifiez à nouveau.",
+        "cgnat": "Votre fournisseur partage une IP publique entre plusieurs foyers : la redirection de ports ne peut pas l’ouvrir. Demandez une IP publique à votre fournisseur ou utilisez un VPN comme Tailscale.",
+        "unknown": "Impossible de vérifier les ports UDP d’un serveur en marche ni les ports utilisés par un autre programme. Arrêtez le serveur et vérifiez à nouveau."
+      }
     }
   },
   "reasons": {
