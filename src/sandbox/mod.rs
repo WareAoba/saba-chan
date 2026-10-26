@@ -728,6 +728,20 @@ pub fn release(dirs: &[PathBuf], others: &[PathBuf]) -> Result<(), Vec<String>> 
     }
 }
 
+/// 다른 위 폴더 아래 있다가 옮겨 온 폴더(가져오기를 거두며 원래 자리로 돌려놓은 서버 폴더)가 지금 위 폴더에서 다시
+/// 물려받게 한다: 예전 자리에서 물려받은 권한·낮은 수준 표시를 걷고 원래 자리의 상속 권한을 되찾는다. Windows만 할 일이 있다
+pub fn adopt_parent(dir: &Path) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        appcontainer::adopt_parent(dir)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = dir;
+        Ok(())
+    }
+}
+
 /// `saba-core sandbox reset`: 인스턴스 기록에서 폴더를 모아 격리 실행의 프로필·권한·표시를 거둔다. Windows만 할 일이 있다.
 /// 지운 프로필 수, 또는 거두지 못한 것
 pub fn reset() -> Result<usize, Vec<String>> {
