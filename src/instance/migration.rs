@@ -32,19 +32,33 @@ pub struct Restored {
 /// 인스턴스 폴더 안의 파일(옮겨 온 서버)은 인스턴스와 함께 지워지므로 건너뛴다. 보관한 수
 pub fn save(instance_dir: &Path, files: &[PathBuf]) -> std::io::Result<usize> {
     let dir = instance_dir.join(DIR);
+    let kept = keep_originals(&dir, instance_dir, files);
+    // 목록 없는 복사본을 남기지 않는다 (되돌릴 수도 없고 지울 때까지 자리만 차지한다)
+    if kept.is_err() {
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+    kept
+}
+
+fn keep_originals(dir: &Path, instance_dir: &Path, files: &[PathBuf]) -> std::io::Result<usize> {
     let mut originals = Vec::new();
-    for path in files.iter().filter(|p| p.is_file() && !inside_instance(p, instance_dir)) {
+    for (n, path) in files.iter().filter(|p| p.is_file() && !inside_instance(p, instance_dir)).enumerate() {
         if originals.iter().any(|o: &Original| o.path == *path) {
             continue;
         }
-        std::fs::create_dir_all(&dir)?;
-        let copy = originals.len().to_string();
-        std::fs::copy(path, dir.join(&copy))?;
+        std::fs::create_dir_all(dir)?;
+        // 한 파일을 못 보관해도(잠긴 파일 등) 나머지는 되돌릴 수 있게 남긴다
+        let copy = n.to_string();
+        if let Err(e) = std::fs::copy(path, dir.join(&copy)) {
+            tracing::warn!("Could not keep the original of {}: {}", path.display(), e);
+            let _ = std::fs::remove_file(dir.join(&copy));
+            continue;
+        }
         originals.push(Original { path: path.clone(), copy });
     }
     if !originals.is_empty() {
         let body = serde_json::to_vec_pretty(&originals).map_err(std::io::Error::other)?;
-        std::fs::write(dir.join(MANIFEST), body)?;
+        saba_atomic_file::write(&dir.join(MANIFEST), &body, saba_atomic_file::Mode::Plain)?;
     }
     Ok(originals.len())
 }
@@ -194,6 +208,29 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&props).unwrap(), "enable-rcon=true\nmotd=mine\n");
         // 가져오기 전에 없던 파일은 보관하지 않았다: 서버가 쓰는 파일일 수 있어 지우지 않는다
         assert!(absent.exists());
+    }
+
+    /// 한 파일을 보관하지 못해도 나머지는 보관하고 목록에 남긴다. 목록을 쓰지 못하면 보관 폴더를 남기지 않는다
+    #[test]
+    fn a_file_that_cannot_be_kept_does_not_lose_the_others() {
+        let tmp = tempfile::tempdir().unwrap();
+        let server = tmp.path().join("server");
+        let instance = tmp.path().join("instance");
+        std::fs::create_dir_all(&server).unwrap();
+        let (a, b) = (server.join("a.ini"), server.join("b.ini"));
+        std::fs::write(&a, "a").unwrap();
+        std::fs::write(&b, "b").unwrap();
+        // 첫 파일의 보관 자리를 막는다
+        std::fs::create_dir_all(instance.join(DIR).join("0")).unwrap();
+        assert_eq!(save(&instance, &[a.clone(), b.clone()]).unwrap(), 1);
+        std::fs::write(&b, "changed").unwrap();
+        assert_eq!(restore(&instance, |_| true).restored, 1);
+        assert_eq!(std::fs::read_to_string(&b).unwrap(), "b");
+
+        let other = tmp.path().join("other");
+        std::fs::create_dir_all(other.join(DIR).join(MANIFEST)).unwrap();
+        assert!(save(&other, &[a]).is_err());
+        assert!(!other.join(DIR).exists(), "copies without a list are not left behind");
     }
 
     /// 인스턴스 폴더 안의 파일(옮겨 온 서버)은 인스턴스와 함께 지워지므로 보관하지 않고, 밖의 파일만 보관한다
