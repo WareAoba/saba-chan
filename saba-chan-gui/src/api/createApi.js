@@ -1000,8 +1000,8 @@ export function createApi({ invoke, hub }) {
         // GUI ⇄ CLI 전환: 데몬이 이 PC에서 띄울 수 있는 인터페이스 `{cli, gui}`, 그리고 띄우기 (고른 서버로 연다)
         clientsLaunchable: () => daemonCall('get', '/api/clients/launch'),
         clientLaunch: (opts) => {
-            const { kind, instance } = opts || {};
-            return daemonCall('post', '/api/clients/launch', { kind, instance });
+            const { kind, instance, daemon } = opts || {};
+            return daemonCall('post', '/api/clients/launch', { kind, instance, ...(daemon ? { daemon } : {}) });
         },
         // 데몬 이벤트 스트림: cb({id, type, data}). 돌려주는 함수로 해제
         onDaemonEvent: (callback) => hub.on('events:message', callback),

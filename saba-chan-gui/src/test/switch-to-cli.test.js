@@ -29,6 +29,8 @@ describe('전환 브리지', () => {
             path: '/api/clients/launch',
             body: { kind: 'cli', instance: 'inst-1' },
         });
+        await api.clientLaunch({ kind: 'cli', instance: 'inst-1', daemon: 'host-b' });
+        expect(sent().body).toEqual({ kind: 'cli', instance: 'inst-1', daemon: 'host-b' });
     });
 
     it('화면이 구독하기 전에 온 서버 열기 요청은 첫 구독자에게 넘긴다', async () => {
@@ -75,6 +77,20 @@ describe('CLI로 전환 버튼', () => {
         await flush();
         expect(window.api.clientLaunch).toHaveBeenCalledWith({ kind: 'cli', instance: 'inst-1' });
         expect(window.api.closeResponse).toHaveBeenCalledWith('exit-interface');
+    });
+
+    it('원격 데몬을 고른 채면 CLI도 그 데몬을 다룬다', async () => {
+        useUIStore.setState({ activeServerId: 'inst-b' });
+        window.api.daemonTarget = vi.fn().mockResolvedValue({ target: 'host-b' });
+        window.api.clientsLaunchable = vi.fn().mockResolvedValue({ cli: true, gui: true });
+        window.api.clientLaunch = vi.fn().mockResolvedValue({ success: true, pid: 10 });
+        window.api.closeResponse = vi.fn();
+        render(<SwitchToCliButton />);
+        await flush();
+        fireEvent.click(screen.getByRole('button', { name: 'Switch to CLI' }));
+        await flush();
+        expect(window.api.clientLaunch).toHaveBeenCalledWith({ kind: 'cli', instance: 'inst-b', daemon: 'host-b' });
+        delete window.api.daemonTarget;
     });
 
     it('못 띄우면 알리고 GUI는 남는다', async () => {
