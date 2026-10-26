@@ -26,14 +26,14 @@ tokio = { version = "1", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sys-locale = "0.3"
-thiserror = "1.0"
+thiserror = "2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter", "registry"] }
 anyhow = "1.0"
-toml = "0.5"
+toml = "0.9"
 serde_ignored = "0.1"
 schemars = "0.8"
-axum = "0.7"
+axum = "0.8"
 # 사용자가 직접 넣는 모듈·익스텐션 zip은 7-Zip 등에서 bzip2·zstd로 묶었을 수 있다 (암호 zip만 뺀다)
 zip = { version = "9", default-features = false, features = ["deflate", "bzip2", "zstd", "time"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
@@ -42,12 +42,12 @@ uuid = { version = "1.0", features = ["v4", "serde"] }
 glob = "0.3"
 regex = "1"
 reqwest = { version = "0.13", default-features = false, features = ["native-tls", "json", "system-proxy", "blocking"] }
-base64 = "0.21"
+base64 = "0.22"
 sysinfo = "0.30"
 socket2 = "0.5"
 tokio-util = "0.7"
 # 사바쨩 웹: 릴레이 웹소켓 클라이언트 (`crate::remote`). reqwest와 같은 native-tls
-tokio-tungstenite = { version = "0.21", features = ["native-tls"] }
+tokio-tungstenite = { version = "0.30", features = ["native-tls"] }
 futures-util = { version = "0.3", default-features = false }
 hmac = "0.12"
 sha2 = "0.10"
@@ -71,10 +71,10 @@ winreg = "0.52"
 winapi = { version = "0.3", features = ["processthreadsapi", "winnt", "handleapi", "pdh", "libloaderapi", "userenv", "aclapi", "accctrl", "securitybaseapi", "jobapi2", "namedpipeapi", "synchapi", "minwinbase", "winbase", "fileapi", "iphlpapi", "tcpmib", "udpmib", "ws2def", "iprtrmib", "tlhelp32"] }
 
 [target.'cfg(unix)'.dependencies]
-nix = { version = "0.27", features = ["signal"] }
+nix = { version = "0.31", features = ["signal"] }
 
 [dependencies.tower]
-version = "0.4"
+version = "0.5"
 # 액션 카탈로그가 데몬 라우터를 안에서 부른다 (`ServiceExt::oneshot`)
 features = ["util"]
 

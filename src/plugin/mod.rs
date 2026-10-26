@@ -368,7 +368,7 @@ fn call_lanes() -> std::sync::Arc<CallLanes> {
 fn module_name(entry: &str) -> String {
     let path = std::path::Path::new(entry);
     for dir in path.parent().into_iter().flat_map(std::path::Path::ancestors) {
-        if let Some(name) = std::fs::read_to_string(dir.join("module.toml")).ok().and_then(|text| text.parse::<toml::Value>().ok())
+        if let Some(name) = std::fs::read_to_string(dir.join("module.toml")).ok().and_then(|text| text.parse::<toml::Table>().ok())
             .and_then(|value| value.get("module")?.get("name")?.as_str().map(str::to_string)) {
             return name;
         }

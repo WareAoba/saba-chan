@@ -4,6 +4,7 @@
 
 use super::super::IPCServer;
 use crate::actions::{self, Caller, Surface};
+use super::LooseJson;
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
@@ -63,14 +64,14 @@ fn caller(locale: String) -> Caller {
 }
 
 /// POST /api/actions/:id/plan `{input, instance?, locale?}`
-pub async fn plan_action(State(state): State<IPCServer>, Path(id): Path<String>, body: Option<Json<ActionBody>>) -> Response {
+pub async fn plan_action(State(state): State<IPCServer>, Path(id): Path<String>, LooseJson(body): LooseJson<ActionBody>) -> Response {
     let body = body.map(|Json(b)| b).unwrap_or_default();
     let caller = caller(locale(&state, body.locale).await);
     reply(actions::plan(&state, &id, body.instance.as_deref(), &body.input, &caller).await)
 }
 
 /// POST /api/actions/:id/run `{input, instance?}` 또는 `{planId}`
-pub async fn run_action(State(state): State<IPCServer>, Path(id): Path<String>, body: Option<Json<ActionBody>>) -> Response {
+pub async fn run_action(State(state): State<IPCServer>, Path(id): Path<String>, LooseJson(body): LooseJson<ActionBody>) -> Response {
     let body = body.map(|Json(b)| b).unwrap_or_default();
     let caller = caller(locale(&state, body.locale).await);
     reply(actions::run(&state, &id, body.instance.as_deref(), &body.input, body.plan_id.as_deref(), &caller).await)
@@ -84,7 +85,7 @@ pub struct StepsBody {
 }
 
 /// POST /api/actions/plan `{steps:[{id, instance?, input}], locale?}`: 여러 단계 계획 (실행은 `/api/actions/plan/run {planId}`)
-pub async fn plan_steps(State(state): State<IPCServer>, body: Option<Json<StepsBody>>) -> Response {
+pub async fn plan_steps(State(state): State<IPCServer>, LooseJson(body): LooseJson<StepsBody>) -> Response {
     let body = body.map(|Json(b)| b).unwrap_or_default();
     let caller = caller(locale(&state, body.locale).await);
     reply(actions::plan_steps(&state, &body.steps, &caller).await)

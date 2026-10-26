@@ -15,8 +15,8 @@ reqwest = { version = "0.13", default-features = false, features = ["native-tls"
 sys-locale = "0.3"
 saba-chan-updater-lib = { path = "../../updater" }
 futures-util = "0.3"
-toml = "0.8"
-dirs = "5"
+toml = "0.9"
+dirs = "6"
 
 [dev-dependencies]
 zip = { version = "9", default-features = false, features = ["deflate", "time"] }

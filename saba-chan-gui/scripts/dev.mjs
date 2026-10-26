@@ -6,7 +6,8 @@ const children = [];
 let exiting = false;
 
 function run(command, args) {
-    const child = spawn(command, args, { stdio: 'inherit', shell: process.platform === 'win32' });
+    // Unix는 자식마다 프로세스 그룹을 따로 둬서 npm이 띄운 셸·vite까지 한 번에 끝낸다
+    const child = spawn(command, args, { stdio: 'inherit', shell: process.platform === 'win32', detached: process.platform !== 'win32' });
     children.push(child);
     child.on('exit', (code) => stopAll(code ?? 1));
     return child;
@@ -19,7 +20,11 @@ function stopAll(code) {
         if (child.exitCode !== null) continue;
         // Windows는 셸(cmd) 아래 자식까지 끝내야 vite가 남지 않는다
         if (process.platform === 'win32') spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
-        else child.kill();
+        else {
+            try {
+                process.kill(-child.pid, 'SIGTERM');
+            } catch {}
+        }
     }
     process.exitCode = code;
 }

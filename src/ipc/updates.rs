@@ -18,6 +18,7 @@
 //! - `GET  /api/updates/config`              — 업데이트 설정 조회
 //! - `PUT  /api/updates/config`              — 업데이트 설정 변경
 
+use super::handlers::LooseJson;
 use axum::{
     extract::{Query, State},
     response::IntoResponse,
@@ -641,7 +642,7 @@ async fn install_updates(State(state): State<UpdateState>) -> axum::response::Re
         applied["download_errors"] = json!(failed);
     }
     if applied.get("requires_updater").and_then(Value::as_bool) == Some(true) {
-        let launched = into_internal(launch_updater(State(state), None).await).await.body;
+        let launched = into_internal(launch_updater(State(state), LooseJson(None)).await).await.body;
         if launched.get("ok").and_then(Value::as_bool) == Some(false) {
             applied["ok"] = json!(false);
             applied["error"] = launched.get("error").cloned().unwrap_or(Value::Null);
@@ -665,7 +666,7 @@ struct LaunchUpdaterRequest {
 
 async fn launch_updater(
     State(state): State<UpdateState>,
-    body: Option<Json<LaunchUpdaterRequest>>,
+    LooseJson(body): LooseJson<LaunchUpdaterRequest>,
 ) -> axum::response::Response {
     let body = body.map(|Json(b)| b).unwrap_or_default();
     let Some(updater) = updater_binary() else {
@@ -1139,11 +1140,11 @@ mod tests {
 
         let state = UpdateState::new();
         state.manager.write().await.load_pending_manifest().unwrap();
-        let first = super::launch_updater(State(state.clone()), None).await;
+        let first = super::launch_updater(State(state.clone()), crate::ipc::handlers::LooseJson(None)).await;
         assert_eq!(first.status(), axum::http::StatusCode::OK);
         let ticket = std::fs::read_to_string(staging.join("apply-ticket")).unwrap();
 
-        let second = super::launch_updater(State(state.clone()), None).await;
+        let second = super::launch_updater(State(state.clone()), crate::ipc::handlers::LooseJson(None)).await;
         assert_eq!(second.status(), axum::http::StatusCode::CONFLICT);
         let body = axum::body::to_bytes(second.into_body(), usize::MAX).await.unwrap();
         let body: Value = serde_json::from_slice(&body).unwrap();
