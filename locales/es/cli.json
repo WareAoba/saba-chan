@@ -890,13 +890,18 @@
     "col": {
       "task": "Tarea",
       "when": "Cuándo",
-      "on": "Activa"
+      "on": "Activa",
+      "next": "Próxima"
     },
     "action": {
       "backup": "Copia de seguridad",
       "restart": "Reiniciar",
       "announce": "Anunciar",
-      "update": "Actualizar"
+      "update": "Actualizar",
+      "start": "Iniciar",
+      "stop": "Detener",
+      "save": "Guardar",
+      "command": "Comando del juego"
     },
     "none": "{{name}} no tiene tareas programadas.",
     "warns": "avisa {{minutes}} min antes",
@@ -912,17 +917,40 @@
     "disabled": "Desactivada: {{task}}",
     "no_such": "No existe la tarea {{number}} (hay {{count}}).",
     "edited": "Tarea cambiada: {{task}}",
-    "nothing_to_edit": "Indica al menos un cambio (--every, --at, --warn, --no-warn, --message).",
+    "nothing_to_edit": "Indica al menos un cambio (--every, --at, --every-days, --on, --date, --daily, --warn, --no-warn, --message, --arg).",
     "keep_zero": "Conserva al menos 1 copia de seguridad.",
     "keep_set": "Se conservarán las últimas {{count}} copias programadas.",
     "confirm_clear": "¿Eliminar todas las tareas programadas de {{name}}?",
     "cleared": "{{name}} ya no tiene tareas programadas.",
     "bad_action": "«{{got}}» no es una tarea. Usa una de: {{actions}}.",
-    "warn_only_restart": "--warn solo funciona con restart y update.",
+    "warn_only_restart": "--warn solo sirve con restart, update y stop.",
     "message_required": "Un anuncio necesita --message.",
     "every_or_at": "Indica --every (p. ej. 30m, 2h) o --at (p. ej. 04:00), pero no ambos.",
     "bad_every": "«{{got}}» no es un tiempo válido. Usa minutos o unidades, p. ej. 30, 30m, 2h, 1h30m.",
-    "bad_at": "«{{got}}» no es una hora del día. Usa HH:MM, p. ej. 04:00."
+    "bad_at": "«{{got}}» no es una hora del día. Usa HH:MM, p. ej. 04:00.",
+    "weekday": {
+      "mon": "lun",
+      "tue": "mar",
+      "wed": "mié",
+      "thu": "jue",
+      "fri": "vie",
+      "sat": "sáb",
+      "sun": "dom"
+    },
+    "server_clock": "Las horas siguen el reloj del PC servidor ({{zone}}). Las próximas ejecuciones están en la hora de este PC.",
+    "every_days_at": "cada {{n}} días a las {{at}} desde {{from}}",
+    "weekdays_at": "{{days}} a las {{at}}",
+    "date_at": "una vez el {{date}} a las {{at}}",
+    "no_save": "Este juego no tiene comando de guardado.",
+    "command_required": "Un comando del juego necesita --command (lista: server commands).",
+    "command_only": "--command y --arg solo sirven con la tarea command.",
+    "day_rule_needs_at": "--every-days, --on y --date necesitan --at.",
+    "bad_every_days": "{{got}} días no sirve. Usa de 1 a 365.",
+    "bad_weekday": "«{{got}}» no es un día. Usa uno de: {{days}}.",
+    "bad_date": "«{{got}}» no es una fecha. Usa AAAA-MM-DD, p. ej. 2026-12-24.",
+    "bad_arg": "«{{got}}» no es una entrada. Usa NOMBRE=VALOR.",
+    "confirm_danger": "{{command}} es difícil de deshacer y se ejecuta a la hora fijada sin preguntar. ¿Programarlo?",
+    "from_needs_every_days": "--from solo sirve con tareas cada N días (--every-days)."
   },
   "chatbot": {
     "api_key": "Clave de API guardada",

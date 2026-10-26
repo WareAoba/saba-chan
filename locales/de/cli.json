@@ -890,13 +890,18 @@
     "col": {
       "task": "Aufgabe",
       "when": "Wann",
-      "on": "An"
+      "on": "An",
+      "next": "Nächster Lauf"
     },
     "action": {
       "backup": "Sichern",
       "restart": "Neustart",
       "announce": "Ankündigen",
-      "update": "Aktualisieren"
+      "update": "Aktualisieren",
+      "start": "Starten",
+      "stop": "Stoppen",
+      "save": "Speichern",
+      "command": "Spielbefehl"
     },
     "none": "{{name}} hat keine geplanten Aufgaben.",
     "warns": "warnt {{minutes}} Min. vorher",
@@ -912,17 +917,40 @@
     "disabled": "Ausgeschaltet: {{task}}",
     "no_such": "Es gibt keine Aufgabe {{number}} (es gibt {{count}}).",
     "edited": "Aufgabe geändert: {{task}}",
-    "nothing_to_edit": "Gib mindestens eine Änderung an (--every, --at, --warn, --no-warn, --message).",
+    "nothing_to_edit": "Gib mindestens eine Änderung an (--every, --at, --every-days, --on, --date, --daily, --warn, --no-warn, --message, --arg).",
     "keep_zero": "Behalte mindestens 1 Backup.",
     "keep_set": "Die letzten {{count}} geplanten Backups werden behalten.",
     "confirm_clear": "Alle geplanten Aufgaben von {{name}} entfernen?",
     "cleared": "{{name}} hat jetzt keine geplanten Aufgaben mehr.",
     "bad_action": "„{{got}}“ ist keine Aufgabe. Verwende eine davon: {{actions}}.",
-    "warn_only_restart": "--warn funktioniert nur mit restart und update.",
+    "warn_only_restart": "--warn gilt nur für restart, update und stop.",
     "message_required": "Eine Ankündigung braucht --message.",
     "every_or_at": "Gib entweder --every (z. B. 30m, 2h) oder --at (z. B. 04:00) an, nicht beides.",
     "bad_every": "„{{got}}“ ist keine Zeitangabe. Verwende Minuten oder Einheiten, z. B. 30, 30m, 2h, 1h30m.",
-    "bad_at": "„{{got}}“ ist keine Uhrzeit. Verwende HH:MM, z. B. 04:00."
+    "bad_at": "„{{got}}“ ist keine Uhrzeit. Verwende HH:MM, z. B. 04:00.",
+    "weekday": {
+      "mon": "Mo",
+      "tue": "Di",
+      "wed": "Mi",
+      "thu": "Do",
+      "fri": "Fr",
+      "sat": "Sa",
+      "sun": "So"
+    },
+    "server_clock": "Zeiten richten sich nach der Uhr des Server-PCs ({{zone}}). Nächste Läufe in der Zeit dieses PCs.",
+    "every_days_at": "alle {{n}} Tage um {{at}} ab {{from}}",
+    "weekdays_at": "{{days}} um {{at}}",
+    "date_at": "einmal am {{date}} um {{at}}",
+    "no_save": "Dieses Spiel hat keinen Speicherbefehl.",
+    "command_required": "Ein Spielbefehl braucht --command (Liste: server commands).",
+    "command_only": "--command und --arg gelten nur für die Aufgabe command.",
+    "day_rule_needs_at": "--every-days, --on und --date brauchen --at.",
+    "bad_every_days": "{{got}} Tage gehen nicht. Nutze 1 bis 365.",
+    "bad_weekday": "„{{got}}“ ist kein Wochentag. Nutze: {{days}}.",
+    "bad_date": "„{{got}}“ ist kein Datum. Nutze JJJJ-MM-TT, z. B. 2026-12-24.",
+    "bad_arg": "„{{got}}“ ist keine Eingabe. Nutze NAME=WERT.",
+    "confirm_danger": "{{command}} lässt sich schwer rückgängig machen und läuft zur festgelegten Zeit ohne Nachfrage. Planen?",
+    "from_needs_every_days": "--from gilt nur für Aufgaben alle N Tage (--every-days)."
   },
   "chatbot": {
     "api_key": "API-Schlüssel gespeichert",

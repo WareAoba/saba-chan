@@ -69,7 +69,8 @@ describe('MaintenanceTab', () => {
         expect(screen.queryByText('Back up now')).toBeNull();
         expect(window.api.instanceBackups).not.toHaveBeenCalled();
         const tabs = screen.getAllByRole('tab').map((b) => b.textContent);
-        expect(tabs).toEqual(['Restart', 'Update']);
+        // 저장 명령이 없는 모듈은 저장도 숨긴다
+        expect(tabs).toEqual(['Start', 'Stop', 'Restart', 'Update']);
         expect(screen.queryByText(/Warn players/)).toBeNull();
     });
 
