@@ -1,6 +1,6 @@
 [package]
 name = "saba-core"
-version = "0.1.10"
+version = "0.1.11"
 edition = "2021"
 authors = ["WareAoba"]
 description = "Modular game server management platform"
