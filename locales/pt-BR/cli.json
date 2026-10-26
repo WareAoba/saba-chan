@@ -7,7 +7,8 @@
     "module_output_too_large": "A saída do módulo excedeu o limite. Verifique os logs do módulo.",
     "module_path_outside": "O módulo tentou acessar um caminho fora da pasta permitida. Verifique as configurações do módulo.",
     "module_exception": "O módulo gerou uma exceção. Verifique os logs do módulo.",
-    "isolation_unsupported": "Este sistema operacional não oferece o isolamento necessário."
+    "isolation_unsupported": "Este sistema operacional não oferece o isolamento necessário.",
+    "module_platform_unsupported": "Este módulo de jogo não roda no SO deste daemon"
   },
   "add": {
     "created_settings_unsynced": "{{name}} foi criado e as configurações foram salvas, mas não foi possível gravar o arquivo de configuração do jogo: {{error}}",
@@ -463,7 +464,8 @@
     "unmet": "Requer {{component}} {{required}} (instalado: {{installed}})",
     "load_failed": {
       "invalid": "Não foi possível carregar o módulo {{module}}. O module.toml dele não segue o formato:"
-    }
+    },
+    "platform_unsupported": "(não neste SO)"
   },
   "noun": {
     "command": "comando",

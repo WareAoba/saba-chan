@@ -7,7 +7,8 @@
     "module_output_too_large": "모듈 출력이 크기 제한을 넘었습니다. 모듈 로그를 확인해 주세요.",
     "module_path_outside": "모듈이 허용된 폴더 밖의 경로에 접근하려 했습니다. 모듈 설정을 확인해 주세요.",
     "module_exception": "모듈에서 예외가 발생했습니다. 모듈 로그를 확인해 주세요.",
-    "isolation_unsupported": "이 운영체제는 필요한 격리 기능을 지원하지 않습니다."
+    "isolation_unsupported": "이 운영체제는 필요한 격리 기능을 지원하지 않습니다.",
+    "module_platform_unsupported": "이 게임 모듈은 이 데몬의 OS에서 돌아가지 않아요"
   },
   "add": {
     "created_settings_unsynced": "{{name}} 서버를 만들고 설정도 저장했지만, 게임 설정 파일에 쓰지 못했어요: {{error}}",
@@ -463,7 +464,8 @@
     "unmet": "{{component}} {{required}} 필요 (설치됨: {{installed}})",
     "load_failed": {
       "invalid": "{{module}} 모듈을 읽지 못했어요. module.toml이 형식에 맞지 않아요:"
-    }
+    },
+    "platform_unsupported": "(이 OS 미지원)"
   },
   "noun": {
     "command": "명령",

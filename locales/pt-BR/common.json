@@ -7,7 +7,8 @@
     "module_output_too_large": "A saída do módulo excedeu o limite de tamanho. Verifique os registros.",
     "module_path_outside": "O módulo tentou acessar um caminho fora da pasta permitida. Verifique as configurações.",
     "module_exception": "O módulo gerou uma exceção. Verifique os registros.",
-    "isolation_unsupported": "Este sistema operacional não oferece o isolamento necessário."
+    "isolation_unsupported": "Este sistema operacional não oferece o isolamento necessário.",
+    "module_platform_unsupported": "Este módulo de jogo não roda no SO deste daemon"
   },
   "sandbox": {
     "isolation_unsupported": {

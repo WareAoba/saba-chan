@@ -831,6 +831,13 @@ impl Supervisor {
 
     /// 모듈 `[module.dependencies]`를 못 맞추면 시작을 막는 응답. 다 맞으면 None
     async fn unmet_dependencies_response(&self, module_name: &str, instance_name: &str) -> Option<Value> {
+        // 이 OS를 지원한다고 선언하지 않은 모듈 (D3·M1)
+        if let Ok(module) = self.module_loader.get_module(module_name) {
+            if !module.metadata.supports_os(std::env::consts::OS) {
+                tracing::warn!("Module '{}' does not run on {}; '{}' is not started", module_name, std::env::consts::OS, instance_name);
+                return Some(module_loader::platform_unsupported_body(module_name, module.metadata.platforms.as_deref().unwrap_or_default()));
+            }
+        }
         // 데몬이 모자라 아예 로드하지 못한 모듈도 같은 응답을 준다
         let failed = self.module_loader.get_module(module_name).err().and_then(|_| self.module_loader.load_failure(module_name));
         // 데몬보다 새 스키마는 그 이유 그대로 준다 (클라이언트가 "업데이트가 필요해요"로 보인다)
@@ -3912,6 +3919,30 @@ mod tests {
         assert_eq!(resp["error_code"], "module_dependency_unsatisfied");
         assert_eq!(resp["module"], "future", "clients name the module in \"update required\"");
         assert!(resp["missing_dependencies"][0].as_str().unwrap().starts_with("saba-core >=99.0.0"));
+    }
+
+    /// D3·M1: 이 OS를 지원한다고 선언하지 않은 모듈의 서버는 켜지 않는다
+    #[tokio::test]
+    async fn a_module_that_does_not_support_this_os_is_not_started() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("modules").join("elsewhere");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "").unwrap();
+        let other = if cfg!(windows) { "linux" } else { "windows" };
+        std::fs::write(
+            dir.join("module.toml"),
+            format!("[module]\nname = \"elsewhere\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[extensions.saba-core]\nplatforms = [\"{other}\"]\n"),
+        )
+        .unwrap();
+        let supervisor = Supervisor::new_with_instances_dir(
+            tmp.path().join("modules").to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        let resp = supervisor.unmet_dependencies_response("elsewhere", "srv").await.unwrap();
+        assert_eq!(resp["error_code"], "module_platform_unsupported", "{resp}");
+        assert_eq!(resp["module"], "elsewhere");
+        assert_eq!(resp["platforms"], json!([other]));
+        assert_eq!(resp["os"], std::env::consts::OS);
     }
 
     /// 데몬보다 새 스키마라 로드되지 못한 모듈은 시작 응답도 그 이유(module_schema_unsupported)를 준다.

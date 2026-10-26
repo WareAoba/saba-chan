@@ -286,6 +286,10 @@ pub struct UnmetDependency {
     pub installed: Option<String>,
 }
 
+fn yes() -> bool {
+    true
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExtensionInfo {
     pub name: String,
@@ -308,6 +312,12 @@ pub struct ExtensionInfo {
     /// `[module.dependencies]` 중 지금 설치된 버전이 못 맞추는 것 (M9). saba-core 미달은 아예 로드하지 않는다
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub unmet_dependencies: Vec<UnmetDependency>,
+    /// `[extensions.saba-core] platforms`: 이 모듈이 돌아가는 OS. 없으면 선언하지 않음 (D3·M1)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub platforms: Option<Vec<String>>,
+    /// 이 데몬의 OS에서 돌아가는가. 아니면 서버를 만들거나 켜지 않는다(`module_platform_unsupported`)
+    #[serde(default = "yes")]
+    pub platform_supported: bool,
     pub path: String,
     pub executable_path: Option<String>,
     /// `[config] server_executable`: 모듈이 찾는 서버 실행 파일 이름. 클라이언트는 실행 파일 고르기의 파일 종류로 쓴다
@@ -1153,6 +1163,8 @@ mod tests {
     #[test]
     fn test_module_info_serialization_with_commands() {
         let module_info = ExtensionInfo {
+            platforms: None,
+            platform_supported: true,
             trust: saba_chan_updater_lib::integrity::Trust::Unverified,
             name: "palworld".to_string(),
             version: "1.0.0".to_string(),
@@ -1213,6 +1225,8 @@ mod tests {
     #[test]
     fn test_module_info_without_commands() {
         let module_info = ExtensionInfo {
+            platforms: None,
+            platform_supported: true,
             trust: saba_chan_updater_lib::integrity::Trust::Unverified,
             name: "test".to_string(),
             version: "1.0.0".to_string(),
@@ -1254,6 +1268,8 @@ mod tests {
             failed: Vec::new(),
             modules: vec![
                 ExtensionInfo {
+                    platforms: None,
+                    platform_supported: true,
                     trust: saba_chan_updater_lib::integrity::Trust::Unverified,
                     name: "palworld".to_string(),
                     version: "1.0.0".to_string(),

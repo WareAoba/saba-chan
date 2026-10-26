@@ -817,6 +817,19 @@ span[style*="--icon-loader"] svg {
     box-shadow: none;
 }
 
+/* 이 데몬의 OS에서 돌아가지 않는 모듈 (D3·M1) */
+.as-game-card.unsupported {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.as-game-card.unsupported:hover {
+    border-color: var(--border-default);
+    background: var(--bg-surface-tertiary);
+    box-shadow: none;
+    transform: none;
+}
+
 .as-game-card-icon {
     width: 48px;
     height: 48px;

@@ -7,7 +7,8 @@
     "module_output_too_large": "模組輸出超過大小限制。請檢查模組記錄。",
     "module_path_outside": "模組嘗試存取允許資料夾以外的路徑。請檢查模組設定。",
     "module_exception": "模組發生例外。請檢查模組記錄。",
-    "isolation_unsupported": "此作業系統不支援所需的隔離功能。"
+    "isolation_unsupported": "此作業系統不支援所需的隔離功能。",
+    "module_platform_unsupported": "此遊戲模組無法在該常駐程式的系統上執行"
   },
   "sandbox": {
     "isolation_unsupported": {

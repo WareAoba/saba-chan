@@ -7,7 +7,8 @@
     "module_output_too_large": "The module output exceeded the limit. Check the module logs.",
     "module_path_outside": "The module tried to access a path outside the allowed folder. Check the module settings.",
     "module_exception": "The module raised an exception. Check the module logs.",
-    "isolation_unsupported": "This operating system does not support the required isolation."
+    "isolation_unsupported": "This operating system does not support the required isolation.",
+    "module_platform_unsupported": "This game module doesn't run on this daemon's OS"
   },
   "sandbox": {
     "isolation_unsupported": {

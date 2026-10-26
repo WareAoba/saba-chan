@@ -133,6 +133,11 @@ async fn create_instance_inner(state: IPCServer, payload: Value) -> impl IntoRes
         // 모듈 정보에서 process_name, default_port, install 설정 가져오기
         let mut module_trust = None;
         let module_install = if let Ok(loaded_module) = supervisor.module_loader.get_module(module) {
+            if !loaded_module.metadata.supports_os(std::env::consts::OS) {
+                let platforms = loaded_module.metadata.platforms.clone().unwrap_or_default();
+                let body = crate::supervisor::module_loader::platform_unsupported_body(module, &platforms);
+                return (StatusCode::CONFLICT, Json(body)).into_response();
+            }
             module_trust = Some(super::server::module_trust(&loaded_module.path));
             instance.process_name = loaded_module.metadata.process_name.clone();
             if instance.port.is_none() {
@@ -2448,6 +2453,37 @@ mod tests {
         assert_eq!(value["name"], "palworld");
         assert_eq!(value["working_dir"], "C:/srv/palworld/data");
         assert_ne!(value["rest_password"], "palworld");
+    }
+
+    /// D3·M1: 이 OS를 지원하지 않는 모듈로는 서버를 만들지 않는다
+    #[tokio::test]
+    async fn create_refuses_a_module_that_does_not_support_this_os() {
+        use axum::extract::State;
+        use axum::Json;
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        let other = if cfg!(windows) { "linux" } else { "windows" };
+        std::fs::write(
+            dir.join("module.toml"),
+            format!("[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[extensions.saba-core]\nplatforms = [\"{other}\"]\n"),
+        )
+        .unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "").unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            modules.to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        sup.initialize().await.unwrap();
+        let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let made = crate::ipc::internal::into_internal(
+            super::create_instance(State(state.clone()), Json(json!({ "name": "a", "module_name": "game" }))).await,
+        )
+        .await;
+        assert_eq!(made.status, axum::http::StatusCode::CONFLICT, "{:?}", made.body);
+        assert_eq!(made.body["error_code"], "module_platform_unsupported");
+        assert!(state.supervisor.read().await.instance_store.list().is_empty());
     }
 
     #[tokio::test]
