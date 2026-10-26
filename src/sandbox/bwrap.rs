@@ -3,7 +3,9 @@
 //! AppContainer처럼 준 폴더만 보인다: 시스템 폴더(`SYSTEM_DIRS`)는 읽기 전용으로 붙이고, 그 밖(홈·데이터 폴더·다른 인스턴스·
 //! `/run`의 사용자 소켓)은 보이지 않는다. `/tmp`는 빈 폴더다. 그 위에 `Grants`의 폴더만 붙인다: 읽기는 읽기 전용, 쓰기는 쓰기
 //! (목록 권한은 필요 없다: 붙인 폴더의 위 폴더는 bwrap이 만든다). 네트워크는 연다(설치가 내려받는다). 그래서 Windows와 달리
-//! 127.0.0.1에도 닿는다: 데몬 API는 토큰이 데이터 폴더에 있어 쓰지 못한다.
+//! 127.0.0.1에도 닿는다: 데몬 API는 토큰이 데이터 폴더에 있어 쓰지 못한다. 같은 네트워크 네임스페이스의 abstract unix 소켓
+//! (파일 시스템에 없는 소켓. 데스크톱 세션의 X11·Xwayland 등)에도 닿는다: 화면·세션 버스 주소 환경 변수는 넘기지 않지만
+//! 소켓 자체는 막지 못한다 (데스크톱 세션에서 데몬을 돌리면 남는 위험, docs/architecture 02 §D3b).
 //! 프로세스·IPC·UTS 네임스페이스는 따로 두고, bwrap이 끝나면(`--die-with-parent`) 안의 프로세스도 모두 끝난다.
 
 use super::appcontainer::{Access, Grants};
@@ -145,6 +147,9 @@ pub fn args(grants: &Grants, cwd: Option<&Path>) -> Vec<OsString> {
     out
 }
 
+/// 격리 안에 넘기지 않는 데스크톱 세션 주소 (데몬이 데스크톱 세션에서 돌 때 물려받은 값)
+const SESSION_ENV: [&str; 4] = ["DBUS_SESSION_BUS_ADDRESS", "DISPLAY", "WAYLAND_DISPLAY", "XAUTHORITY"];
+
 #[cfg_attr(windows, allow(dead_code))] // Windows는 AppContainer로 띄운다
 /// `cmd`를 bwrap 안에서 띄우는 명령. 환경 변수 변경과 작업 폴더는 그대로 옮긴다 (입출력은 부르는 쪽이 정한다)
 pub fn wrap(bwrap: &Path, cmd: &std::process::Command, grants: &Grants) -> std::process::Command {
@@ -160,8 +165,10 @@ pub fn wrap(bwrap: &Path, cmd: &std::process::Command, grants: &Grants) -> std::
             None => wrapped.env_remove(key),
         };
     }
-    // 세션 버스는 보이지 않지만 주소도 넘기지 않는다
-    wrapped.env_remove("DBUS_SESSION_BUS_ADDRESS");
+    // 세션 버스·화면 소켓 파일은 보이지 않지만 주소도 넘기지 않는다 (abstract 소켓은 네트워크를 함께 써서 닿는다)
+    for key in SESSION_ENV {
+        wrapped.env_remove(key);
+    }
     if let Some(cwd) = cmd.get_current_dir() {
         wrapped.current_dir(cwd);
     }
@@ -232,6 +239,19 @@ mod tests {
         cmd.arg(link.join("sub").join("a"));
         let out = wrap(bwrap, &cmd, &grants).output().unwrap();
         assert_eq!(String::from_utf8_lossy(&out.stdout), "read", "{}", String::from_utf8_lossy(&out.stderr));
+    }
+
+    /// 데스크톱 세션의 화면·세션 버스 주소는 격리 안에 넘기지 않는다 (네트워크를 함께 써서 abstract 소켓은 닿는다)
+    #[test]
+    fn desktop_session_addresses_are_not_passed_in() {
+        let mut cmd = std::process::Command::new("python");
+        cmd.env("DISPLAY", ":0").env("SABA_X", "1");
+        let wrapped = wrap(Path::new("/usr/bin/bwrap"), &cmd, &Grants::default());
+        let envs: Vec<_> = wrapped.get_envs().collect();
+        for key in SESSION_ENV {
+            assert!(envs.contains(&(key.as_ref(), None)), "{key} is removed");
+        }
+        assert!(envs.contains(&("SABA_X".as_ref(), Some("1".as_ref()))));
     }
 
     /// `/etc/resolv.conf`가 `/etc` 밖(NetworkManager 등)을 가리키면 그 파일도 붙인다
