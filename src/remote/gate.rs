@@ -341,10 +341,13 @@ fn match_score(pattern: &str, segments: &[&str]) -> Option<Vec<bool>> {
         .collect()
 }
 
-/// 푼 경로 조각이 괜찮은지: 비어 있지 않고 NUL이 없으며, 조각도 조각 안을 나눔 문자로 가른 부분도 `.`·`..`이 아니다.
-/// 조각 안의 나눔 문자는 그 조각의 글자다 (이름에 `/`가 든 서버). 경로 인자로 상위 폴더를 가리키지는 못하게 한다
+/// 푼 경로 조각이 괜찮은지: 비어 있지 않고 NUL이 없으며, 조각도 조각 안을 나눔 문자로 가른 부분도 `.`·`..`이 아니고,
+/// 절대 경로(맨 앞이 나눔 문자, 드라이브 `X:`)가 아니다. 조각 가운데·끝의 나눔 문자는 그 조각의 글자다 (이름에 `/`가 든 서버).
+/// 경로 인자로 상위 폴더나 다른 곳을 가리키지는 못하게 한다
 fn safe_segment(decoded: &str) -> bool {
-    !decoded.is_empty() && !decoded.contains('\0') && !decoded.split(['/', '\\']).any(|p| p == "." || p == "..")
+    let bytes = decoded.as_bytes();
+    let absolute = decoded.starts_with(['/', '\\']) || (bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':');
+    !decoded.is_empty() && !absolute && !decoded.contains('\0') && !decoded.split(['/', '\\']).any(|p| p == "." || p == "..")
 }
 
 /// 라우터가 경로 인자를 푸는 대로 조각마다 푼 경로 조각 (쿼리는 뺀다). 풀 수 없거나 이상한 조각(`safe_segment`가 아닌 것)이 있으면 `None`.
@@ -617,7 +620,7 @@ mod tests {
         assert_eq!(segs("/api/config/%67ui/reset"), own(&["api", "config", "gui", "reset"]));
         assert_eq!(segs("/api/servers?x=%2F"), own(&["api", "servers"]));
         assert_eq!(segs("/health"), own(&["health"]));
-        for bad in ["/api/x/%2e%2e/y", "/api//x", "/api/%FF", "/api/%6", "api/x", "/api/x/..", "/api/a%2F..%2Fb", "/api/..%5Cb", "/api/a%00"] {
+        for bad in ["/api/x/%2e%2e/y", "/api//x", "/api/%FF", "/api/%6", "api/x", "/api/x/..", "/api/a%2F..%2Fb", "/api/..%5Cb", "/api/a%00", "/api/%2Fetc%2Fpasswd", "/api/%5C%5Chost%5Cshare", "/api/C%3A%5Cx", "/api/c:", "/api/%5Cx"] {
             assert_eq!(segs(bad), None, "{bad}");
         }
     }
@@ -632,6 +635,10 @@ mod tests {
         );
         assert_eq!(decide("POST", "/api/server/Survival%201%2F2/stop"), Ok("/api/server/{name}/stop"));
         assert_eq!(decide("GET", "/api/server/a%5Cb/status"), Ok("/api/server/{name}/status"));
+        // 이름 가운데·끝의 나눔 문자는 이름이다. 맨 앞이 나눔 문자거나 드라이브(`X:`)면 절대 경로라 받지 않는다
+        assert_eq!(decide("GET", "/api/server/a%2F/status"), Ok("/api/server/{name}/status"));
+        assert_eq!(decide("GET", "/api/server/%2Fetc/status"), Err(Refusal::BadPath));
+        assert_eq!(decide("GET", "/api/server/D%3A%5Cgames/status"), Err(Refusal::BadPath));
         // 리터럴 조각을 인코딩한 `/`로 이어 붙여도 그 라우트가 아니다
         assert_eq!(decide("GET", "/api/config%2Fnode-token"), Err(Refusal::NotAllowed));
         assert_eq!(path_segments("/api/remote%2Fclients"), Some(vec!["api".into(), "remote/clients".into()]));
