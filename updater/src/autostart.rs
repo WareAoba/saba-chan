@@ -192,8 +192,12 @@ pub fn desktop_file(entry: &Entry) -> String {
     )
 }
 
-/// `Exec` 줄을 되읽는다
+/// `Exec` 줄을 되읽는다. 데스크톱이 끈 항목(`Hidden=true`, `X-GNOME-Autostart-enabled=false`)은 없는 것으로 본다
 pub fn parse_desktop_file(text: &str) -> Option<Entry> {
+    let key = |name: &str| text.lines().find_map(|l| l.trim().strip_prefix(name)?.trim_start().strip_prefix('=').map(str::trim));
+    if key("Hidden") == Some("true") || key("X-GNOME-Autostart-enabled") == Some("false") {
+        return None;
+    }
     let exec = desktop_unescape(text.lines().find_map(|l| l.trim().strip_prefix("Exec="))?.trim());
     let exec = exec.as_str();
     let (program, rest) = if let Some(quoted) = exec.strip_prefix('"') {
@@ -438,6 +442,14 @@ mod tests {
         assert!(text.contains(r#"Exec="/home/a b/\\$sa\\"ba\\`%%\\\\/saba-chan-gui" --tray"#), "{}", text);
         assert_eq!(parse_desktop_file(&text), Some(e));
         assert_eq!(parse_desktop_file("[Desktop Entry]\nName=x\n"), None);
+    }
+
+    #[test]
+    fn a_desktop_file_turned_off_by_the_desktop_reads_as_not_registered() {
+        let on = desktop_file(&Entry { program: PathBuf::from("/opt/saba/saba-chan-gui"), args: vec![TRAY_ARG.into()] });
+        assert!(parse_desktop_file(&on).is_some());
+        assert_eq!(parse_desktop_file(&format!("{}Hidden=true\n", on)), None);
+        assert_eq!(parse_desktop_file(&on.replace("X-GNOME-Autostart-enabled=true", "X-GNOME-Autostart-enabled=false")), None);
     }
 
     #[cfg(not(target_os = "windows"))]
