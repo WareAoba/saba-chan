@@ -113,7 +113,14 @@
     "reset_gui_done": "GUI 設定已還原為預設值",
     "reset_gui_failed": "無法重設設定",
     "os_notifications_label": "系統通知",
-    "os_notifications_description": "當機、意外啟動或停止等必須知道的事件也會透過 Windows、macOS 通知傳送。應用程式視窗在前景時只在應用程式內提示。"
+    "os_notifications_description": "當機、意外啟動或停止等必須知道的事件也會透過 Windows、macOS 通知傳送。應用程式視窗在前景時只在應用程式內提示。",
+    "sound_effects_label": "音效",
+    "sound_effects_description": "從應用程式外（Discord、網頁等）啟動或停止伺服器、意外停止、安裝結果以及發現更新時播放提示音。在應用程式內直接啟動或停止時不播放。",
+    "sound_server_start": "伺服器啟動",
+    "sound_server_stop": "伺服器停止",
+    "sound_crash": "意外停止",
+    "sound_install": "安裝結果",
+    "sound_update": "發現更新"
   },
   "add_server_modal": {
     "title": "新增伺服器",

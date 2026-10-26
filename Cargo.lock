@@ -4405,6 +4405,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "uuid",
+ "windows-sys 0.61.2",
  "winreg 0.52.0",
 ]
 

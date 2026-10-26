@@ -113,7 +113,14 @@
     "reset_gui_done": "GUI-Einstellungen auf Standard zurückgesetzt",
     "reset_gui_failed": "Einstellungen konnten nicht zurückgesetzt werden",
     "os_notifications_label": "Systembenachrichtigungen",
-    "os_notifications_description": "Wichtige Ereignisse wie Abstürze und unerwartete Starts oder Stopps auch als Windows- oder macOS-Benachrichtigung senden. Solange das App-Fenster vorne ist, nur in der App."
+    "os_notifications_description": "Wichtige Ereignisse wie Abstürze und unerwartete Starts oder Stopps auch als Windows- oder macOS-Benachrichtigung senden. Solange das App-Fenster vorne ist, nur in der App.",
+    "sound_effects_label": "Soundeffekte",
+    "sound_effects_description": "Spielt einen Ton ab, wenn ein Server von außerhalb der App (Discord, Web usw.) gestartet oder gestoppt wird, unerwartet stoppt, eine Installation abschließt oder ein Update gefunden wird. Starten oder Stoppen in der App selbst ist stumm.",
+    "sound_server_start": "Server gestartet",
+    "sound_server_stop": "Server gestoppt",
+    "sound_crash": "Unerwarteter Stopp",
+    "sound_install": "Installationsergebnis",
+    "sound_update": "Update gefunden"
   },
   "add_server_modal": {
     "title": "Neuen Server hinzufügen",

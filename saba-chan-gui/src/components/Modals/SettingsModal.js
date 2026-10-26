@@ -31,6 +31,15 @@ import { ExtensionGuiSection, extensionGuiAvailable } from './ExtensionGuiSectio
 import { UnisolatedSection, unisolatedAvailable } from './UnisolatedSection';
 import SabaStorage from './SabaStorage';
 
+// 효과음 종류별 스위치 (DEFAULT_SOUNDS 키 → 이름)
+const SOUND_KINDS = [
+    ['serverStart', 'gui:settings_modal.sound_server_start'],
+    ['serverStop', 'gui:settings_modal.sound_server_stop'],
+    ['crash', 'gui:settings_modal.sound_crash'],
+    ['install', 'gui:settings_modal.sound_install'],
+    ['update', 'gui:settings_modal.sound_update'],
+];
+
 function SettingsModal({
     isOpen,
     onClose,
@@ -107,6 +116,8 @@ function SettingsModal({
     const autoGeneratePasswords = useSettingsStore((s) => s.autoGeneratePasswords);
     const portConflictCheck = useSettingsStore((s) => s.portConflictCheck);
     const osNotifications = useSettingsStore((s) => s.osNotifications);
+    const sounds = useSettingsStore((s) => s.sounds);
+    const setSound = (key, on) => useSettingsStore.getState().update({ sounds: { ...sounds, [key]: on } });
 
     // 외부에서 initialView 지정으로 열렸을 때 해당 탭 자동 진입
     useEffect(() => {
@@ -440,6 +451,35 @@ function SettingsModal({
                                     checked={osNotifications}
                                     onChange={(checked) => useSettingsStore.getState().update({ osNotifications: checked })}
                                 />
+                            </div>
+
+                            {/* 밖에서 켜고 끈 것·크래시·설치 결과·업데이트 효과음: 전체 스위치 + 종류별 */}
+                            <div className="setting-item setting-item-group">
+                                <div className="setting-item-row">
+                                    <label className="setting-label">
+                                        <span className="setting-title">
+                                            <Icon name="volume" size="sm" /> {t('gui:settings_modal.sound_effects_label')}
+                                        </span>
+                                        <span className="setting-description">
+                                            {t('gui:settings_modal.sound_effects_description')}
+                                        </span>
+                                    </label>
+                                    <SabaToggle checked={sounds.enabled} onChange={(on) => setSound('enabled', on)} />
+                                </div>
+                                {sounds.enabled && (
+                                    <div className="setting-sublist">
+                                        {SOUND_KINDS.map(([key, label]) => (
+                                            <div className="setting-subitem" key={key}>
+                                                <span>{t(label)}</span>
+                                                <SabaToggle
+                                                    size="sm"
+                                                    checked={sounds[key]}
+                                                    onChange={(on) => setSound(key, on)}
+                                                />
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
 
                             {/* 사바 스토리지 — 클릭하면 SabaStorage로 전환 */}

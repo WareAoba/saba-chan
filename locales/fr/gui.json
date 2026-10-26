@@ -113,7 +113,14 @@
     "reset_gui_done": "Paramètres de l'interface restaurés par défaut",
     "reset_gui_failed": "Impossible de réinitialiser les paramètres",
     "os_notifications_label": "Notifications système",
-    "os_notifications_description": "Envoie aussi les événements importants, comme les plantages et les démarrages ou arrêts inattendus, en notification Windows ou macOS. Quand la fenêtre de l'app est au premier plan, ils ne s'affichent que dans l'app."
+    "os_notifications_description": "Envoie aussi les événements importants, comme les plantages et les démarrages ou arrêts inattendus, en notification Windows ou macOS. Quand la fenêtre de l'app est au premier plan, ils ne s'affichent que dans l'app.",
+    "sound_effects_label": "Effets sonores",
+    "sound_effects_description": "Joue un son quand un serveur est démarré ou arrêté depuis l'extérieur de l'app (Discord, web, etc.), s'arrête de façon inattendue, termine son installation ou quand une mise à jour est trouvée. Démarrer ou arrêter depuis l'app elle-même ne fait pas de son.",
+    "sound_server_start": "Serveur démarré",
+    "sound_server_stop": "Serveur arrêté",
+    "sound_crash": "Arrêt inattendu",
+    "sound_install": "Résultat de l'installation",
+    "sound_update": "Mise à jour trouvée"
   },
   "add_server_modal": {
     "title": "Ajouter un nouveau serveur",

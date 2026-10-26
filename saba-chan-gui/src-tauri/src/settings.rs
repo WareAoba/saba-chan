@@ -61,6 +61,7 @@ pub fn default_settings() -> Map<String, Value> {
         "autoGeneratePasswords": true,
         "portConflictCheck": true,
         "osNotifications": true,
+        "sounds": { "enabled": true, "serverStart": true, "serverStop": true, "crash": true, "install": true, "update": true },
     });
     match v {
         Value::Object(m) => m,
