@@ -1627,7 +1627,7 @@
     "save": "Save",
     "status_off": "Off",
     "status_listening": "Listening on port {{port}}",
-    "status_published": "Address shared with your other PCs",
+    "status_published": "Your other PCs know about this PC",
     "clients": "PCs connected to this one",
     "no_clients": "No PC is connected to this one.",
     "revoke": "Disconnect",
@@ -1692,6 +1692,7 @@
     "err_browse_not_a_folder": "That's not a folder",
     "err_generic": "Couldn't read the folder. Please try again",
     "exists": "{{name}} already exists. Press again to replace it",
-    "replace": "Replace"
+    "replace": "Replace",
+    "bad_name": "A name cannot contain / or \\"
   }
 }

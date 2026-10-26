@@ -1627,7 +1627,7 @@
     "save": "保存",
     "status_off": "关闭",
     "status_listening": "正在端口 {{port}} 监听",
-    "status_published": "已把地址告诉你的其他电脑",
+    "status_published": "已把本机告诉你的其他电脑",
     "clients": "已连接到本机的电脑",
     "no_clients": "没有电脑连接到本机。",
     "revoke": "断开",
@@ -1692,6 +1692,7 @@
     "err_browse_not_a_folder": "这不是文件夹",
     "err_generic": "无法读取文件夹，请重试",
     "exists": "{{name}} 已存在。再按一次即可替换",
-    "replace": "替换"
+    "replace": "替换",
+    "bad_name": "名称不能包含 / 或 \\"
   }
 }

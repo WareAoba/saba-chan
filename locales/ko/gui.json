@@ -1627,7 +1627,7 @@
     "save": "저장",
     "status_off": "꺼짐",
     "status_listening": "{{port}} 포트에서 받는 중",
-    "status_published": "내 다른 PC에 주소를 알렸어요",
+    "status_published": "내 다른 PC에 이 PC를 알렸어요",
     "clients": "이 PC에 붙은 PC",
     "no_clients": "이 PC에 붙은 PC가 없어요.",
     "revoke": "연결 끊기",
@@ -1692,6 +1692,7 @@
     "err_browse_not_a_folder": "폴더가 아니에요",
     "err_generic": "폴더를 읽지 못했어요. 다시 해 주세요",
     "exists": "{{name}} 파일이 이미 있어요. 바꾸려면 한 번 더 눌러 주세요",
-    "replace": "바꾸기"
+    "replace": "바꾸기",
+    "bad_name": "이름에 / 나 \\ 는 쓸 수 없어요"
   }
 }

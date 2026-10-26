@@ -1464,7 +1464,10 @@
       "relay_not_paired": "このPCはリレーに接続していません",
       "relay_unreachable": "リレーに接続できませんでした",
       "remote_ambiguous": "その名前のリモートデーモンが複数あります。host id で選んでください",
-      "remote_timeout": "リモートデーモンが時間内に応答しませんでした。要求はまだ処理中かもしれません"
+      "remote_timeout": "リモートデーモンが時間内に応答しませんでした。要求はまだ処理中かもしれません",
+      "remote_bad_path": "そのパスはリモートデーモンに送れません",
+      "remote_unauthorized": "リモートデーモンがこのPCを受け付けなくなりました。もう一度接続してください",
+      "remote_local_only": "そのPCで直接行う必要があります"
     },
     "daemon": "デーモン",
     "this_pc": "このPC",

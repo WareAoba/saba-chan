@@ -1627,7 +1627,7 @@
     "save": "Speichern",
     "status_off": "Aus",
     "status_listening": "Wartet auf Port {{port}}",
-    "status_published": "Adresse an deine anderen PCs weitergegeben",
+    "status_published": "Deine anderen PCs kennen diesen PC jetzt",
     "clients": "Mit diesem PC verbundene PCs",
     "no_clients": "Kein PC ist mit diesem verbunden.",
     "revoke": "Trennen",
@@ -1692,6 +1692,7 @@
     "err_browse_not_a_folder": "Das ist kein Ordner",
     "err_generic": "Ordner konnte nicht gelesen werden. Bitte erneut versuchen",
     "exists": "{{name}} gibt es schon. Zum Ersetzen noch einmal drücken",
-    "replace": "Ersetzen"
+    "replace": "Ersetzen",
+    "bad_name": "Ein Name darf kein / oder \\ enthalten"
   }
 }

@@ -1627,7 +1627,7 @@
     "save": "Guardar",
     "status_off": "Apagado",
     "status_listening": "Escuchando en el puerto {{port}}",
-    "status_published": "Dirección compartida con tus otros PC",
+    "status_published": "Tus otros PC ya conocen este PC",
     "clients": "PC conectados a este",
     "no_clients": "Ningún PC está conectado a este.",
     "revoke": "Desconectar",
@@ -1692,6 +1692,7 @@
     "err_browse_not_a_folder": "No es una carpeta",
     "err_generic": "No se pudo leer la carpeta. Inténtalo de nuevo",
     "exists": "{{name}} ya existe. Pulsa otra vez para reemplazarlo",
-    "replace": "Reemplazar"
+    "replace": "Reemplazar",
+    "bad_name": "El nombre no puede contener / ni \\"
   }
 }

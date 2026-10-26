@@ -1464,7 +1464,10 @@
       "relay_not_paired": "此电脑未连接中继",
       "relay_unreachable": "无法连接中继",
       "remote_ambiguous": "有多个同名的远程守护进程。请用 host id 选择",
-      "remote_timeout": "远程守护进程未及时回应。请求可能仍在处理中"
+      "remote_timeout": "远程守护进程未及时回应。请求可能仍在处理中",
+      "remote_bad_path": "该路径不能发送给远程守护进程",
+      "remote_unauthorized": "远程守护进程不再接受本机。请重新连接",
+      "remote_local_only": "这只能在那台电脑上直接操作"
     },
     "daemon": "守护进程",
     "this_pc": "本机",

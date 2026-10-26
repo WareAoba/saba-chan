@@ -1268,7 +1268,10 @@
       "relay_not_paired": "此電腦未連線中繼",
       "relay_unreachable": "無法連上中繼",
       "remote_ambiguous": "有多個同名的遠端常駐程式。請用 host id 選擇",
-      "remote_timeout": "遠端常駐程式未及時回應。請求可能仍在處理中"
+      "remote_timeout": "遠端常駐程式未及時回應。請求可能仍在處理中",
+      "remote_bad_path": "該路徑不能傳給遠端常駐程式",
+      "remote_unauthorized": "遠端常駐程式不再接受本機。請重新連線",
+      "remote_local_only": "這只能在那台電腦上直接操作"
     },
     "daemon": "守護程式",
     "this_pc": "本機",

@@ -1627,7 +1627,7 @@
     "save": "Enregistrer",
     "status_off": "Désactivé",
     "status_listening": "À l'écoute sur le port {{port}}",
-    "status_published": "Adresse communiquée à vos autres PC",
+    "status_published": "Vos autres PC connaissent maintenant ce PC",
     "clients": "PC connectés à celui-ci",
     "no_clients": "Aucun PC n'est connecté à celui-ci.",
     "revoke": "Déconnecter",
@@ -1692,6 +1692,7 @@
     "err_browse_not_a_folder": "Ce n'est pas un dossier",
     "err_generic": "Impossible de lire le dossier. Réessayez",
     "exists": "{{name}} existe déjà. Appuyez encore pour le remplacer",
-    "replace": "Remplacer"
+    "replace": "Remplacer",
+    "bad_name": "Un nom ne peut pas contenir / ni \\"
   }
 }

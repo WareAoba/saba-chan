@@ -1627,7 +1627,7 @@
     "save": "保存",
     "status_off": "オフ",
     "status_listening": "ポート {{port}} で受付中",
-    "status_published": "他のPCにアドレスを知らせました",
+    "status_published": "他のPCにこのPCを知らせました",
     "clients": "このPCにつないだPC",
     "no_clients": "このPCにつないだPCはありません。",
     "revoke": "接続を切る",
@@ -1692,6 +1692,7 @@
     "err_browse_not_a_folder": "フォルダーではありません",
     "err_generic": "フォルダーを読めませんでした。もう一度お試しください",
     "exists": "{{name}} はすでにあります。置き換えるにはもう一度押してください",
-    "replace": "置き換える"
+    "replace": "置き換える",
+    "bad_name": "名前に / や \\ は使えません"
   }
 }

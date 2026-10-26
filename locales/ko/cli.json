@@ -1464,7 +1464,10 @@
       "relay_not_paired": "이 PC가 릴레이에 연결돼 있지 않아요",
       "relay_unreachable": "릴레이에 닿지 못했어요",
       "remote_ambiguous": "그 이름의 원격 데몬이 둘 이상이에요. host id로 골라 주세요",
-      "remote_timeout": "원격 데몬이 제때 답하지 않았어요. 요청은 이미 처리 중일 수 있어요"
+      "remote_timeout": "원격 데몬이 제때 답하지 않았어요. 요청은 이미 처리 중일 수 있어요",
+      "remote_bad_path": "그 경로는 원격 데몬에 보낼 수 없어요",
+      "remote_unauthorized": "원격 데몬이 이 PC를 더는 받지 않아요. 다시 연결해 주세요",
+      "remote_local_only": "그 PC에서 직접 해야 하는 일이에요"
     },
     "daemon": "데몬",
     "this_pc": "이 PC",
