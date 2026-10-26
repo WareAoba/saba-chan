@@ -170,21 +170,26 @@ function StartNotice({ api, guildId }) {
     const { t } = useTranslation();
     const toast = useApp((s) => s.toast);
     const servers = useData((s) => s.servers);
+    const serversLoaded = useData((s) => s.serversLoaded);
+    // null = 읽는 중, false = 읽지 못함
     const [notice, setNotice] = useState(null);
-    const [busy, setBusy] = useState(null);
+    const [busy, setBusy] = useState(false);
 
     useEffect(() => {
         setNotice(null);
         api.guildStartNoticeGet(guildId).then((res) => {
-            if (failed(res)) toast(errorText(t, res), 'error');
-            else setNotice(res);
+            if (failed(res)) {
+                toast(errorText(t, res), 'error');
+                setNotice(false);
+            } else setNotice(res);
         });
     }, [api, guildId, t, toast]);
 
+    // 한 번에 하나씩: 응답의 목록이 그때의 전체라 겹치면 늦게 온 것이 앞 변경을 덮는다
     const toggle = async (id, enabled) => {
-        setBusy(id);
+        setBusy(true);
         const res = await api.guildStartNoticeSave(id, guildId, enabled);
-        setBusy(null);
+        setBusy(false);
         if (failed(res)) return toast(errorText(t, res), 'error');
         setNotice((n) => ({ ...n, instances: res.instances }));
         toast(enabled ? t('perm.notice_on') : t('perm.notice_off'), 'ok');
@@ -195,7 +200,7 @@ function StartNotice({ api, guildId }) {
         <div className="field">
             <span>{t('perm.notice')}</span>
             <small className="hint">{t('perm.notice_hint')}</small>
-            {!notice ? (
+            {notice === false ? null : !notice || !serversLoaded ? (
                 <Loading />
             ) : rows.length === 0 ? (
                 <Empty>{t('perm.notice_empty')}</Empty>
@@ -212,7 +217,7 @@ function StartNotice({ api, guildId }) {
                                     className="switch"
                                     aria-label={r.name}
                                     checked={r.on}
-                                    disabled={busy === r.id}
+                                    disabled={busy}
                                     onChange={(ev) => toggle(r.id, ev.target.checked)}
                                 />
                             </label>
