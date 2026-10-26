@@ -110,6 +110,7 @@ function SettingsModal({
     const [togglingIds, setTogglingIds] = useState(new Set());
     const autoGeneratePasswords = useSettingsStore((s) => s.autoGeneratePasswords);
     const portConflictCheck = useSettingsStore((s) => s.portConflictCheck);
+    const osNotifications = useSettingsStore((s) => s.osNotifications);
 
     const handleExtensionToggle = useCallback(
         async (extId, enable) => {
@@ -831,6 +832,23 @@ function SettingsModal({
                                 <SabaToggle
                                     checked={portConflictCheck}
                                     onChange={(checked) => useSettingsStore.getState().update({ portConflictCheck: checked })}
+                                />
+                            </div>
+
+                            {/* 중대한 알림을 OS 알림으로도 */}
+                            <div className="setting-item">
+                                <label className="setting-label">
+                                    <span className="setting-title">
+                                        <Icon name="bell" size="sm" />{' '}
+                                        {t('gui:settings_modal.os_notifications_label')}
+                                    </span>
+                                    <span className="setting-description">
+                                        {t('gui:settings_modal.os_notifications_description')}
+                                    </span>
+                                </label>
+                                <SabaToggle
+                                    checked={osNotifications}
+                                    onChange={(checked) => useSettingsStore.getState().update({ osNotifications: checked })}
                                 />
                             </div>
 

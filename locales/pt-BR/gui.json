@@ -115,7 +115,9 @@
     "reset_gui_button": "Redefinir",
     "reset_gui_confirm": "Clique de novo para redefinir",
     "reset_gui_done": "Configurações da interface restauradas para o padrão",
-    "reset_gui_failed": "Não foi possível redefinir as configurações"
+    "reset_gui_failed": "Não foi possível redefinir as configurações",
+    "os_notifications_label": "Notificações do sistema",
+    "os_notifications_description": "Envia também como notificações do Windows ou macOS os eventos importantes, como falhas e inícios ou paradas inesperados. Com a janela do app em primeiro plano, aparecem só no app."
   },
   "add_server_modal": {
     "title": "Adicionar Novo Servidor",
@@ -1323,7 +1325,10 @@
     "source_api": "API",
     "source_discord": "Discord",
     "source_schedule": "Agendamento",
-    "source_daemon": "Daemon"
+    "source_daemon": "Daemon",
+    "source_web": "Saba-chan web",
+    "source_remote": "PC remoto",
+    "source_restart": "Reinício automático"
   },
   "launch_preview": {
     "title": "Prévia dos argumentos de inicialização",
@@ -1411,7 +1416,11 @@
     "schedule_restart": "{{name}} vai reiniciar conforme agendado em {{minutes}} min.",
     "schedule_update": "{{name}} vai atualizar conforme agendado em {{minutes}} min.",
     "module_update": "{{name}}: saiu a versão {{version}} do módulo {{module}}.",
-    "server_update": "{{name}}: saiu uma nova versão do servidor do jogo. Se não der para entrar, atualize o servidor."
+    "server_update": "{{name}}: saiu uma nova versão do servidor do jogo. Se não der para entrar, atualize o servidor.",
+    "instance_started": "{{name}} foi iniciado ({{source}}).",
+    "instance_stopped": "{{name}} foi parado ({{source}}).",
+    "instance_stopped_in_game": "{{name}} foi parado de dentro do jogo.",
+    "instance_started_external": "{{name}} foi iniciado fora do Saba-chan. O Saba-chan não iniciou este processo."
   },
   "switch_cli": {
     "label": "Mudar para a CLI",

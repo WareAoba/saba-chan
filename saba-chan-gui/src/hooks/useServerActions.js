@@ -10,7 +10,7 @@ import {
     retryWithBackoff,
     safeShowToast,
 } from '../utils/helpers';
-import { claimStopNotice, showPortMoved } from '../utils/daemonEvents';
+import { claimStopNotice, eventsAvailable, showPortMoved } from '../utils/daemonEvents';
 import { gameNameOf, reuseUnchanged } from '../utils/serverView';
 import { blockedText, canAskUnisolated, showTrustWarnings } from '../utils/trustNotice';
 import { updateRequiredText } from '../utils/updateRequired';
@@ -120,10 +120,12 @@ export function useServerActions({
 
                         const isKnownOp = isGuiOp || isApiOp || inBootGrace || hasPendingOptimistic;
 
-                        if (wasRunning && nowStopped && !isKnownOp) {
+                        // 데몬 이벤트를 받으면 켜짐·꺼짐은 이벤트가 출처와 함께 알린다 (instance.started·stopped·exit).
+                        // 폴링은 이벤트를 못 받을 때만, 사바쨩을 거치지 않은 변화만 알린다
+                        const pollNotices = !eventsAvailable() && !isKnownOp;
+                        if (pollNotices && wasRunning && nowStopped) {
                             // Crash / unexpected stop — genuinely important.
-                            // This is the ONLY state transition that warrants
-                            // a persistent notice. instance.exit 이벤트가 이미 알렸으면 건너뛴다 (G-S6)
+                            // instance.exit 이벤트가 이미 알렸으면 건너뛴다 (G-S6)
                             if (claimStopNotice(newServer.id, 'poll'))
                                 safeShowToast(
                                     t('servers.unexpected_stop_toast', { name: newServer.name }),
@@ -134,16 +136,8 @@ export function useServerActions({
                                         source: newServer.name,
                                     },
                                 );
-                        } else if (wasRunning && nowStopped && !isGuiOp && isApiOp && !inBootGrace) {
-                            // API-initiated stop (Discord bot command, etc.)
-                            // Informational toast only — not notice-worthy.
-                            safeShowToast(t('servers.unexpected_stop_toast', { name: newServer.name }), 'info', 3000);
-                        } else if (wasStopped && nowRunning && !isKnownOp) {
+                        } else if (pollNotices && wasStopped && nowRunning) {
                             // External start — informational only, not alarming.
-                            // Toast is enough; no persistent notice.
-                            safeShowToast(t('servers.external_start_toast', { name: newServer.name }), 'info', 3000);
-                        } else if (wasStopped && nowRunning && !isGuiOp && isApiOp && !inBootGrace) {
-                            // API-initiated start (Discord bot command, etc.)
                             safeShowToast(t('servers.external_start_toast', { name: newServer.name }), 'info', 3000);
                         }
 

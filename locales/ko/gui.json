@@ -115,7 +115,9 @@
     "reset_gui_button": "초기화",
     "reset_gui_confirm": "한 번 더 누르면 초기화",
     "reset_gui_done": "GUI 설정을 처음 값으로 되돌렸어요",
-    "reset_gui_failed": "설정을 초기화하지 못했어요"
+    "reset_gui_failed": "설정을 초기화하지 못했어요",
+    "os_notifications_label": "OS 알림",
+    "os_notifications_description": "크래시, 예기치 않은 시작·종료처럼 꼭 알아야 할 일을 Windows·macOS 알림으로도 보내요. 앱 창이 앞에 있으면 앱 안에서만 알려요."
   },
   "add_server_modal": {
     "title": "새 서버 추가",
@@ -1323,7 +1325,10 @@
     "source_api": "API",
     "source_discord": "디스코드",
     "source_schedule": "예약 작업",
-    "source_daemon": "데몬"
+    "source_daemon": "데몬",
+    "source_web": "사바쨩 웹",
+    "source_remote": "원격 PC",
+    "source_restart": "자동 재시작"
   },
   "launch_preview": {
     "title": "실행 인자 미리보기",
@@ -1411,7 +1416,11 @@
     "schedule_restart": "{{name}} 서버가 {{minutes}}분 뒤 예약대로 다시 시작돼요.",
     "schedule_update": "{{name}} 서버가 {{minutes}}분 뒤 예약대로 업데이트돼요.",
     "module_update": "{{name}}: {{module}} 모듈의 새 버전 {{version}}이(가) 나왔어요.",
-    "server_update": "{{name}}: 게임 서버의 새 버전이 나왔어요. 접속이 막히면 서버를 업데이트해 주세요."
+    "server_update": "{{name}}: 게임 서버의 새 버전이 나왔어요. 접속이 막히면 서버를 업데이트해 주세요.",
+    "instance_started": "{{name}} 서버를 켰어요 ({{source}}).",
+    "instance_stopped": "{{name}} 서버를 껐어요 ({{source}}).",
+    "instance_stopped_in_game": "{{name}} 서버를 게임 안에서 껐어요.",
+    "instance_started_external": "{{name}} 서버가 사바쨩 밖에서 켜졌어요. 사바쨩이 켜지 않은 프로세스예요."
   },
   "switch_cli": {
     "label": "CLI로 전환",

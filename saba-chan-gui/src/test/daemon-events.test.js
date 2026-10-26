@@ -80,6 +80,43 @@ describe('데몬 이벤트 스트림', () => {
         expect(eventToast({ type: 'mystery', data: {} }, t)).toBeNull();
     });
 
+    it('켜고 끈 출처를 문구에 싣고, 사바쨩 밖에서 켠 것만 경고로 알린다', () => {
+        const started = (data) => eventToast({ type: 'instance.started', data: { instance: 'Survival', ...data } }, t);
+        const stopped = (data) => eventToast({ type: 'instance.stopped', data: { instance: 'Survival', ...data } }, t);
+        // 앱에서 한 일은 그 자리에서, 디스코드·말하는 사바쨩에서 한 일은 action.run이 이미 알린다
+        for (const source of ['gui', 'discord', 'chatbot']) {
+            expect(started({ source, unexpected: false })).toBeNull();
+            expect(stopped({ source, kind: 'user_stop' })).toBeNull();
+        }
+        const table = [
+            ['cli', 'CLI'],
+            ['web', 'Saba-chan web'],
+            ['remote', 'Remote PC'],
+            ['schedule', 'Schedule'],
+            ['restart', 'Auto restart'],
+            ['daemon', 'Daemon'],
+        ];
+        for (const [source, label] of table) {
+            const on = started({ source, unexpected: false });
+            expect(on).toMatchObject({ message: `Survival started (${label}).`, type: 'info' });
+            expect(stopped({ source, kind: 'user_stop' })).toMatchObject({
+                message: `Survival stopped (${label}).`,
+                type: 'info',
+            });
+        }
+        expect(started({ source: 'remote', userName: 'Home PC', unexpected: false }).message).toBe(
+            'Survival started (Remote PC · Home PC).',
+        );
+        expect(stopped({ source: 'game', kind: 'in_game_stop' })).toMatchObject({
+            message: 'Survival was stopped from inside the game.',
+            type: 'info',
+        });
+        expect(started({ source: 'external', unexpected: true })).toMatchObject({
+            message: 'Survival was started outside Saba-chan. Saba-chan did not start this process.',
+            type: 'warning',
+        });
+    });
+
     it('토스트를 띄우고, 서버가 바뀌는 이벤트는 한 번만 목록을 다시 읽는다', async () => {
         vi.useFakeTimers();
         window.showToast = vi.fn();

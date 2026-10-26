@@ -9,7 +9,7 @@ export const auditAvailable = () => !!window.api?.auditList;
 
 const PAGE = 100;
 const MAX = 1000; // 데몬 상한
-const SOURCES = ['gui', 'cli', 'api', 'discord', 'schedule', 'daemon'];
+const SOURCES = ['gui', 'cli', 'api', 'discord', 'schedule', 'daemon', 'web', 'remote', 'restart'];
 const ACTIONS = ['start', 'stop', 'restart', 'command', 'stdin', 'backup'];
 
 // 데몬은 인자를 JSON 문자열로 남긴다 (잘렸을 수 있다): 배열이면 띄어 쓰고, 아니면 그대로

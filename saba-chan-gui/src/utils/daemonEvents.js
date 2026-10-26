@@ -5,7 +5,7 @@ import { safeShowToast } from './helpers';
 export const eventsAvailable = () => typeof window.api?.onDaemonEvent === 'function';
 
 /** 서버 목록을 다시 읽어야 하는 이벤트 (상태는 이벤트로 오지 않는다) */
-export const SERVER_CHANGING = ['action.run', 'instance.exit', 'resync'];
+export const SERVER_CHANGING = ['action.run', 'instance.exit', 'instance.started', 'instance.stopped', 'resync'];
 
 /** preload가 넘긴 한 건 → {id, type, data}. data는 문자열(JSON)이어도 받는다 */
 export function normalizeEvent(raw) {
@@ -35,6 +35,15 @@ export function subscribeDaemonEvents(cb) {
 
 /** action.run data(감사 한 줄 모양) → 감사 목록 한 건 모양 */
 export const auditEntryOf = (data) => ({ ...data, ts: data.ts ?? data.at });
+
+// 켜고 끈 출처 중 이미 다른 곳이 알린 것: 앱(그 자리에서), 디스코드·말하는 사바쨩(action.run)
+const SOURCES_TOLD_ELSEWHERE = ['gui', 'discord', 'chatbot'];
+
+/** instance.started·stopped의 출처 → "원격 PC · 집 PC" */
+export function sourceText(d, t) {
+    const label = t(`audit.source_${d.source}`, { defaultValue: d.source || '' });
+    return d.userName ? `${label} · ${d.userName}` : label;
+}
 
 /**
  * 이벤트 → 토스트 {message, type, duration} 또는 null.
@@ -66,6 +75,31 @@ export function eventToast(ev, t, nameOf = (id) => id) {
                 message: `${t('events.instance_exit', { name, kind })}${restart}`,
                 type: 'warning',
                 duration: 8000,
+            };
+        }
+        case 'instance.started': {
+            const name = d.instance || nameOf(d.instanceId);
+            // 사바쨩이 띄우지 않은 프로세스로 켜졌다: 예기치 않은 시작
+            if (d.unexpected) {
+                return { message: t('events.instance_started_external', { name }), type: 'warning', duration: 10000 };
+            }
+            if (SOURCES_TOLD_ELSEWHERE.includes(d.source)) return null;
+            return {
+                message: t('events.instance_started', { name, source: sourceText(d, t) }),
+                type: 'info',
+                duration: 4000,
+            };
+        }
+        case 'instance.stopped': {
+            const name = d.instance || nameOf(d.instanceId);
+            if (d.kind === 'in_game_stop') {
+                return { message: t('events.instance_stopped_in_game', { name }), type: 'info', duration: 4000 };
+            }
+            if (SOURCES_TOLD_ELSEWHERE.includes(d.source)) return null;
+            return {
+                message: t('events.instance_stopped', { name, source: sourceText(d, t) }),
+                type: 'info',
+                duration: 4000,
             };
         }
         case 'backup.done': {

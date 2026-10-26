@@ -1078,7 +1078,9 @@ pub async fn auto_restart(state: IPCServer, instance_id: String, delay: std::tim
     tracing::info!("Auto restarting '{}' after a crash", instance_id);
     // 백업이 잠금을 쥐고 있으면 끝나기를 기다린다 (기다리는 동안 사용자가 정지·시작하면 그만둔다)
     let wanted = || async { state.supervisor.read().await.restart_still_wanted(&instance_id, generation).await };
-    let Some(resp) = super::backup::start_when_free(&state, &instance_id, generation, wanted).await else {
+    // 다시 띄운 시작의 출처는 자동 재시작이다 (`instance.started`·감사 로그)
+    let restart = crate::audit::Origin::new("restart");
+    let Some(resp) = crate::audit::with_origin(restart, super::backup::start_when_free(&state, &instance_id, generation, wanted)).await else {
         tracing::info!("Auto restart of '{}' skipped: stopped or started meanwhile", instance_id);
         state.supervisor.read().await.record_restart_outcome(&instance_id, generation, false);
         return;

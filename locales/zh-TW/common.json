@@ -124,5 +124,15 @@
       "title": "要載入擴充功能畫面嗎？",
       "message": "{{component}} 的畫面程式碼未經驗證。載入後它會在 Saba-chan 視窗內執行。僅在信任時允許。"
     }
+  },
+  "notify": {
+    "title": "Saba-chan",
+    "crash": "{{name}} 當機並停止了。",
+    "unknown_exit": "{{name}} 意外停止了。",
+    "restart_in": "{{secs}} 秒後重新啟動。",
+    "gave_up": "已放棄自動重新啟動，請檢查伺服器。",
+    "restart_failed": "無法重新啟動 {{name}}。",
+    "external_start": "{{name}} 在 Saba-chan 之外啟動。這不是 Saba-chan 啟動的程序。",
+    "backup_failed": "{{name}} 自動備份失敗。"
   }
 }
