@@ -54,6 +54,7 @@ fn bad_gateway(message: &str) -> axum::response::Response {
 }
 
 /// POST `<relay>/api/privacy/erasures` (노드 토큰 서명)
+#[allow(clippy::result_large_err)] // 오류 응답은 드문 경로다
 async fn issue(base: &str, locale: Option<&str>) -> Result<Ticket, axum::response::Response> {
     let client = client()?;
     let path = "/api/privacy/erasures";
