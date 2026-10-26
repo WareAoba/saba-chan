@@ -52,7 +52,7 @@ describe('설정 > 고급: 원격 데몬 (/api/remote/*)', () => {
         await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Save' })));
         expect(window.api.remoteSettingsSet).toHaveBeenCalledWith({ enabled: true, port: 57480, address: 'saba.example.com' });
         expect(screen.getByText('Listening on port 57480')).toBeInTheDocument();
-        expect(screen.getByText('Address shared with your other PCs')).toBeInTheDocument();
+        expect(screen.getByText('Your other PCs know about this PC')).toBeInTheDocument();
     });
 
     it('포트를 열지 못하면 이유를 번역해 보인다', async () => {
@@ -91,6 +91,20 @@ describe('설정 > 고급: 원격 데몬 (/api/remote/*)', () => {
         const daemons = screen.getByRole('list', { name: 'Remote daemons this PC uses' });
         await act(async () => fireEvent.click(within(daemons).getByRole('button', { name: 'Forget' })));
         expect(window.api.remoteForget).toHaveBeenCalledWith('host-b');
+    });
+
+    it('공인 주소가 없는 원격 데몬은 릴레이를 거친다고 보인다 (CLI와 같다)', async () => {
+        window.api.remoteDaemons.mockResolvedValue({
+            daemons: [
+                { hostId: 'host-b', name: '게임 PC', address: '', port: 57480 },
+                { hostId: 'host-d', name: '집 서버', address: 'g.example', port: 57480 },
+            ],
+        });
+        await act(async () => render(<RemoteDaemonSection />));
+        const daemons = screen.getByRole('list', { name: 'Remote daemons this PC uses' });
+        expect(within(daemons).getByText('Through the relay')).toBeInTheDocument();
+        expect(within(daemons).getByText('g.example:57480')).toBeInTheDocument();
+        expect(within(daemons).queryByText(':57480')).toBeNull();
     });
 
     it('릴레이에 연결하지 않았으면 내 다른 PC 대신 안내를 보인다', async () => {

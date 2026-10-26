@@ -123,6 +123,13 @@ describe('상단 탭 페이지 전환', () => {
         expect(document.querySelector('.settings-modal-overlay')).toBeNull();
     }, 20000);
 
+    it('다른 탭으로 가면 열어 둔 데몬 팝오버를 닫는다', async () => {
+        await boot();
+        act(() => useUIStore.getState().setShowBackgroundSection(true));
+        await act(async () => fireEvent.click(document.querySelectorAll('.appbar-tab')[2]));
+        await waitFor(() => expect(useUIStore.getState().showBackgroundSection).toBe(false));
+    }, 20000);
+
     it('openSettings(update) 요청은 설정 페이지로 이동한다', async () => {
         await boot();
         act(() => useUIStore.getState().openSettings('update'));

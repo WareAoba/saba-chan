@@ -534,7 +534,7 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 
 ### 3.4 콘솔 입력, 정지, 강제 종료
 
-- **stdin**: `POST /api/instance/:id/stdin` `{command}`가 `/rcon`과 같은 `via_stdin`을 부르고, 보낸 뒤 찍힌 콘솔 줄을 `data.response`로 돌려준다 (`managed.rs:117-136`, `command.rs:432-`). 쓰기는 mpsc(256)를 거쳐 writer task가 개행을 붙여 쓴다 (`managed_process.rs:285, 344-351, 408-415`).
+- **stdin**: `POST /api/instance/:id/stdin` `{command}`가 `/rcon`과 같은 `via_stdin`을 부르고, 보낸 뒤 찍힌 콘솔 줄을 `data.response`로 돌려준다 (`managed.rs:117-136`, `command.rs:432-`). 쓰기는 mpsc(256)를 거쳐 writer task가 개행을 붙여 쓴다 (`managed_process.rs:285, 344-351, 408-415`). 보낸 뒤 2초 안에 stdout에 보낸 명령과 같은 줄이 오면 서버가 입력을 되풀이한 것으로 보고 그 한 줄은 버퍼에 넣지 않는다(`LogBuffer::take_echo`, 리눅스 테라리아 등. 클라이언트는 보낸 명령을 이미 보인다).
 - **managed stop** (`mod.rs:951-1026`):
   1. `force`이면 `force_kill`을 한다.
   2. 모듈이 `stdin`을 지원하고 stdin이 열려 있으면 `stop_command`를 stdin으로 보낸다. 그 시작이 아직 `ready_patterns`를 기다리는 중이면(켜지는 중) 준비 문구가 찍히거나 프로세스가 끝날 때까지, 길어야 4번의 대기 시간만큼 들고 있다가 보낸다. 준비 전에 받은 명령을 실패하는 서버가 있어서다(minecraft 26.3은 `An unexpected error occurred while trying to execute that command`만 찍고 계속 돈다). 테스트 `a_stop_while_starting_waits_for_the_ready_line`.
