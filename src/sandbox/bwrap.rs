@@ -121,6 +121,7 @@ pub fn args(grants: &Grants, cwd: Option<&Path>) -> Vec<OsString> {
     out
 }
 
+#[cfg_attr(windows, allow(dead_code))] // Windows는 AppContainer로 띄운다
 /// `cmd`를 bwrap 안에서 띄우는 명령. 환경 변수 변경과 작업 폴더는 그대로 옮긴다 (입출력은 부르는 쪽이 정한다)
 pub fn wrap(bwrap: &Path, cmd: &std::process::Command, grants: &Grants) -> std::process::Command {
     let mut wrapped = std::process::Command::new(bwrap);
