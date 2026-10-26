@@ -974,8 +974,13 @@ pub fn isolation_for(entry: &Path, config: &Value, python_exe: &Path) -> Option<
     // 모듈 기본값과 구별할 수 없지만 Java 설치 모양인 폴더(`runtime_home`)를 읽기로만 붙인다
     #[cfg(not(windows))]
     if let Some(java) = config.get("java_path").and_then(Value::as_str) {
-        for runtime in runtime_homes_in(Some(java), None, std::env::var_os("PATH").as_deref(), &[]) {
-            grants.push_optional(&runtime, Access::Read, &data_dir, home);
+        let runtimes = runtime_homes_in(Some(java), None, std::env::var_os("PATH").as_deref(), &[]);
+        for runtime in &runtimes {
+            grants.push_optional(runtime, Access::Read, &data_dir, home);
+        }
+        // `runtime_home`은 실제 경로를 돌려준다: 모듈은 설정한 경로로 실행하므로 그 경로가 거친 링크(`current` 등)도 남긴다
+        if !runtimes.is_empty() {
+            grants.note_links(Path::new(java.trim()));
         }
     }
     let profile = appcontainer::profile_for(&key);
@@ -1238,7 +1243,14 @@ mod tests {
         std::fs::write(&entry, "").unwrap();
         let config = serde_json::json!({ "java_path": jdk.join("bin").join("java") });
         let iso = isolation_for(&entry, &config, Path::new("python")).unwrap();
+        assert!(iso.grants.entries.contains(&(jdk.clone(), appcontainer::Access::Read)), "{:?}", iso.grants.entries);
+        // `~/.sdkman/.../current/bin/java`처럼 링크를 거친 설정 경로도 격리 안에서 그대로 실행되게 링크를 남긴다
+        let current = root.join("current");
+        std::os::unix::fs::symlink(&jdk, &current).unwrap();
+        let config = serde_json::json!({ "java_path": current.join("bin").join("java") });
+        let iso = isolation_for(&entry, &config, Path::new("python")).unwrap();
         assert!(iso.grants.entries.contains(&(jdk, appcontainer::Access::Read)), "{:?}", iso.grants.entries);
+        assert!(iso.grants.links.contains(&current), "{:?}", iso.grants.links);
     }
 
     #[test]

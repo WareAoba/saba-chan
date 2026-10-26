@@ -118,6 +118,11 @@ impl Grants {
         if !self.entries.iter().any(|(p, a)| p == &real && *a == access) {
             self.entries.push((real, access));
         }
+        self.note_links(path);
+    }
+
+    /// 원래 경로가 거친 링크를 남긴다 (`links`). 권한은 실제 경로에 붙으므로 원래 경로로 쓰는 쪽을 위해서다
+    pub fn note_links(&mut self, path: &Path) {
         if path.is_absolute() {
             for link in path.ancestors().filter(|p| std::fs::symlink_metadata(p).is_ok_and(|m| m.file_type().is_symlink())) {
                 if !self.links.iter().any(|l| l == link) {

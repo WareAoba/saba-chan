@@ -101,11 +101,32 @@ fn proxy_for(target: &str, env: impl Fn(&str) -> Option<String>) -> Option<Proxy
     }?;
     let rest = value.trim().strip_prefix("http://")?.trim_end_matches('/');
     let (auth, addr) = match rest.rsplit_once('@') {
-        Some((user, addr)) => (Some(base64::engine::general_purpose::STANDARD.encode(user)), addr),
+        Some((user, addr)) => (Some(base64::engine::general_purpose::STANDARD.encode(percent_decode(user))), addr),
         None => (None, rest),
     };
     let addr = if addr.rsplit_once(':').is_some_and(|(_, p)| p.parse::<u16>().is_ok()) { addr.to_string() } else { format!("{addr}:80") };
     Some(Proxy { addr, auth })
+}
+
+/// URL의 `%XX`를 바이트로 되돌린다 (프록시 사용자명·암호). 잘못된 이스케이프는 그대로 둔다
+fn percent_decode(s: &str) -> Vec<u8> {
+    let bytes = s.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        let hex = bytes.get(i + 1..i + 3).filter(|h| h.iter().all(u8::is_ascii_hexdigit)).and_then(|h| std::str::from_utf8(h).ok()).and_then(|h| u8::from_str_radix(h, 16).ok());
+        match (bytes[i], hex) {
+            (b'%', Some(b)) => {
+                out.push(b);
+                i += 3;
+            }
+            (b, _) => {
+                out.push(b);
+                i += 1;
+            }
+        }
+    }
+    out
 }
 
 /// 프록시에 `CONNECT host:port`로 터널을 연다 (응답 머리는 8KB까지)
@@ -299,6 +320,8 @@ mod tests {
         let proxy = proxy_for("wss://saba-chan.online/node/tunnel?to=a", env(&vars)).expect("a proxy");
         assert_eq!(proxy.addr, "proxy.lan:3128");
         assert_eq!(proxy.auth.as_deref(), Some("dXNlcjpwdw=="));
+        let escaped = proxy_for("wss://saba-chan.online/x", env(&[("HTTPS_PROXY", "http://user:p%40ss@proxy.lan:3128")]));
+        assert_eq!(escaped.unwrap().auth.as_deref(), Some("dXNlcjpwQHNz"), "user:p@ss, URL-decoded");
         assert!(proxy_for("wss://relay.corp/x", env(&vars)).is_none(), "NO_PROXY suffix");
         assert!(proxy_for("wss://relay.direct/x", env(&vars)).is_none(), "NO_PROXY host");
         assert!(proxy_for("ws://127.0.0.1:9/x", env(&vars)).is_none(), "loopback is never proxied");
