@@ -94,7 +94,15 @@ function SabaStorage({ onBack, isExiting, devMode, initialTab = 'components' }) 
 // 컴포넌트 데이터 파싱 — 순수 함수이므로 컴포넌트 밖에 정의
 // 모듈/익스텐션은 별도 탭이라 카드로 보이지 않지만(hidden), 모두 업데이트가 함께 받고 적용한다 (UP1).
 // locales는 백그라운드 자동 업데이트 — 다루지 않는다
-const parseComponents = (comps) =>
+const COMPONENT_ICONS = {
+    updater: 'componentUpdater',
+    gui: 'componentGui',
+    'saba-core': 'componentCore',
+    cli: 'componentCli',
+    installer: 'componentInstaller',
+};
+
+export const parseComponents = (comps) =>
     (comps || [])
         .filter((c) => {
             const k = typeof c.component === 'string' ? c.component : String(c.component);
@@ -106,15 +114,7 @@ const parseComponents = (comps) =>
                 key,
                 hidden: key.startsWith('module-') || key.startsWith('ext-'),
                 display: c.display_name || key,
-                icon: key.startsWith('module-')
-                    ? 'gamepad'
-                    : key === 'gui'
-                      ? 'monitor'
-                      : key === 'cli'
-                        ? 'terminal'
-                        : key === 'updater'
-                          ? 'refresh'
-                          : 'server',
+                icon: key.startsWith('module-') ? 'gamepad' : COMPONENT_ICONS[key] || 'server',
                 current_version: c.current_version || '—',
                 latest_version: c.latest_version || null,
                 update_available: !!c.update_available,

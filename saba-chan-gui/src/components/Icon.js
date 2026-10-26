@@ -603,6 +603,40 @@ export const Icon = ({ name, size = 'md', color = 'currentColor' }) => {
                 <path d="M32 304v48a32.09 32.09 0 0032 32h384a32.09 32.09 0 0032-32v-48zm224 64a16 16 0 1116-16 16 16 0 01-16 16z" fill="currentColor" />
             </svg>
         ),
+        // 사바 스토리지 컴포넌트 목록 (사용자 10-26 고른 세트)
+        componentUpdater: (
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M17.5 19H7a5 5 0 1 1 1.6-9.74A6 6 0 0 1 20 11a4 4 0 0 1-2.5 8z" />
+                <path d="M12 16v-6M9.5 12.5 12 10l2.5 2.5" />
+            </svg>
+        ),
+        componentGui: (
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="2" y="3" width="20" height="14" rx="2" />
+                <path d="M8 21h8M12 17v4" />
+                <path d="m10 7 5 3-2 .6-.9 2.1z" />
+            </svg>
+        ),
+        componentCore: (
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="5" y="5" width="14" height="14" rx="2" />
+                <rect x="9" y="9" width="6" height="6" rx="1" />
+                <path d="M9 1v4M15 1v4M9 19v4M15 19v4M1 9h4M1 15h4M19 9h4M19 15h4" />
+            </svg>
+        ),
+        componentCli: (
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="2" y="4" width="20" height="16" rx="2" />
+                <path d="m6 10 3 2.5L6 15M12 15h5" />
+            </svg>
+        ),
+        componentInstaller: (
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 11l9-4 9 4v8l-9 4-9-4z" />
+                <path d="M3 11l9 4 9-4M12 15v8" />
+                <path d="M12 1v6M9.5 4.5 12 7l2.5-2.5" />
+            </svg>
+        ),
         cloud: (
             <svg xmlns="http://www.w3.org/2000/svg" className="ionicon" viewBox="0 0 512 512">
                 <path
