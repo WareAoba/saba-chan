@@ -811,6 +811,8 @@
       "remote.connect.host_id": "要連線的電腦 id（見 `remote peers`）",
       "remote.forget.host_id": "要移除的電腦 id（見 `remote daemons`）",
       "config.autostart.mode": "off、daemon 或 full",
+      "keep_settings": "刪除實例時不將遊戲設定檔還原到匯入前的狀態，保持現狀",
+      "move_folder": "將 --from 資料夾移到 saba-chan 資料夾，而不是在原處連結（僅限同一磁碟）",
       "config.browse.path": "要顯示的資料夾的完整路徑",
       "config.browse.files": "也顯示這些副檔名的檔案（逗號分隔，* 表示全部）"
     },

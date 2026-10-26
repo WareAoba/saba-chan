@@ -811,6 +811,8 @@
       "remote.connect.host_id": "PC-ID zum Verbinden (siehe `remote peers`)",
       "remote.forget.host_id": "PC-ID zum Entfernen (siehe `remote daemons`)",
       "config.autostart.mode": "off, daemon oder full",
+      "keep_settings": "Beim Löschen der Instanz die Spieleinstellungsdateien nicht auf den Stand vor dem Import zurücksetzen, sondern so lassen",
+      "move_folder": "Den --from-Ordner nicht an Ort und Stelle verknüpfen, sondern in den saba-chan-Ordner verschieben (nur auf demselben Laufwerk)",
       "config.browse.path": "Vollständiger Pfad des Ordners",
       "config.browse.files": "Auch Dateien mit diesen Endungen zeigen (kommagetrennt, * für alle)"
     },

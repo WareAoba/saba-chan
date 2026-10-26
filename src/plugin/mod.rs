@@ -476,6 +476,11 @@ impl PluginCall {
         &self.config
     }
 
+    #[cfg(test)]
+    pub fn timeout_secs(&self) -> u64 {
+        self.timeout_secs
+    }
+
     pub fn config_mut(&mut self) -> &mut Value {
         &mut self.config
     }

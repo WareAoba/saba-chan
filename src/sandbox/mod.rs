@@ -500,7 +500,21 @@ pub const INSTANCE_DATA_DIRS: &str = "instance_data_dirs";
 
 /// 격리 실행이 이 config 키의 폴더에 권한을 받는가. 이 키들은 데몬만 정하고 모듈 설정에서 싣지 않는다
 pub fn grants_write(key: &str) -> bool {
-    INSTANCE_DIR_FIELDS.contains(&key) || key == INSTANCE_DATA_DIRS
+    INSTANCE_DIR_FIELDS.contains(&key) || key == INSTANCE_DATA_DIRS || key == MIGRATION_IMPORT
+}
+
+/// 가져오기(마이그레이션)의 `import_settings` 호출에만 데몬이 싣는 표시 (`true`). 이 호출만 인스턴스 폴더 자체에
+/// 쓰기를 받는다(가져온 서버의 포터블 런타임을 서버 폴더 대신 인스턴스 폴더에 받는다). 다른 호출은 읽기만 한다
+pub const MIGRATION_IMPORT: &str = "migration_import";
+
+/// config의 인스턴스 폴더 키(`field`)에 줄 권한: `instance_dir` 쓰기는 가져오기의 `import_settings`에만
+fn field_access(field: &str, access: appcontainer::Access, config: &Value) -> appcontainer::Access {
+    let import = config.get(MIGRATION_IMPORT).and_then(Value::as_bool) == Some(true);
+    if field == "instance_dir" && access == appcontainer::Access::Write && !import {
+        appcontainer::Access::Read
+    } else {
+        access
+    }
 }
 
 /// 격리 실행이 config의 인스턴스 폴더(`INSTANCE_DIR_FIELDS`)에 받는 권한: 모듈은 쓰기, 그 밖(익스텐션 등)은 읽기
@@ -894,9 +908,9 @@ pub fn isolation_for(entry: &Path, config: &Value, python_exe: &Path) -> Option<
         .is_none_or(|dir| protect_daemon_entries(Path::new(dir)));
     let data_dirs = config.get(INSTANCE_DATA_DIRS).and_then(Value::as_array).into_iter().flatten();
     // 데이터 폴더는 폴더일 때만 (데몬 파일 이름은 `insert_instance_fields`가 이미 뺐다)
-    let data_dirs = data_dirs.filter_map(Value::as_str).filter(|p| !Path::new(p).is_file());
-    let fields = INSTANCE_DIR_FIELDS.iter().filter_map(|field| config.get(*field).and_then(Value::as_str));
-    for path in fields.chain(data_dirs).filter(|_| instance_protected) {
+    let data_dirs = data_dirs.filter_map(Value::as_str).filter(|p| !Path::new(p).is_file()).map(|p| (p, access));
+    let fields = INSTANCE_DIR_FIELDS.iter().filter_map(|field| config.get(*field).and_then(Value::as_str).map(|p| (p, field_access(field, access, config))));
+    for (path, access) in fields.chain(data_dirs).filter(|_| instance_protected) {
         if !path.is_empty() {
             let path = Path::new(path);
             // 새로 설치할 폴더는 아직 없다: 권한은 있는 폴더에만 줄 수 있으므로 먼저 만든다
@@ -1134,6 +1148,20 @@ mod tests {
         assert_eq!(got, want);
         let got = release_targets(&dirs[..1], &[PathBuf::from("/games/mc")]);
         assert_eq!(got, vec![PathBuf::from("/games/pal")]);
+    }
+
+    /// 인스턴스 폴더 자체에 쓰기는 가져오기의 `import_settings`만: 다른 호출은 읽기만 한다
+    /// (인스턴스 폴더 바로 아래 데몬 항목을 격리 실행이 바꾸지 못하게). 모듈 설정 값으로는 이 표시를 싣지 못한다
+    #[test]
+    fn only_the_migration_import_writes_the_instance_folder_itself() {
+        use appcontainer::Access;
+        let start = serde_json::json!({ "instance_dir": "/i", "working_dir": "/i/server" });
+        assert_eq!(field_access("instance_dir", Access::Write, &start), Access::Read);
+        assert_eq!(field_access("working_dir", Access::Write, &start), Access::Write);
+        let import = serde_json::json!({ "instance_dir": "/i", MIGRATION_IMPORT: true });
+        assert_eq!(field_access("instance_dir", Access::Write, &import), Access::Write);
+        assert_eq!(field_access("instance_dir", Access::Read, &import), Access::Read, "extensions only read");
+        assert!(grants_write(MIGRATION_IMPORT));
     }
 
     #[test]

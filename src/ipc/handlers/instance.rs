@@ -763,12 +763,7 @@ async fn create_instance_inner(state: IPCServer, payload: Value) -> impl IntoRes
                     drop(supervisor);
                     let mut detected: Option<Value> = None;
                     if let Some((_, ref lifecycle_path, ref _server_exe)) = module_install {
-                        // instance_dir: 모듈이 서버 폴더 대신 인스턴스 폴더에 둘 것(가져온 서버의 포터블 런타임 등)의 자리
-                        let import_config = json!({
-                            "working_dir": instance.working_dir,
-                            "instance_dir": instance_dir,
-                        });
-                        match crate::plugin::PluginCall::new(lifecycle_path, "import_settings", import_config).in_instance(Some(state.host_context(&id))).run().await {
+                        match migration_import_call(lifecycle_path, instance.working_dir.as_deref(), &instance_dir).in_instance(Some(state.host_context(&id))).run().await {
                             Ok(mut result) => {
                                 if result.get("success").and_then(|v| v.as_bool()).unwrap_or(false) {
                                     let mut imported = instance.clone();
@@ -849,6 +844,18 @@ async fn create_instance_inner(state: IPCServer, payload: Value) -> impl IntoRes
         let error = json!({ "error": "Invalid request" });
         (StatusCode::BAD_REQUEST, Json(error)).into_response()
     }
+}
+
+/// 가져오기의 모듈 `import_settings` 호출. instance_dir: 모듈이 서버 폴더 대신 인스턴스 폴더에 둘 것(가져온 서버의
+/// 포터블 런타임 등)의 자리. 런타임을 받을 수 있으므로 설치와 같은 시간 한도를 주고, 이 호출만 인스턴스 폴더에 쓴다
+/// (`sandbox::MIGRATION_IMPORT`)
+fn migration_import_call(lifecycle_path: &str, working_dir: Option<&str>, instance_dir: &std::path::Path) -> crate::plugin::PluginCall {
+    let config = json!({
+        "working_dir": working_dir,
+        "instance_dir": instance_dir,
+        crate::sandbox::MIGRATION_IMPORT: true,
+    });
+    crate::plugin::PluginCall::new(lifecycle_path, "import_settings", config).timeout(crate::plugin::INSTALL_TIMEOUT_SECS)
 }
 
 /// 가져온 서버의 게임 설정 파일(모듈 `config_files`)을 인스턴스 폴더에 보관한다 (`instance::migration`).
@@ -2395,6 +2402,17 @@ mod tests {
 
     use super::{memory_limit_from, stop_timeout_from};
     use serde_json::json;
+
+    /// 가져오기의 `import_settings`는 포터블 런타임을 받을 수 있어 설치와 같은 시간 한도를 받고,
+    /// 이 호출만 인스턴스 폴더에 쓴다는 표시를 싣는다 (기본 120초면 느린 회선에서 가져온 설정을 모두 잃는다)
+    #[test]
+    fn the_migration_import_waits_like_an_install_and_is_marked() {
+        let call = super::migration_import_call("game/lifecycle.py", Some("/srv/game"), std::path::Path::new("/data/instances/a"));
+        assert_eq!(call.timeout_secs(), crate::plugin::INSTALL_TIMEOUT_SECS);
+        assert_eq!(call.config()[crate::sandbox::MIGRATION_IMPORT], json!(true));
+        assert_eq!(call.config()["working_dir"], json!("/srv/game"));
+        assert_eq!(call.config()["instance_dir"], json!("/data/instances/a"));
+    }
 
     /// 설치가 끝났다는 표시를 기다린다. 상한은 멈춘 설치를 알아채려는 것이라, 병렬 테스트로 느려진 PC·CI에서도 넉넉히 둔다
     async fn provisioned(state: &crate::ipc::IPCServer, name: &str) -> Option<crate::ipc::ProvisionProgress> {

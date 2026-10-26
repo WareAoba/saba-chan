@@ -780,6 +780,8 @@
       "config.move.folder": "Folder to use. Saba-chan makes a modules or extensions folder inside it",
       "components_dir": "Folder for modules and extensions. Saba-chan makes modules and extensions folders inside it and moves installed files",
       "config.autostart.mode": "off, daemon or full",
+      "keep_settings": "Keep the game settings files as they are instead of restoring them to their state before the import when the instance is deleted",
+      "move_folder": "Move the --from folder into the saba-chan folder instead of linking it in place (same drive only)",
       "config.browse.path": "Full path of the folder to show",
       "config.browse.files": "Also show files with these extensions (comma separated, * for all)"
     },

@@ -811,6 +811,8 @@
       "remote.connect.host_id": "Id ПК для подключения (см. `remote peers`)",
       "remote.forget.host_id": "Id ПК, который забыть (см. `remote daemons`)",
       "config.autostart.mode": "off, daemon или full",
+      "keep_settings": "При удалении экземпляра не возвращать файлы настроек игры к состоянию до импорта, а оставить как есть",
+      "move_folder": "Переместить папку --from в папку saba-chan вместо подключения на месте (только на том же диске)",
       "config.browse.path": "Полный путь к папке",
       "config.browse.files": "Показывать и файлы с этими расширениями (через запятую, * — все)"
     },

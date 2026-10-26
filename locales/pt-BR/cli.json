@@ -811,6 +811,8 @@
       "remote.connect.host_id": "Id do PC ao qual conectar (veja `remote peers`)",
       "remote.forget.host_id": "Id do PC a esquecer (veja `remote daemons`)",
       "config.autostart.mode": "off, daemon ou full",
+      "keep_settings": "Ao excluir a instância, não restaurar os arquivos de configuração do jogo ao estado anterior à importação e mantê-los como estão",
+      "move_folder": "Mover a pasta --from para a pasta do saba-chan em vez de vinculá-la no lugar (somente na mesma unidade)",
       "config.browse.path": "Caminho completo da pasta",
       "config.browse.files": "Mostrar também arquivos com estas extensões (separadas por vírgula, * para todos)"
     },

@@ -109,6 +109,11 @@ pub fn is_allowed_path(path: &str) -> bool {
     }
     // Rust 셸이 직접 정하는 경로는 렌더러(확장 GUI 스크립트 포함)에 열지 않는다
     let lowered = route.to_ascii_lowercase();
+    // 원격 데몬 중계 길은 열지 않는다: 안쪽 경로로 셸 전용·동의 경로를 원격 데몬에 보낼 수 있다.
+    // GUI는 이 길 대신 `X-Saba-Target`(daemon_request의 target)으로 원격 데몬을 고른다
+    if lowered.starts_with("/api/remote/daemons/") && lowered.split('/').nth(5) == Some("proxy") {
+        return false;
+    }
     !RESERVED_ROUTES
         .iter()
         .any(|r| lowered == *r || lowered.starts_with(&format!("{r}/")))
@@ -416,6 +421,20 @@ mod tests {
     use std::sync::{Arc, Mutex};
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
+
+    /// 원격 데몬 중계 길로 셸 전용·동의 경로를 원격 데몬에 보내지 못하게: GUI는 이 길을 쓰지 않는다(`X-Saba-Target`)
+    #[test]
+    fn refuses_the_remote_proxy_route() {
+        for path in [
+            "/api/remote/daemons/h1/proxy/api/sandbox/unisolated/module-x",
+            "/api/remote/daemons/h1/proxy/api/daemon/shutdown",
+            "/API/Remote/Daemons/h1/Proxy/api/servers",
+        ] {
+            assert!(!is_allowed_path(path), "{path}");
+            assert!(!is_allowed_request(&reqwest::Method::POST, path), "{path}");
+        }
+        assert!(is_allowed_path("/api/remote/daemons"));
+    }
 
     #[test]
     fn allows_only_api_and_health() {
