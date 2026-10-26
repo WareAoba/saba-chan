@@ -129,8 +129,10 @@
 
 ## 🔨 소스에서 빌드 (Windows)
 
+배포 파일은 GitHub Actions(`.github/workflows/build-windows.yml`)가 이 저장소의 소스로 빌드하고 서명합니다. 직접 빌드할 때는:
+
 ```powershell
-# 전체 릴리스 빌드
+# 전체 빌드 (서명하지 않음)
 .\scripts\build-windows.ps1
 
 # 데몬
@@ -142,6 +144,15 @@ cargo build --release -p saba-chan-cli
 # GUI 개발 모드
 cd saba-chan-gui; npm install; npm start
 ```
+
+## 코드 서명 정책 · Code signing policy
+
+Free code signing provided by [SignPath.io](https://signpath.io), certificate by [SignPath Foundation](https://signpath.org).
+
+- **서명하는 파일**: 이 저장소의 소스로 GitHub Actions가 빌드한 Windows 실행 파일(`saba-core.exe`, `saba-runner.exe`, `saba-chan-cli.exe`, `saba-chan-gui.exe`, `saba-chan-updater.exe`, `saba-chan-installer.exe`)만 서명합니다. 빌드 과정은 [build-windows.yml](.github/workflows/build-windows.yml)에 공개돼 있어요.
+- **Committers and reviewers**: [WareAoba](https://github.com/WareAoba)
+- **Approvers**: [WareAoba](https://github.com/WareAoba) — 릴리스마다 서명 요청을 직접 승인합니다.
+- **개인정보 · Privacy policy**: 사바쨩은 업데이트 확인(기본으로 켜져 있고 설정에서 끌 수 있어요. 익명 ID와 버전만 보냅니다)과, 사용자가 직접 연결한 디스코드 연동 말고는 다른 시스템으로 정보를 보내지 않습니다. 무엇을 보내고 얼마나 보관하는지는 [개인정보처리방침](https://saba-chan.online/legal/privacy)에 있어요. Saba-chan sends data only for update checks (on by default, can be turned off; an anonymous ID and version numbers) and for the Discord integration the user connects; see the [privacy policy](https://saba-chan.online/legal/privacy).
 
 ## 라이선스
 

@@ -31,7 +31,7 @@ BLOCK "StringFileInfo"
 {{
 BLOCK "000004b0"
 {{
-VALUE "ProductName", "Saba-chan Runner"
+VALUE "ProductName", "Saba-chan"
 VALUE "CompanyName", "Saba-chan"
 VALUE "FileDescription", "Saba-chan game server console runner"
 VALUE "FileVersion", "{version}"
