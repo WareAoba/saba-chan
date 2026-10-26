@@ -1009,6 +1009,9 @@ async fn spawn_plugin(
         }
     });
 
+    // 활성 익스텐션만 import되게 하는 가드 (M6, sitecustomize.py). 공용 모듈처럼 격리 계획보다 먼저 쓴다
+    let import_guard = import_guard_dir();
+
     // 확인되지 않은 구성요소: AppContainer(Windows)·bubblewrap(리눅스) 안에서 돌린다. 토큰 파일 경로는 주지 않는다
     let isolation = crate::sandbox::isolation_for(std::path::Path::new(module_path), &config, &python_exe);
 
@@ -1035,8 +1038,7 @@ async fn spawn_plugin(
             .unwrap_or(&extensions_dir)
             .to_string_lossy()
             .into_owned();
-        // 활성 익스텐션만 import되게 하는 가드 (M6, sitecustomize.py)
-        if let Some(guard) = import_guard_dir() {
+        if let Some(guard) = &import_guard {
             pypath = format!("{}{}{}", guard.display(), PYPATH_SEP, pypath);
         }
         paths.push(pypath);
@@ -2327,8 +2329,8 @@ print(json.dumps(codes))
         // 인스턴스 폴더의 데몬 파일(토큰·설정)은 읽기 권한을 받은 인스턴스 폴더 안에서도 비어 보인다
         std::fs::write(instance.path().join("rcon.json"), "{\"password\": \"pw\"}").unwrap();
         let entry = module.path().join("lifecycle.py");
-        // 공용 모듈(python-shared)도 보여야 한다
-        std::fs::write(&entry, "import json, os, sys\nimport i18n\nconfig = json.loads(sys.stdin.read())\n\
+        // 공용 모듈(python-shared)과 익스텐션 import 가드(python-guard)도 보여야 한다
+        std::fs::write(&entry, "import json, os, sys\nimport i18n\nassert 'sitecustomize' in sys.modules, sys.path\nconfig = json.loads(sys.stdin.read())\n\
              open(os.path.join(config['working_dir'], 'out'), 'w').write('ok')\n\
              try:\n    open(config['secret']).read(); seen = True\nexcept OSError:\n    seen = False\n\
              daemon = open(os.path.join(config['instance_dir'], 'rcon.json')).read()\n\
