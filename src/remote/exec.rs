@@ -116,30 +116,43 @@ fn module_fields(
 
 /// 서버를 만들 때 켜진 익스텐션이 물은 칸(`AddServer.options`, `options`는 그 선언)의 답(`given`)을 원격에서 받는가.
 /// 모든 키가 선언한 칸이고 값이 선언한 종류에 맞아야 한다(boolean은 참거짓, number는 수나 수로 읽히는 글자(GUI·CLI는 글자로 싣는다), select는 선언한 선택지, 그 밖은 글자.
-/// 객체·목록은 받지 않는다). 경로·파일·비밀번호 칸(`pc_only_type`)은 선언한 기본값 그대로일 때만 받는다 (GUI는 손대지 않은 칸도 기본값을 싣는다)
+/// 객체·목록은 받지 않는다). 경로·파일·비밀번호 칸(`pc_only_type`)은 선언한 기본값 그대로일 때만 받는다 (GUI는 손대지 않은 칸도 기본값을 싣는다).
+/// 같은 칸을 여러 익스텐션이 물으면 하나라도 그런 칸이면 그 규칙을 따르고, 아니면 선언 종류가 모두 같고 값이 선언마다 맞아야 한다
 pub(crate) fn create_option_answers_allowed(options: &[Value], given: &serde_json::Map<String, Value>) -> bool {
+    fn kind(o: &Value) -> (&str, Option<&str>) {
+        (o.get("type").and_then(Value::as_str).unwrap_or("text"), o.get("format").and_then(Value::as_str))
+    }
     given.iter().all(|(key, value)| {
-        let Some(option) = options.iter().find(|o| o.get("field").and_then(Value::as_str) == Some(key)) else {
+        // 여러 익스텐션이 같은 칸을 물으면 선언 전부를 본다: 하나라도 PC 전용 칸이면 그 규칙, 아니면 종류가 모두 같아야 한다
+        let declared: Vec<&Value> = options.iter().filter(|o| o.get("field").and_then(Value::as_str) == Some(key)).collect();
+        let Some(first) = declared.first() else {
             return false;
         };
         if value.is_object() || value.is_array() {
             return false;
         }
-        if value.is_null() || option.get("default") == Some(value) {
+        if value.is_null() {
             return true;
         }
-        let kind = option.get("type").and_then(Value::as_str).unwrap_or("text");
-        if pc_only_type(kind, option.get("format").and_then(Value::as_str)) {
+        let pc_only: Vec<&&Value> = declared.iter().filter(|o| pc_only_type(kind(o).0, kind(o).1)).collect();
+        if !pc_only.is_empty() {
+            return pc_only.iter().all(|o| o.get("default") == Some(value));
+        }
+        if declared.iter().any(|o| kind(o) != kind(first)) {
             return false;
         }
-        match kind {
-            "boolean" => value.is_boolean(),
-            "number" => value.is_number() || value.as_str().is_some_and(|n| n.trim().parse::<f64>().is_ok_and(f64::is_finite)),
-            "select" => option.get("options").and_then(Value::as_array).is_some_and(|choices| {
-                choices.iter().any(|c| c == value || c.get("value") == Some(value))
-            }),
-            _ => value.is_string(),
-        }
+        let (field_type, _) = kind(first);
+        declared.iter().all(|option| {
+            option.get("default") == Some(value)
+                || match field_type {
+                    "boolean" => value.is_boolean(),
+                    "number" => value.is_number() || value.as_str().is_some_and(|n| n.trim().parse::<f64>().is_ok_and(f64::is_finite)),
+                    "select" => option.get("options").and_then(Value::as_array).is_some_and(|choices| {
+                        choices.iter().any(|c| c == value || c.get("value") == Some(value))
+                    }),
+                    _ => value.is_string(),
+                }
+        })
     })
 }
 
@@ -275,6 +288,23 @@ mod tests {
         ] {
             assert!(!ok(bad.clone()), "{bad}");
         }
+    }
+
+    #[test]
+    fn a_field_two_extensions_ask_follows_every_declaration() {
+        let options = vec![
+            json!({ "field": "dir", "type": "text" }),
+            json!({ "field": "dir", "type": "path", "default": "boxes" }),
+            json!({ "field": "size", "type": "number" }),
+            json!({ "field": "size", "type": "text" }),
+            json!({ "field": "on", "type": "boolean" }),
+            json!({ "field": "on", "type": "boolean" }),
+        ];
+        let ok = |v: Value| create_option_answers_allowed(&options, v.as_object().unwrap());
+        assert!(!ok(json!({ "dir": "/etc" })));
+        assert!(ok(json!({ "dir": "boxes" })));
+        assert!(!ok(json!({ "size": "3" })));
+        assert!(ok(json!({ "on": true })));
     }
 
     #[tokio::test]
