@@ -61,6 +61,7 @@ pub async fn run(ctx: &Ctx, cmd: ConfigCmd) -> Result<()> {
         ConfigCmd::Import { file, dry_run, overwrite } => import(ctx, &file, dry_run, overwrite).await,
         ConfigCmd::Paths => paths(ctx).await,
         ConfigCmd::Move { kind, folder } => move_dir(ctx, kind, &folder).await,
+        ConfigCmd::Autostart { mode } => autostart(ctx, mode).await,
     }
 }
 
@@ -98,6 +99,23 @@ async fn move_dir(ctx: &Ctx, kind: crate::cli::DirKind, folder: &std::path::Path
     let left: Vec<&str> = r["left_behind"].as_array().into_iter().flatten().filter_map(Value::as_str).collect();
     if !left.is_empty() {
         ctx.out.warn(&t!("config.move_left_behind", files = left.join(", ")));
+    }
+    Ok(())
+}
+
+/// 로그인할 때 자동 실행 (GUI 설정 > 일반과 같은 값)
+async fn autostart(ctx: &Ctx, mode: Option<crate::cli::AutostartMode>) -> Result<()> {
+    let r = match mode {
+        Some(mode) => ctx.api.set_autostart(mode.as_str()).await?,
+        None => ctx.api.autostart().await?,
+    };
+    let name = |r: &Value| t!(&format!("config.autostart.{}", r["mode"].as_str().unwrap_or("off")));
+    if r["supported"] == false {
+        ctx.out.data(&r, |_| say!("{}", t!("config.autostart.unsupported")));
+    } else if mode.is_some() {
+        ctx.out.done(&t!("config.autostart.set", mode = name(&r)), &r);
+    } else {
+        ctx.out.data(&r, |r| say!("{}", t!("config.autostart.current", mode = name(r))));
     }
     Ok(())
 }

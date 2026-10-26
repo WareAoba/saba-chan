@@ -152,7 +152,7 @@ pub(super) fn served_by(port: u16, server: Option<u32>) -> bool {
         return false;
     };
     let mut system = sysinfo::System::new();
-    system.refresh_processes();
+    system.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
     let parent = |pid: u32| system.process(sysinfo::Pid::from_u32(pid)).and_then(|p| p.parent()).map(|p| p.as_u32());
     owners.into_iter().any(|pid| descends_from(pid, root, parent))
 }

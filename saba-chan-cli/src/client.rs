@@ -211,6 +211,14 @@ impl Api {
     pub async fn move_dir(&self, kind: &str, target: &str) -> Result<Value> {
         self.post_long("/api/system/paths/move", json!({ "kind": kind, "target": target })).await
     }
+    /// GET /api/system/autostart — 로그인할 때 자동 실행 `{supported, mode: "off"|"daemon"|"full"}`
+    pub async fn autostart(&self) -> Result<Value> {
+        self.get("/api/system/autostart").await
+    }
+    /// PUT /api/system/autostart `{mode}`
+    pub async fn set_autostart(&self, mode: &str) -> Result<Value> {
+        self.put("/api/system/autostart", json!({ "mode": mode })).await
+    }
     /// GET /api/system/metrics — 시스템 모니터 표본
     pub async fn system_metrics(&self) -> Result<Value> {
         self.get("/api/system/metrics").await

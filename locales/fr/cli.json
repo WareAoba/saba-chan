@@ -194,7 +194,15 @@
     "confirm_move_modules": "Déplacer les modules vers {{dir}} ? Les modules installés sont copiés, vérifiés, puis supprimés de l'ancien dossier.",
     "confirm_move_extensions": "Déplacer les extensions vers {{dir}} ? Les extensions installées sont copiées, vérifiées, puis supprimées de l'ancien dossier.",
     "moved": "Déplacé vers {{path}}.",
-    "move_left_behind": "Ces anciens fichiers n'ont pas pu être supprimés. Supprimez-les vous-même : {{files}}"
+    "move_left_behind": "Ces anciens fichiers n'ont pas pu être supprimés. Supprimez-les vous-même : {{files}}",
+    "autostart": {
+      "off": "Désactivé",
+      "daemon": "Démon seul",
+      "full": "Tout avec la GUI",
+      "current": "Démarrer à la connexion : {{mode}}",
+      "set": "Démarrer à la connexion est maintenant : {{mode}}.",
+      "unsupported": "Le démarrage à la connexion ne peut pas encore être réglé sur ce système."
+    }
   },
   "console": {
     "attach_help": "Connecté à {{name}}. Tapez une commande, :help pour l'aide, :q pour quitter (le serveur continue de tourner).",
@@ -328,7 +336,11 @@
       "paths_verify_failed": "La copie ne correspond pas à l'original. Rien n'a été modifié. Réessayez.",
       "paths_commit_failed": "L'enregistrement du paramètre a échoué. Les fichiers ont été remis en place.",
       "paths_unknown_kind": "Choisissez modules ou extensions.",
-      "paths_overlaps_install": "Impossible de le placer dans le dossier d'installation. Choisissez un dossier en dehors."
+      "paths_overlaps_install": "Impossible de le placer dans le dossier d'installation. Choisissez un dossier en dehors.",
+      "autostart_gui_missing": "La GUI n’est pas installée. Installez-la pour tout démarrer avec la GUI.",
+      "autostart_write_failed": "Impossible d’ajouter Saba-chan aux programmes de démarrage. Vérifiez les autorisations et réessayez.",
+      "autostart_unsupported": "Le démarrage à la connexion ne peut pas encore être réglé sur ce système.",
+      "autostart_unknown_mode": "Choisissez off, daemon ou full."
     },
     "not_a_bool": "« {{value}} » n'est pas oui/non (utilisez true ou false).",
     "not_a_number": "« {{value}} » n'est pas un nombre.",
@@ -689,7 +701,8 @@
       "remote.peers": "Vos autres PC sur le relais auxquels ce démon peut se connecter",
       "remote.connect": "S'appairer avec le démon distant d'un autre de vos PC (ids dans `remote peers`)",
       "remote.daemons": "Démons distants auxquels ce démon se connecte",
-      "remote.forget": "Oublier un démon distant (reconnectez-vous avec `remote connect`)"
+      "remote.forget": "Oublier un démon distant (reconnectez-vous avec `remote connect`)",
+      "config.autostart": "Ce qui démarre quand vous vous connectez à ce PC : off, daemon (démon et zone de notification seulement) ou full (avec la fenêtre de la GUI). Sans mode, affiche la valeur actuelle"
     },
     "arg": {
       "module.maker.game": "Jeu à mettre dans la première demande",
@@ -767,7 +780,8 @@
       "remote.set.address": "Nom d’hôte public ou IP de ce PC (vide pour l’effacer)",
       "remote.revoke.host_id": "ID du PC à dissocier (voir `remote clients`)",
       "remote.connect.host_id": "Id du PC auquel se connecter (voir `remote peers`)",
-      "remote.forget.host_id": "Id du PC à oublier (voir `remote daemons`)"
+      "remote.forget.host_id": "Id du PC à oublier (voir `remote daemons`)",
+      "config.autostart.mode": "off, daemon ou full"
     },
     "after": "Les noms peuvent être partiels (ex. start pal). Sans argument dans un terminal, le menu plein écran s'ouvre (SABA_NO_TUI=1 : le shell interactif).\nDans les scripts, utilisez --json et --yes. Codes de sortie : 0 ok · 1 échec · 2 utilisation · 3 daemon injoignable · 4 introuvable · 130 annulé"
   },

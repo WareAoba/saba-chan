@@ -1011,6 +1011,11 @@ pub enum ConfigCmd {
         /// Folder to use. Saba-chan makes a `modules` or `extensions` folder inside it
         folder: std::path::PathBuf,
     },
+    /// What starts when you sign in to this PC: off, daemon (daemon and tray only) or full (with the GUI window). Shows the current value without a mode
+    Autostart {
+        #[arg(value_enum)]
+        mode: Option<AutostartMode>,
+    },
     /// Bring in settings and servers from an export zip
     Import {
         file: std::path::PathBuf,
@@ -1035,6 +1040,24 @@ impl DirKind {
         match self {
             DirKind::Modules => "modules",
             DirKind::Extensions => "extensions",
+        }
+    }
+}
+
+/// `config autostart`의 모드 (데몬 `/api/system/autostart`의 `mode`)
+#[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AutostartMode {
+    Off,
+    Daemon,
+    Full,
+}
+
+impl AutostartMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            AutostartMode::Off => "off",
+            AutostartMode::Daemon => "daemon",
+            AutostartMode::Full => "full",
         }
     }
 }

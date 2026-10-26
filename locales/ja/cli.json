@@ -194,7 +194,15 @@
     "confirm_move_modules": "モジュールを {{dir}} へ移しますか？インストール済みのモジュールをコピーして確認したあと、元のフォルダーから削除します。",
     "confirm_move_extensions": "拡張機能を {{dir}} へ移しますか？インストール済みの拡張機能をコピーして確認したあと、元のフォルダーから削除します。",
     "moved": "{{path}} へ移しました。",
-    "move_left_behind": "元のフォルダーの次のファイルを削除できませんでした。手動で削除してください: {{files}}"
+    "move_left_behind": "元のフォルダーの次のファイルを削除できませんでした。手動で削除してください: {{files}}",
+    "autostart": {
+      "off": "オフ",
+      "daemon": "デーモンのみ",
+      "full": "GUIまで全部",
+      "current": "サインイン時に自動起動: {{mode}}",
+      "set": "サインイン時の自動起動を{{mode}}にしました。",
+      "unsupported": "このOSではまだサインイン時の自動起動を設定できません。"
+    }
   },
   "console": {
     "attach_help": "{{name}} に接続しました。コマンドを入力してください。:help でヘルプ、:q で抜けます（サーバーは動き続けます）。",
@@ -328,7 +336,11 @@
       "paths_verify_failed": "コピーが元と一致しませんでした。何も変更していません。もう一度試してください。",
       "paths_commit_failed": "設定を保存できなかったため、ファイルを元の場所に戻しました。",
       "paths_unknown_kind": "modules または extensions を選んでください。",
-      "paths_overlaps_install": "インストール先フォルダーの中には置けません。その外のフォルダーを選んでください。"
+      "paths_overlaps_install": "インストール先フォルダーの中には置けません。その外のフォルダーを選んでください。",
+      "autostart_gui_missing": "GUIがインストールされていません。GUIまで全部を使うにはGUIをインストールしてください。",
+      "autostart_write_failed": "スタートアッププログラムに登録できませんでした。権限を確認してもう一度試してください。",
+      "autostart_unsupported": "このOSではまだサインイン時の自動起動を設定できません。",
+      "autostart_unknown_mode": "off、daemon、full から選んでください。"
     },
     "not_a_bool": "「{{value}}」ははい/いいえではありません（true か false を使ってください）。",
     "not_a_number": "「{{value}}」は数値ではありません。",
@@ -816,7 +828,8 @@
       "remote.peers": "リレーにあるあなたの他のPCのうち、このデーモンが接続できるPC",
       "remote.connect": "他のPCのリモートデーモンとペアリング（`remote peers`にidが表示されます）",
       "remote.daemons": "このデーモンが接続するリモートデーモン",
-      "remote.forget": "リモートデーモンを削除（再接続は`remote connect`）"
+      "remote.forget": "リモートデーモンを削除（再接続は`remote connect`）",
+      "config.autostart": "PCにサインインしたときに起動するもの: off(オフ)、daemon(デーモンとトレイのみ)、full(GUIウィンドウまで)。モードなしで今の値を表示"
     },
     "arg": {
       "module.maker.game": "最初の依頼に入れるゲーム名",
@@ -962,7 +975,8 @@
       "remote.set.address": "この PC の公開ホスト名または IP (空なら消します)",
       "remote.revoke.host_id": "解除する PC id (`remote clients` に表示)",
       "remote.connect.host_id": "接続するPC id（`remote peers`に表示）",
-      "remote.forget.host_id": "削除するPC id（`remote daemons`に表示）"
+      "remote.forget.host_id": "削除するPC id（`remote daemons`に表示）",
+      "config.autostart.mode": "off、daemon または full"
     },
     "after": "名前は一部だけでも指定できます（例: start pal）。端末で引数なしで実行すると全画面メニューが開きます(SABA_NO_TUI=1 なら対話シェル)。\nスクリプトでは --json と --yes を使ってください。終了コード: 0 成功 · 1 失敗 · 2 使い方の誤り · 3 デーモンに接続不可 · 4 見つからない · 130 キャンセル"
   },

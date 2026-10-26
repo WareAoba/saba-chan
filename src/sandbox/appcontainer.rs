@@ -308,44 +308,48 @@ mod imp {
     use std::collections::{BTreeMap, BTreeSet};
     use std::path::PathBuf;
     use std::ffi::{OsStr, OsString};
-    use winapi::ctypes::c_void;
+    use std::ffi::c_void;
     use std::os::windows::ffi::{OsStrExt, OsStringExt};
     use std::os::windows::io::{FromRawHandle, OwnedHandle, RawHandle};
     use std::path::Path;
     use std::ptr::null_mut;
-    use winapi::shared::minwindef::{DWORD, FALSE, TRUE};
-    use winapi::um::accctrl::{
-        EXPLICIT_ACCESS_W, GRANT_ACCESS, NO_INHERITANCE, REVOKE_ACCESS, SE_FILE_OBJECT, SUB_CONTAINERS_AND_OBJECTS_INHERIT, TRUSTEE_IS_SID,
+    use windows_sys::Win32::Foundation::{LocalFree, SetHandleInformation, FALSE, HANDLE, HANDLE_FLAG_INHERIT, TRUE};
+    use windows_sys::Win32::Security::Authorization::{
+        GetSecurityInfo, SetEntriesInAclW, SetSecurityInfo, EXPLICIT_ACCESS_W, GRANT_ACCESS, REVOKE_ACCESS, SE_FILE_OBJECT, TRUSTEE_IS_SID,
         TRUSTEE_IS_WELL_KNOWN_GROUP,
     };
-    use winapi::um::aclapi::{GetSecurityInfo, SetEntriesInAclW, SetSecurityInfo};
-    use winapi::um::fileapi::{CreateFileW, GetFileInformationByHandle, GetFinalPathNameByHandleW, BY_HANDLE_FILE_INFORMATION, OPEN_EXISTING};
-    use winapi::um::handleapi::SetHandleInformation;
-    use winapi::um::jobapi2::{AssignProcessToJobObject, CreateJobObjectW, SetInformationJobObject, TerminateJobObject};
-    use winapi::um::libloaderapi::{GetProcAddress, LoadLibraryW};
-    use winapi::um::minwinbase::SECURITY_ATTRIBUTES;
-    use winapi::um::namedpipeapi::CreatePipe;
-    use winapi::um::processthreadsapi::{
-        CreateProcessW, DeleteProcThreadAttributeList, GetCurrentProcess, GetExitCodeProcess, InitializeProcThreadAttributeList, OpenProcessToken, ResumeThread,
-        TerminateProcess, UpdateProcThreadAttribute, PROCESS_INFORMATION,
+    use windows_sys::Win32::Security::{
+        AclSizeInformation, AddMandatoryAce, AllocateAndInitializeSid, EqualSid, GetAce, GetAclInformation, GetLengthSid, GetTokenInformation,
+        InitializeAcl, TokenUser, ACCESS_ALLOWED_ACE, ACE_HEADER, ACL, ACL_REVISION, ACL_SIZE_INFORMATION, CONTAINER_INHERIT_ACE,
+        DACL_SECURITY_INFORMATION, LABEL_SECURITY_INFORMATION, NO_INHERITANCE, OBJECT_INHERIT_ACE, OWNER_SECURITY_INFORMATION,
+        PSECURITY_DESCRIPTOR, PSID, SECURITY_ATTRIBUTES, SECURITY_CAPABILITIES, SECURITY_CREATOR_SID_AUTHORITY, SECURITY_MANDATORY_LABEL_AUTHORITY,
+        SID_AND_ATTRIBUTES, SID_IDENTIFIER_AUTHORITY, SUB_CONTAINERS_AND_OBJECTS_INHERIT, SYSTEM_MANDATORY_LABEL_ACE, TOKEN_QUERY, TOKEN_USER,
     };
-    use winapi::um::securitybaseapi::{AddMandatoryAce, AllocateAndInitializeSid, EqualSid, GetAce, GetAclInformation, GetLengthSid, GetTokenInformation, InitializeAcl};
-    use winapi::um::synchapi::WaitForSingleObject;
-    use winapi::um::winbase::{
-        LocalFree, CREATE_NO_WINDOW, CREATE_SUSPENDED, CREATE_UNICODE_ENVIRONMENT, EXTENDED_STARTUPINFO_PRESENT, HANDLE_FLAG_INHERIT,
-        INFINITE, STARTF_USESTDHANDLES, STARTUPINFOEXW, FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT,
+    use windows_sys::Win32::Storage::FileSystem::{
+        CreateFileW, GetFileInformationByHandle, GetFinalPathNameByHandleW, BY_HANDLE_FILE_INFORMATION, DELETE, FILE_ATTRIBUTE_REPARSE_POINT,
+        FILE_DELETE_CHILD, FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT, FILE_GENERIC_EXECUTE, FILE_GENERIC_READ, FILE_GENERIC_WRITE,
+        FILE_LIST_DIRECTORY, FILE_READ_ATTRIBUTES, FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE, FILE_TRAVERSE, OPEN_EXISTING, READ_CONTROL,
+        SYNCHRONIZE, WRITE_DAC, WRITE_OWNER,
     };
-    use winapi::um::winnt::{
-        AclSizeInformation, JobObjectExtendedLimitInformation, ACCESS_ALLOWED_ACE, ACCESS_ALLOWED_ACE_TYPE, ACE_HEADER,
-        ACL_SIZE_INFORMATION, CONTAINER_INHERIT_ACE, DACL_SECURITY_INFORMATION, DELETE, FILE_DELETE_CHILD, FILE_GENERIC_EXECUTE,
-        FILE_GENERIC_READ, FILE_GENERIC_WRITE, FILE_LIST_DIRECTORY, FILE_READ_ATTRIBUTES, FILE_TRAVERSE, HANDLE,
-        JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE, OBJECT_INHERIT_ACE, PACL, PSECURITY_DESCRIPTOR,
-        PSID, SECURITY_CAPABILITIES, SE_GROUP_ENABLED, SID_AND_ATTRIBUTES, SID_IDENTIFIER_AUTHORITY, SYNCHRONIZE, ACL, ACL_REVISION,
-        LABEL_SECURITY_INFORMATION, SECURITY_MANDATORY_LABEL_AUTHORITY, SECURITY_MANDATORY_LOW_RID, SECURITY_MANDATORY_MEDIUM_RID, SYSTEM_MANDATORY_LABEL_ACE,
-        SYSTEM_MANDATORY_LABEL_ACE_TYPE, SYSTEM_MANDATORY_LABEL_NO_WRITE_UP, FILE_ATTRIBUTE_REPARSE_POINT, FILE_SHARE_DELETE,
-        FILE_SHARE_READ, FILE_SHARE_WRITE, READ_CONTROL, WRITE_DAC, WRITE_OWNER, SECURITY_CREATOR_OWNER_RIGHTS_RID,
-        SECURITY_CREATOR_SID_AUTHORITY, OWNER_SECURITY_INFORMATION, TOKEN_QUERY, TOKEN_USER, TokenUser,
+    use windows_sys::Win32::System::JobObjects::{
+        AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation, SetInformationJobObject, TerminateJobObject,
+        JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
     };
+    use windows_sys::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryW};
+    use windows_sys::Win32::System::Pipes::CreatePipe;
+    use windows_sys::Win32::System::SystemServices::{
+        ACCESS_ALLOWED_ACE_TYPE, SECURITY_CREATOR_OWNER_RIGHTS_RID, SECURITY_MANDATORY_LOW_RID, SECURITY_MANDATORY_MEDIUM_RID, SE_GROUP_ENABLED,
+        SYSTEM_MANDATORY_LABEL_ACE_TYPE, SYSTEM_MANDATORY_LABEL_NO_WRITE_UP,
+    };
+    use windows_sys::Win32::System::Threading::{
+        CreateProcessW, DeleteProcThreadAttributeList, GetCurrentProcess, GetExitCodeProcess, InitializeProcThreadAttributeList, OpenProcessToken,
+        ResumeThread, TerminateProcess, UpdateProcThreadAttribute, WaitForSingleObject, CREATE_NO_WINDOW, CREATE_SUSPENDED, CREATE_UNICODE_ENVIRONMENT,
+        EXTENDED_STARTUPINFO_PRESENT, INFINITE, PROCESS_INFORMATION, STARTF_USESTDHANDLES, STARTUPINFOEXW,
+    };
+    #[allow(clippy::upper_case_acronyms)]
+    type DWORD = u32;
+    #[allow(clippy::upper_case_acronyms)]
+    type PACL = *mut ACL;
 
     const PROC_THREAD_ATTRIBUTE_HANDLE_LIST: usize = 0x0002_0002;
     const PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES: usize = 0x0002_0009;
@@ -380,11 +384,11 @@ mod imp {
             if lib.is_null() {
                 return Err(last_error("userenv.dll"));
             }
-            let create = GetProcAddress(lib, c"CreateAppContainerProfile".as_ptr());
-            let derive = GetProcAddress(lib, c"DeriveAppContainerSidFromAppContainerName".as_ptr());
-            if create.is_null() || derive.is_null() {
+            let create = GetProcAddress(lib, c"CreateAppContainerProfile".as_ptr().cast());
+            let derive = GetProcAddress(lib, c"DeriveAppContainerSidFromAppContainerName".as_ptr().cast());
+            let (Some(create), Some(derive)) = (create, derive) else {
                 return Err("AppContainer is not supported on this Windows".into());
-            }
+            };
             let create: CreateProfile = std::mem::transmute(create);
             let derive: DeriveSid = std::mem::transmute(derive);
             let name = wide(OsStr::new(profile));
@@ -407,9 +411,9 @@ mod imp {
 
     /// S-1-15-3-1 (internetClient), S-1-15-2-1 (ALL APPLICATION PACKAGES)
     fn well_known(sub0: DWORD, sub1: DWORD) -> Result<PSID, String> {
-        let mut auth = SID_IDENTIFIER_AUTHORITY { Value: APP_PACKAGE_AUTHORITY };
+        let auth = SID_IDENTIFIER_AUTHORITY { Value: APP_PACKAGE_AUTHORITY };
         let mut sid: PSID = null_mut();
-        if unsafe { AllocateAndInitializeSid(&mut auth, 2, sub0, sub1, 0, 0, 0, 0, 0, 0, &mut sid) } == 0 {
+        if unsafe { AllocateAndInitializeSid(&auth, 2, sub0, sub1, 0, 0, 0, 0, 0, 0, &mut sid) } == 0 {
             return Err(last_error("AllocateAndInitializeSid"));
         }
         Ok(sid)
@@ -449,7 +453,7 @@ mod imp {
                 return None;
             }
             let header = &*(ace as *const ACE_HEADER);
-            if header.AceType != ACCESS_ALLOWED_ACE_TYPE {
+            if header.AceType != ACCESS_ALLOWED_ACE_TYPE as u8 {
                 return Some(AceView { allowed: false, mask: 0, flags: header.AceFlags, who: Who::Other });
             }
             let allowed = &*(ace as *const ACCESS_ALLOWED_ACE);
@@ -482,7 +486,7 @@ mod imp {
                 FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
                 null_mut(),
             );
-            if h == winapi::um::handleapi::INVALID_HANDLE_VALUE {
+            if h == windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE {
                 return Err(last_error(&format!("open {}", path.display())));
             }
             let handle = OwnedHandle::from_raw_handle(h as RawHandle);
@@ -526,8 +530,7 @@ mod imp {
 
     /// 재분석 지점의 태그 (클라우드 파일 `IO_REPARSE_TAG_CLOUD`는 `0x9000_?01A` 묶음, 링크류는 이름 대리 비트 `0x2000_0000`)
     fn reparse_tag(handle: HANDLE) -> Option<u32> {
-        use winapi::um::minwinbase::FileAttributeTagInfo;
-        use winapi::um::winbase::GetFileInformationByHandleEx;
+        use windows_sys::Win32::Storage::FileSystem::{FileAttributeTagInfo, GetFileInformationByHandleEx};
         // winapi 0.3에 없는 구조체 (fileapi.h FILE_ATTRIBUTE_TAG_INFO)
         #[repr(C)]
         #[allow(non_snake_case)]
@@ -586,7 +589,7 @@ mod imp {
             ea.Trustee.TrusteeType = TRUSTEE_IS_WELL_KNOWN_GROUP;
             ea.Trustee.ptstrName = sid as *mut u16;
             let mut new_dacl: PACL = null_mut();
-            let rc = SetEntriesInAclW(1, &mut ea, dacl, &mut new_dacl);
+            let rc = SetEntriesInAclW(1, &ea, dacl, &mut new_dacl);
             if rc != 0 {
                 LocalFree(sd);
                 return Err(format!("build ACL of {}: {}", path.display(), std::io::Error::from_raw_os_error(rc as i32)));
@@ -621,7 +624,7 @@ mod imp {
             ea.Trustee.TrusteeType = TRUSTEE_IS_WELL_KNOWN_GROUP;
             ea.Trustee.ptstrName = sid as *mut u16;
             let mut new_dacl: PACL = null_mut();
-            let rc = SetEntriesInAclW(1, &mut ea, dacl, &mut new_dacl);
+            let rc = SetEntriesInAclW(1, &ea, dacl, &mut new_dacl);
             if rc != 0 {
                 LocalFree(sd);
                 return Err(format!("build ACL of {}: {}", path.display(), std::io::Error::from_raw_os_error(rc as i32)));
@@ -639,19 +642,19 @@ mod imp {
     /// 낮은 무결성 수준 S-1-16-4096
     fn low_integrity() -> Result<PSID, String> {
         static SID: std::sync::OnceLock<Result<Sid, String>> = std::sync::OnceLock::new();
-        integrity_sid(&SID, SECURITY_MANDATORY_LOW_RID)
+        integrity_sid(&SID, SECURITY_MANDATORY_LOW_RID as DWORD)
     }
 
     fn medium_integrity() -> Result<PSID, String> {
         static SID: std::sync::OnceLock<Result<Sid, String>> = std::sync::OnceLock::new();
-        integrity_sid(&SID, SECURITY_MANDATORY_MEDIUM_RID)
+        integrity_sid(&SID, SECURITY_MANDATORY_MEDIUM_RID as DWORD)
     }
 
     fn integrity_sid(cell: &'static std::sync::OnceLock<Result<Sid, String>>, rid: DWORD) -> Result<PSID, String> {
         cell.get_or_init(|| {
-            let mut auth = SID_IDENTIFIER_AUTHORITY { Value: SECURITY_MANDATORY_LABEL_AUTHORITY };
+            let auth = SECURITY_MANDATORY_LABEL_AUTHORITY;
             let mut sid: PSID = null_mut();
-            if unsafe { AllocateAndInitializeSid(&mut auth, 1, rid, 0, 0, 0, 0, 0, 0, 0, &mut sid) } == 0 {
+            if unsafe { AllocateAndInitializeSid(&auth, 1, rid, 0, 0, 0, 0, 0, 0, 0, &mut sid) } == 0 {
                 return Err(last_error("AllocateAndInitializeSid"));
             }
             Ok(Sid(sid))
@@ -665,9 +668,9 @@ mod imp {
     fn owner_rights() -> Result<PSID, String> {
         static SID: std::sync::OnceLock<Result<Sid, String>> = std::sync::OnceLock::new();
         SID.get_or_init(|| {
-            let mut auth = SID_IDENTIFIER_AUTHORITY { Value: SECURITY_CREATOR_SID_AUTHORITY };
+            let auth = SECURITY_CREATOR_SID_AUTHORITY;
             let mut sid: PSID = null_mut();
-            if unsafe { AllocateAndInitializeSid(&mut auth, 1, SECURITY_CREATOR_OWNER_RIGHTS_RID, 0, 0, 0, 0, 0, 0, 0, &mut sid) } == 0 {
+            if unsafe { AllocateAndInitializeSid(&auth, 1, SECURITY_CREATOR_OWNER_RIGHTS_RID as DWORD, 0, 0, 0, 0, 0, 0, 0, &mut sid) } == 0 {
                 return Err(last_error("AllocateAndInitializeSid"));
             }
             Ok(Sid(sid))
@@ -779,7 +782,7 @@ mod imp {
                         }
                         let header = &*(ace as *const ACE_HEADER);
                         let label = &*(ace as *const SYSTEM_MANDATORY_LABEL_ACE);
-                        header.AceType == SYSTEM_MANDATORY_LABEL_ACE_TYPE
+                        header.AceType == SYSTEM_MANDATORY_LABEL_ACE_TYPE as u8
                             && DWORD::from(header.AceFlags) & flags == flags
                             && EqualSid(&label.SidStart as *const DWORD as PSID, low) != 0
                     })
@@ -830,7 +833,7 @@ mod imp {
                     let header = &*(ace as *const ACE_HEADER);
                     let label = &*(ace as *const SYSTEM_MANDATORY_LABEL_ACE);
                     // 처음 나오는 표시가 그 경로의 수준이다 (직접 붙인 표시가 상속받은 표시보다 앞에 온다)
-                    if header.AceType == SYSTEM_MANDATORY_LABEL_ACE_TYPE {
+                    if header.AceType == SYSTEM_MANDATORY_LABEL_ACE_TYPE as u8 {
                         if EqualSid(&label.SidStart as *const DWORD as PSID, low) != 0 {
                             found = Some(header.AceFlags & super::ACE_INHERITED != 0);
                         }
@@ -959,7 +962,7 @@ mod imp {
     /// 경로의 짧은 이름(8.3)을 긴 이름으로 편다. 링크·정션은 따라가지 않는다. 실패하면 그대로
     fn long_path(path: &Path) -> PathBuf {
         use std::os::windows::ffi::OsStringExt;
-        use winapi::um::fileapi::GetLongPathNameW;
+        use windows_sys::Win32::Storage::FileSystem::GetLongPathNameW;
         let name = wide(path.as_os_str());
         let mut buf = vec![0u16; 1024];
         unsafe {
@@ -977,7 +980,7 @@ mod imp {
 
     /// 경로가 있는 볼륨이 파일 보안 정보(ACL·표시)를 두는가 (NTFS·ReFS는 예, FAT·exFAT는 아니오)
     fn persistent_acls(path: &Path) -> Result<bool, String> {
-        use winapi::um::fileapi::{GetVolumeInformationW, GetVolumePathNameW};
+        use windows_sys::Win32::Storage::FileSystem::{GetVolumeInformationW, GetVolumePathNameW};
         let name = wide(path.as_os_str());
         let mut root = vec![0u16; name.len().max(260) + 1];
         let mut flags: DWORD = 0;
@@ -989,7 +992,7 @@ mod imp {
                 return Err(last_error(&format!("read the volume of {}", path.display())));
             }
         }
-        Ok(flags & winapi::um::winnt::FILE_PERSISTENT_ACLS != 0)
+        Ok(flags & windows_sys::Win32::System::SystemServices::FILE_PERSISTENT_ACLS != 0)
     }
 
     /// 이 파일에만 중간 수준 표시를 직접 붙인다. 직접 붙인 표시가 상속받은 표시보다 앞에 와서 그 파일의 수준이 되고,
@@ -1021,11 +1024,11 @@ mod imp {
         fn launch_integrity(exe: &std::path::Path) -> u32 {
             use super::*;
             use std::os::windows::io::AsRawHandle;
-            use winapi::um::winnt::{TokenIntegrityLevel, TOKEN_MANDATORY_LABEL};
+            use windows_sys::Win32::Security::{TokenIntegrityLevel, TOKEN_MANDATORY_LABEL};
             unsafe {
                 let app = wide(exe.as_os_str());
                 let mut line = wide(std::ffi::OsStr::new("probe --list"));
-                let mut si: winapi::um::processthreadsapi::STARTUPINFOW = std::mem::zeroed();
+                let mut si: windows_sys::Win32::System::Threading::STARTUPINFOW = std::mem::zeroed();
                 si.cb = std::mem::size_of_val(&si) as DWORD;
                 let mut pi: PROCESS_INFORMATION = std::mem::zeroed();
                 assert_ne!(
@@ -1044,8 +1047,8 @@ mod imp {
                     && GetTokenInformation(token, TokenIntegrityLevel, buf.as_mut_ptr() as *mut c_void, buf.len() as DWORD, &mut len) != 0;
                 let rid = if read {
                     let label = &*(buf.as_ptr() as *const TOKEN_MANDATORY_LABEL);
-                    let count = *winapi::um::securitybaseapi::GetSidSubAuthorityCount(label.Label.Sid);
-                    *winapi::um::securitybaseapi::GetSidSubAuthority(label.Label.Sid, DWORD::from(count) - 1)
+                    let count = *windows_sys::Win32::Security::GetSidSubAuthorityCount(label.Label.Sid);
+                    *windows_sys::Win32::Security::GetSidSubAuthority(label.Label.Sid, DWORD::from(count) - 1)
                 } else {
                     0
                 };
@@ -1251,7 +1254,7 @@ mod imp {
             let (ok, out) = icacls(&dir, &["/remove:g", "*S-1-5-32-544"]);
             assert!(ok, "{out}");
             assert_eq!(super::low_label(&exe).unwrap(), Some(true));
-            assert!(super::open_checked(&exe, winapi::um::winnt::WRITE_OWNER).is_err(), "the file must not grant WRITE_OWNER, as on a real PC");
+            assert!(super::open_checked(&exe, windows_sys::Win32::Storage::FileSystem::WRITE_OWNER).is_err(), "the file must not grant WRITE_OWNER, as on a real PC");
             assert_eq!(launch_integrity(&exe), 0x1000);
             assert_eq!(super::clear_low_labels(&dir).unwrap(), 1);
             assert_eq!(super::low_label(&exe).unwrap(), None);
@@ -1517,7 +1520,7 @@ mod imp {
                         continue;
                     }
                     let header = &*(ace as *const ACE_HEADER);
-                    if header.AceType != ACCESS_ALLOWED_ACE_TYPE || header.AceFlags & super::ACE_INHERITED != 0 {
+                    if header.AceType != ACCESS_ALLOWED_ACE_TYPE as u8 || header.AceFlags & super::ACE_INHERITED != 0 {
                         continue;
                     }
                     let allowed = &*(ace as *const ACCESS_ALLOWED_ACE);
@@ -1540,10 +1543,9 @@ mod imp {
             if lib.is_null() {
                 return Err(last_error("userenv.dll"));
             }
-            let delete = GetProcAddress(lib, c"DeleteAppContainerProfile".as_ptr());
-            if delete.is_null() {
+            let Some(delete) = GetProcAddress(lib, c"DeleteAppContainerProfile".as_ptr().cast()) else {
                 return Err("AppContainer is not supported on this Windows".into());
-            }
+            };
             let delete: DeleteProfile = std::mem::transmute(delete);
             let name = wide(OsStr::new(profile));
             let hr = delete(name.as_ptr());
@@ -1555,9 +1557,9 @@ mod imp {
     }
 
     fn pipe() -> Result<(OwnedHandle, OwnedHandle), String> {
-        let mut sa = SECURITY_ATTRIBUTES { nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as DWORD, lpSecurityDescriptor: null_mut(), bInheritHandle: TRUE };
+        let sa = SECURITY_ATTRIBUTES { nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as DWORD, lpSecurityDescriptor: null_mut(), bInheritHandle: TRUE };
         let (mut r, mut w): (HANDLE, HANDLE) = (null_mut(), null_mut());
-        if unsafe { CreatePipe(&mut r, &mut w, &mut sa, 0) } == 0 {
+        if unsafe { CreatePipe(&mut r, &mut w, &sa, 0) } == 0 {
             return Err(last_error("CreatePipe"));
         }
         unsafe { Ok((OwnedHandle::from_raw_handle(r as RawHandle), OwnedHandle::from_raw_handle(w as RawHandle))) }
@@ -1644,7 +1646,7 @@ mod imp {
 
         unsafe {
             use std::os::windows::io::AsRawHandle;
-            let mut capability = SID_AND_ATTRIBUTES { Sid: internet, Attributes: SE_GROUP_ENABLED };
+            let mut capability = SID_AND_ATTRIBUTES { Sid: internet, Attributes: SE_GROUP_ENABLED as DWORD };
             let mut caps: SECURITY_CAPABILITIES = std::mem::zeroed();
             caps.AppContainerSid = sid;
             caps.Capabilities = &mut capability;
@@ -1699,7 +1701,7 @@ mod imp {
                 EXTENDED_STARTUPINFO_PRESENT | CREATE_SUSPENDED | CREATE_NO_WINDOW | CREATE_UNICODE_ENVIRONMENT,
                 env_block.as_mut_ptr() as *mut c_void,
                 cwd_w.as_ref().map_or(std::ptr::null(), |c| c.as_ptr()),
-                &mut si.StartupInfo,
+                &si.StartupInfo,
                 &mut pi,
             );
             let create_error = last_error("CreateProcessW");

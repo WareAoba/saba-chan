@@ -16,11 +16,13 @@ pub struct RunningProcess {
 
 /// 크로스 플랫폼: 실행 중인 모든 프로세스 목록 가져오기
 pub fn get_running_processes() -> Vec<RunningProcess> {
-    use sysinfo::{ProcessRefreshKind, UpdateKind};
+    use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, UpdateKind};
     let mut sys = System::new();
     // 기본 refresh_processes()는 커맨드라인·작업 폴더를 읽지 않는다: 자동 감지(cmd_patterns, 주인 가리기)에 필요하다
     sys.refresh_processes_specifics(
-        ProcessRefreshKind::new()
+        ProcessesToUpdate::All,
+        true,
+        ProcessRefreshKind::nothing()
             .with_exe(UpdateKind::OnlyIfNotSet)
             .with_cmd(UpdateKind::OnlyIfNotSet)
             .with_cwd(UpdateKind::OnlyIfNotSet),
@@ -31,9 +33,9 @@ pub fn get_running_processes() -> Vec<RunningProcess> {
         .map(|(pid, process)| {
             RunningProcess {
                 pid: pid.as_u32(),
-                name: process.name().to_string(),
+                name: process.name().to_string_lossy().into_owned(),
                 executable_path: process.exe().and_then(|p| p.to_str()).map(String::from),
-                cmd: process.cmd().to_vec(),
+                cmd: process.cmd().iter().map(|arg| arg.to_string_lossy().into_owned()).collect(),
                 cwd: process.cwd().and_then(|p| p.to_str()).map(String::from),
             }
         })

@@ -656,12 +656,13 @@ pub(crate) async fn preparation_output(cmd: &mut Command) -> std::io::Result<std
 #[cfg(windows)]
 mod windows_job {
     use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle, RawHandle};
-    use winapi::um::handleapi::INVALID_HANDLE_VALUE;
-    use winapi::um::jobapi2::{AssignProcessToJobObject, CreateJobObjectW, SetInformationJobObject, TerminateJobObject};
-    use winapi::um::processthreadsapi::{OpenThread, ResumeThread};
-    use winapi::um::tlhelp32::{CreateToolhelp32Snapshot, Thread32First, Thread32Next, THREADENTRY32, TH32CS_SNAPTHREAD};
-    use winapi::um::winbase::{CREATE_NO_WINDOW, CREATE_SUSPENDED};
-    use winapi::um::winnt::{JobObjectExtendedLimitInformation, HANDLE, JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_BREAKAWAY_OK, THREAD_SUSPEND_RESUME};
+    use windows_sys::Win32::Foundation::{HANDLE, INVALID_HANDLE_VALUE};
+    use windows_sys::Win32::System::Diagnostics::ToolHelp::{CreateToolhelp32Snapshot, Thread32First, Thread32Next, THREADENTRY32, TH32CS_SNAPTHREAD};
+    use windows_sys::Win32::System::JobObjects::{
+        AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation, SetInformationJobObject, TerminateJobObject,
+        JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_BREAKAWAY_OK,
+    };
+    use windows_sys::Win32::System::Threading::{OpenThread, ResumeThread, CREATE_NO_WINDOW, CREATE_SUSPENDED, THREAD_SUSPEND_RESUME};
 
     // 실행기가 자식을 먼저 띄우면 Job 등록만으로는 이미 나온 자식을 포함하지 못한다.
     pub(super) fn spawn(cmd: &mut tokio::process::Command) -> std::io::Result<(tokio::process::Child, OwnedHandle)> {

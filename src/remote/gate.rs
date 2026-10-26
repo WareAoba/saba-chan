@@ -165,6 +165,9 @@ pub static ROUTES: &[Route] = &[
     allow("GET", "/api/system/metrics"),
     deny("GET", "/api/system/paths"),
     deny("POST", "/api/system/paths/move"),
+    // 이 PC에 로그인할 때 무엇을 띄울지는 PC에서만 정한다
+    deny("GET", "/api/system/autostart"),
+    deny("PUT", "/api/system/autostart"),
     // ── 클라이언트·데몬 제어: 콘솔 읽기만 ──
     deny("POST", "/api/client/register"),
     deny("GET", "/api/clients"),

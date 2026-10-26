@@ -1573,5 +1573,16 @@
     "start_daemon": "데몬 켜기",
     "stop_daemon": "데몬 끄기",
     "quit_all": "완전히 종료"
+  },
+  "autostart": {
+    "label": "로그인할 때 자동 실행",
+    "description": "PC에 로그인하면 사바쨩을 켭니다. 데몬만 켜면 창 없이 트레이에서 돕니다.",
+    "off": "끔",
+    "daemon": "데몬만",
+    "full": "GUI까지 전체",
+    "err_gui_missing": "GUI가 설치되어 있지 않아 GUI까지 전체를 고를 수 없습니다.",
+    "err_write_failed": "시작 프로그램에 등록하지 못했습니다. 다시 시도하세요.",
+    "err_unsupported": "이 OS에서는 아직 설정할 수 없습니다.",
+    "err_generic": "자동 실행을 바꾸지 못했습니다."
   }
 }

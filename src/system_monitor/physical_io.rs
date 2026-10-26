@@ -86,15 +86,15 @@ mod imp {
 #[cfg(windows)]
 mod imp {
     use std::ptr::null_mut;
-    use winapi::um::pdh::{
-        PdhAddEnglishCounterW, PdhCloseQuery, PdhCollectQueryData, PdhGetFormattedCounterValue, PdhOpenQueryW,
-        PDH_FMT_COUNTERVALUE, PDH_FMT_DOUBLE, PDH_HCOUNTER, PDH_HQUERY,
+    use windows_sys::Win32::System::Performance::{
+        PdhAddEnglishCounterW, PdhCloseQuery, PdhCollectQueryData, PdhGetFormattedCounterValue, PdhOpenQueryW, PDH_FMT_COUNTERVALUE, PDH_FMT_DOUBLE,
     };
 
+    /// PDH 핸들은 isize다 (0이면 없음)
     pub struct Counter {
-        query: PDH_HQUERY,
-        read: PDH_HCOUNTER,
-        write: PDH_HCOUNTER,
+        query: isize,
+        read: isize,
+        write: isize,
         primed: bool,
     }
 
@@ -107,10 +107,10 @@ mod imp {
 
     impl Counter {
         pub fn new() -> Self {
-            let mut c = Self { query: null_mut(), read: null_mut(), write: null_mut(), primed: false };
+            let mut c = Self { query: 0, read: 0, write: 0, primed: false };
             unsafe {
-                if PdhOpenQueryW(null_mut(), 0, &mut c.query) != 0 {
-                    c.query = null_mut();
+                if PdhOpenQueryW(std::ptr::null(), 0, &mut c.query) != 0 {
+                    c.query = 0;
                     return c;
                 }
                 // English 이름: 윈도우 표시 언어와 상관없이 같은 카운터
@@ -118,14 +118,14 @@ mod imp {
                 let w = PdhAddEnglishCounterW(c.query, wide(r"\PhysicalDisk(_Total)\Disk Write Bytes/sec").as_ptr(), 0, &mut c.write);
                 if r != 0 || w != 0 {
                     PdhCloseQuery(c.query);
-                    c.query = null_mut();
+                    c.query = 0;
                 }
             }
             c
         }
 
         pub fn refresh(&mut self) -> Option<(u64, u64)> {
-            if self.query.is_null() {
+            if self.query == 0 {
                 return None;
             }
             unsafe {
@@ -141,18 +141,18 @@ mod imp {
         }
     }
 
-    unsafe fn value(counter: PDH_HCOUNTER) -> Option<u64> {
+    unsafe fn value(counter: isize) -> Option<u64> {
         let mut v: PDH_FMT_COUNTERVALUE = std::mem::zeroed();
         // CStatus 0(VALID_DATA)·1(NEW_DATA)은 둘 다 쓸 수 있는 값이다
         if PdhGetFormattedCounterValue(counter, PDH_FMT_DOUBLE, null_mut(), &mut v) != 0 || v.CStatus > 1 {
             return None;
         }
-        Some(v.u.doubleValue().max(0.0) as u64)
+        Some(v.Anonymous.doubleValue.max(0.0) as u64)
     }
 
     impl Drop for Counter {
         fn drop(&mut self) {
-            if !self.query.is_null() {
+            if self.query != 0 {
                 unsafe { PdhCloseQuery(self.query) };
             }
         }

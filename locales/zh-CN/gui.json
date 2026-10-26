@@ -1573,5 +1573,16 @@
     "start_daemon": "启动守护进程",
     "stop_daemon": "停止守护进程",
     "quit_all": "完全退出"
+  },
+  "autostart": {
+    "label": "登录时自动启动",
+    "description": "登录此电脑时启动 Saba-chan。仅守护进程时没有窗口，在托盘中运行。",
+    "off": "关闭",
+    "daemon": "仅守护进程",
+    "full": "包括 GUI 全部",
+    "err_gui_missing": "未安装 GUI，无法选择“包括 GUI 全部”。",
+    "err_write_failed": "无法添加到启动程序。请重试。",
+    "err_unsupported": "此操作系统暂不支持此设置。",
+    "err_generic": "无法更改自动启动。"
   }
 }

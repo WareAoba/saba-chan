@@ -1573,5 +1573,16 @@
     "start_daemon": "デーモンを開始",
     "stop_daemon": "デーモンを停止",
     "quit_all": "完全に終了"
+  },
+  "autostart": {
+    "label": "サインイン時に自動起動",
+    "description": "PCにサインインするとSaba-chanを起動します。デーモンのみはウィンドウなしでトレイで動きます。",
+    "off": "オフ",
+    "daemon": "デーモンのみ",
+    "full": "GUIまで全部",
+    "err_gui_missing": "GUIがインストールされていないため、GUIまで全部は選べません。",
+    "err_write_failed": "スタートアッププログラムに登録できませんでした。もう一度試してください。",
+    "err_unsupported": "このOSではまだ設定できません。",
+    "err_generic": "自動起動を変更できませんでした。"
   }
 }

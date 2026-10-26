@@ -32,8 +32,7 @@ pub fn stops_with_launcher() -> bool {
     *FOUND.get_or_init(|| {
         #[cfg(windows)]
         unsafe {
-            use winapi::um::jobapi2::QueryInformationJobObject;
-            use winapi::um::winnt::{JobObjectExtendedLimitInformation, JOBOBJECT_EXTENDED_LIMIT_INFORMATION};
+            use windows_sys::Win32::System::JobObjects::{JobObjectExtendedLimitInformation, QueryInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION};
             let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std::mem::zeroed();
             // 핸들 없이 부르면 이 프로세스의 job을 본다. job 밖이면 실패한다
             let read = QueryInformationJobObject(

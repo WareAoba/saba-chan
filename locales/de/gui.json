@@ -1573,5 +1573,16 @@
     "start_daemon": "Daemon starten",
     "stop_daemon": "Daemon stoppen",
     "quit_all": "Vollständig beenden"
+  },
+  "autostart": {
+    "label": "Beim Anmelden starten",
+    "description": "Startet Saba-chan, wenn du dich an diesem PC anmeldest. Nur Daemon läuft ohne Fenster im Tray.",
+    "off": "Aus",
+    "daemon": "Nur Daemon",
+    "full": "Alles mit GUI",
+    "err_gui_missing": "Die GUI ist nicht installiert, daher kann „Alles mit GUI“ nicht gewählt werden.",
+    "err_write_failed": "Saba-chan konnte nicht zu den Autostart-Programmen hinzugefügt werden. Versuche es erneut.",
+    "err_unsupported": "Auf diesem Betriebssystem noch nicht einstellbar.",
+    "err_generic": "Der Start beim Anmelden konnte nicht geändert werden."
   }
 }

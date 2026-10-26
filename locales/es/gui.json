@@ -1573,5 +1573,16 @@
     "start_daemon": "Iniciar daemon",
     "stop_daemon": "Detener daemon",
     "quit_all": "Salir por completo"
+  },
+  "autostart": {
+    "label": "Iniciar al iniciar sesión",
+    "description": "Inicia Saba-chan al iniciar sesión en este PC. Solo el daemon se ejecuta en la bandeja sin ventana.",
+    "off": "Desactivado",
+    "daemon": "Solo el daemon",
+    "full": "Todo con la GUI",
+    "err_gui_missing": "La GUI no está instalada, así que no se puede elegir «Todo con la GUI».",
+    "err_write_failed": "No se pudo añadir Saba-chan a los programas de inicio. Inténtalo de nuevo.",
+    "err_unsupported": "Todavía no se puede configurar en este sistema operativo.",
+    "err_generic": "No se pudo cambiar el inicio al iniciar sesión."
   }
 }
