@@ -237,11 +237,26 @@ async fn forward_once(file: &ConfigFile, relay: Option<Target>, host_id: &str, p
     let mut line = (!matches!(*req.method(), Method::GET | Method::HEAD | Method::OPTIONS) && !crate::audit::is_quiet())
         .then(|| AuditLine::new(req.method(), path, &daemon.name));
     let res = send_saved(file, relay, &daemon, path, req).await;
-    if let Some(line) = line.as_mut() {
-        line.status = res.status().as_u16();
+    let Some(line) = line.as_mut() else { return res };
+    line.status = res.status().as_u16();
+    // 시작 실패처럼 200에 `success:false`(또는 `ok:false`)로 답하는 라우트가 있다: 길이를 아는 작은 본문만 열어 보고 그대로 넘긴다
+    let small = axum::body::HttpBody::size_hint(res.body()).exact().is_some_and(|n| n <= DECLINE_PEEK_LIMIT as u64);
+    if !res.status().is_success() || !small {
+        return res;
     }
-    res
+    let (head, body) = res.into_parts();
+    let Ok(bytes) = axum::body::to_bytes(body, DECLINE_PEEK_LIMIT).await else {
+        line.status = 0;
+        return error(StatusCode::BAD_GATEWAY, "remote_unreachable");
+    };
+    if let Ok(v) = serde_json::from_slice::<Value>(&bytes) {
+        line.declined = ["success", "ok"].iter().any(|k| v.get(*k).and_then(Value::as_bool) == Some(false));
+    }
+    Response::from_parts(head, Body::from(bytes))
 }
+
+/// 감사 기록에 실패 여부를 보려고 열어 보는 답 본문의 상한
+const DECLINE_PEEK_LIMIT: usize = 1024 * 1024;
 
 /// 원격 데몬에 보낸 조작 한 줄 (이 PC 감사 로그). 쿼리·본문은 비밀을 가릴 모듈 정보가 원격에 있어 남기지 않는다.
 /// 답을 받기 전에 끝나도(요청이 끊기거나 이 데몬이 멈춤) 이미 원격에 닿았을 수 있으므로 결과 모름(`status` 0)으로 남긴다
@@ -250,12 +265,14 @@ struct AuditLine {
     daemon: String,
     command: String,
     status: u16,
+    /// 2xx이지만 본문이 실패라고 했다
+    declined: bool,
 }
 
 impl AuditLine {
     fn new(method: &Method, path: &str, daemon: &str) -> Self {
         let command = format!("{method} {}", path.split('?').next().unwrap_or(path));
-        Self { origin: crate::audit::current(), daemon: daemon.to_string(), command, status: 0 }
+        Self { origin: crate::audit::current(), daemon: daemon.to_string(), command, status: 0, declined: false }
     }
 }
 
@@ -265,7 +282,7 @@ impl Drop for AuditLine {
             action: "remote",
             daemon: Some(&self.daemon),
             command: Some(&self.command),
-            ok: (200..300).contains(&self.status),
+            ok: (200..300).contains(&self.status) && !self.declined,
             status: self.status,
             ..Default::default()
         };
@@ -423,6 +440,7 @@ mod tests {
                 })
                 .post(|body: String| async move { body }),
             )
+            .route("/api/declined", axum::routing::post(|| async { Json(json!({ "ok": false, "error_code": "not_found" })) }))
             .route(
                 "/api/slow",
                 get(|| async {
@@ -532,6 +550,14 @@ mod tests {
         assert_eq!(mine[0]["command"], "DELETE /api/missing");
         assert_eq!((mine[0]["ok"].as_bool(), mine[0]["status"].as_u64()), (Some(false), Some(404)));
         assert!(!mine.iter().any(|e| e.to_string().contains("secret")), "{mine:?}");
+
+        // 200이어도 본문이 실패(`success`·`ok`가 false)라고 하면 실패로 남기고, 본문은 그대로 넘긴다
+        let declined = forward(&file, Some(relay_b.clone()), "host-b", "/api/declined", Request::post("/ignored").body(Body::empty()).unwrap(), CancellationToken::new());
+        let declined_origin = Origin { user_name: Some(format!("{marker}-declined")), ..Origin::new("gui") };
+        let (status, body) = json_of(with_origin(declined_origin, declined).await).await;
+        assert_eq!((status, body["error_code"].as_str()), (200, Some("not_found")));
+        let declined: Vec<Value> = crate::audit::log().recent(1000, None).into_iter().filter(|e| e["userName"] == format!("{marker}-declined").as_str()).collect();
+        assert_eq!((declined.len(), declined[0]["ok"].as_bool(), declined[0]["status"].as_u64()), (1, Some(false), Some(200)));
 
         // 답을 기다리다 이 데몬이 멈춰도 원격에 닿았을 수 있으므로 결과 모름으로 남는다
         let stop = CancellationToken::new();
