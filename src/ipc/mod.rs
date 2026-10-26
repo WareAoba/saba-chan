@@ -959,6 +959,9 @@ impl IPCServer {
             // 인스턴스별 디스코드 낱말, 길드가 쓸 서버 (로컬 전용)
             .route("/api/instance/{id}/words", get(handlers::words::get).put(handlers::words::put))
             .route("/api/guilds/{guild}/allowed-instances", put(handlers::words::put_allowed))
+            // 켜짐 알림: 길드마다 고른 서버 (액션 instance.start_notice.set 도 같은 라우트)
+            .route("/api/guilds/{guild}/start-notice", get(handlers::start_notice::get))
+            .route("/api/instance/{id}/start-notice/{guild}", put(handlers::start_notice::put))
             .route("/api/chatbot/guilds/{guild}", get(handlers::chatbot::get_guild).patch(handlers::chatbot::patch_guild))
             // ── 원격 데몬 (D1): 원격 포트 설정과 짝 맺은 PC (로컬 전용, 원격 포트에서는 막는다) ──
             .route("/api/remote/settings", get(handlers::remote_daemon::get_settings).put(handlers::remote_daemon::put_settings))

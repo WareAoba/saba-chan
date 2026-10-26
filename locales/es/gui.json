@@ -1067,7 +1067,10 @@
     "prefix_err_count": "Hasta {{max}} prefijos.",
     "prefix_err_length": "Los prefijos tienen como máximo {{max}} caracteres: {{words}}",
     "translate_commands_title": "Nombres de comandos traducidos",
-    "translate_commands_desc": "Muestra nombres y descripciones traducidos de los comandos del juego en los comandos de barra de Discord. Si está apagado, solo se ven los nombres del módulo (por ejemplo save-all)."
+    "translate_commands_desc": "Muestra nombres y descripciones traducidos de los comandos del juego en los comandos de barra de Discord. Si está apagado, solo se ven los nombres del módulo (por ejemplo save-all).",
+    "start_notice": "Aviso de inicio de {{name}}",
+    "start_notice_hint": "Los servidores con la campana activada se anuncian en el canal de avisos de este servidor de Discord cuando Saba-chan los inicia. No se avisan los inicios desde Discord ni los de fuera de Saba-chan. Elige el canal de avisos en la pestaña Canales.",
+    "start_notice_save_failed": "No se pudo guardar el aviso de inicio: {{error}}"
   },
   "maintenance": {
     "load_failed": "No se pudieron cargar las copias de seguridad ni las programaciones.",

@@ -1067,7 +1067,10 @@
     "prefix_err_count": "前缀最多 {{max}} 个。",
     "prefix_err_length": "前缀最多 {{max}} 个字符：{{words}}",
     "translate_commands_title": "翻译命令名称",
-    "translate_commands_desc": "在 Discord 斜杠命令中显示游戏命令的翻译名称和说明。关闭时只显示模块中的原始名称（例如 save-all）。"
+    "translate_commands_desc": "在 Discord 斜杠命令中显示游戏命令的翻译名称和说明。关闭时只显示模块中的原始名称（例如 save-all）。",
+    "start_notice": "{{name}} 启动通知",
+    "start_notice_hint": "开启铃铛的服务器在 Saba-chan 启动时会在此 Discord 服务器的通知频道告知。从 Discord 启动的和在 Saba-chan 之外启动的除外。通知频道在“频道”标签中设置。",
+    "start_notice_save_failed": "无法保存启动通知：{{error}}"
   },
   "maintenance": {
     "load_failed": "无法加载备份和计划信息。",

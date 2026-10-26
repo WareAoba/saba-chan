@@ -187,6 +187,8 @@ pub static ROUTES: &[Route] = &[
     allow("GET", "/api/instance/{id}/words"),
     allow("PUT", "/api/instance/{id}/words"),
     allow("PUT", "/api/guilds/{guild}/allowed-instances"),
+    allow("GET", "/api/guilds/{guild}/start-notice"),
+    allow("PUT", "/api/instance/{id}/start-notice/{guild}"),
     allow("GET", "/api/relay/host/{host_id}/nodes"),
     allow("GET", "/api/relay/node/{guild_id}/members"),
     // ── 디스코드 설정·릴레이 연결: 웹이 타고 있는 연결 자체다 ──

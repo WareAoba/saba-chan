@@ -1015,3 +1015,28 @@ fn a_command_kept_off_remote_surfaces_is_not_a_remote_action() {
     let shown = command_view(&json!({ "name": "say", "risk": "safe", "inputs": [] })).unwrap();
     assert_eq!(shown["surfaces"], json!(["gui", "cli", "discord", "chatbot"]));
 }
+
+// 사용자 요청(2026-10-26): 켜짐 알림은 디스코드 `/<서버> 켜짐-알림`으로도 바꾼다. 관리자 이상, 요청이 온 길드만, 말하는 사바쨩은 아니다
+#[tokio::test]
+async fn start_notice_is_set_from_discord_by_admins_for_their_own_guild() {
+    let (state, id, _tmp) = server().await;
+    set_node(&state, json!({ "ownerDiscordId": "owner", "defaultLevel": 1, "members": { "admin": 2 } })).await;
+    let on = json!({ "enabled": true });
+    let id_ = "instance.start_notice.set";
+    assert_eq!(plan(&state, id_, Some(&id), &on, &relay("user", false)).await.unwrap_err().code, "PERMISSION_DENIED");
+    assert_eq!(plan(&state, id_, Some(&id), &on, &relay("admin", true)).await.unwrap_err().code, "action_not_allowed");
+    let other = json!({ "guild": "other", "enabled": true });
+    assert_eq!(plan(&state, id_, Some(&id), &other, &relay("admin", false)).await.unwrap_err().code, "invalid_input");
+
+    let planned = plan(&state, id_, Some(&id), &on, &relay("admin", false)).await.unwrap();
+    assert_eq!(planned["needsConfirm"], false);
+    let done = run(&state, "", None, &Value::Null, planned["planId"].as_str(), &relay("admin", false)).await.unwrap();
+    assert_eq!(done["success"], true, "{done}");
+    assert_eq!(state.config_store.get_bot_config().await.node_settings["g"]["startNotice"], json!([id]));
+
+    // 서버 루트 아래 메뉴에 실린다
+    let (actions, _) = heartbeat_actions(&crate::chat::i18n::languages(), &[]);
+    let item = actions.iter().find(|a| a["id"] == id_).expect("in the Discord menu");
+    assert_eq!(item["title"]["ko"], "켜짐 알림");
+    assert_eq!(item["name"]["en"], "Start alert");
+}

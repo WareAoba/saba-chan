@@ -193,6 +193,13 @@ pub static ACTIONS: &[Def] = &[
         guild_owner: true,
         ..def("discord.settings.set", Kind::Admin, "caution", LOCAL_AND_DISCORD, false, "PATCH", "/api/discord/:guild/settings")
     },
+    // 켜짐 알림 (길드마다 서버마다, 기본 꺼짐). 디스코드에서는 관리자 이상, 요청이 온 길드만. 서버 루트 메뉴(`/<서버> 켜짐-알림`)에 싣는다
+    Def {
+        fields: &[path_field("guild"), field("enabled", "boolean", true)],
+        discord_level: Some(crate::chat::permissions::ADMIN),
+        guild_owner: true,
+        ..def("instance.start_notice.set", Kind::Admin, "caution", LOCAL_AND_DISCORD, true, "PUT", "/api/instance/:id/start-notice/:guild")
+    },
     def("update.check", Kind::Query, "safe", LOCAL_AND_DISCORD, false, "POST", "/api/updates/check"),
     // 원격(디스코드)에서도 끝까지 가도록 받기·적용·업데이터 띄우기를 한 번에 한다 (`/api/updates/install`)
     Def { discord_level: Some(crate::chat::permissions::OWNER), ..def("update.apply", Kind::Admin, "danger", LOCAL_AND_DISCORD, false, "POST", "/api/updates/install") },

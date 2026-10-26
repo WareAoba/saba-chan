@@ -1067,7 +1067,10 @@
     "prefix_err_count": "Até {{max}} prefixos.",
     "prefix_err_length": "Prefixos têm no máximo {{max}} caracteres: {{words}}",
     "translate_commands_title": "Nomes de comandos traduzidos",
-    "translate_commands_desc": "Mostra nomes e descrições traduzidos dos comandos do jogo nos comandos de barra do Discord. Desligado, mostra só os nomes do módulo (por exemplo save-all)."
+    "translate_commands_desc": "Mostra nomes e descrições traduzidos dos comandos do jogo nos comandos de barra do Discord. Desligado, mostra só os nomes do módulo (por exemplo save-all).",
+    "start_notice": "Alerta de início de {{name}}",
+    "start_notice_hint": "Servidores com o sino ligado são anunciados no canal de alertas deste servidor do Discord quando a Saba-chan os inicia. Inícios pelo Discord e fora da Saba-chan ficam de fora. Escolha o canal de alertas na aba Canais.",
+    "start_notice_save_failed": "Não foi possível salvar o alerta de início: {{error}}"
   },
   "maintenance": {
     "load_failed": "Não foi possível carregar os backups e agendamentos.",

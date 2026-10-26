@@ -15,6 +15,7 @@ pub mod logs;
 pub mod chatbot;
 pub mod discord;
 pub mod words;
+pub mod start_notice;
 pub mod events;
 pub mod migration;
 pub mod diagnostics;

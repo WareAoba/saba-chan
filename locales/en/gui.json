@@ -1067,7 +1067,10 @@
     "prefix_err_count": "Up to {{max}} prefixes.",
     "prefix_err_length": "Prefixes can be up to {{max}} characters: {{words}}",
     "translate_commands_title": "Translated command names",
-    "translate_commands_desc": "Show translated names and descriptions of game commands in Discord slash commands. When off, only the names in the module (for example save-all) are shown."
+    "translate_commands_desc": "Show translated names and descriptions of game commands in Discord slash commands. When off, only the names in the module (for example save-all) are shown.",
+    "start_notice": "{{name}} start alert",
+    "start_notice_hint": "Servers with the bell on are announced in this Discord server's alert channel when Saba-chan starts them. Starts from Discord and starts outside Saba-chan are left out. Pick the alert channel in the Channels tab.",
+    "start_notice_save_failed": "Couldn't save the start alert: {{error}}"
   },
   "maintenance": {
     "load_failed": "Couldn't load backups and schedules.",

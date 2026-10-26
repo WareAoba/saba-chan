@@ -126,7 +126,12 @@
     "words_bad_command": "{{spec}}：请写成 命令=称呼,称呼（命令= 表示删除）。",
     "no_paired_servers": "此电脑尚未与任何 Discord 服务器配对。运行: saba-chan-cli bot pair",
     "pick_server": "已配对多个 Discord 服务器。请指定要更改的服务器 id: {{servers}}",
-    "translate_commands": "翻译命令名称"
+    "translate_commands": "翻译命令名称",
+    "notice_none": "还没有开启启动通知的服务器。Saba-chan 启动服务器时不会告知。",
+    "notice_is_on": "{{server}}：启动通知已开",
+    "notice_is_off": "{{server}}：启动通知已关",
+    "notice_on_saved": "将在 {{guild}} 的通知频道告知 {{server}} 已启动。",
+    "notice_off_saved": "不再在 {{guild}} 告知 {{server}} 已启动。"
   },
   "col": {
     "players": "在线玩家",
@@ -870,7 +875,8 @@
       "remote.servers": "按守护进程列出本机和每个远程守护进程的服务器（要操作某个请用`--daemon <名称>`）",
       "remote.forget": "移除远程守护进程（重新连接用 `remote connect`）",
       "config.autostart": "登录此电脑时启动的内容：off（关闭）、daemon（仅守护进程和托盘）、full（包括 GUI 窗口）。不带模式时显示当前值",
-      "config.browse": "查看守护进程所在电脑的文件夹和文件（加 --daemon 时为那台远程电脑）。不给路径则显示驱动器或 /"
+      "config.browse": "查看守护进程所在电脑的文件夹和文件（加 --daemon 时为那台远程电脑）。不给路径则显示驱动器或 /",
+      "bot.notice": "Saba-chan 启动服务器时在 Discord 服务器的通知频道告知（默认关闭）。不带服务器：查看；服务器加 `--on`/`--off`：更改"
     },
     "arg": {
       "module.maker.game": "第一个请求中的游戏名",
@@ -1022,7 +1028,9 @@
       "keep_settings": "删除时不将游戏设置文件恢复到导入前，保留当前设置",
       "move_folder": "不在原位置链接 --from 文件夹，而是移入 saba-chan 文件夹（仅限同一驱动器）",
       "config.browse.path": "要显示的文件夹的完整路径",
-      "config.browse.files": "也显示这些扩展名的文件（逗号分隔，* 表示全部）"
+      "config.browse.files": "也显示这些扩展名的文件（逗号分隔，* 表示全部）",
+      "bot.notice.on": "开启启动通知",
+      "bot.notice.off": "关闭启动通知"
     },
     "after": "名称可以只写一部分（例如 start pal）。在终端中不带参数运行会打开全屏菜单(SABA_NO_TUI=1 时为交互式 shell)。\n在脚本中请使用 --json 和 --yes。退出码：0 成功 · 1 失败 · 2 用法错误 · 3 无法连接守护进程 · 4 未找到 · 130 已取消"
   },

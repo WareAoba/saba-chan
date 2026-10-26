@@ -1067,7 +1067,10 @@
     "prefix_err_count": "접두사는 {{max}}개까지예요.",
     "prefix_err_length": "접두사는 {{max}}자까지예요: {{words}}",
     "translate_commands_title": "명령 이름 번역",
-    "translate_commands_desc": "디스코드 슬래시 명령에 게임 명령의 번역한 이름과 설명을 붙여요. 끄면 모듈에 적힌 원래 이름(예: save-all)만 보여요."
+    "translate_commands_desc": "디스코드 슬래시 명령에 게임 명령의 번역한 이름과 설명을 붙여요. 끄면 모듈에 적힌 원래 이름(예: save-all)만 보여요.",
+    "start_notice": "{{name}} 켜짐 알림",
+    "start_notice_hint": "종 버튼을 켠 서버는 사바쨩이 켤 때 이 디스코드 서버의 알림 채널에 알려요. 디스코드에서 켠 것과 사바쨩 밖에서 켜진 것은 빼요. 알림 채널은 채널 탭에서 정해요.",
+    "start_notice_save_failed": "켜짐 알림을 저장하지 못했어요: {{error}}"
   },
   "maintenance": {
     "load_failed": "백업·예약 정보를 불러오지 못했어요.",

@@ -945,6 +945,19 @@ pub enum BotCmd {
         #[arg(long)]
         all: bool,
     },
+    /// Post in the Discord server's alert channel when Saba-chan starts a server (off by default).
+    /// No server: show. Server with `--on`/`--off`: change
+    Notice {
+        guild: String,
+        /// Server by name or id
+        server: Option<String>,
+        /// Turn the start alert on
+        #[arg(long, requires = "server", conflicts_with = "off")]
+        on: bool,
+        /// Turn the start alert off
+        #[arg(long, requires = "server")]
+        off: bool,
+    },
     /// Bot settings back to their defaults (all when no key is named)
     Reset { keys: Vec<String> },
 

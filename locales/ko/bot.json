@@ -196,6 +196,13 @@
       },
       "delete": {
         "title": "서버 삭제"
+      },
+      "start_notice": {
+        "set": {
+          "title": "켜짐 알림",
+          "description": "사바쨩이 이 서버를 켜면 이 디스코드 서버의 알림 채널에 알려요",
+          "name": "켜짐 알림"
+        }
       }
     },
     "server": {

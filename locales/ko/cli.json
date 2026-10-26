@@ -126,7 +126,12 @@
     "words_bad_command": "{{spec}}: 명령=낱말,낱말 꼴로 적어 주세요 (지우려면 명령=).",
     "no_paired_servers": "이 PC와 페어링된 디스코드 서버가 아직 없어요. 실행: saba-chan-cli bot pair",
     "pick_server": "페어링된 디스코드 서버가 여럿이에요. 바꿀 서버의 id를 적어 주세요: {{servers}}",
-    "translate_commands": "명령 이름 번역"
+    "translate_commands": "명령 이름 번역",
+    "notice_none": "아직 켜짐 알림을 켠 서버가 없어요. 사바쨩이 서버를 켜도 알리지 않아요.",
+    "notice_is_on": "{{server}}: 켜짐 알림 켜짐",
+    "notice_is_off": "{{server}}: 켜짐 알림 꺼짐",
+    "notice_on_saved": "{{guild}}의 알림 채널에 {{server}} 켜짐을 알릴게요.",
+    "notice_off_saved": "{{guild}}에 {{server}} 켜짐을 더 알리지 않아요."
   },
   "col": {
     "players": "접속자",
@@ -870,7 +875,8 @@
       "remote.servers": "이 PC와 원격 데몬마다의 서버를 데몬별로 (하나를 다루려면 `--daemon <이름>`)",
       "remote.forget": "원격 데몬 잊기 (다시 붙으려면 `remote connect`)",
       "config.autostart": "PC에 로그인할 때 켤 것: off(끔), daemon(데몬과 트레이만), full(GUI 창까지). 모드 없이 쓰면 지금 값을 보여요",
-      "config.browse": "데몬 PC의 폴더와 파일 보기 (--daemon이면 그 원격 PC). 경로가 없으면 드라이브나 /"
+      "config.browse": "데몬 PC의 폴더와 파일 보기 (--daemon이면 그 원격 PC). 경로가 없으면 드라이브나 /",
+      "bot.notice": "사바쨩이 서버를 켜면 디스코드 서버의 알림 채널에 알리기 (기본 꺼짐). 서버 없이: 보기, 서버와 `--on`·`--off`: 바꾸기"
     },
     "arg": {
       "module.maker.game": "첫 부탁에 넣을 게임 이름",
@@ -1022,7 +1028,9 @@
       "keep_settings": "인스턴스를 지울 때 게임 설정 파일을 가져오기 전으로 되돌리지 않고 지금 그대로 두기",
       "move_folder": "--from 폴더를 그 자리에 연결하지 않고 사바쨩 폴더로 옮기기 (같은 드라이브만)",
       "config.browse.path": "보일 폴더의 전체 경로",
-      "config.browse.files": "이 확장자의 파일도 보이기 (쉼표로, *면 모두)"
+      "config.browse.files": "이 확장자의 파일도 보이기 (쉼표로, *면 모두)",
+      "bot.notice.on": "켜짐 알림 켜기",
+      "bot.notice.off": "켜짐 알림 끄기"
     },
     "after": "이름은 일부만 적어도 돼요 (예: start pal). 인자 없이 터미널에서 실행하면 전체 화면 메뉴가 열려요(SABA_NO_TUI=1이면 대화형 셸).\n스크립트에서는 --json과 --yes를 쓰세요. 종료 코드: 0 성공 · 1 실패 · 2 사용법 · 3 데몬 연결 안 됨 · 4 없음 · 130 취소"
   },
