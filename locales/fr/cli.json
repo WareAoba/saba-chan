@@ -716,6 +716,7 @@
       "remote.peers": "Vos autres PC sur le relais auxquels ce démon peut se connecter",
       "remote.connect": "S'appairer avec le démon distant d'un autre de vos PC (ids dans `remote peers`)",
       "remote.daemons": "Démons distants auxquels ce démon se connecte",
+      "remote.servers": "Serveurs de ce PC et de chaque démon distant, par démon (pour en utiliser un, `--daemon <nom>`)",
       "remote.forget": "Oublier un démon distant (reconnectez-vous avec `remote connect`)",
       "config.autostart": "Ce qui démarre quand vous vous connectez à ce PC : off, daemon (démon et zone de notification seulement) ou full (avec la fenêtre de la GUI). Sans mode, affiche la valeur actuelle"
     },
@@ -1246,7 +1247,12 @@
       "remote_rejected": "Le démon distant n'a pas accepté la connexion. Réessayez",
       "remote_unknown": "Ce n'est pas un démon distant auquel vous êtes connecté. Voyez `remote daemons`",
       "relay_not_paired": "Ce PC n'est pas connecté au relais",
-      "relay_unreachable": "Impossible de joindre le relais"
-    }
+      "relay_unreachable": "Impossible de joindre le relais",
+      "remote_ambiguous": "Plusieurs daemons distants portent ce nom. Choisissez-le par host id",
+      "remote_timeout": "Le daemon distant n'a pas répondu à temps. Il traite peut-être encore la demande"
+    },
+    "daemon": "Démon",
+    "this_pc": "Ce PC",
+    "no_servers": "Aucun serveur"
   }
 }

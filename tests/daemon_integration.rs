@@ -713,10 +713,10 @@ async fn test_check_update_no_extension_data() {
     assert_eq!(resp.status(), reqwest::StatusCode::OK);
     let body: Value = resp.json().await.unwrap();
     assert_eq!(body["update_available"], false);
-    // reason이 "no_extension_data" 또는 "no_hook_handled" (기존 인스턴스는 ext_data가 있을 수 있음)
+    // 다운로드 설치(minecraft)면 update_unsupported, 설치 방식 익스텐션 서버면 no_extension_data 또는 no_hook_handled
     assert!(
-        body["reason"] == "no_extension_data" || body["reason"] == "no_hook_handled",
-        "Expected reason to be no_extension_data or no_hook_handled, got: {:?}",
+        ["update_unsupported", "no_extension_data", "no_hook_handled"].iter().any(|r| body["reason"] == *r),
+        "Expected reason to be update_unsupported, no_extension_data or no_hook_handled, got: {:?}",
         body["reason"]
     );
 

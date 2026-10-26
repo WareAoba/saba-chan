@@ -111,7 +111,8 @@
     "path_missing": "未指定路径",
     "path_not_folder": "不是文件夹",
     "no_log_folder": "没有日志文件夹",
-    "open_folder_failed": "无法打开文件夹"
+    "open_folder_failed": "无法打开文件夹",
+    "remote_local_path": "操作远程守护进程时无法选择本机路径。请在顶部栏切换到本机后重试"
   },
   "consent": {
     "allow": "允许",

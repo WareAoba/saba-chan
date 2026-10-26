@@ -716,6 +716,7 @@
       "remote.peers": "中繼上此常駐程式可連線的你的其他電腦",
       "remote.connect": "與你其他電腦的遠端常駐程式配對（`remote peers` 中顯示 id）",
       "remote.daemons": "此常駐程式連線的遠端常駐程式",
+      "remote.servers": "依守護程式列出本機和每個遠端守護程式的伺服器（要操作某個請用`--daemon <名稱>`）",
       "remote.forget": "移除遠端常駐程式（重新連線用 `remote connect`）",
       "config.autostart": "登入此電腦時啟動的內容：off（關閉）、daemon（僅常駐程式和系統匣）、full（包含 GUI 視窗）。不帶模式時顯示目前的值"
     },
@@ -1246,7 +1247,12 @@
       "remote_rejected": "遠端常駐程式未接受連線，請再試一次",
       "remote_unknown": "這不是你已連線的遠端常駐程式。請查看 `remote daemons`",
       "relay_not_paired": "此電腦未連線中繼",
-      "relay_unreachable": "無法連上中繼"
-    }
+      "relay_unreachable": "無法連上中繼",
+      "remote_ambiguous": "有多個同名的遠端常駐程式。請用 host id 選擇",
+      "remote_timeout": "遠端常駐程式未及時回應。請求可能仍在處理中"
+    },
+    "daemon": "守護程式",
+    "this_pc": "本機",
+    "no_servers": "沒有伺服器"
   }
 }

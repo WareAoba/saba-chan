@@ -131,6 +131,19 @@ const CONSENT_ROUTES: &[&str] = &["/api/sandbox/unisolated", "/api/sandbox/exten
 /// 업데이터 실행(relaunch 대상), 클라이언트 등록, 데몬 종료는 셸 명령으로만 부른다
 const RESERVED_ROUTES: &[&str] = &["/api/updates/launch-updater", "/api/client", "/api/daemon/shutdown"];
 
+/// 머리에 실을 수 있게 퍼센트 인코딩 (이름은 한국어일 수 있다)
+fn encode_target(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for b in s.bytes() {
+        if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.' | b'~') {
+            out.push(b as char);
+        } else {
+            out.push_str(&format!("%{b:02X}"));
+        }
+    }
+    out
+}
+
 pub fn parse_method(method: &str) -> Option<reqwest::Method> {
     match method.to_ascii_uppercase().as_str() {
         "GET" => Some(reqwest::Method::GET),
@@ -147,6 +160,10 @@ pub struct DaemonClient {
     base: RwLock<String>,
     token: RwLock<String>,
     token_path: PathBuf,
+    /// 고른 원격 데몬 (G1, 설정 `gui.daemonTarget`). 없으면 이 PC의 데몬
+    target: RwLock<Option<String>>,
+    /// 대상이 바뀔 때마다 오른다 (이벤트 스트림이 새 대상으로 다시 붙는다)
+    target_gen: tokio::sync::watch::Sender<u64>,
 }
 
 impl DaemonClient {
@@ -162,7 +179,36 @@ impl DaemonClient {
             base: RwLock::new(base),
             token: RwLock::new(String::new()),
             token_path,
+            target: RwLock::new(None),
+            target_gen: tokio::sync::watch::Sender::new(0),
         }
+    }
+
+    pub fn target(&self) -> Option<String> {
+        self.target.read().unwrap().clone()
+    }
+
+    /// 저장·사용하는 꼴: 앞뒤 공백을 떼고, 비면 이 PC(None)
+    pub fn normalize_target(target: Option<String>) -> Option<String> {
+        target.map(|t| t.trim().to_string()).filter(|t| !t.is_empty())
+    }
+
+    /// 다룰 데몬을 바꾼다 (빈 값은 이 PC). 바뀌었으면 세대를 올린다
+    pub fn set_target(&self, target: Option<String>) {
+        let target = Self::normalize_target(target);
+        let mut cur = self.target.write().unwrap();
+        if *cur != target {
+            *cur = target;
+            self.target_gen.send_modify(|g| *g += 1);
+        }
+    }
+
+    pub fn target_generation(&self) -> u64 {
+        *self.target_gen.borrow()
+    }
+
+    pub fn watch_target(&self) -> tokio::sync::watch::Receiver<u64> {
+        self.target_gen.subscribe()
     }
 
     pub async fn identity_valid(&self, timeout_ms: u64) -> bool {
@@ -234,6 +280,11 @@ impl DaemonClient {
 
     /// 토큰·출처 헤더를 붙인 요청. 시간 제한은 부르는 쪽이 정한다 (SSE는 없음)
     pub fn builder(&self, method: reqwest::Method, path: &str) -> reqwest::RequestBuilder {
+        self.builder_for(method, path, None)
+    }
+
+    /// `target`이 있으면 이 요청만 그 데몬(`local`이면 이 PC)에 보낸다 (합쳐 보기, G1c). 없으면 고른 데몬
+    pub fn builder_for(&self, method: reqwest::Method, path: &str, target: Option<&str>) -> reqwest::RequestBuilder {
         let mut req = self
             .http
             .request(method, format!("{}{}", self.base(), path))
@@ -242,6 +293,11 @@ impl DaemonClient {
         let token = self.token();
         if !token.is_empty() && self.base_is_loopback() && path != "/health" {
             req = req.header("X-Saba-Token", token);
+        }
+        // 고른 원격 데몬은 이 PC의 데몬이 중계한다 (01 §1.4.2 7). 데몬이 살아 있는지는 늘 이 PC에 묻는다
+        let target = target.map(str::to_string).or_else(|| self.target());
+        if let Some(target) = target.filter(|_| !path.starts_with("/health")) {
+            req = req.header("X-Saba-Target", encode_target(&target));
         }
         req
     }
@@ -264,8 +320,9 @@ impl DaemonClient {
         path: &str,
         body: Option<&Value>,
         timeout: Duration,
+        target: Option<&str>,
     ) -> Result<Resp, NetError> {
-        let mut req = self.builder(method.clone(), path).timeout(timeout);
+        let mut req = self.builder_for(method.clone(), path, target).timeout(timeout);
         if let Some(b) = body {
             req = req.json(b);
         }
@@ -284,15 +341,31 @@ impl DaemonClient {
         body: Option<&Value>,
         timeout: Duration,
     ) -> Result<Resp, NetError> {
-        let res = self.send_once(&method, path, body, timeout).await?;
+        self.send_to(method, path, body, timeout, None).await
+    }
+
+    /// `send`와 같고, `target`이 있으면 이 요청만 그 데몬에 보낸다 (`builder_for`)
+    pub async fn send_to(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        body: Option<&Value>,
+        timeout: Duration,
+        target: Option<&str>,
+    ) -> Result<Resp, NetError> {
+        let res = self.send_once(&method, path, body, timeout, target).await?;
         if res.status != 401 || path.contains("/api/relay/") {
+            return Ok(res);
+        }
+        // 원격 데몬이 이 PC의 짝을 받지 않은 것(중계된 401)은 이 PC의 토큰 문제가 아니다
+        if res.data()["error_code"] == "remote_unauthorized" {
             return Ok(res);
         }
         if !self.load_token() {
             return Ok(res);
         }
         tracing::info!("[Auth] Token reloaded after 401, retrying {}", path);
-        self.send_once(&method, path, body, timeout).await
+        self.send_once(&method, path, body, timeout, target).await
     }
 
     /// axios처럼 2xx만 성공으로 본다
@@ -532,6 +605,33 @@ mod tests {
         assert_eq!(seen.lock().unwrap().len(), 1);
     }
 
+    /// 고른 원격 데몬이 이 PC의 짝을 받지 않은 401(`remote_unauthorized`)은 토큰을 다시 읽어 또 보내지 않는다
+    #[tokio::test]
+    async fn a_relayed_remote_refusal_is_not_retried() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let count = Arc::new(Mutex::new(0));
+        let seen = count.clone();
+        tokio::spawn(async move {
+            while let Ok((mut sock, _)) = listener.accept().await {
+                let mut buf = vec![0u8; 4096];
+                let _ = sock.read(&mut buf).await;
+                *seen.lock().unwrap() += 1;
+                let body = "{\"error\":\"remote_unauthorized\",\"error_code\":\"remote_unauthorized\"}";
+                let resp = format!("HTTP/1.1 401 Unauthorized\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
+                let _ = sock.write_all(resp.as_bytes()).await;
+            }
+        });
+        let dir = tempfile::tempdir().unwrap();
+        let token_path = dir.path().join(".ipc_token");
+        std::fs::write(&token_path, "t").unwrap();
+        let client = DaemonClient::new(base, token_path);
+        client.set_target(Some("host-b".into()));
+        let res = client.send(reqwest::Method::POST, "/api/instance/a/stop", None, Duration::from_secs(2)).await.unwrap();
+        assert_eq!(res.status, 401);
+        assert_eq!(*count.lock().unwrap(), 1);
+    }
+
     #[test]
     fn token_goes_only_to_loopback() {
         let dir = tempfile::tempdir().unwrap();
@@ -549,6 +649,47 @@ mod tests {
         assert!(!has_token("http://example.com:57474"));
         let local = DaemonClient::new("http://127.0.0.1:57474".into(), token_path);
         assert!(!local.builder(reqwest::Method::GET, "/health").build().unwrap().headers().contains_key("X-Saba-Token"));
+    }
+
+    /// 고른 원격 데몬(G1)은 데몬 요청마다 `X-Saba-Target`(퍼센트 인코딩)으로 이 PC의 데몬에 알린다.
+    /// 이 PC의 데몬이 살아 있는지 보는 `/health`에는 싣지 않는다. 바꾸면 세대가 올라 이벤트 스트림이 다시 붙는다
+    #[test]
+    fn a_chosen_remote_daemon_is_named_on_daemon_requests_but_not_health() {
+        let dir = tempfile::tempdir().unwrap();
+        let client = DaemonClient::new("http://127.0.0.1:57474".into(), dir.path().join(".ipc_token"));
+        let target = |path: &str| {
+            let req = client.builder(reqwest::Method::GET, path).build().unwrap();
+            req.headers().get("X-Saba-Target").map(|v| v.to_str().unwrap().to_string())
+        };
+        assert_eq!(target("/api/servers"), None);
+        let before = client.target_generation();
+        client.set_target(Some("게임 PC".into()));
+        assert_eq!(client.target().as_deref(), Some("게임 PC"));
+        assert_ne!(client.target_generation(), before);
+        assert_eq!(target("/api/servers").as_deref(), Some("%EA%B2%8C%EC%9E%84%20PC"));
+        assert_eq!(target("/health"), None);
+        let same = client.target_generation();
+        client.set_target(Some("게임 PC".into()));
+        assert_eq!(client.target_generation(), same);
+        client.set_target(Some("  ".into()));
+        assert_eq!(client.target(), None);
+        assert_eq!(target("/api/servers"), None);
+    }
+
+    /// 합쳐 보기(G1c)는 요청 하나만 다른 데몬에 보낸다: 고른 데몬은 그대로 두고 그 요청에만 그 대상을 싣는다
+    #[test]
+    fn one_request_can_name_its_own_daemon() {
+        let dir = tempfile::tempdir().unwrap();
+        let client = DaemonClient::new("http://127.0.0.1:57474".into(), dir.path().join(".ipc_token"));
+        client.set_target(Some("host-b".into()));
+        let target = |over: Option<&str>| {
+            let req = client.builder_for(reqwest::Method::GET, "/api/instance/x/start", over).build().unwrap();
+            req.headers().get("X-Saba-Target").map(|v| v.to_str().unwrap().to_string())
+        };
+        assert_eq!(target(None).as_deref(), Some("host-b"));
+        assert_eq!(target(Some("local")).as_deref(), Some("local"));
+        assert_eq!(target(Some("host-c")).as_deref(), Some("host-c"));
+        assert_eq!(client.target().as_deref(), Some("host-b"));
     }
 
     /// 상태 확인 한 번에 /health 하나: 신원 증명이 실린 그 응답을 상태 본문으로도 쓴다 (폴링마다 두 번 묻지 않게)

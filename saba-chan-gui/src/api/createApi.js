@@ -3,6 +3,7 @@
  * 응답 가공은 main.js의 각 ipcMain 핸들러를 그대로 옮겼다. 네이티브 작업은 Rust 명령(계약 §2)으로 간다.
  */
 import i18n from 'i18next';
+import { safeShowToast } from '../utils/helpers';
 import { createDaemonClient, queryString } from './daemon';
 
 /** 서버 시작 요청을 기다리는 시간 (CLI `post_long`과 같다) */
@@ -20,6 +21,16 @@ export function createApi({ invoke, hub }) {
     const post = (path, body, opts) => request('post', path, body, opts);
     const put = (path, body, opts) => request('put', path, body, opts);
     const del = (path, opts) => request('delete', path, undefined, opts);
+
+    // 이 PC의 파일 대화상자. 원격 데몬을 다루는 중이면 열지 않는다: 고른 경로가 그 PC 데몬에 가서 엉뚱한 곳을 가리킨다 (G1)
+    const pickLocal = async (cmd, args) => {
+        const current = await Promise.resolve(invoke('daemon_target_get')).catch(() => null);
+        if (current?.target) {
+            safeShowToast(t('errors.remote_local_path'), 'warning', 5000);
+            return null;
+        }
+        return invoke(cmd, args);
+    };
 
     // ipcRenderer.send처럼 기다리지 않는 호출
     const send = (cmd, args) => {
@@ -875,8 +886,8 @@ export function createApi({ invoke, hub }) {
         settingsGetPath: () => invoke('settings_get_path'),
 
         // ── 대화상자 ──
-        openFileDialog: (options) => invoke('dialog_open_file', { filters: options?.filters ?? null }),
-        openFolderDialog: () => invoke('dialog_open_folder'),
+        openFileDialog: (options) => pickLocal('dialog_open_file', { filters: options?.filters ?? null }),
+        openFolderDialog: () => pickLocal('dialog_open_folder'),
 
         // 고른 폴더가 어느 게임 서버 폴더인지 (데몬의 게임 폴더 판정만 쓴다)
         migrationScanDir: async (dirPath) => {
@@ -991,15 +1002,15 @@ export function createApi({ invoke, hub }) {
         // GUI ⇄ CLI 전환: 데몬이 이 PC에서 띄울 수 있는 인터페이스 `{cli, gui}`, 그리고 띄우기 (고른 서버로 연다)
         clientsLaunchable: () => daemonCall('get', '/api/clients/launch'),
         clientLaunch: (opts) => {
-            const { kind, instance } = opts || {};
-            return daemonCall('post', '/api/clients/launch', { kind, instance });
+            const { kind, instance, daemon } = opts || {};
+            return daemonCall('post', '/api/clients/launch', { kind, instance, ...(daemon ? { daemon } : {}) });
         },
         // 데몬 이벤트 스트림: cb({id, type, data}). 돌려주는 함수로 해제
         onDaemonEvent: (callback) => hub.on('events:message', callback),
 
         // 내보내기/가져오기: 파일은 데몬이 읽고 쓴다. 여기서는 경로만 고른다
         dataExport: async (opts = {}) => {
-            const filePath = await invoke('dialog_save_file', {
+            const filePath = await pickLocal('dialog_save_file', {
                 defaultPath: `saba-chan-export-${new Date().toISOString().slice(0, 10)}.zip`,
                 filters: [{ name: 'Zip', extensions: ['zip'] }],
             });
@@ -1010,7 +1021,7 @@ export function createApi({ invoke, hub }) {
         dataImport: async (opts = {}) => {
             let filePath = typeof opts?.path === 'string' && opts.path ? opts.path : null;
             if (!filePath) {
-                filePath = await invoke('dialog_open_file', { filters: [{ name: 'Zip', extensions: ['zip'] }] });
+                filePath = await pickLocal('dialog_open_file', { filters: [{ name: 'Zip', extensions: ['zip'] }] });
                 if (!filePath) return { canceled: true };
             }
             const body = await daemonCall(
@@ -1090,6 +1101,38 @@ export function createApi({ invoke, hub }) {
         // 모듈·익스텐션 폴더 옮기기: 데몬이 복사·검증 뒤 옮긴다 (큰 폴더는 오래 걸린다)
         systemPathsMove: (kind, target) =>
             daemonJson('post', '/api/system/paths/move', { kind, target }, PATHS_MOVE_TIMEOUT),
+        // 원격 데몬 (01 §1.4.2): 고른 데몬과 상관없이 이 PC의 데몬이 답한다. 지우기는 204라 본문이 없다
+        remoteSettings: () => daemonJson('get', '/api/remote/settings'),
+        remoteSettingsSet: (patch) => daemonJson('put', '/api/remote/settings', patch),
+        remoteClients: () => daemonJson('get', '/api/remote/clients'),
+        remoteRevoke: async (hostId) =>
+            (await daemonJson('delete', `/api/remote/clients/${encodeURIComponent(hostId)}`)) || { ok: true },
+        remotePeers: () => daemonJson('get', '/api/remote/peers', undefined, 30000),
+        remoteDaemons: () => daemonJson('get', '/api/remote/daemons'),
+        remoteConnect: (hostId) => daemonJson('post', '/api/remote/daemons', { hostId }, 30000),
+        remoteForget: async (hostId) =>
+            (await daemonJson('delete', `/api/remote/daemons/${encodeURIComponent(hostId)}`)) || { ok: true },
+        // 합쳐 보기 (G1c): 이 PC와 원격 데몬마다의 서버 {daemons:[{hostId(이 PC는 null), name, ok, error_code?, servers}]}
+        // 데몬이 원격 데몬 하나를 30초까지 기다린다 (01 §1.4.2 8)
+        remoteServers: () => daemonJson('get', '/api/remote/servers', undefined, 40000),
+        // 합쳐 보기에서 다른 데몬의 서버 하나를 켜고 끈다. hostId가 없으면 이 PC
+        remoteInstanceAction: async (hostId, id, action) => {
+            if (!['start', 'stop', 'restart'].includes(action)) return { success: false, error: `unknown action ${action}` };
+            const body = action === 'start' ? {} : { force: false };
+            try {
+                return (
+                    await request('post', `/api/instance/${encodeURIComponent(id)}/${action}`, body, {
+                        timeout: action === 'start' ? START_TIMEOUT_MS : STOP_TIMEOUT_MS,
+                        target: hostId || 'local',
+                    })
+                ).data;
+            } catch (error) {
+                return error.response ? errorBody(error) : connectionError(error);
+            }
+        },
+        // 다룰 데몬 (G1): 셸이 데몬 요청마다 X-Saba-Target을 싣고 설정 gui.daemonTarget에 저장한다
+        daemonTarget: () => invoke('daemon_target_get'),
+        daemonTargetSet: (target) => invoke('daemon_target_set', { target: target || null }),
         // 로그인할 때 자동 실행: `{supported, mode: 'off'|'daemon'|'full'}`
         systemAutostart: () => daemonJson('get', '/api/system/autostart'),
         systemAutostartSet: (mode) => daemonJson('put', '/api/system/autostart', { mode }),

@@ -503,6 +503,9 @@ async fn one(ctx: &Ctx, words: &[String]) -> Result<()> {
     if let Some(port) = cli.global.port {
         ctx = ctx.on_port(port);
     }
+    if let Some(daemon) = crate::cli::line_daemon(&matches) {
+        ctx.api.target = Some(daemon).filter(|d| !d.trim().is_empty());
+    }
     if cli.global.json || cli.global.json_stream {
         ctx.out = crate::output::Out { json: true };
         ctx.ask.enabled = false;

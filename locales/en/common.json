@@ -111,7 +111,8 @@
     "path_missing": "No path given",
     "path_not_folder": "Not a folder",
     "no_log_folder": "No log folder",
-    "open_folder_failed": "Couldn't open the folder"
+    "open_folder_failed": "Couldn't open the folder",
+    "remote_local_path": "You can't pick a path on this PC while working with a remote daemon. Switch to this PC in the top bar and try again"
   },
   "consent": {
     "allow": "Allow",

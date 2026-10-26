@@ -252,10 +252,21 @@ jobs:
         env:
           UPDATER_SIGNING_KEY: ${{ secrets.UPDATER_SIGNING_KEY }}
         run: |
+          # 지난 릴리즈(모든 채널 중 최신)의 manifest: 바뀐 모듈·익스텐션이 같은 버전으로 다시 나가지 않게 대조한다.
+          # 업데이터·데몬은 버전이 오른 것만 받는다. 확인하지 못하면 멈춘다
+          prev_url=$(curl -fsS -H 'X-Saba-Client: 1' \
+            "${{ vars.RELAY_URL }}/v1/updates/check?channel=beta&platform=windows-x64&current=0.0.0&client_id=release-workflow" \
+            | python -c "import json,sys;print(json.load(sys.stdin).get('latest',{}).get('manifestUrl',''))")
+          previous=()
+          if [ -n "$prev_url" ]; then
+            curl -fsS -H 'X-Saba-Client: 1' "$prev_url" > previous-manifest.json
+            previous=(--previous previous-manifest.json)
+          fi
           python scripts/versions.py manifest --assets output \
             --base-url "${{ vars.R2_PUBLIC_BASE }}" --platform windows-x64 \
             --modules-repo addons/modules --extensions-repo addons/extensions \
             --addons-ref "$(git -C addons/modules rev-parse HEAD)" \
+            "${previous[@]}" \
             --out release-manifest.unsigned.json
           # 번들된 공개키로 검증까지 통과해야 출력된다
           ./target/debug/examples/release_signing \

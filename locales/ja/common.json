@@ -111,7 +111,8 @@
     "path_missing": "パスが指定されていません",
     "path_not_folder": "フォルダーではありません",
     "no_log_folder": "ログフォルダーがありません",
-    "open_folder_failed": "フォルダーを開けませんでした"
+    "open_folder_failed": "フォルダーを開けませんでした",
+    "remote_local_path": "リモートデーモンを操作している間はこのPCのパスを選べません。上部バーでこのPCに切り替えてからもう一度お試しください"
   },
   "consent": {
     "allow": "許可",

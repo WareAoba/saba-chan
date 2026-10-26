@@ -735,7 +735,7 @@ async fn install_module_locked(state: IPCServer, module_id: String) -> axum::res
 }
 
 /// 모듈 `[install] requires_extensions`
-fn required_extensions(module: &crate::supervisor::module_loader::LoadedModule) -> Vec<String> {
+pub(crate) fn required_extensions(module: &crate::supervisor::module_loader::LoadedModule) -> Vec<String> {
     module.metadata.install.as_ref().map(|i| i.requires_extensions.clone()).unwrap_or_default()
 }
 
@@ -1301,17 +1301,26 @@ async fn stop_instance_unrecorded(state: IPCServer, key: &str, force: bool) -> a
 
 // NOTE: sync_gui_config は config::save_gui_config に統合されました (portConflictCheck 同期含む)
 /// 실행 전 비밀번호: 빈 REST 비밀번호는 GUI "비밀번호 자동 생성"(`autoGeneratePasswords`, 기본 켬)이 켜져 있을 때만 채운다.
-/// 꺼져 있으면 비워 두고, 모듈이 게임 설정의 값을 쓰거나 스스로 만든다(`credential_map`으로 데몬에 돌아온다). `key`: 인스턴스 id 또는 이름
+/// 꺼져 있으면 비워 두고, 모듈이 게임 설정의 값을 쓰거나 스스로 만든다(`credential_map`으로 데몬에 돌아온다).
+/// REST를 지원하지 않는 모듈(`[protocols] supported`에 rest가 없음)의 서버에는 REST 계정을 만들지 않고, 남아 있던 것은 지운다. `key`: 인스턴스 id 또는 이름
 pub(super) async fn fill_passwords(state: &IPCServer, key: &str) {
     let generate = state.config_store.get_gui_settings().await.auto_generate_passwords;
     let mut supervisor = state.supervisor.write().await;
     let found = supervisor.instance_store.get(key).or_else(|| supervisor.instance_store.list().iter().find(|i| i.name == key)).cloned();
-    if let Some(mut inst) = found {
-        if inst.ensure_passwords(generate) {
-            let id = inst.id.clone();
-            if let Err(e) = supervisor.instance_store.update(&id, inst) {
-                tracing::warn!("Failed to save auto-generated passwords for {}: {}", key, e);
-            }
+    let Some(mut inst) = found else { return };
+    let changed = match supervisor.module_loader.get_module(&inst.module_name).map(|m| m.metadata.supports_protocol("rest")) {
+        Ok(true) => inst.ensure_passwords(generate),
+        // 예전 데몬이 만들어 둔 계정도 치운다 (REST 없는 모듈은 이 값을 쓰지 않는다)
+        Ok(false) if inst.rest_username.is_some() || inst.rest_password.is_some() => {
+            (inst.rest_username, inst.rest_password) = (None, None);
+            true
+        }
+        _ => false,
+    };
+    if changed {
+        let id = inst.id.clone();
+        if let Err(e) = supervisor.instance_store.update(&id, inst) {
+            tracing::warn!("Failed to save auto-generated passwords for {}: {}", key, e);
         }
     }
 }
@@ -1354,27 +1363,47 @@ mod tests {
         assert_eq!(module_update_of(&status, "ark"), None);
     }
 
-    /// GUI "비밀번호 자동 생성"을 끄면 시작할 때 빈 REST 비밀번호를 채우지 않는다. 켜져 있으면(기본) 채운다
+    /// GUI "비밀번호 자동 생성"을 끄면 시작할 때 빈 REST 비밀번호를 채우지 않는다. 켜져 있으면(기본) 채운다.
+    /// REST를 지원하지 않는 모듈의 서버에는 REST 계정을 만들지 않는다 (테라리아 점검: 설정 화면에 쓸모없는 값이 보였다)
     #[tokio::test]
     async fn rest_passwords_are_generated_only_when_the_setting_is_on() {
         let tmp = tempfile::tempdir().unwrap();
-        let sup = crate::supervisor::Supervisor::new_with_instances_dir(
-            tmp.path().join("modules").to_str().unwrap(),
-            tmp.path().join("instances").to_str().unwrap(),
-        );
+        let modules = tmp.path().join("modules");
+        for (name, supported) in [("game", "rest"), ("console", "stdin")] {
+            let dir = modules.join(name);
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join("module.toml"), format!("[module]\nschema_version = 1\nname = \"{name}\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[protocols]\nsupported = [\"{supported}\"]\n")).unwrap();
+            std::fs::write(dir.join("lifecycle.py"), "").unwrap();
+        }
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
         let mut state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
         state.config_store = Arc::new(crate::config_store::ConfigStore::new(&tmp.path().join("data")));
         let inst = crate::instance::ServerInstance::new("srv", "game");
         let id = inst.id.clone();
+        let mut plain = crate::instance::ServerInstance::new("terra", "console");
+        // 0.1.10이 만들어 둔 값
+        (plain.rest_username, plain.rest_password) = (Some("admin".into()), Some("left-over".into()));
+        let plain_id = plain.id.clone();
         state.supervisor.write().await.instance_store.add(inst).unwrap();
-        let password = || async { state.supervisor.read().await.instance_store.get(&id).unwrap().rest_password.clone() };
+        state.supervisor.write().await.instance_store.add(plain).unwrap();
+        let rest = |id: String| {
+            let state = state.clone();
+            async move {
+                let sup = state.supervisor.read().await;
+                let i = sup.instance_store.get(&id).unwrap();
+                (i.rest_username.clone(), i.rest_password.clone())
+            }
+        };
 
         state.config_store.set_gui_settings_from_json(json!({ "autoGeneratePasswords": false })).await.unwrap();
         fill_passwords(&state, &id).await;
-        assert_eq!(password().await, None, "the setting is off");
+        assert_eq!(rest(id.clone()).await.1, None, "the setting is off");
         state.config_store.set_gui_settings_from_json(json!({ "autoGeneratePasswords": true })).await.unwrap();
         fill_passwords(&state, "srv").await;
-        assert_eq!(password().await.map(|p| p.len()), Some(16), "found by name too");
+        assert_eq!(rest(id.clone()).await.1.map(|p| p.len()), Some(16), "found by name too");
+        fill_passwords(&state, &plain_id).await;
+        assert_eq!(rest(plain_id).await, (None, None), "a module without REST keeps no REST account");
     }
 
     /// 클라이언트가 실행 파일 고르기 창의 파일 종류를 모듈 선언(`[config] server_executable`)에서 알 수 있다

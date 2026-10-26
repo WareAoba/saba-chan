@@ -299,7 +299,7 @@ Tauri 커맨드(`installer/gui/src-tauri/src/lib.rs`): `get_installer_state`, `s
 | GET | `/api/nodes/:guildId/discord-members` | 노드(5/min) | — | 봇이 조회한 길드 멤버(각각 `avatarUrl` 64px png). 전체 요청은 길드마다 10분에 한 번이고 나머지는 봇 캐시로 답한다. 봇이 없으면 503 `BOT_UNAVAILABLE` | `node.ts` |
 | GET/PATCH | `/api/nodes/:guildId/settings` | 노드 | PATCH `{locale?: 'auto'\|태그, language?, sleeping?, musicEnabled?, musicUIEnabled?, musicSettings?: {queueLines 1-20, refreshInterval 2000-10000, normalize}}`(준 키만, `musicSettings`는 키별로 합친다) | `{guildId, locale, sleeping, musicEnabled, musicUIEnabled, musicSettings}`. 원본은 데몬 `nodeSettings[g].discord`(I2)이고 데몬만 보낸다. 디스코드의 `/언어`·`/코코낸내`·`/기상`·`/음악 기능\|플레이어`는 데몬 액션 `discord.settings.set`을 부른다 (server-chan #36). 확인한 뒤 노드가 다른 PC로 옮겨 갔으면 쓰지 않고 409 `NODE_MOVED` | `node.ts` |
 | GET/PUT | `/api/nodes/:guildId/channels` | 노드 | PUT `{chatbot?: string[](≤20), music?: string\|null, notify?: string\|null}` | `{guildId, chatbot, music, notify, botAvailable, channels:[{id,name,category}]}`. `notify`는 알림 채널(I3, server-chan #39). 400 `INVALID_BODY`·`CHANNEL_CONFLICT`·`UNKNOWN_CHANNEL`(`channelId` 포함), 배정할 때 봇이 없으면 503 `BOT_UNAVAILABLE`, 확인한 뒤 노드가 다른 PC로 옮겨 갔으면 409 `NODE_MOVED`. 한 채널은 한 종류만, 챗봇의 대화(호출·후속 대화·확인 버튼)는 배정 채널에서만 하고(배정을 풀거나 챗봇을 끄면 그 채널에서 받은 확인 버튼도 쓰지 않는다), 데몬이 알아보지 못한 접두사 명령을 정확한 명령으로 바꾸는 명령 해석기(chatbot/interpreter.ts)는 챗봇이 켜져 있고 키가 있으면 길드의 모든 채널에서 동작하며 음악 채널의 일반 메시지는 지운다 (server-chan PR #23) | `node.ts` |
-| GET/PUT/DELETE | `/api/nodes/:guildId/chatbot` | 노드 | PUT 설정 일부, `apiKey`: 문자열=교체, null=삭제, 생략=유지(128KB) | 설정 + `hasApiKey`(키 자체는 돌려주지 않는다) + `effectiveModel`(고른 모델을 쓸 수 없어 대신 쓰는 모델, 대체가 없으면 `model`과 같다). `triggerWords`·`sessionSeconds`·`ambientSeconds`는 받아도 무시한다(후속 대화 180초, 끼어들기 없음으로 고정). PUT·DELETE는 확인한 뒤 노드가 다른 PC로 옮겨 갔으면 쓰지 않고 409 `NODE_MOVED` | `chatbot/routes.ts` |
+| GET/PUT/DELETE | `/api/nodes/:guildId/chatbot` | 노드 | PUT 설정 일부, `apiKey`: 문자열=교체, null=삭제, 생략=유지(128KB) | 설정 + `hasApiKey`(키 자체는 돌려주지 않는다) + `effectiveModel`(고른 모델을 쓸 수 없어 대신 쓰는 모델, 대체가 없으면 `model`과 같다). `triggerWords`·`sessionSeconds`·`ambientSeconds`는 받아도 무시한다(후속 대화 180초, 끼어들기 180초로 고정 — 부르지 않은 잡담은 180초 뒤 한 번 모아 추론 low 로 판단). PUT·DELETE는 확인한 뒤 노드가 다른 PC로 옮겨 갔으면 쓰지 않고 409 `NODE_MOVED` | `chatbot/routes.ts` |
 | GET | `/api/nodes/:guildId/chatbot/models` | 노드(10/min) | — | `{provider, models, selected, effectiveModel}`: 길드에 저장된 사용자 키로 받은 대화 모델 목록(이름순, 10분 캐시). 409 `NO_API_KEY`, 422 `INVALID_API_KEY`·`KEY_PERMISSION`(키 권한 부족)·`QUOTA_EXCEEDED`, 503 `PROVIDER_UNAVAILABLE` | `chatbot/routes.ts` |
 | DELETE | `/api/nodes/:guildId/chatbot/memory` | 노드 | — | 이 길드의 장기 기억 삭제 | `chatbot/routes.ts` |
 | GET | `/poll` | 노드(60/30s) | — | `{commands:[{id, payload, requestedBy, guildId, channelId}]}`(10건까지) / 204 / 401 `TOKEN_REPLACED`(대기 중 재페어링) | `routes/poll.ts` |
@@ -349,7 +349,7 @@ Tauri 커맨드(`installer/gui/src-tauri/src/lib.rs`): `get_installer_state`, `s
 | `update_events` | host_id, anon_id, from/to_version, phase, error_code, platform |
 | `chatbot_settings` / `chatbot_memory` / `chatbot_records` | 길드 챗봇 설정(키는 `api_key_enc`로 암호화) / 채널별 요약 기억 / 길드별 기록(kind·key·value·만료) |
 | `blocked_users` | `discord_id` PK, reason, created_by(운영자 디스코드 ID 또는 `admin-api`), created_at, expires_at(NULL이면 무기한). §4.4 (g) |
-| `relay_stats` | `at` PK, hosts_total, hosts_online, guilds, bot_guilds, pollers, web_sessions, commands(지난 기록 뒤 큐에 들어온 수), chatbot_turns, music_voice, cpu_pct, rss_mb, load_pct, mem_used_pct, db_mb. 5분마다 한 줄, 사람·IP·길드 id 없음. §4.4 (h) |
+| `relay_stats` | `at` PK, hosts_total, hosts_online, guilds, bot_guilds, pollers, web_sessions, commands(지난 기록 뒤 큐에 들어온 수), chatbot_turns, chatbot_input_tokens·chatbot_cached_tokens·chatbot_cache_write_tokens·chatbot_output_tokens(bigint, 0031), music_voice, cpu_pct, rss_mb, load_pct, mem_used_pct, db_mb. 5분마다 한 줄, 사람·IP·길드 id 없음. §4.4 (h) |
 
 정리 스케줄러(`services/cleanup.ts`): 감사 30일, 운영 통계 365일, 끝난 큐 7일, 업데이트 이벤트 90일, 페어링 코드 24시간 뒤 삭제, 만료된 챗봇 도구 기록(`chatbot_records.expires_at`) 삭제. 수령 기한이 지난 페어링 토큰은 바로 지운다. 만료 큐는 timeout으로, heartbeat가 3분 넘게 없는 host는 offline으로 바꾼다.
 
@@ -408,7 +408,7 @@ Tauri 커맨드(`installer/gui/src-tauri/src/lib.rs`): `get_installer_state`, `s
 - 쓰기(POST·DELETE)는 세션의 `x-csrf-token`(상수 시간 비교)과 `Origin == <proto>://<Host>`가 모두 맞아야 한다. `/admin/console/*`에는 CORS 헤더를 내지 않는다. `x-admin-key`는 이 경로에서, 쿠키는 `/admin/api`에서 받지 않는다.
 - 감사: 로그인·로그아웃은 `action='admin'` `detail.op` `login`·`logout`, 차단·해제는 (g)와 같고, 공지는 발송이 끝날 때 `announce_broadcast`(보낸 운영자 ID). 페이지의 기록 탭은 이 두 action 의 최근 50줄이다.
 - 문구는 `src/admin/text.ts`(10개 언어, 없는 언어는 en)를 페이지에 데이터 블록으로 넣는다.
-- 운영 통계: 5분마다 `relay_stats` 한 줄(365일 보관). 접속·자원은 그 순간 값, 명령 수는 지난 기록 뒤 큐에 들어온 수(기록이 15분보다 오래됐으면 5분), 챗봇 판단 수는 기록에 성공한 뒤에만 0으로 되돌린다. 조회는 하루 5분·일주일 1시간·한 달 6시간·일 년 1일 칸으로 묶고, 칸마다 명령·챗봇은 합계, 나머지는 최댓값이다.
+- 운영 통계: 5분마다 `relay_stats` 한 줄(365일 보관). 접속·자원은 그 순간 값, 명령 수는 지난 기록 뒤 큐에 들어온 수(기록이 15분보다 오래됐으면 5분), 챗봇 판단 수와 챗봇 모델 호출 토큰(입력은 캐시 읽기·쓰기 포함, 출력은 추론 포함)은 기록에 성공한 뒤에만 0으로 되돌린다. 조회는 하루 5분·일주일 1시간·한 달 6시간·일 년 1일 칸으로 묶고, 칸마다 명령·챗봇(판단·토큰)은 합계, 나머지는 최댓값이다.
 
 **(i) 길드 하나에 여러 PC** (원격 데몬 R2, `services/guildHosts.ts`, `bot/commands/guildRouting.ts`, 사용자 결정 2026-10-25): 한 디스코드 서버에 여러 사람의 PC(같은 사람의 집 PC와 원격 PC 포함)가 함께 붙는다. PC를 여러 사람이 함께 소유하지는 않는다.
 - 처음 연결한 PC가 대표(`nodes.host_id`)이고, 그 뒤에 연결한 PC는 `guild_hosts`에 붙는다. 길드 공통 설정(언어·접두사·잠자기·음악·챗봇·채널 배정)의 원본은 대표 PC 데몬이다. 붙은 PC는 그 길드의 설정·채널·디스코드 멤버를 읽기만 한다. 각 PC의 서버와 권한 사다리는 그 PC 주인의 것이고 판정은 그 PC 데몬이 한다(poll의 `ownerDiscordId`는 그 PC 주인). 릴레이의 미리 거르기(금지 멤버)는 대표 PC 사다리 캐시로 한다.
@@ -424,7 +424,7 @@ Tauri 커맨드(`installer/gui/src-tauri/src/lib.rs`): `get_installer_state`, `s
 - 원격 PC(B)는 자기 직접 연결 주소와 TLS 인증서 SHA-256 지문을 올린다(`PUT /api/remote/endpoint`). 내 PC(A)는 `GET /api/remote/peers`로 같은 주인의 다른 PC와 주소를 본다.
 - A는 B 앞으로 연결표를 받는다(`POST /api/remote/tickets`). 비밀은 32바이트이고 릴레이에는 SHA-256만 남는다. 2분 동안 한 번만 쓴다. 남의 PC는 있는지도 알리지 않는다(404).
 - A는 B에 TLS로 붙어 받은 지문을 고정하고 연결표를 내민다. B는 그것을 릴레이에 한 번 확인하고(`redeem`, 대상 PC 토큰만) 누가 붙는지(`fromHostId`) 안다. 그 뒤의 접속 토큰은 B 데몬이 스스로 내고, 연결된 뒤에는 릴레이를 거치지 않는다.
-- 원격 PC(B) 데몬 쪽(원격 포트, 주소 올리기, 짝 맺기와 토큰)은 01 §1.4.2(D1). 기본 포트 57480은 확정 전이다.
+- 원격 PC(B) 데몬 쪽(원격 포트, 주소 올리기, 짝 맺기와 토큰)은 01 §1.4.2(D1). 기본 포트 57480(사용자 확정 2026-10-26).
 - 붙는 쪽 데몬(A)이 목록·연결표를 받아 원격 데몬에 붙고 요청을 중계하는 것은 01 §1.4.2 5~6(D1b). A는 원격 데몬에 닿지 못하면 `peers`의 지금 주소·지문으로 한 번 다시 붙는다.
 - 아직 없는 것: GUI·CLI에서 원격 데몬 고르기(G1), 공인 주소가 없는 PC(NAT 뒤) 지원(연결 방식 `transport`에 자리만 있다).
 

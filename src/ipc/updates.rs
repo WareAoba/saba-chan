@@ -54,6 +54,8 @@ pub struct UpdateState {
     pub clients: Option<crate::ipc::ClientRegistry>,
     /// 업데이터를 이미 띄웠는가. 다시 띄우면 표를 새로 끊어 먼저 띄운 업데이터가 적용하지 못한다
     updater_launched: Arc<std::sync::atomic::AtomicBool>,
+    /// 데몬이 모듈 업데이트를 바로 적용했다: 기동 때 띄운 작업이 그 모듈이 쓰는 익스텐션을 맞춘다 (`prepare_after_update`)
+    pub modules_updated: Arc<tokio::sync::Notify>,
 }
 
 impl UpdateState {
@@ -72,6 +74,7 @@ impl UpdateState {
             stop_requested: None,
             clients: None,
             updater_launched: Arc::default(),
+            modules_updated: Arc::default(),
         }
     }
 
@@ -601,6 +604,8 @@ async fn apply_updates_with(state: UpdateState, body: ApplyRequest) -> impl Into
                     }
                 }
             }
+            // 새 판이 요구하는 익스텐션은 위 결과 마커를 보고 따로 맞춘다 (받는 동안 답을 붙잡지 않는다)
+            state.modules_updated.notify_one();
         }
 
         if has_ext_updates {

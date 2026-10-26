@@ -28,6 +28,8 @@ import { SabaToggle } from '../ui/SabaUI';
 import { AuditLog, auditAvailable } from '../servers/AuditTab';
 import { DataTransferSection, dataTransferAvailable } from './DataTransferSection';
 import { FolderPathsSection, folderPathsAvailable } from './FolderPathsSection';
+import { RemoteDaemonSection, remoteDaemonAvailable } from './RemoteDaemonSection';
+import { useDaemonTarget } from '../shell/DaemonSwitcher';
 import { AutostartSetting, autostartAvailable } from './AutostartSetting';
 import { ExtensionGuiSection, extensionGuiAvailable } from './ExtensionGuiSection';
 import { UnisolatedSection, unisolatedAvailable } from './UnisolatedSection';
@@ -52,6 +54,7 @@ function SettingsModal({
     variant = 'modal',
 }) {
     const { t, i18n } = useTranslation(['gui', 'common']);
+    const daemonTarget = useDaemonTarget();
     const [activeTab, setActiveTab] = useState('general');
     const [showUpdatePanel, setShowUpdatePanel] = useState(false);
     const [updatePanelExiting, setUpdatePanelExiting] = useState(false);
@@ -912,9 +915,17 @@ function SettingsModal({
                                 />
                             </div>
 
-                            {folderPathsAvailable() && <FolderPathsSection />}
+                            {remoteDaemonAvailable() && <RemoteDaemonSection />}
+                            {/* 이 PC의 대화상자로 경로를 고르는 절은 원격 데몬을 다루는 동안 숨긴다 (경로가 그 PC 것이 아니다) */}
+                            {daemonTarget ? (
+                                <p className="setting-description">{t('gui:remote_daemon.local_only_sections')}</p>
+                            ) : (
+                                <>
+                                    {folderPathsAvailable() && <FolderPathsSection />}
 
-                            {dataTransferAvailable() && <DataTransferSection />}
+                                    {dataTransferAvailable() && <DataTransferSection />}
+                                </>
+                            )}
 
                             {unisolatedAvailable() && <UnisolatedSection />}
 

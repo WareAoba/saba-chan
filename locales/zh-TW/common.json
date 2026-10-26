@@ -111,7 +111,8 @@
     "path_missing": "未指定路徑",
     "path_not_folder": "不是資料夾",
     "no_log_folder": "沒有記錄資料夾",
-    "open_folder_failed": "無法開啟資料夾"
+    "open_folder_failed": "無法開啟資料夾",
+    "remote_local_path": "操作遠端守護程式時無法選擇本機路徑。請在頂部列切換到本機後再試一次"
   },
   "consent": {
     "allow": "允許",

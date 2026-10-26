@@ -42,6 +42,8 @@ export const useSettingsStore = create((set, get) => ({
     consoleFontScale: THEME_DEFAULTS.consoleFontScale,
     // 서버 페이지의 시스템 모니터를 펼쳐 둘지 (접으면 요약 한 줄)
     systemMonitorOpen: true,
+    // 서버 목록 보기 (G1c): 'switch' 고른 데몬만 | 'unified' 다른 데몬의 서버도 데몬별로
+    daemonView: 'switch',
 
     // ── Actions ──
     load: async () => {
@@ -72,6 +74,7 @@ export const useSettingsStore = create((set, get) => ({
                 patch.sidebarCompact = settings.sidebarCompact ?? THEME_DEFAULTS.sidebarCompact;
                 patch.consoleFontScale = settings.consoleFontScale ?? THEME_DEFAULTS.consoleFontScale;
                 patch.systemMonitorOpen = settings.systemMonitorOpen ?? true;
+                patch.daemonView = settings.daemonView === 'unified' ? 'unified' : 'switch';
             }
             const path = await window.api.settingsGetPath();
             patch.settingsPath = path;
@@ -182,6 +185,7 @@ export const useSettingsStore = create((set, get) => ({
             sidebarCompact: THEME_DEFAULTS.sidebarCompact,
             consoleFontScale: THEME_DEFAULTS.consoleFontScale,
             systemMonitorOpen: true,
+            daemonView: 'switch',
         });
         dirtyKeys.clear();
     },
@@ -209,6 +213,7 @@ const _settingsKeys = [
     'sidebarCompact',
     'consoleFontScale',
     'systemMonitorOpen',
+    'daemonView',
 ];
 useSettingsStore.subscribe((state, prevState) => {
     if (applyingLoad) return;

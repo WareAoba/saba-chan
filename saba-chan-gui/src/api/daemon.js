@@ -1,6 +1,11 @@
 import i18n from 'i18next';
 
 function moduleErrorBody(body) {
+    // 고른 원격 데몬에 닿지 못한 것 같은 중계 오류 (01 §1.4.2): 화면마다 따로 번역하지 않게 여기서 문구로
+    const relayKey = `remote_daemon.err_${body?.error_code}`;
+    if (String(body?.error_code || '').startsWith('remote_') && i18n.exists(relayKey, { ns: 'gui' })) {
+        return { ...body, error: i18n.t(relayKey, { ns: 'gui' }) };
+    }
     const key = `module_errors.${body?.error_code}`;
     if (!i18n.exists(key, { ns: 'common' })) return body;
     const details = [body.error || body.message];
@@ -15,10 +20,12 @@ function moduleErrorBody(body) {
  * 연결 실패면 err.code(ECONNREFUSED·ETIMEDOUT·…)가 있는 오류를 던진다.
  */
 export function createDaemonClient(invoke) {
-    async function request(method, path, body, { timeout = 5000, responseType } = {}) {
+    // target: 이 요청만 그 데몬에 보낸다 (원격 데몬 hostId, 이 PC는 'local'). 없으면 상단 바에서 고른 데몬
+    async function request(method, path, body, { timeout = 5000, responseType, target } = {}) {
         const args = { method: method.toUpperCase(), path, timeoutMs: timeout };
         if (body !== undefined) args.body = body;
         if (responseType) args.responseType = responseType;
+        if (target) args.target = target;
         let res;
         try {
             res = await invoke('daemon_request', args);

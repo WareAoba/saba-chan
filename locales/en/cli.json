@@ -1216,7 +1216,12 @@
       "remote_rejected": "The remote daemon did not accept the connection. Try again",
       "remote_unknown": "Not a remote daemon you connected to. Check `remote daemons`",
       "relay_not_paired": "This PC is not connected to the relay",
-      "relay_unreachable": "Could not reach the relay"
-    }
+      "relay_unreachable": "Could not reach the relay",
+      "remote_ambiguous": "More than one remote daemon has that name. Pick it by host id",
+      "remote_timeout": "The remote daemon did not answer in time. It may still be handling the request"
+    },
+    "daemon": "Daemon",
+    "this_pc": "This PC",
+    "no_servers": "No servers"
   }
 }

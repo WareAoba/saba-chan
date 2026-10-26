@@ -163,6 +163,18 @@ fn build(method: &Method, path: &str, headers: &HeaderMap, token: &str, body: &a
     req.header(header::AUTHORIZATION, format!("Bearer {token}")).body(Body::from(body.clone())).ok()
 }
 
+/// 원격 데몬에 넘길 경로: 데몬 API와 상태 확인만 (짝 맺기 같은 원격 포트 자체의 길은 넘기지 않는다)
+pub fn forward_path(rest: &str, query: Option<&str>) -> Option<String> {
+    let rest = rest.trim_start_matches('/');
+    if !(rest == "health" || rest.starts_with("api/")) || rest.split('/').any(|s| s == ".." || s == ".") {
+        return None;
+    }
+    Some(match query {
+        Some(q) => format!("/{rest}?{q}"),
+        None => format!("/{rest}"),
+    })
+}
+
 /// 저장한 원격 데몬 `host_id`에 `path`(쿼리 포함, `/api/...`)를 보낸다.
 /// `stop`(이 데몬 종료)이 취소되면 기다리던 답과 넘기던 스트림을 끝낸다.
 pub async fn forward(file: &ConfigFile, relay: Option<Target>, host_id: &str, path: &str, req: Request<Body>, stop: CancellationToken) -> Response {

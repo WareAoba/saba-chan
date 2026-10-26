@@ -288,6 +288,72 @@ describe('데몬 응답 가공', () => {
     });
 });
 
+describe('원격 데몬 (G1)', () => {
+    it('짝 풀기·잊기는 204여도 성공으로, 다룰 데몬은 셸 명령으로 고른다', async () => {
+        const { api, tauri } = await install({
+            daemon_request: daemon({
+                'DELETE /api/remote/clients/host%20a': { status: 204, data: '' },
+                'DELETE /api/remote/daemons/host-b': { status: 404, data: { error: 'remote_unknown', error_code: 'remote_unknown' } },
+                'POST /api/remote/daemons': (args) => ({ status: 200, data: { hostId: args.body.hostId, name: '게임 PC' } }),
+            }),
+            daemon_target_set: (args) => ({ success: true, target: args.target }),
+        });
+        expect(await api.remoteRevoke('host a')).toEqual({ ok: true });
+        expect(await api.remoteForget('host-b')).toMatchObject({ error_code: 'remote_unknown' });
+        expect(await api.remoteConnect('host-b')).toEqual({ hostId: 'host-b', name: '게임 PC' });
+        expect(await api.daemonTargetSet('')).toEqual({ success: true, target: null });
+        expect(tauri.invoke).toHaveBeenCalledWith('daemon_target_set', { target: null });
+    });
+
+    it('원격 데몬을 다루는 중에는 이 PC의 경로를 고르지 않는다 (그 데몬에 가면 엉뚱한 곳을 가리킨다)', async () => {
+        let target = 'host-b';
+        const { api, tauri } = await install({
+            daemon_target_get: () => ({ target }),
+            dialog_open_folder: () => '/srv/game',
+            dialog_open_file: () => '/srv/game/server.jar',
+        });
+        expect(await api.openFolderDialog()).toBeNull();
+        expect(await api.openFileDialog({})).toBeNull();
+        expect(await api.dataImport({ dryRun: true })).toEqual({ canceled: true });
+        expect(tauri.invoke.mock.calls.some(([cmd]) => cmd.startsWith('dialog_'))).toBe(false);
+
+        target = null;
+        expect(await api.openFolderDialog()).toBe('/srv/game');
+        expect(await api.openFileDialog({})).toBe('/srv/game/server.jar');
+    });
+
+    it('합쳐 보기는 모든 데몬의 서버를 이 PC에 묻고, 서버 하나는 그 데몬에 바로 켜고 끈다', async () => {
+        const calls = [];
+        const { api } = await install({
+            daemon_request: (args) => {
+                calls.push(args);
+                if (args.path === '/api/remote/servers') return { status: 200, data: { daemons: [] } };
+                return { status: 200, data: { success: true } };
+            },
+        });
+        expect(await api.remoteServers()).toEqual({ daemons: [] });
+        expect(calls[0].target).toBeUndefined();
+        expect(await api.remoteInstanceAction('host-b', 'id 1', 'start')).toEqual({ success: true });
+        expect(await api.remoteInstanceAction(null, 'id-2', 'stop')).toEqual({ success: true });
+        expect(calls[1]).toMatchObject({ method: 'POST', path: '/api/instance/id%201/start', target: 'host-b' });
+        expect(calls[2]).toMatchObject({ method: 'POST', path: '/api/instance/id-2/stop', target: 'local', body: { force: false } });
+        expect(await api.remoteInstanceAction('host-b', 'x', 'delete')).toMatchObject({ success: false });
+        expect(calls).toHaveLength(3);
+    });
+
+    it('고른 원격 데몬에 닿지 못한 오류는 어느 화면에서든 문구로 온다', async () => {
+        const { api } = await install({
+            daemon_request: daemon({
+                'POST /api/instance/a/stop': { status: 502, data: { error: 'remote_unreachable', error_code: 'remote_unreachable' } },
+            }),
+        });
+        expect(await api.instanceStop('a')).toMatchObject({
+            error_code: 'remote_unreachable',
+            error: 'Could not reach the remote daemon. Check its address and firewall',
+        });
+    });
+});
+
 describe('가져오기 (dataImport)', () => {
     it('파일 선택을 취소하면 {canceled:true}, 고르면 결과에 path를 붙인다', async () => {
         let picked = null;

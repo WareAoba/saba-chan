@@ -111,7 +111,8 @@
     "path_missing": "Kein Pfad angegeben",
     "path_not_folder": "Das ist kein Ordner",
     "no_log_folder": "Kein Logordner",
-    "open_folder_failed": "Der Ordner konnte nicht geöffnet werden"
+    "open_folder_failed": "Der Ordner konnte nicht geöffnet werden",
+    "remote_local_path": "Solange du einen entfernten Daemon bedienst, kannst du keinen Pfad auf diesem PC wählen. Wechsle oben zu diesem PC und versuche es erneut"
   },
   "consent": {
     "allow": "Erlauben",

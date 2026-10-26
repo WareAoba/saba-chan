@@ -716,6 +716,7 @@
       "remote.peers": "Seus outros PCs no relay aos quais este daemon pode se conectar",
       "remote.connect": "Parear com o daemon remoto de outro PC seu (ids em `remote peers`)",
       "remote.daemons": "Daemons remotos aos quais este daemon se conecta",
+      "remote.servers": "Servidores deste PC e de cada daemon remoto, por daemon (para usar um, `--daemon <nome>`)",
       "remote.forget": "Esquecer um daemon remoto (conecte de novo com `remote connect`)",
       "config.autostart": "O que inicia quando você entra neste PC: off, daemon (só o daemon e a bandeja) ou full (com a janela da GUI). Sem modo mostra o valor atual"
     },
@@ -1246,7 +1247,12 @@
       "remote_rejected": "O daemon remoto não aceitou a conexão. Tente de novo",
       "remote_unknown": "Não é um daemon remoto ao qual você se conectou. Veja `remote daemons`",
       "relay_not_paired": "Este PC não está conectado ao relay",
-      "relay_unreachable": "Não foi possível alcançar o relay"
-    }
+      "relay_unreachable": "Não foi possível alcançar o relay",
+      "remote_ambiguous": "Há mais de um daemon remoto com esse nome. Escolha pelo host id",
+      "remote_timeout": "O daemon remoto não respondeu a tempo. Ele ainda pode estar processando o pedido"
+    },
+    "daemon": "Daemon",
+    "this_pc": "Este PC",
+    "no_servers": "Sem servidores"
   }
 }

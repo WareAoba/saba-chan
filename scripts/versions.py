@@ -289,6 +289,44 @@ def addon_components(args: argparse.Namespace, assets: Path) -> dict:
     return found
 
 
+def zip_contents(blob: bytes) -> dict[str, str]:
+    """zip 안 파일마다 sha256 (zip 시각·압축 방식은 보지 않는다)"""
+    with zipfile.ZipFile(io.BytesIO(blob)) as zf:
+        return {i.filename: hashlib.sha256(zf.read(i)).hexdigest() for i in zf.infolist() if not i.is_dir()}
+
+
+def addon_version_problems(components: dict, assets: Path, previous: dict, fetch) -> list[str]:
+    """지난 릴리즈(`previous` manifest)보다 버전이 낮거나, 같은 버전인데 파일이 바뀐 모듈·익스텐션.
+    업데이터·데몬은 버전이 오른 것만 받으므로, 바뀐 것을 같은 버전으로 실으면 이미 깐 사용자는 받지 못한다.
+    같은 버전이면 지난 zip을 `fetch(url)`로 받아 파일 내용을 비교한다"""
+    problems = []
+    for key, comp in components.items():
+        old = previous.get("components", {}).get(key)
+        if not old or not key.startswith(("module-", "ext-")):
+            continue
+        new_v, old_v = (versions_semver(comp["version"]), versions_semver(old["version"]))
+        if new_v < old_v:
+            problems.append(f"{key} {comp['version']} is lower than {old['version']} in {previous.get('version')}")
+        elif new_v == old_v and zip_contents((assets / comp["asset"]).read_bytes()) != zip_contents(fetch(old["url"])):
+            problems.append(f"{key} changed since {previous.get('version')} but keeps version {comp['version']}; raise it")
+    return problems
+
+
+def versions_semver(version: str) -> tuple:
+    """비교용 (major, minor, patch, 정식 여부, 시험판 식별자). 시험판은 정식보다 낮다"""
+    core, _, pre = version.partition("-")
+    nums = tuple(int(p) for p in core.split("."))
+    ids = tuple((0, int(x), "") if x.isdigit() else (1, 0, x) for x in pre.split(".")) if pre else ()
+    return (*nums, not pre, ids)
+
+
+def fetch_url(url: str) -> bytes:
+    import urllib.request
+
+    with urllib.request.urlopen(url, timeout=60) as resp:
+        return resp.read()
+
+
 def exe_file_version(blob: bytes) -> str | None:
     """exe의 파일 버전 리소스(VS_FIXEDFILEINFO)의 FILEVERSION을 `major.minor.patch`로. 리소스가 없으면 None"""
     start = 0
@@ -367,7 +405,13 @@ def cmd_manifest(data: dict, args: argparse.Namespace) -> int:
             "url": f"{base}/{r2_key(release, name)}",
             "version": version,
         }
-    for key, comp in addon_components(args, assets).items():
+    addons = addon_components(args, assets)
+    if getattr(args, "previous", None):
+        previous = json.loads(Path(args.previous).read_text(encoding="utf-8"))
+        problems = addon_version_problems(addons, assets, previous.get("manifest", previous), fetch_url)
+        if problems:
+            sys.exit("modules/extensions:\n  " + "\n  ".join(problems))
+    for key, comp in addons.items():
         blob = (assets / comp["asset"]).read_bytes()
         components[key] = {
             **comp,
@@ -461,6 +505,7 @@ def main() -> int:
     m.add_argument("--modules-repo", help="saba-chan-modules 체크아웃 (모듈을 같이 싣는다)")
     m.add_argument("--extensions-repo", help="saba-chan-extensions 체크아웃")
     m.add_argument("--addons-ref", help="아이콘 URL에 쓸 모듈 저장소 커밋")
+    m.add_argument("--previous", help="지난 릴리즈의 (서명된) manifest. 바뀐 모듈·익스텐션의 버전이 오르지 않았으면 멈춘다")
     r = sub.add_parser("registration")
     r.add_argument("--signed", required=True, help="release_signing sign 출력")
     r.add_argument("--rollout", type=int, default=100)

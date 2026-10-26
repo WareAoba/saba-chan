@@ -1,6 +1,6 @@
 //! 렌더러가 부르는 Rust 명령 (계약 §2). 결과 모양은 main.js 각 핸들러와 같다
 
-use crate::daemon::{is_allowed_request, parse_method};
+use crate::daemon::{is_allowed_request, parse_method, DaemonClient};
 use crate::{lifecycle, settings, tray, window, AppState};
 use base64::Engine;
 use serde::Deserialize;
@@ -22,13 +22,16 @@ pub async fn daemon_request(
     body: Option<Value>,
     timeout_ms: Option<u64>,
     response_type: Option<String>,
+    target: Option<String>,
 ) -> Value {
     let Some(method) = parse_method(&method).filter(|m| is_allowed_request(m, &path)) else {
         return json!({ "status": 0, "error": format!("Invalid daemon request: {path}"), "code": "EINVAL" });
     };
     let client = app.state::<AppState>().client.clone();
     let timeout = Duration::from_millis(timeout_ms.unwrap_or(5000));
-    match client.send(method, &path, body.as_ref(), timeout).await {
+    // 합쳐 보기(G1c)는 요청마다 데몬을 고른다 (`local`이면 이 PC). 없으면 상단 바에서 고른 데몬
+    let target = DaemonClient::normalize_target(target);
+    match client.send_to(method, &path, body.as_ref(), timeout, target.as_deref()).await {
         Ok(res) => {
             let data = match response_type.as_deref() {
                 Some("base64") => Value::String(base64::engine::general_purpose::STANDARD.encode(&res.body)),
@@ -342,6 +345,26 @@ pub async fn language_set(app: AppHandle, language: String) -> Value {
     state.reload_i18n(&language);
     tray::update_menu(&app);
     json!({ "success": success, "language": language })
+}
+
+/// 다룰 데몬 (G1): 고른 원격 데몬 hostId, 없으면 이 PC
+#[tauri::command]
+pub fn daemon_target_get(app: AppHandle) -> Value {
+    json!({ "target": app.state::<AppState>().client.target() })
+}
+
+/// 다룰 데몬을 바꾸고 설정 `gui.daemonTarget`에 저장한다. 이 뒤의 데몬 요청과 이벤트 스트림이 그 데몬으로 간다
+#[tauri::command]
+pub async fn daemon_target_set(app: AppHandle, target: Option<String>) -> Value {
+    let state = app.state::<AppState>();
+    let target = crate::daemon::DaemonClient::normalize_target(target);
+    let success = save_settings(&state, &json!({ "daemonTarget": target })).await;
+    if success && state.client.target() != target {
+        // 팝아웃 콘솔은 메인 창처럼 다시 읽히지 않으니 닫는다 (남기면 이전 데몬의 instanceId로 새 데몬에 명령한다)
+        window::close_popouts(&app);
+        state.client.set_target(target.clone());
+    }
+    json!({ "success": success, "target": state.client.target() })
 }
 
 // ── 대화상자 ──

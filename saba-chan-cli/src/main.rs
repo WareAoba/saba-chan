@@ -84,8 +84,10 @@ async fn run() {
     let spawn_port = g.port.unwrap_or_else(bootstrap::ipc_port);
     let port = g.port.unwrap_or_else(|| bootstrap::live_port(spawn_port));
     let color = !g.no_color && std::env::var_os("NO_COLOR").is_none() && std::io::stdout().is_terminal();
+    let mut api = client::Api::new(port, daemon_lang);
+    api.target = g.daemon.clone().filter(|d| !d.trim().is_empty());
     let ctx = ctx::Ctx {
-        api: client::Api::new(port, daemon_lang),
+        api,
         spawn_port,
         port_fixed: g.port.is_some(),
         out: output::Out::new(json, color),

@@ -761,7 +761,10 @@ impl IPCServer {
 
     /// 데몬 HTTP 라우터 전체 (인증·감사 미들웨어 포함). 액션 카탈로그도 이것을 안에서 부른다
     pub fn router(&self) -> Router {
-        self.routes().layer(axum::middleware::from_fn(auth::auth_middleware))
+        self.routes()
+            // 고른 원격 데몬으로 중계 (G1, `X-Saba-Target`). 로컬 IPC에만: 원격 포트는 `routes`를 따로 씌운다
+            .layer(axum::middleware::from_fn_with_state(self.clone(), crate::remote_daemon::target::layer))
+            .layer(axum::middleware::from_fn(auth::auth_middleware))
     }
 
     /// 인증층을 씌우기 전의 라우트 (감사 출처 포함). 로컬 IPC는 IPC 토큰, 원격 포트(`remote_daemon`)는 짝 맺은 PC 토큰을 씌운다
@@ -951,6 +954,7 @@ impl IPCServer {
             .route("/api/remote/peers", get(handlers::remote_daemon::list_peers))
             .route("/api/remote/daemons", get(handlers::remote_daemon::list_daemons).post(handlers::remote_daemon::connect_daemon))
             .route("/api/remote/daemons/{host_id}", delete(handlers::remote_daemon::forget_daemon))
+            .route("/api/remote/servers", get(handlers::remote_daemon::list_all_servers))
             .route("/api/remote/daemons/{host_id}/proxy/{*rest}", get(handlers::remote_daemon::proxy).post(handlers::remote_daemon::proxy).put(handlers::remote_daemon::proxy).patch(handlers::remote_daemon::proxy).delete(handlers::remote_daemon::proxy))
             .with_state(self.clone())
             .merge(updates::updates_router(self.update_state.clone()))

@@ -29,8 +29,11 @@ pub struct Api {
     verified: Arc<RwLock<Option<String>>>,
     /// 요청마다 싣는 `Accept-Language` (`--lang`·`SABA_LANG`으로 고른 언어). 없으면 데몬이 자기 설정을 따른다
     pub lang: Option<String>,
+    /// 고른 원격 데몬 (`--daemon`, hostId 또는 저장한 이름). 이 PC의 데몬이 그 데몬에 중계한다 (01 §1.4.2 7)
+    pub target: Option<String>,
     /// 이 실행에서 마지막으로 보인 포트 충돌 정지 알림 id (L50)
-    notices_seen: Arc<std::sync::atomic::AtomicU64>,
+    /// 데몬(대상)마다 따로: 알림 id는 그 PC의 시각으로 만든다
+    notices_seen: Arc<std::sync::Mutex<std::collections::HashMap<String, Arc<std::sync::atomic::AtomicU64>>>>,
 }
 
 fn read_token() -> Option<String> {
@@ -72,7 +75,29 @@ impl Api {
             token: Arc::new(RwLock::new(read_token())),
             verified: Arc::default(),
             lang,
+            target: None,
             notices_seen: Arc::default(),
+        }
+    }
+
+    /// 지금 대상(이 PC면 빈 이름)에서 본 마지막 포트 충돌 알림 id
+    fn notices_cursor(&self) -> Arc<std::sync::atomic::AtomicU64> {
+        let key = self.target.clone().unwrap_or_default();
+        self.notices_seen.lock().unwrap().entry(key).or_default().clone()
+    }
+
+    /// 같은 언어·대상으로 다른 포트의 데몬에 붙는다
+    pub fn on_port(&self, port: u16) -> Self {
+        let mut api = Self::new(port, self.lang.clone());
+        api.target = self.target.clone();
+        api
+    }
+
+    /// 고른 원격 데몬을 싣는다. 이 PC의 데몬이 살아 있는지 보는 `/health`에는 싣지 않는다 (데몬도 `/health`는 이 PC에서 답한다)
+    fn targeted(&self, req: reqwest::RequestBuilder, path: &str) -> reqwest::RequestBuilder {
+        match self.target.as_deref() {
+            Some(t) if !path.starts_with("/health") => req.header("X-Saba-Target", seg(t)),
+            _ => req,
         }
     }
 
@@ -95,7 +120,7 @@ impl Api {
             req = req.header("X-Saba-Token", t);
         }
         // 감사 로그의 출처 (A10)
-        req = req.header("X-Saba-Client", "cli");
+        req = self.targeted(req.header("X-Saba-Client", "cli"), path);
         if let Some(b) = body {
             req = req.json(b);
         }
@@ -265,9 +290,10 @@ impl Api {
     /// 포트 충돌로 멈춘 알림(`port_conflict_stops`)은 데몬에 남는다: 알림을 보여 주는 `status`는 이 실행에서 본 것 뒤만,
     /// 나머지는 `keep`으로 남은 것 모두를 받는다
     pub async fn servers(&self, keep_notices: bool) -> Result<Value> {
-        let mut body = self.get_slow(&servers_path(keep_notices, &self.notices_seen)).await?;
+        let seen = self.notices_cursor();
+        let mut body = self.get_slow(&servers_path(keep_notices, &seen)).await?;
         if !keep_notices {
-            remember_notices(&self.notices_seen, &mut body);
+            remember_notices(&seen, &mut body);
         }
         Ok(body)
     }
@@ -656,7 +682,7 @@ impl Api {
     }
 
     async fn open_events(&self, since: Option<u64>) -> Result<reqwest::Response> {
-        let mut req = self.http.get(format!("{}/api/events", self.base)).header("X-Saba-Client", "cli");
+        let mut req = self.targeted(self.http.get(format!("{}/api/events", self.base)).header("X-Saba-Client", "cli"), "/api/events");
         if let Some(t) = self.token.read().ok().and_then(|t| t.clone()) {
             req = req.header("X-Saba-Token", t);
         }
@@ -725,6 +751,11 @@ impl Api {
     }
     pub async fn connect_remote_daemon(&self, host_id: &str) -> Result<Value> {
         self.post("/api/remote/daemons", json!({ "hostId": host_id })).await
+    }
+    /// GET /api/remote/servers — 이 PC와 원격 데몬마다의 서버 (G1c 합쳐 보기)
+    pub async fn remote_servers(&self) -> Result<Value> {
+        // 데몬이 원격 데몬 하나를 30초까지 기다린다
+        self.get_slow("/api/remote/servers").await
     }
     /// DELETE /api/remote/daemons/:hostId
     pub async fn forget_remote_daemon(&self, host_id: &str) -> Result<Value> {
@@ -1190,6 +1221,10 @@ mod tests {
 
     /// 받은 요청 머리를 그대로 돌려주는 한 번짜리 데몬
     async fn request_head(lang: Option<&str>) -> String {
+        request_head_to(lang, None, "/api/servers").await
+    }
+
+    async fn request_head_to(lang: Option<&str>, target: Option<&str>, path: &str) -> String {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
@@ -1205,9 +1240,10 @@ mod tests {
             sock.write_all(b"HTTP/1.1 200 OK\r\ncontent-length: 2\r\n\r\n{}").await.unwrap();
             String::from_utf8_lossy(&head).to_ascii_lowercase()
         });
-        let api = Api::new(port, lang.map(str::to_string));
+        let mut api = Api::new(port, lang.map(str::to_string));
+        api.target = target.map(str::to_string);
         *api.token.write().unwrap() = None;
-        api.call(Method::GET, "/api/servers", None, QUICK).await.unwrap();
+        api.call(Method::GET, path, None, QUICK).await.unwrap();
         server.await.unwrap()
     }
 
@@ -1273,6 +1309,27 @@ mod tests {
     async fn the_chosen_language_goes_to_the_daemon() {
         assert!(request_head(Some("ko")).await.contains("\r\naccept-language: ko\r\n"));
         assert!(!request_head(None).await.contains("accept-language"));
+    }
+
+    /// 셸·TUI에서 한 줄만 다른 데몬을 고르면 그 데몬의 알림 커서를 따로 쓴다 (다른 PC의 알림 id와 비교하지 않는다)
+    #[test]
+    fn each_daemon_keeps_its_own_notice_cursor() {
+        let mut api = Api::new(1, None);
+        api.notices_cursor().store(500, std::sync::atomic::Ordering::Relaxed);
+        let mut other = api.clone();
+        other.target = Some("host-b".into());
+        assert_eq!(other.notices_cursor().load(std::sync::atomic::Ordering::Relaxed), 0);
+        api.target = None;
+        assert_eq!(api.notices_cursor().load(std::sync::atomic::Ordering::Relaxed), 500);
+    }
+
+    /// `--daemon`으로 고른 원격 데몬은 요청마다 `X-Saba-Target`(퍼센트 인코딩)으로 이 PC의 데몬에 알린다 (중계는 데몬이 한다)
+    #[tokio::test]
+    async fn a_chosen_remote_daemon_is_named_on_every_request() {
+        assert!(request_head_to(None, Some("게임 PC"), "/api/servers").await.contains("\r\nx-saba-target: %ea%b2%8c%ec%9e%84%20pc\r\n"));
+        // 이 PC의 데몬이 살아 있는지는 언제나 이 PC에 묻는다 (`daemon stop`이 원격 pid를 잡지 않게)
+        assert!(!request_head_to(None, Some("게임 PC"), "/health").await.contains("x-saba-target"));
+        assert!(!request_head(None).await.contains("x-saba-target"));
     }
 
     /// 일부만 된 작업(2xx에 `ok`/`success: false`, 예: 업데이트 받기·적용, 챗봇 기억 지우기)은 본문을 명령에 돌려준다:

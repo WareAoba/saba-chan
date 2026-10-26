@@ -579,6 +579,43 @@ pub(crate) async fn prepare_for_module(
     json!({ "installed": installed, "enabled": enabled, "failed": failed })
 }
 
+/// 업데이트로 바뀐 모듈이 쓰는 익스텐션을 맞춘다 (모듈 설치의 `prepare_for_module`과 같은 일). 완료 마커의 `module-*` 키를 보고,
+/// 마커 하나에 한 번만 한다. 업데이터가 적용하면 데몬이 다시 뜨므로 기동 때, 데몬이 바로 적용하면 그 뒤에 부른다
+/// (`UpdateState::modules_updated`). 옛 판이 요구하던 목록은 남지 않으므로 이미 깔린 익스텐션은 켜짐 상태를 그대로 두고
+/// (사용자가 껐을 수 있다) 없는 것만 받아 켠다. 돌려주는 값: (모듈 id, `prepare_for_module`의 결과)
+pub async fn prepare_after_update(state: &IPCServer, marker_path: &std::path::Path) -> Vec<(String, serde_json::Value)> {
+    let Some(marker) = saba_chan_updater_lib::UpdateCompletionMarker::take_unprepared_at(marker_path) else {
+        return Vec::new();
+    };
+    let modules: Vec<&str> = marker
+        .updated_components
+        .iter()
+        .filter_map(|k| k.strip_prefix(saba_chan_updater_lib::relay::MODULE_PREFIX))
+        .collect();
+    if modules.is_empty() {
+        return Vec::new();
+    }
+    let _dirs = super::paths::components_in_use().await;
+    let mut prepared = Vec::new();
+    for module_id in modules {
+        let required = match state.supervisor.read().await.module_loader.get_module(module_id) {
+            Ok(module) => super::server::required_extensions(&module),
+            Err(_) => continue,
+        };
+        if required.is_empty() {
+            continue;
+        }
+        let installed: Vec<String> = {
+            let mgr = state.extension_manager.read().await;
+            required.iter().filter(|id| mgr.discovered(id).is_some()).cloned().collect()
+        };
+        let result = prepare_for_module(state, &required, &installed).await;
+        tracing::info!("[Updates] Extensions for updated module '{}': {}", module_id, result);
+        prepared.push((module_id.to_string(), result));
+    }
+    prepared
+}
+
 /// GET /api/extensions/updates — 설치된 익스텐션 업데이트 체크 (매니페스트 비교)
 pub async fn check_extension_updates(
     State(state): State<IPCServer>,
@@ -869,5 +906,41 @@ mod tests {
             assert_eq!(gui_file(&dir, "link.js"), None);
             assert_eq!(gui_file(&dir, "linked/outside.js"), None);
         }
+    }
+
+    /// 업데이트로 모듈이 바뀌면 그 모듈이 쓰는 익스텐션을 맞춘다 (모듈 설치와 같은 일, 완료 마커 하나에 한 번).
+    /// 옛 판이 요구하던 목록이 남지 않으므로 이미 깔린 익스텐션의 켜짐 상태는 그대로 둔다 (사용자가 껐을 수 있다)
+    #[tokio::test]
+    async fn modules_changed_by_an_update_get_their_extensions_once() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ext = tempfile::Builder::new().prefix("upd").tempdir_in(crate::plugin::resolve_extensions_dir()).unwrap();
+        let id = ext.path().file_name().unwrap().to_string_lossy().into_owned();
+        std::fs::write(ext.path().join("manifest.json"), json!({ "id": id, "name": "t", "version": "0.1.0" }).to_string()).unwrap();
+        let module = tmp.path().join("modules").join("needsext");
+        std::fs::create_dir_all(&module).unwrap();
+        std::fs::write(
+            module.join("module.toml"),
+            format!("[module]\nschema_version = 1\nname = \"needsext\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[install]\nrequires_extensions = [\"{id}\"]\n"),
+        )
+        .unwrap();
+        std::fs::write(module.join("lifecycle.py"), "").unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            tmp.path().join("modules").to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        sup.initialize().await.unwrap();
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        state.extension_manager.write().await.discover().unwrap();
+
+        let marker = tmp.path().join("update-complete.json");
+        saba_chan_updater_lib::UpdateCompletionMarker::success(vec!["saba-core".into(), "module-needsext".into(), "module-gone".into()])
+            .save_to(&marker)
+            .unwrap();
+        let prepared = prepare_after_update(&state, &marker).await;
+        assert_eq!(prepared.len(), 1, "only installed modules that use extensions: {prepared:?}");
+        assert_eq!(prepared[0].0, "needsext");
+        assert_eq!(prepared[0].1, json!({ "installed": [], "enabled": [], "failed": [] }));
+        assert!(!state.extension_manager.read().await.is_enabled(&id), "an installed extension keeps its state");
+        assert!(prepare_after_update(&state, &marker).await.is_empty(), "once per update");
     }
 }
