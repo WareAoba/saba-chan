@@ -2118,7 +2118,7 @@ print(json.dumps(codes))
     async fn import_guard_blocks_only_disabled_extensions() {
         // PATH의 첫 python이 Windows 스토어 스텁일 수 있으므로 데몬과 같은 탐지로 실제 인터프리터를 고른다
         let Ok(python) = crate::python_env::detect_system_python().await else {
-            eprintln!("SKIP: Python >= 3.10 not found (python, python3, py)");
+            eprintln!("SKIP: Python >= 3.11 not found (python, python3, py)");
             return;
         };
         let tmp = tempfile::tempdir().unwrap();

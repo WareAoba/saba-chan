@@ -923,11 +923,13 @@ def download(url, dest, *, on_progress=None, timeout=60, checksums=None, user_ag
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp, open(part, "wb") as out:
             total = int(resp.headers.get("Content-Length") or 0)
+            read = getattr(resp, "read1", None) or resp.read
             done = 0
             while True:
                 if time.monotonic() > deadline:
                     raise TimeoutError(f"download took longer than {timeout * 10}s")
-                chunk = resp.read(1 << 20)
+                # read()는 1MiB가 찰 때까지 기다리므로 조금씩 오는 응답이면 아래 한도 검사에 돌아오지 못한다
+                chunk = read(1 << 20)
                 if not chunk:
                     break
                 out.write(chunk)
@@ -1019,13 +1021,15 @@ def safe_extract(archive, dest, *, prefix=None, strip_top=False, keep_existing=(
         for name, (_, kind, link, info) in zip(names, entries):
             if cut and not name.startswith(cut):
                 continue
-            rel = name[len(cut):]
+            rel = "/".join(p for p in name[len(cut):].split("/") if p not in ("", "."))
             if not rel:
                 continue
             if kind == "hardlink":
                 if not link.startswith(cut) or not link[len(cut):]:
                     continue
-                link = link[len(cut):]
+                link = "/".join(p for p in link[len(cut):].split("/") if p not in ("", "."))
+                if not link:
+                    continue
                 safe_join(dest, *[p for p in link.split("/") if p])
             planned.append((rel, kind, link, safe_join(dest, *[p for p in rel.split("/") if p]), info))
         written = []
