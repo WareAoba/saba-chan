@@ -1,10 +1,13 @@
 //! saba-runner — 게임 서버 하나를 띄우고 콘솔을 지킨다 (C8b)
 //!
-//! 사용법: `saba-runner --run-dir <dir> --log <file> [--cwd <dir>] [--console pipe|pty] [--tail <pattern>]... [--memory-limit <MiB>] -- <program> [args...]`
+//! 사용법: `saba-runner --run-dir <dir> --log <file> [--cwd <dir>] [--console pipe|pty] [--tail <pattern>]... [--memory-limit <MiB>]
+//!   [--line-start <regex>] [--progress <regex>]... -- <program> [args...]`
 //!
 //! `--console pty`: 서버를 의사 콘솔(Windows ConPTY, unix pty)에 띄운다. 출력이 파이프면
 //! 끝날 때까지 모아 두는 서버(stdout 블록 버퍼링)도 줄마다 나온다. stdout·stderr는 한 갈래로
-//! 합쳐지고, 터미널 제어 문자는 지운다. 기본은 `pipe`.
+//! 합쳐지고, 터미널 제어 문자는 화면에 그린 모습으로 바꾼다(`screen.rs`). 기본은 `pipe`.
+//!
+//! `--progress`: 이 모양의 진행 줄이 숫자만 바뀌며 이어지면 첫 줄과 마지막 줄만 남긴다 (`Fold`).
 //!
 //! Windows에서는 서버를 Job Object에 넣는다. 러너가 어떻게 끝나든(강제 종료 포함) 서버와
 //! 서버가 띄운 프로세스가 같이 끝난다. 런처(곧바로 끝나고 진짜 서버를 남기는 exe)를 띄우면
@@ -31,6 +34,7 @@ use std::time::{Duration, Instant};
 
 #[cfg(windows)]
 mod job;
+mod screen;
 
 /// 서버 콘솔을 잇는 방식
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -59,6 +63,8 @@ struct Args {
     memory_limit: Option<u64>,
     /// 줄 머리 (`[launch] line_start`). 줄바꿈 없이 이어 쓴 출력을 맞는 자리마다 나눈다
     line_start: Option<regex::Regex>,
+    /// 진행 줄 모양 (`[extensions.saba-core] progress_patterns`). 이어지는 같은 단계는 첫·마지막 줄만 남긴다
+    progress: Vec<regex::Regex>,
     program: String,
     program_args: Vec<String>,
 }
@@ -70,6 +76,7 @@ fn parse_args() -> Result<Args, String> {
     let mut tails = Vec::new();
     let mut memory_limit = None;
     let mut line_start = None;
+    let mut progress = Vec::new();
     while let Some(arg) = it.next() {
         match arg.as_str() {
             "--run-dir" => run_dir = it.next().map(PathBuf::from),
@@ -91,6 +98,10 @@ fn parse_args() -> Result<Args, String> {
                 let value = it.next().unwrap_or_default();
                 line_start = Some(regex::Regex::new(&value).ok().filter(|re| !re.is_match("")).ok_or_else(|| format!("--line-start takes a regex that does not match the empty string, got '{}'", value))?);
             }
+            "--progress" => {
+                let value = it.next().unwrap_or_default();
+                progress.push(regex::Regex::new(&value).map_err(|_| format!("--progress takes a regex, got '{}'", value))?);
+            }
             "--" => break,
             other => return Err(format!("unknown argument '{}'", other)),
         }
@@ -104,6 +115,7 @@ fn parse_args() -> Result<Args, String> {
         tails,
         memory_limit,
         line_start,
+        progress,
         program,
         program_args: it.collect(),
     })
@@ -143,6 +155,59 @@ fn split_at_line_starts<'a>(line: &'a str, line_start: Option<&regex::Regex>) ->
     parts
 }
 
+/// 진행 줄 접기 (`--progress`). 선언한 진행 줄 모양 하나가 이어지는 동안 첫 줄만 바로 쓰고, 그 뒤 줄은
+/// 숫자만 다른 같은 단계면 마지막 것만 들고 있다가 다른 줄이 오거나 출력이 멈추면 쓴다.
+/// 갱신마다 새 줄을 쓰는 서버(테라리아 월드 생성: 한 실행에 수만 줄)의 로그가 단계마다 두 줄이 된다
+#[derive(Default)]
+struct Fold {
+    patterns: Vec<regex::Regex>,
+    /// 지금 이어지는 단계: (맞은 모양, 숫자를 지운 줄, 아직 쓰지 않은 마지막 줄)
+    run: Option<(usize, String, Option<String>)>,
+}
+
+impl Fold {
+    /// 줄 하나를 받아 지금 쓸 줄들을 돌려준다
+    fn take(&mut self, line: &str) -> Vec<String> {
+        let matched = self.patterns.iter().position(|re| re.is_match(line));
+        let step = matched.map(|i| (i, digits_blanked(line)));
+        if let (Some((run_i, run_step, held)), Some((i, step))) = (self.run.as_mut(), step.as_ref()) {
+            if run_i == i && run_step == step {
+                *held = Some(line.to_string());
+                return Vec::new();
+            }
+        }
+        let mut out: Vec<String> = self.run.take().and_then(|(_, _, held)| held).into_iter().collect();
+        self.run = step.map(|(i, step)| (i, step, None));
+        out.push(line.to_string());
+        out
+    }
+
+    /// 들고 있는 마지막 줄 (단계는 그대로 이어진다)
+    fn flush(&mut self) -> Option<String> {
+        self.run.as_mut().and_then(|(_, _, held)| held.take())
+    }
+
+    fn holding(&self) -> bool {
+        self.run.as_ref().is_some_and(|(_, _, held)| held.is_some())
+    }
+}
+
+/// 숫자를 지운 줄: "60.3% - Smoothing the world - 0.2%" → "#% - Smoothing the world - #%"
+fn digits_blanked(line: &str) -> String {
+    let mut out = String::with_capacity(line.len());
+    let mut in_number = false;
+    for c in line.chars() {
+        let digit = c.is_ascii_digit() || (in_number && c == '.');
+        if digit && !in_number {
+            out.push('#');
+        } else if !digit {
+            out.push(c);
+        }
+        in_number = digit;
+    }
+    out
+}
+
 /// 줄 끝 없이 온 요청도 바로 보게, 줄 단위가 아니라 읽은 만큼 본다
 fn pump(
     reader: impl Read + Send + 'static,
@@ -151,6 +216,7 @@ fn pump(
     console: Console,
     reply: Option<Arc<Stdin>>,
     line_start: Option<regex::Regex>,
+    progress: Vec<regex::Regex>,
 ) -> std::thread::JoinHandle<()> {
     // 읽기는 막히므로 따로 읽어 넘겨받고, 기다리는 동안 조각을 내보낼 수 있게 한다
     let (tx, rx) = std::sync::mpsc::sync_channel::<Vec<u8>>(16);
@@ -171,30 +237,38 @@ fn pump(
     std::thread::spawn(move || {
         // UTF-16LE 출력은 글자 안의 0A 바이트에서 자르지 않는다 (D-S13)
         let mut lines = Lines::default();
-        let emit = |line: &[u8], lines: &Lines| {
-            if console == Console::Pty {
-                let line = decode_line(&strip_ansi_escapes::strip(line));
-                // 화면을 다시 그린 자리(\r)는 마지막 내용만 남긴다
-                let line = line.rsplit('\r').next().unwrap_or_default();
-                for part in split_at_line_starts(line, line_start.as_ref()) {
-                    if !part.trim().is_empty() {
-                        write_log(&log, stream, part);
-                    }
-                }
+        let mut fold = Fold { patterns: progress, run: None };
+        let emit = |line: &[u8], lines: &Lines, fold: &mut Fold| {
+            let shown = if console == Console::Pty {
+                // 터미널 제어 문자는 화면에 그린 모습으로 바꾼다: 다시 그린 자리(\r)는 마지막 내용만, 커서 이동은 빈칸으로
+                screen::render(&decode_line(line))
             } else {
-                let line = lines.decode(line);
-                for part in split_at_line_starts(&line, line_start.as_ref()) {
-                    write_log(&log, stream, part);
+                vec![lines.decode(line)]
+            };
+            for line in &shown {
+                for part in split_at_line_starts(line, line_start.as_ref()) {
+                    if console == Console::Pty && part.trim().is_empty() {
+                        continue;
+                    }
+                    for out in fold.take(part) {
+                        write_log(&log, stream, &out);
+                    }
                 }
             }
         };
         loop {
-            let chunk = if console == Console::Pty && !lines.pending().is_empty() {
+            let waiting = (console == Console::Pty && !lines.pending().is_empty()) || fold.holding();
+            let chunk = if waiting {
                 match rx.recv_timeout(PARTIAL_LINE_IDLE) {
                     Ok(chunk) => chunk,
                     Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-                        if let Some(rest) = lines.finish() {
-                            emit(&rest, &lines);
+                        if console == Console::Pty {
+                            if let Some(rest) = lines.finish() {
+                                emit(&rest, &lines, &mut fold);
+                            }
+                        }
+                        if let Some(last) = fold.flush() {
+                            write_log(&log, stream, &last);
                         }
                         continue;
                     }
@@ -223,11 +297,14 @@ fn pump(
                 }
             }
             while let Some(line) = lines.next_line() {
-                emit(&line, &lines);
+                emit(&line, &lines, &mut fold);
             }
         }
         if let Some(rest) = lines.finish() {
-            emit(&rest, &lines);
+            emit(&rest, &lines, &mut fold);
+        }
+        if let Some(last) = fold.flush() {
+            write_log(&log, stream, &last);
         }
     })
 }
@@ -506,7 +583,7 @@ fn run(args: Args) -> Result<i32, String> {
     let stdin: Arc<Stdin> = Arc::new(Mutex::new(Some(stdin)));
     // 의사 콘솔의 커서 위치 요청에는 runner가 답한다 (파이프에는 그런 요청이 없다)
     let reply = (args.console == Console::Pty).then(|| stdin.clone());
-    let readers: Vec<_> = outputs.into_iter().map(|(r, stream)| pump(r, log.clone(), stream, args.console, reply.clone(), args.line_start.clone())).collect();
+    let readers: Vec<_> = outputs.into_iter().map(|(r, stream)| pump(r, log.clone(), stream, args.console, reply.clone(), args.line_start.clone(), args.progress.clone())).collect();
     if !args.tails.is_empty() {
         let base = args.cwd.clone().unwrap_or_else(|| PathBuf::from("."));
         follow_files(args.tails.iter().map(|t| base.join(t)).collect(), log.clone());
@@ -664,7 +741,7 @@ mod tests {
             }
         }
         let reader = Chunks(vec![b"\x1b[", b"6n", b"REST API started\r\n\x1b[6n"]);
-        super::pump(reader, log, super::Stream::Stdout, super::Console::Pty, Some(stdin), None).join().unwrap();
+        super::pump(reader, log, super::Stream::Stdout, super::Console::Pty, Some(stdin), None, Vec::new()).join().unwrap();
         assert_eq!(sink.0.lock().unwrap().as_slice(), b"\x1b[1;1R\x1b[1;1R");
         let text = std::fs::read_to_string(&path).unwrap();
         let _ = std::fs::remove_file(&path);
@@ -690,7 +767,7 @@ mod tests {
             }
         }
         let (close, held) = std::sync::mpsc::channel();
-        let pump = super::pump(Held(Some(b"[LOG] REST accessed /v1/api/info"), held), log, super::Stream::Stdout, super::Console::Pty, None, None);
+        let pump = super::pump(Held(Some(b"[LOG] REST accessed /v1/api/info"), held), log, super::Stream::Stdout, super::Console::Pty, None, None, Vec::new());
         let mut text = String::new();
         for _ in 0..30 {
             std::thread::sleep(Duration::from_millis(100));
@@ -727,12 +804,94 @@ mod tests {
             let path = std::env::temp_dir().join(format!("saba-runner-split-{}-{:?}.log", std::process::id(), console));
             let log: super::Log = std::sync::Arc::new(std::sync::Mutex::new(std::fs::File::create(&path).unwrap()));
             let reader = Chunks(vec![b"[LOG] REST accessed /v1/api/save[LOG] REST accessed /v1/api/shutdown\nplain [LOG] stays\n"]);
-            super::pump(reader, log, super::Stream::Stdout, console, None, Some(split.clone())).join().unwrap();
+            super::pump(reader, log, super::Stream::Stdout, console, None, Some(split.clone()), Vec::new()).join().unwrap();
             let text = std::fs::read_to_string(&path).unwrap();
             let _ = std::fs::remove_file(&path);
             let contents: Vec<&str> = text.lines().map(|l| l.splitn(3, "] ").nth(2).unwrap_or_default()).collect();
             assert_eq!(contents, ["[LOG] REST accessed /v1/api/save", "[LOG] REST accessed /v1/api/shutdown", "plain [LOG] stays"], "{console:?}");
         }
+    }
+
+    /// 테라리아 점검: 의사 콘솔에서 `\r`로 덮어 쓴 진행 줄이 한 실행에 수만 줄로 쌓였고, help의 칸이 사라졌다.
+    /// 로그에는 화면에 보인 모습대로 한 줄씩 남는다
+    #[test]
+    fn pseudo_console_lines_are_logged_as_the_screen_shows_them() {
+        let path = std::env::temp_dir().join(format!("saba-runner-screen-{}.log", std::process::id()));
+        let log: super::Log = std::sync::Arc::new(std::sync::Mutex::new(std::fs::File::create(&path).unwrap()));
+        let progress: String = (1..=100).map(|p| format!("\rResetting game objects {p}%")).collect();
+        let output = format!("{progress}\r\n: help\r\nhelp\x1b[4X\x1b[4CDisplays a list of commands.\r\n");
+        super::pump(std::io::Cursor::new(output.into_bytes()), log, super::Stream::Stdout, super::Console::Pty, None, None, Vec::new()).join().unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        let _ = std::fs::remove_file(&path);
+        let contents: Vec<&str> = text.lines().map(|l| l.splitn(3, "] ").nth(2).unwrap_or_default()).collect();
+        assert_eq!(contents, ["Resetting game objects 100%", ": help", "help    Displays a list of commands."]);
+    }
+
+    /// 테라리아 점검: 서버가 진행 줄을 갱신마다 새 줄로 써서 한 실행 로그가 수만 줄이었다(PC 실측, 파이프 원문도 CRLF).
+    /// 모듈이 선언한 진행 줄 모양이 이어지면 단계마다 첫 줄과 마지막 줄만 남긴다. 숫자만 다르면 같은 단계다
+    #[test]
+    fn declared_progress_lines_fold_to_the_first_and_last_of_each_step() {
+        let progress = vec![
+            regex::Regex::new(r"^\d+(?:\.\d+)?% - .+ - \d+(?:\.\d+)?%$").unwrap(),
+            regex::Regex::new(r"^Resetting game objects \d+%$").unwrap(),
+        ];
+        let mut out = String::new();
+        for p in 0..=100 {
+            out.push_str(&format!("Resetting game objects {p}%\r\n"));
+        }
+        for step in ["Terrain", "Smoothing the world"] {
+            for p in 0..50 {
+                out.push_str(&format!("{}.{}% - {step} - {p}.5%\r\n", p / 10, p % 10));
+            }
+        }
+        out.push_str("Server started\r\nResetting game objects 1%\r\nResetting game objects 2%\r\n");
+        for console in [super::Console::Pipe, super::Console::Pty] {
+            let path = std::env::temp_dir().join(format!("saba-runner-fold-{}-{:?}.log", std::process::id(), console));
+            let log: super::Log = std::sync::Arc::new(std::sync::Mutex::new(std::fs::File::create(&path).unwrap()));
+            super::pump(std::io::Cursor::new(out.clone().into_bytes()), log, super::Stream::Stdout, console, None, None, progress.clone()).join().unwrap();
+            let text = std::fs::read_to_string(&path).unwrap();
+            let _ = std::fs::remove_file(&path);
+            let contents: Vec<&str> = text.lines().map(|l| l.splitn(3, "] ").nth(2).unwrap_or_default()).collect();
+            assert_eq!(
+                contents,
+                [
+                    "Resetting game objects 0%", "Resetting game objects 100%",
+                    "0.0% - Terrain - 0.5%", "4.9% - Terrain - 49.5%",
+                    "0.0% - Smoothing the world - 0.5%", "4.9% - Smoothing the world - 49.5%",
+                    "Server started", "Resetting game objects 1%", "Resetting game objects 2%",
+                ],
+                "{console:?}"
+            );
+        }
+    }
+
+    /// 접은 진행 줄의 마지막 모습은 출력이 멈추면 다음 줄을 기다리지 않고 남긴다
+    #[test]
+    fn a_folded_progress_line_is_logged_once_output_pauses() {
+        let path = std::env::temp_dir().join(format!("saba-runner-fold-idle-{}.log", std::process::id()));
+        let log: super::Log = std::sync::Arc::new(std::sync::Mutex::new(std::fs::File::create(&path).unwrap()));
+        let (tx, rx) = std::sync::mpsc::channel::<()>();
+        struct Paused(Vec<&'static [u8]>, std::sync::mpsc::Receiver<()>);
+        impl std::io::Read for Paused {
+            fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+                if self.0.is_empty() {
+                    let _ = self.1.recv();
+                    return Ok(0);
+                }
+                let c = self.0.remove(0);
+                buf[..c.len()].copy_from_slice(c);
+                Ok(c.len())
+            }
+        }
+        let progress = vec![regex::Regex::new(r"^Saving \d+%$").unwrap()];
+        let pump = super::pump(Paused(vec![b"Saving 1%\nSaving 2%\nSaving 3%\n"], rx), log, super::Stream::Stdout, super::Console::Pipe, None, None, progress);
+        std::thread::sleep(std::time::Duration::from_millis(1500));
+        let text = std::fs::read_to_string(&path).unwrap();
+        drop(tx);
+        pump.join().unwrap();
+        let _ = std::fs::remove_file(&path);
+        let contents: Vec<&str> = text.lines().map(|l| l.splitn(3, "] ").nth(2).unwrap_or_default()).collect();
+        assert_eq!(contents, ["Saving 1%", "Saving 3%"]);
     }
 
     // 외부 감사: 따라 읽는 로그 파일의 끝나지 않은 줄이 끝없이 쌓였고, 파일을 새로 쓰기 시작해도 옛 조각이 새 줄 앞에 붙었다
