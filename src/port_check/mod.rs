@@ -309,6 +309,8 @@ pub async fn begin_start(instance_id: &str) -> Starting {
 // ── 시험 리스너 ──
 
 type Seen = Arc<Mutex<HashSet<(u16, Protocol)>>>;
+/// 방화벽이 막는 포트를 고르는 함수 (시험에서 바꿔 끼운다)
+type FirewallCheck = fn(&[(u16, Protocol)]) -> Vec<(u16, Protocol)>;
 
 fn expected_line(nonce: &str) -> Vec<u8> {
     format!("saba-chan-port-check {}\n", nonce).into_bytes()
@@ -465,15 +467,12 @@ pub async fn run(relay: &Relay, targets: &[Target], bind_ip: IpAddr) -> Result<V
     run_with(relay, targets, bind_ip, firewall::blocked_ports).await
 }
 
-/// 이 PC 방화벽이 막는 포트를 고르는 함수 (시험에서는 가짜로 바꾼다)
-type BlockedPorts = fn(&[(u16, Protocol)]) -> Vec<(u16, Protocol)>;
-
 /// `firewall`: 이 PC 방화벽이 막는 시험 리스너 포트 (닿지 않은 포트를 닫힘 대신 방화벽으로 알린다)
 async fn run_with(
     relay: &Relay,
     targets: &[Target],
     bind_ip: IpAddr,
-    firewall: BlockedPorts,
+    firewall: FirewallCheck,
 ) -> Result<Vec<Report>, CheckError> {
     let ids: Vec<String> = targets.iter().map(|t| t.instance_id.clone()).collect();
     let (_hold, starting) = Hold::take(&ids).ok_or(CheckError::Busy)?;

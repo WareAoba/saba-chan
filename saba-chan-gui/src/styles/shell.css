@@ -626,6 +626,9 @@
 }
 .server-detail > .segmented {
     align-self: flex-start;
+    /* 좁은 창에서는 줄을 바꾼다 (가로 스크롤 없이) */
+    flex-wrap: wrap;
+    max-width: 100%;
 }
 .detail-body {
     flex: 1;
@@ -2643,8 +2646,8 @@ button.appbar-preflight {
 }
 .mt-task-head .segmented {
     flex-shrink: 1;
+    flex-wrap: wrap;
     min-width: 0;
-    overflow-x: auto;
     margin-right: auto;
 }
 .mt-task-fields {
@@ -2686,6 +2689,96 @@ button.appbar-preflight {
 }
 .mt-field .input.mt-time {
     width: 130px;
+}
+.mt-field .input.mt-date {
+    width: 160px;
+}
+.mt-fieldset {
+    border: 0;
+    margin: 0;
+    padding: 0;
+    min-width: 0;
+}
+.mt-fieldset > legend {
+    padding: 0;
+    margin-bottom: var(--sp-1);
+    font-size: var(--fs-xs);
+    font-weight: 600;
+    color: var(--text-3);
+}
+.mt-weekdays {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-1);
+}
+.mt-weekday {
+    min-width: 40px;
+    height: 32px;
+    padding: 0 var(--sp-2);
+    border-radius: var(--r-md);
+    border: 1px solid var(--line);
+    background: var(--bg-2);
+    color: var(--text-2);
+    font-size: var(--fs-sm);
+    cursor: pointer;
+}
+.mt-weekday.on {
+    background: var(--brand-gradient);
+    border-color: transparent;
+    color: var(--brand-text);
+}
+.mt-next {
+    font-size: var(--fs-xs);
+}
+.modal.mt-picker {
+    max-width: 520px;
+    width: calc(100vw - var(--sp-8));
+    text-align: left;
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-3);
+}
+.mt-picker-list {
+    list-style: none;
+    margin: 0;
+    padding: var(--sp-1);
+    max-height: 320px;
+    overflow-y: auto;
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
+}
+.mt-picker-item {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--sp-1) var(--sp-2);
+    width: 100%;
+    padding: var(--sp-2) var(--sp-3);
+    border: 0;
+    border-radius: var(--r-sm);
+    background: transparent;
+    color: var(--text-1);
+    text-align: left;
+    cursor: pointer;
+}
+.mt-picker-item:hover,
+.mt-picker-item.selected {
+    background: var(--bg-2);
+}
+.mt-picker-name {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    font-weight: 600;
+    margin-right: auto;
+}
+.mt-picker-item > .muted {
+    flex-basis: 100%;
+    font-size: var(--fs-xs);
+}
+.mt-picker .modal-actions {
+    display: flex;
+    justify-content: flex-end;
 }
 .mt-keep {
     padding-top: var(--sp-3);

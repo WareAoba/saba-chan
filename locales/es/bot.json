@@ -153,7 +153,8 @@
   },
   "schedule": {
     "restart_warning": "El servidor se reiniciará en {{minutes}} min.",
-    "update_warning": "El servidor se reiniciará para actualizarse en {{minutes}} min."
+    "update_warning": "El servidor se reiniciará para actualizarse en {{minutes}} min.",
+    "stop_warning": "El servidor se detendrá en {{minutes}} min."
   },
   "provision": {
     "installing": "Instalando el servidor…",

@@ -1059,7 +1059,42 @@ async fn authorize(server: &IPCServer, r: &Resolved, caller: &Caller) -> Result<
     if !perms.meets(perms.effective_level(who), need) {
         return Err(denied(need));
     }
+    // 예약 작업은 나중에 요청자 없이 돈다: 새로 넣거나 켜는 서버 명령은 요청자가 지금 그 명령을 쓸 수 있어야 한다
+    if r.id == "instance.schedule.set" && !instance.is_empty() {
+        for (cmd, risk) in scheduled_commands(server, instance, r.body.as_ref()).await {
+            perms.check(who, instance, &cmd, &risk).map_err(|d| denied(d.need))?;
+        }
+    }
     Ok(())
+}
+
+/// 예약 저장에서 새로 넣거나 바꾼 켜진 작업이 돌릴 서버 명령과 그 risk (정식 이름. 모르는 명령은 저장이 거절한다)
+async fn scheduled_commands(server: &IPCServer, instance: &str, body: Option<&Value>) -> Vec<(String, String)> {
+    let Some(tasks) = body
+        .and_then(|b| b.get("schedule"))
+        .and_then(|s| serde_json::from_value::<Vec<crate::scheduler::ScheduledTask>>(s.clone()).ok())
+    else {
+        return Vec::new();
+    };
+    let sup = server.supervisor.read().await;
+    let Some(current) = sup.instance_store.get(instance) else { return Vec::new() };
+    let meta = sup.module_loader.get_module(&current.module_name).ok().map(|m| m.metadata);
+    let mut out = Vec::new();
+    for task in tasks.iter().filter(|t| t.enabled && !current.schedule.contains(t)) {
+        use crate::scheduler::TaskAction;
+        let found = match task.action {
+            TaskAction::Start => Some(("start".to_string(), "caution")),
+            TaskAction::Stop => Some(("stop".to_string(), "caution")),
+            TaskAction::Restart => Some(("restart".to_string(), "caution")),
+            TaskAction::Command => meta
+                .as_ref()
+                .and_then(|m| crate::commands::find(m, task.command.as_deref().unwrap_or("")))
+                .map(|f| (f.name.clone(), crate::commands::risk_of(f.risk.as_deref()))),
+            _ => None,
+        };
+        out.extend(found.map(|(cmd, risk)| (cmd, risk.to_string())));
+    }
+    out
 }
 
 /// 내장 서버 액션에 대응하는 내장 명령 이름 (레벨 키 `<instance>/<명령>`)
