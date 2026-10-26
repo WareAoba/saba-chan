@@ -83,6 +83,8 @@ function SettingsModal({
     const [appVersion, setAppVersion] = useState(null);
     const [componentInfo, setComponentInfo] = useState(null);
     const aboutBtnRef = useRef(null);
+    // 이스터에그: 정보 페이지 로고를 다섯 번 누르면 이름 해명
+    const logoClicks = useRef(0);
     const [aboutRevealOrigin, setAboutRevealOrigin] = useState({ x: '100%', y: '0%' });
     const tabOrder = ['general', 'appearance', 'advanced'];
     const { isClosing, requestClose } = useModalClose(onClose);
@@ -1169,7 +1171,17 @@ function SettingsModal({
                         {/* 사바쨩 정보 카드 */}
                         <div className="about-card about-app-card">
                             <div className="about-app-logo-container">
-                                <img src="./title.png" alt="Saba-chan" className="about-app-logo" />
+                                <img
+                                    src="./title.png"
+                                    alt="Saba-chan"
+                                    className="about-app-logo"
+                                    onClick={() => {
+                                        logoClicks.current += 1;
+                                        if (logoClicks.current < 5) return;
+                                        logoClicks.current = 0;
+                                        safeShowToast(t('gui:settings_modal.name_egg'), 'info', 6000);
+                                    }}
+                                />
                                 {appVersion && <span className="about-version-badge">v{appVersion}</span>}
                             </div>
                             <div className="about-app-info">
