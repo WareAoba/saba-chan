@@ -698,6 +698,10 @@
       "remote.set": "Activer ou désactiver le port distant, changer le port ou l’adresse publique envoyée au relais",
       "remote.clients": "Vos PC associés à ce démon",
       "remote.revoke": "Dissocier un PC : son jeton cesse de fonctionner immédiatement",
+      "remote.peers": "Vos autres PC sur le relais auxquels ce démon peut se connecter",
+      "remote.connect": "S'appairer avec le démon distant d'un autre de vos PC (ids dans `remote peers`)",
+      "remote.daemons": "Démons distants auxquels ce démon se connecte",
+      "remote.forget": "Oublier un démon distant (reconnectez-vous avec `remote connect`)",
       "config.autostart": "Ce qui démarre quand vous vous connectez à ce PC : off, daemon (démon et zone de notification seulement) ou full (avec la fenêtre de la GUI). Sans mode, affiche la valeur actuelle"
     },
     "arg": {
@@ -775,6 +779,8 @@
       "remote.set.port": "Numéro du port distant",
       "remote.set.address": "Nom d’hôte public ou IP de ce PC (vide pour l’effacer)",
       "remote.revoke.host_id": "ID du PC à dissocier (voir `remote clients`)",
+      "remote.connect.host_id": "Id du PC auquel se connecter (voir `remote peers`)",
+      "remote.forget.host_id": "Id du PC à oublier (voir `remote daemons`)",
       "config.autostart.mode": "off, daemon ou full"
     },
     "after": "Les noms peuvent être partiels (ex. start pal). Sans argument dans un terminal, le menu plein écran s'ouvre (SABA_NO_TUI=1 : le shell interactif).\nDans les scripts, utilisez --json et --yes. Codes de sortie : 0 ok · 1 échec · 2 utilisation · 3 daemon injoignable · 4 introuvable · 130 annulé"
@@ -1211,6 +1217,21 @@
       "certificate_failed": "Impossible de préparer le certificat",
       "port_in_use": "Le port est déjà utilisé",
       "bind_failed": "Impossible d’ouvrir le port"
+    },
+    "no_peers": "Le relais n'a aucun autre PC à vous.",
+    "reachable": "Port distant",
+    "saved": "Connecté",
+    "connected": "Appairé avec le démon distant de {{name}}.",
+    "no_daemons": "Ce démon ne se connecte à aucun démon distant. Voyez vos PC avec `remote peers` et connectez-vous avec `remote connect <id du PC>`.",
+    "forgotten": "Démon distant de {{host}} oublié.",
+    "connect_error": {
+      "remote_not_found": "Ce PC ne fait pas partie de vos autres PC",
+      "remote_no_endpoint": "Ce PC n'a pas ouvert son port distant ni envoyé son adresse publique",
+      "remote_unreachable": "Impossible de joindre le démon distant (vérifiez l'adresse et le pare-feu)",
+      "remote_rejected": "Le démon distant n'a pas accepté la connexion. Réessayez",
+      "remote_unknown": "Ce n'est pas un démon distant auquel vous êtes connecté. Voyez `remote daemons`",
+      "relay_not_paired": "Ce PC n'est pas connecté au relais",
+      "relay_unreachable": "Impossible de joindre le relais"
     }
   }
 }

@@ -698,6 +698,10 @@
       "remote.set": "Activar o desactivar el puerto remoto, cambiar el puerto o la dirección pública enviada al relé",
       "remote.clients": "Tus PC emparejados con este daemon",
       "remote.revoke": "Deshacer el emparejamiento con un PC: su token deja de funcionar al instante",
+      "remote.peers": "Tus otros PCs en el relé a los que este daemon puede conectarse",
+      "remote.connect": "Emparejar con el daemon remoto de otro PC tuyo (ids en `remote peers`)",
+      "remote.daemons": "Daemons remotos a los que se conecta este daemon",
+      "remote.forget": "Olvidar un daemon remoto (vuelve a conectar con `remote connect`)",
       "config.autostart": "Qué se inicia al iniciar sesión en este PC: off, daemon (solo el daemon y la bandeja) o full (con la ventana de la GUI). Sin modo muestra el valor actual"
     },
     "arg": {
@@ -775,6 +779,8 @@
       "remote.set.port": "Número del puerto remoto",
       "remote.set.address": "Nombre de host público o IP de este PC (vacío la borra)",
       "remote.revoke.host_id": "ID del PC que se desempareja (ver `remote clients`)",
+      "remote.connect.host_id": "Id del PC al que conectarse (ver `remote peers`)",
+      "remote.forget.host_id": "Id del PC que olvidar (ver `remote daemons`)",
       "config.autostart.mode": "off, daemon o full"
     },
     "after": "Los nombres pueden ser parciales (p. ej. start pal). Sin argumentos en una terminal se abre el menú a pantalla completa (SABA_NO_TUI=1: la shell interactiva).\nEn scripts usa --json y --yes. Códigos de salida: 0 correcto · 1 error · 2 uso · 3 daemon inaccesible · 4 no encontrado · 130 cancelado"
@@ -1211,6 +1217,21 @@
       "certificate_failed": "No se pudo preparar el certificado",
       "port_in_use": "El puerto ya está en uso",
       "bind_failed": "No se pudo abrir el puerto"
+    },
+    "no_peers": "El relé no tiene otro PC tuyo.",
+    "reachable": "Puerto remoto",
+    "saved": "Conectado",
+    "connected": "Emparejado con el daemon remoto de {{name}}.",
+    "no_daemons": "Este daemon no se conecta a ningún daemon remoto. Mira tus PCs con `remote peers` y conéctate con `remote connect <id de PC>`.",
+    "forgotten": "Se olvidó el daemon remoto de {{host}}.",
+    "connect_error": {
+      "remote_not_found": "Ese PC no es uno de tus otros PCs",
+      "remote_no_endpoint": "Ese PC no ha abierto su puerto remoto ni enviado su dirección pública",
+      "remote_unreachable": "No se pudo llegar al daemon remoto (revisa la dirección y el cortafuegos)",
+      "remote_rejected": "El daemon remoto no aceptó la conexión. Inténtalo de nuevo",
+      "remote_unknown": "No es un daemon remoto al que te hayas conectado. Revisa `remote daemons`",
+      "relay_not_paired": "Este PC no está conectado al relé",
+      "relay_unreachable": "No se pudo llegar al relé"
     }
   }
 }

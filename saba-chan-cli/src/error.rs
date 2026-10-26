@@ -169,6 +169,9 @@ pub fn api_hint(code: &str, body: &Value) -> Option<String> {
     if let Some(text) = crate::i18n::try_t(&format!("module_errors.{code}")) {
         return Some(text);
     }
+    if let Some(text) = crate::i18n::try_t(&format!("remote.connect_error.{code}")) {
+        return Some(text);
+    }
     let list = |key: &str| {
         body.get(key)
             .and_then(Value::as_array)

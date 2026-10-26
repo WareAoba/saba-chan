@@ -215,10 +215,10 @@ async fn every_route_is_registered_and_requires_the_token() {
         }
         // 등록된 경로에 등록되지 않은 메서드를 보내면 axum은 405, 없는 경로면 404를 준다.
         // 핸들러를 실행하지 않고 라우트 존재만 확인한다.
-        let unused = ["patch", "delete", "put", "post", "get"]
-            .into_iter()
-            .find(|m| !route.methods.iter().any(|x| x == m))
-            .expect("some method is unused");
+        // 모든 메서드를 받는 라우트(원격 데몬 중계)는 위에서 메서드마다 확인했다
+        let Some(unused) = ["patch", "delete", "put", "post", "get"].into_iter().find(|m| !route.methods.iter().any(|x| x == m)) else {
+            continue;
+        };
         let status = client
             .request(unused.to_uppercase().parse().unwrap(), &url)
             .header("X-Saba-Token", token.as_str())

@@ -2,6 +2,7 @@
 //!
 //!   enabled·port·address·transport   원격 포트를 열지, 어느 포트로, 릴레이에 알릴 공인 주소, 연결 방식
 //!   clients[]                        이 PC에 붙도록 짝 맺은 같은 주인의 PC. 토큰은 SHA-256만 둔다
+//!   daemons[]                        이 PC가 붙는 원격 데몬(D1b): 주소·고정한 지문·받은 토큰
 
 use saba_chan_updater_lib::config_file::ConfigFile;
 use serde::{Deserialize, Serialize};
@@ -42,6 +43,19 @@ pub struct Client {
     pub host_id: String,
     pub name: String,
     pub token_hash: String,
+    pub paired_at: String,
+}
+
+/// 이 PC가 붙는 원격 데몬. 토큰은 보내야 하므로 원문으로 둔다 (노드 토큰처럼 이 PC의 설정 파일에만)
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Daemon {
+    pub host_id: String,
+    pub name: String,
+    pub address: String,
+    pub port: u16,
+    pub cert_sha256: String,
+    pub token: String,
     pub paired_at: String,
 }
 
@@ -119,6 +133,54 @@ pub fn verify(clients: &[Client], token: &str) -> Option<Client> {
     clients.iter().find(|c| constant_time_eq(c.token_hash.as_bytes(), h.as_bytes())).cloned()
 }
 
+pub fn daemons_in(file: &ConfigFile) -> Vec<Daemon> {
+    file.peek_section("remote")
+        .get("daemons")
+        .cloned()
+        .and_then(|v| serde_json::from_value(v).ok())
+        .unwrap_or_default()
+}
+
+fn write_daemons(file: &ConfigFile, edit: impl FnOnce(&mut Vec<Daemon>)) -> std::io::Result<Vec<Daemon>> {
+    let mut out = Vec::new();
+    file.update(|doc| {
+        let remote = section(doc);
+        let mut daemons: Vec<Daemon> =
+            remote.get("daemons").cloned().and_then(|v| serde_json::from_value(v).ok()).unwrap_or_default();
+        edit(&mut daemons);
+        remote.insert("daemons".into(), serde_json::to_value(&daemons).expect("daemons serialize"));
+        out = daemons;
+    })?;
+    Ok(out)
+}
+
+/// 원격 데몬을 저장한다. 같은 PC면 바꾼다
+pub fn save_daemon_in(file: &ConfigFile, daemon: Daemon) -> std::io::Result<()> {
+    write_daemons(file, |daemons| {
+        daemons.retain(|d| d.host_id != daemon.host_id);
+        daemons.push(daemon);
+    })
+    .map(|_| ())
+}
+
+/// 릴레이가 알려 준 새 주소·지문으로 바꾼다 (토큰은 그대로). 없는 PC면 false
+pub fn update_endpoint_in(file: &ConfigFile, host_id: &str, address: &str, port: u16, cert_sha256: &str) -> std::io::Result<bool> {
+    let mut found = false;
+    write_daemons(file, |daemons| {
+        if let Some(d) = daemons.iter_mut().find(|d| d.host_id == host_id) {
+            (d.address, d.port, d.cert_sha256) = (address.to_string(), port, cert_sha256.to_string());
+            found = true;
+        }
+    })?;
+    Ok(found)
+}
+
+/// 원격 데몬을 잊는다. 있었으면 true
+pub fn forget_daemon_in(file: &ConfigFile, host_id: &str) -> std::io::Result<bool> {
+    let before = daemons_in(file).len();
+    Ok(write_daemons(file, |daemons| daemons.retain(|d| d.host_id != host_id))?.len() != before)
+}
+
 /// 짝을 푼다. 있었으면 true
 pub fn revoke_in(file: &ConfigFile, host_id: &str) -> std::io::Result<bool> {
     let before = clients_in(file).len();
@@ -177,5 +239,39 @@ mod tests {
         let clients = clients_in(&f);
         assert_eq!(verify(&clients, &new), None);
         assert!(verify(&clients, &other).is_some());
+    }
+
+    fn daemon(host: &str, token: &str) -> Daemon {
+        Daemon {
+            host_id: host.into(),
+            name: "원격".into(),
+            address: "203.0.113.7".into(),
+            port: 57480,
+            cert_sha256: "ab".repeat(32),
+            token: token.into(),
+            paired_at: "2026-10-25T00:00:00Z".into(),
+        }
+    }
+
+    #[test]
+    fn a_remote_daemon_is_saved_moved_and_forgotten_without_touching_the_rest() {
+        let (_d, f) = file();
+        let token = issue_in(&f, "host-a", "집 PC").unwrap();
+        save_daemon_in(&f, daemon("host-b", "sbr_one")).unwrap();
+        save_daemon_in(&f, daemon("host-b", "sbr_two")).unwrap();
+        save_daemon_in(&f, daemon("host-c", "sbr_three")).unwrap();
+        let daemons = daemons_in(&f);
+        assert_eq!(daemons.len(), 2, "the same PC is saved once");
+        assert_eq!(daemons.iter().find(|d| d.host_id == "host-b").unwrap().token, "sbr_two");
+
+        assert!(update_endpoint_in(&f, "host-b", "saba.example.com", 7443, &"cd".repeat(32)).unwrap());
+        let b = daemons_in(&f).into_iter().find(|d| d.host_id == "host-b").unwrap();
+        assert_eq!((b.address.as_str(), b.port, b.token.as_str()), ("saba.example.com", 7443, "sbr_two"));
+        assert!(!update_endpoint_in(&f, "host-x", "a", 1, "b").unwrap());
+
+        assert!(forget_daemon_in(&f, "host-b").unwrap());
+        assert!(!forget_daemon_in(&f, "host-b").unwrap());
+        assert_eq!(daemons_in(&f).len(), 1);
+        assert!(verify(&clients_in(&f), &token).is_some(), "paired PCs stay");
     }
 }

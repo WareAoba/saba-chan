@@ -698,6 +698,10 @@
       "remote.set": "Ligar ou desligar a porta remota, mudar a porta ou o endereço público enviado ao relay",
       "remote.clients": "Seus PCs pareados com este daemon",
       "remote.revoke": "Desfazer o pareamento com um PC: o token dele para de funcionar na hora",
+      "remote.peers": "Seus outros PCs no relay aos quais este daemon pode se conectar",
+      "remote.connect": "Parear com o daemon remoto de outro PC seu (ids em `remote peers`)",
+      "remote.daemons": "Daemons remotos aos quais este daemon se conecta",
+      "remote.forget": "Esquecer um daemon remoto (conecte de novo com `remote connect`)",
       "config.autostart": "O que inicia quando você entra neste PC: off, daemon (só o daemon e a bandeja) ou full (com a janela da GUI). Sem modo mostra o valor atual"
     },
     "arg": {
@@ -775,6 +779,8 @@
       "remote.set.port": "Número da porta remota",
       "remote.set.address": "Nome de host público ou IP deste PC (vazio apaga)",
       "remote.revoke.host_id": "ID do PC a desparear (veja `remote clients`)",
+      "remote.connect.host_id": "Id do PC ao qual conectar (veja `remote peers`)",
+      "remote.forget.host_id": "Id do PC a esquecer (veja `remote daemons`)",
       "config.autostart.mode": "off, daemon ou full"
     },
     "after": "Os nomes podem ser parciais (ex.: start pal). Sem argumentos em um terminal, abre o menu em tela cheia (SABA_NO_TUI=1: o shell interativo).\nEm scripts, use --json e --yes. Códigos de saída: 0 ok · 1 falha · 2 uso · 3 daemon inacessível · 4 não encontrado · 130 cancelado"
@@ -1211,6 +1217,21 @@
       "certificate_failed": "Não foi possível preparar o certificado",
       "port_in_use": "A porta já está em uso",
       "bind_failed": "Não foi possível abrir a porta"
+    },
+    "no_peers": "O relay não tem outro PC seu.",
+    "reachable": "Porta remota",
+    "saved": "Conectado",
+    "connected": "Pareado com o daemon remoto de {{name}}.",
+    "no_daemons": "Este daemon não se conecta a nenhum daemon remoto. Veja seus PCs com `remote peers` e conecte com `remote connect <id do PC>`.",
+    "forgotten": "O daemon remoto de {{host}} foi esquecido.",
+    "connect_error": {
+      "remote_not_found": "Esse PC não é um dos seus outros PCs",
+      "remote_no_endpoint": "Esse PC não abriu a porta remota nem enviou o endereço público",
+      "remote_unreachable": "Não foi possível alcançar o daemon remoto (verifique o endereço e o firewall)",
+      "remote_rejected": "O daemon remoto não aceitou a conexão. Tente de novo",
+      "remote_unknown": "Não é um daemon remoto ao qual você se conectou. Veja `remote daemons`",
+      "relay_not_paired": "Este PC não está conectado ao relay",
+      "relay_unreachable": "Não foi possível alcançar o relay"
     }
   }
 }

@@ -1275,8 +1275,8 @@ mod tests {
 
     #[test]
     fn ports_held_by_another_program_are_found_over_tcp_and_udp() {
-        let tcp = std::net::TcpListener::bind((std::net::Ipv4Addr::UNSPECIFIED, 0)).unwrap();
-        let udp = std::net::UdpSocket::bind((std::net::Ipv4Addr::UNSPECIFIED, 0)).unwrap();
+        let tcp = std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let udp = std::net::UdpSocket::bind((std::net::Ipv4Addr::LOCALHOST, 0)).unwrap();
         let (tcp_port, udp_port) = (tcp.local_addr().unwrap().port(), udp.local_addr().unwrap().port());
         let ports = vec![("port".to_string(), tcp_port), ("query_port".to_string(), udp_port)];
         assert_eq!(ports_held_elsewhere(&ports), ports);

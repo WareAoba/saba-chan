@@ -825,6 +825,10 @@
       "remote.set": "リモートポートのオン・オフ、ポートやリレーに知らせる公開アドレスの変更",
       "remote.clients": "このデーモンとペアリングした自分の PC",
       "remote.revoke": "PC とのペアリング解除: その PC のトークンはすぐ使えなくなります",
+      "remote.peers": "リレーにあるあなたの他のPCのうち、このデーモンが接続できるPC",
+      "remote.connect": "他のPCのリモートデーモンとペアリング（`remote peers`にidが表示されます）",
+      "remote.daemons": "このデーモンが接続するリモートデーモン",
+      "remote.forget": "リモートデーモンを削除（再接続は`remote connect`）",
       "config.autostart": "PCにサインインしたときに起動するもの: off(オフ)、daemon(デーモンとトレイのみ)、full(GUIウィンドウまで)。モードなしで今の値を表示"
     },
     "arg": {
@@ -970,6 +974,8 @@
       "remote.set.port": "リモートポート番号",
       "remote.set.address": "この PC の公開ホスト名または IP (空なら消します)",
       "remote.revoke.host_id": "解除する PC id (`remote clients` に表示)",
+      "remote.connect.host_id": "接続するPC id（`remote peers`に表示）",
+      "remote.forget.host_id": "削除するPC id（`remote daemons`に表示）",
       "config.autostart.mode": "off、daemon または full"
     },
     "after": "名前は一部だけでも指定できます（例: start pal）。端末で引数なしで実行すると全画面メニューが開きます(SABA_NO_TUI=1 なら対話シェル)。\nスクリプトでは --json と --yes を使ってください。終了コード: 0 成功 · 1 失敗 · 2 使い方の誤り · 3 デーモンに接続不可 · 4 見つからない · 130 キャンセル"
@@ -1406,6 +1412,21 @@
       "certificate_failed": "証明書を準備できませんでした",
       "port_in_use": "ポートはすでに使われています",
       "bind_failed": "ポートを開けませんでした"
+    },
+    "no_peers": "リレーにこのPC以外のあなたのPCがありません。",
+    "reachable": "リモートポート",
+    "saved": "接続済み",
+    "connected": "{{name}}のリモートデーモンとペアリングしました。",
+    "no_daemons": "このデーモンが接続するリモートデーモンはありません。`remote peers`でPCを確認し、`remote connect <PC id>`で接続します。",
+    "forgotten": "{{host}}のリモートデーモンを削除しました。",
+    "connect_error": {
+      "remote_not_found": "そのPCはあなたの他のPCの一覧にありません",
+      "remote_no_endpoint": "そのPCはリモートポートを開いていないか、公開アドレスを知らせていません",
+      "remote_unreachable": "リモートデーモンに接続できませんでした（アドレスとファイアウォールを確認してください）",
+      "remote_rejected": "リモートデーモンが接続を受け付けませんでした。もう一度お試しください",
+      "remote_unknown": "接続していないリモートデーモンです。`remote daemons`で確認してください",
+      "relay_not_paired": "このPCはリレーに接続していません",
+      "relay_unreachable": "リレーに接続できませんでした"
     }
   }
 }

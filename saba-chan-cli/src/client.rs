@@ -714,6 +714,21 @@ impl Api {
     pub async fn revoke_remote_client(&self, host_id: &str) -> Result<Value> {
         self.delete(&format!("/api/remote/clients/{}", seg(host_id))).await
     }
+    /// GET /api/remote/peers — 릴레이에 있는 같은 주인의 다른 PC (D1b)
+    pub async fn remote_peers(&self) -> Result<Value> {
+        self.get("/api/remote/peers").await
+    }
+    /// GET·POST /api/remote/daemons — 이 데몬이 붙는 원격 데몬, 짝 맺기
+    pub async fn remote_daemons(&self) -> Result<Value> {
+        self.get("/api/remote/daemons").await
+    }
+    pub async fn connect_remote_daemon(&self, host_id: &str) -> Result<Value> {
+        self.post("/api/remote/daemons", json!({ "hostId": host_id })).await
+    }
+    /// DELETE /api/remote/daemons/:hostId
+    pub async fn forget_remote_daemon(&self, host_id: &str) -> Result<Value> {
+        self.delete(&format!("/api/remote/daemons/{}", seg(host_id))).await
+    }
     /// GET /api/actions?surface=cli&instance&locale (P2)
     pub async fn actions(&self, instance: Option<&str>) -> Result<Value> {
         let mut path = "/api/actions?surface=cli".to_string();
@@ -1478,6 +1493,7 @@ mod route_coverage {
         ("/api/server/{name}/start", "이름 기반 옛 길"),
         ("/api/server/{name}/stop", "이름 기반 옛 길"),
         ("/api/instance/{id}/managed/start", "start가 관리 모드를 데몬에 맡긴다"),
+        ("/api/remote/daemons/{host_id}/proxy/{*rest}", "원격 데몬 중계: 데몬 API 전체를 그 데몬으로 넘기는 길 (원격 데몬 고르기는 G1)"),
     ];
 
     /// 라우터 소스에서 `.route("…"` 경로를 모은다 (여러 줄에 걸친 것도)

@@ -5,6 +5,7 @@
 //! 지금은 공인 주소가 있는 PC만 된다 (`Transport::Direct`). 붙는 쪽(내 PC에서 원격 데몬을 고르고 중계하기)은 다음 단계다
 
 pub mod config;
+pub mod peer;
 pub mod relay;
 pub mod server;
 pub mod tls;
@@ -87,12 +88,15 @@ fn listen_on(addr: std::net::SocketAddr, dual: bool) -> std::io::Result<std::net
     Ok(socket.into())
 }
 
-/// 두 겹(IPv6·IPv4)으로 받는다. IPv6가 없으면 IPv4만
+/// 두 겹(IPv6·IPv4)으로 받는다. IPv6가 없으면 IPv4만.
+/// 시험은 루프백에만 묶는다: 모든 주소에 묶으면 Windows가 빌드마다 이름이 바뀌는 시험 바이너리마다 방화벽 허용 창을 띄운다
 fn bind(port: u16) -> std::io::Result<tokio::net::TcpListener> {
-    let std_listener = match listen_on((std::net::Ipv6Addr::UNSPECIFIED, port).into(), true) {
+    use std::net::{Ipv4Addr, Ipv6Addr};
+    let (v6, v4) = if cfg!(test) { (Ipv6Addr::LOCALHOST, Ipv4Addr::LOCALHOST) } else { (Ipv6Addr::UNSPECIFIED, Ipv4Addr::UNSPECIFIED) };
+    let std_listener = match listen_on((v6, port).into(), true) {
         Ok(l) => l,
         Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => return Err(e),
-        Err(_) => listen_on((std::net::Ipv4Addr::UNSPECIFIED, port).into(), false)?,
+        Err(_) => listen_on((v4, port).into(), false)?,
     };
     tokio::net::TcpListener::from_std(std_listener)
 }
@@ -302,6 +306,13 @@ mod tests {
         let published = super::publish_with_retry(&relay, "saba.example.com", 57480, &"ab".repeat(32), &cancel, Duration::from_millis(10)).await;
         assert!(handled.load(Ordering::SeqCst), "returns only after the relay handled the request");
         assert!(published);
+    }
+
+    /// 시험의 원격 포트는 루프백에만 묶는다 (Windows가 시험 바이너리마다 방화벽 허용 창을 띄우지 않게)
+    #[tokio::test]
+    async fn tests_bind_the_remote_port_to_loopback_only() {
+        let listener = super::bind(0).unwrap();
+        assert!(listener.local_addr().unwrap().ip().is_loopback());
     }
 
     #[test]

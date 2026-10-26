@@ -825,6 +825,10 @@
       "remote.set": "원격 포트 켜기·끄기, 포트나 릴레이에 알릴 공인 주소 바꾸기",
       "remote.clients": "이 데몬에 짝 맺은 내 PC",
       "remote.revoke": "PC와의 짝 풀기: 그 PC의 토큰이 바로 통하지 않아요",
+      "remote.peers": "릴레이에 있는 내 다른 PC 중 이 데몬이 붙을 수 있는 PC",
+      "remote.connect": "내 다른 PC의 원격 데몬과 짝 맺기 (`remote peers`에 id가 보여요)",
+      "remote.daemons": "이 데몬이 붙는 원격 데몬",
+      "remote.forget": "원격 데몬 잊기 (다시 붙으려면 `remote connect`)",
       "config.autostart": "PC에 로그인할 때 켤 것: off(끔), daemon(데몬과 트레이만), full(GUI 창까지). 모드 없이 쓰면 지금 값을 보여요"
     },
     "arg": {
@@ -970,6 +974,8 @@
       "remote.set.port": "원격 포트 번호",
       "remote.set.address": "이 PC의 공인 호스트 이름이나 IP (빈 값이면 지워요)",
       "remote.revoke.host_id": "짝을 풀 PC id (`remote clients`에 보여요)",
+      "remote.connect.host_id": "붙을 PC id (`remote peers`에 보여요)",
+      "remote.forget.host_id": "잊을 PC id (`remote daemons`에 보여요)",
       "config.autostart.mode": "off, daemon 또는 full"
     },
     "after": "이름은 일부만 적어도 돼요 (예: start pal). 인자 없이 터미널에서 실행하면 전체 화면 메뉴가 열려요(SABA_NO_TUI=1이면 대화형 셸).\n스크립트에서는 --json과 --yes를 쓰세요. 종료 코드: 0 성공 · 1 실패 · 2 사용법 · 3 데몬 연결 안 됨 · 4 없음 · 130 취소"
@@ -1406,6 +1412,21 @@
       "certificate_failed": "인증서를 준비하지 못했어요",
       "port_in_use": "포트를 이미 쓰고 있어요",
       "bind_failed": "포트를 열지 못했어요"
+    },
+    "no_peers": "릴레이에 이 PC 말고 다른 내 PC가 없어요.",
+    "reachable": "원격 포트",
+    "saved": "연결함",
+    "connected": "{{name}}의 원격 데몬과 짝을 맺었어요.",
+    "no_daemons": "이 데몬이 붙는 원격 데몬이 없어요. `remote peers`로 내 PC를 보고 `remote connect <PC id>`로 붙어요.",
+    "forgotten": "{{host}}의 원격 데몬을 잊었어요.",
+    "connect_error": {
+      "remote_not_found": "그 PC는 내 다른 PC 목록에 없어요",
+      "remote_no_endpoint": "그 PC가 원격 포트를 열지 않았거나 공인 주소를 알리지 않았어요",
+      "remote_unreachable": "원격 데몬에 닿지 못했어요 (주소·방화벽을 확인해 주세요)",
+      "remote_rejected": "원격 데몬이 연결을 받지 않았어요. 다시 해 주세요",
+      "remote_unknown": "연결하지 않은 원격 데몬이에요. `remote daemons`로 확인해 주세요",
+      "relay_not_paired": "이 PC가 릴레이에 연결돼 있지 않아요",
+      "relay_unreachable": "릴레이에 닿지 못했어요"
     }
   }
 }

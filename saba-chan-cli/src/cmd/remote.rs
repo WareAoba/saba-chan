@@ -43,6 +43,49 @@ pub async fn run(ctx: &Ctx, cmd: RemoteCmd) -> Result<()> {
             ctx.out.done(&t!("remote.revoked", host = host_id), &r);
             Ok(())
         }
+        RemoteCmd::Peers => {
+            let v = ctx.api.remote_peers().await?;
+            ctx.out.data(&v, |v| {
+                let peers = v.get("peers").and_then(Value::as_array).cloned().unwrap_or_default();
+                if peers.is_empty() {
+                    say!("{}", output::dim(&t!("remote.no_peers")));
+                    return;
+                }
+                let mut t = output::table(&[t!("col.name"), t!("remote.host_id"), t!("col.state"), t!("remote.reachable"), t!("remote.saved")]);
+                for p in &peers {
+                    t.add_row(vec![s(p, "name").to_string(), s(p, "hostId").to_string(), s(p, "status").to_string(), yes_no(p, "hasEndpoint"), yes_no(p, "saved")]);
+                }
+                output::print_table(t);
+            });
+            Ok(())
+        }
+        RemoteCmd::Connect { host_id } => {
+            let r = ctx.api.connect_remote_daemon(&host_id).await?;
+            ctx.out.done(&t!("remote.connected", name = s(&r, "name")), &r);
+            Ok(())
+        }
+        RemoteCmd::Daemons => {
+            let v = ctx.api.remote_daemons().await?;
+            ctx.out.data(&v, |v| {
+                let daemons = v.get("daemons").and_then(Value::as_array).cloned().unwrap_or_default();
+                if daemons.is_empty() {
+                    say!("{}", output::dim(&t!("remote.no_daemons")));
+                    return;
+                }
+                let mut t = output::table(&[t!("col.name"), t!("remote.host_id"), t!("remote.address"), t!("remote.paired_at")]);
+                for d in &daemons {
+                    let address = format!("{}:{}", s(d, "address"), d.get("port").map(|p| p.to_string()).unwrap_or_default());
+                    t.add_row(vec![s(d, "name").to_string(), s(d, "hostId").to_string(), address, s(d, "pairedAt").to_string()]);
+                }
+                output::print_table(t);
+            });
+            Ok(())
+        }
+        RemoteCmd::Forget { host_id } => {
+            let r = ctx.api.forget_remote_daemon(&host_id).await?;
+            ctx.out.done(&t!("remote.forgotten", host = host_id), &r);
+            Ok(())
+        }
     }
 }
 
@@ -50,6 +93,10 @@ async fn status(ctx: &Ctx) -> Result<()> {
     let v = ctx.api.remote_settings().await?;
     ctx.out.data(&v, print_status);
     Ok(())
+}
+
+fn yes_no(v: &Value, key: &str) -> String {
+    if v.get(key).and_then(Value::as_bool) == Some(true) { t!("remote.yes") } else { t!("remote.no") }
 }
 
 /// 준 것만 바꾼다

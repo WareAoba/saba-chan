@@ -698,6 +698,10 @@
       "remote.set": "開啟或關閉遠端連接埠, 變更連接埠或通知中繼的公開位址",
       "remote.clients": "與此常駐程式配對的我的電腦",
       "remote.revoke": "解除與電腦的配對: 該電腦的權杖立即失效",
+      "remote.peers": "中繼上此常駐程式可連線的你的其他電腦",
+      "remote.connect": "與你其他電腦的遠端常駐程式配對（`remote peers` 中顯示 id）",
+      "remote.daemons": "此常駐程式連線的遠端常駐程式",
+      "remote.forget": "移除遠端常駐程式（重新連線用 `remote connect`）",
       "config.autostart": "登入此電腦時啟動的內容：off（關閉）、daemon（僅常駐程式和系統匣）、full（包含 GUI 視窗）。不帶模式時顯示目前的值"
     },
     "arg": {
@@ -775,6 +779,8 @@
       "remote.set.port": "遠端連接埠號碼",
       "remote.set.address": "此電腦的公開主機名稱或 IP (留空則清除)",
       "remote.revoke.host_id": "要解除配對的電腦 id (見 `remote clients`)",
+      "remote.connect.host_id": "要連線的電腦 id（見 `remote peers`）",
+      "remote.forget.host_id": "要移除的電腦 id（見 `remote daemons`）",
       "config.autostart.mode": "off、daemon 或 full"
     },
     "after": "名稱可以只寫一部分（例如 start pal）。在終端機中不帶參數執行會開啟全螢幕選單(SABA_NO_TUI=1 時為互動式 shell)。\n在指令碼中請使用 --json 和 --yes。結束代碼：0 成功 · 1 失敗 · 2 用法錯誤 · 3 無法連線常駐程式 · 4 找不到 · 130 已取消"
@@ -1211,6 +1217,21 @@
       "certificate_failed": "無法準備憑證",
       "port_in_use": "連接埠已被使用",
       "bind_failed": "無法開啟連接埠"
+    },
+    "no_peers": "中繼上沒有你的其他電腦。",
+    "reachable": "遠端連接埠",
+    "saved": "已連線",
+    "connected": "已與 {{name}} 的遠端常駐程式配對。",
+    "no_daemons": "此常駐程式未連線任何遠端常駐程式。用 `remote peers` 查看你的電腦，用 `remote connect <PC id>` 連線。",
+    "forgotten": "已移除 {{host}} 的遠端常駐程式。",
+    "connect_error": {
+      "remote_not_found": "該電腦不在你的其他電腦清單中",
+      "remote_no_endpoint": "該電腦未開啟遠端連接埠或未告知公開位址",
+      "remote_unreachable": "無法連上遠端常駐程式（請檢查位址與防火牆）",
+      "remote_rejected": "遠端常駐程式未接受連線，請再試一次",
+      "remote_unknown": "這不是你已連線的遠端常駐程式。請查看 `remote daemons`",
+      "relay_not_paired": "此電腦未連線中繼",
+      "relay_unreachable": "無法連上中繼"
     }
   }
 }

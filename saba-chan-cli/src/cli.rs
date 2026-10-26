@@ -316,6 +316,14 @@ pub enum RemoteCmd {
     Clients,
     /// Unpair a PC: its token stops working at once
     Revoke { host_id: String },
+    /// Your other PCs on the relay that this daemon can connect to
+    Peers,
+    /// Pair with the remote daemon on one of your PCs (`remote peers` shows the ids)
+    Connect { host_id: String },
+    /// Remote daemons this daemon connects to
+    Daemons,
+    /// Forget a remote daemon (pair again with `remote connect`)
+    Forget { host_id: String },
 }
 
 #[derive(Subcommand, Debug)]
