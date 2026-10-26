@@ -1218,12 +1218,19 @@ async fn delete_instance_held(state: IPCServer, id: String, keep_settings: bool)
     // ── 가져온 서버: 서버 폴더는 두고, 사바쨩이 남긴 것을 거둔다 ──
     let unlinked = unlink_server_folder(&state, &instance, keep_settings, detached.as_deref()).await;
 
+    // 연결 해제를 마쳤다는 표시가 없으면 다음 시작 때 인스턴스를 되돌린다 (그 사이 데몬이 멈춘 경우)
+    if let Some(dir) = &detached {
+        if let Err(e) = crate::instance::InstanceStore::mark_unlinked(dir) {
+            tracing::warn!("{:#}", e);
+        }
+    }
     let removed = state.supervisor.write().await.instance_store.remove(&id);
     if let Some(dir) = detached {
         let name = instance.name.clone();
         let _ = tokio::task::spawn_blocking(move || {
-            if let Err(e) = std::fs::remove_dir_all(&dir) {
-                tracing::warn!("Could not remove the folder of deleted instance '{}' (removed at next start): {}", name, e);
+            match std::fs::remove_dir_all(&dir) {
+                Ok(()) => crate::instance::InstanceStore::forget_unlinked(&dir),
+                Err(e) => tracing::warn!("Could not remove the folder of deleted instance '{}' (removed at next start): {}", name, e),
             }
         })
         .await;
