@@ -80,7 +80,7 @@
     "tooltip": "사바쨩 - 게임 서버 관리",
     "open_window": "창 열기",
     "daemon_running": "데몬 실행 중",
-    "daemon_stopped": "데몬 중지됨",
+    "daemon_stopped": "데몬 종료됨",
     "stop_daemon": "데몬 종료",
     "start_daemon": "데몬 시작",
     "quit_all": "완전히 종료"

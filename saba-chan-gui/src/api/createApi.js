@@ -1020,6 +1020,13 @@ export function createApi({ invoke, hub }) {
         // 길드가 쓸 서버 제한 `{instances: [id] | null}` (null = 제한 없음) → `{guildId, allowedInstances}`
         guildAllowedInstancesSave: (guild, instances) =>
             daemonCall('put', `/api/guilds/${encodeURIComponent(guild)}/allowed-instances`, { instances }),
+        // 켜짐 알림을 켠 서버 → `{guildId, instances, allowedInstances}` (allowedInstances null = 모든 서버)
+        guildStartNoticeGet: (guild) => daemonCall('get', `/api/guilds/${encodeURIComponent(guild)}/start-notice`),
+        // 켜짐 알림 `{enabled}` → `{success, id, guildId, enabled, instances}` (그 길드에서 켠 서버 목록)
+        guildStartNoticeSave: (id, guild, enabled) =>
+            daemonCall('put', `/api/instance/${encodeURIComponent(id)}/start-notice/${encodeURIComponent(guild)}`, {
+                enabled,
+            }),
         discordSettingsGet: (guild) => daemonCall('get', discordSettingsPath(guild)),
         discordSettingsSet: (guild, patch) => daemonCall('patch', discordSettingsPath(guild), patch || {}),
         // GUI ⇄ CLI 전환: 데몬이 이 PC에서 띄울 수 있는 인터페이스 `{cli, gui}`, 그리고 띄우기 (고른 서버로 연다)

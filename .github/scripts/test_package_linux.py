@@ -25,7 +25,7 @@ class LinuxZips(unittest.TestCase):
                 "saba-chan-cli-linux-x64.zip", "saba-chan-updater-linux-x64.zip", "saba-core-linux-x64.zip"])
             with zipfile.ZipFile(d / "out" / "saba-core-linux-x64.zip") as zf:
                 modes = {i.filename: (i.external_attr >> 16) & 0o777 for i in zf.infolist()}
-        self.assertEqual(modes, {"saba-core": 0o755, "saba-runner": 0o755, "i18n.py": 0o644, "daemon_rcon.py": 0o644})
+        self.assertEqual(modes, {"saba-core": 0o755, "saba-runner": 0o755, "i18n.py": 0o644, "daemon_rcon.py": 0o644, "common_locales.json": 0o644})
 
     def test_a_missing_binary_stops_packaging(self):
         with tempfile.TemporaryDirectory() as d:

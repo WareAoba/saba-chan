@@ -11,7 +11,7 @@ export const auditAvailable = () => !!window.api?.auditList;
 const PAGE = 100;
 const MAX = 1000; // 데몬 상한
 const SOURCES = ['gui', 'cli', 'api', 'discord', 'schedule', 'daemon', 'web', 'remote', 'restart'];
-const ACTIONS = ['start', 'stop', 'restart', 'command', 'stdin', 'backup'];
+const ACTIONS = ['start', 'stop', 'restart', 'command', 'stdin', 'backup', 'remote'];
 const EXPORT_ERRORS = ['INVALID_PATH', 'WRITE_FAILED']; // data_transfer.err_* 문구를 같이 쓴다
 const PERIODS = ['all', 'today', '7d', '30d', 'custom'];
 const DAYS_BACK = { today: 0, '7d': 6, '30d': 29 }; // 오늘을 포함해 며칠
@@ -45,11 +45,11 @@ const argsText = (args) => {
     return args;
 };
 
-/** 한 건 → "무엇을" 한 줄 (명령이면 명령 이름과 인자) */
+/** 한 건 → "무엇을" 한 줄 (명령이면 명령 이름과 인자, 원격 데몬에 중계한 조작이면 그 데몬과 요청) */
 export function auditWhat(e, t) {
     const action = ACTIONS.includes(e.action) ? t(`audit.action_${e.action}`) : e.action;
     const detail = [e.command, argsText(e.args)].filter(Boolean).join(' ');
-    return detail ? `${action} · ${detail}` : action;
+    return [action, e.daemon, detail].filter(Boolean).join(' · ');
 }
 
 /** 한 건 → 결과 칩. 예약 백업은 서버가 꺼져 있으면 409로 건너뛴다 */

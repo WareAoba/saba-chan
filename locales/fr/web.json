@@ -169,7 +169,12 @@
     "ladder_removed": "Les personnes des niveaux supprimés passent au niveau juste en dessous. Les commandes qui les demandaient passent au niveau juste au-dessus.",
     "ladder_invalid": "Les noms de niveau doivent faire 1 à 32 caractères.",
     "ladder_revert": "Annuler",
-    "ladder_save": "Enregistrer les niveaux"
+    "ladder_save": "Enregistrer les niveaux",
+    "notice": "Alertes de démarrage",
+    "notice_hint": "Les serveurs activés ici sont annoncés dans le canal d’alertes de ce serveur Discord quand Saba-chan les démarre. Les démarrages depuis Discord ou hors de Saba-chan ne sont pas annoncés.",
+    "notice_empty": "Ce serveur Discord n’utilise aucun serveur.",
+    "notice_on": "Alerte de démarrage activée.",
+    "notice_off": "Alerte de démarrage désactivée."
   },
   "modules": {
     "games": "Modules de jeu",

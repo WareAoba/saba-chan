@@ -169,7 +169,12 @@
     "ladder_removed": "被刪除等級的人會移到下一級，需要該等級的指令會移到上一級。",
     "ladder_invalid": "等級名稱需為 1–32 個字元。",
     "ladder_revert": "還原",
-    "ladder_save": "儲存等級"
+    "ladder_save": "儲存等級",
+    "notice": "啟動通知",
+    "notice_hint": "開啟的伺服器在 Saba-chan 啟動時會在此 Discord 伺服器的通知頻道告知。從 Discord 啟動的和在 Saba-chan 之外啟動的除外。",
+    "notice_empty": "此 Discord 伺服器沒有使用的伺服器。",
+    "notice_on": "已開啟啟動通知。",
+    "notice_off": "已關閉啟動通知。"
   },
   "modules": {
     "games": "遊戲模組",

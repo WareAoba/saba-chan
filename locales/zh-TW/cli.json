@@ -126,7 +126,12 @@
     "words_bad_command": "{{spec}}：請寫成 命令=稱呼,稱呼（命令= 表示刪除）。",
     "no_paired_servers": "這台電腦尚未與任何 Discord 伺服器配對。執行: saba-chan-cli bot pair",
     "pick_server": "已配對多個 Discord 伺服器。請指定要變更的伺服器 id: {{servers}}",
-    "translate_commands": "翻譯指令名稱"
+    "translate_commands": "翻譯指令名稱",
+    "notice_none": "還沒有開啟啟動通知的伺服器。Saba-chan 啟動伺服器時不會告知。",
+    "notice_is_on": "{{server}}：啟動通知已開",
+    "notice_is_off": "{{server}}：啟動通知已關",
+    "notice_on_saved": "將在 {{guild}} 的通知頻道告知 {{server}} 已啟動。",
+    "notice_off_saved": "不再在 {{guild}} 告知 {{server}} 已啟動。"
   },
   "col": {
     "players": "線上玩家",
@@ -742,7 +747,8 @@
       "remote.servers": "依守護程式列出本機和每個遠端守護程式的伺服器（要操作某個請用`--daemon <名稱>`）",
       "remote.forget": "移除遠端常駐程式（重新連線用 `remote connect`）",
       "config.autostart": "登入此電腦時啟動的內容：off（關閉）、daemon（僅常駐程式和系統匣）、full（包含 GUI 視窗）。不帶模式時顯示目前的值",
-      "config.browse": "查看常駐程式所在電腦的資料夾和檔案（加 --daemon 時為那台遠端電腦）。不給路徑則顯示磁碟機或 /"
+      "config.browse": "查看常駐程式所在電腦的資料夾和檔案（加 --daemon 時為那台遠端電腦）。不給路徑則顯示磁碟機或 /",
+      "bot.notice": "Saba-chan 啟動伺服器時在 Discord 伺服器的通知頻道告知（預設關閉）。不帶伺服器：查看；伺服器加 `--on`/`--off`：變更"
     },
     "arg": {
       "module.maker.game": "第一個請求中的遊戲名稱",
@@ -828,7 +834,9 @@
       "keep_settings": "刪除實例時不將遊戲設定檔還原到匯入前的狀態，保持現狀",
       "move_folder": "將 --from 資料夾移到 saba-chan 資料夾，而不是在原處連結（僅限同一磁碟）",
       "config.browse.path": "要顯示的資料夾的完整路徑",
-      "config.browse.files": "也顯示這些副檔名的檔案（逗號分隔，* 表示全部）"
+      "config.browse.files": "也顯示這些副檔名的檔案（逗號分隔，* 表示全部）",
+      "bot.notice.on": "開啟啟動通知",
+      "bot.notice.off": "關閉啟動通知"
     },
     "after": "名稱可以只寫一部分（例如 start pal）。在終端機中不帶參數執行會開啟全螢幕選單(SABA_NO_TUI=1 時為互動式 shell)。\n在指令碼中請使用 --json 和 --yes。結束代碼：0 成功 · 1 失敗 · 2 用法錯誤 · 3 無法連線常駐程式 · 4 找不到 · 130 已取消"
   },

@@ -1026,6 +1026,7 @@ const INSTALLED_ENTRIES: &[&str] = &[
     "locales",
     "i18n.py",
     "daemon_rcon.py",
+    "common_locales.json",
     INSTALL_MARKER,
 ];
 

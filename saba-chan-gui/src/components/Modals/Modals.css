@@ -1965,6 +1965,36 @@
     margin-top: var(--sp-1-5);
 }
 
+/* 하위 스위치가 딸린 설정 항목 (효과음 종류별) */
+.setting-item-group {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--sp-3);
+}
+
+.setting-item-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.setting-sublist {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+    padding-top: var(--sp-3);
+    padding-left: var(--sp-4);
+    border-top: 1px solid var(--border-light);
+}
+
+.setting-subitem {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: calc(13px * var(--font-scale));
+    color: var(--text-secondary);
+}
+
 /* ═══════════════════════════════════════════════ */
 /* 클릭 가능한 설정 항목                             */
 /* ═══════════════════════════════════════════════ */

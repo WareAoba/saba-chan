@@ -126,7 +126,12 @@
     "words_bad_command": "{{spec}}: コマンド=語,語 の形で書いてください (消すには コマンド=)。",
     "no_paired_servers": "このPCとペアリングされたDiscordサーバーはまだありません。実行: saba-chan-cli bot pair",
     "pick_server": "ペアリングされたDiscordサーバーが複数あります。変更するサーバーのIDを指定してください: {{servers}}",
-    "translate_commands": "コマンド名の翻訳"
+    "translate_commands": "コマンド名の翻訳",
+    "notice_none": "起動通知をオンにしたサーバーはまだありません。サバちゃんがサーバーを起動しても知らせません。",
+    "notice_is_on": "{{server}}: 起動通知オン",
+    "notice_is_off": "{{server}}: 起動通知オフ",
+    "notice_on_saved": "{{guild}}の通知チャンネルに{{server}}の起動を知らせます。",
+    "notice_off_saved": "{{guild}}に{{server}}の起動を知らせないようにしました。"
   },
   "col": {
     "players": "接続者",
@@ -870,7 +875,8 @@
       "remote.servers": "このPCと各リモートデーモンのサーバーをデーモンごとに（操作するには`--daemon <名前>`）",
       "remote.forget": "リモートデーモンを削除（再接続は`remote connect`）",
       "config.autostart": "PCにサインインしたときに起動するもの: off(オフ)、daemon(デーモンとトレイのみ)、full(GUIウィンドウまで)。モードなしで今の値を表示",
-      "config.browse": "デーモンのPCのフォルダーとファイルを表示 (--daemonならそのリモートPC)。パスがなければドライブか /"
+      "config.browse": "デーモンのPCのフォルダーとファイルを表示 (--daemonならそのリモートPC)。パスがなければドライブか /",
+      "bot.notice": "サバちゃんがサーバーを起動したらDiscordサーバーの通知チャンネルに知らせる（既定はオフ）。サーバーなし: 表示、サーバーと`--on`・`--off`: 変更"
     },
     "arg": {
       "module.maker.game": "最初の依頼に入れるゲーム名",
@@ -1025,7 +1031,9 @@
       "keep_settings": "削除時にゲーム設定ファイルを取り込む前に戻さず今のまま残す",
       "move_folder": "--from のフォルダーをその場でつながずサバちゃんのフォルダーへ移す（同じドライブのみ）",
       "config.browse.path": "表示するフォルダーのフルパス",
-      "config.browse.files": "この拡張子のファイルも表示 (カンマ区切り、* ですべて)"
+      "config.browse.files": "この拡張子のファイルも表示 (カンマ区切り、* ですべて)",
+      "bot.notice.on": "起動通知をオン",
+      "bot.notice.off": "起動通知をオフ"
     },
     "after": "名前は一部だけでも指定できます（例: start pal）。端末で引数なしで実行すると全画面メニューが開きます(SABA_NO_TUI=1 なら対話シェル)。\nスクリプトでは --json と --yes を使ってください。終了コード: 0 成功 · 1 失敗 · 2 使い方の誤り · 3 デーモンに接続不可 · 4 見つからない · 130 キャンセル"
   },

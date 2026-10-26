@@ -54,6 +54,26 @@ describe('AuditLog', () => {
         await waitFor(() => expect(window.api.auditList).toHaveBeenLastCalledWith({ limit: 200, instance: 'mc-1' }));
     });
 
+    it('원격 데몬에 중계한 조작은 데몬 이름과 요청을 적는다', async () => {
+        window.api.auditList = vi.fn().mockResolvedValue({
+            entries: [
+                entry({
+                    source: 'cli',
+                    user: undefined,
+                    guild: undefined,
+                    action: 'remote',
+                    daemon: 'Game PC',
+                    instanceId: '',
+                    instance: undefined,
+                    command: 'POST /api/instance/x/start',
+                    args: undefined,
+                }),
+            ],
+        });
+        render(<AuditLog />);
+        expect(await screen.findByText('Remote daemon · Game PC · POST /api/instance/x/start')).toBeTruthy();
+    });
+
     it('전체 기록은 서버 이름을 적고, 적게 오면 더 보기가 없다', async () => {
         window.api.auditList = vi
             .fn()

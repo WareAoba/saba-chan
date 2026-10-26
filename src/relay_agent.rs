@@ -634,6 +634,10 @@ impl Session {
         if let Some(allowed) = allowed_instances_by_guild(&bot.node_settings) {
             meta["allowedInstances"] = allowed;
         }
+        // 길드별 켜짐 알림을 켠 서버 (`/api/instance/:id/start-notice/:guild`). 켠 길드만 싣는다
+        if let Some(on) = ids_by_guild(&bot.node_settings, crate::ipc::handlers::start_notice::KEY) {
+            meta["startNotice"] = on;
+        }
         // 인스턴스별로 서버와 명령을 부르는 낱말 (어느 길드에서나 같다, 릴레이는 찾기·위험 확인에 쓴다).
         // 비어도 싣는다: 이 키가 있으면 릴레이는 옛 길드별 `instanceWords`·전역 별명을 보지 않는다
         meta["serverWords"] = crate::chat::words::heartbeat(&bot.server_words);
@@ -1409,12 +1413,17 @@ fn permission_entry(p: &crate::chat::permissions::NodePermissions) -> Value {
 
 /// `bot.node_settings[guild].allowedInstances` → `{ guild: [instance id, ...] }`. 하나도 없으면 None
 fn allowed_instances_by_guild(node_settings: &Value) -> Option<Value> {
+    ids_by_guild(node_settings, "allowedInstances")
+}
+
+/// `bot.node_settings[guild].<key>`의 인스턴스 ID 목록 → `{ guild: [instance id, ...] }`. 목록이 있는 길드가 없으면 None
+fn ids_by_guild(node_settings: &Value, key: &str) -> Option<Value> {
     let map: serde_json::Map<String, Value> = node_settings
         .as_object()?
         .iter()
         .filter_map(|(guild, cfg)| {
             let ids: Vec<Value> = cfg
-                .get("allowedInstances")?
+                .get(key)?
                 .as_array()?
                 .iter()
                 .filter(|v| v.is_string())
@@ -2037,6 +2046,17 @@ mod tests {
         );
         assert_eq!(allowed_instances_by_guild(&json!({ "g2": {} })), None);
         assert_eq!(allowed_instances_by_guild(&json!(null)), None);
+    }
+
+    // 켜짐 알림을 켠 서버는 길드마다 싣는다. 켠 서버가 없는 길드는 싣지 않는다 (릴레이는 없으면 알리지 않는다)
+    #[test]
+    fn start_notice_is_sent_per_guild() {
+        let settings = json!({
+            "g1": { "startNotice": ["i-mc", 3] },
+            "g2": { "allowedInstances": ["i-mc"] },
+        });
+        assert_eq!(ids_by_guild(&settings, "startNotice"), Some(json!({ "g1": ["i-mc"] })));
+        assert_eq!(ids_by_guild(&json!({ "g2": {} }), "startNotice"), None);
     }
 
     #[test]

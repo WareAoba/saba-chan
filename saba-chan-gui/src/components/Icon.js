@@ -471,6 +471,20 @@ export const Icon = ({ name, size = 'md', color = 'currentColor' }) => {
                 />
             </svg>
         ),
+        volume: (
+            <svg width="24" height="24" fill="none" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path
+                    d="M11.4 4.2A1 1 0 0 1 13 5v14a1 1 0 0 1-1.6.8L7.65 17H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h3.65l3.75-2.8ZM11 7 8.6 8.8A1 1 0 0 1 8 9H5v6h3a1 1 0 0 1 .6.2L11 17V7Z"
+                    fill="currentColor"
+                />
+                <path
+                    d="M16 9a4 4 0 0 1 0 6M18.5 6.5a7.5 7.5 0 0 1 0 11"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                />
+            </svg>
+        ),
         bellOff: (
             <svg width="24" height="24" fill="none" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                 <path

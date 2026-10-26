@@ -169,7 +169,12 @@
     "ladder_removed": "被删除等级的人会移到下一级，需要该等级的命令会移到上一级。",
     "ladder_invalid": "等级名称需为 1–32 个字符。",
     "ladder_revert": "还原",
-    "ladder_save": "保存等级"
+    "ladder_save": "保存等级",
+    "notice": "启动通知",
+    "notice_hint": "开启的服务器在 Saba-chan 启动时会在此 Discord 服务器的通知频道告知。从 Discord 启动的和在 Saba-chan 之外启动的除外。",
+    "notice_empty": "此 Discord 服务器没有使用的服务器。",
+    "notice_on": "已开启启动通知。",
+    "notice_off": "已关闭启动通知。"
   },
   "modules": {
     "games": "游戏模块",

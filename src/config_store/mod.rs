@@ -34,6 +34,8 @@ pub struct GuiSettings {
     pub port_conflict_check: bool,
     /// 크래시 같은 중대 알림을 OS 알림으로도 (GUI 셸이 읽는다)
     pub os_notifications: bool,
+    /// 밖에서 켜고 끈 것·크래시·설치 결과·업데이트 발견 때 효과음 (GUI 셸이 낸다)
+    pub sounds: SoundSettings,
 
     // Theme customization
     /// "dark" | "light" | "auto". 없으면 GUI가 정한다(예전 브라우저 저장값 이전, 기본 auto)
@@ -65,6 +67,31 @@ pub struct GuiSettings {
     /// 서버 목록 보기 (G1c): "switch"(고른 데몬만) | "unified"(다른 데몬의 서버도 데몬별로). 없으면 switch
     #[serde(skip_serializing_if = "Option::is_none")]
     pub daemon_view: Option<String>,
+}
+
+/// 효과음 — 전체 스위치와 종류별 스위치. 둘 다 켜져 있어야 울린다
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct SoundSettings {
+    pub enabled: bool,
+    pub server_start: bool,
+    pub server_stop: bool,
+    pub crash: bool,
+    pub install: bool,
+    pub update: bool,
+}
+
+impl Default for SoundSettings {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            server_start: true,
+            server_stop: true,
+            crash: true,
+            install: true,
+            update: true,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -99,6 +126,7 @@ impl Default for GuiSettings {
             auto_generate_passwords: true,
             port_conflict_check: true,
             os_notifications: true,
+            sounds: SoundSettings::default(),
             theme: None,
             accent_color: "#667eea".to_string(),
             accent_secondary: "#764ba2".to_string(),
@@ -280,10 +308,12 @@ const LOCAL_SECTIONS: &[&str] = &["schemaVersion", "updates", "boot", "extension
 const RESERVED_SECTIONS: &[&str] = &["schemaVersion", "gui", "relay", "updates", "boot", "extensions", "chatbot", "sandbox", "node", "paths", "remote"];
 
 /// `nodeSettings[guild]`에서 전용 API만 바꾸는 키: 권한 API(P1), 디스코드 설정 API(I2, `discord`),
-/// 0.1.10까지의 길드·인스턴스 낱말(`instances`, 시작할 때 `serverWords`로 옮긴다), 길드가 쓸 서버 API(`allowedInstances`)
+/// 0.1.10까지의 길드·인스턴스 낱말(`instances`, 시작할 때 `serverWords`로 옮긴다), 길드가 쓸 서버 API(`allowedInstances`),
+/// 켜짐 알림 API(`startNotice`)
 pub const PERMISSION_KEYS: &[&str] = &[
     "instances",
     "allowedInstances",
+    "startNotice",
     "ownerDiscordId",
     "relayOwnerDiscordId",
     "defaultLevel",
@@ -1430,15 +1460,28 @@ mod tests {
         assert!(gui.enable_transitions);
     }
 
-    /// GUI 셸이 읽는 설정(OS 알림)도 저장하면 남는다. 모르는 키는 합칠 때 버려진다
+    /// GUI 셸이 읽는 설정(OS 알림·효과음)도 저장하면 남는다. 모르는 키는 합칠 때 버려진다
     #[tokio::test]
-    async fn os_notifications_setting_survives_a_save() {
+    async fn shell_settings_survive_a_save() {
         let tmp = TempDir::new().unwrap();
         let store = ConfigStore::new(tmp.path());
-        assert_eq!(serde_json::to_value(store.get_gui_settings().await).unwrap()["osNotifications"], true);
-        store.set_gui_settings_from_json(serde_json::json!({ "osNotifications": false })).await.unwrap();
+        let defaults = serde_json::to_value(store.get_gui_settings().await).unwrap();
+        assert_eq!(defaults["osNotifications"], true);
+        assert_eq!(
+            defaults["sounds"],
+            serde_json::json!({ "enabled": true, "serverStart": true, "serverStop": true, "crash": true, "install": true, "update": true })
+        );
+        store
+            .set_gui_settings_from_json(
+                serde_json::json!({ "osNotifications": false, "sounds": { "enabled": true, "crash": false } }),
+            )
+            .await
+            .unwrap();
         let saved = serde_json::to_value(ConfigStore::new(tmp.path()).get_gui_settings().await).unwrap();
         assert_eq!(saved["osNotifications"], false);
+        // 빠진 종류는 기본(켬)으로 채운다
+        assert_eq!(saved["sounds"]["crash"], false);
+        assert_eq!(saved["sounds"]["update"], true);
     }
 
     #[tokio::test]

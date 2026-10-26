@@ -136,6 +136,8 @@ pub struct Event<'a> {
     pub instance: Option<&'a str>,
     pub command: Option<&'a str>,
     pub args: Option<&'a Value>,
+    /// 이 PC가 중계한 원격 데몬의 이름 (`remote` 기록)
+    pub daemon: Option<&'a str>,
     pub ok: bool,
     pub status: u16,
 }
@@ -245,6 +247,7 @@ impl AuditLog {
             ("guildName", origin.guild_name.as_deref()),
             ("instance", event.instance),
             ("command", event.command),
+            ("daemon", event.daemon),
         ];
         for (key, value) in fields {
             if let Some(v) = value {

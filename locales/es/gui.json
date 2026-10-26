@@ -78,6 +78,7 @@
     "dev_nickname": "WareAoba",
     "dev_bio": "Domador de IA",
     "github_repo": "Repositorio de GitHub",
+    "name_egg": "No tiene nada que ver con cierto VTuber… Me enteré después de ponerle el nombre y también me parece injusto.",
     "accent_color_label": "Color de acento",
     "accent_color_description": "Elige el color de los botones y los resaltados",
     "accent_purple": "Morado",
@@ -113,7 +114,14 @@
     "reset_gui_done": "Ajustes de la interfaz restaurados",
     "reset_gui_failed": "No se pudieron restablecer los ajustes",
     "os_notifications_label": "Notificaciones del sistema",
-    "os_notifications_description": "Envía también como notificaciones de Windows o macOS los eventos importantes, como fallos e inicios o paradas inesperados. Con la ventana de la app al frente, solo se muestran en la app."
+    "os_notifications_description": "Envía también como notificaciones de Windows o macOS los eventos importantes, como fallos e inicios o paradas inesperados. Con la ventana de la app al frente, solo se muestran en la app.",
+    "sound_effects_label": "Efectos de sonido",
+    "sound_effects_description": "Reproduce un sonido cuando un servidor se inicia o se detiene desde fuera de la app (Discord, web, etc.), se detiene de forma inesperada, termina de instalarse o cuando se encuentra una actualización. Iniciar o detener desde la propia app no suena.",
+    "sound_server_start": "Servidor iniciado",
+    "sound_server_stop": "Servidor detenido",
+    "sound_crash": "Detención inesperada",
+    "sound_install": "Resultado de la instalación",
+    "sound_update": "Actualización encontrada"
   },
   "add_server_modal": {
     "title": "Agregar Nuevo Servidor",
@@ -1060,7 +1068,10 @@
     "prefix_err_count": "Hasta {{max}} prefijos.",
     "prefix_err_length": "Los prefijos tienen como máximo {{max}} caracteres: {{words}}",
     "translate_commands_title": "Nombres de comandos traducidos",
-    "translate_commands_desc": "Muestra nombres y descripciones traducidos de los comandos del juego en los comandos de barra de Discord. Si está apagado, solo se ven los nombres del módulo (por ejemplo save-all)."
+    "translate_commands_desc": "Muestra nombres y descripciones traducidos de los comandos del juego en los comandos de barra de Discord. Si está apagado, solo se ven los nombres del módulo (por ejemplo save-all).",
+    "start_notice": "Aviso de inicio de {{name}}",
+    "start_notice_hint": "Los servidores con la campana activada se anuncian en el canal de avisos de este servidor de Discord cuando Saba-chan los inicia. No se avisan los inicios desde Discord ni los de fuera de Saba-chan. Elige el canal de avisos en la pestaña Canales.",
+    "start_notice_save_failed": "No se pudo guardar el aviso de inicio: {{error}}"
   },
   "maintenance": {
     "load_failed": "No se pudieron cargar las copias de seguridad ni las programaciones.",
@@ -1358,6 +1369,7 @@
     "action_command": "Comando",
     "action_stdin": "Entrada de consola",
     "action_backup": "Copia de seguridad",
+    "action_remote": "Daemon remoto",
     "skipped_stopped": "Omitida (servidor apagado)",
     "source_gui": "App",
     "source_cli": "CLI",

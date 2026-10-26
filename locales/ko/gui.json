@@ -78,6 +78,7 @@
     "dev_nickname": "와레아오바",
     "dev_bio": "인공지능 조련사",
     "github_repo": "GitHub 리포지토리",
+    "name_egg": "모 버튜버랑은 상관없습니다… 저도 짓고 나서 알아서 억울해요",
     "accent_color_label": "강조 색상",
     "accent_color_description": "버튼과 강조 표시에 쓸 색을 고르세요",
     "accent_purple": "퍼플",
@@ -113,7 +114,14 @@
     "reset_gui_done": "GUI 설정을 처음 값으로 되돌렸어요",
     "reset_gui_failed": "설정을 초기화하지 못했어요",
     "os_notifications_label": "OS 알림",
-    "os_notifications_description": "크래시, 예기치 않은 시작·종료처럼 꼭 알아야 할 일을 Windows·macOS 알림으로도 보내요. 앱 창이 앞에 있으면 앱 안에서만 알려요."
+    "os_notifications_description": "크래시, 예기치 않은 시작·종료처럼 꼭 알아야 할 일을 Windows·macOS 알림으로도 보내요. 앱 창이 앞에 있으면 앱 안에서만 알려요.",
+    "sound_effects_label": "효과음",
+    "sound_effects_description": "밖(디스코드·웹 등)에서 켜고 끈 일, 예기치 않은 종료, 설치 결과, 업데이트 발견을 소리로 알려요. 앱에서 직접 켜고 끈 것은 울리지 않아요.",
+    "sound_server_start": "서버 켜짐",
+    "sound_server_stop": "서버 꺼짐",
+    "sound_crash": "예기치 않은 종료",
+    "sound_install": "설치 결과",
+    "sound_update": "업데이트 발견"
   },
   "add_server_modal": {
     "title": "새 서버 추가",
@@ -1060,7 +1068,10 @@
     "prefix_err_count": "접두사는 {{max}}개까지예요.",
     "prefix_err_length": "접두사는 {{max}}자까지예요: {{words}}",
     "translate_commands_title": "명령 이름 번역",
-    "translate_commands_desc": "디스코드 슬래시 명령에 게임 명령의 번역한 이름과 설명을 붙여요. 끄면 모듈에 적힌 원래 이름(예: save-all)만 보여요."
+    "translate_commands_desc": "디스코드 슬래시 명령에 게임 명령의 번역한 이름과 설명을 붙여요. 끄면 모듈에 적힌 원래 이름(예: save-all)만 보여요.",
+    "start_notice": "{{name}} 켜짐 알림",
+    "start_notice_hint": "종 버튼을 켠 서버는 사바쨩이 켤 때 이 디스코드 서버의 알림 채널에 알려요. 디스코드에서 켠 것과 사바쨩 밖에서 켜진 것은 빼요. 알림 채널은 채널 탭에서 정해요.",
+    "start_notice_save_failed": "켜짐 알림을 저장하지 못했어요: {{error}}"
   },
   "maintenance": {
     "load_failed": "백업·예약 정보를 불러오지 못했어요.",
@@ -1358,6 +1369,7 @@
     "action_command": "명령",
     "action_stdin": "콘솔 입력",
     "action_backup": "백업",
+    "action_remote": "원격 데몬 조작",
     "skipped_stopped": "건너뜀 (서버 꺼짐)",
     "source_gui": "앱",
     "source_cli": "CLI",

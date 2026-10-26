@@ -126,7 +126,12 @@
     "words_bad_command": "{{spec}}: write it as COMMAND=WORD,WORD (COMMAND= removes them).",
     "no_paired_servers": "No Discord server is paired with this PC yet. Run: saba-chan-cli bot pair",
     "pick_server": "Several Discord servers are paired. Give the id of the one to change: {{servers}}",
-    "translate_commands": "Translated command names"
+    "translate_commands": "Translated command names",
+    "notice_none": "No server has start alerts on. Nothing is posted when Saba-chan starts a server.",
+    "notice_is_on": "{{server}}: start alert on",
+    "notice_is_off": "{{server}}: start alert off",
+    "notice_on_saved": "{{guild}}'s alert channel will hear when {{server}} starts.",
+    "notice_off_saved": "{{guild}} will no longer hear when {{server}} starts."
   },
   "col": {
     "players": "Players",
@@ -727,7 +732,8 @@
       "server.discord": "What Discord chat calls this server and its commands (the same in every Discord server). No options: show",
       "gui": "Switch to the desktop app: it opens on the same server and the full-screen menu closes",
       "config.autostart": "What starts when you sign in to this PC: off, daemon (daemon and tray only) or full (with the GUI window). Shows the current value without a mode",
-      "config.browse": "Folders and files on the daemon's PC (with --daemon, the remote PC). Drives or / without a path"
+      "config.browse": "Folders and files on the daemon's PC (with --daemon, the remote PC). Drives or / without a path",
+      "bot.notice": "Post in the Discord server's alert channel when Saba-chan starts a server (off by default). No server: show. Server with `--on`/`--off`: change"
     },
     "arg": {
       "module.maker.game": "Game to put in the first prompt",
@@ -797,7 +803,9 @@
       "keep_settings": "Keep the game settings files as they are instead of restoring them to their state before the import when the instance is deleted",
       "move_folder": "Move the --from folder into the saba-chan folder instead of linking it in place (same drive only)",
       "config.browse.path": "Full path of the folder to show",
-      "config.browse.files": "Also show files with these extensions (comma separated, * for all)"
+      "config.browse.files": "Also show files with these extensions (comma separated, * for all)",
+      "bot.notice.on": "Turn the start alert on",
+      "bot.notice.off": "Turn the start alert off"
     },
     "after": "Names can be partial (e.g. start pal). Run with no arguments in a terminal to open the full-screen menu (SABA_NO_TUI=1: the interactive shell).\nIn scripts use --json and --yes. Exit codes: 0 ok · 1 failed · 2 usage · 3 daemon unreachable · 4 not found · 130 cancelled"
   },

@@ -972,6 +972,14 @@ impl Api {
     pub async fn save_allowed_instances(&self, guild_id: &str, instances: Option<&[String]>) -> Result<Value> {
         self.put(&format!("/api/guilds/{}/allowed-instances", seg(guild_id)), json!({ "instances": instances })).await
     }
+    /// GET /api/guilds/:guild/start-notice — `{guildId, instances}` (켜짐 알림을 켠 서버)
+    pub async fn start_notice(&self, guild_id: &str) -> Result<Value> {
+        self.get(&format!("/api/guilds/{}/start-notice", seg(guild_id))).await
+    }
+    /// PUT /api/instance/:id/start-notice/:guild — `{enabled}` → `{success, id, guildId, enabled, instances}`
+    pub async fn set_start_notice(&self, id: &str, guild_id: &str, enabled: bool) -> Result<Value> {
+        self.put(&format!("/api/instance/{}/start-notice/{}", seg(id), seg(guild_id)), json!({ "enabled": enabled })).await
+    }
     // ── 백업·예약 ──
 
     /// GET /api/instance/:id/backups — `{backups: [{name, kind, created, size}]}`
