@@ -285,6 +285,26 @@ class SdkAtomicWriteTests(unittest.TestCase):
             self.assertEqual(path.read_bytes(), b"new")
             self.assertEqual(path.stat().st_ino, inode)
 
+    @unittest.skipUnless(hasattr(os, "fork") and sys.platform.startswith("linux"), "RLIMIT_FSIZE")
+    def test_a_failed_in_place_write_restores_the_original(self):
+        """제자리 쓰기가 디스크·크기 제한으로 실패해도 원래 내용이 남는다 (실패한 쓰기 버퍼를 다시 내보내지 않는다)"""
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "server.properties"
+            path.write_bytes(b"original")
+            script = (
+                f"import sys, signal, resource; sys.path.insert(0, {str(Path(daemon_rcon.__file__).parent)!r})\n"
+                "import daemon_rcon\n"
+                "signal.signal(signal.SIGXFSZ, signal.SIG_IGN)\n"
+                "resource.setrlimit(resource.RLIMIT_FSIZE, (16, 16))\n"
+                "try:\n"
+                f"    daemon_rcon._overwrite_in_place({str(path)!r}, b'X' * 32)\n"
+                "except OSError:\n"
+                "    print('failed')\n"
+            )
+            out = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True, timeout=30)
+            self.assertIn("failed", out.stdout, out.stderr)
+            self.assertEqual(path.read_bytes(), b"original")
+
     def test_a_label_that_differs_only_in_the_auto_inherited_flag_is_the_same_access(self):
         """데몬이 기존 파일에 맞춘 상속 표시(S:(ML;ID;..))와 OS가 새 파일에 붙인 것(S:AI(ML;ID;..))은 같은 권한이다"""
         old = "O:BAD:AI(A;ID;FA;;;SY)S:(ML;ID;NW;;;LW)"

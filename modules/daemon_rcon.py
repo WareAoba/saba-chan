@@ -468,20 +468,28 @@ class _ReplaceDenied(Exception):
 
 
 def _overwrite_in_place(path, data):
-    with open(path, "r+b") as f:
-        original = f.read()
+    # 버퍼 없이 fd로 쓴다: 쓰기가 실패하면 버퍼에 남은 새 내용이 복구 중에 다시 쓰이지 않는다
+    fd = os.open(path, os.O_RDWR | getattr(os, "O_BINARY", 0))
+    try:
+        original = b""
+        while chunk := os.read(fd, 1 << 20):
+            original += chunk
         try:
-            f.seek(0)
-            f.write(data)
-            f.truncate()
-            f.flush()
-            os.fsync(f.fileno())
+            _write_all_at_start(fd, data)
+            os.fsync(fd)
         except BaseException:
-            f.seek(0)
-            f.write(original)
-            f.truncate()
-            f.flush()
+            _write_all_at_start(fd, original)
             raise
+    finally:
+        os.close(fd)
+
+
+def _write_all_at_start(fd, data):
+    os.lseek(fd, 0, os.SEEK_SET)
+    view = memoryview(data)
+    while view:
+        view = view[os.write(fd, view):]
+    os.ftruncate(fd, len(data))
 
 
 def _replace_keeping_access(tmp, path):
