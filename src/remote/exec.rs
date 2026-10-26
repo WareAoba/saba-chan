@@ -44,9 +44,7 @@ pub async fn run(server: &IPCServer, req: Request, user: Option<String>) -> Resp
     let blocked = {
         let segments = gate::path_segments(&req.path).unwrap_or_default();
         let supervisor = server.supervisor.read().await;
-        let instance = edited_instance(&supervisor, pattern, &segments);
-        let pc_only = pc_only_fields(&supervisor, pattern, instance, req.body.as_ref());
-        gate::blocked_fields(&req.method, pattern, req.body.as_ref(), &pc_only)
+        blocked_fields(&supervisor, &req.method, pattern, &segments, req.body.as_ref()).0
     };
     if !blocked.is_empty() {
         return Response {
@@ -147,7 +145,7 @@ pub(crate) fn create_option_answers_allowed(options: &[Value], given: &serde_jso
 
 /// 요청이 설정을 고치는 인스턴스 (인스턴스 설정, 게임 설정 파일 쓰기). `segments`는 푼 경로 조각이다
 /// (라우터는 id를 풀어서 찾으므로 여기서도 푼 id로 찾는다: %61bc로 모듈 칸 검사를 비켜 가지 않게)
-pub(crate) fn edited_instance<'a>(
+fn edited_instance<'a>(
     supervisor: &'a crate::supervisor::Supervisor,
     pattern: &str,
     segments: &[String],
@@ -160,8 +158,22 @@ pub(crate) fn edited_instance<'a>(
     }
 }
 
+/// 이 요청 본문에서 원격이 바꾸지 못하는 칸(`gate::blocked_fields`, 그 인스턴스 모듈의 PC 전용 설정 포함)과
+/// 요청이 고치는 인스턴스. 웹 원격과 원격 포트가 같이 쓴다 (원격 포트는 저장된 값과 같은 칸을 더 뺀다)
+pub(crate) fn blocked_fields<'a>(
+    supervisor: &'a crate::supervisor::Supervisor,
+    method: &str,
+    pattern: &str,
+    segments: &[String],
+    body: Option<&Value>,
+) -> (Vec<String>, Option<&'a crate::instance::ServerInstance>) {
+    let instance = edited_instance(supervisor, pattern, segments);
+    let pc_only = pc_only_fields(supervisor, pattern, instance, body);
+    (gate::blocked_fields(method, pattern, body, &pc_only), instance)
+}
+
 /// 이 요청이 고치는 인스턴스(`instance`, `edited_instance`) 또는 만드는 인스턴스(`body.module_name`) 모듈의 PC 전용 설정 키
-pub(crate) fn pc_only_fields(
+fn pc_only_fields(
     supervisor: &crate::supervisor::Supervisor,
     pattern: &str,
     instance: Option<&crate::instance::ServerInstance>,

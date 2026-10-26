@@ -231,9 +231,7 @@ async fn blocked_fields(server: &crate::ipc::IPCServer, method: &str, pattern: &
         _ => false,
     };
     let supervisor = server.supervisor.read().await;
-    let instance = crate::remote::exec::edited_instance(&supervisor, pattern, segments);
-    let pc_only = crate::remote::exec::pc_only_fields(&supervisor, pattern, instance, body);
-    let mut blocked = crate::remote::gate::blocked_fields(method, pattern, body, &pc_only);
+    let (mut blocked, instance) = crate::remote::exec::blocked_fields(&supervisor, method, pattern, segments, body);
     if create_options_only {
         blocked.retain(|k| k != "extension_data");
     }
