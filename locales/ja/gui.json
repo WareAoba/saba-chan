@@ -184,6 +184,7 @@
   "server_actions": {
     "delete_confirm_title": "サーバーを削除",
     "delete_confirm_message": "サーバー '{{name}}' を削除してもよろしいですか?",
+    "delete_detail": "サーバーファイルも削除されます。",
     "server_added": "インスタンス '{{name}}' を追加しました",
     "server_detected": "検出したサーバー: {{type}} {{version}} · プラグイン・MOD {{count}} 個{{names}}",
     "server_deleted": "サーバー '{{name}}' を削除しました",

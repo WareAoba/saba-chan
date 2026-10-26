@@ -244,6 +244,7 @@
   "server_actions": {
     "delete_confirm_title": "刪除伺服器",
     "delete_confirm_message": "確定要刪除伺服器'{{name}}'嗎？",
+    "delete_detail": "伺服器檔案也會一併刪除。",
     "server_added": "實例'{{name}}'已新增",
     "server_detected": "偵測到的伺服器：{{type}} {{version}} · {{count}} 個外掛/模組{{names}}",
     "server_provisioned": "伺服器 '{{name}}' 已安裝",

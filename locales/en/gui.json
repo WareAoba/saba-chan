@@ -151,7 +151,7 @@
     "new_server_title": "New Server",
     "new_server_desc": "Pick a game and the server files are downloaded for you.",
     "migrate_title": "Import Existing Server",
-    "migrate_desc": "Link a game server folder you already use. Files stay where they are.",
+    "migrate_desc": "Bring in a game server folder you already use. Link it where it is, or move it into saba-chan.",
     "migration_coming_soon": "The import steps are not ready yet.",
     "no_modules_hint": "Add a module first."
   },
@@ -244,6 +244,7 @@
   "server_actions": {
     "delete_confirm_title": "Delete Server",
     "delete_confirm_message": "Are you sure you want to delete server '{{name}}'?",
+    "delete_detail": "The server files are deleted too.",
     "server_added": "Added instance '{{name}}'",
     "server_detected": "Detected server: {{type}} {{version}} · {{count}} plugins/mods{{names}}",
     "server_provisioned": "Server '{{name}}' is installed",

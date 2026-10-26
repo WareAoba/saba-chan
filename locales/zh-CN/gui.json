@@ -244,6 +244,7 @@
   "server_actions": {
     "delete_confirm_title": "删除服务器",
     "delete_confirm_message": "确定要删除服务器'{{name}}'吗？",
+    "delete_detail": "服务器文件也会被删除。",
     "server_added": "实例'{{name}}'已添加",
     "server_detected": "检测到的服务器：{{type}} {{version}} · {{count}} 个插件/模组{{names}}",
     "server_provisioned": "服务器 '{{name}}' 已安装",

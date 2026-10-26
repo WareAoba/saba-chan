@@ -244,6 +244,7 @@
   "server_actions": {
     "delete_confirm_title": "Удалить сервер",
     "delete_confirm_message": "Вы уверены, что хотите удалить сервер '{{name}}'?",
+    "delete_detail": "Файлы сервера тоже удаляются.",
     "server_added": "Экземпляр '{{name}}' добавлен",
     "server_detected": "Обнаружен сервер: {{type}} {{version}} · плагинов/модов: {{count}}{{names}}",
     "server_provisioned": "Сервер '{{name}}' установлен",

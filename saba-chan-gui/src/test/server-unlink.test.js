@@ -95,3 +95,17 @@ describe('기존 서버 가져오기', () => {
         expect(window.api.instanceCreate.mock.calls[0][0]).toMatchObject({ migration_source: '/srv/old', migration_mode: 'move' });
     });
 });
+
+describe('일반 서버 삭제', () => {
+    beforeEach(() => {
+        window.showToast = vi.fn();
+        window.api = { instanceDelete: vi.fn().mockResolvedValue({ success: true }), serverList: vi.fn() };
+    });
+
+    it('서버 파일도 함께 지워진다고 알린다 (옮겨 온 서버도 같다)', async () => {
+        const plain = { id: 'b', name: 'B', module: 'game', status: 'stopped' };
+        const { result, setModal } = setup([plain]);
+        await act(async () => result.current.handleDeleteServer(plain));
+        expect(setModal.mock.calls.at(-1)[0].detail).toMatch(/delete_detail|지워져|deleted/);
+    });
+});

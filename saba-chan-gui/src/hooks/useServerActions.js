@@ -1163,6 +1163,7 @@ export function useServerActions({
             type: 'question',
             title: t('server_actions.delete_confirm_title'),
             message: t('server_actions.delete_confirm_message', { name: server.name }),
+            detail: t('server_actions.delete_detail'),
             onConfirm: () => performDeleteServer(server),
         });
     };

@@ -244,6 +244,7 @@
   "server_actions": {
     "delete_confirm_title": "Deletar Servidor",
     "delete_confirm_message": "Tem certeza de que deseja deletar o servidor '{{name}}'?",
+    "delete_detail": "Os arquivos do servidor também são excluídos.",
     "server_added": "A instância '{{name}}' foi adicionada",
     "server_detected": "Servidor detectado: {{type}} {{version}} · {{count}} plugins/mods{{names}}",
     "server_provisioned": "O servidor '{{name}}' está instalado",

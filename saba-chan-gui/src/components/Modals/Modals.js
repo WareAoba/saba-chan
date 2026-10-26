@@ -74,7 +74,8 @@ export function QuestionModal({ title, message, detail, onConfirm, onCancel, but
                 <h2 className="modal-title">{title}</h2>
                 <p className="modal-message">{message}</p>
                 {detail && <p className="modal-detail">{detail}</p>}
-                <div className="modal-buttons-group">
+                {/* 버튼이 셋 이상이면 세로로 쌓는다: 긴 이름이 한 줄에 다 들어가지 않는다 */}
+                <div className={clsx('modal-buttons-group', { stacked: buttons?.length > 2 })}>
                     {buttons ? (
                         // 커스텀 버튼 배열
                         buttons.map((btn, idx) => (

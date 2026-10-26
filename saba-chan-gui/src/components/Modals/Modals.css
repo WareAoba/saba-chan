@@ -181,6 +181,14 @@
     justify-content: center;
 }
 
+.modal-buttons-group.stacked {
+    flex-direction: column;
+}
+
+.modal-buttons-group.stacked > .modal-button {
+    flex: none;
+}
+
 .question-confirm {
     flex: 1;
 }
