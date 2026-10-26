@@ -342,11 +342,12 @@ fn match_score(pattern: &str, segments: &[&str]) -> Option<Vec<bool>> {
 }
 
 /// 푼 경로 조각이 괜찮은지: 비어 있지 않고 NUL이 없으며, 조각도 조각 안을 나눔 문자로 가른 부분도 `.`·`..`이 아니고,
-/// 절대 경로(맨 앞이 나눔 문자, 드라이브 `X:`)가 아니다. 조각 가운데·끝의 나눔 문자는 그 조각의 글자다 (이름에 `/`가 든 서버).
+/// 절대 경로(맨 앞이 나눔 문자, 드라이브 `X:` 자체나 `X:\`·`X:/`로 시작)가 아니다 (`S:1` 같은 이름은 받는다). 조각 가운데·끝의 나눔 문자는 그 조각의 글자다 (이름에 `/`가 든 서버).
 /// 경로 인자로 상위 폴더나 다른 곳을 가리키지는 못하게 한다
 fn safe_segment(decoded: &str) -> bool {
     let bytes = decoded.as_bytes();
-    let absolute = decoded.starts_with(['/', '\\']) || (bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':');
+    let drive = bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':' && matches!(bytes.get(2), None | Some(b'/' | b'\\'));
+    let absolute = decoded.starts_with(['/', '\\']) || drive;
     !decoded.is_empty() && !absolute && !decoded.contains('\0') && !decoded.split(['/', '\\']).any(|p| p == "." || p == "..")
 }
 
@@ -620,7 +621,9 @@ mod tests {
         assert_eq!(segs("/api/config/%67ui/reset"), own(&["api", "config", "gui", "reset"]));
         assert_eq!(segs("/api/servers?x=%2F"), own(&["api", "servers"]));
         assert_eq!(segs("/health"), own(&["health"]));
-        for bad in ["/api/x/%2e%2e/y", "/api//x", "/api/%FF", "/api/%6", "api/x", "/api/x/..", "/api/a%2F..%2Fb", "/api/..%5Cb", "/api/a%00", "/api/%2Fetc%2Fpasswd", "/api/%5C%5Chost%5Cshare", "/api/C%3A%5Cx", "/api/c:", "/api/%5Cx"] {
+        // 드라이브처럼 시작해도 경로가 아닌 이름은 이름이다
+        assert_eq!(segs("/api/server/S:1/stop"), own(&["api", "server", "S:1", "stop"]));
+        for bad in ["/api/x/%2e%2e/y", "/api//x", "/api/%FF", "/api/%6", "api/x", "/api/x/..", "/api/a%2F..%2Fb", "/api/..%5Cb", "/api/a%00", "/api/%2Fetc%2Fpasswd", "/api/%5C%5Chost%5Cshare", "/api/C%3A%5Cx", "/api/c:", "/api/C%3A%2Fx", "/api/%5Cx"] {
             assert_eq!(segs(bad), None, "{bad}");
         }
     }
