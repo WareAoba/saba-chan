@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { AgreementList, allChecked } from '../AgreementList';
 import Icon from '../Icon';
 import { SabaSpinner } from '../ui/SabaUI';
+import { Segmented } from '../ui/StatusChip';
 import { TrustCreateNotice } from '../ui/TrustBadge';
 
 /**
@@ -37,6 +38,8 @@ export function AddInstanceMigration({ extensions, servers, onAddServer, onStepC
     const [instanceName, setInstanceName] = useState('');
     const [submitting, setSubmitting] = useState(false);
     const [agreed, setAgreed] = useState({}); // 약관 id → 체크 여부
+    // 'link': 서버 폴더를 그 자리에 연결 / 'move': 사바쨩 인스턴스 폴더로 옮겨 전속 (데몬 `migration_mode`)
+    const [mode, setMode] = useState('link');
     const nameInputRef = useRef(null);
 
     // ─── 디렉토리 선택 ───
@@ -160,13 +163,14 @@ export function AddInstanceMigration({ extensions, servers, onAddServer, onStepC
                 name: instanceName.trim(),
                 module_name: mod.name || mod.id,
                 migration_source: dirPath,
+                migration_mode: mode,
                 // 사용자가 체크한 약관 (module.toml [[agreements]]): 데몬이 만든 직후 모듈에 동의를 남긴다
                 ...(agreements.length ? { accept_agreements: agreements.map((a) => a.id) } : {}),
             });
         } finally {
             setSubmitting(false);
         }
-    }, [detectedModule, manualModule, instanceName, dirPath, onAddServer, agreements]);
+    }, [detectedModule, manualModule, instanceName, dirPath, mode, onAddServer, agreements]);
 
     const handleBackToPickDir = useCallback(() => {
         onStepChange?.('pick-dir'); // 높이 캡처 후 부모 상태 변경 (배칭)
@@ -444,6 +448,23 @@ export function AddInstanceMigration({ extensions, servers, onAddServer, onStepC
                         />
                     </div>
 
+                    {/* 서버 폴더를 다루는 방식 */}
+                    <div className="as-section as-section-card">
+                        <span className="as-label">
+                            <Icon name="folder" size="sm" />
+                            {t('migration_modal.mode_label')}
+                        </span>
+                        <Segmented
+                            ariaLabel={t('migration_modal.mode_label')}
+                            items={[
+                                { id: 'link', label: t('migration_modal.mode_link') },
+                                { id: 'move', label: t('migration_modal.mode_move') },
+                            ]}
+                            value={mode}
+                            onChange={(id) => !submitting && setMode(id)}
+                        />
+                    </div>
+
                     {/* 확인 안 된·바뀐 모듈: 게임 서버는 격리되지 않는다 */}
                     <TrustCreateNotice trust={installedModule?.trust} />
 
@@ -467,7 +488,7 @@ export function AddInstanceMigration({ extensions, servers, onAddServer, onStepC
                     {/* 마이그레이션 안내 */}
                     <p className="as-provision-hint">
                         <Icon name="info" size="sm" />
-                        {t('migration_modal.migrate_hint')}
+                        {t(mode === 'move' ? 'migration_modal.migrate_hint_move' : 'migration_modal.migrate_hint')}
                     </p>
                 </div>
             </div>

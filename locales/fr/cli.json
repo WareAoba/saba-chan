@@ -37,7 +37,14 @@
     "folder_is": "{{dir}} ressemble à un serveur {{game}}.",
     "pick_game": "Choisissez le jeu avec --module.",
     "folder_in_use": "{{dir}} est déjà utilisé par {{name}}. Deux serveurs dans un même dossier s'écraseraient mutuellement.",
-    "created_settings_failed": "{{name}} a été créé, mais ses réglages n'ont pas été enregistrés : {{error}}"
+    "created_settings_failed": "{{name}} a été créé, mais ses réglages n'ont pas été enregistrés : {{error}}",
+    "notice": {
+      "folder_not_writable": "saba-chan ne peut pas écrire dans ce dossier. L'enregistrement des paramètres et le démarrage du serveur peuvent échouer ; déplacez-le vers un emplacement accessible en écriture.",
+      "server_running": "Le serveur de ce dossier tourne en dehors de saba-chan. Arrêtez-le puis redémarrez-le depuis saba-chan."
+    },
+    "ask_mode": "Que faire du dossier du serveur ?",
+    "mode_link": "Le laisser en place",
+    "mode_move": "Le déplacer dans saba-chan (même lecteur uniquement ; supprimer un serveur déplacé supprime ses fichiers)"
   },
   "bot": {
     "ask_token": "Jeton du nœud",
@@ -340,7 +347,10 @@
       "autostart_gui_missing": "La GUI n’est pas installée. Installez-la pour tout démarrer avec la GUI.",
       "autostart_write_failed": "Impossible d’ajouter Saba-chan aux programmes de démarrage. Vérifiez les autorisations et réessayez.",
       "autostart_unsupported": "Le démarrage à la connexion ne peut pas encore être réglé sur ce système.",
-      "autostart_unknown_mode": "Choisissez off, daemon ou full."
+      "autostart_unknown_mode": "Choisissez off, daemon ou full.",
+      "move_cross_volume": "Un dossier situé sur un autre lecteur ne peut pas être déplacé. Importez-le plutôt avec « Le laisser en place ».",
+      "move_in_use": "Impossible de déplacer le dossier. Arrêtez le serveur de ce dossier, fermez les programmes qui l'ont ouvert, puis réessayez.",
+      "move_failed": "Impossible de déplacer le dossier. Importez-le plutôt avec « Le laisser en place »."
     },
     "not_a_bool": "« {{value}} » n'est pas oui/non (utilisez true ou false).",
     "not_a_number": "« {{value}} » n'est pas un nombre.",
@@ -471,7 +481,12 @@
   "remove": {
     "confirm": "Supprimer le serveur {{name}} ?",
     "confirm_running": "{{name}} est en cours d'exécution. L'arrêter et le supprimer ?",
-    "done": "{{name}} supprimé."
+    "done": "{{name}} supprimé.",
+    "unlink_folder_kept": "Les fichiers du dossier du serveur ({{path}}) restent ; seuls les enregistrements, journaux et sauvegardes de saba-chan sont supprimés.",
+    "unlink_restores": "Les fichiers de paramètres du jeu reviennent à leur état d'avant l'import (ajoutez --keep-settings pour garder les actuels).",
+    "unlink_keeps_settings": "Les fichiers de paramètres du jeu restent tels quels.",
+    "unlinked": "« {{name}} » a été retiré de saba-chan. Les fichiers du serveur sont toujours dans {{path}}.",
+    "unlink_restore_failed": "{{n}} fichier(s) de paramètres du jeu n'ont pas pu être restaurés."
   },
   "reorder": {
     "done": "Ordre enregistré."

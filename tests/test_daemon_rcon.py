@@ -274,6 +274,15 @@ class SdkAtomicWriteTests(unittest.TestCase):
         self.assertEqual(data, b"old")
         self.assertEqual(names, ["serverconfig.txt"])
 
+    def test_a_label_that_differs_only_in_the_auto_inherited_flag_is_the_same_access(self):
+        """데몬이 기존 파일에 맞춘 상속 표시(S:(ML;ID;..))와 OS가 새 파일에 붙인 것(S:AI(ML;ID;..))은 같은 권한이다"""
+        old = "O:BAD:AI(A;ID;FA;;;SY)S:(ML;ID;NW;;;LW)"
+        new = "O:BAD:AI(A;ID;FA;;;SY)S:AI(ML;ID;NW;;;LW)"
+        self.assertTrue(daemon_rcon._same_access(old, new))
+        self.assertFalse(daemon_rcon._same_access("O:BAD:AI(A;ID;FA;;;SY)", new))
+        self.assertFalse(daemon_rcon._same_access("O:BAD:AI(A;ID;FA;;;SY)S:(ML;;NW;;;LW)", new))
+        self.assertFalse(daemon_rcon._same_access(None, None))
+
     @unittest.skipUnless(os.name == "nt", "Windows DACL")
     def test_access_of_tells_an_explicit_grant_apart(self):
         with tempfile.TemporaryDirectory() as directory:

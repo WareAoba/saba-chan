@@ -219,6 +219,10 @@ pub fn api_hint(code: &str, body: &Value) -> Option<String> {
             lines.push(t!("err.hint.port_conflict"));
             Some(lines.join("\n  "))
         }
+        // 가져오기 "옮기기"가 폴더를 옮기지 못했다 (아무것도 만들지 않았다)
+        "move_cross_volume" => Some(t!("err.hint.move_cross_volume")),
+        "move_in_use" => Some(t!("err.hint.move_in_use")),
+        "move_failed" | "source_missing" | "destination_exists" => Some(t!("err.hint.move_failed")),
         "server_not_running" => Some(t!("err.hint.server_not_running")),
         "server_running" => Some(t!("err.hint.server_running")),
         "rcon_unreachable" => Some(t!("err.hint.rcon_unreachable")),
@@ -354,6 +358,16 @@ mod tests {
         }
         // 언어는 다른 시험이 먼저 정할 수 있어 모양만 본다
         assert!(api_hint("invalid_command", &json!({})).unwrap().contains(">/<"));
+    }
+
+    /// 가져오기 "옮기기"가 폴더를 옮기지 못하면(다른 드라이브, 켜진 서버) 원문 코드 대신 할 일을 알려 준다
+    #[test]
+    fn a_refused_move_tells_what_to_do() {
+        crate::i18n::init("en");
+        for code in ["move_cross_volume", "move_in_use", "move_failed", "source_missing", "destination_exists"] {
+            let hint = api_hint(code, &json!({})).unwrap_or_default();
+            assert!(!hint.is_empty() && !hint.contains("err.hint"), "{}: {}", code, hint);
+        }
     }
 
     /// RCON만 받는 서버의 명령 실패(데몬 #457)는 데몬 영어 문구만 남기지 않고 할 일을 알려 준다

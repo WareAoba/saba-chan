@@ -15,7 +15,7 @@ pub async fn run(ctx: &Ctx, cmd: ServerCmd) -> Result<()> {
         ServerCmd::List => list(ctx).await,
         ServerCmd::Info { server } => info(ctx, server.as_deref()).await,
         ServerCmd::Add(a) => add(ctx, a).await,
-        ServerCmd::Remove { server } => remove(ctx, server.as_deref()).await,
+        ServerCmd::Remove { server, keep_settings } => remove(ctx, server.as_deref(), keep_settings).await,
         ServerCmd::Start(a) => start(ctx, a).await,
         ServerCmd::Stop(a) => stop(ctx, a).await,
         ServerCmd::Restart(a) => restart(ctx, a).await,
@@ -296,6 +296,7 @@ async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
 
     // 1) 새로 설치 / 기존 폴더 (폴더를 고르면 게임은 폴더를 보고 알아낸다)
     let mut from = a.from.clone();
+    let mut move_folder = a.move_folder;
     if from.is_none() && ctx.ask.enabled && a.name.is_none() {
         let installs = given
             .as_ref()
@@ -307,6 +308,9 @@ async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
             == Some(1)
         {
             from = ctx.ask.text(&t!("add.ask_folder"), None, false)?;
+            // 그 자리에 연결 / 사바쨩 폴더로 옮기기 (GUI 가져오기와 같은 선택)
+            let modes = [t!("add.mode_link"), t!("add.mode_move")];
+            move_folder = from.is_some() && ctx.ask.select(&t!("add.ask_mode"), &modes, 0)? == Some(1);
         }
     }
 
@@ -504,13 +508,22 @@ async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
     }
     if let Some(dir) = &from {
         body["migration_source"] = json!(dir);
+        if move_folder {
+            body["migration_mode"] = json!("move");
+        }
     }
     if !ext_data.is_empty() {
         body["extension_data"] = Value::Object(ext_data);
     }
-    let created = ctx.api.create_instance(body).await?;
+    let created = ctx.api.create_instance(body).await.map_err(move_refusal)?;
     let id = s(&created, "id").to_string();
     super::print_trust_warnings(ctx, &created);
+    // 가져온 폴더에서 미리 알릴 것 (데몬 `notices`: 쓸 수 없는 폴더, 밖에서 켜 둔 서버)
+    for code in created.get("notices").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str) {
+        if let Some(text) = crate::i18n::try_t(&format!("add.notice.{code}")) {
+            ctx.out.warn(&text);
+        }
+    }
     // 7-0) 약관 (예: 게임 EULA). 설치를 기다리기 전에 묻는다
     offer_agreements(ctx, &id, &name, &a.accept).await;
 
@@ -705,18 +718,45 @@ async fn follow_provision(ctx: &Ctx, name: &str, created: bool) -> Result<Value>
     }
 }
 
-async fn remove(ctx: &Ctx, query: Option<&str>) -> Result<()> {
+async fn remove(ctx: &Ctx, query: Option<&str>, keep_settings: bool) -> Result<()> {
     let sv = resolve::server_exact(ctx, query).await?;
-    let running = status_of(&runtime(ctx, &sv).await?) == "running";
-    let question = if running {
-        t!("remove.confirm_running", name = sv.name)
-    } else {
-        t!("remove.confirm", name = sv.name)
-    };
-    ctx.ask.ensure(&question)?;
-    let r = ctx.api.delete_instance(&sv.id).await?;
-    ctx.out.done(&t!("remove.done", name = sv.name), &r);
+    let rt = runtime(ctx, &sv).await?;
+    let running = status_of(&rt) == "running";
+    ctx.ask.ensure(&remove_question(&sv.name, &rt, running, keep_settings))?;
+    let r = ctx.api.delete_instance(&sv.id, keep_settings).await?;
+    let (done, failed) = removed_message(&sv.name, &r);
+    if let Some(failed) = failed {
+        ctx.out.warn(&failed);
+    }
+    ctx.out.done(&done, &r);
     Ok(())
+}
+
+/// 지우기 전에 묻는 말. 가져온 서버(`linked_folder`)는 연결만 끊고 폴더는 남긴다고, 보관한 원래 설정이 있으면
+/// 그것으로 되돌린다고(`--keep-settings`로 둘 수 있다) 알린다 (GUI 삭제 확인과 같은 내용)
+fn remove_question(name: &str, rt: &Value, running: bool, keep_settings: bool) -> String {
+    let base = if running { t!("remove.confirm_running", name = name) } else { t!("remove.confirm", name = name) };
+    let folder = s(rt, "linked_folder");
+    let mut q = base;
+    if !folder.is_empty() {
+        q = format!("{} {}", q, t!("remove.unlink_folder_kept", path = folder));
+    }
+    // 옮겨 온 서버도 서버 폴더 밖(데이터 폴더)에 남는 설정은 되돌린다
+    if rt.get("restorable_settings").and_then(Value::as_bool) == Some(true) {
+        q.push(' ');
+        q.push_str(&if keep_settings { t!("remove.unlink_keeps_settings") } else { t!("remove.unlink_restores") });
+    }
+    q
+}
+
+/// 지운 뒤 알릴 말과, 가져오기 전 설정으로 되돌리지 못한 파일이 있으면 그 경고
+fn removed_message(name: &str, r: &Value) -> (String, Option<String>) {
+    let folder = s(r, "linked_folder");
+    let failed = r.get("settings_restore_failed").and_then(Value::as_u64).filter(|n| *n > 0).map(|n| t!("remove.unlink_restore_failed", n = n));
+    if folder.is_empty() {
+        return (t!("remove.done", name = name), failed);
+    }
+    (t!("remove.unlinked", name = name, path = folder), failed)
 }
 
 // ── 시작·정지 ──
@@ -1008,6 +1048,20 @@ fn tell_moved_ports(ctx: &Ctx, res: &Result<Value>) {
     }
     if let Some(line) = body.and_then(module_update_line) {
         ctx.out.note(&line);
+    }
+}
+
+/// 가져오기 "옮기기"를 데몬이 거절했으면(다른 드라이브, 켜진 서버 등) 데몬의 영어 문구 대신 현지화된 까닭과 할 일로 바꾼다
+fn move_refusal(e: anyhow::Error) -> anyhow::Error {
+    match api_code(&e) {
+        Some(code @ ("move_cross_volume" | "move_in_use" | "move_failed" | "source_missing" | "destination_exists")) => {
+            let body = json!({});
+            match crate::error::api_hint(code, &body) {
+                Some(text) => CliError::Failed(text).into(),
+                None => e,
+            }
+        }
+        _ => e,
     }
 }
 
@@ -2045,6 +2099,38 @@ mod tests {
         let refused = crate::client::check(200, json!({ "success": false, "error_code": "graceful_stop_unavailable" })).unwrap_err();
         let e = agree_to_unsaved_stop(&ctx, &sv, refused, "stop").unwrap_err();
         assert!(cannot_save_and_exit(&e), "the daemon's code is kept: {e}");
+    }
+
+    /// 가져오기 "옮기기"가 거절되면 데몬 영어 문구 대신 현지화된 까닭과 할 일 한 줄만 보인다
+    #[test]
+    fn a_refused_move_reads_in_the_users_language() {
+        crate::i18n::init("ko");
+        let refused = crate::client::check(409, json!({ "success": false, "error_code": "move_cross_volume", "error": "Could not move the server folder into saba-chan (move_cross_volume)" })).unwrap_err();
+        let shown = move_refusal(refused).to_string();
+        assert_eq!(shown, t!("err.hint.move_cross_volume"));
+        let other = crate::client::check(409, json!({ "success": false, "error_code": "name_taken", "error": "x" })).unwrap_err();
+        assert_eq!(move_refusal(other).to_string(), "x");
+    }
+
+    /// 가져온 서버는 지우기 전에 서버 폴더가 남는다는 것과 설정을 되돌리는지를 알리고, 끝나면 폴더 자리를 알린다
+    #[test]
+    fn removing_an_imported_server_says_the_folder_stays_and_what_happens_to_its_settings() {
+        crate::i18n::init("ko");
+        let rt = json!({ "linked_folder": "D:\\pal", "restorable_settings": true });
+        let q = remove_question("pal", &rt, false, false);
+        assert!(q.contains("D:\\pal") && q.contains("--keep-settings"), "{q}");
+        assert!(!remove_question("pal", &rt, false, true).contains("--keep-settings"));
+        assert_eq!(remove_question("mc", &json!({}), false, false), t!("remove.confirm", name = "mc"));
+
+        let (done, failed) = removed_message("pal", &json!({ "success": true, "linked_folder": "D:\\pal", "settings_restore_failed": 2 }));
+        assert!(done.contains("D:\\pal"));
+        assert!(failed.is_some_and(|f| f.contains('2')));
+        assert_eq!(removed_message("mc", &json!({ "success": true })), (t!("remove.done", name = "mc"), None));
+
+        // 옮겨 온 서버도 밖에 남는 설정은 되돌린다고 알린다
+        let moved = json!({ "restorable_settings": true });
+        assert!(remove_question("mv", &moved, false, false).contains("--keep-settings"));
+        assert!(removed_message("mv", &json!({ "success": true, "settings_restore_failed": 1 })).1.is_some());
     }
 
     /// 끝난 설치 카드를 GUI가 다음 폴링 전에 닫으면 항목은 사라져도 서버는 설치 중이 아닌 채로 남는다 (L65)

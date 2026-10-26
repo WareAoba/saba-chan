@@ -151,13 +151,13 @@
     "new_server_title": "새 서버 만들기",
     "new_server_desc": "게임을 고르면 서버 파일을 내려받아 새로 만듭니다.",
     "migrate_title": "기존 서버 가져오기",
-    "migrate_desc": "쓰던 게임 서버 폴더를 그대로 연결합니다. 파일은 원래 자리에 남아요.",
+    "migrate_desc": "쓰던 게임 서버 폴더를 가져옵니다. 그 자리에 연결하거나 사바쨩으로 옮길 수 있어요.",
     "migration_coming_soon": "가져오기 단계는 아직 준비 중입니다.",
     "no_modules_hint": "먼저 모듈을 추가하세요."
   },
   "migration_modal": {
     "title": "기존 서버 가져오기",
-    "description": "쓰던 게임 서버 폴더를 사바쨩에 연결합니다",
+    "description": "쓰던 게임 서버 폴더를 사바쨩으로 가져옵니다",
     "step_select": "선택",
     "step_review": "검토",
     "step_result": "완료",
@@ -199,7 +199,11 @@
     "category_important": "중요",
     "close": "닫기",
     "done": "완료",
-    "new_server": "서버 목록으로"
+    "new_server": "서버 목록으로",
+    "mode_label": "서버 폴더",
+    "mode_link": "그 자리에 연결",
+    "mode_move": "사바쨩으로 옮기기",
+    "migrate_hint_move": "선택한 폴더를 사바쨩 인스턴스 폴더 안으로 옮겨요. 같은 드라이브 안에서만 옮길 수 있어요. 게임이 서버 폴더 밖에 두는 데이터(예: 좀보이드 저장 폴더)는 옮기지 않아요. 옮긴 서버를 지우면 서버 파일도 함께 지워져요."
   },
   "command_modal": {
     "title": "명령어 실행 - {{name}}",
@@ -240,6 +244,7 @@
   "server_actions": {
     "delete_confirm_title": "서버 삭제",
     "delete_confirm_message": "서버 '{{name}}'을(를) 삭제하시겠습니까?",
+    "delete_detail": "서버 파일도 함께 지워져요.",
     "server_added": "인스턴스 '{{name}}'을(를) 추가했습니다",
     "server_detected": "감지한 서버: {{type}} {{version}} · 플러그인·모드 {{count}}개{{names}}",
     "server_provisioned": "서버 '{{name}}' 설치를 마쳤습니다",
@@ -274,7 +279,20 @@
     "click_to_stop": "정지하려면 클릭",
     "click_to_start": "시작하려면 클릭",
     "delete_still_running": "'{{name}}' 서버를 아직 지우고 있어요. 잠시 뒤 서버 목록을 다시 확인해 주세요.",
-    "delete_unconfirmed": "'{{name}}'이(가) 삭제됐는지 확인하지 못했어요. 데몬이 응답하면 서버 목록을 다시 확인해 주세요."
+    "delete_unconfirmed": "'{{name}}'이(가) 삭제됐는지 확인하지 못했어요. 데몬이 응답하면 서버 목록을 다시 확인해 주세요.",
+    "unlink_confirm_title": "가져온 서버 빼기",
+    "unlink_confirm_message": "'{{name}}'을(를) 사바쨩에서 뺄까요?",
+    "unlink_detail": "서버 폴더({{path}})의 파일은 그대로 남아요. 사바쨩의 기록·로그·백업만 지워요.",
+    "unlink_detail_restorable": "서버 폴더({{path}})의 파일은 그대로 남아요. 사바쨩의 기록·로그·백업은 지우고, 게임 설정 파일은 가져오기 전으로 되돌릴 수 있어요.",
+    "unlink_restore": "설정 되돌리고 빼기",
+    "unlink_keep_settings": "지금 설정 두고 빼기",
+    "server_unlinked": "'{{name}}'을(를) 사바쨩에서 뺐어요. 서버 파일은 {{path}}에 남아 있어요.",
+    "unlink_restore_failed": "게임 설정 파일 {{n}}개는 되돌리지 못했어요.",
+    "migrate_notice_folder_not_writable": "이 폴더에 쓸 수 없어요. 설정 저장과 서버 실행이 실패할 수 있으니 쓰기 권한이 있는 곳으로 옮겨 주세요.",
+    "migrate_notice_server_running": "이 폴더의 서버가 사바쨩 밖에서 켜져 있어요. 끄고 사바쨩에서 다시 켜 주세요.",
+    "delete_detail_restorable": "서버 파일은 함께 지워져요. 서버 폴더 밖(게임 데이터 폴더)에 남는 게임 설정 파일은 가져오기 전으로 되돌릴 수 있어요.",
+    "delete_restore": "설정 되돌리고 지우기",
+    "delete_keep_settings": "지금 설정 두고 지우기"
   },
   "server_settings": {
     "title": "설정",
@@ -420,7 +438,10 @@
     "preflight_failed_title": "'{{name}}' 서버를 켜기 전 점검에서 문제가 있어요",
     "working_dir_in_use": "'{{instance}}' 서버가 이미 이 폴더를 쓰고 있어요. 한 폴더에 서버를 둘 만들면 월드와 설정을 서로 덮어씁니다. 다른 폴더를 골라 주세요.",
     "no_command_path": "이 서버는 명령을 보낼 콘솔이 없어요. 사바쨩에서 서버를 켜야 명령을 보낼 수 있어요.",
-    "stdin_unconfirmed": "명령을 보냈는지 확인하지 못했어요. 다시 보내기 전에 콘솔을 확인해 주세요."
+    "stdin_unconfirmed": "명령을 보냈는지 확인하지 못했어요. 다시 보내기 전에 콘솔을 확인해 주세요.",
+    "move_cross_volume": "다른 드라이브에 있는 폴더는 옮길 수 없어요. '그 자리에 연결'로 가져와 주세요.",
+    "move_in_use": "폴더를 옮기지 못했어요. 이 폴더의 서버를 끄고, 폴더를 연 프로그램을 닫은 뒤 다시 시도해 주세요.",
+    "move_failed": "폴더를 옮기지 못했어요. '그 자리에 연결'로 가져와 주세요."
   },
   "settings": {
     "save_failed_title": "설정 저장 실패",

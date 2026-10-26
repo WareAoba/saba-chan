@@ -199,7 +199,11 @@
     "category_important": "Wichtig",
     "close": "Schließen",
     "done": "Fertig",
-    "new_server": "Zurück zur Serverliste"
+    "new_server": "Zurück zur Serverliste",
+    "mode_label": "Serverordner",
+    "mode_link": "Am Ort lassen",
+    "mode_move": "In saba-chan verschieben",
+    "migrate_hint_move": "Der gewählte Ordner wird in den Instanzordner von saba-chan verschoben. Das geht nur auf demselben Laufwerk. Daten, die das Spiel außerhalb des Serverordners ablegt (z. B. der Zomboid-Speicherordner), werden nicht verschoben. Wird ein verschobener Server gelöscht, werden auch seine Dateien gelöscht."
   },
   "command_modal": {
     "title": "Befehl ausführen - {{name}}",
@@ -240,6 +244,7 @@
   "server_actions": {
     "delete_confirm_title": "Server löschen",
     "delete_confirm_message": "Sind Sie sicher, dass Sie den Server '{{name}}' löschen möchten?",
+    "delete_detail": "Die Serverdateien werden ebenfalls gelöscht.",
     "server_added": "Instanz '{{name}}' hinzugefügt",
     "server_detected": "Erkannter Server: {{type}} {{version}} · {{count}} Plugins/Mods{{names}}",
     "server_provisioned": "Server '{{name}}' ist installiert",
@@ -274,7 +279,20 @@
     "click_to_stop": "Zum Stoppen klicken",
     "click_to_start": "Zum Starten klicken",
     "delete_still_running": "'{{name}}' wird noch gelöscht. Prüfen Sie die Serverliste gleich noch einmal.",
-    "delete_unconfirmed": "Es konnte nicht bestätigt werden, ob '{{name}}' gelöscht wurde. Prüfen Sie die Serverliste, sobald der Daemon antwortet."
+    "delete_unconfirmed": "Es konnte nicht bestätigt werden, ob '{{name}}' gelöscht wurde. Prüfen Sie die Serverliste, sobald der Daemon antwortet.",
+    "unlink_confirm_title": "Importierten Server entfernen",
+    "unlink_confirm_message": "'{{name}}' aus saba-chan entfernen?",
+    "unlink_detail": "Die Dateien im Serverordner ({{path}}) bleiben erhalten. Nur die Einträge, Protokolle und Sicherungen von saba-chan werden gelöscht.",
+    "unlink_detail_restorable": "Die Dateien im Serverordner ({{path}}) bleiben erhalten. Die Einträge, Protokolle und Sicherungen von saba-chan werden gelöscht, und die Spieleinstellungsdateien können auf den Stand vor dem Import zurückgesetzt werden.",
+    "unlink_restore": "Einstellungen zurücksetzen und entfernen",
+    "unlink_keep_settings": "Aktuelle Einstellungen behalten und entfernen",
+    "server_unlinked": "'{{name}}' wurde aus saba-chan entfernt. Die Serverdateien liegen weiterhin in {{path}}.",
+    "unlink_restore_failed": "{{n}} Spieleinstellungsdatei(en) konnten nicht zurückgesetzt werden.",
+    "migrate_notice_folder_not_writable": "saba-chan kann in diesen Ordner nicht schreiben. Das Speichern von Einstellungen und der Serverstart können fehlschlagen. Verschiebe ihn an einen beschreibbaren Ort.",
+    "migrate_notice_server_running": "Der Server in diesem Ordner läuft außerhalb von saba-chan. Beende ihn und starte ihn in saba-chan neu.",
+    "delete_detail_restorable": "Die Serverdateien werden ebenfalls gelöscht. Spieleinstellungsdateien außerhalb des Serverordners (im Datenordner des Spiels) können auf den Stand vor dem Import zurückgesetzt werden.",
+    "delete_restore": "Einstellungen zurücksetzen und löschen",
+    "delete_keep_settings": "Aktuelle Einstellungen behalten und löschen"
   },
   "server_settings": {
     "title": "Einstellungen",
@@ -420,7 +438,10 @@
     "preflight_failed_title": "Die Startprüfung für '{{name}}' hat ein Problem gefunden",
     "working_dir_in_use": "Der Server '{{instance}}' verwendet diesen Ordner bereits. Zwei Server in einem Ordner überschreiben gegenseitig Welt und Einstellungen. Wähle einen anderen Ordner.",
     "no_command_path": "Dieser Server hat keine Konsole für Befehle. Starte ihn über Saba-chan, um Befehle zu senden.",
-    "stdin_unconfirmed": "Es konnte nicht bestätigt werden, dass der Befehl gesendet wurde. Prüfen Sie die Konsole, bevor Sie es erneut versuchen."
+    "stdin_unconfirmed": "Es konnte nicht bestätigt werden, dass der Befehl gesendet wurde. Prüfen Sie die Konsole, bevor Sie es erneut versuchen.",
+    "move_cross_volume": "Ein Ordner auf einem anderen Laufwerk kann nicht verschoben werden. Importiere ihn stattdessen mit „Am Ort lassen“.",
+    "move_in_use": "Der Ordner konnte nicht verschoben werden. Stoppe den Server in diesem Ordner, schließe Programme, die ihn geöffnet haben, und versuche es erneut.",
+    "move_failed": "Der Ordner konnte nicht verschoben werden. Importiere ihn stattdessen mit „Am Ort lassen“."
   },
   "settings": {
     "save_failed_title": "Einstellungsspeicherung fehlgeschlagen",

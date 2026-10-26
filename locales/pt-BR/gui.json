@@ -199,7 +199,11 @@
     "category_important": "Importante",
     "close": "Fechar",
     "done": "Feito",
-    "new_server": "Ir para Lista de Servidores"
+    "new_server": "Ir para Lista de Servidores",
+    "mode_label": "Pasta do servidor",
+    "mode_link": "Deixar onde está",
+    "mode_move": "Mover para o saba-chan",
+    "migrate_hint_move": "A pasta escolhida é movida para a pasta da instância do saba-chan. Isso só funciona na mesma unidade. Dados que o jogo guarda fora da pasta do servidor (como a pasta de saves do Zomboid) não são movidos. Excluir um servidor movido também exclui os arquivos dele."
   },
   "command_modal": {
     "title": "Executar Comando - {{name}}",
@@ -240,6 +244,7 @@
   "server_actions": {
     "delete_confirm_title": "Deletar Servidor",
     "delete_confirm_message": "Tem certeza de que deseja deletar o servidor '{{name}}'?",
+    "delete_detail": "Os arquivos do servidor também são excluídos.",
     "server_added": "A instância '{{name}}' foi adicionada",
     "server_detected": "Servidor detectado: {{type}} {{version}} · {{count}} plugins/mods{{names}}",
     "server_provisioned": "O servidor '{{name}}' está instalado",
@@ -274,7 +279,20 @@
     "click_to_stop": "Clique para parar",
     "click_to_start": "Clique para iniciar",
     "delete_still_running": "'{{name}}' ainda está sendo excluído. Verifique a lista de servidores novamente em instantes.",
-    "delete_unconfirmed": "Não foi possível confirmar se '{{name}}' foi excluído. Verifique a lista de servidores quando o daemon responder."
+    "delete_unconfirmed": "Não foi possível confirmar se '{{name}}' foi excluído. Verifique a lista de servidores quando o daemon responder.",
+    "unlink_confirm_title": "Remover servidor importado",
+    "unlink_confirm_message": "Remover '{{name}}' do saba-chan?",
+    "unlink_detail": "Os arquivos da pasta do servidor ({{path}}) continuam onde estão. Só os registros, logs e backups do saba-chan são apagados.",
+    "unlink_detail_restorable": "Os arquivos da pasta do servidor ({{path}}) continuam onde estão. Os registros, logs e backups do saba-chan são apagados, e os arquivos de configuração do jogo podem voltar a como estavam antes da importação.",
+    "unlink_restore": "Restaurar configurações e remover",
+    "unlink_keep_settings": "Manter configurações atuais e remover",
+    "server_unlinked": "'{{name}}' foi removido do saba-chan. Os arquivos do servidor continuam em {{path}}.",
+    "unlink_restore_failed": "{{n}} arquivo(s) de configuração do jogo não puderam ser restaurados.",
+    "migrate_notice_folder_not_writable": "O saba-chan não consegue gravar nesta pasta. Salvar configurações e iniciar o servidor podem falhar; mova-a para um local com permissão de escrita.",
+    "migrate_notice_server_running": "O servidor desta pasta está rodando fora do saba-chan. Pare-o e inicie de novo pelo saba-chan.",
+    "delete_detail_restorable": "Os arquivos do servidor também são excluídos. Os arquivos de configuração do jogo guardados fora da pasta do servidor (na pasta de dados do jogo) podem voltar a como estavam antes da importação.",
+    "delete_restore": "Restaurar configurações e excluir",
+    "delete_keep_settings": "Manter configurações atuais e excluir"
   },
   "server_settings": {
     "title": "Configurações",
@@ -420,7 +438,10 @@
     "preflight_failed_title": "A verificação antes de iniciar '{{name}}' encontrou um problema",
     "working_dir_in_use": "O servidor '{{instance}}' já usa esta pasta. Dois servidores na mesma pasta sobrescrevem o mundo e as configurações um do outro. Escolha outra pasta.",
     "no_command_path": "Este servidor não tem console para enviar comandos. Inicie-o pela Saba-chan para enviar comandos.",
-    "stdin_unconfirmed": "Não foi possível confirmar se o comando foi enviado. Verifique o console antes de tentar de novo."
+    "stdin_unconfirmed": "Não foi possível confirmar se o comando foi enviado. Verifique o console antes de tentar de novo.",
+    "move_cross_volume": "Não é possível mover uma pasta de outra unidade. Importe-a com \"Deixar onde está\".",
+    "move_in_use": "Não foi possível mover a pasta. Pare o servidor desta pasta, feche os programas que a estão usando e tente de novo.",
+    "move_failed": "Não foi possível mover a pasta. Importe-a com \"Deixar onde está\"."
   },
   "settings": {
     "save_failed_title": "Falha ao salvar configurações",

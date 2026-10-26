@@ -151,13 +151,13 @@
     "new_server_title": "New Server",
     "new_server_desc": "Pick a game and the server files are downloaded for you.",
     "migrate_title": "Import Existing Server",
-    "migrate_desc": "Link a game server folder you already use. Files stay where they are.",
+    "migrate_desc": "Bring in a game server folder you already use. Link it where it is, or move it into saba-chan.",
     "migration_coming_soon": "The import steps are not ready yet.",
     "no_modules_hint": "Add a module first."
   },
   "migration_modal": {
     "title": "Import Existing Server",
-    "description": "Link a game server folder you already use to saba-chan",
+    "description": "Bring a game server folder you already use into saba-chan",
     "step_select": "Select",
     "step_review": "Review",
     "step_result": "Result",
@@ -199,7 +199,11 @@
     "category_important": "Important",
     "close": "Close",
     "done": "Done",
-    "new_server": "Go to Server List"
+    "new_server": "Go to Server List",
+    "mode_label": "Server folder",
+    "mode_link": "Keep it where it is",
+    "mode_move": "Move into saba-chan",
+    "migrate_hint_move": "The selected folder is moved into the saba-chan instance folder. This only works within the same drive. Data the game keeps outside the server folder (such as the Zomboid save folder) is not moved. Deleting a moved server also deletes its files."
   },
   "command_modal": {
     "title": "Execute Command - {{name}}",
@@ -240,6 +244,7 @@
   "server_actions": {
     "delete_confirm_title": "Delete Server",
     "delete_confirm_message": "Are you sure you want to delete server '{{name}}'?",
+    "delete_detail": "The server files are deleted too.",
     "server_added": "Added instance '{{name}}'",
     "server_detected": "Detected server: {{type}} {{version}} · {{count}} plugins/mods{{names}}",
     "server_provisioned": "Server '{{name}}' is installed",
@@ -274,7 +279,20 @@
     "click_to_stop": "Click to stop",
     "click_to_start": "Click to start",
     "delete_still_running": "'{{name}}' is still being deleted. Check the server list again in a moment.",
-    "delete_unconfirmed": "Couldn't confirm whether '{{name}}' was deleted. Check the server list once the daemon responds."
+    "delete_unconfirmed": "Couldn't confirm whether '{{name}}' was deleted. Check the server list once the daemon responds.",
+    "unlink_confirm_title": "Remove imported server",
+    "unlink_confirm_message": "Remove '{{name}}' from saba-chan?",
+    "unlink_detail": "The files in the server folder ({{path}}) stay where they are. Only saba-chan's records, logs and backups are deleted.",
+    "unlink_detail_restorable": "The files in the server folder ({{path}}) stay where they are. saba-chan's records, logs and backups are deleted, and the game settings files can go back to how they were before the import.",
+    "unlink_restore": "Restore settings and remove",
+    "unlink_keep_settings": "Keep current settings and remove",
+    "server_unlinked": "Removed '{{name}}' from saba-chan. The server files are still in {{path}}.",
+    "unlink_restore_failed": "{{n}} game settings file(s) could not be restored.",
+    "migrate_notice_folder_not_writable": "saba-chan can't write to this folder. Saving settings and starting the server may fail, so move it somewhere you can write to.",
+    "migrate_notice_server_running": "The server in this folder is running outside saba-chan. Stop it and start it again from saba-chan.",
+    "delete_detail_restorable": "The server files are deleted too. Game settings files kept outside the server folder (in the game's data folder) can go back to how they were before the import.",
+    "delete_restore": "Restore settings and delete",
+    "delete_keep_settings": "Keep current settings and delete"
   },
   "server_settings": {
     "title": "Settings",
@@ -420,7 +438,10 @@
     "preflight_failed_title": "The pre-start check for '{{name}}' found a problem",
     "working_dir_in_use": "Server '{{instance}}' already uses this folder. Two servers in one folder overwrite each other's world and settings. Pick another folder.",
     "no_command_path": "This server has no console to send commands to. Start it from Saba-chan to send commands.",
-    "stdin_unconfirmed": "Couldn't confirm the command was sent. Check the console before trying again."
+    "stdin_unconfirmed": "Couldn't confirm the command was sent. Check the console before trying again.",
+    "move_cross_volume": "A folder on another drive can't be moved. Import it with \"Keep it where it is\" instead.",
+    "move_in_use": "The folder could not be moved. Stop the server in this folder, close any program that has it open, and try again.",
+    "move_failed": "The folder could not be moved. Import it with \"Keep it where it is\" instead."
   },
   "settings": {
     "save_failed_title": "Settings save failed",

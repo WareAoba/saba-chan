@@ -112,6 +112,8 @@ async fn server_list(state: &IPCServer, notices: Notices) -> axum::response::Res
         memory_limit_mb: Option<u64>,
         revision: String,
         instance_dir: String,
+        linked_folder: Option<String>,
+        restorable_settings: bool,
         process_patterns: Vec<String>,
         // Native 모드 데이터
         pid: Option<u32>,
@@ -153,6 +155,8 @@ async fn server_list(state: &IPCServer, notices: Notices) -> axum::response::Res
                 memory_limit_mb: instance.memory_limit_mb,
                 revision: instance.settings_revision(),
                 instance_dir: supervisor.instance_store.instance_dir(&instance.id).to_string_lossy().to_string(),
+                linked_folder: crate::instance::migration::linked_folder(instance.working_dir.as_deref(), &supervisor.instance_store.instance_dir(&instance.id)),
+                restorable_settings: crate::instance::migration::saved(&supervisor.instance_store.instance_dir(&instance.id)),
                 process_patterns,
                 managed: supervisor.uses_managed_start(instance),
                 pid,
@@ -250,6 +254,8 @@ async fn server_list(state: &IPCServer, notices: Notices) -> axum::response::Res
                     slots: Default::default(),
                     players: None,
                     unresponsive: None,
+                    linked_folder: instance.linked_folder.clone(),
+                    restorable_settings: instance.restorable_settings,
                 });
                 ext_handled = true;
             }
@@ -306,6 +312,8 @@ async fn server_list(state: &IPCServer, notices: Notices) -> axum::response::Res
             slots: Default::default(),
             players: None,
             unresponsive: None,
+            linked_folder: instance.linked_folder.clone(),
+            restorable_settings: instance.restorable_settings,
         });
     }
 

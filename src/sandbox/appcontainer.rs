@@ -298,7 +298,7 @@ fn same_final_path(final_path: &str, requested: &str) -> bool {
 }
 
 #[cfg(windows)]
-pub use imp::{clear_low_label_of, clear_low_labels, grant, reset, revoke_stale_runtimes, spawn, Contained};
+pub use imp::{clear_low_label_of, clear_low_labels, grant, release, reset, revoke_stale_runtimes, spawn, Contained};
 #[cfg(windows)]
 pub(crate) use imp::check_existing_path;
 
@@ -319,10 +319,10 @@ mod imp {
         TRUSTEE_IS_WELL_KNOWN_GROUP,
     };
     use windows_sys::Win32::Security::{
-        AclSizeInformation, AddMandatoryAce, AllocateAndInitializeSid, EqualSid, GetAce, GetAclInformation, GetLengthSid, GetTokenInformation,
-        InitializeAcl, TokenUser, ACCESS_ALLOWED_ACE, ACE_HEADER, ACL, ACL_REVISION, ACL_SIZE_INFORMATION, CONTAINER_INHERIT_ACE,
-        DACL_SECURITY_INFORMATION, LABEL_SECURITY_INFORMATION, NO_INHERITANCE, OBJECT_INHERIT_ACE, OWNER_SECURITY_INFORMATION,
-        PSECURITY_DESCRIPTOR, PSID, SECURITY_ATTRIBUTES, SECURITY_CAPABILITIES, SECURITY_CREATOR_SID_AUTHORITY, SECURITY_MANDATORY_LABEL_AUTHORITY,
+        AclSizeInformation, AddAce, AddMandatoryAce, AllocateAndInitializeSid, EqualSid, GetAce, GetAclInformation, GetLengthSid, GetTokenInformation,
+        InitializeAcl, InitializeSecurityDescriptor, SetKernelObjectSecurity, SetSecurityDescriptorSacl, TokenUser, ACCESS_ALLOWED_ACE, ACE_HEADER, ACL, ACL_REVISION, ACL_SIZE_INFORMATION, CONTAINER_INHERIT_ACE,
+        DACL_SECURITY_INFORMATION, INHERITED_ACE, LABEL_SECURITY_INFORMATION, NO_INHERITANCE, OBJECT_INHERIT_ACE, OWNER_SECURITY_INFORMATION,
+        PSECURITY_DESCRIPTOR, PSID, SECURITY_ATTRIBUTES, SECURITY_CAPABILITIES, SECURITY_DESCRIPTOR, SECURITY_CREATOR_SID_AUTHORITY, SECURITY_MANDATORY_LABEL_AUTHORITY,
         SID_AND_ATTRIBUTES, SID_IDENTIFIER_AUTHORITY, SUB_CONTAINERS_AND_OBJECTS_INHERIT, SYSTEM_MANDATORY_LABEL_ACE, TOKEN_QUERY, TOKEN_USER,
     };
     use windows_sys::Win32::Storage::FileSystem::{
@@ -338,7 +338,7 @@ mod imp {
     use windows_sys::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryW};
     use windows_sys::Win32::System::Pipes::CreatePipe;
     use windows_sys::Win32::System::SystemServices::{
-        ACCESS_ALLOWED_ACE_TYPE, SECURITY_CREATOR_OWNER_RIGHTS_RID, SECURITY_MANDATORY_LOW_RID, SECURITY_MANDATORY_MEDIUM_RID, SE_GROUP_ENABLED,
+        ACCESS_ALLOWED_ACE_TYPE, SECURITY_CREATOR_OWNER_RIGHTS_RID, SECURITY_DESCRIPTOR_REVISION, SECURITY_MANDATORY_LOW_RID, SECURITY_MANDATORY_MEDIUM_RID, SE_GROUP_ENABLED,
         SYSTEM_MANDATORY_LABEL_ACE_TYPE, SYSTEM_MANDATORY_LABEL_NO_WRITE_UP,
     };
     use windows_sys::Win32::System::Threading::{
@@ -805,13 +805,151 @@ mod imp {
                 return Err(format!("write label of {}: {}", path.display(), std::io::Error::from_raw_os_error(rc as i32)));
             }
         }
+        // 붙이기 전부터 있던 파일(가져온 서버의 설정 파일 등)에도 상속 표시를 맞춘다: 없으면 격리 실행이 고치지 못한다
+        let failed = sync_inherited_low(path, true);
+        if !failed.is_empty() {
+            tracing::warn!("[Sandbox] {} existing item(s) under {} did not get the low label (first: {})", failed.len(), path.display(),
+                failed.first().map(|(p, e)| format!("{}: {e}", p.display())).unwrap_or_default());
+        }
+        Ok(())
+    }
+
+    /// 폴더에 붙이거나 뗀 낮은 수준 표시를 그 전부터 있던 하위 항목에 맞춘다 (`low`: 상속 표시를 둘지). 고치지 못한 항목
+    /// SetSecurityInfo는 DACL과 달리 표시(레이블)를 이미 있는 하위 항목에 퍼뜨리지 않는다(PC 실측): 붙인 뒤에도 원래 파일은
+    /// 중간 수준이라 격리 실행이 고치지 못하고, 뗀 뒤에도 하위에 상속 표시가 남는다. 각 항목에 직접 붙은 표시(실행 파일의
+    /// 중간 수준 등)는 그대로 두고 상속 표시만 넣거나 뺀다. 링크·정션은 따라가지도 고치지도 않는다
+    fn sync_inherited_low(dir: &Path, low: bool) -> Vec<(PathBuf, String)> {
+        use std::os::windows::fs::MetadataExt;
+        let gone = |p: &Path| matches!(std::fs::symlink_metadata(p), Err(e) if e.kind() == std::io::ErrorKind::NotFound);
+        let mut failed = Vec::new();
+        let mut pending = vec![dir.to_path_buf()];
+        while let Some(path) = pending.pop() {
+            let entries = match std::fs::read_dir(&path) {
+                Ok(entries) => entries,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(e) => {
+                    failed.push((path, format!("list: {e}")));
+                    continue;
+                }
+            };
+            for entry in entries.flatten() {
+                let item = entry.path();
+                let attributes = entry.metadata().map(|m| m.file_attributes()).unwrap_or(0);
+                let is_dir = match entry.file_type() {
+                    Ok(t) if t.is_symlink() || attributes & FILE_ATTRIBUTE_REPARSE_POINT != 0 && reparse_refusal(&item, attributes).is_some() => continue,
+                    Ok(t) => t.is_dir(),
+                    Err(_) if gone(&item) => continue,
+                    Err(e) => {
+                        failed.push((item, format!("read the type: {e}")));
+                        continue;
+                    }
+                };
+                match set_inherited_low(&item, is_dir, low) {
+                    Ok(()) => {}
+                    Err(_) if gone(&item) => continue,
+                    Err(e) => failed.push((item.clone(), e)),
+                }
+                if is_dir {
+                    pending.push(item);
+                }
+            }
+        }
+        failed
+    }
+
+    /// 한 항목의 상속받은 낮은 수준 표시를 넣거나(`low`) 뺀다. 다른 표시 ACE는 그대로 둔다. 이미 맞으면 쓰지 않는다.
+    /// SetKernelObjectSecurity는 상속 계산 없이 준 그대로 쓴다 (SetSecurityInfo는 상속 표시를 지운다)
+    fn set_inherited_low(path: &Path, is_dir: bool, low: bool) -> Result<(), String> {
+        use std::os::windows::io::AsRawHandle;
+        let low_sid = low_integrity()?;
+        let handle = open_for_relabel(path)?;
+        let h = handle.as_raw_handle() as HANDLE;
+        unsafe {
+            let mut sacl: PACL = null_mut();
+            let mut sd: PSECURITY_DESCRIPTOR = null_mut();
+            let rc = GetSecurityInfo(h, SE_FILE_OBJECT, LABEL_SECURITY_INFORMATION, null_mut(), null_mut(), null_mut(), &mut sacl, &mut sd);
+            if rc != 0 {
+                return Err(format!("read label of {}: {}", path.display(), std::io::Error::from_raw_os_error(rc as i32)));
+            }
+            // 남길 ACE(상속받은 낮은 수준 표시 말고 전부)의 원래 바이트
+            let mut keep: Vec<Vec<u8>> = Vec::new();
+            let mut has_inherited_low = false;
+            let mut info: ACL_SIZE_INFORMATION = std::mem::zeroed();
+            if !sacl.is_null()
+                && GetAclInformation(sacl, &mut info as *mut _ as *mut c_void, std::mem::size_of::<ACL_SIZE_INFORMATION>() as DWORD, AclSizeInformation) != 0
+            {
+                for i in 0..info.AceCount {
+                    let mut ace: *mut c_void = null_mut();
+                    if GetAce(sacl, i, &mut ace) == 0 || ace.is_null() {
+                        continue;
+                    }
+                    let header = &*(ace as *const ACE_HEADER);
+                    let label = &*(ace as *const SYSTEM_MANDATORY_LABEL_ACE);
+                    let inherited_low = header.AceType == SYSTEM_MANDATORY_LABEL_ACE_TYPE as u8
+                        && DWORD::from(header.AceFlags) & INHERITED_ACE != 0
+                        && EqualSid(&label.SidStart as *const DWORD as PSID, low_sid) != 0;
+                    if inherited_low {
+                        has_inherited_low = true;
+                    } else {
+                        keep.push(std::slice::from_raw_parts(ace as *const u8, usize::from(header.AceSize)).to_vec());
+                    }
+                }
+            }
+            LocalFree(sd);
+            if has_inherited_low == low {
+                return Ok(());
+            }
+            // ACL 머리 + 남길 ACE + 새 표시 ACE(머리·마스크 8바이트 + SID). 8바이트 정렬
+            let label_size = 8 + GetLengthSid(low_sid) as usize;
+            let size = std::mem::size_of::<ACL>() + keep.iter().map(Vec::len).sum::<usize>() + label_size;
+            let mut buf = vec![0u64; size.div_ceil(8)];
+            let acl = buf.as_mut_ptr() as *mut ACL;
+            if InitializeAcl(acl, (buf.len() * 8) as DWORD, DWORD::from(ACL_REVISION)) == 0 {
+                return Err(last_error("InitializeAcl"));
+            }
+            for ace in &keep {
+                if AddAce(acl, DWORD::from(ACL_REVISION), u32::MAX, ace.as_ptr() as *const c_void, ace.len() as DWORD) == 0 {
+                    return Err(last_error("AddAce"));
+                }
+            }
+            if low {
+                // 위 폴더의 (OI)(CI) 표시를 물려받은 모양: 폴더는 (OI)(CI)(I), 파일은 (I)
+                let flags = INHERITED_ACE | if is_dir { (OBJECT_INHERIT_ACE | CONTAINER_INHERIT_ACE) as DWORD } else { 0 };
+                if AddMandatoryAce(acl, DWORD::from(ACL_REVISION), flags, SYSTEM_MANDATORY_LABEL_NO_WRITE_UP, low_sid) == 0 {
+                    return Err(last_error("AddMandatoryAce"));
+                }
+            }
+            let mut desc: SECURITY_DESCRIPTOR = std::mem::zeroed();
+            let desc_ptr = &mut desc as *mut SECURITY_DESCRIPTOR as PSECURITY_DESCRIPTOR;
+            if InitializeSecurityDescriptor(desc_ptr, SECURITY_DESCRIPTOR_REVISION) == 0 || SetSecurityDescriptorSacl(desc_ptr, TRUE, acl, FALSE) == 0 {
+                return Err(last_error("build the label"));
+            }
+            if SetKernelObjectSecurity(h, LABEL_SECURITY_INFORMATION, desc_ptr) == 0 {
+                return Err(last_error(&format!("write label of {}", path.display())));
+            }
+        }
         Ok(())
     }
 
     /// 경로에 걸린 낮은 수준 표시: `None` 없음(또는 앞선 다른 수준 표시), `Some(true)` 위 폴더에서 상속받은 것, `Some(false)` 직접 붙은 것
     fn low_label(path: &Path) -> Result<Option<bool>, String> {
-        use std::os::windows::io::AsRawHandle;
         let low = low_integrity()?;
+        Ok(first_label(path, |sid, flags, _| unsafe { EqualSid(sid, low) != 0 }.then_some(flags & super::ACE_INHERITED != 0))?.flatten())
+    }
+
+    /// 이 파일에 직접 붙은 중간 수준 표시(`label_medium`이 붙인 모양)가 그 경로의 수준인가
+    fn own_medium_label(path: &Path) -> Result<bool, String> {
+        let medium = medium_integrity()?;
+        Ok(first_label(path, |sid, flags, mask| {
+            let same = unsafe { EqualSid(sid, medium) != 0 };
+            same && flags & super::ACE_INHERITED == 0 && mask == SYSTEM_MANDATORY_LABEL_NO_WRITE_UP
+        })?
+        .unwrap_or(false))
+    }
+
+    /// 경로의 처음 나오는 표시 ACE(그 경로의 수준. 직접 붙인 표시가 상속받은 표시보다 앞에 온다)를 `f(SID, 플래그, 마스크)`로 본다
+    fn first_label<T>(path: &Path, f: impl FnOnce(PSID, u8, u32) -> T) -> Result<Option<T>, String> {
+        use std::os::windows::io::AsRawHandle;
         unsafe {
             let read = open_checked(path, 0)?;
             let mut sacl: PACL = null_mut();
@@ -832,11 +970,8 @@ mod imp {
                     }
                     let header = &*(ace as *const ACE_HEADER);
                     let label = &*(ace as *const SYSTEM_MANDATORY_LABEL_ACE);
-                    // 처음 나오는 표시가 그 경로의 수준이다 (직접 붙인 표시가 상속받은 표시보다 앞에 온다)
                     if header.AceType == SYSTEM_MANDATORY_LABEL_ACE_TYPE as u8 {
-                        if EqualSid(&label.SidStart as *const DWORD as PSID, low) != 0 {
-                            found = Some(header.AceFlags & super::ACE_INHERITED != 0);
-                        }
+                        found = Some(f(&label.SidStart as *const DWORD as PSID, header.AceFlags, label.Mask));
                         break;
                     }
                 }
@@ -855,6 +990,17 @@ mod imp {
     /// 볼륨이 보안 정보를 두지 않으면(FAT 등) 표시가 있을 수 없으므로 아무것도 하지 않는다
     pub fn clear_low_labels(dir: &Path) -> Result<usize, Vec<(PathBuf, String)>> {
         let _guard = acl_lock();
+        walk_executables(dir, clear_one)
+    }
+
+    /// 인스턴스를 지우며 폴더의 낮은 수준 표시를 뗀 뒤: 서버를 띄우려고 실행 파일에 직접 붙인 중간 수준 표시(`clear_low_labels`)도
+    /// 뗀다. 위 폴더에 표시가 없으면 중간 수준이 기본이라 할 일은 같고, 흔적만 남는다. 뗀 파일 수
+    fn drop_medium_labels(dir: &Path) -> Result<usize, Vec<(PathBuf, String)>> {
+        walk_executables(dir, unlabel_medium_one)
+    }
+
+    /// `dir`과 그 아래(링크는 따라가지 않는다)의 실행 파일마다 `visit(파일, 센 수, 실패)`. 볼륨이 보안 정보를 두지 않으면 0
+    fn walk_executables(dir: &Path, mut visit: impl FnMut(&Path, &mut usize, &mut Vec<(PathBuf, String)>)) -> Result<usize, Vec<(PathBuf, String)>> {
         // 실제 경로(`\\?\` 긴 이름)에서 시작한다: 짧은 이름(8.3)이 섞인 경로는 열 때의 경로 확인과 맞지 않는다
         let dir = std::fs::canonicalize(dir).map_err(|e| vec![(dir.to_path_buf(), format!("resolve: {e}"))])?;
         match persistent_acls(&dir) {
@@ -879,7 +1025,7 @@ mod imp {
                             Ok(t) if t.is_symlink() => {}
                             Ok(_) if reparse_refusal(&entry.path(), attributes).map(|e| failed.push((entry.path(), e))).is_some() => {}
                             Ok(t) if t.is_dir() => pending.push(entry.path()),
-                            Ok(_) if is_executable(&entry.path()) => clear_one(&entry.path(), &mut cleared, &mut failed),
+                            Ok(_) if is_executable(&entry.path()) => visit(&entry.path(), &mut cleared, &mut failed),
                             Ok(_) => {}
                             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
                             Err(e) => failed.push((entry.path(), format!("read the type: {e}"))),
@@ -959,6 +1105,37 @@ mod imp {
         }
     }
 
+    /// 한 실행 파일에 직접 붙은 중간 수준 표시를 떼고(빈 표시, 위 폴더에서 다시 물려받는다) 센다. 떼고도 낮은 수준이면 실패다
+    fn unlabel_medium_one(path: &Path, removed: &mut usize, failed: &mut Vec<(PathBuf, String)>) {
+        use std::os::windows::io::AsRawHandle;
+        let gone = || matches!(std::fs::symlink_metadata(path), Err(e) if e.kind() == std::io::ErrorKind::NotFound);
+        let unlabel = || -> Result<bool, String> {
+            if !own_medium_label(path)? {
+                return Ok(false);
+            }
+            let mut buf = [0u32; 4];
+            let acl = buf.as_mut_ptr() as *mut ACL;
+            if unsafe { InitializeAcl(acl, std::mem::size_of_val(&buf) as DWORD, DWORD::from(ACL_REVISION)) } == 0 {
+                return Err(last_error("InitializeAcl"));
+            }
+            let handle = open_for_relabel(path)?;
+            let rc = unsafe { SetSecurityInfo(handle.as_raw_handle() as HANDLE, SE_FILE_OBJECT, LABEL_SECURITY_INFORMATION, null_mut(), null_mut(), null_mut(), acl) };
+            if rc != 0 {
+                return Err(format!("remove label of {}: {}", path.display(), std::io::Error::from_raw_os_error(rc as i32)));
+            }
+            match low_label(path)? {
+                None => Ok(true),
+                Some(_) => Err("a low label came back from the folder".to_string()),
+            }
+        };
+        match unlabel() {
+            Ok(true) => *removed += 1,
+            Ok(false) => {}
+            Err(_) if gone() => {}
+            Err(e) => failed.push((path.to_path_buf(), e)),
+        }
+    }
+
     /// 경로의 짧은 이름(8.3)을 긴 이름으로 편다. 링크·정션은 따라가지 않는다. 실패하면 그대로
     fn long_path(path: &Path) -> PathBuf {
         use std::os::windows::ffi::OsStringExt;
@@ -993,6 +1170,34 @@ mod imp {
             }
         }
         Ok(flags & windows_sys::Win32::System::SystemServices::FILE_PERSISTENT_ACLS != 0)
+    }
+
+    /// 폴더에 직접 붙인 낮은 수준 표시(`label_low`)를 떼어 표시가 없던 처음 상태로 둔다 (하위가 물려받은 표시도 뗀다).
+    /// 직접 붙은 표시가 없으면 아무것도 하지 않는다. 떼었으면 true
+    fn unlabel_low(path: &Path) -> Result<bool, String> {
+        use std::os::windows::io::AsRawHandle;
+        if low_label(path)? != Some(false) {
+            return Ok(false);
+        }
+        // ACE 없는 ACL 머리만
+        let mut buf = [0u32; 4];
+        let acl = buf.as_mut_ptr() as *mut ACL;
+        unsafe {
+            if InitializeAcl(acl, std::mem::size_of_val(&buf) as DWORD, DWORD::from(ACL_REVISION)) == 0 {
+                return Err(last_error("InitializeAcl"));
+            }
+        }
+        let handle = open_for_relabel(path)?;
+        let rc = unsafe { SetSecurityInfo(handle.as_raw_handle() as HANDLE, SE_FILE_OBJECT, LABEL_SECURITY_INFORMATION, null_mut(), null_mut(), null_mut(), acl) };
+        if rc != 0 {
+            return Err(format!("remove label of {}: {}", path.display(), std::io::Error::from_raw_os_error(rc as i32)));
+        }
+        // 하위 항목이 물려받은 표시도 뗀다 (SetSecurityInfo는 표시를 하위로 다시 계산하지 않는다)
+        let failed = sync_inherited_low(path, false);
+        if let Some((p, e)) = failed.first() {
+            return Err(format!("{} item(s) under {} kept the low label (first: {}: {e})", failed.len(), path.display(), p.display()));
+        }
+        Ok(true)
     }
 
     /// 이 파일에만 중간 수준 표시를 직접 붙인다. 직접 붙인 표시가 상속받은 표시보다 앞에 와서 그 파일의 수준이 되고,
@@ -1070,6 +1275,28 @@ mod imp {
             assert!(failed.is_empty(), "{failed:?}");
         }
 
+        /// 가져온 서버 폴더: 표시를 붙이기 전부터 있던 파일도 낮은 수준이 되어 격리 실행이 고칠 수 있고,
+        /// 표시를 떼면 그 사이 생긴 파일까지 하위의 상속 표시가 모두 사라진다
+        #[test]
+        fn files_that_were_there_before_follow_the_folder_label_both_ways() {
+            let tmp = tempfile::tempdir().unwrap();
+            let dir = std::fs::canonicalize(tmp.path()).unwrap();
+            std::fs::create_dir_all(dir.join("Config")).unwrap();
+            let before = dir.join("Config").join("settings.ini");
+            std::fs::write(&before, b"x").unwrap();
+            super::label_low(&dir).unwrap();
+            assert_eq!(super::low_label(&before).unwrap(), Some(true));
+            assert_eq!(super::low_label(&dir.join("Config")).unwrap(), Some(true));
+            let after = dir.join("Config").join("made-later.json");
+            std::fs::write(&after, b"x").unwrap();
+            assert_eq!(super::low_label(&after).unwrap(), Some(true), "new files still inherit");
+
+            assert!(super::unlabel_low(&dir).unwrap());
+            for path in [&dir, &dir.join("Config"), &before, &after] {
+                assert_eq!(super::low_label(path).unwrap(), None, "{}", path.display());
+            }
+        }
+
         /// 낮은 수준 표시를 상속한 실행 파일은 낮은 무결성으로 뜬다(서버가 DLL을 못 읽고 끝나던 원인). 걷으면 중간으로 뜬다
         #[test]
         fn a_server_in_a_folder_the_sandbox_wrote_runs_at_medium_integrity_after_the_labels_go() {
@@ -1081,6 +1308,23 @@ mod imp {
             assert_eq!(launch_integrity(&exe), 0x1000, "the inherited low label makes the launch low integrity");
             super::clear_low_labels(&dir).unwrap();
             assert!(launch_integrity(&exe) >= 0x2000, "after the labels go the server starts at the daemon's level");
+        }
+
+        /// 가져온 서버를 빼면(`release`) 서버를 띄우려고 실행 파일에 붙인 중간 수준 표시도 남지 않는다
+        #[test]
+        fn releasing_a_folder_leaves_no_label_on_its_executables() {
+            let tmp = tempfile::tempdir().unwrap();
+            let dir = std::fs::canonicalize(tmp.path()).unwrap();
+            let exe = dir.join("bin").join("server.exe");
+            std::fs::create_dir_all(exe.parent().unwrap()).unwrap();
+            std::fs::write(&exe, b"x").unwrap();
+            super::label_low(&dir).unwrap();
+            super::clear_low_labels(&dir).unwrap();
+            assert!(super::own_medium_label(&exe).unwrap());
+
+            super::release(&[], &[dir.clone()]).unwrap();
+            assert!(!super::own_medium_label(&exe).unwrap());
+            assert_eq!(super::low_label(&exe).unwrap(), None);
         }
 
         /// L38: 확장자가 `.exe`가 아닌 실행 대상(PE)은 폴더 걷기가 보지 않는다. 그 파일을 띄우기 전에 따로 덮는다
@@ -1479,6 +1723,48 @@ mod imp {
         } else {
             Err(failed)
         }
+    }
+
+    /// 인스턴스를 지울 때 (`super::release`): `labeled` 폴더의 낮은 무결성 표시를 덮고, 사바쨩 프로필마다
+    /// `targets`에서 그 SID의 명시 ACE를 거둔다. 프로필과 런타임 기록은 그대로 둔다
+    pub fn release(targets: &[PathBuf], labeled: &[PathBuf]) -> Result<(), Vec<String>> {
+        let mut failed: Vec<String> = Vec::new();
+        for dir in labeled.iter().filter(|d| d.is_dir()) {
+            if let Err(errs) = clear_low_labels(dir) {
+                failed.extend(errs.into_iter().map(|(p, e)| format!("{}: {}", p.display(), e)));
+            }
+            let _guard = acl_lock();
+            if let Err(e) = std::fs::canonicalize(dir).map_err(|e| format!("{}: resolve: {e}", dir.display())).and_then(|d| unlabel_low(&d)) {
+                failed.push(e);
+                continue;
+            }
+            // 폴더 표시를 뗀 뒤에야 뗄 수 있다 (먼저 떼면 실행 파일이 낮은 수준을 다시 물려받는다)
+            if let Err(errs) = drop_medium_labels(dir) {
+                failed.extend(errs.into_iter().map(|(p, e)| format!("{}: {}", p.display(), e)));
+            }
+        }
+        let _guard = acl_lock();
+        for profile in saba_profiles() {
+            let sid = match container_sid(&profile) {
+                Ok(sid) => sid,
+                Err(e) => {
+                    failed.push(format!("{}: {}", profile, e));
+                    continue;
+                }
+            };
+            for path in targets.iter().filter(|p| p.exists()) {
+                match has_own_ace(path, sid) {
+                    Ok(false) => {}
+                    Ok(true) => {
+                        if let Err(e) = remove_ace(path, sid) {
+                            failed.push(e);
+                        }
+                    }
+                    Err(e) => failed.push(e),
+                }
+            }
+        }
+        if failed.is_empty() { Ok(()) } else { Err(failed) }
     }
 
     /// 이 사용자의 AppContainer 매핑 중 사바쨩 프로필 이름 (`HKCU\...\AppContainer\Mappings\<SID>`의 `Moniker`)

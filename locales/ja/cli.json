@@ -37,7 +37,14 @@
     "folder_is": "{{dir}} は {{game}} サーバーのようです。",
     "pick_game": "--module でゲームを選んでください。",
     "folder_in_use": "{{dir}} はすでに {{name}} が使っています。同じフォルダーに 2 つのサーバーを置くと互いに上書きしてしまいます。",
-    "created_settings_failed": "{{name}} は作成しましたが、設定を保存できませんでした: {{error}}"
+    "created_settings_failed": "{{name}} は作成しましたが、設定を保存できませんでした: {{error}}",
+    "notice": {
+      "folder_not_writable": "このフォルダーに書き込めません。設定の保存やサーバーの起動に失敗することがあるため、書き込める場所へ移してください。",
+      "server_running": "このフォルダーのサーバーがサバちゃんの外で起動しています。停止してからサバちゃんで起動し直してください。"
+    },
+    "ask_mode": "サーバーフォルダーをどうしますか？",
+    "mode_link": "今の場所のまま",
+    "mode_move": "サバちゃんへ移す（同じドライブのみ。移したサーバーを削除するとファイルも削除）"
   },
   "bot": {
     "ask_token": "ノードトークン",
@@ -340,7 +347,10 @@
       "autostart_gui_missing": "GUIがインストールされていません。GUIまで全部を使うにはGUIをインストールしてください。",
       "autostart_write_failed": "スタートアッププログラムに登録できませんでした。権限を確認してもう一度試してください。",
       "autostart_unsupported": "このOSではまだサインイン時の自動起動を設定できません。",
-      "autostart_unknown_mode": "off、daemon、full から選んでください。"
+      "autostart_unknown_mode": "off、daemon、full から選んでください。",
+      "move_cross_volume": "別のドライブにあるフォルダーは移せません。「今の場所のまま」で取り込んでください。",
+      "move_in_use": "フォルダーを移せませんでした。このフォルダーのサーバーを停止し、フォルダーを開いているプログラムを閉じてからもう一度試してください。",
+      "move_failed": "フォルダーを移せませんでした。「今の場所のまま」で取り込んでください。"
     },
     "not_a_bool": "「{{value}}」ははい/いいえではありません（true か false を使ってください）。",
     "not_a_number": "「{{value}}」は数値ではありません。",
@@ -471,7 +481,12 @@
   "remove": {
     "confirm": "サーバー {{name}} を削除しますか？",
     "confirm_running": "{{name}} は動いています。停止して削除しますか？",
-    "done": "{{name}} を削除しました。"
+    "done": "{{name}} を削除しました。",
+    "unlink_folder_kept": "サーバーフォルダー（{{path}}）のファイルは残り、サバちゃんの記録・ログ・バックアップだけを削除します。",
+    "unlink_restores": "ゲーム設定ファイルは取り込む前の状態に戻します（今の設定を残すには --keep-settings）。",
+    "unlink_keeps_settings": "ゲーム設定ファイルは今のまま残します。",
+    "unlinked": "「{{name}}」をサバちゃんから外しました。サーバーファイルは {{path}} に残っています。",
+    "unlink_restore_failed": "ゲーム設定ファイル {{n}} 個を戻せませんでした。"
   },
   "reorder": {
     "done": "並び順を保存しました。"
@@ -978,7 +993,9 @@
       "remote.revoke.host_id": "解除する PC id (`remote clients` に表示)",
       "remote.connect.host_id": "接続するPC id（`remote peers`に表示）",
       "remote.forget.host_id": "削除するPC id（`remote daemons`に表示）",
-      "config.autostart.mode": "off、daemon または full"
+      "config.autostart.mode": "off、daemon または full",
+      "keep_settings": "削除時にゲーム設定ファイルを取り込む前に戻さず今のまま残す",
+      "move_folder": "--from のフォルダーをその場でつながずサバちゃんのフォルダーへ移す（同じドライブのみ）"
     },
     "after": "名前は一部だけでも指定できます（例: start pal）。端末で引数なしで実行すると全画面メニューが開きます(SABA_NO_TUI=1 なら対話シェル)。\nスクリプトでは --json と --yes を使ってください。終了コード: 0 成功 · 1 失敗 · 2 使い方の誤り · 3 デーモンに接続不可 · 4 見つからない · 130 キャンセル"
   },

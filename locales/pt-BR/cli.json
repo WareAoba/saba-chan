@@ -37,7 +37,14 @@
     "folder_is": "{{dir}} parece um servidor de {{game}}.",
     "pick_game": "Escolha o jogo com --module.",
     "folder_in_use": "{{dir}} já está sendo usada por {{name}}. Dois servidores na mesma pasta sobrescreveriam um ao outro.",
-    "created_settings_failed": "{{name}} foi criado, mas as configurações não foram salvas: {{error}}"
+    "created_settings_failed": "{{name}} foi criado, mas as configurações não foram salvas: {{error}}",
+    "notice": {
+      "folder_not_writable": "O saba-chan não consegue gravar nesta pasta. Salvar configurações e iniciar o servidor podem falhar; mova-a para um local com permissão de escrita.",
+      "server_running": "O servidor desta pasta está rodando fora do saba-chan. Pare-o e inicie de novo pelo saba-chan."
+    },
+    "ask_mode": "O que fazer com a pasta do servidor?",
+    "mode_link": "Deixar onde está",
+    "mode_move": "Mover para o saba-chan (só na mesma unidade; excluir um servidor movido exclui os arquivos dele)"
   },
   "bot": {
     "ask_token": "Token do nó",
@@ -340,7 +347,10 @@
       "autostart_gui_missing": "A GUI não está instalada. Instale-a para iniciar tudo com a GUI.",
       "autostart_write_failed": "Não foi possível adicionar o Saba-chan aos programas de inicialização. Verifique as permissões e tente de novo.",
       "autostart_unsupported": "Ainda não é possível configurar o início ao entrar neste sistema operacional.",
-      "autostart_unknown_mode": "Escolha off, daemon ou full."
+      "autostart_unknown_mode": "Escolha off, daemon ou full.",
+      "move_cross_volume": "Não é possível mover uma pasta de outra unidade. Importe-a com \"Deixar onde está\".",
+      "move_in_use": "Não foi possível mover a pasta. Pare o servidor desta pasta, feche os programas que a estão usando e tente de novo.",
+      "move_failed": "Não foi possível mover a pasta. Importe-a com \"Deixar onde está\"."
     },
     "not_a_bool": "\"{{value}}\" não é sim/não (use true ou false).",
     "not_a_number": "\"{{value}}\" não é um número.",
@@ -471,7 +481,12 @@
   "remove": {
     "confirm": "Excluir o servidor {{name}}?",
     "confirm_running": "{{name}} está rodando. Parar e excluir?",
-    "done": "{{name}} excluído."
+    "done": "{{name}} excluído.",
+    "unlink_folder_kept": "Os arquivos da pasta do servidor ({{path}}) continuam; só os registros, logs e backups do saba-chan são apagados.",
+    "unlink_restores": "Os arquivos de configuração do jogo voltam a como estavam antes da importação (use --keep-settings para manter os atuais).",
+    "unlink_keeps_settings": "Os arquivos de configuração do jogo ficam como estão agora.",
+    "unlinked": "'{{name}}' foi removido do saba-chan. Os arquivos do servidor continuam em {{path}}.",
+    "unlink_restore_failed": "{{n}} arquivo(s) de configuração do jogo não puderam ser restaurados."
   },
   "reorder": {
     "done": "Ordem salva."

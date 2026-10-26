@@ -738,6 +738,8 @@ impl Supervisor {
         // REST 포트는 데몬이 접속하는 인스턴스 값이 기준이다 (정지도 그 값을 쓴다). 모듈 설정에 남은 옛 값
         // (예: 설치가 기본 INI에서 읽어 온 8212)이 먼저 들어가면 모듈이 INI를 그 값으로 맞춰 데몬이 못 붙는다
         if let Some(v) = instance.rest_port { put("rest_port", json!(v)); }
+        // 인스턴스 폴더: 모듈이 그 안에 받아 둔 것(가져온 서버의 포터블 런타임 등)을 시작·점검 모두 같은 자리에서 본다
+        put("instance_dir", json!(instance_dir.to_string_lossy()));
         for (key, value) in &instance.module_settings {
             // 격리 실행이 쓰기를 받는 폴더 키는 데몬만 정한다 (모듈은 import_settings로 아무 값이나 넣을 수 있다)
             // 호출마다 데몬이 정하는 키(`RESERVED_CALL_KEYS`)도 모듈 설정 값으로는 싣지 않는다
@@ -2435,6 +2437,8 @@ impl Supervisor {
                 "reset_server" => "reset_server",
                 // 실제 설정 파일을 saba-chan 키로 (설정 화면이 캐시 대신 실제 값을 보여 준다)
                 "import" => "import_settings",
+                // 사바쨩이 고칠 수 있는 게임 설정 파일 (가져온 서버를 해제할 때 되돌린다)
+                "config_files" => "config_files",
                 _ => "read_properties",
             };
 
@@ -3708,6 +3712,8 @@ mod tests {
         let id = inst.id.clone();
         sup.instance_store.add(inst).unwrap();
         let validate = sup.instance_call(&id, "validate").unwrap();
+        // 켜기 전 점검도 시작과 같이 인스턴스 폴더를 안다 (그 안에 받은 포터블 런타임을 본다)
+        assert_eq!(validate.config()["instance_dir"], json!(sup.instance_store.instance_dir(&id).to_string_lossy()));
         let sup = tokio::sync::RwLock::new(sup);
         let installed = Supervisor::get_installed_version(&sup, "game", &id).await.unwrap();
         for config in [validate.config(), &installed["config"]] {
@@ -3991,9 +3997,10 @@ mod tests {
         let mut cfg = serde_json::Map::new();
         Supervisor::insert_instance_fields(&mut cfg, &inst, root);
         assert_eq!(cfg["instance_data_dirs"], json!([at("zomboid"), at("세이브")]));
-        for key in ["install_dir", "working_dir", "instance_dir"] {
+        for key in ["install_dir", "working_dir"] {
             assert!(cfg.get(key).is_none(), "{key} from module settings");
         }
+        assert_eq!(cfg["instance_dir"], json!(root.to_string_lossy()), "the daemon's instance folder, not the module setting");
         assert_eq!(cfg["cache_dir"], json!(at("zomboid")), "the setting itself still reaches the module");
     }
 

@@ -199,7 +199,11 @@
     "category_important": "Importante",
     "close": "Cerrar",
     "done": "Finalizado",
-    "new_server": "Ir a la lista de servidores"
+    "new_server": "Ir a la lista de servidores",
+    "mode_label": "Carpeta del servidor",
+    "mode_link": "Dejarla donde está",
+    "mode_move": "Mover a saba-chan",
+    "migrate_hint_move": "La carpeta elegida se mueve a la carpeta de la instancia de saba-chan. Solo funciona dentro de la misma unidad. Los datos que el juego guarda fuera de la carpeta del servidor (como la carpeta de partidas de Zomboid) no se mueven. Al eliminar un servidor movido también se eliminan sus archivos."
   },
   "command_modal": {
     "title": "Ejecutar Comando - {{name}}",
@@ -240,6 +244,7 @@
   "server_actions": {
     "delete_confirm_title": "Eliminar Servidor",
     "delete_confirm_message": "¿Está seguro de que desea eliminar el servidor '{{name}}'?",
+    "delete_detail": "Los archivos del servidor también se eliminan.",
     "server_added": "Se agregó la instancia '{{name}}'",
     "server_detected": "Servidor detectado: {{type}} {{version}} · {{count}} plugins/mods{{names}}",
     "server_provisioned": "El servidor '{{name}}' está instalado",
@@ -274,7 +279,20 @@
     "click_to_stop": "Haz clic para detener",
     "click_to_start": "Haz clic para iniciar",
     "delete_still_running": "'{{name}}' todavía se está eliminando. Vuelve a revisar la lista de servidores en un momento.",
-    "delete_unconfirmed": "No se pudo confirmar si '{{name}}' se eliminó. Revisa la lista de servidores cuando el daemon responda."
+    "delete_unconfirmed": "No se pudo confirmar si '{{name}}' se eliminó. Revisa la lista de servidores cuando el daemon responda.",
+    "unlink_confirm_title": "Quitar servidor importado",
+    "unlink_confirm_message": "¿Quitar '{{name}}' de saba-chan?",
+    "unlink_detail": "Los archivos de la carpeta del servidor ({{path}}) se quedan donde están. Solo se borran los registros, logs y copias de seguridad de saba-chan.",
+    "unlink_detail_restorable": "Los archivos de la carpeta del servidor ({{path}}) se quedan donde están. Se borran los registros, logs y copias de seguridad de saba-chan, y los archivos de ajustes del juego pueden volver a como estaban antes de importar.",
+    "unlink_restore": "Restaurar ajustes y quitar",
+    "unlink_keep_settings": "Mantener ajustes actuales y quitar",
+    "server_unlinked": "Se quitó '{{name}}' de saba-chan. Los archivos del servidor siguen en {{path}}.",
+    "unlink_restore_failed": "No se pudieron restaurar {{n}} archivo(s) de ajustes del juego.",
+    "migrate_notice_folder_not_writable": "saba-chan no puede escribir en esta carpeta. Guardar ajustes e iniciar el servidor pueden fallar; muévela a un lugar con permiso de escritura.",
+    "migrate_notice_server_running": "El servidor de esta carpeta se está ejecutando fuera de saba-chan. Detenlo e inícialo de nuevo desde saba-chan.",
+    "delete_detail_restorable": "Los archivos del servidor también se eliminan. Los archivos de ajustes del juego guardados fuera de la carpeta del servidor (en la carpeta de datos del juego) pueden volver a como estaban antes de importar.",
+    "delete_restore": "Restaurar ajustes y eliminar",
+    "delete_keep_settings": "Mantener ajustes actuales y eliminar"
   },
   "server_settings": {
     "title": "Configuración",
@@ -420,7 +438,10 @@
     "preflight_failed_title": "La comprobación previa de '{{name}}' encontró un problema",
     "working_dir_in_use": "El servidor '{{instance}}' ya usa esta carpeta. Dos servidores en una carpeta sobrescriben el mundo y los ajustes del otro. Elige otra carpeta.",
     "no_command_path": "Este servidor no tiene consola para enviar comandos. Inícialo desde Saba-chan para enviar comandos.",
-    "stdin_unconfirmed": "No se pudo confirmar que el comando se envió. Revisa la consola antes de volver a intentarlo."
+    "stdin_unconfirmed": "No se pudo confirmar que el comando se envió. Revisa la consola antes de volver a intentarlo.",
+    "move_cross_volume": "No se puede mover una carpeta de otra unidad. Impórtala con «Dejarla donde está».",
+    "move_in_use": "No se pudo mover la carpeta. Detén el servidor de esta carpeta, cierra los programas que la tengan abierta e inténtalo de nuevo.",
+    "move_failed": "No se pudo mover la carpeta. Impórtala con «Dejarla donde está»."
   },
   "settings": {
     "save_failed_title": "Falló guardar configuración",

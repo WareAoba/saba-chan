@@ -934,7 +934,7 @@ export function useServerActions({
 
     // ── handleAddServer ─────────────────────────────────────
     const handleAddServer = async (payload, legacyModuleName) => {
-        // payload = { name, module_name, accept_agreements?, preset?, extension_data?, migration_source?, module_settings? }
+        // payload = { name, module_name, accept_agreements?, preset?, extension_data?, migration_source?, migration_mode?, module_settings? }
         const serverName = typeof payload === 'string' ? payload : payload?.name;
         const moduleName = typeof payload === 'string' ? legacyModuleName : payload?.module_name;
 
@@ -987,6 +987,10 @@ export function useServerActions({
             // 마이그레이션: 기존 서버 디렉토리 직접 연결
             if (payload?.migration_source) {
                 instanceData.migration_source = payload.migration_source;
+                // 그 자리에 연결(link) / 사바쨩으로 옮기기(move)
+                if (payload.migration_mode) {
+                    instanceData.migration_mode = payload.migration_mode;
+                }
             }
 
             console.log('Adding instance:', instanceData);
@@ -1052,6 +1056,13 @@ export function useServerActions({
                 return false;
             }
 
+            // 가져오기 "옮기기"가 폴더를 옮기지 못함 (다른 드라이브, 켜진 서버·열린 파일 등): 아무것도 만들지 않았다
+            if (['move_cross_volume', 'move_in_use', 'move_failed', 'source_missing', 'destination_exists'].includes(result.error_code)) {
+                const key = ['move_cross_volume', 'move_in_use'].includes(result.error_code) ? result.error_code : 'move_failed';
+                setModal({ type: 'failure', title: t('servers.add_failed_title'), message: t(`servers.${key}`) });
+                return false;
+            }
+
             if (result.error_code === 'preset_not_found') {
                 setModal({
                     type: 'failure',
@@ -1083,10 +1094,15 @@ export function useServerActions({
                               names: components.length ? ` (${components.map((c) => c.name).join(', ')})` : '',
                           })
                         : '';
+                    // 가져온 폴더에서 미리 알릴 것 (데몬 `notices`: 쓸 수 없는 폴더, 밖에서 켜 둔 서버)
+                    const noticeLines = (result.notices || [])
+                        .map((code) => '\n' + t(`server_actions.migrate_notice_${code}`, { defaultValue: '' }))
+                        .filter((line) => line.trim())
+                        .join('');
                     setModal({
                         type: 'success',
                         title: t('command_modal.success'),
-                        message: t('server_actions.server_added', { name: serverName }) + detectedLine,
+                        message: t('server_actions.server_added', { name: serverName }) + detectedLine + noticeLines,
                     });
                     setShowModuleManager(false);
                     fetchServers();
@@ -1102,18 +1118,60 @@ export function useServerActions({
 
     // ── handleDeleteServer ──────────────────────────────────
     const handleDeleteServer = async (server) => {
+        // 가져온 서버(인스턴스 폴더 밖의 서버 폴더): 연결만 끊고 폴더는 남긴다. 보관한 원래 설정으로 되돌릴지 고른다
+        if (server.linked_folder) {
+            const remove = (keepSettings) => () => performDeleteServer(server, { keepSettings });
+            setModal({
+                type: 'question',
+                title: t('server_actions.unlink_confirm_title'),
+                message: t('server_actions.unlink_confirm_message', { name: server.name }),
+                detail: t(
+                    server.restorable_settings
+                        ? 'server_actions.unlink_detail_restorable'
+                        : 'server_actions.unlink_detail',
+                    { path: server.linked_folder },
+                ),
+                buttons: server.restorable_settings
+                    ? [
+                          { label: t('server_actions.unlink_restore'), action: remove(false) },
+                          { label: t('server_actions.unlink_keep_settings'), action: remove(true) },
+                          { label: t('modals.cancel'), action: () => setModal(null) },
+                      ]
+                    : undefined,
+                onConfirm: remove(false),
+            });
+            return;
+        }
+        // 옮겨 온 서버: 서버 파일은 함께 지워지지만, 서버 폴더 밖(데이터 폴더)에 남는 설정은 되돌릴지 고른다
+        if (server.restorable_settings) {
+            const remove = (keepSettings) => () => performDeleteServer(server, { keepSettings });
+            setModal({
+                type: 'question',
+                title: t('server_actions.delete_confirm_title'),
+                message: t('server_actions.delete_confirm_message', { name: server.name }),
+                detail: t('server_actions.delete_detail_restorable'),
+                buttons: [
+                    { label: t('server_actions.delete_restore'), action: remove(false) },
+                    { label: t('server_actions.delete_keep_settings'), action: remove(true) },
+                    { label: t('modals.cancel'), action: () => setModal(null) },
+                ],
+                onConfirm: remove(false),
+            });
+            return;
+        }
         setModal({
             type: 'question',
             title: t('server_actions.delete_confirm_title'),
             message: t('server_actions.delete_confirm_message', { name: server.name }),
+            detail: t('server_actions.delete_detail'),
             onConfirm: () => performDeleteServer(server),
         });
     };
 
-    const performDeleteServer = async (server) => {
+    const performDeleteServer = async (server, options) => {
         setModal(null);
         try {
-            const result = await window.api.instanceDelete(server.id);
+            const result = await window.api.instanceDelete(server.id, options);
             if (result.error_code === 'ETIMEDOUT') {
                 // 답이 늦었을 뿐 데몬은 계속 지우고 있을 수 있다: 목록에 남았는지로 판단한다
                 const list = await window.api.serverList().catch(() => null);
@@ -1146,11 +1204,16 @@ export function useServerActions({
                 setModal({ type: 'failure', title: t('servers.delete_failed_title'), message: errorMsg });
             } else {
                 console.log(`Instance "${server.name}" (ID: ${server.id}) deleted`);
-                setModal({
-                    type: 'success',
-                    title: t('command_modal.success'),
-                    message: t('server_actions.server_deleted', { name: server.name }),
-                });
+                const message = result.linked_folder
+                    ? t('server_actions.server_unlinked', { name: server.name, path: result.linked_folder }) +
+                      (result.settings_restore_failed
+                          ? '\n' + t('server_actions.unlink_restore_failed', { n: result.settings_restore_failed })
+                          : '')
+                    : t('server_actions.server_deleted', { name: server.name }) +
+                      (result.settings_restore_failed
+                          ? '\n' + t('server_actions.unlink_restore_failed', { n: result.settings_restore_failed })
+                          : '');
+                setModal({ type: 'success', title: t('command_modal.success'), message });
                 fetchServers();
             }
         } catch (error) {

@@ -1,6 +1,6 @@
 use super::LooseJson;
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
     Json,
@@ -89,7 +89,23 @@ fn open_user_runtime(entry: String, instance: &crate::instance::ServerInstance) 
 pub async fn create_instance(
     State(state): State<IPCServer>,
     Json(payload): Json<Value>,
-) -> impl IntoResponse {
+) -> axum::response::Response {
+    // 요청이 끊겨도(클라이언트 시간 초과) 만들기를 끝까지 마친다: 가져오기는 큰 서버 폴더에 권한을 주는 데 수십 초가 들 수 있고,
+    // 중간에 멈추면 인스턴스만 남고 설정 가져오기·원래 설정 보관이 빠진다
+    match tokio::spawn(create_instance_to_the_end(state, payload)).await {
+        Ok(response) => response,
+        Err(e) => {
+            tracing::error!("Instance creation task failed: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": "instance creation failed" }))).into_response()
+        }
+    }
+}
+
+async fn create_instance_to_the_end(state: IPCServer, payload: Value) -> axum::response::Response {
+    create_instance_inner(state, payload).await.into_response()
+}
+
+async fn create_instance_inner(state: IPCServer, payload: Value) -> impl IntoResponse {
     let mut supervisor = state.supervisor.write().await;
 
     let name = payload
@@ -301,8 +317,32 @@ pub async fn create_instance(
             instance.working_dir = Some(dir.to_string());
         }
         // migration_source → working_dir (마이그레이션: 기존 서버 디렉토리 직접 연결)
+        // `migration_mode = "move"`면 그 폴더를 인스턴스 폴더 안으로 옮겨 전속시킨다 (기본 "link": 그 자리에 연결)
+        let move_mode = match payload.get("migration_mode").and_then(|v| v.as_str()) {
+            None | Some("link") => false,
+            Some("move") => true,
+            Some(_) => {
+                let error = json!({ "error": "migration_mode must be \"link\" or \"move\"", "error_code": "invalid_format", "fields": [{"field": "migration_mode"}] });
+                return (StatusCode::BAD_REQUEST, Json(error)).into_response();
+            }
+        };
+        let mut moved_from: Option<std::path::PathBuf> = None;
         let migration_mode = if let Some(src) = payload.get("migration_source").and_then(|v| v.as_str()) {
-            if instance.working_dir.is_none() {
+            if move_mode {
+                // 옮길 폴더도 다른 인스턴스가 쓰는 폴더와 겹치면 안 된다
+                if let Some(other) = supervisor.instance_store.folder_user(std::path::Path::new(src), &instance.id) {
+                    let error = json!({ "success": false, "error": format!("Server '{}' already uses this folder", other.name), "error_code": "working_dir_in_use", "instance": other.name });
+                    return (StatusCode::CONFLICT, Json(error)).into_response();
+                }
+                let subdir = module_install.as_ref().and_then(|(install, _, _)| install.as_ref()).and_then(|i| i.install_subdir.clone()).unwrap_or_else(|| "server".to_string());
+                let Some(dest) = crate::instance::migration::move_target(&supervisor.instance_store.instance_dir(&instance.id), &subdir) else {
+                    tracing::warn!("Migration: module install_subdir '{}' is not a folder inside the instance, not moving", subdir);
+                    let error = json!({ "success": false, "error": "The module's install folder is not inside the instance folder", "error_code": "move_failed" });
+                    return (StatusCode::CONFLICT, Json(error)).into_response();
+                };
+                instance.working_dir = Some(dest.to_string_lossy().into_owned());
+                moved_from = Some(std::path::PathBuf::from(src));
+            } else if instance.working_dir.is_none() {
                 instance.working_dir = Some(src.to_string());
             }
             true
@@ -387,6 +427,15 @@ pub async fn create_instance(
         // 설치가 끝날 때까지 업데이트·삭제·복원·시작이 같은 폴더에 끼어들지 않게 작업 잠금을 쥔다.
         // 목록에 보이기 전에 잡는다 (보인 뒤에 잡으면 그 틈의 삭제가 먼저 잡아 설치가 지워지는 폴더로 돈다)
         let install_guard = super::backup::InstanceLock::try_take_for_writes(&id);
+
+        // 가져오기 "옮기기": 목록에 보이기 전에 옮긴다 (실패하면 아무것도 만들지 않는다)
+        if let (Some(src), Some(dest)) = (&moved_from, instance.working_dir.as_deref()) {
+            if let Err(code) = crate::instance::migration::move_into(src, std::path::Path::new(dest)) {
+                let _ = std::fs::remove_dir_all(&instance_dir);
+                let error = json!({ "success": false, "error": format!("Could not move the server folder into saba-chan ({})", code), "error_code": code });
+                return (StatusCode::CONFLICT, Json(error)).into_response();
+            }
+        }
 
         // 인스턴스 저장 (프로비저닝은 비동기로 수행)
         match supervisor.instance_store.add(instance.clone()) {
@@ -714,8 +763,10 @@ pub async fn create_instance(
                     drop(supervisor);
                     let mut detected: Option<Value> = None;
                     if let Some((_, ref lifecycle_path, ref _server_exe)) = module_install {
+                        // instance_dir: 모듈이 서버 폴더 대신 인스턴스 폴더에 둘 것(가져온 서버의 포터블 런타임 등)의 자리
                         let import_config = json!({
                             "working_dir": instance.working_dir,
+                            "instance_dir": instance_dir,
                         });
                         match crate::plugin::PluginCall::new(lifecycle_path, "import_settings", import_config).in_instance(Some(state.host_context(&id))).run().await {
                             Ok(mut result) => {
@@ -754,6 +805,9 @@ pub async fn create_instance(
                     }
                     // 마이그레이션 변경사항 저장 (executable_path, import된 설정 등)
                     let _ = state.supervisor.write().await.instance_store.update(&id, instance.clone());
+                    // 해제할 때 되돌릴 원래 게임 설정 파일. 약관 반영·첫 시작이 파일을 고치기 전에 보관한다
+                    // (옮긴 서버도 서버 폴더 밖 데이터 폴더의 설정은 남으므로 보관한다)
+                    save_migration_originals(&state, &instance, &instance_dir, metadata.as_ref()).await;
                     // 가져온 서버는 설치를 거치지 않으므로, 만들 때 동의한 약관을 모듈이 지금 반영한다 (예: eula.txt)
                     if !instance.accepted_agreements.is_empty() {
                         let ids: Vec<String> = instance.accepted_agreements.keys().cloned().collect();
@@ -767,10 +821,26 @@ pub async fn create_instance(
                     if let Some(detected) = detected {
                         response["detected"] = detected;
                     }
+                    // 가져온 폴더에서 미리 알릴 것: 쓸 수 없는 폴더, 사바쨩 밖에서 켜 둔 서버
+                    // 프로세스 목록 읽기는 막는 호출이라 런타임 밖에서
+                    let folder = instance.working_dir.clone().map(std::path::PathBuf::from);
+                    let notices = match folder {
+                        Some(folder) => tokio::task::spawn_blocking(move || crate::instance::migration::notices(&folder)).await.unwrap_or_default(),
+                        None => Vec::new(),
+                    };
+                    if !notices.is_empty() {
+                        response["notices"] = json!(notices);
+                    }
                     created(response)
                 }
             }
             Err(e) => {
+                // 옮긴 서버 폴더는 제자리로 돌려놓는다 (저장하지 못한 인스턴스 폴더에 남기지 않게)
+                if let (Some(src), Some(dest)) = (&moved_from, instance.working_dir.as_deref()) {
+                    if let Err(back) = std::fs::rename(dest, src) {
+                        tracing::error!("Could not move the server folder back to {} after a failed create: {}", src.display(), back);
+                    }
+                }
                 let error = json!({ "error": format!("Failed to create instance: {}", e) });
                 (StatusCode::INTERNAL_SERVER_ERROR, Json(error)).into_response()
             }
@@ -779,6 +849,89 @@ pub async fn create_instance(
         let error = json!({ "error": "Invalid request" });
         (StatusCode::BAD_REQUEST, Json(error)).into_response()
     }
+}
+
+/// 가져온 서버의 게임 설정 파일(모듈 `config_files`)을 인스턴스 폴더에 보관한다 (`instance::migration`).
+/// 모듈이 모르거나 실패하면 보관하지 않는다: 가져오기는 막지 않고, 해제할 때 되돌릴 것이 없을 뿐이다
+async fn save_migration_originals(
+    state: &IPCServer,
+    instance: &crate::instance::ServerInstance,
+    instance_dir: &std::path::Path,
+    metadata: Option<&crate::supervisor::module_loader::ModuleMetadata>,
+) {
+    let files = match crate::supervisor::Supervisor::manage_properties(&state.supervisor, &instance.id, "config_files", None).await {
+        Ok(result) if result.get("success").and_then(Value::as_bool) == Some(true) => result,
+        Ok(result) => {
+            tracing::info!("Migration: module did not list its config files for '{}': {}", instance.name, result.get("error_code").and_then(serde_json::Value::as_str).unwrap_or("failed"));
+            return;
+        }
+        Err(e) => {
+            tracing::warn!("Migration: could not ask the module for its config files for '{}': {}", instance.name, e);
+            return;
+        }
+    };
+    // 모듈이 밝힌 경로는 그 서버의 폴더(서버 폴더·인스턴스 폴더·선언한 데이터 폴더) 안의 것만 보관한다
+    let boundary = crate::module_paths::Boundary::for_instance(instance, instance_dir, metadata);
+    let files: Vec<std::path::PathBuf> = files.get("files").and_then(Value::as_array).into_iter().flatten()
+        .filter_map(Value::as_str)
+        .filter_map(|f| boundary.resolve(std::path::Path::new(f)))
+        .collect();
+    match crate::instance::migration::save(instance_dir, &files) {
+        Ok(n) => tracing::info!("Migration: kept {} original config file(s) of '{}' to restore when unlinked", n, instance.name),
+        Err(e) => tracing::warn!("Migration: could not keep the original config files of '{}': {}", instance.name, e),
+    }
+}
+
+/// 가져온 서버를 지우기 전에 거둔 결과
+struct Unlinked {
+    /// 남는 서버 폴더 (그 자리에 연결한 서버). 옮겨 온 서버는 인스턴스 폴더와 함께 지워져 없다
+    folder: Option<String>,
+    restored: crate::instance::migration::Restored,
+}
+
+/// 가져온 서버를 지우기 전에: 보관한 원래 게임 설정 파일로 되돌리고(`keep_settings`가 아니면. 옮겨 온 서버도
+/// 서버 폴더 밖 설정 파일(좀보이드 데이터 폴더 등)이 남으므로 되돌린다), 인스턴스 폴더 밖 서버 폴더에는
+/// 격리 실행에 준 폴더 권한·낮은 무결성 표시를 거둔다. 서버 폴더 밖의 파일은 지우지 않는다. 가져온 서버가 아니면 None
+async fn unlink_server_folder(state: &IPCServer, instance: &crate::instance::ServerInstance, keep_settings: bool) -> Option<Unlinked> {
+    let (instance_dir, metadata, others) = {
+        let supervisor = state.supervisor.read().await;
+        let others: Vec<std::path::PathBuf> = supervisor.instance_store.list().iter()
+            .filter(|i| i.id != instance.id)
+            .flat_map(|i| [Some(supervisor.instance_store.instance_dir(&i.id)), i.working_dir.as_deref().map(std::path::PathBuf::from)])
+            .flatten()
+            .collect();
+        let metadata = supervisor.module_loader.get_module(&instance.module_name).ok().map(|m| m.metadata);
+        (supervisor.instance_store.instance_dir(&instance.id), metadata, others)
+    };
+    let folder = crate::instance::migration::linked_folder(instance.working_dir.as_deref(), &instance_dir);
+    if folder.is_none() && !crate::instance::migration::saved(&instance_dir) {
+        return None;
+    }
+    let boundary = crate::module_paths::Boundary::for_instance(instance, &instance_dir, metadata.as_ref());
+    let exe_dir = instance.executable_path.as_deref().and_then(|p| std::path::Path::new(p).parent()).map(std::path::Path::to_path_buf);
+    // 실행 파일 폴더는 그 서버 폴더 안일 때만 (밖이면 다른 인스턴스와 함께 쓰는 런타임일 수 있다)
+    let dirs: Vec<std::path::PathBuf> = folder.iter().map(std::path::PathBuf::from).collect();
+    let exe_dir = exe_dir.filter(|d| crate::module_paths::is_inside(d, &dirs));
+    let dirs: Vec<std::path::PathBuf> = dirs.iter().cloned().chain(exe_dir).collect();
+    let name = instance.name.clone();
+    // 파일 복사와 폴더 걷기(표시 덮기)는 막는 작업이라 런타임 밖에서
+    let restored = tokio::task::spawn_blocking(move || {
+        let restored = if keep_settings {
+            crate::instance::migration::Restored::default()
+        } else {
+            crate::instance::migration::restore(&instance_dir, |path| boundary.resolve(path).is_some())
+        };
+        if dirs.is_empty() {
+            return restored;
+        }
+        if let Err(failed) = crate::sandbox::release(&dirs, &others) {
+            tracing::warn!("Could not take back sandbox permissions on the server folder of '{}': {}", name, failed.join("; "));
+        }
+        restored
+    })
+    .await
+    .unwrap_or_default();
+    Some(Unlinked { folder, restored })
 }
 
 /// DELETE /api/provision-progress/:name - 프로비저닝 상태 클리어 (에러 dismiss용)
@@ -841,10 +994,19 @@ pub async fn get_provision_progress(
     }
 }
 
+/// `DELETE /api/instance/:id`의 선택 값
+#[derive(Debug, Default, serde::Deserialize)]
+pub struct DeleteQuery {
+    /// 가져온 서버의 게임 설정 파일을 가져오기 전 내용으로 되돌리지 않는다 (사바쨩에서 바꾼 설정을 남긴다)
+    #[serde(default)]
+    pub keep_settings: bool,
+}
+
 /// DELETE /api/instance/:id - 인스턴스 삭제
 pub async fn delete_instance(
     Path(id): Path<String>,
     State(state): State<IPCServer>,
+    Query(query): Query<DeleteQuery>,
 ) -> impl IntoResponse {
     // 백업·복원·업데이트 중에는 폴더를 지우지 않는다
     let Some(guard) = super::backup::InstanceLock::take_for_writes(&id).await else {
@@ -853,7 +1015,7 @@ pub async fn delete_instance(
     // 요청이 끊겨도 정지·삭제를 끝까지 한다: 추적을 뺀 채 멈추면 돌던 서버가 추적 밖에 남는다
     let work = crate::audit::spawn(async move {
         let _guard = guard;
-        delete_instance_held(state, id).await
+        delete_instance_held(state, id, query.keep_settings).await
     });
     work.await.unwrap_or_else(|e| {
         let error = json!({ "success": false, "error": format!("Failed to delete instance: {}", e) });
@@ -862,7 +1024,7 @@ pub async fn delete_instance(
 }
 
 /// 작업 잠금을 잡은 뒤의 인스턴스 삭제
-async fn delete_instance_held(state: IPCServer, id: String) -> axum::response::Response {
+async fn delete_instance_held(state: IPCServer, id: String, keep_settings: bool) -> axum::response::Response {
     let supervisor = state.supervisor.write().await;
 
     // ── 인스턴스 존재 확인 ──
@@ -934,6 +1096,9 @@ async fn delete_instance_held(state: IPCServer, id: String) -> axum::response::R
         }
     }
 
+    // ── 가져온 서버: 서버 폴더는 두고, 사바쨩이 남긴 것을 거둔다 ──
+    let unlinked = unlink_server_folder(&state, &instance, keep_settings).await;
+
     // ── 디렉토리 삭제 (Windows 파일 잠금 대비 재시도) ──
     let mut last_err = None;
     for attempt in 0..3 {
@@ -941,7 +1106,14 @@ async fn delete_instance_held(state: IPCServer, id: String) -> axum::response::R
         match removed {
             Ok(_) => {
                 state.provision_tracker.forget(&instance.name);
-                let response = json!({ "success": true });
+                let mut response = json!({ "success": true });
+                if let Some(unlinked) = &unlinked {
+                    if let Some(folder) = &unlinked.folder {
+                        response["linked_folder"] = json!(folder);
+                    }
+                    response["settings_restored"] = json!(unlinked.restored.restored);
+                    response["settings_restore_failed"] = json!(unlinked.restored.failed.len());
+                }
                 return (StatusCode::OK, Json(response)).into_response();
             }
             Err(e) => {
@@ -2031,6 +2203,140 @@ mod tests {
         let instance = sup.instance_store.get(response.body["id"].as_str().unwrap()).unwrap();
         assert_ne!(instance.executable_path.as_deref(), outside.to_str());
         assert!(!instance.module_settings.contains_key("motd"));
+    }
+
+    /// 가져온 서버를 지우면(연결 해제) 서버 폴더는 남고, 사바쨩이 고친 게임 설정 파일은 가져오기 전 내용으로 돌아간다.
+    /// 모듈이 서버 경계 밖 파일을 밝혀도 보관·되돌리기 대상이 아니다. `keep_settings`면 지금 내용을 둔다
+    #[tokio::test]
+    async fn unlinking_an_imported_server_keeps_its_folder_and_restores_its_settings_files() {
+        use axum::{extract::{Path, Query, State}, Json};
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("module.toml"), "[module]\nschema_version = 1\nname = 'game'\nversion = '1.0.0'\nentry = 'lifecycle.py'\n").unwrap();
+        let outside = tmp.path().join("outside.ini");
+        std::fs::write(dir.join("lifecycle.py"), format!(
+            "import json, os, sys\nc = json.load(sys.stdin)\nf = sys.argv[1]\n\
+             if f == 'functions': print(json.dumps({{'success': True, 'functions': ['import_settings', 'config_files']}}))\n\
+             elif f == 'config_files': print(json.dumps({{'success': True, 'files': [os.path.join(c['working_dir'], 'game.ini'), {:?}]}}))\n\
+             else: print(json.dumps({{'success': True, 'settings': {{}}}}))\n",
+            outside.to_string_lossy()
+        )).unwrap();
+        crate::sandbox::consent_test_component(&dir.join("lifecycle.py"));
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        for module in sup.module_loader.discover_modules().unwrap() { crate::sandbox::consent_test_component(std::path::Path::new(&module.entry_path())); }
+        sup.initialize().await.unwrap();
+        let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+
+        for keep_settings in [false, true] {
+            let server = tmp.path().join(format!("기존 서버 {keep_settings}"));
+            std::fs::create_dir_all(&server).unwrap();
+            let ini = server.join("game.ini");
+            std::fs::write(&ini, "rcon=on\n").unwrap();
+            std::fs::write(&outside, "before").unwrap();
+            let name = format!("g{keep_settings}");
+            let created = crate::ipc::internal::into_internal(super::create_instance(State(state.clone()), Json(serde_json::json!({"name": name, "module_name":"game", "migration_source":server}))).await).await;
+            assert_eq!(created.status.as_u16(), 201, "{}", created.body);
+            let id = created.body["id"].as_str().unwrap().to_string();
+            let instance_dir = state.supervisor.read().await.instance_store.instance_dir(&id);
+            assert!(crate::instance::migration::saved(&instance_dir));
+
+            // 사바쨩이 쓰는 동안 바뀐 파일 (시작 전 정책 등)
+            std::fs::write(&ini, "rcon=off\n").unwrap();
+            std::fs::write(&outside, "after").unwrap();
+            let removed = crate::ipc::internal::into_internal(super::delete_instance(Path(id.clone()), State(state.clone()), Query(super::DeleteQuery { keep_settings })).await).await;
+            assert_eq!(removed.status.as_u16(), 200, "{}", removed.body);
+            assert_eq!(removed.body["linked_folder"], serde_json::json!(server.to_string_lossy()));
+            assert!(server.is_dir() && !instance_dir.exists());
+            let expected = if keep_settings { "rcon=off\n" } else { "rcon=on\n" };
+            assert_eq!(std::fs::read_to_string(&ini).unwrap(), expected);
+            assert_eq!(std::fs::read_to_string(&outside).unwrap(), "after", "a file outside the server is never kept or restored");
+        }
+    }
+
+    /// 가져오기가 오래 걸려 클라이언트가 요청을 끊어도(GUI 시간 초과) 데몬은 설정 가져오기까지 마친다:
+    /// 중간에 멈추면 기본값인 인스턴스만 남고 되돌릴 원래 설정도 보관되지 않는다
+    #[tokio::test]
+    async fn an_import_cut_off_by_the_client_still_finishes() {
+        use axum::{extract::State, Json};
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("module.toml"), "[module]\nschema_version = 1\nname = 'game'\nversion = '1.0.0'\nentry = 'lifecycle.py'\n").unwrap();
+        std::fs::write(dir.join("lifecycle.py"),
+            "import json, sys, time\nf = sys.argv[1]\n\
+             if f == 'functions': print(json.dumps({'success': True, 'functions': ['import_settings']}))\n\
+             else:\n    time.sleep(1.5)\n    print(json.dumps({'success': True, 'settings': {'motd': 'mine'}}))\n").unwrap();
+        crate::sandbox::consent_test_component(&dir.join("lifecycle.py"));
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        for module in sup.module_loader.discover_modules().unwrap() { crate::sandbox::consent_test_component(std::path::Path::new(&module.entry_path())); }
+        sup.initialize().await.unwrap();
+        let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let server = tmp.path().join("server");
+        std::fs::create_dir_all(&server).unwrap();
+
+        let request = super::create_instance(State(state.clone()), Json(serde_json::json!({"name":"g", "module_name":"game", "migration_source":server})));
+        assert!(tokio::time::timeout(std::time::Duration::from_millis(300), request).await.is_err(), "the client gave up first");
+
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+        loop {
+            let imported = state.supervisor.read().await.instance_store.list().first().and_then(|i| i.module_settings.get("motd").cloned());
+            if imported == Some(serde_json::json!("mine")) {
+                break;
+            }
+            assert!(std::time::Instant::now() < deadline, "the import never finished after the request was dropped");
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+    }
+
+    /// 가져오기 "옮기기"는 서버 폴더를 인스턴스 폴더 안으로 옮겨 전속시킨다: 모듈은 옮긴 자리를 읽고,
+    /// 지우면 서버 파일도 함께 지워진다. 모르는 방식은 아무것도 만들지 않고 거절한다
+    #[tokio::test]
+    async fn moving_an_existing_server_makes_it_part_of_the_instance() {
+        use axum::{extract::{Path, Query, State}, Json};
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("module.toml"), "[module]\nschema_version = 1\nname = 'game'\nversion = '1.0.0'\nentry = 'lifecycle.py'\n").unwrap();
+        std::fs::write(dir.join("lifecycle.py"),
+            "import json, os, sys\nc = json.load(sys.stdin)\nf = sys.argv[1]\n\
+             if f == 'functions': print(json.dumps({'success': True, 'functions': ['import_settings']}))\n\
+             else: print(json.dumps({'success': True, 'settings': {'motd': open(os.path.join(c['working_dir'], 'motd.txt')).read(), 'seen_instance_dir': c.get('instance_dir')}}))\n").unwrap();
+        crate::sandbox::consent_test_component(&dir.join("lifecycle.py"));
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        for module in sup.module_loader.discover_modules().unwrap() { crate::sandbox::consent_test_component(std::path::Path::new(&module.entry_path())); }
+        sup.initialize().await.unwrap();
+        let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let server = tmp.path().join("기존 서버");
+        std::fs::create_dir_all(&server).unwrap();
+        std::fs::write(server.join("motd.txt"), "mine").unwrap();
+
+        let bad = crate::ipc::internal::into_internal(super::create_instance(State(state.clone()), Json(serde_json::json!({"name":"x", "module_name":"game", "migration_source":server, "migration_mode":"copy"}))).await).await;
+        assert_eq!(bad.body["error_code"], "invalid_format", "{}", bad.body);
+        assert!(server.is_dir() && state.supervisor.read().await.instance_store.list().is_empty());
+
+        let created = crate::ipc::internal::into_internal(super::create_instance(State(state.clone()), Json(serde_json::json!({"name":"g", "module_name":"game", "migration_source":server, "migration_mode":"move"}))).await).await;
+        assert_eq!(created.status.as_u16(), 201, "{}", created.body);
+        let id = created.body["id"].as_str().unwrap().to_string();
+        let (instance, instance_dir) = {
+            let sup = state.supervisor.read().await;
+            (sup.instance_store.get(&id).unwrap().clone(), sup.instance_store.instance_dir(&id))
+        };
+        assert!(!server.exists(), "the folder was moved, not copied");
+        let moved = instance_dir.join("server");
+        assert_eq!(instance.working_dir.as_deref(), Some(moved.to_string_lossy().as_ref()));
+        assert_eq!(instance.module_settings["motd"], "mine", "the module read the moved folder");
+        // 가져오기도 인스턴스 폴더를 안다 (모듈이 포터블 런타임 같은 것을 서버 폴더 대신 그곳에 둔다)
+        assert_eq!(instance.module_settings["seen_instance_dir"], serde_json::json!(instance_dir.to_string_lossy()));
+        assert_eq!(crate::instance::migration::linked_folder(instance.working_dir.as_deref(), &instance_dir), None);
+
+        let removed = crate::ipc::internal::into_internal(super::delete_instance(Path(id), State(state.clone()), Query(Default::default())).await).await;
+        assert_eq!(removed.status.as_u16(), 200, "{}", removed.body);
+        assert!(removed.body.get("linked_folder").is_none());
+        assert!(!moved.exists());
     }
 
     #[tokio::test]

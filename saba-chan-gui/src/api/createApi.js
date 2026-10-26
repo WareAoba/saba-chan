@@ -380,8 +380,10 @@ export function createApi({ invoke, hub }) {
         },
         instanceCreate: async (data) => {
             try {
-                // 백엔드가 도커 프로비저닝을 백그라운드로 처리하므로 짧은 타임아웃으로 충분
-                return (await post('/api/instances', data, { timeout: 30000 })).data;
+                // 새 설치는 데몬이 백그라운드로 처리하므로 짧은 타임아웃으로 충분. 기존 서버 가져오기는 큰 폴더에 권한을 주고
+                // 설정을 읽느라 오래 걸릴 수 있어 시작처럼 기다린다 (CLI `post_long`과 같다)
+                const timeout = data?.migration_source ? START_TIMEOUT_MS : 30000;
+                return (await post('/api/instances', data, { timeout })).data;
             } catch (error) {
                 if (error.response) {
                     const status = error.response.status;
@@ -446,10 +448,12 @@ export function createApi({ invoke, hub }) {
                 return errorBody(error, { success: false });
             }
         },
-        instanceDelete: async (id) => {
+        instanceDelete: async (id, { keepSettings = false } = {}) => {
             try {
-                // 데몬은 정지 대기·pre_delete 훅·폴더 삭제(재시도 포함)를 마치고 답한다
-                return (await del(`/api/instance/${encodeURIComponent(id)}`, { timeout: 120000 })).data;
+                // 데몬은 정지 대기·pre_delete 훅·폴더 삭제(재시도 포함)를 마치고 답한다.
+                // keepSettings: 가져온 서버의 게임 설정 파일을 가져오기 전 내용으로 되돌리지 않는다
+                const query = keepSettings ? '?keep_settings=true' : '';
+                return (await del(`/api/instance/${encodeURIComponent(id)}${query}`, { timeout: 120000 })).data;
             } catch (error) {
                 if (error.response) {
                     const status = error.response.status;

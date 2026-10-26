@@ -1356,7 +1356,7 @@ else:
         assert_eq!(code(managed).await, "instance_busy");
         let update = super::super::instance::begin_server_update(&state, &id).await.err().expect("update must wait");
         assert_eq!(code(update).await, "instance_busy");
-        let removed = super::super::instance::delete_instance(Path(id.clone()), State(state.clone())).await.into_response();
+        let removed = super::super::instance::delete_instance(Path(id.clone()), State(state.clone()), axum::extract::Query(Default::default())).await.into_response();
         assert_eq!(code(removed).await, "instance_busy");
         assert!(state.supervisor.read().await.instance_store.get(&id).is_some());
         drop(guard);

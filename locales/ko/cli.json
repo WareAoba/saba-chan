@@ -17,7 +17,7 @@
     "ask_preset": "추천 설정으로 시작할까요?",
     "no_preset": "기본 설정",
     "created_installing": "{{name}}을(를) 만들었어요. 서버 파일을 설치하는 중...",
-    "folder_other_game": "{{dir}}은(는) 다른 게임 폴더로 보여요 ({{games}}).",
+    "folder_other_game": "{{dir}} 폴더는 다른 게임 폴더로 보여요 ({{games}}).",
     "folder_unrecognized": "{{dir}}에서 서버를 알아보지 못했어요.",
     "fresh_install": "새로 설치",
     "install_failed": "설치 실패: {{error}}",
@@ -34,10 +34,17 @@
     "still_installing": "{{name}}은(는) 뒤에서 계속 설치 중이에요.",
     "use_anyway": "그래도 쓸까요?",
     "use_existing": "기존 서버 폴더 쓰기",
-    "folder_is": "{{dir}}은(는) {{game}} 서버로 보여요.",
+    "folder_is": "{{dir}} 폴더는 {{game}} 서버로 보여요.",
     "pick_game": "--module로 게임을 골라 주세요.",
-    "folder_in_use": "{{dir}}는 이미 {{name}}이(가) 쓰고 있어요. 한 폴더에 서버 둘을 두면 서로 덮어써요.",
-    "created_settings_failed": "{{name}} 서버는 만들었지만 설정을 저장하지 못했어요: {{error}}"
+    "folder_in_use": "{{dir}} 폴더는 이미 {{name}}이(가) 쓰고 있어요. 한 폴더에 서버 둘을 두면 서로 덮어써요.",
+    "created_settings_failed": "{{name}} 서버는 만들었지만 설정을 저장하지 못했어요: {{error}}",
+    "notice": {
+      "folder_not_writable": "이 폴더에 쓸 수 없어요. 설정 저장과 서버 실행이 실패할 수 있으니 쓰기 권한이 있는 곳으로 옮겨 주세요.",
+      "server_running": "이 폴더의 서버가 사바쨩 밖에서 켜져 있어요. 끄고 사바쨩에서 다시 켜 주세요."
+    },
+    "ask_mode": "서버 폴더를 어떻게 할까요?",
+    "mode_link": "그 자리에 연결",
+    "mode_move": "사바쨩으로 옮기기 (같은 드라이브만, 옮긴 서버를 지우면 파일도 지워짐)"
   },
   "bot": {
     "ask_token": "노드 토큰",
@@ -340,7 +347,10 @@
       "autostart_gui_missing": "GUI가 설치되어 있지 않아요. GUI까지 전체를 쓰려면 GUI를 설치하세요.",
       "autostart_write_failed": "시작 프로그램에 등록하지 못했어요. 권한을 확인하고 다시 시도하세요.",
       "autostart_unsupported": "이 OS에서는 아직 로그인할 때 자동 실행을 설정할 수 없어요.",
-      "autostart_unknown_mode": "off, daemon, full 중에서 고르세요."
+      "autostart_unknown_mode": "off, daemon, full 중에서 고르세요.",
+      "move_cross_volume": "다른 드라이브에 있는 폴더는 옮길 수 없어요. '그 자리에 연결'로 가져와 주세요.",
+      "move_in_use": "폴더를 옮기지 못했어요. 이 폴더의 서버를 끄고, 폴더를 연 프로그램을 닫은 뒤 다시 시도해 주세요.",
+      "move_failed": "폴더를 옮기지 못했어요. '그 자리에 연결'로 가져와 주세요."
     },
     "not_a_bool": "\"{{value}}\"는 예/아니오 값이 아니에요 (true 또는 false).",
     "not_a_number": "\"{{value}}\"는 숫자가 아니에요.",
@@ -471,7 +481,12 @@
   "remove": {
     "confirm": "{{name}} 서버를 지울까요?",
     "confirm_running": "{{name}}이(가) 돌고 있어요. 끄고 지울까요?",
-    "done": "{{name}}을(를) 지웠어요."
+    "done": "{{name}}을(를) 지웠어요.",
+    "unlink_folder_kept": "서버 폴더({{path}})의 파일은 그대로 남고, 사바쨩의 기록·로그·백업만 지워요.",
+    "unlink_restores": "게임 설정 파일은 가져오기 전으로 되돌려요(지금 설정을 두려면 --keep-settings).",
+    "unlink_keeps_settings": "게임 설정 파일은 지금 그대로 둬요.",
+    "unlinked": "'{{name}}'을(를) 사바쨩에서 뺐어요. 서버 파일은 {{path}}에 남아 있어요.",
+    "unlink_restore_failed": "게임 설정 파일 {{n}}개는 되돌리지 못했어요."
   },
   "reorder": {
     "done": "순서를 저장했어요."
@@ -978,7 +993,9 @@
       "remote.revoke.host_id": "짝을 풀 PC id (`remote clients`에 보여요)",
       "remote.connect.host_id": "붙을 PC id (`remote peers`에 보여요)",
       "remote.forget.host_id": "잊을 PC id (`remote daemons`에 보여요)",
-      "config.autostart.mode": "off, daemon 또는 full"
+      "config.autostart.mode": "off, daemon 또는 full",
+      "keep_settings": "인스턴스를 지울 때 게임 설정 파일을 가져오기 전으로 되돌리지 않고 지금 그대로 두기",
+      "move_folder": "--from 폴더를 그 자리에 연결하지 않고 사바쨩 폴더로 옮기기 (같은 드라이브만)"
     },
     "after": "이름은 일부만 적어도 돼요 (예: start pal). 인자 없이 터미널에서 실행하면 전체 화면 메뉴가 열려요(SABA_NO_TUI=1이면 대화형 셸).\n스크립트에서는 --json과 --yes를 쓰세요. 종료 코드: 0 성공 · 1 실패 · 2 사용법 · 3 데몬 연결 안 됨 · 4 없음 · 130 취소"
   },

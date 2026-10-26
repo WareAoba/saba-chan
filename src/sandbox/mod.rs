@@ -513,8 +513,9 @@ fn instance_access(key: &str) -> appcontainer::Access {
 }
 
 /// 인스턴스 폴더 안의 데몬 항목 중 비밀이 든 것. 격리 실행에 인스턴스 폴더 권한을 줄 때 상속을 끊어 둔다
-/// (비밀 파일은 저장할 때마다 `Mode::Secret`이 다시 끊는다. 여기서는 예전에 저장된 것과 백업 폴더를 막는다)
-const PROTECTED_INSTANCE_ENTRIES: [&str; 4] = ["instance.json", "settings.json", "rcon.json", "backups"];
+/// (비밀 파일은 저장할 때마다 `Mode::Secret`이 다시 끊는다. 여기서는 예전에 저장된 것과 백업 폴더,
+/// 가져온 서버의 원래 설정 보관본을 막는다)
+const PROTECTED_INSTANCE_ENTRIES: [&str; 5] = ["instance.json", "settings.json", "rcon.json", "backups", crate::instance::migration::DIR];
 
 /// 하나라도 끊지 못하면 false: 그때는 인스턴스 폴더 권한을 주지 않는다 (상속으로 비밀이 열리지 않게)
 fn protect_daemon_entries(instance_dir: &Path) -> bool {
@@ -685,6 +686,32 @@ pub fn reset_targets(dirs: &[PathBuf], python_base: Option<PathBuf>) -> Vec<Path
     out.sort();
     out.dedup();
     out
+}
+
+/// 인스턴스를 지우며 남는 폴더(가져온 서버 폴더·실행 파일 폴더, `dirs`)에서 거둘 곳: 그 폴더들과 바로 위(목록 권한).
+/// 바로 위 폴더는 남는 다른 인스턴스의 폴더(`others`)도 그 아래에 있으면 그쪽이 아직 쓰므로 둔다
+pub fn release_targets(dirs: &[PathBuf], others: &[PathBuf]) -> Vec<PathBuf> {
+    let shared = |parent: &Path| others.iter().any(|o| o.parent() == Some(parent));
+    let mut out: Vec<PathBuf> = dirs.iter().filter(|d| !d.as_os_str().is_empty()).cloned().collect();
+    out.extend(dirs.iter().filter_map(|d| d.parent()).filter(|p| !p.as_os_str().is_empty() && !shared(p)).map(Path::to_path_buf));
+    out.sort();
+    out.dedup();
+    out
+}
+
+/// 인스턴스를 지울 때 남는 폴더(`dirs`)에서 격리 실행의 흔적을 거둔다: 낮은 무결성 표시를 덮고,
+/// 사바쨩 프로필들의 명시 ACE를 뺀다(프로필은 남는다: 같은 모듈의 다른 인스턴스가 쓴다). Windows만 할 일이 있다
+pub fn release(dirs: &[PathBuf], others: &[PathBuf]) -> Result<(), Vec<String>> {
+    let targets = release_targets(dirs, others);
+    #[cfg(windows)]
+    {
+        appcontainer::release(&targets, dirs)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = targets;
+        Ok(())
+    }
 }
 
 /// `saba-core sandbox reset`: 인스턴스 기록에서 폴더를 모아 격리 실행의 프로필·권한·표시를 거둔다. Windows만 할 일이 있다.
@@ -1098,6 +1125,17 @@ mod tests {
     }
     use super::*;
 
+    /// 가져온 서버를 지우면 그 폴더와 바로 위에서 거두되, 다른 인스턴스가 같은 위 폴더를 쓰면 위 폴더는 둔다
+    #[test]
+    fn unlinking_releases_the_folder_and_its_parent_unless_another_server_still_sits_there() {
+        let dirs = [PathBuf::from("/games/pal"), PathBuf::from("/games/pal/bin")];
+        let got = release_targets(&dirs, &[PathBuf::from("/data/instances/b")]);
+        let want: Vec<PathBuf> = ["/games", "/games/pal", "/games/pal/bin"].iter().map(PathBuf::from).collect();
+        assert_eq!(got, want);
+        let got = release_targets(&dirs[..1], &[PathBuf::from("/games/mc")]);
+        assert_eq!(got, vec![PathBuf::from("/games/pal")]);
+    }
+
     #[test]
     fn python_isolation_policy_is_independent_of_launch_guard_platform() {
         assert!(!python_isolation_required(Trust::Verified));
@@ -1489,6 +1527,12 @@ mod tests {
         // 주인은 계속 읽고 쓴다
         assert_eq!(std::fs::read(tmp.path().join("rcon.json")).unwrap(), b"{}");
         std::fs::write(tmp.path().join("backups").join("a"), b"x").unwrap();
+    }
+
+    /// 가져오기 전 원래 설정 보관본은 격리된 모듈이 고치지 못해야 한다 (해제할 때 그대로 되돌린다)
+    #[test]
+    fn the_kept_originals_of_an_imported_server_are_protected_too() {
+        assert!(PROTECTED_INSTANCE_ENTRIES.contains(&crate::instance::migration::DIR));
     }
 
     /// 익스텐션 폴더는 id의 '-'를 '_'로 바꾼 이름이다. 없는 폴더를 보면 기록에 없는 코드 검사가 빠진다
