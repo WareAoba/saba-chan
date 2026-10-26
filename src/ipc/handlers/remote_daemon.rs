@@ -173,7 +173,7 @@ pub async fn proxy(State(state): State<IPCServer>, Path((host_id, _)): Path<(Str
     let Some(path) = forward_path(rest, req.uri().query()) else {
         return peer::error(StatusCode::NOT_FOUND, "not_found");
     };
-    peer::forward(&ConfigFile::default_location(), relay_target(&state).await, &host_id, &path, req).await
+    peer::forward(&ConfigFile::default_location(), relay_target(&state).await, &host_id, &path, req, state.shutdown_token.clone()).await
 }
 
 #[cfg(test)]

@@ -6,6 +6,9 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use futures_util::StreamExt;
+use tokio_util::sync::CancellationToken;
+
 use axum::{
     body::Body,
     http::{header, HeaderMap, HeaderName, Method, Request, StatusCode},
@@ -160,8 +163,20 @@ fn build(method: &Method, path: &str, headers: &HeaderMap, token: &str, body: &a
     req.header(header::AUTHORIZATION, format!("Bearer {token}")).body(Body::from(body.clone())).ok()
 }
 
-/// 저장한 원격 데몬 `host_id`에 `path`(쿼리 포함, `/api/...`)를 보낸다
-pub async fn forward(file: &ConfigFile, relay: Option<Target>, host_id: &str, path: &str, req: Request<Body>) -> Response {
+/// 저장한 원격 데몬 `host_id`에 `path`(쿼리 포함, `/api/...`)를 보낸다.
+/// `stop`(이 데몬 종료)이 취소되면 기다리던 답과 넘기던 스트림을 끝낸다.
+pub async fn forward(file: &ConfigFile, relay: Option<Target>, host_id: &str, path: &str, req: Request<Body>, stop: CancellationToken) -> Response {
+    tokio::select! {
+        _ = stop.cancelled() => error(StatusCode::SERVICE_UNAVAILABLE, "shutting_down"),
+        res = forward_once(file, relay, host_id, path, req) => {
+            let (head, body) = res.into_parts();
+            let body = body.into_data_stream().take_until(stop.cancelled_owned());
+            Response::from_parts(head, Body::from_stream(body))
+        }
+    }
+}
+
+async fn forward_once(file: &ConfigFile, relay: Option<Target>, host_id: &str, path: &str, req: Request<Body>) -> Response {
     let Some(daemon) = config::daemons_in(file).into_iter().find(|d| d.host_id == host_id) else {
         return error(StatusCode::NOT_FOUND, "remote_unknown");
     };
@@ -332,15 +347,15 @@ mod tests {
         assert_eq!(config::daemons_in(&file), vec![daemon]);
 
         let req = get_req(&[("accept-language", "ko"), ("x-saba-token", "local-ipc-secret"), ("cookie", "c=1")]);
-        let (status, body) = json_of(forward(&file, Some(relay.clone()), "host-b", "/api/echo", req).await).await;
+        let (status, body) = json_of(forward(&file, Some(relay.clone()), "host-b", "/api/echo", req, CancellationToken::new()).await).await;
         assert_eq!(status, 200, "{body}");
         assert_eq!(body, json!({ "lang": "ko", "ipcToken": null, "cookie": null }));
 
         let post = Request::post("/ignored").header("content-type", "text/plain").body(Body::from("hello")).unwrap();
-        let res = forward(&file, Some(relay.clone()), "host-b", "/api/echo", post).await;
+        let res = forward(&file, Some(relay.clone()), "host-b", "/api/echo", post, CancellationToken::new()).await;
         assert_eq!(axum::body::to_bytes(res.into_body(), 1024).await.unwrap(), "hello");
 
-        let (status, body) = json_of(forward(&file, Some(relay), "host-x", "/api/echo", get_req(&[])).await).await;
+        let (status, body) = json_of(forward(&file, Some(relay), "host-x", "/api/echo", get_req(&[]), CancellationToken::new()).await).await;
         assert_eq!((status, body["error_code"].as_str()), (404, Some("remote_unknown")));
     }
 
@@ -371,7 +386,7 @@ mod tests {
         stop.cancel();
 
         let (_b2, _stop2) = remote_daemon(&relay, &state, Some(&ConfigFile::at(b.path()))).await;
-        let (status, body) = json_of(forward(&file, Some(relay), "host-b", "/api/echo", get_req(&[])).await).await;
+        let (status, body) = json_of(forward(&file, Some(relay), "host-b", "/api/echo", get_req(&[]), CancellationToken::new()).await).await;
         assert_eq!(status, 200, "{body}");
         let after = config::daemons_in(&file).remove(0);
         assert_ne!((after.port, &after.cert_sha256), (before.port, &before.cert_sha256), "the saved endpoint follows the relay");
@@ -389,7 +404,7 @@ mod tests {
         let before = connect(&file, Some(relay.clone()), "host-b").await.unwrap();
         // 릴레이가 다른 주소를 알게 됐다
         *state.endpoint.lock().unwrap() = json!({ "address": "127.0.0.1", "port": 9, "certSha256": "cd".repeat(32) });
-        let (status, body) = json_of(forward(&file, Some(relay), "host-b", "/api/slow", get_req(&[])).await).await;
+        let (status, body) = json_of(forward(&file, Some(relay), "host-b", "/api/slow", get_req(&[]), CancellationToken::new()).await).await;
         assert_eq!((status, body["error_code"].as_str()), (504, Some("remote_timeout")));
         assert_eq!(config::daemons_in(&file).remove(0), before, "the saved endpoint stays");
     }
@@ -403,10 +418,38 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let file = ConfigFile::at(dir.path());
         connect(&file, Some(relay.clone()), "host-b").await.unwrap();
-        let res = forward(&file, Some(relay), "host-b", "/api/stream", get_req(&[])).await;
+        let res = forward(&file, Some(relay), "host-b", "/api/stream", get_req(&[]), CancellationToken::new()).await;
         assert_eq!(res.status(), StatusCode::OK);
         let mut stream = res.into_body().into_data_stream();
         let first = tokio::time::timeout(Duration::from_secs(5), stream.next()).await.expect("the first chunk arrives before the stream ends");
         assert_eq!(first.unwrap().unwrap(), "first\n");
+    }
+
+    #[tokio::test]
+    async fn stopping_this_daemon_ends_a_relayed_stream_and_a_waiting_request() {
+        let state = Relay::default();
+        let relay = fake_relay(state.clone()).await;
+        let (_b, _stop) = remote_daemon(&relay, &state, None).await;
+        let dir = tempfile::tempdir().unwrap();
+        let file = ConfigFile::at(dir.path());
+        connect(&file, Some(relay.clone()), "host-b").await.unwrap();
+
+        let stop = CancellationToken::new();
+        let res = forward(&file, Some(relay.clone()), "host-b", "/api/stream", get_req(&[]), stop.clone()).await;
+        let mut stream = res.into_body().into_data_stream();
+        stream.next().await.unwrap().unwrap();
+        stop.cancel();
+        let end = tokio::time::timeout(Duration::from_secs(5), stream.next()).await.expect("the stream ends when this daemon stops");
+        assert!(end.is_none());
+
+        let stop = CancellationToken::new();
+        let slow = tokio::spawn({
+            let (file, relay, stop) = (file.clone(), relay.clone(), stop.clone());
+            async move { forward(&file, Some(relay), "host-b", "/api/slow", get_req(&[]), stop).await }
+        });
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        stop.cancel();
+        let res = tokio::time::timeout(Duration::from_secs(5), slow).await.expect("a waiting request gives up when this daemon stops").unwrap();
+        assert_eq!(res.status(), StatusCode::SERVICE_UNAVAILABLE);
     }
 }
