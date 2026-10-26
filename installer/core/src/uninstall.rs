@@ -125,6 +125,12 @@ pub async fn do_uninstall(keep: Keep, on_progress: impl Fn(&UninstallProgress)) 
             shortcuts::remove_shortcuts_into(dir, shortcuts::ALL_SHORTCUT_NAMES);
         }
     }
+    // 로그인할 때 자동 실행: 이 설치를 가리키는 것만 (다른 설치본을 켜 둔 것은 둔다)
+    if let Some(dir) = &install_dir {
+        if let Err(e) = saba_chan_updater_lib::autostart::remove_if_in(dir) {
+            tracing::warn!("[Uninstall] Failed to remove the sign-in autostart entry: {}", e);
+        }
+    }
 
     // Step 4: 설치 디렉토리 삭제
     emit("files", "Removing installation files...", 35);

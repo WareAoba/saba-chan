@@ -194,7 +194,15 @@
     "confirm_move_modules": "Module nach {{dir}} verschieben? Installierte Module werden kopiert, geprüft und dann aus dem alten Ordner entfernt.",
     "confirm_move_extensions": "Erweiterungen nach {{dir}} verschieben? Installierte Erweiterungen werden kopiert, geprüft und dann aus dem alten Ordner entfernt.",
     "moved": "Nach {{path}} verschoben.",
-    "move_left_behind": "Diese alten Dateien ließen sich nicht entfernen. Lösche sie selbst: {{files}}"
+    "move_left_behind": "Diese alten Dateien ließen sich nicht entfernen. Lösche sie selbst: {{files}}",
+    "autostart": {
+      "off": "Aus",
+      "daemon": "Nur Daemon",
+      "full": "Alles mit GUI",
+      "current": "Beim Anmelden starten: {{mode}}",
+      "set": "Beim Anmelden starten ist jetzt: {{mode}}.",
+      "unsupported": "Der Start beim Anmelden kann auf diesem Betriebssystem noch nicht eingestellt werden."
+    }
   },
   "console": {
     "attach_help": "Mit {{name}} verbunden. Gib einen Befehl ein, :help für Hilfe, :q zum Verlassen (der Server läuft weiter).",
@@ -328,7 +336,11 @@
       "paths_verify_failed": "Die Kopie stimmte nicht mit dem Original überein. Nichts wurde geändert. Versuche es erneut.",
       "paths_commit_failed": "Die Einstellung konnte nicht gespeichert werden. Die Dateien wurden zurückgelegt.",
       "paths_unknown_kind": "Wähle modules oder extensions.",
-      "paths_overlaps_install": "Das geht nicht im Installationsordner. Wähle einen Ordner außerhalb davon."
+      "paths_overlaps_install": "Das geht nicht im Installationsordner. Wähle einen Ordner außerhalb davon.",
+      "autostart_gui_missing": "Die GUI ist nicht installiert. Installiere sie, um alles mit GUI zu starten.",
+      "autostart_write_failed": "Saba-chan konnte nicht zu den Autostart-Programmen hinzugefügt werden. Prüfe die Berechtigungen und versuche es erneut.",
+      "autostart_unsupported": "Der Start beim Anmelden kann auf diesem Betriebssystem noch nicht eingestellt werden.",
+      "autostart_unknown_mode": "Wähle off, daemon oder full."
     },
     "not_a_bool": "„{{value}}“ ist kein Ja/Nein (verwende true oder false).",
     "not_a_number": "„{{value}}“ ist keine Zahl.",
@@ -685,7 +697,8 @@
       "remote.status": "Einstellungen und Zustand des Remote-Ports (offen, an das Relay gemeldete Adresse, Zertifikat-Fingerabdruck)",
       "remote.set": "Remote-Port ein- oder ausschalten, Port oder öffentliche Adresse für das Relay ändern",
       "remote.clients": "Deine mit diesem Daemon gekoppelten PCs",
-      "remote.revoke": "Kopplung mit einem PC aufheben: sein Token gilt sofort nicht mehr"
+      "remote.revoke": "Kopplung mit einem PC aufheben: sein Token gilt sofort nicht mehr",
+      "config.autostart": "Was beim Anmelden an diesem PC startet: off, daemon (nur Daemon und Tray) oder full (mit GUI-Fenster). Ohne Modus wird der aktuelle Wert gezeigt"
     },
     "arg": {
       "module.maker.game": "Spiel für die erste Anfrage",
@@ -761,7 +774,8 @@
       "remote.set.off": "Remote-Port ausschalten",
       "remote.set.port": "Remote-Portnummer",
       "remote.set.address": "Öffentlicher Hostname oder IP dieses PCs (leer entfernt sie)",
-      "remote.revoke.host_id": "PC-ID, deren Kopplung aufgehoben wird (siehe `remote clients`)"
+      "remote.revoke.host_id": "PC-ID, deren Kopplung aufgehoben wird (siehe `remote clients`)",
+      "config.autostart.mode": "off, daemon oder full"
     },
     "after": "Namen können abgekürzt werden (z. B. start pal). Ohne Argumente öffnet sich im Terminal das Vollbildmenü (SABA_NO_TUI=1: die interaktive Shell).\nIn Skripten --json und --yes verwenden. Exit-Codes: 0 ok · 1 fehlgeschlagen · 2 Verwendung · 3 Daemon nicht erreichbar · 4 nicht gefunden · 130 abgebrochen"
   },

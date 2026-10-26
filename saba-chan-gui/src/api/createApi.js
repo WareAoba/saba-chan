@@ -1088,6 +1088,9 @@ export function createApi({ invoke, hub }) {
         // 모듈·익스텐션 폴더 옮기기: 데몬이 복사·검증 뒤 옮긴다 (큰 폴더는 오래 걸린다)
         systemPathsMove: (kind, target) =>
             daemonJson('post', '/api/system/paths/move', { kind, target }, PATHS_MOVE_TIMEOUT),
+        // 로그인할 때 자동 실행: `{supported, mode: 'off'|'daemon'|'full'}`
+        systemAutostart: () => daemonJson('get', '/api/system/autostart'),
+        systemAutostartSet: (mode) => daemonJson('put', '/api/system/autostart', { mode }),
         instanceBackups: (id) => daemonJson('get', instancePath(id, '/backups')),
         // body: 없으면 지금 상태, `{ source: 'snapshot', snapshot? }`이면 게임 자동 백업 보관
         instanceBackupCreate: (id, body) => daemonJson('post', instancePath(id, '/backups'), body, BACKUP_TIMEOUT),

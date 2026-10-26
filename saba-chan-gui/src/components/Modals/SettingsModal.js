@@ -28,6 +28,7 @@ import { SabaToggle } from '../ui/SabaUI';
 import { AuditLog, auditAvailable } from '../servers/AuditTab';
 import { DataTransferSection, dataTransferAvailable } from './DataTransferSection';
 import { FolderPathsSection, folderPathsAvailable } from './FolderPathsSection';
+import { AutostartSetting, autostartAvailable } from './AutostartSetting';
 import { ExtensionGuiSection, extensionGuiAvailable } from './ExtensionGuiSection';
 import { UnisolatedSection, unisolatedAvailable } from './UnisolatedSection';
 import SabaStorage from './SabaStorage';
@@ -440,6 +441,8 @@ function SettingsModal({
                                     ]}
                                 />
                             </div>
+
+                            {autostartAvailable() && <AutostartSetting />}
 
                             {/* 사바 스토리지 — 클릭하면 SabaStorage로 전환 */}
                             <div

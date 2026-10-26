@@ -194,7 +194,15 @@
     "confirm_move_modules": "모듈을 {{dir}}(으)로 옮길까요? 설치된 모듈을 복사하고 확인한 뒤 원래 폴더에서 지워요.",
     "confirm_move_extensions": "익스텐션을 {{dir}}(으)로 옮길까요? 설치된 익스텐션을 복사하고 확인한 뒤 원래 폴더에서 지워요.",
     "moved": "{{path}}(으)로 옮겼어요.",
-    "move_left_behind": "원래 폴더의 이 파일은 지우지 못했어요. 직접 지워 주세요: {{files}}"
+    "move_left_behind": "원래 폴더의 이 파일은 지우지 못했어요. 직접 지워 주세요: {{files}}",
+    "autostart": {
+      "off": "끔",
+      "daemon": "데몬만",
+      "full": "GUI까지 전체",
+      "current": "로그인할 때 자동 실행: {{mode}}",
+      "set": "로그인할 때 자동 실행을 {{mode}}(으)로 바꿨어요.",
+      "unsupported": "이 OS에서는 아직 로그인할 때 자동 실행을 설정할 수 없어요."
+    }
   },
   "console": {
     "attach_help": "{{name}} 콘솔에 붙었어요. 명령을 입력하세요. 도움말 :help, 나가기 :q (서버는 계속 돌아요).",
@@ -328,7 +336,11 @@
       "paths_verify_failed": "복사본이 원본과 달라요. 바뀐 것은 없어요. 다시 시도하세요.",
       "paths_commit_failed": "설정을 저장하지 못해 파일을 원래 자리로 되돌렸어요.",
       "paths_unknown_kind": "modules 또는 extensions를 고르세요.",
-      "paths_overlaps_install": "설치 폴더 안에는 둘 수 없어요. 설치 폴더 밖의 폴더를 고르세요."
+      "paths_overlaps_install": "설치 폴더 안에는 둘 수 없어요. 설치 폴더 밖의 폴더를 고르세요.",
+      "autostart_gui_missing": "GUI가 설치되어 있지 않아요. GUI까지 전체를 쓰려면 GUI를 설치하세요.",
+      "autostart_write_failed": "시작 프로그램에 등록하지 못했어요. 권한을 확인하고 다시 시도하세요.",
+      "autostart_unsupported": "이 OS에서는 아직 로그인할 때 자동 실행을 설정할 수 없어요.",
+      "autostart_unknown_mode": "off, daemon, full 중에서 고르세요."
     },
     "not_a_bool": "\"{{value}}\"는 예/아니오 값이 아니에요 (true 또는 false).",
     "not_a_number": "\"{{value}}\"는 숫자가 아니에요.",
@@ -812,7 +824,8 @@
       "remote.status": "원격 포트 설정과 상태 (열림, 릴레이에 알린 주소, 인증서 지문)",
       "remote.set": "원격 포트 켜기·끄기, 포트나 릴레이에 알릴 공인 주소 바꾸기",
       "remote.clients": "이 데몬에 짝 맺은 내 PC",
-      "remote.revoke": "PC와의 짝 풀기: 그 PC의 토큰이 바로 통하지 않아요"
+      "remote.revoke": "PC와의 짝 풀기: 그 PC의 토큰이 바로 통하지 않아요",
+      "config.autostart": "PC에 로그인할 때 켤 것: off(끔), daemon(데몬과 트레이만), full(GUI 창까지). 모드 없이 쓰면 지금 값을 보여요"
     },
     "arg": {
       "module.maker.game": "첫 부탁에 넣을 게임 이름",
@@ -956,7 +969,8 @@
       "remote.set.off": "원격 포트 끄기",
       "remote.set.port": "원격 포트 번호",
       "remote.set.address": "이 PC의 공인 호스트 이름이나 IP (빈 값이면 지워요)",
-      "remote.revoke.host_id": "짝을 풀 PC id (`remote clients`에 보여요)"
+      "remote.revoke.host_id": "짝을 풀 PC id (`remote clients`에 보여요)",
+      "config.autostart.mode": "off, daemon 또는 full"
     },
     "after": "이름은 일부만 적어도 돼요 (예: start pal). 인자 없이 터미널에서 실행하면 전체 화면 메뉴가 열려요(SABA_NO_TUI=1이면 대화형 셸).\n스크립트에서는 --json과 --yes를 쓰세요. 종료 코드: 0 성공 · 1 실패 · 2 사용법 · 3 데몬 연결 안 됨 · 4 없음 · 130 취소"
   },

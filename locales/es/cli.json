@@ -194,7 +194,15 @@
     "confirm_move_modules": "¿Mover los módulos a {{dir}}? Los módulos instalados se copian, se comprueban y luego se eliminan de la carpeta anterior.",
     "confirm_move_extensions": "¿Mover las extensiones a {{dir}}? Las extensiones instaladas se copian, se comprueban y luego se eliminan de la carpeta anterior.",
     "moved": "Movido a {{path}}.",
-    "move_left_behind": "No se pudieron eliminar estos archivos antiguos. Bórralos tú: {{files}}"
+    "move_left_behind": "No se pudieron eliminar estos archivos antiguos. Bórralos tú: {{files}}",
+    "autostart": {
+      "off": "Desactivado",
+      "daemon": "Solo el daemon",
+      "full": "Todo con la GUI",
+      "current": "Iniciar al iniciar sesión: {{mode}}",
+      "set": "Iniciar al iniciar sesión ahora es: {{mode}}.",
+      "unsupported": "Todavía no se puede configurar el inicio al iniciar sesión en este sistema operativo."
+    }
   },
   "console": {
     "attach_help": "Conectado a {{name}}. Escribe un comando, :help para ayuda, :q para salir (el servidor sigue en marcha).",
@@ -328,7 +336,11 @@
       "paths_verify_failed": "La copia no coincidía con el original. No se cambió nada. Vuelve a intentarlo.",
       "paths_commit_failed": "No se pudo guardar el ajuste. Los archivos se devolvieron a su lugar.",
       "paths_unknown_kind": "Elige modules o extensions.",
-      "paths_overlaps_install": "No puede ir dentro de la carpeta de instalación. Elige una carpeta fuera de ella."
+      "paths_overlaps_install": "No puede ir dentro de la carpeta de instalación. Elige una carpeta fuera de ella.",
+      "autostart_gui_missing": "La GUI no está instalada. Instálala para iniciar todo con la GUI.",
+      "autostart_write_failed": "No se pudo añadir Saba-chan a los programas de inicio. Revisa los permisos e inténtalo de nuevo.",
+      "autostart_unsupported": "Todavía no se puede configurar el inicio al iniciar sesión en este sistema operativo.",
+      "autostart_unknown_mode": "Elige off, daemon o full."
     },
     "not_a_bool": "«{{value}}» no es sí/no (usa true o false).",
     "not_a_number": "«{{value}}» no es un número.",
@@ -685,7 +697,8 @@
       "remote.status": "Ajustes y estado del puerto remoto (abierto, dirección enviada al relé, huella del certificado)",
       "remote.set": "Activar o desactivar el puerto remoto, cambiar el puerto o la dirección pública enviada al relé",
       "remote.clients": "Tus PC emparejados con este daemon",
-      "remote.revoke": "Deshacer el emparejamiento con un PC: su token deja de funcionar al instante"
+      "remote.revoke": "Deshacer el emparejamiento con un PC: su token deja de funcionar al instante",
+      "config.autostart": "Qué se inicia al iniciar sesión en este PC: off, daemon (solo el daemon y la bandeja) o full (con la ventana de la GUI). Sin modo muestra el valor actual"
     },
     "arg": {
       "module.maker.game": "Juego para la primera petición",
@@ -761,7 +774,8 @@
       "remote.set.off": "Desactivar el puerto remoto",
       "remote.set.port": "Número del puerto remoto",
       "remote.set.address": "Nombre de host público o IP de este PC (vacío la borra)",
-      "remote.revoke.host_id": "ID del PC que se desempareja (ver `remote clients`)"
+      "remote.revoke.host_id": "ID del PC que se desempareja (ver `remote clients`)",
+      "config.autostart.mode": "off, daemon o full"
     },
     "after": "Los nombres pueden ser parciales (p. ej. start pal). Sin argumentos en una terminal se abre el menú a pantalla completa (SABA_NO_TUI=1: la shell interactiva).\nEn scripts usa --json y --yes. Códigos de salida: 0 correcto · 1 error · 2 uso · 3 daemon inaccesible · 4 no encontrado · 130 cancelado"
   },
