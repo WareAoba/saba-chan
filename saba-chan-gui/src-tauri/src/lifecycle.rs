@@ -11,6 +11,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tauri::async_runtime::JoinHandle;
 use tauri::{AppHandle, Manager};
+#[cfg(not(windows))]
 use tauri_plugin_notification::NotificationExt;
 
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
@@ -799,16 +800,39 @@ fn notify_critical(app: &AppHandle, ev: &SseEvent) {
     let state = app.state::<AppState>();
     let Some(body) = events::critical_notice(ev, &state.i18n.read().unwrap()) else { return };
     if state.settings()["osNotifications"] == json!(false) {
+        tracing::info!("[Notify] {} — OS notifications off", ev.kind);
         return;
     }
     let in_front = app
         .get_webview_window(crate::window::MAIN)
         .is_some_and(|w| w.is_visible().unwrap_or(false) && w.is_focused().unwrap_or(false));
-    if !in_front {
+    if in_front {
+        tracing::info!("[Notify] {} — window in front, in-app notice only", ev.kind);
+    } else {
         show_notification(app, &state.t("notify.title", &[]), &body);
     }
 }
 
+/// Windows는 토스트를 직접 띄운다: 알림 플러그인은 결과를 버려 실패해도 기록이 남지 않는다
+#[cfg(windows)]
+pub fn show_notification(_app: &AppHandle, title: &str, body: &str) {
+    use saba_chan_updater_lib::notify_app_id;
+    use tauri_winrt_notification::{IconCrop, Toast};
+    let (title, body) = (title.to_string(), body.to_string());
+    // WinRT 호출은 비동기 작업 스레드 밖, 전용 스레드에서 한다
+    std::thread::spawn(move || {
+        let mut toast = Toast::new(notify_app_id::GUI_APP_ID).title(&title).text1(&body);
+        if let Some(icon) = notify_app_id::icon_path().filter(|p| p.is_file()) {
+            toast = toast.icon(&icon, IconCrop::Square, "");
+        }
+        match toast.show() {
+            Ok(()) => tracing::info!("[Notify] Notification shown"),
+            Err(e) => tracing::warn!("[Notify] Failed to show notification: {:?}", e),
+        }
+    });
+}
+
+#[cfg(not(windows))]
 pub fn show_notification(app: &AppHandle, title: &str, body: &str) {
     if let Err(e) = app.notification().builder().title(title).body(body).show() {
         tracing::warn!("[Notify] Failed to show notification: {}", e);

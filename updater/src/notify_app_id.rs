@@ -20,11 +20,18 @@ fn key_path(app_id: &str) -> String {
     format!(r"Software\Classes\AppUserModelId\{}", app_id)
 }
 
-/// GUI 알림을 등록한다. 아이콘 파일이 없으면 `icon_png`로 만든다 (못 만들면 이름만 등록)
+/// 알림 아이콘 파일 위치
+#[cfg(target_os = "windows")]
+pub fn icon_path() -> Option<std::path::PathBuf> {
+    std::env::var_os("LOCALAPPDATA").map(|d| Path::new(&d).join(GUI_APP_ID).join(ICON_FILE))
+}
+
+/// GUI 알림을 등록한다. 아이콘은 토스트 이미지 크기 제한 안에 드는 작은 PNG를 준다. 아이콘 파일이 없거나 다르면 `icon_png`로 쓴다 (못 만들면 이름만 등록)
 #[cfg(target_os = "windows")]
 pub fn ensure(icon_png: &[u8]) -> std::io::Result<()> {
-    let icon = std::env::var_os("LOCALAPPDATA").map(|d| Path::new(&d).join(GUI_APP_ID).join(ICON_FILE)).filter(|p| {
-        p.is_file()
+    // 바뀐 아이콘으로 다시 쓴다 (크기로 비교)
+    let icon = icon_path().filter(|p| {
+        std::fs::metadata(p).is_ok_and(|m| m.len() == icon_png.len() as u64)
             || std::fs::create_dir_all(p.parent().unwrap_or(p)).and_then(|_| std::fs::write(p, icon_png)).is_ok()
     });
     register(GUI_APP_ID, DISPLAY_NAME, icon.as_deref())

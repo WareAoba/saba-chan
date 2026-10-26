@@ -656,7 +656,7 @@ async fn main() -> anyhow::Result<()> {
     // Windows가 GUI 알림(크래시 등 중대 알림)을 바로가기 없이도 띄우도록 앱 ID를 등록한다
     tokio::task::spawn_blocking(|| {
         if let Err(e) =
-            saba_chan_updater_lib::notify_app_id::ensure(include_bytes!("../saba-chan-gui/src-tauri/icons/icon.png"))
+            saba_chan_updater_lib::notify_app_id::ensure(include_bytes!("../saba-chan-gui/public/favicon.png"))
         {
             tracing::warn!("[Notify] Failed to register notification app id: {}", e);
         }
