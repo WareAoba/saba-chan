@@ -515,7 +515,7 @@ async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
     if !ext_data.is_empty() {
         body["extension_data"] = Value::Object(ext_data);
     }
-    let created = ctx.api.create_instance(body).await?;
+    let created = ctx.api.create_instance(body).await.map_err(move_refusal)?;
     let id = s(&created, "id").to_string();
     super::print_trust_warnings(ctx, &created);
     // 가져온 폴더에서 미리 알릴 것 (데몬 `notices`: 쓸 수 없는 폴더, 밖에서 켜 둔 서버)
@@ -1048,6 +1048,20 @@ fn tell_moved_ports(ctx: &Ctx, res: &Result<Value>) {
     }
     if let Some(line) = body.and_then(module_update_line) {
         ctx.out.note(&line);
+    }
+}
+
+/// 가져오기 "옮기기"를 데몬이 거절했으면(다른 드라이브, 켜진 서버 등) 데몬의 영어 문구 대신 현지화된 까닭과 할 일로 바꾼다
+fn move_refusal(e: anyhow::Error) -> anyhow::Error {
+    match api_code(&e) {
+        Some(code @ ("move_cross_volume" | "move_in_use" | "move_failed" | "source_missing" | "destination_exists")) => {
+            let body = json!({});
+            match crate::error::api_hint(code, &body) {
+                Some(text) => CliError::Failed(text).into(),
+                None => e,
+            }
+        }
+        _ => e,
     }
 }
 
@@ -2082,6 +2096,17 @@ mod tests {
         let refused = crate::client::check(200, json!({ "success": false, "error_code": "graceful_stop_unavailable" })).unwrap_err();
         let e = agree_to_unsaved_stop(&ctx, &sv, refused, "stop").unwrap_err();
         assert!(cannot_save_and_exit(&e), "the daemon's code is kept: {e}");
+    }
+
+    /// 가져오기 "옮기기"가 거절되면 데몬 영어 문구 대신 현지화된 까닭과 할 일 한 줄만 보인다
+    #[test]
+    fn a_refused_move_reads_in_the_users_language() {
+        crate::i18n::init("ko");
+        let refused = crate::client::check(409, json!({ "success": false, "error_code": "move_cross_volume", "error": "Could not move the server folder into saba-chan (move_cross_volume)" })).unwrap_err();
+        let shown = move_refusal(refused).to_string();
+        assert_eq!(shown, t!("err.hint.move_cross_volume"));
+        let other = crate::client::check(409, json!({ "success": false, "error_code": "name_taken", "error": "x" })).unwrap_err();
+        assert_eq!(move_refusal(other).to_string(), "x");
     }
 
     /// 가져온 서버는 지우기 전에 서버 폴더가 남는다는 것과 설정을 되돌리는지를 알리고, 끝나면 폴더 자리를 알린다

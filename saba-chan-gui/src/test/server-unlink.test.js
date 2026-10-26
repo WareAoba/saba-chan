@@ -83,3 +83,15 @@ describe('가져온 서버 삭제(연결 해제)', () => {
         expect(done.message).toContain('1');
     });
 });
+
+describe('기존 서버 가져오기', () => {
+    it('고른 방식(옮기기)을 데몬 생성 요청에 싣는다', async () => {
+        window.showToast = vi.fn();
+        window.api = { instanceCreate: vi.fn().mockResolvedValue({ success: true, id: 'b' }), serverList: vi.fn().mockResolvedValue({ servers: [] }) };
+        const { result } = setup([]);
+        await act(async () =>
+            result.current.handleAddServer({ name: 'B', module_name: 'game', migration_source: '/srv/old', migration_mode: 'move' }),
+        );
+        expect(window.api.instanceCreate.mock.calls[0][0]).toMatchObject({ migration_source: '/srv/old', migration_mode: 'move' });
+    });
+});

@@ -747,8 +747,10 @@ pub async fn create_instance(
                     drop(supervisor);
                     let mut detected: Option<Value> = None;
                     if let Some((_, ref lifecycle_path, ref _server_exe)) = module_install {
+                        // instance_dir: 모듈이 서버 폴더 대신 인스턴스 폴더에 둘 것(가져온 서버의 포터블 런타임 등)의 자리
                         let import_config = json!({
                             "working_dir": instance.working_dir,
+                            "instance_dir": instance_dir,
                         });
                         match crate::plugin::PluginCall::new(lifecycle_path, "import_settings", import_config).in_instance(Some(state.host_context(&id))).run().await {
                             Ok(mut result) => {
@@ -2241,7 +2243,7 @@ mod tests {
         std::fs::write(dir.join("lifecycle.py"),
             "import json, os, sys\nc = json.load(sys.stdin)\nf = sys.argv[1]\n\
              if f == 'functions': print(json.dumps({'success': True, 'functions': ['import_settings']}))\n\
-             else: print(json.dumps({'success': True, 'settings': {'motd': open(os.path.join(c['working_dir'], 'motd.txt')).read()}}))\n").unwrap();
+             else: print(json.dumps({'success': True, 'settings': {'motd': open(os.path.join(c['working_dir'], 'motd.txt')).read(), 'seen_instance_dir': c.get('instance_dir')}}))\n").unwrap();
         crate::sandbox::consent_test_component(&dir.join("lifecycle.py"));
         let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
         for module in sup.module_loader.discover_modules().unwrap() { crate::sandbox::consent_test_component(std::path::Path::new(&module.entry_path())); }
@@ -2266,6 +2268,8 @@ mod tests {
         let moved = instance_dir.join("server");
         assert_eq!(instance.working_dir.as_deref(), Some(moved.to_string_lossy().as_ref()));
         assert_eq!(instance.module_settings["motd"], "mine", "the module read the moved folder");
+        // 가져오기도 인스턴스 폴더를 안다 (모듈이 포터블 런타임 같은 것을 서버 폴더 대신 그곳에 둔다)
+        assert_eq!(instance.module_settings["seen_instance_dir"], serde_json::json!(instance_dir.to_string_lossy()));
         assert_eq!(crate::instance::migration::linked_folder(instance.working_dir.as_deref(), &instance_dir), None);
 
         let removed = crate::ipc::internal::into_internal(super::delete_instance(Path(id), State(state.clone()), Query(Default::default())).await).await;

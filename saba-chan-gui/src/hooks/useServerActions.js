@@ -934,7 +934,7 @@ export function useServerActions({
 
     // ── handleAddServer ─────────────────────────────────────
     const handleAddServer = async (payload, legacyModuleName) => {
-        // payload = { name, module_name, accept_agreements?, preset?, extension_data?, migration_source?, module_settings? }
+        // payload = { name, module_name, accept_agreements?, preset?, extension_data?, migration_source?, migration_mode?, module_settings? }
         const serverName = typeof payload === 'string' ? payload : payload?.name;
         const moduleName = typeof payload === 'string' ? legacyModuleName : payload?.module_name;
 
@@ -987,6 +987,10 @@ export function useServerActions({
             // 마이그레이션: 기존 서버 디렉토리 직접 연결
             if (payload?.migration_source) {
                 instanceData.migration_source = payload.migration_source;
+                // 그 자리에 연결(link) / 사바쨩으로 옮기기(move)
+                if (payload.migration_mode) {
+                    instanceData.migration_mode = payload.migration_mode;
+                }
             }
 
             console.log('Adding instance:', instanceData);
