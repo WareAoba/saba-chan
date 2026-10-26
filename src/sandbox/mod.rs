@@ -970,6 +970,14 @@ pub fn isolation_for(entry: &Path, config: &Value, python_exe: &Path) -> Option<
             grants.shared.push(entry);
         }
     }
+    // 설정한 Java: Windows는 설정을 저장할 때 연다(`open_user_runtime`). 리눅스는 실행마다 붙이므로 여기서 붙인다.
+    // 모듈 기본값과 구별할 수 없지만 Java 설치 모양인 폴더(`runtime_home`)를 읽기로만 붙인다
+    #[cfg(not(windows))]
+    if let Some(java) = config.get("java_path").and_then(Value::as_str) {
+        for runtime in runtime_homes_in(Some(java), None, std::env::var_os("PATH").as_deref(), &[]) {
+            grants.push_optional(&runtime, Access::Read, &data_dir, home);
+        }
+    }
     let profile = appcontainer::profile_for(&key);
     Some(Isolation { key, dir, profile, grants, pycache, temp, data, extension_root })
 }
@@ -1214,6 +1222,23 @@ mod tests {
         std::fs::write(&entry, "").unwrap();
         let iso = isolation_for(&entry, &serde_json::json!({}), &venv.join("bin").join("python")).unwrap();
         assert!(iso.grants.entries.contains(&(base, appcontainer::Access::Read)), "{:?}", iso.grants.entries);
+    }
+
+    /// 리눅스는 실행마다 붙이므로, 설정한 Java(`java_path`)도 그 실행에 읽기로 붙인다 (Java 설치 모양인 폴더만)
+    #[cfg(not(windows))]
+    #[test]
+    fn a_configured_java_is_mounted_for_the_run() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let jdk = root.join("jdk-21");
+        std::fs::create_dir_all(jdk.join("bin")).unwrap();
+        std::fs::write(jdk.join("bin").join("java"), "").unwrap();
+        std::fs::write(jdk.join("release"), "JAVA_VERSION=\"21\"\n").unwrap();
+        let entry = root.join("lifecycle.py");
+        std::fs::write(&entry, "").unwrap();
+        let config = serde_json::json!({ "java_path": jdk.join("bin").join("java") });
+        let iso = isolation_for(&entry, &config, Path::new("python")).unwrap();
+        assert!(iso.grants.entries.contains(&(jdk, appcontainer::Access::Read)), "{:?}", iso.grants.entries);
     }
 
     #[test]
