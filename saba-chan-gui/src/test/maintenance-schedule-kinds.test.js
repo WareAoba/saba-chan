@@ -60,6 +60,9 @@ describe('예약 작업 초안', () => {
         expect(draftProblems(toDraft({ action: 'command', at: '04:00', command: 'say' }), tr, commands[0])).toContain(
             'maintenance.err_command_input',
         );
+        // 기본값이 있는 필수 인자는 비워도 데몬이 기본값을 쓴다
+        const withDefault = { ...commands[0], inputs: [{ ...commands[0].inputs[0], default: 'hi' }] };
+        expect(draftProblems(toDraft({ action: 'command', at: '04:00', command: 'say' }), tr, withDefault)).toEqual([]);
     });
 });
 

@@ -157,7 +157,7 @@ export function draftProblems(d, t, command) {
     if (d.action === COMMAND) {
         if (!d.command) out.push(t('maintenance.err_command'));
         for (const input of command?.inputs || []) {
-            if (input.required && !String(d.args[input.name] ?? '').trim()) {
+            if (input.required && input.default == null && !String(d.args[input.name] ?? '').trim()) {
                 out.push(t('maintenance.err_command_input', { name: input.label || input.name }));
             }
         }
