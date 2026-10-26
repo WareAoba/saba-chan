@@ -1347,6 +1347,7 @@
     "action_command": "Befehl",
     "action_stdin": "Konsoleneingabe",
     "action_backup": "Sicherung",
+    "action_remote": "Remote-Daemon",
     "skipped_stopped": "Übersprungen (Server aus)",
     "source_gui": "App",
     "source_cli": "CLI",

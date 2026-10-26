@@ -64,10 +64,8 @@ fn row(e: &Value) -> Vec<String> {
         "" => s(e, "source").to_string(),
         user => format!("{} ({})", s(e, "source"), user),
     };
-    let server = match s(e, "instance") {
-        "" => s(e, "instanceId"),
-        name => name,
-    };
+    // 원격 데몬에 중계한 조작(`remote`)은 서버 대신 그 데몬
+    let server = [s(e, "instance"), s(e, "instanceId"), s(e, "daemon")].into_iter().find(|v| !v.is_empty()).unwrap_or("");
     let what = match (s(e, "action"), s(e, "command")) {
         (action, "") => action.to_string(),
         (action, cmd) => format!("{} {} {}", action, cmd, s(e, "args")).trim_end().to_string(),
@@ -79,4 +77,15 @@ fn row(e: &Value) -> Vec<String> {
     };
     let when = e.get("ts").or_else(|| e.get("at")).and_then(Value::as_u64).map(output::ago).unwrap_or_default();
     vec![when, from, server.to_string(), what, ok]
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn a_relayed_change_names_the_remote_daemon() {
+        let e = serde_json::json!({ "source": "gui", "action": "remote", "instanceId": "", "daemon": "게임 PC", "command": "POST /api/instance/x/start", "ok": true });
+        let row = super::row(&e);
+        assert_eq!(row[2], "게임 PC");
+        assert_eq!(row[3], "remote POST /api/instance/x/start");
+    }
 }

@@ -10,7 +10,7 @@ export const auditAvailable = () => !!window.api?.auditList;
 const PAGE = 100;
 const MAX = 1000; // 데몬 상한
 const SOURCES = ['gui', 'cli', 'api', 'discord', 'schedule', 'daemon', 'web', 'remote', 'restart'];
-const ACTIONS = ['start', 'stop', 'restart', 'command', 'stdin', 'backup'];
+const ACTIONS = ['start', 'stop', 'restart', 'command', 'stdin', 'backup', 'remote'];
 
 // 데몬은 인자를 JSON 문자열로 남긴다 (잘렸을 수 있다): 배열이면 띄어 쓰고, 아니면 그대로
 const argsText = (args) => {
@@ -21,11 +21,11 @@ const argsText = (args) => {
     return args;
 };
 
-/** 한 건 → "무엇을" 한 줄 (명령이면 명령 이름과 인자) */
+/** 한 건 → "무엇을" 한 줄 (명령이면 명령 이름과 인자, 원격 데몬에 중계한 조작이면 그 데몬과 요청) */
 export function auditWhat(e, t) {
     const action = ACTIONS.includes(e.action) ? t(`audit.action_${e.action}`) : e.action;
     const detail = [e.command, argsText(e.args)].filter(Boolean).join(' ');
-    return detail ? `${action} · ${detail}` : action;
+    return [action, e.daemon, detail].filter(Boolean).join(' · ');
 }
 
 /** 한 건 → 결과 칩. 예약 백업은 서버가 꺼져 있으면 409로 건너뛴다 */

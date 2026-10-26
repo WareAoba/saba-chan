@@ -1347,6 +1347,7 @@
     "action_command": "Comando",
     "action_stdin": "Entrada de consola",
     "action_backup": "Copia de seguridad",
+    "action_remote": "Daemon remoto",
     "skipped_stopped": "Omitida (servidor apagado)",
     "source_gui": "App",
     "source_cli": "CLI",

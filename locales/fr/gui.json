@@ -1347,6 +1347,7 @@
     "action_command": "Commande",
     "action_stdin": "Saisie console",
     "action_backup": "Sauvegarde",
+    "action_remote": "Démon distant",
     "skipped_stopped": "Ignorée (serveur arrêté)",
     "source_gui": "App",
     "source_cli": "CLI",
