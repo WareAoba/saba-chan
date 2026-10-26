@@ -1231,7 +1231,9 @@
       "remote_rejected": "O daemon remoto não aceitou a conexão. Tente de novo",
       "remote_unknown": "Não é um daemon remoto ao qual você se conectou. Veja `remote daemons`",
       "relay_not_paired": "Este PC não está conectado ao relay",
-      "relay_unreachable": "Não foi possível alcançar o relay"
+      "relay_unreachable": "Não foi possível alcançar o relay",
+      "remote_ambiguous": "Há mais de um daemon remoto com esse nome. Escolha pelo host id",
+      "remote_timeout": "O daemon remoto não respondeu a tempo. Ele ainda pode estar processando o pedido"
     }
   }
 }

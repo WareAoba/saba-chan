@@ -855,6 +855,7 @@
       "no_color": "色を使わない",
       "lang": "メッセージの言語 (en、ko ...)",
       "port": "デーモンのポート (既定: 設定ファイル)",
+      "daemon": "保存したリモートデーモンをこのPCのデーモン経由で使う (名前か host id、`remote daemons`で確認)",
       "server": "サーバー名（一部だけでも可）",
       "extra_args": "試す追加の起動引数 (引用符で囲む、省くと保存されたもの)",
       "name": "新しいサーバーの名前",
@@ -1426,7 +1427,9 @@
       "remote_rejected": "リモートデーモンが接続を受け付けませんでした。もう一度お試しください",
       "remote_unknown": "接続していないリモートデーモンです。`remote daemons`で確認してください",
       "relay_not_paired": "このPCはリレーに接続していません",
-      "relay_unreachable": "リレーに接続できませんでした"
+      "relay_unreachable": "リレーに接続できませんでした",
+      "remote_ambiguous": "その名前のリモートデーモンが複数あります。host id で選んでください",
+      "remote_timeout": "リモートデーモンが時間内に応答しませんでした。要求はまだ処理中かもしれません"
     }
   }
 }

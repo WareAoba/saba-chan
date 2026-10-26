@@ -855,6 +855,7 @@
       "no_color": "색 끄기",
       "lang": "메시지 언어 (en, ko ...)",
       "port": "데몬 포트 (기본: 설정 파일)",
+      "daemon": "저장한 원격 데몬을 이 PC의 데몬을 거쳐 쓰기 (이름이나 host id, `remote daemons`로 보기)",
       "server": "서버 이름 (일부만 적어도 돼요)",
       "extra_args": "시험해 볼 추가 실행 인자 (따옴표로 묶기, 없으면 저장된 것)",
       "name": "새 서버 이름",
@@ -1426,7 +1427,9 @@
       "remote_rejected": "원격 데몬이 연결을 받지 않았어요. 다시 해 주세요",
       "remote_unknown": "연결하지 않은 원격 데몬이에요. `remote daemons`로 확인해 주세요",
       "relay_not_paired": "이 PC가 릴레이에 연결돼 있지 않아요",
-      "relay_unreachable": "릴레이에 닿지 못했어요"
+      "relay_unreachable": "릴레이에 닿지 못했어요",
+      "remote_ambiguous": "그 이름의 원격 데몬이 둘 이상이에요. host id로 골라 주세요",
+      "remote_timeout": "원격 데몬이 제때 답하지 않았어요. 요청은 이미 처리 중일 수 있어요"
     }
   }
 }

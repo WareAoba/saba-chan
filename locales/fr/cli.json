@@ -1231,7 +1231,9 @@
       "remote_rejected": "Le démon distant n'a pas accepté la connexion. Réessayez",
       "remote_unknown": "Ce n'est pas un démon distant auquel vous êtes connecté. Voyez `remote daemons`",
       "relay_not_paired": "Ce PC n'est pas connecté au relais",
-      "relay_unreachable": "Impossible de joindre le relais"
+      "relay_unreachable": "Impossible de joindre le relais",
+      "remote_ambiguous": "Plusieurs daemons distants portent ce nom. Choisissez-le par host id",
+      "remote_timeout": "Le daemon distant n'a pas répondu à temps. Il traite peut-être encore la demande"
     }
   }
 }

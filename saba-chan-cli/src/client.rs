@@ -29,6 +29,8 @@ pub struct Api {
     verified: Arc<RwLock<Option<String>>>,
     /// 요청마다 싣는 `Accept-Language` (`--lang`·`SABA_LANG`으로 고른 언어). 없으면 데몬이 자기 설정을 따른다
     pub lang: Option<String>,
+    /// 고른 원격 데몬 (`--daemon`, hostId 또는 저장한 이름). 이 PC의 데몬이 그 데몬에 중계한다 (01 §1.4.2 7)
+    pub target: Option<String>,
     /// 이 실행에서 마지막으로 보인 포트 충돌 정지 알림 id (L50)
     notices_seen: Arc<std::sync::atomic::AtomicU64>,
 }
@@ -72,7 +74,22 @@ impl Api {
             token: Arc::new(RwLock::new(read_token())),
             verified: Arc::default(),
             lang,
+            target: None,
             notices_seen: Arc::default(),
+        }
+    }
+
+    /// 같은 언어·대상으로 다른 포트의 데몬에 붙는다
+    pub fn on_port(&self, port: u16) -> Self {
+        let mut api = Self::new(port, self.lang.clone());
+        api.target = self.target.clone();
+        api
+    }
+
+    fn targeted(&self, req: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+        match self.target.as_deref() {
+            Some(t) => req.header("X-Saba-Target", seg(t)),
+            None => req,
         }
     }
 
@@ -95,7 +112,7 @@ impl Api {
             req = req.header("X-Saba-Token", t);
         }
         // 감사 로그의 출처 (A10)
-        req = req.header("X-Saba-Client", "cli");
+        req = self.targeted(req.header("X-Saba-Client", "cli"));
         if let Some(b) = body {
             req = req.json(b);
         }
@@ -655,7 +672,7 @@ impl Api {
     }
 
     async fn open_events(&self, since: Option<u64>) -> Result<reqwest::Response> {
-        let mut req = self.http.get(format!("{}/api/events", self.base)).header("X-Saba-Client", "cli");
+        let mut req = self.targeted(self.http.get(format!("{}/api/events", self.base)).header("X-Saba-Client", "cli"));
         if let Some(t) = self.token.read().ok().and_then(|t| t.clone()) {
             req = req.header("X-Saba-Token", t);
         }
@@ -1189,6 +1206,10 @@ mod tests {
 
     /// 받은 요청 머리를 그대로 돌려주는 한 번짜리 데몬
     async fn request_head(lang: Option<&str>) -> String {
+        request_head_to(lang, None).await
+    }
+
+    async fn request_head_to(lang: Option<&str>, target: Option<&str>) -> String {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
@@ -1204,7 +1225,8 @@ mod tests {
             sock.write_all(b"HTTP/1.1 200 OK\r\ncontent-length: 2\r\n\r\n{}").await.unwrap();
             String::from_utf8_lossy(&head).to_ascii_lowercase()
         });
-        let api = Api::new(port, lang.map(str::to_string));
+        let mut api = Api::new(port, lang.map(str::to_string));
+        api.target = target.map(str::to_string);
         *api.token.write().unwrap() = None;
         api.call(Method::GET, "/api/servers", None, QUICK).await.unwrap();
         server.await.unwrap()
@@ -1272,6 +1294,13 @@ mod tests {
     async fn the_chosen_language_goes_to_the_daemon() {
         assert!(request_head(Some("ko")).await.contains("\r\naccept-language: ko\r\n"));
         assert!(!request_head(None).await.contains("accept-language"));
+    }
+
+    /// `--daemon`으로 고른 원격 데몬은 요청마다 `X-Saba-Target`(퍼센트 인코딩)으로 이 PC의 데몬에 알린다 (중계는 데몬이 한다)
+    #[tokio::test]
+    async fn a_chosen_remote_daemon_is_named_on_every_request() {
+        assert!(request_head_to(None, Some("게임 PC")).await.contains("\r\nx-saba-target: %ea%b2%8c%ec%9e%84%20pc\r\n"));
+        assert!(!request_head(None).await.contains("x-saba-target"));
     }
 
     /// 일부만 된 작업(2xx에 `ok`/`success: false`, 예: 업데이트 받기·적용, 챗봇 기억 지우기)은 본문을 명령에 돌려준다:
