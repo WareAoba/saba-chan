@@ -154,6 +154,7 @@ pub static ROUTES: &[Route] = &[
     deny("DELETE", "/api/remote/clients/{host_id}"),
     deny("GET", "/api/remote/peers"),
     deny("GET", "/api/remote/daemons"),
+    deny("GET", "/api/remote/servers"),
     deny("POST", "/api/remote/daemons"),
     deny("DELETE", "/api/remote/daemons/{host_id}"),
     deny("GET", "/api/remote/daemons/{host_id}/proxy/{*rest}"),
