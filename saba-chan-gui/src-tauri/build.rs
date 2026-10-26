@@ -34,6 +34,7 @@ const COMMANDS: &[&str] = &[
     "window_minimize",
     "window_maximize",
     "window_close",
+    "window_set_background",
     "sandbox_consent_allow",
     "tray_action",
     "tray_popup_fit",

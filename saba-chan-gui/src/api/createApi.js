@@ -139,6 +139,8 @@ export function createApi({ invoke, hub }) {
     const minimizeWindow = () => send('window_minimize');
     const maximizeWindow = () => send('window_maximize');
     const closeWindow = () => send('window_close');
+    // 테마 바탕색(#rrggbb)을 창 바탕에 칠한다 (크기를 바꾸는 중 흰 바탕이 비치지 않게)
+    const windowSetBackground = (color) => send('window_set_background', { color });
 
     // 본 마지막 포트 충돌 정지 알림 id. 데몬은 읽어도 알림을 지우지 않으므로 그 뒤 것만 받는다 (L50)
     let noticesAfter = 0;
@@ -1260,6 +1262,7 @@ export function createApi({ invoke, hub }) {
         minimizeWindow,
         maximizeWindow,
         closeWindow,
+        windowSetBackground,
     };
 
     const electron = {

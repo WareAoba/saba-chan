@@ -42,3 +42,11 @@ describe('LoadingScreen 데몬 로그 줄', () => {
         expect(container.querySelector('.loading-log-level')).toBeNull();
     });
 });
+
+describe('LoadingScreen 글자 로고', () => {
+    it('로고 주소를 문서 기준 절대 주소로 넘긴다 (CSS 파일 기준으로 풀리면 /assets/ 아래 없는 파일이 된다)', () => {
+        const { container } = render(<LoadingScreen logoSrc="./logo-kr.png" initProgress={0} failed="x" />);
+        const wordmark = container.querySelector('.loading-logo-text').style.getPropertyValue('--wordmark');
+        expect(wordmark).toBe(`url("${new URL('./logo-kr.png', document.baseURI).href}")`);
+    });
+});
