@@ -1,6 +1,6 @@
 import { act, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { DaemonSwitcher } from '../components/shell/DaemonSwitcher';
+import { DaemonSwitcher, REMOTE_DAEMONS_CHANGED } from '../components/shell/DaemonSwitcher';
 import { pickOption } from './dropdown';
 
 describe('상단 바: 다룰 데몬 고르기 (이 PC / 연결한 원격 데몬)', () => {
@@ -47,5 +47,21 @@ describe('상단 바: 다룰 데몬 고르기 (이 PC / 연결한 원격 데몬)
         await act(async () => render(<DaemonSwitcher onSwitched={reload} />));
         expect(window.api.daemonTargetSet).toHaveBeenCalledWith(null);
         expect(reload).toHaveBeenCalled();
+    });
+
+    it('이 PC로 되돌리기를 저장하지 못하면 다시 읽지 않고 고르는 칸을 남긴다 (되풀이 새로고침이 없게)', async () => {
+        window.api.daemonTarget.mockResolvedValue({ target: 'host-gone' });
+        window.api.daemonTargetSet.mockResolvedValue({ success: false, target: 'host-gone' });
+        await act(async () => render(<DaemonSwitcher onSwitched={reload} />));
+        expect(reload).not.toHaveBeenCalled();
+        expect(screen.getByRole('combobox', { name: 'Daemon' })).toBeInTheDocument();
+    });
+
+    it('설정에서 원격 데몬을 연결하면 다시 켜지 않아도 나타난다', async () => {
+        window.api.remoteDaemons.mockResolvedValueOnce({ daemons: [] });
+        const { container } = await act(async () => render(<DaemonSwitcher onSwitched={reload} />));
+        expect(container).toBeEmptyDOMElement();
+        await act(async () => window.dispatchEvent(new Event(REMOTE_DAEMONS_CHANGED)));
+        expect(screen.getByRole('combobox', { name: 'Daemon' })).toBeInTheDocument();
     });
 });

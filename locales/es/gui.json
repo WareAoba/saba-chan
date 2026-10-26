@@ -1622,7 +1622,13 @@
     "err_remote_rejected": "El daemon remoto rechazó la conexión. Inténtalo de nuevo",
     "err_remote_unknown": "Este daemon remoto no está conectado. Conéctalo de nuevo",
     "err_relay_not_paired": "Este PC no está conectado a Discord",
-    "err_relay_unreachable": "No se pudo alcanzar el relay"
+    "err_relay_unreachable": "No se pudo alcanzar el relay",
+    "err_remote_timeout": "El daemon remoto no respondió a tiempo. Puede que aún esté procesando la solicitud",
+    "err_remote_ambiguous": "Hay más de un daemon remoto con ese nombre",
+    "err_remote_bad_path": "Esa ruta no se puede enviar a un daemon remoto",
+    "err_remote_unauthorized": "El daemon remoto ya no acepta este PC. Conéctalo de nuevo",
+    "err_remote_local_only": "Esto solo se puede hacer en ese PC",
+    "local_only_sections": "La ubicación de carpetas y la exportación/importación de datos eligen rutas en este PC, así que se ocultan mientras gestionas un daemon remoto."
   },
   "daemon_switcher": {
     "label": "Daemon",

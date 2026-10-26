@@ -1622,7 +1622,13 @@
     "err_remote_rejected": "遠端常駐程式拒絕了連線，請再試一次",
     "err_remote_unknown": "這個遠端常駐程式尚未連線，請重新連線",
     "err_relay_not_paired": "本機沒有連接 Discord",
-    "err_relay_unreachable": "無法連到中繼"
+    "err_relay_unreachable": "無法連到中繼",
+    "err_remote_timeout": "遠端常駐程式未及時回應。請求可能仍在處理中",
+    "err_remote_ambiguous": "有多個同名的遠端常駐程式",
+    "err_remote_bad_path": "該路徑不能傳給遠端常駐程式",
+    "err_remote_unauthorized": "遠端常駐程式不再接受本機。請重新連線",
+    "err_remote_local_only": "這只能在那台電腦上直接操作",
+    "local_only_sections": "資料夾位置和資料匯出/匯入會在本機選擇路徑，因此管理遠端常駐程式時會隱藏。"
   },
   "daemon_switcher": {
     "label": "常駐程式",

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Icon } from '../Icon';
 import { SabaSpinner, SabaToggle } from '../ui/SabaUI';
+import { REMOTE_DAEMONS_CHANGED, reloadWindow } from '../shell/DaemonSwitcher';
 
 export const remoteDaemonAvailable = () => typeof window.api?.remoteSettings === 'function';
 
@@ -19,6 +20,11 @@ const ERRORS = [
     'remote_unknown',
     'relay_not_paired',
     'relay_unreachable',
+    'remote_timeout',
+    'remote_ambiguous',
+    'remote_bad_path',
+    'remote_unauthorized',
+    'remote_local_only',
 ];
 
 const failed = (res) => !res || res.ok === false || res.success === false || Boolean(res.error_code);
@@ -35,7 +41,7 @@ export function remoteErrorText(res, t) {
  * 내 다른 PC에 붙기, 붙은 원격 데몬. 상단 바에서 다룰 데몬을 고른다. CLI `remote …`와 같은 기능이다.
  * 이 경로들은 고른 데몬과 상관없이 늘 이 PC의 데몬이 답한다.
  */
-export function RemoteDaemonSection() {
+export function RemoteDaemonSection({ onTargetGone = reloadWindow }) {
     const { t } = useTranslation('gui');
     const [settings, setSettings] = useState(null);
     const [draft, setDraft] = useState(null); // {enabled, port, address}
@@ -110,7 +116,10 @@ export function RemoteDaemonSection() {
 
     const connect = async (hostId) => {
         const res = await run(`connect:${hostId}`, () => window.api.remoteConnect(hostId));
-        if (res && !failed(res)) await Promise.all([loadPeers(), loadDaemons()]);
+        if (res && !failed(res)) {
+            await Promise.all([loadPeers(), loadDaemons()]);
+            window.dispatchEvent(new Event(REMOTE_DAEMONS_CHANGED));
+        }
     };
     const revoke = async (hostId) => {
         const res = await run(`revoke:${hostId}`, () => window.api.remoteRevoke(hostId));
@@ -118,7 +127,18 @@ export function RemoteDaemonSection() {
     };
     const forget = async (hostId) => {
         const res = await run(`forget:${hostId}`, () => window.api.remoteForget(hostId));
-        if (res && !failed(res)) await Promise.all([loadPeers(), loadDaemons()]);
+        if (!res || failed(res)) return;
+        // 지금 다루던 데몬이면 이 PC로 돌아간다 (남겨 두면 모든 요청이 remote_unknown이다)
+        const current = await window.api.daemonTarget?.().catch(() => null);
+        if (current?.target === hostId) {
+            const back = await window.api.daemonTargetSet(null).catch(() => null);
+            if (back?.success) {
+                onTargetGone();
+                return;
+            }
+        }
+        await Promise.all([loadPeers(), loadDaemons()]);
+        window.dispatchEvent(new Event(REMOTE_DAEMONS_CHANGED));
     };
 
     const status = settings?.status || {};

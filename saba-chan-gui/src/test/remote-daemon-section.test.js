@@ -82,4 +82,16 @@ describe('설정 > 고급: 원격 데몬 (/api/remote/*)', () => {
         await act(async () => render(<RemoteDaemonSection />));
         expect(screen.getByText('This PC is not connected to Discord yet. Connect it on the Discord page first.')).toBeInTheDocument();
     });
+
+    it('지금 다루는 원격 데몬을 잊으면 이 PC로 돌아가고 화면을 다시 읽는다', async () => {
+        window.api.remoteDaemons.mockResolvedValue({ daemons: [{ hostId: 'host-b', name: '게임 PC', address: 'g.example', port: 57480 }] });
+        window.api.daemonTarget = vi.fn().mockResolvedValue({ target: 'host-b' });
+        window.api.daemonTargetSet = vi.fn().mockResolvedValue({ success: true, target: null });
+        const reload = vi.fn();
+        await act(async () => render(<RemoteDaemonSection onTargetGone={reload} />));
+        const daemons = screen.getByRole('list', { name: 'Remote daemons this PC uses' });
+        await act(async () => fireEvent.click(within(daemons).getByRole('button', { name: 'Forget' })));
+        expect(window.api.daemonTargetSet).toHaveBeenCalledWith(null);
+        expect(reload).toHaveBeenCalled();
+    });
 });

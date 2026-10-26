@@ -354,7 +354,7 @@ pub fn daemon_target_get(app: AppHandle) -> Value {
 #[tauri::command]
 pub async fn daemon_target_set(app: AppHandle, target: Option<String>) -> Value {
     let state = app.state::<AppState>();
-    let target = target.map(|t| t.trim().to_string()).filter(|t| !t.is_empty());
+    let target = crate::daemon::DaemonClient::normalize_target(target);
     let success = save_settings(&state, &json!({ "daemonTarget": target })).await;
     if success {
         state.client.set_target(target.clone());

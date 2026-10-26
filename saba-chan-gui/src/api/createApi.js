@@ -1088,7 +1088,6 @@ export function createApi({ invoke, hub }) {
         // 모듈·익스텐션 폴더 옮기기: 데몬이 복사·검증 뒤 옮긴다 (큰 폴더는 오래 걸린다)
         systemPathsMove: (kind, target) =>
             daemonJson('post', '/api/system/paths/move', { kind, target }, PATHS_MOVE_TIMEOUT),
-        // 로그인할 때 자동 실행: `{supported, mode: 'off'|'daemon'|'full'}`
         // 원격 데몬 (01 §1.4.2): 고른 데몬과 상관없이 이 PC의 데몬이 답한다. 지우기는 204라 본문이 없다
         remoteSettings: () => daemonJson('get', '/api/remote/settings'),
         remoteSettingsSet: (patch) => daemonJson('put', '/api/remote/settings', patch),
@@ -1103,6 +1102,7 @@ export function createApi({ invoke, hub }) {
         // 다룰 데몬 (G1): 셸이 데몬 요청마다 X-Saba-Target을 싣고 설정 gui.daemonTarget에 저장한다
         daemonTarget: () => invoke('daemon_target_get'),
         daemonTargetSet: (target) => invoke('daemon_target_set', { target: target || null }),
+        // 로그인할 때 자동 실행: `{supported, mode: 'off'|'daemon'|'full'}`
         systemAutostart: () => daemonJson('get', '/api/system/autostart'),
         systemAutostartSet: (mode) => daemonJson('put', '/api/system/autostart', { mode }),
         instanceBackups: (id) => daemonJson('get', instancePath(id, '/backups')),

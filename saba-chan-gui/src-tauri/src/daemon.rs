@@ -188,9 +188,14 @@ impl DaemonClient {
         self.target.read().unwrap().clone()
     }
 
+    /// 저장·사용하는 꼴: 앞뒤 공백을 떼고, 비면 이 PC(None)
+    pub fn normalize_target(target: Option<String>) -> Option<String> {
+        target.map(|t| t.trim().to_string()).filter(|t| !t.is_empty())
+    }
+
     /// 다룰 데몬을 바꾼다 (빈 값은 이 PC). 바뀌었으면 세대를 올린다
     pub fn set_target(&self, target: Option<String>) {
-        let target = target.map(|t| t.trim().to_string()).filter(|t| !t.is_empty());
+        let target = Self::normalize_target(target);
         let mut cur = self.target.write().unwrap();
         if *cur != target {
             *cur = target;
@@ -331,6 +336,10 @@ impl DaemonClient {
     ) -> Result<Resp, NetError> {
         let res = self.send_once(&method, path, body, timeout).await?;
         if res.status != 401 || path.contains("/api/relay/") {
+            return Ok(res);
+        }
+        // 원격 데몬이 이 PC의 짝을 받지 않은 것(중계된 401)은 이 PC의 토큰 문제가 아니다
+        if res.data()["error_code"] == "remote_unauthorized" {
             return Ok(res);
         }
         if !self.load_token() {
@@ -575,6 +584,33 @@ mod tests {
             .unwrap();
         assert_eq!(res.status, 401);
         assert_eq!(seen.lock().unwrap().len(), 1);
+    }
+
+    /// 고른 원격 데몬이 이 PC의 짝을 받지 않은 401(`remote_unauthorized`)은 토큰을 다시 읽어 또 보내지 않는다
+    #[tokio::test]
+    async fn a_relayed_remote_refusal_is_not_retried() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let count = Arc::new(Mutex::new(0));
+        let seen = count.clone();
+        tokio::spawn(async move {
+            while let Ok((mut sock, _)) = listener.accept().await {
+                let mut buf = vec![0u8; 4096];
+                let _ = sock.read(&mut buf).await;
+                *seen.lock().unwrap() += 1;
+                let body = "{\"error\":\"remote_unauthorized\",\"error_code\":\"remote_unauthorized\"}";
+                let resp = format!("HTTP/1.1 401 Unauthorized\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
+                let _ = sock.write_all(resp.as_bytes()).await;
+            }
+        });
+        let dir = tempfile::tempdir().unwrap();
+        let token_path = dir.path().join(".ipc_token");
+        std::fs::write(&token_path, "t").unwrap();
+        let client = DaemonClient::new(base, token_path);
+        client.set_target(Some("host-b".into()));
+        let res = client.send(reqwest::Method::POST, "/api/instance/a/stop", None, Duration::from_secs(2)).await.unwrap();
+        assert_eq!(res.status, 401);
+        assert_eq!(*count.lock().unwrap(), 1);
     }
 
     #[test]

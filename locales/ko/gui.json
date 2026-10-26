@@ -1622,7 +1622,13 @@
     "err_remote_rejected": "원격 데몬이 연결을 받지 않았어요. 다시 해 주세요",
     "err_remote_unknown": "연결하지 않은 원격 데몬이에요. 다시 연결해 주세요",
     "err_relay_not_paired": "이 PC가 디스코드에 연결돼 있지 않아요",
-    "err_relay_unreachable": "릴레이에 닿지 못했어요"
+    "err_relay_unreachable": "릴레이에 닿지 못했어요",
+    "err_remote_timeout": "원격 데몬이 제때 답하지 않았어요. 요청은 아직 처리 중일 수 있어요",
+    "err_remote_ambiguous": "그 이름의 원격 데몬이 둘 이상이에요",
+    "err_remote_bad_path": "그 경로는 원격 데몬에 보낼 수 없어요",
+    "err_remote_unauthorized": "원격 데몬이 이 PC를 더는 받지 않아요. 다시 연결해 주세요",
+    "err_remote_local_only": "그 PC에서 직접 해야 하는 일이에요",
+    "local_only_sections": "폴더 위치와 데이터 내보내기·가져오기는 이 PC에서 경로를 고르므로, 원격 데몬을 다루는 동안에는 숨겨요."
   },
   "daemon_switcher": {
     "label": "데몬",

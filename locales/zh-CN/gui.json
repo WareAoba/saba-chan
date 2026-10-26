@@ -1622,7 +1622,13 @@
     "err_remote_rejected": "远程守护进程拒绝了连接，请重试",
     "err_remote_unknown": "这个远程守护进程尚未连接，请重新连接",
     "err_relay_not_paired": "本机没有连接 Discord",
-    "err_relay_unreachable": "无法连到中继"
+    "err_relay_unreachable": "无法连到中继",
+    "err_remote_timeout": "远程守护进程未及时回应。请求可能仍在处理中",
+    "err_remote_ambiguous": "有多个同名的远程守护进程",
+    "err_remote_bad_path": "该路径不能发送给远程守护进程",
+    "err_remote_unauthorized": "远程守护进程不再接受本机。请重新连接",
+    "err_remote_local_only": "这只能在那台电脑上直接操作",
+    "local_only_sections": "文件夹位置和数据导出/导入会在本机选择路径，因此管理远程守护进程时会隐藏。"
   },
   "daemon_switcher": {
     "label": "守护进程",

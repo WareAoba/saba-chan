@@ -1622,7 +1622,13 @@
     "err_remote_rejected": "リモートデーモンが接続を拒否しました。もう一度お試しください",
     "err_remote_unknown": "接続していないリモートデーモンです。もう一度接続してください",
     "err_relay_not_paired": "このPCはDiscordにつないでいません",
-    "err_relay_unreachable": "リレーに届きませんでした"
+    "err_relay_unreachable": "リレーに届きませんでした",
+    "err_remote_timeout": "リモートデーモンが時間内に応答しませんでした。要求はまだ処理中かもしれません",
+    "err_remote_ambiguous": "その名前のリモートデーモンが複数あります",
+    "err_remote_bad_path": "そのパスはリモートデーモンに送れません",
+    "err_remote_unauthorized": "リモートデーモンがこのPCを受け付けなくなりました。もう一度接続してください",
+    "err_remote_local_only": "そのPCで直接行う必要があります",
+    "local_only_sections": "フォルダーの場所とデータの書き出し・読み込みはこのPCでパスを選ぶため、リモートデーモンを管理している間は隠します。"
   },
   "daemon_switcher": {
     "label": "デーモン",
