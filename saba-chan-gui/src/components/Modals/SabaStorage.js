@@ -102,6 +102,14 @@ const COMPONENT_ICONS = {
     installer: 'componentInstaller',
 };
 
+// 목록 순서 (열 때마다 같게). 여기 없는 것은 뒤에 이름순
+const COMPONENT_ORDER = ['saba-core', 'gui', 'cli', 'updater', 'installer'];
+const componentRank = (key) => {
+    const i = COMPONENT_ORDER.indexOf(key);
+    return i === -1 ? COMPONENT_ORDER.length : i;
+};
+const byName = (a, b) => String(a).localeCompare(String(b));
+
 export const parseComponents = (comps) =>
     (comps || [])
         .filter((c) => {
@@ -122,7 +130,8 @@ export const parseComponents = (comps) =>
                 installed: !!c.installed,
                 needsUpdater: key === 'gui' || key === 'saba-core',
             };
-        });
+        })
+        .sort((a, b) => componentRank(a.key) - componentRank(b.key) || byName(a.key, b.key));
 
 // ─────────────────────────────────────────────────────────────
 // 다운로드 진행률 링 (SVG)
@@ -714,7 +723,7 @@ function ModuleCardIcon({ icon }) {
 function ModulesTab() {
     const { t } = useTranslation('gui');
     const { refreshExtensions } = useExtensions();
-    const [installedModules, setInstalledModules] = useState([]);
+    const [installedModules, setInstalledModules] = useState(null); // null = 받는 중
     const [manifestModules, setManifestModules] = useState(null); // null = 미로드, [] = 로드됨
     const [manifestLoading, setManifestLoading] = useState(false);
     const [manifestError, setManifestError] = useState(null);
@@ -732,8 +741,11 @@ function ModulesTab() {
             if (res?.modules) {
                 clearModuleAuditCache();
                 setInstalledModules(res.modules);
+                return;
             }
         } catch (_) {}
+        // 받지 못하면 빈 목록으로 (계속 받는 중으로 두지 않는다)
+        setInstalledModules((prev) => prev ?? []);
     }, []);
 
     // 모듈 캐시 새로고침 (디스크 재스캔)
@@ -862,8 +874,9 @@ function ModulesTab() {
         });
     }, [confirmRemoveId, loadInstalledModules, t]);
 
+    const sortedModules = [...(installedModules || [])].sort((a, b) => byName(a.name, b.name));
     const installedIds = new Set(
-        installedModules.map((m) => {
+        sortedModules.map((m) => {
             // m.name 은 "Minecraft" 같은 display name, path 에서 디렉토리 이름 추출
             const parts = (m.path || '').replace(/\\/g, '/').split('/');
             return parts[parts.length - 1]; // 마지막 경로 컴포넌트 = 모듈 디렉토리명
@@ -895,11 +908,11 @@ function ModulesTab() {
                     <Icon name={refreshingModules ? 'loader' : 'refresh'} size="sm" />
                 </button>
             </div>
-            {installedModules.length === 0 ? (
+            {installedModules === null ? null : installedModules.length === 0 ? (
                 <SabaEmpty compact body={t('saba_storage.no_installed_modules', '설치된 모듈이 없습니다.')} />
             ) : (
                 <div className="ss-cards">
-                    {installedModules.map((m, idx) => {
+                    {sortedModules.map((m, idx) => {
                         const moduleId = getModuleId(m);
                         const isRemoving = removingIds.has(moduleId);
                         return (
@@ -1045,6 +1058,7 @@ function ExtensionsTab() {
         installExtension,
         removeExtension,
         toggleExtension,
+        loading,
     } = useExtensions();
 
     const [confirmRemoveId, setConfirmRemoveId] = useState(null);
@@ -1150,10 +1164,11 @@ function ExtensionsTab() {
                 </button>
             </div>
             {extensions.length === 0 ? (
-                <SabaEmpty compact body={t('settings_modal.no_extensions', '설치된 익스텐션이 없습니다.')} />
+                // 목록을 받는 중에는 "없음"을 띄우지 않는다
+                !loading && <SabaEmpty compact body={t('settings_modal.no_extensions', '설치된 익스텐션이 없습니다.')} />
             ) : (
                 <div className="ss-cards">
-                    {extensions.map((ext) => {
+                    {[...extensions].sort((a, b) => byName(a.name || a.id, b.name || b.id)).map((ext) => {
                         const updateInfo = availableUpdates.find((u) => u.id === ext.id);
                         const isRemoving = removingIds.has(ext.id);
                         const isBusy = isRemoving || installingIds.has(ext.id);

@@ -173,14 +173,14 @@ export function ServersPage({
                 </aside>
             )}
             {!detailHidden && selected && (
-                <main className="server-detail-pane">
+                <main className="server-detail-pane server-detail-flex">
                     {isDaemonDown && listHidden && <DaemonDownNotice />}
                     {!monitorSide && systemMonitorAvailable() && (
                         <div className="monitor-top-slot">
                             <SystemMonitor layout="top" servers={servers} />
                         </div>
                     )}
-                    <div ref={detailRef}>
+                    <div ref={detailRef} className="server-detail-host">
                         <ServerDetail
                             server={selected}
                             moduleData={moduleOf(selected.module)}

@@ -60,15 +60,63 @@ pub struct AuditQuery {
     /// 이 인스턴스 id의 기록만
     #[serde(default)]
     pub instance: Option<String>,
+    /// 이 시각(unix 초)부터
+    #[serde(default)]
+    pub since: Option<u64>,
+    /// 이 시각(unix 초) 전까지
+    #[serde(default)]
+    pub until: Option<u64>,
 }
 
-/// GET /api/audit?limit=&instance= — 감사 로그 (A10), 최신이 먼저. 기본 100건, 최대 1000건
+/// GET /api/audit?limit=&instance=&since=&until= — 감사 로그 (A10), 최신이 먼저. 기본 100건, 최대 1000건
 pub async fn audit(axum::extract::Query(q): axum::extract::Query<AuditQuery>) -> impl IntoResponse {
     let limit = q.limit.unwrap_or(100).clamp(1, 1000);
-    let entries = tokio::task::spawn_blocking(move || crate::audit::log().recent(limit, q.instance.as_deref()))
-        .await
-        .unwrap_or_default();
+    let entries = tokio::task::spawn_blocking(move || {
+        crate::audit::log().query(&crate::audit::Filter { limit, instance_id: q.instance.as_deref(), since: q.since, until: q.until })
+    })
+    .await
+    .unwrap_or_default();
     Json(json!({ "entries": entries }))
+}
+
+#[derive(serde::Deserialize)]
+pub struct AuditExportRequest {
+    /// 데몬이 CSV를 쓸 절대 경로
+    pub path: String,
+    #[serde(default)]
+    pub instance: Option<String>,
+    #[serde(default)]
+    pub since: Option<u64>,
+    #[serde(default)]
+    pub until: Option<u64>,
+}
+
+/// POST /api/audit/export `{path, instance?, since?, until?}` — 기간의 기록을 모두 CSV로 `path`에 쓴다.
+/// `{success, path, count}`. 경로가 절대 경로가 아니면 400 `INVALID_PATH`, 쓰지 못하면 500 `WRITE_FAILED`
+pub async fn audit_export(Json(req): Json<AuditExportRequest>) -> axum::response::Response {
+    use axum::http::StatusCode;
+    let fail = |status: StatusCode, code: &str, message: String| {
+        (status, Json(json!({ "success": false, "error": message, "error_code": code }))).into_response()
+    };
+    let path = std::path::PathBuf::from(req.path.trim());
+    if req.path.trim().is_empty() || !path.is_absolute() {
+        return fail(StatusCode::BAD_REQUEST, "INVALID_PATH", "path must be an absolute file path".into());
+    }
+    let written = tokio::task::spawn_blocking(move || {
+        let entries = crate::audit::log().query(&crate::audit::Filter {
+            instance_id: req.instance.as_deref(),
+            since: req.since,
+            until: req.until,
+            ..Default::default()
+        });
+        std::fs::write(&path, crate::audit::to_csv(&entries)).map(|_| (path, entries.len()))
+    })
+    .await;
+    match written {
+        Ok(Ok((path, count))) => Json(json!({ "success": true, "path": path.to_string_lossy(), "count": count })).into_response(),
+        Ok(Err(e)) => fail(StatusCode::INTERNAL_SERVER_ERROR, "WRITE_FAILED", format!("Could not write the audit export: {e}")),
+        Err(e) => fail(StatusCode::INTERNAL_SERVER_ERROR, "WRITE_FAILED", e.to_string()),
+    }
 }
 
 /// GET /api/onboarding — 처음 쓰는 사람의 다음 할 일 (J1-a). GUI 첫 화면과 CLI가 같은 단계를 보인다.

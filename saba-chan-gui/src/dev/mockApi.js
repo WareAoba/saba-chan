@@ -435,7 +435,7 @@ const impl = {
             nodeToken: 'kept',
             path: path || 'C:\\Users\\me\\saba-chan-export.zip',
         }),
-    auditList: ({ instance } = {}) =>
+    auditList: ({ instance, since, until } = {}) =>
         ok({
             entries: [
                 {
@@ -479,8 +479,9 @@ const impl = {
                     ok: true,
                     status: 200,
                 },
-            ].filter((e) => !instance || e.instanceId === instance),
+            ].filter((e) => (!instance || e.instanceId === instance) && (!since || e.ts >= since) && (!until || e.ts < until)),
         }),
+    auditExport: () => ok({ success: true, path: 'C:\\Users\\me\\saba-chan-activity.csv', count: 4 }),
     daemonConsole: ({ since } = {}) => {
         const msgs = [
             ['info', 'IPC server listening on 127.0.0.1:57474'],
