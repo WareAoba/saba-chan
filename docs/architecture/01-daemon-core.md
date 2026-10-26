@@ -516,7 +516,7 @@ Relay 서명 방식(`relay.rs:115-161`):
 | `backup_keep` | Option<u32> | 자동 백업 보관 개수 (기본 10). 예약·업데이트 전·복원 전 백업을 종류마다 따로 센다. 수동 백업은 지우지 않는다. 원격(디스코드·챗봇) 요청이 만든 백업은 정리를 하지 않는다(원격 복원을 거듭해도 앞서 남긴 안전 백업이 밀려 지워지지 않는다. 넘친 것은 이 PC에서 만드는 다음 백업이 정리한다, D-B11) |
 
 - RCON 필드(`rcon_port`, `rcon_password`)는 없다. 예전 `instance.json`·`settings.json`에 남은 RCON 키는 로드할 때 한 번 지우고 다시 쓴다(`instance/mod.rs:439-468, 483-500`).
-- 시작할 때(`server.rs` `fill_passwords`, 두 시작 경로 공용) 모듈 `[protocols] supported`에 `rest`가 있으면 `ensure_passwords(generate)`가 비어 있는 REST 비밀번호를 16자 영숫자로 채운다. REST를 지원하지 않는 모듈의 서버에는 REST 계정을 만들지 않는다. `generate`는 `GuiSettings.autoGeneratePasswords`(기본 true)다. 꺼져 있으면 비워 두고, 모듈이 게임 설정의 값을 쓰거나 스스로 만들어 `credential_map`으로 데몬에 돌려준다(Palworld는 INI `AdminPassword`가 비면 임의 값을 써 넣는다). 이미 있는 비밀번호는 켜져 있어도 바꾸지 않는다.
+- 시작할 때(`server.rs` `fill_passwords`, 두 시작 경로 공용) 모듈 `[protocols] supported`에 `rest`가 있으면 `ensure_passwords(generate)`가 비어 있는 REST 비밀번호를 16자 영숫자로 채운다. REST를 지원하지 않는 모듈의 서버에는 REST 계정을 만들지 않고, 예전 데몬이 만들어 둔 `rest_username`·`rest_password`는 지운다. `generate`는 `GuiSettings.autoGeneratePasswords`(기본 true)다. 꺼져 있으면 비워 두고, 모듈이 게임 설정의 값을 쓰거나 스스로 만들어 `credential_map`으로 데몬에 돌려준다(Palworld는 INI `AdminPassword`가 비면 임의 값을 써 넣는다). 이미 있는 비밀번호는 켜져 있어도 바꾸지 않는다.
 - 비밀번호 생성은 `constants::generate_random_password`가 uuid v4 바이트에 `% 62`를 적용하는 방식이다(`constants.rs:188-201`). 모듈로 편향이 있고, 두 번째 uuid는 계산만 하고 쓰지 않는다.
 
 ### 4.2 영속화 (`InstanceStore`, `instance/mod.rs:238-477`)

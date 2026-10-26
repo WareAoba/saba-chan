@@ -2925,10 +2925,10 @@ impl Supervisor {
         // 준비되기 전에 끝났으면 그 시작의 준비 알림을 닫는다 (R39)
         ready::exited(instance_id, &instance.name, stop_requested);
         let became_ready = ready::take_ready(instance_id);
-        let (graceful, artifacts, declares_ready) = self
+        let (graceful, artifacts, ready_patterns) = self
             .module_loader
             .get_module(&instance.module_name)
-            .map(|m| (m.metadata.graceful_exit_patterns.clone(), m.metadata.crash_artifacts.clone(), !m.metadata.ready_patterns.is_empty()))
+            .map(|m| (m.metadata.graceful_exit_patterns.clone(), m.metadata.crash_artifacts.clone(), m.metadata.ready_patterns.clone()))
             .unwrap_or_default();
         let tail: Vec<String> = proc
             .get_recent_console(crash::CONSOLE_TAIL_LINES)
@@ -2949,7 +2949,8 @@ impl Supervisor {
             graceful_patterns: &graceful,
             new_crash_files: &crash_files,
             ran_secs: if proc.reattached { u64::MAX } else { saba_runner::now().saturating_sub(proc.started_at) },
-            ready: declares_ready.then_some(became_ready),
+            // 준비 문구를 다음 확인(0.5초 간격) 전에 찍고 끝났으면 기다리던 쪽은 못 봤다: 콘솔 끝에서도 찾는다
+            ready: (!ready_patterns.is_empty()).then(|| became_ready || ready::any_match(&ready_patterns, &tail)),
         });
 
         let auto_restart = setting_flag(&instance, "auto_restart", true);

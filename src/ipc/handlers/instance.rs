@@ -1611,14 +1611,12 @@ pub async fn server_update_status(state: &IPCServer, id: &str) -> Option<Value> 
     let instance = supervisor.instance_store.get(id)?.clone();
 
     // 모듈에서 install config 가져오기 (install_subdir, app_id 등)
-    let install_config = supervisor
-        .module_loader
-        .get_module(&instance.module_name)
-        .ok()
-        .and_then(|m| m.metadata.install.clone());
+    let module = supervisor.module_loader.get_module(&instance.module_name).ok();
+    let install_config = module.as_ref().and_then(|m| m.metadata.install.clone());
 
-    // 다운로드·수동 설치 서버는 사바쨩이 업데이트를 확인하지 않는다 (적용 `begin_server_update`과 같은 조건)
-    if !install_config.as_ref().is_some_and(|cfg| installed_by_extension(&instance, &cfg.method)) {
+    // 다운로드·수동 설치 서버는 사바쨩이 업데이트를 확인하지 않는다 (적용 `begin_server_update`과 같은 조건).
+    // 모듈을 읽지 못했으면 설치 방식을 모르므로 아래 hook에 맡긴다
+    if module.is_some() && !install_config.as_ref().is_some_and(|cfg| installed_by_extension(&instance, &cfg.method)) {
         return Some(json!({
             "update_available": false,
             "reason": "update_unsupported",
@@ -3211,6 +3209,7 @@ mod tests {
             id
         };
         let (terra, imported, steam) = (add("terra", "dl", false), add("imported", "sc", false), add("pal", "sc", true));
+        let gone = add("gone", "missing", false);
         let reason = |id: String| {
             let state = state.clone();
             async move { super::server_update_status(&state, &id).await.unwrap()["reason"].clone() }
@@ -3218,5 +3217,6 @@ mod tests {
         assert_eq!(reason(terra).await, json!("update_unsupported"));
         assert_eq!(reason(imported).await, json!("update_unsupported"), "not installed through the extension");
         assert_eq!(reason(steam).await, json!("no_hook_handled"), "no steamcmd extension in this test");
+        assert_eq!(reason(gone).await, json!("no_extension_data"), "a module that did not load is not called un-updatable");
     }
 }

@@ -1294,21 +1294,25 @@ async fn stop_instance_unrecorded(state: IPCServer, key: &str, force: bool) -> a
 // NOTE: sync_gui_config は config::save_gui_config に統合されました (portConflictCheck 同期含む)
 /// 실행 전 비밀번호: 빈 REST 비밀번호는 GUI "비밀번호 자동 생성"(`autoGeneratePasswords`, 기본 켬)이 켜져 있을 때만 채운다.
 /// 꺼져 있으면 비워 두고, 모듈이 게임 설정의 값을 쓰거나 스스로 만든다(`credential_map`으로 데몬에 돌아온다).
-/// REST를 지원하지 않는 모듈(`[protocols] supported`에 rest가 없음)의 서버에는 REST 계정을 만들지 않는다. `key`: 인스턴스 id 또는 이름
+/// REST를 지원하지 않는 모듈(`[protocols] supported`에 rest가 없음)의 서버에는 REST 계정을 만들지 않고, 남아 있던 것은 지운다. `key`: 인스턴스 id 또는 이름
 pub(super) async fn fill_passwords(state: &IPCServer, key: &str) {
     let generate = state.config_store.get_gui_settings().await.auto_generate_passwords;
     let mut supervisor = state.supervisor.write().await;
     let found = supervisor.instance_store.get(key).or_else(|| supervisor.instance_store.list().iter().find(|i| i.name == key)).cloned();
-    let supports_rest = |module: &str| {
-        supervisor.module_loader.get_module(module).ok()
-            .is_some_and(|m| m.metadata.protocols_supported.as_deref().unwrap_or(&[]).iter().any(|p| p == "rest"))
+    let Some(mut inst) = found else { return };
+    let changed = match supervisor.module_loader.get_module(&inst.module_name).map(|m| m.metadata.supports_protocol("rest")) {
+        Ok(true) => inst.ensure_passwords(generate),
+        // 예전 데몬이 만들어 둔 계정도 치운다 (REST 없는 모듈은 이 값을 쓰지 않는다)
+        Ok(false) if inst.rest_username.is_some() || inst.rest_password.is_some() => {
+            (inst.rest_username, inst.rest_password) = (None, None);
+            true
+        }
+        _ => false,
     };
-    if let Some(mut inst) = found.filter(|i| supports_rest(&i.module_name)) {
-        if inst.ensure_passwords(generate) {
-            let id = inst.id.clone();
-            if let Err(e) = supervisor.instance_store.update(&id, inst) {
-                tracing::warn!("Failed to save auto-generated passwords for {}: {}", key, e);
-            }
+    if changed {
+        let id = inst.id.clone();
+        if let Err(e) = supervisor.instance_store.update(&id, inst) {
+            tracing::warn!("Failed to save auto-generated passwords for {}: {}", key, e);
         }
     }
 }
@@ -1369,7 +1373,9 @@ mod tests {
         state.config_store = Arc::new(crate::config_store::ConfigStore::new(&tmp.path().join("data")));
         let inst = crate::instance::ServerInstance::new("srv", "game");
         let id = inst.id.clone();
-        let plain = crate::instance::ServerInstance::new("terra", "console");
+        let mut plain = crate::instance::ServerInstance::new("terra", "console");
+        // 0.1.10이 만들어 둔 값
+        (plain.rest_username, plain.rest_password) = (Some("admin".into()), Some("left-over".into()));
         let plain_id = plain.id.clone();
         state.supervisor.write().await.instance_store.add(inst).unwrap();
         state.supervisor.write().await.instance_store.add(plain).unwrap();
@@ -1389,7 +1395,7 @@ mod tests {
         fill_passwords(&state, "srv").await;
         assert_eq!(rest(id.clone()).await.1.map(|p| p.len()), Some(16), "found by name too");
         fill_passwords(&state, &plain_id).await;
-        assert_eq!(rest(plain_id).await, (None, None), "a module without REST gets no REST account");
+        assert_eq!(rest(plain_id).await, (None, None), "a module without REST keeps no REST account");
     }
 
     /// 클라이언트가 실행 파일 고르기 창의 파일 종류를 모듈 선언(`[config] server_executable`)에서 알 수 있다

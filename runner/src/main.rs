@@ -239,18 +239,20 @@ fn pump(
         let mut lines = Lines::default();
         let mut fold = Fold { patterns: progress, run: None };
         let emit = |line: &[u8], lines: &Lines, fold: &mut Fold| {
-            let line = if console == Console::Pty {
+            let shown = if console == Console::Pty {
                 // 터미널 제어 문자는 화면에 그린 모습으로 바꾼다: 다시 그린 자리(\r)는 마지막 내용만, 커서 이동은 빈칸으로
                 screen::render(&decode_line(line))
             } else {
-                lines.decode(line)
+                vec![lines.decode(line)]
             };
-            for part in split_at_line_starts(&line, line_start.as_ref()) {
-                if console == Console::Pty && part.trim().is_empty() {
-                    continue;
-                }
-                for out in fold.take(part) {
-                    write_log(&log, stream, &out);
+            for line in &shown {
+                for part in split_at_line_starts(line, line_start.as_ref()) {
+                    if console == Console::Pty && part.trim().is_empty() {
+                        continue;
+                    }
+                    for out in fold.take(part) {
+                        write_log(&log, stream, &out);
+                    }
                 }
             }
         };

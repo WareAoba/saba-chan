@@ -283,6 +283,11 @@ pub struct CommandAliasInfo {
 }
 
 impl ModuleMetadata {
+    /// `[protocols] supported`에 이 프로토콜(`rest`·`rcon`·`stdin`)이 있는가
+    pub fn supports_protocol(&self, protocol: &str) -> bool {
+        self.protocols_supported.as_deref().unwrap_or(&[]).iter().any(|p| p == protocol)
+    }
+
     /// 명령을 RCON으로 보내는 모듈이면 그 기본 RCON 포트. `supported`에 rcon이 있고 stdin·rest가 없을 때만이다
     /// (명령 경로 우선순위 STDIN → REST → RCON: 다른 경로가 있으면 RCON을 쓰지 않는다)
     pub fn rcon_only_port(&self) -> Option<u16> {
