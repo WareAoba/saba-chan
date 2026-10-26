@@ -89,7 +89,23 @@ fn open_user_runtime(entry: String, instance: &crate::instance::ServerInstance) 
 pub async fn create_instance(
     State(state): State<IPCServer>,
     Json(payload): Json<Value>,
-) -> impl IntoResponse {
+) -> axum::response::Response {
+    // 요청이 끊겨도(클라이언트 시간 초과) 만들기를 끝까지 마친다: 가져오기는 큰 서버 폴더에 권한을 주는 데 수십 초가 들 수 있고,
+    // 중간에 멈추면 인스턴스만 남고 설정 가져오기·원래 설정 보관이 빠진다
+    match tokio::spawn(create_instance_to_the_end(state, payload)).await {
+        Ok(response) => response,
+        Err(e) => {
+            tracing::error!("Instance creation task failed: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": "instance creation failed" }))).into_response()
+        }
+    }
+}
+
+async fn create_instance_to_the_end(state: IPCServer, payload: Value) -> axum::response::Response {
+    create_instance_inner(state, payload).await.into_response()
+}
+
+async fn create_instance_inner(state: IPCServer, payload: Value) -> impl IntoResponse {
     let mut supervisor = state.supervisor.write().await;
 
     let name = payload
@@ -2236,6 +2252,42 @@ mod tests {
             let expected = if keep_settings { "rcon=off\n" } else { "rcon=on\n" };
             assert_eq!(std::fs::read_to_string(&ini).unwrap(), expected);
             assert_eq!(std::fs::read_to_string(&outside).unwrap(), "after", "a file outside the server is never kept or restored");
+        }
+    }
+
+    /// 가져오기가 오래 걸려 클라이언트가 요청을 끊어도(GUI 시간 초과) 데몬은 설정 가져오기까지 마친다:
+    /// 중간에 멈추면 기본값인 인스턴스만 남고 되돌릴 원래 설정도 보관되지 않는다
+    #[tokio::test]
+    async fn an_import_cut_off_by_the_client_still_finishes() {
+        use axum::{extract::State, Json};
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("module.toml"), "[module]\nschema_version = 1\nname = 'game'\nversion = '1.0.0'\nentry = 'lifecycle.py'\n").unwrap();
+        std::fs::write(dir.join("lifecycle.py"),
+            "import json, sys, time\nf = sys.argv[1]\n\
+             if f == 'functions': print(json.dumps({'success': True, 'functions': ['import_settings']}))\n\
+             else:\n    time.sleep(1.5)\n    print(json.dumps({'success': True, 'settings': {'motd': 'mine'}}))\n").unwrap();
+        crate::sandbox::consent_test_component(&dir.join("lifecycle.py"));
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        for module in sup.module_loader.discover_modules().unwrap() { crate::sandbox::consent_test_component(std::path::Path::new(&module.entry_path())); }
+        sup.initialize().await.unwrap();
+        let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let server = tmp.path().join("server");
+        std::fs::create_dir_all(&server).unwrap();
+
+        let request = super::create_instance(State(state.clone()), Json(serde_json::json!({"name":"g", "module_name":"game", "migration_source":server})));
+        assert!(tokio::time::timeout(std::time::Duration::from_millis(300), request).await.is_err(), "the client gave up first");
+
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+        loop {
+            let imported = state.supervisor.read().await.instance_store.list().first().and_then(|i| i.module_settings.get("motd").cloned());
+            if imported == Some(serde_json::json!("mine")) {
+                break;
+            }
+            assert!(std::time::Instant::now() < deadline, "the import never finished after the request was dropped");
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         }
     }
 

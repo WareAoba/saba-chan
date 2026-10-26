@@ -380,8 +380,10 @@ export function createApi({ invoke, hub }) {
         },
         instanceCreate: async (data) => {
             try {
-                // 백엔드가 도커 프로비저닝을 백그라운드로 처리하므로 짧은 타임아웃으로 충분
-                return (await post('/api/instances', data, { timeout: 30000 })).data;
+                // 새 설치는 데몬이 백그라운드로 처리하므로 짧은 타임아웃으로 충분. 기존 서버 가져오기는 큰 폴더에 권한을 주고
+                // 설정을 읽느라 오래 걸릴 수 있어 시작처럼 기다린다 (CLI `post_long`과 같다)
+                const timeout = data?.migration_source ? START_TIMEOUT_MS : 30000;
+                return (await post('/api/instances', data, { timeout })).data;
             } catch (error) {
                 if (error.response) {
                     const status = error.response.status;

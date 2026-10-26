@@ -933,8 +933,23 @@ mod imp {
 
     /// 경로에 걸린 낮은 수준 표시: `None` 없음(또는 앞선 다른 수준 표시), `Some(true)` 위 폴더에서 상속받은 것, `Some(false)` 직접 붙은 것
     fn low_label(path: &Path) -> Result<Option<bool>, String> {
-        use std::os::windows::io::AsRawHandle;
         let low = low_integrity()?;
+        Ok(first_label(path, |sid, flags, _| unsafe { EqualSid(sid, low) != 0 }.then_some(flags & super::ACE_INHERITED != 0))?.flatten())
+    }
+
+    /// 이 파일에 직접 붙은 중간 수준 표시(`label_medium`이 붙인 모양)가 그 경로의 수준인가
+    fn own_medium_label(path: &Path) -> Result<bool, String> {
+        let medium = medium_integrity()?;
+        Ok(first_label(path, |sid, flags, mask| {
+            let same = unsafe { EqualSid(sid, medium) != 0 };
+            same && flags & super::ACE_INHERITED == 0 && mask == SYSTEM_MANDATORY_LABEL_NO_WRITE_UP
+        })?
+        .unwrap_or(false))
+    }
+
+    /// 경로의 처음 나오는 표시 ACE(그 경로의 수준. 직접 붙인 표시가 상속받은 표시보다 앞에 온다)를 `f(SID, 플래그, 마스크)`로 본다
+    fn first_label<T>(path: &Path, f: impl FnOnce(PSID, u8, u32) -> T) -> Result<Option<T>, String> {
+        use std::os::windows::io::AsRawHandle;
         unsafe {
             let read = open_checked(path, 0)?;
             let mut sacl: PACL = null_mut();
@@ -955,11 +970,8 @@ mod imp {
                     }
                     let header = &*(ace as *const ACE_HEADER);
                     let label = &*(ace as *const SYSTEM_MANDATORY_LABEL_ACE);
-                    // 처음 나오는 표시가 그 경로의 수준이다 (직접 붙인 표시가 상속받은 표시보다 앞에 온다)
                     if header.AceType == SYSTEM_MANDATORY_LABEL_ACE_TYPE as u8 {
-                        if EqualSid(&label.SidStart as *const DWORD as PSID, low) != 0 {
-                            found = Some(header.AceFlags & super::ACE_INHERITED != 0);
-                        }
+                        found = Some(f(&label.SidStart as *const DWORD as PSID, header.AceFlags, label.Mask));
                         break;
                     }
                 }
@@ -978,6 +990,17 @@ mod imp {
     /// 볼륨이 보안 정보를 두지 않으면(FAT 등) 표시가 있을 수 없으므로 아무것도 하지 않는다
     pub fn clear_low_labels(dir: &Path) -> Result<usize, Vec<(PathBuf, String)>> {
         let _guard = acl_lock();
+        walk_executables(dir, clear_one)
+    }
+
+    /// 인스턴스를 지우며 폴더의 낮은 수준 표시를 뗀 뒤: 서버를 띄우려고 실행 파일에 직접 붙인 중간 수준 표시(`clear_low_labels`)도
+    /// 뗀다. 위 폴더에 표시가 없으면 중간 수준이 기본이라 할 일은 같고, 흔적만 남는다. 뗀 파일 수
+    fn drop_medium_labels(dir: &Path) -> Result<usize, Vec<(PathBuf, String)>> {
+        walk_executables(dir, unlabel_medium_one)
+    }
+
+    /// `dir`과 그 아래(링크는 따라가지 않는다)의 실행 파일마다 `visit(파일, 센 수, 실패)`. 볼륨이 보안 정보를 두지 않으면 0
+    fn walk_executables(dir: &Path, mut visit: impl FnMut(&Path, &mut usize, &mut Vec<(PathBuf, String)>)) -> Result<usize, Vec<(PathBuf, String)>> {
         // 실제 경로(`\\?\` 긴 이름)에서 시작한다: 짧은 이름(8.3)이 섞인 경로는 열 때의 경로 확인과 맞지 않는다
         let dir = std::fs::canonicalize(dir).map_err(|e| vec![(dir.to_path_buf(), format!("resolve: {e}"))])?;
         match persistent_acls(&dir) {
@@ -1002,7 +1025,7 @@ mod imp {
                             Ok(t) if t.is_symlink() => {}
                             Ok(_) if reparse_refusal(&entry.path(), attributes).map(|e| failed.push((entry.path(), e))).is_some() => {}
                             Ok(t) if t.is_dir() => pending.push(entry.path()),
-                            Ok(_) if is_executable(&entry.path()) => clear_one(&entry.path(), &mut cleared, &mut failed),
+                            Ok(_) if is_executable(&entry.path()) => visit(&entry.path(), &mut cleared, &mut failed),
                             Ok(_) => {}
                             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
                             Err(e) => failed.push((entry.path(), format!("read the type: {e}"))),
@@ -1079,6 +1102,37 @@ mod imp {
             Ok(None) => {}
             Err(_) if gone() => {}
             Err(e) => failed.push((path.to_path_buf(), format!("read the label: {e}"))),
+        }
+    }
+
+    /// 한 실행 파일에 직접 붙은 중간 수준 표시를 떼고(빈 표시, 위 폴더에서 다시 물려받는다) 센다. 떼고도 낮은 수준이면 실패다
+    fn unlabel_medium_one(path: &Path, removed: &mut usize, failed: &mut Vec<(PathBuf, String)>) {
+        use std::os::windows::io::AsRawHandle;
+        let gone = || matches!(std::fs::symlink_metadata(path), Err(e) if e.kind() == std::io::ErrorKind::NotFound);
+        let unlabel = || -> Result<bool, String> {
+            if !own_medium_label(path)? {
+                return Ok(false);
+            }
+            let mut buf = [0u32; 4];
+            let acl = buf.as_mut_ptr() as *mut ACL;
+            if unsafe { InitializeAcl(acl, std::mem::size_of_val(&buf) as DWORD, DWORD::from(ACL_REVISION)) } == 0 {
+                return Err(last_error("InitializeAcl"));
+            }
+            let handle = open_for_relabel(path)?;
+            let rc = unsafe { SetSecurityInfo(handle.as_raw_handle() as HANDLE, SE_FILE_OBJECT, LABEL_SECURITY_INFORMATION, null_mut(), null_mut(), null_mut(), acl) };
+            if rc != 0 {
+                return Err(format!("remove label of {}: {}", path.display(), std::io::Error::from_raw_os_error(rc as i32)));
+            }
+            match low_label(path)? {
+                None => Ok(true),
+                Some(_) => Err("a low label came back from the folder".to_string()),
+            }
+        };
+        match unlabel() {
+            Ok(true) => *removed += 1,
+            Ok(false) => {}
+            Err(_) if gone() => {}
+            Err(e) => failed.push((path.to_path_buf(), e)),
         }
     }
 
@@ -1254,6 +1308,23 @@ mod imp {
             assert_eq!(launch_integrity(&exe), 0x1000, "the inherited low label makes the launch low integrity");
             super::clear_low_labels(&dir).unwrap();
             assert!(launch_integrity(&exe) >= 0x2000, "after the labels go the server starts at the daemon's level");
+        }
+
+        /// 가져온 서버를 빼면(`release`) 서버를 띄우려고 실행 파일에 붙인 중간 수준 표시도 남지 않는다
+        #[test]
+        fn releasing_a_folder_leaves_no_label_on_its_executables() {
+            let tmp = tempfile::tempdir().unwrap();
+            let dir = std::fs::canonicalize(tmp.path()).unwrap();
+            let exe = dir.join("bin").join("server.exe");
+            std::fs::create_dir_all(exe.parent().unwrap()).unwrap();
+            std::fs::write(&exe, b"x").unwrap();
+            super::label_low(&dir).unwrap();
+            super::clear_low_labels(&dir).unwrap();
+            assert!(super::own_medium_label(&exe).unwrap());
+
+            super::release(&[], &[dir.clone()]).unwrap();
+            assert!(!super::own_medium_label(&exe).unwrap());
+            assert_eq!(super::low_label(&exe).unwrap(), None);
         }
 
         /// L38: 확장자가 `.exe`가 아닌 실행 대상(PE)은 폴더 걷기가 보지 않는다. 그 파일을 띄우기 전에 따로 덮는다
@@ -1665,6 +1736,11 @@ mod imp {
             let _guard = acl_lock();
             if let Err(e) = std::fs::canonicalize(dir).map_err(|e| format!("{}: resolve: {e}", dir.display())).and_then(|d| unlabel_low(&d)) {
                 failed.push(e);
+                continue;
+            }
+            // 폴더 표시를 뗀 뒤에야 뗄 수 있다 (먼저 떼면 실행 파일이 낮은 수준을 다시 물려받는다)
+            if let Err(errs) = drop_medium_labels(dir) {
+                failed.extend(errs.into_iter().map(|(p, e)| format!("{}: {}", p.display(), e)));
             }
         }
         let _guard = acl_lock();
