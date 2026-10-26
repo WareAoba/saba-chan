@@ -2306,7 +2306,7 @@ print(json.dumps(codes))
         );
     }
 
-    /// 리눅스(D3b): 확인되지 않은 모듈은 bubblewrap 안에서 돈다. 인스턴스 폴더는 쓰고, 받지 않은 폴더는 보지 못한다
+    /// 리눅스(D3b): 확인되지 않은 모듈은 bubblewrap 안에서 돈다. 서버 폴더는 쓰고, 받지 않은 폴더는 보지 못한다
     #[cfg(target_os = "linux")]
     #[tokio::test]
     async fn an_unverified_module_runs_inside_bubblewrap_on_linux() {
@@ -2316,19 +2316,21 @@ print(json.dumps(codes))
             return;
         }
         crate::python_env::get_python_path().await.expect("test Python ready");
-        // 모듈 폴더 아래에 있어야 모듈로 보고 인스턴스 폴더 쓰기를 준다
+        // 모듈 폴더 아래에 있어야 모듈로 보고 서버 폴더 쓰기를 준다 (인스턴스 폴더 자체는 가져오기 때만 쓴다)
         let module = tempfile::Builder::new().prefix("bwrap-probe-").tempdir_in(resolve_modules_dir()).unwrap();
         let (instance, other) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+        let server = instance.path().join("server");
+        std::fs::create_dir(&server).unwrap();
         std::fs::write(other.path().join("secret"), "token").unwrap();
         let entry = module.path().join("lifecycle.py");
         std::fs::write(&entry, "import json, os, sys\nconfig = json.loads(sys.stdin.read())\n\
-             open(os.path.join(config['instance_dir'], 'out'), 'w').write('ok')\n\
+             open(os.path.join(config['working_dir'], 'out'), 'w').write('ok')\n\
              try:\n    open(config['secret']).read(); seen = True\nexcept OSError:\n    seen = False\n\
              print(json.dumps({'success': True, 'seen': seen}))\n").unwrap();
-        let config = json!({ "instance_dir": instance.path(), "secret": other.path().join("secret") });
+        let config = json!({ "instance_dir": instance.path(), "working_dir": server, "secret": other.path().join("secret") });
         let result = run_plugin(entry.to_str().unwrap(), "probe", config).await.map_err(|e| error_response(&e)).expect("the isolated module ran");
         assert_eq!(result["success"], true, "{result}");
-        assert_eq!(std::fs::read_to_string(instance.path().join("out")).unwrap(), "ok", "writes its instance folder");
+        assert_eq!(std::fs::read_to_string(server.join("out")).unwrap(), "ok", "writes its server folder");
         assert_eq!(result["seen"], false, "an ungranted folder is not visible: {result}");
     }
 
