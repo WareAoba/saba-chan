@@ -208,8 +208,8 @@ fn build(method: &Method, path: &str, headers: &HeaderMap, token: &str, body: &a
 /// 넘기는 경로는 풀지 않은 그대로지만 판정은 푼 경로로 한다
 pub fn forward_path(rest: &str, query: Option<&str>) -> Option<String> {
     let rest = rest.trim_start_matches('/');
-    let decoded = crate::remote::gate::normalized_path(&format!("/{rest}"))?;
-    if !(decoded == "/health" || decoded.starts_with("/api/")) {
+    let segments = crate::remote::gate::path_segments(&format!("/{rest}"))?;
+    if !(segments == ["health"] || (segments.len() > 1 && segments[0] == "api")) {
         return None;
     }
     Some(match query {

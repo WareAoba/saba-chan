@@ -221,7 +221,12 @@ mod tests {
     fn only_daemon_api_paths_are_forwarded() {
         assert_eq!(crate::remote_daemon::peer::forward_path("api/instances", Some("a=1")).as_deref(), Some("/api/instances?a=1"));
         assert_eq!(crate::remote_daemon::peer::forward_path("health", None).as_deref(), Some("/health"));
-        for bad in ["remote/pair", "api/../remote/pair", "api/%2e%2e/remote/pair", "api/a%2Fb", "", "apix"] {
+        // 이름에 `/`가 든 서버는 이름 그대로 넘긴다
+        assert_eq!(
+            crate::remote_daemon::peer::forward_path("api/server/Survival%201%2F2/stop", None).as_deref(),
+            Some("/api/server/Survival%201%2F2/stop")
+        );
+        for bad in ["remote/pair", "api/../remote/pair", "api/%2e%2e/remote/pair", "api/a%2F..%2Fb", "api%2Fservers", "", "apix", "api"] {
             assert_eq!(crate::remote_daemon::peer::forward_path(bad, None), None, "{bad}");
         }
     }

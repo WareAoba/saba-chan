@@ -26,8 +26,13 @@ use super::relay::{self, Failure, Target};
 
 /// 원격에서 부르지 못하는 라우트: 이 PC의 릴레이 토큰, 개인정보 지우기, 원격 포트 설정과 짝 관리,
 /// 이 PC의 아무 경로에 쓰거나 읽는 옮기기(설정 내보내기·들이기, 저장 폴더 옮기기)
-const LOCAL_ONLY: &[&str] =
-    &["/api/config/node-token", "/api/relay/privacy/erase", "/api/remote/", "/api/migration/", "/api/system/paths/move"];
+const LOCAL_ONLY: &[&[&str]] = &[
+    &["api", "config", "node-token"],
+    &["api", "relay", "privacy", "erase"],
+    &["api", "remote"],
+    &["api", "migration"],
+    &["api", "system", "paths", "move"],
+];
 /// PC 전용 칸을 보려고 받아 두는 본문 (axum `Json`의 기본 한도와 같다)
 const FIELDS_BODY_LIMIT: usize = 2 * 1024 * 1024;
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
@@ -144,16 +149,15 @@ pub(crate) fn router(routes: Router, ctx: Ctx) -> Router {
         .layer(axum::middleware::from_fn_with_state(ctx, remote_auth))
 }
 
-/// 짝 맺은 PC가 부르지 못하는 경로면 상태와 오류 코드. 경로는 라우터가 푸는 대로 푼 값으로 본다.
+/// 짝 맺은 PC가 부르지 못하는 경로면 상태와 오류 코드. 경로는 라우터가 푸는 대로 푼 조각 목록으로 조각끼리 본다.
 /// 노드 토큰, 그리고 고른 데몬과 상관없이 이 PC에서만 처리하는 경로(연결 관리, 이 PC의 인터페이스·앱 설정·업데이트,
 /// 로그인 자동 실행, 데몬 종료: `target::stays_local`)는 짝 맺은 PC도 부르지 못한다
 pub(crate) fn refused_path(path: &str) -> Option<(StatusCode, &'static str)> {
-    let Some(path) = crate::remote::gate::normalized_path(path) else {
+    let Some(segments) = crate::remote::gate::path_segments(path) else {
         return Some((StatusCode::BAD_REQUEST, "remote_bad_path"));
     };
-    let path = path.as_str();
-    (LOCAL_ONLY.iter().any(|p| path == p.trim_end_matches('/') || path.starts_with(p))
-        || (path.starts_with("/api/") && super::target::stays_local(path)))
+    (LOCAL_ONLY.iter().any(|p| crate::remote::gate::starts_with(&segments, p))
+        || (segments.first().is_some_and(|s| s == "api") && super::target::stays_local(&segments)))
     .then_some((StatusCode::FORBIDDEN, "remote_local_only"))
 }
 
@@ -626,10 +630,13 @@ pub(crate) mod tests {
             let (s, body) = call(r.addr, &r.pin, "POST", path, Some(&token), None).await.unwrap();
             assert_eq!((s, body["error_code"].as_str()), (403, Some("remote_local_only")), "{path}");
         }
-        for path in ["/api/config/%2e%2e/reset", "/api/config/a%2Fb/reset", "/api/config/%FF/reset"] {
+        for path in ["/api/config/%2e%2e/reset", "/api/config/a%2F..%2Fb/reset", "/api/config/%FF/reset"] {
             let (s, body) = call(r.addr, &r.pin, "POST", path, Some(&token), None).await.unwrap();
             assert_eq!((s, body["error_code"].as_str()), (400, Some("remote_bad_path")), "{path}");
         }
+        // 조각 안의 인코딩한 `/`는 그 조각의 글자다 (이름에 `/`가 든 서버를 이름으로 부른다)
+        let (s, body) = call(r.addr, &r.pin, "POST", "/api/config/a%2Fb/reset", Some(&token), None).await.unwrap();
+        assert_eq!((s, body), (200, json!({ "reset": "a/b" })));
         let (s, body) = call(r.addr, &r.pin, "POST", "/api/config/bot/reset", Some(&token), None).await.unwrap();
         assert_eq!((s, body), (200, json!({ "reset": "bot" })));
         r.cancel.cancel();

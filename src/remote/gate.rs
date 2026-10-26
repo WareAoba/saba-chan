@@ -254,7 +254,7 @@ pub static ROUTES: &[Route] = &[
 pub enum Refusal {
     /// 표에서 거부했거나 표에 없다
     NotAllowed,
-    /// 경로가 이상하다 (`..`, 나눔 문자, 빈 조각)
+    /// 경로가 이상하다 (`..`, 빈 조각, 풀 수 없는 조각)
     BadPath,
 }
 
@@ -269,7 +269,7 @@ pub fn decide(method: &str, path: &str) -> Result<&'static str, Refusal> {
 
 /// `path`(쿼리 포함 가능)에 맞는 라우트 패턴 (허용·거부와 상관없이)
 pub fn route_of(path: &str) -> Result<&'static str, Refusal> {
-    normalized_path(path).ok_or(Refusal::BadPath)?;
+    path_segments(path).ok_or(Refusal::BadPath)?;
     let path = path.split_once('?').map_or(path, |(p, _)| p);
     // 패턴은 라우터처럼 풀지 않은 조각과 맞춘다 (라우터는 리터럴 조각을 풀지 않는다)
     let segments: Vec<&str> = path[1..].split('/').collect();
@@ -302,27 +302,23 @@ fn match_score(pattern: &str, segments: &[&str]) -> Option<Vec<bool>> {
         .collect()
 }
 
-/// 비어 있지 않고, 풀어도 나눔 문자·`.`·`..`·NUL이 아닌 경로 조각
-fn safe_segment(segment: &str) -> bool {
-    match percent_decode(segment) {
-        Some(d) => !d.is_empty() && d != "." && d != ".." && !d.contains(['/', '\\', '\0']),
-        None => false,
-    }
+/// 푼 경로 조각이 괜찮은지: 비어 있지 않고 NUL이 없으며, 조각도 조각 안을 나눔 문자로 가른 부분도 `.`·`..`이 아니다.
+/// 조각 안의 나눔 문자는 그 조각의 글자다 (이름에 `/`가 든 서버). 경로 인자로 상위 폴더를 가리키지는 못하게 한다
+fn safe_segment(decoded: &str) -> bool {
+    !decoded.is_empty() && !decoded.contains('\0') && !decoded.split(['/', '\\']).any(|p| p == "." || p == "..")
 }
 
-/// 라우터가 경로 인자를 푸는 대로 조각마다 푼 경로 (쿼리는 뺀다). 이상한 조각(`safe_segment`가 아닌 것)이 있으면 `None`.
-/// 경로로 무엇을 막을지 정하는 곳(웹 문지기, 원격 포트, 원격 데몬 고르기)은 모두 이 값으로 본다 (인코딩한 경로로 판정을 비켜 가지 않게)
-pub(crate) fn normalized_path(path: &str) -> Option<String> {
+/// 라우터가 경로 인자를 푸는 대로 조각마다 푼 경로 조각 (쿼리는 뺀다). 풀 수 없거나 이상한 조각(`safe_segment`가 아닌 것)이 있으면 `None`.
+/// 경로로 무엇을 막을지 정하는 곳(웹 문지기, 원격 포트, 원격 데몬 고르기)은 모두 이 조각 목록을 조각끼리 비교한다
+/// (인코딩한 경로로 판정을 비켜 가지 않게, 조각 안의 인코딩한 `/`가 다른 조각처럼 보이지 않게)
+pub(crate) fn path_segments(path: &str) -> Option<Vec<String>> {
     let path = path.split_once('?').map_or(path, |(p, _)| p);
-    let mut out = String::with_capacity(path.len());
-    for segment in path.strip_prefix('/')?.split('/') {
-        if !safe_segment(segment) {
-            return None;
-        }
-        out.push('/');
-        out.push_str(&percent_decode(segment)?);
-    }
-    Some(out)
+    path.strip_prefix('/')?.split('/').map(|s| percent_decode(s).filter(|d| safe_segment(d))).collect()
+}
+
+/// 푼 조각 목록이 `prefix` 조각들로 시작하는지 (조각끼리 비교한다)
+pub(crate) fn starts_with(segments: &[String], prefix: &[&str]) -> bool {
+    segments.len() >= prefix.len() && segments.iter().zip(prefix).all(|(s, p)| s == p)
 }
 
 pub(crate) fn percent_decode(s: &str) -> Option<String> {
@@ -558,7 +554,7 @@ mod tests {
         for path in [
             "/api/instance/../config/node-token",
             "/api/instance/a%2F..%2Fb/start",
-            "/api/instance/a%5Cb/start",
+            "/api/instance/..%5Cb/start",
             "/api/instance//start",
             "/api/instance/%2e%2e/start",
             "api/servers",
@@ -567,15 +563,35 @@ mod tests {
         }
     }
 
-    /// 경로로 막을 것을 정하는 곳은 모두 라우터가 푸는 대로 푼 경로를 본다
+    /// 경로로 막을 것을 정하는 곳은 모두 라우터가 푸는 대로 조각마다 푼 조각 목록을 본다
     #[test]
     fn paths_are_judged_decoded() {
-        assert_eq!(normalized_path("/api/config/%67ui/reset").as_deref(), Some("/api/config/gui/reset"));
-        assert_eq!(normalized_path("/api/servers?x=%2F").as_deref(), Some("/api/servers"));
-        assert_eq!(normalized_path("/health").as_deref(), Some("/health"));
-        for bad in ["/api/x/%2e%2e/y", "/api/a%2Fb", "/api/a%5Cb", "/api//x", "/api/%FF", "/api/%6", "api/x", "/api/x/.."] {
-            assert_eq!(normalized_path(bad), None, "{bad}");
+        let segs = |p: &str| path_segments(p);
+        let own = |v: &[&str]| Some(v.iter().map(|s| s.to_string()).collect::<Vec<_>>());
+        assert_eq!(segs("/api/config/%67ui/reset"), own(&["api", "config", "gui", "reset"]));
+        assert_eq!(segs("/api/servers?x=%2F"), own(&["api", "servers"]));
+        assert_eq!(segs("/health"), own(&["health"]));
+        for bad in ["/api/x/%2e%2e/y", "/api//x", "/api/%FF", "/api/%6", "api/x", "/api/x/..", "/api/a%2F..%2Fb", "/api/..%5Cb", "/api/a%00"] {
+            assert_eq!(segs(bad), None, "{bad}");
         }
+    }
+
+    /// 조각 안의 인코딩한 `/`·`\\`는 그 조각의 글자다: 이름에 `/`가 든 서버도 이름으로 부른다.
+    /// 그 조각은 다른 조각으로 나뉘지 않으므로 앞 조각 비교를 비켜 가지 못한다
+    #[test]
+    fn an_encoded_slash_stays_inside_its_segment() {
+        assert_eq!(
+            path_segments("/api/server/Survival%201%2F2/stop"),
+            Some(vec!["api".into(), "server".into(), "Survival 1/2".into(), "stop".into()])
+        );
+        assert_eq!(decide("POST", "/api/server/Survival%201%2F2/stop"), Ok("/api/server/{name}/stop"));
+        assert_eq!(decide("GET", "/api/server/a%5Cb/status"), Ok("/api/server/{name}/status"));
+        // 리터럴 조각을 인코딩한 `/`로 이어 붙여도 그 라우트가 아니다
+        assert_eq!(decide("GET", "/api/config%2Fnode-token"), Err(Refusal::NotAllowed));
+        let segments = path_segments("/api/remote%2Fclients").unwrap();
+        assert!(!starts_with(&segments, &["api", "remote"]));
+        assert!(starts_with(&path_segments("/api/remote/clients").unwrap(), &["api", "remote"]));
+        assert!(!starts_with(&path_segments("/api/remotex").unwrap(), &["api", "remote"]));
     }
 
     #[test]
