@@ -113,19 +113,12 @@ pub(crate) struct Ctx {
     pub file: ConfigFile,
     pub clients: Clients,
     pub relay: RelaySource,
-    /// PC 전용 칸 판정에 쓰는 이 데몬 (모듈의 PC 전용 설정, 저장된 값)
-    server: Option<crate::ipc::IPCServer>,
     pairs: Arc<std::sync::Mutex<Vec<(Instant, std::net::IpAddr)>>>,
 }
 
 impl Ctx {
     pub(crate) fn new(file: ConfigFile, clients: Clients, relay: RelaySource) -> Self {
-        Self { file, clients, relay, server: None, pairs: Arc::default() }
-    }
-
-    pub(crate) fn with_server(mut self, server: crate::ipc::IPCServer) -> Self {
-        self.server = Some(server);
-        self
+        Self { file, clients, relay, pairs: Arc::default() }
     }
 
     fn pair_allowed(&self, from: std::net::IpAddr) -> bool {
@@ -152,27 +145,49 @@ pub(crate) fn router(routes: Router, ctx: Ctx) -> Router {
 /// 짝 맺은 PC가 부르지 못하는 경로면 상태와 오류 코드. 경로는 라우터가 푸는 대로 푼 조각 목록으로 조각끼리 본다.
 /// 노드 토큰, 그리고 고른 데몬과 상관없이 이 PC에서만 처리하는 경로(연결 관리, 이 PC의 인터페이스·앱 설정·업데이트,
 /// 로그인 자동 실행, 데몬 종료: `target::stays_local`)는 짝 맺은 PC도 부르지 못한다
-pub(crate) fn refused_path(path: &str) -> Option<(StatusCode, &'static str)> {
-    let Some(segments) = crate::remote::gate::path_segments(path) else {
-        return Some((StatusCode::BAD_REQUEST, "remote_bad_path"));
-    };
-    (LOCAL_ONLY.iter().any(|p| crate::remote::gate::starts_with(&segments, p))
-        || (segments.first().is_some_and(|s| s == "api") && super::target::stays_local(&segments)))
+fn refused(segments: &[String]) -> Option<(StatusCode, &'static str)> {
+    (LOCAL_ONLY.iter().any(|p| crate::remote::gate::starts_with(segments, p))
+        || (segments.first().is_some_and(|s| s == "api") && super::target::stays_local(segments)))
     .then_some((StatusCode::FORBIDDEN, "remote_local_only"))
+}
+
+/// 짝 맺은 PC(감사 출처 `remote`)의 요청에 PC 전용 규칙을 거는 층 (`IPCServer::routes`가 씌운다).
+/// 원격 포트로 온 요청과, 그 요청이 안에서 다시 부르는 라우터(`actions::call_as`: 액션 실행, 여러 단계 계획)가 모두 이 층 하나를 지난다.
+/// 출처 `remote`는 HTTP 머리로 흉내 낼 수 없다 (`audit::INTERNAL_SOURCES`)
+pub(crate) async fn rules(State(server): State<crate::ipc::IPCServer>, req: Request<Body>, next: Next) -> Response {
+    if req.extensions().get::<crate::audit::Origin>().is_none_or(|o| o.source != "remote") {
+        return next.run(req).await;
+    }
+    let Ok((segments, pattern)) = crate::remote::gate::parse(req.uri().path()) else {
+        return error(StatusCode::BAD_REQUEST, "remote_bad_path");
+    };
+    if let Some((status, code)) = refused(&segments) {
+        return error(status, code);
+    }
+    let method = req.method().as_str().to_string();
+    let Some(pattern) = pattern.filter(|p| crate::remote::gate::checks_fields(&method, p)) else {
+        return next.run(req).await;
+    };
+    // 웹 원격과 같이 PC 전용 칸은 바꾸지 못한다. 하나라도 있으면 요청 전체를 거절한다 (일부만 쓰지 않게)
+    let (parts, body) = req.into_parts();
+    let Ok(bytes) = axum::body::to_bytes(body, FIELDS_BODY_LIMIT).await else {
+        return error(StatusCode::PAYLOAD_TOO_LARGE, "body_too_large");
+    };
+    let json = serde_json::from_slice::<Value>(&bytes).ok();
+    let blocked = blocked_fields(&server, &method, pattern, &segments, json.as_ref()).await;
+    if !blocked.is_empty() {
+        return (StatusCode::FORBIDDEN, Json(crate::remote::exec::field_refusal(blocked))).into_response();
+    }
+    next.run(Request::from_parts(parts, Body::from(bytes))).await
 }
 
 /// 짝 맺은 PC가 바꾸지 못하는 본문 칸. 웹 원격과 같은 PC 전용 칸 규칙(`gate::blocked_fields`)에서
 /// 저장된 값과 같은 칸(바꾸지 않는 칸)은 뺀다: GUI는 설정 창의 칸을 바꾸지 않아도 함께 보낸다.
 /// 플러그인 설치는 해시를 함께 줄 때만 막는다 (주소만 주면 데몬이 공식 목록의 주소인지 본다)
-pub(crate) async fn blocked_fields(server: Option<&crate::ipc::IPCServer>, method: &str, path: &str, body: Option<&Value>) -> Vec<String> {
-    let Ok(pattern) = crate::remote::gate::route_of(path) else { return Vec::new() };
-    if !crate::remote::gate::checks_fields(method, pattern) {
-        return Vec::new();
-    }
-    let pc_only = match server {
-        Some(server) => crate::remote::exec::pc_only_fields(server, pattern, path, body).await,
-        None => Vec::new(),
-    };
+async fn blocked_fields(server: &crate::ipc::IPCServer, method: &str, pattern: &str, segments: &[String], body: Option<&Value>) -> Vec<String> {
+    let supervisor = server.supervisor.read().await;
+    let instance = crate::remote::exec::edited_instance(&supervisor, pattern, segments);
+    let pc_only = crate::remote::exec::pc_only_fields(&supervisor, pattern, instance, body);
     let mut blocked = crate::remote::gate::blocked_fields(method, pattern, body, &pc_only);
     if blocked.is_empty() {
         return blocked;
@@ -181,13 +196,9 @@ pub(crate) async fn blocked_fields(server: Option<&crate::ipc::IPCServer>, metho
         let sha = body.and_then(|b| b.get("sha256")).and_then(Value::as_str).is_some_and(|s| !s.is_empty());
         return if sha { blocked } else { Vec::new() };
     }
-    let (Some(server), Some(body), "/api/instance/{id}" | "/api/instance/{id}/properties") = (server, body, pattern) else {
+    let (Some(instance), Some(body)) = (instance, body) else {
         return blocked;
     };
-    // 라우터처럼 id를 풀어서 찾는다
-    let id = path.split('?').next().and_then(|p| p.split('/').nth(3)).and_then(crate::remote::gate::percent_decode);
-    let supervisor = server.supervisor.read().await;
-    let Some(instance) = id.and_then(|id| supervisor.instance_store.get(&id)) else { return blocked };
     let view = serde_json::to_value(instance).unwrap_or_default();
     blocked.retain(|key| {
         let (sent, key) = match key.strip_prefix("settings.") {
@@ -234,9 +245,6 @@ async fn remote_auth(State(ctx): State<Ctx>, mut req: Request<Body>, next: Next)
     if path == "/health" {
         return next.run(req).await;
     }
-    if let Some((status, code)) = refused_path(path) {
-        return error(status, code);
-    }
     let token = req
         .headers()
         .get(header::AUTHORIZATION)
@@ -252,20 +260,7 @@ async fn remote_auth(State(ctx): State<Ctx>, mut req: Request<Body>, next: Next)
     origin.user = Some(client.host_id);
     origin.user_name = Some(client.name);
     req.extensions_mut().insert(origin);
-    // 웹 원격과 같이 PC 전용 칸은 바꾸지 못한다. 하나라도 있으면 요청 전체를 거절한다 (일부만 쓰지 않게)
-    let method = req.method().as_str().to_string();
-    if crate::remote::gate::route_of(req.uri().path()).is_ok_and(|p| crate::remote::gate::checks_fields(&method, p)) {
-        let (parts, body) = req.into_parts();
-        let Ok(bytes) = axum::body::to_bytes(body, FIELDS_BODY_LIMIT).await else {
-            return error(StatusCode::PAYLOAD_TOO_LARGE, "body_too_large");
-        };
-        let json = serde_json::from_slice::<Value>(&bytes).ok();
-        let blocked = blocked_fields(ctx.server.as_ref(), &method, parts.uri.path(), json.as_ref()).await;
-        if !blocked.is_empty() {
-            return (StatusCode::FORBIDDEN, Json(crate::remote::exec::field_refusal(blocked))).into_response();
-        }
-        req = Request::from_parts(parts, Body::from(bytes));
-    }
+    // PC 전용 경로·칸은 안쪽 층(`rules`)이 이 출처를 보고 막는다 (안에서 다시 부르는 라우터도 같은 층을 지난다)
     // 짝이 풀리면 이 응답의 본문(이벤트 스트림, 내려받기)도 오류로 끊는다(받던 쪽이 다 받은 것으로 알지 않게). 새 요청은 위에서 바로 막힌다.
     // 길이를 아는 본문은 그대로 둔다
     let res = next.run(req).await;
@@ -477,6 +472,14 @@ pub(crate) mod tests {
         base
     }
 
+    fn test_server(dir: &std::path::Path) -> crate::ipc::IPCServer {
+        let sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            dir.join("modules").to_str().unwrap(),
+            dir.join("instances").to_str().unwrap(),
+        );
+        crate::ipc::IPCServer::new(Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new())
+    }
+
     struct Remote {
         addr: std::net::SocketAddr,
         pin: String,
@@ -505,7 +508,9 @@ pub(crate) mod tests {
             .route("/api/instances", axum::routing::get(|| async { Json(json!([])) }))
             .route("/api/config/node-token", axum::routing::get(|| async { Json(json!({ "token": "leak" })) }))
             .route("/api/remote/clients", axum::routing::get(|| async { Json(json!([])) }))
-            .route("/api/config/{kind}/reset", post(|axum::extract::Path(kind): axum::extract::Path<String>| async move { Json(json!({ "reset": kind })) }));
+            .route("/api/config/{kind}/reset", post(|axum::extract::Path(kind): axum::extract::Path<String>| async move { Json(json!({ "reset": kind })) }))
+            // 데몬 라우트(`IPCServer::routes`)처럼 짝 맺은 PC의 규칙 층을 씌운다
+            .layer(axum::middleware::from_fn_with_state(test_server(dir.path()), rules));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         let cancel = CancellationToken::new();
@@ -597,38 +602,57 @@ pub(crate) mod tests {
         assert_eq!((s, res["error"].as_str()), (502, Some("relay_unreachable")));
     }
 
+    /// 실제 데몬 라우트(`IPCServer::routes`)를 원격 포트로 연다. 짝 맺은 PC 하나의 토큰과 함께
+    async fn start_daemon(tmp: &std::path::Path, server: &crate::ipc::IPCServer) -> (std::net::SocketAddr, String, String, CancellationToken) {
+        let id = Identity::load_or_create(tmp).unwrap();
+        let file = ConfigFile::at(tmp);
+        let token = config::issue_in(&file, "host-a", "집 PC").unwrap();
+        let clients = Clients::default();
+        clients.set(config::clients_in(&file));
+        let ctx = Ctx::new(file, clients, RelaySource::Fixed(Target { base: "http://127.0.0.1:9".into(), token: "sbn_b.s".into() }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let cancel = CancellationToken::new();
+        tokio::spawn(serve(listener, Arc::new(id.server_config().unwrap()), router(server.routes(), ctx), cancel.clone()));
+        (addr, id.sha256.clone(), token, cancel)
+    }
+
     #[tokio::test]
     async fn local_only_routes_are_refused_even_with_a_token() {
-        let r = start(Some(fake_relay().await)).await;
-        let (_, body) =
-            call(r.addr, &r.pin, "POST", "/remote/pair", None, Some(json!({ "ticketId": "good", "secret": "s3cret" }))).await.unwrap();
-        let token = body["token"].as_str().unwrap().to_string();
+        let tmp = tempfile::tempdir().unwrap();
+        let server = test_server(tmp.path());
+        let (addr, pin, token, cancel) = start_daemon(tmp.path(), &server).await;
         for path in [
             "/api/config/node-token",
             "/api/relay/privacy/erase",
             "/api/remote/clients",
             "/api/system/autostart",
-            "/api/daemon/shutdown",
-            "/api/updates/check",
+            "/api/updates/status",
             "/api/clients/launch",
             "/api/config/gui",
         ] {
-            let (s, _) = call(r.addr, &r.pin, "GET", path, Some(&token), None).await.unwrap();
-            assert_eq!(s, 403, "{path}");
+            let (s, body) = call(addr, &pin, "GET", path, Some(&token), None).await.unwrap();
+            assert_eq!((s, body["error_code"].as_str()), (403, Some("remote_local_only")), "{path}");
         }
-        let (s, _) = call(r.addr, &r.pin, "GET", "/health", None, None).await.unwrap();
+        let (s, _) = call(addr, &pin, "GET", "/health", None, None).await.unwrap();
         assert_eq!(s, 200);
+        cancel.cancel();
     }
 
-    /// 이 PC 전용 경로는 퍼센트 인코딩해도 같은 판정을 받는다 (라우터가 푸는 대로 풀어서 본다)
+    /// 이 PC 전용 경로는 매개변수 조각을 퍼센트 인코딩해도 같은 판정을 받는다 (라우터가 푸는 대로 풀어서 본다).
+    /// 리터럴 조각을 인코딩하면 라우터가 그 라우트로 보내지 않는다
     #[tokio::test]
     async fn local_only_routes_are_judged_on_the_decoded_path() {
         let r = start(None).await;
         let token = config::issue_in(&r.file, "host-a", "집 PC").unwrap();
         r.clients.set(config::clients_in(&r.file));
-        for path in ["/api/config/gui/reset", "/api/config/%67ui/reset", "/api/config/%6Eode-token", "/api/%72emote/clients"] {
+        for path in ["/api/config/gui/reset", "/api/config/%67ui/reset", "/api/config/client/reset", "/api/config/%63lient/reset"] {
             let (s, body) = call(r.addr, &r.pin, "POST", path, Some(&token), None).await.unwrap();
             assert_eq!((s, body["error_code"].as_str()), (403, Some("remote_local_only")), "{path}");
+        }
+        for path in ["/api/config/%6Eode-token", "/api/%72emote/clients"] {
+            let (s, body) = call(r.addr, &r.pin, "GET", path, Some(&token), None).await.unwrap();
+            assert_eq!(s, 404, "{path} {body}");
         }
         for path in ["/api/config/%2e%2e/reset", "/api/config/a%2F..%2Fb/reset", "/api/config/%FF/reset"] {
             let (s, body) = call(r.addr, &r.pin, "POST", path, Some(&token), None).await.unwrap();
@@ -726,8 +750,7 @@ pub(crate) mod tests {
         let token = config::issue_in(&file, "host-a", "집 PC").unwrap();
         let clients = Clients::default();
         clients.set(config::clients_in(&file));
-        let ctx = Ctx::new(file, clients, RelaySource::Fixed(Target { base: "http://127.0.0.1:9".into(), token: "sbn_b.s".into() }))
-            .with_server(server.clone());
+        let ctx = Ctx::new(file, clients, RelaySource::Fixed(Target { base: "http://127.0.0.1:9".into(), token: "sbn_b.s".into() }));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         let cancel = CancellationToken::new();

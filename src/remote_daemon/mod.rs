@@ -166,7 +166,7 @@ pub async fn apply(server: &IPCServer) -> Status {
                 match (identity.server_config(), bind(settings.port)) {
                     (Ok(tls), Ok(listener)) => {
                         let cancel = server.shutdown_token.child_token();
-                        let ctx = server::Ctx::new(file.clone(), clients(), relay.clone()).with_server(server.clone());
+                        let ctx = server::Ctx::new(file.clone(), clients(), relay.clone());
                         let app = server::router(server.routes(), ctx);
                         let task = tokio::spawn(server::serve(listener, Arc::new(tls), app, cancel.clone()));
                         rt.cancel = Some((cancel, task));

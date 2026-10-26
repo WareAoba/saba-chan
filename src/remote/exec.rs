@@ -41,8 +41,13 @@ pub async fn run(server: &IPCServer, req: Request, user: Option<String>) -> Resp
             )
         }
     };
-    let pc_only = pc_only_fields(server, pattern, &req.path, req.body.as_ref()).await;
-    let blocked = gate::blocked_fields(&req.method, pattern, req.body.as_ref(), &pc_only);
+    let blocked = {
+        let segments = gate::path_segments(&req.path).unwrap_or_default();
+        let supervisor = server.supervisor.read().await;
+        let instance = edited_instance(&supervisor, pattern, &segments);
+        let pc_only = pc_only_fields(&supervisor, pattern, instance, req.body.as_ref());
+        gate::blocked_fields(&req.method, pattern, req.body.as_ref(), &pc_only)
+    };
     if !blocked.is_empty() {
         return Response {
             status: StatusCode::FORBIDDEN.as_u16(),
@@ -106,27 +111,33 @@ fn module_fields(
         .collect()
 }
 
-/// 이 요청(`path`, `body`)이 고치는 인스턴스 모듈의 PC 전용 설정 키
-pub(crate) async fn pc_only_fields(server: &IPCServer, pattern: &str, path: &str, body: Option<&Value>) -> Vec<String> {
-    let supervisor = server.supervisor.read().await;
-    let module = match pattern {
-        "/api/instance/{id}" | "/api/instance/{id}/properties" => path
-            .split('?')
-            .next()
-            .and_then(|p| p.split('/').nth(3))
-            // 라우터는 id 를 풀어서 찾으므로 여기서도 풀어서 찾는다 (%61bc 로 모듈 칸 검사를 비켜 가지 않게)
-            .and_then(super::gate::percent_decode)
-            .and_then(|id| supervisor.instance_store.get(&id))
-            .map(|i| i.module_name.clone()),
-        "/api/instances" => body
-            .and_then(|b| b.get("module_name"))
-            .and_then(Value::as_str)
-            .map(str::to_string),
+/// 요청이 설정을 고치는 인스턴스 (인스턴스 설정, 게임 설정 파일 쓰기). `segments`는 푼 경로 조각이다
+/// (라우터는 id를 풀어서 찾으므로 여기서도 푼 id로 찾는다: %61bc로 모듈 칸 검사를 비켜 가지 않게)
+pub(crate) fn edited_instance<'a>(
+    supervisor: &'a crate::supervisor::Supervisor,
+    pattern: &str,
+    segments: &[String],
+) -> Option<&'a crate::instance::ServerInstance> {
+    match pattern {
+        "/api/instance/{id}" | "/api/instance/{id}/properties" => {
+            gate::param(pattern, segments, "id").and_then(|id| supervisor.instance_store.get(id))
+        }
         _ => None,
+    }
+}
+
+/// 이 요청이 고치는 인스턴스(`instance`, `edited_instance`) 또는 만드는 인스턴스(`body.module_name`) 모듈의 PC 전용 설정 키
+pub(crate) fn pc_only_fields(
+    supervisor: &crate::supervisor::Supervisor,
+    pattern: &str,
+    instance: Option<&crate::instance::ServerInstance>,
+    body: Option<&Value>,
+) -> Vec<String> {
+    let module = match pattern {
+        "/api/instances" => body.and_then(|b| b.get("module_name")).and_then(Value::as_str),
+        _ => instance.map(|i| i.module_name.as_str()),
     };
-    module
-        .map(|m| module_fields(&supervisor, &m, is_pc_only))
-        .unwrap_or_default()
+    module.map(|m| module_fields(supervisor, m, is_pc_only)).unwrap_or_default()
 }
 
 /// 인스턴스를 담은 응답에서 비밀값(REST 비밀번호, 모듈의 비밀번호 칸)을 뺀다.

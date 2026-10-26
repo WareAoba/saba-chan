@@ -269,18 +269,30 @@ pub fn decide(method: &str, path: &str) -> Result<&'static str, Refusal> {
 
 /// `path`(쿼리 포함 가능)에 맞는 라우트 패턴 (허용·거부와 상관없이)
 pub fn route_of(path: &str) -> Result<&'static str, Refusal> {
-    path_segments(path).ok_or(Refusal::BadPath)?;
+    parse(path)?.1.ok_or(Refusal::NotAllowed)
+}
+
+/// `path`(쿼리 포함 가능)를 푼 조각 목록(`path_segments`)과 맞는 라우트 패턴 (표에 없으면 `None`). 이상한 경로면 `BadPath`
+pub fn parse(path: &str) -> Result<(Vec<String>, Option<&'static str>), Refusal> {
+    let decoded = path_segments(path).ok_or(Refusal::BadPath)?;
     let path = path.split_once('?').map_or(path, |(p, _)| p);
     // 패턴은 라우터처럼 풀지 않은 조각과 맞춘다 (라우터는 리터럴 조각을 풀지 않는다)
     let segments: Vec<&str> = path[1..].split('/').collect();
     // 라우터처럼 리터럴 조각이 많이 맞는 패턴을 고른 뒤 그 패턴의 메서드를 본다
     // (매개변수 패턴의 허용으로 리터럴 라우트의 다른 처리기에 닿지 않게)
-    ROUTES
+    let pattern = ROUTES
         .iter()
         .filter_map(|r| match_score(r.pattern, &segments).map(|score| (score, r.pattern)))
         .max_by(|a, b| a.0.cmp(&b.0))
-        .map(|(_, p)| p)
-        .ok_or(Refusal::NotAllowed)
+        .map(|(_, p)| p);
+    Ok((decoded, pattern))
+}
+
+/// 패턴의 `{name}` 자리에 온 푼 조각 (라우터가 처리기에 넘기는 값과 같다)
+pub fn param<'a>(pattern: &str, segments: &'a [String], name: &str) -> Option<&'a str> {
+    let wanted = format!("{{{name}}}");
+    let at = pattern.trim_start_matches('/').split('/').position(|p| p == wanted)?;
+    segments.get(at).map(String::as_str)
 }
 
 /// 패턴이 조각들과 맞으면 리터럴이 맞은 자리 (앞쪽 리터럴이 클수록 앞선다)
