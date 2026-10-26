@@ -1,4 +1,4 @@
-//! 확인되지 않은 모듈·익스텐션 실행 제한 (Windows)
+//! 확인되지 않은 모듈·익스텐션 실행 제한 (Windows: AppContainer, 리눅스: bubblewrap `bwrap.rs`)
 //!
 //! 신뢰 표시(`integrity::trust_of`)가 `verified`가 아닌 구성요소에만 적용한다. 공식 카탈로그에서 받아
 //! 그대로인 것은 지금처럼 실행한다.
@@ -15,9 +15,12 @@ use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
 pub mod appcontainer;
+pub mod bwrap;
 
-/// 이 플랫폼에서 제한을 거는가
-pub const ENFORCED: bool = cfg!(windows);
+/// 이 플랫폼에서 제한을 거는가 (Windows, bubblewrap을 쓸 수 있는 리눅스)
+pub fn enforced() -> bool {
+    cfg!(windows) || bwrap::program().is_some()
+}
 
 /// 모듈·익스텐션 진입 파일(`<modules>/<이름>/lifecycle.py`, `<modules>/<이름>/scripts/lifecycle.py` 등)의
 /// 설치 기록 키와 폴더
@@ -70,9 +73,9 @@ pub fn trust_of_entry(entry: &Path) -> Trust {
     }
 }
 
-/// 제한을 거는가 (Windows이고 공식·그대로가 아닌 것)
+/// 제한을 거는가 (격리하는 플랫폼이고 공식·그대로가 아닌 것)
 pub fn restricted(trust: Trust) -> bool {
-    ENFORCED && trust != Trust::Verified
+    trust != Trust::Verified && enforced()
 }
 
 pub fn python_isolation_required(trust: Trust) -> bool {
@@ -186,7 +189,7 @@ impl Blocked {
             "file": self.file,
             "detail": self.detail,
         });
-        if !ENFORCED && self.code == "sandbox_unavailable" {
+        if self.code == "sandbox_unavailable" && !enforced() {
             response["error_code"] = serde_json::json!("isolation_unsupported");
         }
         response
@@ -200,7 +203,7 @@ pub fn message(blocked: &Blocked) -> String {
         "launch_outside_instance" => format!("This unverified module tried to run a program outside the server folder: {}. If you set the Java path yourself, choose it again in the server settings.", file),
         "server_in_sync_folder" => format!("The server folder is inside a sync folder such as OneDrive, so saba-chan cannot check it: {}. Move the server folder outside the sync folder.", file),
         "server_folder_label" => format!("Could not remove the low integrity mark from the server folder: {}. Check that this account can change the permissions of that folder.", file),
-        "sandbox_unavailable" if !ENFORCED => "This operating system cannot isolate this unverified component. Consent is required to run it without isolation.".to_string(),
+        "sandbox_unavailable" if !enforced() => "This operating system cannot isolate this unverified component. Consent is required to run it without isolation.".to_string(),
         "sandbox_unavailable" => format!("Could not prepare the isolated environment for this unverified component: {}", blocked.detail.as_deref().unwrap_or("")),
         other => other.to_string(),
     }
@@ -319,7 +322,7 @@ pub async fn guard_launch_for(trust: impl FnOnce() -> Trust, program: &str, args
     let gate = LaunchGate(LABEL_GATE.lock().await);
     let target = Path::new(&resolve_program(program, cwd)).to_path_buf();
     restore_server_folders(roots.dirs.clone(), target.is_absolute().then_some(target)).await?;
-    if !ENFORCED || !restricted(trust()) {
+    if !restricted(trust()) {
         return Ok((program.to_string(), gate));
     }
     strip_search_path(env);
@@ -669,7 +672,7 @@ pub fn plain_local_path(path: &Path) -> bool {
 /// 사용자가 설정에서 정한 런타임(`java_path`)을 그 구성요소의 격리 실행에 연다 (Windows, 확인되지 않은 것만).
 /// 설정을 저장할 때 데몬이 부른다: 실행 때 받는 config의 값은 모듈 기본값과 구별할 수 없다
 pub fn open_user_runtime(entry: &Path, java_path: &str) {
-    if !ENFORCED || !restricted(trust_of_entry(entry)) {
+    if !cfg!(windows) || !restricted(trust_of_entry(entry)) {
         return;
     }
     let Some((key, _)) = component_of(entry) else { return };
@@ -775,7 +778,7 @@ pub fn reset() -> Result<usize, Vec<String>> {
 /// 데몬이 시작할 때: 예전에 준 런타임 읽기 권한 중 지금 쓰지 않는 것을 거둔다. 지금 쓰는 것은 데몬이 아는 런타임과
 /// 인스턴스마다 사용자가 정한 `java_path`(`(모듈 진입 파일, java_path)`)다. Windows에서만 한다
 pub fn reconcile_runtimes(user_runtimes: &[(String, String)]) {
-    if !ENFORCED {
+    if !cfg!(windows) {
         return;
     }
     let path = std::env::var_os("PATH");
@@ -962,6 +965,9 @@ pub fn isolation_for(entry: &Path, config: &Value, python_exe: &Path) -> Option<
 pub enum Spawned {
     #[cfg(windows)]
     Contained(appcontainer::Contained),
+    /// bwrap 안에서 띄울 명령 (리눅스). 입출력·프로세스 그룹은 부르는 쪽이 정하고 띄운다
+    #[cfg(not(windows))]
+    Wrapped(std::process::Command),
     /// 사용자가 이 구성요소를 격리 없이 돌리기로 했다
     Unisolated,
 }
@@ -990,8 +996,10 @@ pub async fn spawn_isolated(cmd: &std::process::Command, iso: &Isolation) -> Res
     #[cfg(not(windows))]
     let error = {
         drop(gate);
-        let _ = cmd;
-        "AppContainer is only available on Windows".to_string()
+        match bwrap::program() {
+            Some(program) => return Ok(Spawned::Wrapped(bwrap::wrap(program, cmd, &iso.grants))),
+            None => "bubblewrap (bwrap) is not available".to_string(),
+        }
     };
     if unisolated_allowed(&iso.key, &iso.dir) {
         tracing::warn!("[Sandbox] {} runs without isolation by the user's choice ({})", iso.key, error);
@@ -1201,6 +1209,28 @@ mod tests {
         let response = blocked.to_json(message(&blocked));
         assert_eq!(response["action_required"], "sandbox_unavailable");
         assert_eq!(response["error_code"], "isolation_unsupported");
+    }
+
+    #[cfg(not(windows))]
+    #[tokio::test]
+    async fn an_isolated_run_on_linux_is_wrapped_in_bubblewrap() {
+        bwrap::use_in_this_test();
+        let Some(program) = bwrap::program() else { return };
+        assert!(restricted(Trust::Unverified) && !restricted(Trust::Verified));
+        let tmp = tempfile::tempdir().unwrap();
+        let iso = Isolation {
+            key: "module-bwrap-test".into(), dir: tmp.path().to_path_buf(),
+            profile: String::new(), grants: appcontainer::Grants::default(),
+            pycache: PathBuf::new(), temp: PathBuf::new(), data: None, extension_root: PathBuf::new(),
+        };
+        let mut cmd = std::process::Command::new("python");
+        cmd.arg("lifecycle.py").env("SABA_X", "1");
+        let Ok(Spawned::Wrapped(wrapped)) = spawn_isolated(&cmd, &iso).await else { panic!("expected a bwrap command") };
+        assert_eq!(wrapped.get_program(), program.as_os_str());
+        let args: Vec<_> = wrapped.get_args().collect();
+        let sep = args.iter().position(|a| *a == "--").unwrap();
+        assert_eq!(&args[sep + 1..], ["python", "lifecycle.py"]);
+        assert!(wrapped.get_envs().any(|(k, v)| k == "SABA_X" && v == Some("1".as_ref())));
     }
 
     // 백로그 M7 (사용자 결정: 동기화 폴더 아래 서버는 계속 막는다). 막되 원인과 할 일을 알린다

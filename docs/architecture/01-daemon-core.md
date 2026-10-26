@@ -760,7 +760,7 @@ REST 자격증명 조회의 `get_credentials` 재진입은 바깥 호출의 자�
 - `PYTHONPATH` = `<data_dir>/python-guard` + `<extensions_dir의 부모>` + `<data_dir>/python-shared` + 기존 값. `sitecustomize.py`는 표준 라이브러리 경로를 이 경로보다 먼저 두고 활성 익스텐션만 import되게 막는다.
 - `SABA_ENABLED_EXTENSIONS` = `config.json`의 `extensions.enabled`를 쉼표로 연결한 값. 목록이 없으면 빈 문자열이다(`:317-322`).
 - 데몬 연결 정보 `SABA_IPC_PORT`, `SABA_IPC_URL`, `SABA_TOKEN_PATH`, `SABA_LANG`(`daemon_env`, `:14-38`).
-- 확인되지 않은 구성요소는 격리를 요구한다. Windows는 AppContainer를 쓰며, Linux·macOS는 현재 파일 지문에 대한 비격리 동의가 없으면 실행을 거부한다(`sandbox::isolation_for`, 02 문서 §2.1). 격리를 요구한 실행은 `SABA_TOKEN_PATH`를 빼고 임시·캐시 폴더를 구성요소별로 나눈다.
+- 확인되지 않은 구성요소는 격리를 요구한다. Windows는 AppContainer를, 리눅스는 bubblewrap(`bwrap`을 쓸 수 있을 때, `sandbox/bwrap.rs`)을 쓰며, 그 밖(`bwrap`이 없거나 쓸 수 없는 리눅스, macOS)은 현재 파일 지문에 대한 비격리 동의가 없으면 실행을 거부한다(`sandbox::isolation_for`, 02 문서 §2.1). 격리를 요구한 실행은 `SABA_TOKEN_PATH`를 빼고 임시·캐시 폴더를 구성요소별로 나눈다.
 - `SABA_HOST_DIR`은 모든 호출에 있고, 실행 종료 후 정리한다. 대상 인스턴스는 이 환경 변수가 아니라 `PluginCall`의 데몬 측 문맥으로 정한다.
 - 내장 공용 Python 유틸리티는 `<data_dir>/python-shared/`에 맞춰 쓴다. 모듈 폴더는 `PYTHONPATH`에 넣지 않는다. 익스텐션은 import 가드와 익스텐션 상위 폴더를 사용한다.
 

@@ -414,7 +414,7 @@ pub(crate) fn trust_warnings(kind: &str, id: &str, trust: saba_chan_updater_lib:
         Trust::Unverified => format!("{}_unverified", kind),
     };
     // isolated: 이 플랫폼에서 격리된 환경(허용된 폴더만)에서 돈다
-    vec![json!({ "code": code, kind: id, "isolated": crate::sandbox::ENFORCED })]
+    vec![json!({ "code": code, kind: id, "isolated": crate::sandbox::enforced() })]
 }
 
 fn module_info(m: crate::supervisor::module_loader::LoadedModule, versions: &std::collections::BTreeMap<String, String>) -> ExtensionInfo {
