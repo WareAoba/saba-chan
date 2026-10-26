@@ -343,67 +343,60 @@ pub fn shows_instances(method: &str, pattern: &str) -> bool {
     method == "GET" && matches!(pattern, "/api/instances" | "/api/instance/{id}" | "/api/servers")
 }
 
-/// 본문 칸을 보는 라우트 (`blocked_fields`가 막는 칸이 있을 수 있다)
-pub fn checks_fields(method: &str, pattern: &str) -> bool {
-    matches!(
-        (method, pattern),
-        ("PATCH", "/api/instance/{id}")
-            | ("POST", "/api/instances")
-            | ("PUT", "/api/instance/{id}/properties")
-            | ("POST", "/api/instance/{id}/rest")
-            | ("POST", "/api/extensions/{id}/install")
-    )
-}
+/// 본문에서 막는 칸을 고르는 규칙. `file_fields`는 그 인스턴스 모듈의 PC 전용 설정 키(비밀값·경로)다
+type FieldRule = fn(&serde_json::Map<String, Value>, &[String]) -> Vec<String>;
 
-/// 허용된 라우트라도 원격에서 바꾸면 안 되는 본문 키. `file_fields`는 그 인스턴스 모듈의 PC 전용 설정 키(비밀값·경로)다
-pub fn blocked_fields(method: &str, pattern: &str, body: Option<&Value>, file_fields: &[String]) -> Vec<String> {
-    let Some(body) = body.and_then(Value::as_object) else {
-        return Vec::new();
-    };
-    let mut blocked: Vec<String> = match (method, pattern) {
-        ("PATCH", "/api/instance/{id}") => body
-            .keys()
-            .filter(|k| SETTINGS_PC_ONLY.contains(&k.as_str()) || file_fields.contains(k))
-            .cloned()
-            .collect(),
-        ("POST", "/api/instances") => {
-            let mut keys: Vec<String> = body
-                .keys()
-                .filter(|k| CREATE_PC_ONLY.contains(&k.as_str()))
-                .cloned()
-                .collect();
-            if let Some(settings) = body.get("module_settings").and_then(Value::as_object) {
-                keys.extend(
-                    settings
-                        .keys()
-                        .filter(|k| file_fields.contains(k) || SETTINGS_PC_ONLY.contains(&k.as_str()))
-                        .map(|k| format!("module_settings.{k}")),
-                );
-            }
-            keys
+/// 본문 칸을 보는 라우트와 그 규칙. `checks_fields`와 `blocked_fields`가 이 표 하나를 본다
+static FIELD_RULES: &[(&str, &str, FieldRule)] = &[
+    ("PATCH", "/api/instance/{id}", |body, file_fields| {
+        body.keys().filter(|k| SETTINGS_PC_ONLY.contains(&k.as_str()) || file_fields.contains(k)).cloned().collect()
+    }),
+    ("POST", "/api/instances", |body, file_fields| {
+        let mut keys: Vec<String> = body.keys().filter(|k| CREATE_PC_ONLY.contains(&k.as_str())).cloned().collect();
+        if let Some(settings) = body.get("module_settings").and_then(Value::as_object) {
+            keys.extend(
+                settings
+                    .keys()
+                    .filter(|k| file_fields.contains(k) || SETTINGS_PC_ONLY.contains(&k.as_str()))
+                    .map(|k| format!("module_settings.{k}")),
+            );
         }
-        // 게임 설정 파일 쓰기도 인스턴스 설정과 같은 칸을 막는다 (같은 값이 파일을 거쳐 인스턴스 설정으로 돌아온다)
-        ("PUT", "/api/instance/{id}/properties") => body
-            .get("settings")
+        keys
+    }),
+    // 게임 설정 파일 쓰기도 인스턴스 설정과 같은 칸을 막는다 (같은 값이 파일을 거쳐 인스턴스 설정으로 돌아온다)
+    ("PUT", "/api/instance/{id}/properties", |body, file_fields| {
+        body.get("settings")
             .and_then(Value::as_object)
             .into_iter()
             .flat_map(|settings| settings.keys())
             .filter(|k| SETTINGS_PC_ONLY.contains(&k.as_str()) || file_fields.contains(k))
             .map(|k| format!("settings.{k}"))
-            .collect(),
-        // 대상은 인스턴스 설정의 REST 주소만. 다른 호스트로 보내면 게임 관리자 비밀번호가 실려 나간다
-        ("POST", "/api/instance/{id}/rest") => body
-            .keys()
-            .filter(|k| ["rest_host", "rest_port", "use_https"].contains(&k.as_str()))
-            .cloned()
-            .collect(),
-        ("POST", "/api/extensions/{id}/install") => body
-            .keys()
-            .filter(|k| ["download_url", "sha256"].contains(&k.as_str()))
-            .cloned()
-            .collect(),
-        _ => Vec::new(),
+            .collect()
+    }),
+    // 대상은 인스턴스 설정의 REST 주소만. 다른 호스트로 보내면 게임 관리자 비밀번호가 실려 나간다
+    ("POST", "/api/instance/{id}/rest", |body, _| {
+        body.keys().filter(|k| ["rest_host", "rest_port", "use_https"].contains(&k.as_str())).cloned().collect()
+    }),
+    ("POST", "/api/extensions/{id}/install", |body, _| {
+        body.keys().filter(|k| ["download_url", "sha256"].contains(&k.as_str())).cloned().collect()
+    }),
+];
+
+fn field_rule(method: &str, pattern: &str) -> Option<FieldRule> {
+    FIELD_RULES.iter().find(|(m, p, _)| *m == method && *p == pattern).map(|(_, _, rule)| *rule)
+}
+
+/// 본문 칸을 보는 라우트 (`blocked_fields`가 막는 칸이 있을 수 있다)
+pub fn checks_fields(method: &str, pattern: &str) -> bool {
+    field_rule(method, pattern).is_some()
+}
+
+/// 허용된 라우트라도 원격에서 바꾸면 안 되는 본문 키. `file_fields`는 그 인스턴스 모듈의 PC 전용 설정 키(비밀값·경로)다
+pub fn blocked_fields(method: &str, pattern: &str, body: Option<&Value>, file_fields: &[String]) -> Vec<String> {
+    let (Some(rule), Some(body)) = (field_rule(method, pattern), body.and_then(Value::as_object)) else {
+        return Vec::new();
     };
+    let mut blocked = rule(body, file_fields);
     blocked.sort();
     blocked
 }
