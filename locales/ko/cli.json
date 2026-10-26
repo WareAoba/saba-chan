@@ -332,6 +332,7 @@
       "paths_not_writable": "그 폴더에 쓸 수 없어요. 쓸 수 있는 폴더를 고르세요.",
       "paths_has_link": "폴더 안에 링크(바로가기 폴더)가 있어요. 지운 뒤 다시 시도하세요.",
       "paths_copy_failed": "복사하지 못했어요. 바뀐 것은 없어요. 남은 공간을 확인하고 다시 시도하세요.",
+      "paths_acl_failed": "새 폴더의 접근 권한을 정하지 못했어요. 바뀐 것은 없어요. 다른 폴더를 고르세요.",
       "paths_verify_failed": "복사본이 원본과 달라요. 바뀐 것은 없어요. 다시 시도하세요.",
       "paths_commit_failed": "설정을 저장하지 못해 파일을 원래 자리로 되돌렸어요.",
       "paths_unknown_kind": "modules 또는 extensions를 고르세요.",
@@ -819,6 +820,11 @@
       "server.query": "게임 모듈이 제공하는 조회 (이름이 없으면 목록)",
       "daemon.clients": "데몬에 붙은 데스크톱 앱 창",
       "gui": "데스크톱 앱으로 전환 (같은 서버를 열고 전체 화면 메뉴는 닫혀요)",
+      "remote": "원격 데몬 포트: 같은 주인의 다른 PC가 이 데몬에 TLS로 직접 붙어요",
+      "remote.status": "원격 포트 설정과 상태 (열림, 릴레이에 알린 주소, 인증서 지문)",
+      "remote.set": "원격 포트 켜기·끄기, 포트나 릴레이에 알릴 공인 주소 바꾸기",
+      "remote.clients": "이 데몬에 짝 맺은 내 PC",
+      "remote.revoke": "PC와의 짝 풀기: 그 PC의 토큰이 바로 통하지 않아요",
       "config.autostart": "PC에 로그인할 때 켤 것: off(끔), daemon(데몬과 트레이만), full(GUI 창까지). 모드 없이 쓰면 지금 값을 보여요"
     },
     "arg": {
@@ -959,6 +965,11 @@
       "do.steps": "여러 단계를 JSON으로: [{\"id\": \"...\", \"instance\": \"...\", \"input\": {...}}, ...] (ACTION 대신)",
       "do.run_id": "뒤에서 이어 가는 여러 단계 실행의 진행",
       "do.server": "액션을 적용할 서버",
+      "remote.set.on": "원격 포트 켜기",
+      "remote.set.off": "원격 포트 끄기",
+      "remote.set.port": "원격 포트 번호",
+      "remote.set.address": "이 PC의 공인 호스트 이름이나 IP (빈 값이면 지워요)",
+      "remote.revoke.host_id": "짝을 풀 PC id (`remote clients`에 보여요)",
       "config.autostart.mode": "off, daemon 또는 full"
     },
     "after": "이름은 일부만 적어도 돼요 (예: start pal). 인자 없이 터미널에서 실행하면 전체 화면 메뉴가 열려요(SABA_NO_TUI=1이면 대화형 셸).\n스크립트에서는 --json과 --yes를 쓰세요. 종료 코드: 0 성공 · 1 실패 · 2 사용법 · 3 데몬 연결 안 됨 · 4 없음 · 130 취소"
@@ -1374,5 +1385,27 @@
   },
   "gui": {
     "opened": "사바쨩 앱을 열었어요."
+  },
+  "remote": {
+    "item": "항목",
+    "value": "값",
+    "listening": "열림",
+    "not_listening": "열리지 않음",
+    "off": "꺼짐",
+    "address": "공인 주소",
+    "no_address": "없음 (릴레이에 알리지 않아요)",
+    "published": "릴레이에 알림",
+    "fingerprint": "인증서 지문",
+    "yes": "예",
+    "no": "아니요",
+    "no_clients": "이 데몬에 짝 맺은 PC가 없어요.",
+    "host_id": "PC id",
+    "paired_at": "짝 맺은 때",
+    "revoked": "{{host}}와(과)의 짝을 풀었어요. 그 PC의 토큰은 더는 통하지 않아요.",
+    "error": {
+      "certificate_failed": "인증서를 준비하지 못했어요",
+      "port_in_use": "포트를 이미 쓰고 있어요",
+      "bind_failed": "포트를 열지 못했어요"
+    }
   }
 }

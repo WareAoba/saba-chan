@@ -898,6 +898,7 @@ impl Session {
             owner_id,
             via_chatbot: crate::chat::permissions::via_chatbot(payload.get("via").and_then(Value::as_str), reported.is_some()),
             confirmed_by: payload.get("confirmedBy").and_then(Value::as_str).map(str::to_string),
+            guild_owner_id: cmd.get("guildOwnerDiscordId").and_then(Value::as_str).filter(|s| !s.is_empty()).map(str::to_string),
         }
     }
 
@@ -1561,7 +1562,7 @@ mod tests {
                 _ => axum::http::StatusCode::OK,
             }
         }
-        let app = axum::Router::new().route("/result/:id", post(result));
+        let app = axum::Router::new().route("/result/{id}", post(result));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let base = format!("http://{}", listener.local_addr().unwrap());
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
@@ -1638,7 +1639,7 @@ mod tests {
             *BODY.lock().unwrap() = body;
             axum::http::StatusCode::OK
         }
-        let app = axum::Router::new().route("/result/:id", post(result));
+        let app = axum::Router::new().route("/result/{id}", post(result));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let base = format!("http://{}", listener.local_addr().unwrap());
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
@@ -1668,7 +1669,7 @@ mod tests {
             }
             axum::http::StatusCode::OK
         }
-        let app = axum::Router::new().route("/result/:id", post(result));
+        let app = axum::Router::new().route("/result/{id}", post(result));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let base = format!("http://{}", listener.local_addr().unwrap());
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
@@ -1698,7 +1699,7 @@ mod tests {
             OTHER.fetch_add(1, Ordering::SeqCst);
             axum::http::StatusCode::OK
         }
-        let app = axum::Router::new().route("/result/:id", post(result));
+        let app = axum::Router::new().route("/result/{id}", post(result));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let base = format!("http://{}", listener.local_addr().unwrap());
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
@@ -1720,7 +1721,7 @@ mod tests {
         use std::sync::atomic::{AtomicUsize, Ordering};
         static CALLS: AtomicUsize = AtomicUsize::new(0);
         let app = axum::Router::new().route(
-            "/result/:id",
+            "/result/{id}",
             post(|| async {
                 CALLS.fetch_add(1, Ordering::SeqCst);
                 axum::http::StatusCode::OK
@@ -1787,7 +1788,7 @@ mod tests {
                 }),
             )
             .route(
-                "/result/:id",
+                "/result/{id}",
                 post(|| async {
                     RESULTS.fetch_add(1, Ordering::SeqCst);
                     axum::http::StatusCode::OK
@@ -1831,6 +1832,7 @@ mod tests {
             owner_id: Some("owner".into()),
             via_chatbot: false,
             confirmed_by: None,
+            guild_owner_id: None,
         };
         let before = now_ms();
         let res = permission_action(&server, &who, &json!({ "op": "default_level", "level": 1 })).await;

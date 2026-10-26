@@ -223,7 +223,7 @@ pub fn stage_archive(archive: &Path, members: &[String], into: &Path) -> Result<
     for i in 0..zip.len() {
         let mut file = zip.by_index(i)?;
         // 이름 조각이 모두 보통 이름일 때만 (드라이브·루트·`..`가 섞이면 `into.join`이 임시 자리 밖을 가리킬 수 있다)
-        let Some(rel) = file.enclosed_name().map(Path::to_path_buf).filter(|r| r.components().all(|c| matches!(c, std::path::Component::Normal(_)))) else { continue };
+        let Some(rel) = file.enclosed_name().filter(|r| r.components().all(|c| matches!(c, std::path::Component::Normal(_)))) else { continue };
         let name = rel.components().map(|c| c.as_os_str().to_string_lossy().into_owned()).collect::<Vec<_>>().join("/");
         if file.is_dir() || !wanted(&name) {
             continue;
@@ -496,7 +496,7 @@ fn write_v2(dir: &Path, target: &Path, entries: &[(PathBuf, PathBuf)], exclude: 
     }
     sync_all(&w.written)?;
     let mut zip = zip::ZipWriter::new(File::create(target)?);
-    let opts = zip::write::FileOptions::default().compression_method(zip::CompressionMethod::Deflated).large_file(true);
+    let opts = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated).large_file(true);
     zip.start_file(SUMMARY_V2, opts)?;
     serde_json::to_writer(&mut zip, &w.summary)?;
     zip.start_file(MANIFEST_V2, opts)?;
@@ -597,7 +597,7 @@ fn collect_garbage(dir: &Path) {
 #[cfg(test)]
 fn write_zip(target: &Path, paths: &[PathBuf]) -> Result<()> {
     let mut zip = zip::ZipWriter::new(File::create(target)?);
-    let opts = zip::write::FileOptions::default()
+    let opts = zip::write::SimpleFileOptions::default()
         .compression_method(zip::CompressionMethod::Deflated)
         .large_file(true);
     let mut manifest = Manifest { version: 1, paths: Vec::new(), links: Vec::new() };
@@ -620,7 +620,7 @@ fn write_zip(target: &Path, paths: &[PathBuf]) -> Result<()> {
 }
 
 #[cfg(test)]
-fn add_dir(zip: &mut zip::ZipWriter<File>, dir: &Path, prefix: &str, opts: zip::write::FileOptions, links: &mut Vec<LinkEntry>) -> Result<()> {
+fn add_dir(zip: &mut zip::ZipWriter<File>, dir: &Path, prefix: &str, opts: zip::write::SimpleFileOptions, links: &mut Vec<LinkEntry>) -> Result<()> {
     for item in fs::read_dir(dir)? {
         let item = item?;
         let name = format!("{}/{}", prefix, item.file_name().to_string_lossy());
@@ -657,7 +657,7 @@ fn info(path: &Path) -> Option<BackupInfo> {
     // 판 2는 요약을 읽는다. 판 1(요약 없음)이나 읽지 못하면 zip 크기.
     // 열리고 매니페스트가 있어야 읽을 수 있다 (매니페스트 내용까지 읽지는 않는다: 목록마다 모두 풀면 느리다)
     let zip = File::open(path).ok().and_then(|f| zip::ZipArchive::new(f).ok());
-    let readable = zip.as_ref().is_some_and(|z| z.file_names().any(|n| n == MANIFEST_V2 || n == MANIFEST));
+    let readable = zip.as_ref().is_some_and(|z| z.file_names().flatten().any(|n| n == MANIFEST_V2 || n == MANIFEST));
     let summary = zip.and_then(|mut zip| zip.by_name(SUMMARY_V2).ok().and_then(|f| serde_json::from_reader::<_, SummaryV2>(f).ok()));
     // 판 1은 0.1.8까지 만든 것이다: 수정 시각이 새로 찍힌 사본(옮겼다 되돌린 것)도 이름의 시각보다 새것으로 보지 않는다
     let v1_made = name_time_ns(&name).map_or(modified, |named| named.min(modified));
@@ -945,7 +945,7 @@ fn extract_entry(zip: &mut zip::ZipArchive<File>, entry: &ManifestEntry) -> Resu
     for i in 0..zip.len() {
         let mut file = zip.by_index(i)?;
         // enclosed_name: `..`나 절대 경로로 폴더 밖에 쓰는 항목을 막는다
-        let Some(rel) = file.enclosed_name().and_then(|p| p.strip_prefix(&prefix).ok()).map(Path::to_path_buf) else {
+        let Some(rel) = file.enclosed_name().and_then(|p| p.strip_prefix(&prefix).ok().map(Path::to_path_buf)) else {
             continue;
         };
         let out = entry.path.join(rel);
@@ -1070,11 +1070,11 @@ mod tests {
             let mut output = zip::ZipWriter::new(File::create(&crafted).unwrap());
             for index in 0..source.len() {
                 let file = source.by_index(index).unwrap();
-                if file.name() != MANIFEST { output.raw_copy_file(file).unwrap(); }
+                if file.name().unwrap() != MANIFEST { output.raw_copy_file(file).unwrap(); }
             }
-            output.start_file("1", zip::write::FileOptions::default()).unwrap();
+            output.start_file("1", zip::write::SimpleFileOptions::default()).unwrap();
             output.write_all(b"content").unwrap();
-            output.start_file(MANIFEST, zip::write::FileOptions::default()).unwrap();
+            output.start_file(MANIFEST, zip::write::SimpleFileOptions::default()).unwrap();
             output.write_all(&serde_json::to_vec(&manifest).unwrap()).unwrap();
             output.finish().unwrap();
         }
@@ -1102,11 +1102,11 @@ mod tests {
             let mut out = zip::ZipWriter::new(File::create(&crafted).unwrap());
             for i in 0..src.len() {
                 let f = src.by_index(i).unwrap();
-                if f.name() != MANIFEST {
+                if f.name().unwrap() != MANIFEST {
                     out.raw_copy_file(f).unwrap();
                 }
             }
-            out.start_file(MANIFEST, zip::write::FileOptions::default()).unwrap();
+            out.start_file(MANIFEST, zip::write::SimpleFileOptions::default()).unwrap();
             std::io::Write::write_all(&mut out, &serde_json::to_vec(&manifest).unwrap()).unwrap();
             out.finish().unwrap();
         }
@@ -1239,7 +1239,7 @@ mod tests {
             let mut out = zip::ZipWriter::new(File::create(&broken).unwrap());
             for i in 0..src.len() {
                 let f = src.by_index(i).unwrap();
-                if f.name() != "1" {
+                if f.name().unwrap() != "1" {
                     out.raw_copy_file(f).unwrap();
                 }
             }
@@ -1580,7 +1580,7 @@ mod tests {
         let dir = tmp.path().join("backups");
         fs::create_dir_all(&dir).unwrap();
         let mut zip = zip::ZipWriter::new(File::create(dir.join("20200101-000000-000-manual.zip")).unwrap());
-        zip.start_file("other.txt", zip::write::FileOptions::default()).unwrap();
+        zip.start_file("other.txt", zip::write::SimpleFileOptions::default()).unwrap();
         zip.finish().unwrap();
         #[cfg(unix)]
         std::os::unix::fs::symlink(tmp.path().join("gone.zip"), dir.join("20200102-000000-000-manual.zip")).unwrap();

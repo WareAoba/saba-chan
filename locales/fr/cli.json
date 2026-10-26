@@ -1,4 +1,14 @@
 {
+  "module_errors": {
+    "module_timeout": "L'appel au module a expiré. Vérifiez l'état du module.",
+    "module_execution_failed": "Impossible d'exécuter le module. Vérifiez l'environnement d'exécution et les journaux du module.",
+    "module_crashed": "Le processus du module s'est arrêté sur une erreur. Vérifiez les journaux du module.",
+    "module_bad_output": "Le module a renvoyé un résultat invalide. Mettez le module à jour ou contactez son auteur.",
+    "module_output_too_large": "La sortie du module a dépassé la limite. Vérifiez les journaux du module.",
+    "module_path_outside": "Le module a tenté d'accéder à un chemin hors du dossier autorisé. Vérifiez les réglages du module.",
+    "module_exception": "Le module a levé une exception. Vérifiez les journaux du module.",
+    "isolation_unsupported": "Ce système d'exploitation ne prend pas en charge l'isolation requise."
+  },
   "add": {
     "created_settings_unsynced": "{{name}} a été créé et ses paramètres enregistrés, mais le fichier de configuration du jeu n'a pas pu être écrit : {{error}}",
     "ask_folder": "Dossier du serveur",
@@ -26,7 +36,8 @@
     "use_existing": "Utiliser un dossier de serveur existant",
     "folder_is": "{{dir}} ressemble à un serveur {{game}}.",
     "pick_game": "Choisissez le jeu avec --module.",
-    "folder_in_use": "{{dir}} est déjà utilisé par {{name}}. Deux serveurs dans un même dossier s'écraseraient mutuellement."
+    "folder_in_use": "{{dir}} est déjà utilisé par {{name}}. Deux serveurs dans un même dossier s'écraseraient mutuellement.",
+    "created_settings_failed": "{{name}} a été créé, mais ses réglages n'ont pas été enregistrés : {{error}}"
   },
   "bot": {
     "ask_token": "Jeton du nœud",
@@ -66,6 +77,27 @@
     "token_saved": "Jeton du nœud enregistré.",
     "unpaired": "Appairage supprimé.",
     "invite": "Invitez le bot sur votre serveur Discord avec ce lien :",
+    "channel": "salon",
+    "channel_ambiguous": "Plusieurs salons s'appellent {{name}}. Utilisez son id.",
+    "channel_none": "aucun",
+    "chatbot_channels": "Salons de Saba-chan qui parle",
+    "music_channel": "Salon musique",
+    "notify_channel": "Salon des notifications",
+    "confirm_music_channel": "Faire de #{{name}} le salon musique supprime les messages ordinaires qui y sont postés. Continuer ?",
+    "channels_saved": "Attribution des salons modifiée.",
+    "channels_bot_missing": "Le bot n'est pas sur ce serveur Discord, ses salons ne peuvent donc pas être listés. Invitez-le : saba-chan-cli bot invite",
+    "discord_saved": "Réglages Discord enregistrés.",
+    "discord_not_synced": "Enregistré ici, mais le bot est injoignable. Ce sera envoyé quand le bot se reconnectera.",
+    "on": "activé",
+    "off": "désactivé",
+    "locale": "Langue",
+    "locale_auto": "auto (langue de ce PC)",
+    "sleeping": "En veille",
+    "music": "Musique",
+    "music_ui": "Panneau du lecteur",
+    "music_queue_lines": "Lignes de la file",
+    "music_refresh": "Rafraîchissement du panneau",
+    "music_normalize": "Volume homogène",
     "allow_all": "Ce serveur Discord voit tous les serveurs de ce PC.",
     "allow_none": "Aucun serveur ouvert.",
     "allow_all_saved": "{{guild}} voit maintenant tous les serveurs.",
@@ -73,6 +105,10 @@
     "link_accepted": "{{guild}} est connecté à ce PC.",
     "link_declined": "Demande de connexion refusée.",
     "pair_gui_hint": "Vous pouvez aussi voir la connexion Discord dans l'écran Discord de la GUI.",
+    "words": "Noms d'appel",
+    "command_words": "Mots des commandes",
+    "words_saved": "Mots de discussion de {{server}} enregistrés.",
+    "words_bad_command": "{{spec}} : écrivez-le sous la forme COMMANDE=MOT,MOT (COMMANDE= les supprime).",
     "no_paired_servers": "Aucun serveur Discord n'est encore associé à ce PC. Lancez : saba-chan-cli bot pair",
     "pick_server": "Plusieurs serveurs Discord sont associés. Indiquez l'id de celui à modifier : {{servers}}",
     "translate_commands": "Noms de commandes traduits"
@@ -122,6 +158,27 @@
     "confirm_reset_all": "Réinitialiser tous les paramètres par défaut ?",
     "confirm_reset": "Réinitialiser {{keys}} à la valeur par défaut ?",
     "all": "tous les paramètres",
+    "confirm_export_secrets": "Les mots de passe, la clé API de Saba-chan qui parle et l'appairage du bot seront écrits tels quels dans le fichier. Continuer ?",
+    "exported": "Réglages et {{count}} serveurs enregistrés dans {{path}}.",
+    "export_no_secrets": "Les mots de passe, clés API et l'appairage du bot ont été omis. Ajoutez --secrets pour les inclure.",
+    "import_preview": "L'import changerait ceci (rien n'a encore changé).",
+    "imported": "Importé.",
+    "import_added": "Nouveaux serveurs",
+    "import_replaced": "Serveurs remplacés",
+    "import_settings": "Réglages",
+    "import_skipped": "{{name}} : ignoré ({{reason}})",
+    "import_missing_module": "Le module {{module}} n'est pas sur ce PC. Installez-le avant de démarrer ce serveur.",
+    "import_move_files": "Les fichiers des serveurs de jeu ne sont pas inclus. Déplacez les dossiers des serveurs aux mêmes chemins, ou changez le dossier dans les réglages du serveur.",
+    "skip_reason": {
+      "exists": "existe déjà, utilisez --overwrite pour remplacer",
+      "running": "en cours d'exécution",
+      "working_dir_in_use": "un autre serveur utilise le même dossier",
+      "invalid_id": "id invalide",
+      "save_failed": "enregistrement impossible",
+      "name_taken": "un serveur porte déjà ce nom",
+      "busy": "installation, mise à jour, sauvegarde ou restauration en cours"
+    },
+    "import_token_moved": "L'appairage du bot a aussi été déplacé. Déconnectez l'ancien PC (sur l'ancien PC : saba-chan-cli bot unpair).",
     "paths": {
       "data": "Données et paramètres",
       "install": "Programme",
@@ -250,6 +307,14 @@
       "schedule_changed": "La planification a été modifiée ailleurs. Vérifiez-la avec saba-chan-cli schedule show, puis réessayez.",
       "invalid_command": "Écrivez la clé de commande sous la forme `<server>/<command>`. Une clé sans serveur doit être un id d'action globale.",
       "no_command_path": "Ce serveur a été lancé en dehors de Saba-chan, il n'a donc pas de console pour recevoir des commandes. Redémarrez-le depuis Saba-chan : saba-chan-cli restart <server>",
+      "conflict_with": "entre en conflit avec {{name}}",
+      "word": {
+        "invalid": "utilisez 1 à 32 caractères sans espace",
+        "reserved": "est un mot réservé",
+        "conflict": "appelle déjà autre chose",
+        "unknown_command": "ce serveur n'a pas cette commande",
+        "too_many": "10 mots au maximum"
+      },
       "not_supported": "Consultez les commandes non prises en charge avec : saba-chan-cli module info",
       "agent_too_old": "Rechercher les mises à jour : saba-chan-cli update check",
       "install_backup_failed": "Impossible de sauvegarder {{file}} avant l'installation, rien n'a donc été installé. Vérifiez l'espace disque libre et les fichiers .bak de ce dossier.",
@@ -267,6 +332,7 @@
       "paths_not_writable": "Saba-chan ne peut pas écrire à cet endroit. Choisissez un dossier accessible en écriture.",
       "paths_has_link": "Le dossier contient un lien (dossier raccourci). Supprimez-le, puis réessayez.",
       "paths_copy_failed": "La copie a échoué. Rien n'a été modifié. Vérifiez l'espace libre et réessayez.",
+      "paths_acl_failed": "Impossible de définir les droits du nouveau dossier. Rien n'a été modifié. Choisissez un autre dossier.",
       "paths_verify_failed": "La copie ne correspond pas à l'original. Rien n'a été modifié. Réessayez.",
       "paths_commit_failed": "L'enregistrement du paramètre a échoué. Les fichiers ont été remis en place.",
       "paths_unknown_kind": "Choisissez modules ou extensions.",
@@ -281,6 +347,7 @@
     "not_found": "Aucun {{what}} nommé « {{query}} ».",
     "pair_expected": "KEY=VALUE attendu, reçu « {{got}} ».",
     "timeout": "Le daemon a mis trop de temps à répondre ({{path}}).",
+    "body_read": "Impossible de lire toute la réponse de {{path}} : {{error}}",
     "unknown_command": "Commande inconnue : {{path}}. Lancez `saba-chan-cli help` pour voir les commandes.",
     "not_supported": "Le module {{module}} ne prend pas en charge cette fonction"
   },
@@ -327,7 +394,8 @@
     "url_one_id": "--url et --sha256 ne fonctionnent qu'avec un seul ID d'extension à la fois.",
     "no_config": "{{id}} n'a aucun paramètre.",
     "status_busy": "En cours de démarrage : {{list}}",
-    "status_done": "Prêtes : {{list}}"
+    "status_done": "Prêtes : {{list}}",
+    "update_failed": "{{n}} extension(s) n'ont pas pu être mises à jour."
   },
   "history": {
     "none": "Aucun arrêt enregistré pour l'instant."
@@ -474,7 +542,8 @@
     "bye": "Au revoir. Le daemon et les serveurs continuent de tourner.",
     "ctrl_c": "(appuyez à nouveau sur Ctrl+C ou tapez exit pour quitter)",
     "help_line": "Tapez une commande (help, Tab pour compléter) ou parlez comme sur Discord (ex. \"my-server-1 start\"). exit pour quitter.",
-    "welcome": "Saba-chan CLI {{version}}"
+    "welcome": "Saba-chan CLI {{version}}",
+    "lang_fixed": "La langue ne peut pas changer dans le shell ; on reste en {{lang}}."
   },
   "start": {
     "already": "{{name}} est déjà lancé.",
@@ -575,9 +644,42 @@
     "blocked": "Le serveur ne peut pas démarrer tant que ces points ne sont pas corrigés.",
     "ok": "{{name}} semble prêt à démarrer."
   },
+  "launch_preview": {
+    "no_args": "Le module de {{name}} ne transforme pas les réglages en arguments de lancement.",
+    "invalid_format": "Format invalide : {{arg}} ({{field}})"
+  },
   "help": {
     "cmd": {
       "module.maker": "Créer un nouveau module de jeu avec votre agent IA : commandes d'installation, première demande et chemins de ce PC",
+      "config.export": "Enregistrer les réglages et la liste des serveurs dans un zip, pour les transférer sur un autre PC (sans les fichiers de jeu)",
+      "config.import": "Reprendre les réglages et les serveurs d'un zip exporté",
+      "bot.channels": "Salons de Saba-chan qui parle (plusieurs) et salon musique (un seul) d'un serveur Discord appairé. Sans option : afficher",
+      "monitor": "Utilisation du CPU, de la mémoire, du disque et du réseau, et la part de chaque serveur",
+      "audit": "Qui a démarré, arrêté ou envoyé des commandes aux serveurs, et d'où (GUI, CLI, Discord, planification)",
+      "perm": "Qui peut lancer quelles commandes depuis Discord (niveaux par membre, préréglage, exceptions)",
+      "perm.show": "Niveaux, préréglage et exceptions d'un serveur Discord",
+      "perm.grant": "Donner un niveau à un membre : admin, user, chatbot ou banned",
+      "perm.revoke": "Retirer le niveau propre d'un membre (il reçoit le niveau par défaut)",
+      "perm.default": "Niveau des membres sans niveau propre",
+      "perm.preset": "Préréglage des niveaux de commande : loose, default ou strict",
+      "perm.cap": "Niveau maximal qu'une demande passant par Saba-chan qui parle peut utiliser",
+      "perm.command": "Niveau requis par une commande (`<id du serveur>/<commande>`) ; sans niveau, on revient au préréglage",
+      "perm.owner": "Changer le propriétaire fixé de ce serveur Discord",
+      "perm.level": "Ajouter, renommer, supprimer ou déplacer un niveau d'autorisation d'un serveur Discord (`perm show` les liste)",
+      "perm.level.add": "Ajouter un niveau (juste sous le propriétaire, ou juste au-dessus de `--above`)",
+      "perm.level.rename": "Renommer un niveau ajouté",
+      "perm.level.remove": "Supprimer un niveau : ses membres descendent d'un niveau, les commandes qui l'exigeaient montent d'un niveau",
+      "perm.level.move": "Placer un niveau juste au-dessus d'un autre (le propriétaire reste en haut, Banni en bas)",
+      "sandbox": "Exécution isolée des modules et extensions non vérifiés",
+      "sandbox.allow": "Exécuter ce composant sans isolation quand l'isolation ne peut pas être préparée (redemandé si ses fichiers changent)",
+      "sandbox.revoke": "Retirer le consentement à l'exécution sans isolation",
+      "do": "Lancer n'importe quelle action du démon par son id (`saba-chan-cli do` seul les liste)",
+      "bot.lang": "Langue dans laquelle le bot répond sur un serveur Discord (`auto` suit la langue de ce PC). Sans valeur : afficher",
+      "bot.sleep": "Mettre le bot en veille sur un serveur Discord (il ignore les commandes jusqu'au réveil)",
+      "bot.wake": "Réveiller le bot sur un serveur Discord",
+      "bot.music": "Réglages du lecteur de musique d'un serveur Discord. Sans option : afficher",
+      "bot.allow": "Serveurs qu'un serveur Discord peut voir et lancer. Sans serveur : afficher. `--all` : tous les serveurs",
+      "bot.link": "Demandes de connexion envoyées depuis Discord avec /saba connect sans code. Sans id : afficher, ID : accepter, `--decline` : refuser",
       "help": "Afficher l'aide d'une commande. Avec --json : l'arbre des commandes, les arguments et les codes de sortie",
       "events": "Suivre les événements du démon en direct (avec --json : un JSON par ligne). Ctrl+C pour arrêter",
       "install": "Installer Saba-chan sur ce PC sans le programme d'installation fenêtré",
@@ -591,10 +693,19 @@
       "server.query": "Consultations en lecture seule du module de jeu (sans nom : la liste)",
       "daemon.clients": "Fenêtres de l'application de bureau connectées au démon",
       "gui": "Passer à l'application de bureau : elle ouvre le même serveur et le menu plein écran se ferme",
+      "remote": "Port du démon distant : vos autres PC se connectent directement à ce démon en TLS",
+      "remote.status": "Réglages et état du port distant (ouvert, adresse envoyée au relais, empreinte du certificat)",
+      "remote.set": "Activer ou désactiver le port distant, changer le port ou l’adresse publique envoyée au relais",
+      "remote.clients": "Vos PC associés à ce démon",
+      "remote.revoke": "Dissocier un PC : son jeton cesse de fonctionner immédiatement",
       "config.autostart": "Ce qui démarre quand vous vous connectez à ce PC : off, daemon (démon et zone de notification seulement) ou full (avec la fenêtre de la GUI). Sans mode, affiche la valeur actuelle"
     },
     "arg": {
       "module.maker.game": "Jeu à mettre dans la première demande",
+      "perm.level.add.above": "Le placer juste au-dessus de ce niveau (par défaut : juste sous le propriétaire)",
+      "perm.level.move.above": "Le déplacer juste au-dessus de ce niveau",
+      "perm.level.add.name": "Nom du nouveau niveau (1 à 32 caractères)",
+      "perm.level.rename.name": "Nouveau nom (1 à 32 caractères)",
       "backup.create.from_snapshot": "Conserver la dernière sauvegarde automatique du jeu au lieu de copier le monde maintenant (Palworld, etc.)",
       "bot.channels.notify": "Le salon des notifications (plantages, sauvegardes, mises à jour, redémarrages planifiés), par nom ou id",
       "bot.channels.no_notify": "Retirer le salon des notifications",
@@ -604,8 +715,33 @@
       "sandbox.revoke.component": "Composant dont on retire l'autorisation",
       "do.plan": "Vérifier seulement l'entrée et montrer ce qui se passerait",
       "do.input": "Entrée sous la forme key=value (les valeurs lisibles en JSON restent du JSON)",
+      "member": "ID d'utilisateur Discord",
+      "level": "Niveau (admin, user, chatbot, banned ou le nom d'un niveau ajouté à ce serveur)",
+      "perm.preset.preset": "loose, default ou strict",
+      "server.add.preset": "Un préréglage du jeu (`module info` les liste)",
       "server": "Nom du serveur (une partie suffit)",
       "ids": "Un ou plusieurs ID d'extension",
+      "file": "chemin du fichier zip",
+      "secrets": "Enregistrer aussi les mots de passe, la clé API de Saba-chan qui parle et l'appairage du bot",
+      "dry_run": "Montrer seulement ce qui changerait",
+      "overwrite": "Remplacer les serveurs qui existent déjà (ceux en cours d'exécution sont ignorés)",
+      "bot.channels.chatbot": "Salons où parle Saba-chan qui parle, par nom ou id (séparés par des virgules). Remplace la liste actuelle",
+      "bot.channels.no_chatbot": "Retirer tous les salons de Saba-chan qui parle",
+      "bot.channels.music": "Le salon du lecteur de musique, par nom ou id. Les autres messages qui y sont postés sont supprimés",
+      "bot.channels.no_music": "Retirer le salon musique",
+      "monitor.watch": "Rafraîchir en continu jusqu'à Ctrl+C",
+      "monitor.interval": "Secondes entre deux rafraîchissements avec --watch",
+      "audit.limit": "Nombre d'entrées",
+      "audit.follow": "Afficher les nouvelles entrées au fil de l'eau (Ctrl+C pour arrêter)",
+      "bot.lang.value": "auto ou un code de langue (ko, en, ja, zh-CN, zh-TW, es, pt-BR, ru, de, fr)",
+      "bot.prefix.values": "Un ou plusieurs préfixes (sans espace, 32 caractères max, 10 max)",
+      "bot.prefix.default": "Revenir au préfixe par défaut de la langue de l'app",
+      "bot.music.on": "Activer la musique",
+      "bot.music.off": "Désactiver la musique",
+      "bot.music.ui": "Afficher le panneau du lecteur (on ou off)",
+      "bot.music.queue_lines": "Lignes de la file dans le panneau du lecteur (1-20)",
+      "bot.music.refresh": "Rafraîchissement du panneau du lecteur en millisecondes (2000-10000)",
+      "bot.music.normalize": "Égaliser le volume entre les morceaux (on ou off)",
       "help.command": "Chemin de la commande, par ex. `server start`",
       "events.kind": "Seulement ces événements ; `instance` inclut aussi `instance.exit` et similaires",
       "events.server": "Seulement les événements de ce serveur",
@@ -634,6 +770,11 @@
       "chatbot.show.guild": "Les valeurs qu'un serveur Discord utilise réellement (communes + les siennes), par nom ou id",
       "do.steps": "Plusieurs étapes en JSON : [{\"id\": \"...\", \"instance\": \"...\", \"input\": {...}}, ...] (à la place d'ACTION)",
       "do.run_id": "Progression d'une exécution en plusieurs étapes qui continue en arrière-plan",
+      "remote.set.on": "Activer le port distant",
+      "remote.set.off": "Désactiver le port distant",
+      "remote.set.port": "Numéro du port distant",
+      "remote.set.address": "Nom d’hôte public ou IP de ce PC (vide pour l’effacer)",
+      "remote.revoke.host_id": "ID du PC à dissocier (voir `remote clients`)",
       "config.autostart.mode": "off, daemon ou full"
     },
     "after": "Les noms peuvent être partiels (ex. start pal). Sans argument dans un terminal, le menu plein écran s'ouvre (SABA_NO_TUI=1 : le shell interactif).\nDans les scripts, utilisez --json et --yes. Codes de sortie : 0 ok · 1 échec · 2 utilisation · 3 daemon injoignable · 4 introuvable · 130 annulé"
@@ -741,14 +882,45 @@
     "forget_failed": "La mémoire de Saba-chan qui parle n'a pas pu être effacée sur certains serveurs Discord. Vérifiez les erreurs ci-dessus.",
     "not_synced": "Enregistré sur ce PC. Le changement atteindra Discord une fois le bot connecté (saba-chan-cli bot status).",
     "sync_failed": "Le serveur Discord {{guild}} n'a pas reçu le changement : {{error}}",
-    "read_failed": "Impossible de lire {{path}} : {{error}}"
+    "read_failed": "Impossible de lire {{path}} : {{error}}",
+    "cleared_pending": "Réglages et clé de Saba-chan qui parle effacés sur ce PC. Le relais était injoignable ; ce sera effacé à la prochaine connexion."
   },
   "trust": {
     "verified": "vérifié",
     "modified": "modifié",
-    "unverified": "non vérifié"
+    "unverified": "non vérifié",
+    "notice": {
+      "module_unverified": "Créé à partir d'un module ({{id}}) qui ne vient pas du catalogue officiel. Assurez-vous de faire confiance à sa source.",
+      "module_modified": "Le module ({{id}}) a changé après son installation. Réinstallez-le, sauf si vous l'avez modifié vous-même.",
+      "extension_unverified": "Extension ({{id}}) activée alors qu'elle ne vient pas du catalogue officiel. Assurez-vous de faire confiance à sa source.",
+      "extension_modified": "L'extension ({{id}}) a changé après son installation. Réinstallez-la, sauf si vous l'avez modifiée vous-même.",
+      "isolated": "Ce composant s'exécute dans un environnement isolé (dossiers autorisés uniquement)"
+    }
+  },
+  "sandbox": {
+    "isolation_unsupported": {
+      "message": "Le composant n'a pas été exécuté car ce système d'exploitation ne prend pas en charge l'isolation."
+    },
+    "allowed": "{{component}} s'exécutera sans isolation. La question sera reposée si ses fichiers changent.",
+    "confirm_allow": "Exécuter {{component}} sans isolation ? Du code non vérifié aura un accès illimité aux fichiers et au réseau de ce PC. La question sera reposée si ses fichiers changent.",
+    "confirm_gui": "Charger le bundle GUI de {{component}} dans l'app ? Du code non vérifié s'exécutera dans la fenêtre de l'app.",
+    "gui_allowed": "Le bundle GUI de {{component}} sera chargé.",
+    "gui_revoked": "Consentement au chargement du bundle GUI de {{component}} retiré.",
+    "none": "Aucun consentement n'est enregistré sur ce PC.",
+    "component": "Composant",
+    "kind_unisolated": "Exécution sans isolation",
+    "kind_gui": "Bundle GUI",
+    "stale": "fichiers modifiés, non utilisé",
+    "in_use": "utilisé",
+    "needs_terminal": "Répondez vous-même au consentement dans un terminal. --yes ou --json ne peuvent pas le remplacer.",
+    "revoked": "Consentement à l'exécution de {{component}} sans isolation retiré."
   },
   "audit": {
+    "empty": "Rien d'enregistré pour l'instant.",
+    "when": "Quand",
+    "from": "Depuis",
+    "what": "Quoi",
+    "result": "Résultat",
     "scanning": "Vérification du code de {{name}}...",
     "declared": "Déclaré",
     "none_declared": "(rien)",
@@ -760,6 +932,25 @@
       "where": "Emplacement",
       "what": "Code"
     }
+  },
+  "monitor": {
+    "cpu": "CPU",
+    "memory": "Mémoire",
+    "disk_io": "E/S disque",
+    "disk": "Disque",
+    "network": "Réseau",
+    "read_write": "Lecture {{read}} · Écriture {{write}}",
+    "disk_free": "{{free}} libres sur {{total}}",
+    "rx_tx": "Entrant {{rx}} · Sortant {{tx}}",
+    "others": "Autres processus",
+    "idle": "Inactif / libre",
+    "legend": "█ Serveurs (couleur) ·",
+    "none_running": "Aucun serveur en cours d'exécution",
+    "network_note": "Les E/S disque et le réseau sont des valeurs de toute la machine, non réparties par serveur. Les barres s'échelonnent sur le pic observé pendant la surveillance. Les requêtes d'E/S par serveur incluent les accès au cache, elles dépassent donc les E/S disque réelles.",
+    "watch_hint": "Ctrl+C pour arrêter",
+    "io_requests": "Requêtes d'E/S (cache inclus)",
+    "disk_io_process_note": "Compteurs du disque physique indisponibles ; affichage de la somme des E/S des processus (accès au cache inclus).",
+    "whole": "Toute la machine (non répartie)"
   },
   "tui": {
     "running_hint": "(en cours · Ctrl+C pour arrêter)",
@@ -932,6 +1123,14 @@
     "extension": "Mise à jour nécessaire. L'extension {{name}} demande Saba-chan {{version}} ou plus récent."
   },
   "do": {
+    "bad_pair": "Les entrées doivent être de la forme key=value : {{pair}}",
+    "confirm": "Lancer {{action}} ?",
+    "done": "{{action}} terminé",
+    "col": {
+      "id": "Action",
+      "title": "Nom",
+      "risk": "Risque"
+    },
     "steps_array": "--steps doit être une liste d'étapes (un tableau JSON).",
     "confirm_steps": "Lancer ces étapes ?",
     "running": "Étapes en cours…",
@@ -939,6 +1138,35 @@
     "state_running": "en cours",
     "state_done": "terminé",
     "run_hint": "Exécution en arrière-plan (id {{id}}). Elle continue même si vous partez ; suivez-la avec do --run {{id}}."
+  },
+  "perm": {
+    "owner": "Propriétaire",
+    "no_owner": "Pas encore connu (fixé quand le relais le signale pour la première fois)",
+    "owner_conflict": "Le relais a signalé un autre propriétaire ({{id}}). Le propriétaire fixé est conservé ; utilisez `saba-chan-cli perm owner` pour le changer.",
+    "default": "Niveau par défaut",
+    "preset": "Préréglage",
+    "cap": "Plafond de Saba-chan qui parle",
+    "member": "Membre",
+    "command": "Commande",
+    "level_col": "Niveau",
+    "ladder": "Niveaux (du plus haut au plus bas)",
+    "level_fixed": "{{level}} ne peut pas être déplacé ni supprimé (le propriétaire reste en haut, Banni en bas).",
+    "level_builtin": "{{level}} est un niveau intégré, il ne peut pas être renommé.",
+    "saved": "Autorisations de {{guild}} enregistrées",
+    "preset_reset": "Choisir le préréglage remet {{count}} niveau(x) de commande à ceux du préréglage {{preset}}. Continuer ?",
+    "bad_level": "Niveau inconnu : {{level}} (admin, user, chatbot, banned ou un niveau ajouté à ce serveur)",
+    "import_none": "Il ne reste aucun niveau à reprendre sur le relais.",
+    "import_confirm": "Reprendre sur ce PC les niveaux des {{count}} membre(s) ci-dessus ?",
+    "import_not_candidate": "Rien à reprendre pour {{member}}. Voyez la liste avec `saba-chan-cli perm import <server>`.",
+    "import_partial": "{{ok}} repris, {{failed}} en échec.",
+    "imported": "Niveaux de {{count}} membre(s) de {{guild}} repris",
+    "level": {
+      "owner": "propriétaire",
+      "admin": "admin",
+      "user": "utilisateur",
+      "chatbot": "Saba-chan qui parle",
+      "banned": "banni"
+    }
   },
   "players": {
     "title": "{{server}} : {{count}} en ligne",
@@ -962,5 +1190,27 @@
   },
   "gui": {
     "opened": "L'application Saba-chan est ouverte."
+  },
+  "remote": {
+    "item": "Élément",
+    "value": "Valeur",
+    "listening": "Ouvert",
+    "not_listening": "Non ouvert",
+    "off": "Désactivé",
+    "address": "Adresse publique",
+    "no_address": "Aucune (non envoyée au relais)",
+    "published": "Envoyée au relais",
+    "fingerprint": "Empreinte du certificat",
+    "yes": "Oui",
+    "no": "Non",
+    "no_clients": "Aucun PC n’est associé à ce démon.",
+    "host_id": "ID du PC",
+    "paired_at": "Associé le",
+    "revoked": "Association avec {{host}} supprimée. Son jeton ne fonctionne plus.",
+    "error": {
+      "certificate_failed": "Impossible de préparer le certificat",
+      "port_in_use": "Le port est déjà utilisé",
+      "bind_failed": "Impossible d’ouvrir le port"
+    }
   }
 }

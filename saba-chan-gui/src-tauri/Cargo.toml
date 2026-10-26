@@ -31,9 +31,9 @@ serde_json = "1"
 tokio = { version = "1", features = ["full"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter", "registry"] }
-reqwest = { version = "0.11", features = ["json", "stream"] }
+reqwest = { version = "0.13", default-features = false, features = ["native-tls", "json", "system-proxy", "stream"] }
 futures-util = "0.3"
-base64 = "0.21"
+base64 = "0.22"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 sys-locale = "0.3"
 saba-chan-updater-lib = { path = "../../updater" }

@@ -127,6 +127,9 @@ pub enum Cmd {
     /// Isolated runs of unverified modules and extensions
     #[command(subcommand)]
     Sandbox(SandboxCmd),
+    /// Remote daemon port: your other PCs connect to this daemon over TLS
+    #[command(subcommand)]
+    Remote(RemoteCmd),
     /// Run any daemon action by id (`saba do` alone lists them)
     Do {
         /// Action id, e.g. server.restart or server.command:say
@@ -290,6 +293,29 @@ impl LevelCmd {
             LevelCmd::Add { guild, .. } | LevelCmd::Rename { guild, .. } | LevelCmd::Remove { guild, .. } | LevelCmd::Move { guild, .. } => guild,
         }
     }
+}
+
+#[derive(Subcommand, Debug)]
+pub enum RemoteCmd {
+    /// Remote port settings and state (listening, address sent to the relay, certificate fingerprint)
+    Status,
+    /// Turn the remote port on or off, change its port or the public address sent to the relay
+    Set {
+        #[arg(long, conflicts_with = "off")]
+        on: bool,
+        #[arg(long)]
+        off: bool,
+        #[arg(long)]
+        port: Option<u16>,
+        /// Public host name or IP of this PC (empty clears it)
+        #[arg(long)]
+        address: Option<String>,
+    },
+    /// Your PCs paired with this daemon
+    #[command(visible_alias = "ls")]
+    Clients,
+    /// Unpair a PC: its token stops working at once
+    Revoke { host_id: String },
 }
 
 #[derive(Subcommand, Debug)]

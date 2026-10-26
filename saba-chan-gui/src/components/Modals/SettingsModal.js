@@ -945,7 +945,7 @@ function SettingsModal({
                                                     onTestModal({
                                                         type: 'success',
                                                         title: 'Success!',
-                                                        message: '작업이 성공적으로 완료되었습니다.',
+                                                        message: 'The task finished successfully.',
                                                     });
                                             }}
                                         >
@@ -958,7 +958,7 @@ function SettingsModal({
                                                     onTestModal({
                                                         type: 'failure',
                                                         title: 'Error!',
-                                                        message: '예기치 못한 오류가 발생했습니다.',
+                                                        message: 'An unexpected error occurred.',
                                                     });
                                             }}
                                         >
@@ -971,7 +971,7 @@ function SettingsModal({
                                                     onTestModal({
                                                         type: 'notification',
                                                         title: 'Notice',
-                                                        message: '새로운 업데이트가 있습니다.',
+                                                        message: 'A new update is available.',
                                                     });
                                             }}
                                         >
@@ -984,7 +984,7 @@ function SettingsModal({
                                                     onTestModal({
                                                         type: 'question',
                                                         title: 'Confirm?',
-                                                        message: '이 작업을 진행하시겠습니까?',
+                                                        message: 'Do you want to continue?',
                                                         onConfirm: () => onTestModal(null),
                                                         onCancel: () => onTestModal(null),
                                                     });
@@ -996,7 +996,7 @@ function SettingsModal({
                                             className="gui-test-btn gui-test-toast-info"
                                             onClick={() => {
                                                 window.showToast &&
-                                                    window.showToast('ℹ️ 정보 토스트 메시지입니다.', 'info', 3000);
+                                                    window.showToast('ℹ️ Info toast message.', 'info', 3000);
                                             }}
                                         >
                                             <Icon name="info" size="sm" /> Toast (Info)
@@ -1005,7 +1005,7 @@ function SettingsModal({
                                             className="gui-test-btn gui-test-toast-success"
                                             onClick={() => {
                                                 window.showToast &&
-                                                    window.showToast('✅ 성공 토스트 메시지입니다.', 'success', 3000);
+                                                    window.showToast('✅ Success toast message.', 'success', 3000);
                                             }}
                                         >
                                             <Icon name="check" size="sm" /> Toast (Success)
@@ -1014,7 +1014,7 @@ function SettingsModal({
                                             className="gui-test-btn gui-test-toast-warning"
                                             onClick={() => {
                                                 window.showToast &&
-                                                    window.showToast('⚠️ 경고 토스트 메시지입니다.', 'warning', 3000);
+                                                    window.showToast('⚠️ Warning toast message.', 'warning', 3000);
                                             }}
                                         >
                                             <Icon name="alertCircle" size="sm" /> Toast (Warning)
@@ -1023,7 +1023,7 @@ function SettingsModal({
                                             className="gui-test-btn gui-test-toast-error"
                                             onClick={() => {
                                                 window.showToast &&
-                                                    window.showToast('❌ 에러 토스트 메시지입니다.', 'error', 4000);
+                                                    window.showToast('❌ Error toast message.', 'error', 4000);
                                             }}
                                         >
                                             <Icon name="x" size="sm" /> Toast (Error)
@@ -1032,18 +1032,18 @@ function SettingsModal({
                                             className="gui-test-btn gui-test-progress"
                                             onClick={() => {
                                                 if (!onTestProgressBar) return;
-                                                onTestProgressBar({ message: '다운로드 중...', percent: 0 });
+                                                onTestProgressBar({ message: 'Downloading...', percent: 0 });
                                                 let p = 0;
                                                 const iv = setInterval(() => {
                                                     p += Math.random() * 15 + 5;
                                                     if (p >= 100) {
                                                         p = 100;
-                                                        onTestProgressBar({ message: '완료!', percent: 100 });
+                                                        onTestProgressBar({ message: 'Done!', percent: 100 });
                                                         clearInterval(iv);
                                                         setTimeout(() => onTestProgressBar(null), 1500);
                                                     } else {
                                                         onTestProgressBar({
-                                                            message: `다운로드 중... ${Math.round(p)}%`,
+                                                            message: `Downloading... ${Math.round(p)}%`,
                                                             percent: p,
                                                         });
                                                     }
@@ -1056,7 +1056,7 @@ function SettingsModal({
                                             className="gui-test-btn gui-test-progress-ind"
                                             onClick={() => {
                                                 if (!onTestProgressBar) return;
-                                                onTestProgressBar({ message: '처리 중...', indeterminate: true });
+                                                onTestProgressBar({ message: 'Processing...', indeterminate: true });
                                                 setTimeout(() => onTestProgressBar(null), 4000);
                                             }}
                                         >
@@ -1082,7 +1082,7 @@ function SettingsModal({
                                             className="gui-test-btn gui-test-notice-info"
                                             onClick={() => {
                                                 window.showToast &&
-                                                    window.showToast('ℹ️ 정보 알림 테스트', 'info', 3000, {
+                                                    window.showToast('ℹ️ Info notification test', 'info', 3000, {
                                                         isNotice: true,
                                                         source: 'GUI Test',
                                                     });
@@ -1094,7 +1094,7 @@ function SettingsModal({
                                             className="gui-test-btn gui-test-notice-success"
                                             onClick={() => {
                                                 window.showToast &&
-                                                    window.showToast('✅ 성공 알림 테스트', 'success', 3000, {
+                                                    window.showToast('✅ Success notification test', 'success', 3000, {
                                                         isNotice: true,
                                                         source: 'GUI Test',
                                                     });
@@ -1106,7 +1106,7 @@ function SettingsModal({
                                             className="gui-test-btn gui-test-notice-error"
                                             onClick={() => {
                                                 window.showToast &&
-                                                    window.showToast('❌ 에러 알림 테스트', 'error', 4000, {
+                                                    window.showToast('❌ Error notification test', 'error', 4000, {
                                                         isNotice: true,
                                                         source: 'GUI Test',
                                                     });
@@ -1177,9 +1177,9 @@ function SettingsModal({
                                 />
                             </div>
                             <div className="about-dev-info">
-                                <span className="about-dev-nickname">와레아오바</span>
+                                <span className="about-dev-nickname">{t('gui:settings_modal.dev_nickname')}</span>
                                 <span className="about-dev-id">@WareAoba</span>
-                                <span className="about-dev-bio">인공지능 조련사</span>
+                                <span className="about-dev-bio">{t('gui:settings_modal.dev_bio')}</span>
                             </div>
                             <span className="about-made-by">{t('gui:settings_modal.made_by')}</span>
                             <button

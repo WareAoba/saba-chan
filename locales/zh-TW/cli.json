@@ -1,4 +1,14 @@
 {
+  "module_errors": {
+    "module_timeout": "模組呼叫超時。請檢查模組狀態。",
+    "module_execution_failed": "無法執行模組。請檢查執行環境和模組日誌。",
+    "module_crashed": "模組程序因錯誤退出。請檢查模組日誌。",
+    "module_bad_output": "模組返回了無效的結果。請更新模組或聯絡作者。",
+    "module_output_too_large": "模組輸出超出了大小限制。請檢查模組日誌。",
+    "module_path_outside": "模組試圖存取允許範圍外的資料夾。請檢查模組設定。",
+    "module_exception": "模組拋出了例外。請檢查模組日誌。",
+    "isolation_unsupported": "此作業系統不支援所需的隔離功能。"
+  },
   "add": {
     "created_settings_unsynced": "{{name}} 已建立且設定已儲存，但無法寫入遊戲設定檔：{{error}}",
     "ask_folder": "伺服器資料夾",
@@ -26,7 +36,8 @@
     "use_existing": "使用現有的伺服器資料夾",
     "folder_is": "{{dir}} 看起來是 {{game}} 伺服器。",
     "pick_game": "請用 --module 選擇遊戲。",
-    "folder_in_use": "{{dir}} 已被 {{name}} 使用。兩個伺服器放在同一資料夾會互相覆寫。"
+    "folder_in_use": "{{dir}} 已被 {{name}} 使用。兩個伺服器放在同一資料夾會互相覆寫。",
+    "created_settings_failed": "{{name}} 已建立，但其設定未能儲存：{{error}}"
   },
   "bot": {
     "ask_token": "節點權杖",
@@ -66,6 +77,27 @@
     "token_saved": "節點權杖已儲存。",
     "unpaired": "已取消配對。",
     "invite": "用這個連結邀請機器人到你的 Discord 伺服器：",
+    "channel": "頻道",
+    "channel_ambiguous": "有多個名為 {{name}} 的頻道。請使用其 id。",
+    "channel_none": "無",
+    "chatbot_channels": "會說話的 Saba-chan 頻道",
+    "music_channel": "音樂頻道",
+    "notify_channel": "通知頻道",
+    "confirm_music_channel": "將 #{{name}} 設為音樂頻道後，其中的普通訊息會被刪除。要繼續嗎？",
+    "channels_saved": "頻道分配已更改。",
+    "channels_bot_missing": "機器人不在這個 Discord 伺服器中，因此無法列出其頻道。請邀請它：saba-chan-cli bot invite",
+    "discord_saved": "Discord 設定已儲存。",
+    "discord_not_synced": "已在本機儲存，但無法聯絡到機器人。機器人重新連線後會傳送。",
+    "on": "開",
+    "off": "關",
+    "locale": "語言",
+    "locale_auto": "auto（跟隨這臺電腦的語言）",
+    "sleeping": "休眠中",
+    "music": "音樂",
+    "music_ui": "播放器面板",
+    "music_queue_lines": "佇列行數",
+    "music_refresh": "面板重新整理",
+    "music_normalize": "音量均衡",
     "allow_all": "這個 Discord 伺服器可以看到本機的所有伺服器。",
     "allow_none": "沒有開放的伺服器。",
     "allow_all_saved": "{{guild}} 現在可以看到所有伺服器。",
@@ -73,6 +105,10 @@
     "link_accepted": "已將 {{guild}} 連接到這台電腦。",
     "link_declined": "已拒絕連接請求。",
     "pair_gui_hint": "也可以在 GUI 的 Discord 頁面查看 Discord 連接狀態。",
+    "words": "稱呼",
+    "command_words": "命令稱呼",
+    "words_saved": "已儲存 {{server}} 的聊天稱呼。",
+    "words_bad_command": "{{spec}}：請寫成 命令=稱呼,稱呼（命令= 表示刪除）。",
     "no_paired_servers": "這台電腦尚未與任何 Discord 伺服器配對。執行: saba-chan-cli bot pair",
     "pick_server": "已配對多個 Discord 伺服器。請指定要變更的伺服器 id: {{servers}}",
     "translate_commands": "翻譯指令名稱"
@@ -122,6 +158,27 @@
     "confirm_reset_all": "要將所有設定還原為預設值嗎？",
     "confirm_reset": "要將 {{keys}} 還原為預設值嗎？",
     "all": "所有設定",
+    "confirm_export_secrets": "密碼、會說話的 Saba-chan 的 API 金鑰和機器人配對資訊將原樣寫入檔案。要繼續嗎？",
+    "exported": "已將設定和 {{count}} 個伺服器儲存到 {{path}}。",
+    "export_no_secrets": "未包含密碼、API 金鑰和機器人配對資訊。新增 --secrets 可包含它們。",
+    "import_preview": "匯入將做出以下更改（尚未更改任何內容）。",
+    "imported": "已匯入。",
+    "import_added": "新伺服器",
+    "import_replaced": "被替換的伺服器",
+    "import_settings": "設定",
+    "import_skipped": "{{name}}：已跳過（{{reason}}）",
+    "import_missing_module": "這臺電腦上沒有 {{module}} 模組。啟動該伺服器前請先安裝它。",
+    "import_move_files": "不包含遊戲伺服器檔案。請把伺服器資料夾移到相同路徑，或在伺服器設定中更改資料夾。",
+    "skip_reason": {
+      "exists": "已存在，使用 --overwrite 替換",
+      "running": "正在執行",
+      "working_dir_in_use": "另一個伺服器在使用同一資料夾",
+      "invalid_id": "id 無效",
+      "save_failed": "無法儲存",
+      "name_taken": "已有同名伺服器",
+      "busy": "正在安裝、更新、備份或恢復"
+    },
+    "import_token_moved": "機器人配對也一併遷移了。請斷開舊電腦（在舊電腦上執行：saba-chan-cli bot unpair）。",
     "paths": {
       "data": "資料與設定",
       "install": "程式",
@@ -250,6 +307,14 @@
       "schedule_changed": "排程工作已在別處變更。請用 saba-chan-cli schedule show 重新確認後再試。",
       "invalid_command": "命令鍵請寫成 `<伺服器>/<命令>`。不帶伺服器的鍵只能是全域動作 id。",
       "no_command_path": "此伺服器是在 Saba-chan 之外啟動的，沒有可接收指令的主控台。請透過 Saba-chan 重新啟動：saba-chan-cli restart <server>",
+      "conflict_with": "與 {{name}} 衝突",
+      "word": {
+        "invalid": "請使用 1-32 個字元，不含空格",
+        "reserved": "是保留詞",
+        "conflict": "已用於稱呼其他物件",
+        "unknown_command": "該伺服器沒有這個命令",
+        "too_many": "最多 10 個稱呼"
+      },
       "not_supported": "可用 saba-chan-cli module info 查看不支援的指令。",
       "agent_too_old": "檢查更新：saba-chan-cli update check",
       "install_backup_failed": "安裝前無法備份 {{file}}，因此沒有安裝。請檢查磁碟可用空間以及該資料夾中的 .bak 檔案。",
@@ -267,6 +332,7 @@
       "paths_not_writable": "Saba-chan 無法寫入該位置。請選擇可寫入的資料夾。",
       "paths_has_link": "資料夾內有連結（捷徑資料夾）。移除後再試。",
       "paths_copy_failed": "複製失敗，未做任何變更。請檢查可用空間後再試。",
+      "paths_acl_failed": "無法設定新資料夾的存取權限，未做任何變更。請選擇其他資料夾。",
       "paths_verify_failed": "複本與原件不一致，未做任何變更。請再試一次。",
       "paths_commit_failed": "儲存設定失敗，檔案已放回原處。",
       "paths_unknown_kind": "請選擇 modules 或 extensions。",
@@ -281,6 +347,7 @@
     "not_found": "沒有名為「{{query}}」的{{what}}。",
     "pair_expected": "應為 KEY=VALUE，實際為「{{got}}」。",
     "timeout": "常駐程式回應時間過長（{{path}}）。",
+    "body_read": "無法讀取來自 {{path}} 的完整回應：{{error}}",
     "unknown_command": "沒有這個命令：{{path}}。執行 `saba-chan-cli help` 查看命令列表。",
     "not_supported": "{{module}} 模組不支援此功能"
   },
@@ -327,7 +394,8 @@
     "url_one_id": "--url 和 --sha256 一次只能用於一個擴充功能 ID。",
     "no_config": "{{id}} 沒有設定項目。",
     "status_busy": "正在啟動：{{list}}",
-    "status_done": "已就緒：{{list}}"
+    "status_done": "已就緒：{{list}}",
+    "update_failed": "{{n}} 個擴充功能更新失敗。"
   },
   "history": {
     "none": "尚無停止記錄。"
@@ -474,7 +542,8 @@
     "bye": "再見。常駐程式和伺服器會繼續運作。",
     "ctrl_c": "（再按一次 Ctrl+C 或輸入 exit 離開）",
     "help_line": "輸入指令（help，Tab 自動完成），或像在 Discord 一樣說話（例如 \"my-server-1 start\"）。輸入 exit 離開。",
-    "welcome": "Saba-chan CLI {{version}}"
+    "welcome": "Saba-chan CLI {{version}}",
+    "lang_fixed": "在 shell 中無法更改語言，繼續使用 {{lang}}。"
   },
   "start": {
     "already": "{{name}} 已在執行。",
@@ -575,9 +644,42 @@
     "blocked": "修正這些問題之前伺服器無法啟動。",
     "ok": "{{name}} 看起來可以啟動了。"
   },
+  "launch_preview": {
+    "no_args": "{{name}} 的模組不會把設定轉換為啟動參數。",
+    "invalid_format": "格式無效：{{arg}}（{{field}}）"
+  },
   "help": {
     "cmd": {
       "module.maker": "用你的 AI 代理製作新的遊戲模組：安裝指令、第一個請求和這台電腦的路徑",
+      "config.export": "將設定和伺服器列表儲存為 zip（用於遷移到其他電腦，不含遊戲檔案）",
+      "config.import": "從匯出的 zip 匯入設定和伺服器",
+      "bot.channels": "Discord 伺服器的會說話的 Saba-chan 頻道（多個）、音樂頻道（一個）和通知頻道。不帶選項則只檢視",
+      "monitor": "CPU、記憶體、磁碟和網路的使用量，以及每個伺服器所佔份額",
+      "audit": "誰從哪裡（GUI、CLI、Discord、計劃）啟動、停止了伺服器或傳送了命令",
+      "perm": "在 Discord 中誰能使用哪些命令（成員等級、預設集、按命令的等級）",
+      "perm.show": "檢視一個 Discord 伺服器的等級、預設集和覆蓋設定（伺服器名稱或 id，省略則為唯一的伺服器）",
+      "perm.grant": "給成員（名稱或 id）設定等級：admin、user、chatbot、banned",
+      "perm.revoke": "刪除成員的單獨等級（改用預設等級）",
+      "perm.default": "沒有單獨等級的成員的等級",
+      "perm.preset": "命令等級預設集：loose、default、strict",
+      "perm.cap": "經由會說話的 Saba-chan 的請求可使用的最高等級",
+      "perm.command": "單個命令所需的等級（`<伺服器>/<命令>`，伺服器為名稱或 id）。省略等級則恢復為預設集",
+      "perm.owner": "更改固定的 Discord 伺服器所有者",
+      "perm.level": "新增、重新命名、刪除或移動一個 Discord 伺服器的權限等級（`perm show` 可檢視）",
+      "perm.level.add": "新增等級（放在所有者正下方，或 `--above` 等級的正上方）",
+      "perm.level.rename": "重新命名新增的等級",
+      "perm.level.remove": "刪除等級：其成員移到下一級，需要該等級的命令移到上一級",
+      "perm.level.move": "把等級移到另一個等級正上方（所有者固定在最上，禁止固定在最下）",
+      "sandbox": "未經驗證的模組和擴充功能的隔離執行",
+      "sandbox.allow": "無法準備隔離時，讓此元件在無隔離的情況下執行（檔案變化時會再次詢問）。--gui：載入擴充功能的 GUI 包",
+      "sandbox.revoke": "撤銷同意（--gui：載入 GUI 包的同意）",
+      "do": "按 id 執行守護程序操作（只輸入 `saba-chan-cli do` 顯示列表）",
+      "bot.lang": "機器人在 Discord 伺服器中回覆所用的語言（`auto` 跟隨這臺電腦的語言）。不帶值則檢視",
+      "bot.sleep": "讓機器人在 Discord 伺服器中休眠（喚醒前不接受命令）",
+      "bot.wake": "喚醒 Discord 伺服器中的機器人",
+      "bot.music": "Discord 伺服器的音樂播放器設定。不帶選項則檢視",
+      "bot.allow": "Discord 伺服器可以檢視和呼叫的伺服器。不指定伺服器：檢視，`--all`：所有伺服器",
+      "bot.link": "在 Discord 中不帶代碼使用 /saba connect 發來的連線請求。不帶 ID：檢視，ID：接受，`--decline`：拒絕",
       "help": "顯示命令說明。加 --json 時輸出命令樹、參數與結束代碼",
       "events": "即時追蹤常駐程式事件（加 --json 時每行一個 JSON）。按 Ctrl+C 停止",
       "install": "不使用視窗安裝程式，在這台電腦上安裝 Saba-chan",
@@ -591,10 +693,19 @@
       "server.query": "遊戲模組提供的查詢（不指定名稱則列出）",
       "daemon.clients": "連到常駐程式的桌面應用程式視窗",
       "gui": "切換到桌面應用程式:開啟同一個伺服器,全螢幕選單隨之關閉",
+      "remote": "遠端常駐程式連接埠: 同一主人的其他電腦透過 TLS 直接連線此常駐程式",
+      "remote.status": "遠端連接埠設定與狀態 (是否開啟、通知中繼的位址、憑證指紋)",
+      "remote.set": "開啟或關閉遠端連接埠, 變更連接埠或通知中繼的公開位址",
+      "remote.clients": "與此常駐程式配對的我的電腦",
+      "remote.revoke": "解除與電腦的配對: 該電腦的權杖立即失效",
       "config.autostart": "登入此電腦時啟動的內容：off（關閉）、daemon（僅常駐程式和系統匣）、full（包含 GUI 視窗）。不帶模式時顯示目前的值"
     },
     "arg": {
       "module.maker.game": "第一個請求中的遊戲名稱",
+      "perm.level.add.above": "放在此等級正上方（預設：所有者正下方）",
+      "perm.level.move.above": "移到此等級正上方",
+      "perm.level.add.name": "新等級名稱（1–32 個字元）",
+      "perm.level.rename.name": "新名稱（1–32 個字元）",
       "backup.create.from_snapshot": "保留遊戲最新的自動備份，而不是現在複製世界（Palworld 等）",
       "bot.channels.notify": "通知頻道(當機、備份、更新、排程重啟),名稱或 ID",
       "bot.channels.no_notify": "取消通知頻道",
@@ -604,8 +715,33 @@
       "sandbox.revoke.component": "撤銷許可的元件",
       "do.plan": "只檢查輸入並顯示將會發生什麼",
       "do.input": "輸入 key=value (可依 JSON 讀取的值維持為 JSON)",
+      "member": "Discord 使用者 ID",
+      "level": "等級（admin·user·chatbot·banned，或此伺服器新增的等級名稱）",
+      "perm.preset.preset": "loose · default · strict",
+      "server.add.preset": "遊戲的推薦設定 id（可用 `module info` 檢視）",
       "server": "伺服器名稱（部分即可）",
       "ids": "一個或多個擴充功能 ID",
+      "file": "zip 檔案路徑",
+      "secrets": "同時儲存密碼、會說話的 Saba-chan 的 API 金鑰和機器人配對資訊",
+      "dry_run": "只檢視會更改的內容",
+      "overwrite": "覆蓋已有的伺服器（跳過正在執行的伺服器）",
+      "bot.channels.chatbot": "會說話的 Saba-chan 對話的頻道，名稱或 id（多個用逗號分隔）。替換當前列表",
+      "bot.channels.no_chatbot": "解除所有會說話的 Saba-chan 頻道",
+      "bot.channels.music": "音樂播放器頻道，名稱或 id。該頻道中的普通訊息會被刪除",
+      "bot.channels.no_music": "解除音樂頻道",
+      "monitor.watch": "持續重新整理直到按 Ctrl+C",
+      "monitor.interval": "--watch 的重新整理間隔（秒）",
+      "audit.limit": "顯示的記錄數",
+      "audit.follow": "持續顯示新產生的記錄（按 Ctrl+C 停止）",
+      "bot.lang.value": "auto 或語言程式碼（ko、en、ja、zh-CN、zh-TW、es、pt-BR、ru、de、fr）",
+      "bot.prefix.values": "一個或多個字首（不含空格，最多 32 個字元，最多 10 個）",
+      "bot.prefix.default": "恢復為應用語言的預設字首",
+      "bot.music.on": "開啟音樂",
+      "bot.music.off": "關閉音樂",
+      "bot.music.ui": "顯示播放器面板（on 或 off）",
+      "bot.music.queue_lines": "播放器面板的佇列行數（1-20）",
+      "bot.music.refresh": "播放器面板重新整理間隔，毫秒（2000-10000）",
+      "bot.music.normalize": "使每首歌的音量一致（on 或 off）",
       "help.command": "命令路徑（例如 `server start`）",
       "events.kind": "只看這些事件；`instance` 也包括 `instance.exit` 等下層事件",
       "events.server": "只看這個伺服器的事件",
@@ -634,6 +770,11 @@
       "chatbot.show.guild": "某個 Discord 伺服器實際使用的值（共用值 + 該伺服器的值），名稱或 id",
       "do.steps": "用 JSON 寫多個步驟：[{\"id\": \"...\", \"instance\": \"...\", \"input\": {...}}, ...]（取代 ACTION）",
       "do.run_id": "在背景繼續的多步驟執行的進度",
+      "remote.set.on": "開啟遠端連接埠",
+      "remote.set.off": "關閉遠端連接埠",
+      "remote.set.port": "遠端連接埠號碼",
+      "remote.set.address": "此電腦的公開主機名稱或 IP (留空則清除)",
+      "remote.revoke.host_id": "要解除配對的電腦 id (見 `remote clients`)",
       "config.autostart.mode": "off、daemon 或 full"
     },
     "after": "名稱可以只寫一部分（例如 start pal）。在終端機中不帶參數執行會開啟全螢幕選單(SABA_NO_TUI=1 時為互動式 shell)。\n在指令碼中請使用 --json 和 --yes。結束代碼：0 成功 · 1 失敗 · 2 用法錯誤 · 3 無法連線常駐程式 · 4 找不到 · 130 已取消"
@@ -741,14 +882,45 @@
     "forget_failed": "部分 Discord 伺服器上會說話的 Saba-chan 的記憶無法清除。請查看上面的錯誤。",
     "not_synced": "已儲存在這台電腦上。機器人連線後會同步到 Discord（saba-chan-cli bot status）。",
     "sync_failed": "Discord 伺服器 {{guild}} 沒有收到此變更：{{error}}",
-    "read_failed": "無法讀取 {{path}}：{{error}}"
+    "read_failed": "無法讀取 {{path}}：{{error}}",
+    "cleared_pending": "已清除這臺電腦上會說話的 Saba-chan 的設定和金鑰。未能聯絡到中繼，將在下次連線時清除。"
   },
   "trust": {
     "verified": "已驗證",
     "modified": "已修改",
-    "unverified": "未驗證"
+    "unverified": "未驗證",
+    "notice": {
+      "module_unverified": "此伺服器由非官方目錄來源的模組（{{id}}）建立。請確認你信任其來源。",
+      "module_modified": "模組（{{id}}）在安裝後被修改過。除非是你自己修改的，否則請重新安裝。",
+      "extension_unverified": "已啟用非官方目錄來源的擴充功能（{{id}}）。請確認你信任其來源。",
+      "extension_modified": "擴充功能（{{id}}）在安裝後被修改過。除非是你自己修改的，否則請重新安裝。",
+      "isolated": "此元件在隔離環境中執行（僅限允許的資料夾）"
+    }
+  },
+  "sandbox": {
+    "isolation_unsupported": {
+      "message": "此作業系統不支援隔離執行，因此未執行該元件。"
+    },
+    "allowed": "{{component}} 將在無隔離的情況下執行。如果其檔案發生變化，會再次詢問你。",
+    "confirm_allow": "要在無隔離的情況下執行 {{component}} 嗎？未經驗證的程式碼將不受限制地存取這臺電腦的檔案和網路。如果其檔案發生變化，會再次詢問你。",
+    "confirm_gui": "要把 {{component}} 的 GUI 包載入到應用中嗎？未經驗證的程式碼將在應用視窗中執行。",
+    "gui_allowed": "將載入 {{component}} 的 GUI 包。",
+    "gui_revoked": "已撤銷載入 {{component}} 的 GUI 包的同意。",
+    "none": "這臺電腦上沒有記錄任何同意。",
+    "component": "元件",
+    "kind_unisolated": "無隔離執行",
+    "kind_gui": "GUI 包",
+    "stale": "檔案已更改，未使用",
+    "in_use": "使用中",
+    "needs_terminal": "請在終端中親自回答此同意。--yes 或 --json 不能代替。",
+    "revoked": "已撤銷在無隔離的情況下執行 {{component}} 的同意。"
   },
   "audit": {
+    "empty": "尚無記錄。",
+    "when": "時間",
+    "from": "來源",
+    "what": "內容",
+    "result": "結果",
     "scanning": "正在檢查 {{name}} 的程式碼...",
     "declared": "已宣告",
     "none_declared": "(無)",
@@ -760,6 +932,25 @@
       "where": "位置",
       "what": "程式碼"
     }
+  },
+  "monitor": {
+    "cpu": "CPU",
+    "memory": "記憶體",
+    "disk_io": "磁碟 IO",
+    "disk": "磁碟",
+    "network": "網路",
+    "read_write": "讀 {{read}} · 寫 {{write}}",
+    "disk_free": "{{total}} 中可用 {{free}}",
+    "rx_tx": "入 {{rx}} · 出 {{tx}}",
+    "others": "其他程序",
+    "idle": "空閒",
+    "legend": "█ 伺服器（顏色）·",
+    "none_running": "沒有正在執行的伺服器",
+    "network_note": "磁碟 IO 和網路是整臺電腦的數值，不按伺服器拆分。條形按觀察期間的峰值縮放。每個伺服器的 IO 請求包含快取命中，因此會超過實際磁碟 IO。",
+    "watch_hint": "按 Ctrl+C 停止",
+    "io_requests": "IO 請求（含快取）",
+    "disk_io_process_note": "無法使用物理磁碟計數器；顯示程序 IO 的總和（含快取命中）。",
+    "whole": "整臺電腦（不拆分）"
   },
   "tui": {
     "daemon_up": "● 常駐程式 v{{version}}",
@@ -932,6 +1123,14 @@
     "extension": "需要更新。{{name}} 擴充功能需要 Saba-chan {{version}} 或更新版本。"
   },
   "do": {
+    "bad_pair": "輸入必須形如 key=value：{{pair}}",
+    "confirm": "要執行 {{action}} 嗎？",
+    "done": "{{action}} 已完成",
+    "col": {
+      "id": "操作",
+      "title": "名稱",
+      "risk": "風險"
+    },
     "steps_array": "--steps 必須是步驟清單（JSON 陣列）。",
     "confirm_steps": "要執行這些步驟嗎？",
     "running": "正在執行步驟…",
@@ -939,6 +1138,35 @@
     "state_running": "執行中",
     "state_done": "已完成",
     "run_hint": "正在背景執行（id {{id}}）。離開也會繼續，可用 do --run {{id}} 查看進度。"
+  },
+  "perm": {
+    "owner": "所有者",
+    "no_owner": "尚不清楚（中繼首次報告時固定）",
+    "owner_conflict": "中繼報告了不同的所有者（{{id}}）。保留已固定的所有者；如需更改，請使用 `saba-chan-cli perm owner`。",
+    "default": "預設等級",
+    "preset": "預設集",
+    "cap": "會說話的 Saba-chan 上限",
+    "member": "成員",
+    "command": "命令",
+    "level_col": "等級",
+    "ladder": "等級（從高到低）",
+    "level_fixed": "{{level}} 不能移動或刪除（所有者固定在最上，禁止固定在最下）。",
+    "level_builtin": "{{level}} 是基本等級，不能重新命名。",
+    "saved": "已儲存 {{guild}} 的權限",
+    "preset_reset": "選擇預設集會把 {{count}} 個按命令的等級重置為 {{preset}} 預設集的值。要繼續嗎？",
+    "bad_level": "未知等級：{{level}}（admin、user、chatbot、banned 或此伺服器新增的等級名稱）",
+    "import_none": "中繼上沒有可匯入的等級。",
+    "import_confirm": "要把上面 {{count}} 名成員的等級匯入這臺電腦嗎？",
+    "import_not_candidate": "{{member}} 沒有可匯入的內容。使用 `saba-chan-cli perm import <server>` 檢視列表。",
+    "import_partial": "已匯入 {{ok}} 個，{{failed}} 個失敗。",
+    "imported": "已匯入 {{guild}} 的 {{count}} 名成員的等級",
+    "level": {
+      "owner": "所有者",
+      "admin": "管理員",
+      "user": "使用者",
+      "chatbot": "會說話的 Saba-chan",
+      "banned": "禁止"
+    }
   },
   "players": {
     "title": "{{server}}：{{count}} 人在線",
@@ -962,5 +1190,27 @@
   },
   "gui": {
     "opened": "已開啟 Saba-chan 應用程式。"
+  },
+  "remote": {
+    "item": "項目",
+    "value": "值",
+    "listening": "已開啟",
+    "not_listening": "未開啟",
+    "off": "關閉",
+    "address": "公開位址",
+    "no_address": "無 (不通知中繼)",
+    "published": "已通知中繼",
+    "fingerprint": "憑證指紋",
+    "yes": "是",
+    "no": "否",
+    "no_clients": "沒有與此常駐程式配對的電腦。",
+    "host_id": "電腦 id",
+    "paired_at": "配對時間",
+    "revoked": "已解除與 {{host}} 的配對。該電腦的權杖已失效。",
+    "error": {
+      "certificate_failed": "無法準備憑證",
+      "port_in_use": "連接埠已被使用",
+      "bind_failed": "無法開啟連接埠"
+    }
   }
 }

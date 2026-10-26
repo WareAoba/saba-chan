@@ -7,59 +7,16 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
-use std::io::{Read, Seek, Write};
 use std::path::PathBuf;
 use saba_chan_updater_lib::config_file::ConfigFile;
 use saba_chan_updater_lib::version::SemVer;
 
 const PACKAGE_DOWNLOAD_LIMIT: usize = 128 * 1024 * 1024;
-const PACKAGE_ENTRY_LIMIT: usize = 10_000;
-const PACKAGE_EXPANDED_LIMIT: u64 = 512 * 1024 * 1024;
-
-fn check_package_archive<R: Read + Seek>(archive: &mut zip::ZipArchive<R>, entry_limit: usize, expanded_limit: u64) -> Result<()> {
-    if archive.len() > entry_limit {
-        anyhow::bail!("Extension package has too many files");
-    }
-    let mut expanded = 0u64;
-    for index in 0..archive.len() {
-        expanded = expanded.saturating_add(archive.by_index(index)?.size());
-        if expanded > expanded_limit {
-            anyhow::bail!("Extension package expands beyond the size limit");
-        }
-    }
-    Ok(())
-}
-
-fn extract_package_archive<R: Read + Seek>(mut archive: zip::ZipArchive<R>, staging: &std::path::Path) -> Result<()> {
-    std::fs::create_dir_all(staging)?;
-    let mut expanded = 0u64;
-    for index in 0..archive.len() {
-        let mut entry = archive.by_index(index)?;
-        let relative = entry.enclosed_name().filter(|path| path.components().all(|part| matches!(part, std::path::Component::Normal(_))))
-            .context("Extension package contains an invalid path")?;
-        if entry.unix_mode().is_some_and(|mode| mode & 0o170000 == 0o120000) {
-            anyhow::bail!("Extension package contains a link");
-        }
-        let output = staging.join(relative);
-        if entry.is_dir() {
-            std::fs::create_dir_all(output)?;
-            continue;
-        }
-        if let Some(parent) = output.parent() { std::fs::create_dir_all(parent)?; }
-        let mut file = std::fs::File::create(output)?;
-        let mut buffer = [0u8; 64 * 1024];
-        loop {
-            let count = entry.read(&mut buffer)?;
-            if count == 0 { break; }
-            expanded = expanded.saturating_add(count as u64);
-            if expanded > PACKAGE_EXPANDED_LIMIT {
-                anyhow::bail!("Extension package expands beyond the size limit");
-            }
-            file.write_all(&buffer[..count])?;
-        }
-    }
-    Ok(())
-}
+const PACKAGE_LIMITS: crate::archive::Limits = crate::archive::Limits {
+    what: "Extension package",
+    entries: 10_000,
+    expanded: 512 * 1024 * 1024,
+};
 
 /// npm package.json 스타일 dependencies 디시리얼라이저.
 /// 예전 hook 이름 → 지금 이름. `server.post_stop`은 실제로는 정지 **전에** 불려
@@ -774,8 +731,8 @@ impl ExtensionManager {
         }
         let ext_id = (|| -> Result<String> {
             let mut archive = zip::ZipArchive::new(std::io::Cursor::new(&bytes))?;
-            check_package_archive(&mut archive, PACKAGE_ENTRY_LIMIT, PACKAGE_EXPANDED_LIMIT)?;
-            extract_package_archive(archive, &staging)?;
+            crate::archive::check(&mut archive, &PACKAGE_LIMITS)?;
+            crate::archive::extract(archive, &staging, &PACKAGE_LIMITS)?;
             let content = std::fs::read_to_string(staging.join("manifest.json"))
                 .context("zip has no manifest.json at its root")?;
             Ok(parse_manifest(&content)?.0.id)
@@ -1616,8 +1573,8 @@ impl ExtensionManager {
         let result = (|| -> Result<()> {
             let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes))
                 .context("Failed to read downloaded zip archive")?;
-            check_package_archive(&mut archive, PACKAGE_ENTRY_LIMIT, PACKAGE_EXPANDED_LIMIT)?;
-            extract_package_archive(archive, &staging).context("Failed to extract extension zip")?;
+            crate::archive::check(&mut archive, &PACKAGE_LIMITS)?;
+            crate::archive::extract(archive, &staging, &PACKAGE_LIMITS).context("Failed to extract extension zip")?;
             let content = std::fs::read_to_string(staging.join("manifest.json"))
                 .context("Package has no manifest.json at its root")?;
             let (manifest, _) = parse_manifest(&content)?;
@@ -1877,15 +1834,16 @@ mod tests {
         {
             let mut zip = zip::ZipWriter::new(&mut bytes);
             for name in ["one", "two"] {
-                zip.start_file(name, zip::write::FileOptions::default()).unwrap();
+                zip.start_file(name, zip::write::SimpleFileOptions::default()).unwrap();
                 zip.write_all(b"data").unwrap();
             }
             zip.finish().unwrap();
         }
         let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes.into_inner())).unwrap();
-        assert!(super::check_package_archive(&mut archive, 1, 100).is_err());
-        assert!(super::check_package_archive(&mut archive, 10, 7).is_err());
-        assert!(super::check_package_archive(&mut archive, 10, 8).is_ok());
+        let limits = |entries, expanded| crate::archive::Limits { what: "Extension package", entries, expanded };
+        assert!(crate::archive::check(&mut archive, &limits(1, 100)).is_err());
+        assert!(crate::archive::check(&mut archive, &limits(10, 7)).is_err());
+        assert!(crate::archive::check(&mut archive, &limits(10, 8)).is_ok());
     }
 
     #[test]
@@ -2242,7 +2200,7 @@ mod tests {
         let mut buf = std::io::Cursor::new(Vec::new());
         {
             let mut w = zip::ZipWriter::new(&mut buf);
-            let opts = zip::write::FileOptions::default();
+            let opts = zip::write::SimpleFileOptions::default();
             w.start_file("manifest.json", opts).unwrap();
             w.write_all(manifest.to_string().as_bytes()).unwrap();
             w.start_file("data.txt", opts).unwrap();
@@ -2963,7 +2921,7 @@ mod tests {
 
         let file = std::fs::File::create(&zip_path).unwrap();
         let mut zip_writer = zip::ZipWriter::new(file);
-        let options = zip::write::FileOptions::default()
+        let options = zip::write::SimpleFileOptions::default()
             .compression_method(zip::CompressionMethod::Stored);
         zip_writer.start_file("manifest.json", options).unwrap();
         std::io::Write::write_all(&mut zip_writer, manifest_content.as_bytes()).unwrap();
