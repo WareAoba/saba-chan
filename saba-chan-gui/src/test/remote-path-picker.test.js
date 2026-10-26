@@ -147,4 +147,36 @@ describe('원격 경로 고르기 창', () => {
         await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Choose this folder' })));
         await expect(result).resolves.toBe('/home/me/worlds');
     });
+
+    it('폴더를 읽는 동안에는 Enter로도 저장을 정하지 않는다', async () => {
+        let release;
+        window.api.systemBrowse = vi.fn(async (path) => {
+            if (path === '/slow') {
+                await new Promise((r) => {
+                    release = r;
+                });
+                return { ok: true, path: '/slow', parent: '/', home: '/home/me', sep: '/', entries: [] };
+            }
+            return listing[path || ''];
+        });
+        await act(async () => render(<RemotePathPicker />));
+        let result;
+        let settled = false;
+        await act(async () => {
+            result = pickRemotePath({ kind: 'save', extensions: ['zip'], defaultName: 'export.zip' });
+            result.then(() => {
+                settled = true;
+            });
+        });
+        const path = screen.getByRole('textbox', { name: 'Path' });
+        fireEvent.change(path, { target: { value: '/slow' } });
+        act(() => {
+            fireEvent.keyDown(path, { key: 'Enter' });
+        });
+        await act(async () => fireEvent.keyDown(screen.getByRole('textbox', { name: 'File name' }), { key: 'Enter' }));
+        expect(settled).toBe(false);
+        await act(async () => release());
+        await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Save here' })));
+        await expect(result).resolves.toBe('/slow/export.zip');
+    });
 });

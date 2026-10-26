@@ -113,6 +113,8 @@ function RemotePathPicker() {
     };
     const ready = !busy && !!result();
     const choose = () => {
+        // 폴더를 읽는 동안에는 앞 폴더로 정하지 않는다 (버튼만이 아니라 Enter도)
+        if (busy) return;
         const value = result();
         if (!value) return;
         // 이미 있는 파일에 저장하면 한 번 더 눌러야 바꾼다 (내보내기는 그 파일을 바꾼다)
