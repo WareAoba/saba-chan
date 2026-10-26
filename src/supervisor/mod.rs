@@ -365,7 +365,9 @@ impl Supervisor {
             let attached = managed_process::ManagedProcess::attach_runner(&self.instance_store.runner_home(&instance.id), log_pattern.as_deref()).await;
             if attached.is_none() {
                 // 업데이트 전에 띄운 러너가 끝났다: 그 뒤로는 인스턴스 폴더의 러너 기록을 보지 않는다
-                let _ = std::fs::remove_file(self.instance_store.state_dir(&instance.id).join(crate::instance::LEGACY_RUN));
+                if let Err(e) = forget_legacy_run(&self.instance_store, &instance.id) {
+                    tracing::warn!("Could not stop following the old runner record of '{}': {}", instance.name, e);
+                }
             }
             if let Some(proc) = attached {
                 let pid = proc.pid;
@@ -459,11 +461,14 @@ impl Supervisor {
                     adopted = false;
                 }
             }
-            if saba_runner::runner_file(&managed_process::run_dir(&dir)).is_file() {
+            let legacy_run = managed_process::run_dir(&dir);
+            if saba_runner::runner_file(&legacy_run).is_file() {
                 if let Err(e) = saba_atomic_file::write(&state.join(LEGACY_RUN), b"", saba_atomic_file::Mode::Plain) {
                     tracing::warn!("Could not keep following the runner of '{}': {}", instance.name, e);
                     adopted = false;
                 }
+            } else {
+                managed_process::clear_run_dir(&legacy_run);
             }
         }
         if adopted {
@@ -2147,10 +2152,8 @@ impl Supervisor {
             (s.instance_store.instance_dir(&instance.id), s.instance_store.state_dir(&instance.id), s.instance_store.managed_pid_file(&instance.id))
         };
         // 새로 띄우는 서버의 기록은 데몬 전용 폴더에만 둔다
-        if let Err(e) = std::fs::remove_file(state_dir.join(crate::instance::LEGACY_RUN)) {
-            if e.kind() != std::io::ErrorKind::NotFound {
-                tracing::warn!("Could not stop following the old runner record of '{}': {}", instance.name, e);
-            }
+        if let Err(e) = forget_legacy_run(&sup.read().await.instance_store, &instance.id) {
+            tracing::warn!("Could not stop following the old runner record of '{}': {}", instance.name, e);
         }
         // saba-runner가 서버를 쥐면 데몬이 재시작해도 콘솔·stdin·종료 코드가 이어진다 (C8b)
         let managed = match managed_process::runner_binary() {
@@ -3491,6 +3494,16 @@ pub(crate) fn is_daemon_entry(name: &str) -> bool {
     temp || crate::instance::DAEMON_ENTRIES.iter().any(|e| same(e, name))
 }
 
+/// 업데이트 전에 띄운 러너를 더 따라가지 않는다: 표시(`LEGACY_RUN`)를 지우고 인스턴스 폴더에 남은 그 러너의 기록을 치운다
+fn forget_legacy_run(store: &crate::instance::InstanceStore, id: &str) -> std::io::Result<()> {
+    match std::fs::remove_file(store.state_dir(id).join(crate::instance::LEGACY_RUN)) {
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e),
+        _ => {}
+    }
+    managed_process::clear_run_dir(&managed_process::run_dir(&store.instance_dir(id)));
+    Ok(())
+}
+
 /// 시작·정지를 시킨 쪽: `source`(gui·cli·discord·chatbot·web·remote·schedule·restart·daemon·game·external)와 사람·PC 이름.
 /// 말하는 사바쨩은 디스코드와 가른다. 사용자 id·길드는 싣지 않는다
 fn origin_fields(origin: &crate::audit::Origin) -> serde_json::Map<String, Value> {
@@ -4677,6 +4690,7 @@ mod tests {
         assert!(supervisor.instance_store.managed_pid_file("srv").exists());
         assert!(!inst_dir.join("managed.pid").exists());
         assert_eq!(supervisor.instance_store.runner_home("srv"), supervisor.instance_store.state_dir("srv"));
+        assert!(!inst_dir.join("run").exists(), "the old runner record is cleared once it is not followed");
 
         supervisor.tracker.untrack("srv").unwrap();
         std::fs::remove_file(supervisor.instance_store.managed_pid_file("srv")).unwrap();

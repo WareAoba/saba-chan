@@ -34,6 +34,17 @@ pub fn runner_server_pid(state_dir: &Path) -> Option<u32> {
     read_json::<RunnerInfo>(&runner_file(&run_dir(state_dir))).map(|i| i.pid)
 }
 
+/// 더 따라가지 않는 러너 기록 폴더를 치운다: 러너가 남기는 파일만 지우고 비면 폴더도 지운다. 링크는 따라가지 않는다
+pub fn clear_run_dir(run: &Path) {
+    if !std::fs::symlink_metadata(run).is_ok_and(|m| m.is_dir()) {
+        return;
+    }
+    for file in [runner_file(run), exit_file(run), run.join(TOKEN_FILE)] {
+        let _ = std::fs::remove_file(file);
+    }
+    let _ = std::fs::remove_dir(run);
+}
+
 /// 시작 중 서버가 메모리 상한에 걸려 끝났다. 호출 쪽이 `downcast_ref`로 알아본다
 #[derive(Debug)]
 pub struct MemoryLimitAtStart {
