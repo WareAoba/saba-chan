@@ -170,6 +170,7 @@ pub fn run() {
         ])
         .setup(|app| {
             let handle = app.handle();
+            lifecycle::register_notification_app(handle);
             let tray_start = handle.state::<AppState>().tray_start;
             if !tray_start {
                 window::create_main_window(handle)?;

@@ -448,6 +448,23 @@ function SettingsModal({
 
                             {autostartAvailable() && <AutostartSetting />}
 
+                            {/* 중대한 알림을 OS 알림으로도 */}
+                            <div className="setting-item">
+                                <label className="setting-label">
+                                    <span className="setting-title">
+                                        <Icon name="bell" size="sm" />{' '}
+                                        {t('gui:settings_modal.os_notifications_label')}
+                                    </span>
+                                    <span className="setting-description">
+                                        {t('gui:settings_modal.os_notifications_description')}
+                                    </span>
+                                </label>
+                                <SabaToggle
+                                    checked={osNotifications}
+                                    onChange={(checked) => useSettingsStore.getState().update({ osNotifications: checked })}
+                                />
+                            </div>
+
                             {/* 사바 스토리지 — 클릭하면 SabaStorage로 전환 */}
                             <div
                                 className="setting-item setting-item-clickable"
@@ -832,23 +849,6 @@ function SettingsModal({
                                 <SabaToggle
                                     checked={portConflictCheck}
                                     onChange={(checked) => useSettingsStore.getState().update({ portConflictCheck: checked })}
-                                />
-                            </div>
-
-                            {/* 중대한 알림을 OS 알림으로도 */}
-                            <div className="setting-item">
-                                <label className="setting-label">
-                                    <span className="setting-title">
-                                        <Icon name="bell" size="sm" />{' '}
-                                        {t('gui:settings_modal.os_notifications_label')}
-                                    </span>
-                                    <span className="setting-description">
-                                        {t('gui:settings_modal.os_notifications_description')}
-                                    </span>
-                                </label>
-                                <SabaToggle
-                                    checked={osNotifications}
-                                    onChange={(checked) => useSettingsStore.getState().update({ osNotifications: checked })}
                                 />
                             </div>
 

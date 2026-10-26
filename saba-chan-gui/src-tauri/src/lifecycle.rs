@@ -809,6 +809,23 @@ fn notify_critical(app: &AppHandle, ev: &SseEvent) {
     }
 }
 
+/// Windows가 이 앱의 알림을 띄우도록 앱 ID를 등록한다 (바로가기 없이 설치해도 뜨게). 시작마다 맞춰 둔다
+pub fn register_notification_app(app: &AppHandle) {
+    if !cfg!(windows) {
+        return;
+    }
+    let config = app.config();
+    let name = config.product_name.as_deref().unwrap_or("Saba-chan");
+    // 아이콘은 앱 데이터 폴더에 둔다 (제거기가 이 폴더째 지운다)
+    let icon = app.path().app_local_data_dir().ok().map(|d| d.join("notify-icon.png")).filter(|p| {
+        p.is_file()
+            || std::fs::create_dir_all(p.parent().unwrap_or(p)).and_then(|_| std::fs::write(p, include_bytes!("../icons/icon.png"))).is_ok()
+    });
+    if let Err(e) = saba_chan_updater_lib::notify_app_id::register(&config.identifier, name, icon.as_deref()) {
+        tracing::warn!("[Notify] Failed to register notification app id: {}", e);
+    }
+}
+
 pub fn show_notification(app: &AppHandle, title: &str, body: &str) {
     if let Err(e) = app.notification().builder().title(title).body(body).show() {
         tracing::warn!("[Notify] Failed to show notification: {}", e);

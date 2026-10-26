@@ -18,8 +18,11 @@ pub const TEMP_NAMES: &[&str] = &[
 /// 임시 폴더 바로 아래 `<접두어><pid>`인 것. 그 PID가 아직 돌면 둔다
 pub const TEMP_PID_PREFIXES: &[&str] = &[crate::release::WORK_DIR_PREFIX];
 
+/// GUI의 Tauri 식별자. Windows 알림 앱 ID로도 쓰인다 (`notify_app_id`)
+pub const GUI_IDENTIFIER: &str = "com.saba-chan.app";
+
 /// 창 앱(Tauri)의 식별자. WebView 데이터·캐시가 이 이름의 폴더에 쌓인다
-pub const APP_IDENTIFIERS: &[&str] = &["com.saba-chan.app", "com.saba-chan.installer", "com.saba-chan.updater"];
+pub const APP_IDENTIFIERS: &[&str] = &[GUI_IDENTIFIER, "com.saba-chan.installer", "com.saba-chan.updater"];
 
 /// 지금 도는 제거기의 WebView 폴더 식별자: 끝날 때까지 잠겨 있어 정리 스크립트가 지운다
 pub const SELF_IDENTIFIER: &str = "com.saba-chan.installer";
