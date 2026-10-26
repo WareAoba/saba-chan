@@ -779,7 +779,10 @@ async fn create_instance_inner(state: IPCServer, payload: Value) -> impl IntoRes
                                     let boundary = crate::module_paths::Boundary::for_instance(&imported, &instance_dir, metadata.as_ref());
                                     if let Err(e) = boundary.returned_paths(&mut result, &module_name_owned, "import_settings") {
                                         let mut failure = crate::plugin::error_response(&e);
-                                        failure["id"] = json!(&id);
+                                        // 거두지 못했으면(옮긴 폴더를 돌려놓지 못함) 남은 인스턴스를 알린다
+                                        if !undo_import(&state, &instance, moved_from.as_deref()).await {
+                                            failure["id"] = json!(&id);
+                                        }
                                         return (StatusCode::UNPROCESSABLE_ENTITY, Json(failure)).into_response();
                                     }
                                     instance = imported;
@@ -902,11 +905,7 @@ struct Unlinked {
 async fn unlink_server_folder(state: &IPCServer, instance: &crate::instance::ServerInstance, keep_settings: bool) -> Option<Unlinked> {
     let (instance_dir, metadata, others) = {
         let supervisor = state.supervisor.read().await;
-        let others: Vec<std::path::PathBuf> = supervisor.instance_store.list().iter()
-            .filter(|i| i.id != instance.id)
-            .flat_map(|i| [Some(supervisor.instance_store.instance_dir(&i.id)), i.working_dir.as_deref().map(std::path::PathBuf::from)])
-            .flatten()
-            .collect();
+        let others = other_instance_folders(&supervisor, &instance.id);
         let metadata = supervisor.module_loader.get_module(&instance.module_name).ok().map(|m| m.metadata);
         (supervisor.instance_store.instance_dir(&instance.id), metadata, others)
     };
@@ -939,6 +938,49 @@ async fn unlink_server_folder(state: &IPCServer, instance: &crate::instance::Ser
     .await
     .unwrap_or_default();
     Some(Unlinked { folder, restored })
+}
+
+/// `id` 말고 다른 인스턴스들의 인스턴스 폴더와 서버 폴더 (`sandbox::release`가 그들이 함께 쓰는 위 폴더를 둔다)
+fn other_instance_folders(supervisor: &crate::supervisor::Supervisor, id: &str) -> Vec<std::path::PathBuf> {
+    supervisor.instance_store.list().iter()
+        .filter(|i| i.id != id)
+        .flat_map(|i| [Some(supervisor.instance_store.instance_dir(&i.id)), i.working_dir.as_deref().map(std::path::PathBuf::from)])
+        .flatten()
+        .collect()
+}
+
+/// 가져오기가 실패한 새 인스턴스를 거둔다: 옮겨 온 서버 폴더는 원래 자리로 돌려놓고, 그 서버 폴더에 준 격리 실행의
+/// 권한·표시를 거둔 뒤 인스턴스를 지운다. 돌려놓지 못하면 서버 파일이 든 인스턴스를 그대로 둔다(지우면 서버도 지워진다).
+/// 인스턴스를 지웠으면 true
+async fn undo_import(state: &IPCServer, instance: &crate::instance::ServerInstance, moved_from: Option<&std::path::Path>) -> bool {
+    let folder = match (moved_from, instance.working_dir.as_deref()) {
+        (Some(src), Some(dest)) => match std::fs::rename(dest, src) {
+            Ok(()) => Some(src.to_path_buf()),
+            Err(e) => {
+                tracing::error!("Could not move the server folder back to {} after a failed import: {}", src.display(), e);
+                return false;
+            }
+        },
+        (None, dir) => dir.filter(|d| !d.trim().is_empty()).map(std::path::PathBuf::from),
+        (Some(_), None) => None,
+    };
+    if let Some(folder) = folder {
+        let others = other_instance_folders(&*state.supervisor.read().await, &instance.id);
+        let name = instance.name.clone();
+        let _ = tokio::task::spawn_blocking(move || {
+            if let Err(failed) = crate::sandbox::release(&[folder], &others) {
+                tracing::warn!("Could not take back sandbox permissions on the server folder of '{}': {}", name, failed.join("; "));
+            }
+        })
+        .await;
+    }
+    match state.supervisor.write().await.instance_store.remove(&instance.id) {
+        Ok(()) => true,
+        Err(e) => {
+            tracing::warn!("Could not remove '{}' after a failed import: {}", instance.name, e);
+            false
+        }
+    }
 }
 
 /// DELETE /api/provision-progress/:name - 프로비저닝 상태 클리어 (에러 dismiss용)
@@ -2206,10 +2248,36 @@ mod tests {
         let response = crate::ipc::internal::into_internal(super::create_instance(State(state.clone()), Json(serde_json::json!({"name":"g", "module_name":"game", "migration_source":server}))).await).await;
         assert_eq!(response.status.as_u16(), 422, "{}", response.body);
         assert_eq!(response.body["error_code"], "module_path_outside");
-        let sup = state.supervisor.read().await;
-        let instance = sup.instance_store.get(response.body["id"].as_str().unwrap()).unwrap();
-        assert_ne!(instance.executable_path.as_deref(), outside.to_str());
-        assert!(!instance.module_settings.contains_key("motd"));
+        // 가져오기가 실패했으니 아무것도 만들지 않는다
+        assert!(state.supervisor.read().await.instance_store.list().is_empty());
+    }
+
+    /// 옮겨 온 서버의 가져오기가 실패하면 서버 폴더를 원래 자리로 돌려놓고 인스턴스를 만들지 않는다
+    /// (남은 인스턴스를 지우면 옮겨 온 서버도 함께 지워진다)
+    #[tokio::test]
+    async fn a_moved_server_goes_back_when_its_import_fails() {
+        use axum::{extract::State, Json};
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        let server = tmp.path().join("server");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::create_dir_all(&server).unwrap();
+        std::fs::write(server.join("world.dat"), "world").unwrap();
+        let outside = tmp.path().join("outside.exe");
+        std::fs::write(&outside, "outside").unwrap();
+        std::fs::write(dir.join("module.toml"), "[module]\nschema_version = 1\nname = 'game'\nversion = '1.0.0'\nentry = 'lifecycle.py'\n").unwrap();
+        let result = serde_json::json!({"success":true,"executable_path":outside});
+        std::fs::write(dir.join("lifecycle.py"), format!("import sys\nprint('{{\"success\":true,\"functions\":[\"import_settings\"]}}' if sys.argv[1] == 'functions' else {:?})\n", result.to_string())).unwrap();
+        crate::sandbox::consent_test_component(&dir.join("lifecycle.py"));
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        for module in sup.module_loader.discover_modules().unwrap() { crate::sandbox::consent_test_component(std::path::Path::new(&module.entry_path())); }
+        sup.initialize().await.unwrap();
+        let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let response = crate::ipc::internal::into_internal(super::create_instance(State(state.clone()), Json(serde_json::json!({"name":"g", "module_name":"game", "migration_source":server, "migration_mode":"move"}))).await).await;
+        assert_eq!(response.status.as_u16(), 422, "{}", response.body);
+        assert_eq!(std::fs::read_to_string(server.join("world.dat")).unwrap(), "world");
+        assert!(state.supervisor.read().await.instance_store.list().is_empty());
     }
 
     /// 가져온 서버를 지우면(연결 해제) 서버 폴더는 남고, 사바쨩이 고친 게임 설정 파일은 가져오기 전 내용으로 돌아간다.
