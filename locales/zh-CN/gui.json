@@ -1692,6 +1692,7 @@
     "err_browse_not_a_folder": "这不是文件夹",
     "err_generic": "无法读取文件夹，请重试",
     "exists": "{{name}} 已存在。再按一次即可替换",
-    "replace": "替换"
+    "replace": "替换",
+    "bad_name": "名称不能包含 / 或 \\"
   }
 }

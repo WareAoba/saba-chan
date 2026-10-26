@@ -192,6 +192,22 @@ fn roots() -> Vec<PathBuf> {
     }
 }
 
+/// 고르기 목록에서 뺄 항목: `.`으로 시작하는 이름, Windows 숨김·시스템 속성 (`$Recycle.Bin`·`System Volume Information` 등).
+/// 경로를 직접 적으면 열 수 있다
+fn hidden(entry: &std::fs::DirEntry, name: &str) -> bool {
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        // FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM
+        if entry.metadata().is_ok_and(|m| m.file_attributes() & (0x2 | 0x4) != 0) {
+            return true;
+        }
+    }
+    #[cfg(not(windows))]
+    let _ = entry;
+    name.starts_with('.')
+}
+
 pub(crate) fn browse_dir(path: &str, files: Option<&str>) -> serde_json::Value {
     let home = home_dir();
     if path.trim().is_empty() {
@@ -216,8 +232,11 @@ pub(crate) fn browse_dir(path: &str, files: Option<&str>) -> serde_json::Value {
     let mut entries: Vec<(bool, String, PathBuf)> = Vec::new();
     let mut truncated = false;
     for entry in read.flatten() {
-        let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false) || entry.path().is_dir();
         let name = entry.file_name().to_string_lossy().to_string();
+        if hidden(&entry, &name) {
+            continue;
+        }
+        let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false) || entry.path().is_dir();
         let shown = is_dir
             || wanted.as_ref().is_some_and(|w| {
                 w.iter().any(|e| e == "*")
@@ -283,6 +302,26 @@ mod tests {
             zips["entries"][1]["path"].as_str().map(PathBuf::from),
             Some(dir.path().join("backup.ZIP"))
         );
+    }
+
+    /// 숨긴 항목(`.`으로 시작, Windows 숨김·시스템 속성. `$Recycle.Bin`·`System Volume Information` 등)은 고르기 목록에 보이지 않는다
+    #[test]
+    fn browsing_leaves_out_hidden_entries() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join(".cache")).unwrap();
+        std::fs::create_dir(dir.path().join("Worlds")).unwrap();
+        std::fs::write(dir.path().join(".env.zip"), "").unwrap();
+        #[cfg(windows)]
+        {
+            use std::os::windows::ffi::OsStrExt;
+            std::fs::create_dir(dir.path().join("System Volume Information")).unwrap();
+            let wide: Vec<u16> = dir.path().join("System Volume Information").as_os_str().encode_wide().chain([0]).collect();
+            // FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM
+            assert_ne!(unsafe { windows_sys::Win32::Storage::FileSystem::SetFileAttributesW(wide.as_ptr(), 0x2 | 0x4) }, 0);
+        }
+        let listed = browse_dir(&dir.path().to_string_lossy(), Some("*"));
+        let names: Vec<&str> = listed["entries"].as_array().unwrap().iter().map(|e| e["name"].as_str().unwrap()).collect();
+        assert_eq!(names, vec!["Worlds"]);
     }
 
     #[test]

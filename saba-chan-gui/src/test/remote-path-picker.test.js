@@ -92,6 +92,16 @@ describe('원격 경로 고르기 창', () => {
         await expect(result).resolves.toBe('/home/me/mine.zip');
     });
 
+    it('이름에 폴더 구분자를 넣으면 저장을 막고 이유를 보인다', async () => {
+        await act(async () => render(<RemotePathPicker />));
+        await act(async () => {
+            pickRemotePath({ kind: 'save', extensions: ['zip'], defaultName: 'export.zip' });
+        });
+        fireEvent.change(screen.getByRole('textbox', { name: 'File name' }), { target: { value: 'a\\b.zip' } });
+        expect(screen.getByRole('button', { name: 'Save here' })).toBeDisabled();
+        expect(screen.getByRole('alert')).toHaveTextContent('/ or \\');
+    });
+
     it('이미 있는 파일에 저장하면 한 번 더 눌러야 바꾼다', async () => {
         await act(async () => render(<RemotePathPicker />));
         let result;

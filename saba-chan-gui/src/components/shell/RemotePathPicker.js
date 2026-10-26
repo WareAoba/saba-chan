@@ -173,6 +173,11 @@ function RemotePathPicker() {
                         }}
                     />
                 </div>
+                {kind === 'save' && /[/\\]/.test(name) && (
+                    <p className="remote-picker-error" role="alert">
+                        {t('remote_picker.bad_name')}
+                    </p>
+                )}
                 {replacing && (
                     <p className="remote-picker-error" role="alert">
                         {t('remote_picker.exists', { name: saveName() })}

@@ -1692,6 +1692,7 @@
     "err_browse_not_a_folder": "Ce n'est pas un dossier",
     "err_generic": "Impossible de lire le dossier. Réessayez",
     "exists": "{{name}} existe déjà. Appuyez encore pour le remplacer",
-    "replace": "Remplacer"
+    "replace": "Remplacer",
+    "bad_name": "Un nom ne peut pas contenir / ni \\"
   }
 }

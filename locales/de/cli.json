@@ -1268,7 +1268,10 @@
       "relay_not_paired": "Dieser PC ist nicht mit dem Relay verbunden",
       "relay_unreachable": "Das Relay ist nicht erreichbar",
       "remote_ambiguous": "Mehrere Remote-Daemons haben diesen Namen. Wähle ihn über die Host-ID",
-      "remote_timeout": "Der Remote-Daemon hat nicht rechtzeitig geantwortet. Er bearbeitet die Anfrage eventuell noch"
+      "remote_timeout": "Der Remote-Daemon hat nicht rechtzeitig geantwortet. Er bearbeitet die Anfrage eventuell noch",
+      "remote_bad_path": "Dieser Pfad kann nicht an einen Remote-Daemon gesendet werden",
+      "remote_unauthorized": "Der Remote-Daemon akzeptiert diesen PC nicht mehr. Verbinde ihn erneut",
+      "remote_local_only": "Das geht nur direkt auf diesem PC"
     },
     "daemon": "Daemon",
     "this_pc": "Dieser PC",

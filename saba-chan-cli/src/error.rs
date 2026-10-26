@@ -340,6 +340,18 @@ mod tests {
         }
     }
 
+    /// 원격 포트가 거절한 요청도 코드 대신 문구로 보인다 (GUI `remote_daemon.err_*`와 같은 코드)
+    #[test]
+    fn remote_port_refusals_have_localized_guidance() {
+        crate::i18n::init("en");
+        for code in ["remote_bad_path", "remote_unauthorized", "remote_local_only"] {
+            assert!(api_hint(code, &json!({})).is_some(), "{code}");
+            for lang in ["en", "ko"] {
+                assert!(crate::i18n::try_t_in(lang, &format!("remote.connect_error.{code}")).is_some(), "{lang}: {code}");
+            }
+        }
+    }
+
     /// 데몬이 거절한 릴레이 주소는 쓸 수 있는 주소를 알려 준다 (R31)
     #[test]
     fn a_refused_relay_url_says_which_addresses_are_allowed() {

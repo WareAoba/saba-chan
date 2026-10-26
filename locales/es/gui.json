@@ -1692,6 +1692,7 @@
     "err_browse_not_a_folder": "No es una carpeta",
     "err_generic": "No se pudo leer la carpeta. Inténtalo de nuevo",
     "exists": "{{name}} ya existe. Pulsa otra vez para reemplazarlo",
-    "replace": "Reemplazar"
+    "replace": "Reemplazar",
+    "bad_name": "El nombre no puede contener / ni \\"
   }
 }
