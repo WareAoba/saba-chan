@@ -2,7 +2,7 @@
 //!
 //! 설정(config.json `remote`)이 켜져 있으면 자체 서명 인증서로 원격 포트를 열고, 공인 주소와 인증서 지문을 릴레이에 올린다.
 //! 붙는 PC는 릴레이에서 받은 연결표로 한 번 짝을 맺고(`/remote/pair`), 그 뒤로는 받은 토큰으로 데몬 API를 부른다.
-//! 지금은 공인 주소가 있는 PC만 된다 (`Transport::Direct`). 붙는 쪽(내 PC에서 원격 데몬을 고르고 중계하기)은 다음 단계다
+//! 공인 주소가 없으면 주소 없이 올리고, 붙는 PC는 릴레이 터널로 붙는다 (T1, `tunnel.rs`)
 
 pub mod config;
 pub mod peer;
@@ -10,6 +10,7 @@ pub mod relay;
 pub mod server;
 pub mod target;
 pub mod tls;
+pub mod tunnel;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock, RwLock};
@@ -106,11 +107,11 @@ fn bind(port: u16) -> std::io::Result<tokio::net::TcpListener> {
 const RETRY_MAX: std::time::Duration = std::time::Duration::from_secs(300);
 
 /// `first`만큼 기다렸다가 주소를 올린다. 실패하면 간격을 두 배씩 늘려(상한 5분) 올릴 때까지 다시 한다.
-/// 올렸으면 true. `cancel`(포트를 닫거나 설정을 다시 적용함)이면 기다림 중에 멈추고 false.
+/// 올렸으면 true. `cancel`(포트를 닫거나 설정을 다시 적용함)이면 기다림 중에 멈추고 false. 릴레이가 받지 않으면(`Refused`) 그만두고 false.
 /// 보내는 중인 요청은 끝까지 기다린다: 다시 적용하는 쪽이 이 작업이 끝난 뒤에 새 주소를 올리도록 (늦게 닿은 예전 주소가 덮지 않게)
 async fn publish_with_retry(
     relay: &server::RelaySource,
-    address: &str,
+    address: Option<&str>,
     port: u16,
     sha: &str,
     cancel: &CancellationToken,
@@ -123,8 +124,10 @@ async fn publish_with_retry(
             _ = tokio::time::sleep(wait) => {}
         }
         if let Some(t) = relay.target().await {
-            if relay::publish(&t, address, port, sha).await {
-                return true;
+            match relay::publish(&t, address, port, sha).await {
+                relay::Published::Done => return true,
+                relay::Published::Refused => return false,
+                relay::Published::Failed => {}
             }
         }
         wait = (wait * 2).min(RETRY_MAX);
@@ -183,28 +186,32 @@ pub async fn apply(server: &IPCServer) -> Status {
         }
     }
 
-    // 릴레이의 주소: 열려 있고 공인 주소가 있으면 올리고, 아니면 (전에 올렸을 때) 내린다
+    // 릴레이의 주소: 열려 있으면 올리고(공인 주소가 없으면 주소 없이, 터널로만), 아니면 (전에 올렸을 때) 내린다
     let target = relay.target().await;
-    let address = settings.address.trim();
-    if let (true, Some(sha), Some(t)) = (status.listening && !address.is_empty(), status.cert_sha256.as_deref(), target.as_ref()) {
-        status.published = relay::publish(t, address, settings.port, sha).await;
-        if let (false, Some((cancel, _))) = (status.published, rt.cancel.as_ref()) {
+    let address = Some(settings.address.trim()).filter(|a| !a.is_empty());
+    if let (true, Some(sha), Some(t)) = (status.listening, status.cert_sha256.as_deref(), target.as_ref()) {
+        let published = relay::publish(t, address, settings.port, sha).await;
+        status.published = published == relay::Published::Done;
+        if published == relay::Published::Refused {
+            tracing::warn!("The relay does not take a remote daemon without a public address yet");
+        }
+        if let (relay::Published::Failed, Some((cancel, _))) = (published, rt.cancel.as_ref()) {
             // 부팅 직후 네트워크가 아직이거나 릴레이가 잠시 받지 않으면, 포트가 열려 있는 동안 다시 올린다
             tracing::warn!("Failed to publish the remote daemon address to the relay; retrying");
-            let (cancel, address, sha) = (cancel.clone(), address.to_string(), sha.to_string());
+            let (cancel, address, sha) = (cancel.clone(), address.map(str::to_string), sha.to_string());
             let port = settings.port;
             let done = Arc::new(AtomicBool::new(false));
             let flag = done.clone();
             let task = tokio::spawn(async move {
-                if publish_with_retry(&relay, &address, port, &sha, &cancel, std::time::Duration::from_secs(5)).await {
+                if publish_with_retry(&relay, address.as_deref(), port, &sha, &cancel, std::time::Duration::from_secs(5)).await {
                     flag.store(true, Ordering::SeqCst);
                     tracing::info!("Published the remote daemon address to the relay");
                 }
             });
             rt.retry = Some((task, done));
         }
-    } else if let (true, Some(t)) = (was_published || !address.is_empty(), target.as_ref()) {
-        // 데몬이 다시 뜬 뒤에는 전에 올렸는지 모르므로, 주소를 적어 둔 PC면 내린다
+    } else if let (true, Some(t)) = (was_published || tls::exists(&saba_chan_updater_lib::constants::resolve_data_dir()), target.as_ref()) {
+        // 데몬이 다시 뜬 뒤에는 전에 올렸는지 모르므로, 원격 포트를 연 적이 있는(인증서가 있는) PC면 내린다
         if !relay::withdraw(t).await {
             tracing::warn!("Failed to withdraw the remote daemon address from the relay");
         }
@@ -241,9 +248,32 @@ mod tests {
     async fn a_failed_publish_is_retried_until_the_relay_takes_it() {
         let (relay, calls) = flaky_relay(2).await;
         let cancel = super::CancellationToken::new();
-        let published = super::publish_with_retry(&relay, "saba.example.com", 57480, &"ab".repeat(32), &cancel, Duration::from_millis(10)).await;
+        let published = super::publish_with_retry(&relay, Some("saba.example.com"), 57480, &"ab".repeat(32), &cancel, Duration::from_millis(10)).await;
         assert!(published);
         assert_eq!(calls.load(Ordering::SeqCst), 3);
+    }
+
+    /// 공인 주소가 없으면 주소 없이 올린다. 그것을 모르는 예전 릴레이(400)에는 다시 보내지 않는다
+    #[tokio::test]
+    async fn an_old_relay_that_refuses_an_address_less_endpoint_is_not_asked_again() {
+        let calls = super::Arc::new(AtomicUsize::new(0));
+        let seen = calls.clone();
+        let app = axum::Router::new().route(
+            "/api/remote/endpoint",
+            axum::routing::put(move |axum::Json(body): axum::Json<serde_json::Value>| {
+                seen.fetch_add(1, Ordering::SeqCst);
+                async move { if body["address"].is_null() { axum::http::StatusCode::BAD_REQUEST } else { axum::http::StatusCode::NO_CONTENT } }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let relay = super::server::RelaySource::Fixed(super::relay::Target { base, token: "sbn_host-b.secret".into() });
+        let cancel = super::CancellationToken::new();
+        let published = super::publish_with_retry(&relay, None, 57480, &"ab".repeat(32), &cancel, Duration::from_millis(10)).await;
+        assert!(!published);
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        assert!(super::publish_with_retry(&relay, Some("saba.example.com"), 57480, &"ab".repeat(32), &cancel, Duration::from_millis(10)).await);
     }
 
     /// 포트를 닫거나 설정을 다시 적용하면 다시 올리기를 멈춘다
@@ -256,7 +286,7 @@ mod tests {
             tokio::time::sleep(Duration::from_millis(100)).await;
             stop.cancel();
         });
-        let published = super::publish_with_retry(&relay, "saba.example.com", 57480, &"ab".repeat(32), &cancel, Duration::from_millis(10)).await;
+        let published = super::publish_with_retry(&relay, Some("saba.example.com"), 57480, &"ab".repeat(32), &cancel, Duration::from_millis(10)).await;
         assert!(!published);
         let after = calls.load(Ordering::SeqCst);
         tokio::time::sleep(Duration::from_millis(100)).await;
@@ -304,7 +334,7 @@ mod tests {
             tokio::time::sleep(Duration::from_millis(100)).await;
             stop.cancel();
         });
-        let published = super::publish_with_retry(&relay, "saba.example.com", 57480, &"ab".repeat(32), &cancel, Duration::from_millis(10)).await;
+        let published = super::publish_with_retry(&relay, Some("saba.example.com"), 57480, &"ab".repeat(32), &cancel, Duration::from_millis(10)).await;
         assert!(handled.load(Ordering::SeqCst), "returns only after the relay handled the request");
         assert!(published);
     }

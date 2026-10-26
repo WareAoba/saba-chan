@@ -974,7 +974,7 @@
       "remote.set.on": "원격 포트 켜기",
       "remote.set.off": "원격 포트 끄기",
       "remote.set.port": "원격 포트 번호",
-      "remote.set.address": "이 PC의 공인 호스트 이름이나 IP (빈 값이면 지워요)",
+      "remote.set.address": "이 PC의 공인 호스트 이름이나 IP (빈 값이면 지우고 릴레이를 거쳐 붙어요)",
       "remote.revoke.host_id": "짝을 풀 PC id (`remote clients`에 보여요)",
       "remote.connect.host_id": "붙을 PC id (`remote peers`에 보여요)",
       "remote.forget.host_id": "잊을 PC id (`remote daemons`에 보여요)",
@@ -1401,7 +1401,7 @@
     "not_listening": "열리지 않음",
     "off": "꺼짐",
     "address": "공인 주소",
-    "no_address": "없음 (릴레이에 알리지 않아요)",
+    "no_address": "없음 (릴레이를 거쳐 붙어요)",
     "published": "릴레이에 알림",
     "fingerprint": "인증서 지문",
     "yes": "예",
@@ -1423,8 +1423,8 @@
     "forgotten": "{{host}}의 원격 데몬을 잊었어요.",
     "connect_error": {
       "remote_not_found": "그 PC는 내 다른 PC 목록에 없어요",
-      "remote_no_endpoint": "그 PC가 원격 포트를 열지 않았거나 공인 주소를 알리지 않았어요",
-      "remote_unreachable": "원격 데몬에 닿지 못했어요 (주소·방화벽을 확인해 주세요)",
+      "remote_no_endpoint": "그 PC가 원격 포트를 열지 않았어요",
+      "remote_unreachable": "원격 데몬에 닿지 못했어요 (그 PC가 켜져 있는지 확인해 주세요)",
       "remote_rejected": "원격 데몬이 연결을 받지 않았어요. 다시 해 주세요",
       "remote_unknown": "연결하지 않은 원격 데몬이에요. `remote daemons`로 확인해 주세요",
       "relay_not_paired": "이 PC가 릴레이에 연결돼 있지 않아요",
@@ -1434,6 +1434,7 @@
     },
     "daemon": "데몬",
     "this_pc": "이 PC",
-    "no_servers": "서버 없음"
+    "no_servers": "서버 없음",
+    "via_relay": "릴레이 거침"
   }
 }

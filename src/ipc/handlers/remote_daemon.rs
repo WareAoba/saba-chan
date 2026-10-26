@@ -145,7 +145,10 @@ pub async fn connect_daemon(State(state): State<IPCServer>, Json(body): Json<Con
 
 pub async fn forget_daemon(Path(host_id): Path<String>) -> Response {
     match config::forget_daemon_in(&ConfigFile::default_location(), &host_id) {
-        Ok(true) => StatusCode::NO_CONTENT.into_response(),
+        Ok(true) => {
+            crate::remote_daemon::tunnel::close(&host_id);
+            StatusCode::NO_CONTENT.into_response()
+        }
         Ok(false) => peer::error(StatusCode::NOT_FOUND, "remote_unknown"),
         Err(_) => peer::error(StatusCode::INTERNAL_SERVER_ERROR, "save_failed"),
     }

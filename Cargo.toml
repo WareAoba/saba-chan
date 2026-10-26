@@ -58,7 +58,7 @@ hex = "0.4"
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
 tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12", "logging"] }
 rcgen = { version = "0.13", default-features = false, features = ["crypto", "ring"] }
-hyper = { version = "1", features = ["http1", "client", "server"] }
+hyper = { version = "1", features = ["http1", "http2", "client", "server"] }
 hyper-util = { version = "0.1", features = ["tokio", "service"] }
 http-body-util = "0.1"
 saba-chan-updater-lib = { path = "updater" }
@@ -87,6 +87,7 @@ features = ["util"]
 mock-relay = ["saba-chan-updater-lib/mock-relay"]
 
 [dev-dependencies]
+axum = { version = "0.8", features = ["ws"] }
 proptest = "1"
 saba-chan-updater-lib = { path = "updater", features = ["test-isolation"] }
 

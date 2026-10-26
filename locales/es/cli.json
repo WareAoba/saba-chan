@@ -778,7 +778,7 @@
       "remote.set.on": "Activar el puerto remoto",
       "remote.set.off": "Desactivar el puerto remoto",
       "remote.set.port": "Número del puerto remoto",
-      "remote.set.address": "Nombre de host público o IP de este PC (vacío la borra)",
+      "remote.set.address": "Nombre de host o IP pública de este PC (vacío lo borra y conecta a través del relay)",
       "remote.revoke.host_id": "ID del PC que se desempareja (ver `remote clients`)",
       "remote.connect.host_id": "Id del PC al que conectarse (ver `remote peers`)",
       "remote.forget.host_id": "Id del PC que olvidar (ver `remote daemons`)",
@@ -1205,7 +1205,7 @@
     "not_listening": "No abierto",
     "off": "Apagado",
     "address": "Dirección pública",
-    "no_address": "Ninguna (no se envía al relé)",
+    "no_address": "Ninguna (se conecta a través del relay)",
     "published": "Enviada al relé",
     "fingerprint": "Huella del certificado",
     "yes": "Sí",
@@ -1227,8 +1227,8 @@
     "forgotten": "Se olvidó el daemon remoto de {{host}}.",
     "connect_error": {
       "remote_not_found": "Ese PC no es uno de tus otros PCs",
-      "remote_no_endpoint": "Ese PC no ha abierto su puerto remoto ni enviado su dirección pública",
-      "remote_unreachable": "No se pudo llegar al daemon remoto (revisa la dirección y el cortafuegos)",
+      "remote_no_endpoint": "Ese PC no ha abierto su puerto remoto",
+      "remote_unreachable": "No se pudo llegar al daemon remoto (comprueba que el PC esté encendido)",
       "remote_rejected": "El daemon remoto no aceptó la conexión. Inténtalo de nuevo",
       "remote_unknown": "No es un daemon remoto al que te hayas conectado. Revisa `remote daemons`",
       "relay_not_paired": "Este PC no está conectado al relé",
@@ -1238,6 +1238,7 @@
     },
     "daemon": "Daemon",
     "this_pc": "Este PC",
-    "no_servers": "Sin servidores"
+    "no_servers": "Sin servidores",
+    "via_relay": "A través del relay"
   }
 }

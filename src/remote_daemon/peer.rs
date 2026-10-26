@@ -2,6 +2,8 @@
 //!
 //!   connect   릴레이에서 그 PC 앞 연결표를 받아, 받은 지문을 고정하고 TLS로 붙어 `/remote/pair`로 토큰을 받는다
 //!   forward   저장한 원격 데몬에 요청 하나를 그대로 보낸다. 닿지 못하면 릴레이에서 새 주소·지문을 받아 한 번 더 해 본다
+//!
+//! 직접 붙지 못하거나 주소가 없는 PC(NAT 뒤)는 릴레이 터널로 붙는다 (T1, `tunnel.rs`)
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -20,7 +22,7 @@ use serde_json::{json, Value};
 
 use super::config::{self, Daemon};
 use super::relay::{self, Endpoint, Target, TicketFailure};
-use super::tls;
+use super::{tls, tunnel};
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 /// 원격 데몬이 답의 머리를 보낼 때까지. 정지는 인스턴스 `stop_timeout`(3600초까지)을 기다린 뒤 답하므로 CLI의 정지 대기와 같게 둔다.
@@ -108,6 +110,33 @@ async fn send(endpoint: &Endpoint, req: Request<Body>) -> Sent {
     }
 }
 
+async fn through_tunnel(relay: Option<&Target>, host_id: &str, endpoint: &Endpoint, mut req: Request<Body>) -> Sent {
+    let Some(relay) = relay else { return Sent::NotConnected };
+    let Some(mut sender) = tunnel::sender(relay, host_id, &endpoint.cert_sha256).await else { return Sent::NotConnected };
+    if sender.ready().await.is_err() {
+        return Sent::NotConnected;
+    }
+    tunnel::absolute(&mut req);
+    match tokio::time::timeout(RESPONSE_TIMEOUT, sender.send_request(req)).await {
+        Ok(Ok(res)) => Sent::Answered(res),
+        _ => Sent::NoAnswer,
+    }
+}
+
+/// 직접 붙어 보고, 주소가 없거나 붙지 못하면 릴레이 터널로. 이 PC까지 터널이 열려 있으면 터널부터 쓴다
+/// (NAT 뒤 PC에 직접 붙기를 요청마다 기다리지 않게). `request`는 보낼 때마다 새로 만든다
+async fn send_to(relay: Option<&Target>, host_id: &str, endpoint: &Endpoint, request: &(dyn Fn() -> Option<Request<Body>> + Sync)) -> Sent {
+    if !endpoint.address.is_empty() && !tunnel::is_open(relay, host_id) {
+        let Some(req) = request() else { return Sent::NotConnected };
+        match send(endpoint, req).await {
+            Sent::NotConnected => {}
+            sent => return sent,
+        }
+    }
+    let Some(req) = request() else { return Sent::NotConnected };
+    through_tunnel(relay, host_id, endpoint, req).await
+}
+
 /// `host_id` 원격 데몬과 짝을 맺고 저장한다
 pub async fn connect(file: &ConfigFile, relay: Option<Target>, host_id: &str) -> Result<Daemon, ConnectError> {
     let relay = relay.ok_or(ConnectError::RelayNotPaired)?;
@@ -117,12 +146,16 @@ pub async fn connect(file: &ConfigFile, relay: Option<Target>, host_id: &str) ->
         TicketFailure::Unreachable => ConnectError::RelayUnreachable,
     })?;
     let body = json!({ "ticketId": ticket.ticket_id, "secret": ticket.secret }).to_string();
-    let req = Request::post("/remote/pair")
-        .header(header::HOST, tls::SERVER_NAME)
-        .header(header::CONTENT_TYPE, "application/json")
-        .body(Body::from(body))
-        .expect("pair request");
-    let Sent::Answered(res) = send(&ticket.endpoint, req).await else { return Err(ConnectError::RemoteUnreachable) };
+    let req = || {
+        Request::post("/remote/pair")
+            .header(header::HOST, tls::SERVER_NAME)
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from(body.clone()))
+            .ok()
+    };
+    let Sent::Answered(res) = send_to(Some(&relay), host_id, &ticket.endpoint, &req).await else {
+        return Err(ConnectError::RemoteUnreachable);
+    };
     if !res.status().is_success() {
         return Err(if res.status() == StatusCode::UNAUTHORIZED { ConnectError::Rejected } else { ConnectError::RemoteUnreachable });
     }
@@ -197,19 +230,16 @@ async fn forward_once(file: &ConfigFile, relay: Option<Target>, host_id: &str, p
         return error(StatusCode::PAYLOAD_TOO_LARGE, "body_too_large");
     };
     let request = || build(&parts.method, path, &parts.headers, &daemon.token, &body);
-    let Some(first) = request() else {
+    if request().is_none() {
         return error(StatusCode::BAD_REQUEST, "bad_request");
-    };
-    let mut endpoint = endpoint_of(&daemon);
-    let mut res = send(&endpoint, first).await;
+    }
+    let endpoint = endpoint_of(&daemon);
+    let mut res = send_to(relay.as_ref(), host_id, &endpoint, &request).await;
     if matches!(res, Sent::NotConnected) {
         // 주소가 바뀌었거나 원격 데몬이 인증서를 새로 만들었을 수 있다: 릴레이가 아는 지금 값으로 한 번 더
         if let Some(fresh) = fresh_endpoint(relay.as_ref(), host_id).await.filter(|e| *e != endpoint) {
             let _ = config::update_endpoint_in(file, host_id, &fresh.address, fresh.port, &fresh.cert_sha256);
-            endpoint = fresh;
-            if let Some(again) = request() {
-                res = send(&endpoint, again).await;
-            }
+            res = send_to(relay.as_ref(), host_id, &fresh, &request).await;
         }
     }
     let res = match res {
@@ -240,6 +270,46 @@ mod tests {
     struct Relay {
         /// 원격 PC(host-b)가 올린 지금 주소
         endpoint: Arc<Mutex<Value>>,
+        /// 터널 흉내: 원격 PC의 실제 원격 포트, 릴레이 주소, 받기를 기다리는 A 소켓, 연 터널 수
+        port: Arc<Mutex<u16>>,
+        base: Arc<Mutex<String>>,
+        waiting: Arc<Mutex<std::collections::HashMap<String, axum::extract::ws::WebSocket>>>,
+        tunnels: Arc<std::sync::atomic::AtomicUsize>,
+    }
+
+    /// 두 웹소켓의 프레임을 잇는다 (릴레이 `TunnelHub` 흉내)
+    async fn splice(a: axum::extract::ws::WebSocket, b: axum::extract::ws::WebSocket) {
+        let (mut a_tx, mut a_rx) = a.split();
+        let (mut b_tx, mut b_rx) = b.split();
+        let ab = async { while let Some(Ok(m)) = a_rx.next().await { if futures_util::SinkExt::send(&mut b_tx, m).await.is_err() { break } } };
+        let ba = async { while let Some(Ok(m)) = b_rx.next().await { if futures_util::SinkExt::send(&mut a_tx, m).await.is_err() { break } } };
+        tokio::select! { () = ab => {} () = ba => {} }
+    }
+
+    /// `/node/tunnel`: A가 `to=host-b`로 열면 B 에이전트가 명령을 받은 것처럼 `tunnel::accept`를 띄우고, B가 `accept=`로 붙으면 잇는다
+    async fn tunnel_ws(
+        State(r): State<Relay>,
+        axum::extract::Query(q): axum::extract::Query<std::collections::HashMap<String, String>>,
+        ws: axum::extract::ws::WebSocketUpgrade,
+    ) -> Response {
+        if let Some(id) = q.get("accept").cloned() {
+            return ws.on_upgrade(move |b| async move {
+                let a = r.waiting.lock().unwrap().remove(&id);
+                if let Some(a) = a {
+                    splice(a, b).await;
+                }
+            });
+        }
+        if q.get("to").map(String::as_str) != Some("host-b") {
+            return StatusCode::NOT_FOUND.into_response();
+        }
+        ws.on_upgrade(move |a| async move {
+            let id = format!("t{}", r.tunnels.fetch_add(1, std::sync::atomic::Ordering::SeqCst));
+            r.waiting.lock().unwrap().insert(id.clone(), a);
+            let b = Target { base: r.base.lock().unwrap().clone(), token: "sbn_host-b.secret".into() };
+            let port = *r.port.lock().unwrap();
+            tokio::spawn(tunnel::accept(b, id, port));
+        })
     }
 
     /// 릴레이 흉내: host-b 앞 연결표·확인·PC 목록. host-off는 주소가 없고 그 밖은 남의 PC다
@@ -279,9 +349,11 @@ mod tests {
                     Json(json!({ "peers": [{ "hostId": "host-b", "name": "원격 PC", "status": "online", "endpoint": endpoint }] }))
                 }),
             )
-            .with_state(state);
+            .route("/node/tunnel", get(tunnel_ws))
+            .with_state(state.clone());
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let base = format!("http://{}", listener.local_addr().unwrap());
+        *state.base.lock().unwrap() = base.clone();
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         Target { base, token: "sbn_host-a.secret".into() }
     }
@@ -324,6 +396,7 @@ mod tests {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
         *state.endpoint.lock().unwrap() = json!({ "address": "127.0.0.1", "port": port, "certSha256": id.sha256 });
+        *state.port.lock().unwrap() = port;
         let cancel = CancellationToken::new();
         tokio::spawn(server::serve(listener, Arc::new(id.server_config().unwrap()), server::router(routes, ctx), cancel.clone()));
         (dir, cancel)
@@ -369,6 +442,52 @@ mod tests {
 
         let (status, body) = json_of(forward(&file, Some(relay), "host-x", "/api/echo", get_req(&[]), CancellationToken::new()).await).await;
         assert_eq!((status, body["error_code"].as_str()), (404, Some("remote_unknown")));
+    }
+
+    /// 공인 주소가 없는 PC(NAT 뒤)는 릴레이 터널로 짝을 맺고 요청을 보낸다. 터널 하나를 계속 쓴다
+    #[tokio::test]
+    async fn a_pc_without_a_public_address_is_reached_through_the_relay_tunnel() {
+        let state = Relay::default();
+        let relay = fake_relay(state.clone()).await;
+        let (_b, _stop) = remote_daemon(&relay, &state, None).await;
+        state.endpoint.lock().unwrap()["address"] = Value::Null;
+        let dir = tempfile::tempdir().unwrap();
+        let file = ConfigFile::at(dir.path());
+
+        let daemon = connect(&file, Some(relay.clone()), "host-b").await.unwrap();
+        assert_eq!(daemon.address, "");
+        let req = get_req(&[("accept-language", "ko")]);
+        let (status, body) = json_of(forward(&file, Some(relay.clone()), "host-b", "/api/echo", req, CancellationToken::new()).await).await;
+        assert_eq!((status, body["lang"].as_str()), (200, Some("ko")), "{body}");
+        let post = Request::post("/ignored").header("content-type", "text/plain").body(Body::from("hello")).unwrap();
+        let res = forward(&file, Some(relay.clone()), "host-b", "/api/echo", post, CancellationToken::new()).await;
+        assert_eq!(axum::body::to_bytes(res.into_body(), 1024).await.unwrap(), "hello");
+        // 이벤트 스트림이 열려 있어도 다른 요청은 같은 터널로 간다
+        let res = forward(&file, Some(relay.clone()), "host-b", "/api/stream", get_req(&[]), CancellationToken::new()).await;
+        let mut stream = res.into_body().into_data_stream();
+        assert_eq!(stream.next().await.unwrap().unwrap(), "first\n");
+        let (status, _) = json_of(forward(&file, Some(relay.clone()), "host-b", "/api/echo", get_req(&[]), CancellationToken::new()).await).await;
+        assert_eq!(status, 200);
+        assert_eq!(state.tunnels.load(std::sync::atomic::Ordering::SeqCst), 1, "one tunnel carries every request");
+        // 원격 데몬을 잊으면 열어 둔 터널을 놓는다 (릴레이의 터널 수 한도를 쥐고 있지 않게)
+        assert!(tunnel::is_open(Some(&relay), "host-b"));
+        tunnel::close("host-b");
+        assert!(!tunnel::is_open(Some(&relay), "host-b"));
+    }
+
+    /// 주소가 있어도 직접 닿지 않으면(공유기가 포트를 넘기지 않음) 터널로 붙는다
+    #[tokio::test]
+    async fn an_unreachable_address_falls_back_to_the_tunnel() {
+        let state = Relay::default();
+        let relay = fake_relay(state.clone()).await;
+        let (_b, _stop) = remote_daemon(&relay, &state, None).await;
+        state.endpoint.lock().unwrap()["port"] = json!(9);
+        let dir = tempfile::tempdir().unwrap();
+        let file = ConfigFile::at(dir.path());
+        connect(&file, Some(relay.clone()), "host-b").await.unwrap();
+        let (status, body) = json_of(forward(&file, Some(relay), "host-b", "/api/echo", get_req(&[]), CancellationToken::new()).await).await;
+        assert_eq!(status, 200, "{body}");
+        assert_eq!(state.tunnels.load(std::sync::atomic::Ordering::SeqCst), 1);
     }
 
     #[tokio::test]

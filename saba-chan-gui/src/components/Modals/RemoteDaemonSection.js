@@ -211,7 +211,7 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow }) {
                             onChange={(e) => setDraft({ ...draft, address: e.target.value })}
                         />
                     </div>
-                    <div className="data-transfer-actions">
+                    <div className="data-transfer-actions remote-daemon-actions">
                         <span className="muted" role="status">
                             {!settings.enabled && t('remote_daemon.status_off')}
                             {settings.enabled && status.listening && t('remote_daemon.status_listening', { port: settings.port })}

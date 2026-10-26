@@ -74,8 +74,7 @@ pub async fn run(ctx: &Ctx, cmd: RemoteCmd) -> Result<()> {
                 }
                 let mut t = output::table(&[t!("col.name"), t!("remote.host_id"), t!("remote.address"), t!("remote.paired_at")]);
                 for d in &daemons {
-                    let address = format!("{}:{}", s(d, "address"), d.get("port").map(|p| p.to_string()).unwrap_or_default());
-                    t.add_row(vec![s(d, "name").to_string(), s(d, "hostId").to_string(), address, s(d, "pairedAt").to_string()]);
+                    t.add_row(vec![s(d, "name").to_string(), s(d, "hostId").to_string(), daemon_address(d), s(d, "pairedAt").to_string()]);
                 }
                 output::print_table(t);
             });
@@ -139,6 +138,14 @@ fn yes_no(v: &Value, key: &str) -> String {
 }
 
 /// 준 것만 바꾼다
+/// 붙는 원격 데몬의 주소. 공인 주소가 없는 PC는 릴레이 터널로 붙는다 (T1)
+fn daemon_address(d: &Value) -> String {
+    match s(d, "address") {
+        "" => t!("remote.via_relay"),
+        address => format!("{}:{}", address, d.get("port").map(|p| p.to_string()).unwrap_or_default()),
+    }
+}
+
 fn patch(on: bool, off: bool, port: Option<u16>, address: Option<String>) -> Map<String, Value> {
     let mut body = Map::new();
     if on || off {
@@ -205,6 +212,12 @@ mod tests {
         assert_eq!(rows[0], [t!("remote.this_pc"), "test-pal".into(), "palworld".into(), state_label("running")]);
         assert_eq!(rows[1], ["게임 PC".to_string(), "-".into(), String::new(), t!("remote.no_servers")]);
         assert_eq!(rows[2], ["host-c".to_string(), "-".into(), String::new(), t!("remote.connect_error.remote_unreachable")]);
+    }
+
+    #[test]
+    fn a_daemon_without_a_public_address_is_reached_through_the_relay() {
+        assert_eq!(daemon_address(&json!({ "address": "", "port": 57480 })), t!("remote.via_relay"));
+        assert_eq!(daemon_address(&json!({ "address": "h.example", "port": 57480 })), "h.example:57480");
     }
 
     #[test]

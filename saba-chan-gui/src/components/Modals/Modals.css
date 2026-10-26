@@ -3201,6 +3201,10 @@
 }
 
 /* 설정 > 고급: 원격 데몬 */
+/* 상태 글자를 저장 버튼과 세로 가운데에 맞춘다 */
+.remote-daemon-actions {
+    align-items: center;
+}
 .remote-daemon-subtitle {
     margin: var(--sp-2) 0 0;
     font-size: 13px;

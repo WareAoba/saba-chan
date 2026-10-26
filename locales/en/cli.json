@@ -1174,7 +1174,7 @@
     "not_listening": "Not open",
     "off": "Off",
     "address": "Public address",
-    "no_address": "None (not sent to the relay)",
+    "no_address": "None (connects through the relay)",
     "published": "Sent to the relay",
     "fingerprint": "Certificate fingerprint",
     "yes": "Yes",
@@ -1196,8 +1196,8 @@
     "forgotten": "Forgot the remote daemon on {{host}}.",
     "connect_error": {
       "remote_not_found": "That PC is not one of your other PCs",
-      "remote_no_endpoint": "That PC has not opened its remote port or sent its public address",
-      "remote_unreachable": "Could not reach the remote daemon (check its address and firewall)",
+      "remote_no_endpoint": "That PC has not opened its remote port",
+      "remote_unreachable": "Could not reach the remote daemon (check that the PC is on)",
       "remote_rejected": "The remote daemon did not accept the connection. Try again",
       "remote_unknown": "Not a remote daemon you connected to. Check `remote daemons`",
       "relay_not_paired": "This PC is not connected to the relay",
@@ -1207,6 +1207,7 @@
     },
     "daemon": "Daemon",
     "this_pc": "This PC",
-    "no_servers": "No servers"
+    "no_servers": "No servers",
+    "via_relay": "Through the relay"
   }
 }
