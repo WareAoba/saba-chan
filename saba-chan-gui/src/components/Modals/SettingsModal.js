@@ -83,6 +83,8 @@ function SettingsModal({
     const [appVersion, setAppVersion] = useState(null);
     const [componentInfo, setComponentInfo] = useState(null);
     const aboutBtnRef = useRef(null);
+    // 이스터에그: 정보 페이지 로고를 다섯 번 누르면 이름 해명
+    const logoClicks = useRef(0);
     const [aboutRevealOrigin, setAboutRevealOrigin] = useState({ x: '100%', y: '0%' });
     const tabOrder = ['general', 'appearance', 'advanced'];
     const { isClosing, requestClose } = useModalClose(onClose);
@@ -115,6 +117,7 @@ function SettingsModal({
     const devMode = useDevMode();
     const autoGeneratePasswords = useSettingsStore((s) => s.autoGeneratePasswords);
     const portConflictCheck = useSettingsStore((s) => s.portConflictCheck);
+    const autoPortCheck = useSettingsStore((s) => s.autoPortCheck);
     const osNotifications = useSettingsStore((s) => s.osNotifications);
     const sounds = useSettingsStore((s) => s.sounds);
     const setSound = (key, on) => useSettingsStore.getState().update({ sounds: { ...sounds, [key]: on } });
@@ -804,6 +807,23 @@ function SettingsModal({
                                 />
                             </div>
 
+                            {/* 자동 포트포워딩 확인 (데몬이 서버를 만들 때·켜질 때) */}
+                            <div className="setting-item">
+                                <label className="setting-label">
+                                    <span className="setting-title">
+                                        <Icon name="globe" size="sm" />{' '}
+                                        {t('gui:settings_modal.auto_port_check_label', 'Automatic Port Forwarding Check')}
+                                    </span>
+                                    <span className="setting-description">
+                                        {t('gui:settings_modal.auto_port_check_description', 'When a server is created and when Saba-chan starts, quietly check through the relay whether friends can reach your servers.')}
+                                    </span>
+                                </label>
+                                <SabaToggle
+                                    checked={autoPortCheck}
+                                    onChange={(checked) => useSettingsStore.getState().update({ autoPortCheck: checked })}
+                                />
+                            </div>
+
                             {/* IPC 포트 설정 */}
                             <div className="setting-item">
                                 <label className="setting-label">
@@ -1169,7 +1189,17 @@ function SettingsModal({
                         {/* 사바쨩 정보 카드 */}
                         <div className="about-card about-app-card">
                             <div className="about-app-logo-container">
-                                <img src="./title.png" alt="Saba-chan" className="about-app-logo" />
+                                <img
+                                    src="./title.png"
+                                    alt="Saba-chan"
+                                    className="about-app-logo"
+                                    onClick={() => {
+                                        logoClicks.current += 1;
+                                        if (logoClicks.current < 5) return;
+                                        logoClicks.current = 0;
+                                        safeShowToast(t('gui:settings_modal.name_egg'), 'info', 6000);
+                                    }}
+                                />
                                 {appVersion && <span className="about-version-badge">v{appVersion}</span>}
                             </div>
                             <div className="about-app-info">

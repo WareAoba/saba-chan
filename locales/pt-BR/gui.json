@@ -60,6 +60,8 @@
     "auto_generate_passwords_description": "Se a senha REST de um servidor estiver vazia, ela é preenchida com uma aleatória ao iniciar. Senhas existentes nunca são alteradas.",
     "port_conflict_check_label": "Detecção de conflito de porta",
     "port_conflict_check_description": "Mostra avisos quando várias instâncias de servidor usam a mesma porta.",
+    "auto_port_check_label": "Verificação automática de portas",
+    "auto_port_check_description": "Ao criar um servidor e ao iniciar o Saba-chan, verifica em silêncio pelo relay se os amigos conseguem entrar de fora. Se estiver fechada, avisa na página do servidor.",
     "uninstall_label": "Desinstalar Saba-chan",
     "uninstall_description": "Remover completamente o Saba-chan deste computador. Os servidores em execução são desligados corretamente primeiro e depois o instalador é executado no modo de desinstalação.",
     "uninstall_confirm_title": "Desinstalar Saba-chan",
@@ -78,6 +80,7 @@
     "dev_nickname": "WareAoba",
     "dev_bio": "Domador de IA",
     "github_repo": "Repositório no GitHub",
+    "name_egg": "Nada a ver com um certo VTuber… Só descobri depois de escolher o nome, e também acho injusto.",
     "accent_color_label": "Cor de destaque",
     "accent_color_description": "Escolha a cor dos botões e dos destaques",
     "accent_purple": "Roxo",
@@ -1067,7 +1070,10 @@
     "prefix_err_count": "Até {{max}} prefixos.",
     "prefix_err_length": "Prefixos têm no máximo {{max}} caracteres: {{words}}",
     "translate_commands_title": "Nomes de comandos traduzidos",
-    "translate_commands_desc": "Mostra nomes e descrições traduzidos dos comandos do jogo nos comandos de barra do Discord. Desligado, mostra só os nomes do módulo (por exemplo save-all)."
+    "translate_commands_desc": "Mostra nomes e descrições traduzidos dos comandos do jogo nos comandos de barra do Discord. Desligado, mostra só os nomes do módulo (por exemplo save-all).",
+    "start_notice": "Alerta de início de {{name}}",
+    "start_notice_hint": "Servidores com o sino ligado são anunciados no canal de alertas deste servidor do Discord quando a Saba-chan os inicia. Inícios pelo Discord e fora da Saba-chan ficam de fora. Escolha o canal de alertas na aba Canais.",
+    "start_notice_save_failed": "Não foi possível salvar o alerta de início: {{error}}"
   },
   "maintenance": {
     "load_failed": "Não foi possível carregar os backups e agendamentos.",
@@ -1346,6 +1352,17 @@
     "empty": "Nenhuma atividade ainda.",
     "load_failed": "Não foi possível carregar o registro de atividades.",
     "more": "Mostrar mais",
+    "export": "Exportar",
+    "exported": "{{count}} registros exportados.",
+    "export_failed": "Não foi possível exportar os registros.",
+    "period": "Período",
+    "period_all": "Tudo",
+    "period_today": "Hoje",
+    "period_7d": "Últimos 7 dias",
+    "period_30d": "Últimos 30 dias",
+    "period_custom": "Personalizado",
+    "from": "De",
+    "to": "Até",
     "ok": "Sucesso",
     "failed": "Falhou ({{status}})",
     "action_start": "Iniciar",
@@ -1710,5 +1727,39 @@
     "exists": "{{name}} já existe. Pressione de novo para substituir",
     "replace": "Substituir",
     "bad_name": "O nome não pode conter / nem \\"
+  },
+  "port_check": {
+    "button": "Verificar redirecionamento de portas",
+    "running": "Verificando…",
+    "address": "IP público {{address}} (os amigos entram com este endereço e a porta)",
+    "help": "Guia de redirecionamento de portas",
+    "verdict": {
+      "open": "Acessível pela internet",
+      "firewall": "Bloqueado pelo firewall do PC",
+      "closed": "Não acessível pela internet",
+      "cgnat": "Seu roteador não tem IP público (CGNAT)",
+      "unknown": "Algumas portas não puderam ser verificadas",
+      "no_ports": "Este jogo não informa quais portas verificar"
+    },
+    "status": {
+      "open": "Aberta",
+      "closed": "Fechada",
+      "unknown": "Não verificada",
+      "in_use": "Em uso por outro programa",
+      "firewall": "Bloqueado pelo firewall"
+    },
+    "hint": {
+      "closed": "Confira se o roteador redireciona esta porta para este PC e se o firewall do PC a permite.",
+      "firewall": "O Firewall do Windows está bloqueando o Saba-chan (saba-core). Permita no aviso que aparece durante a verificação ou permita o saba-core nas configurações do Firewall do Windows e verifique novamente.",
+      "cgnat": "Sua operadora divide um IP público entre várias casas, então o redirecionamento de portas não consegue abri-lo. Peça um IP público à operadora ou use uma VPN como o Tailscale.",
+      "unknown": "Não é possível verificar portas UDP de um servidor ligado nem portas usadas por outro programa. Pare o servidor e verifique de novo."
+    },
+    "error": {
+      "node_token_missing": "Conecte ao Discord (pareamento) primeiro. Quem verifica é o relay.",
+      "port_check_busy": "Já há uma verificação em andamento. Tente de novo em instantes.",
+      "rate_limited": "Verificações demais. Tente de novo em um minuto.",
+      "relay_unreachable": "Não foi possível alcançar o relay. Verifique sua conexão com a internet.",
+      "failed": "Não foi possível verificar."
+    }
   }
 }

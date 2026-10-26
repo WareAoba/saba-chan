@@ -530,6 +530,30 @@
     gap: var(--sp-4);
     min-height: 100%;
 }
+/* 서버 상세: 칸 → 감싸개 → 상세를 세로 flex로 이어, 기록 탭은 칸 높이에 맞춰 목록만 스크롤한다.
+   다른 탭은 줄지 않고(flex-shrink 0) 칸이 스크롤한다 */
+.server-detail-flex {
+    display: flex;
+    flex-direction: column;
+}
+.server-detail-flex > * {
+    flex: none;
+}
+.server-detail-flex > .server-detail-host {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+}
+.server-detail-host > .server-detail {
+    flex: 1 0 auto;
+    width: 100%;
+}
+.server-detail-host > .server-detail.fill-pane {
+    flex: 1 1 0;
+}
+.server-detail.fill-pane > .detail-body {
+    min-height: auto;
+}
 .detail-head {
     display: flex;
     align-items: center;
@@ -1893,6 +1917,9 @@ button.activity-line:hover {
 .dc-list-row.dim .dc-list-text {
     opacity: 0.55;
 }
+.dc-notice-btn.active {
+    color: var(--accent);
+}
 .dc-list-btn {
     background: none;
     border: none;
@@ -2836,8 +2863,40 @@ button.appbar-preflight {
 .audit-more {
     align-self: center;
 }
+/* 머리·기간·더 보기는 제자리에 두고 목록만 스크롤한다 */
+.audit-card {
+    flex: 1;
+}
+/* 크기 격리: 목록 길이가 바깥 칸의 최소 높이로 번지지 않게 한다. 칸이 아주 작으면 이 높이까지만 줄고 바깥이 스크롤한다 */
+.audit-scroll {
+    flex: 1;
+    min-height: calc(var(--sp-6) * 5);
+    overflow-y: auto;
+    contain: size;
+}
+.audit-period {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--sp-2);
+}
+.audit-dates {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    color: var(--text-3);
+}
+.audit-dates .input {
+    width: auto;
+}
+.page-activity {
+    align-items: stretch;
+}
 .activity-page {
     width: 100%;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
 }
 
 /* 서버 설정 맨 위: 최종 실행 인자 미리보기 (읽기 전용) */
@@ -3133,6 +3192,38 @@ button.appbar-preflight {
     margin: var(--sp-0-5) 0 0;
     color: var(--text-secondary);
     font-size: 0.92em;
+}
+
+/* 포트포워딩 확인 결과: 정보 탭 */
+.port-check-result {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1-5);
+}
+.port-check-verdict {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-1-5);
+    margin: 0;
+    font-weight: 600;
+}
+.port-check-verdict.verdict-open {
+    color: var(--success);
+}
+.port-check-verdict.verdict-firewall,
+.port-check-verdict.verdict-closed,
+.port-check-verdict.verdict-cgnat {
+    color: var(--warning);
+}
+.server-check-issue.port-open {
+    color: var(--success);
+}
+.server-check-issue.port-closed,
+.server-check-issue.port-firewall {
+    color: var(--danger);
+}
+.server-check-issue.port-in_use {
+    color: var(--warning);
 }
 
 /* 진단 정보 (설정 > 고급) */

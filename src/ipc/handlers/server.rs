@@ -1160,6 +1160,11 @@ pub async fn start_server_handler(
         },
         None => None,
     };
+    // 포트포워딩 확인이 시험 리스너로 포트를 잡고 있으면 놓을 때까지 (몇 초). 시작하는 동안에는 새 확인이 포트를 잡지 않는다
+    let _starting = match inst_id.as_deref() {
+        Some(id) => Some(crate::port_check::begin_start(id).await),
+        None => None,
+    };
 
     fill_passwords(&state, &name).await;
 

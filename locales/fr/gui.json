@@ -60,6 +60,8 @@
     "auto_generate_passwords_description": "Si le mot de passe REST d'un serveur est vide, il est rempli au hasard au démarrage. Les mots de passe existants ne sont jamais modifiés.",
     "port_conflict_check_label": "Détection de conflit de port",
     "port_conflict_check_description": "Affiche des avertissements lorsque plusieurs instances de serveur utilisent le même port.",
+    "auto_port_check_label": "Vérification automatique des ports",
+    "auto_port_check_description": "À la création d’un serveur et au démarrage de Saba-chan, vérifie discrètement via le relais si vos amis peuvent se connecter depuis l’extérieur. Un port fermé s’affiche sur la page du serveur.",
     "uninstall_label": "Désinstaller Saba-chan",
     "uninstall_description": "Supprimer complètement Saba-chan de cet ordinateur. Les serveurs en cours d'exécution sont d'abord arrêtés proprement, puis le programme d'installation s'exécute en mode désinstallation.",
     "uninstall_confirm_title": "Désinstaller Saba-chan",
@@ -78,6 +80,7 @@
     "dev_nickname": "WareAoba",
     "dev_bio": "Dompteur d'IA",
     "github_repo": "Dépôt GitHub",
+    "name_egg": "Aucun rapport avec un certain VTuber… Je l'ai appris après avoir choisi le nom, et franchement, ce n'est pas juste.",
     "accent_color_label": "Couleur d'accentuation",
     "accent_color_description": "Choisissez la couleur des boutons et des surlignages",
     "accent_purple": "Violet",
@@ -1067,7 +1070,10 @@
     "prefix_err_count": "{{max}} préfixes au maximum.",
     "prefix_err_length": "Les préfixes font au plus {{max}} caractères : {{words}}",
     "translate_commands_title": "Noms de commandes traduits",
-    "translate_commands_desc": "Affiche les noms et descriptions traduits des commandes du jeu dans les commandes slash Discord. Désactivé, seuls les noms du module (par exemple save-all) sont affichés."
+    "translate_commands_desc": "Affiche les noms et descriptions traduits des commandes du jeu dans les commandes slash Discord. Désactivé, seuls les noms du module (par exemple save-all) sont affichés.",
+    "start_notice": "Alerte de démarrage de {{name}}",
+    "start_notice_hint": "Les serveurs avec la cloche activée sont annoncés dans le canal d’alertes de ce serveur Discord quand Saba-chan les démarre. Les démarrages depuis Discord ou hors de Saba-chan ne sont pas annoncés. Choisissez le canal d’alertes dans l’onglet Canaux.",
+    "start_notice_save_failed": "Impossible d’enregistrer l’alerte de démarrage : {{error}}"
   },
   "maintenance": {
     "load_failed": "Impossible de charger les sauvegardes et la planification.",
@@ -1346,6 +1352,17 @@
     "empty": "Aucune activité pour l'instant.",
     "load_failed": "Impossible de charger le journal d'activité.",
     "more": "Afficher plus",
+    "export": "Exporter",
+    "exported": "{{count}} entrées exportées.",
+    "export_failed": "Impossible d'exporter les entrées.",
+    "period": "Période",
+    "period_all": "Tout",
+    "period_today": "Aujourd'hui",
+    "period_7d": "7 derniers jours",
+    "period_30d": "30 derniers jours",
+    "period_custom": "Personnalisé",
+    "from": "Du",
+    "to": "Au",
     "ok": "Réussi",
     "failed": "Échec ({{status}})",
     "action_start": "Démarrer",
@@ -1710,5 +1727,39 @@
     "exists": "{{name}} existe déjà. Appuyez encore pour le remplacer",
     "replace": "Remplacer",
     "bad_name": "Un nom ne peut pas contenir / ni \\"
+  },
+  "port_check": {
+    "button": "Vérifier la redirection de ports",
+    "running": "Vérification…",
+    "address": "IP publique {{address}} (vos amis se connectent avec cette adresse et le port)",
+    "help": "Guide de redirection de ports",
+    "verdict": {
+      "open": "Accessible depuis Internet",
+      "firewall": "Bloqué par le pare-feu du PC",
+      "closed": "Inaccessible depuis Internet",
+      "cgnat": "Votre routeur n’a pas d’IP publique (CGNAT)",
+      "unknown": "Certains ports n’ont pas pu être vérifiés",
+      "no_ports": "Ce jeu n’indique pas quels ports vérifier"
+    },
+    "status": {
+      "open": "Ouvert",
+      "closed": "Fermé",
+      "unknown": "Non vérifié",
+      "in_use": "Utilisé par un autre programme",
+      "firewall": "Bloqué par le pare-feu"
+    },
+    "hint": {
+      "closed": "Vérifiez que le routeur redirige ce port vers ce PC et que le pare-feu du PC l’autorise.",
+      "firewall": "Le pare-feu Windows bloque Saba-chan (saba-core). Autorisez-le dans la fenêtre qui s’affiche pendant la vérification, ou autorisez saba-core dans les paramètres du pare-feu Windows, puis vérifiez à nouveau.",
+      "cgnat": "Votre fournisseur partage une IP publique entre plusieurs foyers : la redirection de ports ne peut pas l’ouvrir. Demandez une IP publique à votre fournisseur ou utilisez un VPN comme Tailscale.",
+      "unknown": "Impossible de vérifier les ports UDP d’un serveur en marche ni les ports utilisés par un autre programme. Arrêtez le serveur et vérifiez à nouveau."
+    },
+    "error": {
+      "node_token_missing": "Connectez d’abord Discord (appairage). C’est le relais qui vérifie.",
+      "port_check_busy": "Une vérification est déjà en cours. Réessayez dans un instant.",
+      "rate_limited": "Trop de vérifications. Réessayez dans une minute.",
+      "relay_unreachable": "Impossible de joindre le relais. Vérifiez votre connexion Internet.",
+      "failed": "La vérification a échoué."
+    }
   }
 }

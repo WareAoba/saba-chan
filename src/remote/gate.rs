@@ -42,6 +42,7 @@ pub static ROUTES: &[Route] = &[
     deny("GET", "/api/diagnostics"),
     deny("GET", "/api/onboarding"),
     deny("GET", "/api/audit"),
+    deny("POST", "/api/audit/export"),
     // 이벤트는 원격 연결이 따로 밀어 준다 (SSE는 요청·응답 한 번으로 끝나지 않는다)
     deny("GET", "/api/events"),
     // ── 서버 ──
@@ -66,6 +67,9 @@ pub static ROUTES: &[Route] = &[
     allow("POST", "/api/instance/{id}/query/{name}"),
     allow("POST", "/api/instance/{id}/validate"),
     allow("POST", "/api/instance/{id}/diagnose"),
+    // 포트포워딩 확인: 릴레이가 요청한 PC의 공인 주소로만 확인한다
+    allow("GET", "/api/instance/{id}/port-check"),
+    allow("POST", "/api/instance/{id}/port-check"),
     // ── 인스턴스 ──
     allow("GET", "/api/instances"),
     allow("POST", "/api/instances"),
@@ -187,6 +191,8 @@ pub static ROUTES: &[Route] = &[
     allow("GET", "/api/instance/{id}/words"),
     allow("PUT", "/api/instance/{id}/words"),
     allow("PUT", "/api/guilds/{guild}/allowed-instances"),
+    allow("GET", "/api/guilds/{guild}/start-notice"),
+    allow("PUT", "/api/instance/{id}/start-notice/{guild}"),
     allow("GET", "/api/relay/host/{host_id}/nodes"),
     allow("GET", "/api/relay/node/{guild_id}/members"),
     // ── 디스코드 설정·릴레이 연결: 웹이 타고 있는 연결 자체다 ──

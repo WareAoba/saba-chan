@@ -1,7 +1,7 @@
 import * as L from '@gui/components/discord/levels';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useApp } from '../store';
+import { useApp, useData } from '../store';
 import { Dropdown } from './Dropdown';
 import { Icon } from './icons';
 import { Button, Empty, errorText, failed, Loading, Section } from './ui';
@@ -155,6 +155,80 @@ function LadderEditor({ perm, busy, onSave, t }) {
     );
 }
 
+/** 켜짐 알림 줄: 이 디스코드 서버가 쓰기로 한 서버만 (allowedInstances 가 null 이면 전부), 켠 것은 on */
+export function noticeRows(servers, notice) {
+    if (!notice) return [];
+    const on = new Set(Array.isArray(notice.instances) ? notice.instances : []);
+    const allowed = Array.isArray(notice.allowedInstances) ? new Set(notice.allowedInstances) : null;
+    return servers
+        .filter((s) => !allowed || allowed.has(s.id))
+        .map((s) => ({ id: s.id, name: s.name, on: on.has(s.id) }));
+}
+
+/** 켜짐 알림: 사바쨩이 켠 서버를 이 디스코드 서버의 알림 채널에 알린다 (서버마다, 기본 꺼짐) */
+function StartNotice({ api, guildId }) {
+    const { t } = useTranslation();
+    const toast = useApp((s) => s.toast);
+    const servers = useData((s) => s.servers);
+    const serversLoaded = useData((s) => s.serversLoaded);
+    // null = 읽는 중, false = 읽지 못함
+    const [notice, setNotice] = useState(null);
+    const [busy, setBusy] = useState(false);
+
+    useEffect(() => {
+        setNotice(null);
+        api.guildStartNoticeGet(guildId).then((res) => {
+            if (failed(res)) {
+                toast(errorText(t, res), 'error');
+                setNotice(false);
+            } else setNotice(res);
+        });
+    }, [api, guildId, t, toast]);
+
+    // 한 번에 하나씩: 응답의 목록이 그때의 전체라 겹치면 늦게 온 것이 앞 변경을 덮는다
+    const toggle = async (id, enabled) => {
+        setBusy(true);
+        const res = await api.guildStartNoticeSave(id, guildId, enabled);
+        setBusy(false);
+        if (failed(res)) return toast(errorText(t, res), 'error');
+        setNotice((n) => ({ ...n, instances: res.instances }));
+        toast(enabled ? t('perm.notice_on') : t('perm.notice_off'), 'ok');
+    };
+
+    const rows = noticeRows(servers, notice);
+    return (
+        <div className="field">
+            <span>{t('perm.notice')}</span>
+            <small className="hint">{t('perm.notice_hint')}</small>
+            {notice === false ? null : !notice || !serversLoaded ? (
+                <Loading />
+            ) : rows.length === 0 ? (
+                <Empty>{t('perm.notice_empty')}</Empty>
+            ) : (
+                <ul className="rows">
+                    {rows.map((r) => (
+                        <li key={r.id} className="row">
+                            <div className="row-main">
+                                <div className="row-title row-title-one">{r.name}</div>
+                            </div>
+                            <label className="toggle">
+                                <input
+                                    type="checkbox"
+                                    className="switch"
+                                    aria-label={r.name}
+                                    checked={r.on}
+                                    disabled={busy}
+                                    onChange={(ev) => toggle(r.id, ev.target.checked)}
+                                />
+                            </label>
+                        </li>
+                    ))}
+                </ul>
+            )}
+        </div>
+    );
+}
+
 function GuildPermissions({ api, guildId }) {
     const { t } = useTranslation();
     const toast = useApp((s) => s.toast);
@@ -219,6 +293,7 @@ function GuildPermissions({ api, guildId }) {
                 t={t}
                 onSave={(ladder) => write(() => api.permissionsUpdate(guildId, { ladder }))}
             />
+            <StartNotice api={api} guildId={guildId} />
             <input
                 className="search"
                 type="search"

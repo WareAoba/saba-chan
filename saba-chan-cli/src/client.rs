@@ -414,6 +414,10 @@ impl Api {
     pub async fn players(&self, id: &str) -> Result<Value> {
         self.get_slow(&format!("/api/instance/{}/players", seg(id))).await
     }
+    /// POST /api/instance/:id/port-check — 릴레이가 밖에서 그 서버의 포트에 접속해 본다 (몇 초)
+    pub async fn port_check(&self, id: &str) -> Result<Value> {
+        self.post(&format!("/api/instance/{}/port-check", seg(id)), json!({})).await
+    }
     /// GET /api/instance/:id/logs?source=&lines=&before= — 저장된 실행 로그 `{sources, source, lines, before?}`
     pub async fn logs(&self, id: &str, source: Option<&str>, lines: Option<usize>, before: Option<u64>) -> Result<Value> {
         self.get(&with_query(
@@ -659,12 +663,23 @@ impl Api {
         self.patch("/api/config/gui", patch).await
     }
     /// GET /api/audit — `{entries: [{ts, source, user?, guild?, action, instanceId, instance?, command?, args?, ok, status}]}` 최신이 먼저
-    pub async fn audit(&self, instance: Option<&str>, limit: usize) -> Result<Value> {
+    /// `since`부터 `until` 전까지 (unix 초)
+    pub async fn audit(&self, instance: Option<&str>, limit: usize, since: Option<u64>, until: Option<u64>) -> Result<Value> {
         self.get(&with_query(
             "/api/audit",
-            &[("limit", Some(limit.to_string())), ("instance", instance.map(str::to_string))],
+            &[
+                ("limit", Some(limit.to_string())),
+                ("instance", instance.map(str::to_string)),
+                ("since", since.map(|v| v.to_string())),
+                ("until", until.map(|v| v.to_string())),
+            ],
         ))
         .await
+    }
+    /// POST /api/audit/export — 데몬이 기간의 기록을 모두 `path`에 CSV로 쓴다. `{success, path, count}`
+    pub async fn export_audit(&self, path: &str, instance: Option<&str>, since: Option<u64>, until: Option<u64>) -> Result<Value> {
+        self.post_long("/api/audit/export", json!({ "path": path, "instance": instance, "since": since, "until": until }))
+            .await
     }
     /// GET /api/events — 데몬 이벤트 스트림 (P4, SSE). `since`는 마지막으로 받은 번호
     pub async fn events(&self, since: Option<u64>) -> Result<Events> {
@@ -960,6 +975,14 @@ impl Api {
     /// PUT /api/guilds/:guild/allowed-instances — `{instances: [id] | null}` (null은 제한 없음)
     pub async fn save_allowed_instances(&self, guild_id: &str, instances: Option<&[String]>) -> Result<Value> {
         self.put(&format!("/api/guilds/{}/allowed-instances", seg(guild_id)), json!({ "instances": instances })).await
+    }
+    /// GET /api/guilds/:guild/start-notice — `{guildId, instances}` (켜짐 알림을 켠 서버)
+    pub async fn start_notice(&self, guild_id: &str) -> Result<Value> {
+        self.get(&format!("/api/guilds/{}/start-notice", seg(guild_id))).await
+    }
+    /// PUT /api/instance/:id/start-notice/:guild — `{enabled}` → `{success, id, guildId, enabled, instances}`
+    pub async fn set_start_notice(&self, id: &str, guild_id: &str, enabled: bool) -> Result<Value> {
+        self.put(&format!("/api/instance/{}/start-notice/{}", seg(id), seg(guild_id)), json!({ "enabled": enabled })).await
     }
     // ── 백업·예약 ──
 

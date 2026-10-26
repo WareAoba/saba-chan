@@ -126,7 +126,12 @@
     "words_bad_command": "{{spec}}: コマンド=語,語 の形で書いてください (消すには コマンド=)。",
     "no_paired_servers": "このPCとペアリングされたDiscordサーバーはまだありません。実行: saba-chan-cli bot pair",
     "pick_server": "ペアリングされたDiscordサーバーが複数あります。変更するサーバーのIDを指定してください: {{servers}}",
-    "translate_commands": "コマンド名の翻訳"
+    "translate_commands": "コマンド名の翻訳",
+    "notice_none": "起動通知をオンにしたサーバーはまだありません。サバちゃんがサーバーを起動しても知らせません。",
+    "notice_is_on": "{{server}}: 起動通知オン",
+    "notice_is_off": "{{server}}: 起動通知オフ",
+    "notice_on_saved": "{{guild}}の通知チャンネルに{{server}}の起動を知らせます。",
+    "notice_off_saved": "{{guild}}に{{server}}の起動を知らせないようにしました。"
   },
   "col": {
     "players": "接続者",
@@ -372,7 +377,8 @@
       "autostart_unknown_mode": "off、daemon、full から選んでください。",
       "move_cross_volume": "別のドライブにあるフォルダーは移せません。「今の場所のまま」で取り込んでください。",
       "move_in_use": "フォルダーを移せませんでした。このフォルダーのサーバーを停止し、フォルダーを開いているプログラムを閉じてからもう一度試してください。",
-      "move_failed": "フォルダーを移せませんでした。「今の場所のまま」で取り込んでください。"
+      "move_failed": "フォルダーを移せませんでした。「今の場所のまま」で取り込んでください。",
+      "port_check_busy": "すでに確認中です。しばらくしてからもう一度お試しください"
     },
     "not_a_bool": "「{{value}}」ははい/いいえではありません（true か false を使ってください）。",
     "not_a_number": "「{{value}}」は数値ではありません。",
@@ -854,6 +860,7 @@
       "config.paths": "データ・モジュール・拡張機能フォルダーの場所と既定のフォルダー",
       "config.move": "モジュールや拡張機能を別のフォルダーへ移す。インストール済みのファイルも移す。サーバーはすべて停止が必要",
       "server.players": "今接続している人",
+      "server.port-check": "友だちが外部からこのサーバーに接続できるか確認（ポート開放）",
       "server.rcon": "サーバーがコマンドを受け取る経路(コンソール、なければRCON)で1行送って応答を見る",
       "server.log": "過去の実行まで保存されたログ(コンソールは今回の実行分のみ)",
       "server.query": "ゲームモジュールが提供する照会(名前がなければ一覧)",
@@ -870,7 +877,8 @@
       "remote.servers": "このPCと各リモートデーモンのサーバーをデーモンごとに（操作するには`--daemon <名前>`）",
       "remote.forget": "リモートデーモンを削除（再接続は`remote connect`）",
       "config.autostart": "PCにサインインしたときに起動するもの: off(オフ)、daemon(デーモンとトレイのみ)、full(GUIウィンドウまで)。モードなしで今の値を表示",
-      "config.browse": "デーモンのPCのフォルダーとファイルを表示 (--daemonならそのリモートPC)。パスがなければドライブか /"
+      "config.browse": "デーモンのPCのフォルダーとファイルを表示 (--daemonならそのリモートPC)。パスがなければドライブか /",
+      "bot.notice": "サバちゃんがサーバーを起動したらDiscordサーバーの通知チャンネルに知らせる（既定はオフ）。サーバーなし: 表示、サーバーと`--on`・`--off`: 変更"
     },
     "arg": {
       "module.maker.game": "最初の依頼に入れるゲーム名",
@@ -973,6 +981,9 @@
       "monitor.interval": "--watch での更新間隔 (秒)",
       "audit.limit": "表示する件数",
       "audit.follow": "新しい記録を出続ける (Ctrl+C で終了)",
+      "audit.since": "この日から: YYYY-MM-DD、today、7d(過去7日)",
+      "audit.until": "この日の終わりまで: YYYY-MM-DD または today",
+      "audit.export": "一覧の代わりに期間の記録をすべてこの CSV ファイルに保存",
       "bot.lang.value": "auto または言語コード (ko, en, ja, zh-CN, zh-TW, es, pt-BR, ru, de, fr)",
       "bot.prefix.values": "1 つ以上のプレフィックス (空白なし、32 文字まで、10 個まで)",
       "bot.prefix.default": "アプリの言語の既定のプレフィックスに戻す",
@@ -1022,7 +1033,9 @@
       "keep_settings": "削除時にゲーム設定ファイルを取り込む前に戻さず今のまま残す",
       "move_folder": "--from のフォルダーをその場でつながずサバちゃんのフォルダーへ移す（同じドライブのみ）",
       "config.browse.path": "表示するフォルダーのフルパス",
-      "config.browse.files": "この拡張子のファイルも表示 (カンマ区切り、* ですべて)"
+      "config.browse.files": "この拡張子のファイルも表示 (カンマ区切り、* ですべて)",
+      "bot.notice.on": "起動通知をオン",
+      "bot.notice.off": "起動通知をオフ"
     },
     "after": "名前は一部だけでも指定できます（例: start pal）。端末で引数なしで実行すると全画面メニューが開きます(SABA_NO_TUI=1 なら対話シェル)。\nスクリプトでは --json と --yes を使ってください。終了コード: 0 成功 · 1 失敗 · 2 使い方の誤り · 3 デーモンに接続不可 · 4 見つからない · 130 キャンセル"
   },
@@ -1214,6 +1227,10 @@
     "from": "送信元",
     "what": "内容",
     "result": "結果",
+    "exported": "記録を{{count}}件 {{path}} に保存しました。",
+    "bad_date": "日付は 2026-10-01、today、7d のように書いてください: {{value}}",
+    "export_write_failed": "ファイルを書き込めませんでした。保存先と権限を確認してください。",
+    "export_invalid_path": "ファイルパスが正しくありません。フルパスで指定してください。",
     "scanning": "{{name}} のコードを検査中...",
     "declared": "宣言済み",
     "none_declared": "(なし)",
@@ -1483,5 +1500,30 @@
     "this_pc": "このPC",
     "no_servers": "サーバーなし",
     "via_relay": "リレー経由"
+  },
+  "port_check": {
+    "title": "{{server}} のポート開放確認",
+    "address": "グローバルIP {{address}}（友だちはこのアドレスとポートで接続します）",
+    "verdict": {
+      "open": "外部から接続できます",
+      "firewall": "PCのファイアウォールがブロックしています",
+      "closed": "外部から接続できません",
+      "cgnat": "ルーターがグローバルIPを受け取っていません（CGNAT）",
+      "unknown": "一部のポートは確認できませんでした",
+      "no_ports": "このゲームは確認するポートを示していません"
+    },
+    "status": {
+      "open": "開放",
+      "closed": "閉鎖",
+      "unknown": "未確認",
+      "in_use": "他のプログラムが使用中",
+      "firewall": "ファイアウォールがブロック"
+    },
+    "hint": {
+      "closed": "ルーターでこのポートをこのPCへ転送しているか、PCのファイアウォールで許可しているか確認してください。",
+      "firewall": "Windowsファイアウォールがサバちゃん（saba-core）の接続をブロックしています。確認時に表示される許可画面で許可するか、Windowsファイアウォールの設定でsaba-coreを許可してから、もう一度確認してください。",
+      "cgnat": "プロバイダーが1つのグローバルIPを複数の家庭で共有しているため、ポート開放では開けません。プロバイダーにグローバルIPを依頼するか、TailscaleなどのVPNを使ってください。",
+      "unknown": "起動中のサーバーのUDPポートと、他のプログラムが使っているポートは確認できません。サーバーを停止してからもう一度確認してください。"
+    }
   }
 }

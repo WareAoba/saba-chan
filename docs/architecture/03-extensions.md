@@ -304,6 +304,7 @@ ue4-ini는 hook을 선언하지 않는다. steamcmd의 condition은 `instance.ex
 - `SteamCMD` 클래스(`steamcmd.py:151-622`): 포터블 SteamCMD 탐색/설치, `install(...)`, `update`, buildid·브랜치 비교로 `check_update`. 압축 해제는 경로 탈출을 막는다(`:799-827`).
 - daemon hook으로 실제로 쓰이는 것은 `server.check_update` 하나뿐이다. 설치는 module의 `lifecycle.py install_server`가 `from extensions.steamcmd import SteamCMD`로 직접 수행한다(`M:palworld/lifecycle.py:1175`, `M:zomboid/lifecycle.py:1457`).
 - `install_for_module(module_dir, install_dir, beta=None)`(steamcmd 다음 판): 모듈 module.toml `[install]`(`method = "steamcmd"`, `app_id`, `anonymous`, `beta`)을 읽어 SteamCMD를 준비하고 설치·업데이트한다. 앱 ID를 모듈 코드에 다시 적지 않는다. `[install]`에 steamcmd 앱 ID가 없으면 `ValueError`. 반환은 `SteamCMD.install`과 같다.
+- 설치 진행률은 SteamCMD 출력의 `progress:` 줄 → 설치 폴더 appmanifest의 `BytesDownloaded`/`BytesToDownload`(`_manifest_progress`) → 늘어난 디스크 크기와 앱별 어림 총량(`_disk_progress`) 순으로 읽는다. 출력은 파이프에서 버퍼에 묶이기 쉽다. 디스크 크기가 어림 총량을 넘으면(미리 잡은 파일 크기·받기 임시 파일) 진행률을 올리지 않고 직전 값을 유지한다.
 - instance_fields `install_method_steamcmd`, `steamcmd_app_id` 등은 daemon이 module의 `[install] method`를 보고 **범용 규칙**(`install_method_<방식>`, `<방식>_<이름>`)으로 채운다(`src/instance/mod.rs:142-166` `apply_install_extension_data`). core에 steamcmd 이름은 없다.
 
 ### 5.3 music
@@ -312,7 +313,7 @@ ue4-ini는 hook을 선언하지 않는다. steamcmd의 condition은 `instance.ex
 
 ### 5.4 ue4-ini (v0.1.0, 디렉토리명 `ue4_ini`)
 
-- `parse_option_settings(ini_path)`와 `write_option_settings(ini_path, props, section)`를 제공하는 **순수 Python 라이브러리**다(`ue4_ini.py:23,163`). hook은 선언하지 않는다.
+- `parse_option_settings(ini_path)`와 `write_option_settings(ini_path, props, section)`를 제공하는 **순수 Python 라이브러리**다(`ue4_ini.py:23,163`). hook은 선언하지 않는다. 쓰기는 같은 폴더 임시 파일에 쓰고 바꾸되, 격리 실행처럼 권한을 옮기지 못하거나 임시 파일을 만들 수 없으면 원래 파일을 제자리에서 덮어쓴다(데몬 `atomic_write`와 같은 규칙, 02-modules §2.5).
 - palworld가 `requires_extensions = ["steamcmd", "ue4-ini"]`로 요구한다(`M:palworld/module.toml:51`). ~~최상위에서 무조건 import해서 ue4-ini가 없으면 lifecycle 전체가 ImportError로 실패하고, disable해도 import가 막히지 않는다.~~ → 해결: palworld는 `try/except ImportError`로 import하고 INI를 건드리는 함수만 `extension_required`를 돌려준다(`M:palworld/lifecycle.py:32-37`). disable하면 import 가드가 import를 막는다(2.1).
 
 ### 5.5 module → extension 참조 방식

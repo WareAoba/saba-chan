@@ -785,6 +785,7 @@ impl IPCServer {
             .route("/api/diagnostics", get(handlers::diagnostics::diagnostics))
             .route("/api/onboarding", get(handlers::diagnostics::onboarding))
             .route("/api/audit", get(handlers::diagnostics::audit))
+            .route("/api/audit/export", post(handlers::diagnostics::audit_export))
             .route("/api/events", get(handlers::events::stream))
             // ── Server query/control ──
             .route("/api/servers", get(handlers::server::list_servers))
@@ -837,6 +838,7 @@ impl IPCServer {
             .route("/api/instance/{id}/server/reset", post(handlers::managed::reset_server_handler))
             .route("/api/instance/{id}/agreements", post(handlers::managed::accept_agreements_handler))
             .route("/api/instance/{id}/diagnose", post(handlers::managed::diagnose_handler))
+            .route("/api/instance/{id}/port-check", get(handlers::port_check::last).post(handlers::port_check::check))
             // 백업 (A2)·예약 작업 (A3)
             .route("/api/instance/{id}/backups", get(handlers::backup::list_backups).post(handlers::backup::create_backup))
             .route("/api/instance/{id}/backups/{name}", delete(handlers::backup::delete_backup))
@@ -959,6 +961,9 @@ impl IPCServer {
             // 인스턴스별 디스코드 낱말, 길드가 쓸 서버 (로컬 전용)
             .route("/api/instance/{id}/words", get(handlers::words::get).put(handlers::words::put))
             .route("/api/guilds/{guild}/allowed-instances", put(handlers::words::put_allowed))
+            // 켜짐 알림: 길드마다 고른 서버 (액션 instance.start_notice.set 도 같은 라우트)
+            .route("/api/guilds/{guild}/start-notice", get(handlers::start_notice::get))
+            .route("/api/instance/{id}/start-notice/{guild}", put(handlers::start_notice::put))
             .route("/api/chatbot/guilds/{guild}", get(handlers::chatbot::get_guild).patch(handlers::chatbot::patch_guild))
             // ── 원격 데몬 (D1): 원격 포트 설정과 짝 맺은 PC (로컬 전용, 원격 포트에서는 막는다) ──
             .route("/api/remote/settings", get(handlers::remote_daemon::get_settings).put(handlers::remote_daemon::put_settings))
@@ -1041,6 +1046,8 @@ impl IPCServer {
                     // 원격 포트 (D1): 켜져 있으면 열고 릴레이에 주소를 올린다
                     let remote_server = self.clone();
                     tokio::spawn(async move { crate::remote_daemon::apply(&remote_server).await });
+                    // 자동 포트포워딩 확인 (설정이 켜져 있을 때만, 자동 시작한 서버가 포트를 연 뒤)
+                    tokio::spawn(crate::port_check::auto_on_start(self.clone()));
 
                     let shutdown_signal = self.shutdown_token.clone();
                     axum::serve(listener, router)

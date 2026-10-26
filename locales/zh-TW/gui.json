@@ -60,6 +60,8 @@
     "auto_generate_passwords_description": "伺服器的 REST 密碼為空時，啟動時隨機填入。已有的密碼不會變更。",
     "port_conflict_check_label": "連接埠衝突偵測",
     "port_conflict_check_description": "當多個伺服器實例使用相同連接埠時顯示警告。",
+    "auto_port_check_label": "自動檢查連接埠轉發",
+    "auto_port_check_description": "建立伺服器時和 Saba-chan 啟動時，透過中繼悄悄檢查朋友能否從外部連線。連接埠關閉時會在伺服器頁面提示。",
     "uninstall_label": "解除安裝 Saba-chan",
     "uninstall_description": "從此電腦完全移除 Saba-chan。會先正常關閉執行中的伺服器，然後安裝程式以解除安裝模式執行。",
     "uninstall_confirm_title": "解除安裝 Saba-chan",
@@ -78,6 +80,7 @@
     "dev_nickname": "WareAoba",
     "dev_bio": "AI 馴獸師",
     "github_repo": "GitHub 儲存庫",
+    "name_egg": "與某位 VTuber 無關……我也是取完名字才知道的，我也很委屈",
     "accent_color_label": "強調色",
     "accent_color_description": "選擇按鈕和醒目標示使用的顏色",
     "accent_purple": "紫色",
@@ -1067,7 +1070,10 @@
     "prefix_err_count": "前綴最多 {{max}} 個。",
     "prefix_err_length": "前綴最多 {{max}} 個字元：{{words}}",
     "translate_commands_title": "翻譯指令名稱",
-    "translate_commands_desc": "在 Discord 斜線指令中顯示遊戲指令的翻譯名稱和說明。關閉時只顯示模組中的原始名稱（例如 save-all）。"
+    "translate_commands_desc": "在 Discord 斜線指令中顯示遊戲指令的翻譯名稱和說明。關閉時只顯示模組中的原始名稱（例如 save-all）。",
+    "start_notice": "{{name}} 啟動通知",
+    "start_notice_hint": "開啟鈴鐺的伺服器在 Saba-chan 啟動時會在此 Discord 伺服器的通知頻道告知。從 Discord 啟動的和在 Saba-chan 之外啟動的除外。通知頻道在「頻道」分頁中設定。",
+    "start_notice_save_failed": "無法儲存啟動通知：{{error}}"
   },
   "maintenance": {
     "load_failed": "無法載入備份與排程資訊。",
@@ -1346,6 +1352,17 @@
     "empty": "尚無紀錄。",
     "load_failed": "無法載入操作紀錄。",
     "more": "顯示更多",
+    "export": "匯出",
+    "exported": "已匯出 {{count}} 筆紀錄。",
+    "export_failed": "無法匯出紀錄。",
+    "period": "時間範圍",
+    "period_all": "全部",
+    "period_today": "今天",
+    "period_7d": "最近 7 天",
+    "period_30d": "最近 30 天",
+    "period_custom": "自訂",
+    "from": "開始日期",
+    "to": "結束日期",
     "ok": "成功",
     "failed": "失敗（{{status}}）",
     "action_start": "啟動",
@@ -1710,5 +1727,39 @@
     "exists": "{{name}} 已存在。再按一次即可取代",
     "replace": "取代",
     "bad_name": "名稱不能包含 / 或 \\"
+  },
+  "port_check": {
+    "button": "檢查連接埠轉發",
+    "running": "正在檢查…",
+    "address": "公用 IP {{address}}（朋友用這個位址和連接埠連線）",
+    "help": "連接埠轉發說明",
+    "verdict": {
+      "open": "可以從外部連線",
+      "firewall": "被電腦防火牆封鎖",
+      "closed": "無法從外部連線",
+      "cgnat": "路由器沒有取得公用 IP（CGNAT）",
+      "unknown": "部分連接埠無法檢查",
+      "no_ports": "此遊戲沒有標示要檢查的連接埠"
+    },
+    "status": {
+      "open": "開放",
+      "closed": "關閉",
+      "unknown": "未檢查",
+      "in_use": "被其他程式使用中",
+      "firewall": "被防火牆封鎖"
+    },
+    "hint": {
+      "closed": "請確認路由器已將此連接埠轉發到這台電腦，且電腦防火牆已允許。",
+      "firewall": "Windows 防火牆正在封鎖 Saba-chan（saba-core）的連線。請在檢查時跳出的提示中允許，或在 Windows 防火牆設定中允許 saba-core，然後再檢查。",
+      "cgnat": "電信業者讓多戶共用一個公用 IP，無法透過連接埠轉發開放。請向業者申請公用 IP，或使用 Tailscale 等 VPN。",
+      "unknown": "無法檢查執行中伺服器的 UDP 連接埠和其他程式使用的連接埠。請停止伺服器後再檢查。"
+    },
+    "error": {
+      "node_token_missing": "請先連結 Discord（配對）。檢查由中繼完成。",
+      "port_check_busy": "已經在檢查中，請稍後再試。",
+      "rate_limited": "檢查太頻繁，請一分鐘後再試。",
+      "relay_unreachable": "無法連線到中繼，請檢查網路連線。",
+      "failed": "檢查失敗。"
+    }
   }
 }

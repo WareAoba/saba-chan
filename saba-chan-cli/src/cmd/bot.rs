@@ -116,6 +116,7 @@ pub async fn run(ctx: &Ctx, cmd: BotCmd) -> Result<()> {
         }
         BotCmd::Link { id, decline } => link(ctx, id.as_deref(), decline).await,
         BotCmd::Allow { guild, servers, all } => allow(ctx, &resolve::guild(ctx, Some(&guild)).await?, &servers, all).await,
+        BotCmd::Notice { guild, server, on, off } => notice(ctx, &resolve::guild(ctx, Some(&guild)).await?, server.as_deref(), (on || off).then_some(on)).await,
         BotCmd::Reset { keys } => {
             let q = if keys.is_empty() {
                 t!("config.confirm_reset_all")
@@ -435,6 +436,31 @@ async fn allow(ctx: &Ctx, guild: &str, queries: &[String], all: bool) -> Result<
         (t!("bot.allow_saved", guild = guild, servers = names.join(", ")), r)
     };
     ctx.out.done(&msg, &r);
+    Ok(())
+}
+
+/// 켜짐 알림: 사바쨩이 켠 서버를 그 디스코드 서버의 알림 채널에 알린다 (`nodeSettings[guild].startNotice`, 기본 꺼짐)
+async fn notice(ctx: &Ctx, guild: &str, server: Option<&str>, enabled: Option<bool>) -> Result<()> {
+    let servers = crate::resolve::servers(ctx).await.unwrap_or_default();
+    let name_of = |id: &str| servers.iter().find(|s| s.id == id).map_or(id.to_string(), |s| s.name.clone());
+    let id = match server {
+        Some(q) => Some(crate::resolve::server(ctx, Some(q)).await?.id),
+        None => None,
+    };
+    let (Some(id), Some(enabled)) = (&id, enabled) else {
+        let r = ctx.api.start_notice(guild).await?;
+        let on: Vec<String> = r.get("instances").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str).map(str::to_string).collect();
+        ctx.out.data(&r, |_| match &id {
+            Some(id) if on.contains(id) => say!("{}", t!("bot.notice_is_on", server = name_of(id))),
+            Some(id) => say!("{}", t!("bot.notice_is_off", server = name_of(id))),
+            None if on.is_empty() => say!("{}", output::dim(&t!("bot.notice_none"))),
+            None => on.iter().for_each(|id| say!("{}", name_of(id))),
+        });
+        return Ok(());
+    };
+    let r = ctx.api.set_start_notice(id, guild, enabled).await?;
+    let key = if enabled { "bot.notice_on_saved" } else { "bot.notice_off_saved" };
+    ctx.out.done(&t!(key, guild = guild, server = name_of(id)), &r);
     Ok(())
 }
 

@@ -134,6 +134,8 @@ pub static ACTIONS: &[Def] = &[
     def("server.console.tail", Kind::Query, "safe", LOCAL_AND_CHATBOT, true, "GET", "/api/instance/:id/console?count=20"),
     // 접속자 이름까지 (검수 13번). 모듈이 `[status] players`를 선언한 서버만 (heartbeat `modules`, 인스턴스 목록)
     def("server.players", Kind::Query, "safe", ALL, true, "GET", "/api/instance/:id/players"),
+    // 포트포워딩 확인: 릴레이가 밖에서 게임 포트에 접속해 본다. 공인 주소가 결과에 있어 챗봇에는 열지 않는다 (디스코드는 요약만 보인다)
+    def("server.port_check", Kind::Query, "safe", LOCAL_AND_DISCORD, true, "POST", "/api/instance/:id/port-check"),
     // 시작·정지 기록은 디스코드에서 쓰지 않는다 (사용자 디스코드 검수 3번)
     def("instance.events", Kind::Query, "safe", LOCAL_AND_CHATBOT, true, "GET", "/api/instance/:id/events"),
     // 로그 전체 읽기·내보내기 (검수 9번). 디스코드 메뉴에는 없고 내보내기는 파일로 첨부된다
@@ -192,6 +194,13 @@ pub static ACTIONS: &[Def] = &[
         remote_menu: false,
         guild_owner: true,
         ..def("discord.settings.set", Kind::Admin, "caution", LOCAL_AND_DISCORD, false, "PATCH", "/api/discord/:guild/settings")
+    },
+    // 켜짐 알림 (길드마다 서버마다, 기본 꺼짐). 디스코드에서는 관리자 이상, 요청이 온 길드만. 서버 루트 메뉴(`/<서버> 켜짐-알림`)에 싣는다
+    Def {
+        fields: &[path_field("guild"), field("enabled", "boolean", true)],
+        discord_level: Some(crate::chat::permissions::ADMIN),
+        guild_owner: true,
+        ..def("instance.start_notice.set", Kind::Admin, "caution", LOCAL_AND_DISCORD, true, "PUT", "/api/instance/:id/start-notice/:guild")
     },
     def("update.check", Kind::Query, "safe", LOCAL_AND_DISCORD, false, "POST", "/api/updates/check"),
     // 원격(디스코드)에서도 끝까지 가도록 받기·적용·업데이터 띄우기를 한 번에 한다 (`/api/updates/install`)
@@ -602,6 +611,8 @@ pub const HEARTBEAT_MAX_BYTES: usize = 32768;
 fn module_support(id: &str) -> Option<fn(&LoadedModule) -> bool> {
     match id {
         "server.players" => Some(|m| m.metadata.players_function.is_some()),
+        // 밖에 여는 포트(`public`)를 선언한 모듈만 확인할 것이 있다
+        "server.port_check" => Some(|m| m.metadata.settings.as_ref().is_some_and(|s| s.fields.iter().any(|f| f.public.is_some()))),
         _ => None,
     }
 }

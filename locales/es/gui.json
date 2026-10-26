@@ -60,6 +60,8 @@
     "auto_generate_passwords_description": "Si la contraseña REST de un servidor está vacía, se rellena con una aleatoria al iniciarlo. Las contraseñas existentes no se cambian.",
     "port_conflict_check_label": "Detección de conflicto de puertos",
     "port_conflict_check_description": "Muestra advertencias cuando múltiples instancias de servidor utilizan el mismo puerto.",
+    "auto_port_check_label": "Comprobación automática de puertos",
+    "auto_port_check_description": "Al crear un servidor y al iniciar Saba-chan, comprueba en silencio a través del relé si tus amigos pueden conectarse desde fuera. Si está cerrado, se avisa en la página del servidor.",
     "uninstall_label": "Desinstalar Saba-chan",
     "uninstall_description": "Eliminar completamente Saba-chan de este equipo. Primero se apagan correctamente los servidores en ejecución y luego el instalador se ejecuta en modo de desinstalación.",
     "uninstall_confirm_title": "Desinstalar Saba-chan",
@@ -78,6 +80,7 @@
     "dev_nickname": "WareAoba",
     "dev_bio": "Domador de IA",
     "github_repo": "Repositorio de GitHub",
+    "name_egg": "No tiene nada que ver con cierto VTuber… Me enteré después de ponerle el nombre y también me parece injusto.",
     "accent_color_label": "Color de acento",
     "accent_color_description": "Elige el color de los botones y los resaltados",
     "accent_purple": "Morado",
@@ -1067,7 +1070,10 @@
     "prefix_err_count": "Hasta {{max}} prefijos.",
     "prefix_err_length": "Los prefijos tienen como máximo {{max}} caracteres: {{words}}",
     "translate_commands_title": "Nombres de comandos traducidos",
-    "translate_commands_desc": "Muestra nombres y descripciones traducidos de los comandos del juego en los comandos de barra de Discord. Si está apagado, solo se ven los nombres del módulo (por ejemplo save-all)."
+    "translate_commands_desc": "Muestra nombres y descripciones traducidos de los comandos del juego en los comandos de barra de Discord. Si está apagado, solo se ven los nombres del módulo (por ejemplo save-all).",
+    "start_notice": "Aviso de inicio de {{name}}",
+    "start_notice_hint": "Los servidores con la campana activada se anuncian en el canal de avisos de este servidor de Discord cuando Saba-chan los inicia. No se avisan los inicios desde Discord ni los de fuera de Saba-chan. Elige el canal de avisos en la pestaña Canales.",
+    "start_notice_save_failed": "No se pudo guardar el aviso de inicio: {{error}}"
   },
   "maintenance": {
     "load_failed": "No se pudieron cargar las copias de seguridad ni las programaciones.",
@@ -1346,6 +1352,17 @@
     "empty": "Aún no hay actividad.",
     "load_failed": "No se pudo cargar el registro de actividad.",
     "more": "Mostrar más",
+    "export": "Exportar",
+    "exported": "Se exportaron {{count}} registros.",
+    "export_failed": "No se pudieron exportar los registros.",
+    "period": "Periodo",
+    "period_all": "Todo",
+    "period_today": "Hoy",
+    "period_7d": "Últimos 7 días",
+    "period_30d": "Últimos 30 días",
+    "period_custom": "Personalizado",
+    "from": "Desde",
+    "to": "Hasta",
     "ok": "Correcto",
     "failed": "Falló ({{status}})",
     "action_start": "Iniciar",
@@ -1710,5 +1727,39 @@
     "exists": "{{name}} ya existe. Pulsa otra vez para reemplazarlo",
     "replace": "Reemplazar",
     "bad_name": "El nombre no puede contener / ni \\"
+  },
+  "port_check": {
+    "button": "Comprobar reenvío de puertos",
+    "running": "Comprobando…",
+    "address": "IP pública {{address}} (tus amigos se conectan con esta dirección y el puerto)",
+    "help": "Guía de reenvío de puertos",
+    "verdict": {
+      "open": "Accesible desde internet",
+      "firewall": "Bloqueado por el firewall del PC",
+      "closed": "No accesible desde internet",
+      "cgnat": "Tu router no tiene IP pública (CGNAT)",
+      "unknown": "Algunos puertos no se pudieron comprobar",
+      "no_ports": "Este juego no indica qué puertos comprobar"
+    },
+    "status": {
+      "open": "Abierto",
+      "closed": "Cerrado",
+      "unknown": "Sin comprobar",
+      "in_use": "En uso por otro programa",
+      "firewall": "Bloqueado por el firewall"
+    },
+    "hint": {
+      "closed": "Comprueba que el router reenvía este puerto a este PC y que el cortafuegos del PC lo permite.",
+      "firewall": "El Firewall de Windows está bloqueando Saba-chan (saba-core). Permítelo en el aviso que aparece durante la comprobación o permite saba-core en la configuración del Firewall de Windows y vuelve a comprobar.",
+      "cgnat": "Tu proveedor comparte una IP pública entre muchos hogares, así que el reenvío de puertos no puede abrirlo. Pide una IP pública a tu proveedor o usa una VPN como Tailscale.",
+      "unknown": "No se pueden comprobar los puertos UDP de un servidor en marcha ni los puertos que usa otro programa. Detén el servidor y vuelve a comprobar."
+    },
+    "error": {
+      "node_token_missing": "Conecta primero con Discord (emparejamiento). La comprobación la hace el relé.",
+      "port_check_busy": "Ya hay una comprobación en curso. Inténtalo de nuevo en un momento.",
+      "rate_limited": "Demasiadas comprobaciones. Inténtalo de nuevo en un minuto.",
+      "relay_unreachable": "No se pudo conectar con el relé. Revisa tu conexión a internet.",
+      "failed": "No se pudo comprobar."
+    }
   }
 }

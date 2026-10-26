@@ -60,6 +60,8 @@
     "auto_generate_passwords_description": "REST パスワードが空なら、サーバー起動時にランダムな値で埋めます。既にあるパスワードは変えません。",
     "port_conflict_check_label": "ポート競合チェック",
     "port_conflict_check_description": "複数のサーバーインスタンスが同じポートを使用している場合に警告を表示します。",
+    "auto_port_check_label": "ポート開放の自動確認",
+    "auto_port_check_description": "サーバーを作成したときとサバちゃんの起動時に、外部から友だちが接続できるかをリレーで静かに確認します。閉じていればサーバー画面に表示します。",
     "uninstall_label": "サバちゃんをアンインストール",
     "uninstall_description": "このコンピューターからサバちゃんを完全に削除します。起動中のサーバーを先に正常終了してから、インストーラーがアンインストールモードで実行されます。",
     "uninstall_confirm_title": "サバちゃんをアンインストール",
@@ -78,6 +80,7 @@
     "dev_nickname": "ワレアオバ",
     "dev_bio": "AI使い",
     "github_repo": "GitHub リポジトリ",
+    "name_egg": "某VTuberさんとは関係ありません…名前を付けてから知ったので、こちらも困っています",
     "accent_color_label": "アクセントカラー",
     "accent_color_description": "ボタンとハイライトに使う色を選んでください",
     "accent_purple": "パープル",
@@ -1067,7 +1070,10 @@
     "prefix_err_count": "接頭辞は{{max}}個までです。",
     "prefix_err_length": "接頭辞は{{max}}文字までです: {{words}}",
     "translate_commands_title": "コマンド名の翻訳",
-    "translate_commands_desc": "Discordのスラッシュコマンドにゲームコマンドの翻訳した名前と説明を付けます。オフにするとモジュールに書かれた元の名前(例: save-all)だけを表示します。"
+    "translate_commands_desc": "Discordのスラッシュコマンドにゲームコマンドの翻訳した名前と説明を付けます。オフにするとモジュールに書かれた元の名前(例: save-all)だけを表示します。",
+    "start_notice": "{{name}} の起動通知",
+    "start_notice_hint": "ベルをオンにしたサーバーは、サバちゃんが起動したときにこのDiscordサーバーの通知チャンネルで知らせます。Discordから起動したものと、サバちゃんの外で起動したものは除きます。通知チャンネルはチャンネルタブで選びます。",
+    "start_notice_save_failed": "起動通知を保存できませんでした: {{error}}"
   },
   "maintenance": {
     "load_failed": "バックアップ・予約の情報を読み込めませんでした。",
@@ -1346,6 +1352,17 @@
     "empty": "まだ履歴がありません。",
     "load_failed": "履歴を読み込めませんでした。",
     "more": "もっと見る",
+    "export": "書き出し",
+    "exported": "記録を{{count}}件書き出しました。",
+    "export_failed": "記録を書き出せませんでした。",
+    "period": "期間",
+    "period_all": "すべて",
+    "period_today": "今日",
+    "period_7d": "過去7日",
+    "period_30d": "過去30日",
+    "period_custom": "期間を指定",
+    "from": "開始日",
+    "to": "終了日",
     "ok": "成功",
     "failed": "失敗（{{status}}）",
     "action_start": "起動",
@@ -1710,5 +1727,39 @@
     "exists": "{{name}} はすでにあります。置き換えるにはもう一度押してください",
     "replace": "置き換える",
     "bad_name": "名前に / や \\ は使えません"
+  },
+  "port_check": {
+    "button": "ポート開放を確認",
+    "running": "確認中…",
+    "address": "グローバルIP {{address}}（友だちはこのアドレスとポートで接続します）",
+    "help": "ポート開放の案内",
+    "verdict": {
+      "open": "外部から接続できます",
+      "firewall": "PCのファイアウォールがブロックしています",
+      "closed": "外部から接続できません",
+      "cgnat": "ルーターがグローバルIPを受け取っていません（CGNAT）",
+      "unknown": "一部のポートは確認できませんでした",
+      "no_ports": "このゲームは確認するポートを示していません"
+    },
+    "status": {
+      "open": "開放",
+      "closed": "閉鎖",
+      "unknown": "未確認",
+      "in_use": "他のプログラムが使用中",
+      "firewall": "ファイアウォールがブロック"
+    },
+    "hint": {
+      "closed": "ルーターでこのポートをこのPCへ転送しているか、PCのファイアウォールで許可しているか確認してください。",
+      "firewall": "Windowsファイアウォールがサバちゃん（saba-core）の接続をブロックしています。確認時に表示される許可画面で許可するか、Windowsファイアウォールの設定でsaba-coreを許可してから、もう一度確認してください。",
+      "cgnat": "プロバイダーが1つのグローバルIPを複数の家庭で共有しているため、ポート開放では開けません。プロバイダーにグローバルIPを依頼するか、TailscaleなどのVPNを使ってください。",
+      "unknown": "起動中のサーバーのUDPポートと、他のプログラムが使っているポートは確認できません。サーバーを停止してからもう一度確認してください。"
+    },
+    "error": {
+      "node_token_missing": "先にDiscord連携（ペアリング）をしてください。確認はリレーが行います。",
+      "port_check_busy": "すでに確認中です。しばらくしてからもう一度お試しください。",
+      "rate_limited": "確認の回数が多すぎます。1分後にもう一度お試しください。",
+      "relay_unreachable": "リレーに接続できませんでした。インターネット接続を確認してください。",
+      "failed": "確認できませんでした。"
+    }
   }
 }

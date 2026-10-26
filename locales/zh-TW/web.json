@@ -169,7 +169,12 @@
     "ladder_removed": "被刪除等級的人會移到下一級，需要該等級的指令會移到上一級。",
     "ladder_invalid": "等級名稱需為 1–32 個字元。",
     "ladder_revert": "還原",
-    "ladder_save": "儲存等級"
+    "ladder_save": "儲存等級",
+    "notice": "啟動通知",
+    "notice_hint": "開啟的伺服器在 Saba-chan 啟動時會在此 Discord 伺服器的通知頻道告知。從 Discord 啟動的和在 Saba-chan 之外啟動的除外。",
+    "notice_empty": "此 Discord 伺服器沒有使用的伺服器。",
+    "notice_on": "已開啟啟動通知。",
+    "notice_off": "已關閉啟動通知。"
   },
   "modules": {
     "games": "遊戲模組",
@@ -212,5 +217,39 @@
     "remote_timeout": "未在 2 分鐘內完成，已視為失敗。請在電腦上確認結果。",
     "remote_host_gone": "請求完成前與電腦的連線已中斷。",
     "remote_busy": "請求過多。請稍後再試。"
+  },
+  "port_check": {
+    "button": "檢查連接埠轉發",
+    "running": "正在檢查…",
+    "address": "公用 IP {{address}}（朋友用這個位址和連接埠連線）",
+    "help": "連接埠轉發說明",
+    "verdict": {
+      "open": "可以從外部連線",
+      "firewall": "被電腦防火牆封鎖",
+      "closed": "無法從外部連線",
+      "cgnat": "路由器沒有取得公用 IP（CGNAT）",
+      "unknown": "部分連接埠無法檢查",
+      "no_ports": "此遊戲沒有標示要檢查的連接埠"
+    },
+    "status": {
+      "open": "開放",
+      "closed": "關閉",
+      "unknown": "未檢查",
+      "in_use": "被其他程式使用中",
+      "firewall": "被防火牆封鎖"
+    },
+    "hint": {
+      "closed": "請確認路由器已將此連接埠轉發到這台電腦，且電腦防火牆已允許。",
+      "firewall": "Windows 防火牆正在封鎖 Saba-chan（saba-core）的連線。請在檢查時跳出的提示中允許，或在 Windows 防火牆設定中允許 saba-core，然後再檢查。",
+      "cgnat": "電信業者讓多戶共用一個公用 IP，無法透過連接埠轉發開放。請向業者申請公用 IP，或使用 Tailscale 等 VPN。",
+      "unknown": "無法檢查執行中伺服器的 UDP 連接埠和其他程式使用的連接埠。請停止伺服器後再檢查。"
+    },
+    "error": {
+      "node_token_missing": "請先連結 Discord（配對）。檢查由中繼完成。",
+      "port_check_busy": "已經在檢查中，請稍後再試。",
+      "rate_limited": "檢查太頻繁，請一分鐘後再試。",
+      "relay_unreachable": "無法連線到中繼，請檢查網路連線。",
+      "failed": "檢查失敗。"
+    }
   }
 }

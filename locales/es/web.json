@@ -169,7 +169,12 @@
     "ladder_removed": "Quienes estén en niveles eliminados bajan al nivel de abajo. Los comandos que los necesitaban suben al nivel de arriba.",
     "ladder_invalid": "Los nombres de nivel deben tener de 1 a 32 caracteres.",
     "ladder_revert": "Deshacer",
-    "ladder_save": "Guardar niveles"
+    "ladder_save": "Guardar niveles",
+    "notice": "Avisos de inicio",
+    "notice_hint": "Los servidores activados aquí se anuncian en el canal de avisos de este servidor de Discord cuando Saba-chan los inicia. No se avisan los inicios desde Discord ni los de fuera de Saba-chan.",
+    "notice_empty": "Este servidor de Discord no usa ningún servidor.",
+    "notice_on": "Aviso de inicio activado.",
+    "notice_off": "Aviso de inicio desactivado."
   },
   "modules": {
     "games": "Módulos de juego",
@@ -212,5 +217,39 @@
     "remote_timeout": "No terminó en 2 minutos, así que se trató como un fallo. Comprueba el resultado en el PC.",
     "remote_host_gone": "Se perdió la conexión con el PC antes de que terminara la solicitud.",
     "remote_busy": "Demasiadas solicitudes. Inténtalo de nuevo en un momento."
+  },
+  "port_check": {
+    "button": "Comprobar reenvío de puertos",
+    "running": "Comprobando…",
+    "address": "IP pública {{address}} (tus amigos se conectan con esta dirección y el puerto)",
+    "help": "Guía de reenvío de puertos",
+    "verdict": {
+      "open": "Accesible desde internet",
+      "firewall": "Bloqueado por el firewall del PC",
+      "closed": "No accesible desde internet",
+      "cgnat": "Tu router no tiene IP pública (CGNAT)",
+      "unknown": "Algunos puertos no se pudieron comprobar",
+      "no_ports": "Este juego no indica qué puertos comprobar"
+    },
+    "status": {
+      "open": "Abierto",
+      "closed": "Cerrado",
+      "unknown": "Sin comprobar",
+      "in_use": "En uso por otro programa",
+      "firewall": "Bloqueado por el firewall"
+    },
+    "hint": {
+      "closed": "Comprueba que el router reenvía este puerto a este PC y que el cortafuegos del PC lo permite.",
+      "firewall": "El Firewall de Windows está bloqueando Saba-chan (saba-core). Permítelo en el aviso que aparece durante la comprobación o permite saba-core en la configuración del Firewall de Windows y vuelve a comprobar.",
+      "cgnat": "Tu proveedor comparte una IP pública entre muchos hogares, así que el reenvío de puertos no puede abrirlo. Pide una IP pública a tu proveedor o usa una VPN como Tailscale.",
+      "unknown": "No se pueden comprobar los puertos UDP de un servidor en marcha ni los puertos que usa otro programa. Detén el servidor y vuelve a comprobar."
+    },
+    "error": {
+      "node_token_missing": "Conecta primero con Discord (emparejamiento). La comprobación la hace el relé.",
+      "port_check_busy": "Ya hay una comprobación en curso. Inténtalo de nuevo en un momento.",
+      "rate_limited": "Demasiadas comprobaciones. Inténtalo de nuevo en un minuto.",
+      "relay_unreachable": "No se pudo conectar con el relé. Revisa tu conexión a internet.",
+      "failed": "No se pudo comprobar."
+    }
   }
 }

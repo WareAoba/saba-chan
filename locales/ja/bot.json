@@ -196,6 +196,13 @@
       },
       "delete": {
         "title": "サーバーを削除"
+      },
+      "start_notice": {
+        "set": {
+          "title": "起動通知",
+          "description": "サバちゃんがこのサーバーを起動したら、このDiscordサーバーの通知チャンネルに知らせます",
+          "name": "起動通知"
+        }
       }
     },
     "server": {
@@ -235,6 +242,10 @@
       "players": {
         "title": "プレイヤー",
         "description": "接続中のプレイヤーと名前"
+      },
+      "port_check": {
+        "title": "ポート開放の確認",
+        "description": "外部からこのサーバーに接続できるかリレーが確認します"
       }
     },
     "monitor": {
@@ -367,7 +378,29 @@
       "players": "👥 接続 {{online}}人",
       "players_max": "👥 接続 {{online}}/{{max}}人",
       "player_item": "• {{name}}",
-      "players_more": "…ほか {{count}}人"
+      "players_more": "…ほか {{count}}人",
+      "port_check": {
+        "open": "✅ 外部から接続できます",
+        "firewall": "🧱 PCのファイアウォールがブロックしています",
+        "closed": "🚫 外部から接続できません",
+        "cgnat": "⚠️ ルーターがグローバルIPを受け取っていません（CGNAT）",
+        "unknown": "❔ 一部のポートは確認できませんでした",
+        "no_ports": "📭 このゲームは確認するポートを示していません"
+      },
+      "port_status": {
+        "open": "開放",
+        "closed": "閉鎖",
+        "unknown": "未確認",
+        "in_use": "他のプログラムが使用中",
+        "firewall": "ファイアウォールがブロック"
+      },
+      "port_item": "• {{port}}/{{protocol}} · {{status}}",
+      "port_hint": {
+        "closed": "ルーターでこのポートをこのPCへ転送しているか、PCのファイアウォールで許可しているか確認してください。",
+        "firewall": "Windowsファイアウォールがサバちゃん（saba-core）の接続をブロックしています。確認時に表示される許可画面で許可するか、Windowsファイアウォールの設定でsaba-coreを許可してから、もう一度確認してください。",
+        "cgnat": "プロバイダーが1つのグローバルIPを複数の家庭で共有しているため、ポート開放では開けません。プロバイダーにグローバルIPを依頼するか、TailscaleなどのVPNを使ってください。",
+        "unknown": "起動中のサーバーのUDPポートと、他のプログラムが使っているポートは確認できません。サーバーを停止してからもう一度確認してください。"
+      }
     }
   },
   "reasons": {

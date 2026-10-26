@@ -36,7 +36,17 @@ pub async fn dispatch(ctx: &Ctx, cmd: Cmd) -> Result<()> {
         Cmd::Status => status::run(ctx).await,
         Cmd::Version => status::version(ctx).await,
         Cmd::Monitor(a) => monitor::run(ctx, a).await,
-        Cmd::Audit { server, limit, follow } => audit::run(ctx, server.as_deref(), limit, follow).await,
+        Cmd::Audit { server, limit, follow, since, until, export } => {
+            let opts = audit::Opts {
+                server: server.as_deref(),
+                limit,
+                follow,
+                since: since.as_deref(),
+                until: until.as_deref(),
+                export: export.as_deref(),
+            };
+            audit::run(ctx, opts).await
+        }
         Cmd::Perm(c) => perm::run(ctx, c).await,
         Cmd::Sandbox(c) => sandbox::run(ctx, c).await,
         Cmd::Remote(c) => remote::run(ctx, c).await,
