@@ -157,7 +157,7 @@
   },
   "migration_modal": {
     "title": "Import Existing Server",
-    "description": "Link a game server folder you already use to saba-chan",
+    "description": "Bring a game server folder you already use into saba-chan",
     "step_select": "Select",
     "step_review": "Review",
     "step_result": "Result",

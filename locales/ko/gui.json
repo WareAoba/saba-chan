@@ -157,7 +157,7 @@
   },
   "migration_modal": {
     "title": "기존 서버 가져오기",
-    "description": "쓰던 게임 서버 폴더를 사바쨩에 연결합니다",
+    "description": "쓰던 게임 서버 폴더를 사바쨩으로 가져옵니다",
     "step_select": "선택",
     "step_review": "검토",
     "step_result": "완료",
