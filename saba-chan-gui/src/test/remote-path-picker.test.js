@@ -35,11 +35,15 @@ const listing = {
         entries: [],
     },
     '/home': { ok: false, error_code: 'browse_denied' },
+    // 파일 경로를 보면 데몬은 폴더가 아니라고 답한다 (그 이름이 이미 있다)
+    '/home/me/backup.zip': { ok: false, error_code: 'browse_not_a_folder' },
+    '/home/me/.old.zip': { ok: false, error_code: 'browse_not_a_folder' },
 };
+const browse = (path) => listing[path || ''] ?? { ok: false, error_code: 'browse_not_found' };
 
 describe('원격 경로 고르기 창', () => {
     beforeEach(() => {
-        window.api = { systemBrowse: vi.fn(async (path) => listing[path || '']) };
+        window.api = { systemBrowse: vi.fn(async (path) => browse(path)) };
     });
     afterEach(() => setRemotePathPicker(null));
 
@@ -119,6 +123,23 @@ describe('원격 경로 고르기 창', () => {
         await expect(result).resolves.toBe('/home/me/backup.zip');
     });
 
+    it('목록에 없는 숨긴 파일도 이미 있으면 한 번 더 묻는다', async () => {
+        await act(async () => render(<RemotePathPicker />));
+        let result;
+        let settled = false;
+        await act(async () => {
+            result = pickRemotePath({ kind: 'save', extensions: ['zip'], defaultName: '.old.zip' });
+            result.then(() => {
+                settled = true;
+            });
+        });
+        await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Save here' })));
+        expect(settled).toBe(false);
+        expect(screen.getByRole('alert')).toHaveTextContent('.old.zip already exists');
+        await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Replace' })));
+        await expect(result).resolves.toBe('/home/me/.old.zip');
+    });
+
     it('늦게 온 앞선 폴더 응답은 지금 목록을 바꾸지 않는다', async () => {
         let release;
         window.api.systemBrowse.mockImplementation(async (path) => {
@@ -128,7 +149,7 @@ describe('원격 경로 고르기 창', () => {
                 });
                 return { ok: true, path: '/slow', parent: '/', home: '/home/me', sep: '/', entries: [] };
             }
-            return listing[path || ''];
+            return browse(path);
         });
         await act(async () => render(<RemotePathPicker />));
         let result;
@@ -157,7 +178,7 @@ describe('원격 경로 고르기 창', () => {
                 });
                 return { ok: true, path: '/slow', parent: '/', home: '/home/me', sep: '/', entries: [] };
             }
-            return listing[path || ''];
+            return browse(path);
         });
         await act(async () => render(<RemotePathPicker />));
         let result;
