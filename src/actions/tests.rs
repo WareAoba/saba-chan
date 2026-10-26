@@ -456,6 +456,23 @@ async fn discord_settings_stay_in_the_guild_that_asked_and_need_its_owner() {
     assert!(plan(&state, "discord.settings.set", None, &other, &gui()).await.is_ok());
 }
 
+/// 원격 데몬 R2b: 디스코드 서버 주인(릴레이 `guildOwnerDiscordId`)도 길드 공통 설정은 주인으로 본다. 다른 주인 액션은 아니다
+#[tokio::test]
+async fn the_discord_server_owner_may_change_guild_settings_only() {
+    let (state, _id, _tmp) = server().await;
+    open_everything(&state).await;
+    let mut boss = relay("boss", false);
+    boss.remote.as_mut().unwrap().guild_owner_id = Some("boss".into());
+    let input = json!({ "locale": "ko" });
+    assert!(plan(&state, "discord.settings.set", None, &input, &boss).await.is_ok());
+    assert_eq!(plan(&state, "chatbot.settings.set", None, &json!({ "memo": "x" }), &boss).await.unwrap_err().code, "PERMISSION_DENIED");
+    assert_eq!(plan(&state, "update.apply", None, &json!({}), &boss).await.unwrap_err().code, "PERMISSION_DENIED");
+    // 서버 주인이 다른 사람이면 그대로
+    let mut someone = relay("admin", false);
+    someone.remote.as_mut().unwrap().guild_owner_id = Some("boss".into());
+    assert_eq!(plan(&state, "discord.settings.set", None, &input, &someone).await.unwrap_err().code, "PERMISSION_DENIED");
+}
+
 #[tokio::test]
 async fn console_input_to_a_module_without_stdin_is_refused() {
     use axum::response::IntoResponse;

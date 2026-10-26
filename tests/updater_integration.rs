@@ -31,7 +31,7 @@ use saba_chan_updater_lib::version::SemVer;
 fn create_test_zip(files: &HashMap<&str, &[u8]>) -> Vec<u8> {
     let buf = std::io::Cursor::new(Vec::new());
     let mut zip_writer = zip::ZipWriter::new(buf);
-    let options = zip::write::FileOptions::default()
+    let options = zip::write::SimpleFileOptions::default()
         .compression_method(zip::CompressionMethod::Stored);
 
     for (name, content) in files {
@@ -497,7 +497,7 @@ $stagedPath = "{}"
 fn test_timestamp_format() {
     // UpdateManager 내부의 chrono_now_iso가 올바른 ISO 8601 형식인지
     // (내부 함수이므로 패턴 검증만)
-    let pattern = regex_lite::Regex::new(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$").unwrap();
+    let pattern = regex::Regex::new(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$").unwrap();
 
     // 검증을 위해 수동 구성
     let ts = format!("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z", 2026, 2, 13, 10, 30, 0);

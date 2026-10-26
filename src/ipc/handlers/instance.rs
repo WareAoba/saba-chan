@@ -1,3 +1,4 @@
+use super::LooseJson;
 use axum::{
     extract::{Path, State},
     http::StatusCode,
@@ -1008,7 +1009,7 @@ pub async fn rename_instance(
 pub async fn launch_preview(
     State(state): State<IPCServer>,
     Path(id): Path<String>,
-    body: Option<Json<Value>>,
+    LooseJson(body): LooseJson<Value>,
 ) -> impl IntoResponse {
     let body = body.map(|Json(b)| b).unwrap_or(Value::Null);
     let draft = match body.get("settings") {

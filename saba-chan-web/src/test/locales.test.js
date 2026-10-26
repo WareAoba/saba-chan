@@ -1,7 +1,8 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { SUPPORTED_LANGUAGES } from '../i18n';
+import { initI18n, SUPPORTED_LANGUAGES } from '../i18n';
+import { hangulOutsideT } from '../../../saba-chan-gui/src/test/hangulScan';
 
 const LOCALES = join(__dirname, '../../../locales');
 const SRC = join(__dirname, '..');
@@ -51,5 +52,29 @@ describe('web.json', () => {
             }
         }
         expect(missing).toEqual([]);
+    });
+});
+
+describe('탭 제목', () => {
+    it('브라우저 탭 제목은 고른 언어의 app_name 이다', async () => {
+        await initI18n('ja');
+        expect(document.title).toBe(catalog('ja').app_name);
+        expect(document.documentElement.lang).toBe('ja');
+    });
+
+    it('index.html 의 처음 제목·언어는 기본 언어(en)다', () => {
+        const html = readFileSync(join(__dirname, '../../index.html'), 'utf8');
+        expect(html).toContain(`<title>${catalog('en').app_name}</title>`);
+        expect(html).toContain('<html lang="en">');
+    });
+});
+
+describe('한글 하드코딩', () => {
+    it('화면 코드에 번역 키를 거치지 않은 한글이 없다', () => {
+        const found = [];
+        for (const file of sources(SRC)) {
+            for (const h of hangulOutsideT(readFileSync(file, 'utf8'))) found.push(`${file.slice(SRC.length + 1)}:${h.line}: ${h.text}`);
+        }
+        expect(found).toEqual([]);
     });
 });

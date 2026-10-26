@@ -65,7 +65,7 @@ async fn a_slow_command_does_not_hold_up_the_ones_behind_it() {
         .route("/info", get(|| async { Json(json!({ "version": "test", "minAgentVersion": "0.1.0" })) }))
         .route("/heartbeat", post(|| async { Json(json!({ "status": "ok" })) }))
         .route("/poll", get(poll))
-        .route("/result/:id", post(result))
+        .route("/result/{id}", post(result))
         .with_state(relay.clone());
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let relay_url = format!("http://{}", listener.local_addr().unwrap());

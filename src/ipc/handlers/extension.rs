@@ -10,6 +10,7 @@
 //! GET  /api/extensions/:id/i18n/:locale → i18n JSON
 //! DELETE /api/extensions/:id         → 제거 (비활성화 + 디렉토리 삭제)
 
+use super::LooseJson;
 use axum::{
     extract::{Path, State},
     http::{header, StatusCode},
@@ -441,7 +442,7 @@ fn install_source(
 pub async fn install_extension(
     State(state): State<IPCServer>,
     Path(ext_id): Path<String>,
-    body: Option<Json<serde_json::Value>>,
+    LooseJson(body): LooseJson<serde_json::Value>,
 ) -> Json<serde_json::Value> {
     let field = |k: &str| body.as_ref().and_then(|Json(b)| b.get(k)).and_then(|v| v.as_str()).map(str::to_string);
     let _dirs = super::paths::components_in_use().await;

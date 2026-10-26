@@ -315,7 +315,7 @@ mod tests {
 
         let zip_path = root.join("module.zip");
         let mut zip = zip::ZipWriter::new(std::fs::File::create(&zip_path).unwrap());
-        zip.start_file("lifecycle.py", zip::write::FileOptions::default()).unwrap();
+        zip.start_file("lifecycle.py", zip::write::SimpleFileOptions::default()).unwrap();
         zip.write_all(b"print('hi')").unwrap();
         zip.finish().unwrap();
 

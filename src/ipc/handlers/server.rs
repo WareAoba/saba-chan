@@ -1,4 +1,5 @@
-﻿use axum::{
+﻿use super::LooseJson;
+use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
@@ -873,7 +874,7 @@ async fn start_checked(state: IPCServer, instance: crate::instance::ServerInstan
 
     let resp = if managed {
         crate::ipc::internal::into_internal(
-            super::managed::start_managed_handler(Path(instance.id.clone()), State(state.clone()), None).await,
+            super::managed::start_managed_handler(Path(instance.id.clone()), State(state.clone()), LooseJson(None)).await,
         )
         .await
     } else {
@@ -969,7 +970,7 @@ fn instance_not_found(id: &str) -> axum::response::Response {
 pub async fn stop_instance_handler(
     Path(id): Path<String>,
     State(state): State<IPCServer>,
-    body: Option<Json<ServerStopRequest>>,
+    LooseJson(body): LooseJson<ServerStopRequest>,
 ) -> axum::response::Response {
     let force = body.map(|Json(b)| b.force).unwrap_or(false);
     stop_instance(state, &id, force).await
@@ -980,17 +981,17 @@ pub async fn stop_instance_handler(
 pub async fn restart_instance_handler(
     Path(id): Path<String>,
     State(state): State<IPCServer>,
-    body: Option<Json<ServerStopRequest>>,
+    LooseJson(body): LooseJson<ServerStopRequest>,
 ) -> axum::response::Response {
     // 안에서 부르는 정지·시작은 따로 남기지 않는다
-    let resp = crate::audit::quietly(restart_instance(Path(id.clone()), State(state.clone()), body)).await;
+    let resp = crate::audit::quietly(restart_instance(Path(id.clone()), State(state.clone()), LooseJson(body))).await;
     super::audited(&state, "restart", &id, None, None, resp).await
 }
 
 async fn restart_instance(
     Path(id): Path<String>,
     State(state): State<IPCServer>,
-    body: Option<Json<ServerStopRequest>>,
+    LooseJson(body): LooseJson<ServerStopRequest>,
 ) -> axum::response::Response {
     let picked = {
         let supervisor = state.supervisor.read().await;
@@ -1447,7 +1448,7 @@ mod tests {
         let restarter = {
             let state = state.clone();
             tokio::spawn(async move {
-                crate::ipc::internal::into_internal(restart_instance(Path("stop-during-restart".into()), State(state), None).await).await.body
+                crate::ipc::internal::into_internal(restart_instance(Path("stop-during-restart".into()), State(state), super::super::LooseJson(None)).await).await.body
             })
         };
         tokio::time::sleep(std::time::Duration::from_millis(1000)).await;

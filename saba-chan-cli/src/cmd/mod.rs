@@ -15,6 +15,7 @@ pub mod install;
 pub mod module;
 pub mod monitor;
 pub mod perm;
+pub mod remote;
 pub mod sandbox;
 pub mod schedule;
 pub mod server;
@@ -38,6 +39,7 @@ pub async fn dispatch(ctx: &Ctx, cmd: Cmd) -> Result<()> {
         Cmd::Audit { server, limit, follow } => audit::run(ctx, server.as_deref(), limit, follow).await,
         Cmd::Perm(c) => perm::run(ctx, c).await,
         Cmd::Sandbox(c) => sandbox::run(ctx, c).await,
+        Cmd::Remote(c) => remote::run(ctx, c).await,
         Cmd::Do { run_id: Some(id), .. } => do_action::run_status(ctx, &id).await,
         Cmd::Do { steps: Some(steps), plan, .. } => do_action::steps(ctx, &steps, plan).await,
         Cmd::Do { action, server, plan, input, .. } => do_action::run(ctx, action.as_deref(), server.as_deref(), plan, &input).await,

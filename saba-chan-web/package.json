@@ -2,7 +2,7 @@
   "name": "saba-chan-web",
   "version": "0.1.10",
   "private": true,
-  "description": "사바쨩 웹 - 디스코드 1회용 링크로 여는 원격 관리 화면",
+  "description": "Saba-chan Web - remote management page opened with a one-time Discord link",
   "type": "module",
   "engines": {
     "node": ">=22.12"

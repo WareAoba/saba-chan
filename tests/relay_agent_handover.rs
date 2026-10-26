@@ -92,7 +92,7 @@ async fn a_reconnect_neither_drops_waiting_commands_nor_the_results_of_running_o
         .route("/heartbeat", post(|| async { Json(json!({ "status": "ok" })) }))
         .route("/poll", get(poll))
         .route("/ack", post(ack))
-        .route("/result/:id", post(result))
+        .route("/result/{id}", post(result))
         .with_state(relay.clone());
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let relay_url = format!("http://{}", listener.local_addr().unwrap());

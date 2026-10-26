@@ -324,6 +324,7 @@
       "paths_not_writable": "Saba-chan can't write there. Choose a folder you can write to.",
       "paths_has_link": "The folder has a link (shortcut folder) inside. Remove it, then try again.",
       "paths_copy_failed": "Copying failed. Nothing was changed. Check the free space and try again.",
+      "paths_acl_failed": "Could not set access permissions on the new folder. Nothing was changed. Choose another folder.",
       "paths_verify_failed": "The copy did not match the original. Nothing was changed. Try again.",
       "paths_commit_failed": "Saving the setting failed. The files were put back where they were.",
       "paths_unknown_kind": "Choose modules or extensions.",
@@ -666,7 +667,7 @@
       "bot.wake": "Wake the bot on a Discord server",
       "bot.music": "Music player settings of a Discord server. No options: show",
       "bot.allow": "Servers a Discord server can see and run. No servers: show. `--all`: every server",
-      "bot.link": "Connection requests sent from Discord with /사바쨩 연결 and no code. No id: show, ID: accept, `--decline`: refuse",
+      "bot.link": "Connection requests sent from Discord with /saba connect and no code. No id: show, ID: accept, `--decline`: refuse",
       "help": "Show help for a command. With --json: the command tree, arguments and exit codes",
       "events": "Follow daemon events as they happen (with --json: one JSON per line). Ctrl+C to stop",
       "install": "Install Saba-chan on this PC without the window installer",
@@ -1151,5 +1152,27 @@
   },
   "gui": {
     "opened": "Opened the Saba-chan app."
+  },
+  "remote": {
+    "item": "Item",
+    "value": "Value",
+    "listening": "Open",
+    "not_listening": "Not open",
+    "off": "Off",
+    "address": "Public address",
+    "no_address": "None (not sent to the relay)",
+    "published": "Sent to the relay",
+    "fingerprint": "Certificate fingerprint",
+    "yes": "Yes",
+    "no": "No",
+    "no_clients": "No PC is paired with this daemon.",
+    "host_id": "PC id",
+    "paired_at": "Paired at",
+    "revoked": "Unpaired {{host}}. Its token no longer works.",
+    "error": {
+      "certificate_failed": "Could not prepare the certificate",
+      "port_in_use": "The port is already in use",
+      "bind_failed": "Could not open the port"
+    }
   }
 }

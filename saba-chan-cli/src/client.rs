@@ -691,6 +691,21 @@ impl Api {
             self.delete(&path).await
         }
     }
+    /// GET·PUT /api/remote/settings — 원격 데몬 포트 (D1)
+    pub async fn remote_settings(&self) -> Result<Value> {
+        self.get("/api/remote/settings").await
+    }
+    pub async fn set_remote_settings(&self, body: Value) -> Result<Value> {
+        self.put("/api/remote/settings", body).await
+    }
+    /// GET /api/remote/clients — 이 데몬에 짝 맺은 PC
+    pub async fn remote_clients(&self) -> Result<Value> {
+        self.get("/api/remote/clients").await
+    }
+    /// DELETE /api/remote/clients/:hostId
+    pub async fn revoke_remote_client(&self, host_id: &str) -> Result<Value> {
+        self.delete(&format!("/api/remote/clients/{}", seg(host_id))).await
+    }
     /// GET /api/actions?surface=cli&instance&locale (P2)
     pub async fn actions(&self, instance: Option<&str>) -> Result<Value> {
         let mut path = "/api/actions?surface=cli".to_string();
@@ -1445,16 +1460,16 @@ mod route_coverage {
     const NOT_FOR_CLI: &[(&str, &str)] = &[
         ("/api/client/register", "GUI 창 수명 (CLI는 한 번 돌고 끝난다)"),
         ("/api/updates/install", "원격(디스코드 `/사바쨩 업데이트`)용 한 번에 받고 적용 (CLI `update`는 단계마다 진행을 보인다)"),
-        ("/api/client/:id/heartbeat", "GUI 창 수명"),
-        ("/api/client/:id/unregister", "GUI 창 수명"),
-        ("/api/extensions/:id/gui", "GUI 번들"),
-        ("/api/extensions/:id/gui/styles", "GUI 번들"),
-        ("/api/extensions/:id/icon", "GUI 그림"),
-        ("/api/extensions/:id/i18n/:locale", "GUI 번들 문구"),
-        ("/api/server/:name/status", "이름 기반 옛 길 (CLI는 인스턴스 id 길)"),
-        ("/api/server/:name/start", "이름 기반 옛 길"),
-        ("/api/server/:name/stop", "이름 기반 옛 길"),
-        ("/api/instance/:id/managed/start", "start가 관리 모드를 데몬에 맡긴다"),
+        ("/api/client/{id}/heartbeat", "GUI 창 수명"),
+        ("/api/client/{id}/unregister", "GUI 창 수명"),
+        ("/api/extensions/{id}/gui", "GUI 번들"),
+        ("/api/extensions/{id}/gui/styles", "GUI 번들"),
+        ("/api/extensions/{id}/icon", "GUI 그림"),
+        ("/api/extensions/{id}/i18n/{locale}", "GUI 번들 문구"),
+        ("/api/server/{name}/status", "이름 기반 옛 길 (CLI는 인스턴스 id 길)"),
+        ("/api/server/{name}/start", "이름 기반 옛 길"),
+        ("/api/server/{name}/stop", "이름 기반 옛 길"),
+        ("/api/instance/{id}/managed/start", "start가 관리 모드를 데몬에 맡긴다"),
     ];
 
     /// 라우터 소스에서 `.route("…"` 경로를 모은다 (여러 줄에 걸친 것도)
@@ -1479,10 +1494,10 @@ mod route_coverage {
             .collect()
     }
 
-    /// `:x`와 `{}`는 아무 한 조각
+    /// `{x}`와 `{}`는 아무 한 조각
     fn same(route: &str, call: &str) -> bool {
         let (r, c): (Vec<&str>, Vec<&str>) = (route.split('/').collect(), call.split('/').collect());
-        r.len() == c.len() && r.iter().zip(&c).all(|(a, b)| a == b || a.starts_with(':') || *b == "{}")
+        r.len() == c.len() && r.iter().zip(&c).all(|(a, b)| a == b || a.starts_with('{') || *b == "{}")
     }
 
     #[test]

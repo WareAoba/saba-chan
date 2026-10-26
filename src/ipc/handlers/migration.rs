@@ -72,7 +72,7 @@ pub(crate) fn write_bundle(path: &Path, bundle: &Bundle) -> anyhow::Result<()> {
     let tmp = path.with_extension("saba-export.tmp");
     let result = (|| -> anyhow::Result<()> {
         let mut zip = zip::ZipWriter::new(std::fs::File::create(&tmp)?);
-        let opts = zip::write::FileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+        let opts = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
         let mut put = |name: &str, bytes: &[u8]| -> anyhow::Result<()> {
             zip.start_file(name, opts)?;
             zip.write_all(bytes)?;
@@ -593,7 +593,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("other.zip");
         let mut zip = zip::ZipWriter::new(std::fs::File::create(&path).unwrap());
-        zip.start_file("saba-export.json", zip::write::FileOptions::default()).unwrap();
+        zip.start_file("saba-export.json", zip::write::SimpleFileOptions::default()).unwrap();
         zip.write_all(br#"{"format":"something-else","formatVersion":1}"#).unwrap();
         zip.finish().unwrap();
         assert!(read_bundle(&path).is_err());

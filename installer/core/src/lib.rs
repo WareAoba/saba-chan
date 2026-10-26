@@ -1152,7 +1152,7 @@ mod tests {
             async move {
                 if good {
                     let mut zip = zip::ZipWriter::new(std::fs::File::create(&dest).unwrap());
-                    zip.start_file("saba-core", zip::write::FileOptions::default()).unwrap();
+                    zip.start_file("saba-core", zip::write::SimpleFileOptions::default()).unwrap();
                     zip.write_all(b"bin").unwrap();
                     zip.finish().unwrap();
                 } else {

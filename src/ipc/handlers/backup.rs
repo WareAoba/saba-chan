@@ -6,6 +6,7 @@
 //! - `GET/PUT /api/instance/:id/schedule` — `{schedule: [...], backup_keep}`
 #![allow(clippy::result_large_err)] // 오류는 바로 돌려줄 HTTP 응답
 
+use super::LooseJson;
 use axum::{
     extract::{Path, State},
     http::StatusCode,
@@ -542,7 +543,7 @@ pub struct CreateBody {
     from_snapshot: bool,
 }
 
-pub async fn create_backup(Path(id): Path<String>, State(state): State<IPCServer>, body: Option<Json<CreateBody>>) -> Response {
+pub async fn create_backup(Path(id): Path<String>, State(state): State<IPCServer>, LooseJson(body): LooseJson<CreateBody>) -> Response {
     let body = body.map(|Json(b)| b).unwrap_or_default();
     let source = match body.source.as_deref() {
         None if body.from_snapshot => Source::Snapshot(body.snapshot),
@@ -950,7 +951,7 @@ async fn run_task_now(state: &IPCServer, id: &str, task: &ScheduledTask, fire: c
             }
             tracing::info!("Scheduled restart of '{}'", id);
             let resp = crate::ipc::internal::into_internal(
-                super::server::restart_instance_handler(Path(id.to_string()), State(state.clone()), None).await,
+                super::server::restart_instance_handler(Path(id.to_string()), State(state.clone()), LooseJson(None)).await,
             )
             .await;
             if !resp.status.is_success() || resp.body.get("success").and_then(Value::as_bool) == Some(false) {
@@ -1351,7 +1352,7 @@ else:
         let guard = InstanceLock::take(&id).expect("free");
         let start = super::super::server::start_instance_handler(Path(id.clone()), State(state.clone())).await;
         assert_eq!(code(start).await, "instance_busy");
-        let managed = super::super::managed::start_managed_handler(Path(id.clone()), State(state.clone()), None).await.into_response();
+        let managed = super::super::managed::start_managed_handler(Path(id.clone()), State(state.clone()), super::LooseJson(None)).await.into_response();
         assert_eq!(code(managed).await, "instance_busy");
         let update = super::super::instance::begin_server_update(&state, &id).await.err().expect("update must wait");
         assert_eq!(code(update).await, "instance_busy");
@@ -1497,7 +1498,7 @@ print(json.dumps({'success': True, 'snapshots': [{'id': 'S1', 'created': 1792800
         assert!(backup::backed_up_paths(&dir, &kept.name).unwrap().contains(&world.join("Level.sav")));
         // 원격 액션 backup.create 의 칸 from_snapshot 도 같은 길이다
         let body: CreateBody = serde_json::from_value(json!({ "from_snapshot": true })).unwrap();
-        let via_action = crate::ipc::internal::into_internal(create_backup(Path(id.clone()), State(state.clone()), Some(Json(body))).await).await.body;
+        let via_action = crate::ipc::internal::into_internal(create_backup(Path(id.clone()), State(state.clone()), super::LooseJson(Some(Json(body)))).await).await.body;
         assert_eq!(via_action["backup"]["kind"], "snapshot", "{via_action}");
 
         // 바로 복원: 지금 월드는 안전 백업으로 남기고 스냅샷으로 바꾼다
@@ -1548,7 +1549,7 @@ print(json.dumps({'success': True, 'snapshots': [{'id': 'startup/backup_1', 'cre
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         let mut z = zip::ZipWriter::new(std::fs::File::create(path).unwrap());
         for (name, body) in files {
-            z.start_file(*name, zip::write::FileOptions::default()).unwrap();
+            z.start_file(*name, zip::write::SimpleFileOptions::default()).unwrap();
             std::io::Write::write_all(&mut z, body).unwrap();
         }
         z.finish().unwrap();
@@ -1967,7 +1968,7 @@ print(json.dumps({'success': True, 'snapshots': [{'id': 'startup/backup_1', 'cre
         }
         let create = |origin: crate::audit::Origin| {
             let (state, id) = (state.clone(), id.clone());
-            crate::audit::with_origin(origin, async move { create_backup(Path(id), State(state), None).await })
+            crate::audit::with_origin(origin, async move { create_backup(Path(id), State(state), LooseJson(None)).await })
         };
         let refused = create(crate::audit::Origin::new("discord")).await;
         assert_eq!(refused.status(), StatusCode::CONFLICT);

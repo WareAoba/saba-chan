@@ -1,0 +1,46 @@
+# ═══════════════════════════════════════════════════════════
+# 의존성 보안 점검 (RustSec, npm advisory)
+# ═══════════════════════════════════════════════════════════
+#
+# 알려진 취약점이 있는 의존성을 알린다. PR을 막지는 않는다: 결과는 job 요약과 실패 표시로 본다.
+# 받아들이기로 한 RustSec 항목은 .cargo/audit.toml의 [advisories] ignore에 이유와 함께 적는다.
+
+name: Audit
+
+on:
+  schedule:
+    - cron: '0 0 * * 1'   # 월요일 09:00 KST
+  pull_request:
+    paths:
+      - 'Cargo.lock'
+      - '**/package-lock.json'
+      - '.github/workflows/audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cargo:
+    name: cargo audit
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+      - run: cargo audit
+
+  npm:
+    name: npm audit (${{ matrix.dir }})
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        dir: [saba-chan-gui, saba-chan-web]
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm audit --audit-level=high
+        working-directory: ${{ matrix.dir }}

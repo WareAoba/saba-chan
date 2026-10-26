@@ -14,6 +14,11 @@ pub fn set_ipc_port(port: u16) {
     let _ = IPC_PORT.set(port);
 }
 
+/// 데몬 API 포트. HOST·LOOPBACK 중계는 이 포트로 잇지 않는다
+pub(crate) fn ipc_port() -> u16 {
+    *IPC_PORT.get().unwrap_or(&saba_chan_updater_lib::constants::DEFAULT_IPC_PORT)
+}
+
 /// Python 실행마다 넣는 데몬 연결 정보.
 /// - `SABA_IPC_PORT`, `SABA_IPC_URL`: 데몬 API 주소
 /// - `SABA_TOKEN_PATH`: `X-Saba-Token` 값이 든 파일 (토큰 자체는 env에 넣지 않는다)
@@ -21,7 +26,7 @@ pub fn set_ipc_port(port: u16) {
 /// - `TEMP`·`TMP`·`TMPDIR`·`PIP_CACHE_DIR`: 데이터 폴더 안 (제거기가 지운다. 시스템 임시 폴더·사용자 pip 캐시에 흔적을 남기지 않는다).
 ///   격리 실행은 그 뒤에 자기 임시 폴더로 덮는다
 fn daemon_env() -> Vec<(&'static str, String)> {
-    let port = *IPC_PORT.get().unwrap_or(&saba_chan_updater_lib::constants::DEFAULT_IPC_PORT);
+    let port = ipc_port();
     let mut env = vec![
         ("SABA_IPC_PORT", port.to_string()),
         ("SABA_IPC_URL", format!("http://127.0.0.1:{}", port)),
@@ -363,7 +368,7 @@ fn call_lanes() -> std::sync::Arc<CallLanes> {
 fn module_name(entry: &str) -> String {
     let path = std::path::Path::new(entry);
     for dir in path.parent().into_iter().flat_map(std::path::Path::ancestors) {
-        if let Some(name) = std::fs::read_to_string(dir.join("module.toml")).ok().and_then(|text| text.parse::<toml::Value>().ok())
+        if let Some(name) = std::fs::read_to_string(dir.join("module.toml")).ok().and_then(|text| text.parse::<toml::Table>().ok())
             .and_then(|value| value.get("module")?.get("name")?.as_str().map(str::to_string)) {
             return name;
         }
@@ -1072,11 +1077,12 @@ async fn spawn_plugin(
     let host_dir = tempfile::Builder::new().prefix("host-").tempdir_in(&host_root)
         .map_err(|error| call_error(module_path, function, "module_execution_failed", "prepare", error, Vec::new()))?;
     cmd.env("SABA_HOST_DIR", host_dir.path());
-    let host_context = isolation.as_ref()
+    // 격리된 구성요소는 HOST에서 자기 인스턴스의 REST만 쓴다 (host.rs `sandboxed`)
+    let sandboxed = isolation.as_ref()
         .filter(|iso| !crate::sandbox::unisolated_allowed(&iso.key, &iso.dir))
-        .map(|_| None)
-        .unwrap_or_else(|| HOST_CONTEXT.try_with(Clone::clone).ok().flatten());
-    let host_proxy = host::Proxy { dir: host_dir.path().into(), context: host_context, server };
+        .map(|_| std::path::PathBuf::from(module_path));
+    let host_context = HOST_CONTEXT.try_with(Clone::clone).ok().flatten();
+    let host_proxy = host::Proxy { dir: host_dir.path().into(), context: host_context, server, sandboxed };
 
     apply_creation_flags(&mut cmd);
 
@@ -1502,7 +1508,7 @@ for number in range(65):
 print(json.dumps(codes))
 "#, std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("modules").to_string_lossy(), dir.path().to_string_lossy());
         let mut child = python_process(&script).await;
-        let proxy = host::Proxy { dir: dir.path().into(), context: None, server: None };
+        let proxy = host::Proxy { dir: dir.path().into(), context: None, server: None, sandboxed: None };
         let (status, stdout, stderr) = drive(&mut child, b"{}", None, None, Some(proxy), std::time::Duration::from_secs(15)).await.unwrap().unwrap();
         assert!(status.success(), "{stderr}");
         let codes = parse_plugin_output(&stdout).unwrap();

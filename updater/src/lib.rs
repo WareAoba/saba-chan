@@ -430,10 +430,10 @@ pub fn extract_zip(
             .enclosed_name()
             .filter(|p| p.components().all(|c| matches!(c, std::path::Component::Normal(_))))
         else {
-            anyhow::bail!("Unsafe path in archive {}: {}", staged.display(), entry.name());
+            anyhow::bail!("Unsafe path in archive {}: {}", staged.display(), String::from_utf8_lossy(entry.name_raw()));
         };
-        reject_links_below(target_dir, rel)?;
-        let out_path = target_dir.join(rel);
+        reject_links_below(target_dir, &rel)?;
+        let out_path = target_dir.join(&rel);
         if entry.is_dir() {
             std::fs::create_dir_all(&out_path)?;
             continue;

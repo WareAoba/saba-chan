@@ -1,0 +1,36 @@
+# 의존성 갱신 PR. 생태계마다 한 주에 PR 하나로 묶는다 (보안 갱신은 따로 바로 온다)
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 2
+    groups:
+      cargo:
+        patterns: ["*"]
+
+  - package-ecosystem: npm
+    directories: [/saba-chan-gui, /saba-chan-web]
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 2
+    groups:
+      npm:
+        patterns: ["*"]
+
+  - package-ecosystem: pip
+    directory: /tests/e2e
+    schedule:
+      interval: monthly
+    groups:
+      pip:
+        patterns: ["*"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]

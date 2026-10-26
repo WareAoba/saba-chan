@@ -105,7 +105,7 @@ async fn query_http_keeps_the_modules_path_failure() {
     let state = boot("query").await;
     let id = add_instance(&state, "query").await;
     let response = into_internal(managed::query_instance_handler(
-        Path((id, "path".into())), State(state), Some(Json(json!({ "args": {} }))),
+        Path((id, "path".into())), State(state), saba_core::ipc::handlers::LooseJson(Some(Json(json!({ "args": {} })))),
     ).await).await;
     assert_eq!(response.status, StatusCode::OK);
     assert_module_failure(&response.body, "query_path");

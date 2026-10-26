@@ -11,6 +11,7 @@ mod process_monitor;
 mod system_monitor;
 mod python_env;
 mod utils;
+mod archive;
 mod extension;
 mod validator;
 mod boot_selector;
@@ -26,6 +27,7 @@ mod actions;
 mod launch_args;
 mod relay_agent;
 mod remote;
+mod remote_daemon;
 mod tray_host;
 
 use std::sync::Arc;

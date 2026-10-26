@@ -46,55 +46,55 @@ pub static ROUTES: &[Route] = &[
     deny("GET", "/api/events"),
     // ── 서버 ──
     allow("GET", "/api/servers"),
-    allow("GET", "/api/server/:name/status"),
-    allow("POST", "/api/server/:name/start"),
-    allow("POST", "/api/server/:name/stop"),
-    allow("POST", "/api/instance/:id/start"),
-    allow("POST", "/api/instance/:id/stop"),
-    allow("POST", "/api/instance/:id/restart"),
-    allow("POST", "/api/instance/:id/managed/start"),
-    allow("GET", "/api/instance/:id/events"),
-    allow("GET", "/api/instance/:id/console"),
-    allow("POST", "/api/instance/:id/stdin"),
-    allow("GET", "/api/instance/:id/logs"),
-    allow("GET", "/api/instance/:id/logs/export"),
-    allow("GET", "/api/instance/:id/players"),
-    allow("POST", "/api/instance/:id/command"),
-    allow("GET", "/api/instance/:id/commands"),
-    allow("POST", "/api/instance/:id/rcon"),
-    allow("POST", "/api/instance/:id/rest"),
-    allow("POST", "/api/instance/:id/query/:name"),
-    allow("POST", "/api/instance/:id/validate"),
-    allow("POST", "/api/instance/:id/diagnose"),
+    allow("GET", "/api/server/{name}/status"),
+    allow("POST", "/api/server/{name}/start"),
+    allow("POST", "/api/server/{name}/stop"),
+    allow("POST", "/api/instance/{id}/start"),
+    allow("POST", "/api/instance/{id}/stop"),
+    allow("POST", "/api/instance/{id}/restart"),
+    allow("POST", "/api/instance/{id}/managed/start"),
+    allow("GET", "/api/instance/{id}/events"),
+    allow("GET", "/api/instance/{id}/console"),
+    allow("POST", "/api/instance/{id}/stdin"),
+    allow("GET", "/api/instance/{id}/logs"),
+    allow("GET", "/api/instance/{id}/logs/export"),
+    allow("GET", "/api/instance/{id}/players"),
+    allow("POST", "/api/instance/{id}/command"),
+    allow("GET", "/api/instance/{id}/commands"),
+    allow("POST", "/api/instance/{id}/rcon"),
+    allow("POST", "/api/instance/{id}/rest"),
+    allow("POST", "/api/instance/{id}/query/{name}"),
+    allow("POST", "/api/instance/{id}/validate"),
+    allow("POST", "/api/instance/{id}/diagnose"),
     // ── 인스턴스 ──
     allow("GET", "/api/instances"),
     allow("POST", "/api/instances"),
     allow("PUT", "/api/instances/reorder"),
-    allow("GET", "/api/instance/:id"),
-    allow("PATCH", "/api/instance/:id"),
-    allow("DELETE", "/api/instance/:id"),
-    allow("POST", "/api/instance/:id/rename"),
+    allow("GET", "/api/instance/{id}"),
+    allow("PATCH", "/api/instance/{id}"),
+    allow("DELETE", "/api/instance/{id}"),
+    allow("POST", "/api/instance/{id}/rename"),
     // 저장하지 않은 설정 초안으로 실행 줄을 만든다: 모듈이 초안의 경로로 프로그램을 부를 수 있다
-    deny("POST", "/api/instance/:id/launch-preview"),
-    allow("GET", "/api/provision-progress/:name"),
-    allow("DELETE", "/api/provision-progress/:name"),
-    allow("GET", "/api/instance/:id/check-update"),
-    allow("POST", "/api/instance/:id/apply-update"),
-    allow("GET", "/api/instance/:id/installed-version"),
+    deny("POST", "/api/instance/{id}/launch-preview"),
+    allow("GET", "/api/provision-progress/{name}"),
+    allow("DELETE", "/api/provision-progress/{name}"),
+    allow("GET", "/api/instance/{id}/check-update"),
+    allow("POST", "/api/instance/{id}/apply-update"),
+    allow("GET", "/api/instance/{id}/installed-version"),
     // 게임 설정 원문 (관리자 비밀번호가 들어 있다). 웹은 인스턴스 설정(비밀값을 뺀다)으로 고친다
-    deny("GET", "/api/instance/:id/properties"),
-    allow("PUT", "/api/instance/:id/properties"),
-    allow("POST", "/api/instance/:id/properties/reset"),
-    deny("GET", "/api/instance/:id/settings/live"),
-    allow("POST", "/api/instance/:id/server/reset"),
-    allow("POST", "/api/instance/:id/agreements"),
+    deny("GET", "/api/instance/{id}/properties"),
+    allow("PUT", "/api/instance/{id}/properties"),
+    allow("POST", "/api/instance/{id}/properties/reset"),
+    deny("GET", "/api/instance/{id}/settings/live"),
+    allow("POST", "/api/instance/{id}/server/reset"),
+    allow("POST", "/api/instance/{id}/agreements"),
     // ── 백업·일정 ──
-    allow("GET", "/api/instance/:id/backups"),
-    allow("POST", "/api/instance/:id/backups"),
-    allow("DELETE", "/api/instance/:id/backups/:name"),
-    allow("POST", "/api/instance/:id/backups/:name/restore"),
-    allow("GET", "/api/instance/:id/schedule"),
-    allow("PUT", "/api/instance/:id/schedule"),
+    allow("GET", "/api/instance/{id}/backups"),
+    allow("POST", "/api/instance/{id}/backups"),
+    allow("DELETE", "/api/instance/{id}/backups/{name}"),
+    allow("POST", "/api/instance/{id}/backups/{name}/restore"),
+    allow("GET", "/api/instance/{id}/schedule"),
+    allow("PUT", "/api/instance/{id}/schedule"),
     // ── 모듈: 공식 목록에서만 받는다. 폴더에서 들이기·삭제는 PC에서 ──
     allow("GET", "/api/modules"),
     allow("POST", "/api/modules/refresh"),
@@ -102,35 +102,35 @@ pub static ROUTES: &[Route] = &[
     deny("GET", "/api/maker"),
     deny("POST", "/api/modules/detect"),
     allow("GET", "/api/modules/manifest"),
-    allow("POST", "/api/modules/manifest/:id/install"),
-    deny("DELETE", "/api/modules/:id"),
-    allow("GET", "/api/module/:name"),
-    allow("GET", "/api/module/:name/audit"),
-    allow("GET", "/api/module/:name/locales"),
-    allow("GET", "/api/module/:name/versions"),
-    allow("GET", "/api/module/:name/version/:version"),
+    allow("POST", "/api/modules/manifest/{id}/install"),
+    deny("DELETE", "/api/modules/{id}"),
+    allow("GET", "/api/module/{name}"),
+    allow("GET", "/api/module/{name}/audit"),
+    allow("GET", "/api/module/{name}/locales"),
+    allow("GET", "/api/module/{name}/versions"),
+    allow("GET", "/api/module/{name}/version/{version}"),
     // 설치 폴더와 실행 파일 경로를 받는다
-    deny("POST", "/api/module/:name/install"),
+    deny("POST", "/api/module/{name}/install"),
     // ── 플러그인: 공식 목록에서 받고 켜고 끈다. 주소 지정 설치는 `blocked_fields`가 막는다 ──
     allow("GET", "/api/extensions"),
     allow("GET", "/api/extensions/init-status"),
     deny("POST", "/api/extensions/rescan"),
     allow("GET", "/api/extensions/manifest"),
     allow("GET", "/api/extensions/updates"),
-    allow("POST", "/api/extensions/:id/enable"),
-    allow("POST", "/api/extensions/:id/disable"),
-    deny("POST", "/api/extensions/:id/mount"),
-    deny("POST", "/api/extensions/:id/unmount"),
-    allow("POST", "/api/extensions/:id/install"),
-    deny("DELETE", "/api/extensions/:id"),
+    allow("POST", "/api/extensions/{id}/enable"),
+    allow("POST", "/api/extensions/{id}/disable"),
+    deny("POST", "/api/extensions/{id}/mount"),
+    deny("POST", "/api/extensions/{id}/unmount"),
+    allow("POST", "/api/extensions/{id}/install"),
+    deny("DELETE", "/api/extensions/{id}"),
     // 설정에는 비밀값이 들 수 있다
-    deny("GET", "/api/extensions/:id/config"),
-    deny("PUT", "/api/extensions/:id/config"),
-    deny("GET", "/api/extensions/:id/gui"),
-    deny("GET", "/api/extensions/:id/gui/styles"),
-    deny("GET", "/api/extensions/:id/icon"),
-    allow("GET", "/api/extensions/:id/audit"),
-    allow("GET", "/api/extensions/:id/i18n/:locale"),
+    deny("GET", "/api/extensions/{id}/config"),
+    deny("PUT", "/api/extensions/{id}/config"),
+    deny("GET", "/api/extensions/{id}/gui"),
+    deny("GET", "/api/extensions/{id}/gui/styles"),
+    deny("GET", "/api/extensions/{id}/icon"),
+    allow("GET", "/api/extensions/{id}/audit"),
+    allow("GET", "/api/extensions/{id}/i18n/{locale}"),
     // ── 데몬·앱 설정, 토큰, 경로 ──
     deny("GET", "/api/config/bot"),
     deny("PUT", "/api/config/bot"),
@@ -138,15 +138,20 @@ pub static ROUTES: &[Route] = &[
     deny("GET", "/api/config/gui"),
     deny("PUT", "/api/config/gui"),
     deny("PATCH", "/api/config/gui"),
-    deny("GET", "/api/config/client/:kind"),
-    deny("PUT", "/api/config/client/:kind"),
-    deny("GET", "/api/config/:kind/defaults"),
-    deny("POST", "/api/config/:kind/reset"),
+    deny("GET", "/api/config/client/{kind}"),
+    deny("PUT", "/api/config/client/{kind}"),
+    deny("GET", "/api/config/{kind}/defaults"),
+    deny("POST", "/api/config/{kind}/reset"),
     deny("POST", "/api/migration/export"),
     deny("POST", "/api/migration/import"),
     deny("GET", "/api/config/node-token"),
     deny("PUT", "/api/config/node-token"),
     deny("DELETE", "/api/config/node-token"),
+    // 원격 데몬 포트와 짝 맺은 PC (D1)
+    deny("GET", "/api/remote/settings"),
+    deny("PUT", "/api/remote/settings"),
+    deny("GET", "/api/remote/clients"),
+    deny("DELETE", "/api/remote/clients/{host_id}"),
     deny("GET", "/api/system/components"),
     allow("GET", "/api/system/metrics"),
     deny("GET", "/api/system/paths"),
@@ -156,33 +161,33 @@ pub static ROUTES: &[Route] = &[
     deny("GET", "/api/clients"),
     deny("GET", "/api/clients/launch"),
     deny("POST", "/api/clients/launch"),
-    deny("POST", "/api/client/:id/heartbeat"),
-    deny("DELETE", "/api/client/:id/unregister"),
+    deny("POST", "/api/client/{id}/heartbeat"),
+    deny("DELETE", "/api/client/{id}/unregister"),
     deny("POST", "/api/daemon/shutdown"),
     allow("GET", "/api/daemon/console"),
     // ── 멤버 권한과 길드별 서버 노출 ──
-    allow("GET", "/api/permissions/:guild_id"),
-    allow("PATCH", "/api/permissions/:guild_id"),
-    allow("PUT", "/api/permissions/:guild_id/members/:discord_id"),
-    allow("DELETE", "/api/permissions/:guild_id/members/:discord_id"),
-    allow("GET", "/api/instance/:id/words"),
-    allow("PUT", "/api/instance/:id/words"),
-    allow("PUT", "/api/guilds/:guild/allowed-instances"),
-    allow("GET", "/api/relay/host/:host_id/nodes"),
-    allow("GET", "/api/relay/node/:guild_id/members"),
+    allow("GET", "/api/permissions/{guild_id}"),
+    allow("PATCH", "/api/permissions/{guild_id}"),
+    allow("PUT", "/api/permissions/{guild_id}/members/{discord_id}"),
+    allow("DELETE", "/api/permissions/{guild_id}/members/{discord_id}"),
+    allow("GET", "/api/instance/{id}/words"),
+    allow("PUT", "/api/instance/{id}/words"),
+    allow("PUT", "/api/guilds/{guild}/allowed-instances"),
+    allow("GET", "/api/relay/host/{host_id}/nodes"),
+    allow("GET", "/api/relay/node/{guild_id}/members"),
     // ── 디스코드 설정·릴레이 연결: 웹이 타고 있는 연결 자체다 ──
-    deny("GET", "/api/discord/:guild_id/settings"),
-    deny("PATCH", "/api/discord/:guild_id/settings"),
-    deny("GET", "/api/relay/host/:host_id/status"),
-    deny("GET", "/api/relay/node/:guild_id/legacy-members"),
-    deny("GET", "/api/relay/node/:guild_id/channels"),
-    deny("PUT", "/api/relay/node/:guild_id/channels"),
-    deny("GET", "/api/relay/node/:guild_id/chatbot/models"),
+    deny("GET", "/api/discord/{guild_id}/settings"),
+    deny("PATCH", "/api/discord/{guild_id}/settings"),
+    deny("GET", "/api/relay/host/{host_id}/status"),
+    deny("GET", "/api/relay/node/{guild_id}/legacy-members"),
+    deny("GET", "/api/relay/node/{guild_id}/channels"),
+    deny("PUT", "/api/relay/node/{guild_id}/channels"),
+    deny("GET", "/api/relay/node/{guild_id}/chatbot/models"),
     deny("GET", "/api/relay/bot-invite"),
     deny("POST", "/api/relay/pair/initiate"),
-    deny("GET", "/api/relay/pair/:code/status"),
+    deny("GET", "/api/relay/pair/{code}/status"),
     deny("GET", "/api/relay/link-requests"),
-    deny("POST", "/api/relay/link-requests/:request_id"),
+    deny("POST", "/api/relay/link-requests/{request_id}"),
     deny("GET", "/api/relay/agent"),
     deny("POST", "/api/relay/agent/start"),
     deny("POST", "/api/relay/agent/stop"),
@@ -192,21 +197,21 @@ pub static ROUTES: &[Route] = &[
     deny("PUT", "/api/chatbot"),
     deny("DELETE", "/api/chatbot"),
     deny("DELETE", "/api/chatbot/memory"),
-    deny("GET", "/api/chatbot/guilds/:guild"),
-    deny("PATCH", "/api/chatbot/guilds/:guild"),
+    deny("GET", "/api/chatbot/guilds/{guild}"),
+    deny("PATCH", "/api/chatbot/guilds/{guild}"),
     // ── 샌드박스 예외 ──
     deny("GET", "/api/sandbox/unisolated"),
-    deny("POST", "/api/sandbox/unisolated/:component"),
-    deny("DELETE", "/api/sandbox/unisolated/:component"),
+    deny("POST", "/api/sandbox/unisolated/{component}"),
+    deny("DELETE", "/api/sandbox/unisolated/{component}"),
     deny("GET", "/api/sandbox/extension-gui"),
-    deny("POST", "/api/sandbox/extension-gui/:component"),
-    deny("DELETE", "/api/sandbox/extension-gui/:component"),
+    deny("POST", "/api/sandbox/extension-gui/{component}"),
+    deny("DELETE", "/api/sandbox/extension-gui/{component}"),
     // ── 액션 카탈로그: 목록만. 실행은 안에서 라우터를 다시 불러 이 표를 비켜 간다 ──
     allow("GET", "/api/actions"),
     deny("POST", "/api/actions/plan"),
-    deny("GET", "/api/actions/runs/:run_id"),
-    deny("POST", "/api/actions/:id/plan"),
-    deny("POST", "/api/actions/:id/run"),
+    deny("GET", "/api/actions/runs/{run_id}"),
+    deny("POST", "/api/actions/{id}/plan"),
+    deny("POST", "/api/actions/{id}/run"),
     // ── 업데이트 ──
     deny("GET", "/api/updates/status"),
     deny("POST", "/api/updates/check"),
@@ -263,7 +268,7 @@ fn match_score(pattern: &str, segments: &[&str]) -> Option<Vec<bool>> {
         .iter()
         .zip(segments)
         .map(|(p, s)| {
-            if p.starts_with(':') {
+            if p.starts_with('{') {
                 Some(false)
             } else {
                 (p == s).then_some(true)
@@ -299,7 +304,7 @@ pub(crate) fn percent_decode(s: &str) -> Option<String> {
 
 /// 응답에 인스턴스 설정을 담는 라우트 (비밀값을 빼고 돌려준다, `exec::hide_secrets`)
 pub fn shows_instances(method: &str, pattern: &str) -> bool {
-    method == "GET" && matches!(pattern, "/api/instances" | "/api/instance/:id" | "/api/servers")
+    method == "GET" && matches!(pattern, "/api/instances" | "/api/instance/{id}" | "/api/servers")
 }
 
 /// 허용된 라우트라도 원격에서 바꾸면 안 되는 본문 키. `file_fields`는 그 인스턴스 모듈의 PC 전용 설정 키(비밀값·경로)다
@@ -308,7 +313,7 @@ pub fn blocked_fields(method: &str, pattern: &str, body: Option<&Value>, file_fi
         return Vec::new();
     };
     let mut blocked: Vec<String> = match (method, pattern) {
-        ("PATCH", "/api/instance/:id") => body
+        ("PATCH", "/api/instance/{id}") => body
             .keys()
             .filter(|k| SETTINGS_PC_ONLY.contains(&k.as_str()) || file_fields.contains(k))
             .cloned()
@@ -330,7 +335,7 @@ pub fn blocked_fields(method: &str, pattern: &str, body: Option<&Value>, file_fi
             keys
         }
         // 게임 설정 파일 쓰기도 인스턴스 설정과 같은 칸을 막는다 (같은 값이 파일을 거쳐 인스턴스 설정으로 돌아온다)
-        ("PUT", "/api/instance/:id/properties") => body
+        ("PUT", "/api/instance/{id}/properties") => body
             .get("settings")
             .and_then(Value::as_object)
             .into_iter()
@@ -339,12 +344,12 @@ pub fn blocked_fields(method: &str, pattern: &str, body: Option<&Value>, file_fi
             .map(|k| format!("settings.{k}"))
             .collect(),
         // 대상은 인스턴스 설정의 REST 주소만. 다른 호스트로 보내면 게임 관리자 비밀번호가 실려 나간다
-        ("POST", "/api/instance/:id/rest") => body
+        ("POST", "/api/instance/{id}/rest") => body
             .keys()
             .filter(|k| ["rest_host", "rest_port", "use_https"].contains(&k.as_str()))
             .cloned()
             .collect(),
-        ("POST", "/api/extensions/:id/install") => body
+        ("POST", "/api/extensions/{id}/install") => body
             .keys()
             .filter(|k| ["download_url", "sha256"].contains(&k.as_str()))
             .cloned()
@@ -444,14 +449,14 @@ mod tests {
 
     #[test]
     fn allows_server_management() {
-        assert_eq!(decide("POST", "/api/instance/abc/start"), Ok("/api/instance/:id/start"));
+        assert_eq!(decide("POST", "/api/instance/abc/start"), Ok("/api/instance/{id}/start"));
         assert_eq!(
             decide("GET", "/api/instance/abc/logs?source=latest&lines=200"),
-            Ok("/api/instance/:id/logs")
+            Ok("/api/instance/{id}/logs")
         );
         assert_eq!(
             decide("DELETE", "/api/instance/abc/backups/2026-10-24_1200"),
-            Ok("/api/instance/:id/backups/:name")
+            Ok("/api/instance/{id}/backups/{name}")
         );
     }
 
@@ -487,12 +492,12 @@ mod tests {
 
     #[test]
     fn literal_segment_wins_over_parameter() {
-        // 라우터처럼 리터럴 라우트가 매개변수 라우트보다 먼저다: DELETE는 `/api/modules/:id`가 아니라 GET만 있는 리터럴에 닿는다
+        // 라우터처럼 리터럴 라우트가 매개변수 라우트보다 먼저다: DELETE는 `/api/modules/{id}`가 아니라 GET만 있는 리터럴에 닿는다
         assert_eq!(decide("GET", "/api/modules/manifest"), Ok("/api/modules/manifest"));
         assert_eq!(
             decide("DELETE", "/api/modules/manifest"),
             Err(Refusal::NotAllowed),
-            "DELETE /api/modules/:id is denied"
+            "DELETE /api/modules/{{id}} is denied"
         );
     }
 
@@ -514,26 +519,26 @@ mod tests {
     fn accepts_percent_encoded_names() {
         assert_eq!(
             decide("GET", "/api/server/%EB%A7%88%EC%9D%B8/status"),
-            Ok("/api/server/:name/status")
+            Ok("/api/server/{name}/status")
         );
     }
 
     #[test]
     fn instance_settings_cannot_change_launch_or_paths() {
         let body = json!({ "port": 25565, "executable_path": "C:/x.exe", "working_dir": "C:/", "extra_args": ["-x"], "java_path": "C:/j.exe", "motd": "hi" });
-        let blocked = blocked_fields("PATCH", "/api/instance/:id", Some(&body), &["java_path".to_string()]);
+        let blocked = blocked_fields("PATCH", "/api/instance/{id}", Some(&body), &["java_path".to_string()]);
         assert_eq!(
             blocked,
             vec!["executable_path", "extra_args", "java_path", "working_dir"]
         );
-        assert!(blocked_fields("PATCH", "/api/instance/:id", Some(&json!({ "port": 1 })), &[]).is_empty());
+        assert!(blocked_fields("PATCH", "/api/instance/{id}", Some(&json!({ "port": 1 })), &[]).is_empty());
         // 게임 설정 파일 쓰기로 같은 칸을 비켜 가지 못한다
         let body = json!({ "settings": { "rest_password": "x", "java_path": "/bin/sh", "motd": "hi" } });
         assert_eq!(
-            blocked_fields("PUT", "/api/instance/:id/properties", Some(&body), &["java_path".to_string()]),
+            blocked_fields("PUT", "/api/instance/{id}/properties", Some(&body), &["java_path".to_string()]),
             vec!["settings.java_path", "settings.rest_password"]
         );
-        assert!(blocked_fields("PUT", "/api/instance/:id/properties", Some(&json!({ "settings": { "motd": "hi" } })), &[]).is_empty());
+        assert!(blocked_fields("PUT", "/api/instance/{id}/properties", Some(&json!({ "settings": { "motd": "hi" } })), &[]).is_empty());
     }
 
     #[test]
@@ -550,9 +555,9 @@ mod tests {
     #[test]
     fn the_rest_target_is_set_only_on_the_pc() {
         let patch = json!({ "rest_port": 1, "port": 2 });
-        assert_eq!(blocked_fields("PATCH", "/api/instance/:id", Some(&patch), &[]), vec!["rest_port"]);
+        assert_eq!(blocked_fields("PATCH", "/api/instance/{id}", Some(&patch), &[]), vec!["rest_port"]);
         let file = json!({ "settings": { "rest_port": 1 } });
-        assert_eq!(blocked_fields("PUT", "/api/instance/:id/properties", Some(&file), &[]), vec!["settings.rest_port"]);
+        assert_eq!(blocked_fields("PUT", "/api/instance/{id}/properties", Some(&file), &[]), vec!["settings.rest_port"]);
         let create = json!({ "name": "s", "module_name": "palworld", "module_settings": { "rest_host": "h", "rest_port": 1, "motd": "hi" } });
         assert_eq!(
             blocked_fields("POST", "/api/instances", Some(&create), &[]),
@@ -564,19 +569,19 @@ mod tests {
     fn rest_calls_cannot_pick_another_host() {
         let body = json!({ "endpoint": "/x", "rest_host": "attacker.example", "rest_port": 80, "use_https": true });
         assert_eq!(
-            blocked_fields("POST", "/api/instance/:id/rest", Some(&body), &[]),
+            blocked_fields("POST", "/api/instance/{id}/rest", Some(&body), &[]),
             vec!["rest_host", "rest_port", "use_https"]
         );
-        assert!(blocked_fields("POST", "/api/instance/:id/rest", Some(&json!({ "endpoint": "/x" })), &[]).is_empty());
+        assert!(blocked_fields("POST", "/api/instance/{id}/rest", Some(&json!({ "endpoint": "/x" })), &[]).is_empty());
     }
 
     #[test]
     fn extension_install_cannot_name_a_download() {
         let body = json!({ "download_url": "https://evil.example/x.zip", "sha256": "00" });
         assert_eq!(
-            blocked_fields("POST", "/api/extensions/:id/install", Some(&body), &[]),
+            blocked_fields("POST", "/api/extensions/{id}/install", Some(&body), &[]),
             vec!["download_url", "sha256"]
         );
-        assert!(blocked_fields("POST", "/api/extensions/:id/install", None, &[]).is_empty());
+        assert!(blocked_fields("POST", "/api/extensions/{id}/install", None, &[]).is_empty());
     }
 }

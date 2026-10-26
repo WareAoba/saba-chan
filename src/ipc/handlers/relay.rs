@@ -83,7 +83,7 @@ async fn signed_base(state: &IPCServer, requested: Option<&str>) -> String {
 
 /// Create an HTTP client with 5s timeout for relay requests.
 /// Automatically includes X-Saba-Client: 1 header required by nginx.
-fn relay_client() -> Result<reqwest::Client, reqwest::Error> {
+pub(crate) fn relay_client() -> Result<reqwest::Client, reqwest::Error> {
     let mut headers = reqwest::header::HeaderMap::new();
     headers.insert(
         "X-Saba-Client",
@@ -136,6 +136,8 @@ pub(crate) async fn adopt_node_token(state: &IPCServer, token: &str, changed: bo
     sync_host_id(state, Some(token)).await;
     if changed {
         crate::relay_agent::restart(state).await;
+        // 원격 포트 주소는 PC(노드 토큰)마다 올린다
+        crate::remote_daemon::apply(state).await;
     }
 }
 
@@ -551,11 +553,38 @@ pub async fn initiate_pairing(
         Err(r) => return r,
     };
     let url = format!("{}/api/pair/initiate", base);
-    match send(client.post(&url).json(&payload)).await {
+    let body = pairing_body(&payload, &base, &configured, load_node_token().as_deref(), device_name().as_deref());
+    match send(client.post(&url).json(&body)).await {
         Ok((code, Some(data))) => (code, Json(data)).into_response(),
         Ok((code, None)) => invalid_response(code),
         Err(r) => r,
     }
+}
+
+/// 릴레이로 보내는 페어링 요청. GUI 가 보낸 것 중 `relayUrl` 만 옮기고, 이 PC 의 이름과
+/// (토큰을 준 릴레이일 때만) 지금 토큰을 싣는다 — 릴레이는 그 토큰의 PC 를 다시 연결한다
+fn pairing_body(payload: &Value, base: &str, configured: &str, token: Option<&str>, device: Option<&str>) -> Value {
+    let mut body = serde_json::Map::new();
+    if let Some(url) = payload.get("relayUrl").and_then(Value::as_str) {
+        body.insert("relayUrl".into(), json!(url));
+    }
+    if let Some(token) = token.map(str::trim).filter(|t| parse_node_token(t).is_some()) {
+        if base == resolve_relay_url(Some(configured.trim())) {
+            body.insert("currentToken".into(), json!(token));
+        }
+    }
+    if let Some(name) = device.map(str::trim).filter(|n| !n.is_empty()) {
+        body.insert("deviceName".into(), json!(name.chars().take(64).collect::<String>()));
+    }
+    Value::Object(body)
+}
+
+/// 이 PC 의 이름 (릴레이에서 새 PC 의 이름)
+fn device_name() -> Option<String> {
+    let env = |k: &str| std::env::var(k).ok().filter(|v| !v.trim().is_empty());
+    env("COMPUTERNAME").or_else(|| env("HOSTNAME")).or_else(|| {
+        std::fs::read_to_string("/etc/hostname").ok().map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
+    })
 }
 
 // ── GET /api/relay/pair/:code/status ──
@@ -640,7 +669,7 @@ fn store_node_token(file: &ConfigFile, token: Option<&str>) -> StoredToken {
 
 #[cfg(test)]
 mod tests {
-    use super::{node_token_in, store_node_token, write_node_token_in, StoredToken};
+    use super::{node_token_in, pairing_body, store_node_token, write_node_token_in, StoredToken};
     use saba_chan_updater_lib::config_file::ConfigFile;
     use serde_json::json;
 
@@ -690,6 +719,20 @@ mod tests {
         assert_eq!(signed_relay_url("https://my.relay", None), "https://my.relay");
     }
 
+    /// 페어링 요청은 정한 칸만 보낸다. 지금 토큰은 그 토큰을 준 릴레이(설정 주소)에만 싣는다:
+    /// 릴레이는 그 토큰의 PC 를 다시 연결하고(계정 하나에 PC 여러 대), PC 이름은 새 PC 의 이름이 된다
+    #[test]
+    fn a_pairing_request_names_this_pc_and_only_proves_it_to_the_relay_that_issued_the_token() {
+        let gui = json!({ "relayUrl": "https://saba-chan.online", "currentToken": "sbn_forged.x", "extra": 1 });
+        let body = pairing_body(&gui, "https://saba-chan.online", "https://saba-chan.online/", Some("sbn_me.s"), Some("gcp-1"));
+        assert_eq!(body, json!({ "relayUrl": "https://saba-chan.online", "currentToken": "sbn_me.s", "deviceName": "gcp-1" }));
+        let mock = pairing_body(&json!({}), "http://127.0.0.1:9000", "https://saba-chan.online", Some("sbn_me.s"), None);
+        assert_eq!(mock, json!({}), "a mock relay never gets the real token");
+        let fresh = pairing_body(&json!({}), "https://saba-chan.online", "", None, Some(&"x".repeat(80)));
+        assert_eq!(fresh["deviceName"].as_str().unwrap().chars().count(), 64);
+        assert!(fresh.get("currentToken").is_none());
+    }
+
     /// 페어링은 받은 노드 토큰이 평문으로 오가지 않게 https(또는 루프백 모의 릴레이)에서만 한다
     #[test]
     fn pairing_only_goes_to_an_https_or_loopback_relay() {
@@ -707,7 +750,7 @@ mod tests {
             .route("/api/hosts/h1", get(|| async { Json(json!({ "online": true })) }))
             .route("/api/hosts/h2", get(|| async { (StatusCode::NOT_FOUND, "nope") }))
             .route("/api/bot-invite", get(|| async { Json(json!({ "url": "https://discord.com/x" })) }))
-            .route("/api/link-requests/:id", post(|Path(id): Path<String>, Json(b): Json<Value>| async move { Json(json!({ "id": id, "accept": b["accept"] })) }));
+            .route("/api/link-requests/{id}", post(|Path(id): Path<String>, Json(b): Json<Value>| async move { Json(json!({ "id": id, "accept": b["accept"] })) }));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
