@@ -1,6 +1,7 @@
 //! 원격 문지기: 사바쨩 웹(릴레이 경유)이 부를 수 있는 데몬 API
 //!
 //! 데몬 라우트마다 허용·거부를 이 표 한 곳에 적는다. 표에 없는 요청은 거부한다.
+//! 짝 맺은 PC(원격 포트)도 이 표의 PC 전용 거부(`deny`)를 따른다. `not_on_web`은 웹에만 없는 것이다 (`pc_only`).
 //! 범위는 서버·인스턴스 관리와 멤버 권한이고, 공식 목록의 모듈·플러그인 설치와 데몬 콘솔 읽기를 더한다.
 //! 토큰·비밀값·데몬 설정·경로·업데이트·샌드박스·릴레이 연결·챗봇은 PC에서만 한다.
 //! 새 라우트를 만들면 여기 분류를 적는다 (`every_route_is_classified` 테스트가 빠진 것을 잡는다).
@@ -10,7 +11,10 @@ use serde_json::Value;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Access {
     Allow,
+    /// PC에서만 하는 일: 웹 원격도 짝 맺은 PC(원격 포트)도 부르지 못한다
     Deny,
+    /// 웹 원격에만 없는 것: 웹이 다른 길로 하거나 그리지 않는다. 짝 맺은 PC의 GUI는 쓴다
+    NotOnWeb,
 }
 
 pub struct Route {
@@ -35,15 +39,24 @@ const fn deny(method: &'static str, pattern: &'static str) -> Route {
     }
 }
 
+const fn not_on_web(method: &'static str, pattern: &'static str) -> Route {
+    Route {
+        method,
+        pattern,
+        access: Access::NotOnWeb,
+    }
+}
+
 pub static ROUTES: &[Route] = &[
     allow("GET", "/health"),
     allow("GET", "/api/version"),
     // 진단·감사 정보에는 PC 경로가 담긴다
     deny("GET", "/api/diagnostics"),
-    deny("GET", "/api/onboarding"),
+    // 다음 할 일 단계만 담는다
+    not_on_web("GET", "/api/onboarding"),
     deny("GET", "/api/audit"),
     // 이벤트는 원격 연결이 따로 밀어 준다 (SSE는 요청·응답 한 번으로 끝나지 않는다)
-    deny("GET", "/api/events"),
+    not_on_web("GET", "/api/events"),
     // ── 서버 ──
     allow("GET", "/api/servers"),
     allow("GET", "/api/server/{name}/status"),
@@ -84,11 +97,12 @@ pub static ROUTES: &[Route] = &[
     allow("GET", "/api/instance/{id}/check-update"),
     allow("POST", "/api/instance/{id}/apply-update"),
     allow("GET", "/api/instance/{id}/installed-version"),
-    // 게임 설정 원문 (관리자 비밀번호가 들어 있다). 웹은 인스턴스 설정(비밀값을 뺀다)으로 고친다
-    deny("GET", "/api/instance/{id}/properties"),
+    // 게임 설정 원문 (관리자 비밀번호가 들어 있다). 웹은 인스턴스 설정(비밀값을 뺀다)으로 고친다.
+    // 짝 맺은 PC의 GUI는 이것으로 게임 설정을 고친다 (원격 포트는 인스턴스 설정도 비밀값째 보인다)
+    not_on_web("GET", "/api/instance/{id}/properties"),
     allow("PUT", "/api/instance/{id}/properties"),
     allow("POST", "/api/instance/{id}/properties/reset"),
-    deny("GET", "/api/instance/{id}/settings/live"),
+    not_on_web("GET", "/api/instance/{id}/settings/live"),
     allow("POST", "/api/instance/{id}/server/reset"),
     allow("POST", "/api/instance/{id}/agreements"),
     // ── 백업·일정 ──
@@ -129,13 +143,15 @@ pub static ROUTES: &[Route] = &[
     // 설정에는 비밀값이 들 수 있다
     deny("GET", "/api/extensions/{id}/config"),
     deny("PUT", "/api/extensions/{id}/config"),
-    deny("GET", "/api/extensions/{id}/gui"),
-    deny("GET", "/api/extensions/{id}/gui/styles"),
-    deny("GET", "/api/extensions/{id}/icon"),
+    // 웹은 플러그인 화면을 그리지 않는다. GUI는 slot에 넣는다 (확인되지 않은 번들은 그 PC의 동의가 있어야 준다)
+    not_on_web("GET", "/api/extensions/{id}/gui"),
+    not_on_web("GET", "/api/extensions/{id}/gui/styles"),
+    not_on_web("GET", "/api/extensions/{id}/icon"),
     allow("GET", "/api/extensions/{id}/audit"),
     allow("GET", "/api/extensions/{id}/i18n/{locale}"),
     // ── 데몬·앱 설정, 토큰, 경로 ──
-    deny("GET", "/api/config/bot"),
+    // 비밀값이 없다 (접두사·릴레이 주소·길드 설정). 바꾸기는 릴레이 주소가 들어 PC에서만
+    not_on_web("GET", "/api/config/bot"),
     deny("PUT", "/api/config/bot"),
     deny("PATCH", "/api/config/bot"),
     deny("GET", "/api/config/gui"),
@@ -158,7 +174,8 @@ pub static ROUTES: &[Route] = &[
     deny("GET", "/api/remote/peers"),
     deny("GET", "/api/remote/daemons"),
     deny("GET", "/api/remote/servers"),
-    deny("GET", "/api/system/browse"),
+    // 데몬 PC의 폴더 보기 (원격 경로 고르기 D2, CLI `config browse --daemon`). 웹은 경로를 고르지 않는다
+    not_on_web("GET", "/api/system/browse"),
     deny("POST", "/api/remote/daemons"),
     deny("DELETE", "/api/remote/daemons/{host_id}"),
     deny("GET", "/api/remote/daemons/{host_id}/proxy/{*rest}"),
@@ -227,12 +244,13 @@ pub static ROUTES: &[Route] = &[
     deny("GET", "/api/sandbox/extension-gui"),
     deny("POST", "/api/sandbox/extension-gui/{component}"),
     deny("DELETE", "/api/sandbox/extension-gui/{component}"),
-    // ── 액션 카탈로그: 목록만. 실행은 안에서 라우터를 다시 불러 이 표를 비켜 간다 ──
+    // ── 액션 카탈로그: 웹은 목록만. 실행은 안에서 라우터를 다시 불러 이 표를 비켜 간다.
+    //    짝 맺은 PC는 안에서 다시 부르는 라우터도 원격 포트의 규칙 층(`remote_daemon::server::rules`)을 지난다 ──
     allow("GET", "/api/actions"),
-    deny("POST", "/api/actions/plan"),
-    deny("GET", "/api/actions/runs/{run_id}"),
-    deny("POST", "/api/actions/{id}/plan"),
-    deny("POST", "/api/actions/{id}/run"),
+    not_on_web("POST", "/api/actions/plan"),
+    not_on_web("GET", "/api/actions/runs/{run_id}"),
+    not_on_web("POST", "/api/actions/{id}/plan"),
+    not_on_web("POST", "/api/actions/{id}/run"),
     // ── 업데이트 ──
     deny("GET", "/api/updates/status"),
     deny("POST", "/api/updates/check"),
@@ -246,7 +264,8 @@ pub static ROUTES: &[Route] = &[
     deny("GET", "/api/updates/integrity"),
     deny("GET", "/api/updates/config"),
     deny("PUT", "/api/updates/config"),
-    deny("GET", "/api/runtime/preflight"),
+    // 그 데몬의 런타임 준비 단계만 담는다
+    not_on_web("GET", "/api/runtime/preflight"),
 ];
 
 /// 원격 요청을 받지 않는 이유
@@ -265,6 +284,12 @@ pub fn decide(method: &str, path: &str) -> Result<&'static str, Refusal> {
         Some(r) if r.access == Access::Allow => Ok(r.pattern),
         _ => Err(Refusal::NotAllowed),
     }
+}
+
+/// 짝 맺은 PC(원격 포트)도 부르지 못하는 라우트: 웹 원격이 PC에서만 하는 일로 거부한 것 (`Access::Deny`).
+/// 표에 없는 메서드는 라우터가 405로 답한다
+pub fn pc_only(method: &str, pattern: &str) -> bool {
+    ROUTES.iter().any(|r| r.pattern == pattern && r.method == method && r.access == Access::Deny)
 }
 
 /// `path`(쿼리 포함 가능)에 맞는 라우트 패턴 (허용·거부와 상관없이)
@@ -498,6 +523,21 @@ mod tests {
             stale.is_empty(),
             "ROUTES lists routes the router no longer has: {stale:?}"
         );
+    }
+
+    /// 이 PC의 앱·연결에 관한 경로(원격 데몬 고르기와 상관없이 이 PC가 처리하는 것)는 모두 PC 전용이다:
+    /// 짝 맺은 PC의 거절은 이 표 하나로 정한다
+    #[test]
+    fn this_pcs_own_routes_are_pc_only() {
+        for r in ROUTES.iter().filter(|r| r.pattern.starts_with("/api/")) {
+            let segments: Vec<String> = r.pattern[1..].split('/').map(|s| if s.starts_with('{') { "x".into() } else { s.into() }).collect();
+            if crate::remote_daemon::target::stays_local(&segments) {
+                assert!(pc_only(r.method, r.pattern), "{} {}", r.method, r.pattern);
+            }
+        }
+        assert!(pc_only("GET", "/api/config/node-token"));
+        assert!(!pc_only("GET", "/api/events"), "the web only lacks it");
+        assert!(!pc_only("GET", "/api/servers"));
     }
 
     #[test]

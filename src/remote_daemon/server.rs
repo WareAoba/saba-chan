@@ -24,15 +24,6 @@ use tokio_util::sync::CancellationToken;
 use super::config::{self, Client};
 use super::relay::{self, Failure, Target};
 
-/// 원격에서 부르지 못하는 라우트: 이 PC의 릴레이 토큰, 개인정보 지우기, 원격 포트 설정과 짝 관리,
-/// 이 PC의 아무 경로에 쓰거나 읽는 옮기기(설정 내보내기·들이기, 저장 폴더 옮기기)
-const LOCAL_ONLY: &[&[&str]] = &[
-    &["api", "config", "node-token"],
-    &["api", "relay", "privacy", "erase"],
-    &["api", "remote"],
-    &["api", "migration"],
-    &["api", "system", "paths", "move"],
-];
 /// PC 전용 칸을 보려고 받아 두는 본문 (axum `Json`의 기본 한도와 같다)
 const FIELDS_BODY_LIMIT: usize = 2 * 1024 * 1024;
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
@@ -142,15 +133,6 @@ pub(crate) fn router(routes: Router, ctx: Ctx) -> Router {
         .layer(axum::middleware::from_fn_with_state(ctx, remote_auth))
 }
 
-/// 짝 맺은 PC가 부르지 못하는 경로면 상태와 오류 코드. 경로는 라우터가 푸는 대로 푼 조각 목록으로 조각끼리 본다.
-/// 노드 토큰, 그리고 고른 데몬과 상관없이 이 PC에서만 처리하는 경로(연결 관리, 이 PC의 인터페이스·앱 설정·업데이트,
-/// 로그인 자동 실행, 데몬 종료: `target::stays_local`)는 짝 맺은 PC도 부르지 못한다
-fn refused(segments: &[String]) -> Option<(StatusCode, &'static str)> {
-    (LOCAL_ONLY.iter().any(|p| crate::remote::gate::starts_with(segments, p))
-        || (segments.first().is_some_and(|s| s == "api") && super::target::stays_local(segments)))
-    .then_some((StatusCode::FORBIDDEN, "remote_local_only"))
-}
-
 /// 짝 맺은 PC(감사 출처 `remote`)의 요청에 PC 전용 규칙을 거는 층 (`IPCServer::routes`가 씌운다).
 /// 원격 포트로 온 요청과, 그 요청이 안에서 다시 부르는 라우터(`actions::call_as`: 액션 실행, 여러 단계 계획)가 모두 이 층 하나를 지난다.
 /// 출처 `remote`는 HTTP 머리로 흉내 낼 수 없다 (`audit::INTERNAL_SOURCES`)
@@ -161,10 +143,12 @@ pub(crate) async fn rules(State(server): State<crate::ipc::IPCServer>, req: Requ
     let Ok((segments, pattern)) = crate::remote::gate::parse(req.uri().path()) else {
         return error(StatusCode::BAD_REQUEST, "remote_bad_path");
     };
-    if let Some((status, code)) = refused(&segments) {
-        return error(status, code);
-    }
     let method = req.method().as_str().to_string();
+    // 웹 원격이 PC에서만 하는 일로 거부하는 라우트(`gate::pc_only`)는 짝 맺은 PC도 부르지 못한다.
+    // 이 PC의 앱·연결에 관한 경로(`target::stays_local`)도 모두 여기에 든다
+    if pattern.is_some_and(|p| crate::remote::gate::pc_only(&method, p)) {
+        return error(StatusCode::FORBIDDEN, "remote_local_only");
+    }
     let Some(pattern) = pattern.filter(|p| crate::remote::gate::checks_fields(&method, p)) else {
         return next.run(req).await;
     };
@@ -509,6 +493,7 @@ pub(crate) mod tests {
             .route("/api/config/node-token", axum::routing::get(|| async { Json(json!({ "token": "leak" })) }))
             .route("/api/remote/clients", axum::routing::get(|| async { Json(json!([])) }))
             .route("/api/config/{kind}/reset", post(|axum::extract::Path(kind): axum::extract::Path<String>| async move { Json(json!({ "reset": kind })) }))
+            .route("/api/server/{name}/status", axum::routing::get(|axum::extract::Path(name): axum::extract::Path<String>| async move { Json(json!({ "name": name })) }))
             // 데몬 라우트(`IPCServer::routes`)처럼 짝 맺은 PC의 규칙 층을 씌운다
             .layer(axum::middleware::from_fn_with_state(test_server(dir.path()), rules));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -622,31 +607,44 @@ pub(crate) mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let server = test_server(tmp.path());
         let (addr, pin, token, cancel) = start_daemon(tmp.path(), &server).await;
-        for path in [
-            "/api/config/node-token",
-            "/api/relay/privacy/erase",
-            "/api/remote/clients",
-            "/api/system/autostart",
-            "/api/updates/status",
-            "/api/clients/launch",
-            "/api/config/gui",
+        for (method, path) in [
+            ("GET", "/api/config/node-token"),
+            ("GET", "/api/relay/privacy/erase"),
+            ("GET", "/api/remote/clients"),
+            ("GET", "/api/system/autostart"),
+            ("GET", "/api/updates/status"),
+            ("GET", "/api/clients/launch"),
+            ("GET", "/api/config/gui"),
+            // 웹 원격이 PC 전용으로 거부하는 라우트는 짝 맺은 PC도 부르지 못한다 (`gate::ROUTES` 하나로 정한다)
+            ("POST", "/api/module/plain/install"),
+            ("POST", "/api/modules/detect"),
+            ("POST", "/api/extensions/x/mount"),
+            ("POST", "/api/extensions/rescan"),
+            ("GET", "/api/extensions/x/config"),
+            ("PUT", "/api/extensions/x/config"),
+            ("POST", "/api/sandbox/unisolated/x"),
         ] {
+            let (s, body) = call(addr, &pin, method, path, Some(&token), Some(json!({}))).await.unwrap();
+            assert_eq!((s, body["error_code"].as_str()), (403, Some("remote_local_only")), "{method} {path}");
+        }
+        // 웹 원격에만 없는 라우트(GUI가 쓰는 것)는 받는다
+        for path in ["/api/onboarding", "/api/runtime/preflight", "/api/config/bot", "/api/system/browse"] {
             let (s, body) = call(addr, &pin, "GET", path, Some(&token), None).await.unwrap();
-            assert_eq!((s, body["error_code"].as_str()), (403, Some("remote_local_only")), "{path}");
+            assert_ne!(body["error_code"].as_str(), Some("remote_local_only"), "{path} {s}");
         }
         let (s, _) = call(addr, &pin, "GET", "/health", None, None).await.unwrap();
         assert_eq!(s, 200);
         cancel.cancel();
     }
 
-    /// 이 PC 전용 경로는 매개변수 조각을 퍼센트 인코딩해도 같은 판정을 받는다 (라우터가 푸는 대로 풀어서 본다).
+    /// PC 전용 판정은 라우터가 고르는 라우트로 한다: 매개변수 조각을 퍼센트 인코딩해도 같은 판정이고,
     /// 리터럴 조각을 인코딩하면 라우터가 그 라우트로 보내지 않는다
     #[tokio::test]
     async fn local_only_routes_are_judged_on_the_decoded_path() {
         let r = start(None).await;
         let token = config::issue_in(&r.file, "host-a", "집 PC").unwrap();
         r.clients.set(config::clients_in(&r.file));
-        for path in ["/api/config/gui/reset", "/api/config/%67ui/reset", "/api/config/client/reset", "/api/config/%63lient/reset"] {
+        for path in ["/api/config/gui/reset", "/api/config/%67ui/reset", "/api/config/bot/reset"] {
             let (s, body) = call(r.addr, &r.pin, "POST", path, Some(&token), None).await.unwrap();
             assert_eq!((s, body["error_code"].as_str()), (403, Some("remote_local_only")), "{path}");
         }
@@ -654,15 +652,13 @@ pub(crate) mod tests {
             let (s, body) = call(r.addr, &r.pin, "GET", path, Some(&token), None).await.unwrap();
             assert_eq!(s, 404, "{path} {body}");
         }
-        for path in ["/api/config/%2e%2e/reset", "/api/config/a%2F..%2Fb/reset", "/api/config/%FF/reset"] {
-            let (s, body) = call(r.addr, &r.pin, "POST", path, Some(&token), None).await.unwrap();
+        for path in ["/api/server/%2e%2e/status", "/api/server/a%2F..%2Fb/status", "/api/server/%FF/status"] {
+            let (s, body) = call(r.addr, &r.pin, "GET", path, Some(&token), None).await.unwrap();
             assert_eq!((s, body["error_code"].as_str()), (400, Some("remote_bad_path")), "{path}");
         }
         // 조각 안의 인코딩한 `/`는 그 조각의 글자다 (이름에 `/`가 든 서버를 이름으로 부른다)
-        let (s, body) = call(r.addr, &r.pin, "POST", "/api/config/a%2Fb/reset", Some(&token), None).await.unwrap();
-        assert_eq!((s, body), (200, json!({ "reset": "a/b" })));
-        let (s, body) = call(r.addr, &r.pin, "POST", "/api/config/bot/reset", Some(&token), None).await.unwrap();
-        assert_eq!((s, body), (200, json!({ "reset": "bot" })));
+        let (s, body) = call(r.addr, &r.pin, "GET", "/api/server/Survival%201%2F2/status", Some(&token), None).await.unwrap();
+        assert_eq!((s, body), (200, json!({ "name": "Survival 1/2" })));
         r.cancel.cancel();
     }
 
