@@ -724,7 +724,7 @@ async fn launch_updater(
         None => (Vec::new(), false),
     };
     let relaunch = relaunch_target(body.relaunch, &guis, resident);
-    let args = updater_args(ticket, saba_chan_updater_lib::profile::Profile::load(), relaunch);
+    let args = updater_args(ticket, saba_chan_updater_lib::profile::Profile::load(), relaunch, saba_chan_updater_lib::autostart::service_relaunch());
     if let Err(e) = spawn_detached(&updater, &args) {
         state.updater_launched.store(false, Ordering::SeqCst);
         return (
@@ -746,8 +746,9 @@ async fn launch_updater(
 }
 
 /// 업데이터 실행 인자. 헤드리스 설치는 창 없이 적용하게 `--headless`를 붙이고,
-/// 다시 띄울 것을 받지 않았으면 데몬 자신을 다시 띄우게 한다 (GUI가 없어 데몬을 띄워 줄 쪽이 없다)
-fn updater_args(ticket: String, profile: saba_chan_updater_lib::profile::Profile, mut relaunch: Vec<String>) -> Vec<String> {
+/// 다시 띄울 것을 받지 않았으면 데몬 자신을 다시 띄우게 한다 (GUI가 없어 데몬을 띄워 줄 쪽이 없다).
+/// 데몬이 자동 실행 서비스로 돌면(`service`, 화면 없는 리눅스) 데몬 대신 그 서비스를 다시 시작하게 한다
+fn updater_args(ticket: String, profile: saba_chan_updater_lib::profile::Profile, mut relaunch: Vec<String>, service: Option<Vec<String>>) -> Vec<String> {
     let mut args = vec![
         "--apply".to_string(),
         "--wait-pid".to_string(),
@@ -758,7 +759,9 @@ fn updater_args(ticket: String, profile: saba_chan_updater_lib::profile::Profile
     if profile == saba_chan_updater_lib::profile::Profile::Headless {
         args.push("--headless".to_string());
         if relaunch.is_empty() {
-            if let Ok(me) = std::env::current_exe() {
+            if let Some(service) = service {
+                relaunch = service;
+            } else if let Ok(me) = std::env::current_exe() {
                 relaunch = vec![me.to_string_lossy().into_owned(), "--spawned".to_string()];
             }
         }
@@ -1218,17 +1221,22 @@ mod tests {
     fn a_headless_install_applies_without_a_window_and_relaunches_the_daemon() {
         use saba_chan_updater_lib::profile::Profile;
         let me = std::env::current_exe().unwrap().to_string_lossy().into_owned();
-        let args = super::updater_args("t".into(), Profile::Headless, Vec::new());
+        let args = super::updater_args("t".into(), Profile::Headless, Vec::new(), None);
         let relaunch = args.iter().position(|a| a == "--relaunch").expect("relaunches something");
         assert!(args[..relaunch].contains(&"--headless".to_string()), "{args:?}");
         assert_eq!(args[relaunch + 1..], [me, "--spawned".to_string()]);
 
         let cli = vec!["/opt/saba/saba-core".to_string(), "--spawned".to_string()];
-        let args = super::updater_args("t".into(), Profile::Headless, cli.clone());
+        let args = super::updater_args("t".into(), Profile::Headless, cli.clone(), None);
         assert_eq!(args[args.len() - 2..], cli[..]);
 
-        let args = super::updater_args("t".into(), Profile::Desktop, Vec::new());
+        let args = super::updater_args("t".into(), Profile::Desktop, Vec::new(), None);
         assert!(!args.iter().any(|a| a == "--headless" || a == "--relaunch"), "{args:?}");
+
+        // 서비스로 돈 데몬은 서비스를 다시 시작한다
+        let service = vec!["/usr/bin/systemctl".to_string(), "--user".into(), "start".into(), "saba-chan.service".into()];
+        let args = super::updater_args("t".into(), Profile::Headless, Vec::new(), Some(service.clone()));
+        assert_eq!(args[args.len() - 4..], service[..]);
     }
 
     /// 데몬이 바로 적용한 업데이트(재시작 없는 모듈·익스텐션·설치기)도 결과와 패치노트를 남긴다.

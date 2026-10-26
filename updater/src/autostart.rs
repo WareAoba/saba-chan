@@ -275,7 +275,7 @@ pub fn systemd_unit(entry: &Entry) -> String {
         exec.push_str(a);
     }
     format!(
-        "[Unit]\nDescription={} daemon\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nType=simple\nExecStart={}\nRestart=on-failure\nRestartSec=5\n\n[Install]\nWantedBy=default.target\n",
+        "[Unit]\nDescription={} daemon\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nType=simple\nExecStart={}\nRestart=on-failure\nRestartSec=5\nKillMode=process\n\n[Install]\nWantedBy=default.target\n",
         ENTRY_NAME, exec
     )
 }
@@ -387,6 +387,20 @@ pub fn write_to(autostart: &Path, units: &Path, entry: &Entry) -> std::io::Resul
 pub fn remove_from(autostart: &Path, units: &Path) -> std::io::Result<()> {
     remove_in(autostart)?;
     remove_service_in(units)
+}
+
+/// 이 데몬이 자동 실행 서비스(`saba-chan.service`)로 돌면, 업데이트 뒤 다시 띄울 명령 (`systemctl --user start`).
+/// 업데이터가 데몬을 직접 띄우면 서비스 밖에서 돌아 멈춰도 다시 뜨지 않는다. 서비스가 아니면 None
+pub fn service_relaunch() -> Option<Vec<String>> {
+    let cgroup = std::fs::read_to_string("/proc/self/cgroup").ok()?;
+    let systemctl = ["/usr/bin/systemctl", "/bin/systemctl"].into_iter().map(PathBuf::from).find(|p| p.is_file());
+    service_relaunch_from(&cgroup, systemctl)
+}
+
+fn service_relaunch_from(cgroup: &str, systemctl: Option<PathBuf>) -> Option<Vec<String>> {
+    let unit = format!("/{SERVICE_FILE}");
+    cgroup.lines().any(|l| l.trim_end().ends_with(&unit)).then_some(())?;
+    Some(vec![systemctl?.to_string_lossy().into_owned(), "--user".into(), "start".into(), SERVICE_FILE.into()])
 }
 
 /// 로그인하지 않아도 이 사용자의 서비스가 부팅할 때 도는가 (`loginctl enable-linger`). 리눅스가 아니면 None
@@ -616,8 +630,24 @@ mod tests {
         assert!(text.contains(r#"ExecStart="/home/a b/$$sa\"ba%%/saba-core""#), "{}", text);
         assert!(text.contains("Restart=on-failure\n"), "{}", text);
         assert!(text.contains("WantedBy=default.target\n"), "{}", text);
+        // 데몬이 끝나도 업데이터·게임 서버는 남는다 (업데이터가 데몬 종료를 기다린 뒤 적용한다)
+        assert!(text.contains("KillMode=process\n"), "{}", text);
         assert_eq!(parse_systemd_unit(&text), Some(e));
         assert_eq!(parse_systemd_unit("[Unit]\nDescription=x\n"), None);
+    }
+
+    /// 서비스로 돈 데몬은 업데이트 뒤 systemd가 다시 띄운다 (업데이터가 직접 띄우면 서비스 밖에서 돈다)
+    #[test]
+    fn a_daemon_in_the_service_is_relaunched_through_systemd() {
+        let systemctl = Some(PathBuf::from("/usr/bin/systemctl"));
+        let cgroup = "0::/user.slice/user-1000.slice/user@1000.service/app.slice/saba-chan.service\n";
+        assert_eq!(
+            service_relaunch_from(cgroup, systemctl.clone()),
+            Some(vec!["/usr/bin/systemctl".to_string(), "--user".into(), "start".into(), SERVICE_FILE.into()])
+        );
+        assert_eq!(service_relaunch_from("0::/user.slice/user-1000.slice/session-2.scope\n", systemctl.clone()), None);
+        assert_eq!(service_relaunch_from("0::/system.slice/saba-chan.service.d\n", systemctl), None);
+        assert_eq!(service_relaunch_from(cgroup, None), None, "no systemctl, no service relaunch");
     }
 
     #[cfg(not(target_os = "windows"))]
