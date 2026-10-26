@@ -1105,6 +1105,13 @@ pub fn localized() -> clap::Command {
 
 /// 인자를 읽는다. 맨 위 `help`는 우리 명령이라 clap의 하위 `help`가 꺼진다:
 /// `server help start`처럼 하위 명령 자리에 온 `help`는 맨 앞으로 옮겨 다시 읽는다
+/// 이 줄에 `--daemon`을 적었을 때만 그 값 (셸·TUI 한 줄). `SABA_DAEMON`에서 다시 채운 값은 시작할 때 고른 대상을 덮지 않는다
+pub fn line_daemon(matches: &clap::ArgMatches) -> Option<String> {
+    (matches.value_source("daemon") == Some(clap::parser::ValueSource::CommandLine))
+        .then(|| matches.get_one::<String>("daemon").cloned())
+        .flatten()
+}
+
 pub fn parse(args: Vec<std::ffi::OsString>) -> Result<clap::ArgMatches, clap::Error> {
     match localized().try_get_matches_from(&args) {
         Err(e) if e.kind() == clap::error::ErrorKind::InvalidSubcommand && args.iter().skip(1).any(|a| a == "help") => {
@@ -1226,6 +1233,14 @@ mod tests {
     }
 
     /// 명령 본문 안의 `--lang=ko`는 전역 옵션이 아니다: 데몬 언어를 바꾸지 않게 실제 전역 옵션만 쓴다
+    #[test]
+    fn only_a_daemon_written_on_the_line_changes_the_target() {
+        let m = |args: &[&str]| parse(std::iter::once("saba-chan-cli").chain(args.iter().copied()).map(Into::into).collect()).unwrap();
+        assert_eq!(line_daemon(&m(&["--daemon", "test", "status"])).as_deref(), Some("test"));
+        assert_eq!(line_daemon(&m(&["status", "--daemon=local"])).as_deref(), Some("local"));
+        assert_eq!(line_daemon(&m(&["status"])), None);
+    }
+
     #[test]
     fn a_lang_inside_command_text_is_not_the_global_option() {
         let p = |args: &[&str]| Cli::try_parse_from(std::iter::once("saba-chan-cli").chain(args.iter().copied())).unwrap();

@@ -32,7 +32,8 @@ pub struct Api {
     /// 고른 원격 데몬 (`--daemon`, hostId 또는 저장한 이름). 이 PC의 데몬이 그 데몬에 중계한다 (01 §1.4.2 7)
     pub target: Option<String>,
     /// 이 실행에서 마지막으로 보인 포트 충돌 정지 알림 id (L50)
-    notices_seen: Arc<std::sync::atomic::AtomicU64>,
+    /// 데몬(대상)마다 따로: 알림 id는 그 PC의 시각으로 만든다
+    notices_seen: Arc<std::sync::Mutex<std::collections::HashMap<String, Arc<std::sync::atomic::AtomicU64>>>>,
 }
 
 fn read_token() -> Option<String> {
@@ -77,6 +78,12 @@ impl Api {
             target: None,
             notices_seen: Arc::default(),
         }
+    }
+
+    /// 지금 대상(이 PC면 빈 이름)에서 본 마지막 포트 충돌 알림 id
+    fn notices_cursor(&self) -> Arc<std::sync::atomic::AtomicU64> {
+        let key = self.target.clone().unwrap_or_default();
+        self.notices_seen.lock().unwrap().entry(key).or_default().clone()
     }
 
     /// 같은 언어·대상으로 다른 포트의 데몬에 붙는다
@@ -283,9 +290,10 @@ impl Api {
     /// 포트 충돌로 멈춘 알림(`port_conflict_stops`)은 데몬에 남는다: 알림을 보여 주는 `status`는 이 실행에서 본 것 뒤만,
     /// 나머지는 `keep`으로 남은 것 모두를 받는다
     pub async fn servers(&self, keep_notices: bool) -> Result<Value> {
-        let mut body = self.get_slow(&servers_path(keep_notices, &self.notices_seen)).await?;
+        let seen = self.notices_cursor();
+        let mut body = self.get_slow(&servers_path(keep_notices, &seen)).await?;
         if !keep_notices {
-            remember_notices(&self.notices_seen, &mut body);
+            remember_notices(&seen, &mut body);
         }
         Ok(body)
     }
@@ -1295,6 +1303,18 @@ mod tests {
     async fn the_chosen_language_goes_to_the_daemon() {
         assert!(request_head(Some("ko")).await.contains("\r\naccept-language: ko\r\n"));
         assert!(!request_head(None).await.contains("accept-language"));
+    }
+
+    /// 셸·TUI에서 한 줄만 다른 데몬을 고르면 그 데몬의 알림 커서를 따로 쓴다 (다른 PC의 알림 id와 비교하지 않는다)
+    #[test]
+    fn each_daemon_keeps_its_own_notice_cursor() {
+        let mut api = Api::new(1, None);
+        api.notices_cursor().store(500, std::sync::atomic::Ordering::Relaxed);
+        let mut other = api.clone();
+        other.target = Some("host-b".into());
+        assert_eq!(other.notices_cursor().load(std::sync::atomic::Ordering::Relaxed), 0);
+        api.target = None;
+        assert_eq!(api.notices_cursor().load(std::sync::atomic::Ordering::Relaxed), 500);
     }
 
     /// `--daemon`으로 고른 원격 데몬은 요청마다 `X-Saba-Target`(퍼센트 인코딩)으로 이 PC의 데몬에 알린다 (중계는 데몬이 한다)
