@@ -2,6 +2,8 @@
 """
 Simple i18n utility for Python modules.
 Loads translations from JSON files in the module's locales/ directory.
+Keys a module does not define fall back to the shared phrases in common_locales.json
+(next to this file, shipped with the daemon, saba-core >=0.1.11-0).
 """
 
 import json
@@ -25,6 +27,7 @@ class I18n:
         self.default_lang = default_lang
         self.current_lang = os.environ.get('SABA_LANG', default_lang)
         self.translations = {}
+        self.common = {}
         self._load_translations()
     
     def _load_translations(self):
@@ -42,6 +45,15 @@ class I18n:
                 with open(current_file, 'r', encoding='utf-8') as f:
                     self.translations[self.current_lang] = json.load(f)
     
+        # 공용 문구: 모듈 locales에 없는 범용 키(정지·설치 오류 등)
+        common_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'common_locales.json')
+        if os.path.exists(common_file):
+            try:
+                with open(common_file, 'r', encoding='utf-8') as f:
+                    self.common = json.load(f)
+            except (OSError, ValueError):
+                self.common = {}
+
     def _get_nested_value(self, obj, path):
         """Get nested value from object using dot notation"""
         keys = path.split('.')
@@ -77,6 +89,11 @@ class I18n:
         if translation is None and self.default_lang in self.translations:
             translation = self._get_nested_value(self.translations[self.default_lang], key)
         
+        # Fall back to the shared phrases (current language, then default)
+        for lang in (self.current_lang, self.default_lang):
+            if translation is None and lang in self.common:
+                translation = self._get_nested_value(self.common[lang], key)
+
         # Fall back to key itself
         if translation is None:
             translation = key

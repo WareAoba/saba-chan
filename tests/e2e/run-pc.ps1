@@ -49,7 +49,7 @@ Need node "Node 22.12 이상을 설치하세요."
 # WindowsApps의 python.exe는 스토어 설치 안내 스텁이라 venv를 만들지 못한다
 $py = Get-Command python -All -ErrorAction SilentlyContinue | Where-Object { $_.Source -notlike "*\WindowsApps\*" } | Select-Object -First 1
 if (-not $py) { $py = Get-Command py -ErrorAction SilentlyContinue }
-if (-not $py) { throw "Python 3.10 이상이 필요합니다 (WindowsApps 스텁 말고 실제 설치본)." }
+if (-not $py) { throw "Python 3.11 이상이 필요합니다 (WindowsApps 스텁 말고 실제 설치본)." }
 foreach ($r in "saba-chan-modules", "saba-chan-extensions") {
     if (-not (Test-Path (Join-Path $Git $r))) { throw "$Git\$r 이 없습니다. saba-chan 체크아웃 옆에 같은 이름으로 두세요 (worktree도 됩니다)." }
 }

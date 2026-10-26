@@ -169,7 +169,12 @@
     "ladder_removed": "People on deleted levels move to the level just below. Commands that needed them move to the level just above.",
     "ladder_invalid": "Level names need 1–32 characters.",
     "ladder_revert": "Revert",
-    "ladder_save": "Save levels"
+    "ladder_save": "Save levels",
+    "notice": "Start alerts",
+    "notice_hint": "Servers turned on here are announced in this Discord server's alert channel when Saba-chan starts them. Starts from Discord and starts outside Saba-chan are left out.",
+    "notice_empty": "This Discord server uses no servers.",
+    "notice_on": "Start alert on.",
+    "notice_off": "Start alert off."
   },
   "modules": {
     "games": "Game modules",

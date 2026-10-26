@@ -80,6 +80,7 @@
     "dev_nickname": "WareAoba",
     "dev_bio": "AI tamer",
     "github_repo": "GitHub repository",
+    "name_egg": "No relation to a certain VTuber… I only found out after picking the name, and honestly, it's not fair.",
     "accent_color_label": "Accent Color",
     "accent_color_description": "Choose the color for buttons and highlights",
     "accent_purple": "Purple",
@@ -115,7 +116,14 @@
     "reset_gui_done": "GUI settings restored to defaults",
     "reset_gui_failed": "Couldn't reset settings",
     "os_notifications_label": "System notifications",
-    "os_notifications_description": "Also send important events, such as crashes and unexpected starts or stops, as Windows or macOS notifications. While the app window is in front, they show only in the app."
+    "os_notifications_description": "Also send important events, such as crashes and unexpected starts or stops, as Windows or macOS notifications. While the app window is in front, they show only in the app.",
+    "sound_effects_label": "Sound effects",
+    "sound_effects_description": "Play a sound when a server is started or stopped from outside the app (Discord, web, and so on), stops unexpectedly, finishes installing, or when an update is found. Starting or stopping from the app itself makes no sound.",
+    "sound_server_start": "Server started",
+    "sound_server_stop": "Server stopped",
+    "sound_crash": "Unexpected stop",
+    "sound_install": "Install result",
+    "sound_update": "Update found"
   },
   "add_server_modal": {
     "title": "Add New Server",
@@ -1062,7 +1070,10 @@
     "prefix_err_count": "Up to {{max}} prefixes.",
     "prefix_err_length": "Prefixes can be up to {{max}} characters: {{words}}",
     "translate_commands_title": "Translated command names",
-    "translate_commands_desc": "Show translated names and descriptions of game commands in Discord slash commands. When off, only the names in the module (for example save-all) are shown."
+    "translate_commands_desc": "Show translated names and descriptions of game commands in Discord slash commands. When off, only the names in the module (for example save-all) are shown.",
+    "start_notice": "{{name}} start alert",
+    "start_notice_hint": "Servers with the bell on are announced in this Discord server's alert channel when Saba-chan starts them. Starts from Discord and starts outside Saba-chan are left out. Pick the alert channel in the Channels tab.",
+    "start_notice_save_failed": "Couldn't save the start alert: {{error}}"
   },
   "maintenance": {
     "load_failed": "Couldn't load backups and schedules.",

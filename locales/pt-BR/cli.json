@@ -126,7 +126,12 @@
     "words_bad_command": "{{spec}}: escreva como COMANDO=PALAVRA,PALAVRA (COMANDO= remove).",
     "no_paired_servers": "Nenhum servidor do Discord está pareado com este PC ainda. Execute: saba-chan-cli bot pair",
     "pick_server": "Vários servidores do Discord estão pareados. Informe o id do que deseja alterar: {{servers}}",
-    "translate_commands": "Nomes de comandos traduzidos"
+    "translate_commands": "Nomes de comandos traduzidos",
+    "notice_none": "Nenhum servidor está com o alerta de início ligado. Nada é avisado quando a Saba-chan inicia um servidor.",
+    "notice_is_on": "{{server}}: alerta de início ligado",
+    "notice_is_off": "{{server}}: alerta de início desligado",
+    "notice_on_saved": "O canal de alertas de {{guild}} será avisado quando {{server}} iniciar.",
+    "notice_off_saved": "{{guild}} não será mais avisado quando {{server}} iniciar."
   },
   "col": {
     "players": "Jogadores",
@@ -744,7 +749,8 @@
       "remote.servers": "Servidores deste PC e de cada daemon remoto, por daemon (para usar um, `--daemon <nome>`)",
       "remote.forget": "Esquecer um daemon remoto (conecte de novo com `remote connect`)",
       "config.autostart": "O que inicia quando você entra neste PC: off, daemon (só o daemon e a bandeja) ou full (com a janela da GUI). Sem modo mostra o valor atual",
-      "config.browse": "Pastas e arquivos no PC do daemon (com --daemon, o PC remoto). Sem caminho, unidades ou /"
+      "config.browse": "Pastas e arquivos no PC do daemon (com --daemon, o PC remoto). Sem caminho, unidades ou /",
+      "bot.notice": "Avisar no canal de alertas do servidor do Discord quando a Saba-chan inicia um servidor (desligado por padrão). Sem servidor: ver. Servidor com `--on`/`--off`: mudar"
     },
     "arg": {
       "module.maker.game": "Jogo para o primeiro pedido",
@@ -827,7 +833,9 @@
       "keep_settings": "Ao excluir a instância, não restaurar os arquivos de configuração do jogo ao estado anterior à importação e mantê-los como estão",
       "move_folder": "Mover a pasta --from para a pasta do saba-chan em vez de vinculá-la no lugar (somente na mesma unidade)",
       "config.browse.path": "Caminho completo da pasta",
-      "config.browse.files": "Mostrar também arquivos com estas extensões (separadas por vírgula, * para todos)"
+      "config.browse.files": "Mostrar também arquivos com estas extensões (separadas por vírgula, * para todos)",
+      "bot.notice.on": "Ligar o alerta de início",
+      "bot.notice.off": "Desligar o alerta de início"
     },
     "after": "Os nomes podem ser parciais (ex.: start pal). Sem argumentos em um terminal, abre o menu em tela cheia (SABA_NO_TUI=1: o shell interativo).\nEm scripts, use --json e --yes. Códigos de saída: 0 ok · 1 falha · 2 uso · 3 daemon inacessível · 4 não encontrado · 130 cancelado"
   },

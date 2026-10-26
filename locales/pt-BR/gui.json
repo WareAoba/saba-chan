@@ -80,6 +80,7 @@
     "dev_nickname": "WareAoba",
     "dev_bio": "Domador de IA",
     "github_repo": "Repositório no GitHub",
+    "name_egg": "Nada a ver com um certo VTuber… Só descobri depois de escolher o nome, e também acho injusto.",
     "accent_color_label": "Cor de destaque",
     "accent_color_description": "Escolha a cor dos botões e dos destaques",
     "accent_purple": "Roxo",
@@ -115,7 +116,14 @@
     "reset_gui_done": "Configurações da interface restauradas para o padrão",
     "reset_gui_failed": "Não foi possível redefinir as configurações",
     "os_notifications_label": "Notificações do sistema",
-    "os_notifications_description": "Envia também como notificações do Windows ou macOS os eventos importantes, como falhas e inícios ou paradas inesperados. Com a janela do app em primeiro plano, aparecem só no app."
+    "os_notifications_description": "Envia também como notificações do Windows ou macOS os eventos importantes, como falhas e inícios ou paradas inesperados. Com a janela do app em primeiro plano, aparecem só no app.",
+    "sound_effects_label": "Efeitos sonoros",
+    "sound_effects_description": "Toca um som quando um servidor é iniciado ou parado de fora do app (Discord, web etc.), para inesperadamente, termina de instalar ou quando uma atualização é encontrada. Iniciar ou parar pelo próprio app não toca som.",
+    "sound_server_start": "Servidor iniciado",
+    "sound_server_stop": "Servidor parado",
+    "sound_crash": "Parada inesperada",
+    "sound_install": "Resultado da instalação",
+    "sound_update": "Atualização encontrada"
   },
   "add_server_modal": {
     "title": "Adicionar Novo Servidor",
@@ -1062,7 +1070,10 @@
     "prefix_err_count": "Até {{max}} prefixos.",
     "prefix_err_length": "Prefixos têm no máximo {{max}} caracteres: {{words}}",
     "translate_commands_title": "Nomes de comandos traduzidos",
-    "translate_commands_desc": "Mostra nomes e descrições traduzidos dos comandos do jogo nos comandos de barra do Discord. Desligado, mostra só os nomes do módulo (por exemplo save-all)."
+    "translate_commands_desc": "Mostra nomes e descrições traduzidos dos comandos do jogo nos comandos de barra do Discord. Desligado, mostra só os nomes do módulo (por exemplo save-all).",
+    "start_notice": "Alerta de início de {{name}}",
+    "start_notice_hint": "Servidores com o sino ligado são anunciados no canal de alertas deste servidor do Discord quando a Saba-chan os inicia. Inícios pelo Discord e fora da Saba-chan ficam de fora. Escolha o canal de alertas na aba Canais.",
+    "start_notice_save_failed": "Não foi possível salvar o alerta de início: {{error}}"
   },
   "maintenance": {
     "load_failed": "Não foi possível carregar os backups e agendamentos.",

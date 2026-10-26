@@ -9,7 +9,7 @@
 //! 2. 기존 venv 유효? → 바로 반환
 //! 3. Python 인터프리터 탐색:
 //!    a. 이미 다운로드된 포터블 Python → 사용
-//!    b. 시스템 Python ≥ 3.10 → 사용
+//!    b. 시스템 Python ≥ 3.11 → 사용 (모듈 공용 도우미가 표준 `tomllib`으로 module.toml을 읽는다)
 //!    c. 둘 다 없음 → 포터블 Python 자동 다운로드 (~20 MB)
 //! 4. 찾은 Python으로 venv 생성 → pip 업그레이드 → 검증 → 캐시
 //!
@@ -42,7 +42,7 @@ use crate::utils::apply_creation_flags;
 use saba_chan_updater_lib::python_pin::PYTHON_VERSION;
 
 /// 시스템 Python 사용 시 최소 요구 버전
-const MIN_PYTHON_VERSION: (u32, u32) = (3, 10);
+const MIN_PYTHON_VERSION: (u32, u32) = (3, 11);
 
 const VENV_DIR_NAME: &str = "python-env";
 const PORTABLE_DIR_NAME: &str = "python-standalone";
@@ -188,7 +188,7 @@ pub async fn ensure_venv() -> Result<PathBuf> {
     Ok(python_exe)
 }
 
-/// 시스템에서 Python ≥ 3.10 을 탐지합니다.
+/// 시스템에서 Python ≥ 3.11 을 탐지합니다.
 pub async fn detect_system_python() -> Result<String> {
     let candidates = ["python", "python3", "py"];
     for cmd_name in candidates {
@@ -277,7 +277,7 @@ async fn download_portable_python(data_dir: &Path) -> Result<PathBuf> {
         .await
         .context(
             "Python 다운로드 실패. \
-             인터넷 연결을 확인하거나, Python 3.10 이상을 수동 설치해 주세요.",
+             인터넷 연결을 확인하거나, Python 3.11 이상을 수동 설치해 주세요.",
         )?;
 
     // 고정 해시와 다르면 풀지 않는다 (C6)
@@ -499,7 +499,12 @@ fn is_dir_writable(dir: &Path) -> bool {
     }
 }
 
-/// Python 실행 파일이 정상 동작하는지 확인
+/// verify_python 출력("3.12.8")이 최소 버전 이상인가. 그보다 낮은 venv는 다시 만든다
+fn python_output_supported(stdout: &str) -> bool {
+    parse_python_version(stdout).is_some_and(|v| v >= MIN_PYTHON_VERSION)
+}
+
+/// Python 실행 파일이 정상 동작하고 최소 버전 이상인지 확인
 async fn verify_python(exe: &Path) -> bool {
     let mut cmd = Command::new(exe);
     cmd.args([
@@ -507,7 +512,8 @@ async fn verify_python(exe: &Path) -> bool {
         "import sys; v=sys.version_info; print(f'{v.major}.{v.minor}.{v.micro}')",
     ]);
     apply_creation_flags(&mut cmd);
-    matches!(crate::plugin::preparation_output(&mut cmd).await, Ok(o) if o.status.success())
+    matches!(crate::plugin::preparation_output(&mut cmd).await,
+        Ok(o) if o.status.success() && python_output_supported(&String::from_utf8_lossy(&o.stdout)))
 }
 
 /// pip 명령 실행
@@ -592,6 +598,15 @@ mod tests {
         }).await.unwrap();
         assert_eq!(path, Path::new("python"));
         assert_eq!(*state.lock().unwrap(), Preflight::Ready);
+    }
+
+    #[test]
+    fn a_venv_older_than_the_minimum_is_not_reused() {
+        // 모듈 공용 도우미가 표준 tomllib(3.11+)으로 module.toml을 읽는다. 3.10 venv는 다시 만든다
+        assert!(!python_output_supported("3.10.12\n"));
+        assert!(python_output_supported("3.11.0\n"));
+        assert!(python_output_supported("3.12.8"));
+        assert!(!python_output_supported(""));
     }
 
     #[test]

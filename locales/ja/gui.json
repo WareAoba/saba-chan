@@ -80,6 +80,7 @@
     "dev_nickname": "ワレアオバ",
     "dev_bio": "AI使い",
     "github_repo": "GitHub リポジトリ",
+    "name_egg": "某VTuberさんとは関係ありません…名前を付けてから知ったので、こちらも困っています",
     "accent_color_label": "アクセントカラー",
     "accent_color_description": "ボタンとハイライトに使う色を選んでください",
     "accent_purple": "パープル",
@@ -115,7 +116,14 @@
     "reset_gui_done": "GUI設定を初期値に戻しました",
     "reset_gui_failed": "設定をリセットできませんでした",
     "os_notifications_label": "OS 通知",
-    "os_notifications_description": "クラッシュや予期しない起動・停止など、必ず知るべきことを Windows・macOS の通知でも送ります。アプリのウィンドウが前面にあるときはアプリ内だけで知らせます。"
+    "os_notifications_description": "クラッシュや予期しない起動・停止など、必ず知るべきことを Windows・macOS の通知でも送ります。アプリのウィンドウが前面にあるときはアプリ内だけで知らせます。",
+    "sound_effects_label": "効果音",
+    "sound_effects_description": "アプリの外（Discord・Web など）からの起動・停止、予期しない停止、インストール結果、アップデートの発見を音で知らせます。アプリで直接起動・停止したときは鳴りません。",
+    "sound_server_start": "サーバー起動",
+    "sound_server_stop": "サーバー停止",
+    "sound_crash": "予期しない停止",
+    "sound_install": "インストール結果",
+    "sound_update": "アップデート発見"
   },
   "add_server_modal": {
     "title": "新規サーバーを追加",
@@ -1062,7 +1070,10 @@
     "prefix_err_count": "接頭辞は{{max}}個までです。",
     "prefix_err_length": "接頭辞は{{max}}文字までです: {{words}}",
     "translate_commands_title": "コマンド名の翻訳",
-    "translate_commands_desc": "Discordのスラッシュコマンドにゲームコマンドの翻訳した名前と説明を付けます。オフにするとモジュールに書かれた元の名前(例: save-all)だけを表示します。"
+    "translate_commands_desc": "Discordのスラッシュコマンドにゲームコマンドの翻訳した名前と説明を付けます。オフにするとモジュールに書かれた元の名前(例: save-all)だけを表示します。",
+    "start_notice": "{{name}} の起動通知",
+    "start_notice_hint": "ベルをオンにしたサーバーは、サバちゃんが起動したときにこのDiscordサーバーの通知チャンネルで知らせます。Discordから起動したものと、サバちゃんの外で起動したものは除きます。通知チャンネルはチャンネルタブで選びます。",
+    "start_notice_save_failed": "起動通知を保存できませんでした: {{error}}"
   },
   "maintenance": {
     "load_failed": "バックアップ・予約の情報を読み込めませんでした。",

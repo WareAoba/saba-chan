@@ -145,8 +145,10 @@ fn import_guard_dir() -> Option<std::path::PathBuf> {
 
 /// 데몬에 넣어 둔 공용 Python 유틸리티. 모듈 폴더에 이것과 다른 판이 있으면 덮어쓴다.
 /// 설치·업데이트 경로와 상관없이(개발 빌드를 복사만 해도) 모듈이 데몬과 같은 판을 쓴다 (C7)
-const SHARED_MODULES: [(&str, &str); 3] = [
+const SHARED_MODULES: [(&str, &str); 4] = [
     ("i18n.py", include_str!("../../modules/i18n.py")),
+    // i18n.py가 모듈 locales에 없는 범용 문구를 찾는 곳
+    ("common_locales.json", include_str!("../../modules/common_locales.json")),
     ("daemon_rcon.py", include_str!("../../modules/daemon_rcon.py")),
     // 모듈 코드 검사기 (M12): 적합성 키트가 `--shared-libs`에서 찾는다
     ("saba_audit.py", crate::module_audit::SCRIPT),
@@ -2116,7 +2118,7 @@ print(json.dumps(codes))
     async fn import_guard_blocks_only_disabled_extensions() {
         // PATH의 첫 python이 Windows 스토어 스텁일 수 있으므로 데몬과 같은 탐지로 실제 인터프리터를 고른다
         let Ok(python) = crate::python_env::detect_system_python().await else {
-            eprintln!("SKIP: Python >= 3.10 not found (python, python3, py)");
+            eprintln!("SKIP: Python >= 3.11 not found (python, python3, py)");
             return;
         };
         let tmp = tempfile::tempdir().unwrap();

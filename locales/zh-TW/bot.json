@@ -196,6 +196,13 @@
       },
       "delete": {
         "title": "刪除伺服器"
+      },
+      "start_notice": {
+        "set": {
+          "title": "啟動通知",
+          "description": "Saba-chan 啟動此伺服器時，在此 Discord 伺服器的通知頻道告知",
+          "name": "啟動通知"
+        }
       }
     },
     "server": {

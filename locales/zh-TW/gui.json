@@ -80,6 +80,7 @@
     "dev_nickname": "WareAoba",
     "dev_bio": "AI 馴獸師",
     "github_repo": "GitHub 儲存庫",
+    "name_egg": "與某位 VTuber 無關……我也是取完名字才知道的，我也很委屈",
     "accent_color_label": "強調色",
     "accent_color_description": "選擇按鈕和醒目標示使用的顏色",
     "accent_purple": "紫色",
@@ -115,7 +116,14 @@
     "reset_gui_done": "GUI 設定已還原為預設值",
     "reset_gui_failed": "無法重設設定",
     "os_notifications_label": "系統通知",
-    "os_notifications_description": "當機、意外啟動或停止等必須知道的事件也會透過 Windows、macOS 通知傳送。應用程式視窗在前景時只在應用程式內提示。"
+    "os_notifications_description": "當機、意外啟動或停止等必須知道的事件也會透過 Windows、macOS 通知傳送。應用程式視窗在前景時只在應用程式內提示。",
+    "sound_effects_label": "音效",
+    "sound_effects_description": "從應用程式外（Discord、網頁等）啟動或停止伺服器、意外停止、安裝結果以及發現更新時播放提示音。在應用程式內直接啟動或停止時不播放。",
+    "sound_server_start": "伺服器啟動",
+    "sound_server_stop": "伺服器停止",
+    "sound_crash": "意外停止",
+    "sound_install": "安裝結果",
+    "sound_update": "發現更新"
   },
   "add_server_modal": {
     "title": "新增伺服器",
@@ -1062,7 +1070,10 @@
     "prefix_err_count": "前綴最多 {{max}} 個。",
     "prefix_err_length": "前綴最多 {{max}} 個字元：{{words}}",
     "translate_commands_title": "翻譯指令名稱",
-    "translate_commands_desc": "在 Discord 斜線指令中顯示遊戲指令的翻譯名稱和說明。關閉時只顯示模組中的原始名稱（例如 save-all）。"
+    "translate_commands_desc": "在 Discord 斜線指令中顯示遊戲指令的翻譯名稱和說明。關閉時只顯示模組中的原始名稱（例如 save-all）。",
+    "start_notice": "{{name}} 啟動通知",
+    "start_notice_hint": "開啟鈴鐺的伺服器在 Saba-chan 啟動時會在此 Discord 伺服器的通知頻道告知。從 Discord 啟動的和在 Saba-chan 之外啟動的除外。通知頻道在「頻道」分頁中設定。",
+    "start_notice_save_failed": "無法儲存啟動通知：{{error}}"
   },
   "maintenance": {
     "load_failed": "無法載入備份與排程資訊。",

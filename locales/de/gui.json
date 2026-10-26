@@ -80,6 +80,7 @@
     "dev_nickname": "WareAoba",
     "dev_bio": "KI-Dompteur",
     "github_repo": "GitHub-Repository",
+    "name_egg": "Keine Verbindung zu einem gewissen VTuber … ich habe es erst nach der Namenswahl erfahren und finde das selbst unfair.",
     "accent_color_label": "Akzentfarbe",
     "accent_color_description": "Wähle die Farbe für Schaltflächen und Hervorhebungen",
     "accent_purple": "Lila",
@@ -115,7 +116,14 @@
     "reset_gui_done": "GUI-Einstellungen auf Standard zurückgesetzt",
     "reset_gui_failed": "Einstellungen konnten nicht zurückgesetzt werden",
     "os_notifications_label": "Systembenachrichtigungen",
-    "os_notifications_description": "Wichtige Ereignisse wie Abstürze und unerwartete Starts oder Stopps auch als Windows- oder macOS-Benachrichtigung senden. Solange das App-Fenster vorne ist, nur in der App."
+    "os_notifications_description": "Wichtige Ereignisse wie Abstürze und unerwartete Starts oder Stopps auch als Windows- oder macOS-Benachrichtigung senden. Solange das App-Fenster vorne ist, nur in der App.",
+    "sound_effects_label": "Soundeffekte",
+    "sound_effects_description": "Spielt einen Ton ab, wenn ein Server von außerhalb der App (Discord, Web usw.) gestartet oder gestoppt wird, unerwartet stoppt, eine Installation abschließt oder ein Update gefunden wird. Starten oder Stoppen in der App selbst ist stumm.",
+    "sound_server_start": "Server gestartet",
+    "sound_server_stop": "Server gestoppt",
+    "sound_crash": "Unerwarteter Stopp",
+    "sound_install": "Installationsergebnis",
+    "sound_update": "Update gefunden"
   },
   "add_server_modal": {
     "title": "Neuen Server hinzufügen",
@@ -1062,7 +1070,10 @@
     "prefix_err_count": "Höchstens {{max}} Präfixe.",
     "prefix_err_length": "Präfixe dürfen höchstens {{max}} Zeichen haben: {{words}}",
     "translate_commands_title": "Übersetzte Befehlsnamen",
-    "translate_commands_desc": "Zeigt übersetzte Namen und Beschreibungen der Spielbefehle in Discord-Slash-Befehlen. Wenn aus, werden nur die Namen aus dem Modul (z. B. save-all) gezeigt."
+    "translate_commands_desc": "Zeigt übersetzte Namen und Beschreibungen der Spielbefehle in Discord-Slash-Befehlen. Wenn aus, werden nur die Namen aus dem Modul (z. B. save-all) gezeigt.",
+    "start_notice": "Start-Hinweis für {{name}}",
+    "start_notice_hint": "Server mit aktivierter Glocke werden im Hinweiskanal dieses Discord-Servers gemeldet, wenn Saba-chan sie startet. Starts aus Discord und außerhalb von Saba-chan werden nicht gemeldet. Den Hinweiskanal wählst du im Tab Kanäle.",
+    "start_notice_save_failed": "Start-Hinweis konnte nicht gespeichert werden: {{error}}"
   },
   "maintenance": {
     "load_failed": "Backups und Zeitpläne konnten nicht geladen werden.",

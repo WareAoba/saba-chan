@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 # 컴포넌트 → (zip 이름 앞부분, 실행 파일, 함께 넣는 저장소 파일)
 LINUX_ASSETS = {
-    "saba-core": ("saba-core", ["saba-core", "saba-runner"], ["modules/i18n.py", "modules/daemon_rcon.py"]),
+    "saba-core": ("saba-core", ["saba-core", "saba-runner"], ["modules/i18n.py", "modules/daemon_rcon.py", "modules/common_locales.json"]),
     "cli": ("saba-chan-cli", ["saba-chan-cli"], []),
     "updater": ("saba-chan-updater", ["saba-chan-updater"], []),
 }

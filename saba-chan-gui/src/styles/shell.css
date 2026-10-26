@@ -1893,6 +1893,9 @@ button.activity-line:hover {
 .dc-list-row.dim .dc-list-text {
     opacity: 0.55;
 }
+.dc-notice-btn.active {
+    color: var(--accent);
+}
 .dc-list-btn {
     background: none;
     border: none;

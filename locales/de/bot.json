@@ -196,6 +196,13 @@
       },
       "delete": {
         "title": "Server löschen"
+      },
+      "start_notice": {
+        "set": {
+          "title": "Start-Hinweis",
+          "description": "Im Hinweiskanal dieses Discord-Servers melden, wenn Saba-chan diesen Server startet",
+          "name": "Start-Hinweis"
+        }
       }
     },
     "server": {

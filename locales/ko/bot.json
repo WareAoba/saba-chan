@@ -2,7 +2,7 @@
   "default_prefix": "사바쨩",
   "commands": {
     "start": "서버 시작",
-    "stop": "서버 중지",
+    "stop": "서버 정지",
     "status": "서버 상태",
     "restart": "서버 재시작"
   },
@@ -120,7 +120,7 @@
   },
   "messages": {
     "server_started": "서버를 시작했습니다",
-    "server_stopped": "서버를 중지했습니다",
+    "server_stopped": "서버를 정지했습니다",
     "server_not_running": "서버가 실행 중이 아닙니다",
     "command_error": "명령 실행 오류",
     "raw_command_success": "✅ {{output}}",
@@ -196,6 +196,13 @@
       },
       "delete": {
         "title": "서버 삭제"
+      },
+      "start_notice": {
+        "set": {
+          "title": "켜짐 알림",
+          "description": "사바쨩이 이 서버를 켜면 이 디스코드 서버의 알림 채널에 알려요",
+          "name": "켜짐 알림"
+        }
       }
     },
     "server": {

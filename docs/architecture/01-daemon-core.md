@@ -458,6 +458,8 @@ PC 주인이 디스코드에서 받은 일회용 링크로 브라우저(사바�
 | GET | `/api/instance/:id/words` | `words.rs` `get` | - | 그 서버를 부르는 낱말 `{id, name, module, defaultWords, words, commands:[{name, label, risk, builtin, moduleAliases, aliases}]}`. 낱말은 인스턴스에 딸려 어느 길드에서나 같다. `defaultWords`는 정하지 않아도 그 서버를 부르는 기본 호출명이다: 인스턴스 이름, 그리고 같은 모듈의 서버가 모든 서버 중 이것 하나뿐이면 게임명(아래 §4 `game_names`)·module.toml 별명·모듈 이름(대소문자만 다른 것은 하나로, 다른 모듈과 다투는 별명과 다른 서버의 이름·id·낱말은 뺀다, `chat::words::default_words`). 명령은 이름마다 한 줄이고, 모듈이 내장(start·stop·status)과 같은 이름을 정의하면 이름표·위험도는 모듈 선언을 쓴다(`builtin`은 true). 없는 인스턴스는 404 `not_found` |
 | PUT | `/api/instance/:id/words` | `words.rs` `put` | `{words, commands:{<명령>:[..]}}` | `{success, id, words, commands}`. 규칙 위반은 400 `validation_failed {details:[{field, reason, word?, conflictWith?}]}`(`field`: `words[i]`·`commands.<명령>[i]`·`words`·`commands.<명령>`·`input`, `reason`: `invalid`·`reserved`·`conflict`(같은 서버 안에서 겹치면 `conflictWith`가 그 서버 이름)·`unknown_command`·`too_many`, `word`는 문제가 된 낱말). 서버 낱말은 모든 서버(길드가 쓰는 서버만이 아니다)의 이름·id·낱말과 겹치면 안 된다. 없는 인스턴스는 404. 빈 값이면 항목을 지운다. 검사와 저장은 설정 잠금 안에서 한다(`update_server_words`). 로컬 전용(릴레이 에이전트는 부르지 않고 액션 카탈로그에도 없다). 0.1.10의 `/api/guilds/:guild/instances*`는 없앴다 |
 | PUT | `/api/guilds/:guild/allowed-instances` | `words.rs` `put_allowed` | `{instances: [id] \| null}` | `{guildId, allowedInstances: [id] \| null}`. 그 길드가 보고 부를 수 있는 서버(`nodeSettings[guild].allowedInstances`). null은 제한 없음(키 삭제), 빈 배열은 아무 서버도 못 쓴다. 겹친 id는 하나로 줄인다. 없는 인스턴스 id는 400 `validation_failed {details:[{field:"instances", reason:"unknown_instance", id}]}`, 모양이 틀리면 `reason:"invalid"`. 설정 잠금 안에서 저장한다(`update_node_settings`). 로컬 전용(액션 카탈로그에 없다) |
+| GET | `/api/guilds/:guild/start-notice` | `start_notice.rs` `get` | - | `{guildId, instances: [id], allowedInstances: [id] \| null}`. 켜짐 알림을 켠 서버(`nodeSettings[guild].startNotice`, 없으면 빈 배열)와 그 길드가 쓸 수 있는 서버(null이면 전부). 원격 웹도 부른다 |
+| PUT | `/api/instance/:id/start-notice/:guild` | `start_notice.rs` `put` | `{enabled: bool}` | `{success, id, guildId, enabled, instances}`. 사바쨩이 그 서버를 켜면 그 길드의 알림 채널에 알릴지(기본 꺼짐, 사용자 요청 2026-10-26). 길드가 `allowedInstances`를 정했으면 그 밖의 서버를 켜는 요청은 400 `validation_failed {details:[{field:"instance", reason:"not_allowed"}]}`(끄기는 된다). 없는 인스턴스는 404, `enabled`가 bool이 아니면 400. 빈 목록이면 키를 지운다. 액션 `instance.start_notice.set`(GUI·CLI·디스코드, 디스코드는 관리자 이상·디스코드 서버 주인, 요청이 온 길드만. 서버 루트 하위 명령 `/<서버> 켜짐-알림`)이 이 라우트를 부른다 |
 | GET·PATCH | `/api/chatbot/guilds/:guild` | `chatbot.rs` `get_guild`·`patch_guild` | PATCH `{설정 키: 값\|null}` | 길드 하나의 챗봇 설정(I2-b): `{success, guildId, settings, hasApiKey}`(`settings`는 릴레이 기본값 위에 실제 값). PATCH는 그 길드 값만 합쳐 `PUT /api/chatbot`과 같이 저장·동기화한다. 릴레이 기본값 표에 없는 키(`apiKey` 포함)는 400 `validation_failed`. 액션 `chatbot.settings.get`(safe, 디스코드는 소유자)·`chatbot.settings.set`(admin, 디스코드는 소유자, 챗봇 표면 없음: 챗봇이 자기 확인을 끄지 못하게). 원격은 자기 길드만 |
 
 
@@ -576,7 +578,7 @@ Relay 서명 방식(`relay.rs:115-161`):
 
 | 그룹 | 필드 (기본값) |
 |---|---|
-| 동작 | `autoRefresh`(true), `refreshInterval`(2000), `ipcPort`(57474), `consoleBufferSize`(2000), `autoGeneratePasswords`(true), `portConflictCheck`(true), `autoPortCheck`(false, 켜면 인스턴스를 만들 때와 데몬을 켜고 90초 뒤 포트포워딩 확인을 조용히 한다. 노드 토큰이 없으면 하지 않는다), `osNotifications`(true, GUI 셸의 중대 알림 OS 알림) |
+| 동작 | `autoRefresh`(true), `refreshInterval`(2000), `ipcPort`(57474), `consoleBufferSize`(2000), `autoGeneratePasswords`(true), `portConflictCheck`(true), `autoPortCheck`(false, 켜면 인스턴스를 만들 때와 데몬을 켜고 90초 뒤 포트포워딩 확인을 조용히 한다. 노드 토큰이 없으면 하지 않는다), `osNotifications`(true, GUI 셸의 중대 알림 OS 알림), `sounds`({enabled, serverStart, serverStop, crash, install, update} 모두 true, GUI 셸의 효과음 전체·종류별 스위치) |
 | 테마 | `theme?`, `accentColor`("#667eea"), `accentSecondary`("#764ba2"), `useGradient`(true), `fontScale`(100), `enableTransitions`(true), `consoleSyntaxHighlight`(true), `consoleBgColor`, `consoleTextColor`, `sidebarCompact`(false), `windowOpacity`(100), `consoleFontScale`(100), `systemMonitorOpen`(true, 서버 페이지 시스템 모니터 펼침) |
 | 창/언어 | `windowBounds?{width:1200,height:840,x?,y?}`, `language?` |
 | 다룰 데몬 | `daemonTarget?`(GUI가 고른 원격 데몬 hostId, 없으면 이 PC. §1.4.2 7, 04 §1.1) |
@@ -600,6 +602,7 @@ Relay 서명 방식(`relay.rs:115-161`):
   - 데몬에 값이 없는 길드는 릴레이 값을 읽는다(릴레이에 없으면 기본값). 페어링했는데 릴레이를 읽지 못하면 GET은 기본값에 `loaded:false`를 붙여 답하고, PATCH는 503 `relay_unavailable`로 거절한다(기본값을 저장해 릴레이 값을 덮지 않게).
   - 릴레이에 닿지 않거나 5xx로 보내지 못한 설정은 저장해 두고, 다음에 하트비트가 성공하면 `sync_on_connect`로 다시 보낸다(`discord::take_pending_sync`).
 - `nodeSettings[guildId].allowedInstances`: 그 길드가 보고 부를 수 있는 인스턴스 id 목록(없으면 제한 없음). `PUT /api/guilds/:guild/allowed-instances`로만 바뀐다. 봇 설정 일괄 저장·초기화는 이 값을 바꾸지 않는다(`PERMISSION_KEYS`).
+- `nodeSettings[guildId].startNotice`: 켜짐 알림을 켠 인스턴스 id 목록(없으면 아무것도 알리지 않는다). `PUT /api/instance/:id/start-notice/:guild`로만 바뀐다(`PERMISSION_KEYS`). heartbeat `startNotice`로 릴레이에 간다.
 - `serverWords[instanceId]`: 그 서버를 부르는 낱말 `{words:[..], commands:{<명령 정식 이름>:[..]}}`(`chat/words.rs`). 인스턴스에 딸려 어느 길드에서나 같다. `/api/instance/:id/words`로만 바뀐다(봇 설정 일괄 저장은 이 키를 되돌린다, `keep_permission_keys`). 낱말은 공백 없는 1~32자, 항목마다 10개까지이고, 다른 서버 이름·id·낱말, 모듈 이름·게임명·module.toml 별명, `help`·`도움`·`도움말`·`list`·`목록`과 겹치면 안 된다. 명령 낱말은 같은 서버의 다른 명령 이름·별명과 겹치면 안 되고, 명령은 내장(start·stop·status)이거나 모듈 정의에 있어야 한다. 채팅 명령은 요청한 길드와 상관없이 이 낱말로 서버와 명령을 찾는다(길드가 쓸 서버 `allowedInstances`는 그대로 거른다).
   - 채팅 처리기(릴레이에서 온 길드 요청만): 대상은 인스턴스 이름·id → 그 서버 `words` → 모듈 이름·게임명·module.toml 별명 순(게임명 `ModuleView.game_names`는 module.toml `display_name`과 모듈 locales마다의 `display_name`에서 띄어 쓰지 않은 것, `chat::api::game_names`. 그 길드가 쓰는 서버 중 그 모듈 서버가 하나일 때만 그 서버를 부른다, 사용자 요청 2026-10-25), 명령은 그 길드·서버의 `commands` → module.toml 별명 → 명령 이름 → 내장 순이다. 여러 서버가 걸리면 `errors.multiple_instances`로 답한다. 위험(`danger`) 명령은 그 서버만 가리키는 말(인스턴스 이름·id·그 서버 `words`)로 불러야 하고, 모듈 이름·게임명·모듈 별명으로 찾았으면 실행하지 않고 `errors.danger_needs_name`(서버 이름을 알려 준다)으로 답한다(권한 판정 뒤, `chat::Ctx::module_command`). 로컬 요청(GUI·CLI)은 사용자 낱말을 쓰지 않는다. 권한 키는 언제나 정식 이름(`<instance>/<command>`)이다.
 
@@ -647,7 +650,7 @@ Relay 서명 방식(`relay.rs:115-161`):
 
 ### 6.1 Python (`src/python_env/mod.rs`)
 
-- 버전: 포터블 CPython **3.12.8**(python-build-standalone 태그 `20250106`, `install_only_stripped`)이다(`updater/src/python_pin.rs:7-8`). 시스템 Python을 쓸 경우 3.10 이상이어야 한다(`python_env/mod.rs:45`).
+- 버전: 포터블 CPython **3.12.8**(python-build-standalone 태그 `20250106`, `install_only_stripped`)이다(`updater/src/python_pin.rs:7-8`). 시스템 Python을 쓸 경우 3.11 이상이어야 한다(`python_env/mod.rs:45`, 모듈 공용 도우미가 표준 `tomllib`으로 module.toml을 읽는다). 기존 venv도 버전을 확인해 그보다 낮으면 다시 만든다(`verify_python`).
 - 탐색 순서: 이미 받은 포터블 Python, 시스템 Python, 자동 다운로드 순이다(`find_base_python`, `:209`). 찾은 인터프리터로 `<pyroot>/python-env` venv를 만들고 pip를 업그레이드한다(`ensure_venv`, `:114`).
 - 시스템 Python은 `sys.executable`로 확인한 실제 인터프리터 파일 경로를 사용한다.
 - 성공한 결과는 `OnceCell`에 캐시하고, 실패는 캐시하지 않아 다음 호출이 다시 시도한다(`get_python_path`, `:56`). 모든 `run_plugin` 호출이 여기를 거친다(`plugin/mod.rs:282`). 데몬은 기동하자마자 미리 준비를 시작하고(`main.rs:320-324`), 진행은 `/api/runtime/preflight`(`preflight_snapshot`, `python_env/mod.rs:86-106`)로 보인다.

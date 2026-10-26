@@ -304,6 +304,24 @@ export function DiscordPage({
         [t],
     );
 
+    // ── 켜짐 알림: 데몬 API로 서버마다 바로 저장 (bot-config 일괄 저장으로는 바뀌지 않는다) ──
+    const updateStartNotice = useCallback(
+        async (guildId, serverId, enabled) => {
+            setSaveState('saving');
+            try {
+                const res = await window.api.guildStartNoticeSave(serverId, guildId, enabled);
+                if (!res || res.error || res.error_code) throw new Error(res?.error || res?.error_code || '-');
+                const list = Array.isArray(res.instances) ? res.instances : [];
+                useDiscordStore.getState().applySavedNodeValue(guildId, 'startNotice', list.length ? list : null);
+                setSaveState('saved');
+            } catch (e) {
+                setSaveState(null);
+                safeShowToast(t('discord.start_notice_save_failed', { error: e.message }), 'error', 5000);
+            }
+        },
+        [t],
+    );
+
     // ── 페어링 ──
     const pairing = usePairing({
         relayUrl,
@@ -572,6 +590,7 @@ export function DiscordPage({
                                 settings={settings}
                                 update={updateNodes}
                                 updateAllowed={updateAllowed}
+                                updateStartNotice={updateStartNotice}
                                 members={cloudMembers[currentNode.guildId]}
                                 membersLoading={membersLoading === currentNode.guildId}
                                 membersFailed={!!membersFailed[currentNode.guildId]}

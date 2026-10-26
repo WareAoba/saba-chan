@@ -211,6 +211,31 @@ describe('DiscordPage', () => {
         expect(save).not.toHaveBeenCalled();
     });
 
+    // 사용자 요청(2026-10-26): 켜짐 알림은 서버마다 켜고(기본 꺼짐) 데몬 길드 API로 바로 저장한다
+    it('켜짐 알림은 서버마다 기본 꺼짐이고, 켜면 데몬 API로 바로 저장한다', async () => {
+        const { useDiscordStore } = await import('../stores/useDiscordStore');
+        window.api.guildStartNoticeSave = vi.fn(async (instanceId, guildId, enabled) => ({
+            success: true,
+            id: instanceId,
+            guildId,
+            enabled,
+            instances: enabled ? [instanceId] : [],
+        }));
+        const save = vi.fn();
+        await act(async () => render(<Harness save={save} />));
+        await waitFor(() => expect(document.querySelectorAll('.dc-nav-row')).toHaveLength(3));
+        const nodeRow = [...document.querySelectorAll('.dc-nav-row')].find((b) => b.textContent.includes('사바 마을'));
+        await act(async () => fireEvent.click(nodeRow));
+        const bells = document.querySelectorAll('.dc-notice-btn');
+        expect(bells).toHaveLength(2);
+        expect([...bells].map((b) => b.getAttribute('aria-pressed'))).toEqual(['false', 'false']);
+        await act(async () => fireEvent.click(bells[0]));
+        expect(window.api.guildStartNoticeSave).toHaveBeenCalledWith('s1', 'g1', true);
+        // 앱은 스토어 값을 그대로 넘긴다 (이 하네스는 자기 상태를 넘겨 다시 그리지 않는다)
+        expect(useDiscordStore.getState().nodeSettings.g1.startNotice).toEqual(['s1']);
+        expect(save).not.toHaveBeenCalled();
+    });
+
     it('멤버 목록을 다시 받다 실패하면 받아 둔 목록을 지우지 않고 알린다', async () => {
         await act(async () => render(<Harness save={vi.fn()} />));
         await waitFor(() => expect(document.querySelectorAll('.dc-nav-row')).toHaveLength(3));

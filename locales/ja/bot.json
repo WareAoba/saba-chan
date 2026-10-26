@@ -196,6 +196,13 @@
       },
       "delete": {
         "title": "サーバーを削除"
+      },
+      "start_notice": {
+        "set": {
+          "title": "起動通知",
+          "description": "サバちゃんがこのサーバーを起動したら、このDiscordサーバーの通知チャンネルに知らせます",
+          "name": "起動通知"
+        }
       }
     },
     "server": {

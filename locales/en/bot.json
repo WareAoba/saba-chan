@@ -196,6 +196,13 @@
       },
       "delete": {
         "title": "Delete server"
+      },
+      "start_notice": {
+        "set": {
+          "title": "Start alert",
+          "description": "Post in this Discord server's alert channel when Saba-chan starts this server",
+          "name": "Start alert"
+        }
       }
     },
     "server": {
