@@ -204,10 +204,12 @@ fn build(method: &Method, path: &str, headers: &HeaderMap, token: &str, body: &a
     req.header(header::AUTHORIZATION, format!("Bearer {token}")).body(Body::from(body.clone())).ok()
 }
 
-/// 원격 데몬에 넘길 경로: 데몬 API와 상태 확인만 (짝 맺기 같은 원격 포트 자체의 길은 넘기지 않는다)
+/// 원격 데몬에 넘길 경로: 데몬 API와 상태 확인만 (짝 맺기 같은 원격 포트 자체의 길은 넘기지 않는다).
+/// 넘기는 경로는 풀지 않은 그대로지만 판정은 푼 경로로 한다
 pub fn forward_path(rest: &str, query: Option<&str>) -> Option<String> {
     let rest = rest.trim_start_matches('/');
-    if !(rest == "health" || rest.starts_with("api/")) || rest.split('/').any(|s| s == ".." || s == ".") {
+    let segments = crate::remote::gate::path_segments(&format!("/{rest}"))?;
+    if !(segments == ["health"] || (segments.len() > 1 && segments[0] == "api")) {
         return None;
     }
     Some(match query {

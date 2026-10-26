@@ -110,10 +110,12 @@
     "save": "Guardar",
     "saved": "Ajustes guardados.",
     "saved_restart": "Ajustes guardados. Algunos se aplican tras reiniciar el servidor.",
-    "changed_elsewhere": "Los ajustes se cambiaron en otro lugar mientras tanto. Vuelve a abrir el servidor.",
+    "changed_elsewhere": "Los ajustes se cambiaron en otro lugar mientras tanto. Carga los valores nuevos y vuelve a hacer el cambio.",
     "danger_zone": "Eliminar servidor",
     "delete_hint": "Elimina los ajustes y archivos del servidor.",
-    "stop_first": "Detén el servidor primero."
+    "stop_first": "Detén el servidor primero.",
+    "save_failed": "No se pudo guardar",
+    "reload": "Cargar valores nuevos"
   },
   "backups": {
     "create": "Copiar ahora",

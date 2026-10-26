@@ -1325,7 +1325,8 @@
       "remote_timeout": "遠端常駐程式未及時回應。請求可能仍在處理中",
       "remote_bad_path": "該路徑不能傳給遠端常駐程式",
       "remote_unauthorized": "遠端常駐程式不再接受本機。請重新連線",
-      "remote_local_only": "這只能在那台電腦上直接操作"
+      "remote_local_only": "這只能在那台電腦上直接操作",
+      "remote_field_blocked": "以下設定只能在那台電腦上直接變更：{{fields}}"
     },
     "daemon": "守護程式",
     "this_pc": "本機",

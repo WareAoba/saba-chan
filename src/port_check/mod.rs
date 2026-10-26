@@ -122,7 +122,7 @@ pub enum Nat {
     Direct,
     /// 공유기가 공인 주소를 받았다 (포트포워딩하면 된다)
     Router,
-    /// 공유기가 받은 바깥 주소가 공인 주소가 아니다: 통신사 공유 주소(CGNAT)라 포트포워딩으로 열 수 없다
+    /// 공유기가 받은 바깥 주소가 통신사 공유 대역이거나 릴레이가 본 주소와 다르다: 포트포워딩으로 열 수 없다
     Cgnat,
     /// 공유기가 UPnP에 답하지 않아 모른다
     Unknown,
@@ -150,6 +150,8 @@ pub fn classify_nat(observed: IpAddr, route_local: Option<IpAddr>, gateway: Opti
         return Nat::Direct;
     }
     match gateway {
+        // 사설 주소면 공유기 아래 공유기(이중 NAT)일 수 있다: 바깥 공유기에서 포트포워딩하면 열리므로 단정하지 않는다
+        Some(IpAddr::V4(g)) if g.is_private() => Nat::Unknown,
         Some(IpAddr::V4(g)) if !is_public_v4(g) => Nat::Cgnat,
         Some(g) if g != observed => Nat::Cgnat,
         Some(_) => Nat::Router,
@@ -178,6 +180,9 @@ pub struct Report {
 fn verdict(nat: Nat, ports: &[PortResult]) -> &'static str {
     if ports.is_empty() {
         "no_ports"
+    } else if ports.iter().all(|p| p.status == PortStatus::Open) {
+        // 확인값을 실제로 받았으면 NAT 추정보다 앞선다
+        "open"
     } else if nat == Nat::Cgnat {
         "cgnat"
     } else if ports.iter().any(|p| p.status == PortStatus::Firewall) {

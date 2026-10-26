@@ -618,6 +618,7 @@ mod tests {
         for need in [
             "allow-daemon-request",
             "allow-daemon-status",
+            "allow-daemon-target-get",
             "allow-language-get",
             "allow-tray-action",
             "allow-tray-popup-fit",

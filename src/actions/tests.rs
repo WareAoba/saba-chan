@@ -93,6 +93,50 @@ async fn the_chatbot_cannot_reach_forbidden_actions_whatever_the_levels() {
     assert!(plan(&state, "instance.settings.set", Some(&id), &json!({ "admin_pass": "x" }), &gui()).await.is_ok());
 }
 
+/// 원격 포트(짝 맺은 PC)에서 온 액션은 대상 라우트·칸이 원격 포트에서 막힌 것이면 계획·실행·여러 단계 계획 모두
+/// 미리 거절한다 (여러 단계에서 앞 단계만 돌고 멈추지 않게). 안에서 다시 부르는 다른 호출도 같은 규칙 층을 지난다
+#[tokio::test]
+async fn a_paired_pc_cannot_reach_routes_the_remote_port_refuses_through_actions() {
+    let (state, id, _tmp) = server().await;
+    let remote = crate::audit::Origin::new("remote");
+    let paired = Caller::local(remote.clone(), "en".into());
+    for action in ["update.apply", "update.check"] {
+        let err = plan(&state, action, None, &json!({}), &paired).await.unwrap_err();
+        assert_eq!((err.status, err.code), (403, "remote_local_only"), "{action}");
+        let err = run(&state, action, None, &json!({}), None, &paired).await.unwrap_err();
+        assert_eq!((err.status, err.code), (403, "remote_local_only"), "{action}");
+    }
+    let steps = json!([{ "id": "server.status", "instance": id, "input": {} }, { "id": "update.apply", "input": {} }]);
+    assert_eq!(plan_steps(&state, &steps, &paired).await.unwrap_err().code, "remote_local_only");
+    // 원격 포트가 막는 PC 전용 칸도 같다
+    let err = plan(&state, "instance.settings.set", Some(&id), &json!({ "java_path": "/bin/sh" }), &paired).await.unwrap_err();
+    assert_eq!((err.status, err.code), (403, "remote_field_blocked"), "{err:?}");
+    assert_eq!(err.data["fields"], json!(["java_path"]));
+    // 같은 계획에서 만들 서버(`@N`)도 그 모듈의 PC 전용 칸으로 본다
+    let on_new = json!([
+        { "id": "instance.create", "input": { "name": "new-srv", "module_name": "plain" } },
+        { "id": "instance.settings.set", "instance": "@1", "input": { "java_path": "/bin/sh" } },
+    ]);
+    let err = plan_steps(&state, &on_new, &paired).await.unwrap_err();
+    assert_eq!((err.status, err.code, err.data["step"].as_i64()), (403, "remote_field_blocked", Some(2)), "{err:?}");
+    assert_eq!(err.data["fields"], json!(["java_path"]));
+    // 그 모듈을 찾지 못하면 설정 칸은 모두 막는다
+    let unknown = json!([
+        { "id": "instance.create", "input": { "name": "new-srv", "module_name": "missing" } },
+        { "id": "instance.settings.set", "instance": "@1", "input": { "players": 6 } },
+    ]);
+    let err = plan_steps(&state, &unknown, &paired).await.unwrap_err();
+    assert_eq!((err.code, err.data["step"].as_i64()), ("remote_field_blocked", Some(2)), "{err:?}");
+    // 액션이 아닌 안쪽 호출도 같은 층을 지난다
+    let res = call_as(&state, "GET", "/api/updates/status", None, Some(remote.clone())).await;
+    assert_eq!((res.status.as_u16(), res.body["error_code"].as_str()), (403, Some("remote_local_only")), "{:?}", res.body);
+    // 원격 포트가 받는 라우트는 그대로, 이 PC의 화면에서는 그대로
+    assert!(plan(&state, "server.status", Some(&id), &json!({}), &paired).await.is_ok());
+    assert!(plan(&state, "update.apply", None, &json!({}), &gui()).await.is_ok());
+    let res = call_as(&state, "GET", "/api/updates/status", None, Some(crate::audit::Origin::new("gui"))).await;
+    assert_ne!(res.body["error_code"].as_str(), Some("remote_local_only"), "{:?}", res.body);
+}
+
 #[tokio::test]
 async fn update_apply_from_discord_needs_the_owner_even_with_an_override() {
     let (state, _id, _tmp) = server().await;

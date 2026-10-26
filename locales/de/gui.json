@@ -1663,7 +1663,11 @@
     "switch_to_cli": "Zur CLI wechseln",
     "start_daemon": "Daemon starten",
     "stop_daemon": "Daemon stoppen",
-    "quit_all": "Vollständig beenden"
+    "quit_all": "Vollständig beenden",
+    "remote_connected": "{{name}} verbunden",
+    "remote_unreachable": "{{name}} nicht erreichbar",
+    "stop_confirm": "Stoppen?",
+    "stop_confirm_aria": "Stoppen von {{name}} bestätigen"
   },
   "autostart": {
     "label": "Beim Anmelden starten",
@@ -1720,6 +1724,7 @@
     "err_remote_bad_path": "Dieser Pfad kann nicht an einen Remote-Daemon gesendet werden",
     "err_remote_unauthorized": "Der Remote-Daemon akzeptiert diesen PC nicht mehr. Verbinde ihn erneut",
     "err_remote_local_only": "Das geht nur direkt auf diesem PC",
+    "err_remote_field_blocked": "Diese Einstellungen lassen sich nur direkt auf diesem PC ändern: {{fields}}",
     "view": "Serverliste",
     "view_description": "Die kombinierte Ansicht zeigt unter den Servern des gewählten Daemons die Server der anderen Daemons (auch dieses PCs), nach Daemon gruppiert, und du kannst sie dort starten und stoppen",
     "view_switch": "Nur gewählter Daemon",

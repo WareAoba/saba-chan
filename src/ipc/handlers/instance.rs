@@ -435,6 +435,8 @@ async fn create_instance_inner(state: IPCServer, payload: Value) -> impl IntoRes
         let instance_dir = supervisor.instance_store.instance_dir(&id);
 
         // 설치가 끝날 때까지 업데이트·삭제·복원·시작이 같은 폴더에 끼어들지 않게 작업 잠금을 쥔다.
+        // 가져오기는 이 요청이 끝날 때까지 쥔다: 격리된 `import_settings`가 끝나면 그때 없던 데몬 항목 자리를 지우므로
+        // 그 사이 시작·설정 저장·백업이 데몬 항목을 만들지 않게 한다.
         // 목록에 보이기 전에 잡는다 (보인 뒤에 잡으면 그 틈의 삭제가 먼저 잡아 설치가 지워지는 폴더로 돈다)
         let install_guard = super::backup::InstanceLock::try_take_for_writes(&id);
 
@@ -1388,7 +1390,7 @@ pub(crate) fn extra_args_from(value: &Value) -> Option<Vec<String>> {
 
 /// 설정의 저장된 값: 공통 칸(`constants::INSTANCE_FIELDS`, 예: port)은 PATCH가 인스턴스 칸에 쓰므로 그 값을,
 /// 아니면 `module_settings`를 본다. `view`는 그 인스턴스를 JSON으로 펼친 것
-fn stored_setting(view: &Value, instance: &crate::instance::ServerInstance, key: &str) -> Option<Value> {
+pub(crate) fn stored_setting(view: &Value, instance: &crate::instance::ServerInstance, key: &str) -> Option<Value> {
     let own = saba_chan_updater_lib::constants::INSTANCE_FIELDS.iter().any(|(k, _)| *k == key);
     own.then(|| view.get(key).filter(|v| !v.is_null()).cloned()).flatten().or_else(|| instance.module_settings.get(key).cloned())
 }
@@ -2488,6 +2490,43 @@ mod tests {
             assert!(std::time::Instant::now() < deadline, "the import never finished after the request was dropped");
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         }
+    }
+
+    /// 가져오기는 끝날 때까지 그 인스턴스의 작업 잠금을 쥔다: 그동안 시작·설정 저장·백업이 데몬 항목을 만들지 않는다
+    /// (격리된 가져오기가 끝나면 시작할 때 없던 데몬 항목 자리를 지우므로, 그 사이 데몬이 만든 것이 지워지지 않게)
+    #[tokio::test]
+    async fn an_import_holds_the_instance_lock_until_it_is_done() {
+        use axum::{extract::{Path, State}, Json};
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("module.toml"), "[module]\nschema_version = 1\nname = 'game'\nversion = '1.0.0'\nentry = 'lifecycle.py'\n").unwrap();
+        std::fs::write(dir.join("lifecycle.py"),
+            "import json, sys, time\nf = sys.argv[1]\n\
+             if f == 'functions': print(json.dumps({'success': True, 'functions': ['import_settings']}))\n\
+             else:\n    time.sleep(1.5)\n    print(json.dumps({'success': True, 'settings': {'motd': 'mine'}}))\n").unwrap();
+        crate::sandbox::consent_test_component(&dir.join("lifecycle.py"));
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        for module in sup.module_loader.discover_modules().unwrap() { crate::sandbox::consent_test_component(std::path::Path::new(&module.entry_path())); }
+        sup.initialize().await.unwrap();
+        let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let server = tmp.path().join("server");
+        std::fs::create_dir_all(&server).unwrap();
+
+        let request = tokio::spawn(super::create_instance(State(state.clone()), Json(serde_json::json!({"name":"g", "module_name":"game", "migration_source":server}))));
+        let id = loop {
+            if let Some(id) = state.supervisor.read().await.instance_store.list().first().map(|i| i.id.clone()) {
+                break id;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        };
+        assert!(super::super::backup::InstanceLock::take(&id).is_none(), "the import holds the lock");
+        let saved = crate::ipc::internal::into_internal(super::update_instance_settings(State(state.clone()), Path(id.clone()), Json(json!({ "motd": "theirs" }))).await).await;
+        assert_eq!(saved.status, 409, "{}", saved.body);
+        let created = crate::ipc::internal::into_internal(request.await.unwrap()).await;
+        assert_eq!(created.status, 201, "{}", created.body);
+        assert!(super::super::backup::InstanceLock::take(&id).is_some(), "the lock is released once the import is done");
     }
 
     /// 가져오기 "옮기기"는 서버 폴더를 인스턴스 폴더 안으로 옮겨 전속시킨다: 모듈은 옮긴 자리를 읽고,

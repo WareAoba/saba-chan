@@ -1006,6 +1006,27 @@ async fn allowed_instances(server: &IPCServer, caller: &Caller) -> Option<Vec<St
 
 /// 표면과 레벨 판정. 챗봇 경로는 표면부터 본다 (레벨·설정으로 풀 수 없다)
 async fn authorize(server: &IPCServer, r: &Resolved, caller: &Caller) -> Result<(), ActionError> {
+    authorize_in(server, r, caller, None).await
+}
+
+/// `authorize`. `new_server_module`은 같은 계획에서 앞서 만들 서버(`@N`)를 쓰는 단계일 때 그 생성 단계의 모듈이다
+/// (아직 없는 서버라 원격 포트 규칙이 그 모듈의 PC 전용 칸을 이것으로 찾는다. 모듈이 없으면 빈 이름)
+async fn authorize_in(server: &IPCServer, r: &Resolved, caller: &Caller, new_server_module: Option<&str>) -> Result<(), ActionError> {
+    // 원격 포트(짝 맺은 PC)에서 온 계획·실행은 대상 라우트·칸을 원격 포트의 규칙으로 미리 본다.
+    // 실행이 안에서 부르는 라우터도 같은 규칙 층(`remote_daemon::server::rules`)을 지나지만, 여러 단계 계획이
+    // 앞 단계만 돌고 뒤 단계에서 멈추지 않게 계획 때 거절한다
+    if caller.remote.is_none() && caller.origin.source == "remote" {
+        if let Some(refused) = crate::remote_daemon::server::refusal(server, r.method, &r.uri, r.body.as_ref(), new_server_module).await {
+            let (status, code) = (refused.status().as_u16(), refused.code());
+            return Err(match refused {
+                crate::remote_daemon::server::Refused::Fields(fields) => ActionError {
+                    data: json!({ "fields": fields }),
+                    ..ActionError::new(status, code, "These settings can only be changed on the PC")
+                },
+                crate::remote_daemon::server::Refused::Route(..) => ActionError::new(status, code, "This can only be done on that PC itself"),
+            });
+        }
+    }
     if !r.surfaces.contains(&caller.surface) {
         return Err(ActionError::new(403, "action_not_allowed", format!("'{}' is not available from {}", r.id, caller.surface.name())));
     }

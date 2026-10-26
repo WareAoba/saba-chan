@@ -41,11 +41,16 @@ pub async fn run(server: &IPCServer, req: Request, user: Option<String>) -> Resp
             )
         }
     };
-    let pc_only = pc_only_fields(server, pattern, &req).await;
-    let blocked = gate::blocked_fields(&req.method, pattern, req.body.as_ref(), &pc_only);
+    let blocked = {
+        let segments = gate::path_segments(&req.path).unwrap_or_default();
+        let supervisor = server.supervisor.read().await;
+        blocked_fields(&supervisor, &req.method, pattern, &segments, req.body.as_ref(), None).0
+    };
     if !blocked.is_empty() {
-        let msg = "These settings can only be changed on the PC";
-        return refusal(StatusCode::FORBIDDEN, "remote_field_blocked", msg, Some(blocked));
+        return Response {
+            status: StatusCode::FORBIDDEN.as_u16(),
+            body: field_refusal(blocked),
+        };
     }
     let mut origin = crate::audit::Origin::new("web");
     origin.user = user;
@@ -58,6 +63,11 @@ pub async fn run(server: &IPCServer, req: Request, user: Option<String>) -> Resp
         status: res.status.as_u16(),
         body,
     }
+}
+
+/// PC에서만 바꾸는 칸을 담은 요청의 거절 본문 (원격 포트도 같은 모양으로 거절한다)
+pub(crate) fn field_refusal(fields: Vec<String>) -> Value {
+    refusal(StatusCode::FORBIDDEN, "remote_field_blocked", "These settings can only be changed on the PC", Some(fields)).body
 }
 
 fn refusal(status: StatusCode, code: &str, error: &str, fields: Option<Vec<String>>) -> Response {
@@ -78,7 +88,12 @@ fn is_secret(f: &crate::supervisor::module_loader::SettingField) -> bool {
 
 /// 모듈 설정 중 원격에서 바꾸지 않는 칸: 비밀값과 경로(실행 파일·런타임·폴더를 고르는 칸)
 fn is_pc_only(f: &crate::supervisor::module_loader::SettingField) -> bool {
-    is_secret(f) || matches!(f.field_type.as_str(), "file" | "path") || f.format.as_deref() == Some("path")
+    pc_only_type(&f.field_type, f.format.as_deref())
+}
+
+/// 원격에서 바꾸지 않는 칸 종류: 비밀번호, 파일·경로, 경로 형식 글 (모듈 설정과 익스텐션이 묻는 칸이 같은 규칙)
+pub(crate) fn pc_only_type(field_type: &str, format: Option<&str>) -> bool {
+    matches!(field_type, "password" | "file" | "path") || format == Some("path")
 }
 
 fn module_fields(
@@ -99,30 +114,104 @@ fn module_fields(
         .collect()
 }
 
-/// 이 요청이 고치는 인스턴스 모듈의 PC 전용 설정 키
-async fn pc_only_fields(server: &IPCServer, pattern: &str, req: &Request) -> Vec<String> {
-    let supervisor = server.supervisor.read().await;
-    let module = match pattern {
-        "/api/instance/{id}" | "/api/instance/{id}/properties" => req
-            .path
-            .split('?')
-            .next()
-            .and_then(|p| p.split('/').nth(3))
-            // 라우터는 id 를 풀어서 찾으므로 여기서도 풀어서 찾는다 (%61bc 로 모듈 칸 검사를 비켜 가지 않게)
-            .and_then(super::gate::percent_decode)
-            .and_then(|id| supervisor.instance_store.get(&id))
-            .map(|i| i.module_name.clone()),
-        "/api/instances" => req
-            .body
-            .as_ref()
-            .and_then(|b| b.get("module_name"))
-            .and_then(Value::as_str)
-            .map(str::to_string),
+/// 서버를 만들 때 켜진 익스텐션이 물은 칸(`AddServer.options`, `options`는 그 선언)의 답(`given`)을 원격에서 받는가.
+/// 모든 키가 선언한 칸이고 값이 선언한 종류에 맞아야 한다(boolean은 참거짓, number는 수나 수로 읽히는 글자(GUI·CLI는 글자로 싣는다), select는 선언한 선택지, 그 밖은 글자.
+/// 객체·목록은 받지 않는다). 경로·파일·비밀번호 칸(`pc_only_type`)은 선언한 기본값 그대로일 때만 받는다 (GUI는 손대지 않은 칸도 기본값을 싣는다).
+/// 같은 칸을 여러 익스텐션이 물으면 하나라도 그런 칸이면 그 규칙을 따르고, 아니면 선언 종류가 모두 같고 값이 선언마다 맞아야 한다
+pub(crate) fn create_option_answers_allowed(options: &[Value], given: &serde_json::Map<String, Value>) -> bool {
+    fn kind(o: &Value) -> (&str, Option<&str>) {
+        (o.get("type").and_then(Value::as_str).unwrap_or("text"), o.get("format").and_then(Value::as_str))
+    }
+    given.iter().all(|(key, value)| {
+        // 여러 익스텐션이 같은 칸을 물으면 선언 전부를 본다: 하나라도 PC 전용 칸이면 그 규칙, 아니면 종류가 모두 같아야 한다
+        let declared: Vec<&Value> = options.iter().filter(|o| o.get("field").and_then(Value::as_str) == Some(key)).collect();
+        let Some(first) = declared.first() else {
+            return false;
+        };
+        if value.is_object() || value.is_array() {
+            return false;
+        }
+        if value.is_null() {
+            return true;
+        }
+        let pc_only: Vec<&&Value> = declared.iter().filter(|o| pc_only_type(kind(o).0, kind(o).1)).collect();
+        if !pc_only.is_empty() {
+            return pc_only.iter().all(|o| o.get("default") == Some(value));
+        }
+        if declared.iter().any(|o| kind(o) != kind(first)) {
+            return false;
+        }
+        let (field_type, _) = kind(first);
+        declared.iter().all(|option| {
+            option.get("default") == Some(value)
+                || match field_type {
+                    "boolean" => value.is_boolean(),
+                    "number" => value.is_number() || value.as_str().is_some_and(|n| n.trim().parse::<f64>().is_ok_and(f64::is_finite)),
+                    "select" => option.get("options").and_then(Value::as_array).is_some_and(|choices| {
+                        choices.iter().any(|c| c == value || c.get("value") == Some(value))
+                    }),
+                    _ => value.is_string(),
+                }
+        })
+    })
+}
+
+/// 요청이 설정을 고치는 인스턴스 (인스턴스 설정, 게임 설정 파일 쓰기). `segments`는 푼 경로 조각이다
+/// (라우터는 id를 풀어서 찾으므로 여기서도 푼 id로 찾는다: %61bc로 모듈 칸 검사를 비켜 가지 않게)
+fn edited_instance<'a>(
+    supervisor: &'a crate::supervisor::Supervisor,
+    pattern: &str,
+    segments: &[String],
+) -> Option<&'a crate::instance::ServerInstance> {
+    match pattern {
+        "/api/instance/{id}" | "/api/instance/{id}/properties" => {
+            gate::param(pattern, segments, "id").and_then(|id| supervisor.instance_store.get(id))
+        }
         _ => None,
+    }
+}
+
+/// 이 요청 본문에서 원격이 바꾸지 못하는 칸(`gate::blocked_fields`, 그 인스턴스 모듈의 PC 전용 설정 포함)과
+/// 요청이 고치는 인스턴스. 웹 원격과 원격 포트가 같이 쓴다 (원격 포트는 저장된 값과 같은 칸을 더 뺀다).
+/// `new_server_module`은 아직 없는 서버(같은 계획에서 앞서 만들 서버)를 고치는 요청일 때 그 서버의 모듈이다
+pub(crate) fn blocked_fields<'a>(
+    supervisor: &'a crate::supervisor::Supervisor,
+    method: &str,
+    pattern: &str,
+    segments: &[String],
+    body: Option<&Value>,
+    new_server_module: Option<&str>,
+) -> (Vec<String>, Option<&'a crate::instance::ServerInstance>) {
+    let instance = edited_instance(supervisor, pattern, segments);
+    let pc_only = match (instance, new_server_module) {
+        (None, Some(module)) => new_server_pc_only_fields(supervisor, module, body),
+        _ => pc_only_fields(supervisor, pattern, instance, body),
     };
-    module
-        .map(|m| module_fields(&supervisor, &m, is_pc_only))
-        .unwrap_or_default()
+    (gate::blocked_fields(method, pattern, body, &pc_only), instance)
+}
+
+/// 이 요청이 고치는 인스턴스(`instance`, `edited_instance`) 또는 만드는 인스턴스(`body.module_name`) 모듈의 PC 전용 설정 키
+fn pc_only_fields(
+    supervisor: &crate::supervisor::Supervisor,
+    pattern: &str,
+    instance: Option<&crate::instance::ServerInstance>,
+    body: Option<&Value>,
+) -> Vec<String> {
+    let module = match pattern {
+        "/api/instances" => body.and_then(|b| b.get("module_name")).and_then(Value::as_str),
+        _ => instance.map(|i| i.module_name.as_str()),
+    };
+    module.map(|m| module_fields(supervisor, m, is_pc_only)).unwrap_or_default()
+}
+
+/// 아직 없는 서버 모듈(`module`)의 PC 전용 설정 키. 그 모듈을 찾지 못하면 본문의 설정 칸을 모두 PC 전용으로 본다
+fn new_server_pc_only_fields(supervisor: &crate::supervisor::Supervisor, module: &str, body: Option<&Value>) -> Vec<String> {
+    if supervisor.module_loader.get_module(module).is_ok() {
+        return module_fields(supervisor, module, is_pc_only);
+    }
+    let body = body.and_then(Value::as_object);
+    let settings = body.and_then(|b| b.get("settings")).and_then(Value::as_object);
+    body.into_iter().chain(settings).flat_map(|m| m.keys().cloned()).collect()
 }
 
 /// 인스턴스를 담은 응답에서 비밀값(REST 비밀번호, 모듈의 비밀번호 칸)을 뺀다.
@@ -182,6 +271,55 @@ mod tests {
             path: path.into(),
             body,
         }
+    }
+
+    /// 서버를 만들 때 켜진 익스텐션이 물은 칸의 답: 선언한 종류에 맞는 값만, 경로·파일·비밀번호 칸은 선언한 기본값일 때만
+    #[test]
+    fn create_option_answers_match_what_the_extension_declared() {
+        let options = vec![
+            json!({ "field": "boxed", "type": "boolean" }),
+            json!({ "field": "slots", "type": "number" }),
+            json!({ "field": "tier", "type": "select", "options": ["small", "large"] }),
+            json!({ "field": "label", "type": "text" }),
+            json!({ "field": "box_dir", "type": "path", "default": "boxes" }),
+            json!({ "field": "key", "type": "password" }),
+        ];
+        let ok = |v: Value| create_option_answers_allowed(&options, v.as_object().unwrap());
+        assert!(ok(json!({ "boxed": true, "slots": 3, "tier": "large", "label": "hi", "box_dir": "boxes" })));
+        // GUI·CLI는 숫자 칸 답을 글자로 싣는다
+        assert!(ok(json!({ "slots": "3" })));
+        assert!(ok(json!({ "slots": "2.5" })));
+        for bad in [
+            json!({ "boxed": "yes" }),
+            json!({ "slots": "three" }),
+            json!({ "slots": "" }),
+            json!({ "tier": "huge" }),
+            json!({ "label": 1 }),
+            json!({ "label": ["a"] }),
+            json!({ "boxed": { "x": 1 } }),
+            json!({ "box_dir": "/etc" }),
+            json!({ "key": "x" }),
+            json!({ "other": 1 }),
+        ] {
+            assert!(!ok(bad.clone()), "{bad}");
+        }
+    }
+
+    #[test]
+    fn a_field_two_extensions_ask_follows_every_declaration() {
+        let options = vec![
+            json!({ "field": "dir", "type": "text" }),
+            json!({ "field": "dir", "type": "path", "default": "boxes" }),
+            json!({ "field": "size", "type": "number" }),
+            json!({ "field": "size", "type": "text" }),
+            json!({ "field": "on", "type": "boolean" }),
+            json!({ "field": "on", "type": "boolean" }),
+        ];
+        let ok = |v: Value| create_option_answers_allowed(&options, v.as_object().unwrap());
+        assert!(!ok(json!({ "dir": "/etc" })));
+        assert!(ok(json!({ "dir": "boxes" })));
+        assert!(!ok(json!({ "size": "3" })));
+        assert!(ok(json!({ "on": true })));
     }
 
     #[tokio::test]

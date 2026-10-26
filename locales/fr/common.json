@@ -134,6 +134,7 @@
     "gave_up": "Le redémarrage auto a abandonné. Vérifiez le serveur.",
     "restart_failed": "Impossible de redémarrer {{name}}.",
     "external_start": "{{name}} a été démarré en dehors de Saba-chan. Saba-chan n'a pas lancé ce processus.",
-    "backup_failed": "La sauvegarde automatique de {{name}} a échoué."
+    "backup_failed": "La sauvegarde automatique de {{name}} a échoué.",
+    "on_daemon": "Sur {{daemon}} : {{body}}"
   }
 }

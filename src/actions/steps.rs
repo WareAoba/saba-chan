@@ -81,7 +81,7 @@ pub async fn plan_steps(server: &IPCServer, steps: &Value, caller: &Caller) -> R
                 let mut r = resolve_in(server, id, instance, &input, caller, module).await.map_err(|e| step_error(n, e))?;
                 // 아직 없는 서버라 길드 허용 목록은 실행 때 본다
                 r.instance = None;
-                authorize(server, &r, caller).await.map_err(|e| step_error(n, e))?;
+                authorize_in(server, &r, caller, Some(module.unwrap_or_default())).await.map_err(|e| step_error(n, e))?;
                 let name = maker.pointer("/input/name").cloned().unwrap_or(Value::Null);
                 (Step::OnNew { id: id.to_string(), from, input }, r, Some(name))
             }

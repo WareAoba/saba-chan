@@ -110,10 +110,12 @@
     "save": "儲存",
     "saved": "設定已儲存。",
     "saved_restart": "設定已儲存。部分設定在伺服器重新啟動後生效。",
-    "changed_elsewhere": "期間設定已在其他地方被變更。請重新開啟伺服器。",
+    "changed_elsewhere": "期間設定已在其他地方被變更。請載入新的值後再修改。",
     "danger_zone": "刪除伺服器",
     "delete_hint": "刪除伺服器的設定和檔案。",
-    "stop_first": "請先停止伺服器。"
+    "stop_first": "請先停止伺服器。",
+    "save_failed": "無法儲存",
+    "reload": "載入新的值"
   },
   "backups": {
     "create": "立即備份",

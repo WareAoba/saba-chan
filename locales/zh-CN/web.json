@@ -110,10 +110,12 @@
     "save": "保存",
     "saved": "设置已保存。",
     "saved_restart": "设置已保存。部分设置在服务器重启后生效。",
-    "changed_elsewhere": "期间设置已在其他地方被更改。请重新打开服务器。",
+    "changed_elsewhere": "期间设置已在其他地方被更改。请载入新的值后再修改。",
     "danger_zone": "删除服务器",
     "delete_hint": "删除服务器的设置和文件。",
-    "stop_first": "请先停止服务器。"
+    "stop_first": "请先停止服务器。",
+    "save_failed": "无法保存",
+    "reload": "载入新的值"
   },
   "backups": {
     "create": "立即备份",

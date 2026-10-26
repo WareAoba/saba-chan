@@ -1325,7 +1325,8 @@
       "remote_timeout": "O daemon remoto não respondeu a tempo. Ele ainda pode estar processando o pedido",
       "remote_bad_path": "Esse caminho não pode ser enviado a um daemon remoto",
       "remote_unauthorized": "O daemon remoto não aceita mais este PC. Conecte de novo",
-      "remote_local_only": "Isso só pode ser feito naquele PC"
+      "remote_local_only": "Isso só pode ser feito naquele PC",
+      "remote_field_blocked": "Estas configurações só podem ser alteradas naquele PC: {{fields}}"
     },
     "daemon": "Daemon",
     "this_pc": "Este PC",

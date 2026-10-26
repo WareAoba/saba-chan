@@ -1663,7 +1663,11 @@
     "switch_to_cli": "Cambiar a la CLI",
     "start_daemon": "Iniciar daemon",
     "stop_daemon": "Detener daemon",
-    "quit_all": "Salir por completo"
+    "quit_all": "Salir por completo",
+    "remote_connected": "{{name}} conectado",
+    "remote_unreachable": "No se puede contactar con {{name}}",
+    "stop_confirm": "¿Detener?",
+    "stop_confirm_aria": "Confirmar detener {{name}}"
   },
   "autostart": {
     "label": "Iniciar al iniciar sesión",
@@ -1720,6 +1724,7 @@
     "err_remote_bad_path": "Esa ruta no se puede enviar a un daemon remoto",
     "err_remote_unauthorized": "El daemon remoto ya no acepta este PC. Conéctalo de nuevo",
     "err_remote_local_only": "Esto solo se puede hacer en ese PC",
+    "err_remote_field_blocked": "Estos ajustes solo se pueden cambiar en ese PC: {{fields}}",
     "view": "Lista de servidores",
     "view_description": "La vista combinada muestra, bajo los servidores del daemon elegido, los servidores de los demás daemons (incluido este PC) agrupados por daemon, y permite iniciarlos y detenerlos ahí",
     "view_switch": "Solo el daemon elegido",

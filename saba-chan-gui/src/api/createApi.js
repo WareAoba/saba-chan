@@ -510,6 +510,8 @@ export function createApi({ invoke, hub }) {
                 return { error: t('errors.reorder_failed', { error: error.message }) };
             }
         },
+        // 인스턴스 하나의 지금 설정과 revision (GET /api/instance/:id)
+        instanceGet: (id) => daemonCall('get', instancePath(id)),
         instanceUpdateSettings: async (id, settings) => {
             try {
                 // 값에는 비밀번호가 들어갈 수 있어 키 이름만 남긴다

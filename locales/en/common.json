@@ -134,6 +134,7 @@
     "gave_up": "Auto restart gave up. Please check the server.",
     "restart_failed": "Could not restart {{name}}.",
     "external_start": "{{name}} was started outside Saba-chan. Saba-chan did not start this process.",
-    "backup_failed": "Automatic backup of {{name}} failed."
+    "backup_failed": "Automatic backup of {{name}} failed.",
+    "on_daemon": "On {{daemon}}: {{body}}"
   }
 }

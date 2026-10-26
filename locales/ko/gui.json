@@ -1663,7 +1663,11 @@
     "switch_to_cli": "CLI로 전환",
     "start_daemon": "데몬 켜기",
     "stop_daemon": "데몬 끄기",
-    "quit_all": "완전히 종료"
+    "quit_all": "완전히 종료",
+    "remote_connected": "{{name}} 연결됨",
+    "remote_unreachable": "{{name}}에 닿지 않아요",
+    "stop_confirm": "정지할까요?",
+    "stop_confirm_aria": "{{name}} 정지 확인"
   },
   "autostart": {
     "label": "로그인할 때 자동 실행",
@@ -1720,6 +1724,7 @@
     "err_remote_bad_path": "그 경로는 원격 데몬에 보낼 수 없어요",
     "err_remote_unauthorized": "원격 데몬이 이 PC를 더는 받지 않아요. 다시 연결해 주세요",
     "err_remote_local_only": "그 PC에서 직접 해야 하는 일이에요",
+    "err_remote_field_blocked": "이 설정은 그 PC에서 직접 바꿔야 해요: {{fields}}",
     "view": "서버 목록 보기",
     "view_description": "합쳐 보기는 고른 데몬의 서버 아래에 다른 데몬(이 PC 포함)의 서버를 데몬별로 보여 주고, 거기서 바로 켜고 끌 수 있어요",
     "view_switch": "고른 데몬만",

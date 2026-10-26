@@ -134,6 +134,7 @@
     "gave_up": "已放弃自动重启，请检查服务器。",
     "restart_failed": "无法重新启动 {{name}}。",
     "external_start": "{{name}} 在 Saba-chan 之外启动。这不是 Saba-chan 启动的进程。",
-    "backup_failed": "{{name}} 自动备份失败。"
+    "backup_failed": "{{name}} 自动备份失败。",
+    "on_daemon": "在 {{daemon}} 上：{{body}}"
   }
 }
