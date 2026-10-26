@@ -1658,7 +1658,6 @@
     "err_remote_bad_path": "Esse caminho não pode ser enviado a um daemon remoto",
     "err_remote_unauthorized": "O daemon remoto não aceita mais este PC. Conecte de novo",
     "err_remote_local_only": "Isso só pode ser feito naquele PC",
-    "local_only_sections": "Locais de pastas e exportação/importação de dados escolhem caminhos neste PC, então ficam ocultos enquanto você gerencia um daemon remoto.",
     "view": "Lista de servidores",
     "view_description": "A visão combinada mostra, abaixo dos servidores do daemon escolhido, os servidores dos outros daemons (incluindo este PC) agrupados por daemon, e permite iniciá-los e pará-los ali",
     "view_switch": "Só o daemon escolhido",
@@ -1671,5 +1670,28 @@
   "other_daemons": {
     "open": "Abrir este daemon",
     "empty": "Nenhum servidor"
+  },
+  "remote_picker": {
+    "title_file": "Escolher um arquivo no PC remoto",
+    "title_folder": "Escolher uma pasta no PC remoto",
+    "title_save": "Salvar no PC remoto",
+    "up": "Subir",
+    "home": "Início",
+    "path": "Caminho",
+    "roots": "Unidades",
+    "file_name": "Nome do arquivo",
+    "choose": "Escolher",
+    "choose_folder": "Escolher esta pasta",
+    "save": "Salvar aqui",
+    "cancel": "Cancelar",
+    "empty": "Não há nada aqui",
+    "truncated": "Itens demais; mostrando os primeiros 5000",
+    "err_browse_bad_path": "Digite um caminho completo",
+    "err_browse_not_found": "Essa pasta não existe",
+    "err_browse_denied": "Não é possível abrir essa pasta",
+    "err_browse_not_a_folder": "Isso não é uma pasta",
+    "err_generic": "Não foi possível ler a pasta. Tente novamente",
+    "exists": "{{name}} já existe. Pressione de novo para substituir",
+    "replace": "Substituir"
   }
 }

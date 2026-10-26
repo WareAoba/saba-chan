@@ -209,6 +209,18 @@
       "current": "Start at sign-in: {{mode}}",
       "set": "Start at sign-in is now {{mode}}.",
       "unsupported": "Start at sign-in cannot be set on this OS yet."
+    },
+    "browse": {
+      "roots": "Drives",
+      "empty": "  (empty)",
+      "truncated": "Too many items; showing the first 5000",
+      "home": "Home folder: {{path}}",
+      "remote_full_path": "For a remote daemon, give a full path on that PC (for example /srv/game or D:\\Games)",
+      "err_browse_bad_path": "Type a full path",
+      "err_browse_not_found": "That folder doesn't exist",
+      "err_browse_denied": "You can't open that folder",
+      "err_browse_not_a_folder": "That's not a folder",
+      "err_browse_failed": "Couldn't read the folder. Please try again"
     }
   },
   "console": {
@@ -703,7 +715,8 @@
       "config.move": "Move modules or extensions to another folder. Installed files are moved; servers must be stopped",
       "server.discord": "What Discord chat calls this server and its commands (the same in every Discord server). No options: show",
       "gui": "Switch to the desktop app: it opens on the same server and the full-screen menu closes",
-      "config.autostart": "What starts when you sign in to this PC: off, daemon (daemon and tray only) or full (with the GUI window). Shows the current value without a mode"
+      "config.autostart": "What starts when you sign in to this PC: off, daemon (daemon and tray only) or full (with the GUI window). Shows the current value without a mode",
+      "config.browse": "Folders and files on the daemon's PC (with --daemon, the remote PC). Drives or / without a path"
     },
     "arg": {
       "module.maker.game": "Game to put in the first prompt",
@@ -766,7 +779,9 @@
       "config.move.kind": "What to move: modules or extensions",
       "config.move.folder": "Folder to use. Saba-chan makes a modules or extensions folder inside it",
       "components_dir": "Folder for modules and extensions. Saba-chan makes modules and extensions folders inside it and moves installed files",
-      "config.autostart.mode": "off, daemon or full"
+      "config.autostart.mode": "off, daemon or full",
+      "config.browse.path": "Full path of the folder to show",
+      "config.browse.files": "Also show files with these extensions (comma separated, * for all)"
     },
     "after": "Names can be partial (e.g. start pal). Run with no arguments in a terminal to open the full-screen menu (SABA_NO_TUI=1: the interactive shell).\nIn scripts use --json and --yes. Exit codes: 0 ok · 1 failed · 2 usage · 3 daemon unreachable · 4 not found · 130 cancelled"
   },

@@ -4,6 +4,7 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 import { installTauriBridge } from '../api/install';
+import { setRemotePathPicker } from '../api/remotePathPicker';
 
 /** 가짜 __TAURI__: invoke 응답은 handlers[명령](인자)로, listen은 emit으로 흉내 낸다 */
 function fakeTauri(handlers = {}) {
@@ -305,21 +306,47 @@ describe('원격 데몬 (G1)', () => {
         expect(tauri.invoke).toHaveBeenCalledWith('daemon_target_set', { target: null });
     });
 
-    it('원격 데몬을 다루는 중에는 이 PC의 경로를 고르지 않는다 (그 데몬에 가면 엉뚱한 곳을 가리킨다)', async () => {
+    it('원격 데몬을 다루는 중에는 이 PC의 대화상자 대신 그 데몬의 폴더에서 고른다 (D2)', async () => {
         let target = 'host-b';
+        const asked = [];
+        setRemotePathPicker(async (req) => {
+            asked.push(req);
+            return req.kind === 'folder' ? '/srv/game' : req.kind === 'save' ? '/srv/out.zip' : '/srv/game/server.jar';
+        });
         const { api, tauri } = await install({
             daemon_target_get: () => ({ target }),
-            dialog_open_folder: () => '/srv/game',
-            dialog_open_file: () => '/srv/game/server.jar',
+            dialog_open_folder: () => 'C:/local',
+            dialog_open_file: () => 'C:/local/a.jar',
+            daemon_request: daemon({ 'POST /api/migration/export': { status: 200, data: { ok: true } } }),
         });
-        expect(await api.openFolderDialog()).toBeNull();
-        expect(await api.openFileDialog({})).toBeNull();
-        expect(await api.dataImport({ dryRun: true })).toEqual({ canceled: true });
+        expect(await api.openFolderDialog()).toBe('/srv/game');
+        expect(await api.openFileDialog({ filters: [{ name: 'Jar', extensions: ['jar'] }] })).toBe('/srv/game/server.jar');
+        expect(await api.dataExport({})).toEqual({ ok: true });
         expect(tauri.invoke.mock.calls.some(([cmd]) => cmd.startsWith('dialog_'))).toBe(false);
+        expect(asked[0]).toEqual({ kind: 'folder', extensions: null, defaultName: null });
+        expect(asked[1]).toEqual({ kind: 'file', extensions: ['jar'], defaultName: null });
+        expect(asked[2].kind).toBe('save');
+        expect(asked[2].extensions).toEqual(['zip']);
+        expect(asked[2].defaultName).toMatch(/^saba-chan-export-.*\.zip$/);
+        const exported = tauri.invoke.mock.calls.find(([cmd, a]) => cmd === 'daemon_request' && a.path === '/api/migration/export');
+        expect(exported[1].body.path).toBe('/srv/out.zip');
+
+        // 고르기 창이 없으면(띄우기 전) 이 PC 경로를 보내지 않고 그만둔다
+        setRemotePathPicker(null);
+        expect(await api.openFolderDialog()).toBeNull();
 
         target = null;
-        expect(await api.openFolderDialog()).toBe('/srv/game');
-        expect(await api.openFileDialog({})).toBe('/srv/game/server.jar');
+        expect(await api.openFolderDialog()).toBe('C:/local');
+        expect(await api.openFileDialog({})).toBe('C:/local/a.jar');
+    });
+
+    it('원격 데몬 폴더 보기는 고른 데몬에 묻는다', async () => {
+        const { api } = await install({
+            daemon_request: daemon({
+                'GET /api/system/browse?path=%2Fsrv&files=zip': { status: 200, data: { ok: true, entries: [] } },
+            }),
+        });
+        expect(await api.systemBrowse('/srv', ['zip'])).toEqual({ ok: true, entries: [] });
     });
 
     it('합쳐 보기는 모든 데몬의 서버를 이 PC에 묻고, 서버 하나는 그 데몬에 바로 켜고 끈다', async () => {

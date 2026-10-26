@@ -1658,7 +1658,6 @@
     "err_remote_bad_path": "That path cannot be sent to a remote daemon",
     "err_remote_unauthorized": "The remote daemon no longer accepts this PC. Connect it again",
     "err_remote_local_only": "This can only be done on that PC itself",
-    "local_only_sections": "Folder locations and data import/export pick paths on this PC, so they are hidden while you manage a remote daemon.",
     "view": "Server list",
     "view_description": "Combined view shows the servers of the other daemons (including this PC) under the chosen daemon's servers, grouped by daemon, and lets you start and stop them there",
     "view_switch": "Chosen daemon only",
@@ -1671,5 +1670,28 @@
   "other_daemons": {
     "open": "Open this daemon",
     "empty": "No servers"
+  },
+  "remote_picker": {
+    "title_file": "Choose a file on the remote PC",
+    "title_folder": "Choose a folder on the remote PC",
+    "title_save": "Save to the remote PC",
+    "up": "Up",
+    "home": "Home",
+    "path": "Path",
+    "roots": "Drives",
+    "file_name": "File name",
+    "choose": "Choose",
+    "choose_folder": "Choose this folder",
+    "save": "Save here",
+    "cancel": "Cancel",
+    "empty": "Nothing here",
+    "truncated": "Too many items; showing the first 5000",
+    "err_browse_bad_path": "Type a full path",
+    "err_browse_not_found": "That folder doesn't exist",
+    "err_browse_denied": "You can't open that folder",
+    "err_browse_not_a_folder": "That's not a folder",
+    "err_generic": "Couldn't read the folder. Please try again",
+    "exists": "{{name}} already exists. Press again to replace it",
+    "replace": "Replace"
   }
 }

@@ -209,6 +209,18 @@
       "current": "登入時自動啟動：{{mode}}",
       "set": "登入時自動啟動已改為{{mode}}。",
       "unsupported": "此作業系統暫不支援設定登入時自動啟動。"
+    },
+    "browse": {
+      "roots": "磁碟機",
+      "empty": "  （空）",
+      "truncated": "項目太多，只顯示前 5000 個",
+      "home": "主目錄：{{path}}",
+      "remote_full_path": "遠端常駐程式請填寫那台電腦上的完整路徑（例如 /srv/game、D:\\Games）",
+      "err_browse_bad_path": "請輸入完整路徑",
+      "err_browse_not_found": "該資料夾不存在",
+      "err_browse_denied": "無法開啟該資料夾",
+      "err_browse_not_a_folder": "這不是資料夾",
+      "err_browse_failed": "無法讀取資料夾，請重試"
     }
   },
   "console": {
@@ -718,7 +730,8 @@
       "remote.daemons": "此常駐程式連線的遠端常駐程式",
       "remote.servers": "依守護程式列出本機和每個遠端守護程式的伺服器（要操作某個請用`--daemon <名稱>`）",
       "remote.forget": "移除遠端常駐程式（重新連線用 `remote connect`）",
-      "config.autostart": "登入此電腦時啟動的內容：off（關閉）、daemon（僅常駐程式和系統匣）、full（包含 GUI 視窗）。不帶模式時顯示目前的值"
+      "config.autostart": "登入此電腦時啟動的內容：off（關閉）、daemon（僅常駐程式和系統匣）、full（包含 GUI 視窗）。不帶模式時顯示目前的值",
+      "config.browse": "查看常駐程式所在電腦的資料夾和檔案（加 --daemon 時為那台遠端電腦）。不給路徑則顯示磁碟機或 /"
     },
     "arg": {
       "module.maker.game": "第一個請求中的遊戲名稱",
@@ -797,7 +810,9 @@
       "remote.revoke.host_id": "要解除配對的電腦 id (見 `remote clients`)",
       "remote.connect.host_id": "要連線的電腦 id（見 `remote peers`）",
       "remote.forget.host_id": "要移除的電腦 id（見 `remote daemons`）",
-      "config.autostart.mode": "off、daemon 或 full"
+      "config.autostart.mode": "off、daemon 或 full",
+      "config.browse.path": "要顯示的資料夾的完整路徑",
+      "config.browse.files": "也顯示這些副檔名的檔案（逗號分隔，* 表示全部）"
     },
     "after": "名稱可以只寫一部分（例如 start pal）。在終端機中不帶參數執行會開啟全螢幕選單(SABA_NO_TUI=1 時為互動式 shell)。\n在指令碼中請使用 --json 和 --yes。結束代碼：0 成功 · 1 失敗 · 2 用法錯誤 · 3 無法連線常駐程式 · 4 找不到 · 130 已取消"
   },

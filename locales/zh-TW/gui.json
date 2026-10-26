@@ -1658,7 +1658,6 @@
     "err_remote_bad_path": "該路徑不能傳給遠端常駐程式",
     "err_remote_unauthorized": "遠端常駐程式不再接受本機。請重新連線",
     "err_remote_local_only": "這只能在那台電腦上直接操作",
-    "local_only_sections": "資料夾位置和資料匯出/匯入會在本機選擇路徑，因此管理遠端常駐程式時會隱藏。",
     "view": "伺服器列表顯示",
     "view_description": "合併顯示會在所選守護程式的伺服器下方依守護程式列出其他守護程式(包括本機)的伺服器，並可直接啟動和停止",
     "view_switch": "僅所選守護程式",
@@ -1671,5 +1670,28 @@
   "other_daemons": {
     "open": "開啟此守護程式",
     "empty": "沒有伺服器"
+  },
+  "remote_picker": {
+    "title_file": "在遠端電腦上選擇檔案",
+    "title_folder": "在遠端電腦上選擇資料夾",
+    "title_save": "儲存到遠端電腦",
+    "up": "向上",
+    "home": "主目錄",
+    "path": "路徑",
+    "roots": "磁碟機",
+    "file_name": "檔案名稱",
+    "choose": "選擇",
+    "choose_folder": "選擇此資料夾",
+    "save": "儲存到這裡",
+    "cancel": "取消",
+    "empty": "這裡是空的",
+    "truncated": "項目太多，只顯示前 5000 個",
+    "err_browse_bad_path": "請輸入完整路徑",
+    "err_browse_not_found": "該資料夾不存在",
+    "err_browse_denied": "無法開啟該資料夾",
+    "err_browse_not_a_folder": "這不是資料夾",
+    "err_generic": "無法讀取資料夾，請重試",
+    "exists": "{{name}} 已存在。再按一次即可取代",
+    "replace": "取代"
   }
 }

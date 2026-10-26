@@ -934,16 +934,10 @@ function SettingsModal({
                             </div>
 
                             {remoteDaemonAvailable() && <RemoteDaemonSection />}
-                            {/* 이 PC의 대화상자로 경로를 고르는 절은 원격 데몬을 다루는 동안 숨긴다 (경로가 그 PC 것이 아니다) */}
-                            {daemonTarget ? (
-                                <p className="setting-description">{t('gui:remote_daemon.local_only_sections')}</p>
-                            ) : (
-                                <>
-                                    {folderPathsAvailable() && <FolderPathsSection />}
+                            {/* 원격 데몬을 다루는 동안은 경로를 그 PC의 폴더에서 고른다 (RemotePathPicker, D2). 데몬을 바꾸면 다시 읽는다 */}
+                            {folderPathsAvailable() && <FolderPathsSection key={daemonTarget || 'local'} />}
 
-                                    {dataTransferAvailable() && <DataTransferSection />}
-                                </>
-                            )}
+                            {dataTransferAvailable() && <DataTransferSection key={daemonTarget || 'local'} />}
 
                             {unisolatedAvailable() && <UnisolatedSection />}
 
