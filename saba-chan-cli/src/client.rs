@@ -86,10 +86,11 @@ impl Api {
         api
     }
 
-    fn targeted(&self, req: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+    /// 고른 원격 데몬을 싣는다. 이 PC의 데몬이 살아 있는지 보는 `/health`에는 싣지 않는다 (데몬도 `/health`는 이 PC에서 답한다)
+    fn targeted(&self, req: reqwest::RequestBuilder, path: &str) -> reqwest::RequestBuilder {
         match self.target.as_deref() {
-            Some(t) => req.header("X-Saba-Target", seg(t)),
-            None => req,
+            Some(t) if !path.starts_with("/health") => req.header("X-Saba-Target", seg(t)),
+            _ => req,
         }
     }
 
@@ -112,7 +113,7 @@ impl Api {
             req = req.header("X-Saba-Token", t);
         }
         // 감사 로그의 출처 (A10)
-        req = self.targeted(req.header("X-Saba-Client", "cli"));
+        req = self.targeted(req.header("X-Saba-Client", "cli"), path);
         if let Some(b) = body {
             req = req.json(b);
         }
@@ -672,7 +673,7 @@ impl Api {
     }
 
     async fn open_events(&self, since: Option<u64>) -> Result<reqwest::Response> {
-        let mut req = self.targeted(self.http.get(format!("{}/api/events", self.base)).header("X-Saba-Client", "cli"));
+        let mut req = self.targeted(self.http.get(format!("{}/api/events", self.base)).header("X-Saba-Client", "cli"), "/api/events");
         if let Some(t) = self.token.read().ok().and_then(|t| t.clone()) {
             req = req.header("X-Saba-Token", t);
         }
@@ -1206,10 +1207,10 @@ mod tests {
 
     /// 받은 요청 머리를 그대로 돌려주는 한 번짜리 데몬
     async fn request_head(lang: Option<&str>) -> String {
-        request_head_to(lang, None).await
+        request_head_to(lang, None, "/api/servers").await
     }
 
-    async fn request_head_to(lang: Option<&str>, target: Option<&str>) -> String {
+    async fn request_head_to(lang: Option<&str>, target: Option<&str>, path: &str) -> String {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
@@ -1228,7 +1229,7 @@ mod tests {
         let mut api = Api::new(port, lang.map(str::to_string));
         api.target = target.map(str::to_string);
         *api.token.write().unwrap() = None;
-        api.call(Method::GET, "/api/servers", None, QUICK).await.unwrap();
+        api.call(Method::GET, path, None, QUICK).await.unwrap();
         server.await.unwrap()
     }
 
@@ -1299,7 +1300,9 @@ mod tests {
     /// `--daemon`으로 고른 원격 데몬은 요청마다 `X-Saba-Target`(퍼센트 인코딩)으로 이 PC의 데몬에 알린다 (중계는 데몬이 한다)
     #[tokio::test]
     async fn a_chosen_remote_daemon_is_named_on_every_request() {
-        assert!(request_head_to(None, Some("게임 PC")).await.contains("\r\nx-saba-target: %ea%b2%8c%ec%9e%84%20pc\r\n"));
+        assert!(request_head_to(None, Some("게임 PC"), "/api/servers").await.contains("\r\nx-saba-target: %ea%b2%8c%ec%9e%84%20pc\r\n"));
+        // 이 PC의 데몬이 살아 있는지는 언제나 이 PC에 묻는다 (`daemon stop`이 원격 pid를 잡지 않게)
+        assert!(!request_head_to(None, Some("게임 PC"), "/health").await.contains("x-saba-target"));
         assert!(!request_head(None).await.contains("x-saba-target"));
     }
 

@@ -18,8 +18,11 @@ use crate::ipc::IPCServer;
 pub const HEADER: &str = "x-saba-target";
 const BAD: &str = "bad_target";
 
-/// 고른 데몬과 상관없이 이 PC에서 처리하는 경로
+/// 고른 데몬과 상관없이 이 PC에서 처리하는 경로. 데몬 API(`/api/…`)가 아닌 것(`/health` 포함)도 이 PC다
 pub fn stays_local(path: &str) -> bool {
+    if !path.starts_with("/api/") {
+        return true;
+    }
     // 연결 관리, 이 PC의 인터페이스, 앱 설정, 이 PC 프로그램 업데이트·로그인 자동 실행, 이 데몬 종료
     const TREES: &[&str] = &["/api/remote", "/api/client", "/api/clients", "/api/config/gui", "/api/config/client", "/api/updates"];
     const EXACT: &[&str] = &["/api/system/autostart", "/api/daemon/shutdown"];
@@ -53,20 +56,25 @@ pub fn resolve(file: &ConfigFile, wanted: &str) -> Result<String, &'static str> 
 }
 
 pub async fn layer(State(state): State<IPCServer>, req: Request<Body>, next: Next) -> Response {
+    relay_with(&ConfigFile::default_location(), &state, req, next).await
+}
+
+async fn relay_with(file: &ConfigFile, state: &IPCServer, req: Request<Body>, next: Next) -> Response {
     let wanted = match remote_of(&req) {
         Ok(None) => return next.run(req).await,
         Ok(Some(w)) => w,
         Err(code) => return peer::error(StatusCode::BAD_REQUEST, code),
     };
-    let file = ConfigFile::default_location();
-    let host_id = match resolve(&file, &wanted) {
+    // 풀지 않은 경로 그대로 (원격 데몬이 다시 푼다). `..`·`.` 조각은 보내지 않는다
+    let Some(path) = peer::forward_path(req.uri().path(), req.uri().query()) else {
+        return peer::error(StatusCode::BAD_REQUEST, "remote_bad_path");
+    };
+    let host_id = match resolve(file, &wanted) {
         Ok(h) => h,
         Err(code) => return peer::error(if code == "remote_ambiguous" { StatusCode::CONFLICT } else { StatusCode::NOT_FOUND }, code),
     };
-    // 풀지 않은 경로 그대로 (원격 데몬이 다시 푼다)
-    let path = req.uri().path_and_query().map(|p| p.as_str().to_string()).unwrap_or_else(|| req.uri().path().to_string());
     let relay = server::RelaySource::Configured(state.clone()).target().await;
-    peer::forward(&file, relay, &host_id, &path, req, state.shutdown_token.clone()).await
+    peer::forward(file, relay, &host_id, &path, req, state.shutdown_token.clone()).await
 }
 
 #[cfg(test)]
@@ -96,11 +104,13 @@ mod tests {
             "/api/updates/status",
             "/api/system/autostart",
             "/api/daemon/shutdown",
+            "/health",
+            "/remote/pair",
+            "/apix",
         ] {
             assert!(stays_local(path), "{path}");
         }
         for path in [
-            "/health",
             "/api/servers",
             "/api/events",
             "/api/instance/x/start",
@@ -157,25 +167,34 @@ mod tests {
         use axum::{routing::get, Router};
         use tower::ServiceExt;
         let tmp = tempfile::tempdir().unwrap();
+        let file = ConfigFile::at(tmp.path());
         let supervisor = std::sync::Arc::new(tokio::sync::RwLock::new(crate::supervisor::Supervisor::new_with_instances_dir(
             tmp.path().join("modules").to_str().unwrap(),
             tmp.path().join("instances").to_str().unwrap(),
         )));
         let server = IPCServer::new(supervisor, "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
         let app = Router::new()
+            .route("/health", get(|| async { "here" }))
             .route("/api/servers", get(|| async { "here" }))
             .route("/api/remote/daemons", get(|| async { "here" }))
-            .layer(axum::middleware::from_fn_with_state(server, layer));
-        let status_and_body = |res: Response| async move {
-            let status = res.status().as_u16();
-            (status, String::from_utf8(axum::body::to_bytes(res.into_body(), 4096).await.unwrap().to_vec()).unwrap())
+            .layer(axum::middleware::from_fn(move |req: Request<Body>, next: Next| {
+                let (file, server) = (file.clone(), server.clone());
+                async move { relay_with(&file, &server, req, next).await }
+            }));
+        let call = |path: &'static str, target: Option<&'static str>| {
+            let app = app.clone();
+            async move {
+                let res = app.oneshot(req(path, target)).await.unwrap();
+                let status = res.status().as_u16();
+                (status, String::from_utf8(axum::body::to_bytes(res.into_body(), 4096).await.unwrap().to_vec()).unwrap())
+            }
         };
-        let (s, b) = status_and_body(app.clone().oneshot(req("/api/servers", None)).await.unwrap()).await;
-        assert_eq!((s, b.as_str()), (200, "here"));
-        let (s, b) = status_and_body(app.clone().oneshot(req("/api/remote/daemons", Some("host-never-saved"))).await.unwrap()).await;
-        assert_eq!((s, b.as_str()), (200, "here"));
-        let (s, b) = status_and_body(app.oneshot(req("/api/servers", Some("host-never-saved"))).await.unwrap()).await;
-        assert_eq!(s, 404, "{b}");
-        assert!(b.contains("remote_unknown"), "{b}");
+        assert_eq!(call("/api/servers", None).await, (200, "here".into()));
+        assert_eq!(call("/api/remote/daemons", Some("host-b")).await, (200, "here".into()));
+        assert_eq!(call("/health", Some("host-b")).await, (200, "here".into()));
+        let (s, b) = call("/api/servers", Some("host-b")).await;
+        assert!(s == 404 && b.contains("remote_unknown"), "{s} {b}");
+        let (s, b) = call("/api/x/../../remote/pair", Some("host-b")).await;
+        assert!(s == 400 && b.contains("remote_bad_path"), "{s} {b}");
     }
 }
