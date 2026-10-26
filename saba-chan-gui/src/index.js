@@ -5,6 +5,7 @@ import ReactDOM from 'react-dom/client';
 import { ErrorBoundary } from 'react-error-boundary';
 import App from './App';
 import { ErrorFallback } from './components/ErrorFallback';
+import { TrayPopup } from './components/shell/TrayPopup';
 import { installMockApi } from './dev/mockApi';
 import { i18nReady } from './i18n'; // Initialize i18n
 import './styles/tokens.css'; // 디자인 토큰 (다른 CSS보다 먼저)
@@ -29,12 +30,16 @@ const handleGlobalError = (error, info) => {
     console.error('[ErrorBoundary] Component stack:', info.componentStack);
 };
 
+// 트레이 아이콘을 눌러 뜬 작은 창은 앱 전체가 아니라 팝업만 그린다
+const trayPopup = new URLSearchParams(window.location.search).has('tray-popup');
+if (trayPopup) document.documentElement.dataset.trayPopup = '';
+
 // 고른 언어 파일을 읽은 뒤 그린다 (실패해도 영어로 그린다)
 i18nReady.finally(() => {
     const root = ReactDOM.createRoot(document.getElementById('root'));
     root.render(
         <ErrorBoundary FallbackComponent={ErrorFallback} onError={handleGlobalError}>
-            <App />
+            {trayPopup ? <TrayPopup /> : <App />}
         </ErrorBoundary>,
     );
 });

@@ -1558,5 +1558,20 @@
     "module_newer": "需要更新。{{name}} 模块需要更新版本的 Saba-chan。",
     "extension": "需要更新。{{name}} 扩展需要 Saba-chan {{version}} 或更高版本。",
     "check": "检查更新"
+  },
+  "tray_popup": {
+    "title": "Saba酱",
+    "daemon_running": "守护进程运行中",
+    "daemon_stopped": "守护进程已停止",
+    "servers": "服务器",
+    "no_servers": "还没有服务器",
+    "action_failed": "失败",
+    "start": "启动 {{name}}",
+    "stop": "停止 {{name}}",
+    "open_window": "打开窗口",
+    "switch_to_cli": "切换到 CLI",
+    "start_daemon": "启动守护进程",
+    "stop_daemon": "停止守护进程",
+    "quit_all": "完全退出"
   }
 }
