@@ -1327,6 +1327,25 @@ mod imp {
             assert_eq!(super::low_label(&exe).unwrap(), None);
         }
 
+        /// 위 폴더가 낮은 수준 표시를 물려주면(다른 격리 폴더 안의 서버) 빼도 실행 파일의 중간 수준 표시를 남긴다:
+        /// 떼면 서버가 낮은 무결성으로 떠 뜨지 못한다
+        #[test]
+        fn releasing_a_folder_under_a_low_folder_keeps_its_executables_at_medium() {
+            let tmp = tempfile::tempdir().unwrap();
+            let outer = std::fs::canonicalize(tmp.path()).unwrap();
+            let dir = outer.join("server");
+            let exe = dir.join("server.exe");
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(&exe, b"x").unwrap();
+            super::label_low(&outer).unwrap();
+            super::clear_low_labels(&dir).unwrap();
+            assert!(super::own_medium_label(&exe).unwrap());
+
+            super::release(&[], &[dir.clone()]).unwrap();
+            assert!(super::own_medium_label(&exe).unwrap());
+            assert_eq!(super::low_label(&exe).unwrap(), None, "the medium label still decides the level");
+        }
+
         /// L38: 확장자가 `.exe`가 아닌 실행 대상(PE)은 폴더 걷기가 보지 않는다. 그 파일을 띄우기 전에 따로 덮는다
         #[test]
         fn a_launch_target_without_an_exe_extension_also_runs_at_medium_integrity() {
@@ -1738,7 +1757,16 @@ mod imp {
                 failed.push(e);
                 continue;
             }
-            // 폴더 표시를 뗀 뒤에야 뗄 수 있다 (먼저 떼면 실행 파일이 낮은 수준을 다시 물려받는다)
+            // 폴더 표시를 뗀 뒤에야 뗄 수 있다 (먼저 떼면 실행 파일이 낮은 수준을 다시 물려받는다).
+            // 위 폴더에서 물려받은 낮은 수준 표시가 남아 있으면 중간 수준 표시가 서버를 중간으로 띄우는 것이라 둔다
+            match std::fs::canonicalize(dir).map_err(|e| format!("{}: resolve: {e}", dir.display())).and_then(|d| low_label(&d)) {
+                Ok(None) => {}
+                Ok(Some(_)) => continue,
+                Err(e) => {
+                    failed.push(e);
+                    continue;
+                }
+            }
             if let Err(errs) = drop_medium_labels(dir) {
                 failed.extend(errs.into_iter().map(|(p, e)| format!("{}: {}", p.display(), e)));
             }
