@@ -991,6 +991,8 @@
     "result": "Result",
     "exported": "Saved {{count}} entries to {{path}}.",
     "bad_date": "Write the date like 2026-10-01, today or 7d: {{value}}",
+    "export_write_failed": "Couldn't write the file. Check the location and permissions.",
+    "export_invalid_path": "The file path isn't valid. Give a full path.",
     "scanning": "Checking the code of {{name}}...",
     "declared": "Declared",
     "none_declared": "(none)",

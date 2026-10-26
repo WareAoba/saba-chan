@@ -976,6 +976,8 @@
     "result": "Resultado",
     "exported": "{{count}} registros salvos em {{path}}.",
     "bad_date": "Escreva a data como 2026-10-01, today ou 7d: {{value}}",
+    "export_write_failed": "Não foi possível gravar o arquivo. Verifique o local e as permissões.",
+    "export_invalid_path": "O caminho do arquivo não é válido. Informe um caminho completo.",
     "scanning": "Verificando o código de {{name}}...",
     "declared": "Declarado",
     "none_declared": "(nada)",

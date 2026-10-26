@@ -1219,6 +1219,8 @@
     "result": "결과",
     "exported": "기록 {{count}}건을 {{path}}에 저장했어요.",
     "bad_date": "날짜는 2026-10-01, today, 7d처럼 적어 주세요: {{value}}",
+    "export_write_failed": "파일을 쓰지 못했어요. 저장 위치와 권한을 확인해 주세요.",
+    "export_invalid_path": "파일 경로가 올바르지 않아요. 전체 경로로 적어 주세요.",
     "scanning": "{{name}}의 코드를 검사하는 중...",
     "declared": "선언한 기능",
     "none_declared": "(없음)",

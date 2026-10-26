@@ -1219,6 +1219,8 @@
     "result": "結果",
     "exported": "記録を{{count}}件 {{path}} に保存しました。",
     "bad_date": "日付は 2026-10-01、today、7d のように書いてください: {{value}}",
+    "export_write_failed": "ファイルを書き込めませんでした。保存先と権限を確認してください。",
+    "export_invalid_path": "ファイルパスが正しくありません。フルパスで指定してください。",
     "scanning": "{{name}} のコードを検査中...",
     "declared": "宣言済み",
     "none_declared": "(なし)",

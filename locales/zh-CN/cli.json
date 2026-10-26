@@ -1219,6 +1219,8 @@
     "result": "结果",
     "exported": "已将 {{count}} 条记录保存到 {{path}}。",
     "bad_date": "日期请写成 2026-10-01、today 或 7d：{{value}}",
+    "export_write_failed": "无法写入文件。请检查保存位置和权限。",
+    "export_invalid_path": "文件路径无效。请填写完整路径。",
     "scanning": "正在检查 {{name}} 的代码...",
     "declared": "已声明",
     "none_declared": "(无)",

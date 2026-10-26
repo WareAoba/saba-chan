@@ -29,7 +29,7 @@ pub async fn run(ctx: &Ctx, o: Opts<'_>) -> Result<()> {
     let until = o.until.map(|v| day(v, true)).transpose()?;
     if let Some(file) = o.export {
         let path = crate::cmd::config::daemon_path(ctx, file)?;
-        let r = ctx.api.export_audit(&path, id.as_deref(), since, until).await?;
+        let r = ctx.api.export_audit(&path, id.as_deref(), since, until).await.map_err(export_error)?;
         let count = r.get("count").and_then(Value::as_u64).unwrap_or(0);
         ctx.out.done(&t!("audit.exported", path = path, count = count), &r);
         return Ok(());
@@ -77,6 +77,16 @@ pub async fn run(ctx: &Ctx, o: Opts<'_>) -> Result<()> {
                 }
             },
         }
+    }
+}
+
+/// 데몬의 내보내기 오류 문구는 영문이다: 아는 코드는 이 언어 문구로 바꾼다
+fn export_error(e: anyhow::Error) -> anyhow::Error {
+    match e.downcast_ref::<crate::error::CliError>() {
+        Some(crate::error::CliError::Api { code: Some(code), .. }) if matches!(code.as_str(), "WRITE_FAILED" | "INVALID_PATH") => {
+            crate::error::failed(t!(&format!("audit.export_{}", code.to_lowercase())))
+        }
+        _ => e,
     }
 }
 
@@ -160,6 +170,25 @@ mod tests {
         assert!(!in_period(&e(250), Some(100), Some(200)));
         assert!(!in_period(&e(50), Some(100), None));
         assert!(in_period(&e(50), None, None));
+    }
+
+    #[test]
+    fn a_failed_export_is_told_in_the_users_language() {
+        crate::i18n::init("ko");
+        let api = |code: &str| {
+            anyhow::Error::from(crate::error::CliError::Api {
+                status: 500,
+                code: Some(code.into()),
+                message: "Could not write the audit export: denied".into(),
+                body: serde_json::json!({}),
+            })
+        };
+        for code in ["WRITE_FAILED", "INVALID_PATH"] {
+            let msg = export_error(api(code)).to_string();
+            assert!(!msg.contains("Could not write"), "{code}: {msg}");
+            assert_eq!(msg, t!(&format!("audit.export_{}", code.to_lowercase())));
+        }
+        assert!(export_error(api("other")).to_string().contains("Could not write"));
     }
 
     #[test]
