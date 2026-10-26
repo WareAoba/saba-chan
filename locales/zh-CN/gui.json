@@ -1681,6 +1681,8 @@
     "err_browse_not_found": "该文件夹不存在",
     "err_browse_denied": "无法打开该文件夹",
     "err_browse_not_a_folder": "这不是文件夹",
-    "err_generic": "无法读取文件夹，请重试"
+    "err_generic": "无法读取文件夹，请重试",
+    "exists": "{{name}} 已存在。再按一次即可替换",
+    "replace": "替换"
   }
 }

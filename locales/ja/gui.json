@@ -1681,6 +1681,8 @@
     "err_browse_not_found": "そのフォルダーはありません",
     "err_browse_denied": "そのフォルダーは開けません",
     "err_browse_not_a_folder": "フォルダーではありません",
-    "err_generic": "フォルダーを読めませんでした。もう一度お試しください"
+    "err_generic": "フォルダーを読めませんでした。もう一度お試しください",
+    "exists": "{{name}} はすでにあります。置き換えるにはもう一度押してください",
+    "replace": "置き換える"
   }
 }

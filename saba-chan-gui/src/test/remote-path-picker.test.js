@@ -91,4 +91,50 @@ describe('원격 경로 고르기 창', () => {
         await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Save here' })));
         await expect(result).resolves.toBe('/home/me/mine.zip');
     });
+
+    it('이미 있는 파일에 저장하면 한 번 더 눌러야 바꾼다', async () => {
+        await act(async () => render(<RemotePathPicker />));
+        let result;
+        let settled = false;
+        await act(async () => {
+            result = pickRemotePath({ kind: 'save', extensions: ['zip'], defaultName: 'backup.zip' });
+            result.then(() => {
+                settled = true;
+            });
+        });
+        await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Save here' })));
+        expect(settled).toBe(false);
+        expect(screen.getByRole('alert')).toHaveTextContent('backup.zip already exists');
+        await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Replace' })));
+        await expect(result).resolves.toBe('/home/me/backup.zip');
+    });
+
+    it('늦게 온 앞선 폴더 응답은 지금 목록을 바꾸지 않는다', async () => {
+        let release;
+        window.api.systemBrowse.mockImplementation(async (path) => {
+            if (path === '/slow') {
+                await new Promise((r) => {
+                    release = r;
+                });
+                return { ok: true, path: '/slow', parent: '/', home: '/home/me', sep: '/', entries: [] };
+            }
+            return listing[path || ''];
+        });
+        await act(async () => render(<RemotePathPicker />));
+        let result;
+        await act(async () => {
+            result = pickRemotePath({ kind: 'folder', extensions: null, defaultName: null });
+        });
+        const path = screen.getByRole('textbox', { name: 'Path' });
+        fireEvent.change(path, { target: { value: '/slow' } });
+        act(() => {
+            fireEvent.keyDown(path, { key: 'Enter' });
+        });
+        fireEvent.change(path, { target: { value: '/home/me/worlds' } });
+        await act(async () => fireEvent.keyDown(path, { key: 'Enter' }));
+        await act(async () => release());
+        expect(screen.getByDisplayValue('/home/me/worlds')).toBeInTheDocument();
+        await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Choose this folder' })));
+        await expect(result).resolves.toBe('/home/me/worlds');
+    });
 });

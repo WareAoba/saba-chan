@@ -1681,6 +1681,8 @@
     "err_browse_not_found": "그 폴더가 없어요",
     "err_browse_denied": "그 폴더는 열 수 없어요",
     "err_browse_not_a_folder": "폴더가 아니에요",
-    "err_generic": "폴더를 읽지 못했어요. 다시 해 주세요"
+    "err_generic": "폴더를 읽지 못했어요. 다시 해 주세요",
+    "exists": "{{name}} 파일이 이미 있어요. 바꾸려면 한 번 더 눌러 주세요",
+    "replace": "바꾸기"
   }
 }

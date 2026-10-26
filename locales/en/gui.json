@@ -1681,6 +1681,8 @@
     "err_browse_not_found": "That folder doesn't exist",
     "err_browse_denied": "You can't open that folder",
     "err_browse_not_a_folder": "That's not a folder",
-    "err_generic": "Couldn't read the folder. Please try again"
+    "err_generic": "Couldn't read the folder. Please try again",
+    "exists": "{{name}} already exists. Press again to replace it",
+    "replace": "Replace"
   }
 }

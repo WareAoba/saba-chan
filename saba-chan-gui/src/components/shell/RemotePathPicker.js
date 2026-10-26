@@ -22,7 +22,10 @@ function RemotePathPicker() {
     const [name, setName] = useState('');
     const [error, setError] = useState(null);
     const [busy, setBusy] = useState(false);
+    const [replacing, setReplacing] = useState(null); // 바꾸기를 한 번 더 눌러야 하는 저장 경로
     const requestRef = useRef(null);
+    // 마지막으로 연 폴더 조회 (늦게 온 앞선 응답은 버린다)
+    const seqRef = useRef(0);
 
     const finish = useCallback((value) => {
         requestRef.current?.resolve(value);
@@ -35,13 +38,16 @@ function RemotePathPicker() {
         async (path) => {
             const req = requestRef.current;
             if (!req) return;
+            const seq = ++seqRef.current;
             setBusy(true);
             setError(null);
             const res = await window.api.systemBrowse(
                 path,
                 req.kind === 'folder' ? null : req.extensions?.length ? req.extensions : ['*'],
             );
+            if (seq !== seqRef.current || requestRef.current !== req) return;
             setBusy(false);
+            setReplacing(null);
             if (!res?.ok) {
                 const key = `remote_picker.err_${res?.error_code}`;
                 setError(t(key, { defaultValue: t('remote_picker.err_generic') }));
@@ -65,10 +71,12 @@ function RemotePathPicker() {
                     setListing(null);
                     setChosen(null);
                     setError(null);
+                    setReplacing(null);
                     setName(req.defaultName || '');
+                    const seq = ++seqRef.current;
                     (async () => {
                         const roots = await window.api.systemBrowse('', null);
-                        if (requestRef.current?.resolve !== resolve) return;
+                        if (requestRef.current?.resolve !== resolve || seq !== seqRef.current) return;
                         if (roots?.ok && roots.home) await open(roots.home);
                         else if (roots?.ok) {
                             setListing(roots);
@@ -91,6 +99,8 @@ function RemotePathPicker() {
     const sep = listing?.sep || '/';
     const saveName = () => {
         const n = name.trim();
+        // 이름에 폴더 구분자를 넣어 다른 폴더에 쓰지 않는다
+        if (/[/\\]/.test(n)) return '';
         const ext = extensions?.[0];
         if (!n || !ext || ext === '*' || n.toLowerCase().endsWith(`.${ext.toLowerCase()}`)) return n;
         return `${n}.${ext}`;
@@ -104,7 +114,16 @@ function RemotePathPicker() {
     const ready = !busy && !!result();
     const choose = () => {
         const value = result();
-        if (value) finish(value);
+        if (!value) return;
+        // 이미 있는 파일에 저장하면 한 번 더 눌러야 바꾼다 (내보내기는 그 파일을 바꾼다)
+        if (kind === 'save' && replacing !== value) {
+            const n = saveName().toLowerCase();
+            if (listing?.entries?.some((e) => !e.dir && e.name.toLowerCase() === n)) {
+                setReplacing(value);
+                return;
+            }
+        }
+        finish(value);
     };
     const up = () => (listing?.parent ? open(listing.parent) : open(''));
 
@@ -154,6 +173,11 @@ function RemotePathPicker() {
                         }}
                     />
                 </div>
+                {replacing && (
+                    <p className="remote-picker-error" role="alert">
+                        {t('remote_picker.exists', { name: saveName() })}
+                    </p>
+                )}
                 {error && (
                     <p className="remote-picker-error" role="alert">
                         {error}
@@ -187,7 +211,10 @@ function RemotePathPicker() {
                         className="setting-input-text remote-picker-name"
                         aria-label={t('remote_picker.file_name')}
                         value={name}
-                        onChange={(e) => setName(e.target.value)}
+                        onChange={(e) => {
+                            setName(e.target.value);
+                            setReplacing(null);
+                        }}
                         onKeyDown={(e) => {
                             if (e.key === 'Enter') choose();
                         }}
@@ -196,7 +223,7 @@ function RemotePathPicker() {
                 <div className="modal-buttons-group">
                     <button type="button" className="modal-button question-confirm" onClick={choose} disabled={!ready}>
                         {t(
-                            `remote_picker.${kind === 'folder' ? 'choose_folder' : kind === 'save' ? 'save' : 'choose'}`,
+                            `remote_picker.${kind === 'folder' ? 'choose_folder' : kind === 'save' ? (replacing ? 'replace' : 'save') : 'choose'}`,
                         )}
                     </button>
                     <button type="button" className="modal-button question-cancel" onClick={requestClose}>

@@ -1681,6 +1681,8 @@
     "err_browse_not_found": "Essa pasta não existe",
     "err_browse_denied": "Não é possível abrir essa pasta",
     "err_browse_not_a_folder": "Isso não é uma pasta",
-    "err_generic": "Não foi possível ler a pasta. Tente novamente"
+    "err_generic": "Não foi possível ler a pasta. Tente novamente",
+    "exists": "{{name}} já existe. Pressione de novo para substituir",
+    "replace": "Substituir"
   }
 }
