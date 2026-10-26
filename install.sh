@@ -47,6 +47,11 @@ case " $* " in
     *" --dir "* | *" --dir="*) ;;
     *) set -- --dir "$DIR" "$@" ;;
 esac
+# CLI는 상대 경로를 지금 폴더 기준으로 푼다: 링크가 ~/.local/bin 기준으로 풀리지 않게 같은 절대 경로로 둔다
+case "$DIR" in
+    /*) ;;
+    *) DIR="$PWD/$DIR" ;;
+esac
 
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT INT TERM
@@ -80,7 +85,8 @@ unzip -q "$TMP/cli.zip" -d "$TMP/cli"
 chmod +x "$TMP/cli/saba-chan-cli"
 
 # 묻는 말(폴더·모듈·확인)은 터미널에서 받는다: `curl | sh`면 표준 입력은 이 스크립트다
-if [ -r /dev/tty ] && [ -w /dev/tty ]; then
+# 제어 터미널이 없으면(ssh 원격 명령, CI) 권한이 있어도 열리지 않는다: 실제로 열어 본다
+if (: </dev/tty) 2>/dev/null; then
     "$TMP/cli/saba-chan-cli" install --no-gui "$@" </dev/tty
 else
     "$TMP/cli/saba-chan-cli" install --no-gui "$@" </dev/null
