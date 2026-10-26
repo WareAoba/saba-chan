@@ -153,7 +153,8 @@
   },
   "schedule": {
     "restart_warning": "服务器将在 {{minutes}} 分钟后重启。",
-    "update_warning": "服务器将在 {{minutes}} 分钟后重启以进行更新。"
+    "update_warning": "服务器将在 {{minutes}} 分钟后重启以进行更新。",
+    "stop_warning": "服务器将在 {{minutes}} 分钟后停止。"
   },
   "provision": {
     "installing": "正在安装服务器…",

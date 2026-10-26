@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 1237ff574ead34458616f20b1140af979d59e5dff1555f7d3253ce5e80abd245 # shrinks to job = ScheduledTask { action: Stop, every_minutes: None, at: Some("00:00"), every_days: None, start_date: None, weekdays: [], date: Some("2028-04-07"), warn_minutes: [], message: None, command: None, args: None, enabled: true }, last = 2024-01-01T00:00:00

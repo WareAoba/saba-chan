@@ -153,7 +153,8 @@
   },
   "schedule": {
     "restart_warning": "{{minutes}}分後にサーバーを再起動します。",
-    "update_warning": "{{minutes}}分後にアップデートのためサーバーを再起動します。"
+    "update_warning": "{{minutes}}分後にアップデートのためサーバーを再起動します。",
+    "stop_warning": "{{minutes}}分後にサーバーを停止します。"
   },
   "provision": {
     "installing": "サーバーをインストール中…",

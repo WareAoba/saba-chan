@@ -153,7 +153,8 @@
   },
   "schedule": {
     "restart_warning": "Der Server startet in {{minutes}} Min. neu.",
-    "update_warning": "Der Server startet in {{minutes}} Min. für ein Update neu."
+    "update_warning": "Der Server startet in {{minutes}} Min. für ein Update neu.",
+    "stop_warning": "Der Server wird in {{minutes}} Min. gestoppt."
   },
   "provision": {
     "installing": "Server wird installiert…",

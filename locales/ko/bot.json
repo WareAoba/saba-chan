@@ -153,7 +153,8 @@
   },
   "schedule": {
     "restart_warning": "{{minutes}}분 뒤 서버가 다시 시작됩니다.",
-    "update_warning": "{{minutes}}분 뒤 업데이트를 위해 서버가 다시 시작됩니다."
+    "update_warning": "{{minutes}}분 뒤 업데이트를 위해 서버가 다시 시작됩니다.",
+    "stop_warning": "{{minutes}}분 뒤 서버가 꺼집니다."
   },
   "provision": {
     "installing": "서버를 설치하는 중…",

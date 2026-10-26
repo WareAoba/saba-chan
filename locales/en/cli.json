@@ -846,13 +846,18 @@
     "col": {
       "task": "Task",
       "when": "When",
-      "on": "On"
+      "on": "On",
+      "next": "Next run"
     },
     "action": {
       "backup": "Back up",
       "restart": "Restart",
       "announce": "Announce",
-      "update": "Update"
+      "update": "Update",
+      "start": "Start",
+      "stop": "Stop",
+      "save": "Save",
+      "command": "Game command"
     },
     "none": "{{name}} has no scheduled tasks.",
     "warns": "warns {{minutes}} min before",
@@ -868,17 +873,40 @@
     "disabled": "Turned off: {{task}}",
     "no_such": "There is no task {{number}} (there are {{count}}).",
     "edited": "Task changed: {{task}}",
-    "nothing_to_edit": "Give at least one thing to change (--every, --at, --warn, --no-warn, --message).",
+    "nothing_to_edit": "Give at least one thing to change (--every, --at, --every-days, --on, --date, --daily, --warn, --no-warn, --message, --arg).",
     "keep_zero": "Keep at least 1 backup.",
     "keep_set": "Keeping the last {{count}} scheduled backups.",
     "confirm_clear": "Remove every scheduled task of {{name}}?",
     "cleared": "{{name}} has no scheduled tasks now.",
     "bad_action": "\"{{got}}\" is not a task. Use one of: {{actions}}.",
-    "warn_only_restart": "--warn only works with restart and update.",
+    "warn_only_restart": "--warn only works with restart, update and stop.",
     "message_required": "An announcement needs --message.",
     "every_or_at": "Give either --every (e.g. 30m, 2h) or --at (e.g. 04:00), not both.",
     "bad_every": "\"{{got}}\" is not a time. Use minutes or units, e.g. 30, 30m, 2h, 1h30m.",
-    "bad_at": "\"{{got}}\" is not a time of day. Use HH:MM, e.g. 04:00."
+    "bad_at": "\"{{got}}\" is not a time of day. Use HH:MM, e.g. 04:00.",
+    "weekday": {
+      "mon": "Mon",
+      "tue": "Tue",
+      "wed": "Wed",
+      "thu": "Thu",
+      "fri": "Fri",
+      "sat": "Sat",
+      "sun": "Sun"
+    },
+    "server_clock": "Times follow the server PC's clock ({{zone}}). Next runs are in this PC's time.",
+    "every_days_at": "every {{n}} days at {{at}} from {{from}}",
+    "weekdays_at": "{{days}} at {{at}}",
+    "date_at": "once on {{date}} at {{at}}",
+    "no_save": "This game has no save command.",
+    "command_required": "A game command needs --command (list: server commands).",
+    "command_only": "--command and --arg only work with the command task.",
+    "day_rule_needs_at": "--every-days, --on and --date need --at.",
+    "bad_every_days": "{{got}} days won't work. Use 1 to 365.",
+    "bad_weekday": "\"{{got}}\" is not a weekday. Use one of: {{days}}.",
+    "bad_date": "\"{{got}}\" is not a date. Use YYYY-MM-DD, e.g. 2026-12-24.",
+    "bad_arg": "\"{{got}}\" is not an input. Use NAME=VALUE.",
+    "confirm_danger": "{{command}} is hard to undo, and it runs at the set time without asking. Schedule it?",
+    "from_needs_every_days": "--from only works with every-N-days tasks (--every-days)."
   },
   "chatbot": {
     "api_key": "API key saved",

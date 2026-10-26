@@ -1,6 +1,7 @@
 import clsx from 'clsx';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useInstanceCommands } from '../../hooks/useInstanceCommands';
 import { safeShowToast } from '../../utils/helpers';
 import CustomDropdown from '../CustomDropdown/CustomDropdown';
 import { Icon } from '../Icon';
@@ -18,7 +19,15 @@ const KIND_TONE = {
 };
 // 게임이 스스로 만든 자동 백업 (데몬 `game-snapshot:<id>`). 복원만 하고 사바쨩이 지우지 않는다
 const GAME_SNAPSHOT = 'game-snapshot';
-const ACTIONS = ['backup', 'restart', 'announce', 'update'];
+const ACTIONS = ['start', 'stop', 'restart', 'save', 'backup', 'announce', 'update'];
+// 게임 명령은 위 목록 대신 따로 띄우는 명령 목록에서 고른다
+const COMMAND = 'command';
+// 예고(warn_minutes)를 받는 작업 (데몬 problems()와 같다)
+const WARNS = ['restart', 'update', 'stop'];
+// 데몬 `scheduler::WEEKDAYS` (월요일부터)
+export const WEEKDAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+const MAX_EVERY_DAYS = 365;
+const MODES = ['every', 'daily', 'days', 'weekdays', 'date'];
 
 /** 이 화면을 띄울 IPC가 있는지 (로드맵 쪽 preload가 먼저 들어와야 한다) */
 export const maintenanceAvailable = () => !!window.api?.instanceScheduleGet;
@@ -58,16 +67,31 @@ const errorText = (res, fallback, t) => {
 
 // ── 예약 작업 초안 ↔ 데몬 형식 ──
 let draftSeq = 0;
+const modeOf = (task) => {
+    if (!task.at) return 'every';
+    if (task.every_days != null) return 'days';
+    if (task.weekdays?.length) return 'weekdays';
+    if (task.date) return 'date';
+    return 'daily';
+};
 export function toDraft(task) {
     draftSeq += 1;
     return {
         key: `t${draftSeq}`,
         action: task.action || 'restart',
-        mode: task.at ? 'at' : 'every',
+        mode: modeOf(task),
         every: task.every_minutes != null ? String(task.every_minutes) : '60',
         at: task.at || '04:00',
+        everyDays: task.every_days != null ? String(task.every_days) : '2',
+        startDate: task.start_date || '',
+        weekdays: task.weekdays || [],
+        date: task.date || '',
         warn: (task.warn_minutes || []).join(', '),
         message: task.message || '',
+        command: task.command || '',
+        args: Object.fromEntries(Object.entries(task.args || {}).map(([k, v]) => [k, String(v)])),
+        // 저장된 인자 값 (고치지 않은 값은 원래 형식 그대로 보낸다: 다른 곳에서 글자로 저장한 숫자 등)
+        savedArgs: task.args || {},
         enabled: task.enabled !== false,
     };
 }
@@ -78,20 +102,42 @@ const parseWarn = (text) =>
         .map((w) => Number(w))
         .filter((n) => Number.isInteger(n) && n > 0);
 
-export function fromDraft(d, { announce }) {
+/** `inputs`: 고른 게임 명령의 입력 정의 (숫자 입력은 숫자로 보낸다) */
+export function fromDraft(d, { announce, inputs = [] }) {
     const task = { action: d.action, enabled: d.enabled };
-    if (d.mode === 'at') task.at = d.at;
-    else task.every_minutes = Number(d.every);
-    if ((d.action === 'restart' || d.action === 'update') && announce) {
+    if (d.mode === 'every') task.every_minutes = Number(d.every);
+    else task.at = d.at;
+    if (d.mode === 'days') {
+        task.every_days = Number(d.everyDays);
+        if (d.startDate) task.start_date = d.startDate;
+    }
+    if (d.mode === 'weekdays') task.weekdays = WEEKDAYS.filter((w) => d.weekdays.includes(w));
+    if (d.mode === 'date') task.date = d.date;
+    if (WARNS.includes(d.action) && announce) {
         const warn = parseWarn(d.warn);
         if (warn.length) task.warn_minutes = warn;
     }
     if (d.action === 'announce') task.message = d.message.trim();
+    if (d.action === COMMAND) {
+        task.command = d.command;
+        const args = {};
+        for (const [name, raw] of Object.entries(d.args)) {
+            const value = String(raw).trim();
+            if (!value) continue;
+            if (name in d.savedArgs && String(d.savedArgs[name]) === value) {
+                args[name] = d.savedArgs[name];
+                continue;
+            }
+            const type = inputs.find((i) => i.name === name)?.type;
+            args[name] = type === 'number' && Number.isFinite(Number(value)) ? Number(value) : value;
+        }
+        if (Object.keys(args).length) task.args = args;
+    }
     return task;
 }
 
-/** 저장 전에 화면에서 바로 알 수 있는 문제 (데몬 problems()와 같은 규칙) */
-export function draftProblems(d, t) {
+/** 저장 전에 화면에서 바로 알 수 있는 문제 (데몬 problems()와 같은 규칙). `command`: 고른 게임 명령의 정의 */
+export function draftProblems(d, t, command) {
     const out = [];
     if (d.mode === 'every') {
         const n = Number(d.every);
@@ -99,15 +145,44 @@ export function draftProblems(d, t) {
     } else if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(d.at)) {
         out.push(t('maintenance.err_at'));
     }
+    if (d.mode === 'days') {
+        const n = Number(d.everyDays);
+        if (!Number.isInteger(n) || n < 1 || n > MAX_EVERY_DAYS) {
+            out.push(t('maintenance.err_every_days', { max: MAX_EVERY_DAYS }));
+        }
+    }
+    if (d.mode === 'weekdays' && !d.weekdays.length) out.push(t('maintenance.err_weekdays'));
+    if (d.mode === 'date' && !/^\d{4}-\d{2}-\d{2}$/.test(d.date)) out.push(t('maintenance.err_date'));
     if (d.action === 'announce' && !d.message.trim()) out.push(t('maintenance.err_message'));
+    if (d.action === COMMAND) {
+        if (!d.command) out.push(t('maintenance.err_command'));
+        for (const input of command?.inputs || []) {
+            if (input.required && !String(d.args[input.name] ?? '').trim()) {
+                out.push(t('maintenance.err_command_input', { name: input.label || input.name }));
+            }
+        }
+    }
     return out;
 }
+
+/** 요일 이름 (보는 사람의 언어, 2024-01-01이 월요일) */
+const weekdayLabel = (lang, i) =>
+    new Intl.DateTimeFormat(lang, { weekday: 'short', timeZone: 'UTC' }).format(new Date(Date.UTC(2024, 0, 1 + i)));
+
+/** UTC 차이(분) → "UTC+9", "UTC-3:30" */
+const offsetText = (minutes) => {
+    const sign = minutes < 0 ? '-' : '+';
+    const abs = Math.abs(minutes);
+    const h = Math.floor(abs / 60);
+    const m = abs % 60;
+    return `UTC${sign}${h}${m ? `:${String(m).padStart(2, '0')}` : ''}`;
+};
 
 /**
  * 서버별 백업·예약 작업 탭 (데몬 A2·A3).
  * 백업 목록은 모듈이 [backup]을 선언했을 때만, 공지·예고는 공지 명령이 있을 때만 보인다.
  */
-export function MaintenanceTab({ server }) {
+export function MaintenanceTab({ server, moduleCommands = [] }) {
     const { t } = useTranslation('gui');
     const [info, setInfo] = useState(null);
     const [loadError, setLoadError] = useState(null);
@@ -122,6 +197,11 @@ export function MaintenanceTab({ server }) {
                 backupKeep: res?.backup_keep ?? 10,
                 backupSupported: !!res?.backup_supported,
                 announceSupported: !!res?.announce_supported,
+                saveSupported: !!res?.save_supported,
+                // 작업마다 다음 실행 시각 (유닉스 초). 보는 사람의 시간대로 보인다
+                nextRuns: Array.isArray(res?.next_runs) ? res.next_runs : [],
+                // 작업 시각은 서버 PC의 시계다
+                utcOffset: typeof res?.utc_offset_minutes === 'number' ? res.utc_offset_minutes : null,
                 // 저장할 때 다시 보낸다: 그사이 다른 곳에서 바뀌었으면 데몬이 덮어쓰지 않고 거절한다 (L51)
                 revision: res?.revision,
             });
@@ -149,7 +229,7 @@ export function MaintenanceTab({ server }) {
     return (
         <div className="mt-tab">
             {info.backupSupported && window.api?.instanceBackups && <BackupsCard server={server} />}
-            <ScheduleCard server={server} info={info} onSaved={load} />
+            <ScheduleCard server={server} info={info} onSaved={load} moduleCommands={moduleCommands} />
         </div>
     );
 }
@@ -357,8 +437,18 @@ function BackupsCard({ server }) {
     );
 }
 
-function ScheduleCard({ server, info, onSaved }) {
-    const { t } = useTranslation('gui');
+const findCommand = (commands, name) => commands.find((c) => c.name === name);
+// 키 순서와 상관없이 같은 작업인지 견줄 문자열
+const sameKey = (v) =>
+    v && typeof v === 'object' && !Array.isArray(v)
+        ? `{${Object.keys(v)
+              .sort()
+              .map((k) => `${JSON.stringify(k)}:${sameKey(v[k])}`)
+              .join(',')}}`
+        : JSON.stringify(v);
+
+function ScheduleCard({ server, info, onSaved, moduleCommands }) {
+    const { t, i18n } = useTranslation('gui');
     const base = useRef(null);
     const [drafts, setDrafts] = useState([]);
     const [keep, setKeep] = useState(String(info.backupKeep));
@@ -366,6 +456,11 @@ function ScheduleCard({ server, info, onSaved }) {
     const [serverErrors, setServerErrors] = useState([]);
     // 다른 곳에서 바뀌어 거절됨: 고친 내용은 두고 다시 읽기를 보인다
     const [stale, setStale] = useState(false);
+    // 게임 명령 목록을 띄운 작업
+    const [picking, setPicking] = useState(null);
+    // 새로 넣은 위험 명령: 한 번 더 눌러 저장한다
+    const [armed, setArmed] = useState(false);
+    const commands = useInstanceCommands(server, moduleCommands) || [];
 
     useEffect(() => {
         const next = info.schedule.map(toDraft);
@@ -373,6 +468,7 @@ function ScheduleCard({ server, info, onSaved }) {
         setKeep(String(info.backupKeep));
         setServerErrors([]);
         setStale(false);
+        setArmed(false);
         base.current = JSON.stringify({ d: next.map(({ key, ...r }) => r), k: String(info.backupKeep) });
     }, [info]);
 
@@ -380,20 +476,59 @@ function ScheduleCard({ server, info, onSaved }) {
     const dirty = base.current !== null && snapshot !== base.current;
 
     const actions = ACTIONS.filter(
-        (a) => (a !== 'backup' || info.backupSupported) && (a !== 'announce' || info.announceSupported),
+        (a) =>
+            (a !== 'backup' || info.backupSupported) &&
+            (a !== 'announce' || info.announceSupported) &&
+            (a !== 'save' || info.saveSupported),
     );
     const keepNum = Number(keep);
     const keepBad = info.backupSupported && (!Number.isInteger(keepNum) || keepNum < 1);
-    const problems = drafts.map((d) => draftProblems(d, t));
+    const problems = drafts.map((d) => draftProblems(d, t, findCommand(commands, d.command)));
     const blocked = keepBad || problems.some((p) => p.length > 0);
+    const toTask = (d) =>
+        fromDraft(d, { announce: info.announceSupported, inputs: findCommand(commands, d.command)?.inputs });
+    const saved = info.schedule.map(sameKey);
 
-    const patch = (key, change) => setDrafts((ds) => ds.map((d) => (d.key === key ? { ...d, ...change } : d)));
+    // 저장된 그대로인 켜진 작업만 다음 실행 시각을 보인다 (고친 작업은 저장해야 정해진다)
+    const nextRunOf = (d) => {
+        const i = saved.indexOf(sameKey(toTask(d)));
+        const at = i >= 0 ? info.nextRuns[i] : null;
+        return typeof at === 'number' ? at : null;
+    };
+    const fmtRun = (secs) =>
+        new Date(secs * 1000).toLocaleString(i18n.language, {
+            month: 'numeric',
+            day: 'numeric',
+            weekday: 'short',
+            hour: '2-digit',
+            minute: '2-digit',
+        });
+    // 서버 PC와 보는 곳의 시간대가 다르면 시각이 어느 쪽 기준인지 알린다
+    const otherZone = info.utcOffset !== null && info.utcOffset !== -new Date().getTimezoneOffset();
+    // 이번에 새로 넣거나 바꾼 켜진 위험 명령
+    const newDanger = drafts.some(
+        (d) =>
+            d.enabled &&
+            d.action === COMMAND &&
+            findCommand(commands, d.command)?.risk === 'danger' &&
+            !saved.includes(sameKey(toTask(d))),
+    );
+
+    const patch = (key, change) => {
+        setArmed(false);
+        setDrafts((ds) => ds.map((d) => (d.key === key ? { ...d, ...change } : d)));
+    };
 
     const save = async () => {
+        if (newDanger && !armed) {
+            setArmed(true);
+            return;
+        }
+        setArmed(false);
         setSaving(true);
         setServerErrors([]);
         try {
-            const body = { schedule: drafts.map((d) => fromDraft(d, { announce: info.announceSupported })) };
+            const body = { schedule: drafts.map(toTask) };
             if (info.backupSupported) body.backup_keep = keepNum;
             if (info.revision) body.revision = info.revision;
             const res = await window.api.instanceScheduleSave(server.id, body);
@@ -413,6 +548,8 @@ function ScheduleCard({ server, info, onSaved }) {
         }
     };
 
+    const pickingDraft = drafts.find((d) => d.key === picking);
+
     return (
         <section className="dc-card" aria-label={t('maintenance.schedule_title')}>
             <div className="dc-card-head">
@@ -431,17 +568,26 @@ function ScheduleCard({ server, info, onSaved }) {
                 </button>
             </div>
             <p className="dc-card-desc">{t('maintenance.schedule_desc')}</p>
+            {otherZone && (
+                <p className="muted">
+                    <Icon name="info" size="xs" /> {t('maintenance.server_clock', { zone: offsetText(info.utcOffset) })}
+                </p>
+            )}
 
             {drafts.length === 0 ? (
                 <p className="muted">{t('maintenance.schedule_empty')}</p>
             ) : (
                 <ul className="mt-tasks">
                     {drafts.map((d, i) => {
-                        const items = (actions.includes(d.action) ? actions : [...actions, d.action]).map((a) => ({
+                        const shown =
+                            d.action === COMMAND || actions.includes(d.action) ? actions : [...actions, d.action];
+                        const items = shown.map((a) => ({
                             id: a,
                             label: t(`maintenance.action_${a}`, { defaultValue: a }),
                         }));
-                        const canWarn = (d.action === 'restart' || d.action === 'update') && info.announceSupported;
+                        const canWarn = WARNS.includes(d.action) && info.announceSupported;
+                        const command = d.action === COMMAND ? findCommand(commands, d.command) : null;
+                        const next = d.enabled ? nextRunOf(d) : null;
                         return (
                             <li key={d.key} className={clsx('mt-task', { off: !d.enabled })}>
                                 <div className="mt-task-head">
@@ -451,6 +597,19 @@ function ScheduleCard({ server, info, onSaved }) {
                                         onChange={(a) => patch(d.key, { action: a })}
                                         ariaLabel={t('maintenance.task_aria', { n: i + 1 })}
                                     />
+                                    <button
+                                        type="button"
+                                        className={clsx(
+                                            'btn btn-sm',
+                                            d.action === COMMAND ? 'btn-primary' : 'btn-ghost',
+                                        )}
+                                        onClick={() => setPicking(d.key)}
+                                    >
+                                        <Icon name="terminal" size="sm" />{' '}
+                                        {d.action === COMMAND && d.command
+                                            ? command?.label || d.command
+                                            : t('maintenance.action_command')}
+                                    </button>
                                     <SabaToggle
                                         checked={d.enabled}
                                         aria-label={t('maintenance.task_enabled')}
@@ -475,12 +634,12 @@ function ScheduleCard({ server, info, onSaved }) {
                                                 value={d.mode}
                                                 ariaLabel={t('maintenance.when')}
                                                 onChange={(v) => patch(d.key, { mode: v })}
-                                                options={[
-                                                    { value: 'every', label: t('maintenance.mode_every') },
-                                                    { value: 'at', label: t('maintenance.mode_at') },
-                                                ]}
+                                                options={MODES.map((m) => ({
+                                                    value: m,
+                                                    label: t(`maintenance.mode_${m}`),
+                                                }))}
                                             />
-                                            {d.mode === 'every' ? (
+                                            {d.mode === 'every' && (
                                                 <span className="mt-inline">
                                                     <input
                                                         className="input mt-num"
@@ -492,7 +651,31 @@ function ScheduleCard({ server, info, onSaved }) {
                                                     />
                                                     <span className="muted">{t('maintenance.minutes')}</span>
                                                 </span>
-                                            ) : (
+                                            )}
+                                            {d.mode === 'days' && (
+                                                <span className="mt-inline">
+                                                    <input
+                                                        className="input mt-num"
+                                                        type="number"
+                                                        min="1"
+                                                        max={MAX_EVERY_DAYS}
+                                                        value={d.everyDays}
+                                                        aria-label={t('maintenance.every_days')}
+                                                        onChange={(e) => patch(d.key, { everyDays: e.target.value })}
+                                                    />
+                                                    <span className="muted">{t('maintenance.days')}</span>
+                                                </span>
+                                            )}
+                                            {d.mode === 'date' && (
+                                                <input
+                                                    className="input mt-date"
+                                                    type="date"
+                                                    value={d.date}
+                                                    aria-label={t('maintenance.on_date')}
+                                                    onChange={(e) => patch(d.key, { date: e.target.value })}
+                                                />
+                                            )}
+                                            {d.mode !== 'every' && (
                                                 <input
                                                     className="input mt-time"
                                                     type="time"
@@ -503,6 +686,45 @@ function ScheduleCard({ server, info, onSaved }) {
                                             )}
                                         </span>
                                     </label>
+                                    {d.mode === 'days' && (
+                                        <label className="mt-field">
+                                            <span>{t('maintenance.start_date')}</span>
+                                            <input
+                                                className="input mt-date"
+                                                type="date"
+                                                value={d.startDate}
+                                                title={t('maintenance.start_date_hint')}
+                                                onChange={(e) => patch(d.key, { startDate: e.target.value })}
+                                            />
+                                        </label>
+                                    )}
+                                    {d.mode === 'weekdays' && (
+                                        <fieldset className="mt-field mt-fieldset">
+                                            <legend>{t('maintenance.weekdays')}</legend>
+                                            <span className="mt-weekdays">
+                                                {WEEKDAYS.map((w, wi) => {
+                                                    const on = d.weekdays.includes(w);
+                                                    return (
+                                                        <button
+                                                            key={w}
+                                                            type="button"
+                                                            aria-pressed={on}
+                                                            className={clsx('mt-weekday', { on })}
+                                                            onClick={() =>
+                                                                patch(d.key, {
+                                                                    weekdays: on
+                                                                        ? d.weekdays.filter((x) => x !== w)
+                                                                        : [...d.weekdays, w],
+                                                                })
+                                                            }
+                                                        >
+                                                            {weekdayLabel(i18n.language, wi)}
+                                                        </button>
+                                                    );
+                                                })}
+                                            </span>
+                                        </fieldset>
+                                    )}
                                     {canWarn && (
                                         <label className="mt-field">
                                             <span>{t('maintenance.warn_minutes')}</span>
@@ -525,7 +747,23 @@ function ScheduleCard({ server, info, onSaved }) {
                                             />
                                         </label>
                                     )}
+                                    {command?.inputs?.map((input) => (
+                                        <CommandInput
+                                            key={input.name}
+                                            input={input}
+                                            value={d.args[input.name] ?? ''}
+                                            onChange={(v) => patch(d.key, { args: { ...d.args, [input.name]: v } })}
+                                        />
+                                    ))}
                                 </div>
+                                {command?.risk === 'danger' && (
+                                    <p className="dc-field-error">
+                                        <Icon name="alertTriangle" size="xs" /> {t('maintenance.command_danger')}
+                                    </p>
+                                )}
+                                {next !== null && (
+                                    <p className="muted mt-next">{t('maintenance.next_run', { time: fmtRun(next) })}</p>
+                                )}
                                 {problems[i].length > 0 && (
                                     <p className="dc-field-error">
                                         <Icon name="alertTriangle" size="xs" /> {problems[i].join(' · ')}
@@ -566,7 +804,9 @@ function ScheduleCard({ server, info, onSaved }) {
             )}
 
             <div className={clsx('dc-savebar', { dirty })}>
-                <span className="dc-savebar-text">{dirty ? t('discord.unsaved') : ''}</span>
+                <span className="dc-savebar-text">
+                    {armed ? t('maintenance.danger_confirm') : dirty ? t('discord.unsaved') : ''}
+                </span>
                 {dirty && (
                     <button
                         type="button"
@@ -576,15 +816,143 @@ function ScheduleCard({ server, info, onSaved }) {
                             setDrafts(info.schedule.map(toDraft));
                             setKeep(String(info.backupKeep));
                             setServerErrors([]);
+                            setArmed(false);
                         }}
                     >
                         {t('discord.revert')}
                     </button>
                 )}
-                <button type="button" className="btn btn-primary" disabled={!dirty || saving || blocked} onClick={save}>
-                    <Icon name="save" size="sm" /> {t('discord.save')}
+                <button
+                    type="button"
+                    className={clsx('btn', armed ? 'btn-danger' : 'btn-primary')}
+                    disabled={!dirty || saving || blocked}
+                    onClick={save}
+                >
+                    <Icon name="save" size="sm" /> {armed ? t('maintenance.danger_save') : t('discord.save')}
                 </button>
             </div>
+            {pickingDraft && (
+                <CommandPicker
+                    commands={commands}
+                    current={pickingDraft.action === COMMAND ? pickingDraft.command : ''}
+                    onPick={(c) => {
+                        const keepArgs = c.name === pickingDraft.command ? pickingDraft.args : {};
+                        const defaults = Object.fromEntries(
+                            (c.inputs || [])
+                                .filter((input) => input.default != null && keepArgs[input.name] == null)
+                                .map((input) => [input.name, String(input.default)]),
+                        );
+                        patch(pickingDraft.key, {
+                            action: COMMAND,
+                            command: c.name,
+                            args: { ...defaults, ...keepArgs },
+                        });
+                        setPicking(null);
+                    }}
+                    onClose={() => setPicking(null)}
+                />
+            )}
         </section>
+    );
+}
+
+/** 게임 명령 입력 하나 (module.toml `[[commands.fields.inputs]]`) */
+function CommandInput({ input, value, onChange }) {
+    const label = `${input.label || input.name}${input.required ? ' *' : ''}`;
+    if (Array.isArray(input.options) && input.options.length) {
+        return (
+            <div className="mt-field">
+                <span>{label}</span>
+                <CustomDropdown
+                    value={value}
+                    ariaLabel={label}
+                    onChange={onChange}
+                    options={[
+                        ...(input.required ? [] : [{ value: '', label: '—' }]),
+                        ...input.options.map((o) => ({ value: String(o), label: String(o) })),
+                    ]}
+                />
+            </div>
+        );
+    }
+    return (
+        <label className="mt-field">
+            <span>{label}</span>
+            <input
+                className={clsx('input', input.type === 'number' && 'mt-num')}
+                type={input.type === 'number' ? 'number' : 'text'}
+                min={input.min}
+                max={input.max}
+                value={value}
+                placeholder={input.placeholder || ''}
+                onChange={(e) => onChange(e.target.value)}
+            />
+        </label>
+    );
+}
+
+/** 예약할 게임 명령을 고르는 창 (모듈·익스텐션이 주는 명령) */
+function CommandPicker({ commands, current, onPick, onClose }) {
+    const { t } = useTranslation('gui');
+    const [filter, setFilter] = useState('');
+    const q = filter.trim().toLowerCase();
+    const list = commands.filter(
+        (c) =>
+            !q ||
+            c.name.toLowerCase().includes(q) ||
+            String(c.label || '')
+                .toLowerCase()
+                .includes(q),
+    );
+    return (
+        <div className="modal-overlay" onClick={onClose}>
+            <div
+                className="modal mt-picker"
+                role="dialog"
+                aria-label={t('maintenance.command_pick')}
+                onClick={(e) => e.stopPropagation()}
+                onKeyDown={(e) => {
+                    if (e.key === 'Escape') onClose();
+                }}
+            >
+                <h2 className="modal-title">{t('maintenance.command_pick')}</h2>
+                <input
+                    className="input"
+                    value={filter}
+                    placeholder={t('maintenance.command_search')}
+                    aria-label={t('maintenance.command_search')}
+                    onChange={(e) => setFilter(e.target.value)}
+                />
+                {list.length === 0 ? (
+                    <p className="muted">{t('maintenance.command_none')}</p>
+                ) : (
+                    <ul className="mt-picker-list">
+                        {list.map((c) => (
+                            <li key={c.name}>
+                                <button
+                                    type="button"
+                                    className={clsx('mt-picker-item', { selected: c.name === current })}
+                                    onClick={() => onPick(c)}
+                                >
+                                    <span className="mt-picker-name">
+                                        {c.label || c.name}
+                                        {c.label && c.label !== c.name && <code>{c.name}</code>}
+                                    </span>
+                                    {c.description && <span className="muted">{c.description}</span>}
+                                    {c.risk === 'danger' && (
+                                        <StatusChip tone="stop" label={t('maintenance.command_danger_chip')} />
+                                    )}
+                                </button>
+                            </li>
+                        ))}
+                    </ul>
+                )}
+                <div className="modal-actions">
+                    <button type="button" className="btn btn-ghost" onClick={onClose}>
+                        {t('maintenance.close')}
+                    </button>
+                </div>
+            </div>
+        </div>
     );
 }

@@ -877,13 +877,18 @@
     "col": {
       "task": "Tâche",
       "when": "Quand",
-      "on": "Activée"
+      "on": "Activée",
+      "next": "Prochaine"
     },
     "action": {
       "backup": "Sauvegarder",
       "restart": "Redémarrer",
       "announce": "Annoncer",
-      "update": "Mettre à jour"
+      "update": "Mettre à jour",
+      "start": "Démarrer",
+      "stop": "Arrêter",
+      "save": "Sauvegarder",
+      "command": "Commande de jeu"
     },
     "none": "{{name}} n'a aucune tâche planifiée.",
     "warns": "prévient {{minutes}} min avant",
@@ -899,17 +904,40 @@
     "disabled": "Désactivée : {{task}}",
     "no_such": "Il n'y a pas de tâche {{number}} (il y en a {{count}}).",
     "edited": "Tâche modifiée : {{task}}",
-    "nothing_to_edit": "Indiquez au moins une modification (--every, --at, --warn, --no-warn, --message).",
+    "nothing_to_edit": "Donne au moins un changement (--every, --at, --every-days, --on, --date, --daily, --warn, --no-warn, --message, --arg).",
     "keep_zero": "Conservez au moins 1 sauvegarde.",
     "keep_set": "Les {{count}} dernières sauvegardes planifiées sont conservées.",
     "confirm_clear": "Supprimer toutes les tâches planifiées de {{name}} ?",
     "cleared": "{{name}} n'a plus de tâche planifiée.",
     "bad_action": "« {{got}} » n'est pas une tâche. Utilisez l'une de : {{actions}}.",
-    "warn_only_restart": "--warn ne fonctionne qu'avec restart et update.",
+    "warn_only_restart": "--warn ne marche qu'avec restart, update et stop.",
     "message_required": "Une annonce nécessite --message.",
     "every_or_at": "Indiquez soit --every (ex. 30m, 2h), soit --at (ex. 04:00), mais pas les deux.",
     "bad_every": "« {{got}} » n'est pas une durée. Utilisez des minutes ou des unités, ex. 30, 30m, 2h, 1h30m.",
-    "bad_at": "« {{got}} » n'est pas une heure. Utilisez HH:MM, ex. 04:00."
+    "bad_at": "« {{got}} » n'est pas une heure. Utilisez HH:MM, ex. 04:00.",
+    "weekday": {
+      "mon": "lun",
+      "tue": "mar",
+      "wed": "mer",
+      "thu": "jeu",
+      "fri": "ven",
+      "sat": "sam",
+      "sun": "dim"
+    },
+    "server_clock": "Les heures suivent l'horloge du PC serveur ({{zone}}). Les prochaines exécutions sont à l'heure de ce PC.",
+    "every_days_at": "tous les {{n}} jours à {{at}} depuis le {{from}}",
+    "weekdays_at": "{{days}} à {{at}}",
+    "date_at": "une fois le {{date}} à {{at}}",
+    "no_save": "Ce jeu n'a pas de commande de sauvegarde.",
+    "command_required": "Une commande de jeu demande --command (liste : server commands).",
+    "command_only": "--command et --arg ne servent qu'avec la tâche command.",
+    "day_rule_needs_at": "--every-days, --on et --date demandent --at.",
+    "bad_every_days": "{{got}} jours ne marche pas. Utilise 1 à 365.",
+    "bad_weekday": "« {{got}} » n'est pas un jour. Utilise : {{days}}.",
+    "bad_date": "« {{got}} » n'est pas une date. Utilise AAAA-MM-JJ, ex. 2026-12-24.",
+    "bad_arg": "« {{got}} » n'est pas une entrée. Utilise NOM=VALEUR.",
+    "confirm_danger": "{{command}} est difficile à annuler et s'exécute à l'heure prévue sans confirmation. Le programmer ?",
+    "from_needs_every_days": "--from ne marche qu'avec les tâches tous les N jours (--every-days)."
   },
   "chatbot": {
     "api_key": "Clé API enregistrée",

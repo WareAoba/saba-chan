@@ -153,7 +153,8 @@
   },
   "schedule": {
     "restart_warning": "Сервер перезапустится через {{minutes}} мин.",
-    "update_warning": "Сервер перезапустится для обновления через {{minutes}} мин."
+    "update_warning": "Сервер перезапустится для обновления через {{minutes}} мин.",
+    "stop_warning": "Сервер остановится через {{minutes}} мин."
   },
   "provision": {
     "installing": "Установка сервера…",
