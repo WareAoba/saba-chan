@@ -978,13 +978,27 @@ async fn undo_import(state: &IPCServer, instance: &crate::instance::ServerInstan
     // 만들 때 server.post_create를 알렸으니 지울 때도 알린다
     pre_delete_hook(state, instance).await;
     let folder = match (moved_from, instance.working_dir.as_deref()) {
-        (Some(src), Some(dest)) => match std::fs::rename(dest, src) {
-            Ok(()) => Some(src.to_path_buf()),
-            Err(e) => {
-                tracing::error!("Could not move the server folder back to {} after a failed import: {}", src.display(), e);
+        (Some(src), Some(dest)) => {
+            // Windows 파일 잠금 대비 재시도 (가져오기 실행기·백신이 잠깐 쥐고 있을 수 있다)
+            let mut moved = None;
+            for attempt in 0..3 {
+                match std::fs::rename(dest, src) {
+                    Ok(()) => {
+                        moved = Some(src.to_path_buf());
+                        break;
+                    }
+                    Err(e) => tracing::warn!("Could not move the server folder back to {} after a failed import ({}/3): {}", src.display(), attempt + 1, e),
+                }
+                if attempt < 2 {
+                    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                }
+            }
+            if moved.is_none() {
+                tracing::error!("Could not move the server folder back to {} after a failed import", src.display());
                 return false;
             }
-        },
+            moved
+        }
         (None, dir) => dir.filter(|d| !d.trim().is_empty()).map(std::path::PathBuf::from),
         (Some(_), None) => None,
     };
