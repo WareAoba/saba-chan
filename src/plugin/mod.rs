@@ -999,6 +999,16 @@ async fn spawn_plugin(
         .env("PYTHONUNBUFFERED", "1")
         .envs(daemon_env());
 
+    // 공용 모듈 유틸리티 경로 (daemon_rcon.py, i18n.py 등). 익스텐션 폴더가 없어도 필요하다.
+    // 격리 권한은 있는 폴더에만 주므로 격리 계획보다 먼저 쓴다 (첫 실행에 import i18n이 실패하지 않게)
+    static SHARED: std::sync::Once = std::sync::Once::new();
+    let modules_lib_dir = saba_chan_updater_lib::constants::resolve_data_dir().join("python-shared");
+    SHARED.call_once(|| {
+        if let Err(e) = ensure_shared_modules(&modules_lib_dir) {
+            tracing::warn!("Cannot write shared Python modules to {}: {}", modules_lib_dir.display(), e);
+        }
+    });
+
     // 확인되지 않은 구성요소: AppContainer(Windows)·bubblewrap(리눅스) 안에서 돌린다. 토큰 파일 경로는 주지 않는다
     let isolation = crate::sandbox::isolation_for(std::path::Path::new(module_path), &config, &python_exe);
 
@@ -1031,14 +1041,6 @@ async fn spawn_plugin(
         }
         paths.push(pypath);
     }
-    // 공용 모듈 유틸리티 경로 (daemon_rcon.py, i18n.py 등). 익스텐션 폴더가 없어도 필요하다
-    static SHARED: std::sync::Once = std::sync::Once::new();
-    let modules_lib_dir = saba_chan_updater_lib::constants::resolve_data_dir().join("python-shared");
-    SHARED.call_once(|| {
-        if let Err(e) = ensure_shared_modules(&modules_lib_dir) {
-            tracing::warn!("Cannot write shared Python modules to {}: {}", modules_lib_dir.display(), e);
-        }
-    });
     if modules_lib_dir.is_dir() {
         paths.push(modules_lib_dir.display().to_string());
     }
@@ -2323,7 +2325,8 @@ print(json.dumps(codes))
         std::fs::create_dir(&server).unwrap();
         std::fs::write(other.path().join("secret"), "token").unwrap();
         let entry = module.path().join("lifecycle.py");
-        std::fs::write(&entry, "import json, os, sys\nconfig = json.loads(sys.stdin.read())\n\
+        // 공용 모듈(python-shared)도 보여야 한다
+        std::fs::write(&entry, "import json, os, sys\nimport i18n\nconfig = json.loads(sys.stdin.read())\n\
              open(os.path.join(config['working_dir'], 'out'), 'w').write('ok')\n\
              try:\n    open(config['secret']).read(); seen = True\nexcept OSError:\n    seen = False\n\
              print(json.dumps({'success': True, 'seen': seen}))\n").unwrap();
