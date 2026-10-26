@@ -377,7 +377,8 @@
       "autostart_unknown_mode": "Choisissez off, daemon ou full.",
       "move_cross_volume": "Un dossier situé sur un autre lecteur ne peut pas être déplacé. Importez-le plutôt avec « Le laisser en place ».",
       "move_in_use": "Impossible de déplacer le dossier. Arrêtez le serveur de ce dossier, fermez les programmes qui l'ont ouvert, puis réessayez.",
-      "move_failed": "Impossible de déplacer le dossier. Importez-le plutôt avec « Le laisser en place »."
+      "move_failed": "Impossible de déplacer le dossier. Importez-le plutôt avec « Le laisser en place ».",
+      "port_check_busy": "Une vérification est déjà en cours. Réessayez dans un instant"
     },
     "not_a_bool": "« {{value}} » n'est pas oui/non (utilisez true ou false).",
     "not_a_number": "« {{value}} » n'est pas un nombre.",
@@ -731,6 +732,7 @@
       "config.paths": "Où Saba-chan garde ses données, modules et extensions, et les dossiers par défaut",
       "config.move": "Déplacer les modules ou les extensions vers un autre dossier. Les fichiers installés sont déplacés ; les serveurs doivent être arrêtés",
       "server.players": "Qui est connecté",
+      "server.port-check": "Vérifier si vos amis peuvent joindre ce serveur depuis Internet (redirection de ports)",
       "server.rcon": "Envoyer une ligne comme le serveur reçoit les commandes (console, sinon RCON) et afficher la réponse",
       "server.log": "Journal enregistré des exécutions passées (la console ne garde que l'actuelle)",
       "server.query": "Consultations en lecture seule du module de jeu (sans nom : la liste)",
@@ -783,6 +785,9 @@
       "monitor.interval": "Secondes entre deux rafraîchissements avec --watch",
       "audit.limit": "Nombre d'entrées",
       "audit.follow": "Afficher les nouvelles entrées au fil de l'eau (Ctrl+C pour arrêter)",
+      "audit.since": "À partir de ce jour : AAAA-MM-JJ, today ou 7d (7 derniers jours)",
+      "audit.until": "Jusqu'à la fin de ce jour : AAAA-MM-JJ ou today",
+      "audit.export": "Enregistrer toutes les entrées de la période dans ce fichier CSV au lieu de les lister",
       "bot.lang.value": "auto ou un code de langue (ko, en, ja, zh-CN, zh-TW, es, pt-BR, ru, de, fr)",
       "bot.prefix.values": "Un ou plusieurs préfixes (sans espace, 32 caractères max, 10 max)",
       "bot.prefix.default": "Revenir au préfixe par défaut de la langue de l'app",
@@ -1007,6 +1012,10 @@
     "from": "Depuis",
     "what": "Quoi",
     "result": "Résultat",
+    "exported": "{{count}} entrées enregistrées dans {{path}}.",
+    "bad_date": "Écrivez la date comme 2026-10-01, today ou 7d : {{value}}",
+    "export_write_failed": "Impossible d'écrire le fichier. Vérifiez l'emplacement et les autorisations.",
+    "export_invalid_path": "Le chemin du fichier n'est pas valide. Indiquez un chemin complet.",
     "scanning": "Vérification du code de {{name}}...",
     "declared": "Déclaré",
     "none_declared": "(rien)",
@@ -1322,5 +1331,30 @@
     "this_pc": "Ce PC",
     "no_servers": "Aucun serveur",
     "via_relay": "Via le relais"
+  },
+  "port_check": {
+    "title": "Vérification des ports de {{server}}",
+    "address": "IP publique {{address}} (vos amis se connectent avec cette adresse et le port)",
+    "verdict": {
+      "open": "Accessible depuis Internet",
+      "firewall": "Bloqué par le pare-feu du PC",
+      "closed": "Inaccessible depuis Internet",
+      "cgnat": "Votre routeur n’a pas d’IP publique (CGNAT)",
+      "unknown": "Certains ports n’ont pas pu être vérifiés",
+      "no_ports": "Ce jeu n’indique pas quels ports vérifier"
+    },
+    "status": {
+      "open": "Ouvert",
+      "closed": "Fermé",
+      "unknown": "Non vérifié",
+      "in_use": "Utilisé par un autre programme",
+      "firewall": "Bloqué par le pare-feu"
+    },
+    "hint": {
+      "closed": "Vérifiez que le routeur redirige ce port vers ce PC et que le pare-feu du PC l’autorise.",
+      "firewall": "Le pare-feu Windows bloque Saba-chan (saba-core). Autorisez-le dans la fenêtre qui s’affiche pendant la vérification, ou autorisez saba-core dans les paramètres du pare-feu Windows, puis vérifiez à nouveau.",
+      "cgnat": "Votre fournisseur partage une IP publique entre plusieurs foyers : la redirection de ports ne peut pas l’ouvrir. Demandez une IP publique à votre fournisseur ou utilisez un VPN comme Tailscale.",
+      "unknown": "Impossible de vérifier les ports UDP d’un serveur en marche ni les ports utilisés par un autre programme. Arrêtez le serveur et vérifiez à nouveau."
+    }
   }
 }

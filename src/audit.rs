@@ -150,6 +150,62 @@ fn clip(s: &str) -> String {
     }
 }
 
+/// 기록 조회 조건 (`GET /api/audit`, `POST /api/audit/export`)
+pub struct Filter<'a> {
+    pub limit: usize,
+    pub instance_id: Option<&'a str>,
+    /// 이 시각(unix 초)부터
+    pub since: Option<u64>,
+    /// 이 시각(unix 초) 전까지
+    pub until: Option<u64>,
+}
+
+impl Default for Filter<'_> {
+    fn default() -> Self {
+        Self { limit: usize::MAX, instance_id: None, since: None, until: None }
+    }
+}
+
+/// CSV 열 (기록의 키, 시각은 이 PC 시간대)
+const CSV_COLUMNS: [&str; 13] =
+    ["time", "source", "user", "userName", "guild", "guildName", "instance", "instanceId", "action", "command", "args", "ok", "status"];
+
+/// 기록을 CSV로 (오래된 것이 먼저, 엑셀이 한글을 읽도록 BOM). 수식으로 읽힐 칸은 앞에 '를 붙인다
+pub fn to_csv(newest_first: &[Value]) -> String {
+    fn cell(raw: &str) -> String {
+        let text = if raw.starts_with(['=', '+', '-', '@', '\t', '\r']) { format!("'{raw}") } else { raw.to_string() };
+        if text.contains([',', '"', '\n', '\r']) {
+            format!("\"{}\"", text.replace('"', "\"\""))
+        } else {
+            text
+        }
+    }
+    let mut out = String::from("\u{feff}");
+    out.push_str(&CSV_COLUMNS.join(","));
+    out.push_str("\r\n");
+    for e in newest_first.iter().rev() {
+        let row: Vec<String> = CSV_COLUMNS
+            .iter()
+            .map(|&k| match k {
+                "time" => e
+                    .get("ts")
+                    .and_then(Value::as_i64)
+                    .and_then(|t| chrono::DateTime::from_timestamp(t, 0))
+                    .map(|t| t.with_timezone(&chrono::Local).format("%Y-%m-%d %H:%M:%S%:z").to_string())
+                    .unwrap_or_default(),
+                _ => match e.get(k) {
+                    Some(Value::String(s)) => cell(s),
+                    Some(Value::Null) | None => String::new(),
+                    Some(v) => cell(&v.to_string()),
+                },
+            })
+            .collect();
+        out.push_str(&row.join(","));
+        out.push_str("\r\n");
+    }
+    out
+}
+
 pub struct AuditLog {
     path: PathBuf,
     lock: Mutex<()>,
@@ -230,17 +286,30 @@ impl AuditLog {
 
     /// 최근 기록 (최신이 먼저). `instance_id`가 있으면 그 서버 것만
     pub fn recent(&self, limit: usize, instance_id: Option<&str>) -> Vec<Value> {
+        self.query(&Filter { limit, instance_id, ..Filter::default() })
+    }
+
+    /// 조건에 맞는 기록 (최신이 먼저). 기간은 `since <= ts < until` (unix 초)
+    pub fn query(&self, f: &Filter<'_>) -> Vec<Value> {
         let _guard = self.lock.lock().unwrap_or_else(|e| e.into_inner());
         let mut out = Vec::new();
         for path in [self.path.clone(), self.rotated()] {
             let Ok(text) = std::fs::read_to_string(&path) else { continue };
             for line in text.lines().rev() {
                 let Ok(v) = serde_json::from_str::<Value>(line) else { continue };
-                if instance_id.is_some_and(|id| v.get("instanceId").and_then(Value::as_str) != Some(id)) {
+                let ts = v.get("ts").and_then(Value::as_u64).unwrap_or(0);
+                if f.until.is_some_and(|u| ts >= u) {
+                    continue;
+                }
+                // 시각은 잠금 전에 정하고 시계도 바뀔 수 있어 파일 순서가 시각 순서라고 볼 수 없다: 끝까지 본다
+                if f.since.is_some_and(|s| ts < s) {
+                    continue;
+                }
+                if f.instance_id.is_some_and(|id| v.get("instanceId").and_then(Value::as_str) != Some(id)) {
                     continue;
                 }
                 out.push(v);
-                if out.len() >= limit {
+                if out.len() >= f.limit {
                     return out;
                 }
             }
@@ -401,6 +470,57 @@ mod tests {
         log.record(&cli, &Event { action: "stop", instance_id: "a", ok: true, status: 200, ..Default::default() });
         let all = log.recent(10, None);
         assert_eq!(all.iter().map(|v| v["action"].as_str().unwrap()).collect::<Vec<_>>(), ["stop", "command", "start"]);
+    }
+
+    /// ts를 정해 한 줄 남긴다 (record는 지금 시각을 쓴다)
+    fn line_at(log: &AuditLog, ts: u64, action: &str, instance_id: &str) {
+        log.append(&json!({ "ts": ts, "source": "cli", "action": action, "instanceId": instance_id, "ok": true, "status": 200 })).unwrap();
+    }
+
+    #[test]
+    fn a_period_keeps_only_records_inside_it_across_rotation() {
+        let dir = tempfile::tempdir().unwrap();
+        let log = AuditLog::at(dir.path().join("audit.log"));
+        line_at(&log, 100, "start", "a");
+        line_at(&log, 200, "stop", "b");
+        std::fs::rename(log.path(), log.rotated()).unwrap();
+        line_at(&log, 300, "restart", "a");
+        line_at(&log, 400, "backup", "a");
+
+        let actions = |f: Filter<'_>| log.query(&f).iter().map(|v| v["action"].as_str().unwrap().to_string()).collect::<Vec<_>>();
+        assert_eq!(actions(Filter { since: Some(200), until: Some(400), ..Filter::default() }), ["restart", "stop"]);
+        assert_eq!(actions(Filter { since: Some(150), ..Filter::default() }), ["backup", "restart", "stop"]);
+        assert_eq!(actions(Filter { until: Some(300), instance_id: Some("a"), ..Filter::default() }), ["start"]);
+        assert_eq!(actions(Filter { since: Some(100), limit: 2, ..Filter::default() }), ["backup", "restart"]);
+    }
+
+    /// 동시 기록이나 시계 보정으로 파일 순서와 시각이 어긋나도 기간 안의 기록을 빠뜨리지 않는다
+    #[test]
+    fn a_period_keeps_records_written_out_of_time_order() {
+        let dir = tempfile::tempdir().unwrap();
+        let log = AuditLog::at(dir.path().join("audit.log"));
+        line_at(&log, 200, "stop", "a");
+        line_at(&log, 100, "start", "a");
+        line_at(&log, 300, "restart", "a");
+        let actions: Vec<_> = log.query(&Filter { since: Some(150), ..Filter::default() }).iter().map(|v| v["action"].as_str().unwrap().to_string()).collect();
+        assert_eq!(actions, ["restart", "stop"]);
+    }
+
+    #[test]
+    fn csv_is_oldest_first_quoted_and_safe_for_spreadsheets() {
+        let rows = [
+            json!({ "ts": 200, "source": "discord", "userName": "김치", "action": "command", "command": "=cmd|calc", "args": "[\"a,b\"]", "instanceId": "x", "ok": false, "status": 400 }),
+            json!({ "ts": 100, "source": "cli", "action": "start", "instanceId": "x", "ok": true, "status": 200 }),
+        ];
+        let csv = to_csv(&rows);
+        assert!(csv.starts_with('\u{feff}'));
+        let lines: Vec<&str> = csv.trim_start_matches('\u{feff}').split("\r\n").collect();
+        assert_eq!(lines[0], CSV_COLUMNS.join(","));
+        assert!(lines[1].contains(",cli,") && lines[1].ends_with(",start,,,true,200"), "{}", lines[1]);
+        assert!(lines[2].contains(",김치,"), "{}", lines[2]);
+        assert!(lines[2].contains(",'=cmd|calc,"), "formula cell must be defused: {}", lines[2]);
+        assert!(lines[2].contains(r#","[""a,b""]","#), "comma cell must be quoted: {}", lines[2]);
+        assert_eq!(lines.len(), 4, "header + 2 rows + trailing empty");
     }
 
     #[test]

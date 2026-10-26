@@ -109,8 +109,17 @@ pub enum Cmd {
         #[arg(long, default_value_t = 30)]
         limit: usize,
         /// Keep printing new entries as they happen (Ctrl+C to stop)
-        #[arg(short, long)]
+        #[arg(short, long, conflicts_with = "export")]
         follow: bool,
+        /// From this day: YYYY-MM-DD, today, or 7d (the last 7 days)
+        #[arg(long, value_name = "DATE")]
+        since: Option<String>,
+        /// Up to the end of this day: YYYY-MM-DD or today
+        #[arg(long, value_name = "DATE")]
+        until: Option<String>,
+        /// Save every entry of the period to this CSV file instead of listing them
+        #[arg(long, value_name = "FILE")]
+        export: Option<std::path::PathBuf>,
     },
     /// Follow daemon events as they happen (with --json: one JSON per line). Ctrl+C to stop
     Events {
@@ -504,6 +513,9 @@ pub enum ServerCmd {
     Commands { server: Option<String> },
     /// Who is online
     Players { server: Option<String> },
+    /// Check from the internet whether friends can reach this server (port forwarding)
+    #[command(name = "port-check", visible_alias = "ports")]
+    PortCheck { server: Option<String> },
     /// Send one line the way the server takes commands (console, else RCON) and show its reply
     Rcon {
         server: String,

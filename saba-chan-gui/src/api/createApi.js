@@ -7,6 +7,10 @@ import { safeShowToast } from '../utils/helpers';
 import { createDaemonClient, queryString } from './daemon';
 import { hasRemotePathPicker, pickRemotePath } from './remotePathPicker';
 
+// 저장 파일 이름의 날짜는 이 PC 시간대로 (toISOString은 UTC라 한국 오전 9시 전에는 어제가 된다)
+const localDate = (d = new Date()) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
 /** 서버 시작 요청을 기다리는 시간 (CLI `post_long`과 같다) */
 const START_TIMEOUT_MS = 30 * 60_000;
 
@@ -617,6 +621,9 @@ export function createApi({ invoke, hub }) {
         // 서버 점검: 모듈 validate(켜기 전 점검)·diagnose(최근 로그 진단). 모듈 Python을 돌리므로 넉넉히 기다린다
         instanceValidate: (id) => daemonCall('post', `/api/instance/${encodeURIComponent(id)}/validate`, {}, 60000),
         instanceDiagnose: (id) => daemonCall('post', `/api/instance/${encodeURIComponent(id)}/diagnose`, {}, 60000),
+        // 포트포워딩 확인: 릴레이가 밖에서 게임 포트에 접속해 본다 (몇 초). 마지막 결과는 자동 확인 것도 같이 본다
+        instancePortCheck: (id) => daemonCall('post', `/api/instance/${encodeURIComponent(id)}/port-check`, {}, 30000),
+        instancePortCheckLast: (id) => daemonCall('get', `/api/instance/${encodeURIComponent(id)}/port-check`),
         // 설정 화면용: 디스크의 실제 설정 (실패하면 success:false)
         instanceReadLiveSettings: (id) =>
             daemonCall('get', `/api/instance/${encodeURIComponent(id)}/settings/live`, undefined, 60000),
@@ -977,9 +984,19 @@ export function createApi({ invoke, hub }) {
         deleteNodeToken: () => daemonCall('delete', '/api/config/node-token'),
 
         auditList: (opts) => {
-            const { limit, instance } = opts || {};
-            const qs = queryString({ limit: limit || undefined, instance: instance || undefined });
+            const { limit, instance, since, until } = opts || {};
+            const qs = queryString({ limit: limit || undefined, instance: instance || undefined, since, until });
             return daemonCall('get', `/api/audit${qs}`, undefined, 10000);
+        },
+        // 기간({since, until} unix 초)의 기록을 데몬이 CSV로 쓴다. 저장 창을 닫으면 {canceled:true}
+        auditExport: async (opts = {}) => {
+            const { instance, since, until } = opts;
+            const filePath = await pickLocal('dialog_save_file', {
+                defaultPath: `saba-chan-activity-${localDate()}.csv`,
+                filters: [{ name: 'CSV', extensions: ['csv'] }],
+            });
+            if (!filePath) return { canceled: true };
+            return daemonCall('post', '/api/audit/export', { path: filePath, instance, since, until }, 60000);
         },
         permissionsGet: (guildId) => daemonCall('get', permPath(guildId)),
         permissionsUpdate: (guildId, patch) => daemonCall('patch', permPath(guildId), patch || {}),
@@ -1027,7 +1044,7 @@ export function createApi({ invoke, hub }) {
         // 내보내기/가져오기: 파일은 데몬이 읽고 쓴다. 여기서는 경로만 고른다
         dataExport: async (opts = {}) => {
             const filePath = await pickLocal('dialog_save_file', {
-                defaultPath: `saba-chan-export-${new Date().toISOString().slice(0, 10)}.zip`,
+                defaultPath: `saba-chan-export-${localDate()}.zip`,
                 filters: [{ name: 'Zip', extensions: ['zip'] }],
             });
             if (!filePath) return { canceled: true };

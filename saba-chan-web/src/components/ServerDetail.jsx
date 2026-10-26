@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { useApp, useData } from '../store';
 import { BackupsPanel } from './BackupsPanel';
 import { Icon } from './icons';
+import { PortCheck } from './PortCheck';
 import { startPoll } from './poll';
 import { SettingsPanel } from './SettingsPanel';
 import { Button, errorText, failed, Segments, StatusDot } from './ui';
@@ -184,6 +185,7 @@ export function ServerDetail({ api, server }) {
                 ]}
             />
             {view === 'console' && <ConsolePanel api={api} server={server} moduleData={moduleData} />}
+            {view === 'settings' && <PortCheck api={api} server={server} />}
             {view === 'settings' && (
                 <SettingsPanel
                     api={api}

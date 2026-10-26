@@ -60,6 +60,8 @@
     "auto_generate_passwords_description": "REST 비밀번호가 비어 있으면 서버를 실행할 때 무작위로 채웁니다. 이미 있는 비밀번호는 바꾸지 않아요.",
     "port_conflict_check_label": "포트 충돌 검사",
     "port_conflict_check_description": "서버 여러 개가 같은 포트를 쓰면 경고를 표시합니다.",
+    "auto_port_check_label": "자동 포트포워딩 확인",
+    "auto_port_check_description": "서버를 만들 때와 사바쨩이 켜질 때 친구가 밖에서 접속할 수 있는지 릴레이로 조용히 확인해요. 닫혀 있으면 서버 화면에 알려요.",
     "uninstall_label": "사바쨩 삭제",
     "uninstall_description": "이 컴퓨터에서 사바쨩을 완전히 제거합니다. 켜져 있는 서버를 먼저 정상 종료한 뒤, 인스톨러를 제거 모드로 실행합니다.",
     "uninstall_confirm_title": "사바쨩 삭제",
@@ -1379,6 +1381,17 @@
     "empty": "아직 기록이 없어요.",
     "load_failed": "기록을 불러오지 못했어요.",
     "more": "더 보기",
+    "export": "내보내기",
+    "exported": "기록 {{count}}건을 내보냈어요.",
+    "export_failed": "기록을 내보내지 못했어요.",
+    "period": "기간",
+    "period_all": "전체",
+    "period_today": "오늘",
+    "period_7d": "최근 7일",
+    "period_30d": "최근 30일",
+    "period_custom": "직접 고르기",
+    "from": "시작일",
+    "to": "종료일",
     "ok": "성공",
     "failed": "실패 ({{status}})",
     "action_start": "시작",
@@ -1743,5 +1756,39 @@
     "exists": "{{name}} 파일이 이미 있어요. 바꾸려면 한 번 더 눌러 주세요",
     "replace": "바꾸기",
     "bad_name": "이름에 / 나 \\ 는 쓸 수 없어요"
+  },
+  "port_check": {
+    "button": "포트포워딩 확인",
+    "running": "확인 중…",
+    "address": "공인 IP {{address}} (친구는 이 주소와 포트로 접속해요)",
+    "help": "포트포워딩 안내",
+    "verdict": {
+      "open": "밖에서 접속할 수 있어요",
+      "firewall": "PC 방화벽이 막고 있어요",
+      "closed": "밖에서 접속할 수 없어요",
+      "cgnat": "공유기가 공인 IP를 받지 못했어요 (CGNAT)",
+      "unknown": "일부 포트는 확인하지 못했어요",
+      "no_ports": "이 게임은 확인할 포트를 알려 주지 않았어요"
+    },
+    "status": {
+      "open": "열림",
+      "closed": "닫힘",
+      "unknown": "확인 못 함",
+      "in_use": "다른 프로그램이 사용 중",
+      "firewall": "방화벽이 막음"
+    },
+    "hint": {
+      "closed": "공유기에서 이 포트를 이 PC로 포트포워딩했는지, PC 방화벽에서 허용했는지 확인해 주세요.",
+      "firewall": "Windows 방화벽이 사바쨩(saba-core)의 연결을 막고 있어요. 확인할 때 뜨는 허용 창에서 허용하거나, Windows 방화벽 설정에서 saba-core를 허용한 뒤 다시 확인해 주세요.",
+      "cgnat": "통신사가 공인 IP를 여러 집이 나눠 쓰게 해서 포트포워딩으로는 열 수 없어요. 통신사에 공인 IP를 요청하거나 Tailscale 같은 VPN을 써 주세요.",
+      "unknown": "켜져 있는 서버의 UDP 포트와 다른 프로그램이 쓰는 포트는 확인할 수 없어요. 서버를 끄고 다시 확인해 주세요."
+    },
+    "error": {
+      "node_token_missing": "먼저 디스코드 연결(페어링)을 해 주세요. 확인은 릴레이가 해요.",
+      "port_check_busy": "이미 확인하고 있어요. 잠시 뒤에 다시 해 주세요.",
+      "rate_limited": "확인을 너무 자주 했어요. 1분 뒤에 다시 해 주세요.",
+      "relay_unreachable": "릴레이에 연결하지 못했어요. 인터넷 연결을 확인해 주세요.",
+      "failed": "확인하지 못했어요."
+    }
   }
 }

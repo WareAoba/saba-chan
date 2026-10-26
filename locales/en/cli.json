@@ -377,7 +377,8 @@
       "autostart_unknown_mode": "Pick off, daemon or full.",
       "move_cross_volume": "A folder on another drive can't be moved. Import it with \"Keep it where it is\" instead.",
       "move_in_use": "The folder could not be moved. Stop the server in this folder, close any program that has it open, and try again.",
-      "move_failed": "The folder could not be moved. Import it with \"Keep it where it is\" instead."
+      "move_failed": "The folder could not be moved. Import it with \"Keep it where it is\" instead.",
+      "port_check_busy": "A check is already running. Try again in a moment"
     },
     "not_a_bool": "\"{{value}}\" is not yes/no (use true or false).",
     "not_a_number": "\"{{value}}\" is not a number.",
@@ -733,6 +734,7 @@
       "gui": "Switch to the desktop app: it opens on the same server and the full-screen menu closes",
       "config.autostart": "What starts when you sign in to this PC: off, daemon (daemon and tray only) or full (with the GUI window). Shows the current value without a mode",
       "config.browse": "Folders and files on the daemon's PC (with --daemon, the remote PC). Drives or / without a path",
+      "server.port-check": "Check whether friends can reach this server from the internet (port forwarding)",
       "bot.notice": "Post in the Discord server's alert channel when Saba-chan starts a server (off by default). No server: show. Server with `--on`/`--off`: change"
     },
     "arg": {
@@ -768,6 +770,9 @@
       "monitor.interval": "Seconds between refreshes with --watch",
       "audit.limit": "How many entries",
       "audit.follow": "Keep printing new entries as they happen (Ctrl+C to stop)",
+      "audit.since": "From this day: YYYY-MM-DD, today, or 7d (the last 7 days)",
+      "audit.until": "Up to the end of this day: YYYY-MM-DD or today",
+      "audit.export": "Save every entry of the period to this CSV file instead of listing them",
       "bot.lang.value": "auto or a language code (ko, en, ja, zh-CN, zh-TW, es, pt-BR, ru, de, fr)",
       "bot.prefix.values": "One or more prefixes (no spaces, up to 32 characters, up to 10)",
       "bot.prefix.default": "Go back to the default prefix of the app language",
@@ -1022,6 +1027,10 @@
     "from": "From",
     "what": "What",
     "result": "Result",
+    "exported": "Saved {{count}} entries to {{path}}.",
+    "bad_date": "Write the date like 2026-10-01, today or 7d: {{value}}",
+    "export_write_failed": "Couldn't write the file. Check the location and permissions.",
+    "export_invalid_path": "The file path isn't valid. Give a full path.",
     "scanning": "Checking the code of {{name}}...",
     "declared": "Declared",
     "none_declared": "(none)",
@@ -1291,5 +1300,30 @@
     "this_pc": "This PC",
     "no_servers": "No servers",
     "via_relay": "Through the relay"
+  },
+  "port_check": {
+    "title": "Port forwarding check for {{server}}",
+    "address": "Public IP {{address}} (friends join with this address and the port)",
+    "verdict": {
+      "open": "Reachable from the internet",
+      "firewall": "Blocked by the PC firewall",
+      "closed": "Not reachable from the internet",
+      "cgnat": "Your router has no public IP (CGNAT)",
+      "unknown": "Some ports could not be checked",
+      "no_ports": "This game does not say which ports to check"
+    },
+    "status": {
+      "open": "Open",
+      "closed": "Closed",
+      "unknown": "Not checked",
+      "in_use": "Used by another program",
+      "firewall": "Blocked by firewall"
+    },
+    "hint": {
+      "closed": "Check that your router forwards this port to this PC and that the PC firewall allows it.",
+      "firewall": "Windows Firewall is blocking Saba-chan (saba-core). Allow it in the prompt that appears during the check, or allow saba-core in Windows Firewall settings, then check again.",
+      "cgnat": "Your provider shares one public IP among many homes, so port forwarding cannot open it. Ask your provider for a public IP or use a VPN such as Tailscale.",
+      "unknown": "UDP ports of a running server and ports another program uses cannot be checked. Stop the server and check again."
+    }
   }
 }

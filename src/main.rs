@@ -28,6 +28,7 @@ mod launch_args;
 mod relay_agent;
 mod remote;
 mod remote_daemon;
+mod port_check;
 mod tray_host;
 
 use std::sync::Arc;

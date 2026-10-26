@@ -11,18 +11,26 @@ const KEYS = ['updater', 'gui', 'saba-core', 'cli', 'installer'];
 
 describe('컴포넌트 아이콘', () => {
     it('다섯 컴포넌트가 서로 다른 자기 아이콘을 쓴다', () => {
-        const icons = parseComponents(KEYS.map((component) => ({ component }))).map((c) => c.icon);
-        expect(icons).toEqual([
+        const icons = Object.fromEntries(
+            parseComponents(KEYS.map((component) => ({ component }))).map((c) => [c.key, c.icon]),
+        );
+        expect(icons).toEqual({
+            updater: 'componentUpdater',
+            gui: 'componentGui',
+            'saba-core': 'componentCore',
+            cli: 'componentCli',
+            installer: 'componentInstaller',
+        });
+    });
+
+    it('아이콘이 실제로 그려진다', () => {
+        for (const name of [
             'componentUpdater',
             'componentGui',
             'componentCore',
             'componentCli',
             'componentInstaller',
-        ]);
-    });
-
-    it('아이콘이 실제로 그려진다', () => {
-        for (const name of ['componentUpdater', 'componentGui', 'componentCore', 'componentCli', 'componentInstaller']) {
+        ]) {
             const { container, unmount } = render(<Icon name={name} />);
             expect(container.querySelector('svg'), name).not.toBeNull();
             unmount();

@@ -60,6 +60,8 @@
     "auto_generate_passwords_description": "Ist das REST-Passwort eines Servers leer, wird es beim Start zufällig gesetzt. Vorhandene Passwörter werden nie geändert.",
     "port_conflict_check_label": "Portkonflikterkennung",
     "port_conflict_check_description": "Zeigt Warnungen an, wenn mehrere Serverinstanzen denselben Port verwenden.",
+    "auto_port_check_label": "Automatische Portprüfung",
+    "auto_port_check_description": "Prüft beim Erstellen eines Servers und beim Start von Saba-chan still über das Relay, ob Freunde von außen verbinden können. Geschlossene Ports erscheinen auf der Serverseite.",
     "uninstall_label": "Saba-chan deinstallieren",
     "uninstall_description": "Saba-chan vollständig von diesem Computer entfernen. Laufende Server werden zuerst ordnungsgemäß beendet, dann läuft das Installationsprogramm im Deinstallationsmodus.",
     "uninstall_confirm_title": "Saba-chan deinstallieren",
@@ -1379,6 +1381,17 @@
     "empty": "Noch keine Aktivität.",
     "load_failed": "Das Aktivitätsprotokoll konnte nicht geladen werden.",
     "more": "Mehr anzeigen",
+    "export": "Exportieren",
+    "exported": "{{count}} Einträge exportiert.",
+    "export_failed": "Die Einträge konnten nicht exportiert werden.",
+    "period": "Zeitraum",
+    "period_all": "Alle",
+    "period_today": "Heute",
+    "period_7d": "Letzte 7 Tage",
+    "period_30d": "Letzte 30 Tage",
+    "period_custom": "Benutzerdefiniert",
+    "from": "Von",
+    "to": "Bis",
     "ok": "Erfolgreich",
     "failed": "Fehlgeschlagen ({{status}})",
     "action_start": "Starten",
@@ -1743,5 +1756,39 @@
     "exists": "{{name}} gibt es schon. Zum Ersetzen noch einmal drücken",
     "replace": "Ersetzen",
     "bad_name": "Ein Name darf kein / oder \\ enthalten"
+  },
+  "port_check": {
+    "button": "Portweiterleitung prüfen",
+    "running": "Wird geprüft…",
+    "address": "Öffentliche IP {{address}} (Freunde verbinden sich mit dieser Adresse und dem Port)",
+    "help": "Anleitung zur Portweiterleitung",
+    "verdict": {
+      "open": "Aus dem Internet erreichbar",
+      "firewall": "Von der PC-Firewall blockiert",
+      "closed": "Aus dem Internet nicht erreichbar",
+      "cgnat": "Dein Router hat keine öffentliche IP (CGNAT)",
+      "unknown": "Einige Ports konnten nicht geprüft werden",
+      "no_ports": "Dieses Spiel gibt keine zu prüfenden Ports an"
+    },
+    "status": {
+      "open": "Offen",
+      "closed": "Geschlossen",
+      "unknown": "Nicht geprüft",
+      "in_use": "Von einem anderen Programm belegt",
+      "firewall": "Von der Firewall blockiert"
+    },
+    "hint": {
+      "closed": "Prüfe, ob der Router diesen Port an diesen PC weiterleitet und die PC-Firewall ihn erlaubt.",
+      "firewall": "Die Windows-Firewall blockiert Saba-chan (saba-core). Erlaube es in der Abfrage, die bei der Prüfung erscheint, oder erlaube saba-core in den Einstellungen der Windows-Firewall und prüfe erneut.",
+      "cgnat": "Dein Anbieter teilt eine öffentliche IP unter vielen Haushalten, daher lässt sie sich nicht per Portweiterleitung öffnen. Frag deinen Anbieter nach einer öffentlichen IP oder nutze ein VPN wie Tailscale.",
+      "unknown": "UDP-Ports eines laufenden Servers und Ports, die ein anderes Programm belegt, lassen sich nicht prüfen. Stoppe den Server und prüfe erneut."
+    },
+    "error": {
+      "node_token_missing": "Verbinde zuerst Discord (Kopplung). Die Prüfung macht das Relay.",
+      "port_check_busy": "Es läuft bereits eine Prüfung. Versuch es gleich noch einmal.",
+      "rate_limited": "Zu viele Prüfungen. Versuch es in einer Minute erneut.",
+      "relay_unreachable": "Relay nicht erreichbar. Prüfe deine Internetverbindung.",
+      "failed": "Prüfung fehlgeschlagen."
+    }
   }
 }

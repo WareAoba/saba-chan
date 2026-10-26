@@ -165,7 +165,7 @@ async fn autostart(ctx: &Ctx, mode: Option<crate::cli::AutostartMode>) -> Result
 /// 데몬은 절대 경로만 받는다 (CLI와 같은 PC)
 /// 데몬에 보낼 경로. 이 PC 데몬이면 지금 폴더 기준 전체 경로로, 원격 데몬이면 그 PC의 경로라 적은 그대로 보내고
 /// 전체 경로만 받는다 (이 PC 기준으로 풀면 엉뚱한 곳을 가리킨다. 그 PC가 Windows인지 아닌지 여기서는 모른다)
-fn daemon_path(ctx: &Ctx, file: &std::path::Path) -> Result<String> {
+pub(crate) fn daemon_path(ctx: &Ctx, file: &std::path::Path) -> Result<String> {
     if ctx.api.target.is_none() {
         return Ok(std::path::absolute(file).unwrap_or_else(|_| file.to_path_buf()).to_string_lossy().into_owned());
     }

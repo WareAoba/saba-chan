@@ -377,7 +377,8 @@
       "autostart_unknown_mode": "請選擇 off、daemon 或 full。",
       "move_cross_volume": "無法移動其他磁碟機上的資料夾。請改用「保留在原位置」匯入。",
       "move_in_use": "無法移動資料夾。請停止此資料夾中的伺服器，關閉開啟該資料夾的程式後再試一次。",
-      "move_failed": "無法移動資料夾。請改用「保留在原位置」匯入。"
+      "move_failed": "無法移動資料夾。請改用「保留在原位置」匯入。",
+      "port_check_busy": "已經在檢查中，請稍後再試"
     },
     "not_a_bool": "「{{value}}」不是是/否（請使用 true 或 false）。",
     "not_a_number": "「{{value}}」不是數字。",
@@ -731,6 +732,7 @@
       "config.paths": "Saba-chan 存放資料、模組和擴充的位置，以及預設資料夾",
       "config.move": "把模組或擴充移到其他資料夾。已安裝的檔案會一起移動；必須先停止伺服器",
       "server.players": "目前在線的人",
+      "server.port-check": "檢查朋友能否從外部連線到此伺服器（連接埠轉發）",
       "server.rcon": "依伺服器接收指令的方式（主控台，沒有則用 RCON）送出一行並查看回覆",
       "server.log": "儲存的歷次執行記錄（主控台只保留本次）",
       "server.query": "遊戲模組提供的查詢（不指定名稱則列出）",
@@ -783,6 +785,9 @@
       "monitor.interval": "--watch 的重新整理間隔（秒）",
       "audit.limit": "顯示的記錄數",
       "audit.follow": "持續顯示新產生的記錄（按 Ctrl+C 停止）",
+      "audit.since": "從這一天起：YYYY-MM-DD、today 或 7d（最近 7 天）",
+      "audit.until": "到這一天結束：YYYY-MM-DD 或 today",
+      "audit.export": "不列出，而是把該時間範圍內的所有紀錄儲存到此 CSV 檔案",
       "bot.lang.value": "auto 或語言程式碼（ko、en、ja、zh-CN、zh-TW、es、pt-BR、ru、de、fr）",
       "bot.prefix.values": "一個或多個字首（不含空格，最多 32 個字元，最多 10 個）",
       "bot.prefix.default": "恢復為應用語言的預設字首",
@@ -1007,6 +1012,10 @@
     "from": "來源",
     "what": "內容",
     "result": "結果",
+    "exported": "已將 {{count}} 筆紀錄儲存到 {{path}}。",
+    "bad_date": "日期請寫成 2026-10-01、today 或 7d：{{value}}",
+    "export_write_failed": "無法寫入檔案。請檢查儲存位置和權限。",
+    "export_invalid_path": "檔案路徑無效。請填寫完整路徑。",
     "scanning": "正在檢查 {{name}} 的程式碼...",
     "declared": "已宣告",
     "none_declared": "(無)",
@@ -1322,5 +1331,30 @@
     "this_pc": "本機",
     "no_servers": "沒有伺服器",
     "via_relay": "透過中繼"
+  },
+  "port_check": {
+    "title": "{{server}} 的連接埠轉發檢查",
+    "address": "公用 IP {{address}}（朋友用這個位址和連接埠連線）",
+    "verdict": {
+      "open": "可以從外部連線",
+      "firewall": "被電腦防火牆封鎖",
+      "closed": "無法從外部連線",
+      "cgnat": "路由器沒有取得公用 IP（CGNAT）",
+      "unknown": "部分連接埠無法檢查",
+      "no_ports": "此遊戲沒有標示要檢查的連接埠"
+    },
+    "status": {
+      "open": "開放",
+      "closed": "關閉",
+      "unknown": "未檢查",
+      "in_use": "被其他程式使用中",
+      "firewall": "被防火牆封鎖"
+    },
+    "hint": {
+      "closed": "請確認路由器已將此連接埠轉發到這台電腦，且電腦防火牆已允許。",
+      "firewall": "Windows 防火牆正在封鎖 Saba-chan（saba-core）的連線。請在檢查時跳出的提示中允許，或在 Windows 防火牆設定中允許 saba-core，然後再檢查。",
+      "cgnat": "電信業者讓多戶共用一個公用 IP，無法透過連接埠轉發開放。請向業者申請公用 IP，或使用 Tailscale 等 VPN。",
+      "unknown": "無法檢查執行中伺服器的 UDP 連接埠和其他程式使用的連接埠。請停止伺服器後再檢查。"
+    }
   }
 }

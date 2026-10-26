@@ -243,6 +243,10 @@
       "players": {
         "title": "Players",
         "description": "Who is online"
+      },
+      "port_check": {
+        "title": "Port forwarding check",
+        "description": "The relay checks whether this server is reachable from the internet"
       }
     },
     "monitor": {
@@ -375,7 +379,29 @@
       "players": "👥 {{online}} online",
       "players_max": "👥 {{online}}/{{max}} online",
       "player_item": "• {{name}}",
-      "players_more": "…and {{count}} more"
+      "players_more": "…and {{count}} more",
+      "port_check": {
+        "open": "✅ Reachable from the internet",
+        "firewall": "🧱 Blocked by the PC firewall",
+        "closed": "🚫 Not reachable from the internet",
+        "cgnat": "⚠️ Your router has no public IP (CGNAT)",
+        "unknown": "❔ Some ports could not be checked",
+        "no_ports": "📭 This game does not say which ports to check"
+      },
+      "port_status": {
+        "open": "Open",
+        "closed": "Closed",
+        "unknown": "Not checked",
+        "in_use": "Used by another program",
+        "firewall": "Blocked by firewall"
+      },
+      "port_item": "• {{port}}/{{protocol}} · {{status}}",
+      "port_hint": {
+        "closed": "Check that your router forwards this port to this PC and that the PC firewall allows it.",
+        "firewall": "Windows Firewall is blocking Saba-chan (saba-core). Allow it in the prompt that appears during the check, or allow saba-core in Windows Firewall settings, then check again.",
+        "cgnat": "Your provider shares one public IP among many homes, so port forwarding cannot open it. Ask your provider for a public IP or use a VPN such as Tailscale.",
+        "unknown": "UDP ports of a running server and ports another program uses cannot be checked. Stop the server and check again."
+      }
     }
   },
   "reasons": {

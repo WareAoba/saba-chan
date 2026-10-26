@@ -8,6 +8,7 @@ import { Icon } from '../Icon';
 import { CliText, commandCli } from '../CliLine';
 import { useUIStore } from '../../stores/useUIStore';
 import { commandErrorText } from '../../utils/commandReply';
+import { commandText } from '../../utils/serverView';
 
 // 서버 상세의 "명령" 탭 (이름은 옛 모달에서 왔다)
 function CommandModal({ server, modules }) {
@@ -198,40 +199,43 @@ function CommandModal({ server, modules }) {
 
                 <div className="cmd-list" role="listbox" aria-label={t('command_modal.command_label')}>
                     {filteredHints.length > 0 ? (
-                        filteredHints.map((cmd, idx) => (
-                            // biome-ignore lint/a11y/useKeyWithClickEvents: 키보드로는 입력 칸의 ↑↓·Tab으로 고른다
-                            <div
-                                key={cmd.name}
-                                role="option"
-                                tabIndex={-1}
-                                aria-selected={idx === highlightIdx}
-                                className={clsx('cmd-item', { active: idx === highlightIdx })}
-                                onMouseDown={(e) => e.preventDefault()}
-                                onClick={() => {
-                                    setCommandInput(cmd.name + ' ');
-                                    inputRef.current?.focus();
-                                }}
-                                title={cmd.description}
-                            >
-                                <span className="cmd-item-name">{cmd.name}</span>
-                                {cmd.description && <span className="cmd-item-desc">{cmd.description}</span>}
-                                {cmd.group && (
-                                    <span className="cmd-source" title={cmd.group}>
-                                        <Icon name="extension" size="xs" /> {cmd.group}
-                                    </span>
-                                )}
-                                {cmd.source === 'extension' && (
-                                    <span className="cmd-source" title={cmd.extension}>
-                                        <Icon name="extension" size="xs" /> {cmd.extension}
-                                    </span>
-                                )}
-                                {cmd.risk && cmd.risk !== 'safe' && (
-                                    <span className={clsx('cmd-risk', `risk-${cmd.risk}`)}>
-                                        {t(`shell.risk_${cmd.risk}`)}
-                                    </span>
-                                )}
-                            </div>
-                        ))
+                        filteredHints.map((cmd, idx) => {
+                            const text = commandText(t, server.module, cmd);
+                            return (
+                                // biome-ignore lint/a11y/useKeyWithClickEvents: 키보드로는 입력 칸의 ↑↓·Tab으로 고른다
+                                <div
+                                    key={cmd.name}
+                                    role="option"
+                                    tabIndex={-1}
+                                    aria-selected={idx === highlightIdx}
+                                    className={clsx('cmd-item', { active: idx === highlightIdx })}
+                                    onMouseDown={(e) => e.preventDefault()}
+                                    onClick={() => {
+                                        setCommandInput(cmd.name + ' ');
+                                        inputRef.current?.focus();
+                                    }}
+                                    title={cmd.name}
+                                >
+                                    <span className="cmd-item-name">{text.label}</span>
+                                    {text.description && <span className="cmd-item-desc">{text.description}</span>}
+                                    {cmd.group && (
+                                        <span className="cmd-source" title={cmd.group}>
+                                            <Icon name="extension" size="xs" /> {cmd.group}
+                                        </span>
+                                    )}
+                                    {cmd.source === 'extension' && (
+                                        <span className="cmd-source" title={cmd.extension}>
+                                            <Icon name="extension" size="xs" /> {cmd.extension}
+                                        </span>
+                                    )}
+                                    {cmd.risk && cmd.risk !== 'safe' && (
+                                        <span className={clsx('cmd-risk', `risk-${cmd.risk}`)}>
+                                            {t(`shell.risk_${cmd.risk}`)}
+                                        </span>
+                                    )}
+                                </div>
+                            );
+                        })
                     ) : (
                         <p className="cmd-empty">
                             {commandInput.trim()

@@ -34,6 +34,8 @@ export const useSettingsStore = create((set, get) => ({
     consoleBufferSize: 2000,
     autoGeneratePasswords: true,
     portConflictCheck: true,
+    // 서버를 만들 때·데몬이 켜질 때 포트포워딩을 조용히 확인한다 (데몬이 한다)
+    autoPortCheck: false,
     // 크래시처럼 꼭 알아야 할 일을 OS 알림으로도 (창이 앞에 있으면 앱 안 알림만)
     osNotifications: true,
     // 밖에서 켜고 끈 것·크래시·설치 결과·업데이트 발견 때 효과음 (셸이 낸다). 전체·종류별 스위치
@@ -74,6 +76,7 @@ export const useSettingsStore = create((set, get) => ({
                 patch.consoleBufferSize = settings.consoleBufferSize ?? 2000;
                 patch.autoGeneratePasswords = settings.autoGeneratePasswords ?? true;
                 patch.portConflictCheck = settings.portConflictCheck ?? true;
+                patch.autoPortCheck = settings.autoPortCheck ?? false;
                 patch.osNotifications = settings.osNotifications ?? true;
                 patch.sounds = { ...DEFAULT_SOUNDS, ...settings.sounds };
 
@@ -187,6 +190,7 @@ export const useSettingsStore = create((set, get) => ({
             consoleBufferSize: 2000,
             autoGeneratePasswords: true,
             portConflictCheck: true,
+            autoPortCheck: false,
             osNotifications: true,
             sounds: DEFAULT_SOUNDS,
             settingsPath: '',
@@ -218,6 +222,7 @@ const _settingsKeys = [
     'consoleBufferSize',
     'autoGeneratePasswords',
     'portConflictCheck',
+    'autoPortCheck',
     'osNotifications',
     'sounds',
     // Theme customization
@@ -260,6 +265,7 @@ if (import.meta.hot) {
             consoleBufferSize: s.consoleBufferSize,
             autoGeneratePasswords: s.autoGeneratePasswords,
             portConflictCheck: s.portConflictCheck,
+            autoPortCheck: s.autoPortCheck,
             osNotifications: s.osNotifications,
             sounds: s.sounds,
             settingsPath: s.settingsPath,

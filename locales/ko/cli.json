@@ -377,7 +377,8 @@
       "autostart_unknown_mode": "off, daemon, full 중에서 고르세요.",
       "move_cross_volume": "다른 드라이브에 있는 폴더는 옮길 수 없어요. '그 자리에 연결'로 가져와 주세요.",
       "move_in_use": "폴더를 옮기지 못했어요. 이 폴더의 서버를 끄고, 폴더를 연 프로그램을 닫은 뒤 다시 시도해 주세요.",
-      "move_failed": "폴더를 옮기지 못했어요. '그 자리에 연결'로 가져와 주세요."
+      "move_failed": "폴더를 옮기지 못했어요. '그 자리에 연결'로 가져와 주세요.",
+      "port_check_busy": "이미 확인 중이에요. 잠시 뒤 다시 하세요"
     },
     "not_a_bool": "\"{{value}}\"는 예/아니오 값이 아니에요 (true 또는 false).",
     "not_a_number": "\"{{value}}\"는 숫자가 아니에요.",
@@ -859,6 +860,7 @@
       "config.paths": "데이터·모듈·익스텐션 폴더 위치와 기본 폴더",
       "config.move": "모듈이나 익스텐션을 다른 폴더로 옮겨요. 설치된 파일도 옮기며, 서버를 모두 꺼야 해요",
       "server.players": "지금 접속한 사람",
+      "server.port-check": "친구가 밖에서 이 서버에 접속할 수 있는지 확인 (포트포워딩)",
       "server.rcon": "서버가 명령을 받는 길(콘솔, 없으면 RCON)로 한 줄 보내고 답 보기",
       "server.log": "지난 실행까지 저장된 로그 (콘솔은 지금 실행분만)",
       "server.query": "게임 모듈이 제공하는 조회 (이름이 없으면 목록)",
@@ -979,6 +981,9 @@
       "monitor.interval": "--watch 새로 고침 간격 (초)",
       "audit.limit": "보여 줄 기록 수",
       "audit.follow": "새 기록을 생기는 대로 이어서 보여 주기 (Ctrl+C로 멈춤)",
+      "audit.since": "이날부터: YYYY-MM-DD, today, 7d(최근 7일)",
+      "audit.until": "이날 끝까지: YYYY-MM-DD 또는 today",
+      "audit.export": "목록 대신 기간의 기록을 모두 이 CSV 파일로 저장",
       "bot.lang.value": "auto 또는 언어 코드 (ko, en, ja, zh-CN, zh-TW, es, pt-BR, ru, de, fr)",
       "bot.prefix.values": "접두사 하나 이상 (공백 없이 32자까지, 10개까지)",
       "bot.prefix.default": "앱 언어의 기본 접두사로 되돌리기",
@@ -1259,6 +1264,10 @@
     "from": "어디서",
     "what": "한 일",
     "result": "결과",
+    "exported": "기록 {{count}}건을 {{path}}에 저장했어요.",
+    "bad_date": "날짜는 2026-10-01, today, 7d처럼 적어 주세요: {{value}}",
+    "export_write_failed": "파일을 쓰지 못했어요. 저장 위치와 권한을 확인해 주세요.",
+    "export_invalid_path": "파일 경로가 올바르지 않아요. 전체 경로로 적어 주세요.",
     "scanning": "{{name}}의 코드를 검사하는 중...",
     "declared": "선언한 기능",
     "none_declared": "(없음)",
@@ -1528,5 +1537,30 @@
     "this_pc": "이 PC",
     "no_servers": "서버 없음",
     "via_relay": "릴레이 거침"
+  },
+  "port_check": {
+    "title": "{{server}} 포트포워딩 확인",
+    "address": "공인 IP {{address}} (친구는 이 주소와 포트로 접속해요)",
+    "verdict": {
+      "open": "밖에서 접속할 수 있어요",
+      "firewall": "PC 방화벽이 막고 있어요",
+      "closed": "밖에서 접속할 수 없어요",
+      "cgnat": "공유기가 공인 IP를 받지 못했어요 (CGNAT)",
+      "unknown": "일부 포트는 확인하지 못했어요",
+      "no_ports": "이 게임은 확인할 포트를 알려 주지 않았어요"
+    },
+    "status": {
+      "open": "열림",
+      "closed": "닫힘",
+      "unknown": "확인 못 함",
+      "in_use": "다른 프로그램이 사용 중",
+      "firewall": "방화벽이 막음"
+    },
+    "hint": {
+      "closed": "공유기에서 이 포트를 이 PC로 포트포워딩했는지, PC 방화벽에서 허용했는지 확인해 주세요.",
+      "firewall": "Windows 방화벽이 사바쨩(saba-core)의 연결을 막고 있어요. 확인할 때 뜨는 허용 창에서 허용하거나, Windows 방화벽 설정에서 saba-core를 허용한 뒤 다시 확인해 주세요.",
+      "cgnat": "통신사가 공인 IP를 여러 집이 나눠 쓰게 해서 포트포워딩으로는 열 수 없어요. 통신사에 공인 IP를 요청하거나 Tailscale 같은 VPN을 써 주세요.",
+      "unknown": "켜져 있는 서버의 UDP 포트와 다른 프로그램이 쓰는 포트는 확인할 수 없어요. 서버를 끄고 다시 확인해 주세요."
+    }
   }
 }
