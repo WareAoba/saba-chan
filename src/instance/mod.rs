@@ -26,6 +26,8 @@ pub const LEGACY_ADOPTED: &str = "legacy-adopted";
 /// 인스턴스 기록 폴더 안: 업데이트 전에 띄운 러너가 아직 예전 자리(`<instance>/run/`)에 쓴다는 표시. 그 러너가 끝나거나 새로 띄우면 지운다
 pub const LEGACY_RUN: &str = "legacy-run";
 pub const MANAGED_PID: &str = "managed.pid";
+/// `STATE_DIR` 바로 아래: 지우는 중인 인스턴스 폴더를 옮겨 두는 곳 (`detach_dir`). 남은 것은 다음 로드 때 지운다
+const DELETING: &str = "deleting";
 
 /// 인스턴스 폴더 바로 아래에서 데몬이 쓰는 항목. 격리된 모듈에게 쓰기를 주지 않는다
 /// (instance.json을 고칠 수 있으면 다음 로드 때 실행 파일·사용자 설정까지 바꾼다)
@@ -305,6 +307,14 @@ impl InstanceStore {
             Vec::new()
         };
 
+        // 지우다 남은 인스턴스 폴더 (`detach_dir`)
+        let deleting = self.state_root().join(DELETING);
+        if deleting.exists() {
+            if let Err(e) = fs::remove_dir_all(&deleting) {
+                tracing::warn!("지우다 남은 인스턴스 폴더 삭제 실패: {}: {}", deleting.display(), e);
+            }
+        }
+
         // ── 각 인스턴스 디렉토리에서 로드 ──
         let mut loaded = Vec::new();
         if let Ok(entries) = fs::read_dir(&self.root_dir) {
@@ -380,10 +390,12 @@ impl InstanceStore {
     pub fn remove(&mut self, id: &str) -> Result<()> {
         // 디렉토리 삭제
         let dir = self.checked_dir(id)?;
+        // 기록 폴더는 데몬만 쓰는 PID·러너 기록이라, 지우지 못해도 인스턴스 삭제를 막지 않는다
         let state = self.state_dir(id);
-        if state.exists() {
-            fs::remove_dir_all(&state)
-                .with_context(|| format!("인스턴스 기록 폴더 삭제 실패: {}", state.display()))?;
+        if let Err(e) = fs::remove_dir_all(&state) {
+            if e.kind() != std::io::ErrorKind::NotFound {
+                tracing::warn!("인스턴스 기록 폴더 삭제 실패: {}: {}", state.display(), e);
+            }
         }
         if dir.exists() {
             fs::remove_dir_all(&dir)
@@ -450,6 +462,19 @@ impl InstanceStore {
     /// 인스턴스의 데몬 전용 기록 폴더
     pub fn state_dir(&self, id: &str) -> PathBuf {
         self.state_root().join(id)
+    }
+
+    /// 지울 인스턴스 폴더를 데몬 전용 자리(`<STATE_DIR>/deleting/<id>-<uuid>`)로 옮긴다. 다른 프로세스가 연 파일이 있으면
+    /// 옮겨지지 않으므로, 되돌릴 수 없는 단계(원래 설정 되돌리기 등) 전에 지울 수 있는지 본다. 폴더가 없으면 None
+    pub fn detach_dir(&self, id: &str) -> Result<Option<PathBuf>> {
+        let dir = self.checked_dir(id)?;
+        if !dir.exists() {
+            return Ok(None);
+        }
+        let to = self.state_root().join(DELETING).join(format!("{}-{}", id, uuid::Uuid::new_v4()));
+        fs::create_dir_all(self.state_root().join(DELETING))?;
+        fs::rename(&dir, &to).with_context(|| format!("인스턴스 디렉토리를 옮기지 못함: {}", dir.display()))?;
+        Ok(Some(to))
     }
 
     /// 데몬이 직접 띄운 서버의 PID 기록. 파일 시각이 기록 시각이다 (재부팅 뒤 PID 재사용 판별)
