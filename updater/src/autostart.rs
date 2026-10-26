@@ -26,7 +26,6 @@ const RUN_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Run";
 const APPROVED_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run";
 #[cfg(not(target_os = "windows"))]
 const DESKTOP_FILE: &str = "saba-chan.desktop";
-#[cfg(not(target_os = "windows"))]
 const SERVICE_FILE: &str = "saba-chan.service";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
