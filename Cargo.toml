@@ -43,7 +43,7 @@ glob = "0.3"
 regex = "1"
 reqwest = { version = "0.13", default-features = false, features = ["native-tls", "json", "system-proxy", "blocking"] }
 base64 = "0.22"
-sysinfo = "0.30"
+sysinfo = "0.38"
 socket2 = "0.5"
 tokio-util = "0.7"
 # 사바쨩 웹: 릴레이 웹소켓 클라이언트 (`crate::remote`). reqwest와 같은 native-tls
@@ -66,9 +66,12 @@ saba-atomic-file = { path = "atomic-file" }
 saba-runner = { path = "runner", default-features = false }
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.59", features = ["Win32_Networking_WinSock"] }
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation", "Win32_NetworkManagement_IpHelper", "Win32_Networking_WinSock", "Win32_Security", "Win32_Security_Authorization",
+    "Win32_Storage_FileSystem", "Win32_System_Diagnostics_ToolHelp", "Win32_System_JobObjects", "Win32_System_LibraryLoader", "Win32_System_Performance",
+    "Win32_System_Pipes", "Win32_System_SystemServices", "Win32_System_Threading",
+] }
 winreg = "0.52"
-winapi = { version = "0.3", features = ["processthreadsapi", "winnt", "handleapi", "pdh", "libloaderapi", "userenv", "aclapi", "accctrl", "securitybaseapi", "jobapi2", "namedpipeapi", "synchapi", "minwinbase", "winbase", "fileapi", "iphlpapi", "tcpmib", "udpmib", "ws2def", "iprtrmib", "tlhelp32"] }
 
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.31", features = ["signal"] }

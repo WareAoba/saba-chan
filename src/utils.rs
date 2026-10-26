@@ -51,9 +51,8 @@ pub fn merged_env(base: impl IntoIterator<Item = (String, String)>, overrides: &
 pub fn spawn_in_new_console(program: &std::path::Path, args: &[String], dir: Option<&std::path::Path>, env: &[(String, String)]) -> std::io::Result<(u32, std::os::windows::io::OwnedHandle)> {
     use std::os::windows::io::FromRawHandle;
     use std::os::windows::ffi::OsStrExt;
-    use winapi::um::handleapi::CloseHandle;
-    use winapi::um::processthreadsapi::{CreateProcessW, PROCESS_INFORMATION, STARTUPINFOW};
-    use winapi::um::winbase::{CREATE_NEW_CONSOLE, CREATE_UNICODE_ENVIRONMENT};
+    use windows_sys::Win32::Foundation::CloseHandle;
+    use windows_sys::Win32::System::Threading::{CreateProcessW, CREATE_NEW_CONSOLE, CREATE_UNICODE_ENVIRONMENT, PROCESS_INFORMATION, STARTUPINFOW};
 
     let wide = |s: &std::ffi::OsStr| s.encode_wide().collect::<Vec<u16>>();
     let mut line = Vec::new();
@@ -86,7 +85,7 @@ pub fn spawn_in_new_console(program: &std::path::Path, args: &[String], dir: Opt
             CREATE_NEW_CONSOLE | CREATE_UNICODE_ENVIRONMENT,
             block.as_ref().map_or(std::ptr::null_mut(), |b| b.as_ptr() as *mut _),
             if dir.len() > 1 { dir.as_ptr() } else { std::ptr::null() },
-            &mut si,
+            &si,
             &mut pi,
         );
         if ok == 0 {

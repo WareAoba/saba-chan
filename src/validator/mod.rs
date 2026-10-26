@@ -637,16 +637,16 @@ pub(crate) use held_ports::tcp_listener_pids;
 #[cfg(windows)]
 mod held_ports {
     use std::collections::HashSet;
-    use winapi::shared::tcpmib::{MIB_TCP6TABLE_OWNER_PID, MIB_TCPTABLE_OWNER_PID};
-    use winapi::shared::udpmib::{MIB_UDP6TABLE_OWNER_PID, MIB_UDPTABLE_OWNER_PID};
-    use winapi::shared::ws2def::{AF_INET, AF_INET6};
-    use winapi::um::iphlpapi::{GetExtendedTcpTable, GetExtendedUdpTable};
-    use winapi::shared::iprtrmib::{TCP_TABLE_OWNER_PID_LISTENER, UDP_TABLE_OWNER_PID};
+    use windows_sys::Win32::NetworkManagement::IpHelper::{
+        GetExtendedTcpTable, GetExtendedUdpTable, MIB_TCP6TABLE_OWNER_PID, MIB_TCPTABLE_OWNER_PID, MIB_UDP6TABLE_OWNER_PID, MIB_UDPTABLE_OWNER_PID,
+        TCP_TABLE_OWNER_PID_LISTENER, UDP_TABLE_OWNER_PID,
+    };
+    use windows_sys::Win32::Networking::WinSock::{AF_INET, AF_INET6};
 
     const ERROR_INSUFFICIENT_BUFFER: u32 = 122;
 
     /// 표를 받을 버퍼를 크기가 맞을 때까지 다시 잡는다 (호출 사이에 표가 커질 수 있다)
-    fn table(read: impl Fn(*mut winapi::ctypes::c_void, &mut u32) -> u32) -> Option<Vec<u64>> {
+    fn table(read: impl Fn(*mut std::ffi::c_void, &mut u32) -> u32) -> Option<Vec<u64>> {
         let mut size = 0u32;
         for _ in 0..4 {
             // u64로 잡아 표 구조체 정렬을 맞춘다
