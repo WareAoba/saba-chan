@@ -288,7 +288,10 @@
     "server_unlinked": "'{{name}}' foi removido do saba-chan. Os arquivos do servidor continuam em {{path}}.",
     "unlink_restore_failed": "{{n}} arquivo(s) de configuração do jogo não puderam ser restaurados.",
     "migrate_notice_folder_not_writable": "O saba-chan não consegue gravar nesta pasta. Salvar configurações e iniciar o servidor podem falhar; mova-a para um local com permissão de escrita.",
-    "migrate_notice_server_running": "O servidor desta pasta está rodando fora do saba-chan. Pare-o e inicie de novo pelo saba-chan."
+    "migrate_notice_server_running": "O servidor desta pasta está rodando fora do saba-chan. Pare-o e inicie de novo pelo saba-chan.",
+    "delete_detail_restorable": "Os arquivos do servidor também são excluídos. Os arquivos de configuração do jogo guardados fora da pasta do servidor (na pasta de dados do jogo) podem voltar a como estavam antes da importação.",
+    "delete_restore": "Restaurar configurações e excluir",
+    "delete_keep_settings": "Manter configurações atuais e excluir"
   },
   "server_settings": {
     "title": "Configurações",

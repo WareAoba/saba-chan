@@ -737,10 +737,11 @@ async fn remove(ctx: &Ctx, query: Option<&str>, keep_settings: bool) -> Result<(
 fn remove_question(name: &str, rt: &Value, running: bool, keep_settings: bool) -> String {
     let base = if running { t!("remove.confirm_running", name = name) } else { t!("remove.confirm", name = name) };
     let folder = s(rt, "linked_folder");
-    if folder.is_empty() {
-        return base;
+    let mut q = base;
+    if !folder.is_empty() {
+        q = format!("{} {}", q, t!("remove.unlink_folder_kept", path = folder));
     }
-    let mut q = format!("{} {}", base, t!("remove.unlink_folder_kept", path = folder));
+    // 옮겨 온 서버도 서버 폴더 밖(데이터 폴더)에 남는 설정은 되돌린다
     if rt.get("restorable_settings").and_then(Value::as_bool) == Some(true) {
         q.push(' ');
         q.push_str(&if keep_settings { t!("remove.unlink_keeps_settings") } else { t!("remove.unlink_restores") });
@@ -751,11 +752,11 @@ fn remove_question(name: &str, rt: &Value, running: bool, keep_settings: bool) -
 /// 지운 뒤 알릴 말과, 가져오기 전 설정으로 되돌리지 못한 파일이 있으면 그 경고
 fn removed_message(name: &str, r: &Value) -> (String, Option<String>) {
     let folder = s(r, "linked_folder");
+    let failed = r.get("settings_restore_failed").and_then(Value::as_u64).filter(|n| *n > 0).map(|n| t!("remove.unlink_restore_failed", n = n));
     if folder.is_empty() {
-        return (t!("remove.done", name = name), None);
+        return (t!("remove.done", name = name), failed);
     }
-    let failed = r.get("settings_restore_failed").and_then(Value::as_u64).filter(|n| *n > 0);
-    (t!("remove.unlinked", name = name, path = folder), failed.map(|n| t!("remove.unlink_restore_failed", n = n)))
+    (t!("remove.unlinked", name = name, path = folder), failed)
 }
 
 // ── 시작·정지 ──
@@ -2097,6 +2098,11 @@ mod tests {
         assert!(done.contains("D:\\pal"));
         assert!(failed.is_some_and(|f| f.contains('2')));
         assert_eq!(removed_message("mc", &json!({ "success": true })), (t!("remove.done", name = "mc"), None));
+
+        // 옮겨 온 서버도 밖에 남는 설정은 되돌린다고 알린다
+        let moved = json!({ "restorable_settings": true });
+        assert!(remove_question("mv", &moved, false, false).contains("--keep-settings"));
+        assert!(removed_message("mv", &json!({ "success": true, "settings_restore_failed": 1 })).1.is_some());
     }
 
     /// 끝난 설치 카드를 GUI가 다음 폴링 전에 닫으면 항목은 사라져도 서버는 설치 중이 아닌 채로 남는다 (L65)

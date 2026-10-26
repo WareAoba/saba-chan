@@ -88,6 +88,19 @@ pub fn linked_folder(working_dir: Option<&str>, instance_dir: &Path) -> Option<S
     (!crate::module_paths::is_inside(Path::new(dir), &[instance_dir.to_path_buf()])).then(|| dir.to_string())
 }
 
+/// 옮겨 온 서버 폴더가 놓일 자리: 인스턴스 폴더 안의 `subdir`(모듈 `install_subdir`). 상대 경로의 보통 이름만 받고,
+/// 첫 이름이 데몬 항목(`logs`·`migration` 등)이면 거절한다 (모듈이 정한 값으로 서버 폴더를 밖이나 데몬 자리로 옮기지 않게)
+pub fn move_target(instance_dir: &Path, subdir: &str) -> Option<PathBuf> {
+    let rel = Path::new(subdir);
+    let mut parts = rel.components().peekable();
+    let first = match parts.peek() {
+        Some(std::path::Component::Normal(name)) => name.to_str()?,
+        _ => return None,
+    };
+    let plain = rel.components().all(|c| matches!(c, std::path::Component::Normal(n) if n.to_str().is_some_and(|n| !n.contains(':') && !n.contains('\\'))));
+    (plain && !crate::supervisor::is_daemon_entry(first)).then(|| instance_dir.join(rel))
+}
+
 /// 가져오기 "옮기기": 서버 폴더(`src`)를 인스턴스 폴더 안(`dest`)으로 옮겨 이 인스턴스에 전속시킨다.
 /// 같은 드라이브 안의 이름 바꾸기만 한다(바로 끝나고, 실패하면 아무것도 바뀌지 않는다). 다른 드라이브로 복사하지 않는다.
 /// 실패하면 까닭 코드: `source_missing`, `destination_exists`, `move_cross_volume`(다른 드라이브),
@@ -229,6 +242,17 @@ mod tests {
         std::fs::create_dir_all(&src).unwrap();
         assert_eq!(move_into(&src, &dest), Err("destination_exists"));
         assert!(src.is_dir(), "a refused move changes nothing");
+    }
+
+    /// 옮길 자리는 인스턴스 폴더 안의 하위 폴더만 (모듈의 install_subdir가 절대 경로·`..`이면 거절)
+    #[test]
+    fn a_move_target_stays_inside_the_instance_folder() {
+        let instance = Path::new("/data/instances/id");
+        assert_eq!(move_target(instance, "server"), Some(instance.join("server")));
+        assert_eq!(move_target(instance, "game/server"), Some(instance.join("game/server")));
+        for bad in ["", ".", "..", "../outside", "a/../../b", "/abs", "C:\\x", "C:x", "\\\\host\\share", "logs", "migration"] {
+            assert_eq!(move_target(instance, bad), None, "{bad}");
+        }
     }
 
     #[test]

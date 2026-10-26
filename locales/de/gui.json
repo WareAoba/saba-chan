@@ -288,7 +288,10 @@
     "server_unlinked": "'{{name}}' wurde aus saba-chan entfernt. Die Serverdateien liegen weiterhin in {{path}}.",
     "unlink_restore_failed": "{{n}} Spieleinstellungsdatei(en) konnten nicht zurückgesetzt werden.",
     "migrate_notice_folder_not_writable": "saba-chan kann in diesen Ordner nicht schreiben. Das Speichern von Einstellungen und der Serverstart können fehlschlagen. Verschiebe ihn an einen beschreibbaren Ort.",
-    "migrate_notice_server_running": "Der Server in diesem Ordner läuft außerhalb von saba-chan. Beende ihn und starte ihn in saba-chan neu."
+    "migrate_notice_server_running": "Der Server in diesem Ordner läuft außerhalb von saba-chan. Beende ihn und starte ihn in saba-chan neu.",
+    "delete_detail_restorable": "Die Serverdateien werden ebenfalls gelöscht. Spieleinstellungsdateien außerhalb des Serverordners (im Datenordner des Spiels) können auf den Stand vor dem Import zurückgesetzt werden.",
+    "delete_restore": "Einstellungen zurücksetzen und löschen",
+    "delete_keep_settings": "Aktuelle Einstellungen behalten und löschen"
   },
   "server_settings": {
     "title": "Einstellungen",

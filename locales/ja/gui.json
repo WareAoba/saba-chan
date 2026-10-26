@@ -228,7 +228,10 @@
     "server_unlinked": "「{{name}}」をサバちゃんから外しました。サーバーファイルは {{path}} に残っています。",
     "unlink_restore_failed": "ゲーム設定ファイル {{n}} 個を戻せませんでした。",
     "migrate_notice_folder_not_writable": "このフォルダーに書き込めません。設定の保存やサーバーの起動に失敗することがあるため、書き込める場所へ移してください。",
-    "migrate_notice_server_running": "このフォルダーのサーバーがサバちゃんの外で起動しています。停止してからサバちゃんで起動し直してください。"
+    "migrate_notice_server_running": "このフォルダーのサーバーがサバちゃんの外で起動しています。停止してからサバちゃんで起動し直してください。",
+    "delete_detail_restorable": "サーバーファイルも削除されます。サーバーフォルダーの外（ゲームのデータフォルダー）に残るゲーム設定ファイルは、取り込む前の状態に戻せます。",
+    "delete_restore": "設定を戻して削除",
+    "delete_keep_settings": "今の設定のまま削除"
   },
   "server_settings": {
     "title": "設定",

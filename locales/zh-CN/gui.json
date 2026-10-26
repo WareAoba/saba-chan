@@ -288,7 +288,10 @@
     "server_unlinked": "已从 saba-chan 中移除“{{name}}”。服务器文件仍在 {{path}}。",
     "unlink_restore_failed": "有 {{n}} 个游戏设置文件未能恢复。",
     "migrate_notice_folder_not_writable": "无法写入此文件夹。保存设置和启动服务器可能会失败，请将其移到可写入的位置。",
-    "migrate_notice_server_running": "此文件夹中的服务器正在 saba-chan 之外运行。请先停止，再从 saba-chan 启动。"
+    "migrate_notice_server_running": "此文件夹中的服务器正在 saba-chan 之外运行。请先停止，再从 saba-chan 启动。",
+    "delete_detail_restorable": "服务器文件也会被删除。保存在服务器文件夹之外（游戏数据文件夹）的游戏设置文件可以恢复到导入前的状态。",
+    "delete_restore": "恢复设置并删除",
+    "delete_keep_settings": "保留当前设置并删除"
   },
   "server_settings": {
     "title": "设置",

@@ -1138,6 +1138,23 @@ export function useServerActions({
             });
             return;
         }
+        // 옮겨 온 서버: 서버 파일은 함께 지워지지만, 서버 폴더 밖(데이터 폴더)에 남는 설정은 되돌릴지 고른다
+        if (server.restorable_settings) {
+            const remove = (keepSettings) => () => performDeleteServer(server, { keepSettings });
+            setModal({
+                type: 'question',
+                title: t('server_actions.delete_confirm_title'),
+                message: t('server_actions.delete_confirm_message', { name: server.name }),
+                detail: t('server_actions.delete_detail_restorable'),
+                buttons: [
+                    { label: t('server_actions.delete_restore'), action: remove(false) },
+                    { label: t('server_actions.delete_keep_settings'), action: remove(true) },
+                    { label: t('modals.cancel'), action: () => setModal(null) },
+                ],
+                onConfirm: remove(false),
+            });
+            return;
+        }
         setModal({
             type: 'question',
             title: t('server_actions.delete_confirm_title'),
@@ -1187,7 +1204,10 @@ export function useServerActions({
                       (result.settings_restore_failed
                           ? '\n' + t('server_actions.unlink_restore_failed', { n: result.settings_restore_failed })
                           : '')
-                    : t('server_actions.server_deleted', { name: server.name });
+                    : t('server_actions.server_deleted', { name: server.name }) +
+                      (result.settings_restore_failed
+                          ? '\n' + t('server_actions.unlink_restore_failed', { n: result.settings_restore_failed })
+                          : '');
                 setModal({ type: 'success', title: t('command_modal.success'), message });
                 fetchServers();
             }

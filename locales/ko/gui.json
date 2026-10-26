@@ -288,7 +288,10 @@
     "server_unlinked": "'{{name}}'을(를) 사바쨩에서 뺐어요. 서버 파일은 {{path}}에 남아 있어요.",
     "unlink_restore_failed": "게임 설정 파일 {{n}}개는 되돌리지 못했어요.",
     "migrate_notice_folder_not_writable": "이 폴더에 쓸 수 없어요. 설정 저장과 서버 실행이 실패할 수 있으니 쓰기 권한이 있는 곳으로 옮겨 주세요.",
-    "migrate_notice_server_running": "이 폴더의 서버가 사바쨩 밖에서 켜져 있어요. 끄고 사바쨩에서 다시 켜 주세요."
+    "migrate_notice_server_running": "이 폴더의 서버가 사바쨩 밖에서 켜져 있어요. 끄고 사바쨩에서 다시 켜 주세요.",
+    "delete_detail_restorable": "서버 파일은 함께 지워져요. 서버 폴더 밖(게임 데이터 폴더)에 남는 게임 설정 파일은 가져오기 전으로 되돌릴 수 있어요.",
+    "delete_restore": "설정 되돌리고 지우기",
+    "delete_keep_settings": "지금 설정 두고 지우기"
   },
   "server_settings": {
     "title": "설정",

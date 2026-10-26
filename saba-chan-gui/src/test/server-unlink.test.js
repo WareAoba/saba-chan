@@ -63,6 +63,16 @@ describe('가져온 서버 삭제(연결 해제)', () => {
         expect(window.api.instanceDelete).toHaveBeenLastCalledWith('a', { keepSettings: false });
     });
 
+    it('옮겨 온 서버도 밖에 남는 설정을 되돌릴지 그대로 둘지 고르게 한다', async () => {
+        const moved = { ...linked, linked_folder: undefined };
+        const { result, setModal } = setup([moved]);
+        await act(async () => result.current.handleDeleteServer(moved));
+        const modal = setModal.mock.calls.at(-1)[0];
+        expect(modal.buttons).toHaveLength(3);
+        await act(async () => modal.buttons[1].action());
+        expect(window.api.instanceDelete).toHaveBeenLastCalledWith('a', { keepSettings: true });
+    });
+
     it('일부 설정 파일을 되돌리지 못했으면 성공과 함께 알린다', async () => {
         window.api.instanceDelete.mockResolvedValue({ success: true, linked_folder: 'D:\\Games\\pal', settings_restored: 1, settings_restore_failed: 1 });
         const { result, setModal } = setup([linked]);

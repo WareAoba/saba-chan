@@ -288,7 +288,10 @@
     "server_unlinked": "Removed '{{name}}' from saba-chan. The server files are still in {{path}}.",
     "unlink_restore_failed": "{{n}} game settings file(s) could not be restored.",
     "migrate_notice_folder_not_writable": "saba-chan can't write to this folder. Saving settings and starting the server may fail, so move it somewhere you can write to.",
-    "migrate_notice_server_running": "The server in this folder is running outside saba-chan. Stop it and start it again from saba-chan."
+    "migrate_notice_server_running": "The server in this folder is running outside saba-chan. Stop it and start it again from saba-chan.",
+    "delete_detail_restorable": "The server files are deleted too. Game settings files kept outside the server folder (in the game's data folder) can go back to how they were before the import.",
+    "delete_restore": "Restore settings and delete",
+    "delete_keep_settings": "Keep current settings and delete"
   },
   "server_settings": {
     "title": "Settings",

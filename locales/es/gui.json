@@ -288,7 +288,10 @@
     "server_unlinked": "Se quitó '{{name}}' de saba-chan. Los archivos del servidor siguen en {{path}}.",
     "unlink_restore_failed": "No se pudieron restaurar {{n}} archivo(s) de ajustes del juego.",
     "migrate_notice_folder_not_writable": "saba-chan no puede escribir en esta carpeta. Guardar ajustes e iniciar el servidor pueden fallar; muévela a un lugar con permiso de escritura.",
-    "migrate_notice_server_running": "El servidor de esta carpeta se está ejecutando fuera de saba-chan. Detenlo e inícialo de nuevo desde saba-chan."
+    "migrate_notice_server_running": "El servidor de esta carpeta se está ejecutando fuera de saba-chan. Detenlo e inícialo de nuevo desde saba-chan.",
+    "delete_detail_restorable": "Los archivos del servidor también se eliminan. Los archivos de ajustes del juego guardados fuera de la carpeta del servidor (en la carpeta de datos del juego) pueden volver a como estaban antes de importar.",
+    "delete_restore": "Restaurar ajustes y eliminar",
+    "delete_keep_settings": "Mantener ajustes actuales y eliminar"
   },
   "server_settings": {
     "title": "Configuración",

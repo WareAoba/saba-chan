@@ -288,7 +288,10 @@
     "server_unlinked": "« {{name}} » a été retiré de saba-chan. Les fichiers du serveur sont toujours dans {{path}}.",
     "unlink_restore_failed": "{{n}} fichier(s) de paramètres du jeu n'ont pas pu être restaurés.",
     "migrate_notice_folder_not_writable": "saba-chan ne peut pas écrire dans ce dossier. L'enregistrement des paramètres et le démarrage du serveur peuvent échouer ; déplacez-le vers un emplacement accessible en écriture.",
-    "migrate_notice_server_running": "Le serveur de ce dossier tourne en dehors de saba-chan. Arrêtez-le puis redémarrez-le depuis saba-chan."
+    "migrate_notice_server_running": "Le serveur de ce dossier tourne en dehors de saba-chan. Arrêtez-le puis redémarrez-le depuis saba-chan.",
+    "delete_detail_restorable": "Les fichiers du serveur sont aussi supprimés. Les fichiers de paramètres du jeu gardés hors du dossier du serveur (dans le dossier de données du jeu) peuvent revenir à leur état d'avant l'import.",
+    "delete_restore": "Restaurer les paramètres et supprimer",
+    "delete_keep_settings": "Garder les paramètres actuels et supprimer"
   },
   "server_settings": {
     "title": "Paramètres",
