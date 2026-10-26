@@ -208,7 +208,9 @@
       "full": "GUIまで全部",
       "current": "サインイン時に自動起動: {{mode}}",
       "set": "サインイン時の自動起動を{{mode}}にしました。",
-      "unsupported": "このOSではまだサインイン時の自動起動を設定できません。"
+      "unsupported": "このOSではまだサインイン時の自動起動を設定できません。",
+      "service": "デーモンを systemd ユーザーサービス (saba-chan.service) として動かします。落ちたら再起動します。",
+      "linger_hint": "ログインせずに起動時に動かすには一度実行してください: sudo loginctl enable-linger $USER"
     },
     "browse": {
       "roots": "ドライブ",

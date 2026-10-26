@@ -3,12 +3,15 @@
 //! 설정 파일에 따로 적지 않는다: OS에 등록된 항목 자체가 지금 값이다 (작업 관리자에서 끄거나 지워도 맞게 보인다).
 //! - Windows: `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`의 `Saba-chan` 값.
 //!   작업 관리자·설정 앱에서 끈 표시(`...\Explorer\StartupApproved\Run`)가 있으면 꺼진 것으로 보고, 사바쨩에서 다시 고르면 그 표시를 지운다
-//! - Linux: `$XDG_CONFIG_HOME/autostart/saba-chan.desktop` (없으면 `~/.config/autostart`)
+//! - Linux: `$XDG_CONFIG_HOME/autostart/saba-chan.desktop` (없으면 `~/.config/autostart`).
+//!   GUI 없이 설치한 화면 없는 서버(D3)의 데몬만은 systemd 사용자 서비스
+//!   `$XDG_CONFIG_HOME/systemd/user/saba-chan.service`(`default.target.wants`에 걸려 있어야 켜진 것)
 //!
 //! 등록 항목은 하나다. 설정 파일을 여러 설치본이 함께 쓰므로 마지막으로 켠 설치본의 실행 파일을 가리킨다.
 //! 데몬만: 창 없이 트레이만 드는 GUI(`--tray`)가 데몬을 띄운다 (Windows에서 콘솔 창이 뜨지 않는다).
 //! 전체: GUI를 그대로 띄운다 (창이 열리고 데몬을 띄운다). 어느 쪽이든 GUI가 있어야 한다:
-//! 로그인 자동 실행은 데스크톱 세션만 돌린다 (화면 없는 서버의 부팅 실행은 아직 없다)
+//! 로그인 자동 실행은 데스크톱 세션만 돌린다. 화면 없는 리눅스 서버는 데몬을 서비스로 바로 돌리고,
+//! 로그인하지 않아도 부팅할 때 켜려면 사용자가 `loginctl enable-linger`를 한 번 한다 (`lingering`)
 
 use std::path::{Path, PathBuf};
 
@@ -23,6 +26,8 @@ const RUN_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Run";
 const APPROVED_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run";
 #[cfg(not(target_os = "windows"))]
 const DESKTOP_FILE: &str = "saba-chan.desktop";
+#[cfg(not(target_os = "windows"))]
+const SERVICE_FILE: &str = "saba-chan.service";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
@@ -58,9 +63,14 @@ pub struct Entry {
 }
 
 impl Entry {
-    /// 이 항목이 켜는 모드: 트레이 인자면 데몬만, 아니면 GUI까지 전체
+    /// 데몬을 바로 돌리는 서비스 항목인가 (화면 없는 리눅스)
+    pub fn is_service(&self) -> bool {
+        self.program.file_name().is_some_and(|n| n == crate::uninstall_entry::CORE_EXE)
+    }
+
+    /// 이 항목이 켜는 모드: 트레이 인자나 데몬 서비스면 데몬만, 아니면 GUI까지 전체
     pub fn mode(&self) -> Mode {
-        if self.args.iter().any(|a| a == TRAY_ARG) {
+        if self.is_service() || self.args.iter().any(|a| a == TRAY_ARG) {
             Mode::Daemon
         } else {
             Mode::Full
@@ -95,9 +105,11 @@ pub fn supported() -> bool {
 /// `install_dir`의 실행 파일로 `mode`를 켜는 항목. 끔은 None
 pub fn entry_for(mode: Mode, install_dir: &Path) -> Result<Option<Entry>, AutostartError> {
     let gui = crate::find_gui_exe(install_dir);
-    // 데몬을 직접 등록하지 않는다: Windows의 데몬은 콘솔 프로그램이라 로그인할 때 콘솔 창이 뜬다
+    // 데스크톱에서는 데몬을 직접 등록하지 않는다: Windows의 데몬은 콘솔 프로그램이라 로그인할 때 콘솔 창이 뜬다
+    let core = install_dir.join(crate::uninstall_entry::CORE_EXE);
     let entry = match (mode, gui) {
         (Mode::Off, _) => return Ok(None),
+        (Mode::Daemon, None) if cfg!(target_os = "linux") && core.is_file() => Entry { program: core, args: Vec::new() },
         (_, None) => return Err(AutostartError::new("gui_missing", install_dir.to_string_lossy())),
         (Mode::Full, Some(gui)) => Entry { program: gui, args: Vec::new() },
         (Mode::Daemon, Some(gui)) => Entry { program: gui, args: vec![TRAY_ARG.to_string()] },
@@ -235,15 +247,182 @@ pub fn parse_desktop_file(text: &str) -> Option<Entry> {
     })
 }
 
-/// 리눅스 자동 실행 폴더
+// ── Linux systemd 사용자 서비스 ──
+
+/// `ExecStart` 따옴표 안 글자 (`"` `\`는 역슬래시, `%`는 `%%`, `$`는 `$$`)
+fn unit_quote(s: &str) -> String {
+    let mut out = String::from("\"");
+    for c in s.chars() {
+        match c {
+            '"' | '\\' => {
+                out.push('\\');
+                out.push(c);
+            }
+            '%' => out.push_str("%%"),
+            '$' => out.push_str("$$"),
+            _ => out.push(c),
+        }
+    }
+    out.push('"');
+    out
+}
+
+/// 데몬 서비스 단위. 멈춤 API로 끝나면(종료 코드 0) 다시 띄우지 않고, 죽었을 때만 다시 띄운다
+pub fn systemd_unit(entry: &Entry) -> String {
+    let mut exec = unit_quote(&entry.program.to_string_lossy());
+    for a in &entry.args {
+        exec.push(' ');
+        exec.push_str(a);
+    }
+    format!(
+        "[Unit]\nDescription={} daemon\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nType=simple\nExecStart={}\nRestart=on-failure\nRestartSec=5\n\n[Install]\nWantedBy=default.target\n",
+        ENTRY_NAME, exec
+    )
+}
+
+/// `ExecStart` 줄을 되읽는다
+pub fn parse_systemd_unit(text: &str) -> Option<Entry> {
+    let exec = text.lines().find_map(|l| l.trim().strip_prefix("ExecStart="))?.trim();
+    let (program, rest) = if let Some(quoted) = exec.strip_prefix('"') {
+        let mut program = String::new();
+        let mut chars = quoted.char_indices().peekable();
+        let mut end = None;
+        while let Some((i, c)) = chars.next() {
+            match c {
+                '\\' => program.push(chars.next()?.1),
+                '%' | '$' if chars.peek().is_some_and(|(_, n)| *n == c) => {
+                    chars.next();
+                    program.push(c);
+                }
+                '"' => {
+                    end = Some(i + 1);
+                    break;
+                }
+                _ => program.push(c),
+            }
+        }
+        (program, &quoted[end?..])
+    } else {
+        let (p, r) = exec.split_once(char::is_whitespace).unwrap_or((exec, ""));
+        (p.to_string(), r)
+    };
+    if program.is_empty() {
+        return None;
+    }
+    Some(Entry {
+        program: PathBuf::from(program),
+        args: rest.split_whitespace().map(str::to_string).collect(),
+    })
+}
+
+/// 사용자 설정 폴더 (`$XDG_CONFIG_HOME`, 없으면 `~/.config`)
 #[cfg(not(target_os = "windows"))]
-pub fn autostart_dir() -> Option<PathBuf> {
-    let config = std::env::var_os("XDG_CONFIG_HOME")
+fn config_dir() -> Option<PathBuf> {
+    std::env::var_os("XDG_CONFIG_HOME")
         .filter(|v| !v.is_empty())
         .map(PathBuf::from)
         .filter(|p| p.is_absolute())
-        .or_else(|| std::env::var_os("HOME").filter(|v| !v.is_empty()).map(|h| PathBuf::from(h).join(".config")))?;
-    Some(config.join("autostart"))
+        .or_else(|| std::env::var_os("HOME").filter(|v| !v.is_empty()).map(|h| PathBuf::from(h).join(".config")))
+}
+
+/// systemd 사용자 단위 폴더
+#[cfg(not(target_os = "windows"))]
+pub fn unit_dir() -> Option<PathBuf> {
+    Some(config_dir()?.join("systemd").join("user"))
+}
+
+/// 켜진(`default.target.wants`에 걸린) 서비스 항목
+#[cfg(not(target_os = "windows"))]
+fn read_service_in(units: &Path) -> Option<Entry> {
+    std::fs::symlink_metadata(units.join("default.target.wants").join(SERVICE_FILE)).ok()?;
+    parse_systemd_unit(&std::fs::read_to_string(units.join(SERVICE_FILE)).ok()?)
+}
+
+/// 단위 파일을 쓰고 켠다 (`systemctl --user enable`이 하는 것과 같은 링크. 다음 로그인·부팅부터 돈다)
+#[cfg(not(target_os = "windows"))]
+fn write_service_in(units: &Path, entry: &Entry) -> std::io::Result<()> {
+    let wants = units.join("default.target.wants");
+    std::fs::create_dir_all(&wants)?;
+    crate::write_atomic(&units.join(SERVICE_FILE), systemd_unit(entry).as_bytes())?;
+    let link = wants.join(SERVICE_FILE);
+    match std::fs::remove_file(&link) {
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e),
+        _ => {}
+    }
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(units.join(SERVICE_FILE), &link)?;
+    Ok(())
+}
+
+#[cfg(not(target_os = "windows"))]
+fn remove_service_in(units: &Path) -> std::io::Result<()> {
+    for f in [units.join("default.target.wants").join(SERVICE_FILE), units.join(SERVICE_FILE)] {
+        match std::fs::remove_file(f) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e),
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
+/// 등록 항목 하나: 데스크톱 항목, 없으면 켜진 서비스
+#[cfg(not(target_os = "windows"))]
+pub fn read_from(autostart: &Path, units: &Path) -> Option<Entry> {
+    read_in(autostart).or_else(|| read_service_in(units))
+}
+
+/// 하나만 남긴다: 서비스를 쓰면 데스크톱 항목을, 데스크톱 항목을 쓰면 서비스를 지운다
+#[cfg(not(target_os = "windows"))]
+pub fn write_to(autostart: &Path, units: &Path, entry: &Entry) -> std::io::Result<()> {
+    if entry.is_service() {
+        write_service_in(units, entry)?;
+        remove_in(autostart)
+    } else {
+        write_in(autostart, entry)?;
+        remove_service_in(units)
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn remove_from(autostart: &Path, units: &Path) -> std::io::Result<()> {
+    remove_in(autostart)?;
+    remove_service_in(units)
+}
+
+/// 로그인하지 않아도 이 사용자의 서비스가 부팅할 때 도는가 (`loginctl enable-linger`). 리눅스가 아니면 None
+pub fn lingering() -> Option<bool> {
+    #[cfg(target_os = "linux")]
+    {
+        let user = std::env::var("USER")
+            .ok()
+            .or_else(|| std::env::var("LOGNAME").ok())
+            .filter(|u| !u.is_empty())
+            .or_else(this_user_name)?;
+        Some(Path::new("/var/lib/systemd/linger").join(user).exists())
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        None
+    }
+}
+
+/// `USER`가 없는 서비스·컨테이너 환경: 이 프로세스의 uid를 `/etc/passwd`에서 찾는다
+#[cfg(target_os = "linux")]
+fn this_user_name() -> Option<String> {
+    use std::os::unix::fs::MetadataExt;
+    let uid = std::fs::metadata("/proc/self").ok()?.uid().to_string();
+    let passwd = std::fs::read_to_string("/etc/passwd").ok()?;
+    passwd.lines().find_map(|l| {
+        let mut f = l.split(':');
+        let name = f.next()?;
+        (f.nth(1)? == uid).then(|| name.to_string())
+    })
+}
+
+/// 리눅스 자동 실행 폴더
+#[cfg(not(target_os = "windows"))]
+pub fn autostart_dir() -> Option<PathBuf> {
+    Some(config_dir()?.join("autostart"))
 }
 
 /// `dir`의 등록 항목
@@ -282,7 +461,7 @@ pub fn read() -> Option<Entry> {
     }
     #[cfg(not(target_os = "windows"))]
     {
-        read_in(&autostart_dir()?)
+        read_from(&autostart_dir()?, &unit_dir()?)
     }
 }
 
@@ -322,8 +501,8 @@ fn write(entry: &Entry) -> std::io::Result<()> {
     }
     #[cfg(not(target_os = "windows"))]
     {
-        let dir = autostart_dir().ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "no home folder"))?;
-        write_in(&dir, entry)
+        let no_home = || std::io::Error::new(std::io::ErrorKind::NotFound, "no home folder");
+        write_to(&autostart_dir().ok_or_else(no_home)?, &unit_dir().ok_or_else(no_home)?, entry)
     }
 }
 
@@ -344,9 +523,9 @@ fn remove() -> std::io::Result<()> {
     }
     #[cfg(not(target_os = "windows"))]
     {
-        match autostart_dir() {
-            Some(dir) => remove_in(&dir),
-            None => Ok(()),
+        match (autostart_dir(), unit_dir()) {
+            (Some(dir), Some(units)) => remove_from(&dir, &units),
+            _ => Ok(()),
         }
     }
 }
@@ -416,8 +595,53 @@ mod tests {
     fn without_a_gui_nothing_can_be_turned_on_but_off_still_works() {
         let dir = install_with(&[crate::uninstall_entry::CORE_EXE]);
         assert_eq!(entry_for(Mode::Full, dir.path()).unwrap_err().code, "gui_missing");
-        assert_eq!(entry_for(Mode::Daemon, dir.path()).unwrap_err().code, "gui_missing");
+        if cfg!(target_os = "linux") {
+            // 화면 없는 리눅스 서버 (D3): 데몬만은 데몬을 바로 systemd 사용자 서비스로 등록한다
+            let daemon = entry_for(Mode::Daemon, dir.path()).unwrap().unwrap();
+            assert_eq!(daemon, Entry { program: dir.path().join(crate::uninstall_entry::CORE_EXE), args: vec![] });
+            assert_eq!(daemon.mode(), Mode::Daemon);
+            assert!(daemon.is_service());
+        } else {
+            assert_eq!(entry_for(Mode::Daemon, dir.path()).unwrap_err().code, "gui_missing");
+        }
         assert_eq!(entry_for(Mode::Off, dir.path()).unwrap(), None);
+        let empty = install_with(&[]);
+        assert_eq!(entry_for(Mode::Daemon, empty.path()).unwrap_err().code, "gui_missing");
+    }
+
+    #[test]
+    fn the_systemd_unit_reads_back_and_restarts_only_after_a_crash() {
+        let e = Entry { program: PathBuf::from("/home/a b/$sa\"ba%/saba-core"), args: vec![] };
+        let text = systemd_unit(&e);
+        assert!(text.contains(r#"ExecStart="/home/a b/$$sa\"ba%%/saba-core""#), "{}", text);
+        assert!(text.contains("Restart=on-failure\n"), "{}", text);
+        assert!(text.contains("WantedBy=default.target\n"), "{}", text);
+        assert_eq!(parse_systemd_unit(&text), Some(e));
+        assert_eq!(parse_systemd_unit("[Unit]\nDescription=x\n"), None);
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn the_service_counts_only_while_it_is_enabled_and_replaces_the_desktop_entry() {
+        let dir = tempfile::tempdir().unwrap();
+        let (autostart, units) = (dir.path().join("autostart"), dir.path().join("systemd/user"));
+        let tray = Entry { program: PathBuf::from("/opt/saba/saba-chan-gui"), args: vec![TRAY_ARG.into()] };
+        let service = Entry { program: PathBuf::from("/opt/saba/saba-core"), args: vec![] };
+        write_to(&autostart, &units, &tray).unwrap();
+        assert_eq!(read_from(&autostart, &units), Some(tray.clone()));
+        write_to(&autostart, &units, &service).unwrap();
+        assert_eq!(read_from(&autostart, &units), Some(service.clone()));
+        assert_eq!(read_in(&autostart), None, "only one entry");
+        // `systemctl --user disable`로 끈 서비스는 등록되지 않은 것이다
+        std::fs::remove_file(units.join("default.target.wants").join(SERVICE_FILE)).unwrap();
+        assert_eq!(read_from(&autostart, &units), None);
+        write_to(&autostart, &units, &service).unwrap();
+        remove_from(&autostart, &units).unwrap();
+        assert_eq!(read_from(&autostart, &units), None);
+        assert!(!units.join(SERVICE_FILE).exists());
+        write_to(&autostart, &units, &service).unwrap();
+        write_to(&autostart, &units, &tray).unwrap();
+        assert!(!units.join(SERVICE_FILE).exists(), "the desktop entry replaces the service");
     }
 
     #[test]

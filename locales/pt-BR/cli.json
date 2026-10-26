@@ -208,7 +208,9 @@
       "full": "Tudo com a GUI",
       "current": "Iniciar ao entrar: {{mode}}",
       "set": "Iniciar ao entrar agora é: {{mode}}.",
-      "unsupported": "Ainda não é possível configurar o início ao entrar neste sistema operacional."
+      "unsupported": "Ainda não é possível configurar o início ao entrar neste sistema operacional.",
+      "service": "O daemon roda como serviço de usuário do systemd (saba-chan.service) e reinicia se falhar.",
+      "linger_hint": "Para iniciar no boot sem fazer login, rode uma vez: sudo loginctl enable-linger $USER"
     },
     "browse": {
       "roots": "Unidades",

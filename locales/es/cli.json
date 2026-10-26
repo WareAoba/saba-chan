@@ -208,7 +208,9 @@
       "full": "Todo con la GUI",
       "current": "Iniciar al iniciar sesión: {{mode}}",
       "set": "Iniciar al iniciar sesión ahora es: {{mode}}.",
-      "unsupported": "Todavía no se puede configurar el inicio al iniciar sesión en este sistema operativo."
+      "unsupported": "Todavía no se puede configurar el inicio al iniciar sesión en este sistema operativo.",
+      "service": "El daemon se ejecuta como servicio de usuario de systemd (saba-chan.service) y se reinicia si falla.",
+      "linger_hint": "Para que arranque al iniciar sin iniciar sesión, ejecuta una vez: sudo loginctl enable-linger $USER"
     },
     "browse": {
       "roots": "Unidades",
