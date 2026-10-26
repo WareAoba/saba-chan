@@ -202,11 +202,12 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
   - `AddInstanceMigration.js`: 폴더 선택 → `migrationScanDir`(daemon `/api/modules/detect`, 파일 목록은 주지 않는다) → 모듈 자동 감지(`dir_signatures`). 실패하면 `moduleManifest`에서 수동으로 고른다. 서버 폴더를 "그 자리에 연결"(기본)과 "사바쨩으로 옮기기" 중에 골라 `migration_mode`(`link`·`move`)로 보낸다. CLI는 `server add --from DIR --move`, 또는 대화형에서 폴더를 고른 뒤 같은 선택을 묻는다. 옮기기 실패 코드는 GUI `servers.move_*`, CLI `err.hint.move_*` 문구로 보인다.
 - **ServerSettingsModal.js + useServerSettings.js**: 모듈 `settings.fields` 스키마로 필드를 렌더링하고(`instanceUpdateSettings`), 버전 선택과 설치(`moduleListVersions`, `moduleInstallServer`, `instanceGetInstalledVersion`), 서버 리셋(`instanceResetServer`)을 제공한다. 인스턴스별 bot alias와 권한 편집도 여기서 하는데, bot-config을 직접 load/save한다(515-592).
 - **CommandModal.js**: 모듈 `commands.fields` 기반 명령 힌트, 자동완성, 입력 폼. `executeCommand`(82)로 실행한다.
-- **SettingsModal.js**: 탭은 `general / appearance / extensions / advanced`(335-353)이다. 버전과 컴포넌트 정보(`getComponentInfo`), 언어, 테마, IPC 포트, 언인스톨(`launchUninstaller`)이 있고, SabaStorage로 들어가는 진입점이 있다.
+- **SettingsModal.js**: 탭은 `general / appearance / advanced`이다. 버전과 컴포넌트 정보(`getComponentInfo`), 언어, 테마, IPC 포트, 언인스톨(`launchUninstaller`)이 있고, SabaStorage로 들어가는 진입점이 있다. `openSettings('extensions')`는 SabaStorage 익스텐션 탭을 연다(`initialTab`). 익스텐션 켜기·끄기와 전역 설정은 설정에 두지 않고 SabaStorage에서만 한다.
+- **작업 기록 페이지**: 상단 탭 `activity`(`AppBar.js` `APP_PAGES`, `auditList`가 있을 때만)가 모든 서버의 감사 로그(`AuditLog`, `auditList`)를 보인다. 서버별 기록은 서버 상세의 기록 탭이다.
 - **SabaStorage.js**(구 업데이트 센터, 1197줄): 탭은 `components / modules / extensions`(53-70)이다.
   - components 탭: updater check/download/progress/apply/launchApply.
   - modules 탭: 설치된 모듈과 `saba-chan-modules` 레지스트리(`moduleManifest`, `moduleInstallFromManifest`, `moduleRemove`). 맨 아래 `ModuleMakerCard`("직접 만들기")는 `makerInfo`가 준 저장소로 에이전트별 설치 줄과 첫 부탁을 보여 준다. 서버 추가 창의 게임 고르기에도 같은 카드가 있다.
-  - extensions 탭: 확장 레지스트리.
+  - extensions 탭: 설치된 익스텐션의 켜기·끄기(`toggleExtension`)·전역 설정(`ExtensionConfigForm`)·제거와 확장 레지스트리.
   - devMode의 Mock 릴리스 서버 토글(`handleToggleMock`): qcza9f의 옛 renderer는 L3에서 없어진 `api_base_url`/`github_*`를 보내 효과가 없다. GUI 리메이크(PR #5, fd26f4e)에서 고쳤다: `relay_url`만 보내고, `mock_relay`로 빌드한 개발판에서만 보인다.
 - **DiscordBotModal.js**(1134줄): 클라우드 릴레이 전용이다(local 모드, 봇 토큰, 음악 설정은 없어졌다). prefix, 노드(길드)별 `allowedInstances`와 멤버별 차단 명령(`memberPermissions`, 멤버 목록은 `relayListNodeMembers`, 125)을 다룬다. 페어링은 `relayInitiatePairing`(351)으로 시작해 `relayPollPairingStatus`(364)로 진행 상황을 확인하고 `saveNodeToken`(373)으로 마무리한다. 기본 relay는 `https://saba-chan.online`(9)이다. side-panel 모드가 있다(845-848). 명령 별명은 ServerSettingsModal에서 편집한다.
 - **BackgroundModal.js**: daemon 상태(`daemonStatus`)와 재시작(`daemonRestart`).

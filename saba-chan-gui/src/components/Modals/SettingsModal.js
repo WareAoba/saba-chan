@@ -1,12 +1,10 @@
 import clsx from 'clsx';
-import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import './Modals.css';
-import { useExtensions } from '../../contexts/ExtensionContext';
 import { useDevMode } from '../../hooks/useDevMode';
 import { useModalClose } from '../../hooks/useModalClose';
 import { DiagnosticsPanel, diagnosticsAvailable } from '../DiagnosticsPanel';
-import { ExtensionConfigForm } from '../ExtensionConfigForm';
 import { useSettingsStore, DEFAULT_IPC_PORT } from '../../stores/useSettingsStore';
 import {
     getTheme,
@@ -20,12 +18,10 @@ import {
 } from '../../utils/themeManager';
 import CustomDropdown from '../CustomDropdown/CustomDropdown';
 import { OklchPicker } from '../ui/OklchPicker';
-import { SabaEmpty } from '../ui/SabaArt';
 import { Icon } from '../Icon';
 import { safeShowToast } from '../../utils/helpers';
 import { LANGUAGE_OPTIONS } from '../../utils/languages';
 import { SabaToggle } from '../ui/SabaUI';
-import { AuditLog, auditAvailable } from '../servers/AuditTab';
 import { DataTransferSection, dataTransferAvailable } from './DataTransferSection';
 import { FolderPathsSection, folderPathsAvailable } from './FolderPathsSection';
 import { RemoteDaemonSection, remoteDaemonAvailable } from './RemoteDaemonSection';
@@ -60,6 +56,8 @@ function SettingsModal({
     const [updatePanelExiting, setUpdatePanelExiting] = useState(false);
     // 사바 스토리지에서 돌아갈 탭 (들어온 탭으로 돌아간다)
     const storageReturnTab = useRef('general');
+    // 사바 스토리지를 열 때 처음 보일 탭 (설정을 '익스텐션'으로 열면 익스텐션 탭)
+    const [storageTab, setStorageTab] = useState('components');
     const [localRefreshInterval, setLocalRefreshInterval] = useState(refreshInterval);
     const [selectedLanguage, setSelectedLanguage] = useState(i18n.language);
     const [selectedTheme, setSelectedTheme] = useState(getTheme());
@@ -77,7 +75,7 @@ function SettingsModal({
     const [componentInfo, setComponentInfo] = useState(null);
     const aboutBtnRef = useRef(null);
     const [aboutRevealOrigin, setAboutRevealOrigin] = useState({ x: '100%', y: '0%' });
-    const tabOrder = ['general', 'appearance', 'extensions', 'advanced'];
+    const tabOrder = ['general', 'appearance', 'advanced'];
     const { isClosing, requestClose } = useModalClose(onClose);
 
     // ── Dynamic tab indicator ──
@@ -106,32 +104,16 @@ function SettingsModal({
         return () => window.removeEventListener('resize', syncIndicator);
     }, [syncIndicator]);
     const devMode = useDevMode();
-    const { extensions, toggleExtension } = useExtensions();
-    const [togglingIds, setTogglingIds] = useState(new Set());
     const autoGeneratePasswords = useSettingsStore((s) => s.autoGeneratePasswords);
     const portConflictCheck = useSettingsStore((s) => s.portConflictCheck);
     const osNotifications = useSettingsStore((s) => s.osNotifications);
 
-    const handleExtensionToggle = useCallback(
-        async (extId, enable) => {
-            setTogglingIds((prev) => new Set(prev).add(extId));
-            await toggleExtension(extId, enable);
-            setTogglingIds((prev) => {
-                const s = new Set(prev);
-                s.delete(extId);
-                return s;
-            });
-        },
-        [toggleExtension],
-    );
-
     // 외부에서 initialView 지정으로 열렸을 때 해당 탭 자동 진입
     useEffect(() => {
-        if (isOpen && initialView === 'update') {
+        if (isOpen && (initialView === 'update' || initialView === 'extensions')) {
             setActiveTab('general');
+            setStorageTab(initialView === 'extensions' ? 'extensions' : 'components');
             setShowUpdatePanel(true);
-        } else if (isOpen && initialView === 'extensions') {
-            setActiveTab('extensions');
         }
     }, [isOpen, initialView]);
 
@@ -168,6 +150,7 @@ function SettingsModal({
     // 사바 스토리지 열기: 탭을 바꾸지 않고 바로 들어간다
     const openStorage = useCallback(() => {
         storageReturnTab.current = activeTab;
+        setStorageTab('components');
         setShowUpdatePanel(true);
     }, [activeTab]);
 
@@ -380,12 +363,6 @@ function SettingsModal({
                                 {t('gui:settings_modal.appearance')}
                             </button>
                             <button
-                                className={clsx('settings-tab', { active: activeTab === 'extensions' })}
-                                onClick={() => handleTabChange('extensions')}
-                            >
-                                {t('gui:settings_modal.extensions_tab', 'Extensions')}
-                            </button>
-                            <button
                                 className={clsx('settings-tab', { active: activeTab === 'advanced' })}
                                 onClick={() => handleTabChange('advanced')}
                             >
@@ -489,6 +466,7 @@ function SettingsModal({
                                 onBack={handleUpdatePanelBack}
                                 isExiting={updatePanelExiting}
                                 devMode={devMode}
+                                initialTab={storageTab}
                             />
                         </div>
                     )}
@@ -743,73 +721,6 @@ function SettingsModal({
                         </div>
                     )}
 
-                    {activeTab === 'extensions' && !showUpdatePanel && (
-                        <div
-                            className={clsx('settings-tab-content', slideDirection)}
-                            key="extensions"
-                            onAnimationEnd={() => setSlideDirection('')}
-                        >
-                            <h3>{t('gui:settings_modal.extensions_tab', 'Extensions')}</h3>
-                            <p className="setting-description" style={{ margin: '0 0 12px', opacity: 0.75 }}>
-                                {t(
-                                    'gui:settings_modal.extensions_toggle_hint',
-                                    '설치된 익스텐션을 활성화하거나 비활성화합니다. 설치·삭제는 사바 스토리지에서 가능합니다.',
-                                )}
-                            </p>
-
-                            {extensions.length === 0 ? (
-                                <SabaEmpty
-                                    compact
-                                    body={t('gui:settings_modal.extensions_none', '설치된 익스텐션이 없습니다.')}
-                                />
-                            ) : (
-                                extensions.map((ext) => (
-                                    <Fragment key={ext.id}>
-                                    <div className="setting-item extension-item">
-                                        <label
-                                            className="setting-label"
-                                            htmlFor={`ext-toggle-${ext.id}`}
-                                            style={{ cursor: 'pointer' }}
-                                        >
-                                            <span className="setting-title">
-                                                {ext.name || ext.id}
-                                                {ext.version && (
-                                                    <span className="extension-version">v{ext.version}</span>
-                                                )}
-                                            </span>
-                                            {ext.description && (
-                                                <span className="setting-description">{ext.description}</span>
-                                            )}
-                                        </label>
-                                        <SabaToggle
-                                            checked={!!ext.enabled}
-                                            disabled={togglingIds.has(ext.id)}
-                                            onChange={(checked) => handleExtensionToggle(ext.id, checked)}
-                                        />
-                                    </div>
-                                    {ext.enabled && <ExtensionConfigForm ext={ext} />}
-                                    </Fragment>
-                                ))
-                            )}
-
-                            <div
-                                className="setting-item setting-item-clickable"
-                                style={{ marginTop: 8 }}
-                                onClick={openStorage}
-                            >
-                                <label className="setting-label" style={{ cursor: 'pointer' }}>
-                                    <span className="setting-title">
-                                        <Icon name="package" size="sm" /> {t('saba_storage.title', '사바 스토리지')}
-                                    </span>
-                                    <span className="setting-description">
-                                        {t('gui:settings_modal.extensions_store_hint', '설치·삭제·업데이트')}
-                                    </span>
-                                </label>
-                                <Icon name="chevronRight" size="sm" color="var(--brand-primary)" />
-                            </div>
-                        </div>
-                    )}
-
                     {activeTab === 'advanced' && !showUpdatePanel && (
                         <div
                             className={clsx('settings-tab-content', slideDirection)}
@@ -942,12 +853,6 @@ function SettingsModal({
                             {unisolatedAvailable() && <UnisolatedSection />}
 
                             {extensionGuiAvailable() && <ExtensionGuiSection />}
-
-                            {auditAvailable() && (
-                                <div className="settings-audit">
-                                    <AuditLog />
-                                </div>
-                            )}
 
                             {/* GUI 컴포넌트 테스트 섹션 (개발자 모드 전용) */}
                             {devMode && (

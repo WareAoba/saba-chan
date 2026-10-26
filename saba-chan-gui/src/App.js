@@ -16,6 +16,7 @@ import {
 import { AgreementDialog } from './components/AgreementList';
 import { DiscordPage } from './components/discord/DiscordPage';
 import { ActivityBar, activityAvailable } from './components/shell/ActivityBar';
+import { AuditLog } from './components/servers/AuditTab';
 import { SabaBubble } from './components/shell/SabaBubble';
 import { CommandPalette, paletteAvailable } from './components/shell/CommandPalette';
 import { DaemonEvents } from './components/shell/DaemonEvents';
@@ -834,6 +835,13 @@ function App() {
                             />
                         )}
                         {page === 'discord' && <DiscordPage {...discordPageProps} />}
+                        {page === 'activity' && (
+                            <div className="page page-scroll page-activity">
+                                <div className="dc-main activity-page">
+                                    <AuditLog />
+                                </div>
+                            </div>
+                        )}
                         {page === 'settings' && (
                             <div className="page page-scroll page-settings">
                                 <SettingsModal
