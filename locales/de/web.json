@@ -110,10 +110,12 @@
     "save": "Speichern",
     "saved": "Einstellungen gespeichert.",
     "saved_restart": "Einstellungen gespeichert. Manche gelten erst nach einem Serverneustart.",
-    "changed_elsewhere": "Die Einstellungen wurden inzwischen woanders geändert. Öffne den Server erneut.",
+    "changed_elsewhere": "Die Einstellungen wurden inzwischen woanders geändert. Lade die neuen Werte und ändere sie dann erneut.",
     "danger_zone": "Server löschen",
     "delete_hint": "Löscht die Servereinstellungen und -dateien.",
-    "stop_first": "Stoppe zuerst den Server."
+    "stop_first": "Stoppe zuerst den Server.",
+    "save_failed": "Speichern fehlgeschlagen",
+    "reload": "Neue Werte laden"
   },
   "backups": {
     "create": "Jetzt sichern",

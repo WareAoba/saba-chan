@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useApp } from '../store';
 import { Dropdown } from './Dropdown';
@@ -136,6 +136,7 @@ function FieldInput({ field, value, onChange, t, modNs }) {
 export function SettingsPanel({ api, server, moduleData, running, onDeleted, control }) {
     const { t } = useTranslation();
     const toast = useApp((s) => s.toast);
+    const ask = useApp((s) => s.ask);
     const fields = useMemo(() => moduleData?.settings?.fields ?? [], [moduleData]);
     const initial = useMemo(
         () => Object.fromEntries(fields.map((f) => [f.name, savedValue(server, f)])),
@@ -146,6 +147,26 @@ export function SettingsPanel({ api, server, moduleData, running, onDeleted, con
     const [saving, setSaving] = useState(false);
     const [name, setName] = useState(server.name);
     const modNs = `mod_${server.module}`;
+    // 저장에 실을 revision: 고치기 시작한 때(또는 마지막 저장)의 값. 폴링의 최신 값을 실으면 데몬의 settings_changed 검사를 지난다
+    const revision = useRef(server.revision || null);
+    const seen = useRef(server.revision);
+    const latest = useRef({ initial, revision: server.revision });
+    latest.current = { initial, revision: server.revision };
+
+    const reload = () => {
+        setValues(latest.current.initial);
+        setTouched(new Set());
+        revision.current = latest.current.revision || null;
+    };
+
+    // 고치는 칸이 없는 동안에는 다른 곳에서 바뀐 값을 따라간다
+    useEffect(() => {
+        if (seen.current === server.revision) return;
+        seen.current = server.revision;
+        if (touched.size > 0) return;
+        setValues(initial);
+        revision.current = server.revision || null;
+    }, [server.revision, initial, touched]);
 
     const change = (key, v) => {
         setValues((prev) => ({ ...prev, [key]: v }));
@@ -155,14 +176,22 @@ export function SettingsPanel({ api, server, moduleData, running, onDeleted, con
     const save = async () => {
         const patch = patchOf(fields, values, touched);
         if (Object.keys(patch).length === 0) return;
-        if (server.revision) patch.revision = server.revision;
+        if (revision.current) patch.revision = revision.current;
         setSaving(true);
         const res = await api.instanceUpdateSettings(server.id, patch);
         setSaving(false);
-        if (failed(res)) {
-            const msg = res?.error_code === 'settings_changed' ? t('settings.changed_elsewhere') : errorText(t, res);
-            return toast(msg, 'error');
+        if (res?.error_code === 'settings_changed') {
+            // GUI처럼 창으로 알린다. 고르면 바뀐 값을 다시 불러오고, 고친 값은 버린다
+            const ok = await ask({
+                title: t('settings.save_failed'),
+                message: t('settings.changed_elsewhere'),
+                confirmLabel: t('settings.reload'),
+            });
+            if (ok) reload();
+            return;
         }
+        if (failed(res)) return toast(errorText(t, res), 'error');
+        if (res?.revision) revision.current = res.revision;
         setTouched(new Set());
         toast(running ? t('settings.saved_restart') : t('settings.saved'), 'ok');
     };

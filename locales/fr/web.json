@@ -110,10 +110,12 @@
     "save": "Enregistrer",
     "saved": "Réglages enregistrés.",
     "saved_restart": "Réglages enregistrés. Certains s'appliquent après le redémarrage du serveur.",
-    "changed_elsewhere": "Les réglages ont été modifiés ailleurs entre-temps. Rouvrez le serveur.",
+    "changed_elsewhere": "Les réglages ont été modifiés ailleurs entre-temps. Chargez les nouvelles valeurs, puis refaites votre modification.",
     "danger_zone": "Supprimer le serveur",
     "delete_hint": "Supprime les réglages et fichiers du serveur.",
-    "stop_first": "Arrêtez d'abord le serveur."
+    "stop_first": "Arrêtez d'abord le serveur.",
+    "save_failed": "Enregistrement impossible",
+    "reload": "Charger les nouvelles valeurs"
   },
   "backups": {
     "create": "Sauvegarder maintenant",

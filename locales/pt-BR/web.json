@@ -110,10 +110,12 @@
     "save": "Salvar",
     "saved": "Configurações salvas.",
     "saved_restart": "Configurações salvas. Algumas valem após reiniciar o servidor.",
-    "changed_elsewhere": "As configurações foram alteradas em outro lugar nesse meio-tempo. Abra o servidor de novo.",
+    "changed_elsewhere": "As configurações foram alteradas em outro lugar nesse meio-tempo. Carregue os novos valores e faça a alteração de novo.",
     "danger_zone": "Excluir servidor",
     "delete_hint": "Exclui as configurações e os arquivos do servidor.",
-    "stop_first": "Pare o servidor primeiro."
+    "stop_first": "Pare o servidor primeiro.",
+    "save_failed": "Não foi possível salvar",
+    "reload": "Carregar novos valores"
   },
   "backups": {
     "create": "Fazer backup agora",

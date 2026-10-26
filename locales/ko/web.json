@@ -110,10 +110,12 @@
     "save": "저장",
     "saved": "설정을 저장했어요.",
     "saved_restart": "설정을 저장했어요. 일부는 서버를 다시 켜야 적용돼요.",
-    "changed_elsewhere": "그사이 다른 곳에서 설정이 바뀌었어요. 서버를 다시 열어 주세요.",
+    "changed_elsewhere": "그사이 다른 곳에서 설정이 바뀌었어요. 바뀐 값을 불러온 뒤 다시 고쳐 주세요.",
     "danger_zone": "서버 지우기",
     "delete_hint": "서버 설정과 파일을 지워요.",
-    "stop_first": "서버를 끈 뒤에 할 수 있어요."
+    "stop_first": "서버를 끈 뒤에 할 수 있어요.",
+    "save_failed": "저장하지 못했어요",
+    "reload": "바뀐 값 불러오기"
   },
   "backups": {
     "create": "지금 백업",

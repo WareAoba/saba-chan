@@ -110,10 +110,12 @@
     "save": "Save",
     "saved": "Settings saved.",
     "saved_restart": "Settings saved. Some apply after the server restarts.",
-    "changed_elsewhere": "The settings were changed elsewhere in the meantime. Open the server again.",
+    "changed_elsewhere": "The settings were changed elsewhere in the meantime. Load the new values, then make your change again.",
     "danger_zone": "Delete server",
     "delete_hint": "Deletes the server settings and files.",
-    "stop_first": "Stop the server first."
+    "stop_first": "Stop the server first.",
+    "save_failed": "Couldn't save",
+    "reload": "Load new values"
   },
   "backups": {
     "create": "Back up now",
