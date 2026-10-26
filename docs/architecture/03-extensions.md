@@ -303,6 +303,7 @@ ue4-ini는 hook을 선언하지 않는다. steamcmd의 condition은 `instance.ex
 
 - `SteamCMD` 클래스(`steamcmd.py:151-622`): 포터블 SteamCMD 탐색/설치, `install(...)`, `update`, buildid·브랜치 비교로 `check_update`. 압축 해제는 경로 탈출을 막는다(`:799-827`).
 - daemon hook으로 실제로 쓰이는 것은 `server.check_update` 하나뿐이다. 설치는 module의 `lifecycle.py install_server`가 `from extensions.steamcmd import SteamCMD`로 직접 수행한다(`M:palworld/lifecycle.py:1175`, `M:zomboid/lifecycle.py:1457`).
+- `install_for_module(module_dir, install_dir, beta=None)`(steamcmd 다음 판): 모듈 module.toml `[install]`(`method = "steamcmd"`, `app_id`, `anonymous`, `beta`)을 읽어 SteamCMD를 준비하고 설치·업데이트한다. 앱 ID를 모듈 코드에 다시 적지 않는다. `[install]`에 steamcmd 앱 ID가 없으면 `ValueError`. 반환은 `SteamCMD.install`과 같다.
 - instance_fields `install_method_steamcmd`, `steamcmd_app_id` 등은 daemon이 module의 `[install] method`를 보고 **범용 규칙**(`install_method_<방식>`, `<방식>_<이름>`)으로 채운다(`src/instance/mod.rs:142-166` `apply_install_extension_data`). core에 steamcmd 이름은 없다.
 
 ### 5.3 music
