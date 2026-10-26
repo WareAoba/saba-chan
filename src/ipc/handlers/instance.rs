@@ -907,7 +907,8 @@ struct Unlinked {
 /// 가져온 서버를 지우기 전에: 보관한 원래 게임 설정 파일로 되돌리고(`keep_settings`가 아니면. 옮겨 온 서버도
 /// 서버 폴더 밖 설정 파일(좀보이드 데이터 폴더 등)이 남으므로 되돌린다), 인스턴스 폴더 밖 서버 폴더에는
 /// 격리 실행에 준 폴더 권한·낮은 무결성 표시를 거둔다. 서버 폴더 밖의 파일은 지우지 않는다. 가져온 서버가 아니면 None
-async fn unlink_server_folder(state: &IPCServer, instance: &crate::instance::ServerInstance, keep_settings: bool) -> Option<Unlinked> {
+/// `detached`: 지우려고 옮겨 둔 인스턴스 폴더(`InstanceStore::detach_dir`). 보관한 원래 설정은 거기서 읽는다
+async fn unlink_server_folder(state: &IPCServer, instance: &crate::instance::ServerInstance, keep_settings: bool, detached: Option<&std::path::Path>) -> Option<Unlinked> {
     let (instance_dir, metadata, others) = {
         let supervisor = state.supervisor.read().await;
         let others = other_instance_folders(&supervisor, &instance.id);
@@ -915,10 +916,11 @@ async fn unlink_server_folder(state: &IPCServer, instance: &crate::instance::Ser
         (supervisor.instance_store.instance_dir(&instance.id), metadata, others)
     };
     let folder = crate::instance::migration::linked_folder(instance.working_dir.as_deref(), &instance_dir);
-    if folder.is_none() && !crate::instance::migration::saved(&instance_dir) {
+    let records = detached.map_or_else(|| instance_dir.clone(), std::path::Path::to_path_buf);
+    if folder.is_none() && !crate::instance::migration::saved(&records) {
         return None;
     }
-    let boundary = crate::module_paths::Boundary::for_instance(instance, &instance_dir, metadata.as_ref());
+    let boundary = crate::module_paths::Boundary::for_instance(instance, &records, metadata.as_ref());
     let exe_dir = instance.executable_path.as_deref().and_then(|p| std::path::Path::new(p).parent()).map(std::path::Path::to_path_buf);
     // 실행 파일 폴더는 그 서버 폴더 안일 때만 (밖이면 다른 인스턴스와 함께 쓰는 런타임일 수 있다)
     let dirs: Vec<std::path::PathBuf> = folder.iter().map(std::path::PathBuf::from).collect();
@@ -930,7 +932,7 @@ async fn unlink_server_folder(state: &IPCServer, instance: &crate::instance::Ser
         let restored = if keep_settings {
             crate::instance::migration::Restored::default()
         } else {
-            crate::instance::migration::restore(&instance_dir, |path| boundary.resolve(path).is_some())
+            crate::instance::migration::restore(&records, |path| boundary.resolve(path).is_some())
         };
         if dirs.is_empty() {
             return restored;
@@ -1186,31 +1188,19 @@ async fn delete_instance_held(state: IPCServer, id: String, keep_settings: bool)
     // ── Extension hook: server.pre_delete ──
     pre_delete_hook(&state, &instance).await;
 
-    // ── 가져온 서버: 서버 폴더는 두고, 사바쨩이 남긴 것을 거둔다 ──
-    let unlinked = unlink_server_folder(&state, &instance, keep_settings).await;
-
-    // ── 디렉토리 삭제 (Windows 파일 잠금 대비 재시도) ──
+    // ── 지울 수 있는지 먼저 본다: 인스턴스 폴더를 데몬 전용 자리로 옮긴다 (Windows 파일 잠금 대비 재시도) ──
+    // 옮기지 못하면 원래 설정 되돌리기·권한 거두기 전에 멈춘다 (되돌린 뒤 인스턴스가 남으면 설정과 파일이 어긋난다)
+    let mut detached = None;
     let mut last_err = None;
     for attempt in 0..3 {
-        let removed = state.supervisor.write().await.instance_store.remove(&id);
-        match removed {
-            Ok(_) => {
-                state.provision_tracker.forget(&instance.name);
-                let mut response = json!({ "success": true });
-                if let Some(unlinked) = &unlinked {
-                    if let Some(folder) = &unlinked.folder {
-                        response["linked_folder"] = json!(folder);
-                    }
-                    response["settings_restored"] = json!(unlinked.restored.restored);
-                    response["settings_restore_failed"] = json!(unlinked.restored.failed.len());
-                }
-                return (StatusCode::OK, Json(response)).into_response();
+        let moved = state.supervisor.read().await.instance_store.detach_dir(&id);
+        match moved {
+            Ok(dir) => {
+                detached = Some(dir);
+                break;
             }
             Err(e) => {
-                tracing::warn!(
-                    "Instance '{}' delete attempt {}/3 failed: {}",
-                    instance.name, attempt + 1, e
-                );
+                tracing::warn!("Instance '{}' delete attempt {}/3 failed: {:#}", instance.name, attempt + 1, e);
                 last_err = Some(e);
                 if attempt < 2 {
                     // 재시도 전 대기 — 파일 잠금 해제 기다림
@@ -1219,10 +1209,50 @@ async fn delete_instance_held(state: IPCServer, id: String, keep_settings: bool)
             }
         }
     }
+    let Some(detached) = detached else {
+        let err_msg = last_err.map(|e| format!("{:#}", e)).unwrap_or_else(|| "Unknown error".to_string());
+        let error = json!({ "success": false, "error": format!("Failed to delete instance: {}", err_msg) });
+        return (StatusCode::INTERNAL_SERVER_ERROR, Json(error)).into_response();
+    };
 
-    let err_msg = last_err.map(|e| format!("{}", e)).unwrap_or_else(|| "Unknown error".to_string());
-    let error = json!({ "success": false, "error": format!("Failed to delete instance: {}", err_msg) });
-    (StatusCode::INTERNAL_SERVER_ERROR, Json(error)).into_response()
+    // ── 가져온 서버: 서버 폴더는 두고, 사바쨩이 남긴 것을 거둔다 ──
+    let unlinked = unlink_server_folder(&state, &instance, keep_settings, detached.as_deref()).await;
+
+    // 연결 해제를 마쳤다는 표시가 없으면 다음 시작 때 인스턴스를 되돌린다 (그 사이 데몬이 멈춘 경우)
+    if let Some(dir) = &detached {
+        if let Err(e) = crate::instance::InstanceStore::mark_unlinked(dir) {
+            tracing::warn!("{:#}", e);
+        }
+    }
+    let removed = state.supervisor.write().await.instance_store.remove(&id);
+    if let Some(dir) = detached {
+        let name = instance.name.clone();
+        let _ = tokio::task::spawn_blocking(move || {
+            match std::fs::remove_dir_all(&dir) {
+                Ok(()) => crate::instance::InstanceStore::forget_unlinked(&dir),
+                Err(e) => tracing::warn!("Could not remove the folder of deleted instance '{}' (removed at next start): {}", name, e),
+            }
+        })
+        .await;
+    }
+    match removed {
+        Ok(_) => {
+            state.provision_tracker.forget(&instance.name);
+            let mut response = json!({ "success": true });
+            if let Some(unlinked) = &unlinked {
+                if let Some(folder) = &unlinked.folder {
+                    response["linked_folder"] = json!(folder);
+                }
+                response["settings_restored"] = json!(unlinked.restored.restored);
+                response["settings_restore_failed"] = json!(unlinked.restored.failed.len());
+            }
+            (StatusCode::OK, Json(response)).into_response()
+        }
+        Err(e) => {
+            let error = json!({ "success": false, "error": format!("Failed to delete instance: {}", e) });
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(error)).into_response()
+        }
+    }
 }
 
 /// POST /api/instance/:id/rename — 이름 바꾸기 (`{name}`). 실행 중이면 409 `server_running`,
@@ -2371,6 +2401,51 @@ mod tests {
             assert_eq!(std::fs::read_to_string(&ini).unwrap(), expected);
             assert_eq!(std::fs::read_to_string(&outside).unwrap(), "after", "a file outside the server is never kept or restored");
         }
+    }
+
+    /// 인스턴스 폴더를 지울 수 없으면 아무것도 되돌리지 않는다: 설정만 원래대로 돌아가고 인스턴스가 남으면,
+    /// 남은 인스턴스는 사바쨩 설정과 다른 게임 설정 파일로 돈다
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn a_delete_that_cannot_remove_the_folder_restores_nothing() {
+        use axum::{extract::{Path, Query, State}, Json};
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("module.toml"), "[module]\nschema_version = 1\nname = 'game'\nversion = '1.0.0'\nentry = 'lifecycle.py'\n").unwrap();
+        std::fs::write(dir.join("lifecycle.py"),
+            "import json, os, sys\nc = json.load(sys.stdin)\nf = sys.argv[1]\n\
+             if f == 'functions': print(json.dumps({'success': True, 'functions': ['import_settings', 'config_files']}))\n\
+             elif f == 'config_files': print(json.dumps({'success': True, 'files': [os.path.join(c['working_dir'], 'game.ini')]}))\n\
+             else: print(json.dumps({'success': True, 'settings': {}}))\n",
+        ).unwrap();
+        crate::sandbox::consent_test_component(&dir.join("lifecycle.py"));
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        for module in sup.module_loader.discover_modules().unwrap() { crate::sandbox::consent_test_component(std::path::Path::new(&module.entry_path())); }
+        sup.initialize().await.unwrap();
+        let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let server = tmp.path().join("server");
+        std::fs::create_dir_all(&server).unwrap();
+        let ini = server.join("game.ini");
+        std::fs::write(&ini, "rcon=on\n").unwrap();
+        let created = crate::ipc::internal::into_internal(super::create_instance(State(state.clone()), Json(serde_json::json!({"name": "g", "module_name":"game", "migration_source":server}))).await).await;
+        assert_eq!(created.status.as_u16(), 201, "{}", created.body);
+        let id = created.body["id"].as_str().unwrap().to_string();
+        assert!(crate::instance::migration::saved(&state.supervisor.read().await.instance_store.instance_dir(&id)));
+        std::fs::write(&ini, "rcon=off\n").unwrap();
+        // 다른 프로세스가 지우기를 막고 연 파일이 든 인스턴스 폴더 (서버 로그를 연 편집기 등)
+        let instance_dir = state.supervisor.read().await.instance_store.instance_dir(&id);
+        std::fs::write(instance_dir.join("held.log"), "x").unwrap();
+        let _held = {
+            use std::os::windows::fs::OpenOptionsExt;
+            std::fs::OpenOptions::new().read(true).share_mode(0).open(instance_dir.join("held.log")).unwrap()
+        };
+
+        let removed = crate::ipc::internal::into_internal(super::delete_instance(Path(id.clone()), State(state.clone()), Query(super::DeleteQuery { keep_settings: false })).await).await;
+        assert_eq!(removed.status.as_u16(), 500, "{}", removed.body);
+        assert!(state.supervisor.read().await.instance_store.get(&id).is_some());
+        assert_eq!(std::fs::read_to_string(&ini).unwrap(), "rcon=off\n", "nothing was restored for an instance that stays");
     }
 
     /// 가져오기가 오래 걸려 클라이언트가 요청을 끊어도(GUI 시간 초과) 데몬은 설정 가져오기까지 마친다:
