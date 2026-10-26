@@ -2934,6 +2934,10 @@ impl Supervisor {
         if proc.log_follower {
             return;
         }
+        // 끝난 실행의 PID는 놓는다: 남겨 두면 모니터가 다음 순회에서 같은 실행을 원인 모를 종료로 다시 판정한다
+        if self.tracker.get_pid(instance_id).is_ok_and(|pid| pid == proc.pid || proc.runner_pid.is_some()) {
+            let _ = self.tracker.untrack(instance_id);
+        }
         let stop_origin = self.stop_requested.remove(instance_id);
         let stop_requested = stop_origin.is_some();
         let Some(instance) = self.instance_store.get(instance_id).cloned() else { return };
@@ -4344,6 +4348,10 @@ mod tests {
         let started = seen("instance.started", "w-ext");
         assert_eq!(started.len(), 1, "{started:?}");
         assert_eq!((started[0]["source"].as_str(), started[0]["unexpected"].as_bool()), (Some("external"), Some(true)));
+
+        // 끝까지 판정한 정지 뒤의 모니터 순회가 같은 실행을 원인 모를 종료로 다시 보지 않는다
+        sup.write().await.monitor_processes_taken_at(&[], u64::MAX).await.unwrap();
+        assert!(seen("instance.exit", "w-long").iter().all(|e| e["kind"] == "user_stop"), "a judged stop is not judged again");
 
         // 게임 안에서 끈 것: 정상 정지 (출처 game)
         with_origin(Origin::new("gui"), Supervisor::start_managed_server(&sup, "w-quits", "quits", json!({}))).await.unwrap();
