@@ -2,7 +2,8 @@
 //! `player_join_patterns`·`player_leave_patterns`가 콘솔 줄에 맞으면 `instance.player {instanceId, instance, player, change}`를 낸다.
 //!
 //! - 시스템 줄(`LogSource::System`)은 보지 않는다. 이름 그룹 `name`만 싣고(IP·고유 ID 없음), 64자에서 자르고 제어 문자를 뺀다.
-//! - relay로 올리지 않는다 (0.1.9). 1분 접속자 수 갱신(`players.rs`)과는 따로다.
+//! - relay로 올리지 않는다 (0.1.9).
+//! - 같은 줄로 접속자를 센다(`players::roster_*`). 모듈이 접속자 수를 주지 않을 때 서버 목록·하트비트가 이 수를 쓴다.
 
 use serde_json::{json, Value};
 use std::sync::Arc;
@@ -44,6 +45,11 @@ impl Patterns {
         (!patterns.join.is_empty() || !patterns.leave.is_empty()).then_some(patterns)
     }
 
+    /// 접속과 퇴장을 둘 다 알아볼 때만 접속자를 셀 수 있다 (한쪽만 있으면 늘기만 하거나 늘 0이다)
+    pub fn can_count(&self) -> bool {
+        !self.join.is_empty() && !self.leave.is_empty()
+    }
+
     /// 콘솔 줄 하나에서 접속·퇴장과 이름을 찾는다. 이름이 비면 없는 것으로 본다
     pub fn parse(&self, line: &str) -> Option<(String, Change)> {
         let find = |list: &[regex::Regex]| {
@@ -68,6 +74,7 @@ pub fn after_start(instance_id: &str, instance: &str, result: &anyhow::Result<Va
 }
 
 async fn watch(id: String, name: String, proc: Arc<ManagedProcess>, patterns: Patterns) {
+    let roster = patterns.can_count().then(|| super::players::roster_start(&id));
     let mut next_line = 0;
     loop {
         // 끝난 것을 먼저 보고 마지막 줄까지 읽은 뒤 나간다
@@ -78,10 +85,16 @@ async fn watch(id: String, name: String, proc: Arc<ManagedProcess>, patterns: Pa
                 continue;
             }
             if let Some((player, change)) = patterns.parse(&line.content) {
+                if let Some(roster) = roster {
+                    super::players::roster_change(&id, roster, &player, change == Change::Join);
+                }
                 crate::events::emit("instance.player", json!({ "instanceId": id, "instance": name, "player": player, "change": change.as_str() }));
             }
         }
         if !running {
+            if let Some(roster) = roster {
+                super::players::roster_end(&id, roster);
+            }
             return;
         }
         tokio::time::sleep(POLL).await;
@@ -101,5 +114,15 @@ mod tests {
         assert_eq!(p.parse(" left"), None, "an empty name is no player");
         assert_eq!(p.parse("Alex left"), Some(("Alex".to_string(), Change::Leave)));
         assert!(Patterns::new(&[], &[]).is_none());
+        assert!(p.can_count());
+    }
+
+    // 리뷰(Codex #625): 한쪽 문구만 있으면 이벤트는 내되 접속자 수는 세지 않는다
+    #[test]
+    fn players_are_counted_only_when_both_join_and_leave_are_known() {
+        let join_only = Patterns::new(&["(?P<name>\\S+) joined".to_string()], &[]).unwrap();
+        let leave_only = Patterns::new(&[], &["(?P<name>\\S+) left".to_string()]).unwrap();
+        assert!(!join_only.can_count() && !leave_only.can_count());
+        assert_eq!(join_only.parse("Bob joined"), Some(("Bob".to_string(), Change::Join)));
     }
 }

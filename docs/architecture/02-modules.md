@@ -205,7 +205,7 @@ zomboid의 `beta_branch` 키는 지워졌다. lifecycle에는 `use_beta`를 보�
 
 시작 한 번(자동 재시작 포함)마다 `instance.ready {instanceId, instance, ok, code?}` 이벤트가 한 번 나온다(`supervisor/ready.rs`, 01 §`GET /api/events`). 패턴이 없거나 콘솔을 읽지 않는 시작은 시작이 성공한 때 바로 `ok:true`다. 준비되기 전에 끝나면 `ok:false`와 `code`: `start_failed`, `stopped_while_starting`, `ready_timeout`. 데몬이 띄운 프로세스가 준비 문구 전에 끝나 이미 치워졌으면 `start_failed`다. 감독자가 시작을 시도하지 않은 요청(사전 점검에 막힘, 다른 작업 중, 이미 켜짐, 시작 중)에는 알림이 없다. relay로도 올린다(01 §relay 이벤트).
 
-접속·퇴장 문구가 있으면 managed 시작마다 프로세스가 끝날 때까지 콘솔을 보고, 맞는 줄마다 `instance.player {instanceId, instance, player, change:"join"|"leave"}`를 낸다(`supervisor/player_events.rs`). 시스템 줄은 보지 않고, `name` 그룹만 싣는다(64자에서 자르고 제어 문자를 뺀다). non-managed 시작에는 없고, relay로 올리지 않는다. 1분 접속자 수 갱신(`supervisor/players.rs`)과는 따로다.
+접속·퇴장 문구가 있으면 managed 시작마다 프로세스가 끝날 때까지 콘솔을 보고, 맞는 줄마다 `instance.player {instanceId, instance, player, change:"join"|"leave"}`를 낸다(`supervisor/player_events.rs`). 시스템 줄은 보지 않고, `name` 그룹만 싣는다(64자에서 자르고 제어 문자를 뺀다). non-managed 시작에는 없고, relay로 올리지 않는다. 접속·퇴장 문구가 둘 다 있으면 같은 줄로 그 프로세스의 접속자 이름을 센다(같은 이름은 하나, 0명에서 시작, 모르는 이름의 퇴장은 무시, 프로세스가 끝나면 지움, `players::roster_*`). 모듈이 `[status] players`를 선언하지 않았거나 그 함수가 `online` 없이 답하면 서버 목록 `players`와 relay 하트비트가 이 수를 쓰고, 답에 `max`가 있으면 붙인다(`players::get`, 1분 갱신 뒤부터). 함수가 실패하는 동안에는 쓰지 않는다(값이 빈다). 플레이어 목록 요청(`GET /api/instance/:id/players`)은 여전히 모듈 함수만 쓴다. 데몬이 다시 켜져 콘솔을 중간부터 읽는 프로세스(log follower)는 세지 않는다.
 
 #### `[credential_map]` (`HashMap<String,String>`)
 데몬 키(`rest_password` / `rest_username`) → 게임 설정 키. 사용처는 managed start 후 동기화(`mod.rs:1554-1619`), import_settings 결과 반영(`D:src/instance/mod.rs:172-206`), 설정 PATCH 때 역동기화(`instance.rs:1162-1189`)다. **non-managed `start_server`에서는 동기화하지 않는다**.
