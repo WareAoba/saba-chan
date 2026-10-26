@@ -260,11 +260,10 @@ pub enum Refusal {
 
 /// `path`(쿼리 포함 가능)를 받을지. 받으면 그 라우트의 패턴을 돌려준다
 pub fn decide(method: &str, path: &str) -> Result<&'static str, Refusal> {
+    normalized_path(path).ok_or(Refusal::BadPath)?;
     let path = path.split_once('?').map_or(path, |(p, _)| p);
-    let segments: Vec<&str> = path.strip_prefix('/').ok_or(Refusal::BadPath)?.split('/').collect();
-    if segments.iter().any(|s| !safe_segment(s)) {
-        return Err(Refusal::BadPath);
-    }
+    // 패턴은 라우터처럼 풀지 않은 조각과 맞춘다 (라우터는 리터럴 조각을 풀지 않는다)
+    let segments: Vec<&str> = path[1..].split('/').collect();
     // 라우터처럼 리터럴 조각이 많이 맞는 패턴을 고른 뒤 그 패턴의 메서드를 본다
     // (매개변수 패턴의 허용으로 리터럴 라우트의 다른 처리기에 닿지 않게)
     let pattern = ROUTES
@@ -304,6 +303,21 @@ fn safe_segment(segment: &str) -> bool {
         Some(d) => !d.is_empty() && d != "." && d != ".." && !d.contains(['/', '\\', '\0']),
         None => false,
     }
+}
+
+/// 라우터가 경로 인자를 푸는 대로 조각마다 푼 경로 (쿼리는 뺀다). 이상한 조각(`safe_segment`가 아닌 것)이 있으면 `None`.
+/// 경로로 무엇을 막을지 정하는 곳(웹 문지기, 원격 포트, 원격 데몬 고르기)은 모두 이 값으로 본다 (인코딩한 경로로 판정을 비켜 가지 않게)
+pub(crate) fn normalized_path(path: &str) -> Option<String> {
+    let path = path.split_once('?').map_or(path, |(p, _)| p);
+    let mut out = String::with_capacity(path.len());
+    for segment in path.strip_prefix('/')?.split('/') {
+        if !safe_segment(segment) {
+            return None;
+        }
+        out.push('/');
+        out.push_str(&percent_decode(segment)?);
+    }
+    Some(out)
 }
 
 pub(crate) fn percent_decode(s: &str) -> Option<String> {
@@ -533,6 +547,17 @@ mod tests {
             "api/servers",
         ] {
             assert_eq!(decide("POST", path), Err(Refusal::BadPath), "{path}");
+        }
+    }
+
+    /// 경로로 막을 것을 정하는 곳은 모두 라우터가 푸는 대로 푼 경로를 본다
+    #[test]
+    fn paths_are_judged_decoded() {
+        assert_eq!(normalized_path("/api/config/%67ui/reset").as_deref(), Some("/api/config/gui/reset"));
+        assert_eq!(normalized_path("/api/servers?x=%2F").as_deref(), Some("/api/servers"));
+        assert_eq!(normalized_path("/health").as_deref(), Some("/health"));
+        for bad in ["/api/x/%2e%2e/y", "/api/a%2Fb", "/api/a%5Cb", "/api//x", "/api/%FF", "/api/%6", "api/x", "/api/x/.."] {
+            assert_eq!(normalized_path(bad), None, "{bad}");
         }
     }
 

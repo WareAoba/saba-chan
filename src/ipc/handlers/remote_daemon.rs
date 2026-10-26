@@ -221,7 +221,7 @@ mod tests {
     fn only_daemon_api_paths_are_forwarded() {
         assert_eq!(crate::remote_daemon::peer::forward_path("api/instances", Some("a=1")).as_deref(), Some("/api/instances?a=1"));
         assert_eq!(crate::remote_daemon::peer::forward_path("health", None).as_deref(), Some("/health"));
-        for bad in ["remote/pair", "api/../remote/pair", "", "apix"] {
+        for bad in ["remote/pair", "api/../remote/pair", "api/%2e%2e/remote/pair", "api/a%2Fb", "", "apix"] {
             assert_eq!(crate::remote_daemon::peer::forward_path(bad, None), None, "{bad}");
         }
     }

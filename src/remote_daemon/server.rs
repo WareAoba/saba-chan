@@ -133,6 +133,19 @@ pub(crate) fn router(routes: Router, ctx: Ctx) -> Router {
         .layer(axum::middleware::from_fn_with_state(ctx, remote_auth))
 }
 
+/// 짝 맺은 PC가 부르지 못하는 경로면 상태와 오류 코드. 경로는 라우터가 푸는 대로 푼 값으로 본다.
+/// 노드 토큰, 그리고 고른 데몬과 상관없이 이 PC에서만 처리하는 경로(연결 관리, 이 PC의 인터페이스·앱 설정·업데이트,
+/// 로그인 자동 실행, 데몬 종료: `target::stays_local`)는 짝 맺은 PC도 부르지 못한다
+pub(crate) fn refused_path(path: &str) -> Option<(StatusCode, &'static str)> {
+    let Some(path) = crate::remote::gate::normalized_path(path) else {
+        return Some((StatusCode::BAD_REQUEST, "remote_bad_path"));
+    };
+    let path = path.as_str();
+    (LOCAL_ONLY.iter().any(|p| path == p.trim_end_matches('/') || path.starts_with(p))
+        || (path.starts_with("/api/") && super::target::stays_local(path)))
+    .then_some((StatusCode::FORBIDDEN, "remote_local_only"))
+}
+
 async fn remote_auth(State(ctx): State<Ctx>, mut req: Request<Body>, next: Next) -> Response {
     let path = req.uri().path();
     if path == "/remote/pair" {
@@ -147,12 +160,8 @@ async fn remote_auth(State(ctx): State<Ctx>, mut req: Request<Body>, next: Next)
     if path == "/health" {
         return next.run(req).await;
     }
-    // 노드 토큰, 그리고 고른 데몬과 상관없이 이 PC에서만 처리하는 경로(연결 관리, 이 PC의 인터페이스·앱 설정·업데이트,
-    // 로그인 자동 실행, 데몬 종료: `target::stays_local`)는 짝 맺은 PC도 부르지 못한다
-    if LOCAL_ONLY.iter().any(|p| path == p.trim_end_matches('/') || path.starts_with(p))
-        || (path.starts_with("/api/") && super::target::stays_local(path))
-    {
-        return error(StatusCode::FORBIDDEN, "remote_local_only");
+    if let Some((status, code)) = refused_path(path) {
+        return error(status, code);
     }
     let token = req
         .headers()
@@ -407,7 +416,8 @@ pub(crate) mod tests {
             )
             .route("/api/instances", axum::routing::get(|| async { Json(json!([])) }))
             .route("/api/config/node-token", axum::routing::get(|| async { Json(json!({ "token": "leak" })) }))
-            .route("/api/remote/clients", axum::routing::get(|| async { Json(json!([])) }));
+            .route("/api/remote/clients", axum::routing::get(|| async { Json(json!([])) }))
+            .route("/api/config/{kind}/reset", post(|axum::extract::Path(kind): axum::extract::Path<String>| async move { Json(json!({ "reset": kind })) }));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         let cancel = CancellationToken::new();
@@ -520,6 +530,25 @@ pub(crate) mod tests {
         }
         let (s, _) = call(r.addr, &r.pin, "GET", "/health", None, None).await.unwrap();
         assert_eq!(s, 200);
+    }
+
+    /// 이 PC 전용 경로는 퍼센트 인코딩해도 같은 판정을 받는다 (라우터가 푸는 대로 풀어서 본다)
+    #[tokio::test]
+    async fn local_only_routes_are_judged_on_the_decoded_path() {
+        let r = start(None).await;
+        let token = config::issue_in(&r.file, "host-a", "집 PC").unwrap();
+        r.clients.set(config::clients_in(&r.file));
+        for path in ["/api/config/gui/reset", "/api/config/%67ui/reset", "/api/config/%6Eode-token", "/api/%72emote/clients"] {
+            let (s, body) = call(r.addr, &r.pin, "POST", path, Some(&token), None).await.unwrap();
+            assert_eq!((s, body["error_code"].as_str()), (403, Some("remote_local_only")), "{path}");
+        }
+        for path in ["/api/config/%2e%2e/reset", "/api/config/a%2Fb/reset", "/api/config/%FF/reset"] {
+            let (s, body) = call(r.addr, &r.pin, "POST", path, Some(&token), None).await.unwrap();
+            assert_eq!((s, body["error_code"].as_str()), (400, Some("remote_bad_path")), "{path}");
+        }
+        let (s, body) = call(r.addr, &r.pin, "POST", "/api/config/bot/reset", Some(&token), None).await.unwrap();
+        assert_eq!((s, body), (200, json!({ "reset": "bot" })));
+        r.cancel.cancel();
     }
 
     #[test]

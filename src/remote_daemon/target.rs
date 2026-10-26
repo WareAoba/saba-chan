@@ -35,7 +35,9 @@ pub fn remote_of(req: &Request<Body>) -> Result<Option<String>, &'static str> {
     // 이름은 한국어일 수 있어 퍼센트 인코딩해 싣는다
     let value = crate::remote::gate::percent_decode(value.to_str().map_err(|_| BAD)?).ok_or(BAD)?;
     let value = value.trim();
-    if value.is_empty() || value == "local" || stays_local(req.uri().path()) {
+    // 이 PC의 경로인지는 푼 경로로 본다. 풀 수 없는 경로는 중계 쪽(`forward_path`)이 거절한다
+    let here = crate::remote::gate::normalized_path(req.uri().path()).is_some_and(|p| stays_local(&p));
+    if value.is_empty() || value == "local" || here {
         return Ok(None);
     }
     Ok(Some(value.to_string()))
@@ -138,6 +140,9 @@ mod tests {
         assert_eq!(remote_of(&req("/api/servers", Some("%EA%B2%8C%EC%9E%84%20PC"))), Ok(Some("게임 PC".into())));
         assert_eq!(remote_of(&req("/api/servers", Some("%FF"))), Err(BAD));
         assert_eq!(remote_of(&req("/api/remote/daemons", Some("host-b"))), Ok(None));
+        // 이 PC의 경로는 인코딩해도 이 PC에 남는다
+        assert_eq!(remote_of(&req("/api/config/%67ui", Some("host-b"))), Ok(None));
+        assert_eq!(remote_of(&req("/api/%72emote/daemons", Some("host-b"))), Ok(None));
         let bad = Request::get("/api/servers").header(HEADER, &b"\xff"[..]).body(Body::empty()).unwrap();
         assert_eq!(remote_of(&bad), Err(BAD));
     }
@@ -196,7 +201,9 @@ mod tests {
         assert_eq!(call("/health", Some("host-b")).await, (200, "here".into()));
         let (s, b) = call("/api/servers", Some("host-b")).await;
         assert!(s == 404 && b.contains("remote_unknown"), "{s} {b}");
-        let (s, b) = call("/api/x/../../remote/pair", Some("host-b")).await;
-        assert!(s == 400 && b.contains("remote_bad_path"), "{s} {b}");
+        for path in ["/api/x/../../remote/pair", "/api/x/%2e%2e/%2e%2e/remote/pair"] {
+            let (s, b) = call(path, Some("host-b")).await;
+            assert!(s == 400 && b.contains("remote_bad_path"), "{path}: {s} {b}");
+        }
     }
 }
