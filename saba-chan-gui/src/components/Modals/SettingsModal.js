@@ -463,6 +463,7 @@ function SettingsModal({
                     {showUpdatePanel && (
                         <div className="settings-tab-content" key="update-panel">
                             <SabaStorage
+                                key={storageTab}
                                 onBack={handleUpdatePanelBack}
                                 isExiting={updatePanelExiting}
                                 devMode={devMode}
