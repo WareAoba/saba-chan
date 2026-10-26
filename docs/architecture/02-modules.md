@@ -638,6 +638,7 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 - 모듈 저장소에는 릴리즈 워크플로가 없다. 검사용 `M:.github/workflows/check-modules.yml`(스키마·적합성 검사)만 있다.
 - 코어 릴리즈 워크플로가 `saba-chan-modules`의 `main`을 checkout하고(`release.yml:175-182`), `versions.py manifest --modules-repo`가 모듈마다 `module-<name>.zip`을 만든다(`versions.py:217-245`, `_`·`.`로 시작하는 폴더는 뺀다). 버전은 각 `module.toml`의 `[module].version`, 목록 화면용 정보(`display_name`, `description`, `game_name`, `requires_extensions`, 아이콘 URL)는 `meta`에 들어간다.
 - 이 zip들은 코어·GUI·CLI와 **같은 릴리즈 manifest**(`components`의 `module-<name>` 키)에 실려 서명되고, R2 `releases/<version>/`에 올라간다. 그래서 모듈 목록과 버전은 릴리즈 단위로 고정된다.
+- 업데이터·데몬은 버전이 오른 모듈·익스텐션만 받으므로, 워크플로는 지난 릴리즈(릴레이 `check?channel=beta`의 최신) manifest를 `--previous`로 넘긴다. 지난 판보다 버전이 낮거나, 같은 버전인데 zip 안 파일 내용이 다르면(지난 zip을 R2에서 받아 파일별 sha256 비교, zip 시각은 보지 않는다) 서명 전에 멈춘다(`versions.py` `addon_version_problems`). 버전은 발행 때 바뀐 것만 한 번 올린다.
 
 ### 5.2 데몬의 목록·설치
 
@@ -657,6 +658,7 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 ### 5.3 업데이터
 
 - `check_for_updates`가 같은 manifest에서 **설치된 모듈만** 골라 버전을 비교한다(`D:updater/src/lib.rs:482-557`). 새 모듈 설치는 목록 화면(§5.2)의 몫이다.
+- **업데이트한 모듈의 익스텐션**: 앱 업데이트로 모듈이 바뀌면 새 판의 `[install] requires_extensions` 중 디스크에 없는 것을 카탈로그에서 받고 켠다(§5.2의 `prepare_for_module`과 같은 일, `handlers/extension.rs` `prepare_after_update`). 대상은 완료 마커 `update-complete.json`의 `updated_components` 중 `module-*`이고, 데몬이 마커에 `extensions_prepared: true`를 먼저 적어 마커 하나에 한 번만 한다(`UpdateCompletionMarker::take_unprepared_at`). 업데이터가 적용하면 다시 뜬 데몬이 기동 때, 데몬이 바로 적용하면(`POST /api/updates/apply`) 적용 뒤에 한다(`UpdateState::modules_updated`). 옛 판이 요구하던 목록은 남지 않으므로 이미 깔린 익스텐션은 켜짐 상태를 그대로 둔다(사용자가 껐을 수 있다). 결과는 데몬 로그에만 남고, 받지 못한 익스텐션은 시작할 때 `extension_required`로 알린다.
 - 무결성 검사는 업데이터가 적용할 때 zip에서 푼 파일마다 기록한 SHA-256(`<data_dir>/installed-files.json`)과 디스크 파일을 비교한다. manifest의 zip 해시와는 비교하지 않는다 (`D:updater/src/integrity.rs:1-6, 105-152, 235-239`). 설치기로 처음 깐 모듈은 기록이 없어 결과에 나오지 않는다.
 - **installer**: 고른 모듈의 `requires_extensions`를 `ext-<id>`에서 받아 설치하고, 받은 것을 `config.json`의 `extensions.enabled`에 더해 켜 둔다(`installer/core/src/lib.rs` `enable_extensions`, 있던 항목은 그대로). 데몬은 시작할 때 이 목록을 읽는다. 모듈 목록도 같은 manifest의 `module-*`에서 만든다(`installer/gui/src-tauri/src/lib.rs` `get_available_modules`, `installer/core/src/release.rs` `modules`). 하드코딩 폴백은 없고, 받지 못하면 화면이 알린다.
 

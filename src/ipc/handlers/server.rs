@@ -727,7 +727,7 @@ async fn install_module_locked(state: IPCServer, module_id: String) -> axum::res
 }
 
 /// 모듈 `[install] requires_extensions`
-fn required_extensions(module: &crate::supervisor::module_loader::LoadedModule) -> Vec<String> {
+pub(crate) fn required_extensions(module: &crate::supervisor::module_loader::LoadedModule) -> Vec<String> {
     module.metadata.install.as_ref().map(|i| i.requires_extensions.clone()).unwrap_or_default()
 }
 

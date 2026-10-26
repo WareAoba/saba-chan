@@ -19,6 +19,9 @@ pub struct UpdateCompletionMarker {
     /// 클라이언트가 결과를 확인했다. 확인해도 지우지 않아 패치노트를 다시 볼 수 있다
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub acknowledged: bool,
+    /// 데몬이 바뀐 모듈이 쓰는 익스텐션을 맞췄다 (`take_unprepared_at`). 업데이터는 적지 않는다
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub extensions_prepared: bool,
 }
 
 /// 릴리즈 버전과 언어별 패치노트
@@ -60,6 +63,7 @@ impl UpdateCompletionMarker {
             failed: Vec::new(),
             release: None,
             acknowledged: false,
+            extensions_prepared: false,
         }
     }
 
@@ -72,6 +76,7 @@ impl UpdateCompletionMarker {
             failed: Vec::new(),
             release: None,
             acknowledged: false,
+            extensions_prepared: false,
         }
     }
 
@@ -116,6 +121,16 @@ impl UpdateCompletionMarker {
         }
     }
 
+    /// 데몬이 아직 익스텐션을 맞추지 않은 마커면 맞췄다고 먼저 적고 돌려준다 (없거나 이미 맞췄으면 None).
+    /// 먼저 적으므로 맞추다 끊겨도 다시 하지 않는다: 빠진 익스텐션은 시작할 때 `extension_required`로 알린다
+    pub fn take_unprepared_at(path: &std::path::Path) -> Option<Self> {
+        let marker = Self::load_from(path).filter(|m| !m.extensions_prepared)?;
+        if let Err(e) = (Self { extensions_prepared: true, ..marker.clone() }).save_to(path) {
+            tracing::warn!("[Updater] Cannot mark the update result as handled: {}", e);
+        }
+        Some(marker)
+    }
+
     /// 마커 삭제
     pub fn clear() -> Result<(), String> {
         let path = Self::path();
@@ -129,5 +144,28 @@ impl UpdateCompletionMarker {
     /// 마커 존재 여부
     pub fn exists() -> bool {
         Self::path().exists()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 업데이트로 바뀐 모듈의 익스텐션은 데몬이 마커 하나에 한 번만 맞춘다. 예전 업데이터가 남긴 마커(표시 없음)도 맞출 대상이다
+    #[test]
+    fn a_marker_is_handed_out_for_extension_setup_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("update-complete.json");
+        assert!(UpdateCompletionMarker::take_unprepared_at(&path).is_none(), "no marker");
+
+        std::fs::write(&path, r#"{"timestamp":"t","updated_components":["saba-core","module-x"],"success":true,"message":null,"acknowledged":true}"#).unwrap();
+        let taken = UpdateCompletionMarker::take_unprepared_at(&path).unwrap();
+        assert_eq!(taken.updated_components, ["saba-core", "module-x"]);
+        assert!(UpdateCompletionMarker::take_unprepared_at(&path).is_none(), "only once");
+        let kept = UpdateCompletionMarker::load_from(&path).unwrap();
+        assert!(kept.acknowledged && kept.extensions_prepared, "other fields stay");
+
+        UpdateCompletionMarker::success(vec!["module-y".into()]).save_to(&path).unwrap();
+        assert!(UpdateCompletionMarker::take_unprepared_at(&path).is_some(), "a new update is handed out again");
     }
 }
