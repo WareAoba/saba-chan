@@ -1027,7 +1027,9 @@ def safe_extract(archive, dest, *, prefix=None, strip_top=False, keep_existing=(
             if kind == "hardlink":
                 if not link.startswith(cut) or not link[len(cut):]:
                     continue
-                link = link[len(cut):]
+                link = "/".join(p for p in link[len(cut):].split("/") if p not in ("", "."))
+                if not link:
+                    continue
                 safe_join(dest, *[p for p in link.split("/") if p])
             planned.append((rel, kind, link, safe_join(dest, *[p for p in rel.split("/") if p]), info))
         written = []

@@ -270,6 +270,18 @@ class ExtractTests(unittest.TestCase):
         daemon_rcon.safe_extract(path, self.dest, keep_existing={"serverconfig.txt"})
         self.assertEqual((self.dest / "serverconfig.txt").read_text(), "mine")
 
+    def test_a_dot_slash_hard_link_still_finds_its_file(self):
+        path = self.root / "a.tar"
+        with tarfile.open(path, "w") as tf:
+            info = tarfile.TarInfo("./lib/real.so")
+            info.size = 3
+            tf.addfile(info, io.BytesIO(b"lib"))
+            hard = tarfile.TarInfo("./lib/copy.so")
+            hard.type, hard.linkname = tarfile.LNKTYPE, "./lib/real.so"
+            tf.addfile(hard)
+        daemon_rcon.safe_extract(path, self.dest)
+        self.assertEqual((self.dest / "lib" / "copy.so").read_bytes(), b"lib")
+
     def test_strip_top_prefix_and_keep_existing(self):
         archive = self._zip({"jdk-21/bin/java": "x", "jdk-21/release": "r"})
         daemon_rcon.safe_extract(archive, self.dest, strip_top=True)
