@@ -344,6 +344,24 @@ pub async fn language_set(app: AppHandle, language: String) -> Value {
     json!({ "success": success, "language": language })
 }
 
+/// 다룰 데몬 (G1): 고른 원격 데몬 hostId, 없으면 이 PC
+#[tauri::command]
+pub fn daemon_target_get(app: AppHandle) -> Value {
+    json!({ "target": app.state::<AppState>().client.target() })
+}
+
+/// 다룰 데몬을 바꾸고 설정 `gui.daemonTarget`에 저장한다. 이 뒤의 데몬 요청과 이벤트 스트림이 그 데몬으로 간다
+#[tauri::command]
+pub async fn daemon_target_set(app: AppHandle, target: Option<String>) -> Value {
+    let state = app.state::<AppState>();
+    let target = target.map(|t| t.trim().to_string()).filter(|t| !t.is_empty());
+    let success = save_settings(&state, &json!({ "daemonTarget": target })).await;
+    if success {
+        state.client.set_target(target.clone());
+    }
+    json!({ "success": success, "target": state.client.target() })
+}
+
 // ── 대화상자 ──
 
 #[derive(Deserialize)]

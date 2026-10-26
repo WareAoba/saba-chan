@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-daemon-target-get"
+description = "Enables the daemon_target_get command without any pre-configured scope."
+commands.allow = ["daemon_target_get"]
+
+[[permission]]
+identifier = "deny-daemon-target-get"
+description = "Denies the daemon_target_get command without any pre-configured scope."
+commands.deny = ["daemon_target_get"]

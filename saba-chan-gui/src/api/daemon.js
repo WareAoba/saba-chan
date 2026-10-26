@@ -1,6 +1,11 @@
 import i18n from 'i18next';
 
 function moduleErrorBody(body) {
+    // 고른 원격 데몬에 닿지 못한 것 같은 중계 오류 (01 §1.4.2): 화면마다 따로 번역하지 않게 여기서 문구로
+    const relayKey = `remote_daemon.err_${body?.error_code}`;
+    if (String(body?.error_code || '').startsWith('remote_') && i18n.exists(relayKey, { ns: 'gui' })) {
+        return { ...body, error: i18n.t(relayKey, { ns: 'gui' }) };
+    }
     const key = `module_errors.${body?.error_code}`;
     if (!i18n.exists(key, { ns: 'common' })) return body;
     const details = [body.error || body.message];

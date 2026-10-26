@@ -15,6 +15,8 @@ const COMMANDS: &[&str] = &[
     "refresh_ipc_base",
     "language_get",
     "language_set",
+    "daemon_target_get",
+    "daemon_target_set",
     "dialog_open_file",
     "dialog_open_folder",
     "dialog_save_file",

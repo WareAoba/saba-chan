@@ -92,6 +92,11 @@
     gap: var(--sp-3);
     min-width: 0;
 }
+/* 다룰 데몬 (이 PC / 원격 데몬) */
+.appbar-daemon-switcher {
+    max-width: 180px;
+    -webkit-app-region: no-drag;
+}
 .appbar-ext-init {
     display: inline-flex;
     -webkit-app-region: no-drag;

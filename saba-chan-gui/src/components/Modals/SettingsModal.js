@@ -28,6 +28,7 @@ import { SabaToggle } from '../ui/SabaUI';
 import { AuditLog, auditAvailable } from '../servers/AuditTab';
 import { DataTransferSection, dataTransferAvailable } from './DataTransferSection';
 import { FolderPathsSection, folderPathsAvailable } from './FolderPathsSection';
+import { RemoteDaemonSection, remoteDaemonAvailable } from './RemoteDaemonSection';
 import { AutostartSetting, autostartAvailable } from './AutostartSetting';
 import { ExtensionGuiSection, extensionGuiAvailable } from './ExtensionGuiSection';
 import { UnisolatedSection, unisolatedAvailable } from './UnisolatedSection';
@@ -912,6 +913,7 @@ function SettingsModal({
                                 />
                             </div>
 
+                            {remoteDaemonAvailable() && <RemoteDaemonSection />}
                             {folderPathsAvailable() && <FolderPathsSection />}
 
                             {dataTransferAvailable() && <DataTransferSection />}

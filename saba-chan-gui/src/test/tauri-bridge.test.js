@@ -286,6 +286,36 @@ describe('데몬 응답 가공', () => {
     });
 });
 
+describe('원격 데몬 (G1)', () => {
+    it('짝 풀기·잊기는 204여도 성공으로, 다룰 데몬은 셸 명령으로 고른다', async () => {
+        const { api, tauri } = await install({
+            daemon_request: daemon({
+                'DELETE /api/remote/clients/host%20a': { status: 204, data: '' },
+                'DELETE /api/remote/daemons/host-b': { status: 404, data: { error: 'remote_unknown', error_code: 'remote_unknown' } },
+                'POST /api/remote/daemons': (args) => ({ status: 200, data: { hostId: args.body.hostId, name: '게임 PC' } }),
+            }),
+            daemon_target_set: (args) => ({ success: true, target: args.target }),
+        });
+        expect(await api.remoteRevoke('host a')).toEqual({ ok: true });
+        expect(await api.remoteForget('host-b')).toMatchObject({ error_code: 'remote_unknown' });
+        expect(await api.remoteConnect('host-b')).toEqual({ hostId: 'host-b', name: '게임 PC' });
+        expect(await api.daemonTargetSet('')).toEqual({ success: true, target: null });
+        expect(tauri.invoke).toHaveBeenCalledWith('daemon_target_set', { target: null });
+    });
+
+    it('고른 원격 데몬에 닿지 못한 오류는 어느 화면에서든 문구로 온다', async () => {
+        const { api } = await install({
+            daemon_request: daemon({
+                'POST /api/instance/a/stop': { status: 502, data: { error: 'remote_unreachable', error_code: 'remote_unreachable' } },
+            }),
+        });
+        expect(await api.instanceStop('a')).toMatchObject({
+            error_code: 'remote_unreachable',
+            error: 'Could not reach the remote daemon. Check its address and firewall',
+        });
+    });
+});
+
 describe('가져오기 (dataImport)', () => {
     it('파일 선택을 취소하면 {canceled:true}, 고르면 결과에 path를 붙인다', async () => {
         let picked = null;

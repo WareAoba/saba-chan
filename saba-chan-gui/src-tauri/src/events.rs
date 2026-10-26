@@ -74,7 +74,11 @@ impl SseBuffer {
 /// 멈출 때까지 스트림을 유지한다
 pub async fn run_event_stream<F: Fn(SseEvent)>(client: Arc<DaemonClient>, stop: Arc<AtomicBool>, emit: F) {
     let mut last_id: Option<u64> = None;
+    // 다룰 데몬(G1)이 바뀌면 끊고 바로 새 대상에 붙는다. 번호는 데몬마다 따로라 처음부터 받는다
+    let mut target = client.watch_target();
+    target.mark_unchanged();
     while !stop.load(Ordering::SeqCst) {
+        let mut switched = false;
         let mut req = client
             .builder(reqwest::Method::GET, "/api/events")
             .header("Accept", "text/event-stream");
@@ -85,7 +89,15 @@ pub async fn run_event_stream<F: Fn(SseEvent)>(client: Arc<DaemonClient>, stop: 
             Ok(res) if res.status().as_u16() == 200 => {
                 let mut stream = res.bytes_stream();
                 let mut buf = SseBuffer::default();
-                while let Some(chunk) = stream.next().await {
+                loop {
+                    let chunk = tokio::select! {
+                        c = stream.next() => c,
+                        _ = target.changed() => {
+                            switched = true;
+                            break;
+                        }
+                    };
+                    let Some(chunk) = chunk else { break };
                     if stop.load(Ordering::SeqCst) {
                         return;
                     }
@@ -106,7 +118,15 @@ pub async fn run_event_stream<F: Fn(SseEvent)>(client: Arc<DaemonClient>, stop: 
             }
             Err(_) => {}
         }
-        tokio::time::sleep(EVENTS_RETRY).await;
+        if !switched {
+            tokio::select! {
+                _ = tokio::time::sleep(EVENTS_RETRY) => {}
+                _ = target.changed() => switched = true,
+            }
+        }
+        if switched {
+            last_id = None;
+        }
     }
 }
 

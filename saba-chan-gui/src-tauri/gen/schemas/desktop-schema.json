@@ -411,6 +411,18 @@
           "markdownDescription": "Enables the daemon_status command without any pre-configured scope."
         },
         {
+          "description": "Enables the daemon_target_get command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-daemon-target-get",
+          "markdownDescription": "Enables the daemon_target_get command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the daemon_target_set command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-daemon-target-set",
+          "markdownDescription": "Enables the daemon_target_set command without any pre-configured scope."
+        },
+        {
           "description": "Enables the dialog_open_file command without any pre-configured scope.",
           "type": "string",
           "const": "allow-dialog-open-file",
@@ -607,6 +619,18 @@
           "type": "string",
           "const": "deny-daemon-status",
           "markdownDescription": "Denies the daemon_status command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the daemon_target_get command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-daemon-target-get",
+          "markdownDescription": "Denies the daemon_target_get command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the daemon_target_set command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-daemon-target-set",
+          "markdownDescription": "Denies the daemon_target_set command without any pre-configured scope."
         },
         {
           "description": "Denies the dialog_open_file command without any pre-configured scope.",

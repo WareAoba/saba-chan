@@ -131,6 +131,19 @@ const CONSENT_ROUTES: &[&str] = &["/api/sandbox/unisolated", "/api/sandbox/exten
 /// 업데이터 실행(relaunch 대상), 클라이언트 등록, 데몬 종료는 셸 명령으로만 부른다
 const RESERVED_ROUTES: &[&str] = &["/api/updates/launch-updater", "/api/client", "/api/daemon/shutdown"];
 
+/// 머리에 실을 수 있게 퍼센트 인코딩 (이름은 한국어일 수 있다)
+fn encode_target(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for b in s.bytes() {
+        if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.' | b'~') {
+            out.push(b as char);
+        } else {
+            out.push_str(&format!("%{b:02X}"));
+        }
+    }
+    out
+}
+
 pub fn parse_method(method: &str) -> Option<reqwest::Method> {
     match method.to_ascii_uppercase().as_str() {
         "GET" => Some(reqwest::Method::GET),
@@ -147,6 +160,10 @@ pub struct DaemonClient {
     base: RwLock<String>,
     token: RwLock<String>,
     token_path: PathBuf,
+    /// 고른 원격 데몬 (G1, 설정 `gui.daemonTarget`). 없으면 이 PC의 데몬
+    target: RwLock<Option<String>>,
+    /// 대상이 바뀔 때마다 오른다 (이벤트 스트림이 새 대상으로 다시 붙는다)
+    target_gen: tokio::sync::watch::Sender<u64>,
 }
 
 impl DaemonClient {
@@ -162,7 +179,31 @@ impl DaemonClient {
             base: RwLock::new(base),
             token: RwLock::new(String::new()),
             token_path,
+            target: RwLock::new(None),
+            target_gen: tokio::sync::watch::Sender::new(0),
         }
+    }
+
+    pub fn target(&self) -> Option<String> {
+        self.target.read().unwrap().clone()
+    }
+
+    /// 다룰 데몬을 바꾼다 (빈 값은 이 PC). 바뀌었으면 세대를 올린다
+    pub fn set_target(&self, target: Option<String>) {
+        let target = target.map(|t| t.trim().to_string()).filter(|t| !t.is_empty());
+        let mut cur = self.target.write().unwrap();
+        if *cur != target {
+            *cur = target;
+            self.target_gen.send_modify(|g| *g += 1);
+        }
+    }
+
+    pub fn target_generation(&self) -> u64 {
+        *self.target_gen.borrow()
+    }
+
+    pub fn watch_target(&self) -> tokio::sync::watch::Receiver<u64> {
+        self.target_gen.subscribe()
     }
 
     pub async fn identity_valid(&self, timeout_ms: u64) -> bool {
@@ -242,6 +283,10 @@ impl DaemonClient {
         let token = self.token();
         if !token.is_empty() && self.base_is_loopback() && path != "/health" {
             req = req.header("X-Saba-Token", token);
+        }
+        // 고른 원격 데몬은 이 PC의 데몬이 중계한다 (01 §1.4.2 7). 데몬이 살아 있는지는 늘 이 PC에 묻는다
+        if let Some(target) = self.target().filter(|_| !path.starts_with("/health")) {
+            req = req.header("X-Saba-Target", encode_target(&target));
         }
         req
     }
@@ -549,6 +594,31 @@ mod tests {
         assert!(!has_token("http://example.com:57474"));
         let local = DaemonClient::new("http://127.0.0.1:57474".into(), token_path);
         assert!(!local.builder(reqwest::Method::GET, "/health").build().unwrap().headers().contains_key("X-Saba-Token"));
+    }
+
+    /// 고른 원격 데몬(G1)은 데몬 요청마다 `X-Saba-Target`(퍼센트 인코딩)으로 이 PC의 데몬에 알린다.
+    /// 이 PC의 데몬이 살아 있는지 보는 `/health`에는 싣지 않는다. 바꾸면 세대가 올라 이벤트 스트림이 다시 붙는다
+    #[test]
+    fn a_chosen_remote_daemon_is_named_on_daemon_requests_but_not_health() {
+        let dir = tempfile::tempdir().unwrap();
+        let client = DaemonClient::new("http://127.0.0.1:57474".into(), dir.path().join(".ipc_token"));
+        let target = |path: &str| {
+            let req = client.builder(reqwest::Method::GET, path).build().unwrap();
+            req.headers().get("X-Saba-Target").map(|v| v.to_str().unwrap().to_string())
+        };
+        assert_eq!(target("/api/servers"), None);
+        let before = client.target_generation();
+        client.set_target(Some("게임 PC".into()));
+        assert_eq!(client.target().as_deref(), Some("게임 PC"));
+        assert_ne!(client.target_generation(), before);
+        assert_eq!(target("/api/servers").as_deref(), Some("%EA%B2%8C%EC%9E%84%20PC"));
+        assert_eq!(target("/health"), None);
+        let same = client.target_generation();
+        client.set_target(Some("게임 PC".into()));
+        assert_eq!(client.target_generation(), same);
+        client.set_target(Some("  ".into()));
+        assert_eq!(client.target(), None);
+        assert_eq!(target("/api/servers"), None);
     }
 
     /// 상태 확인 한 번에 /health 하나: 신원 증명이 실린 그 응답을 상태 본문으로도 쓴다 (폴링마다 두 번 묻지 않게)
