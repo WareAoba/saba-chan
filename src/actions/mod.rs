@@ -1006,6 +1006,13 @@ async fn allowed_instances(server: &IPCServer, caller: &Caller) -> Option<Vec<St
 
 /// 표면과 레벨 판정. 챗봇 경로는 표면부터 본다 (레벨·설정으로 풀 수 없다)
 async fn authorize(server: &IPCServer, r: &Resolved, caller: &Caller) -> Result<(), ActionError> {
+    // 원격 포트(짝 맺은 PC)에서 온 요청은 대상 라우트도 원격 포트와 같은 표로 본다.
+    // 실행은 안에서 라우터를 다시 불러 원격 포트의 인증층을 거치지 않는다
+    if caller.remote.is_none() && caller.origin.source == "remote" {
+        if let Some((status, code)) = crate::remote_daemon::server::refused_path(&r.uri) {
+            return Err(ActionError::new(status.as_u16(), code, "This can only be done on that PC itself"));
+        }
+    }
     if !r.surfaces.contains(&caller.surface) {
         return Err(ActionError::new(403, "action_not_allowed", format!("'{}' is not available from {}", r.id, caller.surface.name())));
     }

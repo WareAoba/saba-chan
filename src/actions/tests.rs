@@ -89,6 +89,24 @@ async fn the_chatbot_cannot_reach_forbidden_actions_whatever_the_levels() {
     assert!(plan(&state, "instance.settings.set", Some(&id), &json!({ "admin_pass": "x" }), &gui()).await.is_ok());
 }
 
+/// 원격 포트(짝 맺은 PC)에서 온 액션은 대상 라우트가 원격 포트에서 막힌 것이면 계획·실행·여러 단계 계획 모두 거절한다
+#[tokio::test]
+async fn a_paired_pc_cannot_reach_routes_the_remote_port_refuses_through_actions() {
+    let (state, id, _tmp) = server().await;
+    let paired = Caller::local(crate::audit::Origin::new("remote"), "en".into());
+    for action in ["update.apply", "update.check"] {
+        let err = plan(&state, action, None, &json!({}), &paired).await.unwrap_err();
+        assert_eq!((err.status, err.code), (403, "remote_local_only"), "{action}");
+        let err = run(&state, action, None, &json!({}), None, &paired).await.unwrap_err();
+        assert_eq!((err.status, err.code), (403, "remote_local_only"), "{action}");
+    }
+    let steps = json!([{ "id": "server.status", "instance": id, "input": {} }, { "id": "update.apply", "input": {} }]);
+    assert_eq!(plan_steps(&state, &steps, &paired).await.unwrap_err().code, "remote_local_only");
+    // 원격 포트가 받는 라우트는 그대로, 이 PC의 화면에서는 그대로
+    assert!(plan(&state, "server.status", Some(&id), &json!({}), &paired).await.is_ok());
+    assert!(plan(&state, "update.apply", None, &json!({}), &gui()).await.is_ok());
+}
+
 #[tokio::test]
 async fn update_apply_from_discord_needs_the_owner_even_with_an_override() {
     let (state, _id, _tmp) = server().await;
