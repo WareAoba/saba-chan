@@ -27,6 +27,7 @@ function RemotePathPicker() {
     // 마지막으로 연 폴더 조회 (늦게 온 앞선 응답은 버린다)
     const seqRef = useRef(0);
     const checking = useRef(false); // 저장할 이름이 있는지 데몬에 묻는 중
+    const shown = useRef(null); // 지금 화면이 고른 경로 (물은 뒤에 바뀌었는지 본다)
 
     const finish = useCallback((value) => {
         requestRef.current?.resolve(value);
@@ -113,6 +114,7 @@ function RemotePathPicker() {
         return here && n ? `${here.endsWith(sep) ? here : here + sep}${n}` : null;
     };
     const ready = !busy && !!result();
+    shown.current = result();
     const choose = async () => {
         // 폴더를 읽는 동안에는 앞 폴더로 정하지 않는다 (버튼만이 아니라 Enter도)
         if (busy || checking.current) return;
@@ -121,9 +123,12 @@ function RemotePathPicker() {
         // 이미 있는 파일에 저장하면 한 번 더 눌러야 바꾼다 (내보내기는 그 파일을 바꾼다).
         // 목록에는 숨긴 항목이 없고 5000개에서 끊기므로 그 경로를 데몬에 직접 묻는다: 없다고 답할 때만 바로 저장
         if (kind === 'save' && replacing !== value) {
+            const req = requestRef.current;
             checking.current = true;
             const res = await window.api.systemBrowse(value, null).catch(() => null);
             checking.current = false;
+            // 묻는 동안 창을 닫았거나 이름·폴더를 바꿨으면 그 답으로 정하지 않는다
+            if (requestRef.current !== req || shown.current !== value) return;
             if (res?.error_code !== 'browse_not_found') {
                 setReplacing(value);
                 return;

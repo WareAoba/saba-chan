@@ -140,6 +140,35 @@ describe('원격 경로 고르기 창', () => {
         await expect(result).resolves.toBe('/home/me/.old.zip');
     });
 
+    it('저장할 이름을 묻는 동안 이름을 바꾸면 앞 이름으로 저장하지 않는다', async () => {
+        let release;
+        window.api.systemBrowse.mockImplementation(async (path) => {
+            if (path === '/home/me/a.zip') {
+                await new Promise((r) => {
+                    release = r;
+                });
+            }
+            return browse(path);
+        });
+        await act(async () => render(<RemotePathPicker />));
+        let result;
+        let settled = false;
+        await act(async () => {
+            result = pickRemotePath({ kind: 'save', extensions: ['zip'], defaultName: 'a.zip' });
+            result.then(() => {
+                settled = true;
+            });
+        });
+        act(() => {
+            fireEvent.click(screen.getByRole('button', { name: 'Save here' }));
+        });
+        fireEvent.change(screen.getByRole('textbox', { name: 'File name' }), { target: { value: 'b' } });
+        await act(async () => release());
+        expect(settled).toBe(false);
+        await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Save here' })));
+        await expect(result).resolves.toBe('/home/me/b.zip');
+    });
+
     it('늦게 온 앞선 폴더 응답은 지금 목록을 바꾸지 않는다', async () => {
         let release;
         window.api.systemBrowse.mockImplementation(async (path) => {
