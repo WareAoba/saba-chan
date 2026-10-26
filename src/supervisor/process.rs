@@ -19,10 +19,8 @@ pub enum ProcessError {
 pub fn is_process_alive(pid: u32) -> bool {
     #[cfg(target_os = "windows")]
     {
-        use winapi::um::processthreadsapi::{GetExitCodeProcess, OpenProcess};
-        use winapi::um::winnt::PROCESS_QUERY_LIMITED_INFORMATION;
-        use winapi::um::handleapi::CloseHandle;
-        use winapi::um::minwinbase::STILL_ACTIVE;
+        use windows_sys::Win32::Foundation::{CloseHandle, STILL_ACTIVE};
+        use windows_sys::Win32::System::Threading::{GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION};
 
         unsafe {
             let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
@@ -33,7 +31,7 @@ pub fn is_process_alive(pid: u32) -> bool {
             let mut code = 0;
             let ok = GetExitCodeProcess(handle, &mut code);
             CloseHandle(handle);
-            ok == 0 || code == STILL_ACTIVE
+            ok == 0 || code == STILL_ACTIVE as u32
         }
     }
     #[cfg(not(target_os = "windows"))]
@@ -50,7 +48,7 @@ const START_TIME_SLACK_SECS: u64 = 10;
 pub fn process_start_time(pid: u32) -> Option<u64> {
     let pid = sysinfo::Pid::from_u32(pid);
     let mut sys = sysinfo::System::new();
-    if !sys.refresh_process(pid) {
+    if sys.refresh_processes(sysinfo::ProcessesToUpdate::Some(&[pid]), true) == 0 {
         return None;
     }
     sys.process(pid).map(|p| p.start_time()).filter(|&t| t > 0)
@@ -342,7 +340,7 @@ mod tests {
         let mut child = None;
         for _ in 0..600 {
             let mut sys = sysinfo::System::new();
-            sys.refresh_processes();
+            sys.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
             child = sys
                 .processes()
                 .iter()

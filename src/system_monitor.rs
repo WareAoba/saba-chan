@@ -16,7 +16,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-use sysinfo::{Disks, Networks, Pid, ProcessRefreshKind, System};
+use sysinfo::{Disks, Networks, Pid, ProcessRefreshKind, ProcessesToUpdate, System};
 
 mod physical_io;
 use physical_io::PhysicalIo;
@@ -354,10 +354,12 @@ impl SystemMonitor {
         let window = sampler.last_refresh.map(|t| t.elapsed()).unwrap_or_default();
         Self::refresh(sampler, want_io);
         if sampler.disks_listed_at.is_none_or(|t| t.elapsed() > DISK_LIST_TTL) {
-            sampler.disks.refresh_list();
+            sampler.disks.refresh(true);
             sampler.disks_listed_at = Some(Instant::now());
         } else {
-            sampler.disks.refresh();
+            sampler.disks.list_mut().iter_mut().for_each(|disk| {
+                disk.refresh();
+            });
         }
         let sizes = self.dir_sizes.lock().unwrap_or_else(|e| e.into_inner());
         let snap = build_snapshot(sampler, roots, extra_dirs, &sizes, window);
@@ -372,10 +374,10 @@ impl SystemMonitor {
         sampler.physical_rates = carry_physical(sampler.physical_rates, sampler.physical_io.refresh(), Instant::now());
         // 프로세스 IO 카운터는 프로세스마다 따로 읽는다: 쓸 데가 없으면 건너뛴다
         let with_io = want_io || sampler.physical_rates.is_none();
-        let kind = ProcessRefreshKind::new().with_cpu().with_memory();
-        sampler.system.refresh_processes_specifics(if with_io { kind.with_disk_usage() } else { kind });
+        let kind = ProcessRefreshKind::nothing().with_cpu().with_memory();
+        sampler.system.refresh_processes_specifics(ProcessesToUpdate::All, true, if with_io { kind.with_disk_usage() } else { kind });
         sampler.proc_io = with_io;
-        sampler.networks.refresh();
+        sampler.networks.refresh(true);
         sampler.last_refresh = Some(Instant::now());
     }
 
@@ -474,7 +476,7 @@ fn build_snapshot(
 
     let inst_cpu: f32 = instances.iter().map(|i| i.cpu_percent).sum();
     // 프로세스 합과 전체 값은 재는 시점이 조금 달라 어긋난다: 전체가 인스턴스 합보다 작아지지 않게 맞춘다
-    let total_cpu = sys.global_cpu_info().cpu_usage().clamp(0.0, 100.0).max(inst_cpu.min(100.0));
+    let total_cpu = sys.global_cpu_usage().clamp(0.0, 100.0).max(inst_cpu.min(100.0));
     let inst_mem: u64 = instances.iter().map(|i| i.memory_bytes).sum();
     let total_mem = sys.total_memory();
     let used_mem = total_mem.saturating_sub(sys.available_memory()).max(inst_mem.min(total_mem));

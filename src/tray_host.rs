@@ -39,10 +39,10 @@ pub fn has_desktop() -> bool {
 
 #[cfg(windows)]
 fn windows_interactive() -> bool {
-    use winapi::shared::minwindef::DWORD;
-    use winapi::um::processthreadsapi::{GetCurrentProcessId, ProcessIdToSessionId};
-    use winapi::um::winuser::{GetProcessWindowStation, GetUserObjectInformationW, UOI_NAME};
-    let mut session: DWORD = 0;
+    use windows_sys::Win32::System::RemoteDesktop::ProcessIdToSessionId;
+    use windows_sys::Win32::System::StationsAndDesktops::{GetProcessWindowStation, GetUserObjectInformationW, UOI_NAME};
+    use windows_sys::Win32::System::Threading::GetCurrentProcessId;
+    let mut session: u32 = 0;
     // SAFETY: 출력 포인터는 이 스택 변수다
     if unsafe { ProcessIdToSessionId(GetCurrentProcessId(), &mut session) } == 0 || session == 0 {
         return false;
@@ -53,13 +53,13 @@ fn windows_interactive() -> bool {
         return false;
     }
     let mut name = [0u16; 64];
-    let mut needed: DWORD = 0;
+    let mut needed: u32 = 0;
     let ok = unsafe {
         GetUserObjectInformationW(
             station as _,
-            UOI_NAME as i32,
+            UOI_NAME,
             name.as_mut_ptr().cast(),
-            (name.len() * 2) as DWORD,
+            (name.len() * 2) as u32,
             &mut needed,
         )
     };

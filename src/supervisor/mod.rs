@@ -1229,7 +1229,7 @@ impl Supervisor {
                     #[cfg(windows)]
                     if let Some(handle) = console_handle.as_ref() {
                         use std::os::windows::io::AsRawHandle;
-                        unsafe { winapi::um::processthreadsapi::TerminateProcess(handle.as_raw_handle() as _, 1) };
+                        unsafe { windows_sys::Win32::System::Threading::TerminateProcess(handle.as_raw_handle() as _, 1) };
                     }
                 }
                 if let Some(child) = child.as_mut() {
