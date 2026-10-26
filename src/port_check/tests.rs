@@ -176,6 +176,16 @@ async fn a_port_the_pc_firewall_blocks_is_reported_as_the_firewall() {
 }
 
 #[tokio::test]
+async fn ports_past_the_relay_limit_are_unknown_not_closed() {
+    let relay = mock_relay(Mode::Drop).await;
+    let ports: Vec<(u16, Protocol)> = (0..MAX_PORTS + 1).map(|_| (free_port(), Protocol::Udp)).collect();
+    let reports = run(&relay, &[target("pc-many", false, &ports)], LOOPBACK).await.unwrap();
+    let got = statuses(&reports[0]);
+    assert_eq!(got[..MAX_PORTS], vec![PortStatus::Closed; MAX_PORTS][..]);
+    assert_eq!(got[MAX_PORTS], PortStatus::Unknown);
+}
+
+#[tokio::test]
 async fn a_probe_without_the_nonce_does_not_count() {
     // 누군가 그 포트로 다른 값을 보내도 열림이 아니다
     let port = free_port();

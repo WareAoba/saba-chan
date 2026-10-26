@@ -490,6 +490,8 @@ async fn run_with(
         }
     }
     ask.truncate(MAX_PORTS);
+    // 한 번에 실을 수 없어 묻지 않은 포트는 닫힘이 아니라 모름이다
+    let asked: HashSet<(u16, Protocol)> = ask.iter().copied().collect();
 
     let (answer, gateway) = if ask.is_empty() {
         (None, None)
@@ -524,7 +526,7 @@ async fn run_with(
                     let key = (p.port, p.protocol);
                     let status = if !t.running && busy.contains(&key) {
                         PortStatus::InUse
-                    } else if !public_address {
+                    } else if !public_address || !asked.contains(&key) {
                         PortStatus::Unknown
                     } else if !t.running {
                         if seen.contains(&key) {

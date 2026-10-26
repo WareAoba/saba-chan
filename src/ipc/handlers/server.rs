@@ -898,8 +898,6 @@ async fn start_instance(
 }
 
 async fn start_checked(state: IPCServer, instance: crate::instance::ServerInstance, managed: bool) -> axum::response::Response {
-    // 포트포워딩 확인이 시험 리스너로 포트를 잡고 있으면 놓을 때까지 (몇 초). 시작하는 동안에는 새 확인이 포트를 잡지 않는다
-    let _starting = crate::port_check::begin_start(&instance.id).await;
     if let Some(blocked) = preflight(&state, &instance.id).await {
         return blocked;
     }
@@ -1160,6 +1158,11 @@ pub async fn start_server_handler(
             None => return super::audited(&state, "start", &name, None, None, super::backup::instance_busy()).await,
             guard => guard,
         },
+        None => None,
+    };
+    // 포트포워딩 확인이 시험 리스너로 포트를 잡고 있으면 놓을 때까지 (몇 초). 시작하는 동안에는 새 확인이 포트를 잡지 않는다
+    let _starting = match inst_id.as_deref() {
+        Some(id) => Some(crate::port_check::begin_start(id).await),
         None => None,
     };
 
