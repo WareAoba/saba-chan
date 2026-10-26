@@ -679,15 +679,17 @@ def _kv_text(path, encodings):
     bom = raw.startswith(b"\xef\xbb\xbf")
     if bom:
         raw = raw[3:]
+    error = None
     for encoding in encodings:
         encoding = encoding or __import__("locale").getpreferredencoding(False)
         try:
             text = raw.decode(encoding)
             break
-        except (UnicodeDecodeError, LookupError):
-            continue
+        except (UnicodeDecodeError, LookupError) as e:
+            error = e
     else:
-        encoding, text = "latin-1", raw.decode("latin-1")
+        # 어느 인코딩으로도 못 읽었다: 빈 설정으로 보고 덮어쓰지 않는다
+        raise error if isinstance(error, UnicodeDecodeError) else UnicodeDecodeError("utf-8", raw, 0, 1, "no encoding")
     newline = "\r\n" if "\r\n" in text else "\n"
     return text.splitlines(), newline, encoding, bom
 
@@ -704,7 +706,7 @@ def _kv_parse(line, comments):
 def read_key_values(path, *, encodings=_KV_ENCODINGS, case_insensitive=False, first_wins=False,
                     strip_values=False, comments=("#",)):
     """`키=값` 줄 파일(server.properties, serverconfig.txt, 좀보이드 ini 등) → {키: 값}.
-    없으면 {}. case_insensitive면 키를 소문자로 돌려준다. 같은 키가 여러 줄이면 마지막(first_wins면 첫) 줄"""
+    없으면 {}. encodings 어느 것으로도 못 읽으면 UnicodeDecodeError(update_key_values도 쓰지 않는다). case_insensitive면 키를 소문자로 돌려준다. 같은 키가 여러 줄이면 마지막(first_wins면 첫) 줄"""
     lines, _, _, _ = _kv_text(path, encodings)
     out = {}
     for line in lines:

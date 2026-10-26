@@ -146,6 +146,14 @@ class KeyValueFileTests(unittest.TestCase):
         daemon_rcon.update_key_values(self.path, {"port": 1}, write_encoding="utf-8")
         self.assertEqual(self.path.read_bytes(), "motd=서울\nport=1\n".encode("utf-8"))
 
+    def test_a_file_no_encoding_can_read_is_not_overwritten(self):
+        self.path.write_bytes(b"motd=\x81\n")
+        with self.assertRaises(UnicodeDecodeError):
+            daemon_rcon.read_key_values(self.path, encodings=("utf-8", "cp1252"))
+        with self.assertRaises(UnicodeDecodeError):
+            daemon_rcon.update_key_values(self.path, {"a": "1"}, encodings=("utf-8", "cp1252"))
+        self.assertEqual(self.path.read_bytes(), b"motd=\x81\n")
+
     def test_missing_file_reads_empty_and_is_created(self):
         self.assertEqual(daemon_rcon.read_key_values(self.path), {})
         daemon_rcon.update_key_values(self.path, {"a": True})
