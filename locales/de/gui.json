@@ -115,7 +115,9 @@
     "reset_gui_button": "Zurücksetzen",
     "reset_gui_confirm": "Zum Zurücksetzen erneut klicken",
     "reset_gui_done": "GUI-Einstellungen auf Standard zurückgesetzt",
-    "reset_gui_failed": "Einstellungen konnten nicht zurückgesetzt werden"
+    "reset_gui_failed": "Einstellungen konnten nicht zurückgesetzt werden",
+    "os_notifications_label": "Systembenachrichtigungen",
+    "os_notifications_description": "Wichtige Ereignisse wie Abstürze und unerwartete Starts oder Stopps auch als Windows- oder macOS-Benachrichtigung senden. Solange das App-Fenster vorne ist, nur in der App."
   },
   "add_server_modal": {
     "title": "Neuen Server hinzufügen",
@@ -1344,7 +1346,10 @@
     "source_api": "API",
     "source_discord": "Discord",
     "source_schedule": "Zeitplan",
-    "source_daemon": "Daemon"
+    "source_daemon": "Daemon",
+    "source_web": "Saba-chan Web",
+    "source_remote": "Entfernter PC",
+    "source_restart": "Automatischer Neustart"
   },
   "launch_preview": {
     "title": "Vorschau der Startargumente",
@@ -1432,7 +1437,11 @@
     "schedule_restart": "{{name}} startet planmäßig in {{minutes}} Min. neu.",
     "schedule_update": "{{name}} wird planmäßig in {{minutes}} Min. aktualisiert.",
     "module_update": "{{name}}: Version {{version}} des Moduls {{module}} ist verfügbar.",
-    "server_update": "{{name}}: Eine neue Spielserver-Version ist verfügbar. Wenn niemand beitreten kann, aktualisiere den Server."
+    "server_update": "{{name}}: Eine neue Spielserver-Version ist verfügbar. Wenn niemand beitreten kann, aktualisiere den Server.",
+    "instance_started": "{{name}} wurde gestartet ({{source}}).",
+    "instance_stopped": "{{name}} wurde beendet ({{source}}).",
+    "instance_stopped_in_game": "{{name}} wurde im Spiel beendet.",
+    "instance_started_external": "{{name}} wurde außerhalb von Saba-chan gestartet. Saba-chan hat diesen Prozess nicht gestartet."
   },
   "switch_cli": {
     "label": "Zur CLI wechseln",
@@ -1649,7 +1658,6 @@
     "err_remote_bad_path": "Dieser Pfad kann nicht an einen Remote-Daemon gesendet werden",
     "err_remote_unauthorized": "Der Remote-Daemon akzeptiert diesen PC nicht mehr. Verbinde ihn erneut",
     "err_remote_local_only": "Das geht nur direkt auf diesem PC",
-    "local_only_sections": "Ordnerorte und Datenexport/-import wählen Pfade auf diesem PC und sind daher ausgeblendet, solange du einen Remote-Daemon verwaltest.",
     "view": "Serverliste",
     "view_description": "Die kombinierte Ansicht zeigt unter den Servern des gewählten Daemons die Server der anderen Daemons (auch dieses PCs), nach Daemon gruppiert, und du kannst sie dort starten und stoppen",
     "view_switch": "Nur gewählter Daemon",
@@ -1662,5 +1670,28 @@
   "other_daemons": {
     "open": "Diesen Daemon öffnen",
     "empty": "Keine Server"
+  },
+  "remote_picker": {
+    "title_file": "Datei auf dem entfernten PC wählen",
+    "title_folder": "Ordner auf dem entfernten PC wählen",
+    "title_save": "Auf dem entfernten PC speichern",
+    "up": "Nach oben",
+    "home": "Start",
+    "path": "Pfad",
+    "roots": "Laufwerke",
+    "file_name": "Dateiname",
+    "choose": "Wählen",
+    "choose_folder": "Diesen Ordner wählen",
+    "save": "Hier speichern",
+    "cancel": "Abbrechen",
+    "empty": "Hier ist nichts",
+    "truncated": "Zu viele Einträge; die ersten 5000 werden angezeigt",
+    "err_browse_bad_path": "Gib einen vollständigen Pfad ein",
+    "err_browse_not_found": "Diesen Ordner gibt es nicht",
+    "err_browse_denied": "Dieser Ordner kann nicht geöffnet werden",
+    "err_browse_not_a_folder": "Das ist kein Ordner",
+    "err_generic": "Ordner konnte nicht gelesen werden. Bitte erneut versuchen",
+    "exists": "{{name}} gibt es schon. Zum Ersetzen noch einmal drücken",
+    "replace": "Ersetzen"
   }
 }

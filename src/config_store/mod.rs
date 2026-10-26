@@ -32,6 +32,8 @@ pub struct GuiSettings {
     pub console_buffer_size: u32,
     pub auto_generate_passwords: bool,
     pub port_conflict_check: bool,
+    /// 크래시 같은 중대 알림을 OS 알림으로도 (GUI 셸이 읽는다)
+    pub os_notifications: bool,
 
     // Theme customization
     /// "dark" | "light" | "auto". 없으면 GUI가 정한다(예전 브라우저 저장값 이전, 기본 auto)
@@ -96,6 +98,7 @@ impl Default for GuiSettings {
             console_buffer_size: 2000,
             auto_generate_passwords: true,
             port_conflict_check: true,
+            os_notifications: true,
             theme: None,
             accent_color: "#667eea".to_string(),
             accent_secondary: "#764ba2".to_string(),
@@ -1425,6 +1428,17 @@ mod tests {
         // 파일에 없는 필드는 기본값
         assert!(gui.port_conflict_check);
         assert!(gui.enable_transitions);
+    }
+
+    /// GUI 셸이 읽는 설정(OS 알림)도 저장하면 남는다. 모르는 키는 합칠 때 버려진다
+    #[tokio::test]
+    async fn os_notifications_setting_survives_a_save() {
+        let tmp = TempDir::new().unwrap();
+        let store = ConfigStore::new(tmp.path());
+        assert_eq!(serde_json::to_value(store.get_gui_settings().await).unwrap()["osNotifications"], true);
+        store.set_gui_settings_from_json(serde_json::json!({ "osNotifications": false })).await.unwrap();
+        let saved = serde_json::to_value(ConfigStore::new(tmp.path()).get_gui_settings().await).unwrap();
+        assert_eq!(saved["osNotifications"], false);
     }
 
     #[tokio::test]

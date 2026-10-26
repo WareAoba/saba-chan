@@ -209,6 +209,18 @@
       "current": "サインイン時に自動起動: {{mode}}",
       "set": "サインイン時の自動起動を{{mode}}にしました。",
       "unsupported": "このOSではまだサインイン時の自動起動を設定できません。"
+    },
+    "browse": {
+      "roots": "ドライブ",
+      "empty": "  (空です)",
+      "truncated": "項目が多すぎるため最初の5000件だけ表示しています",
+      "home": "ホームフォルダー: {{path}}",
+      "remote_full_path": "リモートデーモンにはそのPCのフルパスを指定してください (例: /srv/game、D:\\Games)",
+      "err_browse_bad_path": "フルパスを入力してください",
+      "err_browse_not_found": "そのフォルダーはありません",
+      "err_browse_denied": "そのフォルダーは開けません",
+      "err_browse_not_a_folder": "フォルダーではありません",
+      "err_browse_failed": "フォルダーを読めませんでした。もう一度お試しください"
     }
   },
   "console": {
@@ -845,7 +857,8 @@
       "remote.daemons": "このデーモンが接続するリモートデーモン",
       "remote.servers": "このPCと各リモートデーモンのサーバーをデーモンごとに（操作するには`--daemon <名前>`）",
       "remote.forget": "リモートデーモンを削除（再接続は`remote connect`）",
-      "config.autostart": "PCにサインインしたときに起動するもの: off(オフ)、daemon(デーモンとトレイのみ)、full(GUIウィンドウまで)。モードなしで今の値を表示"
+      "config.autostart": "PCにサインインしたときに起動するもの: off(オフ)、daemon(デーモンとトレイのみ)、full(GUIウィンドウまで)。モードなしで今の値を表示",
+      "config.browse": "デーモンのPCのフォルダーとファイルを表示 (--daemonならそのリモートPC)。パスがなければドライブか /"
     },
     "arg": {
       "module.maker.game": "最初の依頼に入れるゲーム名",
@@ -995,7 +1008,9 @@
       "remote.forget.host_id": "削除するPC id（`remote daemons`に表示）",
       "config.autostart.mode": "off、daemon または full",
       "keep_settings": "削除時にゲーム設定ファイルを取り込む前に戻さず今のまま残す",
-      "move_folder": "--from のフォルダーをその場でつながずサバちゃんのフォルダーへ移す（同じドライブのみ）"
+      "move_folder": "--from のフォルダーをその場でつながずサバちゃんのフォルダーへ移す（同じドライブのみ）",
+      "config.browse.path": "表示するフォルダーのフルパス",
+      "config.browse.files": "この拡張子のファイルも表示 (カンマ区切り、* ですべて)"
     },
     "after": "名前は一部だけでも指定できます（例: start pal）。端末で引数なしで実行すると全画面メニューが開きます(SABA_NO_TUI=1 なら対話シェル)。\nスクリプトでは --json と --yes を使ってください。終了コード: 0 成功 · 1 失敗 · 2 使い方の誤り · 3 デーモンに接続不可 · 4 見つからない · 130 キャンセル"
   },

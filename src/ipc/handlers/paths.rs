@@ -3,6 +3,7 @@
 //! - `GET /api/system/paths` — 데이터·설치·인스턴스·모듈·익스텐션 폴더의 지금 값과 기본값, 모듈·익스텐션 폴더의 출처
 //! - `POST /api/system/paths/move` `{kind: "modules"|"extensions", target}` — 고른 폴더 아래로 옮긴다
 //!   (`saba_chan_updater_lib::component_dirs`). 실패는 HTTP 200 `{ok: false, error_code: "paths_<PathError 코드>", error}`
+//! - `GET /api/system/browse?path=&files=` — 이 PC의 폴더 안(폴더와 `files` 확장자의 파일). 원격 데몬을 다룰 때 GUI가 그 PC의 경로를 고른다(D2)
 
 use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
 use saba_chan_updater_lib::component_dirs::{self, Kind, Layout, PathError};
@@ -163,11 +164,138 @@ async fn move_component_dir(
     Ok((target, moved))
 }
 
+#[derive(Deserialize)]
+pub struct BrowseQuery {
+    #[serde(default)]
+    path: String,
+    /// 보일 파일 확장자 (쉼표로, `*`면 모두). 없으면 폴더만
+    files: Option<String>,
+}
+
+/// 한 폴더에서 보이는 항목 상한 (넘으면 `truncated`)
+const BROWSE_MAX: usize = 5000;
+
+fn browse_failed(code: &str) -> serde_json::Value {
+    json!({ "ok": false, "error_code": code })
+}
+
+fn home_dir() -> Option<PathBuf> {
+    std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" }).map(PathBuf::from)
+}
+
+/// 시작 자리: Windows는 있는 드라이브, 그 밖은 `/`
+fn roots() -> Vec<PathBuf> {
+    if cfg!(windows) {
+        (b'A'..=b'Z').map(|d| PathBuf::from(format!("{}:\\", d as char))).filter(|p| p.exists()).collect()
+    } else {
+        vec![PathBuf::from("/")]
+    }
+}
+
+pub(crate) fn browse_dir(path: &str, files: Option<&str>) -> serde_json::Value {
+    let home = home_dir();
+    if path.trim().is_empty() {
+        let entries: Vec<_> = roots()
+            .into_iter()
+            .map(|p| json!({ "name": p.to_string_lossy(), "path": p, "dir": true }))
+            .collect();
+        return json!({ "ok": true, "path": null, "parent": null, "home": home, "sep": std::path::MAIN_SEPARATOR_STR, "entries": entries });
+    }
+    let dir = PathBuf::from(path);
+    if !dir.is_absolute() || dir.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
+        return browse_failed("browse_bad_path");
+    }
+    let read = match std::fs::read_dir(&dir) {
+        Ok(read) => read,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return browse_failed("browse_not_found"),
+        Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => return browse_failed("browse_denied"),
+        Err(_) => return browse_failed("browse_not_a_folder"),
+    };
+    let wanted: Option<Vec<String>> =
+        files.map(|f| f.split(',').map(|e| e.trim().trim_start_matches('.').to_ascii_lowercase()).filter(|e| !e.is_empty()).collect());
+    let mut entries: Vec<(bool, String, PathBuf)> = Vec::new();
+    let mut truncated = false;
+    for entry in read.flatten() {
+        let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false) || entry.path().is_dir();
+        let name = entry.file_name().to_string_lossy().to_string();
+        let shown = is_dir
+            || wanted.as_ref().is_some_and(|w| {
+                w.iter().any(|e| e == "*")
+                    || Path::new(&name).extension().is_some_and(|x| w.contains(&x.to_string_lossy().to_ascii_lowercase()))
+            });
+        if !shown {
+            continue;
+        }
+        if entries.len() >= BROWSE_MAX {
+            truncated = true;
+            break;
+        }
+        entries.push((is_dir, name, entry.path()));
+    }
+    entries.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.to_lowercase().cmp(&b.1.to_lowercase())));
+    let entries: Vec<_> = entries.into_iter().map(|(dir, name, path)| json!({ "name": name, "path": path, "dir": dir })).collect();
+    json!({
+        "ok": true,
+        "path": dir,
+        "parent": dir.parent(),
+        "home": home,
+        "sep": std::path::MAIN_SEPARATOR_STR,
+        "entries": entries,
+        "truncated": truncated,
+    })
+}
+
+/// GET /api/system/browse
+pub async fn browse(axum::extract::Query(q): axum::extract::Query<BrowseQuery>) -> impl IntoResponse {
+    let value = tokio::task::spawn_blocking(move || browse_dir(&q.path, q.files.as_deref()))
+        .await
+        .unwrap_or_else(|_| browse_failed("browse_failed"));
+    Json(value)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::sync::Arc;
     use tokio::sync::RwLock;
+
+    /// 원격 데몬을 다룰 때 GUI가 그 PC의 폴더·파일을 고른다 (D2): 폴더는 늘, 파일은 고른 확장자만
+    #[test]
+    fn browsing_lists_folders_and_only_the_asked_files() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join("Worlds")).unwrap();
+        std::fs::write(dir.path().join("backup.ZIP"), b"z").unwrap();
+        std::fs::write(dir.path().join("notes.txt"), b"t").unwrap();
+        let path = dir.path().to_string_lossy().to_string();
+
+        let folders = browse_dir(&path, None);
+        assert_eq!(folders["ok"], true, "{folders}");
+        let names = |v: &serde_json::Value| -> Vec<(String, bool)> {
+            v["entries"].as_array().unwrap().iter().map(|e| (e["name"].as_str().unwrap().to_string(), e["dir"].as_bool().unwrap())).collect()
+        };
+        assert_eq!(names(&folders), vec![("Worlds".to_string(), true)]);
+        assert_eq!(folders["parent"].as_str().map(PathBuf::from), dir.path().parent().map(Path::to_path_buf));
+
+        let zips = browse_dir(&path, Some("zip"));
+        assert_eq!(names(&zips), vec![("Worlds".to_string(), true), ("backup.ZIP".to_string(), false)]);
+        assert_eq!(names(&browse_dir(&path, Some("*"))).len(), 3);
+        assert_eq!(
+            zips["entries"][1]["path"].as_str().map(PathBuf::from),
+            Some(dir.path().join("backup.ZIP"))
+        );
+    }
+
+    #[test]
+    fn browsing_starts_at_the_roots_and_says_why_it_cannot_open_a_folder() {
+        let roots = browse_dir("", None);
+        assert_eq!(roots["ok"], true);
+        assert!(roots["path"].is_null());
+        assert!(!roots["entries"].as_array().unwrap().is_empty());
+        assert_eq!(browse_dir("relative/dir", None)["error_code"], "browse_bad_path");
+        let dir = tempfile::tempdir().unwrap();
+        let gone = dir.path().join("gone").to_string_lossy().to_string();
+        assert_eq!(browse_dir(&gone, None)["error_code"], "browse_not_found");
+    }
 
     fn module(root: &Path, name: &str) {
         let dir = root.join(name);

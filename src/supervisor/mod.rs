@@ -84,8 +84,10 @@ pub struct Supervisor {
     port_conflict_stops: std::sync::Mutex<PortConflictStops>,
     /// GUI 설정: 포트 충돌 검사 건너뛰기 (portConflictCheck 비활성화 시 true)
     pub skip_port_check: std::sync::Arc<AtomicBool>,
-    /// 데몬이 정지를 보낸 인스턴스. 이 상태로 끝나면 사용자 정지다 (A1)
-    stop_requested: HashSet<String>,
+    /// 데몬이 정지를 보낸 인스턴스와 정지를 시킨 쪽. 이 상태로 끝나면 사용자 정지다 (A1)
+    stop_requested: HashMap<String, crate::audit::Origin>,
+    /// 모니터가 한 번 돌았는가. 데몬이 켜질 때 이미 돌던 프로세스는 예기치 않은 시작으로 알리지 않는다
+    first_scan_done: bool,
     /// 자동 재시작 시각 (한도 계산용)
     restart_history: HashMap<String, VecDeque<Instant>>,
     /// 종료 이력 (GET /api/instance/:id/events)
@@ -298,7 +300,8 @@ impl Supervisor {
             provision_tracker: None,
             port_conflict_stops: std::sync::Mutex::new(PortConflictStops::default()),
             skip_port_check: std::sync::Arc::new(AtomicBool::new(false)),
-            stop_requested: HashSet::new(),
+            stop_requested: HashMap::new(),
+            first_scan_done: false,
             restart_history: HashMap::new(),
             exit_events: HashMap::new(),
             pending_restarts: Vec::new(),
@@ -1111,6 +1114,7 @@ impl Supervisor {
                                 }
                             }
                         }
+                        announce_started(&instance.id, &instance.name, &crate::audit::current(), false);
                         return Ok(val.clone());
                     }
                 }
@@ -1244,6 +1248,7 @@ impl Supervisor {
             s.tracker.track(&instance.id, pid)?;
         }
         tracing::info!("Non-managed server '{}' started with PID {}", server_name, pid);
+        announce_started(&instance.id, &instance.name, &crate::audit::current(), false);
 
         Ok(json!({
             "success": true,
@@ -1295,7 +1300,7 @@ impl Supervisor {
                 .or_else(|| s.instance_store.list().iter().find(|i| i.name == server_name))
                 .cloned()
                 .ok_or_else(|| anyhow::anyhow!("Instance '{}' not found", server_name))?;
-            s.stop_requested.insert(instance.id.clone());
+            s.stop_requested.insert(instance.id.clone(), crate::audit::current());
             let generation = s.run_generation.entry(instance.id.clone()).or_default();
             *generation += 1;
             let _ = STOPPED_AT.try_with(|at| at.set(Some(*generation)));
@@ -1324,6 +1329,9 @@ impl Supervisor {
                 if let Ok(val) = result {
                     if val.get("handled").and_then(|h| h.as_bool()) == Some(true) {
                         sup.write().await.stop_cooldowns.insert(instance.id.clone(), Instant::now());
+                        if val.get("success").and_then(Value::as_bool) != Some(false) {
+                            announce_stopped(&instance.id, server_name, crash::ExitKind::UserStop, &crate::audit::current());
+                        }
                         return Ok(val.clone());
                     }
                 }
@@ -1523,7 +1531,11 @@ impl Supervisor {
         if plugin_success {
             tracing::info!("Server '{}' stopped successfully: {}", server_name, plugin_message);
             // auto-detect 쿨다운 등록
-            sup.write().await.stop_cooldowns.insert(instance.id.clone(), Instant::now());
+            let mut s = sup.write().await;
+            s.stop_cooldowns.insert(instance.id.clone(), Instant::now());
+            // 정지 표시는 다음 시작까지 남긴다: 모니터가 사라진 PID를 원인 모를 종료로 보지 않게
+            let origin = s.stop_requested.get(&instance.id).cloned().unwrap_or_else(crate::audit::current);
+            announce_stopped(&instance.id, server_name, crash::ExitKind::UserStop, &origin);
             Ok(json!({
                 "success": true,
                 "server": server_name,
@@ -1951,6 +1963,7 @@ impl Supervisor {
                                 }
                             }
                         }
+                        announce_started(&instance.id, &instance.name, &crate::audit::current(), false);
                         return Ok(val.clone());
                     }
                 }
@@ -2154,6 +2167,7 @@ impl Supervisor {
         }
 
         tracing::info!("Managed server '{}' started with PID {}", instance.name, pid);
+        announce_started(&instance.id, &instance.name, &crate::audit::current(), false);
         Ok(json!({
             "success": true,
             "server": instance.name,
@@ -2924,7 +2938,12 @@ impl Supervisor {
         if proc.log_follower {
             return;
         }
-        let stop_requested = self.stop_requested.remove(instance_id);
+        // 끝난 실행의 PID는 놓는다: 남겨 두면 모니터가 다음 순회에서 같은 실행을 원인 모를 종료로 다시 판정한다
+        if self.tracker.get_pid(instance_id).is_ok_and(|pid| pid == proc.pid || proc.runner_pid.is_some()) {
+            let _ = self.tracker.untrack(instance_id);
+        }
+        let stop_origin = self.stop_requested.remove(instance_id);
+        let stop_requested = stop_origin.is_some();
         let Some(instance) = self.instance_store.get(instance_id).cloned() else { return };
         // 준비되기 전에 끝났으면 그 시작의 준비 알림을 닫는다 (R39)
         ready::exited(instance_id, &instance.name, stop_requested);
@@ -2996,8 +3015,14 @@ impl Supervisor {
         }
 
         let (note_code, note_args) = note_code.map(|(c, a)| (c.to_string(), a)).unzip();
+        let kind = verdict.kind;
         let event = crash::ExitEvent { at: saba_runner::now(), verdict, restart_in_secs: restart_in, note, note_code, note_args };
         self.record_exit(instance_id, &instance.name, event, attempt);
+        match (kind, stop_origin) {
+            (crash::ExitKind::UserStop, Some(origin)) => announce_stopped(instance_id, &instance.name, kind, &origin),
+            (crash::ExitKind::InGameStop, _) => announce_stopped(instance_id, &instance.name, kind, &crate::audit::Origin::new("game")),
+            _ => {}
+        }
     }
 
     /// 종료 판정 하나를 알리고(`instance.exit`) 이력에 남긴다.
@@ -3064,7 +3089,7 @@ impl Supervisor {
     /// 대기하는 동안 사용자가 정지·시작했거나 인스턴스가 지워졌으면 false.
     /// `generation`은 예약 때의 실행 세대 (꺼진 서버에 정지를 보내면 정지 표시가 바로 지워지므로 세대로 가른다)
     pub async fn restart_still_wanted(&self, instance_id: &str, generation: u64) -> bool {
-        if self.stop_requested.contains(instance_id)
+        if self.stop_requested.contains_key(instance_id)
             || self.instance_store.get(instance_id).is_none()
             || self.run_generation.get(instance_id).copied().unwrap_or_default() != generation
         {
@@ -3183,6 +3208,13 @@ impl Supervisor {
                     if let Err(e) = self.tracker.untrack(&instance.id) {
                         tracing::error!("Failed to untrack process: {}", e);
                     }
+                    // 사바쨩이 시키지 않았는데 사라진 non-managed 서버 (managed는 위에서 판정했다)
+                    let judged = dead.iter().any(|(id, _)| *id == instance.id) || self.managed_store.get(&instance.id).await.is_some();
+                    if !judged && !self.stop_requested.contains_key(&instance.id) {
+                        let verdict = crash::ExitVerdict { kind: crash::ExitKind::UnknownExit, exit_code: None, signal: None, evidence: "exit status unknown".into() };
+                        let event = crash::ExitEvent { at: saba_runner::now(), verdict, restart_in_secs: None, note: None, note_code: None, note_args: None };
+                        self.record_exit(&instance.id, &instance.name, event, None);
+                    }
                 }
                 continue;
             }
@@ -3254,6 +3286,8 @@ impl Supervisor {
                                 if let Err(e) = self.tracker.track(&instance.id, process.pid) {
                                     tracing::error!("Failed to track process: {}", e);
                                 }
+                                // 지난 정지의 표시를 지운다: 이 프로세스가 나중에 사라지면 사용자 정지가 아니다
+                                self.stop_requested.remove(&instance.id);
 
                                 // ── 포트 충돌 검사: 새로 감지된 프로세스의 포트가 이미 실행 중인 인스턴스와 겹치면 강제 종료 ──
                                 // GUI에서 portConflictCheck를 비활성화하면 auto-detect 시에도 강제 종료를 건너뜀
@@ -3303,12 +3337,19 @@ impl Supervisor {
                                     }));
                                 } // if !skip_port_check
                                 }
+                                // 사바쨩이 띄우지 않은 서버가 켜졌다. 데몬이 켜질 때 이미 돌던 것은 빼고, 포트 충돌로 끈 것도 뺀다.
+                                // 사바쨩이 띄우는 중(추적 전)에 먼저 본 것도 뺀다
+                                let starting = self.starting.lock().unwrap_or_else(|e| e.into_inner()).contains(&instance.id);
+                                if self.first_scan_done && !starting && self.tracker.get_pid(&instance.id).is_ok() {
+                                    announce_started(&instance.id, &instance.name, &crate::audit::Origin::new("external"), true);
+                                }
                             }
                 }
             }
         }
         
         tracing::debug!("Monitor cycle: {} tracked, {} auto-detected", tracked_count, auto_detected_count);
+        self.first_scan_done = true;
         Ok(())
     }
 
@@ -3399,6 +3440,37 @@ pub(crate) fn is_daemon_entry(name: &str) -> bool {
     // 원자적 저장의 임시 파일 `.<항목>.<pid>-<n>.tmp`
     let temp = name.len() > 5 && name.starts_with('.') && name.is_char_boundary(name.len() - 4) && same(&name[name.len() - 4..], ".tmp");
     temp || crate::instance::DAEMON_ENTRIES.iter().any(|e| same(e, name))
+}
+
+/// 시작·정지를 시킨 쪽: `source`(gui·cli·discord·chatbot·web·remote·schedule·restart·daemon·game·external)와 사람·PC 이름.
+/// 말하는 사바쨩은 디스코드와 가른다. 사용자 id·길드는 싣지 않는다
+fn origin_fields(origin: &crate::audit::Origin) -> serde_json::Map<String, Value> {
+    let source = if origin.via.as_deref() == Some("chatbot") { "chatbot" } else { origin.source.as_str() };
+    let mut fields = serde_json::Map::new();
+    fields.insert("source".into(), json!(source));
+    if let Some(name) = &origin.user_name {
+        fields.insert("userName".into(), json!(name));
+    }
+    fields
+}
+
+/// `instance.started`: 서버가 켜졌다. `unexpected`면 사바쨩이 띄우지 않은 프로세스다
+fn announce_started(instance_id: &str, name: &str, origin: &crate::audit::Origin, unexpected: bool) {
+    let mut data = origin_fields(origin);
+    data.insert("instanceId".into(), json!(instance_id));
+    data.insert("instance".into(), json!(name));
+    data.insert("unexpected".into(), json!(unexpected));
+    crate::events::emit("instance.started", Value::Object(data));
+}
+
+/// `instance.stopped`: 사바쨩을 거쳐 끄거나(`user_stop`) 게임 안에서 끈(`in_game_stop`) 정상 정지.
+/// 크래시·원인 모를 종료는 `instance.exit`만 알린다
+fn announce_stopped(instance_id: &str, name: &str, kind: crash::ExitKind, origin: &crate::audit::Origin) {
+    let mut data = origin_fields(origin);
+    data.insert("instanceId".into(), json!(instance_id));
+    data.insert("instance".into(), json!(name));
+    data.insert("kind".into(), json!(kind));
+    crate::events::emit("instance.stopped", Value::Object(data));
 }
 
 #[cfg(test)]
@@ -4128,7 +4200,7 @@ mod tests {
             }
             supervisor.managed_store.insert(id, proc).await;
         }
-        supervisor.stop_requested.insert("stopped".into());
+        supervisor.stop_requested.insert("stopped".into(), crate::audit::Origin::new("gui"));
         for _ in 0..50 {
             if supervisor.managed_store.running_instance_ids().await.is_empty() {
                 break;
@@ -4172,7 +4244,7 @@ mod tests {
         assert_eq!(ends, vec![("instance.restarted".to_string(), json!(7)), ("instance.restart_cancelled".to_string(), json!(8))]);
         assert_eq!(supervisor.take_pending_restarts(), vec![("crash".to_string(), Duration::from_secs(5), 0)]);
         assert!(supervisor.restart_still_wanted("crash", 0).await);
-        supervisor.stop_requested.insert("crash".into());
+        supervisor.stop_requested.insert("crash".into(), crate::audit::Origin::new("gui"));
         assert!(!supervisor.restart_still_wanted("crash", 0).await, "a stop during the wait cancels the restart");
         // 꺼진 서버에 보낸 정지는 정지 표시를 바로 지운다: 그래도 대기 중 정지가 있었으면 재시작하지 않는다
         supervisor.stop_requested.remove("crash");
@@ -4183,6 +4255,135 @@ mod tests {
         // 데몬을 다시 켜도 종료 이력이 남는다
         let restarted = Supervisor::new_with_instances_dir(modules_dir.to_str().unwrap(), instances_dir.to_str().unwrap());
         assert_eq!(restarted.exit_events("crash").last().map(|e| e.verdict.kind), Some(crash::ExitKind::Crash));
+    }
+
+    /// 시작·정지마다 누가 시켰는지 `instance.started`·`instance.stopped`에 싣는다 (출처는 요청의 `audit::Origin`).
+    /// 예기치 않은 것은 사바쨩이 띄우지 않은 프로세스의 시작(`unexpected`)과 크래시·강제 종료(`instance.exit`)뿐이다
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn starts_and_stops_say_who_asked() {
+        use crate::audit::{with_origin, Origin};
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let games = [
+            ("long", "", "sleep 30"),
+            ("quits", "[detection]\ngraceful_exit_patterns = [\"Stopping the server\"]\n", "sleep 0.3; echo Stopping the server; exit 0"),
+            ("boom", "", "sleep 0.3; kill -SEGV $$"),
+        ];
+        for (name, extra, sh) in games {
+            let dir = modules.join(name);
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join("module.toml"), format!("[module]\nschema_version = 1\nname = \"{name}\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n{extra}")).unwrap();
+            std::fs::write(dir.join("lifecycle.py"), format!(
+                "import json, sys\n\
+                 if sys.argv[1] == 'get_launch_command':\n    \
+                 print(json.dumps({{'success': True, 'program': '/bin/sh', 'args': ['-c', {sh:?}], 'working_dir': '.'}}))\n\
+                 else:\n    print(json.dumps({{'success': True}}))\n"
+            )).unwrap();
+            crate::sandbox::consent_test_component(&dir.join("lifecycle.py"));
+        }
+        let mut sup = Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        for (id, module) in [("w-long", "long"), ("w-quits", "quits"), ("w-boom", "boom"), ("w-ext", "long")] {
+            let mut inst = crate::instance::ServerInstance::new(id, module);
+            inst.id = id.into();
+            if id == "w-ext" {
+                inst.process_name = Some("fakegame".into());
+            }
+            sup.instance_store.add(inst).unwrap();
+        }
+        let ext_dir = sup.instance_store.instance_dir("w-ext").to_string_lossy().to_string();
+        let sup = std::sync::Arc::new(tokio::sync::RwLock::new(sup));
+        let mut sub = crate::events::bus().subscribe(None);
+        // 받은 이벤트를 모아 두고, 찾은 것만 꺼낸다
+        let mut got: Vec<(String, Value)> = Vec::new();
+        let mut seen = move |kind: &str, id: &str| -> Vec<Value> {
+            got.extend(std::iter::from_fn(|| sub.rx.try_recv().ok()).map(|e| (e.kind.clone(), e.data.clone())));
+            let (hit, rest) = std::mem::take(&mut got).into_iter().partition(|(k, d)| k == kind && d["instanceId"] == id);
+            got = rest;
+            hit.into_iter().map(|(_, d)| d).collect()
+        };
+
+        // 사바쨩을 거친 시작·정지: 출처를 싣고 예기치 않은 것이 아니다
+        let chatbot = Origin { via: Some("chatbot".into()), user_name: Some("Dana".into()), ..Origin::new("discord") };
+        let paths = [
+            (Origin::new("gui"), "gui"),
+            (Origin::new("cli"), "cli"),
+            (Origin { user_name: Some("Dana".into()), ..Origin::new("discord") }, "discord"),
+            (chatbot, "chatbot"),
+            (Origin::new("web"), "web"),
+            (Origin { user_name: Some("집 PC".into()), ..Origin::new("remote") }, "remote"),
+            (Origin::new("schedule"), "schedule"),
+            (Origin::new("restart"), "restart"),
+            (Origin::new("daemon"), "daemon"),
+        ];
+        for (origin, source) in paths {
+            let user = origin.user_name.clone();
+            let started = with_origin(origin.clone(), Supervisor::start_managed_server(&sup, "w-long", "long", json!({}))).await.unwrap();
+            assert_eq!(started["success"], true, "{started}");
+            let stopped = with_origin(origin, Supervisor::stop_server(&sup, "w-long", "long", true)).await.unwrap();
+            assert_eq!(stopped["success"], true, "{stopped}");
+            let started = seen("instance.started", "w-long");
+            assert_eq!(started.len(), 1, "{source}: {started:?}");
+            assert_eq!((started[0]["source"].as_str(), started[0]["unexpected"].as_bool()), (Some(source), Some(false)), "{source}");
+            assert_eq!(started[0]["userName"].as_str(), user.as_deref(), "{source}");
+            let stopped = seen("instance.stopped", "w-long");
+            assert_eq!(stopped.len(), 1, "{source}: {stopped:?}");
+            assert_eq!((stopped[0]["source"].as_str(), stopped[0]["kind"].as_str()), (Some(source), Some("user_stop")), "{source}");
+            assert_eq!(stopped[0]["userName"].as_str(), user.as_deref(), "{source}");
+        }
+
+        let wait_exit = |id: &'static str| {
+            let sup = sup.clone();
+            async move {
+                for _ in 0..100 {
+                    if !sup.read().await.managed_store.running_instance_ids().await.iter().any(|i| i == id) {
+                        return;
+                    }
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                }
+                panic!("{id} did not exit");
+            }
+        };
+        // 사바쨩 밖의 프로세스: 데몬이 켜질 때 이미 돌던 것은 알리지 않는다. 그 뒤에 나타난 것만 예기치 않은 시작이다
+        let ext = crate::process_monitor::RunningProcess { pid: 4_000_001, name: "fakegame".into(), executable_path: None, cmd: Vec::new(), cwd: Some(ext_dir) };
+        sup.write().await.monitor_processes_taken_at(std::slice::from_ref(&ext), u64::MAX).await.unwrap();
+        assert!(seen("instance.started", "w-ext").is_empty(), "a server already running when the daemon started is not unexpected");
+        // 사바쨩이 시키지 않았는데 사라졌다: 원인 모를 종료
+        sup.write().await.monitor_processes_taken_at(&[], u64::MAX).await.unwrap();
+        let gone = seen("instance.exit", "w-ext");
+        assert_eq!(gone.iter().map(|e| e["kind"].clone()).collect::<Vec<_>>(), vec![json!("unknown_exit")]);
+        sup.write().await.monitor_processes_taken_at(std::slice::from_ref(&ext), u64::MAX).await.unwrap();
+        let started = seen("instance.started", "w-ext");
+        assert_eq!(started.len(), 1, "{started:?}");
+        assert_eq!((started[0]["source"].as_str(), started[0]["unexpected"].as_bool()), (Some("external"), Some(true)));
+        // 사바쨩이 띄우는 중(아직 추적 전)에 모니터가 먼저 본 프로세스는 밖에서 켠 것이 아니다
+        sup.write().await.monitor_processes_taken_at(&[], u64::MAX).await.unwrap();
+        seen("instance.exit", "w-ext");
+        sup.read().await.starting.lock().unwrap().insert("w-ext".into());
+        sup.write().await.monitor_processes_taken_at(std::slice::from_ref(&ext), u64::MAX).await.unwrap();
+        sup.read().await.starting.lock().unwrap().remove("w-ext");
+        assert!(seen("instance.started", "w-ext").is_empty(), "a server saba-chan is starting is not unexpected");
+
+        // 끝까지 판정한 정지 뒤의 모니터 순회가 같은 실행을 원인 모를 종료로 다시 보지 않는다
+        sup.write().await.monitor_processes_taken_at(&[], u64::MAX).await.unwrap();
+        assert!(seen("instance.exit", "w-long").iter().all(|e| e["kind"] == "user_stop"), "a judged stop is not judged again");
+
+        // 게임 안에서 끈 것: 정상 정지 (출처 game)
+        with_origin(Origin::new("gui"), Supervisor::start_managed_server(&sup, "w-quits", "quits", json!({}))).await.unwrap();
+        wait_exit("w-quits").await;
+        sup.write().await.monitor_processes_taken_at(std::slice::from_ref(&ext), u64::MAX).await.unwrap();
+        let stopped = seen("instance.stopped", "w-quits");
+        assert_eq!(stopped.len(), 1, "{stopped:?}");
+        assert_eq!((stopped[0]["source"].as_str(), stopped[0]["kind"].as_str()), (Some("game"), Some("in_game_stop")));
+
+        // 크래시: instance.exit 만 (정상 정지 알림은 없다)
+        with_origin(Origin::new("gui"), Supervisor::start_managed_server(&sup, "w-boom", "boom", json!({}))).await.unwrap();
+        wait_exit("w-boom").await;
+        sup.write().await.monitor_processes_taken_at(std::slice::from_ref(&ext), u64::MAX).await.unwrap();
+        assert!(seen("instance.stopped", "w-boom").is_empty());
+        let exits = seen("instance.exit", "w-boom");
+        assert_eq!(exits.iter().map(|e| e["kind"].clone()).collect::<Vec<_>>(), vec![json!("crash")]);
     }
 
     /// managed 모드에서는 모듈이 stdin을 지원할 때만 명령을 stdin으로 보낸다 (M3)

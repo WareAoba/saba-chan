@@ -61,6 +61,7 @@ pub async fn run(ctx: &Ctx, cmd: ConfigCmd) -> Result<()> {
         ConfigCmd::Import { file, dry_run, overwrite } => import(ctx, &file, dry_run, overwrite).await,
         ConfigCmd::Paths => paths(ctx).await,
         ConfigCmd::Move { kind, folder } => move_dir(ctx, kind, &folder).await,
+        ConfigCmd::Browse { path, files } => browse(ctx, path.as_deref().unwrap_or(""), files.as_deref()).await,
         ConfigCmd::Autostart { mode } => autostart(ctx, mode).await,
     }
 }
@@ -90,8 +91,42 @@ async fn paths(ctx: &Ctx) -> Result<()> {
     Ok(())
 }
 
+/// 데몬 PC의 폴더 보기 (GUI 원격 경로 고르기와 같은 API). `--daemon`이면 그 PC의 폴더다
+async fn browse(ctx: &Ctx, path: &str, files: Option<&str>) -> Result<()> {
+    let r = ctx.api.browse(path, files).await.map_err(|e| {
+        match e.downcast_ref::<crate::error::CliError>() {
+            Some(crate::error::CliError::Api { code: Some(code), .. }) if code.starts_with("browse_") => {
+                crate::error::failed(t!(&format!("config.browse.err_{code}")))
+            }
+            _ => e,
+        }
+    })?;
+    ctx.out.data(&r, |r| {
+        let s = |v: &Value| v.as_str().unwrap_or("").to_string();
+        match r["path"].as_str() {
+            Some(p) => say!("{}", p),
+            None => say!("{}", t!("config.browse.roots")),
+        }
+        let entries = r["entries"].as_array().cloned().unwrap_or_default();
+        if entries.is_empty() {
+            say!("  {}", t!("config.browse.empty"));
+        }
+        for e in &entries {
+            let suffix = if e["dir"] == true && r["path"].is_string() { s(&r["sep"]) } else { String::new() };
+            say!("  {}{}", s(&e["name"]), suffix);
+        }
+        if r["truncated"] == true {
+            say!("{}", t!("config.browse.truncated"));
+        }
+        if r["path"].is_null() && r["home"].is_string() {
+            say!("{}", t!("config.browse.home", path = s(&r["home"])));
+        }
+    });
+    Ok(())
+}
+
 async fn move_dir(ctx: &Ctx, kind: crate::cli::DirKind, folder: &std::path::Path) -> Result<()> {
-    let target = absolute(folder);
+    let target = daemon_path(ctx, folder)?;
     ctx.ask.ensure(&t!(&format!("config.confirm_move_{}", kind.as_str()), dir = target))?;
     let r = ctx.api.move_dir(kind.as_str(), &target).await?;
     let path = r["path"].as_str().unwrap_or(&target).to_string();
@@ -121,15 +156,31 @@ async fn autostart(ctx: &Ctx, mode: Option<crate::cli::AutostartMode>) -> Result
 }
 
 /// 데몬은 절대 경로만 받는다 (CLI와 같은 PC)
-fn absolute(file: &std::path::Path) -> String {
-    std::path::absolute(file).unwrap_or_else(|_| file.to_path_buf()).to_string_lossy().into_owned()
+/// 데몬에 보낼 경로. 이 PC 데몬이면 지금 폴더 기준 전체 경로로, 원격 데몬이면 그 PC의 경로라 적은 그대로 보내고
+/// 전체 경로만 받는다 (이 PC 기준으로 풀면 엉뚱한 곳을 가리킨다. 그 PC가 Windows인지 아닌지 여기서는 모른다)
+fn daemon_path(ctx: &Ctx, file: &std::path::Path) -> Result<String> {
+    if ctx.api.target.is_none() {
+        return Ok(std::path::absolute(file).unwrap_or_else(|_| file.to_path_buf()).to_string_lossy().into_owned());
+    }
+    let raw = file.to_string_lossy().into_owned();
+    if full_path(&raw) {
+        Ok(raw)
+    } else {
+        Err(crate::error::failed(t!("config.browse.remote_full_path")))
+    }
+}
+
+/// 어느 OS에서든 전체 경로인가: `/…`, `\\…`(공유 폴더), `X:\…`·`X:/…`
+fn full_path(p: &str) -> bool {
+    let b = p.as_bytes();
+    p.starts_with('/') || p.starts_with("\\\\") || (b.len() >= 3 && b[0].is_ascii_alphabetic() && b[1] == b':' && (b[2] == b'\\' || b[2] == b'/'))
 }
 
 async fn export(ctx: &Ctx, file: &std::path::Path, secrets: bool) -> Result<()> {
     if secrets {
         ctx.ask.ensure(&t!("config.confirm_export_secrets"))?;
     }
-    let path = absolute(file);
+    let path = daemon_path(ctx, file)?;
     let r = ctx.api.export_config(&path, secrets).await?;
     let n = r.get("instances").and_then(Value::as_array).map_or(0, Vec::len);
     ctx.out.done(&t!("config.exported", path = path, count = n), &r);
@@ -140,7 +191,7 @@ async fn export(ctx: &Ctx, file: &std::path::Path, secrets: bool) -> Result<()> 
 }
 
 async fn import(ctx: &Ctx, file: &std::path::Path, dry_run: bool, overwrite: bool) -> Result<()> {
-    let path = absolute(file);
+    let path = daemon_path(ctx, file)?;
     let r = ctx.api.import_config(&path, dry_run, overwrite).await?;
     let names = |key: &str| -> Vec<String> {
         r.pointer(&format!("/instances/{}", key))
@@ -303,4 +354,18 @@ async fn set(ctx: &Ctx, pairs: &[String]) -> Result<()> {
         ctx.out.hint(&t!("config.restart_needed"));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    /// 원격 데몬에는 그 PC의 전체 경로만 보낸다: Windows·리눅스 어느 쪽 경로든 알아본다 (D2)
+    #[test]
+    fn a_remote_path_must_be_full_on_either_os() {
+        for p in ["/srv/game", "C:\\Games\\a.zip", "d:/saba", "\\\\nas\\share"] {
+            assert!(super::full_path(p), "{p}");
+        }
+        for p in ["a.zip", "games/x", "C:relative", "~/x", ""] {
+            assert!(!super::full_path(p), "{p}");
+        }
+    }
 }

@@ -232,6 +232,11 @@ impl Api {
     pub async fn paths(&self) -> Result<Value> {
         self.get("/api/system/paths").await
     }
+    /// GET /api/system/browse?path=&files= — 데몬 PC의 폴더 보기 `{ok, path, parent, home, sep, entries: [{name, path, dir}], truncated}`
+    pub async fn browse(&self, path: &str, files: Option<&str>) -> Result<Value> {
+        self.get(&with_query("/api/system/browse", &[("path", Some(path.into())), ("files", files.map(Into::into))]))
+            .await
+    }
     /// POST /api/system/paths/move `{kind, target}` — 파일을 복사·검증해 옮기므로 오래 걸릴 수 있다
     pub async fn move_dir(&self, kind: &str, target: &str) -> Result<Value> {
         self.post_long("/api/system/paths/move", json!({ "kind": kind, "target": target })).await

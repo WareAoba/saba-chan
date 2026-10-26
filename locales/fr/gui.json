@@ -115,7 +115,9 @@
     "reset_gui_button": "Réinitialiser",
     "reset_gui_confirm": "Cliquez à nouveau pour réinitialiser",
     "reset_gui_done": "Paramètres de l'interface restaurés par défaut",
-    "reset_gui_failed": "Impossible de réinitialiser les paramètres"
+    "reset_gui_failed": "Impossible de réinitialiser les paramètres",
+    "os_notifications_label": "Notifications système",
+    "os_notifications_description": "Envoie aussi les événements importants, comme les plantages et les démarrages ou arrêts inattendus, en notification Windows ou macOS. Quand la fenêtre de l'app est au premier plan, ils ne s'affichent que dans l'app."
   },
   "add_server_modal": {
     "title": "Ajouter un nouveau serveur",
@@ -1344,7 +1346,10 @@
     "source_api": "API",
     "source_discord": "Discord",
     "source_schedule": "Planification",
-    "source_daemon": "Démon"
+    "source_daemon": "Démon",
+    "source_web": "Saba-chan web",
+    "source_remote": "PC distant",
+    "source_restart": "Redémarrage auto"
   },
   "launch_preview": {
     "title": "Aperçu des arguments de lancement",
@@ -1432,7 +1437,11 @@
     "schedule_restart": "{{name}} redémarrera comme prévu dans {{minutes}} min.",
     "schedule_update": "{{name}} sera mis à jour comme prévu dans {{minutes}} min.",
     "module_update": "{{name}} : la version {{version}} du module {{module}} est disponible.",
-    "server_update": "{{name}} : une nouvelle version du serveur de jeu est disponible. Si personne ne peut se connecter, mettez le serveur à jour."
+    "server_update": "{{name}} : une nouvelle version du serveur de jeu est disponible. Si personne ne peut se connecter, mettez le serveur à jour.",
+    "instance_started": "{{name}} a démarré ({{source}}).",
+    "instance_stopped": "{{name}} s'est arrêté ({{source}}).",
+    "instance_stopped_in_game": "{{name}} a été arrêté depuis le jeu.",
+    "instance_started_external": "{{name}} a été démarré en dehors de Saba-chan. Saba-chan n'a pas lancé ce processus."
   },
   "switch_cli": {
     "label": "Passer à la CLI",
@@ -1649,7 +1658,6 @@
     "err_remote_bad_path": "Ce chemin ne peut pas être envoyé à un daemon distant",
     "err_remote_unauthorized": "Le daemon distant n'accepte plus ce PC. Reconnectez-le",
     "err_remote_local_only": "Cela ne peut se faire que sur ce PC",
-    "local_only_sections": "L'emplacement des dossiers et l'export/import de données choisissent des chemins sur ce PC ; ils sont masqués pendant que vous gérez un daemon distant.",
     "view": "Liste des serveurs",
     "view_description": "La vue combinée affiche, sous les serveurs du daemon choisi, les serveurs des autres daemons (ce PC compris) regroupés par daemon, et permet de les démarrer et les arrêter",
     "view_switch": "Daemon choisi uniquement",
@@ -1662,5 +1670,28 @@
   "other_daemons": {
     "open": "Ouvrir ce daemon",
     "empty": "Aucun serveur"
+  },
+  "remote_picker": {
+    "title_file": "Choisir un fichier sur le PC distant",
+    "title_folder": "Choisir un dossier sur le PC distant",
+    "title_save": "Enregistrer sur le PC distant",
+    "up": "Remonter",
+    "home": "Accueil",
+    "path": "Chemin",
+    "roots": "Lecteurs",
+    "file_name": "Nom du fichier",
+    "choose": "Choisir",
+    "choose_folder": "Choisir ce dossier",
+    "save": "Enregistrer ici",
+    "cancel": "Annuler",
+    "empty": "Rien ici",
+    "truncated": "Trop d'éléments ; seuls les 5000 premiers sont affichés",
+    "err_browse_bad_path": "Saisissez un chemin complet",
+    "err_browse_not_found": "Ce dossier n'existe pas",
+    "err_browse_denied": "Impossible d'ouvrir ce dossier",
+    "err_browse_not_a_folder": "Ce n'est pas un dossier",
+    "err_generic": "Impossible de lire le dossier. Réessayez",
+    "exists": "{{name}} existe déjà. Appuyez encore pour le remplacer",
+    "replace": "Remplacer"
   }
 }

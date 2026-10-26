@@ -22,6 +22,7 @@ pub mod launch_ticket;
 pub mod error;
 pub mod integrity;
 pub mod marker;
+pub mod notify_app_id;
 pub mod process;
 pub mod profile;
 pub mod relay;

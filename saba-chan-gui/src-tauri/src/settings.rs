@@ -60,6 +60,7 @@ pub fn default_settings() -> Map<String, Value> {
         "consoleBufferSize": 2000,
         "autoGeneratePasswords": true,
         "portConflictCheck": true,
+        "osNotifications": true,
     });
     match v {
         Value::Object(m) => m,

@@ -21,6 +21,7 @@ import { CommandPalette, paletteAvailable } from './components/shell/CommandPale
 import { DaemonEvents } from './components/shell/DaemonEvents';
 import { LinkRequests, linkRequestsAvailable } from './components/discord/LinkRequests';
 import { AppBar } from './components/shell/AppBar';
+import RemotePathPicker from './components/shell/RemotePathPicker';
 import { daemonStateOf } from './components/servers/DaemonDown';
 import { ServersPage } from './components/servers/ServersPage';
 import { TooltipProvider } from './components/ui/Tooltip';
@@ -771,6 +772,7 @@ function App() {
                         />
                     )}
                     <Toast />
+                    <RemotePathPicker />
                     <AppBar
                         page={page}
                         onNavigate={setPage}

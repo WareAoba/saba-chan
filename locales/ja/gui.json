@@ -115,7 +115,9 @@
     "reset_gui_button": "リセット",
     "reset_gui_confirm": "もう一度押すとリセット",
     "reset_gui_done": "GUI設定を初期値に戻しました",
-    "reset_gui_failed": "設定をリセットできませんでした"
+    "reset_gui_failed": "設定をリセットできませんでした",
+    "os_notifications_label": "OS 通知",
+    "os_notifications_description": "クラッシュや予期しない起動・停止など、必ず知るべきことを Windows・macOS の通知でも送ります。アプリのウィンドウが前面にあるときはアプリ内だけで知らせます。"
   },
   "add_server_modal": {
     "title": "新規サーバーを追加",
@@ -1344,7 +1346,10 @@
     "source_api": "API",
     "source_discord": "Discord",
     "source_schedule": "スケジュール",
-    "source_daemon": "デーモン"
+    "source_daemon": "デーモン",
+    "source_web": "サバちゃんウェブ",
+    "source_remote": "リモートPC",
+    "source_restart": "自動再起動"
   },
   "launch_preview": {
     "title": "起動引数のプレビュー",
@@ -1432,7 +1437,11 @@
     "schedule_restart": "{{name}} は{{minutes}}分後に予約どおり再起動します。",
     "schedule_update": "{{name}} は{{minutes}}分後に予約どおりアップデートします。",
     "module_update": "{{name}}: {{module}} モジュールの新しいバージョン {{version}} が出ました。",
-    "server_update": "{{name}}: ゲームサーバーの新しいバージョンが出ました。接続できない場合はサーバーをアップデートしてください。"
+    "server_update": "{{name}}: ゲームサーバーの新しいバージョンが出ました。接続できない場合はサーバーをアップデートしてください。",
+    "instance_started": "{{name}} を起動しました（{{source}}）。",
+    "instance_stopped": "{{name}} を停止しました（{{source}}）。",
+    "instance_stopped_in_game": "{{name}} はゲーム内で停止されました。",
+    "instance_started_external": "{{name}} がサバちゃんの外で起動されました。サバちゃんが起動したプロセスではありません。"
   },
   "switch_cli": {
     "label": "CLIに切り替え",
@@ -1649,7 +1658,6 @@
     "err_remote_bad_path": "そのパスはリモートデーモンに送れません",
     "err_remote_unauthorized": "リモートデーモンがこのPCを受け付けなくなりました。もう一度接続してください",
     "err_remote_local_only": "そのPCで直接行う必要があります",
-    "local_only_sections": "フォルダーの場所とデータの書き出し・読み込みはこのPCでパスを選ぶため、リモートデーモンを管理している間は隠します。",
     "view": "サーバー一覧の表示",
     "view_description": "まとめて表示では、選んだデーモンのサーバーの下に他のデーモン(このPCを含む)のサーバーをデーモンごとに表示し、そこから起動・停止できます",
     "view_switch": "選んだデーモンのみ",
@@ -1662,5 +1670,28 @@
   "other_daemons": {
     "open": "このデーモンを開く",
     "empty": "サーバーがありません"
+  },
+  "remote_picker": {
+    "title_file": "リモートPCのファイルを選ぶ",
+    "title_folder": "リモートPCのフォルダーを選ぶ",
+    "title_save": "リモートPCに保存",
+    "up": "上へ",
+    "home": "ホーム",
+    "path": "パス",
+    "roots": "ドライブ",
+    "file_name": "ファイル名",
+    "choose": "選ぶ",
+    "choose_folder": "このフォルダーを選ぶ",
+    "save": "ここに保存",
+    "cancel": "キャンセル",
+    "empty": "何もありません",
+    "truncated": "項目が多すぎるため最初の5000件だけ表示しています",
+    "err_browse_bad_path": "フルパスを入力してください",
+    "err_browse_not_found": "そのフォルダーはありません",
+    "err_browse_denied": "そのフォルダーは開けません",
+    "err_browse_not_a_folder": "フォルダーではありません",
+    "err_generic": "フォルダーを読めませんでした。もう一度お試しください",
+    "exists": "{{name}} はすでにあります。置き換えるにはもう一度押してください",
+    "replace": "置き換える"
   }
 }

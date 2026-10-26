@@ -110,6 +110,7 @@ function SettingsModal({
     const [togglingIds, setTogglingIds] = useState(new Set());
     const autoGeneratePasswords = useSettingsStore((s) => s.autoGeneratePasswords);
     const portConflictCheck = useSettingsStore((s) => s.portConflictCheck);
+    const osNotifications = useSettingsStore((s) => s.osNotifications);
 
     const handleExtensionToggle = useCallback(
         async (extId, enable) => {
@@ -446,6 +447,23 @@ function SettingsModal({
                             </div>
 
                             {autostartAvailable() && <AutostartSetting />}
+
+                            {/* 중대한 알림을 OS 알림으로도 */}
+                            <div className="setting-item">
+                                <label className="setting-label">
+                                    <span className="setting-title">
+                                        <Icon name="bell" size="sm" />{' '}
+                                        {t('gui:settings_modal.os_notifications_label')}
+                                    </span>
+                                    <span className="setting-description">
+                                        {t('gui:settings_modal.os_notifications_description')}
+                                    </span>
+                                </label>
+                                <SabaToggle
+                                    checked={osNotifications}
+                                    onChange={(checked) => useSettingsStore.getState().update({ osNotifications: checked })}
+                                />
+                            </div>
 
                             {/* 사바 스토리지 — 클릭하면 SabaStorage로 전환 */}
                             <div
@@ -916,16 +934,10 @@ function SettingsModal({
                             </div>
 
                             {remoteDaemonAvailable() && <RemoteDaemonSection />}
-                            {/* 이 PC의 대화상자로 경로를 고르는 절은 원격 데몬을 다루는 동안 숨긴다 (경로가 그 PC 것이 아니다) */}
-                            {daemonTarget ? (
-                                <p className="setting-description">{t('gui:remote_daemon.local_only_sections')}</p>
-                            ) : (
-                                <>
-                                    {folderPathsAvailable() && <FolderPathsSection />}
+                            {/* 원격 데몬을 다루는 동안은 경로를 그 PC의 폴더에서 고른다 (RemotePathPicker, D2). 데몬을 바꾸면 다시 읽는다 */}
+                            {folderPathsAvailable() && <FolderPathsSection key={daemonTarget || 'local'} />}
 
-                                    {dataTransferAvailable() && <DataTransferSection />}
-                                </>
-                            )}
+                            {dataTransferAvailable() && <DataTransferSection key={daemonTarget || 'local'} />}
 
                             {unisolatedAvailable() && <UnisolatedSection />}
 

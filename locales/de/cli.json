@@ -209,6 +209,18 @@
       "current": "Beim Anmelden starten: {{mode}}",
       "set": "Beim Anmelden starten ist jetzt: {{mode}}.",
       "unsupported": "Der Start beim Anmelden kann auf diesem Betriebssystem noch nicht eingestellt werden."
+    },
+    "browse": {
+      "roots": "Laufwerke",
+      "empty": "  (leer)",
+      "truncated": "Zu viele Einträge; die ersten 5000 werden angezeigt",
+      "home": "Startordner: {{path}}",
+      "remote_full_path": "Gib für einen entfernten Daemon einen vollständigen Pfad auf diesem PC an (z. B. /srv/game oder D:\\Games)",
+      "err_browse_bad_path": "Gib einen vollständigen Pfad ein",
+      "err_browse_not_found": "Diesen Ordner gibt es nicht",
+      "err_browse_denied": "Dieser Ordner kann nicht geöffnet werden",
+      "err_browse_not_a_folder": "Das ist kein Ordner",
+      "err_browse_failed": "Ordner konnte nicht gelesen werden. Bitte erneut versuchen"
     }
   },
   "console": {
@@ -718,7 +730,8 @@
       "remote.daemons": "Remote-Daemons, mit denen sich dieser Daemon verbindet",
       "remote.servers": "Server auf diesem PC und auf jedem Remote-Daemon, nach Daemon (einen bedienen mit `--daemon <Name>`)",
       "remote.forget": "Remote-Daemon entfernen (erneut verbinden mit `remote connect`)",
-      "config.autostart": "Was beim Anmelden an diesem PC startet: off, daemon (nur Daemon und Tray) oder full (mit GUI-Fenster). Ohne Modus wird der aktuelle Wert gezeigt"
+      "config.autostart": "Was beim Anmelden an diesem PC startet: off, daemon (nur Daemon und Tray) oder full (mit GUI-Fenster). Ohne Modus wird der aktuelle Wert gezeigt",
+      "config.browse": "Ordner und Dateien auf dem PC des Daemons (mit --daemon der entfernte PC). Ohne Pfad Laufwerke oder /"
     },
     "arg": {
       "module.maker.game": "Spiel für die erste Anfrage",
@@ -799,7 +812,9 @@
       "remote.forget.host_id": "PC-ID zum Entfernen (siehe `remote daemons`)",
       "config.autostart.mode": "off, daemon oder full",
       "keep_settings": "Beim Löschen der Instanz die Spieleinstellungsdateien nicht auf den Stand vor dem Import zurücksetzen, sondern so lassen",
-      "move_folder": "Den --from-Ordner nicht an Ort und Stelle verknüpfen, sondern in den saba-chan-Ordner verschieben (nur auf demselben Laufwerk)"
+      "move_folder": "Den --from-Ordner nicht an Ort und Stelle verknüpfen, sondern in den saba-chan-Ordner verschieben (nur auf demselben Laufwerk)",
+      "config.browse.path": "Vollständiger Pfad des Ordners",
+      "config.browse.files": "Auch Dateien mit diesen Endungen zeigen (kommagetrennt, * für alle)"
     },
     "after": "Namen können abgekürzt werden (z. B. start pal). Ohne Argumente öffnet sich im Terminal das Vollbildmenü (SABA_NO_TUI=1: die interaktive Shell).\nIn Skripten --json und --yes verwenden. Exit-Codes: 0 ok · 1 fehlgeschlagen · 2 Verwendung · 3 Daemon nicht erreichbar · 4 nicht gefunden · 130 abgebrochen"
   },

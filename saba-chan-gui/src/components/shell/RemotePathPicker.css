@@ -1,0 +1,76 @@
+/* 원격 경로 고르기 (D2): 대화상자 위, 설정 창보다 위에 뜬다 */
+.remote-picker-overlay {
+    z-index: 9500;
+}
+
+.modal.remote-picker {
+    max-width: 520px;
+    width: calc(100vw - var(--sp-8));
+    text-align: left;
+}
+
+.remote-picker-bar {
+    display: flex;
+    gap: var(--sp-2);
+    align-items: center;
+    margin-top: var(--sp-3);
+}
+
+.remote-picker-bar .remote-picker-path {
+    flex: 1;
+    min-width: 0;
+}
+
+.remote-picker-list {
+    list-style: none;
+    margin: var(--sp-3) 0 0;
+    padding: var(--sp-1);
+    height: 280px;
+    overflow-y: auto;
+    border: 1px solid var(--glass-border);
+    border-radius: var(--r-md);
+}
+
+.remote-picker-entry {
+    display: flex;
+    gap: var(--sp-2);
+    align-items: center;
+    width: 100%;
+    padding: var(--sp-1) var(--sp-2);
+    border: none;
+    border-radius: var(--r-sm);
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.remote-picker-entry span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.remote-picker-entry:hover {
+    background: var(--bg-hover);
+}
+
+.remote-picker-entry.selected {
+    background: color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.remote-picker-empty {
+    padding: var(--sp-2);
+    opacity: 0.7;
+}
+
+.remote-picker-error {
+    margin: var(--sp-2) 0 0;
+    color: var(--danger);
+}
+
+.remote-picker-name {
+    width: 100%;
+    margin-top: var(--sp-3);
+}

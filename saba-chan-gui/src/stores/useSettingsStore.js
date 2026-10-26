@@ -24,6 +24,8 @@ export const useSettingsStore = create((set, get) => ({
     consoleBufferSize: 2000,
     autoGeneratePasswords: true,
     portConflictCheck: true,
+    // 크래시처럼 꼭 알아야 할 일을 OS 알림으로도 (창이 앞에 있으면 앱 안 알림만)
+    osNotifications: true,
     settingsPath: '',
     settingsReady: false,
 
@@ -60,6 +62,7 @@ export const useSettingsStore = create((set, get) => ({
                 patch.consoleBufferSize = settings.consoleBufferSize ?? 2000;
                 patch.autoGeneratePasswords = settings.autoGeneratePasswords ?? true;
                 patch.portConflictCheck = settings.portConflictCheck ?? true;
+                patch.osNotifications = settings.osNotifications ?? true;
 
                 // Theme customization
                 patch.theme = settings.theme ?? getTheme();
@@ -171,6 +174,7 @@ export const useSettingsStore = create((set, get) => ({
             consoleBufferSize: 2000,
             autoGeneratePasswords: true,
             portConflictCheck: true,
+            osNotifications: true,
             settingsPath: '',
             settingsReady: false,
             theme: 'auto',
@@ -200,6 +204,7 @@ const _settingsKeys = [
     'consoleBufferSize',
     'autoGeneratePasswords',
     'portConflictCheck',
+    'osNotifications',
     // Theme customization
     'theme',
     'accentColor',
@@ -240,6 +245,7 @@ if (import.meta.hot) {
             consoleBufferSize: s.consoleBufferSize,
             autoGeneratePasswords: s.autoGeneratePasswords,
             portConflictCheck: s.portConflictCheck,
+            osNotifications: s.osNotifications,
             settingsPath: s.settingsPath,
             settingsReady: s.settingsReady,
             theme: s.theme,

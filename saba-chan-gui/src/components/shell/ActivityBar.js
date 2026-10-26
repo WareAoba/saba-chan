@@ -15,7 +15,7 @@ export const ACTIVITY_POLL_MS = 3000;
 export const ACTIVITY_SLOW_POLL_MS = 30000;
 export const CONSOLE_POLL_MS = 1000;
 const CONSOLE_MAX = 2000;
-const SOURCES = ['gui', 'cli', 'api', 'discord', 'schedule', 'daemon'];
+const SOURCES = ['gui', 'cli', 'api', 'discord', 'schedule', 'daemon', 'web', 'remote', 'restart'];
 
 /** 몇 초 전·몇 분 전 (현재 언어로) */
 export function ago(ts, now, lang) {

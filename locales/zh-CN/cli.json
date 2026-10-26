@@ -209,6 +209,18 @@
       "current": "登录时自动启动：{{mode}}",
       "set": "登录时自动启动已改为{{mode}}。",
       "unsupported": "此操作系统暂不支持设置登录时自动启动。"
+    },
+    "browse": {
+      "roots": "驱动器",
+      "empty": "  （空）",
+      "truncated": "项目太多，只显示前 5000 个",
+      "home": "主目录：{{path}}",
+      "remote_full_path": "远程守护进程请填写那台电脑上的完整路径（例如 /srv/game、D:\\Games）",
+      "err_browse_bad_path": "请输入完整路径",
+      "err_browse_not_found": "该文件夹不存在",
+      "err_browse_denied": "无法打开该文件夹",
+      "err_browse_not_a_folder": "这不是文件夹",
+      "err_browse_failed": "无法读取文件夹，请重试"
     }
   },
   "console": {
@@ -845,7 +857,8 @@
       "remote.daemons": "此守护进程连接的远程守护进程",
       "remote.servers": "按守护进程列出本机和每个远程守护进程的服务器（要操作某个请用`--daemon <名称>`）",
       "remote.forget": "移除远程守护进程（重新连接用 `remote connect`）",
-      "config.autostart": "登录此电脑时启动的内容：off（关闭）、daemon（仅守护进程和托盘）、full（包括 GUI 窗口）。不带模式时显示当前值"
+      "config.autostart": "登录此电脑时启动的内容：off（关闭）、daemon（仅守护进程和托盘）、full（包括 GUI 窗口）。不带模式时显示当前值",
+      "config.browse": "查看守护进程所在电脑的文件夹和文件（加 --daemon 时为那台远程电脑）。不给路径则显示驱动器或 /"
     },
     "arg": {
       "module.maker.game": "第一个请求中的游戏名",
@@ -995,7 +1008,9 @@
       "remote.forget.host_id": "要移除的电脑 id（见 `remote daemons`）",
       "config.autostart.mode": "off、daemon 或 full",
       "keep_settings": "删除时不将游戏设置文件恢复到导入前，保留当前设置",
-      "move_folder": "不在原位置链接 --from 文件夹，而是移入 saba-chan 文件夹（仅限同一驱动器）"
+      "move_folder": "不在原位置链接 --from 文件夹，而是移入 saba-chan 文件夹（仅限同一驱动器）",
+      "config.browse.path": "要显示的文件夹的完整路径",
+      "config.browse.files": "也显示这些扩展名的文件（逗号分隔，* 表示全部）"
     },
     "after": "名称可以只写一部分（例如 start pal）。在终端中不带参数运行会打开全屏菜单(SABA_NO_TUI=1 时为交互式 shell)。\n在脚本中请使用 --json 和 --yes。退出码：0 成功 · 1 失败 · 2 用法错误 · 3 无法连接守护进程 · 4 未找到 · 130 已取消"
   },

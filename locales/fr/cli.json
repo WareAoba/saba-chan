@@ -209,6 +209,18 @@
       "current": "Démarrer à la connexion : {{mode}}",
       "set": "Démarrer à la connexion est maintenant : {{mode}}.",
       "unsupported": "Le démarrage à la connexion ne peut pas encore être réglé sur ce système."
+    },
+    "browse": {
+      "roots": "Lecteurs",
+      "empty": "  (vide)",
+      "truncated": "Trop d'éléments ; seuls les 5000 premiers sont affichés",
+      "home": "Dossier personnel : {{path}}",
+      "remote_full_path": "Pour un démon distant, indiquez un chemin complet sur ce PC (par exemple /srv/game ou D:\\Games)",
+      "err_browse_bad_path": "Saisissez un chemin complet",
+      "err_browse_not_found": "Ce dossier n'existe pas",
+      "err_browse_denied": "Impossible d'ouvrir ce dossier",
+      "err_browse_not_a_folder": "Ce n'est pas un dossier",
+      "err_browse_failed": "Impossible de lire le dossier. Réessayez"
     }
   },
   "console": {
@@ -718,7 +730,8 @@
       "remote.daemons": "Démons distants auxquels ce démon se connecte",
       "remote.servers": "Serveurs de ce PC et de chaque démon distant, par démon (pour en utiliser un, `--daemon <nom>`)",
       "remote.forget": "Oublier un démon distant (reconnectez-vous avec `remote connect`)",
-      "config.autostart": "Ce qui démarre quand vous vous connectez à ce PC : off, daemon (démon et zone de notification seulement) ou full (avec la fenêtre de la GUI). Sans mode, affiche la valeur actuelle"
+      "config.autostart": "Ce qui démarre quand vous vous connectez à ce PC : off, daemon (démon et zone de notification seulement) ou full (avec la fenêtre de la GUI). Sans mode, affiche la valeur actuelle",
+      "config.browse": "Dossiers et fichiers sur le PC du démon (avec --daemon, le PC distant). Sans chemin, les lecteurs ou /"
     },
     "arg": {
       "module.maker.game": "Jeu à mettre dans la première demande",
@@ -799,7 +812,9 @@
       "remote.forget.host_id": "Id du PC à oublier (voir `remote daemons`)",
       "config.autostart.mode": "off, daemon ou full",
       "keep_settings": "À la suppression de l'instance, ne pas rétablir les fichiers de réglages du jeu tels qu'avant l'import, les laisser tels quels",
-      "move_folder": "Déplacer le dossier --from dans le dossier de saba-chan au lieu de le lier sur place (même lecteur uniquement)"
+      "move_folder": "Déplacer le dossier --from dans le dossier de saba-chan au lieu de le lier sur place (même lecteur uniquement)",
+      "config.browse.path": "Chemin complet du dossier",
+      "config.browse.files": "Afficher aussi les fichiers avec ces extensions (séparées par des virgules, * pour tous)"
     },
     "after": "Les noms peuvent être partiels (ex. start pal). Sans argument dans un terminal, le menu plein écran s'ouvre (SABA_NO_TUI=1 : le shell interactif).\nDans les scripts, utilisez --json et --yes. Codes de sortie : 0 ok · 1 échec · 2 utilisation · 3 daemon injoignable · 4 introuvable · 130 annulé"
   },
