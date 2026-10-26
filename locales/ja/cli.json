@@ -7,7 +7,8 @@
     "module_output_too_large": "モジュールの出力がサイズ上限を超えました。モジュールのログを確認してください。",
     "module_path_outside": "モジュールが許可されたフォルダーの外にアクセスしようとしました。モジュールの設定を確認してください。",
     "module_exception": "モジュールで例外が発生しました。モジュールのログを確認してください。",
-    "isolation_unsupported": "この OS は必要な隔離機能に対応していません。"
+    "isolation_unsupported": "この OS は必要な隔離機能に対応していません。",
+    "module_platform_unsupported": "このゲームモジュールはこのデーモンのOSでは動きません"
   },
   "add": {
     "created_settings_unsynced": "{{name}} を作成して設定も保存しましたが、ゲームの設定ファイルに書き込めませんでした: {{error}}",
@@ -463,7 +464,8 @@
     "unmet": "{{component}} {{required}} が必要です（インストール済み: {{installed}}）",
     "load_failed": {
       "invalid": "{{module}} モジュールを読み込めませんでした。module.toml が形式に合っていません:"
-    }
+    },
+    "platform_unsupported": "(このOSは非対応)"
   },
   "noun": {
     "command": "コマンド",

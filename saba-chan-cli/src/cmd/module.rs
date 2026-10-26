@@ -167,6 +167,10 @@ async fn list(ctx: &Ctx) -> Result<()> {
                 {
                     ver.push_str(&console::style(" !").yellow().to_string());
                 }
+                // 이 데몬의 OS에서 돌아가지 않는 모듈 (D3·M1)
+                if m.get("platform_supported") == Some(&Value::Bool(false)) {
+                    ver.push_str(&format!("  {}", output::dim(&t!("module.platform_unsupported"))));
+                }
                 let aliases = m
                     .get("module_aliases")
                     .and_then(Value::as_array)

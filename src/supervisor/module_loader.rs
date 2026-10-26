@@ -127,6 +127,9 @@ pub struct ModuleMetadata {
     /// [extensions.saba-core] progress_patterns — 갱신마다 새 줄로 찍히는 진행 표시 (정규식). 러너가 단계마다 첫·마지막 줄로 접는다
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub progress_patterns: Vec<String>,
+    /// [extensions.saba-core] platforms — 이 모듈이 돌아가는 OS (`std::env::consts::OS` 이름: windows·linux·macos). 없으면 막지 않는다 (D3·M1)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub platforms: Option<Vec<String>>,
     /// [extensions.saba-core] ready_timeout — 준비 문구를 기다리는 시간(초). 없으면 600
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ready_timeout: Option<u64>,
@@ -327,6 +330,11 @@ impl ModuleMetadata {
     /// 설정 이름 → 필드 타입 (`number`, `text`, `password`…). 파일에서 읽은 값을 타입대로 저장할 때 쓴다
     pub fn setting_types(&self) -> std::collections::HashMap<String, String> {
         self.settings.iter().flat_map(|s| &s.fields).map(|f| (f.name.clone(), f.field_type.clone())).collect()
+    }
+
+    /// 이 OS에서 돌아가는가 (`os`는 `std::env::consts::OS`). `platforms`를 선언하지 않은 모듈은 막지 않는다
+    pub fn supports_os(&self, os: &str) -> bool {
+        self.platforms.as_ref().is_none_or(|p| p.iter().any(|x| x == os))
     }
 
     /// 컴포넌트 버전 의존성을 확인합니다.
@@ -1388,6 +1396,7 @@ impl ModuleToml {
                 .unwrap_or_default(),
             ready_patterns: Vec::new(),
             progress_patterns: Vec::new(),
+            platforms: None,
             ready_timeout: None,
             player_join_patterns: Vec::new(),
             player_leave_patterns: Vec::new(),
@@ -1513,7 +1522,22 @@ pub(crate) fn parse_module_toml(content: &str) -> Result<ModuleMetadata> {
 /// 그래서 이 이름의 익스텐션은 만들 수 없다 (`extension::is_valid_extension_id`)
 pub const DAEMON_TABLE: &str = "saba-core";
 /// 이 데몬이 읽는 `[extensions.saba-core]` 키
-const DAEMON_TABLE_KEYS: &[&str] = &["ready_patterns", "ready_timeout", "player_join_patterns", "player_leave_patterns", "data_roots", "progress_patterns"];
+const DAEMON_TABLE_KEYS: &[&str] =
+    &["ready_patterns", "ready_timeout", "player_join_patterns", "player_leave_patterns", "data_roots", "progress_patterns", "platforms"];
+/// 이 OS를 지원하지 않는 모듈의 서버를 만들거나 켜지 않는 응답 (`module_platform_unsupported`)
+pub fn platform_unsupported_body(module: &str, platforms: &[String]) -> serde_json::Value {
+    serde_json::json!({
+        "success": false,
+        "error": format!("Module '{}' runs on {} only, not {}", module, platforms.join(", "), std::env::consts::OS),
+        "error_code": "module_platform_unsupported",
+        "module": module,
+        "platforms": platforms,
+        "os": std::env::consts::OS,
+    })
+}
+
+/// `platforms`에 적을 수 있는 OS (`std::env::consts::OS`와 같은 이름)
+pub const PLATFORMS: &[&str] = &["windows", "linux", "macos"];
 /// `ready_timeout` 상한(초)
 pub const READY_TIMEOUT_MAX_SECS: u64 = 900;
 
@@ -1552,6 +1576,21 @@ fn read_daemon_table(meta: &mut ModuleMetadata) -> Vec<String> {
     meta.player_join_patterns.extend(read_pattern_list(&table, "player_join_patterns", true, &mut warnings));
     meta.player_leave_patterns.extend(read_pattern_list(&table, "player_leave_patterns", true, &mut warnings));
     meta.progress_patterns.extend(read_pattern_list(&table, "progress_patterns", false, &mut warnings));
+    match table.get("platforms") {
+        None => {}
+        Some(serde_json::Value::Array(items)) => {
+            let mut platforms = Vec::new();
+            for item in items {
+                match item.as_str().map(str::to_ascii_lowercase).filter(|p| PLATFORMS.contains(&p.as_str())) {
+                    Some(p) if !platforms.contains(&p) => platforms.push(p),
+                    Some(_) => {}
+                    None => warnings.push(format!("extensions.{}.platforms has an unknown OS {} (use {}); ignored", DAEMON_TABLE, item, PLATFORMS.join(", "))),
+                }
+            }
+            meta.platforms = Some(platforms);
+        }
+        Some(_) => warnings.push(format!("extensions.{}.platforms must be a list of OS names; ignored", DAEMON_TABLE)),
+    }
     match table.get("data_roots") {
         None => {}
         Some(serde_json::Value::Array(items)) => {
@@ -2798,6 +2837,21 @@ entry = "lifecycle.py"
         assert_eq!(meta.progress_patterns, vec!["^Saving \\d+%$".to_string()]);
         assert!(meta.warnings.iter().any(|w| w.contains("progress_patterns") && w.contains("'('")), "{:?}", meta.warnings);
         assert!(parse_module_toml(V1).unwrap().progress_patterns.is_empty());
+    }
+
+    /// D3·M1: 지원 OS는 `[extensions.saba-core] platforms`에 둔다 (0.1.10 로더가 거부하지 않는 자리). 없으면 막지 않는다
+    #[test]
+    fn schema_v1_reads_supported_platforms_from_the_daemon_table() {
+        let meta = parse_module_toml(&format!("{V1}\n[extensions.saba-core]\nplatforms = ['windows', 'Linux', 'beos']\n")).unwrap();
+        assert_eq!(meta.platforms, Some(vec!["windows".to_string(), "linux".to_string()]));
+        assert!(meta.warnings.iter().any(|w| w.contains("platforms") && w.contains("beos")), "{:?}", meta.warnings);
+        assert!(meta.supports_os("windows") && meta.supports_os("linux") && !meta.supports_os("macos"));
+        let undeclared = parse_module_toml(V1).unwrap();
+        assert_eq!(undeclared.platforms, None);
+        assert!(undeclared.supports_os("macos"), "a module that declares nothing is not blocked");
+        let wrong = parse_module_toml(&format!("{V1}\n[extensions.saba-core]\nplatforms = 'linux'\n")).unwrap();
+        assert_eq!(wrong.platforms, None);
+        assert!(wrong.warnings.iter().any(|w| w.contains("platforms")), "{:?}", wrong.warnings);
     }
 
     #[test]

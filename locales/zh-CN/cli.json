@@ -7,7 +7,8 @@
     "module_output_too_large": "模块输出超出了大小限制。请检查模块日志。",
     "module_path_outside": "模块试图访问允许范围外的文件夹。请检查模块设置。",
     "module_exception": "模块抛出了异常。请检查模块日志。",
-    "isolation_unsupported": "此操作系统不支持所需的隔离功能。"
+    "isolation_unsupported": "此操作系统不支持所需的隔离功能。",
+    "module_platform_unsupported": "此游戏模块无法在该守护进程的系统上运行"
   },
   "add": {
     "created_settings_unsynced": "{{name}} 已创建且设置已保存，但未能写入游戏配置文件：{{error}}",
@@ -463,7 +464,8 @@
     "unmet": "需要 {{component}} {{required}}（已安装：{{installed}}）",
     "load_failed": {
       "invalid": "无法加载 {{module}} 模块。module.toml 不符合格式:"
-    }
+    },
+    "platform_unsupported": "（不支持此系统）"
   },
   "noun": {
     "command": "命令",

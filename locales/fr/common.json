@@ -7,7 +7,8 @@
     "module_output_too_large": "La sortie du module a dépassé la limite de taille. Vérifiez ses journaux.",
     "module_path_outside": "Le module a tenté d’accéder à un chemin hors du dossier autorisé. Vérifiez ses paramètres.",
     "module_exception": "Une exception s’est produite dans le module. Vérifiez ses journaux.",
-    "isolation_unsupported": "Ce système d’exploitation ne prend pas en charge l’isolation requise."
+    "isolation_unsupported": "Ce système d’exploitation ne prend pas en charge l’isolation requise.",
+    "module_platform_unsupported": "Ce module de jeu ne fonctionne pas sur l'OS de ce démon"
   },
   "sandbox": {
     "isolation_unsupported": {

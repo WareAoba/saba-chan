@@ -1,3 +1,4 @@
+import clsx from 'clsx';
 import { useRef, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AgreementList, allChecked } from '../AgreementList';
@@ -143,11 +144,21 @@ export function AddInstanceNewServer({
                                         const displayName = t(`mod_${m.name}:module.display_name`, {
                                             defaultValue: m.game_name || m.name,
                                         });
+                                        // 이 데몬의 OS에서 돌아가지 않는 모듈 (`platform_supported`, D3·M1)
+                                        const unsupported = m.platform_supported === false;
                                         return (
                                             <button
                                                 key={m.name}
-                                                className="as-game-card"
+                                                className={clsx('as-game-card', { unsupported })}
                                                 type="button"
+                                                disabled={unsupported}
+                                                data-tooltip={
+                                                    unsupported
+                                                        ? t('add_server_modal.platform_unsupported_detail', {
+                                                              platforms: (m.platforms || []).join(', '),
+                                                          })
+                                                        : undefined
+                                                }
                                                 onClick={() => handleGameSelect(m.name)}
                                             >
                                                 <div className="as-game-card-icon">
@@ -160,7 +171,9 @@ export function AddInstanceNewServer({
                                                     )}
                                                 </div>
                                                 <span className="as-game-card-name">{displayName}</span>
-                                                <span className="as-game-card-version">v{m.version}</span>
+                                                <span className="as-game-card-version">
+                                                    {unsupported ? t('add_server_modal.platform_unsupported') : `v${m.version}`}
+                                                </span>
                                             </button>
                                         );
                                     })}

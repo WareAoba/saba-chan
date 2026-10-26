@@ -433,8 +433,11 @@ fn module_info(m: crate::supervisor::module_loader::LoadedModule, versions: &std
         })
     });
     let trust = module_trust(&m.path);
+    let platform_supported = m.metadata.supports_os(std::env::consts::OS);
     let meta = m.metadata;
     ExtensionInfo {
+        platforms: meta.platforms,
+        platform_supported,
         name: meta.name,
         version: meta.version,
         trust,
