@@ -85,6 +85,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 | instanceDelete (363) | DELETE /api/instance/:id(`{keepSettings}`이면 `?keep_settings=true`). 서버 목록의 `linked_folder`가 있는 서버(가져온 서버)는 폴더가 남는다고 알리고, `restorable_settings`면 "설정 되돌리고 빼기"·"지금 설정 두고 빼기"를 고르게 한다. CLI `server rm --keep-settings`와 같다 | ✓ 665 |
 | instanceReorder (394) | PUT /api/instances/reorder {order} | ✓ 663 |
 | instanceUpdateSettings (408) | PATCH /api/instance/:id. 400이면 `{status, error, error_code, details, fields}`를 그대로 넘긴다(`invalid_format`이면 형식 오류 알림). 설정 창은 연 때의 `ServerInfo.revision`(그 뒤 실제 값 읽기·버전 감지·설치 저장이 준 `revision`이 있으면 그 값)을 싣고, 409 `settings_changed`면 다른 곳에서 바뀌었다고 알린 뒤 목록을 다시 읽는다 | ✓ 665 |
+| instanceGet | GET /api/instance/:id(`daemonCall`, 실패는 데몬 본문 그대로). 사바쨩 웹 서버 설정(`SettingsPanel.jsx`)이 저장에서 409 `settings_changed`를 받고 "새 값 불러오기"를 고르면 마지막 폴링 대신 이것으로 지금 값과 `revision`을 다시 읽는다(없으면 409 본문의 `revision`). 읽지 못하면 고친 값을 두고 알린다 | ✓ |
 | instanceLaunchPreview (452) | POST /api/instance/:id/launch-preview `{settings, extra_args?}` (extra_args를 안 넘기면 저장된 것) | ✓ 666 |
 | instanceResetServer (457) | POST /api/instance/:id/server/reset | ✓ 686 |
 | executeCommand (465) | POST /api/instance/:id/command {command, args}. 명령 해석과 라우팅(REST·stdin·모듈)은 데몬이 한다(464 주석). GUI는 `…/rcon`, `…/rest`를 직접 부르지 않는다 | ✓ 673 |

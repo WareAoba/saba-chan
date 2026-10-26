@@ -150,13 +150,15 @@ export function SettingsPanel({ api, server, moduleData, running, onDeleted, con
     // 저장에 실을 revision: 고치기 시작한 때(또는 마지막 저장)의 값. 폴링의 최신 값을 실으면 데몬의 settings_changed 검사를 지난다
     const revision = useRef(server.revision || null);
     const seen = useRef(server.revision);
-    const latest = useRef({ initial, revision: server.revision });
-    latest.current = { initial, revision: server.revision };
 
-    const reload = () => {
-        setValues(latest.current.initial);
+    // 다른 곳에서 바뀐 뒤 다시 불러오기: 마지막 폴링이 아니라 데몬의 지금 값과 revision을 읽는다
+    // (폴링 값은 그보다 오래됐을 수 있다). 읽지 못하면 고친 값을 그대로 둔다
+    const reload = async (conflictRevision) => {
+        const fresh = await api.instanceGet(server.id);
+        if (!fresh?.id || failed(fresh)) return toast(errorText(t, fresh), 'error');
+        setValues(Object.fromEntries(fields.map((f) => [f.name, savedValue(fresh, f)])));
         setTouched(new Set());
-        revision.current = latest.current.revision || null;
+        revision.current = fresh.revision || conflictRevision || null;
     };
 
     // 고치는 칸이 없는 동안에는 다른 곳에서 바뀐 값을 따라간다
@@ -187,7 +189,7 @@ export function SettingsPanel({ api, server, moduleData, running, onDeleted, con
                 message: t('settings.changed_elsewhere'),
                 confirmLabel: t('settings.reload'),
             });
-            if (ok) reload();
+            if (ok) await reload(res.revision);
             return;
         }
         if (failed(res)) return toast(errorText(t, res), 'error');
