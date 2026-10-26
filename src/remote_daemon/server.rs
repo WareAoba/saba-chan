@@ -27,6 +27,10 @@ use super::relay::{self, Failure, Target};
 const LOCAL_ONLY: &[&str] = &["/api/config/node-token", "/api/remote/"];
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
 const MAX_CONNECTIONS: usize = 64;
+/// 한 곳(IP)이 쥘 수 있는 연결 (인증 전에 잡으므로 한 곳이 짝 맺은 PC의 자리를 다 쥐지 못하게)
+const MAX_PER_SOURCE: usize = 8;
+/// 릴레이 터널(이 PC 안 루프백에서 붙는다) 몫은 따로 둔다
+const MAX_TUNNELS: usize = 16;
 /// 짝 맺기 시도는 1분에 한 곳(IP)에서 이만큼, 모두 합쳐 이만큼 (릴레이에도 그만큼만 묻는다)
 const PAIR_PER_SOURCE: usize = 5;
 const PAIR_PER_MINUTE: usize = 20;
@@ -108,7 +112,11 @@ async fn remote_auth(State(ctx): State<Ctx>, mut req: Request<Body>, next: Next)
     if path == "/health" {
         return next.run(req).await;
     }
-    if LOCAL_ONLY.iter().any(|p| path == p.trim_end_matches('/') || path.starts_with(p)) {
+    // 노드 토큰, 그리고 고른 데몬과 상관없이 이 PC에서만 처리하는 경로(연결 관리, 이 PC의 인터페이스·앱 설정·업데이트,
+    // 로그인 자동 실행, 데몬 종료: `target::stays_local`)는 짝 맺은 PC도 부르지 못한다
+    if LOCAL_ONLY.iter().any(|p| path == p.trim_end_matches('/') || path.starts_with(p))
+        || (path.starts_with("/api/") && super::target::stays_local(path))
+    {
         return error(StatusCode::FORBIDDEN, "remote_local_only");
     }
     let token = req
@@ -173,6 +181,8 @@ pub(crate) async fn serve(
 ) {
     let acceptor = tokio_rustls::TlsAcceptor::from(tls);
     let slots = Arc::new(tokio::sync::Semaphore::new(MAX_CONNECTIONS));
+    let tunnel_slots = Arc::new(tokio::sync::Semaphore::new(MAX_TUNNELS));
+    let per_source = Sources::default();
     loop {
         let (tcp, peer) = tokio::select! {
             _ = cancel.cancelled() => return,
@@ -186,10 +196,15 @@ pub(crate) async fn serve(
             },
         };
         // 자리가 없으면 바로 끊는다 (핸드셰이크하지 않는 연결이 자리를 다 쥐지 못하게 핸드셰이크에도 시간 제한)
-        let Ok(slot) = slots.clone().try_acquire_owned() else { continue };
+        let source = peer.ip().to_canonical();
+        let pool = if source.is_loopback() { &tunnel_slots } else { &slots };
+        let Ok(slot) = pool.clone().try_acquire_owned() else { continue };
+        let Some(held) = per_source.take(source, if source.is_loopback() { MAX_TUNNELS } else { MAX_PER_SOURCE }) else {
+            continue;
+        };
         let (acceptor, app, cancel) = (acceptor.clone(), app.clone(), cancel.clone());
         tokio::spawn(async move {
-            let _slot = slot;
+            let _slot = (slot, held);
             let Ok(Ok(stream)) = tokio::time::timeout(HANDSHAKE_TIMEOUT, acceptor.accept(tcp)).await else { return };
             let ip = Peer(peer.ip().to_canonical());
             let app = tower::ServiceExt::map_request(app, move |mut req: Request<hyper::body::Incoming>| {
@@ -220,6 +235,37 @@ pub(crate) async fn serve(
                 }
             }
         });
+    }
+}
+
+/// 곳(IP)마다 열린 연결 수
+#[derive(Clone, Default)]
+struct Sources(Arc<std::sync::Mutex<std::collections::HashMap<std::net::IpAddr, usize>>>);
+
+/// 연결이 끝나면 그 곳의 수를 돌려놓는다
+struct Held(Sources, std::net::IpAddr);
+
+impl Sources {
+    fn take(&self, ip: std::net::IpAddr, max: usize) -> Option<Held> {
+        let mut map = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        let n = map.entry(ip).or_default();
+        if *n >= max {
+            return None;
+        }
+        *n += 1;
+        Some(Held(self.clone(), ip))
+    }
+}
+
+impl Drop for Held {
+    fn drop(&mut self) {
+        let mut map = self.0 .0.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(n) = map.get_mut(&self.1) {
+            *n -= 1;
+            if *n == 0 {
+                map.remove(&self.1);
+            }
+        }
     }
 }
 
@@ -349,12 +395,32 @@ pub(crate) mod tests {
         let (_, body) =
             call(r.addr, &r.pin, "POST", "/remote/pair", None, Some(json!({ "ticketId": "good", "secret": "s3cret" }))).await.unwrap();
         let token = body["token"].as_str().unwrap().to_string();
-        for path in ["/api/config/node-token", "/api/remote/clients"] {
+        for path in [
+            "/api/config/node-token",
+            "/api/remote/clients",
+            "/api/system/autostart",
+            "/api/daemon/shutdown",
+            "/api/updates/check",
+            "/api/clients/launch",
+            "/api/config/gui",
+        ] {
             let (s, _) = call(r.addr, &r.pin, "GET", path, Some(&token), None).await.unwrap();
             assert_eq!(s, 403, "{path}");
         }
         let (s, _) = call(r.addr, &r.pin, "GET", "/health", None, None).await.unwrap();
         assert_eq!(s, 200);
+    }
+
+    #[test]
+    fn one_source_cannot_hold_every_connection() {
+        let sources = Sources::default();
+        let a: std::net::IpAddr = "203.0.113.5".parse().unwrap();
+        let b: std::net::IpAddr = "198.51.100.7".parse().unwrap();
+        let held: Vec<_> = (0..MAX_PER_SOURCE).map(|_| sources.take(a, MAX_PER_SOURCE).unwrap()).collect();
+        assert!(sources.take(a, MAX_PER_SOURCE).is_none());
+        assert!(sources.take(b, MAX_PER_SOURCE).is_some(), "another source still connects");
+        drop(held);
+        assert!(sources.take(a, MAX_PER_SOURCE).is_some());
     }
 
     #[tokio::test]

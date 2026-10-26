@@ -112,15 +112,23 @@ async fn send(endpoint: &Endpoint, req: Request<Body>) -> Sent {
 
 async fn through_tunnel(relay: Option<&Target>, host_id: &str, endpoint: &Endpoint, mut req: Request<Body>) -> Sent {
     let Some(relay) = relay else { return Sent::NotConnected };
-    let Some(mut sender) = tunnel::sender(relay, host_id, &endpoint.cert_sha256).await else { return Sent::NotConnected };
-    if sender.ready().await.is_err() {
-        return Sent::NotConnected;
-    }
     tunnel::absolute(&mut req);
-    match tokio::time::timeout(RESPONSE_TIMEOUT, sender.send_request(req)).await {
-        Ok(Ok(res)) => Sent::Answered(res),
-        _ => Sent::NoAnswer,
+    // 열어 둔 터널이 그새 끊겼으면 요청은 나가지 않고 돌아온다: 새 터널로 한 번 더 보낸다
+    for _ in 0..2 {
+        let Some(mut sender) = tunnel::sender(relay, host_id, &endpoint.cert_sha256).await else { return Sent::NotConnected };
+        if sender.ready().await.is_err() {
+            continue;
+        }
+        match tokio::time::timeout(RESPONSE_TIMEOUT, sender.try_send_request(req)).await {
+            Ok(Ok(res)) => return Sent::Answered(res),
+            Ok(Err(mut e)) => match e.take_message() {
+                Some(unsent) => req = unsent,
+                None => return Sent::NoAnswer,
+            },
+            Err(_) => return Sent::NoAnswer,
+        }
     }
+    Sent::NotConnected
 }
 
 /// 직접 붙어 보고, 주소가 없거나 붙지 못하면 릴레이 터널로. 이 PC까지 터널이 열려 있으면 터널부터 쓴다
