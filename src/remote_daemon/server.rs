@@ -140,15 +140,11 @@ pub(crate) async fn rules(State(server): State<crate::ipc::IPCServer>, req: Requ
     if req.extensions().get::<crate::audit::Origin>().is_none_or(|o| o.source != "remote") {
         return next.run(req).await;
     }
-    let Ok((segments, pattern)) = crate::remote::gate::parse(req.uri().path()) else {
-        return error(StatusCode::BAD_REQUEST, "remote_bad_path");
-    };
     let method = req.method().as_str().to_string();
-    // 웹 원격이 PC에서만 하는 일로 거부하는 라우트(`gate::pc_only`)는 짝 맺은 PC도 부르지 못한다.
-    // 이 PC의 앱·연결에 관한 경로(`target::stays_local`)도 모두 여기에 든다
-    if pattern.is_some_and(|p| crate::remote::gate::pc_only(&method, p)) {
-        return error(StatusCode::FORBIDDEN, "remote_local_only");
-    }
+    let (segments, pattern) = match route_rules(&method, req.uri().path()) {
+        Ok(found) => found,
+        Err(refused) => return refused.into_response(),
+    };
     let Some(pattern) = pattern.filter(|p| crate::remote::gate::checks_fields(&method, p)) else {
         return next.run(req).await;
     };
@@ -160,9 +156,65 @@ pub(crate) async fn rules(State(server): State<crate::ipc::IPCServer>, req: Requ
     let json = serde_json::from_slice::<Value>(&bytes).ok();
     let blocked = blocked_fields(&server, &method, pattern, &segments, json.as_ref()).await;
     if !blocked.is_empty() {
-        return (StatusCode::FORBIDDEN, Json(crate::remote::exec::field_refusal(blocked))).into_response();
+        return Refused::Fields(blocked).into_response();
     }
     next.run(Request::from_parts(parts, Body::from(bytes))).await
+}
+
+/// 짝 맺은 PC의 요청을 받지 않는 이유
+#[derive(Debug)]
+pub(crate) enum Refused {
+    /// 상태와 오류 코드 (이상한 경로 400 `remote_bad_path`, PC 전용 라우트 403 `remote_local_only`)
+    Route(StatusCode, &'static str),
+    /// 바뀐 PC 전용 칸 (403 `remote_field_blocked`)
+    Fields(Vec<String>),
+}
+
+impl Refused {
+    pub(crate) fn status(&self) -> StatusCode {
+        match self {
+            Self::Route(status, _) => *status,
+            Self::Fields(_) => StatusCode::FORBIDDEN,
+        }
+    }
+
+    pub(crate) fn code(&self) -> &'static str {
+        match self {
+            Self::Route(_, code) => code,
+            Self::Fields(_) => "remote_field_blocked",
+        }
+    }
+
+    fn into_response(self) -> Response {
+        match self {
+            Self::Route(status, code) => error(status, code),
+            Self::Fields(fields) => (StatusCode::FORBIDDEN, Json(crate::remote::exec::field_refusal(fields))).into_response(),
+        }
+    }
+}
+
+/// 경로 판정: 푼 조각과 라우트 패턴(표에 없으면 `None`, 라우터가 404·405로 답한다)
+fn route_rules(method: &str, path: &str) -> Result<(Vec<String>, Option<&'static str>), Refused> {
+    let (segments, pattern) =
+        crate::remote::gate::parse(path).map_err(|_| Refused::Route(StatusCode::BAD_REQUEST, "remote_bad_path"))?;
+    // 웹 원격이 PC에서만 하는 일로 거부하는 라우트(`gate::pc_only`)는 짝 맺은 PC도 부르지 못한다.
+    // 이 PC의 앱·연결에 관한 경로(`target::stays_local`)도 모두 여기에 든다
+    if pattern.is_some_and(|p| crate::remote::gate::pc_only(method, p)) {
+        return Err(Refused::Route(StatusCode::FORBIDDEN, "remote_local_only"));
+    }
+    Ok((segments, pattern))
+}
+
+/// 짝 맺은 PC가 `method uri`(본문 `body`)를 부를 수 있는지 미리 본다 (`rules` 층과 같은 판정).
+/// 액션 계획은 실행 전에 이것으로 각 단계를 본다: 여러 단계 계획이 앞 단계만 돌고 멈추지 않게
+pub(crate) async fn refusal(server: &crate::ipc::IPCServer, method: &str, uri: &str, body: Option<&Value>) -> Option<Refused> {
+    let (segments, pattern) = match route_rules(method, uri) {
+        Ok(found) => found,
+        Err(refused) => return Some(refused),
+    };
+    let pattern = pattern.filter(|p| crate::remote::gate::checks_fields(method, p))?;
+    let blocked = blocked_fields(server, method, pattern, &segments, body).await;
+    (!blocked.is_empty()).then_some(Refused::Fields(blocked))
 }
 
 /// 짝 맺은 PC가 바꾸지 못하는 본문 칸. 웹 원격과 같은 PC 전용 칸 규칙(`gate::blocked_fields`)에서
