@@ -87,12 +87,17 @@ pub fn linked_folder(working_dir: Option<&str>, instance_dir: &Path) -> Option<S
     (!inside_instance(Path::new(dir), instance_dir)).then(|| dir.to_string())
 }
 
-/// 인스턴스 폴더 안인가. 모르면 안으로 본다: 링크(정션 등) 아래 데이터 폴더처럼 `is_inside`가 판정하지 못하는 경로도
-/// 글자 그대로나 실제 경로로 안이면 안이다 (밖으로 잘못 보면 인스턴스와 함께 지울 서버 폴더를 "남는다"고 안내한다)
+/// 인스턴스 폴더 안인가. 링크(정션 등) 아래 데이터 폴더처럼 `is_inside`가 판정하지 못하는 경로는 실제 경로로 보고,
+/// 실제 경로를 못 구하면 `..` 없는 글자 그대로로 본다 (밖으로 잘못 보면 인스턴스와 함께 지울 서버 폴더를 "남는다"고 안내한다)
 fn inside_instance(path: &Path, instance_dir: &Path) -> bool {
-    let lexical = || std::path::absolute(path).ok().zip(std::path::absolute(instance_dir).ok()).is_some_and(|(p, i)| p.starts_with(i));
-    let real = || std::fs::canonicalize(path).ok().zip(std::fs::canonicalize(instance_dir).ok()).is_some_and(|(p, i)| p.starts_with(i));
-    crate::module_paths::is_inside(path, &[instance_dir.to_path_buf()]) || lexical() || real()
+    if crate::module_paths::is_inside(path, &[instance_dir.to_path_buf()]) {
+        return true;
+    }
+    if let (Ok(p), Ok(i)) = (std::fs::canonicalize(path), std::fs::canonicalize(instance_dir)) {
+        return p.starts_with(i);
+    }
+    let plain = !path.components().any(|c| matches!(c, std::path::Component::ParentDir));
+    plain && std::path::absolute(path).ok().zip(std::path::absolute(instance_dir).ok()).is_some_and(|(p, i)| p.starts_with(i))
 }
 
 /// 옮겨 온 서버 폴더가 놓일 자리: 인스턴스 폴더 안의 `subdir`(모듈 `install_subdir`). 상대 경로의 보통 이름만 받고,
@@ -312,5 +317,11 @@ mod tests {
         assert_eq!(linked_folder(Some(&instance.join("server").to_string_lossy()), &instance), None);
         let through_real = real.join("instance").join("server");
         assert_eq!(linked_folder(Some(&through_real.to_string_lossy()), &instance), None);
+        // 글자로는 안이어도 실제로 밖이면 연결된 폴더다 (`..`, 인스턴스 안의 링크가 밖을 가리킴)
+        std::fs::create_dir_all(tmp.path().join("outside")).unwrap();
+        let up = instance.join("..").join("..").join("outside");
+        assert!(linked_folder(Some(&up.to_string_lossy()), &instance).is_some());
+        std::os::unix::fs::symlink(tmp.path().join("outside"), real.join("instance").join("away")).unwrap();
+        assert!(linked_folder(Some(&instance.join("away").to_string_lossy()), &instance).is_some());
     }
 }
