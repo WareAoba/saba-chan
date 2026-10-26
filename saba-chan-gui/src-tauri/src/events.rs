@@ -2,6 +2,7 @@
 //!
 //! 연결 하나를 유지하고 받은 이벤트를 `events:message`({id, type, data})로 넘긴다.
 //! 끊기면 마지막 번호(Last-Event-ID)로 3초 뒤 다시 붙는다. 놓친 건이 있으면 데몬이 `resync`를 보낸다.
+//! 원격 데몬을 고른 동안에는 이 PC 데몬에도 따로 붙어 중대 알림을 놓치지 않는다 (`Feed`).
 
 use crate::daemon::DaemonClient;
 use futures_util::StreamExt;
@@ -71,16 +72,65 @@ impl SseBuffer {
     }
 }
 
-/// 멈출 때까지 스트림을 유지한다
-pub async fn run_event_stream<F: Fn(SseEvent)>(client: Arc<DaemonClient>, stop: Arc<AtomicBool>, emit: F) {
+/// 이벤트 스트림이 붙는 데몬
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Feed {
+    /// 고른 데몬 (화면·중대 알림·효과음)
+    Chosen,
+    /// 원격 데몬을 고른 동안의 이 PC 데몬 (중대 알림·크래시 소리만). 이 PC를 고르면 `Chosen`이 이 PC다
+    LocalWhileRemote,
+}
+
+impl Feed {
+    /// 지금 붙을 데몬(안의 None = 이 PC). 바깥 None이면 붙지 않고 쉰다
+    pub fn source(self, chosen: Option<String>) -> Option<Option<String>> {
+        match (self, chosen) {
+            (Feed::Chosen, chosen) => Some(chosen),
+            (Feed::LocalWhileRemote, Some(_)) => Some(None),
+            (Feed::LocalWhileRemote, None) => None,
+        }
+    }
+
+    /// 이 스트림의 이벤트로 낼 소리. 이 PC 감시는 크래시(예기치 않은 종료)만
+    pub fn plays(self, cue: crate::sounds::Cue) -> bool {
+        self == Feed::Chosen || cue == crate::sounds::Cue::Crashed
+    }
+
+    /// 앱 화면이 이 스트림의 데몬을 보이는가 (창이 앞에 있으면 앱 안 알림으로 충분한지)
+    pub fn shown_in_app(self) -> bool {
+        self == Feed::Chosen
+    }
+}
+
+/// 이벤트 스트림 요청. 붙을 때 정한 데몬(None = 이 PC)에 묻는다
+pub fn events_request(client: &DaemonClient, source: Option<&str>) -> reqwest::RequestBuilder {
+    client
+        .builder_for(reqwest::Method::GET, "/api/events", Some(source.unwrap_or("local")))
+        .header("Accept", "text/event-stream")
+}
+
+/// 멈출 때까지 스트림을 유지한다. `emit`은 이벤트와 그 이벤트를 낸 데몬(None = 이 PC)을 받는다
+pub async fn run_event_stream<F: Fn(SseEvent, Option<&str>)>(
+    client: Arc<DaemonClient>,
+    stop: Arc<AtomicBool>,
+    feed: Feed,
+    emit: F,
+) {
     let mut last_id: Option<u64> = None;
     // 다룰 데몬(G1)이 바뀌면 끊고 바로 새 대상에 붙는다. 번호는 데몬마다 따로라 처음부터 받는다
     let mut target = client.watch_target();
     while !stop.load(Ordering::SeqCst) {
         let mut switched = false;
-        let mut req = client
-            .builder(reqwest::Method::GET, "/api/events")
-            .header("Accept", "text/event-stream");
+        let Some(source) = feed.source(client.target()) else {
+            // 이 PC를 골랐다: 고른 스트림이 이 PC의 것을 받는다
+            tokio::select! {
+                _ = tokio::time::sleep(EVENTS_RETRY) => {}
+                _ = target.changed() => {}
+            }
+            last_id = None;
+            continue;
+        };
+        let mut req = events_request(&client, source.as_deref());
         if let Some(id) = last_id {
             req = req.header("Last-Event-ID", id.to_string());
         }
@@ -114,7 +164,7 @@ pub async fn run_event_stream<F: Fn(SseEvent)>(client: Arc<DaemonClient>, stop: 
                         if ev.id.is_some() {
                             last_id = ev.id;
                         }
-                        emit(ev);
+                        emit(ev, source.as_deref());
                     }
                 }
             }
@@ -163,6 +213,25 @@ pub fn critical_notice(ev: &SseEvent, i18n: &crate::i18n::I18n) -> Option<String
         "backup.done" if d["ok"].as_bool() == Some(false) && d["kind"] != "manual" => Some(text("notify.backup_failed")),
         _ => None,
     }
+}
+
+/// 원격 데몬의 중대 알림 본문에 그 데몬 이름을 붙인다 (이 PC 서버로 읽히지 않게)
+pub fn on_daemon(body: String, daemon: Option<&str>, i18n: &crate::i18n::I18n) -> String {
+    match daemon {
+        Some(daemon) => i18n.t("notify.on_daemon", &[("daemon", daemon), ("body", &body)]),
+        None => body,
+    }
+}
+
+/// `GET /api/remote/daemons` 결과에서 원격 데몬 이름. 없으면 hostId
+pub fn daemon_name(list: &Value, host_id: &str) -> String {
+    list["daemons"]
+        .as_array()
+        .and_then(|a| a.iter().find(|d| d["hostId"] == host_id))
+        .and_then(|d| d["name"].as_str())
+        .filter(|n| !n.is_empty())
+        .unwrap_or(host_id)
+        .to_string()
 }
 
 /// 알릴 업데이트 (Locales는 백그라운드 자동 적용이라 뺀다)
@@ -269,6 +338,57 @@ mod tests {
         }
         // 이름이 없으면 id
         assert_eq!(body("instance.exit", json!({"instanceId": "i-1", "kind": "crash"})).as_deref(), Some("i-1 crashed and stopped."));
+    }
+
+    /// 원격 데몬의 중대 알림은 그 데몬 이름을 붙인다 (이 PC 서버로 읽히지 않게). 이 PC의 것은 그대로
+    #[test]
+    fn a_remote_daemons_notice_names_the_daemon() {
+        let i18n = crate::i18n::I18n::load("en", None);
+        let body = "Survival crashed and stopped.".to_string();
+        assert_eq!(on_daemon(body.clone(), None, &i18n), body);
+        assert_eq!(
+            on_daemon(body, Some("Living room PC"), &i18n),
+            "On Living room PC: Survival crashed and stopped."
+        );
+        let list = json!({"daemons": [{"hostId": "host-b", "name": "Living room PC"}, {"hostId": "host-c"}]});
+        assert_eq!(daemon_name(&list, "host-b"), "Living room PC");
+        assert_eq!(daemon_name(&list, "host-c"), "host-c");
+        assert_eq!(daemon_name(&json!({}), "host-d"), "host-d");
+    }
+
+    /// 원격 데몬을 고른 동안에도 이 PC 데몬의 중대 알림을 받는다: 이 PC 감시 스트림은 원격을 고른 동안만 붙고
+    /// 늘 이 PC에 묻는다. 이 PC를 고르면 고른 스트림이 이 PC라 쉰다 (같은 알림을 두 번 띄우지 않게)
+    #[test]
+    fn the_local_watch_runs_only_while_a_remote_daemon_is_chosen() {
+        assert_eq!(Feed::Chosen.source(None), Some(None));
+        assert_eq!(Feed::Chosen.source(Some("host-b".into())), Some(Some("host-b".into())));
+        assert_eq!(Feed::LocalWhileRemote.source(None), None);
+        assert_eq!(Feed::LocalWhileRemote.source(Some("host-b".into())), Some(None));
+
+        let dir = tempfile::tempdir().unwrap();
+        let client = DaemonClient::new("http://127.0.0.1:57474".into(), dir.path().join(".ipc_token"));
+        client.set_target(Some("host-b".into()));
+        let target = |source: Option<&str>| {
+            let req = events_request(&client, source).build().unwrap();
+            req.headers().get("X-Saba-Target").map(|v| v.to_str().unwrap().to_string())
+        };
+        assert_eq!(target(None).as_deref(), Some("local"));
+        // 붙을 때 정한 데몬에 묻는다 (그사이 고른 데몬이 바뀌어도)
+        client.set_target(Some("host-c".into()));
+        assert_eq!(target(Some("host-b")).as_deref(), Some("host-b"));
+    }
+
+    /// 이 PC 감시 스트림은 소리 중 크래시(예기치 않은 종료)만 낸다. 고른 스트림은 지금 규칙 그대로
+    #[test]
+    fn the_local_watch_plays_only_the_crash_sound() {
+        use crate::sounds::Cue;
+        for cue in [Cue::Started, Cue::Stopped, Cue::InstallSuccess, Cue::InstallFailed, Cue::Crashed] {
+            assert!(Feed::Chosen.plays(cue), "{cue:?}");
+            assert_eq!(Feed::LocalWhileRemote.plays(cue), cue == Cue::Crashed, "{cue:?}");
+        }
+        // 앱 화면은 고른 데몬을 보이므로, 이 PC 감시 스트림의 알림은 창이 앞에 있어도 띄운다
+        assert!(Feed::Chosen.shown_in_app());
+        assert!(!Feed::LocalWhileRemote.shown_in_app());
     }
 
     #[test]

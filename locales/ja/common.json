@@ -134,6 +134,7 @@
     "gave_up": "自動再起動をやめました。サーバーを確認してください。",
     "restart_failed": "{{name}} を再起動できませんでした。",
     "external_start": "{{name}} がサバちゃんの外で起動されました。サバちゃんが起動したプロセスではありません。",
-    "backup_failed": "{{name}} の自動バックアップに失敗しました。"
+    "backup_failed": "{{name}} の自動バックアップに失敗しました。",
+    "on_daemon": "{{daemon}} で: {{body}}"
   }
 }

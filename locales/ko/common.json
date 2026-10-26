@@ -134,6 +134,7 @@
     "gave_up": "자동 재시작을 멈췄어요. 직접 확인해 주세요.",
     "restart_failed": "{{name}} 서버를 다시 켜지 못했어요.",
     "external_start": "{{name}} 서버가 사바쨩 밖에서 켜졌어요. 사바쨩이 켜지 않은 프로세스예요.",
-    "backup_failed": "{{name}} 자동 백업에 실패했어요."
+    "backup_failed": "{{name}} 자동 백업에 실패했어요.",
+    "on_daemon": "{{daemon}}에서: {{body}}"
   }
 }

@@ -134,6 +134,7 @@
     "gave_up": "O reinício automático desistiu. Verifique o servidor.",
     "restart_failed": "Não foi possível reiniciar {{name}}.",
     "external_start": "{{name}} foi iniciado fora do Saba-chan. O Saba-chan não iniciou este processo.",
-    "backup_failed": "O backup automático de {{name}} falhou."
+    "backup_failed": "O backup automático de {{name}} falhou.",
+    "on_daemon": "Em {{daemon}}: {{body}}"
   }
 }
