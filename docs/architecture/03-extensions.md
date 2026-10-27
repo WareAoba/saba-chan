@@ -9,7 +9,7 @@
 
 > **2026-10-17 L3 이후**: 업데이트·모듈 목록·익스텐션 목록은 모두 릴레이의 서명된 릴리즈 manifest 하나에서 나온다. GitHub 업데이트 경로(`github.rs`, `api_base_url`, `github_owner`/`github_repo`, `include_prerelease`, 익스텐션 `manifest_url`, module.toml `[update]`, modules·extensions 저장소의 릴리즈 워크플로)는 없다. 근거 커밋: saba-chan 65e1763·8b840f7·60768a7, modules a26bdeb, extensions 301ff2c.
 >
-> **현재 코드 기준 요약**: 로컬 Discord 봇(`discord_bot/`), docker·music 익스텐션, `ext_process` API는 모두 없어졌다. 익스텐션 저장소에는 `steamcmd`, `ue4_ini` 두 개만 있다. 활성 목록과 익스텐션 글로벌 설정은 `<data_dir>/config.json`의 `extensions.enabled`, `extensions.settings`에 저장된다.
+> **현재 코드 기준 요약**: 로컬 Discord 봇(`discord_bot/`), docker·music 익스텐션, `ext_process` API는 모두 없어졌다. 익스텐션 저장소에는 `steamcmd`, `ue4_ini`, `xna` 세 개가 있다. 활성 목록과 익스텐션 글로벌 설정은 `<data_dir>/config.json`의 `extensions.enabled`, `extensions.settings`에 저장된다.
 
 ## 0. 용어 정리: "plugin" vs "extension" (프로젝트 오너 프레이밍 대비)
 
@@ -218,7 +218,7 @@ ue4-ini는 hook을 선언하지 않는다. steamcmd의 condition은 `instance.ex
 - `GET /api/extensions/updates`: 업데이트 목록만 돌려준다(`handlers/extension.rs:468-487`).
 - `POST /api/extensions/:id/install` (body `{download_url?, sha256?}`): body가 없거나 `{}`이면 원격 목록(서명된 카탈로그)에서 URL과 sha256을 찾는다. `download_url`만 주면 그 id의 카탈로그 URL과 같을 때만 카탈로그 sha256으로 받고, 다르면 해시 확인 없이 받지 않고 `sha256_required`로 거부한다. 둘 다 주면 그대로 받되, 카탈로그의 URL·해시와 같을 때만 공식 설치로 기록한다(`install_source`, `handlers/extension.rs:396-422`). 받기·검사·압축 해제는 락 없이 `stage_package`로 하고(sha256(있으면), manifest 스키마, id, `min_app_version` 확인, `ext/:1376-1415`), 폴더 교체만 write 락 안에서 `install_staged`로 한다. 실행 중인 인스턴스가 쓰는 익스텐션이면 `in_use`로 거부하고, 옛 폴더는 새 폴더가 자리 잡은 뒤에 지우며 실패하면 되돌린다(`ext/:695-721,1419-1440`). 빠진 익스텐션 의존성도 차례로 함께 설치한다(`handlers/extension.rs:400-465`). 원격 목록에서 받을 때 그 버전이 설치된 버전보다 낮으면 `older_than_installed`로 거부한다(예전 서명 manifest 재전송 방지).
 - 업데이터의 일괄 업데이트(`/api/updates/*`)는 설치된 `ext-*`만 비교하고, 적용 뒤 `rescan()`으로 다시 읽는다(`src/ipc/updates.rs:575-577`).
-- 배포: 익스텐션 저장소에는 릴리즈 워크플로도 생성된 `manifest.json`도 없다(CI는 pytest·ruff만, `E:.github/workflows/ci.yml`). 코어 릴리즈 워크플로가 `saba-chan-extensions`의 `main`을 checkout하고 `versions.py manifest --extensions-repo`가 `ext-<id>.zip`을 만들어 같은 릴리즈 manifest에 싣는다(`D:.github/workflows/release.yml:185-215`, `D:scripts/versions.py:246-267`). 지금 저장소에는 `steamcmd`, `ue4_ini` 두 개만 있다.
+- 배포: 익스텐션 저장소에는 릴리즈 워크플로도 생성된 `manifest.json`도 없다(CI는 pytest·ruff만, `E:.github/workflows/ci.yml`). 코어 릴리즈 워크플로가 `saba-chan-extensions`의 `main`을 checkout하고 `versions.py manifest --extensions-repo`가 `ext-<id>.zip`을 만들어 같은 릴리즈 manifest에 싣는다(`D:.github/workflows/release.yml:185-215`, `D:scripts/versions.py:246-267`). 지금 저장소에는 `steamcmd`, `ue4_ini`, `xna` 세 개가 있다.
 
 ### 3.5 의존성 처리
 

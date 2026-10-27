@@ -593,7 +593,7 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 ## 4. 모듈별 기능 요약
 
 공통 사항:
-- 모든 모듈은 version 0.1.0, author WareAoba다.
+- 버전은 각 `module.toml`의 `version`이 기준이다(카탈로그 판은 릴리스 manifest). author는 모두 WareAoba다.
 - `locales/` 아래에 10개 언어 JSON이 있다: `de, en, es, fr, ja, ko, pt-BR, ru, zh-CN, zh-TW`.
 - `[aliases]`(한국어 별칭), `[errors]`(사용자용 오류 문구), `[backup]`, `config.announce_command`가 있다. 모두 `schema_version = 1`이다.
 
@@ -639,7 +639,14 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 | 정지 | managed는 데몬이 stdin으로 `quit`을 보낸다. 모듈 `stop()`(non-managed, stdin 없는 managed)은 공용 `graceful_stop`으로 force가 아니면 콘솔 `quit`(`instance_id` 필요) → SIGTERM(POSIX) 순서로 요청하고, non-managed면 `stop_timeout`만큼 기다린 뒤에만 강제 종료한다. managed(`managed:true`)면 요청만 보내고 바로 돌려준다(기다림과 강제 종료는 데몬). 둘 다 보낼 수 없으면(콘솔 없는 Windows) 끝내지 않고 `graceful_stop_unavailable`로 답한다(§3.4). PID 확인·종료는 공용 헬퍼를 쓰고, `status()`는 PID 생존만 본다 (`:1020-1092`). ~~예전 버그(managed 기본 True, `input` 키, 토큰 없음)~~ → 해결. ~~`tasklist`·`os.kill`로 직접 확인·종료, RCON 폴백(stop·status·command)~~ → 해결: 지워졌다 |
 | 미구현 | `list_versions`, `get_version_details`, `get_installed_version`, `reset_properties` |
 
-### 4.4 __example (`M:__example/`)
+### 4.4 terraria (`M:terraria/`, lifecycle 627줄, toml 816줄)
+
+- 공식 TerrariaServer.exe(XNA Framework 4.0 필요)를 stdin으로 다룬다(`protocols.supported = ["stdin"]`). `requires_extensions = ["xna"]`: XNA 재배포 파일은 익스텐션 `xna`가 서버 폴더에 넣는다(03).
+- 설정 파일은 `serverconfig.txt`(`[config_files]`, 가져오기 해제 때 되돌린다). 실행 인자 모양은 `module.toml`의 `arg`에서 읽는다.
+- 접속·퇴장 줄은 공식 로컬라이즈 문구(12개 언어)로 알아보고, 1분 접속자 수는 데몬의 공용 계산(접속·퇴장 패턴이 둘 다 있을 때)을 쓴다. 아이콘은 `icon.png`.
+- `saba-core >=0.1.11-0`을 요구한다.
+
+### 4.5 __example (`M:__example/`)
 
 - 파일명이 `__example__module.toml`, `__example__lifecycle.py`다. 로더는 `module.toml`과 `entry`(여기서는 `lifecycle.py`)를 요구하므로 **이름을 바꿔야** 동작한다. 폴더명도 `_`로 시작해 빌드에서 제외된다(의도된 것).
 - `name = "mygame"`인데 폴더명은 `__example`이다. toml 주석은 "폴더명과 동일"을 요구한다(예시 값).
@@ -649,7 +656,7 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 - `get_credentials`, `read_properties`가 없다. 명령은 stdin으로 가므로 콘솔 모듈에는 지장이 없지만, REST 모듈을 만들면 `get_credentials`를 직접 추가해야 한다.
 - settings에 `managed_start`와 `graceful_stop`이 있다. `managed_start`는 데몬이 시작 경로를 고르는 데 쓴다(§3.1). `graceful_stop`은 데몬도 예시 `stop()`도 읽지 않고(설정 동기화에서 빼기만 한다, `instance.rs:1293`), GUI만 정지 방식을 고를 때 읽는다 (`saba-chan-gui/src/hooks/useServerActions.js:618`).
 
-### 4.5 i18n과 locales
+### 4.6 i18n과 locales
 
 - 모듈 측: `I18n(MODULE_DIR)`이 `locales/<SABA_LANG>.json`을 읽고, 없으면 `en`으로 대체한다. 키 구조는 `module`, `settings`, `commands`, `presets`, `queries`, `agreements`, `errors`, `messages`, `rcon`, `reset` 등이다(minecraft ko.json 기준). `queries.<name>.label`·`description`과 `[errors]` 코드의 `errors.<code>`는 데몬도 읽는다: 액션 목록(`GET /api/actions?instance=`)과 heartbeat `actions`의 조회 제목·설명(`actions::module_locale`, `<모듈 폴더>/locales/<lang>.json`). `reset.label`·`reset.description`은 서버 초기화(`reset_server`)가 무엇을 지우고 남기는지 GUI 초기화 화면에 보여 주는 문구다(모듈마다 다르다: minecraft는 JAR·eula.txt만 남김, palworld는 설정만 기본값으로, zomboid는 월드 세이브만 지움).
 - 인터페이스 측: `GET /api/module/:name/locales`가 `<modules_dir>/<name>/locales/*.json`을 하나의 맵으로 묶어 돌려준다 (`D:src/ipc/handlers/config.rs:200-234`). GUI는 이를 `mod_<name>` 네임스페이스로 쓴다. 이 경로 계산은 `module.path`가 아니라 **모듈 이름으로 만든 경로**라서, ZIP 모듈(`.extracted/<name>`)이나 폴더명이 name과 다른 모듈에서는 locales가 비어 나온다.
