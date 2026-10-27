@@ -441,7 +441,9 @@ def atomic_write(path, data):
     POSIX: 권한 비트를 옮긴 뒤 os.replace"""
     path = os.fspath(path)
     folder = os.path.dirname(os.path.abspath(path))
-    os.makedirs(folder, exist_ok=True)
+    # 있는 폴더에는 makedirs를 부르지 않는다: 위 폴더를 보지 못하는 격리 실행(드라이브 바로 아래 서버 폴더)에서 위부터 만들려다 실패한다
+    if not os.path.isdir(folder):
+        os.makedirs(folder, exist_ok=True)
     try:
         fd, tmp = tempfile.mkstemp(prefix=f".{os.path.basename(path)}.", suffix=".tmp", dir=folder)
     except PermissionError:
