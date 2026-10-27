@@ -257,13 +257,21 @@ mod win {
         }
     }
 
-    /// 그 포트를 연 프로세스의 실행 파일. AppContainer 안의 프로세스는 따로 제한되므로 판정하지 않는다
+    /// 그 포트를 연 프로세스의 실행 파일. AppContainer 안의 프로세스는 따로 제한되므로, 읽지 못한 프로세스가 있어도 판정하지 않는다
     pub(super) fn listener_exe(port: u16, protocol: Protocol) -> Option<String> {
         let pids = match protocol {
             Protocol::Tcp => crate::validator::tcp_listener_pids(port)?,
             Protocol::Udp => crate::validator::udp_owner_pids(port)?,
         };
-        pids.into_iter().filter(|&pid| pid > 4).find_map(process_image)
+        // 다른 주소에 같은 포트를 연 프로그램이 여럿이면 어느 쪽이 밖의 연결을 받는지 몰라 판정하지 않는다
+        let mut images: Vec<String> = Vec::new();
+        for pid in pids.into_iter().filter(|&pid| pid > 4) {
+            let image = process_image(pid)?;
+            if !images.iter().any(|i| i.eq_ignore_ascii_case(&image)) {
+                images.push(image);
+            }
+        }
+        (images.len() == 1).then(|| images.remove(0))
     }
 
     fn process_image(pid: u32) -> Option<String> {
