@@ -71,14 +71,15 @@ impl UpdateManager {
         let content = std::fs::read_to_string(&manifest_path)?;
         let components: Vec<ComponentVersion> = serde_json::from_str(&content)?;
 
-        // 받아 둔 뒤 설치기로 같거나 더 새 판을 깔았으면 그 항목은 버린다 (옛 판으로 되돌리지 않게)
+        // 받아 둔 뒤 설치기로 같거나 더 새 판을 깔았으면 그 항목은 버린다 (옛 판으로 되돌리지 않게).
+        // 기록 없는 모듈·익스텐션의 같은 버전 재설치는 공식 표시를 되살리려는 것이라 남긴다
         let installed = Self::load_installed_manifest_at(&self.installed_manifest_file);
         // 실제 파일 존재 여부 재확인
         let mut valid = Vec::new();
         self.already_installed.clear();
         for mut comp in components {
             if let (Some(latest), Some(now)) = (comp.latest_version.as_deref(), installed.get(&comp.component.manifest_key())) {
-                if !self.compare_versions(latest, now) {
+                if !self.compare_versions(latest, now) && !Self::reinstall_from_catalog(&comp.component, now, latest) {
                     tracing::info!("[UpdateManager] {} {} is already installed (staged {}); skipping", comp.component.manifest_key(), now, latest);
                     self.already_installed.push(comp.component.manifest_key());
                     continue;

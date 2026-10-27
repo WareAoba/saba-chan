@@ -1790,3 +1790,24 @@ async fn an_apply_target_already_installed_is_skipped_and_the_rest_are_applied()
     assert!(failed.is_empty(), "{:?}", failed);
     let _ = std::fs::remove_dir_all(manager.resolve_ext_dir(&name));
 }
+
+// 기록 없이 놓인 모듈의 같은 버전 재설치(공식 표시 복구)는 되살린 목록에서도 남긴다. 더 새 판이 깔렸으면 뺀다
+#[test]
+fn a_restored_same_version_reinstall_without_a_record_is_kept() {
+    let tmp = tempfile::tempdir().unwrap();
+    let file = tmp.path().join("x.zip");
+    std::fs::write(&file, b"zip").unwrap();
+    let same = Component::Module(format!("unrecorded-{}", std::process::id()));
+    let newer = Component::Module(format!("newer-{}", std::process::id()));
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.staging_dir = tmp.path().join("staging");
+    manager.installed_manifest_file = tmp.path().join("installed-manifest.json");
+    manager.status.components = vec![staged(same.clone(), &file), staged(newer.clone(), &file)];
+    manager.save_pending_manifest().unwrap();
+    let installed: std::collections::HashMap<String, String> =
+        [(same.manifest_key(), "0.2.0".to_string()), (newer.manifest_key(), "0.3.0".to_string())].into_iter().collect();
+    std::fs::write(&manager.installed_manifest_file, serde_json::to_string(&installed).unwrap()).unwrap();
+
+    assert_eq!(manager.load_pending_manifest().unwrap(), 1);
+    assert_eq!(manager.status.components[0].component, same);
+}
