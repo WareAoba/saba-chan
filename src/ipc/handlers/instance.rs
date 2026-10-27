@@ -1255,6 +1255,10 @@ async fn delete_instance_held(state: IPCServer, id: String, keep_settings: bool)
     match removed {
         Ok(_) => {
             state.provision_tracker.forget(&instance.name);
+            // 지운 서버의 디스코드 낱말은 heartbeat에 더 싣지 않는다
+            if let Err(e) = state.config_store.update_server_words(|t| ((), t.remove(&id).is_some())).await {
+                tracing::warn!("Could not forget the Discord words of deleted instance '{}': {}", instance.name, e);
+            }
             let mut response = json!({ "success": true });
             if let Some(unlinked) = &unlinked {
                 if let Some(folder) = &unlinked.folder {
@@ -2418,6 +2422,26 @@ mod tests {
             assert_eq!(std::fs::read_to_string(&ini).unwrap(), expected);
             assert_eq!(std::fs::read_to_string(&outside).unwrap(), "after", "a file outside the server is never kept or restored");
         }
+    }
+
+    /// 지운 서버의 디스코드 낱말은 남기지 않는다: 남으면 heartbeat가 없는 서버의 낱말을 계속 싣는다
+    #[tokio::test]
+    async fn deleting_an_instance_forgets_its_discord_words() {
+        use axum::extract::{Path, Query, State};
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        std::fs::create_dir_all(&modules).unwrap();
+        let sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let inst = crate::instance::ServerInstance::new("w", "game");
+        let id = inst.id.clone();
+        state.supervisor.write().await.instance_store.add(inst).unwrap();
+        let words = crate::chat::words::InstanceWords { words: vec!["마크".into()], ..Default::default() };
+        state.config_store.update_server_words(|t| ((), t.insert(id.clone(), words).is_none())).await.unwrap();
+
+        let removed = crate::ipc::internal::into_internal(super::delete_instance(Path(id.clone()), State(state.clone()), Query(super::DeleteQuery { keep_settings: false })).await).await;
+        assert_eq!(removed.status.as_u16(), 200, "{}", removed.body);
+        assert!(!state.config_store.get_bot_config().await.server_words.contains_key(&id));
     }
 
     /// 인스턴스 폴더를 지울 수 없으면 아무것도 되돌리지 않는다: 설정만 원래대로 돌아가고 인스턴스가 남으면,
