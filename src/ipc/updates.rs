@@ -642,17 +642,26 @@ fn launch_targets(pending: &[Component], servers_running: bool) -> (Vec<Componen
         .partition(|c| !(servers_running && matches!(c, Component::Gui | Component::Updater | Component::CoreDaemon)))
 }
 
+/// 데몬을 다시 켠 뒤 아직 확인 전이면(상태가 비어 있음) 지난번에 받아 둔 목록(`pending.json`)을 되살린다.
+/// 이미 확인했으면 그 상태를 그대로 쓴다 (확인이 받아 둔 파일을 알아본다)
+fn restore_pending(mgr: &mut saba_chan_updater_lib::UpdateManager) {
+    if mgr.get_status().components.is_empty() {
+        let _ = mgr.load_pending_manifest();
+    }
+}
+
 /// POST /api/updates/apply-on-launch — `auto_apply`가 켜져 있으면 받아 둔 업데이트를 적용한다 (GUI가 열릴 때 부른다).
 /// 꺼져 있거나 받아 둔 것이 없으면 `{ok:true, skipped:"off"|"nothing"}`. 그 밖에는 apply의 답에 미룬 것 `held`
 /// (서버가 켜져 있어 다시 시작하지 않은 구성요소 키)를 붙인다. `requires_updater`면 부른 쪽이 업데이터를 띄운다
 async fn apply_on_launch(State(state): State<UpdateState>) -> axum::response::Response {
-    let (auto_apply, pending) = {
-        let mgr = state.manager.read().await;
-        (mgr.get_config().auto_apply, mgr.get_pending_components().into_iter().map(|c| c.component.clone()).collect::<Vec<_>>())
+    let pending = {
+        let mut mgr = state.manager.write().await;
+        if !mgr.get_config().auto_apply {
+            return Json(json!({ "ok": true, "skipped": "off" })).into_response();
+        }
+        restore_pending(&mut mgr);
+        mgr.get_pending_components().into_iter().map(|c| c.component.clone()).collect::<Vec<_>>()
     };
-    if !auto_apply {
-        return Json(json!({ "ok": true, "skipped": "off" })).into_response();
-    }
     let servers_running = match state.supervisor {
         Some(ref sup) => !sup.read().await.running_instances().await.is_empty(),
         None => false,
@@ -1162,6 +1171,34 @@ mod tests {
         );
     }
 
+    /// 받아 둔 업데이트의 `pending.json`을 같이 쓰는 시험끼리 차례로
+    static STAGING: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+    /// 받아 둔 뒤 데몬·PC를 다시 켜면 상태가 비어 있다: 다음 실행 때 적용은 디스크의 대기 목록을 되살려 적용한다
+    #[tokio::test]
+    async fn applying_on_launch_restores_what_was_downloaded_before_a_restart() {
+        let _staging = STAGING.lock().await;
+        let staging = saba_chan_updater_lib::constants::resolve_staging_dir();
+        std::fs::create_dir_all(&staging).unwrap();
+        let staged = staging.join("saba-chan-gui-restore-test.zip");
+        std::fs::write(&staged, b"zip").unwrap();
+        let pending = json!([{
+            "component": "gui", "current_version": "0.1.0", "latest_version": "0.2.0",
+            "update_available": true, "download_url": null, "asset_name": "saba-chan-gui-restore-test.zip",
+            "release_notes": null, "published_at": null, "downloaded": true,
+            "downloaded_path": staged.to_string_lossy(), "installed": true
+        }]);
+        std::fs::write(staging.join("pending.json"), pending.to_string()).unwrap();
+
+        let state = UpdateState::new();
+        let mut mgr = state.manager.write().await;
+        assert!(mgr.get_pending_components().is_empty(), "a fresh daemon has not read the staging folder yet");
+        super::restore_pending(&mut mgr);
+        assert_eq!(mgr.get_pending_components().len(), 1);
+        std::fs::remove_file(staging.join("pending.json")).unwrap();
+        std::fs::remove_file(&staged).unwrap();
+    }
+
     #[test]
     fn auto_apply_is_kept_with_the_update_settings() {
         let mut cfg = saba_chan_updater_lib::UpdateConfig::default();
@@ -1216,6 +1253,7 @@ mod tests {
     #[tokio::test]
     async fn a_second_launch_is_refused_while_one_is_pending() {
         use axum::extract::State;
+        let _staging = STAGING.lock().await;
         let staging = saba_chan_updater_lib::constants::resolve_staging_dir();
         std::fs::create_dir_all(&staging).unwrap();
         let staged = staging.join("saba-chan-gui-linux-x64.zip");
