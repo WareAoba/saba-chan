@@ -30,6 +30,7 @@ const T = {
         labelOptions: 'Options',
         labelDesktop: 'Desktop Shortcut',
         labelStartMenu: 'Start Menu Shortcut',
+        privacyNotice: 'Saba-chan sends an anonymous ID and version numbers to the Saba-chan server to check for updates. You can turn this off in the app settings. Discord features send data only after you connect them. Privacy policy: saba-chan.online/legal/privacy',
         btnInstall: 'Install',
         installing: 'Installing...',
         installSub: 'Please wait...',
@@ -120,6 +121,7 @@ const T = {
         labelOptions: '옵션',
         labelDesktop: '바탕화면 바로가기',
         labelStartMenu: '시작 메뉴 바로가기',
+        privacyNotice: '사바쨩은 업데이트를 확인하려고 익명 ID와 버전 정보를 사바쨩 서버로 보내요. 앱 설정에서 끌 수 있어요. 디스코드 기능은 직접 연결한 뒤에만 정보를 보내요. 개인정보처리방침: saba-chan.online/legal/privacy',
         btnInstall: '설치',
         installing: '설치 중!',
         installSub: '잠시만 기다려 주세요...!',
@@ -210,6 +212,7 @@ const T = {
         labelOptions: 'オプション',
         labelDesktop: 'デスクトップショートカット',
         labelStartMenu: 'スタートメニューショートカット',
+        privacyNotice: 'Saba-chanはアップデートを確認するため、匿名IDとバージョン情報をSaba-chanのサーバーに送ります。アプリの設定でオフにできます。Discord機能は連携した後にだけ情報を送ります。プライバシーポリシー: saba-chan.online/legal/privacy',
         btnInstall: 'インストール',
         installing: 'インストール中...',
         installSub: 'しばらくお待ちください...',
@@ -300,6 +303,7 @@ const T = {
         labelOptions: '选项',
         labelDesktop: '桌面快捷方式',
         labelStartMenu: '开始菜单快捷方式',
+        privacyNotice: 'Saba-chan 会向 Saba-chan 服务器发送匿名 ID 和版本信息以检查更新。可以在应用设置中关闭。Discord 功能仅在你连接后才会发送信息。隐私政策：saba-chan.online/legal/privacy',
         btnInstall: '安装',
         installing: '正在安装...',
         installSub: '请稍候...',
@@ -390,6 +394,7 @@ const T = {
         labelOptions: '選項',
         labelDesktop: '桌面捷徑',
         labelStartMenu: '開始功能表捷徑',
+        privacyNotice: 'Saba-chan 會向 Saba-chan 伺服器傳送匿名 ID 和版本資訊以檢查更新。可以在應用程式設定中關閉。Discord 功能僅在你連結後才會傳送資訊。隱私權政策：saba-chan.online/legal/privacy',
         btnInstall: '安裝',
         installing: '正在安裝...',
         installSub: '請稍候...',
@@ -480,6 +485,7 @@ const T = {
         labelOptions: 'Opciones',
         labelDesktop: 'Acceso directo en el escritorio',
         labelStartMenu: 'Acceso directo en el menú Inicio',
+        privacyNotice: 'Saba-chan envía un ID anónimo y los números de versión al servidor de Saba-chan para buscar actualizaciones. Puedes desactivarlo en los ajustes de la app. Las funciones de Discord solo envían datos después de conectarlas. Política de privacidad: saba-chan.online/legal/privacy',
         btnInstall: 'Instalar',
         installing: 'Instalando...',
         installSub: 'Por favor, espera...',
@@ -570,6 +576,7 @@ const T = {
         labelOptions: 'Opções',
         labelDesktop: 'Atalho na área de trabalho',
         labelStartMenu: 'Atalho no menu Iniciar',
+        privacyNotice: 'O Saba-chan envia um ID anônimo e os números de versão ao servidor do Saba-chan para verificar atualizações. Você pode desativar isso nas configurações do app. Os recursos do Discord só enviam dados depois que você os conecta. Política de privacidade: saba-chan.online/legal/privacy',
         btnInstall: 'Instalar',
         installing: 'Instalando...',
         installSub: 'Por favor, aguarde...',
@@ -660,6 +667,7 @@ const T = {
         labelOptions: 'Параметры',
         labelDesktop: 'Ярлык на рабочем столе',
         labelStartMenu: 'Ярлык в меню «Пуск»',
+        privacyNotice: 'Saba-chan отправляет анонимный ID и номера версий на сервер Saba-chan, чтобы проверять обновления. Это можно отключить в настройках приложения. Функции Discord отправляют данные только после подключения. Политика конфиденциальности: saba-chan.online/legal/privacy',
         btnInstall: 'Установить',
         installing: 'Установка...',
         installSub: 'Пожалуйста, подождите...',
@@ -750,6 +758,7 @@ const T = {
         labelOptions: 'Optionen',
         labelDesktop: 'Desktop-Verknüpfung',
         labelStartMenu: 'Startmenü-Verknüpfung',
+        privacyNotice: 'Saba-chan sendet eine anonyme ID und Versionsnummern an den Saba-chan-Server, um nach Updates zu suchen. Das kannst du in den App-Einstellungen ausschalten. Discord-Funktionen senden erst Daten, wenn du sie verbindest. Datenschutzerklärung: saba-chan.online/legal/privacy',
         btnInstall: 'Installieren',
         installing: 'Installation...',
         installSub: 'Bitte warten...',
@@ -840,6 +849,7 @@ const T = {
         labelOptions: 'Options',
         labelDesktop: 'Raccourci sur le bureau',
         labelStartMenu: 'Raccourci dans le menu Démarrer',
+        privacyNotice: 'Saba-chan envoie un identifiant anonyme et les numéros de version au serveur Saba-chan pour rechercher les mises à jour. Vous pouvez désactiver cela dans les paramètres de l\'app. Les fonctions Discord n\'envoient des données qu\'après leur connexion. Politique de confidentialité : saba-chan.online/legal/privacy',
         btnInstall: 'Installer',
         installing: 'Installation en cours...',
         installSub: 'Veuillez patienter...',
@@ -977,6 +987,7 @@ function applyTranslations() {
     s('label-options', 'labelOptions');
     s('label-desktop', 'labelDesktop');
     s('label-startmenu', 'labelStartMenu');
+    s('privacy-notice', 'privacyNotice');
     s('btn-install-text', 'btnInstall');
     s('btn-close-text', 'btnClose');
     s('btn-launch-text', 'btnLaunch');
