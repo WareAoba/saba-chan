@@ -703,6 +703,7 @@
     "restart_required_title": "Reinicio requerido",
     "apply": "Aplicar",
     "module_busy": "Otra instalación o eliminación de este módulo sigue en curso. Vuelve a intentarlo cuando termine.",
+    "module_in_use": "Un servidor en ejecución está usando este módulo. Detén el servidor antes de eliminarlo.",
     "extensions_enabled": "Se activaron las extensiones que usa este módulo: {{ids}}",
     "extension_failed": "No se pudo preparar la extensión {{id}}: {{error}}",
     "remove_failed": "No se pudo eliminar el módulo: {{error}}"

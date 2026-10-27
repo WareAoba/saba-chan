@@ -703,6 +703,7 @@
     "restart_required_title": "需要重启",
     "apply": "应用",
     "module_busy": "此模块的另一个安装或移除仍在进行中。请在完成后重试。",
+    "module_in_use": "正在运行的服务器正在使用此模块。请先停止服务器再删除。",
     "extensions_enabled": "已启用此模块使用的扩展：{{ids}}",
     "extension_failed": "无法准备扩展 {{id}}：{{error}}",
     "remove_failed": "无法移除模块：{{error}}"

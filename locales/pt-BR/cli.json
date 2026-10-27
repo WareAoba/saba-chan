@@ -338,6 +338,7 @@
       "snapshot_not_found": "O jogo não tem backup automático.",
       "invalid_relay_url": "Só são permitidos endereços de relay https:// (http apenas para localhost, 127.0.0.1 ou [::1] ao testar neste PC).",
       "module_busy": "Este módulo já está sendo instalado ou removido. Tente de novo quando terminar.",
+      "module_in_use": "Um servidor em execução está usando este módulo. Pare o servidor antes de removê-lo.",
       "schedule_changed": "O agendamento foi alterado em outro lugar. Confira com saba-chan-cli schedule show e tente de novo.",
       "invalid_command": "Escreva a chave do comando como `<server>/<command>`. Uma chave sem servidor deve ser um id de ação global.",
       "no_command_path": "Este servidor foi iniciado fora do Saba-chan, então não tem console para receber comandos. Reinicie-o pelo Saba-chan: saba-chan-cli restart <server>",

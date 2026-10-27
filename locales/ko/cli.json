@@ -338,6 +338,7 @@
       "snapshot_not_found": "게임이 만든 자동 백업이 없어요.",
       "invalid_relay_url": "릴레이 주소는 https:// 주소만 쓸 수 있어요(이 PC에서 시험할 때만 localhost·127.0.0.1·[::1]의 http를 쓸 수 있어요).",
       "module_busy": "이 모듈을 이미 설치하거나 지우는 중이에요. 끝난 뒤 다시 해 주세요.",
+      "module_in_use": "켜진 서버가 이 모듈을 쓰고 있어요. 서버를 정지한 뒤 제거해 주세요.",
       "schedule_changed": "다른 곳에서 예약 작업이 바뀌었어요. saba-chan-cli schedule show로 다시 확인한 뒤 해 주세요.",
       "invalid_command": "명령 키는 `<서버>/<명령>` 모양으로 써 주세요. 서버 없이 쓰는 키는 전역 액션 id만 돼요.",
       "no_command_path": "이 서버는 사바쨩 밖에서 켜져서 명령을 받을 콘솔이 없어요. 사바쨩에서 다시 켜 주세요: saba-chan-cli restart <서버>",

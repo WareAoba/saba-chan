@@ -703,6 +703,7 @@
     "restart_required_title": "需要重新啟動",
     "apply": "套用",
     "module_busy": "此模組的另一個安裝或移除仍在進行中。請在完成後再試一次。",
+    "module_in_use": "執行中的伺服器正在使用此模組。請先停止伺服器再移除。",
     "extensions_enabled": "已啟用此模組使用的擴充功能：{{ids}}",
     "extension_failed": "無法準備擴充功能 {{id}}：{{error}}",
     "remove_failed": "無法移除模組：{{error}}"

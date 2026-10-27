@@ -907,6 +907,7 @@ function ModulesTab() {
             const res = await window.api?.moduleRemove?.(id);
             if (res?.ok) await loadInstalledModules();
             else if (res?.error_code === 'module_busy') safeShowToast(t('saba_storage.module_busy'), 'warning', 4000);
+            else if (res?.error_code === 'module_in_use') safeShowToast(t('saba_storage.module_in_use'), 'warning', 5000);
             else safeShowToast(t('saba_storage.remove_failed', { error: createTranslateError(t)(res?.error) }), 'error', 5000);
         } catch (e) {
             safeShowToast(t('saba_storage.remove_failed', { error: createTranslateError(t)(e?.message) }), 'error', 5000);

@@ -338,6 +338,7 @@
       "snapshot_not_found": "遊戲沒有自動備份.",
       "invalid_relay_url": "中繼位址只能使用 https://(僅在本機測試時可對 localhost、127.0.0.1 或 [::1] 使用 http)。",
       "module_busy": "此模組正在安裝或刪除中。請在完成後再試一次。",
+      "module_in_use": "執行中的伺服器正在使用此模組。請先停止伺服器再移除。",
       "schedule_changed": "排程工作已在別處變更。請用 saba-chan-cli schedule show 重新確認後再試。",
       "invalid_command": "命令鍵請寫成 `<伺服器>/<命令>`。不帶伺服器的鍵只能是全域動作 id。",
       "no_command_path": "此伺服器是在 Saba-chan 之外啟動的，沒有可接收指令的主控台。請透過 Saba-chan 重新啟動：saba-chan-cli restart <server>",
