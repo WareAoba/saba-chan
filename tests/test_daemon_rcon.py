@@ -285,6 +285,28 @@ class SdkAtomicWriteTests(unittest.TestCase):
             self.assertEqual(path.read_bytes(), b"new")
             self.assertEqual(path.stat().st_ino, inode)
 
+    def test_a_folder_whose_parent_cannot_be_seen_is_still_written(self):
+        """PC 실측 10-27: 드라이브 바로 아래 서버 폴더(D:\\test 서버)를 가져와 연결하면 격리 실행은 D:\\를 보지 못한다.
+        이미 있는 폴더에 os.makedirs를 부르면 위 폴더부터 만들려다 PermissionError로 저장이 실패했다"""
+        with tempfile.TemporaryDirectory() as directory:
+            folder = Path(directory) / "server"
+            folder.mkdir()
+            path = folder / "server.properties"
+            path.write_bytes(b"old")
+            hidden = os.path.abspath(directory)
+            real_exists, real_isdir, real_mkdir = os.path.exists, os.path.isdir, os.mkdir
+
+            def mkdir(p, *args, **kwargs):
+                if os.path.abspath(p) == hidden:
+                    raise PermissionError(13, "denied")
+                return real_mkdir(p, *args, **kwargs)
+
+            with patch.object(os.path, "exists", lambda p: False if os.path.abspath(p) == hidden else real_exists(p)), \
+                    patch.object(os.path, "isdir", lambda p: False if os.path.abspath(p) == hidden else real_isdir(p)), \
+                    patch.object(os, "mkdir", mkdir):
+                daemon_rcon.atomic_write(path, b"new")
+            self.assertEqual(path.read_bytes(), b"new")
+
     @unittest.skipUnless(hasattr(os, "fork") and sys.platform.startswith("linux"), "RLIMIT_FSIZE")
     def test_a_failed_in_place_write_restores_the_original(self):
         """제자리 쓰기가 디스크·크기 제한으로 실패해도 원래 내용이 남는다 (실패한 쓰기 버퍼를 다시 내보내지 않는다)"""
