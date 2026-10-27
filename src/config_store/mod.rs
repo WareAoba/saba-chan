@@ -186,6 +186,22 @@ impl GuiSettings {
         }
         Ok(())
     }
+
+    /// 손으로 고친 파일의 고를 수 없는 값은 기본값으로 둔다 (그대로 두면 다른 앱 설정 저장도 모두 거절된다)
+    fn sanitize(&mut self) {
+        let default = Self::default();
+        let mut fix = |value: &mut String, allowed: &[&str], fallback: &str| {
+            if !allowed.contains(&value.as_str()) {
+                *value = fallback.to_string();
+            }
+        };
+        fix(&mut self.close_action, &["ask", "tray", "quit"], &default.close_action);
+        fix(&mut self.toast_duration, &["short", "normal", "long"], &default.toast_duration);
+        fix(&mut self.console_timestamps, &["off", "24h", "12h"], &default.console_timestamps);
+        if self.new_server_backup_keep == 0 {
+            self.new_server_backup_keep = default.new_server_backup_keep;
+        }
+    }
 }
 
 // ── Bot Config (bot-config.json) ──
@@ -420,7 +436,8 @@ impl ConfigStore {
     pub fn new(data_dir: &Path) -> Self {
         let file = ConfigFile::at(data_dir);
         let doc = file.load();
-        let gui = section_or_default::<GuiSettings>(&doc, "gui");
+        let mut gui = section_or_default::<GuiSettings>(&doc, "gui");
+        gui.sanitize();
         let mut bot = section_or_default::<BotConfig>(&doc, "relay");
         bot.normalize();
         // 손으로 고친 파일의 틀린 접두사는 버리고 기본값으로 둔다
@@ -1058,6 +1075,15 @@ mod tests {
         assert_eq!(loaded.ipc_port, 12345);
         assert_eq!(loaded.refresh_interval, 2000); // default
         assert_eq!(loaded.accent_color, "#667eea"); // default
+    }
+
+    #[test]
+    fn gui_settings_with_unchoosable_values_load_as_defaults() {
+        let mut loaded: GuiSettings = serde_json::from_str(r#"{"closeAction": "hide", "toastDuration": "x", "newServerBackupKeep": 0, "autoRefresh": false}"#).unwrap();
+        loaded.sanitize();
+        assert!(loaded.validate().is_ok());
+        assert_eq!(loaded.close_action, GuiSettings::default().close_action);
+        assert!(!loaded.auto_refresh, "valid values stay");
     }
 
     #[test]
