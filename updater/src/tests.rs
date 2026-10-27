@@ -1743,3 +1743,24 @@ async fn apply_staged_without_a_pending_list_fails() {
     assert!(result.unwrap_err().contains("Failed to load manifest"));
     assert_eq!(last, Some(("error".to_string(), 1)));
 }
+
+// 받아 둔 뒤 설치기로 같거나 더 새 판을 깔았으면, 되살린 목록의 그 항목은 적용하지 않는다 (옛 판으로 되돌리지 않게)
+#[test]
+fn a_restored_pending_list_skips_what_is_already_installed_at_that_version_or_newer() {
+    let tmp = tempfile::tempdir().unwrap();
+    let file = tmp.path().join("x.zip");
+    std::fs::write(&file, b"zip").unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.staging_dir = tmp.path().join("staging");
+    manager.status.components = vec![staged(Component::Locales, &file), staged(Component::Module("m".into()), &file)];
+    manager.save_pending_manifest().unwrap();
+
+    let mut loaded = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    loaded.staging_dir = manager.staging_dir.clone();
+    loaded.installed_manifest_file = tmp.path().join("installed-manifest.json");
+    let installed: std::collections::HashMap<String, String> =
+        [(Component::Locales.manifest_key(), "0.3.0".to_string()), (Component::Module("m".into()).manifest_key(), "0.1.0".to_string())].into_iter().collect();
+    std::fs::write(&loaded.installed_manifest_file, serde_json::to_string(&installed).unwrap()).unwrap();
+    assert_eq!(loaded.load_pending_manifest().unwrap(), 1);
+    assert_eq!(loaded.status.components.iter().map(|c| c.component.clone()).collect::<Vec<_>>(), vec![Component::Module("m".into())]);
+}

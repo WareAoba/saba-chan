@@ -71,9 +71,17 @@ impl UpdateManager {
         let content = std::fs::read_to_string(&manifest_path)?;
         let components: Vec<ComponentVersion> = serde_json::from_str(&content)?;
 
+        // 받아 둔 뒤 설치기로 같거나 더 새 판을 깔았으면 그 항목은 버린다 (옛 판으로 되돌리지 않게)
+        let installed = Self::load_installed_manifest_at(&self.installed_manifest_file);
         // 실제 파일 존재 여부 재확인
         let mut valid = Vec::new();
         for mut comp in components {
+            if let (Some(latest), Some(now)) = (comp.latest_version.as_deref(), installed.get(&comp.component.manifest_key())) {
+                if !self.compare_versions(latest, now) {
+                    tracing::info!("[UpdateManager] {} {} is already installed (staged {}); skipping", comp.component.manifest_key(), now, latest);
+                    continue;
+                }
+            }
             if let Some(ref path) = comp.downloaded_path {
                 if std::path::Path::new(path).exists() {
                     comp.downloaded = true;
