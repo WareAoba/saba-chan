@@ -74,6 +74,27 @@ describe('포트포워딩 확인', () => {
         expect(await screen.findByRole('status')).toHaveTextContent(/Blocked by the PC firewall/);
     });
 
+    it('결과가 나오면 성공이든 실패든 다시 확인할 수 있다', async () => {
+        window.api.instancePortCheckLast = vi.fn().mockResolvedValue({ ...closedReport, verdict: 'open' });
+        window.api.instancePortCheck = vi.fn().mockResolvedValue({ ...closedReport, verdict: 'router' });
+        render(<PortCheck server={server} />);
+        const retry = await screen.findByRole('button', { name: /Check again/i });
+        await act(async () => fireEvent.click(retry));
+        expect(window.api.instancePortCheck).toHaveBeenCalledWith('a');
+        expect(screen.getByText(/Port forwarding is not set up on the router/)).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /Check again/i })).toBeInTheDocument();
+    });
+
+    it('상단 알림에서 고친 뒤 바로 다시 확인하고, 열리면 알림이 사라진다', async () => {
+        window.api.instancePortCheckLast = vi.fn().mockResolvedValue({ ...closedReport, verdict: 'firewall' });
+        window.api.instancePortCheck = vi.fn().mockResolvedValue({ ...closedReport, verdict: 'open' });
+        const { container } = render(<PortCheckNotice server={server} />);
+        await screen.findByRole('status');
+        await act(async () => fireEvent.click(screen.getByRole('button', { name: /Check again/i })));
+        expect(window.api.instancePortCheck).toHaveBeenCalledWith('a');
+        expect(container).toBeEmptyDOMElement();
+    });
+
     it('도움말 주소는 웹사이트 언어 경로를 따른다 (영어는 앞에 언어가 없다)', () => {
         expect(portHelpUrl('en')).toBe('https://saba-chan.online/docs/server-management');
         expect(portHelpUrl('ko')).toBe('https://saba-chan.online/ko/docs/server-management');

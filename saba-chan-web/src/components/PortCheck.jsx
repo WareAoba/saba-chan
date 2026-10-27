@@ -35,7 +35,7 @@ export function PortCheck({ api, server }) {
         <section className="port-check">
             <div className="port-check-head">
                 <Button busy={busy} onClick={run}>
-                    {busy ? t('port_check.running') : t('port_check.button')}
+                    {busy ? t('port_check.running') : portCheckShown(report) ? t('port_check.retry') : t('port_check.button')}
                 </Button>
                 {report?.verdict === 'no_ports' && <span className="hint">{t('port_check.verdict.no_ports')}</span>}
             </div>

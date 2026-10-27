@@ -14,6 +14,7 @@ const STATUS_ICON = {
     unknown: 'info',
     in_use: 'alertTriangle',
     firewall: 'alertCircle',
+    router: 'alertCircle',
 };
 
 /** 마지막 확인 결과. 자동 확인이 끝나면(`instance.port_check`) 다시 읽는다 */
@@ -50,20 +51,16 @@ function HelpLink() {
     );
 }
 
-/** 정보 탭: 확인 버튼과 결과 (공인 주소, 포트마다 상태, 닫혔으면 안내) */
-export function PortCheck({ server }) {
+/** 확인을 실행한다. 결과는 `setReport`로, 실패는 `setError`로 */
+function usePortCheckRun(serverId, setReport) {
     const { t } = useTranslation('gui');
-    const [report, setReport] = useLastPortCheck(server.id);
     const [running, setRunning] = useState(false);
     const [error, setError] = useState(null);
-
-    if (!portCheckAvailable()) return null;
-
     const run = async () => {
         setRunning(true);
         setError(null);
         try {
-            const res = await window.api.instancePortCheck(server.id);
+            const res = await window.api.instancePortCheck(serverId);
             if (res?.verdict) setReport(res);
             else setError(t(`port_check.error.${res?.error_code}`, { defaultValue: res?.error || t('port_check.error.failed') }));
         } catch (err) {
@@ -72,14 +69,32 @@ export function PortCheck({ server }) {
             setRunning(false);
         }
     };
+    return { run, running, error };
+}
+
+/** 확인 버튼. 결과가 있으면 성공이든 실패든 "다시 확인" */
+function PortCheckButton({ run, running, checked }) {
+    const { t } = useTranslation('gui');
+    const label = running ? t('port_check.running') : checked ? t('port_check.retry') : t('port_check.button');
+    return (
+        <button type="button" className="btn btn-ghost" disabled={running} onClick={run}>
+            <Icon name={running || checked ? 'refresh' : 'globe'} size="sm" className={running ? 'spin' : undefined} /> {label}
+        </button>
+    );
+}
+
+/** 정보 탭: 확인 버튼과 결과 (공인 주소, 포트마다 상태, 닫혔으면 안내) */
+export function PortCheck({ server }) {
+    const { t } = useTranslation('gui');
+    const [report, setReport] = useLastPortCheck(server.id);
+    const { run, running, error } = usePortCheckRun(server.id, setReport);
+
+    if (!portCheckAvailable()) return null;
 
     return (
         <section className="server-check port-check">
             <div className="server-check-actions">
-                <button type="button" className="btn btn-ghost" disabled={running} onClick={run}>
-                    <Icon name={running ? 'refresh' : 'globe'} size="sm" className={running ? 'spin' : undefined} />{' '}
-                    {running ? t('port_check.running') : t('port_check.button')}
-                </button>
+                <PortCheckButton run={run} running={running} checked={portCheckShown(report)} />
             </div>
             {error && (
                 <div className="notice tone-stop" role="alert">
@@ -119,18 +134,21 @@ export function PortCheck({ server }) {
     );
 }
 
-/** 상세 머리 아래: 자동 확인에서 닫혔다고 나왔으면 조용히 알린다 */
+/** 상세 머리 아래: 확인에서 닿지 않는다고 나왔으면 알린다. 고친 뒤 바로 다시 확인할 수 있다 */
 export function PortCheckNotice({ server }) {
     const { t } = useTranslation('gui');
-    const [report] = useLastPortCheck(server.id);
+    const [report, setReport] = useLastPortCheck(server.id);
+    const { run, running, error } = usePortCheckRun(server.id, setReport);
     if (!portCheckAvailable() || !portCheckNeedsAttention(report)) return null;
     return (
-        <div className="notice tone-warn" role="status">
+        <div className="notice tone-warn port-check-notice" role="status">
             <Icon name="globe" size="sm" />
             <span>
                 <strong>{t(`port_check.verdict.${report.verdict}`)}</strong> {t(`port_check.hint.${report.verdict}`)}{' '}
                 <HelpLink />
+                {error && <span className="port-check-notice-error"> {error}</span>}
             </span>
+            <PortCheckButton run={run} running={running} checked />
         </div>
     );
 }

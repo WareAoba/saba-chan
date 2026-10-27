@@ -384,6 +384,7 @@
       "port_check": {
         "open": "✅ 可以从外网连接",
         "firewall": "🧱 被电脑防火墙阻止",
+        "router": "📡 路由器未设置端口转发",
         "closed": "🚫 无法从外网连接",
         "cgnat": "⚠️ 路由器没有获得公网 IP（CGNAT）",
         "unknown": "❔ 部分端口无法检查",
@@ -394,12 +395,14 @@
         "closed": "关闭",
         "unknown": "未检查",
         "in_use": "被其他程序占用",
-        "firewall": "被防火墙阻止"
+        "firewall": "被防火墙阻止",
+        "router": "未转发"
       },
       "port_item": "• {{port}}/{{protocol}} · {{status}}",
       "port_hint": {
         "closed": "请确认路由器已将此端口转发到这台电脑，并且电脑防火墙已放行。",
-        "firewall": "Windows 防火墙正在阻止 Saba-chan（saba-core）的连接。请在检查时弹出的提示中允许，或在 Windows 防火墙设置中允许 saba-core，然后再检查。",
+        "firewall": "Windows 防火墙正在阻止此端口的入站连接。请针对当前连接的网络（专用或公用），在 Windows 防火墙设置中允许 saba-core（服务器已停止时）或游戏服务器程序（服务器运行时），然后再检查。",
+        "router": "电脑防火墙已允许此端口。请在路由器设置中把此端口转发到这台电脑，然后再检查。",
         "cgnat": "运营商让多户共用一个公网 IP，无法通过端口转发开放。请向运营商申请公网 IP，或使用 Tailscale 等 VPN。",
         "unknown": "无法检查正在运行的服务器的 UDP 端口和其他程序占用的端口。请停止服务器后再检查。"
       }

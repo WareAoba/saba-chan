@@ -91,7 +91,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 | executeCommand (465) | POST /api/instance/:id/command {command, args}. 명령 해석과 라우팅(REST·stdin·모듈)은 데몬이 한다(464 주석). GUI는 `…/rcon`, `…/rest`를 직접 부르지 않는다 | ✓ 673 |
 | instanceStop/Restart/Rename/Commands (493-498) | POST …/stop·…/restart {force}(둘 다 70분 timeout: 데몬이 stop_timeout까지 기다린 뒤 답한다, L74), POST …/rename {name}, GET …/commands | ✓ 648, 649, 664, 674 |
 | instanceValidate / instanceDiagnose | POST /api/instance/:id/validate · /diagnose `{}` (60초 timeout). 모듈 결과 `{success, issues:[{code, severity, message, solution}]}`를 그대로 돌려준다(서버 상세 `ServerCheck`) | ✓ 717, 724 |
-| instancePortCheck / instancePortCheckLast | POST /api/instance/:id/port-check `{}` (30초 timeout) · GET 같은 경로. 포트포워딩 확인 결과(01) | ✓ 서버 상세 정보 탭 `PortCheck`(확인 버튼·포트별 결과·공유기 도움말 링크), 닫힘·CGNAT면 상단 `PortCheckNotice`. `instance.port_check` 이벤트에 마지막 결과를 다시 읽는다. 웹 서버 설정 화면도 같은 브리지로 `PortCheck.jsx` |
+| instancePortCheck / instancePortCheckLast | POST /api/instance/:id/port-check `{}` (30초 timeout) · GET 같은 경로. 포트포워딩 확인 결과(01) | ✓ 서버 상세 정보 탭 `PortCheck`(확인 버튼, 결과가 있으면 성공·실패 모두 "다시 확인"·포트별 결과·공유기 도움말 링크), 닫힘·방화벽·공유기·CGNAT면 상단 `PortCheckNotice`(다시 확인 버튼). `instance.port_check` 이벤트에 마지막 결과를 다시 읽는다. 웹 서버 설정 화면도 같은 브리지로 `PortCheck.jsx` |
 | instanceReadLiveSettings (500) | GET /api/instance/:id/settings/live | ✓ 685 |
 | runtimePreflight (501) | GET /api/runtime/preflight | ✓ 756 |
 | systemMetrics (503) | GET /api/system/metrics[?sizes=false] | ✓ 715 (`SystemMonitor`) |
@@ -291,7 +291,7 @@ PC 주인이 폰 브라우저로 서버·인스턴스를 관리하는 원격 화
 - `bot pair [--relay-url URL]`: 페어링 코드를 받아 보여 주고(디스코드 `/사바쨩 연결`·`/saba connect`에 넣는다) claimed까지 기다린다. 데몬은 설정한 릴레이와만 페어링하므로, `--relay-url`이 설정과 다르면 봇 설정 `cloud.relayUrl`을 먼저 바꾼 뒤 페어링한다. `--json`만 주면 코드만 내고 끝, `--yes`면 기다린다.
 - `bot channels GUILD [--chatbot 이름,…] [--no-chatbot] [--music 이름] [--no-music] [--notify 이름] [--no-notify]`: 채널 이름이나 id를 GET 응답의 `channels`로 id로 바꿔 PUT한다. `--notify`는 알림 채널(I3: 크래시·백업·업데이트·예약 예고)이다. 음악 채널을 새로 정할 때는 메시지가 지워진다고 확인을 받는다.
 - `bot link [ID] [--decline]`: 디스코드에서 코드 없이 `/사바쨩 연결`로 온 연결 요청(J1-b). ID 없이 부르면 목록(`GET /api/relay/link-requests`), ID면 수락, `--decline`이면 거절(`POST /api/relay/link-requests/:id`). `bot pair`는 끝에 GUI 디스코드 화면에서도 볼 수 있다는 안내를 붙인다(J1-c).
-- `server port-check <서버>`(별칭 `ports`): 포트포워딩 확인(`POST /api/instance/:id/port-check`). 판정, relay가 본 주소, 포트마다 `포트/프로토콜 상태`, 닫힘·CGNAT·모름이면 안내 한 줄.
+- `server port-check <서버>`(별칭 `ports`): 포트포워딩 확인(`POST /api/instance/:id/port-check`). 판정, relay가 본 주소, 포트마다 `포트/프로토콜 상태`, 방화벽·공유기·닫힘·CGNAT·모름이면 안내 한 줄.
 - `bot erase`: 개인정보 모두 지우기(`POST /api/relay/privacy/erase`). 동의 페이지 주소를 보이고 데몬이 끝났다고 할 때까지 3초마다 묻는다(`GET`). Ctrl+C로 그만둬도 데몬은 계속 묻고 동의하면 연결을 끊는다. `--json`만 주면 주소만 낸다.
 - `bot allow GUILD [서버…] [--all]`: 그 디스코드 서버가 보고 부를 수 있는 서버(`nodeSettings[guild].allowedInstances`, Q-4). 서버 없이 부르면 보기, `--all`은 키를 지워 제한 없음. `PUT /api/guilds/:guild/allowed-instances`로 저장한다(`--all`이면 `instances:null`). 없는 서버 id는 데몬이 400으로 거절한다.
 - `bot notice GUILD [서버] [--on|--off]`: 켜짐 알림(사바쨩이 켠 서버를 그 디스코드 서버의 알림 채널에 알린다, 기본 꺼짐). 서버 없이 부르면 켠 서버 목록, 서버만 주면 그 서버가 켜졌는지, `--on`·`--off`로 바꾼다. `GET /api/guilds/:guild/start-notice`·`PUT /api/instance/:id/start-notice/:guild`.

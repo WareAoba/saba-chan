@@ -1794,11 +1794,13 @@
   "port_check": {
     "button": "Check port forwarding",
     "running": "Checking…",
+    "retry": "Check again",
     "address": "Public IP {{address}} (friends join with this address and the port)",
     "help": "Port forwarding guide",
     "verdict": {
       "open": "Reachable from the internet",
       "firewall": "Blocked by the PC firewall",
+      "router": "Port forwarding is not set up on the router",
       "closed": "Not reachable from the internet",
       "cgnat": "Your router has no public IP (CGNAT)",
       "unknown": "Some ports could not be checked",
@@ -1809,11 +1811,13 @@
       "closed": "Closed",
       "unknown": "Not checked",
       "in_use": "Used by another program",
-      "firewall": "Blocked by firewall"
+      "firewall": "Blocked by firewall",
+      "router": "Not forwarded"
     },
     "hint": {
       "closed": "Check that your router forwards this port to this PC and that the PC firewall allows it.",
-      "firewall": "Windows Firewall is blocking Saba-chan (saba-core). Allow it in the prompt that appears during the check, or allow saba-core in Windows Firewall settings, then check again.",
+      "firewall": "Windows Firewall is blocking incoming connections on this port. For the network you are connected to now (private or public), allow saba-core if the server is stopped, or the game server program if it is running, in Windows Firewall settings, then check again.",
+      "router": "The PC firewall allows this port. Forward this port to this PC in your router settings, then check again.",
       "cgnat": "Your provider shares one public IP among many homes, so port forwarding cannot open it. Ask your provider for a public IP or use a VPN such as Tailscale.",
       "unknown": "UDP ports of a running server and ports another program uses cannot be checked. Stop the server and check again."
     },
