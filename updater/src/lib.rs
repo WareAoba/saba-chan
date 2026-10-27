@@ -524,6 +524,8 @@ pub struct UpdateManager {
     cached_manifest: Option<ReleaseManifest>,
     /// 마지막으로 확인한 릴리즈 (버전·패치노트). 받아 둘 때 적용 결과에 실으려고 남긴다 (A5)
     latest_release: Option<relay::LatestRelease>,
+    /// 받아 둔 목록을 디스크에서 되살렸을 때 그 릴리즈 요약 (확인 전이라 `latest_release`가 없다)
+    restored_release: Option<crate::marker::ReleaseSummary>,
     /// 다운로드 진행 상태 (Arc로 공유 — Manager 잠금 없이 폴링 가능)
     pub download_progress: Arc<StdMutex<DownloadProgress>>,
 }
@@ -570,6 +572,7 @@ impl UpdateManager {
             installed_manifest_file: crate::constants::resolve_installed_manifest_path(),
             cached_manifest: None,
             latest_release: None,
+            restored_release: None,
             download_progress: Arc::new(StdMutex::new(DownloadProgress::default())),
         };
         // 지난 업데이트가 남긴 .exe.old: 적용 직후엔 옛 프로세스가 쥐고 있어 못 지운 것을 다음 실행 때 지운다
