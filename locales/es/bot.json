@@ -42,6 +42,7 @@
   "server": {
     "start_request": "⏳ Iniciando servidor **{{name}}**...",
     "start_complete": "✅ ¡Solicitud de inicio de **{{name}}** completada!",
+    "already_running": "ℹ️ **{{name}}** ya está en marcha.",
     "stop_request": "⏳ Deteniendo servidor **{{name}}**...",
     "stop_complete": "✅ ¡Solicitud de detención de **{{name}}** completada!",
     "graceful_stop_unavailable": "⚠️ **{{name}}** no se detuvo: no tiene forma (consola o REST) de guardar y salir. Para cerrarlo sin guardar, elige una detención forzada en saba-chan en este PC.",

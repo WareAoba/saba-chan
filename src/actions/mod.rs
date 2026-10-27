@@ -1135,10 +1135,17 @@ fn needs_confirm(r: &Resolved, caller: &Caller) -> bool {
     r.risk == "danger" || (r.kind == Kind::Admin && via_chatbot)
 }
 
-/// 계획 하나: 액션 하나 또는 여러 단계
+/// 계획 하나: 액션 하나, 여러 단계, 또는 채팅 처리기가 해석한 문장 명령
 enum PlanBody {
     One(Box<Resolved>),
     Steps(Vec<steps::Step>),
+    Text(Box<TextPlan>),
+}
+
+/// 문장 명령의 계획 (`plan_text`): 원문과 해석한 명령
+struct TextPlan {
+    text: String,
+    target: crate::chat::Target,
 }
 
 struct StoredPlan {
@@ -1203,6 +1210,76 @@ pub async fn plan(server: &IPCServer, id: &str, instance: Option<&str>, input: &
     });
     store_plan(plan_id, StoredPlan::new(PlanBody::One(Box::new(r)), caller, confirm));
     Ok(view)
+}
+
+/// 문장 명령의 계획 (릴레이 `plan {text}`): 해석·권한·위험 명령 판정은 채팅 처리기가 한다 (문장 명령과 같은 규칙).
+/// 실행할 것이 있으면 그 명령의 액션 id·서버와 planId를, 없으면(도움말·목록·모르는 명령·거절) 답만 돌려준다.
+/// 확인은 받지 않는다: danger는 서버 이름으로 불러야 하고, 챗봇이 고른 것은 요청자의 확인(`confirmedBy`)이 있어야 한다
+pub async fn plan_text(server: &IPCServer, text: &str, caller: &Caller) -> Result<Value, ActionError> {
+    let req = chat_request(text, caller);
+    let (settings, cat) = chat_settings(server, caller).await;
+    let target = match crate::chat::interpret(server, &settings, &cat, &req).await {
+        crate::chat::Interpreted::Run(target) => target,
+        crate::chat::Interpreted::Reply(reply) => return Ok(chat_json(reply, true, caller)),
+    };
+    let plan_id = new_plan_id();
+    let view = json!({
+        "success": true,
+        "planId": plan_id,
+        "actionId": target.action_id(),
+        "instance": target.instance(),
+        "summary": [],
+        "risk": target.risk(),
+        "needsConfirm": false,
+        "expiresAt": expires_at(),
+    });
+    store_plan(plan_id, StoredPlan::new(PlanBody::Text(Box::new(TextPlan { text: text.to_string(), target: *target })), caller, false));
+    Ok(view)
+}
+
+/// 문장 계획 실행: 답은 문장 명령과 같다 (`text`). 시작했는데 이미 켜져 있었으면 `already_running`
+async fn run_text(server: &IPCServer, plan: TextPlan, caller: &Caller) -> Value {
+    let req = chat_request(&plan.text, caller);
+    let (settings, cat) = chat_settings(server, caller).await;
+    let done = crate::chat::execute(server, &settings, &cat, &req, &plan.target).await;
+    let mut out = chat_json(done.reply, done.ok, caller);
+    out["actionId"] = json!(plan.target.action_id());
+    out["instance"] = json!(plan.target.instance());
+    if done.already_running {
+        out["already_running"] = json!(true);
+    }
+    out
+}
+
+fn chat_request(text: &str, caller: &Caller) -> crate::chat::ChatRequest {
+    let who = caller.remote.as_ref();
+    crate::chat::ChatRequest {
+        text: text.to_string(),
+        guild_id: who.and_then(|w| w.guild_id.clone()),
+        user_id: who.and_then(|w| w.user_id.clone()),
+        user_name: caller.origin.user_name.clone(),
+        guild_name: caller.origin.guild_name.clone(),
+        locale: Some(caller.locale.clone()),
+        remote: caller.remote.clone(),
+    }
+}
+
+async fn chat_settings(server: &IPCServer, caller: &Caller) -> (crate::chat::ChatSettings, crate::chat::i18n::Catalog) {
+    let bot = server.config_store.get_bot_config().await;
+    (crate::chat::ChatSettings::from(&bot), catalog(&caller.locale))
+}
+
+/// 채팅 답의 모양: `{success, text}`, 알아보지 못한 입력·거절이면 `code`·`args`도. 챗봇에는 IP·비밀처럼 보이는 값을 가린다
+fn chat_json(reply: crate::chat::Reply, ok: bool, caller: &Caller) -> Value {
+    let mut out = json!({ "success": ok && reply.code.is_none(), "text": reply.text });
+    if let Some(code) = reply.code {
+        out["code"] = json!(code);
+        out["args"] = reply.args;
+    }
+    if caller.surface == Chatbot || caller.remote.as_ref().is_some_and(|w| w.via_chatbot) {
+        mask_console(&mut out);
+    }
+    out
 }
 
 /// 켜진 서버의 복원은 계획부터 거절한다 (먼저 끄는 단계가 앞에 있는 여러 단계 계획은 실행 때 라우트가 본다)
@@ -1333,6 +1410,7 @@ pub async fn run(server: &IPCServer, id: &str, instance: Option<&str>, input: &V
                     authorize(server, &r, &caller).await?;
                     (*r, caller)
                 }
+                PlanBody::Text(plan) => return Ok(run_text(server, *plan, &caller).await),
             }
         }
         None => {
@@ -1363,6 +1441,7 @@ fn take_plan(pid: &str, id: &str, caller: &Caller) -> Result<StoredPlan, ActionE
     let same_action = match &p.body {
         PlanBody::One(r) => id.is_empty() || r.id == id,
         PlanBody::Steps(_) => id.is_empty() || id == steps::PLAN_ID,
+        PlanBody::Text(t) => id.is_empty() || t.target.action_id() == id,
     };
     if p.owner != caller.owner_key() || !same_action {
         return Err(ActionError::new(403, "plan_not_yours", "This plan belongs to another request"));

@@ -42,6 +42,7 @@
   "server": {
     "start_request": "⏳ Démarrage du serveur **{{name}}**...",
     "start_complete": "✅ Demande de démarrage de **{{name}}** terminée!",
+    "already_running": "ℹ️ **{{name}}** est déjà en marche.",
     "stop_request": "⏳ Arrêt du serveur **{{name}}**...",
     "stop_complete": "✅ Demande d'arrêt de **{{name}}** terminée!",
     "graceful_stop_unavailable": "⚠️ **{{name}}** n'a pas été arrêté : il n'a aucun moyen (console ou REST) de sauvegarder et de quitter. Pour l'arrêter sans sauvegarder, choisissez un arrêt forcé dans saba-chan sur ce PC.",

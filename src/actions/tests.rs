@@ -1138,3 +1138,46 @@ async fn start_notice_is_set_from_discord_by_admins_for_their_own_guild() {
     assert_eq!(item["title"]["ko"], "켜짐 알림");
     assert_eq!(item["name"]["en"], "Start alert");
 }
+
+/// 디스코드 문장 명령도 계획 → 실행 한 길로: 데몬이 문장을 해석해 액션과 서버를 알려 주고, 실행하면 문장 명령과 같은 답을 쓴다
+#[tokio::test]
+async fn a_sentence_plans_the_action_it_names_and_runs_with_the_same_reply() {
+    let (state, id, _tmp) = server().await;
+    open_everything(&state).await;
+    let caller = relay("u1", false);
+    let planned = plan_text(&state, "srv status", &caller).await.unwrap();
+    assert_eq!(planned["actionId"], "server.status");
+    assert_eq!(planned["instance"], json!(id));
+    assert_eq!(planned["needsConfirm"], false);
+    let plan_id = planned["planId"].as_str().unwrap().to_string();
+
+    // 다른 사람은 남의 계획을 실행하지 못한다
+    let err = run(&state, "", None, &Value::Null, Some(&plan_id), &relay("u2", false)).await.unwrap_err();
+    assert_eq!(err.code, "plan_not_yours");
+
+    let done = run(&state, "", None, &Value::Null, Some(&plan_id), &caller).await.unwrap();
+    assert_eq!(done["success"], true, "{done}");
+    assert_eq!(done["actionId"], "server.status");
+    assert_eq!(done["instance"], json!(id));
+    let text = done["text"].as_str().unwrap();
+    assert!(text.contains("srv"), "{text}");
+    let req = crate::chat::ChatRequest { text: "srv status".into(), guild_id: Some("g".into()), user_id: Some("u1".into()), locale: Some("ko".into()), remote: caller.remote.clone(), ..Default::default() };
+    assert_eq!(text, crate::chat::api::run_with_daemon_settings(&state, &req).await.text);
+}
+
+/// 실행할 것이 없는 문장(도움말·모르는 명령)은 계획 없이 답한다. 모르는 입력은 코드와 함께 실패로
+#[tokio::test]
+async fn a_sentence_with_nothing_to_run_is_answered_without_a_plan() {
+    let (state, _id, _tmp) = server().await;
+    open_everything(&state).await;
+    let help = plan_text(&state, "help", &relay("u1", false)).await.unwrap();
+    assert_eq!(help["success"], true);
+    assert!(help.get("planId").is_none(), "{help}");
+    assert!(help["text"].as_str().is_some_and(|t| !t.is_empty()), "{help}");
+
+    let unknown = plan_text(&state, "srv dance", &relay("u1", false)).await.unwrap();
+    assert_eq!(unknown["success"], false);
+    assert_eq!(unknown["code"], "UNKNOWN_COMMAND");
+    assert!(unknown["text"].as_str().is_some_and(|t| !t.is_empty()), "{unknown}");
+    assert!(unknown.get("planId").is_none());
+}

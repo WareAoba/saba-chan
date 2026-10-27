@@ -1239,6 +1239,10 @@ async fn action_request(server: &crate::ipc::IPCServer, action: &str, payload: &
     match action {
         // 여러 단계 계획 (I1)
         "plan" if payload.get("steps").is_some() => crate::actions::plan_steps(server, &payload["steps"], caller).await,
+        // 문장 명령 ("terra-a 공지 안녕"): 데몬이 해석한다
+        "plan" if payload.get("text").is_some() => {
+            crate::actions::plan_text(server, payload["text"].as_str().unwrap_or_default(), caller).await
+        }
         "plan" => crate::actions::plan(server, id, instance, &input, caller).await,
         "run_plan" => {
             let plan_id = payload.get("planId").and_then(Value::as_str).unwrap_or_default();

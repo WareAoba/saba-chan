@@ -42,6 +42,7 @@
   "server": {
     "start_request": "⏳ **{{name}}** サーバーを起動しています...",
     "start_complete": "✅ **{{name}}** 起動リクエストが完了しました!",
+    "already_running": "ℹ️ **{{name}}** はすでに起動しています。",
     "stop_request": "⏳ **{{name}}** サーバーを停止しています...",
     "stop_complete": "✅ **{{name}}** 停止リクエストが完了しました!",
     "graceful_stop_unavailable": "⚠️ **{{name}}** は保存して終了する手段（コンソール・REST）がないため停止しませんでした。保存せずに終了するには、このPCのsaba-chanで強制停止を選んでください。",
