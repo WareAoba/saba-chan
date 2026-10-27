@@ -2,7 +2,7 @@
 //!
 //! 방화벽 API(`INetFwPolicy2`)로 지금 연결된 네트워크의 프로필과 규칙을 읽고, 방화벽과 같은 순서로 따진다:
 //! 꺼져 있으면 허용, "모두 차단"이면 차단, 맞는 차단 규칙이 있으면 차단, 맞는 허용 규칙이 있거나 기본 동작이 허용이면 허용, 아니면 차단.
-//! 연결된 프로필이 둘 이상이면 하나라도 막을 때 막는다고 본다.
+//! Windows는 연결마다 그 네트워크의 프로필을 적용하므로, 연결된 프로필이 둘 이상인데 판정이 서로 다르면 어느 연결로 들어올지 몰라 판정하지 않는다.
 //! 규칙이 "인터넷 어디서나"가 아니면(원격 주소·인터페이스·서비스·앱 패키지 제한) 밖에서 오는 연결에는 맞지 않는 것으로 본다.
 //! 그룹 정책이 로컬 규칙을 덮어쓰거나, 읽지 못하거나, 받는 프로그램을 모르면 판정하지 않는다 (None).
 
@@ -47,7 +47,7 @@ pub(super) struct Rule {
     pub protocol: Option<i32>,
     /// 받는 포트 범위 (비었으면 모든 포트)
     pub ports: Vec<(u16, u16)>,
-    /// 인터넷 어디서 오는 연결에나 맞는다 (원격 주소·로컬 주소·인터페이스·서비스·앱 패키지 제한이 없다)
+    /// 인터넷 어디서 오는 연결에나 맞는다 (원격 주소·원격 포트·로컬 주소·인터페이스·서비스·앱 패키지 제한이 없다)
     pub anywhere: bool,
 }
 
@@ -99,7 +99,7 @@ fn applies(rule: &Rule, profile: &Profile, exe: &str, port: u16, protocol: Proto
         && rule.app.as_deref().is_none_or(|a| same_app(a, exe, env))
 }
 
-/// 연결된 프로필 모두에서 따진다. 연결된 프로필이 없으면 판정하지 않는다
+/// 연결된 프로필마다 따진다. 연결된 프로필이 없거나 프로필마다 판정이 다르면 판정하지 않는다
 pub(super) fn decide(
     active: &[Profile],
     rules: &[Rule],
@@ -124,7 +124,9 @@ pub(super) fn decide(
         }
         !(profile.default_allow || matching().any(|r| r.allow))
     };
-    Some(if active.iter().any(blocks) { Verdict::Blocked } else { Verdict::Allowed })
+    let mut verdicts = active.iter().map(|p| if blocks(p) { Verdict::Blocked } else { Verdict::Allowed });
+    let first = verdicts.next()?;
+    verdicts.all(|v| v == first).then_some(first)
 }
 
 /// 포트마다 방화벽 판정 (Windows만, 다른 OS는 모두 None). 시간이 걸릴 수 있어 blocking 스레드에서 부른다
@@ -160,7 +162,7 @@ mod win {
     };
     use windows::Win32::System::Com::{CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED};
     use windows::Win32::System::Ole::IEnumVARIANT;
-    use windows::Win32::System::Variant::{VariantClear, VARIANT, VT_DISPATCH};
+    use windows::Win32::System::Variant::{VariantClear, VARIANT, VT_DISPATCH, VT_EMPTY};
 
     /// 이 스레드에서 연 COM을 닫는다 (다른 방식으로 이미 열린 스레드면 닫지 않는다)
     struct Com(bool);
@@ -186,8 +188,19 @@ mod win {
         let ports = if protocol == 6 || protocol == 17 { parse_ports(&rule.LocalPorts().map(|b| b.to_string()).unwrap_or_default()) } else { Vec::new() };
         let text = |b: windows::core::Result<windows::core::BSTR>| b.map(|b| b.to_string()).unwrap_or_default();
         let package = rule.cast::<INetFwRule3>().ok().map(|r| text(r.LocalAppPackageId())).unwrap_or_default();
+        // 개별 어댑터 목록이 있으면 그 어댑터로 오는 연결에만 맞는다
+        let adapters = match rule.Interfaces() {
+            Ok(mut v) => {
+                let listed = v.Anonymous.Anonymous.vt != VT_EMPTY;
+                let _ = VariantClear(&mut v);
+                listed
+            }
+            Err(_) => true,
+        };
         let anywhere = any_address(&text(rule.RemoteAddresses()))
+            && any_address(&text(rule.RemotePorts()))
             && any_address(&text(rule.LocalAddresses()))
+            && !adapters
             && matches!(text(rule.InterfaceTypes()).trim(), "" | "All")
             && any_address(&text(rule.ServiceName()))
             && package.trim().is_empty();
@@ -354,9 +367,10 @@ mod tests {
     }
 
     #[test]
-    fn any_connected_profile_that_blocks_blocks() {
+    fn connected_profiles_that_disagree_are_not_judged() {
+        // 개인·공용 네트워크에 함께 연결돼 있으면 친구의 연결이 어느 쪽으로 들어올지 모른다
         let rules = [allow(Some(EXE), None, PRIVATE)];
-        assert_eq!(decide(&[profile(PRIVATE), profile(PUBLIC)], &rules, EXE, 7777, Protocol::Tcp, &env), Some(Verdict::Blocked));
+        assert_eq!(decide(&[profile(PRIVATE), profile(PUBLIC)], &rules, EXE, 7777, Protocol::Tcp, &env), None);
         let rules = [allow(Some(EXE), None, PRIVATE | PUBLIC)];
         assert_eq!(decide(&[profile(PRIVATE), profile(PUBLIC)], &rules, EXE, 7777, Protocol::Tcp, &env), Some(Verdict::Allowed));
     }
