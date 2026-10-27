@@ -201,6 +201,23 @@ describe('앱 부팅 파이프라인', () => {
         expect(window.api.updaterApplyOnLaunch).toHaveBeenCalledTimes(1);
     }, 15000);
 
+    it('콘솔 팝아웃 창은 받아 둔 업데이트를 적용하지 않는다 (앱을 새로 연 것이 아니다)', async () => {
+        window.history.replaceState(null, '', '/?console-popout=mc&name=MC');
+        try {
+            window.api = createApiMock({
+                updaterApplyOnLaunch: vi.fn().mockResolvedValue({ ok: true, skipped: 'nothing' }),
+            });
+            await act(async () => {
+                render(<App />);
+            });
+            await waitFor(() => expect(window.api.daemonStatus).toHaveBeenCalled(), { timeout: 6000 });
+            await new Promise((r) => setTimeout(r, 800));
+            expect(window.api.updaterApplyOnLaunch).not.toHaveBeenCalled();
+        } finally {
+            window.history.replaceState(null, '', '/');
+        }
+    }, 15000);
+
     it('settings 로드 실패 → settingsReady=true (fallback), 봇 설정은 별도 로드', async () => {
         window.api = createApiMock({
             settingsLoad: vi.fn().mockRejectedValue(new Error('disk error')),
