@@ -124,22 +124,28 @@ pub(super) fn decide(
     if active.is_empty() {
         return None;
     }
-    let blocks = |profile: &Profile, maybe: bool| {
+    // 맞는지 모르는 허용 규칙과 차단 규칙은 따로 맞을 수 있다 (서로 다른 원격 주소 범위)
+    let blocks = |profile: &Profile, maybe_allow: bool, maybe_block: bool| {
         if !profile.enabled {
             return false;
         }
         if profile.block_all {
             return true;
         }
-        let matching = || rules.iter().filter(|r| applies(r, profile, exe, port, protocol, maybe, env));
-        if matching().any(|r| !r.allow) {
+        let matching = |allow: bool, maybe: bool| {
+            rules.iter().filter(move |r| r.allow == allow).any(|r| applies(r, profile, exe, port, protocol, maybe, env))
+        };
+        if matching(false, maybe_block) {
             return true;
         }
-        !(profile.default_allow || matching().any(|r| r.allow))
+        !(profile.default_allow || matching(true, maybe_allow))
     };
     let verdict = |profile: &Profile| {
-        let sure = blocks(profile, false);
-        (sure == blocks(profile, true)).then_some(if sure { Verdict::Blocked } else { Verdict::Allowed })
+        let sure = blocks(profile, false, false);
+        [(false, true), (true, false), (true, true)]
+            .iter()
+            .all(|&(a, b)| blocks(profile, a, b) == sure)
+            .then_some(if sure { Verdict::Blocked } else { Verdict::Allowed })
     };
     let mut verdicts = active.iter().map(verdict);
     let first = verdicts.next()??;
@@ -403,7 +409,10 @@ mod tests {
         assert_eq!(decide(&[profile(PRIVATE)], &[limited.clone()], EXE, 7777, Protocol::Tcp, &env), None);
         // 판정이 갈리지 않으면 그대로 판정한다
         let open = Profile { default_allow: true, ..profile(PRIVATE) };
-        assert_eq!(decide(&[open], &[limited], EXE, 7777, Protocol::Tcp, &env), Some(Verdict::Allowed));
+        assert_eq!(decide(&[open], &[limited.clone()], EXE, 7777, Protocol::Tcp, &env), Some(Verdict::Allowed));
+        // 맞는지 모르는 허용과 차단이 함께 있어도, 허용만 맞는 연결이 있을 수 있다
+        let limited_block = Rule { allow: false, ..limited.clone() };
+        assert_eq!(decide(&[profile(PRIVATE)], &[limited, limited_block], EXE, 7777, Protocol::Tcp, &env), None);
     }
 
     #[test]
