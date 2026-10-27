@@ -36,6 +36,17 @@ pub struct UninstallProgress {
 
 /// 이 설치본이 마지막인지. 제거 항목(레지스트리)과, 항목 없이 설치된 폴더 목록(CLI `install --dir`)을 함께 본다.
 /// 지우는 폴더는 목록에서 뺀다
+/// `~/.local/bin/saba-chan-cli`가 이 설치 폴더의 CLI를 가리키는 링크면 지운다 (다른 설치를 가리키면 둔다)
+#[cfg(unix)]
+fn remove_cli_link(home: &Path, install_dir: &Path) -> bool {
+    let link = home.join(".local").join("bin").join("saba-chan-cli");
+    let Ok(target) = std::fs::read_link(&link) else { return false };
+    if !target.parent().is_some_and(|p| saba_chan_updater_lib::same_path(p, install_dir)) {
+        return false;
+    }
+    std::fs::remove_file(&link).is_ok()
+}
+
 fn last_install(install_dir: Option<&Path>) -> bool {
     use saba_chan_updater_lib::uninstall_entry as entry;
     let Some(dir) = install_dir else { return false };
@@ -127,8 +138,19 @@ pub async fn do_uninstall(keep: Keep, on_progress: impl Fn(&UninstallProgress)) 
     }
     // 로그인할 때 자동 실행: 이 설치를 가리키는 것만 (다른 설치본을 켜 둔 것은 둔다)
     if let Some(dir) = &install_dir {
-        if let Err(e) = saba_chan_updater_lib::autostart::remove_if_in(dir) {
-            tracing::warn!("[Uninstall] Failed to remove the sign-in autostart entry: {}", e);
+        match saba_chan_updater_lib::autostart::remove_if_in(dir) {
+            // 지운 서비스 단위를 systemd가 잊게 한다 (리눅스 화면 없는 서버, 없으면 아무 일도 없다)
+            #[cfg(target_os = "linux")]
+            Ok(true) => {
+                let _ = std::process::Command::new("systemctl").args(["--user", "daemon-reload"]).status();
+            }
+            Ok(_) => {}
+            Err(e) => tracing::warn!("[Uninstall] Failed to remove the sign-in autostart entry: {}", e),
+        }
+        // install.sh가 만든 CLI 링크 (이 설치를 가리킬 때만)
+        #[cfg(unix)]
+        if let Some(home) = std::env::var_os("HOME") {
+            remove_cli_link(Path::new(&home), dir);
         }
     }
 
@@ -1440,6 +1462,24 @@ mod tests {
         assert_eq!(sandbox_failures(out, false, core).len(), 2);
         // Codex 리뷰 #539: 실패로 끝났는데 실패 줄이 없으면(명령을 모르는 옛 코어 등) 성공으로 보았다
         assert_eq!(sandbox_failures("usage: saba-core ...\n", false, core).len(), 1);
+    }
+
+    /// install.sh가 만든 CLI 링크는 이 설치를 가리킬 때만 지운다
+    #[cfg(unix)]
+    #[test]
+    fn the_cli_link_is_removed_only_when_it_points_into_this_install() {
+        let home = tempfile::tempdir().unwrap();
+        let ours = tempfile::tempdir().unwrap();
+        let other = tempfile::tempdir().unwrap();
+        let bin = home.path().join(".local").join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        std::os::unix::fs::symlink(other.path().join("saba-chan-cli"), bin.join("saba-chan-cli")).unwrap();
+        assert!(!remove_cli_link(home.path(), ours.path()));
+        assert!(bin.join("saba-chan-cli").symlink_metadata().is_ok());
+        std::fs::remove_file(bin.join("saba-chan-cli")).unwrap();
+        std::os::unix::fs::symlink(ours.path().join("saba-chan-cli"), bin.join("saba-chan-cli")).unwrap();
+        assert!(remove_cli_link(home.path(), ours.path()));
+        assert!(bin.join("saba-chan-cli").symlink_metadata().is_err());
     }
 
     /// 아무것도 정하지 않으면 설정과 인스턴스를 둘 다 남기고, 지울 것만 따로 고른다
