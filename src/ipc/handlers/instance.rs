@@ -342,6 +342,11 @@ async fn create_instance_inner(state: IPCServer, payload: Value) -> impl IntoRes
         };
         let mut moved_from: Option<std::path::PathBuf> = None;
         let migration_mode = if let Some(src) = payload.get("migration_source").and_then(|v| v.as_str()) {
+            // 상대 경로는 데몬의 작업 폴더 기준으로 풀린다: 보내는 쪽이 절대 경로로 바꿔 보내야 한다
+            if !std::path::Path::new(src).is_absolute() {
+                let error = json!({ "error": "migration_source must be an absolute path", "error_code": "invalid_format", "fields": [{"field": "migration_source"}] });
+                return (StatusCode::BAD_REQUEST, Json(error)).into_response();
+            }
             if move_mode {
                 // 옮길 폴더도 다른 인스턴스가 쓰는 폴더와 겹치면 안 된다
                 if let Some(other) = supervisor.instance_store.folder_user(std::path::Path::new(src), &instance.id) {
@@ -2536,6 +2541,28 @@ mod tests {
         let created = crate::ipc::internal::into_internal(request.await.unwrap()).await;
         assert_eq!(created.status, 201, "{}", created.body);
         assert!(super::super::backup::InstanceLock::take(&id).is_some(), "the lock is released once the import is done");
+    }
+
+    /// 가져올 서버 폴더는 절대 경로여야 한다: 상대 경로는 데몬의 작업 폴더 기준으로 풀려 엉뚱한 폴더를 연결하거나 옮긴다
+    #[tokio::test]
+    async fn a_relative_migration_source_is_refused() {
+        use axum::{extract::State, Json};
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("module.toml"), "[module]\nschema_version = 1\nname = 'game'\nversion = '1.0.0'\nentry = 'lifecycle.py'\n").unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "import json\nprint(json.dumps({'success': True}))\n").unwrap();
+        crate::sandbox::consent_test_component(&dir.join("lifecycle.py"));
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        for module in sup.module_loader.discover_modules().unwrap() { crate::sandbox::consent_test_component(std::path::Path::new(&module.entry_path())); }
+        sup.initialize().await.unwrap();
+        let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        for mode in ["link", "move"] {
+            let bad = crate::ipc::internal::into_internal(super::create_instance(State(state.clone()), Json(serde_json::json!({"name":"g", "module_name":"game", "migration_source":"rel/dir", "migration_mode":mode}))).await).await;
+            assert_eq!((bad.status.as_u16(), bad.body["error_code"].as_str(), bad.body["fields"][0]["field"].as_str()), (400, Some("invalid_format"), Some("migration_source")), "{mode}: {}", bad.body);
+        }
+        assert!(state.supervisor.read().await.instance_store.list().is_empty());
     }
 
     /// 가져오기 "옮기기"는 서버 폴더를 인스턴스 폴더 안으로 옮겨 전속시킨다: 모듈은 옮긴 자리를 읽고,
