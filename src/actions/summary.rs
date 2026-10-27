@@ -112,7 +112,7 @@ fn port_check(result: &Value, cat: &Catalog) -> String {
         let port = p.get("port").and_then(Value::as_u64).unwrap_or(0).to_string();
         out.push(cat.t("actions.summary.port_item", &[("port", &port), ("protocol", &str_of(&p, "protocol").to_uppercase()), ("status", &status)]));
     }
-    if matches!(verdict, "firewall" | "closed" | "cgnat" | "unknown") {
+    if matches!(verdict, "firewall" | "router" | "closed" | "cgnat" | "unknown") {
         out.push(cat.t(&format!("actions.summary.port_hint.{}", verdict), &[]));
     }
     out.join("\n")

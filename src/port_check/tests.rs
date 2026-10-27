@@ -71,6 +71,10 @@ fn the_verdict_puts_cgnat_and_closed_first() {
     assert_eq!(verdict(Nat::Router, &[p(PortStatus::Open), p(PortStatus::Unknown)]), "unknown");
     assert_eq!(verdict(Nat::Router, &[p(PortStatus::InUse)]), "unknown");
     assert_eq!(verdict(Nat::Router, &[p(PortStatus::Closed), p(PortStatus::Firewall)]), "firewall");
+    // 방화벽부터 풀어야 공유기 설정을 확인할 수 있다
+    assert_eq!(verdict(Nat::Router, &[p(PortStatus::Router), p(PortStatus::Firewall)]), "firewall");
+    assert_eq!(verdict(Nat::Router, &[p(PortStatus::Open), p(PortStatus::Router)]), "router");
+    assert_eq!(verdict(Nat::Cgnat, &[p(PortStatus::Router)]), "cgnat");
 }
 
 // ── 릴레이 흉내: 실제 릴레이처럼 요청이 온 주소(루프백)의 그 포트로 확인값을 보낸다 ──
@@ -140,6 +144,15 @@ fn target(id: &str, running: bool, ports: &[(u16, Protocol)]) -> Target {
 
 const LOOPBACK: IpAddr = IpAddr::V4(Ipv4Addr::LOCALHOST);
 
+/// 방화벽을 읽지 못한 PC (시험 결과가 시험하는 PC의 방화벽에 따라 달라지지 않게)
+fn unread(queries: &[firewall::Query]) -> Vec<Option<firewall::Verdict>> {
+    vec![None; queries.len()]
+}
+
+async fn run(relay: &Relay, targets: &[Target], bind_ip: IpAddr) -> Result<Vec<Report>, CheckError> {
+    run_with(relay, targets, bind_ip, unread).await
+}
+
 fn statuses(r: &Report) -> Vec<PortStatus> {
     r.ports.iter().map(|p| p.status).collect()
 }
@@ -167,23 +180,66 @@ async fn a_stopped_server_is_closed_when_nothing_arrives() {
 }
 
 #[tokio::test]
-async fn a_port_the_pc_firewall_blocks_is_reported_as_the_firewall() {
+async fn an_unreachable_port_is_blamed_on_the_firewall_or_the_router_by_the_firewall_rules() {
+    use firewall::{Program, Verdict};
     let relay = mock_relay(Mode::Drop).await;
     let (tcp, udp) = (free_port(), free_port());
-    fn blocks_tcp(ports: &[(u16, Protocol)]) -> Vec<(u16, Protocol)> {
-        ports.iter().copied().filter(|p| p.1 == Protocol::Tcp).collect()
+    // 방화벽이 시험 리스너(데몬)의 TCP는 막고 UDP는 허용한다
+    fn blocks_tcp(queries: &[firewall::Query]) -> Vec<Option<Verdict>> {
+        queries
+            .iter()
+            .map(|&(_, protocol, program)| {
+                assert_eq!(program, Program::Daemon, "a stopped server is reached through the daemon's test listener");
+                Some(if protocol == Protocol::Tcp { Verdict::Blocked } else { Verdict::Allowed })
+            })
+            .collect()
     }
     let reports =
         run_with(&relay, &[target("pc-firewall", false, &[(tcp, Protocol::Tcp), (udp, Protocol::Udp)])], LOOPBACK, blocks_tcp).await.unwrap();
-    assert_eq!(statuses(&reports[0]), vec![PortStatus::Firewall, PortStatus::Closed]);
-    // 방화벽부터 풀어야 공유기 설정을 확인할 수 있다
+    assert_eq!(statuses(&reports[0]), vec![PortStatus::Firewall, PortStatus::Router]);
     assert_eq!(reports[0].verdict, "firewall");
+    // 방화벽이 모두 허용하면 원인은 공유기다
+    fn allows(queries: &[firewall::Query]) -> Vec<Option<Verdict>> {
+        vec![Some(Verdict::Allowed); queries.len()]
+    }
+    let reports = run_with(&relay, &[target("pc-router", false, &[(tcp, Protocol::Tcp)])], LOOPBACK, allows).await.unwrap();
+    assert_eq!(statuses(&reports[0]), vec![PortStatus::Router]);
+    assert_eq!(reports[0].verdict, "router");
+}
+
+#[tokio::test]
+async fn a_running_server_is_judged_by_the_program_that_opened_the_port() {
+    use firewall::{Program, Verdict};
+    let relay = mock_relay(Mode::Drop).await;
+    let game = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let tcp = game.local_addr().unwrap().port();
+    let udp = free_port();
+    fn blocks_the_game(queries: &[firewall::Query]) -> Vec<Option<Verdict>> {
+        queries.iter().map(|&(_, _, program)| (program == Program::Listener).then_some(Verdict::Blocked)).collect()
+    }
+    let reports =
+        run_with(&relay, &[target("pc-running-fw", true, &[(tcp, Protocol::Tcp), (udp, Protocol::Udp)])], LOOPBACK, blocks_the_game).await.unwrap();
+    // 켜진 서버의 UDP는 닿았는지 몰라도 방화벽이 막는 것은 안다
+    assert_eq!(statuses(&reports[0]), vec![PortStatus::Firewall, PortStatus::Firewall]);
+    fn allows(queries: &[firewall::Query]) -> Vec<Option<Verdict>> {
+        vec![Some(Verdict::Allowed); queries.len()]
+    }
+    let reports = run_with(&relay, &[target("pc-running-fw", true, &[(tcp, Protocol::Tcp), (udp, Protocol::Udp)])], LOOPBACK, allows).await.unwrap();
+    assert_eq!(statuses(&reports[0]), vec![PortStatus::Router, PortStatus::Unknown]);
+    drop(game);
 }
 
 #[tokio::test]
 async fn ports_past_the_relay_limit_are_unknown_not_closed() {
     let relay = mock_relay(Mode::Drop).await;
-    let ports: Vec<(u16, Protocol)> = (0..MAX_PORTS + 1).map(|_| (free_port(), Protocol::Udp)).collect();
+    // 서로 다른 포트여야 한다 (같은 포트가 두 번 나오면 하나로 묶여 한도 안에 든다)
+    let mut ports: Vec<(u16, Protocol)> = Vec::new();
+    while ports.len() < MAX_PORTS + 1 {
+        let p = (free_port(), Protocol::Udp);
+        if !ports.contains(&p) {
+            ports.push(p);
+        }
+    }
     let reports = run(&relay, &[target("pc-many", false, &ports)], LOOPBACK).await.unwrap();
     let got = statuses(&reports[0]);
     assert_eq!(got[..MAX_PORTS], vec![PortStatus::Closed; MAX_PORTS][..]);
@@ -293,4 +349,25 @@ async fn a_check_during_a_start_leaves_the_ports_to_the_server() {
     assert!(reports[0].running);
     drop(starting);
     assert!(with_holds(|h| !h.starting.contains_key("pc-starting")));
+}
+
+#[tokio::test]
+async fn a_start_during_a_check_waits_and_then_the_server_can_open_the_ports() {
+    // 확인 도중 들어온 시작 요청: 확인이 끝날 때까지 기다렸다가, 끝나면 곧바로 게임 서버가 같은 포트를 연다
+    let relay = mock_relay(Mode::Drop).await;
+    let (tcp, udp) = (free_port(), free_port());
+    let check = tokio::spawn(async move {
+        run(&relay, &[target("pc-start-wait", false, &[(tcp, Protocol::Tcp), (udp, Protocol::Udp)])], LOOPBACK).await
+    });
+    while !is_held("pc-start-wait") {
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    let started = tokio::time::Instant::now();
+    let starting = tokio::time::timeout(Duration::from_secs(5), begin_start("pc-start-wait")).await.expect("the start continues after the check");
+    assert!(started.elapsed() >= Duration::from_millis(100), "the start waited for the check");
+    let _game_tcp = std::net::TcpListener::bind(("127.0.0.1", tcp)).expect("the server opens the TCP port right after the check");
+    let _game_udp = std::net::UdpSocket::bind(("127.0.0.1", udp)).expect("the server opens the UDP port right after the check");
+    let reports = check.await.unwrap().unwrap();
+    assert_eq!(statuses(&reports[0]), vec![PortStatus::Closed, PortStatus::Closed]);
+    drop(starting);
 }

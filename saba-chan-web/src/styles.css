@@ -1077,6 +1077,7 @@ textarea {
     color: var(--ok);
 }
 .verdict-firewall .port-check-verdict,
+.verdict-router .port-check-verdict,
 .verdict-closed .port-check-verdict,
 .verdict-cgnat .port-check-verdict {
     color: var(--warn);
@@ -1089,6 +1090,7 @@ textarea {
     color: var(--ok);
 }
 .port-check-ports .port-closed,
-.port-check-ports .port-firewall {
+.port-check-ports .port-firewall,
+.port-check-ports .port-router {
     color: var(--stop);
 }

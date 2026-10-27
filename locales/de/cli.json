@@ -1339,6 +1339,7 @@
     "verdict": {
       "open": "Aus dem Internet erreichbar",
       "firewall": "Von der PC-Firewall blockiert",
+      "router": "Am Router ist keine Portweiterleitung eingerichtet",
       "closed": "Aus dem Internet nicht erreichbar",
       "cgnat": "Dein Router hat keine öffentliche IP (CGNAT)",
       "unknown": "Einige Ports konnten nicht geprüft werden",
@@ -1349,11 +1350,13 @@
       "closed": "Geschlossen",
       "unknown": "Nicht geprüft",
       "in_use": "Von einem anderen Programm belegt",
-      "firewall": "Von der Firewall blockiert"
+      "firewall": "Von der Firewall blockiert",
+      "router": "Nicht weitergeleitet"
     },
     "hint": {
       "closed": "Prüfe, ob der Router diesen Port an diesen PC weiterleitet und die PC-Firewall ihn erlaubt.",
-      "firewall": "Die Windows-Firewall blockiert Saba-chan (saba-core). Erlaube es in der Abfrage, die bei der Prüfung erscheint, oder erlaube saba-core in den Einstellungen der Windows-Firewall und prüfe erneut.",
+      "firewall": "Die Windows-Firewall blockiert eingehende Verbindungen auf diesem Port. Erlaube für das Netzwerk, mit dem du gerade verbunden bist (privat oder öffentlich), in den Einstellungen der Windows-Firewall saba-core, wenn der Server gestoppt ist, oder das Programm des Spielservers, wenn er läuft, und prüfe erneut.",
+      "router": "Die PC-Firewall lässt diesen Port zu. Leite diesen Port in den Router-Einstellungen an diesen PC weiter und prüfe erneut.",
       "cgnat": "Dein Anbieter teilt eine öffentliche IP unter vielen Haushalten, daher lässt sie sich nicht per Portweiterleitung öffnen. Frag deinen Anbieter nach einer öffentlichen IP oder nutze ein VPN wie Tailscale.",
       "unknown": "UDP-Ports eines laufenden Servers und Ports, die ein anderes Programm belegt, lassen sich nicht prüfen. Stoppe den Server und prüfe erneut."
     }

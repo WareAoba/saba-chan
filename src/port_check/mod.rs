@@ -102,8 +102,10 @@ pub enum PortStatus {
     Unknown,
     /// 서버가 꺼져 있는데 다른 프로그램이 그 포트를 쓰고 있다
     InUse,
-    /// 닿지 않았고, 이 PC 방화벽(Windows)에 사바쨩을 허용하는 규칙이 없다
+    /// 닿지 않았고, 이 PC 방화벽(Windows)이 그 포트로 들어오는 연결을 막는다
     Firewall,
+    /// 닿지 않았고, 이 PC 방화벽은 허용한다: 공유기에서 포트포워딩되지 않았다
+    Router,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -171,7 +173,8 @@ pub struct Report {
     pub public_address: bool,
     pub nat: Nat,
     pub running: bool,
-    /// open: 모두 열림, firewall: 이 PC 방화벽이 막는 포트가 있다, closed: 닫힌 포트가 있다, cgnat: 공유기에 공인 주소가 없다, unknown: 닫힌 것은 없지만 모두 확인하지 못했다,
+    /// open: 모두 열림, firewall: 이 PC 방화벽이 막는 포트가 있다, router: 방화벽은 허용하는데 공유기가 넘겨주지 않는다,
+    /// closed: 닫힌 포트가 있다 (방화벽을 읽지 못해 원인을 가리지 못했다), cgnat: 공유기에 공인 주소가 없다, unknown: 닫힌 것은 없지만 모두 확인하지 못했다,
     /// no_ports: 모듈이 밖에 여는 포트를 선언하지 않았다
     pub verdict: &'static str,
     pub ports: Vec<PortResult>,
@@ -187,6 +190,8 @@ fn verdict(nat: Nat, ports: &[PortResult]) -> &'static str {
         "cgnat"
     } else if ports.iter().any(|p| p.status == PortStatus::Firewall) {
         "firewall"
+    } else if ports.iter().any(|p| p.status == PortStatus::Router) {
+        "router"
     } else if ports.iter().any(|p| p.status == PortStatus::Closed) {
         "closed"
     } else if ports.iter().all(|p| p.status == PortStatus::Open) {
@@ -314,8 +319,8 @@ pub async fn begin_start(instance_id: &str) -> Starting {
 // ── 시험 리스너 ──
 
 type Seen = Arc<Mutex<HashSet<(u16, Protocol)>>>;
-/// 방화벽이 막는 포트를 고르는 함수 (시험에서 바꿔 끼운다)
-type FirewallCheck = fn(&[(u16, Protocol)]) -> Vec<(u16, Protocol)>;
+/// 포트마다 방화벽 판정 (시험에서 바꿔 끼운다)
+type FirewallCheck = fn(&[firewall::Query]) -> Vec<Option<firewall::Verdict>>;
 
 fn expected_line(nonce: &str) -> Vec<u8> {
     format!("saba-chan-port-check {}\n", nonce).into_bytes()
@@ -469,10 +474,11 @@ async fn gateway_external_ip() -> Option<IpAddr> {
 
 /// 인스턴스들의 포트를 한 번에 확인한다. `bind_ip`는 시험 리스너 주소 (데몬은 모든 주소, 시험은 루프백)
 pub async fn run(relay: &Relay, targets: &[Target], bind_ip: IpAddr) -> Result<Vec<Report>, CheckError> {
-    run_with(relay, targets, bind_ip, firewall::blocked_ports).await
+    run_with(relay, targets, bind_ip, firewall::verdicts).await
 }
 
-/// `firewall`: 이 PC 방화벽이 막는 시험 리스너 포트 (닿지 않은 포트를 닫힘 대신 방화벽으로 알린다)
+/// `firewall`: 그 포트를 받는 프로그램(꺼진 서버는 이 데몬, 켜진 서버는 포트를 연 프로세스)을 방화벽이 막는가.
+/// 닿지 않은 포트의 원인을 하나로 가린다: 막으면 방화벽, 허용하면 공유기, 읽지 못하면 닫힘
 async fn run_with(
     relay: &Relay,
     targets: &[Target],
@@ -493,7 +499,17 @@ async fn run_with(
     // 꺼진 서버는 시험 리스너로, 켜진 서버는 TCP만 릴레이 접속 결과로 본다
     let listen: Vec<(u16, Protocol)> = unique(targets.iter().filter(|t| !t.running).flat_map(|t| t.ports.iter()));
     let (busy, listeners) = open_listeners(&listen, bind_ip, &nonce, &seen, &stop).await;
-    let firewalled = firewall(&listen);
+    // 방화벽 판정은 릴레이를 기다리는 동안 따로 읽는다 (규칙이 많으면 시간이 걸린다)
+    let queries: Vec<firewall::Query> = listen
+        .iter()
+        .filter(|p| !busy.contains(p))
+        .map(|&(port, protocol)| (port, protocol, firewall::Program::Daemon))
+        .chain(unique(targets.iter().filter(|t| t.running).flat_map(|t| t.ports.iter())).into_iter().map(|(port, protocol)| (port, protocol, firewall::Program::Listener)))
+        .collect();
+    let firewall_read = tokio::task::spawn_blocking({
+        let queries = queries.clone();
+        move || firewall(&queries)
+    });
     let live_tcp = unique(targets.iter().filter(|t| t.running && !starting.contains(&t.instance_id)).flat_map(|t| t.ports.iter()).filter(|p| p.protocol == Protocol::Tcp));
     let mut ask: Vec<(u16, Protocol)> = listen.iter().filter(|p| !busy.contains(p)).copied().collect();
     for p in live_tcp {
@@ -520,12 +536,23 @@ async fn run_with(
         let _ = task.await;
     }
     let answer = answer.transpose()?;
+    let firewalled: HashMap<firewall::Query, firewall::Verdict> = match firewall_read.await {
+        Ok(verdicts) => queries.into_iter().zip(verdicts).filter_map(|(q, v)| Some((q, v?))).collect(),
+        Err(_) => HashMap::new(),
+    };
     let seen = seen.lock().unwrap_or_else(|e| e.into_inner()).clone();
     let tcp_results: HashMap<(u16, Protocol), &str> =
         answer.iter().flat_map(|a| &a.probes).map(|p| ((p.port, p.protocol), p.result.as_str())).collect();
     let observed = answer.as_ref().and_then(|a| a.address.parse::<IpAddr>().ok());
     let public_address = answer.as_ref().is_some_and(|a| a.public_address);
     let nat = observed.filter(|_| public_address).map(|o| classify_nat(o, route_local(o), gateway)).unwrap_or(Nat::Unknown);
+
+    // 닿지 않은 포트의 원인. 이 PC에 공인 주소가 바로 있으면 공유기 탓이 아니다
+    let unreachable = |port: u16, protocol: Protocol, program: firewall::Program| match firewalled.get(&(port, protocol, program)) {
+        Some(firewall::Verdict::Blocked) => PortStatus::Firewall,
+        Some(firewall::Verdict::Allowed) if nat != Nat::Direct => PortStatus::Router,
+        _ => PortStatus::Closed,
+    };
 
     let checked_at = chrono::Utc::now().to_rfc3339();
     Ok(targets
@@ -538,22 +565,24 @@ async fn run_with(
                     let key = (p.port, p.protocol);
                     let status = if !t.running && busy.contains(&key) {
                         PortStatus::InUse
+                    } else if t.running && p.protocol == Protocol::Udp {
+                        // 게임이 답하지 않아 닿았는지 모른다. 방화벽이 막는 것만은 확실히 알 수 있다
+                        match firewalled.get(&(p.port, p.protocol, firewall::Program::Listener)) {
+                            Some(firewall::Verdict::Blocked) => PortStatus::Firewall,
+                            _ => PortStatus::Unknown,
+                        }
                     } else if !public_address || !asked.contains(&key) {
                         PortStatus::Unknown
                     } else if !t.running {
                         if seen.contains(&key) {
                             PortStatus::Open
-                        } else if firewalled.contains(&key) {
-                            PortStatus::Firewall
                         } else {
-                            PortStatus::Closed
+                            unreachable(p.port, p.protocol, firewall::Program::Daemon)
                         }
-                    } else if p.protocol == Protocol::Udp {
-                        PortStatus::Unknown
                     } else {
                         match tcp_results.get(&key) {
                             Some(&"connected") => PortStatus::Open,
-                            Some(_) => PortStatus::Closed,
+                            Some(_) => unreachable(p.port, p.protocol, firewall::Program::Listener),
                             None => PortStatus::Unknown,
                         }
                     };

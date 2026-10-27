@@ -632,7 +632,7 @@ fn ports_held_by_binding(ports: &[(String, u16)]) -> Vec<(String, u16)> {
 /// IPv4는 주소와 상관없이 센다(예전 0.0.0.0 바인딩 검사도 막혔다). IPv6는 `[::]`에 묶인 것만 센다:
 /// 자바 서버처럼 dual-stack으로 듣는 소켓은 IPv6 표에만 나오고, 특정 IPv6 주소만 쓰는 소켓은 IPv4 포트와 겹치지 않는다
 #[cfg(windows)]
-pub(crate) use held_ports::tcp_listener_pids;
+pub(crate) use held_ports::{tcp_listener_pids, udp_owner_pids};
 
 #[cfg(windows)]
 mod held_ports {
@@ -682,6 +682,26 @@ mod held_ports {
             }
             if let Some(buf) = table(|p, n| GetExtendedTcpTable(p, n, 0, AF_INET6 as u32, TCP_TABLE_OWNER_PID_LISTENER, 0)) {
                 let t = buf.as_ptr() as *const MIB_TCP6TABLE_OWNER_PID;
+                pids.extend(rows(&buf, t, (*t).table.as_ptr()).iter().filter(|r| port(r.dwLocalPort) == want).map(|r| r.dwOwningPid));
+                read_any = true;
+            }
+        }
+        read_any.then_some(pids)
+    }
+
+    /// UDP로 그 포트에 묶인 프로세스 (IPv4·IPv6 모두)
+    pub fn udp_owner_pids(want: u16) -> Option<Vec<u32>> {
+        let port = |raw: u32| u16::from_be(raw as u16);
+        let mut pids = Vec::new();
+        let mut read_any = false;
+        unsafe {
+            if let Some(buf) = table(|p, n| GetExtendedUdpTable(p, n, 0, AF_INET as u32, UDP_TABLE_OWNER_PID, 0)) {
+                let t = buf.as_ptr() as *const MIB_UDPTABLE_OWNER_PID;
+                pids.extend(rows(&buf, t, (*t).table.as_ptr()).iter().filter(|r| port(r.dwLocalPort) == want).map(|r| r.dwOwningPid));
+                read_any = true;
+            }
+            if let Some(buf) = table(|p, n| GetExtendedUdpTable(p, n, 0, AF_INET6 as u32, UDP_TABLE_OWNER_PID, 0)) {
+                let t = buf.as_ptr() as *const MIB_UDP6TABLE_OWNER_PID;
                 pids.extend(rows(&buf, t, (*t).table.as_ptr()).iter().filter(|r| port(r.dwLocalPort) == want).map(|r| r.dwOwningPid));
                 read_any = true;
             }
