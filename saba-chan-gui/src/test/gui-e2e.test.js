@@ -184,6 +184,23 @@ describe('앱 부팅 파이프라인', () => {
         );
     }, 20000);
 
+    it('앱을 열면 받아 둔 업데이트 적용을 데몬에 한 번 맡기고, 업데이터가 필요하면 띄운다', async () => {
+        window.api = createApiMock({
+            updaterApplyOnLaunch: vi.fn().mockResolvedValue({
+                ok: true,
+                applied: [],
+                requires_updater: true,
+                needs_updater: ['gui'],
+            }),
+            updaterLaunchApply: vi.fn().mockResolvedValue({ ok: true }),
+        });
+        await act(async () => {
+            render(<App />);
+        });
+        await waitFor(() => expect(window.api.updaterLaunchApply).toHaveBeenCalledWith(['gui']), { timeout: 6000 });
+        expect(window.api.updaterApplyOnLaunch).toHaveBeenCalledTimes(1);
+    }, 15000);
+
     it('settings 로드 실패 → settingsReady=true (fallback), 봇 설정은 별도 로드', async () => {
         window.api = createApiMock({
             settingsLoad: vi.fn().mockRejectedValue(new Error('disk error')),
@@ -971,6 +988,32 @@ describe('게임 서버 업데이트 배지', () => {
 // 종료 다이얼로그 E2E
 // ════════════════════════════════════════════════════════════
 describe('종료 다이얼로그', () => {
+    // 사용자 10-27: 창 닫기 버튼 동작 설정 (매번 묻기 / 트레이로 / 모두 끄기)
+    it.each([
+        ['tray', 'exit-interface'],
+        ['quit', 'quit'],
+    ])('창 닫기 설정이 %s면 묻지 않고 %s로 답한다', async (closeAction, answer) => {
+        let closeRequestCb = null;
+        window.api = createApiMock({
+            settingsLoad: vi.fn().mockResolvedValue({ closeAction }),
+            // 켜진 managed 서버가 있으면 모두 끄기는 한 번 더 묻는다 (아래 시험)
+            serverList: vi.fn().mockResolvedValue({ servers: [] }),
+            onCloseRequest: vi.fn((cb) => {
+                closeRequestCb = cb;
+            }),
+            closeResponse: vi.fn(),
+        });
+        await act(async () => {
+            render(<App />);
+        });
+        await waitFor(() => expect(useSettingsStore.getState().closeAction).toBe(closeAction), { timeout: 5000 });
+        act(() => {
+            closeRequestCb();
+        });
+        expect(window.api.closeResponse).toHaveBeenCalledWith(answer);
+        expect(screen.queryByText(/exit interface|인터페이스만 종료/i)).toBeNull();
+    }, 15000);
+
     it('close 요청 시 "인터페이스만 종료" / "완전히 종료" 두 선택지를 표시한다', async () => {
         let closeRequestCb = null;
         window.api = createApiMock({

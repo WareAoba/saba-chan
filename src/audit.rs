@@ -284,6 +284,35 @@ impl AuditLog {
         writeln!(f, "{}", line)
     }
 
+    /// `cutoff`(unix 초)보다 이른 기록을 넘긴 파일까지 지운다. 지운 줄 수. 다 지운 파일은 없앤다 (앱 설정 `auditKeepDays`)
+    pub fn prune_before(&self, cutoff: u64) -> usize {
+        let _guard = self.lock.lock().unwrap_or_else(|e| e.into_inner());
+        let mut dropped = 0;
+        for path in [self.path.clone(), self.rotated()] {
+            let Ok(text) = std::fs::read_to_string(&path) else { continue };
+            let total = text.lines().count();
+            let kept: Vec<&str> = text
+                .lines()
+                .filter(|line| {
+                    serde_json::from_str::<Value>(line).ok().and_then(|v| v.get("ts").and_then(Value::as_u64)).is_none_or(|ts| ts >= cutoff)
+                })
+                .collect();
+            if kept.len() == total {
+                continue;
+            }
+            dropped += total - kept.len();
+            let written = if kept.is_empty() {
+                std::fs::remove_file(&path)
+            } else {
+                saba_atomic_file::write(&path, format!("{}\n", kept.join("\n")).as_bytes(), saba_atomic_file::Mode::Plain)
+            };
+            if let Err(e) = written {
+                tracing::warn!("[Audit] Could not prune {}: {}", path.display(), e);
+            }
+        }
+        dropped
+    }
+
     /// 최근 기록 (최신이 먼저). `instance_id`가 있으면 그 서버 것만 (시험에서만 쓴다)
     #[cfg(test)]
     pub fn recent(&self, limit: usize, instance_id: Option<&str>) -> Vec<Value> {
@@ -317,6 +346,28 @@ impl AuditLog {
         }
         out
     }
+}
+
+/// 앱 설정 `auditKeepDays`가 있으면 그보다 오래된 기록을 지운다. 켜질 때 한 번, 그 뒤 한 시간마다 (설정은 매번 다시 읽는다)
+pub fn spawn_retention(config: std::sync::Arc<crate::config_store::ConfigStore>, shutdown: tokio_util::sync::CancellationToken) {
+    const EVERY: std::time::Duration = std::time::Duration::from_secs(3600);
+    tokio::spawn(async move {
+        loop {
+            let days = config.get_gui_settings().await.audit_keep_days;
+            if days > 0 {
+                let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+                let cutoff = now.saturating_sub(u64::from(days) * 86_400);
+                let dropped = tokio::task::spawn_blocking(move || log().prune_before(cutoff)).await.unwrap_or(0);
+                if dropped > 0 {
+                    tracing::info!("[Audit] Dropped {} record(s) older than {} day(s)", dropped, days);
+                }
+            }
+            tokio::select! {
+                _ = shutdown.cancelled() => break,
+                _ = tokio::time::sleep(EVERY) => {}
+            }
+        }
+    });
 }
 
 static GLOBAL: std::sync::OnceLock<AuditLog> = std::sync::OnceLock::new();
@@ -493,6 +544,23 @@ mod tests {
         assert_eq!(actions(Filter { since: Some(150), ..Filter::default() }), ["backup", "restart", "stop"]);
         assert_eq!(actions(Filter { until: Some(300), instance_id: Some("a"), ..Filter::default() }), ["start"]);
         assert_eq!(actions(Filter { since: Some(100), limit: 2, ..Filter::default() }), ["backup", "restart"]);
+    }
+
+    /// 보관 기간(일)보다 오래된 기록은 넘긴 파일까지 지우고, 그 안의 기록은 그대로 둔다
+    #[test]
+    fn records_older_than_the_kept_days_are_dropped() {
+        let dir = tempfile::tempdir().unwrap();
+        let log = AuditLog::at(dir.path().join("audit.log"));
+        line_at(&log, 100, "start", "a");
+        line_at(&log, 200, "stop", "a");
+        std::fs::rename(log.path(), log.rotated()).unwrap();
+        line_at(&log, 300, "restart", "a");
+        line_at(&log, 400, "backup", "a");
+        assert_eq!(log.prune_before(250), 2);
+        let actions: Vec<_> = log.query(&Filter::default()).iter().map(|v| v["action"].as_str().unwrap().to_string()).collect();
+        assert_eq!(actions, ["backup", "restart"]);
+        assert!(!log.rotated().exists(), "an emptied rotated file goes away");
+        assert_eq!(log.prune_before(250), 0, "nothing more to drop");
     }
 
     /// 동시 기록이나 시계 보정으로 파일 순서와 시각이 어긋나도 기간 안의 기록을 빠뜨리지 않는다

@@ -322,8 +322,10 @@ pub struct UpdateConfig {
     pub enabled: bool,
     /// 확인 주기 (시간 단위, 기본값 3, 최소 1시간에서 최대 8시간)
     pub check_interval_hours: u32,
-    /// 확인 뒤 새 버전을 미리 내려받아 둘지 (적용은 언제나 사용자가 고른다)
+    /// 확인 뒤 새 버전을 미리 내려받아 둘지
     pub auto_download: bool,
+    /// 받아 둔 업데이트를 앱을 열 때 적용할지 (켜면 내려받기도 한다). 끄면 적용은 사용자가 고른다
+    pub auto_apply: bool,
     /// 스테이징 디렉터리 (다운로드와 임시 파일 저장, 기본값: 실행파일 경로 기준)
     pub install_root: Option<String>,
     /// 릴레이 주소 (None이면 relay::DEFAULT_RELAY_URL). 모의 릴레이 시험은 여기에
@@ -346,6 +348,7 @@ impl Default for UpdateConfig {
             enabled: true,
             check_interval_hours: 3,
             auto_download: false,
+            auto_apply: false,
             install_root: None,
             relay_url: None,
             channel: relay::DEFAULT_CHANNEL.to_string(),

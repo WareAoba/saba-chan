@@ -26,6 +26,17 @@ export const DEFAULT_SOUNDS = Object.freeze({
     update: true,
 });
 
+// 앱 동작 옵션 (사용자 10-27). 기본값은 데몬 GuiSettings와 같다: 지금까지의 동작 그대로
+export const APP_OPTION_DEFAULTS = Object.freeze({
+    closeAction: 'ask', // 창 닫기: ask | tray | quit
+    toastDuration: 'normal', // 알림 표시 시간: short | normal | long
+    newServerBackupKeep: 10, // 새 서버의 자동 백업 보관 개수 (데몬이 만들 때 넣는다)
+    newServerAutoRestart: true, // 새 서버의 크래시 자동 재시작
+    auditKeepDays: 0, // 작업 기록 보관 일수, 0은 용량 한도만 (데몬이 지운다)
+    consoleTimestamps: 'off', // 콘솔 줄 앞 시각: off | 24h | 12h
+    consoleTimestampDate: false,
+});
+
 export const useSettingsStore = create((set, get) => ({
     // ── State ──
     autoRefresh: true,
@@ -40,6 +51,7 @@ export const useSettingsStore = create((set, get) => ({
     osNotifications: true,
     // 밖에서 켜고 끈 것·크래시·설치 결과·업데이트 발견 때 효과음 (셸이 낸다). 전체·종류별 스위치
     sounds: DEFAULT_SOUNDS,
+    ...APP_OPTION_DEFAULTS,
     settingsPath: '',
     settingsReady: false,
 
@@ -79,6 +91,7 @@ export const useSettingsStore = create((set, get) => ({
                 patch.autoPortCheck = settings.autoPortCheck ?? false;
                 patch.osNotifications = settings.osNotifications ?? true;
                 patch.sounds = { ...DEFAULT_SOUNDS, ...settings.sounds };
+                for (const [k, v] of Object.entries(APP_OPTION_DEFAULTS)) patch[k] = settings[k] ?? v;
 
                 // Theme customization
                 patch.theme = settings.theme ?? getTheme();
@@ -193,6 +206,7 @@ export const useSettingsStore = create((set, get) => ({
             autoPortCheck: false,
             osNotifications: true,
             sounds: DEFAULT_SOUNDS,
+            ...APP_OPTION_DEFAULTS,
             settingsPath: '',
             settingsReady: false,
             theme: 'auto',
@@ -225,6 +239,7 @@ const _settingsKeys = [
     'autoPortCheck',
     'osNotifications',
     'sounds',
+    ...Object.keys(APP_OPTION_DEFAULTS),
     // Theme customization
     'theme',
     'accentColor',

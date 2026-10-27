@@ -123,6 +123,7 @@ pub fn updates_router(state: UpdateState) -> Router {
         .route("/api/updates/download", post(download_components))
         .route("/api/updates/download/progress", get(get_download_progress))
         .route("/api/updates/apply", post(apply_updates))
+        .route("/api/updates/apply-on-launch", post(apply_on_launch))
         .route("/api/updates/launch-updater", post(launch_updater))
         .route("/api/updates/install", post(install_updates))
         .route("/api/updates/last-result", get(get_last_result).delete(clear_last_result))
@@ -227,13 +228,14 @@ async fn check_updates(
 
 /// 확인 한 번과 그 뒤처리. 수동 확인(`POST /check`)과 주기 확인이 같은 길을 쓴다.
 /// - Locales 업데이트는 사용자에게 보이지 않게 바로 적용
-/// - `auto_download`이면 나머지 업데이트를 내려받아 두고 pending manifest 저장
-///   (적용은 언제나 사용자가 고른다)
+/// - `auto_download`(또는 `auto_apply`)이면 나머지 업데이트를 내려받아 두고 pending manifest 저장
+///   (적용은 사용자가 고르거나, `auto_apply`면 앱을 열 때 `POST /apply-on-launch`)
 async fn check_and_follow_up(state: &UpdateState) -> anyhow::Result<saba_chan_updater_lib::UpdateStatus> {
     let (status, auto_download) = {
         let mut mgr = state.manager.write().await;
         let status = mgr.check_for_updates().await?;
-        (status, mgr.get_config().auto_download)
+        let cfg = mgr.get_config();
+        (status, cfg.auto_download || cfg.auto_apply)
     };
     announce_new_updates(&status);
 
@@ -632,6 +634,40 @@ async fn apply_updates_with(state: UpdateState, body: ApplyRequest) -> impl Into
     }))
 }
 
+/// 앱을 열 때 적용할 것과 미룰 것. 서버가 켜져 있으면 다시 시작해야 하는 것(데몬·GUI·업데이터)은 미룬다: 서버가 같이 꺼진다
+fn launch_targets(pending: &[Component], servers_running: bool) -> (Vec<Component>, Vec<Component>) {
+    pending
+        .iter()
+        .cloned()
+        .partition(|c| !(servers_running && matches!(c, Component::Gui | Component::Updater | Component::CoreDaemon)))
+}
+
+/// POST /api/updates/apply-on-launch — `auto_apply`가 켜져 있으면 받아 둔 업데이트를 적용한다 (GUI가 열릴 때 부른다).
+/// 꺼져 있거나 받아 둔 것이 없으면 `{ok:true, skipped:"off"|"nothing"}`. 그 밖에는 apply의 답에 미룬 것 `held`
+/// (서버가 켜져 있어 다시 시작하지 않은 구성요소 키)를 붙인다. `requires_updater`면 부른 쪽이 업데이터를 띄운다
+async fn apply_on_launch(State(state): State<UpdateState>) -> axum::response::Response {
+    let (auto_apply, pending) = {
+        let mgr = state.manager.read().await;
+        (mgr.get_config().auto_apply, mgr.get_pending_components().into_iter().map(|c| c.component.clone()).collect::<Vec<_>>())
+    };
+    if !auto_apply {
+        return Json(json!({ "ok": true, "skipped": "off" })).into_response();
+    }
+    let servers_running = match state.supervisor {
+        Some(ref sup) => !sup.read().await.running_instances().await.is_empty(),
+        None => false,
+    };
+    let (targets, held) = launch_targets(&pending, servers_running);
+    let held: Vec<String> = held.iter().map(|c| c.manifest_key()).collect();
+    if targets.is_empty() {
+        return Json(json!({ "ok": true, "skipped": if held.is_empty() { "nothing" } else { "servers_running" }, "held": held })).into_response();
+    }
+    let body = ApplyRequest { components: targets.iter().map(|c| c.manifest_key()).collect() };
+    let mut answer = crate::ipc::internal::into_internal(apply_updates_with(state, body).await.into_response()).await.body;
+    answer["held"] = json!(held);
+    Json(answer).into_response()
+}
+
 /// POST /api/updates/install — 확인 → 받을 것 전부 받기 → 적용. 데몬·GUI처럼 재시작이 필요한 것이 있으면 업데이터를 띄운다
 /// (그 뒤 데몬은 꺼지고 업데이터가 GUI나 데몬을 다시 띄운다). GUI가 없는 원격(디스코드)에서도 끝까지 가게 하는 경로다.
 /// 답: apply의 답(`ok, applied, requires_updater, errors`)에 `downloaded`, 받지 못한 것 `download_errors`, 업데이터를 띄웠으면 `updater_launched: true`
@@ -1019,6 +1055,9 @@ async fn set_config(
     if let Some(v) = body.get("auto_download").and_then(|v| v.as_bool()) {
         cfg.auto_download = v;
     }
+    if let Some(v) = body.get("auto_apply").and_then(|v| v.as_bool()) {
+        cfg.auto_apply = v;
+    }
     if let Some(v) = body.get("install_root").and_then(|v| v.as_str()) {
         cfg.install_root = Some(v.to_string());
     }
@@ -1111,6 +1150,28 @@ fn resolve_modules_dir() -> String {
 
 #[cfg(test)]
 mod tests {
+    /// 실행할 때 적용: 받아 둔 것을 모두 고르되, 서버가 켜져 있으면 다시 시작해야 하는 것(데몬·GUI·업데이터)은 미룬다
+    #[test]
+    fn applying_on_launch_holds_restarts_while_servers_run() {
+        use saba_chan_updater_lib::Component as C;
+        let pending = vec![C::CoreDaemon, C::Module("minecraft".into()), C::Gui, C::Locales];
+        assert_eq!(super::launch_targets(&pending, false), (pending.clone(), vec![]));
+        assert_eq!(
+            super::launch_targets(&pending, true),
+            (vec![C::Module("minecraft".into()), C::Locales], vec![C::CoreDaemon, C::Gui])
+        );
+    }
+
+    #[test]
+    fn auto_apply_is_kept_with_the_update_settings() {
+        let mut cfg = saba_chan_updater_lib::UpdateConfig::default();
+        assert!(!cfg.auto_apply, "off by default");
+        cfg.auto_apply = true;
+        let dir = tempfile::tempdir().unwrap();
+        super::save_updater_config_to(&saba_chan_updater_lib::config_file::ConfigFile::at(dir.path()), &cfg).unwrap();
+        assert!(super::load_updater_config_from(&saba_chan_updater_lib::config_file::ConfigFile::at(dir.path())).auto_apply);
+    }
+
     /// 등록된 GUI 중 GUI 실행 파일로 떠 있는 것만 고르고, 업데이터를 띄울 때 끈다
     #[cfg(unix)]
     #[tokio::test]

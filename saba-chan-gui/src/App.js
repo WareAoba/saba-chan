@@ -435,6 +435,19 @@ function App() {
         return () => clearTimeout(timer);
     }, [daemonReady, initFailed, initSeen, t]);
 
+    // '받고 다음 실행 때 적용': 앱을 열 때 한 번 데몬에 맡긴다. 무엇을 적용할지(켜진 서버가 있으면 재시작이 필요한 것은 미룸)는 데몬이 고른다
+    const applyOnLaunchDone = useRef(false);
+    useEffect(() => {
+        if (!daemonReady || applyOnLaunchDone.current || !window.api?.updaterApplyOnLaunch) return;
+        applyOnLaunchDone.current = true;
+        (async () => {
+            const res = await window.api.updaterApplyOnLaunch();
+            if (res?.requires_updater && res.needs_updater?.length > 0) {
+                await window.api.updaterLaunchApply?.(res.needs_updater);
+            }
+        })();
+    }, [daemonReady]);
+
     // Background Daemon status polling
     // biome-ignore lint/correctness/useExhaustiveDependencies: setter is stable
     useEffect(() => {
@@ -513,6 +526,38 @@ function App() {
                     setModal(null);
                 };
 
+                // 모두 끄기: managed 서버가 켜져 있으면 한 번 더 묻는다
+                const quitAll = () => {
+                    if (runningManaged.length > 0) {
+                        // managed 인스턴스가 실행 중 → 2차 경고
+                        const names = runningManaged.map((s) => s.name).join(', ');
+                        setModal({
+                            type: 'warning',
+                            title: t('app_exit.managed_warning_title'),
+                            message: t('app_exit.managed_warning_message', {
+                                names,
+                                count: runningManaged.length,
+                            }),
+                            detail: t('app_exit.managed_warning_detail'),
+                            buttons: [
+                                {
+                                    label: t('app_exit.quit_all_label'),
+                                    action: doQuit,
+                                },
+                                {
+                                    label: t('modals.cancel'),
+                                    action: () => {
+                                        window.api.closeResponse('cancel');
+                                        setModal(null);
+                                    },
+                                },
+                            ],
+                        });
+                    } else {
+                        doQuit();
+                    }
+                };
+
                 const showExitModal = () => {
                     setModal({
                         type: 'question',
@@ -529,36 +574,7 @@ function App() {
                             },
                             {
                                 label: t('app_exit.quit_all_label'),
-                                action: () => {
-                                    if (runningManaged.length > 0) {
-                                        // managed 인스턴스가 실행 중 → 2차 경고
-                                        const names = runningManaged.map((s) => s.name).join(', ');
-                                        setModal({
-                                            type: 'warning',
-                                            title: t('app_exit.managed_warning_title'),
-                                            message: t('app_exit.managed_warning_message', {
-                                                names,
-                                                count: runningManaged.length,
-                                            }),
-                                            detail: t('app_exit.managed_warning_detail'),
-                                            buttons: [
-                                                {
-                                                    label: t('app_exit.quit_all_label'),
-                                                    action: doQuit,
-                                                },
-                                                {
-                                                    label: t('modals.cancel'),
-                                                    action: () => {
-                                                        window.api.closeResponse('cancel');
-                                                        setModal(null);
-                                                    },
-                                                },
-                                            ],
-                                        });
-                                    } else {
-                                        doQuit();
-                                    }
-                                },
+                                action: quitAll,
                             },
                             {
                                 label: t('modals.cancel'),
@@ -571,7 +587,11 @@ function App() {
                     });
                 };
 
-                showExitModal();
+                // 창 닫기 버튼 동작 설정 (사용자 10-27): 매번 묻기 / 트레이로 / 모두 끄기
+                const closeAction = useSettingsStore.getState().closeAction;
+                if (closeAction === 'tray') window.api.closeResponse('exit-interface');
+                else if (closeAction === 'quit') quitAll();
+                else showExitModal();
             });
         }
 

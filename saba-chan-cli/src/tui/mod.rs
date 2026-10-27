@@ -112,6 +112,7 @@ pub async fn run(ctx: &Ctx, server: Option<&str>) -> Result<()> {
     }
     let mut ctx = ctx.clone();
     ctx.in_shell = true;
+    crate::cmd::console::load_stamp(&ctx).await;
     let mut app = App::new();
     app.port = ctx.api.port;
     app.open_server = server.map(str::to_string);

@@ -258,6 +258,15 @@ async fn create_instance_inner(state: IPCServer, payload: Value) -> impl IntoRes
             None
         };
 
+        // ── 앱 설정의 새 서버 기본값. 기본값과 같으면 비워 둬 지금처럼 읽을 때 기본값을 쓴다 ──
+        let app = state.config_store.get_gui_settings().await;
+        if app.new_server_backup_keep as usize != crate::ipc::handlers::backup::DEFAULT_KEEP {
+            instance.backup_keep = Some(app.new_server_backup_keep);
+        }
+        if !app.new_server_auto_restart && !instance.module_settings.contains_key("auto_restart") {
+            instance.module_settings.insert("auto_restart".into(), json!(false));
+        }
+
         // ── 익스텐션이 만들 때 물은 칸 (`AddServer.options` → `extension_data`, Q-7). 설치 방식 값은 뒤에서 덮는다 ──
         match payload.get("extension_data") {
             None | Some(Value::Null) => {}
@@ -2843,6 +2852,44 @@ mod tests {
         let progress = provisioned(&state, "a").await.expect("provisioning finished");
         let text = crate::chat::i18n::Catalog::for_language(&state.config_store.ui_language().await);
         assert_eq!(progress.error.as_deref(), Some(text.t("provision.save_failed", &[]).as_str()));
+    }
+
+    /// 앱 설정의 새 서버 기본값(자동 백업 보관 개수, 크래시 자동 재시작)을 만들 때 넣는다. 기본값이면 지금처럼 비워 둔다
+    #[tokio::test]
+    async fn create_applies_the_new_server_defaults_from_app_settings() {
+        use axum::extract::State;
+        use axum::Json;
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("module.toml"), "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n").unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "").unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            modules.to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        for module in sup.module_loader.discover_modules().unwrap() { crate::sandbox::consent_test_component(std::path::Path::new(&module.entry_path())); }
+        sup.initialize().await.unwrap();
+        let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let create = |name: &str| {
+            let (state, body) = (state.clone(), json!({ "name": name, "module_name": "game" }));
+            async move {
+                let made = crate::ipc::internal::into_internal(super::create_instance(State(state.clone()), Json(body)).await).await;
+                assert!(made.status.is_success(), "{:?}", made.body);
+                state.supervisor.read().await.instance_store.get(made.body["id"].as_str().unwrap()).cloned().unwrap()
+            }
+        };
+
+        let plain = create("a").await;
+        assert_eq!((plain.backup_keep, plain.module_settings.get("auto_restart")), (None, None));
+
+        state.config_store
+            .write_gui(json!({ "newServerBackupKeep": 3, "newServerAutoRestart": false }), crate::config_store::Apply::MergePatch, None)
+            .await
+            .unwrap();
+        let tuned = create("b").await;
+        assert_eq!((tuned.backup_keep, tuned.module_settings.get("auto_restart")), (Some(3), Some(&json!(false))));
     }
 
     #[tokio::test]

@@ -120,6 +120,14 @@ function SettingsModal({
     const autoPortCheck = useSettingsStore((s) => s.autoPortCheck);
     const osNotifications = useSettingsStore((s) => s.osNotifications);
     const sounds = useSettingsStore((s) => s.sounds);
+    const closeAction = useSettingsStore((s) => s.closeAction);
+    const toastDuration = useSettingsStore((s) => s.toastDuration);
+    const newServerBackupKeep = useSettingsStore((s) => s.newServerBackupKeep);
+    const newServerAutoRestart = useSettingsStore((s) => s.newServerAutoRestart);
+    const auditKeepDays = useSettingsStore((s) => s.auditKeepDays);
+    const consoleTimestamps = useSettingsStore((s) => s.consoleTimestamps);
+    const consoleTimestampDate = useSettingsStore((s) => s.consoleTimestampDate);
+    const setOption = (patch) => useSettingsStore.getState().update(patch);
     const setSound = (key, on) => useSettingsStore.getState().update({ sounds: { ...sounds, [key]: on } });
 
     // 외부에서 initialView 지정으로 열렸을 때 해당 탭 자동 진입
@@ -437,6 +445,48 @@ function SettingsModal({
                                 />
                             </div>
 
+                            {/* 창 닫기 버튼: 매번 묻기 / 트레이로 / 사바쨩까지 끄기 */}
+                            <div className="setting-item">
+                                <label className="setting-label">
+                                    <span className="setting-title">
+                                        <Icon name="close" size="sm" /> {t('gui:settings_modal.close_action_label')}
+                                    </span>
+                                    <span className="setting-description">
+                                        {t('gui:settings_modal.close_action_description')}
+                                    </span>
+                                </label>
+                                <CustomDropdown
+                                    className="setting-select"
+                                    value={closeAction}
+                                    onChange={(val) => setOption({ closeAction: val })}
+                                    options={['ask', 'tray', 'quit'].map((value) => ({
+                                        value,
+                                        label: t(`gui:settings_modal.close_action_${value}`),
+                                    }))}
+                                />
+                            </div>
+
+                            <div className="setting-item">
+                                <label className="setting-label">
+                                    <span className="setting-title">
+                                        <Icon name="messageSquare" size="sm" />{' '}
+                                        {t('gui:settings_modal.toast_duration_label')}
+                                    </span>
+                                    <span className="setting-description">
+                                        {t('gui:settings_modal.toast_duration_description')}
+                                    </span>
+                                </label>
+                                <CustomDropdown
+                                    className="setting-select"
+                                    value={toastDuration}
+                                    onChange={(val) => setOption({ toastDuration: val })}
+                                    options={['short', 'normal', 'long'].map((value) => ({
+                                        value,
+                                        label: t(`gui:settings_modal.toast_duration_${value}`),
+                                    }))}
+                                />
+                            </div>
+
                             {autostartAvailable() && <AutostartSetting />}
 
                             {/* 중대한 알림을 OS 알림으로도 */}
@@ -661,6 +711,41 @@ function SettingsModal({
                                 />
                             </div>
 
+                            {/* 줄 앞 시각 (데몬이 받은 시각) */}
+                            <div className="setting-item">
+                                <label className="setting-label">
+                                    <span className="setting-title">
+                                        <Icon name="clock" size="sm" /> {t('gui:settings_modal.console_timestamps_label')}
+                                    </span>
+                                    <span className="setting-description">
+                                        {t('gui:settings_modal.console_timestamps_description')}
+                                    </span>
+                                </label>
+                                <CustomDropdown
+                                    className="setting-select"
+                                    value={consoleTimestamps}
+                                    onChange={(val) => setOption({ consoleTimestamps: val })}
+                                    options={['off', '24h', '12h'].map((value) => ({
+                                        value,
+                                        label: t(`gui:settings_modal.console_timestamps_${value}`),
+                                    }))}
+                                />
+                            </div>
+                            {consoleTimestamps !== 'off' && (
+                                <div className="setting-item">
+                                    <label className="setting-label">
+                                        <span className="setting-title">
+                                            <Icon name="clock" size="sm" />{' '}
+                                            {t('gui:settings_modal.console_timestamp_date_label')}
+                                        </span>
+                                    </label>
+                                    <SabaToggle
+                                        checked={consoleTimestampDate}
+                                        onChange={(checked) => setOption({ consoleTimestampDate: checked })}
+                                    />
+                                </div>
+                            )}
+
                             {/* ── 5-2. 콘솔 뒷배경색 ── */}
                             <div className="setting-item">
                                 <label className="setting-label">
@@ -821,6 +906,72 @@ function SettingsModal({
                                 <SabaToggle
                                     checked={autoPortCheck}
                                     onChange={(checked) => useSettingsStore.getState().update({ autoPortCheck: checked })}
+                                />
+                            </div>
+
+                            {/* 새 서버 기본값: 서버를 만들 때 데몬이 채운다. 만든 뒤에는 서버마다 바꾼다 */}
+                            <div className="setting-item setting-item-group">
+                                <div className="setting-item-row">
+                                    <label className="setting-label">
+                                        <span className="setting-title">
+                                            <Icon name="server" size="sm" />{' '}
+                                            {t('gui:settings_modal.new_server_defaults_label')}
+                                        </span>
+                                        <span className="setting-description">
+                                            {t('gui:settings_modal.new_server_defaults_description')}
+                                        </span>
+                                    </label>
+                                </div>
+                                <div className="setting-sublist">
+                                    <div className="setting-subitem">
+                                        <span>{t('gui:settings_modal.new_server_backup_keep')}</span>
+                                        <CustomDropdown
+                                            className="setting-select"
+                                            value={newServerBackupKeep}
+                                            onChange={(val) => setOption({ newServerBackupKeep: Number(val) })}
+                                            options={[...new Set([3, 5, 10, 20, 30, 50, newServerBackupKeep])]
+                                                .sort((a, b) => a - b)
+                                                .map((value) => ({
+                                                    value,
+                                                    label: t('gui:settings_modal.new_server_backup_keep_count', {
+                                                        n: value,
+                                                    }),
+                                                }))}
+                                        />
+                                    </div>
+                                    <div className="setting-subitem">
+                                        <span>{t('gui:settings_modal.new_server_auto_restart')}</span>
+                                        <SabaToggle
+                                            size="sm"
+                                            checked={newServerAutoRestart}
+                                            onChange={(on) => setOption({ newServerAutoRestart: on })}
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* 활동 기록 보관 기간: 지난 기록은 데몬이 지운다 */}
+                            <div className="setting-item">
+                                <label className="setting-label">
+                                    <span className="setting-title">
+                                        <Icon name="file" size="sm" /> {t('gui:settings_modal.audit_keep_label')}
+                                    </span>
+                                    <span className="setting-description">
+                                        {t('gui:settings_modal.audit_keep_description')}
+                                    </span>
+                                </label>
+                                <CustomDropdown
+                                    className="setting-select"
+                                    value={auditKeepDays}
+                                    onChange={(val) => setOption({ auditKeepDays: Number(val) })}
+                                    options={[...new Set([0, 7, 30, 90, 365, auditKeepDays])]
+                                        .sort((a, b) => a - b)
+                                        .map((value) => ({
+                                            value,
+                                            label: value
+                                                ? t('gui:settings_modal.audit_keep_days', { n: value })
+                                                : t('gui:settings_modal.audit_keep_all'),
+                                        }))}
                                 />
                             </div>
 

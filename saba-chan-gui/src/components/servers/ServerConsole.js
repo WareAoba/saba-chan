@@ -20,7 +20,7 @@ const historyOf = (id) => {
  * 콘솔 한 줄. 줄 객체는 받은 뒤 바뀌지 않으므로, 새 줄이 붙거나 입력칸을 칠 때
  * 이미 그린 줄(최대 수천 개)을 다시 그리지 않는다.
  */
-const ConsoleLine = memo(function ConsoleLine({ line, syntaxEnabled, compiledRules }) {
+const ConsoleLine = memo(function ConsoleLine({ line, syntaxEnabled, compiledRules, stamp }) {
     return (
         <div
             className={clsx(
@@ -29,6 +29,7 @@ const ConsoleLine = memo(function ConsoleLine({ line, syntaxEnabled, compiledRul
                 `console-level-${line.level?.toLowerCase() || 'info'}`,
             )}
         >
+            {stamp && line.timestamp != null && <span className="console-time">{stamp(line.timestamp)}</span>}
             <HighlightedContent
                 text={line.content}
                 spans={syntaxEnabled ? line.spans : undefined}
@@ -39,16 +40,32 @@ const ConsoleLine = memo(function ConsoleLine({ line, syntaxEnabled, compiledRul
 });
 
 /** 줄 목록. 입력칸을 칠 때는 줄 배열이 그대로라 통째로 건너뛴다 */
-const ConsoleLines = memo(function ConsoleLines({ lines, syntaxEnabled, compiledRules }) {
+const ConsoleLines = memo(function ConsoleLines({ lines, syntaxEnabled, compiledRules, stamp }) {
     return lines.map((line) => (
         <ConsoleLine
             key={line.key ?? line.id}
             line={line}
             syntaxEnabled={syntaxEnabled}
             compiledRules={compiledRules}
+            stamp={stamp}
         />
     ));
 });
+
+/**
+ * 줄 앞 시각 표시 함수. 끔이면 null. 시각은 데몬이 준 unix 초이고 이 PC 시간대·언어로 보인다
+ */
+export function consoleStamper(mode, withDate, lang) {
+    if (!mode || mode === 'off') return null;
+    const fmt = new Intl.DateTimeFormat(lang || undefined, {
+        ...(withDate ? { month: '2-digit', day: '2-digit' } : {}),
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: mode === '12h',
+    });
+    return (ts) => fmt.format(new Date(ts * 1000));
+}
 
 /**
  * 상세 화면에 박힌 콘솔. 창을 따로 열지 않아도 로그를 보고 명령을 보낼 수 있다(L).
@@ -69,8 +86,14 @@ export function ServerConsole({
     autoFocus = false,
     readOnly = false,
 }) {
-    const { t } = useTranslation('gui');
+    const { t, i18n } = useTranslation('gui');
     const syntaxEnabled = useSettingsStore((s) => s.consoleSyntaxHighlight);
+    const stampMode = useSettingsStore((s) => s.consoleTimestamps);
+    const stampDate = useSettingsStore((s) => s.consoleTimestampDate);
+    const stamp = useMemo(
+        () => consoleStamper(stampMode, stampDate, i18n.language),
+        [stampMode, stampDate, i18n.language],
+    );
     const outputRef = useRef(null);
     const inputRef = useRef(null);
     const stickRef = useRef(true);
@@ -134,7 +157,12 @@ export function ServerConsole({
                         {server.status === 'running' ? t('console.waiting') : t('shell.console_offline')}
                     </div>
                 )}
-                <ConsoleLines lines={lines} syntaxEnabled={syntaxEnabled} compiledRules={compiledRules} />
+                <ConsoleLines
+                    lines={lines}
+                    syntaxEnabled={syntaxEnabled}
+                    compiledRules={compiledRules}
+                    stamp={stamp}
+                />
             </div>
             {!stdinDisabled && quickCommands.length > 0 && (
                 <div className="term-quick" role="group" aria-label={t('shell.console_quick')}>

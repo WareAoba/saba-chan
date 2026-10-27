@@ -38,6 +38,20 @@ pub struct GuiSettings {
     pub os_notifications: bool,
     /// 밖에서 켜고 끈 것·크래시·설치 결과·업데이트 발견 때 효과음 (GUI 셸이 낸다)
     pub sounds: SoundSettings,
+    /// 창 닫기 버튼: "ask"(매번 묻기) | "tray"(창만 닫고 트레이에 남기) | "quit"(모두 끄기)
+    pub close_action: String,
+    /// 알림(토스트) 표시 시간: "short" | "normal" | "long"
+    pub toast_duration: String,
+    /// 새 서버의 자동 백업 보관 개수 (서버의 `backup_keep`, 기본 10)
+    pub new_server_backup_keep: u32,
+    /// 새 서버의 크래시 자동 재시작 (서버의 `auto_restart` 설정)
+    pub new_server_auto_restart: bool,
+    /// 작업 기록 보관 일수. 0이면 기간 제한 없이 용량 한도(`audit.rs` `MAX_BYTES`)만
+    pub audit_keep_days: u32,
+    /// 서버 콘솔 줄 앞 시각: "off" | "24h" | "12h"
+    pub console_timestamps: String,
+    /// 콘솔 시각에 날짜도
+    pub console_timestamp_date: bool,
 
     // Theme customization
     /// "dark" | "light" | "auto". 없으면 GUI가 정한다(예전 브라우저 저장값 이전, 기본 auto)
@@ -130,6 +144,13 @@ impl Default for GuiSettings {
             auto_port_check: false,
             os_notifications: true,
             sounds: SoundSettings::default(),
+            close_action: "ask".to_string(),
+            toast_duration: "normal".to_string(),
+            new_server_backup_keep: 10,
+            new_server_auto_restart: true,
+            audit_keep_days: 0,
+            console_timestamps: "off".to_string(),
+            console_timestamp_date: false,
             theme: None,
             accent_color: "#667eea".to_string(),
             accent_secondary: "#764ba2".to_string(),
@@ -148,6 +169,22 @@ impl Default for GuiSettings {
             daemon_target: None,
             daemon_view: None,
         }
+    }
+}
+
+impl GuiSettings {
+    /// 고르는 값이 정해진 키는 그 안에서만 받는다
+    fn validate(&self) -> Result<(), String> {
+        let choice = |key: &str, value: &str, allowed: &[&str]| {
+            if allowed.contains(&value) { Ok(()) } else { Err(format!("{key} must be one of {}", allowed.join(", "))) }
+        };
+        choice("closeAction", &self.close_action, &["ask", "tray", "quit"])?;
+        choice("toastDuration", &self.toast_duration, &["short", "normal", "long"])?;
+        choice("consoleTimestamps", &self.console_timestamps, &["off", "24h", "12h"])?;
+        if self.new_server_backup_keep == 0 {
+            return Err("newServerBackupKeep must be 1 or more".into());
+        }
+        Ok(())
     }
 }
 
@@ -463,6 +500,7 @@ impl ConfigStore {
 
         let settings: GuiSettings = serde_json::from_value(merged)
             .map_err(|e| ConfigStoreError::InvalidData(format!("Invalid GUI settings: {}", e)))?;
+        settings.validate().map_err(|e| ConfigStoreError::InvalidData(format!("Invalid GUI settings: {}", e)))?;
         let saved = serde_json::to_value(&settings)?;
         self.file.set_section("gui", saved.clone())?;
         *current = settings.clone();
@@ -1461,6 +1499,31 @@ mod tests {
         // 파일에 없는 필드는 기본값
         assert!(gui.port_conflict_check);
         assert!(gui.enable_transitions);
+    }
+
+    /// 사용자 10-27: 창 닫기·새 서버 기본값·알림 시간·작업 기록 보관·콘솔 시각. 기본은 지금 동작 그대로, 모르는 선택지는 거절
+    #[tokio::test]
+    async fn app_options_default_to_todays_behaviour_and_refuse_unknown_choices() {
+        let tmp = TempDir::new().unwrap();
+        let store = ConfigStore::new(tmp.path());
+        let v = serde_json::to_value(store.get_gui_settings().await).unwrap();
+        assert_eq!(
+            (&v["closeAction"], &v["toastDuration"], &v["consoleTimestamps"], &v["consoleTimestampDate"]),
+            (&serde_json::json!("ask"), &serde_json::json!("normal"), &serde_json::json!("off"), &serde_json::json!(false))
+        );
+        assert_eq!((&v["newServerBackupKeep"], &v["newServerAutoRestart"], &v["auditKeepDays"]), (&serde_json::json!(10), &serde_json::json!(true), &serde_json::json!(0)));
+
+        for bad in [
+            serde_json::json!({ "closeAction": "hide" }),
+            serde_json::json!({ "toastDuration": "forever" }),
+            serde_json::json!({ "consoleTimestamps": "utc" }),
+            serde_json::json!({ "newServerBackupKeep": 0 }),
+        ] {
+            assert!(store.write_gui(bad.clone(), Apply::MergePatch, None).await.is_err(), "{bad}");
+        }
+        store.write_gui(serde_json::json!({ "closeAction": "tray", "consoleTimestamps": "12h", "auditKeepDays": 30 }), Apply::MergePatch, None).await.unwrap();
+        let saved = ConfigStore::new(tmp.path()).get_gui_settings().await;
+        assert_eq!((saved.close_action.as_str(), saved.console_timestamps.as_str(), saved.audit_keep_days), ("tray", "12h", 30));
     }
 
     /// GUI 셸이 읽는 설정(OS 알림·효과음)도 저장하면 남는다. 모르는 키는 합칠 때 버려진다
