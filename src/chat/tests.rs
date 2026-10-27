@@ -633,3 +633,87 @@ async fn a_command_kept_off_remote_surfaces_is_unknown_there() {
     // 원격 도움말에도 보이지 않는다
     assert!(!r.args["help"].as_str().unwrap_or_default().contains(" say"), "{}", r.args["help"]);
 }
+
+fn remote_req(text: &str) -> ChatRequest {
+    ChatRequest { text: text.into(), guild_id: Some("g1".into()), user_id: Some("u1".into()), remote: discord("u1"), ..Default::default() }
+}
+
+/// 해석만 하는 단계는 아무것도 실행하지 않고, 실행할 명령을 액션 id와 서버로 알려 준다 (릴레이가 계획으로 받는다)
+#[tokio::test]
+async fn interpreting_names_the_action_without_running_it() {
+    let mut api = fixture();
+    api.modules[0].players = true;
+    let cat = Catalog::for_language("en");
+    let cases = [
+        ("마크 시작", "server.start", "i-mc"),
+        ("survival stop", "server.stop", "i-mc"),
+        ("mc status", "server.status", "i-mc"),
+        ("mc players", "server.players", "i-mc"),
+        ("mc 추방 Steve griefing", "server.command:kick", "i-mc"),
+        ("팰월드 players", "server.command:players", "i-pal"),
+    ];
+    for (text, action, instance) in cases {
+        match interpret(&api, &settings(), &cat, &remote_req(text)).await {
+            Interpreted::Run(target) => {
+                assert_eq!((target.action_id().as_str(), target.instance()), (action, instance), "{text}");
+            }
+            Interpreted::Reply(r) => panic!("{text}: {r:?}"),
+        }
+    }
+    assert!(api.calls().is_empty(), "{:?}", api.calls());
+}
+
+/// 실행할 것이 없는 입력(도움말·목록·모르는 명령·권한 없음)은 해석 단계에서 답이 나온다
+#[tokio::test]
+async fn interpreting_answers_what_needs_no_run() {
+    let api = fixture();
+    let cat = Catalog::for_language("en");
+    let answer = |text: &'static str| {
+        let api = &api;
+        let cat = &cat;
+        async move {
+            match interpret(api, &settings(), cat, &remote_req(text)).await {
+                Interpreted::Reply(r) => r,
+                Interpreted::Run(t) => panic!("{text} ran {}", t.action_id()),
+            }
+        }
+    };
+    assert_eq!(answer("help").await.text, run(&api, &settings(), "help").await);
+    assert_eq!(answer("list").await.text, run(&api, &settings(), "list").await);
+    assert_eq!(answer("mc dance").await.code, Some("UNKNOWN_COMMAND"));
+    assert_eq!(answer("zzz start").await.code, Some("INSTANCE_NOT_FOUND"));
+    assert!(api.calls().is_empty());
+}
+
+/// 해석한 명령을 실행하면 한 번에 처리한 것과 같은 답을 쓰고, 성공 여부를 따로 알려 준다
+#[tokio::test]
+async fn running_an_interpreted_command_answers_like_the_whole_command() {
+    let mut api = fixture();
+    let cat = Catalog::for_language("en");
+    let req = remote_req("mc 추방 Steve");
+    let Interpreted::Run(target) = interpret(&api, &settings(), &cat, &req).await else { panic!() };
+    let done = execute(&api, &settings(), &cat, &req, &target).await;
+    assert!(done.ok);
+    assert_eq!(api.calls(), vec![r#"command i-mc kick ["Steve"]"#]);
+    assert_eq!(done.reply.text, run(&api, &settings(), "mc 추방 Steve").await);
+
+    api.reply = Some(InternalResponse { status: StatusCode::INTERNAL_SERVER_ERROR, body: json!({ "success": false, "error": "boom" }) });
+    let req = remote_req("mc stop");
+    let Interpreted::Run(target) = interpret(&api, &settings(), &cat, &req).await else { panic!() };
+    let done = execute(&api, &settings(), &cat, &req, &target).await;
+    assert!(!done.ok && done.reply.text.starts_with('❌'), "{:?}", done.reply);
+}
+
+/// 이미 켜져 있는 서버의 시작은 그렇게 답하고, 다 켜졌다는 알림을 기다릴 일이 아니라고 표시한다
+#[tokio::test]
+async fn starting_a_running_server_says_it_is_already_on() {
+    let mut api = fixture();
+    api.reply = Some(InternalResponse { status: StatusCode::OK, body: json!({ "success": true, "already_running": true }) });
+    let cat = Catalog::for_language("ko");
+    let req = remote_req("마크 시작");
+    let Interpreted::Run(target) = interpret(&api, &settings(), &cat, &req).await else { panic!() };
+    let done = execute(&api, &settings(), &cat, &req, &target).await;
+    assert!(done.ok && done.already_running);
+    assert_eq!(done.reply.text, cat.t("server.already_running", &[("name", "survival")]));
+    assert_ne!(done.reply.text, "server.already_running");
+}

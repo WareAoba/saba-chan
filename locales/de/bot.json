@@ -42,6 +42,7 @@
   "server": {
     "start_request": "⏳ Starten von **{{name}}**-Server...",
     "start_complete": "✅ Start-Anfrage für **{{name}}** abgeschlossen!",
+    "already_running": "ℹ️ **{{name}}** läuft bereits.",
     "stop_request": "⏳ Stoppen von **{{name}}**-Server...",
     "stop_complete": "✅ Stop-Anfrage für **{{name}}** abgeschlossen!",
     "graceful_stop_unavailable": "⚠️ **{{name}}** wurde nicht gestoppt: Es gibt keinen Weg (Konsole oder REST), zu speichern und zu beenden. Um ihn ohne Speichern zu beenden, wähle in saba-chan auf diesem PC einen erzwungenen Stopp.",

@@ -42,6 +42,7 @@
   "server": {
     "start_request": "⏳ **{{name}}** 서버를 시작합니다...",
     "start_complete": "✅ **{{name}}** 시작 요청 완료!",
+    "already_running": "ℹ️ **{{name}}** 서버는 이미 켜져 있어요.",
     "stop_request": "⏳ **{{name}}** 서버를 정지합니다...",
     "stop_complete": "✅ **{{name}}** 정지 요청 완료!",
     "graceful_stop_unavailable": "⚠️ **{{name}}** 서버는 저장하고 끄라고 요청할 방법(콘솔·REST)이 없어 정지하지 않았습니다. 저장 없이 끄려면 이 PC의 사바쨩에서 강제 종료를 고르세요.",

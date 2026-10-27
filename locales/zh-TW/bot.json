@@ -42,6 +42,7 @@
   "server": {
     "start_request": "⏳ 正在啟動 **{{name}}** 伺服器...",
     "start_complete": "✅ **{{name}}** 啟動要求已完成！",
+    "already_running": "ℹ️ **{{name}}** 已在執行中。",
     "stop_request": "⏳ 正在停止 **{{name}}** 伺服器...",
     "stop_complete": "✅ **{{name}}** 停止要求已完成！",
     "graceful_stop_unavailable": "⚠️ **{{name}}** 未停止：它沒有可以儲存並結束的途徑（主控台或 REST）。如需不儲存直接結束，請在這台電腦上的 saba-chan 中選擇強制停止。",

@@ -42,6 +42,7 @@
   "server": {
     "start_request": "⏳ Starting **{{name}}** server...",
     "start_complete": "✅ **{{name}}** start request completed!",
+    "already_running": "ℹ️ **{{name}}** is already running.",
     "stop_request": "⏳ Stopping **{{name}}** server...",
     "stop_complete": "✅ **{{name}}** stop request completed!",
     "graceful_stop_unavailable": "⚠️ **{{name}}** was not stopped: it has no way (console or REST) to save and exit. To end it without saving, choose a force stop in saba-chan on this PC.",
