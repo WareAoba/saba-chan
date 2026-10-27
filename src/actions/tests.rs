@@ -1165,6 +1165,18 @@ async fn a_sentence_plans_the_action_it_names_and_runs_with_the_same_reply() {
     assert_eq!(text, crate::chat::api::run_with_daemon_settings(&state, &req).await.text);
 }
 
+/// 문장 계획도 실행할 때 지금 권한으로 다시 판정한다: 계획 뒤에 권한을 잃었으면 실행하지 않는다
+#[tokio::test]
+async fn a_sentence_plan_is_judged_again_when_it_runs() {
+    let (state, _id, _tmp) = server().await;
+    open_everything(&state).await;
+    let caller = relay("u1", false);
+    let planned = plan_text(&state, "srv status", &caller).await.unwrap();
+    set_node(&state, json!({ "ownerDiscordId": "owner", "defaultLevel": 1, "members": { "u1": -1 } })).await;
+    let done = run(&state, "", None, &Value::Null, planned["planId"].as_str(), &caller).await.unwrap();
+    assert_eq!(done["success"], false, "{done}");
+}
+
 /// 실행할 것이 없는 문장(도움말·모르는 명령)은 계획 없이 답한다. 모르는 입력은 코드와 함께 실패로
 #[tokio::test]
 async fn a_sentence_with_nothing_to_run_is_answered_without_a_plan() {
