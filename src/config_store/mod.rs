@@ -190,7 +190,7 @@ impl GuiSettings {
     /// 손으로 고친 파일의 고를 수 없는 값은 기본값으로 둔다 (그대로 두면 다른 앱 설정 저장도 모두 거절된다)
     fn sanitize(&mut self) {
         let default = Self::default();
-        let mut fix = |value: &mut String, allowed: &[&str], fallback: &str| {
+        let fix = |value: &mut String, allowed: &[&str], fallback: &str| {
             if !allowed.contains(&value.as_str()) {
                 *value = fallback.to_string();
             }
