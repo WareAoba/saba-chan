@@ -703,6 +703,7 @@
     "restart_required_title": "Redémarrage requis",
     "apply": "Appliquer",
     "module_busy": "Une autre installation ou suppression de ce module est encore en cours. Réessayez quand elle sera terminée.",
+    "module_in_use": "Un serveur en cours d'exécution utilise ce module. Arrêtez le serveur avant de le supprimer.",
     "extensions_enabled": "Les extensions utilisées par ce module ont été activées : {{ids}}",
     "extension_failed": "Impossible de préparer l’extension {{id}} : {{error}}",
     "remove_failed": "Impossible de supprimer le module : {{error}}"
@@ -1135,6 +1136,7 @@
     "schedule_desc": "Démarre, arrête, sauvegarde, archive, redémarre, annonce, met à jour ou lance des commandes de jeu automatiquement à heures ou intervalles fixes.",
     "schedule_empty": "Aucune tâche planifiée.",
     "schedule_saved": "Planification enregistrée.",
+    "schedule_date_passed": "La tâche {{n}} est prévue à une date déjà passée, elle ne sera donc pas exécutée. Modifiez sa date ou son heure.",
     "task_add": "Ajouter une tâche",
     "task_aria": "Type de la tâche {{n}}",
     "task_enabled": "Activer cette tâche",

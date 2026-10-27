@@ -1743,3 +1743,71 @@ async fn apply_staged_without_a_pending_list_fails() {
     assert!(result.unwrap_err().contains("Failed to load manifest"));
     assert_eq!(last, Some(("error".to_string(), 1)));
 }
+
+// 받아 둔 뒤 설치기로 같거나 더 새 판을 깔았으면, 되살린 목록의 그 항목은 적용하지 않는다 (옛 판으로 되돌리지 않게)
+#[test]
+fn a_restored_pending_list_skips_what_is_already_installed_at_that_version_or_newer() {
+    let tmp = tempfile::tempdir().unwrap();
+    let file = tmp.path().join("x.zip");
+    std::fs::write(&file, b"zip").unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.staging_dir = tmp.path().join("staging");
+    manager.status.components = vec![staged(Component::Locales, &file), staged(Component::Module("m".into()), &file)];
+    manager.save_pending_manifest().unwrap();
+
+    let mut loaded = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    loaded.staging_dir = manager.staging_dir.clone();
+    loaded.installed_manifest_file = tmp.path().join("installed-manifest.json");
+    let installed: std::collections::HashMap<String, String> =
+        [(Component::Locales.manifest_key(), "0.3.0".to_string()), (Component::Module("m".into()).manifest_key(), "0.1.0".to_string())].into_iter().collect();
+    std::fs::write(&loaded.installed_manifest_file, serde_json::to_string(&installed).unwrap()).unwrap();
+    assert_eq!(loaded.load_pending_manifest().unwrap(), 1);
+    assert_eq!(loaded.status.components.iter().map(|c| c.component.clone()).collect::<Vec<_>>(), vec![Component::Module("m".into())]);
+}
+
+// 적용 대상 목록을 남긴 뒤 설치기로 그중 하나를 같거나 더 새 판으로 깔았으면, 그 키는 건너뛰고 나머지는 적용한다
+#[tokio::test]
+async fn an_apply_target_already_installed_is_skipped_and_the_rest_are_applied() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.install_root = tmp.path().join("install");
+    manager.staging_dir = tmp.path().join("staging");
+    manager.installed_manifest_file = tmp.path().join("installed-manifest.json");
+    std::fs::create_dir_all(&manager.install_root).unwrap();
+    let name = format!("targets-{}", std::process::id());
+    let ext = Component::Extension(name.clone());
+    let zip = extension_zip(tmp.path());
+    manager.status.components = vec![staged(Component::Locales, &zip), staged(ext.clone(), &zip)];
+    manager.save_pending_manifest().unwrap();
+    manager.save_updater_apply_targets(&[Component::Locales.manifest_key(), ext.manifest_key()]).unwrap();
+    manager.status.components.clear();
+    let installed: std::collections::HashMap<String, String> = [(Component::Locales.manifest_key(), "0.2.0".to_string())].into_iter().collect();
+    std::fs::write(&manager.installed_manifest_file, serde_json::to_string(&installed).unwrap()).unwrap();
+
+    let (applied, failed) = manager.apply_staged(|_| {}).await.unwrap();
+
+    assert_eq!(applied, vec![ext.manifest_key()]);
+    assert!(failed.is_empty(), "{:?}", failed);
+    let _ = std::fs::remove_dir_all(manager.resolve_ext_dir(&name));
+}
+
+// 기록 없이 놓인 모듈의 같은 버전 재설치(공식 표시 복구)는 되살린 목록에서도 남긴다. 더 새 판이 깔렸으면 뺀다
+#[test]
+fn a_restored_same_version_reinstall_without_a_record_is_kept() {
+    let tmp = tempfile::tempdir().unwrap();
+    let file = tmp.path().join("x.zip");
+    std::fs::write(&file, b"zip").unwrap();
+    let same = Component::Module(format!("unrecorded-{}", std::process::id()));
+    let newer = Component::Module(format!("newer-{}", std::process::id()));
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.staging_dir = tmp.path().join("staging");
+    manager.installed_manifest_file = tmp.path().join("installed-manifest.json");
+    manager.status.components = vec![staged(same.clone(), &file), staged(newer.clone(), &file)];
+    manager.save_pending_manifest().unwrap();
+    let installed: std::collections::HashMap<String, String> =
+        [(same.manifest_key(), "0.2.0".to_string()), (newer.manifest_key(), "0.3.0".to_string())].into_iter().collect();
+    std::fs::write(&manager.installed_manifest_file, serde_json::to_string(&installed).unwrap()).unwrap();
+
+    assert_eq!(manager.load_pending_manifest().unwrap(), 1);
+    assert_eq!(manager.status.components[0].component, same);
+}

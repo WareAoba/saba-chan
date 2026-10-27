@@ -703,6 +703,7 @@
     "restart_required_title": "需要重新啟動",
     "apply": "套用",
     "module_busy": "此模組的另一個安裝或移除仍在進行中。請在完成後再試一次。",
+    "module_in_use": "執行中的伺服器正在使用此模組。請先停止伺服器再移除。",
     "extensions_enabled": "已啟用此模組使用的擴充功能：{{ids}}",
     "extension_failed": "無法準備擴充功能 {{id}}：{{error}}",
     "remove_failed": "無法移除模組：{{error}}"
@@ -1135,6 +1136,7 @@
     "schedule_desc": "在設定的時間或間隔自動啟動、停止、儲存、備份、重新啟動、公告、更新伺服器或執行遊戲指令。",
     "schedule_empty": "沒有排程工作。",
     "schedule_saved": "已儲存排程工作。",
+    "schedule_date_passed": "第 {{n}} 個工作的日期已經過去，不會執行。請修改日期或時間。",
     "task_add": "新增工作",
     "task_aria": "第 {{n}} 個工作的類型",
     "task_enabled": "啟用此工作",

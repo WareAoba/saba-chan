@@ -93,7 +93,11 @@ pub fn action(app: &AppHandle, id: &str) -> bool {
         "switch_to_cli" => {
             tauri::async_runtime::spawn(async move {
                 let state = app.state::<AppState>();
-                let body = json!({ "kind": "cli" });
+                // 고른 원격 데몬이 있으면 CLI도 그 데몬으로 연다 (창의 전환 버튼과 같다)
+                let body = match state.client.target() {
+                    Some(daemon) => json!({ "kind": "cli", "daemon": daemon }),
+                    None => json!({ "kind": "cli" }),
+                };
                 let res = state.client.post("/api/clients/launch", &body, 30000).await;
                 let ok = res.as_ref().is_ok_and(|v| v["success"].as_bool().unwrap_or(false));
                 if ok {

@@ -338,6 +338,7 @@
       "snapshot_not_found": "游戏没有自动备份.",
       "invalid_relay_url": "中继地址只能使用 https://(仅在本机测试时可对 localhost、127.0.0.1 或 [::1] 使用 http)。",
       "module_busy": "此模块正在安装或删除中。请在完成后重试。",
+      "module_in_use": "正在运行的服务器正在使用此模块。请先停止服务器再删除。",
       "schedule_changed": "计划任务已在别处更改。请用 saba-chan-cli schedule show 重新确认后再试。",
       "invalid_command": "命令键请写成 `<服务器>/<命令>`。不带服务器的键只能是全局操作 id。",
       "no_command_path": "此服务器是在 Saba-chan 之外启动的，没有可接收命令的控制台。请通过 Saba-chan 重新启动：saba-chan-cli restart <server>",
@@ -1043,6 +1044,7 @@
       "schedule.edit.from": "与 --every-days 一起：从这天开始计算 (YYYY-MM-DD，默认今天)",
       "schedule.edit.args": "游戏命令输入 名称=值 (可重复)",
       "schedule.add.command": "要执行的游戏命令 (command 任务，列表：server commands)",
+      "schedule.edit.command": "要更改的游戏命令 (command 任务，换成其他命令时除非给出 --arg，否则清除旧输入)",
       "bot.notice.on": "开启启动通知",
       "bot.notice.off": "关闭启动通知"
     },
@@ -1125,6 +1127,7 @@
     "edited": "已修改任务：{{task}}",
     "nothing_to_edit": "请至少给出一项修改（--every、--at、--every-days、--on、--date、--daily、--warn、--no-warn、--message、--arg）。",
     "keep_zero": "请至少保留 1 个备份。",
+    "date_passed": "第 {{number}} 个任务的日期已经过去，不会执行。请修改日期或时间。",
     "keep_set": "将保留最近 {{count}} 个定时备份。",
     "confirm_clear": "要移除 {{name}} 的所有定时任务吗？",
     "cleared": "{{name}} 现在没有定时任务了。",

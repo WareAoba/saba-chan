@@ -703,6 +703,7 @@
     "mock_server_label": "Mock 서버 (테스트)",
     "real_api_label": "실제 GitHub API",
     "module_busy": "이 모듈의 다른 설치나 제거가 아직 진행 중이에요. 끝난 뒤 다시 시도해 주세요.",
+    "module_in_use": "켜진 서버가 이 모듈을 쓰고 있어요. 서버를 정지한 뒤 제거해 주세요.",
     "extensions_enabled": "이 모듈이 쓰는 익스텐션을 켰어요: {{ids}}",
     "extension_failed": "익스텐션 {{id}}를 준비하지 못했어요: {{error}}",
     "remove_failed": "모듈을 제거하지 못했어요: {{error}}"
@@ -1135,6 +1136,7 @@
     "schedule_desc": "정한 시각이나 주기에 서버 시작·정지·저장·백업·재시작·공지·업데이트와 게임 명령을 자동으로 실행합니다.",
     "schedule_empty": "예약된 작업이 없어요.",
     "schedule_saved": "예약 작업을 저장했어요.",
+    "schedule_date_passed": "{{n}}번 작업의 날짜가 이미 지나서 실행되지 않아요. 날짜나 시각을 고쳐 주세요.",
     "task_add": "작업 추가",
     "task_aria": "{{n}}번째 작업 종류",
     "task_enabled": "이 작업 사용",

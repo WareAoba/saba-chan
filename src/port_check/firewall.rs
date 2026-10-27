@@ -121,7 +121,8 @@ pub(super) fn decide(
     protocol: Protocol,
     env: &dyn Fn(&str) -> Option<String>,
 ) -> Option<Verdict> {
-    if active.is_empty() {
+    // Windows 방화벽이 꺼져 있으면 다른 방화벽(백신 등)이 대신 막고 있을 수 있어 허용이라고 단정하지 않는다
+    if active.is_empty() || active.iter().any(|p| !p.enabled) {
         return None;
     }
     // 맞는지 모르는 허용 규칙과 차단 규칙은 따로 맞을 수 있다 (서로 다른 원격 주소 범위)
@@ -360,9 +361,9 @@ mod tests {
     fn without_an_allow_rule_the_default_inbound_block_applies() {
         let rules = [allow(Some(r"C:\Games\other.exe"), Some(6), ALL)];
         assert_eq!(decide(&[profile(PRIVATE)], &rules, EXE, 7777, Protocol::Tcp, &env), Some(Verdict::Blocked));
-        // 방화벽이 꺼져 있거나 기본 동작이 허용이면 막지 않는다
+        // 방화벽이 꺼져 있으면 다른 방화벽이 막을 수 있어 판정하지 않고, 기본 동작이 허용이면 막지 않는다
         let off = Profile { enabled: false, ..profile(PRIVATE) };
-        assert_eq!(decide(&[off], &rules, EXE, 7777, Protocol::Tcp, &env), Some(Verdict::Allowed));
+        assert_eq!(decide(&[off], &rules, EXE, 7777, Protocol::Tcp, &env), None);
         let open = Profile { default_allow: true, ..profile(PRIVATE) };
         assert_eq!(decide(&[open], &rules, EXE, 7777, Protocol::Tcp, &env), Some(Verdict::Allowed));
         // "모두 차단"은 허용 규칙보다 앞선다

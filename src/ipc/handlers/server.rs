@@ -804,6 +804,13 @@ pub async fn remove_module(
     let _dirs = super::paths::components_in_use().await;
     let modules_dir = {
         let supervisor = state.supervisor.read().await;
+        // 켜진 서버가 쓰는 모듈을 지우면 그 서버를 정지할 수 없다 (EE9). Windows 경로는 대소문자를 가리지 않는다
+        for instance in supervisor.instance_store.list() {
+            if instance.module_name.eq_ignore_ascii_case(&module_id) && supervisor.is_running(&instance.id).await {
+                let error = format!("Module '{}' is used by a running server; stop it first", module_id);
+                return (StatusCode::OK, Json(json!({ "ok": false, "error": error, "error_code": "module_in_use" }))).into_response();
+            }
+        }
         std::path::PathBuf::from(supervisor.module_loader.modules_dir())
     };
     let module_path = modules_dir.join(&module_id);
@@ -1296,10 +1303,11 @@ async fn stop_instance_unrecorded(state: IPCServer, key: &str, force: bool) -> a
                 if success {
                     // tracker는 id로만 찾는다: 이름이 다른 인스턴스의 id와 같아도 그쪽을 건드리지 않는다
                     let supervisor = state.supervisor.read().await;
-                    if let Err(e) = supervisor.tracker.untrack(&inst.id) {
-                        tracing::warn!("Failed to untrack stopped server '{}': {}", name, e);
-                    } else {
-                        tracing::info!("Server '{}' untracked from process tracker", name);
+                    // managed 정지는 stop_server 안에서 이미 tracker를 비운다: NotFound는 정상이다
+                    match supervisor.tracker.untrack(&inst.id) {
+                        Ok(()) => tracing::info!("Server '{}' untracked from process tracker", name),
+                        Err(crate::supervisor::process::ProcessError::NotFound { .. }) => {}
+                        Err(e) => tracing::warn!("Failed to untrack stopped server '{}': {}", name, e),
                     }
                 }
                 (StatusCode::OK, Json(result)).into_response()
@@ -2027,6 +2035,35 @@ mod tests {
         assert_eq!(body["missing_dependencies"], json!(["saba-core >=99.0.0 (installed 0.1.9)"]), "{body}");
         let missing = saba_chan_updater_lib::unmet_requires("module-future", &requires, &Default::default());
         assert_eq!(unmet_requires_body("future", &missing)["missing_dependencies"], json!(["saba-core >=99.0.0 (not installed)"]));
+    }
+
+    /// 켜진 서버가 쓰는 모듈은 지우지 않는다: 지우면 그 서버를 정지할 수 없게 된다 (EE9)
+    #[tokio::test]
+    async fn a_module_used_by_a_running_server_is_not_removed() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("plain");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("module.toml"), "[module]\nschema_version = 1\nname = \"plain\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n").unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "").unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let inst = crate::instance::ServerInstance::new("srv", "plain");
+        let id = inst.id.clone();
+        sup.instance_store.add(inst).unwrap();
+        sup.tracker.track(&id, std::process::id()).unwrap();
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+
+        let refused = crate::ipc::internal::into_internal(remove_module(Path("plain".into()), State(state.clone())).await.into_response()).await.body;
+        assert_eq!(refused["error_code"], "module_in_use", "{refused}");
+        assert!(dir.exists(), "the module folder must stay");
+        // Windows 경로는 대소문자를 가리지 않는다: 다른 대소문자로 불러도 같은 폴더다
+        let upper = crate::ipc::internal::into_internal(remove_module(Path("PLAIN".into()), State(state.clone())).await.into_response()).await.body;
+        assert_eq!(upper["error_code"], "module_in_use", "{upper}");
+
+        state.supervisor.read().await.tracker.untrack(&id).unwrap();
+        let removed = crate::ipc::internal::into_internal(remove_module(Path("plain".into()), State(state)).await.into_response()).await.body;
+        assert_eq!(removed["ok"], true, "{removed}");
     }
 
     /// 같은 모듈을 동시에 두 번 설치하지 않고, 설치마다 다른 임시 경로를 쓴다 (D-S2)

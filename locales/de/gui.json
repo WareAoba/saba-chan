@@ -703,6 +703,7 @@
     "restart_required_title": "Neustart erforderlich",
     "apply": "Anwenden",
     "module_busy": "Eine andere Installation oder Entfernung dieses Moduls läuft noch. Versuche es erneut, wenn sie fertig ist.",
+    "module_in_use": "Ein laufender Server verwendet dieses Modul. Stoppe den Server, bevor du es entfernst.",
     "extensions_enabled": "Die Erweiterungen dieses Moduls wurden aktiviert: {{ids}}",
     "extension_failed": "Erweiterung {{id}} konnte nicht eingerichtet werden: {{error}}",
     "remove_failed": "Modul konnte nicht entfernt werden: {{error}}"
@@ -1135,6 +1136,7 @@
     "schedule_desc": "Startet, stoppt, speichert, sichert, startet neu, kündigt an, aktualisiert oder führt Spielbefehle automatisch zu festen Zeiten oder Intervallen aus.",
     "schedule_empty": "Keine geplanten Aufgaben.",
     "schedule_saved": "Zeitplan gespeichert.",
+    "schedule_date_passed": "Aufgabe {{n}} ist für ein bereits vergangenes Datum geplant und wird nicht ausgeführt. Ändere Datum oder Uhrzeit.",
     "task_add": "Aufgabe hinzufügen",
     "task_aria": "Typ von Aufgabe {{n}}",
     "task_enabled": "Diese Aufgabe aktivieren",

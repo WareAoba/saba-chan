@@ -289,7 +289,8 @@ async fn remote_auth(State(ctx): State<Ctx>, mut req: Request<Body>, next: Next)
         };
     }
     if path == "/health" {
-        return next.run(req).await;
+        // 토큰 없이 받는 상태 확인은 살아 있는지만 답한다 (데몬 /health의 판·PID·토큰 증명은 이 PC 안에서만)
+        return Json(json!({ "ok": true })).into_response();
     }
     let token = req
         .headers()
@@ -543,7 +544,7 @@ pub(crate) mod tests {
         let clients = Clients::default();
         let ctx = Ctx::new(file.clone(), clients.clone(), relay);
         let routes = Router::new()
-            .route("/health", axum::routing::get(|| async { Json(json!({ "ok": true })) }))
+            .route("/health", axum::routing::get(|| async { Json(json!({ "ok": true, "version": "0.0.0", "pid": 1, "token": true })) }))
             .route(
                 "/api/events",
                 axum::routing::get(|| async {
@@ -699,8 +700,8 @@ pub(crate) mod tests {
             let (s, _) = call(addr, &pin, "HEAD", path, Some(&token), None).await.unwrap();
             assert_eq!(s, 403, "HEAD {path}");
         }
-        let (s, _) = call(addr, &pin, "GET", "/health", None, None).await.unwrap();
-        assert_eq!(s, 200);
+        let (s, body) = call(addr, &pin, "GET", "/health", None, None).await.unwrap();
+        assert_eq!((s, body), (200, json!({ "ok": true })));
         cancel.cancel();
     }
 

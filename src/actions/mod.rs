@@ -1237,18 +1237,25 @@ pub async fn plan_text(server: &IPCServer, text: &str, caller: &Caller) -> Resul
     Ok(view)
 }
 
-/// 문장 계획 실행: 답은 문장 명령과 같다 (`text`). 시작했는데 이미 켜져 있었으면 `already_running`
-async fn run_text(server: &IPCServer, plan: TextPlan, caller: &Caller) -> Value {
+/// 문장 계획 실행: 답은 문장 명령과 같다 (`text`). 시작했는데 이미 켜져 있었으면 `already_running`.
+/// 실행할 때 문장을 다시 해석한다: 계획 뒤에 바뀐 권한·서버 상태로 판정하고 답한다
+async fn run_text(server: &IPCServer, plan: TextPlan, caller: &Caller) -> Result<Value, ActionError> {
     let req = chat_request(&plan.text, caller);
     let (settings, cat) = chat_settings(server, caller).await;
-    let done = crate::chat::execute(server, &settings, &cat, &req, &plan.target).await;
+    let target = match crate::chat::interpret(server, &settings, &cat, &req).await {
+        crate::chat::Interpreted::Run(target) if target.action_id() == plan.target.action_id() && target.instance() == plan.target.instance() => target,
+        // 같은 문장이 다른 명령·서버를 가리키게 됐다 (서버 이름이 바뀌었거나 지워짐): 계획을 다시 만들게 한다
+        crate::chat::Interpreted::Run(_) => return Err(ActionError::new(404, "plan_expired", "The plan no longer matches; plan again")),
+        crate::chat::Interpreted::Reply(reply) => return Ok(chat_json(reply, true, caller)),
+    };
+    let done = crate::chat::execute(server, &settings, &cat, &req, &target).await;
     let mut out = chat_json(done.reply, done.ok, caller);
-    out["actionId"] = json!(plan.target.action_id());
-    out["instance"] = json!(plan.target.instance());
+    out["actionId"] = json!(target.action_id());
+    out["instance"] = json!(target.instance());
     if done.already_running {
         out["already_running"] = json!(true);
     }
-    out
+    Ok(out)
 }
 
 fn chat_request(text: &str, caller: &Caller) -> crate::chat::ChatRequest {
@@ -1410,7 +1417,7 @@ pub async fn run(server: &IPCServer, id: &str, instance: Option<&str>, input: &V
                     authorize(server, &r, &caller).await?;
                     (*r, caller)
                 }
-                PlanBody::Text(plan) => return Ok(run_text(server, *plan, &caller).await),
+                PlanBody::Text(plan) => return run_text(server, *plan, &caller).await,
             }
         }
         None => {

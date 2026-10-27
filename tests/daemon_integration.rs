@@ -60,6 +60,8 @@ fn cleanup_test_instances() {
     }
 }
 
+/// 빈 포트 번호. 리스너를 바로 놓으므로 그사이 다른 테스트의 데몬이 같은 번호를 잡을 수 있다:
+/// `boot_ipc`는 답한 데몬이 자기 것인지 확인한다
 fn pick_free_port() -> u16 {
     let listener = TcpListener::bind("127.0.0.1:0").expect("failed to bind ephemeral port");
     let port = listener.local_addr().unwrap().port();
@@ -67,11 +69,34 @@ fn pick_free_port() -> u16 {
     port
 }
 
+/// 테스트 안에서 겹치지 않는 이름
+fn unique_name(prefix: &str) -> String {
+    format!("{}-{}", prefix, uuid::Uuid::new_v4())
+}
+
 async fn wait_for_ipc_ready(base_url: &str, client: &reqwest::Client) {
     for _ in 0..50 {
         if let Ok(resp) = client.get(format!("{}/api/modules", base_url)).send().await {
             if resp.status().is_success() {
                 return;
+            }
+        }
+        sleep(Duration::from_millis(300)).await;
+    }
+    panic!("IPC server did not become ready: {}", base_url);
+}
+
+/// 이 포트에서 답하는 데몬이 `epoch`(이 테스트가 만든 로그 버퍼의 세대)를 가진 데몬인지.
+/// 다른 데몬이 답하거나(포트를 빼앗김) 이 데몬이 바인드에 실패해 끝나면 false
+async fn wait_for_own_ipc(base_url: &str, client: &reqwest::Client, epoch: u64, task: &tokio::task::JoinHandle<()>) -> bool {
+    for _ in 0..50 {
+        if task.is_finished() {
+            return false;
+        }
+        if let Ok(resp) = client.get(format!("{}/api/daemon/console?count=0", base_url)).send().await {
+            if resp.status().is_success() {
+                let body: Value = resp.json().await.unwrap_or_default();
+                return body["epoch"].as_u64() == Some(epoch);
             }
         }
         sleep(Duration::from_millis(300)).await;
@@ -111,39 +136,51 @@ entry = "lifecycle.py"
     }
 }
 
-/// 테스트용 IPC 서버 + Supervisor 를 부팅하여 (base_url, abort_handle)을 반환
+/// 테스트용 IPC 서버 + Supervisor 를 부팅하여 (base_url, supervisor, server_task)를 반환
 /// 각 테스트마다 고유한 임시 인스턴스 디렉토리를 사용하여 병렬 실행 시 격리를 보장한다.
+/// 고른 포트를 그사이 다른 테스트의 데몬이 잡으면 그 데몬에 붙지 않고 다른 포트로 다시 띄운다
 async fn boot_ipc() -> (String, Arc<RwLock<Supervisor>>, tokio::task::JoinHandle<()>) {
     std::env::set_var("SABA_AUTH_DISABLED", "1");
     ensure_test_module();
 
-    // 테스트별 고유 임시 인스턴스 디렉토리 생성 (병렬 격리)
-    let tmp_instances = std::env::temp_dir()
-        .join(format!("saba-test-instances-{}", pick_free_port()));
-    fs::create_dir_all(&tmp_instances).expect("failed to create temp instances dir");
+    // 테스트별 고유 임시 인스턴스 디렉토리 (병렬 격리). 서버 작업이 끝나면(abort) 함께 지운다
+    let tmp_instances = Arc::new(
+        tempfile::Builder::new()
+            .prefix("saba-test-instances-")
+            .tempdir()
+            .expect("failed to create temp instances dir"),
+    );
 
     let supervisor = Arc::new(RwLock::new(
-        Supervisor::new_with_instances_dir("./modules", &tmp_instances.to_string_lossy()),
+        Supervisor::new_with_instances_dir("./modules", &tmp_instances.path().to_string_lossy()),
     ));
     {
         let mut sup = supervisor.write().await;
         sup.initialize().await.expect("supervisor init failed");
     }
 
-    let port = pick_free_port();
-    let listen_addr = format!("127.0.0.1:{}", port);
-    let base_url = format!("http://{}", listen_addr);
-
-    let sup_clone = supervisor.clone();
-    let server = IPCServer::new(sup_clone, &listen_addr, saba_core::daemon_log::DaemonLogBuffer::new());
-    let server_task = tokio::spawn(async move {
-        let _ = server.start().await;
-    });
-
     let client = reqwest::Client::new();
-    wait_for_ipc_ready(&base_url, &client).await;
-
-    (base_url, supervisor, server_task)
+    for attempt in 1..=5 {
+        let listen_addr = format!("127.0.0.1:{}", pick_free_port());
+        let base_url = format!("http://{}", listen_addr);
+        let logs = saba_core::daemon_log::DaemonLogBuffer::new();
+        let epoch = logs.epoch();
+        let server = IPCServer::new(supervisor.clone(), &listen_addr, logs);
+        let keep_dir = tmp_instances.clone();
+        let addr = listen_addr.clone();
+        let server_task = tokio::spawn(async move {
+            let _keep_dir = keep_dir;
+            if let Err(e) = server.start().await {
+                panic!("IPC server on {} failed: {:#}", addr, e);
+            }
+        });
+        if wait_for_own_ipc(&base_url, &client, epoch, &server_task).await {
+            return (base_url, supervisor, server_task);
+        }
+        server_task.abort();
+        eprintln!("IPC port {} was taken by another daemon (attempt {}), retrying on another port", listen_addr, attempt);
+    }
+    panic!("IPC server could not bind a port of its own after 5 attempts");
 }
 
 // ═══════════════════════════════════════════════════════
@@ -357,7 +394,7 @@ async fn test_ipc_instance_full_lifecycle() {
     }
 
     // ── 2) 인스턴스 생성
-    let test_name = format!("test-lifecycle-{}", pick_free_port());
+    let test_name = unique_name("test-lifecycle");
     let create_resp = client
         .post(format!("{}/api/instances", base_url))
         .json(&serde_json::json!({
@@ -531,7 +568,7 @@ async fn test_ipc_multiple_instances_are_independent() {
         .expect("No modules found — ensure ./modules/test-module/module.toml exists");
 
     // ── 1) 첫 번째 인스턴스 생성 ──
-    let name_a = format!("test-multi-0-{}", pick_free_port());
+    let name_a = unique_name("test-multi-0");
     let resp_a = client
         .post(format!("{}/api/instances", base_url))
         .json(&serde_json::json!({
@@ -567,7 +604,7 @@ async fn test_ipc_multiple_instances_are_independent() {
     );
 
     // ── 3) 같은 모듈로 새 인스턴스 재생성 (이전 인스턴스 삭제 후이므로 가능) ──
-    let name_b = format!("test-multi-1-{}", pick_free_port());
+    let name_b = unique_name("test-multi-1");
     let resp_b = client
         .post(format!("{}/api/instances", base_url))
         .json(&serde_json::json!({
@@ -611,7 +648,7 @@ async fn test_ipc_create_instance_saves_extension_data() {
 
     let bad = client
         .post(format!("{}/api/instances", base_url))
-        .json(&serde_json::json!({ "name": format!("test-extdata-bad-{}", pick_free_port()), "module_name": module_name, "extension_data": "boxed" }))
+        .json(&serde_json::json!({ "name": unique_name("test-extdata-bad"), "module_name": module_name, "extension_data": "boxed" }))
         .send().await.unwrap();
     assert_eq!(bad.status(), reqwest::StatusCode::BAD_REQUEST);
     let bad: Value = bad.json().await.unwrap();
@@ -620,7 +657,7 @@ async fn test_ipc_create_instance_saves_extension_data() {
     let resp = client
         .post(format!("{}/api/instances", base_url))
         .json(&serde_json::json!({
-            "name": format!("test-extdata-{}", pick_free_port()),
+            "name": unique_name("test-extdata"),
             "module_name": module_name,
             "extension_data": { "boxed": true, "skip": null }
         }))
@@ -675,6 +712,8 @@ async fn test_check_update_no_extension_data() {
         .unwrap();
     let instances: Vec<Value> = list_resp.json().await.unwrap();
 
+    // migration 모드로 만들 때 쓰는 임시 디렉터리 (테스트가 끝날 때까지 둔다)
+    let tmp = tempfile::Builder::new().prefix("saba-test-check-update-").tempdir().expect("failed to create temp dir");
     let test_id = if let Some(inst) = instances.iter().find(|i| {
         i.get("extension_data")
             .and_then(|ed| ed.as_object())
@@ -684,14 +723,12 @@ async fn test_check_update_no_extension_data() {
         inst["id"].as_str().unwrap().to_string()
     } else {
         // migration 모드로 생성 (임시 디렉터리)
-        let tmp = std::env::temp_dir().join("saba-test-check-update");
-        let _ = fs::create_dir_all(&tmp);
         let create_resp = client
             .post(format!("{}/api/instances", base_url))
             .json(&serde_json::json!({
-                "name": format!("test-check-update-{}", pick_free_port()),
+                "name": unique_name("test-check-update"),
                 "module_name": "minecraft",
-                "migration_source": tmp.to_string_lossy(),
+                "migration_source": tmp.path().to_string_lossy(),
             }))
             .send()
             .await

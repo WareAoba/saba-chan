@@ -21,6 +21,8 @@ use tokio_util::sync::CancellationToken;
 
 /// 확인값을 보낸 뒤 시험 리스너가 받기를 기다리는 시간 (릴레이는 TCP를 다 보낸 뒤에 답한다)
 const RECEIVE_GRACE: Duration = if cfg!(test) { Duration::from_millis(300) } else { Duration::from_millis(1500) };
+/// 방화벽 설정 읽기를 기다리는 최대 시간
+const FIREWALL_READ_LIMIT: Duration = Duration::from_secs(10);
 /// 릴레이 요청 시간 (릴레이의 TCP 접속 한도 3초 + 여유)
 const RELAY_TIMEOUT: Duration = Duration::from_secs(10);
 /// 한 번에 확인하는 포트 수 (릴레이 `MAX_PORTS`와 같다)
@@ -536,7 +538,8 @@ async fn run_with(
         let _ = task.await;
     }
     let answer = answer.transpose()?;
-    let firewalled: HashMap<firewall::Query, firewall::Verdict> = match firewall_read.await {
+    // 방화벽 읽기가 오래 걸려도 결과와 이 서버의 시작을 붙잡지 않는다: 시간이 넘으면 판정 없이 낸다
+    let firewalled: HashMap<firewall::Query, firewall::Verdict> = match tokio::time::timeout(FIREWALL_READ_LIMIT, firewall_read).await.unwrap_or_else(|_| Ok(Vec::new())) {
         Ok(verdicts) => queries.into_iter().zip(verdicts).filter_map(|(q, v)| Some((q, v?))).collect(),
         Err(_) => HashMap::new(),
     };

@@ -301,11 +301,13 @@ async fn main() -> anyhow::Result<()> {
                 // GUI / DaemonOnly / spawned 모드: stderr 출력
                 // DaemonLogLayer가 함께 합성되어 버퍼에도 캡처
                 // stderr는 대개 GUI의 파이프라 GUI가 사라지면 남지 않으니 데몬 자신의 파일에도 쓴다. 패닉도 거기 남긴다
+                // 파이프(GUI가 자기 로그에 옮겨 적는다)에는 색 코드를 싣지 않는다
                 let log_file = daemon_log::LogFile::open(&constants::resolve_data_dir().join("logs").join("daemon.log"), DAEMON_LOG_CAP);
                 let file_writer = log_file.clone();
                 tracing_subscriber::registry()
                     .with(env_filter)
                     .with(tracing_subscriber::fmt::layer()
+                        .with_ansi(std::io::IsTerminal::is_terminal(&std::io::stderr()))
                         .with_writer(std::io::stderr))
                     .with(tracing_subscriber::fmt::layer()
                         .with_ansi(false)

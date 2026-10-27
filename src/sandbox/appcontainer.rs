@@ -112,7 +112,12 @@ impl Grants {
             }
         };
         if blocked {
-            tracing::warn!("[Sandbox] not granting {:?} on {}", access, real.display());
+            // 드라이브 뿌리·홈의 목록 보기를 주지 않는 것은 정해진 동작이다 (드라이브 바로 아래 서버 폴더면 매번 생긴다)
+            if access == Access::List {
+                tracing::debug!("[Sandbox] not granting {:?} on {}", access, real.display());
+            } else {
+                tracing::warn!("[Sandbox] not granting {:?} on {}", access, real.display());
+            }
             return;
         }
         if !self.entries.iter().any(|(p, a)| p == &real && *a == access) {

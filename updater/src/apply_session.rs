@@ -43,6 +43,8 @@ impl UpdateManager {
         if target_keys.is_empty() {
             target_keys = self.pending_keys_in_apply_order();
         }
+        // 목록을 남긴 뒤 설치기로 같거나 더 새 판을 깐 키는 적용할 것이 없다 (실패로 남은 것까지 막지 않게)
+        target_keys.retain(|k| !self.already_installed.contains(k));
         let total = target_keys.len();
         let (applied, failed) = self
             .apply_target_keys(&target_keys, |i, key, done| {
