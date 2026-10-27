@@ -139,6 +139,13 @@ export const parseComponents = (comps) =>
 // ─────────────────────────────────────────────────────────────
 const MOCK_RELAY_URL = 'http://127.0.0.1:9876';
 
+// 업데이트 방식 → 데몬 업데이트 설정 값
+const UPDATE_MODES = {
+    check: { auto_download: false, auto_apply: false },
+    download: { auto_download: true, auto_apply: false },
+    apply: { auto_download: true, auto_apply: true },
+};
+
 function DownloadRing({ percent }) {
     const r = 13;
     const circumference = 2 * Math.PI * r;
@@ -182,6 +189,8 @@ function ComponentsTab({ devMode }) {
     const [mockRelayBuild, setMockRelayBuild] = useState(false);
     const [autoCheckEnabled, setAutoCheckEnabled] = useState(true);
     const [updateChannel, setUpdateChannel] = useState('stable');
+    // 찾은 뒤 할 일: check(알리기만) / download(받아 두기) / apply(받고 다음 실행 때 적용). 적용은 데몬이 판단한다
+    const [updateMode, setUpdateMode] = useState('check');
     const [downloadProgress, setDownloadProgress] = useState({ component: null, percent: 0, active: false });
     const pollRef = useRef(null);
     const progressPollRef = useRef(null);
@@ -444,6 +453,22 @@ function ComponentsTab({ devMode }) {
         }
     }, [t]);
 
+    const handleUpdateModeChange = useCallback(
+        async (mode) => {
+            const previous = updateMode;
+            if (mode === previous) return;
+            setUpdateMode(mode);
+            try {
+                throwIfRejected(await window.api?.updaterSetConfig?.(UPDATE_MODES[mode]));
+            } catch (e) {
+                console.error('Failed to set update mode:', e);
+                setUpdateMode(previous);
+                setError(t('saba_storage.switch_failed', { error: e.message }));
+            }
+        },
+        [t, updateMode],
+    );
+
     // 위 채널은 아래 채널 릴리즈도 받는다 (정식 ⊂ 미리보기 ⊂ 베타). 고를 수 있는 값은 데몬이 다시 확인한다
     const handleChannelChange = useCallback(
         async (channel) => {
@@ -473,6 +498,7 @@ function ComponentsTab({ devMode }) {
                     setMockRelayBuild(cfgRes?.mock_relay === true);
                     setAutoCheckEnabled(cfg?.enabled !== false);
                     if (cfg?.channel) setUpdateChannel(cfg.channel);
+                    setUpdateMode(cfg?.auto_apply ? 'apply' : cfg?.auto_download ? 'download' : 'check');
                 }
             } catch (_) {
                 if (mountedRef.current) setMockMode(false);
@@ -664,6 +690,24 @@ function ComponentsTab({ devMode }) {
                     </span>
                     <SabaToggle checked={autoCheckEnabled} onChange={(checked) => handleAutoCheckToggle(checked)} />
                 </label>
+                {autoCheckEnabled && (
+                    <div className="update-panel-setting-row">
+                        <span className="update-panel-setting-label">
+                            <Icon name="download" size="sm" />
+                            {t('updates.mode')}
+                        </span>
+                        <CustomDropdown
+                            className="update-channel-select"
+                            ariaLabel={t('updates.mode')}
+                            value={updateMode}
+                            onChange={handleUpdateModeChange}
+                            options={Object.keys(UPDATE_MODES).map((value) => ({
+                                value,
+                                label: t(`updates.mode_${value}`),
+                            }))}
+                        />
+                    </div>
+                )}
                 <div className="update-panel-setting-row">
                     <span className="update-panel-setting-label">
                         <Icon name="antenna" size="sm" />

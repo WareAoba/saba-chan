@@ -82,6 +82,10 @@ pub fn console_line(l: &Value) -> Vec<Span<'static>> {
     // 제어 문자를 지웠으면 데몬이 센 오프셋이 맞지 않는다: 토큰 없이 바탕색만
     let spans = (text == raw).then(|| l.get("spans")).flatten();
     let mut out = Vec::new();
+    // 앱 설정에서 켰으면 줄 앞 시각 (GUI 콘솔과 같다, `console::Stamp`)
+    if let Some(t) = crate::cmd::console::current_stamp().and_then(|st| st.of_line(l)) {
+        out.push(Span::styled(format!("{t} "), Style::default().fg(Color::DarkGray)));
+    }
     if s(l, "source") == "system" {
         out.push(Span::styled("» ", base));
     }

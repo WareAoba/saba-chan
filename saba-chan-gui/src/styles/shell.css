@@ -775,6 +775,13 @@
     color: var(--text-2);
 }
 
+/* 줄 앞 시각 (설정에서 켤 때만). 줄 색과 상관없이 흐리게 */
+.console-time {
+    color: var(--text-3);
+    margin-right: var(--sp-2);
+    user-select: none;
+}
+
 /* ── 콘솔 색 토큰: 줄 전체 색은 데몬이 매긴 level, 조각 색은 spans(또는 모듈 규칙)의 토큰 ── */
 .console-line.console-level-error {
     color: var(--tok-error);

@@ -258,6 +258,7 @@ pub static ROUTES: &[Route] = &[
     deny("POST", "/api/updates/download"),
     deny("GET", "/api/updates/download/progress"),
     deny("POST", "/api/updates/apply"),
+    deny("POST", "/api/updates/apply-on-launch"),
     deny("POST", "/api/updates/launch-updater"),
     deny("POST", "/api/updates/install"),
     deny("GET", "/api/updates/last-result"),

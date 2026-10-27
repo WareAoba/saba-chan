@@ -1577,6 +1577,7 @@ mod route_coverage {
     const NOT_FOR_CLI: &[(&str, &str)] = &[
         ("/api/client/register", "GUI 창 수명 (CLI는 한 번 돌고 끝난다)"),
         ("/api/updates/install", "원격(디스코드 `/사바쨩 업데이트`)용 한 번에 받고 적용 (CLI `update`는 단계마다 진행을 보인다)"),
+        ("/api/updates/apply-on-launch", "GUI가 열릴 때 '받고 다음 실행 때 적용' (CLI는 `update apply`로 바로 적용한다)"),
         ("/api/client/{id}/heartbeat", "GUI 창 수명"),
         ("/api/client/{id}/unregister", "GUI 창 수명"),
         ("/api/extensions/{id}/gui", "GUI 번들"),

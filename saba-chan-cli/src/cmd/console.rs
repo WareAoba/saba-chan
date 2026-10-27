@@ -25,6 +25,7 @@ const REATTACH_LINES: usize = 20;
 
 pub async fn run(ctx: &Ctx, a: ConsoleArgs) -> Result<()> {
     let sv = resolve::server(ctx, a.server.as_deref()).await?;
+    load_stamp(ctx).await;
     // 한 번도 켠 적 없는 서버는 데몬이 404를 준다 → 빈 콘솔로 본다
     let first = match ctx.api.console(&sv.id, None, Some(a.lines)).await {
         Err(e)
@@ -192,7 +193,75 @@ fn new_lines<'a>(since: Option<u64>, cur: &Cursor, fresh: &Cursor, lines: &'a [V
     seen.map_or(&[], |i| &lines[i + 1..])
 }
 
+/// 줄 앞 시각 표시. 앱 설정(`consoleTimestamps` `24h`·`12h`, `consoleTimestampDate`)을 GUI와 같이 따른다
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Stamp {
+    h12: bool,
+    date: bool,
+}
+
+impl Stamp {
+    /// `GET /api/config/gui` 문서에서. 끔이거나 모르는 값이면 None
+    pub fn from_app(cfg: &Value) -> Option<Self> {
+        let h12 = match s(cfg, "consoleTimestamps") {
+            "24h" => false,
+            "12h" => true,
+            _ => return None,
+        };
+        Some(Self {
+            h12,
+            date: cfg.get("consoleTimestampDate").and_then(Value::as_bool).unwrap_or(false),
+        })
+    }
+
+    /// 유닉스 초 → 이 PC 시계
+    pub fn at(&self, secs: i64) -> String {
+        let fmt = match (self.date, self.h12) {
+            (false, false) => "%H:%M:%S",
+            (false, true) => "%I:%M:%S %p",
+            (true, false) => "%m-%d %H:%M:%S",
+            (true, true) => "%m-%d %I:%M:%S %p",
+        };
+        chrono::DateTime::from_timestamp(secs, 0)
+            .map(|t| t.with_timezone(&chrono::Local).format(fmt).to_string())
+            .unwrap_or_default()
+    }
+
+    /// 줄의 `timestamp`(유닉스 초)가 있으면 그 시각
+    pub fn of_line(&self, l: &Value) -> Option<String> {
+        l.get("timestamp").and_then(Value::as_i64).map(|t| self.at(t))
+    }
+}
+
+/// 이번 `console`이 쓰는 시각 표시. 셸에서 다시 열 때마다 설정을 다시 읽는다 (`run`)
+static STAMP: std::sync::RwLock<Option<Stamp>> = std::sync::RwLock::new(None);
+
+/// 앱 설정을 읽어 시각 표시를 정한다. 읽지 못하면 붙이지 않는다
+pub async fn load_stamp(ctx: &Ctx) {
+    let stamp = ctx.api.app_config().await.ok().and_then(|c| Stamp::from_app(&c));
+    if let Ok(mut g) = STAMP.write() {
+        *g = stamp;
+    }
+}
+
+pub fn current_stamp() -> Option<Stamp> {
+    STAMP.read().ok().and_then(|g| *g)
+}
+
 pub fn format_line(l: &Value) -> String {
+    format_line_with(l, current_stamp().as_ref())
+}
+
+fn format_line_with(l: &Value, stamp: Option<&Stamp>) -> String {
+    let time = stamp.and_then(|st| st.of_line(l)).map(|t| format!("{} ", style(t).dim()));
+    let body = format_body(l);
+    match time {
+        Some(t) => t + &body,
+        None => body,
+    }
+}
+
+fn format_body(l: &Value) -> String {
     let text = strip_terminal_controls(s(l, "content"));
     let base = |t: &str| match (s(l, "source"), s(l, "level")) {
         ("system", _) => style(t).cyan().to_string(),
@@ -552,6 +621,23 @@ mod tests {
         assert_eq!(console::strip_ansi_codes(&format_line(&plain)), "» x");
         let controlled = json!({"content": "safe\u{1b}]8;;https://example.invalid\u{7}label\u{1b}]8;;\u{7}", "source": "stdout", "level": "info"});
         assert_eq!(format_line(&controlled), "safelabel");
+    }
+
+    /// 콘솔 시각은 GUI와 같은 앱 설정(`consoleTimestamps`·`consoleTimestampDate`)을 따른다. 끔이면 붙이지 않는다
+    #[test]
+    fn console_stamps_follow_the_app_setting() {
+        use chrono::TimeZone;
+        let at = chrono::Local.with_ymd_and_hms(2026, 10, 27, 15, 4, 5).unwrap().timestamp();
+        assert!(Stamp::from_app(&json!({})).is_none());
+        assert!(Stamp::from_app(&json!({ "consoleTimestamps": "off" })).is_none());
+        let h24 = Stamp::from_app(&json!({ "consoleTimestamps": "24h" })).unwrap();
+        assert_eq!(h24.at(at), "15:04:05");
+        let h12 = Stamp::from_app(&json!({ "consoleTimestamps": "12h", "consoleTimestampDate": true })).unwrap();
+        assert_eq!(h12.at(at), "10-27 03:04:05 PM");
+        let line = json!({ "content": "Done", "source": "stdout", "level": "info", "timestamp": at });
+        assert_eq!(console::strip_ansi_codes(&format_line_with(&line, Some(&h24))), "15:04:05 Done");
+        // 시각이 없는 줄(옛 데몬)은 그대로
+        assert_eq!(console::strip_ansi_codes(&format_line_with(&json!({ "content": "x" }), Some(&h24))), "x");
     }
 
     /// TUI처럼 출력 창구를 바꿔 끼웠으면 입력 줄을 열지 않고 따라 읽는다: 입력 줄이 화면과 키를 가로챈다 (`start --console`)

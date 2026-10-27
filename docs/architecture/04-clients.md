@@ -109,6 +109,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 | updaterDownload (697) | POST /api/updates/download `{components}` (빈 배열이면 전부) | ✓ 102 |
 | updaterDownloadProgress (705) | GET /api/updates/download/progress | ✓ 103 |
 | updaterApply (707) | POST /api/updates/apply `{components}` (빈 배열이면 전부) | ✓ 104 |
+| updaterApplyOnLaunch | POST /api/updates/apply-on-launch. 앱을 열 때(데몬 준비 뒤) 한 번 부르고, `requires_updater`면 updaterLaunchApply까지 (`App.js`) | ✓ |
 | updaterLaunchApply (725) | Rust `updater_launch_apply` → POST /api/updates/launch-updater {relaunch:[current_exe]}. 업데이터는 데몬이 띄운다 | ✓ 105 |
 | updaterLastResult (727) | GET/DELETE /api/updates/last-result (GET은 `?lang=`, 언어는 `language_get`) | ✓ 106 |
 | updaterGetConfig (737) | GET /api/updates/config | ✓ 108 |
@@ -169,7 +170,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 | daemonTarget / daemonTargetSet | 셸 명령 `daemon_target_get`·`daemon_target_set {target}`(§1.1). 상단 바 데몬 고르기(`shell/DaemonSwitcher.js`)가 쓴다: 연결한 원격 데몬이 있을 때만 보이고, 고르면 화면을 다시 읽는다(`location.reload`). 잊은 원격 데몬이 남아 있으면 이 PC로 되돌린다 | 셸 |
 | getComponentInfo (1005) | GET /api/system/components (실패하면 `app_get_version`만) | ✓ 714 |
 | onOpenServer | 셸의 `app:openServer {instanceId}`(다른 인터페이스가 고른 서버)를 받는다. App은 `revealServer(instanceId)`로 그 서버를 연다(좁은 한 열 화면에서도 목록 대신 상세). 구독자가 없을 때 온 요청은 첫 구독자에게 한 번 넘긴다(`events.js`) | n/a |
-| onCloseRequest / closeResponse (1021-1025) | 셸의 `app:closeRequest`를 받고, Rust `app_close_response`로 답한다(기다리지 않음). App은 받자마자 `ack`를 보낸다. 돌려주는 함수로 그 구독만 해제 | n/a |
+| onCloseRequest / closeResponse (1021-1025) | 셸의 `app:closeRequest`를 받고, Rust `app_close_response`로 답한다(기다리지 않음). App은 받자마자 `ack`를 보낸다. 앱 설정 `closeAction`이 `tray`면 묻지 않고 `exit-interface`, `quit`이면 모두 끄기(켜진 managed 서버가 있으면 그 경고는 그대로), `ask`(기본)면 종료 모달. 돌려주는 함수로 그 구독만 해제 | n/a |
 | onStatusUpdate (1026) | 셸의 `status:update`. 브리지가 마지막 값을 기억해 늦게 붙은 콜백에도 준다(`events.js:137-177`). 돌려주는 함수로 그 구독만 해제 (채널 전체를 떼는 `off*`는 없다) | n/a |
 | daemonStatus (1030) | Rust `daemon_status` → GET /health. 응답의 `token`이 `valid`(필드가 없으면 예전 데몬이라 유효로 본다)일 때만 `running: true`. 어긋나면 토큰 파일을 한 번 다시 읽어 재시도하고, 그래도 어긋나면 `running: false, error_code: "token_invalid"`. 실행 중이면 `in_parent_job`(데몬을 띄운 프로그램과 함께 끝날 수 있는가: `/health` `stops_with_launcher`, 키가 없는 옛 데몬이면 이 GUI가 job breakaway 없이 띄운 데몬이 아직 살아 있는가)도 준다 | ✓ 637 |
 | daemonRestart (1031) | Rust `daemon_restart`: `stop_daemon()`(API 종료, 안 되면 자기 PID만 kill) 후 `/health`가 멎을 때까지 기다렸다가 **`start_daemon()`으로 직접 spawn**(`lifecycle.rs:592-618`) | 부분 |
@@ -203,7 +204,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 - **서버 켜짐·꺼짐 알림**: 데몬 이벤트를 받는 앱(`window.api.onDaemonEvent`가 있음)에서는 `utils/daemonEvents.js` `eventToast`가 `instance.started`·`instance.stopped`(시킨 쪽을 문구에, 출처 이름은 `audit.source_*`)와 `instance.exit`(크래시·시작 실패·원인 모를 종료)로 알린다. 앱에서 시킨 것(`gui`, 그 자리에서 알린다)과 디스코드·말하는 사바쨩이 시킨 것(`action.run`이 알린다)은 다시 알리지 않고, 사바쨩 밖의 시작(`unexpected:true`)은 경고로 남긴다. `useServerActions`의 목록 폴링은 이벤트를 받지 못할 때만, 사바쨩을 거치지 않은 변화(`last_api_action`·앱 조작이 없음)만 알린다.
 - **App.js**(1057줄): 루트 컴포넌트. `ExtensionProvider`로 감싸고, `useServerActions`가 `refreshInterval` 주기로 `serverList`를 폴링한다. 종료 질문 모달, 로딩 화면(`status:update`), Discord 패널(창이 넓으면 side-panel, 60)과 릴레이 에이전트 시작/정지(`useDiscordStore`, 157-158)를 맡는다. 봇 자동 시작과 `bot:relaunch` 처리는 로컬 봇과 함께 없어졌다.
 - **ServerCard.js**: 인스턴스 카드. 상태, 시작/정지, 콘솔, 설정, 명령 버튼과 REST host:port 표시가 있다. 게임 서버 업데이트 확인/적용(`instanceCheckUpdate/ApplyUpdate` 45-72), 네이티브 프로비저닝 진행률(`instanceProvisionProgress` 100, `NativeProvision.js`: 설치 중엔 요리하는 사바쨩과 진행 막대, 성공하면 접시에 서버 아이콘을 올린 완성 카드(`cooked`, 사용자가 닫을 때까지), 실패하면 쓰러진 사바쨩), 팝아웃 콘솔 포커스(442)를 제공한다. `useDragReorder`로 카드를 드래그해 순서를 바꾸면 `instanceReorder`가 호출된다.
-- **ConsoleView / ConsoleDock / ConsoleWindow**(useMultiConsole): managed 프로세스 콘솔. `managedConsole` 폴링, `managedStdin`, `executeCommand`(stdin이 실패할 때 폴백)를 쓰고, PiP 팝아웃과 always-on-top을 지원한다.
+- **ConsoleView / ConsoleDock / ConsoleWindow**(useMultiConsole): managed 프로세스 콘솔. 서버 화면·팝아웃 콘솔(`servers/ServerConsole.js`)은 앱 설정 `consoleTimestamps`·`consoleTimestampDate`를 켜면 줄 앞에 데몬이 준 줄 시각을 이 PC 시간대·앱 언어로 보인다(`consoleStamper`). `managedConsole` 폴링, `managedStdin`, `executeCommand`(stdin이 실패할 때 폴백)를 쓰고, PiP 팝아웃과 always-on-top을 지원한다.
 - **AddInstanceModal**: 진입점이 둘이다.
   - `AddInstanceNewServer.js`: 게임 모듈 카드 그리드에서 모듈을 고른 뒤 이름과 옵션을 입력하고 `instanceCreate`를 호출한다. 모듈 설정 중 `install = true`인 select(예: 마인크래프트 서버 종류)를 함께 묻고 `module_settings`로 보낸다. 마이그레이션 생성 응답에 `detected`가 있으면 완료 안내에 서버 종류와 플러그인·모드를 덧붙인다(`useServerActions.js` `handleAddServer`). 명령 칩은 `group`(플러그인 이름)이 있으면 표시한다(`CommandModal.js`). CLI `server add`도 `install` 설정을 `--set`으로 받거나 묻고 생성 요청에 싣는다(`saba-chan-cli/src/cmd/server.rs`). 모듈에 `[[presets]]`가 있으면 `server add --preset <id>`로 고르거나 새 서버일 때 묻고 `preset`으로 보낸다.
   - `AddInstanceMigration.js`: 폴더 선택 → `migrationScanDir`(daemon `/api/modules/detect`, 파일 목록은 주지 않는다) → 모듈 자동 감지(`dir_signatures`). 실패하면 `moduleManifest`에서 수동으로 고른다. 서버 폴더를 "그 자리에 연결"(기본)과 "사바쨩으로 옮기기" 중에 골라 `migration_mode`(`link`·`move`)로 보낸다. CLI는 `server add --from DIR --move`, 또는 대화형에서 폴더를 고른 뒤 같은 선택을 묻는다. 옮기기 실패 코드는 GUI `servers.move_*`, CLI `err.hint.move_*` 문구로 보인다.
@@ -220,7 +221,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 - **DiscordBotModal.js**(1134줄): 클라우드 릴레이 전용이다(local 모드, 봇 토큰, 음악 설정은 없어졌다). prefix, 노드(길드)별 `allowedInstances`와 멤버별 차단 명령(`memberPermissions`, 멤버 목록은 `relayListNodeMembers`, 125)을 다룬다. 페어링은 `relayInitiatePairing`(351)으로 시작해 `relayPollPairingStatus`(364)로 진행 상황을 확인하고 `saveNodeToken`(373)으로 마무리한다. 기본 relay는 `https://saba-chan.online`(9)이다. side-panel 모드가 있다(845-848). 명령 별명은 ServerSettingsModal에서 편집한다.
 - **BackgroundModal.js**: daemon 상태(`daemonStatus`)와 재시작(`daemonRestart`).
 - **NoticeModal.js**: 앱 내 공지와 알림 목록(localStorage). 업데이트 모달로 연결된다.
-- 공용 모달(Modals.js): Success/Failure/Notification/Question. TitleBar(frameless 창 컨트롤), Toast, CustomDropdown, Icon, ExtensionSlot(확장 UI 주입 지점. 세부 내용은 다른 문서).
+- 공용 모달(Modals.js): Success/Failure/Notification/Question. TitleBar(frameless 창 컨트롤), Toast(표시 시간은 앱 설정 `toastDuration`으로 0.6·1·2배), CustomDropdown, Icon, ExtensionSlot(확장 UI 주입 지점. 세부 내용은 다른 문서).
 - 상태 저장소(zustand): `useServerStore`, `useSettingsStore`(설정 변경 후 500ms debounce로 자동 저장, 154-163), `useDiscordStore`(에이전트 상태, 봇 설정, 시작/정지), `useUIStore`(모달 표시).
 - 테스트(`src/test/`): gui-e2e, settings-roundtrip, store-unit, discord-side-panel, console-window, theme-contrast. 모두 `window.api`를 mock한다(setupTests.js). `tauri-bridge.test.js`는 가짜 `window.__TAURI__`로 브리지 설치·응답 가공·이벤트를 검사한다.
 
@@ -285,7 +286,7 @@ PC 주인이 폰 브라우저로 서버·인스턴스를 관리하는 원격 화
 - 이름으로 대상 찾기(`resolve.rs`): 정확히 같음 → 대소문자 무시 → 앞부분 → 포함 순서로 찾는다. 지우기·초기화(`server remove`·`server reset`·`module remove`·`extension remove`)와 권한 대상 멤버(`perm`)는 앞의 두 단계만 쓴다(`find_exact`). 앞부분·포함으로만 맞는 이름은 고르지 않고 제안으로 보인다. 이 명령들은 이름 없이 물을 수 없으면(`--json`, 파이프) 대상이 하나뿐이어도 고르지 않고 이름을 대라고 한다.
 - 일부만 된 결과: 데몬이 2xx에 `ok`/`success: false`와 결과만 싣는 응답(`update download`·`update apply`의 `errors`, `chatbot forget`의 `sync`, `server set`·`server add --set`의 `synced: false`)은 `client::partial`로 본문을 받아 된 것과 실패한 것을 보이고 `partial`(종료 코드 1)로 끝낸다. 구성요소를 고르지 않은 받기가 `errors` 없이 `{ok:false, error}`로 실패해도 실패로 끝낸다. 적용에 실패한 구성요소가 있어도 코어 업데이트가 있으면 GUI처럼 경고하고 업데이터를 띄우며, 종료 코드 1로 실패를 남긴다. 업데이터를 띄운 뒤에는 `GET /api/updates/last-result`가 적용 전과 다른 결과(시각)를 줄 때까지 2초마다 묻고(최대 15분, 그 사이 데몬이 꺼져 있는 오류는 기다림의 일부다) 결과와 패치노트를 보인 뒤 끝낸다. 결과가 실패이거나 15분이 지나면 종료 코드 1이다(`cmd/update.rs` `wait_for_result`, 06 §9). `monitor --watch --json`은 표본마다 JSON 한 줄을 낸다(`events`와 같다).
 - `cmd/`: 명령 갈래마다 파일 하나(backup, bot, chatbot, config, console, daemon, extension, module, schedule, server, status, update).
-- 콘솔 색: 터미널이 색을 쓸 때만 `?spans=1`을 붙여(`client.rs` `console`) 데몬이 준 토큰 구간을 토큰별 ANSI 스타일로 칠하고, 나머지는 줄 `level` 색을 쓴다(`cmd/console.rs` `format_line`, `token_style`). 토큰은 02 §`HighlightRuleToml`.
+- 콘솔 색: 터미널이 색을 쓸 때만 `?spans=1`을 붙여(`client.rs` `console`) 데몬이 준 토큰 구간을 토큰별 ANSI 스타일로 칠하고, 나머지는 줄 `level` 색을 쓴다(`cmd/console.rs` `format_line`, `token_style`). 토큰은 02 §`HighlightRuleToml`. 앱 설정 `consoleTimestamps`(`24h`·`12h`)·`consoleTimestampDate`를 켰으면 GUI 콘솔처럼 줄 앞에 줄 시각을 흐리게 붙인다(`console::Stamp`, `console`·TUI를 열 때 `GET /api/config/gui`로 한 번 읽는다).
 
 - `bot pair [--relay-url URL]`: 페어링 코드를 받아 보여 주고(디스코드 `/사바쨩 연결`·`/saba connect`에 넣는다) claimed까지 기다린다. 데몬은 설정한 릴레이와만 페어링하므로, `--relay-url`이 설정과 다르면 봇 설정 `cloud.relayUrl`을 먼저 바꾼 뒤 페어링한다. `--json`만 주면 코드만 내고 끝, `--yes`면 기다린다.
 - `bot channels GUILD [--chatbot 이름,…] [--no-chatbot] [--music 이름] [--no-music] [--notify 이름] [--no-notify]`: 채널 이름이나 id를 GET 응답의 `channels`로 id로 바꿔 PUT한다. `--notify`는 알림 채널(I3: 크래시·백업·업데이트·예약 예고)이다. 음악 채널을 새로 정할 때는 메시지가 지워진다고 확인을 받는다.
@@ -378,7 +379,7 @@ Discord ─ 릴레이의 사바쨩 봇 ─(롱폴링, HMAC 서명)─ 데몬 rel
 - ~~(옛 Electron main.js:501-503) `syncGuiConfigToDaemon`(no-op)과 이를 부르는 `guiConfig:sync` 채널~~ → 해결: 함수, 채널, preload 항목이 모두 없어졌고, Tauri 브리지에도 없다.
 - ~~(옛 Electron main.js:1005-1011) `preloadLightData`~~ → 해결: 없어졌다. 셸의 `finish_background_init`이 로딩 상태 문구만 보낸다(`lifecycle.rs:93-116`).
 - renderer가 쓰지 않는 window.api(§1.2).
-- ~~(옛 Electron main.js:1223-1224) auto_download/auto_apply는 "향후 구현 예정"~~ → 해결: `auto_download`이면 데몬이 확인 때 미리 내려받아 둔다(`src/ipc/updates.rs:215-216, 236`). 동작하지 않던 `auto_apply`는 설정에서 빠졌고, 적용은 언제나 사용자가 고른다.
+- ~~(옛 Electron main.js:1223-1224) auto_download/auto_apply는 "향후 구현 예정"~~ → 해결: `auto_download`이면 데몬이 확인 때 미리 내려받아 둔다(`src/ipc/updates.rs:215-216, 236`). 동작하지 않던 `auto_apply`는 설정에서 빠졌다가, 사바 스토리지의 '업데이트를 찾으면'(알리기만·받아 두기·받고 다음 실행 때 적용)으로 다시 생겼다. 적용은 GUI가 열릴 때 `updaterApplyOnLaunch`로 데몬에 맡긴다.
 
 ### 6.3 기능 버그
 - ~~**before-quit bot 정지 요청 누락**: (옛 Electron main.js:1536, 1559) `currentPort` 범위 오류로 ReferenceError~~ → 해결: 비정상 종료 경로(`on_exit` `lifecycle.rs:690-712`)는 봇을 건드리지 않고 unregister와 자기 데몬 정리만 한다.

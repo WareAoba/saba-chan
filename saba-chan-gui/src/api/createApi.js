@@ -867,6 +867,24 @@ export function createApi({ invoke, hub }) {
                 return { ok: false, error: err.message };
             }
         },
+        // 앱을 열 때 한 번: '받고 다음 실행 때 적용'이면 데몬이 받아 둔 업데이트를 적용한다.
+        // 켜진 서버가 있으면 재시작이 필요한 것은 데몬이 미룬다(held). 적용 결과는 updaterApply와 같은 모양
+        updaterApplyOnLaunch: async () => {
+            try {
+                const { data } = await post('/api/updates/apply-on-launch', {}, { timeout: 120000 });
+                if (data?.ok !== false && data?.applied && data.applied.length > 0) {
+                    hub.dispatch('updates:completed', {
+                        count: data.applied.length,
+                        names: data.applied,
+                        requiresUpdater: !!data.requires_updater,
+                        needsUpdater: data.needs_updater || [],
+                    });
+                }
+                return data;
+            } catch (err) {
+                return { ok: false, error: err.message };
+            }
+        },
         // 업데이터 실행은 데몬이 한다. 다시 띄울 exe 경로와 종료는 Rust가 맡는다
         updaterLaunchApply: (_targets) => invoke('updater_launch_apply'),
         // clear면 확인 처리, 아니면 이 언어의 패치노트를 고른다

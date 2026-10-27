@@ -322,8 +322,10 @@ pub struct UpdateConfig {
     pub enabled: bool,
     /// 확인 주기 (시간 단위, 기본값 3, 최소 1시간에서 최대 8시간)
     pub check_interval_hours: u32,
-    /// 확인 뒤 새 버전을 미리 내려받아 둘지 (적용은 언제나 사용자가 고른다)
+    /// 확인 뒤 새 버전을 미리 내려받아 둘지
     pub auto_download: bool,
+    /// 받아 둔 업데이트를 앱을 열 때 적용할지 (켜면 내려받기도 한다). 끄면 적용은 사용자가 고른다
+    pub auto_apply: bool,
     /// 스테이징 디렉터리 (다운로드와 임시 파일 저장, 기본값: 실행파일 경로 기준)
     pub install_root: Option<String>,
     /// 릴레이 주소 (None이면 relay::DEFAULT_RELAY_URL). 모의 릴레이 시험은 여기에
@@ -346,6 +348,7 @@ impl Default for UpdateConfig {
             enabled: true,
             check_interval_hours: 3,
             auto_download: false,
+            auto_apply: false,
             install_root: None,
             relay_url: None,
             channel: relay::DEFAULT_CHANNEL.to_string(),
@@ -521,6 +524,8 @@ pub struct UpdateManager {
     cached_manifest: Option<ReleaseManifest>,
     /// 마지막으로 확인한 릴리즈 (버전·패치노트). 받아 둘 때 적용 결과에 실으려고 남긴다 (A5)
     latest_release: Option<relay::LatestRelease>,
+    /// 받아 둔 목록을 디스크에서 되살렸을 때 그 릴리즈 요약 (확인 전이라 `latest_release`가 없다)
+    restored_release: Option<crate::marker::ReleaseSummary>,
     /// 다운로드 진행 상태 (Arc로 공유 — Manager 잠금 없이 폴링 가능)
     pub download_progress: Arc<StdMutex<DownloadProgress>>,
 }
@@ -567,6 +572,7 @@ impl UpdateManager {
             installed_manifest_file: crate::constants::resolve_installed_manifest_path(),
             cached_manifest: None,
             latest_release: None,
+            restored_release: None,
             download_progress: Arc::new(StdMutex::new(DownloadProgress::default())),
         };
         // 지난 업데이트가 남긴 .exe.old: 적용 직후엔 옛 프로세스가 쥐고 있어 못 지운 것을 다음 실행 때 지운다
