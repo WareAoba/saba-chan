@@ -3,7 +3,8 @@
 //! 방화벽 API(`INetFwPolicy2`)로 지금 연결된 네트워크의 프로필과 규칙을 읽고, 방화벽과 같은 순서로 따진다:
 //! 꺼져 있으면 허용, "모두 차단"이면 차단, 맞는 차단 규칙이 있으면 차단, 맞는 허용 규칙이 있거나 기본 동작이 허용이면 허용, 아니면 차단.
 //! Windows는 연결마다 그 네트워크의 프로필을 적용하므로, 연결된 프로필이 둘 이상인데 판정이 서로 다르면 어느 연결로 들어올지 몰라 판정하지 않는다.
-//! 규칙이 "인터넷 어디서나"가 아니면(원격 주소·인터페이스·서비스·앱 패키지 제한) 밖에서 오는 연결에는 맞지 않는 것으로 본다.
+//! 같은 서브넷에서만 받는 규칙은 밖에서 오는 연결에 맞지 않는다. 그 밖의 제한(원격 주소·원격 포트·로컬 주소·인터페이스·서비스·앱 패키지)이 있는
+//! 규칙은 맞는지 알 수 없으므로, 그 규칙이 맞을 때와 안 맞을 때 판정이 달라지면 판정하지 않는다.
 //! 그룹 정책이 로컬 규칙을 덮어쓰거나, 읽지 못하거나, 받는 프로그램을 모르면 판정하지 않는다 (None).
 
 use super::Protocol;
@@ -47,8 +48,19 @@ pub(super) struct Rule {
     pub protocol: Option<i32>,
     /// 받는 포트 범위 (비었으면 모든 포트)
     pub ports: Vec<(u16, u16)>,
-    /// 인터넷 어디서 오는 연결에나 맞는다 (원격 주소·원격 포트·로컬 주소·인터페이스·서비스·앱 패키지 제한이 없다)
-    pub anywhere: bool,
+    /// 인터넷에서 오는 연결에 맞는가
+    pub reach: Reach,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(super) enum Reach {
+    /// 제한이 없다
+    #[default]
+    Anywhere,
+    /// 같은 서브넷에서만 받는다
+    Never,
+    /// 제한이 있어 맞는지 알 수 없다 (특정 로컬 주소·원격 주소·원격 포트·어댑터·서비스·앱 패키지)
+    Maybe,
 }
 
 /// `LocalPorts` 글: `*`·빈 글은 모든 포트, 쉼표로 나눈 포트와 범위. `RPC` 같은 이름 포트는 숫자 포트에 맞지 않는다
@@ -87,19 +99,20 @@ fn same_app(rule_app: &str, exe: &str, env: &dyn Fn(&str) -> Option<String>) -> 
     expanded.eq_ignore_ascii_case(exe)
 }
 
-fn applies(rule: &Rule, profile: &Profile, exe: &str, port: u16, protocol: Protocol, env: &dyn Fn(&str) -> Option<String>) -> bool {
+/// `maybe`: 맞는지 알 수 없는 규칙도 맞는다고 볼 것인가
+fn applies(rule: &Rule, profile: &Profile, exe: &str, port: u16, protocol: Protocol, maybe: bool, env: &dyn Fn(&str) -> Option<String>) -> bool {
     let proto = match protocol {
         Protocol::Tcp => 6,
         Protocol::Udp => 17,
     };
-    rule.anywhere
+    (rule.reach == Reach::Anywhere || (maybe && rule.reach == Reach::Maybe))
         && rule.profiles & profile.mask != 0
         && rule.protocol.is_none_or(|p| p == proto)
         && (rule.ports.is_empty() || rule.ports.iter().any(|&(a, b)| a <= port && port <= b))
         && rule.app.as_deref().is_none_or(|a| same_app(a, exe, env))
 }
 
-/// 연결된 프로필마다 따진다. 연결된 프로필이 없거나 프로필마다 판정이 다르면 판정하지 않는다
+/// 연결된 프로필마다 따진다. 연결된 프로필이 없거나, 프로필마다 판정이 다르거나, 맞는지 모르는 규칙에 따라 판정이 달라지면 판정하지 않는다
 pub(super) fn decide(
     active: &[Profile],
     rules: &[Rule],
@@ -111,22 +124,26 @@ pub(super) fn decide(
     if active.is_empty() {
         return None;
     }
-    let blocks = |profile: &Profile| {
+    let blocks = |profile: &Profile, maybe: bool| {
         if !profile.enabled {
             return false;
         }
         if profile.block_all {
             return true;
         }
-        let matching = || rules.iter().filter(|r| applies(r, profile, exe, port, protocol, env));
+        let matching = || rules.iter().filter(|r| applies(r, profile, exe, port, protocol, maybe, env));
         if matching().any(|r| !r.allow) {
             return true;
         }
         !(profile.default_allow || matching().any(|r| r.allow))
     };
-    let mut verdicts = active.iter().map(|p| if blocks(p) { Verdict::Blocked } else { Verdict::Allowed });
-    let first = verdicts.next()?;
-    verdicts.all(|v| v == first).then_some(first)
+    let verdict = |profile: &Profile| {
+        let sure = blocks(profile, false);
+        (sure == blocks(profile, true)).then_some(if sure { Verdict::Blocked } else { Verdict::Allowed })
+    };
+    let mut verdicts = active.iter().map(verdict);
+    let first = verdicts.next()??;
+    verdicts.all(|v| v == Some(first)).then_some(first)
 }
 
 /// 포트마다 방화벽 판정 (Windows만, 다른 OS는 모두 None). 시간이 걸릴 수 있어 blocking 스레드에서 부른다
@@ -154,7 +171,7 @@ pub(super) fn verdicts(queries: &[Query]) -> Vec<Option<Verdict>> {
 
 #[cfg(windows)]
 mod win {
-    use super::{parse_ports, Profile, Protocol, Rule};
+    use super::{parse_ports, Profile, Protocol, Reach, Rule};
     use windows::core::Interface;
     use windows::Win32::NetworkManagement::WindowsFirewall::{
         INetFwPolicy2, INetFwRule, INetFwRule3, NetFwPolicy2, NET_FW_ACTION_ALLOW, NET_FW_MODIFY_STATE_GP_OVERRIDE, NET_FW_PROFILE2_DOMAIN,
@@ -197,13 +214,22 @@ mod win {
             }
             Err(_) => true,
         };
-        let anywhere = any_address(&text(rule.RemoteAddresses()))
+        let remote = text(rule.RemoteAddresses());
+        // 서비스 이름 `*`도 서비스에만 맞는다
+        let reach = if remote.trim().eq_ignore_ascii_case("LocalSubnet") {
+            Reach::Never
+        } else if any_address(&remote)
             && any_address(&text(rule.RemotePorts()))
             && any_address(&text(rule.LocalAddresses()))
             && !adapters
             && matches!(text(rule.InterfaceTypes()).trim(), "" | "All")
-            && any_address(&text(rule.ServiceName()))
-            && package.trim().is_empty();
+            && text(rule.ServiceName()).trim().is_empty()
+            && package.trim().is_empty()
+        {
+            Reach::Anywhere
+        } else {
+            Reach::Maybe
+        };
         let app = text(rule.ApplicationName());
         Some(Rule {
             allow: rule.Action().ok()? == NET_FW_ACTION_ALLOW,
@@ -211,7 +237,7 @@ mod win {
             app: (!app.trim().is_empty()).then_some(app),
             protocol: (protocol != 256).then_some(protocol),
             ports,
-            anywhere,
+            reach,
         })
     }
 
@@ -321,7 +347,7 @@ mod tests {
     }
 
     fn allow(app: Option<&str>, protocol: Option<i32>, profiles: i32) -> Rule {
-        Rule { allow: true, profiles, app: app.map(str::to_string), protocol, ports: Vec::new(), anywhere: true }
+        Rule { allow: true, profiles, app: app.map(str::to_string), protocol, ports: Vec::new(), reach: Reach::Anywhere }
     }
 
     #[test]
@@ -366,12 +392,18 @@ mod tests {
         let named = Rule { ports: parse_ports("RPC"), ..allow(None, Some(6), ALL) };
         assert_eq!(decide(&[profile(PRIVATE)], &[named], EXE, 135, Protocol::Tcp, &env), Some(Verdict::Blocked));
         // 같은 서브넷에서만 허용하는 규칙은 인터넷에서 오는 친구를 들이지 않는다
-        let lan = Rule { anywhere: false, ..allow(Some(EXE), None, ALL) };
+        let lan = Rule { reach: Reach::Never, ..allow(Some(EXE), None, ALL) };
         assert_eq!(decide(&[profile(PRIVATE)], &[lan.clone()], EXE, 7777, Protocol::Tcp, &env), Some(Verdict::Blocked));
-        // 막는 규칙도 일부 주소에만 걸리면 인터넷 전체를 막지는 않는다
+        // 막는 규칙도 같은 서브넷에만 걸리면 인터넷 전체를 막지는 않는다
         let lan_block = Rule { allow: false, ..lan };
         let open = Profile { default_allow: true, ..profile(PRIVATE) };
         assert_eq!(decide(&[open], &[lan_block], EXE, 7777, Protocol::Tcp, &env), Some(Verdict::Allowed));
+        // 이 PC의 LAN 주소나 서비스로만 제한한 규칙은 맞는지 모른다: 그 규칙에 따라 판정이 갈리면 판정하지 않는다
+        let limited = Rule { reach: Reach::Maybe, ..allow(Some(EXE), None, ALL) };
+        assert_eq!(decide(&[profile(PRIVATE)], &[limited.clone()], EXE, 7777, Protocol::Tcp, &env), None);
+        // 판정이 갈리지 않으면 그대로 판정한다
+        let open = Profile { default_allow: true, ..profile(PRIVATE) };
+        assert_eq!(decide(&[open], &[limited], EXE, 7777, Protocol::Tcp, &env), Some(Verdict::Allowed));
     }
 
     #[test]
