@@ -1697,8 +1697,14 @@ async fn set(ctx: &Ctx, query: &str, pairs: &[String]) -> Result<()> {
 }
 
 async fn properties(ctx: &Ctx, query: Option<&str>, action: Option<PropsCmd>) -> Result<()> {
-    let sv = resolve::server(ctx, query).await?;
-    match action.unwrap_or(PropsCmd::Show) {
+    let action = action.unwrap_or(PropsCmd::Show);
+    // 초기화는 되돌릴 수 없다: 이름이 정확히 맞는 서버만 고른다
+    let sv = if matches!(action, PropsCmd::Reset) {
+        resolve::server_exact(ctx, query).await?
+    } else {
+        resolve::server(ctx, query).await?
+    };
+    match action {
         PropsCmd::Show => {
             let r = ctx.api.properties(&sv.id).await?;
             ctx.out.data(&r, |r| {

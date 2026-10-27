@@ -99,7 +99,7 @@ pub async fn run(ctx: &Ctx, cmd: ScheduleCmd) -> Result<()> {
             .await
         }
         ScheduleCmd::Clear { server } => {
-            let sv = resolve::server(ctx, Some(&server)).await?;
+            let sv = resolve::server_exact(ctx, Some(&server)).await?;
             ctx.ask.ensure(&t!("schedule.confirm_clear", name = sv.name))?;
             // 모두 지우기는 무엇이 있든 비우므로 읽은 판을 따지지 않는다
             save(ctx, &sv, None, Vec::new(), None, &t!("schedule.cleared", name = sv.name)).await
