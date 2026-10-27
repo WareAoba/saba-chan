@@ -29,11 +29,11 @@ use super::super::IPCServer;
 use crate::config_store::ChatbotConfig;
 
 /// 릴레이 `ChatbotSettings` 기본값 (/mnt/project-files/chatbot/contract.md §1).
-/// 기본값으로 되돌린 키도 릴레이에 실제로 닿게 PUT마다 깔고 그 위에 사용자 설정을 얹는다
+/// 기본값으로 되돌린 키도 릴레이에 실제로 닿게 PUT마다 깔고 그 위에 사용자 설정을 얹는다.
+/// 제공사(`provider`)는 릴레이가 키로 정하므로 바꿀 수 있는 키가 아니다
 fn relay_defaults() -> Map<String, Value> {
     let Value::Object(map) = json!({
         "enabled": false,
-        "provider": "openai",
         "model": "gpt-6-luna",
         "memo": "",
         "confirmCommands": true,
