@@ -216,11 +216,9 @@
 
 .saba-spinner {
     display: inline-block;
-    border-style: solid;
-    border-color: var(--brand-shadow-light);
-    border-top-color: var(--brand-primary);
-    border-radius: 50%;
-    animation: saba-spin 0.75s linear infinite;
+    background-color: var(--brand-primary);
+    -webkit-mask: var(--spinner-mask) center / contain no-repeat;
+    mask: var(--spinner-mask) center / contain no-repeat;
     flex-shrink: 0;
 }
 
@@ -228,45 +226,45 @@
 .saba-spinner {
     width: 20px;
     height: 20px;
-    border-width: 2.5px;
 }
 
 /* xs — inline text spinner (12×12) */
 .saba-spinner.xs {
     width: 12px;
     height: 12px;
-    border-width: 1.5px;
 }
 
 /* sm — small (16×16) */
 .saba-spinner.sm {
     width: 16px;
     height: 16px;
-    border-width: 2px;
 }
 
 /* lg — prominent (32×32) */
 .saba-spinner.lg {
     width: 32px;
     height: 32px;
-    border-width: 3px;
 }
 
 /* xl — full-page hero (48×48) */
 .saba-spinner.xl {
     width: 48px;
     height: 48px;
-    border-width: 4px;
 }
 
-/* light variant — white track on dark bg */
+/* light variant — white on dark bg */
 .saba-spinner.light {
-    border-color: color-mix(in srgb, var(--text-1) 25%, transparent);
-    border-top-color: var(--text-on-dark);
+    background-color: var(--text-on-dark);
 }
 
-@keyframes saba-spin {
-    to {
-        transform: rotate(360deg);
+@media (prefers-reduced-motion: reduce) {
+    .saba-spinner {
+        -webkit-mask-image: var(--spinner-mask-still);
+        mask-image: var(--spinner-mask-still);
     }
 }
+[data-no-transitions="true"] .saba-spinner {
+    -webkit-mask-image: var(--spinner-mask-still);
+    mask-image: var(--spinner-mask-still);
+}
+
