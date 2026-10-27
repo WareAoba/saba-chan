@@ -131,7 +131,22 @@ fn save_body(read: Option<&Value>, list: Vec<Value>, keep: Option<u32>) -> Value
 async fn save(ctx: &Ctx, sv: &Server, read: Option<&Value>, list: Vec<Value>, keep: Option<u32>, msg: &str) -> Result<()> {
     let r = ctx.api.save_schedule(&sv.id, save_body(read, list, keep)).await?;
     ctx.out.done(msg, &r);
+    for w in save_warnings(&r) {
+        ctx.out.warn(&w);
+    }
     Ok(())
+}
+
+/// 저장 답의 `warnings` → 알릴 줄. `date_passed`: 이미 지난 한 번 작업 (`task`는 0부터)
+fn save_warnings(r: &Value) -> Vec<String> {
+    r.get("warnings")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|w| s(w, "code") == "date_passed")
+        .filter_map(|w| w.get("task").and_then(Value::as_u64))
+        .map(|i| t!("schedule.date_passed", number = i + 1))
+        .collect()
 }
 
 /// 1부터 세는 번호로 작업 하나를 고친다
@@ -606,6 +621,16 @@ mod tests {
         assert_eq!(save_body(Some(&read), vec![], Some(3)), json!({ "schedule": [], "backup_keep": 3, "revision": "ab12" }));
         // 옛 데몬은 revision을 주지 않는다: 예전처럼 보낸다
         assert_eq!(save_body(Some(&json!({ "schedule": [] })), vec![], None), json!({ "schedule": [] }));
+    }
+
+    /// 이미 지난 날의 한 번 작업은 저장되지만 돌지 않는다: 데몬의 `warnings`를 1부터 센 번호로 알린다. 옛 데몬은 싣지 않는다
+    #[test]
+    fn a_once_task_whose_date_passed_is_warned_about() {
+        crate::i18n::init("en");
+        let w = save_warnings(&json!({ "success": true, "warnings": [{ "code": "date_passed", "task": 1 }, { "code": "other" }] }));
+        assert_eq!(w.len(), 1, "{w:?}");
+        assert!(w[0].contains('2') && !w[0].contains("schedule.date_passed"), "{}", w[0]);
+        assert!(save_warnings(&json!({ "success": true })).is_empty());
     }
 
     #[test]

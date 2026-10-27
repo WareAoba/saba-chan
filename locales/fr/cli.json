@@ -919,6 +919,7 @@
     "edited": "Tâche modifiée : {{task}}",
     "nothing_to_edit": "Donne au moins un changement (--every, --at, --every-days, --on, --date, --daily, --warn, --no-warn, --message, --arg).",
     "keep_zero": "Conservez au moins 1 sauvegarde.",
+    "date_passed": "La tâche {{number}} est prévue à une date déjà passée, elle ne sera donc pas exécutée. Modifiez sa date ou son heure.",
     "keep_set": "Les {{count}} dernières sauvegardes planifiées sont conservées.",
     "confirm_clear": "Supprimer toutes les tâches planifiées de {{name}} ?",
     "cleared": "{{name}} n'a plus de tâche planifiée.",

@@ -1135,6 +1135,7 @@
     "schedule_desc": "Automatically start, stop, save, back up, restart, announce, update or run game commands at set times or intervals.",
     "schedule_empty": "No scheduled tasks.",
     "schedule_saved": "Schedule saved.",
+    "schedule_date_passed": "Task {{n}} is set for a date that has already passed, so it will not run. Change its date or time.",
     "task_add": "Add task",
     "task_aria": "Task {{n}} type",
     "task_enabled": "Enable this task",

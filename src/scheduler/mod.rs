@@ -154,6 +154,14 @@ impl ScheduledTask {
         }
     }
 
+    /// 한 번뿐인 날(`date`+`at`)이 `now`(데몬 PC 벽시계)에 이미 지났는지. 지난 작업은 돌지 않는다
+    pub fn once_passed(&self, now: NaiveDateTime) -> bool {
+        let (Some(day), Some(at)) = (self.date.as_deref().and_then(parse_date), self.at.as_deref().and_then(parse_at)) else {
+            return false;
+        };
+        day.and_time(at) <= now
+    }
+
     fn lead(&self) -> Duration {
         Duration::minutes(self.warn_minutes.iter().copied().max().unwrap_or(0) as i64)
     }

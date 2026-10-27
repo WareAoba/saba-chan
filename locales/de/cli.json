@@ -919,6 +919,7 @@
     "edited": "Aufgabe geändert: {{task}}",
     "nothing_to_edit": "Gib mindestens eine Änderung an (--every, --at, --every-days, --on, --date, --daily, --warn, --no-warn, --message, --arg).",
     "keep_zero": "Behalte mindestens 1 Backup.",
+    "date_passed": "Aufgabe {{number}} ist für ein bereits vergangenes Datum geplant und wird nicht ausgeführt. Ändere Datum oder Uhrzeit.",
     "keep_set": "Die letzten {{count}} geplanten Backups werden behalten.",
     "confirm_clear": "Alle geplanten Aufgaben von {{name}} entfernen?",
     "cleared": "{{name}} hat jetzt keine geplanten Aufgaben mehr.",

@@ -1135,6 +1135,7 @@
     "schedule_desc": "Inicia, detiene, guarda, respalda, reinicia, anuncia, actualiza o ejecuta comandos del juego automáticamente a horas o intervalos fijos.",
     "schedule_empty": "No hay tareas programadas.",
     "schedule_saved": "Programación guardada.",
+    "schedule_date_passed": "La tarea {{n}} tiene una fecha que ya pasó, así que no se ejecutará. Cambia su fecha u hora.",
     "task_add": "Añadir tarea",
     "task_aria": "Tipo de la tarea {{n}}",
     "task_enabled": "Activar esta tarea",

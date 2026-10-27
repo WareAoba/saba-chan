@@ -836,12 +836,21 @@ pub async fn put_schedule(Path(id): Path<String>, State(state): State<IPCServer>
         )
             .into_response();
     }
+    // 이미 지난 날의 한 번 작업은 돌지 않는다: 받되 알린다 (그대로 다시 보낸 작업은 이미 알렸거나 돈 작업이다)
+    let now = chrono::Local::now().naive_local();
+    let warnings: Vec<Value> = body
+        .schedule
+        .iter()
+        .enumerate()
+        .filter(|(_, task)| task.enabled && task.once_passed(now) && !instance.schedule.contains(task))
+        .map(|(i, _)| json!({ "code": "date_passed", "task": i }))
+        .collect();
     instance.schedule = body.schedule;
     if body.backup_keep.is_some() {
         instance.backup_keep = body.backup_keep;
     }
     match supervisor.instance_store.update(&id, instance) {
-        Ok(()) => Json(json!({ "success": true })).into_response(),
+        Ok(()) => Json(json!({ "success": true, "warnings": warnings })).into_response(),
         Err(e) => error(StatusCode::INTERNAL_SERVER_ERROR, "save_failed", e.to_string()),
     }
 }
@@ -2051,6 +2060,34 @@ print(json.dumps({'success': True, 'snapshots': [{'id': 'startup/backup_1', 'cre
         assert_eq!(put(json!({ "schedule": [restart("05:00")], "revision": fresh.clone() })).await.status(), StatusCode::OK);
         let after = body_of(read().await).await;
         assert_ne!(after["revision"], json!(fresh), "a saved change gives a new revision");
+    }
+
+    /// 이미 지난 날짜의 한 번 작업은 돌지 않는다: 거절하지 않고 받되 `warnings`로 알린다.
+    /// 그대로 다시 보낸 작업(이미 돈 작업 등)이나 꺼 둔 작업, 아직 오지 않은 날은 알리지 않는다
+    #[tokio::test]
+    async fn a_once_task_saved_after_its_date_is_kept_with_a_warning() {
+        let (state, id, _tmp) = server_with(NO_BACKUP, None).await;
+        let put = |body: Value| {
+            let (state, id) = (state.clone(), id.clone());
+            async move {
+                let body: ScheduleBody = serde_json::from_value(body).unwrap();
+                let r = put_schedule(Path(id), State(state), Json(body)).await;
+                let status = r.status();
+                (status, serde_json::from_slice::<Value>(&axum::body::to_bytes(r.into_body(), usize::MAX).await.unwrap()).unwrap())
+            }
+        };
+        let past = json!({ "action": "start", "at": "04:00", "date": "2000-01-01" });
+        let future = json!({ "action": "start", "at": "04:00", "date": "2999-12-31" });
+        let (status, body) = put(json!({ "schedule": [future.clone(), past.clone()] })).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["warnings"], json!([{ "code": "date_passed", "task": 1 }]), "{body}");
+        assert_eq!(state.supervisor.read().await.instance_store.get(&id).unwrap().schedule.len(), 2, "saved anyway");
+        // 같은 작업을 그대로 다시 보내면 (다른 작업을 고칠 때) 다시 알리지 않는다
+        let (_, body) = put(json!({ "schedule": [future.clone(), past.clone(), { "action": "stop", "at": "05:00" }] })).await;
+        assert_eq!(body["warnings"], json!([]), "{body}");
+        let off = json!({ "action": "stop", "at": "04:00", "date": "2000-01-02", "enabled": false });
+        let (_, body) = put(json!({ "schedule": [off] })).await;
+        assert_eq!(body["warnings"], json!([]), "{body}");
     }
 
     /// 원격(디스코드·챗봇)은 백업을 지우지 못한다: 복원을 거듭해도 앞서 남긴 복원 전 안전 백업이 보관 수만큼 밀려 지워지지 않는다.

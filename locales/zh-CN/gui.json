@@ -1135,6 +1135,7 @@
     "schedule_desc": "在设定的时间或间隔自动启动、停止、保存、备份、重启、公告、更新服务器或执行游戏命令。",
     "schedule_empty": "没有计划任务。",
     "schedule_saved": "已保存计划任务。",
+    "schedule_date_passed": "第 {{n}} 个任务的日期已经过去，不会执行。请修改日期或时间。",
     "task_add": "添加任务",
     "task_aria": "第 {{n}} 个任务的类型",
     "task_enabled": "启用此任务",

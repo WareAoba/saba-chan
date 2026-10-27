@@ -919,6 +919,7 @@
     "edited": "Tarefa alterada: {{task}}",
     "nothing_to_edit": "Informe pelo menos uma mudança (--every, --at, --every-days, --on, --date, --daily, --warn, --no-warn, --message, --arg).",
     "keep_zero": "Mantenha pelo menos 1 backup.",
+    "date_passed": "A tarefa {{number}} está marcada para uma data que já passou, então não será executada. Altere a data ou o horário.",
     "keep_set": "Mantendo os últimos {{count}} backups agendados.",
     "confirm_clear": "Remover todas as tarefas agendadas de {{name}}?",
     "cleared": "{{name}} não tem mais tarefas agendadas.",
