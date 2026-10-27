@@ -96,7 +96,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 | runtimePreflight (501) | GET /api/runtime/preflight | ✓ 756 |
 | systemMetrics (503) | GET /api/system/metrics[?sizes=false] | ✓ 715 (`SystemMonitor`) |
 | configDefaults / configReset (505-507) | GET /api/config/:kind/defaults, POST /api/config/:kind/reset {keys?} | ✓ 704-705 (configDefaults 미사용) |
-| extensionList…extensionInitStatus (510-630) | /api/extensions, /:id/enable, /disable, /audit, /i18n/:locale, /gui, /gui/styles(`responseType:'text'`), /icon(`responseType:'base64'`), /manifest, /:id/install, DELETE /:id, /updates, /rescan, /init-status | ✓ 754-771 (확장 UI 로딩은 03 §4.1). `gui_allowed:false`면 번들·스타일을 요청하지 않고 사용자에게 한 번 묻는다(`ExtensionContext`). `/gui`가 403 `extension_gui_unapproved`면 `extensionGuiBundle`은 `{error_code:'extension_gui_unapproved'}`를 돌려주고 다시 묻는다 |
+| extensionList…extensionInitStatus (510-630) | /api/extensions, /:id/enable, /disable, /audit, /i18n/:locale, /gui, /gui/styles(`responseType:'text'`, 이 웹뷰에서 실행하므로 원격 데몬을 고른 동안에도 `target:'local'`로 이 PC 데몬에서 받는다), /icon(`responseType:'base64'`), /manifest, /:id/install, DELETE /:id, /updates, /rescan, /init-status | ✓ 754-771 (확장 UI 로딩은 03 §4.1). `gui_allowed:false`면 번들·스타일을 요청하지 않고 사용자에게 한 번 묻는다(`ExtensionContext`). `/gui`가 403 `extension_gui_unapproved`면 `extensionGuiBundle`은 `{error_code:'extension_gui_unapproved'}`를 돌려주고 다시 묻는다 |
 | extensionConfigGet / extensionConfigSet | GET /api/extensions/:id/config(`{config}`) · PUT 같은 경로에 값 객체 그대로(키 단위 병합, null이면 삭제). 실패하면 데몬 본문을 그대로 돌려준다(설정 > 익스텐션 `ExtensionConfigForm`) | ✓ 807 |
 | managedConsole (634) | GET /api/instance/:id/console?since&count (4번째 인자 `{spans:true}`면 `&spans=1`) | ✓ 679 |
 | managedStdin (642) | POST /api/instance/:id/stdin | ✓ 680 |
