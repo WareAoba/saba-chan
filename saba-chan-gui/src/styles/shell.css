@@ -3328,7 +3328,8 @@ button.appbar-preflight {
 .port-check-notice {
     align-items: center;
 }
-.port-check-notice > span {
+/* 아이콘(Icon도 span이다)은 그대로 두고 문구만 남은 폭을 채운다 */
+.port-check-notice-text {
     flex: 1;
 }
 .port-check-notice .btn {

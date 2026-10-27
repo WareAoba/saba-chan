@@ -143,7 +143,7 @@ export function PortCheckNotice({ server }) {
     return (
         <div className="notice tone-warn port-check-notice" role="status">
             <Icon name="globe" size="sm" />
-            <span>
+            <span className="port-check-notice-text">
                 <strong>{t(`port_check.verdict.${report.verdict}`)}</strong> {t(`port_check.hint.${report.verdict}`)}{' '}
                 <HelpLink />
                 {error && <span className="port-check-notice-error"> {error}</span>}
