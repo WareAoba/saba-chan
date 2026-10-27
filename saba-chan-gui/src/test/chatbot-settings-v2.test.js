@@ -85,6 +85,30 @@ describe('모델 고르기 (chatbot-settings-v2 §1)', () => {
         expect(onChange).toHaveBeenLastCalledWith('gpt-b');
     });
 
+    it('키로 연결된 제공사를 로고와 이름으로 보이고, 중국판 주소는 지역을 붙인다', async () => {
+        window.api.chatbotModels = vi.fn().mockResolvedValue({
+            provider: 'anthropic',
+            models: ['claude-haiku-5-5'],
+            selected: 'claude-haiku-5-5',
+            effectiveModel: 'claude-haiku-5-5',
+        });
+        const { container, unmount } = render(
+            <ModelField value="claude-haiku-5-5" saved="claude-haiku-5-5" onChange={() => {}} guildId="g1" hasApiKey />,
+        );
+        expect(await screen.findByText('Connected with a Claude key.')).toBeTruthy();
+        expect(container.querySelector('.cb-provider-logo svg')).toBeTruthy();
+        unmount();
+
+        window.api.chatbotModels = vi.fn().mockResolvedValue({
+            provider: 'qwen-cn',
+            models: ['qwen-flash'],
+            selected: 'qwen-flash',
+            effectiveModel: 'qwen-flash',
+        });
+        render(<ModelField value="qwen-flash" saved="qwen-flash" onChange={() => {}} guildId="g1" hasApiKey />);
+        expect(await screen.findByText('Connected with a Qwen China key.')).toBeTruthy();
+    });
+
     it('고른 모델을 대신 쓰고 있으면 알리고 대신 쓰는 모델을 고른다', async () => {
         window.api.chatbotModels = vi
             .fn()

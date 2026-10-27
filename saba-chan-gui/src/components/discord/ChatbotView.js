@@ -4,10 +4,11 @@ import { useTranslation } from 'react-i18next';
 import { safeShowToast } from '../../utils/helpers';
 import CustomDropdown from '../CustomDropdown/CustomDropdown';
 import { Icon } from '../Icon';
-import { SabaSpinner, SabaToggle } from '../ui/SabaUI';
 import { SabaEmpty, SabaFail } from '../ui/SabaArt';
+import { SabaSpinner, SabaToggle } from '../ui/SabaUI';
 import { StatusChip } from '../ui/StatusChip';
 import { Avatar } from './NodeView';
+import { PROVIDER_BRANDS } from './providerBrands';
 
 /**
  * 릴레이 계약 기본값 (/mnt/project-files/chatbot/contract.md). 기본값과 같으면 null로 보내 릴레이 기본을 따른다.
@@ -164,6 +165,7 @@ function ApiKeyCard({ hasApiKey, onChanged, nameOf }) {
                 />
             </div>
             <p className="dc-card-desc">{t('chatbot.key_desc')}</p>
+            <p className="dc-hint">{t('chatbot.key_providers')}</p>
             <form
                 className="cb-key-row"
                 onSubmit={(e) => {
@@ -178,7 +180,7 @@ function ApiKeyCard({ hasApiKey, onChanged, nameOf }) {
                     spellCheck={false}
                     value={value}
                     aria-label={t('chatbot.key_title')}
-                    placeholder={hasApiKey ? t('chatbot.key_replace_placeholder') : 'sk-...'}
+                    placeholder={hasApiKey ? t('chatbot.key_replace_placeholder') : t('chatbot.key_placeholder')}
                     onChange={(e) => setValue(e.target.value)}
                 />
                 <button type="submit" className="btn btn-primary" disabled={busy || !value.trim()}>
@@ -523,7 +525,29 @@ export function ModelField({ value, saved, onChange, guildId, hasApiKey }) {
                     <Icon name="info" size="xs" /> {t(errorKey)}
                 </p>
             )}
+            {res?.provider && !res.error && <ProviderBadge provider={res.provider} />}
             {fallback && <p className="dc-hint">{t('chatbot.model_fallback', { model: saved, fallback })}</p>}
         </div>
+    );
+}
+
+/** 릴레이가 키로 알아낸 제공사 — 로고와 이름 */
+export function ProviderBadge({ provider }) {
+    const { t } = useTranslation('gui');
+    // 중국판이 따로 이름이 있으면(zhipu-cn) 그대로, 없으면 국제판 이름에 지역을 붙인다
+    const own = PROVIDER_BRANDS[provider];
+    const brand = own ?? PROVIDER_BRANDS[String(provider).replace(/-cn$/, '')];
+    if (!brand) return null;
+    const name =
+        !own && String(provider).endsWith('-cn') ? t('chatbot.provider_region_cn', { name: brand.name }) : brand.name;
+    return (
+        <p className="cb-provider">
+            <span
+                className="cb-provider-logo"
+                // biome-ignore lint/security/noDangerouslySetInnerHtml: 저장소에 넣은 고정 SVG (providerBrands.js)
+                dangerouslySetInnerHTML={{ __html: brand.svg }}
+            />
+            {t('chatbot.provider_connected', { provider: name })}
+        </p>
     );
 }

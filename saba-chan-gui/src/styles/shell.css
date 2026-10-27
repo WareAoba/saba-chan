@@ -2805,6 +2805,24 @@ button.appbar-preflight {
 .cb-key-row .btn {
     flex-shrink: 0;
 }
+.cb-provider {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    margin: 0;
+    font-size: var(--fs-xs);
+    color: var(--text-2);
+}
+.cb-provider-logo {
+    display: inline-flex;
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+}
+.cb-provider-logo svg {
+    width: 100%;
+    height: 100%;
+}
 .cb-fields {
     display: flex;
     flex-wrap: wrap;
