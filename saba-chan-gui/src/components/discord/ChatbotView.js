@@ -88,6 +88,8 @@ export function ChatbotView({ nodes = [] }) {
     const { t } = useTranslation('gui');
     const [data, setData] = useState(null);
     const [loadError, setLoadError] = useState(null);
+    // 키를 바꿀 때마다 올린다 — 모델 목록과 연결된 제공사를 다시 묻는다
+    const [keyVersion, setKeyVersion] = useState(0);
 
     const load = useCallback(async () => {
         setLoadError(null);
@@ -122,8 +124,21 @@ export function ChatbotView({ nodes = [] }) {
                             <span>{t('chatbot.relay_delete_pending')}</span>
                         </div>
                     )}
-                    <ApiKeyCard hasApiKey={!!data.hasApiKey} onChanged={(res) => setData(res)} nameOf={nameOf} />
-                    <SettingsEditor data={data} nodes={nodes} nameOf={nameOf} onSaved={(res) => setData(res)} />
+                    <ApiKeyCard
+                        hasApiKey={!!data.hasApiKey}
+                        onChanged={(res) => {
+                            setData(res);
+                            setKeyVersion((v) => v + 1);
+                        }}
+                        nameOf={nameOf}
+                    />
+                    <SettingsEditor
+                        data={data}
+                        nodes={nodes}
+                        nameOf={nameOf}
+                        onSaved={(res) => setData(res)}
+                        keyVersion={keyVersion}
+                    />
                 </>
             )}
         </div>
@@ -206,7 +221,7 @@ function ApiKeyCard({ hasApiKey, onChanged, nameOf }) {
     );
 }
 
-function SettingsEditor({ data, nodes, nameOf, onSaved }) {
+function SettingsEditor({ data, nodes, nameOf, onSaved, keyVersion }) {
     const { t } = useTranslation('gui');
     const savedGuilds = data.guilds || {};
     const guildIds = [...new Set([...nodes.map((n) => n.guildId), ...Object.keys(savedGuilds)])];
@@ -309,6 +324,7 @@ function SettingsEditor({ data, nodes, nameOf, onSaved }) {
                     onChange={(v) => set('model', v)}
                     guildId={guildIds[0]}
                     hasApiKey={!!data.hasApiKey}
+                    keyVersion={keyVersion}
                 />
                 <p className="dc-hint">{t('chatbot.prefix_calls')}</p>
                 <div className="cb-toggles">
@@ -463,11 +479,13 @@ function SettingsEditor({ data, nodes, nameOf, onSaved }) {
  * 고른 모델을 쓸 수 없어 릴레이가 다른 모델로 대신 쓰고 있으면 알리고, 그 모델을 고른 상태로 둔다
  * (저장하면 그 모델이 새 설정이 된다).
  */
-export function ModelField({ value, saved, onChange, guildId, hasApiKey }) {
+export function ModelField({ value, saved, onChange, guildId, hasApiKey, keyVersion = 0 }) {
     const { t } = useTranslation('gui');
     const [res, setRes] = useState(null);
     const canAsk = !!(guildId && hasApiKey && window.api?.chatbotModels);
 
+    // keyVersion: 키를 바꾸면 같은 길드라도 다시 묻는다 (제공사·목록이 바뀐다)
+    // biome-ignore lint/correctness/useExhaustiveDependencies: keyVersion 은 다시 묻는 신호
     const load = useCallback(async () => {
         if (!canAsk) return;
         setRes({ loading: true });
@@ -477,7 +495,7 @@ export function ModelField({ value, saved, onChange, guildId, hasApiKey }) {
         } catch (err) {
             setRes({ error: err.message || 'FAILED' });
         }
-    }, [canAsk, guildId]);
+    }, [canAsk, guildId, keyVersion]);
 
     useEffect(() => {
         setRes(null);

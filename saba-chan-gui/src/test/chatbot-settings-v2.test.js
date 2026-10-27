@@ -92,21 +92,30 @@ describe('모델 고르기 (chatbot-settings-v2 §1)', () => {
             selected: 'claude-haiku-5-5',
             effectiveModel: 'claude-haiku-5-5',
         });
-        const { container, unmount } = render(
-            <ModelField value="claude-haiku-5-5" saved="claude-haiku-5-5" onChange={() => {}} guildId="g1" hasApiKey />,
+        const field = (keyVersion) => (
+            <ModelField
+                value="claude-haiku-5-5"
+                saved="claude-haiku-5-5"
+                onChange={() => {}}
+                guildId="g1"
+                hasApiKey
+                keyVersion={keyVersion}
+            />
         );
+        const { container, rerender } = render(field(0));
         expect(await screen.findByText('Connected with a Claude key.')).toBeTruthy();
         expect(container.querySelector('.cb-provider-logo svg')).toBeTruthy();
-        unmount();
 
+        // 같은 화면에서 키를 바꾸면 다시 묻는다
         window.api.chatbotModels = vi.fn().mockResolvedValue({
             provider: 'qwen-cn',
             models: ['qwen-flash'],
-            selected: 'qwen-flash',
+            selected: 'claude-haiku-5-5',
             effectiveModel: 'qwen-flash',
         });
-        render(<ModelField value="qwen-flash" saved="qwen-flash" onChange={() => {}} guildId="g1" hasApiKey />);
+        rerender(field(1));
         expect(await screen.findByText('Connected with a Qwen China key.')).toBeTruthy();
+        expect(window.api.chatbotModels).toHaveBeenCalledTimes(1);
     });
 
     it('고른 모델을 대신 쓰고 있으면 알리고 대신 쓰는 모델을 고른다', async () => {
