@@ -27,6 +27,11 @@ pub fn check<R: Read + Seek>(archive: &mut zip::ZipArchive<R>, limits: &Limits) 
     Ok(())
 }
 
+/// Windows에서 `name:stream`은 파일이 아니라 그 파일의 대체 데이터 스트림을 가리킨다
+fn names_a_stream(name: &std::ffi::OsStr) -> bool {
+    name.to_string_lossy().contains(':')
+}
+
 /// `dest` 아래에 푼다. 보통 이름 조각만 받고(`..`·절대 경로·드라이브 거부), 링크 항목은 거부하며,
 /// 실제로 풀린 바이트로 크기 상한을 센다. 파일은 기본 권한으로 만든다 (SUID 같은 비트를 옮기지 않는다)
 pub fn extract<R: Read + Seek>(mut archive: zip::ZipArchive<R>, dest: &Path, limits: &Limits) -> Result<()> {
@@ -36,7 +41,7 @@ pub fn extract<R: Read + Seek>(mut archive: zip::ZipArchive<R>, dest: &Path, lim
         let mut entry = archive.by_index(index)?;
         let relative = entry
             .enclosed_name()
-            .filter(|path| path.components().all(|part| matches!(part, Component::Normal(_))))
+            .filter(|path| path.components().all(|part| matches!(part, Component::Normal(name) if !(cfg!(windows) && names_a_stream(name)))))
             .with_context(|| format!("{} contains an invalid path", limits.what))?;
         if entry.unix_mode().is_some_and(|mode| mode & 0o170000 == 0o120000) {
             anyhow::bail!("{} contains a link", limits.what);
@@ -110,6 +115,18 @@ mod tests {
         });
         let dest = tempfile::tempdir().unwrap();
         assert_eq!(extract(zip, dest.path(), &LIMITS).unwrap_err().to_string(), "Test archive contains an invalid path");
+    }
+
+    #[test]
+    fn a_name_with_a_colon_is_a_stream_on_windows() {
+        assert!(names_a_stream(std::ffi::OsStr::new("level.dat:hidden")));
+        assert!(!names_a_stream(std::ffi::OsStr::new("level.dat")));
+        let zip = archive(|w| {
+            w.start_file("mod/a:b", SimpleFileOptions::default()).unwrap();
+            w.write_all(b"x").unwrap();
+        });
+        let dest = tempfile::tempdir().unwrap();
+        assert_eq!(extract(zip, dest.path(), &LIMITS).is_err(), cfg!(windows));
     }
 
     #[test]
