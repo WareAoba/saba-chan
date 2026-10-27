@@ -315,6 +315,11 @@ async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
         }
     }
 
+    // 데몬은 전체 경로만 받는다: 상대 경로는 데몬이 아닌 이 CLI의 지금 폴더 기준으로 푼다
+    if let Some(dir) = from.take() {
+        from = Some(crate::cmd::config::daemon_path(ctx, std::path::Path::new(&dir))?);
+    }
+
     // 이미 다른 서버가 쓰는 폴더면 막는다 (두 서버가 같은 파일을 덮어쓴다)
     if let Some(dir) = from.as_deref() {
         let norm = |p: &str| {
@@ -1697,8 +1702,14 @@ async fn set(ctx: &Ctx, query: &str, pairs: &[String]) -> Result<()> {
 }
 
 async fn properties(ctx: &Ctx, query: Option<&str>, action: Option<PropsCmd>) -> Result<()> {
-    let sv = resolve::server(ctx, query).await?;
-    match action.unwrap_or(PropsCmd::Show) {
+    let action = action.unwrap_or(PropsCmd::Show);
+    // 초기화는 되돌릴 수 없다: 이름이 정확히 맞는 서버만 고른다
+    let sv = if matches!(action, PropsCmd::Reset) {
+        resolve::server_exact(ctx, query).await?
+    } else {
+        resolve::server(ctx, query).await?
+    };
+    match action {
         PropsCmd::Show => {
             let r = ctx.api.properties(&sv.id).await?;
             ctx.out.data(&r, |r| {

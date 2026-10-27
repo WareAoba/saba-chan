@@ -920,6 +920,7 @@
     "edited": "已修改工作：{{task}}",
     "nothing_to_edit": "請至少給出一項修改（--every、--at、--every-days、--on、--date、--daily、--warn、--no-warn、--message、--arg）。",
     "keep_zero": "請至少保留 1 個備份。",
+    "date_passed": "第 {{number}} 個工作的日期已經過去，不會執行。請修改日期或時間。",
     "keep_set": "將保留最近 {{count}} 個排程備份。",
     "confirm_clear": "要移除 {{name}} 的所有排程工作嗎？",
     "cleared": "{{name}} 現在沒有排程工作了。",

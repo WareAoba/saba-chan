@@ -889,6 +889,7 @@
     "edited": "Task changed: {{task}}",
     "nothing_to_edit": "Give at least one thing to change (--every, --at, --every-days, --on, --date, --daily, --warn, --no-warn, --message, --arg).",
     "keep_zero": "Keep at least 1 backup.",
+    "date_passed": "Task {{number}} is set for a date that has already passed, so it will not run. Change its date or time.",
     "keep_set": "Keeping the last {{count}} scheduled backups.",
     "confirm_clear": "Remove every scheduled task of {{name}}?",
     "cleared": "{{name}} has no scheduled tasks now.",

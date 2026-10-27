@@ -573,6 +573,12 @@ function ScheduleCard({ server, info, onSaved, moduleCommands }) {
                 return;
             }
             safeShowToast(t('maintenance.schedule_saved'), 'success', 3000);
+            // 이미 지난 날의 한 번 작업은 저장은 됐지만 돌지 않는다 (데몬 warnings, task는 0부터)
+            for (const w of Array.isArray(res?.warnings) ? res.warnings : []) {
+                if (w?.code === 'date_passed' && Number.isInteger(w.task)) {
+                    safeShowToast(t('maintenance.schedule_date_passed', { n: w.task + 1 }), 'warning', 8000);
+                }
+            }
             onSaved();
         } catch (err) {
             setServerErrors([err.message || String(err)]);

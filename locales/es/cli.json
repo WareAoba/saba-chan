@@ -920,6 +920,7 @@
     "edited": "Tarea cambiada: {{task}}",
     "nothing_to_edit": "Indica al menos un cambio (--every, --at, --every-days, --on, --date, --daily, --warn, --no-warn, --message, --arg).",
     "keep_zero": "Conserva al menos 1 copia de seguridad.",
+    "date_passed": "La tarea {{number}} tiene una fecha que ya pasó, así que no se ejecutará. Cambia su fecha u hora.",
     "keep_set": "Se conservarán las últimas {{count}} copias programadas.",
     "confirm_clear": "¿Eliminar todas las tareas programadas de {{name}}?",
     "cleared": "{{name}} ya no tiene tareas programadas.",

@@ -1044,6 +1044,7 @@
       "schedule.edit.from": "与 --every-days 一起：从这天开始计算 (YYYY-MM-DD，默认今天)",
       "schedule.edit.args": "游戏命令输入 名称=值 (可重复)",
       "schedule.add.command": "要执行的游戏命令 (command 任务，列表：server commands)",
+      "schedule.edit.command": "要更改的游戏命令 (command 任务，换成其他命令时除非给出 --arg，否则清除旧输入)",
       "bot.notice.on": "开启启动通知",
       "bot.notice.off": "关闭启动通知"
     },
@@ -1126,6 +1127,7 @@
     "edited": "已修改任务：{{task}}",
     "nothing_to_edit": "请至少给出一项修改（--every、--at、--every-days、--on、--date、--daily、--warn、--no-warn、--message、--arg）。",
     "keep_zero": "请至少保留 1 个备份。",
+    "date_passed": "第 {{number}} 个任务的日期已经过去，不会执行。请修改日期或时间。",
     "keep_set": "将保留最近 {{count}} 个定时备份。",
     "confirm_clear": "要移除 {{name}} 的所有定时任务吗？",
     "cleared": "{{name}} 现在没有定时任务了。",

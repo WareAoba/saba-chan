@@ -687,11 +687,12 @@ export function createApi({ invoke, hub }) {
                 return null;
             }
         },
-        // 익스텐션 GUI 번들 (JS 소스 텍스트)
+        // 익스텐션 GUI 번들 (JS 소스 텍스트). 이 웹뷰에서 실행하므로 번들·스타일은 원격 데몬을 고른 동안에도 이 PC 데몬에서 받는다
         extensionGuiBundle: async (extId) => {
             try {
                 const { data } = await get(`/api/extensions/${encodeURIComponent(extId)}/gui`, {
                     responseType: 'text',
+                    target: 'local',
                 });
                 return typeof data === 'string' ? data : null;
             } catch (error) {
@@ -707,6 +708,7 @@ export function createApi({ invoke, hub }) {
             try {
                 const { data } = await get(`/api/extensions/${encodeURIComponent(extId)}/gui/styles`, {
                     responseType: 'text',
+                    target: 'local',
                 });
                 return typeof data === 'string' ? data : null;
             } catch (error) {

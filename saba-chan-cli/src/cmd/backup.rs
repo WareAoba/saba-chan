@@ -17,7 +17,7 @@ pub async fn run(ctx: &Ctx, cmd: BackupCmd) -> Result<()> {
         BackupCmd::List { server } => list(ctx, server.as_deref()).await,
         BackupCmd::Create { server, from_snapshot } => create(ctx, server.as_deref(), from_snapshot).await,
         BackupCmd::Delete { server, backup } => {
-            let sv = resolve::server(ctx, Some(&server)).await?;
+            let sv = resolve::server_exact(ctx, Some(&server)).await?;
             let name = pick(ctx, &sv, backup.as_deref()).await?;
             ctx.ask
                 .ensure(&t!("backup.confirm_delete", backup = name, name = sv.name))?;
@@ -97,7 +97,7 @@ async fn create(ctx: &Ctx, server: Option<&str>, from_snapshot: bool) -> Result<
 }
 
 async fn restore(ctx: &Ctx, server: &str, backup: Option<&str>) -> Result<()> {
-    let sv = resolve::server(ctx, Some(server)).await?;
+    let sv = resolve::server_exact(ctx, Some(server)).await?;
     let name = pick(ctx, &sv, backup).await?;
     // 열 수 없는 백업은 복원이 실패한다: 켜진 서버를 끄기 전에 멈춘다 (GUI는 복원 버튼을 막는다)
     refuse_unreadable(&backups(ctx, &sv).await?, &name)?;
@@ -140,7 +140,7 @@ async fn restore(ctx: &Ctx, server: &str, backup: Option<&str>) -> Result<()> {
     Ok(())
 }
 
-/// 백업 이름: 정확히, 앞부분만, 또는 `latest`(가장 최근). 이름이 없으면 목록에서 고른다(최근 것부터)
+/// 백업 이름: 정확히(대소문자 무시) 또는 `latest`(가장 최근). 이름이 없으면 목록에서 고른다(최근 것부터)
 async fn pick(ctx: &Ctx, sv: &Server, query: Option<&str>) -> Result<String> {
     let mut items = backups(ctx, sv).await?;
     let what = t!("noun.backup");
@@ -166,17 +166,22 @@ async fn pick(ctx: &Ctx, sv: &Server, query: Option<&str>) -> Result<String> {
             None => Err(crate::error::CliError::Cancelled.into()),
         };
     };
+    let found = find_backup(&items, query, label);
+    let b = resolve::settle(ctx, &what, query, found, label)?;
+    Ok(s(&b, "name").to_string())
+}
+
+/// 지우기·되돌리기 대상 백업: `latest`(가장 최근)가 아니면 이름이 정확히(대소문자 무시) 맞아야 한다 (`find_exact`)
+fn find_backup(items: &[Value], query: &str, label: impl Fn(&Value) -> String) -> resolve::Found<Value> {
     if query.eq_ignore_ascii_case("latest") {
         if let Some(b) = items
             .iter()
             .max_by_key(|b| b.get("created").and_then(Value::as_u64).unwrap_or(0))
         {
-            return Ok(s(b, "name").to_string());
+            return resolve::Found::One(b.clone());
         }
     }
-    let found = resolve::find(&items, query, |b| vec![s(b, "name").to_string()], label);
-    let b = resolve::settle(ctx, &what, query, found, label)?;
-    Ok(s(&b, "name").to_string())
+    resolve::find_exact(items, query, |b| vec![s(b, "name").to_string()], label)
 }
 
 /// 되살리지 못한 링크가 있으면 그 수 (경로는 데몬 로그에만 남는다)
@@ -279,6 +284,26 @@ mod tests {
         // 복원은 서버를 끄기 전에 거절한다 (리뷰 631 P3-2)
         assert!(refuse_unreadable(&items, "b.zip").is_err());
         assert!(refuse_unreadable(&items, "a.zip").is_ok() && refuse_unreadable(&items, "c.zip").is_ok());
+    }
+
+    /// 지우기·되돌리기 대상 백업은 앞부분 일치로 고르지 않는다: `a-1`은 `a-1`만, `a`는 아무것도 고르지 않는다. `latest`는 가장 최근
+    #[test]
+    fn a_backup_to_delete_or_restore_is_picked_only_by_its_exact_name() {
+        let items = [
+            json!({ "name": "a-1", "created": 1 }),
+            json!({ "name": "a-10", "created": 2 }),
+            json!({ "name": "manual-x", "created": 0 }),
+        ];
+        let label = |b: &Value| s(b, "name").to_string();
+        let one = |q: &str| match find_backup(&items, q, label) {
+            resolve::Found::One(b) => Some(s(&b, "name").to_string()),
+            _ => None,
+        };
+        assert_eq!(one("a-1").as_deref(), Some("a-1"));
+        assert_eq!(one("A-10").as_deref(), Some("a-10"));
+        assert_eq!(one("a"), None);
+        assert_eq!(one("manual"), None, "a unique prefix is still not picked");
+        assert_eq!(one("latest").as_deref(), Some("a-10"));
     }
 
     /// 증분 백업(MK16)은 담은 크기와 새로 저장한 크기가 다르면 둘 다 보인다. 0.1.8 백업이나 옛 데몬은 크기만

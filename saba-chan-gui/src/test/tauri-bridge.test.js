@@ -368,6 +368,21 @@ describe('원격 데몬 (G1)', () => {
         expect(calls).toHaveLength(3);
     });
 
+    it('익스텐션 GUI 번들·스타일은 원격 데몬을 고른 동안에도 이 PC 데몬에서 받는다', async () => {
+        const calls = [];
+        const { api } = await install({
+            daemon_target_get: { target: 'host-b' },
+            daemon_request: (args) => {
+                calls.push(args);
+                return { status: 200, data: args.path.endsWith('/styles') ? '.a{}' : 'bundle()' };
+            },
+        });
+        expect(await api.extensionGuiBundle('ext a')).toBe('bundle()');
+        expect(await api.extensionGuiStyles('ext a')).toBe('.a{}');
+        expect(calls[0]).toMatchObject({ method: 'GET', path: '/api/extensions/ext%20a/gui', target: 'local' });
+        expect(calls[1]).toMatchObject({ method: 'GET', path: '/api/extensions/ext%20a/gui/styles', target: 'local' });
+    });
+
     it('고른 원격 데몬에 닿지 못한 오류는 어느 화면에서든 문구로 온다', async () => {
         const { api } = await install({
             daemon_request: daemon({

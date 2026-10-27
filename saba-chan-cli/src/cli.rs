@@ -426,6 +426,9 @@ pub enum ScheduleCmd {
         /// New message to announce
         #[arg(long)]
         message: Option<String>,
+        /// New game command (command; a different command drops the old inputs unless --arg is given)
+        #[arg(long, value_name = "NAME")]
+        command: Option<String>,
         /// New game command inputs, NAME=VALUE (replaces all inputs)
         #[arg(long = "arg", value_name = "NAME=VALUE")]
         args: Vec<String>,

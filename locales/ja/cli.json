@@ -1044,6 +1044,7 @@
       "schedule.edit.from": "--every-days と一緒に: この日から数える (YYYY-MM-DD、既定: 今日)",
       "schedule.edit.args": "ゲームコマンドの入力 名前=値 (複数可)",
       "schedule.add.command": "実行するゲームコマンド (command 作業、一覧: server commands)",
+      "schedule.edit.command": "変更するゲームコマンド (command 作業、別のコマンドなら --arg を指定しない限り古い入力は消える)",
       "bot.notice.on": "起動通知をオン",
       "bot.notice.off": "起動通知をオフ"
     },
@@ -1126,6 +1127,7 @@
     "edited": "タスクを変更しました: {{task}}",
     "nothing_to_edit": "変更する項目を1つ以上指定してください（--every、--at、--every-days、--on、--date、--daily、--warn、--no-warn、--message、--arg）。",
     "keep_zero": "バックアップは 1 つ以上保持してください。",
+    "date_passed": "{{number}} 番の作業は日付がすでに過ぎているため実行されません。日付か時刻を直してください。",
     "keep_set": "スケジュールバックアップを直近 {{count}} 件保持します。",
     "confirm_clear": "{{name}} のスケジュールされたタスクをすべて削除しますか？",
     "cleared": "{{name}} のスケジュールされたタスクはなくなりました。",

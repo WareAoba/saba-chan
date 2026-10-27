@@ -1136,6 +1136,7 @@
     "schedule_desc": "Inicia, para, salva, faz backup, reinicia, anuncia, atualiza ou executa comandos do jogo automaticamente em horários ou intervalos definidos.",
     "schedule_empty": "Nenhuma tarefa agendada.",
     "schedule_saved": "Agendamento salvo.",
+    "schedule_date_passed": "A tarefa {{n}} está marcada para uma data que já passou, então não será executada. Altere a data ou o horário.",
     "task_add": "Adicionar tarefa",
     "task_aria": "Tipo da tarefa {{n}}",
     "task_enabled": "Ativar esta tarefa",
