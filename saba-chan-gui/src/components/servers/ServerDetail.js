@@ -12,6 +12,7 @@ import { useSettingsStore } from '../../stores/useSettingsStore';
 import { failedModuleReason, failureForModule } from '../../utils/failedModules';
 import { openWithNotice, safeShowToast } from '../../utils/helpers';
 import { useUIStore } from '../../stores/useUIStore';
+import { withCommandAliases } from '../../utils/commandRisk';
 import {
     STATUS_TONE,
     consoleQuickCommands,
@@ -26,6 +27,7 @@ import {
 import { dataStatusRows } from '../DataSlots';
 import ExtensionSlot from '../ExtensionSlot';
 import { Icon } from '../Icon';
+import { PortCheck, PortCheckNotice } from './PortCheck';
 import { ServerCheck } from './ServerCheck';
 import CommandModal from '../Modals/CommandModal';
 import { NativeProvision } from '../NativeProvision';
@@ -171,7 +173,11 @@ export function ServerDetail({
     })();
 
     return (
-        <section className="server-detail" aria-label={server.name}>
+        <section
+            // 기록 탭은 목록만 스크롤하고 머리는 제자리에 둔다: 상세 칸 높이에 맞춘다
+            className={activeTab === 'audit' ? 'server-detail fill-pane' : 'server-detail'}
+            aria-label={server.name}
+        >
             <header className="detail-head">
                 {onBack && (
                     <button
@@ -240,6 +246,8 @@ export function ServerDetail({
                     <span>{t('server_status.unresponsive', { reason: server.unresponsive })}</span>
                 </div>
             )}
+
+            {status !== 'missing' && <PortCheckNotice server={server} />}
 
             {conflicts.length > 0 && (
                 <div className="notice tone-warn">
@@ -326,7 +334,15 @@ export function ServerDetail({
                                 servers={servers}
                             />
                         )}
-                        {activeTab === 'maintenance' && <MaintenanceTab server={server} />}
+                        {activeTab === 'maintenance' && (
+                            <MaintenanceTab
+                                server={server}
+                                moduleCommands={withCommandAliases(
+                                    moduleData?.commands?.fields,
+                                    moduleData?.command_aliases,
+                                )}
+                            />
+                        )}
                         {activeTab === 'discord' && <InstanceDiscordTab server={server} />}
                         {activeTab === 'audit' && <AuditLog instanceId={server.id} />}
                         {activeTab === 'info' && (
@@ -487,6 +503,7 @@ function InfoTab({ server, moduleData, gameName, uptime, onDelete }) {
             <ExtensionSlot slotId="ServerCard.expandedStats" server={server} t={t} />
             <ExtensionSlot slotId="ServerDetail.section" server={server} t={t} />
             <ServerCheck server={server} />
+            <PortCheck server={server} />
             <div className="info-actions">
                 {workingDir && (
                     <button

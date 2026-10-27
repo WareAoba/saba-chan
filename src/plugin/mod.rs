@@ -145,8 +145,10 @@ fn import_guard_dir() -> Option<std::path::PathBuf> {
 
 /// 데몬에 넣어 둔 공용 Python 유틸리티. 모듈 폴더에 이것과 다른 판이 있으면 덮어쓴다.
 /// 설치·업데이트 경로와 상관없이(개발 빌드를 복사만 해도) 모듈이 데몬과 같은 판을 쓴다 (C7)
-const SHARED_MODULES: [(&str, &str); 3] = [
+const SHARED_MODULES: [(&str, &str); 4] = [
     ("i18n.py", include_str!("../../modules/i18n.py")),
+    // i18n.py가 모듈 locales에 없는 범용 문구를 찾는 곳
+    ("common_locales.json", include_str!("../../modules/common_locales.json")),
     ("daemon_rcon.py", include_str!("../../modules/daemon_rcon.py")),
     // 모듈 코드 검사기 (M12): 적합성 키트가 `--shared-libs`에서 찾는다
     ("saba_audit.py", crate::module_audit::SCRIPT),
@@ -1100,6 +1102,10 @@ async fn spawn_plugin(
     if deadline.remaining().is_zero() {
         return Err(call_error(module_path, function, "module_timeout", "prepare", "Process preparation exceeded the deadline", Vec::new()));
     }
+    // 실행이 어떻게 끝나든(이 호출을 기다리던 요청이 끊겨 버려져도) 데몬 항목 자리를 치운다
+    // child보다 먼저 선언해 나중에 놓인다: 버려질 때 `drive`의 실행 표가 먼저 끝내라는 신호를 보낸다.
+    // 놓는 자리에서는 종료를 기다릴 수 없어, 끝나기 직전 그 자리에 새로 생긴 것은 남을 수 있다
+    let clear_entries = isolation.as_ref().map(crate::sandbox::Isolation::clear_daemon_entries_on_drop);
     let mut child = match &isolation {
         None => plain(&mut cmd).map_err(|error| call_error(module_path, function, "module_execution_failed", "run", error, Vec::new()))?,
         Some(iso) => match deadline.paused(crate::sandbox::spawn_isolated(cmd.as_std(), iso)).await {
@@ -1130,6 +1136,7 @@ async fn spawn_plugin(
         },
     };
     let status = drive(&mut child, config_json.as_bytes(), on_progress, loopback, Some(host_proxy), deadline.remaining()).await;
+    drop(clear_entries);
 
     match status {
         Ok(Ok((exit_status, stdout_str, stderr_str))) => {
@@ -2116,7 +2123,7 @@ print(json.dumps(codes))
     async fn import_guard_blocks_only_disabled_extensions() {
         // PATH의 첫 python이 Windows 스토어 스텁일 수 있으므로 데몬과 같은 탐지로 실제 인터프리터를 고른다
         let Ok(python) = crate::python_env::detect_system_python().await else {
-            eprintln!("SKIP: Python >= 3.10 not found (python, python3, py)");
+            eprintln!("SKIP: Python >= 3.11 not found (python, python3, py)");
             return;
         };
         let tmp = tempfile::tempdir().unwrap();

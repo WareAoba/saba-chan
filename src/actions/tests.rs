@@ -7,12 +7,16 @@ const MODULE: &str = "[module]\nschema_version = 1\nname = \"plain\"\nversion = 
 const MODULE_KO: &str = r#"{ "queries": { "players": { "label": "접속자 목록", "description": "지금 접속한 사람", "inputs": { "limit": { "label": "최대 인원" } } } } }"#;
 
 async fn server() -> (IPCServer, String, tempfile::TempDir) {
+    server_with(MODULE).await
+}
+
+async fn server_with(module: &str) -> (IPCServer, String, tempfile::TempDir) {
     crate::ipc::auth::ensure_test_token();
     let tmp = tempfile::tempdir().unwrap();
     let modules = tmp.path().join("modules");
     let dir = modules.join("plain");
     std::fs::create_dir_all(&dir).unwrap();
-    std::fs::write(dir.join("module.toml"), MODULE).unwrap();
+    std::fs::write(dir.join("module.toml"), module).unwrap();
     std::fs::write(dir.join("lifecycle.py"), r#"import json, sys
 json.load(sys.stdin)
 function = sys.argv[1]
@@ -87,6 +91,50 @@ async fn the_chatbot_cannot_reach_forbidden_actions_whatever_the_levels() {
         assert_eq!((err.code, err.data["field"].as_str()), ("invalid_input", Some(key)), "{:?}", err);
     }
     assert!(plan(&state, "instance.settings.set", Some(&id), &json!({ "admin_pass": "x" }), &gui()).await.is_ok());
+}
+
+/// 원격 포트(짝 맺은 PC)에서 온 액션은 대상 라우트·칸이 원격 포트에서 막힌 것이면 계획·실행·여러 단계 계획 모두
+/// 미리 거절한다 (여러 단계에서 앞 단계만 돌고 멈추지 않게). 안에서 다시 부르는 다른 호출도 같은 규칙 층을 지난다
+#[tokio::test]
+async fn a_paired_pc_cannot_reach_routes_the_remote_port_refuses_through_actions() {
+    let (state, id, _tmp) = server().await;
+    let remote = crate::audit::Origin::new("remote");
+    let paired = Caller::local(remote.clone(), "en".into());
+    for action in ["update.apply", "update.check"] {
+        let err = plan(&state, action, None, &json!({}), &paired).await.unwrap_err();
+        assert_eq!((err.status, err.code), (403, "remote_local_only"), "{action}");
+        let err = run(&state, action, None, &json!({}), None, &paired).await.unwrap_err();
+        assert_eq!((err.status, err.code), (403, "remote_local_only"), "{action}");
+    }
+    let steps = json!([{ "id": "server.status", "instance": id, "input": {} }, { "id": "update.apply", "input": {} }]);
+    assert_eq!(plan_steps(&state, &steps, &paired).await.unwrap_err().code, "remote_local_only");
+    // 원격 포트가 막는 PC 전용 칸도 같다
+    let err = plan(&state, "instance.settings.set", Some(&id), &json!({ "java_path": "/bin/sh" }), &paired).await.unwrap_err();
+    assert_eq!((err.status, err.code), (403, "remote_field_blocked"), "{err:?}");
+    assert_eq!(err.data["fields"], json!(["java_path"]));
+    // 같은 계획에서 만들 서버(`@N`)도 그 모듈의 PC 전용 칸으로 본다
+    let on_new = json!([
+        { "id": "instance.create", "input": { "name": "new-srv", "module_name": "plain" } },
+        { "id": "instance.settings.set", "instance": "@1", "input": { "java_path": "/bin/sh" } },
+    ]);
+    let err = plan_steps(&state, &on_new, &paired).await.unwrap_err();
+    assert_eq!((err.status, err.code, err.data["step"].as_i64()), (403, "remote_field_blocked", Some(2)), "{err:?}");
+    assert_eq!(err.data["fields"], json!(["java_path"]));
+    // 그 모듈을 찾지 못하면 설정 칸은 모두 막는다
+    let unknown = json!([
+        { "id": "instance.create", "input": { "name": "new-srv", "module_name": "missing" } },
+        { "id": "instance.settings.set", "instance": "@1", "input": { "players": 6 } },
+    ]);
+    let err = plan_steps(&state, &unknown, &paired).await.unwrap_err();
+    assert_eq!((err.code, err.data["step"].as_i64()), ("remote_field_blocked", Some(2)), "{err:?}");
+    // 액션이 아닌 안쪽 호출도 같은 층을 지난다
+    let res = call_as(&state, "GET", "/api/updates/status", None, Some(remote.clone())).await;
+    assert_eq!((res.status.as_u16(), res.body["error_code"].as_str()), (403, Some("remote_local_only")), "{:?}", res.body);
+    // 원격 포트가 받는 라우트는 그대로, 이 PC의 화면에서는 그대로
+    assert!(plan(&state, "server.status", Some(&id), &json!({}), &paired).await.is_ok());
+    assert!(plan(&state, "update.apply", None, &json!({}), &gui()).await.is_ok());
+    let res = call_as(&state, "GET", "/api/updates/status", None, Some(crate::audit::Origin::new("gui"))).await;
+    assert_ne!(res.body["error_code"].as_str(), Some("remote_local_only"), "{:?}", res.body);
 }
 
 #[tokio::test]
@@ -867,6 +915,26 @@ async fn commands_denied_to_a_member_stay_denied_through_actions() {
     assert!(plan(&state, "server.stop", Some(&id), &json!({}), &relay("someone", false)).await.is_ok(), "only that member");
 }
 
+/// 예약 작업은 나중에 요청자 없이 돈다: 새로 넣거나 켜는 서버 명령은 요청자가 지금 그 명령을 쓸 수 있어야 한다
+#[tokio::test]
+async fn scheduling_a_command_needs_the_requesters_permission_for_it() {
+    let module = format!("{MODULE}\n[[commands.fields]]\nname = \"say\"\nrisk = \"safe\"\n\n[aliases.commands]\nsay = {{ aliases = [\"broadcast\"] }}\n");
+    let (state, id, _tmp) = server_with(&module).await;
+    let levels = json!({ format!("{}/say", id): 3 });
+    set_node(&state, json!({ "ownerDiscordId": "owner", "preset": "loose", "chatbotCap": 2, "defaultLevel": 2, "commandLevels": levels, "memberPermissions": { "admin": { id.clone(): ["stop"] } } })).await;
+    let task = |action: &str, command: Option<&str>| {
+        json!({ "schedule": [{ "action": action, "at": "04:00", "command": command, "enabled": true }] })
+    };
+    let admin = relay("admin", true);
+    for (input, what) in [(task("command", Some("say")), "say"), (task("command", Some("BROADCAST")), "alias"), (task("stop", None), "stop")] {
+        let err = plan(&state, "instance.schedule.set", Some(&id), &input, &admin).await.unwrap_err();
+        assert_eq!((err.code, &err.data["args"]["need"]), ("PERMISSION_DENIED", &json!(3)), "{}", what);
+    }
+    assert!(plan(&state, "instance.schedule.set", Some(&id), &task("start", None), &admin).await.is_ok(), "only the limited commands");
+    let off = json!({ "schedule": [{ "action": "command", "at": "04:00", "command": "say", "enabled": false }] });
+    assert!(plan(&state, "instance.schedule.set", Some(&id), &off, &admin).await.is_ok(), "a disabled task never runs");
+}
+
 #[test]
 fn remote_results_keep_paths_console_lines_and_raw_errors_on_the_pc() {
     let mut v = json!({
@@ -956,6 +1024,36 @@ async fn players_read_as_a_count_and_names_for_supporting_modules() {
     assert_eq!((item["modules"].clone(), item["title"]["ko"].clone(), item["surfaces"].clone()), (json!(["plain"]), json!("플레이어"), json!(["discord", "chatbot"])));
 }
 
+/// 포트포워딩 확인: 디스코드 요약은 판정·포트·안내만 (공인 주소는 채널에 싣지 않는다), heartbeat 항목은 `public` 포트를 선언한 모듈만,
+/// 챗봇에는 열지 않는다
+#[tokio::test]
+async fn port_check_reads_as_a_verdict_without_the_address() {
+    let ko = crate::chat::i18n::Catalog::for_language("ko");
+    let report = json!({
+        "verdict": "closed", "address": "203.0.114.7", "publicAddress": true, "nat": "router",
+        "ports": [{ "field": "port", "port": 8211, "protocol": "udp", "status": "closed" }, { "field": "port", "port": 8211, "protocol": "tcp", "status": "open" }],
+    });
+    let text = summary::text("server.port_check", &report, &ko).unwrap();
+    let lines: Vec<&str> = text.lines().collect();
+    assert_eq!(lines[0], "🚫 밖에서 접속할 수 없어요");
+    assert_eq!(lines[1], "• 8211/UDP · 닫힘");
+    assert_eq!(lines[2], "• 8211/TCP · 열림");
+    assert!(lines[3].contains("포트포워딩"), "{text}");
+    assert!(!text.contains("203.0.114.7"));
+    assert_eq!(summary::text("server.port_check", &json!({ "verdict": "open", "ports": [] }), &ko).unwrap(), "✅ 밖에서 접속할 수 있어요");
+
+    assert_eq!(find("server.port_check").unwrap().surfaces, &[Gui, Cli, Discord]);
+    let (state, _id, _tmp) = server().await;
+    let mut modules = state.supervisor.read().await.module_loader.discover_modules().unwrap();
+    let (actions, _) = heartbeat_actions(&["ko"], &modules);
+    assert_eq!(actions.iter().find(|a| a["id"] == "server.port_check").unwrap()["modules"], json!([]));
+    let settings = modules[0].metadata.settings.get_or_insert_with(|| crate::supervisor::module_loader::ModuleSettings { fields: Vec::new() });
+    settings.fields.push(crate::supervisor::module_loader::SettingField { name: "port".into(), port: true, public: Some("udp".into()), ..Default::default() });
+    let (actions, _) = heartbeat_actions(&["ko"], &modules);
+    let item = actions.iter().find(|a| a["id"] == "server.port_check").unwrap();
+    assert_eq!((item["modules"].clone(), item["title"]["ko"].clone(), item["surfaces"].clone()), (json!(["plain"]), json!("포트포워딩 확인"), json!(["discord"])));
+}
+
 /// 디스코드에서 백업 복원 (사용자 디스코드 검수 14번): 디스코드 메뉴에 싣고, 이름 칸은 백업 목록에서 고르며(`optionsFrom`),
 /// 목록 항목에는 사람이 읽을 이름(`label`)이 붙는다. 켜진 서버는 복원 계획만으로는 409이고, 먼저 끄는 단계가 앞에 있으면 계획된다
 #[tokio::test]
@@ -1014,4 +1112,72 @@ fn a_command_kept_off_remote_surfaces_is_not_a_remote_action() {
     assert_eq!(hidden["surfaces"], json!(["gui", "cli"]));
     let shown = command_view(&json!({ "name": "say", "risk": "safe", "inputs": [] })).unwrap();
     assert_eq!(shown["surfaces"], json!(["gui", "cli", "discord", "chatbot"]));
+}
+
+// 사용자 요청(2026-10-26): 켜짐 알림은 디스코드 `/<서버> 켜짐-알림`으로도 바꾼다. 관리자 이상, 요청이 온 길드만, 말하는 사바쨩은 아니다
+#[tokio::test]
+async fn start_notice_is_set_from_discord_by_admins_for_their_own_guild() {
+    let (state, id, _tmp) = server().await;
+    set_node(&state, json!({ "ownerDiscordId": "owner", "defaultLevel": 1, "members": { "admin": 2 } })).await;
+    let on = json!({ "enabled": true });
+    let id_ = "instance.start_notice.set";
+    assert_eq!(plan(&state, id_, Some(&id), &on, &relay("user", false)).await.unwrap_err().code, "PERMISSION_DENIED");
+    assert_eq!(plan(&state, id_, Some(&id), &on, &relay("admin", true)).await.unwrap_err().code, "action_not_allowed");
+    let other = json!({ "guild": "other", "enabled": true });
+    assert_eq!(plan(&state, id_, Some(&id), &other, &relay("admin", false)).await.unwrap_err().code, "invalid_input");
+
+    let planned = plan(&state, id_, Some(&id), &on, &relay("admin", false)).await.unwrap();
+    assert_eq!(planned["needsConfirm"], false);
+    let done = run(&state, "", None, &Value::Null, planned["planId"].as_str(), &relay("admin", false)).await.unwrap();
+    assert_eq!(done["success"], true, "{done}");
+    assert_eq!(state.config_store.get_bot_config().await.node_settings["g"]["startNotice"], json!([id]));
+
+    // 서버 루트 아래 메뉴에 실린다
+    let (actions, _) = heartbeat_actions(&crate::chat::i18n::languages(), &[]);
+    let item = actions.iter().find(|a| a["id"] == id_).expect("in the Discord menu");
+    assert_eq!(item["title"]["ko"], "켜짐 알림");
+    assert_eq!(item["name"]["en"], "Start alert");
+}
+
+/// 디스코드 문장 명령도 계획 → 실행 한 길로: 데몬이 문장을 해석해 액션과 서버를 알려 주고, 실행하면 문장 명령과 같은 답을 쓴다
+#[tokio::test]
+async fn a_sentence_plans_the_action_it_names_and_runs_with_the_same_reply() {
+    let (state, id, _tmp) = server().await;
+    open_everything(&state).await;
+    let caller = relay("u1", false);
+    let planned = plan_text(&state, "srv status", &caller).await.unwrap();
+    assert_eq!(planned["actionId"], "server.status");
+    assert_eq!(planned["instance"], json!(id));
+    assert_eq!(planned["needsConfirm"], false);
+    let plan_id = planned["planId"].as_str().unwrap().to_string();
+
+    // 다른 사람은 남의 계획을 실행하지 못한다
+    let err = run(&state, "", None, &Value::Null, Some(&plan_id), &relay("u2", false)).await.unwrap_err();
+    assert_eq!(err.code, "plan_not_yours");
+
+    let done = run(&state, "", None, &Value::Null, Some(&plan_id), &caller).await.unwrap();
+    assert_eq!(done["success"], true, "{done}");
+    assert_eq!(done["actionId"], "server.status");
+    assert_eq!(done["instance"], json!(id));
+    let text = done["text"].as_str().unwrap();
+    assert!(text.contains("srv"), "{text}");
+    let req = crate::chat::ChatRequest { text: "srv status".into(), guild_id: Some("g".into()), user_id: Some("u1".into()), locale: Some("ko".into()), remote: caller.remote.clone(), ..Default::default() };
+    assert_eq!(text, crate::chat::api::run_with_daemon_settings(&state, &req).await.text);
+}
+
+/// 실행할 것이 없는 문장(도움말·모르는 명령)은 계획 없이 답한다. 모르는 입력은 코드와 함께 실패로
+#[tokio::test]
+async fn a_sentence_with_nothing_to_run_is_answered_without_a_plan() {
+    let (state, _id, _tmp) = server().await;
+    open_everything(&state).await;
+    let help = plan_text(&state, "help", &relay("u1", false)).await.unwrap();
+    assert_eq!(help["success"], true);
+    assert!(help.get("planId").is_none(), "{help}");
+    assert!(help["text"].as_str().is_some_and(|t| !t.is_empty()), "{help}");
+
+    let unknown = plan_text(&state, "srv dance", &relay("u1", false)).await.unwrap();
+    assert_eq!(unknown["success"], false);
+    assert_eq!(unknown["code"], "UNKNOWN_COMMAND");
+    assert!(unknown["text"].as_str().is_some_and(|t| !t.is_empty()), "{unknown}");
+    assert!(unknown.get("planId").is_none());
 }

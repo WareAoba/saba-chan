@@ -199,10 +199,15 @@ const impl = {
                 { action: 'backup', every_minutes: 120, enabled: true },
                 { action: 'restart', at: '04:00', warn_minutes: [10, 1], enabled: true },
                 { action: 'announce', every_minutes: 60, message: '디스코드에도 놀러 오세요!', enabled: false },
+                { action: 'stop', at: '02:00', weekdays: ['sat', 'sun'], warn_minutes: [5], enabled: true },
+                { action: 'start', at: '08:00', date: '2026-10-01', enabled: true },
             ],
+            next_runs: [Math.floor(Date.now() / 1000) + 3600, Math.floor(Date.now() / 1000) + 7200, null, null, null],
+            utc_offset_minutes: -new Date().getTimezoneOffset(),
             backup_keep: 10,
             backup_supported: true,
             announce_supported: true,
+            save_supported: true,
         }),
     instanceScheduleSave: () => ok({ success: true }),
     instanceBackups: () =>
@@ -253,6 +258,8 @@ const impl = {
             ],
         }),
     instanceDiagnose: () => ok({ success: true, issues: [] }),
+    instancePortCheck: (id) => ok({ instanceId: id, verdict: 'open', address: '203.0.113.7', publicAddress: true, nat: 'router', running: false, checkedAt: new Date().toISOString(), ports: [{ field: 'port', port: 25565, protocol: 'tcp', status: 'open' }] }),
+    instancePortCheckLast: (id) => ok({ instanceId: id, verdict: 'not_checked' }),
     daemonDiagnostics: () =>
         ok({
             ok: true,
@@ -433,7 +440,7 @@ const impl = {
             nodeToken: 'kept',
             path: path || 'C:\\Users\\me\\saba-chan-export.zip',
         }),
-    auditList: ({ instance } = {}) =>
+    auditList: ({ instance, since, until } = {}) =>
         ok({
             entries: [
                 {
@@ -477,8 +484,9 @@ const impl = {
                     ok: true,
                     status: 200,
                 },
-            ].filter((e) => !instance || e.instanceId === instance),
+            ].filter((e) => (!instance || e.instanceId === instance) && (!since || e.ts >= since) && (!until || e.ts < until)),
         }),
+    auditExport: () => ok({ success: true, path: 'C:\\Users\\me\\saba-chan-activity.csv', count: 4 }),
     daemonConsole: ({ since } = {}) => {
         const msgs = [
             ['info', 'IPC server listening on 127.0.0.1:57474'],

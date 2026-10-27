@@ -152,6 +152,10 @@ pub struct ModuleMetadata {
     /// [status] players — 켜진 서버의 접속자 수를 돌려주는 lifecycle 함수 (Q-5, `supervisor::players`)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub players_function: Option<String>,
+    /// [[diagnose]] 로그 진단 규칙. 데몬은 검사만 하고, 모듈 `diagnose_log()`가 공용 도우미
+    /// `daemon_rcon.load_diagnose_rules`·`diagnose_lines`로 쓴다 (saba-core 0.1.11)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub diagnose: Vec<DiagnoseRule>,
     /// 로드는 됐지만 고쳐야 할 점 (스키마 이전 모듈의 모르는 키 등)
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub warnings: Vec<String>,
@@ -202,6 +206,23 @@ pub struct ModuleAgreement {
     /// 사용자가 읽을 원문 (https)
     pub url: String,
 }
+
+/// `[[diagnose]]` — 콘솔 줄에서 알려진 문제를 찾는 규칙. 문구는 모듈 locales의
+/// `errors.detect.<소문자 code>`·`errors.solutions.<소문자 code>`(모듈이 다른 키를 고를 수 있다)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+#[schemars(deny_unknown_fields)]
+pub struct DiagnoseRule {
+    /// 문제 코드 (모듈 안에서 겹치지 않음, 예: "PORT_IN_USE")
+    pub code: String,
+    /// "critical" | "error"(기본) | "warning" | "info"
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub severity: Option<String>,
+    /// Python 정규식 (대소문자 무시). 하나라도 맞으면 그 줄이 문제다
+    pub patterns: Vec<String>,
+}
+
+/// `[[diagnose]] severity`로 받는 값
+pub const DIAGNOSE_SEVERITIES: &[&str] = &["critical", "error", "warning", "info"];
 
 /// `[permissions]` — 모듈 Python 코드가 쓰는 능력 (M12). 선언하지 않은 능력을 코드에서 찾으면
 /// `saba-core module audit`과 `GET /api/module/:name/audit`이 알린다. 새 권한은 여기와
@@ -483,6 +504,9 @@ pub struct SettingField {
     /// 네트워크 포트 값인가. 같은 게임을 여러 개 만들 때 데몬이 겹치지 않게 옮긴다
     #[serde(default)]
     pub port: bool,
+    /// 친구가 밖에서 붙는 포트면 그 프로토콜: "tcp" | "udp" | "both". 포트포워딩 확인이 이 포트만 본다 (`crate::port_check`)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub public: Option<String>,
     /// 서버를 만들 때 고르는 설정 (받을 서버 파일이 달라지는 값. 예: 마인크래프트 서버 종류).
     /// GUI·CLI가 만들기 화면에서 묻고 `POST /api/instances`의 `module_settings`로 보낸다
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -511,6 +535,10 @@ pub struct SettingField {
     /// 다른 설정 값에 따라 보일지 (스키마 2)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub visible_when: Option<VisibleWhen>,
+    /// 이 설정이 게임 설정 파일에서 쓰는 키 (예: `max-players`). 데몬은 읽지 않는다: 공용 도우미
+    /// `daemon_rcon.settings_to_file`·`settings_from_file`이 이름과 파일 키를 이 한 곳에서 잇는다 (saba-core 0.1.11)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file_key: Option<String>,
 }
 
 /// `visible_when = { field, equals }` 또는 `{ field, in = [...] }` (06 §8.2)
@@ -799,6 +827,9 @@ struct ModuleToml {
     /// [status] 켜진 서버의 상태를 더 알려 주는 함수
     #[serde(default)]
     status: Option<StatusSection>,
+    /// [[diagnose]] 로그 진단 규칙 (`ModuleMetadata::diagnose`)
+    #[serde(default)]
+    diagnose: Vec<DiagnoseRule>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -983,6 +1014,9 @@ struct SettingFieldToml {
     /// 네트워크 포트 값이면 true. 인스턴스를 만들 때 다른 인스턴스와 겹치지 않게 옮겨진다
     #[serde(default)]
     port: bool,
+    /// 밖에서 붙는 포트의 프로토콜 `tcp`·`udp`·`both` (`SettingField::public`). `port = true`인 필드만
+    #[serde(default)]
+    public: Option<String>,
     /// 서버를 만들 때 고르는 설정이면 true (설치할 파일이 달라지는 값)
     #[serde(default)]
     install: bool,
@@ -1008,6 +1042,9 @@ struct SettingFieldToml {
     #[serde(default)]
     #[schemars(with = "Option<VisibleWhen>")]
     visible_when: Option<VisibleWhenToml>,
+    /// 게임 설정 파일의 키 (`SettingField::file_key`)
+    #[serde(default)]
+    file_key: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1272,6 +1309,7 @@ impl ModuleToml {
                 options: f.options,
                 group: f.group,
                 port: f.port,
+                public: f.public,
                 install: f.install,
                 arg: f.arg.map(OneOrMany::into_vec).unwrap_or_default(),
                 format: f.format,
@@ -1285,6 +1323,7 @@ impl ModuleToml {
                     equals: v.equals.and_then(|e| serde_json::to_value(e).ok()),
                     any_of: v.any_of.map(|list| list.into_iter().filter_map(|e| serde_json::to_value(e).ok()).collect()),
                 }),
+                file_key: f.file_key,
             }).collect();
             if fields.is_empty() { None } else { Some(ModuleSettings { fields }) }
         } else {
@@ -1423,6 +1462,7 @@ impl ModuleToml {
             }).collect(),
             agreements: self.agreements,
             players_function: self.status.and_then(|s| s.players),
+            diagnose: self.diagnose,
             warnings: Vec::new(),
         }
     }
@@ -1721,6 +1761,13 @@ impl ModuleToml {
             if let Some(format) = field.format.as_deref().filter(|f| !SETTING_FORMATS.contains(f)) {
                 problems.push(format!("settings field '{}': unknown format '{}' (one of {})", field.name, format, SETTING_FORMATS.join(", ")));
             }
+            if let Some(public) = field.public.as_deref() {
+                if crate::port_check::protocols_of(public).is_none() {
+                    problems.push(format!("settings field '{}': public '{}' must be one of tcp, udp, both", field.name, public));
+                } else if !field.port {
+                    problems.push(format!("settings field '{}': public needs port = true", field.name));
+                }
+            }
             if let Some(Err(e)) = field.pattern.as_deref().map(regex::Regex::new) {
                 problems.push(format!("settings field '{}': pattern is not a valid regex: {}", field.name, e));
             }
@@ -1733,6 +1780,28 @@ impl ModuleToml {
                 if let Err(e) = crate::launch_args::ArgPattern::parse(arg) {
                     problems.push(format!("settings field '{}': arg '{}' {}", field.name, arg, e));
                 }
+            }
+        }
+        let mut file_keys = std::collections::HashSet::new();
+        for field in &fields {
+            if let Some(key) = &field.file_key {
+                if key.trim().is_empty() || key.contains(['=', '\n', '\r']) {
+                    problems.push(format!("settings field '{}': file_key must be a non-empty key without '=' or line breaks", field.name));
+                } else if !file_keys.insert(key.as_str()) {
+                    problems.push(format!("settings field '{}': file_key '{}' is used by another field", field.name, key));
+                }
+            }
+        }
+        let mut codes = std::collections::HashSet::new();
+        for rule in &self.diagnose {
+            if !codes.insert(rule.code.as_str()) {
+                problems.push(format!("diagnose '{}': duplicate code", rule.code));
+            }
+            if rule.patterns.is_empty() {
+                problems.push(format!("diagnose '{}': patterns must not be empty", rule.code));
+            }
+            if let Some(severity) = rule.severity.as_deref().filter(|s| !DIAGNOSE_SEVERITIES.contains(s)) {
+                problems.push(format!("diagnose '{}': severity '{}' must be one of {}", rule.code, severity, DIAGNOSE_SEVERITIES.join(", ")));
             }
         }
         for cmd in self.commands.iter().flat_map(|c| &c.fields) {
@@ -2654,6 +2723,27 @@ entry = "lifecycle.py"
 
     const V1: &str = "[module]\nschema_version = 1\nname = \"g\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n";
 
+    /// 0.1.11: 설정의 게임 파일 키(`file_key`)와 로그 진단 규칙(`[[diagnose]]`)은 module.toml 한 곳에 적고
+    /// 공용 도우미가 읽는다. 데몬은 겹침·빈 값·심각도만 검사한다
+    #[test]
+    fn file_keys_and_diagnose_rules_are_read_and_checked() {
+        let good = format!("{V1}\n[[settings.fields]]\nname = \"max_players\"\ntype = \"number\"\nfile_key = \"max-players\"\n\n[[diagnose]]\ncode = \"PORT_IN_USE\"\nseverity = \"critical\"\npatterns = [\"Address already in use\"]\n");
+        let meta = parse_module_toml(&good).unwrap();
+        assert!(meta.warnings.is_empty(), "{:?}", meta.warnings);
+        assert_eq!(meta.settings.unwrap().fields[0].file_key.as_deref(), Some("max-players"));
+        assert_eq!(meta.diagnose, vec![DiagnoseRule { code: "PORT_IN_USE".into(), severity: Some("critical".into()), patterns: vec!["Address already in use".into()] }]);
+        let twice = good.replace("name = \"max_players\"", "name = \"a\"") + "\n[[settings.fields]]\nname = \"b\"\nfile_key = \"max-players\"\n";
+        assert!(parse_module_toml(&twice).unwrap_err().to_string().contains("used by another field"));
+        let injected = good.replace("file_key = \"max-players\"", "file_key = \"a=b\"");
+        assert!(parse_module_toml(&injected).unwrap_err().to_string().contains("file_key"));
+        let severity = good.replace("severity = \"critical\"", "severity = \"fatal\"");
+        assert!(parse_module_toml(&severity).unwrap_err().to_string().contains("severity"));
+        let empty = good.replace("patterns = [\"Address already in use\"]", "patterns = []");
+        assert!(parse_module_toml(&empty).unwrap_err().to_string().contains("patterns"));
+        let duplicate = format!("{good}\n[[diagnose]]\ncode = \"PORT_IN_USE\"\npatterns = [\"x\"]\n");
+        assert!(parse_module_toml(&duplicate).unwrap_err().to_string().contains("duplicate code"));
+    }
+
     /// 0.1.11: 더 새 데몬의 키를 쓴 모듈도 예전 데몬이 읽는다. 모르는 키는 경고로 남기고 무시한다
     /// (꼭 필요한 기능은 `saba-core` 버전 조건으로 막는다)
     #[test]
@@ -2750,6 +2840,18 @@ entry = "lifecycle.py"
         for bad in ["\"a\"", "[\"c\"]", "[\"a\", \"a\"]"] {
             let err = preset(bad).unwrap_err().to_string();
             assert!(err.contains("presets 'p'"), "{bad}: {err}");
+        }
+    }
+
+    /// 포트포워딩 확인 (2026-10-26): 밖에서 붙는 포트는 `public`으로 프로토콜을 밝힌다. 포트 필드에만 쓴다
+    #[test]
+    fn public_declares_the_protocol_of_a_port_field() {
+        let field = |keys: &str| parse_module_toml(&format!("{V1}\n[[settings.fields]]\nname = \"port\"\ntype = \"number\"\n{keys}\n"));
+        let meta = field("port = true\npublic = \"udp\"").unwrap();
+        assert_eq!(meta.settings.unwrap().fields[0].public.as_deref(), Some("udp"));
+        for (keys, needle) in [("port = true\npublic = \"icmp\"", "must be one of"), ("public = \"tcp\"", "port = true")] {
+            let err = field(keys).unwrap_err().to_string();
+            assert!(err.contains("public") && err.contains(needle), "{keys}: {err}");
         }
     }
 

@@ -856,6 +856,13 @@ fn downloaded_release_notes_reach_the_completion_marker() {
     let release = manager.pending_release().expect("release summary saved with the pending manifest");
     assert_eq!((release.version.as_str(), release.notes_for("ko")), ("0.1.3", Some("고침")));
 
+    // 데몬을 다시 켜 받아 둔 목록을 되살린 뒤 적용(업데이터 위임)해도 릴리즈 요약은 남는다 ('다음 실행 때 적용')
+    let mut restarted = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    restarted.staging_dir = manager.staging_dir.clone();
+    restarted.load_pending_manifest().unwrap();
+    restarted.save_pending_manifest().unwrap();
+    assert_eq!(restarted.pending_release().map(|r| r.version), Some("0.1.3".to_string()));
+
     manager.clear_pending_manifest();
     assert!(manager.pending_release().is_none());
 }

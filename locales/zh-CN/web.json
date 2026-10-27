@@ -110,10 +110,12 @@
     "save": "保存",
     "saved": "设置已保存。",
     "saved_restart": "设置已保存。部分设置在服务器重启后生效。",
-    "changed_elsewhere": "期间设置已在其他地方被更改。请重新打开服务器。",
+    "changed_elsewhere": "期间设置已在其他地方被更改。请载入新的值后再修改。",
     "danger_zone": "删除服务器",
     "delete_hint": "删除服务器的设置和文件。",
-    "stop_first": "请先停止服务器。"
+    "stop_first": "请先停止服务器。",
+    "save_failed": "无法保存",
+    "reload": "载入新的值"
   },
   "backups": {
     "create": "立即备份",
@@ -169,7 +171,12 @@
     "ladder_removed": "被删除等级的人会移到下一级，需要该等级的命令会移到上一级。",
     "ladder_invalid": "等级名称需为 1–32 个字符。",
     "ladder_revert": "还原",
-    "ladder_save": "保存等级"
+    "ladder_save": "保存等级",
+    "notice": "启动通知",
+    "notice_hint": "开启的服务器在 Saba-chan 启动时会在此 Discord 服务器的通知频道告知。从 Discord 启动的和在 Saba-chan 之外启动的除外。",
+    "notice_empty": "此 Discord 服务器没有使用的服务器。",
+    "notice_on": "已开启启动通知。",
+    "notice_off": "已关闭启动通知。"
   },
   "modules": {
     "games": "游戏模块",
@@ -212,5 +219,43 @@
     "remote_timeout": "未在 2 分钟内完成，已按失败处理。请在电脑上确认结果。",
     "remote_host_gone": "请求完成前与电脑的连接已断开。",
     "remote_busy": "请求过多。请稍后再试。"
+  },
+  "port_check": {
+    "button": "检查端口转发",
+    "running": "正在检查…",
+    "retry": "重新检查",
+    "address": "公网 IP {{address}}（朋友用这个地址和端口连接）",
+    "help": "端口转发指南",
+    "verdict": {
+      "open": "可以从外网连接",
+      "firewall": "被电脑防火墙阻止",
+      "router": "路由器未设置端口转发",
+      "closed": "无法从外网连接",
+      "cgnat": "路由器没有获得公网 IP（CGNAT）",
+      "unknown": "部分端口无法检查",
+      "no_ports": "此游戏没有声明要检查的端口"
+    },
+    "status": {
+      "open": "开放",
+      "closed": "关闭",
+      "unknown": "未检查",
+      "in_use": "被其他程序占用",
+      "firewall": "被防火墙阻止",
+      "router": "未转发"
+    },
+    "hint": {
+      "closed": "请确认路由器已将此端口转发到这台电脑，并且电脑防火墙已放行。",
+      "firewall": "Windows 防火墙正在阻止此端口的入站连接。请针对当前连接的网络（专用或公用），在 Windows 防火墙设置中允许 saba-core（服务器已停止时）或游戏服务器程序（服务器运行时），然后再检查。",
+      "router": "电脑防火墙已允许此端口。请在路由器设置中把此端口转发到这台电脑，然后再检查。",
+      "cgnat": "运营商让多户共用一个公网 IP，无法通过端口转发开放。请向运营商申请公网 IP，或使用 Tailscale 等 VPN。",
+      "unknown": "无法检查正在运行的服务器的 UDP 端口和其他程序占用的端口。请停止服务器后再检查。"
+    },
+    "error": {
+      "node_token_missing": "请先连接 Discord（配对）。检查由中继完成。",
+      "port_check_busy": "已经在检查中，请稍后再试。",
+      "rate_limited": "检查过于频繁，请一分钟后再试。",
+      "relay_unreachable": "无法连接中继，请检查网络连接。",
+      "failed": "检查失败。"
+    }
   }
 }

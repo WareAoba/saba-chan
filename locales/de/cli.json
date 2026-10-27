@@ -126,7 +126,12 @@
     "words_bad_command": "{{spec}}: Schreibe es als BEFEHL=WORT,WORT (BEFEHL= entfernt sie).",
     "no_paired_servers": "Mit diesem PC ist noch kein Discord-Server gekoppelt. Ausführen: saba-chan-cli bot pair",
     "pick_server": "Mehrere Discord-Server sind gekoppelt. Gib die ID des zu ändernden Servers an: {{servers}}",
-    "translate_commands": "Übersetzte Befehlsnamen"
+    "translate_commands": "Übersetzte Befehlsnamen",
+    "notice_none": "Für keinen Server ist der Start-Hinweis an. Startet Saba-chan einen Server, wird nichts gemeldet.",
+    "notice_is_on": "{{server}}: Start-Hinweis an",
+    "notice_is_off": "{{server}}: Start-Hinweis aus",
+    "notice_on_saved": "Der Hinweiskanal von {{guild}} erfährt, wenn {{server}} startet.",
+    "notice_off_saved": "{{guild}} erfährt nicht mehr, wenn {{server}} startet."
   },
   "col": {
     "players": "Spieler",
@@ -372,7 +377,8 @@
       "autostart_unknown_mode": "Wähle off, daemon oder full.",
       "move_cross_volume": "Ein Ordner auf einem anderen Laufwerk kann nicht verschoben werden. Importiere ihn stattdessen mit „Am Ort lassen“.",
       "move_in_use": "Der Ordner konnte nicht verschoben werden. Stoppe den Server in diesem Ordner, schließe Programme, die ihn geöffnet haben, und versuche es erneut.",
-      "move_failed": "Der Ordner konnte nicht verschoben werden. Importiere ihn stattdessen mit „Am Ort lassen“."
+      "move_failed": "Der Ordner konnte nicht verschoben werden. Importiere ihn stattdessen mit „Am Ort lassen“.",
+      "port_check_busy": "Es läuft bereits eine Prüfung. Versuch es gleich noch einmal"
     },
     "not_a_bool": "„{{value}}“ ist kein Ja/Nein (verwende true oder false).",
     "not_a_number": "„{{value}}“ ist keine Zahl.",
@@ -726,6 +732,7 @@
       "config.paths": "Wo Saba-chan Daten, Module und Erweiterungen ablegt, und die Standardordner",
       "config.move": "Module oder Erweiterungen in einen anderen Ordner verschieben. Installierte Dateien werden verschoben; Server müssen gestoppt sein",
       "server.players": "Wer gerade online ist",
+      "server.port-check": "Prüfen, ob Freunde diesen Server aus dem Internet erreichen (Portweiterleitung)",
       "server.rcon": "Eine Zeile so senden, wie der Server Befehle annimmt (Konsole, sonst RCON), und die Antwort zeigen",
       "server.log": "Gespeichertes Protokoll früherer Läufe (die Konsole hält nur den aktuellen)",
       "server.query": "Nur lesende Abfragen des Spielmoduls (ohne Namen: Liste)",
@@ -742,7 +749,8 @@
       "remote.servers": "Server auf diesem PC und auf jedem Remote-Daemon, nach Daemon (einen bedienen mit `--daemon <Name>`)",
       "remote.forget": "Remote-Daemon entfernen (erneut verbinden mit `remote connect`)",
       "config.autostart": "Was beim Anmelden an diesem PC startet: off, daemon (nur Daemon und Tray) oder full (mit GUI-Fenster). Ohne Modus wird der aktuelle Wert gezeigt",
-      "config.browse": "Ordner und Dateien auf dem PC des Daemons (mit --daemon der entfernte PC). Ohne Pfad Laufwerke oder /"
+      "config.browse": "Ordner und Dateien auf dem PC des Daemons (mit --daemon der entfernte PC). Ohne Pfad Laufwerke oder /",
+      "bot.notice": "Im Hinweiskanal des Discord-Servers melden, wenn Saba-chan einen Server startet (standardmäßig aus). Ohne Server: anzeigen. Server mit `--on`/`--off`: ändern"
     },
     "arg": {
       "module.maker.game": "Spiel für die erste Anfrage",
@@ -777,6 +785,9 @@
       "monitor.interval": "Sekunden zwischen den Aktualisierungen mit --watch",
       "audit.limit": "Wie viele Einträge",
       "audit.follow": "Neue Einträge laufend ausgeben (Ctrl+C zum Beenden)",
+      "audit.since": "Ab diesem Tag: JJJJ-MM-TT, today oder 7d (letzte 7 Tage)",
+      "audit.until": "Bis zum Ende dieses Tages: JJJJ-MM-TT oder today",
+      "audit.export": "Alle Einträge des Zeitraums in diese CSV-Datei speichern statt sie aufzulisten",
       "bot.lang.value": "auto oder ein Sprachcode (ko, en, ja, zh-CN, zh-TW, es, pt-BR, ru, de, fr)",
       "bot.prefix.values": "Ein oder mehrere Präfixe (ohne Leerzeichen, bis 32 Zeichen, bis zu 10)",
       "bot.prefix.default": "Zum Standardpräfix der App-Sprache zurückkehren",
@@ -825,7 +836,9 @@
       "keep_settings": "Beim Löschen der Instanz die Spieleinstellungsdateien nicht auf den Stand vor dem Import zurücksetzen, sondern so lassen",
       "move_folder": "Den --from-Ordner nicht an Ort und Stelle verknüpfen, sondern in den saba-chan-Ordner verschieben (nur auf demselben Laufwerk)",
       "config.browse.path": "Vollständiger Pfad des Ordners",
-      "config.browse.files": "Auch Dateien mit diesen Endungen zeigen (kommagetrennt, * für alle)"
+      "config.browse.files": "Auch Dateien mit diesen Endungen zeigen (kommagetrennt, * für alle)",
+      "bot.notice.on": "Start-Hinweis einschalten",
+      "bot.notice.off": "Start-Hinweis ausschalten"
     },
     "after": "Namen können abgekürzt werden (z. B. start pal). Ohne Argumente öffnet sich im Terminal das Vollbildmenü (SABA_NO_TUI=1: die interaktive Shell).\nIn Skripten --json und --yes verwenden. Exit-Codes: 0 ok · 1 fehlgeschlagen · 2 Verwendung · 3 Daemon nicht erreichbar · 4 nicht gefunden · 130 abgebrochen"
   },
@@ -877,13 +890,18 @@
     "col": {
       "task": "Aufgabe",
       "when": "Wann",
-      "on": "An"
+      "on": "An",
+      "next": "Nächster Lauf"
     },
     "action": {
       "backup": "Sichern",
       "restart": "Neustart",
       "announce": "Ankündigen",
-      "update": "Aktualisieren"
+      "update": "Aktualisieren",
+      "start": "Starten",
+      "stop": "Stoppen",
+      "save": "Speichern",
+      "command": "Spielbefehl"
     },
     "none": "{{name}} hat keine geplanten Aufgaben.",
     "warns": "warnt {{minutes}} Min. vorher",
@@ -899,17 +917,40 @@
     "disabled": "Ausgeschaltet: {{task}}",
     "no_such": "Es gibt keine Aufgabe {{number}} (es gibt {{count}}).",
     "edited": "Aufgabe geändert: {{task}}",
-    "nothing_to_edit": "Gib mindestens eine Änderung an (--every, --at, --warn, --no-warn, --message).",
+    "nothing_to_edit": "Gib mindestens eine Änderung an (--every, --at, --every-days, --on, --date, --daily, --warn, --no-warn, --message, --arg).",
     "keep_zero": "Behalte mindestens 1 Backup.",
     "keep_set": "Die letzten {{count}} geplanten Backups werden behalten.",
     "confirm_clear": "Alle geplanten Aufgaben von {{name}} entfernen?",
     "cleared": "{{name}} hat jetzt keine geplanten Aufgaben mehr.",
     "bad_action": "„{{got}}“ ist keine Aufgabe. Verwende eine davon: {{actions}}.",
-    "warn_only_restart": "--warn funktioniert nur mit restart und update.",
+    "warn_only_restart": "--warn gilt nur für restart, update und stop.",
     "message_required": "Eine Ankündigung braucht --message.",
     "every_or_at": "Gib entweder --every (z. B. 30m, 2h) oder --at (z. B. 04:00) an, nicht beides.",
     "bad_every": "„{{got}}“ ist keine Zeitangabe. Verwende Minuten oder Einheiten, z. B. 30, 30m, 2h, 1h30m.",
-    "bad_at": "„{{got}}“ ist keine Uhrzeit. Verwende HH:MM, z. B. 04:00."
+    "bad_at": "„{{got}}“ ist keine Uhrzeit. Verwende HH:MM, z. B. 04:00.",
+    "weekday": {
+      "mon": "Mo",
+      "tue": "Di",
+      "wed": "Mi",
+      "thu": "Do",
+      "fri": "Fr",
+      "sat": "Sa",
+      "sun": "So"
+    },
+    "server_clock": "Zeiten richten sich nach der Uhr des Server-PCs ({{zone}}). Nächste Läufe in der Zeit dieses PCs.",
+    "every_days_at": "alle {{n}} Tage um {{at}} ab {{from}}",
+    "weekdays_at": "{{days}} um {{at}}",
+    "date_at": "einmal am {{date}} um {{at}}",
+    "no_save": "Dieses Spiel hat keinen Speicherbefehl.",
+    "command_required": "Ein Spielbefehl braucht --command (Liste: server commands).",
+    "command_only": "--command und --arg gelten nur für die Aufgabe command.",
+    "day_rule_needs_at": "--every-days, --on und --date brauchen --at.",
+    "bad_every_days": "{{got}} Tage gehen nicht. Nutze 1 bis 365.",
+    "bad_weekday": "„{{got}}“ ist kein Wochentag. Nutze: {{days}}.",
+    "bad_date": "„{{got}}“ ist kein Datum. Nutze JJJJ-MM-TT, z. B. 2026-12-24.",
+    "bad_arg": "„{{got}}“ ist keine Eingabe. Nutze NAME=WERT.",
+    "confirm_danger": "{{command}} lässt sich schwer rückgängig machen und läuft zur festgelegten Zeit ohne Nachfrage. Planen?",
+    "from_needs_every_days": "--from gilt nur für Aufgaben alle N Tage (--every-days)."
   },
   "chatbot": {
     "api_key": "API-Schlüssel gespeichert",
@@ -971,6 +1012,10 @@
     "from": "Von",
     "what": "Was",
     "result": "Ergebnis",
+    "exported": "{{count}} Einträge in {{path}} gespeichert.",
+    "bad_date": "Datum bitte wie 2026-10-01, today oder 7d angeben: {{value}}",
+    "export_write_failed": "Die Datei konnte nicht geschrieben werden. Prüfe Speicherort und Berechtigungen.",
+    "export_invalid_path": "Der Dateipfad ist ungültig. Gib einen vollständigen Pfad an.",
     "scanning": "Prüfe den Code von {{name}}...",
     "declared": "Deklariert",
     "none_declared": "(nichts)",
@@ -1280,11 +1325,40 @@
       "remote_timeout": "Der Remote-Daemon hat nicht rechtzeitig geantwortet. Er bearbeitet die Anfrage eventuell noch",
       "remote_bad_path": "Dieser Pfad kann nicht an einen Remote-Daemon gesendet werden",
       "remote_unauthorized": "Der Remote-Daemon akzeptiert diesen PC nicht mehr. Verbinde ihn erneut",
-      "remote_local_only": "Das geht nur direkt auf diesem PC"
+      "remote_local_only": "Das geht nur direkt auf diesem PC",
+      "remote_field_blocked": "Diese Einstellungen lassen sich nur direkt auf diesem PC ändern: {{fields}}"
     },
     "daemon": "Daemon",
     "this_pc": "Dieser PC",
     "no_servers": "Keine Server",
     "via_relay": "Über das Relay"
+  },
+  "port_check": {
+    "title": "Portprüfung für {{server}}",
+    "address": "Öffentliche IP {{address}} (Freunde verbinden sich mit dieser Adresse und dem Port)",
+    "verdict": {
+      "open": "Aus dem Internet erreichbar",
+      "firewall": "Von der PC-Firewall blockiert",
+      "router": "Am Router ist keine Portweiterleitung eingerichtet",
+      "closed": "Aus dem Internet nicht erreichbar",
+      "cgnat": "Dein Router hat keine öffentliche IP (CGNAT)",
+      "unknown": "Einige Ports konnten nicht geprüft werden",
+      "no_ports": "Dieses Spiel gibt keine zu prüfenden Ports an"
+    },
+    "status": {
+      "open": "Offen",
+      "closed": "Geschlossen",
+      "unknown": "Nicht geprüft",
+      "in_use": "Von einem anderen Programm belegt",
+      "firewall": "Von der Firewall blockiert",
+      "router": "Nicht weitergeleitet"
+    },
+    "hint": {
+      "closed": "Prüfe, ob der Router diesen Port an diesen PC weiterleitet und die PC-Firewall ihn erlaubt.",
+      "firewall": "Die Windows-Firewall blockiert eingehende Verbindungen auf diesem Port. Erlaube für das Netzwerk, mit dem du gerade verbunden bist (privat oder öffentlich), in den Einstellungen der Windows-Firewall saba-core, wenn der Server gestoppt ist, oder das Programm des Spielservers, wenn er läuft, und prüfe erneut.",
+      "router": "Die PC-Firewall lässt diesen Port zu. Leite diesen Port in den Router-Einstellungen an diesen PC weiter und prüfe erneut.",
+      "cgnat": "Dein Anbieter teilt eine öffentliche IP unter vielen Haushalten, daher lässt sie sich nicht per Portweiterleitung öffnen. Frag deinen Anbieter nach einer öffentlichen IP oder nutze ein VPN wie Tailscale.",
+      "unknown": "UDP-Ports eines laufenden Servers und Ports, die ein anderes Programm belegt, lassen sich nicht prüfen. Stoppe den Server und prüfe erneut."
+    }
   }
 }

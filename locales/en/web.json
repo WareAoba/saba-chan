@@ -110,10 +110,12 @@
     "save": "Save",
     "saved": "Settings saved.",
     "saved_restart": "Settings saved. Some apply after the server restarts.",
-    "changed_elsewhere": "The settings were changed elsewhere in the meantime. Open the server again.",
+    "changed_elsewhere": "The settings were changed elsewhere in the meantime. Load the new values, then make your change again.",
     "danger_zone": "Delete server",
     "delete_hint": "Deletes the server settings and files.",
-    "stop_first": "Stop the server first."
+    "stop_first": "Stop the server first.",
+    "save_failed": "Couldn't save",
+    "reload": "Load new values"
   },
   "backups": {
     "create": "Back up now",
@@ -169,7 +171,12 @@
     "ladder_removed": "People on deleted levels move to the level just below. Commands that needed them move to the level just above.",
     "ladder_invalid": "Level names need 1–32 characters.",
     "ladder_revert": "Revert",
-    "ladder_save": "Save levels"
+    "ladder_save": "Save levels",
+    "notice": "Start alerts",
+    "notice_hint": "Servers turned on here are announced in this Discord server's alert channel when Saba-chan starts them. Starts from Discord and starts outside Saba-chan are left out.",
+    "notice_empty": "This Discord server uses no servers.",
+    "notice_on": "Start alert on.",
+    "notice_off": "Start alert off."
   },
   "modules": {
     "games": "Game modules",
@@ -212,5 +219,43 @@
     "remote_timeout": "It didn't finish within 2 minutes, so it was treated as a failure. Check the result on the PC.",
     "remote_host_gone": "The connection to the PC was lost before the request finished.",
     "remote_busy": "Too many requests. Try again in a moment."
+  },
+  "port_check": {
+    "button": "Check port forwarding",
+    "running": "Checking…",
+    "retry": "Check again",
+    "address": "Public IP {{address}} (friends join with this address and the port)",
+    "help": "Port forwarding guide",
+    "verdict": {
+      "open": "Reachable from the internet",
+      "firewall": "Blocked by the PC firewall",
+      "router": "Port forwarding is not set up on the router",
+      "closed": "Not reachable from the internet",
+      "cgnat": "Your router has no public IP (CGNAT)",
+      "unknown": "Some ports could not be checked",
+      "no_ports": "This game does not say which ports to check"
+    },
+    "status": {
+      "open": "Open",
+      "closed": "Closed",
+      "unknown": "Not checked",
+      "in_use": "Used by another program",
+      "firewall": "Blocked by firewall",
+      "router": "Not forwarded"
+    },
+    "hint": {
+      "closed": "Check that your router forwards this port to this PC and that the PC firewall allows it.",
+      "firewall": "Windows Firewall is blocking incoming connections on this port. For the network you are connected to now (private or public), allow saba-core if the server is stopped, or the game server program if it is running, in Windows Firewall settings, then check again.",
+      "router": "The PC firewall allows this port. Forward this port to this PC in your router settings, then check again.",
+      "cgnat": "Your provider shares one public IP among many homes, so port forwarding cannot open it. Ask your provider for a public IP or use a VPN such as Tailscale.",
+      "unknown": "UDP ports of a running server and ports another program uses cannot be checked. Stop the server and check again."
+    },
+    "error": {
+      "node_token_missing": "Connect to Discord (pairing) first. The relay does the check.",
+      "port_check_busy": "A check is already running. Try again in a moment.",
+      "rate_limited": "Too many checks. Try again in a minute.",
+      "relay_unreachable": "Could not reach the relay. Check your internet connection.",
+      "failed": "The check failed."
+    }
   }
 }

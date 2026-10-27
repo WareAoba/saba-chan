@@ -123,54 +123,86 @@ impl From<String> for Reply {
     }
 }
 
+/// 해석 결과: 실행 없이 나온 답(도움말·목록·안내·거절), 또는 실행할 명령
+#[derive(Debug)]
+pub enum Interpreted {
+    Reply(Reply),
+    Run(Box<Target>),
+}
+
+/// 실행할 것으로 알아본 명령. 문장 계획(`actions::plan_text`)이 실행 때까지 들고 있는다
+#[derive(Debug, Clone)]
+pub struct Target {
+    server: ServerView,
+    exec: Exec,
+    /// 사용자가 부른 서버·명령 낱말과 나머지 인자 원문 (답 문구와 인자 나누기에 쓴다)
+    alias: String,
+    cmd_alias: String,
+    extra: String,
+    risk: &'static str,
+}
+
+#[derive(Debug, Clone)]
+enum Exec {
+    Start,
+    Stop,
+    Status,
+    Players,
+    Defined(Box<CommandField>),
+}
+
+impl Target {
+    pub fn instance(&self) -> &str {
+        &self.server.id
+    }
+
+    pub fn risk(&self) -> &'static str {
+        self.risk
+    }
+
+    /// 같은 일을 하는 액션 id (`server.start`·`server.command:<이름>` …)
+    pub fn action_id(&self) -> String {
+        match &self.exec {
+            Exec::Start => "server.start".into(),
+            Exec::Stop => "server.stop".into(),
+            Exec::Status => "server.status".into(),
+            Exec::Players => "server.players".into(),
+            Exec::Defined(field) => format!("{}{}", crate::actions::COMMAND_PREFIX, field.name),
+        }
+    }
+}
+
+/// 실행한 명령의 답. `ok`는 명령이 해낸 것인지, `already_running`은 시작했는데 이미 켜져 있었는지
+#[derive(Debug, Clone)]
+pub struct Done {
+    pub reply: Reply,
+    pub ok: bool,
+    pub already_running: bool,
+}
+
+impl Done {
+    fn new(reply: impl Into<Reply>, ok: bool) -> Self {
+        Self { reply: reply.into(), ok, already_running: false }
+    }
+}
+
 /// 텍스트 명령을 처리하고 응답을 돌려줍니다. 실패해도 항상 응답을 만듭니다.
 pub async fn process<D: DaemonApi>(api: &D, settings: &ChatSettings, cat: &Catalog, req: &ChatRequest) -> Reply {
-    let modules = api.modules().await;
-    let aliases = ModuleAliases::build(&modules);
-    let ctx = Ctx { api, settings, cat, req, modules, aliases, words: &settings.server_words };
-
-    let text = strip_prefix(req.text.trim(), &ctx.prefixes());
-    let args: Vec<&str> = text.split_whitespace().collect();
-
-    if let Err(denied) = ctx.permit(None) {
-        return ctx.permission_denied(denied);
+    let ctx = Ctx::new(api, settings, cat, req).await;
+    match ctx.interpret().await {
+        Interpreted::Reply(reply) => reply,
+        Interpreted::Run(target) => ctx.execute(&target).await.reply,
     }
+}
 
-    let Some(first) = args.first().copied() else {
-        return ctx.help().await.into();
-    };
-    match TopLevel::parse(first) {
-        Some(TopLevel::Help) => return ctx.help().await.into(),
-        Some(TopLevel::List) => return ctx.list().await.into(),
-        None => {}
-    }
+/// 실행하지 않고 해석만 한다 (권한·위험 명령 판정 포함)
+pub async fn interpret<D: DaemonApi>(api: &D, settings: &ChatSettings, cat: &Catalog, req: &ChatRequest) -> Interpreted {
+    Ctx::new(api, settings, cat, req).await.interpret().await
+}
 
-    let servers = match ctx.servers().await {
-        Ok(s) => s,
-        Err(e) => {
-            tracing::warn!("[Chat] 서버 목록 조회 실패: {}", e);
-            return format!("❌ {}", cat.t("messages.command_error", &[])).into();
-        }
-    };
-
-    let module_known = ctx.aliases.is_known(first);
-    let mounted = ctx.is_mounted(first, &servers);
-    match args.get(1) {
-        None => {
-            // 모듈 별명이나 인스턴스 이름이 실제 서버로 있어야 명령어 안내
-            if !mounted {
-                let command = text.trim();
-                return Reply::unrecognized("UNKNOWN_COMMAND", cat.t("errors.unknown_input", &[]), json!({ "command": command }));
-            }
-            ctx.module_help(first, &servers).into()
-        }
-        Some(cmd) => {
-            if module_known && !mounted {
-                return Reply::unrecognized("INSTANCE_NOT_FOUND", cat.t("errors.unknown_input", &[]), json!({ "name": first }));
-            }
-            ctx.module_command(first, cmd, skip_words(text, 2), &servers).await
-        }
-    }
+/// 해석한 명령을 실행한다
+pub async fn execute<D: DaemonApi>(api: &D, settings: &ChatSettings, cat: &Catalog, req: &ChatRequest, target: &Target) -> Done {
+    Ctx::new(api, settings, cat, req).await.execute(target).await
 }
 
 /// 앞의 낱말 `n`개를 건너뛴 나머지 원문 (따옴표 안의 공백을 그대로 두려고 나누기 전 문자열을 쓴다)
@@ -207,7 +239,76 @@ fn strip_prefix<'t>(text: &'t str, prefixes: &[String]) -> &'t str {
     text
 }
 
-impl<D: DaemonApi> Ctx<'_, D> {
+impl<'a, D: DaemonApi> Ctx<'a, D> {
+    async fn new(api: &'a D, settings: &'a ChatSettings, cat: &'a Catalog, req: &'a ChatRequest) -> Self {
+        let modules = api.modules().await;
+        let aliases = ModuleAliases::build(&modules);
+        Self { api, settings, cat, req, modules, aliases, words: &settings.server_words }
+    }
+
+    async fn interpret(&self) -> Interpreted {
+        let text = strip_prefix(self.req.text.trim(), &self.prefixes());
+        let args: Vec<&str> = text.split_whitespace().collect();
+        let reply = |r: Reply| Interpreted::Reply(r);
+
+        if let Err(denied) = self.permit(None) {
+            return reply(self.permission_denied(denied));
+        }
+
+        let Some(first) = args.first().copied() else {
+            return reply(self.help().await.into());
+        };
+        match TopLevel::parse(first) {
+            Some(TopLevel::Help) => return reply(self.help().await.into()),
+            Some(TopLevel::List) => return reply(self.list().await.into()),
+            None => {}
+        }
+
+        let servers = match self.servers().await {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::warn!("[Chat] 서버 목록 조회 실패: {}", e);
+                return reply(format!("❌ {}", self.t("messages.command_error", &[])).into());
+            }
+        };
+
+        let module_known = self.aliases.is_known(first);
+        let mounted = self.is_mounted(first, &servers);
+        match args.get(1) {
+            None => {
+                // 모듈 별명이나 인스턴스 이름이 실제 서버로 있어야 명령어 안내
+                if !mounted {
+                    let command = text.trim();
+                    return reply(Reply::unrecognized("UNKNOWN_COMMAND", self.t("errors.unknown_input", &[]), json!({ "command": command })));
+                }
+                reply(self.module_help(first, &servers).into())
+            }
+            Some(cmd) => {
+                if module_known && !mounted {
+                    return reply(Reply::unrecognized("INSTANCE_NOT_FOUND", self.t("errors.unknown_input", &[]), json!({ "name": first })));
+                }
+                match self.module_command(first, cmd, skip_words(text, 2), &servers) {
+                    Ok(target) => Interpreted::Run(Box::new(target)),
+                    Err(r) => reply(r),
+                }
+            }
+        }
+    }
+
+    async fn execute(&self, target: &Target) -> Done {
+        let server = &target.server;
+        let Some(module) = self.module(&server.module) else {
+            return Done::new(self.t("server.module_missing", &[("module", &server.module)]), false);
+        };
+        match &target.exec {
+            Exec::Start => self.start(server).await,
+            Exec::Stop => self.stop(server).await,
+            Exec::Status => Done::new(self.status(server), true),
+            Exec::Players => self.players(server).await,
+            Exec::Defined(field) => self.run_defined(server, module, field, &target.alias, &target.cmd_alias, &target.extra).await,
+        }
+    }
+
     fn t(&self, key: &str, vars: &[(&str, &str)]) -> String {
         self.cat.t(key, vars)
     }
@@ -412,16 +513,14 @@ impl<D: DaemonApi> Ctx<'_, D> {
 
     // ── 모듈 + 명령어 ──
 
-    async fn module_command(&self, alias: &str, cmd_alias: &str, extra: &str, servers: &[ServerView]) -> Reply {
+    /// 서버와 명령을 찾고 권한·위험 명령 규칙을 본다. 실행할 것이 아니면 답을 Err로
+    fn module_command(&self, alias: &str, cmd_alias: &str, extra: &str, servers: &[ServerView]) -> Result<Target, Reply> {
         if let Some(msg) = self.alias_conflict(alias).filter(|_| self.named_servers(alias, servers).is_empty()) {
-            return msg.into();
+            return Err(msg.into());
         }
-        let (server, by_name) = match self.find_server(alias, servers) {
-            Ok(s) => s,
-            Err(reply) => return reply,
-        };
+        let (server, by_name) = self.find_server(alias, servers)?;
         let Some(module) = self.module(&server.module) else {
-            return self.t("server.module_missing", &[("module", &server.module)]).into();
+            return Err(self.t("server.module_missing", &[("module", &server.module)]).into());
         };
         let command = words::command_for(self.words.get(&server.id), cmd_alias)
             .map(str::to_string)
@@ -435,49 +534,56 @@ impl<D: DaemonApi> Ctx<'_, D> {
             _ => crate::commands::risk_of(module.command(&command).and_then(|f| f.risk.as_deref())),
         };
         if let Err(denied) = self.permit(Some((&server.id, &command, risk))) {
-            return self.permission_denied(denied);
+            return Err(self.permission_denied(denied));
         }
         // 위험 명령은 그 서버만 가리키는 말로 불러야 한다: 게임명·모듈 별명은 서버가 늘면 다른 서버를 가리킬 수 있다
         if risk == "danger" && !by_name {
-            return self.t("errors.danger_needs_name", &[("name", &server.name)]).into();
+            return Err(self.t("errors.danger_needs_name", &[("name", &server.name)]).into());
         }
         // 챗봇 경로의 danger 명령은 요청자 본인이 확인한 것만 (릴레이 확인 버튼 → `confirmedBy`). 액션 경로는 확인 계획이 같은 일을 한다
         if risk == "danger" && self.req.remote.as_ref().is_some_and(|w| w.via_chatbot && !w.confirmed_by_requester()) {
-            return Reply::unrecognized("action_not_allowed", self.t("errors.chatbot_not_allowed", &[]), json!({ "command": command }));
+            return Err(Reply::unrecognized("action_not_allowed", self.t("errors.chatbot_not_allowed", &[]), json!({ "command": command })));
         }
 
-        match command.as_str() {
-            "start" => self.start(server).await,
-            "stop" => self.stop(server).await.into(),
-            "status" => self.status(server).into(),
-            "players" if module.players => self.players(server).await.into(),
+        let exec = match command.as_str() {
+            "start" => Exec::Start,
+            "stop" => Exec::Stop,
+            "status" => Exec::Status,
+            "players" if module.players => Exec::Players,
             // 디스코드·챗봇에 내보내지 않는 명령은 거기서 없는 명령이다
             _ => match module.command(&command).filter(|f| f.remote || self.req.remote.is_none()) {
-                Some(field) => self.run_defined(server, module, field, alias, cmd_alias, extra).await.into(),
+                Some(field) => Exec::Defined(Box::new(field.clone())),
                 // 없는 명령이면 이 모듈에서 쓸 수 있는 명령을 같이 보여준다
                 // 릴레이는 해석에 실패하면 자기 문구 뒤에 `args.help`를 붙인다
                 None => {
                     let help = self.module_help(alias, servers);
-                    Reply::unrecognized(
+                    return Err(Reply::unrecognized(
                         "UNKNOWN_COMMAND",
                         format!("{}\n\n{}", self.t("errors.command_not_found", &[]), help),
                         json!({ "command": cmd_alias, "name": server.name, "help": help }),
-                    )
+                    ));
                 }
             },
-        }
+        };
+        Ok(Target { server: server.clone(), exec, alias: alias.into(), cmd_alias: cmd_alias.into(), extra: extra.into(), risk })
     }
 
-    async fn start(&self, server: &ServerView) -> Reply {
+    async fn start(&self, server: &ServerView) -> Done {
         let resp = self.remote_response(self.api.start(server).await);
         // 약관 동의는 PC에서만 받는다: 릴레이가 원문 링크와 함께 안내하도록 목록을 싣는다
         if resp.str_field("error_code") == Some("agreement_required") {
             let text = resp.str_field("error").map(str::to_string).unwrap_or_else(|| self.t("errors.error_title", &[]));
-            return Reply::unrecognized("AGREEMENT_REQUIRED", format!("📜 {}", text), json!({ "agreements": resp.body.get("agreements") }));
+            return Done::new(Reply::unrecognized("AGREEMENT_REQUIRED", format!("📜 {}", text), json!({ "agreements": resp.body.get("agreements") })), false);
         }
+        let started = resp.is_success() && resp.body.get("success").and_then(Value::as_bool) != Some(false) && resp.str_field("action_required").is_none();
+        let already_running = started && resp.body.get("already_running").and_then(Value::as_bool) == Some(true);
         let moved = self.port_moved_lines(&resp);
-        let text = self.start_text(server, resp);
-        if moved.is_empty() { text.into() } else { format!("{}\n{}", text, moved.join("\n")).into() }
+        let text = match already_running {
+            true => self.t("server.already_running", &[("name", &server.name)]),
+            false => self.start_text(server, resp),
+        };
+        let text = if moved.is_empty() { text } else { format!("{}\n{}", text, moved.join("\n")) };
+        Done { reply: text.into(), ok: started, already_running }
     }
 
     /// 시작 전에 예약 범위를 피해 옮긴 포트 (`port_moved`, 시작이 실패해도 옮긴 값은 저장돼 있다)
@@ -516,31 +622,31 @@ impl<D: DaemonApi> Ctx<'_, D> {
         self.t("server.start_complete", &[("name", &server.name)])
     }
 
-    async fn stop(&self, server: &ServerView) -> String {
+    async fn stop(&self, server: &ServerView) -> Done {
         let resp = self.remote_response(self.api.stop(server).await);
         let failed = !resp.is_success() || resp.body.get("success").and_then(|v| v.as_bool()) == Some(false);
         // 저장 후 종료를 요청할 길이 없어 서버를 그대로 두었다 (MK10). 강제 종료는 이 PC에서만 고른다
         if resp.str_field("error_code") == Some("graceful_stop_unavailable") {
-            return self.t("server.graceful_stop_unavailable", &[("name", &server.name)]);
+            return Done::new(self.t("server.graceful_stop_unavailable", &[("name", &server.name)]), false);
         }
         if failed {
             let detail = resp.str_field("error").or(resp.str_field("message")).unwrap_or_default();
             tracing::warn!("[Chat] 정지 실패 {}: {}", server.name, detail);
-            return error_line(&self.t("errors.error_title", &[]), detail);
+            return Done::new(error_line(&self.t("errors.error_title", &[]), detail), false);
         }
-        self.t("server.stop_complete", &[("name", &server.name)])
+        Done::new(self.t("server.stop_complete", &[("name", &server.name)]), true)
     }
 
     /// 접속자 조회 (`[status] players`). 이름은 액션 요약과 같은 모양
-    async fn players(&self, server: &ServerView) -> String {
+    async fn players(&self, server: &ServerView) -> Done {
         let resp = self.remote_response(self.api.players(server).await);
         let failed = !resp.is_success() || resp.body.get("success").and_then(Value::as_bool) == Some(false);
         if failed {
             let code = crate::commands::error_code(resp.status.as_u16(), &resp.body);
-            return self.failed_line(server, &self.t("command.players", &[]), &reason(self.cat, &code, &resp.body));
+            return Done::new(self.failed_line(server, &self.t("command.players", &[]), &reason(self.cat, &code, &resp.body)), false);
         }
         let summary = crate::actions::summary::text("server.players", &resp.body, self.cat).unwrap_or_default();
-        format!("**{}**\n{}", server.name, summary)
+        Done::new(format!("**{}**\n{}", server.name, summary), true)
     }
 
     fn status(&self, server: &ServerView) -> String {
@@ -550,10 +656,11 @@ impl<D: DaemonApi> Ctx<'_, D> {
     }
 
     /// 정의된 명령 실행 — 해석·검증·라우팅은 데몬 명령 경로(`crate::commands`)가 한다
-    async fn run_defined(&self, server: &ServerView, module: &ModuleView, field: &CommandField, alias: &str, cmd_alias: &str, extra: &str) -> String {
+    async fn run_defined(&self, server: &ServerView, module: &ModuleView, field: &CommandField, alias: &str, cmd_alias: &str, extra: &str) -> Done {
         let args = split_quoted(extra);
         let resp = self.remote_response(self.api.command(&server.id, &field.name, args).await);
-        self.render_result(server, module, field, alias, cmd_alias, resp)
+        let (text, ok) = self.render_result(server, module, field, alias, cmd_alias, resp);
+        Done::new(text, ok)
     }
 
     fn remote_response(&self, mut resp: InternalResponse) -> InternalResponse {
@@ -580,21 +687,22 @@ impl<D: DaemonApi> Ctx<'_, D> {
 
     /// 성공한 명령의 답: 성공과 명령 이름만. 콘솔 원문은 싣지 않고, 모듈이 실패 모양·답 모양을 정했으면 그것을 따른다.
     /// 모듈·익스텐션이 사람에게 쓴 `message`와 REST 조회 결과(값 줄)는 아래에 붙인다
-    fn success_text(&self, server: &ServerView, module: &ModuleView, field: &CommandField, resp: &InternalResponse) -> String {
+    /// bool은 성공인지 (모듈의 실패 모양에 맞으면 false)
+    fn success_text(&self, server: &ServerView, module: &ModuleView, field: &CommandField, resp: &InternalResponse) -> (String, bool) {
         let label = self.command_label(module, field);
         let data = resp.body.get("data").filter(|d| !d.is_null());
         let console = data.and_then(|d| d.get("response")).and_then(Value::as_str).unwrap_or("");
         for pattern in &module.failure_patterns {
             if let Some(caps) = regex::Regex::new(pattern).ok().and_then(|re| re.captures(console)) {
                 let reason = caps.name("reason").map(|m| m.as_str().trim().to_string()).unwrap_or_else(|| self.t("reasons.rejected", &[]));
-                return self.failed_line(server, &label, &reason);
+                return (self.failed_line(server, &label, &reason), false);
             }
         }
         if let Some(caps) = field.reply_pattern.as_deref().and_then(|p| regex::Regex::new(p).ok()).and_then(|re| re.captures(console)) {
             if let Some(template) = module.text(self.cat.language(), &format!("/commands/{}/done", field.name)) {
                 let re = regex::Regex::new(field.reply_pattern.as_deref().unwrap_or_default()).expect("compiled above");
                 let vars: Vec<(&str, &str)> = re.capture_names().flatten().filter_map(|n| Some((n, caps.name(n)?.as_str()))).collect();
-                return self.done_line(server, &i18n::interpolate(&template, &vars));
+                return (self.done_line(server, &i18n::interpolate(&template, &vars)), true);
             }
         }
         // 모듈·익스텐션 명령은 답을 `message`로 준다 (stdin의 message는 내부 문구)
@@ -609,10 +717,11 @@ impl<D: DaemonApi> Ctx<'_, D> {
             None => None,
         };
         let head = self.done_line(server, &label);
-        match detail {
+        let text = match detail {
             Some(detail) => format!("{}\n{}", head, detail),
             None => head,
-        }
+        };
+        (text, true)
     }
 
     /// 틀린 인자의 이유 (`rule`·`params`, 데몬 검사가 준다). 칸 이름은 모듈 locales `commands.<명령>.inputs.<칸>.label`
@@ -632,11 +741,16 @@ impl<D: DaemonApi> Ctx<'_, D> {
         (text != key).then(|| format!("❌ {}", text))
     }
 
-    fn render_result(&self, server: &ServerView, module: &ModuleView, field: &CommandField, alias: &str, cmd_alias: &str, resp: InternalResponse) -> String {
+    /// 답과 성공 여부
+    fn render_result(&self, server: &ServerView, module: &ModuleView, field: &CommandField, alias: &str, cmd_alias: &str, resp: InternalResponse) -> (String, bool) {
         let failed = !resp.is_success() || resp.body.get("success").and_then(|v| v.as_bool()) == Some(false);
         if !failed {
             return self.success_text(server, module, field, &resp);
         }
+        (self.failure_text(server, module, field, alias, cmd_alias, resp), false)
+    }
+
+    fn failure_text(&self, server: &ServerView, module: &ModuleView, field: &CommandField, alias: &str, cmd_alias: &str, resp: InternalResponse) -> String {
 
         let code = crate::commands::error_code(resp.status.as_u16(), &resp.body);
         let module_text = resp

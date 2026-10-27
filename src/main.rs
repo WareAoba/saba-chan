@@ -28,6 +28,7 @@ mod launch_args;
 mod relay_agent;
 mod remote;
 mod remote_daemon;
+mod port_check;
 mod tray_host;
 
 use std::sync::Arc;
@@ -534,6 +535,8 @@ async fn main() -> anyhow::Result<()> {
 
     // 업데이트 주기 확인 — GUI가 꺼져 있어도 데몬이 확인한다 (U6)
     ipc::updates::spawn_update_scheduler(ipc_server.update_state.clone(), shutdown_token.clone());
+    // 작업 기록 보관 기간 (앱 설정 auditKeepDays)
+    audit::spawn_retention(ipc_server.config_store.clone(), shutdown_token.clone());
     // 인스턴스 예약 작업: 백업·재시작·공지·업데이트 (A3)
     ipc::handlers::backup::spawn_scheduler(ipc_server.clone());
 

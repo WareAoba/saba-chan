@@ -1,6 +1,12 @@
 import clsx from 'clsx';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useSettingsStore } from '../../stores/useSettingsStore';
 import './Toast.css';
+
+// 알림 표시 시간 설정 (toastDuration)에 따른 배율. 사라지지 않는 토스트(0)는 그대로
+const DURATION_SCALE = { short: 0.6, normal: 1, long: 2 };
+const scaled = (duration) =>
+    duration > 0 ? Math.round(duration * (DURATION_SCALE[useSettingsStore.getState().toastDuration] ?? 1)) : duration;
 
 function Toast() {
     const [toasts, setToasts] = useState([]);
@@ -29,7 +35,7 @@ function Toast() {
                 const timer = later(() => {
                     durationTimers.current.delete(toastId);
                     remove(toastId);
-                }, duration);
+                }, scaled(duration));
                 durationTimers.current.set(toastId, timer);
             }
         },

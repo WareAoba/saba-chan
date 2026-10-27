@@ -126,7 +126,12 @@
     "words_bad_command": "{{spec}} : écrivez-le sous la forme COMMANDE=MOT,MOT (COMMANDE= les supprime).",
     "no_paired_servers": "Aucun serveur Discord n'est encore associé à ce PC. Lancez : saba-chan-cli bot pair",
     "pick_server": "Plusieurs serveurs Discord sont associés. Indiquez l'id de celui à modifier : {{servers}}",
-    "translate_commands": "Noms de commandes traduits"
+    "translate_commands": "Noms de commandes traduits",
+    "notice_none": "Aucun serveur n’a l’alerte de démarrage activée. Rien n’est publié quand Saba-chan démarre un serveur.",
+    "notice_is_on": "{{server}} : alerte de démarrage activée",
+    "notice_is_off": "{{server}} : alerte de démarrage désactivée",
+    "notice_on_saved": "Le canal d’alertes de {{guild}} saura quand {{server}} démarre.",
+    "notice_off_saved": "{{guild}} ne saura plus quand {{server}} démarre."
   },
   "col": {
     "players": "Joueurs",
@@ -372,7 +377,8 @@
       "autostart_unknown_mode": "Choisissez off, daemon ou full.",
       "move_cross_volume": "Un dossier situé sur un autre lecteur ne peut pas être déplacé. Importez-le plutôt avec « Le laisser en place ».",
       "move_in_use": "Impossible de déplacer le dossier. Arrêtez le serveur de ce dossier, fermez les programmes qui l'ont ouvert, puis réessayez.",
-      "move_failed": "Impossible de déplacer le dossier. Importez-le plutôt avec « Le laisser en place »."
+      "move_failed": "Impossible de déplacer le dossier. Importez-le plutôt avec « Le laisser en place ».",
+      "port_check_busy": "Une vérification est déjà en cours. Réessayez dans un instant"
     },
     "not_a_bool": "« {{value}} » n'est pas oui/non (utilisez true ou false).",
     "not_a_number": "« {{value}} » n'est pas un nombre.",
@@ -726,6 +732,7 @@
       "config.paths": "Où Saba-chan garde ses données, modules et extensions, et les dossiers par défaut",
       "config.move": "Déplacer les modules ou les extensions vers un autre dossier. Les fichiers installés sont déplacés ; les serveurs doivent être arrêtés",
       "server.players": "Qui est connecté",
+      "server.port-check": "Vérifier si vos amis peuvent joindre ce serveur depuis Internet (redirection de ports)",
       "server.rcon": "Envoyer une ligne comme le serveur reçoit les commandes (console, sinon RCON) et afficher la réponse",
       "server.log": "Journal enregistré des exécutions passées (la console ne garde que l'actuelle)",
       "server.query": "Consultations en lecture seule du module de jeu (sans nom : la liste)",
@@ -742,7 +749,8 @@
       "remote.servers": "Serveurs de ce PC et de chaque démon distant, par démon (pour en utiliser un, `--daemon <nom>`)",
       "remote.forget": "Oublier un démon distant (reconnectez-vous avec `remote connect`)",
       "config.autostart": "Ce qui démarre quand vous vous connectez à ce PC : off, daemon (démon et zone de notification seulement) ou full (avec la fenêtre de la GUI). Sans mode, affiche la valeur actuelle",
-      "config.browse": "Dossiers et fichiers sur le PC du démon (avec --daemon, le PC distant). Sans chemin, les lecteurs ou /"
+      "config.browse": "Dossiers et fichiers sur le PC du démon (avec --daemon, le PC distant). Sans chemin, les lecteurs ou /",
+      "bot.notice": "Prévenir dans le canal d’alertes du serveur Discord quand Saba-chan démarre un serveur (désactivé par défaut). Sans serveur : voir. Serveur avec `--on`/`--off` : changer"
     },
     "arg": {
       "module.maker.game": "Jeu à mettre dans la première demande",
@@ -777,6 +785,9 @@
       "monitor.interval": "Secondes entre deux rafraîchissements avec --watch",
       "audit.limit": "Nombre d'entrées",
       "audit.follow": "Afficher les nouvelles entrées au fil de l'eau (Ctrl+C pour arrêter)",
+      "audit.since": "À partir de ce jour : AAAA-MM-JJ, today ou 7d (7 derniers jours)",
+      "audit.until": "Jusqu'à la fin de ce jour : AAAA-MM-JJ ou today",
+      "audit.export": "Enregistrer toutes les entrées de la période dans ce fichier CSV au lieu de les lister",
       "bot.lang.value": "auto ou un code de langue (ko, en, ja, zh-CN, zh-TW, es, pt-BR, ru, de, fr)",
       "bot.prefix.values": "Un ou plusieurs préfixes (sans espace, 32 caractères max, 10 max)",
       "bot.prefix.default": "Revenir au préfixe par défaut de la langue de l'app",
@@ -825,7 +836,9 @@
       "keep_settings": "À la suppression de l'instance, ne pas rétablir les fichiers de réglages du jeu tels qu'avant l'import, les laisser tels quels",
       "move_folder": "Déplacer le dossier --from dans le dossier de saba-chan au lieu de le lier sur place (même lecteur uniquement)",
       "config.browse.path": "Chemin complet du dossier",
-      "config.browse.files": "Afficher aussi les fichiers avec ces extensions (séparées par des virgules, * pour tous)"
+      "config.browse.files": "Afficher aussi les fichiers avec ces extensions (séparées par des virgules, * pour tous)",
+      "bot.notice.on": "Activer l’alerte de démarrage",
+      "bot.notice.off": "Désactiver l’alerte de démarrage"
     },
     "after": "Les noms peuvent être partiels (ex. start pal). Sans argument dans un terminal, le menu plein écran s'ouvre (SABA_NO_TUI=1 : le shell interactif).\nDans les scripts, utilisez --json et --yes. Codes de sortie : 0 ok · 1 échec · 2 utilisation · 3 daemon injoignable · 4 introuvable · 130 annulé"
   },
@@ -877,13 +890,18 @@
     "col": {
       "task": "Tâche",
       "when": "Quand",
-      "on": "Activée"
+      "on": "Activée",
+      "next": "Prochaine"
     },
     "action": {
       "backup": "Sauvegarder",
       "restart": "Redémarrer",
       "announce": "Annoncer",
-      "update": "Mettre à jour"
+      "update": "Mettre à jour",
+      "start": "Démarrer",
+      "stop": "Arrêter",
+      "save": "Sauvegarder",
+      "command": "Commande de jeu"
     },
     "none": "{{name}} n'a aucune tâche planifiée.",
     "warns": "prévient {{minutes}} min avant",
@@ -899,17 +917,40 @@
     "disabled": "Désactivée : {{task}}",
     "no_such": "Il n'y a pas de tâche {{number}} (il y en a {{count}}).",
     "edited": "Tâche modifiée : {{task}}",
-    "nothing_to_edit": "Indiquez au moins une modification (--every, --at, --warn, --no-warn, --message).",
+    "nothing_to_edit": "Donne au moins un changement (--every, --at, --every-days, --on, --date, --daily, --warn, --no-warn, --message, --arg).",
     "keep_zero": "Conservez au moins 1 sauvegarde.",
     "keep_set": "Les {{count}} dernières sauvegardes planifiées sont conservées.",
     "confirm_clear": "Supprimer toutes les tâches planifiées de {{name}} ?",
     "cleared": "{{name}} n'a plus de tâche planifiée.",
     "bad_action": "« {{got}} » n'est pas une tâche. Utilisez l'une de : {{actions}}.",
-    "warn_only_restart": "--warn ne fonctionne qu'avec restart et update.",
+    "warn_only_restart": "--warn ne marche qu'avec restart, update et stop.",
     "message_required": "Une annonce nécessite --message.",
     "every_or_at": "Indiquez soit --every (ex. 30m, 2h), soit --at (ex. 04:00), mais pas les deux.",
     "bad_every": "« {{got}} » n'est pas une durée. Utilisez des minutes ou des unités, ex. 30, 30m, 2h, 1h30m.",
-    "bad_at": "« {{got}} » n'est pas une heure. Utilisez HH:MM, ex. 04:00."
+    "bad_at": "« {{got}} » n'est pas une heure. Utilisez HH:MM, ex. 04:00.",
+    "weekday": {
+      "mon": "lun",
+      "tue": "mar",
+      "wed": "mer",
+      "thu": "jeu",
+      "fri": "ven",
+      "sat": "sam",
+      "sun": "dim"
+    },
+    "server_clock": "Les heures suivent l'horloge du PC serveur ({{zone}}). Les prochaines exécutions sont à l'heure de ce PC.",
+    "every_days_at": "tous les {{n}} jours à {{at}} depuis le {{from}}",
+    "weekdays_at": "{{days}} à {{at}}",
+    "date_at": "une fois le {{date}} à {{at}}",
+    "no_save": "Ce jeu n'a pas de commande de sauvegarde.",
+    "command_required": "Une commande de jeu demande --command (liste : server commands).",
+    "command_only": "--command et --arg ne servent qu'avec la tâche command.",
+    "day_rule_needs_at": "--every-days, --on et --date demandent --at.",
+    "bad_every_days": "{{got}} jours ne marche pas. Utilise 1 à 365.",
+    "bad_weekday": "« {{got}} » n'est pas un jour. Utilise : {{days}}.",
+    "bad_date": "« {{got}} » n'est pas une date. Utilise AAAA-MM-JJ, ex. 2026-12-24.",
+    "bad_arg": "« {{got}} » n'est pas une entrée. Utilise NOM=VALEUR.",
+    "confirm_danger": "{{command}} est difficile à annuler et s'exécute à l'heure prévue sans confirmation. Le programmer ?",
+    "from_needs_every_days": "--from ne marche qu'avec les tâches tous les N jours (--every-days)."
   },
   "chatbot": {
     "api_key": "Clé API enregistrée",
@@ -971,6 +1012,10 @@
     "from": "Depuis",
     "what": "Quoi",
     "result": "Résultat",
+    "exported": "{{count}} entrées enregistrées dans {{path}}.",
+    "bad_date": "Écrivez la date comme 2026-10-01, today ou 7d : {{value}}",
+    "export_write_failed": "Impossible d'écrire le fichier. Vérifiez l'emplacement et les autorisations.",
+    "export_invalid_path": "Le chemin du fichier n'est pas valide. Indiquez un chemin complet.",
     "scanning": "Vérification du code de {{name}}...",
     "declared": "Déclaré",
     "none_declared": "(rien)",
@@ -1280,11 +1325,40 @@
       "remote_timeout": "Le daemon distant n'a pas répondu à temps. Il traite peut-être encore la demande",
       "remote_bad_path": "Ce chemin ne peut pas être envoyé à un daemon distant",
       "remote_unauthorized": "Le daemon distant n'accepte plus ce PC. Reconnectez-le",
-      "remote_local_only": "Cela ne peut se faire que sur ce PC"
+      "remote_local_only": "Cela ne peut se faire que sur ce PC",
+      "remote_field_blocked": "Ces réglages ne se modifient que sur ce PC : {{fields}}"
     },
     "daemon": "Démon",
     "this_pc": "Ce PC",
     "no_servers": "Aucun serveur",
     "via_relay": "Via le relais"
+  },
+  "port_check": {
+    "title": "Vérification des ports de {{server}}",
+    "address": "IP publique {{address}} (vos amis se connectent avec cette adresse et le port)",
+    "verdict": {
+      "open": "Accessible depuis Internet",
+      "firewall": "Bloqué par le pare-feu du PC",
+      "router": "La redirection de port n’est pas configurée sur le routeur",
+      "closed": "Inaccessible depuis Internet",
+      "cgnat": "Votre routeur n’a pas d’IP publique (CGNAT)",
+      "unknown": "Certains ports n’ont pas pu être vérifiés",
+      "no_ports": "Ce jeu n’indique pas quels ports vérifier"
+    },
+    "status": {
+      "open": "Ouvert",
+      "closed": "Fermé",
+      "unknown": "Non vérifié",
+      "in_use": "Utilisé par un autre programme",
+      "firewall": "Bloqué par le pare-feu",
+      "router": "Non redirigé"
+    },
+    "hint": {
+      "closed": "Vérifiez que le routeur redirige ce port vers ce PC et que le pare-feu du PC l’autorise.",
+      "firewall": "Le pare-feu Windows bloque les connexions entrantes sur ce port. Pour le réseau auquel vous êtes connecté (privé ou public), autorisez saba-core si le serveur est arrêté, ou le programme du serveur de jeu s’il est en marche, dans les paramètres du pare-feu Windows, puis vérifiez à nouveau.",
+      "router": "Le pare-feu du PC autorise ce port. Redirigez ce port vers ce PC dans les paramètres du routeur, puis vérifiez à nouveau.",
+      "cgnat": "Votre fournisseur partage une IP publique entre plusieurs foyers : la redirection de ports ne peut pas l’ouvrir. Demandez une IP publique à votre fournisseur ou utilisez un VPN comme Tailscale.",
+      "unknown": "Impossible de vérifier les ports UDP d’un serveur en marche ni les ports utilisés par un autre programme. Arrêtez le serveur et vérifiez à nouveau."
+    }
   }
 }

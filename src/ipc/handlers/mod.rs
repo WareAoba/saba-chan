@@ -8,6 +8,7 @@ pub mod config;
 pub mod extension;
 pub mod relay;
 pub mod privacy;
+pub mod port_check;
 pub mod remote_daemon;
 pub mod chat;
 pub mod backup;
@@ -15,6 +16,7 @@ pub mod logs;
 pub mod chatbot;
 pub mod discord;
 pub mod words;
+pub mod start_notice;
 pub mod events;
 pub mod migration;
 pub mod diagnostics;
@@ -78,6 +80,7 @@ pub(crate) async fn audited(
         instance: name.as_deref(),
         command: command.as_deref(),
         args: args.as_ref(),
+        daemon: None,
         ok: parts.status.is_success() && !declined,
         status: parts.status.as_u16(),
     });

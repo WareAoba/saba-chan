@@ -110,10 +110,12 @@
     "save": "Enregistrer",
     "saved": "Réglages enregistrés.",
     "saved_restart": "Réglages enregistrés. Certains s'appliquent après le redémarrage du serveur.",
-    "changed_elsewhere": "Les réglages ont été modifiés ailleurs entre-temps. Rouvrez le serveur.",
+    "changed_elsewhere": "Les réglages ont été modifiés ailleurs entre-temps. Chargez les nouvelles valeurs, puis refaites votre modification.",
     "danger_zone": "Supprimer le serveur",
     "delete_hint": "Supprime les réglages et fichiers du serveur.",
-    "stop_first": "Arrêtez d'abord le serveur."
+    "stop_first": "Arrêtez d'abord le serveur.",
+    "save_failed": "Enregistrement impossible",
+    "reload": "Charger les nouvelles valeurs"
   },
   "backups": {
     "create": "Sauvegarder maintenant",
@@ -169,7 +171,12 @@
     "ladder_removed": "Les personnes des niveaux supprimés passent au niveau juste en dessous. Les commandes qui les demandaient passent au niveau juste au-dessus.",
     "ladder_invalid": "Les noms de niveau doivent faire 1 à 32 caractères.",
     "ladder_revert": "Annuler",
-    "ladder_save": "Enregistrer les niveaux"
+    "ladder_save": "Enregistrer les niveaux",
+    "notice": "Alertes de démarrage",
+    "notice_hint": "Les serveurs activés ici sont annoncés dans le canal d’alertes de ce serveur Discord quand Saba-chan les démarre. Les démarrages depuis Discord ou hors de Saba-chan ne sont pas annoncés.",
+    "notice_empty": "Ce serveur Discord n’utilise aucun serveur.",
+    "notice_on": "Alerte de démarrage activée.",
+    "notice_off": "Alerte de démarrage désactivée."
   },
   "modules": {
     "games": "Modules de jeu",
@@ -212,5 +219,43 @@
     "remote_timeout": "Ce n'était pas terminé en 2 minutes, c'est donc considéré comme un échec. Vérifiez le résultat sur le PC.",
     "remote_host_gone": "La connexion avec le PC a été perdue avant la fin de la requête.",
     "remote_busy": "Trop de requêtes. Réessayez dans un instant."
+  },
+  "port_check": {
+    "button": "Vérifier la redirection de ports",
+    "running": "Vérification…",
+    "retry": "Vérifier à nouveau",
+    "address": "IP publique {{address}} (vos amis se connectent avec cette adresse et le port)",
+    "help": "Guide de redirection de ports",
+    "verdict": {
+      "open": "Accessible depuis Internet",
+      "firewall": "Bloqué par le pare-feu du PC",
+      "router": "La redirection de port n’est pas configurée sur le routeur",
+      "closed": "Inaccessible depuis Internet",
+      "cgnat": "Votre routeur n’a pas d’IP publique (CGNAT)",
+      "unknown": "Certains ports n’ont pas pu être vérifiés",
+      "no_ports": "Ce jeu n’indique pas quels ports vérifier"
+    },
+    "status": {
+      "open": "Ouvert",
+      "closed": "Fermé",
+      "unknown": "Non vérifié",
+      "in_use": "Utilisé par un autre programme",
+      "firewall": "Bloqué par le pare-feu",
+      "router": "Non redirigé"
+    },
+    "hint": {
+      "closed": "Vérifiez que le routeur redirige ce port vers ce PC et que le pare-feu du PC l’autorise.",
+      "firewall": "Le pare-feu Windows bloque les connexions entrantes sur ce port. Pour le réseau auquel vous êtes connecté (privé ou public), autorisez saba-core si le serveur est arrêté, ou le programme du serveur de jeu s’il est en marche, dans les paramètres du pare-feu Windows, puis vérifiez à nouveau.",
+      "router": "Le pare-feu du PC autorise ce port. Redirigez ce port vers ce PC dans les paramètres du routeur, puis vérifiez à nouveau.",
+      "cgnat": "Votre fournisseur partage une IP publique entre plusieurs foyers : la redirection de ports ne peut pas l’ouvrir. Demandez une IP publique à votre fournisseur ou utilisez un VPN comme Tailscale.",
+      "unknown": "Impossible de vérifier les ports UDP d’un serveur en marche ni les ports utilisés par un autre programme. Arrêtez le serveur et vérifiez à nouveau."
+    },
+    "error": {
+      "node_token_missing": "Connectez d’abord Discord (appairage). C’est le relais qui vérifie.",
+      "port_check_busy": "Une vérification est déjà en cours. Réessayez dans un instant.",
+      "rate_limited": "Trop de vérifications. Réessayez dans une minute.",
+      "relay_unreachable": "Impossible de joindre le relais. Vérifiez votre connexion Internet.",
+      "failed": "La vérification a échoué."
+    }
   }
 }

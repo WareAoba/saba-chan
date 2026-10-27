@@ -42,6 +42,7 @@
   "server": {
     "start_request": "⏳ 正在启动 **{{name}}** 服务器...",
     "start_complete": "✅ **{{name}}** 启动请求已完成！",
+    "already_running": "ℹ️ **{{name}}** 已在运行。",
     "stop_request": "⏳ 正在停止 **{{name}}** 服务器...",
     "stop_complete": "✅ **{{name}}** 停止请求已完成！",
     "graceful_stop_unavailable": "⚠️ **{{name}}** 未停止：它没有可以保存并退出的途径（控制台或 REST）。如需不保存直接结束，请在这台电脑上的 saba-chan 中选择强制停止。",
@@ -153,7 +154,8 @@
   },
   "schedule": {
     "restart_warning": "服务器将在 {{minutes}} 分钟后重启。",
-    "update_warning": "服务器将在 {{minutes}} 分钟后重启以进行更新。"
+    "update_warning": "服务器将在 {{minutes}} 分钟后重启以进行更新。",
+    "stop_warning": "服务器将在 {{minutes}} 分钟后停止。"
   },
   "provision": {
     "installing": "正在安装服务器…",
@@ -196,6 +198,13 @@
       },
       "delete": {
         "title": "删除服务器"
+      },
+      "start_notice": {
+        "set": {
+          "title": "启动通知",
+          "description": "Saba-chan 启动此服务器时，在此 Discord 服务器的通知频道告知",
+          "name": "启动通知"
+        }
       }
     },
     "server": {
@@ -235,6 +244,10 @@
       "players": {
         "title": "玩家",
         "description": "在线玩家及名字"
+      },
+      "port_check": {
+        "title": "端口转发检查",
+        "description": "中继检查能否从外网连接此服务器"
       }
     },
     "monitor": {
@@ -367,7 +380,32 @@
       "players": "👥 在线 {{online}} 人",
       "players_max": "👥 在线 {{online}}/{{max}} 人",
       "player_item": "• {{name}}",
-      "players_more": "…另外 {{count}} 人"
+      "players_more": "…另外 {{count}} 人",
+      "port_check": {
+        "open": "✅ 可以从外网连接",
+        "firewall": "🧱 被电脑防火墙阻止",
+        "router": "📡 路由器未设置端口转发",
+        "closed": "🚫 无法从外网连接",
+        "cgnat": "⚠️ 路由器没有获得公网 IP（CGNAT）",
+        "unknown": "❔ 部分端口无法检查",
+        "no_ports": "📭 此游戏没有声明要检查的端口"
+      },
+      "port_status": {
+        "open": "开放",
+        "closed": "关闭",
+        "unknown": "未检查",
+        "in_use": "被其他程序占用",
+        "firewall": "被防火墙阻止",
+        "router": "未转发"
+      },
+      "port_item": "• {{port}}/{{protocol}} · {{status}}",
+      "port_hint": {
+        "closed": "请确认路由器已将此端口转发到这台电脑，并且电脑防火墙已放行。",
+        "firewall": "Windows 防火墙正在阻止此端口的入站连接。请针对当前连接的网络（专用或公用），在 Windows 防火墙设置中允许 saba-core（服务器已停止时）或游戏服务器程序（服务器运行时），然后再检查。",
+        "router": "电脑防火墙已允许此端口。请在路由器设置中把此端口转发到这台电脑，然后再检查。",
+        "cgnat": "运营商让多户共用一个公网 IP，无法通过端口转发开放。请向运营商申请公网 IP，或使用 Tailscale 等 VPN。",
+        "unknown": "无法检查正在运行的服务器的 UDP 端口和其他程序占用的端口。请停止服务器后再检查。"
+      }
     }
   },
   "reasons": {

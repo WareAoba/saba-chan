@@ -42,6 +42,7 @@
   "server": {
     "start_request": "⏳ Démarrage du serveur **{{name}}**...",
     "start_complete": "✅ Demande de démarrage de **{{name}}** terminée!",
+    "already_running": "ℹ️ **{{name}}** est déjà en marche.",
     "stop_request": "⏳ Arrêt du serveur **{{name}}**...",
     "stop_complete": "✅ Demande d'arrêt de **{{name}}** terminée!",
     "graceful_stop_unavailable": "⚠️ **{{name}}** n'a pas été arrêté : il n'a aucun moyen (console ou REST) de sauvegarder et de quitter. Pour l'arrêter sans sauvegarder, choisissez un arrêt forcé dans saba-chan sur ce PC.",
@@ -153,7 +154,8 @@
   },
   "schedule": {
     "restart_warning": "Le serveur redémarre dans {{minutes}} min.",
-    "update_warning": "Le serveur redémarre pour une mise à jour dans {{minutes}} min."
+    "update_warning": "Le serveur redémarre pour une mise à jour dans {{minutes}} min.",
+    "stop_warning": "Le serveur s'arrête dans {{minutes}} min."
   },
   "provision": {
     "installing": "Installation du serveur…",
@@ -196,6 +198,13 @@
       },
       "delete": {
         "title": "Supprimer le serveur"
+      },
+      "start_notice": {
+        "set": {
+          "title": "Alerte de démarrage",
+          "description": "Prévenir dans le canal d’alertes de ce serveur Discord quand Saba-chan démarre ce serveur",
+          "name": "Alerte de démarrage"
+        }
       }
     },
     "server": {
@@ -235,6 +244,10 @@
       "players": {
         "title": "Joueurs",
         "description": "Qui est connecté"
+      },
+      "port_check": {
+        "title": "Vérifier la redirection de ports",
+        "description": "Le relais vérifie si ce serveur est accessible depuis Internet"
       }
     },
     "monitor": {
@@ -367,7 +380,32 @@
       "players": "👥 {{online}} connectés",
       "players_max": "👥 {{online}}/{{max}} connectés",
       "player_item": "• {{name}}",
-      "players_more": "…et {{count}} de plus"
+      "players_more": "…et {{count}} de plus",
+      "port_check": {
+        "open": "✅ Accessible depuis Internet",
+        "firewall": "🧱 Bloqué par le pare-feu du PC",
+        "router": "📡 La redirection de port n’est pas configurée sur le routeur",
+        "closed": "🚫 Inaccessible depuis Internet",
+        "cgnat": "⚠️ Votre routeur n’a pas d’IP publique (CGNAT)",
+        "unknown": "❔ Certains ports n’ont pas pu être vérifiés",
+        "no_ports": "📭 Ce jeu n’indique pas quels ports vérifier"
+      },
+      "port_status": {
+        "open": "Ouvert",
+        "closed": "Fermé",
+        "unknown": "Non vérifié",
+        "in_use": "Utilisé par un autre programme",
+        "firewall": "Bloqué par le pare-feu",
+        "router": "Non redirigé"
+      },
+      "port_item": "• {{port}}/{{protocol}} · {{status}}",
+      "port_hint": {
+        "closed": "Vérifiez que le routeur redirige ce port vers ce PC et que le pare-feu du PC l’autorise.",
+        "firewall": "Le pare-feu Windows bloque les connexions entrantes sur ce port. Pour le réseau auquel vous êtes connecté (privé ou public), autorisez saba-core si le serveur est arrêté, ou le programme du serveur de jeu s’il est en marche, dans les paramètres du pare-feu Windows, puis vérifiez à nouveau.",
+        "router": "Le pare-feu du PC autorise ce port. Redirigez ce port vers ce PC dans les paramètres du routeur, puis vérifiez à nouveau.",
+        "cgnat": "Votre fournisseur partage une IP publique entre plusieurs foyers : la redirection de ports ne peut pas l’ouvrir. Demandez une IP publique à votre fournisseur ou utilisez un VPN comme Tailscale.",
+        "unknown": "Impossible de vérifier les ports UDP d’un serveur en marche ni les ports utilisés par un autre programme. Arrêtez le serveur et vérifiez à nouveau."
+      }
     }
   },
   "reasons": {

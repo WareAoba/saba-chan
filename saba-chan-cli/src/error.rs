@@ -169,15 +169,19 @@ pub fn api_hint(code: &str, body: &Value) -> Option<String> {
     if let Some(text) = crate::i18n::try_t(&format!("module_errors.{code}")) {
         return Some(text);
     }
-    if let Some(text) = crate::i18n::try_t(&format!("remote.connect_error.{code}")) {
-        return Some(text);
-    }
     let list = |key: &str| {
         body.get(key)
             .and_then(Value::as_array)
             .map(|a| a.iter().filter_map(Value::as_str).collect::<Vec<_>>().join(" "))
             .unwrap_or_default()
     };
+    // 원격 데몬이 PC 전용 칸을 거절했으면 막힌 칸 이름을 함께 보인다
+    if code == "remote_field_blocked" {
+        return Some(t!("remote.connect_error.remote_field_blocked", fields = list("fields")));
+    }
+    if let Some(text) = crate::i18n::try_t(&format!("remote.connect_error.{code}")) {
+        return Some(text);
+    }
     match code {
         "extension_required" => Some(t!("err.hint.extension_required", ids = list("missing_extensions"))),
         "extension_not_verified" => Some(t!("err.hint.extension_not_verified", ids = list("unverified_extensions"))),
@@ -247,6 +251,7 @@ pub fn api_hint(code: &str, body: &Value) -> Option<String> {
         "agent_too_old" | "module_schema_unsupported" | "app_version_unsatisfied" => Some(t!("err.hint.agent_too_old")),
         "component_version_unsatisfied" => update_required(body, "").map(|_| t!("err.hint.agent_too_old")),
         "module_busy" => Some(t!("err.hint.module_busy")),
+        "port_check_busy" => Some(t!("err.hint.port_check_busy")),
         // 폴더 옮기기 (`/api/system/paths/move`)
         c if c.starts_with("paths_") => crate::i18n::try_t(&format!("err.hint.{}", c)),
         // 로그인할 때 자동 실행 (`/api/system/autostart`)
@@ -344,12 +349,20 @@ mod tests {
     #[test]
     fn remote_port_refusals_have_localized_guidance() {
         crate::i18n::init("en");
-        for code in ["remote_bad_path", "remote_unauthorized", "remote_local_only"] {
+        for code in ["remote_bad_path", "remote_unauthorized", "remote_local_only", "remote_field_blocked"] {
             assert!(api_hint(code, &json!({})).is_some(), "{code}");
             for lang in ["en", "ko"] {
                 assert!(crate::i18n::try_t_in(lang, &format!("remote.connect_error.{code}")).is_some(), "{lang}: {code}");
             }
         }
+    }
+
+    /// PC 전용 칸 거절은 막힌 칸 이름을 보인다
+    #[test]
+    fn a_pc_only_field_refusal_names_the_fields() {
+        crate::i18n::init("en");
+        let hint = api_hint("remote_field_blocked", &json!({ "fields": ["executable_path", "java_path"] })).unwrap();
+        assert!(hint.contains("executable_path java_path") && !hint.contains("{{"), "{hint}");
     }
 
     /// 데몬이 거절한 릴레이 주소는 쓸 수 있는 주소를 알려 준다 (R31)

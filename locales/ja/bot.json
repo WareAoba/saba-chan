@@ -42,6 +42,7 @@
   "server": {
     "start_request": "⏳ **{{name}}** サーバーを起動しています...",
     "start_complete": "✅ **{{name}}** 起動リクエストが完了しました!",
+    "already_running": "ℹ️ **{{name}}** はすでに起動しています。",
     "stop_request": "⏳ **{{name}}** サーバーを停止しています...",
     "stop_complete": "✅ **{{name}}** 停止リクエストが完了しました!",
     "graceful_stop_unavailable": "⚠️ **{{name}}** は保存して終了する手段（コンソール・REST）がないため停止しませんでした。保存せずに終了するには、このPCのsaba-chanで強制停止を選んでください。",
@@ -153,7 +154,8 @@
   },
   "schedule": {
     "restart_warning": "{{minutes}}分後にサーバーを再起動します。",
-    "update_warning": "{{minutes}}分後にアップデートのためサーバーを再起動します。"
+    "update_warning": "{{minutes}}分後にアップデートのためサーバーを再起動します。",
+    "stop_warning": "{{minutes}}分後にサーバーを停止します。"
   },
   "provision": {
     "installing": "サーバーをインストール中…",
@@ -196,6 +198,13 @@
       },
       "delete": {
         "title": "サーバーを削除"
+      },
+      "start_notice": {
+        "set": {
+          "title": "起動通知",
+          "description": "サバちゃんがこのサーバーを起動したら、このDiscordサーバーの通知チャンネルに知らせます",
+          "name": "起動通知"
+        }
       }
     },
     "server": {
@@ -235,6 +244,10 @@
       "players": {
         "title": "プレイヤー",
         "description": "接続中のプレイヤーと名前"
+      },
+      "port_check": {
+        "title": "ポート開放の確認",
+        "description": "外部からこのサーバーに接続できるかリレーが確認します"
       }
     },
     "monitor": {
@@ -367,7 +380,32 @@
       "players": "👥 接続 {{online}}人",
       "players_max": "👥 接続 {{online}}/{{max}}人",
       "player_item": "• {{name}}",
-      "players_more": "…ほか {{count}}人"
+      "players_more": "…ほか {{count}}人",
+      "port_check": {
+        "open": "✅ 外部から接続できます",
+        "firewall": "🧱 PCのファイアウォールがブロックしています",
+        "router": "📡 ルーターでポート開放されていません",
+        "closed": "🚫 外部から接続できません",
+        "cgnat": "⚠️ ルーターがグローバルIPを受け取っていません（CGNAT）",
+        "unknown": "❔ 一部のポートは確認できませんでした",
+        "no_ports": "📭 このゲームは確認するポートを示していません"
+      },
+      "port_status": {
+        "open": "開放",
+        "closed": "閉鎖",
+        "unknown": "未確認",
+        "in_use": "他のプログラムが使用中",
+        "firewall": "ファイアウォールがブロック",
+        "router": "ポート開放なし"
+      },
+      "port_item": "• {{port}}/{{protocol}} · {{status}}",
+      "port_hint": {
+        "closed": "ルーターでこのポートをこのPCへ転送しているか、PCのファイアウォールで許可しているか確認してください。",
+        "firewall": "Windowsファイアウォールがこのポートへの受信接続をブロックしています。いま接続しているネットワーク（プライベート・パブリック）で、サーバーが停止中ならsaba-coreを、起動中ならゲームサーバーのプログラムをWindowsファイアウォールの設定で許可してから、もう一度確認してください。",
+        "router": "PCのファイアウォールはこのポートを許可しています。ルーターの設定でこのポートをこのPCに転送してから、もう一度確認してください。",
+        "cgnat": "プロバイダーが1つのグローバルIPを複数の家庭で共有しているため、ポート開放では開けません。プロバイダーにグローバルIPを依頼するか、TailscaleなどのVPNを使ってください。",
+        "unknown": "起動中のサーバーのUDPポートと、他のプログラムが使っているポートは確認できません。サーバーを停止してからもう一度確認してください。"
+      }
     }
   },
   "reasons": {

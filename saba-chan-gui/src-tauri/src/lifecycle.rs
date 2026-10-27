@@ -1,6 +1,6 @@
 //! 데몬 수명 — 기동·재사용·종료, 클라이언트 등록·heartbeat, 백그라운드 초기화, 앱 종료 경로
 
-use crate::events::{self, SseEvent};
+use crate::events::{self, Feed, SseEvent};
 use crate::{emit_main, settings, sounds, tray, AppState};
 use serde_json::{json, Value};
 use std::io::BufRead;
@@ -730,22 +730,34 @@ async fn unregister_from_daemon(app: &AppHandle, shutdown: bool) {
 fn start_events(app: &AppHandle) {
     let state = app.state::<AppState>();
     state.life.events_stop.store(false, Ordering::SeqCst);
-    let (client, stop, app2) = (state.client.clone(), state.life.events_stop.clone(), app.clone());
-    let cues = Mutex::new(sounds::EventCues::default());
+    let (client, stop) = (state.client.clone(), state.life.events_stop.clone());
+    // 화면은 고른 데몬을 따르고, 원격을 고른 동안에도 이 PC 데몬의 중대 알림·크래시 소리는 따로 받는다
+    let stream = |feed: Feed| {
+        let app2 = app.clone();
+        let cues = Mutex::new(sounds::EventCues::default());
+        events::run_event_stream(
+            client.clone(),
+            stop.clone(),
+            feed,
+            move |ev: SseEvent, from: Option<&str>| {
+                notify_critical(&app2, &ev, feed, from);
+                if let Some(cue) = cues.lock().unwrap().cue_for(&ev).filter(|c| feed.plays(*c)) {
+                    sounds::play(&app2, cue);
+                }
+                if ev.kind == "update.available" && from.is_none() {
+                    // 이 PC 데몬이 새 업데이트를 찾았다: 10분 주기를 기다리지 않고 바로 알린다
+                    let app3 = app2.clone();
+                    tauri::async_runtime::spawn(async move { check_for_updates(&app3).await });
+                }
+                if feed == Feed::Chosen {
+                    emit_main(&app2, "events:message", &ev)
+                }
+            },
+        )
+    };
+    let (chosen, local) = (stream(Feed::Chosen), stream(Feed::LocalWhileRemote));
     let task = tauri::async_runtime::spawn(async move {
-        events::run_event_stream(client, stop, move |ev: SseEvent| {
-            notify_critical(&app2, &ev);
-            if let Some(cue) = cues.lock().unwrap().cue_for(&ev) {
-                sounds::play(&app2, cue);
-            }
-            if ev.kind == "update.available" {
-                // 데몬이 새 업데이트를 찾았다: 10분 주기를 기다리지 않고 바로 알린다
-                let app3 = app2.clone();
-                tauri::async_runtime::spawn(async move { check_for_updates(&app3).await });
-            }
-            emit_main(&app2, "events:message", &ev)
-        })
-        .await;
+        tokio::join!(chosen, local);
     });
     replace_task(&state.life.events_task, Some(task));
 }
@@ -813,8 +825,9 @@ async fn check_for_updates(app: &AppHandle) {
 }
 
 /// 크래시처럼 꼭 알아야 할 일은 OS 알림으로도 (설정 `osNotifications`, 기본 켬).
-/// 앱 창이 앞에 있으면(보이고, 최소화되지 않고, 포커스) 앱 안 알림으로 충분하다. 트레이에만 떠 있어도 이벤트 스트림은 받으므로 알린다
-fn notify_critical(app: &AppHandle, ev: &SseEvent) {
+/// 앱 창이 앞에 있으면(보이고, 최소화되지 않고, 포커스) 앱 안 알림으로 충분하다. 트레이에만 떠 있어도 이벤트 스트림은 받으므로 알린다.
+/// 원격을 고른 동안 받은 이 PC의 일은 화면에 보이지 않으므로 창이 앞에 있어도 알린다. 원격 데몬(`from`)의 일은 그 이름을 붙인다
+fn notify_critical(app: &AppHandle, ev: &SseEvent, feed: Feed, from: Option<&str>) {
     let state = app.state::<AppState>();
     let Some(body) = events::critical_notice(ev, &state.i18n.read().unwrap()) else { return };
     if state.settings()["osNotifications"] == json!(false) {
@@ -826,11 +839,21 @@ fn notify_critical(app: &AppHandle, ev: &SseEvent) {
         .is_some_and(|w| {
             w.is_visible().unwrap_or(false) && !w.is_minimized().unwrap_or(true) && w.is_focused().unwrap_or(false)
         });
-    if in_front {
-        tracing::info!("[Notify] {} — window in front, in-app notice only", ev.kind);
-    } else {
-        show_notification(app, &state.t("notify.title", &[]), &body);
+    if in_front && feed.shown_in_app() {
+        return tracing::info!("[Notify] {} — window in front, in-app notice only", ev.kind);
     }
+    let Some(host_id) = from.map(str::to_string) else {
+        return show_notification(app, &state.t("notify.title", &[]), &body);
+    };
+    // 원격 데몬 이름은 이 PC의 데몬이 안다 (`/api/remote/daemons`는 늘 이 PC가 답한다)
+    let app2 = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let state = app2.state::<AppState>();
+        let list = state.client.get("/api/remote/daemons", 3000).await.unwrap_or_default();
+        let name = events::daemon_name(&list, &host_id);
+        let body = events::on_daemon(body, Some(&name), &state.i18n.read().unwrap());
+        show_notification(&app2, &state.t("notify.title", &[]), &body);
+    });
 }
 
 /// Windows는 토스트를 직접 띄운다: 알림 플러그인은 결과를 버려 실패해도 기록이 남지 않는다

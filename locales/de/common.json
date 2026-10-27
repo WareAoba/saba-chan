@@ -134,6 +134,7 @@
     "gave_up": "Der automatische Neustart wurde aufgegeben. Bitte den Server prüfen.",
     "restart_failed": "{{name}} konnte nicht neu gestartet werden.",
     "external_start": "{{name}} wurde außerhalb von Saba-chan gestartet. Saba-chan hat diesen Prozess nicht gestartet.",
-    "backup_failed": "Automatische Sicherung von {{name}} fehlgeschlagen."
+    "backup_failed": "Automatische Sicherung von {{name}} fehlgeschlagen.",
+    "on_daemon": "Auf {{daemon}}: {{body}}"
   }
 }

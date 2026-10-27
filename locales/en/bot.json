@@ -42,6 +42,7 @@
   "server": {
     "start_request": "⏳ Starting **{{name}}** server...",
     "start_complete": "✅ **{{name}}** start request completed!",
+    "already_running": "ℹ️ **{{name}}** is already running.",
     "stop_request": "⏳ Stopping **{{name}}** server...",
     "stop_complete": "✅ **{{name}}** stop request completed!",
     "graceful_stop_unavailable": "⚠️ **{{name}}** was not stopped: it has no way (console or REST) to save and exit. To end it without saving, choose a force stop in saba-chan on this PC.",
@@ -153,7 +154,8 @@
   },
   "schedule": {
     "restart_warning": "The server restarts in {{minutes}} min.",
-    "update_warning": "The server restarts for an update in {{minutes}} min."
+    "update_warning": "The server restarts for an update in {{minutes}} min.",
+    "stop_warning": "The server stops in {{minutes}} min."
   },
   "provision": {
     "installing": "Installing server…",
@@ -196,6 +198,13 @@
       },
       "delete": {
         "title": "Delete server"
+      },
+      "start_notice": {
+        "set": {
+          "title": "Start alert",
+          "description": "Post in this Discord server's alert channel when Saba-chan starts this server",
+          "name": "Start alert"
+        }
       }
     },
     "server": {
@@ -235,6 +244,10 @@
       "players": {
         "title": "Players",
         "description": "Who is online"
+      },
+      "port_check": {
+        "title": "Port forwarding check",
+        "description": "The relay checks whether this server is reachable from the internet"
       }
     },
     "monitor": {
@@ -367,7 +380,32 @@
       "players": "👥 {{online}} online",
       "players_max": "👥 {{online}}/{{max}} online",
       "player_item": "• {{name}}",
-      "players_more": "…and {{count}} more"
+      "players_more": "…and {{count}} more",
+      "port_check": {
+        "open": "✅ Reachable from the internet",
+        "firewall": "🧱 Blocked by the PC firewall",
+        "router": "📡 Port forwarding is not set up on the router",
+        "closed": "🚫 Not reachable from the internet",
+        "cgnat": "⚠️ Your router has no public IP (CGNAT)",
+        "unknown": "❔ Some ports could not be checked",
+        "no_ports": "📭 This game does not say which ports to check"
+      },
+      "port_status": {
+        "open": "Open",
+        "closed": "Closed",
+        "unknown": "Not checked",
+        "in_use": "Used by another program",
+        "firewall": "Blocked by firewall",
+        "router": "Not forwarded"
+      },
+      "port_item": "• {{port}}/{{protocol}} · {{status}}",
+      "port_hint": {
+        "closed": "Check that your router forwards this port to this PC and that the PC firewall allows it.",
+        "firewall": "Windows Firewall is blocking incoming connections on this port. For the network you are connected to now (private or public), allow saba-core if the server is stopped, or the game server program if it is running, in Windows Firewall settings, then check again.",
+        "router": "The PC firewall allows this port. Forward this port to this PC in your router settings, then check again.",
+        "cgnat": "Your provider shares one public IP among many homes, so port forwarding cannot open it. Ask your provider for a public IP or use a VPN such as Tailscale.",
+        "unknown": "UDP ports of a running server and ports another program uses cannot be checked. Stop the server and check again."
+      }
     }
   },
   "reasons": {

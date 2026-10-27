@@ -29,6 +29,7 @@ pub async fn run(ctx: &Ctx, cmd: ServerCmd) -> Result<()> {
         }
         ServerCmd::Send { server, line } => send(ctx, &server, &line.join(" ")).await,
         ServerCmd::Players { server } => players(ctx, server.as_deref()).await,
+        ServerCmd::PortCheck { server } => port_check(ctx, server.as_deref()).await,
         ServerCmd::Rcon { server, line } => rcon(ctx, &server, &line.join(" ")).await,
         ServerCmd::Log { server, source, lines, runs, all } => log(ctx, server.as_deref(), source.as_deref(), lines, runs, all).await,
         ServerCmd::Query { server, name, args } => query(ctx, &server, name.as_deref(), &args).await,
@@ -1261,6 +1262,29 @@ async fn players(ctx: &Ctx, query: Option<&str>) -> Result<()> {
         }
         for n in names {
             say!("  {}", n);
+        }
+    });
+    Ok(())
+}
+
+/// 포트포워딩 확인: 판정 한 줄, 공인 주소, 포트마다 상태, 닫혔으면 무엇을 볼지
+async fn port_check(ctx: &Ctx, query: Option<&str>) -> Result<()> {
+    let sv = resolve::server(ctx, query).await?;
+    let r = ctx.api.port_check(&sv.id).await?;
+    ctx.out.data(&r, |r| {
+        output::heading(&t!("port_check.title", server = sv.name));
+        let verdict = s(r, "verdict");
+        say!("{}", t!(&format!("port_check.verdict.{}", verdict)));
+        if !s(r, "address").is_empty() {
+            say!("{}", output::dim(&t!("port_check.address", address = s(r, "address"))));
+        }
+        for p in r.get("ports").and_then(Value::as_array).into_iter().flatten() {
+            let port = p.get("port").and_then(Value::as_u64).unwrap_or(0);
+            let status = t!(&format!("port_check.status.{}", s(p, "status")));
+            say!("  {}/{}  {}", port, s(p, "protocol").to_uppercase(), status);
+        }
+        if matches!(verdict, "firewall" | "router" | "closed" | "cgnat" | "unknown") {
+            say!("{}", output::dim(&t!(&format!("port_check.hint.{}", verdict))));
         }
     });
     Ok(())

@@ -710,7 +710,11 @@ impl IPCServer {
         let extension_manager = Arc::new(RwLock::new(ext_mgr));
 
         // ConfigStore 초기화 (기존 JSON 파일에서 로드)
+        #[cfg(not(test))]
         let data_dir = saba_chan_updater_lib::constants::resolve_data_dir();
+        // 시험은 실제 설정 파일을 건드리지 않는다: 데몬마다 빈 데이터 폴더
+        #[cfg(test)]
+        let data_dir = tempfile::tempdir().expect("test data dir").keep();
         let config_store = Arc::new(crate::config_store::ConfigStore::new(&data_dir));
 
         let stop_requested = tokio_util::sync::CancellationToken::new();
@@ -785,6 +789,7 @@ impl IPCServer {
             .route("/api/diagnostics", get(handlers::diagnostics::diagnostics))
             .route("/api/onboarding", get(handlers::diagnostics::onboarding))
             .route("/api/audit", get(handlers::diagnostics::audit))
+            .route("/api/audit/export", post(handlers::diagnostics::audit_export))
             .route("/api/events", get(handlers::events::stream))
             // ── Server query/control ──
             .route("/api/servers", get(handlers::server::list_servers))
@@ -837,6 +842,7 @@ impl IPCServer {
             .route("/api/instance/{id}/server/reset", post(handlers::managed::reset_server_handler))
             .route("/api/instance/{id}/agreements", post(handlers::managed::accept_agreements_handler))
             .route("/api/instance/{id}/diagnose", post(handlers::managed::diagnose_handler))
+            .route("/api/instance/{id}/port-check", get(handlers::port_check::last).post(handlers::port_check::check))
             // 백업 (A2)·예약 작업 (A3)
             .route("/api/instance/{id}/backups", get(handlers::backup::list_backups).post(handlers::backup::create_backup))
             .route("/api/instance/{id}/backups/{name}", delete(handlers::backup::delete_backup))
@@ -959,6 +965,9 @@ impl IPCServer {
             // 인스턴스별 디스코드 낱말, 길드가 쓸 서버 (로컬 전용)
             .route("/api/instance/{id}/words", get(handlers::words::get).put(handlers::words::put))
             .route("/api/guilds/{guild}/allowed-instances", put(handlers::words::put_allowed))
+            // 켜짐 알림: 길드마다 고른 서버 (액션 instance.start_notice.set 도 같은 라우트)
+            .route("/api/guilds/{guild}/start-notice", get(handlers::start_notice::get))
+            .route("/api/instance/{id}/start-notice/{guild}", put(handlers::start_notice::put))
             .route("/api/chatbot/guilds/{guild}", get(handlers::chatbot::get_guild).patch(handlers::chatbot::patch_guild))
             // ── 원격 데몬 (D1): 원격 포트 설정과 짝 맺은 PC (로컬 전용, 원격 포트에서는 막는다) ──
             .route("/api/remote/settings", get(handlers::remote_daemon::get_settings).put(handlers::remote_daemon::put_settings))
@@ -973,6 +982,8 @@ impl IPCServer {
             .merge(updates::updates_router(self.update_state.clone()))
             // 감사 로그 출처 (A10): 요청마다 X-Saba-Client로 정한다. 인증층은 이 바깥에 씌운다 (업데이트 라우터까지)
             .layer(axum::middleware::from_fn(crate::audit::layer))
+            // 짝 맺은 PC(출처 `remote`)의 PC 전용 경로·칸 (D1). 원격 포트와 안에서 다시 부르는 라우터(`actions::call_as`)가 모두 지난다
+            .layer(axum::middleware::from_fn_with_state(self.clone(), crate::remote_daemon::server::rules))
     }
 
     pub async fn start(self) -> Result<()> {
@@ -1041,6 +1052,8 @@ impl IPCServer {
                     // 원격 포트 (D1): 켜져 있으면 열고 릴레이에 주소를 올린다
                     let remote_server = self.clone();
                     tokio::spawn(async move { crate::remote_daemon::apply(&remote_server).await });
+                    // 자동 포트포워딩 확인 (설정이 켜져 있을 때만, 자동 시작한 서버가 포트를 연 뒤)
+                    tokio::spawn(crate::port_check::auto_on_start(self.clone()));
 
                     let shutdown_signal = self.shutdown_token.clone();
                     axum::serve(listener, router)
@@ -1094,6 +1107,28 @@ mod tests {
             }
         };
         tokio::time::timeout(std::time::Duration::from_secs(5), attached).await.expect("the host channel must be attached once the lock is free");
+    }
+
+    /// 시험이 만든 데몬은 이 PC의 실제 설정 파일을 읽거나 쓰지 않는다 (PC 관문 2026-10-26: 시험이 data 폴더 config.json에 길드 설정을 남김)
+    #[tokio::test]
+    async fn test_daemons_keep_their_settings_out_of_the_real_data_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let server = || {
+            let sup = crate::supervisor::Supervisor::new_with_instances_dir(tmp.path().join("modules").to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+            IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new())
+        };
+        let guild = "settings-isolation-guild";
+        let (a, b) = (server(), server());
+        a.config_store
+            .update_node_settings(guild, |n| {
+                n.insert("x".into(), json!(1));
+                ((), true)
+            })
+            .await
+            .unwrap();
+        assert!(b.config_store.get_bot_config().await.node_settings.get(guild).is_none(), "another test daemon must not see it");
+        let real = saba_chan_updater_lib::constants::resolve_data_dir().join("config.json");
+        assert!(!std::fs::read_to_string(real).unwrap_or_default().contains(guild), "the real config.json must stay untouched");
     }
 
     #[test]

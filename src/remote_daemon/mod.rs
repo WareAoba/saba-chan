@@ -13,7 +13,7 @@ pub mod tls;
 pub mod tunnel;
 
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, OnceLock, RwLock};
+use std::sync::{Arc, OnceLock};
 
 use saba_chan_updater_lib::config_file::ConfigFile;
 use serde::Serialize;
@@ -46,13 +46,14 @@ struct Runtime {
 static RUNTIME: tokio::sync::Mutex<Runtime> = tokio::sync::Mutex::const_new(Runtime { cancel: None, retry: None, published: false, status: Status { listening: false, cert_sha256: None, published: false, error: None } });
 
 /// 짝 맺은 PC 목록 (원격 포트의 인증층이 요청마다 본다). 설정 파일에서 채우고, 짝 맺기·풀기가 고친다
-pub(crate) fn clients() -> Arc<RwLock<Vec<config::Client>>> {
-    static CLIENTS: OnceLock<Arc<RwLock<Vec<config::Client>>>> = OnceLock::new();
-    CLIENTS.get_or_init(Arc::default).clone()
+pub(crate) fn clients() -> server::Clients {
+    static CLIENTS: OnceLock<server::Clients> = OnceLock::new();
+    CLIENTS.get_or_init(server::Clients::default).clone()
 }
 
+/// 짝을 푼 PC의 열린 스트림도 여기서 끝난다 (`Clients::set`)
 pub(crate) fn reload_clients(file: &ConfigFile) {
-    *clients().write().unwrap_or_else(|e| e.into_inner()) = config::clients_in(file);
+    clients().set(config::clients_in(file));
 }
 
 pub async fn status() -> Status {

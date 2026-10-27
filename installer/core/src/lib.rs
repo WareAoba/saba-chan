@@ -805,7 +805,7 @@ fn extract_zip(zip_path: &Path, target_dir: &Path) -> anyhow::Result<()> {
 /// 게임 모듈(minecraft, palworld 등)의 lifecycle.py가 이 유틸리티를 import 한다.
 /// 실패한 것마다 안내 문장을 돌려준다 (완료 화면 경고)
 fn install_shared_modules(install_dir: &Path) -> Vec<String> {
-    const SHARED_MODULES: &[&str] = &["i18n.py", "daemon_rcon.py"];
+    const SHARED_MODULES: &[&str] = &["i18n.py", "daemon_rcon.py", "common_locales.json"];
 
     let shared_dir = constants::resolve_data_dir().join("python-shared");
     let _ = std::fs::create_dir_all(&shared_dir);

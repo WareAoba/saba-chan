@@ -42,6 +42,7 @@
   "server": {
     "start_request": "⏳ Starten von **{{name}}**-Server...",
     "start_complete": "✅ Start-Anfrage für **{{name}}** abgeschlossen!",
+    "already_running": "ℹ️ **{{name}}** läuft bereits.",
     "stop_request": "⏳ Stoppen von **{{name}}**-Server...",
     "stop_complete": "✅ Stop-Anfrage für **{{name}}** abgeschlossen!",
     "graceful_stop_unavailable": "⚠️ **{{name}}** wurde nicht gestoppt: Es gibt keinen Weg (Konsole oder REST), zu speichern und zu beenden. Um ihn ohne Speichern zu beenden, wähle in saba-chan auf diesem PC einen erzwungenen Stopp.",
@@ -153,7 +154,8 @@
   },
   "schedule": {
     "restart_warning": "Der Server startet in {{minutes}} Min. neu.",
-    "update_warning": "Der Server startet in {{minutes}} Min. für ein Update neu."
+    "update_warning": "Der Server startet in {{minutes}} Min. für ein Update neu.",
+    "stop_warning": "Der Server wird in {{minutes}} Min. gestoppt."
   },
   "provision": {
     "installing": "Server wird installiert…",
@@ -196,6 +198,13 @@
       },
       "delete": {
         "title": "Server löschen"
+      },
+      "start_notice": {
+        "set": {
+          "title": "Start-Hinweis",
+          "description": "Im Hinweiskanal dieses Discord-Servers melden, wenn Saba-chan diesen Server startet",
+          "name": "Start-Hinweis"
+        }
       }
     },
     "server": {
@@ -235,6 +244,10 @@
       "players": {
         "title": "Spieler",
         "description": "Wer gerade online ist"
+      },
+      "port_check": {
+        "title": "Portweiterleitung prüfen",
+        "description": "Das Relay prüft, ob dieser Server aus dem Internet erreichbar ist"
       }
     },
     "monitor": {
@@ -367,7 +380,32 @@
       "players": "👥 {{online}} online",
       "players_max": "👥 {{online}}/{{max}} online",
       "player_item": "• {{name}}",
-      "players_more": "…und {{count}} weitere"
+      "players_more": "…und {{count}} weitere",
+      "port_check": {
+        "open": "✅ Aus dem Internet erreichbar",
+        "firewall": "🧱 Von der PC-Firewall blockiert",
+        "router": "📡 Am Router ist keine Portweiterleitung eingerichtet",
+        "closed": "🚫 Aus dem Internet nicht erreichbar",
+        "cgnat": "⚠️ Dein Router hat keine öffentliche IP (CGNAT)",
+        "unknown": "❔ Einige Ports konnten nicht geprüft werden",
+        "no_ports": "📭 Dieses Spiel gibt keine zu prüfenden Ports an"
+      },
+      "port_status": {
+        "open": "Offen",
+        "closed": "Geschlossen",
+        "unknown": "Nicht geprüft",
+        "in_use": "Von einem anderen Programm belegt",
+        "firewall": "Von der Firewall blockiert",
+        "router": "Nicht weitergeleitet"
+      },
+      "port_item": "• {{port}}/{{protocol}} · {{status}}",
+      "port_hint": {
+        "closed": "Prüfe, ob der Router diesen Port an diesen PC weiterleitet und die PC-Firewall ihn erlaubt.",
+        "firewall": "Die Windows-Firewall blockiert eingehende Verbindungen auf diesem Port. Erlaube für das Netzwerk, mit dem du gerade verbunden bist (privat oder öffentlich), in den Einstellungen der Windows-Firewall saba-core, wenn der Server gestoppt ist, oder das Programm des Spielservers, wenn er läuft, und prüfe erneut.",
+        "router": "Die PC-Firewall lässt diesen Port zu. Leite diesen Port in den Router-Einstellungen an diesen PC weiter und prüfe erneut.",
+        "cgnat": "Dein Anbieter teilt eine öffentliche IP unter vielen Haushalten, daher lässt sie sich nicht per Portweiterleitung öffnen. Frag deinen Anbieter nach einer öffentlichen IP oder nutze ein VPN wie Tailscale.",
+        "unknown": "UDP-Ports eines laufenden Servers und Ports, die ein anderes Programm belegt, lassen sich nicht prüfen. Stoppe den Server und prüfe erneut."
+      }
     }
   },
   "reasons": {

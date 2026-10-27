@@ -66,6 +66,19 @@ export function setTheme(theme) {
  */
 function applyTheme(theme) {
     document.documentElement.setAttribute('data-theme', theme);
+    syncWindowBackground();
+}
+
+/**
+ * 셸 창의 바탕을 테마 바탕색(--bg-0)으로 칠한다.
+ * 창 크기를 바꾸는 사이 웹뷰가 아직 못 그린 자리가 흰색 대신 이 색으로 보인다.
+ * 트레이 팝업은 투명 창이라 칠하지 않는다.
+ */
+function syncWindowBackground() {
+    const root = document.documentElement;
+    if (root.dataset.trayPopup !== undefined) return;
+    const color = getComputedStyle(root).getPropertyValue('--bg-0').trim();
+    if (color) window.api?.windowSetBackground?.(color);
 }
 
 /**
@@ -87,6 +100,8 @@ export function getEffectiveTheme() {
 export function initTheme() {
     const theme = getTheme();
     applyTheme(theme);
+    // "시스템 따라"면 시스템 테마가 바뀔 때 창 바탕도 따라 바꾼다
+    window.matchMedia?.('(prefers-color-scheme: dark)').addEventListener?.('change', syncWindowBackground);
     // Apply saved customizations
     const custom = getCustomTheme();
     applyCustomTheme(custom);

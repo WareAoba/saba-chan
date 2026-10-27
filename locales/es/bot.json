@@ -42,6 +42,7 @@
   "server": {
     "start_request": "⏳ Iniciando servidor **{{name}}**...",
     "start_complete": "✅ ¡Solicitud de inicio de **{{name}}** completada!",
+    "already_running": "ℹ️ **{{name}}** ya está en marcha.",
     "stop_request": "⏳ Deteniendo servidor **{{name}}**...",
     "stop_complete": "✅ ¡Solicitud de detención de **{{name}}** completada!",
     "graceful_stop_unavailable": "⚠️ **{{name}}** no se detuvo: no tiene forma (consola o REST) de guardar y salir. Para cerrarlo sin guardar, elige una detención forzada en saba-chan en este PC.",
@@ -153,7 +154,8 @@
   },
   "schedule": {
     "restart_warning": "El servidor se reiniciará en {{minutes}} min.",
-    "update_warning": "El servidor se reiniciará para actualizarse en {{minutes}} min."
+    "update_warning": "El servidor se reiniciará para actualizarse en {{minutes}} min.",
+    "stop_warning": "El servidor se detendrá en {{minutes}} min."
   },
   "provision": {
     "installing": "Instalando el servidor…",
@@ -196,6 +198,13 @@
       },
       "delete": {
         "title": "Eliminar servidor"
+      },
+      "start_notice": {
+        "set": {
+          "title": "Aviso de inicio",
+          "description": "Avisa en el canal de avisos de este servidor de Discord cuando Saba-chan inicia este servidor",
+          "name": "Aviso de inicio"
+        }
       }
     },
     "server": {
@@ -235,6 +244,10 @@
       "players": {
         "title": "Jugadores",
         "description": "Quién está conectado"
+      },
+      "port_check": {
+        "title": "Comprobar reenvío de puertos",
+        "description": "El relé comprueba si este servidor es accesible desde internet"
       }
     },
     "monitor": {
@@ -367,7 +380,32 @@
       "players": "👥 {{online}} conectados",
       "players_max": "👥 {{online}}/{{max}} conectados",
       "player_item": "• {{name}}",
-      "players_more": "…y {{count}} más"
+      "players_more": "…y {{count}} más",
+      "port_check": {
+        "open": "✅ Accesible desde internet",
+        "firewall": "🧱 Bloqueado por el firewall del PC",
+        "router": "📡 El router no tiene configurado el reenvío de puertos",
+        "closed": "🚫 No accesible desde internet",
+        "cgnat": "⚠️ Tu router no tiene IP pública (CGNAT)",
+        "unknown": "❔ Algunos puertos no se pudieron comprobar",
+        "no_ports": "📭 Este juego no indica qué puertos comprobar"
+      },
+      "port_status": {
+        "open": "Abierto",
+        "closed": "Cerrado",
+        "unknown": "Sin comprobar",
+        "in_use": "En uso por otro programa",
+        "firewall": "Bloqueado por el firewall",
+        "router": "Sin reenviar"
+      },
+      "port_item": "• {{port}}/{{protocol}} · {{status}}",
+      "port_hint": {
+        "closed": "Comprueba que el router reenvía este puerto a este PC y que el cortafuegos del PC lo permite.",
+        "firewall": "El Firewall de Windows está bloqueando las conexiones entrantes en este puerto. Para la red a la que estás conectado ahora (privada o pública), permite saba-core si el servidor está detenido, o el programa del servidor del juego si está en marcha, en la configuración del Firewall de Windows y vuelve a comprobar.",
+        "router": "El firewall del PC permite este puerto. Reenvía este puerto a este PC en la configuración del router y vuelve a comprobar.",
+        "cgnat": "Tu proveedor comparte una IP pública entre muchos hogares, así que el reenvío de puertos no puede abrirlo. Pide una IP pública a tu proveedor o usa una VPN como Tailscale.",
+        "unknown": "No se pueden comprobar los puertos UDP de un servidor en marcha ni los puertos que usa otro programa. Detén el servidor y vuelve a comprobar."
+      }
     }
   },
   "reasons": {

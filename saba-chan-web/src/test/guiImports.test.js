@@ -9,6 +9,8 @@ const ALLOWED = new Set([
     '@gui/utils/serverView',
     '@gui/utils/localizedText',
     '@gui/utils/commandRisk',
+    // 포트포워딩 확인 결과 읽기 (화면 없는 순수 함수)
+    '@gui/utils/portCheck',
     // 권한 단계 계산과 사다리 편집 (화면 없는 순수 함수)
     '@gui/components/discord/levels',
     '@gui/styles/tokens.css',

@@ -126,7 +126,12 @@
     "words_bad_command": "{{spec}}: コマンド=語,語 の形で書いてください (消すには コマンド=)。",
     "no_paired_servers": "このPCとペアリングされたDiscordサーバーはまだありません。実行: saba-chan-cli bot pair",
     "pick_server": "ペアリングされたDiscordサーバーが複数あります。変更するサーバーのIDを指定してください: {{servers}}",
-    "translate_commands": "コマンド名の翻訳"
+    "translate_commands": "コマンド名の翻訳",
+    "notice_none": "起動通知をオンにしたサーバーはまだありません。サバちゃんがサーバーを起動しても知らせません。",
+    "notice_is_on": "{{server}}: 起動通知オン",
+    "notice_is_off": "{{server}}: 起動通知オフ",
+    "notice_on_saved": "{{guild}}の通知チャンネルに{{server}}の起動を知らせます。",
+    "notice_off_saved": "{{guild}}に{{server}}の起動を知らせないようにしました。"
   },
   "col": {
     "players": "接続者",
@@ -372,7 +377,8 @@
       "autostart_unknown_mode": "off、daemon、full から選んでください。",
       "move_cross_volume": "別のドライブにあるフォルダーは移せません。「今の場所のまま」で取り込んでください。",
       "move_in_use": "フォルダーを移せませんでした。このフォルダーのサーバーを停止し、フォルダーを開いているプログラムを閉じてからもう一度試してください。",
-      "move_failed": "フォルダーを移せませんでした。「今の場所のまま」で取り込んでください。"
+      "move_failed": "フォルダーを移せませんでした。「今の場所のまま」で取り込んでください。",
+      "port_check_busy": "すでに確認中です。しばらくしてからもう一度お試しください"
     },
     "not_a_bool": "「{{value}}」ははい/いいえではありません（true か false を使ってください）。",
     "not_a_number": "「{{value}}」は数値ではありません。",
@@ -797,9 +803,9 @@
       "backup.create": "今すぐバックアップする",
       "backup.delete": "バックアップを 1 つ削除 (名前を省くと一覧から選ぶ)",
       "backup.restore": "バックアップに戻す (起動中なら停止するか尋ねる)。名前を省くと一覧から選ぶ",
-      "schedule": "サーバーの予約作業 (バックアップ、再起動、告知、アップデート)",
+      "schedule": "サーバーの予約作業 (起動、停止、再起動、保存、バックアップ、告知、アップデート、ゲームコマンド)",
       "schedule.show": "予約を表示",
-      "schedule.add": "作業を予約: backup、restart、announce、update",
+      "schedule.add": "作業を予約: start、stop、restart、save、backup、announce、update、command",
       "schedule.edit": "N 番の作業を消さずに直す: 指定したオプションだけ変わる (schedule show を参照)",
       "schedule.remove": "N 番の作業を削除 (schedule show を参照)",
       "schedule.on": "N 番の作業を有効にする",
@@ -854,6 +860,7 @@
       "config.paths": "データ・モジュール・拡張機能フォルダーの場所と既定のフォルダー",
       "config.move": "モジュールや拡張機能を別のフォルダーへ移す。インストール済みのファイルも移す。サーバーはすべて停止が必要",
       "server.players": "今接続している人",
+      "server.port-check": "友だちが外部からこのサーバーに接続できるか確認（ポート開放）",
       "server.rcon": "サーバーがコマンドを受け取る経路(コンソール、なければRCON)で1行送って応答を見る",
       "server.log": "過去の実行まで保存されたログ(コンソールは今回の実行分のみ)",
       "server.query": "ゲームモジュールが提供する照会(名前がなければ一覧)",
@@ -870,7 +877,8 @@
       "remote.servers": "このPCと各リモートデーモンのサーバーをデーモンごとに（操作するには`--daemon <名前>`）",
       "remote.forget": "リモートデーモンを削除（再接続は`remote connect`）",
       "config.autostart": "PCにサインインしたときに起動するもの: off(オフ)、daemon(デーモンとトレイのみ)、full(GUIウィンドウまで)。モードなしで今の値を表示",
-      "config.browse": "デーモンのPCのフォルダーとファイルを表示 (--daemonならそのリモートPC)。パスがなければドライブか /"
+      "config.browse": "デーモンのPCのフォルダーとファイルを表示 (--daemonならそのリモートPC)。パスがなければドライブか /",
+      "bot.notice": "サバちゃんがサーバーを起動したらDiscordサーバーの通知チャンネルに知らせる（既定はオフ）。サーバーなし: 表示、サーバーと`--on`・`--off`: 変更"
     },
     "arg": {
       "module.maker.game": "最初の依頼に入れるゲーム名",
@@ -973,6 +981,9 @@
       "monitor.interval": "--watch での更新間隔 (秒)",
       "audit.limit": "表示する件数",
       "audit.follow": "新しい記録を出続ける (Ctrl+C で終了)",
+      "audit.since": "この日から: YYYY-MM-DD、today、7d(過去7日)",
+      "audit.until": "この日の終わりまで: YYYY-MM-DD または today",
+      "audit.export": "一覧の代わりに期間の記録をすべてこの CSV ファイルに保存",
       "bot.lang.value": "auto または言語コード (ko, en, ja, zh-CN, zh-TW, es, pt-BR, ru, de, fr)",
       "bot.prefix.values": "1 つ以上のプレフィックス (空白なし、32 文字まで、10 個まで)",
       "bot.prefix.default": "アプリの言語の既定のプレフィックスに戻す",
@@ -1022,7 +1033,18 @@
       "keep_settings": "削除時にゲーム設定ファイルを取り込む前に戻さず今のまま残す",
       "move_folder": "--from のフォルダーをその場でつながずサバちゃんのフォルダーへ移す（同じドライブのみ）",
       "config.browse.path": "表示するフォルダーのフルパス",
-      "config.browse.files": "この拡張子のファイルも表示 (カンマ区切り、* ですべて)"
+      "config.browse.files": "この拡張子のファイルも表示 (カンマ区切り、* ですべて)",
+      "every_days": "--at と一緒に: N日ごと",
+      "on": "--at と一緒に: この曜日に (例: mon,wed,fri)",
+      "date": "--at と一緒に: この日に1回 (YYYY-MM-DD)",
+      "daily": "--at と一緒に: 毎日 (edit では --every-days・--on・--date を消す)",
+      "schedule.add.from": "--every-days と一緒に: この日から数える (YYYY-MM-DD、既定: 今日)",
+      "schedule.add.args": "ゲームコマンドの入力 名前=値 (複数可)",
+      "schedule.edit.from": "--every-days と一緒に: この日から数える (YYYY-MM-DD、既定: 今日)",
+      "schedule.edit.args": "ゲームコマンドの入力 名前=値 (複数可)",
+      "schedule.add.command": "実行するゲームコマンド (command 作業、一覧: server commands)",
+      "bot.notice.on": "起動通知をオン",
+      "bot.notice.off": "起動通知をオフ"
     },
     "after": "名前は一部だけでも指定できます（例: start pal）。端末で引数なしで実行すると全画面メニューが開きます(SABA_NO_TUI=1 なら対話シェル)。\nスクリプトでは --json と --yes を使ってください。終了コード: 0 成功 · 1 失敗 · 2 使い方の誤り · 3 デーモンに接続不可 · 4 見つからない · 130 キャンセル"
   },
@@ -1074,13 +1096,18 @@
     "col": {
       "task": "タスク",
       "when": "日時",
-      "on": "有効"
+      "on": "有効",
+      "next": "次回"
     },
     "action": {
       "backup": "バックアップ",
       "restart": "再起動",
       "announce": "アナウンス",
-      "update": "アップデート"
+      "update": "アップデート",
+      "start": "起動",
+      "stop": "停止",
+      "save": "保存",
+      "command": "ゲームコマンド"
     },
     "none": "{{name}} にはスケジュールされたタスクがありません。",
     "warns": "{{minutes}} 分前に予告",
@@ -1096,17 +1123,40 @@
     "disabled": "無効にしました: {{task}}",
     "no_such": "タスク {{number}} はありません（全 {{count}} 件）。",
     "edited": "タスクを変更しました: {{task}}",
-    "nothing_to_edit": "変更する項目を1つ以上指定してください（--every, --at, --warn, --no-warn, --message）。",
+    "nothing_to_edit": "変更する項目を1つ以上指定してください（--every、--at、--every-days、--on、--date、--daily、--warn、--no-warn、--message、--arg）。",
     "keep_zero": "バックアップは 1 つ以上保持してください。",
     "keep_set": "スケジュールバックアップを直近 {{count}} 件保持します。",
     "confirm_clear": "{{name}} のスケジュールされたタスクをすべて削除しますか？",
     "cleared": "{{name}} のスケジュールされたタスクはなくなりました。",
     "bad_action": "「{{got}}」はタスクではありません。次のいずれかを使ってください: {{actions}}。",
-    "warn_only_restart": "--warn は restart と update でのみ使えます。",
+    "warn_only_restart": "--warn は restart、update、stop でのみ使えます。",
     "message_required": "アナウンスには --message が必要です。",
     "every_or_at": "--every（例: 30m、2h）か --at（例: 04:00）のどちらか一方だけを指定してください。",
     "bad_every": "「{{got}}」は時間として認識できません。分数または単位付きで指定してください（例: 30、30m、2h、1h30m）。",
-    "bad_at": "「{{got}}」は時刻ではありません。HH:MM で指定してください（例: 04:00）。"
+    "bad_at": "「{{got}}」は時刻ではありません。HH:MM で指定してください（例: 04:00）。",
+    "weekday": {
+      "mon": "月",
+      "tue": "火",
+      "wed": "水",
+      "thu": "木",
+      "fri": "金",
+      "sat": "土",
+      "sun": "日"
+    },
+    "server_clock": "時刻はサーバーPCの時計（{{zone}}）基準です。次回はこのPCの時刻です。",
+    "every_days_at": "{{from}}から{{n}}日ごと {{at}}",
+    "weekdays_at": "{{days}} {{at}}",
+    "date_at": "{{date}} {{at}}に1回",
+    "no_save": "このゲームには保存コマンドがありません。",
+    "command_required": "ゲームコマンドには --command が必要です（一覧: server commands）。",
+    "command_only": "--command と --arg は command 作業でのみ使えます。",
+    "day_rule_needs_at": "--every-days、--on、--date は --at と一緒に使います。",
+    "bad_every_days": "{{got}}日は使えません。1～365日で入力してください。",
+    "bad_weekday": "「{{got}}」は曜日ではありません。{{days}} から選んでください。",
+    "bad_date": "「{{got}}」は日付ではありません。2026-12-24 のように YYYY-MM-DD で入力してください。",
+    "bad_arg": "「{{got}}」は引数ではありません。名前=値 で入力してください。",
+    "confirm_danger": "{{command}} は元に戻しにくいコマンドで、決めた時に確認なしで実行されます。予約しますか？",
+    "from_needs_every_days": "--from は N日ごと（--every-days）の作業でのみ使えます。"
   },
   "chatbot": {
     "api_key": "API キー保存済み",
@@ -1214,6 +1264,10 @@
     "from": "送信元",
     "what": "内容",
     "result": "結果",
+    "exported": "記録を{{count}}件 {{path}} に保存しました。",
+    "bad_date": "日付は 2026-10-01、today、7d のように書いてください: {{value}}",
+    "export_write_failed": "ファイルを書き込めませんでした。保存先と権限を確認してください。",
+    "export_invalid_path": "ファイルパスが正しくありません。フルパスで指定してください。",
     "scanning": "{{name}} のコードを検査中...",
     "declared": "宣言済み",
     "none_declared": "(なし)",
@@ -1477,11 +1531,40 @@
       "remote_timeout": "リモートデーモンが時間内に応答しませんでした。要求はまだ処理中かもしれません",
       "remote_bad_path": "そのパスはリモートデーモンに送れません",
       "remote_unauthorized": "リモートデーモンがこのPCを受け付けなくなりました。もう一度接続してください",
-      "remote_local_only": "そのPCで直接行う必要があります"
+      "remote_local_only": "そのPCで直接行う必要があります",
+      "remote_field_blocked": "次の設定はそのPCで直接変更する必要があります: {{fields}}"
     },
     "daemon": "デーモン",
     "this_pc": "このPC",
     "no_servers": "サーバーなし",
     "via_relay": "リレー経由"
+  },
+  "port_check": {
+    "title": "{{server}} のポート開放確認",
+    "address": "グローバルIP {{address}}（友だちはこのアドレスとポートで接続します）",
+    "verdict": {
+      "open": "外部から接続できます",
+      "firewall": "PCのファイアウォールがブロックしています",
+      "router": "ルーターでポート開放されていません",
+      "closed": "外部から接続できません",
+      "cgnat": "ルーターがグローバルIPを受け取っていません（CGNAT）",
+      "unknown": "一部のポートは確認できませんでした",
+      "no_ports": "このゲームは確認するポートを示していません"
+    },
+    "status": {
+      "open": "開放",
+      "closed": "閉鎖",
+      "unknown": "未確認",
+      "in_use": "他のプログラムが使用中",
+      "firewall": "ファイアウォールがブロック",
+      "router": "ポート開放なし"
+    },
+    "hint": {
+      "closed": "ルーターでこのポートをこのPCへ転送しているか、PCのファイアウォールで許可しているか確認してください。",
+      "firewall": "Windowsファイアウォールがこのポートへの受信接続をブロックしています。いま接続しているネットワーク（プライベート・パブリック）で、サーバーが停止中ならsaba-coreを、起動中ならゲームサーバーのプログラムをWindowsファイアウォールの設定で許可してから、もう一度確認してください。",
+      "router": "PCのファイアウォールはこのポートを許可しています。ルーターの設定でこのポートをこのPCに転送してから、もう一度確認してください。",
+      "cgnat": "プロバイダーが1つのグローバルIPを複数の家庭で共有しているため、ポート開放では開けません。プロバイダーにグローバルIPを依頼するか、TailscaleなどのVPNを使ってください。",
+      "unknown": "起動中のサーバーのUDPポートと、他のプログラムが使っているポートは確認できません。サーバーを停止してからもう一度確認してください。"
+    }
   }
 }

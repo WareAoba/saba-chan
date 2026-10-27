@@ -35,10 +35,15 @@ impl UpdateManager {
                 let summary = crate::marker::ReleaseSummary::from(release);
                 crate::write_atomic(&self.staging_dir.join(PENDING_RELEASE), serde_json::to_string_pretty(&summary)?.as_bytes())?;
             }
-            // 예전 릴리즈 요약이 이번 대상에 붙지 않게
-            None => {
-                let _ = std::fs::remove_file(self.staging_dir.join(PENDING_RELEASE));
-            }
+            // 되살린 목록이면 그때의 요약을 그대로, 아니면 예전 릴리즈 요약이 이번 대상에 붙지 않게
+            None => match &self.restored_release {
+                Some(summary) => {
+                    crate::write_atomic(&self.staging_dir.join(PENDING_RELEASE), serde_json::to_string_pretty(summary)?.as_bytes())?;
+                }
+                None => {
+                    let _ = std::fs::remove_file(self.staging_dir.join(PENDING_RELEASE));
+                }
+            },
         }
         tracing::info!("[UpdateManager] Saved pending manifest: {} components → {:?}", pending.len(), manifest_path);
         Ok(())
@@ -82,6 +87,7 @@ impl UpdateManager {
 
         let count = valid.len();
         self.status.components = valid;
+        self.restored_release = self.pending_release();
         tracing::info!("[UpdateManager] Loaded pending manifest: {} components", count);
         Ok(count)
     }

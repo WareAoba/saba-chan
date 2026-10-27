@@ -13,6 +13,8 @@ const REFRESH_MS = 3000;
  * 트레이 아이콘을 누르면 아이콘 옆에 뜨는 작은 창 (셸 window.rs `toggle_tray_popup`).
  * 서버 시작·정지는 데몬 API로, 창 열기·CLI로 전환·데몬 켜고 끄기·완전히 종료는 셸(`tray_action`)로 보낸다.
  * 내용 높이를 재서 셸에 알리면 셸이 크기와 자리를 정하고 보인다. 포커스를 잃거나 Esc면 닫힌다.
+ * 상단 바에서 원격 데몬을 골랐으면 서버 요청이 그 데몬으로 가므로, 상태 칩은 그 데몬의 이름과 닿는지를 보이고
+ * 그 데몬의 서버 정지는 한 번 더 눌러 확정한다. 데몬 켜기·끄기는 늘 이 PC의 데몬이다.
  */
 export function TrayPopup() {
     const { t } = useTranslation('gui');
@@ -22,17 +24,37 @@ export function TrayPopup() {
     const [canCli, setCanCli] = useState(false);
     const [busy, setBusy] = useState({});
     const [failed, setFailed] = useState({});
+    // 고른 원격 데몬: {name, reachable}, 이 PC면 null
+    const [remote, setRemote] = useState(null);
+    const [armed, setArmed] = useState(null); // 두 번 눌러 확정할 정지 (원격 서버 id)
 
     const refresh = useCallback(async () => {
-        const status = await Promise.resolve(window.api?.daemonStatus?.()).catch(() => null);
+        const [status, current] = await Promise.all([
+            Promise.resolve(window.api?.daemonStatus?.()).catch(() => null),
+            Promise.resolve(window.api?.daemonTarget?.()).catch(() => null),
+        ]);
         const up = status?.running === true;
+        const target = current?.target || null;
         setDaemonUp(up);
         if (!up) {
+            setRemote(null);
             setServers([]);
             return;
         }
-        const list = await Promise.resolve(window.api?.serverList?.()).catch(() => null);
-        if (Array.isArray(list?.servers)) setServers(list.servers);
+        const [list, daemons] = await Promise.all([
+            Promise.resolve(window.api?.serverList?.()).catch(() => null),
+            target ? Promise.resolve(window.api?.remoteDaemons?.()).catch(() => null) : null,
+        ]);
+        const reachable = Array.isArray(list?.servers);
+        if (target) {
+            const saved = Array.isArray(daemons?.daemons) ? daemons.daemons.find((d) => d.hostId === target) : null;
+            setRemote({ name: saved?.name || target, reachable });
+            // 닿지 않는 원격 데몬의 지난 목록을 남기지 않는다
+            if (!reachable) setServers([]);
+        } else {
+            setRemote(null);
+        }
+        if (reachable) setServers(list.servers);
     }, []);
 
     useEffect(() => {
@@ -66,6 +88,11 @@ export function TrayPopup() {
     const act = (action) => window.api?.trayAction?.(action);
 
     const toggleServer = async (server, action) => {
+        if (action === 'stop' && remote && armed !== server.id) {
+            setArmed(server.id);
+            return;
+        }
+        setArmed(null);
         setBusy((b) => ({ ...b, [server.id]: true }));
         setFailed((f) => ({ ...f, [server.id]: false }));
         try {
@@ -86,7 +113,16 @@ export function TrayPopup() {
             <header className="tray-popup-head">
                 <img className="tray-popup-logo" src="favicon.png" alt="" />
                 <span className="tray-popup-title">{t('tray_popup.title')}</span>
-                {daemonUp !== null && (
+                {daemonUp && remote && (
+                    <StatusChip
+                        tone={remote.reachable ? 'ok' : 'warn'}
+                        label={t(remote.reachable ? 'tray_popup.remote_connected' : 'tray_popup.remote_unreachable', {
+                            name: remote.name,
+                        })}
+                        className="bare"
+                    />
+                )}
+                {daemonUp !== null && !(daemonUp && remote) && (
                     <StatusChip
                         tone={daemonUp ? 'ok' : 'stop'}
                         label={daemonUp ? t('tray_popup.daemon_running') : t('tray_popup.daemon_stopped')}
@@ -96,6 +132,7 @@ export function TrayPopup() {
             </header>
 
             {daemonUp &&
+                remote?.reachable !== false &&
                 (servers.length > 0 ? (
                     <ul className="tray-popup-servers" aria-label={t('tray_popup.servers')}>
                         {servers.map((server) => {
@@ -103,6 +140,7 @@ export function TrayPopup() {
                             const status = viewStatus(server, true);
                             const action = busy[server.id] ? 'busy' : primaryAction(status);
                             const players = playersText(server);
+                            const confirming = armed === server.id && action === 'stop';
                             return (
                                 <li key={server.id} className="tray-popup-server" data-status={status}>
                                     <span
@@ -115,17 +153,29 @@ export function TrayPopup() {
                                             ? t('tray_popup.action_failed')
                                             : players || t(`shell.status_${status}`)}
                                     </span>
-                                    <button
-                                        type="button"
-                                        className="icon-btn tray-popup-server-action"
-                                        disabled={action === 'busy'}
-                                        aria-label={t(action === 'stop' ? 'tray_popup.stop' : 'tray_popup.start', {
-                                            name: server.name,
-                                        })}
-                                        onClick={() => action !== 'busy' && toggleServer(server, action)}
-                                    >
-                                        <Icon name={action === 'stop' ? 'stop' : 'play'} size={14} />
-                                    </button>
+                                    {confirming ? (
+                                        <button
+                                            type="button"
+                                            className="btn btn-danger btn-sm tray-popup-server-confirm"
+                                            aria-label={t('tray_popup.stop_confirm_aria', { name: server.name })}
+                                            onClick={() => toggleServer(server, action)}
+                                        >
+                                            <Icon name="stop" size={12} />
+                                            {t('tray_popup.stop_confirm')}
+                                        </button>
+                                    ) : (
+                                        <button
+                                            type="button"
+                                            className="icon-btn tray-popup-server-action"
+                                            disabled={action === 'busy'}
+                                            aria-label={t(action === 'stop' ? 'tray_popup.stop' : 'tray_popup.start', {
+                                                name: server.name,
+                                            })}
+                                            onClick={() => action !== 'busy' && toggleServer(server, action)}
+                                        >
+                                            <Icon name={action === 'stop' ? 'stop' : 'play'} size={14} />
+                                        </button>
+                                    )}
                                 </li>
                             );
                         })}

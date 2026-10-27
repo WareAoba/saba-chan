@@ -163,6 +163,7 @@ pub fn run() {
             native::console_popin,
             native::console_toggle_always_on_top,
             native::window_minimize,
+            native::window_set_background,
             native::window_maximize,
             native::window_close,
             native::sandbox_consent_allow,

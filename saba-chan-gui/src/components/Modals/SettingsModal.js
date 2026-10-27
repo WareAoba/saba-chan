@@ -1,12 +1,10 @@
 import clsx from 'clsx';
-import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import './Modals.css';
-import { useExtensions } from '../../contexts/ExtensionContext';
 import { useDevMode } from '../../hooks/useDevMode';
 import { useModalClose } from '../../hooks/useModalClose';
 import { DiagnosticsPanel, diagnosticsAvailable } from '../DiagnosticsPanel';
-import { ExtensionConfigForm } from '../ExtensionConfigForm';
 import { useSettingsStore, DEFAULT_IPC_PORT } from '../../stores/useSettingsStore';
 import {
     getTheme,
@@ -20,12 +18,10 @@ import {
 } from '../../utils/themeManager';
 import CustomDropdown from '../CustomDropdown/CustomDropdown';
 import { OklchPicker } from '../ui/OklchPicker';
-import { SabaEmpty } from '../ui/SabaArt';
 import { Icon } from '../Icon';
 import { safeShowToast } from '../../utils/helpers';
 import { LANGUAGE_OPTIONS } from '../../utils/languages';
 import { SabaToggle } from '../ui/SabaUI';
-import { AuditLog, auditAvailable } from '../servers/AuditTab';
 import { DataTransferSection, dataTransferAvailable } from './DataTransferSection';
 import { FolderPathsSection, folderPathsAvailable } from './FolderPathsSection';
 import { RemoteDaemonSection, remoteDaemonAvailable } from './RemoteDaemonSection';
@@ -69,6 +65,8 @@ function SettingsModal({
     const [updatePanelExiting, setUpdatePanelExiting] = useState(false);
     // 사바 스토리지에서 돌아갈 탭 (들어온 탭으로 돌아간다)
     const storageReturnTab = useRef('general');
+    // 사바 스토리지를 열 때 처음 보일 탭 (설정을 '익스텐션'으로 열면 익스텐션 탭)
+    const [storageTab, setStorageTab] = useState('components');
     const [localRefreshInterval, setLocalRefreshInterval] = useState(refreshInterval);
     const [selectedLanguage, setSelectedLanguage] = useState(i18n.language);
     const [selectedTheme, setSelectedTheme] = useState(getTheme());
@@ -85,8 +83,10 @@ function SettingsModal({
     const [appVersion, setAppVersion] = useState(null);
     const [componentInfo, setComponentInfo] = useState(null);
     const aboutBtnRef = useRef(null);
+    // 이스터에그: 정보 페이지 로고를 다섯 번 누르면 이름 해명
+    const logoClicks = useRef(0);
     const [aboutRevealOrigin, setAboutRevealOrigin] = useState({ x: '100%', y: '0%' });
-    const tabOrder = ['general', 'appearance', 'extensions', 'advanced'];
+    const tabOrder = ['general', 'appearance', 'advanced'];
     const { isClosing, requestClose } = useModalClose(onClose);
 
     // ── Dynamic tab indicator ──
@@ -115,34 +115,27 @@ function SettingsModal({
         return () => window.removeEventListener('resize', syncIndicator);
     }, [syncIndicator]);
     const devMode = useDevMode();
-    const { extensions, toggleExtension } = useExtensions();
-    const [togglingIds, setTogglingIds] = useState(new Set());
     const autoGeneratePasswords = useSettingsStore((s) => s.autoGeneratePasswords);
     const portConflictCheck = useSettingsStore((s) => s.portConflictCheck);
+    const autoPortCheck = useSettingsStore((s) => s.autoPortCheck);
     const osNotifications = useSettingsStore((s) => s.osNotifications);
     const sounds = useSettingsStore((s) => s.sounds);
+    const closeAction = useSettingsStore((s) => s.closeAction);
+    const toastDuration = useSettingsStore((s) => s.toastDuration);
+    const newServerBackupKeep = useSettingsStore((s) => s.newServerBackupKeep);
+    const newServerAutoRestart = useSettingsStore((s) => s.newServerAutoRestart);
+    const auditKeepDays = useSettingsStore((s) => s.auditKeepDays);
+    const consoleTimestamps = useSettingsStore((s) => s.consoleTimestamps);
+    const consoleTimestampDate = useSettingsStore((s) => s.consoleTimestampDate);
+    const setOption = (patch) => useSettingsStore.getState().update(patch);
     const setSound = (key, on) => useSettingsStore.getState().update({ sounds: { ...sounds, [key]: on } });
-
-    const handleExtensionToggle = useCallback(
-        async (extId, enable) => {
-            setTogglingIds((prev) => new Set(prev).add(extId));
-            await toggleExtension(extId, enable);
-            setTogglingIds((prev) => {
-                const s = new Set(prev);
-                s.delete(extId);
-                return s;
-            });
-        },
-        [toggleExtension],
-    );
 
     // 외부에서 initialView 지정으로 열렸을 때 해당 탭 자동 진입
     useEffect(() => {
-        if (isOpen && initialView === 'update') {
+        if (isOpen && (initialView === 'update' || initialView === 'extensions')) {
             setActiveTab('general');
+            setStorageTab(initialView === 'extensions' ? 'extensions' : 'components');
             setShowUpdatePanel(true);
-        } else if (isOpen && initialView === 'extensions') {
-            setActiveTab('extensions');
         }
     }, [isOpen, initialView]);
 
@@ -179,6 +172,7 @@ function SettingsModal({
     // 사바 스토리지 열기: 탭을 바꾸지 않고 바로 들어간다
     const openStorage = useCallback(() => {
         storageReturnTab.current = activeTab;
+        setStorageTab('components');
         setShowUpdatePanel(true);
     }, [activeTab]);
 
@@ -391,12 +385,6 @@ function SettingsModal({
                                 {t('gui:settings_modal.appearance')}
                             </button>
                             <button
-                                className={clsx('settings-tab', { active: activeTab === 'extensions' })}
-                                onClick={() => handleTabChange('extensions')}
-                            >
-                                {t('gui:settings_modal.extensions_tab', 'Extensions')}
-                            </button>
-                            <button
                                 className={clsx('settings-tab', { active: activeTab === 'advanced' })}
                                 onClick={() => handleTabChange('advanced')}
                             >
@@ -454,6 +442,48 @@ function SettingsModal({
                                         { value: 5000, label: t('gui:settings_modal.refresh_5s') },
                                         { value: 10000, label: t('gui:settings_modal.refresh_10s') },
                                     ]}
+                                />
+                            </div>
+
+                            {/* 창 닫기 버튼: 매번 묻기 / 트레이로 / 사바쨩까지 끄기 */}
+                            <div className="setting-item">
+                                <label className="setting-label">
+                                    <span className="setting-title">
+                                        <Icon name="close" size="sm" /> {t('gui:settings_modal.close_action_label')}
+                                    </span>
+                                    <span className="setting-description">
+                                        {t('gui:settings_modal.close_action_description')}
+                                    </span>
+                                </label>
+                                <CustomDropdown
+                                    className="setting-select"
+                                    value={closeAction}
+                                    onChange={(val) => setOption({ closeAction: val })}
+                                    options={['ask', 'tray', 'quit'].map((value) => ({
+                                        value,
+                                        label: t(`gui:settings_modal.close_action_${value}`),
+                                    }))}
+                                />
+                            </div>
+
+                            <div className="setting-item">
+                                <label className="setting-label">
+                                    <span className="setting-title">
+                                        <Icon name="messageSquare" size="sm" />{' '}
+                                        {t('gui:settings_modal.toast_duration_label')}
+                                    </span>
+                                    <span className="setting-description">
+                                        {t('gui:settings_modal.toast_duration_description')}
+                                    </span>
+                                </label>
+                                <CustomDropdown
+                                    className="setting-select"
+                                    value={toastDuration}
+                                    onChange={(val) => setOption({ toastDuration: val })}
+                                    options={['short', 'normal', 'long'].map((value) => ({
+                                        value,
+                                        label: t(`gui:settings_modal.toast_duration_${value}`),
+                                    }))}
                                 />
                             </div>
 
@@ -526,9 +556,11 @@ function SettingsModal({
                     {showUpdatePanel && (
                         <div className="settings-tab-content" key="update-panel">
                             <SabaStorage
+                                key={storageTab}
                                 onBack={handleUpdatePanelBack}
                                 isExiting={updatePanelExiting}
                                 devMode={devMode}
+                                initialTab={storageTab}
                             />
                         </div>
                     )}
@@ -679,6 +711,41 @@ function SettingsModal({
                                 />
                             </div>
 
+                            {/* 줄 앞 시각 (데몬이 받은 시각) */}
+                            <div className="setting-item">
+                                <label className="setting-label">
+                                    <span className="setting-title">
+                                        <Icon name="clock" size="sm" /> {t('gui:settings_modal.console_timestamps_label')}
+                                    </span>
+                                    <span className="setting-description">
+                                        {t('gui:settings_modal.console_timestamps_description')}
+                                    </span>
+                                </label>
+                                <CustomDropdown
+                                    className="setting-select"
+                                    value={consoleTimestamps}
+                                    onChange={(val) => setOption({ consoleTimestamps: val })}
+                                    options={['off', '24h', '12h'].map((value) => ({
+                                        value,
+                                        label: t(`gui:settings_modal.console_timestamps_${value}`),
+                                    }))}
+                                />
+                            </div>
+                            {consoleTimestamps !== 'off' && (
+                                <div className="setting-item">
+                                    <label className="setting-label">
+                                        <span className="setting-title">
+                                            <Icon name="clock" size="sm" />{' '}
+                                            {t('gui:settings_modal.console_timestamp_date_label')}
+                                        </span>
+                                    </label>
+                                    <SabaToggle
+                                        checked={consoleTimestampDate}
+                                        onChange={(checked) => setOption({ consoleTimestampDate: checked })}
+                                    />
+                                </div>
+                            )}
+
                             {/* ── 5-2. 콘솔 뒷배경색 ── */}
                             <div className="setting-item">
                                 <label className="setting-label">
@@ -783,73 +850,6 @@ function SettingsModal({
                         </div>
                     )}
 
-                    {activeTab === 'extensions' && !showUpdatePanel && (
-                        <div
-                            className={clsx('settings-tab-content', slideDirection)}
-                            key="extensions"
-                            onAnimationEnd={() => setSlideDirection('')}
-                        >
-                            <h3>{t('gui:settings_modal.extensions_tab', 'Extensions')}</h3>
-                            <p className="setting-description" style={{ margin: '0 0 12px', opacity: 0.75 }}>
-                                {t(
-                                    'gui:settings_modal.extensions_toggle_hint',
-                                    '설치된 익스텐션을 활성화하거나 비활성화합니다. 설치·삭제는 사바 스토리지에서 가능합니다.',
-                                )}
-                            </p>
-
-                            {extensions.length === 0 ? (
-                                <SabaEmpty
-                                    compact
-                                    body={t('gui:settings_modal.extensions_none', '설치된 익스텐션이 없습니다.')}
-                                />
-                            ) : (
-                                extensions.map((ext) => (
-                                    <Fragment key={ext.id}>
-                                    <div className="setting-item extension-item">
-                                        <label
-                                            className="setting-label"
-                                            htmlFor={`ext-toggle-${ext.id}`}
-                                            style={{ cursor: 'pointer' }}
-                                        >
-                                            <span className="setting-title">
-                                                {ext.name || ext.id}
-                                                {ext.version && (
-                                                    <span className="extension-version">v{ext.version}</span>
-                                                )}
-                                            </span>
-                                            {ext.description && (
-                                                <span className="setting-description">{ext.description}</span>
-                                            )}
-                                        </label>
-                                        <SabaToggle
-                                            checked={!!ext.enabled}
-                                            disabled={togglingIds.has(ext.id)}
-                                            onChange={(checked) => handleExtensionToggle(ext.id, checked)}
-                                        />
-                                    </div>
-                                    {ext.enabled && <ExtensionConfigForm ext={ext} />}
-                                    </Fragment>
-                                ))
-                            )}
-
-                            <div
-                                className="setting-item setting-item-clickable"
-                                style={{ marginTop: 8 }}
-                                onClick={openStorage}
-                            >
-                                <label className="setting-label" style={{ cursor: 'pointer' }}>
-                                    <span className="setting-title">
-                                        <Icon name="package" size="sm" /> {t('saba_storage.title', '사바 스토리지')}
-                                    </span>
-                                    <span className="setting-description">
-                                        {t('gui:settings_modal.extensions_store_hint', '설치·삭제·업데이트')}
-                                    </span>
-                                </label>
-                                <Icon name="chevronRight" size="sm" color="var(--brand-primary)" />
-                            </div>
-                        </div>
-                    )}
-
                     {activeTab === 'advanced' && !showUpdatePanel && (
                         <div
                             className={clsx('settings-tab-content', slideDirection)}
@@ -889,6 +889,89 @@ function SettingsModal({
                                 <SabaToggle
                                     checked={portConflictCheck}
                                     onChange={(checked) => useSettingsStore.getState().update({ portConflictCheck: checked })}
+                                />
+                            </div>
+
+                            {/* 자동 포트포워딩 확인 (데몬이 서버를 만들 때·켜질 때) */}
+                            <div className="setting-item">
+                                <label className="setting-label">
+                                    <span className="setting-title">
+                                        <Icon name="globe" size="sm" />{' '}
+                                        {t('gui:settings_modal.auto_port_check_label', 'Automatic Port Forwarding Check')}
+                                    </span>
+                                    <span className="setting-description">
+                                        {t('gui:settings_modal.auto_port_check_description', 'When a server is created and when Saba-chan starts, quietly check through the relay whether friends can reach your servers.')}
+                                    </span>
+                                </label>
+                                <SabaToggle
+                                    checked={autoPortCheck}
+                                    onChange={(checked) => useSettingsStore.getState().update({ autoPortCheck: checked })}
+                                />
+                            </div>
+
+                            {/* 새 서버 기본값: 서버를 만들 때 데몬이 채운다. 만든 뒤에는 서버마다 바꾼다 */}
+                            <div className="setting-item setting-item-group">
+                                <div className="setting-item-row">
+                                    <label className="setting-label">
+                                        <span className="setting-title">
+                                            <Icon name="server" size="sm" />{' '}
+                                            {t('gui:settings_modal.new_server_defaults_label')}
+                                        </span>
+                                        <span className="setting-description">
+                                            {t('gui:settings_modal.new_server_defaults_description')}
+                                        </span>
+                                    </label>
+                                </div>
+                                <div className="setting-sublist">
+                                    <div className="setting-subitem">
+                                        <span>{t('gui:settings_modal.new_server_backup_keep')}</span>
+                                        <CustomDropdown
+                                            className="setting-select"
+                                            value={newServerBackupKeep}
+                                            onChange={(val) => setOption({ newServerBackupKeep: Number(val) })}
+                                            options={[...new Set([3, 5, 10, 20, 30, 50, newServerBackupKeep])]
+                                                .sort((a, b) => a - b)
+                                                .map((value) => ({
+                                                    value,
+                                                    label: t('gui:settings_modal.new_server_backup_keep_count', {
+                                                        n: value,
+                                                    }),
+                                                }))}
+                                        />
+                                    </div>
+                                    <div className="setting-subitem">
+                                        <span>{t('gui:settings_modal.new_server_auto_restart')}</span>
+                                        <SabaToggle
+                                            size="sm"
+                                            checked={newServerAutoRestart}
+                                            onChange={(on) => setOption({ newServerAutoRestart: on })}
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* 활동 기록 보관 기간: 지난 기록은 데몬이 지운다 */}
+                            <div className="setting-item">
+                                <label className="setting-label">
+                                    <span className="setting-title">
+                                        <Icon name="file" size="sm" /> {t('gui:settings_modal.audit_keep_label')}
+                                    </span>
+                                    <span className="setting-description">
+                                        {t('gui:settings_modal.audit_keep_description')}
+                                    </span>
+                                </label>
+                                <CustomDropdown
+                                    className="setting-select"
+                                    value={auditKeepDays}
+                                    onChange={(val) => setOption({ auditKeepDays: Number(val) })}
+                                    options={[...new Set([0, 7, 30, 90, 365, auditKeepDays])]
+                                        .sort((a, b) => a - b)
+                                        .map((value) => ({
+                                            value,
+                                            label: value
+                                                ? t('gui:settings_modal.audit_keep_days', { n: value })
+                                                : t('gui:settings_modal.audit_keep_all'),
+                                        }))}
                                 />
                             </div>
 
@@ -982,12 +1065,6 @@ function SettingsModal({
                             {unisolatedAvailable() && <UnisolatedSection />}
 
                             {extensionGuiAvailable() && <ExtensionGuiSection />}
-
-                            {auditAvailable() && (
-                                <div className="settings-audit">
-                                    <AuditLog />
-                                </div>
-                            )}
 
                             {/* GUI 컴포넌트 테스트 섹션 (개발자 모드 전용) */}
                             {devMode && (
@@ -1263,7 +1340,17 @@ function SettingsModal({
                         {/* 사바쨩 정보 카드 */}
                         <div className="about-card about-app-card">
                             <div className="about-app-logo-container">
-                                <img src="./title.png" alt="Saba-chan" className="about-app-logo" />
+                                <img
+                                    src="./title.png"
+                                    alt="Saba-chan"
+                                    className="about-app-logo"
+                                    onClick={() => {
+                                        logoClicks.current += 1;
+                                        if (logoClicks.current < 5) return;
+                                        logoClicks.current = 0;
+                                        safeShowToast(t('gui:settings_modal.name_egg'), 'info', 6000);
+                                    }}
+                                />
                                 {appVersion && <span className="about-version-badge">v{appVersion}</span>}
                             </div>
                             <div className="about-app-info">

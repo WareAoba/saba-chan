@@ -126,7 +126,12 @@
     "words_bad_command": "{{spec}}：请写成 命令=称呼,称呼（命令= 表示删除）。",
     "no_paired_servers": "此电脑尚未与任何 Discord 服务器配对。运行: saba-chan-cli bot pair",
     "pick_server": "已配对多个 Discord 服务器。请指定要更改的服务器 id: {{servers}}",
-    "translate_commands": "翻译命令名称"
+    "translate_commands": "翻译命令名称",
+    "notice_none": "还没有开启启动通知的服务器。Saba-chan 启动服务器时不会告知。",
+    "notice_is_on": "{{server}}：启动通知已开",
+    "notice_is_off": "{{server}}：启动通知已关",
+    "notice_on_saved": "将在 {{guild}} 的通知频道告知 {{server}} 已启动。",
+    "notice_off_saved": "不再在 {{guild}} 告知 {{server}} 已启动。"
   },
   "col": {
     "players": "在线玩家",
@@ -372,7 +377,8 @@
       "autostart_unknown_mode": "请选择 off、daemon 或 full。",
       "move_cross_volume": "无法移动其他驱动器上的文件夹。请改用“保留在原位置”导入。",
       "move_in_use": "无法移动文件夹。请停止此文件夹中的服务器，关闭打开该文件夹的程序后重试。",
-      "move_failed": "无法移动文件夹。请改用“保留在原位置”导入。"
+      "move_failed": "无法移动文件夹。请改用“保留在原位置”导入。",
+      "port_check_busy": "已经在检查中，请稍后再试"
     },
     "not_a_bool": "“{{value}}”不是是/否（请使用 true 或 false）。",
     "not_a_number": "“{{value}}”不是数字。",
@@ -797,9 +803,9 @@
       "backup.create": "立即备份",
       "backup.delete": "删除一个备份（不指定名称则从列表中选择）",
       "backup.restore": "恢复到备份（服务器运行中会询问是否停止）。不指定名称则从列表中选择",
-      "schedule": "服务器计划任务（备份、重启、公告、更新）",
+      "schedule": "服务器计划任务（启动、停止、重启、保存、备份、公告、更新、游戏命令）",
       "schedule.show": "查看计划",
-      "schedule.add": "添加计划任务：backup、restart、announce、update",
+      "schedule.add": "添加计划任务：start、stop、restart、save、backup、announce、update、command",
       "schedule.edit": "修改第 N 个任务而不删除：只更改给出的选项（参见 schedule show）",
       "schedule.remove": "删除第 N 个任务（参见 schedule show）",
       "schedule.on": "启用第 N 个任务",
@@ -854,6 +860,7 @@
       "config.paths": "Saba-chan 存放数据、模块和扩展的位置，以及默认文件夹",
       "config.move": "把模块或扩展移到其他文件夹。已安装的文件会一起移动；必须先停止服务器",
       "server.players": "当前在线的人",
+      "server.port-check": "检查朋友能否从外网连接此服务器（端口转发）",
       "server.rcon": "按服务器接收命令的方式（控制台，没有则用 RCON）发送一行并查看回复",
       "server.log": "保存的历次运行日志（控制台只保留本次）",
       "server.query": "游戏模块提供的查询（不指定名称则列出）",
@@ -870,7 +877,8 @@
       "remote.servers": "按守护进程列出本机和每个远程守护进程的服务器（要操作某个请用`--daemon <名称>`）",
       "remote.forget": "移除远程守护进程（重新连接用 `remote connect`）",
       "config.autostart": "登录此电脑时启动的内容：off（关闭）、daemon（仅守护进程和托盘）、full（包括 GUI 窗口）。不带模式时显示当前值",
-      "config.browse": "查看守护进程所在电脑的文件夹和文件（加 --daemon 时为那台远程电脑）。不给路径则显示驱动器或 /"
+      "config.browse": "查看守护进程所在电脑的文件夹和文件（加 --daemon 时为那台远程电脑）。不给路径则显示驱动器或 /",
+      "bot.notice": "Saba-chan 启动服务器时在 Discord 服务器的通知频道告知（默认关闭）。不带服务器：查看；服务器加 `--on`/`--off`：更改"
     },
     "arg": {
       "module.maker.game": "第一个请求中的游戏名",
@@ -973,6 +981,9 @@
       "monitor.interval": "--watch 的刷新间隔（秒）",
       "audit.limit": "显示的记录数",
       "audit.follow": "持续显示新产生的记录（按 Ctrl+C 停止）",
+      "audit.since": "从这一天起：YYYY-MM-DD、today 或 7d（最近 7 天）",
+      "audit.until": "到这一天结束：YYYY-MM-DD 或 today",
+      "audit.export": "不列出，而是把该时间范围内的所有记录保存到此 CSV 文件",
       "bot.lang.value": "auto 或语言代码（ko、en、ja、zh-CN、zh-TW、es、pt-BR、ru、de、fr）",
       "bot.prefix.values": "一个或多个前缀（不含空格，最多 32 个字符，最多 10 个）",
       "bot.prefix.default": "恢复为应用语言的默认前缀",
@@ -1022,7 +1033,18 @@
       "keep_settings": "删除时不将游戏设置文件恢复到导入前，保留当前设置",
       "move_folder": "不在原位置链接 --from 文件夹，而是移入 saba-chan 文件夹（仅限同一驱动器）",
       "config.browse.path": "要显示的文件夹的完整路径",
-      "config.browse.files": "也显示这些扩展名的文件（逗号分隔，* 表示全部）"
+      "config.browse.files": "也显示这些扩展名的文件（逗号分隔，* 表示全部）",
+      "every_days": "与 --at 一起：每 N 天",
+      "on": "与 --at 一起：在这些星期 (例: mon,wed,fri)",
+      "date": "与 --at 一起：在这天执行一次 (YYYY-MM-DD)",
+      "daily": "与 --at 一起：每天 (edit 中会清除 --every-days、--on、--date)",
+      "schedule.add.from": "与 --every-days 一起：从这天开始计算 (YYYY-MM-DD，默认今天)",
+      "schedule.add.args": "游戏命令输入 名称=值 (可重复)",
+      "schedule.edit.from": "与 --every-days 一起：从这天开始计算 (YYYY-MM-DD，默认今天)",
+      "schedule.edit.args": "游戏命令输入 名称=值 (可重复)",
+      "schedule.add.command": "要执行的游戏命令 (command 任务，列表：server commands)",
+      "bot.notice.on": "开启启动通知",
+      "bot.notice.off": "关闭启动通知"
     },
     "after": "名称可以只写一部分（例如 start pal）。在终端中不带参数运行会打开全屏菜单(SABA_NO_TUI=1 时为交互式 shell)。\n在脚本中请使用 --json 和 --yes。退出码：0 成功 · 1 失败 · 2 用法错误 · 3 无法连接守护进程 · 4 未找到 · 130 已取消"
   },
@@ -1074,13 +1096,18 @@
     "col": {
       "task": "任务",
       "when": "时间",
-      "on": "启用"
+      "on": "启用",
+      "next": "下次执行"
     },
     "action": {
       "backup": "备份",
       "restart": "重启",
       "announce": "公告",
-      "update": "更新"
+      "update": "更新",
+      "start": "启动",
+      "stop": "停止",
+      "save": "保存",
+      "command": "游戏命令"
     },
     "none": "{{name}} 没有定时任务。",
     "warns": "提前 {{minutes}} 分钟提醒",
@@ -1096,17 +1123,40 @@
     "disabled": "已关闭：{{task}}",
     "no_such": "没有任务 {{number}}（共 {{count}} 个）。",
     "edited": "已修改任务：{{task}}",
-    "nothing_to_edit": "请至少指定一项更改（--every、--at、--warn、--no-warn、--message）。",
+    "nothing_to_edit": "请至少给出一项修改（--every、--at、--every-days、--on、--date、--daily、--warn、--no-warn、--message、--arg）。",
     "keep_zero": "请至少保留 1 个备份。",
     "keep_set": "将保留最近 {{count}} 个定时备份。",
     "confirm_clear": "要移除 {{name}} 的所有定时任务吗？",
     "cleared": "{{name}} 现在没有定时任务了。",
     "bad_action": "“{{got}}”不是任务。请使用以下之一：{{actions}}。",
-    "warn_only_restart": "--warn 只能与 restart 和 update 一起使用。",
+    "warn_only_restart": "--warn 只能用于 restart、update 和 stop。",
     "message_required": "公告需要 --message。",
     "every_or_at": "请指定 --every（例如 30m、2h）或 --at（例如 04:00）其中之一，不能同时指定。",
     "bad_every": "“{{got}}”不是有效的时间。请使用分钟数或带单位的时间，例如 30、30m、2h、1h30m。",
-    "bad_at": "“{{got}}”不是时刻。请使用 HH:MM，例如 04:00。"
+    "bad_at": "“{{got}}”不是时刻。请使用 HH:MM，例如 04:00。",
+    "weekday": {
+      "mon": "周一",
+      "tue": "周二",
+      "wed": "周三",
+      "thu": "周四",
+      "fri": "周五",
+      "sat": "周六",
+      "sun": "周日"
+    },
+    "server_clock": "时间以服务器电脑的时钟（{{zone}}）为准。下次执行按本机时间显示。",
+    "every_days_at": "从 {{from}} 起每 {{n}} 天 {{at}}",
+    "weekdays_at": "{{days}} {{at}}",
+    "date_at": "{{date}} {{at}} 执行一次",
+    "no_save": "这个游戏没有保存命令。",
+    "command_required": "游戏命令需要 --command（列表：server commands）。",
+    "command_only": "--command 和 --arg 只能用于 command 任务。",
+    "day_rule_needs_at": "--every-days、--on、--date 需要和 --at 一起用。",
+    "bad_every_days": "{{got}} 天不可用，请填 1 到 365。",
+    "bad_weekday": "“{{got}}”不是星期，请从 {{days}} 中选择。",
+    "bad_date": "“{{got}}”不是日期，请用 YYYY-MM-DD，例如 2026-12-24。",
+    "bad_arg": "“{{got}}”不是参数，请用 名称=值。",
+    "confirm_danger": "{{command}} 难以撤销，会在设定时间不经确认直接执行。要预约吗？",
+    "from_needs_every_days": "--from 只能用于每 N 天（--every-days）的任务。"
   },
   "chatbot": {
     "api_key": "API 密钥已保存",
@@ -1214,6 +1264,10 @@
     "from": "来源",
     "what": "内容",
     "result": "结果",
+    "exported": "已将 {{count}} 条记录保存到 {{path}}。",
+    "bad_date": "日期请写成 2026-10-01、today 或 7d：{{value}}",
+    "export_write_failed": "无法写入文件。请检查保存位置和权限。",
+    "export_invalid_path": "文件路径无效。请填写完整路径。",
     "scanning": "正在检查 {{name}} 的代码...",
     "declared": "已声明",
     "none_declared": "(无)",
@@ -1477,11 +1531,40 @@
       "remote_timeout": "远程守护进程未及时回应。请求可能仍在处理中",
       "remote_bad_path": "该路径不能发送给远程守护进程",
       "remote_unauthorized": "远程守护进程不再接受本机。请重新连接",
-      "remote_local_only": "这只能在那台电脑上直接操作"
+      "remote_local_only": "这只能在那台电脑上直接操作",
+      "remote_field_blocked": "以下设置只能在那台电脑上直接更改：{{fields}}"
     },
     "daemon": "守护进程",
     "this_pc": "本机",
     "no_servers": "没有服务器",
     "via_relay": "通过中继"
+  },
+  "port_check": {
+    "title": "{{server}} 的端口转发检查",
+    "address": "公网 IP {{address}}（朋友用这个地址和端口连接）",
+    "verdict": {
+      "open": "可以从外网连接",
+      "firewall": "被电脑防火墙阻止",
+      "router": "路由器未设置端口转发",
+      "closed": "无法从外网连接",
+      "cgnat": "路由器没有获得公网 IP（CGNAT）",
+      "unknown": "部分端口无法检查",
+      "no_ports": "此游戏没有声明要检查的端口"
+    },
+    "status": {
+      "open": "开放",
+      "closed": "关闭",
+      "unknown": "未检查",
+      "in_use": "被其他程序占用",
+      "firewall": "被防火墙阻止",
+      "router": "未转发"
+    },
+    "hint": {
+      "closed": "请确认路由器已将此端口转发到这台电脑，并且电脑防火墙已放行。",
+      "firewall": "Windows 防火墙正在阻止此端口的入站连接。请针对当前连接的网络（专用或公用），在 Windows 防火墙设置中允许 saba-core（服务器已停止时）或游戏服务器程序（服务器运行时），然后再检查。",
+      "router": "电脑防火墙已允许此端口。请在路由器设置中把此端口转发到这台电脑，然后再检查。",
+      "cgnat": "运营商让多户共用一个公网 IP，无法通过端口转发开放。请向运营商申请公网 IP，或使用 Tailscale 等 VPN。",
+      "unknown": "无法检查正在运行的服务器的 UDP 端口和其他程序占用的端口。请停止服务器后再检查。"
+    }
   }
 }

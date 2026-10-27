@@ -134,6 +134,8 @@ pub static ACTIONS: &[Def] = &[
     def("server.console.tail", Kind::Query, "safe", LOCAL_AND_CHATBOT, true, "GET", "/api/instance/:id/console?count=20"),
     // 접속자 이름까지 (검수 13번). 모듈이 `[status] players`를 선언한 서버만 (heartbeat `modules`, 인스턴스 목록)
     def("server.players", Kind::Query, "safe", ALL, true, "GET", "/api/instance/:id/players"),
+    // 포트포워딩 확인: 릴레이가 밖에서 게임 포트에 접속해 본다. 공인 주소가 결과에 있어 챗봇에는 열지 않는다 (디스코드는 요약만 보인다)
+    def("server.port_check", Kind::Query, "safe", LOCAL_AND_DISCORD, true, "POST", "/api/instance/:id/port-check"),
     // 시작·정지 기록은 디스코드에서 쓰지 않는다 (사용자 디스코드 검수 3번)
     def("instance.events", Kind::Query, "safe", LOCAL_AND_CHATBOT, true, "GET", "/api/instance/:id/events"),
     // 로그 전체 읽기·내보내기 (검수 9번). 디스코드 메뉴에는 없고 내보내기는 파일로 첨부된다
@@ -192,6 +194,13 @@ pub static ACTIONS: &[Def] = &[
         remote_menu: false,
         guild_owner: true,
         ..def("discord.settings.set", Kind::Admin, "caution", LOCAL_AND_DISCORD, false, "PATCH", "/api/discord/:guild/settings")
+    },
+    // 켜짐 알림 (길드마다 서버마다, 기본 꺼짐). 디스코드에서는 관리자 이상, 요청이 온 길드만. 서버 루트 메뉴(`/<서버> 켜짐-알림`)에 싣는다
+    Def {
+        fields: &[path_field("guild"), field("enabled", "boolean", true)],
+        discord_level: Some(crate::chat::permissions::ADMIN),
+        guild_owner: true,
+        ..def("instance.start_notice.set", Kind::Admin, "caution", LOCAL_AND_DISCORD, true, "PUT", "/api/instance/:id/start-notice/:guild")
     },
     def("update.check", Kind::Query, "safe", LOCAL_AND_DISCORD, false, "POST", "/api/updates/check"),
     // 원격(디스코드)에서도 끝까지 가도록 받기·적용·업데이터 띄우기를 한 번에 한다 (`/api/updates/install`)
@@ -602,6 +611,8 @@ pub const HEARTBEAT_MAX_BYTES: usize = 32768;
 fn module_support(id: &str) -> Option<fn(&LoadedModule) -> bool> {
     match id {
         "server.players" => Some(|m| m.metadata.players_function.is_some()),
+        // 밖에 여는 포트(`public`)를 선언한 모듈만 확인할 것이 있다
+        "server.port_check" => Some(|m| m.metadata.settings.as_ref().is_some_and(|s| s.fields.iter().any(|f| f.public.is_some()))),
         _ => None,
     }
 }
@@ -995,6 +1006,27 @@ async fn allowed_instances(server: &IPCServer, caller: &Caller) -> Option<Vec<St
 
 /// 표면과 레벨 판정. 챗봇 경로는 표면부터 본다 (레벨·설정으로 풀 수 없다)
 async fn authorize(server: &IPCServer, r: &Resolved, caller: &Caller) -> Result<(), ActionError> {
+    authorize_in(server, r, caller, None).await
+}
+
+/// `authorize`. `new_server_module`은 같은 계획에서 앞서 만들 서버(`@N`)를 쓰는 단계일 때 그 생성 단계의 모듈이다
+/// (아직 없는 서버라 원격 포트 규칙이 그 모듈의 PC 전용 칸을 이것으로 찾는다. 모듈이 없으면 빈 이름)
+async fn authorize_in(server: &IPCServer, r: &Resolved, caller: &Caller, new_server_module: Option<&str>) -> Result<(), ActionError> {
+    // 원격 포트(짝 맺은 PC)에서 온 계획·실행은 대상 라우트·칸을 원격 포트의 규칙으로 미리 본다.
+    // 실행이 안에서 부르는 라우터도 같은 규칙 층(`remote_daemon::server::rules`)을 지나지만, 여러 단계 계획이
+    // 앞 단계만 돌고 뒤 단계에서 멈추지 않게 계획 때 거절한다
+    if caller.remote.is_none() && caller.origin.source == "remote" {
+        if let Some(refused) = crate::remote_daemon::server::refusal(server, r.method, &r.uri, r.body.as_ref(), new_server_module).await {
+            let (status, code) = (refused.status().as_u16(), refused.code());
+            return Err(match refused {
+                crate::remote_daemon::server::Refused::Fields(fields) => ActionError {
+                    data: json!({ "fields": fields }),
+                    ..ActionError::new(status, code, "These settings can only be changed on the PC")
+                },
+                crate::remote_daemon::server::Refused::Route(..) => ActionError::new(status, code, "This can only be done on that PC itself"),
+            });
+        }
+    }
     if !r.surfaces.contains(&caller.surface) {
         return Err(ActionError::new(403, "action_not_allowed", format!("'{}' is not available from {}", r.id, caller.surface.name())));
     }
@@ -1048,7 +1080,42 @@ async fn authorize(server: &IPCServer, r: &Resolved, caller: &Caller) -> Result<
     if !perms.meets(perms.effective_level(who), need) {
         return Err(denied(need));
     }
+    // 예약 작업은 나중에 요청자 없이 돈다: 새로 넣거나 켜는 서버 명령은 요청자가 지금 그 명령을 쓸 수 있어야 한다
+    if r.id == "instance.schedule.set" && !instance.is_empty() {
+        for (cmd, risk) in scheduled_commands(server, instance, r.body.as_ref()).await {
+            perms.check(who, instance, &cmd, &risk).map_err(|d| denied(d.need))?;
+        }
+    }
     Ok(())
+}
+
+/// 예약 저장에서 새로 넣거나 바꾼 켜진 작업이 돌릴 서버 명령과 그 risk (정식 이름. 모르는 명령은 저장이 거절한다)
+async fn scheduled_commands(server: &IPCServer, instance: &str, body: Option<&Value>) -> Vec<(String, String)> {
+    let Some(tasks) = body
+        .and_then(|b| b.get("schedule"))
+        .and_then(|s| serde_json::from_value::<Vec<crate::scheduler::ScheduledTask>>(s.clone()).ok())
+    else {
+        return Vec::new();
+    };
+    let sup = server.supervisor.read().await;
+    let Some(current) = sup.instance_store.get(instance) else { return Vec::new() };
+    let meta = sup.module_loader.get_module(&current.module_name).ok().map(|m| m.metadata);
+    let mut out = Vec::new();
+    for task in tasks.iter().filter(|t| t.enabled && !current.schedule.contains(t)) {
+        use crate::scheduler::TaskAction;
+        let found = match task.action {
+            TaskAction::Start => Some(("start".to_string(), "caution")),
+            TaskAction::Stop => Some(("stop".to_string(), "caution")),
+            TaskAction::Restart => Some(("restart".to_string(), "caution")),
+            TaskAction::Command => meta
+                .as_ref()
+                .and_then(|m| crate::commands::find(m, task.command.as_deref().unwrap_or("")))
+                .map(|f| (f.name.clone(), crate::commands::risk_of(f.risk.as_deref()))),
+            _ => None,
+        };
+        out.extend(found.map(|(cmd, risk)| (cmd, risk.to_string())));
+    }
+    out
 }
 
 /// 내장 서버 액션에 대응하는 내장 명령 이름 (레벨 키 `<instance>/<명령>`)
@@ -1068,10 +1135,17 @@ fn needs_confirm(r: &Resolved, caller: &Caller) -> bool {
     r.risk == "danger" || (r.kind == Kind::Admin && via_chatbot)
 }
 
-/// 계획 하나: 액션 하나 또는 여러 단계
+/// 계획 하나: 액션 하나, 여러 단계, 또는 채팅 처리기가 해석한 문장 명령
 enum PlanBody {
     One(Box<Resolved>),
     Steps(Vec<steps::Step>),
+    Text(Box<TextPlan>),
+}
+
+/// 문장 명령의 계획 (`plan_text`): 원문과 해석한 명령
+struct TextPlan {
+    text: String,
+    target: crate::chat::Target,
 }
 
 struct StoredPlan {
@@ -1136,6 +1210,76 @@ pub async fn plan(server: &IPCServer, id: &str, instance: Option<&str>, input: &
     });
     store_plan(plan_id, StoredPlan::new(PlanBody::One(Box::new(r)), caller, confirm));
     Ok(view)
+}
+
+/// 문장 명령의 계획 (릴레이 `plan {text}`): 해석·권한·위험 명령 판정은 채팅 처리기가 한다 (문장 명령과 같은 규칙).
+/// 실행할 것이 있으면 그 명령의 액션 id·서버와 planId를, 없으면(도움말·목록·모르는 명령·거절) 답만 돌려준다.
+/// 확인은 받지 않는다: danger는 서버 이름으로 불러야 하고, 챗봇이 고른 것은 요청자의 확인(`confirmedBy`)이 있어야 한다
+pub async fn plan_text(server: &IPCServer, text: &str, caller: &Caller) -> Result<Value, ActionError> {
+    let req = chat_request(text, caller);
+    let (settings, cat) = chat_settings(server, caller).await;
+    let target = match crate::chat::interpret(server, &settings, &cat, &req).await {
+        crate::chat::Interpreted::Run(target) => target,
+        crate::chat::Interpreted::Reply(reply) => return Ok(chat_json(reply, true, caller)),
+    };
+    let plan_id = new_plan_id();
+    let view = json!({
+        "success": true,
+        "planId": plan_id,
+        "actionId": target.action_id(),
+        "instance": target.instance(),
+        "summary": [],
+        "risk": target.risk(),
+        "needsConfirm": false,
+        "expiresAt": expires_at(),
+    });
+    store_plan(plan_id, StoredPlan::new(PlanBody::Text(Box::new(TextPlan { text: text.to_string(), target: *target })), caller, false));
+    Ok(view)
+}
+
+/// 문장 계획 실행: 답은 문장 명령과 같다 (`text`). 시작했는데 이미 켜져 있었으면 `already_running`
+async fn run_text(server: &IPCServer, plan: TextPlan, caller: &Caller) -> Value {
+    let req = chat_request(&plan.text, caller);
+    let (settings, cat) = chat_settings(server, caller).await;
+    let done = crate::chat::execute(server, &settings, &cat, &req, &plan.target).await;
+    let mut out = chat_json(done.reply, done.ok, caller);
+    out["actionId"] = json!(plan.target.action_id());
+    out["instance"] = json!(plan.target.instance());
+    if done.already_running {
+        out["already_running"] = json!(true);
+    }
+    out
+}
+
+fn chat_request(text: &str, caller: &Caller) -> crate::chat::ChatRequest {
+    let who = caller.remote.as_ref();
+    crate::chat::ChatRequest {
+        text: text.to_string(),
+        guild_id: who.and_then(|w| w.guild_id.clone()),
+        user_id: who.and_then(|w| w.user_id.clone()),
+        user_name: caller.origin.user_name.clone(),
+        guild_name: caller.origin.guild_name.clone(),
+        locale: Some(caller.locale.clone()),
+        remote: caller.remote.clone(),
+    }
+}
+
+async fn chat_settings(server: &IPCServer, caller: &Caller) -> (crate::chat::ChatSettings, crate::chat::i18n::Catalog) {
+    let bot = server.config_store.get_bot_config().await;
+    (crate::chat::ChatSettings::from(&bot), catalog(&caller.locale))
+}
+
+/// 채팅 답의 모양: `{success, text}`, 알아보지 못한 입력·거절이면 `code`·`args`도. 챗봇에는 IP·비밀처럼 보이는 값을 가린다
+fn chat_json(reply: crate::chat::Reply, ok: bool, caller: &Caller) -> Value {
+    let mut out = json!({ "success": ok && reply.code.is_none(), "text": reply.text });
+    if let Some(code) = reply.code {
+        out["code"] = json!(code);
+        out["args"] = reply.args;
+    }
+    if caller.surface == Chatbot || caller.remote.as_ref().is_some_and(|w| w.via_chatbot) {
+        mask_console(&mut out);
+    }
+    out
 }
 
 /// 켜진 서버의 복원은 계획부터 거절한다 (먼저 끄는 단계가 앞에 있는 여러 단계 계획은 실행 때 라우트가 본다)
@@ -1266,6 +1410,7 @@ pub async fn run(server: &IPCServer, id: &str, instance: Option<&str>, input: &V
                     authorize(server, &r, &caller).await?;
                     (*r, caller)
                 }
+                PlanBody::Text(plan) => return Ok(run_text(server, *plan, &caller).await),
             }
         }
         None => {
@@ -1296,6 +1441,7 @@ fn take_plan(pid: &str, id: &str, caller: &Caller) -> Result<StoredPlan, ActionE
     let same_action = match &p.body {
         PlanBody::One(r) => id.is_empty() || r.id == id,
         PlanBody::Steps(_) => id.is_empty() || id == steps::PLAN_ID,
+        PlanBody::Text(t) => id.is_empty() || t.target.action_id() == id,
     };
     if p.owner != caller.owner_key() || !same_action {
         return Err(ActionError::new(403, "plan_not_yours", "This plan belongs to another request"));
@@ -1425,6 +1571,7 @@ async fn record_admin(server: &IPCServer, r: &Resolved, caller: &Caller, ok: boo
         instance: name.as_deref(),
         command: None,
         args: args.as_ref(),
+        daemon: None,
         ok,
         status,
     };

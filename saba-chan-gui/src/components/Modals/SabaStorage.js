@@ -2,6 +2,7 @@ import clsx from 'clsx';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useExtensions } from '../../contexts/ExtensionContext';
+import { ExtensionConfigForm } from '../ExtensionConfigForm';
 import CustomDropdown from '../CustomDropdown/CustomDropdown';
 import { Icon } from '../Icon';
 import { ModuleMakerCard } from '../ModuleMakerCard';
@@ -24,15 +25,16 @@ import { createTranslateError, safeShowToast } from '../../utils/helpers';
 // @param {function} onBack  - 설정 일반 탭으로 돌아가기
 // @param {boolean}  isExiting - 나가기 애니메이션 여부
 // @param {boolean}  devMode   - 개발자 모드
+// @param {string}   initialTab - 처음 보일 탭 (components | modules | extensions)
 // ─────────────────────────────────────────────────────────────
 /** updaterCall은 던지지 않고 {ok:false, error}로 실패를 알린다 */
 function throwIfRejected(res) {
     if (res?.ok === false || res?.error) throw new Error(res.error || 'failed');
 }
 
-function SabaStorage({ onBack, isExiting, devMode }) {
+function SabaStorage({ onBack, isExiting, devMode, initialTab = 'components' }) {
     const { t } = useTranslation('gui');
-    const [activeTab, setActiveTab] = useState('components');
+    const [activeTab, setActiveTab] = useState(initialTab);
     const tabsRef = useRef(null);
     const indicatorRef = useRef(null);
     const syncIndicator = useCallback(() => {
@@ -92,7 +94,23 @@ function SabaStorage({ onBack, isExiting, devMode }) {
 // 컴포넌트 데이터 파싱 — 순수 함수이므로 컴포넌트 밖에 정의
 // 모듈/익스텐션은 별도 탭이라 카드로 보이지 않지만(hidden), 모두 업데이트가 함께 받고 적용한다 (UP1).
 // locales는 백그라운드 자동 업데이트 — 다루지 않는다
-const parseComponents = (comps) =>
+const COMPONENT_ICONS = {
+    updater: 'componentUpdater',
+    gui: 'componentGui',
+    'saba-core': 'componentCore',
+    cli: 'componentCli',
+    installer: 'componentInstaller',
+};
+
+// 목록 순서 (열 때마다 같게). 여기 없는 것은 뒤에 이름순
+const COMPONENT_ORDER = ['saba-core', 'gui', 'cli', 'updater', 'installer'];
+const componentRank = (key) => {
+    const i = COMPONENT_ORDER.indexOf(key);
+    return i === -1 ? COMPONENT_ORDER.length : i;
+};
+const byName = (a, b) => String(a).localeCompare(String(b));
+
+export const parseComponents = (comps) =>
     (comps || [])
         .filter((c) => {
             const k = typeof c.component === 'string' ? c.component : String(c.component);
@@ -104,15 +122,7 @@ const parseComponents = (comps) =>
                 key,
                 hidden: key.startsWith('module-') || key.startsWith('ext-'),
                 display: c.display_name || key,
-                icon: key.startsWith('module-')
-                    ? 'gamepad'
-                    : key === 'gui'
-                      ? 'monitor'
-                      : key === 'cli'
-                        ? 'terminal'
-                        : key === 'updater'
-                          ? 'refresh'
-                          : 'server',
+                icon: key.startsWith('module-') ? 'gamepad' : COMPONENT_ICONS[key] || 'server',
                 current_version: c.current_version || '—',
                 latest_version: c.latest_version || null,
                 update_available: !!c.update_available,
@@ -120,13 +130,21 @@ const parseComponents = (comps) =>
                 installed: !!c.installed,
                 needsUpdater: key === 'gui' || key === 'saba-core',
             };
-        });
+        })
+        .sort((a, b) => componentRank(a.key) - componentRank(b.key) || byName(a.key, b.key));
 
 // ─────────────────────────────────────────────────────────────
 // 다운로드 진행률 링 (SVG)
 // percent: 0–100 → 프로그레스 링,  -1 → indeterminate(스피너)
 // ─────────────────────────────────────────────────────────────
 const MOCK_RELAY_URL = 'http://127.0.0.1:9876';
+
+// 업데이트 방식 → 데몬 업데이트 설정 값
+const UPDATE_MODES = {
+    check: { auto_download: false, auto_apply: false },
+    download: { auto_download: true, auto_apply: false },
+    apply: { auto_download: true, auto_apply: true },
+};
 
 function DownloadRing({ percent }) {
     const r = 13;
@@ -171,6 +189,8 @@ function ComponentsTab({ devMode }) {
     const [mockRelayBuild, setMockRelayBuild] = useState(false);
     const [autoCheckEnabled, setAutoCheckEnabled] = useState(true);
     const [updateChannel, setUpdateChannel] = useState('stable');
+    // 찾은 뒤 할 일: check(알리기만) / download(받아 두기) / apply(받고 다음 실행 때 적용). 적용은 데몬이 판단한다
+    const [updateMode, setUpdateMode] = useState('check');
     const [downloadProgress, setDownloadProgress] = useState({ component: null, percent: 0, active: false });
     const pollRef = useRef(null);
     const progressPollRef = useRef(null);
@@ -433,6 +453,22 @@ function ComponentsTab({ devMode }) {
         }
     }, [t]);
 
+    const handleUpdateModeChange = useCallback(
+        async (mode) => {
+            const previous = updateMode;
+            if (mode === previous) return;
+            setUpdateMode(mode);
+            try {
+                throwIfRejected(await window.api?.updaterSetConfig?.(UPDATE_MODES[mode]));
+            } catch (e) {
+                console.error('Failed to set update mode:', e);
+                setUpdateMode(previous);
+                setError(t('saba_storage.switch_failed', { error: e.message }));
+            }
+        },
+        [t, updateMode],
+    );
+
     // 위 채널은 아래 채널 릴리즈도 받는다 (정식 ⊂ 미리보기 ⊂ 베타). 고를 수 있는 값은 데몬이 다시 확인한다
     const handleChannelChange = useCallback(
         async (channel) => {
@@ -462,6 +498,7 @@ function ComponentsTab({ devMode }) {
                     setMockRelayBuild(cfgRes?.mock_relay === true);
                     setAutoCheckEnabled(cfg?.enabled !== false);
                     if (cfg?.channel) setUpdateChannel(cfg.channel);
+                    setUpdateMode(cfg?.auto_apply ? 'apply' : cfg?.auto_download ? 'download' : 'check');
                 }
             } catch (_) {
                 if (mountedRef.current) setMockMode(false);
@@ -653,6 +690,24 @@ function ComponentsTab({ devMode }) {
                     </span>
                     <SabaToggle checked={autoCheckEnabled} onChange={(checked) => handleAutoCheckToggle(checked)} />
                 </label>
+                {autoCheckEnabled && (
+                    <div className="update-panel-setting-row">
+                        <span className="update-panel-setting-label">
+                            <Icon name="download" size="sm" />
+                            {t('updates.mode')}
+                        </span>
+                        <CustomDropdown
+                            className="update-channel-select"
+                            ariaLabel={t('updates.mode')}
+                            value={updateMode}
+                            onChange={handleUpdateModeChange}
+                            options={Object.keys(UPDATE_MODES).map((value) => ({
+                                value,
+                                label: t(`updates.mode_${value}`),
+                            }))}
+                        />
+                    </div>
+                )}
                 <div className="update-panel-setting-row">
                     <span className="update-panel-setting-label">
                         <Icon name="antenna" size="sm" />
@@ -712,7 +767,7 @@ function ModuleCardIcon({ icon }) {
 function ModulesTab() {
     const { t } = useTranslation('gui');
     const { refreshExtensions } = useExtensions();
-    const [installedModules, setInstalledModules] = useState([]);
+    const [installedModules, setInstalledModules] = useState(null); // null = 받는 중
     const [manifestModules, setManifestModules] = useState(null); // null = 미로드, [] = 로드됨
     const [manifestLoading, setManifestLoading] = useState(false);
     const [manifestError, setManifestError] = useState(null);
@@ -730,8 +785,11 @@ function ModulesTab() {
             if (res?.modules) {
                 clearModuleAuditCache();
                 setInstalledModules(res.modules);
+                return;
             }
         } catch (_) {}
+        // 받지 못하면 빈 목록으로 (계속 받는 중으로 두지 않는다)
+        setInstalledModules((prev) => prev ?? []);
     }, []);
 
     // 모듈 캐시 새로고침 (디스크 재스캔)
@@ -860,8 +918,9 @@ function ModulesTab() {
         });
     }, [confirmRemoveId, loadInstalledModules, t]);
 
+    const sortedModules = [...(installedModules || [])].sort((a, b) => byName(a.name, b.name));
     const installedIds = new Set(
-        installedModules.map((m) => {
+        sortedModules.map((m) => {
             // m.name 은 "Minecraft" 같은 display name, path 에서 디렉토리 이름 추출
             const parts = (m.path || '').replace(/\\/g, '/').split('/');
             return parts[parts.length - 1]; // 마지막 경로 컴포넌트 = 모듈 디렉토리명
@@ -893,11 +952,11 @@ function ModulesTab() {
                     <Icon name={refreshingModules ? 'loader' : 'refresh'} size="sm" />
                 </button>
             </div>
-            {installedModules.length === 0 ? (
+            {installedModules === null ? null : installedModules.length === 0 ? (
                 <SabaEmpty compact body={t('saba_storage.no_installed_modules', '설치된 모듈이 없습니다.')} />
             ) : (
                 <div className="ss-cards">
-                    {installedModules.map((m, idx) => {
+                    {sortedModules.map((m, idx) => {
                         const moduleId = getModuleId(m);
                         const isRemoving = removingIds.has(moduleId);
                         return (
@@ -1042,9 +1101,12 @@ function ExtensionsTab() {
         fetchManifest,
         installExtension,
         removeExtension,
+        toggleExtension,
+        loading,
     } = useExtensions();
 
     const [confirmRemoveId, setConfirmRemoveId] = useState(null);
+    const [togglingIds, setTogglingIds] = useState(new Set());
     const [removingIds, setRemovingIds] = useState(new Set());
     const [rescanning, setRescanning] = useState(false);
     const [iconUrls, setIconUrls] = useState({}); // { extId: dataUrl }
@@ -1113,6 +1175,19 @@ function ExtensionsTab() {
         });
     }, [confirmRemoveId, removeExtension]);
 
+    const handleToggle = useCallback(
+        async (id, enable) => {
+            setTogglingIds((prev) => new Set(prev).add(id));
+            await toggleExtension(id, enable);
+            setTogglingIds((prev) => {
+                const n = new Set(prev);
+                n.delete(id);
+                return n;
+            });
+        },
+        [toggleExtension],
+    );
+
     const installedIds = new Set(extensions.map((e) => e.id));
     const uninstalled = manifestExtensions.filter((r) => !installedIds.has(r.id));
 
@@ -1133,10 +1208,11 @@ function ExtensionsTab() {
                 </button>
             </div>
             {extensions.length === 0 ? (
-                <SabaEmpty compact body={t('settings_modal.no_extensions', '설치된 익스텐션이 없습니다.')} />
+                // 목록을 받는 중에는 "없음"을 띄우지 않는다
+                !loading && <SabaEmpty compact body={t('settings_modal.no_extensions', '설치된 익스텐션이 없습니다.')} />
             ) : (
                 <div className="ss-cards">
-                    {extensions.map((ext) => {
+                    {[...extensions].sort((a, b) => byName(a.name || a.id, b.name || b.id)).map((ext) => {
                         const updateInfo = availableUpdates.find((u) => u.id === ext.id);
                         const isRemoving = removingIds.has(ext.id);
                         const isBusy = isRemoving || installingIds.has(ext.id);
@@ -1162,6 +1238,7 @@ function ExtensionsTab() {
                                         <span className="ss-card-desc">{localizedDescription(ext, i18n.language) || ext.id}</span>
                                     )}
                                     <ExtensionAuditNotice extId={ext.id} name={ext.name} />
+                                    {ext.enabled && <ExtensionConfigForm ext={ext} />}
                                 </div>
                                 <div className="ss-card-actions">
                                     {updateInfo && (
@@ -1183,6 +1260,13 @@ function ExtensionsTab() {
                                             )}
                                         </button>
                                     )}
+                                    <SabaToggle
+                                        size="sm"
+                                        checked={!!ext.enabled}
+                                        disabled={isBusy || togglingIds.has(ext.id)}
+                                        onChange={(checked) => handleToggle(ext.id, checked)}
+                                        aria-label={ext.name || ext.id}
+                                    />
                                     <button
                                         className="ss-icon-btn danger"
                                         disabled={isBusy}

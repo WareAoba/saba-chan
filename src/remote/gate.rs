@@ -1,6 +1,7 @@
 //! 원격 문지기: 사바쨩 웹(릴레이 경유)이 부를 수 있는 데몬 API
 //!
 //! 데몬 라우트마다 허용·거부를 이 표 한 곳에 적는다. 표에 없는 요청은 거부한다.
+//! 짝 맺은 PC(원격 포트)도 이 표의 PC 전용 거부(`deny`)를 따른다. `not_on_web`은 웹에만 없는 것이다 (`pc_only`).
 //! 범위는 서버·인스턴스 관리와 멤버 권한이고, 공식 목록의 모듈·플러그인 설치와 데몬 콘솔 읽기를 더한다.
 //! 토큰·비밀값·데몬 설정·경로·업데이트·샌드박스·릴레이 연결·챗봇은 PC에서만 한다.
 //! 새 라우트를 만들면 여기 분류를 적는다 (`every_route_is_classified` 테스트가 빠진 것을 잡는다).
@@ -10,7 +11,10 @@ use serde_json::Value;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Access {
     Allow,
+    /// PC에서만 하는 일: 웹 원격도 짝 맺은 PC(원격 포트)도 부르지 못한다
     Deny,
+    /// 웹 원격에만 없는 것: 웹이 다른 길로 하거나 그리지 않는다. 짝 맺은 PC의 GUI는 쓴다
+    NotOnWeb,
 }
 
 pub struct Route {
@@ -35,15 +39,25 @@ const fn deny(method: &'static str, pattern: &'static str) -> Route {
     }
 }
 
+const fn not_on_web(method: &'static str, pattern: &'static str) -> Route {
+    Route {
+        method,
+        pattern,
+        access: Access::NotOnWeb,
+    }
+}
+
 pub static ROUTES: &[Route] = &[
     allow("GET", "/health"),
     allow("GET", "/api/version"),
     // 진단·감사 정보에는 PC 경로가 담긴다
     deny("GET", "/api/diagnostics"),
-    deny("GET", "/api/onboarding"),
+    // 다음 할 일 단계만 담는다
+    not_on_web("GET", "/api/onboarding"),
     deny("GET", "/api/audit"),
+    deny("POST", "/api/audit/export"),
     // 이벤트는 원격 연결이 따로 밀어 준다 (SSE는 요청·응답 한 번으로 끝나지 않는다)
-    deny("GET", "/api/events"),
+    not_on_web("GET", "/api/events"),
     // ── 서버 ──
     allow("GET", "/api/servers"),
     allow("GET", "/api/server/{name}/status"),
@@ -66,6 +80,9 @@ pub static ROUTES: &[Route] = &[
     allow("POST", "/api/instance/{id}/query/{name}"),
     allow("POST", "/api/instance/{id}/validate"),
     allow("POST", "/api/instance/{id}/diagnose"),
+    // 포트포워딩 확인: 릴레이가 요청한 PC의 공인 주소로만 확인한다
+    allow("GET", "/api/instance/{id}/port-check"),
+    allow("POST", "/api/instance/{id}/port-check"),
     // ── 인스턴스 ──
     allow("GET", "/api/instances"),
     allow("POST", "/api/instances"),
@@ -81,11 +98,12 @@ pub static ROUTES: &[Route] = &[
     allow("GET", "/api/instance/{id}/check-update"),
     allow("POST", "/api/instance/{id}/apply-update"),
     allow("GET", "/api/instance/{id}/installed-version"),
-    // 게임 설정 원문 (관리자 비밀번호가 들어 있다). 웹은 인스턴스 설정(비밀값을 뺀다)으로 고친다
-    deny("GET", "/api/instance/{id}/properties"),
+    // 게임 설정 원문 (관리자 비밀번호가 들어 있다). 웹은 인스턴스 설정(비밀값을 뺀다)으로 고친다.
+    // 짝 맺은 PC의 GUI는 이것으로 게임 설정을 고친다 (원격 포트는 인스턴스 설정도 비밀값째 보인다)
+    not_on_web("GET", "/api/instance/{id}/properties"),
     allow("PUT", "/api/instance/{id}/properties"),
     allow("POST", "/api/instance/{id}/properties/reset"),
-    deny("GET", "/api/instance/{id}/settings/live"),
+    not_on_web("GET", "/api/instance/{id}/settings/live"),
     allow("POST", "/api/instance/{id}/server/reset"),
     allow("POST", "/api/instance/{id}/agreements"),
     // ── 백업·일정 ──
@@ -126,13 +144,15 @@ pub static ROUTES: &[Route] = &[
     // 설정에는 비밀값이 들 수 있다
     deny("GET", "/api/extensions/{id}/config"),
     deny("PUT", "/api/extensions/{id}/config"),
-    deny("GET", "/api/extensions/{id}/gui"),
-    deny("GET", "/api/extensions/{id}/gui/styles"),
-    deny("GET", "/api/extensions/{id}/icon"),
+    // 웹은 플러그인 화면을 그리지 않는다. GUI는 slot에 넣는다 (확인되지 않은 번들은 그 PC의 동의가 있어야 준다)
+    not_on_web("GET", "/api/extensions/{id}/gui"),
+    not_on_web("GET", "/api/extensions/{id}/gui/styles"),
+    not_on_web("GET", "/api/extensions/{id}/icon"),
     allow("GET", "/api/extensions/{id}/audit"),
     allow("GET", "/api/extensions/{id}/i18n/{locale}"),
     // ── 데몬·앱 설정, 토큰, 경로 ──
-    deny("GET", "/api/config/bot"),
+    // 비밀값이 없다 (접두사·릴레이 주소·길드 설정). 바꾸기는 릴레이 주소가 들어 PC에서만
+    not_on_web("GET", "/api/config/bot"),
     deny("PUT", "/api/config/bot"),
     deny("PATCH", "/api/config/bot"),
     deny("GET", "/api/config/gui"),
@@ -155,7 +175,8 @@ pub static ROUTES: &[Route] = &[
     deny("GET", "/api/remote/peers"),
     deny("GET", "/api/remote/daemons"),
     deny("GET", "/api/remote/servers"),
-    deny("GET", "/api/system/browse"),
+    // 데몬 PC의 폴더 보기 (원격 경로 고르기 D2, CLI `config browse --daemon`). 웹은 경로를 고르지 않는다
+    not_on_web("GET", "/api/system/browse"),
     deny("POST", "/api/remote/daemons"),
     deny("DELETE", "/api/remote/daemons/{host_id}"),
     deny("GET", "/api/remote/daemons/{host_id}/proxy/{*rest}"),
@@ -187,6 +208,8 @@ pub static ROUTES: &[Route] = &[
     allow("GET", "/api/instance/{id}/words"),
     allow("PUT", "/api/instance/{id}/words"),
     allow("PUT", "/api/guilds/{guild}/allowed-instances"),
+    allow("GET", "/api/guilds/{guild}/start-notice"),
+    allow("PUT", "/api/instance/{id}/start-notice/{guild}"),
     allow("GET", "/api/relay/host/{host_id}/nodes"),
     allow("GET", "/api/relay/node/{guild_id}/members"),
     // ── 디스코드 설정·릴레이 연결: 웹이 타고 있는 연결 자체다 ──
@@ -222,18 +245,20 @@ pub static ROUTES: &[Route] = &[
     deny("GET", "/api/sandbox/extension-gui"),
     deny("POST", "/api/sandbox/extension-gui/{component}"),
     deny("DELETE", "/api/sandbox/extension-gui/{component}"),
-    // ── 액션 카탈로그: 목록만. 실행은 안에서 라우터를 다시 불러 이 표를 비켜 간다 ──
+    // ── 액션 카탈로그: 웹은 목록만. 실행은 안에서 라우터를 다시 불러 이 표를 비켜 간다.
+    //    짝 맺은 PC는 안에서 다시 부르는 라우터도 원격 포트의 규칙 층(`remote_daemon::server::rules`)을 지난다 ──
     allow("GET", "/api/actions"),
-    deny("POST", "/api/actions/plan"),
-    deny("GET", "/api/actions/runs/{run_id}"),
-    deny("POST", "/api/actions/{id}/plan"),
-    deny("POST", "/api/actions/{id}/run"),
+    not_on_web("POST", "/api/actions/plan"),
+    not_on_web("GET", "/api/actions/runs/{run_id}"),
+    not_on_web("POST", "/api/actions/{id}/plan"),
+    not_on_web("POST", "/api/actions/{id}/run"),
     // ── 업데이트 ──
     deny("GET", "/api/updates/status"),
     deny("POST", "/api/updates/check"),
     deny("POST", "/api/updates/download"),
     deny("GET", "/api/updates/download/progress"),
     deny("POST", "/api/updates/apply"),
+    deny("POST", "/api/updates/apply-on-launch"),
     deny("POST", "/api/updates/launch-updater"),
     deny("POST", "/api/updates/install"),
     deny("GET", "/api/updates/last-result"),
@@ -241,7 +266,8 @@ pub static ROUTES: &[Route] = &[
     deny("GET", "/api/updates/integrity"),
     deny("GET", "/api/updates/config"),
     deny("PUT", "/api/updates/config"),
-    deny("GET", "/api/runtime/preflight"),
+    // 그 데몬의 런타임 준비 단계만 담는다
+    not_on_web("GET", "/api/runtime/preflight"),
 ];
 
 /// 원격 요청을 받지 않는 이유
@@ -249,29 +275,52 @@ pub static ROUTES: &[Route] = &[
 pub enum Refusal {
     /// 표에서 거부했거나 표에 없다
     NotAllowed,
-    /// 경로가 이상하다 (`..`, 나눔 문자, 빈 조각)
+    /// 경로가 이상하다 (`..`, 빈 조각, 풀 수 없는 조각)
     BadPath,
 }
 
 /// `path`(쿼리 포함 가능)를 받을지. 받으면 그 라우트의 패턴을 돌려준다
 pub fn decide(method: &str, path: &str) -> Result<&'static str, Refusal> {
-    let path = path.split_once('?').map_or(path, |(p, _)| p);
-    let segments: Vec<&str> = path.strip_prefix('/').ok_or(Refusal::BadPath)?.split('/').collect();
-    if segments.iter().any(|s| !safe_segment(s)) {
-        return Err(Refusal::BadPath);
+    let pattern = route_of(path)?;
+    match ROUTES.iter().find(|r| r.pattern == pattern && r.method == method) {
+        Some(r) if r.access == Access::Allow => Ok(r.pattern),
+        _ => Err(Refusal::NotAllowed),
     }
+}
+
+/// 짝 맺은 PC(원격 포트)도 부르지 못하는 라우트: 웹 원격이 PC에서만 하는 일로 거부한 것 (`Access::Deny`).
+/// 표에 없는 메서드는 라우터가 405로 답한다. 라우터는 HEAD를 GET 처리기로 답하므로 HEAD는 GET으로 본다
+pub fn pc_only(method: &str, pattern: &str) -> bool {
+    let method = if method == "HEAD" { "GET" } else { method };
+    ROUTES.iter().any(|r| r.pattern == pattern && r.method == method && r.access == Access::Deny)
+}
+
+/// `path`(쿼리 포함 가능)에 맞는 라우트 패턴 (허용·거부와 상관없이)
+pub fn route_of(path: &str) -> Result<&'static str, Refusal> {
+    parse(path)?.1.ok_or(Refusal::NotAllowed)
+}
+
+/// `path`(쿼리 포함 가능)를 푼 조각 목록(`path_segments`)과 맞는 라우트 패턴 (표에 없으면 `None`). 이상한 경로면 `BadPath`
+pub fn parse(path: &str) -> Result<(Vec<String>, Option<&'static str>), Refusal> {
+    let decoded = path_segments(path).ok_or(Refusal::BadPath)?;
+    let path = path.split_once('?').map_or(path, |(p, _)| p);
+    // 패턴은 라우터처럼 풀지 않은 조각과 맞춘다 (라우터는 리터럴 조각을 풀지 않는다)
+    let segments: Vec<&str> = path[1..].split('/').collect();
     // 라우터처럼 리터럴 조각이 많이 맞는 패턴을 고른 뒤 그 패턴의 메서드를 본다
     // (매개변수 패턴의 허용으로 리터럴 라우트의 다른 처리기에 닿지 않게)
     let pattern = ROUTES
         .iter()
         .filter_map(|r| match_score(r.pattern, &segments).map(|score| (score, r.pattern)))
         .max_by(|a, b| a.0.cmp(&b.0))
-        .map(|(_, p)| p)
-        .ok_or(Refusal::NotAllowed)?;
-    match ROUTES.iter().find(|r| r.pattern == pattern && r.method == method) {
-        Some(r) if r.access == Access::Allow => Ok(r.pattern),
-        _ => Err(Refusal::NotAllowed),
-    }
+        .map(|(_, p)| p);
+    Ok((decoded, pattern))
+}
+
+/// 패턴의 `{name}` 자리에 온 푼 조각 (라우터가 처리기에 넘기는 값과 같다)
+pub fn param<'a>(pattern: &str, segments: &'a [String], name: &str) -> Option<&'a str> {
+    let wanted = format!("{{{name}}}");
+    let at = pattern.trim_start_matches('/').split('/').position(|p| p == wanted)?;
+    segments.get(at).map(String::as_str)
 }
 
 /// 패턴이 조각들과 맞으면 리터럴이 맞은 자리 (앞쪽 리터럴이 클수록 앞선다)
@@ -293,12 +342,22 @@ fn match_score(pattern: &str, segments: &[&str]) -> Option<Vec<bool>> {
         .collect()
 }
 
-/// 비어 있지 않고, 풀어도 나눔 문자·`.`·`..`·NUL이 아닌 경로 조각
-fn safe_segment(segment: &str) -> bool {
-    match percent_decode(segment) {
-        Some(d) => !d.is_empty() && d != "." && d != ".." && !d.contains(['/', '\\', '\0']),
-        None => false,
-    }
+/// 푼 경로 조각이 괜찮은지: 비어 있지 않고 NUL이 없으며, 조각도 조각 안을 나눔 문자로 가른 부분도 `.`·`..`이 아니고,
+/// 절대 경로(맨 앞이 나눔 문자, 드라이브 `X:` 자체나 `X:\`·`X:/`로 시작)가 아니다 (`S:1` 같은 이름은 받는다). 조각 가운데·끝의 나눔 문자는 그 조각의 글자다 (이름에 `/`가 든 서버).
+/// 경로 인자로 상위 폴더나 다른 곳을 가리키지는 못하게 한다
+fn safe_segment(decoded: &str) -> bool {
+    let bytes = decoded.as_bytes();
+    let drive = bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':' && matches!(bytes.get(2), None | Some(b'/' | b'\\'));
+    let absolute = decoded.starts_with(['/', '\\']) || drive;
+    !decoded.is_empty() && !absolute && !decoded.contains('\0') && !decoded.split(['/', '\\']).any(|p| p == "." || p == "..")
+}
+
+/// 라우터가 경로 인자를 푸는 대로 조각마다 푼 경로 조각 (쿼리는 뺀다). 풀 수 없거나 이상한 조각(`safe_segment`가 아닌 것)이 있으면 `None`.
+/// 경로로 무엇을 막을지 정하는 곳(웹 문지기, 원격 포트, 원격 데몬 고르기)은 모두 이 조각 목록을 조각끼리 비교한다
+/// (인코딩한 경로로 판정을 비켜 가지 않게, 조각 안의 인코딩한 `/`가 다른 조각처럼 보이지 않게)
+pub(crate) fn path_segments(path: &str) -> Option<Vec<String>> {
+    let path = path.split_once('?').map_or(path, |(p, _)| p);
+    path.strip_prefix('/')?.split('/').map(|s| percent_decode(s).filter(|d| safe_segment(d))).collect()
 }
 
 pub(crate) fn percent_decode(s: &str) -> Option<String> {
@@ -323,55 +382,60 @@ pub fn shows_instances(method: &str, pattern: &str) -> bool {
     method == "GET" && matches!(pattern, "/api/instances" | "/api/instance/{id}" | "/api/servers")
 }
 
-/// 허용된 라우트라도 원격에서 바꾸면 안 되는 본문 키. `file_fields`는 그 인스턴스 모듈의 PC 전용 설정 키(비밀값·경로)다
-pub fn blocked_fields(method: &str, pattern: &str, body: Option<&Value>, file_fields: &[String]) -> Vec<String> {
-    let Some(body) = body.and_then(Value::as_object) else {
-        return Vec::new();
-    };
-    let mut blocked: Vec<String> = match (method, pattern) {
-        ("PATCH", "/api/instance/{id}") => body
-            .keys()
-            .filter(|k| SETTINGS_PC_ONLY.contains(&k.as_str()) || file_fields.contains(k))
-            .cloned()
-            .collect(),
-        ("POST", "/api/instances") => {
-            let mut keys: Vec<String> = body
-                .keys()
-                .filter(|k| CREATE_PC_ONLY.contains(&k.as_str()))
-                .cloned()
-                .collect();
-            if let Some(settings) = body.get("module_settings").and_then(Value::as_object) {
-                keys.extend(
-                    settings
-                        .keys()
-                        .filter(|k| file_fields.contains(k) || SETTINGS_PC_ONLY.contains(&k.as_str()))
-                        .map(|k| format!("module_settings.{k}")),
-                );
-            }
-            keys
+/// 본문에서 막는 칸을 고르는 규칙. `file_fields`는 그 인스턴스 모듈의 PC 전용 설정 키(비밀값·경로)다
+type FieldRule = fn(&serde_json::Map<String, Value>, &[String]) -> Vec<String>;
+
+/// 본문 칸을 보는 라우트와 그 규칙. `checks_fields`와 `blocked_fields`가 이 표 하나를 본다
+static FIELD_RULES: &[(&str, &str, FieldRule)] = &[
+    ("PATCH", "/api/instance/{id}", |body, file_fields| {
+        body.keys().filter(|k| SETTINGS_PC_ONLY.contains(&k.as_str()) || file_fields.contains(k)).cloned().collect()
+    }),
+    ("POST", "/api/instances", |body, file_fields| {
+        let mut keys: Vec<String> = body.keys().filter(|k| CREATE_PC_ONLY.contains(&k.as_str())).cloned().collect();
+        if let Some(settings) = body.get("module_settings").and_then(Value::as_object) {
+            keys.extend(
+                settings
+                    .keys()
+                    .filter(|k| file_fields.contains(k) || SETTINGS_PC_ONLY.contains(&k.as_str()))
+                    .map(|k| format!("module_settings.{k}")),
+            );
         }
-        // 게임 설정 파일 쓰기도 인스턴스 설정과 같은 칸을 막는다 (같은 값이 파일을 거쳐 인스턴스 설정으로 돌아온다)
-        ("PUT", "/api/instance/{id}/properties") => body
-            .get("settings")
+        keys
+    }),
+    // 게임 설정 파일 쓰기도 인스턴스 설정과 같은 칸을 막는다 (같은 값이 파일을 거쳐 인스턴스 설정으로 돌아온다)
+    ("PUT", "/api/instance/{id}/properties", |body, file_fields| {
+        body.get("settings")
             .and_then(Value::as_object)
             .into_iter()
             .flat_map(|settings| settings.keys())
             .filter(|k| SETTINGS_PC_ONLY.contains(&k.as_str()) || file_fields.contains(k))
             .map(|k| format!("settings.{k}"))
-            .collect(),
-        // 대상은 인스턴스 설정의 REST 주소만. 다른 호스트로 보내면 게임 관리자 비밀번호가 실려 나간다
-        ("POST", "/api/instance/{id}/rest") => body
-            .keys()
-            .filter(|k| ["rest_host", "rest_port", "use_https"].contains(&k.as_str()))
-            .cloned()
-            .collect(),
-        ("POST", "/api/extensions/{id}/install") => body
-            .keys()
-            .filter(|k| ["download_url", "sha256"].contains(&k.as_str()))
-            .cloned()
-            .collect(),
-        _ => Vec::new(),
+            .collect()
+    }),
+    // 대상은 인스턴스 설정의 REST 주소만. 다른 호스트로 보내면 게임 관리자 비밀번호가 실려 나간다
+    ("POST", "/api/instance/{id}/rest", |body, _| {
+        body.keys().filter(|k| ["rest_host", "rest_port", "use_https"].contains(&k.as_str())).cloned().collect()
+    }),
+    ("POST", "/api/extensions/{id}/install", |body, _| {
+        body.keys().filter(|k| ["download_url", "sha256"].contains(&k.as_str())).cloned().collect()
+    }),
+];
+
+fn field_rule(method: &str, pattern: &str) -> Option<FieldRule> {
+    FIELD_RULES.iter().find(|(m, p, _)| *m == method && *p == pattern).map(|(_, _, rule)| *rule)
+}
+
+/// 본문 칸을 보는 라우트 (`blocked_fields`가 막는 칸이 있을 수 있다)
+pub fn checks_fields(method: &str, pattern: &str) -> bool {
+    field_rule(method, pattern).is_some()
+}
+
+/// 허용된 라우트라도 원격에서 바꾸면 안 되는 본문 키. `file_fields`는 그 인스턴스 모듈의 PC 전용 설정 키(비밀값·경로)다
+pub fn blocked_fields(method: &str, pattern: &str, body: Option<&Value>, file_fields: &[String]) -> Vec<String> {
+    let (Some(rule), Some(body)) = (field_rule(method, pattern), body.and_then(Value::as_object)) else {
+        return Vec::new();
     };
+    let mut blocked = rule(body, file_fields);
     blocked.sort();
     blocked
 }
@@ -463,6 +527,21 @@ mod tests {
         );
     }
 
+    /// 이 PC의 앱·연결에 관한 경로(원격 데몬 고르기와 상관없이 이 PC가 처리하는 것)는 모두 PC 전용이다:
+    /// 짝 맺은 PC의 거절은 이 표 하나로 정한다
+    #[test]
+    fn this_pcs_own_routes_are_pc_only() {
+        for r in ROUTES.iter().filter(|r| r.pattern.starts_with("/api/")) {
+            let segments: Vec<String> = r.pattern[1..].split('/').map(|s| if s.starts_with('{') { "x".into() } else { s.into() }).collect();
+            if crate::remote_daemon::target::stays_local(&segments) {
+                assert!(pc_only(r.method, r.pattern), "{} {}", r.method, r.pattern);
+            }
+        }
+        assert!(pc_only("GET", "/api/config/node-token"));
+        assert!(!pc_only("GET", "/api/events"), "the web only lacks it");
+        assert!(!pc_only("GET", "/api/servers"));
+    }
+
     #[test]
     fn allows_server_management() {
         assert_eq!(decide("POST", "/api/instance/abc/start"), Ok("/api/instance/{id}/start"));
@@ -497,6 +576,10 @@ mod tests {
 
     #[test]
     fn refuses_unknown_routes_and_methods() {
+        // 라우터는 HEAD를 GET 처리기로 답한다: 웹은 표에 없는 HEAD를 받지 않는다
+        assert_eq!(decide("HEAD", "/api/config/node-token"), Err(Refusal::NotAllowed));
+        assert_eq!(decide("HEAD", "/api/servers"), Err(Refusal::NotAllowed));
+        assert!(pc_only("HEAD", "/api/config/node-token"), "the paired PC treats HEAD as GET");
         assert_eq!(decide("GET", "/api/brand-new"), Err(Refusal::NotAllowed));
         assert_eq!(decide("PUT", "/api/instance/abc/start"), Err(Refusal::NotAllowed));
         assert_eq!(
@@ -522,13 +605,47 @@ mod tests {
         for path in [
             "/api/instance/../config/node-token",
             "/api/instance/a%2F..%2Fb/start",
-            "/api/instance/a%5Cb/start",
+            "/api/instance/..%5Cb/start",
             "/api/instance//start",
             "/api/instance/%2e%2e/start",
             "api/servers",
         ] {
             assert_eq!(decide("POST", path), Err(Refusal::BadPath), "{path}");
         }
+    }
+
+    /// 경로로 막을 것을 정하는 곳은 모두 라우터가 푸는 대로 조각마다 푼 조각 목록을 본다
+    #[test]
+    fn paths_are_judged_decoded() {
+        let segs = |p: &str| path_segments(p);
+        let own = |v: &[&str]| Some(v.iter().map(|s| s.to_string()).collect::<Vec<_>>());
+        assert_eq!(segs("/api/config/%67ui/reset"), own(&["api", "config", "gui", "reset"]));
+        assert_eq!(segs("/api/servers?x=%2F"), own(&["api", "servers"]));
+        assert_eq!(segs("/health"), own(&["health"]));
+        // 드라이브처럼 시작해도 경로가 아닌 이름은 이름이다
+        assert_eq!(segs("/api/server/S:1/stop"), own(&["api", "server", "S:1", "stop"]));
+        for bad in ["/api/x/%2e%2e/y", "/api//x", "/api/%FF", "/api/%6", "api/x", "/api/x/..", "/api/a%2F..%2Fb", "/api/..%5Cb", "/api/a%00", "/api/%2Fetc%2Fpasswd", "/api/%5C%5Chost%5Cshare", "/api/C%3A%5Cx", "/api/c:", "/api/C%3A%2Fx", "/api/%5Cx"] {
+            assert_eq!(segs(bad), None, "{bad}");
+        }
+    }
+
+    /// 조각 안의 인코딩한 `/`·`\\`는 그 조각의 글자다: 이름에 `/`가 든 서버도 이름으로 부른다.
+    /// 그 조각은 다른 조각으로 나뉘지 않으므로 앞 조각 비교를 비켜 가지 못한다
+    #[test]
+    fn an_encoded_slash_stays_inside_its_segment() {
+        assert_eq!(
+            path_segments("/api/server/Survival%201%2F2/stop"),
+            Some(vec!["api".into(), "server".into(), "Survival 1/2".into(), "stop".into()])
+        );
+        assert_eq!(decide("POST", "/api/server/Survival%201%2F2/stop"), Ok("/api/server/{name}/stop"));
+        assert_eq!(decide("GET", "/api/server/a%5Cb/status"), Ok("/api/server/{name}/status"));
+        // 이름 가운데·끝의 나눔 문자는 이름이다. 맨 앞이 나눔 문자거나 드라이브(`X:`)면 절대 경로라 받지 않는다
+        assert_eq!(decide("GET", "/api/server/a%2F/status"), Ok("/api/server/{name}/status"));
+        assert_eq!(decide("GET", "/api/server/%2Fetc/status"), Err(Refusal::BadPath));
+        assert_eq!(decide("GET", "/api/server/D%3A%5Cgames/status"), Err(Refusal::BadPath));
+        // 리터럴 조각을 인코딩한 `/`로 이어 붙여도 그 라우트가 아니다
+        assert_eq!(decide("GET", "/api/config%2Fnode-token"), Err(Refusal::NotAllowed));
+        assert_eq!(path_segments("/api/remote%2Fclients"), Some(vec!["api".into(), "remote/clients".into()]));
     }
 
     #[test]

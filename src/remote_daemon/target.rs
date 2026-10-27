@@ -18,15 +18,17 @@ use crate::ipc::IPCServer;
 pub const HEADER: &str = "x-saba-target";
 const BAD: &str = "bad_target";
 
-/// 고른 데몬과 상관없이 이 PC에서 처리하는 경로. 데몬 API(`/api/…`)가 아닌 것(`/health` 포함)도 이 PC다
-pub fn stays_local(path: &str) -> bool {
-    if !path.starts_with("/api/") {
-        return true;
-    }
+/// 고른 데몬과 상관없이 이 PC에서 처리하는 경로 (푼 조각 목록, `gate::path_segments`). 데몬 API(`/api/…`)가 아닌 것(`/health` 포함)도 이 PC다
+pub fn stays_local(segments: &[String]) -> bool {
+    let segments: Vec<&str> = segments.iter().map(String::as_str).collect();
     // 연결 관리, 이 PC의 인터페이스, 앱 설정, 이 PC 프로그램 업데이트·로그인 자동 실행, 이 데몬 종료
-    const TREES: &[&str] = &["/api/remote", "/api/client", "/api/clients", "/api/config/gui", "/api/config/client", "/api/updates"];
-    const EXACT: &[&str] = &["/api/system/autostart", "/api/daemon/shutdown"];
-    EXACT.contains(&path) || TREES.iter().any(|t| path.strip_prefix(t).is_some_and(|rest| rest.is_empty() || rest.starts_with('/')))
+    match segments.as_slice() {
+        ["api", rest @ ..] => matches!(
+            rest,
+            [] | ["remote" | "client" | "clients" | "updates", ..] | ["config", "gui" | "client", ..] | ["system", "autostart"] | ["daemon", "shutdown"]
+        ),
+        _ => true,
+    }
 }
 
 /// 요청이 고른 원격 데몬 (hostId 또는 이름). `Err`는 읽을 수 없는 머리의 오류 코드
@@ -35,7 +37,9 @@ pub fn remote_of(req: &Request<Body>) -> Result<Option<String>, &'static str> {
     // 이름은 한국어일 수 있어 퍼센트 인코딩해 싣는다
     let value = crate::remote::gate::percent_decode(value.to_str().map_err(|_| BAD)?).ok_or(BAD)?;
     let value = value.trim();
-    if value.is_empty() || value == "local" || stays_local(req.uri().path()) {
+    // 이 PC의 경로인지는 푼 경로로 본다. 풀 수 없는 경로는 중계 쪽(`forward_path`)이 거절한다
+    let here = crate::remote::gate::path_segments(req.uri().path()).is_some_and(|s| stays_local(&s));
+    if value.is_empty() || value == "local" || here {
         return Ok(None);
     }
     Ok(Some(value.to_string()))
@@ -74,7 +78,9 @@ async fn relay_with(file: &ConfigFile, state: &IPCServer, req: Request<Body>, ne
         Err(code) => return peer::error(if code == "remote_ambiguous" { StatusCode::CONFLICT } else { StatusCode::NOT_FOUND }, code),
     };
     let relay = server::RelaySource::Configured(state.clone()).target().await;
-    peer::forward(file, relay, &host_id, &path, req, state.shutdown_token.clone()).await
+    // 이 층은 감사 출처 층(`audit::layer`) 바깥이라 출처를 여기서 정한다 (`audit::layer`와 같이). 중계한 조작을 이 PC 감사 로그에 남길 때 쓴다
+    let origin = req.extensions().get::<crate::audit::Origin>().cloned().unwrap_or_else(|| crate::audit::Origin::from_headers(req.headers()));
+    crate::audit::with_origin(origin, peer::forward(file, relay, &host_id, &path, req, state.shutdown_token.clone())).await
 }
 
 #[cfg(test)]
@@ -87,6 +93,10 @@ mod tests {
             r = r.header(HEADER, t);
         }
         r.body(Body::empty()).unwrap()
+    }
+
+    fn local(path: &str) -> bool {
+        crate::remote::gate::path_segments(path).is_some_and(|s| stays_local(&s))
     }
 
     #[test]
@@ -108,7 +118,7 @@ mod tests {
             "/remote/pair",
             "/apix",
         ] {
-            assert!(stays_local(path), "{path}");
+            assert!(local(path), "{path}");
         }
         for path in [
             "/api/servers",
@@ -122,8 +132,10 @@ mod tests {
             "/api/clientsx",
             "/api/config/guix",
             "/api/daemon/console",
+            // 인코딩한 `/`는 조각 안의 글자라 `/api/remote` 아래가 아니다 (원격 데몬도 그 경로를 모른다)
+            "/api/remote%2Fclients",
         ] {
-            assert!(!stays_local(path), "{path}");
+            assert!(!local(path), "{path}");
         }
     }
 
@@ -136,6 +148,9 @@ mod tests {
         assert_eq!(remote_of(&req("/api/servers", Some("%EA%B2%8C%EC%9E%84%20PC"))), Ok(Some("게임 PC".into())));
         assert_eq!(remote_of(&req("/api/servers", Some("%FF"))), Err(BAD));
         assert_eq!(remote_of(&req("/api/remote/daemons", Some("host-b"))), Ok(None));
+        // 이 PC의 경로는 인코딩해도 이 PC에 남는다
+        assert_eq!(remote_of(&req("/api/config/%67ui", Some("host-b"))), Ok(None));
+        assert_eq!(remote_of(&req("/api/%72emote/daemons", Some("host-b"))), Ok(None));
         let bad = Request::get("/api/servers").header(HEADER, &b"\xff"[..]).body(Body::empty()).unwrap();
         assert_eq!(remote_of(&bad), Err(BAD));
     }
@@ -194,7 +209,9 @@ mod tests {
         assert_eq!(call("/health", Some("host-b")).await, (200, "here".into()));
         let (s, b) = call("/api/servers", Some("host-b")).await;
         assert!(s == 404 && b.contains("remote_unknown"), "{s} {b}");
-        let (s, b) = call("/api/x/../../remote/pair", Some("host-b")).await;
-        assert!(s == 400 && b.contains("remote_bad_path"), "{s} {b}");
+        for path in ["/api/x/../../remote/pair", "/api/x/%2e%2e/%2e%2e/remote/pair"] {
+            let (s, b) = call(path, Some("host-b")).await;
+            assert!(s == 400 && b.contains("remote_bad_path"), "{path}: {s} {b}");
+        }
     }
 }

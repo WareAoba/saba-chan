@@ -1,6 +1,7 @@
 //! `audit` — 누가 어디서 서버를 켜고 끄고 명령을 보냈는지 (데몬 감사 로그, A10)
 //!
-//! `-f`는 이어서 데몬 이벤트 스트림(P4)의 `action.run`을 한 줄씩 따라간다
+//! `-f`는 이어서 데몬 이벤트 스트림(P4)의 `action.run`을 한 줄씩 따라간다.
+//! `--since`·`--until`은 기간, `--export`는 그 기간의 기록을 모두 데몬이 CSV로 쓴다
 
 use crate::ctx::Ctx;
 use crate::error::Result;
@@ -10,14 +11,32 @@ use serde_json::Value;
 /// 스트림이 끊겼을 때 다시 붙기 전 기다림
 const RETRY: std::time::Duration = std::time::Duration::from_secs(2);
 
-pub async fn run(ctx: &Ctx, server: Option<&str>, limit: usize, follow: bool) -> Result<()> {
-    let id = match server {
+pub struct Opts<'a> {
+    pub server: Option<&'a str>,
+    pub limit: usize,
+    pub follow: bool,
+    pub since: Option<&'a str>,
+    pub until: Option<&'a str>,
+    pub export: Option<&'a std::path::Path>,
+}
+
+pub async fn run(ctx: &Ctx, o: Opts<'_>) -> Result<()> {
+    let id = match o.server {
         Some(q) => Some(crate::resolve::server(ctx, Some(q)).await?.id),
         None => None,
     };
+    let since = o.since.map(|v| day(v, false)).transpose()?;
+    let until = o.until.map(|v| day(v, true)).transpose()?;
+    if let Some(file) = o.export {
+        let path = crate::cmd::config::daemon_path(ctx, file)?;
+        let r = ctx.api.export_audit(&path, id.as_deref(), since, until).await.map_err(export_error)?;
+        let count = r.get("count").and_then(Value::as_u64).unwrap_or(0);
+        ctx.out.done(&t!("audit.exported", path = path, count = count), &r);
+        return Ok(());
+    }
     // 목록을 읽기 전에 붙어야 그 사이에 일어난 일을 놓치지 않는다
-    let mut events = if follow { Some(ctx.api.events(None).await?) } else { None };
-    let r = ctx.api.audit(id.as_deref(), limit).await?;
+    let mut events = if o.follow { Some(ctx.api.events(None).await?) } else { None };
+    let r = ctx.api.audit(id.as_deref(), o.limit, since, until).await?;
     ctx.out.data(&r, |r| {
         let entries = r.get("entries").and_then(Value::as_array).cloned().unwrap_or_default();
         if entries.is_empty() {
@@ -37,7 +56,10 @@ pub async fn run(ctx: &Ctx, server: Option<&str>, limit: usize, follow: bool) ->
         match stream.next().await {
             Ok(Some(event)) => {
                 last = event.id.or(last);
-                if event.kind != "action.run" || id.as_deref().is_some_and(|id| s(&event.data, "instanceId") != id) {
+                if event.kind != "action.run"
+                    || id.as_deref().is_some_and(|id| s(&event.data, "instanceId") != id)
+                    || !in_period(&event.data, since, until)
+                {
                     continue;
                 }
                 if ctx.out.json {
@@ -58,16 +80,54 @@ pub async fn run(ctx: &Ctx, server: Option<&str>, limit: usize, follow: bool) ->
     }
 }
 
+/// 데몬의 내보내기 오류 문구는 영문이다: 아는 코드는 이 언어 문구로 바꾼다
+fn export_error(e: anyhow::Error) -> anyhow::Error {
+    match e.downcast_ref::<crate::error::CliError>() {
+        Some(crate::error::CliError::Api { code: Some(code), .. }) if matches!(code.as_str(), "WRITE_FAILED" | "INVALID_PATH") => {
+            crate::error::failed(t!(&format!("audit.export_{}", code.to_lowercase())))
+        }
+        _ => e,
+    }
+}
+
+/// 기록·이벤트의 시각(`ts`·`at`)이 `since` 이상 `until` 미만인가
+fn in_period(e: &Value, since: Option<u64>, until: Option<u64>) -> bool {
+    let at = e.get("ts").or_else(|| e.get("at")).and_then(Value::as_u64).unwrap_or(0);
+    since.is_none_or(|s| at >= s) && until.is_none_or(|u| at < u)
+}
+
+/// `2026-10-01`·`today`·`7d`(오늘 포함 7일) → 그날 0시(이 PC 시간대, unix 초). `end`면 그날 끝(다음 날 0시)
+fn day(value: &str, end: bool) -> Result<u64> {
+    use chrono::{Days, Local, NaiveDate, TimeZone};
+    let bad = || crate::error::usage(t!("audit.bad_date", value = value));
+    let today = Local::now().date_naive();
+    let date = if value == "today" {
+        today
+    } else if let Some(n) = value.strip_suffix('d').and_then(|n| n.parse::<u64>().ok()).filter(|n| *n >= 1) {
+        today.checked_sub_days(Days::new(n - 1)).ok_or_else(bad)?
+    } else {
+        let parts: Vec<&str> = value.split('-').collect();
+        match parts[..] {
+            [y, m, d] if y.len() == 4 && m.len() == 2 && d.len() == 2 => {
+                NaiveDate::from_ymd_opt(y.parse().map_err(|_| bad())?, m.parse().map_err(|_| bad())?, d.parse().map_err(|_| bad())?)
+                    .ok_or_else(bad)?
+            }
+            _ => return Err(bad()),
+        }
+    };
+    let date = if end { date.checked_add_days(Days::new(1)).ok_or_else(bad)? } else { date };
+    let midnight = date.and_hms_opt(0, 0, 0).ok_or_else(bad)?;
+    Local.from_local_datetime(&midnight).earliest().map(|t| t.timestamp().max(0) as u64).ok_or_else(bad)
+}
+
 /// 기록 한 줄 (`/api/audit`의 `ts`, 이벤트의 `at`)
 fn row(e: &Value) -> Vec<String> {
     let from = match s(e, "user") {
         "" => s(e, "source").to_string(),
         user => format!("{} ({})", s(e, "source"), user),
     };
-    let server = match s(e, "instance") {
-        "" => s(e, "instanceId"),
-        name => name,
-    };
+    // 원격 데몬에 중계한 조작(`remote`)은 서버 대신 그 데몬
+    let server = [s(e, "instance"), s(e, "instanceId"), s(e, "daemon")].into_iter().find(|v| !v.is_empty()).unwrap_or("");
     let what = match (s(e, "action"), s(e, "command")) {
         (action, "") => action.to_string(),
         (action, cmd) => format!("{} {} {}", action, cmd, s(e, "args")).trim_end().to_string(),
@@ -79,4 +139,68 @@ fn row(e: &Value) -> Vec<String> {
     };
     let when = e.get("ts").or_else(|| e.get("at")).and_then(Value::as_u64).map(output::ago).unwrap_or_default();
     vec![when, from, server.to_string(), what, ok]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_date_range_covers_whole_days_and_the_end_day_too() {
+        let since = day("2026-10-01", false).unwrap();
+        let until = day("2026-10-03", true).unwrap();
+        // 1일 0시부터 3일 끝까지 (서머타임이 끼면 한 시간 차이)
+        assert!((until - since).abs_diff(3 * 86_400) <= 3_600, "{since}..{until}");
+    }
+
+    #[test]
+    fn today_and_n_days_count_back_from_the_start_of_today() {
+        let now = chrono::Local::now().timestamp() as u64;
+        let today = day("today", false).unwrap();
+        assert!(today <= now && now - today < 86_400);
+        assert!((today - day("7d", false).unwrap()).abs_diff(6 * 86_400) <= 3_600);
+    }
+
+    #[test]
+    fn followed_events_keep_to_the_period() {
+        let e = |at: u64| serde_json::json!({ "at": at });
+        assert!(in_period(&e(150), Some(100), Some(200)));
+        assert!(!in_period(&e(250), Some(100), Some(200)));
+        assert!(!in_period(&e(50), Some(100), None));
+        assert!(in_period(&e(50), None, None));
+    }
+
+    #[test]
+    fn a_failed_export_is_told_in_the_users_language() {
+        crate::i18n::init("ko");
+        let api = |code: &str| {
+            anyhow::Error::from(crate::error::CliError::Api {
+                status: 500,
+                code: Some(code.into()),
+                message: "Could not write the audit export: denied".into(),
+                body: serde_json::json!({}),
+            })
+        };
+        for code in ["WRITE_FAILED", "INVALID_PATH"] {
+            let msg = export_error(api(code)).to_string();
+            assert!(!msg.contains("Could not write"), "{code}: {msg}");
+            assert_eq!(msg, t!(&format!("audit.export_{}", code.to_lowercase())));
+        }
+        assert!(export_error(api("other")).to_string().contains("Could not write"));
+    }
+
+    #[test]
+    fn a_wrong_date_is_refused() {
+        for bad in ["", "2026-13-01", "yesterday", "0d", "26-10-01"] {
+            assert!(day(bad, false).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn a_relayed_change_names_the_remote_daemon() {
+        let e = serde_json::json!({ "source": "gui", "action": "remote", "instanceId": "", "daemon": "게임 PC", "command": "POST /api/instance/x/start", "ok": true });
+        let row = super::row(&e);
+        assert_eq!(row[2], "게임 PC");
+        assert_eq!(row[3], "remote POST /api/instance/x/start");
+    }
 }

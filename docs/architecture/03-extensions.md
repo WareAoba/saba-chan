@@ -277,7 +277,7 @@ ue4-ini는 hook을 선언하지 않는다. steamcmd의 condition은 `instance.ex
 
 - 판정은 데몬이 한 번만 한다(`ExtensionManager::server_slots`, `src/extension/mod.rs`). 켜진 익스텐션만, priority·id 순. `condition`은 `evaluate_condition`(`instance.ext_data.<키>`가 참). `value`는 `extension_status[<ext>][value_from]` → `extension_status.default[value_from]` → `extension_data[value_from]` 순으로 찾고, 없거나 `value_from`이 비밀값 이름(`password`·`token`·`secret`이거나 `_password` 등으로 끝남)이면 그 줄을 뺀다(목록은 원격으로도 나간다). 문자열이 아니면 JSON 문자열로 바꾼다. 항목이 없으면 `slots` 키 자체가 없다.
 - `/api/extensions`의 `slots`는 `normalized_slots(cli)`: 통일 이름 키, 값은 늘 배열. 옛 이름과 새 이름을 함께 쓰면 이어 붙인다.
-- `AddServer.options`의 답은 `POST /api/instances` 본문 `extension_data: {field: value}`로 보낸다. 데몬이 null이 아닌 값을 새 인스턴스 `extension_data`에 넣는다(객체가 아니면 400 `invalid_format`). 설치 방식이 주는 값이 뒤에서 덮는다.
+- `AddServer.options`의 답은 `POST /api/instances` 본문 `extension_data: {field: value}`로 보낸다. 데몬이 null이 아닌 값을 새 인스턴스 `extension_data`에 넣는다(객체가 아니면 400 `invalid_format`). 설치 방식이 주는 값이 뒤에서 덮는다. 짝 맺은 PC(원격 포트)는 선언한 종류에 맞는 값만 보낼 수 있고(비밀번호·파일·경로 칸은 선언한 `default` 그대로만), 웹 원격은 `extension_data`를 보내지 못한다(01 §1.4.2 3·5).
 - CLI(`saba-chan-cli/src/slots.rs`)는 이 결과를 그대로 출력한다. GUI는 같은 자리에서 번들 컴포넌트와 데이터 slot을 함께 그린다.
 - ~~`AddServer.options`의 `use_container` 의미가 호스트와 daemon에 하드코딩된 docker 전용 계약이다.~~ → 해결: 슬롯은 `t`만 받고, daemon `create_instance`에 `use_container`가 없다.
 
@@ -303,6 +303,8 @@ ue4-ini는 hook을 선언하지 않는다. steamcmd의 condition은 `instance.ex
 
 - `SteamCMD` 클래스(`steamcmd.py:151-622`): 포터블 SteamCMD 탐색/설치, `install(...)`, `update`, buildid·브랜치 비교로 `check_update`. 압축 해제는 경로 탈출을 막는다(`:799-827`).
 - daemon hook으로 실제로 쓰이는 것은 `server.check_update` 하나뿐이다. 설치는 module의 `lifecycle.py install_server`가 `from extensions.steamcmd import SteamCMD`로 직접 수행한다(`M:palworld/lifecycle.py:1175`, `M:zomboid/lifecycle.py:1457`).
+- `install_for_module(module_dir, install_dir, beta=None)`(steamcmd 다음 판): 모듈 module.toml `[install]`(`method = "steamcmd"`, `app_id`, `anonymous`, `beta`)을 읽어 SteamCMD를 준비하고 설치·업데이트한다. 앱 ID를 모듈 코드에 다시 적지 않는다. `[install]`에 steamcmd 앱 ID가 없으면 `ValueError`. 반환은 `SteamCMD.install`과 같다.
+- 설치 진행률은 SteamCMD 출력의 `progress:` 줄 → 설치 폴더 appmanifest의 `BytesDownloaded`/`BytesToDownload`(`_manifest_progress`) → 늘어난 디스크 크기와 앱별 어림 총량(`_disk_progress`) 순으로 읽는다. 출력은 파이프에서 버퍼에 묶이기 쉽다. 디스크 크기가 어림 총량을 넘으면(미리 잡은 파일 크기·받기 임시 파일) 진행률을 올리지 않고 직전 값을 유지한다.
 - instance_fields `install_method_steamcmd`, `steamcmd_app_id` 등은 daemon이 module의 `[install] method`를 보고 **범용 규칙**(`install_method_<방식>`, `<방식>_<이름>`)으로 채운다(`src/instance/mod.rs:142-166` `apply_install_extension_data`). core에 steamcmd 이름은 없다.
 
 ### 5.3 music
@@ -311,15 +313,15 @@ ue4-ini는 hook을 선언하지 않는다. steamcmd의 condition은 `instance.ex
 
 ### 5.4 ue4-ini (v0.1.0, 디렉토리명 `ue4_ini`)
 
-- `parse_option_settings(ini_path)`와 `write_option_settings(ini_path, props, section)`를 제공하는 **순수 Python 라이브러리**다(`ue4_ini.py:23,163`). hook은 선언하지 않는다.
+- `parse_option_settings(ini_path)`와 `write_option_settings(ini_path, props, section)`를 제공하는 **순수 Python 라이브러리**다(`ue4_ini.py:23,163`). hook은 선언하지 않는다. 쓰기는 같은 폴더 임시 파일에 쓰고 바꾸되, 격리 실행처럼 권한을 옮기지 못하거나 임시 파일을 만들 수 없으면 원래 파일을 제자리에서 덮어쓴다(데몬 `atomic_write`와 같은 규칙, 02-modules §2.5).
 - palworld가 `requires_extensions = ["steamcmd", "ue4-ini"]`로 요구한다(`M:palworld/module.toml:51`). ~~최상위에서 무조건 import해서 ue4-ini가 없으면 lifecycle 전체가 ImportError로 실패하고, disable해도 import가 막히지 않는다.~~ → 해결: palworld는 `try/except ImportError`로 import하고 INI를 건드리는 함수만 `extension_required`를 돌려준다(`M:palworld/lifecycle.py:32-37`). disable하면 import 가드가 import를 막는다(2.1).
 
 ### 5.5 module → extension 참조 방식
 
 1. `module.toml [install] requires_extensions = [...]`. 모듈을 설치하면(데몬 `POST /api/modules/manifest/:id/install`, 설치기) 요구하는 익스텐션을 받고 켠다(02-modules §5.2). 앱 업데이트로 모듈이 바뀌어도 새로 필요해진 것 중 없는 것을 받고 켠다(02-modules §5.3). 인스턴스 생성 시 `instance.required_extensions`에 복사된다(`handlers/instance.rs:233-240`). 생성 시점에 검증하고(`:242-272`), 시작 시점에 다시 검증한다(`supervisor/mod.rs:572-630`, `installed_and_enabled_set`). module 기능 엔드포인트에서도 검사한다(`handlers/managed.rs:527-562`). `[module.dependencies]`의 `ext-<id>` 버전 요구도 시작 시 검사한다(`supervisor/mod.rs:519-539`).
 2. `module.toml [extensions.<id>]` 섹션은 `metadata.extensions["<id>"]`로 그대로 파싱된다(`supervisor/module_loader.rs:618-622`). settings_changed context의 `module_extensions`로 전달된다.
-3. Python 레벨: `from extensions.<pkg> import …`. PYTHONPATH 주입과 import 가드에 의존하고, module은 `SABA_ENABLED_EXTENSIONS`로 자체 검사도 한다(`M:palworld/lifecycle.py:1165`, `M:zomboid/lifecycle.py:1447`).
-4. ~~`__example__lifecycle.py`의 `from extensions.steamcmd import install_game`은 존재하지 않는 함수다.~~ → 해결: 예제는 `from extensions.steamcmd import SteamCMD`를 쓴다(`M:__example/__example__lifecycle.py:405`).
+3. Python 레벨: `from extensions.<pkg> import …`. PYTHONPATH 주입과 import 가드에 의존한다. 모듈은 `SABA_ENABLED_EXTENSIONS`를 따로 읽지 않고, import가 실패하면(없음·꺼짐, 가드의 `ModuleNotFoundError`) `error_code: "extension_required"`, `missing_extensions`로 답한다(palworld·zomboid `install_server`).
+4. ~~`__example__lifecycle.py`의 `from extensions.steamcmd import install_game`은 존재하지 않는 함수다.~~ → 해결: 예제는 `from extensions.steamcmd import install_for_module`을 쓴다(§5.2, `M:__example/__example__lifecycle.py` `install_server`).
 
 ---
 

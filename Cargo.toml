@@ -1,6 +1,6 @@
 [package]
 name = "saba-core"
-version = "0.1.10"
+version = "0.1.11"
 edition = "2021"
 authors = ["WareAoba"]
 description = "Modular game server management platform"
@@ -61,6 +61,8 @@ rcgen = { version = "0.13", default-features = false, features = ["crypto", "rin
 hyper = { version = "1", features = ["http1", "http2", "client", "server"] }
 hyper-util = { version = "0.1", features = ["tokio", "service"] }
 http-body-util = "0.1"
+# 포트포워딩 확인 (`crate::port_check`): 공유기가 아는 바깥 주소(UPnP)로 CGNAT를 알아본다. hyper·tokio는 위와 같은 판
+igd-next = { version = "0.18", default-features = false, features = ["aio_tokio"] }
 saba-chan-updater-lib = { path = "updater" }
 saba-atomic-file = { path = "atomic-file" }
 saba-runner = { path = "runner", default-features = false }
@@ -72,6 +74,9 @@ windows-sys = { version = "0.59", features = [
     "Win32_System_Pipes", "Win32_System_RemoteDesktop", "Win32_System_StationsAndDesktops", "Win32_System_SystemServices", "Win32_System_Threading",
 ] }
 winreg = "0.52"
+windows = { version = "0.62", features = [
+    "Win32_Foundation", "Win32_NetworkManagement_WindowsFirewall", "Win32_System_Com", "Win32_System_Ole", "Win32_System_Variant",
+] }
 
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.31", features = ["signal"] }
