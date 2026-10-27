@@ -1043,6 +1043,7 @@
       "schedule.edit.from": "--every-days と一緒に: この日から数える (YYYY-MM-DD、既定: 今日)",
       "schedule.edit.args": "ゲームコマンドの入力 名前=値 (複数可)",
       "schedule.add.command": "実行するゲームコマンド (command 作業、一覧: server commands)",
+      "schedule.edit.command": "変更するゲームコマンド (command 作業、別のコマンドなら --arg を指定しない限り古い入力は消える)",
       "bot.notice.on": "起動通知をオン",
       "bot.notice.off": "起動通知をオフ"
     },

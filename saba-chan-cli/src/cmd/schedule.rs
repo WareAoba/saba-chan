@@ -48,6 +48,7 @@ pub async fn run(ctx: &Ctx, cmd: ScheduleCmd) -> Result<()> {
             warn,
             no_warn,
             message,
+            command,
             args,
         } => {
             let sv = resolve::server(ctx, Some(&server)).await?;
@@ -57,6 +58,7 @@ pub async fn run(ctx: &Ctx, cmd: ScheduleCmd) -> Result<()> {
                 warn,
                 no_warn,
                 message,
+                command,
                 args: if args.is_empty() { None } else { Some(parse_args(&args)?) },
             };
             // 바꾼 작업이 켜진 위험 명령이면 추가처럼 묻는다 (번호가 틀리면 edit_on이 알린다)
@@ -163,6 +165,7 @@ struct Edit {
     warn: Vec<u32>,
     no_warn: bool,
     message: Option<String>,
+    command: Option<String>,
     args: Option<Map<String, Value>>,
 }
 
@@ -210,7 +213,13 @@ fn merged_when(old: ScheduleWhen, new: &ScheduleWhen) -> ScheduleWhen {
 
 /// 작업 하나에 바꿀 것을 얹고, 추가와 같은 검사(`build`)를 거친다. 켜짐 여부는 그대로
 fn edited(cur: &Value, task: &Value, change: &Edit) -> Result<Value> {
-    if !gives_when(&change.when) && change.warn.is_empty() && !change.no_warn && change.message.is_none() && change.args.is_none() {
+    if !gives_when(&change.when)
+        && change.warn.is_empty()
+        && !change.no_warn
+        && change.message.is_none()
+        && change.command.is_none()
+        && change.args.is_none()
+    {
         return Err(usage(t!("schedule.nothing_to_edit")));
     }
     let when = merged_when(when_of(task), &change.when);
@@ -228,10 +237,18 @@ fn edited(cur: &Value, task: &Value, change: &Edit) -> Result<Value> {
             .collect()
     };
     let message = change.message.clone().or_else(|| task.get("message").and_then(Value::as_str).map(str::to_string));
-    let command = task.get("command").and_then(Value::as_str);
+    let old_command = task.get("command").and_then(Value::as_str);
+    let command = change.command.as_deref().or(old_command);
+    // 다른 명령으로 바꾸면 옛 명령의 인자는 맞지 않는다: 새로 준 인자만 쓴다
+    let same_command = match (change.command.as_deref(), old_command) {
+        (Some(new), Some(old)) => new.trim().eq_ignore_ascii_case(old),
+        (Some(_), None) => false,
+        (None, _) => true,
+    };
     let args = match &change.args {
         Some(a) => a.clone(),
-        None => task.get("args").and_then(Value::as_object).cloned().unwrap_or_default(),
+        None if same_command => task.get("args").and_then(Value::as_object).cloned().unwrap_or_default(),
+        None => Map::new(),
     };
     let mut out = build(cur, s(task, "action"), &when, &warn, message.as_deref(), command, &args)?;
     out["enabled"] = json!(task.get("enabled").and_then(Value::as_bool).unwrap_or(true));
@@ -692,6 +709,15 @@ mod tests {
         let cmd = json!({ "action": "command", "at": "04:00", "command": "say", "args": { "message": "a" }, "enabled": true });
         let args = Edit { args: Some(parse_args(&["message=b".into()]).unwrap()), ..Edit::default() };
         assert_eq!(edited(&cur, &cmd, &args).unwrap()["args"], json!({ "message": "b" }));
+        // 게임 명령도 바꿀 수 있다: 다른 명령이면 옛 인자는 버리고(새로 준 인자만), 게임 명령이 아닌 작업에는 줄 수 없다
+        let other = Edit { command: Some("save-all".into()), ..Edit::default() };
+        let t = edited(&cur, &cmd, &other).unwrap();
+        assert_eq!((t["command"].clone(), t.get("args")), (json!("save-all"), None));
+        let both = Edit { command: Some("kick".into()), args: Some(parse_args(&["player=x".into()]).unwrap()), ..Edit::default() };
+        assert_eq!(edited(&cur, &cmd, &both).unwrap()["args"], json!({ "player": "x" }));
+        let same = Edit { command: Some("SAY".into()), ..Edit::default() };
+        assert_eq!(edited(&cur, &cmd, &same).unwrap()["args"], json!({ "message": "a" }));
+        assert!(edited(&cur, &task, &other).is_err());
     }
 
     #[test]

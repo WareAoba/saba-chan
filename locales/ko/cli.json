@@ -1043,6 +1043,7 @@
       "schedule.edit.from": "--every-days와 함께: 이 날부터 센다 (YYYY-MM-DD, 기본: 오늘)",
       "schedule.edit.args": "게임 명령 입력 이름=값 (여러 번 줄 수 있음)",
       "schedule.add.command": "실행할 게임 명령 (command 작업, 목록: server commands)",
+      "schedule.edit.command": "바꿀 게임 명령 (command 작업, 다른 명령이면 --arg를 주지 않는 한 옛 입력은 지움)",
       "bot.notice.on": "켜짐 알림 켜기",
       "bot.notice.off": "켜짐 알림 끄기"
     },
