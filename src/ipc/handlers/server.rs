@@ -804,9 +804,9 @@ pub async fn remove_module(
     let _dirs = super::paths::components_in_use().await;
     let modules_dir = {
         let supervisor = state.supervisor.read().await;
-        // 켜진 서버가 쓰는 모듈을 지우면 그 서버를 정지할 수 없다 (EE9)
+        // 켜진 서버가 쓰는 모듈을 지우면 그 서버를 정지할 수 없다 (EE9). Windows 경로는 대소문자를 가리지 않는다
         for instance in supervisor.instance_store.list() {
-            if instance.module_name == module_id && supervisor.is_running(&instance.id).await {
+            if instance.module_name.eq_ignore_ascii_case(&module_id) && supervisor.is_running(&instance.id).await {
                 let error = format!("Module '{}' is used by a running server; stop it first", module_id);
                 return (StatusCode::OK, Json(json!({ "ok": false, "error": error, "error_code": "module_in_use" }))).into_response();
             }
@@ -2057,6 +2057,9 @@ mod tests {
         let refused = crate::ipc::internal::into_internal(remove_module(Path("plain".into()), State(state.clone())).await.into_response()).await.body;
         assert_eq!(refused["error_code"], "module_in_use", "{refused}");
         assert!(dir.exists(), "the module folder must stay");
+        // Windows 경로는 대소문자를 가리지 않는다: 다른 대소문자로 불러도 같은 폴더다
+        let upper = crate::ipc::internal::into_internal(remove_module(Path("PLAIN".into()), State(state.clone())).await.into_response()).await.body;
+        assert_eq!(upper["error_code"], "module_in_use", "{upper}");
 
         state.supervisor.read().await.tracker.untrack(&id).unwrap();
         let removed = crate::ipc::internal::into_internal(remove_module(Path("plain".into()), State(state)).await.into_response()).await.body;
