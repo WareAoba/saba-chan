@@ -636,6 +636,7 @@
     "preflight_failed": "Einrichtung der Laufzeitumgebung für Spielmodule fehlgeschlagen: {{error}}. Wird bei der nächsten Serveraktion erneut versucht."
   },
   "stop": {
+    "confirm": "Sind Sie sicher, dass Sie Server {{name}} stoppen möchten?",
     "already": "{{name}} läuft nicht.",
     "done": "{{name}} gestoppt.",
     "not_yet": "{{name}} wurde noch nicht gestoppt. Erzwingen: saba-chan-cli stop --force {{name}}",
@@ -855,6 +856,7 @@
     "after": "Namen können abgekürzt werden (z. B. start pal). Ohne Argumente öffnet sich im Terminal das Vollbildmenü (SABA_NO_TUI=1: die interaktive Shell).\nIn Skripten --json und --yes verwenden. Exit-Codes: 0 ok · 1 fehlgeschlagen · 2 Verwendung · 3 Daemon nicht erreichbar · 4 nicht gefunden · 130 abgebrochen"
   },
   "restart": {
+    "confirm": "'{{name}}' stoppen und neu starten? Verbundene Spieler werden kurz getrennt.",
     "waiting": "{{name}} wird neu gestartet...",
     "done": "{{name}} neu gestartet."
   },

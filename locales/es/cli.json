@@ -636,6 +636,7 @@
     "preflight_failed": "Falló la preparación del entorno de ejecución para los módulos de juego: {{error}}. Se reintentará en la próxima acción del servidor."
   },
   "stop": {
+    "confirm": "¿Está seguro de que desea detener el servidor {{name}}?",
     "already": "{{name}} no está en marcha.",
     "done": "{{name}} detenido.",
     "not_yet": "{{name}} aún no se ha detenido. Fuérzalo: saba-chan-cli stop --force {{name}}",
@@ -855,6 +856,7 @@
     "after": "Los nombres pueden ser parciales (p. ej. start pal). Sin argumentos en una terminal se abre el menú a pantalla completa (SABA_NO_TUI=1: la shell interactiva).\nEn scripts usa --json y --yes. Códigos de salida: 0 correcto · 1 error · 2 uso · 3 daemon inaccesible · 4 no encontrado · 130 cancelado"
   },
   "restart": {
+    "confirm": "¿Detener e iniciar de nuevo '{{name}}'? Los jugadores conectados se desconectarán un momento.",
     "waiting": "Reiniciando {{name}}...",
     "done": "{{name}} reiniciado."
   },

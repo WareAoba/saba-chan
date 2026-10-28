@@ -636,6 +636,7 @@
     "preflight_failed": "游戏模块运行环境准备失败：{{error}}。将在下次服务器操作时重试。"
   },
   "stop": {
+    "confirm": "确定要停止 {{name}} 服务器吗？",
     "already": "{{name}} 未运行。",
     "done": "{{name}} 已停止。",
     "force_confirm": "不保存就停止吗？",
@@ -1065,6 +1066,7 @@
     "after": "名称可以只写一部分（例如 start pal）。在终端中不带参数运行会打开全屏菜单(SABA_NO_TUI=1 时为交互式 shell)。\n在脚本中请使用 --json 和 --yes。退出码：0 成功 · 1 失败 · 2 用法错误 · 3 无法连接守护进程 · 4 未找到 · 130 已取消"
   },
   "restart": {
+    "confirm": "要停止并重新启动 '{{name}}' 吗？已连接的玩家会短暂断开。",
     "waiting": "正在重启 {{name}}...",
     "done": "{{name}} 已重启。"
   },

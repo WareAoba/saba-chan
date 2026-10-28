@@ -636,6 +636,7 @@
     "preflight_failed": "遊戲模組執行環境準備失敗：{{error}}。將在下次伺服器操作時重試。"
   },
   "stop": {
+    "confirm": "確定要停止 {{name}} 伺服器嗎？",
     "already": "{{name}} 未執行。",
     "done": "{{name}} 已停止。",
     "not_yet": "{{name}} 尚未停止。強制停止：saba-chan-cli stop --force {{name}}",
@@ -855,6 +856,7 @@
     "after": "名稱可以只寫一部分（例如 start pal）。在終端機中不帶參數執行會開啟全螢幕選單(SABA_NO_TUI=1 時為互動式 shell)。\n在指令碼中請使用 --json 和 --yes。結束代碼：0 成功 · 1 失敗 · 2 用法錯誤 · 3 無法連線常駐程式 · 4 找不到 · 130 已取消"
   },
   "restart": {
+    "confirm": "要停止並重新啟動 '{{name}}' 嗎？已連線的玩家會短暫斷線。",
     "waiting": "正在重新啟動 {{name}}...",
     "done": "{{name}} 已重新啟動。"
   },
