@@ -346,8 +346,7 @@
       "ambientEffort": "插話判斷推理強度",
       "confirmLevel": "執行前確認層級",
       "memory": "記憶",
-      "webSearch": "網頁搜尋",
-      "disabledTools": "已關閉的工具組",
+      "tools": "啟用的工具",
       "step": "步驟",
       "from_snapshot": "來自遊戲自動備份"
     },

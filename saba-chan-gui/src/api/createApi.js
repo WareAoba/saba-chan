@@ -995,6 +995,8 @@ export function createApi({ invoke, hub }) {
         },
         permissionsGet: (guildId) => daemonCall('get', permPath(guildId)),
         permissionsUpdate: (guildId, patch) => daemonCall('patch', permPath(guildId), patch || {}),
+        permissionsCommands: (guildId, locale) =>
+            daemonCall('get', `${permPath(guildId)}/commands${queryString({ locale: locale || undefined })}`),
         permissionsSetMember: (guildId, discordId, level) => daemonCall('put', permPath(guildId, discordId), { level }),
         permissionsRemoveMember: (guildId, discordId) => daemonCall('delete', permPath(guildId, discordId)),
         sandboxListUnisolated: () => daemonCall('get', '/api/sandbox/unisolated'),
@@ -1186,6 +1188,8 @@ export function createApi({ invoke, hub }) {
         // 길드에 저장된 사용자 키로 릴레이가 제공자에게 묻는다 (chatbot-settings-v2 §1)
         chatbotModels: (guildId) =>
             daemonJson('get', `/api/relay/node/${encodeURIComponent(guildId)}/chatbot/models`, undefined, 20000),
+        // 고를 수 있는 도구 목록 — 카테고리·쓸 수 있는지 (원본은 릴레이)
+        chatbotTools: (guildId) => daemonJson('get', `/api/relay/node/${encodeURIComponent(guildId)}/chatbot/tools`),
         // 남은 크레딧(제공사가 알려 줄 때만)과 이번 달 사용량 — 릴레이 답 그대로
         chatbotCredit: (guildId) =>
             daemonJson('get', `/api/relay/node/${encodeURIComponent(guildId)}/chatbot/credit`, undefined, 20000),

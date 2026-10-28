@@ -72,8 +72,17 @@ pub fn found(roots: &Roots, running: Option<&[u32]>, skip_self: bool) -> Vec<Pat
     if let Some(cache) = &roots.cache {
         out.push(cache.join(saba_chan_updater_lib::constants::APP_NAME));
     }
+    // 앱 메뉴 항목은 가리키는 프로그램이 없어진 것만 흔적이다: 다른 폴더에 남은 설치의 항목은 둔다
+    // (이 설치를 가리키는 항목은 바로가기 단계가 지운다)
     if let Some(apps) = &roots.applications {
-        out.push(apps.join("saba-chan.desktop"));
+        let entry = apps.join(crate::shortcuts::APP_ENTRY_FILE);
+        let live = std::fs::read_to_string(&entry)
+            .ok()
+            .and_then(|t| saba_chan_updater_lib::autostart::parse_desktop_file(&t))
+            .is_some_and(|e| e.program.is_file());
+        if !live {
+            out.push(entry);
+        }
     }
     out.retain(|p| p.symlink_metadata().is_ok());
     out.sort();
@@ -174,6 +183,26 @@ mod tests {
         // 프로세스 목록을 못 읽으면 PID가 붙은 작업 폴더는 건드리지 않는다
         assert!(found(&r, None, false).is_empty());
         assert!(r.temp.join("saba-chan-installer-42").exists());
+    }
+
+    /// 앱 메뉴 항목은 프로그램이 남아 있는 다른 설치의 것이면 두고, 가리키는 프로그램이 없어졌으면 지운다
+    #[test]
+    fn an_app_menu_entry_of_another_install_is_kept() {
+        let tmp = tempfile::tempdir().unwrap();
+        let r = roots(tmp.path());
+        let apps = r.applications.clone().unwrap();
+        std::fs::create_dir_all(&apps).unwrap();
+        let gui = tmp.path().join("other").join("saba-chan-gui");
+        std::fs::create_dir_all(gui.parent().unwrap()).unwrap();
+        std::fs::write(&gui, b"").unwrap();
+        let entry = apps.join(crate::shortcuts::APP_ENTRY_FILE);
+        let exec = saba_chan_updater_lib::autostart::desktop_exec(&saba_chan_updater_lib::autostart::Entry { program: gui.clone(), args: Vec::new() });
+        std::fs::write(&entry, format!("[Desktop Entry]\nExec={exec}\n")).unwrap();
+        assert!(remove(&r, Some(&[]), false).is_empty());
+        assert!(entry.exists(), "another install still uses it");
+        std::fs::remove_file(&gui).unwrap();
+        assert!(remove(&r, Some(&[]), false).is_empty());
+        assert!(!entry.exists(), "nothing runs it any more");
     }
 
     fn walkdir(base: &Path) -> Vec<String> {

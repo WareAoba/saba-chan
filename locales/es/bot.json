@@ -346,8 +346,7 @@
       "ambientEffort": "Esfuerzo al decidir si intervenir",
       "confirmLevel": "Nivel de confirmación antes de ejecutar",
       "memory": "Memoria",
-      "webSearch": "Búsqueda web",
-      "disabledTools": "Herramientas desactivadas",
+      "tools": "Herramientas activadas",
       "step": "Paso",
       "from_snapshot": "Desde copia automática del juego"
     },

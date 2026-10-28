@@ -12,6 +12,10 @@
 //!
 //! 릴레이 PUT은 받은 키만 합치므로 데몬은 늘 전체 설정을 보낸다: 지운 키(null)는 `RELAY_DEFAULTS` 값으로.
 //! 릴레이에 새 설정이 생기면 그 기본값을 이 표에 한 줄 더한다
+//!
+//! 켜기(`enabled`)와 이 서버에서 켠 도구(`tools`)는 서버마다 둔다 (기본: 꺼짐, 도구 없음). 공통 `allowedTools`는
+//! 전체 허용 도구로 데몬만 안다(없으면 모두 허용): 릴레이에는 서버의 `tools` 중 허용된 것만 간다.
+//! 옛 설정(공통 `enabled`, `disabledTools`, `webSearch`)은 길드 목록을 받았을 때 서버마다 적어 넣는다 (`settle_legacy`)
 //! - `DELETE /api/chatbot/memory?guildId=` — 장기 기억 지우기 (guildId가 없으면 모든 길드)
 //! - `GET /api/chatbot/memo-template?locale=` — 서버 프롬프트 기본 틀 `{template, locale}` (bot.json `chatbot.memo_template`)
 
@@ -44,8 +48,7 @@ fn relay_defaults() -> Map<String, Value> {
         "ambientEffort": "low",
         "confirmLevel": "all",
         "memory": true,
-        "webSearch": true,
-        "disabledTools": [],
+        "tools": [],
     }) else {
         unreachable!()
     };
@@ -63,11 +66,115 @@ fn drop_retired(map: &mut Map<String, Value>) {
     crate::config_store::upgrade_confirm(map);
 }
 
+/// 공통 전체 허용 도구 (데몬만 안다). 없으면 모두 허용
+const ALLOWED_TOOLS: &str = "allowedTools";
+/// 서버마다만 두는 키
+const GUILD_ONLY: &[&str] = &["enabled", "tools"];
+/// 옛 도구 설정 — 서버별 `tools`로 옮긴다
+const LEGACY_TOOL_KEYS: &[&str] = &["disabledTools", "webSearch"];
+/// 옛 데몬이 끌 수 있던 도구 (릴레이 toolkit `LEGACY_TOOL_NAMES`). 옛 설정을 옮길 때 여기서 끈 것만 뺀다
+const LEGACY_TOOL_NAMES: &[&str] = &["game_servers", "research", "lol", "images"];
+
+fn strings(v: Option<&Value>) -> Vec<String> {
+    v.and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect()).unwrap_or_default()
+}
+
+/// 옛 설정이 남아 있다: 공통 켜기, 어디든 끈 도구·웹 검색 스위치, 또는 도구 없이 켜기만 둔 서버(옛 서버별 켜기)
+fn has_legacy(cfg: &ChatbotConfig) -> bool {
+    cfg.settings.contains_key("enabled")
+        || cfg.settings.contains_key("tools")
+        || cfg.guilds.values().any(|m| m.contains_key("enabled") && !m.contains_key("tools"))
+        || std::iter::once(&cfg.settings).chain(cfg.guilds.values()).any(|m| LEGACY_TOOL_KEYS.iter().any(|k| m.contains_key(*k)))
+}
+
+/// 받은 값 검사: 켜기·도구는 서버에만, 전체 허용 도구는 공통에만, 도구 목록은 문자열 배열(또는 지우기 null), 옛 도구 키는 받지 않는다
+fn check_tool_keys(map: &Map<String, Value>, common: bool) -> Result<(), String> {
+    if let Some(k) = LEGACY_TOOL_KEYS.iter().find(|k| map.contains_key(**k)) {
+        return Err(format!("{} is no longer used: choose tools per server (tools, allowedTools)", k));
+    }
+    let (list, misplaced) = if common { (ALLOWED_TOOLS, GUILD_ONLY) } else { ("tools", &[ALLOWED_TOOLS][..]) };
+    if let Some(k) = misplaced.iter().find(|k| map.get(**k).is_some_and(|v| !v.is_null())) {
+        return Err(if common {
+            format!("{} is set per server (guilds.<id>.{})", k, k)
+        } else {
+            format!("{} is a common setting (settings.{})", k, k)
+        });
+    }
+    match map.get(list) {
+        None | Some(Value::Null) => Ok(()),
+        Some(Value::Array(a)) if a.iter().all(Value::is_string) => Ok(()),
+        Some(_) => Err(format!("{} must be a list of tool names", list)),
+    }
+}
+
+/// 서버 하나의 켜기와 켠 도구 (허용 목록을 거르기 전). 서버에 값이 없으면 기본(꺼짐, 도구 없음)이고,
+/// 옛 설정이 남아 있으면 옛 값으로 셈한다: 켜진 서버는 끈 도구 밖의 옛 도구 + 웹 검색 스위치
+fn selection(cfg: &ChatbotConfig, guild: &str) -> (bool, Vec<String>) {
+    let own = cfg.guilds.get(guild);
+    let legacy = has_legacy(cfg);
+    let eff = cfg.effective(guild);
+    let enabled = own.and_then(|m| m.get("enabled")).or(if legacy { eff.get("enabled") } else { None }).and_then(Value::as_bool).unwrap_or(false);
+    if let Some(tools) = own.and_then(|m| m.get("tools")) {
+        return (enabled, strings(Some(tools)));
+    }
+    if !legacy || !enabled {
+        return (enabled, Vec::new());
+    }
+    let off = strings(eff.get("disabledTools"));
+    let mut tools: Vec<String> = LEGACY_TOOL_NAMES.iter().filter(|n| !off.iter().any(|o| o == *n)).map(|n| n.to_string()).collect();
+    if eff.get("webSearch").and_then(Value::as_bool).unwrap_or(true) {
+        tools.push("web_search".into());
+    }
+    (enabled, tools)
+}
+
+/// 서버에 값이 없을 때 쓰는 켜기·도구 — 클라이언트가 노드 목록의 서버를 그릴 때 쓴다 (옮기기 전에는 옛 공통 값)
+fn guild_default(cfg: &ChatbotConfig) -> Value {
+    // 어떤 길드 id와도 겹치지 않는 이름 (디스코드 id는 숫자)
+    let (enabled, tools) = selection(cfg, "");
+    json!({ "enabled": enabled, "tools": tools })
+}
+
+/// 옛 설정을 받은 길드마다 적어 넣고 옛 키를 지운다. 바꿨으면 true
+pub(super) fn settle_legacy(cfg: &mut ChatbotConfig, guilds: impl IntoIterator<Item = String>) -> bool {
+    if !has_legacy(cfg) {
+        return false;
+    }
+    let settled: Vec<(String, bool, Vec<String>)> = guilds.into_iter().map(|g| {
+        let (enabled, tools) = selection(cfg, &g);
+        (g, enabled, tools)
+    }).collect();
+    for (guild, enabled, tools) in settled {
+        let entry = cfg.guilds.entry(guild).or_default();
+        entry.insert("enabled".into(), json!(enabled));
+        entry.insert("tools".into(), json!(tools));
+    }
+    cfg.settings.remove("enabled");
+    cfg.settings.remove("tools");
+    for map in std::iter::once(&mut cfg.settings).chain(cfg.guilds.values_mut()) {
+        for k in LEGACY_TOOL_KEYS {
+            map.remove(*k);
+        }
+    }
+    true
+}
+
 /// 길드 하나에 PUT할 본문: 기본값 위에 사용자 설정, 키는 데몬 것 (없으면 릴레이 것도 지운다)
 fn put_body(cfg: &ChatbotConfig, guild: &str) -> Map<String, Value> {
     let mut body = relay_defaults();
     body.extend(cfg.effective(guild));
     drop_retired(&mut body);
+    let (enabled, mut tools) = selection(cfg, guild);
+    if let Some(allowed) = cfg.settings.get(ALLOWED_TOOLS).filter(|v| v.is_array()) {
+        let allowed = strings(Some(allowed));
+        tools.retain(|t| allowed.contains(t));
+    }
+    body.remove(ALLOWED_TOOLS);
+    for k in LEGACY_TOOL_KEYS {
+        body.remove(*k);
+    }
+    body.insert("enabled".into(), json!(enabled));
+    body.insert("tools".into(), json!(tools));
     body.insert("apiKey".into(), json!(cfg.api_key));
     body
 }
@@ -77,11 +184,32 @@ fn view(cfg: &ChatbotConfig) -> Map<String, Value> {
     let mut settings = cfg.settings.clone();
     drop_retired(&mut settings);
     out.insert("settings".into(), Value::Object(settings));
-    out.insert("guilds".into(), json!(cfg.guilds));
+    // 서버마다 지금 쓰는 켜기·도구를 함께 (옮기기 전에는 옛 설정으로 셈한 값)
+    let guilds: Map<String, Value> = cfg
+        .guilds
+        .iter()
+        .map(|(id, m)| {
+            let mut m = m.clone();
+            for k in LEGACY_TOOL_KEYS {
+                m.remove(*k);
+            }
+            let (enabled, tools) = selection(cfg, id);
+            m.insert("enabled".into(), json!(enabled));
+            m.insert("tools".into(), json!(tools));
+            (id.clone(), Value::Object(m))
+        })
+        .collect();
+    out.insert("guilds".into(), Value::Object(guilds));
     out.insert("hasApiKey".into(), json!(cfg.api_key.as_deref().is_some_and(|k| !k.is_empty())));
     out.insert("pendingRelayDelete".into(), json!(cfg.pending_relay_delete));
-    // 바꿀 수 있는 키와 그 기본값. 클라이언트가 키 이름을 따로 두지 않는다
-    out.insert("defaults".into(), Value::Object(relay_defaults()));
+    out.insert("guildDefault".into(), guild_default(cfg));
+    // 공통에서 바꿀 수 있는 키와 그 기본값. 클라이언트가 키 이름을 따로 두지 않는다
+    let mut defaults = relay_defaults();
+    for k in GUILD_ONLY {
+        defaults.remove(*k);
+    }
+    defaults.insert(ALLOWED_TOOLS.into(), Value::Null);
+    out.insert("defaults".into(), Value::Object(defaults));
     out
 }
 
@@ -130,6 +258,7 @@ fn upgrade_patch(map: &mut Map<String, Value>) {
 
 fn apply(cfg: &mut ChatbotConfig, patch: ChatbotPatch) -> Result<(), String> {
     if let Some(mut s) = patch.settings {
+        check_tool_keys(&s, true)?;
         upgrade_patch(&mut s);
         merge(&mut cfg.settings, s);
     }
@@ -140,8 +269,12 @@ fn apply(cfg: &mut ChatbotConfig, patch: ChatbotPatch) -> Result<(), String> {
                 cfg.guilds.remove(&guild);
             }
             Value::Object(mut m) => {
+                check_tool_keys(&m, false)?;
                 upgrade_patch(&mut m);
+                // 도구 없는 서버 값은 옛 설정으로 셈하므로, 지금 쓰는 도구를 먼저 적어 둔다
+                let (_, tools_now) = selection(cfg, &guild);
                 let entry = cfg.guilds.entry(guild.clone()).or_default();
+                entry.entry("tools").or_insert_with(|| json!(tools_now));
                 merge(entry, m);
                 drop_retired(entry);
                 if entry.is_empty() {
@@ -319,6 +452,7 @@ pub async fn sync_on_connect(state: &IPCServer) {
     if cfg == ChatbotConfig::default() {
         return;
     }
+    let cfg = settled(state, cfg).await;
     for (guild, outcome) in push_all(state, &cfg, None).await {
         if !matches!(&outcome, Ok((c, _)) if c.is_success()) {
             tracing::warn!("[Chatbot] sync to guild {} failed: {}", guild, result_row(&guild, &outcome));
@@ -329,9 +463,29 @@ pub async fn sync_on_connect(state: &IPCServer) {
 /// 챗봇 설정의 읽고-바꾸고-저장하기를 한 번에 하나씩 (키 교체와 설정 저장이 겹쳐도 서로의 값을 지우지 않게)
 pub(super) static SAVE_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
+/// 옛 설정이 남았고 길드 목록을 받을 수 있으면 서버마다 적어 넣고 저장한다 (SAVE_LOCK 안에서).
+/// 페어링 전이거나 목록을 못 받으면 그대로 둔다: 빠진 서버의 옛 값이 사라지지 않게
+async fn settled(state: &IPCServer, mut cfg: ChatbotConfig) -> ChatbotConfig {
+    if !has_legacy(&cfg) || super::relay::load_node_token().is_none() {
+        return cfg;
+    }
+    // 호스트 id가 없으면 길드 목록을 받은 것이 아니다 (host_guilds는 빈 목록을 준다)
+    if state.config_store.get_bot_config().await.cloud.host_id.trim().is_empty() {
+        return cfg;
+    }
+    let base = relay_base(state).await;
+    let (guilds, listed) = guild_ids(state, &base, &cfg).await;
+    if listed && settle_legacy(&mut cfg, guilds) {
+        if let Err(e) = state.config_store.set_chatbot(&cfg) {
+            tracing::warn!("[Chatbot] could not save the per-server settings: {}", e);
+        }
+    }
+    cfg
+}
+
 pub async fn put_chatbot(State(state): State<IPCServer>, Json(patch): Json<ChatbotPatch>) -> Response {
     let _turn = SAVE_LOCK.lock().await;
-    let mut cfg = state.config_store.get_chatbot();
+    let mut cfg = settled(&state, state.config_store.get_chatbot()).await;
     let previous = cfg.clone();
     if let Err(e) = apply(&mut cfg, patch) {
         return (StatusCode::BAD_REQUEST, Json(json!({ "success": false, "error": e, "error_code": "validation_failed" }))).into_response();
@@ -369,6 +523,14 @@ fn guild_view(cfg: &ChatbotConfig, guild: &str) -> Value {
     let mut settings = relay_defaults();
     settings.extend(cfg.effective(guild));
     drop_retired(&mut settings);
+    for k in LEGACY_TOOL_KEYS {
+        settings.remove(*k);
+    }
+    // 이 서버의 선택(허용 목록을 거르기 전)과 공통 허용 목록 (null = 모두)
+    let (enabled, tools) = selection(cfg, guild);
+    settings.insert("enabled".into(), json!(enabled));
+    settings.insert("tools".into(), json!(tools));
+    settings.insert(ALLOWED_TOOLS.into(), cfg.settings.get(ALLOWED_TOOLS).cloned().unwrap_or(Value::Null));
     json!({ "success": true, "guildId": guild, "settings": settings, "hasApiKey": cfg.api_key.as_deref().is_some_and(|k| !k.is_empty()) })
 }
 
@@ -498,11 +660,11 @@ mod tests {
     #[test]
     fn settings_reset_to_default_still_reach_the_relay() {
         let mut cfg = ChatbotConfig::default();
-        apply(&mut cfg, patch(json!({"settings": {"enabled": true, "confirmLevel": "danger"}}))).unwrap();
+        apply(&mut cfg, patch(json!({"settings": {"memory": false, "confirmLevel": "danger"}}))).unwrap();
         // GUI는 기본값으로 되돌릴 때 null을 보낸다. 릴레이는 받은 키만 합치므로 빠뜨리면 예전 값이 남는다
-        apply(&mut cfg, patch(json!({"settings": {"enabled": null, "confirmLevel": null}}))).unwrap();
+        apply(&mut cfg, patch(json!({"settings": {"memory": null, "confirmLevel": null}}))).unwrap();
         let body = put_body(&cfg, "g1");
-        assert_eq!(body["enabled"], json!(false));
+        assert_eq!(body["memory"], json!(true));
         assert_eq!(body["confirmLevel"], json!("all"));
         assert_eq!(body["apiKey"], Value::Null, "no key here means delete it there");
         apply(&mut cfg, patch(json!({"settings": {"model": "m2"}, "guilds": {"g1": {"memo": "g1 only"}}}))).unwrap();
@@ -521,14 +683,14 @@ mod tests {
         let text = serde_json::to_string(&pending).unwrap();
         assert_eq!(serde_json::from_str::<ChatbotConfig>(&text).unwrap(), pending);
         let mut cfg = pending;
-        apply(&mut cfg, patch(json!({"settings": {"enabled": true}}))).unwrap();
+        apply(&mut cfg, patch(json!({"settings": {"memory": false}}))).unwrap();
         assert!(!cfg.pending_relay_delete, "a full PUT replaces what the delete would have removed");
     }
 
     #[test]
     fn patch_merges_removes_and_tracks_the_key() {
         let mut cfg = ChatbotConfig::default();
-        apply(&mut cfg, patch(json!({"settings": {"enabled": true, "model": "m"}, "apiKey": "sk-1", "guilds": {"g1": {"memo": "1"}}}))).unwrap();
+        apply(&mut cfg, patch(json!({"settings": {"memory": false, "model": "m"}, "apiKey": "sk-1", "guilds": {"g1": {"memo": "1"}}}))).unwrap();
         assert_eq!(cfg.api_key.as_deref(), Some("sk-1"));
         apply(&mut cfg, patch(json!({"settings": {"model": null}}))).unwrap();
         assert_eq!(cfg.api_key.as_deref(), Some("sk-1"), "a missing apiKey keeps the key");
@@ -546,8 +708,8 @@ mod tests {
         // 옛 GUI·옛 설정 파일이 보내는 값: 릴레이는 고정값을 쓰니 데몬도 버린다
         let mut cfg = ChatbotConfig::default();
         cfg.guilds.insert("g1".into(), Map::from_iter([("sessionSeconds".to_string(), json!(60))]));
-        apply(&mut cfg, patch(json!({"settings": {"enabled": true, "triggerWords": ["사바"], "ambientSeconds": 30}}))).unwrap();
-        assert_eq!(cfg.settings, Map::from_iter([("enabled".to_string(), json!(true))]));
+        apply(&mut cfg, patch(json!({"settings": {"memory": false, "triggerWords": ["사바"], "ambientSeconds": 30}}))).unwrap();
+        assert_eq!(cfg.settings, Map::from_iter([("memory".to_string(), json!(false))]));
         let body = put_body(&cfg, "g1");
         assert!(RETIRED.iter().all(|k| !body.contains_key(*k)));
         assert!(RETIRED.iter().all(|k| guild_view(&cfg, "g1")["settings"].get(*k).is_none()));
@@ -569,6 +731,131 @@ mod tests {
         assert_eq!(cfg.settings["confirmLevel"], json!("danger"));
         apply(&mut cfg, patch(json!({"settings": {"confirmCommands": null}}))).unwrap();
         assert!(!cfg.settings.contains_key("confirmLevel"));
+    }
+
+    /// 켜기와 도구는 서버마다: 공통 허용 도구와 겹친 것만 릴레이에 간다. 허용 목록과 옛 도구 설정은 보내지 않는다
+    #[test]
+    fn each_server_sends_its_own_switch_and_the_allowed_part_of_its_tools() {
+        let mut cfg = ChatbotConfig::default();
+        apply(&mut cfg, patch(json!({
+            "settings": {"allowedTools": ["lol", "pubg", "web_search"]},
+            "guilds": {"g1": {"enabled": true, "tools": ["lol", "images", "web_search"]}},
+        }))).unwrap();
+        let g1 = put_body(&cfg, "g1");
+        assert_eq!(g1["enabled"], json!(true));
+        assert_eq!(g1["tools"], json!(["lol", "web_search"]));
+        for key in ["allowedTools", "disabledTools", "webSearch"] {
+            assert!(!g1.contains_key(key), "{key} must not reach the relay");
+        }
+        // 새 서버는 꺼져 있고 도구도 없다
+        let g2 = put_body(&cfg, "g2");
+        assert_eq!(g2["enabled"], json!(false));
+        assert_eq!(g2["tools"], json!([]));
+        // 허용 목록이 없으면 모두 허용
+        apply(&mut cfg, patch(json!({"settings": {"allowedTools": null}}))).unwrap();
+        assert_eq!(put_body(&cfg, "g1")["tools"], json!(["lol", "images", "web_search"]));
+    }
+
+    /// 옛 설정(공통 켜기·끈 도구·웹 검색 스위치)은 서버마다 적어 넣는다: 켜 둔 서버는 쓰던 도구 그대로, 꺼진 서버는 도구 없이
+    #[test]
+    fn old_settings_are_written_out_per_server() {
+        let mut cfg = ChatbotConfig::default();
+        cfg.settings = Map::from_iter([
+            ("enabled".to_string(), json!(true)),
+            ("disabledTools".to_string(), json!(["images"])),
+            ("webSearch".to_string(), json!(false)),
+            ("memory".to_string(), json!(false)),
+        ]);
+        cfg.guilds.insert("off".into(), Map::from_iter([("enabled".to_string(), json!(false))]));
+        // 옮기기 전에도 같은 값을 보낸다
+        assert_eq!(put_body(&cfg, "on")["tools"], json!(["game_servers", "research", "lol"]));
+        assert_eq!(guild_default(&cfg), json!({"enabled": true, "tools": ["game_servers", "research", "lol"]}));
+
+        assert!(settle_legacy(&mut cfg, ["on".to_string(), "off".to_string()]));
+        assert_eq!(cfg.settings, Map::from_iter([("memory".to_string(), json!(false))]));
+        assert_eq!(cfg.guilds["on"]["enabled"], json!(true));
+        assert_eq!(cfg.guilds["on"]["tools"], json!(["game_servers", "research", "lol"]));
+        assert_eq!(cfg.guilds["off"]["enabled"], json!(false));
+        assert_eq!(cfg.guilds["off"]["tools"], json!([]));
+        // 그 뒤에 연결한 서버는 기본값(꺼짐)이다
+        assert_eq!(put_body(&cfg, "new")["enabled"], json!(false));
+        assert_eq!(guild_default(&cfg), json!({"enabled": false, "tools": []}));
+        assert!(!settle_legacy(&mut cfg, ["on".to_string()]), "nothing left to move");
+
+        // 웹 검색 스위치를 건드리지 않았으면 켜져 있던 것이다
+        let mut plain = ChatbotConfig::default();
+        plain.guilds.insert("g".into(), Map::from_iter([("enabled".to_string(), json!(true)), ("disabledTools".to_string(), json!([]))]));
+        settle_legacy(&mut plain, ["g".to_string()]);
+        assert_eq!(plain.guilds["g"]["tools"], json!(["game_servers", "research", "lol", "images", "web_search"]));
+    }
+
+    /// 켜기·도구는 서버에만, 전체 허용 도구는 공통에만 둔다. 공통 보기의 바꿀 수 있는 키도 그렇다
+    #[test]
+    fn switches_belong_to_servers_and_the_allowed_list_to_the_common_menu() {
+        let mut cfg = ChatbotConfig::default();
+        assert!(apply(&mut cfg, patch(json!({"settings": {"enabled": true}}))).is_err());
+        assert!(apply(&mut cfg, patch(json!({"settings": {"tools": ["lol"]}}))).is_err());
+        assert!(apply(&mut cfg, patch(json!({"guilds": {"g1": {"allowedTools": ["lol"]}}}))).is_err());
+        assert_eq!(cfg, ChatbotConfig::default(), "a refused patch changes nothing");
+        // 지우기(null)는 받는다: 옛 공통 켜기를 손으로 지울 수 있게
+        apply(&mut cfg, patch(json!({"settings": {"enabled": null, "allowedTools": ["lol"]}}))).unwrap();
+        let defaults = view(&cfg)["defaults"].clone();
+        assert!(defaults.get("enabled").is_none() && defaults.get("tools").is_none(), "{defaults}");
+        assert_eq!(defaults["allowedTools"], Value::Null);
+    }
+
+    /// 옛 GUI에서 서버 하나만 켜 둔 경우(공통 값은 기본값이라 저장되지 않음)도 쓰던 도구 그대로 옮긴다
+    #[test]
+    fn a_server_switched_on_alone_keeps_the_tools_it_had() {
+        let mut cfg = ChatbotConfig::default();
+        cfg.guilds.insert("g".into(), Map::from_iter([("enabled".to_string(), json!(true))]));
+        let all = json!(["game_servers", "research", "lol", "images", "web_search"]);
+        assert_eq!(put_body(&cfg, "g")["tools"], all);
+        // 클라이언트도 옮기기 전부터 그 서버의 값을 본다
+        assert_eq!(view(&cfg)["guilds"]["g"]["tools"], all);
+        assert!(settle_legacy(&mut cfg, ["g".to_string()]));
+        assert_eq!(cfg.guilds["g"]["tools"], all);
+    }
+
+    /// 옮긴 뒤 새로 켠 서버는 도구 없이 켜지고, 옛 설정으로 다시 셈하지 않는다
+    #[test]
+    fn a_server_switched_on_after_the_move_starts_with_no_tools() {
+        let mut cfg = ChatbotConfig::default();
+        apply(&mut cfg, patch(json!({"guilds": {"g2": {"enabled": true}}}))).unwrap();
+        assert_eq!(cfg.guilds["g2"]["tools"], json!([]));
+        assert!(!settle_legacy(&mut cfg, ["g2".to_string()]), "nothing old to move");
+        assert_eq!(put_body(&cfg, "g2")["tools"], json!([]));
+    }
+
+    /// 도구 목록은 문자열 배열이나 null만 받는다. 옛 도구 키는 더 받지 않는다
+    #[test]
+    fn tool_lists_must_be_lists_and_the_old_tool_keys_are_refused() {
+        let mut cfg = ChatbotConfig::default();
+        for bad in [
+            json!({"settings": {"allowedTools": "lol"}}),
+            json!({"settings": {"allowedTools": [1]}}),
+            json!({"guilds": {"g": {"tools": "lol"}}}),
+            json!({"settings": {"webSearch": false}}),
+            json!({"guilds": {"g": {"disabledTools": ["lol"]}}}),
+        ] {
+            assert!(apply(&mut cfg, patch(bad.clone())).is_err(), "{bad}");
+        }
+        apply(&mut cfg, patch(json!({"settings": {"allowedTools": ["lol"]}, "guilds": {"g": {"tools": ["lol"]}}}))).unwrap();
+        apply(&mut cfg, patch(json!({"settings": {"allowedTools": null}}))).unwrap();
+        assert!(!cfg.settings.contains_key("allowedTools"));
+    }
+
+    /// 디스코드 `/사바쨩 설정`은 서버 하나의 켜기·도구를 바꾸고, 공통 허용 목록을 함께 본다
+    #[test]
+    fn the_guild_view_shows_its_tools_and_the_allowed_list() {
+        let mut cfg = ChatbotConfig::default();
+        apply(&mut cfg, patch(json!({"settings": {"allowedTools": ["lol"]}, "guilds": {"g1": {"tools": ["lol", "pubg"]}}}))).unwrap();
+        let v = guild_view(&cfg, "g1");
+        assert_eq!(v["settings"]["tools"], json!(["lol", "pubg"]));
+        assert_eq!(v["settings"]["allowedTools"], json!(["lol"]));
+        assert_eq!(v["settings"]["enabled"], json!(false));
+        assert!(v["settings"].get("disabledTools").is_none());
+        assert_eq!(guild_view(&ChatbotConfig::default(), "g1")["settings"]["allowedTools"], Value::Null);
     }
 
     /// 서버 프롬프트 기본 틀: 요청 언어로, 안내는 주석이라 릴레이가 모델에게 보내지 않는다
@@ -593,7 +880,7 @@ mod tests {
     #[test]
     fn view_lists_every_key_with_its_default() {
         let v = view(&ChatbotConfig::default());
-        assert_eq!(v["defaults"], Value::Object(relay_defaults()));
-        assert_eq!(v["defaults"]["enabled"], json!(false));
+        assert_eq!(v["defaults"]["model"], relay_defaults()["model"]);
+        assert_eq!(v["defaults"]["confirmLevel"], json!("all"));
     }
 }

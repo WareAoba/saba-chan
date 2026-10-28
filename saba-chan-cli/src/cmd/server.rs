@@ -888,7 +888,21 @@ async fn finish_start(ctx: &Ctx, sv: &Server, res: Result<Value>, no_wait: bool,
 
 pub async fn stop(ctx: &Ctx, a: StopArgs) -> Result<()> {
     let sv = resolve::server(ctx, a.server.as_deref()).await?;
+    ensure_stop(ctx, &sv, "stop").await?;
     stop_server(ctx, &sv, a.force, a.no_wait).await
+}
+
+/// 켜진 서버를 끊는 명령(정지·재시작)은 앱·웹·CLI에서 늘 묻는다 (GUI 확인 창과 같은 고정 규칙). 꺼진 서버는 끊을 것이 없어 묻지 않는다
+async fn ensure_stop(ctx: &Ctx, sv: &Server, cmd: &str) -> Result<()> {
+    if status_of(&runtime(ctx, sv).await?) == "stopped" {
+        return Ok(());
+    }
+    ask_stop(ctx, sv, cmd)
+}
+
+/// `--yes`면 묻지 않는다
+fn ask_stop(ctx: &Ctx, sv: &Server, cmd: &str) -> Result<()> {
+    ctx.ask.ensure(&t!(&format!("{cmd}.confirm"), name = sv.name))
 }
 
 pub async fn stop_server(ctx: &Ctx, sv: &Server, force: bool, no_wait: bool) -> Result<()> {
@@ -930,6 +944,7 @@ pub async fn stop_server(ctx: &Ctx, sv: &Server, force: bool, no_wait: bool) -> 
 
 pub async fn restart(ctx: &Ctx, a: RestartArgs) -> Result<()> {
     let sv = resolve::server(ctx, a.server.as_deref()).await?;
+    ensure_stop(ctx, &sv, "restart").await?;
     let spin = crate::progress::spinner(&t!("restart.waiting", name = sv.name));
     let mut r = ctx.api.restart(&sv.id, a.force).await;
     spin.finish_and_clear();
@@ -2197,6 +2212,27 @@ mod tests {
         let refused = crate::client::check(200, json!({ "success": false, "error_code": "graceful_stop_unavailable" })).unwrap_err();
         let e = agree_to_unsaved_stop(&ctx, &sv, refused, "stop").unwrap_err();
         assert!(cannot_save_and_exit(&e), "the daemon's code is kept: {e}");
+    }
+
+    /// 정지·재시작은 묻고, `--yes`면 묻지 않는다. 물을 수 없는데 `--yes`도 없으면 실행하지 않는다
+    #[test]
+    fn stopping_or_restarting_asks_unless_yes_is_given() {
+        crate::i18n::init("ko");
+        let ctx = |ask| Ctx {
+            api: crate::client::Api::new(1, None),
+            spawn_port: 1,
+            port_fixed: true,
+            out: crate::output::Out::new(true, false),
+            ask,
+            in_shell: false,
+            attached: false,
+        };
+        let sv = Server { id: "i".into(), name: "mc".into(), module: "minecraft".into(), raw: json!({}) };
+        for cmd in ["stop", "restart"] {
+            assert!(ask_stop(&ctx(crate::prompt::Prompt { enabled: false, yes: true }), &sv, cmd).is_ok());
+            assert!(ask_stop(&ctx(crate::prompt::Prompt { enabled: false, yes: false }), &sv, cmd).is_err());
+            assert!(t!(&format!("{cmd}.confirm"), name = "mc").contains("mc"), "{cmd}");
+        }
     }
 
     /// 가져오기 "옮기기"가 거절되면 데몬 영어 문구 대신 현지화된 까닭과 할 일 한 줄만 보인다

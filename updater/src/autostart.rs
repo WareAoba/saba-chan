@@ -190,13 +190,18 @@ fn desktop_unescape(s: &str) -> String {
     out
 }
 
-pub fn desktop_file(entry: &Entry) -> String {
+/// Desktop Entry `Exec` 값 (프로그램은 따옴표로, 인자는 그대로). 앱 메뉴 항목(설치기)도 같은 규칙이다
+pub fn desktop_exec(entry: &Entry) -> String {
     let mut exec = desktop_quote(&entry.program.to_string_lossy());
     for a in &entry.args {
         exec.push(' ');
         exec.push_str(a);
     }
-    let exec = desktop_escape(&exec);
+    desktop_escape(&exec)
+}
+
+pub fn desktop_file(entry: &Entry) -> String {
+    let exec = desktop_exec(entry);
     format!(
         "[Desktop Entry]\nType=Application\nName={}\nExec={}\nTerminal=false\nNoDisplay=true\nX-GNOME-Autostart-enabled=true\n",
         ENTRY_NAME, exec

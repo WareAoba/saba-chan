@@ -44,7 +44,7 @@ fn is_server_core() -> bool {
     false
 }
 
-/// 화면이 없는 환경인지: 리눅스는 DISPLAY·WAYLAND_DISPLAY가 모두 없을 때, Windows는 Server Core이거나 SSH로
+/// 화면이 없는 환경인지: 리눅스는 SSH로 들어왔거나 DISPLAY·WAYLAND_DISPLAY가 모두 없을 때, Windows는 Server Core이거나 SSH로
 /// 들어왔거나 대화형 세션 이름(SESSIONNAME)이 없을 때(서비스). `--gui`·`--no-gui`가 감지보다 먼저다
 fn detect_profile(gui: bool, no_gui: bool, os: Os, env: impl Fn(&str) -> Option<String>) -> Profile {
     if gui {
@@ -57,7 +57,8 @@ fn detect_profile(gui: bool, no_gui: bool, os: Os, env: impl Fn(&str) -> Option<
     let headless = match os {
         Os::ServerCore => true,
         Os::Windows => set("SSH_CONNECTION") || !set("SESSIONNAME"),
-        Os::Unix => !set("DISPLAY") && !set("WAYLAND_DISPLAY"),
+        // `ssh -X`로 들어온 서버도 DISPLAY가 있다: SSH 세션은 Windows처럼 화면 없는 서버로 본다
+        Os::Unix => set("SSH_CONNECTION") || (!set("DISPLAY") && !set("WAYLAND_DISPLAY")),
     };
     if headless {
         Profile::Headless
@@ -184,7 +185,7 @@ pub async fn run(ctx: &Ctx, args: InstallArgs) -> Result<()> {
         install_path: dir.clone(),
         language: crate::i18n::lang().to_string(),
         create_desktop_shortcut: false,
-        // 데스크톱이면 시작 메뉴에서 앱을 찾을 수 있게 한다 (헤드리스·리눅스는 라이브러리가 건너뛴다)
+        // 데스크톱이면 시작 메뉴(리눅스는 앱 메뉴)에서 앱을 찾을 수 있게 한다 (헤드리스는 라이브러리가 건너뛴다)
         create_start_menu_shortcut: profile == Profile::Desktop,
         profile,
         selected_modules: modules.clone(),
@@ -222,8 +223,13 @@ pub async fn run(ctx: &Ctx, args: InstallArgs) -> Result<()> {
         &t!("install.done", dir = dir.display()),
         &json!({ "ok": true, "dir": dir, "modules": modules, "components": last.installed_components, "warnings": last.warnings }),
     );
-    ctx.out
-        .hint(&t!("install.next", command = next_command(&dir, cfg!(windows))));
+    // 리눅스 데스크톱은 앱 메뉴에 든 GUI가 데몬을 켠다: 앱을 여는 길을 안내한다
+    if profile == Profile::Desktop && cfg!(target_os = "linux") {
+        ctx.out.hint(&t!("install.next_app", command = app_command(&dir)));
+    } else {
+        ctx.out
+            .hint(&t!("install.next", command = next_command(&dir, cfg!(windows))));
+    }
     Ok(())
 }
 
@@ -285,6 +291,12 @@ fn next_command(dir: &Path, windows: bool) -> String {
     }
 }
 
+/// 유닉스 데스크톱 설치 뒤 GUI를 여는 명령 (작은따옴표로 싼 경로, 끝에 `&`로 터미널을 놓아 준다)
+fn app_command(dir: &Path) -> String {
+    let gui = format!("{}/saba-chan-gui", dir.display().to_string().trim_end_matches('/'));
+    format!("'{}' &", gui.replace('\'', r"'\''"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -305,6 +317,11 @@ mod tests {
     #[test]
     fn a_machine_without_a_display_installs_without_the_gui() {
         assert_eq!(detect_profile(false, false, Os::Unix, env(&[])), Profile::Headless);
+        // `ssh -X`의 전달된 화면은 서버의 데스크톱이 아니다
+        assert_eq!(
+            detect_profile(false, false, Os::Unix, env(&[("DISPLAY", "localhost:10.0"), ("SSH_CONNECTION", "1.2.3.4 5 6.7.8.9 22")])),
+            Profile::Headless
+        );
         assert_eq!(
             detect_profile(false, false, Os::Unix, env(&[("DISPLAY", ":0")])),
             Profile::Desktop
@@ -428,5 +445,7 @@ mod tests {
         );
         let unix = next_command(Path::new("/home/me/my apps/saba-chan"), false);
         assert_eq!(unix, "'/home/me/my apps/saba-chan/saba-chan-cli' daemon start");
+        // 리눅스 데스크톱은 데몬 대신 앱을 연다 (앱이 데몬을 켠다)
+        assert_eq!(app_command(Path::new("/home/me/it's/saba-chan/")), "'/home/me/it'\\''s/saba-chan/saba-chan-gui' &");
     }
 }

@@ -1125,3 +1125,176 @@ textarea {
 .port-check-ports .port-router {
     color: var(--stop);
 }
+
+/* ── 권한: 인스턴스 메뉴와 레벨별 명령 계단 (GUI 계단과 같은 규칙, 휴대폰이라 위가 높은 세로 계단) ── */
+.row-open {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 0;
+    background: none;
+    border: 0;
+    text-align: left;
+    cursor: pointer;
+}
+.instance-menu,
+.stairs-view {
+    display: grid;
+    gap: 12px;
+}
+.stairs {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 8px;
+}
+.stair {
+    display: grid;
+    gap: 8px;
+    /* 높은 레벨일수록 오른쪽으로 한 칸씩 올라선 계단 (GUI 계단처럼 낮은 레벨이 왼쪽) */
+    margin-left: calc(min(var(--step), 6) * 8px);
+    padding: 12px;
+    border-left: 3px solid var(--accent);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--accent) calc(4% + var(--step) * 4%), var(--bg-1));
+    transition:
+        box-shadow var(--dur-fast) var(--ease),
+        background-color var(--dur-fast) var(--ease);
+}
+.stair.is-banned {
+    border-left-color: var(--line-strong);
+    background: var(--bg-1);
+}
+.stair.is-over {
+    box-shadow: inset 0 0 0 2px var(--accent);
+    background: color-mix(in srgb, var(--accent) calc(12% + var(--step) * 4%), var(--bg-1));
+}
+.stair-label {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+}
+.stair-num {
+    color: var(--accent);
+    font-size: 12px;
+    font-weight: 700;
+}
+.stair-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+.stair-carry {
+    width: 100%;
+    color: var(--text-2);
+    font-size: 12px;
+}
+.cmd-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 12px;
+    border: 1px solid var(--line-strong);
+    border-radius: 999px;
+    background: var(--bg-0);
+    color: var(--text-1);
+    font-size: 13px;
+    cursor: grab;
+    /* 손가락으로 끌 때 화면이 같이 움직이지 않게 */
+    touch-action: none;
+    user-select: none;
+    transition:
+        opacity var(--dur-fast) var(--ease),
+        box-shadow var(--dur-fast) var(--ease);
+}
+.cmd-chip.is-fixed {
+    cursor: pointer;
+    touch-action: auto;
+}
+.cmd-chip.is-moved {
+    border-color: var(--warn);
+    box-shadow: 0 0 0 1px var(--warn);
+}
+.cmd-chip.is-selected {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent);
+}
+.cmd-chip.is-dragging {
+    position: relative;
+    z-index: 2;
+    cursor: grabbing;
+    box-shadow: 0 8px 24px rgb(0 0 0 / 0.25);
+}
+.cmd-chip.is-legend {
+    cursor: default;
+}
+.dot {
+    display: inline-block;
+    flex: none;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--text-3);
+}
+.dot.tone-ok {
+    background: var(--ok);
+}
+.dot.tone-warn {
+    background: var(--warn);
+}
+.dot.tone-stop {
+    background: var(--stop);
+}
+.dot.tone-info {
+    background: var(--info);
+}
+.chip-edit {
+    display: grid;
+    gap: 8px;
+    padding: 12px 16px;
+    background: var(--bg-1);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+}
+.level-steps {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    min-width: 0;
+}
+.level-step {
+    padding: 4px 8px;
+    border: 1px solid var(--line-strong);
+    border-radius: 8px;
+    background: var(--bg-1);
+    font-size: 13px;
+    cursor: pointer;
+}
+.level-step.is-up {
+    border-color: transparent;
+    background: color-mix(in srgb, var(--accent) 16%, var(--bg-1));
+    color: var(--accent);
+}
+.level-step.is-on {
+    border-color: var(--accent);
+    background: var(--accent);
+    color: var(--text-inverse);
+    font-weight: 700;
+}
+.stair-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    color: var(--text-2);
+    font-size: 12px;
+}
+.stair-legend > span {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
