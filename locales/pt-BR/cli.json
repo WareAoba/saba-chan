@@ -982,7 +982,15 @@
     "credit_balance_none": "Não foi possível obter o saldo agora.",
     "credit_usage": "Uso deste mês ({{month}}, UTC)",
     "credit_usage_line": "{{calls}} chamadas ao modelo · {{input}} tokens de entrada ({{cached}} em cache) · {{output}} tokens de saída",
-    "credit_exhausted": "O crédito acabou ({{time}}). A Saba-chan não consegue responder até recarregar."
+    "credit_exhausted": "O crédito acabou ({{time}}). A Saba-chan não consegue responder até recarregar.",
+    "cat_game_servers": "Servidores de jogo",
+    "cat_games": "Jogos",
+    "cat_info": "Buscar informações",
+    "cat_create": "Criar",
+    "tool_on": "ativada",
+    "tool_off": "desativada",
+    "tool_blocked": "bloqueada nas configurações gerais",
+    "tool_unavailable": "indisponível agora"
   },
   "trust": {
     "verified": "verificado",

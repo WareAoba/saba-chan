@@ -346,8 +346,7 @@
       "ambientEffort": "Effort pour décider d’intervenir",
       "confirmLevel": "Niveau de confirmation avant exécution",
       "memory": "Mémoire",
-      "webSearch": "Recherche web",
-      "disabledTools": "Outils désactivés",
+      "tools": "Outils activés",
       "step": "Étape",
       "from_snapshot": "Depuis la sauvegarde auto du jeu"
     },

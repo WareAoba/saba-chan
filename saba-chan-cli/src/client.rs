@@ -945,6 +945,14 @@ impl Api {
         ))
         .await
     }
+    /// GET /api/relay/node/:guild/chatbot/tools — `{categories, tools: [{name, category, available, unavailable?}]}`
+    pub async fn chatbot_tools(&self, guild_id: &str, relay_url: Option<&str>) -> Result<Value> {
+        self.get(&with_query(
+            &format!("/api/relay/node/{}/chatbot/tools", seg(guild_id)),
+            &[("relayUrl", relay_url.map(str::to_string))],
+        ))
+        .await
+    }
     /// GET /api/chatbot/memo-template?locale= — 서버 프롬프트 기본 틀 `{locale, template}`
     pub async fn chatbot_memo_template(&self, locale: Option<&str>) -> Result<Value> {
         self.get(&with_query("/api/chatbot/memo-template", &[("locale", locale.map(str::to_string))])).await

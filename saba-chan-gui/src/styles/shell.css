@@ -2859,6 +2859,18 @@ button.appbar-preflight {
     font-size: var(--fs-xs);
     color: var(--text-3);
 }
+.cb-tool-group + .cb-tool-group {
+    margin-top: var(--sp-3);
+}
+.cb-tool-category {
+    margin: var(--sp-3) 0 var(--sp-1);
+    font-size: var(--fs-sm);
+    font-weight: 600;
+    color: var(--text-2);
+}
+.cb-toggle-row.locked .dc-list-name {
+    color: var(--text-3);
+}
 .cb-guild {
     display: flex;
     flex-direction: column;

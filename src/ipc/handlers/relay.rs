@@ -380,6 +380,18 @@ pub async fn get_node_chatbot_models(
     signed_get(&base, &format!("/api/nodes/{}/chatbot/models", encode_path_segment(&guild_id)), invalid_response).await
 }
 
+// ── GET /api/relay/node/:guild_id/chatbot/tools ──
+// 말하는 사바쨩이 고를 수 있는 도구 목록 (`{categories, tools: [{name, category, available, unavailable?}]}`). 도구 목록의 원본은 릴레이다
+
+pub async fn get_node_chatbot_tools(
+    Path(guild_id): Path<String>,
+    Query(params): Query<RelayQueryParams>,
+    State(state): State<IPCServer>,
+) -> Response {
+    let base = signed_base(&state, params.relay_url.as_deref()).await;
+    signed_get(&base, &format!("/api/nodes/{}/chatbot/tools", encode_path_segment(&guild_id)), invalid_response).await
+}
+
 // ── GET /api/relay/node/:guild_id/chatbot/credit ──
 // 남은 크레딧(제공사가 일반 키로 알려 줄 때만)과 이번 달 사용량 (`{provider, balanceSupported, balance, usage, exhaustedAt}`, 409 NO_API_KEY는 그대로)
 

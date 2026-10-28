@@ -982,7 +982,15 @@
     "credit_balance_none": "暫時無法取得餘額。",
     "credit_usage": "本月用量（{{month}}，UTC）",
     "credit_usage_line": "模型呼叫 {{calls}} 次 · 輸入 {{input}} token（快取 {{cached}}） · 輸出 {{output}} token",
-    "credit_exhausted": "額度已用完（{{time}}）。儲值前無法回覆。"
+    "credit_exhausted": "額度已用完（{{time}}）。儲值前無法回覆。",
+    "cat_game_servers": "遊戲伺服器",
+    "cat_games": "遊戲相關",
+    "cat_info": "查找資訊",
+    "cat_create": "創作",
+    "tool_on": "開",
+    "tool_off": "關",
+    "tool_blocked": "已在共用設定中封鎖",
+    "tool_unavailable": "暫時無法使用"
   },
   "trust": {
     "verified": "已驗證",

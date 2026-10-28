@@ -7,6 +7,8 @@ import { Segmented } from '../ui/StatusChip';
 import { Avatar, initialOf } from './Avatar';
 import { BotSettingsTab, botSettingsAvailable } from './BotSettingsTab';
 import { ChannelsTab, channelsAvailable } from './ChannelsTab';
+import { ChatbotGuildTab } from './ChatbotGuildTab';
+import { chatbotAvailable } from './ChatbotView';
 import * as L from './levels';
 import * as P from './nodePermissions';
 import { PermissionPanel, permissionsAvailable } from './PermissionsTab';
@@ -403,6 +405,9 @@ export function NodeView({
                     ...(channelsAvailable()
                         ? [{ id: 'channels', label: t('discord.tab_channels'), icon: <Icon name="hash" size="sm" /> }]
                         : []),
+                    ...(chatbotAvailable()
+                        ? [{ id: 'chatbot', label: t('chatbot.nav'), icon: <Icon name="messageSquare" size="sm" /> }]
+                        : []),
                     ...(botSettingsAvailable()
                         ? [{ id: 'bot', label: t('discord.tab_bot'), icon: <Icon name="settings" size="sm" /> }]
                         : []),
@@ -436,6 +441,7 @@ export function NodeView({
                 />
             )}
             {activeTab === 'channels' && <ChannelsTab key={node.guildId} node={node} />}
+            {activeTab === 'chatbot' && <ChatbotGuildTab key={node.guildId} node={node} />}
             {activeTab === 'bot' && <BotSettingsTab key={node.guildId} node={node} />}
             {levels && (activeTab === 'members' || activeTab === 'commands' || activeTab === 'levels') && (
                 <PermissionPanel

@@ -221,6 +221,7 @@ pub static ROUTES: &[Route] = &[
     deny("PUT", "/api/relay/node/{guild_id}/channels"),
     deny("GET", "/api/relay/node/{guild_id}/chatbot/models"),
     deny("GET", "/api/relay/node/{guild_id}/chatbot/credit"),
+    deny("GET", "/api/relay/node/{guild_id}/chatbot/tools"),
     deny("GET", "/api/relay/bot-invite"),
     deny("POST", "/api/relay/pair/initiate"),
     deny("GET", "/api/relay/pair/{code}/status"),

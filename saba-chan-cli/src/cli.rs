@@ -474,6 +474,8 @@ pub enum ChatbotCmd {
     Models { guild: Option<String> },
     /// Remaining credit (only providers that report it for a regular key) and this month's usage of one Discord server
     Credit { guild: Option<String> },
+    /// Tools by category and whether each is on in one Discord server (change: `chatbot set tools=[lol,pubg] --guild ...`)
+    Tools { guild: Option<String> },
     /// Print the server prompt template (save it and use `chatbot set memo=@FILE --guild ...`)
     Template {
         /// Language of the template (default: the app language)

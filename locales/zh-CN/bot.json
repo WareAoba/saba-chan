@@ -346,8 +346,7 @@
       "ambientEffort": "插话判断推理强度",
       "confirmLevel": "执行前确认级别",
       "memory": "记忆",
-      "webSearch": "网页搜索",
-      "disabledTools": "已关闭的工具组",
+      "tools": "启用的工具",
       "step": "步骤",
       "from_snapshot": "来自游戏自动备份"
     },

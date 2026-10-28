@@ -1192,7 +1192,15 @@
     "credit_balance_none": "今は残高を確認できませんでした。",
     "credit_usage": "今月の使用量（{{month}}、UTC基準）",
     "credit_usage_line": "モデル呼び出し {{calls}}回 · 入力 {{input}}トークン（キャッシュ {{cached}}） · 出力 {{output}}トークン",
-    "credit_exhausted": "クレジットがなくなりました（{{time}}）。チャージするまで返事できません。"
+    "credit_exhausted": "クレジットがなくなりました（{{time}}）。チャージするまで返事できません。",
+    "cat_game_servers": "ゲームサーバー",
+    "cat_games": "ゲーム関連",
+    "cat_info": "情報検索",
+    "cat_create": "作成",
+    "tool_on": "オン",
+    "tool_off": "オフ",
+    "tool_blocked": "共通設定でブロック",
+    "tool_unavailable": "今は使えません"
   },
   "trust": {
     "verified": "確認済み",
