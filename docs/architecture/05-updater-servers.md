@@ -543,7 +543,7 @@ Tauri 커맨드(`installer/gui/src-tauri/src/lib.rs`): `get_installer_state`, `s
 | U7 | ~~설정이 저장되지 않는다, GUI가 POST를 쓴다~~ → 해결: `config.json` `updates` 절, GUI도 PUT | `updates.rs:844-942`, `saba-chan-gui/src/api/createApi.js:754` |
 | U8 | ~~CLI의 `/api/install/*`은 daemon에 없다~~(호출이 지워졌다). ~~CLI apply·download는 여전히 body 없는 POST다~~ → 해결: PR #6 CLI는 본문을 보내고, 데몬도 본문 없는 apply·download를 전체 대상으로 받는다 | `saba-chan-cli/src/client.rs:774-784`, `src/ipc/updates.rs:348-371` |
 | U9 | ~~CLI `launch-apply`가 넘기는 `--install-root`와 대상 인자를 updater가 무시한다~~ → 해결: PR #6 CLI `update apply`는 daemon의 `launch-updater`만 부른다 | `saba-chan-cli/src/cmd/update.rs:237-249` |
-| U10 | ~~CI가 windows-x64 릴리즈만 만든다~~ → linux-x64(헤드리스)는 `release.yml`이 빌드해 manifest `platforms`에 싣는다(D3c). macOS는 아직 없다 | `package-release.py`, `release.yml` |
+| U10 | ~~CI가 windows-x64 릴리즈만 만든다~~ → linux-x64(헤드리스, 0.1.12부터 GUI도)와 linux-arm64(헤드리스, 0.1.12)는 `release.yml`이 빌드해 manifest `platforms`에 싣는다(D3c). macOS는 아직 없다 | `package-release.py`, `release.yml` |
 | U11 | ~~`generate-manifest.py`, `release-manifest.json` 템플릿~~ 지워졌다 | `.github/` |
 | U12 | ~~모듈과 익스텐션 소스가 4갈래로 갈린다~~ 해결됨: 모두 같은 릴리즈 manifest | §1.4 |
 | U13 | `Program Files` 기본 설치에 권한 상승 없이 업데이트를 적용한다 | installer `lib.rs:797-801` |
