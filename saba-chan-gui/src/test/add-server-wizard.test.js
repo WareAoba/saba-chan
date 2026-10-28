@@ -129,6 +129,9 @@ describe('새 서버 만들기 마법사', () => {
         window.api.moduleListVersions.mockReturnValue(new Promise(() => {}));
         fireEvent.click(screen.getByText('vanilla'));
         fireEvent.click(screen.getByText('paper'));
+        // 앞 종류의 목록에서 다시 고를 수도 없다
+        fireEvent.click(screen.getByText('Latest version (recommended)', { selector: '.custom-dropdown-label' }));
+        expect(screen.queryByText('1.21.1')).toBeNull();
         await submitWizard();
         expect(onAddServer.mock.calls[0][0]).toEqual({
             name: 'minecraft',

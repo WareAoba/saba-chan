@@ -78,6 +78,7 @@ export function AddServerSheet({ api, onClose }) {
                     if (!alive) return;
                     const list = releaseVersions(res);
                     setVersions(list);
+                    setVersion((picked) => (list.includes(picked) ? picked : ''));
                 })
                 .catch(() => alive && setVersion(''));
         }, 250);
