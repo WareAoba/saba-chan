@@ -373,7 +373,7 @@ async fn versions(
     let spin = crate::progress::spinner(&t!("module.fetching_versions"));
     let r = match version {
         Some(v) => ctx.api.module_version(name, v).await,
-        None => ctx.api.module_versions(name, snapshots, page, per_page).await,
+        None => ctx.api.module_versions(name, snapshots, page, per_page, None).await,
     };
     spin.finish_and_clear();
     let r = r?;

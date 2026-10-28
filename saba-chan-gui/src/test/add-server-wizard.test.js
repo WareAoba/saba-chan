@@ -100,6 +100,27 @@ describe('새 서버 만들기 마법사', () => {
         });
     });
 
+    it('버전 목록은 고른 서버 종류로 다시 묻고, 그 종류에 없는 버전은 고른 것을 푼다', async () => {
+        open();
+        await waitFor(() => expect(window.api.moduleListVersions).toHaveBeenCalledWith('minecraft', { per_page: 50, settings: {} }));
+        fireEvent.click(screen.getByText('Latest version (recommended)'));
+        await waitFor(() => expect(screen.getByText('1.21.1')).toBeTruthy());
+        fireEvent.click(screen.getByText('1.21.1'));
+        window.api.moduleListVersions.mockResolvedValue({ versions: [{ id: '1.20.6', type: 'release' }] });
+        fireEvent.click(screen.getByText('vanilla'));
+        fireEvent.click(screen.getByText('paper'));
+        await waitFor(() =>
+            expect(window.api.moduleListVersions).toHaveBeenLastCalledWith('minecraft', {
+                per_page: 50,
+                settings: { server_type: 'paper' },
+            }),
+        );
+        await waitFor(() => expect(screen.getByText('Latest version (recommended)')).toBeTruthy());
+        fireEvent.click(screen.getByText('Latest version (recommended)'));
+        expect(screen.getByText('1.20.6')).toBeTruthy();
+        expect(screen.queryByText('1.21.1')).toBeNull();
+    });
+
     it('기본값만 고르면 버전·폴더·실행 방식·포트를 보내지 않는다 (데몬이 정한다)', async () => {
         const onAddServer = open();
         await submitWizard();

@@ -313,6 +313,8 @@ export function createApi({ invoke, hub }) {
                     include_snapshots: options?.include_snapshots ? 'true' : undefined,
                     page: options?.page || undefined,
                     per_page: options?.per_page || undefined,
+                    // 고른 설정(서버 종류 등): 그 설정으로 받을 수 있는 버전만
+                    settings: options?.settings ? JSON.stringify(options.settings) : undefined,
                 });
                 return (await get(`/api/module/${encodeURIComponent(moduleName)}/versions${qs}`, { timeout: 15000 }))
                     .data;

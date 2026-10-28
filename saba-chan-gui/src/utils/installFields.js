@@ -36,6 +36,12 @@ export const suggestName = (moduleName, servers) => {
     }
 };
 
+/** 버전 목록을 물을 설정: 고른 추천 설정 위에 고친 설치 칸 (데몬 만들기가 합치는 순서와 같다) */
+export const versionSettings = (module, installValues, preset) => ({
+    ...(module?.presets?.find((p) => p.id === preset)?.settings || {}),
+    ...installSettings(installValues),
+});
+
 /** 고를 서버 버전이 있는가: 내려받아 설치하는 모듈만 (`[install] method = "download"`, 데몬이 `list_versions`로 고른다) */
 export const choosesVersion = (module) => module?.install?.method === 'download';
 

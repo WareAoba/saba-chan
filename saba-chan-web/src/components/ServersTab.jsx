@@ -6,6 +6,7 @@ import {
     nameTaken,
     releaseVersions,
     suggestName,
+    versionSettings,
 } from '@gui/utils/installFields';
 import { gameNameOf, playersText, primaryAction, viewStatus } from '@gui/utils/serverView';
 import { useEffect, useState } from 'react';
@@ -56,19 +57,28 @@ export function AddServerSheet({ api, onClose }) {
         setManaged(true);
     };
 
-    // 서버 파일을 받는 모듈은 고를 수 있는 릴리스를 묻는다 (못 받으면 최신만)
+    // 서버 파일을 받는 모듈은 고른 설정(서버 종류 등)으로 받을 수 있는 릴리스를 묻는다 (못 받으면 최신만).
+    // 설정을 바꾸면 다시 묻고, 새 목록에 없는 버전을 골라 두었으면 최신으로 돌린다
     const downloads = choosesVersion(chosen);
+    const versionKey = downloads ? JSON.stringify(versionSettings(chosen, installValues, preset)) : '';
     useEffect(() => {
-        setVersions([]);
-        if (!downloads) return;
+        if (!versionKey) return setVersions([]);
         let alive = true;
-        Promise.resolve(api.moduleListVersions?.(module, { per_page: 50 }))
-            .then((res) => alive && setVersions(releaseVersions(res)))
-            .catch(() => {});
+        const timer = setTimeout(() => {
+            Promise.resolve(api.moduleListVersions?.(module, { per_page: 50, settings: JSON.parse(versionKey) }))
+                .then((res) => {
+                    if (!alive) return;
+                    const list = releaseVersions(res);
+                    setVersions(list);
+                    setVersion((picked) => (picked && !list.includes(picked) ? '' : picked));
+                })
+                .catch(() => {});
+        }, 250);
         return () => {
             alive = false;
+            clearTimeout(timer);
         };
-    }, [api, module, downloads]);
+    }, [api, module, versionKey]);
 
     // 만들기와 그 확인에 보내는 몸체. 고르지 않은 것(최신 버전, 사바쨩이 관리)은 보내지 않는다 (GUI createBody와 같다)
     const requestBody = () => {
