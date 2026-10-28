@@ -17,6 +17,8 @@
     "ask_source": "Como você quer configurar?",
     "ask_preset": "Começar com uma predefinição?",
     "no_preset": "Configuração padrão",
+    "agreements_declined": "O servidor não foi criado porque os termos não foram aceitos.",
+    "not_installable": "{{key}}: o saba-chan não consegue instalar um servidor novo com este valor. Opções: {{choices}}",
     "created_installing": "{{name}} criado. Instalando os arquivos do servidor...",
     "folder_other_game": "{{dir}} parece ser de outro jogo ({{games}}).",
     "folder_unrecognized": "Nenhum servidor reconhecido em {{dir}}.",
@@ -131,7 +133,13 @@
     "notice_is_on": "{{server}}: alerta de início ligado",
     "notice_is_off": "{{server}}: alerta de início desligado",
     "notice_on_saved": "O canal de alertas de {{guild}} será avisado quando {{server}} iniciar.",
-    "notice_off_saved": "{{guild}} não será mais avisado quando {{server}} iniciar."
+    "notice_off_saved": "{{guild}} não será mais avisado quando {{server}} iniciar.",
+    "confirm_direct": "Pedidos ao bot",
+    "confirm_chatbot": "Saba-chan falante",
+    "confirm_all": "Todos os comandos",
+    "confirm_caution": "Cautela ou mais",
+    "confirm_danger": "Só perigosos",
+    "confirm_none": "Não perguntar"
   },
   "col": {
     "players": "Jogadores",
@@ -752,7 +760,8 @@
       "remote.forget": "Esquecer um daemon remoto (conecte de novo com `remote connect`)",
       "config.autostart": "O que inicia quando você entra neste PC: off, daemon (só o daemon e a bandeja) ou full (com a janela da GUI). Sem modo mostra o valor atual",
       "config.browse": "Pastas e arquivos no PC do daemon (com --daemon, o PC remoto). Sem caminho, unidades ou /",
-      "bot.notice": "Avisar no canal de alertas do servidor do Discord quando a Saba-chan inicia um servidor (desligado por padrão). Sem servidor: ver. Servidor com `--on`/`--off`: mudar"
+      "bot.notice": "Avisar no canal de alertas do servidor do Discord quando a Saba-chan inicia um servidor (desligado por padrão). Sem servidor: ver. Servidor com `--on`/`--off`: mudar",
+      "bot.confirm": "Quando o bot pergunta com um botão do Discord antes de executar (all, caution, danger, none). Sem opções: mostrar"
     },
     "arg": {
       "module.maker.game": "Jogo para o primeiro pedido",
@@ -840,7 +849,9 @@
       "config.browse.path": "Caminho completo da pasta",
       "config.browse.files": "Mostrar também arquivos com estas extensões (separadas por vírgula, * para todos)",
       "bot.notice.on": "Ligar o alerta de início",
-      "bot.notice.off": "Desligar o alerta de início"
+      "bot.notice.off": "Desligar o alerta de início",
+      "bot.confirm.direct": "Pedidos ao bot — Comandos com prefixo e comandos de barra.",
+      "bot.confirm.chatbot": "Saba-chan falante — Tarefas de administração escolhidas pela Saba-chan falante e pedidos que misturam várias pessoas sempre perguntam, seja qual for este ajuste."
     },
     "after": "Os nomes podem ser parciais (ex.: start pal). Sem argumentos em um terminal, abre o menu em tela cheia (SABA_NO_TUI=1: o shell interativo).\nEm scripts, use --json e --yes. Códigos de saída: 0 ok · 1 falha · 2 uso · 3 daemon inacessível · 4 não encontrado · 130 cancelado"
   },

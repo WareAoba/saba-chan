@@ -735,6 +735,33 @@ textarea {
 .field-row .hint {
     grid-column: 1 / -1;
 }
+/* 만들기 화면: 이미 있는 이름, 모듈 약관 */
+.hint-error {
+    margin-top: -12px;
+    color: var(--stop);
+}
+.agreements {
+    margin: 0;
+    padding: 0;
+    border: 0;
+}
+.agreements legend {
+    margin-bottom: 4px;
+    padding: 0;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-2);
+}
+.agreements .field-row {
+    display: grid;
+    gap: 8px;
+}
+.agreement {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+}
 .field-locked .locked {
     display: flex;
     align-items: center;

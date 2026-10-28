@@ -1,9 +1,9 @@
-//! 디스코드 길드 설정 (I2): 응답 언어·잠자기·음악 기능
+//! 디스코드 길드 설정 (I2): 응답 언어·잠자기·음악 기능·직접 요청 되묻기 단계
 //!
 //! 원본은 데몬 config.json `relay.nodeSettings[<guild>].discord`다. 바꿀 때마다, 그리고 릴레이 에이전트가 연결될 때
 //! 릴레이 `PATCH /api/nodes/:guild/settings`로 맞춘다. 봇 설정 저장(`PUT /api/config/bot`)은 이 블록을 바꾸지 않는다.
 //!
-//! - `GET /api/discord/:guild/settings` → `{guildId, locale, sleeping, music}`
+//! - `GET /api/discord/:guild/settings` → `{guildId, locale, sleeping, music, confirmLevel}`
 //! - `PATCH /api/discord/:guild/settings` 바꿀 키만 (`music` 안도 부분) → `{success, settings, sync}`.
 //!   틀린 값은 400 `invalid_input {field, reason}`, 페어링이 없으면 409 `not_paired`.
 //!   릴레이가 400으로 거절하면 저장하지 않는다. 닿지 않으면 저장하고 `sync.ok:false` (다음 연결 때 맞춘다)
@@ -36,7 +36,12 @@ pub struct GuildSettings {
     pub locale: String,
     pub sleeping: bool,
     pub music: Music,
+    /// 봇에게 직접 요청한 명령을 버튼으로 되묻는 단계 (`CONFIRM_LEVELS`). 데몬만 보고 릴레이에는 보내지 않는다
+    pub confirm_level: String,
 }
+
+/// 되묻기 단계: 모두 / 주의 이상 / 위험만 / 묻지 않음 (`crate::actions::level_asks`)
+pub const CONFIRM_LEVELS: &[&str] = &["all", "caution", "danger", "none"];
 
 /// 범위는 릴레이 `nodeSettingsSchema`와 같다
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -51,7 +56,7 @@ pub struct Music {
 
 impl Default for GuildSettings {
     fn default() -> Self {
-        Self { locale: AUTO_LOCALE.into(), sleeping: false, music: Music::default() }
+        Self { locale: AUTO_LOCALE.into(), sleeping: false, music: Music::default(), confirm_level: "danger".into() }
     }
 }
 
@@ -141,6 +146,10 @@ impl GuildSettings {
                     next.locale = l.to_string();
                 }
                 "sleeping" => next.sleeping = v.as_bool().ok_or(("sleeping".into(), "must be a boolean"))?,
+                "confirmLevel" => match v.as_str() {
+                    Some(l) if CONFIRM_LEVELS.contains(&l) => next.confirm_level = l.to_string(),
+                    _ => return Err(("confirmLevel".into(), "unknown level")),
+                },
                 "music" => {
                     let m = v.as_object().ok_or(("music".into(), "must be an object"))?;
                     for (mk, mv) in m {

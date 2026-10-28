@@ -37,6 +37,8 @@ export async function initI18n(language = pickLanguage()) {
         ns: ['web', 'common'],
         defaultNS: 'web',
         interpolation: { escapeValue: false },
+        // 모듈 locales를 나중에 붙여도 번역된 이름으로 다시 그린다 (registerModuleLocales)
+        react: { bindI18nStore: 'added' },
     });
     document.documentElement.lang = language;
     document.title = i18n.t('app_name');
@@ -44,3 +46,20 @@ export async function initI18n(language = pickLanguage()) {
 }
 
 export default i18n;
+
+const moduleLocalesLoaded = new Set();
+
+/** 모듈 locales(`mod_<이름>`)를 붙인다: 게임 이름·설정 이름·선택지·약관 (GUI useServerStore와 같다).
+ * 모듈 판마다 한 번이고, 받지 못한 모듈은 다음 목록 때 다시 받는다. 붙이면 화면이 다시 그려진다(`bindI18nStore`) */
+export async function registerModuleLocales(api, modules) {
+    const pending = (modules || []).filter((m) => !moduleLocalesLoaded.has(`${m.name}@${m.version || ''}`));
+    await Promise.all(
+        pending.map(async (m) => {
+            const all = await api.moduleGetLocales?.(m.name);
+            const entries = Object.entries(all || {}).filter(([, data]) => data && typeof data === 'object');
+            if (entries.length === 0) return;
+            for (const [lang, data] of entries) i18n.addResourceBundle(lang, `mod_${m.name}`, data, true, true);
+            moduleLocalesLoaded.add(`${m.name}@${m.version || ''}`);
+        }),
+    );
+}

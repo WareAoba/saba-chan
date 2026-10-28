@@ -21,7 +21,7 @@ pub(crate) fn ipc_port() -> u16 {
 
 /// Python 실행마다 넣는 데몬 연결 정보.
 /// - `SABA_IPC_PORT`, `SABA_IPC_URL`: 데몬 API 주소
-/// - `SABA_TOKEN_PATH`: `X-Saba-Token` 값이 든 파일 (토큰 자체는 env에 넣지 않는다)
+/// - IPC 토큰(`SABA_TOKEN_PATH`)은 주지 않는다: 데몬에 부탁할 일은 HOST 통로(`SABA_HOST_DIR`, host.rs)로만 한다
 /// - `SABA_LANG`: 요청이 고른 언어(Accept-Language), 없으면 지금 GUI 언어(고르기 전에는 OS 언어). 언어를 바꿔도 데몬은 재시작하지 않으므로 매번 읽는다.
 /// - `TEMP`·`TMP`·`TMPDIR`·`PIP_CACHE_DIR`: 데이터 폴더 안 (제거기가 지운다. 시스템 임시 폴더·사용자 pip 캐시에 흔적을 남기지 않는다).
 ///   격리 실행은 그 뒤에 자기 임시 폴더로 덮는다
@@ -30,10 +30,6 @@ fn daemon_env() -> Vec<(&'static str, String)> {
     let mut env = vec![
         ("SABA_IPC_PORT", port.to_string()),
         ("SABA_IPC_URL", format!("http://127.0.0.1:{}", port)),
-        (
-            "SABA_TOKEN_PATH",
-            saba_chan_updater_lib::constants::token_file_path().to_string_lossy().into_owned(),
-        ),
     ];
     let lang = crate::audit::current().lang.unwrap_or_else(|| {
         saba_chan_updater_lib::config_file::ConfigFile::default_location()
@@ -62,7 +58,7 @@ const SECRET_ENV_MARKERS: &[&str] = &["TOKEN", "SECRET", "PASSWORD", "PASSWD", "
 
 fn is_secret_env(name: &str) -> bool {
     let upper = name.to_ascii_uppercase();
-    upper != "SABA_TOKEN_PATH" && SECRET_ENV_MARKERS.iter().any(|m| upper.contains(m))
+    SECRET_ENV_MARKERS.iter().any(|m| upper.contains(m))
 }
 
 /// 시간 초과한 Python과 그것이 띄운 프로세스를 함께 끝낸다.
@@ -1071,8 +1067,7 @@ async fn spawn_plugin(
         cmd.env("PYTHONPYCACHEPREFIX", &iso.pycache)
             .env("TEMP", &iso.temp)
             .env("TMP", &iso.temp)
-            .env("TMPDIR", &iso.temp)
-            .env_remove("SABA_TOKEN_PATH");
+            .env("TMPDIR", &iso.temp);
         if let Some(data) = &iso.data {
             cmd.env("SABA_EXTENSION_DATA_DIR", data);
         }
@@ -1952,10 +1947,12 @@ print(json.dumps(codes))
 
     #[test]
     fn secret_looking_variables_are_not_passed_to_python() {
-        for name in ["DISCORD_TOKEN", "openai_api_key", "AWS_SECRET_ACCESS_KEY", "DB_PASSWORD", "GH_APIKEY", "GOOGLE_CREDENTIALS"] {
+        // 데몬 IPC 토큰 파일 경로도 물려주지 않는다: 모듈·익스텐션은 데몬 API를 직접 부르지 않고 HOST 통로로만 부탁한다
+        for name in ["DISCORD_TOKEN", "openai_api_key", "AWS_SECRET_ACCESS_KEY", "DB_PASSWORD", "GH_APIKEY", "GOOGLE_CREDENTIALS", "SABA_TOKEN_PATH"] {
             assert!(is_secret_env(name), "{name}");
         }
-        for name in ["SABA_TOKEN_PATH", "PATH", "APPDATA", "JAVA_HOME", "SYSTEMROOT", "KEYBOARD_LAYOUT"] {
+        assert!(!super::daemon_env().iter().any(|(k, _)| *k == "SABA_TOKEN_PATH"));
+        for name in ["PATH", "APPDATA", "JAVA_HOME", "SYSTEMROOT", "KEYBOARD_LAYOUT"] {
             assert!(!is_secret_env(name), "{name}");
         }
     }

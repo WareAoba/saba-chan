@@ -429,7 +429,6 @@
     "stop_timeout_toast": "⚠️ Stopping {{name}}. This may take some time.",
     "unexpected_stop_toast": "⚠️ {{name}} server stopped unexpectedly!",
     "external_start_toast": "ℹ️ {{name}} was started outside Saba-chan",
-    "status_check_failed_title": "Status check failed",
     "add_server_name_empty_title": "Input Error",
     "add_server_name_empty_message": "Enter a server name",
     "add_module_empty_title": "Input Error",
@@ -476,7 +475,8 @@
     "stdin_unconfirmed": "Couldn't confirm the command was sent. Check the console before trying again.",
     "move_cross_volume": "A folder on another drive can't be moved. Import it with \"Keep it where it is\" instead.",
     "move_in_use": "The folder could not be moved. Stop the server in this folder, close any program that has it open, and try again.",
-    "move_failed": "The folder could not be moved. Import it with \"Keep it where it is\" instead."
+    "move_failed": "The folder could not be moved. Import it with \"Keep it where it is\" instead.",
+    "not_installable": "saba-chan can't install a server with the chosen setting. Pick another value."
   },
   "settings": {
     "save_failed_title": "Settings save failed",
@@ -1056,7 +1056,13 @@
       "not_loaded": "Couldn't read this server's settings from the relay. The values shown are defaults and can't be changed. Reload once connected.",
       "err_not_paired": "This server isn't paired.",
       "err_invalid": "Invalid value: {{field}}",
-      "err_generic": "Couldn't change bot settings."
+      "err_generic": "Couldn't change bot settings.",
+      "confirm_title": "Ask before running",
+      "confirm_desc": "Before running, the bot asks the person who requested it again with a Discord button. Only that person can press it. In the app, web and CLI, dangerous commands and stop/restart always ask, whatever this setting says.",
+      "confirm_direct": "Requests to the bot",
+      "confirm_direct_hint": "Prefix commands and slash commands.",
+      "confirm_chatbot": "Talking Saba-chan",
+      "confirm_chatbot_hint": "Admin tasks picked by Talking Saba-chan and requests mixing several people always ask, whatever this setting says."
     },
     "channels_notify": "Alert channel",
     "channels_notify_hint": "Crashes, auto restarts, updates, finished backups and scheduled restart warnings are posted here.",
@@ -1255,8 +1261,6 @@
     "ambient_effort_hint": "Low is recommended. If she decides to speak, she thinks once more at the conversation effort before sending.",
     "tools_title": "Tools",
     "tools_desc": "Choose which tools Talking Saba-chan may use and when she asks first.",
-    "confirm_level": "Ask before running",
-    "confirm_level_hint": "Dangerous commands and admin tasks always ask, and deleting, stopping the daemon, updates, permissions and secrets are never allowed. User permissions set in the app always apply.",
     "confirm_all": "Every command",
     "confirm_caution": "Caution and above",
     "confirm_danger": "Dangerous only",
@@ -1305,7 +1309,8 @@
     "models_err_QUOTA_EXCEEDED": "The API key is over its usage quota.",
     "models_err_PROVIDER_UNAVAILABLE": "Could not reach the model provider. Try again shortly.",
     "models_err_FAILED": "Could not load the model list.",
-    "model_fallback": "The chosen model ({{model}}) is unavailable, so {{fallback}} is used instead. Save to make {{fallback}} the new model."
+    "model_fallback": "The chosen model ({{model}}) is unavailable, so {{fallback}} is used instead. Save to make {{fallback}} the new model.",
+    "confirm_none": "Don't ask"
   },
   "module_audit": {
     "title": "Module '{{module}}' uses capabilities it doesn't declare.",

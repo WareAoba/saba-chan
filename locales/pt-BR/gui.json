@@ -429,7 +429,6 @@
     "stop_timeout_toast": "⚠️ Parando o servidor {{name}}. Isso pode levar algum tempo.",
     "unexpected_stop_toast": "⚠️ O servidor {{name}} parou inesperadamente!",
     "external_start_toast": "ℹ️ O servidor {{name}} foi iniciado fora do Saba-chan",
-    "status_check_failed_title": "Falha na verificação de status",
     "add_server_name_empty_title": "Erro de Entrada",
     "add_server_name_empty_message": "Digite o nome do servidor",
     "add_module_empty_title": "Erro de Entrada",
@@ -476,7 +475,8 @@
     "stdin_unconfirmed": "Não foi possível confirmar se o comando foi enviado. Verifique o console antes de tentar de novo.",
     "move_cross_volume": "Não é possível mover uma pasta de outra unidade. Importe-a com \"Deixar onde está\".",
     "move_in_use": "Não foi possível mover a pasta. Pare o servidor desta pasta, feche os programas que a estão usando e tente de novo.",
-    "move_failed": "Não foi possível mover a pasta. Importe-a com \"Deixar onde está\"."
+    "move_failed": "Não foi possível mover a pasta. Importe-a com \"Deixar onde está\".",
+    "not_installable": "O saba-chan não consegue instalar um servidor com a configuração escolhida. Escolha outro valor."
   },
   "settings": {
     "save_failed_title": "Falha ao salvar configurações",
@@ -1056,7 +1056,13 @@
       "not_loaded": "Não foi possível ler as configurações deste servidor no relay. Os valores exibidos são padrões e não podem ser alterados. Recarregue quando estiver conectado.",
       "err_not_paired": "Este servidor não está pareado.",
       "err_invalid": "Valor inválido: {{field}}",
-      "err_generic": "Não foi possível alterar as configurações do bot."
+      "err_generic": "Não foi possível alterar as configurações do bot.",
+      "confirm_title": "Perguntar antes de executar",
+      "confirm_desc": "Antes de executar, o bot pergunta de novo a quem pediu, com um botão do Discord. Só essa pessoa pode apertar. No app, na web e na CLI, comandos perigosos e parar ou reiniciar sempre perguntam, seja qual for este ajuste.",
+      "confirm_direct": "Pedidos ao bot",
+      "confirm_direct_hint": "Comandos com prefixo e comandos de barra.",
+      "confirm_chatbot": "Saba-chan falante",
+      "confirm_chatbot_hint": "Tarefas de administração escolhidas pela Saba-chan falante e pedidos que misturam várias pessoas sempre perguntam, seja qual for este ajuste."
     },
     "channels_notify": "Canal de alertas",
     "channels_notify_hint": "Falhas, reinícios automáticos, atualizações, backups concluídos e avisos de reinício agendado são publicados aqui.",
@@ -1255,8 +1261,6 @@
     "ambient_effort_hint": "Recomendado: Baixo. Se decidir falar, pensa de novo com o esforço da conversa antes de enviar.",
     "tools_title": "Ferramentas",
     "tools_desc": "Escolha quais ferramentas a Saba-chan falante pode usar e quando ela pergunta antes.",
-    "confirm_level": "Perguntar antes de executar",
-    "confirm_level_hint": "Comandos perigosos e tarefas de administração sempre perguntam; apagar, parar o daemon, atualizar, permissões e segredos nunca são permitidos. As permissões de usuário do app sempre valem.",
     "confirm_all": "Todos os comandos",
     "confirm_caution": "Cautela ou mais",
     "confirm_danger": "Só perigosos",
@@ -1305,7 +1309,8 @@
     "models_err_QUOTA_EXCEEDED": "A chave de API excedeu a cota de uso.",
     "models_err_PROVIDER_UNAVAILABLE": "Não foi possível contatar o provedor de modelos. Tente de novo em instantes.",
     "models_err_FAILED": "Não foi possível carregar a lista de modelos.",
-    "model_fallback": "O modelo escolhido ({{model}}) não está disponível, então {{fallback}} é usado no lugar. Salve para tornar {{fallback}} o novo modelo."
+    "model_fallback": "O modelo escolhido ({{model}}) não está disponível, então {{fallback}} é usado no lugar. Salve para tornar {{fallback}} o novo modelo.",
+    "confirm_none": "Não perguntar"
   },
   "module_audit": {
     "title": "O módulo '{{module}}' usa recursos que não declara.",

@@ -105,6 +105,7 @@ pub async fn run(ctx: &Ctx, cmd: BotCmd) -> Result<()> {
             let patch = (!music.is_empty()).then(|| json!({ "music": music }));
             discord_settings(ctx, &resolve::guild(ctx, guild.as_deref()).await?, patch).await
         }
+        BotCmd::Confirm { guild, direct, chatbot } => confirm(ctx, &resolve::guild(ctx, guild.as_deref()).await?, direct, chatbot).await,
         BotCmd::Invite => {
             let cfg = ctx.api.bot_config().await?;
             let r = ctx.api.bot_invite(relay_of(&cfg)).await?;
@@ -609,6 +610,31 @@ async fn discord_settings(ctx: &Ctx, guild: &str, patch: Option<Value>) -> Resul
         }
     };
     ctx.out.data(&r, print_discord_settings);
+    Ok(())
+}
+
+/// 되묻기 단계 보기·바꾸기: 직접 요청은 디스코드 설정 `confirmLevel`, 말하는 사바쨩은 이 서버의 챗봇 설정 `confirmLevel` (GUI 봇 설정 탭과 같다)
+async fn confirm(ctx: &Ctx, guild: &str, direct: Option<String>, chatbot: Option<String>) -> Result<()> {
+    if let Some(level) = &direct {
+        ctx.api.set_discord_settings(guild, json!({ "confirmLevel": level })).await?;
+    }
+    if let Some(level) = &chatbot {
+        ctx.api.save_chatbot(json!({ "guilds": { guild: { "confirmLevel": level } } })).await?;
+    }
+    if (direct.is_some() || chatbot.is_some()) && !ctx.out.json {
+        say!("{} {}", console::style("✓").green().bold(), t!("bot.discord_saved"));
+    }
+    let direct = ctx.api.discord_settings(guild).await?;
+    let chatbot = ctx.api.chatbot_guild(guild).await?;
+    let r = json!({
+        "guildId": guild,
+        "direct": direct.get("confirmLevel").and_then(Value::as_str).unwrap_or("danger"),
+        "chatbot": chatbot.pointer("/settings/confirmLevel").and_then(Value::as_str).unwrap_or("all"),
+    });
+    ctx.out.data(&r, |r| {
+        let level = |k: &str| t!(&format!("bot.confirm_{}", s(r, k)));
+        output::print_kv(&[(t!("bot.confirm_direct"), level("direct")), (t!("bot.confirm_chatbot"), level("chatbot"))]);
+    });
     Ok(())
 }
 

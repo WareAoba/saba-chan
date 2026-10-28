@@ -169,3 +169,58 @@ export function showEventToast(ev, t, nameOf) {
     if (toast) safeShowToast(toast.message, toast.type, toast.duration, { isNotice: true, source: 'saba-chan' });
     return toast;
 }
+
+/** 서버 하나의 상태가 바뀌었을 때 오는 이벤트 */
+const INSTANCE_CHANGED = ['instance.started', 'instance.stopped', 'instance.exit'];
+
+/**
+ * 시작·정지가 끝날 때까지 delay마다 check(ev)를 부른다. check가 true면 끝, limitMs가 지나면 onTimeout.
+ * 그 서버의 이벤트가 오면 delay를 기다리지 않고 바로 묻는다. 켜짐 완료처럼 이벤트가 없는 변화도 있어 묻기는 줄이지 않는다.
+ * ev는 깨운 이벤트(시간으로 깨면 null)
+ */
+export function watchInstance({ instanceId, check, onTimeout, delay = 500, limitMs }) {
+    const deadline = Date.now() + limitMs;
+    let done = false;
+    let busy = false;
+    let pending = null;
+    let timer = null;
+    let off = () => {};
+    const finish = () => {
+        done = true;
+        clearTimeout(timer);
+        off();
+    };
+    const run = async (ev) => {
+        if (done) return;
+        if (busy) {
+            pending = ev ?? pending;
+            return;
+        }
+        busy = true;
+        clearTimeout(timer);
+        let finished = false;
+        try {
+            finished = await check(ev);
+        } catch {
+            /* 다음 확인에서 다시 */
+        }
+        busy = false;
+        if (done) return;
+        if (finished) return finish();
+        if (pending) {
+            const next = pending;
+            pending = null;
+            return run(next);
+        }
+        if (Date.now() >= deadline) {
+            finish();
+            return onTimeout();
+        }
+        timer = setTimeout(() => run(null), delay);
+    };
+    off = subscribeDaemonEvents((ev) => {
+        if (INSTANCE_CHANGED.includes(ev.type) && ev.data?.instanceId === instanceId) run(ev);
+    });
+    timer = setTimeout(() => run(null), delay);
+    return finish;
+}

@@ -21,7 +21,7 @@ describe('오래 걸리는 정지', () => {
         window.api = {
             serverList: vi.fn(async () => ({ servers: list })),
             instanceStop: vi.fn(() => new Promise((r) => (release = r))),
-            serverStatus: vi.fn(async () => ({ status: 'stopped' })),
+            instanceStatus: vi.fn(async () => ({ status: 'stopped' })),
         };
         let servers = list;
         const setServers = (u) => {

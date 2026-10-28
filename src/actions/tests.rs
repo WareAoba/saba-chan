@@ -1232,3 +1232,93 @@ async fn a_sentence_with_nothing_to_run_is_answered_without_a_plan() {
     assert!(unknown["text"].as_str().is_some_and(|t| !t.is_empty()), "{unknown}");
     assert!(unknown.get("planId").is_none());
 }
+
+/// 길드 되묻기 단계: 직접 요청은 디스코드 설정(`discord.confirmLevel`), 말하는 사바쨩은 챗봇 설정(`confirmLevel`)
+async fn set_confirm(state: &IPCServer, direct: &str, chatbot: &str) {
+    set_node(state, json!({ "ownerDiscordId": "owner", "preset": "loose", "chatbotCap": 2, "defaultLevel": 2, "discord": { "confirmLevel": direct } })).await;
+    let mut cfg = state.config_store.get_chatbot();
+    cfg.guilds.insert("g".into(), json!({ "confirmLevel": chatbot }).as_object().cloned().unwrap());
+    state.config_store.set_chatbot(&cfg).unwrap();
+}
+
+/// 직접 요청은 기본으로 위험만 묻고, 길드가 고른 단계부터 묻는다. "묻지 않음"이면 위험도 바로 실행한다
+#[tokio::test]
+async fn direct_discord_requests_ask_from_the_guilds_chosen_level() {
+    let (state, id, _tmp) = server().await;
+    open_everything(&state).await;
+    async fn asks(state: &IPCServer, action: &str, instance: &str, input: Value) -> bool {
+        plan(state, action, Some(instance), &input, &relay("owner", false)).await.unwrap()["needsConfirm"] == true
+    }
+    let stop = || asks(&state, "server.stop", &id, json!({}));
+    let restore = || asks(&state, "backup.restore", &id, json!({ "name": "b" }));
+    assert_eq!((stop().await, restore().await), (false, true));
+
+    set_confirm(&state, "caution", "all").await;
+    assert!(stop().await);
+    set_confirm(&state, "none", "all").await;
+    assert!(!restore().await);
+}
+
+/// 말하는 사바쨩은 챗봇 확인 단계를 따른다. 고른 관리 명령은 단계와 상관없이 늘 묻는다
+#[tokio::test]
+async fn chatbot_requests_follow_the_chatbot_level_but_admin_actions_always_ask() {
+    let (state, id, _tmp) = server().await;
+    set_confirm(&state, "danger", "none").await;
+    let stop = plan(&state, "server.stop", Some(&id), &json!({}), &relay("owner", true)).await.unwrap();
+    assert_eq!(stop["needsConfirm"], false);
+    let settings = plan(&state, "instance.settings.set", Some(&id), &json!({ "players": 4 }), &relay("owner", true)).await.unwrap();
+    assert_eq!(settings["needsConfirm"], true);
+    set_confirm(&state, "danger", "caution").await;
+    assert_eq!(plan(&state, "server.stop", Some(&id), &json!({}), &relay("owner", true)).await.unwrap()["needsConfirm"], true);
+}
+
+/// 문장 명령 계획도 같은 규칙으로 묻는다. 요청자가 확인 버튼을 눌러 다시 보낸 문장은 묻지 않는다
+#[tokio::test]
+async fn sentence_plans_ask_by_the_same_rule_unless_the_requester_confirmed() {
+    let (state, _id, _tmp) = server().await;
+    set_confirm(&state, "all", "all").await;
+    let asked = plan_text(&state, "srv start", &relay("owner", false)).await.unwrap();
+    assert_eq!(asked["needsConfirm"], true, "{asked}");
+    let err = run(&state, "", None, &Value::Null, asked["planId"].as_str(), &relay("owner", false)).await.unwrap_err();
+    assert_eq!((err.status, err.code), (409, "confirm_required"));
+    let confirmed = plan_text(&state, "srv start", &pressed("owner")).await.unwrap();
+    assert_eq!(confirmed["needsConfirm"], false, "{confirmed}");
+    set_confirm(&state, "danger", "danger").await;
+    assert_eq!(plan_text(&state, "srv start", &relay("owner", true)).await.unwrap()["needsConfirm"], false);
+}
+
+/// 앱·CLI는 길드와 상관없이 위험과 정지·재시작을 묻는다. 묻는 액션은 계획 없이 바로 실행하지 않는다
+#[tokio::test]
+async fn local_surfaces_ask_for_danger_and_for_stopping_a_server() {
+    let (state, id, _tmp) = server().await;
+    set_confirm(&state, "none", "none").await;
+    for (action, input, asks) in [("server.stop", json!({}), true), ("server.restart", json!({}), true), ("server.start", json!({}), false), ("backup.restore", json!({ "name": "b" }), true)] {
+        let made = plan(&state, action, Some(&id), &input, &gui()).await.unwrap();
+        assert_eq!(made["needsConfirm"].as_bool(), Some(asks), "{action}");
+    }
+    let err = run(&state, "server.stop", Some(&id), &json!({}), None, &gui()).await.unwrap_err();
+    assert_eq!((err.status, err.code), (409, "confirm_required"));
+}
+
+/// 확인 단계 값은 정해진 넷만 받는다
+#[test]
+fn the_direct_confirm_level_takes_only_known_values() {
+    let mut s = crate::ipc::handlers::discord::GuildSettings::default();
+    assert_eq!(s.confirm_level, "danger");
+    s.apply(json!({ "confirmLevel": "none" }).as_object().unwrap()).unwrap();
+    assert_eq!(s.confirm_level, "none");
+    assert_eq!(s.apply(json!({ "confirmLevel": "sometimes" }).as_object().unwrap()).unwrap_err().0, "confirmLevel");
+}
+
+/// 원격 MCP는 길드 설정이 아니라 앱과 같은 고정 규칙으로 묻는다. 확인은 요청자 본인 것이어야 한다
+#[tokio::test]
+async fn mcp_requests_ask_by_the_local_rule_not_the_guild_level() {
+    let (state, id, _tmp) = server().await;
+    set_confirm(&state, "none", "none").await;
+    let mut mcp = relay("owner", false);
+    mcp.origin.via = Some(MCP_VIA.into());
+    let stop = plan(&state, "server.stop", Some(&id), &json!({}), &mcp).await.unwrap();
+    assert_eq!(stop["needsConfirm"], true);
+    let err = run(&state, "", None, &Value::Null, stop["planId"].as_str(), &mcp).await.unwrap_err();
+    assert_eq!(err.code, "confirm_required");
+}

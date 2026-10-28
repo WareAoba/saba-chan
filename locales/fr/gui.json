@@ -429,7 +429,6 @@
     "stop_timeout_toast": "⚠️ Arrêt du serveur {{name}}. Cela peut prendre un certain temps.",
     "unexpected_stop_toast": "⚠️ Le serveur {{name}} s'est arrêté de manière inattendue !",
     "external_start_toast": "ℹ️ Le serveur {{name}} a été démarré en dehors de Saba-chan",
-    "status_check_failed_title": "Échec de la vérification du statut",
     "add_server_name_empty_title": "Erreur d'entrée",
     "add_server_name_empty_message": "Saisissez le nom du serveur",
     "add_module_empty_title": "Erreur d'entrée",
@@ -476,7 +475,8 @@
     "stdin_unconfirmed": "Impossible de confirmer l'envoi de la commande. Vérifiez la console avant de réessayer.",
     "move_cross_volume": "Un dossier situé sur un autre lecteur ne peut pas être déplacé. Importez-le plutôt avec « Le laisser en place ».",
     "move_in_use": "Impossible de déplacer le dossier. Arrêtez le serveur de ce dossier, fermez les programmes qui l'ont ouvert, puis réessayez.",
-    "move_failed": "Impossible de déplacer le dossier. Importez-le plutôt avec « Le laisser en place »."
+    "move_failed": "Impossible de déplacer le dossier. Importez-le plutôt avec « Le laisser en place ».",
+    "not_installable": "saba-chan ne peut pas installer de serveur avec le réglage choisi. Choisissez une autre valeur."
   },
   "settings": {
     "save_failed_title": "Échec de l'enregistrement des paramètres",
@@ -1056,7 +1056,13 @@
       "not_loaded": "Impossible de lire les paramètres de ce serveur depuis le relais. Les valeurs affichées sont celles par défaut et ne peuvent pas être modifiées. Rechargez une fois connecté.",
       "err_not_paired": "Ce serveur n'est pas appairé.",
       "err_invalid": "Valeur non valide : {{field}}",
-      "err_generic": "Impossible de modifier les paramètres du bot."
+      "err_generic": "Impossible de modifier les paramètres du bot.",
+      "confirm_title": "Demander avant d'exécuter",
+      "confirm_desc": "Avant d'exécuter, le bot redemande à la personne qui a fait la demande avec un bouton Discord. Seule cette personne peut l'utiliser. Dans l'app, le web et la CLI, les commandes dangereuses ainsi que l'arrêt et le redémarrage demandent toujours, quel que soit ce réglage.",
+      "confirm_direct": "Demandes au bot",
+      "confirm_direct_hint": "Commandes à préfixe et commandes slash.",
+      "confirm_chatbot": "Saba-chan qui parle",
+      "confirm_chatbot_hint": "Les tâches d'administration choisies par Saba-chan qui parle et les demandes mêlant plusieurs personnes demandent toujours, quel que soit ce réglage."
     },
     "channels_notify": "Salon d'alertes",
     "channels_notify_hint": "Plantages, redémarrages automatiques, mises à jour, sauvegardes terminées et avertissements de redémarrage programmé y sont publiés.",
@@ -1255,8 +1261,6 @@
     "ambient_effort_hint": "Faible est recommandé. Si elle décide de parler, elle réfléchit encore une fois avec l’effort de conversation avant d’envoyer.",
     "tools_title": "Outils",
     "tools_desc": "Choisis les outils que Saba-chan qui parle peut utiliser et quand elle demande avant.",
-    "confirm_level": "Demander avant d’exécuter",
-    "confirm_level_hint": "Les commandes dangereuses et les tâches d’administration demandent toujours ; supprimer, arrêter le démon, les mises à jour, les permissions et les secrets ne sont jamais autorisés. Les permissions définies dans l’app priment toujours.",
     "confirm_all": "Toutes les commandes",
     "confirm_caution": "Sensibles et plus",
     "confirm_danger": "Dangereuses seulement",
@@ -1305,7 +1309,8 @@
     "models_err_QUOTA_EXCEEDED": "Le quota de la clé API est dépassé.",
     "models_err_PROVIDER_UNAVAILABLE": "Impossible de joindre le fournisseur de modèles. Réessayez dans un instant.",
     "models_err_FAILED": "Impossible de charger la liste des modèles.",
-    "model_fallback": "Le modèle choisi ({{model}}) n’est pas disponible, {{fallback}} est utilisé à la place. Enregistrez pour adopter {{fallback}}."
+    "model_fallback": "Le modèle choisi ({{model}}) n’est pas disponible, {{fallback}} est utilisé à la place. Enregistrez pour adopter {{fallback}}.",
+    "confirm_none": "Ne pas demander"
   },
   "module_audit": {
     "title": "Le module '{{module}}' utilise des capacités non déclarées.",

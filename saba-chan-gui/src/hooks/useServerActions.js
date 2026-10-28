@@ -10,7 +10,7 @@ import {
     retryWithBackoff,
     safeShowToast,
 } from '../utils/helpers';
-import { claimStopNotice, eventsAvailable, showPortMoved } from '../utils/daemonEvents';
+import { claimStopNotice, eventsAvailable, showPortMoved, watchInstance } from '../utils/daemonEvents';
 import { gameNameOf, reuseUnchanged } from '../utils/serverView';
 import { blockedText, canAskUnisolated, showTrustWarnings } from '../utils/trustNotice';
 import { updateRequiredText } from '../utils/updateRequired';
@@ -29,7 +29,6 @@ import { updateRequiredText } from '../utils/updateRequired';
  * @param {Function} params.openConsole - Open console for a server
  * @param {Function} params.closeConsole - Close the console panel
  * @param {Function} params.setShowModuleManager - Module manager visibility setter
- * @param {Function} params.formatUptime - Uptime formatter
  * @returns {Object} Server action handlers and fetchServers
  */
 export function useServerActions({
@@ -43,7 +42,6 @@ export function useServerActions({
     openConsole,
     closeConsole,
     setShowModuleManager,
-    formatUptime,
     openSettingsToExtensions,
 }) {
     const { t } = useTranslation('gui');
@@ -615,30 +613,23 @@ export function useServerActions({
                     openConsole(srv.id, name);
                 }
 
-                // Poll until running (max 30s)
-                let attempts = 0;
-                const maxAttempts = 60;
-                const delay = 500;
-                let resolved = false;
+                // 켜질 때까지 확인 (최대 30초). 이벤트가 있으면 그 서버의 이벤트가 올 때 묻는다
                 let consecutiveStopped = 0;
-
-                const checkStatus = async () => {
-                    if (resolved) return;
-                    attempts++;
-                    try {
-                        const statusResult = await window.api.serverStatus(name);
+                watchInstance({
+                    instanceId: srv.id,
+                    limitMs: 30000,
+                    check: async (ev) => {
+                        const statusResult = await window.api.instanceStatus(srv?.id ?? name, name);
                         if (statusResult.status === 'running') {
-                            resolved = true;
                             setProgressBar(null);
                             safeShowToast(t('servers.start_completed_toast', { name }), 'success', 3000);
                             fetchServers();
-                            return;
+                            return true;
                         }
-                        // 프로세스가 즉시 죽은 경우 조기 감지 (5회 연속 stopped → 크래시 판정)
+                        // 프로세스가 즉시 죽은 경우 조기 감지: 꺼짐 이벤트, 또는 연속 stopped 5회
                         if (statusResult.status === 'stopped') {
                             consecutiveStopped++;
-                            if (consecutiveStopped >= 5) {
-                                resolved = true;
+                            if (ev?.type === 'instance.exit' || consecutiveStopped >= 5) {
                                 setProgressBar(null);
                                 revertOptimistic(name);
                                 safeShowToast(
@@ -647,24 +638,19 @@ export function useServerActions({
                                     4000,
                                 );
                                 fetchServers();
-                                return;
+                                return true;
                             }
                         } else {
                             consecutiveStopped = 0;
                         }
-                    } catch (_error) {
-                        /* ignore */
-                    }
-                    if (attempts >= maxAttempts) {
-                        resolved = true;
+                        return false;
+                    },
+                    onTimeout: () => {
                         setProgressBar(null);
                         safeShowToast(t('servers.start_timeout_toast', { name }), 'warning', 3000);
                         fetchServers();
-                        return;
-                    }
-                    if (!resolved) setTimeout(checkStatus, delay);
-                };
-                setTimeout(checkStatus, delay);
+                    },
+                });
             }
         } catch (error) {
             setProgressBar(null);
@@ -711,11 +697,8 @@ export function useServerActions({
                 const useGraceful = srv?.module_settings?.graceful_stop;
                 const forceStop = forced || useGraceful === false;
 
-                // id로 정지 (이름이 바뀌어도 안전). 옛 데몬·IPC면 이름으로
-                const result =
-                    srv?.id && window.api.instanceStop
-                        ? await window.api.instanceStop(srv.id, { force: forceStop })
-                        : await window.api.serverStop(name, { force: forceStop });
+                // id로 정지 (이름이 바뀌어도 안전)
+                const result = await window.api.instanceStop(srv?.id ?? name, { force: forceStop });
                 const opt = optimisticStatusRef.current.get(name);
                 if (opt?.pending) optimisticStatusRef.current.set(name, { status: 'stopping', timestamp: Date.now() });
 
@@ -779,37 +762,24 @@ export function useServerActions({
                     }
                     setProgressBar({ message: t('servers.stopping_toast', { name }), indeterminate: true });
 
-                    // Poll until stopped (max 10s)
-                    let attempts = 0;
-                    const maxAttempts = 20;
-                    const delay = 500;
-                    let resolved = false;
-
-                    const checkStatus = async () => {
-                        if (resolved) return;
-                        attempts++;
-                        try {
-                            const statusResult = await window.api.serverStatus(name);
-                            if (statusResult.status === 'stopped') {
-                                resolved = true;
-                                setProgressBar(null);
-                                safeShowToast(t('servers.stop_completed_toast', { name }), 'success', 3000);
-                                fetchServers();
-                                return;
-                            }
-                        } catch (_error) {
-                            /* ignore */
-                        }
-                        if (attempts >= maxAttempts) {
-                            resolved = true;
+                    // 꺼질 때까지 확인 (최대 10초). 이벤트가 있으면 그 서버의 이벤트가 올 때 묻는다
+                    watchInstance({
+                        instanceId: srv?.id,
+                        limitMs: 10000,
+                        check: async () => {
+                            const statusResult = await window.api.instanceStatus(srv?.id ?? name, name);
+                            if (statusResult.status !== 'stopped') return false;
+                            setProgressBar(null);
+                            safeShowToast(t('servers.stop_completed_toast', { name }), 'success', 3000);
+                            fetchServers();
+                            return true;
+                        },
+                        onTimeout: () => {
                             setProgressBar(null);
                             safeShowToast(t('servers.stop_timeout_toast', { name }), 'warning', 3000);
                             fetchServers();
-                            return;
-                        }
-                        if (!resolved) setTimeout(checkStatus, delay);
-                    };
-                    setTimeout(checkStatus, delay);
+                        },
+                    });
                 }
             } catch (error) {
                 setProgressBar(null);
@@ -908,24 +878,6 @@ export function useServerActions({
             safeShowToast(t('servers.rename_failed_toast', { error: translateError(error.message) }), 'error', 4000);
         }
         return false;
-    };
-
-    // ── handleStatus ────────────────────────────────────────
-    const handleStatus = async (name) => {
-        try {
-            const result = await window.api.serverStatus(name);
-            if (result.error) {
-                const errorMsg = translateError(result.error);
-                setModal({ type: 'failure', title: t('servers.status_check_failed_title'), message: errorMsg });
-            } else {
-                const uptime = result.start_time ? formatUptime(result.start_time) : 'N/A';
-                const statusInfo = `Status: ${result.status}\nPID: ${result.pid || 'N/A'}\nUptime: ${uptime}`;
-                setModal({ type: 'notification', title: name, message: statusInfo });
-            }
-        } catch (error) {
-            const errorMsg = translateError(error.message);
-            setModal({ type: 'failure', title: t('servers.status_check_failed_title'), message: errorMsg });
-        }
     };
 
     // ── handleAddServer ─────────────────────────────────────
@@ -1056,6 +1008,12 @@ export function useServerActions({
             if (['move_cross_volume', 'move_in_use', 'move_failed', 'source_missing', 'destination_exists'].includes(result.error_code)) {
                 const key = ['move_cross_volume', 'move_in_use'].includes(result.error_code) ? result.error_code : 'move_failed';
                 setModal({ type: 'failure', title: t('servers.add_failed_title'), message: t(`servers.${key}`) });
+                return false;
+            }
+
+            // 고른 설정 값을 사바쨩이 설치하지 못한다 (모듈 `install_options` 밖)
+            if (result.error_code === 'not_installable') {
+                setModal({ type: 'failure', title: t('servers.add_failed_title'), message: t('servers.not_installable') });
                 return false;
             }
 
@@ -1224,7 +1182,6 @@ export function useServerActions({
         handleStop,
         handleRestart,
         handleRename,
-        handleStatus,
         handleAddServer,
         handleDeleteServer,
     };
