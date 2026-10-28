@@ -1471,6 +1471,7 @@
     "failed_no_log": "安装失败：{{reason}}",
     "done": "已安装到 {{dir}}",
     "next": "用以下命令启动守护进程：\n{{command}}",
+    "no_gui_build": "此电脑暂无桌面应用，将不带界面安装。可使用 CLI 操作。",
     "next_app": "从应用菜单打开 Saba-chan，或运行以下命令：\n{{command}}",
     "components_dir": "模块和扩展放在 {{dir}}。",
     "components_dir_invalid": "无法将 {{dir}} 用于模块和扩展：{{reason}}",

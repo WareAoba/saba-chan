@@ -44,6 +44,16 @@ fn is_server_core() -> bool {
     false
 }
 
+/// 이 플랫폼 릴리스에 창 앱이 없으면(linux-arm64) 화면이 있어도 헤드리스로 깐다. `--gui`로 고른 것만은 그대로 둔다
+/// (설치기가 빠진 구성요소로 멈춰 알린다)
+fn fit_profile(profile: Profile, forced_gui: bool, has_gui: bool) -> Profile {
+    if profile == Profile::Desktop && !forced_gui && !has_gui {
+        Profile::Headless
+    } else {
+        profile
+    }
+}
+
 /// 화면이 없는 환경인지: 리눅스는 SSH로 들어왔거나 DISPLAY·WAYLAND_DISPLAY가 모두 없을 때, Windows는 Server Core이거나 SSH로
 /// 들어왔거나 대화형 세션 이름(SESSIONNAME)이 없을 때(서비스). `--gui`·`--no-gui`가 감지보다 먼저다
 fn detect_profile(gui: bool, no_gui: bool, os: Os, env: impl Fn(&str) -> Option<String>) -> Profile {
@@ -114,6 +124,11 @@ pub async fn run(ctx: &Ctx, args: InstallArgs) -> Result<()> {
     spin.finish_and_clear();
     let manifest = manifest.map_err(|e| failed(t!("install.fetch_failed", reason = e)))?;
     let available = release::modules(&manifest);
+    let fitted = fit_profile(profile, args.gui, manifest.components.contains_key("gui"));
+    if fitted != profile {
+        ctx.out.hint(&t!("install.no_gui_build"));
+    }
+    let profile = fitted;
 
     // 설치 폴더: 고르지 않으면 기본 위치. 비어 있지 않은 폴더면 그 아래 Saba-chan 폴더에 푼다(제거기가 폴더째 지운다)
     let default_dir = core::dedicated_install_dir(&PathBuf::from(core::default_install_path()));
@@ -300,6 +315,15 @@ fn app_command(dir: &Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// ARM 리눅스처럼 창 앱이 없는 릴리스는 화면이 있어도 헤드리스로 깐다 (고르지 않았을 때만)
+    #[test]
+    fn a_release_without_the_app_installs_headless() {
+        assert_eq!(fit_profile(Profile::Desktop, false, false), Profile::Headless);
+        assert_eq!(fit_profile(Profile::Desktop, true, false), Profile::Desktop, "--gui stays and the installer reports what is missing");
+        assert_eq!(fit_profile(Profile::Desktop, false, true), Profile::Desktop);
+        assert_eq!(fit_profile(Profile::Headless, false, true), Profile::Headless);
+    }
 
     fn cli_file() -> &'static str {
         if cfg!(windows) {

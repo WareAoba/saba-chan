@@ -1215,6 +1215,7 @@
     "failed_no_log": "A instalação falhou: {{reason}}",
     "done": "Instalado em {{dir}}",
     "next": "Inicie o daemon com:\n{{command}}",
+    "no_gui_build": "Ainda não há app de desktop para este PC, então a instalação é feita sem ele. Use a CLI.",
     "next_app": "Abra o Saba-chan pelo menu de aplicativos ou com:\n{{command}}",
     "components_dir": "Os módulos e extensões ficam em {{dir}}.",
     "components_dir_invalid": "Não é possível usar {{dir}} para módulos e extensões: {{reason}}",

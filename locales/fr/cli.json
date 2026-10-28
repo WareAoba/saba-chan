@@ -1215,6 +1215,7 @@
     "failed_no_log": "L'installation a échoué : {{reason}}",
     "done": "Installé dans {{dir}}",
     "next": "Démarrez le démon avec :\n{{command}}",
+    "no_gui_build": "Il n'y a pas encore d'application de bureau pour ce PC : installation sans elle. Utilisez la CLI.",
     "next_app": "Ouvrez Saba-chan depuis le menu des applications ou avec :\n{{command}}",
     "components_dir": "Les modules et extensions vont dans {{dir}}.",
     "components_dir_invalid": "Impossible d'utiliser {{dir}} pour les modules et extensions : {{reason}}",

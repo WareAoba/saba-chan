@@ -1471,6 +1471,7 @@
     "failed_no_log": "설치하지 못했어요: {{reason}}",
     "done": "{{dir}}에 설치했어요",
     "next": "다음 명령으로 데몬을 켜세요:\n{{command}}",
+    "no_gui_build": "이 PC용 창 앱이 아직 없어 화면 없이 설치해요. CLI로 다룰 수 있어요.",
     "next_app": "앱 메뉴에서 사바쨩을 열거나 다음 명령으로 여세요:\n{{command}}",
     "components_dir": "모듈·익스텐션은 {{dir}}에 둬요.",
     "components_dir_invalid": "{{dir}}은(는) 모듈·익스텐션 위치로 쓸 수 없어요: {{reason}}",
