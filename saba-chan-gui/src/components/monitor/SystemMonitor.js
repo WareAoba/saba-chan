@@ -14,9 +14,6 @@ export const systemMonitorAvailable = () => !!window.api?.systemMetrics;
 
 /** 앱을 켠 뒤 본 디스크 IO·네트워크 최고값 (화면을 오가도 이어진다) */
 let sessionPeaks = { diskIo: 0, network: 0 };
-export const resetSessionPeaks = () => {
-    sessionPeaks = { diskIo: 0, network: 0 };
-};
 
 /** 데몬 표본을 주기적으로 받는다. 창이 가려져 있으면 쉰다. 요약만 볼 때는 폴더 크기를 재지 않게 한다. */
 export function useSystemMetrics(intervalMs, sizes = true) {

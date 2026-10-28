@@ -98,7 +98,6 @@ function createApiMock(overrides = {}) {
         onCloseRequest: vi.fn(),
         onConsolePopoutOpened: vi.fn(),
         onConsolePopoutClosed: vi.fn(),
-        loadNodeToken: vi.fn().mockResolvedValue(null),
         saveNodeToken: vi.fn().mockResolvedValue({ success: true }),
     };
 

@@ -62,9 +62,6 @@ export function nextPeaks(prev, snap) {
     };
 }
 
-/** 표본들에서 최대값 */
-export const peaksOf = (history) => history.reduce(nextPeaks, { diskIo: 0, network: 0 });
-
 /** 인스턴스로 나누지 않는 전체 몫의 색: 인스턴스 계열색과 헷갈리지 않는 중립색 */
 export const ALL_COLOR = 'var(--text-2)';
 
