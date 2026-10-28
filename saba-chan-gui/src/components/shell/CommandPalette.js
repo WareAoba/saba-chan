@@ -220,7 +220,7 @@ function Palette({ onClose, busyRef }) {
             setBusy(false);
             if (failed(res)) {
                 setError(errorText(res, t));
-            } else if (res.needsConfirm || action.kind === 'admin' || action.risk === 'danger') {
+            } else if (res.needsConfirm) {
                 setPlan(res);
                 setStep('confirm');
             } else {
