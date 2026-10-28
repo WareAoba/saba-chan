@@ -569,7 +569,7 @@ pub fn has_terminal() -> bool {
 
 /// 터미널로 띄운 CLI를 찾는 환경 변수. 터미널 프로그램(gnome-terminal 등)은 띄우자마자 끝나거나 서버 프로세스에
 /// 창을 맡기므로, 띄운 pid가 CLI가 아니다: 이 표시를 단 CLI를 찾아 그 pid를 기록한다
-#[cfg(any(target_os = "linux", test))]
+#[cfg(target_os = "linux")]
 pub const LAUNCH_TAG_ENV: &str = "SABA_LAUNCH_TAG";
 
 /// 리눅스: CLI를 새 터미널 창에 띄운다 ("CLI로 전환"). 터미널 pid를 돌려주고, CLI에는 `tag`를 환경으로 단다
