@@ -928,7 +928,6 @@
     "saved": "Enregistré",
     "node_sub_all": "Toutes les instances",
     "node_sub_pick": "{{count}} instance(s)",
-    "node_sub_members": "{{count}} restreints",
     "instances_mode": "Instances utilisables par ce serveur Discord",
     "instances_all": "Toutes les instances",
     "instances_all_desc": "Les nouvelles instances apparaissent immédiatement",

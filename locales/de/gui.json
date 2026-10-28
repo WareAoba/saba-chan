@@ -928,7 +928,6 @@
     "saved": "Gespeichert",
     "node_sub_all": "Alle Instanzen",
     "node_sub_pick": "{{count}} Instanzen",
-    "node_sub_members": "{{count}} eingeschränkt",
     "instances_mode": "Instanzen, die dieser Discord-Server nutzen kann",
     "instances_all": "Alle Instanzen",
     "instances_all_desc": "Neue Instanzen erscheinen sofort",

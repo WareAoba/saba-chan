@@ -928,7 +928,6 @@
     "saved": "已儲存",
     "node_sub_all": "所有實例",
     "node_sub_pick": "{{count}} 個實例",
-    "node_sub_members": "{{count}} 人受限",
     "instances_mode": "此 Discord 伺服器可使用的實例",
     "instances_all": "所有實例",
     "instances_all_desc": "新建立的實例也會立即顯示",

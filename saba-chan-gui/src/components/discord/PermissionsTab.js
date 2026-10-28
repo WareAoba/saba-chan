@@ -124,28 +124,29 @@ function PermState({ loading, error, onRetry }) {
 }
 
 /** 레벨마다 그 레벨에서 새로 쓸 수 있게 되는 명령 수 (큰 칩만, help·list 제외) */
-function gainsByLevel(board) {
+function gainsByLevel(board, view) {
     const gains = {};
-    for (const chip of L.stairChips(board).filter((c) => !c.instance)) gains[chip.level] = (gains[chip.level] || 0) + 1;
+    for (const chip of L.stairChips(board, view).filter((c) => !c.instance))
+        gains[chip.level] = (gains[chip.level] || 0) + 1;
     return gains;
 }
 
 /** "Lv 1의 모든 명령 + 5개" 같은 한 줄. 계단을 못 읽었으면 없다 */
-function levelSummary(t, perm, board, id) {
+function levelSummary(t, perm, board, id, view) {
     if (id === L.OWNER) return t('discord.perm_level_all');
     if (id === L.BANNED) return t('discord.perm_level_none');
     if (!board) return null;
     const up = L.ascending(perm);
     const at = up.indexOf(id);
     const below = up[at - 1];
-    const gain = gainsByLevel(board)[id] || 0;
+    const gain = gainsByLevel(board, view)[id] || 0;
     // 금지 바로 위 레벨은 help·list부터 쓴다
     if (below === L.BANNED) return t('discord.perm_level_base', { count: gain + 1 });
     return t('discord.perm_level_gain', { below: L.levelTitle(t, perm, below), count: gain });
 }
 
 // ── 사람: 레벨마다 사람 칩 ──
-export function PeopleView({ node, members, membersLoading, onRefreshMembers, permissions, onEditLevels }) {
+export function PeopleView({ node, instance, members, membersLoading, onRefreshMembers, permissions, onEditLevels }) {
     const { t } = useTranslation('gui');
     const { perm, board, loading, error, busy, load, write } = permissions;
     const guildId = node.guildId;
@@ -326,7 +327,7 @@ export function PeopleView({ node, members, membersLoading, onRefreshMembers, pe
             <ol className="dc-levels">
                 {L.ladderOf(perm).map(({ id: level }) => {
                     const ids = L.sortByName(groups.get(level) || [], nameOf);
-                    const summary = levelSummary(t, perm, board, level);
+                    const summary = levelSummary(t, perm, board, level, instance);
                     const isDefault = level === defaultLevel;
                     return (
                         <li
@@ -872,6 +873,7 @@ export function PermissionPanel({ node, instance = L.ALL_INSTANCES, members, mem
             ) : (
                 <PeopleView
                     node={node}
+                    instance={instance}
                     members={members}
                     membersLoading={membersLoading}
                     onRefreshMembers={onRefreshMembers}

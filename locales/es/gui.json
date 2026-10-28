@@ -928,7 +928,6 @@
     "saved": "Guardado",
     "node_sub_all": "Todas las instancias",
     "node_sub_pick": "{{count}} instancias",
-    "node_sub_members": "{{count}} restringidos",
     "instances_mode": "Instancias que puede usar este servidor de Discord",
     "instances_all": "Todas las instancias",
     "instances_all_desc": "Las nuevas instancias aparecen al instante",

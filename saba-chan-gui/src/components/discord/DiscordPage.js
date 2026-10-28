@@ -12,7 +12,6 @@ import { ChatbotView, chatbotAvailable } from './ChatbotView';
 import { ConnectionView } from './ConnectionView';
 import { Avatar, NodeView } from './NodeView';
 import * as P from './nodePermissions';
-import { permissionsAvailable } from './PermissionsTab';
 import { defaultPrefix, prefixProblems } from './prefixes';
 import { TagInput } from './TagInput';
 import { SabaToggle } from '../ui/SabaUI';
@@ -463,26 +462,15 @@ export function DiscordPage({
                         {cloudNodes.map((n) => {
                             const mode = P.instanceMode(settings, n.guildId);
                             const count = servers.filter((s) => P.isInstanceAllowed(settings, n.guildId, s.id)).length;
-                            const restricted = Object.keys(settings[n.guildId]?.memberPermissions || {}).length;
                             return navItem(
                                 n.guildId,
                                 nodeId === n.guildId,
                                 () => go({ kind: 'node', id: n.guildId }),
                                 <Avatar name={n.guildName || n.guildId} url={n.iconUrl} size={40} />,
                                 n.guildName || n.guildId,
-                                <>
-                                    <span>
-                                        {mode === 'all'
-                                            ? t('discord.node_sub_all')
-                                            : t('discord.node_sub_pick', { count })}
-                                    </span>
-                                    {restricted > 0 && !permissionsAvailable() && (
-                                        <>
-                                            <span className="sep">·</span>
-                                            <span>{t('discord.node_sub_members', { count: restricted })}</span>
-                                        </>
-                                    )}
-                                </>,
+                                <span>
+                                    {mode === 'all' ? t('discord.node_sub_all') : t('discord.node_sub_pick', { count })}
+                                </span>,
                             );
                         })}
 

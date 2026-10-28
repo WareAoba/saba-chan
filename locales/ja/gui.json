@@ -928,7 +928,6 @@
     "saved": "保存しました",
     "node_sub_all": "すべてのインスタンス",
     "node_sub_pick": "インスタンス {{count}}個",
-    "node_sub_members": "制限 {{count}}人",
     "instances_mode": "このDiscordサーバーで使うインスタンス",
     "instances_all": "すべてのインスタンス",
     "instances_all_desc": "新しく作ったインスタンスもすぐに表示されます",

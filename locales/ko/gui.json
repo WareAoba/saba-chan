@@ -928,7 +928,6 @@
     "saved": "저장됨",
     "node_sub_all": "모든 인스턴스",
     "node_sub_pick": "인스턴스 {{count}}개",
-    "node_sub_members": "제한 {{count}}명",
     "instances_mode": "이 디스코드 서버에서 다룰 인스턴스",
     "instances_all": "모든 인스턴스",
     "instances_all_desc": "새로 만든 인스턴스도 바로 보여요",

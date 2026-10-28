@@ -928,7 +928,6 @@
     "saved": "Сохранено",
     "node_sub_all": "Все экземпляры",
     "node_sub_pick": "Экземпляров: {{count}}",
-    "node_sub_members": "Ограничено: {{count}}",
     "instances_mode": "Экземпляры, доступные этому серверу Discord",
     "instances_all": "Все экземпляры",
     "instances_all_desc": "Новые экземпляры появляются сразу",
