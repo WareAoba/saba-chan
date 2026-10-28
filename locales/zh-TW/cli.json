@@ -1223,6 +1223,7 @@
     "failed_no_log": "安裝失敗：{{reason}}",
     "done": "已安裝到 {{dir}}",
     "next": "用以下指令啟動常駐程式：\n{{command}}",
+    "next_app": "從應用程式選單開啟 Saba-chan，或執行以下指令：\n{{command}}",
     "components_dir": "模組和擴充放在 {{dir}}。",
     "components_dir_invalid": "無法將 {{dir}} 用於模組和擴充：{{reason}}",
     "invalid_dir": "無法安裝到 {{dir}}。請選擇不是磁碟機根目錄、使用者主資料夾或設定資料夾的資料夾"

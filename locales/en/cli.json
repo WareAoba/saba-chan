@@ -1238,6 +1238,7 @@
     "failed_no_log": "Install failed: {{reason}}",
     "done": "Installed to {{dir}}",
     "next": "Start the daemon with:\n{{command}}",
+    "next_app": "Open Saba-chan from your app menu, or run:\n{{command}}",
     "components_dir": "Modules and extensions go in {{dir}}.",
     "components_dir_invalid": "Can't use {{dir}} for modules and extensions: {{reason}}",
     "invalid_dir": "Can't install into {{dir}}. Choose a folder that isn't a drive root, your home folder, or the settings folder"

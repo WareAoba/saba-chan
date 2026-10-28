@@ -5,7 +5,7 @@
 
 Windows zip과 같은 이름 규칙(`<컴포넌트>-<플랫폼>.zip`)과 같은 내용(saba-core zip에 saba-runner와 공유 모듈)이다.
 실행 파일은 실행 권한(0755)을 zip에 적는다: 업데이터·설치기가 그 비트를 보고 실행 권한을 준다.
-GUI와 설치기 zip은 만들지 않는다 (리눅스는 헤드리스 구성과 `saba-chan-cli install`만).
+GUI zip은 데스크톱 구성(화면 있는 리눅스)이 받는다. 설치기 zip은 만들지 않는다 (리눅스 설치는 `saba-chan-cli install`).
 """
 
 import argparse
@@ -15,11 +15,13 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 
-# 컴포넌트 → (zip 이름 앞부분, 실행 파일, 함께 넣는 저장소 파일)
+# 컴포넌트 → (zip 이름 앞부분, 실행 파일, 함께 넣는 저장소 파일 → zip 안 이름)
 LINUX_ASSETS = {
-    "saba-core": ("saba-core", ["saba-core", "saba-runner"], ["modules/i18n.py", "modules/daemon_rcon.py", "modules/common_locales.json"]),
-    "cli": ("saba-chan-cli", ["saba-chan-cli"], []),
-    "updater": ("saba-chan-updater", ["saba-chan-updater"], []),
+    "saba-core": ("saba-core", ["saba-core", "saba-runner"], {
+        "modules/i18n.py": "i18n.py", "modules/daemon_rcon.py": "daemon_rcon.py", "modules/common_locales.json": "common_locales.json"}),
+    "cli": ("saba-chan-cli", ["saba-chan-cli"], {}),
+    "gui": ("saba-chan-gui", ["saba-chan-gui"], {"saba-chan-gui/src-tauri/icons/icon.png": "saba-chan-gui.png"}),
+    "updater": ("saba-chan-updater", ["saba-chan-updater"], {}),
 }
 
 
@@ -41,8 +43,8 @@ def package(bin_dir: Path, out_dir: Path, platform: str) -> list[Path]:
         with zipfile.ZipFile(target, "w") as zf:
             for exe in exes:
                 add(zf, bin_dir / exe, exe, 0o755)
-            for rel in extras:
-                add(zf, ROOT / rel, Path(rel).name, 0o644)
+            for rel, name in extras.items():
+                add(zf, ROOT / rel, name, 0o644)
         made.append(target)
         print(f"    → {target.name} ({target.stat().st_size / 1024 / 1024:.2f} MB)")
     return made

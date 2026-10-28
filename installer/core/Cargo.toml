@@ -28,3 +28,7 @@ windows-sys = { version = "0.59", features = [
     "Win32_System_Com",
 ] }
 winreg = "0.52"
+
+[features]
+# 개발용: 모의 릴레이의 고정 키를 믿고 `SABA_RELAY_URL`을 따른다 (scripts/mock-release-server.js). 릴리즈 빌드에는 켜지 않는다
+mock-relay = ["saba-chan-updater-lib/mock-relay"]

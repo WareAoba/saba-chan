@@ -19,7 +19,6 @@ pub use saba_chan_updater_lib::uninstall_entry::Keep;
 
 #[cfg(target_os = "windows")]
 use crate::registry;
-#[cfg(target_os = "windows")]
 use crate::shortcuts;
 
 /// 제거 진행 이벤트
@@ -129,7 +128,6 @@ pub async fn do_uninstall(keep: Keep, on_progress: impl Fn(&UninstallProgress)) 
 
     // Step 3: 바로가기 제거
     emit("shortcuts", "Removing shortcuts...", 20);
-    #[cfg(target_os = "windows")]
     {
         // 어떤 언어로 설치했든 이 설치를 가리키는 것만 (다른 폴더의 설치 바로가기는 둔다)
         if let Some(dir) = &install_dir {

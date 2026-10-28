@@ -7,7 +7,6 @@
 pub mod registry;
 pub mod release;
 pub mod runtime_bootstrap;
-#[cfg(target_os = "windows")]
 pub mod shortcuts;
 pub mod traces;
 pub mod uninstall;
@@ -90,7 +89,6 @@ fn drop_parts_outside(
     installed: &mut HashMap<String, String>,
 ) -> Result<Option<String>, String> {
     if !profile.includes("gui") {
-        #[cfg(target_os = "windows")]
         shortcuts::remove_shortcuts_into(install_dir, shortcuts::ALL_SHORTCUT_NAMES);
         for exe in saba_chan_updater_lib::GUI_EXE_NAMES
             .iter()
@@ -449,8 +447,8 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
         }
     }
 
-    // Step 10: 바로가기 (95-100%). 헤드리스 설치는 GUI가 없어 만들지 않는다
-    #[cfg(target_os = "windows")]
+    // Step 10: 바로가기 (95-100%). 헤드리스 설치는 GUI가 없어 만들지 않는다. 리눅스는 앱 메뉴 항목이다
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
     if config.profile == Profile::Desktop {
         emit("shortcuts", "Creating shortcuts...", 96);
         let gui_exe = saba_chan_updater_lib::find_gui_exe(&install_dir);
