@@ -346,8 +346,7 @@
       "ambientEffort": "끼어들기 판단 추론 강도",
       "confirmLevel": "실행 전 확인 단계",
       "memory": "기억",
-      "webSearch": "웹 검색",
-      "disabledTools": "끈 도구 묶음",
+      "tools": "켠 도구",
       "step": "단계",
       "from_snapshot": "게임 자동 백업에서"
     },

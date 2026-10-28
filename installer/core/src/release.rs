@@ -25,9 +25,18 @@ impl std::ops::Deref for VerifiedRelease {
     }
 }
 
+/// 릴레이 주소. 개발 빌드(mock-relay)만 `SABA_RELAY_URL`로 모의 릴레이(scripts/mock-release-server.js)를 가리킬 수 있다
+fn relay_url() -> String {
+    #[cfg(feature = "mock-relay")]
+    if let Some(url) = std::env::var("SABA_RELAY_URL").ok().filter(|u| !u.is_empty()) {
+        return url;
+    }
+    relay::DEFAULT_RELAY_URL.to_string()
+}
+
 /// 이 플랫폼의 최신 릴리즈 manifest (서명 검증 완료)
 pub async fn fetch_latest() -> Result<VerifiedRelease, String> {
-    let client = RelayClient::new(relay::DEFAULT_RELAY_URL);
+    let client = RelayClient::new(&relay_url());
     let platform = relay::current_platform();
     match client
         .fetch_verified_catalog(relay::DEFAULT_CHANNEL, &platform, &saba_chan_updater_lib::versions::bundled().release, &relay::anon_client_id())

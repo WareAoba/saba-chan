@@ -640,6 +640,7 @@
     "preflight_failed": "Falló la preparación del entorno de ejecución para los módulos de juego: {{error}}. Se reintentará en la próxima acción del servidor."
   },
   "stop": {
+    "confirm": "¿Está seguro de que desea detener el servidor {{name}}?",
     "already": "{{name}} no está en marcha.",
     "done": "{{name}} detenido.",
     "not_yet": "{{name}} aún no se ha detenido. Fuérzalo: saba-chan-cli stop --force {{name}}",
@@ -715,6 +716,7 @@
       "audit": "Quién inició, detuvo o envió comandos a los servidores, y desde dónde (GUI, CLI, Discord, programación)",
       "perm": "Quién puede ejecutar qué comandos desde Discord (niveles por miembro, predefinido, excepciones)",
       "perm.show": "Niveles, predefinido y excepciones de un servidor de Discord",
+      "perm.commands": "Comandos por nivel: desde qué nivel se puede usar cada comando (un servidor con --server)",
       "perm.grant": "Dar un nivel a un miembro: admin, user, chatbot o banned",
       "perm.revoke": "Quitar el nivel propio de un miembro (recibe el nivel predeterminado)",
       "perm.default": "Nivel de los miembros sin nivel propio",
@@ -860,6 +862,7 @@
     "after": "Los nombres pueden ser parciales (p. ej. start pal). Sin argumentos en una terminal se abre el menú a pantalla completa (SABA_NO_TUI=1: la shell interactiva).\nEn scripts usa --json y --yes. Códigos de salida: 0 correcto · 1 error · 2 uso · 3 daemon inaccesible · 4 no encontrado · 130 cancelado"
   },
   "restart": {
+    "confirm": "¿Detener e iniciar de nuevo '{{name}}'? Los jugadores conectados se desconectarán un momento.",
     "waiting": "Reiniciando {{name}}...",
     "done": "{{name}} reiniciado."
   },
@@ -998,7 +1001,15 @@
     "credit_balance_none": "No se pudo obtener el saldo ahora.",
     "credit_usage": "Uso de este mes ({{month}}, UTC)",
     "credit_usage_line": "{{calls}} llamadas al modelo · {{input}} tokens de entrada ({{cached}} en caché) · {{output}} tokens de salida",
-    "credit_exhausted": "Se acabó el crédito ({{time}}). Saba-chan no puede responder hasta que se recargue."
+    "credit_exhausted": "Se acabó el crédito ({{time}}). Saba-chan no puede responder hasta que se recargue.",
+    "cat_game_servers": "Servidores de juego",
+    "cat_games": "Juegos",
+    "cat_info": "Buscar información",
+    "cat_create": "Crear",
+    "tool_on": "activada",
+    "tool_off": "desactivada",
+    "tool_blocked": "bloqueada en los ajustes comunes",
+    "tool_unavailable": "no disponible ahora"
   },
   "trust": {
     "verified": "verificado",
@@ -1220,6 +1231,7 @@
     "failed_no_log": "La instalación falló: {{reason}}",
     "done": "Instalado en {{dir}}",
     "next": "Inicia el daemon con:\n{{command}}",
+    "next_app": "Abre Saba-chan desde el menú de aplicaciones o con:\n{{command}}",
     "components_dir": "Los módulos y extensiones van en {{dir}}.",
     "components_dir_invalid": "No se puede usar {{dir}} para módulos y extensiones: {{reason}}",
     "invalid_dir": "No se puede instalar en {{dir}}. Elige una carpeta que no sea la raíz de una unidad, tu carpeta personal ni la carpeta de ajustes"
@@ -1283,7 +1295,7 @@
       "owner": "propietario",
       "admin": "admin",
       "user": "usuario",
-      "chatbot": "Saba-chan parlante",
+      "chatbot": "Invitado",
       "banned": "bloqueado"
     }
   },

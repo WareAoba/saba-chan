@@ -29,8 +29,8 @@ name: Release — Package & Manifest
 #   saba-chan-gui-windows-x64.zip
 #   saba-chan-updater-windows-x64.zip
 #   saba-chan-installer.exe  (zip 아님: 소개 페이지 다운로드와 업데이터의 제거기 사본 교체용)
-#   saba-core-linux-x64.zip, saba-chan-cli-linux-x64.zip, saba-chan-updater-linux-x64.zip
-#     (화면 없는 리눅스용. 올릴 필요 없이 이 액션이 main 소스로 빌드한다)
+#   saba-core-linux-x64.zip, saba-chan-cli-linux-x64.zip, saba-chan-updater-linux-x64.zip, saba-chan-gui-linux-x64.zip
+#     (리눅스용. GUI zip은 데스크톱 구성만 받는다. 올릴 필요 없이 이 액션이 main 소스로 빌드한다)
 #   locales.zip
 #   manifest.json
 #
@@ -235,15 +235,36 @@ jobs:
         if: steps.guard.outputs.publish != 'false'
         uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
 
-      # 화면 없는 리눅스 설치 (D3c): 이 소스(main)로 데몬·러너·CLI·창 없는 업데이터를 빌드해
-      # linux-x64 zip으로 싣는다. manifest의 platforms.linux-x64가 이 파일들을 가리킨다
-      - name: Build Linux headless assets
+      # 리눅스 GUI (데스크톱 구성): Tauri 빌드에 GTK·WebKitGTK 개발 패키지와 프런트엔드 번들이 든다
+      - name: Install Linux GUI build dependencies
         if: steps.guard.outputs.publish != 'false'
         run: |
-          cargo build --release --locked -p saba-core -p saba-runner -p saba-chan-cli --bins
+          sudo apt-get update
+          sudo apt-get install -y libglib2.0-dev libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
+
+      - name: Setup Node
+        if: steps.guard.outputs.publish != 'false'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+
+      - name: Build GUI frontend
+        if: steps.guard.outputs.publish != 'false'
+        working-directory: saba-chan-gui
+        run: |
+          npm ci
+          npm run build
+
+      # 리눅스 설치 (D3c): 이 소스(main)로 데몬·러너·CLI·창 없는 업데이터·GUI를 빌드해
+      # linux-x64 zip으로 싣는다. manifest의 platforms.linux-x64가 이 파일들을 가리킨다.
+      # 업데이터는 창 없이 빌드한다: 화면 없는 서버에도 같은 파일이 가고, 데스크톱에서는 적용한 뒤 GUI를 다시 띄운다
+      - name: Build Linux assets
+        if: steps.guard.outputs.publish != 'false'
+        run: |
+          cargo build --release --locked -p saba-core -p saba-runner -p saba-chan-cli -p saba-chan-gui --bins
           cargo build --release --locked -p saba-chan-updater --no-default-features
           # Debian 12(glibc 2.36)보다 새 glibc 기호를 요구하면 멈춘다
-          for b in saba-core saba-runner saba-chan-cli saba-chan-updater; do
+          for b in saba-core saba-runner saba-chan-cli saba-chan-updater saba-chan-gui; do
             need=$(objdump -T "target/release/$b" | grep -o 'GLIBC_[0-9.]*' | sed 's/GLIBC_//' | sort -V | tail -1)
             echo "$b needs glibc $need"
             if [ "$(printf '%s\n' "$need" 2.35 | sort -V | tail -1)" != "2.35" ]; then

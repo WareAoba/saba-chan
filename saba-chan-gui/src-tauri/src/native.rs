@@ -495,15 +495,6 @@ fn is_folder(path: &str) -> bool {
 }
 
 #[tauri::command]
-pub fn logs_get_path(app: AppHandle) -> String {
-    let state = app.state::<AppState>();
-    match &state.log_path {
-        Some(p) => p.to_string_lossy().into_owned(),
-        None => state.t("errors.no_log_file", &[]),
-    }
-}
-
-#[tauri::command]
 pub fn logs_open_folder(app: AppHandle) -> Value {
     let state = app.state::<AppState>();
     let dir = state.data_dir.join("logs");
@@ -537,11 +528,6 @@ pub async fn console_popout(app: AppHandle, instance_id: String, server_name: Op
 #[tauri::command]
 pub fn console_popout_list(app: AppHandle) -> Vec<String> {
     window::popout_list(&app)
-}
-
-#[tauri::command(rename_all = "camelCase")]
-pub fn console_focus_popout(app: AppHandle, instance_id: String) -> Value {
-    window::focus_popout(&app, &instance_id)
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -674,7 +660,6 @@ mod tests {
             )),
             data_dir: dir.path().to_path_buf(),
             install_root: dir.path().to_path_buf(),
-            log_path: None,
             after_update: false,
             tray_start: false,
             i18n: std::sync::RwLock::new(crate::i18n::I18n::load("ko", None)),

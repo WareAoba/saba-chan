@@ -346,8 +346,7 @@
       "ambientEffort": "Denkaufwand beim Einmischen",
       "confirmLevel": "Nachfragestufe vor dem Ausführen",
       "memory": "Gedächtnis",
-      "webSearch": "Websuche",
-      "disabledTools": "Deaktivierte Werkzeuge",
+      "tools": "Aktivierte Werkzeuge",
       "step": "Schritt",
       "from_snapshot": "Aus Spiel-Autobackup"
     },

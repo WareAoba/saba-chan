@@ -96,7 +96,7 @@ pub async fn plan_steps(server: &IPCServer, steps: &Value, caller: &Caller) -> R
                 (Step::Ready(r.clone()), r, None)
             }
         };
-        confirm |= needs_confirm(server, &r.id, r.kind, &r.risk, caller).await;
+        confirm |= needs_confirm(server, &r.id, r.instance.as_deref(), r.kind, &r.risk, caller).await;
         if r.risk == "danger" || (r.risk == "caution" && risk == "safe") {
             risk = if r.risk == "danger" { "danger" } else { "caution" };
         }

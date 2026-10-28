@@ -346,8 +346,7 @@
       "ambientEffort": "Esforço ao decidir entrar",
       "confirmLevel": "Nível de confirmação antes de executar",
       "memory": "Memória",
-      "webSearch": "Busca na web",
-      "disabledTools": "Ferramentas desativadas",
+      "tools": "Ferramentas ativadas",
       "step": "Etapa",
       "from_snapshot": "Do backup automático do jogo"
     },

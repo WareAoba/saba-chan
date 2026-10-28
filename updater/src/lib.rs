@@ -19,7 +19,6 @@ pub mod constants;
 pub mod download;
 pub mod python_pin;
 pub mod launch_ticket;
-pub mod error;
 pub mod integrity;
 pub mod marker;
 pub mod notify_app_id;
@@ -41,7 +40,6 @@ mod time;
 mod tests;
 
 // Re-exports for convenience
-pub use error::{UpdaterError, RecoveryStrategy, NetworkChecker, ErrorContext};
 pub use process::ProcessChecker;
 pub use relay::{ReleaseManifest, ManifestComponent};
 pub use integrity::{IntegrityReport, IntegrityStatus, OverallIntegrity, ComponentIntegrity};
@@ -289,30 +287,6 @@ pub struct ApplyComponentResult {
     pub stopped_processes: Vec<String>,
     /// 재시작 필요 여부
     pub restart_needed: bool,
-}
-
-/// 전체 업데이트 적용 결과
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ApplyResult {
-    /// 개별 컴포넌트 적용 결과
-    pub results: Vec<ApplyComponentResult>,
-    /// 적용 후 재시작이 필요한 컴포넌트 목록 (CoreDaemon 업데이트 시 필수)
-    pub daemon_restart_script: Option<String>,
-    /// GUI/CLI 자신의 업데이트가 포함 — 별도 self-update flow가 필요 (self-update flow)
-    pub self_update_components: Vec<String>,
-}
-
-/// GUI/CLI 자신의 업데이트 정보 (업데이터 실행파일이 컴포넌트를 교체한 후 재시작하는 프로세스)
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SelfUpdateInfo {
-    /// 업데이터 실행파일 경로
-    pub updater_executable: String,
-    /// 업데이터 실행파일에 전달할 커맨드라인 인자
-    pub args: Vec<String>,
-    /// 대상 컴포넌트
-    pub component: String,
-    /// 스테이징 파일 경로
-    pub staged_path: Option<String>,
 }
 
 /// 업데이트 설정
@@ -1386,15 +1360,6 @@ impl UpdateManager {
         ordered
     }
 
-    /// 모든 업데이트 가능한 컴포넌트의 의존성을 일괄 확인합니다.
-    pub fn check_all_dependencies(&self) -> Vec<DependencyCheck> {
-        self.status.components.iter()
-            .filter(|c| c.update_available)
-            .map(|c| self.check_dependencies(&c.component.manifest_key()))
-            .collect()
-    }
-
-
     /// 단일 컴포넌트만 개별적으로 적용하는 메서드 (데몬 IPC 경유 시 개별 컴포넌트를 순차적으로 처리)
     ///
     /// Flow 1 (백그라운드 워커): IPC 커맨드를 통해 데몬이 직접 적용한 후 재시작
@@ -1475,78 +1440,6 @@ impl UpdateManager {
                 }
             }
         }
-    }
-
-    /// GUI/CLI 자신의 업데이트 정보를 반환 (업데이터 실행파일을 통해 컴포넌트를 교체한 후 재시작하는 self-update 지원)
-    pub fn get_self_update_info(&self, component: &Component) -> Result<SelfUpdateInfo> {
-        let comp = self.status.components.iter()
-            .find(|c| &c.component == component && c.downloaded)
-            .ok_or_else(|| anyhow::anyhow!("Component {:?} not downloaded", component))?;
-
-        // 업데이터 CLI 실행파일을 install_root/updater/cli/ 또는 근처 디렉터리에서 탐색
-        let updater_exe = self.find_updater_executable()?;
-
-        let staged_path = comp.downloaded_path.clone();
-        let component_key = component.manifest_key();
-
-        Ok(SelfUpdateInfo {
-            updater_executable: updater_exe,
-            args: vec![
-                "apply".to_string(),
-                "--component".to_string(),
-                component_key.clone(),
-                "--install-root".to_string(),
-                self.install_root.display().to_string(),
-            ],
-            component: component_key,
-            staged_path,
-        })
-    }
-
-    /// 업데이터 CLI 실행파일의 경로를 탐색
-    fn find_updater_executable(&self) -> Result<String> {
-        // 배포 환경: install_root/saba-chan-updater(.exe)
-        let candidates = if cfg!(target_os = "windows") {
-            vec![
-                self.install_root.join("saba-chan-updater.exe"),
-            ]
-        } else {
-            vec![
-                self.install_root.join("saba-chan-updater"),
-            ]
-        };
-
-        for candidate in &candidates {
-            if candidate.exists() {
-                return Ok(candidate.display().to_string());
-            }
-        }
-
-        // 개발 환경: target/release 또는 target/debug
-        let dev_candidates = if cfg!(target_os = "windows") {
-            vec![
-                PathBuf::from("updater/gui/src-tauri/target/release/saba-chan-updater.exe"),
-                PathBuf::from("updater/gui/src-tauri/target/debug/saba-chan-updater.exe"),
-                PathBuf::from("target/release/saba-chan-updater.exe"),
-                PathBuf::from("target/debug/saba-chan-updater.exe"),
-            ]
-        } else {
-            vec![
-                PathBuf::from("updater/gui/src-tauri/target/release/saba-chan-updater"),
-                PathBuf::from("updater/gui/src-tauri/target/debug/saba-chan-updater"),
-                PathBuf::from("target/release/saba-chan-updater"),
-                PathBuf::from("target/debug/saba-chan-updater"),
-            ]
-        };
-
-        for candidate in &dev_candidates {
-            if candidate.exists() {
-                return Ok(candidate.canonicalize()?.display().to_string());
-            }
-        }
-
-        // 찾지 못하면 기본값을 반환 (배포 환경에서는 첫 후보 사용)
-        Ok(candidates[0].display().to_string())
     }
 
     // ─────── 테스트 헬퍼 (pub) ────────────────────────────────────────────────────────────────────────

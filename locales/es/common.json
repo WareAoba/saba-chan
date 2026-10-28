@@ -16,7 +16,6 @@
     }
   },
   "app_name": "Saba-chan",
-  "app_description": "Plataforma de Gestión de Servidores de Juegos Modular",
   "success": "Éxito",
   "error": "Error",
   "warning": "Advertencia",
@@ -36,7 +35,6 @@
     "existing_running": "El demonio existente se está ejecutando",
     "starting": "Iniciando demonio...",
     "started": "Demonio iniciado",
-    "preparing": "Preparando demonio... (agotado el tiempo)",
     "failed_to_start": "No se pudo iniciar el daemon",
     "check_warning": "Advertencia al verificar demonio: {{error}}"
   },
@@ -61,8 +59,7 @@
   },
   "network": {
     "connection_refused": "No se puede conectar al demonio. Verifique que el demonio se esté ejecutando",
-    "timeout": "Tiempo de solicitud agotado: El servidor no respondió",
-    "not_found": "Servidor no encontrado. Verifique la configuración de red"
+    "timeout": "Tiempo de solicitud agotado: El servidor no respondió"
   },
   "port_conflict": {
     "force_stop_title": "Conflicto de puerto: {{name}} detenido",
@@ -106,7 +103,6 @@
     "settings_http": "No se pudieron guardar los ajustes (HTTP {{status}}): {{error}}",
     "http": "Error (HTTP {{status}})",
     "command_failed": "No se pudo ejecutar el comando: {{error}}",
-    "no_log_file": "No hay archivo de registro",
     "url_missing": "No se indicó la URL",
     "url_not_web": "Solo se pueden abrir direcciones http(s)",
     "path_missing": "No se indicó la ruta",

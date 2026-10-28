@@ -31,9 +31,6 @@ pub const PUBLISHER: &str = "WareAoba";
 /// 기본 IPC 서버 포트
 pub const DEFAULT_IPC_PORT: u16 = 57474;
 
-/// 기본 Daemon API URL
-pub const DEFAULT_DAEMON_URL: &str = "http://127.0.0.1:57474";
-
 /// 원격 데몬 TLS 포트 기본값 (D1, 설정 `remote.port`로 바꾼다. 사용자 확정 2026-10-26)
 pub const DEFAULT_REMOTE_PORT: u16 = 57480;
 
@@ -239,11 +236,6 @@ pub fn resolve_staging_dir() -> PathBuf {
         }
         PathBuf::from("./updates")
     }
-}
-
-/// 업데이터 상태 파일 경로 (`updater-state.json`)
-pub fn resolve_updater_state_path() -> PathBuf {
-    resolve_data_dir().join("updater-state.json")
 }
 
 /// 업데이트 완료 마커 경로 (`update-complete.json`)

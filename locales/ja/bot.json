@@ -346,8 +346,7 @@
       "ambientEffort": "参加判断の推論の強さ",
       "confirmLevel": "実行前の確認レベル",
       "memory": "記憶",
-      "webSearch": "ウェブ検索",
-      "disabledTools": "無効なツール",
+      "tools": "使うツール",
       "step": "ステップ",
       "from_snapshot": "ゲーム自動バックアップから"
     },

@@ -640,6 +640,7 @@
     "preflight_failed": "게임 모듈 실행 환경 준비에 실패했어요: {{error}}. 다음 서버 작업 때 다시 시도해요."
   },
   "stop": {
+    "confirm": "{{name}} 서버를 정지하시겠습니까?",
     "already": "{{name}}은(는) 이미 꺼져 있어요.",
     "done": "{{name}}을(를) 껐어요.",
     "force_confirm": "저장 없이 끌까요?",
@@ -834,6 +835,7 @@
       "chatbot.forget": "말하는 사바쨩이 기억하는 내용 지우기 (모든 디스코드 서버 또는 하나)",
       "chatbot.models": "저장된 API 키로 쓸 수 있는 모델 (디스코드 서버 이름이나 id, 없으면 하나뿐인 서버)",
       "chatbot.credit": "남은 크레딧(일반 키로 알려 주는 제공사만)과 디스코드 서버 하나의 이번 달 사용량",
+      "chatbot.tools": "디스코드 서버 하나에서 고를 수 있는 도구를 카테고리별로, 켬·끔·막힘과 함께",
       "chatbot.template": "서버 프롬프트 기본 틀 출력 (파일로 저장한 뒤 `chatbot set memo=@파일 --guild ...`)",
       "module.audit": "모듈의 Python 코드가 하는 일을 선언한 권한과 비교",
       "extension.audit": "익스텐션의 Python 코드가 하는 일을 선언한 권한과 비교",
@@ -844,6 +846,7 @@
       "audit": "누가 어디서(GUI·CLI·디스코드·예약) 서버를 켜고 끄고 명령을 보냈는지",
       "perm": "디스코드에서 누가 어떤 명령을 쓸 수 있는지 (멤버 레벨, 프리셋, 명령별 레벨)",
       "perm.show": "디스코드 서버 하나의 레벨·프리셋·덮어쓰기 보기 (서버 이름이나 id, 없으면 하나뿐인 서버)",
+      "perm.commands": "레벨별 명령: 각 명령을 어느 레벨부터 쓸 수 있는지 (--server로 서버 하나만)",
       "perm.grant": "멤버(이름이나 id)에게 레벨 주기: admin, user, chatbot, banned",
       "perm.revoke": "멤버의 개별 레벨 지우기 (기본 레벨을 받아요)",
       "perm.default": "개별 레벨이 없는 멤버의 레벨",
@@ -1071,6 +1074,7 @@
     "after": "이름은 일부만 적어도 돼요 (예: start pal). 인자 없이 터미널에서 실행하면 전체 화면 메뉴가 열려요(SABA_NO_TUI=1이면 대화형 셸).\n스크립트에서는 --json과 --yes를 쓰세요. 종료 코드: 0 성공 · 1 실패 · 2 사용법 · 3 데몬 연결 안 됨 · 4 없음 · 130 취소"
   },
   "restart": {
+    "confirm": "'{{name}}' 서버를 껐다가 다시 켤까요? 접속한 사람은 잠시 끊겨요.",
     "waiting": "{{name}} 다시 시작하는 중...",
     "done": "{{name}}을(를) 다시 시작했어요."
   },
@@ -1209,7 +1213,15 @@
     "credit_balance_none": "지금은 잔액을 확인하지 못했어요.",
     "credit_usage": "이번 달 사용량 ({{month}}, UTC 기준)",
     "credit_usage_line": "모델 호출 {{calls}}번 · 입력 {{input}}토큰(캐시 {{cached}}) · 출력 {{output}}토큰",
-    "credit_exhausted": "크레딧이 다 떨어졌어요 ({{time}}). 충전하기 전까지는 대답하지 못해요."
+    "credit_exhausted": "크레딧이 다 떨어졌어요 ({{time}}). 충전하기 전까지는 대답하지 못해요.",
+    "cat_game_servers": "게임 서버",
+    "cat_games": "게임 관련",
+    "cat_info": "정보 찾기",
+    "cat_create": "만들기",
+    "tool_on": "켜짐",
+    "tool_off": "꺼짐",
+    "tool_blocked": "공통에서 막힘",
+    "tool_unavailable": "지금 쓸 수 없음"
   },
   "trust": {
     "verified": "확인됨",
@@ -1283,7 +1295,7 @@
       "owner": "소유자",
       "admin": "관리자",
       "user": "유저",
-      "chatbot": "말하는 사바쨩",
+      "chatbot": "게스트",
       "banned": "금지"
     }
   },
@@ -1477,6 +1489,7 @@
     "failed_no_log": "설치하지 못했어요: {{reason}}",
     "done": "{{dir}}에 설치했어요",
     "next": "다음 명령으로 데몬을 켜세요:\n{{command}}",
+    "next_app": "앱 메뉴에서 사바쨩을 열거나 다음 명령으로 여세요:\n{{command}}",
     "components_dir": "모듈·익스텐션은 {{dir}}에 둬요.",
     "components_dir_invalid": "{{dir}}은(는) 모듈·익스텐션 위치로 쓸 수 없어요: {{reason}}",
     "invalid_dir": "{{dir}}에는 설치할 수 없어요. 드라이브 루트, 홈 폴더, 설정 폴더가 아닌 폴더를 고르세요"

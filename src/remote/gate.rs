@@ -204,6 +204,7 @@ pub static ROUTES: &[Route] = &[
     // ── 멤버 권한과 길드별 서버 노출 ──
     allow("GET", "/api/permissions/{guild_id}"),
     allow("PATCH", "/api/permissions/{guild_id}"),
+    allow("GET", "/api/permissions/{guild_id}/commands"),
     allow("PUT", "/api/permissions/{guild_id}/members/{discord_id}"),
     allow("DELETE", "/api/permissions/{guild_id}/members/{discord_id}"),
     allow("GET", "/api/instance/{id}/words"),
@@ -222,6 +223,7 @@ pub static ROUTES: &[Route] = &[
     deny("PUT", "/api/relay/node/{guild_id}/channels"),
     deny("GET", "/api/relay/node/{guild_id}/chatbot/models"),
     deny("GET", "/api/relay/node/{guild_id}/chatbot/credit"),
+    deny("GET", "/api/relay/node/{guild_id}/chatbot/tools"),
     deny("GET", "/api/relay/bot-invite"),
     deny("POST", "/api/relay/pair/initiate"),
     deny("GET", "/api/relay/pair/{code}/status"),

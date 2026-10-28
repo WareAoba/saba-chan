@@ -14,7 +14,7 @@ const dirtyKeys = new Set();
 // 데몬에서 읽은 값을 넣는 중: 바꾼 칸으로 치지 않는다
 let applyingLoad = false;
 
-export const DEFAULT_IPC_PORT = 57474; // shared/constants.js와 동일 — renderer는 CJS require 불가하므로 상수 선언
+export const DEFAULT_IPC_PORT = 57474; // updater/src/constants.rs DEFAULT_IPC_PORT와 같다
 
 // 효과음 스위치 — 데몬 GuiSettings.sounds와 같은 모양. 전체(enabled)와 종류가 모두 켜져야 울린다
 export const DEFAULT_SOUNDS = Object.freeze({

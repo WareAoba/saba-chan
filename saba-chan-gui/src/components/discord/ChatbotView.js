@@ -4,18 +4,17 @@ import { useTranslation } from 'react-i18next';
 import { safeShowToast } from '../../utils/helpers';
 import CustomDropdown from '../CustomDropdown/CustomDropdown';
 import { Icon } from '../Icon';
-import { SabaEmpty, SabaFail } from '../ui/SabaArt';
+import { SabaFail } from '../ui/SabaArt';
 import { SabaSpinner, SabaToggle } from '../ui/SabaUI';
 import { StatusChip } from '../ui/StatusChip';
-import { Avatar } from './NodeView';
 import { PROVIDER_BRANDS } from './providerBrands';
 
 /**
- * 릴레이 계약 기본값 (데몬 `chatbot.rs` relay_defaults). 기본값과 같으면 null로 보내 릴레이 기본을 따른다.
- * 호출어는 디스코드 접두사가, 대화 유지시간은 릴레이 고정값이 맡는다 (chatbot-settings-v2 §2)
+ * 공통 설정 기본값 (데몬 `chatbot.rs` relay_defaults + allowedTools). 기본값과 같으면 null로 보내 기본을 따른다.
+ * 호출어는 디스코드 접두사가, 대화 유지시간은 릴레이 고정값이 맡는다 (chatbot-settings-v2 §2).
+ * 켜기와 켠 도구는 서버마다 정한다 (ChatbotGuildTab). allowedTools: 전체 허용 도구, null = 모두
  */
 export const CHATBOT_DEFAULTS = {
-    enabled: false,
     model: 'gpt-6-luna',
     effort: 'medium',
     ambient: true,
@@ -23,11 +22,8 @@ export const CHATBOT_DEFAULTS = {
     ambientEffort: 'low',
     confirmLevel: 'all',
     memory: true,
-    webSearch: true,
-    disabledTools: [],
+    allowedTools: null,
 };
-/** 끌 수 있는 도구 묶음 (계약 disabledTools). 눈치 메모는 끌 수 없는 기본 사양이라 없다 */
-export const CHATBOT_TOOLS = ['game_servers', 'research', 'lol', 'images'];
 export const EFFORTS = ['low', 'medium', 'high'];
 export const AMBIENT_MINUTES = [1, 3, 5, 10, 30];
 export const MEMO_MAX = 8000;
@@ -47,7 +43,6 @@ export function settingsPatch(draft) {
     for (const [k, def] of Object.entries(CHATBOT_DEFAULTS)) {
         let v = draft[k];
         if (k === 'model') v = String(v ?? '').trim();
-        if (k === 'disabledTools') v = CHATBOT_TOOLS.filter((x) => (v || []).includes(x));
         if (k === 'model' && !v) v = def;
         out[k] = same(v, def) ? null : v;
     }
@@ -56,15 +51,104 @@ export function settingsPatch(draft) {
     return out;
 }
 
-const guildDraft = (g = {}) => ({
-    enabled: typeof g.enabled === 'boolean' ? (g.enabled ? 'on' : 'off') : 'inherit',
+/**
+ * 서버 하나의 초안: 켜기·켠 도구·서버 프롬프트. 값이 없으면 데몬이 준 기본(guildDefault: 새 서버는 꺼짐, 도구 없음.
+ * 옛 공통 설정이 아직 옮겨지지 않았으면 그 값)
+ */
+export const guildDraft = (g = {}, fallback = {}) => ({
+    enabled: typeof g.enabled === 'boolean' ? g.enabled : !!fallback.enabled,
+    tools: Array.isArray(g.tools) ? g.tools : Array.isArray(fallback.tools) ? fallback.tools : [],
     memo: typeof g.memo === 'string' ? g.memo : '',
 });
 
-const guildPatch = (d) => ({
-    enabled: d.enabled === 'inherit' ? null : d.enabled === 'on',
+/** 서버 초안 → PUT guilds 값: 켜기·도구는 늘 그대로 적는다 (공통을 따르지 않는다) */
+export const guildPatch = (d) => ({
+    enabled: d.enabled,
+    tools: d.tools,
     memo: d.memo.trim() ? d.memo : null,
 });
+
+/**
+ * 고를 수 있는 도구 목록 — 릴레이가 원본 (GET /api/relay/node/:guild/chatbot/tools).
+ * {categories, tools: [{name, category, available, unavailable?}]}
+ */
+export function useChatbotTools(guildId, keyVersion = 0) {
+    const [res, setRes] = useState(null);
+    const canAsk = !!(guildId && window.api?.chatbotTools);
+    // biome-ignore lint/correctness/useExhaustiveDependencies: keyVersion 은 다시 묻는 신호 (제공사가 바뀐다)
+    const load = useCallback(async () => {
+        if (!canAsk) return;
+        setRes(null);
+        try {
+            const r = await window.api.chatbotTools(guildId);
+            setRes(Array.isArray(r?.tools) ? r : { error: r?.error || 'FAILED' });
+        } catch (err) {
+            setRes({ error: err.message || 'FAILED' });
+        }
+    }, [canAsk, guildId, keyVersion]);
+    useEffect(() => {
+        load();
+    }, [load]);
+    return { catalog: canAsk ? res : { error: 'NO_GUILD' }, reload: load };
+}
+
+/**
+ * 카테고리별 도구 스위치. blocked(name) 이면 잠그고 이유를 보인다; 쓸 수 없는 도구(운영 키·제공사)는 이유만 덧붙인다
+ */
+export function ToolGroups({ catalog, reload, isOn, onToggle, blocked = () => false }) {
+    const { t } = useTranslation('gui');
+    if (!catalog) return <SabaSpinner size="sm" />;
+    if (catalog.error)
+        return (
+            <p className="dc-field-error">
+                <Icon name="info" size="xs" />{' '}
+                {catalog.error === 'NO_GUILD' ? t('chatbot.tools_need_guild') : t('chatbot.tools_failed')}
+                {catalog.error !== 'NO_GUILD' && (
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={reload}>
+                        {t('maintenance.retry')}
+                    </button>
+                )}
+            </p>
+        );
+    return (catalog.categories || []).map((category) => {
+        const tools = catalog.tools.filter((tool) => tool.category === category);
+        if (!tools.length) return null;
+        return (
+            <div className="cb-tool-group" key={category}>
+                <h3 className="cb-tool-category">{t(`chatbot.cat_${category}`)}</h3>
+                <div className="cb-toggles">
+                    {tools.map((tool) => {
+                        const label = t(`chatbot.tool_${tool.name}`, { defaultValue: tool.name });
+                        const locked = blocked(tool.name);
+                        const notes = [
+                            t(`chatbot.tool_${tool.name}_hint`, { defaultValue: '' }),
+                            locked ? t('chatbot.tool_blocked') : '',
+                            !tool.available ? t(`chatbot.tool_unavailable_${tool.unavailable || 'operator_key'}`) : '',
+                        ].filter(Boolean);
+                        return (
+                            <div className={clsx('cb-toggle-row', { locked })} key={tool.name}>
+                                <span className="dc-list-text">
+                                    <span className="dc-list-name">{label}</span>
+                                    {notes.map((n) => (
+                                        <span className="cb-hint" key={n}>
+                                            {n}
+                                        </span>
+                                    ))}
+                                </span>
+                                <SabaToggle
+                                    checked={!locked && isOn(tool.name)}
+                                    disabled={locked}
+                                    aria-label={label}
+                                    onChange={(on) => onToggle(tool.name, on)}
+                                />
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
+        );
+    });
+}
 
 /** 릴레이 400 {guildId, status, error, details} → 읽을 수 있는 줄 */
 export function relayErrorLines(res, nameOf) {
@@ -234,21 +318,16 @@ function ApiKeyCard({ hasApiKey, onChanged, nameOf }) {
 }
 
 function SettingsEditor({ data, nodes, nameOf, onSaved, keyVersion }) {
-    const { t, i18n } = useTranslation('gui');
-    const savedGuilds = data.guilds || {};
-    const guildIds = [...new Set([...nodes.map((n) => n.guildId), ...Object.keys(savedGuilds)])];
+    const { t } = useTranslation('gui');
+    const guildIds = [...new Set([...nodes.map((n) => n.guildId), ...Object.keys(data.guilds || {})])];
+    const { catalog, reload } = useChatbotTools(guildIds[0], keyVersion);
 
-    // 초안에는 저장된 길드만 넣는다. 노드 목록은 나중에 올 수 있으니(릴레이 응답) 없는 길드는 그때그때 빈 초안으로 본다
-    const resetKey = JSON.stringify([data.settings, data.guilds]);
-    const fresh = () => ({
-        settings: settingsDraft(data.settings),
-        guilds: Object.fromEntries(Object.keys(savedGuilds).map((id) => [id, guildDraft(savedGuilds[id])])),
-    });
-    const [base, setBase] = useState(fresh);
-    const [draft, setDraft] = useState(fresh);
+    const resetKey = JSON.stringify(data.settings);
+    const [base, setBase] = useState(() => settingsDraft(data.settings));
+    const [draft, setDraft] = useState(() => settingsDraft(data.settings));
     // biome-ignore lint/correctness/useExhaustiveDependencies: 저장된 값이 바뀔 때만 초기화
     useEffect(() => {
-        const next = fresh();
+        const next = settingsDraft(data.settings);
         setBase(next);
         setDraft(next);
     }, [resetKey]);
@@ -256,36 +335,25 @@ function SettingsEditor({ data, nodes, nameOf, onSaved, keyVersion }) {
     const [saving, setSaving] = useState(false);
     const [errors, setErrors] = useState([]);
     const [syncWarn, setSyncWarn] = useState(false);
-    const [memArmed, setMemArmed] = useState(null);
-    const [templateBusy, setTemplateBusy] = useState(null);
 
-    const s = draft.settings;
-    const set = (k, v) => setDraft((d) => ({ ...d, settings: { ...d.settings, [k]: v } }));
-    const baseGuild = (id) => base.guilds[id] ?? guildDraft(savedGuilds[id]);
-    const draftGuild = (id) => draft.guilds[id] ?? baseGuild(id);
-    const setGuild = (id, change) =>
-        setDraft((d) => ({
-            ...d,
-            guilds: { ...d.guilds, [id]: { ...(d.guilds[id] ?? baseGuild(id)), ...change } },
-        }));
+    const s = draft;
+    const set = (k, v) => setDraft((d) => ({ ...d, [k]: v }));
+    const dirty = !same(base, draft);
 
-    const badMemo = guildIds.some((id) => draftGuild(id).memo.length > MEMO_MAX);
-    const dirty = !same(base.settings, draft.settings) || guildIds.some((id) => !same(baseGuild(id), draftGuild(id)));
+    // 전체 허용 도구: null = 모두. 목록의 도구를 모두 허용하면 다시 null로 (나중에 생긴 도구도 허용되게)
+    const allNames = Array.isArray(catalog?.tools) ? catalog.tools.map((x) => x.name) : [];
+    const isAllowed = (name) => !Array.isArray(s.allowedTools) || s.allowedTools.includes(name);
+    const toggleAllowed = (name, on) => {
+        const now = Array.isArray(s.allowedTools) ? s.allowedTools : allNames;
+        const next = on ? [...new Set([...now, name])] : now.filter((x) => x !== name);
+        set('allowedTools', allNames.every((x) => next.includes(x)) ? null : allNames.filter((x) => next.includes(x)));
+    };
 
     const save = async () => {
         setSaving(true);
         setErrors([]);
         try {
-            const patch = {};
-            if (!same(base.settings, draft.settings) || data.settings?.persona !== undefined) {
-                patch.settings = settingsPatch(draft.settings);
-            }
-            const guilds = {};
-            for (const id of guildIds) {
-                if (!same(baseGuild(id), draftGuild(id))) guilds[id] = guildPatch(draftGuild(id));
-            }
-            if (Object.keys(guilds).length) patch.guilds = guilds;
-            const res = await window.api.chatbotSave(patch);
+            const res = await window.api.chatbotSave({ settings: settingsPatch(draft) });
             if (res?.success === false) {
                 setErrors(
                     relayErrorLines(res, nameOf).concat(res.guildId || res.error ? [] : [t('chatbot.save_failed')]),
@@ -299,35 +367,6 @@ function SettingsEditor({ data, nodes, nameOf, onSaved, keyVersion }) {
             setErrors([err.message || String(err)]);
         } finally {
             setSaving(false);
-        }
-    };
-
-    const clearMemory = async (guildId) => {
-        setMemArmed(null);
-        try {
-            const res = await window.api.chatbotClearMemory(guildId);
-            if (res?.success === false) throw new Error(res.error || t('chatbot.save_failed'));
-            safeShowToast(t('chatbot.memory_cleared', { name: nameOf(guildId) }), 'success', 3000);
-        } catch (err) {
-            safeShowToast(err.message || String(err), 'error', 6000);
-        }
-    };
-
-    // 서버 프롬프트 기본 틀은 데몬이 앱 언어로 준다 (GET /api/chatbot/memo-template)
-    const insertTemplate = async (guildId) => {
-        setTemplateBusy(guildId);
-        try {
-            const res = await window.api.chatbotMemoTemplate(i18n.language);
-            if (res?.success === false || typeof res?.template !== 'string') throw new Error(res?.error || '');
-            // 기다리는 사이 무언가 썼으면 덮지 않는다
-            setDraft((d) => {
-                const g = d.guilds[guildId] ?? baseGuild(guildId);
-                return g.memo.trim() ? d : { ...d, guilds: { ...d.guilds, [guildId]: { ...g, memo: res.template } } };
-            });
-        } catch (err) {
-            safeShowToast(err.message || t('chatbot.memo_template_failed'), 'error', 6000);
-        } finally {
-            setTemplateBusy(null);
         }
     };
 
@@ -364,10 +403,10 @@ function SettingsEditor({ data, nodes, nameOf, onSaved, keyVersion }) {
                     <h2>{t('chatbot.basic_title')}</h2>
                 </div>
                 <p className="dc-card-desc">{t('chatbot.basic_desc')}</p>
-                {toggleRow('enabled', t('chatbot.enabled'), t('chatbot.enabled_hint'))}
+                <p className="dc-hint">{t('chatbot.guilds_moved')}</p>
                 <ModelField
                     value={s.model}
-                    saved={base.settings.model}
+                    saved={base.model}
                     onChange={(v) => set('model', v)}
                     guildId={guildIds[0]}
                     hasApiKey={!!data.hasApiKey}
@@ -410,127 +449,9 @@ function SettingsEditor({ data, nodes, nameOf, onSaved, keyVersion }) {
                     <h2>{t('chatbot.tools_title')}</h2>
                 </div>
                 <p className="dc-card-desc">{t('chatbot.tools_desc')}</p>
-                <div className="cb-toggles">
-                    {toggleRow('webSearch', t('chatbot.web_search'), t('chatbot.web_search_hint'))}
-                    {CHATBOT_TOOLS.map((tool) => {
-                        const label = t(`chatbot.tool_${tool}`);
-                        const off = (s.disabledTools || []).includes(tool);
-                        return (
-                            <div className="cb-toggle-row" key={tool}>
-                                <span className="dc-list-text">
-                                    <span className="dc-list-name">{label}</span>
-                                    <span className="cb-hint">{t(`chatbot.tool_${tool}_hint`)}</span>
-                                </span>
-                                <SabaToggle
-                                    checked={!off}
-                                    aria-label={label}
-                                    onChange={(on) =>
-                                        set(
-                                            'disabledTools',
-                                            on
-                                                ? (s.disabledTools || []).filter((x) => x !== tool)
-                                                : [...(s.disabledTools || []), tool],
-                                        )
-                                    }
-                                />
-                            </div>
-                        );
-                    })}
-                </div>
-            </section>
-
-            <section className="dc-card">
-                <div className="dc-card-head">
-                    <h2>{t('chatbot.guilds_title')}</h2>
-                </div>
-                <p className="dc-card-desc">{t('chatbot.guilds_desc')}</p>
-                {guildIds.length === 0 ? (
-                    <SabaEmpty compact body={t('chatbot.guilds_empty')} />
-                ) : (
-                    <ul className="dc-list">
-                        {guildIds.map((id) => {
-                            const node = nodes.find((n) => n.guildId === id);
-                            const g = draftGuild(id);
-                            const name = nameOf(id);
-                            return (
-                                <li key={id} className="cb-guild">
-                                    <div className="dc-list-row">
-                                        <Avatar name={name} url={node?.iconUrl} size={32} />
-                                        <span className="dc-list-text">
-                                            <span className="dc-list-name">{name}</span>
-                                        </span>
-                                        <CustomDropdown
-                                            className="cb-select"
-                                            value={g.enabled}
-                                            ariaLabel={t('chatbot.guild_enabled_aria', { name })}
-                                            onChange={(v) => setGuild(id, { enabled: v })}
-                                            options={[
-                                                {
-                                                    value: 'inherit',
-                                                    label: t('chatbot.guild_inherit', {
-                                                        state: s.enabled ? t('chatbot.on') : t('chatbot.off'),
-                                                    }),
-                                                },
-                                                { value: 'on', label: t('chatbot.on') },
-                                                { value: 'off', label: t('chatbot.off') },
-                                            ]}
-                                        />
-                                        {window.api?.chatbotClearMemory && (
-                                            <button
-                                                type="button"
-                                                className={clsx(
-                                                    'btn btn-sm',
-                                                    memArmed === id ? 'btn-danger' : 'btn-ghost',
-                                                )}
-                                                onClick={() => (memArmed === id ? clearMemory(id) : setMemArmed(id))}
-                                            >
-                                                {memArmed === id
-                                                    ? t('chatbot.memory_clear_confirm')
-                                                    : t('chatbot.memory_clear')}
-                                            </button>
-                                        )}
-                                    </div>
-                                    <p className="dc-hint">{t('chatbot.channels_moved')}</p>
-                                    {/* label 이 아니라 div: 안의 기본 틀 버튼이 label 의 이름을 가져가지 않게 (글 상자는 aria-label) */}
-                                    <div className="cb-guild-memo">
-                                        <span className="cb-memo-head">
-                                            <span>{t('chatbot.memo')}</span>
-                                            {!g.memo.trim() && window.api?.chatbotMemoTemplate && (
-                                                <button
-                                                    type="button"
-                                                    className="btn btn-ghost btn-sm"
-                                                    disabled={templateBusy === id}
-                                                    onClick={(e) => {
-                                                        e.preventDefault();
-                                                        insertTemplate(id);
-                                                    }}
-                                                >
-                                                    {t('chatbot.memo_template')}
-                                                </button>
-                                            )}
-                                            <span className={clsx('cb-counter', { over: g.memo.length > MEMO_MAX })}>
-                                                {g.memo.length.toLocaleString()} / {MEMO_MAX.toLocaleString()}
-                                            </span>
-                                        </span>
-                                        <textarea
-                                            className="input cb-persona"
-                                            rows={4}
-                                            value={g.memo}
-                                            aria-label={t('chatbot.memo_aria', { name })}
-                                            placeholder={t('chatbot.memo_placeholder')}
-                                            onChange={(e) => setGuild(id, { memo: e.target.value })}
-                                        />
-                                    </div>
-                                </li>
-                            );
-                        })}
-                    </ul>
-                )}
-                {badMemo && (
-                    <p className="dc-field-error">
-                        <Icon name="alertTriangle" size="xs" /> {t('chatbot.err_memo', { max: MEMO_MAX })}
-                    </p>
-                )}
+                <h3 className="cb-tool-category">{t('chatbot.allowed_title')}</h3>
+                <p className="dc-hint">{t('chatbot.allowed_desc')}</p>
+                <ToolGroups catalog={catalog} reload={reload} isOn={isAllowed} onToggle={toggleAllowed} />
             </section>
 
             {errors.length > 0 && (
@@ -546,26 +467,34 @@ function SettingsEditor({ data, nodes, nameOf, onSaved, keyVersion }) {
                 </div>
             )}
 
-            <div className={clsx('dc-savebar', { dirty })}>
-                <span className="dc-savebar-text">{dirty ? t('discord.unsaved') : ''}</span>
-                {dirty && (
-                    <button
-                        type="button"
-                        className="btn btn-ghost"
-                        disabled={saving}
-                        onClick={() => {
-                            setDraft(base);
-                            setErrors([]);
-                        }}
-                    >
-                        {t('discord.revert')}
-                    </button>
-                )}
-                <button type="button" className="btn btn-primary" disabled={!dirty || saving || badMemo} onClick={save}>
-                    <Icon name="save" size="sm" /> {t('discord.save')}
-                </button>
-            </div>
+            <SaveBar
+                dirty={dirty}
+                saving={saving}
+                onRevert={() => {
+                    setDraft(base);
+                    setErrors([]);
+                }}
+                onSave={save}
+            />
         </>
+    );
+}
+
+/** 저장 막대 — 공통 메뉴와 서버 탭이 같이 쓴다 */
+export function SaveBar({ dirty, saving, blocked = false, onRevert, onSave }) {
+    const { t } = useTranslation('gui');
+    return (
+        <div className={clsx('dc-savebar', { dirty })}>
+            <span className="dc-savebar-text">{dirty ? t('discord.unsaved') : ''}</span>
+            {dirty && (
+                <button type="button" className="btn btn-ghost" disabled={saving} onClick={onRevert}>
+                    {t('discord.revert')}
+                </button>
+            )}
+            <button type="button" className="btn btn-primary" disabled={!dirty || saving || blocked} onClick={onSave}>
+                <Icon name="save" size="sm" /> {t('discord.save')}
+            </button>
+        </div>
     );
 }
 

@@ -46,6 +46,10 @@ libc = "0.2"
 windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_System_Console"] }
 winreg = "0.52"
 
+[features]
+# 개발용: `install`이 모의 릴레이(`SABA_RELAY_URL`, scripts/mock-release-server.js)에서 받는다. 릴리즈 빌드에는 켜지 않는다
+mock-relay = ["saba-chan-installer-core/mock-relay"]
+
 [build-dependencies]
 winres = "0.1"
 

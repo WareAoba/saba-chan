@@ -346,8 +346,7 @@
       "ambientEffort": "Join-in reasoning effort",
       "confirmLevel": "Ask-before-running level",
       "memory": "Memory",
-      "webSearch": "Web search",
-      "disabledTools": "Disabled tool sets",
+      "tools": "Enabled tools",
       "step": "Step",
       "from_snapshot": "From game auto-backup"
     },
