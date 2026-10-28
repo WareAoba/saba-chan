@@ -1322,3 +1322,31 @@ async fn mcp_requests_ask_by_the_local_rule_not_the_guild_level() {
     let err = run(&state, "", None, &Value::Null, stop["planId"].as_str(), &mcp).await.unwrap_err();
     assert_eq!(err.code, "confirm_required");
 }
+
+/// 길드가 명령별로 정한 위험 단계(`discord.commandRisks["<서버>/<액션>"]`)로 디스코드 되묻기를 정한다. 앱은 고정 규칙 그대로
+#[tokio::test]
+async fn a_guild_can_retier_one_command_for_discord_confirms() {
+    let (state, id, _tmp) = server().await;
+    open_everything(&state).await;
+    let risks = json!({ format!("{id}/server.start"): "danger", format!("{id}/backup.restore"): "safe" });
+    set_node(&state, json!({ "ownerDiscordId": "owner", "preset": "loose", "chatbotCap": 2, "defaultLevel": 2, "discord": { "confirmLevel": "danger", "commandRisks": risks } })).await;
+    let asks = |action: &'static str, input: Value, caller: Caller| {
+        let (state, id) = (&state, id.clone());
+        async move { plan(state, action, Some(&id), &input, &caller).await.unwrap()["needsConfirm"] == true }
+    };
+    assert!(asks("server.start", json!({}), relay("owner", false)).await);
+    assert!(!asks("backup.restore", json!({ "name": "b" }), relay("owner", false)).await);
+    assert!(asks("backup.restore", json!({ "name": "b" }), gui()).await);
+    assert!(!asks("server.start", json!({}), gui()).await);
+}
+
+/// 명령별 위험 단계는 safe·caution·danger만 받고, null이면 지운다
+#[test]
+fn command_risks_take_known_tiers_and_null_removes() {
+    let mut s = crate::ipc::handlers::discord::GuildSettings::default();
+    s.apply(json!({ "commandRisks": { "i/server.start": "danger" } }).as_object().unwrap()).unwrap();
+    assert_eq!(s.command_risks.get("i/server.start").map(String::as_str), Some("danger"));
+    assert_eq!(s.apply(json!({ "commandRisks": { "i/x": "scary" } }).as_object().unwrap()).unwrap_err().0, "commandRisks.i/x");
+    s.apply(json!({ "commandRisks": { "i/server.start": null } }).as_object().unwrap()).unwrap();
+    assert!(s.command_risks.is_empty());
+}

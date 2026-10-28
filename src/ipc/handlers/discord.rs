@@ -16,6 +16,8 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
@@ -38,7 +40,16 @@ pub struct GuildSettings {
     pub music: Music,
     /// 봇에게 직접 요청한 명령을 버튼으로 되묻는 단계 (`CONFIRM_LEVELS`). 데몬만 보고 릴레이에는 보내지 않는다
     pub confirm_level: String,
+    /// 이 길드의 디스코드 되묻기에서 명령의 위험 단계를 바꾼다 (`"<서버 id>/<액션 id>"` → `RISKS`, 서버 없는 액션은 액션 id만).
+    /// 되묻기에만 쓰고 권한 판정(`commandLevels`)과는 따로다. 앱·웹·CLI는 고정 규칙이라 보지 않는다. 데몬만 본다
+    pub command_risks: BTreeMap<String, String>,
 }
+
+/// 명령별 위험 단계로 고를 수 있는 값
+pub const RISKS: &[&str] = &["safe", "caution", "danger"];
+
+/// 길드당 명령별 위험 단계 수
+const COMMAND_RISKS_MAX: usize = 500;
 
 /// 되묻기 단계: 모두 / 주의 이상 / 위험만 / 묻지 않음 (`crate::actions::level_asks`)
 pub const CONFIRM_LEVELS: &[&str] = &["all", "caution", "danger", "none"];
@@ -56,7 +67,7 @@ pub struct Music {
 
 impl Default for GuildSettings {
     fn default() -> Self {
-        Self { locale: AUTO_LOCALE.into(), sleeping: false, music: Music::default(), confirm_level: "danger".into() }
+        Self { locale: AUTO_LOCALE.into(), sleeping: false, music: Music::default(), confirm_level: "danger".into(), command_risks: BTreeMap::new() }
     }
 }
 
@@ -150,6 +161,27 @@ impl GuildSettings {
                     Some(l) if CONFIRM_LEVELS.contains(&l) => next.confirm_level = l.to_string(),
                     _ => return Err(("confirmLevel".into(), "unknown level")),
                 },
+                "commandRisks" => {
+                    let m = v.as_object().ok_or(("commandRisks".into(), "must be an object"))?;
+                    for (ck, cv) in m {
+                        let field = || format!("commandRisks.{}", ck);
+                        if ck.is_empty() || ck.len() > 200 {
+                            return Err((field(), "bad key"));
+                        }
+                        match cv {
+                            Value::Null => {
+                                next.command_risks.remove(ck);
+                            }
+                            Value::String(r) if RISKS.contains(&r.as_str()) => {
+                                next.command_risks.insert(ck.clone(), r.clone());
+                            }
+                            _ => return Err((field(), "unknown risk")),
+                        }
+                    }
+                    if next.command_risks.len() > COMMAND_RISKS_MAX {
+                        return Err(("commandRisks".into(), "too many"));
+                    }
+                }
                 "music" => {
                     let m = v.as_object().ok_or(("music".into(), "must be an object"))?;
                     for (mk, mv) in m {
