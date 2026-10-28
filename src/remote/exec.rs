@@ -198,7 +198,7 @@ fn pc_only_fields(
     body: Option<&Value>,
 ) -> Vec<String> {
     let module = match pattern {
-        "/api/instances" => body.and_then(|b| b.get("module_name")).and_then(Value::as_str),
+        "/api/instances" | "/api/instances/check" => body.and_then(|b| b.get("module_name")).and_then(Value::as_str),
         _ => instance.map(|i| i.module_name.as_str()),
     };
     module.map(|m| module_fields(supervisor, m, is_pc_only)).unwrap_or_default()

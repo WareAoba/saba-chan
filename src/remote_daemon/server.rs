@@ -224,7 +224,7 @@ async fn blocked_fields(server: &crate::ipc::IPCServer, method: &str, pattern: &
     // 만들 때 켜진 익스텐션이 물은 칸(`AddServer.options`)의 답: GUI는 칸을 건드리지 않아도 기본값을 싣는다.
     // 선언한 칸·종류에 맞는 값이면 받는다 (`exec::create_option_answers_allowed`. 익스텐션 잠금은 인스턴스 잠금보다 먼저 놓는다)
     let create_options_only = match body.and_then(|b| b.get("extension_data")).and_then(Value::as_object) {
-        Some(given) if pattern == "/api/instances" && method == "POST" => {
+        Some(given) if matches!(pattern, "/api/instances" | "/api/instances/check") && method == "POST" => {
             let options = server.extension_manager.read().await.create_options();
             crate::remote::exec::create_option_answers_allowed(&options, given)
         }
