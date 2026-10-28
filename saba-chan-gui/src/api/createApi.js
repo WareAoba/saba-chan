@@ -212,32 +212,6 @@ export function createApi({ invoke, hub }) {
                 return connectionError(error);
             }
         },
-        serverStop: async (name, options = {}) => {
-            try {
-                return (
-                    await post(`/api/server/${encodeURIComponent(name)}/stop`, options || {}, {
-                        timeout: STOP_TIMEOUT_MS,
-                    })
-                ).data;
-            } catch (error) {
-                if (error.response) {
-                    const status = error.response.status;
-                    const data = error.response.data || {};
-                    if (data.module && data.function) return errorBody(error);
-                    switch (status) {
-                        case 400:
-                            return { error: t('server.stop_failed', { error: data.error || t('info') }) };
-                        case 404:
-                            return { error: t('server.not_found', { name }) };
-                        case 500:
-                            return { error: `${t('error')}: ${data.error || data.message}` };
-                        default:
-                            return { error: t('server.stop_failed', { error: data.error || error.message }) };
-                    }
-                }
-                return connectionError(error);
-            }
-        },
         serverStatus: async (name) => {
             try {
                 return (await get(`/api/server/${encodeURIComponent(name)}/status`)).data;

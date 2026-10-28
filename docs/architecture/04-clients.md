@@ -62,7 +62,6 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 |---|---|---|
 | serverList (90) | GET /api/servers?notices_after=<본 마지막 알림 id> (port_conflict_stops가 있으면 `notify` 명령으로 OS 알림. 받은 가장 큰 `id`를 기억해 다음 조회에 실어 같은 알림을 두 번 띄우지 않는다, L50). 서버마다 `managed`(runner가 맡는지, `Supervisor::uses_managed_start`)가 실린다(`ipc/mod.rs:185-187`, `handlers/server.rs:87`) | ✓ 643 |
 | instanceStart (119) | POST /api/instance/:id/start (managed 여부와 포트 검사는 데몬이 정한다) | ✓ 646 |
-| serverStop (139) | POST /api/server/:name/stop (70분 timeout, L74) | ✓ 650 |
 | serverStatus (160) | GET /api/server/:name/status | ✓ 644 |
 | moduleList (181) | GET /api/modules | ✓ 651 |
 | moduleRefresh (192) | POST /api/modules/refresh | ✓ 652 |

@@ -171,11 +171,11 @@ describe('데몬 응답 가공', () => {
         const { api } = await install({
             daemon_request: daemon({
                 'GET /api/server/My%20Server/status': { status: 200, data: { status: 'running' } },
-                'POST /api/server/a%2Fb/stop': { status: 200, data: { success: true } },
+                'POST /api/instance/a%2Fb/stop': { status: 200, data: { success: true } },
             }),
         });
         expect(await api.serverStatus('My Server')).toEqual({ status: 'running' });
-        expect(await api.serverStop('a/b')).toEqual({ success: true });
+        expect(await api.instanceStop('a/b')).toEqual({ success: true });
     });
 
     it('instanceStart는 404를 서버 없음 문구로, 409는 데몬 문구를 살려 넘긴다', async () => {

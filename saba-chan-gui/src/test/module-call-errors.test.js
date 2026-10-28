@@ -35,7 +35,7 @@ describe('모듈 호출 실패 안내', () => {
     it('기존 명령·설정·정지·익스텐션 오류 경로가 진단 필드를 보존한다', async () => {
         const body = { success: false, error_code: 'module_timeout', module: 'plain', function: 'run', phase: 'run', stderr_tail: ['detail'] };
         const { api } = createApi({ invoke: vi.fn().mockResolvedValue({ status: 500, data: body }), hub: { dispatch: vi.fn(), on: vi.fn() } });
-        for (const run of [() => api.executeCommand('id', { command: 'query' }), () => api.instanceUpdateSettings('id', {}), () => api.serverStop('name'), () => api.extensionEnable('ext')]) {
+        for (const run of [() => api.executeCommand('id', { command: 'query' }), () => api.instanceUpdateSettings('id', {}), () => api.instanceStop('id'), () => api.extensionEnable('ext')]) {
             const result = await run();
             expect(result).toMatchObject(body);
             expect(result.error).toContain('The module call timed out.');
