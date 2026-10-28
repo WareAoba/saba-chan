@@ -44,6 +44,10 @@ const MOCK_VERSION = getArg('--version', '0.2.0');
 const ASSETS_DIR = path.join(__dirname, '.mock-assets');
 const BIN_DIR = path.resolve(getArg('--bin-dir', path.join(__dirname, '..', 'target', 'release')));
 const ZIPS_DIR = args.includes('--zips') ? path.resolve(getArg('--zips', '')) : null;
+if (ZIPS_DIR && !getArg('--zips', '')) {
+    console.error('--zips needs a folder');
+    process.exit(2);
+}
 
 // ─── 서명 ───────────────────────────────────────────
 // 공개된 시험용 seed. 운영 키가 아니다: 릴리즈 빌드는 이 키를 믿지 않는다

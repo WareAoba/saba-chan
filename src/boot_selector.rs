@@ -607,7 +607,9 @@ pub fn find_tagged_process(tag: &str, name: &str) -> Option<u32> {
     std::fs::read_dir("/proc").ok()?.flatten().find_map(|entry| {
         let pid: u32 = entry.file_name().to_str()?.parse().ok()?;
         let exe = std::fs::read_link(entry.path().join("exe")).ok()?;
-        if exe.file_name()?.to_str()? != name {
+        // 도는 동안 실행 파일이 바뀌었으면(업데이트) 커널이 이름 뒤에 " (deleted)"를 붙인다
+        let file = exe.file_name()?.to_str()?;
+        if file.strip_suffix(" (deleted)").unwrap_or(file) != name {
             return None;
         }
         let environ = std::fs::read(entry.path().join("environ")).ok()?;

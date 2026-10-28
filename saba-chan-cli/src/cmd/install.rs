@@ -44,7 +44,7 @@ fn is_server_core() -> bool {
     false
 }
 
-/// 화면이 없는 환경인지: 리눅스는 DISPLAY·WAYLAND_DISPLAY가 모두 없을 때, Windows는 Server Core이거나 SSH로
+/// 화면이 없는 환경인지: 리눅스는 SSH로 들어왔거나 DISPLAY·WAYLAND_DISPLAY가 모두 없을 때, Windows는 Server Core이거나 SSH로
 /// 들어왔거나 대화형 세션 이름(SESSIONNAME)이 없을 때(서비스). `--gui`·`--no-gui`가 감지보다 먼저다
 fn detect_profile(gui: bool, no_gui: bool, os: Os, env: impl Fn(&str) -> Option<String>) -> Profile {
     if gui {
@@ -57,7 +57,8 @@ fn detect_profile(gui: bool, no_gui: bool, os: Os, env: impl Fn(&str) -> Option<
     let headless = match os {
         Os::ServerCore => true,
         Os::Windows => set("SSH_CONNECTION") || !set("SESSIONNAME"),
-        Os::Unix => !set("DISPLAY") && !set("WAYLAND_DISPLAY"),
+        // `ssh -X`로 들어온 서버도 DISPLAY가 있다: SSH 세션은 Windows처럼 화면 없는 서버로 본다
+        Os::Unix => set("SSH_CONNECTION") || (!set("DISPLAY") && !set("WAYLAND_DISPLAY")),
     };
     if headless {
         Profile::Headless
@@ -223,7 +224,7 @@ pub async fn run(ctx: &Ctx, args: InstallArgs) -> Result<()> {
         &json!({ "ok": true, "dir": dir, "modules": modules, "components": last.installed_components, "warnings": last.warnings }),
     );
     // 리눅스 데스크톱은 앱 메뉴에 든 GUI가 데몬을 켠다: 앱을 여는 길을 안내한다
-    if profile == Profile::Desktop && !cfg!(windows) {
+    if profile == Profile::Desktop && cfg!(target_os = "linux") {
         ctx.out.hint(&t!("install.next_app", command = app_command(&dir)));
     } else {
         ctx.out
@@ -316,6 +317,11 @@ mod tests {
     #[test]
     fn a_machine_without_a_display_installs_without_the_gui() {
         assert_eq!(detect_profile(false, false, Os::Unix, env(&[])), Profile::Headless);
+        // `ssh -X`의 전달된 화면은 서버의 데스크톱이 아니다
+        assert_eq!(
+            detect_profile(false, false, Os::Unix, env(&[("DISPLAY", "localhost:10.0"), ("SSH_CONNECTION", "1.2.3.4 5 6.7.8.9 22")])),
+            Profile::Headless
+        );
         assert_eq!(
             detect_profile(false, false, Os::Unix, env(&[("DISPLAY", ":0")])),
             Profile::Desktop

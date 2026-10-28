@@ -211,8 +211,7 @@ fn get_start_menu_path() -> anyhow::Result<std::path::PathBuf> {
 
 // ── Linux: 앱 메뉴 항목 (freedesktop Desktop Entry) ──
 
-/// 앱 메뉴 항목 파일 이름. 제거기의 흔적 목록(`traces`)과 같은 이름이다
-#[cfg(any(target_os = "linux", test))]
+/// 앱 메뉴 항목 파일 이름 (제거기의 흔적 정리 `traces`도 이 이름을 본다)
 pub const APP_ENTRY_FILE: &str = "saba-chan.desktop";
 
 /// GUI zip에 함께 든 아이콘 (GUI 실행 파일 옆)

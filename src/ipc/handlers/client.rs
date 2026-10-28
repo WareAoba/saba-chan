@@ -310,7 +310,7 @@ pub async fn client_launch(State(state): State<IPCServer>, Json(body): Json<serd
         return (StatusCode::NOT_FOUND, Json(json!({ "success": false, "error": format!("{} was not found next to the daemon", kind.binary()), "error_code": code }))).into_response();
     };
     let spawned = match kind {
-        Interface::Cli => spawn_in_new_console(&binary, &args, &state.client_registry),
+        Interface::Cli => spawn_in_new_console(&binary, &args, &state.client_registry).await,
         Interface::Gui => {
             let env: Vec<(&str, String)> = gui_ipc_base(&state.listen_addr, configured_gui_port()).map(|b| ("IPC_BASE", b)).into_iter().collect();
             crate::boot_selector::spawn_gui_with(&binary, &args, &env)
@@ -335,31 +335,48 @@ fn cli_terminal_available() -> bool {
 }
 
 #[cfg(windows)]
-fn spawn_in_new_console(cli: &std::path::Path, args: &[String], registry: &crate::ipc::ClientRegistry) -> std::io::Result<u32> {
+async fn spawn_in_new_console(cli: &std::path::Path, args: &[String], registry: &crate::ipc::ClientRegistry) -> std::io::Result<u32> {
     crate::boot_selector::spawn_cli_in_new_console(cli, args).inspect(|&pid| registry.note_launched_cli(pid))
 }
 
-/// 터미널이 CLI를 띄우기까지 잠시 걸린다: 표시를 단 CLI가 나타나면 그 pid를 기록한다 (완전히 종료할 때 닫는다)
+/// 리눅스 터미널이 CLI를 띄우기까지 기다리는 한도
 #[cfg(target_os = "linux")]
-fn spawn_in_new_console(cli: &std::path::Path, args: &[String], registry: &crate::ipc::ClientRegistry) -> std::io::Result<u32> {
-    let tag = uuid::Uuid::new_v4().to_string();
-    let pid = crate::boot_selector::spawn_cli_in_new_console(cli, args, &tag)?;
-    let name = cli.file_name().and_then(|n| n.to_str()).unwrap_or("saba-chan-cli").to_string();
-    let registry = registry.clone();
-    tokio::spawn(async move {
-        for _ in 0..100 {
-            if let Some(cli_pid) = crate::boot_selector::find_tagged_process(&tag, &name) {
-                return registry.note_launched_cli(cli_pid);
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+const CLI_APPEAR_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// 표시를 단 CLI가 나타날 때까지 기다린다 (`/proc`를 훑는 일은 블로킹 스레드에서)
+#[cfg(target_os = "linux")]
+async fn wait_for_tagged_cli(tag: &str, name: &str, timeout: std::time::Duration) -> Option<u32> {
+    let deadline = std::time::Instant::now() + timeout;
+    loop {
+        let (t, n) = (tag.to_string(), name.to_string());
+        if let Ok(Some(pid)) = tokio::task::spawn_blocking(move || crate::boot_selector::find_tagged_process(&t, &n)).await {
+            return Some(pid);
         }
-        tracing::warn!("[Launch] The CLI opened in a terminal did not show up; a full quit will not close it");
-    });
-    Ok(pid)
+        if std::time::Instant::now() >= deadline {
+            return None;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+    }
+}
+
+/// 터미널은 떠도 CLI를 띄우지 못할 수 있다(`-e`를 모르는 터미널, 바로 죽는 터미널): 표시를 단 CLI가 나타나야 성공이다.
+/// 그 pid를 기록해 완전히 종료할 때 닫는다. 나타나지 않으면 실패로 돌려 부른 쪽(GUI)이 닫히지 않게 한다
+#[cfg(target_os = "linux")]
+async fn spawn_in_new_console(cli: &std::path::Path, args: &[String], registry: &crate::ipc::ClientRegistry) -> std::io::Result<u32> {
+    let tag = uuid::Uuid::new_v4().to_string();
+    crate::boot_selector::spawn_cli_in_new_console(cli, args, &tag)?;
+    let name = cli.file_name().and_then(|n| n.to_str()).unwrap_or("saba-chan-cli");
+    match wait_for_tagged_cli(&tag, name, CLI_APPEAR_TIMEOUT).await {
+        Some(pid) => {
+            registry.note_launched_cli(pid);
+            Ok(pid)
+        }
+        None => Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "the terminal did not open the CLI")),
+    }
 }
 
 #[cfg(not(any(windows, target_os = "linux")))]
-fn spawn_in_new_console(_cli: &std::path::Path, _args: &[String], _registry: &crate::ipc::ClientRegistry) -> std::io::Result<u32> {
+async fn spawn_in_new_console(_cli: &std::path::Path, _args: &[String], _registry: &crate::ipc::ClientRegistry) -> std::io::Result<u32> {
     Err(std::io::Error::new(std::io::ErrorKind::Unsupported, "not supported on this OS"))
 }
 
@@ -461,6 +478,22 @@ mod console_tests {
         assert_eq!(with["lines"][0]["message"], "[Heartbeat] Active clients: 2");
         let without = read(&[]).await;
         assert!(without["lines"][0].get("spans").is_none(), "{without}");
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod linux_launch_tests {
+    use super::*;
+
+    /// 리눅스 "CLI로 전환"은 터미널이 실제로 CLI를 띄웠을 때만 성공이다 (띄우지 못하면 GUI가 닫히지 않게)
+    #[tokio::test]
+    async fn the_cli_counts_as_opened_only_when_it_shows_up() {
+        let tag = uuid::Uuid::new_v4().to_string();
+        assert_eq!(wait_for_tagged_cli(&tag, "sleep", std::time::Duration::from_millis(300)).await, None);
+        let mut child = std::process::Command::new("sleep").arg("30").env(crate::boot_selector::LAUNCH_TAG_ENV, &tag).spawn().unwrap();
+        assert_eq!(wait_for_tagged_cli(&tag, "sleep", std::time::Duration::from_secs(5)).await, Some(child.id()));
+        let _ = child.kill();
+        let _ = child.wait();
     }
 }
 

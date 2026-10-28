@@ -102,10 +102,22 @@ mkdir -p "$HOME/.local/bin"
 ln -sf "$CLI" "$HOME/.local/bin/saba-chan-cli"
 
 # 데스크톱 구성: GUI가 데몬을 띄운다. GUI가 쓰는 시스템 라이브러리(WebKitGTK)가 없으면 설치 명령만 알린다
+# 일반 사용자의 PATH에는 ldconfig(/sbin)가 없을 수 있다. 확인할 길이 없으면 있다고 보고 GUI를 띄운다
+has_webkit() {
+    for l in ldconfig /sbin/ldconfig /usr/sbin/ldconfig; do
+        if command -v "$l" >/dev/null 2>&1; then
+            "$l" -p 2>/dev/null | grep -q 'libwebkit2gtk-4\.1\.so\.0'
+            return
+        fi
+    done
+    return 0
+}
 if [ -x "$DIR/saba-chan-gui" ]; then
-    if command -v ldconfig >/dev/null 2>&1 && ! ldconfig -p 2>/dev/null | grep -q 'libwebkit2gtk-4\.1\.so\.0'; then
+    if ! has_webkit; then
         say "창 앱에 WebKitGTK가 필요해요. 예: sudo apt install libwebkit2gtk-4.1-0 libayatana-appindicator3-1 (Fedora: sudo dnf install webkit2gtk4.1 libayatana-appindicator-gtk3)" \
             "The app needs WebKitGTK. For example: sudo apt install libwebkit2gtk-4.1-0 libayatana-appindicator3-1 (Fedora: sudo dnf install webkit2gtk4.1 libayatana-appindicator-gtk3)"
+        # 앱을 열 수 있을 때까지 CLI는 쓸 수 있게 데몬은 켠다 (앱을 열면 이 데몬에 붙는다)
+        "$CLI" daemon start
     else
         say "앱 메뉴에서 사바쨩을 열 수 있어요. 지금 엽니다." "Saba-chan is in your app menu. Opening it now."
         (cd "$DIR" && setsid "$DIR/saba-chan-gui" </dev/null >/dev/null 2>&1 &)
