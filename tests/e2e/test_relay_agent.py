@@ -66,14 +66,16 @@ def test_heartbeat_never_leaks_local_paths(paired, relay, fake_server):
     assert str(paired.sb.root) not in blob, "heartbeat에 로컬 경로(executable_path, working_dir)가 실림"
 
 
-def test_raw_command_roundtrip_reaches_server_console(paired, relay, fake_server):
+def test_text_plan_roundtrip_reaches_server_console(paired, relay, fake_server):
     folder, _ = fake_server("mc1")
     iid = paired.import_server("mc1", folder, module_settings={"ram": "256M"})
     paired.start_instance(iid)
     paired.wait_console(iid, DONE)
 
-    cid = relay.push_command({"action": "raw_command", "text": "mc1 상태", "userName": "e2e", "via": "slash"}, requestedBy="332007306403250178", guildId="1", channelId="2", ownerDiscordId="332007306403250178")
-    result = relay.wait_result(cid)
+    who = {"requestedBy": "332007306403250178", "guildId": "1", "channelId": "2", "ownerDiscordId": "332007306403250178"}
+    plan = relay.wait_result(relay.push_command({"action": "plan", "text": "mc1 상태", "userName": "e2e", "via": "slash"}, **who))
+    assert plan["success"] is True and plan["data"].get("planId"), plan
+    result = relay.wait_result(relay.push_command({"action": "run_plan", "planId": plan["data"]["planId"], "via": "slash"}, **who))
     assert result["success"] is True, result
     assert result["data"]["text"], result
 
@@ -239,9 +241,9 @@ def test_heartbeat_carries_cpu_and_ram_only_for_running_servers(paired, relay, f
 
 def test_text_command_replies_in_the_guild_language(paired, relay):
     """디스코드 텍스트 명령 답은 데몬 GUI 언어가 아니라 릴레이가 실어 보낸 길드 언어로 쓴다."""
-    ko = relay.wait_result(relay.push_command({"action": "raw_command", "text": "", "locale": "ko"}, ownerDiscordId="1"))
+    ko = relay.wait_result(relay.push_command({"action": "plan", "text": "", "locale": "ko"}, ownerDiscordId="1"))
     assert "<모듈>" in ko["data"]["text"], ko
-    en = relay.wait_result(relay.push_command({"action": "raw_command", "text": "", "locale": "en-US"}, ownerDiscordId="1"))
+    en = relay.wait_result(relay.push_command({"action": "plan", "text": "", "locale": "en-US"}, ownerDiscordId="1"))
     assert "<module>" in en["data"]["text"], en
 
 
