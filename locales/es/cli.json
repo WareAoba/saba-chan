@@ -18,6 +18,7 @@
     "ask_preset": "¿Empezar con un ajuste recomendado?",
     "no_preset": "Ajustes predeterminados",
     "agreements_declined": "No se creó el servidor porque no se aceptaron los términos.",
+    "not_installable": "{{key}}: saba-chan no puede instalar un servidor nuevo con este valor. Opciones: {{choices}}",
     "created_installing": "{{name}} creado. Instalando los archivos del servidor...",
     "folder_other_game": "{{dir}} parece ser de otro juego ({{games}}).",
     "folder_unrecognized": "No se reconoció ningún servidor en {{dir}}.",

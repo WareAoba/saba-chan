@@ -448,6 +448,13 @@ async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
     for (k, v) in split_pairs(&a.set)? {
         if is_install(&k) {
             let (key, value) = typed_setting(&fields, &Value::Null, &k, &v)?;
+            // 새로 설치하는 서버는 사바쨩이 설치할 수 있는 값만 (데몬 `not_installable`을 만들기 전에 알린다)
+            if let Some(f) = fields.iter().find(|f| s(f, "name") == key).filter(|_| from.is_none()) {
+                let choices = install_choices(f);
+                if f.get("install_options").is_some_and(Value::is_array) && !value.as_str().is_some_and(|v| choices.iter().any(|c| c == v)) {
+                    return Err(usage(t!("add.not_installable", key = key, choices = choices.join(", "))));
+                }
+            }
             module_settings.insert(key, value);
         } else {
             later_set.push((k, v));
@@ -492,13 +499,15 @@ async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
                     ctx.ask.select(&label, &labels, at)?.map(|i| json!(options[i]))
                 }
                 "boolean" => Some(bool_option(&ctx.ask, &label, &default)?),
-                _ => {
+                // 목록·여러 줄·비밀번호·파일 칸은 만든 뒤 `server set`으로 (GUI 만들기 화면과 같다)
+                "" | "text" | "number" => {
                     let shown = default.as_str().map(str::to_string).or_else(|| (!default.is_null()).then(|| default.to_string()));
                     match ctx.ask.text(&label, shown.as_deref(), true)? {
                         Some(v) if !v.is_empty() => Some(typed_setting(&fields, &Value::Null, s(f, "name"), &v)?.1),
                         _ => None,
                     }
                 }
+                _ => None,
             };
             if let Some(v) = value.filter(|v| *v != default && !v.is_null()) {
                 module_settings.insert(s(f, "name").to_string(), v);
@@ -1992,7 +2001,6 @@ async fn agree(ctx: &Ctx, query: Option<&str>) -> Result<()> {
     Ok(())
 }
 
-/// 익스텐션이 묻는 예/아니오 칸 (AddServer.options). `--yes`는 확인을 넘길 뿐 값을 정하지 않으므로 기본값을 쓴다
 /// 만들 때 고를 수 있는 값: 사바쨩이 설치할 수 있는 값(`install_options`), 없으면 `options` 전부 (GUI와 같다)
 fn install_choices(field: &Value) -> Vec<String> {
     let list = field.get("install_options").filter(|v| v.is_array()).or_else(|| field.get("options"));
@@ -2021,6 +2029,7 @@ fn module_agreements(module: &Value, locales: Option<&Value>) -> Vec<Value> {
     }).collect()
 }
 
+/// 예/아니오 칸 (익스텐션 AddServer.options, 만들 때 고르는 설정). `--yes`는 확인을 넘길 뿐 값을 정하지 않으므로 기본값을 쓴다
 fn bool_option(ask: &crate::prompt::Prompt, label: &str, default: &Value) -> Result<Value> {
     if ask.enabled && !ask.yes {
         Ok(Value::Bool(ask.confirm(label, default.as_bool().unwrap_or(false))?))

@@ -40,9 +40,8 @@ function useLiveData(api, ready) {
             const res = await api.moduleList();
             if (!Array.isArray(res?.modules)) return;
             setModules(res.modules);
-            // 모듈 locales가 붙으면 번역된 게임·설정 이름으로 다시 그린다
-            await registerModuleLocales(api, res.modules).catch(() => {});
-            setModules([...res.modules]);
+            // 모듈 locales가 붙으면 번역된 게임·설정 이름으로 다시 그린다 (i18n `bindI18nStore`)
+            registerModuleLocales(api, res.modules).catch(() => {});
         };
         loadModules();
         const stopPoll = startPoll(loadServers, 4000);

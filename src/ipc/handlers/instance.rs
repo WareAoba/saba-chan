@@ -191,7 +191,7 @@ async fn create_instance_inner(state: IPCServer, payload: Value) -> impl IntoRes
                         (None, _) => !value.is_object() && !value.is_array(),
                     };
                     // 새로 설치하는 서버는 모듈이 설치할 수 있는 값만 (가져오는 서버는 판정된 값 그대로)
-                    let installable = payload.get("migration_source").is_some()
+                    let installable = payload.get("migration_source").is_some_and(|v| !v.is_null())
                         || field.install_options.as_ref().is_none_or(|ok| value.as_str().is_some_and(|v| ok.iter().any(|o| o == v)));
                     if allowed && !installable {
                         let error = json!({ "error": format!("module_settings.{} cannot be installed by saba-chan", field.name), "error_code": "not_installable", "fields": [{"field": field.name}] });
@@ -2811,6 +2811,8 @@ mod tests {
         assert_eq!(refused.status.as_u16(), 400, "{:?}", refused.body);
         assert_eq!(refused.body["error_code"], "not_installable");
         assert_eq!(refused.body["fields"][0]["field"], "server_type");
+        let null_source = create(json!({ "name": "a", "module_name": "game", "migration_source": null, "module_settings": { "server_type": "spigot" } })).await;
+        assert_eq!(null_source.body["error_code"], "not_installable", "null is not an import");
         assert!(state.supervisor.read().await.instance_store.list().is_empty());
 
         let made = create(json!({ "name": "a", "module_name": "game", "module_settings": { "server_type": "vanilla" } })).await;

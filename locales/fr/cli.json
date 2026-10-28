@@ -18,6 +18,7 @@
     "ask_preset": "Partir d'un préréglage ?",
     "no_preset": "Réglages par défaut",
     "agreements_declined": "Le serveur n'a pas été créé, car les conditions n'ont pas été acceptées.",
+    "not_installable": "{{key}} : saba-chan ne peut pas installer de nouveau serveur avec cette valeur. Choix : {{choices}}",
     "created_installing": "{{name}} créé. Installation des fichiers du serveur...",
     "folder_other_game": "{{dir}} semble appartenir à un autre jeu ({{games}}).",
     "folder_unrecognized": "Aucun serveur reconnu dans {{dir}}.",

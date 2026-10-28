@@ -18,6 +18,7 @@
     "ask_preset": "추천 설정으로 시작할까요?",
     "no_preset": "기본 설정",
     "agreements_declined": "약관에 동의하지 않아 서버를 만들지 않았어요.",
+    "not_installable": "{{key}}: 사바쨩이 이 값으로는 새 서버를 설치할 수 없어요. 고를 수 있는 값: {{choices}}",
     "created_installing": "{{name}}을(를) 만들었어요. 서버 파일을 설치하는 중...",
     "folder_other_game": "{{dir}} 폴더는 다른 게임 폴더로 보여요 ({{games}}).",
     "folder_unrecognized": "{{dir}}에서 서버를 알아보지 못했어요.",

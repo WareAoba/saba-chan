@@ -139,3 +139,13 @@ describe('새 서버 만들기 — 이름', () => {
         expect(screen.getByRole('button', { name: /add_server|Add/i })).toBeDisabled();
     });
 });
+
+describe('새 서버 만들기 — 비운 칸', () => {
+    it('고쳤다가 비운 칸은 보내지 않는다 (데몬이 모듈 기본값을 쓴다)', async () => {
+        const onAddServer = openConfigure();
+        fireEvent.change(screen.getByLabelText('World Seed'), { target: { value: 'abc' } });
+        fireEvent.change(screen.getByLabelText('World Seed'), { target: { value: '' } });
+        await submit();
+        expect(onAddServer.mock.calls[0][0].module_settings).toEqual({});
+    });
+});

@@ -11,7 +11,7 @@ import { ModuleMakerCard } from '../ModuleMakerCard';
 import { SabaToggle } from '../ui/SabaUI';
 import { Segmented } from '../ui/StatusChip';
 import { TrustCreateNotice } from '../ui/TrustBadge';
-import { installChoices, installFields, nameTaken, optionLabel, suggestName } from '../../utils/installFields';
+import { installChoices, installFields, installSettings, nameTaken, optionLabel, suggestName } from '../../utils/installFields';
 
 /**
  * AddInstanceNewServer — "새 서버로 추가" 흐름.
@@ -86,7 +86,7 @@ export function AddInstanceNewServer({
             created = await onAddServer({
                 name: newServerName.trim(),
                 module_name: selectedExtension,
-                module_settings: installValues,
+                module_settings: installSettings(installValues),
                 // 사용자가 체크한 약관만 (module.toml [[agreements]])
                 ...(agreements.length ? { accept_agreements: agreements.map((a) => a.id) } : {}),
                 // 프리셋 값은 데몬이 푼다 (I1-b)

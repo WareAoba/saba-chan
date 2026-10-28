@@ -1924,6 +1924,9 @@ fn preset_problems(meta: &ModuleMetadata) -> Vec<String> {
             };
             if !option_ok || crate::validator::validate_setting_value(field, Some(value)).is_err() {
                 problems.push(format!("presets '{}': '{}' value is not allowed for this setting", preset.id, key));
+            } else if field.install_options.as_ref().is_some_and(|ok| !value.as_str().is_some_and(|v| ok.iter().any(|o| o == v))) {
+                // 프리셋으로 새 서버를 만들면 그 값으로 설치한다: 설치할 수 없는 값이면 그 프리셋은 늘 거절된다
+                problems.push(format!("presets '{}': '{}' is not in install_options", preset.id, key));
             }
         }
     }
@@ -2779,6 +2782,8 @@ entry = "lifecycle.py"
         assert!(parse_module_toml(&empty).unwrap_err().to_string().contains("install_options"));
         let default_outside = field("install = true\ninstall_options = [\"spigot\"]\n");
         assert!(parse_module_toml(&default_outside).unwrap_err().to_string().contains("default"));
+        let preset = field("install = true\ninstall_options = [\"vanilla\"]\n\n[[presets]]\nid = \"bukkit\"\n[presets.settings]\nserver_type = \"spigot\"\n");
+        assert!(parse_module_toml(&preset).unwrap_err().to_string().contains("install_options"));
     }
 
     /// 0.1.11: 더 새 데몬의 키를 쓴 모듈도 예전 데몬이 읽는다. 모르는 키는 경고로 남기고 무시한다

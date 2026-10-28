@@ -92,5 +92,15 @@ describe('웹 모듈 locales', () => {
         await registerModuleLocales(api, [{ name: 'terraria', version: '0.1.0' }]);
         expect(api.moduleGetLocales).toHaveBeenCalledTimes(1);
         expect(i18n.t('mod_terraria:module.display_name')).toBe('Terraria!');
+        // 받지 못한 모듈은 다음 목록 때 다시 받는다
+        const flaky = {
+            moduleGetLocales: vi
+                .fn()
+                .mockResolvedValueOnce({})
+                .mockResolvedValue({ en: { module: { display_name: 'XNA' } } }),
+        };
+        await registerModuleLocales(flaky, [{ name: 'xna', version: '0.1.0' }]);
+        await registerModuleLocales(flaky, [{ name: 'xna', version: '0.1.0' }]);
+        expect(i18n.t('mod_xna:module.display_name')).toBe('XNA');
     });
 });
