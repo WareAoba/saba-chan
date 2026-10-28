@@ -159,7 +159,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 | relayInitiatePairing / relayPollPairingStatus (976-990) | POST /api/relay/pair/initiate, GET /api/relay/pair/:code/status | ✓ 782-783 |
 | relayLinkRequests / relayLinkRequestRespond (992-994) | GET /api/relay/link-requests, POST /api/relay/link-requests/:id `{accept}`. 디스코드에서 코드 없이 온 연결 요청(J1-b). 데몬 본문을 그대로 돌려준다(`daemonJson`) | ✓ 784-785 |
 | relayPrivacyErase / relayPrivacyEraseStatus | POST `/api/relay/privacy/erase` `{locale}` → `{url}`, GET → `{status}`. 개인정보 모두 지우기(`daemonJson`) | ✓ 디스코드 연결 화면 `PrivacyErase`: 동의 페이지를 열고 3초마다 묻는다. `done`이면 연결 해제처럼 화면을 비운다(끊기는 데몬이 한다) |
-| relayMcpGrant / relayMcpGrantRevoke | GET `/api/relay/mcp/grant` → `{grant:{clientName, createdAt, lastUsedAt}\|null}`, DELETE → 204. 이 PC 주인 계정의 AI 에이전트 연결(원격 MCP, 05 §4.4 (l))(`daemonJson`) | ✓ 디스코드 연결 화면 `AgentLink`: 연결된 에이전트와 마지막 사용을 보이고 끊는다. 없으면 에이전트에 넣을 주소를 안내한다. 받지 못하면 줄을 그리지 않는다 |
+| relayMcpGrant / relayMcpGrantRevoke | GET `/api/relay/mcp/grant` → `{grant:{clientName, createdAt, lastUsedAt}\|null, url}`(`url`은 에이전트에 넣을 MCP 주소), DELETE → 204. 이 PC 주인 계정의 AI 에이전트 연결(원격 MCP, 05 §4.4 (l))(`daemonJson`) | ✓ 디스코드 연결 화면 `AgentLink`: 연결된 에이전트와 마지막 사용을 보이고 끊는다. 없으면 릴레이가 준 `url`을 에이전트에 넣으라고 안내한다. 받지 못하면 줄을 그리지 않는다 |
 | shellOpenPath (997) | Rust `shell_open_path`. 디렉터리가 아니면 열지 않는다(`errors.path_not_folder`) | n/a |
 | logsGetPath / logsOpenFolder (1001-1002) | Rust `logs_get_path` / `logs_open_folder` | n/a (logsGetPath 미사용) |
 | launchUninstaller (1003) | Rust `launch_uninstaller` (installer 직접 spawn) | n/a |

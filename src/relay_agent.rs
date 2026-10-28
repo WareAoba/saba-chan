@@ -834,10 +834,15 @@ impl Session {
             // 원격 MCP (계정 주인의 AI 에이전트): 길드 없이, 이 PC의 주인만. 앱과 같은 액션과 그 목록(`catalog`)
             "plan" | "run_plan" | "query" | "catalog" if payload.get("via").and_then(Value::as_str) == Some(crate::actions::MCP_VIA) => {
                 let locale = payload.get("locale").and_then(Value::as_str).unwrap_or("en").to_string();
-                let caller = match mcp_caller(cmd, &payload, locale) {
+                let caller = match mcp_caller(cmd, &payload, locale.clone()) {
                     Ok(caller) => caller,
-                    Err(e) => return action_result(Err(e), "en"),
+                    Err(e) => return action_result(Err(e), &locale),
                 };
+                // 문장 계획은 디스코드 채팅 경로다 (MCP는 액션 id로만 부른다)
+                if payload.get("text").is_some() {
+                    let e = crate::actions::ActionError { status: 400, code: "invalid_input", message: "Text plans are not taken from MCP".into(), data: json!({ "field": "text" }) };
+                    return action_result(Err(e), &locale);
+                }
                 let result = match action {
                     "catalog" => {
                         let instance = payload.get("instance").and_then(Value::as_str);
@@ -2006,6 +2011,10 @@ mod tests {
         assert!(denied(&r), "{r:?}");
         let r = session.handle_payload(&json!({ "id": "c8", "requestedBy": "u1", "guildId": "g1", "payload": { "action": "catalog" } })).await;
         assert_eq!(r["success"], false, "{r:?}");
+        // 문장 계획은 MCP로 받지 않는다
+        let text = json!({ "action": "plan", "via": "mcp", "text": "srv start" });
+        let r = session.handle_payload(&json!({ "id": "c9", "requestedBy": "u1", "hostOwnerDiscordId": "u1", "payload": text })).await;
+        assert_eq!((r["success"].as_bool(), r["data"]["code"].as_str()), (Some(false), Some("invalid_input")), "{r:?}");
     }
 
     /// 원격 데몬 터널: 원격 포트가 꺼져 있거나 터널 id가 이상하면 받지 않는다

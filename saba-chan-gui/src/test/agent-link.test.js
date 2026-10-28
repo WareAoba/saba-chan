@@ -8,6 +8,7 @@ describe('AI 에이전트 연결', () => {
         window.api = {
             relayMcpGrant: vi.fn().mockResolvedValue({
                 grant: { clientName: 'Claude', createdAt: '2026-10-28T00:00:00Z', lastUsedAt: '2026-10-28T01:00:00Z' },
+                url: 'https://relay.test/mcp',
             }),
             relayMcpGrantRevoke: vi.fn().mockResolvedValue(''),
         };
@@ -19,7 +20,7 @@ describe('AI 에이전트 연결', () => {
         await act(async () => fireEvent.click(screen.getByRole('button')));
         expect(window.api.relayMcpGrantRevoke).toHaveBeenCalledTimes(1);
         expect(screen.queryByRole('button')).not.toBeInTheDocument();
-        expect(screen.getByText(/saba-chan\.online\/mcp/)).toBeInTheDocument();
+        expect(screen.getByText(/relay\.test\/mcp/)).toBeInTheDocument();
     });
 
     it('끊기가 실패하면 알리고 연결을 그대로 보인다', async () => {

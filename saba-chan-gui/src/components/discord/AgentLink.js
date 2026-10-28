@@ -3,9 +3,6 @@ import { useTranslation } from 'react-i18next';
 import { safeShowToast } from '../../utils/helpers';
 import { Icon } from '../Icon';
 
-/** 에이전트에 넣는 원격 MCP 주소 (릴레이 `<issuer>/mcp`) */
-const MCP_URL = 'https://saba-chan.online/mcp';
-
 export const agentLinkAvailable = () =>
     typeof window.api?.relayMcpGrant === 'function' && typeof window.api?.relayMcpGrantRevoke === 'function';
 
@@ -19,6 +16,8 @@ export function AgentLink() {
     const { t, i18n } = useTranslation('gui');
     // undefined = 아직 모름(못 받았으면 줄을 그리지 않는다), null = 연결 없음
     const [grant, setGrant] = useState(undefined);
+    // 에이전트에 넣을 주소 (릴레이가 준다)
+    const [url, setUrl] = useState('');
     const [busy, setBusy] = useState(false);
 
     useEffect(() => {
@@ -26,7 +25,9 @@ export function AgentLink() {
         window.api
             .relayMcpGrant()
             .then((res) => {
-                if (alive && res && 'grant' in res) setGrant(res.grant);
+                if (!alive || !res || !('grant' in res)) return;
+                setGrant(res.grant);
+                setUrl(typeof res.url === 'string' ? res.url : '');
             })
             .catch(() => {});
         return () => {
@@ -52,7 +53,7 @@ export function AgentLink() {
     if (!grant) {
         return (
             <div className="dc-row-actions">
-                <span className="muted">{t('discord.agent_none', { url: MCP_URL })}</span>
+                <span className="muted">{t('discord.agent_none', { url })}</span>
             </div>
         );
     }

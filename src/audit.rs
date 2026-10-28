@@ -79,7 +79,7 @@ fn accept_language(headers: &axum::http::HeaderMap) -> Option<String> {
 }
 
 /// 데몬이 스스로 정하는 출처: HTTP 헤더로 흉내 낼 수 없다
-const INTERNAL_SOURCES: [&str; 8] = ["discord", "schedule", "daemon", "web", "remote", "restart", "game", "external"];
+const INTERNAL_SOURCES: [&str; 9] = ["discord", "schedule", "daemon", "web", "remote", "restart", "game", "external", "mcp"];
 
 tokio::task_local! {
     static ORIGIN: Origin;
@@ -658,6 +658,8 @@ inputs = [{ name = "message", type = "text" }]
         assert_eq!(Origin::from_headers(&h).source, "api");
         h.insert("X-Saba-Client", "discord".parse().unwrap());
         assert_eq!(Origin::from_headers(&h).source, "api");
+        h.insert("X-Saba-Client", "mcp".parse().unwrap());
+        assert_eq!(Origin::from_headers(&h).source, "api", "only the relay path marks the AI agent");
     }
 
     #[test]

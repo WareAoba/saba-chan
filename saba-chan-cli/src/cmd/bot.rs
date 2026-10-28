@@ -13,9 +13,6 @@ use crate::resolve;
 use serde_json::{json, Map, Value};
 use std::time::Duration;
 
-/// 에이전트에 넣는 원격 MCP 주소 (릴레이 `<issuer>/mcp`)
-const MCP_URL: &str = "https://saba-chan.online/mcp";
-
 pub async fn run(ctx: &Ctx, cmd: BotCmd) -> Result<()> {
     match cmd {
         BotCmd::Status => status(ctx).await,
@@ -42,7 +39,8 @@ pub async fn run(ctx: &Ctx, cmd: BotCmd) -> Result<()> {
             let r = ctx.api.mcp_grant().await?;
             ctx.out.data(&r, |r| match r.get("grant").filter(|g| g.is_object()) {
                 Some(g) => say!("{}", t!("bot.agent_linked", name = s(g, "clientName"), when = s(g, "lastUsedAt"))),
-                None => say!("{}", t!("bot.agent_none", url = MCP_URL)),
+                // 에이전트에 넣을 주소는 릴레이가 준다
+                None => say!("{}", t!("bot.agent_none", url = s(r, "url"))),
             });
             Ok(())
         }
