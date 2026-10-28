@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { safeShowToast } from '../../utils/helpers';
 import CustomDropdown from '../CustomDropdown/CustomDropdown';
@@ -543,6 +543,34 @@ export function PeopleView({ node, instance, members, membersLoading, onRefreshM
 const RISK_TONE = { safe: 'ok', caution: 'warn', danger: 'stop' };
 
 // ── 명령: 계단. 칩은 "이 레벨부터 쓸 수 있다"는 자리에 있고, 위 계단은 아래 계단의 명령을 모두 쓴다 ──
+/**
+ * 칩이 다른 계단으로 옮겨지면 옛 자리에서 새 자리로 미끄러지게 한다 (FLIP).
+ * 칩마다 `data-chip` 으로 찾고, 움직임 줄이기 설정이면 건너뛴다
+ */
+function useChipFlip(ref, dep) {
+    const last = useRef(new Map());
+    useLayoutEffect(() => {
+        const root = ref.current;
+        if (!root) return;
+        const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+        const next = new Map();
+        for (const el of root.querySelectorAll('[data-chip]')) {
+            const box = el.getBoundingClientRect();
+            next.set(el.dataset.chip, box);
+            const prev = last.current.get(el.dataset.chip);
+            if (reduce || !prev || !el.animate) continue;
+            const dx = prev.left - box.left;
+            const dy = prev.top - box.top;
+            if (Math.abs(dx) < 1 && Math.abs(dy) < 1) continue;
+            el.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }], {
+                duration: 260,
+                easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)',
+            });
+        }
+        last.current = next;
+    }, [ref, dep]);
+}
+
 export function CommandStairs({ node, permissions, instance = L.ALL_INSTANCES }) {
     const { t } = useTranslation('gui');
     const { perm, board, loading, error, busy, load, write } = permissions;
@@ -551,6 +579,8 @@ export function CommandStairs({ node, permissions, instance = L.ALL_INSTANCES })
     const [dragging, setDragging] = useState(null);
     const [over, setOver] = useState(null);
     const [presetDraft, setPresetDraft] = useState(null); // 명령별 레벨을 덮을 프리셋 (확인 전)
+    const stairsRef = useRef(null);
+    useChipFlip(stairsRef, board);
     if (!perm) return <PermState loading={loading} error={error} onRetry={load} />;
     if (!board)
         return <SabaFail message={t('discord.perm_err_generic')} onRetry={load} retryLabel={t('discord.reload')} />;
@@ -659,7 +689,7 @@ export function CommandStairs({ node, permissions, instance = L.ALL_INSTANCES })
             )}
 
             <div className="dc-stairs-scroll">
-                <ol className="dc-stairs" style={{ '--steps': levels.length }} aria-label={t('discord.perm_stairs')}>
+                <ol ref={stairsRef} className="dc-stairs" style={{ '--steps': levels.length }} aria-label={t('discord.perm_stairs')}>
                     {levels.map((level, i) => {
                         const here = chips.filter((c) => c.level === level);
                         const below = carried;
@@ -703,10 +733,12 @@ export function CommandStairs({ node, permissions, instance = L.ALL_INSTANCES })
                                         <button
                                             key={c.id}
                                             type="button"
+                                            data-chip={c.id}
                                             className={clsx('dc-cmd-chip', `kind-${c.kind || 'basic'}`, {
                                                 'is-moved': c.overridden,
                                                 'is-fixed': c.fixed,
                                                 'is-selected': selected === c.id,
+                                                'is-dragging': dragging === c.id,
                                             })}
                                             draggable={c.fixed ? undefined : 'true'}
                                             aria-pressed={selected === c.id}

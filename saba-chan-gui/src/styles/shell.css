@@ -2229,6 +2229,7 @@ button.activity-line:hover {
     padding: var(--sp-2-5) var(--sp-2);
     border-top: 3px solid var(--accent);
     background: color-mix(in srgb, var(--accent) calc(4% + var(--step) * 4%), var(--bg-1));
+    transition: box-shadow var(--dur-fast) var(--ease), background-color var(--dur-fast) var(--ease);
 }
 .dc-step.level-banned {
     border-top-color: var(--line-strong);
@@ -2236,6 +2237,7 @@ button.activity-line:hover {
 }
 .dc-step.is-over {
     box-shadow: inset 0 0 0 2px var(--accent);
+    background: color-mix(in srgb, var(--accent) calc(12% + var(--step) * 4%), var(--bg-1));
 }
 .dc-step-chips {
     display: flex;
@@ -2264,6 +2266,14 @@ button.activity-line:hover {
     color: var(--text-1);
     font-size: var(--fs-xs);
     cursor: grab;
+    transition: opacity var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
+}
+.dc-cmd-chip:not(.is-fixed):hover {
+    transform: translateY(-1px);
+}
+.dc-cmd-chip.is-dragging {
+    opacity: 0.4;
+    cursor: grabbing;
 }
 .dc-cmd-chip.is-fixed {
     cursor: pointer;

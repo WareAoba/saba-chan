@@ -1,10 +1,11 @@
 import * as L from '@gui/components/discord/levels';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useApp, useData } from '../store';
 import { Dropdown } from './Dropdown';
 import { Icon } from './icons';
-import { Button, Empty, errorText, failed, Loading, Section } from './ui';
+import { PermissionStairs } from './PermissionStairs';
+import { Button, Empty, errorText, failed, Loading, Section, Segments } from './ui';
 
 /** 레벨 이름: 길드에 더한 단계는 그 이름, 기본 단계는 웹 문구 */
 const levelName = (t, perm, id) => L.ladderOf(perm).find((l) => l.id === id)?.name || t(`perm.level.${id}`);
@@ -229,23 +230,34 @@ function StartNotice({ api, guildId }) {
     );
 }
 
-function GuildPermissions({ api, guildId }) {
-    const { t } = useTranslation();
+/** 길드 하나의 권한과 명령 계단. 늦게 온 앞선 읽기는 버린다 */
+function useGuildPermissions(api, guildId) {
+    const { t, i18n } = useTranslation();
+    const locale = i18n.language;
     const toast = useApp((s) => s.toast);
     const [perm, setPerm] = useState(null);
+    const [board, setBoard] = useState(null);
     const [members, setMembers] = useState(null);
-    const [query, setQuery] = useState('');
     const [busy, setBusy] = useState(false);
+    const seq = useRef(0);
 
     const load = useCallback(async () => {
-        const [p, m] = await Promise.all([api.permissionsGet(guildId), api.relayListNodeMembers(guildId)]);
+        const mine = ++seq.current;
+        const [p, b, m] = await Promise.all([
+            api.permissionsGet(guildId),
+            api.permissionsCommands(guildId, locale),
+            api.relayListNodeMembers(guildId),
+        ]);
+        if (mine !== seq.current) return;
         if (failed(p)) toast(errorText(t, p), 'error');
         else setPerm(p);
+        setBoard(failed(b) ? null : b);
         setMembers(Array.isArray(m?.members) ? m.members : []);
-    }, [api, guildId, t, toast]);
+    }, [api, guildId, locale, t, toast]);
 
     useEffect(() => {
         setPerm(null);
+        setBoard(null);
         setMembers(null);
         load();
     }, [load]);
@@ -253,13 +265,18 @@ function GuildPermissions({ api, guildId }) {
     const write = async (fn) => {
         setBusy(true);
         const res = await fn();
+        if (failed(res)) toast(errorText(t, res), 'error');
+        else toast(t('perm.saved'), 'ok');
+        await load();
         setBusy(false);
-        if (failed(res)) return toast(errorText(t, res), 'error');
-        toast(t('perm.saved'), 'ok');
-        load();
     };
+    return { perm, board, members, busy, write };
+}
 
-    if (!perm || !members) return <Loading />;
+/** 멤버별 레벨: 기본 레벨, 멤버마다 레벨, 레벨 사다리 편집 (길드 전체에 적용) */
+function MemberLevels({ api, guildId, perm, members, busy, write }) {
+    const { t } = useTranslation();
+    const [query, setQuery] = useState('');
     const defaultLevel = typeof perm.defaultLevel === 'number' ? perm.defaultLevel : 1;
     const levelOf = (id) => (Object.hasOwn(perm.members || {}, id) ? perm.members[id] : null);
     const q = query.trim().toLowerCase();
@@ -275,6 +292,7 @@ function GuildPermissions({ api, guildId }) {
 
     return (
         <>
+            <small className="hint">{t('perm.members_server_wide')}</small>
             <div className="field">
                 <span>{t('perm.default')}</span>
                 <LevelSelect
@@ -287,13 +305,6 @@ function GuildPermissions({ api, guildId }) {
                 />
                 <small className="hint">{t('perm.default_hint')}</small>
             </div>
-            <LadderEditor
-                perm={perm}
-                busy={busy}
-                t={t}
-                onSave={(ladder) => write(() => api.permissionsUpdate(guildId, { ladder }))}
-            />
-            <StartNotice api={api} guildId={guildId} />
             <input
                 className="search"
                 type="search"
@@ -338,6 +349,98 @@ function GuildPermissions({ api, guildId }) {
                     })}
                 </ul>
             )}
+            <LadderEditor
+                perm={perm}
+                busy={busy}
+                t={t}
+                onSave={(ladder) => write(() => api.permissionsUpdate(guildId, { ladder }))}
+            />
+        </>
+    );
+}
+
+/** 인스턴스 메뉴: 레벨별 명령과 멤버별 레벨을 따로 보인다 (GUI와 같은 동선) */
+function InstanceMenu({ api, guildId, data, instance, onBack }) {
+    const { t } = useTranslation();
+    const [view, setView] = useState('commands');
+    const { perm, board, members, busy, write } = data;
+    const srv = board?.instances?.find((i) => i.id === instance);
+    return (
+        <div className="instance-menu">
+            <button type="button" className="back" onClick={onBack}>
+                <Icon name="back" size={16} /> {t('perm.back_instances')}
+            </button>
+            <h3>
+                {srv ? srv.name : t('perm.all_instances')}
+                {srv?.module && <small className="hint"> · {srv.module}</small>}
+            </h3>
+            <Segments
+                value={view}
+                onChange={setView}
+                options={[
+                    { value: 'commands', label: t('perm.view_commands') },
+                    { value: 'members', label: t('perm.view_members') },
+                ]}
+            />
+            {view === 'commands' ? (
+                board ? (
+                    <PermissionStairs
+                        api={api}
+                        guildId={guildId}
+                        perm={perm}
+                        board={board}
+                        instance={srv ? srv.id : L.ALL_INSTANCES}
+                        busy={busy}
+                        write={write}
+                    />
+                ) : (
+                    <Empty>{t('perm.stairs_failed')}</Empty>
+                )
+            ) : (
+                <MemberLevels api={api} guildId={guildId} perm={perm} members={members} busy={busy} write={write} />
+            )}
+        </div>
+    );
+}
+
+/** 디스코드 서버 하나: 인스턴스 목록 → 인스턴스 메뉴. 켜짐 알림은 목록 아래 */
+function GuildPermissions({ api, guildId }) {
+    const { t } = useTranslation();
+    const data = useGuildPermissions(api, guildId);
+    const [instance, setInstance] = useState(null);
+
+    if (!data.perm || !data.members) return <Loading />;
+    if (instance)
+        return (
+            <InstanceMenu
+                api={api}
+                guildId={guildId}
+                data={data}
+                instance={instance}
+                onBack={() => setInstance(null)}
+            />
+        );
+    const instances = data.board?.instances || [];
+    return (
+        <>
+            <div className="field">
+                <span>{t('perm.instances')}</span>
+                <small className="hint">{t('perm.instances_hint')}</small>
+                <ul className="rows">
+                    {[{ id: L.ALL_INSTANCES, name: t('perm.all_instances') }, ...instances].map((i) => (
+                        <li key={i.id} className="row">
+                            <button type="button" className="row-open" onClick={() => setInstance(i.id)}>
+                                <span className="row-main">
+                                    <span className="row-title row-title-one">{i.name}</span>
+                                    {i.module && <span className="row-sub">{i.module}</span>}
+                                </span>
+                                <Icon name="chevronRight" size={16} />
+                            </button>
+                        </li>
+                    ))}
+                </ul>
+            </div>
+            <StartNotice api={api} guildId={guildId} />
         </>
     );
 }
@@ -376,7 +479,7 @@ export function PermissionsTab({ api }) {
                             />
                         </div>
                     )}
-                    {guildId && <GuildPermissions api={api} guildId={guildId} />}
+                    {guildId && <GuildPermissions key={guildId} api={api} guildId={guildId} />}
                 </>
             )}
         </Section>

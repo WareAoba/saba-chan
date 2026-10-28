@@ -352,6 +352,36 @@ describe('권한 화면', () => {
         expect(window.api.permissionsUpdate).toHaveBeenCalledTimes(1);
     });
 
+    it('명령 계단: 옮긴 칩은 옛 계단 자리에서 새 계단으로 미끄러진다', async () => {
+        const steps = ['Lv 0 · Banned', 'Lv 1 · Guest', 'Lv 2 · User', 'Lv 3 · Admin', 'Lv 4 · Owner'];
+        const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function () {
+            const left = steps.indexOf(this.closest?.('li')?.getAttribute('aria-label')) * 100;
+            return { left, top: 0, width: 10, height: 10, right: left + 10, bottom: 10, x: left, y: 0 };
+        });
+        const animate = vi.fn();
+        HTMLElement.prototype.animate = animate;
+        try {
+            await openCommands();
+            const moved = baseBoard();
+            moved.items = moved.items.map((i) => (i.name === 'say' ? { ...i, level: 2, overridden: true } : i));
+            window.api.permissionsCommands.mockResolvedValue(moved);
+            const say = within(step('Lv 1 · Guest')).getByRole('button', { name: /^Say$/ });
+            fireEvent.dragStart(say);
+            expect(say).toHaveClass('is-dragging');
+            fireEvent.dragOver(step('Lv 3 · Admin'));
+            fireEvent.drop(step('Lv 3 · Admin'));
+            await flush();
+            expect(within(step('Lv 3 · Admin')).getByRole('button', { name: /^Say$/ })).toBeInTheDocument();
+            expect(animate).toHaveBeenCalledWith(
+                [{ transform: 'translate(-200px, 0px)' }, { transform: 'none' }],
+                expect.objectContaining({ duration: 260 }),
+            );
+        } finally {
+            rect.mockRestore();
+            delete HTMLElement.prototype.animate;
+        }
+    });
+
     it('명령 계단: 한 인스턴스 보기와 고정 레벨 명령', async () => {
         await openCommands();
         pickOption(screen.getByLabelText('View'), 'Creative');
