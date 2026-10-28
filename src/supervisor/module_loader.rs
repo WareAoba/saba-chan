@@ -511,6 +511,10 @@ pub struct SettingField {
     /// GUI·CLI가 만들기 화면에서 묻고 `POST /api/instances`의 `module_settings`로 보낸다
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub install: bool,
+    /// 새 서버를 만들 때 고를 수 있는 `options` (사바쨩이 설치할 수 있는 값). 없으면 `options` 전부.
+    /// 나머지 값은 가져온 서버를 판정할 때만 쓴다
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub install_options: Option<Vec<String>>,
     /// 이 값이 실행 인자로 들어가는 모양 (예: `-port={value}`, `-servername {value}`). `{value}`가 없으면
     /// boolean 플래그. 실행 인자 미리보기가 사용자가 친 인자를 이 필드로 되돌릴 때 쓴다 (`crate::launch_args`)
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -1020,6 +1024,9 @@ struct SettingFieldToml {
     /// 서버를 만들 때 고르는 설정이면 true (설치할 파일이 달라지는 값)
     #[serde(default)]
     install: bool,
+    /// 만들 때 고를 수 있는 `options` (사바쨩이 설치할 수 있는 값). 없으면 `options` 전부
+    #[serde(default)]
+    install_options: Option<Vec<String>>,
     /// 실행 인자 모양. 문자열 하나나 배열 (`SettingField::arg`)
     #[serde(default)]
     arg: Option<OneOrMany>,
@@ -1311,6 +1318,7 @@ impl ModuleToml {
                 port: f.port,
                 public: f.public,
                 install: f.install,
+                install_options: f.install_options,
                 arg: f.arg.map(OneOrMany::into_vec).unwrap_or_default(),
                 format: f.format,
                 pattern: f.pattern,
@@ -1766,6 +1774,16 @@ impl ModuleToml {
                     problems.push(format!("settings field '{}': public '{}' must be one of tcp, udp, both", field.name, public));
                 } else if !field.port {
                     problems.push(format!("settings field '{}': public needs port = true", field.name));
+                }
+            }
+            if let Some(allowed) = &field.install_options {
+                let options = field.options.as_deref().unwrap_or(&[]);
+                if !field.install || ty != "select" {
+                    problems.push(format!("settings field '{}': install_options needs type = \"select\" and install = true", field.name));
+                } else if allowed.is_empty() || allowed.iter().any(|v| !options.contains(v)) {
+                    problems.push(format!("settings field '{}': install_options must be a non-empty subset of options", field.name));
+                } else if let Some(d) = field.default.as_ref().and_then(|d| d.as_str()).filter(|d| !allowed.iter().any(|v| v == d)) {
+                    problems.push(format!("settings field '{}': default '{}' is not in install_options", field.name, d));
                 }
             }
             if let Some(Err(e)) = field.pattern.as_deref().map(regex::Regex::new) {
@@ -2742,6 +2760,25 @@ entry = "lifecycle.py"
         assert!(parse_module_toml(&empty).unwrap_err().to_string().contains("patterns"));
         let duplicate = format!("{good}\n[[diagnose]]\ncode = \"PORT_IN_USE\"\npatterns = [\"x\"]\n");
         assert!(parse_module_toml(&duplicate).unwrap_err().to_string().contains("duplicate code"));
+    }
+
+    /// 만들 때 고를 수 있는 값(`install_options`): 사바쨩이 설치할 수 있는 값만 새 서버 화면에 보인다.
+    /// 나머지 `options`는 가져온 서버를 판정할 때만 쓴다. `options` 안의 값이어야 하고 `install = true`인 select에만 쓴다
+    #[test]
+    fn install_options_are_a_checked_subset_of_options() {
+        let field = |extra: &str| format!("{V1}\n[[settings.fields]]\nname = \"server_type\"\ntype = \"select\"\noptions = [\"vanilla\", \"spigot\"]\ndefault = \"vanilla\"\n{extra}");
+        let meta = parse_module_toml(&field("install = true\ninstall_options = [\"vanilla\"]\n")).unwrap();
+        assert!(meta.warnings.is_empty(), "{:?}", meta.warnings);
+        assert_eq!(meta.settings.unwrap().fields[0].install_options.as_deref(), Some(&["vanilla".to_string()][..]));
+        assert!(parse_module_toml(&field("install = true\n")).unwrap().settings.unwrap().fields[0].install_options.is_none());
+        let outside = field("install = true\ninstall_options = [\"paper\"]\n");
+        assert!(parse_module_toml(&outside).unwrap_err().to_string().contains("install_options"));
+        let not_install = field("install_options = [\"vanilla\"]\n");
+        assert!(parse_module_toml(&not_install).unwrap_err().to_string().contains("install = true"));
+        let empty = field("install = true\ninstall_options = []\n");
+        assert!(parse_module_toml(&empty).unwrap_err().to_string().contains("install_options"));
+        let default_outside = field("install = true\ninstall_options = [\"spigot\"]\n");
+        assert!(parse_module_toml(&default_outside).unwrap_err().to_string().contains("default"));
     }
 
     /// 0.1.11: 더 새 데몬의 키를 쓴 모듈도 예전 데몬이 읽는다. 모르는 키는 경고로 남기고 무시한다

@@ -457,8 +457,8 @@ async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
     // 설치 설정보다 먼저 고른다: 프리셋이 정한 설치 설정은 다시 묻지 않는다
     let mut preset = a.preset.clone();
     let presets: Vec<&Value> = module.get("presets").and_then(Value::as_array).map(|p| p.iter().collect()).unwrap_or_default();
+    let locales = module_locales(ctx, &module_name).await;
     if preset.is_none() && from.is_none() && ctx.ask.enabled && !presets.is_empty() {
-        let locales = module_locales(ctx, &module_name).await;
         let label = |p: &Value| {
             let id = s(p, "id");
             let localized = locales.as_ref().and_then(|l| l.pointer(&format!("/presets/{}/label", id))).and_then(Value::as_str);
@@ -478,18 +478,30 @@ async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
             if module_settings.contains_key(s(f, "name")) || preset_sets(s(f, "name")) {
                 continue;
             }
-            let options: Vec<String> = f
-                .get("options")
-                .and_then(Value::as_array)
-                .map(|o| o.iter().filter_map(Value::as_str).map(str::to_string).collect())
-                .unwrap_or_default();
-            if options.is_empty() {
-                continue;
-            }
-            let label = if s(f, "label").is_empty() { s(f, "name") } else { s(f, "label") };
-            let default = options.iter().position(|o| Some(o.as_str()) == f.get("default").and_then(Value::as_str));
-            if let Some(i) = ctx.ask.select(label, &options, default.unwrap_or(0))? {
-                module_settings.insert(s(f, "name").to_string(), json!(options[i]));
+            let label = setting_label(locales.as_ref(), f);
+            let default = f.get("default").cloned().unwrap_or(Value::Null);
+            // GUI와 같다: 고르지 않은(기본값 그대로인) 칸은 보내지 않는다. 데몬이 모듈 기본값을 채운다
+            let value = match s(f, "field_type") {
+                "select" => {
+                    let options = install_choices(f);
+                    if options.is_empty() {
+                        continue;
+                    }
+                    let labels: Vec<String> = options.iter().map(|o| option_label(locales.as_ref(), f, o)).collect();
+                    let at = options.iter().position(|o| Some(o.as_str()) == default.as_str()).unwrap_or(0);
+                    ctx.ask.select(&label, &labels, at)?.map(|i| json!(options[i]))
+                }
+                "boolean" => Some(bool_option(&ctx.ask, &label, &default)?),
+                _ => {
+                    let shown = default.as_str().map(str::to_string).or_else(|| (!default.is_null()).then(|| default.to_string()));
+                    match ctx.ask.text(&label, shown.as_deref(), true)? {
+                        Some(v) if !v.is_empty() => Some(typed_setting(&fields, &Value::Null, s(f, "name"), &v)?.1),
+                        _ => None,
+                    }
+                }
+            };
+            if let Some(v) = value.filter(|v| *v != default && !v.is_null()) {
+                module_settings.insert(s(f, "name").to_string(), v);
             }
         }
     }
@@ -521,6 +533,20 @@ async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
     if !ext_data.is_empty() {
         body["extension_data"] = Value::Object(ext_data);
     }
+    // 7-0) 약관 (예: 게임 EULA). GUI처럼 만들기 전에 묻고, 묻고서 동의하지 않으면 만들지 않는다.
+    // 물을 수 없으면(`--json`, 터미널 아님) `--accept`로 댄 것만 동의하고 만든 뒤 `server agree`를 안내한다
+    let (mut accepted, ask) = split_agreements(&module_agreements(&module, locales.as_ref()), &a.accept, ctx.ask.enabled);
+    if !ask.is_empty() {
+        show_agreements(ctx, &ask);
+        let names: Vec<&str> = ask.iter().map(|a| s(a, "label")).collect();
+        if !ctx.ask.consent(&t!("agree.confirm", name = name, names = names.join(", "))) {
+            return Err(usage(t!("add.agreements_declined")));
+        }
+        accepted.extend(ask);
+    }
+    if !accepted.is_empty() {
+        body["accept_agreements"] = json!(accepted.iter().map(|a| s(a, "id")).collect::<Vec<_>>());
+    }
     let created = ctx.api.create_instance(body).await.map_err(move_refusal)?;
     let id = s(&created, "id").to_string();
     super::print_trust_warnings(ctx, &created);
@@ -530,7 +556,7 @@ async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
             ctx.out.warn(&text);
         }
     }
-    // 7-0) 약관 (예: 게임 EULA). 설치를 기다리기 전에 묻는다
+    // 7-0-a) 만들기 전에 동의하지 않은 약관 안내 (`--accept` 오타, 물을 수 없을 때)
     offer_agreements(ctx, &id, &name, &a.accept).await;
 
     // 7) 설정 (--set). 틀린 값은 위에서 이미 걸렀다. 데몬이 거절하면 서버는 남기고 끝에 실패로 알린다
@@ -1967,6 +1993,34 @@ async fn agree(ctx: &Ctx, query: Option<&str>) -> Result<()> {
 }
 
 /// 익스텐션이 묻는 예/아니오 칸 (AddServer.options). `--yes`는 확인을 넘길 뿐 값을 정하지 않으므로 기본값을 쓴다
+/// 만들 때 고를 수 있는 값: 사바쨩이 설치할 수 있는 값(`install_options`), 없으면 `options` 전부 (GUI와 같다)
+fn install_choices(field: &Value) -> Vec<String> {
+    let list = field.get("install_options").filter(|v| v.is_array()).or_else(|| field.get("options"));
+    list.and_then(Value::as_array).map(|o| o.iter().filter_map(Value::as_str).map(str::to_string).collect()).unwrap_or_default()
+}
+
+/// 설정 이름: 모듈 locales `settings.<칸>.label` → `label` → `name`
+fn setting_label(locales: Option<&Value>, field: &Value) -> String {
+    let localized = locales.and_then(|l| l.pointer(&format!("/settings/{}/label", s(field, "name")))).and_then(Value::as_str);
+    let label = localized.filter(|l| !l.is_empty()).unwrap_or(s(field, "label"));
+    if label.is_empty() { s(field, "name") } else { label }.to_string()
+}
+
+/// 선택지 이름: 모듈 locales `settings.<칸>.options.<값>`, 없으면 값 그대로
+fn option_label(locales: Option<&Value>, field: &Value, value: &str) -> String {
+    let pointer = format!("/settings/{}/options/{}", s(field, "name"), value);
+    locales.and_then(|l| l.pointer(&pointer)).and_then(Value::as_str).filter(|l| !l.is_empty()).unwrap_or(value).to_string()
+}
+
+/// 모듈이 선언한 약관 (모듈 목록 `agreements`)을 locales 이름과 함께. 만들기 전에 묻는다 (GUI와 같다)
+fn module_agreements(module: &Value, locales: Option<&Value>) -> Vec<Value> {
+    module["agreements"].as_array().into_iter().flatten().map(|a| {
+        let id = s(a, "id");
+        let label = locales.and_then(|l| l.pointer(&format!("/agreements/{}", id))).and_then(Value::as_str).unwrap_or(id);
+        json!({ "id": id, "label": label, "url": a.get("url").cloned().unwrap_or(Value::Null) })
+    }).collect()
+}
+
 fn bool_option(ask: &crate::prompt::Prompt, label: &str, default: &Value) -> Result<Value> {
     if ask.enabled && !ask.yes {
         Ok(Value::Bool(ask.confirm(label, default.as_bool().unwrap_or(false))?))
@@ -2354,6 +2408,30 @@ mod tests {
         assert_eq!(typed_setting(&fields, &fresh, "log_sessions_keep", "5").unwrap().1, json!(5));
         assert_eq!(typed_setting(&fields, &fresh, "extra_args", "-nogui -x").unwrap().1, json!("-nogui -x"));
         assert_eq!(typed_setting(&fields, &fresh, "working_dir", "D:/srv").unwrap().1, json!("D:/srv"));
+    }
+
+    /// 만들 때 고르는 칸은 GUI와 같다: 설치할 수 있는 값(`install_options`)만, 이름은 모듈 locales로
+    #[test]
+    fn install_choices_and_labels_follow_the_gui() {
+        let field = json!({ "name": "server_type", "options": ["vanilla", "paper", "spigot"], "install_options": ["vanilla", "paper"] });
+        assert_eq!(install_choices(&field), vec!["vanilla", "paper"]);
+        assert_eq!(install_choices(&json!({ "options": ["a"] })), vec!["a"]);
+        let locales = json!({ "settings": { "server_type": { "label": "서버 종류", "options": { "paper": "페이퍼" } } } });
+        assert_eq!(option_label(Some(&locales), &field, "paper"), "페이퍼");
+        assert_eq!(option_label(Some(&locales), &field, "vanilla"), "vanilla");
+        assert_eq!(setting_label(Some(&locales), &field), "서버 종류");
+        assert_eq!(setting_label(None, &json!({ "name": "seed", "label": "Seed" })), "Seed");
+    }
+
+    /// 모듈 약관은 GUI처럼 만들기 전에 묻는다: 모듈 목록의 약관을 locales 이름으로 펼친다
+    #[test]
+    fn module_agreements_are_listed_before_creating() {
+        let module = json!({ "agreements": [{ "id": "eula", "url": "https://aka.ms/MinecraftEULA" }] });
+        let locales = json!({ "agreements": { "eula": "마인크래프트 EULA" } });
+        let list = module_agreements(&module, Some(&locales));
+        assert_eq!(list, vec![json!({ "id": "eula", "label": "마인크래프트 EULA", "url": "https://aka.ms/MinecraftEULA" })]);
+        assert_eq!(s(&module_agreements(&module, None)[0], "label"), "eula");
+        assert!(module_agreements(&json!({}), None).is_empty());
     }
 
     /// 만들 때·`server agree`가 묻는 약관은 아직 동의하지 않은 것만 (C2)

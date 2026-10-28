@@ -476,7 +476,8 @@
     "stdin_unconfirmed": "無法確認指令是否已送出。重試前請先查看主控台。",
     "move_cross_volume": "無法移動其他磁碟機上的資料夾。請改用「保留在原位置」匯入。",
     "move_in_use": "無法移動資料夾。請停止此資料夾中的伺服器，關閉開啟該資料夾的程式後再試一次。",
-    "move_failed": "無法移動資料夾。請改用「保留在原位置」匯入。"
+    "move_failed": "無法移動資料夾。請改用「保留在原位置」匯入。",
+    "not_installable": "saba-chan 無法依所選設定安裝伺服器。請選擇其他值。"
   },
   "settings": {
     "save_failed_title": "設定儲存失敗",

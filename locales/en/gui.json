@@ -476,7 +476,8 @@
     "stdin_unconfirmed": "Couldn't confirm the command was sent. Check the console before trying again.",
     "move_cross_volume": "A folder on another drive can't be moved. Import it with \"Keep it where it is\" instead.",
     "move_in_use": "The folder could not be moved. Stop the server in this folder, close any program that has it open, and try again.",
-    "move_failed": "The folder could not be moved. Import it with \"Keep it where it is\" instead."
+    "move_failed": "The folder could not be moved. Import it with \"Keep it where it is\" instead.",
+    "not_installable": "saba-chan can't install a server with the chosen setting. Pick another value."
   },
   "settings": {
     "save_failed_title": "Settings save failed",

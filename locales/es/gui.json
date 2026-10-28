@@ -476,7 +476,8 @@
     "stdin_unconfirmed": "No se pudo confirmar que el comando se envió. Revisa la consola antes de volver a intentarlo.",
     "move_cross_volume": "No se puede mover una carpeta de otra unidad. Impórtala con «Dejarla donde está».",
     "move_in_use": "No se pudo mover la carpeta. Detén el servidor de esta carpeta, cierra los programas que la tengan abierta e inténtalo de nuevo.",
-    "move_failed": "No se pudo mover la carpeta. Impórtala con «Dejarla donde está»."
+    "move_failed": "No se pudo mover la carpeta. Impórtala con «Dejarla donde está».",
+    "not_installable": "saba-chan no puede instalar un servidor con el ajuste elegido. Elige otro valor."
   },
   "settings": {
     "save_failed_title": "Falló guardar configuración",

@@ -476,7 +476,8 @@
     "stdin_unconfirmed": "Não foi possível confirmar se o comando foi enviado. Verifique o console antes de tentar de novo.",
     "move_cross_volume": "Não é possível mover uma pasta de outra unidade. Importe-a com \"Deixar onde está\".",
     "move_in_use": "Não foi possível mover a pasta. Pare o servidor desta pasta, feche os programas que a estão usando e tente de novo.",
-    "move_failed": "Não foi possível mover a pasta. Importe-a com \"Deixar onde está\"."
+    "move_failed": "Não foi possível mover a pasta. Importe-a com \"Deixar onde está\".",
+    "not_installable": "O saba-chan não consegue instalar um servidor com a configuração escolhida. Escolha outro valor."
   },
   "settings": {
     "save_failed_title": "Falha ao salvar configurações",

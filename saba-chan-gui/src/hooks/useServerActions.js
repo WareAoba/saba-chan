@@ -1059,6 +1059,12 @@ export function useServerActions({
                 return false;
             }
 
+            // 고른 설정 값을 사바쨩이 설치하지 못한다 (모듈 `install_options` 밖)
+            if (result.error_code === 'not_installable') {
+                setModal({ type: 'failure', title: t('servers.add_failed_title'), message: t('servers.not_installable') });
+                return false;
+            }
+
             if (result.error_code === 'preset_not_found') {
                 setModal({
                     type: 'failure',

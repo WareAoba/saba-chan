@@ -9,6 +9,7 @@ import { startPoll } from './components/poll';
 import { ServersTab } from './components/ServersTab';
 import { SessionBar } from './components/SessionBar';
 import { ConfirmHost, ToastHost, Wordmark } from './components/ui';
+import { registerModuleLocales } from './i18n';
 import { useApp, useData } from './store';
 
 const TABS = [
@@ -37,7 +38,11 @@ function useLiveData(api, ready) {
         };
         const loadModules = async () => {
             const res = await api.moduleList();
-            if (Array.isArray(res?.modules)) setModules(res.modules);
+            if (!Array.isArray(res?.modules)) return;
+            setModules(res.modules);
+            // 모듈 locales가 붙으면 번역된 게임·설정 이름으로 다시 그린다
+            await registerModuleLocales(api, res.modules).catch(() => {});
+            setModules([...res.modules]);
         };
         loadModules();
         const stopPoll = startPoll(loadServers, 4000);

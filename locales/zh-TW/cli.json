@@ -17,6 +17,7 @@
     "ask_source": "你想怎麼設定？",
     "ask_preset": "要從推薦設定開始嗎？",
     "no_preset": "預設設定",
+    "agreements_declined": "未同意條款，因此沒有建立伺服器。",
     "created_installing": "已建立 {{name}}。正在安裝伺服器檔案...",
     "folder_other_game": "{{dir}} 似乎是另一款遊戲（{{games}}）。",
     "folder_unrecognized": "無法辨識 {{dir}} 中的伺服器。",

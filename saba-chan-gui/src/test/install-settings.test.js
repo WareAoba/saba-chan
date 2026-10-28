@@ -1,4 +1,5 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import i18n from 'i18next';
 import { describe, expect, it, vi } from 'vitest';
 import { AddInstanceNewServer } from '../components/Modals/AddInstanceNewServer';
 
@@ -8,7 +9,14 @@ const minecraft = {
     game_name: 'Minecraft',
     settings: {
         fields: [
-            { name: 'server_type', field_type: 'select', label: 'Server Type', options: ['vanilla', 'paper'], default: 'vanilla', install: true },
+            {
+                name: 'server_type',
+                field_type: 'select',
+                label: 'Server Type',
+                options: ['vanilla', 'paper'],
+                default: 'vanilla',
+                install: true,
+            },
             { name: 'motd', field_type: 'text', label: 'MOTD' },
         ],
     },
@@ -45,5 +53,89 @@ describe('새 서버 만들기 — 만들지 못했을 때', () => {
         });
         expect(onAddServer).toHaveBeenCalled();
         expect(screen.getByText('Server Type')).toBeTruthy();
+    });
+});
+
+const withInstallOptions = {
+    ...minecraft,
+    settings: {
+        fields: [
+            {
+                name: 'server_type',
+                field_type: 'select',
+                label: 'Server Type',
+                options: ['vanilla', 'paper', 'spigot'],
+                install_options: ['vanilla', 'paper'],
+                default: 'vanilla',
+                install: true,
+            },
+            { name: 'hardcore_seed', field_type: 'boolean', label: 'Hardcore Seed', install: true },
+            { name: 'world_seed', field_type: 'text', label: 'World Seed', install: true },
+        ],
+    },
+};
+
+const openConfigure = (servers = [], onAddServer = vi.fn().mockResolvedValue(undefined), ext = withInstallOptions) => {
+    render(<AddInstanceNewServer extensions={[ext]} servers={servers} onAddServer={onAddServer} />);
+    fireEvent.click(screen.getByText('Minecraft'));
+    return onAddServer;
+};
+
+const submit = async () => {
+    await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: /add_server|Add/i }));
+    });
+};
+
+describe('새 서버 만들기 — 설치할 수 있는 값과 모든 칸', () => {
+    it('설치할 수 있는 값(install_options)만 고르게 하고, 선택지 이름은 모듈 로케일을 쓴다', () => {
+        i18n.addResourceBundle(
+            'en',
+            'mod_minecraft',
+            { settings: { server_type: { options: { paper: 'Paper' } } } },
+            true,
+            true,
+        );
+        openConfigure();
+        fireEvent.click(screen.getByText('vanilla'));
+        expect(screen.getByText('Paper')).toBeTruthy();
+        expect(screen.queryByText('spigot')).toBeNull();
+        i18n.removeResourceBundle('en', 'mod_minecraft');
+    });
+
+    it('켜고 끄는 칸과 글자 칸도 묻고, 답을 module_settings로 보낸다', async () => {
+        const onAddServer = openConfigure();
+        expect(screen.getByText('Hardcore Seed')).toBeTruthy();
+        fireEvent.click(screen.getByRole('checkbox', { name: 'Hardcore Seed' }));
+        fireEvent.change(screen.getByLabelText('World Seed'), { target: { value: 'abc' } });
+        await submit();
+        expect(onAddServer).toHaveBeenCalledWith(
+            expect.objectContaining({ module_settings: { hardcore_seed: true, world_seed: 'abc' } }),
+        );
+    });
+});
+
+describe('새 서버 만들기 — 이름', () => {
+    const nameInput = () => screen.getByPlaceholderText(/./, { selector: 'input.as-input' });
+
+    it('기본 이름은 모듈 이름 그대로, 겹치면 2부터 붙인다 (CLI와 같다)', () => {
+        openConfigure();
+        expect(nameInput().value).toBe('minecraft');
+        cleanup();
+        openConfigure([{ name: 'minecraft', module: 'minecraft' }]);
+        expect(nameInput().value).toBe('minecraft-2');
+        cleanup();
+        openConfigure([
+            { name: 'Minecraft', module: 'minecraft' },
+            { name: 'minecraft-2', module: 'other' },
+        ]);
+        expect(nameInput().value).toBe('minecraft-3');
+    });
+
+    it('이미 있는 이름이면 바로 알려 주고 만들기를 막는다', () => {
+        openConfigure([{ name: 'lobby', module: 'minecraft' }]);
+        fireEvent.change(nameInput(), { target: { value: 'Lobby ' } });
+        expect(screen.getByRole('alert')).toBeTruthy();
+        expect(screen.getByRole('button', { name: /add_server|Add/i })).toBeDisabled();
     });
 });

@@ -8,11 +8,10 @@ import ExtensionSlot from '../ExtensionSlot';
 import { useExtensions } from '../../contexts/ExtensionContext';
 import Icon from '../Icon';
 import { ModuleMakerCard } from '../ModuleMakerCard';
+import { SabaToggle } from '../ui/SabaUI';
 import { Segmented } from '../ui/StatusChip';
 import { TrustCreateNotice } from '../ui/TrustBadge';
-
-/** 모듈이 만들 때 고르라고 한 설정 (`install = true`, 예: 마인크래프트 서버 종류) */
-const installFields = (module) => (module?.settings?.fields || []).filter((f) => f.install && f.field_type === 'select');
+import { installChoices, installFields, nameTaken, optionLabel, suggestName } from '../../utils/installFields';
 
 /**
  * AddInstanceNewServer — "새 서버로 추가" 흐름.
@@ -47,9 +46,8 @@ export function AddInstanceNewServer({
         onStepChange?.('configure'); // 높이 캡처 후 부모 상태 변경 (배칭)
         setSelectedExtension(extName);
 
-        // 자동 이름 생성
-        const existingCount = servers.filter((s) => s.module === extName).length;
-        setNewServerName(`my-${extName}-${existingCount + 1}`);
+        // 자동 이름: 모듈 이름 그대로, 겹치면 -2부터 (CLI와 같다)
+        setNewServerName(suggestName(extName, servers));
         setInstallValues({});
         setPreset('');
         setAgreed({});
@@ -110,7 +108,9 @@ export function AddInstanceNewServer({
 
     const agreementModule = extensions.find((m) => m.name === selectedExtension);
     const agreements = agreementModule?.agreements || [];
-    const canSubmit = newServerName.trim() && selectedExtension && !submitting && allChecked(agreements, agreed);
+    const duplicateName = nameTaken(servers, newServerName);
+    const canSubmit =
+        newServerName.trim() && !duplicateName && selectedExtension && !submitting && allChecked(agreements, agreed);
 
     // ──────────────────────────────────────────
     //  Step 1: 게임 선택 (아이콘 카드 그리드)
@@ -268,32 +268,28 @@ export function AddInstanceNewServer({
                             onKeyDown={(e) => {
                                 if (e.key === 'Enter' && canSubmit) handleSubmit();
                             }}
+                            aria-invalid={duplicateName || undefined}
                         />
+                        {duplicateName && (
+                            <p className="as-name-taken" role="alert">
+                                <Icon name="alertCircle" size="sm" />
+                                {t('servers.rename_name_taken', { name: newServerName.trim() })}
+                            </p>
+                        )}
                     </div>
 
-                    {/* 모듈이 만들 때 고르라고 한 설정 (설치할 서버 파일이 달라진다) */}
-                    {installFields(selectedModule).map((field) => {
-                        const modNs = `mod_${selectedModule.name}`;
-                        return (
-                            <div className="as-section as-section-card" key={field.name}>
-                                <label className="as-label">
-                                    <Icon name="settings" size="sm" />
-                                    {t(`${modNs}:settings.${field.name}.label`, { defaultValue: field.label })}
-                                </label>
-                                <CustomDropdown
-                                    value={String(installValues[field.name] ?? field.default ?? '')}
-                                    onChange={(val) => setInstallValues((prev) => ({ ...prev, [field.name]: val }))}
-                                    options={(field.options || []).map((opt) => ({ value: opt, label: opt }))}
-                                    disabled={submitting}
-                                />
-                                <p className="as-provision-hint">
-                                    {t(`${modNs}:settings.${field.name}.description`, {
-                                        defaultValue: field.description || '',
-                                    })}
-                                </p>
-                            </div>
-                        );
-                    })}
+                    {/* 모듈이 만들 때 고르라고 한 설정 (설치할 서버 파일·새 월드가 달라진다) */}
+                    {installFields(selectedModule).map((field) => (
+                        <InstallField
+                            key={field.name}
+                            t={t}
+                            module={selectedModule}
+                            field={field}
+                            value={installValues[field.name]}
+                            onChange={(val) => setInstallValues((prev) => ({ ...prev, [field.name]: val }))}
+                            disabled={submitting}
+                        />
+                    ))}
 
                     {/* 모듈 추천 프리셋 (module.toml [[presets]]) */}
                     {selectedModule?.presets?.length > 0 && (
@@ -377,6 +373,69 @@ export function AddInstanceNewServer({
                     )}
                 </button>
             </div>
+        </div>
+    );
+}
+
+/** 만들 때 고르는 설정 칸 하나. 고르지 않은 칸은 보내지 않는다 (데몬이 모듈 기본값을 채운다) */
+function InstallField({ t, module, field, value, onChange, disabled }) {
+    const modNs = `mod_${module.name}`;
+    const label = t(`${modNs}:settings.${field.name}.label`, { defaultValue: field.label });
+    const description = t(`${modNs}:settings.${field.name}.description`, { defaultValue: field.description || '' });
+    const inputId = `as-install-${field.name}`;
+    const shown = value ?? field.default;
+
+    let control;
+    if (field.field_type === 'select') {
+        control = (
+            <CustomDropdown
+                value={String(shown ?? '')}
+                onChange={onChange}
+                options={installChoices(field).map((opt) => ({
+                    value: opt,
+                    label: optionLabel(t, module.name, field, opt),
+                }))}
+                disabled={disabled}
+            />
+        );
+    } else if (field.field_type === 'boolean') {
+        control = (
+            <SabaToggle
+                checked={shown === true || shown === 'true'}
+                onChange={onChange}
+                disabled={disabled}
+                aria-label={label}
+            />
+        );
+    } else {
+        control = (
+            <input
+                id={inputId}
+                className="as-input"
+                type={field.field_type === 'number' ? 'number' : 'text'}
+                value={String(shown ?? '')}
+                min={field.min}
+                max={field.max}
+                onChange={(e) => {
+                    const raw = e.target.value;
+                    onChange(field.field_type === 'number' && raw !== '' ? Number(raw) : raw);
+                }}
+                disabled={disabled}
+            />
+        );
+    }
+
+    return (
+        <div className={clsx('as-section', 'as-section-card', { 'as-section-row': field.field_type === 'boolean' })}>
+            <label
+                className="as-label"
+                htmlFor={field.field_type === 'select' || field.field_type === 'boolean' ? undefined : inputId}
+            >
+                <Icon name="settings" size="sm" />
+                {label}
+            </label>
+            {control}
+            {description && <p className="as-provision-hint">{description}</p>}
         </div>
     );
 }

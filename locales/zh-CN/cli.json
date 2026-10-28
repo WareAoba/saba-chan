@@ -17,6 +17,7 @@
     "ask_source": "你想怎么设置？",
     "ask_preset": "要从推荐设置开始吗？",
     "no_preset": "默认设置",
+    "agreements_declined": "未同意条款，因此没有创建服务器。",
     "created_installing": "已创建 {{name}}。正在安装服务器文件...",
     "folder_other_game": "{{dir}} 似乎是另一个游戏（{{games}}）。",
     "folder_unrecognized": "无法识别 {{dir}} 中的服务器。",

@@ -17,6 +17,7 @@
     "ask_source": "Como você quer configurar?",
     "ask_preset": "Começar com uma predefinição?",
     "no_preset": "Configuração padrão",
+    "agreements_declined": "O servidor não foi criado porque os termos não foram aceitos.",
     "created_installing": "{{name}} criado. Instalando os arquivos do servidor...",
     "folder_other_game": "{{dir}} parece ser de outro jogo ({{games}}).",
     "folder_unrecognized": "Nenhum servidor reconhecido em {{dir}}.",

@@ -29,6 +29,8 @@ export function SettingsField({ field, value, modNs, onChange, validationError }
     const fieldType = FIELD_TYPES.includes(field.field_type) ? field.field_type : 'text';
     const labelId = `${inputId}-label`;
     const picked = listDraft(value);
+    // 선택지 표시 이름 (모듈 locales `settings.<칸>.options.<값>`, 없으면 값 그대로)
+    const optionText = (opt) => t(`${modNs}:settings.${field.name}.options.${opt}`, { defaultValue: String(opt) });
 
     return (
         <div className="settings-field">
@@ -84,7 +86,7 @@ export function SettingsField({ field, value, modNs, onChange, validationError }
                     value={String(value || '')}
                     onChange={(val) => onChange(field.name, val)}
                     placeholder={fieldLabel}
-                    options={(field.options || []).map((opt) => ({ value: opt, label: opt }))}
+                    options={(field.options || []).map((opt) => ({ value: opt, label: optionText(opt) }))}
                 />
             )}
             {fieldType === 'multiline' && (
@@ -113,7 +115,7 @@ export function SettingsField({ field, value, modNs, onChange, validationError }
                                     )
                                 }
                             />
-                            <label htmlFor={`${inputId}-${i}`}>{opt}</label>
+                            <label htmlFor={`${inputId}-${i}`}>{optionText(opt)}</label>
                         </span>
                     ))}
                 </fieldset>

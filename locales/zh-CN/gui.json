@@ -476,7 +476,8 @@
     "stdin_unconfirmed": "无法确认命令是否已发送。重试前请先查看控制台。",
     "move_cross_volume": "无法移动其他驱动器上的文件夹。请改用“保留在原位置”导入。",
     "move_in_use": "无法移动文件夹。请停止此文件夹中的服务器，关闭打开该文件夹的程序后重试。",
-    "move_failed": "无法移动文件夹。请改用“保留在原位置”导入。"
+    "move_failed": "无法移动文件夹。请改用“保留在原位置”导入。",
+    "not_installable": "saba-chan 无法按所选设置安装服务器。请选择其他值。"
   },
   "settings": {
     "save_failed_title": "设置保存失败",

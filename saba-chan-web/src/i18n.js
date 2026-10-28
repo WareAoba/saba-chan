@@ -44,3 +44,18 @@ export async function initI18n(language = pickLanguage()) {
 }
 
 export default i18n;
+
+const moduleLocalesLoaded = new Set();
+
+/** 모듈 locales(`mod_<이름>`)를 붙인다: 게임 이름·설정 이름·선택지·약관 (GUI useServerStore와 같다). 모듈 판마다 한 번 */
+export async function registerModuleLocales(api, modules) {
+    for (const m of modules || []) {
+        const key = `${m.name}@${m.version || ''}`;
+        if (moduleLocalesLoaded.has(key)) continue;
+        moduleLocalesLoaded.add(key);
+        const all = await api.moduleGetLocales?.(m.name);
+        for (const [lang, data] of Object.entries(all || {})) {
+            if (data && typeof data === 'object') i18n.addResourceBundle(lang, `mod_${m.name}`, data, true, true);
+        }
+    }
+}

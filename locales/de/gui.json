@@ -476,7 +476,8 @@
     "stdin_unconfirmed": "Es konnte nicht bestätigt werden, dass der Befehl gesendet wurde. Prüfen Sie die Konsole, bevor Sie es erneut versuchen.",
     "move_cross_volume": "Ein Ordner auf einem anderen Laufwerk kann nicht verschoben werden. Importiere ihn stattdessen mit „Am Ort lassen“.",
     "move_in_use": "Der Ordner konnte nicht verschoben werden. Stoppe den Server in diesem Ordner, schließe Programme, die ihn geöffnet haben, und versuche es erneut.",
-    "move_failed": "Der Ordner konnte nicht verschoben werden. Importiere ihn stattdessen mit „Am Ort lassen“."
+    "move_failed": "Der Ordner konnte nicht verschoben werden. Importiere ihn stattdessen mit „Am Ort lassen“.",
+    "not_installable": "saba-chan kann mit der gewählten Einstellung keinen Server installieren. Wähle einen anderen Wert."
   },
   "settings": {
     "save_failed_title": "Einstellungsspeicherung fehlgeschlagen",

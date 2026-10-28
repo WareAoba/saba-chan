@@ -1,3 +1,4 @@
+import { installChoices, installFields, nameTaken, suggestName } from '@gui/utils/installFields';
 import { gameNameOf, playersText, primaryAction, viewStatus } from '@gui/utils/serverView';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -6,22 +7,49 @@ import { useApp, useData } from '../store';
 import { Dropdown } from './Dropdown';
 import { Icon } from './icons';
 import { ServerDetail } from './ServerDetail';
+import { FieldInput, patchOf } from './SettingsPanel';
 import { Button, Empty, errorText, failed, Loading, Section, Sheet, StatusDot } from './ui';
 import { useProvision } from './useProvision';
 import { useServerControl } from './useServerControl';
 
-function AddServerSheet({ api, onClose }) {
+/** 새 서버 만들기: GUI 새 서버 화면과 같은 것을 묻는다 (게임·이름·만들 때 고르는 설정·추천 설정·약관).
+ * 익스텐션이 묻는 칸(`extension_data`)과 폴더는 PC에서만 정한다 (src/remote/gate.rs CREATE_PC_ONLY) */
+export function AddServerSheet({ api, onClose }) {
     const { t } = useTranslation();
     const modules = useData((s) => s.modules);
+    const servers = useData((s) => s.servers);
     const toast = useApp((s) => s.toast);
-    const [module, setModule] = useState(modules[0]?.name || '');
-    const [name, setName] = useState('');
+    const firstPlayable = modules.find((m) => m.platform_supported !== false)?.name || '';
+    const [module, setModule] = useState(firstPlayable);
+    const [name, setName] = useState(() => (firstPlayable ? suggestName(firstPlayable, servers) : ''));
+    const [installValues, setInstallValues] = useState({});
+    const [preset, setPreset] = useState('');
+    const [agreed, setAgreed] = useState({});
     const [busy, setBusy] = useState(false);
 
+    const chosen = modules.find((m) => m.name === module);
+    const modNs = `mod_${module}`;
+    const agreements = chosen?.agreements || [];
+    const duplicate = nameTaken(servers, name);
+    const ready = name.trim() && module && !duplicate && agreements.every((a) => agreed[a.id]);
+
+    const pickModule = (next) => {
+        setModule(next);
+        setName(suggestName(next, servers));
+        setInstallValues({});
+        setPreset('');
+        setAgreed({});
+    };
+
     const create = async () => {
-        if (!name.trim() || !module) return;
+        if (!ready) return;
         setBusy(true);
-        const res = await api.instanceCreate({ name: name.trim(), module_name: module });
+        const body = { name: name.trim(), module_name: module };
+        const settings = patchOf(installFields(chosen), installValues, new Set(Object.keys(installValues)));
+        if (Object.keys(settings).length) body.module_settings = settings;
+        if (preset) body.preset = preset;
+        if (agreements.length) body.accept_agreements = agreements.map((a) => a.id);
+        const res = await api.instanceCreate(body);
         setBusy(false);
         if (failed(res)) return toast(errorText(t, res), 'error');
         toast(t('servers.created', { name: name.trim() }), 'ok');
@@ -44,17 +72,102 @@ function AddServerSheet({ api, onClose }) {
                         <span>{t('servers.game')}</span>
                         <Dropdown
                             value={module}
-                            onChange={setModule}
+                            onChange={pickModule}
                             ariaLabel={t('servers.game')}
-                            options={modules.map((m) => ({ value: m.name, label: gameNameOf(t, m.name, m) }))}
+                            options={modules.map((m) => {
+                                const unsupported = m.platform_supported === false;
+                                const game = gameNameOf(t, m.name, m);
+                                return {
+                                    value: m.name,
+                                    label: unsupported ? `${game} · ${t('servers.platform_unsupported')}` : game,
+                                    disabled: unsupported,
+                                };
+                            })}
                         />
                     </div>
+                    {['unverified', 'modified'].includes(chosen?.trust) && (
+                        <p className="banner banner-warn" role="note">
+                            {t(`servers.trust_${chosen.trust}`)}
+                        </p>
+                    )}
                     <label className="field">
                         <span>{t('servers.name')}</span>
-                        <input value={name} onChange={(e) => setName(e.target.value)} maxLength={64} required />
+                        <input
+                            value={name}
+                            onChange={(e) => setName(e.target.value)}
+                            maxLength={64}
+                            required
+                            aria-invalid={duplicate || undefined}
+                        />
                     </label>
+                    {duplicate && (
+                        <p className="hint hint-error" role="alert">
+                            {t('servers.name_taken', { name: name.trim() })}
+                        </p>
+                    )}
+                    {installFields(chosen).map((f) => (
+                        <FieldInput
+                            key={f.name}
+                            field={{ ...f, options: installChoices(f) }}
+                            value={installValues[f.name] ?? f.default ?? ''}
+                            onChange={(v) => setInstallValues((prev) => ({ ...prev, [f.name]: v }))}
+                            t={t}
+                            modNs={modNs}
+                        />
+                    ))}
+                    {chosen?.presets?.length > 0 && (
+                        <div className="field">
+                            <span>{t('servers.preset')}</span>
+                            <Dropdown
+                                value={preset}
+                                onChange={setPreset}
+                                ariaLabel={t('servers.preset')}
+                                options={[
+                                    { value: '', label: t('servers.preset_none') },
+                                    ...chosen.presets.map((p) => ({
+                                        value: p.id,
+                                        label: t(`${modNs}:presets.${p.id}.label`, { defaultValue: p.label || p.id }),
+                                    })),
+                                ]}
+                            />
+                            <small className="hint">
+                                {preset
+                                    ? t(`${modNs}:presets.${preset}.description`, {
+                                          defaultValue: chosen.presets.find((p) => p.id === preset)?.description || '',
+                                      })
+                                    : t('servers.preset_none_hint')}
+                            </small>
+                        </div>
+                    )}
+                    {agreements.length > 0 && (
+                        <fieldset className="field agreements">
+                            <legend>{t('servers.agreements')}</legend>
+                            {agreements.map((a) => {
+                                const label = t(`${modNs}:agreements.${a.id}`, { defaultValue: a.label || a.id });
+                                return (
+                                    <div key={a.id} className="field-row">
+                                        <label className="agreement">
+                                            <input
+                                                type="checkbox"
+                                                checked={!!agreed[a.id]}
+                                                onChange={(e) =>
+                                                    setAgreed((prev) => ({ ...prev, [a.id]: e.target.checked }))
+                                                }
+                                            />
+                                            <span>{t('servers.agree', { name: label })}</span>
+                                        </label>
+                                        {a.url && (
+                                            <a href={a.url} target="_blank" rel="noreferrer noopener">
+                                                {t('servers.read_agreement')}
+                                            </a>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </fieldset>
+                    )}
                     <p className="hint">{t('servers.add_hint')}</p>
-                    <Button tone="accent" type="submit" busy={busy} disabled={!name.trim()}>
+                    <Button tone="accent" type="submit" busy={busy} disabled={!ready}>
                         {t('servers.create')}
                     </Button>
                 </form>

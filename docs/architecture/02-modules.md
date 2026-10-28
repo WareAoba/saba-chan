@@ -131,7 +131,8 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 | `group` | String | `saba-chan` / `advanced` / 없음(basic) 등. `saba-chan`은 사바쨩 설정(실행 방식·Java 경로·메모리·실행 인자처럼 게임 설정 파일에 없는 값)이라는 선언이다: 설정 PATCH 뒤 `configure`의 `settings`로 넘기지 않는다(MK6). 그 밖의 묶음은 표시용이다 |
 | `port` | bool | `false`. 네트워크 포트 값이면 true. 같은 게임 인스턴스를 여럿 만들 때 데몬이 겹치지 않게 옮긴다 |
 | `public` | string? | `"tcp"`·`"udp"`·`"both"`. 친구가 밖에서 접속하는 포트이면 그 프로토콜. 포트포워딩 확인(01 `/api/instance/:id/port-check`)이 이 칸만 본다. `port = true`가 필요하다. 옛 데몬은 모르는 칸 키로 무시한다 |
-| `install` | bool | `false`. 서버를 만들 때 고르는 설정(받을 서버 파일이 달라지는 값). GUI 새 서버 화면과 CLI `server add`가 묻고 `POST /api/instances`의 `module_settings`로 보낸다. GUI는 select만 보인다 |
+| `install` | bool | `false`. 서버를 만들 때 고르는 설정(받을 서버 파일·새 월드가 달라지는 값). GUI 새 서버 화면, 웹 원격 서버 만들기, CLI `server add`가 칸 종류(select·boolean·text·number)대로 묻고, 고친 칸만 `POST /api/instances`의 `module_settings`로 보낸다. select 선택지 이름은 모듈 locales `settings.<칸>.options.<값>`(없으면 값 그대로, 설정 화면도 같다) |
+| `install_options` | Vec<String> | 없음. `install = true`인 select에서 새 서버를 만들 때 고를 수 있는 `options`(사바쨩이 설치할 수 있는 값). 없으면 `options` 전부. 비어 있거나 `options` 밖의 값이 있거나 `default`가 그 밖이거나 select·`install = true`가 아니면 로드 오류. 나머지 `options`는 가져온 서버를 판정할 때만 쓴다. 가져오기(`migration_source`)가 아닌 만들기에서 그 밖의 값을 보내면 400 `not_installable`(`fields`에 그 칸) |
 | `arg` | String 또는 Vec<String> | — 이 값이 실행 인자로 들어가는 모양. 공백으로 나눈 토큰, `{value}`는 많아야 한 번(`"-port={value}"`, `"-servername {value}"`, `["-Xmx{value}", "-Xms{value}"]`). `{value}`가 없으면 boolean 플래그(있으면 true). `{value}`뿐인 모양은 로드 오류. 실행 인자 미리보기가 사용자가 친 추가 인자를 이 필드로 되돌릴 때 쓴다(`src/launch_args.rs`). 실제 실행 줄은 여전히 `get_launch_command`가 만든다 |
 | `format` | String | — 값 형식: `memory_size`(숫자+K/M/G 한 글자, `4G`·`1024M`), `port`(1~65535 정수), `integer`, `path`(비어 있지 않고 줄바꿈 없음). 모르는 이름은 로드 오류 |
 | `pattern` | String | — 값 전체가 맞아야 하는 정규식(잘못된 정규식은 로드 오류). `format`과 함께 PATCH 저장과 미리보기에서 검사한다(`validator::validate_format`) |

@@ -17,6 +17,7 @@
     "ask_source": "どの方法でセットアップしますか？",
     "ask_preset": "おすすめ設定から始めますか？",
     "no_preset": "標準の設定",
+    "agreements_declined": "規約に同意しなかったため、サーバーを作成しませんでした。",
     "created_installing": "{{name}} を作成しました。サーバーファイルをインストールしています...",
     "folder_other_game": "{{dir}} は別のゲーム（{{games}}）のようです。",
     "folder_unrecognized": "{{dir}} にサーバーが見つかりませんでした。",
