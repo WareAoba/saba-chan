@@ -801,6 +801,11 @@
     "disconnect": "Disconnect",
     "disconnect_confirm": "Click again to disconnect",
     "disconnect_desc": "Disconnects this PC from every Discord server.",
+    "agent_none": "No AI agent is linked. Add {{url}} to an agent such as ChatGPT or Claude to let it manage the PCs of your Discord account.",
+    "agent_linked": "AI agent {{name}} can manage every PC of your Discord account. Last used: {{when}}",
+    "agent_revoke": "Unlink agent",
+    "agent_revoked": "Unlinked the AI agent.",
+    "agent_revoke_failed": "Couldn't unlink the AI agent: {{error}}",
     "erase": "Erase all my data",
     "erase_desc": "Erases everything the relay keeps about your Discord account and disconnects this PC. Nothing is erased until you agree on the website.",
     "erase_waiting": "Waiting for your consent on the website. This PC disconnects once you agree.",
@@ -1392,6 +1397,7 @@
     "source_daemon": "Daemon",
     "source_web": "Saba-chan web",
     "source_remote": "Remote PC",
+    "source_mcp": "AI agent",
     "source_restart": "Auto restart"
   },
   "launch_preview": {

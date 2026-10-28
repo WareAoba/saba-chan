@@ -10,7 +10,7 @@ export const auditAvailable = () => !!window.api?.auditList;
 
 const PAGE = 100;
 const MAX = 1000; // 데몬 상한
-const SOURCES = ['gui', 'cli', 'api', 'discord', 'schedule', 'daemon', 'web', 'remote', 'restart'];
+const SOURCES = ['gui', 'cli', 'api', 'discord', 'schedule', 'daemon', 'web', 'remote', 'mcp', 'restart'];
 const ACTIONS = ['start', 'stop', 'restart', 'command', 'stdin', 'backup', 'remote'];
 const EXPORT_ERRORS = ['INVALID_PATH', 'WRITE_FAILED']; // data_transfer.err_* 문구를 같이 쓴다
 const PERIODS = ['all', 'today', '7d', '30d', 'custom'];

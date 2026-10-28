@@ -801,6 +801,11 @@
     "disconnect": "断开连接",
     "disconnect_confirm": "再点一次即可断开",
     "disconnect_desc": "断开这台电脑与所有 Discord 服务器的连接。",
+    "agent_none": "尚未连接 AI 智能体。在 ChatGPT、Claude 等智能体中添加 {{url}}，即可让它管理你 Discord 账号下的电脑。",
+    "agent_linked": "AI 智能体 {{name}} 可以管理你 Discord 账号下的所有电脑。最后使用：{{when}}",
+    "agent_revoke": "断开智能体",
+    "agent_revoked": "已断开 AI 智能体。",
+    "agent_revoke_failed": "无法断开 AI 智能体：{{error}}",
     "erase": "删除我的全部数据",
     "erase_desc": "删除中继保存的你的 Discord 账号的全部信息，并断开这台电脑的连接。在网站上同意后才会删除。",
     "erase_waiting": "正在等待你在网站上同意。同意后这台电脑也会断开连接。",
@@ -1392,6 +1397,7 @@
     "source_daemon": "守护进程",
     "source_web": "Saba-chan 网页",
     "source_remote": "远程电脑",
+    "source_mcp": "AI 智能体",
     "source_restart": "自动重启"
   },
   "launch_preview": {

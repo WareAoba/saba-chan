@@ -831,6 +831,27 @@ impl Session {
                 let origin = crate::audit::Origin::new("discord");
                 crate::audit::with_origin(origin, permission_action(&self.server, &who, &payload)).await
             }
+            // 원격 MCP (계정 주인의 AI 에이전트): 길드 없이, 이 PC의 주인만. 앱과 같은 액션과 그 목록(`catalog`)
+            "plan" | "run_plan" | "query" | "catalog" if payload.get("via").and_then(Value::as_str) == Some(crate::actions::MCP_VIA) => {
+                let locale = payload.get("locale").and_then(Value::as_str).unwrap_or("en").to_string();
+                let caller = match mcp_caller(cmd, &payload, locale.clone()) {
+                    Ok(caller) => caller,
+                    Err(e) => return action_result(Err(e), &locale),
+                };
+                // 문장 계획은 디스코드 채팅 경로다 (MCP는 액션 id로만 부른다)
+                if payload.get("text").is_some() {
+                    let e = crate::actions::ActionError { status: 400, code: "invalid_input", message: "Text plans are not taken from MCP".into(), data: json!({ "field": "text" }) };
+                    return action_result(Err(e), &locale);
+                }
+                let result = match action {
+                    "catalog" => {
+                        let instance = payload.get("instance").and_then(Value::as_str);
+                        Ok(crate::actions::list(&self.server, Some(crate::actions::Surface::Gui), instance, &caller.locale).await)
+                    }
+                    _ => crate::audit::with_origin(caller.origin.clone(), action_request(&self.server, action, &payload, &caller)).await,
+                };
+                action_result(result, &caller.locale)
+            }
             // 액션 카탈로그 (P2·P3): 계획·확인한 계획 실행·읽기 전용 조회
             "plan" | "run_plan" | "query" => {
                 let guild_id = cmd.get("guildId").and_then(|v| v.as_str()).map(str::to_string);
@@ -1251,6 +1272,22 @@ async fn action_request(server: &crate::ipc::IPCServer, action: &str, payload: &
             crate::actions::run(server, id, instance, &input, Some(plan_id), caller).await
         }
         _ => crate::actions::query(server, id, instance, &input, caller).await,
+    }
+}
+
+/// 원격 MCP 요청자. 릴레이가 확인한 이 PC의 주인(`hostOwnerDiscordId`)과 요청자가 같을 때만 받는다.
+/// 길드가 실려 오면 디스코드 요청이므로 MCP로 받지 않는다
+fn mcp_caller(cmd: &Value, payload: &Value, locale: String) -> Result<crate::actions::Caller, crate::actions::ActionError> {
+    let id = |v: Option<&Value>| v.and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty()).map(str::to_string);
+    let user = id(cmd.get("requestedBy"));
+    let owner = id(cmd.get("hostOwnerDiscordId"));
+    let guild = id(cmd.get("guildId"));
+    match (user, owner, guild) {
+        (Some(user), Some(owner), None) if user == owner => {
+            let user_name = id(payload.get("userName"));
+            Ok(crate::actions::Caller::mcp(user, owner, id(payload.get("confirmedBy")), user_name, locale))
+        }
+        _ => Err(crate::actions::ActionError { status: 403, code: "PERMISSION_DENIED", message: "Permission denied".into(), data: Value::Null }),
     }
 }
 
@@ -1945,6 +1982,39 @@ mod tests {
         .await;
         assert_eq!(path, "/node/ws");
         crate::remote::link::stop();
+    }
+
+    /// 원격 MCP: 길드 없이 오고, 요청자가 이 PC의 주인(`hostOwnerDiscordId`)일 때만 앱과 같은 액션을 쓴다
+    #[tokio::test]
+    async fn mcp_commands_run_only_for_the_host_owner() {
+        let tmp = tempfile::tempdir().unwrap();
+        let session = test_session(&RelayAgent::new(), "http://127.0.0.1:9", "sbn_host.secret", tmp.path()).await;
+        let plan = json!({ "action": "plan", "via": "mcp", "id": "extension.enable", "input": { "extension": "x" } });
+        let ok = session.handle_payload(&json!({ "id": "c1", "requestedBy": "u1", "hostOwnerDiscordId": "u1", "payload": plan })).await;
+        assert_eq!(ok["success"], true, "{ok:?}");
+        let denied = |r: &Value| r["success"] == false && r["data"]["code"] == "PERMISSION_DENIED";
+        for cmd in [
+            json!({ "id": "c2", "requestedBy": "u2", "hostOwnerDiscordId": "u1", "payload": plan }),
+            json!({ "id": "c3", "requestedBy": "u1", "payload": plan }),
+            json!({ "id": "c4", "requestedBy": "u1", "hostOwnerDiscordId": "u1", "guildId": "g1", "payload": plan }),
+            json!({ "id": "c5", "hostOwnerDiscordId": "u1", "payload": plan }),
+        ] {
+            let r = session.handle_payload(&cmd).await;
+            assert!(denied(&r), "{cmd} → {r:?}");
+        }
+        // 액션 목록은 MCP 주인에게만 (앱 표면 전체)
+        let catalog = json!({ "action": "catalog", "via": "mcp" });
+        let r = session.handle_payload(&json!({ "id": "c6", "requestedBy": "u1", "hostOwnerDiscordId": "u1", "payload": catalog })).await;
+        let ids: Vec<&str> = r["data"]["actions"].as_array().unwrap().iter().filter_map(|a| a["id"].as_str()).collect();
+        assert!(ids.contains(&"extension.enable") && ids.contains(&"server.stop"), "{r:?}");
+        let r = session.handle_payload(&json!({ "id": "c7", "requestedBy": "u2", "hostOwnerDiscordId": "u1", "payload": catalog })).await;
+        assert!(denied(&r), "{r:?}");
+        let r = session.handle_payload(&json!({ "id": "c8", "requestedBy": "u1", "guildId": "g1", "payload": { "action": "catalog" } })).await;
+        assert_eq!(r["success"], false, "{r:?}");
+        // 문장 계획은 MCP로 받지 않는다
+        let text = json!({ "action": "plan", "via": "mcp", "text": "srv start" });
+        let r = session.handle_payload(&json!({ "id": "c9", "requestedBy": "u1", "hostOwnerDiscordId": "u1", "payload": text })).await;
+        assert_eq!((r["success"].as_bool(), r["data"]["code"].as_str()), (Some(false), Some("invalid_input")), "{r:?}");
     }
 
     /// 원격 데몬 터널: 원격 포트가 꺼져 있거나 터널 id가 이상하면 받지 않는다

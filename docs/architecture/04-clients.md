@@ -161,6 +161,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 | relayInitiatePairing / relayPollPairingStatus (976-990) | POST /api/relay/pair/initiate, GET /api/relay/pair/:code/status | ✓ 782-783 |
 | relayLinkRequests / relayLinkRequestRespond (992-994) | GET /api/relay/link-requests, POST /api/relay/link-requests/:id `{accept}`. 디스코드에서 코드 없이 온 연결 요청(J1-b). 데몬 본문을 그대로 돌려준다(`daemonJson`) | ✓ 784-785 |
 | relayPrivacyErase / relayPrivacyEraseStatus | POST `/api/relay/privacy/erase` `{locale}` → `{url}`, GET → `{status}`. 개인정보 모두 지우기(`daemonJson`) | ✓ 디스코드 연결 화면 `PrivacyErase`: 동의 페이지를 열고 3초마다 묻는다. `done`이면 연결 해제처럼 화면을 비운다(끊기는 데몬이 한다) |
+| relayMcpGrant / relayMcpGrantRevoke | GET `/api/relay/mcp/grant` → `{grant:{clientName, createdAt, lastUsedAt}\|null, url}`(`url`은 에이전트에 넣을 MCP 주소), DELETE → 204. 이 PC 주인 계정의 AI 에이전트 연결(원격 MCP, 05 §4.4 (l))(`daemonJson`) | ✓ 디스코드 연결 화면 `AgentLink`: 연결된 에이전트와 마지막 사용을 보이고 끊는다. 없으면 릴레이가 준 `url`을 에이전트에 넣으라고 안내한다. 받지 못하면 줄을 그리지 않는다 |
 | shellOpenPath (997) | Rust `shell_open_path`. 디렉터리가 아니면 열지 않는다(`errors.path_not_folder`) | n/a |
 | logsOpenFolder (1001-1002) | Rust `logs_open_folder` | n/a |
 | launchUninstaller (1003) | Rust `launch_uninstaller` (installer 직접 spawn) | n/a |
@@ -295,6 +296,7 @@ Tauri 셸과 CLI는 Rust 쪽 SSOT `saba_chan_updater_lib::constants`(`updater/sr
 - `bot link [ID] [--decline]`: 디스코드에서 코드 없이 `/사바쨩 연결`로 온 연결 요청(J1-b). ID 없이 부르면 목록(`GET /api/relay/link-requests`), ID면 수락, `--decline`이면 거절(`POST /api/relay/link-requests/:id`). `bot pair`는 끝에 GUI 디스코드 화면에서도 볼 수 있다는 안내를 붙인다(J1-c).
 - `server port-check <서버>`(별칭 `ports`): 포트포워딩 확인(`POST /api/instance/:id/port-check`). 판정, relay가 본 주소, 포트마다 `포트/프로토콜 상태`, 방화벽·공유기·닫힘·CGNAT·모름이면 안내 한 줄.
 - `bot erase`: 개인정보 모두 지우기(`POST /api/relay/privacy/erase`). 동의 페이지 주소를 보이고 데몬이 끝났다고 할 때까지 3초마다 묻는다(`GET`). Ctrl+C로 그만둬도 데몬은 계속 묻고 동의하면 연결을 끊는다. `--json`만 주면 주소만 낸다.
+- `bot agent [--unlink]`: 이 PC 주인 계정의 AI 에이전트 연결(원격 MCP)을 보이거나(`GET /api/relay/mcp/grant`), 확인을 받고 끊는다(`DELETE`).
 - `bot allow GUILD [서버…] [--all]`: 그 디스코드 서버가 보고 부를 수 있는 서버(`nodeSettings[guild].allowedInstances`, Q-4). 서버 없이 부르면 보기, `--all`은 키를 지워 제한 없음. `PUT /api/guilds/:guild/allowed-instances`로 저장한다(`--all`이면 `instances:null`). 없는 서버 id는 데몬이 400으로 거절한다.
 - `bot notice GUILD [서버] [--on|--off]`: 켜짐 알림(사바쨩이 켠 서버를 그 디스코드 서버의 알림 채널에 알린다, 기본 꺼짐). 서버 없이 부르면 켠 서버 목록, 서버만 주면 그 서버가 켜졌는지, `--on`·`--off`로 바꾼다. `GET /api/guilds/:guild/start-notice`·`PUT /api/instance/:id/start-notice/:guild`.
 - `server discord [SERVER] [--word 낱말,…] [--command 명령=낱말,…] [--clear]`: 디스코드에서 이 서버와 그 명령을 부르는 낱말(봇 설정 `serverWords[id]`, 인스턴스에 딸려 어느 디스코드 서버에서나 같다, `cmd/discord_words.rs`). GUI 서버 상세의 디스코드 탭과 같다. 옵션 없이 부르면 `GET /api/instance/:id/words`의 서버 낱말(괄호는 기본 호출명 `defaultWords`)과 명령별 낱말(괄호는 module.toml 별명)을 보여 준다. GUI 디스코드 탭도 서버 낱말 칸에 `defaultWords`를 "기본:"으로 보인다. 바꿀 때는 지금 값에서 시작해 `--word`(서버 낱말 통째, `--word ""`는 지움)와 `--command`(그 명령만, `명령=`은 지움)만 바꾸고 `{words, commands}` 전체를 `PUT /api/instance/:id/words`로 보낸다. `--clear`는 둘 다 비운다. 낱말 규칙·충돌은 데몬이 검사하고, 400 `validation_failed`의 `details`는 칸마다 한 줄로 보인다(`error.rs` `api_hint`). 0.1.10의 `--guild`(디스코드 서버마다 따로 정하기)는 없앴다. 예전 `bot words`와 전역 별명 명령 `bot alias`·`bot server-alias`·`bot word`도 없다.
@@ -334,7 +336,7 @@ Discord ─ 릴레이의 사바쨩 봇 ─(롱폴링, HMAC 서명)─ 데몬 rel
 |---|---|---|
 | 버전 확인 | `GET /info` | 릴레이가 요구하는 최소 에이전트 버전 확인 |
 | 하트비트 | `POST /heartbeat` (60초) | `agentVersion`, `os`, `metadata`(서버·모듈·봇 설정). 릴레이가 `UPDATE_REQUIRED`를 주면 경고 로그를 남긴다(`relay_agent.rs:281-327`). 지금 릴레이는 경고 대신 426 `AGENT_TOO_OLD`로 거부하고(05 §3 `/heartbeat`), 데몬은 이를 하트비트 오류로 남긴다. 잠자기는 길드 설정(I2)이라 폴링은 쉬지 않는다. 게임 서버 비밀번호(`rcon_password`, `rest_password`)는 메타데이터에서 뺀다(273-276) |
-| 명령 받기 | `GET /poll` (롱폴링) | 디스코드에서 온 명령. `payload.action`은 `raw_command`(옛 릴레이의 문장 명령)·`plan`(문장 계획 `text`, 한 액션 `id`, 여러 단계 `steps`)·`run_plan`·`query`·`permission`·`web_session`·`remote_tunnel` 등이다(05 §4.4) |
+| 명령 받기 | `GET /poll` (롱폴링) | 디스코드에서 온 명령. `payload.action`은 `raw_command`(옛 릴레이의 문장 명령)·`plan`(문장 계획 `text`, 한 액션 `id`, 여러 단계 `steps`)·`run_plan`·`query`·`catalog`(원격 MCP만)·`permission`·`web_session`·`remote_tunnel` 등이다(05 §4.4) |
 | 결과 보내기 | `POST /result/:id` | 채팅 처리기의 응답 `{success, data:{text}}` (`:505-567`) |
 
 - 모든 요청은 노드 토큰으로 HMAC 서명하고 `X-Saba-Client: 1` 헤더를 붙인다(`relay_agent.rs:197-201, 215-229`, `handlers/relay.rs:117` `signed_headers`). 노드 토큰을 싣는 프록시 요청(`/api/relay/host/*`, `/node/*`)은 `?relayUrl=`이 설정된 릴레이와 같거나 루프백일 때만 따르고, 아니면 설정된 릴레이로 보낸다(`handlers/relay.rs:46-67`).

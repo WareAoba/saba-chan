@@ -755,6 +755,8 @@ const impl = {
         }),
     relayLinkRequestRespond: (id, accept) =>
         ok(accept ? { ok: true, guildId: '900', guildName: '마크 친구들' } : { ok: true, declined: true }),
+    relayMcpGrant: () => ok({ grant: { clientName: 'Claude', createdAt: '2026-10-28T00:00:00Z', lastUsedAt: '2026-10-28T01:00:00Z' }, url: 'https://saba-chan.online/mcp' }),
+    relayMcpGrantRevoke: () => ok(''),
     relayPrivacyErase: () => ok({ url: 'https://saba-chan.online/legal/erase#mock.secret' }),
     relayPrivacyEraseStatus: () => ok({ status: 'pending' }),
     onboarding: () =>

@@ -828,6 +828,16 @@ impl Caller {
         Self { surface, remote: None, origin, locale }
     }
 
+    /// 원격 MCP(계정 주인의 AI 에이전트): 앱과 같은 표면, 길드 없는 요청자. 레벨은 주인 판정(`owner`)으로 정해진다
+    pub fn mcp(user: String, owner: String, confirmed_by: Option<String>, user_name: Option<String>, locale: String) -> Self {
+        let mut origin = crate::audit::Origin::new(MCP_VIA);
+        origin.user = Some(user.clone());
+        origin.user_name = user_name;
+        origin.via = Some(MCP_VIA.to_string());
+        let who = Requester { guild_id: None, user_id: Some(user), owner_id: Some(owner), via_chatbot: false, confirmed_by, guild_owner_id: None };
+        Self { surface: Gui, remote: Some(who), origin, locale }
+    }
+
     /// planId를 묶는 키: 출처·길드·사용자 (via는 계획에 따로 남겨 실행 때 상한으로 쓴다)
     fn owner_key(&self) -> String {
         match &self.remote {
@@ -1135,7 +1145,9 @@ async fn authorize_in(server: &IPCServer, r: &Resolved, caller: &Caller, new_ser
     // 원격 포트(짝 맺은 PC)에서 온 계획·실행은 대상 라우트·칸을 원격 포트의 규칙으로 미리 본다.
     // 실행이 안에서 부르는 라우터도 같은 규칙 층(`remote_daemon::server::rules`)을 지나지만, 여러 단계 계획이
     // 앞 단계만 돌고 뒤 단계에서 멈추지 않게 계획 때 거절한다
-    if caller.remote.is_none() && caller.origin.source == "remote" {
+    // 원격 MCP도 웹 원격·짝 맺은 PC와 같이 PC에서만 하는 일과 PC 전용 칸을 막는다
+    let remote_rules = (caller.remote.is_none() && caller.origin.source == "remote") || caller.origin.via.as_deref() == Some(MCP_VIA);
+    if remote_rules {
         if let Some(refused) = crate::remote_daemon::server::refusal(server, r.method, &r.uri, r.body.as_ref(), new_server_module).await {
             let (status, code) = (refused.status().as_u16(), refused.code());
             return Err(match refused {

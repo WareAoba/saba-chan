@@ -35,6 +35,21 @@ pub async fn run(ctx: &Ctx, cmd: BotCmd) -> Result<()> {
             Ok(())
         }
         BotCmd::Erase => erase(ctx).await,
+        BotCmd::Agent { unlink: false } => {
+            let r = ctx.api.mcp_grant().await?;
+            ctx.out.data(&r, |r| match r.get("grant").filter(|g| g.is_object()) {
+                Some(g) => say!("{}", t!("bot.agent_linked", name = s(g, "clientName"), when = s(g, "lastUsedAt"))),
+                // 에이전트에 넣을 주소는 릴레이가 준다
+                None => say!("{}", t!("bot.agent_none", url = s(r, "url"))),
+            });
+            Ok(())
+        }
+        BotCmd::Agent { unlink: true } => {
+            ctx.ask.ensure(&t!("bot.confirm_agent_unlink"))?;
+            let r = ctx.api.mcp_grant_revoke().await?;
+            ctx.out.done(&t!("bot.agent_unlinked"), &r);
+            Ok(())
+        }
         BotCmd::Token => {
             // 셸 기록에 남지 않게 인자로 받지 않는다 (터미널이 아니면 표준 입력 한 줄)
             let token = ctx.ask.secret_or_stdin(&t!("bot.ask_token"))?;
