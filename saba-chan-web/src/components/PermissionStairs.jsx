@@ -1,5 +1,5 @@
 import * as L from '@gui/components/discord/levels';
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useApp } from '../store';
 import { Button, Segments } from './ui';
@@ -7,20 +7,26 @@ import { Button, Segments } from './ui';
 const RISK_TONE = { safe: 'ok', caution: 'warn', danger: 'stop' };
 const toneOf = (c) => (c.kind === 'admin' ? 'info' : RISK_TONE[c.risk] || 'ok');
 
-/** 칩이 다른 계단으로 옮겨지면 옛 자리에서 새 자리로 미끄러지게 한다 (FLIP, GUI 계단과 같다) */
+/**
+ * 칩이 다른 계단으로 옮겨지면 옛 자리에서 새 자리로 미끄러지게 한다 (FLIP, GUI 계단과 같다).
+ * 자리는 그릴 때마다 다시 재고(스크롤·위 줄이 생겨도 옛 값이 남지 않게), 움직임은 `dep`(계단 값)이 바뀔 때만 준다
+ */
 function useChipFlip(ref, dep) {
     const last = useRef(new Map());
-    // biome-ignore lint/correctness/useExhaustiveDependencies: dep(계단 값)이 바뀔 때마다 칩 자리를 다시 잰다
+    const pinned = useRef(new Map()); // 놓은 칩: 다음 계단 값까지 놓은 자리를 옛 자리로 쓴다
+    const prevDep = useRef(dep);
     useLayoutEffect(() => {
         const root = ref.current;
         if (!root) return;
+        const changed = prevDep.current !== dep;
+        prevDep.current = dep;
         const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
         const next = new Map();
         for (const el of root.querySelectorAll('[data-chip]')) {
             const box = el.getBoundingClientRect();
             next.set(el.dataset.chip, box);
-            const prev = last.current.get(el.dataset.chip);
-            if (reduce || !prev || !el.animate) continue;
+            const prev = pinned.current.get(el.dataset.chip) || last.current.get(el.dataset.chip);
+            if (!changed || reduce || !prev || !el.animate) continue;
             const dx = prev.left - box.left;
             const dy = prev.top - box.top;
             if (Math.abs(dx) < 1 && Math.abs(dy) < 1) continue;
@@ -30,21 +36,28 @@ function useChipFlip(ref, dep) {
             });
         }
         last.current = next;
-    }, [ref, dep]);
-    return last;
+        if (changed) pinned.current.clear();
+    });
+    return pinned;
 }
 
 /**
  * 손가락·마우스로 칩을 끈다 (휴대폰은 HTML 끌어 놓기가 없어 pointer 이벤트로).
- * 6px 넘게 움직여야 끌기로 보고, 놓은 자리의 `data-level` 계단으로 옮긴다. 끌고 난 뒤의 click은 무시한다
+ * 6px 넘게 움직여야 끌기로 보고, 놓은 자리의 `data-level` 계단으로 옮긴다(`onDrop`이 옮겼으면 true).
+ * 끈 뒤 같은 칩에 오는 click 하나만 무시한다. 화면이 닫히면 끌던 것을 버린다
  */
 function useChipDrag({ onDrop, flip }) {
     const [drag, setDrag] = useState(null); // {id, over}
     const dragged = useRef(false);
+    const latest = useRef(onDrop);
+    latest.current = onDrop;
+    const stop = useRef(null);
+    useEffect(() => () => stop.current?.(), []);
     const stepAt = (x, y) => document.elementFromPoint?.(x, y)?.closest?.('[data-level]');
 
     const start = (e, chip) => {
         if (chip.fixed || (e.button !== undefined && e.button > 0)) return;
+        stop.current?.();
         const el = e.currentTarget;
         const x0 = e.clientX;
         const y0 = e.clientY;
@@ -55,35 +68,45 @@ function useChipDrag({ onDrop, flip }) {
             const dy = ev.clientY - y0;
             if (!moving && Math.hypot(dx, dy) < 6) return;
             moving = true;
-            dragged.current = true;
             el.style.transform = `translate(${dx}px, ${dy}px)`;
             el.style.pointerEvents = 'none';
             const step = stepAt(ev.clientX, ev.clientY);
-            setDrag({ id: chip.id, over: step ? Number(step.dataset.level) : null });
+            const over = step ? Number(step.dataset.level) : null;
+            setDrag((d) => (d?.id === chip.id && d.over === over ? d : { id: chip.id, over }));
         };
-        const end = (ev) => {
+        const detach = () => {
             window.removeEventListener('pointermove', move);
             window.removeEventListener('pointerup', end);
             window.removeEventListener('pointercancel', end);
-            // 놓은 자리에서 새 계단으로 미끄러지게
-            if (moving) flip.current.set(chip.id, el.getBoundingClientRect());
             el.style.transform = '';
             el.style.pointerEvents = '';
+            stop.current = null;
+        };
+        const end = (ev) => {
+            const box = moving ? el.getBoundingClientRect() : null;
+            detach();
             setDrag(null);
-            if (!moving || ev.type !== 'pointerup') return;
+            if (!moving) return;
+            // 브라우저가 끈 칩에 click 을 보낼 수도, 안 보낼 수도 있다: 바로 뒤 click 하나만 무시한다
+            dragged.current = true;
+            setTimeout(() => {
+                dragged.current = false;
+            }, 0);
+            if (ev.type !== 'pointerup') return;
             const step = stepAt(ev.clientX, ev.clientY);
-            if (step) onDrop(chip, Number(step.dataset.level));
+            // 놓은 자리에서 새 계단으로 미끄러지게 (옮겼을 때만)
+            if (step && latest.current(chip, Number(step.dataset.level))) flip.current.set(chip.id, box);
+        };
+        stop.current = () => {
+            detach();
+            setDrag(null);
         };
         window.addEventListener('pointermove', move);
         window.addEventListener('pointerup', end);
         window.addEventListener('pointercancel', end);
     };
-    /** 끌기 뒤에 따라오는 click 이면 true (한 번만) */
-    const consumeDrag = () => {
-        const was = dragged.current;
-        dragged.current = false;
-        return was;
-    };
+    /** 끌기 바로 뒤에 오는 click 이면 true */
+    const consumeDrag = () => dragged.current;
     return { drag, start, consumeDrag };
 }
 
@@ -102,8 +125,9 @@ export function PermissionStairs({ api, guildId, perm, board, instance, busy, wr
     const levelTitle = (id) => t('perm.level_numbered', { n: L.levelNumber(perm, id), name: levelName(id) });
     const update = (patch) => write(() => api.permissionsUpdate(guildId, patch));
     const move = (chip, level) => {
-        if (busy || chip.fixed || level === L.BANNED || level === chip.level) return;
+        if (busy || chip.fixed || level === L.BANNED || level === chip.level) return false;
         update({ commandLevels: L.levelPatch(chip.items, level) });
+        return true;
     };
     const { drag, start, consumeDrag } = useChipDrag({ onDrop: move, flip });
 

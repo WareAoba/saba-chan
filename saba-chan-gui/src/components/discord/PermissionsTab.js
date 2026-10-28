@@ -545,20 +545,24 @@ const RISK_TONE = { safe: 'ok', caution: 'warn', danger: 'stop' };
 // ── 명령: 계단. 칩은 "이 레벨부터 쓸 수 있다"는 자리에 있고, 위 계단은 아래 계단의 명령을 모두 쓴다 ──
 /**
  * 칩이 다른 계단으로 옮겨지면 옛 자리에서 새 자리로 미끄러지게 한다 (FLIP).
- * 칩마다 `data-chip` 으로 찾고, 움직임 줄이기 설정이면 건너뛴다
+ * 칩마다 `data-chip` 으로 찾고, 움직임 줄이기 설정이면 건너뛴다.
+ * 자리는 그릴 때마다 다시 재고(보기·스크롤·알림 줄이 바뀌어도 옛 값이 남지 않게), 움직임은 `dep`(계단 값)이 바뀔 때만 준다
  */
 function useChipFlip(ref, dep) {
     const last = useRef(new Map());
+    const prevDep = useRef(dep);
     useLayoutEffect(() => {
         const root = ref.current;
         if (!root) return;
+        const changed = prevDep.current !== dep;
+        prevDep.current = dep;
         const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
         const next = new Map();
         for (const el of root.querySelectorAll('[data-chip]')) {
             const box = el.getBoundingClientRect();
             next.set(el.dataset.chip, box);
             const prev = last.current.get(el.dataset.chip);
-            if (reduce || !prev || !el.animate) continue;
+            if (!changed || reduce || !prev || !el.animate) continue;
             const dx = prev.left - box.left;
             const dy = prev.top - box.top;
             if (Math.abs(dx) < 1 && Math.abs(dy) < 1) continue;
@@ -568,7 +572,7 @@ function useChipFlip(ref, dep) {
             });
         }
         last.current = next;
-    }, [ref, dep]);
+    });
 }
 
 export function CommandStairs({ node, permissions, instance = L.ALL_INSTANCES }) {

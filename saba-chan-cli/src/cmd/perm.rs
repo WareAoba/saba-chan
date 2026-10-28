@@ -148,7 +148,11 @@ pub async fn run(ctx: &Ctx, cmd: PermCmd) -> Result<()> {
                 Some(q) => Some(resolve::server(ctx, Some(&q)).await?.id),
                 None => None,
             };
-            let (perm, board) = tokio::try_join!(ctx.api.permissions(&guild), ctx.api.permission_commands(&guild, crate::i18n::lang()))?;
+            let (perm, mut board) = tokio::try_join!(ctx.api.permissions(&guild), ctx.api.permission_commands(&guild, crate::i18n::lang()))?;
+            // --server 면 그 서버 명령과 서버 전체 명령만 (JSON 출력도 같다)
+            if let (Some(id), Some(items)) = (instance.as_deref(), board["items"].as_array_mut()) {
+                items.retain(|i| i["instance"].as_str().is_none_or(|x| x == id));
+            }
             ctx.out.data(&board, |b| stairs(b, &ladder_of(&perm), instance.as_deref()));
             return Ok(());
         }
@@ -358,16 +362,11 @@ fn command_name(names: &Names, key: &str) -> String {
 }
 
 /// 레벨마다 그 레벨부터 쓸 수 있는 명령 (GUI 레벨별 명령 계단과 같다, 낮은 레벨부터).
-/// `instance`가 있으면 그 서버 명령과 서버 전체 명령만
+/// `instance`가 있으면 서버 이름 꼬리표를 붙이지 않는다 (항목은 부르는 쪽이 이미 걸렀다)
 fn stairs(board: &Value, ladder: &[Rung], instance: Option<&str>) {
     let servers: HashMap<&str, &str> =
         board["instances"].as_array().into_iter().flatten().filter_map(|i| Some((i["id"].as_str()?, i["name"].as_str()?))).collect();
-    let items: Vec<&Value> = board["items"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter(|i| instance.is_none_or(|id| i["instance"].as_str().is_none_or(|x| x == id)))
-        .collect();
+    let items: Vec<&Value> = board["items"].as_array().into_iter().flatten().collect();
     for (n, id) in ladder.iter().rev().filter_map(|r| r.id).enumerate() {
         let here: Vec<String> = items
             .iter()

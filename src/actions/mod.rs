@@ -1116,9 +1116,13 @@ fn override_keys(instance: &str, id: &str) -> Vec<String> {
     if instance.is_empty() {
         return vec![id.to_string()];
     }
-    let mut keys: Vec<String> = builtin_command(id).map(|cmd| format!("{}/{}", instance, cmd)).into_iter().collect();
-    keys.push(format!("{}/{}", instance, id));
-    keys
+    let action_key = format!("{}/{}", instance, id);
+    match builtin_command(id) {
+        // players는 릴레이 사전 판정이 액션 키(`<instance>/server.players`)만 보므로 그 키에 쓴다 (둘 다 읽는다)
+        Some("players") => vec![action_key, format!("{}/players", instance)],
+        Some(cmd) => vec![format!("{}/{}", instance, cmd), action_key],
+        None => vec![action_key],
+    }
 }
 
 /// 표면과 레벨 판정. 챗봇 경로는 표면부터 본다 (레벨·설정으로 풀 수 없다)

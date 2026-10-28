@@ -66,13 +66,15 @@ describe('웹 레벨별 명령 계단', () => {
             expect(say.classList.contains('is-dragging')).toBe(true);
             expect(step('Lv 3 · Admin').classList.contains('is-over')).toBe(true);
             fireEvent.pointerUp(window, { clientX: 10, clientY: 100 });
-            fireEvent.click(say);
             await act(async () => {});
             expect(api.permissionsUpdate).toHaveBeenCalledWith('g1', { commandLevels: { 'mc-1/say': 2 } });
             expect(screen.queryByRole('region', { name: 'Say' })).toBeNull();
             rerender(board(2));
             expect(within(step('Lv 3 · Admin')).getByRole('button', { name: /Say/ })).toBeTruthy();
             expect(animate).toHaveBeenCalled();
+            // 끈 뒤에도 다음 탭은 칩을 고른다 (브라우저는 끈 칩에 click 을 보내지 않는다)
+            fireEvent.click(within(step('Lv 3 · Admin')).getByRole('button', { name: /Say/ }));
+            expect(screen.getByRole('region', { name: 'Say' })).toBeTruthy();
         } finally {
             rect.mockRestore();
             delete HTMLElement.prototype.animate;

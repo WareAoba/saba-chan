@@ -241,26 +241,30 @@ function useGuildPermissions(api, guildId) {
     const [busy, setBusy] = useState(false);
     const seq = useRef(0);
 
+    /** 권한과 계단. 디스코드 멤버 목록은 느려서(최대 20초) 처음 열 때만 받는다 */
     const load = useCallback(async () => {
         const mine = ++seq.current;
-        const [p, b, m] = await Promise.all([
-            api.permissionsGet(guildId),
-            api.permissionsCommands(guildId, locale),
-            api.relayListNodeMembers(guildId),
-        ]);
+        const [p, b] = await Promise.all([api.permissionsGet(guildId), api.permissionsCommands(guildId, locale)]);
         if (mine !== seq.current) return;
         if (failed(p)) toast(errorText(t, p), 'error');
         else setPerm(p);
         setBoard(failed(b) ? null : b);
-        setMembers(Array.isArray(m?.members) ? m.members : []);
     }, [api, guildId, locale, t, toast]);
 
     useEffect(() => {
         setPerm(null);
         setBoard(null);
-        setMembers(null);
         load();
     }, [load]);
+
+    useEffect(() => {
+        let live = true;
+        setMembers(null);
+        api.relayListNodeMembers(guildId).then((m) => live && setMembers(Array.isArray(m?.members) ? m.members : []));
+        return () => {
+            live = false;
+        };
+    }, [api, guildId]);
 
     const write = async (fn) => {
         setBusy(true);
