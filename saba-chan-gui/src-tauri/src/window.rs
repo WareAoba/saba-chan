@@ -524,21 +524,6 @@ pub fn close_popouts(app: &AppHandle) {
     }
 }
 
-pub fn focus_popout(app: &AppHandle, instance_id: &str) -> Value {
-    let Some(win) = popout(app, instance_id) else {
-        return json!({ "ok": false });
-    };
-    let _ = win.unminimize();
-    let _ = win.set_focus();
-    // 깜빡임으로 주의 환기
-    let _ = win.request_user_attention(Some(tauri::UserAttentionType::Informational));
-    tauri::async_runtime::spawn(async move {
-        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-        let _ = win.request_user_attention(None);
-    });
-    json!({ "ok": true })
-}
-
 /// PiP 콘솔을 메인 창으로 되돌린다
 pub fn popin(app: &AppHandle, instance_id: &str) -> Value {
     let Some(win) = popout(app, instance_id) else {

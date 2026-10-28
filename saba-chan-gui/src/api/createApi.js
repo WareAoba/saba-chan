@@ -609,7 +609,6 @@ export function createApi({ invoke, hub }) {
         // sizes=false면 데몬이 인스턴스 폴더 크기를 새로 재지 않는다
         systemMetrics: (opts = {}) =>
             daemonCall('get', `/api/system/metrics${opts?.sizes === false ? '?sizes=false' : ''}`, undefined, 5000),
-        configDefaults: (kind) => daemonCall('get', `/api/config/${encodeURIComponent(kind)}/defaults`),
         // keys를 생략하면 kind 전체를 기본값으로 되돌린다
         configReset: (kind, keys) =>
             daemonCall('post', `/api/config/${encodeURIComponent(kind)}/reset`, keys ? { keys } : {}),
@@ -783,7 +782,6 @@ export function createApi({ invoke, hub }) {
             const qs = queryString({ since, count: count || undefined });
             return daemonCall('get', `/api/daemon/console${qs}`, undefined, 10000);
         },
-        consoleFocusPopout: (instanceId) => invoke('console_focus_popout', { instanceId }),
         consolePopin: (instanceId) => invoke('console_popin', { instanceId }),
         consoleToggleAlwaysOnTop: (instanceId, pinned) =>
             invoke('console_toggle_always_on_top', { instanceId, pinned }),
@@ -968,14 +966,6 @@ export function createApi({ invoke, hub }) {
             } catch (e) {
                 console.error('[NodeToken] Failed to save via daemon:', e.message);
                 return false;
-            }
-        },
-        loadNodeToken: async () => {
-            try {
-                return (await get('/api/config/node-token')).data?.token || '';
-            } catch (e) {
-                console.warn('[NodeToken] Failed to load from daemon:', e.message);
-                return '';
             }
         },
         // 연결 해제: 데몬이 릴레이 에이전트를 멈추고 토큰을 지운다
@@ -1194,7 +1184,6 @@ export function createApi({ invoke, hub }) {
             daemonJson('get', `/api/relay/node/${encodeURIComponent(guildId)}/chatbot/credit`, undefined, 20000),
         chatbotMemoTemplate: (locale) =>
             daemonJson('get', `/api/chatbot/memo-template${locale ? `?locale=${encodeURIComponent(locale)}` : ''}`),
-        chatbotClear: () => daemonJson('delete', '/api/chatbot'),
         chatbotClearMemory: (guildId) =>
             daemonJson('delete', `/api/chatbot/memory${guildId ? `?guildId=${encodeURIComponent(guildId)}` : ''}`),
         relayInitiatePairing: async (payload) => {
@@ -1225,7 +1214,6 @@ export function createApi({ invoke, hub }) {
             if (!folderPath || typeof folderPath !== 'string') return { error: t('errors.path_missing') };
             return invoke('shell_open_path', { path: folderPath });
         },
-        logsGetPath: () => invoke('logs_get_path'),
         logsOpenFolder: () => invoke('logs_open_folder'),
         launchUninstaller: () => invoke('launch_uninstaller'),
         getAppVersion: () => invoke('app_get_version'),

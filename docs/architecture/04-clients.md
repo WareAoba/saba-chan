@@ -94,14 +94,14 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 | instanceReadLiveSettings (500) | GET /api/instance/:id/settings/live | ✓ 685 |
 | runtimePreflight (501) | GET /api/runtime/preflight | ✓ 756 |
 | systemMetrics (503) | GET /api/system/metrics[?sizes=false] | ✓ 715 (`SystemMonitor`) |
-| configDefaults / configReset (505-507) | GET /api/config/:kind/defaults, POST /api/config/:kind/reset {keys?} | ✓ 704-705 (configDefaults 미사용) |
+| configReset (505-507) | POST /api/config/:kind/reset {keys?} | ✓ 704-705 |
 | extensionList…extensionInitStatus (510-630) | /api/extensions, /:id/enable, /disable, /audit, /i18n/:locale, /gui, /gui/styles(`responseType:'text'`, 이 웹뷰에서 실행하므로 원격 데몬을 고른 동안에도 `target:'local'`로 이 PC 데몬에서 받는다), /icon(`responseType:'base64'`), /manifest, /:id/install, DELETE /:id, /updates, /rescan, /init-status | ✓ 754-771 (확장 UI 로딩은 03 §4.1). `gui_allowed:false`면 번들·스타일을 요청하지 않고 사용자에게 한 번 묻는다(`ExtensionContext`). `/gui`가 403 `extension_gui_unapproved`면 `extensionGuiBundle`은 `{error_code:'extension_gui_unapproved'}`를 돌려주고 다시 묻는다 |
 | extensionConfigGet / extensionConfigSet | GET /api/extensions/:id/config(`{config}`) · PUT 같은 경로에 값 객체 그대로(키 단위 병합, null이면 삭제). 실패하면 데몬 본문을 그대로 돌려준다(설정 > 익스텐션 `ExtensionConfigForm`) | ✓ 807 |
 | managedConsole (634) | GET /api/instance/:id/console?since&count (4번째 인자 `{spans:true}`면 `&spans=1`) | ✓ 679 |
 | managedStdin (642) | POST /api/instance/:id/stdin | ✓ 680 |
 | consolePopout / consolePopoutList (651-652) | Rust `console_popout` / `console_popout_list` (열린 팝아웃 창의 instanceId 배열). daemon 호출 없음 | n/a |
 | daemonConsole (653) | GET /api/daemon/console?since&count. `{lines:[{id, timestamp, level, target, message}], count, epoch}` 그대로. 활동 줄의 데몬 콘솔(`ActivityBar.js` `DaemonConsole`)은 `epoch`가 바뀌면 받은 줄을 비우고 처음부터 다시 받는다(L55) | ✓ 752 |
-| consoleFocusPopout / Popin / ToggleAlwaysOnTop (658-661) | Rust `console_focus_popout` / `console_popin` / `console_toggle_always_on_top` | n/a |
+| consolePopin / ToggleAlwaysOnTop (658-661) | Rust `console_popin` / `console_toggle_always_on_top` | n/a |
 | trayAction / trayPopupFit | Rust `tray_action {action}`(async: 창 열기가 창을 새로 만든다)(`open_window`·`switch_to_cli`·`start_daemon`·`stop_daemon`·`quit_all`·`close`, 팝업을 닫고 `{ok}`) / `tray_popup_fit {height}`(트레이 팝업 크기·자리를 정하고 보인다). daemon 호출 없음 | n/a |
 | updaterCheck (676) | POST /api/updates/check | ✓ updates.rs:109 |
 | updaterStatus (696) | GET /api/updates/status | ✓ 100 |
@@ -121,7 +121,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 | discordBotStatus / Start / Stop (793-816) | GET /api/relay/agent, POST /api/relay/agent/start·stop. Status는 `running`·`stopped`, 다른 PC가 같은 계정으로 페어링해 멈췄으면(`lastErrorCode: token_replaced`) `replaced`(연결 화면에 다시 페어링 안내), 저장된 릴레이 주소가 거절돼 멈췄으면(`lastErrorCode: invalid_relay_url`) `invalid_relay_url`(연결 화면에 주소 형식 안내), 릴레이가 앱 버전을 거절하면(`lastErrorCode: agent_too_old`) `{status: 'too_old', running, minVersion}`(연결 화면에 `update_required.relay` 안내와 업데이트 화면을 여는 버튼, '실행 중'으로 보이지 않음). 노드 토큰이 없으면(`node_token_missing`) `cloud_token_not_found`, Start가 409 `invalid_relay_url`이면 `{error: 'invalid_relay_url'}`(`discord.invalid_relay_url` 문구) | ✓ 787-789 |
 | botConfigLoad (817) | GET /api/config/bot. 못 읽으면 기본값 대신 예외를 던진다(호출한 쪽이 기본값을 저장해 설정을 지우지 않게) | ✓ 700 |
 | botConfigSave (826) | PATCH /api/config/bot. 디스코드 저장은 마지막으로 저장한 값과 비교한 merge patch(`utils/mergePatch.js` `mergePatchDiff`, 지운 키는 `null`)만 보낸다. 칸마다 자동 저장하므로 `revision`은 싣지 않는다. 데몬 본문을 그대로 돌려준다: 권한 키라 저장하지 않은 경로는 `ignored`로 오고 화면이 알린다(CLI와 같다). 릴레이 동기화는 에이전트 하트비트가 맡는다 | ✓ 700 |
-| saveNodeToken / loadNodeToken / deleteNodeToken (835-853) | PUT/GET/DELETE /api/config/node-token. DELETE는 데몬이 에이전트를 멈추고 토큰을 지운다 | ✓ 710 |
+| saveNodeToken / deleteNodeToken (835-853) | PUT/DELETE /api/config/node-token. DELETE는 데몬이 에이전트를 멈추고 토큰을 지운다 | ✓ 710 |
 | auditList (855) | GET /api/audit?limit&instance&since&until (A10). `{entries}` 최신이 먼저 | ✓ 640 |
 | auditExport | 저장 창(`dialog_save_file`, csv)에서 고른 경로로 POST /api/audit/export `{path, instance?, since?, until?}`. 창을 닫으면 `{canceled:true}` | - |
 | permissionsGet (860) | GET /api/permissions/:guildId (P1) | ✓ 723-726 |
@@ -152,7 +152,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 | onboarding (957) | GET /api/onboarding (J1-a 다음 할 일) | ✓ 639 |
 | daemonDiagnostics | GET /api/diagnostics(버전·pid·데이터 폴더·토큰 파일 유무·최근 경고). 실패하면 `{success:false, error}`(설정 > 고급 `DiagnosticsPanel`) | ✓ 674 |
 | instanceBackups…instanceScheduleSave (958-970) | GET/POST …/backups(`instanceBackupCreate(id, body?)`: `{source:"snapshot"}`이면 게임 자동 백업 보관), DELETE …/backups/:name, POST …/backups/:name/restore(만들기·복원은 10분 timeout), GET/PUT …/schedule | ✓ 690-693 |
-| chatbotGet/Save/Clear/ClearMemory (971-975) | GET/PUT/DELETE /api/chatbot, DELETE /api/chatbot/memory?guildId | ✓ 793-794 (chatbotClear 미사용) |
+| chatbotGet/Save/ClearMemory (971-975) | GET/PUT /api/chatbot, DELETE /api/chatbot/memory?guildId | ✓ 793-794 |
 | chatbotModels | GET /api/relay/node/:guildId/chatbot/models (릴레이 답 그대로: `{provider, models, selected, effectiveModel}`, 409 NO_API_KEY·422·503) | ✓ 챗봇 화면 모델 드롭다운. 고른 모델을 대신 쓰는 중이면(`effectiveModel`≠`model`) 알리고 그 모델을 고른 상태로 둔다. `provider`로 연결된 제공사의 로고(SVG, `discord/providerBrands.js`)와 이름을 보여 준다 |
 | chatbotCredit | GET /api/relay/node/:guildId/chatbot/credit (릴레이 답 그대로, 20초) | ✓ 챗봇 화면 "남은 크레딧" 카드(길드마다 한 번 부른다). 잔액은 `Intl` 통화 형식, 잔액을 주지 않는 제공사는 그렇다는 안내와 이번 달 사용량, `exhaustedAt`이 있으면 소진 경고 |
 | chatbotMemoTemplate | GET /api/chatbot/memo-template?locale= | ✓ 서버 프롬프트 "기본 틀 넣기". 비어 있을 때만 넣고 쓴 글은 덮지 않는다 |
@@ -160,7 +160,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 | relayLinkRequests / relayLinkRequestRespond (992-994) | GET /api/relay/link-requests, POST /api/relay/link-requests/:id `{accept}`. 디스코드에서 코드 없이 온 연결 요청(J1-b). 데몬 본문을 그대로 돌려준다(`daemonJson`) | ✓ 784-785 |
 | relayPrivacyErase / relayPrivacyEraseStatus | POST `/api/relay/privacy/erase` `{locale}` → `{url}`, GET → `{status}`. 개인정보 모두 지우기(`daemonJson`) | ✓ 디스코드 연결 화면 `PrivacyErase`: 동의 페이지를 열고 3초마다 묻는다. `done`이면 연결 해제처럼 화면을 비운다(끊기는 데몬이 한다) |
 | shellOpenPath (997) | Rust `shell_open_path`. 디렉터리가 아니면 열지 않는다(`errors.path_not_folder`) | n/a |
-| logsGetPath / logsOpenFolder (1001-1002) | Rust `logs_get_path` / `logs_open_folder` | n/a (logsGetPath 미사용) |
+| logsOpenFolder (1001-1002) | Rust `logs_open_folder` | n/a |
 | launchUninstaller (1003) | Rust `launch_uninstaller` (installer 직접 spawn) | n/a |
 | getAppVersion (1004) | Rust `app_get_version` (패키지 버전) | n/a |
 | systemPaths / systemPathsMove | GET /api/system/paths · POST /api/system/paths/move `{kind, target}`(시간 제한 30분). 설정 > 고급의 폴더 위치(`FolderPathsSection.js`)가 쓴다. 폴더 고르기는 `openFolderDialog`, 실패 문구는 `error_code`(`paths_*`)로 `gui.json` `folder_paths.err_*`에서 고른다 | ✓ (01 §2.2) |
@@ -182,7 +182,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 
 셸에서 renderer로 가는 push 이벤트는 Tauri 이벤트로, 메인 창(라벨 `main`)에만 보낸다(`emit_main` `lib.rs:60-64`). 팝아웃·트레이 팝업 창의 브리지는 구독하지 않고 `app_ready`도 부르지 않는다(`install.js`). 브리지는 모듈을 읽을 때 9개 채널을 한 번 구독한 뒤(`events.js:5-14, 63-65`) `app_ready`를 부른다(`install.js:23-32`). 렌더러를 새로고침하면 `app_ready`가 다시 와서 셸이 마지막 `status:update`를 다시 보낸다(`lifecycle.rs:66-71`). 채널: `status:update`(로딩 단계 `{step, message, ts}`. `message`는 `common.json`의 `daemon.*`·`init.*`로 번역된다. 데몬이 10초 안에 응답하지 않으면 `step:'daemon_failed'`를 보내고 `ready`는 보내지 않는다. 그 뒤 `daemon_restart`가 성공하면 멈춘 초기화를 이어서 끝내고 `ready`를 보낸다. 실패하면 `{success:false, error}`), `events:message`, `updates:available`, `updates:completed`, `console:popoutOpened/Closed/popinRequest`, `app:closeRequest`, `app:openServer`(`{instanceId}`).
 
-**renderer(src/, 테스트 제외)에서 쓰지 않는 window.api**: `configDefaults`, `chatbotClear`, `logsGetPath`, `loadNodeToken`(2026-10-22 renderer 대조). 나머지 표 항목은 모두 화면에서 부른다. 반대로 **GUI가 호출하지 않는 daemon 라우트**: `/api/server/:name/start`, GET `/api/instances`, GET `/api/instance/:id`, `/api/instance/:id/rcon`, `/rest`, `/managed/start`, `/validate`, `/properties`(GET/PUT), `/properties/reset`, `/diagnose`, `/api/module/:name/version/:version`, `/api/version`, `/api/modules/schema`, `/api/config/client/:kind`, `/api/extensions/:id/mount|unmount|config`, `/api/chat/command`, `/api/updates/integrity`. 이 중 일부는 CLI만 사용한다(§3).
+**표의 window.api는 모두 화면에서 부른다.** 쓰지 않던 `configDefaults`·`chatbotClear`·`logsGetPath`·`loadNodeToken`·`consoleFocusPopout`(와 Tauri `logs_get_path`·`console_focus_popout`)는 지웠다(2026-10-28). 반대로 **GUI가 호출하지 않는 daemon 라우트**: `/api/server/:name/start`, GET `/api/instances`, GET `/api/instance/:id`, `/api/instance/:id/rcon`, `/rest`, `/managed/start`, `/validate`, `/properties`(GET/PUT), `/properties/reset`, `/diagnose`, `/api/module/:name/version/:version`, `/api/version`, `/api/modules/schema`, `/api/config/client/:kind`, `/api/extensions/:id/mount|unmount|config`, `/api/chat/command`, `/api/updates/integrity`. 이 중 일부는 CLI만 사용한다(§3).
 
 ### 1.3 GUI가 읽고 쓰는 설정 파일
 
@@ -241,17 +241,16 @@ PC 주인이 폰 브라우저로 서버·인스턴스를 관리하는 원격 화
 
 ---
 
-## 2. 공유 상수와 포트 (`updater/src/constants.rs`, `shared/constants.js`)
+## 2. 공유 상수와 포트 (`updater/src/constants.rs`)
 
-`shared/constants.js`를 import하는 코드는 이제 없다. 옛 Electron main.js만 `require`했고, 지금은 주석으로만 언급된다(`saba-chan-gui/src/stores/useSettingsStore.js:4`, `updater/gui/src/updater.js:9`). Tauri 셸과 CLI는 Rust 쪽 SSOT `saba_chan_updater_lib::constants`(`updater/src/constants.rs`)를 쓴다.
+Tauri 셸과 CLI는 Rust 쪽 SSOT `saba_chan_updater_lib::constants`(`updater/src/constants.rs`)를 쓴다. 옛 Electron용 `shared/constants.js`는 import하는 곳이 없어 지웠다.
 
 | 상수 | 값 | 사용처 |
 |---|---|---|
 | APP_NAME | `saba-chan` | dataDir 이름(`constants.rs:22`) |
-| DEFAULT_IPC_PORT | `57474` | `constants.rs:32`. 셸 `settings.rs:8, 98-105`, CLI. renderer는 사본을 둔다(`useSettingsStore.js:4`) |
-| DEFAULT_DAEMON_URL | `http://127.0.0.1:57474` | shared/constants.js에만 있고 쓰는 곳이 없다 |
+| DEFAULT_IPC_PORT | `57474` | `constants.rs:32`. 셸 `settings.rs:8, 98-105`, CLI. renderer는 사본을 둔다(`useSettingsStore.js:17`) |
 | SUPPORTED_LANGUAGES | en, ko, ja, zh-CN, zh-TW, es, pt-BR, ru, de, fr | `constants.rs:42`. 셸은 OS 로캘을 이 목록에 맞춘다(`settings.rs:127-150`). **중복 정의 위치**: `saba-chan-gui/src/i18n.js:9`, `updater/gui/src/updater.js:10` |
-| resolve_data_dir() (JS `getSabaDataDir()`) | `SABA_DATA_DIR`, Windows는 `%APPDATA%/saba-chan`, 그 외는 `$HOME/.config/saba-chan` | `constants.rs:55`. 셸 `lib.rs:79` |
+| resolve_data_dir() | `SABA_DATA_DIR`, Windows는 `%APPDATA%/saba-chan`, 그 외는 `$HOME/.config/saba-chan` | `constants.rs:55`. 셸 `lib.rs:79` |
 
 - 그 밖의 포트:
   - 모의 릴레이 `scripts/mock-release-server.js` 9876 (개발용, GUI가 띄우지 않음)
