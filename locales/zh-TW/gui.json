@@ -191,7 +191,9 @@
     "port_reserved": "連接埠 {{port}} 被 Windows 保留，伺服器無法開啟。請選擇其他連接埠。",
     "checking": "正在檢查是否與其他伺服器衝突…",
     "check_failed": "無法檢查衝突。新增伺服器時會再次檢查。",
-    "summary_game": "遊戲"
+    "summary_game": "遊戲",
+    "port_invalid": "請輸入 1 到 65535 之間的連接埠號碼。",
+    "folder_unavailable": "無法建立此資料夾。請檢查路徑與權限。"
   },
   "add_instance_modal": {
     "title": "新增實例",

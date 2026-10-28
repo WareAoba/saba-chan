@@ -381,6 +381,13 @@ async fn create_instance_inner(state: IPCServer, payload: Value, dry_run: bool) 
             }
         }
 
+        // 버전은 내려받아 설치하는 모듈만 고른다 (SteamCMD·익스텐션 설치는 버전을 받지 않는다)
+        let downloads = module_install.as_ref().and_then(|(install, _, _)| install.as_ref()).is_some_and(|i| i.method == "download");
+        if chosen_version.is_some() && !downloads {
+            let error = json!({ "error": "this module does not install a chosen version", "error_code": "invalid_format", "fields": [{"field": "version"}] });
+            return (StatusCode::BAD_REQUEST, Json(error)).into_response();
+        }
+
         // 선택적 필드 설정
         if let Some(path) = payload.get("executable_path").and_then(|v| v.as_str()) {
             instance.executable_path = Some(path.to_string());
@@ -451,6 +458,8 @@ async fn create_instance_inner(state: IPCServer, payload: Value, dry_run: bool) 
             let error = json!({ "success": false, "error": "The folder already has files", "error_code": "folder_not_empty", "fields": [{"field": "working_dir"}] });
             return (StatusCode::CONFLICT, Json(error)).into_response();
         }
+        // 새로 만든 폴더면 인스턴스를 저장하지 못했을 때 지운다 (빈 폴더만)
+        let made_folder = custom_folder && !dry_run && instance.working_dir.as_deref().is_some_and(|d| !std::path::Path::new(d).exists());
         if custom_folder && !dry_run {
             if let Err(e) = instance.working_dir.as_deref().map_or(Ok(()), std::fs::create_dir_all) {
                 let error = json!({ "success": false, "error": format!("Could not create the folder: {}", e), "error_code": "folder_unavailable", "fields": [{"field": "working_dir"}] });
@@ -515,7 +524,9 @@ async fn create_instance_inner(state: IPCServer, payload: Value, dry_run: bool) 
         }
 
         if dry_run {
-            let suggested = (1..).map(|i| if i == 1 { module.to_string() } else { format!("{module}-{i}") }).find(|n| !name_taken(n));
+            // 추천 이름은 대소문자를 가리지 않고 겹치지 않는 것 (GUI·CLI 이름 칸과 같다)
+            let taken_ignoring_case = |n: &str| supervisor.instance_store.list().iter().any(|i| i.name.eq_ignore_ascii_case(n));
+            let suggested = (1..).map(|i| if i == 1 { module.to_string() } else { format!("{module}-{i}") }).find(|n| !taken_ignoring_case(n));
             let fields = port_fields_of(module);
             let fields: Vec<&str> = fields.iter().map(String::as_str).collect();
             let ports: Vec<Value> = crate::validator::instance_ports(&instance, &fields).into_iter().map(|(field, port)| json!({
@@ -977,6 +988,10 @@ async fn create_instance_inner(state: IPCServer, payload: Value, dry_run: bool) 
                     if let Err(back) = std::fs::rename(dest, src) {
                         tracing::error!("Could not move the server folder back to {} after a failed create: {}", src.display(), back);
                     }
+                }
+                // 이 요청이 만든 빈 설치 폴더도 남기지 않는다 (다시 만들 때 "파일이 든 폴더"가 되지 않게)
+                if let Some(dir) = instance.working_dir.as_deref().filter(|_| made_folder) {
+                    let _ = std::fs::remove_dir(dir);
                 }
                 let error = json!({ "error": format!("Failed to create instance: {}", e) });
                 (StatusCode::INTERNAL_SERVER_ERROR, Json(error)).into_response()
@@ -3124,6 +3139,11 @@ mod tests {
              else:\n    print(json.dumps({'success': True}))\n",
         )
         .unwrap();
+        // 설치 방식이 없는 모듈 (버전을 고르지 않는다)
+        let plain = modules.join("plain");
+        std::fs::create_dir_all(&plain).unwrap();
+        std::fs::write(plain.join("module.toml"), "[module]\nschema_version = 1\nname = \"plain\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n").unwrap();
+        std::fs::write(plain.join("lifecycle.py"), "").unwrap();
         let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.join("instances").to_str().unwrap());
         for module in sup.module_loader.discover_modules().unwrap() { crate::sandbox::consent_test_component(std::path::Path::new(&module.entry_path())); }
         sup.initialize().await.unwrap();
@@ -3157,6 +3177,11 @@ mod tests {
         let port = clash.body["ports"].as_array().unwrap().iter().find(|p| p["field"] == "port").cloned().unwrap();
         assert_eq!((&port["port"], &port["in_use_by"]), (&json!(25565), &json!(["game"])), "{}", clash.body);
 
+        // 추천 이름은 대소문자를 가리지 않는다 (GUI·CLI 이름 칸과 같다)
+        state.supervisor.write().await.instance_store.add(crate::instance::ServerInstance::new("GAME-2", "plain")).unwrap();
+        let named = check(json!({ "name": "x", "module_name": "game" })).await;
+        assert_eq!(named.body["name"]["suggested"], "game-3", "{}", named.body);
+
         // 포트를 정하지 않으면 만들기가 고를 포트(다른 서버와 겹치지 않게 옮긴 값)를 알려 준다
         let free = check(json!({ "name": "game-2", "module_name": "game" })).await;
         assert_eq!(free.body["name"]["taken"], false, "{}", free.body);
@@ -3173,7 +3198,7 @@ mod tests {
         assert_eq!(full.body["folder"]["not_empty"], true, "{}", full.body);
 
         let sup = state.supervisor.read().await;
-        assert_eq!(sup.instance_store.list().len(), 1, "확인은 아무것도 만들지 않는다");
+        assert_eq!(sup.instance_store.list().len(), 2, "확인은 아무것도 만들지 않는다");
     }
 
     /// 마법사에서 고른 폴더·버전·실행 방식으로 만든다
@@ -3214,6 +3239,9 @@ mod tests {
         std::fs::write(full.join("a.txt"), "x").unwrap();
         let refused = create(json!({ "name": "c", "module_name": "game", "working_dir": full.to_string_lossy() })).await;
         assert_eq!((refused.status.as_u16(), &refused.body["error_code"]), (409, &json!("folder_not_empty")), "{}", refused.body);
+        // 버전은 내려받아 설치하는 모듈만 받는다
+        let refused = create(json!({ "name": "c", "module_name": "plain", "version": "1.0" })).await;
+        assert_eq!((refused.status.as_u16(), &refused.body["error_code"]), (400, &json!("invalid_format")), "{}", refused.body);
         for (key, bad) in [("working_dir", json!("relative")), ("version", json!("../1.0")), ("version", json!(3)), ("managed_start", json!("no"))] {
             let refused = create(json!({ "name": "c", "module_name": "game", key: bad })).await;
             assert_eq!((refused.status.as_u16(), &refused.body["error_code"]), (400, &json!("invalid_format")), "{key} {}", refused.body);

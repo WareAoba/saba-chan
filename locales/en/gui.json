@@ -191,7 +191,9 @@
     "port_reserved": "Windows reserves port {{port}}, so the server cannot open it. Choose another port.",
     "checking": "Checking for clashes with your other servers…",
     "check_failed": "Could not check for clashes. It is checked again when you add the server.",
-    "summary_game": "Game"
+    "summary_game": "Game",
+    "port_invalid": "Enter a port number from 1 to 65535.",
+    "folder_unavailable": "Could not create this folder. Check the path and permissions."
   },
   "add_instance_modal": {
     "title": "Add Server",

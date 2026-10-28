@@ -191,7 +191,9 @@
     "port_reserved": "O Windows reserva a porta {{port}}, então o servidor não consegue abri-la. Escolha outra porta.",
     "checking": "Verificando conflitos com seus outros servidores…",
     "check_failed": "Não foi possível verificar conflitos. A verificação será refeita ao adicionar o servidor.",
-    "summary_game": "Jogo"
+    "summary_game": "Jogo",
+    "port_invalid": "Digite um número de porta entre 1 e 65535.",
+    "folder_unavailable": "Não foi possível criar esta pasta. Verifique o caminho e as permissões."
   },
   "add_instance_modal": {
     "title": "Adicionar instância",

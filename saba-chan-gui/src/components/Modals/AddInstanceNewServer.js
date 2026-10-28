@@ -50,9 +50,10 @@ export function AddInstanceNewServer({
     const [folderMode, setFolderMode] = useState('default'); // 'default' | 'custom'
     const [folder, setFolder] = useState('');
     const [managed, setManaged] = useState(true);
-    const [port, setPort] = useState(''); // '' = 데몬이 고른 포트
+    const [port, setPort] = useState(null); // null = 데몬이 고른 포트 (고치지 않음)
     const [check, setCheck] = useState(null); // 데몬 확인 결과
     const [checking, setChecking] = useState(false);
+    const [leaving, setLeaving] = useState(false); // 파일 위치 단계의 폴더 확인
     const [agreed, setAgreed] = useState({}); // 약관 id → 체크 여부
     const [extValues, setExtValues] = useState({}); // AddServer.options 답 (field → 값)
     const { extensions: daemonExtensions } = useExtensions();
@@ -81,7 +82,7 @@ export function AddInstanceNewServer({
         setFolderMode('default');
         setFolder('');
         setManaged(true);
-        setPort('');
+        setPort(null);
         setCheck(null);
         setAgreed({});
         setExtValues({});
@@ -133,7 +134,10 @@ export function AddInstanceNewServer({
             setCheck(res?.success ? res : { failed: true, error_code: res?.error_code });
             setChecking(false);
         }, 250);
-        return () => clearTimeout(timer);
+        return () => {
+            clearTimeout(timer);
+            setChecking(false);
+        };
     }, [step, checkKey]);
 
     // 이름 단계 진입 시 이름 인풋에 포커스
@@ -149,14 +153,16 @@ export function AddInstanceNewServer({
     const leaveLocation = async () => {
         setFolderProblem(null);
         if (!customFolder) return goTo(steps[stepIndex + 1]);
-        setChecking(true);
+        setLeaving(true);
         let res = null;
         try {
             res = await window.api?.instanceCheck?.(body());
         } finally {
-            setChecking(false);
+            setLeaving(false);
         }
-        if (res?.error_code === 'invalid_format') return setFolderProblem({ code: 'folder_not_absolute' });
+        const badFolder =
+            res?.error_code === 'invalid_format' && (res.fields || []).some((f) => f.field === 'working_dir');
+        if (badFolder) return setFolderProblem({ code: 'folder_not_absolute' });
         if (res?.folder?.in_use_by) return setFolderProblem({ code: 'folder_in_use', name: res.folder.in_use_by });
         if (res?.folder?.not_empty) return setFolderProblem({ code: 'folder_not_empty' });
         goTo(steps[stepIndex + 1]);
@@ -200,7 +206,10 @@ export function AddInstanceNewServer({
     const duplicateName =
         nameTaken(servers, newServerName) || (check?.name?.value === newServerName.trim() && check?.name?.taken);
     const blockers = check && !check.failed ? checkBlockers(check) : [];
-    const nameReady = newServerName.trim() && !duplicateName && !blockers.length;
+    // 고친 포트는 1~65535의 정수만 (빈 칸은 데몬이 고른 포트)
+    const portInvalid =
+        port != null && port !== '' && !(Number.isInteger(Number(port)) && Number(port) >= 1 && Number(port) <= 65535);
+    const nameReady = newServerName.trim() && !duplicateName && !blockers.length && !portInvalid;
     const canSubmit = nameReady && selectedExtension && !submitting && allChecked(agreements, agreed);
     const canLeave = {
         location: folderMode === 'default' || !!customFolder,
@@ -486,7 +495,7 @@ export function AddInstanceNewServer({
                         </p>
                     )}
                 </div>
-                {(mainPort || port !== '') && (
+                {(mainPort || port != null) && (
                     <div className="as-section as-section-card">
                         <label className="as-label" htmlFor="as-server-port">
                             <Icon name="network" size="sm" />
@@ -498,11 +507,19 @@ export function AddInstanceNewServer({
                             type="number"
                             min={1}
                             max={65535}
-                            value={port !== '' ? port : String(mainPort?.port ?? '')}
+                            value={port ?? String(mainPort?.port ?? '')}
+                            aria-invalid={portInvalid || undefined}
                             onChange={(e) => setPort(e.target.value)}
                             disabled={submitting}
                         />
-                        <p className="as-provision-hint">{t('add_server_modal.port_hint')}</p>
+                        {portInvalid ? (
+                            <p className="as-name-taken" role="alert">
+                                <Icon name="alertCircle" size="sm" />
+                                {t('add_server_modal.port_invalid')}
+                            </p>
+                        ) : (
+                            <p className="as-provision-hint">{t('add_server_modal.port_hint')}</p>
+                        )}
                     </div>
                 )}
                 <CheckNotes t={t} check={check} checking={checking} />
@@ -582,7 +599,7 @@ export function AddInstanceNewServer({
 
     const isLast = step === 'confirm';
     const next = () => (step === 'location' ? leaveLocation() : goTo(steps[stepIndex + 1]));
-    const nextDisabled = submitting || checking || (step in canLeave && !canLeave[step]);
+    const nextDisabled = submitting || leaving || (step in canLeave && !canLeave[step]);
 
     return (
         <div className="add-instance-stage" key={`new-${step}`}>

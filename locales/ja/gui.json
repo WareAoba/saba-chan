@@ -191,7 +191,9 @@
     "port_reserved": "{{port}} 番ポートは Windows が予約しているため開けません。ほかのポートを選んでください。",
     "checking": "ほかのサーバーと重ならないか確認中…",
     "check_failed": "重なりを確認できませんでした。追加するときにもう一度確認します。",
-    "summary_game": "ゲーム"
+    "summary_game": "ゲーム",
+    "port_invalid": "ポートは 1 から 65535 までの数字で入力してください。",
+    "folder_unavailable": "このフォルダーを作成できませんでした。パスと権限を確認してください。"
   },
   "command_modal": {
     "command_label": "コマンド",

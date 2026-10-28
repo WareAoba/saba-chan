@@ -191,7 +191,9 @@
     "port_reserved": "{{port}} 포트는 Windows가 예약해 둬서 열 수 없어요. 다른 포트를 고르세요.",
     "checking": "다른 서버와 겹치는지 확인하는 중…",
     "check_failed": "겹치는지 확인하지 못했어요. 추가할 때 다시 확인해요.",
-    "summary_game": "게임"
+    "summary_game": "게임",
+    "port_invalid": "포트는 1부터 65535 사이의 숫자로 적어 주세요.",
+    "folder_unavailable": "이 폴더를 만들지 못했어요. 경로와 권한을 확인하세요."
   },
   "add_instance_modal": {
     "title": "서버 추가",

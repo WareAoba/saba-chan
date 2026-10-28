@@ -191,7 +191,9 @@
     "port_reserved": "Windows réserve le port {{port}}, le serveur ne peut donc pas l’ouvrir. Choisissez un autre port.",
     "checking": "Vérification des conflits avec vos autres serveurs…",
     "check_failed": "Impossible de vérifier les conflits. La vérification sera refaite à l’ajout du serveur.",
-    "summary_game": "Jeu"
+    "summary_game": "Jeu",
+    "port_invalid": "Saisissez un numéro de port entre 1 et 65535.",
+    "folder_unavailable": "Impossible de créer ce dossier. Vérifiez le chemin et les autorisations."
   },
   "add_instance_modal": {
     "title": "Ajouter une instance",

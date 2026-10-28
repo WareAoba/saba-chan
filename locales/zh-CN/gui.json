@@ -191,7 +191,9 @@
     "port_reserved": "端口 {{port}} 被 Windows 保留，服务器无法打开。请选择其他端口。",
     "checking": "正在检查是否与其他服务器冲突…",
     "check_failed": "无法检查冲突。添加服务器时会再次检查。",
-    "summary_game": "游戏"
+    "summary_game": "游戏",
+    "port_invalid": "请输入 1 到 65535 之间的端口号。",
+    "folder_unavailable": "无法创建此文件夹。请检查路径和权限。"
   },
   "add_instance_modal": {
     "title": "添加实例",

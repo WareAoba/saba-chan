@@ -1012,6 +1012,16 @@ export function useServerActions({
             }
 
             // 고른 설정 값을 사바쨩이 설치하지 못한다 (모듈 `install_options` 밖)
+            // 새 서버를 설치할 폴더: 그 사이 파일이 생겼거나 폴더를 만들지 못함 (만들기 마법사의 파일 위치)
+            if (['folder_not_empty', 'folder_unavailable'].includes(result.error_code)) {
+                setModal({
+                    type: 'failure',
+                    title: t('servers.add_failed_title'),
+                    message: t(`add_server_modal.${result.error_code}`),
+                });
+                return false;
+            }
+
             if (result.error_code === 'not_installable') {
                 setModal({ type: 'failure', title: t('servers.add_failed_title'), message: t('servers.not_installable') });
                 return false;

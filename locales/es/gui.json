@@ -191,7 +191,9 @@
     "port_reserved": "Windows reserva el puerto {{port}}, así que el servidor no puede abrirlo. Elige otro puerto.",
     "checking": "Comprobando choques con tus otros servidores…",
     "check_failed": "No se pudieron comprobar los choques. Se comprobará de nuevo al añadir el servidor.",
-    "summary_game": "Juego"
+    "summary_game": "Juego",
+    "port_invalid": "Escribe un número de puerto entre 1 y 65535.",
+    "folder_unavailable": "No se pudo crear esta carpeta. Revisa la ruta y los permisos."
   },
   "add_instance_modal": {
     "title": "Agregar instancia",

@@ -191,7 +191,9 @@
     "port_reserved": "Windows reserviert Port {{port}}, daher kann der Server ihn nicht öffnen. Wähle einen anderen Port.",
     "checking": "Prüfe auf Überschneidungen mit deinen anderen Servern…",
     "check_failed": "Überschneidungen konnten nicht geprüft werden. Beim Hinzufügen wird erneut geprüft.",
-    "summary_game": "Spiel"
+    "summary_game": "Spiel",
+    "port_invalid": "Gib eine Portnummer von 1 bis 65535 ein.",
+    "folder_unavailable": "Dieser Ordner konnte nicht erstellt werden. Prüfe Pfad und Berechtigungen."
   },
   "add_instance_modal": {
     "title": "Instanz hinzufügen",

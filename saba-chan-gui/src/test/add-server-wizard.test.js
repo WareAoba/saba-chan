@@ -121,6 +121,28 @@ describe('새 서버 만들기 마법사', () => {
         expect(onAddServer.mock.calls[0][0].port).toBe(25600);
     });
 
+    it('쓸 수 없는 포트면 알리고 넘어가지 않는다. 비우면 데몬이 고른 포트로 돌아간다', async () => {
+        const onAddServer = open();
+        await toNameStep();
+        await waitFor(() => expect(screen.getByLabelText('Port').value).toBe('25575'));
+        await act(async () => fireEvent.change(screen.getByLabelText('Port'), { target: { value: '70000' } }));
+        expect(screen.getByRole('alert').textContent).toMatch(/1 to 65535/);
+        expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
+        // 지우는 중에는 빈 칸 그대로 (데몬 포트로 되돌아가 글자가 섞이지 않게)
+        await act(async () => fireEvent.change(screen.getByLabelText('Port'), { target: { value: '' } }));
+        expect(screen.getByLabelText('Port').value).toBe('');
+        await submitWizard();
+        expect(onAddServer.mock.calls[0][0]).not.toHaveProperty('port');
+    });
+
+    it('확인을 기다리는 중에 이전 단계로 가도 다음 버튼이 막히지 않는다', async () => {
+        open();
+        await toNameStep();
+        await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Back' })));
+        expect(screen.getByRole('heading', { name: 'Run mode' })).toBeTruthy();
+        expect(screen.getByRole('button', { name: 'Next' })).not.toBeDisabled();
+    });
+
     it('이전 단계로 돌아가도 고른 값이 남는다', async () => {
         open();
         await next();
