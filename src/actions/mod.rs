@@ -127,7 +127,7 @@ const fn def(id: &'static str, kind: Kind, risk: &'static str, surfaces: &'stati
 /// 챗봇 범위(사용자 결정): 관리 액션은 설치·생성·설정·예약·복원만. 삭제·종료·업데이트·권한·비밀값은 열지 않는다
 pub static ACTIONS: &[Def] = &[
     def("instance.list", Kind::Query, "safe", ALL, false, "GET", "/api/servers"),
-    def("server.status", Kind::Query, "safe", ALL, true, "GET", "/api/server/:iname/status"),
+    def("server.status", Kind::Query, "safe", ALL, true, "GET", "/api/instance/:id/status"),
     def("server.start", Kind::Command, "caution", ALL, true, "POST", "/api/instance/:id/start"),
     def("server.stop", Kind::Command, "caution", ALL, true, "POST", "/api/instance/:id/stop"),
     def("server.restart", Kind::Command, "caution", ALL, true, "POST", "/api/instance/:id/restart"),
@@ -1001,12 +1001,6 @@ async fn resolve_in(server: &IPCServer, id: &str, instance: Option<&str>, input:
     let mut uri = def.path.to_string();
     if let Some(i) = &instance {
         uri = uri.replace(":id", &seg(i));
-        // 이름으로 찾는 라우트 (`/api/server/:name/status`)
-        if uri.contains(":iname") {
-            let name = server.supervisor.read().await.instance_store.get(i).map(|x| x.name.clone());
-            let Some(name) = name else { return Err(ActionError::new(404, "not_found", format!("Instance not found: {}", i))) };
-            uri = uri.replace(":iname", &seg(&name));
-        }
     }
     for f in def.fields {
         match input.get(f.name) {

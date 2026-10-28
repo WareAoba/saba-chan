@@ -725,11 +725,11 @@ async fn a_plan_of_steps_makes_a_server_and_uses_it_with_one_confirmation() {
     let sneaky = json!([steps[0].clone(), { "id": "instance.settings.set", "instance": "@1", "input": { "java_path": "x" } }]);
     let err = plan_steps(&state, &sneaky, &owner_bot).await.unwrap_err();
     assert_eq!((err.code, err.data["field"].as_str(), err.data["step"].as_i64()), ("invalid_input", Some("steps[1].java_path"), Some(2)));
-    // 앞의 생성 단계만 가리킬 수 있고, 이름으로 찾는 액션은 안 된다
+    // 앞의 생성 단계만 가리킬 수 있다. 상태 조회도 id 길이라 새 서버에 쓸 수 있다
     let wrong = json!([{ "id": "server.start", "instance": "@1", "input": {} }]);
     assert_eq!(plan_steps(&state, &wrong, &owner_bot).await.unwrap_err().data["field"], "steps[0].instance");
-    let by_name = json!([steps[0].clone(), { "id": "server.status", "instance": "@1", "input": {} }]);
-    assert_eq!(plan_steps(&state, &by_name, &owner_bot).await.unwrap_err().data["field"], "steps[1].id");
+    let status = json!([steps[0].clone(), { "id": "server.status", "instance": "@1", "input": {} }]);
+    assert!(plan_steps(&state, &status, &owner_bot).await.is_ok());
 
     // 다른 사람은 실행하지 못하고, 요청자가 누르면 순서대로 한 번에
     let plan_id = planned["planId"].as_str().unwrap();

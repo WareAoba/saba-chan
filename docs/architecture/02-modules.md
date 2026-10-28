@@ -503,7 +503,7 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 
 시작 경로는 데몬이 고른다. `POST /api/instance/:id/start`가 `Supervisor::uses_managed_start`(인스턴스 설정 `managed_start`, 없으면 managed)로 경로를 정하고, 시작 전 점검(§2.3 `validate`)을 거쳐 아래 둘 중 하나를 부른다 (`D:src/ipc/handlers/server.rs:649-710`, `D:src/supervisor/mod.rs:1690-1700`). GUI는 이 경로만 부른다 (`D:saba-chan-gui/src/api/createApi.js:133-136`).
 
-| | managed (`POST /api/instance/:id/managed/start`) | non-managed (`POST /api/server/:name/start`) |
+| | managed (`start_managed_handler`) | non-managed (`start_server_handler`) |
 |---|---|---|
 | 엔트리 | `Supervisor::start_managed_server` `mod.rs:1298-1686` | `Supervisor::start_server` `mod.rs:550-855` |
 | 사전 검사 | 중복 실행 방지(managed_store와 tracker PID 생존 확인), 모듈 의존성, 포트 충돌, 시작 중 표시(`StartGuard`), extension `server.pre_start` hook | 포트 충돌, 모듈 의존성, `requires_extensions` 검증, 시작 중 표시, `server.pre_start` hook |
