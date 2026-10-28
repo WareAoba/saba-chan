@@ -89,7 +89,7 @@
 
 **데몬이 자식 프로세스에 넘기는 환경변수**
 
-- Python 모듈/익스텐션: `PYTHONIOENCODING`, `PYTHONUNBUFFERED`, `PYTHONPATH`, `SABA_IPC_PORT`, `SABA_IPC_URL`, `SABA_TOKEN_PATH`, `SABA_LANG`(요청의 `Accept-Language`, 없으면 `config.json`의 `gui.language`, 비었으면 OS 언어, 실행마다 읽음), `SABA_ENABLED_EXTENSIONS`(`plugin/mod.rs:14-38, 304-322`), `SABA_EXTENSION_DATA_ROOT`(import된 익스텐션이 쓸 폴더의 뿌리, 02 §2.1), `SABA_JAVA_RUNTIMES`(데몬이 찾은 Java 런타임 `[{java, home, version, major, arch}]`, 02 §2.1). 토큰 값 자체는 넘기지 않는다. 공용 `modules/daemon_rcon.py`는 `SABA_TOKEN_PATH` 파일을 읽어 `X-Saba-Token`을 붙인다(`modules/daemon_rcon.py:48-54`).
+- Python 모듈/익스텐션: `PYTHONIOENCODING`, `PYTHONUNBUFFERED`, `PYTHONPATH`, `SABA_IPC_PORT`, `SABA_IPC_URL`, `SABA_LANG`(요청의 `Accept-Language`, 없으면 `config.json`의 `gui.language`, 비었으면 OS 언어, 실행마다 읽음), `SABA_ENABLED_EXTENSIONS`(`plugin/mod.rs:14-38, 304-322`), `SABA_EXTENSION_DATA_ROOT`(import된 익스텐션이 쓸 폴더의 뿌리, 02 §2.1), `SABA_JAVA_RUNTIMES`(데몬이 찾은 Java 런타임 `[{java, home, version, major, arch}]`, 02 §2.1). IPC 토큰(`SABA_TOKEN_PATH`)은 0.1.12부터 넘기지 않고 상속 환경에서도 지운다(`is_secret_env`). 모듈·익스텐션은 데몬 HTTP API를 직접 부르지 않고 HOST 통로(§7.1)만 쓴다. 이것은 계약이지 보안 경계가 아니다. 경계는 격리 실행이다(§7.1).
 - `SABA_LANG`는 GUI도 데몬에 넘기지만(`saba-chan-gui/src-tauri/src/lifecycle.rs:177`) **데몬 코어는 이 환경변수를 읽지 않는다.** 언어는 HTTP 요청에 `Accept-Language`가 있으면 그 요청 동안 첫 언어 태그(`ko-KR,ko;q=0.9` → `ko-KR`, 영문자·숫자·`-` 16자까지, `*`는 무시)를 쓰고(CLI `--lang`, 감사 출처 `Origin.lang`로 그 요청이 띄운 작업까지 이어진다), 없으면 `config.json`의 `gui.language`에서 읽고, 비었으면 OS 언어를 지원 언어로 맞춰 쓴다(`ConfigStore::ui_language`, `chat::i18n::os_language`. 중국어는 Hant·TW·HK·MO면 zh-TW, 그 밖은 zh-CN). 릴레이에 알리는 이 PC의 언어(하트비트·디스코드 설정의 `language`)는 요청 언어를 따르지 않는다(`ConfigStore::pc_language`).
 
 ### 1.4 디스코드 릴레이 연결 (`src/relay_agent.rs`)
@@ -217,6 +217,7 @@ PC 주인이 디스코드에서 받은 일회용 링크로 브라우저(사바�
 | GET | `/api/version` | `server.rs:306` | - | `{version, components:{saba-core, module-<이름>, ext-<id>, ...}}` |
 | GET | `/api/servers` | `server.rs:26` `list_servers` | `?notices_after=<id>` 또는 `?notices=keep` | `{servers:[ServerInfo], port_conflict_stops?:[...]}` (아래 설명) |
 | GET | `/api/server/:name/status` | `server.rs:620` | - | supervisor 결과 JSON 그대로. 404 시 `{error, error_code:"instance_not_found"}` |
+| GET | `/api/instance/:id/status` | `server.rs` `get_instance_status` | - | 위와 같은 답. `:id`는 인스턴스 id, 없으면 이름으로 찾는다. GUI는 이 길로 묻는다 |
 | POST | `/api/server/:name/start` | `server.rs:881` | `{module: string (필수), config?: any}` | supervisor 결과(예약 범위를 피해 REST 포트를 옮겼으면 `port_moved`, 7.2). 에러 시 404/422/500 + `error_code`∈{instance_not_found, executable_missing, start_failed}, 409 `instance_busy`(같은 인스턴스의 백업·복원·업데이트 중) |
 | POST | `/api/server/:name/stop` | `server.rs:938` | `{force?: bool}` (바디 필수) | supervisor 결과. 에러 시 `error_code`∈{instance_not_found, stop_failed}. 모듈이 저장 후 종료를 요청할 수 없으면 HTTP 200 `{success:false, error_code:"graceful_stop_unavailable"}`(서버는 그대로, `force:true`로 다시, 02 §3.4) |
 | POST | `/api/instance/:id/start` | `server.rs:654` | - | 데몬이 고른 경로(managed/non-managed, `Supervisor::uses_managed_start`)의 응답 + `managed`(+ 옮긴 포트가 있으면 `port_moved`, 7.2)(+ 새로 켰고 받아 둔 업데이트 확인에 그 모듈의 새 버전이 있으면 `module_update {module, current, latest}`. 그때와 게임 서버에 새 빌드가 있을 때 `instance.update_notice`를 낸다, `server.rs` `announce_updates`). 404 `not_found`, 409 `agreement_required`(`agreements`: 동의하지 않은 모듈 약관, validate보다 먼저), 409 `preflight_failed`(모듈 validate의 critical 문제), 409 `instance_busy`(백업·복원·업데이트 중), 422 `memory_limit_reached`(`limit_mb`: 시작하는 중 러너가 메모리 상한으로 끊음. 종료 이력과 `instance.exit`에 `start_failed`로도 남는다), `success:false` `start_cancelled`(시작 준비 중에 정지·삭제가 들어와 띄우지 않았거나 띄운 것을 바로 껐다. 정지는 시작 요청을 받을 때(약관·validate 점검 전, `supervisor::START_SINCE`)의 실행 세대(`run_generation`)가 바뀐 것으로 안다. 익스텐션이 맡은 시작(`server.pre_start` handled)이 끝났을 때 정지가 들어와 있었으면 정지를 한 번 더 불러 익스텐션이 띄운 서버를 끈다) |
@@ -507,7 +508,7 @@ Relay 서명 방식(`relay.rs:115-161`):
   - `SABA_AUTH_DISABLED=1`이면 토큰 검사를 건너뛴다. **디버그 빌드에서만** 동작하며(`auth.rs:119-122`), 통합 테스트가 이 방식을 쓴다(`tests/daemon_integration.rs:111`).
   - 캐시도 없고 토큰 파일도 없으면 **거부한다**(fail-closed).
   - `/health`는 루프백 검사 뒤 토큰 검사 없이 통과한다(A6).
-- **토큰을 쓰는 클라이언트**: GUI(Tauri 셸 `saba-chan-gui/src-tauri/src/daemon.rs:154-181`, 401이면 파일을 다시 읽고 한 번 재시도 `:228-244`), CLI(`saba-chan-cli/src/client.rs:28-33`, 401이면 파일을 다시 읽고 한 번 재시도 `:97-106`. PR #6 기준), Python 모듈(`modules/daemon_rcon.py:48-54`, `SABA_TOKEN_PATH`). 모두 토큰 파일을 직접 읽어 헤더에 넣는다.
+- **토큰을 쓰는 클라이언트**: GUI(Tauri 셸 `saba-chan-gui/src-tauri/src/daemon.rs:154-181`, 401이면 파일을 다시 읽고 한 번 재시도 `:228-244`), CLI(`saba-chan-cli/src/client.rs:28-33`, 401이면 파일을 다시 읽고 한 번 재시도 `:97-106`. PR #6 기준). 둘 다 토큰 파일을 직접 읽어 헤더에 넣는다. Python 모듈·익스텐션은 토큰을 받지 않는다(0.1.12, §7.1 HOST 통로).
 - **CORS 레이어가 없다.** 브라우저에서 오는 교차 출처 요청은 사전 요청(preflight)에서 막히고, 단순 요청도 토큰이 없으면 401이다. 모든 라우트가 인증을 거치므로 바디 없는 POST를 CSRF로 부를 수 있던 예전 `/api/updates/*` 경로도 막혔다.
 
 ---
@@ -762,17 +763,18 @@ Relay 서명 방식(`relay.rs:115-161`):
 |---|---|---|
 | `instance.stdin` | `{command}` | 기존 인스턴스 stdin API와 같은 처리와 결과 |
 | `instance.rest` | `{method, path, body?}` | `path`를 REST API의 `endpoint`로 옮기고 기존 처리와 결과를 사용 |
+| `instance.rcon` | `{command}` | `/api/instance/:id/rcon`과 같은 처리와 결과(`command.rs` `rcon_for`: 콘솔이 있으면 stdin, RCON만 받으면 RCON, 둘 다 없으면 `no_command_path`). 0.1.12 |
 
-대상 인스턴스는 데몬이 만든 호출 문맥으로 정한다. 격리된 구성요소(확인되지 않았고 비격리 동의도 없는 것)의 실행은 그 인스턴스 모듈 자신일 때(실행한 진입 파일과 그 모듈의 진입 파일의 실제 경로가 같을 때. zip 모듈은 `.extracted` 아래 파일) `instance.rest`만 쓸 수 있다. 콘솔(`instance.stdin`), 익스텐션 hook, 다른 모듈의 요청은 `op_not_allowed`다(`host.rs` `Proxy::sandboxed`, `own_module`). 그래서 REST로만 저장·정지하는 게임(팰월드)도 격리 실행에서 정상 정지한다. `instance.rest`는 대상이 127.0.0.1(`localhost`·`::1`)이고, 데몬 API 포트가 아니고(`port_not_allowed`), 그 포트를 듣는 프로세스가 그 인스턴스 서버이거나 그 자식일 때만(`port_not_served`) 잇는다. 요청에서 인스턴스 id·PID·파일 경로를 받지 않는다. 인스턴스 문맥이 없으면 `no_instance`, 허용하지 않은 작업은 `op_not_allowed`다. 실행당 요청은 64건, 요청 시간은 30초, 보내기는 64 KiB, 받기는 1 MiB다. `LOOPBACK`과 요청 수를 함께 센다. 응답 상한을 넘으면 `response_too_large`로 실패하며 잘린 성공을 돌려주지 않는다. `HOST:` 줄과 그 연속 조각은 로그·stderr 진단에 남기지 않는다.
+대상 인스턴스는 데몬이 만든 호출 문맥으로 정한다. 격리된 구성요소(확인되지 않았고 비격리 동의도 없는 것)의 실행은 그 인스턴스 모듈 자신일 때(실행한 진입 파일과 그 모듈의 진입 파일의 실제 경로가 같을 때. zip 모듈은 `.extracted` 아래 파일) `instance.rest`만 쓸 수 있다. 콘솔(`instance.stdin`)·RCON(`instance.rcon`), 익스텐션 hook, 다른 모듈의 요청은 `op_not_allowed`다(`host.rs` `Proxy::sandboxed`, `own_module`). 그래서 REST로만 저장·정지하는 게임(팰월드)도 격리 실행에서 정상 정지한다. `instance.rest`는 대상이 127.0.0.1(`localhost`·`::1`)이고, 데몬 API 포트가 아니고(`port_not_allowed`), 그 포트를 듣는 프로세스가 그 인스턴스 서버이거나 그 자식일 때만(`port_not_served`) 잇는다. 요청에서 인스턴스 id·PID·파일 경로를 받지 않는다. 인스턴스 문맥이 없으면 `no_instance`, 허용하지 않은 작업은 `op_not_allowed`다. 실행당 요청은 64건, 요청 시간은 30초, 보내기는 64 KiB, 받기는 1 MiB다. `LOOPBACK`과 요청 수를 함께 센다. 응답 상한을 넘으면 `response_too_large`로 실패하며 잘린 성공을 돌려주지 않는다. `HOST:` 줄과 그 연속 조각은 로그·stderr 진단에 남기지 않는다.
 
-REST 자격증명 조회의 `get_credentials` 재진입은 바깥 호출의 자리와 절대 기한을 쓴다. 인스턴스 hook도 같은 문맥을 전달한다. 인스턴스 없는 목록·데몬 시작/종료 hook은 `no_instance`다. SDK의 HTTP 호환 경로와 일반 토큰 경로는 남아 있다.
+REST 자격증명 조회의 `get_credentials` 재진입은 바깥 호출의 자리와 절대 기한을 쓴다. 인스턴스 hook도 같은 문맥을 전달한다. 인스턴스 없는 목록·데몬 시작/종료 hook은 `no_instance`다. SDK의 HTTP 호환 경로와 모듈용 토큰 경로는 0.1.12에서 지웠다.
 
 **자식 프로세스 환경**
 
 - `PYTHONPATH` = `<data_dir>/python-guard` + `<extensions_dir의 부모>` + `<data_dir>/python-shared` + 기존 값. `sitecustomize.py`는 표준 라이브러리 경로를 이 경로보다 먼저 두고 활성 익스텐션만 import되게 막는다.
 - `SABA_ENABLED_EXTENSIONS` = `config.json`의 `extensions.enabled`를 쉼표로 연결한 값. 목록이 없으면 빈 문자열이다(`:317-322`).
-- 데몬 연결 정보 `SABA_IPC_PORT`, `SABA_IPC_URL`, `SABA_TOKEN_PATH`, `SABA_LANG`(`daemon_env`, `:14-38`).
-- 확인되지 않은 구성요소는 격리를 요구한다. Windows는 AppContainer를, 리눅스는 bubblewrap(`bwrap`을 쓸 수 있을 때, `sandbox/bwrap.rs`)을 쓰며, 그 밖(`bwrap`이 없거나 쓸 수 없는 리눅스, macOS)은 현재 파일 지문에 대한 비격리 동의가 없으면 실행을 거부한다(`sandbox::isolation_for`, 02 문서 §2.1). 격리를 요구한 실행은 `SABA_TOKEN_PATH`를 빼고 임시·캐시 폴더를 구성요소별로 나눈다.
+- 데몬 연결 정보 `SABA_IPC_PORT`, `SABA_IPC_URL`, `SABA_LANG`(`daemon_env`). IPC 토큰(`SABA_TOKEN_PATH`)은 넣지 않고 상속 환경에서도 지운다(0.1.12).
+- 확인되지 않은 구성요소는 격리를 요구한다. Windows는 AppContainer를, 리눅스는 bubblewrap(`bwrap`을 쓸 수 있을 때, `sandbox/bwrap.rs`)을 쓰며, 그 밖(`bwrap`이 없거나 쓸 수 없는 리눅스, macOS)은 현재 파일 지문에 대한 비격리 동의가 없으면 실행을 거부한다(`sandbox::isolation_for`, 02 문서 §2.1). 격리를 요구한 실행은 임시·캐시 폴더를 구성요소별로 나눈다.
 - `SABA_HOST_DIR`은 모든 호출에 있고, 실행 종료 후 정리한다. 대상 인스턴스는 이 환경 변수가 아니라 `PluginCall`의 데몬 측 문맥으로 정한다.
 - 내장 공용 Python 유틸리티는 `<data_dir>/python-shared/`에 맞춰 쓴다. 모듈 폴더는 `PYTHONPATH`에 넣지 않는다. 익스텐션은 import 가드와 익스텐션 상위 폴더를 사용한다.
 

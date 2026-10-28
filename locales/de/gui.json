@@ -429,7 +429,6 @@
     "stop_timeout_toast": "⚠️ Server {{name}} wird gestoppt. Das kann eine Weile dauern.",
     "unexpected_stop_toast": "⚠️ Server {{name}} wurde unerwartet gestoppt!",
     "external_start_toast": "ℹ️ Server {{name}} wurde außerhalb von Saba-chan gestartet",
-    "status_check_failed_title": "Statusprüfung fehlgeschlagen",
     "add_server_name_empty_title": "Eingabefehler",
     "add_server_name_empty_message": "Geben Sie den Servernamen ein",
     "add_module_empty_title": "Eingabefehler",

@@ -212,9 +212,16 @@ export function createApi({ invoke, hub }) {
                 return connectionError(error);
             }
         },
-        serverStatus: async (name) => {
+        // 상태는 id로 묻는다. 이 길이 없는 옛 데몬(원격 0.1.11, 라우트가 없어 error_code 없는 404)이면 이름으로
+        instanceStatus: async (id, name = id) => {
+            const ask = async (path) => (await get(path)).data;
             try {
-                return (await get(`/api/server/${encodeURIComponent(name)}/status`)).data;
+                try {
+                    return await ask(`/api/instance/${encodeURIComponent(id)}/status`);
+                } catch (error) {
+                    if (error.response?.status !== 404 || error.response.data?.error_code) throw error;
+                    return await ask(`/api/server/${encodeURIComponent(name)}/status`);
+                }
             } catch (error) {
                 if (error.response) {
                     const status = error.response.status;

@@ -61,6 +61,7 @@ pub static ROUTES: &[Route] = &[
     // ── 서버 ──
     allow("GET", "/api/servers"),
     allow("GET", "/api/server/{name}/status"),
+    allow("GET", "/api/instance/{id}/status"),
     allow("POST", "/api/server/{name}/start"),
     allow("POST", "/api/server/{name}/stop"),
     allow("POST", "/api/instance/{id}/start"),

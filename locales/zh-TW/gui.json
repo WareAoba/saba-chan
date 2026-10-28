@@ -429,7 +429,6 @@
     "stop_timeout_toast": "⚠️ 正在停止 {{name}} 伺服器。這可能需要一些時間。",
     "unexpected_stop_toast": "⚠️ {{name}} 伺服器意外停止！",
     "external_start_toast": "ℹ️ {{name}} 伺服器在 Saba-chan 之外啟動",
-    "status_check_failed_title": "狀態檢查失敗",
     "add_server_name_empty_title": "輸入錯誤",
     "add_server_name_empty_message": "請輸入伺服器名稱",
     "add_module_empty_title": "輸入錯誤",

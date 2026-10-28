@@ -429,7 +429,6 @@
     "stop_timeout_toast": "⚠️ {{name}} 서버를 정지하는 중입니다. 시간이 걸릴 수 있습니다.",
     "unexpected_stop_toast": "⚠️ {{name}} 서버가 예기치 않게 종료되었습니다!",
     "external_start_toast": "ℹ️ {{name}} 서버가 사바쨩 밖에서 시작됐습니다",
-    "status_check_failed_title": "상태 조회 실패",
     "add_server_name_empty_title": "입력 오류",
     "add_server_name_empty_message": "서버 이름을 입력하세요",
     "add_module_empty_title": "입력 오류",
