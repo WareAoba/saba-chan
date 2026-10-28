@@ -897,7 +897,7 @@ impl Supervisor {
     }
 
     /// Start a server by name (e.g., "my-server-1")
-    /// Called by IPC API: POST /api/server/:name/start
+    /// Called by IPC API: POST /api/instance/:id/start (비관리)
     ///
     /// managed 시작과 같이, 익스텐션 hook과 `get_launch_command`는 데몬 락 밖에서 부른다 (C12).
     pub async fn start_server(sup: &tokio::sync::RwLock<Self>, server_name: &str, module_name: &str, config: Value) -> Result<Value> {
@@ -1601,7 +1601,7 @@ impl Supervisor {
     }
 
     /// Get server status by name
-    /// Called by IPC API: GET /api/server/:name/status
+    /// Called by IPC API: GET /api/instance/:id/status
     pub async fn get_server_status(sup: &tokio::sync::RwLock<Self>, server_name: &str, module_name: &str) -> Result<Value> {
         tracing::debug!("Getting status for server '{}'", server_name);
 

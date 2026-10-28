@@ -1617,11 +1617,7 @@ mod route_coverage {
         ("/api/extensions/{id}/gui/styles", "GUI 번들"),
         ("/api/extensions/{id}/icon", "GUI 그림"),
         ("/api/extensions/{id}/i18n/{locale}", "GUI 번들 문구"),
-        ("/api/server/{name}/status", "이름 기반 옛 길 (CLI는 인스턴스 id 길)"),
         ("/api/instance/{id}/status", "GUI가 시작·정지가 끝났는지 묻는 길 (CLI `server info`·`list`는 /api/servers 상태를 쓴다)"),
-        ("/api/server/{name}/start", "이름 기반 옛 길"),
-        ("/api/server/{name}/stop", "이름 기반 옛 길"),
-        ("/api/instance/{id}/managed/start", "start가 관리 모드를 데몬에 맡긴다"),
         ("/api/remote/daemons/{host_id}/proxy/{*rest}", "원격 데몬 중계: 데몬 API 전체를 그 데몬으로 넘기는 길 (원격 데몬 고르기는 G1)"),
     ];
 

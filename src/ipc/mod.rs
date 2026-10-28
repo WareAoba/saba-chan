@@ -793,14 +793,11 @@ impl IPCServer {
             .route("/api/events", get(handlers::events::stream))
             // ── Server query/control ──
             .route("/api/servers", get(handlers::server::list_servers))
-            .route("/api/server/{name}/status", get(handlers::server::get_server_status))
-            .route("/api/server/{name}/start", post(handlers::server::start_server_handler))
             .route("/api/instance/{id}/status", get(handlers::server::get_instance_status))
             .route("/api/instance/{id}/start", post(handlers::server::start_instance_handler))
             .route("/api/instance/{id}/events", get(handlers::server::instance_events_handler))
             .route("/api/instance/{id}/stop", post(handlers::server::stop_instance_handler))
             .route("/api/instance/{id}/restart", post(handlers::server::restart_instance_handler))
-            .route("/api/server/{name}/stop", post(handlers::server::stop_server_handler))
             .route("/api/modules", get(handlers::server::list_modules))
             .route("/api/modules/refresh", post(handlers::server::refresh_modules))
             .route("/api/version", get(handlers::server::version_handler))
@@ -829,7 +826,6 @@ impl IPCServer {
             .route("/api/instance/{id}/rcon", post(handlers::command::rcon_route))
             .route("/api/instance/{id}/rest", post(handlers::command::rest_route))
             // ── Managed-process & module-feature endpoints ──
-            .route("/api/instance/{id}/managed/start", post(handlers::managed::start_managed_route))
             .route("/api/instance/{id}/console", get(handlers::managed::get_console_handler))
             .route("/api/instance/{id}/logs", get(handlers::logs::logs_handler))
             .route("/api/instance/{id}/logs/export", get(handlers::logs::export_handler))

@@ -556,7 +556,7 @@ pub(crate) mod tests {
             .route("/api/config/node-token", axum::routing::get(|| async { Json(json!({ "token": "leak" })) }))
             .route("/api/remote/clients", axum::routing::get(|| async { Json(json!([])) }))
             .route("/api/config/{kind}/reset", post(|axum::extract::Path(kind): axum::extract::Path<String>| async move { Json(json!({ "reset": kind })) }))
-            .route("/api/server/{name}/status", axum::routing::get(|axum::extract::Path(name): axum::extract::Path<String>| async move { Json(json!({ "name": name })) }))
+            .route("/api/instance/{id}/status", axum::routing::get(|axum::extract::Path(name): axum::extract::Path<String>| async move { Json(json!({ "name": name })) }))
             // 데몬 라우트(`IPCServer::routes`)처럼 짝 맺은 PC의 규칙 층을 씌운다
             .layer(axum::middleware::from_fn_with_state(test_server(dir.path()), rules));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -720,12 +720,12 @@ pub(crate) mod tests {
             let (s, body) = call(r.addr, &r.pin, "GET", path, Some(&token), None).await.unwrap();
             assert_eq!(s, 404, "{path} {body}");
         }
-        for path in ["/api/server/%2e%2e/status", "/api/server/a%2F..%2Fb/status", "/api/server/%FF/status"] {
+        for path in ["/api/instance/%2e%2e/status", "/api/instance/a%2F..%2Fb/status", "/api/instance/%FF/status"] {
             let (s, body) = call(r.addr, &r.pin, "GET", path, Some(&token), None).await.unwrap();
             assert_eq!((s, body["error_code"].as_str()), (400, Some("remote_bad_path")), "{path}");
         }
         // 조각 안의 인코딩한 `/`는 그 조각의 글자다 (이름에 `/`가 든 서버를 이름으로 부른다)
-        let (s, body) = call(r.addr, &r.pin, "GET", "/api/server/Survival%201%2F2/status", Some(&token), None).await.unwrap();
+        let (s, body) = call(r.addr, &r.pin, "GET", "/api/instance/Survival%201%2F2/status", Some(&token), None).await.unwrap();
         assert_eq!((s, body), (200, json!({ "name": "Survival 1/2" })));
         r.cancel.cancel();
     }
