@@ -132,7 +132,7 @@ export function stairChips(board, view = ALL_INSTANCES) {
         const chip = {
             title: head.title,
             risk: head.risk,
-            confirmRisk: head.confirmRisk || head.risk,
+            confirmRisk: main[0].confirmRisk || main[0].risk,
             kind: head.kind,
             fixed: head.fixed,
             name: head.name,
@@ -144,6 +144,7 @@ export function stairChips(board, view = ALL_INSTANCES) {
                 id: `${id}@${item.instance}`,
                 level: item.level,
                 items: [item],
+                confirmRisk: item.confirmRisk || item.risk,
                 instance: item.instance,
                 overridden: item.overridden,
             });

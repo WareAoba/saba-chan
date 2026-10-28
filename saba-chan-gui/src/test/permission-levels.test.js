@@ -94,6 +94,13 @@ describe('권한 레벨 계산', () => {
             [2, 'mc-2', 1],
         ]);
         expect(chips.find((c) => c.name === 'say').items).toHaveLength(2);
+        // 되묻기 단계는 칩마다 그 칩 인스턴스의 값 (바꾼 값이 없으면 원래 단계)
+        const tiered = baseBoard();
+        tiered.items[1] = { ...tiered.items[1], confirmRisk: 'danger' };
+        expect(L.stairChips(tiered).filter((c) => c.name === 'stop').map((c) => c.confirmRisk)).toEqual([
+            'caution',
+            'danger',
+        ]);
         // 한 인스턴스 보기: 그 인스턴스와 인스턴스를 받지 않는 것만
         const one = L.stairChips(baseBoard(), 'mc-2');
         expect(one.map((c) => [c.name, c.level])).toEqual([
