@@ -48,6 +48,12 @@ describe('웹 레벨별 명령 계단', () => {
         expect(api.permissionsUpdate).toHaveBeenCalledWith('g1', { commandLevels: { 'mc-1/say': 2 } });
     });
 
+    it('칩 편집 창은 이 서버의 디스코드 되묻기 단계를 보여 주고, 바꾸기는 PC 앱에서 한다고 알린다', () => {
+        mount({});
+        fireEvent.click(within(step('Lv 2 · User')).getByRole('button', { name: /Stop/ }));
+        expect(within(screen.getByRole('region', { name: 'Stop' })).getByText(/Discord confirm: Caution/)).toBeTruthy();
+    });
+
     it('손가락으로 칩을 다른 계단에 끌어 놓으면 옮기고, 새 자리로 미끄러진다', async () => {
         const api = { permissionsUpdate: vi.fn().mockResolvedValue({ ok: true }) };
         const rerender = mount(api);

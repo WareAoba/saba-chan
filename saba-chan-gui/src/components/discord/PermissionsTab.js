@@ -615,6 +615,10 @@ export function CommandStairs({ node, permissions, instance = L.ALL_INSTANCES })
         if (busy || chip.fixed || level === L.BANNED || chip.items.every((i) => i.fixed || i.level === level)) return;
         await update({ commandLevels: L.levelPatch(chip.items, level) });
     };
+    const setRisk = async (chip, risk) => {
+        if (busy || chip.items.every((i) => (i.confirmRisk || i.risk) === risk)) return;
+        await write(() => window.api.discordSettingsSet(guildId, { commandRisks: L.riskPatch(chip.items, risk) }));
+    };
     const label = (chip) => (chip.instance ? `${chip.title} · ${instanceName(chip.instance)}` : chip.title);
     // 계단 하나에 새로 오는 칩 수 (위 계단은 이것들을 모두 이어받는다)
     const gains = {};
@@ -767,7 +771,7 @@ export function CommandStairs({ node, permissions, instance = L.ALL_INSTANCES })
                                                     'dc-dot',
                                                     c.kind === 'admin'
                                                         ? 'tone-info'
-                                                        : `tone-${RISK_TONE[c.risk] || 'ok'}`,
+                                                        : `tone-${RISK_TONE[c.confirmRisk] || 'ok'}`,
                                                 )}
                                                 aria-hidden="true"
                                             />
@@ -791,11 +795,31 @@ export function CommandStairs({ node, permissions, instance = L.ALL_INSTANCES })
                     <div className="dc-card-head">
                         <strong>{label(current)}</strong>
                         {current.risk && (
-                            <span className={clsx('dc-badge', `tone-${RISK_TONE[current.risk] || 'ok'}`)}>
-                                {current.kind === 'admin' ? t('discord.kind_admin') : t(`discord.risk_${current.risk}`)}
+                            <span className={clsx('dc-badge', `tone-${RISK_TONE[current.confirmRisk] || 'ok'}`)}>
+                                {current.kind === 'admin'
+                                    ? t('discord.kind_admin')
+                                    : t(`discord.risk_${current.confirmRisk}`)}
                             </span>
                         )}
                     </div>
+                    {!current.basic && (
+                        <div className="dc-field-row">
+                            <span className="dc-field-label">
+                                <strong>{t('discord.perm_confirm_tier')}</strong>
+                                <small>
+                                    {t('discord.perm_confirm_tier_hint')}
+                                    {current.confirmRisk !== current.risk &&
+                                        ` ${t('discord.perm_confirm_tier_default', { risk: t(`discord.risk_${current.risk}`) })}`}
+                                </small>
+                            </span>
+                            <Segmented
+                                ariaLabel={t('discord.perm_confirm_tier')}
+                                value={current.confirmRisk}
+                                onChange={(r) => setRisk(current, r)}
+                                items={L.RISKS.map((r) => ({ id: r, label: t(`discord.risk_${r}`) }))}
+                            />
+                        </div>
+                    )}
                     {current.fixed ? (
                         <p className="dc-hint">
                             {current.basic ? t('discord.perm_commands_help_hint') : t('discord.perm_fixed_hint')}

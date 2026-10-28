@@ -217,6 +217,7 @@
     "risk_safe": "Sûre",
     "risk_caution": "Prudence",
     "risk_danger": "Dangereuse",
+    "confirm_tier": "Confirmation Discord : {{risk}} (à modifier dans l’app PC)",
     "kind_admin": "Gestion",
     "legend_moved": "Déplacée du préréglage"
   },

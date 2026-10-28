@@ -129,7 +129,14 @@ export function stairChips(board, view = ALL_INSTANCES) {
         for (const item of list) byLevel.set(item.level, [...(byLevel.get(item.level) || []), item]);
         const [[level, main]] = [...byLevel].sort((a, b) => b[1].length - a[1].length);
         const head = list[0];
-        const chip = { title: head.title, risk: head.risk, kind: head.kind, fixed: head.fixed, name: head.name };
+        const chip = {
+            title: head.title,
+            risk: head.risk,
+            confirmRisk: head.confirmRisk || head.risk,
+            kind: head.kind,
+            fixed: head.fixed,
+            name: head.name,
+        };
         chips.push({ ...chip, id, level, items: list, overridden: main.some((i) => i.overridden) });
         for (const item of list.filter((i) => i.level !== level)) {
             chips.push({
@@ -157,6 +164,21 @@ export function levelPatch(items, level) {
         keys.forEach((k, i) => {
             out[k] = i === 0 && level !== item.preset ? level : null;
         });
+    }
+    return out;
+}
+
+/** 디스코드 되묻기 단계 */
+export const RISKS = ['safe', 'caution', 'danger'];
+
+/**
+ * 칩의 디스코드 되묻기 단계를 `risk`로 바꾸는 `commandRisks` 바꾸기 (데몬 `discord.commandRisks`).
+ * 명령의 원래 단계와 같으면 지운다(`null`)
+ */
+export function riskPatch(items, risk) {
+    const out = {};
+    for (const item of items) {
+        if (item.riskKey) out[item.riskKey] = risk === item.risk ? null : risk;
     }
     return out;
 }

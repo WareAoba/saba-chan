@@ -5,7 +5,7 @@ import { useApp } from '../store';
 import { Button, Segments } from './ui';
 
 const RISK_TONE = { safe: 'ok', caution: 'warn', danger: 'stop' };
-const toneOf = (c) => (c.kind === 'admin' ? 'info' : RISK_TONE[c.risk] || 'ok');
+const toneOf = (c) => (c.kind === 'admin' ? 'info' : RISK_TONE[c.confirmRisk] || 'ok');
 
 /**
  * 칩이 다른 계단으로 옮겨지면 옛 자리에서 새 자리로 미끄러지게 한다 (FLIP, GUI 계단과 같다).
@@ -247,6 +247,12 @@ export function PermissionStairs({ api, guildId, perm, board, instance, busy, wr
             {current && (
                 <section className="chip-edit" aria-label={label(current)}>
                     <strong>{label(current)}</strong>
+                    {/* 디스코드 되묻기 단계는 디스코드 설정이라 PC 앱에서만 바꾼다 (원격 문지기) */}
+                    {!current.basic && current.confirmRisk && (
+                        <small className="hint">
+                            {t('perm.confirm_tier', { risk: t(`perm.risk_${current.confirmRisk}`) })}
+                        </small>
+                    )}
                     {current.fixed ? (
                         <small className="hint">{current.basic ? t('perm.help_hint') : t('perm.fixed_hint')}</small>
                     ) : (

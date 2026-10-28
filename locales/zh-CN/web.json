@@ -217,6 +217,7 @@
     "risk_safe": "安全",
     "risk_caution": "注意",
     "risk_danger": "危险",
+    "confirm_tier": "Discord 确认: {{risk}}（在电脑应用中更改）",
     "kind_admin": "管理",
     "legend_moved": "已偏离预设"
   },

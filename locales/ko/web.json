@@ -217,6 +217,7 @@
     "risk_safe": "안전",
     "risk_caution": "주의",
     "risk_danger": "위험",
+    "confirm_tier": "디스코드 되묻기: {{risk}} (PC 앱에서 바꿉니다)",
     "kind_admin": "관리",
     "legend_moved": "프리셋에서 옮김"
   },

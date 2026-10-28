@@ -217,6 +217,7 @@
     "risk_safe": "安全",
     "risk_caution": "注意",
     "risk_danger": "危険",
+    "confirm_tier": "Discordでの確認: {{risk}}(PCアプリで変更します)",
     "kind_admin": "管理",
     "legend_moved": "プリセットから移動"
   },

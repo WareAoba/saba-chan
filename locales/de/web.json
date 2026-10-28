@@ -217,6 +217,7 @@
     "risk_safe": "Sicher",
     "risk_caution": "Vorsicht",
     "risk_danger": "Gefährlich",
+    "confirm_tier": "Discord-Rückfrage: {{risk}} (in der PC-App ändern)",
     "kind_admin": "Verwaltung",
     "legend_moved": "Von der Vorlage verschoben"
   },

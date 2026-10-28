@@ -217,6 +217,7 @@
     "risk_safe": "Safe",
     "risk_caution": "Caution",
     "risk_danger": "Danger",
+    "confirm_tier": "Discord confirm: {{risk}} (change it in the PC app)",
     "kind_admin": "Admin",
     "legend_moved": "Moved from the preset"
   },

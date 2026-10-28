@@ -603,6 +603,7 @@ pub async fn permission_board(server: &IPCServer, guild_id: &str, locale: &str) 
     let bot = server.config_store.get_bot_config().await;
     let node = bot.node_settings.get(guild_id);
     let perms = NodePermissions::from_node(node);
+    let risks = crate::ipc::handlers::discord::GuildSettings::from_node(node).unwrap_or_default().command_risks;
     let allowed: Option<Vec<String>> =
         node.and_then(|n| n.get("allowedInstances")).and_then(Value::as_array).map(|l| l.iter().filter_map(|v| v.as_str().map(str::to_string)).collect());
     let instances: Vec<(String, String, String)> = {
@@ -614,9 +615,12 @@ pub async fn permission_board(server: &IPCServer, guild_id: &str, locale: &str) 
             .map(|i| (i.id.clone(), i.name.clone(), i.module_name.clone()))
             .collect()
     };
-    // keys: 덮어쓰기 키 (먼저 보는 것부터). 화면은 첫 키에 쓰고, 프리셋대로 되돌릴 때는 모두 지운다
-    let entry = |instance: &str, name: &str, title: &Value, kind: &str, risk: &str, level: i64, preset: i64, fixed: bool, keys: Vec<String>| {
+    // keys: 덮어쓰기 키 (먼저 보는 것부터). 화면은 첫 키에 쓰고, 프리셋대로 되돌릴 때는 모두 지운다.
+    // riskKey: 디스코드 되묻기 단계 키 (`discord.commandRisks`, `needs_confirm`과 같은 모양). confirmRisk는 이 길드에서 쓰는 단계
+    let entry = |instance: &str, action: &str, name: &str, title: &Value, kind: &str, risk: &str, level: i64, preset: i64, fixed: bool, keys: Vec<String>| {
         let overridden = !fixed && keys.iter().any(|k| perms.override_level(k).is_some());
+        let risk_key = if instance.is_empty() { action.to_string() } else { format!("{instance}/{action}") };
+        let confirm_risk = risks.get(&risk_key).map_or(risk, String::as_str);
         json!({
             "key": keys.first(),
             "keys": keys,
@@ -625,6 +629,8 @@ pub async fn permission_board(server: &IPCServer, guild_id: &str, locale: &str) 
             "title": title,
             "kind": kind,
             "risk": risk,
+            "riskKey": risk_key,
+            "confirmRisk": confirm_risk,
             "level": level,
             "preset": preset,
             "overridden": overridden,
@@ -640,7 +646,7 @@ pub async fn permission_board(server: &IPCServer, guild_id: &str, locale: &str) 
         let level = required_level(&perms, instance, id, None, kind, risk, fixed);
         let preset = fixed.unwrap_or_else(|| preset_need(&perms, kind, risk));
         let name = builtin_command(id).unwrap_or(id);
-        Some(entry(instance, name, &a["title"], kind.name(), risk, level, preset, fixed.is_some(), override_keys(instance, id)))
+        Some(entry(instance, id, name, &a["title"], kind.name(), risk, level, preset, fixed.is_some(), override_keys(instance, id)))
     };
     let mut items = Vec::new();
     let globals = list(server, None, None, locale).await;
@@ -661,7 +667,7 @@ pub async fn permission_board(server: &IPCServer, guild_id: &str, locale: &str) 
                     let risk = a["risk"].as_str().unwrap_or("caution");
                     let level = perms.required(id, cmd, risk);
                     let keys = vec![format!("{}/{}", id, cmd)];
-                    items.push(entry(id, cmd, &a["title"], "command", risk, level, perms.preset_need(risk), false, keys));
+                    items.push(entry(id, a["id"].as_str().unwrap_or_default(), cmd, &a["title"], "command", risk, level, perms.preset_need(risk), false, keys));
                 }
                 None if a["scope"] == "instance" => items.extend(action_entry(id, a)),
                 None => {}
