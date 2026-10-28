@@ -16,7 +16,6 @@
     }
   },
   "app_name": "サバちゃん",
-  "app_description": "モジュラーゲームサーバー管理プラットフォーム",
   "success": "成功",
   "error": "エラー",
   "warning": "警告",
@@ -36,7 +35,6 @@
     "existing_running": "既存のデーモンが実行されています",
     "starting": "デーモンを起動中...",
     "started": "デーモンが起動しました",
-    "preparing": "デーモンを準備中... (タイムアウト)",
     "failed_to_start": "デーモンを起動できませんでした",
     "check_warning": "デーモンチェック警告: {{error}}"
   },
@@ -61,8 +59,7 @@
   },
   "network": {
     "connection_refused": "デーモンに接続できません。デーモンが実行されているか確認してください",
-    "timeout": "リクエストタイムアウト: サーバーが応答しません",
-    "not_found": "サーバーが見つかりません。ネットワーク設定を確認してください"
+    "timeout": "リクエストタイムアウト: サーバーが応答しません"
   },
   "port_conflict": {
     "force_stop_title": "ポート競合: {{name}} 停止",
@@ -106,7 +103,6 @@
     "settings_http": "設定を保存できませんでした (HTTP {{status}}): {{error}}",
     "http": "エラー (HTTP {{status}})",
     "command_failed": "コマンドを実行できませんでした: {{error}}",
-    "no_log_file": "ログファイルがありません",
     "url_missing": "URLが指定されていません",
     "url_not_web": "http(s)のアドレスのみ開けます",
     "path_missing": "パスが指定されていません",
