@@ -1646,20 +1646,32 @@ fn read_pattern_list(table: &serde_json::Value, key: &str, needs_name: bool, war
     out
 }
 
-/// `[extensions.saba-core]`의 이름 목록 하나(`platforms`·`architectures`)를 읽는다. 대소문자는 가리지 않고, `allowed`에 없는 이름은 빼고 경고한다
-fn read_name_list(table: &serde_json::Value, key: &str, allowed: &[&str], what: &str, warnings: &mut Vec<String>) -> Option<Vec<String>> {
+/// `architectures`에 흔히 쓰는 다른 이름 → `std::env::consts::ARCH` 이름
+const ARCH_ALIASES: &[(&str, &str)] = &[("amd64", "x86_64"), ("x64", "x86_64"), ("arm64", "aarch64")];
+
+/// `[extensions.saba-core]`의 이름 목록 하나(`platforms`·`architectures`)를 읽는다. 대소문자는 가리지 않고 `aliases`는 바꿔 읽으며,
+/// `allowed`에 없는 이름은 빼고 경고한다. 남은 이름이 없으면 선언하지 않은 것으로 본다 (틀린 이름 하나로 어디서도 못 돌게 되지 않게)
+fn read_name_list(
+    table: &serde_json::Value,
+    key: &str,
+    allowed: &[&str],
+    aliases: &[(&str, &str)],
+    what: &str,
+    warnings: &mut Vec<String>,
+) -> Option<Vec<String>> {
     match table.get(key) {
         None => None,
         Some(serde_json::Value::Array(items)) => {
             let mut names = Vec::new();
             for item in items {
-                match item.as_str().map(str::to_ascii_lowercase).filter(|p| allowed.contains(&p.as_str())) {
+                let name = item.as_str().map(str::to_ascii_lowercase).map(|p| aliases.iter().find(|(from, _)| *from == p).map_or(p, |(_, to)| to.to_string()));
+                match name.filter(|p| allowed.contains(&p.as_str())) {
                     Some(p) if !names.contains(&p) => names.push(p),
                     Some(_) => {}
                     None => warnings.push(format!("extensions.{}.{} has an unknown {} {} (use {}); ignored", DAEMON_TABLE, key, what, item, allowed.join(", "))),
                 }
             }
-            Some(names)
+            (!names.is_empty()).then_some(names)
         }
         Some(_) => {
             warnings.push(format!("extensions.{}.{} must be a list of {} names; ignored", DAEMON_TABLE, key, what));
@@ -1683,8 +1695,8 @@ fn read_daemon_table(meta: &mut ModuleMetadata) -> Vec<String> {
     meta.player_join_patterns.extend(read_pattern_list(&table, "player_join_patterns", true, &mut warnings));
     meta.player_leave_patterns.extend(read_pattern_list(&table, "player_leave_patterns", true, &mut warnings));
     meta.progress_patterns.extend(read_pattern_list(&table, "progress_patterns", false, &mut warnings));
-    meta.platforms = read_name_list(&table, "platforms", PLATFORMS, "OS", &mut warnings);
-    meta.architectures = read_name_list(&table, "architectures", ARCHITECTURES, "CPU", &mut warnings);
+    meta.platforms = read_name_list(&table, "platforms", PLATFORMS, &[], "OS", &mut warnings);
+    meta.architectures = read_name_list(&table, "architectures", ARCHITECTURES, ARCH_ALIASES, "CPU", &mut warnings);
     match table.get("data_roots") {
         None => {}
         Some(serde_json::Value::Array(items)) => {
@@ -3054,6 +3066,10 @@ entry = "lifecycle.py"
         assert_eq!(meta.unsupported_on("linux", "aarch64"), Some("arch"));
         let undeclared = parse_module_toml(V1).unwrap();
         assert_eq!(undeclared.unsupported_on("linux", "aarch64"), None, "a module that declares nothing is not blocked");
+        let aliases = parse_module_toml(&format!("{V1}\n[extensions.saba-core]\narchitectures = ['amd64', 'arm64']\n")).unwrap();
+        assert_eq!(aliases.architectures, Some(vec!["x86_64".to_string(), "aarch64".to_string()]));
+        let unknown = parse_module_toml(&format!("{V1}\n[extensions.saba-core]\narchitectures = ['sparc']\n")).unwrap();
+        assert_eq!(unknown.unsupported_on("linux", "x86_64"), None, "a list with no known CPU blocks nowhere");
         let both = parse_module_toml(&format!("{V1}\n[extensions.saba-core]\nplatforms = ['windows']\narchitectures = ['x86_64']\n")).unwrap();
         assert_eq!(both.unsupported_on("linux", "aarch64"), Some("os"), "the OS is named first");
     }
