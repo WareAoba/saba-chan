@@ -73,6 +73,21 @@ describe('웹 서버 만들기 — GUI와 같은 칸', () => {
         });
     });
 
+    it('고쳤다가 비운 설치 칸은 보내지 않는다 (데몬이 모듈 기본값을 쓴다)', async () => {
+        const seeded = {
+            ...minecraft,
+            agreements: [],
+            settings: { fields: [{ name: 'seed', field_type: 'text', label: 'Seed', default: 'abc', install: true }] },
+        };
+        useData.setState({ modules: [seeded], servers: [] });
+        const api = { instanceCreate: vi.fn().mockResolvedValue({ success: true }) };
+        render(<AddServerSheet api={api} onClose={() => {}} />);
+        fireEvent.change(screen.getByRole('textbox', { name: 'Seed' }), { target: { value: '' } });
+        fireEvent.click(create());
+        await flush();
+        expect(api.instanceCreate.mock.calls[0][0].module_settings).toBeUndefined();
+    });
+
     it('이 OS에서 돌지 않는 게임은 고를 수 없다', () => {
         mount();
         fireEvent.click(screen.getByText('Minecraft'));

@@ -1,4 +1,4 @@
-import { installChoices, installFields, nameTaken, suggestName } from '@gui/utils/installFields';
+import { installChoices, installFields, installSettings, nameTaken, suggestName } from '@gui/utils/installFields';
 import { gameNameOf, playersText, primaryAction, viewStatus } from '@gui/utils/serverView';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -45,7 +45,10 @@ export function AddServerSheet({ api, onClose }) {
         if (!ready) return;
         setBusy(true);
         const body = { name: name.trim(), module_name: module };
-        const settings = patchOf(installFields(chosen), installValues, new Set(Object.keys(installValues)));
+        // 비운 칸은 빼서 데몬이 모듈 기본값·추천 설정을 쓰게 한다 (GUI와 같다)
+        const settings = installSettings(
+            patchOf(installFields(chosen), installValues, new Set(Object.keys(installValues))),
+        );
         if (Object.keys(settings).length) body.module_settings = settings;
         if (preset) body.preset = preset;
         if (agreements.length) body.accept_agreements = agreements.map((a) => a.id);
