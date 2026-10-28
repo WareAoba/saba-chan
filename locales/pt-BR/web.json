@@ -94,7 +94,18 @@
     "restart_title": "Reiniciar {{name}}?",
     "restart_message": "Os jogadores conectados serão desconectados por um momento.",
     "delete_title": "Excluir {{name}}?",
-    "delete_message": "As configurações e os arquivos do servidor serão excluídos. Isso não pode ser desfeito."
+    "delete_message": "As configurações e os arquivos do servidor serão excluídos. Isso não pode ser desfeito.",
+    "version": "Versão do servidor",
+    "version_latest": "Versão mais recente (recomendada)",
+    "version_hint": "Se o tipo escolhido não tiver build dessa versão, a instalação falha.",
+    "run": "Modo de execução",
+    "run_managed": "Gerenciado pelo saba-chan (recomendado)",
+    "run_unmanaged": "Gerenciar você mesmo",
+    "run_managed_hint": "O saba-chan executa o processo do servidor, assim você tem console, registros e reinício automático.",
+    "run_unmanaged_hint": "O saba-chan inicia o servidor e só verifica se ele está rodando. O console do saba-chan não fica disponível e, no Windows, o servidor abre em uma janela de console própria.",
+    "port_in_use": "{{servers}} também usa a porta {{port}}. As portas conflitam se os dois rodarem ao mesmo tempo.",
+    "location": "Local dos arquivos",
+    "location_pc": "Os arquivos do servidor vão para a pasta do saba-chan. Para usar outra pasta, crie o servidor no app do saba-chan no PC."
   },
   "detail": {
     "console": "Console",

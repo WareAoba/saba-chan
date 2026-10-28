@@ -10,6 +10,7 @@ import {
     installFields,
     nameTaken,
     optionLabel,
+    releaseVersions,
     suggestName,
     wizardSteps,
 } from '../../utils/installFields';
@@ -108,8 +109,7 @@ export function AddInstanceNewServer({
         Promise.resolve(window.api?.moduleListVersions?.(selectedExtension, { per_page: 50 }))
             .then((res) => {
                 if (!alive) return;
-                const list = Array.isArray(res?.versions) ? res.versions : [];
-                setVersions(list.filter((v) => !v.type || v.type === 'release').map((v) => String(v.id ?? v)));
+                setVersions(releaseVersions(res));
             })
             .catch(() => alive && setVersions([]));
         return () => {

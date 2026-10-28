@@ -47,7 +47,20 @@
     },
     "ask_mode": "伺服器資料夾要怎麼處理？",
     "mode_link": "保留在原位置",
-    "mode_move": "移入 saba-chan（僅限同一磁碟機；刪除已移入的伺服器會刪除其檔案）"
+    "mode_move": "移入 saba-chan（僅限同一磁碟機；刪除已移入的伺服器會刪除其檔案）",
+    "folder_not_empty": "{{dir}} 中已有檔案。請選擇空資料夾，或用 --from 連接現有伺服器。",
+    "port_in_use": "{{servers}} 也在使用連接埠 {{port}}。同時執行會造成連接埠衝突。",
+    "port_reserved": "連接埠 {{port}} 已被 Windows 保留，無法開啟。請用 --game-port 選擇其他連接埠。",
+    "ask_version": "伺服器版本",
+    "version_latest": "最新版本（建議）",
+    "version_not_chosen": "只有在新安裝且由 saba-chan 下載伺服器的遊戲時才能選擇版本（{{game}}）。",
+    "ask_location": "伺服器檔案要放在哪裡？",
+    "location_default": "saba-chan 資料夾（建議）",
+    "location_custom": "其他空資料夾（刪除伺服器後檔案仍保留）",
+    "ask_dir": "安裝資料夾路徑",
+    "ask_run": "伺服器要如何執行？",
+    "run_managed": "由 saba-chan 管理（建議）",
+    "run_unmanaged": "自行管理（無法使用 saba-chan 主控台）"
   },
   "bot": {
     "ask_token": "節點權杖",
@@ -857,7 +870,9 @@
       "bot.notice.on": "開啟啟動通知",
       "bot.notice.off": "關閉啟動通知",
       "bot.confirm.direct": "直接向機器人請求 — 前綴指令和斜線指令。",
-      "bot.confirm.chatbot": "會說話的 Saba-chan — 會說話的 Saba-chan 選擇的管理操作以及多人混合的請求，無論此設定如何都會詢問。"
+      "bot.confirm.chatbot": "會說話的 Saba-chan — 會說話的 Saba-chan 選擇的管理操作以及多人混合的請求，無論此設定如何都會詢問。",
+      "game_version": "要安裝的伺服器版本（下載伺服器的遊戲，預設：最新正式版）",
+      "unmanaged": "自行管理：saba-chan 只啟動並查看是否在執行（無主控台）"
     },
     "after": "名稱可以只寫一部分（例如 start pal）。在終端機中不帶參數執行會開啟全螢幕選單(SABA_NO_TUI=1 時為互動式 shell)。\n在指令碼中請使用 --json 和 --yes。結束代碼：0 成功 · 1 失敗 · 2 用法錯誤 · 3 無法連線常駐程式 · 4 找不到 · 130 已取消"
   },

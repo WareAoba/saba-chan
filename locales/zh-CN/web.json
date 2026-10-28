@@ -94,7 +94,18 @@
     "restart_title": "要重启 {{name}} 吗？",
     "restart_message": "已连接的玩家将暂时断开。",
     "delete_title": "要删除 {{name}} 吗？",
-    "delete_message": "服务器的设置和文件将被删除，且无法撤销。"
+    "delete_message": "服务器的设置和文件将被删除，且无法撤销。",
+    "version": "服务器版本",
+    "version_latest": "最新版本（推荐）",
+    "version_hint": "如果所选类型没有该版本的构建，安装会失败。",
+    "run": "运行方式",
+    "run_managed": "由 saba-chan 管理（推荐）",
+    "run_unmanaged": "自行管理",
+    "run_managed_hint": "saba-chan 负责服务器进程，可以使用控制台、日志和自动重启。",
+    "run_unmanaged_hint": "saba-chan 只启动服务器并查看是否在运行。无法使用 saba-chan 控制台，在 Windows 上服务器会在单独的控制台窗口中打开。",
+    "port_in_use": "{{servers}} 也使用端口 {{port}}。同时运行时端口会冲突。",
+    "location": "文件位置",
+    "location_pc": "服务器文件安装到 saba-chan 文件夹。要放在其他文件夹，请在电脑上的 saba-chan 应用中创建。"
   },
   "detail": {
     "console": "控制台",

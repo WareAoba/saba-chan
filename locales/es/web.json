@@ -94,7 +94,18 @@
     "restart_title": "¿Reiniciar {{name}}?",
     "restart_message": "Los jugadores conectados se desconectarán un momento.",
     "delete_title": "¿Eliminar {{name}}?",
-    "delete_message": "Se eliminarán los ajustes y archivos del servidor. No se puede deshacer."
+    "delete_message": "Se eliminarán los ajustes y archivos del servidor. No se puede deshacer.",
+    "version": "Versión del servidor",
+    "version_latest": "Última versión (recomendada)",
+    "version_hint": "Si el tipo elegido no tiene una compilación de esa versión, la instalación falla.",
+    "run": "Modo de ejecución",
+    "run_managed": "Gestionado por saba-chan (recomendado)",
+    "run_unmanaged": "Gestionarlo tú",
+    "run_managed_hint": "saba-chan ejecuta el proceso del servidor, así tienes consola, registros y reinicio automático.",
+    "run_unmanaged_hint": "saba-chan inicia el servidor y solo comprueba si está en marcha. La consola de saba-chan no está disponible y en Windows el servidor se abre en su propia ventana de consola.",
+    "port_in_use": "{{servers}} también usa el puerto {{port}}. Si ambos se ejecutan a la vez, los puertos chocan.",
+    "location": "Ubicación de los archivos",
+    "location_pc": "Los archivos del servidor van a la carpeta de saba-chan. Para usar otra carpeta, crea el servidor en la app de saba-chan del PC."
   },
   "detail": {
     "console": "Consola",

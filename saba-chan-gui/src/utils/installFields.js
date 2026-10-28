@@ -39,6 +39,12 @@ export const suggestName = (moduleName, servers) => {
 /** 고를 서버 버전이 있는가: 내려받아 설치하는 모듈만 (`[install] method = "download"`, 데몬이 `list_versions`로 고른다) */
 export const choosesVersion = (module) => module?.install?.method === 'download';
 
+/** 고를 수 있는 서버 버전 (`moduleListVersions` 응답): 정식 릴리스만, 종류가 없는 항목은 그대로 (GUI·웹·CLI가 같다) */
+export const releaseVersions = (res) =>
+    (Array.isArray(res?.versions) ? res.versions : [])
+        .filter((v) => !v?.type || v.type === 'release')
+        .map((v) => String(v?.id ?? v));
+
 /**
  * 새 서버 만들기 단계. 서버 종류·버전 단계는 고를 것이 있을 때만 (설치 칸, 추천 설정, 버전).
  * 다음 단계: 파일 위치 → 실행 방식 → 이름·포트 확인 → 확인(약관·익스텐션 칸)

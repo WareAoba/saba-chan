@@ -347,7 +347,6 @@ impl Api {
         self.post_long("/api/instances", body).await
     }
     /// POST /api/instances/check — 만들지 않고 이름·폴더·포트 충돌만 본다 (몸은 create_instance와 같다)
-    #[allow(dead_code)] // `server add` 단계 확인은 다음 변경에서 붙인다
     pub async fn check_instance(&self, body: Value) -> Result<Value> {
         self.post("/api/instances/check", body).await
     }

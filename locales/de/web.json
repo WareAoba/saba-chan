@@ -94,7 +94,18 @@
     "restart_title": "{{name}} neu starten?",
     "restart_message": "Verbundene Spieler werden kurz getrennt.",
     "delete_title": "{{name}} löschen?",
-    "delete_message": "Die Servereinstellungen und -dateien werden gelöscht. Das lässt sich nicht rückgängig machen."
+    "delete_message": "Die Servereinstellungen und -dateien werden gelöscht. Das lässt sich nicht rückgängig machen.",
+    "version": "Serverversion",
+    "version_latest": "Neueste Version (empfohlen)",
+    "version_hint": "Gibt es für den gewählten Typ keinen Build dieser Version, schlägt die Installation fehl.",
+    "run": "Startart",
+    "run_managed": "Von saba-chan verwaltet (empfohlen)",
+    "run_unmanaged": "Selbst verwalten",
+    "run_managed_hint": "saba-chan führt den Serverprozess, damit Konsole, Protokolle und automatischer Neustart verfügbar sind.",
+    "run_unmanaged_hint": "saba-chan startet den Server und prüft nur, ob er läuft. Die saba-chan-Konsole ist nicht verfügbar, und unter Windows öffnet sich der Server in einem eigenen Konsolenfenster.",
+    "port_in_use": "{{servers}} nutzt ebenfalls Port {{port}}. Laufen beide gleichzeitig, überschneiden sich die Ports.",
+    "location": "Speicherort",
+    "location_pc": "Die Serverdateien kommen in den Ordner von saba-chan. Für einen anderen Ordner erstelle den Server in der saba-chan-App am PC."
   },
   "detail": {
     "console": "Konsole",
