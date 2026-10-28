@@ -193,7 +193,7 @@ pub static ACTIONS: &[Def] = &[
     },
     // 디스코드 길드 설정 (I2). 원격에서는 요청이 온 길드만 (`guild`를 그 길드로 고정한다)
     Def {
-        fields: &[path_field("guild"), field("locale", "string", false), field("sleeping", "boolean", false), field("music", "object", false), field("confirmLevel", "string", false)],
+        fields: &[path_field("guild"), field("locale", "string", false), field("sleeping", "boolean", false), field("music", "object", false), field("confirmLevel", "string", false), field("commandRisks", "object", false)],
         discord_level: Some(crate::chat::permissions::OWNER),
         remote_menu: false,
         guild_owner: true,
@@ -1249,23 +1249,29 @@ pub fn level_asks(level: &str, risk: &str) -> bool {
 /// - 디스코드(릴레이): 요청자만 누르는 버튼. 직접 요청은 길드 디스코드 설정 `confirmLevel`, 말하는 사바쨩은 챗봇 설정
 ///   `confirmLevel`을 따른다. 말하는 사바쨩이 고른 관리 액션은 단계와 상관없이 늘 묻는다
 /// - 앱·웹·CLI·원격 MCP(`origin.via = "mcp"`): 그 화면의 확인. 길드와 상관없이 위험과 서버 정지·재시작을 묻는다
-pub async fn needs_confirm(server: &IPCServer, action: &str, kind: Kind, risk: &str, caller: &Caller) -> bool {
-    // 안전한 조회는 이 규칙 밖이다
+pub async fn needs_confirm(server: &IPCServer, action: &str, instance: Option<&str>, kind: Kind, risk: &str, caller: &Caller) -> bool {
+    let fixed = || risk == "danger" || matches!(action, "server.stop" | "server.restart");
+    let guild_risk = match (&caller.remote, caller.origin.via.as_deref()) {
+        (Some(who), via) if via != Some(MCP_VIA) => Some(who),
+        _ => None,
+    };
+    let Some(who) = guild_risk else {
+        // 안전한 조회는 이 규칙 밖이다
+        return !(kind == Kind::Query && risk == "safe") && fixed();
+    };
+    let guild = who.guild_id.as_deref().unwrap_or("");
+    let node = server.config_store.get_bot_config().await.node_settings.get(guild).cloned();
+    let settings = crate::ipc::handlers::discord::GuildSettings::from_node(node.as_ref()).unwrap_or_default();
+    // 길드가 이 명령의 위험 단계를 바꿨으면 그 단계로 묻는다
+    let key = instance.map_or_else(|| action.to_string(), |i| format!("{i}/{action}"));
+    let risk = settings.command_risks.get(&key).map_or(risk, String::as_str);
     if kind == Kind::Query && risk == "safe" {
         return false;
     }
-    let fixed = || risk == "danger" || matches!(action, "server.stop" | "server.restart");
-    let Some(who) = &caller.remote else { return fixed() };
-    if caller.origin.via.as_deref() == Some(MCP_VIA) {
-        return fixed();
-    }
-    let guild = who.guild_id.as_deref().unwrap_or("");
     if caller.surface == Chatbot || who.via_chatbot {
         let cfg = server.config_store.get_chatbot().effective(guild);
         return kind == Kind::Admin || level_asks(cfg.get("confirmLevel").and_then(Value::as_str).unwrap_or("all"), risk);
     }
-    let node = server.config_store.get_bot_config().await.node_settings.get(guild).cloned();
-    let settings = crate::ipc::handlers::discord::GuildSettings::from_node(node.as_ref()).unwrap_or_default();
     level_asks(&settings.confirm_level, risk)
 }
 
@@ -1331,7 +1337,7 @@ pub async fn plan(server: &IPCServer, id: &str, instance: Option<&str>, input: &
     refuse_restore_while_running(server, &r).await?;
     let summary = summarize(server, &r, &caller.locale).await;
     let plan_id = new_plan_id();
-    let confirm = needs_confirm(server, &r.id, r.kind, &r.risk, caller).await;
+    let confirm = needs_confirm(server, &r.id, r.instance.as_deref(), r.kind, &r.risk, caller).await;
     let view = json!({
         "success": true,
         "planId": plan_id,
@@ -1362,7 +1368,7 @@ pub async fn plan_text(server: &IPCServer, text: &str, caller: &Caller) -> Resul
     let confirm = !confirmed && {
         let id = target.action_id();
         let kind = ACTIONS.iter().find(|d| d.id == id).map_or(Kind::Command, |d| d.kind);
-        needs_confirm(server, &id, kind, target.risk(), caller).await
+        needs_confirm(server, &id, Some(target.instance()), kind, target.risk(), caller).await
     };
     let view = json!({
         "success": true,
@@ -1565,7 +1571,7 @@ pub async fn run(server: &IPCServer, id: &str, instance: Option<&str>, input: &V
             let r = resolve(server, id, instance, input, caller).await?;
             authorize(server, &r, caller).await?;
             // 확인이 필요한 액션은 계획 없이 실행하지 않는다 (디스코드는 버튼, 앱·CLI는 확인 창을 거친다)
-            if needs_confirm(server, &r.id, r.kind, &r.risk, caller).await {
+            if needs_confirm(server, &r.id, r.instance.as_deref(), r.kind, &r.risk, caller).await {
                 return Err(ActionError::new(409, "confirm_required", "This action needs a plan and a confirmation"));
             }
             (r, caller.clone())
@@ -1697,7 +1703,7 @@ async fn undo_plan(server: &IPCServer, instance: &str, before: Map<String, Value
     }
     let r = resolve(server, "instance.settings.set", Some(instance), &Value::Object(input), caller).await.ok()?;
     let plan_id = new_plan_id();
-    let confirm = needs_confirm(server, &r.id, r.kind, &r.risk, caller).await;
+    let confirm = needs_confirm(server, &r.id, r.instance.as_deref(), r.kind, &r.risk, caller).await;
     store_plan(plan_id.clone(), StoredPlan::new(PlanBody::One(Box::new(r)), caller, confirm));
     Some(plan_id)
 }
