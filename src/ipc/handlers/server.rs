@@ -830,22 +830,7 @@ pub async fn remove_module(
     (StatusCode::OK, Json(json!({ "ok": true, "id": module_id }))).into_response()
 }
 
-/// GET /api/server/:name/status - 서버 상태 조회
-pub async fn get_server_status(
-    Path(name): Path<String>,
-    State(state): State<IPCServer>,
-) -> impl IntoResponse {
-    // instance에서 모듈명 조회
-    let instance = state.supervisor.read().await
-        .instance_store
-        .list()
-        .iter()
-        .find(|i| i.name == name)
-        .map(|i| (i.name.clone(), i.module_name.clone()));
-    server_status(&state, &name, instance).await
-}
-
-/// GET /api/instance/:id/status — id로 상태 조회 (없으면 이름으로 찾는다). 답은 `/api/server/:name/status`와 같다
+/// GET /api/instance/:id/status — id로 상태 조회 (없으면 이름으로 찾는다). 못 찾았으면 404 `instance_not_found`
 pub async fn get_instance_status(
     Path(id): Path<String>,
     State(state): State<IPCServer>,
@@ -858,11 +843,6 @@ pub async fn get_instance_status(
             .or_else(|| supervisor.instance_store.list().iter().find(|i| i.name == id))
             .map(|i| (i.name.clone(), i.module_name.clone()))
     };
-    server_status(&state, &id, instance).await
-}
-
-/// 찾은 인스턴스(이름, 모듈)의 상태. 못 찾았으면 404 `instance_not_found`
-async fn server_status(state: &IPCServer, key: &str, instance: Option<(String, String)>) -> axum::response::Response {
     if let Some((name, module_name)) = instance {
         match crate::supervisor::Supervisor::get_server_status(&state.supervisor, &name, &module_name).await {
             Ok(result) => (StatusCode::OK, Json(result)).into_response(),
@@ -873,7 +853,7 @@ async fn server_status(state: &IPCServer, key: &str, instance: Option<(String, S
         }
     } else {
         let error = json!({
-            "error": format!("Server '{}' not found", key),
+            "error": format!("Server '{}' not found", id),
             "error_code": "instance_not_found",
         });
         (StatusCode::NOT_FOUND, Json(error)).into_response()
@@ -1025,7 +1005,7 @@ fn instance_not_found(id: &str) -> axum::response::Response {
         .into_response()
 }
 
-/// POST /api/instance/:id/stop — id로 정지 (`{force?}`). 응답은 `/api/server/:name/stop`과 같다
+/// POST /api/instance/:id/stop — id로 정지 (`{force?}`)
 pub async fn stop_instance_handler(
     Path(id): Path<String>,
     State(state): State<IPCServer>,
@@ -1164,8 +1144,8 @@ pub async fn instance_events_handler(Path(id): Path<String>, State(state): State
     Json(json!({ "events": supervisor.exit_events(&id) })).into_response()
 }
 
-/// POST /api/server/:name/start - 서버 시작
-pub async fn start_server_handler(
+/// 비관리 시작 (`start_checked`가 id로 부른다)
+async fn start_server_handler(
     Path(name): Path<String>,
     State(state): State<IPCServer>,
     Json(payload): Json<ServerStartRequest>,
@@ -1261,26 +1241,6 @@ async fn announce_updates(state: &IPCServer, id: &str, mut result: Value) -> Val
         }
     });
     result
-}
-
-/// POST /api/server/:name/stop - 서버 중지
-pub async fn stop_server_handler(
-    Path(name): Path<String>,
-    State(state): State<IPCServer>,
-    Json(payload): Json<ServerStopRequest>,
-) -> axum::response::Response {
-    let id = {
-        let supervisor = state.supervisor.read().await;
-        supervisor.instance_store.list().iter().find(|i| i.name == name).map(|i| i.id.clone())
-    };
-    match id {
-        Some(id) => stop_instance(state, &id, payload.force).await,
-        None => (
-            StatusCode::NOT_FOUND,
-            Json(json!({ "error": format!("Server '{}' not found", name), "error_code": "instance_not_found" })),
-        )
-            .into_response(),
-    }
 }
 
 /// 인스턴스 하나를 id로 정지한다. 이름은 겹칠 수 있으니 정지 경로는 모두 id를 쓴다
@@ -1486,13 +1446,11 @@ mod tests {
             async move { crate::ipc::internal::into_internal(get_instance_status(Path(key), State(state)).await.into_response()).await }
         };
 
-        // 격리 실행이 없는 곳에서는 모듈 status()가 실패 모양으로 답한다. 어느 쪽이든 세 길의 답이 같아야 한다
+        // 격리 실행이 없는 곳에서는 모듈 status()가 실패 모양으로 답한다. 어느 쪽이든 두 길의 답이 같아야 한다
         let by_id = ask(id.clone()).await;
         assert_eq!(by_id.status, StatusCode::OK, "{}", by_id.body);
         let by_name = ask("srv".into()).await;
         assert_eq!(by_name.body, by_id.body);
-        let old = crate::ipc::internal::into_internal(get_server_status(Path("srv".into()), State(state.clone())).await.into_response()).await;
-        assert_eq!(old.body, by_id.body, "same answer as the name route");
         let missing = ask("nope".into()).await;
         assert_eq!(missing.status, StatusCode::NOT_FOUND);
         assert_eq!(missing.body["error_code"], "instance_not_found");

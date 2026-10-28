@@ -88,6 +88,59 @@ describe('웹 서버 만들기 — GUI와 같은 칸', () => {
         expect(api.instanceCreate.mock.calls[0][0].module_settings).toBeUndefined();
     });
 
+    // GUI 마법사와 같은 선택: 버전(서버 파일을 받는 모듈), 실행 방식. 파일 위치는 PC에서만 (CREATE_PC_ONLY)
+    const wizard = (check = { name: { taken: false }, folder: { custom: false }, ports: [] }) => {
+        const downloads = { ...minecraft, agreements: [], install: { method: 'download' } };
+        useData.setState({ modules: [downloads], servers: [] });
+        const api = {
+            instanceCreate: vi.fn().mockResolvedValue({ success: true }),
+            moduleListVersions: vi.fn().mockResolvedValue({
+                versions: [{ id: '1.21.4', type: 'release' }, { id: '24w10a', type: 'snapshot' }, { id: '1.20.6' }],
+            }),
+            instanceCheck: vi.fn().mockResolvedValue({ success: true, ...check }),
+        };
+        render(<AddServerSheet api={api} onClose={() => {}} />);
+        return api;
+    };
+
+    it('고른 버전과 직접 관리를 보내고, 고르지 않으면 보내지 않는다', async () => {
+        const api = wizard();
+        await flush();
+        expect(api.moduleListVersions).toHaveBeenCalledWith('minecraft', { per_page: 50 });
+        fireEvent.click(screen.getByText('Latest version (recommended)'));
+        expect(screen.queryByText('24w10a')).toBeNull();
+        fireEvent.click(screen.getByText('1.20.6'));
+        fireEvent.click(screen.getByText('Managed by saba-chan (recommended)'));
+        fireEvent.click(screen.getByText('Manage it yourself'));
+        fireEvent.click(create());
+        await flush();
+        expect(api.instanceCreate).toHaveBeenCalledWith({
+            name: 'minecraft',
+            module_name: 'minecraft',
+            version: '1.20.6',
+            managed_start: false,
+        });
+    });
+
+    it('만들기 전에 겹치는 포트를 데몬에 물어 알린다', async () => {
+        vi.useFakeTimers();
+        try {
+            const api = wizard({
+                name: { taken: false },
+                folder: { custom: false },
+                ports: [{ field: 'port', port: 25565, in_use_by: ['lobby'], reserved: false }],
+            });
+            await act(async () => {
+                await vi.advanceTimersByTimeAsync(300);
+            });
+            expect(api.instanceCheck).toHaveBeenCalledWith({ name: 'minecraft', module_name: 'minecraft' });
+            expect(screen.getByText(/lobby.*25565/)).toBeTruthy();
+            expect(create().disabled).toBe(false);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
     it('이 OS에서 돌지 않는 게임은 고를 수 없다', () => {
         mount();
         fireEvent.click(screen.getByText('Minecraft'));

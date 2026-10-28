@@ -224,7 +224,7 @@ async fn blocked_fields(server: &crate::ipc::IPCServer, method: &str, pattern: &
     // 만들 때 켜진 익스텐션이 물은 칸(`AddServer.options`)의 답: GUI는 칸을 건드리지 않아도 기본값을 싣는다.
     // 선언한 칸·종류에 맞는 값이면 받는다 (`exec::create_option_answers_allowed`. 익스텐션 잠금은 인스턴스 잠금보다 먼저 놓는다)
     let create_options_only = match body.and_then(|b| b.get("extension_data")).and_then(Value::as_object) {
-        Some(given) if pattern == "/api/instances" && method == "POST" => {
+        Some(given) if matches!(pattern, "/api/instances" | "/api/instances/check") && method == "POST" => {
             let options = server.extension_manager.read().await.create_options();
             crate::remote::exec::create_option_answers_allowed(&options, given)
         }
@@ -556,7 +556,7 @@ pub(crate) mod tests {
             .route("/api/config/node-token", axum::routing::get(|| async { Json(json!({ "token": "leak" })) }))
             .route("/api/remote/clients", axum::routing::get(|| async { Json(json!([])) }))
             .route("/api/config/{kind}/reset", post(|axum::extract::Path(kind): axum::extract::Path<String>| async move { Json(json!({ "reset": kind })) }))
-            .route("/api/server/{name}/status", axum::routing::get(|axum::extract::Path(name): axum::extract::Path<String>| async move { Json(json!({ "name": name })) }))
+            .route("/api/instance/{id}/status", axum::routing::get(|axum::extract::Path(name): axum::extract::Path<String>| async move { Json(json!({ "name": name })) }))
             // 데몬 라우트(`IPCServer::routes`)처럼 짝 맺은 PC의 규칙 층을 씌운다
             .layer(axum::middleware::from_fn_with_state(test_server(dir.path()), rules));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -671,7 +671,7 @@ pub(crate) mod tests {
         let server = test_server(tmp.path());
         let (addr, pin, token, cancel) = start_daemon(tmp.path(), &server).await;
         for (method, path) in [
-            ("GET", "/api/config/node-token"),
+            ("PUT", "/api/config/node-token"),
             ("GET", "/api/relay/privacy/erase"),
             ("GET", "/api/remote/clients"),
             ("GET", "/api/system/autostart"),
@@ -696,7 +696,7 @@ pub(crate) mod tests {
             assert_ne!(body["error_code"].as_str(), Some("remote_local_only"), "{path} {s}");
         }
         // 라우터는 HEAD를 GET 처리기로 답한다: HEAD도 GET과 같게 판정한다
-        for path in ["/api/config/node-token", "/api/extensions/x/config", "/api/updates/status"] {
+        for path in ["/api/config/gui", "/api/extensions/x/config", "/api/updates/status"] {
             let (s, _) = call(addr, &pin, "HEAD", path, Some(&token), None).await.unwrap();
             assert_eq!(s, 403, "HEAD {path}");
         }
@@ -720,12 +720,12 @@ pub(crate) mod tests {
             let (s, body) = call(r.addr, &r.pin, "GET", path, Some(&token), None).await.unwrap();
             assert_eq!(s, 404, "{path} {body}");
         }
-        for path in ["/api/server/%2e%2e/status", "/api/server/a%2F..%2Fb/status", "/api/server/%FF/status"] {
+        for path in ["/api/instance/%2e%2e/status", "/api/instance/a%2F..%2Fb/status", "/api/instance/%FF/status"] {
             let (s, body) = call(r.addr, &r.pin, "GET", path, Some(&token), None).await.unwrap();
             assert_eq!((s, body["error_code"].as_str()), (400, Some("remote_bad_path")), "{path}");
         }
         // 조각 안의 인코딩한 `/`는 그 조각의 글자다 (이름에 `/`가 든 서버를 이름으로 부른다)
-        let (s, body) = call(r.addr, &r.pin, "GET", "/api/server/Survival%201%2F2/status", Some(&token), None).await.unwrap();
+        let (s, body) = call(r.addr, &r.pin, "GET", "/api/instance/Survival%201%2F2/status", Some(&token), None).await.unwrap();
         assert_eq!((s, body), (200, json!({ "name": "Survival 1/2" })));
         r.cancel.cancel();
     }
@@ -781,7 +781,7 @@ pub(crate) mod tests {
         let (s, body) = call(addr, &id.sha256, "GET", "/api/instances", Some(&token), None).await.unwrap();
         assert_eq!(s, 200, "{body}");
         assert!(body.is_array());
-        let (s, _) = call(addr, &id.sha256, "GET", "/api/config/node-token", Some(&token), None).await.unwrap();
+        let (s, _) = call(addr, &id.sha256, "PUT", "/api/config/node-token", Some(&token), Some(json!({ "token": "x" }))).await.unwrap();
         assert_eq!(s, 403);
         let (s, _) = call(addr, &id.sha256, "GET", "/api/instances", None, None).await.unwrap();
         assert_eq!(s, 401);

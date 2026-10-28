@@ -105,6 +105,15 @@ describe('명령 팔레트', () => {
         expect(window.api.actionsRun).toHaveBeenCalledWith('instance.delete', { planId: 'p-instance.delete' });
     });
 
+    it('물을지는 데몬 계획(needsConfirm)이 정한다: 위험·관리 액션도 묻지 말라고 하면 바로 실행한다', async () => {
+        window.api.actionsPlan = vi.fn(async (id) => ({ planId: `p-${id}`, needsConfirm: false, summary: [] }));
+        render(<CommandPalette />);
+        await open();
+        fireEvent.click(screen.getByText('Delete server'));
+        await flush();
+        expect(window.api.actionsRun).toHaveBeenCalledWith('instance.delete', { planId: 'p-instance.delete' });
+    });
+
     it('입력이 있는 액션은 칸을 채운 뒤 실행하고, 조회 결과는 팔레트에 보인다', async () => {
         render(<CommandPalette />);
         await open();

@@ -801,35 +801,33 @@ impl Session {
         let payload = cmd.get("payload").cloned().unwrap_or(Value::Null);
         let action = payload.get("action").and_then(|v| v.as_str()).unwrap_or("");
         match action {
-            "raw_command" => {
-                let text = payload.get("text").and_then(|v| v.as_str()).unwrap_or("");
-                let name = |key: &str| {
-                    payload.get(key).and_then(|v| v.as_str()).map(str::trim).filter(|s| !s.is_empty()).map(str::to_string)
-                };
-                let guild_id = cmd.get("guildId").and_then(|v| v.as_str()).map(str::to_string);
-                let user_id = cmd.get("requestedBy").and_then(|v| v.as_str()).map(str::to_string);
-                let remote = self.requester(cmd, &payload, guild_id.clone(), user_id.clone()).await;
-                let req = crate::chat::ChatRequest {
-                    text: text.to_string(),
-                    guild_id,
-                    user_id,
-                    user_name: name("userName"),
-                    guild_name: name("guildName"),
-                    locale: name("locale"),
-                    remote: Some(remote),
-                };
-                // 감사 로그 (A10): 디스코드에서 누가 보냈는지 (이름은 릴레이가 payload에 실어 보낸 것)
-                let origin = crate::audit::Origin::new("discord").requested_by(&req);
-                let via_chatbot = req.remote.as_ref().is_some_and(|w| w.via_chatbot);
-                let reply = crate::audit::with_origin(origin, crate::chat::api::run_with_daemon_settings(&self.server, &req)).await;
-                raw_command_result(reply, via_chatbot)
-            }
             "permission" => {
                 let guild_id = cmd.get("guildId").and_then(|v| v.as_str()).map(str::to_string);
                 let user_id = cmd.get("requestedBy").and_then(|v| v.as_str()).map(str::to_string);
                 let who = self.requester(cmd, &payload, guild_id, user_id).await;
                 let origin = crate::audit::Origin::new("discord");
                 crate::audit::with_origin(origin, permission_action(&self.server, &who, &payload)).await
+            }
+            // 원격 MCP (계정 주인의 AI 에이전트): 길드 없이, 이 PC의 주인만. 앱과 같은 액션과 그 목록(`catalog`)
+            "plan" | "run_plan" | "query" | "catalog" if payload.get("via").and_then(Value::as_str) == Some(crate::actions::MCP_VIA) => {
+                let locale = payload.get("locale").and_then(Value::as_str).unwrap_or("en").to_string();
+                let caller = match mcp_caller(cmd, &payload, locale.clone()) {
+                    Ok(caller) => caller,
+                    Err(e) => return action_result(Err(e), &locale),
+                };
+                // 문장 계획은 디스코드 채팅 경로다 (MCP는 액션 id로만 부른다)
+                if payload.get("text").is_some() {
+                    let e = crate::actions::ActionError { status: 400, code: "invalid_input", message: "Text plans are not taken from MCP".into(), data: json!({ "field": "text" }) };
+                    return action_result(Err(e), &locale);
+                }
+                let result = match action {
+                    "catalog" => {
+                        let instance = payload.get("instance").and_then(Value::as_str);
+                        Ok(crate::actions::list(&self.server, Some(crate::actions::Surface::Gui), instance, &caller.locale).await)
+                    }
+                    _ => crate::audit::with_origin(caller.origin.clone(), action_request(&self.server, action, &payload, &caller)).await,
+                };
+                action_result(result, &caller.locale)
             }
             // 액션 카탈로그 (P2·P3): 계획·확인한 계획 실행·읽기 전용 조회
             "plan" | "run_plan" | "query" => {
@@ -1254,6 +1252,22 @@ async fn action_request(server: &crate::ipc::IPCServer, action: &str, payload: &
     }
 }
 
+/// 원격 MCP 요청자. 릴레이가 확인한 이 PC의 주인(`hostOwnerDiscordId`)과 요청자가 같을 때만 받는다.
+/// 길드가 실려 오면 디스코드 요청이므로 MCP로 받지 않는다
+fn mcp_caller(cmd: &Value, payload: &Value, locale: String) -> Result<crate::actions::Caller, crate::actions::ActionError> {
+    let id = |v: Option<&Value>| v.and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty()).map(str::to_string);
+    let user = id(cmd.get("requestedBy"));
+    let owner = id(cmd.get("hostOwnerDiscordId"));
+    let guild = id(cmd.get("guildId"));
+    match (user, owner, guild) {
+        (Some(user), Some(owner), None) if user == owner => {
+            let user_name = id(payload.get("userName"));
+            Ok(crate::actions::Caller::mcp(user, owner, id(payload.get("confirmedBy")), user_name, locale))
+        }
+        _ => Err(crate::actions::ActionError { status: 403, code: "PERMISSION_DENIED", message: "Permission denied".into(), data: Value::Null }),
+    }
+}
+
 /// 릴레이 결과 모양: 성공 `{success:true, data}`, 실패 `{success:false, data:{code, error, args?, field?, reason?}}`
 /// `locale`: 요청 언어. 문구가 있는 실패 코드면 짧은 이유(`reason`)를 함께 준다
 fn action_result(result: Result<Value, crate::actions::ActionError>, locale: &str) -> Value {
@@ -1273,21 +1287,6 @@ fn action_result(result: Result<Value, crate::actions::ActionError>, locale: &st
         }
     };
     crate::actions::strip_local_details(&mut out);
-    out
-}
-
-/// 알아보지 못한 입력은 실패와 코드로 돌려준다: 릴레이는 그 코드를 보고 모델 해석기에 정확한 명령을 묻는다.
-/// 답 문구는 실행 오류 원문을 담을 수 있어 액션 결과와 같은 기준으로 로컬 정보를 뺀다 (I3).
-/// 챗봇이 부른 것이면 모듈 답의 IP·비밀처럼 보이는 값도 가린다 (액션 경로의 콘솔·조회 결과와 같다)
-fn raw_command_result(reply: crate::chat::Reply, via_chatbot: bool) -> Value {
-    let mut out = match reply.code {
-        Some(code) => json!({ "success": false, "data": { "code": code, "error": reply.text, "args": reply.args } }),
-        None => json!({ "success": true, "data": { "text": reply.text } }),
-    };
-    crate::actions::strip_local_details(&mut out);
-    if via_chatbot {
-        crate::actions::mask_console(&mut out);
-    }
     out
 }
 
@@ -1947,6 +1946,39 @@ mod tests {
         crate::remote::link::stop();
     }
 
+    /// 원격 MCP: 길드 없이 오고, 요청자가 이 PC의 주인(`hostOwnerDiscordId`)일 때만 앱과 같은 액션을 쓴다
+    #[tokio::test]
+    async fn mcp_commands_run_only_for_the_host_owner() {
+        let tmp = tempfile::tempdir().unwrap();
+        let session = test_session(&RelayAgent::new(), "http://127.0.0.1:9", "sbn_host.secret", tmp.path()).await;
+        let plan = json!({ "action": "plan", "via": "mcp", "id": "extension.enable", "input": { "extension": "x" } });
+        let ok = session.handle_payload(&json!({ "id": "c1", "requestedBy": "u1", "hostOwnerDiscordId": "u1", "payload": plan })).await;
+        assert_eq!(ok["success"], true, "{ok:?}");
+        let denied = |r: &Value| r["success"] == false && r["data"]["code"] == "PERMISSION_DENIED";
+        for cmd in [
+            json!({ "id": "c2", "requestedBy": "u2", "hostOwnerDiscordId": "u1", "payload": plan }),
+            json!({ "id": "c3", "requestedBy": "u1", "payload": plan }),
+            json!({ "id": "c4", "requestedBy": "u1", "hostOwnerDiscordId": "u1", "guildId": "g1", "payload": plan }),
+            json!({ "id": "c5", "hostOwnerDiscordId": "u1", "payload": plan }),
+        ] {
+            let r = session.handle_payload(&cmd).await;
+            assert!(denied(&r), "{cmd} → {r:?}");
+        }
+        // 액션 목록은 MCP 주인에게만 (앱 표면 전체)
+        let catalog = json!({ "action": "catalog", "via": "mcp" });
+        let r = session.handle_payload(&json!({ "id": "c6", "requestedBy": "u1", "hostOwnerDiscordId": "u1", "payload": catalog })).await;
+        let ids: Vec<&str> = r["data"]["actions"].as_array().unwrap().iter().filter_map(|a| a["id"].as_str()).collect();
+        assert!(ids.contains(&"extension.enable") && ids.contains(&"server.stop"), "{r:?}");
+        let r = session.handle_payload(&json!({ "id": "c7", "requestedBy": "u2", "hostOwnerDiscordId": "u1", "payload": catalog })).await;
+        assert!(denied(&r), "{r:?}");
+        let r = session.handle_payload(&json!({ "id": "c8", "requestedBy": "u1", "guildId": "g1", "payload": { "action": "catalog" } })).await;
+        assert_eq!(r["success"], false, "{r:?}");
+        // 문장 계획은 MCP로 받지 않는다
+        let text = json!({ "action": "plan", "via": "mcp", "text": "srv start" });
+        let r = session.handle_payload(&json!({ "id": "c9", "requestedBy": "u1", "hostOwnerDiscordId": "u1", "payload": text })).await;
+        assert_eq!((r["success"].as_bool(), r["data"]["code"].as_str()), (Some(false), Some("invalid_input")), "{r:?}");
+    }
+
     /// 원격 데몬 터널: 원격 포트가 꺼져 있거나 터널 id가 이상하면 받지 않는다
     #[tokio::test]
     async fn a_tunnel_is_refused_while_the_remote_port_is_off() {
@@ -2080,36 +2112,6 @@ mod tests {
         assert!(agent.lock().cancel.is_none() && !agent.lock().status.running);
     }
 
-    /// 릴레이는 실패 + `data.code`(UNKNOWN_COMMAND 등)를 보고 해석기를 부른다. 문구는 `data.error`
-    #[test]
-    fn unrecognized_raw_commands_fail_with_a_code() {
-        let unknown = crate::chat::Reply {
-            text: "Unknown command".into(),
-            code: Some("UNKNOWN_COMMAND"),
-            args: json!({ "command": "dance" }),
-        };
-        assert_eq!(
-            raw_command_result(unknown, false),
-            json!({ "success": false, "data": { "code": "UNKNOWN_COMMAND", "error": "Unknown command", "args": { "command": "dance" } } })
-        );
-        assert_eq!(raw_command_result("done".to_string().into(), false), json!({ "success": true, "data": { "text": "done" } }));
-    }
-
-    /// 채팅 명령 답도 액션 결과와 같이 PC의 경로를 가린 채 나간다 (I3)
-    #[test]
-    fn raw_command_replies_keep_local_paths_on_the_pc() {
-        let failed: crate::chat::Reply = "❌ 오류: Failed to start server: Failed to spawn process 'C:\\Users\\me\\java\\bin\\java.exe': not found".to_string().into();
-        let out = raw_command_result(failed, false).to_string();
-        assert!(!out.contains("Users") && out.contains("<path>"), "{out}");
-        let denied = crate::chat::Reply {
-            text: "no access to /home/me/servers/world".into(),
-            code: Some("PERMISSION_DENIED"),
-            args: json!({ "path": "D:\\Games\\mc" }),
-        };
-        let out = raw_command_result(denied, false).to_string();
-        assert!(!out.contains("/home/me") && !out.contains("Games"), "{out}");
-    }
-
     #[test]
     fn remote_action_module_errors_hide_diagnostics_and_sensitive_text() {
         let out = action_result(Err(crate::actions::ActionError {
@@ -2119,15 +2121,6 @@ mod tests {
         assert!(out["data"].get("stderr_tail").is_none());
         assert_eq!(out["data"]["error"], "peer x.x.x.x token=***");
         assert_eq!(out["data"]["path"], "<path>");
-    }
-
-    /// 챗봇이 부른 채팅 명령의 답은 액션 경로의 콘솔·조회 결과처럼 IP와 비밀처럼 보이는 값을 가린다
-    #[test]
-    fn raw_command_replies_to_the_chatbot_hide_secrets() {
-        let reply = || -> crate::chat::Reply { "joined from 10.0.0.5, password=hunter2".to_string().into() };
-        let out = raw_command_result(reply(), true).to_string();
-        assert!(!out.contains("10.0.0.5") && !out.contains("hunter2"), "{out}");
-        assert!(raw_command_result(reply(), false).to_string().contains("hunter2"), "a person asking directly sees the module's reply");
     }
 
     #[test]

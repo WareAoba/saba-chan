@@ -320,17 +320,15 @@ async fn single_module_word_shows_module_help() {
 }
 
 #[tokio::test]
-async fn node_settings_filter_instances_and_deny_commands() {
+async fn node_settings_filter_instances() {
     let api = fixture();
     let mut s = settings();
     s.node_settings = json!({
         "g1": {
-            "allowedInstances": ["i-mc"],
-            "memberPermissions": { "u1": { "i-mc": ["stop"] } }
+            "allowedInstances": ["i-mc"]
         }
     });
     let cat = Catalog::for_language("en");
-    assert_eq!(run(&api, &s, "mc stop").await, cat.t("errors.permission_denied", &[]));
     assert_eq!(run(&api, &s, "팰월드 start").await, cat.t("errors.unknown_input", &[]));
     assert!(!run(&api, &s, "list").await.contains("pal1"));
     assert!(api.calls().is_empty());

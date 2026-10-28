@@ -725,11 +725,11 @@ async fn a_plan_of_steps_makes_a_server_and_uses_it_with_one_confirmation() {
     let sneaky = json!([steps[0].clone(), { "id": "instance.settings.set", "instance": "@1", "input": { "java_path": "x" } }]);
     let err = plan_steps(&state, &sneaky, &owner_bot).await.unwrap_err();
     assert_eq!((err.code, err.data["field"].as_str(), err.data["step"].as_i64()), ("invalid_input", Some("steps[1].java_path"), Some(2)));
-    // 앞의 생성 단계만 가리킬 수 있고, 이름으로 찾는 액션은 안 된다
+    // 앞의 생성 단계만 가리킬 수 있다. 상태 조회도 id 길이라 새 서버에 쓸 수 있다
     let wrong = json!([{ "id": "server.start", "instance": "@1", "input": {} }]);
     assert_eq!(plan_steps(&state, &wrong, &owner_bot).await.unwrap_err().data["field"], "steps[0].instance");
-    let by_name = json!([steps[0].clone(), { "id": "server.status", "instance": "@1", "input": {} }]);
-    assert_eq!(plan_steps(&state, &by_name, &owner_bot).await.unwrap_err().data["field"], "steps[1].id");
+    let status = json!([steps[0].clone(), { "id": "server.status", "instance": "@1", "input": {} }]);
+    assert!(plan_steps(&state, &status, &owner_bot).await.is_ok());
 
     // 다른 사람은 실행하지 못하고, 요청자가 누르면 순서대로 한 번에
     let plan_id = planned["planId"].as_str().unwrap();
@@ -902,17 +902,73 @@ async fn built_in_server_actions_use_the_levels_set_for_their_commands() {
     assert!(plan(&state, "server.stop", Some(&id), &json!({}), &relay("owner", false)).await.is_ok());
 }
 
-/// GUI에서 사용자별로 막은 명령(`memberPermissions`)은 채팅 명령뿐 아니라 액션 메뉴·확인 버튼으로도 막힌다
+/// 예전 사람별 금지 목록(`memberPermissions`)은 판정에 쓰지 않는다: 레벨은 누적이다 (사용자 지정 2026-10-28)
 #[tokio::test]
-async fn commands_denied_to_a_member_stay_denied_through_actions() {
+async fn old_per_member_deny_lists_no_longer_block_actions() {
     let (state, id, _tmp) = server().await;
     set_node(&state, json!({ "ownerDiscordId": "owner", "preset": "loose", "defaultLevel": 2, "memberPermissions": { "admin": { id.clone(): ["stop"] } } })).await;
-    let admin = relay("admin", false);
-    let err = plan(&state, "server.stop", Some(&id), &json!({}), &admin).await.unwrap_err();
-    assert_eq!(err.code, "PERMISSION_DENIED");
-    assert_eq!(err.data["args"]["need"], 3);
-    assert!(plan(&state, "server.start", Some(&id), &json!({}), &admin).await.is_ok(), "only the denied command");
-    assert!(plan(&state, "server.stop", Some(&id), &json!({}), &relay("someone", false)).await.is_ok(), "only that member");
+    assert!(plan(&state, "server.stop", Some(&id), &json!({}), &relay("admin", false)).await.is_ok());
+}
+
+/// 권한 계단: 원격에서 부를 수 있는 명령·액션마다 `authorize`와 같은 요구 레벨을 싣는다
+#[tokio::test]
+async fn the_permission_board_lists_every_remote_command_at_the_level_it_needs() {
+    let module = format!("{MODULE}\n[[commands.fields]]\nname = \"say\"\nrisk = \"safe\"\n\n[[commands.fields]]\nname = \"ban\"\nrisk = \"danger\"\n\n[[commands.fields]]\nname = \"wipe\"\nrisk = \"safe\"\nremote = false\n");
+    let (state, id, _tmp) = server_with(&module).await;
+    set_node(&state, json!({ "preset": "default", "commandLevels": { format!("{}/stop", id): 3, "instance.create": 1 } })).await;
+    let board = permission_board(&state, "g", "ko").await;
+    let item = |key: &str| board["items"].as_array().unwrap().iter().find(|i| i["key"] == key).cloned();
+    let say = item(&format!("{}/say", id)).unwrap();
+    assert_eq!((&say["level"], &say["preset"], &say["overridden"], &say["kind"]), (&json!(0), &json!(0), &json!(false), &json!("command")));
+    assert_eq!(item(&format!("{}/ban", id)).unwrap()["level"], 2);
+    assert!(item(&format!("{}/wipe", id)).is_none(), "remote = false commands are not reachable from Discord");
+    // 내장 명령은 액션 하나로, 명령 경로와 같은 키로
+    let stop = item(&format!("{}/stop", id)).unwrap();
+    assert_eq!((&stop["level"], &stop["preset"], &stop["overridden"], &stop["name"]), (&json!(3), &json!(1), &json!(true), &json!("stop")));
+    assert_eq!(stop["keys"], json!([format!("{}/stop", id), format!("{}/server.stop", id)]));
+    assert_eq!(board["items"].as_array().unwrap().iter().filter(|i| i["name"] == "stop").count(), 1);
+    let restore = item(&format!("{}/backup.restore", id)).unwrap();
+    assert_eq!((&restore["level"], &restore["kind"]), (&json!(2), &json!("admin")));
+    let create = item("instance.create").unwrap();
+    assert_eq!((&create["level"], &create["preset"], &create["instance"]), (&json!(1), &json!(2), &Value::Null));
+    let update = item("update.apply").unwrap();
+    assert_eq!((&update["level"], &update["fixed"], &update["overridden"]), (&json!(3), &json!(true), &json!(false)));
+    assert!(item("extension.enable").is_none() && item(&format!("{}/instance.delete", id)).is_none(), "PC-only actions are not listed");
+    // 계단의 요구 레벨은 실제 판정과 같다
+    set_node(&state, json!({ "ownerDiscordId": "owner", "commandLevels": { format!("{}/stop", id): 3 }, "members": { "admin": 2 } })).await;
+    assert_eq!(plan(&state, "server.stop", Some(&id), &json!({}), &relay("admin", false)).await.unwrap_err().data["args"]["need"], 3);
+    // 이 길드에 열지 않은 서버는 싣지 않는다
+    set_node(&state, json!({ "allowedInstances": [] })).await;
+    let board = permission_board(&state, "g", "ko").await;
+    assert!(board["items"].as_array().unwrap().iter().all(|i| i["instance"].is_null()));
+    assert_eq!(board["instances"], json!([]));
+}
+
+/// 계단 항목마다 되묻기 단계 키(`commandRisks`와 같은 `<서버>/<액션 id>`)와 이 길드에서 쓰는 단계를 싣는다
+#[tokio::test]
+async fn the_permission_board_carries_each_commands_confirm_tier() {
+    let module = format!("{MODULE}\n[[commands.fields]]\nname = \"say\"\nrisk = \"safe\"\n");
+    let (state, id, _tmp) = server_with(&module).await;
+    let risks = json!({ format!("{id}/server.start"): "danger", format!("{id}/server.command:say"): "caution" });
+    set_node(&state, json!({ "discord": { "commandRisks": risks } })).await;
+    let board = permission_board(&state, "g", "ko").await;
+    let item = |name: &str| board["items"].as_array().unwrap().iter().find(|i| i["name"] == name).cloned().unwrap();
+    let start = item("start");
+    assert_eq!((&start["riskKey"], &start["confirmRisk"]), (&json!(format!("{id}/server.start")), &json!("danger")));
+    let say = item("say");
+    assert_eq!((&say["riskKey"], &say["risk"], &say["confirmRisk"]), (&json!(format!("{id}/server.command:say")), &json!("safe"), &json!("caution")));
+    let create = item("instance.create");
+    assert_eq!((&create["riskKey"], &create["confirmRisk"]), (&json!("instance.create"), &create["risk"]));
+}
+
+/// 채팅 `players`와 액션 `server.players`는 같은 덮어쓰기 키를 본다 (채팅 경로 BUILTIN_COMMANDS와 같다)
+#[test]
+fn every_chat_builtin_command_shares_its_override_key_with_its_action() {
+    for cmd in ["start", "stop", "restart", "status"] {
+        assert_eq!(override_keys("mc", &format!("server.{cmd}")), vec![format!("mc/{cmd}"), format!("mc/server.{cmd}")], "{cmd}");
+    }
+    // players는 릴레이 사전 판정과 같은 액션 키에 먼저 쓴다
+    assert_eq!(override_keys("mc", "server.players"), vec!["mc/server.players".to_string(), "mc/players".to_string()]);
 }
 
 /// 예약 작업은 나중에 요청자 없이 돈다: 새로 넣거나 켜는 서버 명령은 요청자가 지금 그 명령을 쓸 수 있어야 한다
@@ -920,8 +976,8 @@ async fn commands_denied_to_a_member_stay_denied_through_actions() {
 async fn scheduling_a_command_needs_the_requesters_permission_for_it() {
     let module = format!("{MODULE}\n[[commands.fields]]\nname = \"say\"\nrisk = \"safe\"\n\n[aliases.commands]\nsay = {{ aliases = [\"broadcast\"] }}\n");
     let (state, id, _tmp) = server_with(&module).await;
-    let levels = json!({ format!("{}/say", id): 3 });
-    set_node(&state, json!({ "ownerDiscordId": "owner", "preset": "loose", "chatbotCap": 2, "defaultLevel": 2, "commandLevels": levels, "memberPermissions": { "admin": { id.clone(): ["stop"] } } })).await;
+    let levels = json!({ format!("{}/say", id): 3, format!("{}/stop", id): 3 });
+    set_node(&state, json!({ "ownerDiscordId": "owner", "preset": "loose", "chatbotCap": 2, "defaultLevel": 2, "commandLevels": levels })).await;
     let task = |action: &str, command: Option<&str>| {
         json!({ "schedule": [{ "action": action, "at": "04:00", "command": command, "enabled": true }] })
     };
@@ -1282,4 +1338,61 @@ async fn mcp_requests_ask_by_the_local_rule_not_the_guild_level() {
     assert_eq!(stop["needsConfirm"], true);
     let err = run(&state, "", None, &Value::Null, stop["planId"].as_str(), &mcp).await.unwrap_err();
     assert_eq!(err.code, "confirm_required");
+}
+
+/// 원격 MCP(계정 주인의 AI 에이전트)는 앱과 같은 액션을 주인 레벨로 쓴다.
+/// 웹 원격·짝 맺은 PC처럼 PC에서만 하는 일과 PC 전용 칸은 막고, 확인이 필요한 계획은 주인의 확인으로만 돈다
+#[tokio::test]
+async fn an_mcp_owner_reaches_app_actions_but_not_pc_only_ones() {
+    let (state, id, _tmp) = server().await;
+    let owner = Caller::mcp("owner".into(), "owner".into(), None, None, "en".into());
+    assert_eq!(owner.surface, Gui);
+    assert_eq!(owner.origin.source, "mcp");
+    let enable = plan(&state, "extension.enable", None, &json!({ "extension": "x" }), &owner).await.unwrap();
+    assert_eq!(enable["needsConfirm"], false);
+    let err = plan(&state, "update.apply", None, &json!({}), &owner).await.unwrap_err();
+    assert_eq!((err.status, err.code), (403, "remote_local_only"));
+    let err = plan(&state, "instance.settings.set", Some(&id), &json!({ "java_path": "/bin/sh" }), &owner).await.unwrap_err();
+    assert_eq!((err.code, err.data["field"].as_str()), ("invalid_input", Some("java_path")), "{err:?}");
+    // 주인이 아니면 기본 레벨이다 (관리 액션은 막힌다)
+    let other = Caller::mcp("other".into(), "owner".into(), None, None, "en".into());
+    let err = plan(&state, "extension.enable", None, &json!({ "extension": "x" }), &other).await.unwrap_err();
+    assert_eq!(err.code, "PERMISSION_DENIED");
+
+    let stop = plan(&state, "server.stop", Some(&id), &json!({}), &owner).await.unwrap();
+    assert_eq!(stop["needsConfirm"], true);
+    let pid = stop["planId"].as_str().unwrap();
+    let err = run(&state, "", None, &Value::Null, Some(pid), &owner).await.unwrap_err();
+    assert_eq!(err.code, "confirm_required");
+    let confirmed = Caller::mcp("owner".into(), "owner".into(), Some("owner".into()), None, "en".into());
+    let ran = run(&state, "", None, &Value::Null, Some(pid), &confirmed).await;
+    assert!(ran.is_ok(), "{ran:?}");
+}
+
+/// 길드가 명령별로 정한 위험 단계(`discord.commandRisks["<서버>/<액션>"]`)로 디스코드 되묻기를 정한다. 앱은 고정 규칙 그대로
+#[tokio::test]
+async fn a_guild_can_retier_one_command_for_discord_confirms() {
+    let (state, id, _tmp) = server().await;
+    open_everything(&state).await;
+    let risks = json!({ format!("{id}/server.start"): "danger", format!("{id}/backup.restore"): "safe" });
+    set_node(&state, json!({ "ownerDiscordId": "owner", "preset": "loose", "chatbotCap": 2, "defaultLevel": 2, "discord": { "confirmLevel": "danger", "commandRisks": risks } })).await;
+    let asks = |action: &'static str, input: Value, caller: Caller| {
+        let (state, id) = (&state, id.clone());
+        async move { plan(state, action, Some(&id), &input, &caller).await.unwrap()["needsConfirm"] == true }
+    };
+    assert!(asks("server.start", json!({}), relay("owner", false)).await);
+    assert!(!asks("backup.restore", json!({ "name": "b" }), relay("owner", false)).await);
+    assert!(asks("backup.restore", json!({ "name": "b" }), gui()).await);
+    assert!(!asks("server.start", json!({}), gui()).await);
+}
+
+/// 명령별 위험 단계는 safe·caution·danger만 받고, null이면 지운다
+#[test]
+fn command_risks_take_known_tiers_and_null_removes() {
+    let mut s = crate::ipc::handlers::discord::GuildSettings::default();
+    s.apply(json!({ "commandRisks": { "i/server.start": "danger" } }).as_object().unwrap()).unwrap();
+    assert_eq!(s.command_risks.get("i/server.start").map(String::as_str), Some("danger"));
+    assert_eq!(s.apply(json!({ "commandRisks": { "i/x": "scary" } }).as_object().unwrap()).unwrap_err().0, "commandRisks.i/x");
+    s.apply(json!({ "commandRisks": { "i/server.start": null } }).as_object().unwrap()).unwrap();
+    assert!(s.command_risks.is_empty());
 }

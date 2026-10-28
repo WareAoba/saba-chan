@@ -256,6 +256,12 @@ pub enum BackupCmd {
 pub enum PermCmd {
     /// Levels, preset and overrides of one Discord server (name or id; without it: the only paired server)
     Show { guild: Option<String> },
+    /// Commands per level: from which level each command can be used (one server with `--server`)
+    Commands {
+        guild: Option<String>,
+        #[arg(long, value_name = "SERVER")]
+        server: Option<String>,
+    },
     /// Give a member (name or id) a level: admin, user, chatbot (Talking Saba-chan) or banned
     Grant { guild: String, member: String, level: String },
     /// Take a member's own level away (they get the default level)
@@ -474,6 +480,8 @@ pub enum ChatbotCmd {
     Models { guild: Option<String> },
     /// Remaining credit (only providers that report it for a regular key) and this month's usage of one Discord server
     Credit { guild: Option<String> },
+    /// Tools by category and whether each is on in one Discord server (change: `chatbot set tools=[lol,pubg] --guild ...`)
+    Tools { guild: Option<String> },
     /// Print the server prompt template (save it and use `chatbot set memo=@FILE --guild ...`)
     Template {
         /// Language of the template (default: the app language)
@@ -680,6 +688,15 @@ pub struct AddArgs {
     /// Game port (`--port` is the daemon's)
     #[arg(long = "game-port", value_name = "PORT")]
     pub game_port: Option<u16>,
+    /// Server version to install (games that download their server; default: the latest release)
+    #[arg(long = "game-version", value_name = "VERSION", conflicts_with = "from")]
+    pub game_version: Option<String>,
+    /// Install into this empty folder instead of saba-chan's own (its files stay when the server is removed)
+    #[arg(long, value_name = "DIR", conflicts_with = "from")]
+    pub dir: Option<String>,
+    /// Let the server run on its own: saba-chan starts it and watches whether it runs (no saba-chan console)
+    #[arg(long)]
+    pub unmanaged: bool,
     /// Start from one of the game's presets (`saba module info` lists them)
     #[arg(long, value_name = "ID")]
     pub preset: Option<String>,
@@ -913,6 +930,12 @@ pub enum BotCmd {
     Unpair,
     /// Erase everything the relay keeps about your Discord account (opens a consent page), then disconnect this PC
     Erase,
+    /// The AI agent (remote MCP) linked to your Discord account. It can manage every PC of the account
+    Agent {
+        /// Unlink the agent (it loses access at once)
+        #[arg(long)]
+        unlink: bool,
+    },
     /// Set the node token by hand (from a pairing done elsewhere). Asked for without showing it, or one line on stdin; never an argument
     Token,
     /// Show or change the chat prefixes: `prefix`, `prefix A B`, `prefix --default`
@@ -1389,6 +1412,7 @@ mod tests {
         assert!(p(&["bot", "token", "secret-token"]).is_err());
         assert!(matches!(p(&["bot", "token"]).unwrap().cmd, Some(Cmd::Bot(BotCmd::Token))));
         assert!(matches!(p(&["bot", "erase"]).unwrap().cmd, Some(Cmd::Bot(BotCmd::Erase))));
+        assert!(matches!(p(&["bot", "agent", "--unlink"]).unwrap().cmd, Some(Cmd::Bot(BotCmd::Agent { unlink: true }))));
         assert!(p(&["--json", "status"]).unwrap().global.json);
         assert!(p(&["status", "--json"]).unwrap().global.json);
     }

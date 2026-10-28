@@ -29,6 +29,7 @@ pub async fn run(ctx: &Ctx, cmd: ChatbotCmd) -> Result<()> {
         ChatbotCmd::Key { delete } => key(ctx, delete).await,
         ChatbotCmd::Models { guild } => models(ctx, guild.as_deref()).await,
         ChatbotCmd::Credit { guild } => credit(ctx, guild.as_deref()).await,
+        ChatbotCmd::Tools { guild } => tools(ctx, guild.as_deref()).await,
         ChatbotCmd::Template { locale } => {
             let r = ctx.api.chatbot_memo_template(locale.as_deref()).await?;
             // 파일로 받아 `set memo=@파일`에 쓰도록 글만 그대로 낸다
@@ -279,6 +280,56 @@ async fn models(ctx: &Ctx, guild: Option<&str>) -> Result<()> {
     Ok(())
 }
 
+/// 카테고리별 도구와 그 서버에서 켰는지 (앱의 서버 › 말하는 사바쨩 탭과 같은 내용). 도구 목록은 릴레이가 원본
+async fn tools(ctx: &Ctx, guild: Option<&str>) -> Result<()> {
+    let guild = resolve::guild(ctx, guild).await?;
+    let cfg = ctx.api.bot_config().await?;
+    let relay = cfg.pointer("/cloud/relayUrl").and_then(Value::as_str).filter(|u| !u.is_empty());
+    let catalog = ctx.api.chatbot_tools(&guild, relay).await?;
+    let view = ctx.api.chatbot_guild(&guild).await?;
+    let r = json!({ "guildId": guild, "catalog": catalog, "settings": view.get("settings").cloned().unwrap_or(Value::Null) });
+    ctx.out.data(&r, |r| {
+        for line in tool_lines(&r["catalog"], &r["settings"]) {
+            say!("{}", line);
+        }
+        ctx.out.hint(&format!("saba-chan-cli chatbot set tools=[lol,pubg] --guild {}", guild));
+    });
+    Ok(())
+}
+
+/// 카테고리 제목 아래 `이름  상태` 줄. 공통에서 막힌 도구는 막힘, 운영 키·제공사 때문에 못 쓰면 덧붙인다
+fn tool_lines(catalog: &Value, settings: &Value) -> Vec<String> {
+    let names = |v: &Value| -> Vec<String> {
+        v.as_array().map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect()).unwrap_or_default()
+    };
+    let on = names(&settings["tools"]);
+    let allowed = settings["allowedTools"].as_array().map(|_| names(&settings["allowedTools"]));
+    let tools = catalog["tools"].as_array().cloned().unwrap_or_default();
+    let mut lines = Vec::new();
+    for category in catalog["categories"].as_array().into_iter().flatten().filter_map(Value::as_str) {
+        let rows: Vec<&Value> = tools.iter().filter(|t| t["category"] == category).collect();
+        if rows.is_empty() {
+            continue;
+        }
+        lines.push(format!("[{}]", t!(&format!("chatbot.cat_{}", category))));
+        for tool in rows {
+            let name = s(tool, "name");
+            let mut state = if allowed.as_ref().is_some_and(|a| !a.iter().any(|x| x == name)) {
+                t!("chatbot.tool_blocked")
+            } else if on.iter().any(|x| x == name) {
+                t!("chatbot.tool_on")
+            } else {
+                t!("chatbot.tool_off")
+            };
+            if tool["available"] == json!(false) {
+                state = format!("{} ({})", state, t!("chatbot.tool_unavailable"));
+            }
+            lines.push(format!("  {:<14} {}", name, state));
+        }
+    }
+    lines
+}
+
 /// 남은 크레딧과 이번 달 사용량 (앱의 "남은 크레딧" 카드와 같은 내용)
 async fn credit(ctx: &Ctx, guild: Option<&str>) -> Result<()> {
     let guild = resolve::guild(ctx, guild).await?;
@@ -369,6 +420,31 @@ mod tests {
         let got = seen.lock().unwrap().clone();
         let row = format!("{}  {}", t!("chatbot.api_key"), console::strip_ansi_codes(&output::yes_no(true)));
         assert!(got.iter().any(|l| l.contains(&row)), "{got:?}");
+    }
+
+    /// 도구는 카테고리별로, 공통에서 막은 도구는 막힘, 운영 키가 없는 도구는 못 쓴다고 보인다
+    #[test]
+    fn tools_are_grouped_by_category_with_their_state() {
+        crate::i18n::init("ko");
+        let catalog = json!({
+            "categories": ["game_servers", "games", "info"],
+            "tools": [
+                { "name": "game_servers", "category": "game_servers", "available": true },
+                { "name": "lol", "category": "games", "available": true },
+                { "name": "pubg", "category": "games", "available": false, "unavailable": "operator_key" },
+                { "name": "maplestory", "category": "games", "available": true },
+            ],
+        });
+        let settings = json!({ "tools": ["lol", "maplestory"], "allowedTools": ["game_servers", "lol", "pubg"] });
+        let lines = tool_lines(&catalog, &settings);
+        assert_eq!(lines, vec![
+            format!("[{}]", t!("chatbot.cat_game_servers")),
+            format!("  {:<14} {}", "game_servers", t!("chatbot.tool_off")),
+            format!("[{}]", t!("chatbot.cat_games")),
+            format!("  {:<14} {}", "lol", t!("chatbot.tool_on")),
+            format!("  {:<14} {} ({})", "pubg", t!("chatbot.tool_off"), t!("chatbot.tool_unavailable")),
+            format!("  {:<14} {}", "maplestory", t!("chatbot.tool_blocked")),
+        ]);
     }
 
     /// 바꿀 수 있는 키는 데몬이 주는 기본값 표에서 온다: 바꾸지 않은 키도 기본값과 함께 보인다

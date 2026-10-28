@@ -1,12 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import {
-    CHATBOT_TOOLS,
-    ChatbotView,
-    relayErrorLines,
-    settingsDraft,
-    settingsPatch,
-} from '../components/discord/ChatbotView';
+import { ChatbotGuildTab } from '../components/discord/ChatbotGuildTab';
+import { ChatbotView, relayErrorLines, settingsDraft, settingsPatch } from '../components/discord/ChatbotView';
 import { draftProblems, formatBytes, fromDraft, MaintenanceTab, toDraft } from '../components/servers/MaintenanceTab';
 import { pickOption } from './dropdown';
 
@@ -23,7 +18,22 @@ const API_KEYS = [
     'chatbotClearMemory',
     'chatbotCredit',
     'chatbotMemoTemplate',
+    'chatbotTools',
 ];
+
+/** 릴레이가 주는 도구 목록 (GET /api/relay/node/:guild/chatbot/tools) */
+const CATALOG = {
+    categories: ['game_servers', 'games', 'info', 'create'],
+    tools: [
+        { name: 'game_servers', category: 'game_servers', available: true },
+        { name: 'lol', category: 'games', available: true },
+        { name: 'pubg', category: 'games', available: false, unavailable: 'operator_key' },
+        { name: 'maplestory', category: 'games', available: true },
+        { name: 'web_search', category: 'info', available: true },
+        { name: 'research', category: 'info', available: true },
+        { name: 'images', category: 'create', available: true },
+    ],
+};
 
 afterEach(() => {
     for (const k of API_KEYS) delete window.api[k];
@@ -241,17 +251,13 @@ describe('챗봇 설정 변환', () => {
         const d = settingsDraft({ model: 'gpt-x', ambientSeconds: 30, sessionSeconds: 60, triggerWords: ['a'] });
         expect(d).not.toHaveProperty('ambientSeconds');
         expect(d).not.toHaveProperty('triggerWords');
-        const p = settingsPatch({ ...d, enabled: true, disabledTools: ['images', 'lol'] });
-        expect(p).toMatchObject({ model: 'gpt-x', enabled: true, persona: null, memory: null });
+        const p = settingsPatch({ ...d, allowedTools: ['lol'] });
+        expect(p).toMatchObject({ model: 'gpt-x', persona: null, memory: null, allowedTools: ['lol'] });
         expect(Object.keys(p)).not.toContain('sessionSeconds');
-        // 계약 순서로 정리, 비면 null
-        expect(p.disabledTools).toEqual(['lol', 'images']);
-        expect(settingsPatch(d).disabledTools).toBeNull();
-    });
-
-    it('눈치 메모는 끌 수 없는 기본 사양이라 도구 목록에 없고, 예전에 꺼 둔 값은 다음 저장 때 지운다', () => {
-        expect(CHATBOT_TOOLS).not.toContain('social_notes');
-        expect(settingsPatch({ ...settingsDraft(), disabledTools: ['social_notes'] }).disabledTools).toBeNull();
+        // 켜기·도구는 서버마다 정하므로 공통으로 보내지 않는다
+        expect(Object.keys(p)).not.toContain('enabled');
+        expect(Object.keys(p)).not.toContain('disabledTools');
+        expect(settingsPatch(d).allowedTools).toBeNull();
     });
 
     it('추론 강도·끼어들기·확인 단계도 기본값이면 null, 게임 서버 도구도 끌 수 있다', () => {
@@ -263,7 +269,6 @@ describe('챗봇 설정 변환', () => {
             ambientEffort: 'low',
             confirmLevel: 'all',
         });
-        expect(CHATBOT_TOOLS[0]).toBe('game_servers');
         const p = settingsPatch({ ...d, effort: 'high', ambient: false, confirmLevel: 'caution' });
         expect(p).toMatchObject({ effort: 'high', ambient: false, confirmLevel: 'caution', ambientMinutes: null });
         expect(p).not.toHaveProperty('confirmCommands');
@@ -293,49 +298,41 @@ describe('ChatbotView', () => {
         expect(await screen.findByText(/retry on the next connection/)).toBeTruthy();
     });
 
-    it('노드 목록이 설정보다 늦게 와도 깨지지 않고, 그 전에 바꾼 값은 남는다', async () => {
+    it('전체 허용 도구는 카테고리별로, 막으면 목록을 보내고 모두 허용하면 다시 null', async () => {
         window.api.chatbotGet = vi.fn().mockResolvedValue({ success: true, settings: {}, guilds: {}, hasApiKey: true });
         window.api.chatbotSave = vi
             .fn()
             .mockResolvedValue({ success: true, settings: {}, guilds: {}, hasApiKey: true });
-        const { rerender } = render(<ChatbotView nodes={[]} />);
-        await screen.findByText('No Discord servers connected.');
-        fireEvent.click(screen.getByLabelText('Image generation'));
-        rerender(<ChatbotView nodes={nodes} />);
-        const sel = await screen.findByLabelText('Talking Saba-chan in My Guild');
-        expect(screen.getByLabelText('Image generation').checked).toBe(false);
-        pickOption(sel, 'Off');
+        window.api.chatbotTools = vi.fn().mockResolvedValue(CATALOG);
+        render(<ChatbotView nodes={nodes} />);
+        const images = await screen.findByLabelText('Image generation');
+        expect(window.api.chatbotTools).toHaveBeenCalledWith('g1');
+        expect(screen.getByText('Games')).toBeTruthy();
+        expect(screen.getByText('The Saba-chan server cannot use this tool right now.')).toBeTruthy();
+        expect(images.checked).toBe(true);
+        fireEvent.click(images);
         fireEvent.click(screen.getByRole('button', { name: 'Save' }));
         await waitFor(() => expect(window.api.chatbotSave).toHaveBeenCalled());
-        const patch = window.api.chatbotSave.mock.calls[0][0];
-        expect(patch.guilds).toEqual({ g1: { enabled: false, memo: null } });
-        expect(patch.settings.disabledTools).toEqual(['images']);
+        expect(window.api.chatbotSave.mock.calls[0][0]).toEqual({
+            settings: expect.objectContaining({
+                allowedTools: ['game_servers', 'lol', 'pubg', 'maplestory', 'web_search', 'research'],
+            }),
+        });
+        // 다시 허용하면 기본(모두 허용)으로
+        fireEvent.click(screen.getByLabelText('Image generation'));
+        expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
     });
 
-    it('노드 메모는 길드별로, 글자 수를 세고 넘으면 저장을 막는다; 도구 끄기는 disabledTools', async () => {
-        window.api.chatbotGet = vi.fn().mockResolvedValue({
-            success: true,
-            settings: { persona: 'old' },
-            guilds: { g1: { memo: '안녕' } },
-            hasApiKey: true,
-        });
-        window.api.chatbotSave = vi
-            .fn()
-            .mockResolvedValue({ success: true, settings: {}, guilds: {}, hasApiKey: true });
-        render(<ChatbotView nodes={nodes} />);
-        const memo = await screen.findByLabelText('Server prompt for My Guild');
-        expect(memo.value).toBe('안녕');
-        expect(screen.getByText('2 / 8,000')).toBeTruthy();
-        fireEvent.change(memo, { target: { value: 'x'.repeat(8001) } });
-        expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
-        fireEvent.change(memo, { target: { value: '반말로 대답해' } });
-        fireEvent.click(screen.getByLabelText('Image generation'));
-        fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-        await waitFor(() => expect(window.api.chatbotSave).toHaveBeenCalled());
-        const patch = window.api.chatbotSave.mock.calls[0][0];
-        expect(patch.guilds.g1.memo).toBe('반말로 대답해');
-        expect(patch.settings.disabledTools).toEqual(['images']);
-        expect(patch.settings.persona).toBeNull();
+    it('도구 목록을 못 불러오면 알리고 다시 묻는다; 서버가 없으면 연결을 안내한다', async () => {
+        window.api.chatbotGet = vi.fn().mockResolvedValue({ success: true, settings: {}, guilds: {}, hasApiKey: true });
+        window.api.chatbotTools = vi.fn().mockResolvedValueOnce({ error: 'NODE_NOT_FOUND' }).mockResolvedValue(CATALOG);
+        const { unmount } = render(<ChatbotView nodes={nodes} />);
+        expect(await screen.findByText('Could not load the tool list.')).toBeTruthy();
+        fireEvent.click(screen.getAllByRole('button', { name: 'Retry' }).at(-1));
+        expect(await screen.findByLabelText('Image generation')).toBeTruthy();
+        unmount();
+        render(<ChatbotView nodes={[]} />);
+        expect(await screen.findByText('Connect a Discord server to load the tool list.')).toBeTruthy();
     });
 
     it('추론 강도·끼어들기를 고르고, 끼어들기를 끄면 주기와 판단 강도는 잠긴다', async () => {
@@ -346,7 +343,6 @@ describe('ChatbotView', () => {
         render(<ChatbotView nodes={nodes} />);
         pickOption(await screen.findByLabelText('Reasoning effort'), 'High');
         pickOption(screen.getByLabelText('Check interval'), 'Every 10 min');
-        fireEvent.click(screen.getByLabelText('Game servers'));
         fireEvent.click(screen.getByLabelText('Join in uninvited'));
         expect(screen.getByLabelText('Check interval')).toBeDisabled();
         expect(screen.getByLabelText('Join-in reasoning effort')).toBeDisabled();
@@ -357,7 +353,6 @@ describe('ChatbotView', () => {
             ambient: false,
             ambientMinutes: 10,
             ambientEffort: null,
-            disabledTools: ['game_servers'],
         });
     });
 
@@ -366,7 +361,7 @@ describe('ChatbotView', () => {
         window.api.chatbotMemoTemplate = vi
             .fn()
             .mockResolvedValue({ success: true, locale: 'en', template: '## Room vibe\n<!-- guide -->\n' });
-        render(<ChatbotView nodes={nodes} />);
+        render(<ChatbotGuildTab node={nodes[0]} />);
         const memo = await screen.findByLabelText('Server prompt for My Guild');
         fireEvent.click(screen.getByRole('button', { name: 'Insert template' }));
         await waitFor(() => expect(memo.value).toBe('## Room vibe\n<!-- guide -->\n'));
@@ -450,25 +445,88 @@ describe('ChatbotView', () => {
         expect(await screen.findByText('None')).toBeTruthy();
     });
 
-    it('길드 설정을 바꿔 저장하고, 릴레이 400을 보여준다', async () => {
-        window.api.chatbotGet = vi
+    it('서버 탭: 새 서버는 꺼져 있고, 켜기·도구·프롬프트를 그 서버에만 저장한다; 공통에서 막힌 도구는 잠근다', async () => {
+        window.api.chatbotGet = vi.fn().mockResolvedValue({
+            success: true,
+            settings: { allowedTools: ['lol', 'web_search'] },
+            guilds: {},
+            guildDefault: { enabled: false, tools: [] },
+            hasApiKey: true,
+        });
+        window.api.chatbotSave = vi
             .fn()
-            .mockResolvedValue({ success: true, settings: {}, guilds: {}, hasApiKey: false });
+            .mockResolvedValue({ success: true, settings: {}, guilds: {}, hasApiKey: true });
+        window.api.chatbotTools = vi.fn().mockResolvedValue(CATALOG);
+        render(<ChatbotGuildTab node={nodes[0]} />);
+        const on = await screen.findByLabelText('Use Talking Saba-chan in this server');
+        expect(on.checked).toBe(false);
+        const lol = await screen.findByLabelText('LoL stats');
+        expect(lol.checked).toBe(false);
+        expect(screen.getByLabelText('Image generation')).toBeDisabled();
+        expect(screen.getAllByText('This tool is blocked in the shared settings.').length).toBeGreaterThan(0);
+        fireEvent.click(on);
+        fireEvent.click(lol);
+        const memo = screen.getByLabelText('Server prompt for My Guild');
+        fireEvent.change(memo, { target: { value: 'x'.repeat(8001) } });
+        expect(screen.getByText('8,001 / 8,000')).toBeTruthy();
+        expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+        fireEvent.change(memo, { target: { value: '반말로 대답해' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+        await waitFor(() =>
+            expect(window.api.chatbotSave).toHaveBeenCalledWith({
+                guilds: { g1: { enabled: true, tools: ['lol'], memo: '반말로 대답해' } },
+            }),
+        );
+    });
+
+    it('서버 탭: 저장은 됐지만 릴레이에 못 보냈으면 그렇다고 알린다', async () => {
+        window.api.chatbotGet = vi.fn().mockResolvedValue({
+            success: true,
+            settings: {},
+            guilds: {},
+            guildDefault: { enabled: false, tools: [] },
+            hasApiKey: true,
+        });
+        window.api.chatbotSave = vi.fn().mockResolvedValue({
+            success: true,
+            settings: {},
+            guilds: { g1: { enabled: true, tools: [] } },
+            hasApiKey: true,
+            sync: [{ guildId: 'g1', ok: false, status: 0, error: 'relay_unreachable' }],
+        });
+        window.api.chatbotTools = vi.fn().mockResolvedValue(CATALOG);
+        render(<ChatbotGuildTab node={nodes[0]} />);
+        fireEvent.click(await screen.findByLabelText('Use Talking Saba-chan in this server'));
+        fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+        expect(await screen.findByText(/sync on the next connection/)).toBeTruthy();
+    });
+
+    it('서버 탭: 옛 공통 설정이 남아 있으면 그 값(guildDefault)으로 보이고, 릴레이 400과 기억 지우기', async () => {
+        window.api.chatbotGet = vi.fn().mockResolvedValue({
+            success: true,
+            settings: {},
+            guilds: {},
+            guildDefault: { enabled: true, tools: ['game_servers', 'web_search'] },
+            hasApiKey: false,
+        });
         window.api.chatbotSave = vi.fn().mockResolvedValue({
             success: false,
             guildId: 'g1',
             status: 400,
             error: 'invalid_settings',
-            details: ['channelIds too long'],
+            details: ['tools too long'],
         });
         window.api.chatbotClearMemory = vi.fn().mockResolvedValue({ success: true });
-        render(<ChatbotView nodes={nodes} />);
-        const sel = await screen.findByLabelText('Talking Saba-chan in My Guild');
-        pickOption(sel, 'On');
+        window.api.chatbotTools = vi.fn().mockResolvedValue(CATALOG);
+        render(<ChatbotGuildTab node={nodes[0]} />);
+        expect((await screen.findByLabelText('Use Talking Saba-chan in this server')).checked).toBe(true);
+        expect((await screen.findByLabelText('Web search')).checked).toBe(true);
+        expect(screen.getByText(/Add a key/)).toBeTruthy();
+        fireEvent.click(screen.getByLabelText('Web search'));
         fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-        await screen.findByText(/channelIds too long/);
+        await screen.findByText(/tools too long/);
         expect(window.api.chatbotSave).toHaveBeenCalledWith({
-            guilds: { g1: { enabled: true, memo: null } },
+            guilds: { g1: { enabled: true, tools: ['game_servers'], memo: null } },
         });
 
         fireEvent.click(screen.getByRole('button', { name: 'Clear memory' }));

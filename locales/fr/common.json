@@ -17,7 +17,6 @@
     }
   },
   "app_name": "Saba-chan",
-  "app_description": "Plateforme de gestion des serveurs de jeux modulaire",
   "success": "Succès",
   "error": "Erreur",
   "warning": "Avertissement",
@@ -37,7 +36,6 @@
     "existing_running": "Le daemon existant est en cours d'exécution",
     "starting": "Démarrage du daemon...",
     "started": "Daemon démarré",
-    "preparing": "Préparation du daemon... (délai dépassé)",
     "failed_to_start": "Impossible de démarrer le démon",
     "check_warning": "Avertissement lors de la vérification du daemon: {{error}}"
   },
@@ -62,8 +60,7 @@
   },
   "network": {
     "connection_refused": "Impossible de se connecter au daemon. Vérifiez que le daemon est en cours d'exécution",
-    "timeout": "Délai d'attente de la demande dépassé: Le serveur n'a pas répondu",
-    "not_found": "Serveur non trouvé. Vérifiez vos paramètres réseau"
+    "timeout": "Délai d'attente de la demande dépassé: Le serveur n'a pas répondu"
   },
   "port_conflict": {
     "force_stop_title": "Conflit de port : {{name}} arrêté",
@@ -107,7 +104,6 @@
     "settings_http": "Impossible d'enregistrer les paramètres (HTTP {{status}}) : {{error}}",
     "http": "Erreur (HTTP {{status}})",
     "command_failed": "Impossible d'exécuter la commande : {{error}}",
-    "no_log_file": "Aucun fichier journal",
     "url_missing": "Aucune URL indiquée",
     "url_not_web": "Seules les adresses http(s) peuvent être ouvertes",
     "path_missing": "Aucun chemin indiqué",

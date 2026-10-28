@@ -7,18 +7,9 @@
     "restart": "重新啟動伺服器"
   },
   "help": {
-    "title": "📖 使用指南",
-    "list": "檢查伺服器列表",
-    "start": "啟動伺服器",
-    "stop": "停止伺服器",
-    "status": "檢查伺服器狀態",
-    "rest_command": "執行REST命令",
-    "help": "顯示此幫助訊息",
     "available_modules": "**可用模組：** {{modules}}",
     "no_modules": "無",
-    "module_commands": "**模組命令：**{{commands}}",
     "module_title": "**{{module}} 命令**",
-    "command_format": "未知命令：\"{{command}}\"（{{resolved}}）",
     "available_commands": "{{commands}}",
     "usage_format": "`{{prefix}} <模組> <命令>`",
     "modules_header": "📦 **模組:**"
@@ -75,20 +66,6 @@
     }
   },
   "responses": {
-    "info_title": "**伺服器資訊**",
-    "info_version": "• 版本：{{version}}",
-    "info_name": "• 伺服器名稱：{{name}}",
-    "info_description": "• 描述：{{description}}",
-    "players_title": "**連接的玩家（{{count}}）**",
-    "players_empty": "目前沒有玩家在線",
-    "players_item": "• **{{name}}** - Lv.{{level}}（{{id}}）",
-    "metrics_title": "**伺服器指標**",
-    "metrics_players": "• 目前玩家數：{{current}}/{{max}}",
-    "metrics_fps": "• 伺服器FPS：{{fps}}",
-    "metrics_uptime": "• 執行時間：{{uptime}} 分鐘",
-    "announce_success": "✅ 公告已傳送",
-    "save_success": "✅ 世界已保存",
-    "command_executed": "✅ 命令已執行",
     "command_complete": "✅ 命令已執行！",
     "empty_list": "(空)"
   },
@@ -120,37 +97,15 @@
     "local_single_guild_only": "⚠️ 本地機器人只能在一個伺服器中使用。目前已加入{{count}}個伺服器，請從不使用的伺服器中移除機器人。"
   },
   "messages": {
-    "server_started": "伺服器已啟動",
-    "server_stopped": "伺服器已停止",
-    "server_not_running": "伺服器未執行",
-    "command_error": "執行命令出錯",
-    "raw_command_success": "✅ {{output}}",
-    "raw_command_error": "❌ {{error}}"
+    "command_error": "執行命令出錯"
   },
   "cloud": {
-    "not_configured": "❌ 雲端模式未設定。",
-    "register_complete": "✅ 註冊完成！權杖已透過私訊傳送。",
-    "register_failed": "❌ 註冊失敗：{{error}}",
-    "already_registered": "ℹ️ 已註冊。Host ID：{{hostId}}",
     "status_online": "🟢 線上",
     "status_offline": "⚪ 離線",
-    "status_check_failed": "❌ 狀態檢查失敗：{{error}}",
-    "acl_granted": "✅ 已授予 {{user}} 權限等級 {{level}}。",
-    "acl_revoked": "✅ 已撤銷 {{user}} 的權限。",
-    "music_local_only": "🎵 音樂功能僅在本地模式下可用。"
+    "status_check_failed": "❌ 狀態檢查失敗：{{error}}"
   },
   "relay": {
     "command_complete": "✅ 完成"
-  },
-  "rps": {
-    "prompt": "✊✌️✋ 請選一個！",
-    "draw": "{{bot}}！平局！再來一次~ 🔄",
-    "user_win": "{{bot}}！我輸了... 😵",
-    "bot_win": "{{bot}}！我贏了~ 😋",
-    "timeout": "⏰ 時間到！下次再挑戰吧~",
-    "scissors": "剪刀",
-    "rock": "石頭",
-    "paper": "布"
   },
   "schedule": {
     "restart_warning": "伺服器將在 {{minutes}} 分鐘後重新啟動。",
@@ -346,8 +301,7 @@
       "ambientEffort": "插話判斷推理強度",
       "confirmLevel": "執行前確認層級",
       "memory": "記憶",
-      "webSearch": "網頁搜尋",
-      "disabledTools": "已關閉的工具組",
+      "tools": "啟用的工具",
       "step": "步驟",
       "from_snapshot": "來自遊戲自動備份"
     },

@@ -48,7 +48,20 @@
     },
     "ask_mode": "Que faire du dossier du serveur ?",
     "mode_link": "Le laisser en place",
-    "mode_move": "Le déplacer dans saba-chan (même lecteur uniquement ; supprimer un serveur déplacé supprime ses fichiers)"
+    "mode_move": "Le déplacer dans saba-chan (même lecteur uniquement ; supprimer un serveur déplacé supprime ses fichiers)",
+    "folder_not_empty": "{{dir}} contient déjà des fichiers. Choisissez un dossier vide, ou reliez un serveur existant avec --from.",
+    "port_in_use": "{{servers}} utilise aussi le port {{port}}. Lancés ensemble, les ports entrent en conflit.",
+    "port_reserved": "Windows a réservé le port {{port}}, il ne peut pas être ouvert. Choisissez-en un autre avec --game-port.",
+    "ask_version": "Version du serveur",
+    "version_latest": "Dernière version (recommandée)",
+    "version_not_chosen": "On ne peut choisir une version que pour une nouvelle installation d'un jeu dont saba-chan télécharge le serveur ({{game}}).",
+    "ask_location": "Où placer les fichiers du serveur ?",
+    "location_default": "Dossier de saba-chan (recommandé)",
+    "location_custom": "Un autre dossier vide (ses fichiers restent si le serveur est supprimé)",
+    "ask_dir": "Dossier d'installation",
+    "ask_run": "Comment le serveur doit-il tourner ?",
+    "run_managed": "Géré par saba-chan (recommandé)",
+    "run_unmanaged": "De lui-même (sans console saba-chan)"
   },
   "bot": {
     "ask_token": "Jeton du nœud",
@@ -94,6 +107,10 @@
     "erase_expired": "Le lien d’accord a expiré. Relance bot erase.",
     "erase_failed": "Tes données ont été effacées, mais la connexion de ce PC n’a pas pu être retirée. Lance bot unpair.",
     "erase_no_url": "Le relais n’a fourni aucune page d’accord.",
+    "agent_none": "Aucun agent IA n'est lié. Ajoutez {{url}} à un agent comme ChatGPT ou Claude pour qu'il gère les PC de votre compte Discord.",
+    "agent_linked": "L'agent IA {{name}} peut gérer tous les PC de votre compte Discord. Dernière utilisation : {{when}}",
+    "confirm_agent_unlink": "Délier l'agent IA ? Il perd immédiatement l'accès aux PC de ce compte.",
+    "agent_unlinked": "Agent IA délié.",
     "invite": "Invitez le bot sur votre serveur Discord avec ce lien :",
     "channel": "salon",
     "channel_ambiguous": "Plusieurs salons s'appellent {{name}}. Utilisez son id.",
@@ -638,6 +655,7 @@
     "preflight_failed": "Échec de la préparation de l'environnement d'exécution des modules de jeu : {{error}}. Nouvel essai à la prochaine action sur un serveur."
   },
   "stop": {
+    "confirm": "Êtes-vous sûr de vouloir arrêter le serveur {{name}}?",
     "already": "{{name}} n'est pas lancé.",
     "done": "{{name}} arrêté.",
     "not_yet": "{{name}} n'est pas encore arrêté. Forcez l'arrêt : saba-chan-cli stop --force {{name}}",
@@ -713,6 +731,7 @@
       "audit": "Qui a démarré, arrêté ou envoyé des commandes aux serveurs, et d'où (GUI, CLI, Discord, planification)",
       "perm": "Qui peut lancer quelles commandes depuis Discord (niveaux par membre, préréglage, exceptions)",
       "perm.show": "Niveaux, préréglage et exceptions d'un serveur Discord",
+      "perm.commands": "Commandes par niveau : à partir de quel niveau chaque commande est utilisable (un serveur avec --server)",
       "perm.grant": "Donner un niveau à un membre : admin, user, chatbot ou banned",
       "perm.revoke": "Retirer le niveau propre d'un membre (il reçoit le niveau par défaut)",
       "perm.default": "Niveau des membres sans niveau propre",
@@ -803,6 +822,7 @@
       "bot.lang.value": "auto ou un code de langue (ko, en, ja, zh-CN, zh-TW, es, pt-BR, ru, de, fr)",
       "bot.prefix.values": "Un ou plusieurs préfixes (sans espace, 32 caractères max, 10 max)",
       "bot.prefix.default": "Revenir au préfixe par défaut de la langue de l'app",
+      "bot.agent.unlink": "Délier l'agent (l'accès s'arrête immédiatement)",
       "bot.music.on": "Activer la musique",
       "bot.music.off": "Désactiver la musique",
       "bot.music.ui": "Afficher le panneau du lecteur (on ou off)",
@@ -852,11 +872,14 @@
       "bot.notice.on": "Activer l’alerte de démarrage",
       "bot.notice.off": "Désactiver l’alerte de démarrage",
       "bot.confirm.direct": "Demandes au bot — Commandes à préfixe et commandes slash.",
-      "bot.confirm.chatbot": "Saba-chan qui parle — Les tâches d'administration choisies par Saba-chan qui parle et les demandes mêlant plusieurs personnes demandent toujours, quel que soit ce réglage."
+      "bot.confirm.chatbot": "Saba-chan qui parle — Les tâches d'administration choisies par Saba-chan qui parle et les demandes mêlant plusieurs personnes demandent toujours, quel que soit ce réglage.",
+      "game_version": "Version du serveur à installer (jeux dont le serveur est téléchargé ; par défaut : la dernière)",
+      "unmanaged": "De lui-même : saba-chan le lance et vérifie seulement qu'il tourne (sans console)"
     },
     "after": "Les noms peuvent être partiels (ex. start pal). Sans argument dans un terminal, le menu plein écran s'ouvre (SABA_NO_TUI=1 : le shell interactif).\nDans les scripts, utilisez --json et --yes. Codes de sortie : 0 ok · 1 échec · 2 utilisation · 3 daemon injoignable · 4 introuvable · 130 annulé"
   },
   "restart": {
+    "confirm": "Arrêter puis redémarrer « {{name}} » ? Les joueurs connectés seront déconnectés un instant.",
     "waiting": "Redémarrage de {{name}}...",
     "done": "{{name}} redémarré."
   },
@@ -995,7 +1018,15 @@
     "credit_balance_none": "Impossible d’obtenir le solde pour le moment.",
     "credit_usage": "Utilisation ce mois-ci ({{month}}, UTC)",
     "credit_usage_line": "{{calls}} appels au modèle · {{input}} jetons d’entrée ({{cached}} en cache) · {{output}} jetons de sortie",
-    "credit_exhausted": "Le crédit est épuisé ({{time}}). Saba-chan ne peut plus répondre tant qu’il n’est pas rechargé."
+    "credit_exhausted": "Le crédit est épuisé ({{time}}). Saba-chan ne peut plus répondre tant qu’il n’est pas rechargé.",
+    "cat_game_servers": "Serveurs de jeu",
+    "cat_games": "Jeux",
+    "cat_info": "Trouver des infos",
+    "cat_create": "Créer",
+    "tool_on": "activé",
+    "tool_off": "désactivé",
+    "tool_blocked": "bloqué dans les réglages communs",
+    "tool_unavailable": "indisponible pour le moment"
   },
   "trust": {
     "verified": "vérifié",
@@ -1282,7 +1313,7 @@
       "owner": "propriétaire",
       "admin": "admin",
       "user": "utilisateur",
-      "chatbot": "Saba-chan qui parle",
+      "chatbot": "Invité",
       "banned": "banni"
     }
   },

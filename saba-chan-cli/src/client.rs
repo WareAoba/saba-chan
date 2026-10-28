@@ -346,6 +346,10 @@ impl Api {
     pub async fn create_instance(&self, body: Value) -> Result<Value> {
         self.post_long("/api/instances", body).await
     }
+    /// POST /api/instances/check — 만들지 않고 이름·폴더·포트 충돌만 본다 (몸은 create_instance와 같다)
+    pub async fn check_instance(&self, body: Value) -> Result<Value> {
+        self.post("/api/instances/check", body).await
+    }
     /// DELETE /api/instance/:id (`keep_settings`: 가져온 서버의 게임 설정 파일을 되돌리지 않는다)
     pub async fn delete_instance(&self, id: &str, keep_settings: bool) -> Result<Value> {
         let query = if keep_settings { "?keep_settings=true" } else { "" };
@@ -721,6 +725,10 @@ impl Api {
     pub async fn permissions(&self, guild: &str) -> Result<Value> {
         self.get(&format!("/api/permissions/{}", seg(guild))).await
     }
+    /// GET /api/permissions/:guildId/commands?locale — 명령 계단 `{guildId, instances, items}`
+    pub async fn permission_commands(&self, guild: &str, locale: &str) -> Result<Value> {
+        self.get(&format!("/api/permissions/{}/commands?locale={}", seg(guild), seg(locale))).await
+    }
     /// PATCH /api/permissions/:guildId `{defaultLevel?, preset?, chatbotCap?, ownerDiscordId?, commandLevels?}`
     pub async fn update_permissions(&self, guild: &str, patch: Value) -> Result<Value> {
         self.patch(&format!("/api/permissions/{}", seg(guild)), patch).await
@@ -865,6 +873,15 @@ impl Api {
         self.get("/api/relay/privacy/erase").await
     }
 
+    /// GET /api/relay/mcp/grant — 이 PC 주인 계정의 AI 에이전트 연결 `{grant:{clientName, createdAt, lastUsedAt}|null}`
+    pub async fn mcp_grant(&self) -> Result<Value> {
+        self.get("/api/relay/mcp/grant").await
+    }
+    /// DELETE /api/relay/mcp/grant — 에이전트 연결 끊기 (204)
+    pub async fn mcp_grant_revoke(&self) -> Result<Value> {
+        self.delete("/api/relay/mcp/grant").await
+    }
+
     // ── 디스코드 릴레이 ──
 
     /// GET /api/relay/agent — `{running, relayUrl, hasToken, lastHeartbeatAt, lastError, commandsHandled}`
@@ -941,6 +958,14 @@ impl Api {
     pub async fn chatbot_credit(&self, guild_id: &str, relay_url: Option<&str>) -> Result<Value> {
         self.get(&with_query(
             &format!("/api/relay/node/{}/chatbot/credit", seg(guild_id)),
+            &[("relayUrl", relay_url.map(str::to_string))],
+        ))
+        .await
+    }
+    /// GET /api/relay/node/:guild/chatbot/tools — `{categories, tools: [{name, category, available, unavailable?}]}`
+    pub async fn chatbot_tools(&self, guild_id: &str, relay_url: Option<&str>) -> Result<Value> {
+        self.get(&with_query(
+            &format!("/api/relay/node/{}/chatbot/tools", seg(guild_id)),
             &[("relayUrl", relay_url.map(str::to_string))],
         ))
         .await
@@ -1596,11 +1621,7 @@ mod route_coverage {
         ("/api/extensions/{id}/gui/styles", "GUI 번들"),
         ("/api/extensions/{id}/icon", "GUI 그림"),
         ("/api/extensions/{id}/i18n/{locale}", "GUI 번들 문구"),
-        ("/api/server/{name}/status", "이름 기반 옛 길 (CLI는 인스턴스 id 길)"),
         ("/api/instance/{id}/status", "GUI가 시작·정지가 끝났는지 묻는 길 (CLI `server info`·`list`는 /api/servers 상태를 쓴다)"),
-        ("/api/server/{name}/start", "이름 기반 옛 길"),
-        ("/api/server/{name}/stop", "이름 기반 옛 길"),
-        ("/api/instance/{id}/managed/start", "start가 관리 모드를 데몬에 맡긴다"),
         ("/api/remote/daemons/{host_id}/proxy/{*rest}", "원격 데몬 중계: 데몬 API 전체를 그 데몬으로 넘기는 길 (원격 데몬 고르기는 G1)"),
     ];
 

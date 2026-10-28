@@ -799,14 +799,11 @@ impl IPCServer {
             .route("/api/events", get(handlers::events::stream))
             // ── Server query/control ──
             .route("/api/servers", get(handlers::server::list_servers))
-            .route("/api/server/{name}/status", get(handlers::server::get_server_status))
-            .route("/api/server/{name}/start", post(handlers::server::start_server_handler))
             .route("/api/instance/{id}/status", get(handlers::server::get_instance_status))
             .route("/api/instance/{id}/start", post(handlers::server::start_instance_handler))
             .route("/api/instance/{id}/events", get(handlers::server::instance_events_handler))
             .route("/api/instance/{id}/stop", post(handlers::server::stop_instance_handler))
             .route("/api/instance/{id}/restart", post(handlers::server::restart_instance_handler))
-            .route("/api/server/{name}/stop", post(handlers::server::stop_server_handler))
             .route("/api/modules", get(handlers::server::list_modules))
             .route("/api/modules/refresh", post(handlers::server::refresh_modules))
             .route("/api/version", get(handlers::server::version_handler))
@@ -821,6 +818,7 @@ impl IPCServer {
             // ── Instance CRUD ──
             .route("/api/instances", get(handlers::instance::list_instances).post(handlers::instance::create_instance))
             .route("/api/instances/reorder", put(handlers::instance::reorder_instances))
+            .route("/api/instances/check", post(handlers::instance::check_new_instance))
             .route("/api/instance/{id}/rename", post(handlers::instance::rename_instance))
             .route("/api/instance/{id}", get(handlers::instance::get_instance).delete(handlers::instance::delete_instance).patch(handlers::instance::update_instance_settings))
             .route("/api/instance/{id}/launch-preview", post(handlers::instance::launch_preview))
@@ -835,7 +833,6 @@ impl IPCServer {
             .route("/api/instance/{id}/rcon", post(handlers::command::rcon_route))
             .route("/api/instance/{id}/rest", post(handlers::command::rest_route))
             // ── Managed-process & module-feature endpoints ──
-            .route("/api/instance/{id}/managed/start", post(handlers::managed::start_managed_route))
             .route("/api/instance/{id}/console", get(handlers::managed::get_console_handler))
             .route("/api/instance/{id}/logs", get(handlers::logs::logs_handler))
             .route("/api/instance/{id}/logs/export", get(handlers::logs::export_handler))
@@ -871,7 +868,7 @@ impl IPCServer {
             .route("/api/migration/export", post(handlers::migration::export))
             .route("/api/migration/import", post(handlers::migration::import))
             // ── Node token (cloud relay auth) ──
-            .route("/api/config/node-token", get(handlers::config::get_node_token).put(handlers::config::save_node_token).delete(handlers::config::delete_node_token))
+            .route("/api/config/node-token", put(handlers::config::save_node_token).delete(handlers::config::delete_node_token))
             // ── Module locales ──
             .route("/api/module/{name}/locales", get(handlers::config::get_module_locales))
             // ── System components (release manifest) ──
@@ -889,6 +886,10 @@ impl IPCServer {
             .route(
                 "/api/permissions/{guild_id}",
                 get(handlers::permissions::get_permissions).patch(handlers::permissions::update_permissions),
+            )
+            .route(
+                "/api/permissions/{guild_id}/commands",
+                get(handlers::permissions::get_command_board),
             )
             .route(
                 "/api/permissions/{guild_id}/members/{discord_id}",
@@ -951,9 +952,11 @@ impl IPCServer {
             )
             .route("/api/relay/node/{guild_id}/chatbot/models", get(handlers::relay::get_node_chatbot_models))
             .route("/api/relay/node/{guild_id}/chatbot/credit", get(handlers::relay::get_node_chatbot_credit))
+            .route("/api/relay/node/{guild_id}/chatbot/tools", get(handlers::relay::get_node_chatbot_tools))
             .route("/api/relay/bot-invite", get(handlers::relay::get_bot_invite))
             .route("/api/relay/pair/initiate", post(handlers::relay::initiate_pairing))
             .route("/api/relay/pair/{code}/status", get(handlers::relay::poll_pairing_status))
+            .route("/api/relay/mcp/grant", get(handlers::relay::get_mcp_grant).delete(handlers::relay::revoke_mcp_grant))
             .route("/api/relay/link-requests", get(handlers::relay::list_link_requests))
             .route("/api/relay/link-requests/{request_id}", post(handlers::relay::answer_link_request))
             // 개인정보 모두 지우기: 웹사이트에서 동의하면 릴레이가 지우고, 데몬이 연결을 끊는다

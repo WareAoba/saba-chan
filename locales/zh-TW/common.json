@@ -17,7 +17,6 @@
     }
   },
   "app_name": "Saba-chan",
-  "app_description": "模組化遊戲伺服器管理平台",
   "success": "成功",
   "error": "錯誤",
   "warning": "警告",
@@ -37,7 +36,6 @@
     "existing_running": "現有守護程序正在執行",
     "starting": "啟動守護程序...",
     "started": "守護程序已啟動",
-    "preparing": "準備守護程序...（逾時）",
     "failed_to_start": "無法啟動常駐程式",
     "check_warning": "檢查守護程序時出現警告：{{error}}"
   },
@@ -62,8 +60,7 @@
   },
   "network": {
     "connection_refused": "無法連線到守護程序。請檢查守護程序是否在執行",
-    "timeout": "請求逾時：伺服器無回應",
-    "not_found": "找不到伺服器。請檢查網路設定"
+    "timeout": "請求逾時：伺服器無回應"
   },
   "port_conflict": {
     "force_stop_title": "連接埠衝突：{{name}} 已停止",
@@ -107,7 +104,6 @@
     "settings_http": "無法儲存設定 (HTTP {{status}}): {{error}}",
     "http": "錯誤 (HTTP {{status}})",
     "command_failed": "無法執行指令: {{error}}",
-    "no_log_file": "沒有記錄檔",
     "url_missing": "未指定網址",
     "url_not_web": "只能開啟 http(s) 位址",
     "path_missing": "未指定路徑",

@@ -73,8 +73,8 @@ pub async fn plan_steps(server: &IPCServer, steps: &Value, caller: &Caller) -> R
                 let (Some(from), Some(maker)) = (from, maker) else {
                     return Err(step_error(n, bad_input("instance", "must name an earlier instance.create step")));
                 };
-                // 서버 이름으로 찾는 라우트·모듈 명령은 서버가 있어야 한다
-                if !find(id).is_some_and(|d| d.instance && !d.path.contains(":iname")) {
+                // 모듈 명령은 서버가 있어야 한다 (카탈로그의 인스턴스 액션만 된다)
+                if !find(id).is_some_and(|d| d.instance) {
                     return Err(step_error(n, bad_input("id", "cannot run on a server made in this plan")));
                 }
                 let module = maker.pointer("/input/module_name").and_then(Value::as_str);
@@ -96,7 +96,7 @@ pub async fn plan_steps(server: &IPCServer, steps: &Value, caller: &Caller) -> R
                 (Step::Ready(r.clone()), r, None)
             }
         };
-        confirm |= needs_confirm(server, &r.id, r.kind, &r.risk, caller).await;
+        confirm |= needs_confirm(server, &r.id, r.instance.as_deref(), r.kind, &r.risk, caller).await;
         if r.risk == "danger" || (r.risk == "caution" && risk == "safe") {
             risk = if r.risk == "danger" { "danger" } else { "caution" };
         }

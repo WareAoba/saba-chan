@@ -11,17 +11,7 @@ use std::collections::HashMap;
 use super::super::IPCServer;
 use crate::supervisor::Supervisor;
 
-/// POST /api/instance/:id/managed/start 라우트: 시작을 감사에 남긴다 (서버 시작 경로가 안에서 부를 때는 그쪽이 남긴다)
-pub async fn start_managed_route(
-    Path(id): Path<String>,
-    State(state): State<IPCServer>,
-    LooseJson(payload): LooseJson<serde_json::Value>,
-) -> axum::response::Response {
-    let resp = start_managed_handler(Path(id.clone()), State(state.clone()), LooseJson(payload)).await.into_response();
-    super::audited(&state, "start", &id, None, None, resp).await
-}
-
-/// POST /api/instance/:id/managed/start — Start with managed process (stdin/stdout capture)
+/// 관리 시작 (stdin/stdout을 잡는다). `POST /api/instance/:id/start`가 고르면 부른다 (감사는 그쪽이 남긴다)
 pub async fn start_managed_handler(
     Path(id): Path<String>,
     State(state): State<IPCServer>,

@@ -60,14 +60,10 @@ pub static ROUTES: &[Route] = &[
     not_on_web("GET", "/api/events"),
     // ── 서버 ──
     allow("GET", "/api/servers"),
-    allow("GET", "/api/server/{name}/status"),
     allow("GET", "/api/instance/{id}/status"),
-    allow("POST", "/api/server/{name}/start"),
-    allow("POST", "/api/server/{name}/stop"),
     allow("POST", "/api/instance/{id}/start"),
     allow("POST", "/api/instance/{id}/stop"),
     allow("POST", "/api/instance/{id}/restart"),
-    allow("POST", "/api/instance/{id}/managed/start"),
     allow("GET", "/api/instance/{id}/events"),
     allow("GET", "/api/instance/{id}/console"),
     allow("POST", "/api/instance/{id}/stdin"),
@@ -87,6 +83,7 @@ pub static ROUTES: &[Route] = &[
     // ── 인스턴스 ──
     allow("GET", "/api/instances"),
     allow("POST", "/api/instances"),
+    allow("POST", "/api/instances/check"),
     allow("PUT", "/api/instances/reorder"),
     allow("GET", "/api/instance/{id}"),
     allow("PATCH", "/api/instance/{id}"),
@@ -165,7 +162,6 @@ pub static ROUTES: &[Route] = &[
     deny("POST", "/api/config/{kind}/reset"),
     deny("POST", "/api/migration/export"),
     deny("POST", "/api/migration/import"),
-    deny("GET", "/api/config/node-token"),
     deny("PUT", "/api/config/node-token"),
     deny("DELETE", "/api/config/node-token"),
     // 원격 데몬 포트와 짝 맺은 PC (D1)
@@ -204,6 +200,7 @@ pub static ROUTES: &[Route] = &[
     // ── 멤버 권한과 길드별 서버 노출 ──
     allow("GET", "/api/permissions/{guild_id}"),
     allow("PATCH", "/api/permissions/{guild_id}"),
+    allow("GET", "/api/permissions/{guild_id}/commands"),
     allow("PUT", "/api/permissions/{guild_id}/members/{discord_id}"),
     allow("DELETE", "/api/permissions/{guild_id}/members/{discord_id}"),
     allow("GET", "/api/instance/{id}/words"),
@@ -222,9 +219,13 @@ pub static ROUTES: &[Route] = &[
     deny("PUT", "/api/relay/node/{guild_id}/channels"),
     deny("GET", "/api/relay/node/{guild_id}/chatbot/models"),
     deny("GET", "/api/relay/node/{guild_id}/chatbot/credit"),
+    deny("GET", "/api/relay/node/{guild_id}/chatbot/tools"),
     deny("GET", "/api/relay/bot-invite"),
     deny("POST", "/api/relay/pair/initiate"),
     deny("GET", "/api/relay/pair/{code}/status"),
+    // 계정의 에이전트 연결은 PC에서만 보고 끊는다
+    deny("GET", "/api/relay/mcp/grant"),
+    deny("DELETE", "/api/relay/mcp/grant"),
     deny("GET", "/api/relay/link-requests"),
     deny("POST", "/api/relay/link-requests/{request_id}"),
     deny("GET", "/api/relay/privacy/erase"),
@@ -393,18 +394,9 @@ static FIELD_RULES: &[(&str, &str, FieldRule)] = &[
     ("PATCH", "/api/instance/{id}", |body, file_fields| {
         body.keys().filter(|k| SETTINGS_PC_ONLY.contains(&k.as_str()) || file_fields.contains(k)).cloned().collect()
     }),
-    ("POST", "/api/instances", |body, file_fields| {
-        let mut keys: Vec<String> = body.keys().filter(|k| CREATE_PC_ONLY.contains(&k.as_str())).cloned().collect();
-        if let Some(settings) = body.get("module_settings").and_then(Value::as_object) {
-            keys.extend(
-                settings
-                    .keys()
-                    .filter(|k| file_fields.contains(k) || SETTINGS_PC_ONLY.contains(&k.as_str()))
-                    .map(|k| format!("module_settings.{k}")),
-            );
-        }
-        keys
-    }),
+    // 만들기 전 확인도 같은 칸을 막는다: 원격이 PC의 아무 폴더가 있는지·비었는지를 묻지 못하게
+    ("POST", "/api/instances/check", create_blocked),
+    ("POST", "/api/instances", create_blocked),
     // 게임 설정 파일 쓰기도 인스턴스 설정과 같은 칸을 막는다 (같은 값이 파일을 거쳐 인스턴스 설정으로 돌아온다)
     ("PUT", "/api/instance/{id}/properties", |body, file_fields| {
         body.get("settings")
@@ -423,6 +415,20 @@ static FIELD_RULES: &[(&str, &str, FieldRule)] = &[
         body.keys().filter(|k| ["download_url", "sha256"].contains(&k.as_str())).cloned().collect()
     }),
 ];
+
+/// `POST /api/instances`(와 그 확인)에서 PC에서만 정하는 칸
+fn create_blocked(body: &serde_json::Map<String, Value>, file_fields: &[String]) -> Vec<String> {
+    let mut keys: Vec<String> = body.keys().filter(|k| CREATE_PC_ONLY.contains(&k.as_str())).cloned().collect();
+    if let Some(settings) = body.get("module_settings").and_then(Value::as_object) {
+        keys.extend(
+            settings
+                .keys()
+                .filter(|k| file_fields.contains(k) || SETTINGS_PC_ONLY.contains(&k.as_str()))
+                .map(|k| format!("module_settings.{k}")),
+        );
+    }
+    keys
+}
 
 fn field_rule(method: &str, pattern: &str) -> Option<FieldRule> {
     FIELD_RULES.iter().find(|(m, p, _)| *m == method && *p == pattern).map(|(_, _, rule)| *rule)
@@ -540,7 +546,7 @@ mod tests {
                 assert!(pc_only(r.method, r.pattern), "{} {}", r.method, r.pattern);
             }
         }
-        assert!(pc_only("GET", "/api/config/node-token"));
+        assert!(pc_only("PUT", "/api/config/node-token"));
         assert!(!pc_only("GET", "/api/events"), "the web only lacks it");
         assert!(!pc_only("GET", "/api/servers"));
     }
@@ -561,7 +567,7 @@ mod tests {
     #[test]
     fn refuses_pc_only_routes() {
         for (method, path) in [
-            ("GET", "/api/config/node-token"),
+            ("PUT", "/api/config/node-token"),
             ("POST", "/api/daemon/shutdown"),
             ("POST", "/api/updates/install"),
             ("POST", "/api/actions/update.apply/run"),
@@ -580,9 +586,9 @@ mod tests {
     #[test]
     fn refuses_unknown_routes_and_methods() {
         // 라우터는 HEAD를 GET 처리기로 답한다: 웹은 표에 없는 HEAD를 받지 않는다
-        assert_eq!(decide("HEAD", "/api/config/node-token"), Err(Refusal::NotAllowed));
+        assert_eq!(decide("HEAD", "/api/config/gui"), Err(Refusal::NotAllowed));
         assert_eq!(decide("HEAD", "/api/servers"), Err(Refusal::NotAllowed));
-        assert!(pc_only("HEAD", "/api/config/node-token"), "the paired PC treats HEAD as GET");
+        assert!(pc_only("HEAD", "/api/config/gui"), "the paired PC treats HEAD as GET");
         assert_eq!(decide("GET", "/api/brand-new"), Err(Refusal::NotAllowed));
         assert_eq!(decide("PUT", "/api/instance/abc/start"), Err(Refusal::NotAllowed));
         assert_eq!(
@@ -640,12 +646,12 @@ mod tests {
             path_segments("/api/server/Survival%201%2F2/stop"),
             Some(vec!["api".into(), "server".into(), "Survival 1/2".into(), "stop".into()])
         );
-        assert_eq!(decide("POST", "/api/server/Survival%201%2F2/stop"), Ok("/api/server/{name}/stop"));
-        assert_eq!(decide("GET", "/api/server/a%5Cb/status"), Ok("/api/server/{name}/status"));
+        assert_eq!(decide("POST", "/api/instance/Survival%201%2F2/stop"), Ok("/api/instance/{id}/stop"));
+        assert_eq!(decide("GET", "/api/instance/a%5Cb/status"), Ok("/api/instance/{id}/status"));
         // 이름 가운데·끝의 나눔 문자는 이름이다. 맨 앞이 나눔 문자거나 드라이브(`X:`)면 절대 경로라 받지 않는다
-        assert_eq!(decide("GET", "/api/server/a%2F/status"), Ok("/api/server/{name}/status"));
-        assert_eq!(decide("GET", "/api/server/%2Fetc/status"), Err(Refusal::BadPath));
-        assert_eq!(decide("GET", "/api/server/D%3A%5Cgames/status"), Err(Refusal::BadPath));
+        assert_eq!(decide("GET", "/api/instance/a%2F/status"), Ok("/api/instance/{id}/status"));
+        assert_eq!(decide("GET", "/api/instance/%2Fetc/status"), Err(Refusal::BadPath));
+        assert_eq!(decide("GET", "/api/instance/D%3A%5Cgames/status"), Err(Refusal::BadPath));
         // 리터럴 조각을 인코딩한 `/`로 이어 붙여도 그 라우트가 아니다
         assert_eq!(decide("GET", "/api/config%2Fnode-token"), Err(Refusal::NotAllowed));
         assert_eq!(path_segments("/api/remote%2Fclients"), Some(vec!["api".into(), "remote/clients".into()]));
@@ -654,8 +660,8 @@ mod tests {
     #[test]
     fn accepts_percent_encoded_names() {
         assert_eq!(
-            decide("GET", "/api/server/%EB%A7%88%EC%9D%B8/status"),
-            Ok("/api/server/{name}/status")
+            decide("GET", "/api/instance/%EB%A7%88%EC%9D%B8/status"),
+            Ok("/api/instance/{id}/status")
         );
     }
 
@@ -685,6 +691,8 @@ mod tests {
             blocked,
             vec!["migration_source", "module_settings.java_path", "working_dir"]
         );
+        // 만들기 전 확인도 같다: 원격은 PC 폴더가 있는지·비었는지 묻지 못한다
+        assert_eq!(blocked_fields("POST", "/api/instances/check", Some(&body), &["java_path".to_string()]), blocked);
     }
 
     /// REST 대상(주소·포트)은 PC에서만 정한다: 인스턴스 설정·만들기·게임 설정 파일 어느 쪽으로도

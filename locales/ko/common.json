@@ -17,7 +17,6 @@
     }
   },
   "app_name": "사바쨩",
-  "app_description": "모듈형 게임 서버 관리 플랫폼",
   "success": "성공",
   "error": "오류",
   "warning": "경고",
@@ -37,7 +36,6 @@
     "existing_running": "기존 데몬이 실행 중입니다",
     "starting": "데몬을 시작합니다...",
     "started": "데몬 시작 완료",
-    "preparing": "데몬 준비 중... (시간 초과)",
     "failed_to_start": "데몬을 시작하지 못했습니다",
     "check_warning": "데몬 확인 중 경고: {{error}}"
   },
@@ -62,8 +60,7 @@
   },
   "network": {
     "connection_refused": "데몬에 연결할 수 없습니다. 데몬이 실행 중인지 확인해 주세요",
-    "timeout": "요청 시간 초과: 서버가 응답하지 않습니다",
-    "not_found": "서버를 찾을 수 없습니다. 네트워크 설정을 확인해 주세요"
+    "timeout": "요청 시간 초과: 서버가 응답하지 않습니다"
   },
   "port_conflict": {
     "force_stop_title": "포트 충돌: {{name}} 정지됨",
@@ -107,7 +104,6 @@
     "settings_http": "설정을 저장하지 못했어요 (HTTP {{status}}): {{error}}",
     "http": "오류 (HTTP {{status}})",
     "command_failed": "명령을 실행하지 못했어요: {{error}}",
-    "no_log_file": "로그 파일이 없어요",
     "url_missing": "주소가 없어요",
     "url_not_web": "http(s) 주소만 열 수 있어요",
     "path_missing": "경로가 없어요",

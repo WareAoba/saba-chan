@@ -7,18 +7,9 @@
     "restart": "Reiniciar servidor"
   },
   "help": {
-    "title": "📖 Guia de Uso",
-    "list": "Ver lista de servidores",
-    "start": "Iniciar servidor",
-    "stop": "Parar servidor",
-    "status": "Verificar status do servidor",
-    "rest_command": "Executar comando REST",
-    "help": "Mostrar esta mensagem de ajuda",
     "available_modules": "**Módulos disponíveis:** {{modules}}",
     "no_modules": "Nenhum",
-    "module_commands": "**Comandos do módulo:**{{commands}}",
     "module_title": "**Comandos {{module}}**",
-    "command_format": "Comando desconhecido: \"{{command}}\" ({{resolved}})",
     "available_commands": "{{commands}}",
     "usage_format": "`{{prefix}} <módulo> <comando>`",
     "modules_header": "📦 **Módulos:**"
@@ -75,20 +66,6 @@
     }
   },
   "responses": {
-    "info_title": "**Informações do Servidor**",
-    "info_version": "• Versão: {{version}}",
-    "info_name": "• Nome do servidor: {{name}}",
-    "info_description": "• Descrição: {{description}}",
-    "players_title": "**Jogadores Conectados ({{count}})**",
-    "players_empty": "Nenhum jogador conectado",
-    "players_item": "• **{{name}}** - Nv.{{level}} ({{id}})",
-    "metrics_title": "**Métricas do Servidor**",
-    "metrics_players": "• Jogadores atuais: {{current}}/{{max}}",
-    "metrics_fps": "• FPS do servidor: {{fps}}",
-    "metrics_uptime": "• Tempo de atividade: {{uptime}} minutos",
-    "announce_success": "✅ Anúncio enviado",
-    "save_success": "✅ Mundo salvo",
-    "command_executed": "✅ Comando executado",
     "command_complete": "✅ Comando executado!",
     "empty_list": "(vazio)"
   },
@@ -120,37 +97,15 @@
     "local_single_guild_only": "⚠️ O bot local só pode ser usado em um servidor. Este bot está em {{count}} servidores. Remova-o dos servidores que você não usa."
   },
   "messages": {
-    "server_started": "Servidor iniciado",
-    "server_stopped": "Servidor parado",
-    "server_not_running": "O servidor não está em execução",
-    "command_error": "Erro ao executar comando",
-    "raw_command_success": "✅ {{output}}",
-    "raw_command_error": "❌ {{error}}"
+    "command_error": "Erro ao executar comando"
   },
   "cloud": {
-    "not_configured": "❌ O modo cloud não está configurado.",
-    "register_complete": "✅ Registro completo! Token enviado por DM.",
-    "register_failed": "❌ Falha no registro: {{error}}",
-    "already_registered": "ℹ️ Já registrado. Host ID: {{hostId}}",
     "status_online": "🟢 Online",
     "status_offline": "⚪ Offline",
-    "status_check_failed": "❌ Falha na verificação de status: {{error}}",
-    "acl_granted": "✅ Nível de permissão {{level}} concedido a {{user}}.",
-    "acl_revoked": "✅ Permissões revogadas para {{user}}.",
-    "music_local_only": "🎵 A função de música está disponível apenas no modo local."
+    "status_check_failed": "❌ Falha na verificação de status: {{error}}"
   },
   "relay": {
     "command_complete": "✅ Concluído"
-  },
-  "rps": {
-    "prompt": "✊✌️✋ Escolha um!",
-    "draw": "{{bot}}! Empate! De novo~ 🔄",
-    "user_win": "{{bot}}! Eu perdi... 😵",
-    "bot_win": "{{bot}}! Eu ganhei~ 😋",
-    "timeout": "⏰ Tempo esgotado! Tente novamente da próxima vez~",
-    "scissors": "Tesoura",
-    "rock": "Pedra",
-    "paper": "Papel"
   },
   "schedule": {
     "restart_warning": "O servidor será reiniciado em {{minutes}} min.",
@@ -346,8 +301,7 @@
       "ambientEffort": "Esforço ao decidir entrar",
       "confirmLevel": "Nível de confirmação antes de executar",
       "memory": "Memória",
-      "webSearch": "Busca na web",
-      "disabledTools": "Ferramentas desativadas",
+      "tools": "Ferramentas ativadas",
       "step": "Etapa",
       "from_snapshot": "Do backup automático do jogo"
     },

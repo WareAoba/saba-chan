@@ -123,7 +123,7 @@ class RealRelay:
         return self.call("claim", code=code, discordId=discord_id, guildId=guild_id)
 
     def command(self, guild_id: str, text: str, requested_by: str, timeout: float = 90) -> dict:
-        """디스코드 명령 대신 raw_command. 데몬 결과까지 기다린다 → {ok, result:{success,data}}"""
+        """디스코드 문장 명령 대신 문장 계획 → run_plan. 데몬 결과까지 기다린다 → {ok, reply:{ok, data}}"""
         return self.call("command", timeout=timeout, guildId=guild_id, text=text, requestedBy=requested_by)
 
     def action(self, guild_id: str, requested_by: str, call: dict, timeout: float = 90) -> dict:

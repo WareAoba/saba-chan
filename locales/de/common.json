@@ -17,7 +17,6 @@
     }
   },
   "app_name": "Saba-chan",
-  "app_description": "Modulare Verwaltungsplattform für Spielserver",
   "success": "Erfolg",
   "error": "Fehler",
   "warning": "Warnung",
@@ -37,7 +36,6 @@
     "existing_running": "Vorhandener Daemon läuft",
     "starting": "Daemon wird gestartet...",
     "started": "Daemon gestartet",
-    "preparing": "Daemon wird vorbereitet... (Zeitüberschreitung)",
     "failed_to_start": "Der Daemon konnte nicht gestartet werden",
     "check_warning": "Warnung beim Überprüfen des Daemon: {{error}}"
   },
@@ -62,8 +60,7 @@
   },
   "network": {
     "connection_refused": "Verbindung zum Daemon nicht möglich. Prüfen Sie, ob der Daemon läuft",
-    "timeout": "Anfrage-Zeitüberschreitung: Server antwortete nicht",
-    "not_found": "Server nicht gefunden. Prüfen Sie die Netzwerkeinstellungen"
+    "timeout": "Anfrage-Zeitüberschreitung: Server antwortete nicht"
   },
   "port_conflict": {
     "force_stop_title": "Portkonflikt: {{name}} gestoppt",
@@ -107,7 +104,6 @@
     "settings_http": "Einstellungen konnten nicht gespeichert werden (HTTP {{status}}): {{error}}",
     "http": "Fehler (HTTP {{status}})",
     "command_failed": "Befehl konnte nicht ausgeführt werden: {{error}}",
-    "no_log_file": "Keine Logdatei",
     "url_missing": "Keine URL angegeben",
     "url_not_web": "Nur http(s)-Adressen können geöffnet werden",
     "path_missing": "Kein Pfad angegeben",

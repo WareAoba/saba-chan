@@ -298,7 +298,9 @@ async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
     // 1) 새로 설치 / 기존 폴더 (폴더를 고르면 게임은 폴더를 보고 알아낸다)
     let mut from = a.from.clone();
     let mut move_folder = a.move_folder;
-    if from.is_none() && ctx.ask.enabled && a.name.is_none() {
+    // 새 설치에만 있는 선택(--dir, --game-version)을 줬으면 묻지 않는다
+    let fresh_only = a.dir.is_some() || a.game_version.is_some();
+    if from.is_none() && ctx.ask.enabled && a.name.is_none() && !fresh_only {
         let installs = given
             .as_ref()
             .is_none_or(|m| m.get("install").is_some_and(|i| !i.is_null()));
@@ -373,6 +375,9 @@ async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
             resolve::choose(ctx, &t!("noun.game"), all.clone(), resolve::module_label)?
         }
     };
+    if let Some(why) = platform_refusal(&module) {
+        return Err(failed(why));
+    }
     let module_name = s(&module, "name").to_string();
     let display = if s(&module, "display_name").is_empty() {
         module_name.clone()
@@ -515,6 +520,38 @@ async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
         }
     }
 
+    // 5-2) 버전·파일 위치·실행 방식 (GUI 마법사와 같다). 고르지 않으면 데몬 기본값: 최신, 사바쨩 폴더, 사바쨩이 관리
+    let downloads = module.pointer("/install/method").and_then(Value::as_str) == Some("download");
+    let mut version = a.game_version.clone();
+    if version.is_some() && (from.is_some() || !downloads) {
+        return Err(usage(t!("add.version_not_chosen", game = display)));
+    }
+    if version.is_none() && downloads && from.is_none() && ctx.ask.enabled {
+        // 목록을 받지 못하면 최신으로 설치한다 (GUI와 같다)
+        let versions = ctx.api.module_versions(&module_name, false, 1, 50).await.map(|v| release_versions(&v)).unwrap_or_default();
+        if !versions.is_empty() {
+            let mut choices = vec![t!("add.version_latest")];
+            choices.extend(versions.iter().cloned());
+            if let Some(i) = ctx.ask.select(&t!("add.ask_version"), &choices, 0)?.filter(|i| *i > 0) {
+                version = Some(versions[i - 1].clone());
+            }
+        }
+    }
+    let mut dir = a.dir.clone();
+    if dir.is_none() && from.is_none() && ctx.ask.enabled {
+        let choices = [t!("add.location_default"), t!("add.location_custom")];
+        if ctx.ask.select(&t!("add.ask_location"), &choices, 0)? == Some(1) {
+            dir = ctx.ask.text(&t!("add.ask_dir"), None, false)?;
+        }
+    }
+    // 데몬은 전체 경로만 받는다 (--from과 같다)
+    let dir = dir.map(|d| crate::cmd::config::daemon_path(ctx, std::path::Path::new(&d))).transpose()?;
+    let mut managed = !a.unmanaged;
+    if managed && from.is_none() && ctx.ask.enabled {
+        let choices = [t!("add.run_managed"), t!("add.run_unmanaged")];
+        managed = ctx.ask.select(&t!("add.ask_run"), &choices, 0)? != Some(1);
+    }
+
     // --set 값은 만들기 전에 검사한다 (틀리면 서버도 설치 작업도 남기지 않는다)
     let mut patch = Map::new();
     for (k, v) in later_set {
@@ -533,6 +570,15 @@ async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
     if let Some(p) = a.game_port {
         body["port"] = json!(p);
     }
+    if let Some(v) = &version {
+        body["version"] = json!(v);
+    }
+    if let Some(d) = &dir {
+        body["working_dir"] = json!(d);
+    }
+    if !managed {
+        body["managed_start"] = json!(false);
+    }
     if let Some(dir) = &from {
         body["migration_source"] = json!(dir);
         if move_folder {
@@ -541,6 +587,17 @@ async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
     }
     if !ext_data.is_empty() {
         body["extension_data"] = Value::Object(ext_data);
+    }
+    // 6-1) 다른 서버와 겹치는지 (GUI 마법사의 확인 단계): 이름·폴더는 막고 포트는 알린다.
+    // 확인하지 못하면(옛 데몬 등) 그대로 만든다: 만들기가 이름·폴더를 다시 본다
+    if let Ok(check) = ctx.api.check_instance(body.clone()).await {
+        let (blockers, warnings) = check_problems(&check);
+        for w in &warnings {
+            ctx.out.warn(w);
+        }
+        if !blockers.is_empty() {
+            return Err(usage(blockers.join("\n")));
+        }
     }
     // 7-0) 약관 (예: 게임 EULA). GUI처럼 만들기 전에 묻고, 묻고서 동의하지 않으면 만들지 않는다.
     // 물을 수 없으면(`--json`, 터미널 아님) `--accept`로 댄 것만 동의하고 만든 뒤 `server agree`를 안내한다
@@ -632,6 +689,48 @@ async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
     }
     ctx.out.hint(&format!("saba-chan-cli start {}", shell_word(&name)));
     Ok(())
+}
+
+/// 만들기 전 확인(`/api/instances/check`)에서 만들기를 막는 것(같은 이름, 다른 서버가 쓰는 폴더, 파일이 든 폴더)과
+/// 알리기만 하는 것(다른 서버도 쓰는 포트, Windows가 예약한 포트)
+fn check_problems(check: &Value) -> (Vec<String>, Vec<String>) {
+    let mut blockers = Vec::new();
+    if check.pointer("/name/taken") == Some(&json!(true)) {
+        blockers.push(t!("add.name_taken", name = s(&check["name"], "value")));
+    }
+    let folder = &check["folder"];
+    if let Some(other) = folder.get("in_use_by").and_then(Value::as_str) {
+        blockers.push(t!("add.folder_in_use", dir = s(folder, "path"), name = other));
+    }
+    if folder.get("not_empty") == Some(&json!(true)) {
+        blockers.push(t!("add.folder_not_empty", dir = s(folder, "path")));
+    }
+    let mut warnings = Vec::new();
+    for port in check.get("ports").and_then(Value::as_array).into_iter().flatten() {
+        let number = port.get("port").map(Value::to_string).unwrap_or_default();
+        let users: Vec<&str> = port.get("in_use_by").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str).collect();
+        if !users.is_empty() {
+            warnings.push(t!("add.port_in_use", port = number, servers = users.join(", ")));
+        }
+        if port.get("reserved") == Some(&json!(true)) {
+            warnings.push(t!("add.port_reserved", port = number));
+        }
+    }
+    (blockers, warnings)
+}
+
+/// 고를 수 있는 서버 버전 (`/api/module/:name/versions`): GUI처럼 정식 릴리스만, 종류가 없는 항목은 그대로
+fn release_versions(list: &Value) -> Vec<String> {
+    list.get("versions")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|v| v.get("type").and_then(Value::as_str).is_none_or(|t| t.is_empty() || t == "release"))
+        .filter_map(|v| match v.get("id") {
+            Some(id) => Some(id.as_str().map(str::to_string).unwrap_or_else(|| id.to_string())),
+            None => v.as_str().map(str::to_string),
+        })
+        .collect()
 }
 
 /// 이름에 공백이 있으면 따옴표
@@ -888,7 +987,21 @@ async fn finish_start(ctx: &Ctx, sv: &Server, res: Result<Value>, no_wait: bool,
 
 pub async fn stop(ctx: &Ctx, a: StopArgs) -> Result<()> {
     let sv = resolve::server(ctx, a.server.as_deref()).await?;
+    ensure_stop(ctx, &sv, "stop").await?;
     stop_server(ctx, &sv, a.force, a.no_wait).await
+}
+
+/// 켜진 서버를 끊는 명령(정지·재시작)은 앱·웹·CLI에서 늘 묻는다 (GUI 확인 창과 같은 고정 규칙). 꺼진 서버는 끊을 것이 없어 묻지 않는다
+async fn ensure_stop(ctx: &Ctx, sv: &Server, cmd: &str) -> Result<()> {
+    if status_of(&runtime(ctx, sv).await?) == "stopped" {
+        return Ok(());
+    }
+    ask_stop(ctx, sv, cmd)
+}
+
+/// `--yes`면 묻지 않는다
+fn ask_stop(ctx: &Ctx, sv: &Server, cmd: &str) -> Result<()> {
+    ctx.ask.ensure(&t!(&format!("{cmd}.confirm"), name = sv.name))
 }
 
 pub async fn stop_server(ctx: &Ctx, sv: &Server, force: bool, no_wait: bool) -> Result<()> {
@@ -930,6 +1043,7 @@ pub async fn stop_server(ctx: &Ctx, sv: &Server, force: bool, no_wait: bool) -> 
 
 pub async fn restart(ctx: &Ctx, a: RestartArgs) -> Result<()> {
     let sv = resolve::server(ctx, a.server.as_deref()).await?;
+    ensure_stop(ctx, &sv, "restart").await?;
     let spin = crate::progress::spinner(&t!("restart.waiting", name = sv.name));
     let mut r = ctx.api.restart(&sv.id, a.force).await;
     spin.finish_and_clear();
@@ -2029,6 +2143,15 @@ fn module_agreements(module: &Value, locales: Option<&Value>) -> Vec<Value> {
     }).collect()
 }
 
+/// 이 데몬의 OS·CPU에서 돌지 않는 모듈이면 그 이유 (`platform_supported`, `unsupported_reason`). 돌면 None
+fn platform_refusal(module: &Value) -> Option<String> {
+    if module.get("platform_supported").and_then(Value::as_bool) != Some(false) {
+        return None;
+    }
+    let code = if s(module, "unsupported_reason") == "arch" { "module_arch_unsupported" } else { "module_platform_unsupported" };
+    crate::i18n::try_t(&format!("module_errors.{code}")).or_else(|| crate::i18n::try_t("module_errors.module_platform_unsupported"))
+}
+
 /// 예/아니오 칸 (익스텐션 AddServer.options, 만들 때 고르는 설정). `--yes`는 확인을 넘길 뿐 값을 정하지 않으므로 기본값을 쓴다
 fn bool_option(ask: &crate::prompt::Prompt, label: &str, default: &Value) -> Result<Value> {
     if ask.enabled && !ask.yes {
@@ -2197,6 +2320,27 @@ mod tests {
         let refused = crate::client::check(200, json!({ "success": false, "error_code": "graceful_stop_unavailable" })).unwrap_err();
         let e = agree_to_unsaved_stop(&ctx, &sv, refused, "stop").unwrap_err();
         assert!(cannot_save_and_exit(&e), "the daemon's code is kept: {e}");
+    }
+
+    /// 정지·재시작은 묻고, `--yes`면 묻지 않는다. 물을 수 없는데 `--yes`도 없으면 실행하지 않는다
+    #[test]
+    fn stopping_or_restarting_asks_unless_yes_is_given() {
+        crate::i18n::init("ko");
+        let ctx = |ask| Ctx {
+            api: crate::client::Api::new(1, None),
+            spawn_port: 1,
+            port_fixed: true,
+            out: crate::output::Out::new(true, false),
+            ask,
+            in_shell: false,
+            attached: false,
+        };
+        let sv = Server { id: "i".into(), name: "mc".into(), module: "minecraft".into(), raw: json!({}) };
+        for cmd in ["stop", "restart"] {
+            assert!(ask_stop(&ctx(crate::prompt::Prompt { enabled: false, yes: true }), &sv, cmd).is_ok());
+            assert!(ask_stop(&ctx(crate::prompt::Prompt { enabled: false, yes: false }), &sv, cmd).is_err());
+            assert!(t!(&format!("{cmd}.confirm"), name = "mc").contains("mc"), "{cmd}");
+        }
     }
 
     /// 가져오기 "옮기기"가 거절되면 데몬 영어 문구 대신 현지화된 까닭과 할 일 한 줄만 보인다
@@ -2419,6 +2563,38 @@ mod tests {
         assert_eq!(typed_setting(&fields, &fresh, "working_dir", "D:/srv").unwrap().1, json!("D:/srv"));
     }
 
+    /// 만들기 전 확인(`/api/instances/check`)은 GUI 마법사와 같다: 이름·폴더는 막고, 포트는 알리기만 한다
+    #[test]
+    fn the_check_before_adding_blocks_like_the_gui_wizard() {
+        crate::i18n::init("en");
+        let clash = json!({
+            "name": { "value": "mc", "taken": true, "suggested": "mc-2" },
+            "folder": { "custom": true, "path": "D:/srv", "in_use_by": "lobby", "not_empty": true },
+            "ports": [
+                { "field": "port", "port": 25565, "in_use_by": ["lobby"], "reserved": false },
+                { "field": "rcon_port", "port": 50000, "in_use_by": [], "reserved": true },
+                { "field": "query_port", "port": 25570, "in_use_by": [], "reserved": false },
+            ],
+        });
+        let (blockers, warnings) = check_problems(&clash);
+        assert_eq!(blockers, vec![
+            t!("add.name_taken", name = "mc"),
+            t!("add.folder_in_use", dir = "D:/srv", name = "lobby"),
+            t!("add.folder_not_empty", dir = "D:/srv"),
+        ]);
+        assert_eq!(warnings, vec![t!("add.port_in_use", port = 25565, servers = "lobby"), t!("add.port_reserved", port = 50000)]);
+        let clear = json!({ "name": { "taken": false }, "folder": { "custom": false }, "ports": [] });
+        assert_eq!(check_problems(&clear), (vec![], vec![]));
+    }
+
+    /// 고를 수 있는 버전은 GUI처럼 정식 릴리스만 (스냅숏·베타는 빼고, 종류가 없는 항목은 둔다)
+    #[test]
+    fn only_releases_are_offered_as_versions() {
+        let list = json!({ "versions": [{ "id": "1.21.4", "type": "release" }, { "id": "24w10a", "type": "snapshot" }, { "id": "1.20.6" }, "1.19"] });
+        assert_eq!(release_versions(&list), vec!["1.21.4", "1.20.6", "1.19"]);
+        assert!(release_versions(&json!({})).is_empty());
+    }
+
     /// 만들 때 고르는 칸은 GUI와 같다: 설치할 수 있는 값(`install_options`)만, 이름은 모듈 locales로
     #[test]
     fn install_choices_and_labels_follow_the_gui() {
@@ -2433,6 +2609,19 @@ mod tests {
     }
 
     /// 모듈 약관은 GUI처럼 만들기 전에 묻는다: 모듈 목록의 약관을 locales 이름으로 펼친다
+    /// 이 데몬에서 돌지 않는 게임은 고른 직후 멈춘다 (익스텐션을 받기 전에)
+    #[test]
+    fn a_module_the_daemon_cannot_run_stops_right_after_picking_it() {
+        crate::i18n::init("en");
+        assert!(platform_refusal(&json!({ "platform_supported": true })).is_none());
+        assert!(platform_refusal(&json!({})).is_none());
+        let os = platform_refusal(&json!({ "platform_supported": false, "unsupported_reason": "os" })).unwrap();
+        assert_eq!(os, crate::i18n::t("module_errors.module_platform_unsupported"));
+        // CPU 문구가 없는 판에서도 OS 문구로 멈춘다
+        let arch = platform_refusal(&json!({ "platform_supported": false, "unsupported_reason": "arch" })).unwrap();
+        assert!(!arch.is_empty() && !arch.contains("module_errors."));
+    }
+
     #[test]
     fn module_agreements_are_listed_before_creating() {
         let module = json!({ "agreements": [{ "id": "eula", "url": "https://aka.ms/MinecraftEULA" }] });

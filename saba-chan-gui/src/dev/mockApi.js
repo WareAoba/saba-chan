@@ -164,6 +164,48 @@ const mockPermissions = (guildId) => {
     };
     return mockPerms[guildId];
 };
+// 권한 계단 (GET /api/permissions/:guildId/commands): 데몬처럼 덮어쓰기 → 프리셋 순으로 요구 레벨을 정한다
+const MOCK_STAIR_SERVERS = [
+    { id: 'srv-1', name: '야생 서버', module: 'minecraft' },
+    { id: 'srv-2', name: '팰월드 친구들', module: 'palworld' },
+];
+const MOCK_STAIR_ITEMS = [
+    { name: 'instance.create', title: '서버 만들기', kind: 'admin', risk: 'caution' },
+    { name: 'update.apply', title: '사바쨩 업데이트', kind: 'admin', risk: 'danger', fixed: 3 },
+    { name: 'status', title: '상태', kind: 'query', risk: 'safe', instance: true },
+    { name: 'start', title: '시작', kind: 'command', risk: 'caution', instance: true },
+    { name: 'stop', title: '정지', kind: 'command', risk: 'caution', instance: true },
+    { name: 'say', title: '공지', kind: 'command', risk: 'safe', instance: true },
+    { name: 'kick', title: '플레이어 추방', kind: 'command', risk: 'caution', instance: true },
+    { name: 'ban', title: '차단', kind: 'command', risk: 'danger', instance: true },
+    { name: 'backup.restore', title: '백업 복원', kind: 'admin', risk: 'danger', instance: true },
+];
+const mockBoard = (guildId) => {
+    const p = mockPermissions(guildId);
+    const table = p.presets[p.preset] || p.presets.default;
+    const entry = (it, instance) => {
+        const key = instance ? `${instance}/${it.name}` : it.name;
+        const preset = it.fixed ?? (it.kind === 'admin' ? (p.preset === 'strict' ? 3 : 2) : table[it.risk]);
+        const own = it.fixed === undefined ? p.commandLevels[key] : undefined;
+        return {
+            key,
+            keys: [key],
+            instance: instance || null,
+            name: it.name,
+            title: it.title,
+            kind: it.kind,
+            risk: it.risk,
+            level: own ?? preset,
+            preset,
+            overridden: own !== undefined,
+            fixed: it.fixed !== undefined,
+        };
+    };
+    const items = MOCK_STAIR_ITEMS.flatMap((it) =>
+        it.instance ? MOCK_STAIR_SERVERS.map((s) => entry(it, s.id)) : [entry(it)],
+    );
+    return { guildId, instances: MOCK_STAIR_SERVERS, items };
+};
 // 주소 뒤에 ?daemon=stopped&bot=running 처럼 붙이면 상태 표시를 바꿔 볼 수 있다
 const params = new URLSearchParams(globalThis.location?.search || '');
 const mockBot = params.get('bot') || 'stopped';
@@ -631,6 +673,8 @@ const impl = {
         const p = mockPermissions(guildId);
         const { commandLevels, ...rest } = patch || {};
         Object.assign(p, rest);
+        // 프리셋은 한 번 적용하는 틀이다 (데몬과 같이 명령별 레벨을 지운다)
+        if (rest.preset) p.commandLevels = {};
         for (const [k, v] of Object.entries(commandLevels || {})) {
             if (v === null) delete p.commandLevels[k];
             else p.commandLevels[k] = v;
@@ -638,6 +682,7 @@ const impl = {
         if (rest.ownerDiscordId) p.relayOwnerDiscordId = null;
         return ok(p);
     },
+    permissionsCommands: (guildId) => ok(mockBoard(guildId)),
     permissionsSetMember: (guildId, id, level) => {
         const p = mockPermissions(guildId);
         if (id === p.ownerDiscordId) return ok({ error: 'owner', error_code: 'owner_fixed' });
@@ -710,6 +755,8 @@ const impl = {
         }),
     relayLinkRequestRespond: (id, accept) =>
         ok(accept ? { ok: true, guildId: '900', guildName: '마크 친구들' } : { ok: true, declined: true }),
+    relayMcpGrant: () => ok({ grant: { clientName: 'Claude', createdAt: '2026-10-28T00:00:00Z', lastUsedAt: '2026-10-28T01:00:00Z' }, url: 'https://saba-chan.online/mcp' }),
+    relayMcpGrantRevoke: () => ok(''),
     relayPrivacyErase: () => ok({ url: 'https://saba-chan.online/legal/erase#mock.secret' }),
     relayPrivacyEraseStatus: () => ok({ status: 'pending' }),
     onboarding: () =>

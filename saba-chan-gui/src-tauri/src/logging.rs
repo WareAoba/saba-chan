@@ -1,13 +1,13 @@
 //! 로그 — <data>/logs/saba-chan-<ts>.log와 stderr에 같이 쓴다
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Mutex;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{fmt, EnvFilter};
 
 /// 로그 파일을 열고 전역 구독자를 단다. 파일을 못 열면 stderr만 쓴다
-pub fn init(data_dir: &Path) -> Option<PathBuf> {
+pub fn init(data_dir: &Path) {
     let dir = data_dir.join("logs");
     let file = std::fs::create_dir_all(&dir).ok().and_then(|_| {
         // main.js와 같은 이름: ISO 시각에서 :·. 를 -로, 밀리초는 뺀다 (UTC)
@@ -41,5 +41,4 @@ pub fn init(data_dir: &Path) -> Option<PathBuf> {
     if let Some(p) = &path {
         tracing::info!("Log file: {}", p.display());
     }
-    path
 }

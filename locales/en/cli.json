@@ -48,7 +48,20 @@
     },
     "ask_mode": "What should happen to the server folder?",
     "mode_link": "Keep it where it is",
-    "mode_move": "Move into saba-chan (same drive only; deleting a moved server deletes its files)"
+    "mode_move": "Move into saba-chan (same drive only; deleting a moved server deletes its files)",
+    "folder_not_empty": "{{dir}} already has files in it. Pick an empty folder, or connect an existing server with --from.",
+    "port_in_use": "{{servers}} also uses port {{port}}. Running them together makes the ports clash.",
+    "port_reserved": "Windows has reserved port {{port}}, so it cannot be opened. Pick another with --game-port.",
+    "ask_version": "Server version",
+    "version_latest": "Latest version (recommended)",
+    "version_not_chosen": "A version can only be picked for a new install of a game whose server saba-chan downloads ({{game}}).",
+    "ask_location": "Where should the server files go?",
+    "location_default": "saba-chan's folder (recommended)",
+    "location_custom": "Another empty folder (its files stay when the server is removed)",
+    "ask_dir": "Folder to install into",
+    "ask_run": "How should the server run?",
+    "run_managed": "Managed by saba-chan (recommended)",
+    "run_unmanaged": "On its own (no saba-chan console)"
   },
   "bot": {
     "ask_token": "Node token",
@@ -94,6 +107,10 @@
     "erase_expired": "The consent link expired. Run bot erase again.",
     "erase_failed": "Your data was erased, but this PC's connection couldn't be removed. Run bot unpair.",
     "erase_no_url": "The relay gave no consent page.",
+    "agent_none": "No AI agent is linked. Add {{url}} to an agent such as ChatGPT or Claude to let it manage the PCs of your Discord account.",
+    "agent_linked": "AI agent {{name}} can manage every PC of your Discord account. Last used: {{when}}",
+    "confirm_agent_unlink": "Unlink the AI agent? It loses access to this account's PCs at once.",
+    "agent_unlinked": "Unlinked the AI agent.",
     "invite": "Invite the bot to your Discord server with this link:",
     "channel": "channel",
     "channel_ambiguous": "More than one channel is named {{name}}. Use its id.",
@@ -638,6 +655,7 @@
     "preflight_failed": "Runtime setup for game modules failed: {{error}}. It is retried on the next server action."
   },
   "stop": {
+    "confirm": "Are you sure you want to stop {{name}} server?",
     "already": "{{name}} is not running.",
     "done": "{{name}} stopped.",
     "force_confirm": "Stop without saving?",
@@ -713,6 +731,7 @@
       "audit": "Who started, stopped or sent commands to servers, and from where (GUI, CLI, Discord, schedule)",
       "perm": "Who may run which commands from Discord (levels per member, preset, overrides)",
       "perm.show": "Levels, preset and overrides of one Discord server",
+      "perm.commands": "Commands per level: from which level each command can be used (one server with --server)",
       "perm.grant": "Give a member a level: admin, user, chatbot or banned",
       "perm.revoke": "Take a member's own level away (they get the default level)",
       "perm.default": "Level for members without their own level",
@@ -788,6 +807,7 @@
       "bot.lang.value": "auto or a language code (ko, en, ja, zh-CN, zh-TW, es, pt-BR, ru, de, fr)",
       "bot.prefix.values": "One or more prefixes (no spaces, up to 32 characters, up to 10)",
       "bot.prefix.default": "Go back to the default prefix of the app language",
+      "bot.agent.unlink": "Unlink the agent (it loses access at once)",
       "bot.music.on": "Turn music on",
       "bot.music.off": "Turn music off",
       "bot.music.ui": "Show the player panel (on or off)",
@@ -821,11 +841,14 @@
       "bot.notice.on": "Turn the start alert on",
       "bot.notice.off": "Turn the start alert off",
       "bot.confirm.direct": "Requests to the bot — Prefix commands and slash commands.",
-      "bot.confirm.chatbot": "Talking Saba-chan — Admin tasks picked by Talking Saba-chan and requests mixing several people always ask, whatever this setting says."
+      "bot.confirm.chatbot": "Talking Saba-chan — Admin tasks picked by Talking Saba-chan and requests mixing several people always ask, whatever this setting says.",
+      "game_version": "Server version to install (games that download their server; default: latest release)",
+      "unmanaged": "Run on its own: saba-chan starts it and watches whether it runs (no saba-chan console)"
     },
     "after": "Names can be partial (e.g. start pal). Run with no arguments in a terminal to open the full-screen menu (SABA_NO_TUI=1: the interactive shell).\nIn scripts use --json and --yes. Exit codes: 0 ok · 1 failed · 2 usage · 3 daemon unreachable · 4 not found · 130 cancelled"
   },
   "restart": {
+    "confirm": "Stop and start '{{name}}' again? Connected players will be dropped for a moment.",
     "waiting": "Restarting {{name}}...",
     "done": "{{name}} restarted."
   },
@@ -964,7 +987,15 @@
     "credit_balance_none": "Could not get the balance right now.",
     "credit_usage": "This month's usage ({{month}}, UTC)",
     "credit_usage_line": "{{calls}} model calls · {{input}} input tokens ({{cached}} cached) · {{output}} output tokens",
-    "credit_exhausted": "Credit ran out ({{time}}). Saba-chan can't reply until it's topped up."
+    "credit_exhausted": "Credit ran out ({{time}}). Saba-chan can't reply until it's topped up.",
+    "cat_game_servers": "Game servers",
+    "cat_games": "Games",
+    "cat_info": "Finding info",
+    "cat_create": "Creating",
+    "tool_on": "on",
+    "tool_off": "off",
+    "tool_blocked": "blocked in shared settings",
+    "tool_unavailable": "unavailable now"
   },
   "trust": {
     "verified": "verified",
@@ -1038,7 +1069,7 @@
       "owner": "owner",
       "admin": "admin",
       "user": "user",
-      "chatbot": "Talking Saba-chan",
+      "chatbot": "Guest",
       "banned": "banned"
     }
   },

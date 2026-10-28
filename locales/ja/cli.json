@@ -48,7 +48,20 @@
     },
     "ask_mode": "サーバーフォルダーをどうしますか？",
     "mode_link": "今の場所のまま",
-    "mode_move": "サバちゃんへ移す（同じドライブのみ。移したサーバーを削除するとファイルも削除）"
+    "mode_move": "サバちゃんへ移す（同じドライブのみ。移したサーバーを削除するとファイルも削除）",
+    "folder_not_empty": "{{dir}} にはすでにファイルがあります。空のフォルダーを選ぶか、既存のサーバーは --from でつないでください。",
+    "port_in_use": "{{servers}} も {{port}} ポートを使っています。一緒に起動するとポートが重なります。",
+    "port_reserved": "{{port}} ポートは Windows が予約しているため開けません。--game-port で別のポートを選んでください。",
+    "ask_version": "サーバーのバージョン",
+    "version_latest": "最新バージョン (おすすめ)",
+    "version_not_chosen": "バージョンを選べるのは、サーバーファイルをダウンロードするゲームの新規インストールだけです ({{game}})。",
+    "ask_location": "サーバーファイルをどこに置きますか?",
+    "location_default": "サバちゃんのフォルダー (おすすめ)",
+    "location_custom": "別の空フォルダー (サーバーを消してもファイルは残ります)",
+    "ask_dir": "インストールするフォルダーのパス",
+    "ask_run": "サーバーをどう起動しますか?",
+    "run_managed": "サバちゃんが管理 (おすすめ)",
+    "run_unmanaged": "自分で管理 (サバちゃんのコンソールは使えません)"
   },
   "bot": {
     "ask_token": "ノードトークン",
@@ -94,6 +107,10 @@
     "erase_expired": "同意の期限が切れました。bot erase をもう一度実行してください。",
     "erase_failed": "情報は削除しましたが、この PC の接続情報を削除できませんでした。bot unpair を実行してください。",
     "erase_no_url": "リレーが同意ページを返しませんでした。",
+    "agent_none": "連携中のAIエージェントはありません。ChatGPTやClaudeなどのエージェントに {{url}} を追加すると、あなたのDiscordアカウントのPCを操作できます。",
+    "agent_linked": "AIエージェント {{name}} があなたのDiscordアカウントのすべてのPCを操作できます。最終使用: {{when}}",
+    "confirm_agent_unlink": "AIエージェントの連携を解除しますか? エージェントはすぐにこのアカウントのPCを操作できなくなります。",
+    "agent_unlinked": "AIエージェントの連携を解除しました。",
     "invite": "次のリンクからボットを Discord サーバーに招待してください:",
     "channel": "チャンネル",
     "channel_ambiguous": "{{name}} という名前のチャンネルが複数あります。ID で指定してください。",
@@ -638,6 +655,7 @@
     "preflight_failed": "ゲームモジュール用の実行環境の準備に失敗しました: {{error}}。次のサーバー操作時に再試行します。"
   },
   "stop": {
+    "confirm": "{{name}} サーバーを停止してもよろしいですか?",
     "already": "{{name}} は動いていません。",
     "done": "{{name}} を停止しました。",
     "force_confirm": "保存せずに停止しますか？",
@@ -783,6 +801,7 @@
       "bot.pair": "この PC を Discord サーバーとペアリング (Discord に入力するコードを表示)",
       "bot.unpair": "この PC のペアリングを忘れる",
       "bot.erase": "リレーにある自分の Discord アカウントの情報をすべて削除し、この PC の接続を切る (同意ページを開きます)",
+      "bot.agent": "Discordアカウントに連携したAIエージェント(リモートMCP)。アカウントのすべてのPCを操作できます",
       "bot.token": "ノードトークンを直接入力 (別の場所でペアリングした場合)。非表示入力か標準入力の 1 行でのみ受け付ける",
       "bot.prefix": "チャットの接頭辞の表示・変更",
       "bot.nodes": "この PC とペアリングした Discord サーバー",
@@ -841,6 +860,7 @@
       "audit": "誰がどこから (GUI・CLI・Discord・スケジュール) サーバーを起動・停止したか、コマンドを送ったか",
       "perm": "Discord から誰がどのコマンドを使えるか (メンバーごとのレベル・プリセット・個別設定)",
       "perm.show": "Discord サーバー 1 つのレベル・プリセット・個別設定",
+      "perm.commands": "レベル別のコマンド: 各コマンドをどのレベルから使えるか (--server でサーバー1つだけ)",
       "perm.grant": "メンバーにレベルを与える: admin・user・chatbot・banned",
       "perm.revoke": "メンバー個別のレベルを外す (既定のレベルになる)",
       "perm.default": "個別のレベルがないメンバーのレベル",
@@ -1001,6 +1021,7 @@
       "bot.lang.value": "auto または言語コード (ko, en, ja, zh-CN, zh-TW, es, pt-BR, ru, de, fr)",
       "bot.prefix.values": "1 つ以上のプレフィックス (空白なし、32 文字まで、10 個まで)",
       "bot.prefix.default": "アプリの言語の既定のプレフィックスに戻す",
+      "bot.agent.unlink": "エージェントの連携を解除 (すぐに無効になります)",
       "bot.music.on": "音楽をオンにする",
       "bot.music.off": "音楽をオフにする",
       "bot.music.ui": "プレイヤーパネルを表示する (on または off)",
@@ -1062,11 +1083,14 @@
       "bot.notice.off": "起動通知をオフ",
       "chatbot.template.locale": "テンプレートの言語（省略時はアプリの言語）",
       "bot.confirm.direct": "ボットへの直接の依頼 — プレフィックスコマンドとスラッシュコマンドです。",
-      "bot.confirm.chatbot": "おしゃべりサバちゃん — おしゃべりサバちゃんが選んだ管理作業と、複数の人が混ざった依頼は、この設定に関係なく必ず確認します。"
+      "bot.confirm.chatbot": "おしゃべりサバちゃん — おしゃべりサバちゃんが選んだ管理作業と、複数の人が混ざった依頼は、この設定に関係なく必ず確認します。",
+      "game_version": "インストールするサーバーのバージョン (サーバーをダウンロードするゲーム、既定: 最新リリース)",
+      "unmanaged": "自分で管理: サバちゃんは起動して動いているかだけ見ます (コンソールなし)"
     },
     "after": "名前は一部だけでも指定できます（例: start pal）。端末で引数なしで実行すると全画面メニューが開きます(SABA_NO_TUI=1 なら対話シェル)。\nスクリプトでは --json と --yes を使ってください。終了コード: 0 成功 · 1 失敗 · 2 使い方の誤り · 3 デーモンに接続不可 · 4 見つからない · 130 キャンセル"
   },
   "restart": {
+    "confirm": "'{{name}}' を停止して再起動しますか？接続中のプレイヤーは一時的に切断されます。",
     "waiting": "{{name}} を再起動しています...",
     "done": "{{name}} を再起動しました。"
   },
@@ -1205,7 +1229,15 @@
     "credit_balance_none": "今は残高を確認できませんでした。",
     "credit_usage": "今月の使用量（{{month}}、UTC基準）",
     "credit_usage_line": "モデル呼び出し {{calls}}回 · 入力 {{input}}トークン（キャッシュ {{cached}}） · 出力 {{output}}トークン",
-    "credit_exhausted": "クレジットがなくなりました（{{time}}）。チャージするまで返事できません。"
+    "credit_exhausted": "クレジットがなくなりました（{{time}}）。チャージするまで返事できません。",
+    "cat_game_servers": "ゲームサーバー",
+    "cat_games": "ゲーム関連",
+    "cat_info": "情報検索",
+    "cat_create": "作成",
+    "tool_on": "オン",
+    "tool_off": "オフ",
+    "tool_blocked": "共通設定でブロック",
+    "tool_unavailable": "今は使えません"
   },
   "trust": {
     "verified": "確認済み",
@@ -1279,7 +1311,7 @@
       "owner": "オーナー",
       "admin": "管理者",
       "user": "ユーザー",
-      "chatbot": "おしゃべりサバちゃん",
+      "chatbot": "ゲスト",
       "banned": "禁止"
     }
   },

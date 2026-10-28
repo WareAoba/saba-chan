@@ -29,20 +29,6 @@ describe('nodePermissions (데몬 src/chat/mod.rs 해석과 같다)', () => {
         expect(P.instanceOwner(s, NODES, 'b', 'g1')).toBe('g2');
     });
 
-    it('멤버 제한은 막힌 명령 배열로 저장된다', () => {
-        let s = P.setMemberRestricted({}, 'g1', 'u', true);
-        expect(P.isMemberRestricted(s, 'g1', 'u')).toBe(true);
-        s = P.toggleMemberCommand(s, 'g1', 'u', 'a', 'stop');
-        expect(s.g1.memberPermissions.u.a).toEqual(['stop']);
-        expect(P.blockedCount(s, 'g1', 'u')).toBe(1);
-        s = P.setMemberAllCommands(s, 'g1', 'u', 'a', ['stop', 'say'], false);
-        expect(s.g1.memberPermissions.u.a).toEqual(['stop', 'say']);
-        s = P.setMemberAllCommands(s, 'g1', 'u', 'a', ['stop', 'say'], true);
-        expect(s.g1.memberPermissions.u.a).toEqual([]);
-        s = P.setMemberRestricted(s, 'g1', 'u', false);
-        expect(P.isMemberRestricted(s, 'g1', 'u')).toBe(false);
-    });
-
     it('연결 상태', () => {
         expect(cloudStateOf({ hostId: '' })).toBe('no_host');
         expect(cloudStateOf({ hostId: 'h', connected: true })).toBe('connected');
@@ -106,6 +92,18 @@ function Harness({ save, initialView, botConfigSave, hostId = 'host-1', setHostI
     );
 }
 
+/** 인스턴스 메뉴 → 멤버별 레벨 (디스코드 서버 → 인스턴스 → 멤버별 레벨) */
+async function openMemberLevels() {
+    window.api.permissionsGet = vi.fn().mockResolvedValue({ guildId: 'g1', ownerDiscordId: 'o1', members: {}, preset: 'default' });
+    window.api.permissionsCommands = vi.fn().mockResolvedValue({ guildId: 'g1', instances: [], items: [] });
+    const open = [...document.querySelectorAll('button')].find((b) => /permissions|권한 메뉴/.test(b.getAttribute('aria-label') || ''));
+    await act(async () => fireEvent.click(open));
+    await act(async () => fireEvent.click(screen.getByRole('tab', { name: /Member levels|멤버별 레벨/ })));
+    const more = screen.queryByRole('button', { name: /default level|기본 레벨/ });
+    if (more) await act(async () => fireEvent.click(more));
+    await waitFor(() => expect(screen.getByText('민트')).toBeTruthy());
+}
+
 describe('DiscordPage', () => {
     beforeEach(() => {
         Object.defineProperty(window, 'innerWidth', { value: 1280, writable: true, configurable: true });
@@ -148,49 +146,6 @@ describe('DiscordPage', () => {
         await act(async () => {});
         expect(setHostId).not.toHaveBeenCalledWith('h-new');
         expect(save).not.toHaveBeenCalled();
-    });
-
-    it('노드 → 멤버 → 명령 하나 막기가 막힌 명령 배열로 들어가고 자동 저장된다', async () => {
-        const save = vi.fn().mockResolvedValue();
-        await act(async () => render(<Harness save={save} />));
-        await waitFor(() => expect(document.querySelectorAll('.dc-nav-row')).toHaveLength(3));
-
-        // 메뉴의 노드를 누르면 노드 화면
-        const nodeRow = [...document.querySelectorAll('.dc-nav-row')].find((b) => b.textContent.includes('사바 마을'));
-        await act(async () => fireEvent.click(nodeRow));
-        expect(document.querySelector('.detail-head h1').textContent).toBe('사바 마을');
-
-        // 멤버 탭 → 멤버 → 명령 골라서 허용
-        await act(async () => fireEvent.click(document.querySelectorAll('.segmented-item')[1]));
-        await waitFor(() => expect(document.querySelector('.dc-list-btn')).not.toBeNull());
-        await act(async () => fireEvent.click(document.querySelector('.dc-list-btn')));
-        await act(async () => fireEvent.click(document.querySelectorAll('.dc-radio-input')[1]));
-
-        // 제한 없는 노드이므로 인스턴스 둘 다 보이고, 정지(위험) 명령을 끈다
-        expect(document.querySelectorAll('.dc-perm-card')).toHaveLength(2);
-        const stop = [...document.querySelectorAll('.dc-cmd')].find((b) => b.textContent.includes('정지'));
-        expect(stop.classList.contains('danger')).toBe(true);
-        await act(async () => fireEvent.click(stop));
-
-        expect(window.__nodeSettings.g1.memberPermissions.u1.s1).toEqual(['stop']);
-        await waitFor(() => expect(save).toHaveBeenCalled(), { timeout: 2000 });
-    });
-
-    it('자동 저장이 실패하면 저장됨을 띄우지 않는다', async () => {
-        const save = vi.fn().mockResolvedValue(false);
-        await act(async () => render(<Harness save={save} />));
-        await waitFor(() => expect(document.querySelectorAll('.dc-nav-row')).toHaveLength(3));
-        const nodeRow = [...document.querySelectorAll('.dc-nav-row')].find((b) => b.textContent.includes('사바 마을'));
-        await act(async () => fireEvent.click(nodeRow));
-        await act(async () => fireEvent.click(document.querySelectorAll('.segmented-item')[1]));
-        await waitFor(() => expect(document.querySelector('.dc-list-btn')).not.toBeNull());
-        await act(async () => fireEvent.click(document.querySelector('.dc-list-btn')));
-        await act(async () => fireEvent.click(document.querySelectorAll('.dc-radio-input')[1]));
-        const stop = [...document.querySelectorAll('.dc-cmd')].find((b) => b.textContent.includes('정지'));
-        await act(async () => fireEvent.click(stop));
-        await waitFor(() => expect(save).toHaveBeenCalled(), { timeout: 2000 });
-        await act(async () => {});
-        expect(document.querySelector('.dc-save-state')).toBeNull();
     });
 
     it('인스턴스 제한은 데몬 길드 API로 바로 저장하고 bot-config 일괄 저장으로 보내지 않는다', async () => {
@@ -241,8 +196,7 @@ describe('DiscordPage', () => {
         await waitFor(() => expect(document.querySelectorAll('.dc-nav-row')).toHaveLength(3));
         const nodeRow = [...document.querySelectorAll('.dc-nav-row')].find((b) => b.textContent.includes('사바 마을'));
         await act(async () => fireEvent.click(nodeRow));
-        await act(async () => fireEvent.click(document.querySelectorAll('.segmented-item')[1]));
-        await waitFor(() => expect(screen.getByText('민트')).toBeTruthy());
+        await openMemberLevels();
 
         window.api.relayListNodeMembers = vi.fn().mockResolvedValue({ error: 'timeout' });
         const refresh = [...document.querySelectorAll('button')].find((b) =>
@@ -265,8 +219,7 @@ describe('DiscordPage', () => {
         await waitFor(() => expect(document.querySelectorAll('.dc-nav-row')).toHaveLength(3));
         const nodeRow = [...document.querySelectorAll('.dc-nav-row')].find((b) => b.textContent.includes('사바 마을'));
         await act(async () => fireEvent.click(nodeRow));
-        await act(async () => fireEvent.click(document.querySelectorAll('.segmented-item')[1]));
-        await waitFor(() => expect(screen.getByText('민트')).toBeTruthy());
+        await openMemberLevels();
         expect(screen.getByText(/only members with permissions are shown/)).toBeTruthy();
     });
 

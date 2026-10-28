@@ -114,7 +114,6 @@ if (typeof window !== 'undefined') {
         onConsolePopoutClosed: vi.fn(),
         moduleGetLocales: vi.fn(),
         moduleGetMetadata: vi.fn(),
-        loadNodeToken: vi.fn(),
         saveNodeToken: vi.fn(),
     };
     global.window.api = new Proxy(baseMocks, {

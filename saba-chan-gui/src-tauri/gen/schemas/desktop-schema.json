@@ -363,12 +363,6 @@
           "markdownDescription": "Enables the app_ready command without any pre-configured scope."
         },
         {
-          "description": "Enables the console_focus_popout command without any pre-configured scope.",
-          "type": "string",
-          "const": "allow-console-focus-popout",
-          "markdownDescription": "Enables the console_focus_popout command without any pre-configured scope."
-        },
-        {
           "description": "Enables the console_popin command without any pre-configured scope.",
           "type": "string",
           "const": "allow-console-popin",
@@ -457,12 +451,6 @@
           "type": "string",
           "const": "allow-launch-uninstaller",
           "markdownDescription": "Enables the launch_uninstaller command without any pre-configured scope."
-        },
-        {
-          "description": "Enables the logs_get_path command without any pre-configured scope.",
-          "type": "string",
-          "const": "allow-logs-get-path",
-          "markdownDescription": "Enables the logs_get_path command without any pre-configured scope."
         },
         {
           "description": "Enables the logs_open_folder command without any pre-configured scope.",
@@ -579,12 +567,6 @@
           "markdownDescription": "Denies the app_ready command without any pre-configured scope."
         },
         {
-          "description": "Denies the console_focus_popout command without any pre-configured scope.",
-          "type": "string",
-          "const": "deny-console-focus-popout",
-          "markdownDescription": "Denies the console_focus_popout command without any pre-configured scope."
-        },
-        {
           "description": "Denies the console_popin command without any pre-configured scope.",
           "type": "string",
           "const": "deny-console-popin",
@@ -673,12 +655,6 @@
           "type": "string",
           "const": "deny-launch-uninstaller",
           "markdownDescription": "Denies the launch_uninstaller command without any pre-configured scope."
-        },
-        {
-          "description": "Denies the logs_get_path command without any pre-configured scope.",
-          "type": "string",
-          "const": "deny-logs-get-path",
-          "markdownDescription": "Denies the logs_get_path command without any pre-configured scope."
         },
         {
           "description": "Denies the logs_open_folder command without any pre-configured scope.",

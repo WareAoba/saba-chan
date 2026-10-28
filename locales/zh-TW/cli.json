@@ -48,7 +48,20 @@
     },
     "ask_mode": "伺服器資料夾要怎麼處理？",
     "mode_link": "保留在原位置",
-    "mode_move": "移入 saba-chan（僅限同一磁碟機；刪除已移入的伺服器會刪除其檔案）"
+    "mode_move": "移入 saba-chan（僅限同一磁碟機；刪除已移入的伺服器會刪除其檔案）",
+    "folder_not_empty": "{{dir}} 中已有檔案。請選擇空資料夾，或用 --from 連接現有伺服器。",
+    "port_in_use": "{{servers}} 也在使用連接埠 {{port}}。同時執行會造成連接埠衝突。",
+    "port_reserved": "連接埠 {{port}} 已被 Windows 保留，無法開啟。請用 --game-port 選擇其他連接埠。",
+    "ask_version": "伺服器版本",
+    "version_latest": "最新版本（建議）",
+    "version_not_chosen": "只有在新安裝且由 saba-chan 下載伺服器的遊戲時才能選擇版本（{{game}}）。",
+    "ask_location": "伺服器檔案要放在哪裡？",
+    "location_default": "saba-chan 資料夾（建議）",
+    "location_custom": "其他空資料夾（刪除伺服器後檔案仍保留）",
+    "ask_dir": "安裝資料夾路徑",
+    "ask_run": "伺服器要如何執行？",
+    "run_managed": "由 saba-chan 管理（建議）",
+    "run_unmanaged": "自行管理（無法使用 saba-chan 主控台）"
   },
   "bot": {
     "ask_token": "節點權杖",
@@ -94,6 +107,10 @@
     "erase_expired": "同意連結已過期。請重新執行 bot erase。",
     "erase_failed": "資料已刪除，但無法移除這台電腦的連線資訊。請執行 bot unpair。",
     "erase_no_url": "中繼沒有提供同意頁面。",
+    "agent_none": "尚未連接 AI 代理。在 ChatGPT、Claude 等代理中加入 {{url}}，即可讓它管理你 Discord 帳號下的電腦。",
+    "agent_linked": "AI 代理 {{name}} 可以管理你 Discord 帳號下的所有電腦。最後使用：{{when}}",
+    "confirm_agent_unlink": "要中斷 AI 代理連線嗎？它會立即失去對此帳號電腦的存取。",
+    "agent_unlinked": "已中斷 AI 代理連線。",
     "invite": "用這個連結邀請機器人到你的 Discord 伺服器：",
     "channel": "頻道",
     "channel_ambiguous": "有多個名為 {{name}} 的頻道。請使用其 id。",
@@ -638,6 +655,7 @@
     "preflight_failed": "遊戲模組執行環境準備失敗：{{error}}。將在下次伺服器操作時重試。"
   },
   "stop": {
+    "confirm": "確定要停止 {{name}} 伺服器嗎？",
     "already": "{{name}} 未執行。",
     "done": "{{name}} 已停止。",
     "not_yet": "{{name}} 尚未停止。強制停止：saba-chan-cli stop --force {{name}}",
@@ -713,6 +731,7 @@
       "audit": "誰從哪裡（GUI、CLI、Discord、計劃）啟動、停止了伺服器或傳送了命令",
       "perm": "在 Discord 中誰能使用哪些命令（成員等級、預設集、按命令的等級）",
       "perm.show": "檢視一個 Discord 伺服器的等級、預設集和覆蓋設定（伺服器名稱或 id，省略則為唯一的伺服器）",
+      "perm.commands": "各等級命令：每個命令從哪個等級起可用（--server 只看一個伺服器）",
       "perm.grant": "給成員（名稱或 id）設定等級：admin、user、chatbot、banned",
       "perm.revoke": "刪除成員的單獨等級（改用預設等級）",
       "perm.default": "沒有單獨等級的成員的等級",
@@ -803,6 +822,7 @@
       "bot.lang.value": "auto 或語言程式碼（ko、en、ja、zh-CN、zh-TW、es、pt-BR、ru、de、fr）",
       "bot.prefix.values": "一個或多個字首（不含空格，最多 32 個字元，最多 10 個）",
       "bot.prefix.default": "恢復為應用語言的預設字首",
+      "bot.agent.unlink": "中斷代理連線（立即失去存取）",
       "bot.music.on": "開啟音樂",
       "bot.music.off": "關閉音樂",
       "bot.music.ui": "顯示播放器面板（on 或 off）",
@@ -852,11 +872,14 @@
       "bot.notice.on": "開啟啟動通知",
       "bot.notice.off": "關閉啟動通知",
       "bot.confirm.direct": "直接向機器人請求 — 前綴指令和斜線指令。",
-      "bot.confirm.chatbot": "會說話的 Saba-chan — 會說話的 Saba-chan 選擇的管理操作以及多人混合的請求，無論此設定如何都會詢問。"
+      "bot.confirm.chatbot": "會說話的 Saba-chan — 會說話的 Saba-chan 選擇的管理操作以及多人混合的請求，無論此設定如何都會詢問。",
+      "game_version": "要安裝的伺服器版本（下載伺服器的遊戲，預設：最新正式版）",
+      "unmanaged": "自行管理：saba-chan 只啟動並查看是否在執行（無主控台）"
     },
     "after": "名稱可以只寫一部分（例如 start pal）。在終端機中不帶參數執行會開啟全螢幕選單(SABA_NO_TUI=1 時為互動式 shell)。\n在指令碼中請使用 --json 和 --yes。結束代碼：0 成功 · 1 失敗 · 2 用法錯誤 · 3 無法連線常駐程式 · 4 找不到 · 130 已取消"
   },
   "restart": {
+    "confirm": "要停止並重新啟動 '{{name}}' 嗎？已連線的玩家會短暫斷線。",
     "waiting": "正在重新啟動 {{name}}...",
     "done": "{{name}} 已重新啟動。"
   },
@@ -995,7 +1018,15 @@
     "credit_balance_none": "暫時無法取得餘額。",
     "credit_usage": "本月用量（{{month}}，UTC）",
     "credit_usage_line": "模型呼叫 {{calls}} 次 · 輸入 {{input}} token（快取 {{cached}}） · 輸出 {{output}} token",
-    "credit_exhausted": "額度已用完（{{time}}）。儲值前無法回覆。"
+    "credit_exhausted": "額度已用完（{{time}}）。儲值前無法回覆。",
+    "cat_game_servers": "遊戲伺服器",
+    "cat_games": "遊戲相關",
+    "cat_info": "查找資訊",
+    "cat_create": "創作",
+    "tool_on": "開",
+    "tool_off": "關",
+    "tool_blocked": "已在共用設定中封鎖",
+    "tool_unavailable": "暫時無法使用"
   },
   "trust": {
     "verified": "已驗證",
@@ -1282,7 +1313,7 @@
       "owner": "所有者",
       "admin": "管理員",
       "user": "使用者",
-      "chatbot": "會說話的 Saba-chan",
+      "chatbot": "訪客",
       "banned": "禁止"
     }
   },

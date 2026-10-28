@@ -35,7 +35,6 @@ pub struct AppState {
     pub client: Arc<DaemonClient>,
     pub data_dir: PathBuf,
     pub install_root: PathBuf,
-    pub log_path: Option<PathBuf>,
     pub after_update: bool,
     /// `--tray`로 떴다: 처음부터 창을 열지 않는다
     pub tray_start: bool,
@@ -84,7 +83,7 @@ fn install_root() -> PathBuf {
 
 pub fn run() {
     let data_dir = constants::resolve_data_dir();
-    let log_path = logging::init(&data_dir);
+    logging::init(&data_dir);
     let install_root = install_root();
     tracing::info!(
         "Saba-chan starting... version {} ({})",
@@ -107,7 +106,6 @@ pub fn run() {
         client,
         data_dir,
         install_root,
-        log_path,
         after_update: std::env::args().any(|a| a == "--after-update"),
         tray_start: lifecycle::tray_arg(std::env::args()),
         i18n: RwLock::new(i18n),
@@ -153,13 +151,11 @@ pub fn run() {
             native::dialog_save_file,
             native::shell_open_external,
             native::shell_open_path,
-            native::logs_get_path,
             native::logs_open_folder,
             native::app_get_version,
             native::notify,
             native::console_popout,
             native::console_popout_list,
-            native::console_focus_popout,
             native::console_popin,
             native::console_toggle_always_on_top,
             native::window_minimize,

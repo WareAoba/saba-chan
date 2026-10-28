@@ -5,6 +5,8 @@
 //! 금지는 늘 맨 아래다. 높고 낮음은 숫자가 아니라 사다리 순서로 견준다 (`meets`).
 //! 명령마다 요구 레벨이 있다 (`commandLevels` 덮어쓰기, 없으면 프리셋표[risk]). 유효 레벨이 모자라면 거부한다.
 //! 챗봇을 거친 요청의 유효 레벨은 min(작성자 레벨, `chatbotCap`)이다.
+//! 레벨은 누적이다: 어떤 레벨에서 쓸 수 있는 명령은 그 위 레벨에서 모두 쓴다. 사람마다 명령을 따로 막는 규칙은 없다
+//! (예전 `memberPermissions`는 읽지 않는다, 사용자 지정 2026-10-28).
 
 use serde::Serialize;
 use serde_json::{json, Map, Value};
@@ -143,8 +145,6 @@ pub struct NodePermissions {
     pub preset: String,
     pub command_levels: HashMap<String, i64>,
     pub chatbot_cap: i64,
-    /// 예전 `memberPermissions[user][instanceId] = [명령...]` 금지 목록 (읽기만)
-    legacy_denied: HashMap<String, HashMap<String, Vec<String>>>,
 }
 
 impl Default for NodePermissions {
@@ -156,7 +156,6 @@ impl Default for NodePermissions {
             preset: "default".into(),
             command_levels: HashMap::new(),
             chatbot_cap: CHATBOT,
-            legacy_denied: HashMap::new(),
         }
     }
 }
@@ -238,18 +237,6 @@ impl NodePermissions {
             .collect();
         p.members.extend(members);
         p.command_levels.extend(commands);
-        for (user, per) in node.get("memberPermissions").and_then(Value::as_object).into_iter().flatten() {
-            let per: HashMap<String, Vec<String>> = per
-                .as_object()
-                .into_iter()
-                .flatten()
-                .map(|(inst, cmds)| {
-                    let cmds = cmds.as_array().into_iter().flatten().filter_map(Value::as_str).map(str::to_string).collect();
-                    (inst.clone(), cmds)
-                })
-                .collect();
-            p.legacy_denied.insert(user.clone(), per);
-        }
         p
     }
 
@@ -301,20 +288,11 @@ impl NodePermissions {
         Ok(())
     }
 
-    /// 이 사람에게 이 인스턴스의 이 명령을 막아 두었는가 (`memberPermissions`). 막았으면 주인만 쓸 수 있다
-    pub fn member_denied(&self, who: &Requester, instance_id: &str, command: &str) -> bool {
-        who.user_id
-            .as_deref()
-            .and_then(|u| self.legacy_denied.get(u))
-            .and_then(|per| per.get(instance_id))
-            .is_some_and(|cmds| cmds.iter().any(|c| c == command))
-    }
-
     /// 서버 명령 하나
     pub fn check(&self, who: &Requester, instance_id: &str, command: &str, risk: &str) -> Result<(), Denied> {
         self.check_basic(who)?;
         let level = self.effective_level(who);
-        let need = if self.member_denied(who, instance_id, command) { OWNER } else { self.required(instance_id, command, risk) };
+        let need = self.required(instance_id, command, risk);
         if !self.meets(level, need) {
             return Err(self.denied(who, need));
         }
@@ -558,10 +536,10 @@ mod tests {
     }
 
     #[test]
-    fn legacy_deny_lists_still_block_and_the_owner_is_not_assumed() {
+    fn old_per_member_deny_lists_are_ignored_and_the_owner_is_not_assumed() {
+        // 레벨은 누적이다: 예전 사람별 금지 목록은 판정에 쓰지 않는다
         let p = NodePermissions::from_node(Some(&json!({ "memberPermissions": { "u": { "i": ["stop"] } } })));
-        assert!(p.check(&who("u"), "i", "stop", "caution").is_err());
-        assert!(p.check(&who("u"), "j", "stop", "caution").is_ok());
+        assert!(p.check(&who("u"), "i", "stop", "caution").is_ok());
         // 릴레이가 주인을 알려 주지 않으면 누구도 소유자가 아니다
         let mut anon = who("own");
         anon.owner_id = None;

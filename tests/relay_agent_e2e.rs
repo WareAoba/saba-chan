@@ -66,7 +66,7 @@ async fn poll(State(s): State<Shared>, headers: HeaderMap) -> axum::response::Re
             s.delivered = true;
             return Json(json!({ "commands": [{
                 "id": "req 1",
-                "payload": { "action": "raw_command", "text": "list" },
+                "payload": { "action": "plan", "text": "list" },
                 "requestedBy": "user-1",
                 "guildId": "guild-1",
                 "channelId": "chan-1",

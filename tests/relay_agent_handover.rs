@@ -43,7 +43,7 @@ async fn poll(State(s): State<Shared>) -> axum::response::Response {
             let who = |id: &str, payload: Value| json!({ "id": id, "payload": payload, "requestedBy": "user-1", "guildId": "guild-1" });
             let slow = json!({ "action": "query", "id": "server.query:slow", "instance": s.instance, "input": {} });
             let mut batch: Vec<Value> = (1..=4).map(|i| who(&format!("s{i}"), slow.clone())).collect();
-            batch.push(who("w", json!({ "action": "raw_command", "text": "list" })));
+            batch.push(who("w", json!({ "action": "plan", "text": "list" })));
             for c in &batch {
                 s.commands.insert(c["id"].as_str().unwrap().to_string(), c.clone());
             }

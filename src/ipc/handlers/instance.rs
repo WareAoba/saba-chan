@@ -102,10 +102,42 @@ pub async fn create_instance(
 }
 
 async fn create_instance_to_the_end(state: IPCServer, payload: Value) -> axum::response::Response {
-    create_instance_inner(state, payload).await.into_response()
+    create_instance_inner(state, payload, false).await.into_response()
 }
 
-async fn create_instance_inner(state: IPCServer, payload: Value) -> impl IntoResponse {
+/// POST /api/instances/check - 만들기 전에 이름·서버 폴더·포트가 다른 서버와 겹치는지 본다 (만들기 화면의 확인 단계).
+/// 몸체는 `POST /api/instances`와 같고 아무것도 만들거나 바꾸지 않는다. 만들기가 거절할 값(형식, 없는 프리셋 등)은
+/// 같은 오류로 답한다
+pub async fn check_new_instance(State(state): State<IPCServer>, Json(payload): Json<Value>) -> axum::response::Response {
+    create_instance_inner(state, payload, true).await.into_response()
+}
+
+/// 새 서버의 버전 (`version`): 비었으면 None(최신). 경로 조각·명령 인자가 되지 않게 글자를 제한한다
+fn requested_version(payload: &Value) -> Result<Option<String>, Box<axum::response::Response>> {
+    let bad = || {
+        let error = json!({ "error": "version must be a version name", "error_code": "invalid_format", "fields": [{"field": "version"}] });
+        Box::new((StatusCode::BAD_REQUEST, Json(error)).into_response())
+    };
+    match payload.get("version") {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::String(v)) if v.is_empty() => Ok(None),
+        Some(Value::String(v))
+            if v.len() <= 64
+                && !v.starts_with('.')
+                && v.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_' | '+')) =>
+        {
+            Ok(Some(v.clone()))
+        }
+        Some(_) => Err(bad()),
+    }
+}
+
+/// 폴더에 무엇이든 들어 있는가 (없는 폴더는 비었다)
+fn folder_has_entries(dir: &std::path::Path) -> bool {
+    std::fs::read_dir(dir).is_ok_and(|mut entries| entries.next().is_some())
+}
+
+async fn create_instance_inner(state: IPCServer, payload: Value, dry_run: bool) -> impl IntoResponse {
     let mut supervisor = state.supervisor.write().await;
 
     let name = payload
@@ -122,10 +154,24 @@ async fn create_instance_inner(state: IPCServer, payload: Value) -> impl IntoRes
 
     if let (Ok(name), Ok(module)) = (name, module_name) {
         // 이름으로 서버를 찾는 클라이언트가 있어 같은 이름은 둘 두지 않는다 (rename과 같은 409)
-        if supervisor.instance_store.list().iter().any(|i| i.name == name) {
+        let name_taken = |n: &str| supervisor.instance_store.list().iter().any(|i| i.name == n);
+        if name_taken(name) && !dry_run {
             let error = json!({ "success": false, "error": format!("An instance named '{}' already exists", name), "error_code": "name_taken" });
             return (StatusCode::CONFLICT, Json(error)).into_response();
         }
+        // 고른 버전(없으면 최신)과 실행 방식(`managed_start`, 없으면 데몬 기본)
+        let chosen_version = match requested_version(&payload) {
+            Ok(v) => v,
+            Err(resp) => return *resp,
+        };
+        let managed_start = match payload.get("managed_start") {
+            None | Some(Value::Null) => None,
+            Some(Value::Bool(b)) => Some(*b),
+            Some(_) => {
+                let error = json!({ "error": "managed_start must be true or false", "error_code": "invalid_format", "fields": [{"field": "managed_start"}] });
+                return (StatusCode::BAD_REQUEST, Json(error)).into_response();
+            }
+        };
         let mut instance = crate::instance::ServerInstance::new(name, module);
         // REST 포트를 모듈 기본값으로 채웠는가 (사용자가 정하지 않은 값만 예약 범위 밖으로 옮긴다)
         let mut rest_port_defaulted = false;
@@ -252,7 +298,12 @@ async fn create_instance_inner(state: IPCServer, payload: Value) -> impl IntoRes
                 }
             }
 
-            open_user_runtime(loaded_module.entry_path(), &instance);
+            if let Some(managed) = managed_start {
+                instance.module_settings.insert("managed_start".into(), json!(managed));
+            }
+            if !dry_run {
+                open_user_runtime(loaded_module.entry_path(), &instance);
+            }
 
             Some((
                 loaded_module.metadata.install.clone(),
@@ -328,6 +379,13 @@ async fn create_instance_inner(state: IPCServer, payload: Value) -> impl IntoRes
             }
         }
 
+        // 버전은 내려받아 설치하는 모듈만 고른다 (SteamCMD·익스텐션 설치는 버전을 받지 않는다)
+        let downloads = module_install.as_ref().and_then(|(install, _, _)| install.as_ref()).is_some_and(|i| i.method == "download");
+        if chosen_version.is_some() && !downloads {
+            let error = json!({ "error": "this module does not install a chosen version", "error_code": "invalid_format", "fields": [{"field": "version"}] });
+            return (StatusCode::BAD_REQUEST, Json(error)).into_response();
+        }
+
         // 선택적 필드 설정
         if let Some(path) = payload.get("executable_path").and_then(|v| v.as_str()) {
             instance.executable_path = Some(path.to_string());
@@ -373,15 +431,36 @@ async fn create_instance_inner(state: IPCServer, payload: Value) -> impl IntoRes
         } else {
             false
         };
+        // 새 서버를 사바쨩 폴더 밖에 설치한다 (`working_dir`): 그 폴더에 바로 설치하므로 절대 경로여야 하고,
+        // 파일이 든 폴더에는 설치하지 않는다 (있는 서버는 가져오기로 연결한다)
+        let custom_folder = !migration_mode && instance.working_dir.is_some();
+        if custom_folder && !instance.working_dir.as_deref().is_some_and(|d| std::path::Path::new(d).is_absolute()) {
+            let error = json!({ "error": "working_dir must be an absolute path", "error_code": "invalid_format", "fields": [{"field": "working_dir"}] });
+            return (StatusCode::BAD_REQUEST, Json(error)).into_response();
+        }
         // 한 폴더에 서버 둘이면 서로의 월드·설정을 덮어쓴다
-        if let Some(dir) = instance.working_dir.as_deref() {
-            if let Some(other) = supervisor.instance_store.folder_user(std::path::Path::new(dir), &instance.id) {
-                let error = json!({
-                    "success": false,
-                    "error": format!("Server '{}' already uses this folder", other.name),
-                    "error_code": "working_dir_in_use",
-                    "instance": other.name,
-                });
+        let folder_in_use = instance.working_dir.as_deref()
+            .and_then(|dir| supervisor.instance_store.folder_user(std::path::Path::new(dir), &instance.id))
+            .map(|other| other.name.clone());
+        if let Some(other) = folder_in_use.as_ref().filter(|_| !dry_run) {
+            let error = json!({
+                "success": false,
+                "error": format!("Server '{}' already uses this folder", other),
+                "error_code": "working_dir_in_use",
+                "instance": other,
+            });
+            return (StatusCode::CONFLICT, Json(error)).into_response();
+        }
+        let folder_not_empty = custom_folder && instance.working_dir.as_deref().is_some_and(|d| folder_has_entries(std::path::Path::new(d)));
+        if folder_not_empty && !dry_run {
+            let error = json!({ "success": false, "error": "The folder already has files", "error_code": "folder_not_empty", "fields": [{"field": "working_dir"}] });
+            return (StatusCode::CONFLICT, Json(error)).into_response();
+        }
+        // 새로 만든 폴더면 인스턴스를 저장하지 못했을 때 지운다 (빈 폴더만)
+        let made_folder = custom_folder && !dry_run && instance.working_dir.as_deref().is_some_and(|d| !std::path::Path::new(d).exists());
+        if custom_folder && !dry_run {
+            if let Err(e) = instance.working_dir.as_deref().map_or(Ok(()), std::fs::create_dir_all) {
+                let error = json!({ "success": false, "error": format!("Could not create the folder: {}", e), "error_code": "folder_unavailable", "fields": [{"field": "working_dir"}] });
                 return (StatusCode::CONFLICT, Json(error)).into_response();
             }
         }
@@ -397,10 +476,18 @@ async fn create_instance_inner(state: IPCServer, payload: Value) -> impl IntoRes
                 .unwrap_or_default()
         };
         let mut taken = std::collections::HashSet::new();
+        // 포트 → 그 포트를 저장해 둔 다른 서버 이름 (확인 단계가 보여 준다)
+        let mut port_users: std::collections::BTreeMap<u16, Vec<String>> = Default::default();
         for other in supervisor.instance_store.list() {
             let fields = port_fields_of(&other.module_name);
             let fields: Vec<&str> = fields.iter().map(String::as_str).collect();
-            taken.extend(crate::validator::instance_ports(other, &fields).into_iter().map(|(_, p)| p));
+            for (_, p) in crate::validator::instance_ports(other, &fields) {
+                taken.insert(p);
+                let users = port_users.entry(p).or_default();
+                if !users.contains(&other.name) {
+                    users.push(other.name.clone());
+                }
+            }
         }
         // Windows가 예약한 포트(예: 팰월드 REST 8212가 Hyper-V 범위 안)도 피한다: 서버가 그 포트를 열지 못한다
         let taken_or_reserved = |p: u16| taken.contains(&p) || crate::validator::port_reserved_by_windows(p);
@@ -432,6 +519,31 @@ async fn create_instance_inner(state: IPCServer, payload: Value) -> impl IntoRes
                     instance.module_settings.insert("rest_port".to_string(), json!(free));
                 }
             }
+        }
+
+        if dry_run {
+            // 추천 이름은 대소문자를 가리지 않고 겹치지 않는 것 (GUI·CLI 이름 칸과 같다)
+            let taken_ignoring_case = |n: &str| supervisor.instance_store.list().iter().any(|i| i.name.eq_ignore_ascii_case(n));
+            let suggested = (1..).map(|i| if i == 1 { module.to_string() } else { format!("{module}-{i}") }).find(|n| !taken_ignoring_case(n));
+            let fields = port_fields_of(module);
+            let fields: Vec<&str> = fields.iter().map(String::as_str).collect();
+            let ports: Vec<Value> = crate::validator::instance_ports(&instance, &fields).into_iter().map(|(field, port)| json!({
+                "field": field,
+                "port": port,
+                "in_use_by": port_users.get(&port).cloned().unwrap_or_default(),
+                "reserved": crate::validator::port_reserved_by_windows(port),
+            })).collect();
+            return (StatusCode::OK, Json(json!({
+                "success": true,
+                "name": { "value": name, "taken": name_taken(name), "suggested": suggested },
+                "folder": {
+                    "custom": custom_folder,
+                    "path": instance.working_dir.as_deref().filter(|_| custom_folder),
+                    "in_use_by": folder_in_use,
+                    "not_empty": folder_not_empty,
+                },
+                "ports": ports,
+            }))).into_response();
         }
 
         let id = instance.id.clone();
@@ -509,10 +621,13 @@ async fn create_instance_inner(state: IPCServer, payload: Value) -> impl IntoRes
                         // 진행 문구는 데몬 언어로 (모듈이 보내는 문구는 SABA_LANG으로 이미 번역돼 온다)
                         let text = crate::chat::i18n::Catalog::for_language(&state.config_store.ui_language().await);
 
-                        // install_dir 결정: instance_dir / install_subdir (기본 "server")
+                        // install_dir 결정: 고른 폴더, 아니면 instance_dir / install_subdir (기본 "server")
                         let install_subdir = install_config.install_subdir.clone()
                             .unwrap_or_else(|| "server".to_string());
-                        let install_dir = instance_dir.join(&install_subdir);
+                        let install_dir = match instance.working_dir.as_deref().filter(|_| custom_folder) {
+                            Some(dir) => std::path::PathBuf::from(dir),
+                            None => instance_dir.join(&install_subdir),
+                        };
                         let install_dir_str = install_dir.to_string_lossy().to_string();
 
                         // working_dir가 아직 설정되지 않았으면 install_dir로 설정
@@ -582,7 +697,9 @@ async fn create_instance_inner(state: IPCServer, payload: Value) -> impl IntoRes
                             let result = {
                                 // download 방식 모듈은 먼저 list_versions로 최신 버전 조회.
                                 // 인스턴스 설정(서버 종류 등)을 넘겨, 그 설정으로 받을 수 있는 최신을 고르게 한다
-                                let version = if install_config.method == "download" {
+                                let version = if let Some(version) = chosen_version {
+                                    Some(version)
+                                } else if install_config.method == "download" {
                                     match crate::supervisor::Supervisor::latest_version(&module_path, &serde_json::json!(&install_settings)).await {
                                         Ok(version) => Some(version),
                                         Err(e) => {
@@ -869,6 +986,10 @@ async fn create_instance_inner(state: IPCServer, payload: Value) -> impl IntoRes
                     if let Err(back) = std::fs::rename(dest, src) {
                         tracing::error!("Could not move the server folder back to {} after a failed create: {}", src.display(), back);
                     }
+                }
+                // 이 요청이 만든 빈 설치 폴더도 남기지 않는다 (다시 만들 때 "파일이 든 폴더"가 되지 않게)
+                if let Some(dir) = instance.working_dir.as_deref().filter(|_| made_folder) {
+                    let _ = std::fs::remove_dir(dir);
                 }
                 let error = json!({ "error": format!("Failed to create instance: {}", e) });
                 (StatusCode::INTERNAL_SERVER_ERROR, Json(error)).into_response()
@@ -2991,6 +3112,138 @@ mod tests {
             .unwrap();
         let tuned = create("b").await;
         assert_eq!((tuned.backup_keep, tuned.module_settings.get("auto_restart")), (Some(3), Some(&json!(false))));
+    }
+
+    /// 만들기 마법사용 모듈: download 방식이고, install_server는 맞는 버전을 받았을 때만 성공한다
+    /// (`chosen` 폴더는 고른 버전 1.0이고 데몬이 만들어 둔 폴더, 그 밖은 최신 2.0).
+    /// 시험 모듈은 모듈 폴더 밖이라 격리 실행(Windows)에서 설치 폴더에 쓰지 못한다: 파일을 쓰지 않고 받은 값만 본다
+    async fn wizard_state(tmp: &std::path::Path) -> crate::ipc::IPCServer {
+        let modules = tmp.join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n\
+             [protocols]\nsupported = [\"rest\"]\n\n[config]\ndefault_port = 25565\n\n\
+             [[settings.fields]]\nname = \"port\"\ntype = \"number\"\nport = true\n\n[install]\nmethod = \"download\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("lifecycle.py"),
+            "import json, os, sys\nconfig = json.load(sys.stdin)\nif sys.argv[1] == 'list_versions':\n    \
+             print(json.dumps({'success': True, 'latest': {'release': '2.0'}}))\n\
+             elif sys.argv[1] == 'install_server':\n    \
+             want = '1.0' if os.path.basename(config['install_dir']) == 'chosen' else '2.0'\n    \
+             ok = config.get('version') == want and (want == '2.0' or os.path.isdir(config['install_dir']))\n    \
+             print(json.dumps({'success': ok, 'install_path': config['install_dir'], 'message': 'wrong version or folder'}))\n\
+             else:\n    print(json.dumps({'success': True}))\n",
+        )
+        .unwrap();
+        // 설치 방식이 없는 모듈 (버전을 고르지 않는다)
+        let plain = modules.join("plain");
+        std::fs::create_dir_all(&plain).unwrap();
+        std::fs::write(plain.join("module.toml"), "[module]\nschema_version = 1\nname = \"plain\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n").unwrap();
+        std::fs::write(plain.join("lifecycle.py"), "").unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.join("instances").to_str().unwrap());
+        for module in sup.module_loader.discover_modules().unwrap() { crate::sandbox::consent_test_component(std::path::Path::new(&module.entry_path())); }
+        sup.initialize().await.unwrap();
+        crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new())
+    }
+
+    /// 만들기 전에 이름·폴더·포트가 다른 서버와 겹치는지 묻는다. 아무것도 만들지 않는다
+    #[tokio::test]
+    async fn check_reports_name_folder_and_port_conflicts_without_creating() {
+        use axum::extract::State;
+        use axum::Json;
+        let tmp = tempfile::tempdir().unwrap();
+        let state = wizard_state(tmp.path()).await;
+        let used = tmp.path().join("used");
+        {
+            let mut sup = state.supervisor.write().await;
+            let mut other = crate::instance::ServerInstance::new("game", "game");
+            other.port = Some(25565);
+            other.working_dir = Some(used.to_string_lossy().into_owned());
+            sup.instance_store.add(other).unwrap();
+        }
+        let check = |body: serde_json::Value| {
+            let state = state.clone();
+            async move { crate::ipc::internal::into_internal(super::check_new_instance(State(state), Json(body)).await).await }
+        };
+
+        let clash = check(json!({ "name": "game", "module_name": "game", "port": 25565, "working_dir": used.join("srv").to_string_lossy() })).await;
+        assert!(clash.status.is_success(), "{}", clash.body);
+        assert_eq!(clash.body["name"], json!({ "value": "game", "taken": true, "suggested": "game-2" }), "{}", clash.body);
+        assert_eq!(clash.body["folder"]["in_use_by"], "game", "{}", clash.body);
+        let port = clash.body["ports"].as_array().unwrap().iter().find(|p| p["field"] == "port").cloned().unwrap();
+        assert_eq!((&port["port"], &port["in_use_by"]), (&json!(25565), &json!(["game"])), "{}", clash.body);
+
+        // 추천 이름은 대소문자를 가리지 않는다 (GUI·CLI 이름 칸과 같다)
+        state.supervisor.write().await.instance_store.add(crate::instance::ServerInstance::new("GAME-2", "plain")).unwrap();
+        let named = check(json!({ "name": "x", "module_name": "game" })).await;
+        assert_eq!(named.body["name"]["suggested"], "game-3", "{}", named.body);
+
+        // 포트를 정하지 않으면 만들기가 고를 포트(다른 서버와 겹치지 않게 옮긴 값)를 알려 준다
+        let free = check(json!({ "name": "game-2", "module_name": "game" })).await;
+        assert_eq!(free.body["name"]["taken"], false, "{}", free.body);
+        assert_eq!(free.body["folder"], json!({ "custom": false, "path": null, "in_use_by": null, "not_empty": false }), "{}", free.body);
+        let port = free.body["ports"].as_array().unwrap().iter().find(|p| p["field"] == "port").cloned().unwrap();
+        assert_eq!((&port["port"], &port["in_use_by"]), (&json!(25575), &json!([])), "{}", free.body);
+
+        // 상대 경로와 파일이 든 폴더도 미리 알린다
+        let relative = check(json!({ "name": "x", "module_name": "game", "working_dir": "srv" })).await;
+        assert_eq!(relative.body["error_code"], "invalid_format", "{}", relative.body);
+        std::fs::create_dir_all(tmp.path().join("full")).unwrap();
+        std::fs::write(tmp.path().join("full").join("a.txt"), "x").unwrap();
+        let full = check(json!({ "name": "x", "module_name": "game", "working_dir": tmp.path().join("full").to_string_lossy() })).await;
+        assert_eq!(full.body["folder"]["not_empty"], true, "{}", full.body);
+
+        let sup = state.supervisor.read().await;
+        assert_eq!(sup.instance_store.list().len(), 2, "확인은 아무것도 만들지 않는다");
+    }
+
+    /// 마법사에서 고른 폴더·버전·실행 방식으로 만든다
+    #[tokio::test]
+    async fn create_installs_the_chosen_version_into_the_chosen_folder() {
+        use axum::extract::State;
+        use axum::Json;
+        let tmp = tempfile::tempdir().unwrap();
+        let state = wizard_state(tmp.path()).await;
+        let create = |body: serde_json::Value| {
+            let state = state.clone();
+            async move { crate::ipc::internal::into_internal(super::create_instance(State(state), Json(body)).await).await }
+        };
+        let folder = tmp.path().join("my servers").join("chosen");
+        let made = create(json!({ "name": "a", "module_name": "game", "working_dir": folder.to_string_lossy(), "version": "1.0", "managed_start": false })).await;
+        assert!(made.status.is_success(), "{}", made.body);
+        let progress = provisioned(&state, "a").await.expect("provisioning finished");
+        assert_eq!(progress.error, None, "{:?}", progress.details);
+        let id = made.body["id"].as_str().unwrap();
+        let inst = state.supervisor.read().await.instance_store.get(id).cloned().unwrap();
+        assert_eq!(inst.working_dir.as_deref(), Some(folder.to_string_lossy().as_ref()));
+        assert_eq!(inst.module_settings["managed_start"], json!(false));
+
+        // 버전을 고르지 않으면 최신이다
+        let latest = create(json!({ "name": "b", "module_name": "game" })).await;
+        assert!(latest.status.is_success(), "{}", latest.body);
+        let progress = provisioned(&state, "b").await.expect("provisioning finished");
+        assert_eq!(progress.error, None, "{:?}", progress.details);
+
+        // 파일이 든 폴더에는 새로 설치하지 않는다 (있는 서버는 가져오기로)
+        let refused = create(json!({ "name": "c", "module_name": "game", "working_dir": folder.to_string_lossy() })).await;
+        assert_eq!((refused.status.as_u16(), &refused.body["error_code"]), (409, &json!("working_dir_in_use")), "{}", refused.body);
+        let full = tmp.path().join("full");
+        std::fs::create_dir_all(&full).unwrap();
+        std::fs::write(full.join("a.txt"), "x").unwrap();
+        let refused = create(json!({ "name": "c", "module_name": "game", "working_dir": full.to_string_lossy() })).await;
+        assert_eq!((refused.status.as_u16(), &refused.body["error_code"]), (409, &json!("folder_not_empty")), "{}", refused.body);
+        // 버전은 내려받아 설치하는 모듈만 받는다
+        let refused = create(json!({ "name": "c", "module_name": "plain", "version": "1.0" })).await;
+        assert_eq!((refused.status.as_u16(), &refused.body["error_code"]), (400, &json!("invalid_format")), "{}", refused.body);
+        for (key, bad) in [("working_dir", json!("relative")), ("version", json!("../1.0")), ("version", json!(3)), ("managed_start", json!("no"))] {
+            let refused = create(json!({ "name": "c", "module_name": "game", key: bad })).await;
+            assert_eq!((refused.status.as_u16(), &refused.body["error_code"]), (400, &json!("invalid_format")), "{key} {}", refused.body);
+        }
+        assert_eq!(state.supervisor.read().await.instance_store.list().len(), 2);
     }
 
     #[tokio::test]

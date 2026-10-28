@@ -410,6 +410,14 @@ export function createApi({ invoke, hub }) {
                 return { error: t('server.creation_failed', { error: error.message }) };
             }
         },
+        // 만들기 전 확인: 이름·서버 폴더·포트가 다른 서버와 겹치는지 (아무것도 만들지 않는다)
+        instanceCheck: async (data) => {
+            try {
+                return (await post('/api/instances/check', data, { timeout: 15000 })).data;
+            } catch (error) {
+                return errorBody(error);
+            }
+        },
         instanceProvisionProgress: async (name) => {
             try {
                 return (await get(`/api/provision-progress/${encodeURIComponent(name)}`, { timeout: 3000 })).data;
@@ -616,7 +624,6 @@ export function createApi({ invoke, hub }) {
         // sizes=false면 데몬이 인스턴스 폴더 크기를 새로 재지 않는다
         systemMetrics: (opts = {}) =>
             daemonCall('get', `/api/system/metrics${opts?.sizes === false ? '?sizes=false' : ''}`, undefined, 5000),
-        configDefaults: (kind) => daemonCall('get', `/api/config/${encodeURIComponent(kind)}/defaults`),
         // keys를 생략하면 kind 전체를 기본값으로 되돌린다
         configReset: (kind, keys) =>
             daemonCall('post', `/api/config/${encodeURIComponent(kind)}/reset`, keys ? { keys } : {}),
@@ -790,7 +797,6 @@ export function createApi({ invoke, hub }) {
             const qs = queryString({ since, count: count || undefined });
             return daemonCall('get', `/api/daemon/console${qs}`, undefined, 10000);
         },
-        consoleFocusPopout: (instanceId) => invoke('console_focus_popout', { instanceId }),
         consolePopin: (instanceId) => invoke('console_popin', { instanceId }),
         consoleToggleAlwaysOnTop: (instanceId, pinned) =>
             invoke('console_toggle_always_on_top', { instanceId, pinned }),
@@ -977,14 +983,6 @@ export function createApi({ invoke, hub }) {
                 return false;
             }
         },
-        loadNodeToken: async () => {
-            try {
-                return (await get('/api/config/node-token')).data?.token || '';
-            } catch (e) {
-                console.warn('[NodeToken] Failed to load from daemon:', e.message);
-                return '';
-            }
-        },
         // 연결 해제: 데몬이 릴레이 에이전트를 멈추고 토큰을 지운다
         deleteNodeToken: () => daemonCall('delete', '/api/config/node-token'),
 
@@ -1005,6 +1003,8 @@ export function createApi({ invoke, hub }) {
         },
         permissionsGet: (guildId) => daemonCall('get', permPath(guildId)),
         permissionsUpdate: (guildId, patch) => daemonCall('patch', permPath(guildId), patch || {}),
+        permissionsCommands: (guildId, locale) =>
+            daemonCall('get', `${permPath(guildId)}/commands${queryString({ locale: locale || undefined })}`),
         permissionsSetMember: (guildId, discordId, level) => daemonCall('put', permPath(guildId, discordId), { level }),
         permissionsRemoveMember: (guildId, discordId) => daemonCall('delete', permPath(guildId, discordId)),
         sandboxListUnisolated: () => daemonCall('get', '/api/sandbox/unisolated'),
@@ -1196,12 +1196,13 @@ export function createApi({ invoke, hub }) {
         // 길드에 저장된 사용자 키로 릴레이가 제공자에게 묻는다 (chatbot-settings-v2 §1)
         chatbotModels: (guildId) =>
             daemonJson('get', `/api/relay/node/${encodeURIComponent(guildId)}/chatbot/models`, undefined, 20000),
+        // 고를 수 있는 도구 목록 — 카테고리·쓸 수 있는지 (원본은 릴레이)
+        chatbotTools: (guildId) => daemonJson('get', `/api/relay/node/${encodeURIComponent(guildId)}/chatbot/tools`),
         // 남은 크레딧(제공사가 알려 줄 때만)과 이번 달 사용량 — 릴레이 답 그대로
         chatbotCredit: (guildId) =>
             daemonJson('get', `/api/relay/node/${encodeURIComponent(guildId)}/chatbot/credit`, undefined, 20000),
         chatbotMemoTemplate: (locale) =>
             daemonJson('get', `/api/chatbot/memo-template${locale ? `?locale=${encodeURIComponent(locale)}` : ''}`),
-        chatbotClear: () => daemonJson('delete', '/api/chatbot'),
         chatbotClearMemory: (guildId) =>
             daemonJson('delete', `/api/chatbot/memory${guildId ? `?guildId=${encodeURIComponent(guildId)}` : ''}`),
         relayInitiatePairing: async (payload) => {
@@ -1223,6 +1224,9 @@ export function createApi({ invoke, hub }) {
         relayLinkRequests: () => daemonJson('get', '/api/relay/link-requests'),
         relayLinkRequestRespond: (requestId, accept) =>
             daemonJson('post', `/api/relay/link-requests/${encodeURIComponent(requestId)}`, { accept: !!accept }),
+        // 원격 MCP 에이전트 연결 (계정마다 하나): 보기 `{grant|null}`, 끊기는 빈 본문(204)
+        relayMcpGrant: () => daemonJson('get', '/api/relay/mcp/grant'),
+        relayMcpGrantRevoke: () => daemonJson('delete', '/api/relay/mcp/grant'),
         // 개인정보 모두 지우기: `{url}`(웹사이트 동의 페이지)을 받고, 끝났는지는 `{status}`로 묻는다
         relayPrivacyErase: (locale) => daemonJson('post', '/api/relay/privacy/erase', { locale }),
         relayPrivacyEraseStatus: () => daemonJson('get', '/api/relay/privacy/erase'),
@@ -1232,7 +1236,6 @@ export function createApi({ invoke, hub }) {
             if (!folderPath || typeof folderPath !== 'string') return { error: t('errors.path_missing') };
             return invoke('shell_open_path', { path: folderPath });
         },
-        logsGetPath: () => invoke('logs_get_path'),
         logsOpenFolder: () => invoke('logs_open_folder'),
         launchUninstaller: () => invoke('launch_uninstaller'),
         getAppVersion: () => invoke('app_get_version'),

@@ -11,7 +11,6 @@ export const BANNED = -1;
 /** 기본 단계 (높은 것부터). 지운 기본 단계는 이 순서로 가까운 단계를 찾는다 */
 const BUILTIN = [3, 2, 1, 0, -1];
 export const PRESETS = ['loose', 'default', 'strict'];
-export const RISKS = ['safe', 'caution', 'danger'];
 
 const LEVEL_KEYS = { 3: 'owner', 2: 'admin', 1: 'user', 0: 'chatbot', '-1': 'banned' };
 /** 기본 단계의 로케일 키 (더한 단계는 'custom') */
@@ -90,44 +89,103 @@ export function ladderPatch(ladder) {
     });
 }
 
-/** 데몬이 계약표를 안 실어 줘도 같은 값으로 판정한다 */
-const PRESET_TABLE = {
-    loose: { safe: 0, caution: 0, danger: 1 },
-    default: { safe: 0, caution: 1, danger: 2 },
-    strict: { safe: 1, caution: 2, danger: 3 },
-};
-
-/** 인스턴스마다 쓰는 내장 명령과 위험도 (help·list는 인스턴스에 매이지 않는다) */
-export const BUILTIN_COMMANDS = [
-    { name: 'status', risk: 'safe' },
-    { name: 'start', risk: 'caution' },
-    { name: 'stop', risk: 'caution' },
-];
-
-export const commandKey = (instanceId, command) => `${instanceId}/${command}`;
-
-export const normalizeRisk = (risk) => (RISKS.includes(risk) ? risk : 'caution');
-
-/** 프리셋이 이 risk에 요구하는 레벨. 그 기본 단계를 지웠으면 더 엄한 쪽 (데몬 `preset_need`) */
-export function presetLevel(perm, risk) {
-    const preset = PRESETS.includes(perm?.preset) ? perm.preset : 'default';
-    const table = perm?.presets?.[preset] || PRESET_TABLE[preset];
-    const level = table[normalizeRisk(risk)];
-    const ids = ladderOf(perm).map((l) => l.id);
-    const at = BUILTIN.indexOf(level);
-    return (
-        BUILTIN.slice(0, at + 1)
-            .reverse()
-            .find((b) => ids.includes(b)) ?? OWNER
-    );
+/** 아래(금지)부터 위(소유자)로 센 레벨 번호. 금지가 Lv 0이다 (화면 표시용, 저장값과 무관) */
+export function levelNumber(perm, id) {
+    const ladder = ladderOf(perm);
+    const at = ladder.findIndex((l) => l.id === id);
+    return at < 0 ? null : ladder.length - 1 - at;
 }
 
-/** 명령 하나의 요구 레벨과 덮어썼는지 */
-export function requiredLevel(perm, instanceId, command, risk) {
-    const own = perm?.commandLevels?.[commandKey(instanceId, command)];
-    if (typeof own === 'number') return { level: own, overridden: true };
-    return { level: presetLevel(perm, risk), overridden: false };
+/** "Lv 2 · 유저" */
+export function levelTitle(t, perm, id) {
+    return t('discord.perm_level_numbered', { n: levelNumber(perm, id), name: levelLabel(t, perm, id) });
 }
+
+/** 사다리 id (낮은 것부터) */
+export const ascending = (perm) =>
+    ladderOf(perm)
+        .map((l) => l.id)
+        .reverse();
+
+/** 모든 인스턴스 보기 */
+export const ALL_INSTANCES = '*';
+
+/**
+ * 계단 칩 (데몬 `GET /api/permissions/:guildId/commands` 항목을 묶는다).
+ * 같은 이름의 명령은 한 칩이다. 모든 인스턴스 보기에서는 가장 많은 인스턴스가 있는 레벨에 칩 하나를 두고,
+ * 다른 레벨인 인스턴스는 꼬리표(`instance`) 칩으로 따로 둔다. 큰 칩을 옮기면 그 명령의 모든 인스턴스가 옮겨진다
+ */
+export function stairChips(board, view = ALL_INSTANCES) {
+    const items = (board?.items || []).filter((i) => view === ALL_INSTANCES || !i.instance || i.instance === view);
+    const groups = new Map();
+    for (const item of items) {
+        const id = `${item.instance ? 'i' : 'g'}:${item.name}`;
+        if (!groups.has(id)) groups.set(id, []);
+        groups.get(id).push(item);
+    }
+    const chips = [];
+    for (const [id, list] of groups) {
+        const byLevel = new Map();
+        for (const item of list) byLevel.set(item.level, [...(byLevel.get(item.level) || []), item]);
+        const [[level, main]] = [...byLevel].sort((a, b) => b[1].length - a[1].length);
+        const head = list[0];
+        const chip = {
+            title: head.title,
+            risk: head.risk,
+            confirmRisk: main[0].confirmRisk || main[0].risk,
+            kind: head.kind,
+            fixed: head.fixed,
+            name: head.name,
+        };
+        chips.push({ ...chip, id, level, items: list, overridden: main.some((i) => i.overridden) });
+        for (const item of list.filter((i) => i.level !== level)) {
+            chips.push({
+                ...chip,
+                id: `${id}@${item.instance}`,
+                level: item.level,
+                items: [item],
+                confirmRisk: item.confirmRisk || item.risk,
+                instance: item.instance,
+                overridden: item.overridden,
+            });
+        }
+    }
+    return chips;
+}
+
+/**
+ * 칩을 `level`로 옮기는 `commandLevels` 바꾸기. 프리셋 값과 같으면 덮어쓰기를 지운다(`null`),
+ * 다르면 첫 키에 쓰고 나머지 키(예전 키)는 지운다. 고정 레벨 항목은 건드리지 않는다
+ */
+export function levelPatch(items, level) {
+    const out = {};
+    for (const item of items) {
+        if (item.fixed) continue;
+        const keys = item.keys?.length ? item.keys : [item.key];
+        keys.forEach((k, i) => {
+            out[k] = i === 0 && level !== item.preset ? level : null;
+        });
+    }
+    return out;
+}
+
+/** 디스코드 되묻기 단계 */
+export const RISKS = ['safe', 'caution', 'danger'];
+
+/**
+ * 칩의 디스코드 되묻기 단계를 `risk`로 바꾸는 `commandRisks` 바꾸기 (데몬 `discord.commandRisks`).
+ * 명령의 원래 단계와 같으면 지운다(`null`)
+ */
+export function riskPatch(items, risk) {
+    const out = {};
+    for (const item of items) {
+        if (item.riskKey) out[item.riskKey] = risk === item.risk ? null : risk;
+    }
+    return out;
+}
+
+/** 프리셋과 다르게 옮긴 항목 수 */
+export const overriddenCount = (board) => (board?.items || []).filter((i) => i.overridden).length;
 
 /** 레벨별 멤버 묶음 (높은 것부터). 소유자는 맨 위에 따로 둔다 */
 export function membersByLevel(perm) {

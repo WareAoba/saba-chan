@@ -48,7 +48,20 @@
     },
     "ask_mode": "服务器文件夹要怎么处理？",
     "mode_link": "保留在原位置",
-    "mode_move": "移入 saba-chan（仅限同一驱动器；删除已移入的服务器会删除其文件）"
+    "mode_move": "移入 saba-chan（仅限同一驱动器；删除已移入的服务器会删除其文件）",
+    "folder_not_empty": "{{dir}} 中已有文件。请选择空文件夹，或用 --from 连接已有服务器。",
+    "port_in_use": "{{servers}} 也在使用端口 {{port}}。同时运行会导致端口冲突。",
+    "port_reserved": "端口 {{port}} 已被 Windows 保留，无法打开。请用 --game-port 选择其他端口。",
+    "ask_version": "服务器版本",
+    "version_latest": "最新版本（推荐）",
+    "version_not_chosen": "只有在新安装且由 saba-chan 下载服务器的游戏时才能选择版本（{{game}}）。",
+    "ask_location": "服务器文件放在哪里？",
+    "location_default": "saba-chan 文件夹（推荐）",
+    "location_custom": "其他空文件夹（删除服务器后文件仍保留）",
+    "ask_dir": "安装文件夹路径",
+    "ask_run": "服务器如何运行？",
+    "run_managed": "由 saba-chan 管理（推荐）",
+    "run_unmanaged": "自行管理（无法使用 saba-chan 控制台）"
   },
   "bot": {
     "ask_token": "节点令牌",
@@ -94,6 +107,10 @@
     "erase_expired": "同意链接已过期。请重新运行 bot erase。",
     "erase_failed": "数据已删除，但无法移除这台电脑的连接信息。请运行 bot unpair。",
     "erase_no_url": "中继没有提供同意页面。",
+    "agent_none": "尚未连接 AI 智能体。在 ChatGPT、Claude 等智能体中添加 {{url}}，即可让它管理你 Discord 账号下的电脑。",
+    "agent_linked": "AI 智能体 {{name}} 可以管理你 Discord 账号下的所有电脑。最后使用：{{when}}",
+    "confirm_agent_unlink": "要断开 AI 智能体吗？它会立即失去对此账号电脑的访问。",
+    "agent_unlinked": "已断开 AI 智能体。",
     "invite": "用此链接将机器人邀请到你的 Discord 服务器：",
     "channel": "频道",
     "channel_ambiguous": "有多个名为 {{name}} 的频道。请使用其 id。",
@@ -638,6 +655,7 @@
     "preflight_failed": "游戏模块运行环境准备失败：{{error}}。将在下次服务器操作时重试。"
   },
   "stop": {
+    "confirm": "确定要停止 {{name}} 服务器吗？",
     "already": "{{name}} 未运行。",
     "done": "{{name}} 已停止。",
     "force_confirm": "不保存就停止吗？",
@@ -783,6 +801,7 @@
       "bot.pair": "将这台电脑与 Discord 服务器配对（显示要在 Discord 中输入的代码）",
       "bot.unpair": "忘记这台电脑的配对",
       "bot.erase": "删除中继保存的我的 Discord 账号的全部信息，并断开这台电脑的连接（打开同意页面）",
+      "bot.agent": "连接到你 Discord 账号的 AI 智能体（远程 MCP），可以管理账号下的所有电脑",
       "bot.token": "直接输入节点令牌（在别处配对时）。只接受隐藏输入或标准输入的一行",
       "bot.prefix": "查看或更改聊天前缀",
       "bot.nodes": "与这台电脑配对的 Discord 服务器",
@@ -841,6 +860,7 @@
       "audit": "谁从哪里（GUI、CLI、Discord、计划）启动、停止了服务器或发送了命令",
       "perm": "在 Discord 中谁能使用哪些命令（成员等级、预设、按命令的等级）",
       "perm.show": "查看一个 Discord 服务器的等级、预设和覆盖设置（服务器名称或 id，省略则为唯一的服务器）",
+      "perm.commands": "各等级命令：每个命令从哪个等级起可用（--server 只看一个服务器）",
       "perm.grant": "给成员（名称或 id）设置等级：admin、user、chatbot、banned",
       "perm.revoke": "删除成员的单独等级（改用默认等级）",
       "perm.default": "没有单独等级的成员的等级",
@@ -1001,6 +1021,7 @@
       "bot.lang.value": "auto 或语言代码（ko、en、ja、zh-CN、zh-TW、es、pt-BR、ru、de、fr）",
       "bot.prefix.values": "一个或多个前缀（不含空格，最多 32 个字符，最多 10 个）",
       "bot.prefix.default": "恢复为应用语言的默认前缀",
+      "bot.agent.unlink": "断开智能体（立即失去访问）",
       "bot.music.on": "开启音乐",
       "bot.music.off": "关闭音乐",
       "bot.music.ui": "显示播放器面板（on 或 off）",
@@ -1062,11 +1083,14 @@
       "bot.notice.off": "关闭启动通知",
       "chatbot.template.locale": "模板语言（默认：应用语言）",
       "bot.confirm.direct": "直接向机器人请求 — 前缀命令和斜杠命令。",
-      "bot.confirm.chatbot": "会说话的 Saba-chan — 会说话的 Saba-chan 选择的管理操作以及多人混合的请求，无论此设置如何都会询问。"
+      "bot.confirm.chatbot": "会说话的 Saba-chan — 会说话的 Saba-chan 选择的管理操作以及多人混合的请求，无论此设置如何都会询问。",
+      "game_version": "要安装的服务器版本（下载服务器的游戏，默认：最新正式版）",
+      "unmanaged": "自行管理：saba-chan 只启动并查看是否在运行（无控制台）"
     },
     "after": "名称可以只写一部分（例如 start pal）。在终端中不带参数运行会打开全屏菜单(SABA_NO_TUI=1 时为交互式 shell)。\n在脚本中请使用 --json 和 --yes。退出码：0 成功 · 1 失败 · 2 用法错误 · 3 无法连接守护进程 · 4 未找到 · 130 已取消"
   },
   "restart": {
+    "confirm": "要停止并重新启动 '{{name}}' 吗？已连接的玩家会短暂断开。",
     "waiting": "正在重启 {{name}}...",
     "done": "{{name}} 已重启。"
   },
@@ -1205,7 +1229,15 @@
     "credit_balance_none": "暂时无法获取余额。",
     "credit_usage": "本月用量（{{month}}，UTC）",
     "credit_usage_line": "模型调用 {{calls}} 次 · 输入 {{input}} token（缓存 {{cached}}） · 输出 {{output}} token",
-    "credit_exhausted": "额度已用完（{{time}}）。充值前无法回复。"
+    "credit_exhausted": "额度已用完（{{time}}）。充值前无法回复。",
+    "cat_game_servers": "游戏服务器",
+    "cat_games": "游戏相关",
+    "cat_info": "查找信息",
+    "cat_create": "创作",
+    "tool_on": "开",
+    "tool_off": "关",
+    "tool_blocked": "已在通用设置中阻止",
+    "tool_unavailable": "暂时无法使用"
   },
   "trust": {
     "verified": "已验证",
@@ -1279,7 +1311,7 @@
       "owner": "所有者",
       "admin": "管理员",
       "user": "用户",
-      "chatbot": "会说话的 Saba-chan",
+      "chatbot": "访客",
       "banned": "已封禁"
     }
   },
