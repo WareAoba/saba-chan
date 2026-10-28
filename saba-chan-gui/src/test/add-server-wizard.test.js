@@ -143,6 +143,19 @@ describe('새 서버 만들기 마법사', () => {
         expect(screen.getByRole('button', { name: 'Next' })).not.toBeDisabled();
     });
 
+    it('폴더를 확인하는 동안에는 이전 단계로 가지 않는다 (늦게 온 확인 결과가 단계를 건너뛰지 않게)', async () => {
+        open();
+        await next();
+        fireEvent.click(screen.getByRole('tab', { name: 'Another folder' }));
+        fireEvent.change(screen.getByLabelText('Folder path'), { target: { value: '/srv/mc' } });
+        let answer;
+        check.mockImplementationOnce((body) => new Promise((resolve) => (answer = () => resolve(check(body)))));
+        await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Next' })));
+        for (const back of screen.getAllByRole('button', { name: 'Back' })) expect(back).toBeDisabled();
+        await act(async () => answer());
+        expect(screen.getByRole('heading', { name: 'Run mode' })).toBeTruthy();
+    });
+
     it('이전 단계로 돌아가도 고른 값이 남는다', async () => {
         open();
         await next();

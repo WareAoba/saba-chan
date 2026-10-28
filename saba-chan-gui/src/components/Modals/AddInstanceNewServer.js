@@ -606,7 +606,7 @@ export function AddInstanceNewServer({
             {/* ── Header ── */}
             <div className="modal-header add-server-header">
                 <div className="as-header-row">
-                    <button className="ai-back-btn" type="button" onClick={goBack} disabled={submitting}>
+                    <button className="ai-back-btn" type="button" onClick={goBack} disabled={submitting || leaving}>
                         <Icon name="chevronLeft" size="sm" />
                     </button>
                     <div className="as-header-copy">
@@ -648,7 +648,7 @@ export function AddInstanceNewServer({
                 <button className="btn btn-cancel" onClick={onClose} disabled={submitting}>
                     {t('modals.cancel')}
                 </button>
-                <button className="btn btn-secondary" type="button" onClick={goBack} disabled={submitting}>
+                <button className="btn btn-secondary" type="button" onClick={goBack} disabled={submitting || leaving}>
                     {t('add_server_modal.prev')}
                 </button>
                 {isLast ? (
