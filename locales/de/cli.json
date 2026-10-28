@@ -636,6 +636,7 @@
     "preflight_failed": "Einrichtung der Laufzeitumgebung für Spielmodule fehlgeschlagen: {{error}}. Wird bei der nächsten Serveraktion erneut versucht."
   },
   "stop": {
+    "confirm": "Sind Sie sicher, dass Sie Server {{name}} stoppen möchten?",
     "already": "{{name}} läuft nicht.",
     "done": "{{name}} gestoppt.",
     "not_yet": "{{name}} wurde noch nicht gestoppt. Erzwingen: saba-chan-cli stop --force {{name}}",
@@ -711,6 +712,7 @@
       "audit": "Wer Server gestartet, gestoppt oder Befehle gesendet hat, und von wo (GUI, CLI, Discord, Zeitplan)",
       "perm": "Wer welche Befehle aus Discord ausführen darf (Stufen je Mitglied, Vorlage, Ausnahmen)",
       "perm.show": "Stufen, Vorlage und Ausnahmen eines Discord-Servers",
+      "perm.commands": "Befehle je Stufe: ab welcher Stufe jeder Befehl nutzbar ist (ein Server mit --server)",
       "perm.grant": "Einem Mitglied eine Stufe geben: admin, user, chatbot oder banned",
       "perm.revoke": "Die eigene Stufe eines Mitglieds entfernen (es erhält die Standardstufe)",
       "perm.default": "Stufe für Mitglieder ohne eigene Stufe",
@@ -855,6 +857,7 @@
     "after": "Namen können abgekürzt werden (z. B. start pal). Ohne Argumente öffnet sich im Terminal das Vollbildmenü (SABA_NO_TUI=1: die interaktive Shell).\nIn Skripten --json und --yes verwenden. Exit-Codes: 0 ok · 1 fehlgeschlagen · 2 Verwendung · 3 Daemon nicht erreichbar · 4 nicht gefunden · 130 abgebrochen"
   },
   "restart": {
+    "confirm": "'{{name}}' stoppen und neu starten? Verbundene Spieler werden kurz getrennt.",
     "waiting": "{{name}} wird neu gestartet...",
     "done": "{{name}} neu gestartet."
   },
@@ -1287,7 +1290,7 @@
       "owner": "Besitzer",
       "admin": "Admin",
       "user": "Benutzer",
-      "chatbot": "Sprechende Saba-chan",
+      "chatbot": "Gast",
       "banned": "Gesperrt"
     }
   },

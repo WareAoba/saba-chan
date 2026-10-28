@@ -885,6 +885,10 @@ impl IPCServer {
                 get(handlers::permissions::get_permissions).patch(handlers::permissions::update_permissions),
             )
             .route(
+                "/api/permissions/{guild_id}/commands",
+                get(handlers::permissions::get_command_board),
+            )
+            .route(
                 "/api/permissions/{guild_id}/members/{discord_id}",
                 axum::routing::put(handlers::permissions::set_member).delete(handlers::permissions::remove_member),
             )

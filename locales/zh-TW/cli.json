@@ -636,6 +636,7 @@
     "preflight_failed": "遊戲模組執行環境準備失敗：{{error}}。將在下次伺服器操作時重試。"
   },
   "stop": {
+    "confirm": "確定要停止 {{name}} 伺服器嗎？",
     "already": "{{name}} 未執行。",
     "done": "{{name}} 已停止。",
     "not_yet": "{{name}} 尚未停止。強制停止：saba-chan-cli stop --force {{name}}",
@@ -711,6 +712,7 @@
       "audit": "誰從哪裡（GUI、CLI、Discord、計劃）啟動、停止了伺服器或傳送了命令",
       "perm": "在 Discord 中誰能使用哪些命令（成員等級、預設集、按命令的等級）",
       "perm.show": "檢視一個 Discord 伺服器的等級、預設集和覆蓋設定（伺服器名稱或 id，省略則為唯一的伺服器）",
+      "perm.commands": "各等級命令：每個命令從哪個等級起可用（--server 只看一個伺服器）",
       "perm.grant": "給成員（名稱或 id）設定等級：admin、user、chatbot、banned",
       "perm.revoke": "刪除成員的單獨等級（改用預設等級）",
       "perm.default": "沒有單獨等級的成員的等級",
@@ -855,6 +857,7 @@
     "after": "名稱可以只寫一部分（例如 start pal）。在終端機中不帶參數執行會開啟全螢幕選單(SABA_NO_TUI=1 時為互動式 shell)。\n在指令碼中請使用 --json 和 --yes。結束代碼：0 成功 · 1 失敗 · 2 用法錯誤 · 3 無法連線常駐程式 · 4 找不到 · 130 已取消"
   },
   "restart": {
+    "confirm": "要停止並重新啟動 '{{name}}' 嗎？已連線的玩家會短暫斷線。",
     "waiting": "正在重新啟動 {{name}}...",
     "done": "{{name}} 已重新啟動。"
   },
@@ -1287,7 +1290,7 @@
       "owner": "所有者",
       "admin": "管理員",
       "user": "使用者",
-      "chatbot": "會說話的 Saba-chan",
+      "chatbot": "訪客",
       "banned": "禁止"
     }
   },

@@ -636,6 +636,7 @@
     "preflight_failed": "游戏模块运行环境准备失败：{{error}}。将在下次服务器操作时重试。"
   },
   "stop": {
+    "confirm": "确定要停止 {{name}} 服务器吗？",
     "already": "{{name}} 未运行。",
     "done": "{{name}} 已停止。",
     "force_confirm": "不保存就停止吗？",
@@ -839,6 +840,7 @@
       "audit": "谁从哪里（GUI、CLI、Discord、计划）启动、停止了服务器或发送了命令",
       "perm": "在 Discord 中谁能使用哪些命令（成员等级、预设、按命令的等级）",
       "perm.show": "查看一个 Discord 服务器的等级、预设和覆盖设置（服务器名称或 id，省略则为唯一的服务器）",
+      "perm.commands": "各等级命令：每个命令从哪个等级起可用（--server 只看一个服务器）",
       "perm.grant": "给成员（名称或 id）设置等级：admin、user、chatbot、banned",
       "perm.revoke": "删除成员的单独等级（改用默认等级）",
       "perm.default": "没有单独等级的成员的等级",
@@ -1065,6 +1067,7 @@
     "after": "名称可以只写一部分（例如 start pal）。在终端中不带参数运行会打开全屏菜单(SABA_NO_TUI=1 时为交互式 shell)。\n在脚本中请使用 --json 和 --yes。退出码：0 成功 · 1 失败 · 2 用法错误 · 3 无法连接守护进程 · 4 未找到 · 130 已取消"
   },
   "restart": {
+    "confirm": "要停止并重新启动 '{{name}}' 吗？已连接的玩家会短暂断开。",
     "waiting": "正在重启 {{name}}...",
     "done": "{{name}} 已重启。"
   },
@@ -1285,7 +1288,7 @@
       "owner": "所有者",
       "admin": "管理员",
       "user": "用户",
-      "chatbot": "会说话的 Saba-chan",
+      "chatbot": "访客",
       "banned": "已封禁"
     }
   },

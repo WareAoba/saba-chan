@@ -1638,6 +1638,10 @@ button.activity-line:hover {
     color: var(--text-1);
     background: var(--bg-2);
 }
+.dc-menu-title {
+    margin: 0;
+    font-size: var(--fs-lg);
+}
 
 /* 카드 */
 .dc-card {
@@ -2092,7 +2096,267 @@ button.activity-line:hover {
 .dc-level-title.level-custom {
     color: var(--accent);
 }
-/* 권한 단계 사다리: 위가 높은 단계. 끌어서 순서를 바꾼다 (LadderTab.js) */
+/* 권한 탭 (PermissionsTab.js): 사람 = 레벨마다 사람 칩, 명령 = 레벨 계단 위의 명령 칩 */
+.dc-perm {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-3);
+}
+.dc-field-inline {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--sp-2);
+}
+.dc-levels {
+    display: flex;
+    flex-direction: column;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+.dc-level-row {
+    display: grid;
+    grid-template-columns: minmax(96px, auto) minmax(0, 1fr);
+    gap: var(--sp-1) var(--sp-3);
+    padding: var(--sp-2-5) 0;
+    border-bottom: 1px solid var(--line);
+}
+.dc-level-row:last-child {
+    border-bottom: 0;
+}
+.dc-level-head {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--sp-0-5);
+}
+.dc-level-num {
+    font-size: var(--fs-xs);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--accent);
+}
+.dc-level-name {
+    font-weight: 700;
+}
+.dc-level-row.level-owner .dc-level-num {
+    color: var(--info);
+}
+.dc-level-row.level-banned .dc-level-num {
+    color: var(--stop);
+}
+.dc-level-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1-5);
+    min-width: 0;
+}
+.dc-level-can {
+    font-size: var(--fs-sm);
+    color: var(--text-2);
+}
+.dc-people {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--sp-1-5);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+.dc-person {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--sp-1);
+}
+.dc-person-edit {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-1);
+}
+.dc-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-1-5);
+    padding: var(--sp-0-5) var(--sp-2-5) var(--sp-0-5) var(--sp-1);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--r-pill);
+    background: var(--bg-1);
+    color: var(--text-1);
+    font-size: var(--fs-sm);
+    cursor: pointer;
+}
+.dc-chip.is-open {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent);
+}
+.dc-chip.is-static {
+    cursor: default;
+}
+.dc-chip.is-add {
+    padding-left: var(--sp-2-5);
+    border-style: dashed;
+    background: transparent;
+    color: var(--text-2);
+}
+.dc-add-person .dc-member-pick {
+    min-width: 200px;
+}
+.dc-import summary {
+    font-weight: 600;
+    cursor: pointer;
+}
+/* 계단: 왼쪽이 낮은 레벨. 계단마다 높이가 한 칸씩 오른다 */
+.dc-stairs-scroll {
+    overflow-x: auto;
+}
+.dc-stairs {
+    display: grid;
+    grid-template-columns: repeat(var(--steps), minmax(140px, 1fr));
+    align-items: end;
+    min-width: calc(var(--steps) * 140px);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+.dc-step {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+    min-height: calc(140px + var(--step) * 56px);
+    padding: var(--sp-2-5) var(--sp-2);
+    border-top: 3px solid var(--accent);
+    background: color-mix(in srgb, var(--accent) calc(4% + var(--step) * 4%), var(--bg-1));
+    transition: box-shadow var(--dur-fast) var(--ease), background-color var(--dur-fast) var(--ease);
+}
+.dc-step.level-banned {
+    border-top-color: var(--line-strong);
+    background: var(--bg-1);
+}
+.dc-step.is-over {
+    box-shadow: inset 0 0 0 2px var(--accent);
+    background: color-mix(in srgb, var(--accent) calc(12% + var(--step) * 4%), var(--bg-1));
+}
+.dc-step-chips {
+    display: flex;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    gap: var(--sp-1);
+}
+.dc-step-carry {
+    width: 100%;
+    font-size: var(--fs-xs);
+    color: var(--text-2);
+}
+.dc-step-label {
+    display: flex;
+    flex-direction: column;
+    margin-top: auto;
+}
+.dc-cmd-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-1);
+    padding: var(--sp-0-5) var(--sp-2);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--r-pill);
+    background: var(--bg-0);
+    color: var(--text-1);
+    font-size: var(--fs-xs);
+    cursor: grab;
+    transition: opacity var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
+}
+.dc-cmd-chip:not(.is-fixed):hover {
+    transform: translateY(-1px);
+}
+.dc-cmd-chip.is-dragging {
+    opacity: 0.4;
+    cursor: grabbing;
+}
+.dc-cmd-chip.is-fixed {
+    cursor: pointer;
+}
+.dc-cmd-chip.is-moved {
+    border-color: var(--warn);
+    box-shadow: 0 0 0 1px var(--warn);
+}
+.dc-cmd-chip.is-selected {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent);
+}
+.dc-cmd-chip.is-legend {
+    cursor: default;
+}
+.dc-dot {
+    display: inline-block;
+    flex: none;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--text-3);
+}
+.dc-dot.tone-ok {
+    background: var(--ok);
+}
+.dc-dot.tone-warn {
+    background: var(--warn);
+}
+.dc-dot.tone-stop {
+    background: var(--stop);
+}
+.dc-dot.tone-info {
+    background: var(--info);
+}
+.dc-chip-edit {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+}
+.dc-level-steps {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    min-width: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-1);
+}
+.dc-level-step {
+    padding: var(--sp-1) var(--sp-2);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--r-sm);
+    background: var(--bg-1);
+    color: var(--text-1);
+    font-size: var(--fs-sm);
+    cursor: pointer;
+}
+.dc-level-step.is-up {
+    border-color: transparent;
+    background: color-mix(in srgb, var(--accent) 16%, var(--bg-1));
+    color: var(--accent);
+}
+.dc-level-step.is-on {
+    border-color: var(--accent);
+    background: var(--accent);
+    color: var(--text-inverse);
+    font-weight: 700;
+}
+.dc-legend {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--sp-3);
+    font-size: var(--fs-xs);
+    color: var(--text-2);
+}
+.dc-legend > span {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-1);
+}
+/* 레벨 편집: 위가 높은 레벨. 끌어서 순서를 바꾼다 (LadderTab.js) */
 .dc-ladder {
     display: flex;
     flex-direction: column;
@@ -2137,7 +2401,7 @@ button.activity-line:hover {
     border-left-color: var(--accent);
 }
 .dc-ladder-rank {
-    width: 24px;
+    width: 40px;
     color: var(--text-3);
     font-size: var(--fs-sm);
     font-variant-numeric: tabular-nums;

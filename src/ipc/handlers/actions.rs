@@ -31,7 +31,7 @@ pub struct ActionBody {
     locale: Option<String>,
 }
 
-async fn locale(state: &IPCServer, requested: Option<String>) -> String {
+pub(super) async fn locale(state: &IPCServer, requested: Option<String>) -> String {
     match requested {
         Some(l) if !l.trim().is_empty() => l,
         _ => state.config_store.ui_language().await,
