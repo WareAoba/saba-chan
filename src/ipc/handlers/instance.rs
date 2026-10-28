@@ -190,6 +190,13 @@ async fn create_instance_inner(state: IPCServer, payload: Value) -> impl IntoRes
                         (Some(_), None) => false,
                         (None, _) => !value.is_object() && !value.is_array(),
                     };
+                    // 새로 설치하는 서버는 모듈이 설치할 수 있는 값만 (가져오는 서버는 판정된 값 그대로)
+                    let installable = payload.get("migration_source").is_some_and(|v| !v.is_null())
+                        || field.install_options.as_ref().is_none_or(|ok| value.as_str().is_some_and(|v| ok.iter().any(|o| o == v)));
+                    if allowed && !installable {
+                        let error = json!({ "error": format!("module_settings.{} cannot be installed by saba-chan", field.name), "error_code": "not_installable", "fields": [{"field": field.name}] });
+                        return (StatusCode::BAD_REQUEST, Json(error)).into_response();
+                    }
                     if !allowed || crate::validator::validate_setting_value(field, Some(value)).is_err() {
                         // 조용히 버리면 프리셋·기본값이 남아 고른 것과 다른 서버가 된다
                         let error = json!({ "error": format!("module_settings.{} is not a valid value", field.name), "error_code": "invalid_format", "fields": [{"field": field.name}] });
@@ -2770,6 +2777,51 @@ mod tests {
         assert_eq!(made.status, axum::http::StatusCode::CONFLICT, "{:?}", made.body);
         assert_eq!(made.body["error_code"], "module_platform_unsupported");
         assert!(state.supervisor.read().await.instance_store.list().is_empty());
+    }
+
+    /// 새 서버는 사바쨩이 설치할 수 있는 값(`install_options`)으로만 만든다. 가져오는 서버는 판정된 값 그대로 받는다
+    #[tokio::test]
+    async fn a_new_server_takes_only_installable_options() {
+        use axum::extract::State;
+        use axum::Json;
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n\
+             [[settings.fields]]\nname = \"server_type\"\ntype = \"select\"\noptions = [\"vanilla\", \"spigot\"]\ndefault = \"vanilla\"\ninstall = true\ninstall_options = [\"vanilla\"]\n",
+        )
+        .unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "").unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            modules.to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        for module in sup.module_loader.discover_modules().unwrap() { crate::sandbox::consent_test_component(std::path::Path::new(&module.entry_path())); }
+        sup.initialize().await.unwrap();
+        let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let create = |body: serde_json::Value| {
+            let state = state.clone();
+            async move { crate::ipc::internal::into_internal(super::create_instance(State(state), Json(body)).await).await }
+        };
+
+        let refused = create(json!({ "name": "a", "module_name": "game", "module_settings": { "server_type": "spigot" } })).await;
+        assert_eq!(refused.status.as_u16(), 400, "{:?}", refused.body);
+        assert_eq!(refused.body["error_code"], "not_installable");
+        assert_eq!(refused.body["fields"][0]["field"], "server_type");
+        let null_source = create(json!({ "name": "a", "module_name": "game", "migration_source": null, "module_settings": { "server_type": "spigot" } })).await;
+        assert_eq!(null_source.body["error_code"], "not_installable", "null is not an import");
+        assert!(state.supervisor.read().await.instance_store.list().is_empty());
+
+        let made = create(json!({ "name": "a", "module_name": "game", "module_settings": { "server_type": "vanilla" } })).await;
+        assert!(made.status.is_success(), "{:?}", made.body);
+
+        let existing = tmp.path().join("old-server");
+        std::fs::create_dir_all(&existing).unwrap();
+        let imported = create(json!({ "name": "b", "module_name": "game", "migration_source": existing.to_string_lossy(), "module_settings": { "server_type": "spigot" } })).await;
+        assert!(imported.status.is_success(), "{:?}", imported.body);
     }
 
     #[tokio::test]
