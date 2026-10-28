@@ -93,7 +93,6 @@
     "unknown_input": "❌ Unbekannter Befehl.",
     "command_not_found": "❌ Befehl existiert nicht.",
     "permission_denied": "❌ Du hast keine Berechtigung, diesen Befehl zu verwenden.",
-    "chatbot_not_allowed": "❌ Sprechende Saba-chan kann diesen Befehl nicht ausführen. Führe ihn direkt aus.",
     "local_single_guild_only": "⚠️ Der lokale Bot kann nur auf einem Server verwendet werden. Dieser Bot ist auf {{count}} Servern. Entferne ihn von den Servern, die du nicht nutzt."
   },
   "messages": {

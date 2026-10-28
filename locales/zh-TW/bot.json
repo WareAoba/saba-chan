@@ -93,7 +93,6 @@
     "unknown_input": "❌ 未知命令。",
     "command_not_found": "❌ 命令不存在。",
     "permission_denied": "❌ 您沒有使用此命令的權限。",
-    "chatbot_not_allowed": "❌ 「會說話的 Saba-chan」無法執行此命令。請直接執行。",
     "local_single_guild_only": "⚠️ 本地機器人只能在一個伺服器中使用。目前已加入{{count}}個伺服器，請從不使用的伺服器中移除機器人。"
   },
   "messages": {

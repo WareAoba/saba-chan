@@ -540,10 +540,7 @@ impl<'a, D: DaemonApi> Ctx<'a, D> {
         if risk == "danger" && !by_name {
             return Err(self.t("errors.danger_needs_name", &[("name", &server.name)]).into());
         }
-        // 챗봇 경로의 danger 명령은 요청자 본인이 확인한 것만 (릴레이 확인 버튼 → `confirmedBy`). 액션 경로는 확인 계획이 같은 일을 한다
-        if risk == "danger" && self.req.remote.as_ref().is_some_and(|w| w.via_chatbot && !w.confirmed_by_requester()) {
-            return Err(Reply::unrecognized("action_not_allowed", self.t("errors.chatbot_not_allowed", &[]), json!({ "command": command })));
-        }
+        // 챗봇이 고른 명령을 물을지는 계획이 정한다 (`actions::needs_confirm`, 챗봇 `confirmLevel`)
 
         let exec = match command.as_str() {
             "start" => Exec::Start,

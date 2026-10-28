@@ -1304,6 +1304,19 @@ async fn sentence_plans_ask_by_the_same_rule_unless_the_requester_confirmed() {
     assert_eq!(plan_text(&state, "srv start", &relay("owner", true)).await.unwrap()["needsConfirm"], false);
 }
 
+/// 말하는 사바쨩이 고른 위험 모듈 명령도 같은 규칙으로 묻는다: 확인 전이면 거절 대신 확인 계획을, "묻지 않음"이면 바로 실행할 계획을
+#[tokio::test]
+async fn chatbot_danger_sentences_follow_the_chatbot_confirm_level() {
+    let module = format!("{MODULE}\n[[commands.fields]]\nname = \"ban\"\nrisk = \"danger\"\n");
+    let (state, _id, _tmp) = server_with(&module).await;
+    set_confirm(&state, "danger", "danger").await;
+    let asked = plan_text(&state, "srv ban steve", &relay("owner", true)).await.unwrap();
+    assert_eq!((asked["needsConfirm"].clone(), asked["actionId"].clone()), (json!(true), json!("server.command:ban")), "{asked}");
+    set_confirm(&state, "danger", "none").await;
+    let direct = plan_text(&state, "srv ban steve", &relay("owner", true)).await.unwrap();
+    assert_eq!(direct["needsConfirm"], false, "{direct}");
+}
+
 /// 앱·CLI는 길드와 상관없이 위험과 정지·재시작을 묻는다. 묻는 액션은 계획 없이 바로 실행하지 않는다
 #[tokio::test]
 async fn local_surfaces_ask_for_danger_and_for_stopping_a_server() {
