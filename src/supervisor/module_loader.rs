@@ -283,6 +283,10 @@ pub struct ModuleBackup {
     /// 백업이 끝나면(실패해도) 실행해 자동 저장을 되돌리는 `[commands.fields]` 이름 (예: "save-on")
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resume_command: Option<String>,
+    /// 켜진 서버에서 `save_command`가 디스크에 다 썼다고 알리는 콘솔 줄의 정규식 (예: "Saved the game$").
+    /// 있으면 데몬이 고정 대기 대신 이 줄을 기다리고(최대 120초), 나오지 않으면 백업을 만들지 않는다
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub save_done_pattern: Option<String>,
     /// 백업할 폴더 안에서 담지 않을 파일 이름 패턴 (`*` 가능). 서버가 켜져 있는 동안 잠가 두는 파일용 (예: "session.lock")
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub exclude: Vec<String>,
@@ -1879,6 +1883,9 @@ impl ModuleToml {
                 }
             }
         }
+        if let Some(Err(e)) = self.backup.as_ref().and_then(|b| b.save_done_pattern.as_deref()).map(regex::Regex::new) {
+            problems.push(format!("backup.save_done_pattern: invalid regex ({})", e));
+        }
         if self.backup.as_ref().is_some_and(|b| b.pause_command.is_some() && b.resume_command.is_none()) {
             problems.push("backup.pause_command needs backup.resume_command".to_string());
         }
@@ -3113,6 +3120,10 @@ player_leave_patterns = ['^\[\d{2}:\d{2}:\d{2}(?:\] \[[^\]]*/| )INFO\](?: \[[^\]
         // 멈춤만 있고 되돌릴 명령이 없으면 자동 저장이 꺼진 채 남는다
         let unpaired = toml.replace("resume_command = \"save-on\"\n", "");
         assert!(parse_module_toml(&unpaired).unwrap_err().to_string().contains("backup.pause_command"));
+        let done = toml.replace("exclude =", "save_done_pattern = 'Saved the game$'\nexclude =");
+        assert_eq!(parse_module_toml(&done).unwrap().backup.unwrap().save_done_pattern.as_deref(), Some("Saved the game$"));
+        let bad = toml.replace("exclude =", "save_done_pattern = 'Saved ('\nexclude =");
+        assert!(parse_module_toml(&bad).unwrap_err().to_string().contains("backup.save_done_pattern"));
     }
 
     #[test]

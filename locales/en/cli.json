@@ -347,6 +347,8 @@
       "backup_busy": "A backup or restore of this server is already running. Try again when it finishes.",
       "backup_file_locked": "The server is using a file ({{file}}). Stop the server and try again: saba-chan-cli stop <name>",
       "autosave_not_resumed": "The backup was made, but the server’s autosave could not be turned back on. Restart the server: saba-chan-cli restart <name>",
+      "backup_save_rejected": "The server refused the save command, so no backup was made. Stop the server and back up again: saba-chan-cli stop <name>",
+      "backup_save_unconfirmed": "The server did not report that saving finished, so no backup was made. Try again shortly or stop the server and back up: saba-chan-cli stop <name>",
       "snapshot_not_found": "The game has no automatic backup.",
       "invalid_relay_url": "Only https:// relay addresses are allowed (http only for localhost, 127.0.0.1 or [::1] when testing on this PC).",
       "module_busy": "This module is already being installed or removed. Try again when it finishes.",

@@ -1114,6 +1114,8 @@
     "backup_unreadable_hint": "Cette sauvegarde ne peut pas être ouverte, elle ne peut donc pas être restaurée. Le contenu de sauvegarde inutilisé n'est pas nettoyé tant que vous ne la supprimez pas. Supprimez-la.",
     "err_backup_file_locked": "Le serveur utilise un fichier ({{file}}), la sauvegarde n’a pas pu être faite. Arrêtez le serveur et réessayez.",
     "err_autosave_not_resumed": "La sauvegarde a été faite, mais la sauvegarde auto du serveur n’a pas pu être réactivée. Redémarrez le serveur.",
+    "err_backup_save_rejected": "Le serveur a refusé la commande de sauvegarde, aucune sauvegarde n’a donc été faite. Arrêtez le serveur puis recommencez.",
+    "err_backup_save_unconfirmed": "Le serveur n’a pas signalé la fin de l’enregistrement, aucune sauvegarde n’a donc été faite. Réessayez dans un instant ou arrêtez le serveur avant de sauvegarder.",
     "kind_snapshot": "Sauvegarde du jeu conservée",
     "kind_game-snapshot": "Sauvegarde auto du jeu",
     "backup_keep_snapshot": "Conserver la sauvegarde du jeu",

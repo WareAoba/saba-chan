@@ -347,6 +347,8 @@
       "backup_busy": "此服务器已有备份或恢复正在进行。请在完成后重试。",
       "backup_file_locked": "服务器正在使用文件（{{file}}）。请关闭服务器后重试：saba-chan-cli stop 名称",
       "autosave_not_resumed": "备份已完成，但无法重新开启服务器的自动保存。请重启服务器: saba-chan-cli restart <name>",
+      "backup_save_rejected": "服务器拒绝了保存命令，因此没有进行备份。请停止服务器后重新备份: saba-chan-cli stop <name>",
+      "backup_save_unconfirmed": "服务器未报告保存完成，因此没有进行备份。请稍后重试，或停止服务器后再备份: saba-chan-cli stop <name>",
       "snapshot_not_found": "游戏没有自动备份.",
       "invalid_relay_url": "中继地址只能使用 https://(仅在本机测试时可对 localhost、127.0.0.1 或 [::1] 使用 http)。",
       "module_busy": "此模块正在安装或删除中。请在完成后重试。",

@@ -1114,6 +1114,8 @@
     "backup_unreadable_hint": "열 수 없는 백업이에요. 복원할 수 없어요. 지우기 전에는 쓰지 않는 백업 내용도 정리되지 않으니 지워 주세요.",
     "err_backup_file_locked": "서버가 쓰고 있는 파일({{file}})이 있어 백업하지 못했어요. 서버를 끈 뒤 다시 해 주세요.",
     "err_autosave_not_resumed": "백업은 만들었지만 서버의 자동 저장을 다시 켜지 못했어요. 서버를 다시 시작해 주세요.",
+    "err_backup_save_rejected": "서버가 저장 명령을 받지 않아 백업하지 않았어요. 서버를 끈 뒤 다시 백업해 주세요.",
+    "err_backup_save_unconfirmed": "서버가 저장을 마쳤다고 알리지 않아 백업하지 않았어요. 잠시 뒤 다시 하거나 서버를 끈 뒤 백업해 주세요.",
     "kind_snapshot": "게임 자동 백업 보관",
     "kind_game-snapshot": "게임 자동 백업",
     "backup_keep_snapshot": "게임 자동 백업 보관",

@@ -1114,6 +1114,8 @@
     "backup_unreadable_hint": "This backup cannot be opened, so it cannot be restored. Unused backup content is not cleaned up until you delete it. Delete it.",
     "err_backup_file_locked": "The server is using a file ({{file}}), so the backup could not be made. Stop the server and try again.",
     "err_autosave_not_resumed": "The backup was made, but the server’s autosave could not be turned back on. Restart the server.",
+    "err_backup_save_rejected": "The server refused the save command, so no backup was made. Stop the server and back up again.",
+    "err_backup_save_unconfirmed": "The server did not report that saving finished, so no backup was made. Try again shortly or stop the server and back up.",
     "kind_snapshot": "Kept game backup",
     "kind_game-snapshot": "Game auto-backup",
     "backup_keep_snapshot": "Keep game backup",

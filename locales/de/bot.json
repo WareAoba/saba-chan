@@ -384,6 +384,8 @@
     "server_running": "Der Server läuft. Zuerst stoppen",
     "no_command_path": "Der Server wurde außerhalb von Saba-chan gestartet und nimmt keine Befehle an",
     "autosave_not_resumed": "Das Backup wurde erstellt, aber das Autospeichern des Servers ließ sich nicht wieder einschalten. Server neu starten",
+    "backup_save_rejected": "Der Server hat den Speicherbefehl abgelehnt, daher wurde kein Backup erstellt. Halte den Server an und sichere erneut",
+    "backup_save_unconfirmed": "Der Server hat nicht gemeldet, dass das Speichern fertig ist, daher wurde kein Backup erstellt. Versuche es gleich noch einmal oder halte den Server vor dem Backup an",
     "snapshot_not_found": "Das Spiel hat kein automatisches Backup",
     "snapshot_not_deletable": "Saba-chan kann die eigenen Backups des Spiels nicht löschen"
   },
