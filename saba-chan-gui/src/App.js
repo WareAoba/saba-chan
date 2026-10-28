@@ -86,7 +86,6 @@ function App() {
     const setInitProgress = useServerStore((s) => s.setInitProgress);
     const serversInitializing = useServerStore((s) => s.serversInitializing);
     const setServersInitializing = useServerStore((s) => s.setServersInitializing);
-    const formatUptime = useServerStore((s) => s.formatUptime);
 
     // ── UI Store (Zustand) ─────────────────────────────────
     const modal = useUIStore((s) => s.modal);
@@ -177,7 +176,6 @@ function App() {
             openConsole,
             closeConsole,
             setShowModuleManager,
-            formatUptime,
             openSettingsToExtensions: () => {
                 useUIStore.getState().openSettings('extensions');
             },

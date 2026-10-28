@@ -169,3 +169,61 @@ export function showEventToast(ev, t, nameOf) {
     if (toast) safeShowToast(toast.message, toast.type, toast.duration, { isNotice: true, source: 'saba-chan' });
     return toast;
 }
+
+/** 서버 하나의 상태가 바뀌었을 때 오는 이벤트 */
+const INSTANCE_CHANGED = ['instance.started', 'instance.stopped', 'instance.exit'];
+
+/**
+ * 시작·정지가 끝날 때까지 check(ev)를 부른다. check가 true면 끝, limitMs가 지나면 onTimeout.
+ * 이벤트 스트림이 있으면 그 서버의 이벤트가 올 때와 idleMs마다만 묻고(놓친 이벤트 대비), 없으면 delay마다 묻는다.
+ * ev는 깨운 이벤트(시간으로 깨면 null), live는 이벤트로 지켜보는지
+ */
+export function watchInstance({ instanceId, check, onTimeout, delay = 500, limitMs, idleMs = 5000 }) {
+    const live = eventsAvailable();
+    const deadline = Date.now() + limitMs;
+    let done = false;
+    let busy = false;
+    let pending = null;
+    let timer = null;
+    let off = () => {};
+    const finish = () => {
+        done = true;
+        clearTimeout(timer);
+        off();
+    };
+    const run = async (ev) => {
+        if (done) return;
+        if (busy) {
+            pending = ev ?? pending;
+            return;
+        }
+        busy = true;
+        clearTimeout(timer);
+        let finished = false;
+        try {
+            finished = await check(ev, live);
+        } catch {
+            /* 다음 확인에서 다시 */
+        }
+        busy = false;
+        if (done) return;
+        if (finished) return finish();
+        if (Date.now() >= deadline) {
+            finish();
+            return onTimeout();
+        }
+        if (pending) {
+            const next = pending;
+            pending = null;
+            return run(next);
+        }
+        timer = setTimeout(() => run(null), live ? Math.min(idleMs, Math.max(0, deadline - Date.now())) : delay);
+    };
+    if (live) {
+        off = subscribeDaemonEvents((ev) => {
+            if (INSTANCE_CHANGED.includes(ev.type) && ev.data?.instanceId === instanceId) run(ev);
+        });
+    }
+    timer = setTimeout(() => run(null), delay);
+    return finish;
+}
