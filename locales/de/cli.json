@@ -131,7 +131,13 @@
     "notice_is_on": "{{server}}: Start-Hinweis an",
     "notice_is_off": "{{server}}: Start-Hinweis aus",
     "notice_on_saved": "Der Hinweiskanal von {{guild}} erfährt, wenn {{server}} startet.",
-    "notice_off_saved": "{{guild}} erfährt nicht mehr, wenn {{server}} startet."
+    "notice_off_saved": "{{guild}} erfährt nicht mehr, wenn {{server}} startet.",
+    "confirm_direct": "Anfragen an den Bot",
+    "confirm_chatbot": "Sprechende Saba-chan",
+    "confirm_all": "Alle Befehle",
+    "confirm_caution": "Ab Vorsicht",
+    "confirm_danger": "Nur gefährliche",
+    "confirm_none": "Nicht fragen"
   },
   "col": {
     "players": "Spieler",
@@ -751,7 +757,8 @@
       "remote.forget": "Remote-Daemon entfernen (erneut verbinden mit `remote connect`)",
       "config.autostart": "Was beim Anmelden an diesem PC startet: off, daemon (nur Daemon und Tray) oder full (mit GUI-Fenster). Ohne Modus wird der aktuelle Wert gezeigt",
       "config.browse": "Ordner und Dateien auf dem PC des Daemons (mit --daemon der entfernte PC). Ohne Pfad Laufwerke oder /",
-      "bot.notice": "Im Hinweiskanal des Discord-Servers melden, wenn Saba-chan einen Server startet (standardmäßig aus). Ohne Server: anzeigen. Server mit `--on`/`--off`: ändern"
+      "bot.notice": "Im Hinweiskanal des Discord-Servers melden, wenn Saba-chan einen Server startet (standardmäßig aus). Ohne Server: anzeigen. Server mit `--on`/`--off`: ändern",
+      "bot.confirm": "Wann der Bot vor dem Ausführen per Discord-Button fragt (all, caution, danger, none). Ohne Optionen: anzeigen"
     },
     "arg": {
       "module.maker.game": "Spiel für die erste Anfrage",
@@ -839,7 +846,9 @@
       "config.browse.path": "Vollständiger Pfad des Ordners",
       "config.browse.files": "Auch Dateien mit diesen Endungen zeigen (kommagetrennt, * für alle)",
       "bot.notice.on": "Start-Hinweis einschalten",
-      "bot.notice.off": "Start-Hinweis ausschalten"
+      "bot.notice.off": "Start-Hinweis ausschalten",
+      "bot.confirm.direct": "Anfragen an den Bot — Präfix- und Slash-Befehle.",
+      "bot.confirm.chatbot": "Sprechende Saba-chan — Von der sprechenden Saba-chan gewählte Verwaltungsaufgaben und Anfragen mehrerer Personen fragen immer, unabhängig von dieser Einstellung."
     },
     "after": "Namen können abgekürzt werden (z. B. start pal). Ohne Argumente öffnet sich im Terminal das Vollbildmenü (SABA_NO_TUI=1: die interaktive Shell).\nIn Skripten --json und --yes verwenden. Exit-Codes: 0 ok · 1 fehlgeschlagen · 2 Verwendung · 3 Daemon nicht erreichbar · 4 nicht gefunden · 130 abgebrochen"
   },

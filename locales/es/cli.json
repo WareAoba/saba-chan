@@ -131,7 +131,13 @@
     "notice_is_on": "{{server}}: aviso de inicio activado",
     "notice_is_off": "{{server}}: aviso de inicio desactivado",
     "notice_on_saved": "El canal de avisos de {{guild}} sabrá cuándo se inicia {{server}}.",
-    "notice_off_saved": "{{guild}} ya no sabrá cuándo se inicia {{server}}."
+    "notice_off_saved": "{{guild}} ya no sabrá cuándo se inicia {{server}}.",
+    "confirm_direct": "Peticiones al bot",
+    "confirm_chatbot": "Saba-chan parlante",
+    "confirm_all": "Todos los comandos",
+    "confirm_caution": "Precaución o más",
+    "confirm_danger": "Solo peligrosos",
+    "confirm_none": "No preguntar"
   },
   "col": {
     "players": "Jugadores",
@@ -751,7 +757,8 @@
       "remote.forget": "Olvidar un daemon remoto (vuelve a conectar con `remote connect`)",
       "config.autostart": "Qué se inicia al iniciar sesión en este PC: off, daemon (solo el daemon y la bandeja) o full (con la ventana de la GUI). Sin modo muestra el valor actual",
       "config.browse": "Carpetas y archivos en el PC del daemon (con --daemon, el PC remoto). Sin ruta, unidades o /",
-      "bot.notice": "Avisar en el canal de avisos del servidor de Discord cuando Saba-chan inicia un servidor (desactivado por defecto). Sin servidor: ver. Servidor con `--on`/`--off`: cambiar"
+      "bot.notice": "Avisar en el canal de avisos del servidor de Discord cuando Saba-chan inicia un servidor (desactivado por defecto). Sin servidor: ver. Servidor con `--on`/`--off`: cambiar",
+      "bot.confirm": "Cuándo pregunta el bot con un botón de Discord antes de ejecutar (all, caution, danger, none). Sin opciones: mostrar"
     },
     "arg": {
       "module.maker.game": "Juego para la primera petición",
@@ -839,7 +846,9 @@
       "config.browse.path": "Ruta completa de la carpeta",
       "config.browse.files": "Mostrar también archivos con estas extensiones (separadas por comas, * para todos)",
       "bot.notice.on": "Activar el aviso de inicio",
-      "bot.notice.off": "Desactivar el aviso de inicio"
+      "bot.notice.off": "Desactivar el aviso de inicio",
+      "bot.confirm.direct": "Peticiones al bot — Comandos con prefijo y comandos de barra.",
+      "bot.confirm.chatbot": "Saba-chan parlante — Las tareas de administración que elige Saba-chan parlante y las peticiones que mezclan a varias personas siempre preguntan, sea cual sea este ajuste."
     },
     "after": "Los nombres pueden ser parciales (p. ej. start pal). Sin argumentos en una terminal se abre el menú a pantalla completa (SABA_NO_TUI=1: la shell interactiva).\nEn scripts usa --json y --yes. Códigos de salida: 0 correcto · 1 error · 2 uso · 3 daemon inaccesible · 4 no encontrado · 130 cancelado"
   },

@@ -131,7 +131,13 @@
     "notice_is_on": "{{server}}: 켜짐 알림 켜짐",
     "notice_is_off": "{{server}}: 켜짐 알림 꺼짐",
     "notice_on_saved": "{{guild}}의 알림 채널에 {{server}} 켜짐을 알릴게요.",
-    "notice_off_saved": "{{guild}}에 {{server}} 켜짐을 더 알리지 않아요."
+    "notice_off_saved": "{{guild}}에 {{server}} 켜짐을 더 알리지 않아요.",
+    "confirm_direct": "봇에게 직접 요청",
+    "confirm_chatbot": "말하는 사바쨩",
+    "confirm_all": "모든 명령",
+    "confirm_caution": "주의 이상",
+    "confirm_danger": "위험한 명령만",
+    "confirm_none": "묻지 않음"
   },
   "col": {
     "players": "접속자",
@@ -881,7 +887,8 @@
       "remote.forget": "원격 데몬 잊기 (다시 붙으려면 `remote connect`)",
       "config.autostart": "PC에 로그인할 때 켤 것: off(끔), daemon(데몬과 트레이만), full(GUI 창까지). 모드 없이 쓰면 지금 값을 보여요",
       "config.browse": "데몬 PC의 폴더와 파일 보기 (--daemon이면 그 원격 PC). 경로가 없으면 드라이브나 /",
-      "bot.notice": "사바쨩이 서버를 켜면 디스코드 서버의 알림 채널에 알리기 (기본 꺼짐). 서버 없이: 보기, 서버와 `--on`·`--off`: 바꾸기"
+      "bot.notice": "사바쨩이 서버를 켜면 디스코드 서버의 알림 채널에 알리기 (기본 꺼짐). 서버 없이: 보기, 서버와 `--on`·`--off`: 바꾸기",
+      "bot.confirm": "봇이 실행 전에 디스코드 버튼으로 되물을 단계 (all·caution·danger·none). 옵션이 없으면 보기"
     },
     "arg": {
       "module.maker.game": "첫 부탁에 넣을 게임 이름",
@@ -1049,7 +1056,9 @@
       "schedule.edit.command": "바꿀 게임 명령 (command 작업, 다른 명령이면 --arg를 주지 않는 한 옛 입력은 지움)",
       "bot.notice.on": "켜짐 알림 켜기",
       "bot.notice.off": "켜짐 알림 끄기",
-      "chatbot.template.locale": "기본 틀의 언어 (없으면 앱 언어)"
+      "chatbot.template.locale": "기본 틀의 언어 (없으면 앱 언어)",
+      "bot.confirm.direct": "봇에게 직접 요청 — 접두사 명령과 슬래시 명령이에요.",
+      "bot.confirm.chatbot": "말하는 사바쨩 — 말하는 사바쨩이 고른 관리 작업과 여러 사람이 섞인 부탁은 이 설정과 상관없이 늘 물어요."
     },
     "after": "이름은 일부만 적어도 돼요 (예: start pal). 인자 없이 터미널에서 실행하면 전체 화면 메뉴가 열려요(SABA_NO_TUI=1이면 대화형 셸).\n스크립트에서는 --json과 --yes를 쓰세요. 종료 코드: 0 성공 · 1 실패 · 2 사용법 · 3 데몬 연결 안 됨 · 4 없음 · 130 취소"
   },

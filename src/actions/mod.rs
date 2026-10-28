@@ -193,7 +193,7 @@ pub static ACTIONS: &[Def] = &[
     },
     // 디스코드 길드 설정 (I2). 원격에서는 요청이 온 길드만 (`guild`를 그 길드로 고정한다)
     Def {
-        fields: &[path_field("guild"), field("locale", "string", false), field("sleeping", "boolean", false), field("music", "object", false)],
+        fields: &[path_field("guild"), field("locale", "string", false), field("sleeping", "boolean", false), field("music", "object", false), field("confirmLevel", "string", false)],
         discord_level: Some(crate::chat::permissions::OWNER),
         remote_menu: false,
         guild_owner: true,
@@ -1133,10 +1133,41 @@ fn builtin_command(action: &str) -> Option<&'static str> {
     }
 }
 
-/// 확인이 필요한가: danger이거나, 챗봇이 고른 관리 액션. 사람이 직접 친 caution 관리 명령은 바로 실행한다
-fn needs_confirm(r: &Resolved, caller: &Caller) -> bool {
-    let via_chatbot = caller.surface == Chatbot || caller.remote.as_ref().is_some_and(|w| w.via_chatbot);
-    r.risk == "danger" || (r.kind == Kind::Admin && via_chatbot)
+/// 원격 MCP에서 온 요청의 `origin.via`. 디스코드 길드가 아니라 앱과 같은 고정 규칙으로 묻는다
+pub const MCP_VIA: &str = "mcp";
+
+/// 되묻기 단계(`all`·`caution`·`danger`·`none`)가 이 risk를 묻는가. 모르는 단계는 `danger`
+pub fn level_asks(level: &str, risk: &str) -> bool {
+    match level {
+        "all" => true,
+        "caution" => risk != "safe",
+        "none" => false,
+        _ => risk == "danger",
+    }
+}
+
+/// 되묻기는 두 길뿐이다 (사용자 결정 2026-10-28).
+/// - 디스코드(릴레이): 요청자만 누르는 버튼. 직접 요청은 길드 디스코드 설정 `confirmLevel`, 말하는 사바쨩은 챗봇 설정
+///   `confirmLevel`을 따른다. 말하는 사바쨩이 고른 관리 액션은 단계와 상관없이 늘 묻는다
+/// - 앱·웹·CLI·원격 MCP(`origin.via = "mcp"`): 그 화면의 확인. 길드와 상관없이 위험과 서버 정지·재시작을 묻는다
+pub async fn needs_confirm(server: &IPCServer, action: &str, kind: Kind, risk: &str, caller: &Caller) -> bool {
+    // 안전한 조회는 이 규칙 밖이다
+    if kind == Kind::Query && risk == "safe" {
+        return false;
+    }
+    let fixed = || risk == "danger" || matches!(action, "server.stop" | "server.restart");
+    let Some(who) = &caller.remote else { return fixed() };
+    if caller.origin.via.as_deref() == Some(MCP_VIA) {
+        return fixed();
+    }
+    let guild = who.guild_id.as_deref().unwrap_or("");
+    if caller.surface == Chatbot || who.via_chatbot {
+        let cfg = server.config_store.get_chatbot().effective(guild);
+        return kind == Kind::Admin || level_asks(cfg.get("confirmLevel").and_then(Value::as_str).unwrap_or("all"), risk);
+    }
+    let node = server.config_store.get_bot_config().await.node_settings.get(guild).cloned();
+    let settings = crate::ipc::handlers::discord::GuildSettings::from_node(node.as_ref()).unwrap_or_default();
+    level_asks(&settings.confirm_level, risk)
 }
 
 /// 계획 하나: 액션 하나, 여러 단계, 또는 채팅 처리기가 해석한 문장 명령
@@ -1201,7 +1232,7 @@ pub async fn plan(server: &IPCServer, id: &str, instance: Option<&str>, input: &
     refuse_restore_while_running(server, &r).await?;
     let summary = summarize(server, &r, &caller.locale).await;
     let plan_id = new_plan_id();
-    let confirm = needs_confirm(&r, caller);
+    let confirm = needs_confirm(server, &r.id, r.kind, &r.risk, caller).await;
     let view = json!({
         "success": true,
         "planId": plan_id,
@@ -1218,7 +1249,7 @@ pub async fn plan(server: &IPCServer, id: &str, instance: Option<&str>, input: &
 
 /// 문장 명령의 계획 (릴레이 `plan {text}`): 해석·권한·위험 명령 판정은 채팅 처리기가 한다 (문장 명령과 같은 규칙).
 /// 실행할 것이 있으면 그 명령의 액션 id·서버와 planId를, 없으면(도움말·목록·모르는 명령·거절) 답만 돌려준다.
-/// 확인은 받지 않는다: danger는 서버 이름으로 불러야 하고, 챗봇이 고른 것은 요청자의 확인(`confirmedBy`)이 있어야 한다
+/// 확인은 액션 계획과 같은 규칙(`needs_confirm`)이다. danger는 서버 이름으로 불러야 한다 (채팅 처리기)
 pub async fn plan_text(server: &IPCServer, text: &str, caller: &Caller) -> Result<Value, ActionError> {
     let req = chat_request(text, caller);
     let (settings, cat) = chat_settings(server, caller).await;
@@ -1227,6 +1258,13 @@ pub async fn plan_text(server: &IPCServer, text: &str, caller: &Caller) -> Resul
         crate::chat::Interpreted::Reply(reply) => return Ok(chat_json(reply, true, caller)),
     };
     let plan_id = new_plan_id();
+    // 요청자가 확인 버튼을 눌러 다시 보낸 문장은 묻지 않는다
+    let confirmed = caller.remote.as_ref().is_some_and(|w| w.confirmed_by_requester());
+    let confirm = !confirmed && {
+        let id = target.action_id();
+        let kind = ACTIONS.iter().find(|d| d.id == id).map_or(Kind::Command, |d| d.kind);
+        needs_confirm(server, &id, kind, target.risk(), caller).await
+    };
     let view = json!({
         "success": true,
         "planId": plan_id,
@@ -1234,10 +1272,10 @@ pub async fn plan_text(server: &IPCServer, text: &str, caller: &Caller) -> Resul
         "instance": target.instance(),
         "summary": [],
         "risk": target.risk(),
-        "needsConfirm": false,
+        "needsConfirm": confirm,
         "expiresAt": expires_at(),
     });
-    store_plan(plan_id, StoredPlan::new(PlanBody::Text(Box::new(TextPlan { text: text.to_string(), target: *target })), caller, false));
+    store_plan(plan_id, StoredPlan::new(PlanBody::Text(Box::new(TextPlan { text: text.to_string(), target: *target })), caller, confirm));
     Ok(view)
 }
 
@@ -1427,8 +1465,8 @@ pub async fn run(server: &IPCServer, id: &str, instance: Option<&str>, input: &V
         None => {
             let r = resolve(server, id, instance, input, caller).await?;
             authorize(server, &r, caller).await?;
-            // 릴레이에서는 확인이 필요한 액션을 계획 없이 실행하지 않는다
-            if caller.remote.is_some() && needs_confirm(&r, caller) {
+            // 확인이 필요한 액션은 계획 없이 실행하지 않는다 (디스코드는 버튼, 앱·CLI는 확인 창을 거친다)
+            if needs_confirm(server, &r.id, r.kind, &r.risk, caller).await {
                 return Err(ActionError::new(409, "confirm_required", "This action needs a plan and a confirmation"));
             }
             (r, caller.clone())
@@ -1457,8 +1495,8 @@ fn take_plan(pid: &str, id: &str, caller: &Caller) -> Result<StoredPlan, ActionE
     if p.owner != caller.owner_key() || !same_action {
         return Err(ActionError::new(403, "plan_not_yours", "This plan belongs to another request"));
     }
-    // 챗봇이 만든 확인 계획은 요청자 본인이 확인 버튼을 눌렀을 때만 (릴레이 `confirmedBy`). 계획은 버튼을 위해 남긴다
-    if p.via_chatbot && p.needs_confirm && !caller.remote.as_ref().is_some_and(|w| w.confirmed_by_requester()) {
+    // 디스코드에서 만든 확인 계획은 요청자 본인이 확인 버튼을 눌렀을 때만 (릴레이 `confirmedBy`). 계획은 버튼을 위해 남긴다
+    if p.needs_confirm && p.owner.starts_with("relay|") && !caller.remote.as_ref().is_some_and(|w| w.confirmed_by_requester()) {
         return Err(ActionError::new(409, "confirm_required", "This plan needs the requester's confirmation"));
     }
     Ok(store.remove(pid).expect("checked"))
@@ -1560,7 +1598,7 @@ async fn undo_plan(server: &IPCServer, instance: &str, before: Map<String, Value
     }
     let r = resolve(server, "instance.settings.set", Some(instance), &Value::Object(input), caller).await.ok()?;
     let plan_id = new_plan_id();
-    let confirm = needs_confirm(&r, caller);
+    let confirm = needs_confirm(server, &r.id, r.kind, &r.risk, caller).await;
     store_plan(plan_id.clone(), StoredPlan::new(PlanBody::One(Box::new(r)), caller, confirm));
     Some(plan_id)
 }
