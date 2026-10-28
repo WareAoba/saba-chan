@@ -121,6 +121,22 @@ describe('새 서버 만들기 마법사', () => {
         expect(screen.queryByText('1.21.1')).toBeNull();
     });
 
+    it('서버 종류를 바꾸고 새 목록이 오기 전에 넘어가도 앞 종류의 버전은 보내지 않는다', async () => {
+        const onAddServer = open();
+        fireEvent.click(screen.getByText('Latest version (recommended)'));
+        await waitFor(() => expect(screen.getByText('1.21.1')).toBeTruthy());
+        fireEvent.click(screen.getByText('1.21.1'));
+        window.api.moduleListVersions.mockReturnValue(new Promise(() => {}));
+        fireEvent.click(screen.getByText('vanilla'));
+        fireEvent.click(screen.getByText('paper'));
+        await submitWizard();
+        expect(onAddServer.mock.calls[0][0]).toEqual({
+            name: 'minecraft',
+            module_name: 'minecraft',
+            module_settings: { server_type: 'paper' },
+        });
+    });
+
     it('기본값만 고르면 버전·폴더·실행 방식·포트를 보내지 않는다 (데몬이 정한다)', async () => {
         const onAddServer = open();
         await submitWizard();

@@ -104,10 +104,16 @@ export function AddInstanceNewServer({
         });
 
     // 서버 종류·버전 단계: 고른 설정(서버 종류 등)으로 받을 수 있는 릴리스를 데몬에 묻는다 (못 받으면 최신만 고른다).
-    // 설정을 바꾸면 다시 묻고, 새 목록에 없는 버전을 골라 두었으면 최신으로 돌린다
+    // 설정을 바꾸면 다시 묻고, 골라 둔 버전은 바로 비운다 (새 목록이 오기 전에 넘어가도 앞 설정의 버전을 보내지 않게)
     const versionKey = choosesVersion(selectedModule)
         ? JSON.stringify(versionSettings(selectedModule, installValues, preset))
         : '';
+    const versionPickedFor = useRef(versionKey);
+    useEffect(() => {
+        if (versionPickedFor.current === versionKey) return;
+        versionPickedFor.current = versionKey;
+        setVersion('');
+    }, [versionKey]);
     useEffect(() => {
         if (step !== 'server' || !versionKey) return;
         let alive = true;
@@ -119,7 +125,6 @@ export function AddInstanceNewServer({
                     if (!alive) return;
                     const list = releaseVersions(res);
                     setVersions(list);
-                    setVersion((chosen) => (chosen && !list.includes(chosen) ? '' : chosen));
                 })
                 .catch(() => {
                     if (!alive) return;
