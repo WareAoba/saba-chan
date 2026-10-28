@@ -996,7 +996,15 @@
     "credit_balance_none": "Сейчас не удалось узнать баланс.",
     "credit_usage": "Расход за этот месяц ({{month}}, UTC)",
     "credit_usage_line": "Вызовов модели: {{calls}} · вход {{input}} токенов (кеш {{cached}}) · выход {{output}} токенов",
-    "credit_exhausted": "Кредит закончился ({{time}}). Saba-chan не может отвечать, пока его не пополнят."
+    "credit_exhausted": "Кредит закончился ({{time}}). Saba-chan не может отвечать, пока его не пополнят.",
+    "cat_game_servers": "Игровые серверы",
+    "cat_games": "Игры",
+    "cat_info": "Поиск информации",
+    "cat_create": "Создание",
+    "tool_on": "вкл.",
+    "tool_off": "выкл.",
+    "tool_blocked": "запрещено в общих настройках",
+    "tool_unavailable": "сейчас недоступно"
   },
   "trust": {
     "verified": "проверено",

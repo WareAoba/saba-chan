@@ -996,7 +996,15 @@
     "credit_balance_none": "Impossible d’obtenir le solde pour le moment.",
     "credit_usage": "Utilisation ce mois-ci ({{month}}, UTC)",
     "credit_usage_line": "{{calls}} appels au modèle · {{input}} jetons d’entrée ({{cached}} en cache) · {{output}} jetons de sortie",
-    "credit_exhausted": "Le crédit est épuisé ({{time}}). Saba-chan ne peut plus répondre tant qu’il n’est pas rechargé."
+    "credit_exhausted": "Le crédit est épuisé ({{time}}). Saba-chan ne peut plus répondre tant qu’il n’est pas rechargé.",
+    "cat_game_servers": "Serveurs de jeu",
+    "cat_games": "Jeux",
+    "cat_info": "Trouver des infos",
+    "cat_create": "Créer",
+    "tool_on": "activé",
+    "tool_off": "désactivé",
+    "tool_blocked": "bloqué dans les réglages communs",
+    "tool_unavailable": "indisponible pour le moment"
   },
   "trust": {
     "verified": "vérifié",
