@@ -7,8 +7,8 @@ import * as L from './levels';
 const keyOf = (level) => (level.id !== undefined ? `id-${level.id}` : level.key);
 const isCustom = L.isCustomLevel;
 
-// ── 단계: 블록을 끌어 순서를 정한다 (위가 높은 단계). 소유자·금지는 고정, 나머지는 옮기고 지울 수 있다 ──
-export function LadderTab({ node, permissions }) {
+// ── 레벨 편집: 블록을 끌어 순서를 정한다 (위가 높은 레벨). 소유자·금지는 고정, 나머지는 옮기고 지울 수 있다 ──
+export function LadderTab({ node, permissions, onClose }) {
     const { t } = useTranslation('gui');
     const { perm, busy, write } = permissions;
     const saved = L.ladderOf(perm);
@@ -40,7 +40,14 @@ export function LadderTab({ node, permissions }) {
     return (
         <div className="dc-tab">
             <section className="dc-card">
-                <h3>{t('discord.perm_ladder')}</h3>
+                <div className="dc-card-head">
+                    <h3>{t('discord.perm_ladder')}</h3>
+                    {onClose && (
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={onClose}>
+                            <Icon name="chevronLeft" size="sm" /> {t('discord.perm_ladder_done')}
+                        </button>
+                    )}
+                </div>
                 <p className="dc-hint">{t('discord.perm_ladder_hint')}</p>
                 <ol className="dc-ladder" aria-label={t('discord.perm_ladder')}>
                     {draft.map((level, i) => {
@@ -76,7 +83,7 @@ export function LadderTab({ node, permissions }) {
                                     setOver(null);
                                 }}
                             >
-                                <span className="dc-ladder-rank">{draft.length - i}</span>
+                                <span className="dc-ladder-rank">Lv {draft.length - 1 - i}</span>
                                 {isCustom(level) ? (
                                     <input
                                         className="input dc-ladder-name"

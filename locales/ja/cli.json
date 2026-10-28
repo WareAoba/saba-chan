@@ -839,6 +839,7 @@
       "audit": "誰がどこから (GUI・CLI・Discord・スケジュール) サーバーを起動・停止したか、コマンドを送ったか",
       "perm": "Discord から誰がどのコマンドを使えるか (メンバーごとのレベル・プリセット・個別設定)",
       "perm.show": "Discord サーバー 1 つのレベル・プリセット・個別設定",
+      "perm.commands": "レベル別のコマンド: 各コマンドをどのレベルから使えるか (--server でサーバー1つだけ)",
       "perm.grant": "メンバーにレベルを与える: admin・user・chatbot・banned",
       "perm.revoke": "メンバー個別のレベルを外す (既定のレベルになる)",
       "perm.default": "個別のレベルがないメンバーのレベル",
@@ -1277,7 +1278,7 @@
       "owner": "オーナー",
       "admin": "管理者",
       "user": "ユーザー",
-      "chatbot": "おしゃべりサバちゃん",
+      "chatbot": "ゲスト",
       "banned": "禁止"
     }
   },

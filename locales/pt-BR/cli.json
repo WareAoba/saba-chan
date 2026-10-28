@@ -711,6 +711,7 @@
       "audit": "Quem iniciou, parou ou enviou comandos aos servidores, e de onde (GUI, CLI, Discord, agendamento)",
       "perm": "Quem pode executar quais comandos pelo Discord (níveis por membro, predefinição, exceções)",
       "perm.show": "Níveis, predefinição e exceções de um servidor do Discord",
+      "perm.commands": "Comandos por nível: a partir de qual nível cada comando pode ser usado (um servidor com --server)",
       "perm.grant": "Dar um nível a um membro: admin, user, chatbot ou banned",
       "perm.revoke": "Tirar o nível próprio de um membro (ele passa ao nível padrão)",
       "perm.default": "Nível dos membros sem nível próprio",
@@ -1279,7 +1280,7 @@
       "owner": "dono",
       "admin": "admin",
       "user": "usuário",
-      "chatbot": "Saba-chan falante",
+      "chatbot": "Convidado",
       "banned": "banido"
     }
   },

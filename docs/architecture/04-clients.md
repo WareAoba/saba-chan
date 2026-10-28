@@ -126,6 +126,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 | auditExport | 저장 창(`dialog_save_file`, csv)에서 고른 경로로 POST /api/audit/export `{path, instance?, since?, until?}`. 창을 닫으면 `{canceled:true}` | - |
 | permissionsGet (860) | GET /api/permissions/:guildId (P1) | ✓ 723-726 |
 | permissionsUpdate (861) | PATCH /api/permissions/:guildId `{defaultLevel?, preset?, chatbotCap?, ownerDiscordId?, commandLevels?, ladder?}` | ✓ 723-726 |
+| permissionsCommands (1027) | GET /api/permissions/:guildId/commands?locale → `{guildId, instances, items}`. 명령 계단(레벨별 명령) 화면이 칩을 놓는 데 쓴다. 항목마다 `level`(지금 필요한 레벨), `preset`, `overridden`, `fixed`, `keys`(`commandLevels` 키) | ✓ |
 | permissionsSetMember (862) | PUT /api/permissions/:guildId/members/:discordId `{level}` | ✓ 727-730 |
 | permissionsRemoveMember (863) | DELETE /api/permissions/:guildId/members/:discordId | ✓ 727-730 |
 | sandboxListUnisolated (864) | GET /api/sandbox/unisolated `{components:[{component, fingerprint, current}]}` | ✓ 737 |
@@ -219,7 +220,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
   - modules 탭: 설치된 모듈과 `saba-chan-modules` 레지스트리(`moduleManifest`, `moduleInstallFromManifest`, `moduleRemove`). 맨 아래 `ModuleMakerCard`("직접 만들기")는 `makerInfo`가 준 저장소로 에이전트별 설치 줄과 첫 부탁을 보여 준다. 서버 추가 창의 게임 고르기에도 같은 카드가 있다.
   - extensions 탭: 설치된 익스텐션의 켜기·끄기(`toggleExtension`)·전역 설정(`ExtensionConfigForm`)·제거와 확장 레지스트리.
   - devMode의 Mock 릴리스 서버 토글(`handleToggleMock`): qcza9f의 옛 renderer는 L3에서 없어진 `api_base_url`/`github_*`를 보내 효과가 없다. GUI 리메이크(PR #5, fd26f4e)에서 고쳤다: `relay_url`만 보내고, `mock_relay`로 빌드한 개발판에서만 보인다.
-- **DiscordBotModal.js**(1134줄): 클라우드 릴레이 전용이다(local 모드, 봇 토큰, 음악 설정은 없어졌다). prefix, 노드(길드)별 `allowedInstances`와 멤버별 차단 명령(`memberPermissions`, 멤버 목록은 `relayListNodeMembers`, 125)을 다룬다. 페어링은 `relayInitiatePairing`(351)으로 시작해 `relayPollPairingStatus`(364)로 진행 상황을 확인하고 `saveNodeToken`(373)으로 마무리한다. 기본 relay는 `https://saba-chan.online`(9)이다. side-panel 모드가 있다(845-848). 명령 별명은 ServerSettingsModal에서 편집한다.
+- **discord/**(`DiscordPage.js`, `NodeView.js`, `PermissionsTab.js`): 클라우드 릴레이 전용이다(local 모드, 봇 토큰, 음악 설정은 없어졌다). 동선은 디스코드 서버(노드) → 인스턴스 목록(`allowedInstances`, 켜짐 알림) → 인스턴스 메뉴이고, 인스턴스 메뉴는 레벨별 명령 계단(`permissionsCommands`, 그 인스턴스 명령과 서버 전체 명령, 칩을 옮기면 `commandLevels`)과 멤버별 레벨(`permissionsGet`, 멤버 목록은 `relayListNodeMembers`)을 따로 보인다. 멤버 레벨과 프리셋은 길드 전체에 적용된다(사용자 지정 2026-10-28). 예전 멤버별 차단 명령 화면은 없앴다. 페어링은 `relayInitiatePairing`(351)으로 시작해 `relayPollPairingStatus`(364)로 진행 상황을 확인하고 `saveNodeToken`(373)으로 마무리한다. 기본 relay는 `https://saba-chan.online`(9)이다. side-panel 모드가 있다(845-848). 명령 별명은 ServerSettingsModal에서 편집한다.
 - **BackgroundModal.js**: daemon 상태(`daemonStatus`)와 재시작(`daemonRestart`).
 - **NoticeModal.js**: 앱 내 공지와 알림 목록(localStorage). 업데이트 모달로 연결된다.
 - 공용 모달(Modals.js): Success/Failure/Notification/Question. TitleBar(frameless 창 컨트롤), Toast(표시 시간은 앱 설정 `toastDuration`으로 0.6·1·2배), CustomDropdown, Icon, ExtensionSlot(확장 UI 주입 지점. 세부 내용은 다른 문서).
@@ -236,7 +237,7 @@ PC 주인이 폰 브라우저로 서버·인스턴스를 관리하는 원격 화
 - 브리지(`src/api.js`): GUI `createApi({invoke, hub}).api`를 그대로 쓰고 `invoke('daemon_request')`만 세션 요청으로 바꾼다. 다른 Tauri 명령(창·파일 대화상자·프로세스)은 `not_supported`로 막는다. 응답 가공과 오류 문구는 GUI와 같다. 릴레이 `event{kind,data}`는 `onDaemonEvent`로 `{type,data}`가 되어 온다.
 - GUI에서 가져오는 것은 `createApi`, `events`, `serverView`, `localizedText`, `commandRisk`, `portCheck`, 권한 단계 계산 `components/discord/levels`, `tokens.css`, 아이콘 `components/Icon`, 드롭다운 `components/CustomDropdown`(웹 `components/Dropdown.jsx`가 감싼다)뿐이다(`src/test/guiImports.test.js`). 화면은 따로 만든다. GUI에 없는 아이콘만 `src/components/icons.jsx`에 둔다. 로고·사바쨩 그림은 GUI `public/`의 파일을 `@art` 별칭으로 가져온다(`src/art.js`의 목록만 빌드에 들어간다).
 - 주기 읽기(서버 목록 4초, 콘솔 1.5초, PC 사용량·데몬 로그 3초, 설치 진행 2초)는 `components/poll.js` `startPoll`로 한다: 앞 요청이 끝난 뒤에 다음을 잡고, 탭이 숨어 있으면 쉬었다가 보이면 바로 읽는다.
-- 화면: 서버(목록·추가·설치 진행과 실패(`provision-progress`, 실패를 닫으면 데몬이 새로 만들던 서버를 지운다)·시작/정지/재시작·EULA 동의·콘솔·설정·백업·삭제), 권한(`relayListHostNodes(hostId)` → 길드별 `permissionsGet`, 기본 레벨·멤버 레벨과 단계 사다리 편집(위·아래 버튼), 멤버는 실제 레벨 높은 순(사다리 순서)·같은 레벨은 이름순, 디스코드 프로필 사진), 모듈(공식 매니페스트 설치, 플러그인 켜기/끄기/설치), 더보기(PC 사용량, 데몬 로그). 설정의 경로·파일·비밀번호 칸은 PC에서만 바꾼다(열쇠 아이콘, 비밀번호는 데몬이 응답에서 뺀다). 확인 창은 GUI와 같은 경우에만 띄운다.
+- 화면: 서버(목록·추가·설치 진행과 실패(`provision-progress`, 실패를 닫으면 데몬이 새로 만들던 서버를 지운다)·시작/정지/재시작·EULA 동의·콘솔·설정·백업·삭제), 권한(`relayListHostNodes(hostId)` → 길드 → 인스턴스 목록(`permissionsCommands`의 `instances`, 모든 인스턴스 보기, 켜짐 알림) → 인스턴스 메뉴의 레벨별 명령 계단(GUI와 같은 칩, 위가 높은 세로 계단, 손가락·마우스로 끌어 옮기거나 눌러서 레벨 고르기, 옮기면 미끄러지는 애니메이션)과 멤버별 레벨(기본 레벨·멤버 레벨과 레벨 사다리 편집(위·아래 버튼), 멤버는 실제 레벨 높은 순(사다리 순서)·같은 레벨은 이름순, 디스코드 프로필 사진)), 모듈(공식 매니페스트 설치, 플러그인 켜기/끄기/설치), 더보기(PC 사용량, 데몬 로그). 설정의 경로·파일·비밀번호 칸은 PC에서만 바꾼다(열쇠 아이콘, 비밀번호는 데몬이 응답에서 뺀다). 확인 창은 GUI와 같은 경우에만 띄운다.
 - 문구: `locales/<lang>/web.json`(`web` ns)과 `common.json`(`common` ns, 브리지 오류 문구). 10개 언어 키·자리 표시자 일치는 `src/test/locales.test.js`가 검사한다.
 
 ---
@@ -345,7 +346,7 @@ Discord ─ 릴레이의 사바쨩 봇 ─(롱폴링, HMAC 서명)─ 데몬 rel
 - 디스코드 명령과 CLI `chat`, `POST /api/chat/command {text, guild_id?, user_id?} → {reply, code, args}`가 모두 같은 처리기를 쓴다(`handlers/chat.rs:9-16`).
 - 대상 서버 찾기: 인스턴스 이름·id → 그 서버를 부르는 낱말(`serverWords[id].words`) → 모듈 이름·게임명(모듈 locales `display_name`)·module.toml 별명 순이다. 같은 게임 서버가 여럿인데 하나로 좁혀지지 않으면 `errors.multiple_instances`로 답한다. 위험 명령은 모듈 이름·게임명·별명으로 부르면 `errors.danger_needs_name`으로 거절한다(`chat/mod.rs` `named_servers`·`find_server`, 01 §4).
 - 명령 낱말은 그 길드·서버의 `commands`, 그다음 module.toml 별명이고, 접두사는 `prefixes`다. 맞춰 볼 때 대소문자를 가리지 않고 긴 것부터 보며, 접두사 뒤가 공백·쉼표·쌍점이거나 글 끝이어야 한다. 도움말에는 첫 접두사를, 비어 있으면 언어별 `default_prefix`(bot.json)를 쓴다. 응답 문구는 `locales/<lang>/bot.json`을 바이너리에 넣어 쓴다(`chat/i18n.rs`).
-- 노드(디스코드 서버)별 허용 인스턴스와 멤버별 명령 권한은 `nodeSettings`에 있다.
+- 노드(디스코드 서버)별 허용 인스턴스와 권한(멤버 레벨, 명령별 레벨)은 `nodeSettings`에 있다. 레벨은 누적이다(01 §4.4 `nodeSettings`).
 
 ### 4.4 봇 초대
 

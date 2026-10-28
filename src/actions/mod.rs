@@ -593,6 +593,89 @@ pub async fn list(server: &IPCServer, surface: Option<Surface>, instance: Option
     json!({ "actions": actions, "locale": crate::chat::i18n::normalize_language(locale) })
 }
 
+/// 원격(디스코드·챗봇)에서 부를 수 있는가
+fn reachable_remotely(surfaces: &Value) -> bool {
+    surfaces.as_array().is_some_and(|a| a.iter().any(|s| s == "discord" || s == "chatbot"))
+}
+
+/// `GET /api/permissions/:guildId/commands`: 이 길드에서 원격으로 부를 수 있는 명령·액션마다 지금 요구 레벨.
+/// 권한 화면의 계단은 이 목록을 그대로 그린다 (판정은 `authorize`와 같은 `required_level`)
+pub async fn permission_board(server: &IPCServer, guild_id: &str, locale: &str) -> Value {
+    let bot = server.config_store.get_bot_config().await;
+    let node = bot.node_settings.get(guild_id);
+    let perms = NodePermissions::from_node(node);
+    let allowed: Option<Vec<String>> =
+        node.and_then(|n| n.get("allowedInstances")).and_then(Value::as_array).map(|l| l.iter().filter_map(|v| v.as_str().map(str::to_string)).collect());
+    let instances: Vec<(String, String, String)> = {
+        let sup = server.supervisor.read().await;
+        sup.instance_store
+            .list()
+            .iter()
+            .filter(|i| allowed.as_ref().is_none_or(|a| a.contains(&i.id)))
+            .map(|i| (i.id.clone(), i.name.clone(), i.module_name.clone()))
+            .collect()
+    };
+    // keys: 덮어쓰기 키 (먼저 보는 것부터). 화면은 첫 키에 쓰고, 프리셋대로 되돌릴 때는 모두 지운다
+    let entry = |instance: &str, name: &str, title: &Value, kind: &str, risk: &str, level: i64, preset: i64, fixed: bool, keys: Vec<String>| {
+        let overridden = !fixed && keys.iter().any(|k| perms.override_level(k).is_some());
+        json!({
+            "key": keys.first(),
+            "keys": keys,
+            "instance": (!instance.is_empty()).then_some(instance),
+            "name": name,
+            "title": title,
+            "kind": kind,
+            "risk": risk,
+            "level": level,
+            "preset": preset,
+            "overridden": overridden,
+            "fixed": fixed,
+        })
+    };
+    let action_entry = |instance: &str, a: &Value| -> Option<Value> {
+        let id = a["id"].as_str()?;
+        let def = find(id);
+        let kind = def.map(|d| d.kind).unwrap_or(Kind::Query);
+        let risk = a["risk"].as_str().unwrap_or("safe");
+        let fixed = def.and_then(|d| d.discord_level);
+        let level = required_level(&perms, instance, id, None, kind, risk, fixed);
+        let preset = fixed.unwrap_or_else(|| preset_need(&perms, kind, risk));
+        let name = builtin_command(id).unwrap_or(id);
+        Some(entry(instance, name, &a["title"], kind.name(), risk, level, preset, fixed.is_some(), override_keys(instance, id)))
+    };
+    let mut items = Vec::new();
+    let globals = list(server, None, None, locale).await;
+    for a in globals["actions"].as_array().into_iter().flatten() {
+        if a["scope"] == "none" && reachable_remotely(&a["surfaces"]) {
+            items.extend(action_entry("", a));
+        }
+    }
+    for (id, _, _) in &instances {
+        let actions = list(server, None, Some(id), locale).await;
+        let actions: Vec<&Value> = actions["actions"].as_array().into_iter().flatten().filter(|a| reachable_remotely(&a["surfaces"])).collect();
+        // 내장 명령(start 등)은 액션 하나로만 둔다
+        let builtin: Vec<&str> = actions.iter().filter_map(|a| a["id"].as_str().and_then(builtin_command)).collect();
+        for a in actions {
+            match a["id"].as_str().and_then(|i| i.strip_prefix(COMMAND_PREFIX)) {
+                Some(cmd) if builtin.contains(&cmd) => {}
+                Some(cmd) => {
+                    let risk = a["risk"].as_str().unwrap_or("caution");
+                    let level = perms.required(id, cmd, risk);
+                    let keys = vec![format!("{}/{}", id, cmd)];
+                    items.push(entry(id, cmd, &a["title"], "command", risk, level, perms.preset_need(risk), false, keys));
+                }
+                None if a["scope"] == "instance" => items.extend(action_entry(id, a)),
+                None => {}
+            }
+        }
+    }
+    json!({
+        "guildId": guild_id,
+        "instances": instances.iter().map(|(id, name, module)| json!({ "id": id, "name": name, "module": module })).collect::<Vec<_>>(),
+        "items": items,
+    })
+}
+
 /// 입력 칸마다 언어별 제목 (`title: {<locale>: …}`). 제목이 하나도 없는 칸은 그대로 둔다
 fn with_field_titles(mut input: Value, titles: impl Fn(&str) -> Map<String, Value>) -> Value {
     if let Some(props) = input["properties"].as_object_mut() {
@@ -1008,6 +1091,40 @@ async fn allowed_instances(server: &IPCServer, caller: &Caller) -> Option<Vec<St
     Some(list.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
 }
 
+/// 원격 요청 하나의 요구 레벨 (`authorize`와 권한 계단 공통). 고정 레벨 → 명령별 덮어쓰기 → 프리셋 순이다
+fn required_level(perms: &NodePermissions, instance: &str, id: &str, command: Option<&str>, kind: Kind, risk: &str, fixed: Option<i64>) -> i64 {
+    if let Some(level) = fixed {
+        return level;
+    }
+    if let Some(cmd) = command {
+        return perms.required(instance, cmd, risk);
+    }
+    override_keys(instance, id).iter().find_map(|k| perms.override_level(k)).unwrap_or_else(|| preset_need(perms, kind, risk))
+}
+
+/// 덮어쓰기가 없을 때의 요구 레벨: 관리 액션은 `admin`, 나머지는 risk별 프리셋
+fn preset_need(perms: &NodePermissions, kind: Kind, risk: &str) -> i64 {
+    if kind == Kind::Admin {
+        perms.admin_need()
+    } else {
+        perms.preset_need(risk)
+    }
+}
+
+/// 액션의 덮어쓰기 키 (먼저 보는 것부터). 내장 서버 액션은 명령 경로·권한 화면과 같은 키(`<instance>/stop` 등)가 먼저다
+fn override_keys(instance: &str, id: &str) -> Vec<String> {
+    if instance.is_empty() {
+        return vec![id.to_string()];
+    }
+    let action_key = format!("{}/{}", instance, id);
+    match builtin_command(id) {
+        // players는 릴레이 사전 판정이 액션 키(`<instance>/server.players`)만 보므로 그 키에 쓴다 (둘 다 읽는다)
+        Some("players") => vec![action_key, format!("{}/players", instance)],
+        Some(cmd) => vec![format!("{}/{}", instance, cmd), action_key],
+        None => vec![action_key],
+    }
+}
+
 /// 표면과 레벨 판정. 챗봇 경로는 표면부터 본다 (레벨·설정으로 풀 수 없다)
 async fn authorize(server: &IPCServer, r: &Resolved, caller: &Caller) -> Result<(), ActionError> {
     authorize_in(server, r, caller, None).await
@@ -1061,26 +1178,7 @@ async fn authorize_in(server: &IPCServer, r: &Resolved, caller: &Caller, new_ser
             });
         }
     }
-    let need = match (r.discord_level, &r.command) {
-        (Some(level), _) => level,
-        (None, Some(cmd)) => perms.required(instance, cmd, &r.risk),
-        (None, None) => {
-            let key = if instance.is_empty() { r.id.clone() } else { format!("{}/{}", instance, r.id) };
-            // 내장 서버 액션은 명령 경로·GUI 권한 편집기와 같은 키(`<instance>/stop` 등)를 먼저 본다
-            let command_key = builtin_command(&r.id).filter(|_| !instance.is_empty()).map(|cmd| format!("{}/{}", instance, cmd));
-            match command_key.and_then(|k| perms.override_level(&k)).or_else(|| perms.override_level(&key)) {
-                Some(level) => level,
-                None if r.kind == Kind::Admin => perms.admin_need(),
-                None => perms.preset_need(&r.risk),
-            }
-        }
-    };
-    // GUI에서 이 사람에게 막아 둔 명령은 채팅 경로와 같이 주인만 (액션 메뉴·확인 버튼으로 돌아가지 않게)
-    let command = r.command.as_deref().or_else(|| builtin_command(&r.id));
-    let need = match command {
-        Some(cmd) if !instance.is_empty() && perms.member_denied(who, instance, cmd) => crate::chat::permissions::OWNER,
-        _ => need,
-    };
+    let need = required_level(&perms, instance, &r.id, r.command.as_deref(), r.kind, &r.risk, r.discord_level);
     if !perms.meets(perms.effective_level(who), need) {
         return Err(denied(need));
     }
@@ -1129,6 +1227,7 @@ fn builtin_command(action: &str) -> Option<&'static str> {
         "server.stop" => Some("stop"),
         "server.restart" => Some("restart"),
         "server.status" => Some("status"),
+        "server.players" => Some("players"),
         _ => None,
     }
 }

@@ -711,6 +711,7 @@
       "audit": "Who started, stopped or sent commands to servers, and from where (GUI, CLI, Discord, schedule)",
       "perm": "Who may run which commands from Discord (levels per member, preset, overrides)",
       "perm.show": "Levels, preset and overrides of one Discord server",
+      "perm.commands": "Commands per level: from which level each command can be used (one server with --server)",
       "perm.grant": "Give a member a level: admin, user, chatbot or banned",
       "perm.revoke": "Take a member's own level away (they get the default level)",
       "perm.default": "Level for members without their own level",
@@ -1036,7 +1037,7 @@
       "owner": "owner",
       "admin": "admin",
       "user": "user",
-      "chatbot": "Talking Saba-chan",
+      "chatbot": "Guest",
       "banned": "banned"
     }
   },

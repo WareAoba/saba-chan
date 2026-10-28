@@ -204,6 +204,7 @@ pub static ROUTES: &[Route] = &[
     // ── 멤버 권한과 길드별 서버 노출 ──
     allow("GET", "/api/permissions/{guild_id}"),
     allow("PATCH", "/api/permissions/{guild_id}"),
+    allow("GET", "/api/permissions/{guild_id}/commands"),
     allow("PUT", "/api/permissions/{guild_id}/members/{discord_id}"),
     allow("DELETE", "/api/permissions/{guild_id}/members/{discord_id}"),
     allow("GET", "/api/instance/{id}/words"),
