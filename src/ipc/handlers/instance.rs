@@ -3216,7 +3216,7 @@ mod tests {
         let made = create(json!({ "name": "a", "module_name": "game", "working_dir": folder.to_string_lossy(), "version": "1.0", "managed_start": false })).await;
         assert!(made.status.is_success(), "{}", made.body);
         let progress = provisioned(&state, "a").await.expect("provisioning finished");
-        assert_eq!(progress.error, None);
+        assert_eq!(progress.error, None, "{:?}", progress.details);
         assert_eq!(std::fs::read_to_string(folder.join("installed.txt")).unwrap(), "1.0", "고른 버전을 고른 폴더에 설치한다");
         let id = made.body["id"].as_str().unwrap();
         let inst = state.supervisor.read().await.instance_store.get(id).cloned().unwrap();
