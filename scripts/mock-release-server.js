@@ -5,7 +5,6 @@
  * 운영 릴레이의 업데이트 API와 같은 모양으로 응답한다 (updater/src/relay.rs):
  *   GET  /v1/updates/check?channel&platform&current&client_id
  *   GET  /v1/updates/manifest/:version   ← 서명된 manifest 봉투 {manifest, signature, keyId}
- *   POST /v1/updates/event
  *   GET  /download/:file                 ← R2 공개 URL 대신
  *
  * manifest는 공개된 고정 모의 키(keyId "saba-updater-mock")로 서명한다. 이 키는
@@ -253,12 +252,6 @@ const server = http.createServer((req, res) => {
         if (decodeURIComponent(manifestMatch[1]) !== MOCK_VERSION) return send(res, 404, { error: 'not_found' });
         const platform = url.searchParams.get('platform') || 'windows-x64';
         return send(res, 200, signManifest(manifestFor(platform, baseUrl)));
-    }
-
-    if (req.method === 'POST' && pathname === '/v1/updates/event') {
-        req.resume();
-        res.writeHead(204);
-        return res.end();
     }
 
     const downloadMatch = pathname.match(/^\/download\/([^/]+)$/);

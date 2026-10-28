@@ -825,7 +825,7 @@ REST 자격증명 조회의 `get_credentials` 재진입은 바깥 호출의 자�
 - `PUT /api/updates/config`는 바꾼 설정을 `config.json`에 저장한다(`updates.rs:900-902`).
 - 주기 확인은 데몬의 `spawn_update_scheduler`가 한다(`updates.rs:256`). `check_interval_hours`마다 확인하고 `auto_download`나 `auto_apply`이면 받아 둔다. `auto_apply`이면 GUI가 열릴 때 `POST /api/updates/apply-on-launch`로 받아 둔 것을 적용한다(켜진 서버가 있으면 재시작이 필요한 것은 미룬다).
 - **접속하는 외부 URL**
-  - 릴레이: `GET {relay_url}/v1/updates/check?channel&platform&current&client_id`, `GET /v1/updates/manifest/:version`, `POST /v1/updates/event`(익명 진행 이벤트). 모든 요청에 `X-Saba-Client: 1` 헤더(`updater/src/relay.rs:1-25, 160-195`).
+  - 릴레이: `GET {relay_url}/v1/updates/check?channel&platform&current&client_id`, `GET /v1/updates/manifest/:version`. 모든 요청에 `X-Saba-Client: 1` 헤더(`updater/src/relay.rs:1-25, 160-195`).
   - manifest의 각 컴포넌트 `url`(R2 공개 주소). 받을 때 `sha256`을 확인한다(`updater/src/download.rs:40`).
   - manifest는 번들된 공개키로 Ed25519 서명을 검증하고, 플랫폼이 다르거나 현재보다 낮은 버전이면 거부한다(`relay.rs:233-252`, `signature.rs`).
   - `/api/modules/manifest*`, 익스텐션 목록(`ExtensionManager::fetch_remote`), 설치기는 같은 함수 `relay::latest_catalog`를 쓴다(`relay.rs:107-115`). 데몬 쪽 호출은 모두 `None`을 넘기므로 기본 릴레이와 `stable` 채널을 쓰며 `relay_url` 설정을 보지 않는다(`server.rs:503, 533`, `extension/mod.rs:1396`).
