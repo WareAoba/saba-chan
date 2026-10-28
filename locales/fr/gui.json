@@ -1088,7 +1088,13 @@
       "not_loaded": "Impossible de lire les paramètres de ce serveur depuis le relais. Les valeurs affichées sont celles par défaut et ne peuvent pas être modifiées. Rechargez une fois connecté.",
       "err_not_paired": "Ce serveur n'est pas appairé.",
       "err_invalid": "Valeur non valide : {{field}}",
-      "err_generic": "Impossible de modifier les paramètres du bot."
+      "err_generic": "Impossible de modifier les paramètres du bot.",
+      "confirm_title": "Demander avant d'exécuter",
+      "confirm_desc": "Avant d'exécuter, le bot redemande à la personne qui a fait la demande avec un bouton Discord. Seule cette personne peut l'utiliser. Dans l'app, le web et la CLI, les commandes dangereuses ainsi que l'arrêt et le redémarrage demandent toujours, quel que soit ce réglage.",
+      "confirm_direct": "Demandes au bot",
+      "confirm_direct_hint": "Commandes à préfixe et commandes slash.",
+      "confirm_chatbot": "Saba-chan qui parle",
+      "confirm_chatbot_hint": "Les tâches d'administration choisies par Saba-chan qui parle et les demandes mêlant plusieurs personnes demandent toujours, quel que soit ce réglage."
     },
     "channels_notify": "Salon d'alertes",
     "channels_notify_hint": "Plantages, redémarrages automatiques, mises à jour, sauvegardes terminées et avertissements de redémarrage programmé y sont publiés.",
@@ -1246,8 +1252,6 @@
     "ambient_effort_hint": "Faible est recommandé. Si elle décide de parler, elle réfléchit encore une fois avec l’effort de conversation avant d’envoyer.",
     "tools_title": "Outils",
     "tools_desc": "Choisis les outils que Saba-chan qui parle peut utiliser et quand elle demande avant.",
-    "confirm_level": "Demander avant d’exécuter",
-    "confirm_level_hint": "Les commandes dangereuses et les tâches d’administration demandent toujours ; supprimer, arrêter le démon, les mises à jour, les permissions et les secrets ne sont jamais autorisés. Les permissions définies dans l’app priment toujours.",
     "confirm_all": "Toutes les commandes",
     "confirm_caution": "Sensibles et plus",
     "confirm_danger": "Dangereuses seulement",
@@ -1311,7 +1315,8 @@
     "guild_tab_desc": "Choisissez si Saba-chan qui parle fonctionne sur ce serveur et quels outils elle utilise. La clé API, le modèle et les outils autorisés se règlent dans Discord › Saba-chan qui parle.",
     "guild_enabled": "Utiliser Saba-chan qui parle sur ce serveur",
     "guild_enabled_hint": "Les serveurs nouvellement connectés démarrent désactivés.",
-    "guild_tools_title": "Outils sur ce serveur"
+    "guild_tools_title": "Outils sur ce serveur",
+    "confirm_none": "Ne pas demander"
   },
   "module_audit": {
     "title": "Le module '{{module}}' utilise des capacités non déclarées.",

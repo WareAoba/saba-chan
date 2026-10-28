@@ -1088,7 +1088,13 @@
       "not_loaded": "릴레이에서 이 서버의 설정을 읽지 못했어요. 지금 보이는 값은 기본값이라 바꿀 수 없어요. 연결된 뒤 다시 불러오세요.",
       "err_not_paired": "이 서버와 페어링되어 있지 않아요.",
       "err_invalid": "잘못된 값이에요: {{field}}",
-      "err_generic": "봇 설정을 바꾸지 못했어요."
+      "err_generic": "봇 설정을 바꾸지 못했어요.",
+      "confirm_title": "되묻기",
+      "confirm_desc": "실행 전에 요청한 사람에게 디스코드 버튼으로 다시 물어요. 버튼은 요청한 사람만 누를 수 있어요. 앱·웹·CLI에서는 이 설정과 상관없이 위험한 명령과 정지·재시작을 물어요.",
+      "confirm_direct": "봇에게 직접 요청",
+      "confirm_direct_hint": "접두사 명령과 슬래시 명령이에요.",
+      "confirm_chatbot": "말하는 사바쨩",
+      "confirm_chatbot_hint": "말하는 사바쨩이 고른 관리 작업과 여러 사람이 섞인 부탁은 이 설정과 상관없이 늘 물어요."
     },
     "channels_notify": "알림 채널",
     "channels_notify_hint": "크래시, 자동 재시작, 업데이트, 백업 완료, 예약 재시작 예고를 이 채널에 올려요.",
@@ -1246,8 +1252,6 @@
     "ambient_effort_hint": "낮음을 추천해요. 말하기로 정하면 보내기 전에 대화 추론 강도로 한 번 더 생각해요.",
     "tools_title": "도구",
     "tools_desc": "말하는 사바쨩이 쓸 수 있는 도구와, 실행 전에 물어볼지를 정해요.",
-    "confirm_level": "실행 전 확인",
-    "confirm_level_hint": "위험한 명령과 관리 작업은 늘 확인을 받고, 지우기·데몬 정지·업데이트·권한·비밀값은 언제나 할 수 없어요. 앱에서 정한 사용자 권한이 항상 우선해요.",
     "confirm_all": "모든 명령",
     "confirm_caution": "주의 이상",
     "confirm_danger": "위험한 명령만",
@@ -1311,7 +1315,8 @@
     "guild_tab_desc": "이 서버에서 말하는 사바쨩을 쓸지와 쓸 도구를 정해요. API 키·모델·전체 허용 도구는 디스코드 › 말하는 사바쨩에서 정해요.",
     "guild_enabled": "이 서버에서 말하는 사바쨩 사용",
     "guild_enabled_hint": "새로 연결한 서버는 꺼져 있어요.",
-    "guild_tools_title": "이 서버에서 쓸 도구"
+    "guild_tools_title": "이 서버에서 쓸 도구",
+    "confirm_none": "묻지 않음"
   },
   "module_audit": {
     "title": "'{{module}}' 모듈이 선언하지 않은 기능을 써요.",

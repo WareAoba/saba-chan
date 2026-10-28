@@ -26,8 +26,6 @@ export const CHATBOT_DEFAULTS = {
 };
 export const EFFORTS = ['low', 'medium', 'high'];
 export const AMBIENT_MINUTES = [1, 3, 5, 10, 30];
-/** 실행 전 확인 단계: 모두 / 주의 이상 / 위험만 */
-export const CONFIRM_LEVELS = ['all', 'caution', 'danger'];
 export const MEMO_MAX = 8000;
 
 export const chatbotAvailable = () => !!window.api?.chatbotGet;
@@ -451,12 +449,6 @@ function SettingsEditor({ data, nodes, nameOf, onSaved, keyVersion }) {
                     <h2>{t('chatbot.tools_title')}</h2>
                 </div>
                 <p className="dc-card-desc">{t('chatbot.tools_desc')}</p>
-                {selectField(
-                    'confirmLevel',
-                    t('chatbot.confirm_level'),
-                    t('chatbot.confirm_level_hint'),
-                    CONFIRM_LEVELS.map((l) => ({ value: l, label: t(`chatbot.confirm_${l}`) })),
-                )}
                 <h3 className="cb-tool-category">{t('chatbot.allowed_title')}</h3>
                 <p className="dc-hint">{t('chatbot.allowed_desc')}</p>
                 <ToolGroups catalog={catalog} reload={reload} isOn={isAllowed} onToggle={toggleAllowed} />

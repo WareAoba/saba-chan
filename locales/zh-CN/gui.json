@@ -1088,7 +1088,13 @@
       "not_loaded": "无法从中继读取此服务器的设置。当前显示的是默认值，无法修改。连接后请重新加载。",
       "err_not_paired": "此服务器尚未配对。",
       "err_invalid": "无效的值：{{field}}",
-      "err_generic": "无法更改机器人设置。"
+      "err_generic": "无法更改机器人设置。",
+      "confirm_title": "执行前确认",
+      "confirm_desc": "执行前会用 Discord 按钮再次询问发出请求的人。只有该请求者能按按钮。在应用、网页和 CLI 中，无论此设置如何，危险命令以及停止、重启都会询问。",
+      "confirm_direct": "直接向机器人请求",
+      "confirm_direct_hint": "前缀命令和斜杠命令。",
+      "confirm_chatbot": "会说话的 Saba-chan",
+      "confirm_chatbot_hint": "会说话的 Saba-chan 选择的管理操作以及多人混合的请求，无论此设置如何都会询问。"
     },
     "channels_notify": "通知频道",
     "channels_notify_hint": "崩溃、自动重启、更新、备份完成和计划重启预告会发到这个频道。",
@@ -1246,8 +1252,6 @@
     "ambient_effort_hint": "推荐“低”。决定发言时，发送前会用对话推理强度再想一次。",
     "tools_title": "工具",
     "tools_desc": "决定会说话的 Saba-chan 可以使用的工具，以及执行前是否询问。",
-    "confirm_level": "执行前确认",
-    "confirm_level_hint": "危险命令和管理操作始终需要确认；删除、停止守护进程、更新、权限和机密始终不允许。应用中设置的用户权限始终优先。",
     "confirm_all": "所有命令",
     "confirm_caution": "注意及以上",
     "confirm_danger": "仅危险命令",
@@ -1311,7 +1315,8 @@
     "guild_tab_desc": "设置此服务器是否使用会说话的 Saba-chan 以及使用哪些工具。API 密钥、模型和允许的工具在 Discord › 会说话的 Saba-chan 中设置。",
     "guild_enabled": "在此服务器使用会说话的 Saba-chan",
     "guild_enabled_hint": "新连接的服务器默认关闭。",
-    "guild_tools_title": "此服务器使用的工具"
+    "guild_tools_title": "此服务器使用的工具",
+    "confirm_none": "不询问"
   },
   "module_audit": {
     "title": "模块 '{{module}}' 使用了未声明的功能。",

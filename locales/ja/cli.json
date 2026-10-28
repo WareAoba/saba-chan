@@ -133,7 +133,13 @@
     "notice_is_on": "{{server}}: 起動通知オン",
     "notice_is_off": "{{server}}: 起動通知オフ",
     "notice_on_saved": "{{guild}}の通知チャンネルに{{server}}の起動を知らせます。",
-    "notice_off_saved": "{{guild}}に{{server}}の起動を知らせないようにしました。"
+    "notice_off_saved": "{{guild}}に{{server}}の起動を知らせないようにしました。",
+    "confirm_direct": "ボットへの直接の依頼",
+    "confirm_chatbot": "おしゃべりサバちゃん",
+    "confirm_all": "すべてのコマンド",
+    "confirm_caution": "注意以上",
+    "confirm_danger": "危険なコマンドのみ",
+    "confirm_none": "確認しない"
   },
   "col": {
     "players": "接続者",
@@ -883,7 +889,8 @@
       "remote.forget": "リモートデーモンを削除（再接続は`remote connect`）",
       "config.autostart": "PCにサインインしたときに起動するもの: off(オフ)、daemon(デーモンとトレイのみ)、full(GUIウィンドウまで)。モードなしで今の値を表示",
       "config.browse": "デーモンのPCのフォルダーとファイルを表示 (--daemonならそのリモートPC)。パスがなければドライブか /",
-      "bot.notice": "サバちゃんがサーバーを起動したらDiscordサーバーの通知チャンネルに知らせる（既定はオフ）。サーバーなし: 表示、サーバーと`--on`・`--off`: 変更"
+      "bot.notice": "サバちゃんがサーバーを起動したらDiscordサーバーの通知チャンネルに知らせる（既定はオフ）。サーバーなし: 表示、サーバーと`--on`・`--off`: 変更",
+      "bot.confirm": "実行前にボットがDiscordのボタンで確認する段階 (all・caution・danger・none)。オプションなし: 表示"
     },
     "arg": {
       "module.maker.game": "最初の依頼に入れるゲーム名",
@@ -1051,7 +1058,9 @@
       "schedule.edit.command": "変更するゲームコマンド (command 作業、別のコマンドなら --arg を指定しない限り古い入力は消える)",
       "bot.notice.on": "起動通知をオン",
       "bot.notice.off": "起動通知をオフ",
-      "chatbot.template.locale": "テンプレートの言語（省略時はアプリの言語）"
+      "chatbot.template.locale": "テンプレートの言語（省略時はアプリの言語）",
+      "bot.confirm.direct": "ボットへの直接の依頼 — プレフィックスコマンドとスラッシュコマンドです。",
+      "bot.confirm.chatbot": "おしゃべりサバちゃん — おしゃべりサバちゃんが選んだ管理作業と、複数の人が混ざった依頼は、この設定に関係なく必ず確認します。"
     },
     "after": "名前は一部だけでも指定できます（例: start pal）。端末で引数なしで実行すると全画面メニューが開きます(SABA_NO_TUI=1 なら対話シェル)。\nスクリプトでは --json と --yes を使ってください。終了コード: 0 成功 · 1 失敗 · 2 使い方の誤り · 3 デーモンに接続不可 · 4 見つからない · 130 キャンセル"
   },

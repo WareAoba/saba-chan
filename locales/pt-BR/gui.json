@@ -1088,7 +1088,13 @@
       "not_loaded": "Não foi possível ler as configurações deste servidor no relay. Os valores exibidos são padrões e não podem ser alterados. Recarregue quando estiver conectado.",
       "err_not_paired": "Este servidor não está pareado.",
       "err_invalid": "Valor inválido: {{field}}",
-      "err_generic": "Não foi possível alterar as configurações do bot."
+      "err_generic": "Não foi possível alterar as configurações do bot.",
+      "confirm_title": "Perguntar antes de executar",
+      "confirm_desc": "Antes de executar, o bot pergunta de novo a quem pediu, com um botão do Discord. Só essa pessoa pode apertar. No app, na web e na CLI, comandos perigosos e parar ou reiniciar sempre perguntam, seja qual for este ajuste.",
+      "confirm_direct": "Pedidos ao bot",
+      "confirm_direct_hint": "Comandos com prefixo e comandos de barra.",
+      "confirm_chatbot": "Saba-chan falante",
+      "confirm_chatbot_hint": "Tarefas de administração escolhidas pela Saba-chan falante e pedidos que misturam várias pessoas sempre perguntam, seja qual for este ajuste."
     },
     "channels_notify": "Canal de alertas",
     "channels_notify_hint": "Falhas, reinícios automáticos, atualizações, backups concluídos e avisos de reinício agendado são publicados aqui.",
@@ -1246,8 +1252,6 @@
     "ambient_effort_hint": "Recomendado: Baixo. Se decidir falar, pensa de novo com o esforço da conversa antes de enviar.",
     "tools_title": "Ferramentas",
     "tools_desc": "Escolha quais ferramentas a Saba-chan falante pode usar e quando ela pergunta antes.",
-    "confirm_level": "Perguntar antes de executar",
-    "confirm_level_hint": "Comandos perigosos e tarefas de administração sempre perguntam; apagar, parar o daemon, atualizar, permissões e segredos nunca são permitidos. As permissões de usuário do app sempre valem.",
     "confirm_all": "Todos os comandos",
     "confirm_caution": "Cautela ou mais",
     "confirm_danger": "Só perigosos",
@@ -1311,7 +1315,8 @@
     "guild_tab_desc": "Escolha se a Saba-chan falante funciona neste servidor e quais ferramentas ela usa. A chave de API, o modelo e as ferramentas permitidas ficam em Discord › Saba-chan falante.",
     "guild_enabled": "Usar a Saba-chan falante neste servidor",
     "guild_enabled_hint": "Servidores recém-conectados começam desativados.",
-    "guild_tools_title": "Ferramentas neste servidor"
+    "guild_tools_title": "Ferramentas neste servidor",
+    "confirm_none": "Não perguntar"
   },
   "module_audit": {
     "title": "O módulo '{{module}}' usa recursos que não declara.",

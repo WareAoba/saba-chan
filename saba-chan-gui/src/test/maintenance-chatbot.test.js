@@ -335,7 +335,7 @@ describe('ChatbotView', () => {
         expect(await screen.findByText('Connect a Discord server to load the tool list.')).toBeTruthy();
     });
 
-    it('추론 강도·끼어들기·실행 전 확인을 고르고, 끼어들기를 끄면 주기와 판단 강도는 잠긴다', async () => {
+    it('추론 강도·끼어들기를 고르고, 끼어들기를 끄면 주기와 판단 강도는 잠긴다', async () => {
         window.api.chatbotGet = vi.fn().mockResolvedValue({ success: true, settings: {}, guilds: {}, hasApiKey: true });
         window.api.chatbotSave = vi
             .fn()
@@ -343,7 +343,6 @@ describe('ChatbotView', () => {
         render(<ChatbotView nodes={nodes} />);
         pickOption(await screen.findByLabelText('Reasoning effort'), 'High');
         pickOption(screen.getByLabelText('Check interval'), 'Every 10 min');
-        pickOption(screen.getByLabelText('Ask before running'), 'Dangerous only');
         fireEvent.click(screen.getByLabelText('Join in uninvited'));
         expect(screen.getByLabelText('Check interval')).toBeDisabled();
         expect(screen.getByLabelText('Join-in reasoning effort')).toBeDisabled();
@@ -354,7 +353,6 @@ describe('ChatbotView', () => {
             ambient: false,
             ambientMinutes: 10,
             ambientEffort: null,
-            confirmLevel: 'danger',
         });
     });
 

@@ -1088,7 +1088,13 @@
       "not_loaded": "Die Einstellungen dieses Servers konnten nicht vom Relay gelesen werden. Die angezeigten Werte sind Standardwerte und können nicht geändert werden. Nach dem Verbinden neu laden.",
       "err_not_paired": "Dieser Server ist nicht gekoppelt.",
       "err_invalid": "Ungültiger Wert: {{field}}",
-      "err_generic": "Bot-Einstellungen konnten nicht geändert werden."
+      "err_generic": "Bot-Einstellungen konnten nicht geändert werden.",
+      "confirm_title": "Vor dem Ausführen fragen",
+      "confirm_desc": "Vor dem Ausführen fragt der Bot die anfragende Person per Discord-Button noch einmal. Nur diese Person kann ihn drücken. In App, Web und CLI fragen gefährliche Befehle sowie Stoppen und Neustarten immer, unabhängig von dieser Einstellung.",
+      "confirm_direct": "Anfragen an den Bot",
+      "confirm_direct_hint": "Präfix- und Slash-Befehle.",
+      "confirm_chatbot": "Sprechende Saba-chan",
+      "confirm_chatbot_hint": "Von der sprechenden Saba-chan gewählte Verwaltungsaufgaben und Anfragen mehrerer Personen fragen immer, unabhängig von dieser Einstellung."
     },
     "channels_notify": "Benachrichtigungskanal",
     "channels_notify_hint": "Abstürze, automatische Neustarts, Updates, fertige Sicherungen und Hinweise auf geplante Neustarts erscheinen hier.",
@@ -1246,8 +1252,6 @@
     "ambient_effort_hint": "Niedrig wird empfohlen. Entscheidet sie sich zu sprechen, denkt sie vor dem Senden noch einmal mit dem Gesprächsaufwand nach.",
     "tools_title": "Werkzeuge",
     "tools_desc": "Lege fest, welche Werkzeuge Sprechende Saba-chan nutzen darf und wann sie vorher fragt.",
-    "confirm_level": "Vor dem Ausführen fragen",
-    "confirm_level_hint": "Gefährliche Befehle und Verwaltungsaufgaben fragen immer; Löschen, Daemon stoppen, Updates, Berechtigungen und Geheimnisse sind nie erlaubt. In der App festgelegte Benutzerrechte gelten immer.",
     "confirm_all": "Alle Befehle",
     "confirm_caution": "Ab Vorsicht",
     "confirm_danger": "Nur gefährliche",
@@ -1311,7 +1315,8 @@
     "guild_tab_desc": "Lege fest, ob „Sprechende Saba-chan“ auf diesem Server aktiv ist und welche Werkzeuge sie nutzt. API-Schlüssel, Modell und erlaubte Werkzeuge stellst du unter Discord › Sprechende Saba-chan ein.",
     "guild_enabled": "„Sprechende Saba-chan“ auf diesem Server nutzen",
     "guild_enabled_hint": "Neu verbundene Server starten ausgeschaltet.",
-    "guild_tools_title": "Werkzeuge auf diesem Server"
+    "guild_tools_title": "Werkzeuge auf diesem Server",
+    "confirm_none": "Nicht fragen"
   },
   "module_audit": {
     "title": "Modul '{{module}}' nutzt nicht deklarierte Fähigkeiten.",

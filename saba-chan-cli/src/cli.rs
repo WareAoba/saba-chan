@@ -979,6 +979,16 @@ pub enum BotCmd {
         #[arg(long, value_name = "on|off", value_parser = on_off)]
         normalize: Option<bool>,
     },
+    /// When the bot asks with a Discord button before running (all, caution, danger, none). No options: show
+    Confirm {
+        guild: Option<String>,
+        /// Requests to the bot (prefix and slash commands)
+        #[arg(long, value_name = "LEVEL", value_parser = ["all", "caution", "danger", "none"])]
+        direct: Option<String>,
+        /// Commands Talking Saba-chan picks (its admin tasks always ask)
+        #[arg(long, value_name = "LEVEL", value_parser = ["all", "caution", "danger", "none"])]
+        chatbot: Option<String>,
+    },
     /// Link to invite the Saba-chan bot to a Discord server
     Invite,
     /// Connection requests sent from Discord with `/사바쨩 연결` and no code. No id: show. ID: accept, `--decline`: refuse
