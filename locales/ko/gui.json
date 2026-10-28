@@ -169,7 +169,7 @@
     "confirm_step_subtitle": "고른 내용을 확인하고 서버를 추가하세요.",
     "version": "서버 버전",
     "version_latest": "최신 버전 (추천)",
-    "version_hint": "고른 서버 종류가 그 버전을 내지 않았으면 설치가 실패해요.",
+    "version_hint": "고른 서버 종류가 받을 수 있는 버전만 보여요.",
     "location_title": "파일 위치",
     "location_default": "사바쨩 폴더 (추천)",
     "location_default_hint": "사바쨩이 서버마다 만드는 폴더에 설치해요. 서버를 지우면 함께 지워져요.",

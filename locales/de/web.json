@@ -97,7 +97,7 @@
     "delete_message": "Die Servereinstellungen und -dateien werden gelöscht. Das lässt sich nicht rückgängig machen.",
     "version": "Serverversion",
     "version_latest": "Neueste Version (empfohlen)",
-    "version_hint": "Gibt es für den gewählten Typ keinen Build dieser Version, schlägt die Installation fehl.",
+    "version_hint": "Es werden nur Versionen angezeigt, die der gewählte Servertyp anbietet.",
     "run": "Startart",
     "run_managed": "Von saba-chan verwaltet (empfohlen)",
     "run_unmanaged": "Selbst verwalten",

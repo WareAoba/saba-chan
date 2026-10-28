@@ -169,7 +169,7 @@
     "confirm_step_subtitle": "确认所选内容后添加服务器。",
     "version": "服务器版本",
     "version_latest": "最新版本（推荐）",
-    "version_hint": "如果所选类型没有该版本的构建，安装会失败。",
+    "version_hint": "只列出所选服务器类型提供的版本。",
     "location_title": "文件位置",
     "location_default": "saba-chan 文件夹（推荐）",
     "location_default_hint": "安装到 saba-chan 为每个服务器创建的文件夹。删除服务器时一起删除。",

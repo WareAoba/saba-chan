@@ -97,7 +97,7 @@
     "delete_message": "Se eliminarán los ajustes y archivos del servidor. No se puede deshacer.",
     "version": "Versión del servidor",
     "version_latest": "Última versión (recomendada)",
-    "version_hint": "Si el tipo elegido no tiene una compilación de esa versión, la instalación falla.",
+    "version_hint": "Solo se muestran las versiones que ofrece el tipo de servidor elegido.",
     "run": "Modo de ejecución",
     "run_managed": "Gestionado por saba-chan (recomendado)",
     "run_unmanaged": "Gestionarlo tú",
