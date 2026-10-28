@@ -7,18 +7,9 @@
     "restart": "Перезагрузить сервер"
   },
   "help": {
-    "title": "📖 Руководство пользователя",
-    "list": "Просмотр списка серверов",
-    "start": "Запустить сервер",
-    "stop": "Остановить сервер",
-    "status": "Проверить статус сервера",
-    "rest_command": "Выполнить команду REST",
-    "help": "Показать это справочное сообщение",
     "available_modules": "**Доступные модули:** {{modules}}",
     "no_modules": "Нет",
-    "module_commands": "**Команды модуля:**{{commands}}",
     "module_title": "**Команды {{module}}**",
-    "command_format": "Неизвестная команда: \"{{command}}\" ({{resolved}})",
     "available_commands": "{{commands}}",
     "usage_format": "`{{prefix}} <модуль> <команда>`",
     "modules_header": "📦 **Модули:**"
@@ -75,20 +66,6 @@
     }
   },
   "responses": {
-    "info_title": "**Информация о сервере**",
-    "info_version": "• Версия: {{version}}",
-    "info_name": "• Имя сервера: {{name}}",
-    "info_description": "• Описание: {{description}}",
-    "players_title": "**Подключенные игроки ({{count}})**",
-    "players_empty": "Нет подключенных игроков",
-    "players_item": "• **{{name}}** - Ур.{{level}} ({{id}})",
-    "metrics_title": "**Метрики сервера**",
-    "metrics_players": "• Текущие игроки: {{current}}/{{max}}",
-    "metrics_fps": "• FPS сервера: {{fps}}",
-    "metrics_uptime": "• Время работы: {{uptime}} минут",
-    "announce_success": "✅ Объявление отправлено",
-    "save_success": "✅ Мир сохранен",
-    "command_executed": "✅ Команда выполнена",
     "command_complete": "✅ Команда выполнена!",
     "empty_list": "(пусто)"
   },
@@ -120,37 +97,15 @@
     "local_single_guild_only": "⚠️ Локальный бот может использоваться только на одном сервере. Сейчас он находится на {{count}} серверах. Удалите бота с неиспользуемых серверов."
   },
   "messages": {
-    "server_started": "Сервер запущен",
-    "server_stopped": "Сервер остановлен",
-    "server_not_running": "Сервер не запущен",
-    "command_error": "Ошибка выполнения команды",
-    "raw_command_success": "✅ {{output}}",
-    "raw_command_error": "❌ {{error}}"
+    "command_error": "Ошибка выполнения команды"
   },
   "cloud": {
-    "not_configured": "❌ Облачный режим не настроен.",
-    "register_complete": "✅ Регистрация завершена! Токен отправлен в личные сообщения.",
-    "register_failed": "❌ Ошибка регистрации: {{error}}",
-    "already_registered": "ℹ️ Уже зарегистрирован. Host ID: {{hostId}}",
     "status_online": "🟢 Онлайн",
     "status_offline": "⚪ Офлайн",
-    "status_check_failed": "❌ Ошибка проверки статуса: {{error}}",
-    "acl_granted": "✅ Уровень доступа {{level}} предоставлен {{user}}.",
-    "acl_revoked": "✅ Права доступа для {{user}} отозваны.",
-    "music_local_only": "🎵 Музыкальная функция доступна только в локальном режиме."
+    "status_check_failed": "❌ Ошибка проверки статуса: {{error}}"
   },
   "relay": {
     "command_complete": "✅ Готово"
-  },
-  "rps": {
-    "prompt": "✊✌️✋ Выберите один!",
-    "draw": "{{bot}}! Ничья! Ещё раз~ 🔄",
-    "user_win": "{{bot}}! Я проиграл... 😵",
-    "bot_win": "{{bot}}! Я победил~ 😋",
-    "timeout": "⏰ Время вышло! Попробуйте в следующий раз~",
-    "scissors": "Ножницы",
-    "rock": "Камень",
-    "paper": "Бумага"
   },
   "schedule": {
     "restart_warning": "Сервер перезапустится через {{minutes}} мин.",

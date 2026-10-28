@@ -7,18 +7,9 @@
     "restart": "重启服务器"
   },
   "help": {
-    "title": "📖 使用指南",
-    "list": "查看服务器列表",
-    "start": "启动服务器",
-    "stop": "停止服务器",
-    "status": "检查服务器状态",
-    "rest_command": "执行REST命令",
-    "help": "显示此帮助消息",
     "available_modules": "**可用模块：** {{modules}}",
     "no_modules": "无",
-    "module_commands": "**模块命令：**{{commands}}",
     "module_title": "**{{module}} 命令**",
-    "command_format": "未知命令：\"{{command}}\"（{{resolved}}）",
     "available_commands": "{{commands}}",
     "usage_format": "`{{prefix}} <模块> <命令>`",
     "modules_header": "📦 **模块:**"
@@ -75,20 +66,6 @@
     }
   },
   "responses": {
-    "info_title": "**服务器信息**",
-    "info_version": "• 版本：{{version}}",
-    "info_name": "• 服务器名称：{{name}}",
-    "info_description": "• 描述：{{description}}",
-    "players_title": "**连接的玩家（{{count}}）**",
-    "players_empty": "当前没有玩家在线",
-    "players_item": "• **{{name}}** - Lv.{{level}}（{{id}}）",
-    "metrics_title": "**服务器指标**",
-    "metrics_players": "• 当前玩家数：{{current}}/{{max}}",
-    "metrics_fps": "• 服务器FPS：{{fps}}",
-    "metrics_uptime": "• 运行时间：{{uptime}} 分钟",
-    "announce_success": "✅ 公告已发送",
-    "save_success": "✅ 世界已保存",
-    "command_executed": "✅ 命令已执行",
     "command_complete": "✅ 命令已执行！",
     "empty_list": "(空)"
   },
@@ -120,37 +97,15 @@
     "local_single_guild_only": "⚠️ 本地机器人只能在一个服务器中使用。当前已加入{{count}}个服务器，请从不使用的服务器中移除机器人。"
   },
   "messages": {
-    "server_started": "服务器已启动",
-    "server_stopped": "服务器已停止",
-    "server_not_running": "服务器未运行",
-    "command_error": "执行命令出错",
-    "raw_command_success": "✅ {{output}}",
-    "raw_command_error": "❌ {{error}}"
+    "command_error": "执行命令出错"
   },
   "cloud": {
-    "not_configured": "❌ 云模式未配置。",
-    "register_complete": "✅ 注册完成！令牌已通过私信发送。",
-    "register_failed": "❌ 注册失败：{{error}}",
-    "already_registered": "ℹ️ 已注册。Host ID：{{hostId}}",
     "status_online": "🟢 在线",
     "status_offline": "⚪ 离线",
-    "status_check_failed": "❌ 状态检查失败：{{error}}",
-    "acl_granted": "✅ 已授予 {{user}} 权限等级 {{level}}。",
-    "acl_revoked": "✅ 已撤销 {{user}} 的权限。",
-    "music_local_only": "🎵 音乐功能仅在本地模式下可用。"
+    "status_check_failed": "❌ 状态检查失败：{{error}}"
   },
   "relay": {
     "command_complete": "✅ 完成"
-  },
-  "rps": {
-    "prompt": "✊✌️✋ 请选一个！",
-    "draw": "{{bot}}！平局！再来一次~ 🔄",
-    "user_win": "{{bot}}！我输了... 😵",
-    "bot_win": "{{bot}}！我赢了~ 😋",
-    "timeout": "⏰ 时间到！下次再挑战吧~",
-    "scissors": "剪刀",
-    "rock": "石头",
-    "paper": "布"
   },
   "schedule": {
     "restart_warning": "服务器将在 {{minutes}} 分钟后重启。",
