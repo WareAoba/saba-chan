@@ -346,6 +346,11 @@ impl Api {
     pub async fn create_instance(&self, body: Value) -> Result<Value> {
         self.post_long("/api/instances", body).await
     }
+    /// POST /api/instances/check — 만들지 않고 이름·폴더·포트 충돌만 본다 (몸은 create_instance와 같다)
+    #[allow(dead_code)] // `server add` 단계 확인은 다음 변경에서 붙인다
+    pub async fn check_instance(&self, body: Value) -> Result<Value> {
+        self.post("/api/instances/check", body).await
+    }
     /// DELETE /api/instance/:id (`keep_settings`: 가져온 서버의 게임 설정 파일을 되돌리지 않는다)
     pub async fn delete_instance(&self, id: &str, keep_settings: bool) -> Result<Value> {
         let query = if keep_settings { "?keep_settings=true" } else { "" };
