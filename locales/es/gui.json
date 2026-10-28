@@ -1088,7 +1088,13 @@
       "not_loaded": "No se pudo leer la configuración de este servidor desde el relé. Los valores mostrados son predeterminados y no se pueden cambiar. Vuelve a cargar cuando haya conexión.",
       "err_not_paired": "Este servidor no está emparejado.",
       "err_invalid": "Valor no válido: {{field}}",
-      "err_generic": "No se pudieron cambiar los ajustes del bot."
+      "err_generic": "No se pudieron cambiar los ajustes del bot.",
+      "confirm_title": "Preguntar antes de ejecutar",
+      "confirm_desc": "Antes de ejecutar, el bot vuelve a preguntar a quien lo pidió con un botón de Discord. Solo esa persona puede pulsarlo. En la app, la web y la CLI, los comandos peligrosos y detener o reiniciar siempre preguntan, sea cual sea este ajuste.",
+      "confirm_direct": "Peticiones al bot",
+      "confirm_direct_hint": "Comandos con prefijo y comandos de barra.",
+      "confirm_chatbot": "Saba-chan parlante",
+      "confirm_chatbot_hint": "Las tareas de administración que elige Saba-chan parlante y las peticiones que mezclan a varias personas siempre preguntan, sea cual sea este ajuste."
     },
     "channels_notify": "Canal de avisos",
     "channels_notify_hint": "Aquí se publican caídas, reinicios automáticos, actualizaciones, copias terminadas y avisos de reinicios programados.",
@@ -1250,8 +1256,6 @@
     "ambient_effort_hint": "Se recomienda Bajo. Si decide hablar, vuelve a pensarlo con el esfuerzo de conversación antes de enviar.",
     "tools_title": "Herramientas",
     "tools_desc": "Elige qué herramientas puede usar Saba-chan parlante y cuándo pregunta antes.",
-    "confirm_level": "Preguntar antes de ejecutar",
-    "confirm_level_hint": "Los comandos peligrosos y las tareas de administración siempre preguntan; borrar, detener el daemon, actualizar, permisos y secretos nunca se permiten. Los permisos de usuario de la app siempre mandan.",
     "confirm_all": "Todos los comandos",
     "confirm_caution": "Precaución o más",
     "confirm_danger": "Solo peligrosos",
@@ -1300,7 +1304,8 @@
     "models_err_QUOTA_EXCEEDED": "La clave de API superó su cuota de uso.",
     "models_err_PROVIDER_UNAVAILABLE": "No se pudo contactar con el proveedor de modelos. Inténtalo de nuevo en un momento.",
     "models_err_FAILED": "No se pudo cargar la lista de modelos.",
-    "model_fallback": "El modelo elegido ({{model}}) no está disponible, así que se usa {{fallback}}. Guarda para que {{fallback}} sea el nuevo modelo."
+    "model_fallback": "El modelo elegido ({{model}}) no está disponible, así que se usa {{fallback}}. Guarda para que {{fallback}} sea el nuevo modelo.",
+    "confirm_none": "No preguntar"
   },
   "module_audit": {
     "title": "El módulo '{{module}}' usa capacidades que no declara.",

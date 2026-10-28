@@ -644,6 +644,8 @@ impl Session {
         // 권한 원본은 데몬이다: 릴레이는 이 값으로 바깥 검사용 캐시를 맞춘다
         meta["permissions"] = permissions_by_guild(&bot.node_settings);
         meta["permissionsAt"] = json!(permissions_at);
+        // 되묻기는 데몬이 계획마다 정한다 (`actions::needs_confirm`, 문장 계획 포함): 릴레이는 스스로 위험을 판정하지 않고 `needsConfirm`을 따른다
+        meta["confirmByDaemon"] = Value::Bool(true);
         // `/사바쨩 상태` 끝 줄의 다음 할 일 (J1-a, GUI·CLI와 같은 단계)
         meta["onboarding"] = crate::ipc::handlers::diagnostics::onboarding_now(&self.server).await;
         // 언어가 `auto`인 길드는 이 언어로 답한다 (I2)

@@ -133,7 +133,13 @@
     "notice_is_on": "{{server}} : alerte de démarrage activée",
     "notice_is_off": "{{server}} : alerte de démarrage désactivée",
     "notice_on_saved": "Le canal d’alertes de {{guild}} saura quand {{server}} démarre.",
-    "notice_off_saved": "{{guild}} ne saura plus quand {{server}} démarre."
+    "notice_off_saved": "{{guild}} ne saura plus quand {{server}} démarre.",
+    "confirm_direct": "Demandes au bot",
+    "confirm_chatbot": "Saba-chan qui parle",
+    "confirm_all": "Toutes les commandes",
+    "confirm_caution": "Sensibles et plus",
+    "confirm_danger": "Dangereuses seulement",
+    "confirm_none": "Ne pas demander"
   },
   "col": {
     "players": "Joueurs",
@@ -753,7 +759,8 @@
       "remote.forget": "Oublier un démon distant (reconnectez-vous avec `remote connect`)",
       "config.autostart": "Ce qui démarre quand vous vous connectez à ce PC : off, daemon (démon et zone de notification seulement) ou full (avec la fenêtre de la GUI). Sans mode, affiche la valeur actuelle",
       "config.browse": "Dossiers et fichiers sur le PC du démon (avec --daemon, le PC distant). Sans chemin, les lecteurs ou /",
-      "bot.notice": "Prévenir dans le canal d’alertes du serveur Discord quand Saba-chan démarre un serveur (désactivé par défaut). Sans serveur : voir. Serveur avec `--on`/`--off` : changer"
+      "bot.notice": "Prévenir dans le canal d’alertes du serveur Discord quand Saba-chan démarre un serveur (désactivé par défaut). Sans serveur : voir. Serveur avec `--on`/`--off` : changer",
+      "bot.confirm": "Quand le bot demande avec un bouton Discord avant d'exécuter (all, caution, danger, none). Sans option : afficher"
     },
     "arg": {
       "module.maker.game": "Jeu à mettre dans la première demande",
@@ -841,7 +848,9 @@
       "config.browse.path": "Chemin complet du dossier",
       "config.browse.files": "Afficher aussi les fichiers avec ces extensions (séparées par des virgules, * pour tous)",
       "bot.notice.on": "Activer l’alerte de démarrage",
-      "bot.notice.off": "Désactiver l’alerte de démarrage"
+      "bot.notice.off": "Désactiver l’alerte de démarrage",
+      "bot.confirm.direct": "Demandes au bot — Commandes à préfixe et commandes slash.",
+      "bot.confirm.chatbot": "Saba-chan qui parle — Les tâches d'administration choisies par Saba-chan qui parle et les demandes mêlant plusieurs personnes demandent toujours, quel que soit ce réglage."
     },
     "after": "Les noms peuvent être partiels (ex. start pal). Sans argument dans un terminal, le menu plein écran s'ouvre (SABA_NO_TUI=1 : le shell interactif).\nDans les scripts, utilisez --json et --yes. Codes de sortie : 0 ok · 1 échec · 2 utilisation · 3 daemon injoignable · 4 introuvable · 130 annulé"
   },
