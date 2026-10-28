@@ -62,3 +62,11 @@ jobs:
             --model claude-opus-5-5
             --max-turns 30
             --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Read,Grep,Glob"
+      # 액션은 실행 기록을 숨긴다. 실패하면 API가 돌려준 오류 문구만 보여 준다(크레딧 부족, 키 오류 등).
+      - if: failure() && env.HAS_KEY == 'true'
+        run: |
+          f="$RUNNER_TEMP/claude-execution-output.json"
+          if [ ! -f "$f" ]; then echo "실행 기록이 없습니다."; exit 0; fi
+          jq -r '(if type == "array" then .[] else . end)
+            | select(.type == "result" or .error != null)
+            | (.error // empty), (.result // empty)' "$f" | head -c 1000
