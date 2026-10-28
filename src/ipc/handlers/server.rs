@@ -834,14 +834,34 @@ pub async fn get_server_status(
     State(state): State<IPCServer>,
 ) -> impl IntoResponse {
     // instance에서 모듈명 조회
-    let module_name = state.supervisor.read().await
+    let instance = state.supervisor.read().await
         .instance_store
         .list()
         .iter()
         .find(|i| i.name == name)
-        .map(|i| i.module_name.clone());
+        .map(|i| (i.name.clone(), i.module_name.clone()));
+    server_status(&state, &name, instance).await
+}
 
-    if let Some(module_name) = module_name {
+/// GET /api/instance/:id/status — id로 상태 조회 (없으면 이름으로 찾는다). 답은 `/api/server/:name/status`와 같다
+pub async fn get_instance_status(
+    Path(id): Path<String>,
+    State(state): State<IPCServer>,
+) -> axum::response::Response {
+    let instance = {
+        let supervisor = state.supervisor.read().await;
+        supervisor
+            .instance_store
+            .get(&id)
+            .or_else(|| supervisor.instance_store.list().iter().find(|i| i.name == id))
+            .map(|i| (i.name.clone(), i.module_name.clone()))
+    };
+    server_status(&state, &id, instance).await
+}
+
+/// 찾은 인스턴스(이름, 모듈)의 상태. 못 찾았으면 404 `instance_not_found`
+async fn server_status(state: &IPCServer, key: &str, instance: Option<(String, String)>) -> axum::response::Response {
+    if let Some((name, module_name)) = instance {
         match crate::supervisor::Supervisor::get_server_status(&state.supervisor, &name, &module_name).await {
             Ok(result) => (StatusCode::OK, Json(result)).into_response(),
             Err(e) => {
@@ -851,7 +871,7 @@ pub async fn get_server_status(
         }
     } else {
         let error = json!({
-            "error": format!("Server '{}' not found", name),
+            "error": format!("Server '{}' not found", key),
             "error_code": "instance_not_found",
         });
         (StatusCode::NOT_FOUND, Json(error)).into_response()
@@ -1442,6 +1462,38 @@ mod tests {
         assert_eq!(rest(id.clone()).await.1.map(|p| p.len()), Some(16), "found by name too");
         fill_passwords(&state, &plain_id).await;
         assert_eq!(rest(plain_id).await, (None, None), "a module without REST keeps no REST account");
+    }
+
+    /// 상태는 인스턴스 id로도 묻는다(이름이 바뀌어도 끊기지 않게). 이름으로 불러도 같은 답, 없으면 404
+    #[tokio::test]
+    async fn status_is_asked_by_instance_id_or_name() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("modules").join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("module.toml"), "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n").unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "import json\nprint(json.dumps({'success': True, 'status': 'stopped'}))\n").unwrap();
+        let modules = tmp.path().join("modules");
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let inst = crate::instance::ServerInstance::new("srv", "game");
+        let id = inst.id.clone();
+        state.supervisor.write().await.instance_store.add(inst).unwrap();
+        let ask = |key: String| {
+            let state = state.clone();
+            async move { crate::ipc::internal::into_internal(get_instance_status(Path(key), State(state)).await.into_response()).await }
+        };
+
+        // 격리 실행이 없는 곳에서는 모듈 status()가 실패 모양으로 답한다. 어느 쪽이든 세 길의 답이 같아야 한다
+        let by_id = ask(id.clone()).await;
+        assert_eq!(by_id.status, StatusCode::OK, "{}", by_id.body);
+        let by_name = ask("srv".into()).await;
+        assert_eq!(by_name.body, by_id.body);
+        let old = crate::ipc::internal::into_internal(get_server_status(Path("srv".into()), State(state.clone())).await.into_response()).await;
+        assert_eq!(old.body, by_id.body, "same answer as the name route");
+        let missing = ask("nope".into()).await;
+        assert_eq!(missing.status, StatusCode::NOT_FOUND);
+        assert_eq!(missing.body["error_code"], "instance_not_found");
     }
 
     /// 클라이언트가 실행 파일 고르기 창의 파일 종류를 모듈 선언(`[config] server_executable`)에서 알 수 있다

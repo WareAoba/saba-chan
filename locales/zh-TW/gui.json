@@ -429,7 +429,6 @@
     "stop_timeout_toast": "⚠️ 正在停止 {{name}} 伺服器。這可能需要一些時間。",
     "unexpected_stop_toast": "⚠️ {{name}} 伺服器意外停止！",
     "external_start_toast": "ℹ️ {{name}} 伺服器在 Saba-chan 之外啟動",
-    "status_check_failed_title": "狀態檢查失敗",
     "add_server_name_empty_title": "輸入錯誤",
     "add_server_name_empty_message": "請輸入伺服器名稱",
     "add_module_empty_title": "輸入錯誤",
@@ -476,7 +475,8 @@
     "stdin_unconfirmed": "無法確認指令是否已送出。重試前請先查看主控台。",
     "move_cross_volume": "無法移動其他磁碟機上的資料夾。請改用「保留在原位置」匯入。",
     "move_in_use": "無法移動資料夾。請停止此資料夾中的伺服器，關閉開啟該資料夾的程式後再試一次。",
-    "move_failed": "無法移動資料夾。請改用「保留在原位置」匯入。"
+    "move_failed": "無法移動資料夾。請改用「保留在原位置」匯入。",
+    "not_installable": "saba-chan 無法依所選設定安裝伺服器。請選擇其他值。"
   },
   "settings": {
     "save_failed_title": "設定儲存失敗",
@@ -1088,7 +1088,13 @@
       "not_loaded": "無法從中繼讀取此伺服器的設定。目前顯示的是預設值，無法修改。連線後請重新載入。",
       "err_not_paired": "此伺服器尚未配對。",
       "err_invalid": "無效的值：{{field}}",
-      "err_generic": "無法變更機器人設定。"
+      "err_generic": "無法變更機器人設定。",
+      "confirm_title": "執行前確認",
+      "confirm_desc": "執行前會用 Discord 按鈕再次詢問發出請求的人。只有該請求者能按按鈕。在應用程式、網頁和 CLI 中，無論此設定如何，危險指令以及停止、重新啟動都會詢問。",
+      "confirm_direct": "直接向機器人請求",
+      "confirm_direct_hint": "前綴指令和斜線指令。",
+      "confirm_chatbot": "會說話的 Saba-chan",
+      "confirm_chatbot_hint": "會說話的 Saba-chan 選擇的管理操作以及多人混合的請求，無論此設定如何都會詢問。"
     },
     "channels_notify": "通知頻道",
     "channels_notify_hint": "當機、自動重啟、更新、備份完成和排程重啟預告會發到這個頻道。",
@@ -1250,8 +1256,6 @@
     "ambient_effort_hint": "建議「低」。決定發言時，送出前會用對話推理強度再想一次。",
     "tools_title": "工具",
     "tools_desc": "決定會說話的 Saba-chan 可以使用的工具，以及執行前是否詢問。",
-    "confirm_level": "執行前確認",
-    "confirm_level_hint": "危險命令和管理操作一律需要確認；刪除、停止常駐程式、更新、權限和機密一律不允許。應用程式中設定的使用者權限一律優先。",
     "confirm_all": "所有命令",
     "confirm_caution": "注意以上",
     "confirm_danger": "僅危險命令",
@@ -1300,7 +1304,8 @@
     "models_err_QUOTA_EXCEEDED": "API 金鑰已超出使用額度。",
     "models_err_PROVIDER_UNAVAILABLE": "無法連線模型提供者。請稍後再試。",
     "models_err_FAILED": "無法載入模型清單。",
-    "model_fallback": "所選模型（{{model}}）無法使用，正在改用 {{fallback}}。儲存後 {{fallback}} 會成為新模型。"
+    "model_fallback": "所選模型（{{model}}）無法使用，正在改用 {{fallback}}。儲存後 {{fallback}} 會成為新模型。",
+    "confirm_none": "不詢問"
   },
   "module_audit": {
     "title": "模組 '{{module}}' 使用了未宣告的功能。",

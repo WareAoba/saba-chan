@@ -31,7 +31,7 @@ const render = () => {
         }),
     );
     window.api.serverList = vi.fn(async () => ({ servers: list }));
-    window.api.serverStatus = vi.fn(async () => ({ status: 'stopped' }));
+    window.api.instanceStatus = vi.fn(async () => ({ status: 'stopped' }));
     return { result, setModal };
 };
 

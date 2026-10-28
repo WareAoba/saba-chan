@@ -112,11 +112,6 @@ class HostDaemon(io.StringIO):
 
 
 class SdkHostTests(unittest.TestCase):
-    def setUp(self):
-        http = patch.object(daemon_rcon, "daemon_post", side_effect=AssertionError("unexpected HTTP fallback"))
-        http.start()
-        self.addCleanup(http.stop)
-
     def call_with_host(self, call, reply):
         with tempfile.TemporaryDirectory() as directory:
             host = HostDaemon(directory, reply)
@@ -192,13 +187,23 @@ class SdkHostTests(unittest.TestCase):
                         with self.assertRaises(TimeoutError):
                             daemon_rcon.daemon_stdin_command("ignored-instance", "stop", timeout=1000)
 
-    def test_stdin_and_rest_keep_the_http_fallback(self):
-        with patch.dict(os.environ), patch.object(daemon_rcon, "daemon_post", return_value={"success": True}) as post:
+    def test_daemon_requests_go_only_through_the_host_channel(self):
+        """0.1.12: 데몬은 모듈에 IPC 토큰을 주지 않는다. HOST 통로가 없으면 HTTP로 돌아가지 않고 바로 실패한다"""
+        self.assertFalse(hasattr(daemon_rcon, "daemon_post"))
+        with patch.dict(os.environ):
             os.environ.pop("SABA_HOST_DIR", None)
-            self.assertEqual(daemon_rcon.daemon_stdin_command("server-1", "stop", timeout=4), {"success": True})
-            post.assert_called_with("/api/instance/server-1/stdin", {"command": "stop"}, timeout=4)
-            self.assertEqual(daemon_rcon.daemon_rest("server-1", "PUT", "/world", body={"x": 1}, timeout=6), {"success": True})
-            post.assert_called_with("/api/instance/server-1/rest", {"method": "PUT", "endpoint": "/world", "body": {"x": 1}}, timeout=6)
+            for call in (
+                lambda: daemon_rcon.daemon_stdin_command("server-1", "stop", timeout=4),
+                lambda: daemon_rcon.daemon_rest("server-1", "PUT", "/world", body={"x": 1}, timeout=6),
+                lambda: daemon_rcon.daemon_rcon_command("server-1", "stop", timeout=4),
+            ):
+                with self.assertRaises(ConnectionError) as raised:
+                    call()
+                self.assertEqual(raised.exception.error_code, "no_host")
+        with patch.dict(os.environ, {"SABA_HOST_DIR": "host"}), patch.object(daemon_rcon, "_host_request", return_value={"ok": 1}) as host:
+            self.assertEqual(daemon_rcon.daemon_rcon_command("ignored", "stop", timeout=4), {"ok": 1})
+            host.assert_called_with("instance.rcon", {"command": "stop"}, 4)
+        self.assertEqual(daemon_rcon.SINCE["daemon_rcon_command"], "0.1.12")
 
 
 class SdkReplyTests(unittest.TestCase):

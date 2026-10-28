@@ -998,6 +998,33 @@ span[style*="--icon-loader"] svg {
     font-size: calc(13px * var(--font-scale));
 }
 
+/* 켜고 끄는 설치 칸: 이름표와 스위치를 한 줄에 */
+.as-section-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    column-gap: var(--sp-2);
+}
+
+.as-section-row .as-label {
+    margin-bottom: 0;
+}
+
+.as-section-row .as-provision-hint {
+    grid-column: 1 / -1;
+    margin: var(--sp-2) 0 0;
+}
+
+/* 이미 있는 이름 */
+.as-name-taken {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-1);
+    margin: var(--sp-2) 0 0;
+    font-size: calc(12px * var(--font-scale));
+    color: var(--failure-badge-icon);
+}
+
 .as-empty-hint {
     display: flex;
     align-items: center;

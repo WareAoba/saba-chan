@@ -71,7 +71,7 @@ export function patchOf(fields, values, touched) {
     return patch;
 }
 
-function FieldInput({ field, value, onChange, t, modNs }) {
+export function FieldInput({ field, value, onChange, t, modNs }) {
     const type = typeOf(field);
     const label = t(`${modNs}:settings.${field.name}.label`, { defaultValue: field.label || field.name });
     const desc = t(`${modNs}:settings.${field.name}.description`, { defaultValue: field.description || '' });

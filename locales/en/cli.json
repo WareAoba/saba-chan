@@ -17,6 +17,8 @@
     "ask_source": "How do you want to set it up?",
     "ask_preset": "Start from a preset?",
     "no_preset": "No preset",
+    "agreements_declined": "The server was not created because the agreements were not accepted.",
+    "not_installable": "{{key}}: saba-chan can't install a new server with this value. Choices: {{choices}}",
     "created_installing": "Created {{name}}. Installing server files...",
     "folder_other_game": "{{dir}} looks like a different game ({{games}}).",
     "folder_unrecognized": "Could not recognize a server in {{dir}}.",
@@ -131,7 +133,13 @@
     "notice_is_on": "{{server}}: start alert on",
     "notice_is_off": "{{server}}: start alert off",
     "notice_on_saved": "{{guild}}'s alert channel will hear when {{server}} starts.",
-    "notice_off_saved": "{{guild}} will no longer hear when {{server}} starts."
+    "notice_off_saved": "{{guild}} will no longer hear when {{server}} starts.",
+    "confirm_direct": "Requests to the bot",
+    "confirm_chatbot": "Talking Saba-chan",
+    "confirm_all": "Every command",
+    "confirm_caution": "Caution and above",
+    "confirm_danger": "Dangerous only",
+    "confirm_none": "Don't ask"
   },
   "col": {
     "players": "Players",
@@ -736,7 +744,8 @@
       "config.autostart": "What starts when you sign in to this PC: off, daemon (daemon and tray only) or full (with the GUI window). Shows the current value without a mode",
       "config.browse": "Folders and files on the daemon's PC (with --daemon, the remote PC). Drives or / without a path",
       "server.port-check": "Check whether friends can reach this server from the internet (port forwarding)",
-      "bot.notice": "Post in the Discord server's alert channel when Saba-chan starts a server (off by default). No server: show. Server with `--on`/`--off`: change"
+      "bot.notice": "Post in the Discord server's alert channel when Saba-chan starts a server (off by default). No server: show. Server with `--on`/`--off`: change",
+      "bot.confirm": "When the bot asks with a Discord button before running (all, caution, danger, none). No options: show"
     },
     "arg": {
       "module.maker.game": "Game to put in the first prompt",
@@ -808,7 +817,9 @@
       "config.browse.path": "Full path of the folder to show",
       "config.browse.files": "Also show files with these extensions (comma separated, * for all)",
       "bot.notice.on": "Turn the start alert on",
-      "bot.notice.off": "Turn the start alert off"
+      "bot.notice.off": "Turn the start alert off",
+      "bot.confirm.direct": "Requests to the bot — Prefix commands and slash commands.",
+      "bot.confirm.chatbot": "Talking Saba-chan — Admin tasks picked by Talking Saba-chan and requests mixing several people always ask, whatever this setting says."
     },
     "after": "Names can be partial (e.g. start pal). Run with no arguments in a terminal to open the full-screen menu (SABA_NO_TUI=1: the interactive shell).\nIn scripts use --json and --yes. Exit codes: 0 ok · 1 failed · 2 usage · 3 daemon unreachable · 4 not found · 130 cancelled"
   },

@@ -16,7 +16,7 @@ describe('시작 직후 프로세스가 죽은 서버', () => {
                 .fn()
                 .mockResolvedValue({ servers: [{ id: 'a', name: 'A', module: 'game', status: 'stopped' }] }),
             instanceStart: vi.fn().mockResolvedValue({ success: true }),
-            serverStatus: vi.fn().mockResolvedValue({ status: 'stopped' }),
+            instanceStatus: vi.fn().mockResolvedValue({ status: 'stopped' }),
         };
         window.showToast = vi.fn();
     });
