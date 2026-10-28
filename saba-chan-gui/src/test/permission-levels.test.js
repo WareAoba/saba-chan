@@ -101,6 +101,12 @@ describe('권한 레벨 계산', () => {
             'caution',
             'danger',
         ]);
+        // 같은 레벨인데 인스턴스마다 단계가 다르면 한쪽 값이 아니라 섞여 있다고 보인다
+        const mixed = baseBoard();
+        mixed.items[3] = { ...mixed.items[3], confirmRisk: 'danger' };
+        const say = L.stairChips(mixed).find((c) => c.name === 'say');
+        expect([say.confirmRisk, say.confirmMixed]).toEqual([null, true]);
+        expect(L.stairChips(baseBoard()).find((c) => c.name === 'say').confirmMixed).toBe(false);
         // 한 인스턴스 보기: 그 인스턴스와 인스턴스를 받지 않는 것만
         const one = L.stairChips(baseBoard(), 'mc-2');
         expect(one.map((c) => [c.name, c.level])).toEqual([

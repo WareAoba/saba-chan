@@ -1048,6 +1048,8 @@
     "perm_confirm_tier": "Discordでの確認",
     "perm_confirm_tier_hint": "Discord設定の確認段階と比べて、ボタンで聞き直すかを決めます。アプリ・CLIの確認はそのままです。",
     "perm_confirm_tier_default": "(元: {{risk}})",
+    "perm_confirm_tier_mixed": "インスタンスごとに異なる",
+    "perm_confirm_tier_mixed_hint": "インスタンスごとに段階が異なります。選ぶとすべてその段階に揃えます。",
     "perm_legend_moved": "プリセットから移動",
     "perm_ladder_done": "戻る",
     "instance_menu_hint": "インスタンスを開くと、レベル別のコマンドとメンバー別のレベルを見られます。",

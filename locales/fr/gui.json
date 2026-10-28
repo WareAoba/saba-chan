@@ -1048,6 +1048,8 @@
     "perm_confirm_tier": "Confirmation Discord",
     "perm_confirm_tier_hint": "Comparé au niveau de confirmation Discord pour décider si un bouton redemande. Les confirmations de l’app et de la CLI ne changent pas.",
     "perm_confirm_tier_default": "(Par défaut : {{risk}})",
+    "perm_confirm_tier_mixed": "Varie selon l'instance",
+    "perm_confirm_tier_mixed_hint": "Les instances utilisent des niveaux différents. En choisir un les aligne toutes.",
     "perm_legend_moved": "Déplacée du préréglage",
     "perm_ladder_done": "Retour",
     "instance_menu_hint": "Ouvrez une instance pour voir les commandes par niveau et le niveau de chaque membre.",

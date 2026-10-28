@@ -1048,6 +1048,8 @@
     "perm_confirm_tier": "디스코드 되묻기",
     "perm_confirm_tier_hint": "디스코드 설정의 되묻기 단계와 비교해 버튼으로 다시 물을지 정합니다. 앱·CLI의 확인은 그대로입니다.",
     "perm_confirm_tier_default": "(원래: {{risk}})",
+    "perm_confirm_tier_mixed": "인스턴스마다 다름",
+    "perm_confirm_tier_mixed_hint": "인스턴스마다 단계가 달라요. 고르면 모두 그 단계로 맞춥니다.",
     "perm_legend_moved": "프리셋에서 옮김",
     "perm_ladder_done": "돌아가기",
     "instance_menu_hint": "인스턴스를 누르면 레벨별 명령과 멤버별 레벨을 볼 수 있어요.",

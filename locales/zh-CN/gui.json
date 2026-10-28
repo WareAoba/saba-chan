@@ -1048,6 +1048,8 @@
     "perm_confirm_tier": "Discord 确认",
     "perm_confirm_tier_hint": "与 Discord 设置的确认级别比较，决定是否用按钮再次询问。应用和 CLI 的确认不变。",
     "perm_confirm_tier_default": "(原为: {{risk}})",
+    "perm_confirm_tier_mixed": "各实例不同",
+    "perm_confirm_tier_mixed_hint": "各实例的级别不同。选择后将全部统一为该级别。",
     "perm_legend_moved": "已偏离预设",
     "perm_ladder_done": "返回",
     "instance_menu_hint": "打开实例即可查看各等级的命令和每个成员的等级。",
