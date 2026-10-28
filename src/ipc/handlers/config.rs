@@ -150,12 +150,6 @@ pub async fn save_client_config(
 
 // ── Node Token ──
 
-/// GET /api/config/node-token
-pub async fn get_node_token(State(_state): State<IPCServer>) -> impl IntoResponse {
-    let token = super::relay::load_node_token().unwrap_or_default();
-    (StatusCode::OK, Json(json!({ "token": token }))).into_response()
-}
-
 /// PUT /api/config/node-token
 pub async fn save_node_token(
     State(state): State<IPCServer>,

@@ -865,7 +865,7 @@ impl IPCServer {
             .route("/api/migration/export", post(handlers::migration::export))
             .route("/api/migration/import", post(handlers::migration::import))
             // ── Node token (cloud relay auth) ──
-            .route("/api/config/node-token", get(handlers::config::get_node_token).put(handlers::config::save_node_token).delete(handlers::config::delete_node_token))
+            .route("/api/config/node-token", put(handlers::config::save_node_token).delete(handlers::config::delete_node_token))
             // ── Module locales ──
             .route("/api/module/{name}/locales", get(handlers::config::get_module_locales))
             // ── System components (release manifest) ──
