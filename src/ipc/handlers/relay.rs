@@ -389,8 +389,21 @@ pub async fn get_node_chatbot_credit(
     State(state): State<IPCServer>,
 ) -> Response {
     let base = signed_base(&state, params.relay_url.as_deref()).await;
-    signed_get(&base, &format!("/api/nodes/{}/chatbot/credit", encode_path_segment(&guild_id)), invalid_response).await
+    let client = match client() {
+        Ok(c) => c,
+        Err(r) => return r,
+    };
+    // 릴레이가 제공사에 잔액을 묻는 시간(8초)보다 길게 기다린다 (기본 5초면 느린 제공사 때 사용량까지 못 받는다)
+    let api_path = format!("/api/nodes/{}/chatbot/credit", encode_path_segment(&guild_id));
+    let req = client.get(format!("{}{}", base, api_path)).timeout(CREDIT_TIMEOUT);
+    match send(apply_signed_headers(req, "GET", &api_path, None)).await {
+        Ok((code, Some(data))) => (code, Json(data)).into_response(),
+        Ok((code, None)) => invalid_response(code),
+        Err(r) => r,
+    }
 }
+
+const CREDIT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(12);
 
 pub async fn put_node_channels(
     Path(guild_id): Path<String>,
