@@ -1,170 +1,178 @@
 <div align="center">
 
-<img src="saba-chan-gui/public/icon.png" width="140" alt="사바쨩" />
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/banner-dark.png">
+  <img src="docs/images/banner-light.png" width="620" alt="사바쨩 · Saba-chan · サバちゃん">
+</picture>
 
-# 사바쨩 · Saba-chan
+게임 서버를 대신 켜고, 지키고, 고쳐 주는 서버 관리 앱
 
-**게임 서버를 대신 돌봐 주는 나만의 서버 메이드**
+**한국어** · [English](README.en.md) · [日本語](README.ja.md)
 
-마인크래프트, 팰월드, 프로젝트 좀보이드, 테라리아 서버를 하나의 앱에서 설치하고, 켜고, 고치고, 디스코드에서 친구들과 함께 다루세요.
+[웹사이트](https://saba-chan.online) · [사용 안내](https://saba-chan.online/ko/guide) · [모듈](https://github.com/WareAoba/saba-chan-modules) · [익스텐션](https://github.com/WareAoba/saba-chan-extensions) · [릴리스](https://github.com/WareAoba/saba-chan/releases)
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-7c3aed?style=flat-square)](LICENSE)
-![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%28daemon%29-3b82f6?style=flat-square)
-![Core](https://img.shields.io/badge/core-Rust-06b6d4?style=flat-square)
-![Languages](https://img.shields.io/badge/i18n-10%20languages-22c55e?style=flat-square)
-
-[🌐 웹사이트](https://saba-chan.online) · [📦 모듈](https://github.com/WareAoba/saba-chan-modules) · [🧩 익스텐션](https://github.com/WareAoba/saba-chan-extensions) · [📚 아키텍처 문서](docs/architecture/00-overview.md)
+![Windows](https://img.shields.io/badge/Windows-x64-3b82f6?style=flat-square)
+![Linux](https://img.shields.io/badge/Linux-x64%20%7C%20ARM64-3b82f6?style=flat-square)
 
 </div>
 
-> 이름은 일본어 "서버(サーバー)"와 "고등어(鯖, さば)"의 발음이 비슷한 데서 왔어요. 🐟
+친구들이랑 마인크래프트나 팰월드 서버를 열어 본 적이 있다면 알 거예요. 서버 파일 받고, 배치 파일 만들고, 설정 파일 뒤지고, 밤에 서버가 죽으면 누가 다시 켜 줄 때까지 다들 기다리고. 게임이 바뀌면 그걸 처음부터 다시 배워야 하고요.
 
----
+사바쨩은 그 일을 대신 합니다. 게임을 고르면 설치부터 실행, 설정, 백업까지 앱 하나에서 하고, 디스코드 채팅으로 친구들도 서버를 켜고 끌 수 있어요. 게임마다 다른 부분은 "모듈"이라는 설명서에 들어 있어서, 사바쨩 자체는 어떤 게임이든 같은 방식으로 다룹니다.
 
-## 왜 사바쨩인가요?
+이름은 일본어로 서버(サーバー)와 고등어(鯖, さば) 발음이 비슷한 데서 왔어요.
 
-게임 서버 하나 여는 데도 할 일이 많아요. 서버 파일 받기, 배치 파일 만들기, 설정 파일 뒤지기, 원격으로 켜려고 원격 데스크톱 붙이기, 밤중에 꺼진 서버 다시 켜기. 게임이 바뀌면 이걸 처음부터 다시 배워야 하죠.
+## 할 수 있는 것
 
-사바쨩은 이 일을 **게임마다 쓰인 "설명서(모듈)"** 로 바꿔 둡니다. 게임을 고르면 설치·설정·실행 방법은 모듈이 알고 있고, 사바쨩이 그대로 해 줍니다.
+**서버 관리**
 
-| 😵 지금까지 | 🐟 사바쨩과 함께 |
-|---|---|
-| 게임마다 다른 실행법과 배치 파일 | 어떤 게임이든 같은 버튼, 같은 명령 |
-| 설정 파일을 직접 열어 한 줄씩 수정 | 앱에서 항목별로 보고 고치기 |
-| 원격으로 켜려면 포트 포워딩·원격 데스크톱 | 디스코드 채팅으로 켜고 끄기, 원격 제어용 포트 개방 필요 없음 |
-| 서버가 여러 개면 창도 여러 개 | 모든 서버를 한 화면에서 |
+- 여러 게임 서버를 한 화면에서 만들고, 켜고, 끄고, 콘솔을 봅니다. 같은 게임 서버도 여러 개 둘 수 있고, 새 서버는 겹치지 않는 포트와 자기 폴더를 받아요.
+- 새 서버는 단계별로 만듭니다. 게임, 서버 종류와 버전, 설치 위치, 실행 방식, 이름과 포트를 고르면 끝이고, 이름이나 포트가 다른 서버와 겹치면 만들기 전에 알려 줘요.
+- 게임 설정은 파일을 열지 않고 앱에서 항목별로 고칩니다.
+- 오류로 꺼진 서버만 골라서 다시 켭니다. 일부러 끈 서버는 건드리지 않고, 왜 꺼졌는지 기록을 남겨요.
+- 서버마다 작은 감시 프로세스(`saba-runner`)가 붙어 있어서 사바쨩을 껐다 켜도 서버는 계속 돌고 콘솔도 이어집니다.
+- 월드 백업과 복원, 정기 재시작이나 백업 같은 예약 작업도 됩니다.
 
-## ✨ 기능
+**디스코드에서**
 
-- 🖥️ **서버 통합 관리**: 여러 게임 서버를 만들고, 시작·정지하고, 상태와 콘솔 출력을 한곳에서 봅니다. 게임별 설정도 앱 안에서 항목으로 보고 바로 고칠 수 있어요.
-- 👯 **같은 게임 서버를 여러 개**: 팰월드 서버 두 개, 좀보이드 서버 두 개도 나란히. 새 서버는 겹치지 않는 포트와 자기 폴더를 알아서 받아요.
-- 🔁 **크래시 자동 복구**: 오류로 꺼진 서버만 골라서 다시 켜요. 내가 일부러 끈 서버는 건드리지 않고, 왜 꺼졌는지 종료 기록으로 남겨요.
-- 🧭 **끊기지 않는 관리**: 서버마다 작은 감시 프로세스(`saba-runner`)가 붙어서, 사바쨩을 껐다 켜도 서버는 계속 돌고 콘솔과 로그도 이어집니다.
-- 💬 **디스코드에서 제어**: 사바쨩 봇을 서버에 초대하고 PC와 연결하면, 채팅으로 서버를 켜고 끄고 상태를 확인할 수 있어요. 디스코드 서버마다 보여 줄 게임 서버를 고르고, 멤버마다 쓸 수 있는 명령을 정할 수 있어요. 명령어 별명도 직접 지을 수 있어요. 봇은 디스코드 릴레이에서 24시간 깨어 있고, 원격 제어를 위해 내 PC의 포트를 열 필요는 없습니다.
-- 🛰️ **원격 데몬** (0.1.11부터): 다른 PC나 리눅스 서버에서 도는 사바쨩을 내 PC의 앱과 CLI로 그대로 다뤄요. 같은 디스코드 계정의 PC끼리만 짝지어지고, 연결은 TLS로 암호화돼요. 직접 닿지 않는 PC는 사바쨩 클라우드를 거쳐 이어져서 포트 포워딩이 꼭 필요하지 않아요.
-- 📱 **사바쨩 웹** (0.1.11부터): 디스코드에서 `/사바쨩 웹`으로 받은 일회용 링크로, 휴대폰 브라우저에서 내 PC의 서버를 켜고 끄고 콘솔·설정·백업을 다뤄요. 설치도 로그인도 필요 없고, 세션은 15분이고 연장할 수 있어요.
-- 🐧 **리눅스 서버** (0.1.11부터): 화면 없는 리눅스(x86_64)에 데몬과 CLI를 한 줄로 설치하고, 원격 데몬으로 다뤄요.
-- 🔔 **알림** (0.1.11부터): 누가 어디서 서버를 켜고 껐는지, 예상하지 못한 시작·정지까지 앱·OS 알림·디스코드 알림 채널로 알려 줘요.
-- ⌨️ **GUI도 CLI도**: 데스크톱 앱으로 하는 일은 모두 명령줄로도 됩니다(`saba-chan-cli start pal`). 인자 없이 실행하면 Tab 자동 완성이 되는 대화형 셸이 열리고, 스크립트용 `--json` 출력도 있어요. 자세히: [saba-chan-cli/README.md](saba-chan-cli/README.md)
-- 📦 **모듈로 게임 추가**: 게임 하나 = 모듈 하나. 새 게임 지원은 Python 모듈 하나만 쓰면 되고, 적합성 검사 키트로 바로 확인할 수 있어요. Claude Code·Codex 같은 AI 에이전트에게 [모듈 메이커](https://saba-chan.online/ko/guide/module-maker)로 만들게 할 수도 있어요.
-- 🧩 **익스텐션으로 기능 추가**: SteamCMD 자동 설치, 언리얼 엔진 설정 파일 편집 같은 기능을 필요할 때만 켜세요. 익스텐션은 앱 화면에 메뉴를, 게임 서버에 명령을 더할 수 있어요.
-- 💾 **월드 백업**: 세이브를 스냅샷으로 저장하고 되돌려요. 주기와 보관 개수를 정해 두면 알아서 백업합니다.
-- ⏰ **예약 작업**: 정기 재시작, 재시작 전 게임 안 공지, 백업을 시간표대로.
-- 🧪 **모듈·익스텐션 안전 검사**: 모듈이 필요한 권한을 미리 밝히고, 공식 서명이 없는 코드는 설치할 때 검사한 뒤 허용된 폴더 안에서만 돌려요.
-- 🌏 **10개 언어**: 한국어, English, 日本語, Deutsch, Español, Français, Português, Русский, 简体中文, 繁體中文.
+- 사바쨩 봇을 디스코드 서버에 초대하고 PC와 연결하면, 채팅이나 `/사바쨩` 명령으로 서버를 켜고 끄고 상태를 봅니다. 원격 제어를 위해 공유기 포트를 열 필요는 없어요. PC가 먼저 바깥으로 연결하는 방식이라서요.
+- 디스코드 서버마다 소유자, 관리자, 유저, 게스트, 금지 단계를 두고, 단계마다 쓸 수 있는 명령을 정합니다. 위쪽 단계는 아래 단계가 할 수 있는 건 다 할 수 있어요.
+- 정지나 재시작처럼 조심해야 하는 명령은 실행하기 전에 한 번 더 묻습니다. 얼마나 자주 물을지는 디스코드 서버마다 정해요.
+- 봇에는 음악 재생과 "말하는 사바쨩"(AI 대화)도 있어요. 말하는 사바쨩은 직접 넣은 AI API 키로 돌고, 디스코드 서버마다 따로 켜야 합니다.
 
-### 지원 게임
+**밖에서**
 
-| 게임 | 지원 내용 |
-|---|---|
-| **Minecraft** | 공식 서버 자동 다운로드, 콘솔 명령, 설정 편집 |
-| **Palworld** | SteamCMD 자동 설치, REST API 연동 |
-| **Project Zomboid** | SteamCMD 자동 설치, 콘솔 명령 |
-| **Terraria** | 공식 서버 자동 다운로드, 콘솔 명령, Windows·Linux (0.1.11부터) |
-| ➕ 더 많은 게임 | [모듈 저장소](https://github.com/WareAoba/saba-chan-modules)에서 직접 만들 수 있어요 |
+- 휴대폰: 디스코드에서 `/사바쨩 웹`으로 받은 일회용 링크로 브라우저에서 서버를 켜고 끄고 콘솔과 설정을 봅니다. 설치나 로그인은 필요 없어요.
+- 다른 PC: 리눅스 서버나 다른 PC에서 도는 사바쨩을 내 PC의 앱과 CLI로 그대로 다룹니다(원격 데몬). 같은 디스코드 계정으로 짝지은 PC끼리만 이어져요.
+- AI 에이전트: Claude 같은 MCP 지원 에이전트를 내 디스코드 계정으로 연결하면 에이전트가 내 서버를 다룰 수 있어요. 위험한 명령은 에이전트 화면에서 먼저 묻습니다. 연결은 `/사바쨩 에이전트`나 앱의 디스코드 화면에서 확인하고 끊을 수 있어요.
 
-## 🪶 가볍게 설계했어요
+**그 밖에**
 
-사바쨩의 모든 일은 **데몬** 하나가 합니다. 앱(GUI)과 터미널 도구(CLI)는 데몬에게 부탁만 하는 리모컨이에요.
+- 앱으로 하는 일은 CLI로도 다 됩니다(`saba-chan-cli start pal`). 자세한 건 [saba-chan-cli/README.md](saba-chan-cli/README.md)에 있어요.
+- 누가 어디서 서버를 켜고 껐는지, 예상하지 못한 시작과 정지까지 앱, OS 알림, 디스코드 알림 채널로 알려 줍니다.
+- 한국어, English, 日本語, Deutsch, Español, Français, Português, Русский, 简体中文, 繁體中文 10개 언어를 지원해요.
+
+## 지원 게임
+
+| 게임 | 설치 | Windows | Linux x64 | Linux ARM64 |
+|---|---|:-:|:-:|:-:|
+| Minecraft (Java) | 공식 서버 파일 | O | O | 확인 중 |
+| Palworld | SteamCMD | O | O | X |
+| Project Zomboid | SteamCMD | O | O | X |
+| Terraria | 공식 서버 파일 | O | O | X |
+
+ARM에서 안 되는 게임은 서버 실행 파일이나 SteamCMD가 x86용뿐이라서 그래요. 에뮬레이션은 하지 않고, 안 되는 게임은 서버 만들기 화면에서 미리 막습니다. 다른 게임은 [모듈 저장소](https://github.com/WareAoba/saba-chan-modules)에서 직접 만들 수 있어요.
+
+## 설치
+
+| | 앱 (GUI) | CLI | 데몬만 (화면 없는 서버) |
+|---|:-:|:-:|:-:|
+| Windows 10/11 x64 | O | O | O |
+| Linux x64 | O | O | O |
+| Linux ARM64 | - | O | O |
+| macOS | 준비 중 | 준비 중 | - |
+
+리눅스 데스크톱 앱과 ARM64는 0.1.12부터 들어갑니다. macOS는 다른 PC의 사바쨩을 다루는 앱부터 준비하고 있어요.
+
+**Windows**
+
+[웹사이트](https://saba-chan.online)나 [릴리스](https://github.com/WareAoba/saba-chan/releases)에서 `saba-chan-installer.exe`를 받아 실행하고, 설치 위치와 처음 받을 게임을 고르면 됩니다. WebView2 런타임이 필요한데 Windows 11과 최신 Windows 10에는 이미 들어 있어요.
+
+**Linux**
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/WareAoba/saba-chan/main/install.sh | sh
+```
+
+`curl`, `unzip`, `sha256sum`, `python3`가 있으면 됩니다. 화면이 있는 데스크톱이면 앱까지 설치해서 앱 메뉴에 넣고, 화면 없는 서버면 데몬과 CLI만 깔고 데몬을 systemd 사용자 서비스로 켜요. 앱을 쓰려면 WebKitGTK가 필요하고, 없으면 설치 명령을 알려 줍니다. 화면 없는 서버는 다른 PC의 앱에서 [원격 데몬](https://saba-chan.online/ko/guide/remote-daemon)으로 다루면 편해요.
+
+**설치한 다음**
+
+- 설정, 서버 파일, 월드, 백업은 `%APPDATA%\saba-chan`(리눅스는 `~/.config/saba-chan`)에 있어요. 프로그램 폴더를 지워도 서버는 남습니다.
+- 새 버전이 나오면 앱이 알려 주고 설정 화면에서 바로 업데이트합니다. 공식 서명이 확인된 파일만 받아요.
+- 지울 때 "게임 서버 남기기"와 "설정 남기기"를 고르면 다시 설치했을 때 그대로 이어집니다. 둘은 따로 고를 수 있어요.
+
+## 구조
+
+일은 전부 데몬(`saba-core`) 하나가 합니다. 앱과 CLI는 데몬에게 부탁하는 리모컨이라, 늘 켜 두는 서버 PC라면 데몬만 돌려도 돼요.
 
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/images/architecture-dark.svg">
-    <img src="docs/images/architecture-light.svg" alt="사바쨩 구조: GUI와 CLI는 이 PC 안에서 데몬을 조작하고, 데몬이 게임 서버·모듈·익스텐션을 다뤄요. 디스코드 명령은 클라우드 릴레이를 거치고, 연결은 내 PC가 먼저 바깥으로 열어요.">
+    <img src="docs/images/architecture-light.svg" alt="GUI와 CLI는 이 PC 안의 HTTP API로 데몬을 조작하고, 데몬이 게임 서버를 실행하며 모듈과 익스텐션을 Python으로 부릅니다. 디스코드 명령은 클라우드 릴레이를 거치고, 연결은 PC가 먼저 바깥으로 엽니다.">
   </picture>
 </p>
 
-- **GUI 없이도 동작합니다.** 모니터 없이 늘 켜 두는 서버 PC에서는 데몬만 켜 두고, 디스코드나 CLI, 다른 PC의 앱(원격 데몬)으로 다루면 됩니다.
-- **필요한 것만 설치합니다.** 게임 모듈과 익스텐션은 고른 것만 받아요.
-- **Rust 코어**라 오래 켜 둬도 부담이 적고, 서버 PC의 자원은 게임 서버에 돌아갑니다.
-- **시스템을 건드리지 않아요**: 필요한 런타임(Python 등)은 사바쨩 데이터 폴더에 따로 받아서, 시스템 PATH나 다른 프로그램을 바꾸지 않아요.
+디스코드에서 명령을 보내면 이렇게 흘러갑니다. 릴레이가 PC에 먼저 말을 거는 게 아니라, PC의 데몬이 릴레이에 새 명령이 있는지 계속 물어보는 쪽이에요.
 
-## 📥 설치
+```mermaid
+sequenceDiagram
+    actor 친구 as 디스코드 사용자
+    participant 봇 as 사바쨩 봇 (릴레이)
+    participant 데몬 as 내 PC의 데몬
+    participant 서버 as 게임 서버
+    데몬->>봇: 새 명령 있나요? (PC가 먼저 연결, 서명된 요청)
+    친구->>봇: /사바쨩 ... 시작
+    봇-->>데몬: 명령 전달
+    데몬->>데몬: 이 사람 단계로 쓸 수 있는 명령인지 확인
+    opt 되묻는 명령이면
+        데몬-->>봇: 확인 필요
+        봇->>친구: 정말 할까요? [확인]
+        친구->>봇: 확인
+        봇-->>데몬: 실행
+    end
+    데몬->>서버: 실행
+    데몬-->>봇: 결과
+    봇->>친구: 켰어요
+```
 
-1. [웹사이트](https://saba-chan.online)에서 설치기(`saba-chan-installer.exe`)를 받아 실행합니다. GitHub [Releases](https://github.com/WareAoba/saba-chan/releases)에도 같은 파일이 있어요.
-2. 설치 위치와 처음 받을 게임 모듈을 고르고 설치를 누릅니다. 기본 위치는 `C:\Program Files\Saba-chan`이고, 다른 파일이 든 폴더를 고르면 그 안에 `Saba-chan` 폴더를 만들어 설치해요.
-
-- **요구사항**: Windows 10 또는 11 (64비트), Microsoft Edge WebView2 런타임(Windows 11과 최신 Windows 10에는 들어 있어요), 인터넷 연결.
-- **리눅스 서버** (0.1.11부터): 화면 없는 리눅스(x86_64)에는 데몬과 CLI만 설치해요. `curl`, `unzip`, `sha256sum`, `python3`가 필요해요.
-
-  ```sh
-  curl -fsSL https://raw.githubusercontent.com/WareAoba/saba-chan/main/install.sh | sh
-  ```
-
-  설치기가 최신 정식 릴리즈를 받아 릴리즈 해시와 서명된 매니페스트로 파일을 확인하고, 데몬을 systemd 사용자 서비스로 켭니다. 앱 화면은 Windows PC의 사바쨩에서 원격 데몬으로 써요. 자세히: [원격 데몬 사용법](https://saba-chan.online/ko/guide/remote-daemon)
-- **데이터 위치**: 설정, 게임 서버 파일, 월드, 백업은 `%APPDATA%\saba-chan`(리눅스는 `~/.config/saba-chan`)에 저장돼요. 프로그램 폴더를 지워도 서버는 남아요.
-- **업데이트**: 앱이 새 버전을 알려 주면 설정 화면에서 바로 적용합니다. 서명이 확인된 릴리즈만 받아요.
-- **제거**: Windows 설정의 "설치된 앱"이나 앱의 설정 화면에서 제거합니다. "게임 서버와 설정 남기기"를 고르면 서버·월드·백업·설정이 남아서 다시 설치하면 그대로 이어져요. 고르지 않으면 모두 지워집니다.
-
-## 🛡️ 보안
-
-- **내 PC 밖으로 열리지 않아요.** 데몬은 내 컴퓨터 안(`127.0.0.1`)에서만 요청을 받고, 매번 접근 토큰을 확인합니다. 원격 데몬을 직접 켰을 때만 원격 포트(TLS)가 열리고, 같은 디스코드 계정으로 짝지은 PC만 들어올 수 있어요.
-- **원격 제어용 포트는 필요 없어요.** 디스코드 연동은 내 PC가 디스코드 릴레이로 먼저 연결하는 방식이라, 원격 제어를 위해 공유기 설정을 할 필요가 없습니다. 친구가 게임에 접속하려면 게임 포트는 평소처럼 열어야 해요.
-- **오가는 요청은 서명돼요.** 디스코드 릴레이와 주고받는 명령은 페어링할 때 받은 키로 서명해서, 남이 끼어들어 명령을 흉내 낼 수 없어요.
-- **멤버마다 권한을 따로.** 디스코드에서 누가 어떤 명령을 쓸 수 있는지 정할 수 있고, 위험한 명령은 따로 표시돼요.
-- **서명된 업데이트만 설치해요.** 앱·모듈·익스텐션 모두 공식 서명이 확인된 릴리즈에서만 받고, 내려받은 파일은 하나하나 해시로 검사합니다.
-- **켜 둔 익스텐션만 불러와요.** 꺼 둔 익스텐션은 모듈 코드가 몰래 불러올 수도 없어요.
-- **설정 파일이 깨져도 복구해요.** 설정은 파일 하나(`config.json`)에 저장되고, 파일이 깨지면 직전 버전으로 자동 복구합니다.
-- **전부 오픈소스입니다.** 무엇을 하는지 코드로 직접 확인할 수 있어요.
-
-## 🚧 준비 중인 기능
-
-| 기능 | 설명 |
-|---|---|
-| 🍎 **macOS** | 지금은 Windows 앱과 리눅스 데몬(0.1.11부터)만 지원해요. |
-
-## 🧱 구성요소
-
-| 구성요소 | 위치 | 역할 |
+| 구성요소 | 위치 | 하는 일 |
 |---|---|---|
-| **데몬** (`saba-core`) | `src/` (Rust) | 서비스 본체. 모든 기능은 데몬을 통해 동작하고, 디스코드 릴레이 연결도 데몬이 맡습니다 |
-| **GUI** | `saba-chan-gui/` (Tauri + React) | 데몬을 조작하는 데스크톱 앱 |
-| **CLI** | `saba-chan-cli/` (Rust, clap) | 명령줄 도구 + 대화형 셸 |
-| **러너** (`saba-runner`) | `runner/` (Rust) | 서버마다 붙는 감시 프로세스. 데몬이 다시 켜져도 콘솔·로그·종료 코드를 이어 줍니다 |
-| **업데이터 / 인스톨러** | `updater/`, `installer/` (Rust, Tauri) | 서명된 릴리즈로 설치·업데이트 |
-| **모듈** | [saba-chan-modules](https://github.com/WareAoba/saba-chan-modules) | 게임별 서버 구동 설명서 (`module.toml` + `lifecycle.py`) |
-| **익스텐션** | [saba-chan-extensions](https://github.com/WareAoba/saba-chan-extensions) | 데몬 기능 추가, GUI 화면 주입 (Python) |
+| 데몬 `saba-core` | `src/` (Rust) | 서버 실행, 설정, 디스코드 연결까지 모든 기능 |
+| 앱 | `saba-chan-gui/` (Tauri + React) | 데몬을 다루는 데스크톱 앱 |
+| CLI | `saba-chan-cli/` (Rust) | 명령줄 도구와 대화형 셸 |
+| 웹 원격 | `saba-chan-web/` | 휴대폰 브라우저용 화면 |
+| 러너 `saba-runner` | `runner/` (Rust) | 서버마다 붙는 감시 프로세스 |
+| 업데이터, 인스톨러 | `updater/`, `installer/` | 서명된 릴리스로 설치와 업데이트 |
+| 모듈 | [saba-chan-modules](https://github.com/WareAoba/saba-chan-modules) | 게임별 설명서 (`module.toml` + `lifecycle.py`) |
+| 익스텐션 | [saba-chan-extensions](https://github.com/WareAoba/saba-chan-extensions) | SteamCMD, 언리얼 설정 파일 편집 같은 추가 기능 (Python) |
 
-## 📚 문서
+더 깊은 내용은 [docs/architecture/](docs/architecture/00-overview.md)에 있어요. 코드를 읽고 쓴 문서라 근거마다 파일과 줄 번호가 달려 있고, API나 `module.toml` 같은 계약이 바뀌면 같은 커밋에서 같이 고칩니다.
 
-**[docs/architecture/](docs/architecture/00-overview.md)** 가 유일한 기준 문서입니다. 코드를 직접 읽어 작성했고 모든 주장에 `file:line` 근거가 달려 있습니다. 코드의 계약(API 라우트, `module.toml` 키, hook, manifest 필드)이 바뀌면 같은 커밋에서 해당 문서를 고칩니다.
+## 보안
 
-| 문서 | 내용 |
-|------|------|
-| [00-overview](docs/architecture/00-overview.md) | 전체 구조, 핵심 계약 요약, 알려진 문제 |
-| [01-daemon-core](docs/architecture/01-daemon-core.md) | 데몬 기동, IPC HTTP API 전체 라우트, 인증, 인스턴스 모델 |
-| [02-modules](docs/architecture/02-modules.md) | `module.toml` 스키마, `lifecycle.py` 호출 프로토콜 |
-| [03-extensions](docs/architecture/03-extensions.md) | 익스텐션 `manifest.json`, hook, GUI 주입 계약 |
-| [04-clients](docs/architecture/04-clients.md) | GUI, CLI, 로케일 |
-| [05-updater-servers](docs/architecture/05-updater-servers.md) | 업데이터, 인스톨러, CI, 디스코드 릴레이 |
+- 데몬은 이 PC 안(`127.0.0.1`)에서만 요청을 받고, 요청마다 접근 토큰을 확인합니다. 원격 데몬을 직접 켰을 때만 TLS 포트가 열리고, 같은 디스코드 계정으로 짝지은 PC만 들어올 수 있어요.
+- 릴레이와 주고받는 명령은 연결할 때 받은 키로 서명합니다.
+- 앱, 모듈, 익스텐션 업데이트는 공식 서명이 확인된 릴리스에서만 받고, 받은 파일은 하나하나 해시로 확인해요.
+- 공식 서명이 없는 모듈과 익스텐션은 격리해서 돌립니다(Windows는 AppContainer, 리눅스는 bubblewrap). 격리할 수 없는 환경에서는 내가 동의해야 실행돼요.
+- 친구가 게임에 들어오려면 게임 포트는 평소처럼 열어야 해요. 사바쨩이 필요 없게 해 주는 건 원격 제어용 포트뿐입니다.
 
-## 🔨 소스에서 빌드 (Windows)
-
-배포 파일은 GitHub Actions(`.github/workflows/build-windows.yml`)가 이 저장소의 소스로 빌드하고 서명합니다. 직접 빌드할 때는:
+## 소스에서 빌드
 
 ```powershell
-# 전체 빌드 (서명하지 않음)
+# Windows 전체 빌드 (서명 안 함)
 .\scripts\build-windows.ps1
 
-# 데몬
+# 데몬과 CLI만
 cargo build --release
-
-# CLI
 cargo build --release -p saba-chan-cli
 
-# GUI 개발 모드
+# 앱 개발 모드
 cd saba-chan-gui; npm install; npm start
 ```
+
+배포 파일은 GitHub Actions가 이 저장소의 소스로 빌드합니다. Windows는 [build-windows.yml](.github/workflows/build-windows.yml), 리눅스 x64·ARM64는 [release.yml](.github/workflows/release.yml)이에요. 테스트는 `cargo test --workspace`와 `cd saba-chan-gui && npx vitest run`으로 돌립니다.
 
 ## 코드 서명 정책 · Code signing policy
 
 Free code signing provided by [SignPath.io](https://signpath.io), certificate by [SignPath Foundation](https://signpath.org).
 
-- **서명하는 파일**: 이 저장소의 소스로 GitHub Actions가 빌드한 Windows 실행 파일(`saba-core.exe`, `saba-runner.exe`, `saba-chan-cli.exe`, `saba-chan-gui.exe`, `saba-chan-updater.exe`, `saba-chan-installer.exe`)만 서명합니다. 빌드 과정은 [build-windows.yml](.github/workflows/build-windows.yml)에 공개돼 있어요.
-- **Committers and reviewers**: [WareAoba](https://github.com/WareAoba)
-- **Approvers**: [WareAoba](https://github.com/WareAoba) — 릴리스마다 서명 요청을 직접 승인합니다.
-- **개인정보 · Privacy policy**: 사바쨩은 업데이트 확인(기본으로 켜져 있고 설정에서 끌 수 있어요. 익명 ID와 버전만 보냅니다)과, 사용자가 직접 연결한 디스코드 연동 말고는 다른 시스템으로 정보를 보내지 않습니다. 무엇을 보내고 얼마나 보관하는지는 [개인정보처리방침](https://saba-chan.online/legal/privacy)에 있어요. Saba-chan sends data only for update checks (on by default, can be turned off; an anonymous ID and version numbers) and for the Discord integration the user connects; see the [privacy policy](https://saba-chan.online/legal/privacy).
+- 서명하는 파일: 이 저장소의 소스로 GitHub Actions가 빌드한 Windows 실행 파일(`saba-core.exe`, `saba-runner.exe`, `saba-chan-cli.exe`, `saba-chan-gui.exe`, `saba-chan-updater.exe`, `saba-chan-installer.exe`)만 서명합니다. 빌드 과정은 [build-windows.yml](.github/workflows/build-windows.yml)에 공개돼 있어요.
+- Committers and reviewers: [WareAoba](https://github.com/WareAoba)
+- Approvers: [WareAoba](https://github.com/WareAoba). 릴리스마다 서명 요청을 직접 승인합니다.
+- 개인정보 · Privacy policy: 사바쨩은 업데이트 확인(기본으로 켜져 있고 끌 수 있어요. 익명 ID와 버전만 보냅니다)과 사용자가 직접 연결한 디스코드 연동 말고는 다른 곳으로 정보를 보내지 않습니다. 자세한 건 [개인정보처리방침](https://saba-chan.online/legal/privacy)에 있어요. Saba-chan sends data only for update checks (on by default, can be turned off; an anonymous ID and version numbers) and for the Discord integration the user connects; see the [privacy policy](https://saba-chan.online/legal/privacy).
 
 ## 라이선스
 
-[MIT License](LICENSE)
+[MIT](LICENSE)

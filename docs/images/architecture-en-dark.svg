@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="980" height="578" viewBox="0 0 980 578" role="img" aria-labelledby="t d" lang="en" font-family="Inter, &#x27;Segoe UI&#x27;, -apple-system, BlinkMacSystemFont, Roboto, &#x27;Helvetica Neue&#x27;, Arial, sans-serif">
+<title id="t">How Saba-chan fits together</title>
+<desc id="d">The GUI and CLI drive the daemon through an HTTP API on this PC. The daemon starts game servers and calls modules and extensions in Python. Discord commands go through the cloud relay, and the PC opens that connection itself.</desc>
+<!-- 생성기: saba-chan docs/diagrams/build.py. 손으로 고치지 말고 생성기를 고친다. -->
+<defs><marker id="ah0" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#94a3b8"/></marker></defs>
+<rect x="0.5" y="0.5" width="979" height="577" rx="18" fill="#0b0f1a" stroke="rgba(255,255,255,0.08)"/>
+<rect x="20" y="20" width="560" height="480" rx="16" fill="none" stroke="#334155" stroke-width="1.5" stroke-dasharray="6 5"/>
+<circle cx="38" cy="40" r="4" fill="#7c3aed"/>
+<text x="50.0" y="44.5" font-size="12.5" font-weight="700" fill="#94a3b8" text-anchor="start" data-fit="528.0">Your PC</text>
+<rect x="735" y="20" width="225" height="480" rx="16" fill="none" stroke="#334155" stroke-width="1.5" stroke-dasharray="6 5"/>
+<circle cx="753" cy="40" r="4" fill="#5865F2"/>
+<text x="765.0" y="44.5" font-size="12.5" font-weight="700" fill="#94a3b8" text-anchor="start" data-fit="193.0">Cloud</text>
+<path d="M165.0 158.0 L165.0 222.0" fill="none" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ah0)" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M435.0 158.0 L435.0 222.0" fill="none" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ah0)" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M123.0 312.0 L123.0 392.0" fill="none" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ah0)" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M300.0 312.0 L300.0 392.0" fill="none" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ah0)" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M477.0 312.0 L477.0 392.0" fill="none" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ah0)" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M555.0 267.0 L757.0 267.0" fill="none" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ah0)" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M847.0 222.0 L847.0 158.0" fill="none" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ah0)" marker-start="url(#ah0)" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="45" y="70" width="240" height="88" rx="12" fill="#06b6d4" fill-opacity="0.16" stroke="#06b6d4" stroke-opacity="0.75" stroke-width="1.5"/>
+<text x="165.0" y="108.5" font-size="15" font-weight="700" fill="#f1f5f9" text-anchor="middle" data-fit="216.0">GUI app</text>
+<text x="165.0" y="130.9" font-size="12" font-weight="400" fill="#94a3b8" text-anchor="middle" data-fit="216.0">Desktop app · optional</text>
+<rect x="315" y="70" width="240" height="88" rx="12" fill="#06b6d4" fill-opacity="0.16" stroke="#06b6d4" stroke-opacity="0.75" stroke-width="1.5"/>
+<text x="435.0" y="100.7" font-size="15" font-weight="700" fill="#f1f5f9" text-anchor="middle" data-fit="216.0">CLI</text>
+<text x="435.0" y="123.2" font-size="12" font-weight="400" fill="#94a3b8" text-anchor="middle" data-fit="216.0">Commands and interactive</text>
+<text x="435.0" y="138.8" font-size="12" font-weight="400" fill="#94a3b8" text-anchor="middle" data-fit="216.0">shell · optional</text>
+<rect x="217.8" y="177.2" width="164.3" height="25.6" rx="10.0" fill="#111827" stroke="rgba(255,255,255,0.10)"/>
+<text x="300.0" y="194.2" font-size="12" font-weight="500" fill="#f1f5f9" text-anchor="middle" data-fit="234.0">HTTP API · this PC only</text>
+<rect x="45" y="222" width="510" height="90" rx="12" fill="#7c3aed" fill-opacity="0.16" stroke="#7c3aed" stroke-opacity="0.75" stroke-width="1.5"/>
+<text x="300.0" y="261.8" font-size="16" font-weight="700" fill="#f1f5f9" text-anchor="middle" data-fit="486.0">Saba-chan daemon (saba-core)</text>
+<text x="300.0" y="284.6" font-size="12" font-weight="400" fill="#94a3b8" text-anchor="middle" data-fit="486.0">Runs servers, settings and the Discord link on its own</text>
+<rect x="45" y="392" width="156" height="88" rx="12" fill="#22c55e" fill-opacity="0.16" stroke="#22c55e" stroke-opacity="0.75" stroke-width="1.5"/>
+<text x="123.0" y="414.9" font-size="15" font-weight="700" fill="#f1f5f9" text-anchor="middle" data-fit="132.0">Game servers</text>
+<text x="123.0" y="437.3" font-size="12" font-weight="400" fill="#94a3b8" text-anchor="middle" data-fit="132.0">Started and</text>
+<text x="123.0" y="452.9" font-size="12" font-weight="400" fill="#94a3b8" text-anchor="middle" data-fit="132.0">watched by</text>
+<text x="123.0" y="468.5" font-size="12" font-weight="400" fill="#94a3b8" text-anchor="middle" data-fit="132.0">the daemon</text>
+<rect x="222" y="392" width="156" height="88" rx="12" fill="#3b82f6" fill-opacity="0.16" stroke="#3b82f6" stroke-opacity="0.75" stroke-width="1.5"/>
+<text x="300.0" y="422.6" font-size="15" font-weight="700" fill="#f1f5f9" text-anchor="middle" data-fit="132.0">Modules</text>
+<text x="300.0" y="445.1" font-size="12" font-weight="400" fill="#94a3b8" text-anchor="middle" data-fit="132.0">Per-game</text>
+<text x="300.0" y="460.8" font-size="12" font-weight="400" fill="#94a3b8" text-anchor="middle" data-fit="132.0">manuals · Python</text>
+<rect x="399" y="392" width="156" height="88" rx="12" fill="#3b82f6" fill-opacity="0.16" stroke="#3b82f6" stroke-opacity="0.75" stroke-width="1.5"/>
+<text x="477.0" y="422.6" font-size="15" font-weight="700" fill="#f1f5f9" text-anchor="middle" data-fit="132.0">Extensions</text>
+<text x="477.0" y="445.1" font-size="12" font-weight="400" fill="#94a3b8" text-anchor="middle" data-fit="132.0">Extra features ·</text>
+<text x="477.0" y="460.8" font-size="12" font-weight="400" fill="#94a3b8" text-anchor="middle" data-fit="132.0">Python</text>
+<rect x="68.3" y="331.4" width="109.4" height="41.2" rx="10.0" fill="#111827" stroke="rgba(255,255,255,0.10)"/>
+<text x="123.0" y="348.4" font-size="12" font-weight="500" fill="#f1f5f9" text-anchor="middle" data-fit="144.0">Start · console</text>
+<text x="123.0" y="364.0" font-size="12" font-weight="500" fill="#f1f5f9" text-anchor="middle" data-fit="144.0">commands</text>
+<rect x="250.0" y="339.2" width="100.0" height="25.6" rx="10.0" fill="#111827" stroke="rgba(255,255,255,0.10)"/>
+<text x="300.0" y="356.2" font-size="12" font-weight="500" fill="#f1f5f9" text-anchor="middle" data-fit="144.0">Function calls</text>
+<rect x="439.0" y="339.2" width="76.0" height="25.6" rx="10.0" fill="#111827" stroke="rgba(255,255,255,0.10)"/>
+<text x="477.0" y="356.2" font-size="12" font-weight="500" fill="#f1f5f9" text-anchor="middle" data-fit="144.0">Hook calls</text>
+<rect x="757" y="70" width="180" height="88" rx="12" fill="#5865F2" fill-opacity="0.16" stroke="#5865F2" stroke-opacity="0.75" stroke-width="1.5"/>
+<text x="847.0" y="108.5" font-size="15" font-weight="700" fill="#f1f5f9" text-anchor="middle" data-fit="156.0">Discord</text>
+<text x="847.0" y="130.9" font-size="12" font-weight="400" fill="#94a3b8" text-anchor="middle" data-fit="156.0">Commands by chat</text>
+<rect x="757" y="222" width="180" height="90" rx="12" fill="#5865F2" fill-opacity="0.16" stroke="#5865F2" stroke-opacity="0.75" stroke-width="1.5"/>
+<text x="847.0" y="253.7" font-size="15" font-weight="700" fill="#f1f5f9" text-anchor="middle" data-fit="156.0">Discord relay</text>
+<text x="847.0" y="276.1" font-size="12" font-weight="400" fill="#94a3b8" text-anchor="middle" data-fit="156.0">Saba-chan bot · links</text>
+<text x="847.0" y="291.8" font-size="12" font-weight="400" fill="#94a3b8" text-anchor="middle" data-fit="156.0">Discord and your PC</text>
+<rect x="595.9" y="246.4" width="120.2" height="41.2" rx="10.0" fill="#111827" stroke="rgba(255,255,255,0.10)"/>
+<text x="656.0" y="263.4" font-size="12" font-weight="500" fill="#f1f5f9" text-anchor="middle" data-fit="154.0">Your PC dials out</text>
+<text x="656.0" y="279.0" font-size="12" font-weight="500" fill="#f1f5f9" text-anchor="middle" data-fit="154.0">(signed requests)</text>
+<text x="30.0" y="530.0" font-size="12.5" font-weight="400" fill="#94a3b8" text-anchor="start" data-fit="920.0">Game servers run on your PC. Only Discord commands and results and a summary such</text>
+<text x="30.0" y="548.1" font-size="12.5" font-weight="400" fill="#94a3b8" text-anchor="start" data-fit="920.0">as the server list and status go to the relay, and no port is opened for remote control.</text>
+</svg>

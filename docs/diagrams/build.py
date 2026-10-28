@@ -4,7 +4,7 @@
     python docs/diagrams/build.py                     # saba-chan README 그림만
     python docs/diagrams/build.py --modules ../saba-chan-modules --website ../server-chan/website
 
-- saba-chan:         docs/images/architecture-{light,dark}.svg (README, GitHub 라이트/다크)
+- saba-chan:         docs/images/architecture[-en|-ja]-{light,dark}.svg (README 한/영/일, GitHub 라이트/다크)
 - saba-chan-modules: docs/images/module-call-{light,dark}.svg (모듈 개발 가이드 §2)
 - 소개 사이트:        public/assets/docs/<언어>/{architecture,discord-flow,pairing}.svg (다크 사이트라 다크만)
 
@@ -186,6 +186,8 @@ def main():
 
     for theme in ("light", "dark"):
         write(os.path.join(root, "docs", "images", f"architecture-{theme}.svg"), architecture("ko", theme))
+        for lang in ("en", "ja"):
+            write(os.path.join(root, "docs", "images", f"architecture-{lang}-{theme}.svg"), architecture(lang, theme))
     if args.modules:
         for theme in ("light", "dark"):
             write(os.path.join(args.modules, "docs", "images", f"module-call-{theme}.svg"), module_call(theme))
