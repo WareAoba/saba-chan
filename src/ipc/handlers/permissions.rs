@@ -5,7 +5,7 @@
 use super::super::IPCServer;
 use crate::chat::permissions::{apply, Change, LevelInput, NodePermissions};
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::{IntoResponse, Response},
     Json,
@@ -28,6 +28,8 @@ async fn change(state: &IPCServer, guild_id: &str, changes: Vec<Change>) -> Resp
         .config_store
         .update_node_settings(guild_id, |node| {
             let mut next = node.clone();
+            // 예전 사람별 금지 목록은 판정에 쓰지 않으니 저장할 때 지운다
+            next.remove("memberPermissions");
             for c in &changes {
                 // 주인 바꾸기가 먼저 오면 그 뒤 항목은 새 주인 기준으로 막는다
                 let owner = next.get("ownerDiscordId").and_then(Value::as_str).map(str::to_string);
@@ -50,6 +52,17 @@ async fn change(state: &IPCServer, guild_id: &str, changes: Vec<Change>) -> Resp
 /// GET /api/permissions/:guildId
 pub async fn get_permissions(State(state): State<IPCServer>, Path(guild_id): Path<String>) -> Response {
     Json(view(&state, &guild_id).await).into_response()
+}
+
+#[derive(Debug, serde::Deserialize, Default)]
+pub struct BoardQuery {
+    locale: Option<String>,
+}
+
+/// GET /api/permissions/:guildId/commands?locale= : 원격 명령·액션마다 요구 레벨 (`actions::permission_board`)
+pub async fn get_command_board(State(state): State<IPCServer>, Path(guild_id): Path<String>, Query(q): Query<BoardQuery>) -> Response {
+    let locale = super::actions::locale(&state, q.locale).await;
+    Json(crate::actions::permission_board(&state, &guild_id, &locale).await).into_response()
 }
 
 /// `{defaultLevel?, preset?, chatbotCap?, ownerDiscordId?, commandLevels?: {key: level|null}, ladder?: [{id?, name?}]}` → 바꾸기 목록
