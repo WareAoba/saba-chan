@@ -170,12 +170,27 @@ describe('데몬 응답 가공', () => {
     it('경로에 넣는 이름은 인코딩한다 (공백·빗금이 든 서버 이름)', async () => {
         const { api } = await install({
             daemon_request: daemon({
-                'GET /api/server/My%20Server/status': { status: 200, data: { status: 'running' } },
+                'GET /api/instance/My%20Server/status': { status: 200, data: { status: 'running' } },
                 'POST /api/instance/a%2Fb/stop': { status: 200, data: { success: true } },
             }),
         });
-        expect(await api.serverStatus('My Server')).toEqual({ status: 'running' });
+        expect(await api.instanceStatus('My Server')).toEqual({ status: 'running' });
         expect(await api.instanceStop('a/b')).toEqual({ success: true });
+    });
+
+    it('상태는 id로 묻고, 그 길이 없는 옛 데몬이면 이름으로 묻는다. 서버가 없다는 404는 그대로 서버 없음', async () => {
+        const { api } = await install({
+            daemon_request: daemon({
+                'GET /api/instance/new-id/status': { status: 200, data: { status: 'running' } },
+                // 옛 데몬: 라우트가 없어 본문 없는 404
+                'GET /api/instance/old-id/status': { status: 404, data: null },
+                'GET /api/server/Old%20One/status': { status: 200, data: { status: 'stopped' } },
+                'GET /api/instance/gone/status': { status: 404, data: { error_code: 'instance_not_found' } },
+            }),
+        });
+        expect(await api.instanceStatus('new-id', 'New')).toEqual({ status: 'running' });
+        expect(await api.instanceStatus('old-id', 'Old One')).toEqual({ status: 'stopped' });
+        expect((await api.instanceStatus('gone', 'Gone')).error).toBeTruthy();
     });
 
     it('instanceStart는 404를 서버 없음 문구로, 409는 데몬 문구를 살려 넘긴다', async () => {

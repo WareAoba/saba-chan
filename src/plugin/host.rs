@@ -103,7 +103,7 @@ fn write_reply(proxy: &Proxy, id: &str, mut reply: Value) {
 
 async fn dispatch(proxy: &Proxy, request: &Value) -> Value {
     let op = request.get("op").and_then(Value::as_str).unwrap_or("");
-    if !matches!(op, "instance.stdin" | "instance.rest") {
+    if !matches!(op, "instance.stdin" | "instance.rest" | "instance.rcon") {
         tracing::warn!("[Host] operation is not allowed");
         return failure("op_not_allowed", "Host operation is not allowed");
     }
@@ -125,13 +125,17 @@ async fn dispatch(proxy: &Proxy, request: &Value) -> Value {
     let Some(args) = request.get("args").and_then(Value::as_object) else {
         return failure("invalid_request", "Host args must be an object");
     };
-    let allowed: &[&str] = if op == "instance.stdin" {
+    let allowed: &[&str] = if matches!(op, "instance.stdin" | "instance.rcon") {
         &["command"]
     } else {
         &["method", "path", "body"]
     };
     if args.keys().any(|key| !allowed.contains(&key.as_str())) {
         return failure("invalid_request", "Host args contain an unsupported field");
+    }
+    // RCON만 받는 서버의 한 줄 (모듈 `stop()`의 정지 명령). 콘솔이 있으면 데몬이 stdin으로 보낸다
+    if op == "instance.rcon" {
+        return response(crate::ipc::handlers::command::rcon_for(&supervisor, &context.id, &Value::Object(args.clone())).await).await;
     }
     if op == "instance.stdin" {
         return response(
@@ -255,6 +259,7 @@ mod tests {
         };
         for (id, op, args, code) in [
             ("missing", "instance.stdin", json!({"command":"say hi"}), "no_instance"),
+            ("missing-rcon", "instance.rcon", json!({"command":"stop"}), "no_instance"),
             ("denied", "instance.delete", json!({}), "op_not_allowed"),
             (
                 "large",
@@ -338,6 +343,8 @@ mod tests {
         assert!(!matches!(reply["error_code"].as_str(), Some("op_not_allowed" | "no_instance" | "port_not_served")), "{reply}");
         serve(&own, &json!({"id":"stdin","op":"instance.stdin","args":{"command":"op someone"}}).to_string()).await;
         assert_eq!(ask(dir.path(), "stdin")["error_code"], "op_not_allowed");
+        serve(&own, &json!({"id":"rcon","op":"instance.rcon","args":{"command":"op someone"}}).to_string()).await;
+        assert_eq!(ask(dir.path(), "rcon")["error_code"], "op_not_allowed");
         let extension = tempfile::tempdir().unwrap();
         std::fs::write(extension.path().join("hooks.py"), "").unwrap();
         let other = Proxy { sandboxed: Some(extension.path().join("hooks.py")), ..own };
@@ -355,6 +362,19 @@ mod tests {
         let proxy = Proxy { dir: dir.path().into(), context: Some(runtime.for_instance(&id)), server: None, sandboxed: None };
         serve(&proxy, &json!({"id":"d","op":"instance.rest","args":{"method":"GET","path":"/api/instances"}}).to_string()).await;
         assert_eq!(ask(dir.path(), "d")["error_code"], "port_not_allowed");
+    }
+
+    /// RCON 한 줄은 그 호출의 인스턴스로 `/api/instance/:id/rcon`과 같은 길을 탄다 (콘솔도 RCON도 없으면 no_command_path)
+    #[tokio::test]
+    async fn host_rcon_uses_the_instance_command_path() {
+        let (_tmp, supervisor, id, _module) = probe_supervisor(1).await;
+        let runtime = Runtime::new(&supervisor, CredentialsCache::default());
+        let dir = tempfile::tempdir().unwrap();
+        let proxy = Proxy { dir: dir.path().into(), context: Some(runtime.for_instance(&id)), server: None, sandboxed: None };
+        serve(&proxy, &json!({"id":"r","op":"instance.rcon","args":{"command":"stop"}}).to_string()).await;
+        assert_eq!(ask(dir.path(), "r")["error_code"], "no_command_path");
+        serve(&proxy, &json!({"id":"x","op":"instance.rcon","args":{"command":"stop","port":1}}).to_string()).await;
+        assert_eq!(ask(dir.path(), "x")["error_code"], "invalid_request");
     }
 
     #[tokio::test]

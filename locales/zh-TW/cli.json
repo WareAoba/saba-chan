@@ -17,6 +17,8 @@
     "ask_source": "你想怎麼設定？",
     "ask_preset": "要從推薦設定開始嗎？",
     "no_preset": "預設設定",
+    "agreements_declined": "未同意條款，因此沒有建立伺服器。",
+    "not_installable": "{{key}}：saba-chan 無法用此值安裝新伺服器。可選值：{{choices}}",
     "created_installing": "已建立 {{name}}。正在安裝伺服器檔案...",
     "folder_other_game": "{{dir}} 似乎是另一款遊戲（{{games}}）。",
     "folder_unrecognized": "無法辨識 {{dir}} 中的伺服器。",
@@ -131,7 +133,13 @@
     "notice_is_on": "{{server}}：啟動通知已開",
     "notice_is_off": "{{server}}：啟動通知已關",
     "notice_on_saved": "將在 {{guild}} 的通知頻道告知 {{server}} 已啟動。",
-    "notice_off_saved": "不再在 {{guild}} 告知 {{server}} 已啟動。"
+    "notice_off_saved": "不再在 {{guild}} 告知 {{server}} 已啟動。",
+    "confirm_direct": "直接向機器人請求",
+    "confirm_chatbot": "會說話的 Saba-chan",
+    "confirm_all": "所有命令",
+    "confirm_caution": "注意以上",
+    "confirm_danger": "僅危險命令",
+    "confirm_none": "不詢問"
   },
   "col": {
     "players": "線上玩家",
@@ -751,7 +759,8 @@
       "remote.forget": "移除遠端常駐程式（重新連線用 `remote connect`）",
       "config.autostart": "登入此電腦時啟動的內容：off（關閉）、daemon（僅常駐程式和系統匣）、full（包含 GUI 視窗）。不帶模式時顯示目前的值",
       "config.browse": "查看常駐程式所在電腦的資料夾和檔案（加 --daemon 時為那台遠端電腦）。不給路徑則顯示磁碟機或 /",
-      "bot.notice": "Saba-chan 啟動伺服器時在 Discord 伺服器的通知頻道告知（預設關閉）。不帶伺服器：查看；伺服器加 `--on`/`--off`：變更"
+      "bot.notice": "Saba-chan 啟動伺服器時在 Discord 伺服器的通知頻道告知（預設關閉）。不帶伺服器：查看；伺服器加 `--on`/`--off`：變更",
+      "bot.confirm": "機器人在執行前用 Discord 按鈕詢問的等級 (all、caution、danger、none)。不加選項: 檢視"
     },
     "arg": {
       "module.maker.game": "第一個請求中的遊戲名稱",
@@ -839,7 +848,9 @@
       "config.browse.path": "要顯示的資料夾的完整路徑",
       "config.browse.files": "也顯示這些副檔名的檔案（逗號分隔，* 表示全部）",
       "bot.notice.on": "開啟啟動通知",
-      "bot.notice.off": "關閉啟動通知"
+      "bot.notice.off": "關閉啟動通知",
+      "bot.confirm.direct": "直接向機器人請求 — 前綴指令和斜線指令。",
+      "bot.confirm.chatbot": "會說話的 Saba-chan — 會說話的 Saba-chan 選擇的管理操作以及多人混合的請求，無論此設定如何都會詢問。"
     },
     "after": "名稱可以只寫一部分（例如 start pal）。在終端機中不帶參數執行會開啟全螢幕選單(SABA_NO_TUI=1 時為互動式 shell)。\n在指令碼中請使用 --json 和 --yes。結束代碼：0 成功 · 1 失敗 · 2 用法錯誤 · 3 無法連線常駐程式 · 4 找不到 · 130 已取消"
   },

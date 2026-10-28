@@ -4,11 +4,12 @@ saba-chan daemon helpers for Python lifecycle modules
 Shared runtime helpers (every module may use them; the daemon ships this file).
 The file keeps its old name so existing ``from daemon_rcon import ...`` lines work;
 it holds no RCON client. A module whose server only speaks RCON sends its stop
-command with ``daemon_post(f"/api/instance/{id}/rcon", {"command": ...})``.
+command with ``daemon_rcon_command(instance_id, "<stop command>")`` (0.1.12+).
+Modules reach the daemon only through the HOST channel; they get no IPC token.
 
-    daemon_post()                                call any daemon endpoint with the IPC token
     daemon_stdin_command()                       send a line to a managed server's stdin
     daemon_rest()                                send a REST request through the daemon
+    daemon_rcon_command()                        send an RCON command through the daemon
     loopback_exchange() / loopback_http()        talk to this instance's own port on 127.0.0.1
     is_process_alive() / wait_for_exit() / force_kill()   PID-safe process checks and kills
     config_value()                               top level -> module_settings -> settings lookup
@@ -25,8 +26,6 @@ command with ``daemon_post(f"/api/instance/{id}/rcon", {"command": ...})``.
     run_lifecycle()                              the `python lifecycle.py <function>` entry point
 
 Environment (the daemon sets these for every Python run):
-    SABA_IPC_URL     — base URL of the daemon (DAEMON_API_URL still overrides it)
-    SABA_TOKEN_PATH  — file holding the X-Saba-Token value
     SABA_HOST_DIR    — replies to instance-bound HOST requests (0.1.10+)
     SABA_LOOPBACK_DIR — set only for sandboxed runs, which cannot reach 127.0.0.1: the loopback
                         helpers then ask the daemon to make the connection (its own ports only)
@@ -44,15 +43,12 @@ import sys
 import tempfile
 import time
 import urllib.request
-import urllib.error
 
 # ─── Constants ────────────────────────────────────────────────
 
-_DEFAULT_DAEMON_URL = "http://127.0.0.1:57474"
-
 SINCE = {
-    "daemon_post": "0.1.2",
     "daemon_stdin_command": "0.1.2",
+    "daemon_rcon_command": "0.1.12",
     "is_process_alive": "0.1.2",
     "wait_for_exit": "0.1.2",
     "force_kill": "0.1.2",
@@ -109,71 +105,28 @@ def safe_join(root, *parts):
     return path
 
 
-def _daemon_url():
-    """Resolve the daemon API base URL."""
-    return (
-        os.environ.get("DAEMON_API_URL")
-        or os.environ.get("SABA_IPC_URL")
-        or _DEFAULT_DAEMON_URL
-    )
-
-
-def _daemon_headers():
-    """JSON headers plus the daemon auth token when one is available."""
-    headers = {"Content-Type": "application/json"}
-    token_path = os.environ.get("SABA_TOKEN_PATH")
-    if token_path:
-        try:
-            with open(token_path, encoding="utf-8") as f:
-                token = f.read().strip()
-            if token:
-                headers["X-Saba-Token"] = token
-        except OSError:
-            pass
-    return headers
-
-
-def daemon_post(path, payload, timeout=10):
-    """POST JSON to a daemon endpoint with auth and return the decoded reply.
-
-    Raises:
-        ConnectionError: If the daemon is unreachable or answers with an HTTP error.
-    """
-    url = f"{_daemon_url()}{path}"
-    req = urllib.request.Request(
-        url,
-        data=json.dumps(payload).encode("utf-8"),
-        headers=_daemon_headers(),
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            return json.loads(resp.read().decode("utf-8"))
-    except urllib.error.HTTPError as e:
-        body = e.read().decode("utf-8", errors="replace")
-        raise ConnectionError(f"Daemon request failed (HTTP {e.code}): {body}") from e
-    except urllib.error.URLError as e:
-        raise ConnectionError(f"Daemon unreachable at {url}: {e}") from e
+def _host_or_fail(op, args, timeout):
+    if not os.environ.get("SABA_HOST_DIR"):
+        raise _host_error("no_host", "SABA_HOST_DIR is not set")
+    return _host_request(op, args, timeout)
 
 
 def daemon_stdin_command(instance_id, command, *, timeout=10):
-    """Send a line to a managed server's stdin via ``/api/instance/:id/stdin``."""
-    if os.environ.get("SABA_HOST_DIR"):
-        return _host_request("instance.stdin", {"command": command}, timeout)
-    return daemon_post(f"/api/instance/{instance_id}/stdin", {"command": command}, timeout=timeout)
+    """Send a line to a managed server's stdin through the daemon HOST channel."""
+    return _host_or_fail("instance.stdin", {"command": command}, timeout)
 
 
 def daemon_rest(instance_id, method, path, *, body=None, timeout=10):
-    """Send an instance REST request through HOST or the daemon HTTP API."""
+    """Send an instance REST request through the daemon HOST channel."""
     args = {"method": method, "path": path}
     if body is not None:
         args["body"] = body
-    if os.environ.get("SABA_HOST_DIR"):
-        return _host_request("instance.rest", args, timeout)
-    payload = {"method": method, "endpoint": path}
-    if body is not None:
-        payload["body"] = body
-    return daemon_post(f"/api/instance/{instance_id}/rest", payload, timeout=timeout)
+    return _host_or_fail("instance.rest", args, timeout)
+
+
+def daemon_rcon_command(instance_id, command, *, timeout=10):
+    """Send an RCON command to this instance through the daemon HOST channel."""
+    return _host_or_fail("instance.rcon", {"command": command}, timeout)
 
 
 def _host_error(code, message):

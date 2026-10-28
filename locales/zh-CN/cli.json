@@ -17,6 +17,8 @@
     "ask_source": "你想怎么设置？",
     "ask_preset": "要从推荐设置开始吗？",
     "no_preset": "默认设置",
+    "agreements_declined": "未同意条款，因此没有创建服务器。",
+    "not_installable": "{{key}}：saba-chan 无法用此值安装新服务器。可选值：{{choices}}",
     "created_installing": "已创建 {{name}}。正在安装服务器文件...",
     "folder_other_game": "{{dir}} 似乎是另一个游戏（{{games}}）。",
     "folder_unrecognized": "无法识别 {{dir}} 中的服务器。",
@@ -131,7 +133,13 @@
     "notice_is_on": "{{server}}：启动通知已开",
     "notice_is_off": "{{server}}：启动通知已关",
     "notice_on_saved": "将在 {{guild}} 的通知频道告知 {{server}} 已启动。",
-    "notice_off_saved": "不再在 {{guild}} 告知 {{server}} 已启动。"
+    "notice_off_saved": "不再在 {{guild}} 告知 {{server}} 已启动。",
+    "confirm_direct": "直接向机器人请求",
+    "confirm_chatbot": "会说话的 Saba-chan",
+    "confirm_all": "所有命令",
+    "confirm_caution": "注意及以上",
+    "confirm_danger": "仅危险命令",
+    "confirm_none": "不询问"
   },
   "col": {
     "players": "在线玩家",
@@ -881,7 +889,8 @@
       "remote.forget": "移除远程守护进程（重新连接用 `remote connect`）",
       "config.autostart": "登录此电脑时启动的内容：off（关闭）、daemon（仅守护进程和托盘）、full（包括 GUI 窗口）。不带模式时显示当前值",
       "config.browse": "查看守护进程所在电脑的文件夹和文件（加 --daemon 时为那台远程电脑）。不给路径则显示驱动器或 /",
-      "bot.notice": "Saba-chan 启动服务器时在 Discord 服务器的通知频道告知（默认关闭）。不带服务器：查看；服务器加 `--on`/`--off`：更改"
+      "bot.notice": "Saba-chan 启动服务器时在 Discord 服务器的通知频道告知（默认关闭）。不带服务器：查看；服务器加 `--on`/`--off`：更改",
+      "bot.confirm": "机器人在执行前用 Discord 按钮询问的级别 (all、caution、danger、none)。不加选项: 查看"
     },
     "arg": {
       "module.maker.game": "第一个请求中的游戏名",
@@ -1049,7 +1058,9 @@
       "schedule.edit.command": "要更改的游戏命令 (command 任务，换成其他命令时除非给出 --arg，否则清除旧输入)",
       "bot.notice.on": "开启启动通知",
       "bot.notice.off": "关闭启动通知",
-      "chatbot.template.locale": "模板语言（默认：应用语言）"
+      "chatbot.template.locale": "模板语言（默认：应用语言）",
+      "bot.confirm.direct": "直接向机器人请求 — 前缀命令和斜杠命令。",
+      "bot.confirm.chatbot": "会说话的 Saba-chan — 会说话的 Saba-chan 选择的管理操作以及多人混合的请求，无论此设置如何都会询问。"
     },
     "after": "名称可以只写一部分（例如 start pal）。在终端中不带参数运行会打开全屏菜单(SABA_NO_TUI=1 时为交互式 shell)。\n在脚本中请使用 --json 和 --yes。退出码：0 成功 · 1 失败 · 2 用法错误 · 3 无法连接守护进程 · 4 未找到 · 130 已取消"
   },

@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { BotSettingsTab, botSettingsAvailable } from '../components/discord/BotSettingsTab';
+import { pickOption } from './dropdown';
 
 const flush = () => act(async () => {});
 const node = { guildId: 'g1', guildName: 'Test' };
@@ -16,6 +17,8 @@ describe('디스코드 봇 설정 탭', () => {
     afterEach(() => {
         delete window.api.discordSettingsGet;
         delete window.api.discordSettingsSet;
+        delete window.api.chatbotGet;
+        delete window.api.chatbotSave;
         window.showToast = undefined;
     });
 
@@ -84,5 +87,26 @@ describe('디스코드 봇 설정 탭', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
         await flush();
         expect(screen.getByRole('checkbox', { name: 'Volume normalization' })).not.toBeDisabled();
+    });
+
+    it('되묻기: 직접 요청은 디스코드 설정에, 말하는 사바쨩은 이 서버의 챗봇 설정에 저장한다', async () => {
+        window.api.discordSettingsGet = vi.fn().mockResolvedValue({ ...base, confirmLevel: 'danger' });
+        window.api.discordSettingsSet = vi
+            .fn()
+            .mockResolvedValue({ success: true, settings: base, sync: { ok: true } });
+        window.api.chatbotGet = vi
+            .fn()
+            .mockResolvedValue({ success: true, settings: { confirmLevel: 'all' }, guilds: {}, hasApiKey: true });
+        window.api.chatbotSave = vi
+            .fn()
+            .mockResolvedValue({ success: true, settings: {}, guilds: {}, hasApiKey: true });
+        render(<BotSettingsTab node={node} />);
+        await flush();
+        pickOption(screen.getByLabelText('Requests to the bot'), "Don't ask");
+        await flush();
+        expect(window.api.discordSettingsSet).toHaveBeenCalledWith('g1', { confirmLevel: 'none' });
+        pickOption(screen.getByLabelText('Talking Saba-chan'), 'Caution and above');
+        await flush();
+        expect(window.api.chatbotSave).toHaveBeenCalledWith({ guilds: { g1: { confirmLevel: 'caution' } } });
     });
 });

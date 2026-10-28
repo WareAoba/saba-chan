@@ -346,7 +346,6 @@
     "stop_timeout_toast": "⚠️ Server {{name}} wird gestoppt. Das kann eine Weile dauern.",
     "unexpected_stop_toast": "⚠️ Server {{name}} wurde unerwartet gestoppt!",
     "external_start_toast": "ℹ️ Server {{name}} wurde außerhalb von Saba-chan gestartet",
-    "status_check_failed_title": "Statusprüfung fehlgeschlagen",
     "add_server_name_empty_title": "Eingabefehler",
     "add_server_name_empty_message": "Geben Sie den Servernamen ein",
     "add_module_empty_title": "Eingabefehler",
@@ -393,7 +392,8 @@
     "stdin_unconfirmed": "Es konnte nicht bestätigt werden, dass der Befehl gesendet wurde. Prüfen Sie die Konsole, bevor Sie es erneut versuchen.",
     "move_cross_volume": "Ein Ordner auf einem anderen Laufwerk kann nicht verschoben werden. Importiere ihn stattdessen mit „Am Ort lassen“.",
     "move_in_use": "Der Ordner konnte nicht verschoben werden. Stoppe den Server in diesem Ordner, schließe Programme, die ihn geöffnet haben, und versuche es erneut.",
-    "move_failed": "Der Ordner konnte nicht verschoben werden. Importiere ihn stattdessen mit „Am Ort lassen“."
+    "move_failed": "Der Ordner konnte nicht verschoben werden. Importiere ihn stattdessen mit „Am Ort lassen“.",
+    "not_installable": "saba-chan kann mit der gewählten Einstellung keinen Server installieren. Wähle einen anderen Wert."
   },
   "settings": {
     "save_failed_title": "Einstellungsspeicherung fehlgeschlagen",
@@ -979,7 +979,13 @@
       "not_loaded": "Die Einstellungen dieses Servers konnten nicht vom Relay gelesen werden. Die angezeigten Werte sind Standardwerte und können nicht geändert werden. Nach dem Verbinden neu laden.",
       "err_not_paired": "Dieser Server ist nicht gekoppelt.",
       "err_invalid": "Ungültiger Wert: {{field}}",
-      "err_generic": "Bot-Einstellungen konnten nicht geändert werden."
+      "err_generic": "Bot-Einstellungen konnten nicht geändert werden.",
+      "confirm_title": "Vor dem Ausführen fragen",
+      "confirm_desc": "Vor dem Ausführen fragt der Bot die anfragende Person per Discord-Button noch einmal. Nur diese Person kann ihn drücken. In App, Web und CLI fragen gefährliche Befehle sowie Stoppen und Neustarten immer, unabhängig von dieser Einstellung.",
+      "confirm_direct": "Anfragen an den Bot",
+      "confirm_direct_hint": "Präfix- und Slash-Befehle.",
+      "confirm_chatbot": "Sprechende Saba-chan",
+      "confirm_chatbot_hint": "Von der sprechenden Saba-chan gewählte Verwaltungsaufgaben und Anfragen mehrerer Personen fragen immer, unabhängig von dieser Einstellung."
     },
     "channels_notify": "Benachrichtigungskanal",
     "channels_notify_hint": "Abstürze, automatische Neustarts, Updates, fertige Sicherungen und Hinweise auf geplante Neustarts erscheinen hier.",
@@ -1141,8 +1147,6 @@
     "ambient_effort_hint": "Niedrig wird empfohlen. Entscheidet sie sich zu sprechen, denkt sie vor dem Senden noch einmal mit dem Gesprächsaufwand nach.",
     "tools_title": "Werkzeuge",
     "tools_desc": "Lege fest, welche Werkzeuge Sprechende Saba-chan nutzen darf und wann sie vorher fragt.",
-    "confirm_level": "Vor dem Ausführen fragen",
-    "confirm_level_hint": "Gefährliche Befehle und Verwaltungsaufgaben fragen immer; Löschen, Daemon stoppen, Updates, Berechtigungen und Geheimnisse sind nie erlaubt. In der App festgelegte Benutzerrechte gelten immer.",
     "confirm_all": "Alle Befehle",
     "confirm_caution": "Ab Vorsicht",
     "confirm_danger": "Nur gefährliche",
@@ -1191,7 +1195,8 @@
     "models_err_QUOTA_EXCEEDED": "Das Kontingent des API-Schlüssels ist aufgebraucht.",
     "models_err_PROVIDER_UNAVAILABLE": "Der Modellanbieter ist nicht erreichbar. Versuche es gleich noch einmal.",
     "models_err_FAILED": "Die Modellliste konnte nicht geladen werden.",
-    "model_fallback": "Das gewählte Modell ({{model}}) ist nicht verfügbar, daher wird {{fallback}} verwendet. Speichere, um {{fallback}} zu übernehmen."
+    "model_fallback": "Das gewählte Modell ({{model}}) ist nicht verfügbar, daher wird {{fallback}} verwendet. Speichere, um {{fallback}} zu übernehmen.",
+    "confirm_none": "Nicht fragen"
   },
   "module_audit": {
     "title": "Modul '{{module}}' nutzt nicht deklarierte Fähigkeiten.",
