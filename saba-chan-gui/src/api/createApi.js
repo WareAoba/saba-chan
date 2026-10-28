@@ -1024,6 +1024,8 @@ export function createApi({ invoke, hub }) {
         },
         permissionsGet: (guildId) => daemonCall('get', permPath(guildId)),
         permissionsUpdate: (guildId, patch) => daemonCall('patch', permPath(guildId), patch || {}),
+        permissionsCommands: (guildId, locale) =>
+            daemonCall('get', `${permPath(guildId)}/commands${queryString({ locale: locale || undefined })}`),
         permissionsSetMember: (guildId, discordId, level) => daemonCall('put', permPath(guildId, discordId), { level }),
         permissionsRemoveMember: (guildId, discordId) => daemonCall('delete', permPath(guildId, discordId)),
         sandboxListUnisolated: () => daemonCall('get', '/api/sandbox/unisolated'),

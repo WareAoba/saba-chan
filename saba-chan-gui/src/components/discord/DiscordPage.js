@@ -19,7 +19,6 @@ import { SabaToggle } from '../ui/SabaUI';
 import { claimSavedToken, usePairing } from './usePairing';
 
 export const DEFAULT_RELAY_URL = 'https://saba-chan.online';
-const AUTOSAVE_MS = 600;
 
 /** 짝짓기 전에 릴레이 주소(설정 화면에서 바꿨을 수 있다)를 config에 저장한다. 실패하면 false */
 const saveRelayUrl = () => useDiscordStore.getState().saveConfig();
@@ -134,7 +133,6 @@ export function DiscordPage({
     moduleAliasesPerModule,
     discordModuleAliases,
     nodeSettings,
-    setNodeSettings,
     cloudNodes = [],
     setCloudNodes,
     cloudMembers = {},
@@ -163,7 +161,6 @@ export function DiscordPage({
     // 길드별 일부 목록 사유 (권한을 등록한 멤버만 받았을 때)
     const [membersPartial, setMembersPartial] = useState({});
     const [saveState, setSaveState] = useState(null);
-    const saveTimer = useRef(null);
 
     // 화면을 열 때 데몬 설정을 다시 읽는다: GUI가 켜진 동안 CLI로 짝짓거나 가져온 설정을 보인다
     // (기동 때 읽기가 끝나기 전이면 그쪽이 읽는다. 화면에서 고친 값은 loadConfig가 덮지 않는다)
@@ -260,22 +257,6 @@ export function DiscordPage({
     useEffect(() => {
         if (nodeId && !(cloudMembers[nodeId]?.length > 0)) loadMembers(nodeId);
     }, [nodeId, loadMembers]);
-
-    // ── 노드 권한: 바로 반영, 잠깐 모아서 저장 ──
-    const updateNodes = useCallback(
-        (fn) => {
-            setNodeSettings((prev) => fn(prev || {}));
-            setSaveState('saving');
-            clearTimeout(saveTimer.current);
-            saveTimer.current = setTimeout(async () => {
-                // 실패는 저장 쪽이 알린다. 저장됨 표시만 띄우지 않는다
-                const ok = await saveCurrentSettings();
-                setSaveState(ok === false ? null : 'saved');
-            }, AUTOSAVE_MS);
-        },
-        [setNodeSettings, saveCurrentSettings],
-    );
-    useEffect(() => () => clearTimeout(saveTimer.current), []);
 
     // ── 길드가 쓸 서버 제한: 데몬 길드 API로 바로 저장 (bot-config 일괄 저장으로는 바뀌지 않는다) ──
     // 하나씩 저장하고, 다음 목록은 앞 저장이 반영된 스토어 값으로 만든다 (빠르게 두 번 바꿔도 앞 변경이 남는다)
@@ -385,22 +366,6 @@ export function DiscordPage({
               }
           }
         : null;
-
-    // ── 명령 목록 / 위험도 ──
-    const commandsFor = useCallback(
-        (moduleName) =>
-            Object.entries(moduleAliasesPerModule?.[moduleName]?.commands || {}).map(([name, info]) => ({
-                name,
-                label: info.label || name,
-                description: info.description || '',
-            })),
-        [moduleAliasesPerModule],
-    );
-    const riskOf = useCallback(
-        (moduleName, cmd) =>
-            modules.find((m) => m.name === moduleName)?.commands?.fields?.find((f) => f.name === cmd)?.risk || null,
-        [modules],
-    );
 
     const settings = nodeSettings || {};
     const currentNode = cloudNodes.find((n) => n.guildId === nodeId);
@@ -588,7 +553,6 @@ export function DiscordPage({
                                 nodes={cloudNodes}
                                 servers={servers}
                                 settings={settings}
-                                update={updateNodes}
                                 updateAllowed={updateAllowed}
                                 updateStartNotice={updateStartNotice}
                                 members={cloudMembers[currentNode.guildId]}
@@ -596,10 +560,6 @@ export function DiscordPage({
                                 membersFailed={!!membersFailed[currentNode.guildId]}
                                 membersPartial={membersPartial[currentNode.guildId] || null}
                                 onRefreshMembers={() => loadMembers(currentNode.guildId)}
-                                memberId={view.member || null}
-                                onOpenMember={(id) => setView({ kind: 'node', id: currentNode.guildId, member: id })}
-                                commandsFor={commandsFor}
-                                riskOf={riskOf}
                                 saveState={saveState}
                             />
                         )}
