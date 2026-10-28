@@ -711,11 +711,8 @@ export function useServerActions({
                 const useGraceful = srv?.module_settings?.graceful_stop;
                 const forceStop = forced || useGraceful === false;
 
-                // id로 정지 (이름이 바뀌어도 안전). 옛 데몬·IPC면 이름으로
-                const result =
-                    srv?.id && window.api.instanceStop
-                        ? await window.api.instanceStop(srv.id, { force: forceStop })
-                        : await window.api.serverStop(name, { force: forceStop });
+                // id로 정지 (이름이 바뀌어도 안전)
+                const result = await window.api.instanceStop(srv?.id ?? name, { force: forceStop });
                 const opt = optimisticStatusRef.current.get(name);
                 if (opt?.pending) optimisticStatusRef.current.set(name, { status: 'stopping', timestamp: Date.now() });
 

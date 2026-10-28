@@ -819,7 +819,7 @@ impl IPCServer {
             .route("/api/instance/{id}/launch-preview", post(handlers::instance::launch_preview))
             // ── Provision progress ──
             .route("/api/provision-progress/{name}", get(handlers::instance::get_provision_progress).delete(handlers::instance::dismiss_provision_progress))
-            // ── Command execution ──
+            // ── Server update ──
             .route("/api/instance/{id}/check-update", get(handlers::instance::check_server_update))
             .route("/api/instance/{id}/apply-update", post(handlers::instance::apply_server_update))
             // ── Command execution ──
@@ -874,8 +874,6 @@ impl IPCServer {
             .route("/api/system/paths/move", post(handlers::paths::move_dir))
             .route("/api/system/browse", get(handlers::paths::browse))
             .route("/api/system/autostart", get(handlers::autostart::get_autostart).put(handlers::autostart::put_autostart))
-            // ── Directory scan (migration etc.) ──
-            // ── Extension process management (범용) ──
             // ── Client heartbeat ──
             .route("/api/client/register", post(handlers::client::client_register))
             .route("/api/clients", get(handlers::client::client_list))
@@ -935,7 +933,6 @@ impl IPCServer {
             .route("/api/extensions/{id}/icon", get(handlers::extension::serve_icon))
             .route("/api/extensions/{id}/audit", get(handlers::extension::audit_extension))
             .route("/api/extensions/{id}/i18n/{locale}", get(handlers::extension::serve_i18n))
-            // ── Node.js portable environment ──
             // ── Relay server proxy (cloud mode) ──
             .route("/api/relay/host/{host_id}/status", get(handlers::relay::check_host_status))
             .route("/api/relay/host/{host_id}/nodes", get(handlers::relay::list_host_nodes))

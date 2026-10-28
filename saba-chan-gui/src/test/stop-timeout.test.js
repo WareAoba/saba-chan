@@ -69,10 +69,9 @@ describe('정지·재시작 요청 시간 제한', () => {
         return invoke.mock.calls.find(([cmd]) => cmd === 'daemon_request')[1].timeoutMs;
     };
 
-    it('id로 정지·재시작, 이름으로 정지 모두 가장 긴 정지 대기보다 오래 기다린다', async () => {
+    it('정지·재시작 모두 가장 긴 정지 대기보다 오래 기다린다', async () => {
         expect(await timeoutOf((api) => api.instanceStop('s'))).toBeGreaterThan(longest);
         expect(await timeoutOf((api) => api.instanceRestart('s'))).toBeGreaterThan(longest);
-        expect(await timeoutOf((api) => api.serverStop('S'))).toBeGreaterThan(longest);
     });
 });
 
