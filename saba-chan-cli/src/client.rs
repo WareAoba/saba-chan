@@ -865,6 +865,15 @@ impl Api {
         self.get("/api/relay/privacy/erase").await
     }
 
+    /// GET /api/relay/mcp/grant — 이 PC 주인 계정의 AI 에이전트 연결 `{grant:{clientName, createdAt, lastUsedAt}|null}`
+    pub async fn mcp_grant(&self) -> Result<Value> {
+        self.get("/api/relay/mcp/grant").await
+    }
+    /// DELETE /api/relay/mcp/grant — 에이전트 연결 끊기 (204)
+    pub async fn mcp_grant_revoke(&self) -> Result<Value> {
+        self.delete("/api/relay/mcp/grant").await
+    }
+
     // ── 디스코드 릴레이 ──
 
     /// GET /api/relay/agent — `{running, relayUrl, hasToken, lastHeartbeatAt, lastError, commandsHandled}`

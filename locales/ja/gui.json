@@ -904,6 +904,11 @@
     "disconnect": "接続を解除",
     "disconnect_confirm": "もう一度押すと解除",
     "disconnect_desc": "このPCとすべてのDiscordサーバーとの接続を解除します。",
+    "agent_none": "連携中のAIエージェントはありません。ChatGPTやClaudeなどのエージェントに {{url}} を追加すると、あなたのDiscordアカウントのPCを操作できます。",
+    "agent_linked": "AIエージェント {{name}} があなたのDiscordアカウントのすべてのPCを操作できます。最終使用: {{when}}",
+    "agent_revoke": "エージェントの連携を解除",
+    "agent_revoked": "AIエージェントの連携を解除しました。",
+    "agent_revoke_failed": "AIエージェントの連携を解除できませんでした: {{error}}",
     "erase": "個人情報をすべて削除",
     "erase_desc": "リレーにあるあなたの Discord アカウントの情報をすべて削除し、この PC の接続を切ります。ウェブサイトで同意すると削除されます。",
     "erase_waiting": "ウェブサイトでの同意を待っています。同意するとこの PC の接続も切ります。",
@@ -1482,6 +1487,7 @@
     "source_daemon": "デーモン",
     "source_web": "サバちゃんウェブ",
     "source_remote": "リモートPC",
+    "source_mcp": "AIエージェント",
     "source_restart": "自動再起動"
   },
   "launch_preview": {

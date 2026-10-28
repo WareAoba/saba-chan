@@ -904,6 +904,11 @@
     "disconnect": "Trennen",
     "disconnect_confirm": "Zum Trennen erneut klicken",
     "disconnect_desc": "Trennt diesen PC von allen Discord-Servern.",
+    "agent_none": "Kein KI-Agent verknüpft. Füge {{url}} einem Agenten wie ChatGPT oder Claude hinzu, damit er die PCs deines Discord-Kontos verwalten kann.",
+    "agent_linked": "KI-Agent {{name}} kann alle PCs deines Discord-Kontos verwalten. Zuletzt genutzt: {{when}}",
+    "agent_revoke": "Agent trennen",
+    "agent_revoked": "KI-Agent getrennt.",
+    "agent_revoke_failed": "KI-Agent konnte nicht getrennt werden: {{error}}",
     "erase": "Alle meine Daten löschen",
     "erase_desc": "Löscht alles, was das Relay über dein Discord-Konto speichert, und trennt diesen PC. Gelöscht wird erst, wenn du auf der Website zustimmst.",
     "erase_waiting": "Warte auf deine Zustimmung auf der Website. Danach wird dieser PC getrennt.",
@@ -1482,6 +1487,7 @@
     "source_daemon": "Daemon",
     "source_web": "Saba-chan Web",
     "source_remote": "Entfernter PC",
+    "source_mcp": "KI-Agent",
     "source_restart": "Automatischer Neustart"
   },
   "launch_preview": {

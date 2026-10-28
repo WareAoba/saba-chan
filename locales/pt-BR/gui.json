@@ -904,6 +904,11 @@
     "disconnect": "Desconectar",
     "disconnect_confirm": "Clique de novo para desconectar",
     "disconnect_desc": "Desconecta este PC de todos os servidores do Discord.",
+    "agent_none": "Nenhum agente de IA vinculado. Adicione {{url}} a um agente como ChatGPT ou Claude para que ele gerencie os PCs da sua conta do Discord.",
+    "agent_linked": "O agente de IA {{name}} pode gerenciar todos os PCs da sua conta do Discord. Último uso: {{when}}",
+    "agent_revoke": "Desvincular agente",
+    "agent_revoked": "Agente de IA desvinculado.",
+    "agent_revoke_failed": "Não foi possível desvincular o agente de IA: {{error}}",
     "erase": "Apagar todos os meus dados",
     "erase_desc": "Apaga tudo o que o relay guarda sobre sua conta do Discord e desconecta este PC. Nada é apagado até você concordar no site.",
     "erase_waiting": "Aguardando sua concordância no site. Este PC será desconectado quando você concordar.",
@@ -1482,6 +1487,7 @@
     "source_daemon": "Daemon",
     "source_web": "Saba-chan web",
     "source_remote": "PC remoto",
+    "source_mcp": "Agente de IA",
     "source_restart": "Reinício automático"
   },
   "launch_preview": {

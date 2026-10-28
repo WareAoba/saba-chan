@@ -913,6 +913,12 @@ pub enum BotCmd {
     Unpair,
     /// Erase everything the relay keeps about your Discord account (opens a consent page), then disconnect this PC
     Erase,
+    /// The AI agent (remote MCP) linked to your Discord account. It can manage every PC of the account
+    Agent {
+        /// Unlink the agent (it loses access at once)
+        #[arg(long)]
+        unlink: bool,
+    },
     /// Set the node token by hand (from a pairing done elsewhere). Asked for without showing it, or one line on stdin; never an argument
     Token,
     /// Show or change the chat prefixes: `prefix`, `prefix A B`, `prefix --default`
@@ -1389,6 +1395,7 @@ mod tests {
         assert!(p(&["bot", "token", "secret-token"]).is_err());
         assert!(matches!(p(&["bot", "token"]).unwrap().cmd, Some(Cmd::Bot(BotCmd::Token))));
         assert!(matches!(p(&["bot", "erase"]).unwrap().cmd, Some(Cmd::Bot(BotCmd::Erase))));
+        assert!(matches!(p(&["bot", "agent", "--unlink"]).unwrap().cmd, Some(Cmd::Bot(BotCmd::Agent { unlink: true }))));
         assert!(p(&["--json", "status"]).unwrap().global.json);
         assert!(p(&["status", "--json"]).unwrap().global.json);
     }

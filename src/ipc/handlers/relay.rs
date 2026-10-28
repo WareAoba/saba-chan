@@ -431,6 +431,34 @@ pub async fn put_node_channels(
     }
 }
 
+// ── GET·DELETE /api/relay/mcp/grant ──
+// 이 PC 주인 계정의 원격 MCP 에이전트 연결 (05 §4.4 (l)). 보기는 `{grant:{clientName, createdAt, lastUsedAt}|null}`,
+// 끊기는 204. 연결은 계정마다 하나라 주인의 다른 PC에서 끊어도 같다
+
+pub async fn get_mcp_grant(Query(params): Query<RelayQueryParams>, State(state): State<IPCServer>) -> Response {
+    let base = signed_base(&state, params.relay_url.as_deref()).await;
+    signed_get(&base, "/api/mcp/grant", invalid_response).await
+}
+
+pub async fn revoke_mcp_grant(Query(params): Query<RelayQueryParams>, State(state): State<IPCServer>) -> Response {
+    let base = signed_base(&state, params.relay_url.as_deref()).await;
+    signed_delete(&base, "/api/mcp/grant").await
+}
+
+/// 서명한 DELETE를 보낸다. 성공은 204, 실패는 릴레이 답 그대로
+async fn signed_delete(base: &str, api_path: &str) -> Response {
+    let client = match client() {
+        Ok(c) => c,
+        Err(r) => return r,
+    };
+    match send(apply_signed_headers(client.delete(format!("{}{}", base, api_path)), "DELETE", api_path, None)).await {
+        Ok((code, _)) if code.is_success() => StatusCode::NO_CONTENT.into_response(),
+        Ok((code, Some(data))) => (code, Json(data)).into_response(),
+        Ok((code, None)) => invalid_response(code),
+        Err(r) => r,
+    }
+}
+
 // ── GET /api/relay/link-requests · POST /api/relay/link-requests/:id ──
 // 디스코드에서 코드 없이 `/사바쨩 연결`한 요청 (J1-b). 요청은 릴레이가 들고 있고, PC는 보고 수락·거절만 한다.
 // 수락하면 릴레이가 그 길드를 이 PC에 묶는다. 본문과 응답은 릴레이 것을 그대로 전달한다
@@ -792,6 +820,8 @@ mod tests {
             .route("/api/hosts/h1", get(|| async { Json(json!({ "online": true })) }))
             .route("/api/hosts/h2", get(|| async { (StatusCode::NOT_FOUND, "nope") }))
             .route("/api/bot-invite", get(|| async { Json(json!({ "url": "https://discord.com/x" })) }))
+            .route("/api/mcp/grant", axum::routing::delete(|| async { StatusCode::NO_CONTENT }))
+            .route("/api/mcp/gone", axum::routing::delete(|| async { (StatusCode::NOT_FOUND, Json(json!({ "error": "HOST_NOT_FOUND" }))) }))
             .route("/api/link-requests/{id}", post(|Path(id): Path<String>, Json(b): Json<Value>| async move { Json(json!({ "id": id, "accept": b["accept"] })) }));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
@@ -819,6 +849,15 @@ mod tests {
         let base = mock_relay().await;
         let (code, data) = body(signed_post(&base, "/api/link-requests/r1", &json!({ "accept": true })).await).await;
         assert_eq!((code, data), (StatusCode::OK, json!({ "id": "r1", "accept": true })));
+    }
+
+    /// 에이전트 연결 끊기: 릴레이가 지웠으면 204, 아니면 릴레이 답 그대로
+    #[tokio::test]
+    async fn revoking_the_agent_link_passes_the_relay_answer_through() {
+        let base = mock_relay().await;
+        assert_eq!(signed_delete(&base, "/api/mcp/grant").await.status(), StatusCode::NO_CONTENT);
+        assert_eq!(body(signed_delete(&base, "/api/mcp/gone").await).await, (StatusCode::NOT_FOUND, json!({ "error": "HOST_NOT_FOUND" })));
+        assert_eq!(signed_delete("http://127.0.0.1:9", "/api/mcp/grant").await.status(), StatusCode::BAD_GATEWAY);
     }
 
     /// 노드 목록의 주인은 아직 주인이 없는 길드에만 고정한다 (명령이 처음 올 때와 같은 pin_owner 규칙)

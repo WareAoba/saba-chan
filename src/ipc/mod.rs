@@ -948,6 +948,7 @@ impl IPCServer {
             .route("/api/relay/bot-invite", get(handlers::relay::get_bot_invite))
             .route("/api/relay/pair/initiate", post(handlers::relay::initiate_pairing))
             .route("/api/relay/pair/{code}/status", get(handlers::relay::poll_pairing_status))
+            .route("/api/relay/mcp/grant", get(handlers::relay::get_mcp_grant).delete(handlers::relay::revoke_mcp_grant))
             .route("/api/relay/link-requests", get(handlers::relay::list_link_requests))
             .route("/api/relay/link-requests/{request_id}", post(handlers::relay::answer_link_request))
             // 개인정보 모두 지우기: 웹사이트에서 동의하면 릴레이가 지우고, 데몬이 연결을 끊는다

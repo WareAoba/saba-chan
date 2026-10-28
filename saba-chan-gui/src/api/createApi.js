@@ -1223,6 +1223,9 @@ export function createApi({ invoke, hub }) {
         relayLinkRequests: () => daemonJson('get', '/api/relay/link-requests'),
         relayLinkRequestRespond: (requestId, accept) =>
             daemonJson('post', `/api/relay/link-requests/${encodeURIComponent(requestId)}`, { accept: !!accept }),
+        // 원격 MCP 에이전트 연결 (계정마다 하나): 보기 `{grant|null}`, 끊기는 빈 본문(204)
+        relayMcpGrant: () => daemonJson('get', '/api/relay/mcp/grant'),
+        relayMcpGrantRevoke: () => daemonJson('delete', '/api/relay/mcp/grant'),
         // 개인정보 모두 지우기: `{url}`(웹사이트 동의 페이지)을 받고, 끝났는지는 `{status}`로 묻는다
         relayPrivacyErase: (locale) => daemonJson('post', '/api/relay/privacy/erase', { locale }),
         relayPrivacyEraseStatus: () => daemonJson('get', '/api/relay/privacy/erase'),

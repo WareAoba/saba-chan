@@ -904,6 +904,11 @@
     "disconnect": "中斷連線",
     "disconnect_confirm": "再按一次即可中斷",
     "disconnect_desc": "中斷這台電腦與所有 Discord 伺服器的連線。",
+    "agent_none": "尚未連接 AI 代理。在 ChatGPT、Claude 等代理中加入 {{url}}，即可讓它管理你 Discord 帳號下的電腦。",
+    "agent_linked": "AI 代理 {{name}} 可以管理你 Discord 帳號下的所有電腦。最後使用：{{when}}",
+    "agent_revoke": "中斷代理連線",
+    "agent_revoked": "已中斷 AI 代理連線。",
+    "agent_revoke_failed": "無法中斷 AI 代理連線：{{error}}",
     "erase": "刪除我的全部資料",
     "erase_desc": "刪除中繼保存的你的 Discord 帳號的全部資訊，並中斷這台電腦的連線。在網站上同意後才會刪除。",
     "erase_waiting": "正在等待你在網站上同意。同意後這台電腦也會中斷連線。",
@@ -1482,6 +1487,7 @@
     "source_daemon": "背景服務",
     "source_web": "Saba-chan 網頁",
     "source_remote": "遠端電腦",
+    "source_mcp": "AI 代理",
     "source_restart": "自動重新啟動"
   },
   "launch_preview": {

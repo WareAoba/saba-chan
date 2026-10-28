@@ -1283,3 +1283,32 @@ async fn mcp_requests_ask_by_the_local_rule_not_the_guild_level() {
     let err = run(&state, "", None, &Value::Null, stop["planId"].as_str(), &mcp).await.unwrap_err();
     assert_eq!(err.code, "confirm_required");
 }
+
+/// 원격 MCP(계정 주인의 AI 에이전트)는 앱과 같은 액션을 주인 레벨로 쓴다.
+/// 웹 원격·짝 맺은 PC처럼 PC에서만 하는 일과 PC 전용 칸은 막고, 확인이 필요한 계획은 주인의 확인으로만 돈다
+#[tokio::test]
+async fn an_mcp_owner_reaches_app_actions_but_not_pc_only_ones() {
+    let (state, id, _tmp) = server().await;
+    let owner = Caller::mcp("owner".into(), "owner".into(), None, None, "en".into());
+    assert_eq!(owner.surface, Gui);
+    assert_eq!(owner.origin.source, "mcp");
+    let enable = plan(&state, "extension.enable", None, &json!({ "extension": "x" }), &owner).await.unwrap();
+    assert_eq!(enable["needsConfirm"], false);
+    let err = plan(&state, "update.apply", None, &json!({}), &owner).await.unwrap_err();
+    assert_eq!((err.status, err.code), (403, "remote_local_only"));
+    let err = plan(&state, "instance.settings.set", Some(&id), &json!({ "java_path": "/bin/sh" }), &owner).await.unwrap_err();
+    assert_eq!((err.code, err.data["field"].as_str()), ("invalid_input", Some("java_path")), "{err:?}");
+    // 주인이 아니면 기본 레벨이다 (관리 액션은 막힌다)
+    let other = Caller::mcp("other".into(), "owner".into(), None, None, "en".into());
+    let err = plan(&state, "extension.enable", None, &json!({ "extension": "x" }), &other).await.unwrap_err();
+    assert_eq!(err.code, "PERMISSION_DENIED");
+
+    let stop = plan(&state, "server.stop", Some(&id), &json!({}), &owner).await.unwrap();
+    assert_eq!(stop["needsConfirm"], true);
+    let pid = stop["planId"].as_str().unwrap();
+    let err = run(&state, "", None, &Value::Null, Some(pid), &owner).await.unwrap_err();
+    assert_eq!(err.code, "confirm_required");
+    let confirmed = Caller::mcp("owner".into(), "owner".into(), Some("owner".into()), None, "en".into());
+    let ran = run(&state, "", None, &Value::Null, Some(pid), &confirmed).await;
+    assert!(ran.is_ok(), "{ran:?}");
+}

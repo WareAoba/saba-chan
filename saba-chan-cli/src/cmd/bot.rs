@@ -13,6 +13,9 @@ use crate::resolve;
 use serde_json::{json, Map, Value};
 use std::time::Duration;
 
+/// 에이전트에 넣는 원격 MCP 주소 (릴레이 `<issuer>/mcp`)
+const MCP_URL: &str = "https://saba-chan.online/mcp";
+
 pub async fn run(ctx: &Ctx, cmd: BotCmd) -> Result<()> {
     match cmd {
         BotCmd::Status => status(ctx).await,
@@ -35,6 +38,20 @@ pub async fn run(ctx: &Ctx, cmd: BotCmd) -> Result<()> {
             Ok(())
         }
         BotCmd::Erase => erase(ctx).await,
+        BotCmd::Agent { unlink: false } => {
+            let r = ctx.api.mcp_grant().await?;
+            ctx.out.data(&r, |r| match r.get("grant").filter(|g| g.is_object()) {
+                Some(g) => say!("{}", t!("bot.agent_linked", name = s(g, "clientName"), when = s(g, "lastUsedAt"))),
+                None => say!("{}", t!("bot.agent_none", url = MCP_URL)),
+            });
+            Ok(())
+        }
+        BotCmd::Agent { unlink: true } => {
+            ctx.ask.ensure(&t!("bot.confirm_agent_unlink"))?;
+            let r = ctx.api.mcp_grant_revoke().await?;
+            ctx.out.done(&t!("bot.agent_unlinked"), &r);
+            Ok(())
+        }
         BotCmd::Token => {
             // 셸 기록에 남지 않게 인자로 받지 않는다 (터미널이 아니면 표준 입력 한 줄)
             let token = ctx.ask.secret_or_stdin(&t!("bot.ask_token"))?;
