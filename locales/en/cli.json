@@ -636,6 +636,7 @@
     "preflight_failed": "Runtime setup for game modules failed: {{error}}. It is retried on the next server action."
   },
   "stop": {
+    "confirm": "Are you sure you want to stop {{name}} server?",
     "already": "{{name}} is not running.",
     "done": "{{name}} stopped.",
     "force_confirm": "Stop without saving?",
@@ -825,6 +826,7 @@
     "after": "Names can be partial (e.g. start pal). Run with no arguments in a terminal to open the full-screen menu (SABA_NO_TUI=1: the interactive shell).\nIn scripts use --json and --yes. Exit codes: 0 ok · 1 failed · 2 usage · 3 daemon unreachable · 4 not found · 130 cancelled"
   },
   "restart": {
+    "confirm": "Stop and start '{{name}}' again? Connected players will be dropped for a moment.",
     "waiting": "Restarting {{name}}...",
     "done": "{{name}} restarted."
   },

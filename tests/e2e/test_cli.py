@@ -58,7 +58,9 @@ def test_full_server_flow_through_cli(cli, daemon, fake_server):
     assert r.code == 0, r
     assert cli.run("backup", "list", "cli1", check=0).json()
 
-    r = cli.run("stop", "cli1")
+    # 켜진 서버를 끊는 명령은 묻는다: 물을 수 없으면 --yes가 있어야 한다
+    assert cli.run("stop", "cli1").code == 2
+    r = cli.run("stop", "cli1", "--yes")
     assert r.code == 0, r
     assert daemon.server_status(iid) == "stopped"
 
