@@ -17,6 +17,8 @@
     "ask_source": "How do you want to set it up?",
     "ask_preset": "Start from a preset?",
     "no_preset": "No preset",
+    "agreements_declined": "The server was not created because the agreements were not accepted.",
+    "not_installable": "{{key}}: saba-chan can't install a new server with this value. Choices: {{choices}}",
     "created_installing": "Created {{name}}. Installing server files...",
     "folder_other_game": "{{dir}} looks like a different game ({{games}}).",
     "folder_unrecognized": "Could not recognize a server in {{dir}}.",

@@ -369,7 +369,6 @@
     "stop_timeout_toast": "⚠️ {{name}} サーバーを停止しています。時間がかかる場合があります。",
     "unexpected_stop_toast": "⚠️ {{name}} サーバーが予期せず停止しました！",
     "external_start_toast": "ℹ️ {{name}} サーバーはサバちゃんの外で起動されました",
-    "status_check_failed_title": "ステータスチェック失敗",
     "add_server_name_empty_title": "入力エラー",
     "add_server_name_empty_message": "サーバー名を入力してください",
     "add_module_empty_title": "入力エラー",
@@ -416,7 +415,8 @@
     "stdin_unconfirmed": "コマンドが送信されたか確認できませんでした。再送する前にコンソールを確認してください。",
     "move_cross_volume": "別のドライブにあるフォルダーは移せません。「今の場所のまま」で取り込んでください。",
     "move_in_use": "フォルダーを移せませんでした。このフォルダーのサーバーを停止し、フォルダーを開いているプログラムを閉じてからもう一度試してください。",
-    "move_failed": "フォルダーを移せませんでした。「今の場所のまま」で取り込んでください。"
+    "move_failed": "フォルダーを移せませんでした。「今の場所のまま」で取り込んでください。",
+    "not_installable": "選んだ設定ではサバちゃんがサーバーをインストールできません。別の値を選んでください。"
   },
   "settings": {
     "save_failed_title": "設定保存失敗",

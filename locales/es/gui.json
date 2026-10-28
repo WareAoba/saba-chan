@@ -429,7 +429,6 @@
     "stop_timeout_toast": "⚠️ Deteniendo el servidor {{name}}. Puede tardar un poco.",
     "unexpected_stop_toast": "⚠️ ¡El servidor {{name}} se detuvo inesperadamente!",
     "external_start_toast": "ℹ️ El servidor {{name}} se inició fuera de Saba-chan",
-    "status_check_failed_title": "Falló la verificación de estado",
     "add_server_name_empty_title": "Error de Entrada",
     "add_server_name_empty_message": "Ingrese el nombre del servidor",
     "add_module_empty_title": "Error de Entrada",
@@ -476,7 +475,8 @@
     "stdin_unconfirmed": "No se pudo confirmar que el comando se envió. Revisa la consola antes de volver a intentarlo.",
     "move_cross_volume": "No se puede mover una carpeta de otra unidad. Impórtala con «Dejarla donde está».",
     "move_in_use": "No se pudo mover la carpeta. Detén el servidor de esta carpeta, cierra los programas que la tengan abierta e inténtalo de nuevo.",
-    "move_failed": "No se pudo mover la carpeta. Impórtala con «Dejarla donde está»."
+    "move_failed": "No se pudo mover la carpeta. Impórtala con «Dejarla donde está».",
+    "not_installable": "saba-chan no puede instalar un servidor con el ajuste elegido. Elige otro valor."
   },
   "settings": {
     "save_failed_title": "Falló guardar configuración",

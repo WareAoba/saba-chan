@@ -746,11 +746,6 @@ const impl = {
         servers = servers.map((s) => (s.id === id ? { ...s, status: 'running', start_time: now() } : s));
         return ok({ success: true });
     },
-    managedStart: (id) => impl.instanceStart(id),
-    serverStop: (name) => {
-        servers = servers.map((s) => (s.name === name ? { ...s, status: 'stopped', start_time: null } : s));
-        return ok({ success: true });
-    },
     onStatusUpdate: (cb) => setTimeout(() => cb({ step: 'ready', message: 'ready' }), 50),
 };
 

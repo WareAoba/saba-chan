@@ -49,7 +49,7 @@
 ## 6. 좁은 호스트 요청 통로 (합의안 F, 데몬·SDK 기반 구현 완료)
 
 - 모든 실행의 `SABA_HOST_DIR`·`HOST:`·허용 작업·한계·인스턴스 문맥·자격증명 재진입은 [01 §7.1](01-daemon-core.md#71-srcpluginmodrs-python-모듈익스텐션-실행기-단발-프로세스)에 이관했다.
-- `daemon_stdin_command`와 새 `daemon_rest`의 HOST/HTTP 전환은 [02 §2.5](02-modules.md#25-공용-python-유틸-dmodules)에 이관했다. 일반 토큰 경로와 `daemon_post`는 옛 모듈 호환용으로 남는다.
+- `daemon_stdin_command`와 새 `daemon_rest`의 HOST/HTTP 전환은 [02 §2.5](02-modules.md#25-공용-python-유틸-dmodules)에 이관했다. 일반 토큰 경로와 `daemon_post`는 0.1.12에서 지웠다.
 - 남은 part 3: 공식 모듈은 이 SDK 도우미만 사용한다. 팰월드의 `execute_rest_via_daemon`과 `PalworldRestClient` 직접 REST 경로를 도우미로 옮기며 `method`와 `path`의 endpoint 의미를 보존한다.
 
 ## 7. 모듈 호출 오류의 모양 (합의안 G, 구현 완료)
@@ -63,6 +63,6 @@
 
 - 게임 서버 프로세스와 Linux의 OS 실행 제한, 인스턴스별 쓰기 범위.
 - 순수 라이브러리(INI 파서)와 실행 제공자(SteamCMD) 분리. 실행 도구는 데몬이 중개한다.
-- `SABA_TOKEN_PATH`·`daemon_post` 제거 시점.
+- ~~`SABA_TOKEN_PATH`·`daemon_post` 제거 시점~~ → 0.1.12에서 지웠다.
 - 측정 뒤 상주 Python 작업자 검토.
 - 공통 호출 문맥을 한 곳에서 만들고, 버전 있는 입력·결과 계약으로 정리.

@@ -429,7 +429,6 @@
     "stop_timeout_toast": "⚠️ Arrêt du serveur {{name}}. Cela peut prendre un certain temps.",
     "unexpected_stop_toast": "⚠️ Le serveur {{name}} s'est arrêté de manière inattendue !",
     "external_start_toast": "ℹ️ Le serveur {{name}} a été démarré en dehors de Saba-chan",
-    "status_check_failed_title": "Échec de la vérification du statut",
     "add_server_name_empty_title": "Erreur d'entrée",
     "add_server_name_empty_message": "Saisissez le nom du serveur",
     "add_module_empty_title": "Erreur d'entrée",
@@ -476,7 +475,8 @@
     "stdin_unconfirmed": "Impossible de confirmer l'envoi de la commande. Vérifiez la console avant de réessayer.",
     "move_cross_volume": "Un dossier situé sur un autre lecteur ne peut pas être déplacé. Importez-le plutôt avec « Le laisser en place ».",
     "move_in_use": "Impossible de déplacer le dossier. Arrêtez le serveur de ce dossier, fermez les programmes qui l'ont ouvert, puis réessayez.",
-    "move_failed": "Impossible de déplacer le dossier. Importez-le plutôt avec « Le laisser en place »."
+    "move_failed": "Impossible de déplacer le dossier. Importez-le plutôt avec « Le laisser en place ».",
+    "not_installable": "saba-chan ne peut pas installer de serveur avec le réglage choisi. Choisissez une autre valeur."
   },
   "settings": {
     "save_failed_title": "Échec de l'enregistrement des paramètres",

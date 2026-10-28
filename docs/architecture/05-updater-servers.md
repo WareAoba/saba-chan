@@ -272,7 +272,7 @@ Tauri 커맨드(`installer/gui/src-tauri/src/lib.rs`): `get_installer_state`, `s
 
 ### 4.1 전역 동작
 
-- 클라이언트 게이트(`app.ts` `clientGate`): 클라이언트(`X-Saba-Client: 1`, 맞는 `x-internal-secret`, 맞는 `x-admin-key`)가 아닌 접속은 Oops 페이지다. 보안 장치가 아니라 안내용이다. 브라우저도 쓰는 `/admin*`, `/api/bot-invite`, `/remote/ws`, `/v1/updates/download/installer`, 컨테이너 프로브용 `/health`는 통과한다.
+- 클라이언트 게이트(`app.ts` `clientGate`): 클라이언트(`X-Saba-Client: 1`, 맞는 `x-internal-secret`, 맞는 `x-admin-key`)가 아닌 접속은 Oops 페이지다. 보안 장치가 아니라 안내용이다. 브라우저도 쓰는 `/admin*`, `/api/bot-invite`, `/remote/ws`, `/v1/updates/download/installer`, 컨테이너 프로브용 `/health`, 원격 MCP(`/mcp`, `/oauth/*`, `/.well-known/oauth-*`, §4.4 (l))는 통과한다. 원격 MCP 경로는 Oops 변환도 하지 않고(OAuth·MCP 오류 형식 그대로) CORS는 모든 출처에 연다(쿠키 없이 Bearer만 쓴다).
 - 잘못된 요청은 모두 Oops 페이지(`app.ts` `oopsOnError`, 사용자 결정 2026-10-26): 클라이언트가 아닌 요청이 4xx·5xx로 끝나면 권한 없음·틀린 링크·한도 초과·값 오류 모두 없는 주소와 똑같은 404 HTML(웹사이트 `not-found.html`과 같은 그림·문구, 10개 언어)로 바꾸고 경로마다 다른 레이트리밋 헤더도 지운다. 사바쨩 웹(`/remote/`)과 컨테이너 프로브용 `/health`는 바꾸지 않는다. 클라이언트는 지금처럼 JSON 오류를 받는다. nginx도 `/health`는 404, 직접 거절한 405·429와 `X-Saba-Client` 없이 들어온 클라이언트 전용 경로(데몬 경로·`/node/ws`·`/node/tunnel`·`/v1/updates/`·`/api/`)는 404 `not-found.html`로 준다(차단 페이지는 없다).
 - CORS는 `app://`, `tauri://`, 웹사이트 origin, dev 모드의 localhost, `CORS_ORIGINS`만 허용한다.
 - 레이트리밋은 전역 100/min이고 라우트별 값은 `middleware/rateLimit.ts` `ROUTE_RATE_LIMITS`에 있다. 노드 경로(`/poll`, `/heartbeat`, `/events`, `/ack`, `/result/:id`)는 한 번 검증된 토큰이면 노드 단위로, 아니면 IP로 센다.
@@ -297,6 +297,15 @@ Tauri 커맨드(`installer/gui/src-tauri/src/lib.rs`): `get_installer_state`, `s
 | GET | `/api/bot-invite` | — | — | `{clientId, inviteUrl, bot}` / 503 `BOT_NOT_CONFIGURED` | `app.ts` |
 | POST | `/api/pair/initiate` | —(3/min) | `{relayUrl?, deviceName?(64자), currentToken?}` | `{code(nanoid32), pollSecret(nanoid48), expiresAt, ttl:300}`. pollSecret은 sha256으로 저장. `currentToken`이 최근에 검증돼 토큰 캐시에 있는 노드 토큰이면(인증 없는 경로라 argon2를 돌리지 않는다. 켜진 데몬의 토큰은 heartbeat로 늘 캐시에 있다) 그 호스트를 `replace_host_id`로 적어 같은 계정이 수령할 때 그 PC를 다시 연결한다(아니면 무시). `deviceName`은 새 PC의 이름 | `routes/pair.ts` |
 | GET | `/api/pair/:code/status` | `X-Poll-Secret` 헤더(30/min) | — | `{status:'pending', expiresAt}` / `expired` / `{status:'claimed', hostId, nodeToken}`. nodeToken은 수령 기한(코드 만료와 클레임 뒤 2분 가운데 늦은 쪽)까지 다시 읽을 수 있고, 기한이 지나면 `null`이다. 헤더가 없으면 401 `MISSING_POLL_SECRET`, 틀리면 403 | `pair.ts` |
+| GET | `/.well-known/oauth-protected-resource`, `…/mcp` | — | — | `{resource:<issuer>/mcp, authorization_servers:[issuer], scopes_supported:['saba'], bearer_methods_supported:['header']}` (RFC 9728). 원격 MCP가 꺼져 있으면(`DISCORD_CLIENT_SECRET` 없음) `/oauth`·`.well-known` 모두 503 `MCP_NOT_CONFIGURED` | `mcp/oauth/routes.ts` |
+| GET | `/.well-known/oauth-authorization-server` | — | — | RFC 8414. `issuer`(`MCP_ISSUER`, 기본 `https://saba-chan.online`), 인가·토큰·등록·철회 주소, `code_challenge_methods_supported:['S256']`, `token_endpoint_auth_methods_supported:['none']`, `client_id_metadata_document_supported:true`, `authorization_response_iss_parameter_supported:true` | `mcp/oauth/routes.ts` |
+| POST | `/oauth/register` | —(30/min) | RFC 7591 `{client_name?, redirect_uris(1~5), token_endpoint_auth_method?:'none'}`. 돌려보낼 주소는 https 또는 루프백 http, 조각(#) 없음 | 201 `{client_id:'dcr_…', client_name, redirect_uris, token_endpoint_auth_method:'none', …}` / 400 `invalid_redirect_uri`·`invalid_client_metadata` | `mcp/oauth/clients.ts` |
+| GET | `/oauth/authorize` | —(30/min) | `response_type=code, client_id, redirect_uri, code_challenge, code_challenge_method=S256, state?, resource?` | 302 디스코드 로그인(`scope=identify`, 돌아올 곳 `<issuer>/oauth/discord/callback`). `client_id`가 https 주소면 그 CIMD 문서를 받는다(5KB·5초·리다이렉트 없음·사설 주소 거부, 하루 캐시). 돌려보낼 주소가 등록과 다르면 오류 화면만, 같으면 `error`·`state`·`iss`로 돌려보낸다(`invalid_request`·`invalid_target`) | `mcp/oauth/authorize.ts` |
+| GET | `/oauth/discord/callback` | 디스코드 로그인 | `code, state` | 동의 화면 HTML(내 PC 목록, 지금 연결된 에이전트는 끊긴다는 안내, CSRF). 차단 목록이면 403 화면 | `mcp/oauth/authorize.ts` |
+| POST | `/oauth/consent` | 동의 화면(30/min) | form `req, csrf, decision=allow\|deny` | 302 에이전트 `redirect_uri?code&state&iss` / `error=access_denied` | `mcp/oauth/authorize.ts` |
+| POST | `/oauth/token` | —(600/min) | form `grant_type=authorization_code(code, code_verifier, redirect_uri, client_id, resource?)` 또는 `refresh_token(refresh_token, client_id)` | `{access_token, token_type:'Bearer', expires_in:3600, refresh_token}` / 400 `invalid_grant`·`unsupported_grant_type` / 401 `invalid_client` | `mcp/oauth/routes.ts` |
+| POST | `/oauth/revoke` | — | form `token, client_id` | 200. 어느 토큰이든 그 연결째 끊는다 | `mcp/oauth/routes.ts` |
+| GET/DELETE | `/api/mcp/grant` | 노드 | — | GET `{grant:{clientName, createdAt, lastUsedAt}\|null}`(그 PC 주인의 에이전트 연결) / DELETE 204 | `routes/mcpGrant.ts` |
 | GET | `/api/hosts/:hostId` | 노드(자기 호스트) | — | `{id, name, status, lastHeartbeat, agentVersion, createdAt}` | `routes/host.ts` |
 | PATCH | `/api/hosts/:hostId/bot-config` | 노드 | `{prefixes?, prefix?, moduleAliases?, commandAliases?}` (`prefixes`가 있으면 `prefix`보다 우선) | `{success, botConfig}`. 지금 데몬은 heartbeat `botConfig`로 보내므로 쓰지 않는다 | `host.ts` |
 | GET | `/api/hosts/:hostId/nodes` | 노드 | — | `[{guildId, hostId, ownerDiscordId, primary, guildName, locale, iconUrl, prefixes, prefixDefault, createdAt, updatedAt}]`. 이 PC가 대표인 길드(`primary:true`)와 붙은 길드(`primary:false`, §4.4 (i))를 함께 싣는다. `ownerDiscordId`(그 길드에서 이 PC의 주인, 명령 poll에 싣는 값과 같다)는 노드 토큰으로 인증한 요청에만 싣는다(개발 모드 패스스루에는 없다). `iconUrl`은 봇이 그 길드에 있고 아이콘이 있을 때만(128px png, 없으면 null), `prefixes`는 지금 쓰는 접두사(기본값이면 응답 언어의 글자), `prefixDefault`는 기본값을 쓰는 중인지 | `routes/node.ts` |
@@ -349,7 +358,7 @@ Tauri 커맨드(`installer/gui/src-tauri/src/lib.rs`): `get_installer_state`, `s
 
 데몬이 명령을 넣는 HTTP 라우트는 없다. 큐 INSERT는 봇이 같은 프로세스에서 `services/commandSubmission.ts` `submitCommand`로 한다. 페어링 클레임도 봇의 `/사바쨩 연결`이 `services/pairing.ts` `claimPairingCode`를 직접 부른다.
 
-### 4.3 DB 스키마 (`relay-server/src/db/schema.ts`, migration 0000–0032)
+### 4.3 DB 스키마 (`relay-server/src/db/schema.ts`, migration 0000–0034)
 
 | 테이블 | 주요 컬럼 |
 |---|---|
@@ -368,9 +377,12 @@ Tauri 커맨드(`installer/gui/src-tauri/src/lib.rs`): `get_installer_state`, `s
 | `update_events` | host_id, anon_id, from/to_version, phase, error_code, platform |
 | `chatbot_settings` / `chatbot_memory` / `chatbot_records` | 길드 챗봇 설정(키는 `api_key_enc`로 암호화) / 채널별 요약 기억 / 길드별 기록(kind·key·value·만료) |
 | `blocked_users` | `discord_id` PK, reason, created_by(운영자 디스코드 ID 또는 `admin-api`), created_at, expires_at(NULL이면 무기한). §4.4 (g) |
+| `mcp_clients` | `id` PK(CIMD 주소 그대로 또는 `dcr_<nanoid>`), kind(`cimd`·`dcr`), name, redirect_uris jsonb, fetched_at(CIMD 하루 캐시), created_at (0034, §4.4 (l)) |
+| `mcp_grants` | `id` PK, `discord_id` → users(고유: 계정마다 에이전트 연결 하나), `client_id` → mcp_clients, created_at, last_used_at (0034) |
+| `mcp_tokens` | `hash` PK(`sha256:<hex>`, 원문은 두지 않는다), `grant_id` → mcp_grants cascade, kind(`access` 1시간·`refresh` 30일), expires_at, rotated_at(갱신 토큰을 쓴 때), created_at (0034) |
 | `relay_stats` | `at` PK, hosts_total, hosts_online, guilds, bot_guilds, pollers, web_sessions, commands(지난 기록 뒤 큐에 들어온 수), chatbot_turns, chatbot_input_tokens·chatbot_cached_tokens·chatbot_cache_write_tokens·chatbot_output_tokens(bigint, 0031), music_voice, cpu_pct, rss_mb, load_pct, mem_used_pct, db_mb. 5분마다 한 줄, 사람·IP·길드 id 없음. §4.4 (h) |
 
-정리 스케줄러(`services/cleanup.ts`): 감사 30일, 운영 통계 365일, 끝난 큐 7일, 업데이트 이벤트 90일, 페어링 코드 24시간 뒤 삭제, 만료된 챗봇 도구 기록(`chatbot_records.expires_at`)과 기한 없이 180일 안 바뀐 기록 삭제, 90일 안 바뀐 챗봇 장기 기억 삭제, 기한이 지난 운영자 차단(`blocked_users`) 삭제, 끝났거나 기한이 지나고 하루 지난 개인정보 삭제표 삭제. 사용자(`users`)는 30일 넘게 안 보였고 호스트·노드·권한·페어링 코드가 가리키지 않고 `isBanned`가 아닐 때만 지운다(서버 안 금지 -1도 권한 행이라 남는다). 봇이 길드에서 빠지면(`guildDelete`, 기동 때 봇이 없는 길드도) 그 길드를 `unbindGuild`로 푼다(`nodeOwner.ts` `forgetRemovedGuild`·`forgetGuildsBotLeft`). 수령 기한이 지난 페어링 토큰은 바로 지운다. 만료 큐는 timeout으로, heartbeat가 3분 넘게 없는 host는 offline으로 바꾼다.
+정리 스케줄러(`services/cleanup.ts`): 감사 30일, 운영 통계 365일, 끝난 큐 7일, 업데이트 이벤트 90일, 페어링 코드 24시간 뒤 삭제, 만료된 챗봇 도구 기록(`chatbot_records.expires_at`)과 기한 없이 180일 안 바뀐 기록 삭제, 90일 안 바뀐 챗봇 장기 기억 삭제, 기한이 지난 운영자 차단(`blocked_users`) 삭제, 끝났거나 기한이 지나고 하루 지난 개인정보 삭제표 삭제, 만료한 MCP 토큰과 90일 안 쓴 에이전트 연결 삭제, 연결이 없고 하루 넘게 쓰이지 않은 MCP 등록 클라이언트 삭제. 사용자(`users`)는 30일 넘게 안 보였고 호스트·노드·권한·페어링 코드·에이전트 연결이 가리키지 않고 `isBanned`가 아닐 때만 지운다(서버 안 금지 -1도 권한 행이라 남는다). 봇이 길드에서 빠지면(`guildDelete`, 기동 때 봇이 없는 길드도) 그 길드를 `unbindGuild`로 푼다(`nodeOwner.ts` `forgetRemovedGuild`·`forgetGuildsBotLeft`). 수령 기한이 지난 페어링 토큰은 바로 지운다. 만료 큐는 timeout으로, heartbeat가 3분 넘게 없는 host는 offline으로 바꾼다.
 
 ### 4.4 프로토콜 흐름
 
@@ -399,7 +411,7 @@ Tauri 커맨드(`installer/gui/src-tauri/src/lib.rs`): `get_installer_state`, `s
 
 **(d) Sleep/Wake**: 원본은 데몬 `nodeSettings[g].discord.sleeping`이다. 슬래시 `/사바쨩 코코낸내`/`기상`은 데몬 액션 `discord.settings.set`을 부르고, 데몬이 `PATCH /api/nodes/:g/settings {sleeping}`으로 relay의 `nodes.is_sleep`과 메모리 `_pausedGuilds`를 맞춘다(`bot/commands/discordSettings.ts` `applyNodeSettings`). 잠든 길드는 `/사바쨩` 하위 명령을 뺀 명령과 알림을 받지 않는다. 메시지는 모두 무시하고, 상호작용은 `/사바쨩` 하위 명령만 받으며 길드 서버 명령·버튼·모달에는 잠들어 있다는 안내만 보인다(`bot/gateway/gateway.ts`). 옛 데몬(액션을 모름)이면 relay에만 쓴다.
 
-**(e) 슬래시 명령이 보이는 자리**: Discord 슬래시 목록은 길드마다 하나라서(사람마다 다르게 보일 수 없다) relay는 길드 상태로만 고른다. 전역 명령은 봇 DM에서만 보이는 `/사바쨩`(상태·연결·웹·도움말, `contexts:[BotDM]`)이다. 길드의 `/사바쨩`은 길드 명령으로, 서버 슬래시 루트와 같은 길드 범위 PUT에 담는다(`bot/commands/guildCommands.ts` `syncGuilds`). 자리는 노드가 없으면 `unbound`(연결·도움말), 있으면 `nodes.is_sleep`에 따라 `awake`(기상 뺀 전부)·`asleep`(코코낸내 뺀 전부)다. 연결된 길드의 `연결`은 내 PC를 붙인다(§4.4 (i)). 서브커맨드마다 `places`(기본 `awake`·`asleep`)로 보이는 자리를 정하고, 서브커맨드가 하나도 남지 않은 그룹은 뺀다(`bot/gateway/contract.ts` `SlashPlace`, `slash.ts` `buildRootCommand`). 잠든 길드도 서버 슬래시 루트는 그대로 둔다(지웠다 다시 만들면 Discord의 길드당 하루 200개 만들기 한도를 깎는다. `/사바쨩` 하위 명령만 바뀌는 것은 고치기라 한도와 상관없다). 잠든 동안 부르면 게이트웨이가 잠들어 있다는 안내만 한다. 연결·연결해제·옮기기·코코낸내·기상 뒤에 그 길드만 다시 맞추고, 놓친 변화는 5분 전체 맞추기가 잡는다. `/사바쨩 도움말`도 그 자리의 목록만 보인다. 목록에 없는 옛 정의로 불러도 각 핸들러가 노드·권한을 다시 확인한다. 서비스는 `BotService.guildRoots(guildId)`로 특정 길드에만 루트 명령을 더할 수 있다. 같은 PUT에 담고(서버 루트 이름이 겹치면 다른 이름을 붙인다), 처리는 그 서비스의 `guildCommands`가 하며, 릴레이가 처리하는 명령이라 잠든 길드에서도 받는다. 지금은 운영 서버의 `/운영`(§4.4 (g))뿐이다.
+**(e) 슬래시 명령이 보이는 자리**: Discord 슬래시 목록은 길드마다 하나라서(사람마다 다르게 보일 수 없다) relay는 길드 상태로만 고른다. 전역 명령은 봇 DM에서만 보이는 `/사바쨩`(상태·연결·웹·도움말, `contexts:[BotDM]`)이다. 길드의 `/사바쨩`은 길드 명령으로, 서버 슬래시 루트와 같은 길드 범위 PUT에 담는다(`bot/commands/guildCommands.ts` `syncGuilds`). 자리는 노드가 없으면 `unbound`(연결·도움말), 있으면 `nodes.is_sleep`에 따라 `awake`(기상 뺀 전부)·`asleep`(코코낸내 뺀 전부)다. 연결된 길드의 `연결`은 내 PC를 붙인다(§4.4 (i)). 서브커맨드마다 `places`(기본 `awake`·`asleep`)로 보이는 자리를 정하고, 서브커맨드가 하나도 남지 않은 그룹은 뺀다(`bot/gateway/contract.ts` `SlashPlace`, `slash.ts` `buildRootCommand`). 잠든 길드도 서버 슬래시 루트는 그대로 둔다(지웠다 다시 만들면 Discord의 길드당 하루 200개 만들기 한도를 깎는다. `/사바쨩` 하위 명령만 바뀌는 것은 고치기라 한도와 상관없다). 잠든 동안 부르면 게이트웨이가 잠들어 있다는 안내만 한다. 연결·연결해제·옮기기·코코낸내·기상 뒤에 그 길드만 다시 맞추고, 놓친 변화는 5분 전체 맞추기가 잡는다. 길드마다 마지막으로 보낸 정의를 기억해 같으면 다시 보내지 않고, 봇이 길드에 들어오면(`guildCreate`, 추방 뒤 다시 초대 포함) 그 기억을 지워 다시 보낸다(추방되면 Discord가 길드 명령을 지운다). 등록한 길드만 다음 5분 주기에 한 번 Discord의 길드 명령 목록을 조회해 이름을 맞춰 보고(주기마다 5길드까지), 없으면 다시 등록한다. 3번 다시 등록해도 없으면 그 길드는 다시 초대되거나 재시작될 때까지 보지 않는다. 확인된 길드와 권한 없음(50001)으로 등록하지 못한 길드는 조회하지 않는다(`guildCommands.ts` `verifyGuilds`). `/사바쨩 도움말`도 그 자리의 목록만 보인다. 목록에 없는 옛 정의로 불러도 각 핸들러가 노드·권한을 다시 확인한다. 서비스는 `BotService.guildRoots(guildId)`로 특정 길드에만 루트 명령을 더할 수 있다. 같은 PUT에 담고(서버 루트 이름이 겹치면 다른 이름을 붙인다), 처리는 그 서비스의 `guildCommands`가 하며, 릴레이가 처리하는 명령이라 잠든 길드에서도 받는다. 지금은 운영 서버의 `/운영`(§4.4 (g))뿐이다.
 
 **(f) 사바쨩 웹 중계** (`services/webHub.ts`, `routes/web.ts`, `bot/commands/webCommand.ts`): 메모리에만 둔다(단일 인스턴스, 재시작하면 다시 연다).
 
@@ -456,6 +468,12 @@ Tauri 커맨드(`installer/gui/src-tauri/src/lib.rs`): `get_installer_state`, `s
 - 데몬은 두 쪽 모두 프록시 환경을 따른다(`tunnel::proxy_for`: wss는 `HTTPS_PROXY`, 그다음 `ALL_PROXY`, `NO_PROXY`와 루프백은 직접. http 프록시에 `CONNECT`로 연다. URL의 사용자명·암호는 `%XX`를 풀어 Basic 인증으로 보낸다). 웹소켓은 reqwest를 거치지 않아 따로 따른다.
 - nginx `location = /node/tunnel`(노드 경로라 `X-Saba-Client` 필요). 상태는 릴레이 메모리에만 있어 다시 켜면 열린 터널이 닫히고 A가 다시 연다.
 
+
+**(l) 원격 MCP** (`mcp/`, 설계 https://claude.ai/artifact/P7M94HpbN7dtAB28VwSKX4, 사용자 결정 2026-10-28): 사용자의 AI 에이전트(ChatGPT·Claude·Gemini 등)가 `<issuer>/mcp` 하나로 붙어, 디스코드 계정이 주인인 모든 PC를 주인 권한으로 다룬다.
+- 연결은 디스코드 계정마다 하나다(`mcp_grants.discord_id` 고유). 새로 허가하면 예전 연결과 토큰을 지운다. 끊는 길은 앱(`/api/mcp/grant` DELETE), `/oauth/revoke`, 개인정보 지우기, 90일 미사용.
+- 인가: 릴레이가 OAuth 2.1 인가 서버다. 공개 클라이언트·PKCE S256만 받는다. 클라이언트 등록은 CIMD(표준)와 DCR(폐지 예정이지만 받는다). 사람 확인은 디스코드 로그인(`identify`, 비밀값 `DISCORD_CLIENT_SECRET`)이고, 동의 화면에서 허용하면 인가 코드(60초, 한 번. 다시 쓰이면 그 연결째 지운다)를 낸다. 흐름을 시작한 브라우저에 쿠키(`saba_mcp_*`, `Path=/oauth`, 10분)를 두고 콜백·동의에서 확인한다. CIMD 문서는 이름 주소만 받고(IP로 쓴 주소는 거절) 붙는 순간의 주소가 사설·루프백이면 받지 않는다. 토큰 엔드포인트는 CIMD를 다시 받지 않고 코드·연결의 client_id만 맞춘다. 인가 응답에는 늘 `iss`를 붙인다(RFC 9207).
+- 토큰은 무작위 값이고 DB에는 해시만 둔다. 갱신 토큰은 쓸 때마다 새 쌍으로 바꾼다. 같은 갱신 토큰이 10초 안에 다시 오면 같은 쌍을 돌려주고(응답을 못 받은 재시도), 그 뒤에 오면 도난으로 보고 연결을 지운다. 회전은 `rotated_at IS NULL` 조건으로 한 번만 한다. 차단 목록의 계정은 접근·갱신 토큰이 바로 막힌다.
+- 동의 화면과 오류 화면은 릴레이가 그리는 정적 HTML(CSP `default-src 'none'`, `form-action 'self' <에이전트 출처>`, `frame-ancestors 'none'`)이고 문구는 릴레이 locales(`src/locales/*.ts`의 `mcp`) 10개 언어다.
 ### 4.5 daemon 쪽 호출과 relay 서버 비교 (검증 결과)
 
 | daemon 라우트 | relay 호출 | 인증 | 일치 |

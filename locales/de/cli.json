@@ -17,6 +17,8 @@
     "ask_source": "Wie möchtest du ihn einrichten?",
     "ask_preset": "Mit einer Vorlage starten?",
     "no_preset": "Standardeinstellungen",
+    "agreements_declined": "Der Server wurde nicht erstellt, weil den Bedingungen nicht zugestimmt wurde.",
+    "not_installable": "{{key}}: Mit diesem Wert kann saba-chan keinen neuen Server installieren. Möglich: {{choices}}",
     "created_installing": "{{name}} erstellt. Serverdateien werden installiert...",
     "folder_other_game": "{{dir}} sieht nach einem anderen Spiel aus ({{games}}).",
     "folder_unrecognized": "In {{dir}} wurde kein Server erkannt.",
