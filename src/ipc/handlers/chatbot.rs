@@ -270,6 +270,10 @@ fn apply(cfg: &mut ChatbotConfig, patch: ChatbotPatch) -> Result<(), String> {
             }
             Value::Object(mut m) => {
                 check_tool_keys(&m, false)?;
+                // 도구 지우기(null)는 도구 없음 — 키가 빠지면 옛 설정으로 다시 셈한다
+                if m.get("tools").is_some_and(Value::is_null) {
+                    m.insert("tools".into(), json!([]));
+                }
                 upgrade_patch(&mut m);
                 // 도구 없는 서버 값은 옛 설정으로 셈하므로, 지금 쓰는 도구를 먼저 적어 둔다
                 let (_, tools_now) = selection(cfg, &guild);
@@ -825,6 +829,16 @@ mod tests {
         assert_eq!(cfg.guilds["g2"]["tools"], json!([]));
         assert!(!settle_legacy(&mut cfg, ["g2".to_string()]), "nothing old to move");
         assert_eq!(put_body(&cfg, "g2")["tools"], json!([]));
+    }
+
+    /// 서버 도구를 지우면(null) 도구 없음이다: 옛 설정으로 다시 셈해 고르지 않은 도구를 켜지 않는다
+    #[test]
+    fn clearing_a_servers_tools_leaves_it_with_none() {
+        let mut cfg = ChatbotConfig::default();
+        apply(&mut cfg, patch(json!({"guilds": {"g1": {"enabled": true, "tools": ["lol"]}}}))).unwrap();
+        apply(&mut cfg, patch(json!({"guilds": {"g1": {"tools": null}}}))).unwrap();
+        assert_eq!(cfg.guilds["g1"]["tools"], json!([]));
+        assert_eq!(put_body(&cfg, "g1")["tools"], json!([]));
     }
 
     /// 도구 목록은 문자열 배열이나 null만 받는다. 옛 도구 키는 더 받지 않는다
