@@ -820,6 +820,8 @@
       "chatbot.clear": "删除会说话的 Saba-chan 的所有设置和密钥",
       "chatbot.forget": "清除会说话的 Saba-chan 记住的内容（所有 Discord 服务器或其中一个）",
       "chatbot.models": "已保存的 API 密钥可用的模型（Discord 服务器名称或 id，省略则为唯一的服务器）",
+      "chatbot.credit": "剩余额度（仅限用普通密钥即可查询余额的服务商）以及一个 Discord 服务器本月的用量",
+      "chatbot.template": "输出服务器提示词基本模板（保存为文件后用 `chatbot set memo=@文件 --guild ...`）",
       "module.audit": "将模块 Python 代码的行为与声明的权限进行比较",
       "extension.audit": "将扩展 Python 代码的行为与声明的权限进行比较",
       "config.export": "将设置和服务器列表保存为 zip（用于迁移到其他电脑，不含游戏文件）",
@@ -1046,7 +1048,8 @@
       "schedule.add.command": "要执行的游戏命令 (command 任务，列表：server commands)",
       "schedule.edit.command": "要更改的游戏命令 (command 任务，换成其他命令时除非给出 --arg，否则清除旧输入)",
       "bot.notice.on": "开启启动通知",
-      "bot.notice.off": "关闭启动通知"
+      "bot.notice.off": "关闭启动通知",
+      "chatbot.template.locale": "模板语言（默认：应用语言）"
     },
     "after": "名称可以只写一部分（例如 start pal）。在终端中不带参数运行会打开全屏菜单(SABA_NO_TUI=1 时为交互式 shell)。\n在脚本中请使用 --json 和 --yes。退出码：0 成功 · 1 失败 · 2 用法错误 · 3 无法连接守护进程 · 4 未找到 · 130 已取消"
   },
@@ -1183,7 +1186,13 @@
     "not_synced": "已保存在此电脑上。机器人连接后会同步到 Discord（saba-chan-cli bot status）。",
     "sync_failed": "Discord 服务器 {{guild}} 未收到此更改：{{error}}",
     "read_failed": "无法读取 {{path}}：{{error}}",
-    "cleared_pending": "已清除这台电脑上会说话的 Saba-chan 的设置和密钥。未能联系到中继，将在下次连接时清除。"
+    "cleared_pending": "已清除这台电脑上会说话的 Saba-chan 的设置和密钥。未能联系到中继，将在下次连接时清除。",
+    "credit_balance": "余额",
+    "credit_balance_unsupported": "{{provider}} 不会通过普通 API 密钥告知余额。请在其网站上查看。",
+    "credit_balance_none": "暂时无法获取余额。",
+    "credit_usage": "本月用量（{{month}}，UTC）",
+    "credit_usage_line": "模型调用 {{calls}} 次 · 输入 {{input}} token（缓存 {{cached}}） · 输出 {{output}} token",
+    "credit_exhausted": "额度已用完（{{time}}）。充值前无法回复。"
   },
   "trust": {
     "verified": "已验证",

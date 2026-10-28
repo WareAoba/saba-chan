@@ -976,7 +976,13 @@
     "not_synced": "Enregistré sur ce PC. Le changement atteindra Discord une fois le bot connecté (saba-chan-cli bot status).",
     "sync_failed": "Le serveur Discord {{guild}} n'a pas reçu le changement : {{error}}",
     "read_failed": "Impossible de lire {{path}} : {{error}}",
-    "cleared_pending": "Réglages et clé de Saba-chan qui parle effacés sur ce PC. Le relais était injoignable ; ce sera effacé à la prochaine connexion."
+    "cleared_pending": "Réglages et clé de Saba-chan qui parle effacés sur ce PC. Le relais était injoignable ; ce sera effacé à la prochaine connexion.",
+    "credit_balance": "Solde",
+    "credit_balance_unsupported": "{{provider}} n’indique pas le solde pour les clés API classiques. Consulte-le sur son site.",
+    "credit_balance_none": "Impossible d’obtenir le solde pour le moment.",
+    "credit_usage": "Utilisation ce mois-ci ({{month}}, UTC)",
+    "credit_usage_line": "{{calls}} appels au modèle · {{input}} jetons d’entrée ({{cached}} en cache) · {{output}} jetons de sortie",
+    "credit_exhausted": "Le crédit est épuisé ({{time}}). Saba-chan ne peut plus répondre tant qu’il n’est pas rechargé."
   },
   "trust": {
     "verified": "vérifié",

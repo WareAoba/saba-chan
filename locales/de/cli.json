@@ -976,7 +976,13 @@
     "not_synced": "Auf diesem PC gespeichert. Es erreicht Discord, sobald der Bot verbunden ist (saba-chan-cli bot status).",
     "sync_failed": "Discord-Server {{guild}} hat die Änderung nicht erhalten: {{error}}",
     "read_failed": "{{path}} konnte nicht gelesen werden: {{error}}",
-    "cleared_pending": "Einstellungen und Schlüssel der Sprechenden Saba-chan auf diesem PC gelöscht. Das Relay war nicht erreichbar; dort wird beim nächsten Verbinden gelöscht."
+    "cleared_pending": "Einstellungen und Schlüssel der Sprechenden Saba-chan auf diesem PC gelöscht. Das Relay war nicht erreichbar; dort wird beim nächsten Verbinden gelöscht.",
+    "credit_balance": "Guthaben",
+    "credit_balance_unsupported": "{{provider}} meldet das Guthaben für normale API-Schlüssel nicht. Sieh auf deren Website nach.",
+    "credit_balance_none": "Das Guthaben konnte gerade nicht abgerufen werden.",
+    "credit_usage": "Nutzung in diesem Monat ({{month}}, UTC)",
+    "credit_usage_line": "{{calls}} Modellaufrufe · {{input}} Eingabe-Tokens ({{cached}} aus dem Cache) · {{output}} Ausgabe-Tokens",
+    "credit_exhausted": "Das Guthaben ist aufgebraucht ({{time}}). Saba-chan kann erst nach dem Aufladen antworten."
   },
   "trust": {
     "verified": "geprüft",

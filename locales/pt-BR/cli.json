@@ -976,7 +976,13 @@
     "not_synced": "Salvo neste PC. Chega ao Discord assim que o bot estiver conectado (saba-chan-cli bot status).",
     "sync_failed": "O servidor do Discord {{guild}} não recebeu a alteração: {{error}}",
     "read_failed": "Não foi possível ler {{path}}: {{error}}",
-    "cleared_pending": "As configurações e a chave da Saba-chan falante foram apagadas neste PC. O relay não foi alcançado; será apagado na próxima conexão."
+    "cleared_pending": "As configurações e a chave da Saba-chan falante foram apagadas neste PC. O relay não foi alcançado; será apagado na próxima conexão.",
+    "credit_balance": "Saldo",
+    "credit_balance_unsupported": "A {{provider}} não informa o saldo para chaves de API comuns. Veja no site dela.",
+    "credit_balance_none": "Não foi possível obter o saldo agora.",
+    "credit_usage": "Uso deste mês ({{month}}, UTC)",
+    "credit_usage_line": "{{calls}} chamadas ao modelo · {{input}} tokens de entrada ({{cached}} em cache) · {{output}} tokens de saída",
+    "credit_exhausted": "O crédito acabou ({{time}}). A Saba-chan não consegue responder até recarregar."
   },
   "trust": {
     "verified": "verificado",

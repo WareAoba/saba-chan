@@ -21,6 +21,8 @@ const API_KEYS = [
     'chatbotGet',
     'chatbotSave',
     'chatbotClearMemory',
+    'chatbotCredit',
+    'chatbotMemoTemplate',
 ];
 
 afterEach(() => {
@@ -252,6 +254,21 @@ describe('챗봇 설정 변환', () => {
         expect(settingsPatch({ ...settingsDraft(), disabledTools: ['social_notes'] }).disabledTools).toBeNull();
     });
 
+    it('추론 강도·끼어들기·확인 단계도 기본값이면 null, 게임 서버 도구도 끌 수 있다', () => {
+        const d = settingsDraft();
+        expect(d).toMatchObject({
+            effort: 'medium',
+            ambient: true,
+            ambientMinutes: 3,
+            ambientEffort: 'low',
+            confirmLevel: 'all',
+        });
+        expect(CHATBOT_TOOLS[0]).toBe('game_servers');
+        const p = settingsPatch({ ...d, effort: 'high', ambient: false, confirmLevel: 'caution' });
+        expect(p).toMatchObject({ effort: 'high', ambient: false, confirmLevel: 'caution', ambientMinutes: null });
+        expect(p).not.toHaveProperty('confirmCommands');
+    });
+
     it('릴레이 400을 읽을 수 있는 줄로', () => {
         const lines = relayErrorLines(
             { guildId: 'g1', status: 400, error: 'invalid_settings', details: [{ path: 'model', message: 'bad' }] },
@@ -319,6 +336,72 @@ describe('ChatbotView', () => {
         expect(patch.guilds.g1.memo).toBe('반말로 대답해');
         expect(patch.settings.disabledTools).toEqual(['images']);
         expect(patch.settings.persona).toBeNull();
+    });
+
+    it('추론 강도·끼어들기·실행 전 확인을 고르고, 끼어들기를 끄면 주기와 판단 강도는 잠긴다', async () => {
+        window.api.chatbotGet = vi.fn().mockResolvedValue({ success: true, settings: {}, guilds: {}, hasApiKey: true });
+        window.api.chatbotSave = vi
+            .fn()
+            .mockResolvedValue({ success: true, settings: {}, guilds: {}, hasApiKey: true });
+        render(<ChatbotView nodes={nodes} />);
+        pickOption(await screen.findByLabelText('Reasoning effort'), 'High');
+        pickOption(screen.getByLabelText('Check interval'), 'Every 10 min');
+        pickOption(screen.getByLabelText('Ask before running'), 'Dangerous only');
+        fireEvent.click(screen.getByLabelText('Game servers'));
+        fireEvent.click(screen.getByLabelText('Join in uninvited'));
+        expect(screen.getByLabelText('Check interval')).toBeDisabled();
+        expect(screen.getByLabelText('Join-in reasoning effort')).toBeDisabled();
+        fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+        await waitFor(() => expect(window.api.chatbotSave).toHaveBeenCalled());
+        expect(window.api.chatbotSave.mock.calls[0][0].settings).toMatchObject({
+            effort: 'high',
+            ambient: false,
+            ambientMinutes: 10,
+            ambientEffort: null,
+            confirmLevel: 'danger',
+            disabledTools: ['game_servers'],
+        });
+    });
+
+    it('비어 있는 서버 프롬프트는 기본 틀을 앱 언어로 받아 채울 수 있다', async () => {
+        window.api.chatbotGet = vi.fn().mockResolvedValue({ success: true, settings: {}, guilds: {}, hasApiKey: true });
+        window.api.chatbotMemoTemplate = vi
+            .fn()
+            .mockResolvedValue({ success: true, locale: 'en', template: '## Room vibe\n<!-- guide -->\n' });
+        render(<ChatbotView nodes={nodes} />);
+        const memo = await screen.findByLabelText('Server prompt for My Guild');
+        fireEvent.click(screen.getByRole('button', { name: 'Insert template' }));
+        await waitFor(() => expect(memo.value).toBe('## Room vibe\n<!-- guide -->\n'));
+        expect(window.api.chatbotMemoTemplate).toHaveBeenCalledWith('en');
+        // 채운 뒤에는 버튼이 사라진다 (쓴 글을 덮지 않게)
+        expect(screen.queryByRole('button', { name: 'Insert template' })).toBeNull();
+    });
+
+    it('남은 크레딧: 잔액을 주는 제공사는 잔액, 아니면 안내와 이번 달 사용량, 소진을 알렸으면 경고', async () => {
+        window.api.chatbotGet = vi.fn().mockResolvedValue({ success: true, settings: {}, guilds: {}, hasApiKey: true });
+        window.api.chatbotCredit = vi.fn().mockResolvedValue({
+            provider: 'deepseek',
+            balanceSupported: true,
+            balance: { amount: 12.5, currency: 'USD' },
+            usage: { month: '2026-10', calls: 3, input: 12000, cached: 4000, output: 800 },
+            exhaustedAt: null,
+        });
+        const { unmount } = render(<ChatbotView nodes={nodes} />);
+        expect(await screen.findByText('$12.50')).toBeTruthy();
+        expect(screen.getByText(/12,000/)).toBeTruthy();
+        expect(window.api.chatbotCredit).toHaveBeenCalledWith('g1');
+        unmount();
+
+        window.api.chatbotCredit = vi.fn().mockResolvedValue({
+            provider: 'openai',
+            balanceSupported: false,
+            balance: null,
+            usage: { month: '2026-10', calls: 0, input: 0, cached: 0, output: 0 },
+            exhaustedAt: '2026-10-28T01:00:00.000Z',
+        });
+        render(<ChatbotView nodes={nodes} />);
+        expect(await screen.findByText(/OpenAI does not report the balance/)).toBeTruthy();
+        expect(screen.getByText(/Credit ran out/)).toBeTruthy();
     });
 
     it('API 키는 쓰기만 하고 등록 여부만 보인다, 삭제는 null', async () => {

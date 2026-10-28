@@ -28,6 +28,13 @@ pub async fn run(ctx: &Ctx, cmd: ChatbotCmd) -> Result<()> {
         }
         ChatbotCmd::Key { delete } => key(ctx, delete).await,
         ChatbotCmd::Models { guild } => models(ctx, guild.as_deref()).await,
+        ChatbotCmd::Credit { guild } => credit(ctx, guild.as_deref()).await,
+        ChatbotCmd::Template { locale } => {
+            let r = ctx.api.chatbot_memo_template(locale.as_deref()).await?;
+            // 파일로 받아 `set memo=@파일`에 쓰도록 글만 그대로 낸다
+            ctx.out.data(&r, |r| say!("{}", s(r, "template")));
+            Ok(())
+        }
         ChatbotCmd::Clear => {
             ctx.ask.ensure(&t!("chatbot.confirm_clear"))?;
             let r = ctx.api.clear_chatbot().await?;
@@ -272,6 +279,44 @@ async fn models(ctx: &Ctx, guild: Option<&str>) -> Result<()> {
     Ok(())
 }
 
+/// 남은 크레딧과 이번 달 사용량 (앱의 "남은 크레딧" 카드와 같은 내용)
+async fn credit(ctx: &Ctx, guild: Option<&str>) -> Result<()> {
+    let guild = resolve::guild(ctx, guild).await?;
+    let cfg = ctx.api.bot_config().await?;
+    let relay = cfg.pointer("/cloud/relayUrl").and_then(Value::as_str).filter(|u| !u.is_empty());
+    let r = ctx.api.chatbot_credit(&guild, relay).await?;
+    ctx.out.data(&r, |r| {
+        for line in credit_lines(r) {
+            say!("{}", line);
+        }
+        if let Some(at) = r.get("exhaustedAt").and_then(Value::as_str) {
+            ctx.out.warn(&t!("chatbot.credit_exhausted", time = at));
+        }
+    });
+    Ok(())
+}
+
+fn credit_lines(r: &Value) -> Vec<String> {
+    let provider = s(r, "provider");
+    let balance = match r.pointer("/balance/amount").and_then(Value::as_f64) {
+        Some(amount) => format!("{} {}", amount, s(&r["balance"], "currency")),
+        None if r.get("balanceSupported").and_then(Value::as_bool) == Some(true) => t!("chatbot.credit_balance_none"),
+        None => t!("chatbot.credit_balance_unsupported", provider = provider),
+    };
+    let n = |k: &str| r.pointer(&format!("/usage/{}", k)).and_then(Value::as_u64).unwrap_or(0);
+    vec![
+        format!("{}: {}", t!("chatbot.provider"), provider),
+        format!("{}: {}", t!("chatbot.credit_balance"), balance),
+        format!("{}: {}", t!("chatbot.credit_usage", month = s(&r["usage"], "month")), t!(
+            "chatbot.credit_usage_line",
+            calls = n("calls"),
+            input = n("input"),
+            cached = n("cached"),
+            output = n("output")
+        )),
+    ]
+}
+
 /// 모델 목록 한 줄씩, 지금 쓰는 모델에 ● 표시
 fn model_lines(r: &Value) -> Vec<String> {
     let using = [s(r, "effectiveModel"), s(r, "selected")].into_iter().find(|m| !m.is_empty()).unwrap_or("");
@@ -294,6 +339,21 @@ mod tests {
         let r = json!({ "provider": "openai", "models": ["a", "b"], "selected": "gone", "effectiveModel": "b" });
         let lines: Vec<String> = model_lines(&r).iter().map(|l| console::strip_ansi_codes(l).to_string()).collect();
         assert_eq!(lines, vec!["  a", "● b"]);
+    }
+
+    /// 잔액을 주는 제공사는 잔액을, 아니면 주지 않는다는 안내를 보이고, 사용량은 늘 보인다
+    #[test]
+    fn credit_shows_the_balance_or_why_not_and_the_usage() {
+        crate::i18n::init("ko");
+        let usage = json!({ "month": "2026-10", "calls": 2, "input": 1500, "cached": 400, "output": 75 });
+        let paid = credit_lines(&json!({
+            "provider": "deepseek", "balanceSupported": true,
+            "balance": { "amount": 12.34, "currency": "USD" }, "usage": usage, "exhaustedAt": null,
+        }));
+        assert_eq!(paid[1], format!("{}: 12.34 USD", t!("chatbot.credit_balance")));
+        assert!(paid[2].contains("1500") && paid[2].contains("2026-10"), "{paid:?}");
+        let none = credit_lines(&json!({ "provider": "openai", "balanceSupported": false, "balance": null, "usage": usage }));
+        assert_eq!(none[1], format!("{}: {}", t!("chatbot.credit_balance"), t!("chatbot.credit_balance_unsupported", provider = "openai")));
     }
 
     /// 서버별 보기도 공통 보기처럼 API 키 저장 여부를 보인다

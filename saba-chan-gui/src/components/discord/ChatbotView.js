@@ -11,19 +11,27 @@ import { Avatar } from './NodeView';
 import { PROVIDER_BRANDS } from './providerBrands';
 
 /**
- * 릴레이 계약 기본값 (/mnt/project-files/chatbot/contract.md). 기본값과 같으면 null로 보내 릴레이 기본을 따른다.
- * 호출어는 디스코드 접두사가, 대화 유지시간·끼어들기는 릴레이 고정값이 맡는다 (chatbot-settings-v2 §2·§4)
+ * 릴레이 계약 기본값 (데몬 `chatbot.rs` relay_defaults). 기본값과 같으면 null로 보내 릴레이 기본을 따른다.
+ * 호출어는 디스코드 접두사가, 대화 유지시간은 릴레이 고정값이 맡는다 (chatbot-settings-v2 §2)
  */
 export const CHATBOT_DEFAULTS = {
     enabled: false,
     model: 'gpt-6-luna',
-    confirmCommands: true,
+    effort: 'medium',
+    ambient: true,
+    ambientMinutes: 3,
+    ambientEffort: 'low',
+    confirmLevel: 'all',
     memory: true,
     webSearch: true,
     disabledTools: [],
 };
 /** 끌 수 있는 도구 묶음 (계약 disabledTools). 눈치 메모는 끌 수 없는 기본 사양이라 없다 */
-export const CHATBOT_TOOLS = ['research', 'lol', 'images'];
+export const CHATBOT_TOOLS = ['game_servers', 'research', 'lol', 'images'];
+export const EFFORTS = ['low', 'medium', 'high'];
+export const AMBIENT_MINUTES = [1, 3, 5, 10, 30];
+/** 실행 전 확인 단계: 모두 / 주의 이상 / 위험만 */
+export const CONFIRM_LEVELS = ['all', 'caution', 'danger'];
 export const MEMO_MAX = 8000;
 
 export const chatbotAvailable = () => !!window.api?.chatbotGet;
@@ -132,6 +140,12 @@ export function ChatbotView({ nodes = [] }) {
                         }}
                         nameOf={nameOf}
                     />
+                    <CreditCard
+                        guildIds={[...new Set([...nodes.map((n) => n.guildId), ...Object.keys(data.guilds || {})])]}
+                        nameOf={nameOf}
+                        hasApiKey={!!data.hasApiKey}
+                        keyVersion={keyVersion}
+                    />
                     <SettingsEditor
                         data={data}
                         nodes={nodes}
@@ -222,7 +236,7 @@ function ApiKeyCard({ hasApiKey, onChanged, nameOf }) {
 }
 
 function SettingsEditor({ data, nodes, nameOf, onSaved, keyVersion }) {
-    const { t } = useTranslation('gui');
+    const { t, i18n } = useTranslation('gui');
     const savedGuilds = data.guilds || {};
     const guildIds = [...new Set([...nodes.map((n) => n.guildId), ...Object.keys(savedGuilds)])];
 
@@ -245,6 +259,7 @@ function SettingsEditor({ data, nodes, nameOf, onSaved, keyVersion }) {
     const [errors, setErrors] = useState([]);
     const [syncWarn, setSyncWarn] = useState(false);
     const [memArmed, setMemArmed] = useState(null);
+    const [templateBusy, setTemplateBusy] = useState(null);
 
     const s = draft.settings;
     const set = (k, v) => setDraft((d) => ({ ...d, settings: { ...d.settings, [k]: v } }));
@@ -300,6 +315,24 @@ function SettingsEditor({ data, nodes, nameOf, onSaved, keyVersion }) {
         }
     };
 
+    // 서버 프롬프트 기본 틀은 데몬이 앱 언어로 준다 (GET /api/chatbot/memo-template)
+    const insertTemplate = async (guildId) => {
+        setTemplateBusy(guildId);
+        try {
+            const res = await window.api.chatbotMemoTemplate(i18n.language);
+            if (res?.success === false || typeof res?.template !== 'string') throw new Error(res?.error || '');
+            // 기다리는 사이 무언가 썼으면 덮지 않는다
+            setDraft((d) => {
+                const g = d.guilds[guildId] ?? baseGuild(guildId);
+                return g.memo.trim() ? d : { ...d, guilds: { ...d.guilds, [guildId]: { ...g, memo: res.template } } };
+            });
+        } catch (err) {
+            safeShowToast(err.message || t('chatbot.memo_template_failed'), 'error', 6000);
+        } finally {
+            setTemplateBusy(null);
+        }
+    };
+
     const toggleRow = (key, label, hint) => (
         <div className="cb-toggle-row">
             <span className="dc-list-text">
@@ -309,6 +342,22 @@ function SettingsEditor({ data, nodes, nameOf, onSaved, keyVersion }) {
             <SabaToggle checked={!!s[key]} aria-label={label} onChange={(v) => set(key, v)} />
         </div>
     );
+
+    const selectField = (key, label, hint, options, disabled = false) => (
+        <div className="mt-field">
+            <span>{label}</span>
+            <CustomDropdown
+                className="cb-select"
+                value={s[key]}
+                ariaLabel={label}
+                disabled={disabled}
+                onChange={(v) => set(key, v)}
+                options={options}
+            />
+            {hint && <p className="dc-hint">{hint}</p>}
+        </div>
+    );
+    const effortOptions = EFFORTS.map((e) => ({ value: e, label: t(`chatbot.effort_${e}`) }));
 
     return (
         <>
@@ -326,10 +375,45 @@ function SettingsEditor({ data, nodes, nameOf, onSaved, keyVersion }) {
                     hasApiKey={!!data.hasApiKey}
                     keyVersion={keyVersion}
                 />
+                {selectField('effort', t('chatbot.effort'), t('chatbot.effort_hint'), effortOptions)}
                 <p className="dc-hint">{t('chatbot.prefix_calls')}</p>
+                <div className="cb-toggles">{toggleRow('memory', t('chatbot.memory'), t('chatbot.memory_hint'))}</div>
+            </section>
+
+            <section className="dc-card">
+                <div className="dc-card-head">
+                    <h2>{t('chatbot.ambient_title')}</h2>
+                </div>
+                <p className="dc-card-desc">{t('chatbot.ambient_desc')}</p>
+                <div className="cb-toggles">{toggleRow('ambient', t('chatbot.ambient'), t('chatbot.ambient_hint'))}</div>
+                {selectField(
+                    'ambientMinutes',
+                    t('chatbot.ambient_minutes'),
+                    null,
+                    AMBIENT_MINUTES.map((m) => ({ value: m, label: t('chatbot.ambient_minutes_option', { count: m }) })),
+                    !s.ambient,
+                )}
+                {selectField(
+                    'ambientEffort',
+                    t('chatbot.ambient_effort'),
+                    t('chatbot.ambient_effort_hint'),
+                    effortOptions,
+                    !s.ambient,
+                )}
+            </section>
+
+            <section className="dc-card">
+                <div className="dc-card-head">
+                    <h2>{t('chatbot.tools_title')}</h2>
+                </div>
+                <p className="dc-card-desc">{t('chatbot.tools_desc')}</p>
+                {selectField(
+                    'confirmLevel',
+                    t('chatbot.confirm_level'),
+                    t('chatbot.confirm_level_hint'),
+                    CONFIRM_LEVELS.map((l) => ({ value: l, label: t(`chatbot.confirm_${l}`) })),
+                )}
                 <div className="cb-toggles">
-                    {toggleRow('confirmCommands', t('chatbot.confirm_commands'), t('chatbot.confirm_commands_hint'))}
-                    {toggleRow('memory', t('chatbot.memory'), t('chatbot.memory_hint'))}
                     {toggleRow('webSearch', t('chatbot.web_search'), t('chatbot.web_search_hint'))}
                     {CHATBOT_TOOLS.map((tool) => {
                         const label = t(`chatbot.tool_${tool}`);
@@ -410,9 +494,23 @@ function SettingsEditor({ data, nodes, nameOf, onSaved, keyVersion }) {
                                         )}
                                     </div>
                                     <p className="dc-hint">{t('chatbot.channels_moved')}</p>
-                                    <label className="cb-guild-memo">
+                                    {/* label 이 아니라 div: 안의 기본 틀 버튼이 label 의 이름을 가져가지 않게 (글 상자는 aria-label) */}
+                                    <div className="cb-guild-memo">
                                         <span className="cb-memo-head">
                                             <span>{t('chatbot.memo')}</span>
+                                            {!g.memo.trim() && window.api?.chatbotMemoTemplate && (
+                                                <button
+                                                    type="button"
+                                                    className="btn btn-ghost btn-sm"
+                                                    disabled={templateBusy === id}
+                                                    onClick={(e) => {
+                                                        e.preventDefault();
+                                                        insertTemplate(id);
+                                                    }}
+                                                >
+                                                    {t('chatbot.memo_template')}
+                                                </button>
+                                            )}
                                             <span className={clsx('cb-counter', { over: g.memo.length > MEMO_MAX })}>
                                                 {g.memo.length.toLocaleString()} / {MEMO_MAX.toLocaleString()}
                                             </span>
@@ -425,7 +523,7 @@ function SettingsEditor({ data, nodes, nameOf, onSaved, keyVersion }) {
                                             placeholder={t('chatbot.memo_placeholder')}
                                             onChange={(e) => setGuild(id, { memo: e.target.value })}
                                         />
-                                    </label>
+                                    </div>
                                 </li>
                             );
                         })}
@@ -471,6 +569,126 @@ function SettingsEditor({ data, nodes, nameOf, onSaved, keyVersion }) {
                 </button>
             </div>
         </>
+    );
+}
+
+const CREDIT_ERRORS = ['NO_API_KEY', 'INVALID_API_KEY', 'KEY_PERMISSION', 'QUOTA_EXCEEDED', 'PROVIDER_UNAVAILABLE'];
+
+/**
+ * 남은 크레딧: 잔액은 키로 잔액을 알려 주는 제공사만(릴레이가 묻는다), 사용량은 이번 달 길드마다 (릴레이 집계).
+ * 키는 길드마다 같으니 잔액은 첫 길드 답의 것을 보인다
+ */
+export function CreditCard({ guildIds, nameOf, hasApiKey, keyVersion = 0 }) {
+    const { t, i18n } = useTranslation('gui');
+    const [rows, setRows] = useState(null);
+    const canAsk = !!(guildIds.length && hasApiKey && window.api?.chatbotCredit);
+    const idsKey = guildIds.join(',');
+
+    // biome-ignore lint/correctness/useExhaustiveDependencies: idsKey·keyVersion 이 다시 묻는 신호
+    const load = useCallback(async () => {
+        if (!canAsk) return;
+        setRows(null);
+        const ids = idsKey.split(',');
+        const answers = await Promise.all(
+            ids.map((id) =>
+                window.api
+                    .chatbotCredit(id)
+                    .then((r) => (r?.error || r?.success === false || !r?.usage ? { id, error: r?.error || 'FAILED' } : { id, ...r }))
+                    .catch(() => ({ id, error: 'FAILED' })),
+            ),
+        );
+        setRows(answers);
+    }, [canAsk, idsKey, keyVersion]);
+
+    useEffect(() => {
+        load();
+    }, [load]);
+
+    if (!window.api?.chatbotCredit) return null;
+    const first = rows?.find((r) => !r.error);
+    const number = (n) => Number(n || 0).toLocaleString(i18n.language);
+    const money = (b) => {
+        try {
+            return new Intl.NumberFormat(i18n.language, { style: 'currency', currency: b.currency }).format(b.amount);
+        } catch {
+            return `${b.amount} ${b.currency}`;
+        }
+    };
+    const providerName = (id) =>
+        (PROVIDER_BRANDS[id] ?? PROVIDER_BRANDS[String(id).replace(/-cn$/, '')])?.name ?? id;
+    const exhausted = rows?.map((r) => r.exhaustedAt).find(Boolean);
+    const errorKey = !hasApiKey
+        ? 'chatbot.models_need_key'
+        : !guildIds.length
+          ? 'chatbot.models_need_guild'
+          : rows && !first
+            ? `chatbot.models_err_${CREDIT_ERRORS.includes(rows[0]?.error) ? rows[0].error : 'FAILED'}`
+            : null;
+
+    return (
+        <section className="dc-card">
+            <div className="dc-card-head">
+                <h2>{t('chatbot.credit_title')}</h2>
+                {canAsk && (
+                    <button type="button" className="btn btn-ghost btn-sm" disabled={!rows} onClick={load}>
+                        {t('chatbot.credit_refresh')}
+                    </button>
+                )}
+            </div>
+            <p className="dc-card-desc">{t('chatbot.credit_desc')}</p>
+            {canAsk && !rows && <SabaSpinner size="sm" />}
+            {errorKey && (
+                <p className="dc-field-error">
+                    <Icon name="info" size="xs" /> {t(errorKey)}
+                </p>
+            )}
+            {exhausted && (
+                <div className="notice tone-warn" role="status">
+                    <Icon name="alertTriangle" size="sm" />
+                    <span>
+                        {t('chatbot.credit_exhausted', { time: new Date(exhausted).toLocaleString(i18n.language) })}
+                    </span>
+                </div>
+            )}
+            {first && (
+                <>
+                    <div className="mt-field">
+                        <span>{t('chatbot.credit_balance')}</span>
+                        {first.balance ? (
+                            <strong>{money(first.balance)}</strong>
+                        ) : (
+                            <p className="dc-hint">
+                                {first.balanceSupported
+                                    ? t('chatbot.credit_balance_none')
+                                    : t('chatbot.credit_balance_unsupported', { provider: providerName(first.provider) })}
+                            </p>
+                        )}
+                    </div>
+                    <div className="mt-field">
+                        <span>{t('chatbot.credit_usage', { month: first.usage.month })}</span>
+                        <ul className="dc-list">
+                            {rows
+                                .filter((r) => !r.error)
+                                .map((r) => (
+                                    <li key={r.id} className="dc-list-row">
+                                        <span className="dc-list-text">
+                                            <span className="dc-list-name">{nameOf(r.id)}</span>
+                                            <span className="cb-hint">
+                                                {t('chatbot.credit_usage_line', {
+                                                    calls: number(r.usage.calls),
+                                                    input: number(r.usage.input),
+                                                    cached: number(r.usage.cached),
+                                                    output: number(r.usage.output),
+                                                })}
+                                            </span>
+                                        </span>
+                                    </li>
+                                ))}
+                        </ul>
+                    </div>
+                </>
+            )}
+        </section>
     );
 }
 

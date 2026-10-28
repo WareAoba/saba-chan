@@ -945,7 +945,13 @@
     "not_synced": "Saved on this PC. It reaches Discord once the bot is connected (saba-chan-cli bot status).",
     "sync_failed": "Discord server {{guild}} did not get the change: {{error}}",
     "read_failed": "Could not read {{path}}: {{error}}",
-    "cleared_pending": "Cleared the Talking Saba-chan settings and key on this PC. The relay was not reached; it will be cleared on the next connection."
+    "cleared_pending": "Cleared the Talking Saba-chan settings and key on this PC. The relay was not reached; it will be cleared on the next connection.",
+    "credit_balance": "Balance",
+    "credit_balance_unsupported": "{{provider}} does not report the balance for regular API keys. Check it on their website.",
+    "credit_balance_none": "Could not get the balance right now.",
+    "credit_usage": "This month's usage ({{month}}, UTC)",
+    "credit_usage_line": "{{calls}} model calls · {{input}} input tokens ({{cached}} cached) · {{output}} output tokens",
+    "credit_exhausted": "Credit ran out ({{time}}). Saba-chan can't reply until it's topped up."
   },
   "trust": {
     "verified": "verified",

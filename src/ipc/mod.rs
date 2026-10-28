@@ -946,6 +946,7 @@ impl IPCServer {
                 get(handlers::relay::get_node_channels).put(handlers::relay::put_node_channels),
             )
             .route("/api/relay/node/{guild_id}/chatbot/models", get(handlers::relay::get_node_chatbot_models))
+            .route("/api/relay/node/{guild_id}/chatbot/credit", get(handlers::relay::get_node_chatbot_credit))
             .route("/api/relay/bot-invite", get(handlers::relay::get_bot_invite))
             .route("/api/relay/pair/initiate", post(handlers::relay::initiate_pairing))
             .route("/api/relay/pair/{code}/status", get(handlers::relay::poll_pairing_status))
@@ -962,6 +963,7 @@ impl IPCServer {
             // AI 챗봇 설정 (원본은 데몬, 릴레이에 맞춘다)
             .route("/api/chatbot", get(handlers::chatbot::get_chatbot).put(handlers::chatbot::put_chatbot).delete(handlers::chatbot::delete_chatbot))
             .route("/api/chatbot/memory", delete(handlers::chatbot::delete_memory))
+            .route("/api/chatbot/memo-template", get(handlers::chatbot::get_memo_template))
             // 인스턴스별 디스코드 낱말, 길드가 쓸 서버 (로컬 전용)
             .route("/api/instance/{id}/words", get(handlers::words::get).put(handlers::words::put))
             .route("/api/guilds/{guild}/allowed-instances", put(handlers::words::put_allowed))

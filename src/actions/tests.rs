@@ -864,14 +864,14 @@ async fn chatbot_settings_from_discord_are_the_owners_and_never_the_chatbots() {
     let key = json!({ "apiKey": "sk-x" });
     assert_eq!(plan(&state, "chatbot.settings.set", None, &key, &relay("owner", false)).await.unwrap_err().code, "invalid_input");
 
-    let local = json!({ "guild": "g", "confirmCommands": false });
+    let local = json!({ "guild": "g", "confirmLevel": "danger" });
     assert_eq!(run(&state, "chatbot.settings.set", None, &local, None, &gui()).await.unwrap()["success"], true);
     let read = run(&state, "chatbot.settings.get", None, &json!({ "guild": "g" }), None, &gui()).await.unwrap();
-    assert_eq!((read["result"]["settings"]["confirmCommands"].as_bool(), read["result"]["settings"]["model"].as_str()), (Some(false), Some("gpt-6-luna")));
+    assert_eq!((read["result"]["settings"]["confirmLevel"].as_str(), read["result"]["settings"]["model"].as_str()), (Some("danger"), Some("gpt-6-luna")));
     // null은 그 길드의 값을 지워 기본값으로 되돌린다
-    run(&state, "chatbot.settings.set", None, &json!({ "guild": "g", "confirmCommands": null }), None, &gui()).await.unwrap();
+    run(&state, "chatbot.settings.set", None, &json!({ "guild": "g", "confirmLevel": null }), None, &gui()).await.unwrap();
     let read = run(&state, "chatbot.settings.get", None, &json!({ "guild": "g" }), None, &gui()).await.unwrap();
-    assert_ne!(read["result"]["settings"]["confirmCommands"].as_bool(), Some(false));
+    assert_eq!(read["result"]["settings"]["confirmLevel"].as_str(), Some("all"));
     // 메모도 소유자만 읽는다
     assert_eq!(plan(&state, "chatbot.settings.get", None, &json!({}), &relay("admin", false)).await.unwrap_err().code, "PERMISSION_DENIED");
 }

@@ -472,6 +472,14 @@ pub enum ChatbotCmd {
     Clear,
     /// Models the saved API key can use (name or id of the Discord server; without it: the only paired server)
     Models { guild: Option<String> },
+    /// Remaining credit (only providers that report it for a regular key) and this month's usage of one Discord server
+    Credit { guild: Option<String> },
+    /// Print the server prompt template (save it and use `chatbot set memo=@FILE --guild ...`)
+    Template {
+        /// Language of the template (default: the app language)
+        #[arg(long)]
+        locale: Option<String>,
+    },
     /// Forget what Talking Saba-chan remembers (all Discord servers, or one)
     Forget {
         #[arg(long)]

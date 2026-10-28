@@ -340,7 +340,11 @@
       "enabled": "On",
       "model": "Model",
       "memo": "Server prompt",
-      "confirmCommands": "Always ask before running server commands",
+      "effort": "Conversation reasoning effort",
+      "ambient": "Join in uninvited",
+      "ambientMinutes": "Join-in interval (minutes)",
+      "ambientEffort": "Join-in reasoning effort",
+      "confirmLevel": "Ask-before-running level",
       "memory": "Memory",
       "webSearch": "Web search",
       "disabledTools": "Disabled tool sets",
@@ -428,5 +432,8 @@
     "autosave_not_resumed": "The backup was made, but the server’s autosave could not be turned back on. Restart the server",
     "snapshot_not_found": "The game has no automatic backup",
     "snapshot_not_deletable": "Saba-chan cannot delete the game’s own automatic backups"
+  },
+  "chatbot": {
+    "memo_template": "<!-- Guide lines like this one and headings you leave empty are not sent to Talking Saba-chan. Fill in only what you need. -->\n\n## Room vibe\n<!-- Describe how people talk here and how edgy jokes can get. Leave empty to use the default personality. -->\n\n## How to address people\n<!-- Write down special names Saba-chan should call people. Example: Call the person marked (owner) \"Master\". -->\n\n## Words used on this server\n<!-- List nicknames, memes and abbreviations only this server uses, with their meaning. -->\n\n## Game server info\n<!-- Rules, opening hours and other things Saba-chan may tell anyone who asks. -->\n"
   }
 }

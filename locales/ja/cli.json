@@ -820,6 +820,8 @@
       "chatbot.clear": "おしゃべりサバちゃんの設定とキーをすべて削除",
       "chatbot.forget": "おしゃべりサバちゃんが覚えている内容を消す (すべての Discord サーバーまたは 1 つ)",
       "chatbot.models": "保存した API キーで使えるモデル (Discord サーバー名か ID、省くと唯一のサーバー)",
+      "chatbot.credit": "残りクレジット（通常のキーで残高を返すプロバイダーのみ）とDiscordサーバー1つの今月の使用量",
+      "chatbot.template": "サーバープロンプトの基本テンプレートを出力（ファイルに保存して `chatbot set memo=@ファイル --guild ...`）",
       "module.audit": "モジュールの Python コードの動作を宣言した権限と比べる",
       "extension.audit": "エクステンションの Python コードの動作を宣言した権限と比べる",
       "config.export": "設定とサーバー一覧を zip に保存して別の PC へ移す (ゲームのファイルは含まない)",
@@ -1046,7 +1048,8 @@
       "schedule.add.command": "実行するゲームコマンド (command 作業、一覧: server commands)",
       "schedule.edit.command": "変更するゲームコマンド (command 作業、別のコマンドなら --arg を指定しない限り古い入力は消える)",
       "bot.notice.on": "起動通知をオン",
-      "bot.notice.off": "起動通知をオフ"
+      "bot.notice.off": "起動通知をオフ",
+      "chatbot.template.locale": "テンプレートの言語（省略時はアプリの言語）"
     },
     "after": "名前は一部だけでも指定できます（例: start pal）。端末で引数なしで実行すると全画面メニューが開きます(SABA_NO_TUI=1 なら対話シェル)。\nスクリプトでは --json と --yes を使ってください。終了コード: 0 成功 · 1 失敗 · 2 使い方の誤り · 3 デーモンに接続不可 · 4 見つからない · 130 キャンセル"
   },
@@ -1183,7 +1186,13 @@
     "not_synced": "この PC に保存しました。ボットが接続されると Discord に反映されます（saba-chan-cli bot status）。",
     "sync_failed": "Discord サーバー {{guild}} に変更が反映されませんでした: {{error}}",
     "read_failed": "{{path}} を読み込めませんでした: {{error}}",
-    "cleared_pending": "この PC のおしゃべりサバちゃんの設定とキーを消しました。リレーにはまだ届いていないため、次の接続時に消します。"
+    "cleared_pending": "この PC のおしゃべりサバちゃんの設定とキーを消しました。リレーにはまだ届いていないため、次の接続時に消します。",
+    "credit_balance": "残高",
+    "credit_balance_unsupported": "{{provider}}は通常のAPIキーでは残高を教えてくれません。残高はその会社のサイトで確認してください。",
+    "credit_balance_none": "今は残高を確認できませんでした。",
+    "credit_usage": "今月の使用量（{{month}}、UTC基準）",
+    "credit_usage_line": "モデル呼び出し {{calls}}回 · 入力 {{input}}トークン（キャッシュ {{cached}}） · 出力 {{output}}トークン",
+    "credit_exhausted": "クレジットがなくなりました（{{time}}）。チャージするまで返事できません。"
   },
   "trust": {
     "verified": "確認済み",
