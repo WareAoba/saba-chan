@@ -1215,6 +1215,7 @@
     "failed_no_log": "L'installation a échoué : {{reason}}",
     "done": "Installé dans {{dir}}",
     "next": "Démarrez le démon avec :\n{{command}}",
+    "next_app": "Ouvrez Saba-chan depuis le menu des applications ou avec :\n{{command}}",
     "components_dir": "Les modules et extensions vont dans {{dir}}.",
     "components_dir_invalid": "Impossible d'utiliser {{dir}} pour les modules et extensions : {{reason}}",
     "invalid_dir": "Impossible d'installer dans {{dir}}. Choisissez un dossier qui n'est ni la racine d'un lecteur, ni votre dossier personnel, ni le dossier des paramètres"

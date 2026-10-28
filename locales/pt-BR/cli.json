@@ -1215,6 +1215,7 @@
     "failed_no_log": "A instalação falhou: {{reason}}",
     "done": "Instalado em {{dir}}",
     "next": "Inicie o daemon com:\n{{command}}",
+    "next_app": "Abra o Saba-chan pelo menu de aplicativos ou com:\n{{command}}",
     "components_dir": "Os módulos e extensões ficam em {{dir}}.",
     "components_dir_invalid": "Não é possível usar {{dir}} para módulos e extensões: {{reason}}",
     "invalid_dir": "Não é possível instalar em {{dir}}. Escolha uma pasta que não seja a raiz de uma unidade, sua pasta pessoal ou a pasta de configurações"

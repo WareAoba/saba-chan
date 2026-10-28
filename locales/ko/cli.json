@@ -1471,6 +1471,7 @@
     "failed_no_log": "설치하지 못했어요: {{reason}}",
     "done": "{{dir}}에 설치했어요",
     "next": "다음 명령으로 데몬을 켜세요:\n{{command}}",
+    "next_app": "앱 메뉴에서 사바쨩을 열거나 다음 명령으로 여세요:\n{{command}}",
     "components_dir": "모듈·익스텐션은 {{dir}}에 둬요.",
     "components_dir_invalid": "{{dir}}은(는) 모듈·익스텐션 위치로 쓸 수 없어요: {{reason}}",
     "invalid_dir": "{{dir}}에는 설치할 수 없어요. 드라이브 루트, 홈 폴더, 설정 폴더가 아닌 폴더를 고르세요"
