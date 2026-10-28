@@ -3116,7 +3116,9 @@ mod tests {
         assert_eq!((tuned.backup_keep, tuned.module_settings.get("auto_restart")), (Some(3), Some(&json!(false))));
     }
 
-    /// 만들기 마법사용 모듈: download 방식이고, install_server가 받은 버전을 설치 폴더에 적는다
+    /// 만들기 마법사용 모듈: download 방식이고, install_server는 맞는 버전을 받았을 때만 성공한다
+    /// (`chosen` 폴더는 고른 버전 1.0이고 데몬이 만들어 둔 폴더, 그 밖은 최신 2.0).
+    /// 시험 모듈은 모듈 폴더 밖이라 격리 실행(Windows)에서 설치 폴더에 쓰지 못한다: 파일을 쓰지 않고 받은 값만 본다
     async fn wizard_state(tmp: &std::path::Path) -> crate::ipc::IPCServer {
         let modules = tmp.join("modules");
         let dir = modules.join("game");
@@ -3133,9 +3135,9 @@ mod tests {
             "import json, os, sys\nconfig = json.load(sys.stdin)\nif sys.argv[1] == 'list_versions':\n    \
              print(json.dumps({'success': True, 'latest': {'release': '2.0'}}))\n\
              elif sys.argv[1] == 'install_server':\n    \
-             os.makedirs(config['install_dir'], exist_ok=True)\n    \
-             open(os.path.join(config['install_dir'], 'installed.txt'), 'w').write(config.get('version') or '')\n    \
-             print(json.dumps({'success': True, 'install_path': config['install_dir']}))\n\
+             want = '1.0' if os.path.basename(config['install_dir']) == 'chosen' else '2.0'\n    \
+             ok = config.get('version') == want and (want == '2.0' or os.path.isdir(config['install_dir']))\n    \
+             print(json.dumps({'success': ok, 'install_path': config['install_dir'], 'message': 'wrong version or folder'}))\n\
              else:\n    print(json.dumps({'success': True}))\n",
         )
         .unwrap();
@@ -3212,12 +3214,11 @@ mod tests {
             let state = state.clone();
             async move { crate::ipc::internal::into_internal(super::create_instance(State(state), Json(body)).await).await }
         };
-        let folder = tmp.path().join("my servers").join("game");
+        let folder = tmp.path().join("my servers").join("chosen");
         let made = create(json!({ "name": "a", "module_name": "game", "working_dir": folder.to_string_lossy(), "version": "1.0", "managed_start": false })).await;
         assert!(made.status.is_success(), "{}", made.body);
         let progress = provisioned(&state, "a").await.expect("provisioning finished");
         assert_eq!(progress.error, None, "{:?}", progress.details);
-        assert_eq!(std::fs::read_to_string(folder.join("installed.txt")).unwrap(), "1.0", "고른 버전을 고른 폴더에 설치한다");
         let id = made.body["id"].as_str().unwrap();
         let inst = state.supervisor.read().await.instance_store.get(id).cloned().unwrap();
         assert_eq!(inst.working_dir.as_deref(), Some(folder.to_string_lossy().as_ref()));
@@ -3226,10 +3227,8 @@ mod tests {
         // 버전을 고르지 않으면 최신이다
         let latest = create(json!({ "name": "b", "module_name": "game" })).await;
         assert!(latest.status.is_success(), "{}", latest.body);
-        provisioned(&state, "b").await.expect("provisioning finished");
-        let id = latest.body["id"].as_str().unwrap();
-        let dir = state.supervisor.read().await.instance_store.get(id).unwrap().working_dir.clone().unwrap();
-        assert_eq!(std::fs::read_to_string(std::path::Path::new(&dir).join("installed.txt")).unwrap(), "2.0");
+        let progress = provisioned(&state, "b").await.expect("provisioning finished");
+        assert_eq!(progress.error, None, "{:?}", progress.details);
 
         // 파일이 든 폴더에는 새로 설치하지 않는다 (있는 서버는 가져오기로)
         let refused = create(json!({ "name": "c", "module_name": "game", "working_dir": folder.to_string_lossy() })).await;
