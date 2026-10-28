@@ -53,7 +53,7 @@ fn parse_level(raw: &str, ladder: &[Rung]) -> Result<i64> {
         "owner" | "소유자" => Some(3),
         "admin" | "관리자" => Some(2),
         "user" | "유저" => Some(1),
-        "guest" | "손님" | "chatbot" | "챗봇" | "말하는 사바쨩" | "talking saba-chan" => Some(0),
+        "guest" | "게스트" | "손님" | "chatbot" | "챗봇" | "말하는 사바쨩" | "talking saba-chan" => Some(0),
         "banned" | "금지" => Some(-1),
         n => n.parse().ok(),
     };
@@ -140,6 +140,16 @@ pub async fn run(ctx: &Ctx, cmd: PermCmd) -> Result<()> {
             let r = ctx.api.permissions(&guild).await?;
             let names = if ctx.out.json { Names::default() } else { names(ctx, &guild).await };
             show(ctx, &r, &names);
+            return Ok(());
+        }
+        PermCmd::Commands { guild, server } => {
+            let guild = resolve::guild(ctx, guild.as_deref()).await?;
+            let instance = match server {
+                Some(q) => Some(resolve::server(ctx, Some(&q)).await?.id),
+                None => None,
+            };
+            let (perm, board) = tokio::try_join!(ctx.api.permissions(&guild), ctx.api.permission_commands(&guild, crate::i18n::lang()))?;
+            ctx.out.data(&board, |b| stairs(b, &ladder_of(&perm), instance.as_deref()));
             return Ok(());
         }
         PermCmd::Grant { guild, member, level } => {
@@ -347,6 +357,33 @@ fn command_name(names: &Names, key: &str) -> String {
     }
 }
 
+/// 레벨마다 그 레벨부터 쓸 수 있는 명령 (GUI 레벨별 명령 계단과 같다, 낮은 레벨부터).
+/// `instance`가 있으면 그 서버 명령과 서버 전체 명령만
+fn stairs(board: &Value, ladder: &[Rung], instance: Option<&str>) {
+    let servers: HashMap<&str, &str> =
+        board["instances"].as_array().into_iter().flatten().filter_map(|i| Some((i["id"].as_str()?, i["name"].as_str()?))).collect();
+    let items: Vec<&Value> = board["items"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|i| instance.is_none_or(|id| i["instance"].as_str().is_none_or(|x| x == id)))
+        .collect();
+    for (n, id) in ladder.iter().rev().filter_map(|r| r.id).enumerate() {
+        let here: Vec<String> = items
+            .iter()
+            .filter(|i| i["level"].as_i64() == Some(id))
+            .map(|i| {
+                let title = i["title"].as_str().or_else(|| i["name"].as_str()).unwrap_or("?");
+                match (instance, i["instance"].as_str()) {
+                    (None, Some(x)) => format!("{} ({})", title, servers.get(x).copied().unwrap_or(x)),
+                    _ => title.to_string(),
+                }
+            })
+            .collect();
+        say!("Lv {} {}: {}", n, level_name(id, ladder), if here.is_empty() { "-".to_string() } else { here.join(", ") });
+    }
+}
+
 fn show(ctx: &Ctx, r: &Value, names: &Names) {
     ctx.out.data(r, |r| {
         let owner = match s(r, "ownerDiscordId") {
@@ -414,8 +451,8 @@ mod tests {
         assert_eq!(parse_level("금지", &ladder).unwrap(), -1);
         assert_eq!(parse_level("0", &ladder).unwrap(), 0);
         assert!(parse_level("boss", &ladder).is_err());
-        // 레벨 0 이름이 손님으로 바뀌어도(2026-10-28) 예전 입력 낱말은 그대로 받는다
-        for name in ["guest", "손님", "chatbot", "챗봇", "말하는 사바쨩", "Talking Saba-chan"] {
+        // 레벨 0 이름이 게스트로 바뀌어도(2026-10-28) 예전 입력 낱말은 그대로 받는다
+        for name in ["guest", "게스트", "손님", "chatbot", "챗봇", "말하는 사바쨩", "Talking Saba-chan"] {
             assert_eq!(parse_level(name, &ladder).unwrap(), 0, "{name}");
         }
     }

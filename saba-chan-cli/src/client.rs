@@ -721,6 +721,10 @@ impl Api {
     pub async fn permissions(&self, guild: &str) -> Result<Value> {
         self.get(&format!("/api/permissions/{}", seg(guild))).await
     }
+    /// GET /api/permissions/:guildId/commands?locale — 명령 계단 `{guildId, instances, items}`
+    pub async fn permission_commands(&self, guild: &str, locale: &str) -> Result<Value> {
+        self.get(&format!("/api/permissions/{}/commands?locale={}", seg(guild), seg(locale))).await
+    }
     /// PATCH /api/permissions/:guildId `{defaultLevel?, preset?, chatbotCap?, ownerDiscordId?, commandLevels?}`
     pub async fn update_permissions(&self, guild: &str, patch: Value) -> Result<Value> {
         self.patch(&format!("/api/permissions/{}", seg(guild)), patch).await

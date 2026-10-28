@@ -38,13 +38,16 @@ export function usePermissions(guildId) {
     const [error, setError] = useState(null);
     const [busy, setBusy] = useState(false);
     const locale = i18n.language;
+    const seq = useRef(0); // 늦게 온 앞선 읽기가 새 값을 덮지 않게
 
     const load = useCallback(async () => {
+        const mine = ++seq.current;
         try {
             const [res, stairs] = await Promise.all([
                 window.api.permissionsGet(guildId),
                 window.api.permissionsCommands?.(guildId, locale),
             ]);
+            if (mine !== seq.current) return;
             if (failed(res)) setError(res || {});
             else {
                 setPerm(res);
@@ -53,6 +56,7 @@ export function usePermissions(guildId) {
             // 계단을 못 읽어도 사람 화면은 쓴다
             setBoard(stairs && !failed(stairs) ? stairs : null);
         } catch (e) {
+            if (mine !== seq.current) return;
             setError({ error: e.message });
         }
         setLoading(false);
@@ -573,7 +577,7 @@ export function CommandStairs({ node, permissions, instance = L.ALL_INSTANCES })
     ];
     const current = chips.find((c) => c.id === selected);
     const move = async (chip, level) => {
-        if (chip.fixed || level === L.BANNED || level === chip.level) return;
+        if (busy || chip.fixed || level === L.BANNED || level === chip.level) return;
         await update({ commandLevels: L.levelPatch(chip.items, level) });
     };
     const label = (chip) => (chip.instance ? `${chip.title} · ${instanceName(chip.instance)}` : chip.title);

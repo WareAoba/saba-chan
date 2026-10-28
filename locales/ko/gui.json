@@ -984,7 +984,7 @@
     "level_owner": "소유자",
     "level_admin": "관리자",
     "level_user": "유저",
-    "level_chatbot": "손님",
+    "level_chatbot": "게스트",
     "level_banned": "금지",
     "preset_loose": "느슨하게",
     "preset_default": "기본",

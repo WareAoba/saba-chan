@@ -256,6 +256,12 @@ pub enum BackupCmd {
 pub enum PermCmd {
     /// Levels, preset and overrides of one Discord server (name or id; without it: the only paired server)
     Show { guild: Option<String> },
+    /// Commands per level: from which level each command can be used (one server with `--server`)
+    Commands {
+        guild: Option<String>,
+        #[arg(long, value_name = "SERVER")]
+        server: Option<String>,
+    },
     /// Give a member (name or id) a level: admin, user, chatbot (Talking Saba-chan) or banned
     Grant { guild: String, member: String, level: String },
     /// Take a member's own level away (they get the default level)

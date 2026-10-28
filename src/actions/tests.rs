@@ -944,6 +944,14 @@ async fn the_permission_board_lists_every_remote_command_at_the_level_it_needs()
     assert_eq!(board["instances"], json!([]));
 }
 
+/// 채팅 `players`와 액션 `server.players`는 같은 덮어쓰기 키를 본다 (채팅 경로 BUILTIN_COMMANDS와 같다)
+#[test]
+fn every_chat_builtin_command_shares_its_override_key_with_its_action() {
+    for cmd in ["start", "stop", "restart", "status", "players"] {
+        assert_eq!(override_keys("mc", &format!("server.{cmd}")), vec![format!("mc/{cmd}"), format!("mc/server.{cmd}")], "{cmd}");
+    }
+}
+
 /// 예약 작업은 나중에 요청자 없이 돈다: 새로 넣거나 켜는 서버 명령은 요청자가 지금 그 명령을 쓸 수 있어야 한다
 #[tokio::test]
 async fn scheduling_a_command_needs_the_requesters_permission_for_it() {

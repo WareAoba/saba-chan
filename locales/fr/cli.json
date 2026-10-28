@@ -703,6 +703,7 @@
       "audit": "Qui a démarré, arrêté ou envoyé des commandes aux serveurs, et d'où (GUI, CLI, Discord, planification)",
       "perm": "Qui peut lancer quelles commandes depuis Discord (niveaux par membre, préréglage, exceptions)",
       "perm.show": "Niveaux, préréglage et exceptions d'un serveur Discord",
+      "perm.commands": "Commandes par niveau : à partir de quel niveau chaque commande est utilisable (un serveur avec --server)",
       "perm.grant": "Donner un niveau à un membre : admin, user, chatbot ou banned",
       "perm.revoke": "Retirer le niveau propre d'un membre (il reçoit le niveau par défaut)",
       "perm.default": "Niveau des membres sans niveau propre",

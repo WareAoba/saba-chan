@@ -703,6 +703,7 @@
       "audit": "Wer Server gestartet, gestoppt oder Befehle gesendet hat, und von wo (GUI, CLI, Discord, Zeitplan)",
       "perm": "Wer welche Befehle aus Discord ausführen darf (Stufen je Mitglied, Vorlage, Ausnahmen)",
       "perm.show": "Stufen, Vorlage und Ausnahmen eines Discord-Servers",
+      "perm.commands": "Befehle je Stufe: ab welcher Stufe jeder Befehl nutzbar ist (ein Server mit --server)",
       "perm.grant": "Einem Mitglied eine Stufe geben: admin, user, chatbot oder banned",
       "perm.revoke": "Die eigene Stufe eines Mitglieds entfernen (es erhält die Standardstufe)",
       "perm.default": "Stufe für Mitglieder ohne eigene Stufe",

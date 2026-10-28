@@ -1223,6 +1223,7 @@ fn builtin_command(action: &str) -> Option<&'static str> {
         "server.stop" => Some("stop"),
         "server.restart" => Some("restart"),
         "server.status" => Some("status"),
+        "server.players" => Some("players"),
         _ => None,
     }
 }
