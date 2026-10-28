@@ -83,59 +83,76 @@ impl std::fmt::Display for SaveNotDone {
 
 impl std::error::Error for SaveNotDone {}
 
-/// 서버 답이 모듈의 실패 모양(`[commands] failure_patterns`)에 맞으면 그 까닭 (`reason` 이름 묶음, 없으면 맞은 글자)
-fn rejected(reply: &str, failures: &[String]) -> Option<String> {
-    failures.iter().filter_map(|p| regex::Regex::new(p).ok()).find_map(|re| {
-        re.captures(reply).map(|c| c.name("reason").unwrap_or_else(|| c.get(0).expect("whole match")).as_str().trim().to_string())
-    })
+/// 서버 답이 모듈의 실패 모양(`[commands] failure_patterns`)에 맞으면 그 까닭. 실패 모양의 `reason` 이름 묶음만 싣고,
+/// 없으면 "rejected" (콘솔 원문은 밖으로 내지 않는다)
+fn rejected(reply: &str, failures: &[regex::Regex]) -> Option<String> {
+    failures
+        .iter()
+        .find_map(|re| re.captures(reply))
+        .map(|c| c.name("reason").map(|m| m.as_str().trim().to_string()).unwrap_or_else(|| "rejected".to_string()))
 }
 
-/// 켜진 서버의 자동 저장을 멈추고 저장한다. 저장 완료 줄이 선언돼 있으면 `cursor` 뒤 콘솔에 그 줄이 나올 때까지,
-/// 아니면 3초 기다린다. 서버가 거절하거나 완료 줄이 나오지 않으면 백업을 만들지 않는다
+/// 켜진 서버의 자동 저장을 멈추고 저장한다. 서버가 명령을 거절하면(명령 답이 실패 모양) 백업을 만들지 않는다.
+/// 저장 완료 줄이 선언돼 있으면 저장 명령을 보낸 뒤의 콘솔에 그 줄이 나올 때까지 기다리고, 나오지 않으면 백업을 만들지 않는다.
+/// 선언이 없으면 예전처럼 3초 기다린다
 async fn save_for_backup(state: &IPCServer, id: &str, spec: &crate::supervisor::module_loader::ModuleBackup, failures: &[String]) -> Result<(), SaveNotDone> {
     let proc = state.supervisor.read().await.managed_store.get(id).await;
-    let done = spec.save_done_pattern.as_deref().and_then(|p| regex::Regex::new(p).ok());
+    let failures: Vec<regex::Regex> = failures.iter().filter_map(|p| regex::Regex::new(p).ok()).collect();
+    let done = spec.save_done_pattern.as_deref().and_then(|p| match regex::Regex::new(p) {
+        Ok(re) => Some(re),
+        Err(e) => {
+            tracing::warn!("backup.save_done_pattern of '{}' is not a valid regex ({}); waiting a fixed time instead", id, e);
+            None
+        }
+    });
+    let mut confirmed = false;
     for cmd in [spec.pause_command.as_deref(), spec.save_command.as_deref()].into_iter().flatten() {
+        let is_save = Some(cmd) == spec.save_command.as_deref();
         let cursor = match &proc {
             Some(p) => Some(p.console_cursor().await),
             None => None,
         };
         let Some(reply) = command_reply(state, id, cmd, json!({})).await else {
             tracing::warn!("Command '{}' failed before backing up '{}'", cmd, id);
+            // 완료 줄로 확인하기로 한 저장을 보내지도 못했다: 저장 안 된 월드를 묶지 않는다
+            if is_save && done.is_some() {
+                return Err(SaveNotDone::Unconfirmed { command: cmd.to_string() });
+            }
             continue;
         };
-        if let Some(reason) = rejected(&reply, failures) {
+        if let Some(reason) = rejected(&reply, &failures) {
             return Err(SaveNotDone::Rejected { command: cmd.to_string(), reason });
         }
-        if Some(cmd) != spec.save_command.as_deref() {
-            continue;
-        }
-        let Some(done) = &done else {
-            // 저장 명령은 대개 응답 뒤에도 디스크에 쓴다
-            tokio::time::sleep(std::time::Duration::from_secs(3)).await;
-            continue;
-        };
+        let Some(done) = done.as_ref().filter(|_| is_save) else { continue };
         if reply.lines().any(|l| done.is_match(l)) {
+            confirmed = true;
             continue;
         }
-        let (Some(p), Some(cursor)) = (&proc, cursor) else {
+        let (Some(p), Some(mut next)) = (&proc, cursor) else {
             // 콘솔을 볼 수 없는 서버(RCON 등): 답에 없으면 확인할 길이 없다
             return Err(SaveNotDone::Unconfirmed { command: cmd.to_string() });
         };
+        // 거절은 명령 답(위)으로만 가린다. 기다리는 동안 다른 명령·플러그인이 찍는 줄로 저장을 버리지 않는다
         let deadline = tokio::time::Instant::now() + SAVE_WAIT;
         loop {
-            let lines = p.get_console_since(cursor).await;
-            if lines.iter().any(|l| done.is_match(&l.content)) {
-                break;
+            for line in p.get_console_since(next).await {
+                next = line.id + 1;
+                if line.source != crate::supervisor::managed_process::LogSource::System && done.is_match(&line.content) {
+                    confirmed = true;
+                }
             }
-            if let Some(reason) = lines.iter().find_map(|l| rejected(&l.content, failures)) {
-                return Err(SaveNotDone::Rejected { command: cmd.to_string(), reason });
+            if confirmed {
+                break;
             }
             if tokio::time::Instant::now() >= deadline || !p.is_running() {
                 return Err(SaveNotDone::Unconfirmed { command: cmd.to_string() });
             }
             tokio::time::sleep(std::time::Duration::from_millis(200)).await;
         }
+    }
+    if !confirmed {
+        // 저장 명령은 대개 응답 뒤에도 디스크에 쓴다
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
     }
     Ok(())
 }
@@ -2286,6 +2303,17 @@ print(json.dumps({'success': True, 'snapshots': [{'id': 'startup/backup_1', 'cre
         let work = tmp.path().join("server");
         assert_eq!(backed_up_level(&dir, &made, &work), "new\n", "the backup holds what the save wrote");
         assert_eq!(std::fs::read_to_string(work.join("commands.log")).unwrap(), "save-off\nsave-all\nsave-on\n");
+    }
+
+    /// 기다리는 동안 다른 명령이 찍은 실패 줄로 저장을 버리지 않는다: 거절은 저장 명령의 답으로만 가린다
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_failure_line_while_waiting_for_the_save_does_not_abort_the_backup() {
+        let (state, id, tmp) = server_with(&live_module(Some("^Saved the game$")), None).await;
+        run_fake_server(&state, &id, &tmp, "save-all) echo 'Saving the game'; sleep 2; echo 'Unknown command'; echo new > world/level.dat; echo 'Saved the game';;").await;
+        let made = take_backup(&state, &id, BackupKind::Manual).await.unwrap().unwrap().name;
+        let dir = state.supervisor.read().await.instance_store.instance_dir(&id).join("backups");
+        assert_eq!(backed_up_level(&dir, &made, &tmp.path().join("server")), "new\n");
     }
 
     /// 저장 명령을 서버가 거절하면(모듈의 실패 모양) 백업을 만들지 않고 실패로 알린다. 자동 저장은 되돌린다.
