@@ -1,24 +1,33 @@
 import clsx from 'clsx';
-import { useRef, useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useExtensions } from '../../contexts/ExtensionContext';
+import {
+    checkBlockers,
+    choosesVersion,
+    createBody,
+    installChoices,
+    installFields,
+    nameTaken,
+    optionLabel,
+    suggestName,
+    wizardSteps,
+} from '../../utils/installFields';
 import { AgreementList, allChecked } from '../AgreementList';
 import CustomDropdown from '../CustomDropdown/CustomDropdown';
 import { AddServerOptions, addServerExtensionData } from '../DataSlots';
 import ExtensionSlot from '../ExtensionSlot';
-import { useExtensions } from '../../contexts/ExtensionContext';
 import Icon from '../Icon';
 import { ModuleMakerCard } from '../ModuleMakerCard';
 import { SabaToggle } from '../ui/SabaUI';
 import { Segmented } from '../ui/StatusChip';
 import { TrustCreateNotice } from '../ui/TrustBadge';
-import { installChoices, installFields, installSettings, nameTaken, optionLabel, suggestName } from '../../utils/installFields';
 
 /**
- * AddInstanceNewServer — "새 서버로 추가" 흐름.
+ * AddInstanceNewServer — "새 서버로 추가" 마법사.
  *
- * 2단계 구성:
- *   step 'select-game'  — 아이콘+이름 카드 그리드에서 게임 모듈 선택
- *   step 'configure'    — 인스턴스 이름 입력 + 옵션 + 제출
+ * 단계 (`wizardSteps`): 게임 → 서버 종류·버전(고를 것이 있을 때) → 파일 위치 → 실행 방식 → 이름·포트 → 확인.
+ * 이름·폴더·포트가 다른 서버와 겹치는지는 데몬이 본다 (`POST /api/instances/check`)
  */
 export function AddInstanceNewServer({
     extensions,
@@ -30,50 +39,135 @@ export function AddInstanceNewServer({
     onClose,
 }) {
     const { t } = useTranslation('gui');
-    const [step, setStep] = useState('select-game'); // 'select-game' | 'configure'
+    const [step, setStep] = useState('select-game');
     const [selectedExtension, setSelectedExtension] = useState('');
     const [newServerName, setNewServerName] = useState('');
     const [submitting, setSubmitting] = useState(false);
     const [installValues, setInstallValues] = useState({});
     const [preset, setPreset] = useState('');
+    const [version, setVersion] = useState(''); // '' = 최신
+    const [versions, setVersions] = useState(null); // 고를 수 있는 릴리스 (null = 아직 모름)
+    const [folderMode, setFolderMode] = useState('default'); // 'default' | 'custom'
+    const [folder, setFolder] = useState('');
+    const [managed, setManaged] = useState(true);
+    const [port, setPort] = useState(''); // '' = 데몬이 고른 포트
+    const [check, setCheck] = useState(null); // 데몬 확인 결과
+    const [checking, setChecking] = useState(false);
     const [agreed, setAgreed] = useState({}); // 약관 id → 체크 여부
     const [extValues, setExtValues] = useState({}); // AddServer.options 답 (field → 값)
     const { extensions: daemonExtensions } = useExtensions();
     const nameInputRef = useRef(null);
+    const checkSeq = useRef(0);
+
+    const selectedModule = extensions.find((m) => m.name === selectedExtension);
+    const steps = wizardSteps(selectedModule);
+    const stepIndex = steps.indexOf(step);
+    const customFolder = folderMode === 'custom' ? folder.trim() : '';
+
+    const goTo = (next) => {
+        onStepChange?.(next); // 높이 캡처 후 부모 상태 변경 (배칭)
+        setStep(next);
+    };
 
     // 게임 카드를 눌렀을 때
     const handleGameSelect = (extName) => {
-        onStepChange?.('configure'); // 높이 캡처 후 부모 상태 변경 (배칭)
-        setSelectedExtension(extName);
-
         // 자동 이름: 모듈 이름 그대로, 겹치면 -2부터 (CLI와 같다)
+        setSelectedExtension(extName);
         setNewServerName(suggestName(extName, servers));
         setInstallValues({});
         setPreset('');
+        setVersion('');
+        setVersions(null);
+        setFolderMode('default');
+        setFolder('');
+        setManaged(true);
+        setPort('');
+        setCheck(null);
         setAgreed({});
         setExtValues({});
-
-        setStep('configure');
+        goTo(wizardSteps(extensions.find((m) => m.name === extName))[1]);
     };
 
-    // configure 단계 진입 시 이름 인풋에 포커스
+    const body = () =>
+        createBody({
+            name: newServerName,
+            module: selectedExtension,
+            installValues,
+            preset,
+            version,
+            folder: customFolder,
+            managed,
+            port,
+        });
+
+    // 서버 종류·버전 단계: 고를 수 있는 릴리스를 데몬에 묻는다 (못 받으면 최신만 고른다)
     useEffect(() => {
-        if (step === 'configure' && nameInputRef.current) {
-            // 짧은 딜레이로 애니메이션 후 포커스
+        if (step !== 'server' || versions !== null || !choosesVersion(selectedModule)) return;
+        let alive = true;
+        Promise.resolve(window.api?.moduleListVersions?.(selectedExtension, { per_page: 50 }))
+            .then((res) => {
+                if (!alive) return;
+                const list = Array.isArray(res?.versions) ? res.versions : [];
+                setVersions(list.filter((v) => !v.type || v.type === 'release').map((v) => String(v.id ?? v)));
+            })
+            .catch(() => alive && setVersions([]));
+        return () => {
+            alive = false;
+        };
+    }, [step, versions, selectedModule, selectedExtension]);
+
+    // 이름·포트 단계와 확인 단계: 겹치는지 데몬에 묻는다 (입력이 멈춘 뒤 한 번)
+    const checkKey = JSON.stringify(step === 'name' || step === 'confirm' ? body() : null);
+    useEffect(() => {
+        if (step !== 'name' && step !== 'confirm') return;
+        const seq = ++checkSeq.current;
+        setChecking(true);
+        const timer = setTimeout(async () => {
+            let res = null;
+            try {
+                res = await window.api?.instanceCheck?.(JSON.parse(checkKey));
+            } catch (_e) {
+                res = null;
+            }
+            if (seq !== checkSeq.current) return;
+            setCheck(res?.success ? res : { failed: true, error_code: res?.error_code });
+            setChecking(false);
+        }, 250);
+        return () => clearTimeout(timer);
+    }, [step, checkKey]);
+
+    // 이름 단계 진입 시 이름 인풋에 포커스
+    useEffect(() => {
+        if (step === 'name' && nameInputRef.current) {
             const timer = setTimeout(() => nameInputRef.current?.focus(), 80);
             return () => clearTimeout(timer);
         }
     }, [step]);
 
-    // onStepChange는 handleGameSelect/handleBackToSelect에서 동기적으로 호출
-    // (useEffect로 호출하면 paint 이후라 높이 애니메이션 캡처가 실패함)
+    // 파일 위치 단계의 "다음": 고른 폴더가 다른 서버의 폴더이거나 파일이 들어 있으면 넘어가지 않는다
+    const [folderProblem, setFolderProblem] = useState(null);
+    const leaveLocation = async () => {
+        setFolderProblem(null);
+        if (!customFolder) return goTo(steps[stepIndex + 1]);
+        setChecking(true);
+        let res = null;
+        try {
+            res = await window.api?.instanceCheck?.(body());
+        } finally {
+            setChecking(false);
+        }
+        if (res?.error_code === 'invalid_format') return setFolderProblem({ code: 'folder_not_absolute' });
+        if (res?.folder?.in_use_by) return setFolderProblem({ code: 'folder_in_use', name: res.folder.in_use_by });
+        if (res?.folder?.not_empty) return setFolderProblem({ code: 'folder_not_empty' });
+        goTo(steps[stepIndex + 1]);
+    };
 
-    // configure → select-game 으로 돌아가기
-    const handleBackToSelect = () => {
-        onStepChange?.('select-game'); // 높이 캡처 후 부모 상태 변경 (배칭)
-        setStep('select-game');
-        setSelectedExtension('');
-        setNewServerName('');
+    const browseFolder = async () => {
+        const picked = await window.api?.openFolderDialog?.();
+        if (picked) {
+            setFolder(picked);
+            setFolderProblem(null);
+        }
     };
 
     const handleSubmit = async () => {
@@ -84,13 +178,9 @@ export function AddInstanceNewServer({
         let created;
         try {
             created = await onAddServer({
-                name: newServerName.trim(),
-                module_name: selectedExtension,
-                module_settings: installSettings(installValues),
+                ...body(),
                 // 사용자가 체크한 약관만 (module.toml [[agreements]])
                 ...(agreements.length ? { accept_agreements: agreements.map((a) => a.id) } : {}),
-                // 프리셋 값은 데몬이 푼다 (I1-b)
-                ...(preset ? { preset } : {}),
                 // 익스텐션이 물은 칸 (AddServer.options)
                 ...(extensionData ? { extension_data: extensionData } : {}),
             });
@@ -106,14 +196,19 @@ export function AddInstanceNewServer({
         setStep('select-game');
     };
 
-    const agreementModule = extensions.find((m) => m.name === selectedExtension);
-    const agreements = agreementModule?.agreements || [];
-    const duplicateName = nameTaken(servers, newServerName);
-    const canSubmit =
-        newServerName.trim() && !duplicateName && selectedExtension && !submitting && allChecked(agreements, agreed);
+    const agreements = selectedModule?.agreements || [];
+    const duplicateName =
+        nameTaken(servers, newServerName) || (check?.name?.value === newServerName.trim() && check?.name?.taken);
+    const blockers = check && !check.failed ? checkBlockers(check) : [];
+    const nameReady = newServerName.trim() && !duplicateName && !blockers.length;
+    const canSubmit = nameReady && selectedExtension && !submitting && allChecked(agreements, agreed);
+    const canLeave = {
+        location: folderMode === 'default' || !!customFolder,
+        name: nameReady && !checking,
+    };
 
     // ──────────────────────────────────────────
-    //  Step 1: 게임 선택 (아이콘 카드 그리드)
+    //  게임 선택 (아이콘 카드 그리드)
     // ──────────────────────────────────────────
     if (step === 'select-game') {
         return (
@@ -172,7 +267,9 @@ export function AddInstanceNewServer({
                                                 </div>
                                                 <span className="as-game-card-name">{displayName}</span>
                                                 <span className="as-game-card-version">
-                                                    {unsupported ? t('add_server_modal.platform_unsupported') : `v${m.version}`}
+                                                    {unsupported
+                                                        ? t('add_server_modal.platform_unsupported')
+                                                        : `v${m.version}`}
                                                 </span>
                                             </button>
                                         );
@@ -193,28 +290,314 @@ export function AddInstanceNewServer({
         );
     }
 
-    // ──────────────────────────────────────────
-    //  Step 2: 인스턴스 구성 (이름 + 옵션)
-    // ──────────────────────────────────────────
-    const selectedModule = extensions.find((m) => m.name === selectedExtension);
     const selectedDisplayName = selectedModule
         ? t(`mod_${selectedModule.name}:module.display_name`, {
               defaultValue: selectedModule.game_name || selectedModule.name,
           })
         : selectedExtension;
+    const goBack = () => {
+        if (stepIndex <= 1) {
+            onStepChange?.('select-game');
+            setStep('select-game');
+            setSelectedExtension('');
+            setNewServerName('');
+            return;
+        }
+        goTo(steps[stepIndex - 1]);
+    };
+    const ports = check?.ports || [];
+    const mainPort = ports.find((p) => p.field === 'port');
+
+    let content;
+    if (step === 'server') {
+        content = (
+            <>
+                {/* 모듈이 만들 때 고르라고 한 설정 (설치할 서버 파일·새 월드가 달라진다) */}
+                {installFields(selectedModule).map((field) => (
+                    <InstallField
+                        key={field.name}
+                        t={t}
+                        module={selectedModule}
+                        field={field}
+                        value={installValues[field.name]}
+                        onChange={(val) => setInstallValues((prev) => ({ ...prev, [field.name]: val }))}
+                        disabled={submitting}
+                    />
+                ))}
+
+                {choosesVersion(selectedModule) && (
+                    <div className="as-section as-section-card">
+                        <span className="as-label">
+                            <Icon name="download" size="sm" />
+                            {t('add_server_modal.version')}
+                        </span>
+                        <CustomDropdown
+                            value={version}
+                            onChange={setVersion}
+                            options={[
+                                { value: '', label: t('add_server_modal.version_latest') },
+                                ...(versions || []).map((v) => ({ value: v, label: v })),
+                            ]}
+                            disabled={submitting}
+                        />
+                        <p className="as-provision-hint">{t('add_server_modal.version_hint')}</p>
+                    </div>
+                )}
+
+                {/* 모듈 추천 프리셋 (module.toml [[presets]]) */}
+                {selectedModule?.presets?.length > 0 && (
+                    <div className="as-section as-section-card">
+                        <span className="as-label">
+                            <Icon name="lightbulb" size="sm" />
+                            {t('add_server_modal.preset_title')}
+                        </span>
+                        <Segmented
+                            ariaLabel={t('add_server_modal.preset_title')}
+                            value={preset}
+                            onChange={setPreset}
+                            items={[
+                                { id: '', label: t('add_server_modal.preset_none') },
+                                ...selectedModule.presets.map((p) => ({
+                                    id: p.id,
+                                    label: t(`mod_${selectedModule.name}:presets.${p.id}.label`, {
+                                        defaultValue: p.label || p.id,
+                                    }),
+                                })),
+                            ]}
+                        />
+                        <p className="as-provision-hint">
+                            {preset
+                                ? t(`mod_${selectedModule.name}:presets.${preset}.description`, {
+                                      defaultValue:
+                                          selectedModule.presets.find((p) => p.id === preset)?.description || '',
+                                  })
+                                : t('add_server_modal.preset_none_hint')}
+                        </p>
+                    </div>
+                )}
+            </>
+        );
+    } else if (step === 'location') {
+        content = (
+            <div className="as-section as-section-card">
+                <span className="as-label">
+                    <Icon name="folder" size="sm" />
+                    {t('add_server_modal.location_title')}
+                </span>
+                <Segmented
+                    ariaLabel={t('add_server_modal.location_title')}
+                    value={folderMode}
+                    onChange={(mode) => {
+                        setFolderMode(mode);
+                        setFolderProblem(null);
+                    }}
+                    items={[
+                        { id: 'default', label: t('add_server_modal.location_default') },
+                        { id: 'custom', label: t('add_server_modal.location_custom') },
+                    ]}
+                />
+                <p className="as-provision-hint">
+                    {t(
+                        folderMode === 'custom'
+                            ? 'add_server_modal.location_custom_hint'
+                            : 'add_server_modal.location_default_hint',
+                    )}
+                </p>
+                {folderMode === 'custom' && (
+                    <div className="as-path-row">
+                        <input
+                            className="as-input as-input-mono"
+                            type="text"
+                            aria-label={t('add_server_modal.location_placeholder')}
+                            placeholder={t('add_server_modal.location_placeholder')}
+                            value={folder}
+                            onChange={(e) => {
+                                setFolder(e.target.value);
+                                setFolderProblem(null);
+                            }}
+                            aria-invalid={folderProblem ? true : undefined}
+                        />
+                        <button
+                            className="as-btn-icon"
+                            type="button"
+                            onClick={browseFolder}
+                            title={t('add_server_modal.location_browse')}
+                            aria-label={t('add_server_modal.location_browse')}
+                        >
+                            <Icon name="folder" size="sm" />
+                        </button>
+                    </div>
+                )}
+                {folderProblem && (
+                    <p className="as-name-taken" role="alert">
+                        <Icon name="alertCircle" size="sm" />
+                        {t(`add_server_modal.${folderProblem.code}`, { name: folderProblem.name })}
+                    </p>
+                )}
+            </div>
+        );
+    } else if (step === 'run') {
+        content = (
+            <div className="as-section as-section-card">
+                <span className="as-label">
+                    <Icon name="play" size="sm" />
+                    {t('add_server_modal.run_title')}
+                </span>
+                <Segmented
+                    ariaLabel={t('add_server_modal.run_title')}
+                    value={managed ? 'managed' : 'unmanaged'}
+                    onChange={(id) => setManaged(id === 'managed')}
+                    items={[
+                        { id: 'managed', label: t('add_server_modal.run_managed') },
+                        { id: 'unmanaged', label: t('add_server_modal.run_unmanaged') },
+                    ]}
+                />
+                <p className="as-provision-hint">
+                    {t(managed ? 'add_server_modal.run_managed_hint' : 'add_server_modal.run_unmanaged_hint')}
+                </p>
+            </div>
+        );
+    } else if (step === 'name') {
+        content = (
+            <>
+                <div className="as-section as-section-card">
+                    <label className="as-label" htmlFor="as-server-name">
+                        <Icon name="server" size="sm" />
+                        {t('add_server_modal.server_name')}
+                    </label>
+                    <input
+                        id="as-server-name"
+                        ref={nameInputRef}
+                        className="as-input"
+                        type="text"
+                        placeholder={t('add_server_modal.server_name_placeholder')}
+                        value={newServerName}
+                        onChange={(e) => setNewServerName(e.target.value)}
+                        disabled={submitting}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter' && canLeave.name) goTo(steps[stepIndex + 1]);
+                        }}
+                        aria-invalid={duplicateName || undefined}
+                    />
+                    {duplicateName && (
+                        <p className="as-name-taken" role="alert">
+                            <Icon name="alertCircle" size="sm" />
+                            {t('servers.rename_name_taken', { name: newServerName.trim() })}
+                        </p>
+                    )}
+                </div>
+                {(mainPort || port !== '') && (
+                    <div className="as-section as-section-card">
+                        <label className="as-label" htmlFor="as-server-port">
+                            <Icon name="network" size="sm" />
+                            {t('add_server_modal.port')}
+                        </label>
+                        <input
+                            id="as-server-port"
+                            className="as-input"
+                            type="number"
+                            min={1}
+                            max={65535}
+                            value={port !== '' ? port : String(mainPort?.port ?? '')}
+                            onChange={(e) => setPort(e.target.value)}
+                            disabled={submitting}
+                        />
+                        <p className="as-provision-hint">{t('add_server_modal.port_hint')}</p>
+                    </div>
+                )}
+                <CheckNotes t={t} check={check} checking={checking} />
+            </>
+        );
+    } else {
+        const settingRows = installFields(selectedModule)
+            .filter((f) => installValues[f.name] != null && installValues[f.name] !== '')
+            .map((f) => [
+                t(`mod_${selectedModule.name}:settings.${f.name}.label`, { defaultValue: f.label }),
+                f.field_type === 'select'
+                    ? optionLabel(t, selectedModule.name, f, installValues[f.name])
+                    : String(installValues[f.name]),
+            ]);
+        const rows = [
+            [t('add_server_modal.summary_game'), selectedDisplayName],
+            ...settingRows,
+            ...(choosesVersion(selectedModule)
+                ? [[t('add_server_modal.version'), version || t('add_server_modal.version_latest')]]
+                : []),
+            [t('add_server_modal.location_title'), customFolder || t('add_server_modal.location_default')],
+            [
+                t('add_server_modal.run_title'),
+                t(managed ? 'add_server_modal.run_managed' : 'add_server_modal.run_unmanaged'),
+            ],
+            [t('add_server_modal.server_name'), newServerName.trim()],
+            ...ports.map((p) => [`${t('add_server_modal.port')} (${p.field})`, String(p.port)]),
+        ];
+        content = (
+            <>
+                <dl className="as-summary as-section-card">
+                    {rows.map(([label, value]) => (
+                        <div className="as-summary-row" key={label}>
+                            <dt>{label}</dt>
+                            <dd>{value}</dd>
+                        </div>
+                    ))}
+                </dl>
+                <CheckNotes t={t} check={check} checking={checking} />
+
+                {/* 확인 안 된·바뀐 모듈: 게임 서버는 격리되지 않는다 */}
+                <TrustCreateNotice trust={selectedModule?.trust} />
+
+                {/* 모듈이 선언한 약관: 모두 동의해야 만들 수 있다 */}
+                {agreements.length > 0 && (
+                    <div className="as-section as-section-card">
+                        <span className="as-label">
+                            <Icon name="file" size="sm" />
+                            {t('agreements.title')}
+                        </span>
+                        <AgreementList
+                            module={selectedExtension}
+                            agreements={agreements}
+                            checked={agreed}
+                            onToggle={(id, on) => setAgreed((prev) => ({ ...prev, [id]: on }))}
+                            disabled={submitting}
+                        />
+                    </div>
+                )}
+
+                {/* 익스텐션 슬롯 — 서버 생성 옵션 */}
+                <ExtensionSlot slotId="AddServer.options" t={t} />
+                <AddServerOptions
+                    values={extValues}
+                    onChange={(field, value) => setExtValues((prev) => ({ ...prev, [field]: value }))}
+                    disabled={submitting}
+                />
+
+                {/* 프로비저닝 안내 */}
+                <p className="as-provision-hint">
+                    <Icon name="info" size="sm" />
+                    {t('add_server_modal.provision_hint')}
+                </p>
+            </>
+        );
+    }
+
+    const isLast = step === 'confirm';
+    const next = () => (step === 'location' ? leaveLocation() : goTo(steps[stepIndex + 1]));
+    const nextDisabled = submitting || checking || (step in canLeave && !canLeave[step]);
 
     return (
-        <div className="add-instance-stage" key="new-configure">
+        <div className="add-instance-stage" key={`new-${step}`}>
             {/* ── Header ── */}
             <div className="modal-header add-server-header">
                 <div className="as-header-row">
-                    <button className="ai-back-btn" type="button" onClick={handleBackToSelect} disabled={submitting}>
+                    <button className="ai-back-btn" type="button" onClick={goBack} disabled={submitting}>
                         <Icon name="chevronLeft" size="sm" />
                     </button>
                     <div className="as-header-copy">
-                        <h3>{t('add_server_modal.configure_title')}</h3>
+                        <h3>{t(`add_server_modal.${step}_step_title`)}</h3>
                         <p className="add-server-subtitle">
-                            {t('add_server_modal.configure_subtitle')}
+                            {t('add_server_modal.step_counter', { current: stepIndex, total: steps.length - 1 })}
+                            {' · '}
+                            {t(`add_server_modal.${step}_step_subtitle`)}
                         </p>
                     </div>
                 </div>
@@ -238,121 +621,8 @@ export function AddInstanceNewServer({
                             <span className="as-selected-game-name">{selectedDisplayName}</span>
                             <span className="as-selected-game-version">v{selectedModule?.version}</span>
                         </div>
-                        <button
-                            className="as-change-game-btn"
-                            type="button"
-                            onClick={handleBackToSelect}
-                            disabled={submitting}
-                        >
-                            {t('add_server_modal.change_game')}
-                        </button>
                     </div>
-
-                    {/* 확인 안 된·바뀐 모듈: 게임 서버는 격리되지 않는다 */}
-                    <TrustCreateNotice trust={selectedModule?.trust} />
-
-                    {/* 인스턴스 이름 */}
-                    <div className="as-section as-section-card">
-                        <label className="as-label">
-                            <Icon name="server" size="sm" />
-                            {t('add_server_modal.server_name')}
-                        </label>
-                        <input
-                            ref={nameInputRef}
-                            className="as-input"
-                            type="text"
-                            placeholder={t('add_server_modal.server_name_placeholder')}
-                            value={newServerName}
-                            onChange={(e) => setNewServerName(e.target.value)}
-                            disabled={submitting}
-                            onKeyDown={(e) => {
-                                if (e.key === 'Enter' && canSubmit) handleSubmit();
-                            }}
-                            aria-invalid={duplicateName || undefined}
-                        />
-                        {duplicateName && (
-                            <p className="as-name-taken" role="alert">
-                                <Icon name="alertCircle" size="sm" />
-                                {t('servers.rename_name_taken', { name: newServerName.trim() })}
-                            </p>
-                        )}
-                    </div>
-
-                    {/* 모듈이 만들 때 고르라고 한 설정 (설치할 서버 파일·새 월드가 달라진다) */}
-                    {installFields(selectedModule).map((field) => (
-                        <InstallField
-                            key={field.name}
-                            t={t}
-                            module={selectedModule}
-                            field={field}
-                            value={installValues[field.name]}
-                            onChange={(val) => setInstallValues((prev) => ({ ...prev, [field.name]: val }))}
-                            disabled={submitting}
-                        />
-                    ))}
-
-                    {/* 모듈 추천 프리셋 (module.toml [[presets]]) */}
-                    {selectedModule?.presets?.length > 0 && (
-                        <div className="as-section as-section-card">
-                            <span className="as-label">
-                                <Icon name="lightbulb" size="sm" />
-                                {t('add_server_modal.preset_title')}
-                            </span>
-                            <Segmented
-                                ariaLabel={t('add_server_modal.preset_title')}
-                                value={preset}
-                                onChange={setPreset}
-                                items={[
-                                    { id: '', label: t('add_server_modal.preset_none') },
-                                    ...selectedModule.presets.map((p) => ({
-                                        id: p.id,
-                                        label: t(`mod_${selectedModule.name}:presets.${p.id}.label`, {
-                                            defaultValue: p.label || p.id,
-                                        }),
-                                    })),
-                                ]}
-                            />
-                            <p className="as-provision-hint">
-                                {preset
-                                    ? t(`mod_${selectedModule.name}:presets.${preset}.description`, {
-                                          defaultValue:
-                                              selectedModule.presets.find((p) => p.id === preset)?.description || '',
-                                      })
-                                    : t('add_server_modal.preset_none_hint')}
-                            </p>
-                        </div>
-                    )}
-
-                    {/* 모듈이 선언한 약관: 모두 동의해야 만들 수 있다 */}
-                    {agreements.length > 0 && (
-                        <div className="as-section as-section-card">
-                            <span className="as-label">
-                                <Icon name="file" size="sm" />
-                                {t('agreements.title')}
-                            </span>
-                            <AgreementList
-                                module={selectedExtension}
-                                agreements={agreements}
-                                checked={agreed}
-                                onToggle={(id, on) => setAgreed((prev) => ({ ...prev, [id]: on }))}
-                                disabled={submitting}
-                            />
-                        </div>
-                    )}
-
-                    {/* 익스텐션 슬롯 — 서버 생성 옵션 */}
-                    <ExtensionSlot slotId="AddServer.options" t={t} />
-                    <AddServerOptions
-                        values={extValues}
-                        onChange={(field, value) => setExtValues((prev) => ({ ...prev, [field]: value }))}
-                        disabled={submitting}
-                    />
-
-                    {/* 프로비저닝 안내 */}
-                    <p className="as-provision-hint">
-                        <Icon name="info" size="sm" />
-                        {t('add_server_modal.provision_hint')}
-                    </p>
+                    {content}
                 </div>
             </div>
 
@@ -361,20 +631,56 @@ export function AddInstanceNewServer({
                 <button className="btn btn-cancel" onClick={onClose} disabled={submitting}>
                     {t('modals.cancel')}
                 </button>
-                <button className="btn btn-confirm" onClick={handleSubmit} disabled={!canSubmit}>
-                    {submitting ? (
-                        <>
-                            <Icon name="refresh" size="sm" className="spin" /> {t('add_server_modal.provisioning')}
-                        </>
-                    ) : (
-                        <>
-                            <Icon name="plus" size="sm" /> {t('add_server_modal.add_server')}
-                        </>
-                    )}
+                <button className="btn btn-secondary" type="button" onClick={goBack} disabled={submitting}>
+                    {t('add_server_modal.prev')}
                 </button>
+                {isLast ? (
+                    <button className="btn btn-confirm" onClick={handleSubmit} disabled={!canSubmit}>
+                        {submitting ? (
+                            <>
+                                <Icon name="refresh" size="sm" className="spin" /> {t('add_server_modal.provisioning')}
+                            </>
+                        ) : (
+                            <>
+                                <Icon name="plus" size="sm" /> {t('add_server_modal.add_server')}
+                            </>
+                        )}
+                    </button>
+                ) : (
+                    <button className="btn btn-confirm" type="button" onClick={next} disabled={nextDisabled}>
+                        {t('add_server_modal.next')}
+                    </button>
+                )}
             </div>
         </div>
     );
+}
+
+/** 데몬 확인 결과 중 알릴 것: 막는 것(이름·폴더)은 경고로, 다른 서버와 같은 포트·예약된 포트는 안내로 */
+function CheckNotes({ t, check, checking }) {
+    if (checking && !check) return <p className="as-provision-hint">{t('add_server_modal.checking')}</p>;
+    if (!check) return null;
+    if (check.failed) return <p className="as-provision-hint">{t('add_server_modal.check_failed')}</p>;
+    const notes = [];
+    if (check.folder?.in_use_by)
+        notes.push(['alert', t('add_server_modal.folder_in_use', { name: check.folder.in_use_by })]);
+    if (check.folder?.not_empty) notes.push(['alert', t('add_server_modal.folder_not_empty')]);
+    for (const p of check.ports || []) {
+        if (p.in_use_by?.length) {
+            notes.push(['note', t('add_server_modal.port_in_use', { port: p.port, servers: p.in_use_by.join(', ') })]);
+        }
+        if (p.reserved) notes.push(['alert', t('add_server_modal.port_reserved', { port: p.port })]);
+    }
+    return notes.map(([kind, text]) => (
+        <p
+            key={text}
+            className={kind === 'alert' ? 'as-name-taken' : 'as-provision-hint'}
+            role={kind === 'alert' ? 'alert' : undefined}
+        >
+            <Icon name={kind === 'alert' ? 'alertCircle' : 'info'} size="sm" />
+            {text}
+        </p>
+    ));
 }
 
 /** 만들 때 고르는 설정 칸 하나. 고르지 않은 칸은 보내지 않는다 (데몬이 모듈 기본값을 채운다) */

@@ -410,6 +410,14 @@ export function createApi({ invoke, hub }) {
                 return { error: t('server.creation_failed', { error: error.message }) };
             }
         },
+        // 만들기 전 확인: 이름·서버 폴더·포트가 다른 서버와 겹치는지 (아무것도 만들지 않는다)
+        instanceCheck: async (data) => {
+            try {
+                return (await post('/api/instances/check', data, { timeout: 15000 })).data;
+            } catch (error) {
+                return errorBody(error);
+            }
+        },
         instanceProvisionProgress: async (name) => {
             try {
                 return (await get(`/api/provision-progress/${encodeURIComponent(name)}`, { timeout: 3000 })).data;
