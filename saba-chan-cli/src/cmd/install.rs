@@ -184,7 +184,7 @@ pub async fn run(ctx: &Ctx, args: InstallArgs) -> Result<()> {
         install_path: dir.clone(),
         language: crate::i18n::lang().to_string(),
         create_desktop_shortcut: false,
-        // 데스크톱이면 시작 메뉴에서 앱을 찾을 수 있게 한다 (헤드리스·리눅스는 라이브러리가 건너뛴다)
+        // 데스크톱이면 시작 메뉴(리눅스는 앱 메뉴)에서 앱을 찾을 수 있게 한다 (헤드리스는 라이브러리가 건너뛴다)
         create_start_menu_shortcut: profile == Profile::Desktop,
         profile,
         selected_modules: modules.clone(),
@@ -222,8 +222,13 @@ pub async fn run(ctx: &Ctx, args: InstallArgs) -> Result<()> {
         &t!("install.done", dir = dir.display()),
         &json!({ "ok": true, "dir": dir, "modules": modules, "components": last.installed_components, "warnings": last.warnings }),
     );
-    ctx.out
-        .hint(&t!("install.next", command = next_command(&dir, cfg!(windows))));
+    // 리눅스 데스크톱은 앱 메뉴에 든 GUI가 데몬을 켠다: 앱을 여는 길을 안내한다
+    if profile == Profile::Desktop && !cfg!(windows) {
+        ctx.out.hint(&t!("install.next_app", command = app_command(&dir)));
+    } else {
+        ctx.out
+            .hint(&t!("install.next", command = next_command(&dir, cfg!(windows))));
+    }
     Ok(())
 }
 
@@ -283,6 +288,12 @@ fn next_command(dir: &Path, windows: bool) -> String {
         let cli = format!("{}/saba-chan-cli", dir.display().to_string().trim_end_matches('/'));
         format!("'{}' daemon start", cli.replace('\'', r"'\''"))
     }
+}
+
+/// 유닉스 데스크톱 설치 뒤 GUI를 여는 명령 (작은따옴표로 싼 경로, 끝에 `&`로 터미널을 놓아 준다)
+fn app_command(dir: &Path) -> String {
+    let gui = format!("{}/saba-chan-gui", dir.display().to_string().trim_end_matches('/'));
+    format!("'{}' &", gui.replace('\'', r"'\''"))
 }
 
 #[cfg(test)]
@@ -428,5 +439,7 @@ mod tests {
         );
         let unix = next_command(Path::new("/home/me/my apps/saba-chan"), false);
         assert_eq!(unix, "'/home/me/my apps/saba-chan/saba-chan-cli' daemon start");
+        // 리눅스 데스크톱은 데몬 대신 앱을 연다 (앱이 데몬을 켠다)
+        assert_eq!(app_command(Path::new("/home/me/it's/saba-chan/")), "'/home/me/it'\\''s/saba-chan/saba-chan-gui' &");
     }
 }

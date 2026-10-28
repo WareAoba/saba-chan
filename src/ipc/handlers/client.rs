@@ -252,10 +252,10 @@ pub(crate) fn configured_gui_port() -> u16 {
         .unwrap_or(saba_chan_updater_lib::constants::DEFAULT_IPC_PORT)
 }
 
-/// CLI는 새 콘솔 창이 있어야 하므로 지금은 Windows만. GUI는 데스크톱 화면이 있어야 한다
+/// CLI는 새 콘솔 창이 있어야 한다: Windows, 또는 화면과 터미널 프로그램이 있는 리눅스. GUI는 데스크톱 화면이 있어야 한다
 fn has_screen(kind: Interface) -> bool {
     match kind {
-        Interface::Cli => cfg!(windows),
+        Interface::Cli => cli_terminal_available(),
         Interface::Gui => crate::tray_host::has_desktop(),
     }
 }
@@ -294,10 +294,10 @@ pub async fn client_launch(State(state): State<IPCServer>, Json(body): Json<serd
             return (StatusCode::NOT_FOUND, Json(json!({ "success": false, "error": format!("Instance not found: {}", id), "error_code": "not_found" }))).into_response();
         }
     }
-    // 띄울 화면이 없으면(CLI는 Windows 밖, GUI는 데스크톱 화면 없음) 띄운 척하지 않는다: 부른 쪽이 닫히지 않게
+    // 띄울 화면이 없으면(CLI는 화면이나 터미널 프로그램 없음, GUI는 데스크톱 화면 없음) 띄운 척하지 않는다: 부른 쪽이 닫히지 않게
     if !has_screen(kind) {
         let error = match kind {
-            Interface::Cli => "Opening a terminal is only supported on Windows for now",
+            Interface::Cli => "No terminal program to open the CLI in",
             Interface::Gui => "This PC has no desktop screen to open the app on",
         };
         return (StatusCode::NOT_IMPLEMENTED, Json(json!({ "success": false, "error": error, "error_code": "unsupported_platform" }))).into_response();
@@ -310,7 +310,7 @@ pub async fn client_launch(State(state): State<IPCServer>, Json(body): Json<serd
         return (StatusCode::NOT_FOUND, Json(json!({ "success": false, "error": format!("{} was not found next to the daemon", kind.binary()), "error_code": code }))).into_response();
     };
     let spawned = match kind {
-        Interface::Cli => spawn_in_new_console(&binary, &args).inspect(|&pid| state.client_registry.note_launched_cli(pid)),
+        Interface::Cli => spawn_in_new_console(&binary, &args, &state.client_registry),
         Interface::Gui => {
             let env: Vec<(&str, String)> = gui_ipc_base(&state.listen_addr, configured_gui_port()).map(|b| ("IPC_BASE", b)).into_iter().collect();
             crate::boot_selector::spawn_gui_with(&binary, &args, &env)
@@ -325,14 +325,42 @@ pub async fn client_launch(State(state): State<IPCServer>, Json(body): Json<serd
     }
 }
 
-#[cfg(windows)]
-fn spawn_in_new_console(cli: &std::path::Path, args: &[String]) -> std::io::Result<u32> {
-    crate::boot_selector::spawn_cli_in_new_console(cli, args)
+fn cli_terminal_available() -> bool {
+    #[cfg(windows)]
+    return true;
+    #[cfg(target_os = "linux")]
+    return crate::tray_host::has_desktop() && crate::boot_selector::has_terminal();
+    #[cfg(not(any(windows, target_os = "linux")))]
+    return false;
 }
 
-#[cfg(not(windows))]
-fn spawn_in_new_console(_cli: &std::path::Path, _args: &[String]) -> std::io::Result<u32> {
-    Err(std::io::Error::new(std::io::ErrorKind::Unsupported, "Windows only"))
+#[cfg(windows)]
+fn spawn_in_new_console(cli: &std::path::Path, args: &[String], registry: &crate::ipc::ClientRegistry) -> std::io::Result<u32> {
+    crate::boot_selector::spawn_cli_in_new_console(cli, args).inspect(|&pid| registry.note_launched_cli(pid))
+}
+
+/// 터미널이 CLI를 띄우기까지 잠시 걸린다: 표시를 단 CLI가 나타나면 그 pid를 기록한다 (완전히 종료할 때 닫는다)
+#[cfg(target_os = "linux")]
+fn spawn_in_new_console(cli: &std::path::Path, args: &[String], registry: &crate::ipc::ClientRegistry) -> std::io::Result<u32> {
+    let tag = uuid::Uuid::new_v4().to_string();
+    let pid = crate::boot_selector::spawn_cli_in_new_console(cli, args, &tag)?;
+    let name = cli.file_name().and_then(|n| n.to_str()).unwrap_or("saba-chan-cli").to_string();
+    let registry = registry.clone();
+    tokio::spawn(async move {
+        for _ in 0..100 {
+            if let Some(cli_pid) = crate::boot_selector::find_tagged_process(&tag, &name) {
+                return registry.note_launched_cli(cli_pid);
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+        tracing::warn!("[Launch] The CLI opened in a terminal did not show up; a full quit will not close it");
+    });
+    Ok(pid)
+}
+
+#[cfg(not(any(windows, target_os = "linux")))]
+fn spawn_in_new_console(_cli: &std::path::Path, _args: &[String], _registry: &crate::ipc::ClientRegistry) -> std::io::Result<u32> {
+    Err(std::io::Error::new(std::io::ErrorKind::Unsupported, "not supported on this OS"))
 }
 
 #[cfg(test)]

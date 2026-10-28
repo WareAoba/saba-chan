@@ -1460,6 +1460,7 @@
     "failed_no_log": "安装失败：{{reason}}",
     "done": "已安装到 {{dir}}",
     "next": "用以下命令启动守护进程：\n{{command}}",
+    "next_app": "从应用菜单打开 Saba-chan，或运行以下命令：\n{{command}}",
     "components_dir": "模块和扩展放在 {{dir}}。",
     "components_dir_invalid": "无法将 {{dir}} 用于模块和扩展：{{reason}}",
     "invalid_dir": "无法安装到 {{dir}}。请选择不是驱动器根目录、用户主文件夹或设置文件夹的文件夹"

@@ -513,6 +513,108 @@ pub fn spawn_cli_in_new_console(cli: &std::path::Path, args: &[String]) -> std::
     crate::utils::spawn_in_new_console(cli, args, cli.parent(), &[]).map(|(pid, _)| pid)
 }
 
+/// 리눅스 터미널 프로그램과, 그 뒤에 실행할 프로그램을 붙이는 인자. 앞의 것부터 찾는다
+#[cfg(any(target_os = "linux", test))]
+const TERMINALS: &[(&str, &[&str])] = &[
+    ("x-terminal-emulator", &["-e"]),
+    ("gnome-terminal", &["--"]),
+    ("ptyxis", &["--"]),
+    ("kgx", &["--"]),
+    ("konsole", &["-e"]),
+    ("xfce4-terminal", &["-x"]),
+    ("mate-terminal", &["-x"]),
+    ("kitty", &[]),
+    ("alacritty", &["-e"]),
+    ("foot", &[]),
+    ("wezterm", &["start", "--"]),
+    ("xterm", &["-e"]),
+];
+
+/// 리눅스: CLI를 띄울 터미널. `$TERMINAL`(사용자가 고른 것)이 있으면 그것을, 없으면 `TERMINALS`에서 찾는다.
+/// 모르는 `$TERMINAL`은 대부분의 터미널이 받는 `-e`로 붙인다. `find`는 PATH에서 프로그램을 찾는다
+#[cfg(any(target_os = "linux", test))]
+fn terminal_command(preferred: Option<&str>, find: impl Fn(&str) -> Option<PathBuf>) -> Option<(PathBuf, Vec<String>)> {
+    let args_of = |name: &str| -> Vec<String> {
+        let base = std::path::Path::new(name).file_name().and_then(|n| n.to_str()).unwrap_or(name);
+        TERMINALS
+            .iter()
+            .find(|(t, _)| *t == base)
+            .map_or_else(|| vec!["-e".to_string()], |(_, a)| a.iter().map(|s| s.to_string()).collect())
+    };
+    if let Some(term) = preferred.map(str::trim).filter(|t| !t.is_empty()) {
+        if let Some(path) = find(term) {
+            return Some((path, args_of(term)));
+        }
+    }
+    TERMINALS.iter().find_map(|(name, _)| find(name).map(|p| (p, args_of(name))))
+}
+
+/// PATH에서 실행 파일을 찾는다 (경로가 주어지면 그 파일)
+#[cfg(target_os = "linux")]
+fn find_program(name: &str) -> Option<PathBuf> {
+    use std::os::unix::fs::PermissionsExt;
+    let runnable = |p: &std::path::Path| std::fs::metadata(p).is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0);
+    if name.contains('/') {
+        let p = PathBuf::from(name);
+        return runnable(&p).then_some(p);
+    }
+    std::env::split_paths(&std::env::var_os("PATH")?).map(|d| d.join(name)).find(|p| runnable(p))
+}
+
+/// 리눅스: CLI를 띄울 터미널이 있는가 (GUI의 "CLI로 전환")
+#[cfg(target_os = "linux")]
+pub fn has_terminal() -> bool {
+    terminal_command(std::env::var("TERMINAL").ok().as_deref(), find_program).is_some()
+}
+
+/// 터미널로 띄운 CLI를 찾는 환경 변수. 터미널 프로그램(gnome-terminal 등)은 띄우자마자 끝나거나 서버 프로세스에
+/// 창을 맡기므로, 띄운 pid가 CLI가 아니다: 이 표시를 단 CLI를 찾아 그 pid를 기록한다
+#[cfg(any(target_os = "linux", test))]
+pub const LAUNCH_TAG_ENV: &str = "SABA_LAUNCH_TAG";
+
+/// 리눅스: CLI를 새 터미널 창에 띄운다 ("CLI로 전환"). 터미널 pid를 돌려주고, CLI에는 `tag`를 환경으로 단다
+#[cfg(target_os = "linux")]
+pub fn spawn_cli_in_new_console(cli: &std::path::Path, args: &[String], tag: &str) -> std::io::Result<u32> {
+    use std::os::unix::process::CommandExt;
+    let (term, prefix) = terminal_command(std::env::var("TERMINAL").ok().as_deref(), find_program)
+        .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "no terminal program found"))?;
+    let mut cmd = std::process::Command::new(term);
+    cmd.args(prefix)
+        .arg(cli)
+        .args(args)
+        .env(LAUNCH_TAG_ENV, tag)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .process_group(0);
+    if let Some(dir) = cli.parent() {
+        cmd.current_dir(dir);
+    }
+    let child = cmd.spawn()?;
+    let pid = child.id();
+    // 오래 사는 데몬이 띄우므로 끝난 터미널을 거둔다
+    std::thread::spawn(move || {
+        let mut child = child;
+        let _ = child.wait();
+    });
+    Ok(pid)
+}
+
+/// 리눅스: 환경에 `LAUNCH_TAG_ENV=tag`를 달고 실행 파일 이름이 `name`인 이 사용자의 프로세스
+#[cfg(target_os = "linux")]
+pub fn find_tagged_process(tag: &str, name: &str) -> Option<u32> {
+    let wanted = format!("{LAUNCH_TAG_ENV}={tag}");
+    std::fs::read_dir("/proc").ok()?.flatten().find_map(|entry| {
+        let pid: u32 = entry.file_name().to_str()?.parse().ok()?;
+        let exe = std::fs::read_link(entry.path().join("exe")).ok()?;
+        if exe.file_name()?.to_str()? != name {
+            return None;
+        }
+        let environ = std::fs::read(entry.path().join("environ")).ok()?;
+        environ.split(|&b| b == 0).any(|kv| kv == wanted.as_bytes()).then_some(pid)
+    })
+}
+
 /// Windows: 데몬 콘솔 창 숨기기 (GUI 모드에서 사용)
 #[cfg(windows)]
 pub fn hide_console_window() {
@@ -551,6 +653,47 @@ pub async fn wait_for_ipc_port(port: u16, timeout: Duration) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 리눅스 "CLI로 전환": 고른 터미널(`$TERMINAL`)이 먼저고, 없으면 알려진 터미널을 차례로 찾는다.
+    /// 터미널마다 실행할 프로그램을 붙이는 인자가 다르다
+    #[test]
+    fn the_cli_opens_in_the_users_terminal() {
+        let have = |names: &'static [&'static str]| move |n: &str| names.contains(&n).then(|| PathBuf::from(format!("/usr/bin/{n}")));
+        assert_eq!(
+            terminal_command(None, have(&["xterm", "gnome-terminal"])),
+            Some((PathBuf::from("/usr/bin/gnome-terminal"), vec!["--".to_string()]))
+        );
+        assert_eq!(
+            terminal_command(Some("konsole"), have(&["konsole", "gnome-terminal"])),
+            Some((PathBuf::from("/usr/bin/konsole"), vec!["-e".to_string()]))
+        );
+        // 모르는 터미널은 -e로, 찾지 못하면 다음 후보로
+        assert_eq!(terminal_command(Some("myterm"), have(&["myterm"])).unwrap().1, vec!["-e".to_string()]);
+        assert_eq!(terminal_command(Some("missing"), have(&["kitty"])), Some((PathBuf::from("/usr/bin/kitty"), vec![])));
+        assert_eq!(terminal_command(Some("  "), have(&[])), None);
+    }
+
+    /// 터미널이 띄운 CLI는 환경의 표시로 찾는다 (완전히 종료할 때 그 CLI를 닫으려고)
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_tagged_process_is_found_by_its_environment() {
+        let mut child = std::process::Command::new("sleep").arg("30").env(LAUNCH_TAG_ENV, "t-123").spawn().unwrap();
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        let found = loop {
+            if let Some(pid) = find_tagged_process("t-123", "sleep") {
+                break Some(pid);
+            }
+            if std::time::Instant::now() > deadline {
+                break None;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        };
+        assert_eq!(found, Some(child.id()));
+        assert_eq!(find_tagged_process("t-other", "sleep"), None);
+        assert_eq!(find_tagged_process("t-123", "saba-chan-cli"), None);
+        let _ = child.kill();
+        let _ = child.wait();
+    }
 
     #[test]
     fn boot_mode_display() {

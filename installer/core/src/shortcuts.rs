@@ -209,9 +209,74 @@ fn get_start_menu_path() -> anyhow::Result<std::path::PathBuf> {
     }
 }
 
-// ── Non-Windows stubs ───────────────────────────────────
+// ── Linux: 앱 메뉴 항목 (freedesktop Desktop Entry) ──
 
-#[cfg(not(target_os = "windows"))]
+/// 앱 메뉴 항목 파일 이름. 제거기의 흔적 목록(`traces`)과 같은 이름이다
+#[cfg(any(target_os = "linux", test))]
+pub const APP_ENTRY_FILE: &str = "saba-chan.desktop";
+
+/// GUI zip에 함께 든 아이콘 (GUI 실행 파일 옆)
+#[cfg(any(target_os = "linux", test))]
+pub const APP_ICON_FILE: &str = "saba-chan-gui.png";
+
+/// 앱 메뉴 항목 내용. 아이콘이 GUI 옆에 없으면 테마 아이콘 이름으로 둔다
+#[cfg(any(target_os = "linux", test))]
+fn app_entry(target_exe: &std::path::Path, name: &str) -> String {
+    use saba_chan_updater_lib::autostart::{desktop_exec, Entry};
+    let exec = desktop_exec(&Entry { program: target_exe.to_path_buf(), args: Vec::new() });
+    let icon = target_exe.with_file_name(APP_ICON_FILE);
+    let icon = if icon.is_file() { icon.to_string_lossy().into_owned() } else { "saba-chan-gui".to_string() };
+    format!(
+        "[Desktop Entry]\nType=Application\nName={name}\nExec={exec}\nIcon={}\nTerminal=false\nCategories=Game;Utility;\nStartupWMClass=saba-chan-gui\n",
+        icon.replace('\\', "\\\\")
+    )
+}
+
+/// 앱 메뉴 항목이 이 설치 폴더의 프로그램을 가리키는지
+#[cfg(any(target_os = "linux", test))]
+fn entry_points_into(text: &str, install_dir: &std::path::Path) -> bool {
+    saba_chan_updater_lib::autostart::parse_desktop_file(text)
+        .and_then(|e| e.program.parent().map(|p| saba_chan_updater_lib::same_path(p, install_dir)))
+        .unwrap_or(false)
+}
+
+#[cfg(target_os = "linux")]
+fn applications_dir() -> anyhow::Result<std::path::PathBuf> {
+    dirs::data_dir()
+        .map(|d| d.join("applications"))
+        .ok_or_else(|| anyhow::anyhow!("Could not determine the applications folder"))
+}
+
+/// 리눅스는 바탕화면 바로가기를 만들지 않는다 (배포판 대부분이 바탕화면 아이콘을 보이지 않거나 실행을 막는다)
+#[cfg(target_os = "linux")]
+pub fn create_desktop_shortcut(_target_exe: &std::path::Path, _name: &str) -> anyhow::Result<()> {
+    Ok(())
+}
+
+/// 앱 메뉴(`~/.local/share/applications/saba-chan.desktop`)에 항목을 만든다. 시작 메뉴 바로가기에 해당한다
+#[cfg(target_os = "linux")]
+pub fn create_start_menu_shortcut(target_exe: &std::path::Path, name: &str) -> anyhow::Result<()> {
+    let dir = applications_dir()?;
+    std::fs::create_dir_all(&dir)?;
+    let path = dir.join(APP_ENTRY_FILE);
+    std::fs::write(&path, app_entry(target_exe, name))?;
+    tracing::info!("[Shortcut] App menu: {:?}", path);
+    Ok(())
+}
+
+/// 이 설치 폴더를 가리키는 앱 메뉴 항목만 지운다 (다른 폴더의 설치 항목은 둔다)
+#[cfg(target_os = "linux")]
+pub fn remove_shortcuts_into(install_dir: &std::path::Path, _names: &[&str]) {
+    let Ok(dir) = applications_dir() else { return };
+    let path = dir.join(APP_ENTRY_FILE);
+    if std::fs::read_to_string(&path).is_ok_and(|t| entry_points_into(&t, install_dir)) {
+        let _ = std::fs::remove_file(&path);
+    }
+}
+
+// ── 그 밖의 OS ──
+
+#[cfg(not(any(target_os = "windows", target_os = "linux")))]
 pub fn create_desktop_shortcut(
     _target_exe: &std::path::Path,
     _name: &str,
@@ -219,7 +284,7 @@ pub fn create_desktop_shortcut(
     Ok(())
 }
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(not(any(target_os = "windows", target_os = "linux")))]
 pub fn create_start_menu_shortcut(
     _target_exe: &std::path::Path,
     _name: &str,
@@ -227,5 +292,32 @@ pub fn create_start_menu_shortcut(
     Ok(())
 }
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(not(any(target_os = "windows", target_os = "linux")))]
 pub fn remove_shortcuts_into(_install_dir: &std::path::Path, _names: &[&str]) {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 리눅스 앱 메뉴 항목: 공백·특수 글자가 든 설치 경로도 그대로 실행되고, 아이콘은 GUI 옆 파일이다
+    #[test]
+    fn the_app_menu_entry_runs_the_installed_gui() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("My $aba");
+        std::fs::create_dir_all(&dir).unwrap();
+        let gui = dir.join("saba-chan-gui");
+        let text = app_entry(&gui, "사바쨩");
+        assert!(text.contains("Name=사바쨩\n"), "{text}");
+        assert!(text.contains("Icon=saba-chan-gui\n"), "no icon file yet: {text}");
+        let parsed = saba_chan_updater_lib::autostart::parse_desktop_file(&text).unwrap();
+        assert_eq!(parsed.program, gui);
+        assert!(parsed.args.is_empty());
+
+        std::fs::write(dir.join(APP_ICON_FILE), b"png").unwrap();
+        let text = app_entry(&gui, "Saba-chan");
+        let icon = dir.join(APP_ICON_FILE).display().to_string().replace('\\', "\\\\");
+        assert!(text.contains(&format!("Icon={icon}\n")), "{text}");
+        assert!(entry_points_into(&text, &dir));
+        assert!(!entry_points_into(&text, tmp.path()), "another install folder");
+    }
+}
