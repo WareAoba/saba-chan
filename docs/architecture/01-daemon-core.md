@@ -360,7 +360,6 @@ PC 주인이 디스코드에서 받은 일회용 링크로 브라우저(사바�
 | GET | `/api/config/:kind/defaults` | `config.rs:47` | - | `{ok, defaults}` (`gui`, `bot`) / 404 |
 | POST | `/api/config/:kind/reset` | `config.rs:59` | 선택 `{keys?}` | `{ok, config}` / 400. 봇 설정 초기화도 권한 키와 `cloud.hostId`(노드 토큰을 따름)는 남기고, 릴레이 주소가 바뀌면 에이전트를 다시 시작한다 |
 | GET/PUT | `/api/config/client/:kind` | `config.rs:106/117` | 부분 객체(최상위 키 머지) | 그 네임스페이스 JSON (예: `cli`). 예약 이름(`schemaVersion`·`gui`·`relay`·`updates`·`boot`·`extensions`·`chatbot`·`sandbox`)은 400 |
-| GET | `/api/config/node-token` | `config.rs:134` | - | `{token}` (없으면 `""`) |
 | PUT | `/api/config/node-token` | `config.rs:144` | `{token}` | `{ok}`. 저장 뒤 릴레이 에이전트를 새 토큰으로 다시 시작한다 |
 | DELETE | `/api/config/node-token` | `config.rs` `delete_node_token` | - | `{ok}`. 먼저 릴레이 에이전트를 멈춘다(`relay::disconnect`, 개인정보 지우기도 같다) |
 | GET | `/api/remote/settings` | `remote_daemon.rs` `get_settings` | - | `{enabled, port, address, transport, status:{listening, certSha256?, published, error?}}`. §1.4.2. 원격 포트·사바쨩 웹에서는 막는다 |

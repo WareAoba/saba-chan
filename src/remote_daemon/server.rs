@@ -671,7 +671,7 @@ pub(crate) mod tests {
         let server = test_server(tmp.path());
         let (addr, pin, token, cancel) = start_daemon(tmp.path(), &server).await;
         for (method, path) in [
-            ("GET", "/api/config/node-token"),
+            ("PUT", "/api/config/node-token"),
             ("GET", "/api/relay/privacy/erase"),
             ("GET", "/api/remote/clients"),
             ("GET", "/api/system/autostart"),
@@ -696,7 +696,7 @@ pub(crate) mod tests {
             assert_ne!(body["error_code"].as_str(), Some("remote_local_only"), "{path} {s}");
         }
         // 라우터는 HEAD를 GET 처리기로 답한다: HEAD도 GET과 같게 판정한다
-        for path in ["/api/config/node-token", "/api/extensions/x/config", "/api/updates/status"] {
+        for path in ["/api/config/gui", "/api/extensions/x/config", "/api/updates/status"] {
             let (s, _) = call(addr, &pin, "HEAD", path, Some(&token), None).await.unwrap();
             assert_eq!(s, 403, "HEAD {path}");
         }
@@ -781,7 +781,7 @@ pub(crate) mod tests {
         let (s, body) = call(addr, &id.sha256, "GET", "/api/instances", Some(&token), None).await.unwrap();
         assert_eq!(s, 200, "{body}");
         assert!(body.is_array());
-        let (s, _) = call(addr, &id.sha256, "GET", "/api/config/node-token", Some(&token), None).await.unwrap();
+        let (s, _) = call(addr, &id.sha256, "PUT", "/api/config/node-token", Some(&token), Some(json!({ "token": "x" }))).await.unwrap();
         assert_eq!(s, 403);
         let (s, _) = call(addr, &id.sha256, "GET", "/api/instances", None, None).await.unwrap();
         assert_eq!(s, 401);

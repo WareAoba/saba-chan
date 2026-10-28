@@ -165,7 +165,6 @@ pub static ROUTES: &[Route] = &[
     deny("POST", "/api/config/{kind}/reset"),
     deny("POST", "/api/migration/export"),
     deny("POST", "/api/migration/import"),
-    deny("GET", "/api/config/node-token"),
     deny("PUT", "/api/config/node-token"),
     deny("DELETE", "/api/config/node-token"),
     // 원격 데몬 포트와 짝 맺은 PC (D1)
@@ -542,7 +541,7 @@ mod tests {
                 assert!(pc_only(r.method, r.pattern), "{} {}", r.method, r.pattern);
             }
         }
-        assert!(pc_only("GET", "/api/config/node-token"));
+        assert!(pc_only("PUT", "/api/config/node-token"));
         assert!(!pc_only("GET", "/api/events"), "the web only lacks it");
         assert!(!pc_only("GET", "/api/servers"));
     }
@@ -563,7 +562,7 @@ mod tests {
     #[test]
     fn refuses_pc_only_routes() {
         for (method, path) in [
-            ("GET", "/api/config/node-token"),
+            ("PUT", "/api/config/node-token"),
             ("POST", "/api/daemon/shutdown"),
             ("POST", "/api/updates/install"),
             ("POST", "/api/actions/update.apply/run"),
@@ -582,9 +581,9 @@ mod tests {
     #[test]
     fn refuses_unknown_routes_and_methods() {
         // 라우터는 HEAD를 GET 처리기로 답한다: 웹은 표에 없는 HEAD를 받지 않는다
-        assert_eq!(decide("HEAD", "/api/config/node-token"), Err(Refusal::NotAllowed));
+        assert_eq!(decide("HEAD", "/api/config/gui"), Err(Refusal::NotAllowed));
         assert_eq!(decide("HEAD", "/api/servers"), Err(Refusal::NotAllowed));
-        assert!(pc_only("HEAD", "/api/config/node-token"), "the paired PC treats HEAD as GET");
+        assert!(pc_only("HEAD", "/api/config/gui"), "the paired PC treats HEAD as GET");
         assert_eq!(decide("GET", "/api/brand-new"), Err(Refusal::NotAllowed));
         assert_eq!(decide("PUT", "/api/instance/abc/start"), Err(Refusal::NotAllowed));
         assert_eq!(
