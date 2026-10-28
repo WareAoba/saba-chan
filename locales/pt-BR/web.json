@@ -217,6 +217,7 @@
     "risk_safe": "Seguro",
     "risk_caution": "Cuidado",
     "risk_danger": "Perigoso",
+    "confirm_tier": "Confirmação no Discord: {{risk}} (altere no app do PC)",
     "kind_admin": "Administração",
     "legend_moved": "Movido da predefinição"
   },

@@ -32,6 +32,7 @@ const stair = (instance, name, title, level, over) => ({
     title,
     kind: 'command',
     risk: 'caution',
+    riskKey: instance ? `${instance}/${name}` : name,
     level,
     preset: level,
     overridden: false,
@@ -93,6 +94,13 @@ describe('권한 레벨 계산', () => {
             [2, 'mc-2', 1],
         ]);
         expect(chips.find((c) => c.name === 'say').items).toHaveLength(2);
+        // 되묻기 단계는 칩마다 그 칩 인스턴스의 값 (바꾼 값이 없으면 원래 단계)
+        const tiered = baseBoard();
+        tiered.items[1] = { ...tiered.items[1], confirmRisk: 'danger' };
+        expect(L.stairChips(tiered).filter((c) => c.name === 'stop').map((c) => c.confirmRisk)).toEqual([
+            'caution',
+            'danger',
+        ]);
         // 한 인스턴스 보기: 그 인스턴스와 인스턴스를 받지 않는 것만
         const one = L.stairChips(baseBoard(), 'mc-2');
         expect(one.map((c) => [c.name, c.level])).toEqual([
@@ -185,9 +193,11 @@ describe('권한 화면', () => {
         window.api.permissionsUpdate = vi.fn(async () => ({ success: true }));
         window.api.permissionsSetMember = vi.fn(async () => ({ success: true }));
         window.api.permissionsRemoveMember = vi.fn(async () => ({ success: true }));
+        window.api.discordSettingsSet = vi.fn(async () => ({ success: true }));
     });
     afterEach(() => {
         for (const k of API) delete window.api[k];
+        delete window.api.discordSettingsSet;
         delete window.api.relayListLegacyMembers;
         window.showToast = undefined;
     });
@@ -344,6 +354,26 @@ describe('권한 화면', () => {
         await flush();
         expect(window.api.permissionsUpdate).toHaveBeenCalledWith('g1', {
             commandLevels: { 'mc-1/stop': null, 'mc-1/server.stop': null, 'mc-2/stop': null, 'mc-2/server.stop': null },
+        });
+    });
+
+    it('명령 계단: 칩 편집 창에서 디스코드 되묻기 단계를 바꾸고, 원래 단계를 고르면 지운다', async () => {
+        await openCommands();
+        fireEvent.click(within(step('Lv 1 · Guest')).getByRole('button', { name: /^Say$/ }));
+        board.items = board.items.map((i) => (i.name === 'say' ? { ...i, confirmRisk: 'danger' } : i));
+        fireEvent.click(within(screen.getByRole('region', { name: 'Say' })).getByRole('tab', { name: 'Danger' }));
+        await flush();
+        expect(window.api.discordSettingsSet).toHaveBeenCalledWith('g1', {
+            commandRisks: { 'mc-1/say': 'danger', 'mc-2/say': 'danger' },
+        });
+        expect(window.api.permissionsUpdate).not.toHaveBeenCalled();
+        const edit = screen.getByRole('region', { name: 'Say' });
+        expect(within(edit).getByRole('tab', { name: 'Danger' })).toHaveAttribute('aria-selected', 'true');
+        expect(within(edit).getByText(/Default: Safe/)).toBeInTheDocument();
+        fireEvent.click(within(edit).getByRole('tab', { name: 'Safe' }));
+        await flush();
+        expect(window.api.discordSettingsSet).toHaveBeenLastCalledWith('g1', {
+            commandRisks: { 'mc-1/say': null, 'mc-2/say': null },
         });
     });
 

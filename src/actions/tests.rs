@@ -944,6 +944,23 @@ async fn the_permission_board_lists_every_remote_command_at_the_level_it_needs()
     assert_eq!(board["instances"], json!([]));
 }
 
+/// 계단 항목마다 되묻기 단계 키(`commandRisks`와 같은 `<서버>/<액션 id>`)와 이 길드에서 쓰는 단계를 싣는다
+#[tokio::test]
+async fn the_permission_board_carries_each_commands_confirm_tier() {
+    let module = format!("{MODULE}\n[[commands.fields]]\nname = \"say\"\nrisk = \"safe\"\n");
+    let (state, id, _tmp) = server_with(&module).await;
+    let risks = json!({ format!("{id}/server.start"): "danger", format!("{id}/server.command:say"): "caution" });
+    set_node(&state, json!({ "discord": { "commandRisks": risks } })).await;
+    let board = permission_board(&state, "g", "ko").await;
+    let item = |name: &str| board["items"].as_array().unwrap().iter().find(|i| i["name"] == name).cloned().unwrap();
+    let start = item("start");
+    assert_eq!((&start["riskKey"], &start["confirmRisk"]), (&json!(format!("{id}/server.start")), &json!("danger")));
+    let say = item("say");
+    assert_eq!((&say["riskKey"], &say["risk"], &say["confirmRisk"]), (&json!(format!("{id}/server.command:say")), &json!("safe"), &json!("caution")));
+    let create = item("instance.create");
+    assert_eq!((&create["riskKey"], &create["confirmRisk"]), (&json!("instance.create"), &create["risk"]));
+}
+
 /// 채팅 `players`와 액션 `server.players`는 같은 덮어쓰기 키를 본다 (채팅 경로 BUILTIN_COMMANDS와 같다)
 #[test]
 fn every_chat_builtin_command_shares_its_override_key_with_its_action() {

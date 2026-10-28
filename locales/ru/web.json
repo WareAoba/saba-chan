@@ -217,6 +217,7 @@
     "risk_safe": "Безопасная",
     "risk_caution": "Осторожно",
     "risk_danger": "Опасная",
+    "confirm_tier": "Подтверждение в Discord: {{risk}} (меняется в приложении на ПК)",
     "kind_admin": "Управление",
     "legend_moved": "Не по пресету"
   },
