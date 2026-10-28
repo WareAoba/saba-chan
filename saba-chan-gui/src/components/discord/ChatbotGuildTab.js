@@ -44,6 +44,7 @@ export function ChatbotGuildTab({ node }) {
 
     const [saving, setSaving] = useState(false);
     const [errors, setErrors] = useState([]);
+    const [syncWarn, setSyncWarn] = useState(false);
     const [memArmed, setMemArmed] = useState(false);
     const [templateBusy, setTemplateBusy] = useState(false);
 
@@ -67,6 +68,8 @@ export function ChatbotGuildTab({ node }) {
                 );
                 return;
             }
+            // 데몬에는 저장됐지만 릴레이에 못 보낸 서버는 다음 연결 때 맞춘다
+            setSyncWarn(Array.isArray(res?.sync) && res.sync.some((r) => !r.ok));
             setData(res);
             safeShowToast(t('chatbot.saved'), 'success', 3000);
         } catch (err) {
@@ -187,6 +190,12 @@ export function ChatbotGuildTab({ node }) {
                 )}
             </section>
 
+            {syncWarn && (
+                <div className="notice tone-info">
+                    <Icon name="cloudOff" size="sm" />
+                    <span>{t('chatbot.sync_pending')}</span>
+                </div>
+            )}
             {errors.length > 0 && (
                 <div className="notice tone-warn" role="alert">
                     <Icon name="alertTriangle" size="sm" />

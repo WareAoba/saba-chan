@@ -479,6 +479,28 @@ describe('ChatbotView', () => {
         );
     });
 
+    it('서버 탭: 저장은 됐지만 릴레이에 못 보냈으면 그렇다고 알린다', async () => {
+        window.api.chatbotGet = vi.fn().mockResolvedValue({
+            success: true,
+            settings: {},
+            guilds: {},
+            guildDefault: { enabled: false, tools: [] },
+            hasApiKey: true,
+        });
+        window.api.chatbotSave = vi.fn().mockResolvedValue({
+            success: true,
+            settings: {},
+            guilds: { g1: { enabled: true, tools: [] } },
+            hasApiKey: true,
+            sync: [{ guildId: 'g1', ok: false, status: 0, error: 'relay_unreachable' }],
+        });
+        window.api.chatbotTools = vi.fn().mockResolvedValue(CATALOG);
+        render(<ChatbotGuildTab node={nodes[0]} />);
+        fireEvent.click(await screen.findByLabelText('Use Talking Saba-chan in this server'));
+        fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+        expect(await screen.findByText(/sync on the next connection/)).toBeTruthy();
+    });
+
     it('서버 탭: 옛 공통 설정이 남아 있으면 그 값(guildDefault)으로 보이고, 릴레이 400과 기억 지우기', async () => {
         window.api.chatbotGet = vi.fn().mockResolvedValue({
             success: true,
