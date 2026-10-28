@@ -22,6 +22,7 @@
  *
  * --zips <폴더>를 주면 그 폴더에 있는 실제 릴리즈 zip(package-linux.py 출력 등)을 그대로 싣는다:
  * 실행 권한·아이콘 같은 zip 안 구성까지 설치기·업데이터로 시험한다 (리눅스 데스크톱 설치 실측).
+ * 그 폴더에 없는 컴포넌트는 싣지 않는다 (GUI 없는 linux-arm64 같은 릴리즈).
  * 설치기(`saba-chan-cli install`)는 mock-relay로 빌드하면 SABA_RELAY_URL을 따른다.
  *
  * 에셋은 scripts/.mock-assets/ 에 만들어진다 (git에 넣지 않는다).
@@ -187,7 +188,9 @@ function manifestFor(platform, baseUrl) {
     const components = {};
     for (const [key, spec] of Object.entries(componentSpecs(platform))) {
         const real = ZIPS_DIR && path.join(ZIPS_DIR, spec.asset);
-        const zip = real && fs.existsSync(real) ? fs.readFileSync(real) : createMiniZip(spec.inner, assetContent(key, spec));
+        // 실제 릴리즈처럼 그 플랫폼 zip이 없는 컴포넌트는 싣지 않는다 (linux-arm64에는 gui가 없다)
+        if (real && !fs.existsSync(real)) continue;
+        const zip = real ? fs.readFileSync(real) : createMiniZip(spec.inner, assetContent(key, spec));
         fs.writeFileSync(path.join(ASSETS_DIR, spec.asset), zip);
         components[key] = {
             version: MOCK_VERSION,
