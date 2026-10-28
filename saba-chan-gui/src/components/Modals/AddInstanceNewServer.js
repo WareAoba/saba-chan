@@ -121,7 +121,11 @@ export function AddInstanceNewServer({
                     setVersions(list);
                     setVersion((chosen) => (chosen && !list.includes(chosen) ? '' : chosen));
                 })
-                .catch(() => alive && setVersions([]));
+                .catch(() => {
+                    if (!alive) return;
+                    setVersions([]);
+                    setVersion('');
+                });
         }, 250);
         return () => {
             alive = false;

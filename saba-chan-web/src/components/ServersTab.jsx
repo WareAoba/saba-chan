@@ -62,7 +62,9 @@ export function AddServerSheet({ api, onClose }) {
     const downloads = choosesVersion(chosen);
     const versionKey = downloads ? JSON.stringify(versionSettings(chosen, installValues, preset)) : '';
     useEffect(() => {
-        if (!versionKey) return setVersions([]);
+        // 앞 모듈·설정의 목록은 바로 비운다 (새 목록이 오기 전·못 받으면 최신만 고른다)
+        setVersions([]);
+        if (!versionKey) return;
         let alive = true;
         const timer = setTimeout(() => {
             Promise.resolve(api.moduleListVersions?.(module, { per_page: 50, settings: JSON.parse(versionKey) }))
@@ -72,7 +74,7 @@ export function AddServerSheet({ api, onClose }) {
                     setVersions(list);
                     setVersion((picked) => (picked && !list.includes(picked) ? '' : picked));
                 })
-                .catch(() => {});
+                .catch(() => alive && setVersion(''));
         }, 250);
         return () => {
             alive = false;

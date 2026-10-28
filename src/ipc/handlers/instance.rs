@@ -812,11 +812,12 @@ async fn create_instance_inner(state: IPCServer, payload: Value, dry_run: bool) 
                                             }
                                         };
 
+                                        // 받은 파일을 치우는 동안은 작업 잠금을 쥔다 (그 사이 시작·복원이 같은 폴더를 쓰지 않게)
+                                        if let (Err(_), Some(left)) = (&saved, &leftovers) { left.clear() }
                                         drop(install_guard.take()); // 끝났다고 알리기 전에 놓는다 (알림을 본 삭제가 막히지 않게)
                                         // 실행 경로를 저장하지 못했으면 설치했다고 알리지 않는다 (시작할 실행 파일을 모른다)
                                         if let Err(e) = saved {
                                             tracing::warn!("Native provisioning for '{}' finished but the instance could not be saved: {}", name_done, e);
-                                            if let Some(left) = &leftovers { left.clear() }
                                             tracker_done.update(&name_done, crate::ipc::ProvisionProgress {
                                                 step: 0, total: 1,
                                                 label: "done".to_string(),

@@ -124,6 +124,30 @@ describe('웹 서버 만들기 — GUI와 같은 칸', () => {
         });
     });
 
+    it('서버 종류를 바꾸면 앞 목록을 바로 비우고, 새 목록을 못 받으면 고른 버전을 비운다', async () => {
+        const api = wizard();
+        await waitFor(() => expect(screen.getByText('Latest version (recommended)')).toBeTruthy());
+        fireEvent.click(screen.getByText('Latest version (recommended)'));
+        fireEvent.click(screen.getByText('1.20.6'));
+        api.moduleListVersions.mockRejectedValueOnce(new Error('offline'));
+        fireEvent.click(screen.getByText('vanilla'));
+        fireEvent.click(screen.getByText('paper'));
+        await waitFor(() =>
+            expect(api.moduleListVersions).toHaveBeenCalledWith('minecraft', {
+                per_page: 50,
+                settings: { server_type: 'paper' },
+            }),
+        );
+        await flush();
+        fireEvent.click(create());
+        await flush();
+        expect(api.instanceCreate).toHaveBeenCalledWith({
+            name: 'minecraft',
+            module_name: 'minecraft',
+            module_settings: { server_type: 'paper' },
+        });
+    });
+
     it('만들기 전에 겹치는 포트를 데몬에 물어 알린다', async () => {
         vi.useFakeTimers();
         try {
