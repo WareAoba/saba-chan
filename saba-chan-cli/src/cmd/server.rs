@@ -373,6 +373,9 @@ async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
             resolve::choose(ctx, &t!("noun.game"), all.clone(), resolve::module_label)?
         }
     };
+    if let Some(why) = platform_refusal(&module) {
+        return Err(failed(why));
+    }
     let module_name = s(&module, "name").to_string();
     let display = if s(&module, "display_name").is_empty() {
         module_name.clone()
@@ -2044,6 +2047,15 @@ fn module_agreements(module: &Value, locales: Option<&Value>) -> Vec<Value> {
     }).collect()
 }
 
+/// 이 데몬의 OS·CPU에서 돌지 않는 모듈이면 그 이유 (`platform_supported`, `unsupported_reason`). 돌면 None
+fn platform_refusal(module: &Value) -> Option<String> {
+    if module.get("platform_supported").and_then(Value::as_bool) != Some(false) {
+        return None;
+    }
+    let code = if s(module, "unsupported_reason") == "arch" { "module_arch_unsupported" } else { "module_platform_unsupported" };
+    crate::i18n::try_t(&format!("module_errors.{code}")).or_else(|| crate::i18n::try_t("module_errors.module_platform_unsupported"))
+}
+
 /// 예/아니오 칸 (익스텐션 AddServer.options, 만들 때 고르는 설정). `--yes`는 확인을 넘길 뿐 값을 정하지 않으므로 기본값을 쓴다
 fn bool_option(ask: &crate::prompt::Prompt, label: &str, default: &Value) -> Result<Value> {
     if ask.enabled && !ask.yes {
@@ -2469,6 +2481,19 @@ mod tests {
     }
 
     /// 모듈 약관은 GUI처럼 만들기 전에 묻는다: 모듈 목록의 약관을 locales 이름으로 펼친다
+    /// 이 데몬에서 돌지 않는 게임은 고른 직후 멈춘다 (익스텐션을 받기 전에)
+    #[test]
+    fn a_module_the_daemon_cannot_run_stops_right_after_picking_it() {
+        crate::i18n::init("en");
+        assert!(platform_refusal(&json!({ "platform_supported": true })).is_none());
+        assert!(platform_refusal(&json!({})).is_none());
+        let os = platform_refusal(&json!({ "platform_supported": false, "unsupported_reason": "os" })).unwrap();
+        assert_eq!(os, crate::i18n::t("module_errors.module_platform_unsupported"));
+        // CPU 문구가 없는 판에서도 OS 문구로 멈춘다
+        let arch = platform_refusal(&json!({ "platform_supported": false, "unsupported_reason": "arch" })).unwrap();
+        assert!(!arch.is_empty() && !arch.contains("module_errors."));
+    }
+
     #[test]
     fn module_agreements_are_listed_before_creating() {
         let module = json!({ "agreements": [{ "id": "eula", "url": "https://aka.ms/MinecraftEULA" }] });
