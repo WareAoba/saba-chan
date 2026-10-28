@@ -120,14 +120,17 @@ async fn save_for_backup(state: &IPCServer, id: &str, spec: &crate::supervisor::
             }
             continue;
         };
-        if let Some(reason) = rejected(&reply, &failures) {
-            return Err(SaveNotDone::Rejected { command: cmd.to_string(), reason });
-        }
-        let Some(done) = done.as_ref().filter(|_| is_save) else { continue };
-        if reply.lines().any(|l| done.is_match(l)) {
+        let done_here = done.as_ref().filter(|_| is_save);
+        if done_here.is_some_and(|d| reply.lines().any(|l| d.is_match(l))) {
             confirmed = true;
             continue;
         }
+        // 답에는 보낸 뒤 잠깐 찍힌 줄이 다 섞인다(다른 명령의 답 포함). 서버가 바로 찍는 첫 줄로만 거절을 가린다
+        let first = reply.lines().find(|l| !l.trim().is_empty()).unwrap_or_default();
+        if let Some(reason) = rejected(first, &failures) {
+            return Err(SaveNotDone::Rejected { command: cmd.to_string(), reason });
+        }
+        let Some(done) = done_here else { continue };
         let (Some(p), Some(mut next)) = (&proc, cursor) else {
             // 콘솔을 볼 수 없는 서버(RCON 등): 답에 없으면 확인할 길이 없다
             return Err(SaveNotDone::Unconfirmed { command: cmd.to_string() });
@@ -2263,7 +2266,7 @@ print(json.dumps({'success': True, 'snapshots': [{'id': 'startup/backup_1', 'cre
     fn live_module(save_done: Option<&str>) -> String {
         let done = save_done.map(|p| format!("save_done_pattern = '{p}'\n")).unwrap_or_default();
         format!(
-            "{NO_BACKUP}\n[protocols]\nsupported = [\"stdin\"]\n\n[commands]\nfailure_patterns = ['^Unknown command']\n\n\
+            "{NO_BACKUP}\n[protocols]\nsupported = [\"stdin\"]\n\n[commands]\nfailure_patterns = ['(?m)^Unknown command']\n\n\
              [[commands.fields]]\nname = \"save-all\"\nmethod = \"console\"\nconsole_template = \"save-all\"\n\n\
              [[commands.fields]]\nname = \"save-off\"\nmethod = \"console\"\nconsole_template = \"save-off\"\n\n\
              [[commands.fields]]\nname = \"save-on\"\nmethod = \"console\"\nconsole_template = \"save-on\"\n\n\
@@ -2305,12 +2308,12 @@ print(json.dumps({'success': True, 'snapshots': [{'id': 'startup/backup_1', 'cre
         assert_eq!(std::fs::read_to_string(work.join("commands.log")).unwrap(), "save-off\nsave-all\nsave-on\n");
     }
 
-    /// 기다리는 동안 다른 명령이 찍은 실패 줄로 저장을 버리지 않는다: 거절은 저장 명령의 답으로만 가린다
+    /// 저장 명령 답 뒤에 섞인 줄이나 기다리는 동안 다른 명령이 찍은 실패 줄로 저장을 버리지 않는다: 거절은 답의 첫 줄로만 가린다
     #[cfg(unix)]
     #[tokio::test]
     async fn a_failure_line_while_waiting_for_the_save_does_not_abort_the_backup() {
         let (state, id, tmp) = server_with(&live_module(Some("^Saved the game$")), None).await;
-        run_fake_server(&state, &id, &tmp, "save-all) echo 'Saving the game'; sleep 2; echo 'Unknown command'; echo new > world/level.dat; echo 'Saved the game';;").await;
+        run_fake_server(&state, &id, &tmp, "save-all) echo 'Saving the game'; echo 'Unknown command'; sleep 2; echo 'Unknown command'; echo new > world/level.dat; echo 'Saved the game';;").await;
         let made = take_backup(&state, &id, BackupKind::Manual).await.unwrap().unwrap().name;
         let dir = state.supervisor.read().await.instance_store.instance_dir(&id).join("backups");
         assert_eq!(backed_up_level(&dir, &made, &tmp.path().join("server")), "new\n");
