@@ -7,18 +7,9 @@
     "restart": "サーバーを再起動"
   },
   "help": {
-    "title": "📖 使用ガイド",
-    "list": "サーバーリストを確認",
-    "start": "サーバーを起動",
-    "stop": "サーバーを停止",
-    "status": "サーバーステータスを確認",
-    "rest_command": "REST コマンドを実行",
-    "help": "このヘルプメッセージを表示",
     "available_modules": "**利用可能なモジュール:** {{modules}}",
     "no_modules": "なし",
-    "module_commands": "**モジュールコマンド:**{{commands}}",
     "module_title": "**{{module}} コマンド**",
-    "command_format": "不明なコマンド: \"{{command}}\" ({{resolved}})",
     "available_commands": "{{commands}}",
     "usage_format": "`{{prefix}} <モジュール> <コマンド>`",
     "modules_header": "📦 **モジュール:**"
@@ -75,20 +66,6 @@
     }
   },
   "responses": {
-    "info_title": "**サーバー情報**",
-    "info_version": "• バージョン: {{version}}",
-    "info_name": "• サーバー名: {{name}}",
-    "info_description": "• 説明: {{description}}",
-    "players_title": "**接続プレイヤー ({{count}})**",
-    "players_empty": "現在接続しているプレイヤーはいません",
-    "players_item": "• **{{name}}** - Lv.{{level}} ({{id}})",
-    "metrics_title": "**サーバーメトリクス**",
-    "metrics_players": "• 現在のプレイヤー数: {{current}}/{{max}}",
-    "metrics_fps": "• サーバー FPS: {{fps}}",
-    "metrics_uptime": "• 稼働時間: {{uptime}} 分",
-    "announce_success": "✅ アナウンスを送信しました",
-    "save_success": "✅ ワールドを保存しました",
-    "command_executed": "✅ コマンドを実行しました",
     "command_complete": "✅ コマンドを実行しました！",
     "empty_list": "(空)"
   },
@@ -120,37 +97,15 @@
     "danger_needs_name": "⚠️ 危険なコマンドはゲーム名では実行しません。サーバー名「{{name}}」で呼んでください。"
   },
   "messages": {
-    "server_started": "サーバーを起動しました",
-    "server_stopped": "サーバーが停止しました",
-    "server_not_running": "サーバーが実行されていません",
-    "command_error": "コマンド実行エラー",
-    "raw_command_success": "✅ {{output}}",
-    "raw_command_error": "❌ {{error}}"
+    "command_error": "コマンド実行エラー"
   },
   "relay": {
     "command_complete": "✅ 完了"
   },
-  "rps": {
-    "prompt": "✊✌️✋ ひとつ選んでね！",
-    "draw": "{{bot}}！あいこ！もう一回~ 🔄",
-    "user_win": "{{bot}}！負けた... 😵",
-    "bot_win": "{{bot}}！勝った~ 😋",
-    "timeout": "⏰ 時間切れ！また挑戦してね~",
-    "scissors": "チョキ",
-    "rock": "グー",
-    "paper": "パー"
-  },
   "cloud": {
-    "not_configured": "❌ クラウドモードが設定されていません。",
-    "register_complete": "✅ 登録完了！トークンがDMに送信されました。",
-    "register_failed": "❌ 登録失敗: {{error}}",
-    "already_registered": "ℹ️ すでに登録されています。ホストID: {{hostId}}",
     "status_online": "🟢 オンライン",
     "status_offline": "⚪ オフライン",
-    "status_check_failed": "❌ ステータス確認失敗: {{error}}",
-    "acl_granted": "✅ {{user}} に権限レベル {{level}} を付与しました。",
-    "acl_revoked": "✅ {{user}} の権限を解除しました。",
-    "music_local_only": "🎵 音楽機能はローカルモードでのみ使用可能です。"
+    "status_check_failed": "❌ ステータス確認失敗: {{error}}"
   },
   "schedule": {
     "restart_warning": "{{minutes}}分後にサーバーを再起動します。",
