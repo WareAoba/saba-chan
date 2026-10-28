@@ -154,6 +154,8 @@
     "preset_not_found": "このモジュールにはそのおすすめ設定がありません。モジュールを再読み込みしてもう一度お試しください。",
     "platform_unsupported": "このOSは非対応",
     "platform_unsupported_detail": "このゲームモジュールは {{platforms}} でのみ動きます",
+    "arch_unsupported": "このCPUは非対応",
+    "arch_unsupported_detail": "このゲームモジュールは {{architectures}} CPUでのみ動きます",
     "next": "次へ",
     "prev": "戻る",
     "step_counter": "ステップ {{current}}/{{total}}",

@@ -154,6 +154,8 @@
     "preset_not_found": "该模块没有这个推荐配置。请刷新模块后重试。",
     "platform_unsupported": "不支持此系统",
     "platform_unsupported_detail": "此游戏模块只能在 {{platforms}} 上运行",
+    "arch_unsupported": "不支持此 CPU",
+    "arch_unsupported_detail": "此游戏模块只能在 {{architectures}} CPU 上运行",
     "next": "下一步",
     "prev": "上一步",
     "step_counter": "第 {{current}}/{{total}} 步",

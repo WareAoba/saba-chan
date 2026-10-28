@@ -32,6 +32,16 @@ class LinuxZips(unittest.TestCase):
         # 데스크톱 리눅스 GUI: 앱 메뉴 항목(설치기)이 GUI 옆 아이콘을 가리킨다
         self.assertEqual(gui, {"saba-chan-gui": 0o755, "saba-chan-gui.png": 0o644})
 
+    def test_arm64_packs_only_the_listed_components(self):
+        # linux-arm64는 GUI 없이 헤드리스 구성만 싣는다
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            for exe in ("saba-core", "saba-runner", "saba-chan-cli", "saba-chan-updater"):
+                (d / exe).write_bytes(b"\x7fELF")
+            made = package_linux.package(d, d / "out", "linux-arm64", only=["saba-core", "cli", "updater"])
+            self.assertEqual(sorted(p.name for p in made), [
+                "saba-chan-cli-linux-arm64.zip", "saba-chan-updater-linux-arm64.zip", "saba-core-linux-arm64.zip"])
+
     def test_a_missing_binary_stops_packaging(self):
         with tempfile.TemporaryDirectory() as d:
             with self.assertRaises(SystemExit):

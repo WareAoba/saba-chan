@@ -154,6 +154,8 @@
     "preset_not_found": "Dieses Modul hat diese empfohlene Einrichtung nicht. Module neu laden und erneut versuchen.",
     "platform_unsupported": "Nicht für dieses OS",
     "platform_unsupported_detail": "Dieses Spielmodul läuft nur unter {{platforms}}",
+    "arch_unsupported": "Nicht für diese CPU",
+    "arch_unsupported_detail": "Dieses Spielmodul läuft nur auf {{architectures}}-CPUs",
     "next": "Weiter",
     "prev": "Zurück",
     "step_counter": "Schritt {{current}} von {{total}}",

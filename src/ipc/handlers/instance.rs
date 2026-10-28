@@ -179,9 +179,7 @@ async fn create_instance_inner(state: IPCServer, payload: Value, dry_run: bool) 
         // 모듈 정보에서 process_name, default_port, install 설정 가져오기
         let mut module_trust = None;
         let module_install = if let Ok(loaded_module) = supervisor.module_loader.get_module(module) {
-            if !loaded_module.metadata.supports_os(std::env::consts::OS) {
-                let platforms = loaded_module.metadata.platforms.clone().unwrap_or_default();
-                let body = crate::supervisor::module_loader::platform_unsupported_body(module, &platforms);
+            if let Some(body) = crate::supervisor::module_loader::host_unsupported_body(module, &loaded_module.metadata) {
                 return (StatusCode::CONFLICT, Json(body)).into_response();
             }
             module_trust = Some(super::server::module_trust(&loaded_module.path));

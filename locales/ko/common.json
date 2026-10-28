@@ -8,7 +8,8 @@
     "module_path_outside": "모듈이 허용된 폴더 밖의 경로에 접근하려 했습니다. 모듈 설정을 확인해 주세요.",
     "module_exception": "모듈에서 예외가 발생했습니다. 모듈 로그를 확인해 주세요.",
     "isolation_unsupported": "이 운영체제는 필요한 격리 기능을 지원하지 않습니다.",
-    "module_platform_unsupported": "이 게임 모듈은 이 데몬의 OS에서 돌아가지 않아요"
+    "module_platform_unsupported": "이 게임 모듈은 이 데몬의 OS에서 돌아가지 않아요",
+    "module_arch_unsupported": "이 게임 모듈은 이 데몬의 CPU에서 돌아가지 않아요"
   },
   "sandbox": {
     "isolation_unsupported": {

@@ -154,6 +154,8 @@
     "preset_not_found": "Este módulo não tem essa configuração recomendada. Atualize os módulos e tente novamente.",
     "platform_unsupported": "Não neste SO",
     "platform_unsupported_detail": "Este módulo de jogo só roda em {{platforms}}",
+    "arch_unsupported": "Não nesta CPU",
+    "arch_unsupported_detail": "Este módulo de jogo só roda em CPU {{architectures}}",
     "next": "Avançar",
     "prev": "Voltar",
     "step_counter": "Etapa {{current}} de {{total}}",

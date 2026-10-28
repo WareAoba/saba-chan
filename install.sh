@@ -1,11 +1,11 @@
 #!/bin/sh
-# 사바쨩 한 줄 설치: 리눅스 (화면 없는 서버와 데스크톱)
+# 사바쨩 한 줄 설치: 리눅스 (화면 없는 서버와 데스크톱, x86_64·ARM64)
 #
 #   curl -fsSL https://raw.githubusercontent.com/WareAoba/saba-chan/main/install.sh | sh
 #   curl -fsSL .../install.sh | sh -s -- --dir ~/saba --modules minecraft palworld
 #
 # 하는 일
-#   1. 릴레이에서 이 플랫폼(linux-x64)의 최신 릴리즈를 찾아 CLI zip만 받고, manifest의 sha256·크기와 대조한다
+#   1. 릴레이에서 이 플랫폼(linux-x64·linux-arm64)의 최신 릴리즈를 찾아 CLI zip만 받고, manifest의 sha256·크기와 대조한다
 #   2. 받은 CLI로 `saba-chan-cli install`을 돌린다. 나머지(데몬·업데이터·GUI·모듈)는 CLI가 받고,
 #      서명된 manifest를 번들 공개키로 검증한 뒤 설치한다 (창 인스톨러와 같은 saba-chan-installer-core).
 #      화면(DISPLAY·WAYLAND_DISPLAY)이 있으면 GUI까지 든 데스크톱 구성, 없으면 헤드리스 구성이다 (--gui·--no-gui로 정한다)
@@ -19,7 +19,6 @@ set -eu
 
 RELAY=https://saba-chan.online
 CHANNEL=stable
-PLATFORM=linux-x64
 
 case "${LANG:-}${LC_ALL:-}" in
     *ko*) KO=1 ;;
@@ -29,9 +28,11 @@ say() { if [ -n "$KO" ]; then printf '%s\n' "$1"; else printf '%s\n' "$2"; fi; }
 die() { say "오류: $1" "Error: $2" >&2; exit 1; }
 
 [ "$(uname -s)" = Linux ] || die "리눅스에서만 설치할 수 있어요." "This installer is for Linux only."
+# ARM(aarch64)은 화면 없는 구성만 있다: 창 앱이 없는 릴리스면 CLI 설치가 헤드리스로 깐다
 case "$(uname -m)" in
-    x86_64 | amd64) ;;
-    *) die "x86_64 PC만 지원해요." "Only x86_64 is supported." ;;
+    x86_64 | amd64) PLATFORM=linux-x64 ;;
+    aarch64 | arm64) PLATFORM=linux-arm64 ;;
+    *) die "x86_64·ARM64 PC만 지원해요." "Only x86_64 and ARM64 are supported." ;;
 esac
 for tool in curl unzip sha256sum python3; do
     command -v "$tool" >/dev/null 2>&1 || die "$tool 이(가) 필요해요." "$tool is required."
@@ -136,8 +137,9 @@ else
     "$CLI" daemon start
 fi
 
-# SteamCMD(팰월드·좀보이드 등)는 32비트 프로그램이다: 32비트 C 라이브러리가 없으면 설치가 "required file not found"로 실패한다
-[ -e /lib/ld-linux.so.2 ] || [ -e /lib32/ld-linux.so.2 ] ||
+# SteamCMD(팰월드·좀보이드 등)는 32비트 프로그램이다: 32비트 C 라이브러리가 없으면 설치가 "required file not found"로 실패한다.
+# ARM에는 SteamCMD 게임이 없으니 알리지 않는다
+[ "$PLATFORM" != linux-x64 ] || [ -e /lib/ld-linux.so.2 ] || [ -e /lib32/ld-linux.so.2 ] ||
     say "Steam 게임을 설치하려면 32비트 라이브러리가 필요해요. 예: sudo apt install lib32gcc-s1" \
         "Steam games need 32-bit libraries. For example: sudo apt install lib32gcc-s1"
 

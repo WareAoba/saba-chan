@@ -154,6 +154,8 @@
     "preset_not_found": "이 모듈에 그 추천 설정이 없어요. 모듈을 새로 고친 뒤 다시 시도하세요.",
     "platform_unsupported": "이 OS 미지원",
     "platform_unsupported_detail": "이 게임 모듈은 {{platforms}}에서만 돌아가요",
+    "arch_unsupported": "이 CPU 미지원",
+    "arch_unsupported_detail": "이 게임 모듈은 {{architectures}} CPU에서만 돌아가요",
     "next": "다음",
     "prev": "이전",
     "step_counter": "{{current}}/{{total}}단계",

@@ -8,7 +8,8 @@
     "module_path_outside": "모듈이 허용된 폴더 밖의 경로에 접근하려 했습니다. 모듈 설정을 확인해 주세요.",
     "module_exception": "모듈에서 예외가 발생했습니다. 모듈 로그를 확인해 주세요.",
     "isolation_unsupported": "이 운영체제는 필요한 격리 기능을 지원하지 않습니다.",
-    "module_platform_unsupported": "이 게임 모듈은 이 데몬의 OS에서 돌아가지 않아요"
+    "module_platform_unsupported": "이 게임 모듈은 이 데몬의 OS에서 돌아가지 않아요",
+    "module_arch_unsupported": "이 게임 모듈은 이 데몬의 CPU에서 돌아가지 않아요"
   },
   "add": {
     "created_settings_unsynced": "{{name}} 서버를 만들고 설정도 저장했지만, 게임 설정 파일에 쓰지 못했어요: {{error}}",
@@ -504,7 +505,8 @@
     "load_failed": {
       "invalid": "{{module}} 모듈을 읽지 못했어요. module.toml이 형식에 맞지 않아요:"
     },
-    "platform_unsupported": "(이 OS 미지원)"
+    "platform_unsupported": "(이 OS 미지원)",
+    "arch_unsupported": "(이 CPU 미지원)"
   },
   "noun": {
     "command": "명령",
@@ -1504,6 +1506,7 @@
     "failed_no_log": "설치하지 못했어요: {{reason}}",
     "done": "{{dir}}에 설치했어요",
     "next": "다음 명령으로 데몬을 켜세요:\n{{command}}",
+    "no_gui_build": "이 PC용 창 앱이 아직 없어 화면 없이 설치해요. CLI로 다룰 수 있어요.",
     "next_app": "앱 메뉴에서 사바쨩을 열거나 다음 명령으로 여세요:\n{{command}}",
     "components_dir": "모듈·익스텐션은 {{dir}}에 둬요.",
     "components_dir_invalid": "{{dir}}은(는) 모듈·익스텐션 위치로 쓸 수 없어요: {{reason}}",

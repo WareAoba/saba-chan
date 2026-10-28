@@ -154,6 +154,8 @@
     "preset_not_found": "Ce module n'a pas cette configuration recommandée. Actualisez les modules et réessayez.",
     "platform_unsupported": "Pas sur cet OS",
     "platform_unsupported_detail": "Ce module de jeu ne fonctionne que sous {{platforms}}",
+    "arch_unsupported": "Pas sur ce processeur",
+    "arch_unsupported_detail": "Ce module de jeu ne fonctionne que sur processeur {{architectures}}",
     "next": "Suivant",
     "prev": "Retour",
     "step_counter": "Étape {{current}} sur {{total}}",

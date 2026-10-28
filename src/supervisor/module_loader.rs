@@ -130,6 +130,9 @@ pub struct ModuleMetadata {
     /// [extensions.saba-core] platforms — 이 모듈이 돌아가는 OS (`std::env::consts::OS` 이름: windows·linux·macos). 없으면 막지 않는다 (D3·M1)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub platforms: Option<Vec<String>>,
+    /// [extensions.saba-core] architectures — 이 모듈이 돌아가는 CPU (`std::env::consts::ARCH` 이름: x86_64·aarch64). 없으면 막지 않는다
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub architectures: Option<Vec<String>>,
     /// [extensions.saba-core] ready_timeout — 준비 문구를 기다리는 시간(초). 없으면 600
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ready_timeout: Option<u64>,
@@ -356,6 +359,17 @@ impl ModuleMetadata {
     /// 이 OS에서 돌아가는가 (`os`는 `std::env::consts::OS`). `platforms`를 선언하지 않은 모듈은 막지 않는다
     pub fn supports_os(&self, os: &str) -> bool {
         self.platforms.as_ref().is_none_or(|p| p.iter().any(|x| x == os))
+    }
+
+    /// 이 OS·CPU에서 돌아가지 않는 이유: `"os"`(`platforms`) 또는 `"arch"`(`architectures`). 돌아가면 None
+    pub fn unsupported_on(&self, os: &str, arch: &str) -> Option<&'static str> {
+        if !self.supports_os(os) {
+            Some("os")
+        } else if !self.architectures.as_ref().is_none_or(|a| a.iter().any(|x| x == arch)) {
+            Some("arch")
+        } else {
+            None
+        }
     }
 
     /// 컴포넌트 버전 의존성을 확인합니다.
@@ -1444,6 +1458,7 @@ impl ModuleToml {
             ready_patterns: Vec::new(),
             progress_patterns: Vec::new(),
             platforms: None,
+            architectures: None,
             ready_timeout: None,
             player_join_patterns: Vec::new(),
             player_leave_patterns: Vec::new(),
@@ -1571,9 +1586,29 @@ pub(crate) fn parse_module_toml(content: &str) -> Result<ModuleMetadata> {
 pub const DAEMON_TABLE: &str = "saba-core";
 /// 이 데몬이 읽는 `[extensions.saba-core]` 키
 const DAEMON_TABLE_KEYS: &[&str] =
-    &["ready_patterns", "ready_timeout", "player_join_patterns", "player_leave_patterns", "data_roots", "progress_patterns", "platforms"];
+    &["ready_patterns", "ready_timeout", "player_join_patterns", "player_leave_patterns", "data_roots", "progress_patterns", "platforms", "architectures"];
+/// 이 데몬의 OS·CPU에서 돌아가지 않는 모듈의 서버를 만들거나 켜지 않는 응답. 돌아가면 None
+pub fn host_unsupported_body(module: &str, meta: &ModuleMetadata) -> Option<serde_json::Value> {
+    match meta.unsupported_on(std::env::consts::OS, std::env::consts::ARCH)? {
+        "os" => Some(platform_unsupported_body(module, meta.platforms.as_deref().unwrap_or_default())),
+        _ => Some(arch_unsupported_body(module, meta.architectures.as_deref().unwrap_or_default())),
+    }
+}
+
+/// 이 CPU를 지원하지 않는 모듈의 응답 (`module_arch_unsupported`)
+fn arch_unsupported_body(module: &str, architectures: &[String]) -> serde_json::Value {
+    serde_json::json!({
+        "success": false,
+        "error": format!("Module '{}' runs on {} only, not {}", module, architectures.join(", "), std::env::consts::ARCH),
+        "error_code": "module_arch_unsupported",
+        "module": module,
+        "architectures": architectures,
+        "arch": std::env::consts::ARCH,
+    })
+}
+
 /// 이 OS를 지원하지 않는 모듈의 서버를 만들거나 켜지 않는 응답 (`module_platform_unsupported`)
-pub fn platform_unsupported_body(module: &str, platforms: &[String]) -> serde_json::Value {
+fn platform_unsupported_body(module: &str, platforms: &[String]) -> serde_json::Value {
     serde_json::json!({
         "success": false,
         "error": format!("Module '{}' runs on {} only, not {}", module, platforms.join(", "), std::env::consts::OS),
@@ -1586,6 +1621,8 @@ pub fn platform_unsupported_body(module: &str, platforms: &[String]) -> serde_js
 
 /// `platforms`에 적을 수 있는 OS (`std::env::consts::OS`와 같은 이름)
 pub const PLATFORMS: &[&str] = &["windows", "linux", "macos"];
+/// `architectures`에 적을 수 있는 CPU (`std::env::consts::ARCH`와 같은 이름)
+pub const ARCHITECTURES: &[&str] = &["x86_64", "aarch64"];
 /// `ready_timeout` 상한(초)
 pub const READY_TIMEOUT_MAX_SECS: u64 = 900;
 
@@ -1609,6 +1646,40 @@ fn read_pattern_list(table: &serde_json::Value, key: &str, needs_name: bool, war
     out
 }
 
+/// `architectures`에 흔히 쓰는 다른 이름 → `std::env::consts::ARCH` 이름
+const ARCH_ALIASES: &[(&str, &str)] = &[("amd64", "x86_64"), ("x64", "x86_64"), ("arm64", "aarch64")];
+
+/// `[extensions.saba-core]`의 이름 목록 하나(`platforms`·`architectures`)를 읽는다. 대소문자는 가리지 않고 `aliases`는 바꿔 읽으며,
+/// `allowed`에 없는 이름은 빼고 경고한다. 남은 이름이 없으면 선언하지 않은 것으로 본다 (틀린 이름 하나로 어디서도 못 돌게 되지 않게)
+fn read_name_list(
+    table: &serde_json::Value,
+    key: &str,
+    allowed: &[&str],
+    aliases: &[(&str, &str)],
+    what: &str,
+    warnings: &mut Vec<String>,
+) -> Option<Vec<String>> {
+    match table.get(key) {
+        None => None,
+        Some(serde_json::Value::Array(items)) => {
+            let mut names = Vec::new();
+            for item in items {
+                let name = item.as_str().map(str::to_ascii_lowercase).map(|p| aliases.iter().find(|(from, _)| *from == p).map_or(p, |(_, to)| to.to_string()));
+                match name.filter(|p| allowed.contains(&p.as_str())) {
+                    Some(p) if !names.contains(&p) => names.push(p),
+                    Some(_) => {}
+                    None => warnings.push(format!("extensions.{}.{} has an unknown {} {} (use {}); ignored", DAEMON_TABLE, key, what, item, allowed.join(", "))),
+                }
+            }
+            (!names.is_empty()).then_some(names)
+        }
+        Some(_) => {
+            warnings.push(format!("extensions.{}.{} must be a list of {} names; ignored", DAEMON_TABLE, key, what));
+            None
+        }
+    }
+}
+
 /// `[extensions.saba-core]`의 `ready_patterns`·`ready_timeout`(R39), `player_join_patterns`·`player_leave_patterns`(MK8), `progress_patterns`를 읽는다.
 /// 틀린 값은 그 값만 빼고 경고로 남긴다
 fn read_daemon_table(meta: &mut ModuleMetadata) -> Vec<String> {
@@ -1624,21 +1695,8 @@ fn read_daemon_table(meta: &mut ModuleMetadata) -> Vec<String> {
     meta.player_join_patterns.extend(read_pattern_list(&table, "player_join_patterns", true, &mut warnings));
     meta.player_leave_patterns.extend(read_pattern_list(&table, "player_leave_patterns", true, &mut warnings));
     meta.progress_patterns.extend(read_pattern_list(&table, "progress_patterns", false, &mut warnings));
-    match table.get("platforms") {
-        None => {}
-        Some(serde_json::Value::Array(items)) => {
-            let mut platforms = Vec::new();
-            for item in items {
-                match item.as_str().map(str::to_ascii_lowercase).filter(|p| PLATFORMS.contains(&p.as_str())) {
-                    Some(p) if !platforms.contains(&p) => platforms.push(p),
-                    Some(_) => {}
-                    None => warnings.push(format!("extensions.{}.platforms has an unknown OS {} (use {}); ignored", DAEMON_TABLE, item, PLATFORMS.join(", "))),
-                }
-            }
-            meta.platforms = Some(platforms);
-        }
-        Some(_) => warnings.push(format!("extensions.{}.platforms must be a list of OS names; ignored", DAEMON_TABLE)),
-    }
+    meta.platforms = read_name_list(&table, "platforms", PLATFORMS, &[], "OS", &mut warnings);
+    meta.architectures = read_name_list(&table, "architectures", ARCHITECTURES, ARCH_ALIASES, "CPU", &mut warnings);
     match table.get("data_roots") {
         None => {}
         Some(serde_json::Value::Array(items)) => {
@@ -2996,6 +3054,24 @@ entry = "lifecycle.py"
         let wrong = parse_module_toml(&format!("{V1}\n[extensions.saba-core]\nplatforms = 'linux'\n")).unwrap();
         assert_eq!(wrong.platforms, None);
         assert!(wrong.warnings.iter().any(|w| w.contains("platforms")), "{:?}", wrong.warnings);
+    }
+
+    /// 지원 CPU는 `platforms` 옆 `architectures`에 둔다 (`std::env::consts::ARCH` 이름). 없으면 막지 않는다
+    #[test]
+    fn schema_v1_reads_supported_architectures_from_the_daemon_table() {
+        let meta = parse_module_toml(&format!("{V1}\n[extensions.saba-core]\narchitectures = ['x86_64', 'X86_64', 'sparc']\n")).unwrap();
+        assert_eq!(meta.architectures, Some(vec!["x86_64".to_string()]));
+        assert!(meta.warnings.iter().any(|w| w.contains("architectures") && w.contains("sparc")), "{:?}", meta.warnings);
+        assert_eq!(meta.unsupported_on("linux", "x86_64"), None);
+        assert_eq!(meta.unsupported_on("linux", "aarch64"), Some("arch"));
+        let undeclared = parse_module_toml(V1).unwrap();
+        assert_eq!(undeclared.unsupported_on("linux", "aarch64"), None, "a module that declares nothing is not blocked");
+        let aliases = parse_module_toml(&format!("{V1}\n[extensions.saba-core]\narchitectures = ['amd64', 'arm64']\n")).unwrap();
+        assert_eq!(aliases.architectures, Some(vec!["x86_64".to_string(), "aarch64".to_string()]));
+        let unknown = parse_module_toml(&format!("{V1}\n[extensions.saba-core]\narchitectures = ['sparc']\n")).unwrap();
+        assert_eq!(unknown.unsupported_on("linux", "x86_64"), None, "a list with no known CPU blocks nowhere");
+        let both = parse_module_toml(&format!("{V1}\n[extensions.saba-core]\nplatforms = ['windows']\narchitectures = ['x86_64']\n")).unwrap();
+        assert_eq!(both.unsupported_on("linux", "aarch64"), Some("os"), "the OS is named first");
     }
 
     #[test]

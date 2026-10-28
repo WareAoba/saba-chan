@@ -8,7 +8,8 @@
     "module_path_outside": "模块尝试访问允许文件夹之外的路径。请检查模块设置。",
     "module_exception": "模块发生异常。请检查模块日志。",
     "isolation_unsupported": "此操作系统不支持所需的隔离功能。",
-    "module_platform_unsupported": "此游戏模块无法在该守护进程的系统上运行"
+    "module_platform_unsupported": "此游戏模块无法在该守护进程的系统上运行",
+    "module_arch_unsupported": "此游戏模块无法在该守护进程的 CPU 上运行"
   },
   "sandbox": {
     "isolation_unsupported": {

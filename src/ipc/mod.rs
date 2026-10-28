@@ -315,9 +315,15 @@ pub struct ExtensionInfo {
     /// `[extensions.saba-core] platforms`: 이 모듈이 돌아가는 OS. 없으면 선언하지 않음 (D3·M1)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub platforms: Option<Vec<String>>,
-    /// 이 데몬의 OS에서 돌아가는가. 아니면 서버를 만들거나 켜지 않는다(`module_platform_unsupported`)
+    /// `[extensions.saba-core] architectures`: 이 모듈이 돌아가는 CPU. 없으면 선언하지 않음
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub architectures: Option<Vec<String>>,
+    /// 이 데몬의 OS·CPU에서 돌아가는가. 아니면 서버를 만들거나 켜지 않는다(`module_platform_unsupported`·`module_arch_unsupported`)
     #[serde(default = "yes")]
     pub platform_supported: bool,
+    /// 돌아가지 않는 이유: `os`(`platforms`) 또는 `arch`(`architectures`)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unsupported_reason: Option<String>,
     pub path: String,
     pub executable_path: Option<String>,
     /// `[config] server_executable`: 모듈이 찾는 서버 실행 파일 이름. 클라이언트는 실행 파일 고르기의 파일 종류로 쓴다
@@ -1205,6 +1211,8 @@ mod tests {
         let module_info = ExtensionInfo {
             platforms: None,
             platform_supported: true,
+            architectures: None,
+            unsupported_reason: None,
             trust: saba_chan_updater_lib::integrity::Trust::Unverified,
             name: "palworld".to_string(),
             version: "1.0.0".to_string(),
@@ -1267,6 +1275,8 @@ mod tests {
         let module_info = ExtensionInfo {
             platforms: None,
             platform_supported: true,
+            architectures: None,
+            unsupported_reason: None,
             trust: saba_chan_updater_lib::integrity::Trust::Unverified,
             name: "test".to_string(),
             version: "1.0.0".to_string(),
@@ -1310,6 +1320,8 @@ mod tests {
                 ExtensionInfo {
                     platforms: None,
                     platform_supported: true,
+                    architectures: None,
+                    unsupported_reason: None,
                     trust: saba_chan_updater_lib::integrity::Trust::Unverified,
                     name: "palworld".to_string(),
                     version: "1.0.0".to_string(),

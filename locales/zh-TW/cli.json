@@ -8,7 +8,8 @@
     "module_path_outside": "模組試圖存取允許範圍外的資料夾。請檢查模組設定。",
     "module_exception": "模組拋出了例外。請檢查模組日誌。",
     "isolation_unsupported": "此作業系統不支援所需的隔離功能。",
-    "module_platform_unsupported": "此遊戲模組無法在該常駐程式的系統上執行"
+    "module_platform_unsupported": "此遊戲模組無法在該常駐程式的系統上執行",
+    "module_arch_unsupported": "此遊戲模組無法在該常駐程式的 CPU 上執行"
   },
   "add": {
     "created_settings_unsynced": "{{name}} 已建立且設定已儲存，但無法寫入遊戲設定檔：{{error}}",
@@ -504,7 +505,8 @@
     "load_failed": {
       "invalid": "無法載入 {{module}} 模組。module.toml 不符合格式:"
     },
-    "platform_unsupported": "（不支援此系統）"
+    "platform_unsupported": "（不支援此系統）",
+    "arch_unsupported": "（不支援此 CPU）"
   },
   "noun": {
     "command": "指令",
@@ -1246,6 +1248,7 @@
     "failed_no_log": "安裝失敗：{{reason}}",
     "done": "已安裝到 {{dir}}",
     "next": "用以下指令啟動常駐程式：\n{{command}}",
+    "no_gui_build": "此電腦尚無桌面應用程式，將不帶介面安裝。可使用 CLI 操作。",
     "next_app": "從應用程式選單開啟 Saba-chan，或執行以下指令：\n{{command}}",
     "components_dir": "模組和擴充放在 {{dir}}。",
     "components_dir_invalid": "無法將 {{dir}} 用於模組和擴充：{{reason}}",

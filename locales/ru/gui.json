@@ -154,6 +154,8 @@
     "preset_not_found": "У этого модуля нет такой рекомендуемой настройки. Обновите модули и попробуйте снова.",
     "platform_unsupported": "Не для этой ОС",
     "platform_unsupported_detail": "Этот игровой модуль работает только в {{platforms}}",
+    "arch_unsupported": "Не для этого процессора",
+    "arch_unsupported_detail": "Этот игровой модуль работает только на процессорах {{architectures}}",
     "next": "Далее",
     "prev": "Назад",
     "step_counter": "Шаг {{current}} из {{total}}",

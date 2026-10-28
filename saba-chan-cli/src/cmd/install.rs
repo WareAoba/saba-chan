@@ -44,6 +44,19 @@ fn is_server_core() -> bool {
     false
 }
 
+/// 창 앱을 게시하는 플랫폼 (05 §3.1). 여기서 앱이 빠진 릴리스는 잘못 나온 것이라 설치기가 멈춰 알린다
+const APP_PLATFORMS: &[&str] = &["windows-x64", "linux-x64"];
+
+/// 창 앱을 게시하지 않는 플랫폼(linux-arm64)이면 화면이 있어도 헤드리스로 깐다. `--gui`로 고른 것만은 그대로 둔다
+/// (설치기가 빠진 구성요소로 멈춰 알린다)
+fn fit_profile(profile: Profile, forced_gui: bool, has_gui: bool, platform: &str) -> Profile {
+    if profile == Profile::Desktop && !forced_gui && !has_gui && !APP_PLATFORMS.contains(&platform) {
+        Profile::Headless
+    } else {
+        profile
+    }
+}
+
 /// 화면이 없는 환경인지: 리눅스는 SSH로 들어왔거나 DISPLAY·WAYLAND_DISPLAY가 모두 없을 때, Windows는 Server Core이거나 SSH로
 /// 들어왔거나 대화형 세션 이름(SESSIONNAME)이 없을 때(서비스). `--gui`·`--no-gui`가 감지보다 먼저다
 fn detect_profile(gui: bool, no_gui: bool, os: Os, env: impl Fn(&str) -> Option<String>) -> Profile {
@@ -114,6 +127,11 @@ pub async fn run(ctx: &Ctx, args: InstallArgs) -> Result<()> {
     spin.finish_and_clear();
     let manifest = manifest.map_err(|e| failed(t!("install.fetch_failed", reason = e)))?;
     let available = release::modules(&manifest);
+    let fitted = fit_profile(profile, args.gui, manifest.components.contains_key("gui"), &saba_chan_updater_lib::relay::current_platform());
+    if fitted != profile {
+        ctx.out.hint(&t!("install.no_gui_build"));
+    }
+    let profile = fitted;
 
     // 설치 폴더: 고르지 않으면 기본 위치. 비어 있지 않은 폴더면 그 아래 Saba-chan 폴더에 푼다(제거기가 폴더째 지운다)
     let default_dir = core::dedicated_install_dir(&PathBuf::from(core::default_install_path()));
@@ -300,6 +318,22 @@ fn app_command(dir: &Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// ARM 리눅스처럼 창 앱을 게시하지 않는 플랫폼은 화면이 있어도 헤드리스로 깐다 (고르지 않았을 때만)
+    #[test]
+    fn a_release_without_the_app_installs_headless() {
+        assert_eq!(fit_profile(Profile::Desktop, false, false, "linux-arm64"), Profile::Headless);
+        assert_eq!(fit_profile(Profile::Desktop, true, false, "linux-arm64"), Profile::Desktop, "--gui stays and the installer reports what is missing");
+        assert_eq!(fit_profile(Profile::Desktop, false, true, "linux-arm64"), Profile::Desktop);
+        assert_eq!(fit_profile(Profile::Headless, false, true, "linux-arm64"), Profile::Headless);
+    }
+
+    /// 앱을 게시하는 플랫폼에서 앱이 빠진 릴리스는 헤드리스로 바꾸지 않는다: 바꾸면 있던 데스크톱 설치의 GUI를 지운다
+    #[test]
+    fn a_release_missing_the_app_on_an_app_platform_is_not_installed_headless() {
+        assert_eq!(fit_profile(Profile::Desktop, false, false, "linux-x64"), Profile::Desktop);
+        assert_eq!(fit_profile(Profile::Desktop, false, false, "windows-x64"), Profile::Desktop);
+    }
 
     fn cli_file() -> &'static str {
         if cfg!(windows) {

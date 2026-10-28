@@ -8,7 +8,8 @@
     "module_path_outside": "モジュールが許可されたフォルダーの外にアクセスしようとしました。設定を確認してください。",
     "module_exception": "モジュールで例外が発生しました。ログを確認してください。",
     "isolation_unsupported": "このOSは必要な隔離機能をサポートしていません。",
-    "module_platform_unsupported": "このゲームモジュールはこのデーモンのOSでは動きません"
+    "module_platform_unsupported": "このゲームモジュールはこのデーモンのOSでは動きません",
+    "module_arch_unsupported": "このゲームモジュールはこのデーモンのCPUでは動きません"
   },
   "sandbox": {
     "isolation_unsupported": {

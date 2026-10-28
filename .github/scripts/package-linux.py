@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """화면 없는 리눅스 설치용 zip을 만든다 (D3c).
 
-    python .github/scripts/package-linux.py --bin target/release --out output [--platform linux-x64]
+    python .github/scripts/package-linux.py --bin target/release --out output [--platform linux-x64] [--only saba-core,cli,updater]
 
 Windows zip과 같은 이름 규칙(`<컴포넌트>-<플랫폼>.zip`)과 같은 내용(saba-core zip에 saba-runner와 공유 모듈)이다.
 실행 파일은 실행 권한(0755)을 zip에 적는다: 업데이터·설치기가 그 비트를 보고 실행 권한을 준다.
@@ -32,10 +32,12 @@ def add(zf: zipfile.ZipFile, src: Path, name: str, mode: int) -> None:
     zf.writestr(info, src.read_bytes())
 
 
-def package(bin_dir: Path, out_dir: Path, platform: str) -> list[Path]:
+def package(bin_dir: Path, out_dir: Path, platform: str, only: list[str] | None = None) -> list[Path]:
     out_dir.mkdir(parents=True, exist_ok=True)
     made = []
-    for prefix, exes, extras in LINUX_ASSETS.values():
+    for key, (prefix, exes, extras) in LINUX_ASSETS.items():
+        if only is not None and key not in only:
+            continue
         missing = [e for e in exes if not (bin_dir / e).is_file()]
         if missing:
             sys.exit(f"{prefix}: {', '.join(missing)} not built in {bin_dir}")
@@ -55,8 +57,9 @@ def main() -> int:
     parser.add_argument("--bin", required=True, help="cargo build --release 출력 폴더")
     parser.add_argument("--out", required=True)
     parser.add_argument("--platform", default="linux-x64")
+    parser.add_argument("--only", help="이 컴포넌트만 (쉼표 목록, 예: saba-core,cli,updater). 없으면 모두")
     args = parser.parse_args()
-    package(Path(args.bin), Path(args.out), args.platform)
+    package(Path(args.bin), Path(args.out), args.platform, args.only.split(",") if args.only else None)
     return 0
 
 

@@ -8,7 +8,8 @@
     "module_path_outside": "El módulo intentó acceder a una ruta fuera de la carpeta permitida. Revisa su configuración.",
     "module_exception": "Se produjo una excepción en el módulo. Revisa los registros.",
     "isolation_unsupported": "Este sistema operativo no admite el aislamiento requerido.",
-    "module_platform_unsupported": "Este módulo de juego no funciona en el SO de este daemon"
+    "module_platform_unsupported": "Este módulo de juego no funciona en el SO de este daemon",
+    "module_arch_unsupported": "Este módulo de juego no funciona en la CPU de este daemon"
   },
   "sandbox": {
     "isolation_unsupported": {
