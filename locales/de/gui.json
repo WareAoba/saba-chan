@@ -1267,6 +1267,7 @@
     "credit_balance_none": "Das Guthaben konnte gerade nicht abgerufen werden.",
     "credit_usage": "Nutzung in diesem Monat ({{month}}, UTC)",
     "credit_usage_line": "{{calls}} Modellaufrufe · {{input}} Eingabe-Tokens ({{cached}} aus dem Cache) · {{output}} Ausgabe-Tokens",
+    "credit_guild_failed": "Dieser Server konnte nicht geladen werden.",
     "credit_exhausted": "Das Guthaben ist aufgebraucht ({{time}}). Saba-chan kann erst nach dem Aufladen antworten.",
     "guilds_title": "Pro Discord-Server",
     "guilds_desc": "Schalte Sprechende Saba-chan pro Server ein oder aus. Sie antwortet nur in den Kanälen, die im Tab „Kanäle“ des jeweiligen Discord-Servers gewählt sind.",

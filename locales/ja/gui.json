@@ -1267,6 +1267,7 @@
     "credit_balance_none": "今は残高を確認できませんでした。",
     "credit_usage": "今月の使用量（{{month}}、UTC基準）",
     "credit_usage_line": "モデル呼び出し {{calls}}回 · 入力 {{input}}トークン（キャッシュ {{cached}}） · 出力 {{output}}トークン",
+    "credit_guild_failed": "このサーバーは読み込めませんでした。",
     "credit_exhausted": "クレジットがなくなりました（{{time}}）。チャージするまで返事できません。",
     "guilds_title": "Discordサーバー別",
     "guilds_desc": "サーバーごとにオン・オフできます。おしゃべりサバちゃんは、各 Discord サーバーの「チャンネル」タブで選んだチャンネルでだけ返事をします。",

@@ -119,8 +119,18 @@ fn merge(into: &mut Map<String, Value>, patch: Map<String, Value>) {
     }
 }
 
+/// 받은 patch의 옛 확인 설정을 합치기 전에 옮긴다 (합친 뒤에 옮기면 저장된 단계에 밀린다). null = 기본값으로
+fn upgrade_patch(map: &mut Map<String, Value>) {
+    if map.get("confirmCommands") == Some(&Value::Null) {
+        map.remove("confirmCommands");
+        map.entry("confirmLevel").or_insert(Value::Null);
+    }
+    crate::config_store::upgrade_confirm(map);
+}
+
 fn apply(cfg: &mut ChatbotConfig, patch: ChatbotPatch) -> Result<(), String> {
-    if let Some(s) = patch.settings {
+    if let Some(mut s) = patch.settings {
+        upgrade_patch(&mut s);
         merge(&mut cfg.settings, s);
     }
     drop_retired(&mut cfg.settings);
@@ -129,7 +139,8 @@ fn apply(cfg: &mut ChatbotConfig, patch: ChatbotPatch) -> Result<(), String> {
             Value::Null => {
                 cfg.guilds.remove(&guild);
             }
-            Value::Object(m) => {
+            Value::Object(mut m) => {
+                upgrade_patch(&mut m);
                 let entry = cfg.guilds.entry(guild.clone()).or_default();
                 merge(entry, m);
                 drop_retired(entry);
@@ -553,6 +564,11 @@ mod tests {
         // 새 값이 함께 오면 새 값을 둔다
         apply(&mut cfg, patch(json!({"settings": {"confirmCommands": true, "confirmLevel": "caution"}}))).unwrap();
         assert_eq!(cfg.settings["confirmLevel"], json!("caution"));
+        // 옛 키로 보낸 새 저장은 저장된 단계를 바꾸고, null이면 기본값으로 돌린다
+        apply(&mut cfg, patch(json!({"settings": {"confirmCommands": false}}))).unwrap();
+        assert_eq!(cfg.settings["confirmLevel"], json!("danger"));
+        apply(&mut cfg, patch(json!({"settings": {"confirmCommands": null}}))).unwrap();
+        assert!(!cfg.settings.contains_key("confirmLevel"));
     }
 
     /// 서버 프롬프트 기본 틀: 요청 언어로, 안내는 주석이라 릴레이가 모델에게 보내지 않는다

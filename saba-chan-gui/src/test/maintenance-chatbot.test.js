@@ -404,6 +404,40 @@ describe('ChatbotView', () => {
         expect(screen.getByText(/Credit ran out/)).toBeTruthy();
     });
 
+    it('남은 크레딧: 못 불러온 서버도 줄로 보이고, 키를 지우면 예전 잔액을 치운다', async () => {
+        window.api.chatbotGet = vi
+            .fn()
+            .mockResolvedValue({ success: true, settings: {}, guilds: { g2: { memo: 'x' } }, hasApiKey: true });
+        window.api.chatbotSave = vi
+            .fn()
+            .mockResolvedValue({ success: true, settings: {}, guilds: {}, hasApiKey: false });
+        window.api.chatbotCredit = vi.fn((id) =>
+            id === 'g1'
+                ? Promise.resolve({
+                      provider: 'deepseek',
+                      balanceSupported: true,
+                      balance: { amount: 12.5, currency: 'USD' },
+                      usage: { month: '2026-10', calls: 1, input: 10, cached: 0, output: 1 },
+                      exhaustedAt: null,
+                  })
+                : Promise.resolve({ success: false, error: 'RATE_LIMITED' }),
+        );
+        render(<ChatbotView nodes={nodes} />);
+        expect(await screen.findByText('$12.50')).toBeTruthy();
+        expect(screen.getByText('Could not load this server.')).toBeTruthy();
+        fireEvent.click(screen.getByRole('button', { name: 'Remove key' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Click to remove' }));
+        await waitFor(() => expect(screen.queryByText('$12.50')).toBeNull());
+    });
+
+    it('목록에 없는 끼어들기 주기(CLI로 저장한 값)도 고른 값으로 보인다', async () => {
+        window.api.chatbotGet = vi
+            .fn()
+            .mockResolvedValue({ success: true, settings: { ambientMinutes: 15 }, guilds: {}, hasApiKey: true });
+        render(<ChatbotView nodes={nodes} />);
+        expect((await screen.findByLabelText('Check interval')).textContent).toContain('Every 15 min');
+    });
+
     it('API 키는 쓰기만 하고 등록 여부만 보인다, 삭제는 null', async () => {
         window.api.chatbotGet = vi.fn().mockResolvedValue({ success: true, settings: {}, guilds: {}, hasApiKey: true });
         window.api.chatbotSave = vi

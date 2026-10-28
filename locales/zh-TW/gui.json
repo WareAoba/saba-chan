@@ -1267,6 +1267,7 @@
     "credit_balance_none": "暫時無法取得餘額。",
     "credit_usage": "本月用量（{{month}}，UTC）",
     "credit_usage_line": "模型呼叫 {{calls}} 次 · 輸入 {{input}} token（快取 {{cached}}） · 輸出 {{output}} token",
+    "credit_guild_failed": "無法載入此伺服器。",
     "credit_exhausted": "額度已用完（{{time}}）。儲值前無法回覆。",
     "guilds_title": "依 Discord 伺服器",
     "guilds_desc": "可為每個伺服器開啟或關閉會說話的 Saba-chan。它只在各 Discord 伺服器「頻道」分頁中選擇的頻道裡回答。",

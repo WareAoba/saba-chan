@@ -1267,6 +1267,7 @@
     "credit_balance_none": "Impossible d’obtenir le solde pour le moment.",
     "credit_usage": "Utilisation ce mois-ci ({{month}}, UTC)",
     "credit_usage_line": "{{calls}} appels au modèle · {{input}} jetons d’entrée ({{cached}} en cache) · {{output}} jetons de sortie",
+    "credit_guild_failed": "Impossible de charger ce serveur.",
     "credit_exhausted": "Le crédit est épuisé ({{time}}). Saba-chan ne peut plus répondre tant qu’il n’est pas rechargé.",
     "guilds_title": "Par serveur Discord",
     "guilds_desc": "Activez ou désactivez Saba-chan qui parle par serveur. Elle ne répond que dans les salons choisis dans l'onglet Salons de chaque serveur Discord.",

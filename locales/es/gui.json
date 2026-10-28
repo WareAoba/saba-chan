@@ -1267,6 +1267,7 @@
     "credit_balance_none": "No se pudo obtener el saldo ahora.",
     "credit_usage": "Uso de este mes ({{month}}, UTC)",
     "credit_usage_line": "{{calls}} llamadas al modelo · {{input}} tokens de entrada ({{cached}} en caché) · {{output}} tokens de salida",
+    "credit_guild_failed": "No se pudo cargar este servidor.",
     "credit_exhausted": "Se acabó el crédito ({{time}}). Saba-chan no puede responder hasta que se recargue.",
     "guilds_title": "Por servidor de Discord",
     "guilds_desc": "Activa o desactiva Saba-chan parlante en cada servidor. Solo responde en los canales elegidos en la pestaña Canales de cada servidor de Discord.",

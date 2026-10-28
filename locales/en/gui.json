@@ -1267,6 +1267,7 @@
     "credit_balance_none": "Could not get the balance right now.",
     "credit_usage": "This month's usage ({{month}}, UTC)",
     "credit_usage_line": "{{calls}} model calls · {{input}} input tokens ({{cached}} cached) · {{output}} output tokens",
+    "credit_guild_failed": "Could not load this server.",
     "credit_exhausted": "Credit ran out ({{time}}). Saba-chan can't reply until it's topped up.",
     "guilds_title": "Per Discord server",
     "guilds_desc": "Turn Talking Saba-chan on or off per server. She only answers in the channels picked in each Discord server's Channels tab.",

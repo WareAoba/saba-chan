@@ -1267,6 +1267,7 @@
     "credit_balance_none": "지금은 잔액을 확인하지 못했어요.",
     "credit_usage": "이번 달 사용량 ({{month}}, UTC 기준)",
     "credit_usage_line": "모델 호출 {{calls}}번 · 입력 {{input}}토큰(캐시 {{cached}}) · 출력 {{output}}토큰",
+    "credit_guild_failed": "이 서버는 불러오지 못했어요.",
     "credit_exhausted": "크레딧이 다 떨어졌어요 ({{time}}). 충전하기 전까지는 대답하지 못해요.",
     "guilds_title": "디스코드 서버별",
     "guilds_desc": "서버마다 켜고 끌 수 있어요. 말하는 사바쨩은 각 디스코드 서버의 '채널' 탭에서 고른 채널에서만 대답해요.",

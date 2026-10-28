@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { safeShowToast } from '../../utils/helpers';
 import CustomDropdown from '../CustomDropdown/CustomDropdown';
@@ -385,12 +385,17 @@ function SettingsEditor({ data, nodes, nameOf, onSaved, keyVersion }) {
                     <h2>{t('chatbot.ambient_title')}</h2>
                 </div>
                 <p className="dc-card-desc">{t('chatbot.ambient_desc')}</p>
-                <div className="cb-toggles">{toggleRow('ambient', t('chatbot.ambient'), t('chatbot.ambient_hint'))}</div>
+                <div className="cb-toggles">
+                    {toggleRow('ambient', t('chatbot.ambient'), t('chatbot.ambient_hint'))}
+                </div>
                 {selectField(
                     'ambientMinutes',
                     t('chatbot.ambient_minutes'),
                     null,
-                    AMBIENT_MINUTES.map((m) => ({ value: m, label: t('chatbot.ambient_minutes_option', { count: m }) })),
+                    // CLI·디스코드로 목록 밖 값(1-60)을 저장했으면 그 값도 보인다
+                    [...new Set([...AMBIENT_MINUTES, s.ambientMinutes].filter(Number.isInteger))]
+                        .sort((a, b) => a - b)
+                        .map((m) => ({ value: m, label: t('chatbot.ambient_minutes_option', { count: m }) })),
                     !s.ambient,
                 )}
                 {selectField(
@@ -581,23 +586,30 @@ const CREDIT_ERRORS = ['NO_API_KEY', 'INVALID_API_KEY', 'KEY_PERMISSION', 'QUOTA
 export function CreditCard({ guildIds, nameOf, hasApiKey, keyVersion = 0 }) {
     const { t, i18n } = useTranslation('gui');
     const [rows, setRows] = useState(null);
+    // 늦게 온 앞 요청의 답이 새 답을 덮지 않게
+    const asked = useRef(0);
     const canAsk = !!(guildIds.length && hasApiKey && window.api?.chatbotCredit);
     const idsKey = guildIds.join(',');
 
     // biome-ignore lint/correctness/useExhaustiveDependencies: idsKey·keyVersion 이 다시 묻는 신호
     const load = useCallback(async () => {
-        if (!canAsk) return;
+        const seq = ++asked.current;
         setRows(null);
+        if (!canAsk) return;
         const ids = idsKey.split(',');
         const answers = await Promise.all(
             ids.map((id) =>
                 window.api
                     .chatbotCredit(id)
-                    .then((r) => (r?.error || r?.success === false || !r?.usage ? { id, error: r?.error || 'FAILED' } : { id, ...r }))
+                    .then((r) =>
+                        r?.error || r?.success === false || !r?.usage
+                            ? { id, error: r?.error || 'FAILED' }
+                            : { id, ...r },
+                    )
                     .catch(() => ({ id, error: 'FAILED' })),
             ),
         );
-        setRows(answers);
+        if (seq === asked.current) setRows(answers);
     }, [canAsk, idsKey, keyVersion]);
 
     useEffect(() => {
@@ -614,8 +626,7 @@ export function CreditCard({ guildIds, nameOf, hasApiKey, keyVersion = 0 }) {
             return `${b.amount} ${b.currency}`;
         }
     };
-    const providerName = (id) =>
-        (PROVIDER_BRANDS[id] ?? PROVIDER_BRANDS[String(id).replace(/-cn$/, '')])?.name ?? id;
+    const providerName = (id) => (PROVIDER_BRANDS[id] ?? PROVIDER_BRANDS[String(id).replace(/-cn$/, '')])?.name ?? id;
     const exhausted = rows?.map((r) => r.exhaustedAt).find(Boolean);
     const errorKey = !hasApiKey
         ? 'chatbot.models_need_key'
@@ -660,30 +671,32 @@ export function CreditCard({ guildIds, nameOf, hasApiKey, keyVersion = 0 }) {
                             <p className="dc-hint">
                                 {first.balanceSupported
                                     ? t('chatbot.credit_balance_none')
-                                    : t('chatbot.credit_balance_unsupported', { provider: providerName(first.provider) })}
+                                    : t('chatbot.credit_balance_unsupported', {
+                                          provider: providerName(first.provider),
+                                      })}
                             </p>
                         )}
                     </div>
                     <div className="mt-field">
                         <span>{t('chatbot.credit_usage', { month: first.usage.month })}</span>
                         <ul className="dc-list">
-                            {rows
-                                .filter((r) => !r.error)
-                                .map((r) => (
-                                    <li key={r.id} className="dc-list-row">
-                                        <span className="dc-list-text">
-                                            <span className="dc-list-name">{nameOf(r.id)}</span>
-                                            <span className="cb-hint">
-                                                {t('chatbot.credit_usage_line', {
-                                                    calls: number(r.usage.calls),
-                                                    input: number(r.usage.input),
-                                                    cached: number(r.usage.cached),
-                                                    output: number(r.usage.output),
-                                                })}
-                                            </span>
+                            {rows.map((r) => (
+                                <li key={r.id} className="dc-list-row">
+                                    <span className="dc-list-text">
+                                        <span className="dc-list-name">{nameOf(r.id)}</span>
+                                        <span className="cb-hint">
+                                            {r.error
+                                                ? t('chatbot.credit_guild_failed')
+                                                : t('chatbot.credit_usage_line', {
+                                                      calls: number(r.usage.calls),
+                                                      input: number(r.usage.input),
+                                                      cached: number(r.usage.cached),
+                                                      output: number(r.usage.output),
+                                                  })}
                                         </span>
-                                    </li>
-                                ))}
+                                    </span>
+                                </li>
+                            ))}
                         </ul>
                     </div>
                 </>
