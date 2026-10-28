@@ -6,7 +6,6 @@
 //!
 //! - `GET  /v1/updates/check?channel&platform&current&client_id`
 //! - `GET  /v1/updates/manifest/:version`
-//! - `POST /v1/updates/event`
 //!
 //! manifest의 `components`는 업데이터 컴포넌트 키(`saba-core`, `cli`, `gui`,
 //! `updater`, `locales`, `module-<name>`, `ext-<name>`)를 그대로 쓴다.
@@ -228,14 +227,6 @@ impl RelayClient {
         Self::json(resp).await
     }
 
-    /// 익명 진행 이벤트. 실패해도 업데이트를 막지 않는다.
-    pub async fn report_event(&self, event: &UpdateEvent) {
-        let url = format!("{}/v1/updates/event", self.base_url);
-        if let Err(e) = self.http.post(&url).json(event).send().await {
-            tracing::debug!("[Relay] event report failed: {}", e);
-        }
-    }
-
     /// check → manifest → 서명·대상·다운그레이드 검증까지 한 번에.
     /// 코어가 최신이면 현재 릴리즈 manifest를 돌려준다 (컴포넌트별 비교용). 받을 manifest가 없으면 `Ok(None)`.
     pub async fn fetch_verified_release(
@@ -351,19 +342,6 @@ fn bind_release(latest: LatestRelease, manifest: ReleaseManifest) -> Result<Veri
         return Err(RelayError::VersionMismatch { advertised: latest.version, signed: manifest.version });
     }
     Ok(VerifiedRelease { latest, manifest })
-}
-
-/// 릴레이에 보내는 익명 이벤트
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct UpdateEvent {
-    pub anon_id: String,
-    /// check | download | install | success | fail
-    pub phase: String,
-    pub from_version: Option<String>,
-    pub to_version: Option<String>,
-    pub error_code: Option<String>,
-    pub platform: String,
 }
 
 /// 이 빌드의 플랫폼 이름 (`windows-x64`, `linux-x64`, ...)
