@@ -1,6 +1,7 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { AddInstanceNewServer } from '../components/Modals/AddInstanceNewServer';
+import { submitWizard } from './addServerWizard';
 
 const minecraft = {
     name: 'minecraft',
@@ -13,11 +14,7 @@ const minecraft = {
     ],
 };
 
-const submit = async () => {
-    await act(async () => {
-        fireEvent.click(screen.getByRole('button', { name: /add_server|Add/i }));
-    });
-};
+const submit = submitWizard;
 
 describe('새 서버 만들기 — 모듈 추천 프리셋', () => {
     it('프리셋이 있으면 고르게 하고, 고른 id만 preset으로 보낸다', async () => {
@@ -54,6 +51,6 @@ describe('새 서버 만들기 — 모듈 추천 프리셋', () => {
             />,
         );
         fireEvent.click(screen.getByText('Minecraft'));
-        expect(screen.queryByRole('tablist')).toBeNull();
+        expect(screen.queryByRole('tablist', { name: 'Recommended setup' })).toBeNull();
     });
 });

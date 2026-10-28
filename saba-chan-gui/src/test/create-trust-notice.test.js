@@ -2,8 +2,9 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { AddInstanceMigration } from '../components/Modals/AddInstanceMigration';
 import { AddInstanceNewServer } from '../components/Modals/AddInstanceNewServer';
+import { toConfirmStep } from './addServerWizard';
 
-const renderNew = (trust) => {
+const renderNew = async (trust) => {
     render(
         <AddInstanceNewServer
             extensions={[{ name: 'game', version: '1.0.0', trust }]}
@@ -12,23 +13,24 @@ const renderNew = (trust) => {
         />,
     );
     fireEvent.click(screen.getByRole('button', { name: /game/ }));
+    await toConfirmStep();
 };
 
 describe('서버 만들 때 신뢰 안내', () => {
-    it('확인 안 된 모듈이면 게임 서버는 격리되지 않는다고 알린다', () => {
-        renderNew('unverified');
+    it('확인 안 된 모듈이면 게임 서버는 격리되지 않는다고 알린다', async () => {
+        await renderNew('unverified');
         const notice = screen.getByRole('note');
         expect(notice.textContent).toMatch(/not from the official catalog/);
         expect(notice.textContent).toMatch(/game server .*is not isolated/);
     });
 
-    it('설치 뒤 바뀐 모듈이면 바뀌었다고 알린다', () => {
-        renderNew('modified');
+    it('설치 뒤 바뀐 모듈이면 바뀌었다고 알린다', async () => {
+        await renderNew('modified');
         expect(screen.getByRole('note').textContent).toMatch(/changed after installing/);
     });
 
-    it('확인된 모듈이나 trust가 없는 옛 데몬이면 알리지 않는다', () => {
-        renderNew('verified');
+    it('확인된 모듈이나 trust가 없는 옛 데몬이면 알리지 않는다', async () => {
+        await renderNew('verified');
         expect(screen.queryByRole('note')).toBeNull();
     });
 

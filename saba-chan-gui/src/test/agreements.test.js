@@ -4,6 +4,7 @@ import { AgreementDialog } from '../components/AgreementList';
 import { AddInstanceMigration } from '../components/Modals/AddInstanceMigration';
 import { AddInstanceNewServer } from '../components/Modals/AddInstanceNewServer';
 import { useServerActions } from '../hooks/useServerActions';
+import { submitWizard, toConfirmStep } from './addServerWizard';
 
 const eula = { id: 'eula', label: 'Minecraft EULA', url: 'https://aka.ms/MinecraftEULA' };
 
@@ -18,6 +19,7 @@ describe('약관 동의: 서버 만들기', () => {
             />,
         );
         fireEvent.click(screen.getByRole('button', { name: /game/ }));
+        await toConfirmStep();
         const create = screen.getByRole('button', { name: /Add Server/i });
         expect(create).toBeDisabled();
 
@@ -39,8 +41,9 @@ describe('약관 동의: 서버 만들기', () => {
             />,
         );
         fireEvent.click(screen.getByRole('button', { name: /game/ }));
+        await toConfirmStep();
         expect(screen.queryByRole('checkbox')).toBeNull();
-        await act(async () => fireEvent.click(screen.getByRole('button', { name: /Add Server/i })));
+        await submitWizard();
         expect(onAddServer.mock.calls[0][0]).not.toHaveProperty('accept_agreements');
     });
 });

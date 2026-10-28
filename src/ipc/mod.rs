@@ -812,6 +812,7 @@ impl IPCServer {
             // ── Instance CRUD ──
             .route("/api/instances", get(handlers::instance::list_instances).post(handlers::instance::create_instance))
             .route("/api/instances/reorder", put(handlers::instance::reorder_instances))
+            .route("/api/instances/check", post(handlers::instance::check_new_instance))
             .route("/api/instance/{id}/rename", post(handlers::instance::rename_instance))
             .route("/api/instance/{id}", get(handlers::instance::get_instance).delete(handlers::instance::delete_instance).patch(handlers::instance::update_instance_settings))
             .route("/api/instance/{id}/launch-preview", post(handlers::instance::launch_preview))

@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import i18n from 'i18next';
 import { describe, expect, it, vi } from 'vitest';
 import { AddInstanceNewServer } from '../components/Modals/AddInstanceNewServer';
+import { submitWizard, toNameStep } from './addServerWizard';
 
 const minecraft = {
     name: 'minecraft',
@@ -33,9 +34,7 @@ describe('새 서버 만들기 — 만들 때 고르는 모듈 설정', () => {
 
         fireEvent.click(screen.getByText('vanilla'));
         fireEvent.click(screen.getByText('paper'));
-        await act(async () => {
-            fireEvent.click(screen.getByRole('button', { name: /add_server|Add/i }));
-        });
+        await submitWizard();
 
         expect(onAddServer).toHaveBeenCalledWith(
             expect.objectContaining({ module_name: 'minecraft', module_settings: { server_type: 'paper' } }),
@@ -48,11 +47,11 @@ describe('새 서버 만들기 — 만들지 못했을 때', () => {
         const onAddServer = vi.fn().mockResolvedValue(false);
         render(<AddInstanceNewServer extensions={[minecraft]} servers={[]} onAddServer={onAddServer} />);
         fireEvent.click(screen.getByText('Minecraft'));
-        await act(async () => {
-            fireEvent.click(screen.getByRole('button', { name: /add_server|Add/i }));
-        });
+        await submitWizard();
         expect(onAddServer).toHaveBeenCalled();
-        expect(screen.getByText('Server Type')).toBeTruthy();
+        // 확인 단계에 그대로 남아 고른 이름을 보인다
+        expect(screen.getByRole('button', { name: /Add Server/i })).toBeTruthy();
+        expect(screen.getByText('minecraft', { selector: 'dd' })).toBeTruthy();
     });
 });
 
@@ -81,11 +80,7 @@ const openConfigure = (servers = [], onAddServer = vi.fn().mockResolvedValue(und
     return onAddServer;
 };
 
-const submit = async () => {
-    await act(async () => {
-        fireEvent.click(screen.getByRole('button', { name: /add_server|Add/i }));
-    });
-};
+const submit = submitWizard;
 
 describe('새 서버 만들기 — 설치할 수 있는 값과 모든 칸', () => {
     it('설치할 수 있는 값(install_options)만 고르게 하고, 선택지 이름은 모듈 로케일을 쓴다', () => {
@@ -116,27 +111,31 @@ describe('새 서버 만들기 — 설치할 수 있는 값과 모든 칸', () =
 });
 
 describe('새 서버 만들기 — 이름', () => {
-    const nameInput = () => screen.getByPlaceholderText(/./, { selector: 'input.as-input' });
+    const nameInput = () => document.getElementById('as-server-name');
 
-    it('기본 이름은 모듈 이름 그대로, 겹치면 2부터 붙인다 (CLI와 같다)', () => {
+    it('기본 이름은 모듈 이름 그대로, 겹치면 2부터 붙인다 (CLI와 같다)', async () => {
         openConfigure();
+        await toNameStep();
         expect(nameInput().value).toBe('minecraft');
         cleanup();
         openConfigure([{ name: 'minecraft', module: 'minecraft' }]);
+        await toNameStep();
         expect(nameInput().value).toBe('minecraft-2');
         cleanup();
         openConfigure([
             { name: 'Minecraft', module: 'minecraft' },
             { name: 'minecraft-2', module: 'other' },
         ]);
+        await toNameStep();
         expect(nameInput().value).toBe('minecraft-3');
     });
 
-    it('이미 있는 이름이면 바로 알려 주고 만들기를 막는다', () => {
+    it('이미 있는 이름이면 바로 알려 주고 다음 단계로 넘어가지 않는다', async () => {
         openConfigure([{ name: 'lobby', module: 'minecraft' }]);
+        await toNameStep();
         fireEvent.change(nameInput(), { target: { value: 'Lobby ' } });
         expect(screen.getByRole('alert')).toBeTruthy();
-        expect(screen.getByRole('button', { name: /add_server|Add/i })).toBeDisabled();
+        expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
     });
 });
 
