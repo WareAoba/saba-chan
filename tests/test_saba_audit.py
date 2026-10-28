@@ -42,7 +42,7 @@ class SdkAuditTests(unittest.TestCase):
             return saba_audit.scan(root)
 
     def test_import_alias_reports_function_declared_and_required_version(self):
-        findings = self.scan("from daemon_rcon import safe_join as join, daemon_post\n", ">=0.1.8")
+        findings = self.scan("from daemon_rcon import safe_join as join, daemon_stdin_command\n", ">=0.1.8")
         self.assertEqual(len(findings), 1, findings)
         self.assertEqual(findings[0]["permission"], "sdk_version")
         self.assertEqual(findings[0]["line"], 1)
@@ -70,7 +70,7 @@ class SdkAuditTests(unittest.TestCase):
     def test_extension_dependency_is_not_reported_as_a_missing_module_manifest(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            (root / "hook.py").write_text("from daemon_rcon import daemon_post\n", encoding="utf-8")
+            (root / "hook.py").write_text("from daemon_rcon import daemon_stdin_command\n", encoding="utf-8")
             (root / "manifest.json").write_text(json.dumps({"dependencies": {"saba-core": ">=0.1.8"}}), encoding="utf-8")
             self.assertEqual(saba_audit.scan(root), [])
 

@@ -114,7 +114,7 @@
 - **stderr**: 줄 단위로 스트리밍한다. `PROGRESS:{json}` 줄은 `ExtensionProgress{percent,message,step,total,label}`로 파싱해 콜백을 호출하고 `LOOPBACK:`·`HOST:`는 중계로 처리하고 그 줄을 로그에 넣지 않는다. 나머지는 계속 비우고 마지막 200줄, 합계 64 KiB를 보존한다. 앞의 줄은 debug 로그로만 남긴다.
 - **env**:
   - `PYTHONIOENCODING=utf-8`, `PYTHONUNBUFFERED=1`
-  - 데몬 연결 정보 `SABA_IPC_PORT`, `SABA_IPC_URL`, `SABA_TOKEN_PATH`(토큰 파일 경로, 토큰 자체는 넣지 않음), `SABA_LANG`(요청의 `Accept-Language`, 없으면 config.json `gui.language`) (`plg/:14-37`).
+  - 데몬 연결 정보 `SABA_IPC_PORT`, `SABA_IPC_URL`, `SABA_LANG`(IPC 토큰은 0.1.12부터 넣지 않는다)(요청의 `Accept-Language`, 없으면 config.json `gui.language`) (`plg/:14-37`).
   - `PYTHONPATH = <import 가드 폴더>:<extensions_dir의 부모>:<data_dir>/python-shared:<기존 PYTHONPATH>`. extensions 디렉토리의 **부모**를 넣으므로 `import extensions.steamcmd`가 동작한다. `sitecustomize.py`는 표준 라이브러리 경로를 먼저 두고, 활성 익스텐션 외의 `extensions.<id>` import를 거부한다.
   - `SABA_ENABLED_EXTENSIONS=<콤마 목록>`: ~~`%APPDATA%`나 cwd의 `extensions_state.json`을 읽어 Linux/macOS에서 대개 설정되지 않는다.~~ → 해결: `config.json`의 `extensions.enabled`에서 읽고, 목록이 없으면 빈 값으로 항상 설정한다(`plg/:200-205`).
   - import 가드: 데이터 폴더의 `python-guard/sitecustomize.py`(`plg/:84-96`, `src/plugin/sitecustomize.py`)가 `SABA_ENABLED_EXTENSIONS`에 없는 `extensions.<이름>` import를 `ModuleNotFoundError`로 막는다(`-`와 `_`는 같게 본다).

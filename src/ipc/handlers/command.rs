@@ -411,10 +411,15 @@ pub async fn execute_rcon_command(
     State(state): State<IPCServer>,
     Json(payload): Json<serde_json::Value>,
 ) -> impl IntoResponse {
-    let supervisor = state.supervisor.read().await;
+    rcon_for(&state.supervisor, &id, &payload).await
+}
+
+/// 인스턴스 하나에 RCON 한 줄 (HTTP 라우트와 모듈 HOST `instance.rcon`이 같이 쓴다)
+pub(crate) async fn rcon_for(supervisor: &tokio::sync::RwLock<crate::supervisor::Supervisor>, id: &str, payload: &Value) -> axum::response::Response {
+    let supervisor_guard = supervisor.read().await;
 
     // 인스턴스 확인 (lock 해제 전에 clone)
-    let instance = match supervisor.instance_store.get(&id).cloned() {
+    let instance = match supervisor_guard.instance_store.get(id).cloned() {
         Some(instance) => instance,
         None => {
             return (
@@ -428,13 +433,13 @@ pub async fn execute_rcon_command(
     };
 
     // 콘솔 한 줄은 stdin으로 보낸다 (콘솔 출력을 잠깐 모아 답으로 돌려준다). RCON은 모듈이 RCON만 받을 때의
-    // 마지막 경로다 (`rcon_route`). GUI·디스코드·모듈 역호출이 모두 이 엔드포인트를 쓴다
-    let stdin_ok = supervisor.routes_commands_to_stdin(&id).await;
-    let rcon = if stdin_ok { None } else { supervisor.rcon_route(&id) };
-    let running = supervisor.is_running(&id).await;
-    drop(supervisor);
+    // 마지막 경로다 (`rcon_route`). GUI·디스코드·모듈 HOST가 모두 이 길을 쓴다
+    let stdin_ok = supervisor_guard.routes_commands_to_stdin(id).await;
+    let rcon = if stdin_ok { None } else { supervisor_guard.rcon_route(id) };
+    let running = supervisor_guard.is_running(id).await;
+    drop(supervisor_guard);
     if stdin_ok {
-        return via_stdin(&state, &id, &payload).await;
+        return via_stdin_for(supervisor, id, payload).await;
     }
     if let Some(access) = rcon {
         if !running {
@@ -444,7 +449,7 @@ pub async fn execute_rcon_command(
             )
                 .into_response();
         }
-        return via_rcon(&access, &payload).await;
+        return via_rcon(&access, payload).await;
     }
     (
         StatusCode::CONFLICT,
@@ -480,12 +485,6 @@ async fn via_rcon(access: &crate::protocol::rcon::Access, payload: &serde_json::
     }
 }
 
-/// 관리 프로세스의 stdin으로 보낸다. 서버의 답은 콘솔로만 나오므로, 보낸 뒤 잠깐 새로 찍힌 줄을
-/// 모아 `data.response`로 돌려준다 (채팅·CLI가 결과를 보여 줄 수 있게)
-pub(crate) async fn via_stdin(state: &IPCServer, id: &str, payload: &serde_json::Value) -> axum::response::Response {
-    via_stdin_for(&state.supervisor, id, payload).await
-}
-
 pub(crate) async fn stdin_for(supervisor: &tokio::sync::RwLock<crate::supervisor::Supervisor>, id: &str, payload: &Value) -> axum::response::Response {
     if !supervisor.read().await.module_accepts_stdin(id) {
         return (StatusCode::CONFLICT, Json(json!({
@@ -495,6 +494,8 @@ pub(crate) async fn stdin_for(supervisor: &tokio::sync::RwLock<crate::supervisor
     via_stdin_for(supervisor, id, payload).await
 }
 
+/// 관리 프로세스의 stdin으로 보낸다. 서버의 답은 콘솔로만 나오므로, 보낸 뒤 잠깐 새로 찍힌 줄을
+/// 모아 `data.response`로 돌려준다 (채팅·CLI가 결과를 보여 줄 수 있게)
 async fn via_stdin_for(supervisor: &tokio::sync::RwLock<crate::supervisor::Supervisor>, id: &str, payload: &Value) -> axum::response::Response {
     use crate::supervisor::managed_process::LogSource;
     let Some(command) = payload.get("command").and_then(|v| v.as_str()) else {
