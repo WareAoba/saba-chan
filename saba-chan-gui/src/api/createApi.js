@@ -1042,7 +1042,8 @@ export function createApi({ invoke, hub }) {
         actionsRun: (id, body) => daemonCall('post', `/api/actions/${encodeURIComponent(id)}/run`, body || {}),
         // 인스턴스별 디스코드 부르는 말 (어느 디스코드 서버에서나 같다)
         instanceWords: (id) => daemonCall('get', `/api/instance/${encodeURIComponent(id)}/words`),
-        instanceWordsSave: (id, body) => daemonCall('put', `/api/instance/${encodeURIComponent(id)}/words`, body || {}),
+        instanceWordsSave: (id, body) =>
+            daemonCall('put', `/api/instance/${encodeURIComponent(id)}/words`, body || {}),
         // 길드가 쓸 서버 제한 `{instances: [id] | null}` (null = 제한 없음) → `{guildId, allowedInstances}`
         guildAllowedInstancesSave: (guild, instances) =>
             daemonCall('put', `/api/guilds/${encodeURIComponent(guild)}/allowed-instances`, { instances }),
@@ -1156,10 +1157,7 @@ export function createApi({ invoke, hub }) {
         systemPaths: () => daemonJson('get', '/api/system/paths'),
         // 고른 데몬 PC의 폴더 보기 (원격 경로 고르기, D2): path가 비면 드라이브·루트. extensions 없으면 폴더만, ['*']면 모든 파일
         systemBrowse: (path, extensions) =>
-            daemonJson(
-                'get',
-                `/api/system/browse${queryString({ path: path || undefined, files: extensions?.length ? extensions.join(',') : undefined })}`,
-            ),
+            daemonJson('get', `/api/system/browse${queryString({ path: path || undefined, files: extensions?.length ? extensions.join(',') : undefined })}`),
         // 모듈·익스텐션 폴더 옮기기: 데몬이 복사·검증 뒤 옮긴다 (큰 폴더는 오래 걸린다)
         systemPathsMove: (kind, target) =>
             daemonJson('post', '/api/system/paths/move', { kind, target }, PATHS_MOVE_TIMEOUT),
@@ -1179,8 +1177,7 @@ export function createApi({ invoke, hub }) {
         remoteServers: () => daemonJson('get', '/api/remote/servers', undefined, 40000),
         // 합쳐 보기에서 다른 데몬의 서버 하나를 켜고 끈다. hostId가 없으면 이 PC
         remoteInstanceAction: async (hostId, id, action) => {
-            if (!['start', 'stop', 'restart'].includes(action))
-                return { success: false, error: `unknown action ${action}` };
+            if (!['start', 'stop', 'restart'].includes(action)) return { success: false, error: `unknown action ${action}` };
             const body = action === 'start' ? {} : { force: false };
             try {
                 return (
@@ -1218,9 +1215,9 @@ export function createApi({ invoke, hub }) {
         // 길드에 저장된 사용자 키로 릴레이가 제공자에게 묻는다 (chatbot-settings-v2 §1)
         chatbotModels: (guildId) =>
             daemonJson('get', `/api/relay/node/${encodeURIComponent(guildId)}/chatbot/models`, undefined, 20000),
-        // 남은 크레딧(제공사가 알려 줄 때만)과 이번 달 사용량 — 릴레이 답 그대로
         // 고를 수 있는 도구 목록 — 카테고리·쓸 수 있는지 (원본은 릴레이)
         chatbotTools: (guildId) => daemonJson('get', `/api/relay/node/${encodeURIComponent(guildId)}/chatbot/tools`),
+        // 남은 크레딧(제공사가 알려 줄 때만)과 이번 달 사용량 — 릴레이 답 그대로
         chatbotCredit: (guildId) =>
             daemonJson('get', `/api/relay/node/${encodeURIComponent(guildId)}/chatbot/credit`, undefined, 20000),
         chatbotMemoTemplate: (locale) =>
