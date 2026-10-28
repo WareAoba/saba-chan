@@ -337,6 +337,16 @@ describe('권한 화면', () => {
         expect(window.api.permissionsCommands).toHaveBeenCalledTimes(2);
     });
 
+    it('명령 계단: 큰 칩의 지금 레벨을 다시 고르면 다른 레벨인 인스턴스도 그 레벨로 맞춘다', async () => {
+        await openCommands();
+        fireEvent.click(within(step('Lv 2 · User')).getByRole('button', { name: /^Stop$/ }));
+        fireEvent.click(within(screen.getByRole('region', { name: 'Stop' })).getByRole('button', { name: 'Lv 2 · User' }));
+        await flush();
+        expect(window.api.permissionsUpdate).toHaveBeenCalledWith('g1', {
+            commandLevels: { 'mc-1/stop': null, 'mc-1/server.stop': null, 'mc-2/stop': null, 'mc-2/server.stop': null },
+        });
+    });
+
     it('명령 계단: 칩을 다른 계단으로 끌어 옮기고, 금지 계단에는 놓을 수 없다', async () => {
         await openCommands();
         const say = within(step('Lv 1 · Guest')).getByRole('button', { name: /^Say$/ });

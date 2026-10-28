@@ -125,7 +125,9 @@ export function PermissionStairs({ api, guildId, perm, board, instance, busy, wr
     const levelTitle = (id) => t('perm.level_numbered', { n: L.levelNumber(perm, id), name: levelName(id) });
     const update = (patch) => write(() => api.permissionsUpdate(guildId, patch));
     const move = (chip, level) => {
-        if (busy || chip.fixed || level === L.BANNED || level === chip.level) return false;
+        // 대표 레벨이 같아도 다른 레벨인 인스턴스가 있으면 맞춘다
+        if (busy || chip.fixed || level === L.BANNED || chip.items.every((i) => i.fixed || i.level === level))
+            return false;
         update({ commandLevels: L.levelPatch(chip.items, level) });
         return true;
     };

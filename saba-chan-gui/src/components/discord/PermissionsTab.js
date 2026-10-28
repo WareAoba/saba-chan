@@ -611,7 +611,8 @@ export function CommandStairs({ node, permissions, instance = L.ALL_INSTANCES })
     ];
     const current = chips.find((c) => c.id === selected);
     const move = async (chip, level) => {
-        if (busy || chip.fixed || level === L.BANNED || level === chip.level) return;
+        // 대표 레벨이 같아도 다른 레벨인 인스턴스가 있으면 맞춘다
+        if (busy || chip.fixed || level === L.BANNED || chip.items.every((i) => i.fixed || i.level === level)) return;
         await update({ commandLevels: L.levelPatch(chip.items, level) });
     };
     const label = (chip) => (chip.instance ? `${chip.title} · ${instanceName(chip.instance)}` : chip.title);
@@ -693,7 +694,12 @@ export function CommandStairs({ node, permissions, instance = L.ALL_INSTANCES })
             )}
 
             <div className="dc-stairs-scroll">
-                <ol ref={stairsRef} className="dc-stairs" style={{ '--steps': levels.length }} aria-label={t('discord.perm_stairs')}>
+                <ol
+                    ref={stairsRef}
+                    className="dc-stairs"
+                    style={{ '--steps': levels.length }}
+                    aria-label={t('discord.perm_stairs')}
+                >
                     {levels.map((level, i) => {
                         const here = chips.filter((c) => c.level === level);
                         const below = carried;
