@@ -156,7 +156,7 @@
       "3": "Owner",
       "2": "Admin",
       "1": "User",
-      "0": "Talking Saba-chan only",
+      "0": "Guest",
       "-1": "Banned"
     },
     "ladder": "Permission levels",

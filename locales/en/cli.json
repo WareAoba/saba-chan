@@ -1025,7 +1025,7 @@
       "owner": "owner",
       "admin": "admin",
       "user": "user",
-      "chatbot": "Talking Saba-chan",
+      "chatbot": "Guest",
       "banned": "banned"
     }
   },

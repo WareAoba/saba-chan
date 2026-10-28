@@ -156,7 +156,7 @@
       "3": "Besitzer",
       "2": "Admin",
       "1": "Benutzer",
-      "0": "Nur Sprechende Saba-chan",
+      "0": "Gast",
       "-1": "Gesperrt"
     },
     "ladder": "Berechtigungsstufen",

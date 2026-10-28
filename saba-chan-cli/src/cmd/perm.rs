@@ -53,7 +53,7 @@ fn parse_level(raw: &str, ladder: &[Rung]) -> Result<i64> {
         "owner" | "소유자" => Some(3),
         "admin" | "관리자" => Some(2),
         "user" | "유저" => Some(1),
-        "chatbot" | "챗봇" | "말하는 사바쨩" | "talking saba-chan" => Some(0),
+        "guest" | "손님" | "chatbot" | "챗봇" | "말하는 사바쨩" | "talking saba-chan" => Some(0),
         "banned" | "금지" => Some(-1),
         n => n.parse().ok(),
     };
@@ -414,8 +414,8 @@ mod tests {
         assert_eq!(parse_level("금지", &ladder).unwrap(), -1);
         assert_eq!(parse_level("0", &ladder).unwrap(), 0);
         assert!(parse_level("boss", &ladder).is_err());
-        // 서비스 이름이 바뀌어도(말하는 사바쨩) 예전 입력 낱말은 그대로 받는다
-        for name in ["chatbot", "챗봇", "말하는 사바쨩", "Talking Saba-chan"] {
+        // 레벨 0 이름이 손님으로 바뀌어도(2026-10-28) 예전 입력 낱말은 그대로 받는다
+        for name in ["guest", "손님", "chatbot", "챗봇", "말하는 사바쨩", "Talking Saba-chan"] {
             assert_eq!(parse_level(name, &ladder).unwrap(), 0, "{name}");
         }
     }
