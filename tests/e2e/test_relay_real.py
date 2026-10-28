@@ -66,7 +66,7 @@ def test_discord_command_roundtrip_through_real_relay(paired, relay, fake_server
     paired.wait_console(iid, DONE)
     reply = relay.command(GUILD, "mc1 상태", OWNER)
     assert reply.get("ok"), reply
-    assert reply["result"]["success"] is True, reply
+    assert reply["reply"]["ok"] is True, reply
 
 
 def test_crash_alert_reaches_real_relay(paired, relay, fake_server):

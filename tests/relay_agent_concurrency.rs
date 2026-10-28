@@ -36,7 +36,7 @@ async fn poll(State(s): State<Shared>) -> axum::response::Response {
             let who = |id: &str, payload: Value| json!({ "id": id, "payload": payload, "requestedBy": "user-1", "guildId": "guild-1" });
             return Json(json!({ "commands": [
                 who("slow", json!({ "action": "query", "id": "server.query:slow", "instance": s.instance, "input": {} })),
-                who("fast", json!({ "action": "raw_command", "text": "list" })),
+                who("fast", json!({ "action": "plan", "text": "list" })),
             ]}))
             .into_response();
         }

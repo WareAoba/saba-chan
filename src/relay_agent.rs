@@ -801,29 +801,6 @@ impl Session {
         let payload = cmd.get("payload").cloned().unwrap_or(Value::Null);
         let action = payload.get("action").and_then(|v| v.as_str()).unwrap_or("");
         match action {
-            "raw_command" => {
-                let text = payload.get("text").and_then(|v| v.as_str()).unwrap_or("");
-                let name = |key: &str| {
-                    payload.get(key).and_then(|v| v.as_str()).map(str::trim).filter(|s| !s.is_empty()).map(str::to_string)
-                };
-                let guild_id = cmd.get("guildId").and_then(|v| v.as_str()).map(str::to_string);
-                let user_id = cmd.get("requestedBy").and_then(|v| v.as_str()).map(str::to_string);
-                let remote = self.requester(cmd, &payload, guild_id.clone(), user_id.clone()).await;
-                let req = crate::chat::ChatRequest {
-                    text: text.to_string(),
-                    guild_id,
-                    user_id,
-                    user_name: name("userName"),
-                    guild_name: name("guildName"),
-                    locale: name("locale"),
-                    remote: Some(remote),
-                };
-                // 감사 로그 (A10): 디스코드에서 누가 보냈는지 (이름은 릴레이가 payload에 실어 보낸 것)
-                let origin = crate::audit::Origin::new("discord").requested_by(&req);
-                let via_chatbot = req.remote.as_ref().is_some_and(|w| w.via_chatbot);
-                let reply = crate::audit::with_origin(origin, crate::chat::api::run_with_daemon_settings(&self.server, &req)).await;
-                raw_command_result(reply, via_chatbot)
-            }
             "permission" => {
                 let guild_id = cmd.get("guildId").and_then(|v| v.as_str()).map(str::to_string);
                 let user_id = cmd.get("requestedBy").and_then(|v| v.as_str()).map(str::to_string);
@@ -1310,21 +1287,6 @@ fn action_result(result: Result<Value, crate::actions::ActionError>, locale: &st
         }
     };
     crate::actions::strip_local_details(&mut out);
-    out
-}
-
-/// 알아보지 못한 입력은 실패와 코드로 돌려준다: 릴레이는 그 코드를 보고 모델 해석기에 정확한 명령을 묻는다.
-/// 답 문구는 실행 오류 원문을 담을 수 있어 액션 결과와 같은 기준으로 로컬 정보를 뺀다 (I3).
-/// 챗봇이 부른 것이면 모듈 답의 IP·비밀처럼 보이는 값도 가린다 (액션 경로의 콘솔·조회 결과와 같다)
-fn raw_command_result(reply: crate::chat::Reply, via_chatbot: bool) -> Value {
-    let mut out = match reply.code {
-        Some(code) => json!({ "success": false, "data": { "code": code, "error": reply.text, "args": reply.args } }),
-        None => json!({ "success": true, "data": { "text": reply.text } }),
-    };
-    crate::actions::strip_local_details(&mut out);
-    if via_chatbot {
-        crate::actions::mask_console(&mut out);
-    }
     out
 }
 
@@ -2150,36 +2112,6 @@ mod tests {
         assert!(agent.lock().cancel.is_none() && !agent.lock().status.running);
     }
 
-    /// 릴레이는 실패 + `data.code`(UNKNOWN_COMMAND 등)를 보고 해석기를 부른다. 문구는 `data.error`
-    #[test]
-    fn unrecognized_raw_commands_fail_with_a_code() {
-        let unknown = crate::chat::Reply {
-            text: "Unknown command".into(),
-            code: Some("UNKNOWN_COMMAND"),
-            args: json!({ "command": "dance" }),
-        };
-        assert_eq!(
-            raw_command_result(unknown, false),
-            json!({ "success": false, "data": { "code": "UNKNOWN_COMMAND", "error": "Unknown command", "args": { "command": "dance" } } })
-        );
-        assert_eq!(raw_command_result("done".to_string().into(), false), json!({ "success": true, "data": { "text": "done" } }));
-    }
-
-    /// 채팅 명령 답도 액션 결과와 같이 PC의 경로를 가린 채 나간다 (I3)
-    #[test]
-    fn raw_command_replies_keep_local_paths_on_the_pc() {
-        let failed: crate::chat::Reply = "❌ 오류: Failed to start server: Failed to spawn process 'C:\\Users\\me\\java\\bin\\java.exe': not found".to_string().into();
-        let out = raw_command_result(failed, false).to_string();
-        assert!(!out.contains("Users") && out.contains("<path>"), "{out}");
-        let denied = crate::chat::Reply {
-            text: "no access to /home/me/servers/world".into(),
-            code: Some("PERMISSION_DENIED"),
-            args: json!({ "path": "D:\\Games\\mc" }),
-        };
-        let out = raw_command_result(denied, false).to_string();
-        assert!(!out.contains("/home/me") && !out.contains("Games"), "{out}");
-    }
-
     #[test]
     fn remote_action_module_errors_hide_diagnostics_and_sensitive_text() {
         let out = action_result(Err(crate::actions::ActionError {
@@ -2189,15 +2121,6 @@ mod tests {
         assert!(out["data"].get("stderr_tail").is_none());
         assert_eq!(out["data"]["error"], "peer x.x.x.x token=***");
         assert_eq!(out["data"]["path"], "<path>");
-    }
-
-    /// 챗봇이 부른 채팅 명령의 답은 액션 경로의 콘솔·조회 결과처럼 IP와 비밀처럼 보이는 값을 가린다
-    #[test]
-    fn raw_command_replies_to_the_chatbot_hide_secrets() {
-        let reply = || -> crate::chat::Reply { "joined from 10.0.0.5, password=hunter2".to_string().into() };
-        let out = raw_command_result(reply(), true).to_string();
-        assert!(!out.contains("10.0.0.5") && !out.contains("hunter2"), "{out}");
-        assert!(raw_command_result(reply(), false).to_string().contains("hunter2"), "a person asking directly sees the module's reply");
     }
 
     #[test]
