@@ -94,7 +94,18 @@
     "restart_title": "{{name}} 서버를 다시 켤까요?",
     "restart_message": "접속한 사람들의 연결이 잠시 끊어져요.",
     "delete_title": "{{name}} 서버를 지울까요?",
-    "delete_message": "서버 설정과 파일이 지워지고 되돌릴 수 없어요."
+    "delete_message": "서버 설정과 파일이 지워지고 되돌릴 수 없어요.",
+    "version": "서버 버전",
+    "version_latest": "최신 버전 (추천)",
+    "version_hint": "고른 서버 종류가 그 버전을 내지 않았으면 설치가 실패해요.",
+    "run": "실행 방식",
+    "run_managed": "사바쨩이 관리 (추천)",
+    "run_unmanaged": "직접 관리",
+    "run_managed_hint": "사바쨩이 서버 프로세스를 맡아요. 콘솔·로그·자동 재시작을 쓸 수 있어요.",
+    "run_unmanaged_hint": "사바쨩은 서버를 띄우고 켜짐 여부만 봐요. 사바쨩 콘솔은 쓸 수 없고, Windows에서는 서버가 새 콘솔 창에 떠요.",
+    "port_in_use": "{{servers}} 서버도 {{port}} 포트를 써요. 함께 켜면 포트가 겹쳐요.",
+    "location": "파일 위치",
+    "location_pc": "서버 파일은 사바쨩 폴더에 설치해요. 다른 폴더에 두려면 PC의 사바쨩 앱에서 만들어 주세요."
   },
   "detail": {
     "console": "콘솔",

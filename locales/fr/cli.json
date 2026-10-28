@@ -47,7 +47,20 @@
     },
     "ask_mode": "Que faire du dossier du serveur ?",
     "mode_link": "Le laisser en place",
-    "mode_move": "Le déplacer dans saba-chan (même lecteur uniquement ; supprimer un serveur déplacé supprime ses fichiers)"
+    "mode_move": "Le déplacer dans saba-chan (même lecteur uniquement ; supprimer un serveur déplacé supprime ses fichiers)",
+    "folder_not_empty": "{{dir}} contient déjà des fichiers. Choisissez un dossier vide, ou reliez un serveur existant avec --from.",
+    "port_in_use": "{{servers}} utilise aussi le port {{port}}. Lancés ensemble, les ports entrent en conflit.",
+    "port_reserved": "Windows a réservé le port {{port}}, il ne peut pas être ouvert. Choisissez-en un autre avec --game-port.",
+    "ask_version": "Version du serveur",
+    "version_latest": "Dernière version (recommandée)",
+    "version_not_chosen": "On ne peut choisir une version que pour une nouvelle installation d'un jeu dont saba-chan télécharge le serveur ({{game}}).",
+    "ask_location": "Où placer les fichiers du serveur ?",
+    "location_default": "Dossier de saba-chan (recommandé)",
+    "location_custom": "Un autre dossier vide (ses fichiers restent si le serveur est supprimé)",
+    "ask_dir": "Dossier d'installation",
+    "ask_run": "Comment le serveur doit-il tourner ?",
+    "run_managed": "Géré par saba-chan (recommandé)",
+    "run_unmanaged": "De lui-même (sans console saba-chan)"
   },
   "bot": {
     "ask_token": "Jeton du nœud",
@@ -857,7 +870,9 @@
       "bot.notice.on": "Activer l’alerte de démarrage",
       "bot.notice.off": "Désactiver l’alerte de démarrage",
       "bot.confirm.direct": "Demandes au bot — Commandes à préfixe et commandes slash.",
-      "bot.confirm.chatbot": "Saba-chan qui parle — Les tâches d'administration choisies par Saba-chan qui parle et les demandes mêlant plusieurs personnes demandent toujours, quel que soit ce réglage."
+      "bot.confirm.chatbot": "Saba-chan qui parle — Les tâches d'administration choisies par Saba-chan qui parle et les demandes mêlant plusieurs personnes demandent toujours, quel que soit ce réglage.",
+      "game_version": "Version du serveur à installer (jeux dont le serveur est téléchargé ; par défaut : la dernière)",
+      "unmanaged": "De lui-même : saba-chan le lance et vérifie seulement qu'il tourne (sans console)"
     },
     "after": "Les noms peuvent être partiels (ex. start pal). Sans argument dans un terminal, le menu plein écran s'ouvre (SABA_NO_TUI=1 : le shell interactif).\nDans les scripts, utilisez --json et --yes. Codes de sortie : 0 ok · 1 échec · 2 utilisation · 3 daemon injoignable · 4 introuvable · 130 annulé"
   },

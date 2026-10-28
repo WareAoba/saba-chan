@@ -94,7 +94,18 @@
     "restart_title": "Restart {{name}}?",
     "restart_message": "Connected players will be briefly disconnected.",
     "delete_title": "Delete {{name}}?",
-    "delete_message": "The server settings and files will be deleted. This can't be undone."
+    "delete_message": "The server settings and files will be deleted. This can't be undone.",
+    "version": "Server version",
+    "version_latest": "Latest version (recommended)",
+    "version_hint": "If the chosen server type has no build for that version, the install fails.",
+    "run": "Run mode",
+    "run_managed": "Managed by saba-chan (recommended)",
+    "run_unmanaged": "Manage it yourself",
+    "run_managed_hint": "saba-chan runs the server process, so you get the console, logs and auto restart.",
+    "run_unmanaged_hint": "saba-chan starts the server and only watches whether it is running. The saba-chan console is not available, and on Windows the server opens in its own console window.",
+    "port_in_use": "{{servers}} also uses port {{port}}. The ports clash if both run at once.",
+    "location": "File location",
+    "location_pc": "Server files go into saba-chan's folder. To use another folder, create the server in the saba-chan app on the PC."
   },
   "detail": {
     "console": "Console",

@@ -1,6 +1,14 @@
-import { installChoices, installFields, installSettings, nameTaken, suggestName } from '@gui/utils/installFields';
+import {
+    choosesVersion,
+    installChoices,
+    installFields,
+    installSettings,
+    nameTaken,
+    releaseVersions,
+    suggestName,
+} from '@gui/utils/installFields';
 import { gameNameOf, playersText, primaryAction, viewStatus } from '@gui/utils/serverView';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { art } from '../art';
 import { useApp, useData } from '../store';
@@ -12,7 +20,8 @@ import { Button, Empty, errorText, failed, Loading, Section, Sheet, StatusDot } 
 import { useProvision } from './useProvision';
 import { useServerControl } from './useServerControl';
 
-/** 새 서버 만들기: GUI 새 서버 화면과 같은 것을 묻는다 (게임·이름·만들 때 고르는 설정·추천 설정·약관).
+/** 새 서버 만들기: GUI 새 서버 마법사와 같은 것을 묻는다 (게임·이름·만들 때 고르는 설정·추천 설정·버전·실행 방식·약관)
+ * 그리고 만들기 전에 다른 서버와 겹치는지 데몬에 묻는다(`instanceCheck`).
  * 익스텐션이 묻는 칸(`extension_data`)과 폴더는 PC에서만 정한다 (src/remote/gate.rs CREATE_PC_ONLY) */
 export function AddServerSheet({ api, onClose }) {
     const { t } = useTranslation();
@@ -25,6 +34,10 @@ export function AddServerSheet({ api, onClose }) {
     const [installValues, setInstallValues] = useState({});
     const [preset, setPreset] = useState('');
     const [agreed, setAgreed] = useState({});
+    const [versions, setVersions] = useState([]);
+    const [version, setVersion] = useState(''); // '' = 최신
+    const [managed, setManaged] = useState(true);
+    const [check, setCheck] = useState(null);
     const [busy, setBusy] = useState(false);
 
     const chosen = modules.find((m) => m.name === module);
@@ -39,11 +52,26 @@ export function AddServerSheet({ api, onClose }) {
         setInstallValues({});
         setPreset('');
         setAgreed({});
+        setVersion('');
+        setManaged(true);
     };
 
-    const create = async () => {
-        if (!ready) return;
-        setBusy(true);
+    // 서버 파일을 받는 모듈은 고를 수 있는 릴리스를 묻는다 (못 받으면 최신만)
+    const downloads = choosesVersion(chosen);
+    useEffect(() => {
+        setVersions([]);
+        if (!downloads) return;
+        let alive = true;
+        Promise.resolve(api.moduleListVersions?.(module, { per_page: 50 }))
+            .then((res) => alive && setVersions(releaseVersions(res)))
+            .catch(() => {});
+        return () => {
+            alive = false;
+        };
+    }, [api, module, downloads]);
+
+    // 만들기와 그 확인에 보내는 몸체. 고르지 않은 것(최신 버전, 사바쨩이 관리)은 보내지 않는다 (GUI createBody와 같다)
+    const requestBody = () => {
         const body = { name: name.trim(), module_name: module };
         // 비운 칸은 빼서 데몬이 모듈 기본값·추천 설정을 쓰게 한다 (GUI와 같다)
         const settings = installSettings(
@@ -51,6 +79,33 @@ export function AddServerSheet({ api, onClose }) {
         );
         if (Object.keys(settings).length) body.module_settings = settings;
         if (preset) body.preset = preset;
+        if (version) body.version = version;
+        if (!managed) body.managed_start = false;
+        return body;
+    };
+    const checkKey = name.trim() && module ? JSON.stringify(requestBody()) : '';
+
+    // 입력이 멈추면 다른 서버와 겹치는지 묻는다. 확인하지 못해도 만들기가 다시 본다
+    useEffect(() => {
+        setCheck(null);
+        if (!checkKey || !api.instanceCheck) return;
+        let alive = true;
+        const timer = setTimeout(() => {
+            Promise.resolve(api.instanceCheck(JSON.parse(checkKey)))
+                .then((res) => alive && !failed(res) && setCheck(res))
+                .catch(() => {});
+        }, 250);
+        return () => {
+            alive = false;
+            clearTimeout(timer);
+        };
+    }, [api, checkKey]);
+    const portNotes = (check?.ports || []).filter((p) => p.in_use_by?.length);
+
+    const create = async () => {
+        if (!ready) return;
+        setBusy(true);
+        const body = requestBody();
         if (agreements.length) body.accept_agreements = agreements.map((a) => a.id);
         const res = await api.instanceCreate(body);
         setBusy(false);
@@ -142,6 +197,45 @@ export function AddServerSheet({ api, onClose }) {
                             </small>
                         </div>
                     )}
+                    {downloads && versions.length > 0 && (
+                        <div className="field">
+                            <span>{t('servers.version')}</span>
+                            <Dropdown
+                                value={version}
+                                onChange={setVersion}
+                                ariaLabel={t('servers.version')}
+                                options={[
+                                    { value: '', label: t('servers.version_latest') },
+                                    ...versions.map((v) => ({ value: v, label: v })),
+                                ]}
+                            />
+                            {version && <small className="hint">{t('servers.version_hint')}</small>}
+                        </div>
+                    )}
+                    <div className="field">
+                        <span>{t('servers.run')}</span>
+                        <Dropdown
+                            value={managed ? 'managed' : 'unmanaged'}
+                            onChange={(v) => setManaged(v === 'managed')}
+                            ariaLabel={t('servers.run')}
+                            options={[
+                                { value: 'managed', label: t('servers.run_managed') },
+                                { value: 'unmanaged', label: t('servers.run_unmanaged') },
+                            ]}
+                        />
+                        <small className="hint">
+                            {t(managed ? 'servers.run_managed_hint' : 'servers.run_unmanaged_hint')}
+                        </small>
+                    </div>
+                    <div className="field">
+                        <span>{t('servers.location')}</span>
+                        <small className="hint">{t('servers.location_pc')}</small>
+                    </div>
+                    {portNotes.map((p) => (
+                        <p key={p.field} className="banner banner-warn" role="note">
+                            {t('servers.port_in_use', { servers: p.in_use_by.join(', '), port: p.port })}
+                        </p>
+                    ))}
                     {agreements.length > 0 && (
                         <fieldset className="field agreements">
                             <legend>{t('servers.agreements')}</legend>

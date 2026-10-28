@@ -47,7 +47,20 @@
     },
     "ask_mode": "What should happen to the server folder?",
     "mode_link": "Keep it where it is",
-    "mode_move": "Move into saba-chan (same drive only; deleting a moved server deletes its files)"
+    "mode_move": "Move into saba-chan (same drive only; deleting a moved server deletes its files)",
+    "folder_not_empty": "{{dir}} already has files in it. Pick an empty folder, or connect an existing server with --from.",
+    "port_in_use": "{{servers}} also uses port {{port}}. Running them together makes the ports clash.",
+    "port_reserved": "Windows has reserved port {{port}}, so it cannot be opened. Pick another with --game-port.",
+    "ask_version": "Server version",
+    "version_latest": "Latest version (recommended)",
+    "version_not_chosen": "A version can only be picked for a new install of a game whose server saba-chan downloads ({{game}}).",
+    "ask_location": "Where should the server files go?",
+    "location_default": "saba-chan's folder (recommended)",
+    "location_custom": "Another empty folder (its files stay when the server is removed)",
+    "ask_dir": "Folder to install into",
+    "ask_run": "How should the server run?",
+    "run_managed": "Managed by saba-chan (recommended)",
+    "run_unmanaged": "On its own (no saba-chan console)"
   },
   "bot": {
     "ask_token": "Node token",
@@ -826,7 +839,9 @@
       "bot.notice.on": "Turn the start alert on",
       "bot.notice.off": "Turn the start alert off",
       "bot.confirm.direct": "Requests to the bot — Prefix commands and slash commands.",
-      "bot.confirm.chatbot": "Talking Saba-chan — Admin tasks picked by Talking Saba-chan and requests mixing several people always ask, whatever this setting says."
+      "bot.confirm.chatbot": "Talking Saba-chan — Admin tasks picked by Talking Saba-chan and requests mixing several people always ask, whatever this setting says.",
+      "game_version": "Server version to install (games that download their server; default: latest release)",
+      "unmanaged": "Run on its own: saba-chan starts it and watches whether it runs (no saba-chan console)"
     },
     "after": "Names can be partial (e.g. start pal). Run with no arguments in a terminal to open the full-screen menu (SABA_NO_TUI=1: the interactive shell).\nIn scripts use --json and --yes. Exit codes: 0 ok · 1 failed · 2 usage · 3 daemon unreachable · 4 not found · 130 cancelled"
   },

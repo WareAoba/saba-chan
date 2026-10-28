@@ -47,7 +47,20 @@
     },
     "ask_mode": "O que fazer com a pasta do servidor?",
     "mode_link": "Deixar onde está",
-    "mode_move": "Mover para o saba-chan (só na mesma unidade; excluir um servidor movido exclui os arquivos dele)"
+    "mode_move": "Mover para o saba-chan (só na mesma unidade; excluir um servidor movido exclui os arquivos dele)",
+    "folder_not_empty": "{{dir}} já tem arquivos. Escolha uma pasta vazia ou conecte um servidor existente com --from.",
+    "port_in_use": "{{servers}} também usa a porta {{port}}. Rodando juntos, as portas entram em conflito.",
+    "port_reserved": "O Windows reservou a porta {{port}}, então ela não pode ser aberta. Escolha outra com --game-port.",
+    "ask_version": "Versão do servidor",
+    "version_latest": "Versão mais recente (recomendada)",
+    "version_not_chosen": "Só é possível escolher a versão numa instalação nova de um jogo cujo servidor o saba-chan baixa ({{game}}).",
+    "ask_location": "Onde ficam os arquivos do servidor?",
+    "location_default": "Pasta do saba-chan (recomendada)",
+    "location_custom": "Outra pasta vazia (os arquivos ficam ao remover o servidor)",
+    "ask_dir": "Pasta de instalação",
+    "ask_run": "Como o servidor deve rodar?",
+    "run_managed": "Gerenciado pelo saba-chan (recomendado)",
+    "run_unmanaged": "Por conta própria (sem console do saba-chan)"
   },
   "bot": {
     "ask_token": "Token do nó",
@@ -857,7 +870,9 @@
       "bot.notice.on": "Ligar o alerta de início",
       "bot.notice.off": "Desligar o alerta de início",
       "bot.confirm.direct": "Pedidos ao bot — Comandos com prefixo e comandos de barra.",
-      "bot.confirm.chatbot": "Saba-chan falante — Tarefas de administração escolhidas pela Saba-chan falante e pedidos que misturam várias pessoas sempre perguntam, seja qual for este ajuste."
+      "bot.confirm.chatbot": "Saba-chan falante — Tarefas de administração escolhidas pela Saba-chan falante e pedidos que misturam várias pessoas sempre perguntam, seja qual for este ajuste.",
+      "game_version": "Versão do servidor a instalar (jogos que baixam o servidor; padrão: a mais recente)",
+      "unmanaged": "Por conta própria: o saba-chan inicia e só vê se está rodando (sem console)"
     },
     "after": "Os nomes podem ser parciais (ex.: start pal). Sem argumentos em um terminal, abre o menu em tela cheia (SABA_NO_TUI=1: o shell interativo).\nEm scripts, use --json e --yes. Códigos de saída: 0 ok · 1 falha · 2 uso · 3 daemon inacessível · 4 não encontrado · 130 cancelado"
   },

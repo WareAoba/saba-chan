@@ -688,6 +688,15 @@ pub struct AddArgs {
     /// Game port (`--port` is the daemon's)
     #[arg(long = "game-port", value_name = "PORT")]
     pub game_port: Option<u16>,
+    /// Server version to install (games that download their server; default: the latest release)
+    #[arg(long = "game-version", value_name = "VERSION", conflicts_with = "from")]
+    pub game_version: Option<String>,
+    /// Install into this empty folder instead of saba-chan's own (its files stay when the server is removed)
+    #[arg(long, value_name = "DIR", conflicts_with = "from")]
+    pub dir: Option<String>,
+    /// Let the server run on its own: saba-chan starts it and watches whether it runs (no saba-chan console)
+    #[arg(long)]
+    pub unmanaged: bool,
     /// Start from one of the game's presets (`saba module info` lists them)
     #[arg(long, value_name = "ID")]
     pub preset: Option<String>,
