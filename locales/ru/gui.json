@@ -429,7 +429,6 @@
     "stop_timeout_toast": "⚠️ Остановка сервера {{name}}. Это может занять некоторое время.",
     "unexpected_stop_toast": "⚠️ Сервер {{name}} неожиданно остановился!",
     "external_start_toast": "ℹ️ Сервер {{name}} запущен вне Saba-chan",
-    "status_check_failed_title": "Ошибка проверки статуса",
     "add_server_name_empty_title": "Ошибка входа",
     "add_server_name_empty_message": "Введите имя сервера",
     "add_module_empty_title": "Ошибка входа",

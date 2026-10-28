@@ -89,7 +89,7 @@
 
 **데몬이 자식 프로세스에 넘기는 환경변수**
 
-- Python 모듈/익스텐션: `PYTHONIOENCODING`, `PYTHONUNBUFFERED`, `PYTHONPATH`, `SABA_IPC_PORT`, `SABA_IPC_URL`, `SABA_LANG`(요청의 `Accept-Language`, 없으면 `config.json`의 `gui.language`, 비었으면 OS 언어, 실행마다 읽음), `SABA_ENABLED_EXTENSIONS`(`plugin/mod.rs:14-38, 304-322`), `SABA_EXTENSION_DATA_ROOT`(import된 익스텐션이 쓸 폴더의 뿌리, 02 §2.1), `SABA_JAVA_RUNTIMES`(데몬이 찾은 Java 런타임 `[{java, home, version, major, arch}]`, 02 §2.1). IPC 토큰(`SABA_TOKEN_PATH`)은 0.1.12부터 넘기지 않고 상속 환경에서도 지운다(`is_secret_env`). 모듈·익스텐션은 데몬 HTTP API를 직접 부르지 않고 HOST 통로(§7.1)만 쓴다.
+- Python 모듈/익스텐션: `PYTHONIOENCODING`, `PYTHONUNBUFFERED`, `PYTHONPATH`, `SABA_IPC_PORT`, `SABA_IPC_URL`, `SABA_LANG`(요청의 `Accept-Language`, 없으면 `config.json`의 `gui.language`, 비었으면 OS 언어, 실행마다 읽음), `SABA_ENABLED_EXTENSIONS`(`plugin/mod.rs:14-38, 304-322`), `SABA_EXTENSION_DATA_ROOT`(import된 익스텐션이 쓸 폴더의 뿌리, 02 §2.1), `SABA_JAVA_RUNTIMES`(데몬이 찾은 Java 런타임 `[{java, home, version, major, arch}]`, 02 §2.1). IPC 토큰(`SABA_TOKEN_PATH`)은 0.1.12부터 넘기지 않고 상속 환경에서도 지운다(`is_secret_env`). 모듈·익스텐션은 데몬 HTTP API를 직접 부르지 않고 HOST 통로(§7.1)만 쓴다. 이것은 계약이지 보안 경계가 아니다. 경계는 격리 실행이다(§7.1).
 - `SABA_LANG`는 GUI도 데몬에 넘기지만(`saba-chan-gui/src-tauri/src/lifecycle.rs:177`) **데몬 코어는 이 환경변수를 읽지 않는다.** 언어는 HTTP 요청에 `Accept-Language`가 있으면 그 요청 동안 첫 언어 태그(`ko-KR,ko;q=0.9` → `ko-KR`, 영문자·숫자·`-` 16자까지, `*`는 무시)를 쓰고(CLI `--lang`, 감사 출처 `Origin.lang`로 그 요청이 띄운 작업까지 이어진다), 없으면 `config.json`의 `gui.language`에서 읽고, 비었으면 OS 언어를 지원 언어로 맞춰 쓴다(`ConfigStore::ui_language`, `chat::i18n::os_language`. 중국어는 Hant·TW·HK·MO면 zh-TW, 그 밖은 zh-CN). 릴레이에 알리는 이 PC의 언어(하트비트·디스코드 설정의 `language`)는 요청 언어를 따르지 않는다(`ConfigStore::pc_language`).
 
 ### 1.4 디스코드 릴레이 연결 (`src/relay_agent.rs`)

@@ -369,7 +369,6 @@
     "stop_timeout_toast": "⚠️ {{name}} サーバーを停止しています。時間がかかる場合があります。",
     "unexpected_stop_toast": "⚠️ {{name}} サーバーが予期せず停止しました！",
     "external_start_toast": "ℹ️ {{name}} サーバーはサバちゃんの外で起動されました",
-    "status_check_failed_title": "ステータスチェック失敗",
     "add_server_name_empty_title": "入力エラー",
     "add_server_name_empty_message": "サーバー名を入力してください",
     "add_module_empty_title": "入力エラー",

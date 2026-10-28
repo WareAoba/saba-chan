@@ -429,7 +429,6 @@
     "stop_timeout_toast": "⚠️ Deteniendo el servidor {{name}}. Puede tardar un poco.",
     "unexpected_stop_toast": "⚠️ ¡El servidor {{name}} se detuvo inesperadamente!",
     "external_start_toast": "ℹ️ El servidor {{name}} se inició fuera de Saba-chan",
-    "status_check_failed_title": "Falló la verificación de estado",
     "add_server_name_empty_title": "Error de Entrada",
     "add_server_name_empty_message": "Ingrese el nombre del servidor",
     "add_module_empty_title": "Error de Entrada",

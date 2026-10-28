@@ -618,7 +618,7 @@ export function useServerActions({
                 watchInstance({
                     instanceId: srv.id,
                     limitMs: 30000,
-                    check: async (ev, live) => {
+                    check: async (ev) => {
                         const statusResult = await window.api.instanceStatus(srv?.id ?? name, name);
                         if (statusResult.status === 'running') {
                             setProgressBar(null);
@@ -626,10 +626,10 @@ export function useServerActions({
                             fetchServers();
                             return true;
                         }
-                        // 프로세스가 즉시 죽은 경우 조기 감지: 꺼짐 이벤트, 또는 연속 stopped (폴링 5회·이벤트 대기 2회)
+                        // 프로세스가 즉시 죽은 경우 조기 감지: 꺼짐 이벤트, 또는 연속 stopped 5회
                         if (statusResult.status === 'stopped') {
                             consecutiveStopped++;
-                            if (ev?.type === 'instance.exit' || consecutiveStopped >= (live ? 2 : 5)) {
+                            if (ev?.type === 'instance.exit' || consecutiveStopped >= 5) {
                                 setProgressBar(null);
                                 revertOptimistic(name);
                                 safeShowToast(

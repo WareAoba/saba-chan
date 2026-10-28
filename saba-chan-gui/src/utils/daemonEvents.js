@@ -174,12 +174,11 @@ export function showEventToast(ev, t, nameOf) {
 const INSTANCE_CHANGED = ['instance.started', 'instance.stopped', 'instance.exit'];
 
 /**
- * 시작·정지가 끝날 때까지 check(ev)를 부른다. check가 true면 끝, limitMs가 지나면 onTimeout.
- * 이벤트 스트림이 있으면 그 서버의 이벤트가 올 때와 idleMs마다만 묻고(놓친 이벤트 대비), 없으면 delay마다 묻는다.
- * ev는 깨운 이벤트(시간으로 깨면 null), live는 이벤트로 지켜보는지
+ * 시작·정지가 끝날 때까지 delay마다 check(ev)를 부른다. check가 true면 끝, limitMs가 지나면 onTimeout.
+ * 그 서버의 이벤트가 오면 delay를 기다리지 않고 바로 묻는다. 켜짐 완료처럼 이벤트가 없는 변화도 있어 묻기는 줄이지 않는다.
+ * ev는 깨운 이벤트(시간으로 깨면 null)
  */
-export function watchInstance({ instanceId, check, onTimeout, delay = 500, limitMs, idleMs = 5000 }) {
-    const live = eventsAvailable();
+export function watchInstance({ instanceId, check, onTimeout, delay = 500, limitMs }) {
     const deadline = Date.now() + limitMs;
     let done = false;
     let busy = false;
@@ -201,29 +200,27 @@ export function watchInstance({ instanceId, check, onTimeout, delay = 500, limit
         clearTimeout(timer);
         let finished = false;
         try {
-            finished = await check(ev, live);
+            finished = await check(ev);
         } catch {
             /* 다음 확인에서 다시 */
         }
         busy = false;
         if (done) return;
         if (finished) return finish();
-        if (Date.now() >= deadline) {
-            finish();
-            return onTimeout();
-        }
         if (pending) {
             const next = pending;
             pending = null;
             return run(next);
         }
-        timer = setTimeout(() => run(null), live ? Math.min(idleMs, Math.max(0, deadline - Date.now())) : delay);
+        if (Date.now() >= deadline) {
+            finish();
+            return onTimeout();
+        }
+        timer = setTimeout(() => run(null), delay);
     };
-    if (live) {
-        off = subscribeDaemonEvents((ev) => {
-            if (INSTANCE_CHANGED.includes(ev.type) && ev.data?.instanceId === instanceId) run(ev);
-        });
-    }
+    off = subscribeDaemonEvents((ev) => {
+        if (INSTANCE_CHANGED.includes(ev.type) && ev.data?.instanceId === instanceId) run(ev);
+    });
     timer = setTimeout(() => run(null), delay);
     return finish;
 }
