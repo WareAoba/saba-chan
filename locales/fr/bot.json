@@ -340,7 +340,11 @@
       "enabled": "Activé",
       "model": "Modèle",
       "memo": "Prompt du serveur",
-      "confirmCommands": "Toujours demander avant les commandes serveur",
+      "effort": "Effort de réflexion en conversation",
+      "ambient": "Intervenir sans être appelée",
+      "ambientMinutes": "Intervalle d’intervention (minutes)",
+      "ambientEffort": "Effort pour décider d’intervenir",
+      "confirmLevel": "Niveau de confirmation avant exécution",
       "memory": "Mémoire",
       "webSearch": "Recherche web",
       "disabledTools": "Outils désactivés",
@@ -428,5 +432,8 @@
     "autosave_not_resumed": "La sauvegarde a été faite, mais la sauvegarde auto du serveur n’a pas pu être réactivée. Redémarrez le serveur",
     "snapshot_not_found": "Le jeu n’a pas de sauvegarde automatique",
     "snapshot_not_deletable": "Saba-chan ne peut pas supprimer les sauvegardes automatiques du jeu"
+  },
+  "chatbot": {
+    "memo_template": "<!-- Les lignes d’aide comme celle-ci et les titres laissés vides ne sont pas envoyés à Saba-chan qui parle. Remplis seulement ce qu’il faut. -->\n\n## Ambiance\n<!-- Décris comment on parle ici et jusqu’où les blagues peuvent aller. Vide = personnalité par défaut. -->\n\n## Comment appeler les gens\n<!-- Les surnoms que Saba-chan doit utiliser. Exemple : appeler la personne marquée (propriétaire) « maître ». -->\n\n## Mots de ce serveur\n<!-- Surnoms, mèmes et abréviations propres à ce serveur, avec leur sens. -->\n\n## Infos du serveur de jeu\n<!-- Règles, horaires et autres infos que Saba-chan peut donner à qui demande. -->\n"
   }
 }

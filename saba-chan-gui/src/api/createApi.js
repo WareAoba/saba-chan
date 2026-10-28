@@ -1215,6 +1215,11 @@ export function createApi({ invoke, hub }) {
         // 길드에 저장된 사용자 키로 릴레이가 제공자에게 묻는다 (chatbot-settings-v2 §1)
         chatbotModels: (guildId) =>
             daemonJson('get', `/api/relay/node/${encodeURIComponent(guildId)}/chatbot/models`, undefined, 20000),
+        // 남은 크레딧(제공사가 알려 줄 때만)과 이번 달 사용량 — 릴레이 답 그대로
+        chatbotCredit: (guildId) =>
+            daemonJson('get', `/api/relay/node/${encodeURIComponent(guildId)}/chatbot/credit`, undefined, 20000),
+        chatbotMemoTemplate: (locale) =>
+            daemonJson('get', `/api/chatbot/memo-template${locale ? `?locale=${encodeURIComponent(locale)}` : ''}`),
         chatbotClear: () => daemonJson('delete', '/api/chatbot'),
         chatbotClearMemory: (guildId) =>
             daemonJson('delete', `/api/chatbot/memory${guildId ? `?guildId=${encodeURIComponent(guildId)}` : ''}`),

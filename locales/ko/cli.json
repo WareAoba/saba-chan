@@ -820,6 +820,8 @@
       "chatbot.clear": "말하는 사바쨩 설정과 키 모두 지우기",
       "chatbot.forget": "말하는 사바쨩이 기억하는 내용 지우기 (모든 디스코드 서버 또는 하나)",
       "chatbot.models": "저장된 API 키로 쓸 수 있는 모델 (디스코드 서버 이름이나 id, 없으면 하나뿐인 서버)",
+      "chatbot.credit": "남은 크레딧(일반 키로 알려 주는 제공사만)과 디스코드 서버 하나의 이번 달 사용량",
+      "chatbot.template": "서버 프롬프트 기본 틀 출력 (파일로 저장한 뒤 `chatbot set memo=@파일 --guild ...`)",
       "module.audit": "모듈의 Python 코드가 하는 일을 선언한 권한과 비교",
       "extension.audit": "익스텐션의 Python 코드가 하는 일을 선언한 권한과 비교",
       "config.export": "설정과 서버 목록을 zip으로 저장 (다른 PC로 옮길 때, 게임 파일은 빠짐)",
@@ -1046,7 +1048,8 @@
       "schedule.add.command": "실행할 게임 명령 (command 작업, 목록: server commands)",
       "schedule.edit.command": "바꿀 게임 명령 (command 작업, 다른 명령이면 --arg를 주지 않는 한 옛 입력은 지움)",
       "bot.notice.on": "켜짐 알림 켜기",
-      "bot.notice.off": "켜짐 알림 끄기"
+      "bot.notice.off": "켜짐 알림 끄기",
+      "chatbot.template.locale": "기본 틀의 언어 (없으면 앱 언어)"
     },
     "after": "이름은 일부만 적어도 돼요 (예: start pal). 인자 없이 터미널에서 실행하면 전체 화면 메뉴가 열려요(SABA_NO_TUI=1이면 대화형 셸).\n스크립트에서는 --json과 --yes를 쓰세요. 종료 코드: 0 성공 · 1 실패 · 2 사용법 · 3 데몬 연결 안 됨 · 4 없음 · 130 취소"
   },
@@ -1183,7 +1186,13 @@
     "not_synced": "이 PC에 저장했어요. 봇이 연결되면 디스코드에 반영돼요 (saba-chan-cli bot status).",
     "sync_failed": "디스코드 서버 {{guild}}에 반영하지 못했어요: {{error}}",
     "read_failed": "{{path}}을(를) 읽지 못했어요: {{error}}",
-    "cleared_pending": "이 PC의 말하는 사바쨩 설정과 키를 지웠어요. 릴레이에는 아직 닿지 않아 다음 연결 때 지워요."
+    "cleared_pending": "이 PC의 말하는 사바쨩 설정과 키를 지웠어요. 릴레이에는 아직 닿지 않아 다음 연결 때 지워요.",
+    "credit_balance": "잔액",
+    "credit_balance_unsupported": "{{provider}}는 일반 API 키로 잔액을 알려 주지 않아요. 잔액은 그 회사 사이트에서 확인해 주세요.",
+    "credit_balance_none": "지금은 잔액을 확인하지 못했어요.",
+    "credit_usage": "이번 달 사용량 ({{month}}, UTC 기준)",
+    "credit_usage_line": "모델 호출 {{calls}}번 · 입력 {{input}}토큰(캐시 {{cached}}) · 출력 {{output}}토큰",
+    "credit_exhausted": "크레딧이 다 떨어졌어요 ({{time}}). 충전하기 전까지는 대답하지 못해요."
   },
   "trust": {
     "verified": "확인됨",

@@ -326,13 +326,15 @@ pub struct ChatbotConfig {
 }
 
 impl ChatbotConfig {
-    /// 예전 키를 지금 계약으로 (2026-10-17: `persona` → `memo`; 챗봇 채널 `channelIds`는 릴레이가 원본이 되어 지운다)
+    /// 예전 키를 지금 계약으로 (2026-10-17: `persona` → `memo`; 챗봇 채널 `channelIds`는 릴레이가 원본이 되어 지운다;
+    /// 2026-10-28: `confirmCommands` → `confirmLevel`)
     fn migrate(&mut self) {
         for map in std::iter::once(&mut self.settings).chain(self.guilds.values_mut()) {
             if let Some(persona) = map.remove("persona") {
                 map.entry("memo").or_insert(persona);
             }
             map.remove("channelIds");
+            upgrade_confirm(map);
         }
         self.guilds.retain(|_, over| !over.is_empty());
     }
@@ -344,6 +346,14 @@ impl ChatbotConfig {
             out.extend(over.clone());
         }
         out
+    }
+}
+
+/// 예전 `confirmCommands`(켜짐 = 모두 묻기, 꺼짐 = 위험만)를 `confirmLevel`로. `confirmLevel`이 이미 있으면 그것을 둔다.
+/// 옛 설정 파일(`migrate`)과 옛 GUI가 보내는 저장(`handlers::chatbot`)이 함께 쓴다
+pub fn upgrade_confirm(map: &mut serde_json::Map<String, Value>) {
+    if let Some(Value::Bool(ask)) = map.remove("confirmCommands") {
+        map.entry("confirmLevel").or_insert_with(|| Value::from(if ask { "all" } else { "danger" }));
     }
 }
 

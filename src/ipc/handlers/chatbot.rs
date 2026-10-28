@@ -13,6 +13,7 @@
 //! 릴레이 PUT은 받은 키만 합치므로 데몬은 늘 전체 설정을 보낸다: 지운 키(null)는 `RELAY_DEFAULTS` 값으로.
 //! 릴레이에 새 설정이 생기면 그 기본값을 이 표에 한 줄 더한다
 //! - `DELETE /api/chatbot/memory?guildId=` — 장기 기억 지우기 (guildId가 없으면 모든 길드)
+//! - `GET /api/chatbot/memo-template?locale=` — 서버 프롬프트 기본 틀 `{template, locale}` (bot.json `chatbot.memo_template`)
 
 use axum::{
     extract::{Path, Query, State},
@@ -27,6 +28,7 @@ use std::collections::BTreeSet;
 use super::relay::{apply_signed_headers, client, encode_path_segment, resolve_relay_url, send};
 use super::super::IPCServer;
 use crate::config_store::ChatbotConfig;
+use crate::chat::i18n::Catalog;
 
 /// 릴레이 `ChatbotSettings` 기본값 (/mnt/project-files/chatbot/contract.md §1).
 /// 기본값으로 되돌린 키도 릴레이에 실제로 닿게 PUT마다 깔고 그 위에 사용자 설정을 얹는다.
@@ -36,7 +38,11 @@ fn relay_defaults() -> Map<String, Value> {
         "enabled": false,
         "model": "gpt-6-luna",
         "memo": "",
-        "confirmCommands": true,
+        "effort": "medium",
+        "ambient": true,
+        "ambientMinutes": 3,
+        "ambientEffort": "low",
+        "confirmLevel": "all",
         "memory": true,
         "webSearch": true,
         "disabledTools": [],
@@ -53,6 +59,8 @@ fn drop_retired(map: &mut Map<String, Value>) {
     for k in RETIRED {
         map.remove(*k);
     }
+    // 옛 GUI·액션이 보내는 확인 설정은 확인 단계로 옮긴다
+    crate::config_store::upgrade_confirm(map);
 }
 
 /// 길드 하나에 PUT할 본문: 기본값 위에 사용자 설정, 키는 데몬 것 (없으면 릴레이 것도 지운다)
@@ -111,8 +119,18 @@ fn merge(into: &mut Map<String, Value>, patch: Map<String, Value>) {
     }
 }
 
+/// 받은 patch의 옛 확인 설정을 합치기 전에 옮긴다 (합친 뒤에 옮기면 저장된 단계에 밀린다). null = 기본값으로
+fn upgrade_patch(map: &mut Map<String, Value>) {
+    if map.get("confirmCommands") == Some(&Value::Null) {
+        map.remove("confirmCommands");
+        map.entry("confirmLevel").or_insert(Value::Null);
+    }
+    crate::config_store::upgrade_confirm(map);
+}
+
 fn apply(cfg: &mut ChatbotConfig, patch: ChatbotPatch) -> Result<(), String> {
-    if let Some(s) = patch.settings {
+    if let Some(mut s) = patch.settings {
+        upgrade_patch(&mut s);
         merge(&mut cfg.settings, s);
     }
     drop_retired(&mut cfg.settings);
@@ -121,7 +139,8 @@ fn apply(cfg: &mut ChatbotConfig, patch: ChatbotPatch) -> Result<(), String> {
             Value::Null => {
                 cfg.guilds.remove(&guild);
             }
-            Value::Object(m) => {
+            Value::Object(mut m) => {
+                upgrade_patch(&mut m);
                 let entry = cfg.guilds.entry(guild.clone()).or_default();
                 merge(entry, m);
                 drop_retired(entry);
@@ -374,6 +393,27 @@ pub async fn patch_guild(State(state): State<IPCServer>, Path(guild): Path<Strin
     Json(guild_view(&state.config_store.get_chatbot(), &guild)).into_response()
 }
 
+/// 서버 프롬프트 기본 틀 — 제목과 HTML 주석 안내. 릴레이는 주석과 채우지 않은 제목을 모델에게 보내지 않는다
+fn memo_template(language: &str) -> String {
+    Catalog::for_language(language).t("chatbot.memo_template", &[])
+}
+
+#[derive(Deserialize)]
+pub struct TemplateQuery {
+    #[serde(default)]
+    locale: Option<String>,
+}
+
+/// `GET /api/chatbot/memo-template?locale=` (없으면 앱 언어)
+pub async fn get_memo_template(State(state): State<IPCServer>, Query(q): Query<TemplateQuery>) -> Response {
+    let requested = match q.locale.filter(|l| !l.trim().is_empty()) {
+        Some(l) => l,
+        None => state.config_store.ui_language().await,
+    };
+    let locale = crate::chat::i18n::normalize_language(&requested);
+    Json(json!({ "success": true, "locale": locale, "template": memo_template(&locale) })).into_response()
+}
+
 #[derive(Deserialize)]
 pub struct MemoryQuery {
 
@@ -458,12 +498,12 @@ mod tests {
     #[test]
     fn settings_reset_to_default_still_reach_the_relay() {
         let mut cfg = ChatbotConfig::default();
-        apply(&mut cfg, patch(json!({"settings": {"enabled": true, "confirmCommands": false}}))).unwrap();
+        apply(&mut cfg, patch(json!({"settings": {"enabled": true, "confirmLevel": "danger"}}))).unwrap();
         // GUI는 기본값으로 되돌릴 때 null을 보낸다. 릴레이는 받은 키만 합치므로 빠뜨리면 예전 값이 남는다
-        apply(&mut cfg, patch(json!({"settings": {"enabled": null, "confirmCommands": null}}))).unwrap();
+        apply(&mut cfg, patch(json!({"settings": {"enabled": null, "confirmLevel": null}}))).unwrap();
         let body = put_body(&cfg, "g1");
         assert_eq!(body["enabled"], json!(false));
-        assert_eq!(body["confirmCommands"], json!(true));
+        assert_eq!(body["confirmLevel"], json!("all"));
         assert_eq!(body["apiKey"], Value::Null, "no key here means delete it there");
         apply(&mut cfg, patch(json!({"settings": {"model": "m2"}, "guilds": {"g1": {"memo": "g1 only"}}}))).unwrap();
         let body = put_body(&cfg, "g1");
@@ -511,6 +551,34 @@ mod tests {
         let body = put_body(&cfg, "g1");
         assert!(RETIRED.iter().all(|k| !body.contains_key(*k)));
         assert!(RETIRED.iter().all(|k| guild_view(&cfg, "g1")["settings"].get(*k).is_none()));
+    }
+
+    /// 옛 GUI·옛 설정 파일의 `confirmCommands`는 확인 단계로 옮겨 저장하고 보낸다 (켜짐 = 모두 묻기, 꺼짐 = 위험만)
+    #[test]
+    fn the_old_confirm_switch_becomes_a_confirm_level() {
+        let mut cfg = ChatbotConfig::default();
+        apply(&mut cfg, patch(json!({"settings": {"confirmCommands": false}, "guilds": {"g1": {"confirmCommands": true}}}))).unwrap();
+        assert_eq!(cfg.settings, Map::from_iter([("confirmLevel".to_string(), json!("danger"))]));
+        assert_eq!(put_body(&cfg, "g1")["confirmLevel"], json!("all"));
+        assert!(!put_body(&cfg, "g2").contains_key("confirmCommands"));
+        // 새 값이 함께 오면 새 값을 둔다
+        apply(&mut cfg, patch(json!({"settings": {"confirmCommands": true, "confirmLevel": "caution"}}))).unwrap();
+        assert_eq!(cfg.settings["confirmLevel"], json!("caution"));
+        // 옛 키로 보낸 새 저장은 저장된 단계를 바꾸고, null이면 기본값으로 돌린다
+        apply(&mut cfg, patch(json!({"settings": {"confirmCommands": false}}))).unwrap();
+        assert_eq!(cfg.settings["confirmLevel"], json!("danger"));
+        apply(&mut cfg, patch(json!({"settings": {"confirmCommands": null}}))).unwrap();
+        assert!(!cfg.settings.contains_key("confirmLevel"));
+    }
+
+    /// 서버 프롬프트 기본 틀: 요청 언어로, 안내는 주석이라 릴레이가 모델에게 보내지 않는다
+    #[test]
+    fn the_memo_template_comes_in_the_requested_language() {
+        for (lang, heading) in [("ko", "## 호칭"), ("en", "## How to address people")] {
+            let text = memo_template(lang);
+            assert!(text.contains(heading), "{lang}: {text}");
+            assert!(text.contains("<!--") && text.matches("<!--").count() == text.matches("-->").count());
+        }
     }
 
     #[test]

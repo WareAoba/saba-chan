@@ -340,7 +340,11 @@
       "enabled": "開啟",
       "model": "模型",
       "memo": "伺服器提示詞",
-      "confirmCommands": "執行伺服器指令前一律詢問",
+      "effort": "對話推理強度",
+      "ambient": "主動插話",
+      "ambientMinutes": "插話判斷間隔（分鐘）",
+      "ambientEffort": "插話判斷推理強度",
+      "confirmLevel": "執行前確認層級",
       "memory": "記憶",
       "webSearch": "網頁搜尋",
       "disabledTools": "已關閉的工具組",
@@ -428,5 +432,8 @@
     "autosave_not_resumed": "備份已完成，但無法重新開啟伺服器的自動儲存。請重新啟動伺服器",
     "snapshot_not_found": "遊戲沒有自動備份",
     "snapshot_not_deletable": "Saba-chan 不能刪除遊戲自己的自動備份"
+  },
+  "chatbot": {
+    "memo_template": "<!-- 這樣的說明行和沒有填寫的標題不會傳送給會說話的 Saba-chan。只填寫需要的項目即可。 -->\n\n## 聊天氛圍\n<!-- 寫下這個伺服器的聊天氛圍，以及可以接受的玩笑尺度。留空則依預設個性聊天。 -->\n\n## 稱呼\n<!-- 如果 Saba-chan 要用特別的稱呼叫某人，請寫在這裡。例：標有 (擁有者) 的人稱為「主人」。 -->\n\n## 本伺服器的用語\n<!-- 寫下只在本伺服器通用的暱稱、梗、縮寫及其含義。 -->\n\n## 遊戲伺服器說明\n<!-- 寫下伺服器規則、開放時間等 Saba-chan 可以告訴提問者的內容。 -->\n"
   }
 }

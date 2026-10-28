@@ -220,6 +220,7 @@ pub static ROUTES: &[Route] = &[
     deny("GET", "/api/relay/node/{guild_id}/channels"),
     deny("PUT", "/api/relay/node/{guild_id}/channels"),
     deny("GET", "/api/relay/node/{guild_id}/chatbot/models"),
+    deny("GET", "/api/relay/node/{guild_id}/chatbot/credit"),
     deny("GET", "/api/relay/bot-invite"),
     deny("POST", "/api/relay/pair/initiate"),
     deny("GET", "/api/relay/pair/{code}/status"),
@@ -236,6 +237,7 @@ pub static ROUTES: &[Route] = &[
     deny("PUT", "/api/chatbot"),
     deny("DELETE", "/api/chatbot"),
     deny("DELETE", "/api/chatbot/memory"),
+    deny("GET", "/api/chatbot/memo-template"),
     deny("GET", "/api/chatbot/guilds/{guild}"),
     deny("PATCH", "/api/chatbot/guilds/{guild}"),
     // ── 샌드박스 예외 ──

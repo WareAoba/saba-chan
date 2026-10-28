@@ -239,6 +239,15 @@ const impl = {
             selected: 'gpt-6-luna',
             effectiveModel: 'gpt-6-luna',
         }),
+    chatbotCredit: () =>
+        ok({
+            provider: 'openai',
+            balanceSupported: false,
+            balance: null,
+            usage: { month: '2026-10', calls: 42, input: 520000, cached: 310000, output: 18000 },
+            exhaustedAt: null,
+        }),
+    chatbotMemoTemplate: () => ok({ success: true, locale: 'ko', template: '## 방 분위기\n<!-- 안내 -->\n' }),
     instanceValidate: () =>
         ok({
             success: false,

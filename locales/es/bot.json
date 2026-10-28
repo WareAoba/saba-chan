@@ -340,7 +340,11 @@
       "enabled": "Activado",
       "model": "Modelo",
       "memo": "Prompt del servidor",
-      "confirmCommands": "Preguntar siempre antes de ejecutar comandos del servidor",
+      "effort": "Esfuerzo de razonamiento en conversación",
+      "ambient": "Intervenir sin ser llamada",
+      "ambientMinutes": "Intervalo para intervenir (minutos)",
+      "ambientEffort": "Esfuerzo al decidir si intervenir",
+      "confirmLevel": "Nivel de confirmación antes de ejecutar",
       "memory": "Memoria",
       "webSearch": "Búsqueda web",
       "disabledTools": "Herramientas desactivadas",
@@ -428,5 +432,8 @@
     "autosave_not_resumed": "La copia se hizo, pero no se pudo reactivar el autoguardado del servidor. Reinicia el servidor",
     "snapshot_not_found": "El juego no tiene copia automática",
     "snapshot_not_deletable": "Saba-chan no puede borrar las copias automáticas del propio juego"
+  },
+  "chatbot": {
+    "memo_template": "<!-- Las líneas de ayuda como esta y los títulos que dejes vacíos no se envían a Saba-chan parlante. Rellena solo lo que necesites. -->\n\n## Ambiente\n<!-- Describe cómo se habla aquí y hasta dónde pueden llegar las bromas. Si lo dejas vacío, usa su personalidad por defecto. -->\n\n## Cómo llamar a la gente\n<!-- Escribe los nombres especiales con los que Saba-chan debe llamar a alguien. Ejemplo: a la persona marcada (propietario) la llama \"amo\". -->\n\n## Palabras de este servidor\n<!-- Apodos, memes y abreviaturas que solo se usan aquí, con su significado. -->\n\n## Información del servidor de juego\n<!-- Reglas, horarios y otras cosas que Saba-chan puede contar a quien pregunte. -->\n"
   }
 }
