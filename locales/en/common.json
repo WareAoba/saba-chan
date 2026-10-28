@@ -8,7 +8,8 @@
     "module_path_outside": "The module tried to access a path outside the allowed folder. Check the module settings.",
     "module_exception": "The module raised an exception. Check the module logs.",
     "isolation_unsupported": "This operating system does not support the required isolation.",
-    "module_platform_unsupported": "This game module doesn't run on this daemon's OS"
+    "module_platform_unsupported": "This game module doesn't run on this daemon's OS",
+    "module_arch_unsupported": "This game module doesn't run on this daemon's CPU"
   },
   "sandbox": {
     "isolation_unsupported": {

@@ -8,7 +8,8 @@
     "module_path_outside": "Das Modul wollte auf einen Pfad außerhalb des erlaubten Ordners zugreifen. Prüfen Sie die Moduleinstellungen.",
     "module_exception": "Im Modul ist eine Ausnahme aufgetreten. Prüfen Sie das Modulprotokoll.",
     "isolation_unsupported": "Dieses Betriebssystem unterstützt die erforderliche Isolation nicht.",
-    "module_platform_unsupported": "Dieses Spielmodul läuft nicht auf dem OS dieses Daemons"
+    "module_platform_unsupported": "Dieses Spielmodul läuft nicht auf dem OS dieses Daemons",
+    "module_arch_unsupported": "Dieses Spielmodul läuft nicht auf der CPU dieses Daemons"
   },
   "sandbox": {
     "isolation_unsupported": {

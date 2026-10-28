@@ -831,11 +831,11 @@ impl Supervisor {
 
     /// 모듈 `[module.dependencies]`를 못 맞추면 시작을 막는 응답. 다 맞으면 None
     async fn unmet_dependencies_response(&self, module_name: &str, instance_name: &str) -> Option<Value> {
-        // 이 OS를 지원한다고 선언하지 않은 모듈 (D3·M1)
+        // 이 OS·CPU를 지원한다고 선언하지 않은 모듈 (D3·M1)
         if let Ok(module) = self.module_loader.get_module(module_name) {
-            if !module.metadata.supports_os(std::env::consts::OS) {
-                tracing::warn!("Module '{}' does not run on {}; '{}' is not started", module_name, std::env::consts::OS, instance_name);
-                return Some(module_loader::platform_unsupported_body(module_name, module.metadata.platforms.as_deref().unwrap_or_default()));
+            if let Some(body) = module_loader::host_unsupported_body(module_name, &module.metadata) {
+                tracing::warn!("Module '{}' does not run on {}/{}; '{}' is not started", module_name, std::env::consts::OS, std::env::consts::ARCH, instance_name);
+                return Some(body);
             }
         }
         // 데몬이 모자라 아예 로드하지 못한 모듈도 같은 응답을 준다
@@ -3943,6 +3943,30 @@ mod tests {
         assert_eq!(resp["module"], "elsewhere");
         assert_eq!(resp["platforms"], json!([other]));
         assert_eq!(resp["os"], std::env::consts::OS);
+    }
+
+    /// 이 CPU를 지원한다고 선언하지 않은 모듈의 서버도 켜지 않는다 (`architectures`)
+    #[tokio::test]
+    async fn a_module_that_does_not_support_this_cpu_is_not_started() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("modules").join("x86only");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "").unwrap();
+        let other = if std::env::consts::ARCH == "aarch64" { "x86_64" } else { "aarch64" };
+        std::fs::write(
+            dir.join("module.toml"),
+            format!("[module]\nname = \"x86only\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[extensions.saba-core]\narchitectures = [\"{other}\"]\n"),
+        )
+        .unwrap();
+        let supervisor = Supervisor::new_with_instances_dir(
+            tmp.path().join("modules").to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        let resp = supervisor.unmet_dependencies_response("x86only", "srv").await.unwrap();
+        assert_eq!(resp["error_code"], "module_arch_unsupported", "{resp}");
+        assert_eq!(resp["module"], "x86only");
+        assert_eq!(resp["architectures"], json!([other]));
+        assert_eq!(resp["arch"], std::env::consts::ARCH);
     }
 
     /// 데몬보다 새 스키마라 로드되지 못한 모듈은 시작 응답도 그 이유(module_schema_unsupported)를 준다.

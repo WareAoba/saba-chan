@@ -178,7 +178,9 @@
     "preset_none_hint": "Usa los valores predeterminados del módulo.",
     "preset_not_found": "Este módulo no tiene esa configuración recomendada. Actualiza los módulos e inténtalo de nuevo.",
     "platform_unsupported": "No en este SO",
-    "platform_unsupported_detail": "Este módulo de juego solo funciona en {{platforms}}"
+    "platform_unsupported_detail": "Este módulo de juego solo funciona en {{platforms}}",
+    "arch_unsupported": "No en esta CPU",
+    "arch_unsupported_detail": "Este módulo de juego solo funciona en CPU {{architectures}}"
   },
   "add_instance_modal": {
     "title": "Agregar instancia",

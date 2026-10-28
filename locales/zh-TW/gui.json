@@ -178,7 +178,9 @@
     "preset_none_hint": "使用模組預設值建立。",
     "preset_not_found": "此模組沒有這個推薦設定。請重新整理模組後再試一次。",
     "platform_unsupported": "不支援此系統",
-    "platform_unsupported_detail": "此遊戲模組只能在 {{platforms}} 上執行"
+    "platform_unsupported_detail": "此遊戲模組只能在 {{platforms}} 上執行",
+    "arch_unsupported": "不支援此 CPU",
+    "arch_unsupported_detail": "此遊戲模組只能在 {{architectures}} CPU 上執行"
   },
   "add_instance_modal": {
     "title": "新增實例",

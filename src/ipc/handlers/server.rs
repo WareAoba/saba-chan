@@ -453,11 +453,13 @@ fn module_info(m: crate::supervisor::module_loader::LoadedModule, versions: &std
         })
     });
     let trust = module_trust(&m.path);
-    let platform_supported = m.metadata.supports_os(std::env::consts::OS);
+    let unsupported_reason = m.metadata.unsupported_on(std::env::consts::OS, std::env::consts::ARCH).map(str::to_string);
     let meta = m.metadata;
     ExtensionInfo {
         platforms: meta.platforms,
-        platform_supported,
+        architectures: meta.architectures,
+        platform_supported: unsupported_reason.is_none(),
+        unsupported_reason,
         name: meta.name,
         version: meta.version,
         trust,

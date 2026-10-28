@@ -8,7 +8,8 @@
     "module_path_outside": "モジュールが許可されたフォルダーの外にアクセスしようとしました。モジュールの設定を確認してください。",
     "module_exception": "モジュールで例外が発生しました。モジュールのログを確認してください。",
     "isolation_unsupported": "この OS は必要な隔離機能に対応していません。",
-    "module_platform_unsupported": "このゲームモジュールはこのデーモンのOSでは動きません"
+    "module_platform_unsupported": "このゲームモジュールはこのデーモンのOSでは動きません",
+    "module_arch_unsupported": "このゲームモジュールはこのデーモンのCPUでは動きません"
   },
   "add": {
     "created_settings_unsynced": "{{name}} を作成して設定も保存しましたが、ゲームの設定ファイルに書き込めませんでした: {{error}}",
@@ -487,7 +488,8 @@
     "load_failed": {
       "invalid": "{{module}} モジュールを読み込めませんでした。module.toml が形式に合っていません:"
     },
-    "platform_unsupported": "(このOSは非対応)"
+    "platform_unsupported": "(このOSは非対応)",
+    "arch_unsupported": "(このCPUは非対応)"
   },
   "noun": {
     "command": "コマンド",

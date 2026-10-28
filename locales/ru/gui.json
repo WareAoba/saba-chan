@@ -178,7 +178,9 @@
     "preset_none_hint": "Используются значения модуля по умолчанию.",
     "preset_not_found": "У этого модуля нет такой рекомендуемой настройки. Обновите модули и попробуйте снова.",
     "platform_unsupported": "Не для этой ОС",
-    "platform_unsupported_detail": "Этот игровой модуль работает только в {{platforms}}"
+    "platform_unsupported_detail": "Этот игровой модуль работает только в {{platforms}}",
+    "arch_unsupported": "Не для этого процессора",
+    "arch_unsupported_detail": "Этот игровой модуль работает только на процессорах {{architectures}}"
   },
   "add_instance_modal": {
     "title": "Добавить экземпляр",

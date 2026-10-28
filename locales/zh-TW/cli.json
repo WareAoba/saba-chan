@@ -8,7 +8,8 @@
     "module_path_outside": "模組試圖存取允許範圍外的資料夾。請檢查模組設定。",
     "module_exception": "模組拋出了例外。請檢查模組日誌。",
     "isolation_unsupported": "此作業系統不支援所需的隔離功能。",
-    "module_platform_unsupported": "此遊戲模組無法在該常駐程式的系統上執行"
+    "module_platform_unsupported": "此遊戲模組無法在該常駐程式的系統上執行",
+    "module_arch_unsupported": "此遊戲模組無法在該常駐程式的 CPU 上執行"
   },
   "add": {
     "created_settings_unsynced": "{{name}} 已建立且設定已儲存，但無法寫入遊戲設定檔：{{error}}",
@@ -487,7 +488,8 @@
     "load_failed": {
       "invalid": "無法載入 {{module}} 模組。module.toml 不符合格式:"
     },
-    "platform_unsupported": "（不支援此系統）"
+    "platform_unsupported": "（不支援此系統）",
+    "arch_unsupported": "（不支援此 CPU）"
   },
   "noun": {
     "command": "指令",

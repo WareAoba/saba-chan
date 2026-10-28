@@ -8,7 +8,8 @@
     "module_path_outside": "Das Modul wollte auf einen Pfad außerhalb des erlaubten Ordners zugreifen. Prüfe die Moduleinstellungen.",
     "module_exception": "Im Modul ist eine Ausnahme aufgetreten. Prüfe die Modul-Logs.",
     "isolation_unsupported": "Dieses Betriebssystem unterstützt die nötige Isolation nicht.",
-    "module_platform_unsupported": "Dieses Spielmodul läuft nicht auf dem OS dieses Daemons"
+    "module_platform_unsupported": "Dieses Spielmodul läuft nicht auf dem OS dieses Daemons",
+    "module_arch_unsupported": "Dieses Spielmodul läuft nicht auf der CPU dieses Daemons"
   },
   "add": {
     "created_settings_unsynced": "{{name}} wurde erstellt und die Einstellungen wurden gespeichert, aber die Konfigurationsdatei des Spiels konnte nicht geschrieben werden: {{error}}",
@@ -487,7 +488,8 @@
     "load_failed": {
       "invalid": "Das Modul {{module}} konnte nicht geladen werden. Seine module.toml entspricht nicht dem Format:"
     },
-    "platform_unsupported": "(nicht für dieses OS)"
+    "platform_unsupported": "(nicht für dieses OS)",
+    "arch_unsupported": "(nicht für diese CPU)"
   },
   "noun": {
     "command": "Befehl",

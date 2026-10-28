@@ -8,7 +8,8 @@
     "module_path_outside": "El módulo intentó acceder a una ruta fuera de la carpeta permitida. Revisa los ajustes del módulo.",
     "module_exception": "El módulo lanzó una excepción. Revisa los registros del módulo.",
     "isolation_unsupported": "Este sistema operativo no admite el aislamiento necesario.",
-    "module_platform_unsupported": "Este módulo de juego no funciona en el SO de este daemon"
+    "module_platform_unsupported": "Este módulo de juego no funciona en el SO de este daemon",
+    "module_arch_unsupported": "Este módulo de juego no funciona en la CPU de este daemon"
   },
   "add": {
     "created_settings_unsynced": "Se creó {{name}} y se guardaron sus ajustes, pero no se pudo escribir el archivo de configuración del juego: {{error}}",
@@ -487,7 +488,8 @@
     "load_failed": {
       "invalid": "No se pudo cargar el módulo {{module}}. Su module.toml no coincide con el formato:"
     },
-    "platform_unsupported": "(no en este SO)"
+    "platform_unsupported": "(no en este SO)",
+    "arch_unsupported": "(no en esta CPU)"
   },
   "noun": {
     "command": "comando",

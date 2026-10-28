@@ -8,7 +8,8 @@
     "module_path_outside": "Le module a tenté d'accéder à un chemin hors du dossier autorisé. Vérifiez les réglages du module.",
     "module_exception": "Le module a levé une exception. Vérifiez les journaux du module.",
     "isolation_unsupported": "Ce système d'exploitation ne prend pas en charge l'isolation requise.",
-    "module_platform_unsupported": "Ce module de jeu ne fonctionne pas sur l'OS de ce démon"
+    "module_platform_unsupported": "Ce module de jeu ne fonctionne pas sur l'OS de ce démon",
+    "module_arch_unsupported": "Ce module de jeu ne fonctionne pas sur le processeur de ce démon"
   },
   "add": {
     "created_settings_unsynced": "{{name}} a été créé et ses paramètres enregistrés, mais le fichier de configuration du jeu n'a pas pu être écrit : {{error}}",
@@ -487,7 +488,8 @@
     "load_failed": {
       "invalid": "Impossible de charger le module {{module}}. Son module.toml ne respecte pas le format :"
     },
-    "platform_unsupported": "(pas sur cet OS)"
+    "platform_unsupported": "(pas sur cet OS)",
+    "arch_unsupported": "(pas sur ce processeur)"
   },
   "noun": {
     "command": "commande",

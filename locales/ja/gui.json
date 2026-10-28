@@ -178,7 +178,9 @@
     "preset_none_hint": "モジュールの既定値で作成します。",
     "preset_not_found": "このモジュールにはそのおすすめ設定がありません。モジュールを再読み込みしてもう一度お試しください。",
     "platform_unsupported": "このOSは非対応",
-    "platform_unsupported_detail": "このゲームモジュールは {{platforms}} でのみ動きます"
+    "platform_unsupported_detail": "このゲームモジュールは {{platforms}} でのみ動きます",
+    "arch_unsupported": "このCPUは非対応",
+    "arch_unsupported_detail": "このゲームモジュールは {{architectures}} CPUでのみ動きます"
   },
   "command_modal": {
     "title": "コマンド実行 - {{name}}",

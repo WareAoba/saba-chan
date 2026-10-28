@@ -178,7 +178,9 @@
     "preset_none_hint": "使用模块默认值创建。",
     "preset_not_found": "该模块没有这个推荐配置。请刷新模块后重试。",
     "platform_unsupported": "不支持此系统",
-    "platform_unsupported_detail": "此游戏模块只能在 {{platforms}} 上运行"
+    "platform_unsupported_detail": "此游戏模块只能在 {{platforms}} 上运行",
+    "arch_unsupported": "不支持此 CPU",
+    "arch_unsupported_detail": "此游戏模块只能在 {{architectures}} CPU 上运行"
   },
   "add_instance_modal": {
     "title": "添加实例",
