@@ -1024,8 +1024,6 @@ mod tests {
         assert_eq!(players("missing").await.status, StatusCode::NOT_FOUND);
     }
 
-    // 실사용(L23): GUI "새로 설치"가 버전을 직접 골라 인스턴스 설정 없이 보내, 종류가 다른 서버(예: 다른 배포판)의
-    // 파일을 받을 수 있었다. 버전을 비우면 데몬이 그 인스턴스 설정으로 최신을 고르고, 설치에도 그 설정을 넘긴다
     /// 버전 목록은 만들기 화면이 고른 설정(서버 종류 등)을 모듈에 넘겨, 그 설정으로 받을 수 있는 것만 받는다
     #[tokio::test]
     async fn the_version_list_is_asked_for_the_chosen_settings() {
@@ -1060,6 +1058,8 @@ mod tests {
         }
     }
 
+    // 실사용(L23): GUI "새로 설치"가 버전을 직접 골라 인스턴스 설정 없이 보내, 종류가 다른 서버(예: 다른 배포판)의
+    // 파일을 받을 수 있었다. 버전을 비우면 데몬이 그 인스턴스 설정으로 최신을 고르고, 설치에도 그 설정을 넘긴다
     #[tokio::test]
     async fn an_install_without_a_version_takes_the_latest_for_the_instance_settings() {
         let tmp = tempfile::tempdir().unwrap();
