@@ -76,7 +76,7 @@ jobs:
           else
             echo "frontend=false" >> "$GITHUB_OUTPUT"
           fi
-          if echo "$files" | grep -qE '^(\.github/(scripts/(test_)?package-(macos|linux)\.py|workflows/)|saba-chan-gui/src-tauri/(macos/|icons/icon\.icns|tauri\.conf\.json|Cargo\.toml))'; then
+          if echo "$files" | grep -qE '^(\.github/(scripts/(test_)?package-(macos|linux)\.py|workflows/)|saba-chan-gui/src-tauri/(macos/|icons/icon\.icns|tauri\.conf\.json|Cargo\.toml)|installer/core/|updater/src/app_bundle\.rs|install\.sh)'; then
             echo "macpkg=true" >> "$GITHUB_OUTPUT"
           else
             echo "macpkg=false" >> "$GITHUB_OUTPUT"
@@ -293,9 +293,31 @@ jobs:
       - name: Package
         run: |
           version=$(python3 -c "import tomllib;print(tomllib.load(open('versions.toml','rb'))['release']['version'])")
-          python3 .github/scripts/package-linux.py --bin target/release --out macos --platform macos-arm64
+          python3 .github/scripts/package-linux.py --bin target/release --out macos --platform macos-arm64 --version "$version"
           python3 .github/scripts/package-macos.py --bin target/release --out macos --version "$version" --platform macos-arm64
           ls -la macos
+
+      # 모의 릴레이에서 CLI 설치 → 앱 묶음 확인 → 제거 (화면 있는 맥 = 데스크톱 구성). 설치기는 mock-relay 빌드만 모의 키를 믿는다
+      - name: Install and uninstall from a mock relay
+        run: |
+          cargo build --release --locked -p saba-chan-cli --features mock-relay --target-dir target/mock
+          node scripts/mock-release-server.js --port 9877 --version 0.2.0 --zips macos > mock.log 2>&1 &
+          for i in $(seq 1 30); do curl -fs "http://127.0.0.1:9877/v1/updates/check?platform=macos-arm64&current=0.0.0" >/dev/null && break; sleep 1; done
+          export SABA_RELAY_URL=http://127.0.0.1:9877
+          app="$HOME/Applications/Saba-chan.app"
+          target/mock/release/saba-chan-cli --yes install --modules ""
+          ls -la "$app/Contents" "$app/Contents/MacOS" "$app/Contents/Resources"
+          plutil -lint "$app/Contents/Info.plist"
+          test "$(plutil -extract CFBundleExecutable raw "$app/Contents/Info.plist")" = saba-chan-gui
+          test -x "$app/Contents/MacOS/saba-core" && test -x "$app/Contents/MacOS/saba-chan-gui"
+          test -f "$app/Contents/Resources/saba-chan.icns"
+          "$app/Contents/MacOS/saba-chan-cli" --yes uninstall
+          test ! -e "$app" || { find "$app"; exit 1; }
+          ! find "$HOME/Library/WebKit" "$HOME/Library/Caches" "$HOME/.cache" -maxdepth 1 -iname '*saba*' 2>/dev/null | grep .
+
+      - name: Mock relay log
+        if: failure()
+        run: cat mock.log || true
 
       - name: Upload
         uses: actions/upload-artifact@v4
