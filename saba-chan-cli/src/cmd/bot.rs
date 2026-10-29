@@ -102,8 +102,8 @@ pub async fn run(ctx: &Ctx, cmd: BotCmd) -> Result<()> {
             });
             Ok(())
         }
-        BotCmd::Channels { guild, chatbot, no_chatbot, music, no_music, notify, no_notify, game_chat, no_game_chat } => {
-            let change = ChannelChange { chatbot, no_chatbot, music, no_music, notify, no_notify, game_chat, no_game_chat };
+        BotCmd::Channels { guild, chatbot, no_chatbot, music, no_music, notify, no_notify, game_chat, no_game_chat, board, no_board } => {
+            let change = ChannelChange { chatbot, no_chatbot, music, no_music, notify, no_notify, game_chat, no_game_chat, board, no_board };
             match guild {
                 Some(guild) => channels(ctx, &resolve::guild(ctx, Some(&guild)).await?, change).await,
                 None => channels_of_paired(ctx, change).await,
@@ -494,12 +494,14 @@ struct ChannelChange {
     no_notify: bool,
     game_chat: Option<String>,
     no_game_chat: bool,
+    board: Option<String>,
+    no_board: bool,
 }
 
 impl ChannelChange {
     fn is_empty(&self) -> bool {
         self.chatbot.is_empty() && !self.no_chatbot && self.music.is_none() && !self.no_music && self.notify.is_none() && !self.no_notify
-            && self.game_chat.is_none() && !self.no_game_chat
+            && self.game_chat.is_none() && !self.no_game_chat && self.board.is_none() && !self.no_board
     }
 }
 
@@ -558,6 +560,11 @@ async fn channels(ctx: &Ctx, guild: &str, change: ChannelChange) -> Result<()> {
         patch.insert("gameChat".into(), Value::Null);
     } else if let Some(q) = &change.game_chat {
         patch.insert("gameChat".into(), json!(channel_id(&list, q)?));
+    }
+    if change.no_board {
+        patch.insert("board".into(), Value::Null);
+    } else if let Some(q) = &change.board {
+        patch.insert("board".into(), json!(channel_id(&list, q)?));
     }
     let r = if patch.is_empty() {
         current
@@ -714,6 +721,10 @@ fn print_channels(r: &Value) {
     // 옛 릴레이는 게임 채팅 채널을 모른다 (응답에 gameChat 없음)
     if r.get("gameChat").is_some() {
         rows.push((t!("bot.game_chat_channel"), r.get("gameChat").and_then(Value::as_str).map(name).unwrap_or_else(none)));
+    }
+    // 상황판을 모르는 릴레이는 응답에 board 가 없다
+    if r.get("board").is_some() {
+        rows.push((t!("bot.board_channel"), r.get("board").and_then(Value::as_str).map(name).unwrap_or_else(none)));
     }
     output::print_kv(&rows);
     if r.get("botAvailable").and_then(Value::as_bool) == Some(false) {

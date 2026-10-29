@@ -120,6 +120,7 @@
     "music_channel": "Канал Поющей Saba-chan",
     "notify_channel": "Канал уведомлений",
     "game_chat_channel": "Канал игрового чата",
+    "board_channel": "Status board channel",
     "confirm_music_channel": "Если сделать #{{name}} каналом Поющей Saba-chan, обычные сообщения в нём будут удаляться. Продолжить?",
     "channels_saved": "Назначение каналов изменено.",
     "channels_bot_missing": "Бота нет на этом сервере Discord, поэтому его каналы не показать. Пригласите его: saba-chan-cli bot invite",

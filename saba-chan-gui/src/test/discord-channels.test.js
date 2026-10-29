@@ -38,6 +38,20 @@ describe('채널 배정 변환', () => {
         expect(await screen.findByLabelText('Game chat channel')).toBeTruthy();
     });
 
+    it('상황판 채널도 바꾼 것만 보내고, 상황판을 모르는 릴레이(board 없음)에는 그 칸을 보이지 않는다', async () => {
+        expect(channelsPatch({ chatbot: [], music: null, board: null }, { chatbot: [], music: null, board: '222' })).toEqual({
+            board: '222',
+        });
+        window.api.relayNodeChannels = vi.fn().mockResolvedValue(base);
+        const { unmount } = render(<ChannelsTab node={node} />);
+        await screen.findByLabelText('Singing Saba-chan channel');
+        expect(screen.queryByLabelText('Status board channel')).toBeNull();
+        unmount();
+        window.api.relayNodeChannels = vi.fn().mockResolvedValue({ ...base, board: null });
+        render(<ChannelsTab node={node} />);
+        expect(await screen.findByLabelText('Status board channel')).toBeTruthy();
+    });
+
     it('데몬·릴레이 검증 오류는 코드 대신 일반 문구로 보인다', () => {
         const t = (k) => k;
         expect(channelsErrorText({ error: 'VALIDATION_ERROR', details: [] }, t, String)).toBe(

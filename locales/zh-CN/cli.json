@@ -120,6 +120,7 @@
     "music_channel": "会唱歌的 Saba-chan 频道",
     "notify_channel": "通知频道",
     "game_chat_channel": "游戏聊天频道",
+    "board_channel": "Status board channel",
     "confirm_music_channel": "将 #{{name}} 设为会唱歌的 Saba-chan 频道后，其中的普通消息会被删除。要继续吗？",
     "channels_saved": "频道分配已更改。",
     "channels_bot_missing": "机器人不在这个 Discord 服务器中，因此无法列出其频道。请邀请它：saba-chan-cli bot invite",

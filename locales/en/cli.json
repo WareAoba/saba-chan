@@ -120,6 +120,7 @@
     "music_channel": "Singing Saba-chan channel",
     "notify_channel": "Notification channel",
     "game_chat_channel": "Game chat channel",
+    "board_channel": "Status board channel",
     "confirm_music_channel": "Making #{{name}} the Singing Saba-chan channel deletes ordinary messages in it. Continue?",
     "channels_saved": "Channel assignment changed.",
     "channels_bot_missing": "The bot is not in this Discord server, so its channels can't be listed. Invite it: saba-chan-cli bot invite",

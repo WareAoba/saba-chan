@@ -120,6 +120,7 @@
     "music_channel": "Canal da Saba-chan cantora",
     "notify_channel": "Canal de notificações",
     "game_chat_channel": "Canal de chat do jogo",
+    "board_channel": "Status board channel",
     "confirm_music_channel": "Tornar #{{name}} o canal da Saba-chan cantora apaga as mensagens comuns nele. Continuar?",
     "channels_saved": "Atribuição de canais alterada.",
     "channels_bot_missing": "O bot não está neste servidor do Discord, então os canais não podem ser listados. Convide-o: saba-chan-cli bot invite",

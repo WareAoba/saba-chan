@@ -120,6 +120,7 @@
     "music_channel": "うたうサバちゃんのチャンネル",
     "notify_channel": "通知チャンネル",
     "game_chat_channel": "ゲームチャットチャンネル",
+    "board_channel": "Status board channel",
     "confirm_music_channel": "#{{name}} をうたうサバちゃんのチャンネルにすると、そのチャンネルの通常のメッセージは削除されます。続けますか?",
     "channels_saved": "チャンネルの割り当てを変更しました。",
     "channels_bot_missing": "ボットがこの Discord サーバーにいないため、チャンネル一覧を取得できません。招待: saba-chan-cli bot invite",

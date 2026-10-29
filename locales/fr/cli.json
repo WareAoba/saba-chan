@@ -120,6 +120,7 @@
     "music_channel": "Salon de Saba-chan qui chante",
     "notify_channel": "Salon des notifications",
     "game_chat_channel": "Canal du chat du jeu",
+    "board_channel": "Status board channel",
     "confirm_music_channel": "Faire de #{{name}} le salon de Saba-chan qui chante supprime les messages ordinaires qui y sont postés. Continuer ?",
     "channels_saved": "Attribution des salons modifiée.",
     "channels_bot_missing": "Le bot n'est pas sur ce serveur Discord, ses salons ne peuvent donc pas être listés. Invitez-le : saba-chan-cli bot invite",

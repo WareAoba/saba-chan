@@ -120,6 +120,7 @@
     "music_channel": "Canal de Saba-chan cantante",
     "notify_channel": "Canal de notificaciones",
     "game_chat_channel": "Canal de chat del juego",
+    "board_channel": "Status board channel",
     "confirm_music_channel": "Si #{{name}} pasa a ser el canal de Saba-chan cantante, se borrarán los mensajes normales que haya en él. ¿Continuar?",
     "channels_saved": "Se cambió la asignación de canales.",
     "channels_bot_missing": "El bot no está en este servidor de Discord, así que no se pueden listar sus canales. Invítalo: saba-chan-cli bot invite",
