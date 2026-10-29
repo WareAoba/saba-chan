@@ -98,7 +98,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, ubuntu-latest]
+        # macOS(M칩)는 맥 판을 준비하는 동안 PR마다 컴파일·시험이 깨지지 않는지 본다
+        os: [windows-latest, ubuntu-latest, macos-latest]
         full: ['${{ needs.changes.outputs.full }}']
         exclude:
           # Ubuntu 시험은 클라우드 작업에서 매번 돌린다
@@ -137,22 +138,10 @@ jobs:
         shell: bash
         run: |
           mkdir -p modules/test-module
-          cat > modules/test-module/module.toml << 'EOF'
-          [module]
-          name = "test-module"
-          version = "0.0.1"
-          description = "CI test fixture"
-          author = "ci"
-          game_name = "TestGame"
-          display_name = "Test Module"
-          entry = "lifecycle.py"
-          EOF
-          # Strip leading whitespace from heredoc (YAML indentation artifact)
-          sed -i 's/^[[:space:]]*//' modules/test-module/module.toml
-          cat > modules/test-module/lifecycle.py << 'EOF'
-          # minimal test lifecycle
-          EOF
-          sed -i 's/^[[:space:]]*//' modules/test-module/lifecycle.py
+          printf '%s\n' '[module]' 'name = "test-module"' 'version = "0.0.1"' 'description = "CI test fixture"' \
+            'author = "ci"' 'game_name = "TestGame"' 'display_name = "Test Module"' 'entry = "lifecycle.py"' \
+            > modules/test-module/module.toml
+          echo '# minimal test lifecycle' > modules/test-module/lifecycle.py
 
       - name: Clippy
         run: cargo clippy --workspace -- -D warnings
