@@ -76,7 +76,7 @@ jobs:
           else
             echo "frontend=false" >> "$GITHUB_OUTPUT"
           fi
-          if echo "$files" | grep -qE '^\.github/(scripts/package-(macos|linux)\.py|workflows/)'; then
+          if echo "$files" | grep -qE '^(\.github/(scripts/(test_)?package-(macos|linux)\.py|workflows/)|saba-chan-gui/src-tauri/(macos/|icons/icon\.icns|tauri\.conf\.json|Cargo\.toml))'; then
             echo "macpkg=true" >> "$GITHUB_OUTPUT"
           else
             echo "macpkg=false" >> "$GITHUB_OUTPUT"

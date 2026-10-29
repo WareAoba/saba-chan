@@ -1647,7 +1647,16 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let exe = tmp.path().join("saba-replaced-test");
         std::fs::copy("/bin/sleep", &exe).unwrap();
-        let mut child = std::process::Command::new(&exe).arg("30").spawn().unwrap();
+        // 방금 복사한 파일은 다른 시험이 fork하는 동안 쓰기 핸들이 남아 ETXTBSY가 날 수 있다
+        let mut child = (0..50)
+            .find_map(|_| match std::process::Command::new(&exe).arg("30").spawn() {
+                Err(e) if e.kind() == std::io::ErrorKind::ExecutableFileBusy => {
+                    std::thread::sleep(std::time::Duration::from_millis(20));
+                    None
+                }
+                other => Some(other.unwrap()),
+            })
+            .expect("executable stayed busy");
         std::fs::remove_file(&exe).unwrap();
         std::fs::copy("/bin/sleep", &exe).unwrap();
         let named = list_named(&["saba-replaced-test"]).unwrap();

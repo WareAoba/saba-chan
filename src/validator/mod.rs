@@ -621,7 +621,8 @@ fn ports_held_by_binding(ports: &[(String, u16)]) -> Vec<(String, u16)> {
         .filter(|(_, port)| *port != 0)
         .filter(|(_, port)| {
             // 맥(BSD)은 다른 프로그램이 127.0.0.1에만 연 TCP 포트도 0.0.0.0으로는 묶게 해 준다: 루프백에도 묶어 본다
-            [std::net::Ipv4Addr::UNSPECIFIED, std::net::Ipv4Addr::LOCALHOST].into_iter().any(|ip| {
+            let loopback = cfg!(target_os = "macos").then_some(std::net::Ipv4Addr::LOCALHOST);
+            std::iter::once(std::net::Ipv4Addr::UNSPECIFIED).chain(loopback).any(|ip| {
                 let addr = (ip, *port);
                 std::net::TcpListener::bind(addr).err().is_some_and(in_use)
                     || std::net::UdpSocket::bind(addr).err().is_some_and(in_use)

@@ -211,12 +211,28 @@ fn listener_pids(port: u16) -> Option<Vec<u32>> {
 
 #[cfg(target_os = "macos")]
 fn listener_pids(port: u16) -> Option<Vec<u32>> {
-    // 맥에는 /proc가 없다: 시스템의 lsof에 묻는다(`p<PID>` 줄). 맞는 소켓이 없으면 1로 끝나고 아무것도 쓰지 않는다
-    let out = std::process::Command::new("/usr/sbin/lsof")
-        .args(["-nP", &format!("-iTCP:{port}"), "-sTCP:LISTEN", "-Fp"])
-        .output()
+    // 맥에는 /proc가 없다: 시스템의 lsof에 묻는다(`p<PID>` 줄). 맞는 소켓이 없으면 1로 끝나고 아무것도 쓰지 않는다.
+    // 응답 없는 네트워크 드라이브에서 멈추지 않게 커널 대기를 피하고(-b) 5초가 넘으면 끝낸다 (그때는 잇지 않는다)
+    use std::io::Read;
+    let mut child = std::process::Command::new("/usr/sbin/lsof")
+        .args(["-b", "-w", "-nP", &format!("-iTCP:{port}"), "-sTCP:LISTEN", "-Fp"])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
         .ok()?;
-    Some(String::from_utf8_lossy(&out.stdout).lines().filter_map(|l| l.strip_prefix('p')?.parse().ok()).collect())
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    while child.try_wait().ok()?.is_none() {
+        if std::time::Instant::now() > deadline {
+            let _ = child.kill();
+            let _ = child.wait();
+            return None;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let mut text = String::new();
+    child.stdout.take()?.read_to_string(&mut text).ok()?;
+    Some(text.lines().filter_map(|l| l.strip_prefix('p')?.parse().ok()).collect())
 }
 
 #[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
