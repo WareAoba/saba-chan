@@ -972,12 +972,24 @@ fn powershell_lines(script: &str) -> Option<String> {
     }
 }
 
+/// `/proc/<pid>/exe`가 가리키는 실행 파일. 업데이트가 파일을 갈아 끼워 옛 파일이 지워졌으면
+/// 리눅스가 경로 끝에 " (deleted)"를 붙인다: 그 꼬리를 떼어 원래 자리로 돌린다 (옛 판으로 도는 데몬·GUI도 끈다)
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+fn proc_exe(proc_dir: &Path) -> Option<PathBuf> {
+    let exe = std::fs::read_link(proc_dir.join("exe")).ok()?;
+    let text = exe.to_string_lossy();
+    Some(match text.strip_suffix(" (deleted)") {
+        Some(live) => PathBuf::from(live),
+        None => exe,
+    })
+}
+
 #[cfg(not(any(target_os = "windows", target_os = "macos")))]
 fn list_named(names: &[&str]) -> Option<String> {
     let mut listing = String::new();
     for entry in std::fs::read_dir("/proc").ok()?.flatten() {
         let Ok(pid) = entry.file_name().to_string_lossy().parse::<u32>() else { continue };
-        let Ok(exe) = std::fs::read_link(entry.path().join("exe")) else { continue };
+        let Some(exe) = proc_exe(&entry.path()) else { continue };
         let name = exe.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
         let stem = name.strip_suffix(".exe").unwrap_or(&name);
         if names.iter().any(|n| n.eq_ignore_ascii_case(stem)) {
@@ -1039,7 +1051,7 @@ fn list_all() -> Option<String> {
         let ppid = fields.get(1).and_then(|p| p.parse::<u32>().ok()).unwrap_or(0);
         let start = fields.get(19).and_then(|p| p.parse::<u64>().ok()).unwrap_or(0);
         let comm = head.split_once('(').map(|(_, c)| c).unwrap_or("");
-        let exe = std::fs::read_link(entry.path().join("exe")).ok();
+        let exe = proc_exe(&entry.path());
         let name = exe.as_ref().and_then(|e| e.file_name()).map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| comm.to_string());
         let exe = exe.map(|e| e.display().to_string()).unwrap_or_default();
         listing.push_str(&format!("{}|{}|{}|{}|{}\n", pid, ppid, start, name, exe));
@@ -1624,6 +1636,27 @@ mod tests {
         let named = [(110, String::new()), (999, "saba-core".to_string())];
         assert_eq!(identify(Some(listing), &named), vec![(110, "java.exe".to_string(), 60), (999, "saba-core".to_string(), 0)]);
         assert_eq!(still_listed("999|1|42|saba-core.exe|C:\\Saba\\saba-core.exe\n", &identify(None, &named[1..])).len(), 1);
+    }
+
+    // 업데이트가 실행 파일을 갈아 끼운 뒤에도 옛 파일로 도는 프로세스를 찾는다
+    // (리눅스는 지워진 실행 파일의 경로 끝에 " (deleted)"를 붙인다)
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_process_whose_file_was_replaced_is_still_found() {
+        // 다른 시험이 찾는 데몬 이름(saba-core)과 겹치지 않는 이름으로
+        let tmp = tempfile::tempdir().unwrap();
+        let exe = tmp.path().join("saba-replaced-test");
+        std::fs::copy("/bin/sleep", &exe).unwrap();
+        let mut child = std::process::Command::new(&exe).arg("30").spawn().unwrap();
+        std::fs::remove_file(&exe).unwrap();
+        std::fs::copy("/bin/sleep", &exe).unwrap();
+        let named = list_named(&["saba-replaced-test"]).unwrap();
+        let all = list_all().unwrap();
+        let _ = child.kill();
+        let _ = child.wait();
+        let line = format!("{}|saba-replaced-test|{}", child.id(), exe.display());
+        assert!(named.lines().any(|l| l == line), "{named}");
+        assert!(all.lines().any(|l| l.starts_with(&format!("{}|", child.id())) && l.ends_with(&format!("|saba-replaced-test|{}", exe.display()))), "{all}");
     }
 
     // 실제 프로세스 목록으로: 데몬 자리의 셸 아래 자식을 찾고, 끈 뒤 끝날 때까지 기다린다
