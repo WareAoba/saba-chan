@@ -1007,6 +1007,9 @@
     "channels_notify": "通知频道",
     "channels_notify_hint": "崩溃、自动重启、更新、备份完成和计划重启预告会发到这个频道。",
     "channels_is_notify": "用作通知频道",
+    "channels_game_chat": "游戏聊天频道",
+    "channels_game_chat_hint": "开启聊天转发的服务器的游戏聊天会发到这里。",
+    "channels_is_game_chat": "用作游戏聊天频道",
     "default_prefix": "Saba-chan",
     "prefix_default_label": "默认（{{prefix}}）",
     "prefix_default_placeholder": "留空则使用默认的 {{prefix}}",
@@ -1550,6 +1553,18 @@
     "hint": "留空表示不限制。Java 服务器请设为比 -Xmx 大 1~2GB。仅在 Windows 上生效。",
     "placeholder": "不限制",
     "restart_note": "重启后生效。"
+  },
+  "game_chat": {
+    "title": "游戏聊天转发",
+    "desc": "将游戏内聊天发送到 Discord 的游戏聊天频道。不会把 Discord 消息发回游戏。",
+    "mode_label": "要发送的聊天",
+    "mode_off": "不发送",
+    "mode_all": "所有聊天",
+    "mode_keyword": "仅以关键词开头的聊天",
+    "keyword_label": "关键词",
+    "keyword_hint": "聊天开头有此词时，去掉该词后发送。不含空格，最多 32 个字符。",
+    "keyword_placeholder": "例如：!dc",
+    "channel_note": "在 Discord 标签页的频道设置中，或用 /saba assign 选择“游戏聊天”来指定频道。"
   },
   "stop_timeout": {
     "title": "停止等待时间",

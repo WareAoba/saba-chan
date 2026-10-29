@@ -5,7 +5,7 @@ import CustomDropdown from '../CustomDropdown/CustomDropdown';
 import { Icon } from '../Icon';
 import { SabaCheckbox, SabaSpinner } from '../ui/SabaUI';
 
-/** 릴레이 계약: 길드당 챗봇 채널 최대 20개, 음악·알림 채널 각 1개 (assign/contract.md, I3) */
+/** 릴레이 계약: 길드당 챗봇 채널 최대 20개, 음악·알림·게임 채팅 채널 각 1개 (assign/contract.md, I3) */
 export const CHATBOT_MAX = 20;
 
 export const channelsAvailable = () => Boolean(window.api?.relayNodeChannels && window.api?.relayNodeChannelsSave);
@@ -18,6 +18,7 @@ export function channelsPatch(saved, draft) {
     if (!sameSet(saved.chatbot, draft.chatbot)) patch.chatbot = draft.chatbot;
     if ((saved.music || null) !== (draft.music || null)) patch.music = draft.music || null;
     if ((saved.notify || null) !== (draft.notify || null)) patch.notify = draft.notify || null;
+    if ((saved.gameChat || null) !== (draft.gameChat || null)) patch.gameChat = draft.gameChat || null;
     return patch;
 }
 
@@ -45,17 +46,19 @@ const fromResponse = (res) => ({
     chatbot: Array.isArray(res?.chatbot) ? res.chatbot.map(String) : [],
     music: res?.music ? String(res.music) : null,
     notify: res?.notify ? String(res.notify) : null,
+    // 옛 릴레이는 게임 채팅 채널을 모른다 (gameChat 없음)
+    gameChat: res?.gameChat ? String(res.gameChat) : null,
 });
 
 /**
- * 디스코드 서버 하나의 채널 배정: 챗봇 채널(여러 개)·음악 채널(하나)·알림 채널(하나).
+ * 디스코드 서버 하나의 채널 배정: 챗봇 채널(여러 개)·음악 채널(하나)·알림 채널(하나)·게임 채팅 채널(하나).
  * 원본은 릴레이다 (GET/PUT /api/relay/node/:guild_id/channels). 한 채널은 한 종류만 맡는다.
  */
 export function ChannelsTab({ node }) {
     const { t } = useTranslation('gui');
     const guildId = node.guildId;
     const [data, setData] = useState(null); // 마지막 응답
-    const [draft, setDraft] = useState({ chatbot: [], music: null, notify: null });
+    const [draft, setDraft] = useState({ chatbot: [], music: null, notify: null, gameChat: null });
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState(null);
@@ -130,6 +133,12 @@ export function ChannelsTab({ node }) {
             chatbot: id ? d.chatbot.filter((x) => x !== id) : d.chatbot,
             notify: id || null,
         }));
+    const setGameChat = (id) =>
+        setDraft((d) => ({
+            ...d,
+            chatbot: id ? d.chatbot.filter((x) => x !== id) : d.chatbot,
+            gameChat: id || null,
+        }));
 
     const save = async () => {
         if (newMusic && !armed) {
@@ -182,9 +191,10 @@ export function ChannelsTab({ node }) {
                             const id = String(c.id);
                             const isMusic = draft.music === id;
                             const isNotify = draft.notify === id;
+                            const isGameChat = draft.gameChat === id;
                             const checked = draft.chatbot.includes(id);
                             // 봇이 없으면 새로 배정할 수 없다 (503 BOT_UNAVAILABLE). 해제만 된다
-                            const locked = isMusic || isNotify || (!botAvailable && !checked);
+                            const locked = isMusic || isNotify || isGameChat || (!botAvailable && !checked);
                             return (
                                 <div key={id} className={clsx('dc-channel-row', { disabled: locked })}>
                                     <SabaCheckbox
@@ -196,6 +206,7 @@ export function ChannelsTab({ node }) {
                                     <span>#{c.name}</span>
                                     {isMusic && <span className="muted">{t('discord.channels_is_music')}</span>}
                                     {isNotify && <span className="muted">{t('discord.channels_is_notify')}</span>}
+                                    {isGameChat && <span className="muted">{t('discord.channels_is_game_chat')}</span>}
                                 </div>
                             );
                         })}
@@ -237,7 +248,9 @@ export function ChannelsTab({ node }) {
                             value: String(c.id),
                             label: `${c.category ? `${c.category} / ` : ''}#${c.name}`,
                             disabled:
-                                String(c.id) === draft.notify || (!botAvailable && String(c.id) !== draft.music),
+                                String(c.id) === draft.notify ||
+                                String(c.id) === draft.gameChat ||
+                                (!botAvailable && String(c.id) !== draft.music),
                         })),
                     ]}
                 />
@@ -265,11 +278,42 @@ export function ChannelsTab({ node }) {
                             value: String(c.id),
                             label: `${c.category ? `${c.category} / ` : ''}#${c.name}`,
                             disabled:
-                                String(c.id) === draft.music || (!botAvailable && String(c.id) !== draft.notify),
+                                String(c.id) === draft.music ||
+                                String(c.id) === draft.gameChat ||
+                                (!botAvailable && String(c.id) !== draft.notify),
                         })),
                     ]}
                 />
             </section>
+
+            {/* 게임 채팅 채널을 아는 릴레이만 응답에 gameChat을 싣는다 */}
+            {data && 'gameChat' in data && (
+                <section className="dc-card">
+                    <h3>
+                        <Icon name="messageSquare" size="sm" /> {t('discord.channels_game_chat')}
+                    </h3>
+                    <p className="dc-hint">{t('discord.channels_game_chat_hint')}</p>
+                    <CustomDropdown
+                        value={draft.gameChat || ''}
+                        ariaLabel={t('discord.channels_game_chat')}
+                        onChange={(v) => setGameChat(String(v))}
+                        options={[
+                            { value: '', label: t('discord.channels_music_none') },
+                            ...(draft.gameChat && !channels.some((c) => String(c.id) === draft.gameChat)
+                                ? [{ value: draft.gameChat, label: draft.gameChat }]
+                                : []),
+                            ...channels.map((c) => ({
+                                value: String(c.id),
+                                label: `${c.category ? `${c.category} / ` : ''}#${c.name}`,
+                                disabled:
+                                    String(c.id) === draft.music ||
+                                    String(c.id) === draft.notify ||
+                                    (!botAvailable && String(c.id) !== draft.gameChat),
+                            })),
+                        ]}
+                    />
+                </section>
+            )}
 
             {error && (
                 <p className="dc-field-error" role="alert">

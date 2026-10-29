@@ -949,7 +949,7 @@ pub enum BotCmd {
     Nodes,
     /// Members of a paired Discord server (name or id; without it: the only paired server)
     Members { guild: Option<String> },
-    /// Talking Saba-chan channels (several), the Singing Saba-chan channel (one) and the notification channel of a paired Discord server. No options: show
+    /// Talking Saba-chan channels (several), the Singing Saba-chan channel (one), the notification channel and the game chat channel of a paired Discord server. No options: show
     Channels {
         /// Without it: every paired Discord server (changing needs exactly one)
         guild: Option<String>,
@@ -971,6 +971,12 @@ pub enum BotCmd {
         /// Unassign the notification channel
         #[arg(long)]
         no_notify: bool,
+        /// The game chat channel (in-game chat of servers with game chat relay on), by name or id
+        #[arg(long, conflicts_with = "no_game_chat")]
+        game_chat: Option<String>,
+        /// Unassign the game chat channel
+        #[arg(long)]
+        no_game_chat: bool,
     },
     /// The language the bot answers in on a Discord server (`auto` follows this PC's language). No value: show
     Lang { guild: String, value: Option<String> },
