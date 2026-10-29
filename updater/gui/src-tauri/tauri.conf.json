@@ -1,6 +1,6 @@
 {
   "productName": "Saba-chan",
-  "version": "0.1.11",
+  "version": "0.1.12-beta.1",
   "identifier": "com.saba-chan.updater",
   "build": {
     "frontendDist": "../src"
