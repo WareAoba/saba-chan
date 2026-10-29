@@ -22,6 +22,22 @@ describe('채널 배정 변환', () => {
         expect(channelsPatch(saved, { chatbot: [], music: null })).toEqual({ chatbot: [], music: null });
     });
 
+    it('게임 채팅 채널도 바꾼 것만 보내고, 옛 릴레이(gameChat 없음)에는 그 칸을 보이지 않는다', async () => {
+        expect(
+            channelsPatch({ chatbot: [], music: null, gameChat: null }, { chatbot: [], music: null, gameChat: '222' }),
+        ).toEqual({
+            gameChat: '222',
+        });
+        window.api.relayNodeChannels = vi.fn().mockResolvedValue(base);
+        const { unmount } = render(<ChannelsTab node={node} />);
+        await screen.findByLabelText('Singing Saba-chan channel');
+        expect(screen.queryByLabelText('Game chat channel')).toBeNull();
+        unmount();
+        window.api.relayNodeChannels = vi.fn().mockResolvedValue({ ...base, gameChat: null });
+        render(<ChannelsTab node={node} />);
+        expect(await screen.findByLabelText('Game chat channel')).toBeTruthy();
+    });
+
     it('데몬·릴레이 검증 오류는 코드 대신 일반 문구로 보인다', () => {
         const t = (k) => k;
         expect(channelsErrorText({ error: 'VALIDATION_ERROR', details: [] }, t, String)).toBe(

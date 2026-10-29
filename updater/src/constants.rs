@@ -54,6 +54,9 @@ pub const INSTANCE_FIELDS: &[(&str, &str)] = &[
     ("extra_args", "text"),
     // 메모리 상한(MiB). 비우면 제한 없음 (Windows만 적용)
     ("memory_limit_mb", "number"),
+    // 게임 채팅을 디스코드로: off·all·keyword, keyword면 감지 단어
+    ("game_chat", "text"),
+    ("game_chat_keyword", "text"),
 ];
 
 /// `INSTANCE_FIELDS` 중 비울 수 없는 칸: 데몬 PATCH가 null을 받아도 지금 값을 둔다.

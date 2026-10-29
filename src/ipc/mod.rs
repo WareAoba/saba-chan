@@ -243,6 +243,14 @@ pub struct ServerInfo {
     /// 메모리 상한 MiB (`ServerInstance::memory_limit_mb`)
     #[serde(default)]
     pub memory_limit_mb: Option<u64>,
+    /// 게임 채팅 전달 (`ServerInstance::game_chat`·`game_chat_keyword`)
+    #[serde(default)]
+    pub game_chat: crate::supervisor::game_chat::Mode,
+    #[serde(default)]
+    pub game_chat_keyword: String,
+    /// 이 서버의 채팅을 읽을 수 있는지: 모듈이 `chat_patterns`를 주고 데몬이 콘솔을 읽는 시작(managed)일 때
+    #[serde(default)]
+    pub game_chat_supported: bool,
     /// 익스텐션 데이터 slot (Q-7): 데몬이 조건을 판정하고 값을 찾아 둔 것 (`ExtensionManager::server_slots`)
     #[serde(default, skip_serializing_if = "serde_json::Map::is_empty")]
     pub slots: serde_json::Map<String, serde_json::Value>,

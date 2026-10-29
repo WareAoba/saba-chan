@@ -1007,6 +1007,9 @@
     "channels_notify": "通知頻道",
     "channels_notify_hint": "當機、自動重啟、更新、備份完成和排程重啟預告會發到這個頻道。",
     "channels_is_notify": "用作通知頻道",
+    "channels_game_chat": "遊戲聊天頻道",
+    "channels_game_chat_hint": "開啟聊天轉發的伺服器的遊戲聊天會傳到這裡。",
+    "channels_is_game_chat": "用作遊戲聊天頻道",
     "default_prefix": "Saba-chan",
     "prefix_default_label": "預設（{{prefix}}）",
     "prefix_default_placeholder": "留空則使用預設的 {{prefix}}",
@@ -1550,6 +1553,18 @@
     "hint": "留空表示不限制。Java 伺服器請設為比 -Xmx 大 1~2GB。僅在 Windows 上生效。",
     "placeholder": "不限制",
     "restart_note": "重新啟動後生效。"
+  },
+  "game_chat": {
+    "title": "遊戲聊天轉發",
+    "desc": "將遊戲內聊天傳送到 Discord 的遊戲聊天頻道。不會把 Discord 訊息傳回遊戲。",
+    "mode_label": "要傳送的聊天",
+    "mode_off": "不傳送",
+    "mode_all": "所有聊天",
+    "mode_keyword": "僅以關鍵字開頭的聊天",
+    "keyword_label": "關鍵字",
+    "keyword_hint": "聊天開頭有此字時，去掉該字後傳送。不含空格，最多 32 個字元。",
+    "keyword_placeholder": "例如：!dc",
+    "channel_note": "在 Discord 分頁的頻道設定中，或用 /saba assign 選擇「遊戲聊天」來指定頻道。"
   },
   "stop_timeout": {
     "title": "停止等待時間",

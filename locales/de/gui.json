@@ -1007,6 +1007,9 @@
     "channels_notify": "Benachrichtigungskanal",
     "channels_notify_hint": "Abstürze, automatische Neustarts, Updates, fertige Sicherungen und Hinweise auf geplante Neustarts erscheinen hier.",
     "channels_is_notify": "Als Benachrichtigungskanal verwendet",
+    "channels_game_chat": "Spielchat-Kanal",
+    "channels_game_chat_hint": "Hier landet der Spielchat der Server mit aktivierter Weiterleitung.",
+    "channels_is_game_chat": "Als Spielchat-Kanal verwendet",
     "default_prefix": "Saba-chan",
     "prefix_default_label": "Standard ({{prefix}})",
     "prefix_default_placeholder": "Leer lassen für {{prefix}}",
@@ -1550,6 +1553,18 @@
     "hint": "Leer lassen für kein Limit. Bei Java-Servern 1–2 GB über -Xmx setzen. Gilt nur unter Windows.",
     "placeholder": "Kein Limit",
     "restart_note": "Gilt nach einem Neustart."
+  },
+  "game_chat": {
+    "title": "Spielchat weiterleiten",
+    "desc": "Sendet den Chat aus dem Spiel in den Spielchat-Kanal auf Discord. Discord-Nachrichten gehen nicht ins Spiel.",
+    "mode_label": "Zu sendender Chat",
+    "mode_off": "Nicht senden",
+    "mode_all": "Gesamter Chat",
+    "mode_keyword": "Nur Chat, der mit dem Stichwort beginnt",
+    "keyword_label": "Stichwort",
+    "keyword_hint": "Chat, der mit diesem Wort beginnt, wird ohne das Wort gesendet. Ein Wort, bis zu 32 Zeichen.",
+    "keyword_placeholder": "z. B. !dc",
+    "channel_note": "Den Kanal wählst du in der Kanalzuweisung im Discord-Tab oder mit /saba assign → Spielchat."
   },
   "stop_timeout": {
     "title": "Wartezeit beim Stoppen",

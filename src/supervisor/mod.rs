@@ -6,6 +6,7 @@ pub mod highlight;
 pub mod players;
 pub mod ready;
 pub mod player_events;
+pub mod game_chat;
 
 use anyhow::Result;
 use process::ProcessTracker;
@@ -913,9 +914,9 @@ impl Supervisor {
         result.map(|result| with_port_moved(result, moved))
     }
 
-    /// 시작 결과로 준비 알림(R39, `ready.rs`)과 접속·퇴장 알림(MK8, `player_events.rs`)을 시작한다. 콘솔을 읽는 managed 프로세스면 준비 문구를 기다린다
+    /// 시작 결과로 준비 알림(R39, `ready.rs`)과 접속·퇴장 알림(MK8)·게임 채팅 전달(`player_events.rs`)을 시작한다. 콘솔을 읽는 managed 프로세스면 준비 문구를 기다린다
     async fn announce_ready(sup: &tokio::sync::RwLock<Self>, key: &str, result: &Result<Value>) {
-        let (id, name, console, patterns, timeout, join, leave) = {
+        let (id, name, console, patterns, timeout, join, leave, chat) = {
             let s = sup.read().await;
             let Some(instance) = s.instance_store.get(key).or_else(|| s.instance_store.list().iter().find(|i| i.name == key)) else { return };
             let module = s.module_loader.get_module(&instance.module_name).ok();
@@ -923,11 +924,13 @@ impl Supervisor {
             let patterns = meta.map(|m| m.ready_patterns.clone()).unwrap_or_default();
             let timeout = meta.and_then(|m| m.ready_timeout).unwrap_or(ready::DEFAULT_READY_TIMEOUT_SECS);
             let (join, leave) = meta.map(|m| (m.player_join_patterns.clone(), m.player_leave_patterns.clone())).unwrap_or_default();
+            let chat = meta.map(|m| m.chat_patterns.clone()).unwrap_or_default();
+            game_chat::remember(&instance.id, &instance.game_chat());
             let console = s.managed_store.get(&instance.id).await.filter(|p| !p.log_follower);
-            (instance.id.clone(), instance.name.clone(), console, patterns, Duration::from_secs(timeout), join, leave)
+            (instance.id.clone(), instance.name.clone(), console, patterns, Duration::from_secs(timeout), join, leave, chat)
         };
-        // 접속·퇴장 알림(MK8)도 같은 콘솔을 본다
-        player_events::after_start(&id, &name, result, console.clone(), &join, &leave);
+        // 접속·퇴장 알림(MK8)과 게임 채팅도 같은 콘솔을 본다
+        player_events::after_start(&id, &name, result, console.clone(), &join, &leave, &chat);
         ready::after_start(&id, &name, result, console, &patterns, timeout);
     }
 
@@ -3679,6 +3682,53 @@ mod tests {
         let _ = Supervisor::stop_server(&sup, "p-chatty", "chatty", true).await;
     }
 
+    /// 게임 채팅 전달: 켠 서버의 콘솔 채팅이 설정(감지 단어)에 맞으면 데몬이 다 만든 문장으로 `instance.chat`을 낸다. 시스템 줄은 보지 않는다
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_managed_server_forwards_game_chat_as_set() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("modules").join("talky");
+        std::fs::create_dir_all(&dir).unwrap();
+        let table = "chat_patterns = ['^\\[\\d{2}:\\d{2}:\\d{2}\\] \\[Server thread/INFO\\]: <(?P<name>[A-Za-z0-9_]{1,16})> (?P<message>.*)$']\n";
+        std::fs::write(dir.join("module.toml"), format!("[module]\nschema_version = 1\nname = \"talky\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[extensions.saba-core]\n{table}")).unwrap();
+        let sh = "echo '[20:07:05] [Server thread/INFO]: <Steve> hello'; echo '[20:07:06] [Server thread/INFO]: <Steve> !d 안녕 *다들*'; sleep 30";
+        std::fs::write(dir.join("lifecycle.py"), format!(
+            "import json, sys\n\
+             if sys.argv[1] == 'get_launch_command':\n    \
+             print(json.dumps({{'success': True, 'program': '/bin/sh', 'args': ['-c', {sh:?}], 'working_dir': '.'}}))\n\
+             else:\n    print(json.dumps({{'success': True}}))\n"
+        )).unwrap();
+        crate::sandbox::consent_test_component(&dir.join("lifecycle.py"));
+        let mut sup = Supervisor::new_with_instances_dir(tmp.path().join("modules").to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let mut inst = crate::instance::ServerInstance::new("survival", "talky");
+        inst.id = "p-talky".into();
+        inst.game_chat = game_chat::Mode::Keyword;
+        inst.game_chat_keyword = "!d".into();
+        sup.instance_store.add(inst).unwrap();
+        let sup = std::sync::Arc::new(tokio::sync::RwLock::new(sup));
+        let mut sub = crate::events::bus().subscribe(None);
+        assert_eq!(Supervisor::start_managed_server(&sup, "p-talky", "talky", json!({})).await.unwrap()["success"], true);
+        if let Some(proc) = sup.read().await.managed_store.get("p-talky").await {
+            proc.push_system_line("[20:07:07] [Server thread/INFO]: <Mallory> !d fake".into(), crate::supervisor::managed_process::LogLevel::Info).await;
+        }
+
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(20);
+        let text = loop {
+            let left = deadline.saturating_duration_since(tokio::time::Instant::now());
+            let e = tokio::time::timeout(left, sub.rx.recv()).await.expect("instance.chat arrives").unwrap();
+            if e.kind == "instance.chat" && e.data["instanceId"] == "p-talky" {
+                assert_eq!(e.data["instance"], "survival");
+                break e.data["text"].clone();
+            }
+        };
+        assert_eq!(text, "\\[survival\\] **Steve**: 안녕 \\*다들\\*", "the first chat had no keyword; the word is cut and markup escaped");
+        // 설정을 끄면 켜 둔 서버도 바로 따른다
+        game_chat::remember("p-talky", &Default::default());
+        assert_eq!(game_chat::settings("p-talky").pick("!d x"), None);
+        let _ = Supervisor::stop_server(&sup, "p-talky", "talky", true).await;
+    }
+
     #[tokio::test]
     async fn test_supervisor_initialization() {
         let supervisor = Supervisor::new("./modules");
@@ -4852,6 +4902,8 @@ mod tests {
             user_settings: Default::default(),
             imported_settings: Default::default(),
             data_roots_backfill_attempted: Default::default(),
+            game_chat: Default::default(),
+            game_chat_keyword: String::new(),
         };
         supervisor.instance_store.add(inst).unwrap();
 
@@ -4914,6 +4966,8 @@ mod tests {
             user_settings: Default::default(),
             imported_settings: Default::default(),
             data_roots_backfill_attempted: Default::default(),
+            game_chat: Default::default(),
+            game_chat_keyword: String::new(),
         };
         let inst_dir = instances_dir.join("test-tracker-guard");
         let _ = std::fs::create_dir_all(&inst_dir);

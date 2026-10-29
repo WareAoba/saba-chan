@@ -1007,6 +1007,9 @@
     "channels_notify": "Salon d'alertes",
     "channels_notify_hint": "Plantages, redémarrages automatiques, mises à jour, sauvegardes terminées et avertissements de redémarrage programmé y sont publiés.",
     "channels_is_notify": "Utilisé comme salon d'alertes",
+    "channels_game_chat": "Canal du chat du jeu",
+    "channels_game_chat_hint": "Le chat des serveurs avec le relais activé arrive ici.",
+    "channels_is_game_chat": "Utilisé comme canal du chat du jeu",
     "default_prefix": "Saba-chan",
     "prefix_default_label": "par défaut ({{prefix}})",
     "prefix_default_placeholder": "Laisser vide pour utiliser {{prefix}}",
@@ -1550,6 +1553,18 @@
     "hint": "Laisse vide pour aucune limite. Pour les serveurs Java, mets 1 à 2 Go de plus que -Xmx. Uniquement sous Windows.",
     "placeholder": "Aucune limite",
     "restart_note": "S'applique après un redémarrage."
+  },
+  "game_chat": {
+    "title": "Relais du chat du jeu",
+    "desc": "Envoie le chat du jeu dans le canal de chat du jeu sur Discord. Les messages Discord ne sont pas envoyés dans le jeu.",
+    "mode_label": "Chat à envoyer",
+    "mode_off": "Ne pas envoyer",
+    "mode_all": "Tout le chat",
+    "mode_keyword": "Seulement le chat qui commence par le mot-clé",
+    "keyword_label": "Mot-clé",
+    "keyword_hint": "Le chat qui commence par ce mot est envoyé sans lui. Un mot, 32 caractères max.",
+    "keyword_placeholder": "ex. !dc",
+    "channel_note": "Choisissez le canal dans l'assignation des canaux de l'onglet Discord ou avec /saba assign → Chat du jeu."
   },
   "stop_timeout": {
     "title": "Délai d'arrêt",
