@@ -254,8 +254,9 @@ impl RelayClient {
         let manifest = match verify_release(&signed, platform, channel, current) {
             Ok(manifest) => manifest,
             // 최신이고 릴리즈를 받지 않았으면 버전만으로 manifest를 찾는다. 같은 버전이 다른 채널에도 있으면 그쪽 것이 온다.
-            // 다른 채널의 구성요소는 같은 코어 버전이어도 다르다: 비교하지 않고 받을 것이 없다고 본다
-            Err(RelayError::WrongChannel { .. }) if by_version => return Ok(None),
+            // 다른 채널의 구성요소는 같은 코어 버전이어도 다르다: 비교하지 않고 받을 것이 없다고 본다.
+            // 그 버전에 이 플랫폼 몫이 없어도(아직 그 플랫폼 빌드가 나오지 않은 버전) 받을 것이 없다
+            Err(RelayError::WrongChannel { .. } | RelayError::WrongTarget { .. }) if by_version => return Ok(None),
             Err(e) => return Err(e),
         };
         bind_release(latest, manifest).map(Some)
@@ -474,6 +475,14 @@ mod tests {
         let base = fake_relay(r#"{"upToDate":true}"#.into(), PRODUCTION_0_1_1.into()).await;
         let got = RelayClient::new(&base).fetch_verified_release("stable", "windows-x64", "0.1.1", "t").await;
         assert_eq!(got.unwrap().map(|v| v.manifest.version).as_deref(), Some("0.1.1"));
+    }
+
+    /// 지금 버전 릴리즈에 이 플랫폼 몫이 없으면(그 버전에 아직 linux-arm64가 나오지 않음) 받을 것이 없다. 확인 실패가 아니다
+    #[tokio::test]
+    async fn an_up_to_date_client_whose_version_has_no_build_for_its_platform_has_nothing_to_get() {
+        let base = fake_relay(r#"{"upToDate":true}"#.into(), PRODUCTION_0_1_1.into()).await;
+        let got = RelayClient::new(&base).fetch_verified_release("stable", "linux-arm64", "0.1.1", "t").await;
+        assert!(matches!(got, Ok(None)), "{:?}", got.map(|r| r.map(|v| v.manifest.version)));
     }
 
     // U-11: 최신이라는 답에 다른 버전이 붙어 와도, 고른 채널이 받지 않는 채널의 그 버전 manifest는 받지 않는다
