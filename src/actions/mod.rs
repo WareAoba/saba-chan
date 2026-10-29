@@ -184,6 +184,7 @@ pub static ACTIONS: &[Def] = &[
             field("ambientEffort", "string", false),
             field("confirmLevel", "string", false),
             field("memory", "boolean", false),
+            field("moderation", "boolean", false),
             field("tools", "array", false),
         ],
         discord_level: Some(crate::chat::permissions::OWNER),

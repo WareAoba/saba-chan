@@ -178,6 +178,14 @@ export function ChatbotGuildTab({ node }) {
 
             <section className="dc-card">
                 <div className="dc-card-head">
+                    <h2>{t('chatbot.moderation_title')}</h2>
+                </div>
+                <p className="dc-card-desc">{t('chatbot.moderation_desc')}</p>
+                <div className="cb-toggles">{toggleRow('moderation', t('chatbot.moderation'), t('chatbot.moderation_hint'))}</div>
+            </section>
+
+            <section className="dc-card">
+                <div className="dc-card-head">
                     <h2>{t('chatbot.ambient_title')}</h2>
                 </div>
                 <p className="dc-card-desc">{t('chatbot.ambient_desc')}</p>
