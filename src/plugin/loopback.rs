@@ -209,7 +209,17 @@ fn listener_pids(port: u16) -> Option<Vec<u32>> {
     Some(pids)
 }
 
-#[cfg(not(any(windows, target_os = "linux")))]
+#[cfg(target_os = "macos")]
+fn listener_pids(port: u16) -> Option<Vec<u32>> {
+    // 맥에는 /proc가 없다: 시스템의 lsof에 묻는다(`p<PID>` 줄). 맞는 소켓이 없으면 1로 끝나고 아무것도 쓰지 않는다
+    let out = std::process::Command::new("/usr/sbin/lsof")
+        .args(["-nP", &format!("-iTCP:{port}"), "-sTCP:LISTEN", "-Fp"])
+        .output()
+        .ok()?;
+    Some(String::from_utf8_lossy(&out.stdout).lines().filter_map(|l| l.strip_prefix('p')?.parse().ok()).collect())
+}
+
+#[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
 fn listener_pids(_port: u16) -> Option<Vec<u32>> {
     None
 }
