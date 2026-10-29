@@ -42,7 +42,8 @@
     "not_running": "❌ **{{name}}**: {{error}}",
     "not_running_default": "サーバーが実行されていません。最初にサーバーを起動してください",
     "module_missing": "❌ モジュール '{{module}}' がインストールされていません。このサーバーは制御できません。",
-    "port_moved": "🔀 Windows が管理用 REST ポート {{from}} を予約していたため {{to}} に変更しました。"
+    "port_moved": "🔀 Windows が管理用 REST ポート {{from}} を予約していたため {{to}} に変更しました。",
+    "rest_port_closed": "REST port {{port}} is not accepting connections"
   },
   "command": {
     "executing": "⏳ **{{name}}** - `{{command}}` 実行中...",

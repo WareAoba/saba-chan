@@ -1578,7 +1578,7 @@ fn heartbeat_metadata(mut meta: Value, sent: Option<&str>) -> (Value, String, bo
 const STATUS_LINE_MAX: usize = 100;
 
 /// 하트비트의 서버 한 줄: relay가 읽는 필드만 싣는다. 설정값·경로·비밀번호는 PC 밖으로 나가지 않는다.
-/// 실행 중이면 `usage{cpu, memMb}`와 모듈이 알려 준 `players{online, max?}`(Q-5), 익스텐션이 `server.list_enrich`에서 `status_line`을 주면 `statusLine`(X-1)
+/// 실행 중이면 `usage{cpu, memMb}`, `players{online, max?}`(Q-5), 켜진 시각 `startedAt`(Unix 초), 익스텐션이 `server.list_enrich`에서 `status_line`을 주면 `statusLine`(X-1)
 fn relay_server_entry(server: &Value, usage: Option<&crate::system_monitor::InstanceMetrics>) -> Value {
     let mut entry = serde_json::Map::new();
     for key in ["id", "name", "module", "status"] {
@@ -1593,6 +1593,11 @@ fn relay_server_entry(server: &Value, usage: Option<&crate::system_monitor::Inst
     let players = server.get("players").filter(|_| server.get("status").and_then(Value::as_str) == Some("running"));
     if let Some(count) = players.and_then(crate::supervisor::players::parse) {
         entry.insert("players".into(), json!(count));
+    }
+    // 켜진 시각 (Unix 초) — 상황판 가동 시간
+    let running = server.get("status").and_then(Value::as_str) == Some("running");
+    if let Some(at) = server.get("start_time").and_then(Value::as_u64).filter(|_| running) {
+        entry.insert("startedAt".into(), json!(at));
     }
     // 익스텐션 id 순으로 첫 번째 상태 줄. 제어 문자를 빼고 한 줄로 자른다
     let line = server.get("extension_status").and_then(|v| v.as_object()).and_then(|statuses| {
@@ -2160,7 +2165,7 @@ mod tests {
         let server = json!({
             "id": "i1", "name": "마크", "module": "minecraft", "status": "running",
             "extension_status": { "zz": { "status_line": "later" }, "docker": { "status_line": "  컨테이너 실행 중\n", "path": "C:/x" } },
-            "players": { "online": 3, "max": 20 }
+            "players": { "online": 3, "max": 20 }, "start_time": 1_793_000_000u64
         });
         let usage = crate::system_monitor::InstanceMetrics {
             id: "i1".into(), name: "마크".into(), running: true, process_count: 1,
@@ -2170,9 +2175,11 @@ mod tests {
         assert_eq!(entry["usage"], json!({ "cpu": 12.3, "memMb": 3072 }));
         assert_eq!(entry["statusLine"], "컨테이너 실행 중");
         assert_eq!(entry["players"], json!({ "online": 3, "max": 20 }));
+        assert_eq!(entry["startedAt"], 1_793_000_000u64, "상황판 가동 시간");
         let mut off = server.clone();
         off["status"] = json!("stopped");
         assert!(relay_server_entry(&off, None).get("players").is_none(), "a stopped server has no players");
+        assert!(relay_server_entry(&off, None).get("startedAt").is_none());
         assert!(entry.get("extension_status").is_none());
         let stopped = crate::system_monitor::InstanceMetrics { running: false, ..usage };
         assert!(relay_server_entry(&server, Some(&stopped)).get("usage").is_none());

@@ -19,6 +19,7 @@ export function channelsPatch(saved, draft) {
     if ((saved.music || null) !== (draft.music || null)) patch.music = draft.music || null;
     if ((saved.notify || null) !== (draft.notify || null)) patch.notify = draft.notify || null;
     if ((saved.gameChat || null) !== (draft.gameChat || null)) patch.gameChat = draft.gameChat || null;
+    if ((saved.board || null) !== (draft.board || null)) patch.board = draft.board || null;
     return patch;
 }
 
@@ -48,17 +49,19 @@ const fromResponse = (res) => ({
     notify: res?.notify ? String(res.notify) : null,
     // 옛 릴레이는 게임 채팅 채널을 모른다 (gameChat 없음)
     gameChat: res?.gameChat ? String(res.gameChat) : null,
+    // 상황판을 모르는 릴레이는 board 가 없다
+    board: res?.board ? String(res.board) : null,
 });
 
 /**
- * 디스코드 서버 하나의 채널 배정: 챗봇 채널(여러 개)·음악 채널(하나)·알림 채널(하나)·게임 채팅 채널(하나).
+ * 디스코드 서버 하나의 채널 배정: 챗봇 채널(여러 개)·음악 채널(하나)·알림 채널(하나)·게임 채팅 채널(하나)·상황판 채널(하나).
  * 원본은 릴레이다 (GET/PUT /api/relay/node/:guild_id/channels). 한 채널은 한 종류만 맡는다.
  */
 export function ChannelsTab({ node }) {
     const { t } = useTranslation('gui');
     const guildId = node.guildId;
     const [data, setData] = useState(null); // 마지막 응답
-    const [draft, setDraft] = useState({ chatbot: [], music: null, notify: null, gameChat: null });
+    const [draft, setDraft] = useState({ chatbot: [], music: null, notify: null, gameChat: null, board: null });
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState(null);
@@ -139,6 +142,12 @@ export function ChannelsTab({ node }) {
             chatbot: id ? d.chatbot.filter((x) => x !== id) : d.chatbot,
             gameChat: id || null,
         }));
+    const setBoard = (id) =>
+        setDraft((d) => ({
+            ...d,
+            chatbot: id ? d.chatbot.filter((x) => x !== id) : d.chatbot,
+            board: id || null,
+        }));
 
     const save = async () => {
         if (newMusic && !armed) {
@@ -192,9 +201,10 @@ export function ChannelsTab({ node }) {
                             const isMusic = draft.music === id;
                             const isNotify = draft.notify === id;
                             const isGameChat = draft.gameChat === id;
+                            const isBoard = draft.board === id;
                             const checked = draft.chatbot.includes(id);
                             // 봇이 없으면 새로 배정할 수 없다 (503 BOT_UNAVAILABLE). 해제만 된다
-                            const locked = isMusic || isNotify || isGameChat || (!botAvailable && !checked);
+                            const locked = isMusic || isNotify || isGameChat || isBoard || (!botAvailable && !checked);
                             return (
                                 <div key={id} className={clsx('dc-channel-row', { disabled: locked })}>
                                     <SabaCheckbox
@@ -207,6 +217,7 @@ export function ChannelsTab({ node }) {
                                     {isMusic && <span className="muted">{t('discord.channels_is_music')}</span>}
                                     {isNotify && <span className="muted">{t('discord.channels_is_notify')}</span>}
                                     {isGameChat && <span className="muted">{t('discord.channels_is_game_chat')}</span>}
+                                    {isBoard && <span className="muted">{t('discord.channels_is_board')}</span>}
                                 </div>
                             );
                         })}
@@ -250,6 +261,7 @@ export function ChannelsTab({ node }) {
                             disabled:
                                 String(c.id) === draft.notify ||
                                 String(c.id) === draft.gameChat ||
+                                String(c.id) === draft.board ||
                                 (!botAvailable && String(c.id) !== draft.music),
                         })),
                     ]}
@@ -280,6 +292,7 @@ export function ChannelsTab({ node }) {
                             disabled:
                                 String(c.id) === draft.music ||
                                 String(c.id) === draft.gameChat ||
+                                String(c.id) === draft.board ||
                                 (!botAvailable && String(c.id) !== draft.notify),
                         })),
                     ]}
@@ -308,7 +321,38 @@ export function ChannelsTab({ node }) {
                                 disabled:
                                     String(c.id) === draft.music ||
                                     String(c.id) === draft.notify ||
+                                    String(c.id) === draft.board ||
                                     (!botAvailable && String(c.id) !== draft.gameChat),
+                            })),
+                        ]}
+                    />
+                </section>
+            )}
+
+            {/* 상황판을 아는 릴레이만 응답에 board를 싣는다 */}
+            {data && 'board' in data && (
+                <section className="dc-card">
+                    <h3>
+                        <Icon name="monitor" size="sm" /> {t('discord.channels_board')}
+                    </h3>
+                    <p className="dc-hint">{t('discord.channels_board_hint')}</p>
+                    <CustomDropdown
+                        value={draft.board || ''}
+                        ariaLabel={t('discord.channels_board')}
+                        onChange={(v) => setBoard(String(v))}
+                        options={[
+                            { value: '', label: t('discord.channels_music_none') },
+                            ...(draft.board && !channels.some((c) => String(c.id) === draft.board)
+                                ? [{ value: draft.board, label: draft.board }]
+                                : []),
+                            ...channels.map((c) => ({
+                                value: String(c.id),
+                                label: `${c.category ? `${c.category} / ` : ''}#${c.name}`,
+                                disabled:
+                                    String(c.id) === draft.music ||
+                                    String(c.id) === draft.notify ||
+                                    String(c.id) === draft.gameChat ||
+                                    (!botAvailable && String(c.id) !== draft.board),
                             })),
                         ]}
                     />

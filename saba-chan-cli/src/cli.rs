@@ -990,6 +990,12 @@ pub enum BotCmd {
         /// Unassign the game chat channel
         #[arg(long)]
         no_game_chat: bool,
+        /// The status board channel (a card per running server: banner, players, uptime), by name or id
+        #[arg(long, conflicts_with = "no_board")]
+        board: Option<String>,
+        /// Unassign the status board channel
+        #[arg(long)]
+        no_board: bool,
     },
     /// The language the bot answers in on a Discord server (`auto` follows this PC's language). No value: show
     Lang { guild: String, value: Option<String> },

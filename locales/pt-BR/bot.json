@@ -42,7 +42,8 @@
     "not_running": "❌ **{{name}}**: {{error}}",
     "not_running_default": "O servidor não está em execução. Inicie o servidor primeiro",
     "module_missing": "❌ O módulo '{{module}}' não está instalado. Este servidor não pode ser controlado.",
-    "port_moved": "🔀 O Windows reservou a porta REST {{from}}, então ela foi alterada para {{to}}."
+    "port_moved": "🔀 O Windows reservou a porta REST {{from}}, então ela foi alterada para {{to}}.",
+    "rest_port_closed": "REST port {{port}} is not accepting connections"
   },
   "command": {
     "executing": "⏳ **{{name}}** - `{{command}}` executando...",

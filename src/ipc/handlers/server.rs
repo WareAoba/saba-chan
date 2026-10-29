@@ -358,9 +358,11 @@ async fn server_list(state: &IPCServer, notices: Notices) -> axum::response::Res
     }
 
     // ── 접속자 수 (Q-5): 모듈이 알려 준 마지막 값, 켜진 서버만 ──
+    let catalog = crate::chat::i18n::Catalog::for_language(&state.config_store.ui_language().await);
     for srv in servers.iter_mut().filter(|s| s.status == "running") {
         srv.players = crate::supervisor::players::get(&srv.id);
-        srv.unresponsive = crate::supervisor::players::unresponsive(&srv.id, srv.pid, std::time::Instant::now());
+        srv.unresponsive = crate::supervisor::players::unresponsive(&srv.id, srv.pid, std::time::Instant::now())
+            .map(|reason| crate::supervisor::players::reason_text(&reason, &catalog));
     }
 
     // ── 포트 충돌 계산: 시작 시 검사(check_port_conflicts)와 같은 기준 ──

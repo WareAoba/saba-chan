@@ -42,7 +42,8 @@
     "not_running": "❌ **{{name}}**: {{error}}",
     "not_running_default": "Le serveur n'est pas en cours d'exécution. Démarrez d'abord le serveur",
     "module_missing": "❌ Le module '{{module}}' n'est pas installé. Ce serveur ne peut pas être contrôlé.",
-    "port_moved": "🔀 Windows a réservé le port REST {{from}}, il a donc été changé en {{to}}."
+    "port_moved": "🔀 Windows a réservé le port REST {{from}}, il a donc été changé en {{to}}.",
+    "rest_port_closed": "REST port {{port}} is not accepting connections"
   },
   "command": {
     "executing": "⏳ **{{name}}** - `{{command}}` en cours d'exécution...",
