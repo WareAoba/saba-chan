@@ -42,7 +42,8 @@
     "not_running": "❌ **{{name}}**: {{error}}",
     "not_running_default": "Сервер не запущен. Сначала запустите сервер",
     "module_missing": "❌ Модуль '{{module}}' не установлен. Этот сервер не может быть управляем.",
-    "port_moved": "🔀 Windows зарезервировала REST-порт {{from}}, поэтому он изменён на {{to}}."
+    "port_moved": "🔀 Windows зарезервировала REST-порт {{from}}, поэтому он изменён на {{to}}.",
+    "rest_port_closed": "REST port {{port}} is not accepting connections"
   },
   "command": {
     "executing": "⏳ **{{name}}** - `{{command}}` выполняется...",

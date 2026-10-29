@@ -218,12 +218,22 @@ pub async fn refresh(sup: &tokio::sync::RwLock<Supervisor>) {
     while asks.next().await.is_some() {}
 }
 
+/// 포트 확인 실패 이유의 머리. 화면에 낼 때 `reason_text`가 화면 언어 문구로 바꾼다
+const PORT_CLOSED: &str = "rest_port_closed:";
+
 /// 포트에 TCP로 붙었다가 아무것도 보내지 않고 바로 끊는다
 pub async fn port_open(host: &str, port: u16) -> Result<(), String> {
     match tokio::time::timeout(std::time::Duration::from_secs(PROBE_TIMEOUT_SECS), tokio::net::TcpStream::connect((host, port))).await {
         Ok(Ok(_)) => Ok(()),
-        Ok(Err(e)) => Err(format!("port {port} closed: {e}")),
-        Err(_) => Err(format!("port {port} did not answer")),
+        Ok(Err(_)) | Err(_) => Err(format!("{PORT_CLOSED}{port}")),
+    }
+}
+
+/// 응답 없음 이유를 화면에 낼 글로. 포트 확인 실패는 화면 언어 문구(bot.json `server.rest_port_closed`), 모듈이 준 이유는 그대로
+pub fn reason_text(reason: &str, catalog: &crate::chat::i18n::Catalog) -> String {
+    match reason.strip_prefix(PORT_CLOSED) {
+        Some(port) => catalog.t("server.rest_port_closed", &[("port", port)]),
+        None => reason.to_string(),
     }
 }
 
@@ -330,9 +340,15 @@ mod tests {
         let id = "probe-test";
         let now = std::time::Instant::now();
         apply_refresh(id, Some(7), Ok(Some(json!({ "success": true, "max": 32 }))), now, false);
-        apply_probe(id, Some(7), Err("closed".into()), now);
-        apply_probe(id, Some(7), Err("closed".into()), now + UNRESPONSIVE_AFTER);
-        assert!(unresponsive(id, Some(7), now + UNRESPONSIVE_AFTER).is_some());
+        let closed = port_open("127.0.0.1", port).await.unwrap_err();
+        apply_probe(id, Some(7), Err(closed.clone()), now);
+        apply_probe(id, Some(7), Err(closed), now + UNRESPONSIVE_AFTER);
+        // 사용자에게 보이는 이유는 화면 언어로 (locales bot.json)
+        let reason = unresponsive(id, Some(7), now + UNRESPONSIVE_AFTER).unwrap();
+        let ko = reason_text(&reason, &crate::chat::i18n::Catalog::for_language("ko"));
+        assert!(ko.contains(&port.to_string()) && ko.contains("REST"), "{ko}");
+        assert!(!ko.contains("closed"), "{ko}");
+        assert_eq!(reason_text("connection refused", &crate::chat::i18n::Catalog::for_language("ko")), "connection refused");
         apply_refresh(id, Some(7), Err(anyhow::anyhow!("x")), now + UNRESPONSIVE_AFTER, false);
         apply_probe(id, Some(7), Ok(()), now + UNRESPONSIVE_AFTER);
         assert!(unresponsive(id, Some(7), now + UNRESPONSIVE_AFTER).is_none(), "an open port clears it");

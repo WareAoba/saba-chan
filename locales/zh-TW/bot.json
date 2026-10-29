@@ -42,7 +42,8 @@
     "not_running": "❌ **{{name}}**：{{error}}",
     "not_running_default": "伺服器未執行。請先啟動伺服器",
     "module_missing": "❌ 模組 '{{module}}' 未安裝。此伺服器無法控制。",
-    "port_moved": "🔀 Windows 保留了管理用 REST 連接埠 {{from}}，已改為 {{to}}。"
+    "port_moved": "🔀 Windows 保留了管理用 REST 連接埠 {{from}}，已改為 {{to}}。",
+    "rest_port_closed": "REST port {{port}} is not accepting connections"
   },
   "command": {
     "executing": "⏳ **{{name}}** - `{{command}}` 執行中...",
