@@ -7,6 +7,9 @@
 //! 규칙은 맞는지 알 수 없으므로, 그 규칙이 맞을 때와 안 맞을 때 판정이 달라지면 판정하지 않는다.
 //! 그룹 정책이 로컬 규칙을 덮어쓰거나, 읽지 못하거나, 받는 프로그램을 모르면 판정하지 않는다 (None).
 
+// 판정은 Windows 방화벽만 읽는다: 다른 OS에서는 시험만 이 판정 규칙을 쓴다
+#![cfg_attr(not(windows), allow(dead_code))]
+
 use super::Protocol;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

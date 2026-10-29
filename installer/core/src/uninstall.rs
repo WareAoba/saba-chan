@@ -972,12 +972,24 @@ fn powershell_lines(script: &str) -> Option<String> {
     }
 }
 
-#[cfg(not(target_os = "windows"))]
+/// `/proc/<pid>/exe`가 가리키는 실행 파일. 업데이트가 파일을 갈아 끼워 옛 파일이 지워졌으면
+/// 리눅스가 경로 끝에 " (deleted)"를 붙인다: 그 꼬리를 떼어 원래 자리로 돌린다 (옛 판으로 도는 데몬·GUI도 끈다)
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+fn proc_exe(proc_dir: &Path) -> Option<PathBuf> {
+    let exe = std::fs::read_link(proc_dir.join("exe")).ok()?;
+    let text = exe.to_string_lossy();
+    Some(match text.strip_suffix(" (deleted)") {
+        Some(live) => PathBuf::from(live),
+        None => exe,
+    })
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
 fn list_named(names: &[&str]) -> Option<String> {
     let mut listing = String::new();
     for entry in std::fs::read_dir("/proc").ok()?.flatten() {
         let Ok(pid) = entry.file_name().to_string_lossy().parse::<u32>() else { continue };
-        let Ok(exe) = std::fs::read_link(entry.path().join("exe")) else { continue };
+        let Some(exe) = proc_exe(&entry.path()) else { continue };
         let name = exe.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
         let stem = name.strip_suffix(".exe").unwrap_or(&name);
         if names.iter().any(|n| n.eq_ignore_ascii_case(stem)) {
@@ -987,7 +999,47 @@ fn list_named(names: &[&str]) -> Option<String> {
     Some(listing)
 }
 
-#[cfg(not(target_os = "windows"))]
+// 맥에는 /proc가 없다: 커널 프로세스 목록(sysinfo, libproc)에서 같은 줄을 만든다
+#[cfg(target_os = "macos")]
+fn mac_processes() -> Vec<(u32, u32, u64, String, String)> {
+    use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, UpdateKind};
+    let mut sys = sysinfo::System::new();
+    sys.refresh_processes_specifics(ProcessesToUpdate::All, true, ProcessRefreshKind::nothing().with_exe(UpdateKind::Always));
+    sys.processes()
+        .iter()
+        .map(|(pid, p)| {
+            let exe = p.exe().map(|e| e.display().to_string()).unwrap_or_default();
+            let name = p
+                .exe()
+                .and_then(|e| e.file_name())
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_else(|| p.name().to_string_lossy().into_owned());
+            (pid.as_u32(), p.parent().map(|pp| pp.as_u32()).unwrap_or(0), p.start_time(), name, exe)
+        })
+        .collect()
+}
+
+#[cfg(target_os = "macos")]
+fn list_named(names: &[&str]) -> Option<String> {
+    let mut listing = String::new();
+    for (pid, _, _, name, exe) in mac_processes() {
+        if !exe.is_empty() && names.iter().any(|n| n.eq_ignore_ascii_case(&name)) {
+            listing.push_str(&format!("{}|{}|{}\n", pid, name, exe));
+        }
+    }
+    Some(listing)
+}
+
+#[cfg(target_os = "macos")]
+fn list_all() -> Option<String> {
+    let mut listing = String::new();
+    for (pid, ppid, start, name, exe) in mac_processes() {
+        listing.push_str(&format!("{}|{}|{}|{}|{}\n", pid, ppid, start, name, exe));
+    }
+    Some(listing)
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
 fn list_all() -> Option<String> {
     let mut listing = String::new();
     for entry in std::fs::read_dir("/proc").ok()?.flatten() {
@@ -999,7 +1051,7 @@ fn list_all() -> Option<String> {
         let ppid = fields.get(1).and_then(|p| p.parse::<u32>().ok()).unwrap_or(0);
         let start = fields.get(19).and_then(|p| p.parse::<u64>().ok()).unwrap_or(0);
         let comm = head.split_once('(').map(|(_, c)| c).unwrap_or("");
-        let exe = std::fs::read_link(entry.path().join("exe")).ok();
+        let exe = proc_exe(&entry.path());
         let name = exe.as_ref().and_then(|e| e.file_name()).map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| comm.to_string());
         let exe = exe.map(|e| e.display().to_string()).unwrap_or_default();
         listing.push_str(&format!("{}|{}|{}|{}|{}\n", pid, ppid, start, name, exe));
@@ -1584,6 +1636,36 @@ mod tests {
         let named = [(110, String::new()), (999, "saba-core".to_string())];
         assert_eq!(identify(Some(listing), &named), vec![(110, "java.exe".to_string(), 60), (999, "saba-core".to_string(), 0)]);
         assert_eq!(still_listed("999|1|42|saba-core.exe|C:\\Saba\\saba-core.exe\n", &identify(None, &named[1..])).len(), 1);
+    }
+
+    // 업데이트가 실행 파일을 갈아 끼운 뒤에도 옛 파일로 도는 프로세스를 찾는다
+    // (리눅스는 지워진 실행 파일의 경로 끝에 " (deleted)"를 붙인다)
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_process_whose_file_was_replaced_is_still_found() {
+        // 다른 시험이 찾는 데몬 이름(saba-core)과 겹치지 않는 이름으로
+        let tmp = tempfile::tempdir().unwrap();
+        let exe = tmp.path().join("saba-replaced-test");
+        std::fs::copy("/bin/sleep", &exe).unwrap();
+        // 방금 복사한 파일은 다른 시험이 fork하는 동안 쓰기 핸들이 남아 ETXTBSY가 날 수 있다
+        let mut child = (0..50)
+            .find_map(|_| match std::process::Command::new(&exe).arg("30").spawn() {
+                Err(e) if e.kind() == std::io::ErrorKind::ExecutableFileBusy => {
+                    std::thread::sleep(std::time::Duration::from_millis(20));
+                    None
+                }
+                other => Some(other.unwrap()),
+            })
+            .expect("executable stayed busy");
+        std::fs::remove_file(&exe).unwrap();
+        std::fs::copy("/bin/sleep", &exe).unwrap();
+        let named = list_named(&["saba-replaced-test"]).unwrap();
+        let all = list_all().unwrap();
+        let _ = child.kill();
+        let _ = child.wait();
+        let line = format!("{}|saba-replaced-test|{}", child.id(), exe.display());
+        assert!(named.lines().any(|l| l == line), "{named}");
+        assert!(all.lines().any(|l| l.starts_with(&format!("{}|", child.id())) && l.ends_with(&format!("|saba-replaced-test|{}", exe.display()))), "{all}");
     }
 
     // 실제 프로세스 목록으로: 데몬 자리의 셸 아래 자식을 찾고, 끈 뒤 끝날 때까지 기다린다

@@ -1358,6 +1358,7 @@ mod tests {
              else:\n    new = os.path.join(d, 'v2')\n    os.makedirs(new, exist_ok=True)\n    open(os.path.join(d, 'world', 'level.dat'), 'w').write('migrated')\n    print(json.dumps({'success': True, 'install_path': new, 'executable_path': os.path.join(new, 'server.bin'), 'warning': 'Java 21 needed'}))\n",
         )
         .unwrap();
+        crate::sandbox::consent_test_component(&dir.join("lifecycle.py"));
         let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
         sup.initialize().await.unwrap();
         let mut inst = crate::instance::ServerInstance::new("srv", &game);

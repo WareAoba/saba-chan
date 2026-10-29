@@ -1239,7 +1239,9 @@ mod tests {
         registry.register(crate::ipc::ClientKind::Cli, Some(other), None).await;
 
         let guis = super::running_guis(&registry.list().await);
-        assert_eq!(guis, vec![(gui, std::fs::canonicalize(&gui_exe).unwrap())]);
+        // 맥은 임시 폴더를 링크(/var → /private/var)를 풀지 않은 경로로 알려 준다
+        let found: Vec<_> = guis.iter().map(|(pid, exe)| (*pid, std::fs::canonicalize(exe).unwrap())).collect();
+        assert_eq!(found, vec![(gui, std::fs::canonicalize(&gui_exe).unwrap())]);
 
         super::close_guis(&guis).await;
         assert!(!crate::supervisor::process::is_process_alive(gui), "the registered GUI is closed");
@@ -1265,7 +1267,7 @@ mod tests {
             "downloaded_path": staged.to_string_lossy(), "installed": true
         }]);
         std::fs::write(staging.join("pending.json"), pending.to_string()).unwrap();
-        std::env::set_var("SABA_UPDATER_PATH", "/bin/true");
+        std::env::set_var("SABA_UPDATER_PATH", "/usr/bin/true"); // 맥에는 /bin/true가 없다
 
         let state = UpdateState::new();
         state.manager.write().await.load_pending_manifest().unwrap();
