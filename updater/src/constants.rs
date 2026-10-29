@@ -100,6 +100,7 @@ pub const INSTALL_DIR_NAME: &str = "Saba-chan";
 /// 기본 설치 폴더 (이미 설치돼 있으면 설치기는 그 자리를 쓴다)
 ///
 /// - Windows: `%ProgramFiles%\Saba-chan` (Windows가 알려 주는 Program Files, 없으면 `C:\Program Files`)
+/// - macOS:   `$HOME/Applications/Saba-chan.app/Contents/MacOS` (실행 파일은 앱 묶음 안에 둔다. [`crate::app_bundle`])
 /// - Unix:    `$HOME/.local/share/saba-chan`
 pub fn default_install_dir() -> PathBuf {
     #[cfg(target_os = "windows")]
@@ -112,7 +113,12 @@ pub fn default_install_dir() -> PathBuf {
             .unwrap_or_else(|| PathBuf::from(r"C:\Program Files"));
         program_files.join(INSTALL_DIR_NAME)
     }
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
+    {
+        let home = std::env::var_os("HOME").filter(|h| !h.is_empty()).map(PathBuf::from).unwrap_or_default();
+        home.join("Applications").join(crate::app_bundle::BUNDLE_NAME).join("Contents").join("MacOS")
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     {
         match std::env::var_os("HOME").filter(|h| !h.is_empty()) {
             Some(home) => PathBuf::from(home).join(".local").join("share").join(APP_NAME),

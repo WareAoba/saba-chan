@@ -14,13 +14,16 @@ use std::path::{Path, PathBuf};
 #[derive(Clone, Copy, PartialEq, Debug)]
 enum Os {
     Unix,
+    Mac,
     Windows,
     ServerCore,
 }
 
 impl Os {
     fn current() -> Os {
-        if !cfg!(windows) {
+        if cfg!(target_os = "macos") {
+            Os::Mac
+        } else if !cfg!(windows) {
             Os::Unix
         } else if is_server_core() {
             Os::ServerCore
@@ -45,7 +48,7 @@ fn is_server_core() -> bool {
 }
 
 /// 창 앱을 게시하는 플랫폼 (05 §3.1). 여기서 앱이 빠진 릴리스는 잘못 나온 것이라 설치기가 멈춰 알린다
-const APP_PLATFORMS: &[&str] = &["windows-x64", "linux-x64", "linux-arm64"];
+const APP_PLATFORMS: &[&str] = &["windows-x64", "linux-x64", "linux-arm64", "macos-arm64"];
 
 /// 창 앱을 게시하지 않는 플랫폼(새로 붙인 CPU처럼)이면 화면이 있어도 헤드리스로 깐다. `--gui`로 고른 것만은 그대로 둔다
 /// (설치기가 빠진 구성요소로 멈춰 알린다)
@@ -57,7 +60,7 @@ fn fit_profile(profile: Profile, forced_gui: bool, has_gui: bool, platform: &str
     }
 }
 
-/// 화면이 없는 환경인지: 리눅스는 SSH로 들어왔거나 DISPLAY·WAYLAND_DISPLAY가 모두 없을 때, Windows는 Server Core이거나 SSH로
+/// 화면이 없는 환경인지: 리눅스는 SSH로 들어왔거나 DISPLAY·WAYLAND_DISPLAY가 모두 없을 때, 맥은 SSH로 들어왔을 때, Windows는 Server Core이거나 SSH로
 /// 들어왔거나 대화형 세션 이름(SESSIONNAME)이 없을 때(서비스). `--gui`·`--no-gui`가 감지보다 먼저다
 fn detect_profile(gui: bool, no_gui: bool, os: Os, env: impl Fn(&str) -> Option<String>) -> Profile {
     if gui {
@@ -72,6 +75,7 @@ fn detect_profile(gui: bool, no_gui: bool, os: Os, env: impl Fn(&str) -> Option<
         Os::Windows => set("SSH_CONNECTION") || !set("SESSIONNAME"),
         // `ssh -X`로 들어온 서버도 DISPLAY가 있다: SSH 세션은 Windows처럼 화면 없는 서버로 본다
         Os::Unix => set("SSH_CONNECTION") || (!set("DISPLAY") && !set("WAYLAND_DISPLAY")),
+        Os::Mac => set("SSH_CONNECTION"),
     };
     if headless {
         Profile::Headless
@@ -241,9 +245,11 @@ pub async fn run(ctx: &Ctx, args: InstallArgs) -> Result<()> {
         &t!("install.done", dir = dir.display()),
         &json!({ "ok": true, "dir": dir, "modules": modules, "components": last.installed_components, "warnings": last.warnings }),
     );
-    // 리눅스 데스크톱은 앱 메뉴에 든 GUI가 데몬을 켠다: 앱을 여는 길을 안내한다
+    // 리눅스·맥 데스크톱은 앱 메뉴(맥은 응용 프로그램 폴더)에 든 GUI가 데몬을 켠다: 앱을 여는 길을 안내한다
     if profile == Profile::Desktop && cfg!(target_os = "linux") {
         ctx.out.hint(&t!("install.next_app", command = app_command(&dir)));
+    } else if let Some(bundle) = saba_chan_updater_lib::app_bundle::bundle_of(&dir).filter(|_| profile == Profile::Desktop && cfg!(target_os = "macos")) {
+        ctx.out.hint(&t!("install.next_mac_app", command = format!("open '{}'", bundle.display().to_string().replace('\'', r"'\''"))));
     } else {
         ctx.out
             .hint(&t!("install.next", command = next_command(&dir, cfg!(windows))));
@@ -379,6 +385,9 @@ mod tests {
             Profile::Headless
         );
         assert_eq!(detect_profile(false, false, Os::Windows, env(&[])), Profile::Headless);
+        // 맥 데스크톱에는 DISPLAY가 없다: SSH로 들어온 때만 화면 없는 서버로 본다
+        assert_eq!(detect_profile(false, false, Os::Mac, env(&[])), Profile::Desktop);
+        assert_eq!(detect_profile(false, false, Os::Mac, env(&[("SSH_CONNECTION", "1 2 3 4")])), Profile::Headless);
         assert_eq!(detect_profile(true, false, Os::Unix, env(&[])), Profile::Desktop);
         assert_eq!(
             detect_profile(false, true, Os::Unix, env(&[("DISPLAY", ":0")])),

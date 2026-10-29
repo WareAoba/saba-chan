@@ -1256,6 +1256,7 @@
     "next": "Démarrez le démon avec :\n{{command}}",
     "no_gui_build": "Il n'y a pas encore d'application de bureau pour ce PC : installation sans elle. Utilisez la CLI.",
     "next_app": "Ouvrez Saba-chan depuis le menu des applications ou avec :\n{{command}}",
+    "next_mac_app": "Ouvrez Saba-chan depuis le dossier Applications ou avec :\n{{command}}",
     "components_dir": "Les modules et extensions vont dans {{dir}}.",
     "components_dir_invalid": "Impossible d'utiliser {{dir}} pour les modules et extensions : {{reason}}",
     "invalid_dir": "Impossible d'installer dans {{dir}}. Choisissez un dossier qui n'est ni la racine d'un lecteur, ni votre dossier personnel, ni le dossier des paramètres"

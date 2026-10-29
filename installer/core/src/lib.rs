@@ -478,6 +478,18 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
         }
     }
 
+    // 맥: 바로가기 대신 앱 묶음(`~/Applications/Saba-chan.app`)의 묶음 정보·아이콘을 제자리에 놓는다.
+    // 헤드리스로 덮으면 GUI가 지워지므로 열리지 않는 묶음 정보를 걷는다
+    #[cfg(target_os = "macos")]
+    if config.profile == Profile::Desktop {
+        emit("shortcuts", "Creating the app bundle...", 96);
+        if let Err(e) = saba_chan_updater_lib::app_bundle::place_files(&install_dir) {
+            warn(format!("App bundle files were not placed: {}", e));
+        }
+    } else {
+        saba_chan_updater_lib::app_bundle::remove_shell(&install_dir);
+    }
+
     // Step 10.5: 설치한 버전 기록 (업데이터가 같은 파일을 읽는다)
     emit("manifest", "Recording installed versions...", 98);
     // 설치 폴더에 남긴 제거기 사본도 기록한다. 업데이터가 이 버전을 보고 사본을 바꾼다

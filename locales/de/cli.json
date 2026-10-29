@@ -1256,6 +1256,7 @@
     "next": "Starte den Daemon mit:\n{{command}}",
     "no_gui_build": "Für diesen PC gibt es noch keine Desktop-App, daher wird ohne sie installiert. Nutze die CLI.",
     "next_app": "Öffne Saba-chan über das App-Menü oder mit:\n{{command}}",
+    "next_mac_app": "Öffne Saba-chan im Ordner „Programme“ oder mit:\n{{command}}",
     "components_dir": "Module und Erweiterungen kommen nach {{dir}}.",
     "components_dir_invalid": "{{dir}} kann nicht für Module und Erweiterungen verwendet werden: {{reason}}",
     "invalid_dir": "Installation in {{dir}} nicht möglich. Wähle einen Ordner, der kein Laufwerksstamm, kein Benutzerordner und nicht der Einstellungsordner ist"

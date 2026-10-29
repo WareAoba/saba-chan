@@ -1256,6 +1256,7 @@
     "next": "Inicia el daemon con:\n{{command}}",
     "no_gui_build": "Aún no hay app de escritorio para este PC, así que se instala sin ella. Usa la CLI.",
     "next_app": "Abre Saba-chan desde el menú de aplicaciones o con:\n{{command}}",
+    "next_mac_app": "Abre Saba-chan desde la carpeta Aplicaciones o con:\n{{command}}",
     "components_dir": "Los módulos y extensiones van en {{dir}}.",
     "components_dir_invalid": "No se puede usar {{dir}} para módulos y extensiones: {{reason}}",
     "invalid_dir": "No se puede instalar en {{dir}}. Elige una carpeta que no sea la raíz de una unidad, tu carpeta personal ni la carpeta de ajustes"

@@ -162,6 +162,10 @@ pub async fn do_uninstall(keep: Keep, on_progress: impl Fn(&UninstallProgress)) 
                 tracing::info!("[Uninstall] Removed install dir: {:?}", dir);
             }
         }
+        // 맥: 실행 파일 폴더가 앱 묶음 안이면 묶음 껍데기(Info.plist·아이콘, 빈 폴더)까지
+        if !dir.exists() {
+            saba_chan_updater_lib::app_bundle::remove_shell(dir);
+        }
     }
 
     // Step 5: 사용자 데이터 (%APPDATA%/saba-chan). 런타임·캐시는 늘 지우고, 설정·인스턴스는 고른 대로 남긴다
@@ -1099,6 +1103,8 @@ const INSTALLED_ENTRIES: &[&str] = &[
     "i18n.py",
     "daemon_rcon.py",
     "common_locales.json",
+    // GUI zip의 리눅스 앱 메뉴 아이콘 (맥 묶음 정보·아이콘은 설치기가 Contents로 옮긴다)
+    "saba-chan-gui.png",
     INSTALL_MARKER,
 ];
 
