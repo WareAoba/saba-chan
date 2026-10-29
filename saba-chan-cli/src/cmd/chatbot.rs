@@ -431,7 +431,11 @@ mod tests {
         crate::i18n::init("ko");
         let catalog = json!({
             "categories": ["game_servers", "games", "info"],
-            "categoryLabels": { "game_servers": { "ko": "게임 서버" }, "games": { "ko": "게임 관련", "en": "Games" } },
+            // 다른 테스트가 언어를 먼저 정했어도(OnceLock) 지금 언어의 이름을 고른다
+            "categoryLabels": {
+                "game_servers": { (crate::i18n::lang()): "게임 서버" },
+                "games": { (crate::i18n::lang()): "게임 관련", "xx": "다른 언어" },
+            },
             "tools": [
                 { "name": "game_servers", "category": "game_servers", "available": true },
                 { "name": "lol", "category": "games", "available": true },
