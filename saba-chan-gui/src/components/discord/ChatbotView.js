@@ -70,7 +70,8 @@ export const guildPatch = (d) => ({
 
 /**
  * 고를 수 있는 도구 목록 — 릴레이가 원본 (GET /api/relay/node/:guild/chatbot/tools).
- * {categories, tools: [{name, category, available, unavailable?}]}
+ * {categories, categoryLabels, tools: [{name, category, available, unavailable?, label, hint}]}
+ * 표시 이름·설명(label·hint, 언어 → 문구)도 릴레이가 준다 — 새 도구가 앱 업데이트 없이 제 이름으로 보인다
  */
 export function useChatbotTools(guildId, keyVersion = 0) {
     const [res, setRes] = useState(null);
@@ -96,7 +97,8 @@ export function useChatbotTools(guildId, keyVersion = 0) {
  * 카테고리별 도구 스위치. blocked(name) 이면 잠그고 이유를 보인다; 쓸 수 없는 도구(운영 키·제공사)는 이유만 덧붙인다
  */
 export function ToolGroups({ catalog, reload, isOn, onToggle, blocked = () => false }) {
-    const { t } = useTranslation('gui');
+    const { t, i18n } = useTranslation('gui');
+    const local = (texts, fallback) => texts?.[i18n.language] || texts?.en || fallback;
     if (!catalog) return <SabaSpinner size="sm" />;
     if (catalog.error)
         return (
@@ -115,13 +117,13 @@ export function ToolGroups({ catalog, reload, isOn, onToggle, blocked = () => fa
         if (!tools.length) return null;
         return (
             <div className="cb-tool-group" key={category}>
-                <h3 className="cb-tool-category">{t(`chatbot.cat_${category}`)}</h3>
+                <h3 className="cb-tool-category">{local(catalog.categoryLabels?.[category], category)}</h3>
                 <div className="cb-toggles">
                     {tools.map((tool) => {
-                        const label = t(`chatbot.tool_${tool.name}`, { defaultValue: tool.name });
+                        const label = local(tool.label, tool.name);
                         const locked = blocked(tool.name);
                         const notes = [
-                            t(`chatbot.tool_${tool.name}_hint`, { defaultValue: '' }),
+                            local(tool.hint, ''),
                             locked ? t('chatbot.tool_blocked') : '',
                             !tool.available ? t(`chatbot.tool_unavailable_${tool.unavailable || 'operator_key'}`) : '',
                         ].filter(Boolean);

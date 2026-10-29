@@ -311,7 +311,10 @@ fn tool_lines(catalog: &Value, settings: &Value) -> Vec<String> {
         if rows.is_empty() {
             continue;
         }
-        lines.push(format!("[{}]", t!(&format!("chatbot.cat_{}", category))));
+        // 카테고리 이름은 릴레이가 언어별로 준다 (앱과 같은 이름)
+        let labels = &catalog["categoryLabels"][category];
+        let label = labels[crate::i18n::lang()].as_str().or(labels["en"].as_str()).unwrap_or(category);
+        lines.push(format!("[{}]", label));
         for tool in rows {
             let name = s(tool, "name");
             let mut state = if allowed.as_ref().is_some_and(|a| !a.iter().any(|x| x == name)) {
@@ -428,6 +431,11 @@ mod tests {
         crate::i18n::init("ko");
         let catalog = json!({
             "categories": ["game_servers", "games", "info"],
+            // 다른 테스트가 언어를 먼저 정했어도(OnceLock) 지금 언어의 이름을 고른다
+            "categoryLabels": {
+                "game_servers": { (crate::i18n::lang()): "게임 서버" },
+                "games": { (crate::i18n::lang()): "게임 관련", "xx": "다른 언어" },
+            },
             "tools": [
                 { "name": "game_servers", "category": "game_servers", "available": true },
                 { "name": "lol", "category": "games", "available": true },
@@ -438,9 +446,9 @@ mod tests {
         let settings = json!({ "tools": ["lol", "maplestory"], "allowedTools": ["game_servers", "lol", "pubg"] });
         let lines = tool_lines(&catalog, &settings);
         assert_eq!(lines, vec![
-            format!("[{}]", t!("chatbot.cat_game_servers")),
+            "[게임 서버]".to_string(),
             format!("  {:<14} {}", "game_servers", t!("chatbot.tool_off")),
-            format!("[{}]", t!("chatbot.cat_games")),
+            "[게임 관련]".to_string(),
             format!("  {:<14} {}", "lol", t!("chatbot.tool_on")),
             format!("  {:<14} {} ({})", "pubg", t!("chatbot.tool_off"), t!("chatbot.tool_unavailable")),
             format!("  {:<14} {}", "maplestory", t!("chatbot.tool_blocked")),

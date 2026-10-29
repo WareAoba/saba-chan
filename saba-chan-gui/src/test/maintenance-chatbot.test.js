@@ -21,17 +21,33 @@ const API_KEYS = [
     'chatbotTools',
 ];
 
-/** 릴레이가 주는 도구 목록 (GET /api/relay/node/:guild/chatbot/tools) */
+/** 릴레이가 주는 도구 목록 (GET /api/relay/node/:guild/chatbot/tools) — 표시 이름·설명도 릴레이가 준다 */
+const tool = (name, category, en, extra = {}) => ({
+    name,
+    category,
+    available: true,
+    label: { en, ko: `${en} (ko)` },
+    hint: { en: `${en} hint` },
+    ...extra,
+});
 const CATALOG = {
     categories: ['game_servers', 'games', 'info', 'create'],
+    categoryLabels: {
+        game_servers: { en: 'Game servers' },
+        games: { en: 'Games' },
+        info: { en: 'Find info' },
+        create: { en: 'Create' },
+    },
     tools: [
-        { name: 'game_servers', category: 'game_servers', available: true },
-        { name: 'lol', category: 'games', available: true },
-        { name: 'pubg', category: 'games', available: false, unavailable: 'operator_key' },
-        { name: 'maplestory', category: 'games', available: true },
-        { name: 'web_search', category: 'info', available: true },
-        { name: 'research', category: 'info', available: true },
-        { name: 'images', category: 'create', available: true },
+        tool('game_servers', 'game_servers', 'Game servers'),
+        tool('lol', 'games', 'LoL stats'),
+        // 앱 번역에 없는 새 도구도 릴레이가 준 이름으로 보인다
+        tool('tft', 'games', 'TFT stats'),
+        tool('pubg', 'games', 'PUBG stats', { available: false, unavailable: 'operator_key' }),
+        tool('maplestory', 'games', 'MapleStory characters'),
+        tool('web_search', 'info', 'Web search'),
+        tool('research', 'info', 'Everyday info'),
+        tool('images', 'create', 'Image generation'),
     ],
 };
 
@@ -308,6 +324,8 @@ describe('ChatbotView', () => {
         const images = await screen.findByLabelText('Image generation');
         expect(window.api.chatbotTools).toHaveBeenCalledWith('g1');
         expect(screen.getByText('Games')).toBeTruthy();
+        expect(screen.getByLabelText('TFT stats')).toBeTruthy();
+        expect(screen.getByText('TFT stats hint')).toBeTruthy();
         expect(screen.getByText('The Saba-chan server cannot use this tool right now.')).toBeTruthy();
         expect(images.checked).toBe(true);
         fireEvent.click(images);
@@ -315,7 +333,7 @@ describe('ChatbotView', () => {
         await waitFor(() => expect(window.api.chatbotSave).toHaveBeenCalled());
         expect(window.api.chatbotSave.mock.calls[0][0]).toEqual({
             settings: expect.objectContaining({
-                allowedTools: ['game_servers', 'lol', 'pubg', 'maplestory', 'web_search', 'research'],
+                allowedTools: ['game_servers', 'lol', 'tft', 'pubg', 'maplestory', 'web_search', 'research'],
             }),
         });
         // 다시 허용하면 기본(모두 허용)으로
