@@ -711,9 +711,15 @@ mod tests {
         assert!(WorkGuard::try_begin().is_some(), "finishing frees the slot");
     }
 
+    /// 맥의 임시 폴더(/var/folders)는 링크(/var → /private/var) 아래다: 링크를 거절하는 검사라 실제 경로로 시험한다
+    fn real_temp_dir() -> std::path::PathBuf {
+        let temp = std::env::temp_dir();
+        if cfg!(unix) { std::fs::canonicalize(&temp).unwrap() } else { temp }
+    }
+
     #[test]
     fn elevation_grants_only_on_a_new_empty_or_saba_chan_folder() {
-        let root = std::env::temp_dir().join(format!("saba-elevate-test-{}", std::process::id()));
+        let root = real_temp_dir().join(format!("saba-elevate-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).unwrap();
         assert!(check_elevated_contents(&root.join("new")).is_ok(), "a folder that does not exist yet");
@@ -730,7 +736,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn elevation_refuses_a_link_or_a_folder_below_a_link() {
-        let root = std::env::temp_dir().join(format!("saba-elevate-link-test-{}", std::process::id()));
+        let root = real_temp_dir().join(format!("saba-elevate-link-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(root.join("real")).unwrap();
         std::os::unix::fs::symlink(root.join("real"), root.join("link")).unwrap();

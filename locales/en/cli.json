@@ -119,6 +119,7 @@
     "chatbot_channels": "Talking Saba-chan channels",
     "music_channel": "Singing Saba-chan channel",
     "notify_channel": "Notification channel",
+    "game_chat_channel": "Game chat channel",
     "confirm_music_channel": "Making #{{name}} the Singing Saba-chan channel deletes ordinary messages in it. Continue?",
     "channels_saved": "Channel assignment changed.",
     "channels_bot_missing": "The bot is not in this Discord server, so its channels can't be listed. Invite it: saba-chan-cli bot invite",
@@ -250,6 +251,7 @@
       "set": "Start at sign-in is now {{mode}}.",
       "unsupported": "Start at sign-in cannot be set on this OS yet.",
       "service": "The daemon runs as a systemd user service (saba-chan.service) and is restarted if it crashes.",
+      "service_mac": "The daemon is registered as a login item (LaunchAgent). It starts when you log in on screen (including automatic login).",
       "linger_hint": "To start it at boot without signing in, run once: sudo loginctl enable-linger $USER"
     },
     "browse": {
@@ -780,6 +782,8 @@
       "backup.create.from_snapshot": "Keep the game’s latest automatic backup instead of copying the world now (Palworld and others)",
       "bot.channels.notify": "The notification channel (crashes, backups, updates, scheduled restarts), by name or id",
       "bot.channels.no_notify": "Unassign the notification channel",
+      "bot.channels.game_chat": "The game chat channel (in-game chat of servers with game chat relay on), by name or id",
+      "bot.channels.no_game_chat": "Unassign the game chat channel",
       "bot.link.decline": "Refuse this connection request",
       "bot.allow.all": "No limit: every server of this PC",
       "sandbox.allow.component": "Component to run without isolation",
@@ -1267,6 +1271,7 @@
     "next": "Start the daemon with:\n{{command}}",
     "no_gui_build": "There is no desktop app for this PC yet, so Saba-chan is installed without it. Use the CLI.",
     "next_app": "Open Saba-chan from your app menu, or run:\n{{command}}",
+    "next_mac_app": "Open Saba-chan from your Applications folder, or run:\n{{command}}",
     "components_dir": "Modules and extensions go in {{dir}}.",
     "components_dir_invalid": "Can't use {{dir}} for modules and extensions: {{reason}}",
     "invalid_dir": "Can't install into {{dir}}. Choose a folder that isn't a drive root, your home folder, or the settings folder"

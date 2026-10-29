@@ -13,6 +13,7 @@
 //! 경로는 모두 `install_root` 기준입니다.
 
 
+pub mod app_bundle;
 pub mod component_dirs;
 pub mod config_file;
 pub mod constants;

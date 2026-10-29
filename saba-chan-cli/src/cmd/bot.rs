@@ -102,8 +102,8 @@ pub async fn run(ctx: &Ctx, cmd: BotCmd) -> Result<()> {
             });
             Ok(())
         }
-        BotCmd::Channels { guild, chatbot, no_chatbot, music, no_music, notify, no_notify } => {
-            let change = ChannelChange { chatbot, no_chatbot, music, no_music, notify, no_notify };
+        BotCmd::Channels { guild, chatbot, no_chatbot, music, no_music, notify, no_notify, game_chat, no_game_chat } => {
+            let change = ChannelChange { chatbot, no_chatbot, music, no_music, notify, no_notify, game_chat, no_game_chat };
             match guild {
                 Some(guild) => channels(ctx, &resolve::guild(ctx, Some(&guild)).await?, change).await,
                 None => channels_of_paired(ctx, change).await,
@@ -492,11 +492,14 @@ struct ChannelChange {
     no_music: bool,
     notify: Option<String>,
     no_notify: bool,
+    game_chat: Option<String>,
+    no_game_chat: bool,
 }
 
 impl ChannelChange {
     fn is_empty(&self) -> bool {
         self.chatbot.is_empty() && !self.no_chatbot && self.music.is_none() && !self.no_music && self.notify.is_none() && !self.no_notify
+            && self.game_chat.is_none() && !self.no_game_chat
     }
 }
 
@@ -550,6 +553,11 @@ async fn channels(ctx: &Ctx, guild: &str, change: ChannelChange) -> Result<()> {
         patch.insert("notify".into(), Value::Null);
     } else if let Some(q) = &change.notify {
         patch.insert("notify".into(), json!(channel_id(&list, q)?));
+    }
+    if change.no_game_chat {
+        patch.insert("gameChat".into(), Value::Null);
+    } else if let Some(q) = &change.game_chat {
+        patch.insert("gameChat".into(), json!(channel_id(&list, q)?));
     }
     let r = if patch.is_empty() {
         current
@@ -698,11 +706,16 @@ fn print_channels(r: &Value) {
     let none = || output::dim(&t!("bot.channel_none"));
     let music = r.get("music").and_then(Value::as_str).map(name);
     let notify = r.get("notify").and_then(Value::as_str).map(name);
-    output::print_kv(&[
+    let mut rows = vec![
         (t!("bot.chatbot_channels"), if chatbot.is_empty() { none() } else { chatbot.join(", ") }),
         (t!("bot.music_channel"), music.unwrap_or_else(none)),
         (t!("bot.notify_channel"), notify.unwrap_or_else(none)),
-    ]);
+    ];
+    // 옛 릴레이는 게임 채팅 채널을 모른다 (응답에 gameChat 없음)
+    if r.get("gameChat").is_some() {
+        rows.push((t!("bot.game_chat_channel"), r.get("gameChat").and_then(Value::as_str).map(name).unwrap_or_else(none)));
+    }
+    output::print_kv(&rows);
     if r.get("botAvailable").and_then(Value::as_bool) == Some(false) {
         tell!("{} {}", console::style("!").yellow().bold(), t!("bot.channels_bot_missing"));
     }

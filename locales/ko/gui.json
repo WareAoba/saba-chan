@@ -1002,6 +1002,9 @@
     "channels_notify": "알림 채널",
     "channels_notify_hint": "크래시, 자동 재시작, 업데이트, 백업 완료, 예약 재시작 예고를 이 채널에 올려요.",
     "channels_is_notify": "알림 채널로 쓰는 중",
+    "channels_game_chat": "게임 채팅 채널",
+    "channels_game_chat_hint": "채팅 전달을 켠 서버의 게임 채팅이 이 채널로 와요.",
+    "channels_is_game_chat": "게임 채팅 채널로 쓰는 중",
     "default_prefix": "사바쨩",
     "prefix_default_label": "기본값 ({{prefix}})",
     "prefix_default_placeholder": "비워 두면 기본값 {{prefix}}",
@@ -1524,6 +1527,18 @@
     "hint": "비우면 제한이 없어요. Java 서버라면 -Xmx 값보다 1~2GB 크게 정하세요. Windows에서만 적용돼요.",
     "placeholder": "제한 없음",
     "restart_note": "다시 시작하면 적용돼요."
+  },
+  "game_chat": {
+    "title": "게임 채팅 전달",
+    "desc": "게임 안 채팅을 디스코드의 게임 채팅 채널로 보내요. 디스코드에서 게임으로는 보내지 않아요.",
+    "mode_label": "보낼 채팅",
+    "mode_off": "보내지 않기",
+    "mode_all": "모든 채팅",
+    "mode_keyword": "감지 단어로 시작하는 채팅만",
+    "keyword_label": "감지 단어",
+    "keyword_hint": "채팅 맨 앞에 이 단어가 있으면 단어를 빼고 보내요. 띄어쓰기 없이 32자까지.",
+    "keyword_placeholder": "예: !디코",
+    "channel_note": "보낼 채널은 디스코드 탭의 채널 배정이나 /사바쨩 배정에서 게임 채팅으로 정해요."
   },
   "stop_timeout": {
     "title": "정지 대기 시간",

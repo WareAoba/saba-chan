@@ -33,10 +33,12 @@ pub struct Roots {
     pub temp: PathBuf,
     /// 앱 데이터 폴더들 (Windows `%LOCALAPPDATA%`, 리눅스 `~/.local/share`·`~/.cache`)
     pub app_data: Vec<PathBuf>,
-    /// 리눅스 캐시 (`~/.cache`): 업데이트 받기 폴더 `saba-chan/updates`가 여기 있다 (`constants::resolve_staging_dir`)
+    /// 리눅스·맥 캐시 (`~/.cache`): 업데이트 받기 폴더 `saba-chan/updates`가 여기 있다 (`constants::resolve_staging_dir`)
     pub cache: Option<PathBuf>,
     /// 리눅스 바로가기 폴더 (`~/.local/share/applications`)
     pub applications: Option<PathBuf>,
+    /// 맥 `~/Library`: 창 앱(WebKit)이 식별자 이름으로 `WebKit`·`HTTPStorages`·`Saved Application State`에 쓴다
+    pub library: Option<PathBuf>,
 }
 
 impl Roots {
@@ -44,11 +46,15 @@ impl Roots {
         let mut app_data: Vec<PathBuf> = [dirs::data_local_dir(), dirs::cache_dir()].into_iter().flatten().collect();
         app_data.dedup();
         let unix = !cfg!(windows);
+        // 받기 폴더와 같은 곳: `<캐시>/saba-chan/updates`
+        let staging = saba_chan_updater_lib::constants::resolve_staging_dir();
         Roots {
             temp: std::env::temp_dir(),
             app_data,
-            cache: dirs::cache_dir().filter(|_| unix),
-            applications: dirs::data_dir().filter(|_| unix).map(|d| d.join("applications")),
+            // HOME이 없으면 받기 폴더가 상대 경로(`./updates`)다: 현재 폴더를 캐시로 보지 않는다
+            cache: staging.parent().and_then(Path::parent).filter(|p| p.is_absolute()).map(Path::to_path_buf).filter(|_| unix),
+            applications: dirs::data_dir().filter(|_| cfg!(target_os = "linux")).map(|d| d.join("applications")),
+            library: dirs::home_dir().filter(|_| cfg!(target_os = "macos")).map(|h| h.join("Library")),
         }
     }
 }
@@ -71,6 +77,13 @@ pub fn found(roots: &Roots, running: Option<&[u32]>, skip_self: bool) -> Vec<Pat
     }
     if let Some(cache) = &roots.cache {
         out.push(cache.join(saba_chan_updater_lib::constants::APP_NAME));
+    }
+    if let Some(library) = &roots.library {
+        for id in APP_IDENTIFIERS.iter().filter(|id| !(skip_self && **id == SELF_IDENTIFIER)) {
+            out.push(library.join("WebKit").join(id));
+            out.push(library.join("HTTPStorages").join(id));
+            out.push(library.join("Saved Application State").join(format!("{id}.savedState")));
+        }
     }
     // 앱 메뉴 항목은 가리키는 프로그램이 없어진 것만 흔적이다: 다른 폴더에 남은 설치의 항목은 둔다
     // (이 설치를 가리키는 항목은 바로가기 단계가 지운다)
@@ -127,6 +140,7 @@ mod tests {
             app_data: vec![base.join("local")],
             cache: Some(base.join("cache")),
             applications: Some(base.join("apps")),
+            library: Some(base.join("Library")),
         }
     }
 
@@ -156,6 +170,13 @@ mod tests {
         mk(r.app_data[0].join("com.other.app"), true);
         mk(r.cache.as_ref().unwrap().join("saba-chan").join("updates"), true);
         mk(r.applications.as_ref().unwrap().join("saba-chan.desktop"), false);
+        let library = r.library.clone().unwrap();
+        for id in APP_IDENTIFIERS.iter().filter(|id| **id != SELF_IDENTIFIER) {
+            mk(library.join("WebKit").join(id), true);
+            mk(library.join("HTTPStorages").join(id), true);
+            mk(library.join("Saved Application State").join(format!("{id}.savedState")), true);
+        }
+        mk(library.join("WebKit").join("com.other.app"), true);
 
         assert!(remove(&r, Some(&[42]), true).is_empty());
 
@@ -164,6 +185,10 @@ mod tests {
         let mut expected = [
                 "apps",
                 "cache",
+                "Library",
+                "Library/HTTPStorages",
+                "Library/Saved Application State",
+                "Library/WebKit",
                 "local",
                 "local/com.installer-self",
                 "local/com.other.app",

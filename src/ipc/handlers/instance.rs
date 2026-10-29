@@ -1814,6 +1814,26 @@ pub async fn update_instance_settings(
             }
         }
     }
+    // 게임 채팅 전달: 모드와 감지 단어를 함께 본다 (감지 단어 모드에는 단어가 있어야 한다)
+    let game_chat_error = |message: &str, field: &str| {
+        let error = json!({ "error": "invalid_format", "error_code": "invalid_format", "message": message, "fields": [{"field": field}] });
+        (StatusCode::BAD_REQUEST, Json(error)).into_response()
+    };
+    if let Some(mode) = settings.get("game_chat") {
+        match crate::supervisor::game_chat::Mode::parse(mode) {
+            Ok(mode) => updated.game_chat = mode,
+            Err(e) => return game_chat_error(e, "game_chat"),
+        }
+    }
+    if let Some(keyword) = settings.get("game_chat_keyword") {
+        match crate::supervisor::game_chat::parse_keyword(keyword) {
+            Ok(keyword) => updated.game_chat_keyword = keyword,
+            Err(e) => return game_chat_error(e, "game_chat_keyword"),
+        }
+    }
+    if let Err(e) = updated.game_chat().check() {
+        return game_chat_error(e, "game_chat_keyword");
+    }
     // 정지 대기 시간(초): 비우거나(null·"") 0이면 모듈 값을 쓴다
     let stop_timeout = match settings.get("stop_timeout").map(stop_timeout_from) {
         Some(Err(())) => {
@@ -1971,7 +1991,7 @@ pub async fn update_instance_settings(
     // 모듈이 사바쨩 설정으로 선언한 값은 뺀다
     const DAEMON_FIELDS: &[&str] = &[
         "protocol_mode", "executable_path", "working_dir", "server_version", "extension_data", "extra_args", "memory_limit_mb",
-        "rest_host", "rest_port", "rest_username", "rest_password", "rcon_port", "rcon_password", "enable_rcon",
+        "game_chat", "game_chat_keyword", "rest_host", "rest_port", "rest_username", "rest_password", "rcon_port", "rcon_password", "enable_rcon",
     ];
     let saba_fields: Vec<String> = supervisor.module_loader.get_module(&updated.module_name).ok()
         .and_then(|m| m.metadata.settings.as_ref().map(|s| s.saba_fields().into_iter().map(str::to_string).collect()))
@@ -1993,6 +2013,8 @@ pub async fn update_instance_settings(
         let error = json!({ "error": format!("Failed to update instance: {}", e) });
         return (StatusCode::INTERNAL_SERVER_ERROR, Json(error)).into_response();
     }
+    // 켜 둔 서버의 게임 채팅도 바로 따른다
+    crate::supervisor::game_chat::remember(&id, &updated_clone.game_chat());
 
     // 익스텐션 hook에 넘길 값을 챙기고 락을 놓는다. 아래 모듈·익스텐션 호출은 락 밖에서 (C12)
     let instance_dir = supervisor.instance_store.instance_dir(&id);
@@ -3092,6 +3114,8 @@ mod tests {
              print(json.dumps({'success': True, 'executable_path': os.path.join(d, 'server.bin')}))\n",
         )
         .unwrap();
+        // 격리할 수 없는 OS(맥)에서는 동의한 것으로 돌린다. 격리할 수 있으면 동의는 쓰이지 않는다
+        crate::sandbox::consent_test_component(&dir.join("lifecycle.py"));
         let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
             modules.to_str().unwrap(),
             tmp.path().join("instances").to_str().unwrap(),
@@ -3777,13 +3801,25 @@ mod tests {
         let body = json!({
             "motd": "hi", "heap": "4G", "ram": "8", "protocol_mode": "rest",
             "auto_restart": true, "restart_on_unknown_exit": false, "managed_start": true, "log_sessions_keep": 5,
-            "stop_timeout": 90, "memory_limit_mb": "", "extra_args": "-Dx=1",
+            "stop_timeout": 90, "memory_limit_mb": "", "extra_args": "-Dx=1", "game_chat": "all",
         });
-        let saved = crate::ipc::internal::into_internal(super::update_instance_settings(State(state), Path(id), Json(body)).await).await;
+        let saved = crate::ipc::internal::into_internal(super::update_instance_settings(State(state.clone()), Path(id.clone()), Json(body)).await).await;
         assert!(saved.status.is_success(), "{:?}", saved.body);
         // 받은 키는 실패 메시지로 돌려받는다: Windows에서 확인되지 않은 모듈은 격리되어 모듈 폴더에 쓸 수 없다
         let configured: Vec<String> = serde_json::from_str(saved.body["sync_error"].as_str().unwrap()).unwrap();
         assert_eq!(configured, vec!["motd", "ram"], "a saba-chan setting and daemon fields stay out; a game setting named like another game's launcher setting goes in");
+        assert_eq!(crate::supervisor::game_chat::settings(&id).mode, crate::supervisor::game_chat::Mode::All, "a running server follows at once");
+
+        // 게임 채팅 감지 단어 모드에는 단어가 있어야 한다
+        let patch = |body: serde_json::Value| {
+            let (state, id) = (state.clone(), id.clone());
+            async move { crate::ipc::internal::into_internal(super::update_instance_settings(State(state), Path(id), Json(body)).await).await }
+        };
+        assert_eq!(patch(json!({ "game_chat": "keyword" })).await.status, axum::http::StatusCode::BAD_REQUEST);
+        assert_eq!(patch(json!({ "game_chat": "loud" })).await.status, axum::http::StatusCode::BAD_REQUEST);
+        patch(json!({ "game_chat": "keyword", "game_chat_keyword": " !d " })).await;
+        let stored = state.supervisor.read().await.instance_store.get(&id).cloned().unwrap();
+        assert_eq!((stored.game_chat, stored.game_chat_keyword.as_str()), (crate::supervisor::game_chat::Mode::Keyword, "!d"));
     }
 
     /// 처음 설치(30분까지 걸린다)하는 동안 업데이트·삭제·복원이 같은 폴더에 끼어들지 못한다

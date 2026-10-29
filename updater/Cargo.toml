@@ -32,6 +32,10 @@ test-isolation = []
 # 개발용 모의 릴레이의 고정 키를 믿는다. 릴리즈 빌드에는 켜지 않는다
 mock-relay = []
 
+[target.'cfg(target_os = "macos")'.dependencies]
+# autostart: launchctl kickstart의 gui/<uid>
+libc = "0.2"
+
 [target.'cfg(windows)'.dependencies]
 winreg = "0.52"
 # window_icon: 창 아이콘을 exe 리소스에서 DPI에 맞게 읽는다

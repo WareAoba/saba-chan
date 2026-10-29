@@ -1002,6 +1002,9 @@
     "channels_notify": "Canal de avisos",
     "channels_notify_hint": "Aquí se publican caídas, reinicios automáticos, actualizaciones, copias terminadas y avisos de reinicios programados.",
     "channels_is_notify": "Usado como canal de avisos",
+    "channels_game_chat": "Canal de chat del juego",
+    "channels_game_chat_hint": "Aquí llega el chat de los servidores con el reenvío activado.",
+    "channels_is_game_chat": "Usado como canal de chat del juego",
     "default_prefix": "Saba-chan",
     "prefix_default_label": "predeterminado ({{prefix}})",
     "prefix_default_placeholder": "Déjalo vacío para usar {{prefix}}",
@@ -1524,6 +1527,18 @@
     "hint": "Déjalo vacío para no limitar. En servidores Java, ponlo 1–2 GB por encima de -Xmx. Solo se aplica en Windows.",
     "placeholder": "Sin límite",
     "restart_note": "Se aplica tras reiniciar."
+  },
+  "game_chat": {
+    "title": "Reenvío del chat del juego",
+    "desc": "Envía el chat del juego al canal de chat del juego en Discord. Los mensajes de Discord no se envían al juego.",
+    "mode_label": "Chat que se envía",
+    "mode_off": "No enviar",
+    "mode_all": "Todo el chat",
+    "mode_keyword": "Solo el chat que empieza con la palabra clave",
+    "keyword_label": "Palabra clave",
+    "keyword_hint": "El chat que empieza con esta palabra se envía sin ella. Una palabra, hasta 32 caracteres.",
+    "keyword_placeholder": "p. ej. !dc",
+    "channel_note": "Elige el canal en la asignación de canales de la pestaña Discord o con /saba assign → Chat del juego."
   },
   "stop_timeout": {
     "title": "Tiempo de espera al detener",

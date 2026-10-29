@@ -119,6 +119,7 @@
     "chatbot_channels": "말하는 사바쨩 채널",
     "music_channel": "노래하는 사바쨩 채널",
     "notify_channel": "알림 채널",
+    "game_chat_channel": "게임 채팅 채널",
     "confirm_music_channel": "#{{name}}을(를) 노래하는 사바쨩 채널로 정하면 그 채널의 일반 메시지는 지워져요. 계속할까요?",
     "channels_saved": "채널 배정을 바꿨어요.",
     "channels_bot_missing": "봇이 이 디스코드 서버에 없어서 채널 목록을 볼 수 없어요. 초대: saba-chan-cli bot invite",
@@ -250,6 +251,7 @@
       "set": "로그인할 때 자동 실행을 {{mode}}(으)로 바꿨어요.",
       "unsupported": "이 OS에서는 아직 로그인할 때 자동 실행을 설정할 수 없어요.",
       "service": "데몬을 systemd 사용자 서비스(saba-chan.service)로 돌려요. 꺼지면 다시 띄워요.",
+      "service_mac": "데몬을 로그인 항목(LaunchAgent)으로 등록했어요. 화면으로 로그인하면 켜져요(자동 로그인 포함).",
       "linger_hint": "로그인하지 않아도 부팅할 때 켜려면 한 번 실행해 주세요: sudo loginctl enable-linger $USER"
     },
     "browse": {
@@ -928,6 +930,8 @@
       "backup.create.from_snapshot": "지금 월드 대신 게임이 만든 가장 최근 자동 백업을 보관 (팰월드 등)",
       "bot.channels.notify": "알림 채널(크래시·백업·업데이트·예약 재시작), 이름 또는 id",
       "bot.channels.no_notify": "알림 채널 해제",
+      "bot.channels.game_chat": "게임 채팅 채널(채팅 전달을 켠 서버의 게임 채팅), 이름 또는 id",
+      "bot.channels.no_game_chat": "게임 채팅 채널 해제",
       "bot.link.decline": "이 연결 요청 거절",
       "bot.allow.all": "제한 없음: 이 PC의 모든 서버",
       "sandbox.allow.component": "격리 없이 실행할 구성요소",
@@ -1511,6 +1515,7 @@
     "next": "다음 명령으로 데몬을 켜세요:\n{{command}}",
     "no_gui_build": "이 PC용 창 앱이 아직 없어 화면 없이 설치해요. CLI로 다룰 수 있어요.",
     "next_app": "앱 메뉴에서 사바쨩을 열거나 다음 명령으로 여세요:\n{{command}}",
+    "next_mac_app": "응용 프로그램 폴더에서 사바쨩을 열거나 다음 명령으로 여세요:\n{{command}}",
     "components_dir": "모듈·익스텐션은 {{dir}}에 둬요.",
     "components_dir_invalid": "{{dir}}은(는) 모듈·익스텐션 위치로 쓸 수 없어요: {{reason}}",
     "invalid_dir": "{{dir}}에는 설치할 수 없어요. 드라이브 루트, 홈 폴더, 설정 폴더가 아닌 폴더를 고르세요"

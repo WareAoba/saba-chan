@@ -119,6 +119,7 @@
     "chatbot_channels": "Canales de Saba-chan parlante",
     "music_channel": "Canal de Saba-chan cantante",
     "notify_channel": "Canal de notificaciones",
+    "game_chat_channel": "Canal de chat del juego",
     "confirm_music_channel": "Si #{{name}} pasa a ser el canal de Saba-chan cantante, se borrarán los mensajes normales que haya en él. ¿Continuar?",
     "channels_saved": "Se cambió la asignación de canales.",
     "channels_bot_missing": "El bot no está en este servidor de Discord, así que no se pueden listar sus canales. Invítalo: saba-chan-cli bot invite",
@@ -250,6 +251,7 @@
       "set": "Iniciar al iniciar sesión ahora es: {{mode}}.",
       "unsupported": "Todavía no se puede configurar el inicio al iniciar sesión en este sistema operativo.",
       "service": "El daemon se ejecuta como servicio de usuario de systemd (saba-chan.service) y se reinicia si falla.",
+      "service_mac": "El daemon está registrado como ítem de inicio (LaunchAgent). Se inicia al iniciar sesión en pantalla (incluido el inicio automático).",
       "linger_hint": "Para que arranque al iniciar sin iniciar sesión, ejecuta una vez: sudo loginctl enable-linger $USER"
     },
     "browse": {
@@ -795,6 +797,8 @@
       "backup.create.from_snapshot": "Guardar la copia automática más reciente del juego en vez de copiar el mundo ahora (Palworld y otros)",
       "bot.channels.notify": "El canal de avisos (fallos, copias, actualizaciones, reinicios programados), por nombre o id",
       "bot.channels.no_notify": "Quitar el canal de avisos",
+      "bot.channels.game_chat": "El canal de chat del juego (chat de los servidores con el reenvío activado), por nombre o id",
+      "bot.channels.no_game_chat": "Quitar el canal de chat del juego",
       "bot.link.decline": "Rechazar esta solicitud de conexión",
       "bot.allow.all": "Sin límite: todos los servidores de este PC",
       "sandbox.allow.component": "Componente que se ejecuta sin aislamiento",
@@ -1252,6 +1256,7 @@
     "next": "Inicia el daemon con:\n{{command}}",
     "no_gui_build": "Aún no hay app de escritorio para este PC, así que se instala sin ella. Usa la CLI.",
     "next_app": "Abre Saba-chan desde el menú de aplicaciones o con:\n{{command}}",
+    "next_mac_app": "Abre Saba-chan desde la carpeta Aplicaciones o con:\n{{command}}",
     "components_dir": "Los módulos y extensiones van en {{dir}}.",
     "components_dir_invalid": "No se puede usar {{dir}} para módulos y extensiones: {{reason}}",
     "invalid_dir": "No se puede instalar en {{dir}}. Elige una carpeta que no sea la raíz de una unidad, tu carpeta personal ni la carpeta de ajustes"

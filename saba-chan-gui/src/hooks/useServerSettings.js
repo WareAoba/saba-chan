@@ -1,16 +1,10 @@
 import { useCallback, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { launchDraft } from '../components/servers/LaunchPreview';
-import {
-    busyMessage,
-    createTranslateError,
-    installFailureText,
-    moduleSupports,
-    safeShowToast,
-} from '../utils/helpers';
+import { busyMessage, createTranslateError, installFailureText, moduleSupports, safeShowToast } from '../utils/helpers';
 import { gameNameOf } from '../utils/serverView';
-import { listItems } from '../utils/validation';
 import { blockedText } from '../utils/trustNotice';
+import { listItems } from '../utils/validation';
 import { useModalClose } from './useModalClose';
 
 /**
@@ -35,6 +29,12 @@ const restartFlagsOf = (server) => ({
 
 /** 램 상한 칸 값 (MiB, 비면 제한 없음): 데몬 인스턴스 최상위 memory_limit_mb */
 const memoryLimitOf = (server) => (server?.memory_limit_mb == null ? '' : String(server.memory_limit_mb));
+
+/** 게임 채팅 전달 칸 값: 데몬 인스턴스 최상위 game_chat(off·all·keyword)·game_chat_keyword */
+const gameChatOf = (server) => ({
+    game_chat: server?.game_chat || 'off',
+    game_chat_keyword: server?.game_chat_keyword || '',
+});
 
 /** 정지 대기 칸 값 (초, 비면 모듈 값): 데몬 MK14 module_settings.stop_timeout */
 const stopTimeoutOf = (server) =>
@@ -185,6 +185,7 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
             Object.assign(initial, restartFlagsOf(latestServer));
             initial.memory_limit_mb = memoryLimitOf(latestServer);
             initial.stop_timeout = stopTimeoutOf(latestServer);
+            Object.assign(initial, gameChatOf(latestServer));
             setSettingsValues(initial);
         } else {
             const protocols = module?.protocols || {};
@@ -204,6 +205,7 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                 ...restartFlagsOf(latestServer),
                 memory_limit_mb: memoryLimitOf(latestServer),
                 stop_timeout: stopTimeoutOf(latestServer),
+                ...gameChatOf(latestServer),
             });
         }
 
@@ -482,6 +484,7 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                                                     ...restartFlagsOf(updated),
                                                     memory_limit_mb: memoryLimitOf(updated),
                                                     stop_timeout: stopTimeoutOf(updated),
+                                                    ...gameChatOf(updated),
                                                 }));
                                             }
                                         }
@@ -591,6 +594,13 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
             const stopTimeout = String(settingsValues.stop_timeout ?? '').trim();
             if (settingsValues.stop_timeout !== undefined && stopTimeout !== stopTimeoutOf(settingsServer)) {
                 convertedSettings.stop_timeout = stopTimeout === '' ? null : stopTimeout;
+            }
+
+            // 게임 채팅 전달: 바꾼 칸만 보낸다. 감지 단어 모드에 단어가 있는지는 데몬이 본다 (invalid_format)
+            const openedChat = gameChatOf(settingsServer);
+            for (const key of ['game_chat', 'game_chat_keyword']) {
+                const value = String(settingsValues[key] ?? '').trim();
+                if (settingsValues[key] !== undefined && value !== openedChat[key]) convertedSettings[key] = value;
             }
 
             // 크래시 자동 재시작 (데몬이 module_settings 에서 읽는다)

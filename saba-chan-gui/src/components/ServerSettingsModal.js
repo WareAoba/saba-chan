@@ -1,9 +1,9 @@
 import clsx from 'clsx';
 import React, { useCallback, useEffect, useId, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSettingsStore } from '../stores/useSettingsStore';
 import { moduleSupports } from '../utils/helpers';
 import { checkPortConflicts, hiddenFields, validateAllSettings } from '../utils/validation';
-import { useSettingsStore } from '../stores/useSettingsStore';
 import { CliLine, changedForCli } from './CliLine';
 import { CustomDropdown, ExtensionSlot, Icon, SabaCheckbox, SabaToggle } from './index';
 import { LaunchPreview, launchPreviewAvailable } from './servers/LaunchPreview';
@@ -301,6 +301,49 @@ function GeneralTab({
                         <p className="protocol-mode-description">{t('memory_limit.restart_note')}</p>
                     )}
             </div>
+
+            {/* 게임 채팅 전달 (데몬 인스턴스 game_chat·game_chat_keyword). 모듈이 채팅 줄을 알려 주고 데몬이 콘솔을 읽을 때만 */}
+            {settingsServer.game_chat_supported && (
+                <div className="protocol-mode-section game-chat-section">
+                    <div className="protocol-mode-header">
+                        <span className="protocol-mode-title">
+                            <Icon name="messageSquare" size="sm" /> {t('game_chat.title')}
+                        </span>
+                    </div>
+                    <p className="protocol-mode-description">{t('game_chat.desc')}</p>
+                    <div className="restart-row">
+                        <span>
+                            <strong>{t('game_chat.mode_label')}</strong>
+                        </span>
+                        <CustomDropdown
+                            value={settingsValues.game_chat || 'off'}
+                            onChange={(val) => handleSettingChange('game_chat', val)}
+                            options={['off', 'all', 'keyword'].map((mode) => ({
+                                value: mode,
+                                label: t(`game_chat.mode_${mode}`),
+                            }))}
+                        />
+                    </div>
+                    {settingsValues.game_chat === 'keyword' && (
+                        <div className="restart-row">
+                            <span>
+                                <strong>{t('game_chat.keyword_label')}</strong>
+                                <small>{t('game_chat.keyword_hint')}</small>
+                            </span>
+                            <input
+                                type="text"
+                                className="input memory-limit-input"
+                                maxLength={32}
+                                value={settingsValues.game_chat_keyword ?? ''}
+                                placeholder={t('game_chat.keyword_placeholder')}
+                                aria-label={t('game_chat.keyword_label')}
+                                onChange={(e) => handleSettingChange('game_chat_keyword', e.target.value)}
+                            />
+                        </div>
+                    )}
+                    <p className="protocol-mode-description">{t('game_chat.channel_note')}</p>
+                </div>
+            )}
 
             {/* 정지 대기 시간 (데몬 MK14 module_settings.stop_timeout, 초). 비우면 모듈 값, 지나면 강제로 끈다.
                 데몬이 띄우지 않는 서버(managed:false)는 모듈 stop()이 정지를 맡아 이 값을 쓰지 않는다 */}

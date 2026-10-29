@@ -1430,3 +1430,37 @@ fn a_restored_same_version_reinstall_without_a_record_is_kept() {
     assert_eq!(manager.load_pending_manifest().unwrap(), 1);
     assert_eq!(manager.status.components[0].component, same);
 }
+
+// 맥 앱 묶음 안의 GUI 업데이트: 새 묶음 정보·아이콘을 Contents 자리로 옮기고, 무결성 기록은 옮긴 자리를 적는다
+#[tokio::test]
+async fn a_gui_update_inside_an_app_bundle_moves_the_bundle_files_into_place() {
+    use std::io::Write;
+    use crate::app_bundle::{BUNDLE_NAME, ICON_FILE, PLIST_FILE};
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    let contents = tmp.path().join(BUNDLE_NAME).join("Contents");
+    manager.install_root = contents.join("MacOS");
+    std::fs::create_dir_all(&manager.install_root).unwrap();
+    std::fs::create_dir_all(contents.join("Resources")).unwrap();
+    std::fs::write(manager.install_root.join(crate::GUI_EXE_NAMES[0]), b"old gui").unwrap();
+    std::fs::write(contents.join(PLIST_FILE), b"old plist").unwrap();
+    std::fs::write(contents.join("Resources").join(ICON_FILE), b"old icns").unwrap();
+    let zip_path = tmp.path().join("gui.zip");
+    {
+        let mut zw = zip::ZipWriter::new(std::fs::File::create(&zip_path).unwrap());
+        let opts = zip::write::SimpleFileOptions::default();
+        for (name, data) in [(crate::GUI_EXE_NAMES[0], &b"new gui"[..]), (PLIST_FILE, b"new plist"), (ICON_FILE, b"new icns")] {
+            zw.start_file(name, opts).unwrap();
+            zw.write_all(data).unwrap();
+        }
+        zw.finish().unwrap();
+    }
+
+    let files = manager.apply_gui_update(&zip_path.to_string_lossy()).await.unwrap();
+
+    assert_eq!(std::fs::read(contents.join(PLIST_FILE)).unwrap(), b"new plist");
+    assert_eq!(std::fs::read(contents.join("Resources").join(ICON_FILE)).unwrap(), b"new icns");
+    assert!(!manager.install_root.join(PLIST_FILE).exists() && !manager.install_root.join(ICON_FILE).exists());
+    assert!(files.iter().all(|f| f.exists()), "recorded files are where they ended up: {files:?}");
+    assert!(files.contains(&contents.join(PLIST_FILE)));
+}

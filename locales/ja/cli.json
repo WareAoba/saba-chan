@@ -119,6 +119,7 @@
     "chatbot_channels": "おしゃべりサバちゃんのチャンネル",
     "music_channel": "うたうサバちゃんのチャンネル",
     "notify_channel": "通知チャンネル",
+    "game_chat_channel": "ゲームチャットチャンネル",
     "confirm_music_channel": "#{{name}} をうたうサバちゃんのチャンネルにすると、そのチャンネルの通常のメッセージは削除されます。続けますか?",
     "channels_saved": "チャンネルの割り当てを変更しました。",
     "channels_bot_missing": "ボットがこの Discord サーバーにいないため、チャンネル一覧を取得できません。招待: saba-chan-cli bot invite",
@@ -250,6 +251,7 @@
       "set": "サインイン時の自動起動を{{mode}}にしました。",
       "unsupported": "このOSではまだサインイン時の自動起動を設定できません。",
       "service": "デーモンを systemd ユーザーサービス (saba-chan.service) として動かします。落ちたら再起動します。",
+      "service_mac": "デーモンをログイン項目 (LaunchAgent) として登録しました。画面でログインすると起動します (自動ログインを含む)。",
       "linger_hint": "ログインせずに起動時に動かすには一度実行してください: sudo loginctl enable-linger $USER"
     },
     "browse": {
@@ -926,6 +928,8 @@
       "backup.create.from_snapshot": "今のワールドの代わりにゲームが作った最新の自動バックアップを保管(パルワールドなど)",
       "bot.channels.notify": "通知チャンネル(クラッシュ・バックアップ・更新・予約再起動)、名前またはID",
       "bot.channels.no_notify": "通知チャンネルを解除",
+      "bot.channels.game_chat": "ゲームチャットチャンネル (チャット転送をオンにしたサーバーのゲームチャット)、名前または id",
+      "bot.channels.no_game_chat": "ゲームチャットチャンネルを解除",
       "bot.link.decline": "この接続リクエストを拒否",
       "bot.allow.all": "制限なし: このPCのすべてのサーバー",
       "sandbox.allow.component": "分離せずに実行するコンポーネント",
@@ -1509,6 +1513,7 @@
     "next": "次のコマンドでデーモンを起動してください:\n{{command}}",
     "no_gui_build": "このPC向けのデスクトップアプリはまだないため、画面なしでインストールします。CLIで操作できます。",
     "next_app": "アプリメニューからサバちゃんを開くか、次のコマンドで開いてください:\n{{command}}",
+    "next_mac_app": "アプリケーションフォルダからサバちゃんを開くか、次のコマンドで開いてください:\n{{command}}",
     "components_dir": "モジュール・拡張機能は {{dir}} に置きます。",
     "components_dir_invalid": "{{dir}} はモジュール・拡張機能の場所に使えません: {{reason}}",
     "invalid_dir": "{{dir}} にはインストールできません。ドライブのルート、ホームフォルダー、設定フォルダー以外を選んでください"

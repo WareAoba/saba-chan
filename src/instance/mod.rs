@@ -106,6 +106,12 @@ pub struct ServerInstance {
     pub imported_settings: std::collections::BTreeSet<String>,
     #[serde(default, skip_serializing_if = "std::collections::BTreeSet::is_empty")]
     pub data_roots_backfill_attempted: std::collections::BTreeSet<String>,
+    /// 게임 채팅을 디스코드로 보낼지: off(기본)·all·keyword (`supervisor::game_chat`)
+    #[serde(default, skip_serializing_if = "crate::supervisor::game_chat::Mode::is_off")]
+    pub game_chat: crate::supervisor::game_chat::Mode,
+    /// `game_chat = keyword`일 때 채팅 첫머리에 있어야 하는 감지 단어
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub game_chat_keyword: String,
 }
 
 fn default_protocol_mode() -> String {
@@ -158,7 +164,14 @@ impl ServerInstance {
             user_settings: Default::default(),
             imported_settings: Default::default(),
             data_roots_backfill_attempted: Default::default(),
+            game_chat: Default::default(),
+            game_chat_keyword: String::new(),
         }
+    }
+
+    /// 게임 채팅 전달 설정
+    pub fn game_chat(&self) -> crate::supervisor::game_chat::GameChat {
+        crate::supervisor::game_chat::GameChat { mode: self.game_chat, keyword: self.game_chat_keyword.clone() }
     }
 
     /// extension_data에 특정 boolean 플래그가 true인지 확인합니다.

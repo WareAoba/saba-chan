@@ -328,8 +328,8 @@ mod tests {
 
     /// 격리된(확인되지 않은) 모듈도 자기 인스턴스 서버의 REST로 저장·정지를 요청할 수 있다 (REST 게임의 정상 정지).
     /// 콘솔 명령과 다른 구성요소(익스텐션 hook)의 요청은 지금처럼 받지 않는다
-    /// (포트를 듣는 프로세스는 Windows·Linux에서만 읽는다)
-    #[cfg(any(windows, target_os = "linux"))]
+    /// (포트를 듣는 프로세스는 Windows·Linux·맥에서만 읽는다)
+    #[cfg(any(windows, target_os = "linux", target_os = "macos"))]
     #[tokio::test]
     async fn a_sandboxed_module_reaches_only_its_own_instance_rest() {
         let server = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();

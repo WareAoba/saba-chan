@@ -1141,12 +1141,16 @@ impl Session {
     }
 }
 
-/// 올릴 이벤트면 대기열에 넣는다. 가장 오래된 것부터 버려 `EVENT_PENDING`건만 둔다
+/// 올릴 이벤트면 대기열에 넣는다. 가장 오래된 것부터 버려 `EVENT_PENDING`건만 둔다.
+/// 게임 채팅을 먼저 버린다: 채팅이 몰려도 크래시 같은 알림이 밀려나지 않게
 fn queue_event(pending: &mut std::collections::VecDeque<Value>, event: &crate::events::Event) {
     if let Some(v) = relay_event(event) {
         pending.push_back(v);
         while pending.len() > EVENT_PENDING {
-            pending.pop_front();
+            match pending.iter().position(|v| v["type"] == "instance.chat") {
+                Some(i) => drop(pending.remove(i)),
+                None => drop(pending.pop_front()),
+            }
         }
     }
 }
@@ -1182,6 +1186,8 @@ fn relay_event(event: &crate::events::Event) -> Option<Value> {
         "instance.update_notice" => pick(&["at", "instanceId", "instance", "kind", "module", "latest"]),
         // 디스코드에서 시작해 뒤에서 마친 여러 단계 실행 (I1). 원격 실행의 단계 줄에는 오류 원문이 없다(코드만)
         "plan.done" if d.get("guildId").is_some() => pick(&["at", "runId", "guildId", "ok", "steps", "stoppedAt"]),
+        // 게임 채팅 전달: 사용자가 켠 서버의 채팅만 데몬이 다 만든 문장(`text`)으로 낸다 (`supervisor::game_chat`)
+        "instance.chat" => pick(&["at", "instanceId", "instance", "text"]),
         _ => return None,
     };
     Some(json!({ "id": event.id, "type": event.kind, "data": data }))
@@ -2293,6 +2299,19 @@ mod tests {
     }
 
     #[test]
+    fn game_chat_is_dropped_first_when_the_queue_is_full() {
+        let ev = |id: u64, kind: &str| crate::events::Event { id, kind: kind.into(), data: json!({"instanceId": "i", "kind": "crash", "text": "x"}), replay: true };
+        let mut pending = std::collections::VecDeque::new();
+        queue_event(&mut pending, &ev(1, "instance.exit"));
+        for id in 2..=(EVENT_PENDING as u64 + 5) {
+            queue_event(&mut pending, &ev(id, "instance.chat"));
+        }
+        assert_eq!(pending.len(), EVENT_PENDING);
+        assert_eq!(pending[0]["type"], "instance.exit", "a crash outlives a flood of chat");
+        assert_eq!(pending.back().unwrap()["id"], EVENT_PENDING as u64 + 5, "the newest chat stays");
+    }
+
+    #[test]
     fn only_notifications_go_to_the_relay_without_paths_or_console_lines() {
         let ev = |kind: &str, data: Value| crate::events::Event { id: 7, kind: kind.into(), data, replay: true };
         let crash = ev(
@@ -2321,6 +2340,9 @@ mod tests {
         // 켠 서버의 업데이트 알림은 종류·모듈·새 버전만
         let notice = ev("instance.update_notice", json!({"at": 1, "instanceId": "i", "instance": "pal", "kind": "module", "module": "palworld", "latest": "1.1.0", "path": "C:\\x"}));
         assert_eq!(relay_event(&notice).unwrap()["data"], json!({"at": 1, "instanceId": "i", "instance": "pal", "kind": "module", "module": "palworld", "latest": "1.1.0"}));
+        // 게임 채팅은 데몬이 만든 문장만 (채팅 원문·이름 칸은 따로 싣지 않는다)
+        let chat = ev("instance.chat", json!({"at": 1, "instanceId": "i", "instance": "mc1", "text": "\\[mc1\\] **Steve**: hi", "player": "Steve", "message": "hi"}));
+        assert_eq!(relay_event(&chat).unwrap()["data"], json!({"at": 1, "instanceId": "i", "instance": "mc1", "text": "\\[mc1\\] **Steve**: hi"}));
         // 시작·정상 정지는 누가 시켰는지만 (사바쨩 밖의 시작은 unexpected)
         let started = ev("instance.started", json!({"at": 1, "instanceId": "i", "instance": "mc1", "source": "external", "unexpected": true, "path": "C:\\x"}));
         assert_eq!(relay_event(&started).unwrap()["data"], json!({"at": 1, "instanceId": "i", "instance": "mc1", "source": "external", "unexpected": true}));
