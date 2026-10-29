@@ -25,6 +25,7 @@ class MacApp(unittest.TestCase):
             modes = {p.name: p.stat().st_mode & 0o777 for p in (app / "Contents" / "MacOS").iterdir()}
             with open(app / "Contents" / "Info.plist", "rb") as f:
                 plist = plistlib.load(f)
+            icon = (app / "Contents" / "Resources" / plist["CFBundleIconFile"]).read_bytes()[:4]
         self.assertEqual(app.name, "Saba-chan.app")
         self.assertEqual(macos, sorted(package_macos.EXES))
         self.assertTrue(all(m == 0o755 for m in modes.values()), modes)
@@ -33,11 +34,13 @@ class MacApp(unittest.TestCase):
         # 짧은 버전은 그대로, CFBundleVersion은 숫자만
         self.assertEqual(plist["CFBundleShortVersionString"], "0.1.12-beta.1")
         self.assertEqual(plist["CFBundleVersion"], "0.1.12")
+        self.assertEqual(icon, b"icns")
 
     def test_bundle_id_matches_the_gui(self):
         import json
         conf = json.loads((package_macos.ROOT / "saba-chan-gui/src-tauri/tauri.conf.json").read_text(encoding="utf-8"))
-        self.assertEqual(conf["identifier"], package_macos.BUNDLE_ID)
+        plist = plistlib.loads(package_macos.info_plist("0.1.12"))
+        self.assertEqual(conf["identifier"], plist["CFBundleIdentifier"])
 
     def test_missing_binary_stops(self):
         with tempfile.TemporaryDirectory() as d:

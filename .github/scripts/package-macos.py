@@ -5,11 +5,10 @@
 
 구성요소 zip은 리눅스와 같은 package-linux.py로 만든다(`--platform macos-arm64`). 이 스크립트는 그 실행 파일을 한 묶음에 넣는다:
 .dmg를 받아 응용 프로그램 폴더에 끌어 넣는 설치용이다. 설치기도 같은 모양(`Contents/MacOS`에 모든 실행 파일)으로 묶음을 만든다.
-Apple 서명·공증 없이 임시(ad-hoc) 서명만 한다. 아이콘·서명·.dmg는 맥 도구(sips, iconutil, codesign, hdiutil)가 있어야 만든다.
+Apple 서명·공증 없이 임시(ad-hoc) 서명만 한다. 서명과 .dmg는 맥 도구(codesign, hdiutil)가 있어야 만든다.
 """
 
 import argparse
-import plistlib
 import shutil
 import subprocess
 import sys
@@ -19,36 +18,21 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 
 APP_NAME = "Saba-chan.app"
-# GUI의 Tauri 식별자와 같다 (saba-chan-gui/src-tauri/tauri.conf.json, updater notify_app_id::GUI_APP_ID)
-BUNDLE_ID = "com.saba-chan.app"
-MAIN_EXE = "saba-chan-gui"
 EXES = ["saba-chan-gui", "saba-core", "saba-runner", "saba-chan-cli", "saba-chan-updater"]
-ICON_SOURCE = ROOT / "saba-chan-gui/src-tauri/icons/icon.png"
+# 설치기도 같은 두 파일로 묶음을 만든다 (Info.plist의 @VERSION@·@BUILD@를 바꿔 쓴다)
+PLIST_TEMPLATE = ROOT / "saba-chan-gui/src-tauri/macos/Info.plist"
+ICON_SOURCE = ROOT / "saba-chan-gui/src-tauri/icons/icon.icns"
 ICON_FILE = "saba-chan.icns"
 
 
-def info_plist(version: str) -> dict:
+def info_plist(version: str) -> bytes:
     # CFBundleVersion은 숫자와 점만 받는다: 미리보기 꼬리(-beta.1)는 짧은 버전 문자열에만 둔다
-    numeric = version.split("-", 1)[0]
-    return {
-        "CFBundleDevelopmentRegion": "ko",
-        "CFBundleDisplayName": "Saba-chan",
-        "CFBundleExecutable": MAIN_EXE,
-        "CFBundleIconFile": ICON_FILE,
-        "CFBundleIdentifier": BUNDLE_ID,
-        "CFBundleInfoDictionaryVersion": "6.0",
-        "CFBundleName": "Saba-chan",
-        "CFBundlePackageType": "APPL",
-        "CFBundleShortVersionString": version,
-        "CFBundleVersion": numeric,
-        "LSApplicationCategoryType": "public.app-category.utilities",
-        "LSMinimumSystemVersion": "11.0",
-        "NSHighResolutionCapable": True,
-    }
+    text = PLIST_TEMPLATE.read_text(encoding="utf-8")
+    return text.replace("@VERSION@", version).replace("@BUILD@", version.split("-", 1)[0]).encode("utf-8")
 
 
 def build_app(bin_dir: Path, out_dir: Path, version: str) -> Path:
-    """실행 파일을 `Contents/MacOS`에, Info.plist를 `Contents`에 넣는다 (아이콘·서명은 [`finish_app`])"""
+    """실행 파일을 `Contents/MacOS`에, Info.plist와 아이콘을 넣는다 (서명은 [`finish_app`])"""
     missing = [e for e in EXES if not (bin_dir / e).is_file()]
     if missing:
         sys.exit(f"{APP_NAME}: {', '.join(missing)} not built in {bin_dir}")
@@ -61,25 +45,12 @@ def build_app(bin_dir: Path, out_dir: Path, version: str) -> Path:
     for exe in EXES:
         shutil.copy2(bin_dir / exe, macos / exe)
         (macos / exe).chmod(0o755)
-    with open(app / "Contents" / "Info.plist", "wb") as f:
-        plistlib.dump(info_plist(version), f)
+    (app / "Contents" / "Info.plist").write_bytes(info_plist(version))
+    shutil.copy2(ICON_SOURCE, app / "Contents" / "Resources" / ICON_FILE)
     return app
 
 
-def make_icns(png: Path, dest: Path) -> None:
-    with tempfile.TemporaryDirectory() as d:
-        iconset = Path(d) / "saba-chan.iconset"
-        iconset.mkdir()
-        for size in (16, 32, 128, 256, 512):
-            for scale in (1, 2):
-                name = f"icon_{size}x{size}{'@2x' if scale == 2 else ''}.png"
-                px = str(size * scale)
-                subprocess.run(["sips", "-z", px, px, str(png), "--out", str(iconset / name)], check=True, capture_output=True)
-        subprocess.run(["iconutil", "-c", "icns", str(iconset), "-o", str(dest)], check=True)
-
-
 def finish_app(app: Path) -> None:
-    make_icns(ICON_SOURCE, app / "Contents" / "Resources" / ICON_FILE)
     # M칩 맥은 서명 없는 실행 파일을 돌리지 않는다: 개발자 인증서 없이 묶음 전체에 임시 서명을 한다
     subprocess.run(["codesign", "--force", "--deep", "--sign", "-", str(app)], check=True)
     subprocess.run(["codesign", "--verify", "--deep", "--strict", str(app)], check=True)
