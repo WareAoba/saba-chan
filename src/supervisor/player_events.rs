@@ -45,6 +45,7 @@ fn compile(list: &[String]) -> Vec<regex::Regex> {
 
 impl Patterns {
     /// 로더가 걸러 둔 문자열을 컴파일한다. 둘 다 비면 `None`
+    #[cfg(test)]
     pub fn new(join: &[String], leave: &[String]) -> Option<Self> {
         Self::with_chat(join, leave, &[])
     }
