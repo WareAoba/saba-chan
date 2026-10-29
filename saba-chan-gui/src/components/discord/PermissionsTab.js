@@ -798,7 +798,9 @@ export function CommandStairs({ node, permissions, instance = L.ALL_INSTANCES })
                             <span className={clsx('dc-badge', `tone-${RISK_TONE[current.confirmRisk] || 'ok'}`)}>
                                 {current.kind === 'admin'
                                     ? t('discord.kind_admin')
-                                    : t(`discord.risk_${current.confirmRisk}`)}
+                                    : current.confirmMixed
+                                      ? t('discord.perm_confirm_tier_mixed')
+                                      : t(`discord.risk_${current.confirmRisk}`)}
                             </span>
                         )}
                     </div>
@@ -808,8 +810,10 @@ export function CommandStairs({ node, permissions, instance = L.ALL_INSTANCES })
                                 <strong>{t('discord.perm_confirm_tier')}</strong>
                                 <small>
                                     {t('discord.perm_confirm_tier_hint')}
-                                    {current.confirmRisk !== current.risk &&
-                                        ` ${t('discord.perm_confirm_tier_default', { risk: t(`discord.risk_${current.risk}`) })}`}
+                                    {current.confirmMixed
+                                        ? ` ${t('discord.perm_confirm_tier_mixed_hint')}`
+                                        : current.confirmRisk !== current.risk &&
+                                          ` ${t('discord.perm_confirm_tier_default', { risk: t(`discord.risk_${current.risk}`) })}`}
                                 </small>
                             </span>
                             <Segmented

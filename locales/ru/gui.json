@@ -1050,6 +1050,8 @@
     "perm_confirm_tier": "Подтверждение в Discord",
     "perm_confirm_tier_hint": "Сравнивается с уровнем подтверждения в настройках Discord, чтобы решить, переспрашивать ли кнопкой. Подтверждения в приложении и CLI не меняются.",
     "perm_confirm_tier_default": "(По умолчанию: {{risk}})",
+    "perm_confirm_tier_mixed": "Зависит от экземпляра",
+    "perm_confirm_tier_mixed_hint": "У экземпляров разные уровни. Выбор применит его ко всем.",
     "perm_legend_moved": "Не по пресету",
     "perm_ladder_done": "Назад",
     "instance_menu_hint": "Откройте экземпляр, чтобы увидеть команды по уровням и уровни участников.",

@@ -93,7 +93,6 @@
     "unknown_input": "❌ Unknown command.",
     "command_not_found": "❌ Command does not exist.",
     "permission_denied": "❌ You don't have permission to use this command.",
-    "chatbot_not_allowed": "❌ Talking Saba-chan can't run this command. Run it directly.",
     "local_single_guild_only": "⚠️ Local bots can only be used in one server. This bot is in {{count}} servers. Remove it from the servers you do not use."
   },
   "messages": {

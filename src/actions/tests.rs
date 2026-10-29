@@ -412,13 +412,13 @@ fn chatbot_never_lists_deletion_shutdown_update_or_permissions() {
     }
 }
 
-/// 모듈의 위험 명령도 챗봇이 고를 수 있지만 늘 확인 계획을 거친다(요청자 본인이 확인 버튼을 누른다, 사용자 결정 2026-10-20).
+/// 모듈의 위험 명령도 챗봇이 고를 수 있다. 물을지는 계획의 `needs_confirm`이 길드 챗봇 `confirmLevel`로 정한다 (사용자 결정 2026-10-28).
 /// 결과는 콘솔·조회처럼 IP·비밀처럼 보이는 값을 가려 보낸다
 #[test]
 fn danger_module_commands_reach_the_chatbot_only_through_a_confirmation() {
     let wipe = command_view(&json!({ "name": "wipe", "risk": "danger" })).unwrap();
     assert!(wipe["surfaces"].as_array().unwrap().iter().any(|s| s == "chatbot"));
-    assert_eq!(wipe["risk"], "danger", "danger always needs a confirmed plan (needs_confirm)");
+    assert_eq!(wipe["risk"], "danger", "the plan decides whether to ask (needs_confirm)");
     for id in ["server.console.tail", "server.query:players", "server.command:kick"] {
         assert!(chatbot_masked(id), "{id}");
     }
@@ -1302,6 +1302,19 @@ async fn sentence_plans_ask_by_the_same_rule_unless_the_requester_confirmed() {
     assert_eq!(confirmed["needsConfirm"], false, "{confirmed}");
     set_confirm(&state, "danger", "danger").await;
     assert_eq!(plan_text(&state, "srv start", &relay("owner", true)).await.unwrap()["needsConfirm"], false);
+}
+
+/// 말하는 사바쨩이 고른 위험 모듈 명령도 같은 규칙으로 묻는다: 확인 전이면 거절 대신 확인 계획을, "묻지 않음"이면 바로 실행할 계획을
+#[tokio::test]
+async fn chatbot_danger_sentences_follow_the_chatbot_confirm_level() {
+    let module = format!("{MODULE}\n[[commands.fields]]\nname = \"ban\"\nrisk = \"danger\"\n");
+    let (state, _id, _tmp) = server_with(&module).await;
+    set_confirm(&state, "danger", "danger").await;
+    let asked = plan_text(&state, "srv ban steve", &relay("owner", true)).await.unwrap();
+    assert_eq!((asked["needsConfirm"].clone(), asked["actionId"].clone()), (json!(true), json!("server.command:ban")), "{asked}");
+    set_confirm(&state, "danger", "none").await;
+    let direct = plan_text(&state, "srv ban steve", &relay("owner", true)).await.unwrap();
+    assert_eq!(direct["needsConfirm"], false, "{direct}");
 }
 
 /// 앱·CLI는 길드와 상관없이 위험과 정지·재시작을 묻는다. 묻는 액션은 계획 없이 바로 실행하지 않는다

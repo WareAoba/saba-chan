@@ -1050,6 +1050,8 @@
     "perm_confirm_tier": "Discord-Rückfrage",
     "perm_confirm_tier_hint": "Wird mit der Rückfrage-Stufe der Discord-Einstellungen verglichen, um per Button nachzufragen. Bestätigungen in App und CLI bleiben gleich.",
     "perm_confirm_tier_default": "(Standard: {{risk}})",
+    "perm_confirm_tier_mixed": "Je nach Instanz",
+    "perm_confirm_tier_mixed_hint": "Die Instanzen nutzen verschiedene Stufen. Eine Auswahl gilt für alle.",
     "perm_legend_moved": "Von der Vorlage verschoben",
     "perm_ladder_done": "Zurück",
     "instance_menu_hint": "Öffne eine Instanz, um die Befehle je Stufe und die Stufe jedes Mitglieds zu sehen.",

@@ -129,10 +129,13 @@ export function stairChips(board, view = ALL_INSTANCES) {
         for (const item of list) byLevel.set(item.level, [...(byLevel.get(item.level) || []), item]);
         const [[level, main]] = [...byLevel].sort((a, b) => b[1].length - a[1].length);
         const head = list[0];
+        // 같은 레벨의 인스턴스끼리 되묻기 단계가 다르면 섞여 있다 (confirmRisk 없음)
+        const tiers = new Set(main.map((i) => i.confirmRisk || i.risk));
         const chip = {
             title: head.title,
             risk: head.risk,
-            confirmRisk: main[0].confirmRisk || main[0].risk,
+            confirmRisk: tiers.size === 1 ? [...tiers][0] : null,
+            confirmMixed: tiers.size > 1,
             kind: head.kind,
             fixed: head.fixed,
             name: head.name,
@@ -145,6 +148,7 @@ export function stairChips(board, view = ALL_INSTANCES) {
                 level: item.level,
                 items: [item],
                 confirmRisk: item.confirmRisk || item.risk,
+                confirmMixed: false,
                 instance: item.instance,
                 overridden: item.overridden,
             });

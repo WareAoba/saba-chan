@@ -93,7 +93,6 @@
     "unknown_input": "❌ Comando desconocido.",
     "command_not_found": "❌ El comando no existe.",
     "permission_denied": "❌ No tienes permiso para usar este comando.",
-    "chatbot_not_allowed": "❌ Saba-chan parlante no puede ejecutar este comando. Ejecútalo directamente.",
     "local_single_guild_only": "⚠️ El bot local solo puede usarse en un servidor. Este bot está en {{count}} servidores. Elimínalo de los servidores que no uses."
   },
   "messages": {

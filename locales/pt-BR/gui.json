@@ -1050,6 +1050,8 @@
     "perm_confirm_tier": "Confirmação no Discord",
     "perm_confirm_tier_hint": "Comparado ao nível de confirmação do Discord para decidir se um botão pergunta de novo. As confirmações do app e da CLI não mudam.",
     "perm_confirm_tier_default": "(Original: {{risk}})",
+    "perm_confirm_tier_mixed": "Varia por instância",
+    "perm_confirm_tier_mixed_hint": "As instâncias usam níveis diferentes. Escolher um aplica a todas.",
     "perm_legend_moved": "Movido da predefinição",
     "perm_ladder_done": "Voltar",
     "instance_menu_hint": "Abra uma instância para ver os comandos por nível e o nível de cada membro.",
