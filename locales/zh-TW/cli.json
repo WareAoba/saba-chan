@@ -20,6 +20,7 @@
     "no_preset": "預設設定",
     "agreements_declined": "未同意條款，因此沒有建立伺服器。",
     "not_installable": "{{key}}：saba-chan 無法用此值安裝新伺服器。可選值：{{choices}}",
+    "set_needs_wait": "正在安裝的伺服器的設定（--set）會在安裝完成後儲存。請不加 --no-wait 執行，或安裝完成後用 server set 修改。",
     "created_installing": "已建立 {{name}}。正在安裝伺服器檔案...",
     "folder_other_game": "{{dir}} 似乎是另一款遊戲（{{games}}）。",
     "folder_unrecognized": "無法辨識 {{dir}} 中的伺服器。",
