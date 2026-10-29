@@ -21,7 +21,8 @@ hmac = "0.12"
 sha2 = "0.10"
 uuid = { version = "1", features = ["v4"] }
 hex = "0.4"
-tauri = { version = "2", features = ["tray-icon", "image-png"] }
+# 투명 창(트레이 팝업)은 맥에서 이 기능이 있어야 한다 (tauri.conf.json app.macOSPrivateApi와 짝)
+tauri = { version = "2", features = ["tray-icon", "image-png", "macos-private-api"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-opener = "2"
 tauri-plugin-notification = "2"
