@@ -561,6 +561,11 @@ async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
         let (key, value) = typed_setting(&fields, &Value::Null, &k, &v)?;
         insert_patch(&mut patch, &key, value);
     }
+    // 새로 설치하는 동안은 설치가 작업 잠금을 쥐어 설정을 저장할 수 없다: 설치가 끝난 뒤 저장하므로 기다려야 한다
+    let installs = from.is_none() && module.get("install").is_some_and(|v| !v.is_null());
+    if a.no_wait && installs && !patch.is_empty() {
+        return Err(usage(t!("add.set_needs_wait")));
+    }
 
     // 6) 만들기
     let mut body = json!({ "name": name, "module_name": module_name });
@@ -628,7 +633,28 @@ async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
     // 7-0-a) 만들기 전에 동의하지 않은 약관 안내 (`--accept` 오타, 물을 수 없을 때)
     offer_agreements(ctx, &id, &name, &a.accept).await;
 
-    // 7) 설정 (--set). 틀린 값은 위에서 이미 걸렀다. 데몬이 거절하면 서버는 남기고 끝에 실패로 알린다
+    // 8) 설치 진행
+    let provisioning = created.get("provisioning").and_then(Value::as_bool) == Some(true);
+    if provisioning {
+        // 저장할 설정이 남았으면 설치가 끝날 때까지 기다린다 (위에서 --no-wait와 함께 쓰는 것은 막았다)
+        if a.no_wait && patch.is_empty() {
+            ctx.out.done(&t!("add.created_installing", name = name), &created);
+            ctx.out.hint(&format!("saba-chan-cli server progress {}", name));
+            return Ok(());
+        }
+        let result = follow_provision(ctx, &name, true).await?;
+        if let Some(err) = result.get("error").and_then(Value::as_str) {
+            let rolled = ctx.api.dismiss_provision(&name).await.ok();
+            let removed = rolled.and_then(|r| r.get("rolled_back").and_then(Value::as_bool)) == Some(true);
+            return Err(failed(if removed {
+                t!("add.install_failed_removed", error = err)
+            } else {
+                t!("add.install_failed", error = err)
+            }));
+        }
+    }
+    // 7) 설정 (--set). 설치가 끝난 뒤 저장한다 (설치 중에는 작업 잠금 때문에 거절된다).
+    // 틀린 값은 위에서 이미 걸렀다. 데몬이 거절하면 서버는 남기고 끝에 실패로 알린다
     let mut settings_error = None;
     if !patch.is_empty() {
         match ctx.api.update_instance(&id, Value::Object(patch)).await {
@@ -645,32 +671,6 @@ async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
         }
     }
 
-    // 8) 설치 진행
-    let provisioning = created.get("provisioning").and_then(Value::as_bool) == Some(true);
-    if provisioning {
-        if a.no_wait {
-            if let Some(error) = settings_error {
-                return Err(CliError::Partial {
-                    message: error,
-                    data: json!({ "id": id, "name": name, "module": module_name, "provisioning": true }),
-                }
-                .into());
-            }
-            ctx.out.done(&t!("add.created_installing", name = name), &created);
-            ctx.out.hint(&format!("saba-chan-cli server progress {}", name));
-            return Ok(());
-        }
-        let result = follow_provision(ctx, &name, true).await?;
-        if let Some(err) = result.get("error").and_then(Value::as_str) {
-            let rolled = ctx.api.dismiss_provision(&name).await.ok();
-            let removed = rolled.and_then(|r| r.get("rolled_back").and_then(Value::as_bool)) == Some(true);
-            return Err(failed(if removed {
-                t!("add.install_failed_removed", error = err)
-            } else {
-                t!("add.install_failed", error = err)
-            }));
-        }
-    }
     let out = json!({ "success": true, "id": id, "name": name, "module": module_name, "provisioned": provisioning });
     if let Some(error) = settings_error {
         return Err(CliError::Partial {

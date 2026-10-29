@@ -44,6 +44,10 @@ def mirror(sandbox, fake_jar):
             "javaVersion": {"component": "java-runtime-delta", "majorVersion": 17},
         })
     m.file(f"https://piston-data.mojang.com/v1/objects/{sha1}/server.jar", jar)
+    # 서버 종류마다 받을 수 있는 버전 목록 (만들기 화면·최신 버전 고르기가 묻는다)
+    m.json("https://fill.papermc.io/v3/projects/paper", {"project": {"id": "paper"}, "versions": {"1.21": [MC]}})
+    m.json("https://api.purpurmc.org/v2/purpur", {"project": "purpur", "versions": [MC]})
+    m.json("https://meta.fabricmc.net/v2/versions/game", [{"version": MC, "stable": True}])
     # Paper (Fill v3)
     m.json(f"https://fill.papermc.io/v3/projects/paper/versions/{MC}/builds", [
         {"id": 130, "channel": "STABLE", "downloads": {"server:default": {"url": "https://fill-data.papermc.io/v1/objects/e2e/paper-1.21.1-130.jar", "checksums": {"sha256": hashlib.sha256(jar).hexdigest()}}}},
@@ -166,3 +170,15 @@ def test_pinned_version_install_route(mdaemon, mirror, sandbox):
     assert r.status_code == 200 and r.json().get("success") is not False, r.text
     assert (target / "server.jar").read_bytes() == mirror.jar
     assert "eula=true" in (target / "eula.txt").read_text()
+
+
+def test_cli_add_keeps_set_values_while_it_installs(mdaemon, mirror, cli, game_ports):
+    """`server add --set`의 설치 설정이 아닌 값도 남는다. 만들면 바로 설치가 작업 잠금을 쥐므로, 설치가 끝난 뒤 저장한다"""
+    r = cli.run("server", "add", "cs1", "-m", "minecraft", "--game-port", str(game_ports[0]), "--accept", "eula", "--set", "ram=384M", timeout=300)
+    assert r.code == 0, r
+    inst = next(i for i in mdaemon.instances() if i["name"] == "cs1")
+    assert inst["module_settings"].get("ram") == "384M", inst
+    # 기다리지 않으면 저장할 때가 없으므로 만들기 전에 막는다 (서버를 남기지 않는다)
+    r = cli.run("server", "add", "cs2", "-m", "minecraft", "--game-port", str(game_ports[1]), "--accept", "eula", "--no-wait", "--set", "ram=384M")
+    assert r.code == 2, r
+    assert not any(i["name"] == "cs2" for i in mdaemon.instances())
