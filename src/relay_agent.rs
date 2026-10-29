@@ -28,6 +28,12 @@ const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(60);
 const POLL_TIMEOUT: Duration = Duration::from_secs(40); // 릴레이 롱폴 25초 + 여유
 const RETRY_BASE: Duration = Duration::from_secs(3);
 const RETRY_MAX: Duration = Duration::from_secs(60);
+
+/// 하트비트 `metadata.features`: 릴레이가 기능마다 이 PC를 가르는 이름 (전역 최소 버전 `MIN_AGENT_VERSION`과 따로).
+/// 옛 PC와 다르게 다뤄야 하는 변화를 넣을 때만 이름을 더하고, 릴레이 하한이 그 기능을 넘으면 이름과 릴레이 분기를 함께 지운다.
+/// - `confirm_by_daemon`: 되묻기를 데몬이 계획마다 정한다 (`actions::needs_confirm`). 릴레이는 스스로 위험을 판정하지 않고 `needsConfirm`을 따른다
+const FEATURES: &[&str] = &["confirm_by_daemon"];
+
 /// 알림 이벤트(I3): 처음 한 건이 오면 이만큼 모아서, 한 번에 이만큼까지 보낸다
 const EVENT_GATHER: Duration = Duration::from_secs(2);
 const EVENT_BATCH: usize = 20;
@@ -178,6 +184,7 @@ impl RelayAgent {
                 cancel: cancel.clone(),
                 generation,
                 seen: agent.seen.clone(),
+                metadata_sent: Mutex::new(None),
                 ack_supported: std::sync::atomic::AtomicBool::new(true),
             };
             if let Err(e) = session.check_version().await {
@@ -320,6 +327,8 @@ struct Session {
     cancel: CancellationToken,
     generation: u64,
     seen: Arc<Mutex<SeenCommands>>,
+    /// 릴레이가 메타데이터 전체를 받아 둔 지문 (`heartbeat_metadata`). 없으면 다음 하트비트는 전체를 보낸다
+    metadata_sent: Mutex<Option<String>>,
     /// 릴레이가 `/ack`를 모르면(404, 예전 릴레이) 이 세션에서는 더 보내지 않는다
     ack_supported: std::sync::atomic::AtomicBool,
 }
@@ -488,12 +497,26 @@ impl Session {
         }
     }
 
+    /// 릴레이가 메타데이터 전체를 다시 달라고 하면(다시 켜졌거나 지문을 잊었다) 곧바로 한 번 더 보낸다
     async fn heartbeat(&self) {
-        let body = json!({
+        if self.heartbeat_once().await {
+            self.heartbeat_once().await;
+        }
+    }
+
+    /// 하트비트 한 번. 릴레이가 메타데이터 전체를 달라고 했으면(`needMetadata`) true
+    async fn heartbeat_once(&self) -> bool {
+        let sent = self.metadata_sent.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        let (metadata, hash, unchanged) = heartbeat_metadata(self.metadata().await, sent.as_deref());
+        let mut body = json!({
             "agentVersion": AGENT_VERSION,
             "os": format!("{} {}", std::env::consts::OS, std::env::consts::ARCH),
-            "metadata": self.metadata().await,
+            "metadata": metadata,
+            "metadataHash": hash,
         });
+        if unchanged {
+            body["metadataUnchanged"] = Value::Bool(true);
+        }
         let result = async {
             let resp = self.send_signed(reqwest::Method::POST, "/heartbeat", Some(body.to_string())).await?;
             let status = resp.status();
@@ -513,6 +536,11 @@ impl Session {
         }
         .await;
 
+        // 릴레이가 지문을 되돌려 주면 받아 둔 것이다: 다음 하트비트는 그대로면 바뀌는 부분만 보낸다.
+        // 되돌려 주지 않으면(실패, 다시 달라고 함, 지문을 모르는 옛 릴레이) 다음에도 전체를 보낸다
+        let need_full = result.as_ref().is_ok_and(|data| data.get("needMetadata").and_then(Value::as_bool) == Some(true));
+        let kept = result.as_ref().is_ok_and(|data| data.get("metadataHash").and_then(Value::as_str) == Some(hash.as_str()));
+        *self.metadata_sent.lock().unwrap_or_else(|e| e.into_inner()) = kept.then_some(hash);
         match result {
             Ok(data) => {
                 if data.get("warning").and_then(|v| v.as_str()) == Some("UPDATE_REQUIRED") {
@@ -543,6 +571,7 @@ impl Session {
                 self.report_error(e);
             }
         }
+        need_full && unchanged
     }
 
     /// 하트비트 메타데이터: 릴레이 봇이 자동완성·접두사 표시에 쓴다
@@ -644,8 +673,8 @@ impl Session {
         // 권한 원본은 데몬이다: 릴레이는 이 값으로 바깥 검사용 캐시를 맞춘다
         meta["permissions"] = permissions_by_guild(&bot.node_settings);
         meta["permissionsAt"] = json!(permissions_at);
-        // 되묻기는 데몬이 계획마다 정한다 (`actions::needs_confirm`, 문장 계획 포함): 릴레이는 스스로 위험을 판정하지 않고 `needsConfirm`을 따른다
-        meta["confirmByDaemon"] = Value::Bool(true);
+        // 이 데몬이 가진 기능 (`FEATURES`): 릴레이는 버전 번호 대신 이 목록으로 기능마다 갈린다
+        meta["features"] = json!(FEATURES);
         // `/사바쨩 상태` 끝 줄의 다음 할 일 (J1-a, GUI·CLI와 같은 단계)
         meta["onboarding"] = crate::ipc::handlers::diagnostics::onboarding_now(&self.server).await;
         // 언어가 `auto`인 길드는 이 언어로 답한다 (I2)
@@ -1241,15 +1270,55 @@ async fn action_request(server: &crate::ipc::IPCServer, action: &str, payload: &
         "plan" if payload.get("steps").is_some() => crate::actions::plan_steps(server, &payload["steps"], caller).await,
         // 문장 명령 ("terra-a 공지 안녕"): 데몬이 해석한다
         "plan" if payload.get("text").is_some() => {
-            crate::actions::plan_text(server, payload["text"].as_str().unwrap_or_default(), caller).await
+            let view = crate::actions::plan_text(server, payload["text"].as_str().unwrap_or_default(), caller).await?;
+            auto_run(server, payload, view, caller).await
         }
-        "plan" => crate::actions::plan(server, id, instance, &input, caller).await,
+        "plan" => {
+            let view = crate::actions::plan(server, id, instance, &input, caller).await?;
+            auto_run(server, payload, view, caller).await
+        }
         "run_plan" => {
             let plan_id = payload.get("planId").and_then(Value::as_str).unwrap_or_default();
             crate::actions::run(server, id, instance, &input, Some(plan_id), caller).await
         }
         _ => crate::actions::query(server, id, instance, &input, caller).await,
     }
+}
+
+/// 계획 뒤 바로 실행 (`autoRun: {except?: [액션 id]}`): 확인이 필요 없고 `except`에 없는 액션이면 `run_plan`을 따로 받지 않고
+/// 이어서 실행한다. 답은 `run_plan`의 답에 `autoRun: true`와 계획의 `planId`·`actionId`·`instance`를 붙인 것이다.
+/// 확인이 필요하거나 실행할 것이 없으면 계획을 그대로 준다 (릴레이가 지금처럼 묻거나 `run_plan`을 보낸다)
+async fn auto_run(server: &crate::ipc::IPCServer, payload: &Value, view: Value, caller: &crate::actions::Caller) -> Result<Value, crate::actions::ActionError> {
+    let Some(plan_id) = auto_run_plan(payload, &view).map(str::to_string) else { return Ok(view) };
+    let tag = |data: &mut Value| {
+        if !data.is_object() {
+            *data = json!({});
+        }
+        data["autoRun"] = json!(true);
+        for key in ["planId", "actionId", "instance"] {
+            if data.get(key).is_none() {
+                data[key] = view[key].clone();
+            }
+        }
+    };
+    match crate::actions::run(server, "", None, &Value::Null, Some(&plan_id), caller).await {
+        Ok(mut done) => {
+            tag(&mut done);
+            Ok(done)
+        }
+        Err(mut e) => {
+            tag(&mut e.data);
+            Err(e)
+        }
+    }
+}
+
+/// 이어서 실행할 계획의 planId: `autoRun`을 받았고, 확인이 필요 없고(`needsConfirm: false`), 실행할 액션이 `except`에 없을 때만
+fn auto_run_plan<'a>(payload: &Value, view: &'a Value) -> Option<&'a str> {
+    let opts = payload.get("autoRun").filter(|v| v.is_object())?;
+    let (plan_id, action_id) = (view["planId"].as_str()?, view["actionId"].as_str()?);
+    let excepted = opts["except"].as_array().is_some_and(|list| list.iter().any(|v| v.as_str() == Some(action_id)));
+    (view["needsConfirm"] == json!(false) && !excepted).then_some(plan_id)
 }
 
 /// 원격 MCP 요청자. 릴레이가 확인한 이 PC의 주인(`hostOwnerDiscordId`)과 요청자가 같을 때만 받는다.
@@ -1476,6 +1545,30 @@ fn relay_command_entry(c: &crate::supervisor::module_loader::CommandField, alias
     entry
 }
 
+/// 하트비트마다 보내는 메타데이터 키: 서버 목록(CPU·RAM·접속자가 매번 바뀐다)과 릴레이가 매번 캐시를 맞추는 권한
+const HEARTBEAT_ALWAYS: [&str; 3] = ["servers", "permissions", "permissionsAt"];
+
+/// 하트비트 메타데이터를 보낼 모양으로: (보낼 메타데이터, 지문, 바뀌지 않아 줄였는가).
+/// 지문은 `servers`·`permissionsAt`을 뺀 나머지(권한 포함)의 SHA-256이다. 릴레이가 받아 둔 지문(`sent`)과 같으면
+/// `HEARTBEAT_ALWAYS`만 보낸다 (모듈 명령·액션·낱말처럼 큰 값은 바뀔 때만)
+fn heartbeat_metadata(mut meta: Value, sent: Option<&str>) -> (Value, String, bool) {
+    use sha2::{Digest, Sha256};
+    let Value::Object(map) = &mut meta else { return (meta, String::new(), false) };
+    let servers = map.remove("servers");
+    let at = map.remove("permissionsAt");
+    let hash = hex::encode(Sha256::digest(Value::Object(map.clone()).to_string().as_bytes()));
+    let unchanged = sent == Some(hash.as_str());
+    if unchanged {
+        map.retain(|k, _| HEARTBEAT_ALWAYS.contains(&k.as_str()));
+    }
+    for (key, value) in [("servers", servers), ("permissionsAt", at)] {
+        if let Some(value) = value {
+            map.insert(key.to_string(), value);
+        }
+    }
+    (meta, hash, unchanged)
+}
+
 /// 익스텐션 상태 줄 길이 상한 (글자)
 const STATUS_LINE_MAX: usize = 100;
 
@@ -1556,6 +1649,7 @@ mod tests {
             cancel,
             generation: 1,
             seen: Arc::default(),
+            metadata_sent: Mutex::new(None),
             ack_supported: std::sync::atomic::AtomicBool::new(true),
         };
         let reset = || agent.update(1, |s| *s = AgentStatus { running: true, ..Default::default() });
@@ -1615,6 +1709,7 @@ mod tests {
             cancel: CancellationToken::new(),
             generation: 1,
             seen: Arc::default(),
+            metadata_sent: Mutex::new(None),
             ack_supported: std::sync::atomic::AtomicBool::new(true),
         };
         session.post_result("c1", &json!({ "success": true })).await;
@@ -1641,6 +1736,7 @@ mod tests {
             cancel: CancellationToken::new(),
             generation: 1,
             seen: Arc::default(),
+            metadata_sent: Mutex::new(None),
             ack_supported: std::sync::atomic::AtomicBool::new(true),
         }
     }
@@ -1979,6 +2075,48 @@ mod tests {
         assert_eq!((r["success"].as_bool(), r["data"]["code"].as_str()), (Some(false), Some("invalid_input")), "{r:?}");
     }
 
+    /// 계획 뒤 바로 실행 (`autoRun`): 확인이 필요 없으면 실행 결과를, 확인이 필요하거나 `except`에 든 액션이면 계획을 준다
+    #[tokio::test]
+    async fn auto_run_plans_run_unless_they_need_a_confirmation_or_are_excepted() {
+        let tmp = tempfile::tempdir().unwrap();
+        let session = test_session(&RelayAgent::new(), "http://127.0.0.1:9", "sbn_host.secret", tmp.path()).await;
+        let send = |payload: Value| {
+            let cmd = json!({ "id": "c", "requestedBy": "u1", "hostOwnerDiscordId": "u1", "payload": payload });
+            let session = &session;
+            async move { session.handle_payload(&cmd).await }
+        };
+        let plan = |extra: Value| {
+            let mut p = json!({ "action": "plan", "via": "mcp", "id": "extension.enable", "input": { "extension": "x" } });
+            p.as_object_mut().unwrap().extend(extra.as_object().unwrap().clone());
+            p
+        };
+        // 없는 익스텐션이라 실행은 실패한다: 실패도 실행의 답이다
+        let ran = send(plan(json!({ "autoRun": {} }))).await;
+        assert_eq!(ran["data"]["autoRun"], true, "{ran}");
+        assert_eq!(ran["data"]["actionId"], "extension.enable", "{ran}");
+        assert!(ran["data"]["planId"].is_string(), "{ran}");
+        // 계획이 실행에 쓰였다: 같은 planId는 다시 실행되지 않는다
+        let pid = ran["data"]["planId"].as_str().unwrap().to_string();
+        let again = send(json!({ "action": "run_plan", "via": "mcp", "planId": pid })).await;
+        assert_eq!(again["data"]["code"], "plan_expired", "{again}");
+        for kept in [plan(json!({})), plan(json!({ "autoRun": { "except": ["extension.enable"] } }))] {
+            let r = send(kept.clone()).await;
+            assert_eq!((r["success"].as_bool(), r["data"].get("autoRun")), (Some(true), None), "{kept} → {r}");
+            assert!(r["data"]["planId"].is_string(), "{r}");
+        }
+        // 확인이 필요한 계획·답만 있는 문장 계획은 이어서 실행하지 않는다
+        let auto = json!({ "autoRun": {} });
+        let view = |extra: Value| {
+            let mut v = json!({ "planId": "p", "actionId": "server.status", "needsConfirm": false });
+            v.as_object_mut().unwrap().extend(extra.as_object().unwrap().clone());
+            v
+        };
+        assert_eq!(auto_run_plan(&auto, &view(json!({}))), Some("p"));
+        assert_eq!(auto_run_plan(&auto, &view(json!({ "needsConfirm": true }))), None);
+        assert_eq!(auto_run_plan(&auto, &json!({ "text": "도움말", "needsConfirm": false })), None);
+        assert_eq!(auto_run_plan(&json!({ "autoRun": true }), &view(json!({}))), None);
+    }
+
     /// 원격 데몬 터널: 원격 포트가 꺼져 있거나 터널 id가 이상하면 받지 않는다
     #[tokio::test]
     async fn a_tunnel_is_refused_while_the_remote_port_is_off() {
@@ -2033,6 +2171,38 @@ mod tests {
         assert!(entry.get("extension_status").is_none());
         let stopped = crate::system_monitor::InstanceMetrics { running: false, ..usage };
         assert!(relay_server_entry(&server, Some(&stopped)).get("usage").is_none());
+    }
+
+    /// 메타데이터는 바뀔 때만 전체를 보낸다: 릴레이가 받아 둔 지문과 같으면 서버 목록·권한만
+    #[test]
+    fn heartbeat_metadata_is_sent_whole_only_when_it_changed() {
+        let meta = json!({ "servers": [{ "id": "a" }], "permissions": { "g": {} }, "permissionsAt": 1, "actions": [1, 2], "language": "ko" });
+        let (first, hash, unchanged) = heartbeat_metadata(meta.clone(), None);
+        assert!(!unchanged);
+        assert_eq!(first, meta);
+        // 자주 바뀌는 서버 목록·권한 시각은 지문에 들지 않는다
+        let mut busy = meta.clone();
+        busy["servers"] = json!([{ "id": "a", "usage": { "cpu": 3.0, "memMb": 10 } }]);
+        busy["permissionsAt"] = json!(2);
+        let (light, same, unchanged) = heartbeat_metadata(busy.clone(), Some(&hash));
+        assert!(unchanged);
+        assert_eq!(same, hash);
+        assert_eq!(light, json!({ "servers": busy["servers"], "permissions": { "g": {} }, "permissionsAt": 2 }));
+        // 권한이나 큰 값이 바뀌면 지문이 바뀌어 전체를 보낸다
+        for (key, value) in [("permissions", json!({ "g": { "defaultLevel": 2 } })), ("actions", json!([1]))] {
+            let mut changed = meta.clone();
+            changed[key] = value;
+            let (whole, other, unchanged) = heartbeat_metadata(changed.clone(), Some(&hash));
+            assert!(!unchanged && other != hash, "{key}");
+            assert_eq!(whole, changed);
+        }
+    }
+
+    /// 하트비트는 기능 목록을 싣는다 (릴레이가 기능마다 이 PC를 가른다)
+    #[test]
+    fn heartbeat_features_name_what_the_relay_branches_on() {
+        assert!(FEATURES.contains(&"confirm_by_daemon"));
+        assert!(FEATURES.iter().all(|f| !f.is_empty() && f.chars().all(|c| c.is_ascii_lowercase() || c == '_')));
     }
 
     #[test]
