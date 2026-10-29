@@ -949,7 +949,7 @@ pub enum BotCmd {
     Nodes,
     /// Members of a paired Discord server (name or id; without it: the only paired server)
     Members { guild: Option<String> },
-    /// Talking Saba-chan channels (several), the music channel (one) and the notification channel of a paired Discord server. No options: show
+    /// Talking Saba-chan channels (several), the Singing Saba-chan channel (one) and the notification channel of a paired Discord server. No options: show
     Channels {
         /// Without it: every paired Discord server (changing needs exactly one)
         guild: Option<String>,
@@ -959,10 +959,10 @@ pub enum BotCmd {
         /// Unassign every Talking Saba-chan channel
         #[arg(long)]
         no_chatbot: bool,
-        /// The music player channel, by name or id. Other messages in it get deleted
+        /// The Singing Saba-chan channel, by name or id. Other messages in it get deleted
         #[arg(long, conflicts_with = "no_music")]
         music: Option<String>,
-        /// Unassign the music channel
+        /// Unassign the Singing Saba-chan channel
         #[arg(long)]
         no_music: bool,
         /// The notification channel (crashes, backups, updates, scheduled restarts), by name or id
@@ -978,13 +978,13 @@ pub enum BotCmd {
     Sleep { guild: Option<String> },
     /// Wake the bot on a Discord server
     Wake { guild: Option<String> },
-    /// Music player settings of a Discord server. No options: show
+    /// Singing Saba-chan settings of a Discord server. No options: show
     Music {
         guild: Option<String>,
-        /// Turn music on
+        /// Turn Singing Saba-chan on
         #[arg(long, conflicts_with = "off")]
         on: bool,
-        /// Turn music off
+        /// Turn Singing Saba-chan off
         #[arg(long)]
         off: bool,
         /// Show the player panel

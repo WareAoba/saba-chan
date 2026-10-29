@@ -70,7 +70,7 @@ describe('디스코드 봇 설정 탭', () => {
         render(<BotSettingsTab node={node} />);
         await flush();
         expect(screen.getByText(/not applied to Discord yet/)).toBeInTheDocument();
-        fireEvent.click(screen.getByRole('checkbox', { name: 'Music features' }));
+        fireEvent.click(screen.getByRole('checkbox', { name: 'Turn on Singing Saba-chan' }));
         await flush();
         expect(window.showToast).toHaveBeenCalledWith("This server isn't paired.", 'error', 6000, undefined);
     });

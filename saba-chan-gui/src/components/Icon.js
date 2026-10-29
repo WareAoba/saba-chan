@@ -1,4 +1,4 @@
-import { cloneElement } from 'react';
+import { cloneElement, useId } from 'react';
 
 /**
  * SVG 아이콘 컴포넌트
@@ -16,6 +16,7 @@ export const Icon = ({ name, size = 'md', color = 'currentColor' }) => {
     };
 
     const iconSize = typeof size === 'number' ? size : sizeMap[size] || 20;
+    const maskId = `icon-mask-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
 
     const icons = {
         rocket: (
@@ -306,6 +307,42 @@ export const Icon = ({ name, size = 'md', color = 'currentColor' }) => {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <circle cx="12" cy="12" r="10" />
                 <polyline points="12 6 12 12 16 14" />
+            </svg>
+        ),
+        // 말하는 사바쨩 얼굴 (사용자 확정 그림 L2). 마스크로 선을 그려 currentColor 를 따르고, 아이콘마다 마스크 id 를 따로 쓴다
+        sabaTalking: (
+            <svg viewBox="0 0 1400 1400" fill="none">
+                <defs>
+                    <mask id={maskId} maskUnits="userSpaceOnUse" x="0" y="0" width="1400" height="1400">
+                        <path d="M0 0H1400V1400H0Z" fill="#000"/>
+                        <g transform="translate(0 145)" stroke="#fff" strokeWidth="46" strokeLinecap="round" strokeLinejoin="round">
+                        <path fill="#000" d="M332 355 Q327 273 408 240 Q439 163 527 162 Q588 103 670 135 Q752 103 813 162 Q901 163 932 240 Q1013 273 1008 355 L920 510 L420 510Z"/>
+                        <path fill="none" d="M590 245 C588 150 535 92 455 88 C390 86 335 125 311 180"/>
+                        <g>
+                        <path fill="#000" d="M322 432 C250 540 150 660 120 800 C100 900 140 1010 260 1025 C320 1030 360 990 368 946 C300 940 262 900 266 852 C282 760 338 640 354 540Z"/>
+                        <path fill="#fff" d="M335 410 C300 340 225 330 222 400 C220 450 280 450 335 420Z"/>
+                        <path fill="#fff" d="M320 440 C260 450 200 490 170 525 L225 575 L300 490Z"/>
+                        </g>
+                        <g transform="matrix(-1 0 0 1 1340 0)">
+                        <path fill="#000" d="M322 432 C250 540 150 660 120 800 C100 900 140 1010 260 1025 C320 1030 360 990 368 946 C300 940 262 900 266 852 C282 760 338 640 354 540Z"/>
+                        <path fill="#fff" d="M335 410 C300 340 225 330 222 400 C220 450 280 450 335 420Z"/>
+                        <path fill="#fff" d="M320 440 C260 450 200 490 170 525 L225 575 L300 490Z"/>
+                        </g>
+                        <path fill="#000" d="M577 433 C548 483 499 571 466 656 Q452 686 461 724 Q467 761 473 790 C467 827 483 850 524 870 C568 893 630 901 695 901 C769 901 839 884 872 856 Q899 833 902 784 L912 672 Q879 612 833 560 C801 522 778 476 754 425 L736 582 L661 632 L608 621Z"/>
+                        <path fill="#000" d="M581 232 C644 206 731 207 792 225 C898 254 975 332 1016 436 Q1037 496 1034 562 Q1030 652 1011 729 C1000 830 975 910 940 941 Q955 905 950 880 C930 940 885 975 839 966 C885 915 902 840 903 669 Q906 638 894 619 C835 564 790 507 762 435 Q779 554 757 650 Q700 662 640 658 C592 655 578 631 572 598 Q558 538 569 457 C535 517 504 580 479 637 Q448 700 470 760 C480 840 495 930 527 975 C468 986 417 932 399 874 Q393 918 416 952 C370 920 360 840 345 760 Q300 700 298 651 Q291 589 306 533 C333 423 411 304 514 254 Q551 236 581 232Z"/>
+                        <ellipse fill="#fff" stroke="none" cx="550" cy="716" rx="32" ry="80" transform="rotate(-2 550 716)"/>
+                        <ellipse fill="#fff" stroke="none" cx="824" cy="697" rx="32" ry="80"/>
+                        <path fill="#fff" d="M650 785 Q700 772 742 790 C745 840 725 862 698 862 C668 862 648 830 650 785Z"/>
+                        </g>
+                    </mask>
+                </defs>
+                <path d="M0 0H1400V1400H0Z" fill="currentColor" mask={`url(#${maskId})`} />
+            </svg>
+        ),
+        musicNote: (
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <ellipse cx="8.6" cy="17.4" rx="3.4" ry="2.7" transform="rotate(-22 8.6 17.4)" fill="currentColor" stroke="none" />
+                <path d="M11.6 16.8V3.6c1.2 1.9 3.1 2.8 4.6 3.9 1.5 1.1 2.2 2.6 1.6 4.6" />
             </svg>
         ),
         messageSquare: (

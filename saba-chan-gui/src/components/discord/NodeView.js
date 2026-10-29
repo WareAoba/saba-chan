@@ -229,7 +229,7 @@ export function NodeView({
                         ? [{ id: 'channels', label: t('discord.tab_channels'), icon: <Icon name="hash" size="sm" /> }]
                         : []),
                     ...(chatbotAvailable()
-                        ? [{ id: 'chatbot', label: t('chatbot.nav'), icon: <Icon name="messageSquare" size="sm" /> }]
+                        ? [{ id: 'chatbot', label: t('chatbot.nav'), icon: <Icon name="sabaTalking" size="sm" /> }]
                         : []),
                     ...(botSettingsAvailable()
                         ? [{ id: 'bot', label: t('discord.tab_bot'), icon: <Icon name="settings" size="sm" /> }]

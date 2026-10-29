@@ -496,7 +496,7 @@ export function DiscordPage({
                                 'chatbot',
                                 view.kind === 'chatbot',
                                 () => go({ kind: 'chatbot' }),
-                                <Icon name="messageSquare" size="sm" />,
+                                <Icon name="sabaTalking" size="sm" />,
                                 t('chatbot.nav'),
                                 <span>{t('chatbot.nav_sub')}</span>,
                             )}

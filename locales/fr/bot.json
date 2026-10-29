@@ -249,7 +249,7 @@
       "settings": {
         "set": {
           "title": "Modifier les paramètres Discord",
-          "description": "Langue, veille et musique"
+          "description": "Langue, veille et Saba-chan qui chante"
         }
       }
     },
@@ -290,7 +290,7 @@
       "guild": "Serveur Discord",
       "locale": "Langue",
       "sleeping": "Veille",
-      "music": "Musique",
+      "music": "Saba-chan qui chante",
       "enabled": "Activé",
       "model": "Modèle",
       "memo": "Prompt du serveur",

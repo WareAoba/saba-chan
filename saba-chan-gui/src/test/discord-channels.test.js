@@ -48,7 +48,7 @@ describe('ChannelsTab', () => {
         window.api.relayNodeChannels = vi.fn().mockResolvedValue({ ...base, chatbot: ['111', '222'] });
         window.api.relayNodeChannelsSave = vi.fn().mockResolvedValue({ ...base, chatbot: ['111'], music: '222' });
         render(<ChannelsTab node={node} />);
-        const select = await screen.findByLabelText('Music channel');
+        const select = await screen.findByLabelText('Singing Saba-chan channel');
         pickOption(select, 'Text / #music');
         expect(screen.getByText(/All regular messages in #music will be deleted/)).toBeTruthy();
         fireEvent.click(screen.getByRole('button', { name: /^Save$/ }));
@@ -94,7 +94,7 @@ describe('ChannelsTab', () => {
         render(<ChannelsTab node={node} />);
         expect(await screen.findByText(/You can only unassign/)).toBeTruthy();
         expect(screen.getByLabelText('Use #music as a Talking Saba-chan channel').disabled).toBe(true);
-        for (const label of ['Music channel', 'Alert channel']) {
+        for (const label of ['Singing Saba-chan channel', 'Alert channel']) {
             const list = openDropdown(screen.getByLabelText(label));
             expect(within(list).getByRole('option', { name: '#music' })).toHaveAttribute('aria-disabled', 'true');
             fireEvent.keyDown(screen.getByLabelText(label), { key: 'Escape' });

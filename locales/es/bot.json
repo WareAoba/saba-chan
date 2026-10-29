@@ -249,7 +249,7 @@
       "settings": {
         "set": {
           "title": "Cambiar ajustes de Discord",
-          "description": "Idioma, reposo y música"
+          "description": "Idioma, reposo y Saba-chan cantante"
         }
       }
     },
@@ -290,7 +290,7 @@
       "guild": "Servidor de Discord",
       "locale": "Idioma",
       "sleeping": "Reposo",
-      "music": "Música",
+      "music": "Saba-chan cantante",
       "enabled": "Activado",
       "model": "Modelo",
       "memo": "Prompt del servidor",

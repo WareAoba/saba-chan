@@ -243,6 +243,7 @@ export function BotSettingsTab({ node }) {
 
             <section className="dc-card">
                 <div className="dc-card-head">
+                    <Icon name="musicNote" size="md" />
                     <h2>{t('discord.bot_settings.music_title')}</h2>
                 </div>
                 {toggleRow(t('discord.bot_settings.music_enabled'), null, music.enabled, (enabled) =>
