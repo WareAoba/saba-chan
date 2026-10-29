@@ -20,6 +20,7 @@
     "no_preset": "Ajustes predeterminados",
     "agreements_declined": "No se creó el servidor porque no se aceptaron los términos.",
     "not_installable": "{{key}}: saba-chan no puede instalar un servidor nuevo con este valor. Opciones: {{choices}}",
+    "set_needs_wait": "La configuración (--set) de un servidor que se está instalando se guarda al terminar la instalación. Ejecuta sin --no-wait o cámbiala después con server set.",
     "created_installing": "{{name}} creado. Instalando los archivos del servidor...",
     "folder_other_game": "{{dir}} parece ser de otro juego ({{games}}).",
     "folder_unrecognized": "No se reconoció ningún servidor en {{dir}}.",

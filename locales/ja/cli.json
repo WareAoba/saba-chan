@@ -20,6 +20,7 @@
     "no_preset": "標準の設定",
     "agreements_declined": "規約に同意しなかったため、サーバーを作成しませんでした。",
     "not_installable": "{{key}}: この値ではサバちゃんが新しいサーバーをインストールできません。選べる値: {{choices}}",
+    "set_needs_wait": "新しくインストールするサーバーの設定（--set）はインストール完了後に保存します。--no-wait なしで実行するか、インストール後に server set で変更してください。",
     "created_installing": "{{name}} を作成しました。サーバーファイルをインストールしています...",
     "folder_other_game": "{{dir}} は別のゲーム（{{games}}）のようです。",
     "folder_unrecognized": "{{dir}} にサーバーが見つかりませんでした。",
