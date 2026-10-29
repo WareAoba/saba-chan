@@ -46,6 +46,16 @@ class MacApp(unittest.TestCase):
         plist = plistlib.loads(package_macos.info_plist("0.1.12"))
         self.assertEqual(conf["identifier"], plist["CFBundleIdentifier"])
 
+    def test_first_open_note_has_every_language_korean_first(self):
+        import json
+        note = package_macos.first_open_note()
+        locales = sorted(p.name for p in (package_macos.ROOT / "locales").iterdir() if (p / "common.json").is_file())
+        titles = {l: json.loads((package_macos.ROOT / "locales" / l / "common.json").read_text(encoding="utf-8"))["macos_first_open"]["title"] for l in locales}
+        self.assertEqual(len(titles), 10)
+        self.assertTrue(note.startswith(titles["ko"]), note[:80])
+        for title in titles.values():
+            self.assertIn(title, note)
+
     def test_missing_binary_stops(self):
         with tempfile.TemporaryDirectory() as d:
             with self.assertRaises(SystemExit):

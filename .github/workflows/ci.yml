@@ -296,6 +296,12 @@ jobs:
           python3 .github/scripts/package-linux.py --bin target/release --out macos --platform macos-arm64 --version "$version"
           python3 .github/scripts/package-macos.py --bin target/release --out macos --version "$version" --platform macos-arm64
           ls -la macos
+          # .dmg 안: 앱 묶음, 응용 프로그램 바로가기, 첫 실행 안내
+          hdiutil attach -nobrowse -readonly -mountpoint "$RUNNER_TEMP/dmg" macos/Saba-chan-macos-arm64.dmg
+          ls -la "$RUNNER_TEMP/dmg"
+          test -d "$RUNNER_TEMP/dmg/Saba-chan.app" && test -L "$RUNNER_TEMP/dmg/Applications"
+          grep -q "그래도 열기" "$RUNNER_TEMP/dmg/처음 열 때 (First launch).txt"
+          hdiutil detach "$RUNNER_TEMP/dmg"
 
       # 모의 릴레이에서 CLI 설치 → 앱 묶음 확인 → 업데이트 → 제거 (화면 있는 맥 = 데스크톱 구성).
       # 모의 키는 mock-relay 빌드만 믿는다: 데몬·CLI를 그 기능으로 따로 빌드해 시험용 zip(0.2.0, 0.3.0)을 만든다

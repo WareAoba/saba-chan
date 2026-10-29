@@ -10,6 +10,7 @@ Apple 서명·공증 없이 임시(ad-hoc) 서명만 한다. 서명과 .dmg는 �
 
 import argparse
 import importlib.util
+import json
 import shutil
 import subprocess
 import sys
@@ -24,6 +25,10 @@ EXES = ["saba-chan-gui", "saba-core", "saba-runner", "saba-chan-cli", "saba-chan
 PLIST_TEMPLATE = ROOT / "saba-chan-gui/src-tauri/macos/Info.plist"
 ICON_SOURCE = ROOT / "saba-chan-gui/src-tauri/icons/icon.icns"
 ICON_FILE = "saba-chan.icns"
+# .dmg에 함께 넣는 첫 실행 안내 (서명이 없어 macOS가 처음 한 번 막는다). 문구는 locales/*/common.json `macos_first_open`
+FIRST_OPEN_NOTE = "처음 열 때 (First launch).txt"
+# 안내의 언어 순서: 한국어, 영어, 나머지는 이름순
+FIRST_LANGUAGES = ["ko", "en"]
 
 
 def shared_files() -> dict[Path, str]:
@@ -32,6 +37,18 @@ def shared_files() -> dict[Path, str]:
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return {ROOT / rel: name for rel, name in module.LINUX_ASSETS["saba-core"][2].items()}
+
+
+def first_open_note() -> str:
+    """모든 언어의 첫 실행 안내를 한 파일로 (한국어 먼저)"""
+    root = ROOT / "locales"
+    langs = sorted(p.name for p in root.iterdir() if (p / "common.json").is_file())
+    langs = [l for l in FIRST_LANGUAGES if l in langs] + [l for l in langs if l not in FIRST_LANGUAGES]
+    parts = []
+    for lang in langs:
+        text = json.loads((root / lang / "common.json").read_text(encoding="utf-8"))["macos_first_open"]
+        parts.append(f"{text['title']}\n\n{text['steps']}\n")
+    return "\n----------------------------------------\n\n".join(parts)
 
 
 def info_plist(version: str) -> bytes:
@@ -69,12 +86,13 @@ def finish_app(app: Path) -> None:
 
 
 def make_dmg(app: Path, dest: Path) -> None:
-    """앱 묶음과 응용 프로그램 폴더 바로가기를 담은 압축 .dmg"""
+    """앱 묶음, 응용 프로그램 폴더 바로가기, 첫 실행 안내를 담은 압축 .dmg"""
     with tempfile.TemporaryDirectory() as d:
         stage = Path(d) / "Saba-chan"
         stage.mkdir()
         subprocess.run(["cp", "-R", str(app), str(stage)], check=True)
         (stage / "Applications").symlink_to("/Applications")
+        (stage / FIRST_OPEN_NOTE).write_text(first_open_note(), encoding="utf-8")
         if dest.exists():
             dest.unlink()
         subprocess.run(["hdiutil", "create", "-volname", "Saba-chan", "-srcfolder", str(stage),
