@@ -384,6 +384,8 @@
     "server_running": "The server is on. Stop it first",
     "no_command_path": "The server was started outside Saba-chan, so it cannot take commands",
     "autosave_not_resumed": "The backup was made, but the server’s autosave could not be turned back on. Restart the server",
+    "backup_save_rejected": "The server refused the save command, so no backup was made. Stop the server and back up again",
+    "backup_save_unconfirmed": "The server did not report that saving finished, so no backup was made. Try again shortly or stop the server and back up",
     "snapshot_not_found": "The game has no automatic backup",
     "snapshot_not_deletable": "Saba-chan cannot delete the game’s own automatic backups"
   },

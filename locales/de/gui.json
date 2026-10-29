@@ -1116,6 +1116,8 @@
     "backup_unreadable_hint": "Dieses Backup kann nicht geöffnet und daher nicht wiederhergestellt werden. Ungenutzte Backup-Inhalte werden erst aufgeräumt, wenn du es löschst. Lösche es.",
     "err_backup_file_locked": "Der Server benutzt eine Datei ({{file}}), daher konnte kein Backup erstellt werden. Server stoppen und erneut versuchen.",
     "err_autosave_not_resumed": "Das Backup wurde erstellt, aber das Autospeichern des Servers ließ sich nicht wieder einschalten. Server neu starten.",
+    "err_backup_save_rejected": "Der Server hat den Speicherbefehl abgelehnt, daher wurde kein Backup erstellt. Halte den Server an und sichere erneut.",
+    "err_backup_save_unconfirmed": "Der Server hat nicht gemeldet, dass das Speichern fertig ist, daher wurde kein Backup erstellt. Versuche es gleich noch einmal oder halte den Server vor dem Backup an.",
     "kind_snapshot": "Behaltenes Spiel-Backup",
     "kind_game-snapshot": "Spiel-Autobackup",
     "backup_keep_snapshot": "Spiel-Backup behalten",

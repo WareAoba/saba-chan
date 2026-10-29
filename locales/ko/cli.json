@@ -361,6 +361,8 @@
       "backup_busy": "이 서버의 백업이나 되돌리기가 이미 진행 중이에요. 끝난 뒤 다시 해 주세요.",
       "backup_file_locked": "서버가 쓰고 있는 파일({{file}})이 있어요. 서버를 끈 뒤 다시 하세요: saba-chan-cli stop 이름",
       "autosave_not_resumed": "백업은 만들었지만 서버의 자동 저장을 다시 켜지 못했어요. 서버를 다시 시작해 주세요: saba-chan-cli restart <name>",
+      "backup_save_rejected": "서버가 저장 명령을 받지 않아 백업하지 않았어요. 서버를 끈 뒤 다시 백업해 주세요: saba-chan-cli stop 이름",
+      "backup_save_unconfirmed": "서버가 저장을 마쳤다고 알리지 않아 백업하지 않았어요. 잠시 뒤 다시 하거나 서버를 끈 뒤 백업해 주세요: saba-chan-cli stop 이름",
       "snapshot_not_found": "게임이 만든 자동 백업이 없어요.",
       "invalid_relay_url": "릴레이 주소는 https:// 주소만 쓸 수 있어요(이 PC에서 시험할 때만 localhost·127.0.0.1·[::1]의 http를 쓸 수 있어요).",
       "module_busy": "이 모듈을 이미 설치하거나 지우는 중이에요. 끝난 뒤 다시 해 주세요.",

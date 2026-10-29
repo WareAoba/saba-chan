@@ -53,6 +53,9 @@ const CODE_TEXT = {
     backup_file_locked: 'maintenance.err_backup_file_locked',
     // 백업은 만들었지만 자동 저장을 되돌리지 못했다 ([backup] resume_command)
     autosave_not_resumed: 'maintenance.err_autosave_not_resumed',
+    // 켜진 서버가 저장 명령을 거절했거나 저장 완료 줄이 나오지 않아 백업하지 않았다 ([backup] save_done_pattern)
+    backup_save_rejected: 'maintenance.err_backup_save_rejected',
+    backup_save_unconfirmed: 'maintenance.err_backup_save_unconfirmed',
     snapshot_not_found: 'maintenance.err_snapshot_not_found',
     schedule_changed: 'maintenance.err_schedule_changed',
     server_running: 'maintenance.restore_stop_first',

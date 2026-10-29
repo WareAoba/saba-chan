@@ -384,6 +384,8 @@
     "server_running": "El servidor está encendido. Detenlo primero",
     "no_command_path": "El servidor se inició fuera de Saba-chan y no puede recibir comandos",
     "autosave_not_resumed": "La copia se hizo, pero no se pudo reactivar el autoguardado del servidor. Reinicia el servidor",
+    "backup_save_rejected": "El servidor rechazó el comando de guardado, así que no se hizo la copia. Detén el servidor y vuelve a hacer la copia",
+    "backup_save_unconfirmed": "El servidor no avisó de que terminó de guardar, así que no se hizo la copia. Inténtalo de nuevo en un momento o detén el servidor antes de copiar",
     "snapshot_not_found": "El juego no tiene copia automática",
     "snapshot_not_deletable": "Saba-chan no puede borrar las copias automáticas del propio juego"
   },

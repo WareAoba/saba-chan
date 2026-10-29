@@ -1116,6 +1116,8 @@
     "backup_unreadable_hint": "Este backup não pode ser aberto. Ele não pode ser restaurado, e o conteúdo de backup não usado só é limpo depois que ele for excluído. Exclua-o.",
     "err_backup_file_locked": "O servidor está usando um arquivo ({{file}}), então o backup não foi feito. Desligue o servidor e tente de novo.",
     "err_autosave_not_resumed": "O backup foi feito, mas não foi possível religar o salvamento automático do servidor. Reinicie o servidor.",
+    "err_backup_save_rejected": "O servidor recusou o comando de salvar, então nenhum backup foi feito. Pare o servidor e faça o backup de novo.",
+    "err_backup_save_unconfirmed": "O servidor não avisou que terminou de salvar, então nenhum backup foi feito. Tente de novo em instantes ou pare o servidor antes do backup.",
     "kind_snapshot": "Backup do jogo guardado",
     "kind_game-snapshot": "Backup automático do jogo",
     "backup_keep_snapshot": "Guardar backup do jogo",

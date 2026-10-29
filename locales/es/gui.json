@@ -1116,6 +1116,8 @@
     "backup_unreadable_hint": "Esta copia de seguridad no se puede abrir, así que no se puede restaurar. El contenido de copias sin usar no se limpia hasta que la elimines. Elimínala.",
     "err_backup_file_locked": "El servidor está usando un archivo ({{file}}), así que no se pudo hacer la copia. Detén el servidor e inténtalo de nuevo.",
     "err_autosave_not_resumed": "La copia se hizo, pero no se pudo reactivar el autoguardado del servidor. Reinicia el servidor.",
+    "err_backup_save_rejected": "El servidor rechazó el comando de guardado, así que no se hizo la copia. Detén el servidor y vuelve a hacer la copia.",
+    "err_backup_save_unconfirmed": "El servidor no avisó de que terminó de guardar, así que no se hizo la copia. Inténtalo de nuevo en un momento o detén el servidor antes de copiar.",
     "kind_snapshot": "Copia del juego guardada",
     "kind_game-snapshot": "Copia automática del juego",
     "backup_keep_snapshot": "Guardar copia del juego",

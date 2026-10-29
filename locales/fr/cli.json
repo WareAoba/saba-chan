@@ -361,6 +361,8 @@
       "backup_busy": "Une sauvegarde ou une restauration de ce serveur est déjà en cours. Réessayez quand elle sera terminée.",
       "backup_file_locked": "Le serveur utilise un fichier ({{file}}). Arrêtez le serveur et réessayez : saba-chan-cli stop <nom>",
       "autosave_not_resumed": "La sauvegarde a été faite, mais la sauvegarde auto du serveur n’a pas pu être réactivée. Redémarrez le serveur: saba-chan-cli restart <name>",
+      "backup_save_rejected": "Le serveur a refusé la commande de sauvegarde, aucune sauvegarde n’a donc été faite. Arrêtez le serveur puis recommencez: saba-chan-cli stop <name>",
+      "backup_save_unconfirmed": "Le serveur n’a pas signalé la fin de l’enregistrement, aucune sauvegarde n’a donc été faite. Réessayez dans un instant ou arrêtez le serveur avant de sauvegarder: saba-chan-cli stop <name>",
       "snapshot_not_found": "Le jeu n’a pas de sauvegarde automatique.",
       "invalid_relay_url": "Seules les adresses de relais https:// sont autorisées (http uniquement pour localhost, 127.0.0.1 ou [::1] pour tester sur ce PC).",
       "module_busy": "Ce module est déjà en cours d'installation ou de suppression. Réessayez une fois l'opération terminée.",

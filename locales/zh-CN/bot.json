@@ -384,6 +384,8 @@
     "server_running": "服务器正在运行。请先关闭",
     "no_command_path": "服务器是在 Saba-chan 之外启动的，无法接收命令",
     "autosave_not_resumed": "备份已完成，但无法重新开启服务器的自动保存。请重启服务器",
+    "backup_save_rejected": "服务器拒绝了保存命令，因此没有进行备份。请停止服务器后重新备份",
+    "backup_save_unconfirmed": "服务器未报告保存完成，因此没有进行备份。请稍后重试，或停止服务器后再备份",
     "snapshot_not_found": "游戏没有自动备份",
     "snapshot_not_deletable": "Saba-chan 不能删除游戏自己的自动备份"
   },

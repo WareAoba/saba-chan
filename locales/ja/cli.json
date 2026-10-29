@@ -361,6 +361,8 @@
       "backup_busy": "このサーバーのバックアップまたは復元がすでに実行中です。終わってからもう一度試してください。",
       "backup_file_locked": "サーバーが使用中のファイル({{file}})があります。サーバーを停止してからやり直してください: saba-chan-cli stop 名前",
       "autosave_not_resumed": "バックアップは作成しましたが、サーバーの自動保存を再開できませんでした。サーバーを再起動してください: saba-chan-cli restart <name>",
+      "backup_save_rejected": "サーバーが保存コマンドを受け付けなかったため、バックアップしませんでした。サーバーを停止してからもう一度バックアップしてください: saba-chan-cli stop <name>",
+      "backup_save_unconfirmed": "サーバーが保存の完了を知らせなかったため、バックアップしませんでした。しばらくしてからもう一度試すか、サーバーを停止してからバックアップしてください: saba-chan-cli stop <name>",
       "snapshot_not_found": "ゲームが作った自動バックアップがありません.",
       "invalid_relay_url": "リレーのアドレスは https:// のみ使えます(この PC でのテスト用に localhost・127.0.0.1・[::1] の http だけは使えます)。",
       "module_busy": "このモジュールはすでにインストールまたは削除中です。終わってからもう一度試してください。",

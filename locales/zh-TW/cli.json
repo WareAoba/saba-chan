@@ -361,6 +361,8 @@
       "backup_busy": "此伺服器已有備份或還原正在進行。請在完成後再試一次。",
       "backup_file_locked": "伺服器正在使用檔案（{{file}}）。請關閉伺服器後重試：saba-chan-cli stop 名稱",
       "autosave_not_resumed": "備份已完成，但無法重新開啟伺服器的自動儲存。請重新啟動伺服器: saba-chan-cli restart <name>",
+      "backup_save_rejected": "伺服器拒絕了儲存指令，因此沒有備份。請停止伺服器後重新備份: saba-chan-cli stop <name>",
+      "backup_save_unconfirmed": "伺服器沒有回報儲存完成，因此沒有備份。請稍後再試，或停止伺服器後再備份: saba-chan-cli stop <name>",
       "snapshot_not_found": "遊戲沒有自動備份.",
       "invalid_relay_url": "中繼位址只能使用 https://(僅在本機測試時可對 localhost、127.0.0.1 或 [::1] 使用 http)。",
       "module_busy": "此模組正在安裝或刪除中。請在完成後再試一次。",
