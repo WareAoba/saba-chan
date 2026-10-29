@@ -57,7 +57,7 @@
 
 | 게임 | 설치 | Windows | Linux x64 | Linux ARM64 |
 |---|---|:-:|:-:|:-:|
-| Minecraft (Java) | 공식 서버 파일 | O | O | 확인 중 |
+| Minecraft (Java) | 공식 서버 파일 | O | O | O |
 | Palworld | SteamCMD | O | O | X |
 | Project Zomboid | SteamCMD | O | O | X |
 | Terraria | 공식 서버 파일 | O | O | X |
@@ -147,6 +147,7 @@ sequenceDiagram
 - 앱, 모듈, 익스텐션 업데이트는 공식 서명이 확인된 릴리스에서만 받고, 받은 파일은 하나하나 해시로 확인해요.
 - 공식 서명이 없는 모듈과 익스텐션은 격리해서 돌립니다(Windows는 AppContainer, 리눅스는 bubblewrap). 격리할 수 없는 환경에서는 내가 동의해야 실행돼요.
 - 친구가 게임에 들어오려면 게임 포트는 평소처럼 열어야 해요. 사바쨩이 필요 없게 해 주는 건 원격 제어용 포트뿐입니다.
+- 업데이트 확인(기본으로 켜져 있고 끌 수 있어요. 익명 ID, 버전, 플랫폼, 업데이트 채널만 보냅니다)과 직접 연결한 디스코드 연동 말고는 다른 곳으로 정보를 보내지 않아요. 자세한 건 [개인정보처리방침](https://saba-chan.online/ko/legal/privacy)에 있어요.
 
 ## 소스에서 빌드
 
@@ -163,15 +164,6 @@ cd saba-chan-gui; npm install; npm start
 ```
 
 배포 파일은 GitHub Actions가 이 저장소의 소스로 빌드합니다. Windows는 [build-windows.yml](.github/workflows/build-windows.yml), 리눅스 x64·ARM64는 [release.yml](.github/workflows/release.yml)이에요. 테스트는 `cargo test --workspace`와 `cd saba-chan-gui && npx vitest run`으로 돌립니다.
-
-## 코드 서명 정책 · Code signing policy
-
-Free code signing provided by [SignPath.io](https://signpath.io), certificate by [SignPath Foundation](https://signpath.org).
-
-- 서명하는 파일: 이 저장소의 소스로 GitHub Actions가 빌드한 Windows 실행 파일(`saba-core.exe`, `saba-runner.exe`, `saba-chan-cli.exe`, `saba-chan-gui.exe`, `saba-chan-updater.exe`, `saba-chan-installer.exe`)만 서명합니다. 빌드 과정은 [build-windows.yml](.github/workflows/build-windows.yml)에 공개돼 있어요.
-- Committers and reviewers: [WareAoba](https://github.com/WareAoba)
-- Approvers: [WareAoba](https://github.com/WareAoba). 릴리스마다 서명 요청을 직접 승인합니다.
-- 개인정보 · Privacy policy: 사바쨩은 업데이트 확인(기본으로 켜져 있고 끌 수 있어요. 익명 ID, 버전, 플랫폼, 업데이트 채널만 보냅니다)과 사용자가 직접 연결한 디스코드 연동 말고는 다른 곳으로 정보를 보내지 않습니다. 자세한 건 [개인정보처리방침](https://saba-chan.online/ko/legal/privacy)에 있어요. Saba-chan sends data only for update checks (on by default, can be turned off; an anonymous ID, version, platform and update channel) and for the Discord integration the user connects; see the [privacy policy](https://saba-chan.online/legal/privacy).
 
 ## 라이선스
 
