@@ -62,7 +62,8 @@ impl ClientRegistry {
         Self::default()
     }
 
-    /// 데몬이 CLI를 띄웠다 (GUI의 CLI로 전환)
+    /// 데몬이 CLI를 띄웠다 (GUI의 CLI로 전환). 새 터미널로 띄우는 길이 아직 Windows·리눅스뿐이다
+    #[cfg_attr(not(any(windows, target_os = "linux")), allow(dead_code))]
     pub fn note_launched_cli(&self, pid: u32) {
         let at = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
