@@ -201,7 +201,7 @@
       },
       "port_check": {
         "title": "Port forwarding check",
-        "description": "The relay checks whether this server is reachable from the internet"
+        "description": "Server-chan checks whether this server is reachable from the internet"
       }
     },
     "monitor": {

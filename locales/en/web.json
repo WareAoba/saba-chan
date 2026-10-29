@@ -305,10 +305,10 @@
       "unknown": "UDP ports of a running server and ports another program uses cannot be checked. Stop the server and check again."
     },
     "error": {
-      "node_token_missing": "Connect to Discord (pairing) first. The relay does the check.",
+      "node_token_missing": "Connect to Discord (pairing) first. Server-chan does the check.",
       "port_check_busy": "A check is already running. Try again in a moment.",
       "rate_limited": "Too many checks. Try again in a minute.",
-      "relay_unreachable": "Could not reach the relay. Check your internet connection.",
+      "relay_unreachable": "Could not reach Server-chan. Check your internet connection.",
       "failed": "The check failed."
     }
   }

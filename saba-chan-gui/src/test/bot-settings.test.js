@@ -80,7 +80,7 @@ describe('디스코드 봇 설정 탭', () => {
         window.api.discordSettingsSet = vi.fn();
         render(<BotSettingsTab node={node} section="music" />);
         await flush();
-        expect(screen.getByText(/Couldn't read this server's settings from the relay/)).toBeTruthy();
+        expect(screen.getByText(/Couldn't read this server's settings from Server-chan/)).toBeTruthy();
         expect(screen.getByRole('checkbox', { name: 'Volume normalization' })).toBeDisabled();
 
         window.api.discordSettingsGet.mockResolvedValue(base);

@@ -304,7 +304,7 @@ describe('권한 화면', () => {
         perm = base({ relayOwnerDiscordId: '1002' });
         await openPeople();
         expect(screen.getByRole('alert')).toHaveTextContent(
-            'The relay reported a different owner (Mint). The owner here stays Aoba.',
+            'Server-chan reported a different owner (Mint). The owner here stays Aoba.',
         );
         vi.useFakeTimers({ shouldAdvanceTime: true });
         fireEvent.click(screen.getByRole('button', { name: 'Use this owner' }));
