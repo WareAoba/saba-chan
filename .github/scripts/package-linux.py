@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""화면 없는 리눅스 설치용 zip을 만든다 (D3c).
+"""리눅스·맥 설치용 구성요소 zip을 만든다 (D3c). 맥은 `--platform macos-arm64`, 앱 묶음·.dmg는 package-macos.py.
 
     python .github/scripts/package-linux.py --bin target/release --out output [--platform linux-x64] [--only saba-core,cli,updater]
 
