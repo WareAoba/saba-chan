@@ -134,6 +134,11 @@ fn free_port() -> u16 {
     std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port()
 }
 
+/// UDP는 UDP로 빈 포트를 받는다: TCP로 비어 있던 번호를 Windows 러너의 다른 프로그램이 UDP로 쥐고 있어 `InUse`가 나왔다
+fn free_udp_port() -> u16 {
+    std::net::UdpSocket::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port()
+}
+
 fn target(id: &str, running: bool, ports: &[(u16, Protocol)]) -> Target {
     Target {
         instance_id: id.into(),
@@ -160,7 +165,7 @@ fn statuses(r: &Report) -> Vec<PortStatus> {
 #[tokio::test]
 async fn a_stopped_server_is_open_when_the_probe_reaches_the_test_listener() {
     let relay = mock_relay(Mode::Deliver).await;
-    let (tcp, udp) = (free_port(), free_port());
+    let (tcp, udp) = (free_port(), free_udp_port());
     let reports = run(&relay, &[target("pc-open", false, &[(tcp, Protocol::Tcp), (udp, Protocol::Udp)])], LOOPBACK).await.unwrap();
     assert_eq!(statuses(&reports[0]), vec![PortStatus::Open, PortStatus::Open]);
     assert_eq!(reports[0].verdict, "open");
@@ -173,7 +178,7 @@ async fn a_stopped_server_is_open_when_the_probe_reaches_the_test_listener() {
 #[tokio::test]
 async fn a_stopped_server_is_closed_when_nothing_arrives() {
     let relay = mock_relay(Mode::Drop).await;
-    let (tcp, udp) = (free_port(), free_port());
+    let (tcp, udp) = (free_port(), free_udp_port());
     let reports = run(&relay, &[target("pc-closed", false, &[(tcp, Protocol::Tcp), (udp, Protocol::Udp)])], LOOPBACK).await.unwrap();
     assert_eq!(statuses(&reports[0]), vec![PortStatus::Closed, PortStatus::Closed]);
     assert_eq!(reports[0].verdict, "closed");
@@ -183,7 +188,7 @@ async fn a_stopped_server_is_closed_when_nothing_arrives() {
 async fn an_unreachable_port_is_blamed_on_the_firewall_or_the_router_by_the_firewall_rules() {
     use firewall::{Program, Verdict};
     let relay = mock_relay(Mode::Drop).await;
-    let (tcp, udp) = (free_port(), free_port());
+    let (tcp, udp) = (free_port(), free_udp_port());
     // 방화벽이 시험 리스너(데몬)의 TCP는 막고 UDP는 허용한다
     fn blocks_tcp(queries: &[firewall::Query]) -> Vec<Option<Verdict>> {
         queries
@@ -213,7 +218,7 @@ async fn a_running_server_is_judged_by_the_program_that_opened_the_port() {
     let relay = mock_relay(Mode::Drop).await;
     let game = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let tcp = game.local_addr().unwrap().port();
-    let udp = free_port();
+    let udp = free_udp_port();
     fn blocks_the_game(queries: &[firewall::Query]) -> Vec<Option<Verdict>> {
         queries.iter().map(|&(_, _, program)| (program == Program::Listener).then_some(Verdict::Blocked)).collect()
     }
@@ -235,7 +240,7 @@ async fn ports_past_the_relay_limit_are_unknown_not_closed() {
     // 서로 다른 포트여야 한다 (같은 포트가 두 번 나오면 하나로 묶여 한도 안에 든다)
     let mut ports: Vec<(u16, Protocol)> = Vec::new();
     while ports.len() < MAX_PORTS + 1 {
-        let p = (free_port(), Protocol::Udp);
+        let p = (free_udp_port(), Protocol::Udp);
         if !ports.contains(&p) {
             ports.push(p);
         }
@@ -304,7 +309,7 @@ async fn a_running_server_is_checked_by_connecting_and_udp_stays_unknown() {
             let _ = s.read_to_end(&mut buf).await;
         }
     });
-    let udp = free_port();
+    let udp = free_udp_port();
     let reports = run(&relay, &[target("pc-running", true, &[(tcp, Protocol::Tcp), (udp, Protocol::Udp)])], LOOPBACK).await.unwrap();
     assert_eq!(statuses(&reports[0]), vec![PortStatus::Open, PortStatus::Unknown]);
     // 켜진 서버의 TCP가 닿지 않으면 닫힘
@@ -355,7 +360,7 @@ async fn a_check_during_a_start_leaves_the_ports_to_the_server() {
 async fn a_start_during_a_check_waits_and_then_the_server_can_open_the_ports() {
     // 확인 도중 들어온 시작 요청: 확인이 끝날 때까지 기다렸다가, 끝나면 곧바로 게임 서버가 같은 포트를 연다
     let relay = mock_relay(Mode::Drop).await;
-    let (tcp, udp) = (free_port(), free_port());
+    let (tcp, udp) = (free_port(), free_udp_port());
     let check = tokio::spawn(async move {
         run(&relay, &[target("pc-start-wait", false, &[(tcp, Protocol::Tcp), (udp, Protocol::Udp)])], LOOPBACK).await
     });
