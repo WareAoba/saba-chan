@@ -1,7 +1,7 @@
 //! 로그인할 때 자동 실행 API (`saba_chan_updater_lib::autostart`)
 //!
 //! - `GET /api/system/autostart` — `{ok, supported, mode: "off"|"daemon"|"full", service, lingering}` (OS에 등록된 항목을 읽는다).
-//!   `service`: 데몬을 systemd 사용자 서비스로 돌린다(화면 없는 리눅스). `lingering`: 로그인하지 않아도 부팅할 때 돈다(리눅스가 아니면 null)
+//!   `service`: 데몬을 바로 등록했다(GUI 없는 리눅스의 systemd 사용자 서비스, 맥의 LaunchAgent). `lingering`: 로그인하지 않아도 부팅할 때 돈다(리눅스가 아니면 null)
 //! - `PUT /api/system/autostart` `{mode}` — 이 설치 폴더의 실행 파일로 등록하거나 지운다.
 //!   실패는 HTTP 200 `{ok: false, error_code: "autostart_<코드>", error}`
 

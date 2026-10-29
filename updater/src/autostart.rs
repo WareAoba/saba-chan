@@ -66,7 +66,7 @@ pub struct Entry {
 }
 
 impl Entry {
-    /// 데몬을 바로 돌리는 서비스 항목인가 (화면 없는 리눅스)
+    /// 데몬을 바로 돌리는 서비스 항목인가 (GUI 없는 리눅스의 systemd 사용자 서비스, 맥의 LaunchAgent)
     pub fn is_service(&self) -> bool {
         self.program.file_name().is_some_and(|n| n == crate::uninstall_entry::CORE_EXE)
     }
@@ -489,15 +489,15 @@ fn xml_unescape(s: &str) -> String {
     s.replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", "\"").replace("&apos;", "'").replace("&amp;", "&")
 }
 
-/// LaunchAgent plist. 로그인할 때 띄우고, 데몬을 바로 돌리는 항목은 죽었을 때만 다시 띄운다 (멈춤 API로 끝나면 0)
+/// LaunchAgent plist. 로그인할 때 한 번 띄운다. 다시 띄우지는 않는다: 이미 도는 데몬이 있으면 새 데몬은 실패로 끝나는데,
+/// launchd는 다시 띄우는 횟수에 상한이 없다. 띄운 프로그램이 끝나도 그 아래 데몬·게임 서버는 남긴다(`AbandonProcessGroup`)
 pub fn launch_agent(entry: &Entry) -> String {
     let mut args = format!("\t\t<string>{}</string>\n", xml_escape(&entry.program.to_string_lossy()));
     for a in &entry.args {
         args.push_str(&format!("\t\t<string>{}</string>\n", xml_escape(a)));
     }
-    let keep_alive = if entry.is_service() { "\t<key>KeepAlive</key>\n\t<dict>\n\t\t<key>SuccessfulExit</key>\n\t\t<false/>\n\t</dict>\n" } else { "" };
     format!(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\">\n<dict>\n\t<key>Label</key>\n\t<string>{LAUNCH_AGENT_LABEL}</string>\n\t<key>ProgramArguments</key>\n\t<array>\n{args}\t</array>\n\t<key>RunAtLoad</key>\n\t<true/>\n{keep_alive}\t<key>ProcessType</key>\n\t<string>Interactive</string>\n</dict>\n</plist>\n"
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\">\n<dict>\n\t<key>Label</key>\n\t<string>{LAUNCH_AGENT_LABEL}</string>\n\t<key>ProgramArguments</key>\n\t<array>\n{args}\t</array>\n\t<key>RunAtLoad</key>\n\t<true/>\n\t<key>AbandonProcessGroup</key>\n\t<true/>\n\t<key>ProcessType</key>\n\t<string>Interactive</string>\n</dict>\n</plist>\n"
     )
 }
 
@@ -600,6 +600,8 @@ pub fn apply(mode: Mode, install_dir: &Path) -> Result<(), AutostartError> {
 }
 
 fn write(entry: &Entry) -> std::io::Result<()> {
+    #[cfg(not(target_os = "windows"))]
+    let no_home = || std::io::Error::new(std::io::ErrorKind::NotFound, "no home folder");
     #[cfg(target_os = "windows")]
     {
         use winreg::enums::*;
@@ -610,11 +612,10 @@ fn write(entry: &Entry) -> std::io::Result<()> {
     }
     #[cfg(target_os = "macos")]
     {
-        write_agent_in(&launch_agents_dir().ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "no home folder"))?, entry)
+        write_agent_in(&launch_agents_dir().ok_or_else(no_home)?, entry)
     }
     #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     {
-        let no_home = || std::io::Error::new(std::io::ErrorKind::NotFound, "no home folder");
         write_to(&autostart_dir().ok_or_else(no_home)?, &unit_dir().ok_or_else(no_home)?, entry)
     }
 }
@@ -828,18 +829,18 @@ mod tests {
     }
 
     #[test]
-    fn the_launch_agent_reads_back_and_restarts_only_after_a_crash() {
+    fn the_launch_agent_reads_back_and_leaves_what_it_started_running() {
         let e = Entry { program: PathBuf::from("/Users/a b/<sa&ba>/Saba-chan.app/Contents/MacOS/saba-chan-gui"), args: vec![TRAY_ARG.into()] };
         let text = launch_agent(&e);
         assert!(text.contains("<string>/Users/a b/&lt;sa&amp;ba&gt;/Saba-chan.app/Contents/MacOS/saba-chan-gui</string>"), "{}", text);
         assert!(text.contains(&format!("<key>Label</key>\n\t<string>{LAUNCH_AGENT_LABEL}</string>")), "{}", text);
         assert!(text.contains("<key>RunAtLoad</key>\n\t<true/>"), "{}", text);
         assert_eq!(parse_launch_agent(&text), Some(e));
-        // 데몬을 바로 돌리는 항목은 죽었을 때만 launchd가 다시 띄운다 (멈춤 API로 끝나면 0)
+        // 띄운 프로그램이 끝나도 데몬·게임 서버는 남고, 다시 띄우지 않는다 (이미 도는 데몬과 부딪히면 끝없이 다시 띄운다)
+        assert!(text.contains("<key>AbandonProcessGroup</key>\n\t<true/>"), "{}", text);
+        assert!(!text.contains("KeepAlive"), "{}", text);
         let core = Entry { program: PathBuf::from("/Users/a/Saba-chan.app/Contents/MacOS/saba-core"), args: vec![] };
-        let text = launch_agent(&core);
-        assert!(text.contains("<key>SuccessfulExit</key>\n\t\t<false/>"), "{}", text);
-        assert_eq!(parse_launch_agent(&text), Some(core));
+        assert_eq!(parse_launch_agent(&launch_agent(&core)), Some(core));
         assert_eq!(parse_launch_agent("<plist><dict></dict></plist>"), None);
     }
 

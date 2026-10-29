@@ -251,6 +251,7 @@
       "set": "Iniciar ao entrar agora é: {{mode}}.",
       "unsupported": "Ainda não é possível configurar o início ao entrar neste sistema operacional.",
       "service": "O daemon roda como serviço de usuário do systemd (saba-chan.service) e reinicia se falhar.",
+      "service_mac": "O daemon está registrado como item de início de sessão (LaunchAgent). Ele inicia quando você entra na tela (incluindo o login automático).",
       "linger_hint": "Para iniciar no boot sem fazer login, rode uma vez: sudo loginctl enable-linger $USER"
     },
     "browse": {

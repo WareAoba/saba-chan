@@ -251,6 +251,7 @@
       "set": "登录时自动启动已改为{{mode}}。",
       "unsupported": "此操作系统暂不支持设置登录时自动启动。",
       "service": "守护进程作为 systemd 用户服务（saba-chan.service）运行，崩溃后会重新启动。",
+      "service_mac": "守护进程已注册为登录项（LaunchAgent）。在屏幕上登录时启动（包括自动登录）。",
       "linger_hint": "若要不登录也在开机时启动，请运行一次：sudo loginctl enable-linger $USER"
     },
     "browse": {

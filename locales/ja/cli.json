@@ -251,6 +251,7 @@
       "set": "サインイン時の自動起動を{{mode}}にしました。",
       "unsupported": "このOSではまだサインイン時の自動起動を設定できません。",
       "service": "デーモンを systemd ユーザーサービス (saba-chan.service) として動かします。落ちたら再起動します。",
+      "service_mac": "デーモンをログイン項目 (LaunchAgent) として登録しました。画面でログインすると起動します (自動ログインを含む)。",
       "linger_hint": "ログインせずに起動時に動かすには一度実行してください: sudo loginctl enable-linger $USER"
     },
     "browse": {

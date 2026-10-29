@@ -251,6 +251,7 @@
       "set": "Iniciar al iniciar sesión ahora es: {{mode}}.",
       "unsupported": "Todavía no se puede configurar el inicio al iniciar sesión en este sistema operativo.",
       "service": "El daemon se ejecuta como servicio de usuario de systemd (saba-chan.service) y se reinicia si falla.",
+      "service_mac": "El daemon está registrado como ítem de inicio (LaunchAgent). Se inicia al iniciar sesión en pantalla (incluido el inicio automático).",
       "linger_hint": "Para que arranque al iniciar sin iniciar sesión, ejecuta una vez: sudo loginctl enable-linger $USER"
     },
     "browse": {
