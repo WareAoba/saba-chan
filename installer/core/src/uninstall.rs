@@ -972,7 +972,7 @@ fn powershell_lines(script: &str) -> Option<String> {
     }
 }
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
 fn list_named(names: &[&str]) -> Option<String> {
     let mut listing = String::new();
     for entry in std::fs::read_dir("/proc").ok()?.flatten() {
@@ -987,7 +987,47 @@ fn list_named(names: &[&str]) -> Option<String> {
     Some(listing)
 }
 
-#[cfg(not(target_os = "windows"))]
+// 맥에는 /proc가 없다: 커널 프로세스 목록(sysinfo, libproc)에서 같은 줄을 만든다
+#[cfg(target_os = "macos")]
+fn mac_processes() -> Vec<(u32, u32, u64, String, String)> {
+    use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, UpdateKind};
+    let mut sys = sysinfo::System::new();
+    sys.refresh_processes_specifics(ProcessesToUpdate::All, true, ProcessRefreshKind::nothing().with_exe(UpdateKind::Always));
+    sys.processes()
+        .iter()
+        .map(|(pid, p)| {
+            let exe = p.exe().map(|e| e.display().to_string()).unwrap_or_default();
+            let name = p
+                .exe()
+                .and_then(|e| e.file_name())
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_else(|| p.name().to_string_lossy().into_owned());
+            (pid.as_u32(), p.parent().map(|pp| pp.as_u32()).unwrap_or(0), p.start_time(), name, exe)
+        })
+        .collect()
+}
+
+#[cfg(target_os = "macos")]
+fn list_named(names: &[&str]) -> Option<String> {
+    let mut listing = String::new();
+    for (pid, _, _, name, exe) in mac_processes() {
+        if !exe.is_empty() && names.iter().any(|n| n.eq_ignore_ascii_case(&name)) {
+            listing.push_str(&format!("{}|{}|{}\n", pid, name, exe));
+        }
+    }
+    Some(listing)
+}
+
+#[cfg(target_os = "macos")]
+fn list_all() -> Option<String> {
+    let mut listing = String::new();
+    for (pid, ppid, start, name, exe) in mac_processes() {
+        listing.push_str(&format!("{}|{}|{}|{}|{}\n", pid, ppid, start, name, exe));
+    }
+    Some(listing)
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
 fn list_all() -> Option<String> {
     let mut listing = String::new();
     for entry in std::fs::read_dir("/proc").ok()?.flatten() {

@@ -4475,6 +4475,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sys-locale",
+ "sysinfo",
  "tempfile",
  "tokio",
  "toml 0.9.12+spec-1.1.0",
