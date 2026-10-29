@@ -2,12 +2,12 @@
 //! 주기적으로 불러 마지막 값을 기억한다. 서버 목록(`ServerInfo.players`)과 relay 하트비트가 이 값을 읽는다.
 //! 함수는 `{"success": true, "online": <정수>, "max": <정수>?}`를 돌려준다 (02-modules §2.3)
 //!
-//! 모듈이 수를 주지 않으면(함수가 없거나 `online` 없이 답함) 접속·퇴장 문구로 센 수(`player_events`)를 쓴다.
-//! 그 수는 데몬이 콘솔을 처음부터 읽은 프로세스에서만 세고, 프로세스가 끝나면 지운다
+//! 모듈이 접속·퇴장 문구를 주면 그 문구로 센 수(`player_events`)가 먼저다 (사용자 지정). 모듈 함수는 최대 인원과,
+//! 콘솔을 처음부터 읽지 못한 서버에만 쓴다. 센 수는 데몬이 콘솔을 처음부터 읽은 프로세스에서만 세고, 프로세스가 끝나면 지운다
 
 use serde::{Deserialize, Serialize};
 use futures_util::StreamExt;
-use serde_json::Value;
+use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 
@@ -17,6 +17,8 @@ use super::Supervisor;
 pub const REFRESH_SECS: u64 = 60;
 /// 함수 하나를 기다리는 시간. 넘기면 그 서버의 값은 비운다
 pub const CALL_TIMEOUT_SECS: u64 = 10;
+/// REST 포트에 붙어 보는 시간
+const PROBE_TIMEOUT_SECS: u64 = 3;
 /// 켜진 서버가 이만큼 계속 답하지 않으면 응답 없음으로 알린다. 첫 월드 생성(Minecraft)처럼 늦게 여는 서버를 기다린다
 pub const UNRESPONSIVE_AFTER: std::time::Duration = std::time::Duration::from_secs(300);
 
@@ -32,14 +34,13 @@ fn counts() -> &'static Mutex<HashMap<String, PlayerCount>> {
     COUNTS.get_or_init(Default::default)
 }
 
-/// 인스턴스의 마지막 접속자 수. 모듈이 알려 준 수가 먼저고, 없으면 접속·퇴장 문구로 센 수. 둘 다 없으면 None
+/// 인스턴스의 마지막 접속자 수. 접속·퇴장 문구로 센 수가 먼저고(최대 인원은 모듈 답에서 빌린다),
+/// 콘솔을 처음부터 읽지 못한 서버(데몬 재시작 뒤 다시 붙음 등)는 모듈이 알려 준 수. 둘 다 없으면 None
 pub fn get(instance_id: &str) -> Option<PlayerCount> {
-    if let Some(count) = counts().lock().unwrap_or_else(|e| e.into_inner()).get(instance_id).copied() {
-        return Some(count);
-    }
-    // 모듈 함수가 실패한 동안에는 세지 않은 것처럼 비운다(두 출처 사이를 오가지 않게)
-    let max = *fallbacks().lock().unwrap_or_else(|e| e.into_inner()).get(instance_id)?;
-    let online = rosters().lock().unwrap_or_else(|e| e.into_inner()).get(instance_id).map(|r| u32::try_from(r.names.len()).unwrap_or(u32::MAX))?;
+    let counted = rosters().lock().unwrap_or_else(|e| e.into_inner()).get(instance_id).map(|r| u32::try_from(r.names.len()).unwrap_or(u32::MAX));
+    let reported = counts().lock().unwrap_or_else(|e| e.into_inner()).get(instance_id).copied();
+    let Some(online) = counted else { return reported };
+    let max = reported.and_then(|c| c.max).or_else(|| fallbacks().lock().unwrap_or_else(|e| e.into_inner()).get(instance_id).copied().flatten());
     Some(PlayerCount { online, max })
 }
 
@@ -55,7 +56,7 @@ fn rosters() -> &'static Mutex<HashMap<String, Roster>> {
     ROSTERS.get_or_init(Default::default)
 }
 
-/// 센 수를 써도 되는 인스턴스와 붙일 최대 인원: 모듈에 접속자 함수가 없거나(None), 함수가 수 없이 답했다
+/// 센 수에 붙일 최대 인원: 모듈에 접속자 함수가 없거나(None), 함수가 수 없이 답했다
 /// (`{"success": true, "max": 8}` → Some(8)). 함수가 실패하면 빠진다. 락은 한 번에 하나만 잡는다
 fn fallbacks() -> &'static Mutex<HashMap<String, Option<u32>>> {
     static FALLBACKS: OnceLock<Mutex<HashMap<String, Option<u32>>>> = OnceLock::new();
@@ -161,42 +162,74 @@ fn max_of(result: &Value) -> Option<u32> {
     result.get("max").and_then(Value::as_u64).and_then(|n| u32::try_from(n).ok()).filter(|m| *m > 0)
 }
 
-/// 켜진 서버 중 모듈이 접속자 함수를 선언한 것만 묻고, 나머지는 기억을 지운다
+/// 켜진 서버 중 모듈이 접속자 함수를 선언한 것만 묻고, 나머지는 기억을 지운다.
+/// REST 서버(`[protocols] supported`에 rest)는 응답 없음을 REST 포트에 붙어 보기만 해서 정한다: 요청을 보내면
+/// 서버 로그에 접근 줄이 남는다(팰월드 `REST accessed endpoint`). 주기 경로는 콘솔·RCON·REST 요청을 보내지 않는다(사용자 지정)
 pub async fn refresh(sup: &tokio::sync::RwLock<Supervisor>) {
-    let (mut calls, idle): (Vec<_>, Vec<_>) = {
+    let (mut calls, idle, probes): (Vec<_>, Vec<_>, Vec<_>) = {
         let s = sup.read().await;
         let mut calls = Vec::new();
         let mut idle = Vec::new();
+        let mut probes = Vec::new();
         for instance in s.instance_store.list() {
-            let function = s.module_loader.get_module(&instance.module_name).ok().and_then(|m| m.metadata.players_function.clone());
-            let call = match (function, s.tracker.get_pid(&instance.id)) {
-                (Some(f), Ok(pid)) => s.instance_call(&instance.id, &f).ok().map(|c| (pid, c)),
+            let module = s.module_loader.get_module(&instance.module_name).ok();
+            let function = module.as_ref().and_then(|m| m.metadata.players_function.clone());
+            let pid = s.tracker.get_pid(&instance.id).ok();
+            let probe = module.as_ref().filter(|m| m.metadata.supports_protocol("rest")).zip(pid).map(|(m, pid)| {
+                let host = instance.rest_host.clone().unwrap_or_else(|| m.metadata.default_rest_host());
+                (instance.id.clone(), pid, host, instance.rest_port.unwrap_or_else(|| m.metadata.default_rest_port()))
+            });
+            let call = match (function, pid) {
+                (Some(f), Some(pid)) => s.instance_call(&instance.id, &f).ok().map(|c| (pid, c)),
                 _ => None,
             };
             match call {
-                Some((pid, c)) => calls.push((instance.id.clone(), pid, c)),
-                None => idle.push(instance.id.clone()),
+                Some((pid, c)) => calls.push((instance.id.clone(), pid, c, probe.is_none())),
+                None => idle.push((instance.id.clone(), probe.is_some())),
             }
+            probes.extend(probe);
         }
-        (calls, idle)
+        (calls, idle, probes)
     };
-    for id in idle {
+    for (id, probed) in idle {
         set(&id, None);
-        forget(&id);
+        if !probed {
+            forget(&id);
+        }
         fallbacks().lock().unwrap_or_else(|e| e.into_inner()).insert(id, None);
     }
     static START: Mutex<usize> = Mutex::new(0);
     calls.sort_by(|a, b| a.0.cmp(&b.0));
     rotate_calls(&mut calls, &mut START.lock().unwrap_or_else(|e| e.into_inner()));
     let mut asks = futures_util::stream::FuturesUnordered::new();
-    for (id, pid, call) in calls {
-        asks.push(async move {
+    for (id, pid, call, records) in calls {
+        asks.push(Box::pin(async move {
             // 앞에서 돌린 순서로 자리를 시도한다. 기다리는 인스턴스는 이번 갱신을 건너뛴다
             let result = call.timeout(CALL_TIMEOUT_SECS).try_run().await;
-            apply_refresh(&id, Some(pid), result, std::time::Instant::now());
-        });
+            apply_refresh(&id, Some(pid), result, std::time::Instant::now(), records);
+        }) as std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>);
+    }
+    for (id, pid, host, port) in probes {
+        asks.push(Box::pin(async move {
+            let result = port_open(&host, port).await;
+            apply_probe(&id, Some(pid), result, std::time::Instant::now());
+        }));
     }
     while asks.next().await.is_some() {}
+}
+
+/// 포트에 TCP로 붙었다가 아무것도 보내지 않고 바로 끊는다
+pub async fn port_open(host: &str, port: u16) -> Result<(), String> {
+    match tokio::time::timeout(std::time::Duration::from_secs(PROBE_TIMEOUT_SECS), tokio::net::TcpStream::connect((host, port))).await {
+        Ok(Ok(_)) => Ok(()),
+        Ok(Err(e)) => Err(format!("port {port} closed: {e}")),
+        Err(_) => Err(format!("port {port} did not answer")),
+    }
+}
+
+fn apply_probe(id: &str, pid: Option<u32>, result: Result<(), String>, now: std::time::Instant) {
+    let ok = json!({ "success": true });
+    record(id, pid, result.map(|()| &ok), now);
 }
 
 fn rotate_calls<T>(calls: &mut [T], start: &mut usize) {
@@ -206,7 +239,8 @@ fn rotate_calls<T>(calls: &mut [T], start: &mut usize) {
     }
 }
 
-fn apply_refresh(id: &str, pid: Option<u32>, result: anyhow::Result<Option<Value>>, now: std::time::Instant) {
+/// `records`가 false면 응답 없음 기록은 포트 확인(`apply_probe`)이 맡는다
+fn apply_refresh(id: &str, pid: Option<u32>, result: anyhow::Result<Option<Value>>, now: std::time::Instant, records: bool) {
     if matches!(result, Ok(None)) {
         return;
     }
@@ -222,7 +256,9 @@ fn apply_refresh(id: &str, pid: Option<u32>, result: anyhow::Result<Option<Value
             _ => fallbacks.remove(id),
         };
     }
-    record(id, pid, result.as_ref().map_err(|e| e.to_string()), now);
+    if records {
+        record(id, pid, result.as_ref().map_err(|e| e.to_string()), now);
+    }
 }
 
 #[cfg(test)]
@@ -230,15 +266,13 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    // 테라리아처럼 조회 API가 없는 게임: 콘솔 접속·퇴장 문구로 센 수를 쓴다
+    // 콘솔 접속·퇴장 문구로 센 수가 먼저다 (사용자 지정). 모듈 함수는 최대 인원과, 콘솔을 처음부터 못 읽은 경우에만 쓴다
     #[test]
-    fn join_and_leave_lines_count_players_when_the_module_gives_no_count() {
+    fn join_and_leave_lines_count_players_before_the_module_count() {
         let id = "roster-count-test";
         assert_eq!(get(id), None);
         let generation = roster_start(id);
-        assert_eq!(get(id), None, "not used until the module is known to give no count");
-        fallbacks().lock().unwrap().insert(id.to_string(), None);
-        assert_eq!(get(id), Some(PlayerCount { online: 0, max: None }));
+        assert_eq!(get(id), Some(PlayerCount { online: 0, max: None }), "counting starts at zero right away");
         roster_change(id, generation, "Bob", true);
         roster_change(id, generation, "사바쨩", true);
         roster_change(id, generation, "Ghost", false);
@@ -250,19 +284,21 @@ mod tests {
         assert_eq!(get(id).unwrap().online, 1, "a second leave does not go below zero");
 
         // 모듈이 수 없이 최대 인원만 알려 주면 그 값을 붙인다
-        apply_refresh(id, Some(1), Ok(Some(json!({ "success": true, "max": 8 }))), std::time::Instant::now());
+        apply_refresh(id, Some(1), Ok(Some(json!({ "success": true, "max": 8 }))), std::time::Instant::now(), true);
         assert_eq!(get(id), Some(PlayerCount { online: 1, max: Some(8) }));
-        // 모듈이 준 수가 먼저다
-        apply_refresh(id, Some(1), Ok(Some(json!({ "success": true, "online": 5, "max": 8 }))), std::time::Instant::now());
-        assert_eq!(get(id), Some(PlayerCount { online: 5, max: Some(8) }));
-        // 모듈 함수가 실패하면 센 수로 바꿔 보이지 않는다
-        apply_refresh(id, Some(1), Err(anyhow::anyhow!("timeout")), std::time::Instant::now());
-        assert_eq!(get(id), None);
-        apply_refresh(id, Some(1), Ok(Some(json!({ "success": true }))), std::time::Instant::now());
+        // 모듈이 수를 줘도 센 수가 먼저고, 최대 인원만 빌린다
+        apply_refresh(id, Some(1), Ok(Some(json!({ "success": true, "online": 5, "max": 32 }))), std::time::Instant::now(), true);
+        assert_eq!(get(id), Some(PlayerCount { online: 1, max: Some(32) }));
+        // 모듈 함수가 실패해도 센 수는 그대로 보인다
+        apply_refresh(id, Some(1), Err(anyhow::anyhow!("timeout")), std::time::Instant::now(), true);
         assert_eq!(get(id), Some(PlayerCount { online: 1, max: None }));
 
         roster_end(id, generation);
         assert_eq!(get(id), None, "a stopped server has no count");
+        // 콘솔을 처음부터 못 읽은 서버(데몬 재시작 뒤 다시 붙음)는 모듈이 준 수를 쓴다
+        apply_refresh(id, Some(1), Ok(Some(json!({ "success": true, "online": 5, "max": 32 }))), std::time::Instant::now(), true);
+        assert_eq!(get(id), Some(PlayerCount { online: 5, max: Some(32) }));
+        set(id, None);
         forget(id);
         fallbacks().lock().unwrap().remove(id);
     }
@@ -270,7 +306,6 @@ mod tests {
     #[test]
     fn a_restart_starts_from_zero_and_the_old_watch_cannot_touch_it() {
         let id = "roster-restart-test";
-        fallbacks().lock().unwrap().insert(id.to_string(), None);
         let old = roster_start(id);
         roster_change(id, old, "Bob", true);
         let new = roster_start(id);
@@ -280,6 +315,29 @@ mod tests {
         assert_eq!(get(id), Some(PlayerCount { online: 0, max: None }));
         roster_end(id, new);
         assert_eq!(get(id), None);
+    }
+
+    // REST 서버는 포트에 붙어 보기만 한다 (요청을 보내면 서버 로그에 접근 줄이 1분마다 남는다, 사용자 지정)
+    #[tokio::test]
+    async fn a_rest_server_is_probed_by_connecting_only() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        assert!(port_open("127.0.0.1", port).await.is_ok());
+        drop(listener);
+        assert!(port_open("127.0.0.1", port).await.is_err());
+
+        // 함수가 답해도 포트가 닫혀 있으면 응답 없음이다. 함수 결과는 응답 없음을 정하지 않는다
+        let id = "probe-test";
+        let now = std::time::Instant::now();
+        apply_refresh(id, Some(7), Ok(Some(json!({ "success": true, "max": 32 }))), now, false);
+        apply_probe(id, Some(7), Err("closed".into()), now);
+        apply_probe(id, Some(7), Err("closed".into()), now + UNRESPONSIVE_AFTER);
+        assert!(unresponsive(id, Some(7), now + UNRESPONSIVE_AFTER).is_some());
+        apply_refresh(id, Some(7), Err(anyhow::anyhow!("x")), now + UNRESPONSIVE_AFTER, false);
+        apply_probe(id, Some(7), Ok(()), now + UNRESPONSIVE_AFTER);
+        assert!(unresponsive(id, Some(7), now + UNRESPONSIVE_AFTER).is_none(), "an open port clears it");
+        set(id, None);
+        forget(id);
         fallbacks().lock().unwrap().remove(id);
     }
 
@@ -302,7 +360,7 @@ mod tests {
         let now = std::time::Instant::now();
         set(id, Some(PlayerCount { online: 3, max: None }));
         record(id, Some(123), Err("previous failure".into()), now);
-        apply_refresh(id, Some(123), Ok(None), now + UNRESPONSIVE_AFTER);
+        apply_refresh(id, Some(123), Ok(None), now + UNRESPONSIVE_AFTER, true);
         assert_eq!(get(id), Some(PlayerCount { online: 3, max: None }));
         assert_eq!(unresponsive(id, Some(123), now + UNRESPONSIVE_AFTER), None);
         assert_eq!(failures().lock().unwrap()[id].1, now);
