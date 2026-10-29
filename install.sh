@@ -75,10 +75,18 @@ own = m["components"] if m.get("platform") == sys.argv[2] else m.get("platforms"
 cli = own.get("cli")
 if not cli or not cli.get("url", "").startswith("https://"):
     sys.exit(1)
-print(cli["url"], cli["sha256"], cli.get("size_bytes", ""))
+# 창 앱 유무를 맨 앞에 둔다: 크기가 없는 manifest에서도 read가 칸을 밀리지 않게
+print("gui" if own.get("gui") else "nogui", cli["url"], cli["sha256"], cli.get("size_bytes", ""))
 PY
 [ -s "$TMP/cli.txt" ] || die "이 PC용 CLI가 릴리즈에 없어요." "The release has no CLI for this platform."
-read -r CLI_URL CLI_SHA CLI_SIZE <"$TMP/cli.txt"
+read -r HAS_GUI CLI_URL CLI_SHA CLI_SIZE <"$TMP/cli.txt"
+# 이 릴리스에 창 앱이 없으면(ARM, 창 앱 이전 릴리스) 화면이 있어도 헤드리스로 깐다. 받은 CLI가 데스크톱 구성을 고르면 없는 gui로 멈춘다
+if [ "$HAS_GUI" = nogui ]; then
+    case " $* " in
+        *" --gui "* | *" --no-gui "*) ;;
+        *) set -- "$@" --no-gui ;;
+    esac
+fi
 
 say "CLI를 받는 중..." "Downloading the CLI..."
 curl -fsSL "$CLI_URL" -o "$TMP/cli.zip" || die "CLI를 받지 못했어요." "Could not download the CLI."

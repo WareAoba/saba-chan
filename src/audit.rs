@@ -47,6 +47,12 @@ impl Origin {
         Self { source: source.to_string(), user: None, guild: None, user_name: None, guild_name: None, via: None, lang: None }
     }
 
+    /// 릴레이로 온 원격 요청: 디스코드(챗봇 포함)와 원격 MCP(AI 에이전트). 이 PC에서만 하는 일(동의, 업데이트·위험 명령 예약,
+    /// 백업 개수 상한)을 막는 기준이다
+    pub fn is_relay(&self) -> bool {
+        matches!(self.source.as_str(), "discord" | "mcp")
+    }
+
     /// 채팅 명령을 보낸 사람·서버를 붙인다
     pub fn requested_by(self, req: &crate::chat::ChatRequest) -> Self {
         Self {

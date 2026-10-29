@@ -361,7 +361,7 @@ async fn take_backup_locked(state: &IPCServer, id: &str, kind: BackupKind, prote
     if plan.paths.is_empty() {
         return Ok(None);
     }
-    let remote = crate::audit::current().source == "discord";
+    let remote = crate::audit::current().is_relay();
     if remote && backup::list(&plan.dir).iter().filter(|b| b.kind == kind).count() >= REMOTE_BACKUP_CAP {
         return Err(error(
             StatusCode::CONFLICT,
@@ -581,7 +581,7 @@ async fn find_snapshot(state: &IPCServer, id: &str, which: Option<&str>) -> Resu
 /// 스냅샷을 사바쨩 백업으로 적는다 (작업 잠금을 쥔 채). 없는 경로는 뺀다
 async fn keep_snapshot_locked(state: &IPCServer, id: &str, snapshot: GameSnapshot, kind: BackupKind) -> Result<BackupInfo, Response> {
     let dir = backups_dir(state, id).await?;
-    if kind == BackupKind::Snapshot && crate::audit::current().source == "discord" && backup::list(&dir).iter().filter(|b| b.kind == kind).count() >= REMOTE_BACKUP_CAP {
+    if kind == BackupKind::Snapshot && crate::audit::current().is_relay() && backup::list(&dir).iter().filter(|b| b.kind == kind).count() >= REMOTE_BACKUP_CAP {
         return Err(error(StatusCode::CONFLICT, "backup_limit", format!("This instance already has {} backups of this kind; delete old ones on this PC first", REMOTE_BACKUP_CAP)));
     }
     if snapshot.archive.as_ref().is_some_and(|a| !a.is_file()) || (snapshot.archive.is_none() && !snapshot.paths.iter().any(|(from, _)| from.exists())) {
@@ -898,8 +898,8 @@ pub async fn put_schedule(Path(id): Path<String>, State(state): State<IPCServer>
             problems.push("schedule: the chatbot cannot make backups run so often that older ones are removed sooner".into());
         }
     }
-    // 원격(디스코드·챗봇)은 새로 넣거나 바꾸는 작업만 제한한다 (이 PC에서 정한 작업은 그대로 다시 보낼 수 있다)
-    if crate::audit::current().source == "discord" {
+    // 원격(디스코드·챗봇·원격 MCP)은 새로 넣거나 바꾸는 작업만 제한한다 (이 PC에서 정한 작업은 그대로 다시 보낼 수 있다)
+    if crate::audit::current().is_relay() {
         for (i, task) in body.schedule.iter().enumerate() {
             if instance.schedule.contains(task) {
                 continue;
@@ -2016,6 +2016,10 @@ print(json.dumps({'success': True, 'snapshots': [{'id': 'startup/backup_1', 'cre
 
         assert_eq!(remote(json!({ "schedule": [update] })).await, StatusCode::BAD_REQUEST);
         assert_eq!(remote(json!({ "schedule": [restart(1)] })).await, StatusCode::BAD_REQUEST);
+        // 원격 MCP(AI 에이전트)도 릴레이로 온 원격이다: 예약으로 되묻기를 건너뛰지 못한다
+        let mcp = |body: Value| crate::audit::with_origin(crate::audit::Origin::new(crate::actions::MCP_VIA), put(body));
+        assert_eq!(mcp(json!({ "schedule": [update] })).await, StatusCode::BAD_REQUEST);
+        assert_eq!(mcp(json!({ "schedule": [restart(1)] })).await, StatusCode::BAD_REQUEST);
         assert_eq!(remote(json!({ "schedule": [restart(60)], "backup_keep": 1000 })).await, StatusCode::BAD_REQUEST);
         assert_eq!(remote(json!({ "schedule": [restart(60)], "backup_keep": 5 })).await, StatusCode::OK);
         // 0개 보관이면 방금 만든 안전 백업까지 지워진다

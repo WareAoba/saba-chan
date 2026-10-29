@@ -245,7 +245,7 @@ id = "eula"
 url = "https://aka.ms/MinecraftEULA"
 ```
 
-- 동의는 인스턴스 레코드 `accepted_agreements`(`{id: 동의 시각 RFC3339}`)에 남는다. 만들 때 `POST /api/instances`의 `accept_agreements:[id]`, 만든 뒤 `POST /api/instance/:id/agreements {accept:[id]}`로 받는다. 원격(디스코드·챗봇)에서 온 동의는 403 `agreement_local_only`(사람이 직접 원문을 보고 동의해야 하는 법적 동의).
+- 동의는 인스턴스 레코드 `accepted_agreements`(`{id: 동의 시각 RFC3339}`)에 남는다. 만들 때 `POST /api/instances`의 `accept_agreements:[id]`, 만든 뒤 `POST /api/instance/:id/agreements {accept:[id]}`로 받는다. 원격(디스코드·챗봇·원격 MCP)에서 온 동의는 403 `agreement_local_only`(사람이 직접 원문을 보고 동의해야 하는 법적 동의).
 - 선언된 약관을 다 동의하지 않으면 켜기 전 점검이 409 `agreement_required`(`agreements:[{id, label, url, accepted, accepted_at}]`)로 막는다(01 문서 시작 라우트). 파일 내용(예: eula.txt)으로 동의를 추정하지 않는다.
 - 설치·재설치·업데이트 때 모듈은 `accepted_agreements:[id]`를 받고, 그 안에 자기 id가 있을 때만 자기 파일에 동의를 쓴다. 동의를 받으면 데몬이 lifecycle `accept_agreements`를 부른다(§2.3).
 
