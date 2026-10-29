@@ -416,7 +416,7 @@ pub(crate) fn requested_agreements(payload: &Value, key: &str) -> Result<Vec<Str
             return Err(Box::new((StatusCode::BAD_REQUEST, Json(error)).into_response()));
         }
     };
-    if !ids.is_empty() && crate::audit::current().source == "discord" {
+    if !ids.is_empty() && crate::audit::current().is_relay() {
         let error = json!({ "success": false, "error": "Agreements can only be accepted on this PC", "error_code": "agreement_local_only" });
         return Err(Box::new((StatusCode::FORBIDDEN, Json(error)).into_response()));
     }
