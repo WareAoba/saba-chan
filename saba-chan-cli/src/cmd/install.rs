@@ -248,7 +248,7 @@ pub async fn run(ctx: &Ctx, args: InstallArgs) -> Result<()> {
     // 리눅스·맥 데스크톱은 앱 메뉴(맥은 응용 프로그램 폴더)에 든 GUI가 데몬을 켠다: 앱을 여는 길을 안내한다
     if profile == Profile::Desktop && cfg!(target_os = "linux") {
         ctx.out.hint(&t!("install.next_app", command = app_command(&dir)));
-    } else if let Some(bundle) = saba_chan_updater_lib::app_bundle::bundle_of(&dir).filter(|_| profile == Profile::Desktop) {
+    } else if let Some(bundle) = saba_chan_updater_lib::app_bundle::bundle_of(&dir).filter(|_| profile == Profile::Desktop && cfg!(target_os = "macos")) {
         ctx.out.hint(&t!("install.next_mac_app", command = format!("open '{}'", bundle.display().to_string().replace('\'', r"'\''"))));
     } else {
         ctx.out

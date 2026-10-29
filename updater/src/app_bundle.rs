@@ -1,5 +1,5 @@
 //! 맥 앱 묶음(`Saba-chan.app`). 실행 파일은 `Contents/MacOS`(설치 폴더)에 두고, 묶음 정보(Info.plist)와 아이콘은
-//! GUI zip에 함께 실어(package-linux.py) 설치기·업데이터가 `Contents` 자리에 놓는다. 제거기는 묶음째 지운다
+//! GUI zip에 함께 실어(package-linux.py) 설치기가(업데이터는 맥 3단계에서) `Contents` 자리로 옮긴다. 제거기는 묶음째 지운다
 
 use std::path::{Path, PathBuf};
 
@@ -17,7 +17,8 @@ pub fn bundle_of(install_dir: &Path) -> Option<PathBuf> {
     bundle.extension().is_some_and(|e| e.eq_ignore_ascii_case("app")).then(|| bundle.to_path_buf())
 }
 
-/// 설치 폴더에 풀린 묶음 정보와 아이콘을 `Contents/Info.plist`·`Contents/Resources`에 놓는다.
+/// 설치 폴더에 풀린 묶음 정보와 아이콘을 `Contents/Info.plist`·`Contents/Resources`로 옮긴다
+/// (`Contents/MacOS`에는 실행 파일만 둔다: 서명이 다른 파일을 거부한다).
 /// 묶음 안 설치가 아니거나 GUI가 없는 구성(파일이 없음)이면 아무것도 하지 않는다
 pub fn place_files(install_dir: &Path) -> std::io::Result<()> {
     let Some(contents) = bundle_of(install_dir).map(|b| b.join("Contents")) else { return Ok(()) };
@@ -25,12 +26,12 @@ pub fn place_files(install_dir: &Path) -> std::io::Result<()> {
     if !plist.is_file() {
         return Ok(());
     }
-    std::fs::copy(&plist, contents.join(PLIST_FILE))?;
+    std::fs::rename(&plist, contents.join(PLIST_FILE))?;
     let icon = install_dir.join(ICON_FILE);
     if icon.is_file() {
         let resources = contents.join("Resources");
         std::fs::create_dir_all(&resources)?;
-        std::fs::copy(&icon, resources.join(ICON_FILE))?;
+        std::fs::rename(&icon, resources.join(ICON_FILE))?;
     }
     Ok(())
 }
@@ -71,6 +72,7 @@ mod tests {
         place_files(&macos).unwrap();
         assert_eq!(std::fs::read(bundle.join("Contents").join(PLIST_FILE)).unwrap(), b"plist");
         assert_eq!(std::fs::read(bundle.join("Contents/Resources").join(ICON_FILE)).unwrap(), b"icns");
+        assert!(!macos.join(PLIST_FILE).exists() && !macos.join(ICON_FILE).exists(), "MacOS holds executables only");
 
         std::fs::remove_dir_all(&macos).unwrap();
         remove_shell(&macos);

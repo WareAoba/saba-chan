@@ -149,6 +149,11 @@ CLI="$DIR/saba-chan-cli"
 [ -x "$CLI" ] || die "설치 폴더에 CLI가 없어요: $DIR" "No CLI in the install folder: $DIR"
 mkdir -p "$HOME/.local/bin"
 ln -sf "$CLI" "$HOME/.local/bin/saba-chan-cli"
+case ":$PATH:" in
+    *":$HOME/.local/bin:"*) ;;
+    *) say "saba-chan-cli는 ~/.local/bin에 있어요. 이 폴더를 셸 설정의 PATH에 넣으면 이름만으로 쓸 수 있어요." \
+        "saba-chan-cli is in ~/.local/bin. Add that folder to PATH in your shell profile to run it by name." ;;
+esac
 
 # 데스크톱 구성: GUI가 데몬을 띄운다. GUI가 쓰는 시스템 라이브러리(WebKitGTK)가 없으면 설치 명령만 알린다
 # 일반 사용자의 PATH에는 ldconfig(/sbin)가 없을 수 있다. 확인할 길이 없으면 있다고 보고 GUI를 띄운다
@@ -161,12 +166,14 @@ has_webkit() {
     done
     return 0
 }
-if [ -n "$MAC" ] && [ -x "$DIR/saba-chan-gui" ]; then
+BUNDLE=
+case "$DIR" in *.app/Contents/MacOS) BUNDLE="$DIR/../.." ;; esac
+if [ -n "$MAC" ] && [ -n "$BUNDLE" ] && [ -x "$DIR/saba-chan-gui" ]; then
     # 앱 묶음을 연다 (GUI가 데몬을 켠다). 응용 프로그램 폴더의 사바쨩으로도 열 수 있다
     say "응용 프로그램 폴더에서 사바쨩을 열 수 있어요. 지금 엽니다." "Saba-chan is in your Applications folder. Opening it now."
-    open "$DIR/../.." || "$CLI" daemon start
+    open "$BUNDLE" || "$CLI" daemon start
 elif [ -n "$MAC" ]; then
-    # 화면 없는 맥: 로그인할 때 켜기(LaunchAgent)는 아직 없다. 데몬만 켠다
+    # 화면 없는 맥이나 묶음 밖 설치: 로그인할 때 켜기(LaunchAgent)는 아직 없다. 데몬만 켠다
     "$CLI" daemon start
 elif [ -x "$DIR/saba-chan-gui" ]; then
     if ! has_webkit; then

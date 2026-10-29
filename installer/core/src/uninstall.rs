@@ -1103,10 +1103,8 @@ const INSTALLED_ENTRIES: &[&str] = &[
     "i18n.py",
     "daemon_rcon.py",
     "common_locales.json",
-    // GUI zip의 리눅스 앱 메뉴 아이콘, 맥 앱 묶음 정보·아이콘
+    // GUI zip의 리눅스 앱 메뉴 아이콘 (맥 묶음 정보·아이콘은 설치기가 Contents로 옮긴다)
     "saba-chan-gui.png",
-    saba_chan_updater_lib::app_bundle::PLIST_FILE,
-    saba_chan_updater_lib::app_bundle::ICON_FILE,
     INSTALL_MARKER,
 ];
 

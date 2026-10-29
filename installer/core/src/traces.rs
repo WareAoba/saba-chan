@@ -51,7 +51,8 @@ impl Roots {
         Roots {
             temp: std::env::temp_dir(),
             app_data,
-            cache: staging.parent().and_then(Path::parent).map(Path::to_path_buf).filter(|_| unix),
+            // HOME이 없으면 받기 폴더가 상대 경로(`./updates`)다: 현재 폴더를 캐시로 보지 않는다
+            cache: staging.parent().and_then(Path::parent).filter(|p| p.is_absolute()).map(Path::to_path_buf).filter(|_| unix),
             applications: dirs::data_dir().filter(|_| cfg!(target_os = "linux")).map(|d| d.join("applications")),
             library: dirs::home_dir().filter(|_| cfg!(target_os = "macos")).map(|h| h.join("Library")),
         }
