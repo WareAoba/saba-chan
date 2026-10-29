@@ -45,9 +45,9 @@ fn is_server_core() -> bool {
 }
 
 /// 창 앱을 게시하는 플랫폼 (05 §3.1). 여기서 앱이 빠진 릴리스는 잘못 나온 것이라 설치기가 멈춰 알린다
-const APP_PLATFORMS: &[&str] = &["windows-x64", "linux-x64"];
+const APP_PLATFORMS: &[&str] = &["windows-x64", "linux-x64", "linux-arm64"];
 
-/// 창 앱을 게시하지 않는 플랫폼(linux-arm64)이면 화면이 있어도 헤드리스로 깐다. `--gui`로 고른 것만은 그대로 둔다
+/// 창 앱을 게시하지 않는 플랫폼(새로 붙인 CPU처럼)이면 화면이 있어도 헤드리스로 깐다. `--gui`로 고른 것만은 그대로 둔다
 /// (설치기가 빠진 구성요소로 멈춰 알린다)
 fn fit_profile(profile: Profile, forced_gui: bool, has_gui: bool, platform: &str) -> Profile {
     if profile == Profile::Desktop && !forced_gui && !has_gui && !APP_PLATFORMS.contains(&platform) {
@@ -319,20 +319,21 @@ fn app_command(dir: &Path) -> String {
 mod tests {
     use super::*;
 
-    /// ARM 리눅스처럼 창 앱을 게시하지 않는 플랫폼은 화면이 있어도 헤드리스로 깐다 (고르지 않았을 때만)
+    /// 창 앱을 게시하지 않는 플랫폼(새로 붙인 CPU처럼)은 화면이 있어도 헤드리스로 깐다 (고르지 않았을 때만)
     #[test]
     fn a_release_without_the_app_installs_headless() {
-        assert_eq!(fit_profile(Profile::Desktop, false, false, "linux-arm64"), Profile::Headless);
-        assert_eq!(fit_profile(Profile::Desktop, true, false, "linux-arm64"), Profile::Desktop, "--gui stays and the installer reports what is missing");
-        assert_eq!(fit_profile(Profile::Desktop, false, true, "linux-arm64"), Profile::Desktop);
-        assert_eq!(fit_profile(Profile::Headless, false, true, "linux-arm64"), Profile::Headless);
+        assert_eq!(fit_profile(Profile::Desktop, false, false, "linux-riscv64"), Profile::Headless);
+        assert_eq!(fit_profile(Profile::Desktop, true, false, "linux-riscv64"), Profile::Desktop, "--gui stays and the installer reports what is missing");
+        assert_eq!(fit_profile(Profile::Desktop, false, true, "linux-riscv64"), Profile::Desktop);
+        assert_eq!(fit_profile(Profile::Headless, false, true, "linux-riscv64"), Profile::Headless);
     }
 
     /// 앱을 게시하는 플랫폼에서 앱이 빠진 릴리스는 헤드리스로 바꾸지 않는다: 바꾸면 있던 데스크톱 설치의 GUI를 지운다
     #[test]
     fn a_release_missing_the_app_on_an_app_platform_is_not_installed_headless() {
-        assert_eq!(fit_profile(Profile::Desktop, false, false, "linux-x64"), Profile::Desktop);
-        assert_eq!(fit_profile(Profile::Desktop, false, false, "windows-x64"), Profile::Desktop);
+        for platform in ["linux-x64", "linux-arm64", "windows-x64"] {
+            assert_eq!(fit_profile(Profile::Desktop, false, false, platform), Profile::Desktop, "{platform}");
+        }
     }
 
     fn cli_file() -> &'static str {

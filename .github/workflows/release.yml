@@ -72,12 +72,12 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # ARM(aarch64) 리눅스: 헤드리스 구성(데몬·러너·CLI·창 없는 업데이터)만 ARM 러너에서 빌드한다.
+  # ARM(aarch64) 리눅스: x64와 같은 구성(데몬·러너·CLI·창 없는 업데이터·GUI)을 ARM 러너에서 빌드한다.
   # 같은 22.04라 glibc 조건이 x64와 같다. zip은 아래 작업이 받아 manifest의 platforms.linux-arm64로 싣는다
   linux-arm64:
     name: Build linux-arm64 assets
     runs-on: ubuntu-22.04-arm
-    timeout-minutes: 40
+    timeout-minutes: 60
     defaults:
       run:
         shell: bash
@@ -94,28 +94,38 @@ jobs:
         id: src
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
-      # openssl-sys가 시스템 OpenSSL을 쓴다 (x64 이미지에는 이미 있다)
+      # openssl-sys가 시스템 OpenSSL을 쓴다 (x64 이미지에는 이미 있다). GUI(Tauri)는 GTK·WebKitGTK 개발 패키지가 든다
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y pkg-config libssl-dev
+          sudo apt-get install -y pkg-config libssl-dev libglib2.0-dev libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
 
+      - name: Setup Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+
+      - name: Build GUI frontend
+        working-directory: saba-chan-gui
+        run: |
+          npm ci
+          npm run build
+
       - name: Build
         run: |
-          cargo build --release --locked -p saba-core -p saba-runner -p saba-chan-cli --bins
+          cargo build --release --locked -p saba-core -p saba-runner -p saba-chan-cli -p saba-chan-gui --bins
           cargo build --release --locked -p saba-chan-updater --no-default-features
-          for b in saba-core saba-runner saba-chan-cli saba-chan-updater; do
+          for b in saba-core saba-runner saba-chan-cli saba-chan-updater saba-chan-gui; do
             need=$(objdump -T "target/release/$b" | grep -o 'GLIBC_[0-9.]*' | sed 's/GLIBC_//' | sort -V | tail -1)
             echo "$b needs glibc $need"
             if [ "$(printf '%s\n' "$need" 2.35 | sort -V | tail -1)" != "2.35" ]; then
               echo "::error::$b requires glibc $need (> 2.35)"; exit 1
             fi
           done
-          python3 .github/scripts/package-linux.py --bin target/release --out arm64 \
-            --platform linux-arm64 --only saba-core,cli,updater
+          python3 .github/scripts/package-linux.py --bin target/release --out arm64 --platform linux-arm64
 
       - name: Upload
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
