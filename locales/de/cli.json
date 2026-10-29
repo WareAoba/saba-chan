@@ -251,6 +251,7 @@
       "set": "Beim Anmelden starten ist jetzt: {{mode}}.",
       "unsupported": "Der Start beim Anmelden kann auf diesem Betriebssystem noch nicht eingestellt werden.",
       "service": "Der Daemon läuft als systemd-Benutzerdienst (saba-chan.service) und wird nach einem Absturz neu gestartet.",
+      "service_mac": "Der Daemon ist als Anmeldeobjekt (LaunchAgent) registriert. Er startet, wenn Sie sich am Bildschirm anmelden (auch bei automatischer Anmeldung).",
       "linger_hint": "Damit er beim Booten ohne Anmeldung startet, einmal ausführen: sudo loginctl enable-linger $USER"
     },
     "browse": {

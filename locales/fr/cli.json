@@ -251,6 +251,7 @@
       "set": "Démarrer à la connexion est maintenant : {{mode}}.",
       "unsupported": "Le démarrage à la connexion ne peut pas encore être réglé sur ce système.",
       "service": "Le démon tourne comme service utilisateur systemd (saba-chan.service) et redémarre s'il plante.",
+      "service_mac": "Le démon est enregistré comme ouverture de session (LaunchAgent). Il démarre quand vous ouvrez une session à l'écran (y compris la connexion automatique).",
       "linger_hint": "Pour le lancer au démarrage sans ouvrir de session, exécutez une fois : sudo loginctl enable-linger $USER"
     },
     "browse": {

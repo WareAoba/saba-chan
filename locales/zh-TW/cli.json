@@ -251,6 +251,7 @@
       "set": "登入時自動啟動已改為{{mode}}。",
       "unsupported": "此作業系統暫不支援設定登入時自動啟動。",
       "service": "常駐程式以 systemd 使用者服務（saba-chan.service）執行，當掉後會重新啟動。",
+      "service_mac": "常駐程式已註冊為登入項目（LaunchAgent）。在螢幕上登入時啟動（包括自動登入）。",
       "linger_hint": "若要不登入也在開機時啟動，請執行一次：sudo loginctl enable-linger $USER"
     },
     "browse": {

@@ -331,6 +331,17 @@ jobs:
           kill "$(cat mock.pid)" && wait "$(cat mock.pid)" 2>/dev/null || true
           serve 0.3.0 mock-b
           "$cli" daemon start
+          # 로그인할 때 켜기: LaunchAgent 하나를 쓰고 바꾸고 지운다
+          agent="$HOME/Library/LaunchAgents/com.saba-chan.autostart.plist"
+          "$cli" config autostart daemon
+          plutil -lint "$agent"
+          test "$(plutil -extract ProgramArguments.0 raw "$agent")" = "$app/Contents/MacOS/saba-chan-gui"
+          test "$(plutil -extract ProgramArguments.1 raw "$agent")" = --tray
+          "$cli" config autostart full
+          test "$(plutil -extract ProgramArguments raw "$agent")" = 1
+          "$cli" config autostart off
+          test ! -e "$agent"
+          "$cli" config autostart daemon
           "$cli" update config relay_url=http://127.0.0.1:9877
           "$cli" update check
           "$cli" update download
@@ -343,6 +354,7 @@ jobs:
 
           "$cli" --yes uninstall
           test ! -e "$app" || { find "$app"; exit 1; }
+          test ! -e "$agent"
           ! find "$HOME/Library/WebKit" "$HOME/Library/Caches" "$HOME/.cache" -maxdepth 1 -iname '*saba*' 2>/dev/null | grep .
 
       - name: Updater log
