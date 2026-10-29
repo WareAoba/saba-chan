@@ -1,5 +1,5 @@
 //! 맥 앱 묶음(`Saba-chan.app`). 실행 파일은 `Contents/MacOS`(설치 폴더)에 두고, 묶음 정보(Info.plist)와 아이콘은
-//! GUI zip에 함께 실어(package-linux.py) 설치기가(업데이터는 맥 3단계에서) `Contents` 자리로 옮긴다. 제거기는 묶음째 지운다
+//! GUI zip에 함께 실어(package-linux.py) 설치기·업데이터가 `Contents` 자리로 옮긴다. 제거기는 묶음째 지운다
 
 use std::path::{Path, PathBuf};
 
@@ -18,22 +18,27 @@ pub fn bundle_of(install_dir: &Path) -> Option<PathBuf> {
 }
 
 /// 설치 폴더에 풀린 묶음 정보와 아이콘을 `Contents/Info.plist`·`Contents/Resources`로 옮긴다
-/// (`Contents/MacOS`에는 실행 파일만 둔다: 서명이 다른 파일을 거부한다).
-/// 묶음 안 설치가 아니거나 GUI가 없는 구성(파일이 없음)이면 아무것도 하지 않는다
-pub fn place_files(install_dir: &Path) -> std::io::Result<()> {
-    let Some(contents) = bundle_of(install_dir).map(|b| b.join("Contents")) else { return Ok(()) };
+/// (`Contents/MacOS`에는 실행 파일만 둔다: 서명이 다른 파일을 거부한다). 있던 것은 새것으로 바뀐다.
+/// 묶음 안 설치가 아니거나 GUI가 없는 구성(파일이 없음)이면 아무것도 하지 않는다. 옮긴 (원래 자리, 새 자리)를 돌려준다
+pub fn place_files(install_dir: &Path) -> std::io::Result<Vec<(PathBuf, PathBuf)>> {
+    let mut moved = Vec::new();
+    let Some(contents) = bundle_of(install_dir).map(|b| b.join("Contents")) else { return Ok(moved) };
     let plist = install_dir.join(PLIST_FILE);
     if !plist.is_file() {
-        return Ok(());
+        return Ok(moved);
     }
-    std::fs::rename(&plist, contents.join(PLIST_FILE))?;
+    let placed = contents.join(PLIST_FILE);
+    std::fs::rename(&plist, &placed)?;
+    moved.push((plist, placed));
     let icon = install_dir.join(ICON_FILE);
     if icon.is_file() {
         let resources = contents.join("Resources");
         std::fs::create_dir_all(&resources)?;
-        std::fs::rename(&icon, resources.join(ICON_FILE))?;
+        let placed = resources.join(ICON_FILE);
+        std::fs::rename(&icon, &placed)?;
+        moved.push((icon, placed));
     }
-    Ok(())
+    Ok(moved)
 }
 
 /// 실행 파일 폴더를 지운 뒤 남은 묶음 껍데기를 지운다: 묶음 정보·아이콘, 빈 `Contents`와 묶음 폴더.
@@ -69,7 +74,7 @@ mod tests {
         std::fs::create_dir_all(&macos).unwrap();
         std::fs::write(macos.join(PLIST_FILE), b"plist").unwrap();
         std::fs::write(macos.join(ICON_FILE), b"icns").unwrap();
-        place_files(&macos).unwrap();
+        assert_eq!(place_files(&macos).unwrap().len(), 2);
         assert_eq!(std::fs::read(bundle.join("Contents").join(PLIST_FILE)).unwrap(), b"plist");
         assert_eq!(std::fs::read(bundle.join("Contents/Resources").join(ICON_FILE)).unwrap(), b"icns");
         assert!(!macos.join(PLIST_FILE).exists() && !macos.join(ICON_FILE).exists(), "MacOS holds executables only");
@@ -97,7 +102,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let macos = tmp.path().join(BUNDLE_NAME).join("Contents").join("MacOS");
         std::fs::create_dir_all(&macos).unwrap();
-        place_files(&macos).unwrap();
+        assert!(place_files(&macos).unwrap().is_empty());
         assert!(!macos.parent().unwrap().join(PLIST_FILE).exists());
         assert!(place_files(tmp.path()).is_ok(), "not inside a bundle");
     }
