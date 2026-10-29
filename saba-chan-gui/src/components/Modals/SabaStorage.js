@@ -481,9 +481,12 @@ function ComponentsTab({ devMode }) {
                 console.error('Failed to set update channel:', e);
                 setUpdateChannel(previous);
                 setError(t('saba_storage.switch_failed', { error: e.message }));
+                return;
             }
+            // 받을 수 있는 버전이 채널마다 다르다: 바꾼 채널로 다시 묻는다
+            await handleCheck();
         },
-        [t, updateChannel],
+        [t, updateChannel, handleCheck],
     );
 
     useEffect(() => {

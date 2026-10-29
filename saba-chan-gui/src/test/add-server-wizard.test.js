@@ -218,3 +218,21 @@ describe('새 서버 만들기 마법사', () => {
         expect(screen.getByLabelText('Folder path').value).toBe('/srv/mc');
     });
 });
+
+describe('진행 막대', () => {
+    it('단계를 옮길 때 몇 번째 단계인지 비율로 알린다', async () => {
+        window.api.moduleListVersions = vi.fn().mockResolvedValue({ versions: [] });
+        const onStepChange = vi.fn();
+        render(
+            <AddInstanceNewServer
+                extensions={[minecraft]}
+                servers={[]}
+                onAddServer={vi.fn()}
+                onStepChange={onStepChange}
+            />,
+        );
+        fireEvent.click(screen.getByText('Minecraft'));
+        // 게임 → 서버 종류·버전 → 파일 위치 → 실행 방식 → 이름·포트 → 확인: 첫 단계는 1/5
+        expect(onStepChange).toHaveBeenLastCalledWith('server', 1 / 5);
+    });
+});

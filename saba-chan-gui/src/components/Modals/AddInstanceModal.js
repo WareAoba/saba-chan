@@ -32,11 +32,13 @@ export function AddInstanceModal({
     const { t } = useTranslation('gui');
     const [mode, setMode] = useState(null); // null | 'new' | 'migrate'
     const [newFlowStep, setNewFlowStep] = useState('select-game');
+    const [newFlowProgress, setNewFlowProgress] = useState(0);
     const [migrationFlowStep, setMigrationFlowStep] = useState('pick-dir');
 
     const handleClose = useCallback(() => {
         setMode(null); // 모달이 닫힐 때 선택 화면으로 리셋
         setNewFlowStep('select-game');
+        setNewFlowProgress(0);
         setMigrationFlowStep('pick-dir');
         onClose();
     }, [onClose]);
@@ -60,15 +62,17 @@ export function AddInstanceModal({
         const el = contentRef.current;
         if (el) snapshotHeightRef.current = el.getBoundingClientRect().height;
         setMode(newMode);
+        setNewFlowProgress(0); // 새 서버 마법사는 다시 열면 게임 고르기부터 시작한다
     }, []);
 
     const goBack = useCallback(() => captureAndSetMode(null), [captureAndSetMode]);
 
     // step 변경도 캡처
-    const handleNewFlowStep = useCallback((step) => {
+    const handleNewFlowStep = useCallback((step, progress = 0) => {
         const el = contentRef.current;
         if (el) snapshotHeightRef.current = el.getBoundingClientRect().height;
         setNewFlowStep(step);
+        setNewFlowProgress(progress);
     }, []);
     const handleMigrationFlowStep = useCallback((step) => {
         const el = contentRef.current;
@@ -125,7 +129,8 @@ export function AddInstanceModal({
 
     const progressPercent = (() => {
         if (mode === null) return 20;
-        if (mode === 'new') return newFlowStep === 'configure' ? 78 : 50;
+        // 새 서버 마법사는 단계 수가 모듈마다 다르다: 마법사가 알린 비율로 20%~100%를 채운다
+        if (mode === 'new') return 20 + 80 * newFlowProgress;
         if (mode === 'migrate') return migrationFlowStep === 'configure' ? 78 : 50;
         return 20;
     })();
