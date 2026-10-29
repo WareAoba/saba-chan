@@ -5,6 +5,8 @@
 
 > **2026-10-17 L3 이후**: 업데이트·모듈 목록·익스텐션 목록은 모두 릴레이의 서명된 릴리즈 manifest 하나에서 나온다. GitHub 업데이트 경로(`github.rs`, `api_base_url`, `github_owner`/`github_repo`, `include_prerelease`, 익스텐션 `manifest_url`, module.toml `[update]`, modules·extensions 저장소의 릴리즈 워크플로)는 없다. 근거 커밋: saba-chan 65e1763·8b840f7·60768a7, modules a26bdeb, extensions 301ff2c.
 
+> **서버쨩(릴레이 서버)**: 사용자에게 보이는 이름으로는 클라우드 릴레이를 "서버쨩"이라 부른다. 사바쨩의 언니 캐릭터이고, 디스코드 봇을 돌리며 PC의 데몬과 디스코드 사이를 중계한다. 코드·API·설정 키(`relay_*`, `/api/relay/*`)와 이 문서의 본문은 계속 "릴레이"라는 이름을 쓴다.
+
 ## 기준 스냅샷
 
 | 저장소 | 브랜치 · 커밋 | 커밋 날짜 |

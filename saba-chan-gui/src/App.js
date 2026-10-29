@@ -130,7 +130,6 @@ function App() {
     const _settingsReady = useSettingsStore((s) => s.settingsReady);
 
     // ── Discord Store (Zustand) ──────────────────────────────
-    const discordPrefixes = useDiscordStore((s) => s.discordPrefixes);
     const discordModuleAliases = useDiscordStore((s) => s.discordModuleAliases);
     const discordCommandAliases = useDiscordStore((s) => s.discordCommandAliases);
     const discordCloudRelayUrl = useDiscordStore((s) => s.discordCloudRelayUrl);
@@ -687,8 +686,6 @@ function App() {
     // ── 디스코드 페이지 props ──
     const discordPageProps = {
         discordBotStatus,
-        discordPrefixes,
-        setDiscordPrefixes: (val) => useDiscordStore.getState().update({ discordPrefixes: val }),
         discordCloudRelayUrl,
         discordCloudHostId,
         setDiscordCloudHostId: (val) => useDiscordStore.getState().update({ discordCloudHostId: val }),

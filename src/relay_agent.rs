@@ -577,7 +577,6 @@ impl Session {
     /// 하트비트 메타데이터: 릴레이 봇이 자동완성·접두사 표시에 쓴다
     async fn metadata(&self) -> Value {
         use crate::chat::api::DaemonApi;
-        let translate = self.server.config_store.get_bot_config().await.translate_commands;
         let servers: Vec<Value> = match crate::ipc::internal::into_internal(
             crate::ipc::handlers::server::list_servers_internal(&self.server).await,
         )
@@ -601,19 +600,19 @@ impl Session {
         let modules: Vec<Value> = tokio::task::spawn_blocking(move || views
             .into_iter()
             .map(|m| {
-                // 번역한 명령 이름 (봇 설정 `translateCommands`, 기본 켬): 모듈 locales를 언어마다 한 번 읽는다
-                let locales: std::collections::HashMap<&str, Value> = match (translate, &m.locale_dir) {
-                    (true, Some(dir)) => crate::chat::i18n::languages()
+                // 번역한 명령 이름: 모듈 locales를 언어마다 한 번 읽는다. 번역을 끈 서버는 릴레이가 빼고 단다 (서버별 `translateCommands`)
+                let locales: std::collections::HashMap<&str, Value> = match &m.locale_dir {
+                    Some(dir) => crate::chat::i18n::languages()
                         .into_iter()
                         .filter_map(|l| {
                             let raw = std::fs::read_to_string(dir.join("locales").join(format!("{}.json", l))).ok()?;
                             Some((l, serde_json::from_str(&raw).ok()?))
                         })
                         .collect(),
-                    _ => Default::default(),
+                    None => Default::default(),
                 };
                 let texts = |l: &str| locales.get(l).cloned().unwrap_or(Value::Null);
-                let texts: Option<&dyn Fn(&str) -> Value> = if translate { Some(&texts) } else { None };
+                let texts: Option<&dyn Fn(&str) -> Value> = Some(&texts);
                 json!({
                     "name": m.name,
                     // 게임명도 별명처럼 서버를 부른다: 릴레이가 위험 명령 확인에서 같은 서버를 찾도록 함께 보낸다

@@ -12,9 +12,6 @@ import { ChatbotView, chatbotAvailable } from './ChatbotView';
 import { ConnectionView } from './ConnectionView';
 import { Avatar, NodeView } from './NodeView';
 import * as P from './nodePermissions';
-import { defaultPrefix, prefixProblems } from './prefixes';
-import { TagInput } from './TagInput';
-import { SabaToggle } from '../ui/SabaUI';
 import { claimSavedToken, usePairing } from './usePairing';
 
 export const DEFAULT_RELAY_URL = 'https://saba-chan.online';
@@ -36,90 +33,14 @@ export function cloudStateOf({ hostId, connected, connecting, error, loaded }) {
     return 'connecting';
 }
 
-function BotSettingsView({ prefixes, setPrefixes, nodes, sampleModuleWord }) {
-    const { t } = useTranslation('gui');
-    const fallback = defaultPrefix(t, nodes);
-    // 고치는 즉시 스토어에 넣으면 자동 저장된다. 저장할 수 없는 목록은 넣지 않고 화면에만 둔다
-    const [draft, setDraft] = useState(prefixes);
-    useEffect(() => setDraft(prefixes), [prefixes]);
-    const draftProblems = prefixProblems(draft, t);
-    const change = (next) => {
-        setDraft(next);
-        if (prefixProblems(next, t).length === 0) setPrefixes(next);
-    };
-    const p = draft[0] || fallback;
-    const translate = useDiscordStore((s) => s.discordTranslateCommands);
-    return (
-        <div className="dc-view">
-            <header className="dc-view-head">
-                <h1>{t('discord.bot_title')}</h1>
-                <p className="muted">{t('discord.bot_desc')}</p>
-            </header>
-            <section className="dc-card">
-                <div className="dc-card-head">
-                    <h2>{t('discord.prefix_title')}</h2>
-                </div>
-                <p className="dc-card-desc">{t('discord.prefix_desc')}</p>
-                <TagInput
-                    value={draft}
-                    onChange={change}
-                    placeholder={t('discord.prefix_default_placeholder', { prefix: fallback })}
-                    ariaLabel={t('discord.prefix_title')}
-                />
-                {draft.length === 0 && (
-                    <p className="dc-hint">{t('discord.prefix_default_hint', { prefix: fallback })}</p>
-                )}
-                {draftProblems.length > 0 && (
-                    <p className="dc-field-error">
-                        <Icon name="alertTriangle" size="xs" /> {draftProblems.join(' · ')}
-                    </p>
-                )}
-            </section>
-            <section className="dc-card">
-                <div className="cb-toggle-row">
-                    <span className="dc-list-text">
-                        <span className="dc-list-name">{t('discord.translate_commands_title')}</span>
-                        <span className="cb-hint">{t('discord.translate_commands_desc')}</span>
-                    </span>
-                    <SabaToggle
-                        checked={translate}
-                        aria-label={t('discord.translate_commands_title')}
-                        onChange={(on) => useDiscordStore.getState().update({ discordTranslateCommands: on })}
-                    />
-                </div>
-            </section>
-            <section className="dc-card">
-                <div className="dc-card-head">
-                    <h2>{t('discord.usage_title')}</h2>
-                </div>
-                <ul className="dc-usage">
-                    <li>
-                        <code>{p}</code>
-                        <span>{t('discord.usage_help')}</span>
-                    </li>
-                    <li>
-                        <code>{`${p} ${t('discord.usage_list_word')}`}</code>
-                        <span>{t('discord.usage_list')}</span>
-                    </li>
-                    <li>
-                        <code>{`${p} ${sampleModuleWord} ${t('discord.usage_start_word')}`}</code>
-                        <span>{t('discord.usage_command')}</span>
-                    </li>
-                </ul>
-            </section>
-        </div>
-    );
-}
-
 /**
  * 디스코드 페이지 (V1): 왼쪽 메뉴 | 오른쪽 화면. 서버 페이지와 같은 목록-상세 구조.
- * 메뉴: 연결 · 디스코드 서버(노드) 목록 · 기본 설정 · AI 챗봇. 서버마다 부르는 말은 서버 상세의 디스코드 탭에서 고친다.
+ * 메뉴: 연결 · 사바쨩 설정(모든 서버가 함께 쓰는 키·모델) · 디스코드 서버(노드) 목록.
+ * 기능을 켜고 쓰는 일(말하는·노래하는 사바쨩, 접두사, 권한)은 모두 서버 화면에서 한다.
  * 노드 권한은 바꾸는 즉시 저장(잠깐 모아서)한다.
  */
 export function DiscordPage({
     discordBotStatus,
-    discordPrefixes = [],
-    setDiscordPrefixes,
     discordCloudRelayUrl,
     discordCloudHostId,
     setDiscordCloudHostId,
@@ -427,6 +348,15 @@ export function DiscordPage({
                             />,
                         )}
 
+                        {chatbotAvailable() &&
+                            navItem(
+                                'saba',
+                                view.kind === 'saba',
+                                () => go({ kind: 'saba' }),
+                                <Icon name="sabaFace" size="sm" />,
+                                t('discord.nav_saba'),
+                                <span>{t('discord.nav_saba_sub')}</span>,
+                            )}
                         <div className="dc-nav-group">
                             <span>{t('discord.nav_nodes')}</span>
                             {cloudState === 'connected' && (
@@ -473,33 +403,6 @@ export function DiscordPage({
                                 </span>,
                             );
                         })}
-
-                        <div className="dc-nav-group">
-                            <span>{t('discord.nav_bot')}</span>
-                        </div>
-                        {navItem(
-                            'bot',
-                            view.kind === 'bot',
-                            () => go({ kind: 'bot' }),
-                            <Icon name="settings" size="sm" />,
-                            t('discord.nav_settings'),
-                            <span>
-                                {t('discord.nav_settings_sub', {
-                                    prefix: discordPrefixes.length
-                                        ? discordPrefixes.join(', ')
-                                        : t('discord.prefix_default_label', { prefix: defaultPrefix(t, cloudNodes) }),
-                                })}
-                            </span>,
-                        )}
-                        {chatbotAvailable() &&
-                            navItem(
-                                'chatbot',
-                                view.kind === 'chatbot',
-                                () => go({ kind: 'chatbot' }),
-                                <Icon name="sabaTalking" size="sm" />,
-                                t('chatbot.nav'),
-                                <span>{t('chatbot.nav_sub')}</span>,
-                            )}
                     </div>
                 </aside>
             )}
@@ -549,17 +452,10 @@ export function DiscordPage({
                                 membersPartial={membersPartial[currentNode.guildId] || null}
                                 onRefreshMembers={() => loadMembers(currentNode.guildId)}
                                 saveState={saveState}
-                            />
-                        )}
-                        {view.kind === 'bot' && (
-                            <BotSettingsView
-                                prefixes={discordPrefixes}
-                                setPrefixes={setDiscordPrefixes}
-                                nodes={cloudNodes}
                                 sampleModuleWord={sampleModuleWord}
                             />
                         )}
-                        {view.kind === 'chatbot' && chatbotAvailable() && <ChatbotView nodes={cloudNodes} />}
+                        {view.kind === 'saba' && chatbotAvailable() && <ChatbotView nodes={cloudNodes} />}
                     </div>
                 </main>
             )}

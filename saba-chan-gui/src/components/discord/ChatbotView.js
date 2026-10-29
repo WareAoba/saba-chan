@@ -10,19 +10,17 @@ import { StatusChip } from '../ui/StatusChip';
 import { PROVIDER_BRANDS } from './providerBrands';
 
 /**
- * 공통 설정 기본값 (데몬 `chatbot.rs` relay_defaults + allowedTools). 기본값과 같으면 null로 보내 기본을 따른다.
- * 호출어는 디스코드 접두사가, 대화 유지시간은 릴레이 고정값이 맡는다 (chatbot-settings-v2 §2).
- * 켜기와 켠 도구는 서버마다 정한다 (ChatbotGuildTab). allowedTools: 전체 허용 도구, null = 모두
+ * 사바쨩 설정(공통)에 두는 값: 모델만 (데몬 `commonKeys`). 나머지는 서버마다 정한다 (ChatbotGuildTab).
+ * 기본값과 같으면 null로 보내 기본을 따른다. 호출어·명령 이름 번역은 서버의 봇 탭이 맡는다
  */
-export const CHATBOT_DEFAULTS = {
-    model: 'gpt-6-luna',
+export const COMMON_DEFAULTS = { model: 'gpt-6-luna' };
+/** 서버마다 두는 말하는 사바쨩 동작의 기본값 (데몬 relay_defaults, 데몬이 `defaults`로 주면 그쪽이 먼저) */
+export const GUILD_DEFAULTS = {
     effort: 'medium',
+    memory: true,
     ambient: true,
     ambientMinutes: 3,
     ambientEffort: 'low',
-    confirmLevel: 'all',
-    memory: true,
-    allowedTools: null,
 };
 export const EFFORTS = ['low', 'medium', 'high'];
 export const AMBIENT_MINUTES = [1, 3, 5, 10, 30];
@@ -32,40 +30,34 @@ export const chatbotAvailable = () => !!window.api?.chatbotGet;
 
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
-/** 저장된 settings → 화면 초안 (계약에서 빠진 키는 버린다) */
-export function settingsDraft(saved = {}) {
-    return Object.fromEntries(Object.entries(CHATBOT_DEFAULTS).map(([k, def]) => [k, saved[k] ?? def]));
-}
-
-/** 초안 → PUT settings 패치: 기본값과 같으면 null(키 지움) */
-export function settingsPatch(draft) {
-    const out = {};
-    for (const [k, def] of Object.entries(CHATBOT_DEFAULTS)) {
-        let v = draft[k];
-        if (k === 'model') v = String(v ?? '').trim();
-        if (k === 'model' && !v) v = def;
-        out[k] = same(v, def) ? null : v;
-    }
-    // 예전 계약의 persona는 memo(길드별)로 바뀌었다: 남아 있으면 지운다
-    out.persona = null;
-    return out;
-}
-
 /**
- * 서버 하나의 초안: 켜기·켠 도구·서버 프롬프트. 값이 없으면 데몬이 준 기본(guildDefault: 새 서버는 꺼짐, 도구 없음.
- * 옛 공통 설정이 아직 옮겨지지 않았으면 그 값)
+ * 서버 하나의 초안: 켜기·켠 도구·서버 프롬프트와 동작(답변 깊이·기억·끼어들기).
+ * 켜기·도구는 값이 없으면 데몬이 준 기본(guildDefault: 새 서버는 꺼짐, 도구 없음, 옮기기 전이면 옛 공통 값).
+ * 동작은 서버 값 → 아직 옮기지 않은 옛 공통 값(legacy) → 데몬 기본값 순
  */
-export const guildDraft = (g = {}, fallback = {}) => ({
+export const guildDraft = (g = {}, fallback = {}, legacy = {}, defaults = {}) => ({
     enabled: typeof g.enabled === 'boolean' ? g.enabled : !!fallback.enabled,
     tools: Array.isArray(g.tools) ? g.tools : Array.isArray(fallback.tools) ? fallback.tools : [],
     memo: typeof g.memo === 'string' ? g.memo : '',
+    ...Object.fromEntries(
+        Object.entries(GUILD_DEFAULTS).map(([k, def]) => [k, g[k] ?? legacy[k] ?? defaults[k] ?? def]),
+    ),
 });
 
-/** 서버 초안 → PUT guilds 값: 켜기·도구는 늘 그대로 적는다 (공통을 따르지 않는다) */
-export const guildPatch = (d) => ({
+/**
+ * 서버 초안 → PUT guilds 값: 켜기·도구는 늘 그대로 적는다. 동작은 기본값과 같으면 null(기본을 따른다).
+ * 옛 공통 값이 남아 있는 키는 기본값이라도 적는다 (지우면 옛 값을 따라가므로)
+ */
+export const guildPatch = (d, legacy = {}, defaults = {}) => ({
     enabled: d.enabled,
     tools: d.tools,
     memo: d.memo.trim() ? d.memo : null,
+    ...Object.fromEntries(
+        Object.entries(GUILD_DEFAULTS).map(([k, def]) => [
+            k,
+            same(d[k], defaults[k] ?? def) && legacy[k] == null ? null : d[k],
+        ]),
+    ),
 });
 
 /**
@@ -94,9 +86,9 @@ export function useChatbotTools(guildId, keyVersion = 0) {
 }
 
 /**
- * 카테고리별 도구 스위치. blocked(name) 이면 잠그고 이유를 보인다; 쓸 수 없는 도구(운영 키·제공사)는 이유만 덧붙인다
+ * 카테고리별 도구 스위치. 쓸 수 없는 도구(운영 키·제공사)는 이유를 덧붙인다
  */
-export function ToolGroups({ catalog, reload, isOn, onToggle, blocked = () => false }) {
+export function ToolGroups({ catalog, reload, isOn, onToggle }) {
     const { t, i18n } = useTranslation('gui');
     const local = (texts, fallback) => texts?.[i18n.language] || texts?.en || fallback;
     if (!catalog) return <SabaSpinner size="sm" />;
@@ -121,14 +113,12 @@ export function ToolGroups({ catalog, reload, isOn, onToggle, blocked = () => fa
                 <div className="cb-toggles">
                     {tools.map((tool) => {
                         const label = local(tool.label, tool.name);
-                        const locked = blocked(tool.name);
                         const notes = [
                             local(tool.hint, ''),
-                            locked ? t('chatbot.tool_blocked') : '',
                             !tool.available ? t(`chatbot.tool_unavailable_${tool.unavailable || 'operator_key'}`) : '',
                         ].filter(Boolean);
                         return (
-                            <div className={clsx('cb-toggle-row', { locked })} key={tool.name}>
+                            <div className="cb-toggle-row" key={tool.name}>
                                 <span className="dc-list-text">
                                     <span className="dc-list-name">{label}</span>
                                     {notes.map((n) => (
@@ -138,8 +128,7 @@ export function ToolGroups({ catalog, reload, isOn, onToggle, blocked = () => fa
                                     ))}
                                 </span>
                                 <SabaToggle
-                                    checked={!locked && isOn(tool.name)}
-                                    disabled={locked}
+                                    checked={isOn(tool.name)}
                                     aria-label={label}
                                     onChange={(on) => onToggle(tool.name, on)}
                                 />
@@ -173,8 +162,8 @@ export function relayErrorLines(res, nameOf) {
 }
 
 /**
- * AI 챗봇 설정 (디스코드 › 봇 › AI 챗봇). 원본은 데몬 config.json `chatbot`,
- * 데몬이 길드마다 릴레이에 맞춘다. API 키는 쓰기만: 화면에는 등록 여부만 보인다.
+ * 사바쨩 설정 (디스코드 › 사바쨩 설정): 모든 서버에 같은 API 키·모델·크레딧만 둔다.
+ * 원본은 데몬 config.json `chatbot`, 데몬이 길드마다 릴레이에 맞춘다. API 키는 쓰기만: 화면에는 등록 여부만 보인다.
  */
 export function ChatbotView({ nodes = [] }) {
     const { t } = useTranslation('gui');
@@ -199,14 +188,15 @@ export function ChatbotView({ nodes = [] }) {
     }, [load]);
 
     const nameOf = (id) => nodes.find((n) => n.guildId === id)?.guildName || id;
+    const guildIds = data ? [...new Set([...nodes.map((n) => n.guildId), ...Object.keys(data.guilds || {})])] : [];
 
     return (
         <div className="dc-view">
             <header className="dc-view-head">
                 <h1>
-                    <Icon name="sabaTalking" size="lg" /> {t('chatbot.title')}
+                    <Icon name="sabaFace" size="lg" /> {t('chatbot.saba_title')}
                 </h1>
-                <p className="muted">{t('chatbot.desc')}</p>
+                <p className="muted">{t('chatbot.saba_desc')}</p>
             </header>
             {loadError && <SabaFail message={loadError} onRetry={load} retryLabel={t('maintenance.retry')} />}
             {!data && !loadError && <SabaSpinner />}
@@ -226,17 +216,17 @@ export function ChatbotView({ nodes = [] }) {
                         }}
                         nameOf={nameOf}
                     />
-                    <CreditCard
-                        guildIds={[...new Set([...nodes.map((n) => n.guildId), ...Object.keys(data.guilds || {})])]}
-                        nameOf={nameOf}
-                        hasApiKey={!!data.hasApiKey}
-                        keyVersion={keyVersion}
-                    />
-                    <SettingsEditor
+                    <ModelCard
                         data={data}
-                        nodes={nodes}
+                        guildIds={guildIds}
                         nameOf={nameOf}
                         onSaved={(res) => setData(res)}
+                        keyVersion={keyVersion}
+                    />
+                    <CreditCard
+                        guildIds={guildIds}
+                        nameOf={nameOf}
+                        hasApiKey={!!data.hasApiKey}
                         keyVersion={keyVersion}
                     />
                 </>
@@ -321,43 +311,23 @@ function ApiKeyCard({ hasApiKey, onChanged, nameOf }) {
     );
 }
 
-function SettingsEditor({ data, nodes, nameOf, onSaved, keyVersion }) {
+/** 모델: 모든 서버가 같은 모델을 쓴다 (서버마다 다른 값은 받지 않는다) */
+function ModelCard({ data, guildIds, nameOf, onSaved, keyVersion }) {
     const { t } = useTranslation('gui');
-    const guildIds = [...new Set([...nodes.map((n) => n.guildId), ...Object.keys(data.guilds || {})])];
-    const { catalog, reload } = useChatbotTools(guildIds[0], keyVersion);
-
-    const resetKey = JSON.stringify(data.settings);
-    const [base, setBase] = useState(() => settingsDraft(data.settings));
-    const [draft, setDraft] = useState(() => settingsDraft(data.settings));
-    // biome-ignore lint/correctness/useExhaustiveDependencies: 저장된 값이 바뀔 때만 초기화
-    useEffect(() => {
-        const next = settingsDraft(data.settings);
-        setBase(next);
-        setDraft(next);
-    }, [resetKey]);
-
+    const def = data.defaults?.model ?? COMMON_DEFAULTS.model;
+    const savedModel = data.settings?.model ?? def;
+    const [draft, setDraft] = useState(savedModel);
+    useEffect(() => setDraft(savedModel), [savedModel]);
     const [saving, setSaving] = useState(false);
     const [errors, setErrors] = useState([]);
     const [syncWarn, setSyncWarn] = useState(false);
 
-    const s = draft;
-    const set = (k, v) => setDraft((d) => ({ ...d, [k]: v }));
-    const dirty = !same(base, draft);
-
-    // 전체 허용 도구: null = 모두. 목록의 도구를 모두 허용하면 다시 null로 (나중에 생긴 도구도 허용되게)
-    const allNames = Array.isArray(catalog?.tools) ? catalog.tools.map((x) => x.name) : [];
-    const isAllowed = (name) => !Array.isArray(s.allowedTools) || s.allowedTools.includes(name);
-    const toggleAllowed = (name, on) => {
-        const now = Array.isArray(s.allowedTools) ? s.allowedTools : allNames;
-        const next = on ? [...new Set([...now, name])] : now.filter((x) => x !== name);
-        set('allowedTools', allNames.every((x) => next.includes(x)) ? null : allNames.filter((x) => next.includes(x)));
-    };
-
     const save = async () => {
         setSaving(true);
         setErrors([]);
+        const model = String(draft ?? '').trim() || def;
         try {
-            const res = await window.api.chatbotSave({ settings: settingsPatch(draft) });
+            const res = await window.api.chatbotSave({ settings: { model: model === def ? null : model } });
             if (res?.success === false) {
                 setErrors(
                     relayErrorLines(res, nameOf).concat(res.guildId || res.error ? [] : [t('chatbot.save_failed')]),
@@ -374,90 +344,20 @@ function SettingsEditor({ data, nodes, nameOf, onSaved, keyVersion }) {
         }
     };
 
-    const toggleRow = (key, label, hint) => (
-        <div className="cb-toggle-row">
-            <span className="dc-list-text">
-                <span className="dc-list-name">{label}</span>
-                {hint && <span className="cb-hint">{hint}</span>}
-            </span>
-            <SabaToggle checked={!!s[key]} aria-label={label} onChange={(v) => set(key, v)} />
-        </div>
-    );
-
-    const selectField = (key, label, hint, options, disabled = false) => (
-        <div className="mt-field">
-            <span>{label}</span>
-            <CustomDropdown
-                className="cb-select"
-                value={s[key]}
-                ariaLabel={label}
-                disabled={disabled}
-                onChange={(v) => set(key, v)}
-                options={options}
-            />
-            {hint && <p className="dc-hint">{hint}</p>}
-        </div>
-    );
-    const effortOptions = EFFORTS.map((e) => ({ value: e, label: t(`chatbot.effort_${e}`) }));
-
     return (
-        <>
-            <section className="dc-card">
-                <div className="dc-card-head">
-                    <h2>{t('chatbot.basic_title')}</h2>
-                </div>
-                <p className="dc-card-desc">{t('chatbot.basic_desc')}</p>
-                <p className="dc-hint">{t('chatbot.guilds_moved')}</p>
-                <ModelField
-                    value={s.model}
-                    saved={base.model}
-                    onChange={(v) => set('model', v)}
-                    guildId={guildIds[0]}
-                    hasApiKey={!!data.hasApiKey}
-                    keyVersion={keyVersion}
-                />
-                {selectField('effort', t('chatbot.effort'), t('chatbot.effort_hint'), effortOptions)}
-                <p className="dc-hint">{t('chatbot.prefix_calls')}</p>
-                <div className="cb-toggles">{toggleRow('memory', t('chatbot.memory'), t('chatbot.memory_hint'))}</div>
-            </section>
-
-            <section className="dc-card">
-                <div className="dc-card-head">
-                    <h2>{t('chatbot.ambient_title')}</h2>
-                </div>
-                <p className="dc-card-desc">{t('chatbot.ambient_desc')}</p>
-                <div className="cb-toggles">
-                    {toggleRow('ambient', t('chatbot.ambient'), t('chatbot.ambient_hint'))}
-                </div>
-                {selectField(
-                    'ambientMinutes',
-                    t('chatbot.ambient_minutes'),
-                    null,
-                    // CLI·디스코드로 목록 밖 값(1-60)을 저장했으면 그 값도 보인다
-                    [...new Set([...AMBIENT_MINUTES, s.ambientMinutes].filter(Number.isInteger))]
-                        .sort((a, b) => a - b)
-                        .map((m) => ({ value: m, label: t('chatbot.ambient_minutes_option', { count: m }) })),
-                    !s.ambient,
-                )}
-                {selectField(
-                    'ambientEffort',
-                    t('chatbot.ambient_effort'),
-                    t('chatbot.ambient_effort_hint'),
-                    effortOptions,
-                    !s.ambient,
-                )}
-            </section>
-
-            <section className="dc-card">
-                <div className="dc-card-head">
-                    <h2>{t('chatbot.tools_title')}</h2>
-                </div>
-                <p className="dc-card-desc">{t('chatbot.tools_desc')}</p>
-                <h3 className="cb-tool-category">{t('chatbot.allowed_title')}</h3>
-                <p className="dc-hint">{t('chatbot.allowed_desc')}</p>
-                <ToolGroups catalog={catalog} reload={reload} isOn={isAllowed} onToggle={toggleAllowed} />
-            </section>
-
+        <section className="dc-card">
+            <div className="dc-card-head">
+                <h2>{t('chatbot.model_title')}</h2>
+            </div>
+            <p className="dc-card-desc">{t('chatbot.model_desc')}</p>
+            <ModelField
+                value={draft}
+                saved={savedModel}
+                onChange={setDraft}
+                guildId={guildIds[0]}
+                hasApiKey={!!data.hasApiKey}
+                keyVersion={keyVersion}
+            />
             {errors.length > 0 && (
                 <div className="notice tone-warn" role="alert">
                     <Icon name="alertTriangle" size="sm" />
@@ -470,17 +370,16 @@ function SettingsEditor({ data, nodes, nameOf, onSaved, keyVersion }) {
                     <span>{t('chatbot.sync_pending')}</span>
                 </div>
             )}
-
             <SaveBar
-                dirty={dirty}
+                dirty={draft !== savedModel}
                 saving={saving}
                 onRevert={() => {
-                    setDraft(base);
+                    setDraft(savedModel);
                     setErrors([]);
                 }}
                 onSave={save}
             />
-        </>
+        </section>
     );
 }
 

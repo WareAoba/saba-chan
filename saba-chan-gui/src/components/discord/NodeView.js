@@ -171,7 +171,7 @@ function InstanceMenu({ node, servers, instance, onBack, members, membersLoading
 }
 
 /**
- * 디스코드 서버(노드) 하나: 인스턴스(→ 인스턴스 메뉴) / 채널 / 봇 설정.
+ * 디스코드 서버(노드) 하나: 인스턴스(→ 인스턴스 메뉴) / 채널 / 말하는 사바쨩 / 노래하는 사바쨩 / 봇 설정.
  */
 export function NodeView({
     node,
@@ -186,6 +186,7 @@ export function NodeView({
     membersPartial,
     onRefreshMembers,
     saveState,
+    sampleModuleWord,
 }) {
     const { t } = useTranslation('gui');
     const [tab, setTab] = useState('instances');
@@ -232,7 +233,14 @@ export function NodeView({
                         ? [{ id: 'chatbot', label: t('chatbot.nav'), icon: <Icon name="sabaTalking" size="sm" /> }]
                         : []),
                     ...(botSettingsAvailable()
-                        ? [{ id: 'bot', label: t('discord.tab_bot'), icon: <Icon name="settings" size="sm" /> }]
+                        ? [
+                              {
+                                  id: 'music',
+                                  label: t('discord.bot_settings.music_title'),
+                                  icon: <Icon name="musicNote" size="sm" />,
+                              },
+                              { id: 'bot', label: t('discord.tab_bot'), icon: <Icon name="settings" size="sm" /> },
+                          ]
                         : []),
                 ]}
             />
@@ -272,7 +280,8 @@ export function NodeView({
             )}
             {tab === 'channels' && <ChannelsTab key={node.guildId} node={node} />}
             {tab === 'chatbot' && <ChatbotGuildTab key={node.guildId} node={node} />}
-            {tab === 'bot' && <BotSettingsTab key={node.guildId} node={node} />}
+            {tab === 'music' && <BotSettingsTab key={node.guildId} node={node} section="music" />}
+            {tab === 'bot' && <BotSettingsTab key={node.guildId} node={node} sampleModuleWord={sampleModuleWord} />}
         </div>
     );
 }

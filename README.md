@@ -100,16 +100,16 @@ curl -fsSL https://raw.githubusercontent.com/WareAoba/saba-chan/main/install.sh 
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/images/architecture-dark.svg">
-    <img src="docs/images/architecture-light.svg" alt="GUI와 CLI는 이 PC 안의 HTTP API로 데몬을 조작하고, 데몬이 게임 서버를 실행하며 모듈과 익스텐션을 Python으로 부릅니다. 디스코드 명령은 클라우드 릴레이를 거치고, 연결은 PC가 먼저 바깥으로 엽니다.">
+    <img src="docs/images/architecture-light.svg" alt="GUI와 CLI는 이 PC 안의 HTTP API로 데몬을 조작하고, 데몬이 게임 서버를 실행하며 모듈과 익스텐션을 Python으로 부릅니다. 디스코드 명령은 서버쨩을 거치고, 연결은 PC가 먼저 바깥으로 엽니다.">
   </picture>
 </p>
 
-디스코드에서 명령을 보내면 이렇게 흘러갑니다. 릴레이가 PC에 먼저 말을 거는 게 아니라, PC의 데몬이 릴레이에 새 명령이 있는지 계속 물어보는 쪽이에요.
+디스코드에서 명령을 보내면 이렇게 흘러갑니다. 서버쨩이 PC에 먼저 말을 거는 게 아니라, PC의 데몬이 서버쨩에 새 명령이 있는지 계속 물어보는 쪽이에요.
 
 ```mermaid
 sequenceDiagram
     actor 친구 as 디스코드 사용자
-    participant 봇 as 사바쨩 봇 (릴레이)
+    participant 봇 as 사바쨩 봇 (서버쨩)
     participant 데몬 as 내 PC의 데몬
     participant 서버 as 게임 서버
     데몬->>봇: 새 명령 있나요? (PC가 먼저 연결, 서명된 요청)
@@ -143,7 +143,7 @@ sequenceDiagram
 ## 보안
 
 - 데몬은 이 PC 안(`127.0.0.1`)에서만 요청을 받고, 요청마다 접근 토큰을 확인합니다. 원격 데몬을 직접 켰을 때만 TLS 포트가 열리고, 같은 디스코드 계정으로 짝지은 PC만 들어올 수 있어요.
-- 릴레이와 주고받는 명령은 연결할 때 받은 키로 서명합니다.
+- 서버쨩과 주고받는 명령은 연결할 때 받은 키로 서명합니다.
 - 앱, 모듈, 익스텐션 업데이트는 공식 서명이 확인된 릴리스에서만 받고, 받은 파일은 하나하나 해시로 확인해요.
 - 공식 서명이 없는 모듈과 익스텐션은 격리해서 돌립니다(Windows는 AppContainer, 리눅스는 bubblewrap). 격리할 수 없는 환경에서는 내가 동의해야 실행돼요.
 - 친구가 게임에 들어오려면 게임 포트는 평소처럼 열어야 해요. 사바쨩이 필요 없게 해 주는 건 원격 제어용 포트뿐입니다.

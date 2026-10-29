@@ -31,7 +31,7 @@ use std::collections::HashMap;
 /// 처리기가 쓰는 봇 설정 일부
 #[derive(Debug, Clone, Default)]
 pub struct ChatSettings {
-    /// 비어 있으면 응답 언어의 기본 접두사 (`default_prefix`)
+    /// 호스트 접두사 (0.1.12 전 값). 길드 값(`nodeSettings[guild].discord.prefixes`)이 먼저다. 둘 다 비면 응답 언어의 기본 접두사
     pub prefixes: Vec<String>,
     /// 길드별 설정
     pub node_settings: Value,
@@ -315,9 +315,10 @@ impl<'a, D: DaemonApi> Ctx<'a, D> {
 
     /// 맞춰 볼 접두사. 설정이 비어 있으면 응답 언어의 기본값 하나
     fn prefixes(&self) -> Vec<String> {
-        match self.settings.prefixes.is_empty() {
+        let own = crate::ipc::handlers::discord::guild_prefixes(&self.settings.node_settings, self.req.guild_id.as_deref(), &self.settings.prefixes);
+        match own.is_empty() {
             true => vec![self.t("default_prefix", &[])],
-            false => self.settings.prefixes.clone(),
+            false => own,
         }
     }
 

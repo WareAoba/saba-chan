@@ -1092,7 +1092,10 @@
       "bot.confirm.direct": "直接向机器人请求 — 前缀命令和斜杠命令。",
       "bot.confirm.chatbot": "会说话的 Saba-chan — 会说话的 Saba-chan 选择的管理操作以及多人混合的请求，无论此设置如何都会询问。",
       "game_version": "要安装的服务器版本（下载服务器的游戏，默认：最新正式版）",
-      "unmanaged": "自行管理：saba-chan 只启动并查看是否在运行（无控制台）"
+      "unmanaged": "自行管理：saba-chan 只启动并查看是否在运行（无控制台）",
+      "bot.prefix.guild": "The Discord server, by name or id (without it: the only paired server)",
+      "bot.translate.on": "Show translated command names",
+      "bot.translate.off": "Show only the names in the module"
     },
     "after": "名称可以只写一部分（例如 start pal）。在终端中不带参数运行会打开全屏菜单(SABA_NO_TUI=1 时为交互式 shell)。\n在脚本中请使用 --json 和 --yes。退出码：0 成功 · 1 失败 · 2 用法错误 · 3 无法连接守护进程 · 4 未找到 · 130 已取消"
   },

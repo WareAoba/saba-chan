@@ -1,7 +1,7 @@
 //! `chatbot` — 디스코드 AI 챗봇 설정 (데몬이 원본, 릴레이에 맞춰 보낸다)
 //!
 //! 설정 키는 릴레이가 정하고 검사한다 (400이면 데몬이 저장하지 않는다). CLI는 키 이름을 고정하지 않는다.
-//! 값이 비면 그 키를 지운다(기본값으로). 길드별 값은 `--guild`로 공통 값 위에 덮는다.
+//! 값이 비면 그 키를 지운다(기본값으로). 공통에는 모델만 두고, 나머지는 `--guild`로 서버마다 정한다.
 //! API 키는 숨긴 입력이나 표준 입력으로만 받는다 (인자로 받으면 셸 기록에 남는다). 화면에는 저장 여부만.
 
 use crate::cli::ChatbotCmd;
@@ -87,7 +87,7 @@ async fn show(ctx: &Ctx) -> Result<()> {
             .cloned()
             .unwrap_or_default();
         // 예전 데몬은 기본값 표를 주지 않는다: 그때는 저장된 값만
-        let defaults = r.get("defaults").and_then(Value::as_object).cloned().unwrap_or_default();
+        let defaults = common_defaults(r);
         say!();
         output::heading(&t!("chatbot.common"));
         if defaults.is_empty() {
@@ -136,6 +136,15 @@ fn print_settings(m: &Map<String, Value>) {
         .map(|(k, v)| (k.clone(), shown(k, v)))
         .collect();
     output::print_kv(&rows);
+}
+
+/// 공통 메뉴의 기본값 표: 데몬이 공통 키(`commonKeys`)를 주면 그 키만 (나머지는 서버마다 정한다)
+fn common_defaults(r: &Value) -> Map<String, Value> {
+    let mut defaults = r.get("defaults").and_then(Value::as_object).cloned().unwrap_or_default();
+    if let Some(keys) = r.get("commonKeys").and_then(Value::as_array) {
+        defaults.retain(|k, _| keys.iter().any(|c| c.as_str() == Some(k)));
+    }
+    defaults
 }
 
 /// 공통 설정 표: 바꿀 수 있는 키(데몬의 기본값 표)와 저장된 키를 이름순으로, 저장하지 않은 키는 기본값에 표시를 붙여
@@ -297,13 +306,12 @@ async fn tools(ctx: &Ctx, guild: Option<&str>) -> Result<()> {
     Ok(())
 }
 
-/// 카테고리 제목 아래 `이름  상태` 줄. 공통에서 막힌 도구는 막힘, 운영 키·제공사 때문에 못 쓰면 덧붙인다
+/// 카테고리 제목 아래 `이름  상태` 줄. 운영 키·제공사 때문에 못 쓰면 덧붙인다
 fn tool_lines(catalog: &Value, settings: &Value) -> Vec<String> {
     let names = |v: &Value| -> Vec<String> {
         v.as_array().map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect()).unwrap_or_default()
     };
     let on = names(&settings["tools"]);
-    let allowed = settings["allowedTools"].as_array().map(|_| names(&settings["allowedTools"]));
     let tools = catalog["tools"].as_array().cloned().unwrap_or_default();
     let mut lines = Vec::new();
     for category in catalog["categories"].as_array().into_iter().flatten().filter_map(Value::as_str) {
@@ -317,9 +325,7 @@ fn tool_lines(catalog: &Value, settings: &Value) -> Vec<String> {
         lines.push(format!("[{}]", label));
         for tool in rows {
             let name = s(tool, "name");
-            let mut state = if allowed.as_ref().is_some_and(|a| !a.iter().any(|x| x == name)) {
-                t!("chatbot.tool_blocked")
-            } else if on.iter().any(|x| x == name) {
+            let mut state = if on.iter().any(|x| x == name) {
                 t!("chatbot.tool_on")
             } else {
                 t!("chatbot.tool_off")
@@ -425,7 +431,7 @@ mod tests {
         assert!(got.iter().any(|l| l.contains(&row)), "{got:?}");
     }
 
-    /// 도구는 카테고리별로, 공통에서 막은 도구는 막힘, 운영 키가 없는 도구는 못 쓴다고 보인다
+    /// 도구는 카테고리별로, 운영 키가 없는 도구는 못 쓴다고 보인다
     #[test]
     fn tools_are_grouped_by_category_with_their_state() {
         crate::i18n::init("ko");
@@ -443,7 +449,7 @@ mod tests {
                 { "name": "maplestory", "category": "games", "available": true },
             ],
         });
-        let settings = json!({ "tools": ["lol", "maplestory"], "allowedTools": ["game_servers", "lol", "pubg"] });
+        let settings = json!({ "tools": ["lol", "maplestory"] });
         let lines = tool_lines(&catalog, &settings);
         assert_eq!(lines, vec![
             "[게임 서버]".to_string(),
@@ -451,8 +457,18 @@ mod tests {
             "[게임 관련]".to_string(),
             format!("  {:<14} {}", "lol", t!("chatbot.tool_on")),
             format!("  {:<14} {} ({})", "pubg", t!("chatbot.tool_off"), t!("chatbot.tool_unavailable")),
-            format!("  {:<14} {}", "maplestory", t!("chatbot.tool_blocked")),
+            format!("  {:<14} {}", "maplestory", t!("chatbot.tool_on")),
         ]);
+    }
+
+    /// 공통 메뉴에는 공통 키(모델)만 보인다: 답변 깊이 같은 값은 서버마다 정한다
+    #[test]
+    fn the_common_table_holds_only_the_common_keys() {
+        let r = json!({ "defaults": { "model": "m", "effort": "medium" }, "commonKeys": ["model"] });
+        assert_eq!(common_defaults(&r).keys().collect::<Vec<_>>(), vec!["model"]);
+        // 옛 데몬은 공통 키를 주지 않는다: 그때는 전부
+        let old = json!({ "defaults": { "model": "m", "effort": "medium" } });
+        assert_eq!(common_defaults(&old).len(), 2);
     }
 
     /// 바꿀 수 있는 키는 데몬이 주는 기본값 표에서 온다: 바꾸지 않은 키도 기본값과 함께 보인다

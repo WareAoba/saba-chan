@@ -61,17 +61,25 @@ pub async fn run(ctx: &Ctx, cmd: BotCmd) -> Result<()> {
             ctx.out.hint("saba-chan-cli bot start");
             Ok(())
         }
-        BotCmd::Prefix { values, default } => {
+        BotCmd::Prefix { values, default, guild } => {
+            let guild = resolve::guild(ctx, guild.as_deref()).await?;
             if values.is_empty() && !default {
-                let cfg = ctx.api.bot_config().await?;
-                let p = cfg.get("prefixes").cloned().unwrap_or_else(|| json!([]));
-                ctx.out.data(&json!({ "prefixes": p }), |_| say!("{}", prefixes_line(&p)));
+                let r = ctx.api.discord_settings(&guild).await?;
+                let p = r.get("prefixes").cloned().unwrap_or_else(|| json!([]));
+                ctx.out.data(&json!({ "guildId": guild, "prefixes": p }), |_| say!("{}", prefixes_line(&p)));
                 return Ok(());
             }
-            let r = ctx.api.save_bot_config(json!({ "prefixes": values })).await?;
+            let r = ctx.api.set_discord_settings(&guild, json!({ "prefixes": values })).await?;
             let msg = if default { t!("bot.prefix_reset") } else { t!("bot.prefix_set", prefix = values.join(", ")) };
             ctx.out.done(&msg, &r);
+            if r.pointer("/sync/ok").and_then(Value::as_bool) == Some(false) {
+                ctx.out.warn(&t!("bot.discord_not_synced"));
+            }
             Ok(())
+        }
+        BotCmd::Translate { guild, on, off } => {
+            let patch = (on || off).then(|| json!({ "translateCommands": on }));
+            discord_settings(ctx, &resolve::guild(ctx, guild.as_deref()).await?, patch).await
         }
         BotCmd::Nodes => nodes(ctx).await,
         BotCmd::Members { guild } => {
@@ -191,10 +199,6 @@ async fn status(ctx: &Ctx) -> Result<()> {
     if let Some(r) = &relay_check {
         rows.push((t!("bot.relay_check"), relay_line(r)));
     }
-    rows.push((t!("bot.prefix"), prefixes_line(cfg.get("prefixes").unwrap_or(&Value::Null))));
-    // 끄기: saba-chan-cli bot config translateCommands=false (GUI 디스코드 > 봇 설정과 같은 값)
-    let translate = cfg.get("translateCommands").and_then(Value::as_bool) != Some(false);
-    rows.push((t!("bot.translate_commands"), if translate { t!("bot.on") } else { t!("bot.off") }));
     let relay = s(&agent, "relayUrl");
     if !relay.is_empty() {
         rows.push((t!("bot.relay"), relay.to_string()));
@@ -662,18 +666,26 @@ async fn confirm(ctx: &Ctx, guild: &str, direct: Option<String>, chatbot: Option
 }
 
 fn print_discord_settings(r: &Value) {
+    output::print_kv(&discord_rows(r));
+}
+
+/// 서버 하나의 봇 설정 줄 (GUI 서버 › 봇·노래하는 사바쨩 탭과 같은 값)
+fn discord_rows(r: &Value) -> Vec<(String, String)> {
     let on_off = |v: Option<bool>| if v == Some(true) { t!("bot.on") } else { t!("bot.off") };
     let locale = s(r, "locale");
     let music = |k: &str| r.get("music").and_then(|m| m.get(k));
-    output::print_kv(&[
+    vec![
         (t!("bot.locale"), if locale == "auto" { t!("bot.locale_auto") } else { locale.to_string() }),
+        (t!("bot.prefix"), prefixes_line(r.get("prefixes").unwrap_or(&Value::Null))),
+        // 값이 없으면(옛 데몬) 켜짐
+        (t!("bot.translate_commands"), on_off(Some(r.get("translateCommands").and_then(Value::as_bool) != Some(false)))),
         (t!("bot.sleeping"), on_off(r.get("sleeping").and_then(Value::as_bool))),
         (t!("bot.music"), on_off(music("enabled").and_then(Value::as_bool))),
         (t!("bot.music_ui"), on_off(music("ui").and_then(Value::as_bool))),
         (t!("bot.music_queue_lines"), music("queueLines").map(|v| v.to_string()).unwrap_or_default()),
         (t!("bot.music_refresh"), music("refreshInterval").map(|v| format!("{} ms", v)).unwrap_or_default()),
         (t!("bot.music_normalize"), on_off(music("normalize").and_then(Value::as_bool))),
-    ]);
+    ]
 }
 
 fn print_channels(r: &Value) {
@@ -896,6 +908,19 @@ fn bot_value(cfg: &Value, defaults: &Value, key: &str, raw: &str) -> Result<Valu
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 서버 설정에 그 서버의 호출어와 명령 이름 번역이 보인다 (비면 기본 호출어, 값이 없으면 번역 켜짐)
+    #[test]
+    fn server_settings_show_its_prefixes_and_command_translation() {
+        crate::i18n::init("ko");
+        let row = |r: &Value, k: &str| discord_rows(r).into_iter().find(|(name, _)| *name == t!(k)).map(|(_, v)| v);
+        let r = json!({ "locale": "auto", "prefixes": ["사바", "!s"], "translateCommands": false, "music": {} });
+        assert_eq!(row(&r, "bot.prefix").as_deref(), Some("사바, !s"));
+        assert_eq!(row(&r, "bot.translate_commands"), Some(t!("bot.off")));
+        let old = json!({ "locale": "ko", "music": {} });
+        assert_eq!(row(&old, "bot.prefix"), Some(t!("bot.prefix_default")));
+        assert_eq!(row(&old, "bot.translate_commands"), Some(t!("bot.on")));
+    }
 
     /// 권한 키는 봇 설정 저장으로 바뀌지 않는다(L61, 데몬 #469). 데몬이 `ignored`로 알린 키는 저장했다고 말하지 않고
     /// 실패로 끝내 그 키와 권한 명령을 보인다. 목록이 없거나 비면(옛 데몬 포함) 저장한 것이다

@@ -67,8 +67,6 @@ function Harness({ save, initialView, botConfigSave, hostId = 'host-1', setHostI
     return (
         <DiscordPage
             discordBotStatus="running"
-            discordPrefixes={[]}
-            setDiscordPrefixes={() => {}}
             discordCloudHostId={hostId}
             setDiscordCloudHostId={setHostId}
             relayConnected
@@ -94,9 +92,13 @@ function Harness({ save, initialView, botConfigSave, hostId = 'host-1', setHostI
 
 /** 인스턴스 메뉴 → 멤버별 레벨 (디스코드 서버 → 인스턴스 → 멤버별 레벨) */
 async function openMemberLevels() {
-    window.api.permissionsGet = vi.fn().mockResolvedValue({ guildId: 'g1', ownerDiscordId: 'o1', members: {}, preset: 'default' });
+    window.api.permissionsGet = vi
+        .fn()
+        .mockResolvedValue({ guildId: 'g1', ownerDiscordId: 'o1', members: {}, preset: 'default' });
     window.api.permissionsCommands = vi.fn().mockResolvedValue({ guildId: 'g1', instances: [], items: [] });
-    const open = [...document.querySelectorAll('button')].find((b) => /permissions|권한 메뉴/.test(b.getAttribute('aria-label') || ''));
+    const open = [...document.querySelectorAll('button')].find((b) =>
+        /permissions|권한 메뉴/.test(b.getAttribute('aria-label') || ''),
+    );
     await act(async () => fireEvent.click(open));
     await act(async () => fireEvent.click(screen.getByRole('tab', { name: /Member levels|멤버별 레벨/ })));
     const more = screen.queryByRole('button', { name: /default level|기본 레벨/ });
@@ -115,11 +117,31 @@ describe('DiscordPage', () => {
         window.showToast = vi.fn();
     });
 
-    it('모듈이 없으면 사용법 예시에 특정 게임 이름 대신 모듈이라는 말을 쓴다', async () => {
+    it('모듈이 없으면 서버 봇 탭의 사용법 예시에 특정 게임 이름 대신 모듈이라는 말을 쓴다', async () => {
         useDiscordStore.setState({ _botConfigLoaded: true });
-        await act(async () => render(<Harness save={vi.fn()} initialView={{ kind: 'bot' }} mods={[]} />));
+        window.api.discordSettingsGet = vi.fn().mockResolvedValue({ guildId: 'g1', locale: 'auto', music: {} });
+        window.api.discordSettingsSet = vi.fn();
+        await act(async () => render(<Harness save={vi.fn()} mods={[]} />));
+        await waitFor(() => expect(document.querySelectorAll('.dc-nav-row')).toHaveLength(2));
+        const nodeRow = [...document.querySelectorAll('.dc-nav-row')].find((b) => b.textContent.includes('사바 마을'));
+        await act(async () => fireEvent.click(nodeRow));
+        await act(async () => fireEvent.click(screen.getByRole('tab', { name: /Bot|봇/ })));
         expect(screen.queryByText(/minecraft/)).toBeNull();
         expect(screen.getByText(/ module start$/)).toBeInTheDocument();
+    });
+
+    it('사바쨩 설정은 연결 다음 메뉴로 따로 있고, 옛 봇 기본 설정 메뉴는 없다', async () => {
+        useDiscordStore.setState({ _botConfigLoaded: true });
+        window.api.chatbotGet = vi
+            .fn()
+            .mockResolvedValue({ success: true, settings: {}, guilds: {}, hasApiKey: false });
+        await act(async () => render(<Harness save={vi.fn()} />));
+        await waitFor(() => expect(document.querySelectorAll('.dc-nav-row')).toHaveLength(3));
+        const rows = [...document.querySelectorAll('.dc-nav-row')].map((b) => b.textContent);
+        expect(rows[1]).toContain('Saba-chan settings');
+        await act(async () => fireEvent.click(document.querySelectorAll('.dc-nav-row')[1]));
+        expect(await screen.findByRole('heading', { name: /Saba-chan settings/ })).toBeTruthy();
+        delete window.api.chatbotGet;
     });
 
     it('설정을 아직 읽지 못했으면 연결 버튼 없이 연결 확인 중을 보인다', async () => {
@@ -156,7 +178,7 @@ describe('DiscordPage', () => {
         }));
         const save = vi.fn();
         await act(async () => render(<Harness save={save} />));
-        await waitFor(() => expect(document.querySelectorAll('.dc-nav-row')).toHaveLength(3));
+        await waitFor(() => expect(document.querySelectorAll('.dc-nav-row')).toHaveLength(2));
         const nodeRow = [...document.querySelectorAll('.dc-nav-row')].find((b) => b.textContent.includes('사바 마을'));
         await act(async () => fireEvent.click(nodeRow));
         // 인스턴스 탭(첫 탭)에서 "고른 것만"으로 바꾼다
@@ -178,7 +200,7 @@ describe('DiscordPage', () => {
         }));
         const save = vi.fn();
         await act(async () => render(<Harness save={save} />));
-        await waitFor(() => expect(document.querySelectorAll('.dc-nav-row')).toHaveLength(3));
+        await waitFor(() => expect(document.querySelectorAll('.dc-nav-row')).toHaveLength(2));
         const nodeRow = [...document.querySelectorAll('.dc-nav-row')].find((b) => b.textContent.includes('사바 마을'));
         await act(async () => fireEvent.click(nodeRow));
         const bells = document.querySelectorAll('.dc-notice-btn');
@@ -193,7 +215,7 @@ describe('DiscordPage', () => {
 
     it('멤버 목록을 다시 받다 실패하면 받아 둔 목록을 지우지 않고 알린다', async () => {
         await act(async () => render(<Harness save={vi.fn()} />));
-        await waitFor(() => expect(document.querySelectorAll('.dc-nav-row')).toHaveLength(3));
+        await waitFor(() => expect(document.querySelectorAll('.dc-nav-row')).toHaveLength(2));
         const nodeRow = [...document.querySelectorAll('.dc-nav-row')].find((b) => b.textContent.includes('사바 마을'));
         await act(async () => fireEvent.click(nodeRow));
         await openMemberLevels();
@@ -216,7 +238,7 @@ describe('DiscordPage', () => {
             reason: 'bot_unavailable',
         });
         await act(async () => render(<Harness save={vi.fn()} />));
-        await waitFor(() => expect(document.querySelectorAll('.dc-nav-row')).toHaveLength(3));
+        await waitFor(() => expect(document.querySelectorAll('.dc-nav-row')).toHaveLength(2));
         const nodeRow = [...document.querySelectorAll('.dc-nav-row')].find((b) => b.textContent.includes('사바 마을'));
         await act(async () => fireEvent.click(nodeRow));
         await openMemberLevels();
@@ -304,7 +326,9 @@ describe('DiscordPage', () => {
 
     it('봇 초대: 릴레이가 준 초대 주소를 셸 브리지(window.electron)로 연다', async () => {
         // 실제 릴레이 응답은 { clientId, inviteUrl, bot }이고, 셸 열기는 window.api가 아니라 window.electron에 있다
-        window.api.relayBotInvite = vi.fn().mockResolvedValue({ clientId: '1', inviteUrl: 'https://discord.com/invite-x' });
+        window.api.relayBotInvite = vi
+            .fn()
+            .mockResolvedValue({ clientId: '1', inviteUrl: 'https://discord.com/invite-x' });
         window.electron = { shell: { openExternal: vi.fn().mockResolvedValue({ success: true }) } };
         await act(async () => render(<Harness save={vi.fn()} />));
         const btn = await waitFor(() => {

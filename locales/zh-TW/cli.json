@@ -881,7 +881,10 @@
       "bot.confirm.direct": "直接向機器人請求 — 前綴指令和斜線指令。",
       "bot.confirm.chatbot": "會說話的 Saba-chan — 會說話的 Saba-chan 選擇的管理操作以及多人混合的請求，無論此設定如何都會詢問。",
       "game_version": "要安裝的伺服器版本（下載伺服器的遊戲，預設：最新正式版）",
-      "unmanaged": "自行管理：saba-chan 只啟動並查看是否在執行（無主控台）"
+      "unmanaged": "自行管理：saba-chan 只啟動並查看是否在執行（無主控台）",
+      "bot.prefix.guild": "The Discord server, by name or id (without it: the only paired server)",
+      "bot.translate.on": "Show translated command names",
+      "bot.translate.off": "Show only the names in the module"
     },
     "after": "名稱可以只寫一部分（例如 start pal）。在終端機中不帶參數執行會開啟全螢幕選單(SABA_NO_TUI=1 時為互動式 shell)。\n在指令碼中請使用 --json 和 --yes。結束代碼：0 成功 · 1 失敗 · 2 用法錯誤 · 3 無法連線常駐程式 · 4 找不到 · 130 已取消"
   },

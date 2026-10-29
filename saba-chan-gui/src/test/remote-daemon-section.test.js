@@ -102,7 +102,7 @@ describe('설정 > 고급: 원격 데몬 (/api/remote/*)', () => {
         });
         await act(async () => render(<RemoteDaemonSection />));
         const daemons = screen.getByRole('list', { name: 'Remote daemons this PC uses' });
-        expect(within(daemons).getByText('Through the relay')).toBeInTheDocument();
+        expect(within(daemons).getByText('Through Server-chan')).toBeInTheDocument();
         expect(within(daemons).getByText('g.example:57480')).toBeInTheDocument();
         expect(within(daemons).queryByText(':57480')).toBeNull();
     });

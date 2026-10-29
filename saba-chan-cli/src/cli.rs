@@ -460,7 +460,7 @@ pub enum ChatbotCmd {
         #[arg(long)]
         guild: Option<String>,
     },
-    /// Change settings: KEY=VALUE ... (keys and their defaults: `chatbot show`; e.g. enabled=true; empty = default, [a,b] = list, @FILE = file text, e.g. memo=@notes.txt)
+    /// Change settings: KEY=VALUE ... (shared: only model; everything else per server with --guild, its keys and values: `chatbot show GUILD`; e.g. --guild G effort=high; empty = default, [a,b] = list, @FILE = file text, e.g. memo=@notes.txt)
     Set {
         #[arg(value_name = "KEY=VALUE", required = true)]
         pairs: Vec<String>,
@@ -938,12 +938,25 @@ pub enum BotCmd {
     },
     /// Set the node token by hand (from a pairing done elsewhere). Asked for without showing it, or one line on stdin; never an argument
     Token,
-    /// Show or change the chat prefixes: `prefix`, `prefix A B`, `prefix --default`
+    /// Show or change the chat prefixes of a Discord server: `prefix`, `prefix A B`, `prefix --default`
     Prefix {
         values: Vec<String>,
         /// Go back to the default prefix of the app language
         #[arg(long, conflicts_with = "values")]
         default: bool,
+        /// The Discord server, by name or id (without it: the only paired server)
+        #[arg(long)]
+        guild: Option<String>,
+    },
+    /// Translated command names in the slash commands of a Discord server. No options: show
+    Translate {
+        guild: Option<String>,
+        /// Show translated command names
+        #[arg(long, conflicts_with = "off")]
+        on: bool,
+        /// Show only the names in the module
+        #[arg(long)]
+        off: bool,
     },
     /// Discord servers paired with this PC
     Nodes,

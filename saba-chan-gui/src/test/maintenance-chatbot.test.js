@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ChatbotGuildTab } from '../components/discord/ChatbotGuildTab';
-import { ChatbotView, relayErrorLines, settingsDraft, settingsPatch } from '../components/discord/ChatbotView';
+import { ChatbotView, guildDraft, guildPatch, relayErrorLines } from '../components/discord/ChatbotView';
 import { draftProblems, formatBytes, fromDraft, MaintenanceTab, toDraft } from '../components/servers/MaintenanceTab';
 import { pickOption } from './dropdown';
 
@@ -263,31 +263,41 @@ describe('MaintenanceTab', () => {
 });
 
 describe('챗봇 설정 변환', () => {
-    it('기본값과 같은 값은 null로 보내 릴레이 기본을 따른다; 계약에서 빠진 키는 보내지 않는다', () => {
-        const d = settingsDraft({ model: 'gpt-x', ambientSeconds: 30, sessionSeconds: 60, triggerWords: ['a'] });
-        expect(d).not.toHaveProperty('ambientSeconds');
-        expect(d).not.toHaveProperty('triggerWords');
-        const p = settingsPatch({ ...d, allowedTools: ['lol'] });
-        expect(p).toMatchObject({ model: 'gpt-x', persona: null, memory: null, allowedTools: ['lol'] });
-        expect(Object.keys(p)).not.toContain('sessionSeconds');
-        // 켜기·도구는 서버마다 정하므로 공통으로 보내지 않는다
-        expect(Object.keys(p)).not.toContain('enabled');
-        expect(Object.keys(p)).not.toContain('disabledTools');
-        expect(settingsPatch(d).allowedTools).toBeNull();
+    it('서버 초안: 서버 값 → 옮기기 전 옛 공통 값 → 데몬 기본값 순으로 채운다', () => {
+        const d = guildDraft(
+            { effort: 'high' },
+            { enabled: true, tools: ['lol'] },
+            { ambientMinutes: 10 },
+            {
+                memory: false,
+            },
+        );
+        expect(d).toMatchObject({
+            enabled: true,
+            tools: ['lol'],
+            memo: '',
+            effort: 'high',
+            memory: false,
+            ambient: true,
+            ambientMinutes: 10,
+            ambientEffort: 'low',
+        });
     });
 
-    it('추론 강도·끼어들기·확인 단계도 기본값이면 null, 게임 서버 도구도 끌 수 있다', () => {
-        const d = settingsDraft();
-        expect(d).toMatchObject({
-            effort: 'medium',
-            ambient: true,
-            ambientMinutes: 3,
-            ambientEffort: 'low',
-            confirmLevel: 'all',
+    it('서버 패치: 기본값과 같으면 null, 옛 공통 값이 남아 있으면 기본값도 그대로 적는다', () => {
+        const d = guildDraft({}, {}, {}, {});
+        expect(guildPatch(d)).toEqual({
+            enabled: false,
+            tools: [],
+            memo: null,
+            effort: null,
+            memory: null,
+            ambient: null,
+            ambientMinutes: null,
+            ambientEffort: null,
         });
-        const p = settingsPatch({ ...d, effort: 'high', ambient: false, confirmLevel: 'caution' });
-        expect(p).toMatchObject({ effort: 'high', ambient: false, confirmLevel: 'caution', ambientMinutes: null });
-        expect(p).not.toHaveProperty('confirmCommands');
+        const p = guildPatch({ ...d, effort: 'medium', ambient: false }, { effort: 'high' });
+        expect(p).toMatchObject({ effort: 'medium', ambient: false, memory: null });
     });
 
     it('릴레이 400을 읽을 수 있는 줄로', () => {
@@ -314,51 +324,35 @@ describe('ChatbotView', () => {
         expect(await screen.findByText(/retry on the next connection/)).toBeTruthy();
     });
 
-    it('전체 허용 도구는 카테고리별로, 막으면 목록을 보내고 모두 허용하면 다시 null', async () => {
+    it('사바쨩 설정에는 API 키·모델·크레딧만 있고, 모델만 공통으로 저장한다', async () => {
+        window.api.chatbotGet = vi.fn().mockResolvedValue({
+            success: true,
+            settings: { model: 'gpt-x' },
+            guilds: {},
+            hasApiKey: true,
+            defaults: { model: 'gpt-6-luna', effort: 'medium' },
+        });
+        window.api.chatbotSave = vi
+            .fn()
+            .mockResolvedValue({ success: true, settings: {}, guilds: {}, hasApiKey: true });
+        window.api.chatbotModels = vi.fn().mockResolvedValue({ models: ['gpt-x', 'gpt-y'], provider: 'openai' });
+        render(<ChatbotView nodes={nodes} />);
+        pickOption(await screen.findByLabelText('Model'), 'gpt-y');
+        expect(screen.queryByLabelText('Reasoning effort')).toBeNull();
+        expect(screen.queryByLabelText('Join in uninvited')).toBeNull();
+        expect(screen.queryByLabelText('Image generation')).toBeNull();
+        fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+        await waitFor(() => expect(window.api.chatbotSave).toHaveBeenCalledWith({ settings: { model: 'gpt-y' } }));
+        delete window.api.chatbotModels;
+    });
+
+    it('서버 탭: 추론 강도·끼어들기를 고르고, 끼어들기를 끄면 주기와 판단 강도는 잠긴다', async () => {
         window.api.chatbotGet = vi.fn().mockResolvedValue({ success: true, settings: {}, guilds: {}, hasApiKey: true });
         window.api.chatbotSave = vi
             .fn()
             .mockResolvedValue({ success: true, settings: {}, guilds: {}, hasApiKey: true });
         window.api.chatbotTools = vi.fn().mockResolvedValue(CATALOG);
-        render(<ChatbotView nodes={nodes} />);
-        const images = await screen.findByLabelText('Image generation');
-        expect(window.api.chatbotTools).toHaveBeenCalledWith('g1');
-        expect(screen.getByText('Games')).toBeTruthy();
-        expect(screen.getByLabelText('TFT stats')).toBeTruthy();
-        expect(screen.getByText('TFT stats hint')).toBeTruthy();
-        expect(screen.getByText('The Saba-chan server cannot use this tool right now.')).toBeTruthy();
-        expect(images.checked).toBe(true);
-        fireEvent.click(images);
-        fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-        await waitFor(() => expect(window.api.chatbotSave).toHaveBeenCalled());
-        expect(window.api.chatbotSave.mock.calls[0][0]).toEqual({
-            settings: expect.objectContaining({
-                allowedTools: ['game_servers', 'lol', 'tft', 'pubg', 'maplestory', 'web_search', 'research'],
-            }),
-        });
-        // 다시 허용하면 기본(모두 허용)으로
-        fireEvent.click(screen.getByLabelText('Image generation'));
-        expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
-    });
-
-    it('도구 목록을 못 불러오면 알리고 다시 묻는다; 서버가 없으면 연결을 안내한다', async () => {
-        window.api.chatbotGet = vi.fn().mockResolvedValue({ success: true, settings: {}, guilds: {}, hasApiKey: true });
-        window.api.chatbotTools = vi.fn().mockResolvedValueOnce({ error: 'NODE_NOT_FOUND' }).mockResolvedValue(CATALOG);
-        const { unmount } = render(<ChatbotView nodes={nodes} />);
-        expect(await screen.findByText('Could not load the tool list.')).toBeTruthy();
-        fireEvent.click(screen.getAllByRole('button', { name: 'Retry' }).at(-1));
-        expect(await screen.findByLabelText('Image generation')).toBeTruthy();
-        unmount();
-        render(<ChatbotView nodes={[]} />);
-        expect(await screen.findByText('Connect a Discord server to load the tool list.')).toBeTruthy();
-    });
-
-    it('추론 강도·끼어들기를 고르고, 끼어들기를 끄면 주기와 판단 강도는 잠긴다', async () => {
-        window.api.chatbotGet = vi.fn().mockResolvedValue({ success: true, settings: {}, guilds: {}, hasApiKey: true });
-        window.api.chatbotSave = vi
-            .fn()
-            .mockResolvedValue({ success: true, settings: {}, guilds: {}, hasApiKey: true });
-        render(<ChatbotView nodes={nodes} />);
+        render(<ChatbotGuildTab node={nodes[0]} />);
         pickOption(await screen.findByLabelText('Reasoning effort'), 'High');
         pickOption(screen.getByLabelText('Check interval'), 'Every 10 min');
         fireEvent.click(screen.getByLabelText('Join in uninvited'));
@@ -366,7 +360,7 @@ describe('ChatbotView', () => {
         expect(screen.getByLabelText('Join-in reasoning effort')).toBeDisabled();
         fireEvent.click(screen.getByRole('button', { name: 'Save' }));
         await waitFor(() => expect(window.api.chatbotSave).toHaveBeenCalled());
-        expect(window.api.chatbotSave.mock.calls[0][0].settings).toMatchObject({
+        expect(window.api.chatbotSave.mock.calls[0][0].guilds.g1).toMatchObject({
             effort: 'high',
             ambient: false,
             ambientMinutes: 10,
@@ -441,11 +435,14 @@ describe('ChatbotView', () => {
         await waitFor(() => expect(screen.queryByText('$12.50')).toBeNull());
     });
 
-    it('목록에 없는 끼어들기 주기(CLI로 저장한 값)도 고른 값으로 보인다', async () => {
-        window.api.chatbotGet = vi
-            .fn()
-            .mockResolvedValue({ success: true, settings: { ambientMinutes: 15 }, guilds: {}, hasApiKey: true });
-        render(<ChatbotView nodes={nodes} />);
+    it('서버 탭: 목록에 없는 끼어들기 주기(CLI로 저장한 값)도 고른 값으로 보인다', async () => {
+        window.api.chatbotGet = vi.fn().mockResolvedValue({
+            success: true,
+            settings: {},
+            guilds: { g1: { ambientMinutes: 15 } },
+            hasApiKey: true,
+        });
+        render(<ChatbotGuildTab node={nodes[0]} />);
         expect((await screen.findByLabelText('Check interval')).textContent).toContain('Every 15 min');
     });
 
@@ -463,10 +460,10 @@ describe('ChatbotView', () => {
         expect(await screen.findByText('None')).toBeTruthy();
     });
 
-    it('서버 탭: 새 서버는 꺼져 있고, 켜기·도구·프롬프트를 그 서버에만 저장한다; 공통에서 막힌 도구는 잠근다', async () => {
+    it('서버 탭: 새 서버는 꺼져 있고, 켜기·도구·프롬프트를 그 서버에만 저장한다; 도구 목록을 못 불러오면 다시 묻는다', async () => {
         window.api.chatbotGet = vi.fn().mockResolvedValue({
             success: true,
-            settings: { allowedTools: ['lol', 'web_search'] },
+            settings: {},
             guilds: {},
             guildDefault: { enabled: false, tools: [] },
             hasApiKey: true,
@@ -474,14 +471,17 @@ describe('ChatbotView', () => {
         window.api.chatbotSave = vi
             .fn()
             .mockResolvedValue({ success: true, settings: {}, guilds: {}, hasApiKey: true });
-        window.api.chatbotTools = vi.fn().mockResolvedValue(CATALOG);
+        window.api.chatbotTools = vi.fn().mockResolvedValueOnce({ error: 'NODE_NOT_FOUND' }).mockResolvedValue(CATALOG);
         render(<ChatbotGuildTab node={nodes[0]} />);
         const on = await screen.findByLabelText('Use Talking Saba-chan in this server');
         expect(on.checked).toBe(false);
+        expect(await screen.findByText('Could not load the tool list.')).toBeTruthy();
+        fireEvent.click(screen.getAllByRole('button', { name: 'Retry' }).at(-1));
         const lol = await screen.findByLabelText('LoL stats');
         expect(lol.checked).toBe(false);
-        expect(screen.getByLabelText('Image generation')).toBeDisabled();
-        expect(screen.getAllByText('This tool is blocked in the shared settings.').length).toBeGreaterThan(0);
+        expect(screen.getByLabelText('TFT stats')).toBeTruthy();
+        expect(screen.getByText('TFT stats hint')).toBeTruthy();
+        expect(screen.getByText('The Saba-chan server cannot use this tool right now.')).toBeTruthy();
         fireEvent.click(on);
         fireEvent.click(lol);
         const memo = screen.getByLabelText('Server prompt for My Guild');
@@ -492,7 +492,9 @@ describe('ChatbotView', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Save' }));
         await waitFor(() =>
             expect(window.api.chatbotSave).toHaveBeenCalledWith({
-                guilds: { g1: { enabled: true, tools: ['lol'], memo: '반말로 대답해' } },
+                guilds: {
+                    g1: expect.objectContaining({ enabled: true, tools: ['lol'], memo: '반말로 대답해', effort: null }),
+                },
             }),
         );
     });
@@ -544,7 +546,7 @@ describe('ChatbotView', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Save' }));
         await screen.findByText(/tools too long/);
         expect(window.api.chatbotSave).toHaveBeenCalledWith({
-            guilds: { g1: { enabled: true, tools: ['game_servers'], memo: null } },
+            guilds: { g1: expect.objectContaining({ enabled: true, tools: ['game_servers'], memo: null }) },
         });
 
         fireEvent.click(screen.getByRole('button', { name: 'Clear memory' }));

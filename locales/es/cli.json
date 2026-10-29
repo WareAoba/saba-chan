@@ -881,7 +881,10 @@
       "bot.confirm.direct": "Peticiones al bot — Comandos con prefijo y comandos de barra.",
       "bot.confirm.chatbot": "Saba-chan parlante — Las tareas de administración que elige Saba-chan parlante y las peticiones que mezclan a varias personas siempre preguntan, sea cual sea este ajuste.",
       "game_version": "Versión del servidor a instalar (juegos que descargan su servidor; por defecto: la última)",
-      "unmanaged": "Por su cuenta: saba-chan lo inicia y solo vigila si funciona (sin consola)"
+      "unmanaged": "Por su cuenta: saba-chan lo inicia y solo vigila si funciona (sin consola)",
+      "bot.prefix.guild": "The Discord server, by name or id (without it: the only paired server)",
+      "bot.translate.on": "Show translated command names",
+      "bot.translate.off": "Show only the names in the module"
     },
     "after": "Los nombres pueden ser parciales (p. ej. start pal). Sin argumentos en una terminal se abre el menú a pantalla completa (SABA_NO_TUI=1: la shell interactiva).\nEn scripts usa --json y --yes. Códigos de salida: 0 correcto · 1 error · 2 uso · 3 daemon inaccesible · 4 no encontrado · 130 cancelado"
   },
