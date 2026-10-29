@@ -81,10 +81,10 @@ fn strings(v: Option<&Value>) -> Vec<String> {
     v.and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect()).unwrap_or_default()
 }
 
-/// 옛 설정이 남아 있다: 공통에 둔 서버 값(켜기·허용 도구 포함), 어디든 끈 도구·웹 검색 스위치, 또는 도구 없이 켜기만 둔 서버(옛 서버별 켜기)
+/// 옛 설정이 남아 있다: 공통에 둔 서버 값(켜기·허용 도구 포함), 서버에 둔 공통 값(모델), 어디든 끈 도구·웹 검색 스위치, 또는 도구 없이 켜기만 둔 서버(옛 서버별 켜기)
 fn has_legacy(cfg: &ChatbotConfig) -> bool {
     cfg.settings.keys().any(|k| !COMMON_KEYS.contains(&k.as_str()))
-        || cfg.guilds.values().any(|m| m.contains_key("enabled") && !m.contains_key("tools"))
+        || cfg.guilds.values().any(|m| (m.contains_key("enabled") && !m.contains_key("tools")) || COMMON_KEYS.iter().any(|k| m.contains_key(*k)))
         || std::iter::once(&cfg.settings).chain(cfg.guilds.values()).any(|m| LEGACY_TOOL_KEYS.iter().any(|k| m.contains_key(*k)))
 }
 
@@ -115,6 +115,18 @@ fn check_tool_keys(map: &Map<String, Value>, common: bool) -> Result<(), String>
         Some(Value::Array(a)) if a.iter().all(Value::is_string) => Ok(()),
         Some(_) => Err("tools must be a list of tool names".to_string()),
     }
+}
+
+/// 길드 하나에 쓰는 값: 공통 위에 길드 값, 단 공통 키(모델)는 늘 공통 값 (옛날에 길드마다 둔 모델은 무시한다)
+fn merged(cfg: &ChatbotConfig, guild: &str) -> Map<String, Value> {
+    let mut out = cfg.effective(guild);
+    for k in COMMON_KEYS {
+        match cfg.settings.get(*k) {
+            Some(v) => out.insert(k.to_string(), v.clone()),
+            None => out.remove(*k),
+        };
+    }
+    out
 }
 
 /// 옛 전체 허용 도구로 거른 도구 (허용 목록이 없으면 그대로)
@@ -183,6 +195,9 @@ pub(super) fn settle_legacy(cfg: &mut ChatbotConfig, guilds: impl IntoIterator<I
         entry.insert("tools".into(), json!(tools));
     }
     cfg.settings.retain(|k, _| COMMON_KEYS.contains(&k.as_str()));
+    for map in cfg.guilds.values_mut() {
+        map.retain(|k, _| !COMMON_KEYS.contains(&k.as_str()));
+    }
     for map in std::iter::once(&mut cfg.settings).chain(cfg.guilds.values_mut()) {
         for k in LEGACY_TOOL_KEYS {
             map.remove(*k);
@@ -194,7 +209,7 @@ pub(super) fn settle_legacy(cfg: &mut ChatbotConfig, guilds: impl IntoIterator<I
 /// 길드 하나에 PUT할 본문: 기본값 위에 사용자 설정, 키는 데몬 것 (없으면 릴레이 것도 지운다)
 fn put_body(cfg: &ChatbotConfig, guild: &str) -> Map<String, Value> {
     let mut body = relay_defaults();
-    body.extend(cfg.effective(guild));
+    body.extend(merged(cfg, guild));
     drop_retired(&mut body);
     let (enabled, tools) = selection(cfg, guild);
     let tools = allowed_part(cfg, tools);
@@ -555,7 +570,7 @@ pub async fn delete_chatbot(State(state): State<IPCServer>) -> Response {
 /// 길드 하나의 챗봇 설정 (I2-b, 디스코드 `/사바쨩 설정`이 액션으로 부른다): 릴레이 기본값 위에 실제 값, 키는 `hasApiKey`만
 fn guild_view(cfg: &ChatbotConfig, guild: &str) -> Value {
     let mut settings = relay_defaults();
-    settings.extend(cfg.effective(guild));
+    settings.extend(merged(cfg, guild));
     drop_retired(&mut settings);
     for k in LEGACY_TOOL_KEYS {
         settings.remove(*k);
@@ -804,6 +819,19 @@ mod tests {
         assert_eq!(put_body(&cfg, "g1")["effort"], json!("high"));
         assert_eq!(put_body(&cfg, "g1")["model"], json!("m"));
         assert_eq!(view(&cfg)["commonKeys"], json!(["model"]));
+    }
+
+    /// 옛날에 서버마다 정한 모델은 공통 모델을 덮지 않는다 (서버 화면에서 보이지도 바꾸지도 못한다). 옮길 때 지운다
+    #[test]
+    fn an_old_server_model_does_not_override_the_common_one() {
+        let mut cfg = ChatbotConfig::default();
+        cfg.settings = Map::from_iter([("model".to_string(), json!("common"))]);
+        cfg.guilds.insert("g1".into(), Map::from_iter([("model".to_string(), json!("old")), ("tools".to_string(), json!([]))]));
+        assert_eq!(put_body(&cfg, "g1")["model"], json!("common"));
+        assert_eq!(guild_view(&cfg, "g1")["settings"]["model"], json!("common"));
+        assert!(settle_legacy(&mut cfg, ["g1".to_string()]));
+        assert!(!cfg.guilds["g1"].contains_key("model"));
+        assert!(!settle_legacy(&mut cfg, ["g1".to_string()]));
     }
 
     /// 옛 공통 서버 값(답변 깊이·기억 같은 값, 전체 허용 도구)은 서버마다 적어 넣는다: 서버가 따로 정한 값이 이기고,

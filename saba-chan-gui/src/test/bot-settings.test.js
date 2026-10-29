@@ -128,4 +128,37 @@ describe('디스코드 봇 설정 탭', () => {
         await flush();
         expect(window.api.discordSettingsSet).toHaveBeenCalledWith('g1', { translateCommands: false });
     });
+
+    it('호출어를 빠르게 여러 개 넣어도 앞 저장의 답이 화면의 칩을 지우지 않고, 설정을 못 읽었으면 바꾸지 않는다', async () => {
+        const answers = [];
+        window.api.discordSettingsGet = vi.fn().mockResolvedValue({ ...base, prefixes: [] });
+        window.api.discordSettingsSet = vi.fn(
+            (_g, p) =>
+                new Promise((resolve) =>
+                    answers.push(() => resolve({ success: true, settings: { ...base, ...p }, sync: { ok: true } })),
+                ),
+        );
+        const { unmount } = render(<BotSettingsTab node={node} />);
+        await flush();
+        const input = screen.getByLabelText('Command prefix');
+        fireEvent.change(input, { target: { value: 'a' } });
+        fireEvent.keyDown(input, { key: 'Enter' });
+        fireEvent.change(input, { target: { value: 'b' } });
+        fireEvent.keyDown(input, { key: 'Enter' });
+        await act(async () => answers[0]());
+        expect(screen.getByRole('button', { name: 'b ×' })).toBeTruthy();
+        await act(async () => answers[1]?.());
+        expect(screen.getByRole('button', { name: 'a ×' })).toBeTruthy();
+        expect(screen.getByRole('button', { name: 'b ×' })).toBeTruthy();
+        unmount();
+
+        window.api.discordSettingsGet = vi.fn().mockResolvedValue({ ...base, prefixes: [], loaded: false });
+        window.api.discordSettingsSet = vi.fn();
+        render(<BotSettingsTab node={node} />);
+        await flush();
+        const locked = screen.getByLabelText('Command prefix');
+        fireEvent.change(locked, { target: { value: 'c' } });
+        fireEvent.keyDown(locked, { key: 'Enter' });
+        expect(window.api.discordSettingsSet).not.toHaveBeenCalled();
+    });
 });

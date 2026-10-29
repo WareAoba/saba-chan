@@ -476,8 +476,21 @@ pub async fn sync_on_connect(state: &IPCServer) {
                 let path = format!("/api/nodes/{}/settings", encode_path_segment(&guild));
                 match call(&base, reqwest::Method::GET, &path, None).await {
                     Ok((c, body)) if c.is_success() => {
-                        if let Err(e) = save(state, &guild, &GuildSettings::from_relay(&body).inherit(&body, &bot)).await {
+                        let s = GuildSettings::from_relay(&body).inherit(&body, &bot);
+                        if let Err(e) = save(state, &guild, &s).await {
                             tracing::warn!("[Discord] could not keep the relay settings of guild {}: {}", guild, e);
+                            continue;
+                        }
+                        // 호스트 값을 물려받았으면(접두사·명령 번역) 릴레이에도 그 값을 보낸다
+                        let diff = changed(&body, &s.relay_body());
+                        if !diff.is_empty() {
+                            let outcome = call(&base, reqwest::Method::PATCH, &path, Some(Value::Object(diff).to_string())).await;
+                            if !matches!(&outcome, Ok((c, _)) if c.is_success()) {
+                                tracing::warn!("[Discord] could not send the inherited settings of guild {}: {}", guild, result_row(&guild, &outcome));
+                            }
+                            if retry_later(&outcome) {
+                                PENDING_SYNC.store(true, std::sync::atomic::Ordering::SeqCst);
+                            }
                         }
                     }
                     // 릴레이에 노드가 없거나 닿지 않으면 다음 연결 때 다시

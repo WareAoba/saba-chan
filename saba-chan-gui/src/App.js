@@ -145,8 +145,14 @@ function App() {
     // ── Custom Hooks ─────────────────────────────────────────
     // ══════════════════════════════════════════════════════════
 
-    const { consolePopoutIds, openConsole, closeConsole, popinConsole, setConsoleInput, sendConsoleCommand } =
-        useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef });
+    const {
+        consolePopoutIds,
+        openConsole,
+        closeConsole,
+        popinConsole,
+        setConsoleInput,
+        sendConsoleCommand,
+    } = useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef });
 
     const { draggedName, cardRefs, skipNextClick, handleCardPointerDown } = useDragReorder(servers, setServers);
 
@@ -797,7 +803,10 @@ function App() {
                         discordStatus={discordBotStatus}
                         unreadCount={unreadNoticeCount}
                         extInitializing={extInitializing}
-                        extInitLabel={Object.values(extInitInProgress).join(', ') || t('common:init.extensions')}
+                        extInitLabel={
+                            Object.values(extInitInProgress).join(', ') ||
+                            t('common:init.extensions')
+                        }
                         showNotice={showNoticeSection}
                         onToggleNotice={() => (showNoticeSection ? requestNoticeClose() : setShowNoticeSection(true))}
                         noticeProps={{

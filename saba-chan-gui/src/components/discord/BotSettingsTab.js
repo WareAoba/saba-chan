@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { safeShowToast } from '../../utils/helpers';
 import { LANGUAGE_OPTIONS } from '../../utils/languages';
@@ -62,19 +62,32 @@ function NumberField({ label, unit, value, range, disabled, onCommit }) {
     );
 }
 
-/** 접두사 칸: 고치는 즉시 저장한다. 저장할 수 없는 목록은 저장하지 않고 화면에만 두고 이유를 보인다 */
-function PrefixField({ value, fallback, onSave }) {
+/**
+ * 접두사 칸: 고치는 즉시 저장한다. 저장할 수 없는 목록은 저장하지 않고 화면에만 두고 이유를 보인다.
+ * 저장이 끝나기 전에 또 고치면, 앞 저장의 답이 화면의 목록을 되돌리지 않게 저장 중에는 받은 값으로 덮지 않는다
+ */
+function PrefixField({ value, fallback, disabled, onSave }) {
     const { t } = useTranslation('gui');
     const [draft, setDraft] = useState(value);
-    useEffect(() => setDraft(value), [value]);
+    const pending = useRef(0);
+    const valueKey = JSON.stringify(value);
+    // biome-ignore lint/correctness/useExhaustiveDependencies: 저장된 목록이 바뀔 때만 (valueKey)
+    useEffect(() => {
+        if (pending.current === 0) setDraft(value);
+    }, [valueKey]);
     const problems = prefixProblems(draft, t);
     return (
         <>
             <TagInput
                 value={draft}
                 onChange={(next) => {
+                    if (disabled) return;
                     setDraft(next);
-                    if (prefixProblems(next, t).length === 0) onSave(next);
+                    if (prefixProblems(next, t).length > 0) return;
+                    pending.current += 1;
+                    Promise.resolve(onSave(next)).finally(() => {
+                        pending.current -= 1;
+                    });
                 }}
                 placeholder={t('discord.prefix_default_placeholder', { prefix: fallback })}
                 ariaLabel={t('discord.prefix_title')}
@@ -265,6 +278,7 @@ export function BotSettingsTab({ node, section = 'bot', sampleModuleWord = '' })
                         <PrefixField
                             value={prefixes}
                             fallback={fallbackPrefix}
+                            disabled={unloaded}
                             onSave={(next) => save({ prefixes: next })}
                         />
                         {toggleRow(

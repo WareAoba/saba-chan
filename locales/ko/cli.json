@@ -847,7 +847,7 @@
       "schedule.clear": "예약 작업 모두 지우기",
       "chatbot": "말하는 사바쨩(디스코드 AI) 설정과 API 키",
       "chatbot.show": "설정과 API 키 저장 여부",
-      "chatbot.set": "설정 바꾸기: 키=값 ... (키와 기본값: `chatbot show`, 예: enabled=true. 빈 값 = 기본값, [a,b] = 목록, @파일 = 파일 내용, 예: memo=@메모.txt)",
+      "chatbot.set": "설정 바꾸기: 키=값 ... (공통은 model만, 나머지는 --guild로 서버마다. 서버의 키와 값: `chatbot show 서버`, 예: --guild 서버 effort=high. 빈 값 = 기본값, [a,b] = 목록, @파일 = 파일 내용, 예: memo=@메모.txt)",
       "chatbot.key": "API 키 저장 (숨겨서 물어봐요. 인자로 넘기지 마세요)",
       "chatbot.clear": "말하는 사바쨩 설정과 키 모두 지우기",
       "chatbot.forget": "말하는 사바쨩이 기억하는 내용 지우기 (모든 디스코드 서버 또는 하나)",

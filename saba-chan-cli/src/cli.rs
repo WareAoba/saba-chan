@@ -460,7 +460,7 @@ pub enum ChatbotCmd {
         #[arg(long)]
         guild: Option<String>,
     },
-    /// Change settings: KEY=VALUE ... (keys and their defaults: `chatbot show`; e.g. enabled=true; empty = default, [a,b] = list, @FILE = file text, e.g. memo=@notes.txt)
+    /// Change settings: KEY=VALUE ... (shared: only model; everything else per server with --guild, its keys and values: `chatbot show GUILD`; e.g. --guild G effort=high; empty = default, [a,b] = list, @FILE = file text, e.g. memo=@notes.txt)
     Set {
         #[arg(value_name = "KEY=VALUE", required = true)]
         pairs: Vec<String>,
