@@ -1007,6 +1007,9 @@
     "channels_notify": "Canal de alertas",
     "channels_notify_hint": "Falhas, reinícios automáticos, atualizações, backups concluídos e avisos de reinício agendado são publicados aqui.",
     "channels_is_notify": "Usado como canal de alertas",
+    "channels_game_chat": "Canal de chat do jogo",
+    "channels_game_chat_hint": "O chat dos servidores com encaminhamento ativado chega aqui.",
+    "channels_is_game_chat": "Usado como canal de chat do jogo",
     "default_prefix": "Saba-chan",
     "prefix_default_label": "padrão ({{prefix}})",
     "prefix_default_placeholder": "Deixe vazio para usar {{prefix}}",
@@ -1532,6 +1535,18 @@
     "hint": "Deixe vazio para não limitar. Em servidores Java, defina 1–2 GB acima do -Xmx. Só vale no Windows.",
     "placeholder": "Sem limite",
     "restart_note": "Vale após reiniciar."
+  },
+  "game_chat": {
+    "title": "Encaminhar chat do jogo",
+    "desc": "Envia o chat do jogo para o canal de chat do jogo no Discord. Mensagens do Discord não vão para o jogo.",
+    "mode_label": "Chat a enviar",
+    "mode_off": "Não enviar",
+    "mode_all": "Todo o chat",
+    "mode_keyword": "Só chat que começa com a palavra-chave",
+    "keyword_label": "Palavra-chave",
+    "keyword_hint": "O chat que começa com esta palavra é enviado sem ela. Uma palavra, até 32 caracteres.",
+    "keyword_placeholder": "ex.: !dc",
+    "channel_note": "Escolha o canal na designação de canais da aba Discord ou com /saba assign → Chat do jogo."
   },
   "stop_timeout": {
     "title": "Tempo de espera ao parar",

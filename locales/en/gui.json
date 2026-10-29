@@ -1007,6 +1007,9 @@
     "channels_notify": "Alert channel",
     "channels_notify_hint": "Crashes, auto restarts, updates, finished backups and scheduled restart warnings are posted here.",
     "channels_is_notify": "Used as the alert channel",
+    "channels_game_chat": "Game chat channel",
+    "channels_game_chat_hint": "In-game chat from servers with chat relay turned on is posted here.",
+    "channels_is_game_chat": "Used as the game chat channel",
     "default_prefix": "Saba-chan",
     "prefix_default_label": "default ({{prefix}})",
     "prefix_default_placeholder": "Leave empty to use {{prefix}}",
@@ -1532,6 +1535,18 @@
     "hint": "Leave empty for no limit. For Java servers, set it 1–2 GB above the -Xmx value. Applies on Windows only.",
     "placeholder": "No limit",
     "restart_note": "Takes effect after a restart."
+  },
+  "game_chat": {
+    "title": "Game chat relay",
+    "desc": "Sends in-game chat to the game chat channel on Discord. Discord messages are not sent into the game.",
+    "mode_label": "Chat to send",
+    "mode_off": "Don't send",
+    "mode_all": "All chat",
+    "mode_keyword": "Only chat starting with the keyword",
+    "keyword_label": "Keyword",
+    "keyword_hint": "Chat that starts with this word is sent without it. One word, up to 32 characters.",
+    "keyword_placeholder": "e.g. !dc",
+    "channel_note": "Pick the channel under channel assignment in the Discord tab, or with /saba assign → Game chat."
   },
   "stop_timeout": {
     "title": "Stop wait time",

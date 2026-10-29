@@ -141,6 +141,9 @@ pub struct ModuleMetadata {
     pub player_join_patterns: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub player_leave_patterns: Vec<String>,
+    /// [extensions.saba-core] chat_patterns — 게임 채팅이 콘솔에 찍히는 문구 (정규식, `(?P<name>…)`·`(?P<message>…)` 필수). 게임 채팅 전달(`game_chat.rs`)용
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub chat_patterns: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub data_roots: Vec<String>,
     /// [[presets]] 서버를 만들 때 고르는 추천 설정 묶음 (I1-b)
@@ -1465,6 +1468,7 @@ impl ModuleToml {
             architectures: None,
             ready_timeout: None,
             player_join_patterns: Vec::new(),
+            chat_patterns: Vec::new(),
             player_leave_patterns: Vec::new(),
             data_roots: Vec::new(),
             module_aliases: self.aliases.as_ref()
@@ -1590,7 +1594,7 @@ pub(crate) fn parse_module_toml(content: &str) -> Result<ModuleMetadata> {
 pub const DAEMON_TABLE: &str = "saba-core";
 /// 이 데몬이 읽는 `[extensions.saba-core]` 키
 const DAEMON_TABLE_KEYS: &[&str] =
-    &["ready_patterns", "ready_timeout", "player_join_patterns", "player_leave_patterns", "data_roots", "progress_patterns", "platforms", "architectures"];
+    &["ready_patterns", "ready_timeout", "player_join_patterns", "player_leave_patterns", "chat_patterns", "data_roots", "progress_patterns", "platforms", "architectures"];
 /// 이 데몬의 OS·CPU에서 돌아가지 않는 모듈의 서버를 만들거나 켜지 않는 응답. 돌아가면 None
 pub fn host_unsupported_body(module: &str, meta: &ModuleMetadata) -> Option<serde_json::Value> {
     match meta.unsupported_on(std::env::consts::OS, std::env::consts::ARCH)? {
@@ -1631,15 +1635,17 @@ pub const ARCHITECTURES: &[&str] = &["x86_64", "aarch64"];
 pub const READY_TIMEOUT_MAX_SECS: u64 = 900;
 
 /// `[extensions.saba-core]`의 정규식 목록 하나를 읽는다. `needs_name`이면 `(?P<name>…)`이 없는 항목도 버린다
-fn read_pattern_list(table: &serde_json::Value, key: &str, needs_name: bool, warnings: &mut Vec<String>) -> Vec<String> {
+fn read_pattern_list(table: &serde_json::Value, key: &str, groups: &[&str], warnings: &mut Vec<String>) -> Vec<String> {
     let mut out = Vec::new();
     match table.get(key) {
         None => {}
         Some(serde_json::Value::Array(items)) => {
             for item in items {
                 match item.as_str().map(|p| (p, regex::Regex::new(p))) {
-                    Some((p, Ok(re))) if !needs_name || re.capture_names().any(|n| n == Some("name")) => out.push(p.to_string()),
-                    Some((p, Ok(_))) => warnings.push(format!("extensions.{}.{} '{}' has no (?P<name>...) group; ignored", DAEMON_TABLE, key, p)),
+                    Some((p, Ok(re))) => match groups.iter().find(|g| !re.capture_names().any(|n| n == Some(**g))) {
+                        None => out.push(p.to_string()),
+                        Some(g) => warnings.push(format!("extensions.{}.{} '{}' has no (?P<{}>...) group; ignored", DAEMON_TABLE, key, p, g)),
+                    },
                     Some((p, Err(_))) => warnings.push(format!("extensions.{}.{} '{}' is not a valid regex; ignored", DAEMON_TABLE, key, p)),
                     None => warnings.push(format!("extensions.{}.{} must hold strings; ignored {}", DAEMON_TABLE, key, item)),
                 }
@@ -1684,7 +1690,7 @@ fn read_name_list(
     }
 }
 
-/// `[extensions.saba-core]`의 `ready_patterns`·`ready_timeout`(R39), `player_join_patterns`·`player_leave_patterns`(MK8), `progress_patterns`를 읽는다.
+/// `[extensions.saba-core]`의 `ready_patterns`·`ready_timeout`(R39), `player_join_patterns`·`player_leave_patterns`(MK8), `chat_patterns`(게임 채팅), `progress_patterns`를 읽는다.
 /// 틀린 값은 그 값만 빼고 경고로 남긴다
 fn read_daemon_table(meta: &mut ModuleMetadata) -> Vec<String> {
     let Some(table) = meta.extensions.get(DAEMON_TABLE).cloned() else { return Vec::new() };
@@ -1695,10 +1701,11 @@ fn read_daemon_table(meta: &mut ModuleMetadata) -> Vec<String> {
             warnings.push(format!("extensions.{}.{} is not known to this saba-chan; ignored", DAEMON_TABLE, key));
         }
     }
-    meta.ready_patterns.extend(read_pattern_list(&table, "ready_patterns", false, &mut warnings));
-    meta.player_join_patterns.extend(read_pattern_list(&table, "player_join_patterns", true, &mut warnings));
-    meta.player_leave_patterns.extend(read_pattern_list(&table, "player_leave_patterns", true, &mut warnings));
-    meta.progress_patterns.extend(read_pattern_list(&table, "progress_patterns", false, &mut warnings));
+    meta.ready_patterns.extend(read_pattern_list(&table, "ready_patterns", &[], &mut warnings));
+    meta.player_join_patterns.extend(read_pattern_list(&table, "player_join_patterns", &["name"], &mut warnings));
+    meta.player_leave_patterns.extend(read_pattern_list(&table, "player_leave_patterns", &["name"], &mut warnings));
+    meta.chat_patterns.extend(read_pattern_list(&table, "chat_patterns", &["name", "message"], &mut warnings));
+    meta.progress_patterns.extend(read_pattern_list(&table, "progress_patterns", &[], &mut warnings));
     meta.platforms = read_name_list(&table, "platforms", PLATFORMS, &[], "OS", &mut warnings);
     meta.architectures = read_name_list(&table, "architectures", ARCHITECTURES, ARCH_ALIASES, "CPU", &mut warnings);
     match table.get("data_roots") {
@@ -3166,6 +3173,15 @@ player_leave_patterns = ['^\[\d{2}:\d{2}:\d{2}(?:\] \[[^\]]*/| )INFO\](?: \[[^\]
         for needle in ["'(\\w+) joined'", "'('", "player_leave_patterns must be a list"] {
             assert!(meta.warnings.iter().any(|w| w.contains(needle)), "{needle}: {:?}", meta.warnings);
         }
+    }
+
+    /// 게임 채팅 전달: `chat_patterns`는 `name`과 `message` 그룹이 둘 다 있어야 한다
+    #[test]
+    fn schema_v1_reads_chat_patterns_that_name_the_player_and_the_message() {
+        let table = "[extensions.saba-core]\nchat_patterns = ['^<(?P<name>\\w+)> (?P<message>.*)$', '^<(?P<name>\\w+)> .*$']\n";
+        let meta = parse_module_toml(&format!("{V1}\n{table}")).unwrap();
+        assert_eq!(meta.chat_patterns, vec!["^<(?P<name>\\w+)> (?P<message>.*)$".to_string()]);
+        assert!(meta.warnings.iter().any(|w| w.contains("(?P<message>...)")), "{:?}", meta.warnings);
     }
 
     #[test]

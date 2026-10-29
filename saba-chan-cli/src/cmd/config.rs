@@ -152,9 +152,10 @@ async fn autostart(ctx: &Ctx, mode: Option<crate::cli::AutostartMode>) -> Result
     } else {
         ctx.out.data(&r, |r| say!("{}", t!("config.autostart.current", mode = name(r))));
     }
-    // 화면 없는 리눅스: 데몬을 systemd 사용자 서비스로 돌린다. 로그인 없이 부팅할 때 켜려면 linger가 필요하다
+    // 화면 없는 리눅스: 데몬을 systemd 사용자 서비스로 돌린다. 로그인 없이 부팅할 때 켜려면 linger가 필요하다.
+    // 맥: 데몬을 LaunchAgent로 바로 띄운다 (화면 로그인 때 돈다)
     if r["service"] == true {
-        ctx.out.note(&t!("config.autostart.service"));
+        ctx.out.note(&t!(if cfg!(target_os = "macos") { "config.autostart.service_mac" } else { "config.autostart.service" }));
         if r["lingering"] == false {
             ctx.out.hint(&t!("config.autostart.linger_hint"));
         }

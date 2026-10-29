@@ -6,6 +6,8 @@
 //! - Linux: `$XDG_CONFIG_HOME/autostart/saba-chan.desktop` (없으면 `~/.config/autostart`).
 //!   GUI 없이 설치한 화면 없는 서버(D3)의 데몬만은 systemd 사용자 서비스
 //!   `$XDG_CONFIG_HOME/systemd/user/saba-chan.service`(`default.target.wants`에 걸려 있어야 켜진 것)
+//! - macOS: LaunchAgent `~/Library/LaunchAgents/com.saba-chan.autostart.plist`. GUI 없이 설치한 맥의 데몬만은 데몬을 바로 등록한다.
+//!   시스템 설정 > 로그인 항목에서 끈 것은 읽지 못한다 (등록된 것으로 보인다)
 //!
 //! 등록 항목은 하나다. 설정 파일을 여러 설치본이 함께 쓰므로 마지막으로 켠 설치본의 실행 파일을 가리킨다.
 //! 데몬만: 창 없이 트레이만 드는 GUI(`--tray`)가 데몬을 띄운다 (Windows에서 콘솔 창이 뜨지 않는다).
@@ -27,6 +29,8 @@ const APPROVED_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Explorer\
 #[cfg(not(target_os = "windows"))]
 const DESKTOP_FILE: &str = "saba-chan.desktop";
 const SERVICE_FILE: &str = "saba-chan.service";
+/// macOS LaunchAgent 이름 (파일 이름은 `<이름>.plist`)
+pub const LAUNCH_AGENT_LABEL: &str = "com.saba-chan.autostart";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
@@ -62,7 +66,7 @@ pub struct Entry {
 }
 
 impl Entry {
-    /// 데몬을 바로 돌리는 서비스 항목인가 (화면 없는 리눅스)
+    /// 데몬을 바로 돌리는 서비스 항목인가 (GUI 없는 리눅스의 systemd 사용자 서비스, 맥의 LaunchAgent)
     pub fn is_service(&self) -> bool {
         self.program.file_name().is_some_and(|n| n == crate::uninstall_entry::CORE_EXE)
     }
@@ -96,9 +100,9 @@ impl std::fmt::Display for AutostartError {
     }
 }
 
-/// 이 OS에서 자동 실행을 등록할 수 있는지 (macOS는 아직 아니다)
+/// 이 OS에서 자동 실행을 등록할 수 있는지
 pub fn supported() -> bool {
-    cfg!(any(target_os = "windows", target_os = "linux"))
+    cfg!(any(target_os = "windows", target_os = "linux", target_os = "macos"))
 }
 
 /// `install_dir`의 실행 파일로 `mode`를 켜는 항목. 끔은 None
@@ -108,7 +112,7 @@ pub fn entry_for(mode: Mode, install_dir: &Path) -> Result<Option<Entry>, Autost
     let core = install_dir.join(crate::uninstall_entry::CORE_EXE);
     let entry = match (mode, gui) {
         (Mode::Off, _) => return Ok(None),
-        (Mode::Daemon, None) if cfg!(target_os = "linux") && core.is_file() => Entry { program: core, args: Vec::new() },
+        (Mode::Daemon, None) if cfg!(any(target_os = "linux", target_os = "macos")) && core.is_file() => Entry { program: core, args: Vec::new() },
         (_, None) => return Err(AutostartError::new("gui_missing", install_dir.to_string_lossy())),
         (Mode::Full, Some(gui)) => Entry { program: gui, args: Vec::new() },
         (Mode::Daemon, Some(gui)) => Entry { program: gui, args: vec![TRAY_ARG.to_string()] },
@@ -393,14 +397,26 @@ pub fn remove_from(autostart: &Path, units: &Path) -> std::io::Result<()> {
     remove_service_in(units)
 }
 
-/// 이 데몬이 자동 실행 서비스(`saba-chan.service`)로 돌면, 업데이트 뒤 다시 띄울 명령 (`systemctl --user start`).
+/// 이 데몬이 자동 실행 서비스(`saba-chan.service`, 맥은 LaunchAgent)로 돌면, 업데이트 뒤 다시 띄울 명령
+/// (`systemctl --user start`, 맥은 `launchctl kickstart`).
 /// 업데이터가 데몬을 직접 띄우면 서비스 밖에서 돌아 멈춰도 다시 뜨지 않는다. 서비스가 아니면 None
 pub fn service_relaunch() -> Option<Vec<String>> {
-    let cgroup = std::fs::read_to_string("/proc/self/cgroup").ok()?;
-    let systemctl = ["/usr/bin/systemctl", "/bin/systemctl"].into_iter().map(PathBuf::from).find(|p| p.is_file());
-    service_relaunch_from(&cgroup, systemctl)
+    #[cfg(target_os = "macos")]
+    {
+        let launchctl = Some(PathBuf::from("/bin/launchctl")).filter(|p| p.is_file());
+        // SAFETY: getuid는 실패하지 않고 메모리를 건드리지 않는다
+        let uid = unsafe { libc::getuid() };
+        launchd_relaunch_from(std::env::var("XPC_SERVICE_NAME").ok().as_deref(), uid, launchctl)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let cgroup = std::fs::read_to_string("/proc/self/cgroup").ok()?;
+        let systemctl = ["/usr/bin/systemctl", "/bin/systemctl"].into_iter().map(PathBuf::from).find(|p| p.is_file());
+        service_relaunch_from(&cgroup, systemctl)
+    }
 }
 
+#[cfg_attr(target_os = "macos", allow(dead_code))]
 fn service_relaunch_from(cgroup: &str, systemctl: Option<PathBuf>) -> Option<Vec<String>> {
     let unit = format!("/{SERVICE_FILE}");
     cgroup.lines().any(|l| l.trim_end().ends_with(&unit)).then_some(())?;
@@ -463,6 +479,77 @@ pub fn remove_in(dir: &Path) -> std::io::Result<()> {
     }
 }
 
+// ── macOS LaunchAgent ──
+
+fn xml_escape(s: &str) -> String {
+    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
+}
+
+fn xml_unescape(s: &str) -> String {
+    s.replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", "\"").replace("&apos;", "'").replace("&amp;", "&")
+}
+
+/// LaunchAgent plist. 로그인할 때 한 번 띄운다. 다시 띄우지는 않는다: 이미 도는 데몬이 있으면 새 데몬은 실패로 끝나는데,
+/// launchd는 다시 띄우는 횟수에 상한이 없다. 띄운 프로그램이 끝나도 그 아래 데몬·게임 서버는 남긴다(`AbandonProcessGroup`)
+pub fn launch_agent(entry: &Entry) -> String {
+    let mut args = format!("\t\t<string>{}</string>\n", xml_escape(&entry.program.to_string_lossy()));
+    for a in &entry.args {
+        args.push_str(&format!("\t\t<string>{}</string>\n", xml_escape(a)));
+    }
+    format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\">\n<dict>\n\t<key>Label</key>\n\t<string>{LAUNCH_AGENT_LABEL}</string>\n\t<key>ProgramArguments</key>\n\t<array>\n{args}\t</array>\n\t<key>RunAtLoad</key>\n\t<true/>\n\t<key>AbandonProcessGroup</key>\n\t<true/>\n\t<key>ProcessType</key>\n\t<string>Interactive</string>\n</dict>\n</plist>\n"
+    )
+}
+
+/// `ProgramArguments`를 되읽는다 (이 모듈이 쓴 꼴만 읽는다)
+pub fn parse_launch_agent(text: &str) -> Option<Entry> {
+    let rest = &text[text.find("<key>ProgramArguments</key>")?..];
+    let array = &rest[rest.find("<array>")? + "<array>".len()..rest.find("</array>")?];
+    let mut items = array
+        .split("<string>")
+        .skip(1)
+        .filter_map(|part| part.split_once("</string>").map(|(v, _)| xml_unescape(v)));
+    let program = items.next().filter(|p| !p.is_empty())?;
+    Some(Entry { program: PathBuf::from(program), args: items.collect() })
+}
+
+fn launch_agent_file() -> String {
+    format!("{LAUNCH_AGENT_LABEL}.plist")
+}
+
+/// 이 사용자의 LaunchAgent 폴더 (`~/Library/LaunchAgents`)
+#[cfg(target_os = "macos")]
+pub fn launch_agents_dir() -> Option<PathBuf> {
+    std::env::var_os("HOME").filter(|v| !v.is_empty()).map(|h| PathBuf::from(h).join("Library").join("LaunchAgents"))
+}
+
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn read_agent_in(dir: &Path) -> Option<Entry> {
+    parse_launch_agent(&std::fs::read_to_string(dir.join(launch_agent_file())).ok()?)
+}
+
+/// 다음 로그인부터 돈다 (지금 `launchctl`로 올리지는 않는다: 리눅스 항목과 같다)
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn write_agent_in(dir: &Path, entry: &Entry) -> std::io::Result<()> {
+    std::fs::create_dir_all(dir)?;
+    crate::write_atomic(&dir.join(launch_agent_file()), launch_agent(entry).as_bytes())
+}
+
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn remove_agent_in(dir: &Path) -> std::io::Result<()> {
+    match std::fs::remove_file(dir.join(launch_agent_file())) {
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),
+        _ => Ok(()),
+    }
+}
+
+/// launchd는 띄운 작업에 `XPC_SERVICE_NAME=<이름>`을 준다. 이 LaunchAgent로 돈 데몬이면 `launchctl kickstart`로 다시 띄운다
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn launchd_relaunch_from(service_name: Option<&str>, uid: u32, launchctl: Option<PathBuf>) -> Option<Vec<String>> {
+    (service_name? == LAUNCH_AGENT_LABEL).then_some(())?;
+    Some(vec![launchctl?.to_string_lossy().into_owned(), "kickstart".into(), format!("gui/{uid}/{LAUNCH_AGENT_LABEL}")])
+}
+
 // ── 이 사용자의 등록 (OS별) ──
 
 /// 지금 등록된 항목
@@ -477,7 +564,11 @@ pub fn read() -> Option<Entry> {
         }
         parse_command_line(&line)
     }
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
+    {
+        read_agent_in(&launch_agents_dir()?)
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     {
         read_from(&autostart_dir()?, &unit_dir()?)
     }
@@ -509,6 +600,8 @@ pub fn apply(mode: Mode, install_dir: &Path) -> Result<(), AutostartError> {
 }
 
 fn write(entry: &Entry) -> std::io::Result<()> {
+    #[cfg(not(target_os = "windows"))]
+    let no_home = || std::io::Error::new(std::io::ErrorKind::NotFound, "no home folder");
     #[cfg(target_os = "windows")]
     {
         use winreg::enums::*;
@@ -517,9 +610,12 @@ fn write(entry: &Entry) -> std::io::Result<()> {
         // 작업 관리자에서 껐던 표시가 남으면 새로 고른 값이 돌지 않는다
         clear_task_manager_flag()
     }
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
     {
-        let no_home = || std::io::Error::new(std::io::ErrorKind::NotFound, "no home folder");
+        write_agent_in(&launch_agents_dir().ok_or_else(no_home)?, entry)
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    {
         write_to(&autostart_dir().ok_or_else(no_home)?, &unit_dir().ok_or_else(no_home)?, entry)
     }
 }
@@ -539,7 +635,11 @@ fn remove() -> std::io::Result<()> {
         }
         clear_task_manager_flag()
     }
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
+    {
+        launch_agents_dir().map_or(Ok(()), |dir| remove_agent_in(&dir))
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     {
         match (autostart_dir(), unit_dir()) {
             (Some(dir), Some(units)) => remove_from(&dir, &units),
@@ -613,8 +713,8 @@ mod tests {
     fn without_a_gui_nothing_can_be_turned_on_but_off_still_works() {
         let dir = install_with(&[crate::uninstall_entry::CORE_EXE]);
         assert_eq!(entry_for(Mode::Full, dir.path()).unwrap_err().code, "gui_missing");
-        if cfg!(target_os = "linux") {
-            // 화면 없는 리눅스 서버 (D3): 데몬만은 데몬을 바로 systemd 사용자 서비스로 등록한다
+        if cfg!(any(target_os = "linux", target_os = "macos")) {
+            // 화면 없는 리눅스 서버 (D3)·맥: 데몬만은 데몬을 바로 서비스(systemd 사용자 서비스, LaunchAgent)로 등록한다
             let daemon = entry_for(Mode::Daemon, dir.path()).unwrap().unwrap();
             assert_eq!(daemon, Entry { program: dir.path().join(crate::uninstall_entry::CORE_EXE), args: vec![] });
             assert_eq!(daemon.mode(), Mode::Daemon);
@@ -726,6 +826,51 @@ mod tests {
         assert_eq!(read_in(&autostart).map(|e| e.mode()), Some(Mode::Full));
         remove_in(&autostart).unwrap();
         assert_eq!(read_in(&autostart), None);
+    }
+
+    #[test]
+    fn the_launch_agent_reads_back_and_leaves_what_it_started_running() {
+        let e = Entry { program: PathBuf::from("/Users/a b/<sa&ba>/Saba-chan.app/Contents/MacOS/saba-chan-gui"), args: vec![TRAY_ARG.into()] };
+        let text = launch_agent(&e);
+        assert!(text.contains("<string>/Users/a b/&lt;sa&amp;ba&gt;/Saba-chan.app/Contents/MacOS/saba-chan-gui</string>"), "{}", text);
+        assert!(text.contains(&format!("<key>Label</key>\n\t<string>{LAUNCH_AGENT_LABEL}</string>")), "{}", text);
+        assert!(text.contains("<key>RunAtLoad</key>\n\t<true/>"), "{}", text);
+        assert_eq!(parse_launch_agent(&text), Some(e));
+        // 띄운 프로그램이 끝나도 데몬·게임 서버는 남고, 다시 띄우지 않는다 (이미 도는 데몬과 부딪히면 끝없이 다시 띄운다)
+        assert!(text.contains("<key>AbandonProcessGroup</key>\n\t<true/>"), "{}", text);
+        assert!(!text.contains("KeepAlive"), "{}", text);
+        let core = Entry { program: PathBuf::from("/Users/a/Saba-chan.app/Contents/MacOS/saba-core"), args: vec![] };
+        assert_eq!(parse_launch_agent(&launch_agent(&core)), Some(core));
+        assert_eq!(parse_launch_agent("<plist><dict></dict></plist>"), None);
+    }
+
+    /// LaunchAgent로 돈 데몬은 업데이트 뒤 launchd가 다시 띄운다
+    #[test]
+    fn a_daemon_in_the_launch_agent_is_relaunched_through_launchd() {
+        let launchctl = Some(PathBuf::from("/bin/launchctl"));
+        assert_eq!(
+            launchd_relaunch_from(Some(LAUNCH_AGENT_LABEL), 501, launchctl.clone()),
+            Some(vec!["/bin/launchctl".to_string(), "kickstart".into(), format!("gui/501/{LAUNCH_AGENT_LABEL}")])
+        );
+        assert_eq!(launchd_relaunch_from(Some("application.com.apple.Terminal.123"), 501, launchctl.clone()), None);
+        assert_eq!(launchd_relaunch_from(None, 501, launchctl), None);
+        assert_eq!(launchd_relaunch_from(Some(LAUNCH_AGENT_LABEL), 501, None), None);
+    }
+
+    #[test]
+    fn the_launch_agents_folder_holds_one_entry_that_can_be_replaced_and_removed() {
+        let dir = tempfile::tempdir().unwrap();
+        let agents = dir.path().join("LaunchAgents");
+        assert_eq!(read_agent_in(&agents), None);
+        remove_agent_in(&agents).unwrap();
+        let tray = Entry { program: PathBuf::from("/Applications/Saba-chan.app/Contents/MacOS/saba-chan-gui"), args: vec![TRAY_ARG.into()] };
+        write_agent_in(&agents, &tray).unwrap();
+        assert_eq!(read_agent_in(&agents), Some(tray));
+        let full = Entry { program: PathBuf::from("/Applications/Saba-chan.app/Contents/MacOS/saba-chan-gui"), args: vec![] };
+        write_agent_in(&agents, &full).unwrap();
+        assert_eq!(read_agent_in(&agents).map(|e| e.mode()), Some(Mode::Full));
+        remove_agent_in(&agents).unwrap();
+        assert_eq!(read_agent_in(&agents), None);
     }
 
     #[test]

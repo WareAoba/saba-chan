@@ -1007,6 +1007,9 @@
     "channels_notify": "通知チャンネル",
     "channels_notify_hint": "クラッシュ、自動再起動、アップデート、バックアップ完了、予約再起動の予告をこのチャンネルに投稿します。",
     "channels_is_notify": "通知チャンネルとして使用中",
+    "channels_game_chat": "ゲームチャットチャンネル",
+    "channels_game_chat_hint": "チャット転送をオンにしたサーバーのゲームチャットがここに届きます。",
+    "channels_is_game_chat": "ゲームチャットチャンネルとして使用中",
     "default_prefix": "サバちゃん",
     "prefix_default_label": "既定 ({{prefix}})",
     "prefix_default_placeholder": "空欄なら既定の {{prefix}}",
@@ -1532,6 +1535,18 @@
     "hint": "空欄なら無制限。Javaサーバーは-Xmxより1〜2GB大きくしてください。Windowsでのみ適用されます。",
     "placeholder": "制限なし",
     "restart_note": "再起動すると適用されます。"
+  },
+  "game_chat": {
+    "title": "ゲームチャット転送",
+    "desc": "ゲーム内のチャットをDiscordのゲームチャットチャンネルに送ります。Discordからゲームへは送りません。",
+    "mode_label": "送るチャット",
+    "mode_off": "送らない",
+    "mode_all": "すべてのチャット",
+    "mode_keyword": "検知ワードで始まるチャットのみ",
+    "keyword_label": "検知ワード",
+    "keyword_hint": "チャットの先頭にこの単語があれば、単語を除いて送ります。空白なし、32文字まで。",
+    "keyword_placeholder": "例: !dc",
+    "channel_note": "送り先はDiscordタブのチャンネル設定、または /saba assign で「ゲームチャット」を選んで決めます。"
   },
   "stop_timeout": {
     "title": "停止の待ち時間",

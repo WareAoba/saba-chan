@@ -10,6 +10,7 @@
 #   windows  — Windows clippy + cargo test (Rust 변경 시). 배포 대상이 Windows뿐이고
 #              Windows 전용 코드는 로컬 클라우드에서 실행되지 않는다
 #   frontend — GUI 번들 빌드, 업데이터/설치기 스크립트 문법 (프런트 변경 시)
+#   macos-package — 맥 구성요소 zip·Saba-chan.app·서명 없는 .dmg (패키징·워크플로 변경 시)
 #
 # 전체 (Actions 탭 workflow_dispatch, 또는 v* 태그 push):
 #   위 전부 + linux(Ubuntu clippy + cargo test), gui-tests(Vitest), e2e(Python E2E)
@@ -46,6 +47,7 @@ jobs:
       full: ${{ steps.f.outputs.full }}
       rust: ${{ steps.f.outputs.rust }}
       frontend: ${{ steps.f.outputs.frontend }}
+      macpkg: ${{ steps.f.outputs.macpkg }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -57,6 +59,7 @@ jobs:
             echo "full=true" >> "$GITHUB_OUTPUT"
             echo "rust=true" >> "$GITHUB_OUTPUT"
             echo "frontend=true" >> "$GITHUB_OUTPUT"
+            echo "macpkg=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           files=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD")
@@ -72,6 +75,11 @@ jobs:
             echo "frontend=true" >> "$GITHUB_OUTPUT"
           else
             echo "frontend=false" >> "$GITHUB_OUTPUT"
+          fi
+          if echo "$files" | grep -qE '^(\.github/(scripts/(test_)?package-(macos|linux)\.py|workflows/)|saba-chan-gui/src-tauri/(macos/|icons/icon\.icns|tauri\.conf\.json|Cargo\.toml)|installer/core/|updater/|install\.sh)'; then
+            echo "macpkg=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "macpkg=false" >> "$GITHUB_OUTPUT"
           fi
 
   # ─────────────────────────────────────────
@@ -98,7 +106,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, ubuntu-latest]
+        # macOS(M칩)는 맥 판을 준비하는 동안 PR마다 컴파일·시험이 깨지지 않는지 본다
+        os: [windows-latest, ubuntu-latest, macos-latest]
         full: ['${{ needs.changes.outputs.full }}']
         exclude:
           # Ubuntu 시험은 클라우드 작업에서 매번 돌린다
@@ -137,22 +146,10 @@ jobs:
         shell: bash
         run: |
           mkdir -p modules/test-module
-          cat > modules/test-module/module.toml << 'EOF'
-          [module]
-          name = "test-module"
-          version = "0.0.1"
-          description = "CI test fixture"
-          author = "ci"
-          game_name = "TestGame"
-          display_name = "Test Module"
-          entry = "lifecycle.py"
-          EOF
-          # Strip leading whitespace from heredoc (YAML indentation artifact)
-          sed -i 's/^[[:space:]]*//' modules/test-module/module.toml
-          cat > modules/test-module/lifecycle.py << 'EOF'
-          # minimal test lifecycle
-          EOF
-          sed -i 's/^[[:space:]]*//' modules/test-module/lifecycle.py
+          printf '%s\n' '[module]' 'name = "test-module"' 'version = "0.0.1"' 'description = "CI test fixture"' \
+            'author = "ci"' 'game_name = "TestGame"' 'display_name = "Test Module"' 'entry = "lifecycle.py"' \
+            > modules/test-module/module.toml
+          echo '# minimal test lifecycle' > modules/test-module/lifecycle.py
 
       - name: Clippy
         run: cargo clippy --workspace -- -D warnings
@@ -258,3 +255,120 @@ jobs:
           name: e2e-report
           path: ${{ runner.temp }}/saba-e2e/*.md
           if-no-files-found: ignore
+
+  # ─────────────────────────────────────────
+  # 맥 묶음 — 구성요소 zip, Saba-chan.app, 서명 없는 .dmg (전체, 또는 패키징을 바꾼 PR)
+  # 결과는 작업 산출물로 올린다: 맥 실기 확인에 쓴다
+  # ─────────────────────────────────────────
+  macos-package:
+    name: macOS package (arm64)
+    needs: changes
+    if: needs.changes.outputs.macpkg == 'true'
+    runs-on: macos-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: saba-chan-gui/package-lock.json
+
+      - name: Build GUI frontend
+        working-directory: saba-chan-gui
+        run: |
+          npm ci
+          npm run build
+
+      - name: Build
+        run: |
+          cargo build --release --locked -p saba-core -p saba-runner -p saba-chan-cli -p saba-chan-gui --bins
+          cargo build --release --locked -p saba-chan-updater --no-default-features
+
+      - name: Package
+        run: |
+          version=$(python3 -c "import tomllib;print(tomllib.load(open('versions.toml','rb'))['release']['version'])")
+          python3 .github/scripts/package-linux.py --bin target/release --out macos --platform macos-arm64 --version "$version"
+          python3 .github/scripts/package-macos.py --bin target/release --out macos --version "$version" --platform macos-arm64
+          ls -la macos
+
+      # 모의 릴레이에서 CLI 설치 → 앱 묶음 확인 → 업데이트 → 제거 (화면 있는 맥 = 데스크톱 구성).
+      # 모의 키는 mock-relay 빌드만 믿는다: 데몬·CLI를 그 기능으로 따로 빌드해 시험용 zip(0.2.0, 0.3.0)을 만든다
+      - name: Install, update and uninstall from a mock relay
+        run: |
+          cargo build --release --locked -p saba-core -p saba-runner -p saba-chan-cli --features saba-core/mock-relay,saba-chan-cli/mock-relay --target-dir target/mock
+          cargo build --release --locked -p saba-chan-updater --no-default-features --target-dir target/mock
+          cp target/release/saba-chan-gui target/mock/release/
+          python3 .github/scripts/package-linux.py --bin target/mock/release --out mock-a --platform macos-arm64 --version 0.2.0
+          python3 .github/scripts/package-linux.py --bin target/mock/release --out mock-b --platform macos-arm64 --version 0.3.0
+          serve() {
+            node scripts/mock-release-server.js --port 9877 --version "$1" --zips "$2" >> mock.log 2>&1 &
+            echo $! > mock.pid
+            for i in $(seq 1 30); do curl -fs "http://127.0.0.1:9877/v1/updates/check?platform=macos-arm64&current=0.0.0" >/dev/null && return; sleep 1; done
+            exit 1
+          }
+          export SABA_RELAY_URL=http://127.0.0.1:9877
+          app="$HOME/Applications/Saba-chan.app"
+          cli="$app/Contents/MacOS/saba-chan-cli"
+          plist_version() { plutil -extract CFBundleShortVersionString raw "$app/Contents/Info.plist"; }
+
+          serve 0.2.0 mock-a
+          target/mock/release/saba-chan-cli --yes install --modules ""
+          ls -la "$app/Contents" "$app/Contents/MacOS" "$app/Contents/Resources"
+          plutil -lint "$app/Contents/Info.plist"
+          test "$(plutil -extract CFBundleExecutable raw "$app/Contents/Info.plist")" = saba-chan-gui
+          test "$(plist_version)" = 0.2.0
+          test -x "$app/Contents/MacOS/saba-core" && test -x "$app/Contents/MacOS/saba-chan-gui"
+          test -f "$app/Contents/Resources/saba-chan.icns"
+          test ! -e "$app/Contents/MacOS/Info.plist"
+
+          # 업데이트: 데몬이 받고, 업데이터가 이름 바꾸기로 갈아 끼운 뒤 데몬을 다시 띄운다
+          kill "$(cat mock.pid)" && wait "$(cat mock.pid)" 2>/dev/null || true
+          serve 0.3.0 mock-b
+          "$cli" daemon start
+          # 로그인할 때 켜기: LaunchAgent 하나를 쓰고 바꾸고 지운다
+          agent="$HOME/Library/LaunchAgents/com.saba-chan.autostart.plist"
+          "$cli" config autostart daemon
+          plutil -lint "$agent"
+          test "$(plutil -extract ProgramArguments.0 raw "$agent")" = "$app/Contents/MacOS/saba-chan-gui"
+          test "$(plutil -extract ProgramArguments.1 raw "$agent")" = --tray
+          "$cli" config autostart full
+          test "$(plutil -extract ProgramArguments raw "$agent")" = 1
+          "$cli" config autostart off
+          test ! -e "$agent"
+          "$cli" config autostart daemon
+          "$cli" update config relay_url=http://127.0.0.1:9877
+          "$cli" update check
+          "$cli" update download
+          "$cli" --yes update apply
+          "$cli" update status
+          test "$(plist_version)" = 0.3.0
+          test ! -e "$app/Contents/MacOS/Info.plist" && test ! -e "$app/Contents/MacOS/saba-chan.icns"
+          "$cli" update integrity
+          "$cli" daemon stop
+
+          "$cli" --yes uninstall
+          test ! -e "$app" || { find "$app"; exit 1; }
+          test ! -e "$agent"
+          ! find "$HOME/Library/WebKit" "$HOME/Library/Caches" "$HOME/.cache" -maxdepth 1 -iname '*saba*' 2>/dev/null | grep .
+
+      - name: Updater log
+        if: failure()
+        run: cat "${TMPDIR:-/tmp}/saba-updater.log" || true
+
+      - name: Mock relay log
+        if: failure()
+        run: cat mock.log || true
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-arm64
+          path: macos/*
+          if-no-files-found: error
+          retention-days: 7

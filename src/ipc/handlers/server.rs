@@ -110,6 +110,9 @@ async fn server_list(state: &IPCServer, notices: Notices) -> axum::response::Res
         extension_data: std::collections::HashMap<String, serde_json::Value>,
         extra_args: Vec<String>,
         memory_limit_mb: Option<u64>,
+        game_chat: crate::supervisor::game_chat::Mode,
+        game_chat_keyword: String,
+        chat_patterns: bool,
         revision: String,
         instance_dir: String,
         linked_folder: Option<String>,
@@ -133,9 +136,9 @@ async fn server_list(state: &IPCServer, notices: Notices) -> axum::response::Res
             } else {
                 None
             };
-            let process_patterns = supervisor.module_loader.get_module(&instance.module_name)
-                .map(|m| m.metadata.process_patterns.clone())
-                .unwrap_or_default();
+            let module = supervisor.module_loader.get_module(&instance.module_name).ok();
+            let process_patterns = module.as_ref().map(|m| m.metadata.process_patterns.clone()).unwrap_or_default();
+            let chat_patterns = module.as_ref().is_some_and(|m| !m.metadata.chat_patterns.is_empty());
             InstanceSnapshot {
                 id: instance.id.clone(),
                 name: instance.name.clone(),
@@ -153,6 +156,9 @@ async fn server_list(state: &IPCServer, notices: Notices) -> axum::response::Res
                 extension_data: instance.extension_data.clone(),
                 extra_args: instance.extra_args.clone(),
                 memory_limit_mb: instance.memory_limit_mb,
+                game_chat: instance.game_chat,
+                game_chat_keyword: instance.game_chat_keyword.clone(),
+                chat_patterns,
                 revision: instance.settings_revision(),
                 instance_dir: supervisor.instance_store.instance_dir(&instance.id).to_string_lossy().to_string(),
                 // 폴더 판정은 아래 락 밖에서
@@ -269,6 +275,9 @@ async fn server_list(state: &IPCServer, notices: Notices) -> axum::response::Res
                     extension_data: instance.extension_data.clone(),
                     extra_args: instance.extra_args.clone(),
                     memory_limit_mb: instance.memory_limit_mb,
+                    game_chat: instance.game_chat,
+                    game_chat_keyword: instance.game_chat_keyword.clone(),
+                    game_chat_supported: instance.chat_patterns && instance.managed,
                     revision: instance.revision.clone(),
                     port_conflicts: vec![],
                     slots: Default::default(),
@@ -327,6 +336,9 @@ async fn server_list(state: &IPCServer, notices: Notices) -> axum::response::Res
             extension_data: instance.extension_data.clone(),
             extra_args: instance.extra_args.clone(),
             memory_limit_mb: instance.memory_limit_mb,
+            game_chat: instance.game_chat,
+            game_chat_keyword: instance.game_chat_keyword.clone(),
+            game_chat_supported: instance.chat_patterns && instance.managed,
             revision: instance.revision.clone(),
             port_conflicts: vec![],
             slots: Default::default(),
@@ -1522,6 +1534,7 @@ mod tests {
              else:\n    print(json.dumps({'success': True}))\n",
         )
         .unwrap();
+        crate::sandbox::consent_test_component(&dir.join("lifecycle.py"));
         let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
         sup.initialize().await.unwrap();
         let mut inst = crate::instance::ServerInstance::new("srv", "game");
@@ -1569,6 +1582,7 @@ mod tests {
              else:\n    print(json.dumps({'success': True}))\n",
         )
         .unwrap();
+        crate::sandbox::consent_test_component(&dir.join("lifecycle.py"));
         let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
         sup.initialize().await.unwrap();
         let mut inst = crate::instance::ServerInstance::new("srv", "game");
@@ -1615,6 +1629,7 @@ mod tests {
              else:\n    print(json.dumps({'success': True, 'issues': []}))\n",
         )
         .unwrap();
+        crate::sandbox::consent_test_component(&dir.join("lifecycle.py"));
         let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
         sup.initialize().await.unwrap();
         let mut inst = crate::instance::ServerInstance::new("srv", "game");
@@ -1655,6 +1670,7 @@ mod tests {
              else:\n    print(json.dumps({'success': True, 'issues': []}))\n",
         )
         .unwrap();
+        crate::sandbox::consent_test_component(&dir.join("lifecycle.py"));
         let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
         sup.initialize().await.unwrap();
         let mut inst = crate::instance::ServerInstance::new("srv", "game");
@@ -1697,6 +1713,7 @@ mod tests {
              else:\n    print(json.dumps({'success': True, 'issues': []}))\n",
         )
         .unwrap();
+        crate::sandbox::consent_test_component(&dir.join("lifecycle.py"));
         let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
         sup.initialize().await.unwrap();
         for id in ["no-console-managed", "no-console-native"] {
@@ -1757,6 +1774,7 @@ mod tests {
             ),
         )
         .unwrap();
+        crate::sandbox::consent_test_component(&dir.join("lifecycle.py"));
         let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
         sup.initialize().await.unwrap();
         let mut inst = crate::instance::ServerInstance::new("native", "game");

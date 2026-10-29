@@ -42,6 +42,31 @@ class LinuxZips(unittest.TestCase):
             self.assertEqual(sorted(p.name for p in made), [
                 "saba-chan-cli-linux-arm64.zip", "saba-chan-updater-linux-arm64.zip", "saba-core-linux-arm64.zip"])
 
+    def test_the_mac_gui_carries_the_app_bundle_files(self):
+        # 맥 설치기는 GUI zip의 Info.plist·아이콘을 앱 묶음(Contents) 자리에 놓는다. 업데이트도 같은 파일을 다시 놓는다
+        import plistlib
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            for exe in ("saba-core", "saba-runner", "saba-chan-cli", "saba-chan-updater", "saba-chan-gui"):
+                (d / exe).write_bytes(b"\xcf\xfa\xed\xfe")
+            package_linux.package(d, d / "out", "macos-arm64", version="0.1.12-beta.1")
+            with zipfile.ZipFile(d / "out" / "saba-chan-gui-macos-arm64.zip") as zf:
+                names = sorted(zf.namelist())
+                plist = plistlib.loads(zf.read("Info.plist"))
+                icon = zf.read("saba-chan.icns")[:4]
+        self.assertEqual(names, ["Info.plist", "saba-chan-gui", "saba-chan.icns"])
+        self.assertEqual(plist["CFBundleShortVersionString"], "0.1.12-beta.1")
+        self.assertEqual(plist["CFBundleIconFile"], "saba-chan.icns")
+        self.assertEqual(icon, b"icns")
+
+    def test_the_mac_gui_needs_the_release_version(self):
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            for exe in ("saba-core", "saba-runner", "saba-chan-cli", "saba-chan-updater", "saba-chan-gui"):
+                (d / exe).write_bytes(b"\xcf\xfa\xed\xfe")
+            with self.assertRaises(SystemExit):
+                package_linux.package(d, d / "out", "macos-arm64")
+
     def test_a_missing_binary_stops_packaging(self):
         with tempfile.TemporaryDirectory() as d:
             with self.assertRaises(SystemExit):
