@@ -36,16 +36,16 @@
 
 **Discord から**
 
-- サバちゃんボットを Discord サーバーに招待して PC とつなげば、チャットや `/saba-chan` コマンドでサーバーの起動・停止・状態確認ができます。PC のほうから外へ接続する仕組みなので、遠隔操作のためにルーターのポートを開ける必要はありません。
+- サバちゃんボットを Discord サーバーに招待して PC とつなげば、チャットや `/saba` コマンド(韓国語の Discord では `/사바쨩`)でサーバーの起動・停止・状態確認ができます。PC のほうから外へ接続する仕組みなので、遠隔操作のためにルーターのポートを開ける必要はありません。
 - Discord サーバーごとにオーナー・管理者・ユーザー・ゲスト・禁止の段階があり、段階ごとに使えるコマンドを決められます。上の段階は、下の段階ができることを必ず全部できます。
-- 停止や再起動のような注意が必要なコマンドは、実行前にもう一度確認します。どれくらい確認するかは Discord サーバーごとに決められます。
+- 危険なコマンドは、実行前にボタンでもう一度確認します。初期設定では危険段階のコマンドだけを確認し、Discord サーバーごとに停止や再起動のような注意段階、あるいは全コマンドまで広げられます。
 - ボットには音楽再生と、AI と話せる「おしゃべりサバちゃん」もあります。おしゃべりサバちゃんは自分で登録した AI の API キーで動き、Discord サーバーごとにオンにする必要があります。
 
 **外出先から**
 
-- スマホ: Discord の `/saba-chan web` で受け取った使い捨てリンクから、ブラウザでサーバーの起動・停止やコンソール、設定を扱えます。インストールもログインもいりません。
+- スマホ: Discord の `/saba web` で受け取ったリンク(その PC の持ち主だけが受け取れて、5 分以内に 1 回だけ使えます)から、ブラウザでサーバーの起動・停止やコンソール、設定を扱えます。インストールもログインもいりません。
 - 別の PC: Linux サーバーや別の PC で動くサバちゃんを、手元のアプリと CLI でそのまま操作できます(リモートデーモン)。同じ Discord アカウントでペアにした PC 同士だけがつながります。
-- AI エージェント: Claude など MCP に対応したエージェントを自分の Discord アカウントに連携すると、エージェントがサーバーを操作できます。危ないコマンドはエージェントの画面で先に確認します。連携は `/saba-chan agent` やアプリの Discord 画面で確認・解除できます。
+- AI エージェント: Claude など MCP に対応したエージェントを自分の Discord アカウントに連携すると、エージェントがサーバーを操作できます。危ないコマンドはエージェントの画面で先に確認します。連携は `/saba agent` やアプリの Discord 画面で確認・解除できます。
 
 **そのほか**
 
@@ -85,11 +85,11 @@ Linux のデスクトップアプリと ARM64 は 0.1.12 からです。macOS �
 curl -fsSL https://raw.githubusercontent.com/WareAoba/saba-chan/main/install.sh | sh
 ```
 
-`curl`、`unzip`、`sha256sum`、`python3` があれば大丈夫です。画面のあるデスクトップならアプリまで入れてアプリメニューに追加し、画面のないサーバーならデーモンと CLI だけを入れてデーモンを systemd のユーザーサービスとして起動します。アプリには WebKitGTK が必要で、入っていなければインストールコマンドを教えてくれます。画面のないサーバーは、別の PC のアプリから[リモートデーモン](https://saba-chan.online/ja/guide/remote-daemon)として操作するのが楽です。
+`curl`、`unzip`、`sha256sum`、`python3` があれば大丈夫です。画面のあるデスクトップならアプリまで入れてアプリメニューに追加し、画面のないサーバーならデーモンと CLI だけを入れてデーモンを systemd のユーザーサービスとして起動します。アプリには WebKitGTK が、SteamCMD で入れるゲーム(パルワールド、Zomboid)には `lib32gcc-s1` などの 32 ビットライブラリが必要で、入っていなければインストールコマンドを教えてくれます。画面のないサーバーは、別の PC のアプリから[リモートデーモン](https://saba-chan.online/ja/guide/remote-daemon)として操作するのが楽です。
 
 **インストールしたあと**
 
-- 設定、サーバーファイル、ワールド、バックアップは `%APPDATA%\saba-chan`(Linux は `~/.config/saba-chan`)にあります。プログラムのフォルダを消してもサーバーは残ります。
+- 設定と、場所を別に選ばなかったサーバーファイル、ワールド、バックアップは `%APPDATA%\saba-chan`(Linux は `~/.config/saba-chan`)にあります。プログラムのフォルダを消してもサーバーは残ります。
 - 新しいバージョンが出るとアプリが知らせてくれて、設定画面からそのまま更新できます。公式の署名が確認できたファイルだけを受け取ります。
 - アンインストールのときに「ゲームサーバーを残す」と「設定を残す」を選べば、入れ直したときにそのまま続きから使えます。どちらか片方だけも選べます。
 
@@ -113,7 +113,7 @@ sequenceDiagram
     participant Daemon as 手元の PC のデーモン
     participant Game as ゲームサーバー
     Daemon->>Bot: 新しいコマンドある? (PC から接続、署名付き)
-    User->>Bot: /saba-chan ... 起動
+    User->>Bot: /saba ... 起動
     Bot-->>Daemon: コマンドを渡す
     Daemon->>Daemon: この人の段階で使えるコマンドか確認
     opt 確認が必要なコマンドなら
@@ -171,7 +171,7 @@ Free code signing provided by [SignPath.io](https://signpath.io), certificate by
 - 署名するファイル: このリポジトリのソースから GitHub Actions がビルドした Windows の実行ファイル(`saba-core.exe`、`saba-runner.exe`、`saba-chan-cli.exe`、`saba-chan-gui.exe`、`saba-chan-updater.exe`、`saba-chan-installer.exe`)だけに署名します。ビルドの流れは [build-windows.yml](.github/workflows/build-windows.yml) で公開しています。
 - Committers and reviewers: [WareAoba](https://github.com/WareAoba)
 - Approvers: [WareAoba](https://github.com/WareAoba)。リリースごとに署名リクエストを自分で承認します。
-- プライバシー · Privacy policy: サバちゃんがほかの場所へ情報を送るのは、更新の確認(初期設定でオン、オフにできます。匿名 ID とバージョンだけを送ります)と、ユーザーが自分でつないだ Discord 連携だけです。詳しくは[プライバシーポリシー](https://saba-chan.online/legal/privacy)をご覧ください。
+- プライバシー · Privacy policy: サバちゃんがほかの場所へ情報を送るのは、更新の確認(初期設定でオン、オフにできます。匿名 ID、バージョン、プラットフォーム、更新チャンネルだけを送ります)と、ユーザーが自分でつないだ Discord 連携だけです。詳しくは[プライバシーポリシー](https://saba-chan.online/ja/legal/privacy)をご覧ください。
 
 ## ライセンス
 

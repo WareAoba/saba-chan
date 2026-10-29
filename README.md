@@ -9,7 +9,7 @@
 
 **한국어** · [English](README.en.md) · [日本語](README.ja.md)
 
-[웹사이트](https://saba-chan.online) · [사용 안내](https://saba-chan.online/ko/guide) · [모듈](https://github.com/WareAoba/saba-chan-modules) · [익스텐션](https://github.com/WareAoba/saba-chan-extensions) · [릴리스](https://github.com/WareAoba/saba-chan/releases)
+[웹사이트](https://saba-chan.online/ko) · [사용 안내](https://saba-chan.online/ko/guide) · [모듈](https://github.com/WareAoba/saba-chan-modules) · [익스텐션](https://github.com/WareAoba/saba-chan-extensions) · [릴리스](https://github.com/WareAoba/saba-chan/releases)
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-7c3aed?style=flat-square)](LICENSE)
 ![Windows](https://img.shields.io/badge/Windows-x64-3b82f6?style=flat-square)
@@ -38,12 +38,12 @@
 
 - 사바쨩 봇을 디스코드 서버에 초대하고 PC와 연결하면, 채팅이나 `/사바쨩` 명령으로 서버를 켜고 끄고 상태를 봅니다. 원격 제어를 위해 공유기 포트를 열 필요는 없어요. PC가 먼저 바깥으로 연결하는 방식이라서요.
 - 디스코드 서버마다 소유자, 관리자, 유저, 게스트, 금지 단계를 두고, 단계마다 쓸 수 있는 명령을 정합니다. 위쪽 단계는 아래 단계가 할 수 있는 건 다 할 수 있어요.
-- 정지나 재시작처럼 조심해야 하는 명령은 실행하기 전에 한 번 더 묻습니다. 얼마나 자주 물을지는 디스코드 서버마다 정해요.
+- 위험한 명령은 실행하기 전에 버튼으로 한 번 더 묻습니다. 기본은 위험 단계 명령만 묻고, 디스코드 서버마다 정지·재시작 같은 주의 단계나 모든 명령까지 묻게 넓힐 수 있어요.
 - 봇에는 음악 재생과 "말하는 사바쨩"(AI 대화)도 있어요. 말하는 사바쨩은 직접 넣은 AI API 키로 돌고, 디스코드 서버마다 따로 켜야 합니다.
 
 **밖에서**
 
-- 휴대폰: 디스코드에서 `/사바쨩 웹`으로 받은 일회용 링크로 브라우저에서 서버를 켜고 끄고 콘솔과 설정을 봅니다. 설치나 로그인은 필요 없어요.
+- 휴대폰: 디스코드에서 `/사바쨩 웹`으로 받은 링크(그 PC 주인만 받을 수 있고, 5분 안에 한 번 쓰는 링크)로 브라우저에서 서버를 켜고 끄고 콘솔과 설정을 봅니다. 설치나 로그인은 필요 없어요.
 - 다른 PC: 리눅스 서버나 다른 PC에서 도는 사바쨩을 내 PC의 앱과 CLI로 그대로 다룹니다(원격 데몬). 같은 디스코드 계정으로 짝지은 PC끼리만 이어져요.
 - AI 에이전트: Claude 같은 MCP 지원 에이전트를 내 디스코드 계정으로 연결하면 에이전트가 내 서버를 다룰 수 있어요. 위험한 명령은 에이전트 화면에서 먼저 묻습니다. 연결은 `/사바쨩 에이전트`나 앱의 디스코드 화면에서 확인하고 끊을 수 있어요.
 
@@ -77,7 +77,7 @@ ARM에서 안 되는 게임은 서버 실행 파일이나 SteamCMD가 x86용뿐�
 
 **Windows**
 
-[웹사이트](https://saba-chan.online)나 [릴리스](https://github.com/WareAoba/saba-chan/releases)에서 `saba-chan-installer.exe`를 받아 실행하고, 설치 위치와 처음 받을 게임을 고르면 됩니다. WebView2 런타임이 필요한데 Windows 11과 최신 Windows 10에는 이미 들어 있어요.
+[웹사이트](https://saba-chan.online/ko)나 [릴리스](https://github.com/WareAoba/saba-chan/releases)에서 `saba-chan-installer.exe`를 받아 실행하고, 설치 위치와 처음 받을 게임을 고르면 됩니다. WebView2 런타임이 필요한데 Windows 11과 최신 Windows 10에는 이미 들어 있어요.
 
 **Linux**
 
@@ -85,11 +85,11 @@ ARM에서 안 되는 게임은 서버 실행 파일이나 SteamCMD가 x86용뿐�
 curl -fsSL https://raw.githubusercontent.com/WareAoba/saba-chan/main/install.sh | sh
 ```
 
-`curl`, `unzip`, `sha256sum`, `python3`가 있으면 됩니다. 화면이 있는 데스크톱이면 앱까지 설치해서 앱 메뉴에 넣고, 화면 없는 서버면 데몬과 CLI만 깔고 데몬을 systemd 사용자 서비스로 켜요. 앱을 쓰려면 WebKitGTK가 필요하고, 없으면 설치 명령을 알려 줍니다. 화면 없는 서버는 다른 PC의 앱에서 [원격 데몬](https://saba-chan.online/ko/guide/remote-daemon)으로 다루면 편해요.
+`curl`, `unzip`, `sha256sum`, `python3`가 있으면 됩니다. 화면이 있는 데스크톱이면 앱까지 설치해서 앱 메뉴에 넣고, 화면 없는 서버면 데몬과 CLI만 깔고 데몬을 systemd 사용자 서비스로 켜요. 앱을 쓰려면 WebKitGTK가 필요하고, SteamCMD로 까는 게임(팰월드, 좀보이드)은 32비트 라이브러리(`lib32gcc-s1` 등)가 필요해요. 없으면 설치 명령을 알려 줍니다. 화면 없는 서버는 다른 PC의 앱에서 [원격 데몬](https://saba-chan.online/ko/guide/remote-daemon)으로 다루면 편해요.
 
 **설치한 다음**
 
-- 설정, 서버 파일, 월드, 백업은 `%APPDATA%\saba-chan`(리눅스는 `~/.config/saba-chan`)에 있어요. 프로그램 폴더를 지워도 서버는 남습니다.
+- 설정과, 따로 고르지 않은 서버 파일, 월드, 백업은 `%APPDATA%\saba-chan`(리눅스는 `~/.config/saba-chan`)에 있어요. 프로그램 폴더를 지워도 서버는 남습니다.
 - 새 버전이 나오면 앱이 알려 주고 설정 화면에서 바로 업데이트합니다. 공식 서명이 확인된 파일만 받아요.
 - 지울 때 "게임 서버 남기기"와 "설정 남기기"를 고르면 다시 설치했을 때 그대로 이어집니다. 둘은 따로 고를 수 있어요.
 
@@ -171,7 +171,7 @@ Free code signing provided by [SignPath.io](https://signpath.io), certificate by
 - 서명하는 파일: 이 저장소의 소스로 GitHub Actions가 빌드한 Windows 실행 파일(`saba-core.exe`, `saba-runner.exe`, `saba-chan-cli.exe`, `saba-chan-gui.exe`, `saba-chan-updater.exe`, `saba-chan-installer.exe`)만 서명합니다. 빌드 과정은 [build-windows.yml](.github/workflows/build-windows.yml)에 공개돼 있어요.
 - Committers and reviewers: [WareAoba](https://github.com/WareAoba)
 - Approvers: [WareAoba](https://github.com/WareAoba). 릴리스마다 서명 요청을 직접 승인합니다.
-- 개인정보 · Privacy policy: 사바쨩은 업데이트 확인(기본으로 켜져 있고 끌 수 있어요. 익명 ID와 버전만 보냅니다)과 사용자가 직접 연결한 디스코드 연동 말고는 다른 곳으로 정보를 보내지 않습니다. 자세한 건 [개인정보처리방침](https://saba-chan.online/legal/privacy)에 있어요. Saba-chan sends data only for update checks (on by default, can be turned off; an anonymous ID and version numbers) and for the Discord integration the user connects; see the [privacy policy](https://saba-chan.online/legal/privacy).
+- 개인정보 · Privacy policy: 사바쨩은 업데이트 확인(기본으로 켜져 있고 끌 수 있어요. 익명 ID, 버전, 플랫폼, 업데이트 채널만 보냅니다)과 사용자가 직접 연결한 디스코드 연동 말고는 다른 곳으로 정보를 보내지 않습니다. 자세한 건 [개인정보처리방침](https://saba-chan.online/ko/legal/privacy)에 있어요. Saba-chan sends data only for update checks (on by default, can be turned off; an anonymous ID, version, platform and update channel) and for the Discord integration the user connects; see the [privacy policy](https://saba-chan.online/legal/privacy).
 
 ## 라이선스
 

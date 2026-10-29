@@ -36,20 +36,20 @@ The name is a pun: in Japanese, "server" (サーバー) sounds a lot like "macke
 
 **From Discord**
 
-- Invite the Saba-chan bot to your Discord server and link it to your PC, then start, stop, and check servers with chat or `/saba-chan` commands. You don't need to open router ports for remote control, because your PC makes the outgoing connection.
+- Invite the Saba-chan bot to your Discord server and link it to your PC, then start, stop, and check servers with chat or `/saba` commands (`/사바쨩` on a Korean Discord client). You don't need to open router ports for remote control, because your PC makes the outgoing connection.
 - Each Discord server has its own ladder of levels (owner, admin, user, guest, banned), and you choose which commands each level can use. Higher levels can always do everything the levels below them can.
-- Risky commands such as stop or restart ask for confirmation first. How often it asks is set per Discord server.
+- Dangerous commands ask once more with a button before they run. By default only danger-level commands ask; each Discord server can widen that to caution-level commands like stop and restart, or to every command.
 - The bot also plays music and has "Talking Saba-chan", an AI chat feature. Talking Saba-chan runs on an AI API key you provide and has to be turned on per Discord server.
 
 **When you're away**
 
-- Phone: get a one-time link with `/saba-chan web` in Discord and manage servers, console, and settings from your phone's browser. Nothing to install, no login.
+- Phone: get a link with `/saba web` in Discord (only the PC's owner can get one, and it works once within 5 minutes) and manage servers, console, and settings from your phone's browser. Nothing to install, no login.
 - Another PC: control Saba-chan running on a Linux box or another PC from your own app and CLI (remote daemon). Only PCs paired with the same Discord account can connect.
-- AI agents: link an MCP-capable agent such as Claude to your Discord account and it can manage your servers. Dangerous commands are confirmed in the agent's own screen first. Check or unlink the agent with `/saba-chan agent` or from the Discord screen in the app.
+- AI agents: link an MCP-capable agent such as Claude to your Discord account and it can manage your servers. Dangerous commands are confirmed in the agent's own screen first. Check or unlink the agent with `/saba agent` or from the Discord screen in the app.
 
 **And also**
 
-- Anything the app does, the CLI does too (`saba-chan-cli start pal`). See [saba-chan-cli/README.md](saba-chan-cli/README.md).
+- Anything the app does, the CLI does too (`saba-chan-cli start pal`). See [saba-chan-cli/README.md](saba-chan-cli/README.md) (Korean).
 - Notifications for who started or stopped which server and from where, including unexpected starts and stops, in the app, as OS notifications, and in a Discord alert channel.
 - 10 languages: 한국어, English, 日本語, Deutsch, Español, Français, Português, Русский, 简体中文, 繁體中文.
 
@@ -85,11 +85,11 @@ Download `saba-chan-installer.exe` from the [website](https://saba-chan.online) 
 curl -fsSL https://raw.githubusercontent.com/WareAoba/saba-chan/main/install.sh | sh
 ```
 
-You need `curl`, `unzip`, `sha256sum`, and `python3`. On a desktop with a display it installs the app too and adds it to your app menu. On a headless server it installs just the daemon and CLI and runs the daemon as a systemd user service. The app needs WebKitGTK; if it's missing, the script tells you the package to install. A headless server is easiest to manage from the app on another PC as a [remote daemon](https://saba-chan.online/guide/remote-daemon).
+You need `curl`, `unzip`, `sha256sum`, and `python3`. On a desktop with a display it installs the app too and adds it to your app menu. On a headless server it installs just the daemon and CLI and runs the daemon as a systemd user service. The app needs WebKitGTK, and games installed through SteamCMD (Palworld, Zomboid) need 32-bit libraries such as `lib32gcc-s1`; if they're missing, the script tells you what to install. A headless server is easiest to manage from the app on another PC as a [remote daemon](https://saba-chan.online/guide/remote-daemon).
 
 **After installing**
 
-- Settings, server files, worlds, and backups live in `%APPDATA%\saba-chan` (`~/.config/saba-chan` on Linux). Deleting the program folder leaves your servers alone.
+- Settings, plus server files, worlds, and backups unless you picked another location, live in `%APPDATA%\saba-chan` (`~/.config/saba-chan` on Linux). Deleting the program folder leaves your servers alone.
 - The app tells you when an update is out and installs it from the settings screen. Only officially signed files are accepted.
 - When uninstalling, tick "Keep game servers" and "Keep settings" and a reinstall picks up right where you left off. You can choose each one separately.
 
@@ -113,7 +113,7 @@ sequenceDiagram
     participant Daemon as Daemon on your PC
     participant Game as Game server
     Daemon->>Bot: Anything for me? (outgoing, signed)
-    User->>Bot: /saba-chan ... start
+    User->>Bot: /saba ... start
     Bot-->>Daemon: Command
     Daemon->>Daemon: Is this user's level allowed to run it?
     opt Command needs confirmation
@@ -171,7 +171,7 @@ Free code signing provided by [SignPath.io](https://signpath.io), certificate by
 - What gets signed: only the Windows executables that GitHub Actions builds from this repository's source (`saba-core.exe`, `saba-runner.exe`, `saba-chan-cli.exe`, `saba-chan-gui.exe`, `saba-chan-updater.exe`, `saba-chan-installer.exe`). The build is public in [build-windows.yml](.github/workflows/build-windows.yml).
 - Committers and reviewers: [WareAoba](https://github.com/WareAoba)
 - Approvers: [WareAoba](https://github.com/WareAoba), who approves the signing request for every release.
-- Privacy policy: Saba-chan sends data only for update checks (on by default, can be turned off; an anonymous ID and version numbers) and for the Discord integration the user connects. Details are in the [privacy policy](https://saba-chan.online/legal/privacy).
+- Privacy policy: Saba-chan sends data only for update checks (on by default, can be turned off; an anonymous ID, version, platform and update channel) and for the Discord integration the user connects. Details are in the [privacy policy](https://saba-chan.online/legal/privacy).
 
 ## License
 
