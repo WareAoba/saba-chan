@@ -1239,7 +1239,7 @@
     "models_err_FAILED": "No se pudo cargar la lista de modelos.",
     "model_fallback": "El modelo elegido ({{model}}) no está disponible, así que se usa {{fallback}}. Guarda para que {{fallback}} sea el nuevo modelo.",
     "allowed_title": "Herramientas permitidas",
-    "allowed_desc": "Solo las herramientas permitidas aquí se pueden activar por servidor. Al bloquear una, deja de usarse en todos los servidores.",
+    "allowed_desc": "Solo las herramientas permitidas aquí se pueden activar por servidor. Al bloquear una, deja de usarse en todos los servidores. Permitir una herramienta no la activa. Actívala en cada servidor en Servidor de Discord › pestaña Saba-chan parlante.",
     "tool_blocked": "Esta herramienta está bloqueada en los ajustes comunes.",
     "tool_unavailable_operator_key": "El servidor de Saba-chan no puede usar esta herramienta ahora.",
     "tool_unavailable_provider": "La empresa de tu clave API no admite esta herramienta.",

@@ -1239,7 +1239,7 @@
     "models_err_FAILED": "Could not load the model list.",
     "model_fallback": "The chosen model ({{model}}) is unavailable, so {{fallback}} is used instead. Save to make {{fallback}} the new model.",
     "allowed_title": "Allowed tools",
-    "allowed_desc": "Only tools allowed here can be turned on per server. Blocking one stops it on every server right away.",
+    "allowed_desc": "Only tools allowed here can be turned on per server. Blocking one stops it on every server right away. Allowing a tool does not turn it on. Turn it on per server in Discord server › Talking Saba-chan tab.",
     "tool_blocked": "This tool is blocked in the shared settings.",
     "tool_unavailable_operator_key": "The Saba-chan server cannot use this tool right now.",
     "tool_unavailable_provider": "Your API key's company does not support this tool.",

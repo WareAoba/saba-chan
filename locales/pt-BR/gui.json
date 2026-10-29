@@ -1239,7 +1239,7 @@
     "models_err_FAILED": "Não foi possível carregar a lista de modelos.",
     "model_fallback": "O modelo escolhido ({{model}}) não está disponível, então {{fallback}} é usado no lugar. Salve para tornar {{fallback}} o novo modelo.",
     "allowed_title": "Ferramentas permitidas",
-    "allowed_desc": "Só as ferramentas permitidas aqui podem ser ativadas por servidor. Bloquear uma a desativa em todos os servidores na hora.",
+    "allowed_desc": "Só as ferramentas permitidas aqui podem ser ativadas por servidor. Bloquear uma a desativa em todos os servidores na hora. Permitir uma ferramenta não a ativa. Ative em cada servidor em Servidor do Discord › aba Saba-chan falante.",
     "tool_blocked": "Esta ferramenta está bloqueada nas configurações gerais.",
     "tool_unavailable_operator_key": "O servidor da Saba-chan não pode usar esta ferramenta agora.",
     "tool_unavailable_provider": "A empresa da sua chave de API não suporta esta ferramenta.",

@@ -1239,7 +1239,7 @@
     "models_err_FAILED": "모델 목록을 불러오지 못했어요.",
     "model_fallback": "고른 모델({{model}})을 쓸 수 없어 {{fallback}}(으)로 대신 쓰고 있어요. 저장하면 {{fallback}}이(가) 새 모델이 돼요.",
     "allowed_title": "전체 허용 도구",
-    "allowed_desc": "여기서 허용한 도구만 서버별로 켤 수 있어요. 막으면 모든 서버에서 바로 쓰지 않아요.",
+    "allowed_desc": "여기서 허용한 도구만 서버별로 켤 수 있어요. 막으면 모든 서버에서 바로 쓰지 않아요. 허용만으로는 켜지지 않아요. 서버마다 디스코드 서버 › 말하는 사바쨩 탭에서 켜 주세요.",
     "tool_blocked": "공통 메뉴에서 막아 둔 도구예요.",
     "tool_unavailable_operator_key": "지금은 사바쨩 서버에서 이 도구를 쓸 수 없어요.",
     "tool_unavailable_provider": "지금 API 키의 회사는 이 도구를 지원하지 않아요.",

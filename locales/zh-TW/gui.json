@@ -1239,7 +1239,7 @@
     "models_err_FAILED": "無法載入模型清單。",
     "model_fallback": "所選模型（{{model}}）無法使用，正在改用 {{fallback}}。儲存後 {{fallback}} 會成為新模型。",
     "allowed_title": "允許的工具",
-    "allowed_desc": "只有在這裡允許的工具才能依伺服器開啟。封鎖後會立即在所有伺服器停用。",
+    "allowed_desc": "只有在這裡允許的工具才能依伺服器開啟。封鎖後會立即在所有伺服器停用。 僅允許不會開啟工具。請在每個伺服器的 Discord 伺服器 › 會說話的 Saba-chan 分頁中開啟。",
     "tool_blocked": "此工具已在共用設定中被封鎖。",
     "tool_unavailable_operator_key": "Saba-chan 伺服器暫時無法使用此工具。",
     "tool_unavailable_provider": "目前 API 金鑰的公司不支援此工具。",

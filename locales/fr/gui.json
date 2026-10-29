@@ -1239,7 +1239,7 @@
     "models_err_FAILED": "Impossible de charger la liste des modèles.",
     "model_fallback": "Le modèle choisi ({{model}}) n’est pas disponible, {{fallback}} est utilisé à la place. Enregistrez pour adopter {{fallback}}.",
     "allowed_title": "Outils autorisés",
-    "allowed_desc": "Seuls les outils autorisés ici peuvent être activés par serveur. Bloquer un outil le coupe aussitôt sur tous les serveurs.",
+    "allowed_desc": "Seuls les outils autorisés ici peuvent être activés par serveur. Bloquer un outil le coupe aussitôt sur tous les serveurs. Autoriser un outil ne l’active pas. Activez-le pour chaque serveur dans Serveur Discord › onglet Saba-chan qui parle.",
     "tool_blocked": "Cet outil est bloqué dans les réglages communs.",
     "tool_unavailable_operator_key": "Le serveur de Saba-chan ne peut pas utiliser cet outil pour le moment.",
     "tool_unavailable_provider": "L’entreprise de votre clé API ne prend pas en charge cet outil.",

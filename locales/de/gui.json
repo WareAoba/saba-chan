@@ -1239,7 +1239,7 @@
     "models_err_FAILED": "Die Modellliste konnte nicht geladen werden.",
     "model_fallback": "Das gewählte Modell ({{model}}) ist nicht verfügbar, daher wird {{fallback}} verwendet. Speichere, um {{fallback}} zu übernehmen.",
     "allowed_title": "Erlaubte Werkzeuge",
-    "allowed_desc": "Nur hier erlaubte Werkzeuge lassen sich pro Server einschalten. Ein gesperrtes Werkzeug wird sofort auf allen Servern abgeschaltet.",
+    "allowed_desc": "Nur hier erlaubte Werkzeuge lassen sich pro Server einschalten. Ein gesperrtes Werkzeug wird sofort auf allen Servern abgeschaltet. Erlauben schaltet ein Werkzeug nicht ein. Schalte es pro Server unter Discord-Server › Tab „Sprechende Saba-chan“ ein.",
     "tool_blocked": "Dieses Werkzeug ist in den gemeinsamen Einstellungen gesperrt.",
     "tool_unavailable_operator_key": "Der Saba-chan-Server kann dieses Werkzeug gerade nicht nutzen.",
     "tool_unavailable_provider": "Der Anbieter deines API-Schlüssels unterstützt dieses Werkzeug nicht.",
