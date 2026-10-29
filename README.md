@@ -1,8 +1,8 @@
 <div align="center">
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/banner-dark.png">
-  <img src="docs/images/banner-light.png" width="620" alt="사바쨩 · Saba-chan · サバちゃん">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/banner-ko-dark.png">
+  <img src="docs/images/banner-ko-light.png" width="312" alt="사바쨩">
 </picture>
 
 게임 서버를 대신 켜고, 지키고, 고쳐 주는 서버 관리 앱

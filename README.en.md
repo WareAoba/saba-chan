@@ -1,8 +1,8 @@
 <div align="center">
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/banner-dark.png">
-  <img src="docs/images/banner-light.png" width="620" alt="사바쨩 · Saba-chan · サバちゃん">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/banner-en-dark.png">
+  <img src="docs/images/banner-en-light.png" width="544" alt="Saba-chan">
 </picture>
 
 A server manager that starts, watches over, and fixes your game servers for you

@@ -1,8 +1,8 @@
 <div align="center">
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/banner-dark.png">
-  <img src="docs/images/banner-light.png" width="620" alt="사바쨩 · Saba-chan · サバちゃん">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/banner-ja-dark.png">
+  <img src="docs/images/banner-ja-light.png" width="400" alt="サバちゃん">
 </picture>
 
 ゲームサーバーの起動も見守りも復旧も代わりにやってくれる、サーバー管理アプリ
