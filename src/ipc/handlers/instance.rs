@@ -3092,6 +3092,8 @@ mod tests {
              print(json.dumps({'success': True, 'executable_path': os.path.join(d, 'server.bin')}))\n",
         )
         .unwrap();
+        // 격리할 수 없는 OS(맥)에서는 동의한 것으로 돌린다. 격리할 수 있으면 동의는 쓰이지 않는다
+        crate::sandbox::consent_test_component(&dir.join("lifecycle.py"));
         let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
             modules.to_str().unwrap(),
             tmp.path().join("instances").to_str().unwrap(),

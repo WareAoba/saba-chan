@@ -28,14 +28,17 @@ pub(crate) fn checked_path(path: &Path) -> Option<PathBuf> {
         }
         match std::fs::symlink_metadata(&current) {
             Ok(meta) => {
-                if meta.file_type().is_symlink() {
+                if meta.file_type().is_symlink() && !system_link(&current, &meta) {
                     return None;
                 }
                 #[cfg(windows)]
                 crate::sandbox::appcontainer::check_existing_path(&current).ok()?;
                 ancestor = Some(current.clone());
             }
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => missing.push(component.as_os_str().to_os_string()),
+            // 파일 아래 경로(`level.dat/inside`)도 없는 경로다: 맥·리눅스는 NotFound 대신 NotADirectory를 준다
+            Err(e) if matches!(e.kind(), std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory) => {
+                missing.push(component.as_os_str().to_os_string())
+            }
             Err(_) => return None,
         }
     }
@@ -44,6 +47,22 @@ pub(crate) fn checked_path(path: &Path) -> Option<PathBuf> {
         real.push(component);
     }
     Some(real)
+}
+
+/// 루트 바로 아래에 OS가 둔 링크(맥의 /var·/tmp → /private/…, 리눅스의 /bin → usr/bin).
+/// 루트 폴더에는 관리자만 쓸 수 있으므로 모듈이 만든 링크가 아니다
+#[cfg(unix)]
+fn system_link(path: &Path, meta: &std::fs::Metadata) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    let root = Path::new("/");
+    path.parent() == Some(root)
+        && meta.uid() == 0
+        && std::fs::metadata(root).is_ok_and(|m| m.uid() == 0 && m.mode() & 0o022 == 0)
+}
+
+#[cfg(not(unix))]
+fn system_link(_path: &Path, _meta: &std::fs::Metadata) -> bool {
+    false
 }
 
 fn relative_to(path: &Path, root: &Path) -> Option<PathBuf> {
@@ -223,6 +242,27 @@ impl Boundary {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    /// 맥의 /var·/tmp(→ /private/…)처럼 OS가 둔 링크는 따라간다. 사용자가 만든 링크는 지금처럼 막는다
+    #[cfg(unix)]
+    #[test]
+    fn links_the_system_owns_are_followed_and_user_links_are_not() {
+        let system = ["/bin", "/lib", "/var", "/tmp"].into_iter().map(Path::new).find(|p| {
+            std::fs::symlink_metadata(p).is_ok_and(|m| m.file_type().is_symlink() && std::os::unix::fs::MetadataExt::uid(&m) == 0)
+        });
+        let Some(system) = system else {
+            eprintln!("no root-owned top-level link here; nothing to check");
+            return;
+        };
+        let real = std::fs::canonicalize(system).unwrap();
+        assert_eq!(checked_path(&system.join("x")), Some(real.join("x")));
+        assert!(is_inside(&system.join("x"), &[real.clone()]));
+
+        let tmp = tempfile::tempdir().unwrap();
+        let mine = tmp.path().join("mine");
+        std::os::unix::fs::symlink(&real, &mine).unwrap();
+        assert_eq!(checked_path(&mine.join("x")), None);
+    }
 
     #[test]
     fn daemon_data_files_are_never_in_a_component_boundary() {

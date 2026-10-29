@@ -1522,6 +1522,7 @@ mod tests {
              else:\n    print(json.dumps({'success': True}))\n",
         )
         .unwrap();
+        crate::sandbox::consent_test_component(&dir.join("lifecycle.py"));
         let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
         sup.initialize().await.unwrap();
         let mut inst = crate::instance::ServerInstance::new("srv", "game");
@@ -1569,6 +1570,7 @@ mod tests {
              else:\n    print(json.dumps({'success': True}))\n",
         )
         .unwrap();
+        crate::sandbox::consent_test_component(&dir.join("lifecycle.py"));
         let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
         sup.initialize().await.unwrap();
         let mut inst = crate::instance::ServerInstance::new("srv", "game");
@@ -1615,6 +1617,7 @@ mod tests {
              else:\n    print(json.dumps({'success': True, 'issues': []}))\n",
         )
         .unwrap();
+        crate::sandbox::consent_test_component(&dir.join("lifecycle.py"));
         let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
         sup.initialize().await.unwrap();
         let mut inst = crate::instance::ServerInstance::new("srv", "game");
@@ -1655,6 +1658,7 @@ mod tests {
              else:\n    print(json.dumps({'success': True, 'issues': []}))\n",
         )
         .unwrap();
+        crate::sandbox::consent_test_component(&dir.join("lifecycle.py"));
         let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
         sup.initialize().await.unwrap();
         let mut inst = crate::instance::ServerInstance::new("srv", "game");
@@ -1697,6 +1701,7 @@ mod tests {
              else:\n    print(json.dumps({'success': True, 'issues': []}))\n",
         )
         .unwrap();
+        crate::sandbox::consent_test_component(&dir.join("lifecycle.py"));
         let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
         sup.initialize().await.unwrap();
         for id in ["no-console-managed", "no-console-native"] {
@@ -1757,6 +1762,7 @@ mod tests {
             ),
         )
         .unwrap();
+        crate::sandbox::consent_test_component(&dir.join("lifecycle.py"));
         let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
         sup.initialize().await.unwrap();
         let mut inst = crate::instance::ServerInstance::new("native", "game");
