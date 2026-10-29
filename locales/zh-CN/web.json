@@ -97,7 +97,7 @@
     "delete_message": "服务器的设置和文件将被删除，且无法撤销。",
     "version": "服务器版本",
     "version_latest": "最新版本（推荐）",
-    "version_hint": "如果所选类型没有该版本的构建，安装会失败。",
+    "version_hint": "只列出所选服务器类型提供的版本。",
     "run": "运行方式",
     "run_managed": "由 saba-chan 管理（推荐）",
     "run_unmanaged": "自行管理",

@@ -97,7 +97,7 @@
     "delete_message": "伺服器的設定和檔案將被刪除，且無法復原。",
     "version": "伺服器版本",
     "version_latest": "最新版本（推薦）",
-    "version_hint": "如果所選類型沒有該版本的組建，安裝會失敗。",
+    "version_hint": "只列出所選伺服器類型提供的版本。",
     "run": "執行方式",
     "run_managed": "由 saba-chan 管理（推薦）",
     "run_unmanaged": "自行管理",

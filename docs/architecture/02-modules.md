@@ -379,7 +379,7 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 - `config_files`: `success`, `files[]`(절대 경로). 선택 함수. 사바쨩이 고칠 수 있는 게임 설정 파일(설정 저장·시작 전 정책·약관이 쓰는 파일)이다. 데몬은 마이그레이션 때 지금 있는 것만 보관하고, 연결 해제(삭제) 때 그 내용으로 되돌린다(01 `POST /api/instances`·`DELETE /api/instance/:id`). minecraft `server.properties`·`eula.txt`, palworld `PalWorldSettings.ini`, zomboid 프로필 ini.
 - `instance_commands`: `success`, `commands[]`(명령 필드 + `group`), `components` (`[commands] hook = true`일 때).
 - `install_server`: config에 인스턴스 설정 `settings{}`가 온다(프로비저닝·업데이트, `instance_id`를 준 `POST /api/module/:name/install`).
-- `list_versions`: config `settings{}`(인스턴스 설정)로 그 설정에서 받을 수 있는 최신을 `latest.release`(예전 모양 `latest_release`)에 준다. 예: Minecraft `server_type`이면 Paper·Folia는 안정 빌드가 나온 가장 새 버전. 데몬은 처음 설치와 버전을 비운 `POST /api/module/:name/install`에서 이 값만 읽는다(`Supervisor::latest_version`. 없으면 모듈의 `message`를 까닭으로 싣는다).
+- `list_versions`: config `settings{}`(인스턴스 설정, 만들기 화면이 고른 설정)로 그 설정에서 받을 수 있는 버전만 `versions`에 주고(쪽 나누기도 거른 뒤), 그중 받을 수 있는 최신을 `latest.release`(예전 모양 `latest_release`)에 준다. 예: Minecraft `server_type`이면 그 종류의 받을 곳이 내놓은 버전만이고, Paper·Folia는 안정 빌드가 나온 가장 새 버전이 최신이며 그보다 새 것은 목록에서도 뺀다. 받을 곳을 읽지 못하면 거르지 않는다. 데몬은 처음 설치와 버전을 비운 `POST /api/module/:name/install`에서 이 값만 읽는다(`Supervisor::latest_version`. 없으면 모듈의 `message`를 까닭으로 싣는다).
 - `backup_paths`: `success`, `paths[]`, 선택 `restore_roots[]` (`[backup] hook = true`일 때). `restore_roots`는 `paths`와 같이 해석하는 복원 허용 범위다. 그 폴더 안을 담은 옛 백업(데이터 폴더를 통째로 담던 예전 모듈의 백업 등)도 복원되게 하고, 백업 대상에는 넣지 않는다 (MA3).
 
 ### 2.3 데몬이 호출하는 함수 전체 목록과 전달 config
@@ -401,7 +401,7 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 | `instance_commands` | `GET /api/instance/:id/commands`, module.toml에 없는 이름의 명령 실행 (`[commands] hook = true`일 때, `D:src/ipc/handlers/command.rs`) | `working_dir`, 인스턴스 값(`insert_instance_fields`) |
 | `accept_agreements` | `POST /api/instance/:id/agreements` (동의를 기록한 뒤) | `validate`와 같은 config + `accepted_agreements:[id]`(지금까지 동의한 전부). 모듈은 자기 파일에 동의를 쓴다(예: minecraft eula.txt). 함수가 없으면 기록만 남는다 |
 | `diagnose_log` | `POST /diagnose` | `working_dir`, `log_lines[]`(managed일 때 최근 500줄 중 이번 실행분, `mod.rs:1982-1990`) |
-| `list_versions` | `GET /api/module/:name/versions`, 프로비저닝(download 방식), 버전을 비운 `POST /api/module/:name/install` | `include_snapshots`, `page`, `per_page` 또는 최신을 고를 때 `{settings}` |
+| `list_versions` | `GET /api/module/:name/versions`, 프로비저닝(download 방식), 버전을 비운 `POST /api/module/:name/install` | `include_snapshots`, `page`, `per_page`, `settings?`(목록 query `settings`, 최신을 고를 때 인스턴스 설정) |
 | `get_version_details` | `GET /api/module/:name/version/:v` | `version` |
 | `install_server` | `POST /api/module/:name/install`, 프로비저닝·업데이트(모두 1800초) | `version`, `install_dir`, `accepted_agreements`(동의한 `[[agreements]]` id), `settings`(프로비저닝 때, 그리고 `POST /api/module/:name/install`에 `instance_id`가 있을 때 그 인스턴스 `module_settings`), `instance_data_dirs`(같은 때), `server_executable`(요청 값, 없으면 모듈 `server_executable`), `initial_settings` 등 |
 | `get_installed_version` | `GET /installed-version`, 데몬 초기화 시 backfill `mod.rs:2200-2249` | `validate`와 같은 config(`Supervisor::instance_call`: `server_executable`, `working_dir` 등). `server_executable`은 시작과 같이 `resolve_executable`로 정한다(인스턴스 경로, 옛 `module_settings.executable_path`, `working_dir` + 모듈 `server_executable` 순) |

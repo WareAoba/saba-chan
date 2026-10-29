@@ -171,7 +171,7 @@
     "confirm_step_subtitle": "確認所選內容後新增伺服器。",
     "version": "伺服器版本",
     "version_latest": "最新版本（推薦）",
-    "version_hint": "如果所選類型沒有該版本的組建，安裝會失敗。",
+    "version_hint": "只列出所選伺服器類型提供的版本。",
     "location_title": "檔案位置",
     "location_default": "saba-chan 資料夾（推薦）",
     "location_default_hint": "安裝到 saba-chan 為每個伺服器建立的資料夾。刪除伺服器時一併刪除。",

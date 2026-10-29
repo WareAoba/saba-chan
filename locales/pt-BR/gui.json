@@ -171,7 +171,7 @@
     "confirm_step_subtitle": "Confira suas escolhas e adicione o servidor.",
     "version": "Versão do servidor",
     "version_latest": "Versão mais recente (recomendada)",
-    "version_hint": "Se o tipo escolhido não tiver build dessa versão, a instalação falha.",
+    "version_hint": "Só aparecem as versões que o tipo de servidor escolhido oferece.",
     "location_title": "Local dos arquivos",
     "location_default": "Pasta do saba-chan (recomendada)",
     "location_default_hint": "Instala na pasta que o saba-chan cria para cada servidor. Ela é apagada quando você exclui o servidor.",

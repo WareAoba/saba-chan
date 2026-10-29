@@ -577,14 +577,17 @@ impl Api {
     pub async fn module_metadata(&self, name: &str) -> Result<Value> {
         self.get(&format!("/api/module/{}", seg(name))).await
     }
-    /// GET /api/module/:name/versions
-    pub async fn module_versions(&self, name: &str, snapshots: bool, page: u32, per_page: u32) -> Result<Value> {
-        self.get_slow(&format!(
-            "/api/module/{}/versions?include_snapshots={}&page={}&per_page={}",
-            seg(name),
-            snapshots,
-            page,
-            per_page
+    /// GET /api/module/:name/versions (`settings`: 고른 설정(서버 종류 등). 그 설정으로 받을 수 있는 버전만)
+    pub async fn module_versions(&self, name: &str, snapshots: bool, page: u32, per_page: u32, settings: Option<&Value>) -> Result<Value> {
+        let path = format!("/api/module/{}/versions", seg(name));
+        self.get_slow(&with_query(
+            &path,
+            &[
+                ("include_snapshots", Some(snapshots.to_string())),
+                ("page", Some(page.to_string())),
+                ("per_page", Some(per_page.to_string())),
+                ("settings", settings.map(Value::to_string)),
+            ],
         ))
         .await
     }

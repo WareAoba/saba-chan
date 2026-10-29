@@ -629,6 +629,8 @@ async fn create_instance_inner(state: IPCServer, payload: Value, dry_run: bool) 
                             None => instance_dir.join(&install_subdir),
                         };
                         let install_dir_str = install_dir.to_string_lossy().to_string();
+                        // 고른 폴더에 설치가 실패하면 그 설치가 만든 것만 치운다 (사바쨩 폴더는 롤백이 인스턴스 폴더째 지운다)
+                        let leftovers_dir = custom_folder.then(|| install_dir.clone());
 
                         // working_dir가 아직 설정되지 않았으면 install_dir로 설정
                         if instance.working_dir.is_none() {
@@ -669,6 +671,7 @@ async fn create_instance_inner(state: IPCServer, payload: Value, dry_run: bool) 
 
                         tokio::spawn(async move {
                             let mut install_guard = install_guard;
+                            let leftovers: Option<InstallLeftovers>;
                             // ── Phase 1: supervisor lock을 최소 시간만 잡고 모듈 경로 복사 ──
                             let module_path = {
                                 let sup = supervisor_arc.read().await;
@@ -720,6 +723,7 @@ async fn create_instance_inner(state: IPCServer, payload: Value, dry_run: bool) 
                                     None // 익스텐션 방식은 version 불필요
                                 };
 
+                                leftovers = leftovers_dir.as_deref().map(|dir| InstallLeftovers::before(dir, made_folder));
                                 let mut config = serde_json::json!({
                                     "install_dir": &install_dir_str,
                                     "accepted_agreements": &accepted_agreements,
@@ -806,6 +810,8 @@ async fn create_instance_inner(state: IPCServer, payload: Value, dry_run: bool) 
                                             }
                                         };
 
+                                        // 받은 파일을 치우는 동안은 작업 잠금을 쥔다 (그 사이 시작·복원이 같은 폴더를 쓰지 않게)
+                                        if let (Err(_), Some(left)) = (&saved, &leftovers) { left.clear() }
                                         drop(install_guard.take()); // 끝났다고 알리기 전에 놓는다 (알림을 본 삭제가 막히지 않게)
                                         // 실행 경로를 저장하지 못했으면 설치했다고 알리지 않는다 (시작할 실행 파일을 모른다)
                                         if let Err(e) = saved {
@@ -845,6 +851,7 @@ async fn create_instance_inner(state: IPCServer, payload: Value, dry_run: bool) 
                                             .map(str::to_string)
                                             .unwrap_or_else(|| text.t("provision.install_failed", &[]));
                                         tracing::warn!("Native provisioning failed for '{}': {}", name_done, err_msg);
+                                        if let Some(left) = &leftovers { left.clear() }
                                         drop(install_guard.take()); // 끝났다고 알리기 전에 놓는다 (알림을 본 삭제가 막히지 않게)
                                         tracker_done.update(&name_done, crate::ipc::ProvisionProgress {
                                             step: 0, total: 1,
@@ -859,6 +866,7 @@ async fn create_instance_inner(state: IPCServer, payload: Value, dry_run: bool) 
                                 }
                                 Err(e) => {
                                     tracing::warn!("Native provisioning error for '{}': {}", name_done, e);
+                                    if let Some(left) = &leftovers { left.clear() }
                                     drop(install_guard.take()); // 끝났다고 알리기 전에 놓는다 (알림을 본 삭제가 막히지 않게)
                                     tracker_done.update(&name_done, crate::ipc::ProvisionProgress {
                                         step: 0, total: 1,
@@ -1190,6 +1198,41 @@ async fn undo_import(state: &IPCServer, instance: &crate::instance::ServerInstan
         }
     }
     false
+}
+
+/// 고른 폴더(`working_dir`)에 새로 설치하다 실패했을 때 그 설치가 만든 것. 설치 직전 폴더에 있던 항목은 남기고
+/// (만들기는 빈 폴더만 받으므로 보통 없다), 데몬이 만든 폴더였으면 비었을 때 그 폴더도 지운다
+struct InstallLeftovers {
+    dir: std::path::PathBuf,
+    /// 설치 직전의 항목 이름. 읽지 못했으면 None이고 아무것도 지우지 않는다
+    before: Option<std::collections::HashSet<std::ffi::OsString>>,
+    made_folder: bool,
+}
+
+impl InstallLeftovers {
+    fn before(dir: &std::path::Path, made_folder: bool) -> Self {
+        let before = std::fs::read_dir(dir).ok().map(|entries| entries.flatten().map(|e| e.file_name()).collect());
+        Self { dir: dir.to_path_buf(), before, made_folder }
+    }
+
+    fn clear(&self) {
+        let (Some(before), Ok(entries)) = (&self.before, std::fs::read_dir(&self.dir)) else { return };
+        for entry in entries.flatten().filter(|e| !before.contains(&e.file_name())) {
+            let path = entry.path();
+            // 링크(정션 포함)는 링크만 지운다 (가리키는 곳은 이 설치가 만든 것이 아니다)
+            let removed = match std::fs::symlink_metadata(&path) {
+                Ok(meta) if meta.is_dir() => std::fs::remove_dir_all(&path),
+                Ok(_) => std::fs::remove_file(&path).or_else(|_| std::fs::remove_dir(&path)),
+                Err(e) => Err(e),
+            };
+            if let Err(e) = removed {
+                tracing::warn!("Could not remove {} left by a failed install: {}", path.display(), e);
+            }
+        }
+        if self.made_folder {
+            let _ = std::fs::remove_dir(&self.dir); // 비었을 때만 지워진다
+        }
+    }
 }
 
 /// DELETE /api/provision-progress/:name - 프로비저닝 상태 클리어 (에러 dismiss용)
@@ -3115,7 +3158,7 @@ mod tests {
     }
 
     /// 만들기 마법사용 모듈: download 방식이고, install_server는 맞는 버전을 받았을 때만 성공한다
-    /// (`chosen` 폴더는 고른 버전 1.0이고 데몬이 만들어 둔 폴더, 그 밖은 최신 2.0).
+    /// (`chosen` 폴더는 고른 버전 1.0이고 데몬이 만들어 둔 폴더, 그 밖은 최신 2.0). `failing` 폴더에는 받다 만 파일을 남기고 실패한다.
     /// 시험 모듈은 모듈 폴더 밖이라 격리 실행(Windows)에서 설치 폴더에 쓰지 못한다: 파일을 쓰지 않고 받은 값만 본다
     async fn wizard_state(tmp: &std::path::Path) -> crate::ipc::IPCServer {
         let modules = tmp.join("modules");
@@ -3132,6 +3175,11 @@ mod tests {
             dir.join("lifecycle.py"),
             "import json, os, sys\nconfig = json.load(sys.stdin)\nif sys.argv[1] == 'list_versions':\n    \
              print(json.dumps({'success': True, 'latest': {'release': '2.0'}}))\n\
+             elif sys.argv[1] == 'install_server' and os.path.basename(config['install_dir']) == 'failing':\n    \
+             try:\n        os.makedirs(os.path.join(config['install_dir'], 'libraries'))\n        \
+             open(os.path.join(config['install_dir'], 'partial.jar'), 'w').write('x')\n    \
+             except OSError:\n        pass\n    \
+             print(json.dumps({'success': False, 'message': 'download failed'}))\n\
              elif sys.argv[1] == 'install_server':\n    \
              want = '1.0' if os.path.basename(config['install_dir']) == 'chosen' else '2.0'\n    \
              ok = config.get('version') == want and (want == '2.0' or os.path.isdir(config['install_dir']))\n    \
@@ -3244,6 +3292,33 @@ mod tests {
             assert_eq!((refused.status.as_u16(), &refused.body["error_code"]), (400, &json!("invalid_format")), "{key} {}", refused.body);
         }
         assert_eq!(state.supervisor.read().await.instance_store.list().len(), 2);
+    }
+
+    /// 고른 폴더에 설치하다 실패하면 그 설치가 만든 것만 치운다: 데몬이 만든 폴더는 지우고, 원래 있던 빈 폴더는 남긴다
+    #[tokio::test]
+    async fn a_failed_install_into_a_chosen_folder_clears_only_what_it_made() {
+        use axum::extract::State;
+        use axum::Json;
+        let tmp = tempfile::tempdir().unwrap();
+        let state = wizard_state(tmp.path()).await;
+        let create = |body: serde_json::Value| {
+            let state = state.clone();
+            async move { crate::ipc::internal::into_internal(super::create_instance(State(state), Json(body)).await).await }
+        };
+        let made = tmp.path().join("new").join("failing");
+        let res = create(json!({ "name": "a", "module_name": "game", "working_dir": made.to_string_lossy() })).await;
+        assert!(res.status.is_success(), "{}", res.body);
+        assert!(provisioned(&state, "a").await.expect("provisioning finished").error.is_some());
+        assert!(!made.exists(), "데몬이 만든 폴더는 받다 만 파일과 함께 지운다");
+        assert!(tmp.path().join("new").is_dir(), "그 위 폴더는 그대로");
+
+        let existing = tmp.path().join("kept").join("failing");
+        std::fs::create_dir_all(&existing).unwrap();
+        let res = create(json!({ "name": "b", "module_name": "game", "working_dir": existing.to_string_lossy() })).await;
+        assert!(res.status.is_success(), "{}", res.body);
+        assert!(provisioned(&state, "b").await.expect("provisioning finished").error.is_some());
+        assert!(existing.is_dir(), "원래 있던 폴더는 남긴다");
+        assert_eq!(std::fs::read_dir(&existing).unwrap().count(), 0, "그 설치가 만든 것만 지운다");
     }
 
     #[tokio::test]

@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { AddServerSheet } from '../components/ServersTab';
 import { initI18n } from '../i18n';
@@ -105,8 +105,10 @@ describe('웹 서버 만들기 — GUI와 같은 칸', () => {
 
     it('고른 버전과 직접 관리를 보내고, 고르지 않으면 보내지 않는다', async () => {
         const api = wizard();
-        await flush();
-        expect(api.moduleListVersions).toHaveBeenCalledWith('minecraft', { per_page: 50 });
+        await waitFor(() =>
+            expect(api.moduleListVersions).toHaveBeenCalledWith('minecraft', { per_page: 50, settings: {} }),
+        );
+        await waitFor(() => expect(screen.getByText('Latest version (recommended)')).toBeTruthy());
         fireEvent.click(screen.getByText('Latest version (recommended)'));
         expect(screen.queryByText('24w10a')).toBeNull();
         fireEvent.click(screen.getByText('1.20.6'));
@@ -119,6 +121,30 @@ describe('웹 서버 만들기 — GUI와 같은 칸', () => {
             module_name: 'minecraft',
             version: '1.20.6',
             managed_start: false,
+        });
+    });
+
+    it('서버 종류를 바꾸면 앞 목록을 바로 비우고, 새 목록을 못 받으면 고른 버전을 비운다', async () => {
+        const api = wizard();
+        await waitFor(() => expect(screen.getByText('Latest version (recommended)')).toBeTruthy());
+        fireEvent.click(screen.getByText('Latest version (recommended)'));
+        fireEvent.click(screen.getByText('1.20.6'));
+        api.moduleListVersions.mockRejectedValueOnce(new Error('offline'));
+        fireEvent.click(screen.getByText('vanilla'));
+        fireEvent.click(screen.getByText('paper'));
+        await waitFor(() =>
+            expect(api.moduleListVersions).toHaveBeenCalledWith('minecraft', {
+                per_page: 50,
+                settings: { server_type: 'paper' },
+            }),
+        );
+        await flush();
+        fireEvent.click(create());
+        await flush();
+        expect(api.instanceCreate).toHaveBeenCalledWith({
+            name: 'minecraft',
+            module_name: 'minecraft',
+            module_settings: { server_type: 'paper' },
         });
     });
 

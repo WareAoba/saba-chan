@@ -97,7 +97,7 @@
     "delete_message": "Les réglages et fichiers du serveur seront supprimés. Impossible d'annuler.",
     "version": "Version du serveur",
     "version_latest": "Dernière version (recommandée)",
-    "version_hint": "Si le type choisi n’a pas de build pour cette version, l’installation échoue.",
+    "version_hint": "Seules les versions proposées par le type de serveur choisi sont affichées.",
     "run": "Mode d’exécution",
     "run_managed": "Géré par saba-chan (recommandé)",
     "run_unmanaged": "Le gérer vous-même",

@@ -2611,17 +2611,22 @@ impl Supervisor {
         include_snapshots: bool,
         page: u32,
         per_page: u32,
+        settings: &Value,
     ) -> Result<Value> {
         let call = {
             let s = sup.read().await;
             let module = s.module_loader.get_module(module_name)?;
             let module_path = module.entry_path();
 
-            let config = json!({
+            let mut config = json!({
                 "include_snapshots": include_snapshots,
                 "page": page,
                 "per_page": per_page,
             });
+            // 고를 설정(서버 종류 등). 그 설정으로 받을 수 있는 버전만 (`latest_version`과 같은 키)
+            if settings.is_object() {
+                config["settings"] = settings.clone();
+            }
 
             crate::plugin::PluginCall::new(module_path, "list_versions", config)
         };

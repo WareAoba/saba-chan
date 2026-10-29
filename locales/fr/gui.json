@@ -171,7 +171,7 @@
     "confirm_step_subtitle": "Vérifiez vos choix et ajoutez le serveur.",
     "version": "Version du serveur",
     "version_latest": "Dernière version (recommandée)",
-    "version_hint": "Si le type choisi n’a pas de build pour cette version, l’installation échoue.",
+    "version_hint": "Seules les versions proposées par le type de serveur choisi sont affichées.",
     "location_title": "Emplacement des fichiers",
     "location_default": "Dossier saba-chan (recommandé)",
     "location_default_hint": "Installe dans le dossier que saba-chan crée pour chaque serveur. Il est supprimé avec le serveur.",

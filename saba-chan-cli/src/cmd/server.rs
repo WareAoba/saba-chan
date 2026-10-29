@@ -527,8 +527,11 @@ async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
         return Err(usage(t!("add.version_not_chosen", game = display)));
     }
     if version.is_none() && downloads && from.is_none() && ctx.ask.enabled {
+        // 고른 추천 설정 위에 고른 설치 설정(서버 종류 등)으로 받을 수 있는 것만 (데몬 만들기가 합치는 순서와 같다).
         // 목록을 받지 못하면 최신으로 설치한다 (GUI와 같다)
-        let versions = ctx.api.module_versions(&module_name, false, 1, 50).await.map(|v| release_versions(&v)).unwrap_or_default();
+        let mut chosen = presets.iter().find(|p| Some(s(p, "id")) == preset.as_deref()).and_then(|p| p.get("settings")).and_then(Value::as_object).cloned().unwrap_or_default();
+        chosen.extend(module_settings.clone());
+        let versions = ctx.api.module_versions(&module_name, false, 1, 50, Some(&Value::Object(chosen))).await.map(|v| release_versions(&v)).unwrap_or_default();
         if !versions.is_empty() {
             let mut choices = vec![t!("add.version_latest")];
             choices.extend(versions.iter().cloned());

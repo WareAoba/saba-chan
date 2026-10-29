@@ -171,7 +171,7 @@
     "confirm_step_subtitle": "Check your choices and add the server.",
     "version": "Server version",
     "version_latest": "Latest version (recommended)",
-    "version_hint": "If the chosen server type has no build for that version, the install fails.",
+    "version_hint": "Only versions the chosen server type offers are listed.",
     "location_title": "File location",
     "location_default": "saba-chan folder (recommended)",
     "location_default_hint": "Installs into the folder saba-chan makes for each server. It is removed when you delete the server.",

@@ -475,8 +475,8 @@ pub async fn diagnose_handler(
 
 // ─── Server Installation Handlers ────────────────────────────
 
-/// GET /api/module/:name/versions?include_snapshots=false&page=1&per_page=25
-/// List available Minecraft server versions from Mojang
+/// GET /api/module/:name/versions?include_snapshots=false&page=1&per_page=25&settings={json}
+/// 모듈 `list_versions`가 내놓는 서버 버전. `settings`(JSON 객체)는 모듈에 그대로 넘긴다
 pub async fn list_versions_handler(
     Path(module_name): Path<String>,
     State(state): State<IPCServer>,
@@ -495,7 +495,17 @@ pub async fn list_versions_handler(
         .and_then(|v| v.parse::<u32>().ok())
         .unwrap_or(25);
 
-    match Supervisor::list_versions(&state.supervisor, &module_name, include_snapshots, page, per_page).await {
+    // 만들기 화면이 고른 설정(서버 종류 등): 모듈이 그 설정으로 받을 수 있는 버전만 내놓는다
+    let settings = match params.get("settings").map(|s| serde_json::from_str::<Value>(s)) {
+        None => Value::Null,
+        Some(Ok(v)) if v.is_object() => v,
+        Some(_) => {
+            let error = json!({ "success": false, "error": "settings must be a JSON object", "error_code": "invalid_format", "fields": [{"field": "settings"}] });
+            return (StatusCode::BAD_REQUEST, Json(error)).into_response();
+        }
+    };
+
+    match Supervisor::list_versions(&state.supervisor, &module_name, include_snapshots, page, per_page, &settings).await {
         Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -1012,6 +1022,40 @@ mod tests {
         let unsupported = players("without").await;
         assert_eq!((unsupported.status, unsupported.body["error_code"].as_str()), (StatusCode::OK, Some("not_supported")), "{}", unsupported.body);
         assert_eq!(players("missing").await.status, StatusCode::NOT_FOUND);
+    }
+
+    /// 버전 목록은 만들기 화면이 고른 설정(서버 종류 등)을 모듈에 넘겨, 그 설정으로 받을 수 있는 것만 받는다
+    #[tokio::test]
+    async fn the_version_list_is_asked_for_the_chosen_settings() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("module.toml"), "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n").unwrap();
+        std::fs::write(
+            dir.join("lifecycle.py"),
+            "import json, sys\nconfig = json.load(sys.stdin)\nkind = (config.get('settings') or {}).get('kind')\n\
+             print(json.dumps({'success': True, 'versions': [{'id': '2.0' if kind == 'b' else '1.0', 'type': 'release'}], 'page': config.get('page')}))\n",
+        )
+        .unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        for module in sup.module_loader.discover_modules().unwrap() { crate::sandbox::consent_test_component(std::path::Path::new(&module.entry_path())); }
+        sup.initialize().await.unwrap();
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let list = |query: &[(&str, &str)]| {
+            let state = state.clone();
+            let query: HashMap<String, String> = query.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
+            async move { crate::ipc::internal::into_internal(list_versions_handler(Path("game".into()), State(state), axum::extract::Query(query)).await.into_response()).await }
+        };
+        let typed = list(&[("settings", r#"{"kind":"b"}"#), ("page", "2")]).await;
+        assert!(typed.status.is_success(), "{}", typed.body);
+        assert_eq!((&typed.body["versions"][0]["id"], &typed.body["page"]), (&json!("2.0"), &json!(2)));
+        assert_eq!(list(&[]).await.body["versions"][0]["id"], "1.0");
+        // 설정은 JSON 객체만
+        for bad in ["[1]", "kind=b"] {
+            let refused = list(&[("settings", bad)]).await;
+            assert_eq!((refused.status, &refused.body["error_code"]), (StatusCode::BAD_REQUEST, &json!("invalid_format")), "{bad}");
+        }
     }
 
     // 실사용(L23): GUI "새로 설치"가 버전을 직접 골라 인스턴스 설정 없이 보내, 종류가 다른 서버(예: 다른 배포판)의

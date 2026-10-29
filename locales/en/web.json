@@ -97,7 +97,7 @@
     "delete_message": "The server settings and files will be deleted. This can't be undone.",
     "version": "Server version",
     "version_latest": "Latest version (recommended)",
-    "version_hint": "If the chosen server type has no build for that version, the install fails.",
+    "version_hint": "Only versions the chosen server type offers are listed.",
     "run": "Run mode",
     "run_managed": "Managed by saba-chan (recommended)",
     "run_unmanaged": "Manage it yourself",

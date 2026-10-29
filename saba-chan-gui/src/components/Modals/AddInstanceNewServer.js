@@ -12,6 +12,7 @@ import {
     optionLabel,
     releaseVersions,
     suggestName,
+    versionSettings,
     wizardSteps,
 } from '../../utils/installFields';
 import { AgreementList, allChecked } from '../AgreementList';
@@ -102,20 +103,42 @@ export function AddInstanceNewServer({
             port,
         });
 
-    // 서버 종류·버전 단계: 고를 수 있는 릴리스를 데몬에 묻는다 (못 받으면 최신만 고른다)
+    // 서버 종류·버전 단계: 고른 설정(서버 종류 등)으로 받을 수 있는 릴리스를 데몬에 묻는다 (못 받으면 최신만 고른다).
+    // 설정을 바꾸면 다시 묻고, 앞 목록과 골라 둔 버전은 바로 비운다 (새 목록이 오기 전에 넘어가도 앞 설정의 버전을 보내지 않게)
+    const versionKey = choosesVersion(selectedModule)
+        ? JSON.stringify(versionSettings(selectedModule, installValues, preset))
+        : '';
+    const versionPickedFor = useRef(versionKey);
     useEffect(() => {
-        if (step !== 'server' || versions !== null || !choosesVersion(selectedModule)) return;
+        if (versionPickedFor.current === versionKey) return;
+        versionPickedFor.current = versionKey;
+        setVersion('');
+        setVersions(null);
+    }, [versionKey]);
+    useEffect(() => {
+        if (step !== 'server' || !versionKey) return;
         let alive = true;
-        Promise.resolve(window.api?.moduleListVersions?.(selectedExtension, { per_page: 50 }))
-            .then((res) => {
-                if (!alive) return;
-                setVersions(releaseVersions(res));
-            })
-            .catch(() => alive && setVersions([]));
+        const timer = setTimeout(() => {
+            Promise.resolve(
+                window.api?.moduleListVersions?.(selectedExtension, { per_page: 50, settings: JSON.parse(versionKey) }),
+            )
+                .then((res) => {
+                    if (!alive) return;
+                    const list = releaseVersions(res);
+                    setVersions(list);
+                    setVersion((chosen) => (list.includes(chosen) ? chosen : ''));
+                })
+                .catch(() => {
+                    if (!alive) return;
+                    setVersions([]);
+                    setVersion('');
+                });
+        }, 250);
         return () => {
             alive = false;
+            clearTimeout(timer);
         };
-    }, [step, versions, selectedModule, selectedExtension]);
+    }, [step, versionKey, selectedExtension]);
 
     // 이름·포트 단계와 확인 단계: 겹치는지 데몬에 묻는다 (입력이 멈춘 뒤 한 번)
     const checkKey = JSON.stringify(step === 'name' || step === 'confirm' ? body() : null);
