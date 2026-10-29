@@ -800,6 +800,8 @@
       "bot.channels.no_notify": "Retirer le salon des notifications",
       "bot.channels.game_chat": "Le canal du chat du jeu (chat des serveurs avec le relais activé), par nom ou id",
       "bot.channels.no_game_chat": "Retirer le canal du chat du jeu",
+      "bot.channels.board": "The status board channel (a card per running server: banner, players, uptime), by name or id",
+      "bot.channels.no_board": "Unassign the status board channel",
       "bot.link.decline": "Refuser cette demande de connexion",
       "bot.allow.all": "Sans limite : tous les serveurs de ce PC",
       "sandbox.allow.component": "Composant à lancer sans isolation",

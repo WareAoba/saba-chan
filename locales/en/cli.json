@@ -785,6 +785,8 @@
       "bot.channels.no_notify": "Unassign the notification channel",
       "bot.channels.game_chat": "The game chat channel (in-game chat of servers with game chat relay on), by name or id",
       "bot.channels.no_game_chat": "Unassign the game chat channel",
+      "bot.channels.board": "The status board channel (a card per running server: banner, players, uptime), by name or id",
+      "bot.channels.no_board": "Unassign the status board channel",
       "bot.link.decline": "Refuse this connection request",
       "bot.allow.all": "No limit: every server of this PC",
       "sandbox.allow.component": "Component to run without isolation",

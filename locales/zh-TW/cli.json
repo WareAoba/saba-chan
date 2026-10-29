@@ -800,6 +800,8 @@
       "bot.channels.no_notify": "取消通知頻道",
       "bot.channels.game_chat": "遊戲聊天頻道（開啟聊天轉發的伺服器的遊戲聊天），名稱或 id",
       "bot.channels.no_game_chat": "取消遊戲聊天頻道",
+      "bot.channels.board": "The status board channel (a card per running server: banner, players, uptime), by name or id",
+      "bot.channels.no_board": "Unassign the status board channel",
       "bot.link.decline": "拒絕此連線請求",
       "bot.allow.all": "不限制: 此電腦上的所有伺服器",
       "sandbox.allow.component": "不隔離執行的元件",

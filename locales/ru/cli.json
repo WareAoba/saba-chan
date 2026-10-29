@@ -800,6 +800,8 @@
       "bot.channels.no_notify": "Убрать канал уведомлений",
       "bot.channels.game_chat": "Канал игрового чата (чат серверов с включённой пересылкой), по имени или id",
       "bot.channels.no_game_chat": "Снять канал игрового чата",
+      "bot.channels.board": "The status board channel (a card per running server: banner, players, uptime), by name or id",
+      "bot.channels.no_board": "Unassign the status board channel",
       "bot.link.decline": "Отклонить этот запрос на подключение",
       "bot.allow.all": "Без ограничений: все серверы этого ПК",
       "sandbox.allow.component": "Компонент, который запускается без изоляции",

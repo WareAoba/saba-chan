@@ -931,6 +931,8 @@
       "bot.channels.no_notify": "通知チャンネルを解除",
       "bot.channels.game_chat": "ゲームチャットチャンネル (チャット転送をオンにしたサーバーのゲームチャット)、名前または id",
       "bot.channels.no_game_chat": "ゲームチャットチャンネルを解除",
+      "bot.channels.board": "The status board channel (a card per running server: banner, players, uptime), by name or id",
+      "bot.channels.no_board": "Unassign the status board channel",
       "bot.link.decline": "この接続リクエストを拒否",
       "bot.allow.all": "制限なし: このPCのすべてのサーバー",
       "sandbox.allow.component": "分離せずに実行するコンポーネント",

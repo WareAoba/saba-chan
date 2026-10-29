@@ -931,6 +931,8 @@
       "bot.channels.no_notify": "取消通知频道",
       "bot.channels.game_chat": "游戏聊天频道（开启聊天转发的服务器的游戏聊天），名称或 id",
       "bot.channels.no_game_chat": "取消游戏聊天频道",
+      "bot.channels.board": "The status board channel (a card per running server: banner, players, uptime), by name or id",
+      "bot.channels.no_board": "Unassign the status board channel",
       "bot.link.decline": "拒绝此连接请求",
       "bot.allow.all": "不限制: 此电脑上的所有服务器",
       "sandbox.allow.component": "不隔离运行的组件",
