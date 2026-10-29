@@ -249,7 +249,7 @@
       "settings": {
         "set": {
           "title": "Discord設定を変更",
-          "description": "言語・スリープ・音楽機能"
+          "description": "言語・スリープ・うたうサバちゃん"
         }
       }
     },
@@ -290,7 +290,7 @@
       "guild": "Discordサーバー",
       "locale": "言語",
       "sleeping": "スリープ",
-      "music": "音楽",
+      "music": "うたうサバちゃん",
       "enabled": "オン",
       "model": "モデル",
       "memo": "サーバープロンプト",

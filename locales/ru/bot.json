@@ -249,7 +249,7 @@
       "settings": {
         "set": {
           "title": "Изменить настройки Discord",
-          "description": "Язык, сон и музыка"
+          "description": "Язык, сон и Поющая Saba-chan"
         }
       }
     },
@@ -290,7 +290,7 @@
       "guild": "Сервер Discord",
       "locale": "Язык",
       "sleeping": "Сон",
-      "music": "Музыка",
+      "music": "Поющая Saba-chan",
       "enabled": "Включён",
       "model": "Модель",
       "memo": "Промпт сервера",

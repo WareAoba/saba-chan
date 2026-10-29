@@ -249,7 +249,7 @@
       "settings": {
         "set": {
           "title": "디스코드 설정 바꾸기",
-          "description": "언어·잠자기·음악 기능"
+          "description": "언어·잠자기·노래하는 사바쨩"
         }
       }
     },
@@ -290,7 +290,7 @@
       "guild": "디스코드 서버",
       "locale": "언어",
       "sleeping": "잠자기",
-      "music": "음악",
+      "music": "노래하는 사바쨩",
       "enabled": "켜기",
       "model": "모델",
       "memo": "서버 프롬프트",

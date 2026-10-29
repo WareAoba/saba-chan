@@ -249,7 +249,7 @@
       "settings": {
         "set": {
           "title": "Change Discord settings",
-          "description": "Language, sleep and music"
+          "description": "Language, sleep and Singing Saba-chan"
         }
       }
     },
@@ -290,7 +290,7 @@
       "guild": "Discord server",
       "locale": "Language",
       "sleeping": "Sleep",
-      "music": "Music",
+      "music": "Singing Saba-chan",
       "enabled": "On",
       "model": "Model",
       "memo": "Server prompt",

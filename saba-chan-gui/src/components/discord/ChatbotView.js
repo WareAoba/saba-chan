@@ -201,7 +201,9 @@ export function ChatbotView({ nodes = [] }) {
     return (
         <div className="dc-view">
             <header className="dc-view-head">
-                <h1>{t('chatbot.title')}</h1>
+                <h1>
+                    <Icon name="sabaTalking" size="lg" /> {t('chatbot.title')}
+                </h1>
                 <p className="muted">{t('chatbot.desc')}</p>
             </header>
             {loadError && <SabaFail message={loadError} onRetry={load} retryLabel={t('maintenance.retry')} />}

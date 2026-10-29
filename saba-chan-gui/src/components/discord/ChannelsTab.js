@@ -171,7 +171,9 @@ export function ChannelsTab({ node }) {
             )}
 
             <section className="dc-card">
-                <h3>{t('discord.channels_chatbot')}</h3>
+                <h3>
+                    <Icon name="sabaTalking" size="sm" /> {t('discord.channels_chatbot')}
+                </h3>
                 <p className="dc-hint">{t('discord.channels_chatbot_hint', { max: CHATBOT_MAX })}</p>
                 {groups.map((g) => (
                     <div key={g.key || '_'} className="dc-channel-group">
@@ -218,7 +220,9 @@ export function ChannelsTab({ node }) {
             </section>
 
             <section className="dc-card">
-                <h3>{t('discord.channels_music')}</h3>
+                <h3>
+                    <Icon name="musicNote" size="sm" /> {t('discord.channels_music')}
+                </h3>
                 <p className="dc-hint">{t('discord.channels_music_hint')}</p>
                 <CustomDropdown
                     value={draft.music || ''}

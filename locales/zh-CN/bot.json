@@ -249,7 +249,7 @@
       "settings": {
         "set": {
           "title": "更改 Discord 设置",
-          "description": "语言、睡眠和音乐功能"
+          "description": "语言、睡眠和会唱歌的 Saba-chan"
         }
       }
     },
@@ -290,7 +290,7 @@
       "guild": "Discord 服务器",
       "locale": "语言",
       "sleeping": "睡眠",
-      "music": "音乐",
+      "music": "会唱歌的 Saba-chan",
       "enabled": "开启",
       "model": "模型",
       "memo": "服务器提示词",
