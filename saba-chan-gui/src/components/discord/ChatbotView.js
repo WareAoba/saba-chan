@@ -21,6 +21,7 @@ export const GUILD_DEFAULTS = {
     ambient: true,
     ambientMinutes: 3,
     ambientEffort: 'low',
+    moderation: false,
 };
 export const EFFORTS = ['low', 'medium', 'high'];
 export const AMBIENT_MINUTES = [1, 3, 5, 10, 30];

@@ -295,6 +295,7 @@ describe('챗봇 설정 변환', () => {
             ambient: null,
             ambientMinutes: null,
             ambientEffort: null,
+            moderation: null,
         });
         const p = guildPatch({ ...d, effort: 'medium', ambient: false }, { effort: 'high' });
         expect(p).toMatchObject({ effort: 'medium', ambient: false, memory: null });

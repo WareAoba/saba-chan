@@ -48,6 +48,7 @@ fn relay_defaults() -> Map<String, Value> {
         "ambientEffort": "low",
         "confirmLevel": "all",
         "memory": true,
+        "moderation": false,
         "tools": [],
     }) else {
         unreachable!()
