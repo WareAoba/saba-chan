@@ -1,14 +1,15 @@
-//! 디스코드 길드 설정 (I2): 응답 언어·잠자기·음악 기능·직접 요청 되묻기 단계
+//! 디스코드 길드 설정 (I2): 응답 언어·잠자기·음악 기능·직접 요청 되묻기 단계·접두사·명령 번역
 //!
 //! 원본은 데몬 config.json `relay.nodeSettings[<guild>].discord`다. 바꿀 때마다, 그리고 릴레이 에이전트가 연결될 때
 //! 릴레이 `PATCH /api/nodes/:guild/settings`로 맞춘다. 봇 설정 저장(`PUT /api/config/bot`)은 이 블록을 바꾸지 않는다.
 //!
-//! - `GET /api/discord/:guild/settings` → `{guildId, locale, sleeping, music, confirmLevel}`
+//! - `GET /api/discord/:guild/settings` → `{guildId, locale, sleeping, music, confirmLevel, commandRisks, prefixes, translateCommands}`
 //! - `PATCH /api/discord/:guild/settings` 바꿀 키만 (`music` 안도 부분) → `{success, settings, sync}`.
 //!   틀린 값은 400 `invalid_input {field, reason}`, 페어링이 없으면 409 `not_paired`.
 //!   릴레이가 400으로 거절하면 저장하지 않는다. 닿지 않으면 저장하고 `sync.ok:false` (다음 연결 때 맞춘다)
 //!
 //! 업그레이드 뒤 처음 연결할 때 블록이 없는 길드는 릴레이 값을 한 번 가져와 원본으로 삼는다.
+//! 접두사·명령 번역은 0.1.12 전에는 호스트 하나의 봇 설정(`prefixes`, `translateCommands`)이었다: 서버 값이 없으면 그것을 물려받는다.
 
 use axum::{
     extract::{Path, State},
@@ -24,6 +25,7 @@ use serde_json::{json, Map, Value};
 use super::chatbot::{call, host_guilds, relay_base, result_row};
 use super::relay::{encode_path_segment, load_node_token};
 use super::super::IPCServer;
+use crate::config_store::{BotConfig, PREFIXES_MAX, PREFIX_MAX_CHARS};
 
 /// `nodeSettings[guild]`에서 이 API만 바꾸는 키
 pub const SETTINGS_KEY: &str = "discord";
@@ -43,6 +45,10 @@ pub struct GuildSettings {
     /// 이 길드의 디스코드 되묻기에서 명령의 위험 단계를 바꾼다 (`"<서버 id>/<액션 id>"` → `RISKS`, 서버 없는 액션은 액션 id만).
     /// 되묻기에만 쓰고 권한 판정(`commandLevels`)과는 따로다. 앱·웹·CLI는 고정 규칙이라 보지 않는다. 데몬만 본다
     pub command_risks: BTreeMap<String, String>,
+    /// 이 서버의 접두사 (말하는 사바쨩을 부르는 말이기도 하다). 비어 있으면 응답 언어의 기본 접두사
+    pub prefixes: Vec<String>,
+    /// 디스코드 슬래시 명령에 모듈 명령의 번역한 이름·설명을 단다 (모듈 locales). 끄면 module.toml 이름 그대로
+    pub translate_commands: bool,
 }
 
 /// 명령별 위험 단계로 고를 수 있는 값
@@ -67,7 +73,15 @@ pub struct Music {
 
 impl Default for GuildSettings {
     fn default() -> Self {
-        Self { locale: AUTO_LOCALE.into(), sleeping: false, music: Music::default(), confirm_level: "danger".into(), command_risks: BTreeMap::new() }
+        Self {
+            locale: AUTO_LOCALE.into(),
+            sleeping: false,
+            music: Music::default(),
+            confirm_level: "danger".into(),
+            command_risks: BTreeMap::new(),
+            prefixes: Vec::new(),
+            translate_commands: true,
+        }
     }
 }
 
@@ -86,6 +100,25 @@ impl GuildSettings {
         serde_json::from_value(node?.get(SETTINGS_KEY)?.clone()).ok()
     }
 
+    /// 데몬에 저장된 길드 값 (없으면 `None`). 0.1.12 전에 저장한 값은 호스트의 접두사·명령 번역을 물려받는다
+    pub fn of_guild(node_settings: &Value, guild: &str, bot: &BotConfig) -> Option<Self> {
+        let node = node_settings.get(guild);
+        let saved = node?.get(SETTINGS_KEY)?;
+        Some(Self::from_node(node)?.inherit(saved, bot))
+    }
+
+    /// `saved`(저장된 블록이나 릴레이 값)에 없는 접두사·명령 번역은 호스트 봇 설정 값으로
+    fn inherit(mut self, saved: &Value, bot: &BotConfig) -> Self {
+        let missing = |k: &str| saved.get(k).is_none_or(Value::is_null);
+        if missing("prefixes") {
+            self.prefixes = bot.prefixes.clone();
+        }
+        if missing("translateCommands") {
+            self.translate_commands = bot.translate_commands;
+        }
+        self
+    }
+
     /// 릴레이 `PATCH /api/nodes/:guild/settings` 본문
     fn relay_body(&self) -> Value {
         json!({
@@ -98,6 +131,8 @@ impl GuildSettings {
                 "refreshInterval": self.music.refresh_interval,
                 "normalize": self.music.normalize,
             },
+            "prefixes": self.prefixes,
+            "translateCommands": self.translate_commands,
         })
     }
 
@@ -127,6 +162,11 @@ impl GuildSettings {
             }
         }
         patch.insert("music".into(), Value::Object(music));
+        for key in ["prefixes", "translateCommands"] {
+            if let Some(v) = body.get(key).filter(|v| !v.is_null()) {
+                patch.insert(key.into(), v.clone());
+            }
+        }
         // 하나씩 넣어 틀린 값 하나 때문에 나머지를 잃지 않는다
         for (k, v) in patch {
             match (k.as_str(), v) {
@@ -157,6 +197,25 @@ impl GuildSettings {
                     next.locale = l.to_string();
                 }
                 "sleeping" => next.sleeping = v.as_bool().ok_or(("sleeping".into(), "must be a boolean"))?,
+                "translateCommands" => next.translate_commands = v.as_bool().ok_or(("translateCommands".into(), "must be a boolean"))?,
+                "prefixes" => {
+                    // 릴레이 `prefixList`와 같다: 공백 없는 1~32자, 10개까지
+                    let list = v.as_array().ok_or(("prefixes".into(), "must be a list"))?;
+                    if list.len() > PREFIXES_MAX {
+                        return Err(("prefixes".into(), "too many"));
+                    }
+                    let mut out = Vec::new();
+                    for p in list {
+                        let p = p.as_str().map(str::trim).ok_or(("prefixes".into(), "must be strings"))?;
+                        if p.is_empty() || p.chars().count() > PREFIX_MAX_CHARS || p.chars().any(char::is_whitespace) {
+                            return Err(("prefixes".into(), "1-32 characters without spaces"));
+                        }
+                        if !out.iter().any(|o| o == p) {
+                            out.push(p.to_string());
+                        }
+                    }
+                    next.prefixes = out;
+                }
                 "confirmLevel" => match v.as_str() {
                     Some(l) if CONFIRM_LEVELS.contains(&l) => next.confirm_level = l.to_string(),
                     _ => return Err(("confirmLevel".into(), "unknown level")),
@@ -246,13 +305,22 @@ fn retry_later(outcome: &Result<(StatusCode, Value), String>) -> bool {
 /// 페어링했는데 릴레이를 읽지 못하면 `None`: 기본값으로 착각해 저장하면 다음 동기화가 릴레이 값을 덮어쓴다
 async fn current(state: &IPCServer, guild: &str) -> Option<GuildSettings> {
     let bot = state.config_store.get_bot_config().await;
-    if let Some(s) = GuildSettings::from_node(bot.node_settings.get(guild)) {
+    if let Some(s) = GuildSettings::of_guild(&bot.node_settings, guild, &bot) {
         return Some(s);
     }
     match relay_settings(&relay_base(state).await, guild).await {
-        RelaySettings::Found(body) => Some(GuildSettings::from_relay(&body)),
-        RelaySettings::Absent => Some(GuildSettings::default()),
+        RelaySettings::Found(body) => Some(GuildSettings::from_relay(&body).inherit(&body, &bot)),
+        RelaySettings::Absent => Some(GuildSettings::default().inherit(&Value::Null, &bot)),
         RelaySettings::Unreachable => None,
+    }
+}
+
+/// 이 길드에서 채팅 명령이 맞춰 볼 접두사 (비면 응답 언어의 기본값). 길드 값이 없으면 호스트 값
+pub fn guild_prefixes(node_settings: &Value, guild: Option<&str>, host: &[String]) -> Vec<String> {
+    let own = guild.and_then(|g| node_settings.get(g)?.get(SETTINGS_KEY)?.get("prefixes")?.as_array().cloned());
+    match own {
+        Some(list) => list.iter().filter_map(Value::as_str).map(str::to_string).collect(),
+        None => host.to_vec(),
     }
 }
 
@@ -394,7 +462,7 @@ pub async fn sync_on_connect(state: &IPCServer) {
         }
     }
     for guild in guilds {
-        match GuildSettings::from_node(bot.node_settings.get(&guild)) {
+        match GuildSettings::of_guild(&bot.node_settings, &guild, &bot) {
             Some(s) => {
                 let outcome = push(state, &base, &guild, &Value::Null, &s).await;
                 if !matches!(&outcome, Ok((c, _)) if c.is_success()) {
@@ -408,7 +476,7 @@ pub async fn sync_on_connect(state: &IPCServer) {
                 let path = format!("/api/nodes/{}/settings", encode_path_segment(&guild));
                 match call(&base, reqwest::Method::GET, &path, None).await {
                     Ok((c, body)) if c.is_success() => {
-                        if let Err(e) = save(state, &guild, &GuildSettings::from_relay(&body)).await {
+                        if let Err(e) = save(state, &guild, &GuildSettings::from_relay(&body).inherit(&body, &bot)).await {
                             tracing::warn!("[Discord] could not keep the relay settings of guild {}: {}", guild, e);
                         }
                     }
@@ -459,6 +527,55 @@ mod tests {
         }
     }
 
+    /// 접두사·명령 번역은 서버마다: 접두사는 공백 없는 1~32자 10개까지, 빈 목록은 언어 기본값. 릴레이에도 보낸다
+    #[test]
+    fn prefixes_and_command_translation_are_per_server() {
+        let mut s = GuildSettings::default();
+        assert!(s.prefixes.is_empty());
+        assert!(s.translate_commands);
+        s.apply(&patch(json!({ "prefixes": [" 사바 ", "!s"], "translateCommands": false }))).unwrap();
+        assert_eq!(s.prefixes, vec!["사바", "!s"]);
+        assert!(!s.translate_commands);
+        let body = s.relay_body();
+        assert_eq!(body["prefixes"], json!(["사바", "!s"]));
+        assert_eq!(body["translateCommands"], json!(false));
+        for bad in [json!({ "prefixes": ["띄어 쓰기"] }), json!({ "prefixes": [""] }), json!({ "prefixes": ["x".repeat(33)] }), json!({ "prefixes": vec!["p"; 11] }), json!({ "prefixes": "!s" }), json!({ "translateCommands": 1 })] {
+            let before = s.clone();
+            assert!(s.apply(&patch(bad.clone())).is_err(), "{bad}");
+            assert_eq!(s, before);
+        }
+        s.apply(&patch(json!({ "prefixes": [] }))).unwrap();
+        assert!(s.prefixes.is_empty());
+    }
+
+    /// 서버별로 정하기 전(0.1.12 전)에 저장한 서버는 호스트 하나의 접두사·명령 번역을 물려받는다
+    #[test]
+    fn a_server_saved_before_the_split_inherits_the_host_prefixes() {
+        let bot = crate::config_store::BotConfig { prefixes: vec!["!old".into()], translate_commands: false, ..Default::default() };
+        let old = json!({ "123": { "discord": { "locale": "ko" } } });
+        let s = GuildSettings::of_guild(&old, "123", &bot).unwrap();
+        assert_eq!(s.prefixes, vec!["!old"]);
+        assert!(!s.translate_commands);
+        assert_eq!(s.locale, "ko");
+        let new = json!({ "123": { "discord": { "prefixes": [], "translateCommands": true } } });
+        let s = GuildSettings::of_guild(&new, "123", &bot).unwrap();
+        assert!(s.prefixes.is_empty() && s.translate_commands);
+        assert!(GuildSettings::of_guild(&new, "456", &bot).is_none());
+        // 채팅 명령이 맞춰 볼 접두사도 같다
+        assert_eq!(guild_prefixes(&old, Some("123"), &bot.prefixes), vec!["!old"]);
+        assert!(guild_prefixes(&new, Some("123"), &bot.prefixes).is_empty());
+        assert_eq!(guild_prefixes(&new, Some("456"), &bot.prefixes), vec!["!old"]);
+        assert_eq!(guild_prefixes(&new, None, &bot.prefixes), vec!["!old"]);
+        // 처음 한 번 릴레이 값을 가져올 때도: 릴레이에 서버 값이 없으면(null) 호스트 값
+        let relay = json!({ "prefixes": null, "translateCommands": true });
+        let s = GuildSettings::from_relay(&relay).inherit(&relay, &bot);
+        assert_eq!(s.prefixes, vec!["!old"]);
+        assert!(s.translate_commands, "the relay knew this one");
+        let s = GuildSettings::from_relay(&json!({ "prefixes": ["!r"] })).inherit(&json!({ "prefixes": ["!r"] }), &bot);
+        assert_eq!(s.prefixes, vec!["!r"]);
+        assert!(!s.translate_commands);
+    }
+
     #[test]
     fn relay_values_are_kept_once_when_the_daemon_has_none() {
         let s = GuildSettings::from_relay(&json!({
@@ -489,7 +606,10 @@ mod tests {
         assert_eq!(Value::Object(changed(&relay, &s.relay_body())), json!({ "musicSettings": { "queueLines": 9 } }));
         // 릴레이에 없는 키(예전 릴레이)는 보낸다
         let old_relay = json!({ "musicEnabled": true, "musicUIEnabled": true, "musicSettings": { "queueLines": 9, "refreshInterval": 4000, "normalize": true } });
-        assert_eq!(Value::Object(changed(&old_relay, &s.relay_body())), json!({ "locale": "auto", "sleeping": false }));
+        assert_eq!(
+            Value::Object(changed(&old_relay, &s.relay_body())),
+            json!({ "locale": "auto", "sleeping": false, "prefixes": [], "translateCommands": true })
+        );
     }
 
     #[test]

@@ -1,7 +1,6 @@
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ChatbotView, ModelField } from '../components/discord/ChatbotView';
-import { DiscordPage } from '../components/discord/DiscordPage';
 import { defaultPrefix, prefixProblems, readPrefixes } from '../components/discord/prefixes';
 import { openDropdown } from './dropdown';
 
@@ -29,32 +28,6 @@ describe('접두사 (chatbot-settings-v2 §2·§3)', () => {
     it('기본 접두사는 릴레이가 알려 준 값을 먼저 쓴다', () => {
         expect(defaultPrefix(t, [{ prefixDefault: true, prefixes: ['サバちゃん'] }])).toBe('サバちゃん');
         expect(defaultPrefix(t, [{ prefixDefault: false, prefixes: ['!x'] }])).toBe('discord.default_prefix');
-    });
-
-    it('봇 설정 화면: 비어 있으면 기본값을 안내하고, 칩으로 여러 개 넣는다', async () => {
-        window.api = {
-            relayListHostNodes: vi.fn().mockResolvedValue([]),
-            botConfigLoad: vi.fn().mockResolvedValue({}),
-        };
-        const setPrefixes = vi.fn();
-        await act(async () =>
-            render(
-                <DiscordPage
-                    discordPrefixes={[]}
-                    setDiscordPrefixes={setPrefixes}
-                    cloudNodes={[{ guildId: 'g1', prefixDefault: true, prefixes: ['사바쨩'] }]}
-                    setCloudNodes={() => {}}
-                    cloudMembers={{}}
-                    setCloudMembers={() => {}}
-                    initialView={{ kind: 'bot' }}
-                />,
-            ),
-        );
-        expect(screen.getByText(/사바쨩/, { selector: '.dc-hint' })).toBeTruthy();
-        const input = screen.getByLabelText('Command prefix');
-        fireEvent.change(input, { target: { value: '!pal' } });
-        fireEvent.keyDown(input, { key: 'Enter' });
-        expect(setPrefixes).toHaveBeenLastCalledWith(['!pal']);
     });
 });
 

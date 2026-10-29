@@ -1088,7 +1088,10 @@
       "bot.confirm.direct": "ボットへの直接の依頼 — プレフィックスコマンドとスラッシュコマンドです。",
       "bot.confirm.chatbot": "おしゃべりサバちゃん — おしゃべりサバちゃんが選んだ管理作業と、複数の人が混ざった依頼は、この設定に関係なく必ず確認します。",
       "game_version": "インストールするサーバーのバージョン (サーバーをダウンロードするゲーム、既定: 最新リリース)",
-      "unmanaged": "自分で管理: サバちゃんは起動して動いているかだけ見ます (コンソールなし)"
+      "unmanaged": "自分で管理: サバちゃんは起動して動いているかだけ見ます (コンソールなし)",
+      "bot.prefix.guild": "The Discord server, by name or id (without it: the only paired server)",
+      "bot.translate.on": "Show translated command names",
+      "bot.translate.off": "Show only the names in the module"
     },
     "after": "名前は一部だけでも指定できます（例: start pal）。端末で引数なしで実行すると全画面メニューが開きます(SABA_NO_TUI=1 なら対話シェル)。\nスクリプトでは --json と --yes を使ってください。終了コード: 0 成功 · 1 失敗 · 2 使い方の誤り · 3 デーモンに接続不可 · 4 見つからない · 130 キャンセル"
   },

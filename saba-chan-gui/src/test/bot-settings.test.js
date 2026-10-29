@@ -34,7 +34,7 @@ describe('디스코드 봇 설정 탭', () => {
             settings: base,
             sync: { ok: true },
         });
-        render(<BotSettingsTab node={node} />);
+        render(<BotSettingsTab node={node} section="music" />);
         await flush();
         // 잠자기는 연결 화면의 재우기와 겹쳐서 여기 두지 않는다
         expect(screen.queryByRole('checkbox', { name: 'Sleep' })).toBeNull();
@@ -49,7 +49,7 @@ describe('디스코드 봇 설정 탭', () => {
         window.api.discordSettingsSet = vi
             .fn()
             .mockResolvedValue({ success: true, settings: base, sync: { ok: true } });
-        render(<BotSettingsTab node={node} />);
+        render(<BotSettingsTab node={node} section="music" />);
         await flush();
         const [lines, refresh] = screen.getAllByRole('spinbutton');
         fireEvent.change(lines, { target: { value: '30' } });
@@ -67,7 +67,7 @@ describe('디스코드 봇 설정 탭', () => {
         window.showToast = vi.fn();
         window.api.discordSettingsGet = vi.fn().mockResolvedValue({ ...base, sync: { ok: false } });
         window.api.discordSettingsSet = vi.fn().mockResolvedValue({ success: false, error_code: 'not_paired' });
-        render(<BotSettingsTab node={node} />);
+        render(<BotSettingsTab node={node} section="music" />);
         await flush();
         expect(screen.getByText(/not applied to Discord yet/)).toBeInTheDocument();
         fireEvent.click(screen.getByRole('checkbox', { name: 'Turn on Singing Saba-chan' }));
@@ -78,7 +78,7 @@ describe('디스코드 봇 설정 탭', () => {
     it('릴레이에서 설정을 못 읽었으면(loaded:false) 알리고 바꾸지 못하게 한다', async () => {
         window.api.discordSettingsGet = vi.fn().mockResolvedValue({ ...base, loaded: false });
         window.api.discordSettingsSet = vi.fn();
-        render(<BotSettingsTab node={node} />);
+        render(<BotSettingsTab node={node} section="music" />);
         await flush();
         expect(screen.getByText(/Couldn't read this server's settings from the relay/)).toBeTruthy();
         expect(screen.getByRole('checkbox', { name: 'Volume normalization' })).toBeDisabled();
@@ -108,5 +108,24 @@ describe('디스코드 봇 설정 탭', () => {
         pickOption(screen.getByLabelText('Talking Saba-chan'), 'Caution and above');
         await flush();
         expect(window.api.chatbotSave).toHaveBeenCalledWith({ guilds: { g1: { confirmLevel: 'caution' } } });
+    });
+
+    it('호출어와 명령 이름 번역은 이 서버 값으로 저장하고, 비어 있으면 기본 호출어를 안내한다', async () => {
+        window.api.discordSettingsGet = vi.fn().mockResolvedValue({ ...base, prefixes: [], translateCommands: true });
+        window.api.discordSettingsSet = vi
+            .fn()
+            .mockResolvedValue({ success: true, settings: { ...base, prefixes: ['!pal'] }, sync: { ok: true } });
+        render(<BotSettingsTab node={{ ...node, prefixDefault: true, prefixes: ['사바쨩'] }} />);
+        await flush();
+        expect(screen.getByText(/사바쨩/, { selector: '.dc-hint' })).toBeTruthy();
+        const input = screen.getByLabelText('Command prefix');
+        fireEvent.change(input, { target: { value: '!pal' } });
+        fireEvent.keyDown(input, { key: 'Enter' });
+        await flush();
+        expect(window.api.discordSettingsSet).toHaveBeenCalledWith('g1', { prefixes: ['!pal'] });
+        expect(screen.queryByRole('checkbox', { name: 'Volume normalization' })).toBeNull();
+        fireEvent.click(screen.getByRole('checkbox', { name: 'Translated command names' }));
+        await flush();
+        expect(window.api.discordSettingsSet).toHaveBeenCalledWith('g1', { translateCommands: false });
     });
 });

@@ -5,13 +5,24 @@ import { safeShowToast } from '../../utils/helpers';
 import { Icon } from '../Icon';
 import { SabaFail } from '../ui/SabaArt';
 import { SabaSpinner, SabaToggle } from '../ui/SabaUI';
-import { guildDraft, guildPatch, MEMO_MAX, relayErrorLines, SaveBar, ToolGroups, useChatbotTools } from './ChatbotView';
+import CustomDropdown from '../CustomDropdown/CustomDropdown';
+import {
+    AMBIENT_MINUTES,
+    EFFORTS,
+    guildDraft,
+    guildPatch,
+    MEMO_MAX,
+    relayErrorLines,
+    SaveBar,
+    ToolGroups,
+    useChatbotTools,
+} from './ChatbotView';
 
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
 /**
- * 디스코드 서버 하나의 말하는 사바쨩 (서버 화면 › 말하는 사바쨩 탭): 사용 여부, 이 서버에서 켤 도구, 서버 프롬프트, 기억 지우기.
- * 새 서버는 꺼져 있고 도구도 없다. 공통 메뉴의 전체 허용 도구에서 막은 도구는 잠근다.
+ * 디스코드 서버 하나의 말하는 사바쨩 (서버 화면 › 말하는 사바쨩 탭): 사용 여부, 답변 깊이·기억·끼어들기,
+ * 이 서버에서 켤 도구, 서버 프롬프트, 기억 지우기. 새 서버는 꺼져 있고 도구도 없다.
  * 원본은 데몬 config.json `chatbot.guilds` (PUT /api/chatbot `guilds`)
  */
 export function ChatbotGuildTab({ node }) {
@@ -36,7 +47,9 @@ export function ChatbotGuildTab({ node }) {
         load();
     }, [load]);
 
-    const saved = data ? guildDraft(data.guilds?.[guildId], data.guildDefault) : null;
+    // 아직 서버마다 옮기지 않은 옛 공통 값 (데몬이 서버 목록을 받으면 옮긴다)
+    const legacy = data?.settings || {};
+    const saved = data ? guildDraft(data.guilds?.[guildId], data.guildDefault, legacy, data.defaults) : null;
     const resetKey = JSON.stringify(saved);
     const [draft, setDraft] = useState(null);
     // biome-ignore lint/correctness/useExhaustiveDependencies: 저장된 값이 바뀔 때만 초기화
@@ -52,8 +65,6 @@ export function ChatbotGuildTab({ node }) {
     if (!data || !draft) return <SabaSpinner />;
 
     const set = (change) => setDraft((d) => ({ ...d, ...change }));
-    const allowed = data.settings?.allowedTools;
-    const blocked = (tool) => Array.isArray(allowed) && !allowed.includes(tool);
     const badMemo = draft.memo.length > MEMO_MAX;
     const dirty = !same(saved, draft);
 
@@ -61,7 +72,9 @@ export function ChatbotGuildTab({ node }) {
         setSaving(true);
         setErrors([]);
         try {
-            const res = await window.api.chatbotSave({ guilds: { [guildId]: guildPatch(draft) } });
+            const res = await window.api.chatbotSave({
+                guilds: { [guildId]: guildPatch(draft, legacy, data.defaults) },
+            });
             if (res?.success === false) {
                 setErrors(
                     relayErrorLines(res, () => name).concat(res.guildId || res.error ? [] : [t('chatbot.save_failed')]),
@@ -105,10 +118,35 @@ export function ChatbotGuildTab({ node }) {
         }
     };
 
+    const toggleRow = (key, label, hint) => (
+        <div className="cb-toggle-row">
+            <span className="dc-list-text">
+                <span className="dc-list-name">{label}</span>
+                {hint && <span className="cb-hint">{hint}</span>}
+            </span>
+            <SabaToggle checked={!!draft[key]} aria-label={label} onChange={(v) => set({ [key]: v })} />
+        </div>
+    );
+    const selectField = (key, label, hint, options, disabled = false) => (
+        <div className="mt-field">
+            <span>{label}</span>
+            <CustomDropdown
+                className="cb-select"
+                value={draft[key]}
+                ariaLabel={label}
+                disabled={disabled}
+                onChange={(v) => set({ [key]: v })}
+                options={options}
+            />
+            {hint && <p className="dc-hint">{hint}</p>}
+        </div>
+    );
+    const effortOptions = EFFORTS.map((e) => ({ value: e, label: t(`chatbot.effort_${e}`) }));
+
     const enabledLabel = t('chatbot.guild_enabled');
     return (
         <div className="dc-tab">
-            <p className="dc-card-desc">{t('chatbot.guild_tab_desc')}</p>
+            <p className="dc-card-desc">{t('chatbot.guild_desc')}</p>
             {!data.hasApiKey && (
                 <p className="dc-field-error">
                     <Icon name="info" size="xs" /> {t('chatbot.key_needed')}
@@ -131,13 +169,48 @@ export function ChatbotGuildTab({ node }) {
 
             <section className="dc-card">
                 <div className="dc-card-head">
+                    <h2>{t('chatbot.basic_title')}</h2>
+                </div>
+                {selectField('effort', t('chatbot.effort'), t('chatbot.effort_hint'), effortOptions)}
+                <p className="dc-hint">{t('chatbot.prefix_calls_guild')}</p>
+                <div className="cb-toggles">{toggleRow('memory', t('chatbot.memory'), t('chatbot.memory_hint'))}</div>
+            </section>
+
+            <section className="dc-card">
+                <div className="dc-card-head">
+                    <h2>{t('chatbot.ambient_title')}</h2>
+                </div>
+                <p className="dc-card-desc">{t('chatbot.ambient_desc')}</p>
+                <div className="cb-toggles">
+                    {toggleRow('ambient', t('chatbot.ambient'), t('chatbot.ambient_hint'))}
+                </div>
+                {selectField(
+                    'ambientMinutes',
+                    t('chatbot.ambient_minutes'),
+                    null,
+                    // CLI·디스코드로 목록 밖 값(1-60)을 저장했으면 그 값도 보인다
+                    [...new Set([...AMBIENT_MINUTES, draft.ambientMinutes].filter(Number.isInteger))]
+                        .sort((a, b) => a - b)
+                        .map((m) => ({ value: m, label: t('chatbot.ambient_minutes_option', { count: m }) })),
+                    !draft.ambient,
+                )}
+                {selectField(
+                    'ambientEffort',
+                    t('chatbot.ambient_effort'),
+                    t('chatbot.ambient_effort_hint'),
+                    effortOptions,
+                    !draft.ambient,
+                )}
+            </section>
+
+            <section className="dc-card">
+                <div className="dc-card-head">
                     <h2>{t('chatbot.guild_tools_title')}</h2>
                 </div>
                 <ToolGroups
                     catalog={catalog}
                     reload={reload}
                     isOn={(tool) => draft.tools.includes(tool)}
-                    blocked={blocked}
                     onToggle={(tool, on) =>
                         set({
                             tools: on ? [...new Set([...draft.tools, tool])] : draft.tools.filter((x) => x !== tool),

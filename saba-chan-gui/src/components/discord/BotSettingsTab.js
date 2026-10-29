@@ -5,6 +5,8 @@ import { LANGUAGE_OPTIONS } from '../../utils/languages';
 import CustomDropdown from '../CustomDropdown/CustomDropdown';
 import { Icon } from '../Icon';
 import { SabaSpinner, SabaToggle } from '../ui/SabaUI';
+import { defaultPrefix, prefixProblems } from './prefixes';
+import { TagInput } from './TagInput';
 
 export const botSettingsAvailable = () => Boolean(window.api?.discordSettingsGet && window.api?.discordSettingsSet);
 
@@ -60,12 +62,41 @@ function NumberField({ label, unit, value, range, disabled, onCommit }) {
     );
 }
 
+/** 접두사 칸: 고치는 즉시 저장한다. 저장할 수 없는 목록은 저장하지 않고 화면에만 두고 이유를 보인다 */
+function PrefixField({ value, fallback, onSave }) {
+    const { t } = useTranslation('gui');
+    const [draft, setDraft] = useState(value);
+    useEffect(() => setDraft(value), [value]);
+    const problems = prefixProblems(draft, t);
+    return (
+        <>
+            <TagInput
+                value={draft}
+                onChange={(next) => {
+                    setDraft(next);
+                    if (prefixProblems(next, t).length === 0) onSave(next);
+                }}
+                placeholder={t('discord.prefix_default_placeholder', { prefix: fallback })}
+                ariaLabel={t('discord.prefix_title')}
+            />
+            {draft.length === 0 && <p className="dc-hint">{t('discord.prefix_default_hint', { prefix: fallback })}</p>}
+            {problems.length > 0 && (
+                <p className="dc-field-error">
+                    <Icon name="alertTriangle" size="xs" /> {problems.join(' · ')}
+                </p>
+            )}
+        </>
+    );
+}
+
 /**
- * 디스코드 서버 하나의 봇 취향 설정: 언어·잠자기·음악·되묻기 (데몬 GET/PATCH /api/discord/:guild/settings).
- * 원본은 데몬 config.json이고, 데몬이 relay로 보낸다. 바꾸는 즉시 저장한다.
+ * 디스코드 서버 하나의 봇 설정 (데몬 GET/PATCH /api/discord/:guild/settings). 원본은 데몬 config.json이고,
+ * 데몬이 relay로 보낸다. 바꾸는 즉시 저장한다.
+ * - section 'bot': 언어·접두사·명령 이름 번역·되묻기·사용법
+ * - section 'music': 노래하는 사바쨩
  * 말하는 사바쨩의 되묻기 단계는 챗봇 설정의 이 서버 값(`guilds[guild].confirmLevel`)이다
  */
-export function BotSettingsTab({ node }) {
+export function BotSettingsTab({ node, section = 'bot', sampleModuleWord = '' }) {
     const { t } = useTranslation('gui');
     const guildId = node.guildId;
     const [settings, setSettings] = useState(null);
@@ -155,6 +186,10 @@ export function BotSettingsTab({ node }) {
     }
 
     const music = settings.music || {};
+    const prefixes = Array.isArray(settings.prefixes) ? settings.prefixes : [];
+    // 릴레이가 알려 준 이 서버의 기본 접두사 (모르면 앱 언어의 기본값)
+    const fallbackPrefix = defaultPrefix(t, [node]);
+    const p = prefixes[0] || fallbackPrefix;
     // 릴레이에서 설정을 못 읽었으면 기본값만 보인다. 그대로 저장하면 릴레이 값을 덮으므로 막는다
     const unloaded = settings.loaded === false;
     const locked = saving || unloaded;
@@ -201,85 +236,124 @@ export function BotSettingsTab({ node }) {
                 </output>
             )}
 
-            <section className="dc-card">
-                <div className="dc-card-head">
-                    <h2>{t('discord.bot_settings.general_title')}</h2>
-                </div>
-                <div className="mt-field">
-                    <span>{t('discord.bot_settings.language')}</span>
-                    <CustomDropdown
-                        className="setting-select"
-                        value={settings.locale || 'auto'}
-                        disabled={locked}
-                        onChange={(locale) => locale !== settings.locale && save({ locale })}
-                        options={[
-                            { value: 'auto', label: t('discord.bot_settings.language_auto') },
-                            ...LANGUAGE_OPTIONS,
-                        ]}
-                    />
-                </div>
-            </section>
+            {section === 'bot' && (
+                <>
+                    <section className="dc-card">
+                        <div className="dc-card-head">
+                            <h2>{t('discord.bot_settings.general_title')}</h2>
+                        </div>
+                        <div className="mt-field">
+                            <span>{t('discord.bot_settings.language')}</span>
+                            <CustomDropdown
+                                className="setting-select"
+                                value={settings.locale || 'auto'}
+                                disabled={locked}
+                                onChange={(locale) => locale !== settings.locale && save({ locale })}
+                                options={[
+                                    { value: 'auto', label: t('discord.bot_settings.language_auto') },
+                                    ...LANGUAGE_OPTIONS,
+                                ]}
+                            />
+                        </div>
+                    </section>
 
-            <section className="dc-card">
-                <div className="dc-card-head">
-                    <h2>{t('discord.bot_settings.confirm_title')}</h2>
-                </div>
-                <p className="dc-card-desc">{t('discord.bot_settings.confirm_desc')}</p>
-                {confirmField(
-                    t('discord.bot_settings.confirm_direct'),
-                    t('discord.bot_settings.confirm_direct_hint'),
-                    settings.confirmLevel || 'danger',
-                    (confirmLevel) => confirmLevel !== settings.confirmLevel && save({ confirmLevel }),
-                )}
-                {chatbotConfirm &&
-                    window.api?.chatbotSave &&
-                    confirmField(
-                        t('discord.bot_settings.confirm_chatbot'),
-                        t('discord.bot_settings.confirm_chatbot_hint'),
-                        chatbotConfirm,
-                        (level) => level !== chatbotConfirm && saveChatbotConfirm(level),
+                    <section className="dc-card">
+                        <div className="dc-card-head">
+                            <h2>{t('discord.prefix_title')}</h2>
+                        </div>
+                        <p className="dc-card-desc">{t('discord.prefix_desc')}</p>
+                        <PrefixField
+                            value={prefixes}
+                            fallback={fallbackPrefix}
+                            onSave={(next) => save({ prefixes: next })}
+                        />
+                        {toggleRow(
+                            t('discord.translate_commands_title'),
+                            t('discord.translate_commands_desc'),
+                            settings.translateCommands !== false,
+                            (translateCommands) => save({ translateCommands }),
+                        )}
+                    </section>
+
+                    <section className="dc-card">
+                        <div className="dc-card-head">
+                            <h2>{t('discord.bot_settings.confirm_title')}</h2>
+                        </div>
+                        <p className="dc-card-desc">{t('discord.bot_settings.confirm_desc')}</p>
+                        {confirmField(
+                            t('discord.bot_settings.confirm_direct'),
+                            t('discord.bot_settings.confirm_direct_hint'),
+                            settings.confirmLevel || 'danger',
+                            (confirmLevel) => confirmLevel !== settings.confirmLevel && save({ confirmLevel }),
+                        )}
+                        {chatbotConfirm &&
+                            window.api?.chatbotSave &&
+                            confirmField(
+                                t('discord.bot_settings.confirm_chatbot'),
+                                t('discord.bot_settings.confirm_chatbot_hint'),
+                                chatbotConfirm,
+                                (level) => level !== chatbotConfirm && saveChatbotConfirm(level),
+                            )}
+                    </section>
+
+                    <section className="dc-card">
+                        <div className="dc-card-head">
+                            <h2>{t('discord.usage_title')}</h2>
+                        </div>
+                        <ul className="dc-usage">
+                            <li>
+                                <code>{p}</code>
+                                <span>{t('discord.usage_help')}</span>
+                            </li>
+                            <li>
+                                <code>{`${p} ${t('discord.usage_list_word')}`}</code>
+                                <span>{t('discord.usage_list')}</span>
+                            </li>
+                            <li>
+                                <code>{`${p} ${sampleModuleWord || t('discord.usage_module_word')} ${t('discord.usage_start_word')}`}</code>
+                                <span>{t('discord.usage_command')}</span>
+                            </li>
+                        </ul>
+                    </section>
+                </>
+            )}
+            {section === 'music' && (
+                <section className="dc-card">
+                    {toggleRow(t('discord.bot_settings.music_enabled'), null, music.enabled, (enabled) =>
+                        save({ music: { enabled } }),
                     )}
-            </section>
-
-            <section className="dc-card">
-                <div className="dc-card-head">
-                    <Icon name="musicNote" size="md" />
-                    <h2>{t('discord.bot_settings.music_title')}</h2>
-                </div>
-                {toggleRow(t('discord.bot_settings.music_enabled'), null, music.enabled, (enabled) =>
-                    save({ music: { enabled } }),
-                )}
-                {toggleRow(
-                    t('discord.bot_settings.music_ui'),
-                    t('discord.bot_settings.music_ui_hint'),
-                    music.ui,
-                    (ui) => save({ music: { ui } }),
-                )}
-                {toggleRow(
-                    t('discord.bot_settings.music_normalize'),
-                    t('discord.bot_settings.music_normalize_hint'),
-                    music.normalize,
-                    (normalize) => save({ music: { normalize } }),
-                )}
-                <div className="cb-fields">
-                    <NumberField
-                        label={t('discord.bot_settings.queue_lines')}
-                        unit={t('discord.bot_settings.lines')}
-                        value={music.queueLines ?? 10}
-                        range={QUEUE_LINES}
-                        disabled={locked}
-                        onCommit={(queueLines) => save({ music: { queueLines } })}
-                    />
-                    <NumberField
-                        label={t('discord.bot_settings.refresh')}
-                        unit={t('chatbot.seconds')}
-                        value={Math.round((music.refreshInterval ?? 5000) / 1000)}
-                        range={REFRESH_SECONDS}
-                        disabled={locked}
-                        onCommit={(s) => save({ music: { refreshInterval: s * 1000 } })}
-                    />
-                </div>
-            </section>
+                    {toggleRow(
+                        t('discord.bot_settings.music_ui'),
+                        t('discord.bot_settings.music_ui_hint'),
+                        music.ui,
+                        (ui) => save({ music: { ui } }),
+                    )}
+                    {toggleRow(
+                        t('discord.bot_settings.music_normalize'),
+                        t('discord.bot_settings.music_normalize_hint'),
+                        music.normalize,
+                        (normalize) => save({ music: { normalize } }),
+                    )}
+                    <div className="cb-fields">
+                        <NumberField
+                            label={t('discord.bot_settings.queue_lines')}
+                            unit={t('discord.bot_settings.lines')}
+                            value={music.queueLines ?? 10}
+                            range={QUEUE_LINES}
+                            disabled={locked}
+                            onCommit={(queueLines) => save({ music: { queueLines } })}
+                        />
+                        <NumberField
+                            label={t('discord.bot_settings.refresh')}
+                            unit={t('chatbot.seconds')}
+                            value={Math.round((music.refreshInterval ?? 5000) / 1000)}
+                            range={REFRESH_SECONDS}
+                            disabled={locked}
+                            onCommit={(s) => save({ music: { refreshInterval: s * 1000 } })}
+                        />
+                    </div>
+                </section>
+            )}
         </div>
     );
 }

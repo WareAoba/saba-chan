@@ -80,6 +80,9 @@
     --chart-idle: #2e3036;
     /* 로딩 화면 뒤 매트릭스 진하기: 밝은 바탕에서는 같은 투명도면 글자가 묻힌다 */
     --loading-matrix-opacity: 0.28;
+    /* 사바쨩 얼굴 아이콘: 라이트는 선, 다크는 면 (Icon.js SabaFaceSvg) */
+    --saba-face-line: none;
+    --saba-face-solid: inline;
 }
 
 /* ── 라이트 ── */
@@ -142,6 +145,8 @@
     --series-8: #e34948;
     --chart-idle: #e2e5eb;
     --loading-matrix-opacity: 0.7;
+    --saba-face-line: inline;
+    --saba-face-solid: none;
 }
 
 /* ── 시스템 따라가기: 라이트일 때만 라이트 값으로 덮는다 ── */
@@ -198,6 +203,8 @@
         --series-8: #e34948;
         --chart-idle: #e2e5eb;
         --loading-matrix-opacity: 0.7;
+        --saba-face-line: inline;
+        --saba-face-solid: none;
     }
 }
 

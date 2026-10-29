@@ -225,6 +225,14 @@ button:disabled {
     width: 100%;
 }
 
+/* 사바쨩 얼굴 아이콘: 테마에 맞는 그림 하나만 (tokens.css) */
+.saba-face-line {
+    display: var(--saba-face-line);
+}
+.saba-face-solid {
+    display: var(--saba-face-solid);
+}
+
 /* 아이콘 버튼: 작은 입체 사각 (N1) */
 .icon-btn {
     --btn-height: 32px;

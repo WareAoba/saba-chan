@@ -846,7 +846,10 @@
       "bot.confirm.direct": "Requests to the bot — Prefix commands and slash commands.",
       "bot.confirm.chatbot": "Talking Saba-chan — Admin tasks picked by Talking Saba-chan and requests mixing several people always ask, whatever this setting says.",
       "game_version": "Server version to install (games that download their server; default: latest release)",
-      "unmanaged": "Run on its own: saba-chan starts it and watches whether it runs (no saba-chan console)"
+      "unmanaged": "Run on its own: saba-chan starts it and watches whether it runs (no saba-chan console)",
+      "bot.prefix.guild": "The Discord server, by name or id (without it: the only paired server)",
+      "bot.translate.on": "Show translated command names",
+      "bot.translate.off": "Show only the names in the module"
     },
     "after": "Names can be partial (e.g. start pal). Run with no arguments in a terminal to open the full-screen menu (SABA_NO_TUI=1: the interactive shell).\nIn scripts use --json and --yes. Exit codes: 0 ok · 1 failed · 2 usage · 3 daemon unreachable · 4 not found · 130 cancelled"
   },
