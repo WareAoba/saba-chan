@@ -57,7 +57,7 @@ The name is a pun: in Japanese, "server" (サーバー) sounds a lot like "macke
 
 | Game | Install | Windows | Linux x64 | Linux ARM64 |
 |---|---|:-:|:-:|:-:|
-| Minecraft (Java) | Official server files | Yes | Yes | Testing |
+| Minecraft (Java) | Official server files | Yes | Yes | Yes |
 | Palworld | SteamCMD | Yes | Yes | No |
 | Project Zomboid | SteamCMD | Yes | Yes | No |
 | Terraria | Official server files | Yes | Yes | No |
@@ -147,6 +147,7 @@ The deeper material is in [docs/architecture/](docs/architecture/00-overview.md)
 - App, module, and extension updates come only from releases with a valid official signature, and every downloaded file is checked against its hash.
 - Modules and extensions without an official signature run isolated (AppContainer on Windows, bubblewrap on Linux). Where isolation isn't available, they only run if you agree to it.
 - Friends still need the game's own port open to join. The only port Saba-chan makes unnecessary is one for remote control.
+- Saba-chan sends data only for update checks (on by default, can be turned off; an anonymous ID, version, platform and update channel) and for the Discord integration you connect. See the [privacy policy](https://saba-chan.online/legal/privacy).
 
 ## Building from source
 
@@ -163,15 +164,6 @@ cd saba-chan-gui; npm install; npm start
 ```
 
 Release files are built from this repository by GitHub Actions: [build-windows.yml](.github/workflows/build-windows.yml) for Windows and [release.yml](.github/workflows/release.yml) for Linux x64 and ARM64. Run tests with `cargo test --workspace` and `cd saba-chan-gui && npx vitest run`.
-
-## Code signing policy
-
-Free code signing provided by [SignPath.io](https://signpath.io), certificate by [SignPath Foundation](https://signpath.org).
-
-- What gets signed: only the Windows executables that GitHub Actions builds from this repository's source (`saba-core.exe`, `saba-runner.exe`, `saba-chan-cli.exe`, `saba-chan-gui.exe`, `saba-chan-updater.exe`, `saba-chan-installer.exe`). The build is public in [build-windows.yml](.github/workflows/build-windows.yml).
-- Committers and reviewers: [WareAoba](https://github.com/WareAoba)
-- Approvers: [WareAoba](https://github.com/WareAoba), who approves the signing request for every release.
-- Privacy policy: Saba-chan sends data only for update checks (on by default, can be turned off; an anonymous ID, version, platform and update channel) and for the Discord integration the user connects. Details are in the [privacy policy](https://saba-chan.online/legal/privacy).
 
 ## License
 

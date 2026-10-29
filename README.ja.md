@@ -57,7 +57,7 @@
 
 | ゲーム | インストール | Windows | Linux x64 | Linux ARM64 |
 |---|---|:-:|:-:|:-:|
-| Minecraft (Java) | 公式サーバーファイル | ○ | ○ | 確認中 |
+| Minecraft (Java) | 公式サーバーファイル | ○ | ○ | ○ |
 | Palworld | SteamCMD | ○ | ○ | × |
 | Project Zomboid | SteamCMD | ○ | ○ | × |
 | Terraria | 公式サーバーファイル | ○ | ○ | × |
@@ -147,6 +147,7 @@ sequenceDiagram
 - アプリ・モジュール・拡張機能の更新は、公式の署名が確認できたリリースからだけ受け取り、落としたファイルはひとつずつハッシュで確かめます。
 - 公式の署名がないモジュールや拡張機能は隔離して動かします(Windows は AppContainer、Linux は bubblewrap)。隔離できない環境では、自分で同意したときだけ動きます。
 - 友だちがゲームに入るには、ゲームのポートはいつもどおり開けておく必要があります。サバちゃんがいらなくしてくれるのは遠隔操作用のポートだけです。
+- 更新の確認(初期設定でオン、オフにできます。匿名 ID、バージョン、プラットフォーム、更新チャンネルだけを送ります)と、自分でつないだ Discord 連携のほかには情報を送りません。詳しくは[プライバシーポリシー](https://saba-chan.online/ja/legal/privacy)をご覧ください。
 
 ## ソースからビルド
 
@@ -163,15 +164,6 @@ cd saba-chan-gui; npm install; npm start
 ```
 
 配布ファイルは GitHub Actions がこのリポジトリのソースからビルドします。Windows は [build-windows.yml](.github/workflows/build-windows.yml)、Linux x64・ARM64 は [release.yml](.github/workflows/release.yml) です。テストは `cargo test --workspace` と `cd saba-chan-gui && npx vitest run` で回します。
-
-## コード署名ポリシー · Code signing policy
-
-Free code signing provided by [SignPath.io](https://signpath.io), certificate by [SignPath Foundation](https://signpath.org).
-
-- 署名するファイル: このリポジトリのソースから GitHub Actions がビルドした Windows の実行ファイル(`saba-core.exe`、`saba-runner.exe`、`saba-chan-cli.exe`、`saba-chan-gui.exe`、`saba-chan-updater.exe`、`saba-chan-installer.exe`)だけに署名します。ビルドの流れは [build-windows.yml](.github/workflows/build-windows.yml) で公開しています。
-- Committers and reviewers: [WareAoba](https://github.com/WareAoba)
-- Approvers: [WareAoba](https://github.com/WareAoba)。リリースごとに署名リクエストを自分で承認します。
-- プライバシー · Privacy policy: サバちゃんがほかの場所へ情報を送るのは、更新の確認(初期設定でオン、オフにできます。匿名 ID、バージョン、プラットフォーム、更新チャンネルだけを送ります)と、ユーザーが自分でつないだ Discord 連携だけです。詳しくは[プライバシーポリシー](https://saba-chan.online/ja/legal/privacy)をご覧ください。
 
 ## ライセンス
 
