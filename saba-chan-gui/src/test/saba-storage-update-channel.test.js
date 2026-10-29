@@ -19,7 +19,8 @@ beforeEach(() => {
         {
             updaterSetConfig: setConfigSpy,
             updaterGetConfig: vi.fn().mockResolvedValue({ config: { enabled: true, channel: 'rc' } }),
-            updaterStatus: vi.fn().mockResolvedValue({ ok: true, components: [] }),
+            // 캐시가 있으면 열 때 릴레이에 다시 묻지 않는다
+            updaterStatus: vi.fn().mockResolvedValue({ ok: true, components: [{ component: 'saba-core', current_version: '0.1.11' }] }),
             updaterCheck: vi.fn().mockResolvedValue({ ok: true, components: [] }),
             updaterDownloadProgress: vi.fn().mockResolvedValue({ ok: true, active: false }),
         },
@@ -49,6 +50,20 @@ describe('업데이트 채널', () => {
         expect(box.textContent).toContain('Beta');
     });
 
+    it('채널을 바꾸면 새 채널로 목록을 다시 받는다', async () => {
+        render(<SabaStorage onBack={() => {}} isExiting={false} />);
+        const box = await screen.findByRole('combobox', { name: 'Update channel' });
+        await waitFor(() => expect(box.textContent).toContain('Preview'));
+        expect(window.api.updaterCheck).not.toHaveBeenCalled();
+
+        fireEvent.click(box);
+        fireEvent.click(await screen.findByRole('option', { name: /Beta/ }));
+        await waitFor(() => expect(window.api.updaterCheck).toHaveBeenCalledTimes(1));
+        expect(setConfigSpy.mock.invocationCallOrder[0]).toBeLessThan(
+            window.api.updaterCheck.mock.invocationCallOrder[0],
+        );
+    });
+
     it('저장에 실패하면 이전 채널로 되돌린다', async () => {
         setConfigSpy.mockResolvedValue({ ok: false, error: 'nope' });
         render(<SabaStorage onBack={() => {}} isExiting={false} />);
@@ -59,5 +74,6 @@ describe('업데이트 채널', () => {
         fireEvent.click(await screen.findByRole('option', { name: /Stable/ }));
         await waitFor(() => expect(setConfigSpy).toHaveBeenCalledWith({ channel: 'stable' }));
         await waitFor(() => expect(box.textContent).toContain('Preview'));
+        expect(window.api.updaterCheck).not.toHaveBeenCalled();
     });
 });

@@ -67,8 +67,9 @@ export function AddInstanceNewServer({
     const stepIndex = steps.indexOf(step);
     const customFolder = folderMode === 'custom' ? folder.trim() : '';
 
-    const goTo = (next) => {
-        onStepChange?.(next); // 높이 캡처 후 부모 상태 변경 (배칭)
+    // 진행 막대는 부모가 그린다: 단계와 함께 지금이 몇 번째인지(0~1) 알린다
+    const goTo = (next, list = steps) => {
+        onStepChange?.(next, list.indexOf(next) / (list.length - 1)); // 높이 캡처 후 부모 상태 변경 (배칭)
         setStep(next);
     };
 
@@ -88,7 +89,8 @@ export function AddInstanceNewServer({
         setCheck(null);
         setAgreed({});
         setExtValues({});
-        goTo(wizardSteps(extensions.find((m) => m.name === extName))[1]);
+        const nextSteps = wizardSteps(extensions.find((m) => m.name === extName));
+        goTo(nextSteps[1], nextSteps);
     };
 
     const body = () =>
@@ -333,7 +335,7 @@ export function AddInstanceNewServer({
         : selectedExtension;
     const goBack = () => {
         if (stepIndex <= 1) {
-            onStepChange?.('select-game');
+            onStepChange?.('select-game', 0);
             setStep('select-game');
             setSelectedExtension('');
             setNewServerName('');
