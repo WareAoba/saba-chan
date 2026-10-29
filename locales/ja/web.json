@@ -262,7 +262,7 @@
     "memory": "メモリ",
     "servers_usage": "サーバーごとの使用量",
     "none_running": "実行中のサーバーはありません。",
-    "pc_only_note": "更新、パス、Discord 接続、喋るサバちゃんの設定は PC のサバちゃんアプリで行います。"
+    "pc_only_note": "更新、パス、Discord 接続、おしゃべりサバちゃんの設定は PC のサバちゃんアプリで行います。"
   },
   "errors": {
     "generic": "リクエストを完了できませんでした。",
