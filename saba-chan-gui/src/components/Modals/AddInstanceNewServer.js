@@ -150,6 +150,9 @@ export function AddInstanceNewServer({
 
     // 파일 위치 단계의 "다음": 고른 폴더가 다른 서버의 폴더이거나 파일이 들어 있으면 넘어가지 않는다
     const [folderProblem, setFolderProblem] = useState(null);
+    // 확인을 기다리는 사이 단계나 폴더가 바뀌었으면 늦게 온 결과는 버린다
+    const shown = useRef({});
+    shown.current = { step, customFolder };
     const leaveLocation = async () => {
         setFolderProblem(null);
         if (!customFolder) return goTo(steps[stepIndex + 1]);
@@ -160,6 +163,7 @@ export function AddInstanceNewServer({
         } finally {
             setLeaving(false);
         }
+        if (shown.current.step !== step || shown.current.customFolder !== customFolder) return;
         const badFolder =
             res?.error_code === 'invalid_format' && (res.fields || []).some((f) => f.field === 'working_dir');
         if (badFolder) return setFolderProblem({ code: 'folder_not_absolute' });
@@ -606,7 +610,7 @@ export function AddInstanceNewServer({
             {/* ── Header ── */}
             <div className="modal-header add-server-header">
                 <div className="as-header-row">
-                    <button className="ai-back-btn" type="button" onClick={goBack} disabled={submitting || leaving}>
+                    <button className="ai-back-btn" type="button" onClick={goBack} disabled={submitting}>
                         <Icon name="chevronLeft" size="sm" />
                     </button>
                     <div className="as-header-copy">
@@ -648,7 +652,7 @@ export function AddInstanceNewServer({
                 <button className="btn btn-cancel" onClick={onClose} disabled={submitting}>
                     {t('modals.cancel')}
                 </button>
-                <button className="btn btn-secondary" type="button" onClick={goBack} disabled={submitting || leaving}>
+                <button className="btn btn-secondary" type="button" onClick={goBack} disabled={submitting}>
                     {t('add_server_modal.prev')}
                 </button>
                 {isLast ? (

@@ -412,13 +412,13 @@ fn chatbot_never_lists_deletion_shutdown_update_or_permissions() {
     }
 }
 
-/// 모듈의 위험 명령도 챗봇이 고를 수 있지만 늘 확인 계획을 거친다(요청자 본인이 확인 버튼을 누른다, 사용자 결정 2026-10-20).
+/// 모듈의 위험 명령도 챗봇이 고를 수 있다. 물을지는 계획의 `needs_confirm`이 길드 챗봇 `confirmLevel`로 정한다 (사용자 결정 2026-10-28).
 /// 결과는 콘솔·조회처럼 IP·비밀처럼 보이는 값을 가려 보낸다
 #[test]
 fn danger_module_commands_reach_the_chatbot_only_through_a_confirmation() {
     let wipe = command_view(&json!({ "name": "wipe", "risk": "danger" })).unwrap();
     assert!(wipe["surfaces"].as_array().unwrap().iter().any(|s| s == "chatbot"));
-    assert_eq!(wipe["risk"], "danger", "danger always needs a confirmed plan (needs_confirm)");
+    assert_eq!(wipe["risk"], "danger", "the plan decides whether to ask (needs_confirm)");
     for id in ["server.console.tail", "server.query:players", "server.command:kick"] {
         assert!(chatbot_masked(id), "{id}");
     }

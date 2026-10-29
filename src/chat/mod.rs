@@ -540,7 +540,6 @@ impl<'a, D: DaemonApi> Ctx<'a, D> {
         if risk == "danger" && !by_name {
             return Err(self.t("errors.danger_needs_name", &[("name", &server.name)]).into());
         }
-        // 챗봇이 고른 명령을 물을지는 계획이 정한다 (`actions::needs_confirm`, 챗봇 `confirmLevel`)
 
         let exec = match command.as_str() {
             "start" => Exec::Start,

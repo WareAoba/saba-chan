@@ -771,7 +771,7 @@ export function CommandStairs({ node, permissions, instance = L.ALL_INSTANCES })
                                                     'dc-dot',
                                                     c.kind === 'admin'
                                                         ? 'tone-info'
-                                                        : `tone-${RISK_TONE[c.confirmRisk ?? c.risk] || 'ok'}`,
+                                                        : `tone-${RISK_TONE[c.confirmRisk] || 'ok'}`,
                                                 )}
                                                 aria-hidden="true"
                                             />
@@ -795,12 +795,7 @@ export function CommandStairs({ node, permissions, instance = L.ALL_INSTANCES })
                     <div className="dc-card-head">
                         <strong>{label(current)}</strong>
                         {current.risk && (
-                            <span
-                                className={clsx(
-                                    'dc-badge',
-                                    `tone-${RISK_TONE[current.confirmRisk ?? current.risk] || 'ok'}`,
-                                )}
-                            >
+                            <span className={clsx('dc-badge', `tone-${RISK_TONE[current.confirmRisk] || 'ok'}`)}>
                                 {current.kind === 'admin'
                                     ? t('discord.kind_admin')
                                     : current.confirmMixed

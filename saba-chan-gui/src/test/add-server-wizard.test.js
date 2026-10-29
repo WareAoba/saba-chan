@@ -143,17 +143,29 @@ describe('새 서버 만들기 마법사', () => {
         expect(screen.getByRole('button', { name: 'Next' })).not.toBeDisabled();
     });
 
-    it('폴더를 확인하는 동안에는 이전 단계로 가지 않는다 (늦게 온 확인 결과가 단계를 건너뛰지 않게)', async () => {
+    it('폴더 확인을 기다리는 사이 단계나 폴더가 바뀌면 늦게 온 결과로 넘어가지 않는다', async () => {
         open();
         await next();
         fireEvent.click(screen.getByRole('tab', { name: 'Another folder' }));
         fireEvent.change(screen.getByLabelText('Folder path'), { target: { value: '/srv/mc' } });
-        let answer;
-        check.mockImplementationOnce((body) => new Promise((resolve) => (answer = () => resolve(check(body)))));
+        const hold = () => {
+            let answer;
+            check.mockImplementationOnce((body) => new Promise((resolve) => (answer = () => resolve(check(body)))));
+            return () => answer();
+        };
+        // 폴더를 고치면 예전 폴더의 결과로 넘어가지 않는다
+        let answer = hold();
         await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Next' })));
-        for (const back of screen.getAllByRole('button', { name: 'Back' })) expect(back).toBeDisabled();
+        fireEvent.change(screen.getByLabelText('Folder path'), { target: { value: '/full' } });
         await act(async () => answer());
-        expect(screen.getByRole('heading', { name: 'Run mode' })).toBeTruthy();
+        expect(screen.getByLabelText('Folder path').value).toBe('/full');
+        // 이전 단계로 갔으면 그 단계에 머문다
+        fireEvent.change(screen.getByLabelText('Folder path'), { target: { value: '/srv/mc' } });
+        answer = hold();
+        await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Next' })));
+        await act(async () => fireEvent.click(screen.getAllByRole('button', { name: 'Back' })[0]));
+        await act(async () => answer());
+        expect(screen.getByRole('heading', { name: 'Server type and version' })).toBeTruthy();
     });
 
     it('이전 단계로 돌아가도 고른 값이 남는다', async () => {
