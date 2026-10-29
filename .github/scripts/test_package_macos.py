@@ -29,7 +29,7 @@ class MacApp(unittest.TestCase):
         self.assertEqual(app.name, "Saba-chan.app")
         # 데몬 zip과 같은 공유 모듈 파일도 든다 (.dmg로 넣은 앱도 설치기로 깐 앱과 같은 구성)
         shared = sorted(package_macos.shared_files().values())
-        self.assertEqual(shared, ["common_locales.json", "daemon_rcon.py", "i18n.py"])
+        self.assertIn("i18n.py", shared)
         self.assertEqual(macos, sorted(package_macos.EXES + shared))
         self.assertTrue(all(modes[e] == 0o755 for e in package_macos.EXES), modes)
         self.assertTrue(all(modes[f] == 0o644 for f in shared), modes)

@@ -301,8 +301,7 @@ jobs:
       # 모의 키는 mock-relay 빌드만 믿는다: 데몬·CLI를 그 기능으로 따로 빌드해 시험용 zip(0.2.0, 0.3.0)을 만든다
       - name: Install, update and uninstall from a mock relay
         run: |
-          cargo build --release --locked -p saba-core -p saba-chan-cli --features saba-core/mock-relay,saba-chan-cli/mock-relay --target-dir target/mock
-          cargo build --release --locked -p saba-runner --target-dir target/mock
+          cargo build --release --locked -p saba-core -p saba-runner -p saba-chan-cli --features saba-core/mock-relay,saba-chan-cli/mock-relay --target-dir target/mock
           cargo build --release --locked -p saba-chan-updater --no-default-features --target-dir target/mock
           cp target/release/saba-chan-gui target/mock/release/
           python3 .github/scripts/package-linux.py --bin target/mock/release --out mock-a --platform macos-arm64 --version 0.2.0
@@ -329,7 +328,7 @@ jobs:
           test ! -e "$app/Contents/MacOS/Info.plist"
 
           # 업데이트: 데몬이 받고, 업데이터가 이름 바꾸기로 갈아 끼운 뒤 데몬을 다시 띄운다
-          kill "$(cat mock.pid)"
+          kill "$(cat mock.pid)" && wait "$(cat mock.pid)" 2>/dev/null || true
           serve 0.3.0 mock-b
           "$cli" daemon start
           "$cli" update config relay_url=http://127.0.0.1:9877
