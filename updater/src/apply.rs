@@ -250,9 +250,18 @@ impl UpdateManager {
         // 설치 폴더 바로 안에 GUI exe가 있으면 (portable exe, 또는 0.1.1의 Electron 폴더) 그 자리에 푼다
         if let Some(portable_exe) = find_gui_exe(&self.install_root) {
             tracing::info!("[Updater] GUI portable exe detected at {}", portable_exe.display());
-            let files = Self::extract_or_restore(staged, &self.install_root, "GUI")?;
+            let mut files = Self::extract_or_restore(staged, &self.install_root, "GUI")?;
             std::fs::remove_file(staged).ok();
             self.retire_other_gui_exes(&files);
+            // 맥 앱 묶음: 새 묶음 정보·아이콘을 Contents 자리로 옮기고 기록할 경로도 옮긴 자리로 바꾼다
+            match crate::app_bundle::place_files(&self.install_root) {
+                Ok(moved) => {
+                    for (from, to) in moved {
+                        files.iter_mut().filter(|f| same_path(f, &from)).for_each(|f| *f = to.clone());
+                    }
+                }
+                Err(e) => tracing::warn!("[Updater] App bundle files were not placed: {}", e),
+            }
             tracing::info!("[Updater] GUI (portable exe) updated");
             return Ok(files);
         }

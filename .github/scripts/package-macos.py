@@ -9,6 +9,7 @@ Apple 서명·공증 없이 임시(ad-hoc) 서명만 한다. 서명과 .dmg는 �
 """
 
 import argparse
+import importlib.util
 import shutil
 import subprocess
 import sys
@@ -25,6 +26,14 @@ ICON_SOURCE = ROOT / "saba-chan-gui/src-tauri/icons/icon.icns"
 ICON_FILE = "saba-chan.icns"
 
 
+def shared_files() -> dict[Path, str]:
+    """데몬 zip(saba-core)에 함께 드는 공유 모듈 파일 → 묶음 안 이름. 목록은 package-linux.py 하나에서 정한다"""
+    spec = importlib.util.spec_from_file_location("package_linux", Path(__file__).resolve().parent / "package-linux.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return {ROOT / rel: name for rel, name in module.LINUX_ASSETS["saba-core"][2].items()}
+
+
 def info_plist(version: str) -> bytes:
     # CFBundleVersion은 숫자와 점만 받는다: 미리보기 꼬리(-beta.1)는 짧은 버전 문자열에만 둔다
     text = PLIST_TEMPLATE.read_text(encoding="utf-8")
@@ -32,7 +41,7 @@ def info_plist(version: str) -> bytes:
 
 
 def build_app(bin_dir: Path, out_dir: Path, version: str) -> Path:
-    """실행 파일을 `Contents/MacOS`에, Info.plist와 아이콘을 넣는다 (서명은 [`finish_app`])"""
+    """실행 파일과 공유 모듈 파일을 `Contents/MacOS`에, Info.plist와 아이콘을 넣는다 (서명은 [`finish_app`])"""
     missing = [e for e in EXES if not (bin_dir / e).is_file()]
     if missing:
         sys.exit(f"{APP_NAME}: {', '.join(missing)} not built in {bin_dir}")
@@ -45,6 +54,9 @@ def build_app(bin_dir: Path, out_dir: Path, version: str) -> Path:
     for exe in EXES:
         shutil.copy2(bin_dir / exe, macos / exe)
         (macos / exe).chmod(0o755)
+    for src, name in shared_files().items():
+        shutil.copy2(src, macos / name)
+        (macos / name).chmod(0o644)
     (app / "Contents" / "Info.plist").write_bytes(info_plist(version))
     shutil.copy2(ICON_SOURCE, app / "Contents" / "Resources" / ICON_FILE)
     return app
