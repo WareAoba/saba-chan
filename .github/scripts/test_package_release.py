@@ -88,7 +88,8 @@ class OtherPlatformAssets(unittest.TestCase):
         import tempfile
         with tempfile.TemporaryDirectory() as d:
             staging = Path(d)
-            for name in ("saba-core-linux-x64.zip", "saba-core-windows-x64.zip"):
+            # 같은 Windows라도 다른 CPU(arm64) 몫은 이 패키저의 원본이 아니다
+            for name in ("saba-core-linux-x64.zip", "saba-core-macos-arm64.zip", "saba-core-windows-arm64.zip", "saba-core-windows-x64.zip"):
                 (staging / name).write_bytes(b"PK")
             old, pr.STAGING_DIR = pr.STAGING_DIR, staging
             try:

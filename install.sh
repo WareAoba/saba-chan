@@ -14,7 +14,7 @@
 #
 # 인자는 `saba-chan-cli install`의 것이다 (--dir, --modules, --components-dir, --gui, --no-gui, --yes).
 # 정식 채널만 설치한다 (CLI 설치도 정식 채널을 받는다). 채널은 설치 뒤 `saba-chan-cli update config channel=beta`로
-# 필요: curl, unzip, sha256sum, python3(manifest JSON 읽기)
+# 필요: curl, sha256sum, python3(manifest JSON 읽기, zip 풀기. 클라우드 서버 이미지에는 unzip이 없는 일이 많다)
 set -eu
 
 RELAY=https://saba-chan.online
@@ -28,13 +28,12 @@ say() { if [ -n "$KO" ]; then printf '%s\n' "$1"; else printf '%s\n' "$2"; fi; }
 die() { say "오류: $1" "Error: $2" >&2; exit 1; }
 
 [ "$(uname -s)" = Linux ] || die "리눅스에서만 설치할 수 있어요." "This installer is for Linux only."
-# ARM(aarch64)은 화면 없는 구성만 있다: 창 앱이 없는 릴리스면 CLI 설치가 헤드리스로 깐다
 case "$(uname -m)" in
     x86_64 | amd64) PLATFORM=linux-x64 ;;
     aarch64 | arm64) PLATFORM=linux-arm64 ;;
     *) die "x86_64·ARM64 PC만 지원해요." "Only x86_64 and ARM64 are supported." ;;
 esac
-for tool in curl unzip sha256sum python3; do
+for tool in curl sha256sum python3; do
     command -v "$tool" >/dev/null 2>&1 || die "$tool 이(가) 필요해요." "$tool is required."
 done
 
@@ -80,7 +79,7 @@ print("gui" if own.get("gui") else "nogui", cli["url"], cli["sha256"], cli.get("
 PY
 [ -s "$TMP/cli.txt" ] || die "이 PC용 CLI가 릴리즈에 없어요." "The release has no CLI for this platform."
 read -r HAS_GUI CLI_URL CLI_SHA CLI_SIZE <"$TMP/cli.txt"
-# 이 릴리스에 창 앱이 없으면(ARM, 창 앱 이전 릴리스) 화면이 있어도 헤드리스로 깐다. 받은 CLI가 데스크톱 구성을 고르면 없는 gui로 멈춘다
+# 이 릴리스에 이 플랫폼의 창 앱이 없으면(창 앱 이전 릴리스) 화면이 있어도 헤드리스로 깐다. 받은 CLI가 데스크톱 구성을 고르면 없는 gui로 멈춘다
 if [ "$HAS_GUI" = nogui ]; then
     case " $* " in
         *" --gui "* | *" --no-gui "*) ;;
@@ -92,7 +91,7 @@ say "CLI를 받는 중..." "Downloading the CLI..."
 curl -fsSL "$CLI_URL" -o "$TMP/cli.zip" || die "CLI를 받지 못했어요." "Could not download the CLI."
 [ -z "$CLI_SIZE" ] || [ "$(wc -c <"$TMP/cli.zip" | tr -d ' ')" = "$CLI_SIZE" ] || die "받은 CLI 크기가 달라요." "The CLI download has the wrong size."
 echo "$CLI_SHA  $TMP/cli.zip" | sha256sum -c --status - || die "받은 CLI가 릴리즈와 달라요." "The CLI download does not match the release."
-unzip -q "$TMP/cli.zip" -d "$TMP/cli"
+python3 -c 'import sys, zipfile; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])' "$TMP/cli.zip" "$TMP/cli"
 chmod +x "$TMP/cli/saba-chan-cli"
 
 # 묻는 말(폴더·모듈·확인)은 터미널에서 받는다: `curl | sh`면 표준 입력은 이 스크립트다

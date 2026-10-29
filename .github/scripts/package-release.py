@@ -127,7 +127,9 @@ def read_bundled_version(key: str) -> str | None:
     return data.get("components", {}).get(key, {}).get("version")
 
 
-OTHER_PLATFORM_ASSET = re.compile(r"-(linux|macos)-(x64|arm64)\.zip$", re.IGNORECASE)
+# 이 패키저가 만드는 플랫폼. 플랫폼이 붙은 다른 zip(release.yml이 빌드해 붙인 linux-x64·linux-arm64 등)은 원본이 아니다
+PLATFORM = "windows-x64"
+PLATFORM_ASSET = re.compile(r"-((?:windows|linux|macos)-(?:x64|arm64))\.zip$", re.IGNORECASE)
 
 
 def find_raw_file(patterns: list[str]) -> Path | None:
@@ -135,8 +137,8 @@ def find_raw_file(patterns: list[str]) -> Path | None:
     if not STAGING_DIR.exists():
         return None
     for f in sorted(STAGING_DIR.iterdir()):
-        # 다른 플랫폼 zip(release.yml이 빌드해 붙인 linux-x64 등)은 Windows 원본이 아니다
-        if OTHER_PLATFORM_ASSET.search(f.name):
+        tagged = PLATFORM_ASSET.search(f.name)
+        if tagged and tagged.group(1).lower() != PLATFORM:
             continue
         for pat in patterns:
             if re.search(pat, f.name, re.IGNORECASE):
