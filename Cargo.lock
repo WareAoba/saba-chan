@@ -4513,6 +4513,7 @@ dependencies = [
  "chrono",
  "flate2",
  "futures-util",
+ "libc",
  "proptest",
  "reqwest",
  "ring",

@@ -173,8 +173,9 @@ if [ -n "$MAC" ] && [ -n "$BUNDLE" ] && [ -x "$DIR/saba-chan-gui" ]; then
     say "응용 프로그램 폴더에서 사바쨩을 열 수 있어요. 지금 엽니다." "Saba-chan is in your Applications folder. Opening it now."
     open "$BUNDLE" || "$CLI" daemon start
 elif [ -n "$MAC" ]; then
-    # 화면 없는 맥이나 묶음 밖 설치: 로그인할 때 켜기(LaunchAgent)는 아직 없다. 데몬만 켠다
+    # 화면 없는 맥이나 묶음 밖 설치: 데몬을 지금 켠다. GUI가 없으면 다음 로그인부터 데몬을 켜는 LaunchAgent도 등록한다
     "$CLI" daemon start
+    [ -x "$DIR/saba-chan-gui" ] || "$CLI" config autostart daemon || true
 elif [ -x "$DIR/saba-chan-gui" ]; then
     if ! has_webkit; then
         say "창 앱에 WebKitGTK가 필요해요. 예: sudo apt install libwebkit2gtk-4.1-0 libayatana-appindicator3-1 (Fedora: sudo dnf install webkit2gtk4.1 libayatana-appindicator-gtk3)" \
