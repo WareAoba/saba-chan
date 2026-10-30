@@ -1840,5 +1840,15 @@
       "relay_unreachable": "无法连接中继，请检查网络连接。",
       "failed": "检查失败。"
     }
+  },
+  "picker": {
+    "today": "Today",
+    "clear": "Clear",
+    "prev_month": "Previous month",
+    "next_month": "Next month",
+    "hour": "Hour",
+    "minute": "Minute",
+    "pick_date": "Pick a date",
+    "pick_time": "Pick a time"
   }
 }

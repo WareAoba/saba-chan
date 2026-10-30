@@ -1840,5 +1840,15 @@
       "relay_unreachable": "リレーに接続できませんでした。インターネット接続を確認してください。",
       "failed": "確認できませんでした。"
     }
+  },
+  "picker": {
+    "today": "Today",
+    "clear": "Clear",
+    "prev_month": "Previous month",
+    "next_month": "Next month",
+    "hour": "Hour",
+    "minute": "Minute",
+    "pick_date": "Pick a date",
+    "pick_time": "Pick a time"
   }
 }
