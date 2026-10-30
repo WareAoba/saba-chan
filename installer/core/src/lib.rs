@@ -272,7 +272,7 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
     // Step 3: R2에서 받고 SHA-256 확인 후 압축 해제 (10-45%)
     // 하나라도 실패하면 설치를 멈춘다. 반쯤 설치된 앱은 업데이터도 고치기 어렵다.
     // 필수 컴포넌트가 빠진 릴리즈는 기존 설치를 건드리기 전에 멈춘다
-    let components = match release::installable(&manifest, config.profile, config.uninstaller_exe.is_none()) {
+    let components = match release::installable(&manifest, config.profile, installer_from_release(config.uninstaller_exe.is_some())) {
         Ok(c) => c,
         Err(missing) => {
             let msg = format!("The release is missing required components: {}", missing.join(", "));
@@ -827,6 +827,12 @@ fn place_component(file: &Path, target_dir: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// 업데이트·제거를 맡을 설치기를 릴리즈에서 받는가. 창 설치기는 Windows에서만 자기 사본을 설치 폴더에 남기므로
+/// (`registry::register_uninstall_entry`) 다른 OS의 창 설치와 CLI 설치는 릴리즈의 것을 받는다
+fn installer_from_release(running_installer: bool) -> bool {
+    !running_installer || !cfg!(windows)
+}
+
 fn extract_zip(zip_path: &Path, target_dir: &Path) -> anyhow::Result<()> {
     std::fs::create_dir_all(target_dir)?;
     // 덮어쓰기 설치 때 켜진 서버의 saba-runner처럼 잠긴 exe는 업데이터처럼 비켜 둔다
@@ -1011,6 +1017,13 @@ fn is_copy_of(copy: &Path, original: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 설치 폴더에 설치기가 꼭 남는다: Windows 창 설치는 자기 사본을 남기고, 그 밖에는 릴리즈의 것을 받는다
+    #[test]
+    fn every_install_leaves_an_installer_to_apply_updates() {
+        assert!(installer_from_release(false), "the CLI has no copy of the installer");
+        assert_eq!(installer_from_release(true), !cfg!(windows));
+    }
 
     #[test]
     fn installed_extensions_are_enabled_next_to_the_ones_already_on() {
