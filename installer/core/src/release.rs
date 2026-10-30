@@ -56,9 +56,10 @@ pub async fn fetch_latest() -> Result<VerifiedRelease, String> {
     }
 }
 
-/// manifest가 요구하는 최소 설치기 버전
-pub fn required_installer_version(manifest: &ReleaseManifest) -> Option<&str> {
-    manifest.components.get("installer").map(|c| c.version.as_str())
+/// manifest가 요구하는 최소 설치기 버전. 창 설치기(`running_installer`)만 따진다:
+/// `saba-chan-cli install`은 설치기를 릴리즈에서 받아 깔므로 자기 판이 낮아도 막지 않는다
+pub fn required_installer_version(manifest: &ReleaseManifest, running_installer: bool) -> Option<&str> {
+    manifest.components.get("installer").filter(|_| running_installer).map(|c| c.version.as_str())
 }
 
 /// 하나라도 빠지면 앱이 돌지 않는 컴포넌트: versions.toml의 `required = true` (패키징 스크립트도 이 값을 읽는다).
@@ -289,7 +290,8 @@ mod tests {
         // `saba-chan-cli install`은 자기 사본이 없다: 업데이트·제거를 맡을 설치기를 릴리즈에서 받는다
         let keys: Vec<_> = installable(&manifest, Profile::Headless, true).unwrap().into_iter().map(|(k, _)| k.as_str()).collect();
         assert_eq!(keys, ["cli", "installer", "locales", "saba-core"]);
-        assert_eq!(required_installer_version(&manifest), Some("0.2.0"));
+        assert_eq!(required_installer_version(&manifest, true), Some("0.2.0"));
+        assert_eq!(required_installer_version(&manifest, false), None, "the CLI installs the release's installer");
 
         let root = Path::new("/opt/saba");
         assert_eq!(target_dir(root, &component("1", Some("."))), root);

@@ -213,7 +213,7 @@ updater-lib 파일 구성(859c3fd에서 나눔): `lib.rs`는 컴포넌트 정의
 |---|---|
 | 1 (0-5%) | 다른 폴더의 설치본 검사(`installed_elsewhere`), install dir 생성, 쓰기 probe, 필요하면 권한 상승 |
 | 2 (5-10%) | 릴레이에서 서명된 최신 manifest를 받아 검증한다(`release.rs` `fetch_latest`) |
-| 2.5 | manifest의 `installer.version`이 현재 `CARGO_PKG_VERSION`보다 높으면 설치를 차단한다(`install`의 `installer_outdated`) |
+| 2.5 | 창 설치기는 manifest의 `installer.version`이 현재 `CARGO_PKG_VERSION`보다 높으면 설치를 차단한다(`install`의 `installer_outdated`). `saba-chan-cli install`은 그 설치기를 릴리즈에서 받아 깔므로 막지 않는다(맥·리눅스 manifest에도 `installer`가 생겼다) |
 | 3 (10-40%) | 업데이터가 아는 키 중 모듈·익스텐션을 뺀 컴포넌트(`installer` 제외)를 모두 R2에서 받아 SHA-256을 확인하고, 임시 폴더에 한 번 풀어 본다(`release.rs` `installable`, `fetch_all`). 하나라도 실패하면 설치 폴더를 건드리지 않고 멈춘다(`download_failed`·`extract_failed`) |
 | 3.2 | 받기와 검증이 모두 끝난 뒤, 덮어쓰기 전에 이 설치 폴더의 프로세스를 끈다(`uninstall.rs` `stop_daemon_before_install`). `saba-core`는 실행 파일 경로(받은 경로와 실제 경로 둘 다)로 찾고, 못 찾으면 설정된 포트의 `/health` PID를 보고 그 exe가 이 폴더 안일 때만 대상으로 삼는다. 경로를 못 읽어 어느 설치의 것인지 모르면 끄지 않고 `daemon_running`으로 멈춰 사용자가 먼저 끄게 한다(`port_daemon_to_stop`). `/api/daemon/shutdown`은 설정된 포트의 `/health` PID가 찾은 데몬일 때만 보낸다(다른 데이터 폴더·포트로 도는 다른 설치의 데몬이 그 포트에 답할 수 있다. `asks_to_shut_down`). 보낸 뒤 20초 안에 안 끝나면(보내지 않았거나 거절되면 바로) 그 PID만 kill. 이어서 이 폴더의 GUI exe와 `saba-chan-cli`를 그 PID만 끈다(트리째 끄면 데몬이 남았을 때 그 아래 게임 서버까지 죽는다). 포터블 GUI는 실행기가 임시 폴더에 풀어 띄우므로, 실행기를 끄기 전에 그 자손(`descendants_in`)을 찾고, 데몬을 끄기 전에 `GET /api/clients`에서 `installRoot`가 이 폴더인 GUI PID를 받아 둔다. 그 PID가 아직 GUI 이름의 프로세스일 때만 끈다. 단계마다 `%TEMP%\saba-chan-installer.log`에 남긴다 |
 | 3.5 (40-45%) | 3.2 뒤에 받은 zip을 `install_dir/<install_dir>`에 푼다. 푸는 중에 실패하면(디스크 부족 등) `extract_failed`로 멈춘다 |

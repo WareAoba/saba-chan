@@ -256,7 +256,7 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
     .for_profile(config.profile);
 
     // 설치기 자체가 이 릴리즈를 설치할 수 있는 버전인지
-    if let Some(required_version) = release::required_installer_version(&manifest) {
+    if let Some(required_version) = release::required_installer_version(&manifest, config.uninstaller_exe.is_some()) {
         if version_compare(INSTALLER_VERSION, required_version) == std::cmp::Ordering::Less {
             return fail(
                 "installer_outdated",
