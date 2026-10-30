@@ -272,7 +272,7 @@ Tauri 커맨드(`installer/gui/src-tauri/src/lib.rs`): `get_installer_state`, `s
 
 ### 4.1 전역 동작
 
-- 클라이언트 게이트(`app.ts` `clientGate`): 클라이언트(`X-Saba-Client: 1`, 맞는 `x-internal-secret`, 맞는 `x-admin-key`)가 아닌 접속은 Oops 페이지다. 보안 장치가 아니라 안내용이다. 브라우저도 쓰는 `/admin*`, `/api/bot-invite`, `/remote/ws`, `/v1/updates/download/installer`, 컨테이너 프로브용 `/health`, 원격 MCP(`/mcp`, `/oauth/*`, `/.well-known/oauth-*`, §4.4 (l))는 통과한다. 원격 MCP 경로는 Oops 변환도 하지 않고(OAuth·MCP 오류 형식 그대로) CORS는 모든 출처에 연다(쿠키 없이 Bearer만 쓴다).
+- 클라이언트 게이트(`app.ts` `clientGate`): 클라이언트(`X-Saba-Client: 1`, 맞는 `x-internal-secret`, 맞는 `x-admin-key`)가 아닌 접속은 Oops 페이지다. 보안 장치가 아니라 안내용이다. 브라우저도 쓰는 `/admin*`, `/api/bot-invite`, `/remote/ws`, `/v1/updates/download/installer`, 컨테이너 프로브용 `/health`, 원격 MCP(`/mcp`, `/oauth/*`, `/.well-known/oauth-*`, §4.4 (l))는 통과한다. 원격 MCP 경로는 Oops 변환도 하지 않고(OAuth·MCP 오류 형식 그대로. 다만 `Accept`에 `text/html`이 있는 `/mcp` 요청, 곧 주소창으로 연 브라우저의 오류는 `WWW-Authenticate`를 지운 404 Oops 페이지다) CORS는 모든 출처에 연다(쿠키 없이 Bearer만 쓴다).
 - 잘못된 요청은 모두 Oops 페이지(`app.ts` `oopsOnError`, 사용자 결정 2026-10-26): 클라이언트가 아닌 요청이 4xx·5xx로 끝나면 권한 없음·틀린 링크·한도 초과·값 오류 모두 없는 주소와 똑같은 404 HTML(웹사이트 `not-found.html`과 같은 그림·문구, 10개 언어)로 바꾸고 경로마다 다른 레이트리밋 헤더도 지운다. 사바쨩 웹(`/remote/`)과 컨테이너 프로브용 `/health`는 바꾸지 않는다. 클라이언트는 지금처럼 JSON 오류를 받는다. nginx도 `/health`는 404, 직접 거절한 405·429와 `X-Saba-Client` 없이 들어온 클라이언트 전용 경로(데몬 경로·`/node/ws`·`/node/tunnel`·`/v1/updates/`·`/api/`)는 404 `not-found.html`로 준다(차단 페이지는 없다).
 - CORS는 `app://`, `tauri://`, 웹사이트 origin, dev 모드의 localhost, `CORS_ORIGINS`만 허용한다.
 - 레이트리밋은 전역 100/min이고 라우트별 값은 `middleware/rateLimit.ts` `ROUTE_RATE_LIMITS`에 있다. 노드 경로(`/poll`, `/heartbeat`, `/events`, `/ack`, `/result/:id`)는 한 번 검증된 토큰이면 노드 단위로, 아니면 IP로 센다.
