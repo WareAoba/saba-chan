@@ -612,15 +612,18 @@ impl Session {
                     None => Default::default(),
                 };
                 let texts = |l: &str| locales.get(l).cloned().unwrap_or(Value::Null);
+                let names = &texts;
                 let texts: Option<&dyn Fn(&str) -> Value> = Some(&texts);
-                json!({
+                let mut entry = json!({
                     "name": m.name,
                     // 게임명도 별명처럼 서버를 부른다: 릴레이가 위험 명령 확인에서 같은 서버를 찾도록 함께 보낸다
                     "module_aliases": m.game_names.iter().chain(&m.module_aliases).collect::<Vec<_>>(),
                     // 디스코드·챗봇에 내보내지 않는 명령(`remote = false`)은 싣지 않는다
                     "commands": { "fields": m.commands.iter().filter(|c| c.remote).map(|c| relay_command_entry(c, m.aliases_of(&c.name), texts)).collect::<Vec<_>>() },
                     "presets": m.presets.iter().map(|p| json!({ "id": p.id, "label": p.label })).collect::<Vec<_>>(),
-                })
+                });
+                relay_module_names(&mut entry, m.display_name.as_deref(), names);
+                entry
             })
             .collect())
         .await
@@ -1514,6 +1517,24 @@ fn ids_by_guild(node_settings: &Value, key: &str) -> Option<Value> {
     (!map.is_empty()).then_some(Value::Object(map))
 }
 
+/// 모듈의 게임 이름 — `display_name`(module.toml)과 `display_names`(언어 → 모듈 locales `display_name`). 없으면 키를 싣지 않는다.
+/// 릴레이가 상황판 채널에 켜진 게임을 보이는 데 쓴다 (`game_names`와 달리 띄어 쓴 이름도 그대로 싣는다)
+fn relay_module_names(entry: &mut Value, display_name: Option<&str>, texts: &dyn Fn(&str) -> Value) {
+    if let Some(name) = display_name.map(str::trim).filter(|n| !n.is_empty()) {
+        entry["display_name"] = json!(name);
+    }
+    let names: serde_json::Map<String, Value> = crate::chat::i18n::languages()
+        .into_iter()
+        .filter_map(|l| {
+            let name = texts(l).get("display_name")?.as_str()?.trim().to_string();
+            (!name.is_empty()).then(|| (l.to_string(), json!(name)))
+        })
+        .collect();
+    if !names.is_empty() {
+        entry["display_names"] = Value::Object(names);
+    }
+}
+
 /// 하트비트의 모듈 명령 한 줄: relay가 슬래시·챗봇 도구를 만드는 데 쓰는 필드만 (템플릿·엔드포인트는 PC 안에서만 쓴다).
 /// `aliases`는 module.toml `[aliases.commands]`의 별칭 — 별칭으로 친 명령도 relay가 위험도 확인을 거치게 한다
 /// `texts`: 언어 → 모듈 locales (번역한 명령 이름이 켜져 있을 때). 있으면 `commands.<이름>.label`·`description`과
@@ -2029,6 +2050,26 @@ mod tests {
         assert_eq!(entry["inputs"][0]["titles"]["ko"], "바로 쓰기");
         assert!(entry["titles"].get("en").is_none(), "no text for a language → nothing (the relay shows the plain name)");
         assert!(relay_command_entry(&field, &[], None).get("titles").is_none(), "off → plain names only");
+    }
+
+    /// 게임 이름: module.toml `display_name`과 언어마다 모듈 locales의 `display_name` (상황판 채널에 켜진 게임을 보인다)
+    #[test]
+    fn heartbeat_modules_carry_game_names() {
+        let texts = |lang: &str| -> Value {
+            match lang {
+                "ko" => json!({ "display_name": "프로젝트 좀보이드" }),
+                "ja" => json!({ "display_name": " " }),
+                _ => Value::Null,
+            }
+        };
+        let mut entry = json!({});
+        relay_module_names(&mut entry, Some("Project Zomboid"), &texts);
+        assert_eq!(entry["display_name"], "Project Zomboid");
+        assert_eq!(entry["display_names"], json!({ "ko": "프로젝트 좀보이드" }), "blank or missing → left out");
+
+        let mut bare = json!({});
+        relay_module_names(&mut bare, None, &|_: &str| Value::Null);
+        assert_eq!(bare, json!({}), "no names → no keys (the relay falls back to the module name)");
     }
 
     /// 사바쨩 웹: 릴레이가 세션을 열었다고 알리면 이 세션의 릴레이 주소·토큰으로 웹소켓을 연다
