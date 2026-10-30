@@ -203,6 +203,10 @@
       "port_check": {
         "title": "Comprobar reenvío de puertos",
         "description": "El relé comprueba si este servidor es accesible desde internet"
+      },
+      "chat": {
+        "title": "Enviar chat del juego",
+        "description": "Envía un mensaje de Discord al chat del juego"
       }
     },
     "monitor": {
@@ -303,7 +307,8 @@
       "memory": "Memoria",
       "tools": "Herramientas activadas",
       "step": "Paso",
-      "from_snapshot": "Desde copia automática del juego"
+      "from_snapshot": "Desde copia automática del juego",
+      "text": "Mensaje"
     },
     "summary": {
       "server_item": "• **{{name}}** ({{module}}) · {{status}}",

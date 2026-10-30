@@ -71,6 +71,7 @@ pub static ROUTES: &[Route] = &[
     allow("GET", "/api/instance/{id}/logs/export"),
     allow("GET", "/api/instance/{id}/players"),
     allow("POST", "/api/instance/{id}/command"),
+    allow("POST", "/api/instance/{id}/chat"),
     allow("GET", "/api/instance/{id}/commands"),
     allow("POST", "/api/instance/{id}/rcon"),
     allow("POST", "/api/instance/{id}/rest"),

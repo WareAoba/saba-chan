@@ -203,6 +203,10 @@
       "port_check": {
         "title": "Vérifier la redirection de ports",
         "description": "Le relais vérifie si ce serveur est accessible depuis Internet"
+      },
+      "chat": {
+        "title": "Envoyer au chat du jeu",
+        "description": "Envoie un message Discord dans le chat du jeu"
       }
     },
     "monitor": {
@@ -303,7 +307,8 @@
       "memory": "Mémoire",
       "tools": "Outils activés",
       "step": "Étape",
-      "from_snapshot": "Depuis la sauvegarde auto du jeu"
+      "from_snapshot": "Depuis la sauvegarde auto du jeu",
+      "text": "Message"
     },
     "summary": {
       "server_item": "• **{{name}}** ({{module}}) · {{status}}",

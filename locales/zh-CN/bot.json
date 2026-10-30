@@ -203,6 +203,10 @@
       "port_check": {
         "title": "端口转发检查",
         "description": "中继检查能否从外网连接此服务器"
+      },
+      "chat": {
+        "title": "发送游戏聊天",
+        "description": "把 Discord 消息发送到游戏聊天"
       }
     },
     "monitor": {
@@ -303,7 +307,8 @@
       "memory": "记忆",
       "tools": "启用的工具",
       "step": "步骤",
-      "from_snapshot": "来自游戏自动备份"
+      "from_snapshot": "来自游戏自动备份",
+      "text": "内容"
     },
     "summary": {
       "server_item": "• **{{name}}** ({{module}}) · {{status}}",

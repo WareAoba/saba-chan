@@ -203,6 +203,10 @@
       "port_check": {
         "title": "ポート開放の確認",
         "description": "外部からこのサーバーに接続できるかリレーが確認します"
+      },
+      "chat": {
+        "title": "ゲームチャット送信",
+        "description": "Discordのメッセージをゲームチャットに送ります"
       }
     },
     "monitor": {
@@ -303,7 +307,8 @@
       "memory": "記憶",
       "tools": "使うツール",
       "step": "ステップ",
-      "from_snapshot": "ゲーム自動バックアップから"
+      "from_snapshot": "ゲーム自動バックアップから",
+      "text": "本文"
     },
     "summary": {
       "server_item": "• **{{name}}** ({{module}}) · {{status}}",

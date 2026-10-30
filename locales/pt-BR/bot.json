@@ -203,6 +203,10 @@
       "port_check": {
         "title": "Verificar redirecionamento de portas",
         "description": "O relay verifica se este servidor é acessível pela internet"
+      },
+      "chat": {
+        "title": "Enviar chat do jogo",
+        "description": "Envia uma mensagem do Discord para o chat do jogo"
       }
     },
     "monitor": {
@@ -303,7 +307,8 @@
       "memory": "Memória",
       "tools": "Ferramentas ativadas",
       "step": "Etapa",
-      "from_snapshot": "Do backup automático do jogo"
+      "from_snapshot": "Do backup automático do jogo",
+      "text": "Mensagem"
     },
     "summary": {
       "server_item": "• **{{name}}** ({{module}}) · {{status}}",

@@ -4,6 +4,8 @@
 //! - 인스턴스 설정 `game_chat`: `off`(기본)·`all`(모든 채팅)·`keyword`(첫머리에 감지 단어 `game_chat_keyword`가 있는 채팅만, 단어는 빼고).
 //! - 데몬이 보낼 문장을 다 만들어 `instance.chat {instanceId, instance, text}`로 낸다. 릴레이는 그 문장을 그대로 보낸다 (멘션 없이).
 //!   이름·본문은 디스코드 서식 문자를 이스케이프하고 제어 문자를 뺀다.
+//! - 반대 방향(디스코드 → 게임)은 액션 `server.chat`이 모듈 `chat_send` 함수를 부른다. 보낼 이름·본문은 [`outgoing`]이 줄바꿈·제어
+//!   문자를 빼서 한 줄로 만든다(콘솔 명령을 끼워 넣지 못하게). 보낸 글이 게임 채팅으로 다시 찍혀도 디스코드로 되돌리지 않는다 ([`is_echo`])
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -15,6 +17,11 @@ const MESSAGE_MAX: usize = 300;
 const INSTANCE_MAX: usize = 64;
 /// 감지 단어의 최대 길이 (문자)
 pub const KEYWORD_MAX: usize = 32;
+/// 게임으로 보내는 이름·본문의 최대 길이 (문자)
+const OUT_NAME_MAX: usize = 32;
+const OUT_TEXT_MAX: usize = 200;
+/// 게임으로 보낸 글이 게임 채팅으로 다시 찍히기를 기다리는 시간
+const ECHO_SECS: u64 = 30;
 
 /// 인스턴스 설정 `game_chat` (`instance.json`)
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -118,6 +125,43 @@ fn escape(text: &str, max: usize) -> String {
     out
 }
 
+/// 게임으로 보낼 이름과 본문: 제어 문자(줄바꿈 포함)를 빼고 다듬어 자른다. 둘 중 하나라도 비면 None
+pub fn outgoing(name: &str, text: &str) -> Option<(String, String)> {
+    let line = |s: &str, max: usize| s.chars().map(|c| if c.is_control() { ' ' } else { c }).collect::<String>().split_whitespace().collect::<Vec<_>>().join(" ").chars().take(max).collect::<String>();
+    let (name, text) = (line(name, OUT_NAME_MAX), line(text, OUT_TEXT_MAX));
+    (!name.is_empty() && !text.is_empty()).then_some((name, text))
+}
+
+/// 인스턴스별로 게임에 보낸 본문과 보낸 때
+type Sent = Mutex<HashMap<String, Vec<(String, std::time::Instant)>>>;
+
+fn sent() -> &'static Sent {
+    static SENT: OnceLock<Sent> = OnceLock::new();
+    SENT.get_or_init(Default::default)
+}
+
+/// 게임으로 보낸 본문을 기억한다 (`is_echo`가 그 메아리를 거른다)
+pub fn remember_sent(instance_id: &str, text: &str) {
+    let mut sent = sent().lock().unwrap_or_else(|e| e.into_inner());
+    let list = sent.entry(instance_id.to_string()).or_default();
+    list.retain(|(_, at)| at.elapsed().as_secs() < ECHO_SECS);
+    list.push((text.to_string(), std::time::Instant::now()));
+}
+
+/// 콘솔 채팅이 방금 게임으로 보낸 글의 메아리인가 (본문에 그 글이 들어 있다). 맞으면 그 기억은 지운다
+pub fn is_echo(instance_id: &str, message: &str) -> bool {
+    let mut sent = sent().lock().unwrap_or_else(|e| e.into_inner());
+    let Some(list) = sent.get_mut(instance_id) else { return false };
+    list.retain(|(_, at)| at.elapsed().as_secs() < ECHO_SECS);
+    match list.iter().position(|(text, _)| message.contains(text.as_str())) {
+        Some(i) => {
+            list.remove(i);
+            true
+        }
+        None => false,
+    }
+}
+
 fn current() -> &'static Mutex<HashMap<String, GameChat>> {
     static CURRENT: OnceLock<Mutex<HashMap<String, GameChat>>> = OnceLock::new();
     CURRENT.get_or_init(Default::default)
@@ -179,6 +223,25 @@ mod tests {
         let line = compose("s", "a_b", "@everyone **x** [click](https://e.x) <@1>\u{7}");
         assert_eq!(line, "\\[s\\] **a\\_b**: \\@everyone \\*\\*x\\*\\* \\[click\\]\\(https\\://e.x\\) \\<\\@1\\>");
         assert_eq!(compose("s", "p", &"가".repeat(400)).matches('가').count(), MESSAGE_MAX);
+    }
+
+    // 사용자 요청(2026-10-30): 디스코드 글을 콘솔 명령으로 게임에 보낸다. 줄바꿈이 남으면 다음 콘솔 명령을 끼워 넣을 수 있다
+    #[test]
+    fn outgoing_chat_is_one_line_without_control_characters() {
+        assert_eq!(outgoing(" 김치 ", "안녕\nstop\r\n"), Some(("김치".to_string(), "안녕 stop".to_string())));
+        assert_eq!(outgoing("a\u{1b}[31m", "x\ty"), Some(("a [31m".to_string(), "x y".to_string())));
+        assert_eq!(outgoing("p", "가".repeat(300).as_str()).unwrap().1.chars().count(), OUT_TEXT_MAX);
+        assert_eq!(outgoing("p", " \n "), None);
+        assert_eq!(outgoing("", "hi"), None);
+    }
+
+    #[test]
+    fn a_sent_chat_coming_back_from_the_console_is_not_forwarded_again() {
+        remember_sent("echo-a", "김치: 안녕");
+        assert!(!is_echo("echo-b", "김치: 안녕"), "other servers are not affected");
+        assert!(is_echo("echo-a", "[디코] 김치: 안녕"));
+        assert!(!is_echo("echo-a", "[디코] 김치: 안녕"), "only once");
+        assert!(!is_echo("echo-a", "something else"));
     }
 
     #[test]

@@ -203,6 +203,10 @@
       "port_check": {
         "title": "Portweiterleitung prüfen",
         "description": "Das Relay prüft, ob dieser Server aus dem Internet erreichbar ist"
+      },
+      "chat": {
+        "title": "Spielchat senden",
+        "description": "Sendet eine Discord-Nachricht in den Spielchat"
       }
     },
     "monitor": {
@@ -303,7 +307,8 @@
       "memory": "Gedächtnis",
       "tools": "Aktivierte Werkzeuge",
       "step": "Schritt",
-      "from_snapshot": "Aus Spiel-Autobackup"
+      "from_snapshot": "Aus Spiel-Autobackup",
+      "text": "Nachricht"
     },
     "summary": {
       "server_item": "• **{{name}}** ({{module}}) · {{status}}",
