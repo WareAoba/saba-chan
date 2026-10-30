@@ -67,8 +67,8 @@ export function LoadingScreen({ logoSrc, initStatus, initProgress, failed, onRet
             {/* 뒤에서 흐르는 서버 콘솔 (가운데는 비워 둔다) */}
             <MatrixRain className="loading-matrix" tokens={tokens} />
             <div className="loading-vignette" aria-hidden="true" />
-            <div className="appbar appbar-bare">
-                <div className="appbar-spacer" />
+            <div className="appbar appbar-bare" data-tauri-drag-region>
+                <div className="appbar-spacer" data-tauri-drag-region />
                 <WindowControls />
             </div>
             <div className="loading-content">

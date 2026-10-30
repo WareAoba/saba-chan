@@ -42,8 +42,8 @@ export function PopoutConsole({
 
     return (
         <div className="App console-popout-app">
-            <div className="console-popout-titlebar">
-                <span className="console-popout-titlebar-title">
+            <div className="console-popout-titlebar" data-tauri-drag-region>
+                <span className="console-popout-titlebar-title" data-tauri-drag-region>
                     <Icon name="terminal" size="sm" />
                     {server?.name || popoutParams.name}
                 </span>
@@ -69,7 +69,7 @@ export function PopoutConsole({
                     </button>
                     <button
                         type="button"
-                        className="console-popout-titlebar-btn"
+                        className="console-popout-titlebar-btn console-popout-window-btn"
                         onClick={() => window.electron?.minimizeWindow()}
                         title={t('title_bar.minimize')}
                         aria-label={t('title_bar.minimize')}
@@ -78,7 +78,7 @@ export function PopoutConsole({
                     </button>
                     <button
                         type="button"
-                        className="console-popout-titlebar-btn console-popout-titlebar-close"
+                        className="console-popout-titlebar-btn console-popout-titlebar-close console-popout-window-btn"
                         onClick={() => window.electron?.closeWindow()}
                         title={t('title_bar.close')}
                         aria-label={t('title_bar.close')}

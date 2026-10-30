@@ -21,8 +21,8 @@ export function ErrorFallback({ error, resetErrorBoundary }) {
 
     return (
         <div className="error-fallback" role="alert">
-            <div className="appbar appbar-bare">
-                <div className="appbar-spacer" />
+            <div className="appbar appbar-bare" data-tauri-drag-region>
+                <div className="appbar-spacer" data-tauri-drag-region />
                 <WindowControls />
             </div>
             <div className="error-fallback-content">

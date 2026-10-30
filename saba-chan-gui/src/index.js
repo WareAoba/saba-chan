@@ -23,6 +23,8 @@ if (import.meta.env?.DEV && !window.api) installMockApi();
 // 트레이 아이콘을 눌러 뜬 작은 창은 앱 전체가 아니라 팝업만 그린다
 const trayPopup = new URLSearchParams(window.location.search).has('tray-popup');
 if (trayPopup) document.documentElement.dataset.trayPopup = '';
+// 맥 창은 왼쪽 위 신호등을 쓴다 (window.rs `frame`): CSS가 앱 창 버튼을 숨기고 그 자리를 비운다
+if (/Mac/.test(navigator.platform || navigator.userAgent)) document.documentElement.dataset.platform = 'mac';
 
 // Apply saved theme before first render (트레이 팝업 표시를 먼저 달아야 투명 창에 바탕을 칠하지 않는다)
 initTheme();

@@ -35,6 +35,8 @@
     "allow-console-popout-list",
     "allow-console-popin",
     "allow-console-toggle-always-on-top",
+    "core:window:allow-start-dragging",
+    "core:window:allow-internal-toggle-maximize",
     "allow-window-minimize",
     "allow-window-maximize",
     "allow-window-close",

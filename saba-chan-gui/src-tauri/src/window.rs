@@ -190,6 +190,31 @@ fn lock_navigation<'a>(
         })
 }
 
+/// 창 틀. Windows·리눅스는 틀 없이 앱이 그린 버튼을 쓰고, 맥은 왼쪽 위 신호등을 앱 상단바 위에 겹쳐 그린다
+/// (렌더러는 `data-platform="mac"`이면 자기 창 버튼을 숨기고 신호등 자리를 비운다). `bar_height`는 그 상단바 높이
+fn frame<'a>(
+    builder: WebviewWindowBuilder<'a, tauri::Wry, AppHandle>,
+    bar_height: f64,
+) -> WebviewWindowBuilder<'a, tauri::Wry, AppHandle> {
+    #[cfg(target_os = "macos")]
+    {
+        // y는 신호등(높이 14) 위쪽 여백이다: 상단바 가운데에 놓는다
+        builder
+            .title_bar_style(tauri::TitleBarStyle::Overlay)
+            .hidden_title(true)
+            .traffic_light_position(tauri::LogicalPosition::new(16.0, (bar_height - 14.0) / 2.0))
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = bar_height;
+        builder.decorations(false)
+    }
+}
+
+/// 렌더러 상단바 높이 (`tokens.css` `--appbar-h`, `.console-popout-titlebar`)
+const APPBAR_HEIGHT: f64 = 48.0;
+const POPOUT_BAR_HEIGHT: f64 = 36.0;
+
 // ── 메인 창 ──
 
 pub fn create_main_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
@@ -215,7 +240,6 @@ pub fn create_main_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         .title("Saba-chan")
         .inner_size(width.min(work_w), height.max(min_height).min(work_h))
         .min_inner_size(MIN_WIDTH, min_height)
-        .decorations(false)
         .visible(false) // 페이지가 뜰 때까지 보이지 않음
         .background_color(background_for(app, None)) // CSS 로드 전·크기 바꾸는 중 흰 화면 방지
         .on_page_load(|w, payload| {
@@ -227,7 +251,7 @@ pub fn create_main_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     if let (Some(x), Some(y)) = (bounds["x"].as_f64(), bounds["y"].as_f64()) {
         builder = builder.position(x, y);
     }
-    let win = lock_navigation(app, builder).build()?;
+    let win = lock_navigation(app, frame(builder, APPBAR_HEIGHT)).build()?;
     // 테마가 "시스템 따라"면 창이 생긴 뒤에야 시스템 테마를 안다
     let _ = win.set_background_color(Some(background_for(app, win.theme().ok())));
     apply_icon(&win);
@@ -490,10 +514,9 @@ pub fn open_popout(app: &AppHandle, instance_id: &str, server_name: &str) -> tau
         .title(format!("Console — {server_name}"))
         .inner_size(700.0, 450.0)
         .min_inner_size(400.0, 250.0)
-        .decorations(false)
         .background_color(background)
         .always_on_top(true);
-    let win = lock_navigation(app, builder).build()?;
+    let win = lock_navigation(app, frame(builder, POPOUT_BAR_HEIGHT)).build()?;
     apply_icon(&win);
 
     // 메인 창에 팝아웃 열림/닫힘 알림 → 임베디드 콘솔 숨김 제어

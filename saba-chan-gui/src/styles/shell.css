@@ -201,6 +201,19 @@
     background: var(--stop);
     color: var(--text-on-dark);
 }
+/* 맥: 신호등이 상단바 왼쪽 위에 겹친다 (window.rs `frame`). 앱 창 버튼은 숨기고 그 자리를 비운다 */
+:root[data-platform='mac'] .appbar-window,
+:root[data-platform='mac'] .console-popout-window-btn {
+    display: none;
+}
+:root[data-platform='mac'] .appbar {
+    padding-left: var(--mac-traffic-lights-w);
+    padding-right: var(--sp-4);
+}
+:root[data-platform='mac'] .console-popout-titlebar {
+    min-height: 36px;
+    padding-left: var(--mac-traffic-lights-w);
+}
 
 /* 상단바에서 펼쳐지는 패널(데몬·알림): 버튼 아래에 붙는다 */
 .popover-anchor {
