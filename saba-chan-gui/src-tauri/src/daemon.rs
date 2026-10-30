@@ -165,7 +165,7 @@ pub struct DaemonClient {
     base: RwLock<String>,
     token: RwLock<String>,
     token_path: PathBuf,
-    /// 고른 원격 데몬 (G1, 설정 `gui.daemonTarget`). 없으면 이 PC의 데몬
+    /// 고른 원격 데몬 (G1, 시작할 때 설정 `gui.mainDaemon`). 없으면 이 PC의 데몬
     target: RwLock<Option<String>>,
     /// 대상이 바뀔 때마다 오른다 (이벤트 스트림이 새 대상으로 다시 붙는다)
     target_gen: tokio::sync::watch::Sender<u64>,

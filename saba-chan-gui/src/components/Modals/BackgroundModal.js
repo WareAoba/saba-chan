@@ -27,7 +27,7 @@ function BackgroundModal({ isOpen, onClose, isClosing, ipcPort }) {
                 if (!alive) return;
                 if (!current?.target) return setRemote(null);
                 const where = d?.address ? `${d.address}:${d.port}` : t('remote_daemon.via_relay');
-                setRemote(`${d?.name || current.target} · ${where}`);
+                setRemote(`${d?.label || d?.name || current.target} · ${where}`);
             })
             .catch(() => alive && setRemote(null));
         return () => {

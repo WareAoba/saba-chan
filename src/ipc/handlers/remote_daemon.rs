@@ -1,17 +1,18 @@
 //! 원격 데몬 설정과 짝 맺은 PC (D1, `crate::remote_daemon`). 로컬 전용: 원격 포트에서는 막는다
 //!
-//!   GET    /api/remote/settings            {enabled, port, address, transport, status}
+//!   GET    /api/remote/settings            {enabled, port, address, transport, status, hostId} hostId = 이 PC의 릴레이 PC id (없으면 "")
 //!   PUT    /api/remote/settings            {enabled?, port?, address?} → 저장하고 원격 포트를 다시 맞춘다
-//!   GET    /api/remote/clients             {clients:[{hostId, name, pairedAt}]}
+//!   GET    /api/remote/clients             {clients:[{hostId, name, ownerName, label, pairedAt}]}
 //!   DELETE /api/remote/clients/:hostId     짝을 푼다 (그 PC의 토큰이 더는 통하지 않는다)
 //!
 //! 붙는 쪽 (D1b, `remote_daemon::peer`):
-//!   GET    /api/remote/peers                         {peers:[{hostId, name, status, hasEndpoint, saved}]} 같은 주인의 다른 PC (릴레이)
-//!   GET    /api/remote/daemons                       {daemons:[{hostId, name, address, port, pairedAt}]} 이 PC가 붙는 원격 데몬
-//!   POST   /api/remote/daemons {hostId}              짝을 맺고 저장한다 → {hostId, name}
+//!   GET    /api/remote/peers                         {peers:[{hostId, name, ownerName, label, status, hasEndpoint, saved}]} 같은 주인의 다른 PC (릴레이)
+//!   GET    /api/remote/daemons                       {daemons:[{hostId, name, ownerName, label, address, port, pairedAt}]} 이 PC가 붙는 원격 데몬
+//!   POST   /api/remote/daemons {hostId}              짝을 맺고 저장한다 → {hostId, name, label}
+//!   label = 화면에 보일 이름 `디스코드 이름(PC 이름)` (`config::label`)
 //!   DELETE /api/remote/daemons/:hostId               잊는다
 //!   ANY    /api/remote/daemons/:hostId/proxy/*path   원격 데몬의 `/path`(`api/…`·`health`)에 그대로 보낸다
-//!   GET    /api/remote/servers                       {daemons:[{hostId, name, ok, error_code?, servers}]} 이 PC(hostId null)와 원격 데몬마다의 서버 (G1c 합쳐 보기)
+//!   GET    /api/remote/servers                       {daemons:[{hostId, name, label, ok, error_code?, servers}]} 이 PC(hostId null)와 원격 데몬마다의 서버 (G1c 합쳐 보기)
 
 use axum::{
     body::Body,
@@ -39,7 +40,11 @@ fn view(settings: &config::Settings, status: &remote_daemon::Status) -> Value {
 
 pub async fn get_settings() -> Json<Value> {
     let settings = config::settings_in(&ConfigFile::default_location());
-    Json(view(&settings, &remote_daemon::status().await))
+    let mut v = view(&settings, &remote_daemon::status().await);
+    // 원격 데몬의 이벤트 중 이 PC가 시킨 것(`remoteHost`)을 가리는 데 쓴다 (셸 효과음)
+    let host = crate::ipc::handlers::relay::load_node_token();
+    v["hostId"] = json!(host.as_deref().and_then(|t| crate::ipc::handlers::relay::parse_node_token(t.trim())).map_or("", |(id, _)| id));
+    Json(v)
 }
 
 #[derive(Deserialize)]
@@ -79,7 +84,7 @@ pub async fn put_settings(State(state): State<IPCServer>, Json(patch): Json<Sett
 pub async fn list_clients() -> Json<Value> {
     let clients: Vec<Value> = config::clients_in(&ConfigFile::default_location())
         .into_iter()
-        .map(|c| json!({ "hostId": c.host_id, "name": c.name, "pairedAt": c.paired_at }))
+        .map(|c| json!({ "hostId": c.host_id, "label": c.label(), "name": c.name, "ownerName": c.owner_name, "pairedAt": c.paired_at }))
         .collect();
     Json(json!({ "clients": clients }))
 }
@@ -107,12 +112,28 @@ pub async fn list_peers(State(state): State<IPCServer>) -> Response {
     let Ok(peers) = remote_daemon::relay::peers(&target).await else {
         return peer::error(StatusCode::BAD_GATEWAY, "relay_unreachable");
     };
-    let saved = config::daemons_in(&ConfigFile::default_location());
+    let file = ConfigFile::default_location();
+    // 릴레이의 이름이 기준이다: 짝 맺은 PC·원격 데몬의 저장한 이름을 맞춘다 (예전에 짝 맺어 주인 이름이 없는 PC 포함)
+    let known: Vec<_> = peers.iter().map(|p| (p.host_id.clone(), p.name.clone(), p.owner_name.clone())).collect();
+    match config::refresh_names_in(&file, &known) {
+        // 원격 포트가 들고 있는 짝 맺은 PC도 새 이름으로 (요청 출처 이름)
+        Ok(()) => remote_daemon::reload_clients(&file),
+        Err(e) => tracing::warn!("Failed to refresh remote PC names: {}", e),
+    }
+    let saved = config::daemons_in(&file);
     let peers: Vec<Value> = peers
         .into_iter()
         .map(|p| {
             let is_saved = saved.iter().any(|d| d.host_id == p.host_id);
-            json!({ "hostId": p.host_id, "name": p.name, "status": p.status, "hasEndpoint": p.endpoint.is_some(), "saved": is_saved })
+            json!({
+                "hostId": p.host_id,
+                "label": config::label(&p.owner_name, &p.name),
+                "name": p.name,
+                "ownerName": p.owner_name,
+                "status": p.status,
+                "hasEndpoint": p.endpoint.is_some(),
+                "saved": is_saved,
+            })
         })
         .collect();
     Json(json!({ "peers": peers })).into_response()
@@ -121,7 +142,17 @@ pub async fn list_peers(State(state): State<IPCServer>) -> Response {
 pub async fn list_daemons() -> Json<Value> {
     let daemons: Vec<Value> = config::daemons_in(&ConfigFile::default_location())
         .into_iter()
-        .map(|d| json!({ "hostId": d.host_id, "name": d.name, "address": d.address, "port": d.port, "pairedAt": d.paired_at }))
+        .map(|d| {
+            json!({
+                "hostId": d.host_id,
+                "label": d.label(),
+                "name": d.name,
+                "ownerName": d.owner_name,
+                "address": d.address,
+                "port": d.port,
+                "pairedAt": d.paired_at,
+            })
+        })
         .collect();
     Json(json!({ "daemons": daemons }))
 }
@@ -138,7 +169,7 @@ pub async fn connect_daemon(State(state): State<IPCServer>, Json(body): Json<Con
         return bad("invalid_host", "hostId is required");
     }
     match peer::connect(&ConfigFile::default_location(), relay_target(&state).await, host_id).await {
-        Ok(d) => Json(json!({ "hostId": d.host_id, "name": d.name })).into_response(),
+        Ok(d) => Json(json!({ "hostId": d.host_id, "name": d.name, "label": d.label() })).into_response(),
         Err(e) => peer::error(e.status(), e.code()),
     }
 }
@@ -171,7 +202,7 @@ async fn body_json(res: Response) -> Value {
 /// 이 PC와 저장한 원격 데몬마다의 서버 목록. 원격 데몬은 동시에 묻고, 포트 충돌 알림은 비우지 않는다(`notices=keep`)
 async fn all_servers_with(file: &ConfigFile, state: &IPCServer, timeout: std::time::Duration) -> Value {
     let local = body_json(crate::ipc::handlers::server::list_servers_internal(state).await).await;
-    let mut daemons = vec![json!({ "hostId": null, "name": "", "ok": true, "servers": local["servers"].as_array().cloned().unwrap_or_default() })];
+    let mut daemons = vec![json!({ "hostId": null, "name": "", "label": "", "ok": true, "servers": local["servers"].as_array().cloned().unwrap_or_default() })];
     let relay = relay_target(state).await;
     let asks = config::daemons_in(file).into_iter().map(|d| {
         let relay = relay.clone();
@@ -185,7 +216,7 @@ async fn all_servers_with(file: &ConfigFile, state: &IPCServer, timeout: std::ti
             let (ok, body) = tokio::time::timeout(timeout, ask)
                 .await
                 .unwrap_or_else(|_| (false, json!({ "error_code": "remote_timeout" })));
-            let mut entry = json!({ "hostId": d.host_id, "name": d.name, "ok": ok, "servers": [] });
+            let mut entry = json!({ "hostId": d.host_id, "name": d.name, "label": d.label(), "ok": ok, "servers": [] });
             if ok {
                 entry["servers"] = Value::Array(body["servers"].as_array().cloned().unwrap_or_default());
             } else {
@@ -256,6 +287,7 @@ mod tests {
             config::Daemon {
                 host_id: "host-b".into(),
                 name: "게임 PC".into(),
+                owner_name: String::new(),
                 address: "127.0.0.1".into(),
                 port,
                 cert_sha256: "ab".repeat(32),

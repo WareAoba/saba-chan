@@ -1,6 +1,7 @@
 //! 원격 데몬 설정과 짝 맺은 PC (config.json `remote` 한 곳).
 //!
 //!   enabled·port·address·transport   원격 포트를 열지, 어느 포트로, 릴레이에 알릴 공인 주소, 연결 방식
+//!   enabled 기본 켬                   디스코드 계정과 PC를 함께 빼앗기지 않는 한 짝을 맺을 수 없다 (사용자 확정 2026-10-30)
 //!   clients[]                        이 PC에 붙도록 짝 맺은 같은 주인의 PC. 토큰은 SHA-256만 둔다
 //!   daemons[]                        이 PC가 붙는 원격 데몬(D1b): 주소·고정한 지문·받은 토큰
 
@@ -29,7 +30,7 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            enabled: false,
+            enabled: true,
             port: saba_chan_updater_lib::constants::DEFAULT_REMOTE_PORT,
             address: String::new(),
             transport: Transport::Direct,
@@ -42,6 +43,9 @@ impl Default for Settings {
 pub struct Client {
     pub host_id: String,
     pub name: String,
+    /// 그 PC 주인의 디스코드 이름 (릴레이가 알려 준다). 예전에 짝 맺은 PC는 비어 있다가 PC 목록을 읽을 때 채운다
+    #[serde(default)]
+    pub owner_name: String,
     pub token_hash: String,
     pub paired_at: String,
 }
@@ -52,11 +56,37 @@ pub struct Client {
 pub struct Daemon {
     pub host_id: String,
     pub name: String,
+    #[serde(default)]
+    pub owner_name: String,
     pub address: String,
     pub port: u16,
     pub cert_sha256: String,
     pub token: String,
     pub paired_at: String,
+}
+
+/// 화면에 보일 PC 이름: `디스코드 이름(PC 이름)`. 주인 이름을 모르거나 PC 이름이 곧 주인 이름이면 PC 이름만
+pub fn label(owner_name: &str, name: &str) -> String {
+    let (owner, name) = (owner_name.trim(), name.trim());
+    if owner.is_empty() || owner == name {
+        name.to_string()
+    } else if name.is_empty() {
+        owner.to_string()
+    } else {
+        format!("{owner}({name})")
+    }
+}
+
+impl Client {
+    pub fn label(&self) -> String {
+        label(&self.owner_name, &self.name)
+    }
+}
+
+impl Daemon {
+    pub fn label(&self) -> String {
+        label(&self.owner_name, &self.name)
+    }
 }
 
 const TOKEN_PREFIX: &str = "sbr_";
@@ -109,11 +139,12 @@ fn write_clients(file: &ConfigFile, edit: impl FnOnce(&mut Vec<Client>)) -> std:
 }
 
 /// `host_id` PC 앞으로 새 토큰을 낸다. 같은 PC가 다시 짝을 맺으면 예전 토큰은 더는 통하지 않는다
-pub fn issue_in(file: &ConfigFile, host_id: &str, name: &str) -> std::io::Result<String> {
+pub fn issue_in(file: &ConfigFile, host_id: &str, name: &str, owner_name: &str) -> std::io::Result<String> {
     let token = format!("{TOKEN_PREFIX}{}{}", uuid::Uuid::new_v4().simple(), uuid::Uuid::new_v4().simple());
     let client = Client {
         host_id: host_id.to_string(),
         name: name.to_string(),
+        owner_name: owner_name.to_string(),
         token_hash: hash(&token),
         paired_at: chrono::Utc::now().to_rfc3339(),
     };
@@ -181,6 +212,40 @@ pub fn forget_daemon_in(file: &ConfigFile, host_id: &str) -> std::io::Result<boo
     Ok(write_daemons(file, |daemons| daemons.retain(|d| d.host_id != host_id))?.len() != before)
 }
 
+/// 릴레이가 알려 준 PC 이름·주인 이름(`(hostId, name, ownerName)`)으로 짝 맺은 PC와 원격 데몬의 이름을 맞춘다.
+/// 바뀐 것이 없으면 쓰지 않는다. 주인 이름을 모르는 옛 릴레이면(빈 값) 주인 이름은 그대로 둔다
+pub fn refresh_names_in(file: &ConfigFile, known: &[(String, String, String)]) -> std::io::Result<()> {
+    let fresh = |host_id: &str, name: &mut String, owner: &mut String| {
+        let Some((_, n, o)) = known.iter().find(|(h, ..)| h == host_id) else { return false };
+        let mut changed = false;
+        if !n.is_empty() && n != name {
+            *name = n.clone();
+            changed = true;
+        }
+        if !o.is_empty() && o != owner {
+            *owner = o.clone();
+            changed = true;
+        }
+        changed
+    };
+    let stale = clients_in(file).into_iter().any(|mut c| fresh(&c.host_id, &mut c.name, &mut c.owner_name))
+        || daemons_in(file).into_iter().any(|mut d| fresh(&d.host_id, &mut d.name, &mut d.owner_name));
+    if !stale {
+        return Ok(());
+    }
+    write_clients(file, |clients| {
+        for c in clients.iter_mut() {
+            fresh(&c.host_id, &mut c.name, &mut c.owner_name);
+        }
+    })?;
+    write_daemons(file, |daemons| {
+        for d in daemons.iter_mut() {
+            fresh(&d.host_id, &mut d.name, &mut d.owner_name);
+        }
+    })
+    .map(|_| ())
+}
+
 /// 짝을 푼다. 있었으면 true
 pub fn revoke_in(file: &ConfigFile, host_id: &str) -> std::io::Result<bool> {
     let before = clients_in(file).len();
@@ -198,10 +263,13 @@ mod tests {
     }
 
     #[test]
-    fn settings_default_to_off_on_the_default_port_and_keep_other_sections() {
+    fn settings_default_to_on_on_the_default_port_and_keep_other_sections() {
         let (_d, f) = file();
         f.set_section("node", json!({"token": "sbn_x.y"})).unwrap();
         assert_eq!(settings_in(&f), Settings::default());
+        assert!(settings_in(&f).enabled, "remote opening is on unless turned off");
+        save_settings_in(&f, &Settings { enabled: false, ..Settings::default() }).unwrap();
+        assert!(!settings_in(&f).enabled, "a saved off stays off");
         assert_eq!(Settings::default().port, saba_chan_updater_lib::constants::DEFAULT_REMOTE_PORT);
         let s = Settings { enabled: true, port: 7443, address: "saba.example.com".into(), transport: Transport::Direct };
         save_settings_in(&f, &s).unwrap();
@@ -214,7 +282,7 @@ mod tests {
     fn a_paired_pc_is_known_by_its_token_and_only_the_hash_is_stored() {
         let (_d, f) = file();
         save_settings_in(&f, &Settings { enabled: true, ..Settings::default() }).unwrap();
-        let token = issue_in(&f, "host-a", "집 PC").unwrap();
+        let token = issue_in(&f, "host-a", "집 PC", "").unwrap();
         assert!(token.starts_with("sbr_") && token.len() > 60);
         assert!(!std::fs::read_to_string(f.path()).unwrap().contains(&token));
         let clients = clients_in(&f);
@@ -227,9 +295,9 @@ mod tests {
     #[test]
     fn pairing_again_replaces_the_old_token_and_revoking_forgets_the_pc() {
         let (_d, f) = file();
-        let old = issue_in(&f, "host-a", "집 PC").unwrap();
-        let other = issue_in(&f, "host-b", "노트북").unwrap();
-        let new = issue_in(&f, "host-a", "집 PC").unwrap();
+        let old = issue_in(&f, "host-a", "집 PC", "").unwrap();
+        let other = issue_in(&f, "host-b", "노트북", "").unwrap();
+        let new = issue_in(&f, "host-a", "집 PC", "").unwrap();
         let clients = clients_in(&f);
         assert_eq!(clients.len(), 2);
         assert_eq!(verify(&clients, &old), None);
@@ -245,6 +313,7 @@ mod tests {
         Daemon {
             host_id: host.into(),
             name: "원격".into(),
+            owner_name: String::new(),
             address: "203.0.113.7".into(),
             port: 57480,
             cert_sha256: "ab".repeat(32),
@@ -256,7 +325,7 @@ mod tests {
     #[test]
     fn a_remote_daemon_is_saved_moved_and_forgotten_without_touching_the_rest() {
         let (_d, f) = file();
-        let token = issue_in(&f, "host-a", "집 PC").unwrap();
+        let token = issue_in(&f, "host-a", "집 PC", "").unwrap();
         save_daemon_in(&f, daemon("host-b", "sbr_one")).unwrap();
         save_daemon_in(&f, daemon("host-b", "sbr_two")).unwrap();
         save_daemon_in(&f, daemon("host-c", "sbr_three")).unwrap();
@@ -273,5 +342,37 @@ mod tests {
         assert!(!forget_daemon_in(&f, "host-b").unwrap());
         assert_eq!(daemons_in(&f).len(), 1);
         assert!(verify(&clients_in(&f), &token).is_some(), "paired PCs stay");
+    }
+
+    #[test]
+    fn a_pc_is_shown_as_its_owners_discord_name_and_its_own_name() {
+        assert_eq!(label("김마무", "DESKTOP-1"), "김마무(DESKTOP-1)");
+        assert_eq!(label("", "DESKTOP-1"), "DESKTOP-1", "old relays do not send the owner");
+        assert_eq!(label("김마무", "김마무"), "김마무", "a PC named after its owner is not doubled");
+        assert_eq!(label("김마무", ""), "김마무");
+    }
+
+    #[test]
+    fn names_from_the_relay_fill_in_saved_pcs_and_leave_unknown_ones_alone() {
+        let (_d, f) = file();
+        issue_in(&f, "host-a", "집 PC", "").unwrap();
+        save_daemon_in(&f, daemon("host-b", "sbr_one")).unwrap();
+        save_daemon_in(&f, daemon("host-c", "sbr_two")).unwrap();
+        let known = vec![
+            ("host-a".to_string(), "집 PC".to_string(), "김마무".to_string()),
+            ("host-b".to_string(), "거실 PC".to_string(), "김마무".to_string()),
+            ("host-c".to_string(), "노트북".to_string(), String::new()),
+        ];
+        refresh_names_in(&f, &known).unwrap();
+        assert_eq!(clients_in(&f)[0].label(), "김마무(집 PC)");
+        let daemons = daemons_in(&f);
+        assert_eq!(daemons[0].label(), "김마무(거실 PC)");
+        assert_eq!((daemons[1].name.as_str(), daemons[1].owner_name.as_str()), ("노트북", ""));
+        assert_eq!(daemons[0].token, "sbr_one", "tokens stay");
+
+        let saved = std::fs::metadata(f.path()).unwrap().modified().unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        refresh_names_in(&f, &known).unwrap();
+        assert_eq!(std::fs::metadata(f.path()).unwrap().modified().unwrap(), saved, "nothing changed, nothing written");
     }
 }

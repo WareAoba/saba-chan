@@ -304,8 +304,8 @@ async fn remote_auth(State(ctx): State<Ctx>, mut req: Request<Body>, next: Next)
     };
     let mut origin = crate::audit::Origin::from_headers(req.headers());
     origin.source = "remote".into();
+    origin.user_name = Some(client.label());
     origin.user = Some(client.host_id);
-    origin.user_name = Some(client.name);
     req.extensions_mut().insert(origin);
     // PC 전용 경로·칸은 안쪽 층(`rules`)이 이 출처를 보고 막는다 (안에서 다시 부르는 라우터도 같은 층을 지난다)
     // 짝이 풀리면 이 응답의 본문(이벤트 스트림, 내려받기)도 오류로 끊는다(받던 쪽이 다 받은 것으로 알지 않게). 새 요청은 위에서 바로 막힌다.
@@ -349,7 +349,7 @@ async fn pair(State(ctx): State<Ctx>, peer: Option<axum::Extension<Peer>>, Json(
         Err(Failure::Rejected) => return error(StatusCode::UNAUTHORIZED, "ticket_invalid"),
         Err(Failure::Unreachable) => return error(StatusCode::BAD_GATEWAY, "relay_unreachable"),
     };
-    let token = match config::issue_in(&ctx.file, &from.from_host_id, &from.from_host_name) {
+    let token = match config::issue_in(&ctx.file, &from.from_host_id, &from.from_host_name, &from.from_owner_name) {
         Ok(t) => t,
         Err(e) => {
             tracing::warn!("Failed to save a remote pairing: {}", e);
@@ -618,8 +618,8 @@ pub(crate) mod tests {
             .await
             .is_ok()
         };
-        let a = config::issue_in(&r.file, "host-a", "집 PC").unwrap();
-        let c = config::issue_in(&r.file, "host-c", "노트북").unwrap();
+        let a = config::issue_in(&r.file, "host-a", "집 PC", "").unwrap();
+        let c = config::issue_in(&r.file, "host-c", "노트북", "").unwrap();
         r.clients.set(config::clients_in(&r.file));
         let (stream_a, stream_c) = (open(a.clone()).await, open(c).await);
 
@@ -654,7 +654,7 @@ pub(crate) mod tests {
     async fn start_daemon(tmp: &std::path::Path, server: &crate::ipc::IPCServer) -> (std::net::SocketAddr, String, String, CancellationToken) {
         let id = Identity::load_or_create(tmp).unwrap();
         let file = ConfigFile::at(tmp);
-        let token = config::issue_in(&file, "host-a", "집 PC").unwrap();
+        let token = config::issue_in(&file, "host-a", "집 PC", "").unwrap();
         let clients = Clients::default();
         clients.set(config::clients_in(&file));
         let ctx = Ctx::new(file, clients, RelaySource::Fixed(Target { base: "http://127.0.0.1:9".into(), token: "sbn_b.s".into() }));
@@ -710,7 +710,7 @@ pub(crate) mod tests {
     #[tokio::test]
     async fn local_only_routes_are_judged_on_the_decoded_path() {
         let r = start(None).await;
-        let token = config::issue_in(&r.file, "host-a", "집 PC").unwrap();
+        let token = config::issue_in(&r.file, "host-a", "집 PC", "").unwrap();
         r.clients.set(config::clients_in(&r.file));
         for path in ["/api/config/gui/reset", "/api/config/%67ui/reset", "/api/config/bot/reset"] {
             let (s, body) = call(r.addr, &r.pin, "POST", path, Some(&token), None).await.unwrap();
@@ -769,7 +769,7 @@ pub(crate) mod tests {
         );
         let id = Identity::load_or_create(tmp.path()).unwrap();
         let file = ConfigFile::at(tmp.path());
-        let token = config::issue_in(&file, "host-a", "집 PC").unwrap();
+        let token = config::issue_in(&file, "host-a", "집 PC", "").unwrap();
         let clients = Clients::default();
         clients.set(config::clients_in(&file));
         let ctx = Ctx::new(file, clients, RelaySource::Fixed(Target { base: "http://127.0.0.1:9".into(), token: "sbn_b.s".into() }));
@@ -811,7 +811,7 @@ pub(crate) mod tests {
         );
         let ident = Identity::load_or_create(tmp.path()).unwrap();
         let file = ConfigFile::at(tmp.path());
-        let token = config::issue_in(&file, "host-a", "집 PC").unwrap();
+        let token = config::issue_in(&file, "host-a", "집 PC", "").unwrap();
         let clients = Clients::default();
         clients.set(config::clients_in(&file));
         let ctx = Ctx::new(file, clients, RelaySource::Fixed(Target { base: "http://127.0.0.1:9".into(), token: "sbn_b.s".into() }));

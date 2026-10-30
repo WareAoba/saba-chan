@@ -124,4 +124,103 @@ describe('설정 > 고급: 원격 데몬 (/api/remote/*)', () => {
         expect(window.api.daemonTargetSet).toHaveBeenCalledWith(null);
         expect(reload).toHaveBeenCalled();
     });
+
+    it('PC는 데몬이 정한 디스코드 이름(PC 이름)으로 보인다', async () => {
+        window.api.remoteClients.mockResolvedValue({ clients: [{ hostId: 'host-a', name: '노트북', label: '김마무(노트북)' }] });
+        window.api.remoteDaemons.mockResolvedValue({
+            daemons: [{ hostId: 'host-b', name: '게임 PC', label: '김마무(게임 PC)', address: '', port: 57480 }],
+        });
+        await act(async () => render(<RemoteDaemonSection />));
+        const clients = screen.getByRole('list', { name: 'PCs connected to this one' });
+        expect(within(clients).getByText('김마무(노트북)')).toBeInTheDocument();
+        const daemons = screen.getByRole('list', { name: 'Remote daemons this PC uses' });
+        expect(within(daemons).getByText('김마무(게임 PC)')).toBeInTheDocument();
+    });
+
+    it('연결한 PC는 그 데몬을 여는 버튼이 있고, 지금 보는 데몬이면 보는 중이라고 보인다', async () => {
+        window.api.remotePeers.mockResolvedValue({
+            peers: [
+                { hostId: 'host-b', name: '게임 PC', hasEndpoint: true, saved: true },
+                { hostId: 'host-c', name: '사무실', hasEndpoint: true, saved: true },
+            ],
+        });
+        window.api.daemonTarget = vi.fn().mockResolvedValue({ target: 'host-c' });
+        window.api.daemonTargetSet = vi.fn().mockResolvedValue({ success: true, target: 'host-b' });
+        const switched = vi.fn();
+        await act(async () => render(<RemoteDaemonSection onSwitched={switched} />));
+        const peers = screen.getByRole('list', { name: 'My other PCs' });
+        const office = within(peers).getByText('사무실').closest('li');
+        expect(within(office).queryByRole('button', { name: 'Open' })).toBeNull();
+        expect(within(office).getByText('Viewing')).toBeInTheDocument();
+        const game = within(peers).getByText('게임 PC').closest('li');
+        await act(async () => fireEvent.click(within(game).getByRole('button', { name: 'Open' })));
+        expect(window.api.daemonTargetSet).toHaveBeenCalledWith('host-b');
+        expect(switched).toHaveBeenCalled();
+    });
+
+    it('메인 데몬을 고르면 설정에 남고, 메인을 잊으면 이 PC로 돌아간다', async () => {
+        useSettingsStore.setState({ mainDaemon: null });
+        window.api.remoteDaemons.mockResolvedValue({
+            daemons: [
+                { hostId: 'host-b', name: '게임 PC', label: '김마무(게임 PC)', address: 'g.example', port: 57480 },
+            ],
+        });
+        window.api.daemonTarget = vi.fn().mockResolvedValue({ target: null });
+        await act(async () => render(<RemoteDaemonSection />));
+        const main = screen.getByRole('combobox', { name: 'Main daemon' });
+        expect(main).toHaveTextContent('This PC');
+        pickOption(main, '김마무(게임 PC)');
+        await act(async () => {});
+        expect(useSettingsStore.getState().mainDaemon).toBe('host-b');
+        const daemons = screen.getByRole('list', { name: 'Remote daemons this PC uses' });
+        expect(within(daemons).getByText('Main')).toBeInTheDocument();
+        await act(async () => fireEvent.click(within(daemons).getByRole('button', { name: 'Forget' })));
+        expect(useSettingsStore.getState().mainDaemon).toBeNull();
+    });
+
+    it('잊기는 한 번 묻고, 확인해야 잊는다', async () => {
+        window.api.remoteDaemons.mockResolvedValue({ daemons: [{ hostId: 'host-b', name: '게임 PC', address: 'g', port: 57480 }] });
+        const onAsk = vi.fn();
+        await act(async () => render(<RemoteDaemonSection onAsk={onAsk} />));
+        const daemons = screen.getByRole('list', { name: 'Remote daemons this PC uses' });
+        await act(async () => fireEvent.click(within(daemons).getByRole('button', { name: 'Forget' })));
+        expect(window.api.remoteForget).not.toHaveBeenCalled();
+        const asked = onAsk.mock.calls[0][0];
+        expect(asked.message).toContain('게임 PC');
+        await act(async () => asked.onConfirm());
+        expect(window.api.remoteForget).toHaveBeenCalledWith('host-b');
+    });
+
+    it('그 PC의 데몬이 지워졌으면 까닭을 보이고, 짝을 잊었으면 다시 연결한다', async () => {
+        window.api.remotePeers.mockResolvedValue({
+            peers: [
+                { hostId: 'host-b', name: '게임 PC', hasEndpoint: true, saved: true },
+                { hostId: 'host-c', name: '사무실', hasEndpoint: false, saved: true },
+            ],
+        });
+        window.api.remoteDaemons.mockResolvedValue({
+            daemons: [
+                { hostId: 'host-b', name: '게임 PC', address: '', port: 57480 },
+                { hostId: 'host-c', name: '사무실', address: '', port: 57480 },
+                { hostId: 'host-d', name: '옛 PC', address: '', port: 57480 },
+            ],
+        });
+        window.api.remoteServers = vi.fn().mockResolvedValue({
+            daemons: [
+                { hostId: null, ok: true, servers: [] },
+                { hostId: 'host-b', ok: false, error_code: 'remote_unauthorized', servers: [] },
+                { hostId: 'host-c', ok: false, error_code: 'remote_unreachable', servers: [] },
+                { hostId: 'host-d', ok: false, error_code: 'remote_unreachable', servers: [] },
+            ],
+        });
+        window.api.remoteConnect.mockResolvedValue({ hostId: 'host-b', name: '게임 PC' });
+        await act(async () => render(<RemoteDaemonSection />));
+        const daemons = screen.getByRole('list', { name: 'Remote daemons this PC uses' });
+        const row = (name) => within(daemons).getByText(name).closest('li');
+        expect(within(row('사무실')).getByText('Not reachable')).toBeInTheDocument();
+        expect(within(row('옛 PC')).getByText('Removed from Server-chan')).toBeInTheDocument();
+        expect(within(row('게임 PC')).getByText('That PC forgot this one')).toBeInTheDocument();
+        await act(async () => fireEvent.click(within(row('게임 PC')).getByRole('button', { name: 'Reconnect' })));
+        expect(window.api.remoteConnect).toHaveBeenCalledWith('host-b');
+    });
 });

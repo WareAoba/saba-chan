@@ -1770,7 +1770,19 @@
     "view": "服务器列表显示",
     "view_description": "合并显示会在所选守护进程的服务器下方按守护进程列出其他守护进程(包括本机)的服务器，并可直接启动和停止",
     "view_switch": "仅所选守护进程",
-    "view_unified": "合并显示所有守护进程"
+    "view_unified": "合并显示所有守护进程",
+    "main": "Main daemon",
+    "main_description": "The app opens on this daemon. Picking another daemon in the top bar lasts until the app is closed",
+    "main_badge": "Main",
+    "open": "Open",
+    "viewing": "Viewing",
+    "forget_confirm_title": "Forget this remote daemon?",
+    "forget_confirm_message": "The daemon on {{name}} is removed from this PC. To use it again, connect it from My other PCs.",
+    "cancel": "Cancel",
+    "reconnect": "Reconnect",
+    "state_gone": "Removed from Server-chan",
+    "state_unpaired": "That PC forgot this one",
+    "state_unreachable": "Not reachable"
   },
   "daemon_switcher": {
     "label": "守护进程",

@@ -64,7 +64,7 @@ export function OtherDaemons({ currentTarget, onSwitched = reloadWindow }) {
     return (
         <div className="other-daemons">
             {others.map((d) => {
-                const name = d.hostId ? d.name || d.hostId : t('daemon_switcher.local');
+                const name = d.hostId ? d.label || d.name || d.hostId : t('daemon_switcher.local');
                 return (
                     <section key={d.hostId || 'local'} className="other-daemon" aria-label={name}>
                         <header className="other-daemon-head">

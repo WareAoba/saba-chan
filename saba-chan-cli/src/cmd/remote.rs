@@ -32,7 +32,7 @@ pub async fn run(ctx: &Ctx, cmd: RemoteCmd) -> Result<()> {
                 }
                 let mut t = output::table(&[t!("col.name"), t!("remote.host_id"), t!("remote.paired_at")]);
                 for c in &clients {
-                    t.add_row(vec![s(c, "name").to_string(), s(c, "hostId").to_string(), s(c, "pairedAt").to_string()]);
+                    t.add_row(vec![pc_name(c), s(c, "hostId").to_string(), s(c, "pairedAt").to_string()]);
                 }
                 output::print_table(t);
             });
@@ -53,7 +53,7 @@ pub async fn run(ctx: &Ctx, cmd: RemoteCmd) -> Result<()> {
                 }
                 let mut t = output::table(&[t!("col.name"), t!("remote.host_id"), t!("col.state"), t!("remote.reachable"), t!("remote.saved")]);
                 for p in &peers {
-                    t.add_row(vec![s(p, "name").to_string(), s(p, "hostId").to_string(), s(p, "status").to_string(), yes_no(p, "hasEndpoint"), yes_no(p, "saved")]);
+                    t.add_row(vec![pc_name(p), s(p, "hostId").to_string(), s(p, "status").to_string(), yes_no(p, "hasEndpoint"), yes_no(p, "saved")]);
                 }
                 output::print_table(t);
             });
@@ -61,7 +61,7 @@ pub async fn run(ctx: &Ctx, cmd: RemoteCmd) -> Result<()> {
         }
         RemoteCmd::Connect { host_id } => {
             let r = ctx.api.connect_remote_daemon(&host_id).await?;
-            ctx.out.done(&t!("remote.connected", name = s(&r, "name")), &r);
+            ctx.out.done(&t!("remote.connected", name = pc_name(&r)), &r);
             Ok(())
         }
         RemoteCmd::Daemons => {
@@ -74,7 +74,7 @@ pub async fn run(ctx: &Ctx, cmd: RemoteCmd) -> Result<()> {
                 }
                 let mut t = output::table(&[t!("col.name"), t!("remote.host_id"), t!("remote.address"), t!("remote.paired_at")]);
                 for d in &daemons {
-                    t.add_row(vec![s(d, "name").to_string(), s(d, "hostId").to_string(), daemon_address(d), s(d, "pairedAt").to_string()]);
+                    t.add_row(vec![pc_name(d), s(d, "hostId").to_string(), daemon_address(d), s(d, "pairedAt").to_string()]);
                 }
                 output::print_table(t);
             });
@@ -113,10 +113,10 @@ fn state_label(status: &str) -> String {
 fn server_rows(v: &Value) -> Vec<[String; 4]> {
     let mut rows = Vec::new();
     for d in v.get("daemons").and_then(Value::as_array).into_iter().flatten() {
-        let daemon = match (d.get("hostId").and_then(Value::as_str), s(d, "name")) {
+        let daemon = match (d.get("hostId").and_then(Value::as_str), pc_name(d)) {
             (None, _) => t!("remote.this_pc"),
-            (Some(host), "") => host.to_string(),
-            (Some(_), name) => name.to_string(),
+            (Some(host), name) if name.is_empty() => host.to_string(),
+            (Some(_), name) => name,
         };
         let servers = d.get("servers").and_then(Value::as_array).cloned().unwrap_or_default();
         if d.get("ok").and_then(Value::as_bool) != Some(true) {
@@ -131,6 +131,14 @@ fn server_rows(v: &Value) -> Vec<[String; 4]> {
         }
     }
     rows
+}
+
+/// 화면에 보일 PC 이름: 데몬이 정한 `디스코드 이름(PC 이름)`, 옛 데몬이면 PC 이름
+fn pc_name(v: &Value) -> String {
+    match s(v, "label") {
+        "" => s(v, "name").to_string(),
+        label => label.to_string(),
+    }
 }
 
 fn yes_no(v: &Value, key: &str) -> String {
@@ -205,12 +213,12 @@ mod tests {
     fn every_daemons_servers_are_one_table_and_an_unreachable_daemon_says_why() {
         let v = json!({ "daemons": [
             { "hostId": null, "name": "", "ok": true, "servers": [{ "id": "a", "name": "test-pal", "module": "palworld", "status": "running" }] },
-            { "hostId": "host-b", "name": "게임 PC", "ok": true, "servers": [] },
+            { "hostId": "host-b", "name": "게임 PC", "label": "김마무(게임 PC)", "ok": true, "servers": [] },
             { "hostId": "host-c", "name": "", "ok": false, "error_code": "remote_unreachable", "servers": [] },
         ] });
         let rows = server_rows(&v);
         assert_eq!(rows[0], [t!("remote.this_pc"), "test-pal".into(), "palworld".into(), state_label("running")]);
-        assert_eq!(rows[1], ["게임 PC".to_string(), "-".into(), String::new(), t!("remote.no_servers")]);
+        assert_eq!(rows[1], ["김마무(게임 PC)".to_string(), "-".into(), String::new(), t!("remote.no_servers")]);
         assert_eq!(rows[2], ["host-c".to_string(), "-".into(), String::new(), t!("remote.connect_error.remote_unreachable")]);
     }
 

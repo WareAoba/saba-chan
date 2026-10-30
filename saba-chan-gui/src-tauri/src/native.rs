@@ -367,18 +367,18 @@ pub fn daemon_target_get(app: AppHandle) -> Value {
     json!({ "target": app.state::<AppState>().client.target() })
 }
 
-/// 다룰 데몬을 바꾸고 설정 `gui.daemonTarget`에 저장한다. 이 뒤의 데몬 요청과 이벤트 스트림이 그 데몬으로 간다
+/// 다룰 데몬을 바꾼다. 이 뒤의 데몬 요청과 이벤트 스트림이 그 데몬으로 간다.
+/// 저장하지 않는다: 앱을 열면 늘 메인 데몬(설정 `mainDaemon`)부터 보인다
 #[tauri::command]
 pub async fn daemon_target_set(app: AppHandle, target: Option<String>) -> Value {
     let state = app.state::<AppState>();
     let target = crate::daemon::DaemonClient::normalize_target(target);
-    let success = save_settings(&state, &json!({ "daemonTarget": target })).await;
-    if success && state.client.target() != target {
+    if state.client.target() != target {
         // 팝아웃 콘솔은 메인 창처럼 다시 읽히지 않으니 닫는다 (남기면 이전 데몬의 instanceId로 새 데몬에 명령한다)
         window::close_popouts(&app);
         state.client.set_target(target.clone());
     }
-    json!({ "success": success, "target": state.client.target() })
+    json!({ "success": true, "target": state.client.target() })
 }
 
 // ── 대화상자 ──

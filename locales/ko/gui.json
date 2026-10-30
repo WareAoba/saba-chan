@@ -1770,7 +1770,19 @@
     "view": "서버 목록 보기",
     "view_description": "합쳐 보기는 고른 데몬의 서버 아래에 다른 데몬(이 PC 포함)의 서버를 데몬별로 보여 주고, 거기서 바로 켜고 끌 수 있어요",
     "view_switch": "고른 데몬만",
-    "view_unified": "모든 데몬 합쳐 보기"
+    "view_unified": "모든 데몬 합쳐 보기",
+    "main": "메인 데몬",
+    "main_description": "앱을 열면 이 데몬부터 보여요. 상단 바에서 다른 데몬을 골라도 다음에 열 때는 메인으로 돌아와요",
+    "main_badge": "메인",
+    "open": "열기",
+    "viewing": "보는 중",
+    "forget_confirm_title": "원격 데몬을 잊을까요?",
+    "forget_confirm_message": "{{name}}의 데몬을 이 PC에서 지워요. 다시 쓰려면 내 다른 PC 목록에서 다시 연결해야 해요.",
+    "cancel": "취소",
+    "reconnect": "다시 연결",
+    "state_gone": "서버쨩에서 지워진 PC",
+    "state_unpaired": "그 PC가 연결을 잊음",
+    "state_unreachable": "닿지 않음"
   },
   "daemon_switcher": {
     "label": "데몬",

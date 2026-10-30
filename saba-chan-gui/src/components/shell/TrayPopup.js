@@ -48,7 +48,7 @@ export function TrayPopup() {
         const reachable = Array.isArray(list?.servers);
         if (target) {
             const saved = Array.isArray(daemons?.daemons) ? daemons.daemons.find((d) => d.hostId === target) : null;
-            setRemote({ name: saved?.name || target, reachable });
+            setRemote({ name: saved?.label || saved?.name || target, reachable });
             // 닿지 않는 원격 데몬의 지난 목록을 남기지 않는다
             if (!reachable) setServers([]);
         } else {

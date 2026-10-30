@@ -64,4 +64,20 @@ describe('상단 바: 다룰 데몬 고르기 (이 PC / 연결한 원격 데몬)
         await act(async () => window.dispatchEvent(new Event(REMOTE_DAEMONS_CHANGED)));
         expect(screen.getByRole('combobox', { name: 'Daemon' })).toBeInTheDocument();
     });
+
+    it('고른 원격 데몬이 이 PC를 잊었으면(데몬을 지우고 다시 설치) 이 PC로 돌아가고, 닿지 않을 뿐이면 그대로 둔다', async () => {
+        window.api.daemonTarget.mockResolvedValue({ target: 'host-b' });
+        window.api.daemonTargetSet.mockResolvedValue({ success: true, target: null });
+        window.api.remoteServers = vi.fn().mockResolvedValue({
+            daemons: [{ hostId: 'host-b', ok: false, error_code: 'remote_unreachable', servers: [] }],
+        });
+        await act(async () => render(<DaemonSwitcher onSwitched={reload} />));
+        expect(window.api.daemonTargetSet).not.toHaveBeenCalled();
+        window.api.remoteServers.mockResolvedValue({
+            daemons: [{ hostId: 'host-b', ok: false, error_code: 'remote_unauthorized', servers: [] }],
+        });
+        await act(async () => render(<DaemonSwitcher onSwitched={reload} />));
+        expect(window.api.daemonTargetSet).toHaveBeenCalledWith(null);
+        expect(reload).toHaveBeenCalled();
+    });
 });

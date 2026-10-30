@@ -72,6 +72,8 @@ export const useSettingsStore = create((set, get) => ({
     systemMonitorOpen: true,
     // 서버 목록 보기 (G1c): 'switch' 고른 데몬만 | 'unified' 다른 데몬의 서버도 데몬별로
     daemonView: 'switch',
+    // 앱을 열면 먼저 볼 데몬: 원격 데몬 hostId, null이면 이 PC
+    mainDaemon: null,
 
     // ── Actions ──
     load: async () => {
@@ -107,6 +109,8 @@ export const useSettingsStore = create((set, get) => ({
                 patch.consoleFontScale = settings.consoleFontScale ?? THEME_DEFAULTS.consoleFontScale;
                 patch.systemMonitorOpen = settings.systemMonitorOpen ?? true;
                 patch.daemonView = settings.daemonView === 'unified' ? 'unified' : 'switch';
+                patch.mainDaemon =
+                    typeof settings.mainDaemon === 'string' && settings.mainDaemon ? settings.mainDaemon : null;
             }
             const path = await window.api.settingsGetPath();
             patch.settingsPath = path;
@@ -222,6 +226,7 @@ export const useSettingsStore = create((set, get) => ({
             consoleFontScale: THEME_DEFAULTS.consoleFontScale,
             systemMonitorOpen: true,
             daemonView: 'switch',
+            mainDaemon: null,
         });
         dirtyKeys.clear();
     },
@@ -254,6 +259,7 @@ const _settingsKeys = [
     'consoleFontScale',
     'systemMonitorOpen',
     'daemonView',
+    'mainDaemon',
 ];
 useSettingsStore.subscribe((state, prevState) => {
     if (applyingLoad) return;

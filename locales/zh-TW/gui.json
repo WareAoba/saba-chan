@@ -1770,7 +1770,19 @@
     "view": "伺服器列表顯示",
     "view_description": "合併顯示會在所選守護程式的伺服器下方依守護程式列出其他守護程式(包括本機)的伺服器，並可直接啟動和停止",
     "view_switch": "僅所選守護程式",
-    "view_unified": "合併顯示所有守護程式"
+    "view_unified": "合併顯示所有守護程式",
+    "main": "Main daemon",
+    "main_description": "The app opens on this daemon. Picking another daemon in the top bar lasts until the app is closed",
+    "main_badge": "Main",
+    "open": "Open",
+    "viewing": "Viewing",
+    "forget_confirm_title": "Forget this remote daemon?",
+    "forget_confirm_message": "The daemon on {{name}} is removed from this PC. To use it again, connect it from My other PCs.",
+    "cancel": "Cancel",
+    "reconnect": "Reconnect",
+    "state_gone": "Removed from Server-chan",
+    "state_unpaired": "That PC forgot this one",
+    "state_unreachable": "Not reachable"
   },
   "daemon_switcher": {
     "label": "常駐程式",

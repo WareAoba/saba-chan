@@ -241,12 +241,12 @@ pub fn on_daemon(body: String, daemon: Option<&str>, i18n: &crate::i18n::I18n) -
     }
 }
 
-/// `GET /api/remote/daemons` 결과에서 원격 데몬 이름. 없으면 hostId
+/// `GET /api/remote/daemons` 결과에서 원격 데몬 이름(`디스코드 이름(PC 이름)`, 옛 데몬이면 PC 이름). 없으면 hostId
 pub fn daemon_name(list: &Value, host_id: &str) -> String {
     list["daemons"]
         .as_array()
         .and_then(|a| a.iter().find(|d| d["hostId"] == host_id))
-        .and_then(|d| d["name"].as_str())
+        .and_then(|d| d["label"].as_str().filter(|n| !n.is_empty()).or(d["name"].as_str()))
         .filter(|n| !n.is_empty())
         .unwrap_or(host_id)
         .to_string()
@@ -372,6 +372,8 @@ mod tests {
         assert_eq!(daemon_name(&list, "host-b"), "Living room PC");
         assert_eq!(daemon_name(&list, "host-c"), "host-c");
         assert_eq!(daemon_name(&json!({}), "host-d"), "host-d");
+        let labelled = json!({"daemons": [{"hostId": "host-b", "name": "Living room PC", "label": "Kim(Living room PC)"}]});
+        assert_eq!(daemon_name(&labelled, "host-b"), "Kim(Living room PC)");
     }
 
     /// 원격 데몬을 고른 동안에도 이 PC 데몬의 중대 알림을 받는다: 이 PC 감시 스트림은 원격을 고른 동안만 붙고
