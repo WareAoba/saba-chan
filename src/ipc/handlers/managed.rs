@@ -270,8 +270,12 @@ pub async fn chat_handler(Path(id): Path<String>, State(state): State<IPCServer>
     crate::supervisor::game_chat::remember_sent(&id, &name, &text);
     match call.timeout(crate::supervisor::players::CALL_TIMEOUT_SECS).run().await {
         Ok(result) if result.get("success").and_then(Value::as_bool) == Some(true) => (StatusCode::OK, Json(json!({ "success": true }))).into_response(),
-        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
+        Ok(result) => {
+            crate::supervisor::game_chat::forget_sent(&id, &name, &text);
+            (StatusCode::OK, Json(result)).into_response()
+        }
         Err(e) => {
+            crate::supervisor::game_chat::forget_sent(&id, &name, &text);
             tracing::warn!("Chat to '{}' failed: {}", id, e);
             (StatusCode::OK, Json(crate::plugin::error_response(&e))).into_response()
         }

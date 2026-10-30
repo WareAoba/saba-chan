@@ -148,6 +148,15 @@ pub fn remember_sent(instance_id: &str, name: &str, text: &str) {
     list.push((name.to_string(), text.to_string(), std::time::Instant::now()));
 }
 
+/// 게임에 보내지 못한 글의 기억을 지운다 (같은 남의 채팅을 메아리로 거르지 않게)
+pub fn forget_sent(instance_id: &str, name: &str, text: &str) {
+    let mut sent = sent().lock().unwrap_or_else(|e| e.into_inner());
+    let Some(list) = sent.get_mut(instance_id) else { return };
+    if let Some(i) = list.iter().rposition(|(n, t, _)| n == name && t == text) {
+        list.remove(i);
+    }
+}
+
 /// 콘솔 채팅이 방금 게임으로 보낸 글의 메아리인가: 채팅 본문이 보낸 본문이나 `이름: 본문`과 똑같다
 /// (마인크래프트처럼 이름을 따로 찍는 게임, 테라리아 `say`처럼 서버 이름으로 `이름: 본문`을 찍는 게임).
 /// 본문 일부만 같은 남의 채팅은 거르지 않는다. 맞으면 그 기억은 지운다
@@ -249,6 +258,9 @@ mod tests {
         remember_sent("echo-a", "김치", "hi");
         assert!(is_echo("echo-a", "hi"), "games that print the name apart");
         assert!(!is_echo("echo-a", "김치: hi"), "one echo per sent chat");
+        remember_sent("echo-a", "김치", "hi");
+        forget_sent("echo-a", "김치", "hi");
+        assert!(!is_echo("echo-a", "hi"), "a chat that never reached the game has no echo");
     }
 
     #[test]
