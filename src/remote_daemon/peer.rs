@@ -179,6 +179,7 @@ pub async fn connect(file: &ConfigFile, relay: Option<Target>, host_id: &str) ->
     let daemon = Daemon {
         host_id: host_id.to_string(),
         name: ticket.name,
+        owner_name: ticket.owner_name,
         address: ticket.endpoint.address,
         port: ticket.endpoint.port,
         cert_sha256: ticket.endpoint.cert_sha256,

@@ -3520,13 +3520,17 @@ fn forget_legacy_run(store: &crate::instance::InstanceStore, id: &str) -> std::i
 }
 
 /// 시작·정지를 시킨 쪽: `source`(gui·cli·discord·chatbot·web·remote·schedule·restart·daemon·game·external)와 사람·PC 이름.
-/// 말하는 사바쨩은 디스코드와 가른다. 사용자 id·길드는 싣지 않는다
+/// 말하는 사바쨩은 디스코드와 가른다. 사용자 id·길드는 싣지 않는다. 원격 데몬으로 시킨 PC는 `remoteHost`(그 PC의 hostId)로
+/// 알린다: 그 PC의 앱이 자기가 누른 것인지 알아 효과음을 내지 않는다
 fn origin_fields(origin: &crate::audit::Origin) -> serde_json::Map<String, Value> {
     let source = if origin.via.as_deref() == Some("chatbot") { "chatbot" } else { origin.source.as_str() };
     let mut fields = serde_json::Map::new();
     fields.insert("source".into(), json!(source));
     if let Some(name) = &origin.user_name {
         fields.insert("userName".into(), json!(name));
+    }
+    if let Some(host) = origin.user.as_ref().filter(|_| source == "remote") {
+        fields.insert("remoteHost".into(), json!(host));
     }
     fields
 }
@@ -4481,10 +4485,10 @@ mod tests {
         let paths = [
             (Origin::new("gui"), "gui"),
             (Origin::new("cli"), "cli"),
-            (Origin { user_name: Some("Dana".into()), ..Origin::new("discord") }, "discord"),
+            (Origin { user: Some("42".into()), user_name: Some("Dana".into()), ..Origin::new("discord") }, "discord"),
             (chatbot, "chatbot"),
             (Origin::new("web"), "web"),
-            (Origin { user_name: Some("집 PC".into()), ..Origin::new("remote") }, "remote"),
+            (Origin { user: Some("host-a".into()), user_name: Some("집 PC".into()), ..Origin::new("remote") }, "remote"),
             (Origin::new("schedule"), "schedule"),
             (Origin::new("restart"), "restart"),
             (Origin::new("daemon"), "daemon"),
@@ -4499,10 +4503,13 @@ mod tests {
             assert_eq!(started.len(), 1, "{source}: {started:?}");
             assert_eq!((started[0]["source"].as_str(), started[0]["unexpected"].as_bool()), (Some(source), Some(false)), "{source}");
             assert_eq!(started[0]["userName"].as_str(), user.as_deref(), "{source}");
+            // 원격으로 시킨 PC만 알린다 (디스코드 사용자 id는 싣지 않는다)
+            assert_eq!(started[0]["remoteHost"].as_str(), (source == "remote").then_some("host-a"), "{source}");
             let stopped = seen("instance.stopped", "w-long");
             assert_eq!(stopped.len(), 1, "{source}: {stopped:?}");
             assert_eq!((stopped[0]["source"].as_str(), stopped[0]["kind"].as_str()), (Some(source), Some("user_stop")), "{source}");
             assert_eq!(stopped[0]["userName"].as_str(), user.as_deref(), "{source}");
+            assert_eq!(stopped[0]["remoteHost"].as_str(), (source == "remote").then_some("host-a"), "{source}");
         }
 
         let wait_exit = |id: &'static str| {

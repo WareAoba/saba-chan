@@ -54,21 +54,38 @@ export function DaemonSwitcher({ onSwitched = reloadWindow }) {
         return { saved, chosen };
     }, [onSwitched]);
 
+    // 고른 원격 데몬이 이 PC를 잊었으면(그 PC의 데몬을 지우고 다시 설치함) 다시 연결하기 전에는 쓸 수 없다:
+    // 이 PC로 돌아간다. 닿지 않는 것은 꺼진 PC일 수 있어 그대로 둔다 (설정의 원격 데몬 절이 까닭을 보인다)
+    const leaveForgotten = useCallback(
+        async (chosen) => {
+            if (chosen === LOCAL || typeof window.api.remoteServers !== 'function') return;
+            const all = await window.api.remoteServers().catch(() => null);
+            const mine = all?.daemons?.find((d) => d.hostId === chosen);
+            if (mine?.error_code !== 'remote_unauthorized') return;
+            const current = await window.api.daemonTarget().catch(() => null);
+            if (current?.target !== chosen) return;
+            const res = await window.api.daemonTargetSet(null).catch(() => null);
+            if (res?.success) onSwitched();
+        },
+        [onSwitched],
+    );
+
     useEffect(() => {
         let alive = true;
         const refresh = () =>
             load().then((r) => {
-                if (!alive || !r) return;
+                if (!alive || !r) return null;
                 setDaemons(r.saved);
                 setTarget(r.chosen);
+                return r;
             });
-        refresh();
+        refresh().then((r) => r && leaveForgotten(r.chosen));
         window.addEventListener(REMOTE_DAEMONS_CHANGED, refresh);
         return () => {
             alive = false;
             window.removeEventListener(REMOTE_DAEMONS_CHANGED, refresh);
         };
-    }, [load]);
+    }, [load, leaveForgotten]);
 
     if (!daemons || (daemons.length === 0 && target === LOCAL)) return null;
 
@@ -94,7 +111,7 @@ export function DaemonSwitcher({ onSwitched = reloadWindow }) {
             onChange={change}
             options={[
                 { value: LOCAL, label: t('daemon_switcher.local'), icon: 'desktop' },
-                ...daemons.map((d) => ({ value: d.hostId, label: d.name || d.hostId, icon: 'cloud' })),
+                ...daemons.map((d) => ({ value: d.hostId, label: d.label || d.name || d.hostId, icon: 'cloud' })),
             ]}
         />
     );

@@ -16,6 +16,9 @@ pub struct Target {
 pub struct Redeemed {
     pub from_host_id: String,
     pub from_host_name: String,
+    /// 그 PC 주인의 디스코드 이름. 옛 릴레이는 보내지 않는다
+    #[serde(default)]
+    pub from_owner_name: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -102,6 +105,8 @@ pub struct Peer {
     pub host_id: String,
     pub name: String,
     #[serde(default)]
+    pub owner_name: String,
+    #[serde(default)]
     pub status: String,
     pub endpoint: Option<Endpoint>,
 }
@@ -124,6 +129,8 @@ pub struct Ticket {
     pub ticket_id: String,
     pub secret: String,
     pub name: String,
+    #[serde(default)]
+    pub owner_name: String,
     #[serde(flatten)]
     pub endpoint: Endpoint,
 }

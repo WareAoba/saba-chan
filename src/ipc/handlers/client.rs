@@ -217,7 +217,7 @@ fn launch_args(body: &serde_json::Value) -> Result<LaunchLine, (&'static str, &'
         None | Some(serde_json::Value::Null) => None,
         Some(v) => Some(v.as_str().filter(|s| !s.is_empty()).ok_or(("instance", "must be an instance id"))?.to_string()),
     };
-    // GUI가 고른 원격 데몬 (G1, CLI 전역 `--daemon`). GUI를 띄울 때는 받지 않는다: GUI는 설정 `gui.daemonTarget`을 따른다
+    // GUI가 고른 원격 데몬 (G1, CLI 전역 `--daemon`). GUI를 띄울 때는 받지 않는다: GUI는 메인 데몬(`gui.mainDaemon`)부터 연다
     let daemon = match body.get("daemon") {
         None | Some(serde_json::Value::Null) => None,
         Some(_) if kind == Interface::Gui => return Err(("daemon", "only for the cli")),

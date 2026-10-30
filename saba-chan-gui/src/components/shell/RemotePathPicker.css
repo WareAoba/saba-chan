@@ -47,7 +47,8 @@
     cursor: pointer;
 }
 
-.remote-picker-entry span {
+/* 이름만 늘인다 (아이콘도 span이라 함께 늘이면 둘이 가운데로 흩어진다) */
+.remote-picker-entry-name {
     flex: 1;
     min-width: 0;
     overflow: hidden;

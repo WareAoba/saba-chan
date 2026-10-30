@@ -1759,7 +1759,19 @@
     "view": "Serverliste",
     "view_description": "Die kombinierte Ansicht zeigt unter den Servern des gewählten Daemons die Server der anderen Daemons (auch dieses PCs), nach Daemon gruppiert, und du kannst sie dort starten und stoppen",
     "view_switch": "Nur gewählter Daemon",
-    "view_unified": "Alle Daemons kombiniert"
+    "view_unified": "Alle Daemons kombiniert",
+    "main": "Main daemon",
+    "main_description": "The app opens on this daemon. Picking another daemon in the top bar lasts until the app is closed",
+    "main_badge": "Main",
+    "open": "Open",
+    "viewing": "Viewing",
+    "forget_confirm_title": "Forget this remote daemon?",
+    "forget_confirm_message": "The daemon on {{name}} is removed from this PC. To use it again, connect it from My other PCs.",
+    "cancel": "Cancel",
+    "reconnect": "Reconnect",
+    "state_gone": "Removed from Server-chan",
+    "state_unpaired": "That PC forgot this one",
+    "state_unreachable": "Not reachable"
   },
   "daemon_switcher": {
     "label": "Daemon",

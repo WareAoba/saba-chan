@@ -742,7 +742,20 @@ fn start_events(app: &AppHandle) {
             move |ev: SseEvent, from: Option<&str>| {
                 notify_critical(&app2, &ev, feed, from);
                 if let Some(cue) = cues.lock().unwrap().cue_for(&ev).filter(|c| feed.plays(*c)) {
-                    sounds::play(&app2, cue);
+                    match sounds::remote_requester(&ev).map(str::to_string) {
+                        None => sounds::play(&app2, cue),
+                        // 원격으로 시킨 일: 이 PC가 누른 것이면 울리지 않는다. 이 PC의 hostId는 이 PC 데몬이 안다
+                        Some(requester) => {
+                            let app3 = app2.clone();
+                            tauri::async_runtime::spawn(async move {
+                                let state = app3.state::<AppState>();
+                                let own = state.client.get("/api/remote/settings", 3000).await.unwrap_or_default();
+                                if !sounds::asked_by_this_pc(&requester, own["hostId"].as_str()) {
+                                    sounds::play(&app3, cue);
+                                }
+                            });
+                        }
+                    }
                 }
                 if ev.kind == "update.available" && from.is_none() {
                     // 이 PC 데몬이 새 업데이트를 찾았다: 10분 주기를 기다리지 않고 바로 알린다

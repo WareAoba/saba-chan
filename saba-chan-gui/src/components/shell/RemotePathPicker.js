@@ -213,7 +213,7 @@ function RemotePathPicker() {
                                 disabled={busy}
                             >
                                 <Icon name={e.dir ? 'folder' : 'file'} size="sm" />
-                                <span>{e.name}</span>
+                                <span className="remote-picker-entry-name">{e.name}</span>
                             </button>
                         </li>
                     ))}

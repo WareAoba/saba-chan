@@ -162,6 +162,7 @@ mod tests {
         let saved = |host: &str, name: &str| config::Daemon {
             host_id: host.into(),
             name: name.into(),
+            owner_name: String::new(),
             address: "h.example".into(),
             port: 57480,
             cert_sha256: "ab".repeat(32),

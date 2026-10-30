@@ -1,7 +1,8 @@
 //! 효과음 — 데몬 이벤트와 업데이트 확인 결과에 맞춰 짧은 소리를 낸다 (설정 `sounds`: 전체·종류별 스위치, 기본 켬).
 //!
 //! 셸이 내므로 창 없이 트레이에만 떠 있어도 들린다. 앱에서 직접 켜고 끈 것(`source:"gui"`)은
-//! 누른 사람이 이미 보고 있으므로 울리지 않는다. 소리 파일은 `sounds/`에 있고 실행 파일에 싣는다.
+//! 누른 사람이 이미 보고 있으므로 울리지 않는다. 원격 데몬을 이 PC에서 켜고 끈 것(`source:"remote"`, `remoteHost`가 이 PC)도
+//! 같다. 그 원격 PC에서는 밖에서 한 일이라 울린다. 소리 파일은 `sounds/`에 있고 실행 파일에 싣는다.
 
 use crate::events::SseEvent;
 use crate::{window, AppState};
@@ -88,6 +89,16 @@ impl EventCues {
             _ => None,
         }
     }
+}
+
+/// 원격 데몬에 켜기·끄기를 시킨 PC (`remoteHost`). 이 PC의 hostId와 같으면 이 앱에서 누른 것이다
+pub fn remote_requester(ev: &SseEvent) -> Option<&str> {
+    ev.data["remoteHost"].as_str().filter(|h| !h.is_empty())
+}
+
+/// 이 PC(`own`, 릴레이 hostId)가 원격으로 누른 것인가. 이 PC의 hostId를 모르면 울린다
+pub fn asked_by_this_pc(requester: &str, own: Option<&str>) -> bool {
+    own.is_some_and(|own| own == requester)
 }
 
 /// 전체 스위치와 그 종류의 스위치가 모두 꺼지지 않았으면 울린다 (값이 없으면 켬)
@@ -179,6 +190,21 @@ mod tests {
             kind: kind.into(),
             data,
         }
+    }
+
+    #[test]
+    fn a_remote_start_from_this_pc_is_this_apps_own_button() {
+        let from_a = ev("instance.started", json!({"source": "remote", "remoteHost": "host-a"}));
+        assert_eq!(remote_requester(&from_a), Some("host-a"));
+        // 원격 데몬을 고른 이 PC(host-a)가 누른 것: 울리지 않는다
+        assert!(asked_by_this_pc("host-a", Some("host-a")));
+        // 다른 PC가 이 PC의 데몬을 켰다: 밖에서 한 일이다
+        assert!(!asked_by_this_pc("host-a", Some("host-b")));
+        assert!(!asked_by_this_pc("host-a", None));
+        assert_eq!(
+            remote_requester(&ev("instance.started", json!({"source": "discord"}))),
+            None
+        );
     }
 
     #[test]

@@ -99,8 +99,8 @@ pub fn run() {
     // 설정을 데몬 기동 전에 읽는다
     let s = settings::load_settings(&data_dir);
     let client = Arc::new(DaemonClient::new(settings::ipc_base(&s), constants::token_file_path()));
-    // 지난번에 고른 원격 데몬 (G1). 잊은 데몬이면 상단 바가 이 PC로 되돌린다
-    client.set_target(s["daemonTarget"].as_str().map(str::to_string));
+    // 앱을 열면 먼저 볼 데몬 (설정 `mainDaemon`: 원격 데몬 hostId, 없으면 이 PC). 잊은 데몬이면 상단 바가 이 PC로 되돌린다
+    client.set_target(settings::main_daemon(&s));
     let i18n = I18n::load(&settings::language(&s), Some(&install_root.join("locales")));
     let state = AppState {
         client,

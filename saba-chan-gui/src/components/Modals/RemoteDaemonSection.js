@@ -4,7 +4,7 @@ import { useSettingsStore } from '../../stores/useSettingsStore';
 import CustomDropdown from '../CustomDropdown/CustomDropdown';
 import { Icon } from '../Icon';
 import { SabaSpinner, SabaToggle } from '../ui/SabaUI';
-import { REMOTE_DAEMONS_CHANGED, reloadWindow } from '../shell/DaemonSwitcher';
+import { REMOTE_DAEMONS_CHANGED, reloadWindow, useDaemonTarget } from '../shell/DaemonSwitcher';
 
 export const remoteDaemonAvailable = () => typeof window.api?.remoteSettings === 'function';
 
@@ -29,6 +29,9 @@ const ERRORS = [
     'remote_local_only',
 ];
 
+/** 화면에 보일 PC 이름: 데몬이 정한 `디스코드 이름(PC 이름)`, 옛 데몬이면 PC 이름 */
+export const pcName = (pc) => pc?.label || pc?.name || pc?.hostId || '';
+
 const failed = (res) => !res || res.ok === false || res.success === false || Boolean(res.error_code);
 
 /** 실패 → 한 줄 (아는 코드는 번역, 나머지는 데몬 문구) */
@@ -41,9 +44,9 @@ export function remoteErrorText(res, t) {
 /**
  * 설정 > 고급: 원격 데몬 (데몬 `/api/remote/*`, 01 §1.4.2). 이 PC를 내 다른 PC에 열기, 짝 맺은 PC,
  * 내 다른 PC에 붙기, 붙은 원격 데몬. 상단 바에서 다룰 데몬을 고른다. CLI `remote …`와 같은 기능이다.
- * 이 경로들은 고른 데몬과 상관없이 늘 이 PC의 데몬이 답한다.
+ * 이 경로들은 고른 데몬과 상관없이 늘 이 PC의 데몬이 답한다. 메인 데몬(`gui.mainDaemon`)은 앱을 열면 먼저 보일 데몬이다.
  */
-export function RemoteDaemonSection({ onTargetGone = reloadWindow }) {
+export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = reloadWindow, onAsk = null }) {
     const { t } = useTranslation('gui');
     const [settings, setSettings] = useState(null);
     const [draft, setDraft] = useState(null); // {enabled, port, address}
@@ -51,9 +54,13 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow }) {
     const [peers, setPeers] = useState(null); // null = 못 읽음
     const [peersError, setPeersError] = useState(null);
     const [daemons, setDaemons] = useState([]);
+    // 원격 데몬마다 닿는지 (`/api/remote/servers`의 ok·error_code). 아직 모르면 비어 있다
+    const [reach, setReach] = useState({});
     const [busy, setBusy] = useState(null); // 진행 중인 동작 이름
     const [error, setError] = useState(null);
     const daemonView = useSettingsStore((st) => st.daemonView);
+    const mainDaemon = useSettingsStore((st) => st.mainDaemon);
+    const daemonTarget = useDaemonTarget();
     const updateSettings = useSettingsStore((st) => st.update);
 
     const loadSettings = useCallback(async () => {
@@ -78,7 +85,14 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow }) {
     }, [t]);
     const loadDaemons = useCallback(async () => {
         const res = await window.api.remoteDaemons();
-        if (!failed(res)) setDaemons(res.daemons || []);
+        if (failed(res)) return;
+        setDaemons(res.daemons || []);
+        if (!res.daemons?.length || typeof window.api.remoteServers !== 'function') return;
+        // 그 PC의 데몬이 지워졌거나 다시 설치돼 짝을 잊었는지 본다 (닿지 않는 데몬은 늦게 답한다)
+        const all = await window.api.remoteServers().catch(() => null);
+        const next = {};
+        for (const d of all?.daemons || []) if (d.hostId) next[d.hostId] = d.ok ? 'ok' : d.error_code || 'remote_unreachable';
+        setReach(next);
     }, []);
 
     useEffect(() => {
@@ -129,9 +143,27 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow }) {
         const res = await run(`revoke:${hostId}`, () => window.api.remoteRevoke(hostId));
         if (res && !failed(res)) await loadClients();
     };
+    // 잊으면 다시 연결해야 쓸 수 있으니 한 번 묻는다
+    const askForget = (d) => {
+        if (!onAsk) return forget(d.hostId);
+        onAsk({
+            type: 'question',
+            title: t('remote_daemon.forget_confirm_title'),
+            message: t('remote_daemon.forget_confirm_message', { name: pcName(d) }),
+            confirmText: t('remote_daemon.forget'),
+            cancelText: t('remote_daemon.cancel'),
+            onConfirm: () => {
+                onAsk(null);
+                forget(d.hostId);
+            },
+            onCancel: () => onAsk(null),
+        });
+    };
     const forget = async (hostId) => {
         const res = await run(`forget:${hostId}`, () => window.api.remoteForget(hostId));
         if (!res || failed(res)) return;
+        // 잊은 데몬은 메인일 수 없다: 다음에 열 때 이 PC부터 보인다
+        if (mainDaemon === hostId) updateSettings({ mainDaemon: null });
         // 지금 다루던 데몬이면 이 PC로 돌아간다 (남겨 두면 모든 요청이 remote_unknown이다)
         const current = await window.api.daemonTarget?.().catch(() => null);
         if (current?.target === hostId) {
@@ -145,10 +177,26 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow }) {
         window.dispatchEvent(new Event(REMOTE_DAEMONS_CHANGED));
     };
 
+    // 저장한 원격 데몬을 고른다 (상단 바와 같다)
+    const open = async (hostId) => {
+        const res = await run(`open:${hostId}`, () => window.api.daemonTargetSet(hostId));
+        if (res?.success) onSwitched();
+    };
+
+    // 저장한 원격 데몬이 지금 못 쓰는 까닭: 서버쨩에서 지워진 PC(gone), 그 PC가 짝을 잊음(unpaired, 데몬을 지우고
+    // 다시 설치했을 때. 다시 연결하면 된다), 닿지 않음(unreachable, 꺼졌거나 데몬이 지워졌다). 쓸 수 있으면 null
+    const daemonState = (d) => {
+        if (peers && !peers.some((p) => p.hostId === d.hostId)) return 'gone';
+        const r = reach[d.hostId];
+        if (r === 'remote_unauthorized') return 'unpaired';
+        if (r && r !== 'ok') return 'unreachable';
+        return null;
+    };
+
     const status = settings?.status || {};
     const statusError = settings?.enabled && status.error ? remoteErrorText({ error_code: status.error }, t) : null;
-    const button = (name, label, onClick, icon) => (
-        <button type="button" className="btn btn-ghost" onClick={onClick} disabled={busy !== null}>
+    const button = (name, label, onClick, icon, disabled = false) => (
+        <button type="button" className="btn btn-ghost btn-sm" onClick={onClick} disabled={busy !== null || disabled}>
             {busy === name ? <SabaSpinner size="xs" /> : <Icon name={icon} size="sm" />} {label}
         </button>
     );
@@ -238,7 +286,7 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow }) {
                 {clients.map((c) => (
                     <li key={c.hostId} className="remote-daemon-row">
                         <Icon name="desktop" size="sm" />
-                        <span className="remote-daemon-name">{c.name || c.hostId}</span>
+                        <span className="remote-daemon-name">{pcName(c)}</span>
                         {button(`revoke:${c.hostId}`, t('remote_daemon.revoke'), () => revoke(c.hostId), 'close')}
                     </li>
                 ))}
@@ -252,13 +300,25 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow }) {
                     {peers.map((p) => (
                         <li key={p.hostId} className="remote-daemon-row">
                             <Icon name="desktop" size="sm" />
-                            <span className="remote-daemon-name">{p.name || p.hostId}</span>
+                            <span className="remote-daemon-name">{pcName(p)}</span>
                             {p.saved ? (
-                                <span className="muted">{t('remote_daemon.saved')}</span>
+                                <>
+                                    <span className="remote-daemon-meta">{t('remote_daemon.saved')}</span>
+                                    {daemonTarget === p.hostId ? (
+                                        <span className="remote-daemon-meta">{t('remote_daemon.viewing')}</span>
+                                    ) : (
+                                        button(
+                                            `open:${p.hostId}`,
+                                            t('remote_daemon.open'),
+                                            () => open(p.hostId),
+                                            'externalLink',
+                                        )
+                                    )}
+                                </>
                             ) : p.hasEndpoint ? (
                                 button(`connect:${p.hostId}`, t('remote_daemon.connect'), () => connect(p.hostId), 'plug')
                             ) : (
-                                <span className="muted">{t('remote_daemon.no_endpoint')}</span>
+                                <span className="remote-daemon-meta">{t('remote_daemon.no_endpoint')}</span>
                             )}
                         </li>
                     ))}
@@ -271,12 +331,42 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow }) {
                 {daemons.map((d) => (
                     <li key={d.hostId} className="remote-daemon-row">
                         <Icon name="cloud" size="sm" />
-                        <span className="remote-daemon-name">{d.name || d.hostId}</span>
-                        <code className="muted">{d.address ? `${d.address}:${d.port}` : t('remote_daemon.via_relay')}</code>
-                        {button(`forget:${d.hostId}`, t('remote_daemon.forget'), () => forget(d.hostId), 'trash')}
+                        <span className="remote-daemon-name">{pcName(d)}</span>
+                        {mainDaemon === d.hostId && (
+                            <span className="remote-daemon-badge">{t('remote_daemon.main_badge')}</span>
+                        )}
+                        {d.address ? (
+                            <code className="remote-daemon-meta">{`${d.address}:${d.port}`}</code>
+                        ) : (
+                            <span className="remote-daemon-meta">{t('remote_daemon.via_relay')}</span>
+                        )}
+                        {daemonState(d) && <span className="remote-daemon-meta warn">{t(`remote_daemon.state_${daemonState(d)}`)}</span>}
+                        {daemonState(d) === 'unpaired' &&
+                            button(`connect:${d.hostId}`, t('remote_daemon.reconnect'), () => connect(d.hostId), 'refresh')}
+                        {button(`forget:${d.hostId}`, t('remote_daemon.forget'), () => askForget(d), 'trash')}
                     </li>
                 ))}
             </ul>
+
+            {daemons.length > 0 && (
+                <div className="setting-item">
+                    <span className="setting-label">
+                        <span className="setting-title">
+                            <Icon name="home" size="sm" /> {t('remote_daemon.main')}
+                        </span>
+                        <span className="setting-description">{t('remote_daemon.main_description')}</span>
+                    </span>
+                    <CustomDropdown
+                        ariaLabel={t('remote_daemon.main')}
+                        value={daemons.some((d) => d.hostId === mainDaemon) ? mainDaemon : ''}
+                        onChange={(value) => updateSettings({ mainDaemon: value || null })}
+                        options={[
+                            { value: '', label: t('daemon_switcher.local'), icon: 'desktop' },
+                            ...daemons.map((d) => ({ value: d.hostId, label: pcName(d), icon: 'cloud' })),
+                        ]}
+                    />
+                </div>
+            )}
 
             {daemons.length > 0 && (
                 <div className="setting-item">

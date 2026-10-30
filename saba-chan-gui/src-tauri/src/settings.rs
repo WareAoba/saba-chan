@@ -125,6 +125,15 @@ fn port_of_base(base: &str) -> Option<u16> {
     host.rsplit_once(':')?.1.parse().ok().filter(|p| *p != 0)
 }
 
+/// 앱을 열면 먼저 볼 데몬: 설정 `mainDaemon`(원격 데몬 hostId). 없거나 비었으면 이 PC(None)
+pub fn main_daemon(settings: &Value) -> Option<String> {
+    settings["mainDaemon"]
+        .as_str()
+        .map(str::trim)
+        .filter(|h| !h.is_empty())
+        .map(str::to_string)
+}
+
 pub fn language(settings: &Value) -> String {
     match settings["language"].as_str() {
         Some(l) if !l.is_empty() => l.to_string(),
@@ -167,6 +176,15 @@ mod tests {
     use super::*;
 
     /// GUI가 붙는 주소의 포트로 데몬을 띄운다 (데몬이 `IPC_BASE`로 띄운 GUI가 데몬을 다시 켤 때)
+    #[test]
+    fn the_app_opens_on_the_main_daemon_and_ignores_the_last_pick() {
+        assert_eq!(main_daemon(&json!({"mainDaemon": "host-b"})), Some("host-b".into()));
+        assert_eq!(main_daemon(&json!({"mainDaemon": null})), None);
+        assert_eq!(main_daemon(&json!({"mainDaemon": " "})), None);
+        // 상단 바에서 마지막으로 고른 데몬은 다음 실행에 따라가지 않는다
+        assert_eq!(main_daemon(&json!({"daemonTarget": "host-c"})), None);
+    }
+
     #[test]
     fn the_daemon_port_follows_the_connection_address() {
         assert_eq!(port_of_base("http://127.0.0.1:61234"), Some(61234));
