@@ -83,6 +83,7 @@ export function ServerDetail({
             icon: <Icon name="command" size="sm" />,
         },
         { id: 'settings', label: t('shell.tab_settings'), icon: <Icon name="settings" size="sm" /> },
+        { id: 'saba', label: t('shell.tab_saba'), icon: <Icon name="sabaFace" size="sm" /> },
         maintenanceAvailable() && {
             id: 'maintenance',
             label: t('shell.tab_maintenance'),
@@ -326,8 +327,9 @@ export function ServerDetail({
                                     <p>{t('shell.commands_offline')}</p>
                                 </div>
                             ))}
-                        {activeTab === 'settings' && (
+                        {(activeTab === 'settings' || activeTab === 'saba') && (
                             <SettingsTab
+                                section={activeTab === 'saba' ? 'saba' : 'server'}
                                 server={server}
                                 settingsProps={settingsProps}
                                 modules={modules}
@@ -437,8 +439,8 @@ function ServerName({ server, canRename, onRename }) {
     );
 }
 
-/** 설정 탭: 예전 "서버 설정" 모달 내용을 그대로 박아 넣는다 */
-function SettingsTab({ server, settingsProps, modules, servers }) {
+/** 설정·사바쨩 탭: 예전 "서버 설정" 모달 내용을 게임 서버 설정(server)과 사바쨩 설정(saba)으로 나눠 박아 넣는다 */
+function SettingsTab({ section, server, settingsProps, modules, servers }) {
     const { t } = useTranslation('gui');
     const { showSettingsModal, settingsServer, handleOpenSettings } = settingsProps;
     const ready = showSettingsModal && settingsServer?.id === server.id;
@@ -457,7 +459,16 @@ function SettingsTab({ server, settingsProps, modules, servers }) {
             </div>
         );
     }
-    return <ServerSettingsModal {...settingsProps} modules={modules} servers={servers} embedded onClose={() => {}} />;
+    return (
+        <ServerSettingsModal
+            {...settingsProps}
+            section={section}
+            modules={modules}
+            servers={servers}
+            embedded
+            onClose={() => {}}
+        />
+    );
 }
 
 /** 콘솔 줄은 0.5초마다 붙는다: 상세 전체가 아니라 콘솔만 다시 그린다 */

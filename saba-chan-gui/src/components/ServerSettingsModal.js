@@ -218,9 +218,13 @@ function GeneralTab({
     validationErrors,
     portConflicts,
     serverRunning,
+    section,
 }) {
     const { t } = useTranslation('gui');
     const versionId = useId();
+    // section: 'server' = 게임 서버 설정만, 'saba' = 사바쨩이 서버를 다루는 설정만, 없으면 모두
+    const showSaba = section !== 'server';
+    const showServer = section !== 'saba';
     const module = modules.find((m) => m.name === settingsServer.module);
     const hasModuleSettings = module?.settings?.fields?.length > 0;
     const protocols = module?.protocols || {};
@@ -230,7 +234,7 @@ function GeneralTab({
     return (
         <div className="settings-form">
             {/* Single protocol info */}
-            {supportedProtocols.length > 0 && (
+            {showSaba && supportedProtocols.length > 0 && (
                 <div className="protocol-mode-section protocol-mode-info">
                     <div className="protocol-mode-header">
                         <span className="protocol-mode-title">
@@ -242,68 +246,72 @@ function GeneralTab({
             )}
 
             {/* 크래시 자동 재시작 (데몬 A1: instance module_settings 의 auto_restart / restart_on_unknown_exit) */}
-            <div className="protocol-mode-section restart-section">
-                <div className="protocol-mode-header">
-                    <span className="protocol-mode-title">
-                        <Icon name="refresh" size="sm" /> {t('shell.restart_title')}
-                    </span>
+            {showSaba && (
+                <div className="protocol-mode-section restart-section">
+                    <div className="protocol-mode-header">
+                        <span className="protocol-mode-title">
+                            <Icon name="refresh" size="sm" /> {t('shell.restart_title')}
+                        </span>
+                    </div>
+                    <p className="protocol-mode-description">{t('shell.restart_desc')}</p>
+                    <div className="restart-row">
+                        <span>
+                            <strong>{t('shell.restart_on_crash')}</strong>
+                            <small>{t('shell.restart_on_crash_hint')}</small>
+                        </span>
+                        <SabaToggle
+                            checked={String(settingsValues.auto_restart) !== 'false'}
+                            onChange={(checked) => handleSettingChange('auto_restart', checked)}
+                        />
+                    </div>
+                    <div className={clsx('restart-row', { disabled: String(settingsValues.auto_restart) === 'false' })}>
+                        <span>
+                            <strong>{t('shell.restart_on_unknown')}</strong>
+                            <small>{t('shell.restart_on_unknown_hint')}</small>
+                        </span>
+                        <SabaToggle
+                            checked={String(settingsValues.restart_on_unknown_exit) === 'true'}
+                            disabled={String(settingsValues.auto_restart) === 'false'}
+                            onChange={(checked) => handleSettingChange('restart_on_unknown_exit', checked)}
+                        />
+                    </div>
                 </div>
-                <p className="protocol-mode-description">{t('shell.restart_desc')}</p>
-                <div className="restart-row">
-                    <span>
-                        <strong>{t('shell.restart_on_crash')}</strong>
-                        <small>{t('shell.restart_on_crash_hint')}</small>
-                    </span>
-                    <SabaToggle
-                        checked={String(settingsValues.auto_restart) !== 'false'}
-                        onChange={(checked) => handleSettingChange('auto_restart', checked)}
-                    />
-                </div>
-                <div className={clsx('restart-row', { disabled: String(settingsValues.auto_restart) === 'false' })}>
-                    <span>
-                        <strong>{t('shell.restart_on_unknown')}</strong>
-                        <small>{t('shell.restart_on_unknown_hint')}</small>
-                    </span>
-                    <SabaToggle
-                        checked={String(settingsValues.restart_on_unknown_exit) === 'true'}
-                        disabled={String(settingsValues.auto_restart) === 'false'}
-                        onChange={(checked) => handleSettingChange('restart_on_unknown_exit', checked)}
-                    />
-                </div>
-            </div>
+            )}
 
             {/* 램 상한 (데몬 인스턴스 memory_limit_mb, MiB). 비우면 제한 없음, 다음 시작부터 적용 */}
-            <div className="protocol-mode-section memory-limit-section">
-                <div className="protocol-mode-header">
-                    <span className="protocol-mode-title">
-                        <Icon name="monitor" size="sm" /> {t('memory_limit.title')}
-                    </span>
+            {showSaba && (
+                <div className="protocol-mode-section memory-limit-section">
+                    <div className="protocol-mode-header">
+                        <span className="protocol-mode-title">
+                            <Icon name="monitor" size="sm" /> {t('memory_limit.title')}
+                        </span>
+                    </div>
+                    <p className="protocol-mode-description">{t('memory_limit.desc')}</p>
+                    <div className="restart-row">
+                        <span>
+                            <strong>{t('memory_limit.label')}</strong>
+                            <small>{t('memory_limit.hint')}</small>
+                        </span>
+                        <input
+                            type="text"
+                            inputMode="numeric"
+                            className="input memory-limit-input"
+                            value={settingsValues.memory_limit_mb ?? ''}
+                            placeholder={t('memory_limit.placeholder')}
+                            aria-label={t('memory_limit.label')}
+                            onChange={(e) => handleSettingChange('memory_limit_mb', e.target.value)}
+                        />
+                    </div>
+                    {settingsServer.status === 'running' &&
+                        String(settingsValues.memory_limit_mb ?? '').trim() !==
+                            (settingsServer.memory_limit_mb == null ? '' : String(settingsServer.memory_limit_mb)) && (
+                            <p className="protocol-mode-description">{t('memory_limit.restart_note')}</p>
+                        )}
                 </div>
-                <p className="protocol-mode-description">{t('memory_limit.desc')}</p>
-                <div className="restart-row">
-                    <span>
-                        <strong>{t('memory_limit.label')}</strong>
-                        <small>{t('memory_limit.hint')}</small>
-                    </span>
-                    <input
-                        type="text"
-                        inputMode="numeric"
-                        className="input memory-limit-input"
-                        value={settingsValues.memory_limit_mb ?? ''}
-                        placeholder={t('memory_limit.placeholder')}
-                        aria-label={t('memory_limit.label')}
-                        onChange={(e) => handleSettingChange('memory_limit_mb', e.target.value)}
-                    />
-                </div>
-                {settingsServer.status === 'running' &&
-                    String(settingsValues.memory_limit_mb ?? '').trim() !==
-                        (settingsServer.memory_limit_mb == null ? '' : String(settingsServer.memory_limit_mb)) && (
-                        <p className="protocol-mode-description">{t('memory_limit.restart_note')}</p>
-                    )}
-            </div>
+            )}
 
             {/* 게임 채팅 전달 (데몬 인스턴스 game_chat·game_chat_keyword). 모듈이 채팅 줄을 알려 주고 데몬이 콘솔을 읽을 때만 */}
-            {settingsServer.game_chat_supported && (
+            {showSaba && settingsServer.game_chat_supported && (
                 <div className="protocol-mode-section game-chat-section">
                     <div className="protocol-mode-header">
                         <span className="protocol-mode-title">
@@ -347,7 +355,7 @@ function GeneralTab({
 
             {/* 정지 대기 시간 (데몬 MK14 module_settings.stop_timeout, 초). 비우면 모듈 값, 지나면 강제로 끈다.
                 데몬이 띄우지 않는 서버(managed:false)는 모듈 stop()이 정지를 맡아 이 값을 쓰지 않는다 */}
-            {settingsServer.managed !== false && (
+            {showSaba && settingsServer.managed !== false && (
                 <div className="protocol-mode-section stop-timeout-section">
                     <div className="protocol-mode-header">
                         <span className="protocol-mode-title">
@@ -374,223 +382,226 @@ function GeneralTab({
             )}
 
             {/* Module settings fields grouped */}
-            {hasModuleSettings ? (
-                (() => {
-                    // visible_when으로 숨긴 설정은 그리지 않는다 (값은 지우지 않는다)
-                    const hidden = new Set(hiddenFields(module.settings.fields, settingsValues, unsetSettings));
-                    const fields = module.settings.fields.filter((f) => !hidden.has(f.name));
-                    const sabaFields = fields.filter((f) => f.group === 'saba-chan');
-                    const basicFields = fields.filter((f) => !f.group || f.group === 'basic');
-                    const advancedFields = fields.filter((f) => f.group === 'advanced');
+            {hasModuleSettings
+                ? (() => {
+                      // visible_when으로 숨긴 설정은 그리지 않는다 (값은 지우지 않는다)
+                      const hidden = new Set(hiddenFields(module.settings.fields, settingsValues, unsetSettings));
+                      const fields = module.settings.fields.filter((f) => !hidden.has(f.name));
+                      const sabaFields = showSaba ? fields.filter((f) => f.group === 'saba-chan') : [];
+                      const basicFields = showServer ? fields.filter((f) => !f.group || f.group === 'basic') : [];
+                      const advancedFields = showServer ? fields.filter((f) => f.group === 'advanced') : [];
 
-                    return (
-                        <>
-                            {/* Port conflict warnings */}
-                            {portConflicts && portConflicts.length > 0 && (
-                                <div className="validation-warning-banner">
-                                    <Icon name="alert-triangle" size="sm" />
-                                    <div>
-                                        <strong>{t('errors.port_conflict')}</strong>
-                                        {portConflicts.map((c, i) => (
-                                            <div key={i} className="validation-warning-detail">
-                                                {t('errors.port_conflict_detail', {
-                                                    port: c.port,
-                                                    name: c.conflictName,
-                                                })}
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-                            {/* saba-chan settings */}
-                            {sabaFields.length > 0 && (
-                                <div className="settings-group">
-                                    <h4 className="settings-group-title">
-                                        <Icon name="settings" size="sm" />{' '}
-                                        {t('server_settings.saba_chan_group', { defaultValue: 'saba-chan Settings' })}
-                                    </h4>
-                                    {/* Server version selector — only for download-based modules that list and install versions */}
-                                    {module?.install?.method === 'download' &&
-                                        moduleSupports(module, 'list_versions') &&
-                                        moduleSupports(module, 'install_server') && (
-                                            <div className="settings-field">
-                                                <label htmlFor={versionId}>
-                                                    {t('server_settings.server_version', {
-                                                        defaultValue: 'Server Version',
-                                                    })}
-                                                </label>
-                                                {versionsLoading ? (
-                                                    <div className="version-loading">
-                                                        <Icon name="loader" size="sm" />{' '}
-                                                        {t('server_settings.loading_versions', {
-                                                            defaultValue: 'Loading versions...',
-                                                        })}
-                                                    </div>
-                                                ) : (
-                                                    <div className="version-select-row">
-                                                        <CustomDropdown
-                                                            id={versionId}
-                                                            value={settingsValues.server_version || ''}
-                                                            onChange={(val) =>
-                                                                handleSettingChange('server_version', val)
-                                                            }
-                                                            placeholder={t('server_settings.select_version', {
-                                                                defaultValue: 'Select version',
-                                                            })}
-                                                            options={availableVersions.map((v) => ({
-                                                                value: v.id || v.version || v,
-                                                                label: `${v.id || v.version || v}${v.type ? ` (${v.type})` : ''}`,
-                                                            }))}
-                                                        />
-                                                        <button
-                                                            className="btn btn-sm btn-primary version-install-btn"
-                                                            onClick={handleInstallVersion}
-                                                            disabled={
-                                                                !settingsValues.server_version ||
-                                                                versionInstalling ||
-                                                                serverRunning
-                                                            }
-                                                            title={
-                                                                serverRunning
-                                                                    ? t('server_settings.install_server_running')
-                                                                    : t('server_settings.install_version_tooltip', {
-                                                                          defaultValue:
-                                                                              'Download and install this version',
-                                                                      })
-                                                            }
-                                                        >
-                                                            {versionInstalling ? (
-                                                                <>
-                                                                    <Icon name="loader" size="sm" />{' '}
-                                                                    {t('server_settings.installing', {
-                                                                        defaultValue: 'Installing...',
-                                                                    })}
-                                                                </>
-                                                            ) : (
-                                                                <>
-                                                                    <Icon name="download" size="sm" />{' '}
-                                                                    {t('server_settings.install_version_button', {
-                                                                        defaultValue: 'Install',
-                                                                    })}
-                                                                </>
-                                                            )}
-                                                        </button>
-                                                    </div>
-                                                )}
-                                                <small className="field-description">
-                                                    {t('server_settings.version_description_install', {
-                                                        defaultValue:
-                                                            'Select a version and click Install to download the server files.',
-                                                    })}
-                                                </small>
-                                            </div>
-                                        )}
-                                    {sabaFields.map((f) => (
-                                        <SettingsField
-                                            key={f.name}
-                                            field={f}
-                                            value={settingsValues[f.name]}
-                                            modNs={modNs}
-                                            onChange={handleSettingChange}
-                                            validationError={validationErrors?.[f.name]}
-                                        />
-                                    ))}
-                                </div>
-                            )}
+                      return (
+                          <>
+                              {/* Port conflict warnings */}
+                              {showServer && portConflicts && portConflicts.length > 0 && (
+                                  <div className="validation-warning-banner">
+                                      <Icon name="alert-triangle" size="sm" />
+                                      <div>
+                                          <strong>{t('errors.port_conflict')}</strong>
+                                          {portConflicts.map((c, i) => (
+                                              <div key={i} className="validation-warning-detail">
+                                                  {t('errors.port_conflict_detail', {
+                                                      port: c.port,
+                                                      name: c.conflictName,
+                                                  })}
+                                              </div>
+                                          ))}
+                                      </div>
+                                  </div>
+                              )}
+                              {/* saba-chan settings */}
+                              {sabaFields.length > 0 && (
+                                  <div className="settings-group">
+                                      <h4 className="settings-group-title">
+                                          <Icon name="settings" size="sm" />{' '}
+                                          {t('server_settings.saba_chan_group', { defaultValue: 'saba-chan Settings' })}
+                                      </h4>
+                                      {/* Server version selector — only for download-based modules that list and install versions */}
+                                      {module?.install?.method === 'download' &&
+                                          moduleSupports(module, 'list_versions') &&
+                                          moduleSupports(module, 'install_server') && (
+                                              <div className="settings-field">
+                                                  <label htmlFor={versionId}>
+                                                      {t('server_settings.server_version', {
+                                                          defaultValue: 'Server Version',
+                                                      })}
+                                                  </label>
+                                                  {versionsLoading ? (
+                                                      <div className="version-loading">
+                                                          <Icon name="loader" size="sm" />{' '}
+                                                          {t('server_settings.loading_versions', {
+                                                              defaultValue: 'Loading versions...',
+                                                          })}
+                                                      </div>
+                                                  ) : (
+                                                      <div className="version-select-row">
+                                                          <CustomDropdown
+                                                              id={versionId}
+                                                              value={settingsValues.server_version || ''}
+                                                              onChange={(val) =>
+                                                                  handleSettingChange('server_version', val)
+                                                              }
+                                                              placeholder={t('server_settings.select_version', {
+                                                                  defaultValue: 'Select version',
+                                                              })}
+                                                              options={availableVersions.map((v) => ({
+                                                                  value: v.id || v.version || v,
+                                                                  label: `${v.id || v.version || v}${v.type ? ` (${v.type})` : ''}`,
+                                                              }))}
+                                                          />
+                                                          <button
+                                                              className="btn btn-sm btn-primary version-install-btn"
+                                                              onClick={handleInstallVersion}
+                                                              disabled={
+                                                                  !settingsValues.server_version ||
+                                                                  versionInstalling ||
+                                                                  serverRunning
+                                                              }
+                                                              title={
+                                                                  serverRunning
+                                                                      ? t('server_settings.install_server_running')
+                                                                      : t('server_settings.install_version_tooltip', {
+                                                                            defaultValue:
+                                                                                'Download and install this version',
+                                                                        })
+                                                              }
+                                                          >
+                                                              {versionInstalling ? (
+                                                                  <>
+                                                                      <Icon name="loader" size="sm" />{' '}
+                                                                      {t('server_settings.installing', {
+                                                                          defaultValue: 'Installing...',
+                                                                      })}
+                                                                  </>
+                                                              ) : (
+                                                                  <>
+                                                                      <Icon name="download" size="sm" />{' '}
+                                                                      {t('server_settings.install_version_button', {
+                                                                          defaultValue: 'Install',
+                                                                      })}
+                                                                  </>
+                                                              )}
+                                                          </button>
+                                                      </div>
+                                                  )}
+                                                  <small className="field-description">
+                                                      {t('server_settings.version_description_install', {
+                                                          defaultValue:
+                                                              'Select a version and click Install to download the server files.',
+                                                      })}
+                                                  </small>
+                                              </div>
+                                          )}
+                                      {sabaFields.map((f) => (
+                                          <SettingsField
+                                              key={f.name}
+                                              field={f}
+                                              value={settingsValues[f.name]}
+                                              modNs={modNs}
+                                              onChange={handleSettingChange}
+                                              validationError={validationErrors?.[f.name]}
+                                          />
+                                      ))}
+                                  </div>
+                              )}
 
-                            {/* Basic settings */}
-                            {basicFields.length > 0 && (
-                                <div className="settings-group">
-                                    <h4 className="settings-group-title">
-                                        <Icon name="gamepad" size="sm" />{' '}
-                                        {t('server_settings.basic_group', { defaultValue: 'Server Settings' })}
-                                    </h4>
-                                    {basicFields.map((f) => (
-                                        <SettingsField
-                                            key={f.name}
-                                            field={f}
-                                            value={settingsValues[f.name]}
-                                            modNs={modNs}
-                                            onChange={handleSettingChange}
-                                            validationError={validationErrors?.[f.name]}
-                                        />
-                                    ))}
-                                </div>
-                            )}
+                              {/* Basic settings */}
+                              {basicFields.length > 0 && (
+                                  <div className="settings-group">
+                                      <h4 className="settings-group-title">
+                                          <Icon name="gamepad" size="sm" />{' '}
+                                          {t('server_settings.basic_group', { defaultValue: 'Server Settings' })}
+                                      </h4>
+                                      {basicFields.map((f) => (
+                                          <SettingsField
+                                              key={f.name}
+                                              field={f}
+                                              value={settingsValues[f.name]}
+                                              modNs={modNs}
+                                              onChange={handleSettingChange}
+                                              validationError={validationErrors?.[f.name]}
+                                          />
+                                      ))}
+                                  </div>
+                              )}
 
-                            {/* Advanced settings (collapsible) */}
-                            {advancedFields.length > 0 && (
-                                <div className="settings-group settings-group-advanced">
-                                    <h4
-                                        className="settings-group-title settings-group-collapsible"
-                                        onClick={() => setAdvancedExpanded(!advancedExpanded)}
-                                    >
-                                        <Icon name={advancedExpanded ? 'chevronDown' : 'chevronRight'} size="sm" />{' '}
-                                        {t('server_settings.advanced_group', { defaultValue: 'Advanced Settings' })}
-                                        <span className="settings-group-count">({advancedFields.length})</span>
-                                    </h4>
-                                    {advancedExpanded &&
-                                        advancedFields.map((f) => (
-                                            <SettingsField
-                                                key={f.name}
-                                                field={f}
-                                                value={settingsValues[f.name]}
-                                                modNs={modNs}
-                                                onChange={handleSettingChange}
-                                                validationError={validationErrors?.[f.name]}
-                                            />
-                                        ))}
-                                </div>
-                            )}
+                              {/* Advanced settings (collapsible) */}
+                              {advancedFields.length > 0 && (
+                                  <div className="settings-group settings-group-advanced">
+                                      <h4
+                                          className="settings-group-title settings-group-collapsible"
+                                          onClick={() => setAdvancedExpanded(!advancedExpanded)}
+                                      >
+                                          <Icon name={advancedExpanded ? 'chevronDown' : 'chevronRight'} size="sm" />{' '}
+                                          {t('server_settings.advanced_group', { defaultValue: 'Advanced Settings' })}
+                                          <span className="settings-group-count">({advancedFields.length})</span>
+                                      </h4>
+                                      {advancedExpanded &&
+                                          advancedFields.map((f) => (
+                                              <SettingsField
+                                                  key={f.name}
+                                                  field={f}
+                                                  value={settingsValues[f.name]}
+                                                  modNs={modNs}
+                                                  onChange={handleSettingChange}
+                                                  validationError={validationErrors?.[f.name]}
+                                              />
+                                          ))}
+                                  </div>
+                              )}
 
-                            {/* Danger zone: 초기화를 구현한 모듈만 (MK1) */}
-                            {moduleSupports(module, 'reset_server') && (
-                                <div className="settings-group settings-group-danger">
-                                    <h4 className="settings-group-title settings-danger-title">
-                                        <Icon name="alert-triangle" size="sm" />{' '}
-                                        {t('server_settings.danger_zone', { defaultValue: 'Danger Zone' })}
-                                    </h4>
-                                    <div className="danger-zone-content">
-                                        <div className="danger-zone-item">
-                                            <div className="danger-zone-info">
-                                                {/* 무엇을 지우는지는 모듈마다 다르다: 모듈 locales의 reset.label·description이 먼저 */}
-                                                <span className="danger-zone-label">
-                                                    {t(`mod_${settingsServer.module}:reset.label`, {
-                                                        defaultValue: t('server_settings.reset_server_label'),
-                                                    })}
-                                                </span>
-                                                <span className="danger-zone-desc">
-                                                    {t(`mod_${settingsServer.module}:reset.description`, {
-                                                        defaultValue: t('server_settings.reset_server_desc'),
-                                                    })}
-                                                </span>
-                                            </div>
-                                            <button
-                                                className="danger-zone-btn"
-                                                onClick={handleResetServer}
-                                                disabled={resettingServer || serverRunning}
-                                                title={
-                                                    serverRunning
-                                                        ? t('server_settings.reset_server_running')
-                                                        : undefined
-                                                }
-                                            >
-                                                {resettingServer
-                                                    ? t('server_settings.resetting', { defaultValue: 'Resetting...' })
-                                                    : t('server_settings.reset_button', { defaultValue: 'Reset' })}
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-                        </>
-                    );
-                })()
-            ) : (
-                <p className="no-settings" style={{ marginTop: '16px' }}>
-                    {t('server_settings.no_settings')}
-                </p>
-            )}
+                              {/* Danger zone: 초기화를 구현한 모듈만 (MK1) */}
+                              {showServer && moduleSupports(module, 'reset_server') && (
+                                  <div className="settings-group settings-group-danger">
+                                      <h4 className="settings-group-title settings-danger-title">
+                                          <Icon name="alert-triangle" size="sm" />{' '}
+                                          {t('server_settings.danger_zone', { defaultValue: 'Danger Zone' })}
+                                      </h4>
+                                      <div className="danger-zone-content">
+                                          <div className="danger-zone-item">
+                                              <div className="danger-zone-info">
+                                                  {/* 무엇을 지우는지는 모듈마다 다르다: 모듈 locales의 reset.label·description이 먼저 */}
+                                                  <span className="danger-zone-label">
+                                                      {t(`mod_${settingsServer.module}:reset.label`, {
+                                                          defaultValue: t('server_settings.reset_server_label'),
+                                                      })}
+                                                  </span>
+                                                  <span className="danger-zone-desc">
+                                                      {t(`mod_${settingsServer.module}:reset.description`, {
+                                                          defaultValue: t('server_settings.reset_server_desc'),
+                                                      })}
+                                                  </span>
+                                              </div>
+                                              <button
+                                                  className="danger-zone-btn"
+                                                  onClick={handleResetServer}
+                                                  disabled={resettingServer || serverRunning}
+                                                  title={
+                                                      serverRunning
+                                                          ? t('server_settings.reset_server_running')
+                                                          : undefined
+                                                  }
+                                              >
+                                                  {resettingServer
+                                                      ? t('server_settings.resetting', { defaultValue: 'Resetting...' })
+                                                      : t('server_settings.reset_button', { defaultValue: 'Reset' })}
+                                              </button>
+                                          </div>
+                                      </div>
+                                  </div>
+                              )}
+                              {showServer && !basicFields.length && !advancedFields.length && section === 'server' && (
+                                  <p className="no-settings">{t('server_settings.no_settings')}</p>
+                              )}
+                          </>
+                      );
+                  })()
+                : showServer && (
+                      <p className="no-settings" style={{ marginTop: '16px' }}>
+                          {t('server_settings.no_settings')}
+                      </p>
+                  )}
         </div>
     );
 }
@@ -620,6 +631,8 @@ export function ServerSettingsModal({
     isClosing,
     onClose,
     embedded = false,
+    // 서버 상세에 박을 때 나눠 보이기: 'server' | 'saba' (GeneralTab 참고)
+    section,
     // validation props
     servers,
 }) {
@@ -699,19 +712,21 @@ export function ServerSettingsModal({
                 </div>
             )}
 
-            {/* Tab header */}
-            <div className="settings-tabs" ref={tabsRef}>
-                <div className="settings-tab-indicator" ref={indicatorRef} />
-                <button
-                    className={clsx('settings-tab', { active: settingsActiveTab === 'general' })}
-                    onClick={() => setSettingsActiveTab('general')}
-                >
-                    <Icon name="gamepad" size="sm" /> {t('server_settings.general_tab')}
-                </button>
-            </div>
+            {/* Tab header (확장 탭은 사바쨩 쪽에 붙는다) */}
+            {section !== 'server' && (
+                <div className="settings-tabs" ref={tabsRef}>
+                    <div className="settings-tab-indicator" ref={indicatorRef} />
+                    <button
+                        className={clsx('settings-tab', { active: settingsActiveTab === 'general' })}
+                        onClick={() => setSettingsActiveTab('general')}
+                    >
+                        <Icon name="gamepad" size="sm" /> {t('server_settings.general_tab')}
+                    </button>
+                </div>
+            )}
 
             <div className="modal-body">
-                {settingsActiveTab === 'general' && launchPreviewAvailable() && (
+                {section !== 'server' && settingsActiveTab === 'general' && launchPreviewAvailable() && (
                     <LaunchPreview
                         key={settingsServer.id}
                         serverId={settingsServer.id}
@@ -726,14 +741,15 @@ export function ServerSettingsModal({
                         }}
                     />
                 )}
-                {settingsSource === 'stored' && (
+                {section !== 'saba' && settingsSource === 'stored' && (
                     <div className="notice tone-warn">
                         <Icon name="alertTriangle" size="sm" />
                         <span>{t('server_settings.stored_values_notice')}</span>
                     </div>
                 )}
-                {settingsActiveTab === 'general' && (
+                {(section === 'server' || settingsActiveTab === 'general') && (
                     <GeneralTab
+                        section={section}
                         settingsServer={settingsServer}
                         settingsValues={settingsValues}
                         unsetSettings={unsetSettings}
@@ -752,15 +768,17 @@ export function ServerSettingsModal({
                         serverRunning={serverRunning}
                     />
                 )}
-                <ExtensionSlot
-                    slotId="ServerSettings.tab"
-                    server={settingsServer}
-                    activeTab={settingsActiveTab}
-                    setActiveTab={setSettingsActiveTab}
-                    settings={settingsValues}
-                    onSettingsChange={handleSettingChange}
-                    t={t}
-                />
+                {section !== 'server' && (
+                    <ExtensionSlot
+                        slotId="ServerSettings.tab"
+                        server={settingsServer}
+                        activeTab={settingsActiveTab}
+                        setActiveTab={setSettingsActiveTab}
+                        settings={settingsValues}
+                        onSettingsChange={handleSettingChange}
+                        t={t}
+                    />
+                )}
             </div>
 
             <div className="modal-footer">

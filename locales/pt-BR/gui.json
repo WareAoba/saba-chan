@@ -688,6 +688,7 @@
     "tab_console": "Console",
     "tab_commands": "Comandos",
     "tab_settings": "Configurações",
+    "tab_saba": "Saba-chan",
     "tab_info": "Informações",
     "console_offline": "O servidor está parado. Inicie-o para ver o log aqui.",
     "console_offline_input": "Inicie o servidor para enviar comandos",

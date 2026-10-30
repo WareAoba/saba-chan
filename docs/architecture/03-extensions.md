@@ -259,7 +259,7 @@ ue4-ini는 hook을 선언하지 않는다. steamcmd의 condition은 `instance.ex
 | `ServerCard.headerGauge` | `servers/ServerDetail.js:201` | `server` | 없음 |
 | `ServerCard.provision` | `servers/ServerDetail.js:247` (`server.provisioning`일 때) | `server, provisionProgress, onDismiss, t` | 없음 |
 | `ServerCard.expandedStats` | `servers/ServerDetail.js:467` | `server, t` | 없음 |
-| `ServerSettings.tab` | `ServerSettingsModal.js:588` | `server, activeTab, setActiveTab, settings, onSettingsChange, t` | 없음 |
+| `ServerSettings.tab` | `ServerSettingsModal.js` (서버 상세 사바쨩 탭에만) | `server, activeTab, setActiveTab, settings, onSettingsChange, t` | 없음 |
 | `AddServer.options` | `AddInstanceNewServer.js:326` | `t` | 없음 |
 
 - `server` 객체는 `/api/servers`의 `ServerInfo`다. 여기서 `extension_data`와 `extension_status[<extension_id>]`(list_enrich 결과)를 컴포넌트가 읽는다.

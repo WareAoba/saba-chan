@@ -323,7 +323,7 @@ describe('로딩 스크린 상태 머신', () => {
         await waitFor(
             () => {
                 expect(screen.queryByText(/Checking servers/i)).not.toBeInTheDocument();
-                expect(screen.getByText('Saba-chan')).toBeInTheDocument();
+                expect(screen.getByText('Saba-chan', { selector: '.sr-only' })).toBeInTheDocument();
             },
             { timeout: 5000 },
         );
@@ -348,7 +348,7 @@ describe('로딩 스크린 상태 머신', () => {
         await act(async () => {
             fireEvent.click(screen.getByRole('button', { name: /Open anyway/i }));
         });
-        await waitFor(() => expect(screen.getByText('Saba-chan')).toBeInTheDocument(), { timeout: 3000 });
+        await waitFor(() => expect(screen.getByText('Saba-chan', { selector: '.sr-only' })).toBeInTheDocument(), { timeout: 3000 });
     });
 
     it('데몬 기동 실패 → [다시 시도]가 실패하면 그 이유를, 성공하면 ready를 기다려 메인 UI', async () => {
@@ -381,7 +381,7 @@ describe('로딩 스크린 상태 머신', () => {
         });
         // 성공하면 main이 멈춘 초기화를 마치고 ready를 보낸다: 그때까지는 진행 화면
         await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
-        expect(screen.queryByText('Saba-chan')).not.toBeInTheDocument();
+        expect(screen.queryByText('Saba-chan', { selector: '.sr-only' })).not.toBeInTheDocument();
         await act(async () => {
             statusCallback({ step: 'ready', message: 'Ready!' });
         });
@@ -463,7 +463,7 @@ describe('로딩 스크린 상태 머신', () => {
         // 로딩 화면 없이 바로 메인 UI
         await waitFor(
             () => {
-                expect(screen.getByText('Saba-chan')).toBeInTheDocument();
+                expect(screen.getByText('Saba-chan', { selector: '.sr-only' })).toBeInTheDocument();
             },
             { timeout: 3000 },
         );
@@ -701,7 +701,7 @@ describe('모듈 commands 필드 크로스 E2E', () => {
         // 크래시 없이 부팅 완료
         await waitFor(
             () => {
-                expect(screen.getByText('Saba-chan')).toBeInTheDocument();
+                expect(screen.getByText('Saba-chan', { selector: '.sr-only' })).toBeInTheDocument();
             },
             { timeout: 6000 },
         );

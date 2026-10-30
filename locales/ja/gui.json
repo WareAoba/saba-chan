@@ -688,6 +688,7 @@
     "tab_console": "コンソール",
     "tab_commands": "コマンド",
     "tab_settings": "設定",
+    "tab_saba": "Saba-chan",
     "tab_info": "情報",
     "console_offline": "サーバーは停止しています。起動するとここにログが表示されます。",
     "console_offline_input": "サーバーを起動するとコマンドを送信できます",

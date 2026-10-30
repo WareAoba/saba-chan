@@ -688,6 +688,7 @@
     "tab_console": "主控台",
     "tab_commands": "命令",
     "tab_settings": "設定",
+    "tab_saba": "Saba-chan",
     "tab_info": "資訊",
     "console_offline": "伺服器已停止。啟動後記錄會顯示在這裡。",
     "console_offline_input": "啟動伺服器後即可傳送命令",
