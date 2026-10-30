@@ -17,15 +17,17 @@ pub struct RunningProcess {
 /// 크로스 플랫폼: 실행 중인 모든 프로세스 목록 가져오기
 pub fn get_running_processes() -> Vec<RunningProcess> {
     use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, UpdateKind};
-    let mut sys = System::new();
+    // 감시 루프가 2초마다 부른다. Windows는 목록을 들고 있어 `OnlyIfNotSet`이 새로 뜬 프로세스의 경로·커맨드라인만 읽는다
+    // (매번 모든 프로세스를 열어 읽는 비용이 크다). 끝난 프로세스는 refresh가 빼고, PID 재사용은 시작 시각으로 가린다.
+    // Unix는 런처가 같은 PID로 서버를 exec하면 실행 정보가 바뀌므로 매번 읽는다 (/proc 읽기라 싸다)
+    static SYSTEM: std::sync::LazyLock<std::sync::Mutex<System>> = std::sync::LazyLock::new(|| std::sync::Mutex::new(System::new()));
+    let mut sys = SYSTEM.lock().unwrap_or_else(|e| e.into_inner());
+    let update = if cfg!(windows) { UpdateKind::OnlyIfNotSet } else { UpdateKind::Always };
     // 기본 refresh_processes()는 커맨드라인·작업 폴더를 읽지 않는다: 자동 감지(cmd_patterns, 주인 가리기)에 필요하다
     sys.refresh_processes_specifics(
         ProcessesToUpdate::All,
         true,
-        ProcessRefreshKind::nothing()
-            .with_exe(UpdateKind::OnlyIfNotSet)
-            .with_cmd(UpdateKind::OnlyIfNotSet)
-            .with_cwd(UpdateKind::OnlyIfNotSet),
+        ProcessRefreshKind::nothing().with_exe(update).with_cmd(update).with_cwd(update),
     );
     
     let processes: Vec<RunningProcess> = sys.processes()
@@ -169,6 +171,34 @@ pub async fn get_running_processes_async() -> Vec<RunningProcess> {
 mod tests {
     use super::*;
     use std::collections::HashSet;
+
+    /// 목록을 들고 있어도 나중에 뜬 프로세스는 커맨드라인까지 잡히고, 끝난 프로세스는 빠진다
+    #[cfg(unix)]
+    #[test]
+    fn a_later_process_is_listed_with_its_command_and_drops_out_after_it_ends() {
+        get_running_processes();
+        let mut child = std::process::Command::new("sleep").arg("31.4159").spawn().unwrap();
+        let pid = child.id();
+        let listed = get_running_processes().into_iter().find(|p| p.pid == pid).expect("new process listed");
+        assert!(listed.cmd.iter().any(|a| a == "31.4159"), "{:?}", listed.cmd);
+        child.kill().unwrap();
+        child.wait().unwrap();
+        assert!(get_running_processes().iter().all(|p| p.pid != pid));
+    }
+
+    /// 런처가 같은 PID로 실제 서버를 exec하면 다음 스캔에서 바뀐 커맨드라인이 보인다
+    #[cfg(unix)]
+    #[test]
+    fn a_launcher_that_execs_the_server_shows_the_new_command() {
+        let mut child = std::process::Command::new("sh").args(["-c", "sleep 0.5; exec sleep 27.1828"]).spawn().unwrap();
+        let pid = child.id();
+        assert!(get_running_processes().iter().any(|p| p.pid == pid));
+        std::thread::sleep(std::time::Duration::from_millis(1500));
+        let listed = get_running_processes().into_iter().find(|p| p.pid == pid).expect("still listed");
+        child.kill().unwrap();
+        child.wait().unwrap();
+        assert!(listed.cmd.iter().any(|a| a == "27.1828"), "{:?}", listed.cmd);
+    }
 
     fn proc(pid: u32, cwd: &str) -> RunningProcess {
         RunningProcess {
