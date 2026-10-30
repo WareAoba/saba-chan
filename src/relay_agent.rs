@@ -1517,7 +1517,6 @@ fn ids_by_guild(node_settings: &Value, key: &str) -> Option<Value> {
     (!map.is_empty()).then_some(Value::Object(map))
 }
 
-/// 하트비트의 모듈 명령 한 줄: relay가 슬래시·챗봇 도구를 만드는 데 쓰는 필드만 (템플릿·엔드포인트는 PC 안에서만 쓴다).
 /// 모듈의 게임 이름 — `display_name`(module.toml)과 `display_names`(언어 → 모듈 locales `display_name`). 없으면 키를 싣지 않는다.
 /// 릴레이가 상황판 채널에 켜진 게임을 보이는 데 쓴다 (`game_names`와 달리 띄어 쓴 이름도 그대로 싣는다)
 fn relay_module_names(entry: &mut Value, display_name: Option<&str>, texts: &dyn Fn(&str) -> Value) {
@@ -1536,6 +1535,7 @@ fn relay_module_names(entry: &mut Value, display_name: Option<&str>, texts: &dyn
     }
 }
 
+/// 하트비트의 모듈 명령 한 줄: relay가 슬래시·챗봇 도구를 만드는 데 쓰는 필드만 (템플릿·엔드포인트는 PC 안에서만 쓴다).
 /// `aliases`는 module.toml `[aliases.commands]`의 별칭 — 별칭으로 친 명령도 relay가 위험도 확인을 거치게 한다
 /// `texts`: 언어 → 모듈 locales (번역한 명령 이름이 켜져 있을 때). 있으면 `commands.<이름>.label`·`description`과
 /// 칸의 `inputs.<칸>.label`을 언어별 `titles`·`descriptions`로 싣는다 (릴레이 슬래시 명령의 언어별 이름·설명)
