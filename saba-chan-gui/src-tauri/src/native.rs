@@ -178,7 +178,7 @@ pub async fn updater_launch_apply(app: AppHandle) -> Value {
         .unwrap_or_default();
     let client = app.state::<AppState>().client.clone();
     match client
-        .post("/api/updates/launch-updater", &json!({ "relaunch": relaunch }), 10000)
+        .post("/api/updates/launch-updater", &json!({ "relaunch": relaunch, "gui_stays": true }), 10000)
         .await
     {
         Ok(data) if data["ok"].as_bool() == Some(true) => {

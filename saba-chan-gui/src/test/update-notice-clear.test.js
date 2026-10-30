@@ -45,6 +45,23 @@ describe('업데이트 알림 정리', () => {
         delete window.api.updaterLastResult;
     });
 
+    it('적용이 실패했으면 성공으로 알리지 않고 업데이트 알림도 남긴다', async () => {
+        window.api.updaterLastResult = vi.fn().mockResolvedValue({
+            ok: true,
+            version: '0.3.0',
+            result: { success: false, updated_components: [], failed: ['saba-core'] },
+        });
+        window.showToast.mockClear();
+        syncUpdateNotice({ count: 1, names: ['Saba-Core'] }, t);
+
+        await announceUpdateCompleted({ message: 'done' }, t);
+
+        expect(updateNotices()).toHaveLength(1);
+        expect(window.showToast).toHaveBeenCalledTimes(1);
+        expect(window.showToast.mock.calls[0][1]).toBe('error');
+        delete window.api.updaterLastResult;
+    });
+
     it('수동 확인 결과 받을 것이 없으면(Locales만 있어도) 없음을 알린다', async () => {
         for (const data of [
             { ok: true, update_names: [], components: [] },
