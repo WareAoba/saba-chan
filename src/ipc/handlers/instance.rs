@@ -1350,9 +1350,9 @@ async fn delete_instance_held(state: IPCServer, id: String, keep_settings: bool)
         tracing::info!("Instance '{}' is running, force-stopping before delete...", instance.name);
         // Managed process가 있으면 그 PID, 아니면 추적하던 PID를 강제 종료
         let killed = match managed.as_ref() {
-            Some(m) if m.is_running() => m.force_kill(),
+            Some(m) if m.is_running() => m.force_kill().await,
             Some(_) => Ok(()),
-            None => force_kill_tree(pid),
+            None => tokio::task::spawn_blocking(move || force_kill_tree(pid)).await.unwrap_or_else(|e| Err(e.into())),
         };
         let gone = match killed {
             Ok(()) => {

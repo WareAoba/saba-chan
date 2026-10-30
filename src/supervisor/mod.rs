@@ -1436,7 +1436,7 @@ impl Supervisor {
 
                 if force {
                     tracing::info!("Force-killing managed server '{}'", server_name);
-                    if let Err(e) = managed.force_kill() {
+                    if let Err(e) = managed.force_kill().await {
                         tracing::warn!("Force kill of '{}' failed: {}", server_name, e);
                     }
                 } else if via_stdin {
@@ -1481,7 +1481,7 @@ impl Supervisor {
                     }
                     if tokio::time::Instant::now() >= deadline {
                         tracing::warn!("Managed server '{}' did not exit in {}s, force killing", server_name, timeout_secs);
-                        if let Err(e) = managed.force_kill() {
+                        if let Err(e) = managed.force_kill().await {
                             tracing::warn!("Force kill of '{}' failed: {}", server_name, e);
                         }
                         // 끝난 것을 확인하기 전에는 추적을 놓지 않는다 (종료가 거부됐으면 아직 돌고 있다)
@@ -2212,7 +2212,7 @@ impl Supervisor {
             // 띄우는 사이 정지가 들어왔으면 추적하지 않고 끈다: 정지는 이미 "꺼져 있음"으로 끝났다
             if starting.stop_requested(&s) {
                 drop(s);
-                if let Err(e) = managed.force_kill() {
+                if let Err(e) = managed.force_kill().await {
                     tracing::warn!("Could not stop '{}' after a stop request during start: {}", instance.name, e);
                 }
                 return Ok(start_cancelled(&instance.name));
@@ -4842,7 +4842,7 @@ mod tests {
         let rest = supervisor.get_console_output("rest", None, Some(10)).await.unwrap();
         let stdin = supervisor.get_console_output("stdin", None, Some(10)).await.unwrap();
         for id in ["rest", "stdin"] {
-            let _ = supervisor.managed_store.get(id).await.unwrap().force_kill();
+            let _ = supervisor.managed_store.get(id).await.unwrap().force_kill().await;
         }
         assert_eq!(rest["stdin_available"], false, "{rest}");
         assert_eq!(stdin["stdin_available"], true, "{stdin}");
