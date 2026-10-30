@@ -81,6 +81,20 @@ pub async fn run(ctx: &Ctx, cmd: BotCmd) -> Result<()> {
             let patch = (on || off).then(|| json!({ "translateCommands": on }));
             discord_settings(ctx, &resolve::guild(ctx, guild.as_deref()).await?, patch).await
         }
+        BotCmd::Slash { guild, prefix, no_prefix, root_name, private, public } => {
+            let mut patch = serde_json::Map::new();
+            if prefix || no_prefix {
+                patch.insert("slashPrefix".into(), json!(prefix));
+            }
+            if let Some(n) = root_name {
+                patch.insert("slashRootName".into(), json!(n));
+            }
+            if private || public {
+                patch.insert("privateQueries".into(), json!(private));
+            }
+            let patch = (!patch.is_empty()).then_some(Value::Object(patch));
+            discord_settings(ctx, &resolve::guild(ctx, guild.as_deref()).await?, patch).await
+        }
         BotCmd::Nodes => nodes(ctx).await,
         BotCmd::Members { guild } => {
             let guild = resolve::guild(ctx, guild.as_deref()).await?;
@@ -686,6 +700,13 @@ fn discord_rows(r: &Value) -> Vec<(String, String)> {
         (t!("bot.prefix"), prefixes_line(r.get("prefixes").unwrap_or(&Value::Null))),
         // 값이 없으면(옛 데몬) 켜짐
         (t!("bot.translate_commands"), on_off(Some(r.get("translateCommands").and_then(Value::as_bool) != Some(false)))),
+        // 슬래시 모양: 값이 없으면(옛 데몬) 접두어 켜짐·인스턴스 이름·모두에게 보임
+        (t!("bot.slash_prefix"), on_off(Some(r.get("slashPrefix").and_then(Value::as_bool) != Some(false)))),
+        (
+            t!("bot.slash_root_name"),
+            if s(r, "slashRootName") == "word" { t!("bot.slash_root_name_word") } else { t!("bot.slash_root_name_name") },
+        ),
+        (t!("bot.private_queries"), on_off(r.get("privateQueries").and_then(Value::as_bool))),
         (t!("bot.sleeping"), on_off(r.get("sleeping").and_then(Value::as_bool))),
         (t!("bot.music"), on_off(music("enabled").and_then(Value::as_bool))),
         (t!("bot.music_ui"), on_off(music("ui").and_then(Value::as_bool))),
@@ -931,6 +952,14 @@ mod tests {
         let old = json!({ "locale": "ko", "music": {} });
         assert_eq!(row(&old, "bot.prefix"), Some(t!("bot.prefix_default")));
         assert_eq!(row(&old, "bot.translate_commands"), Some(t!("bot.on")));
+        // 슬래시 모양도 같은 줄에 (옛 데몬이면 기본값)
+        assert_eq!(row(&old, "bot.slash_prefix"), Some(t!("bot.on")));
+        assert_eq!(row(&old, "bot.slash_root_name"), Some(t!("bot.slash_root_name_name")));
+        assert_eq!(row(&old, "bot.private_queries"), Some(t!("bot.off")));
+        let r = json!({ "slashPrefix": false, "slashRootName": "word", "privateQueries": true, "music": {} });
+        assert_eq!(row(&r, "bot.slash_prefix"), Some(t!("bot.off")));
+        assert_eq!(row(&r, "bot.slash_root_name"), Some(t!("bot.slash_root_name_word")));
+        assert_eq!(row(&r, "bot.private_queries"), Some(t!("bot.on")));
     }
 
     /// 권한 키는 봇 설정 저장으로 바뀌지 않는다(L61, 데몬 #469). 데몬이 `ignored`로 알린 키는 저장했다고 말하지 않고

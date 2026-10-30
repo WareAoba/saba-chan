@@ -291,6 +291,40 @@ export function BotSettingsTab({ node, section = 'bot', sampleModuleWord = '' })
 
                     <section className="dc-card">
                         <div className="dc-card-head">
+                            <h2>{t('discord.slash_title')}</h2>
+                        </div>
+                        <p className="dc-card-desc">{t('discord.slash_desc')}</p>
+                        {toggleRow(
+                            t('discord.slash_prefix_title'),
+                            t('discord.slash_prefix_desc'),
+                            settings.slashPrefix !== false,
+                            (slashPrefix) => save({ slashPrefix }),
+                        )}
+                        <div className="mt-field">
+                            <span>{t('discord.slash_root_name_title')}</span>
+                            <CustomDropdown
+                                className="setting-select"
+                                value={settings.slashRootName === 'word' ? 'word' : 'name'}
+                                ariaLabel={t('discord.slash_root_name_title')}
+                                disabled={locked}
+                                onChange={(slashRootName) => save({ slashRootName })}
+                                options={['name', 'word'].map((v) => ({
+                                    value: v,
+                                    label: t(`discord.slash_root_name_${v}`),
+                                }))}
+                            />
+                            <p className="dc-hint">{t('discord.slash_root_name_desc')}</p>
+                        </div>
+                        {toggleRow(
+                            t('discord.private_queries_title'),
+                            t('discord.private_queries_desc'),
+                            settings.privateQueries === true,
+                            (privateQueries) => save({ privateQueries }),
+                        )}
+                    </section>
+
+                    <section className="dc-card">
+                        <div className="dc-card-head">
                             <h2>{t('discord.bot_settings.confirm_title')}</h2>
                         </div>
                         <p className="dc-card-desc">{t('discord.bot_settings.confirm_desc')}</p>

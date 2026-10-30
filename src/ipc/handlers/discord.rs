@@ -1,9 +1,10 @@
-//! 디스코드 길드 설정 (I2): 응답 언어·잠자기·음악 기능·직접 요청 되묻기 단계·접두사·명령 번역
+//! 디스코드 길드 설정 (I2): 응답 언어·잠자기·음악 기능·직접 요청 되묻기 단계·접두사·명령 번역·슬래시 모양
 //!
 //! 원본은 데몬 config.json `relay.nodeSettings[<guild>].discord`다. 바꿀 때마다, 그리고 릴레이 에이전트가 연결될 때
 //! 릴레이 `PATCH /api/nodes/:guild/settings`로 맞춘다. 봇 설정 저장(`PUT /api/config/bot`)은 이 블록을 바꾸지 않는다.
 //!
-//! - `GET /api/discord/:guild/settings` → `{guildId, locale, sleeping, music, confirmLevel, commandRisks, prefixes, translateCommands}`
+//! - `GET /api/discord/:guild/settings` → `{guildId, locale, sleeping, music, confirmLevel, commandRisks, prefixes, translateCommands,
+//!   slashPrefix, slashRootName, privateQueries}` (슬래시 모양 세 값은 2026-10-30)
 //! - `PATCH /api/discord/:guild/settings` 바꿀 키만 (`music` 안도 부분) → `{success, settings, sync}`.
 //!   틀린 값은 400 `invalid_input {field, reason}`, 페어링이 없으면 409 `not_paired`.
 //!   릴레이가 400으로 거절하면 저장하지 않는다. 닿지 않으면 저장하고 `sync.ok:false` (다음 연결 때 맞춘다)
@@ -49,7 +50,16 @@ pub struct GuildSettings {
     pub prefixes: Vec<String>,
     /// 디스코드 슬래시 명령에 모듈 명령의 번역한 이름·설명을 단다 (모듈 locales). 끄면 module.toml 이름 그대로
     pub translate_commands: bool,
+    /// 사바쨩 슬래시 명령을 `/사바쨩` 아래에 둔다. 끄면 릴레이가 `/상태`처럼 펼친다
+    pub slash_prefix: bool,
+    /// 서버 슬래시 루트 이름 (`SLASH_ROOT_NAMES`): `name` 인스턴스 이름, `word` 그 서버의 첫 호출어
+    pub slash_root_name: String,
+    /// 조회 결과(서버 상태, 조회 액션)를 부른 사람에게만 보인다
+    pub private_queries: bool,
 }
+
+/// 서버 슬래시 루트 이름으로 고를 수 있는 값
+pub const SLASH_ROOT_NAMES: &[&str] = &["name", "word"];
 
 /// 명령별 위험 단계로 고를 수 있는 값
 pub const RISKS: &[&str] = &["safe", "caution", "danger"];
@@ -81,6 +91,9 @@ impl Default for GuildSettings {
             command_risks: BTreeMap::new(),
             prefixes: Vec::new(),
             translate_commands: true,
+            slash_prefix: true,
+            slash_root_name: "name".into(),
+            private_queries: false,
         }
     }
 }
@@ -133,6 +146,9 @@ impl GuildSettings {
             },
             "prefixes": self.prefixes,
             "translateCommands": self.translate_commands,
+            "slashPrefix": self.slash_prefix,
+            "slashRootName": self.slash_root_name,
+            "privateQueries": self.private_queries,
         })
     }
 
@@ -162,7 +178,7 @@ impl GuildSettings {
             }
         }
         patch.insert("music".into(), Value::Object(music));
-        for key in ["prefixes", "translateCommands"] {
+        for key in ["prefixes", "translateCommands", "slashPrefix", "slashRootName", "privateQueries"] {
             if let Some(v) = body.get(key).filter(|v| !v.is_null()) {
                 patch.insert(key.into(), v.clone());
             }
@@ -198,6 +214,12 @@ impl GuildSettings {
                 }
                 "sleeping" => next.sleeping = v.as_bool().ok_or(("sleeping".into(), "must be a boolean"))?,
                 "translateCommands" => next.translate_commands = v.as_bool().ok_or(("translateCommands".into(), "must be a boolean"))?,
+                "slashPrefix" => next.slash_prefix = v.as_bool().ok_or(("slashPrefix".into(), "must be a boolean"))?,
+                "privateQueries" => next.private_queries = v.as_bool().ok_or(("privateQueries".into(), "must be a boolean"))?,
+                "slashRootName" => match v.as_str() {
+                    Some(n) if SLASH_ROOT_NAMES.contains(&n) => next.slash_root_name = n.to_string(),
+                    _ => return Err(("slashRootName".into(), "unknown value")),
+                },
                 "prefixes" => {
                     // 릴레이 `prefixList`와 같다: 공백 없는 1~32자, 10개까지
                     let list = v.as_array().ok_or(("prefixes".into(), "must be a list"))?;
@@ -561,6 +583,31 @@ mod tests {
         assert!(s.prefixes.is_empty());
     }
 
+    /// 슬래시 모양 (2026-10-30): `/사바쨩` 접두어, 서버 루트 이름(인스턴스 이름·호출어), 조회 결과 나만 보기. 릴레이에도 보낸다
+    #[test]
+    fn slash_display_settings_are_per_server_and_reach_the_relay() {
+        let mut s = GuildSettings::default();
+        assert!(s.slash_prefix);
+        assert_eq!(s.slash_root_name, "name");
+        assert!(!s.private_queries);
+        s.apply(&patch(json!({ "slashPrefix": false, "slashRootName": "word", "privateQueries": true }))).unwrap();
+        assert!(!s.slash_prefix && s.private_queries);
+        assert_eq!(s.slash_root_name, "word");
+        let body = s.relay_body();
+        assert_eq!(body["slashPrefix"], json!(false));
+        assert_eq!(body["slashRootName"], json!("word"));
+        assert_eq!(body["privateQueries"], json!(true));
+        for bad in [json!({ "slashPrefix": "no" }), json!({ "slashRootName": "nick" }), json!({ "privateQueries": 1 })] {
+            let before = s.clone();
+            assert!(s.apply(&patch(bad.clone())).is_err(), "{bad}");
+            assert_eq!(s, before);
+        }
+        // 처음 한 번 릴레이 값을 가져올 때도 같다. 저장 형식은 camelCase
+        let r = GuildSettings::from_relay(&json!({ "slashPrefix": false, "slashRootName": "word", "privateQueries": true }));
+        assert_eq!((r.slash_prefix, r.slash_root_name.as_str(), r.private_queries), (false, "word", true));
+        assert_eq!(serde_json::to_value(&r).unwrap()["slashRootName"], json!("word"));
+    }
+
     /// 서버별로 정하기 전(0.1.12 전)에 저장한 서버는 호스트 하나의 접두사·명령 번역을 물려받는다
     #[test]
     fn a_server_saved_before_the_split_inherits_the_host_prefixes() {
@@ -621,7 +668,7 @@ mod tests {
         let old_relay = json!({ "musicEnabled": true, "musicUIEnabled": true, "musicSettings": { "queueLines": 9, "refreshInterval": 4000, "normalize": true } });
         assert_eq!(
             Value::Object(changed(&old_relay, &s.relay_body())),
-            json!({ "locale": "auto", "sleeping": false, "prefixes": [], "translateCommands": true })
+            json!({ "locale": "auto", "sleeping": false, "prefixes": [], "translateCommands": true, "slashPrefix": true, "slashRootName": "name", "privateQueries": false })
         );
     }
 
