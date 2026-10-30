@@ -57,7 +57,7 @@ export function AppBar({
     const wordmark = wordmarkFor(i18n.language);
 
     return (
-        <header className="appbar">
+        <header className="appbar" data-tauri-drag-region>
             <div className="appbar-brand">
                 <img src="./icon.png" alt="" className="appbar-logo" />
                 {/* 검은 글자 그림을 마스크로 써서 테마 글자색으로 칠한다.
@@ -85,7 +85,7 @@ export function AppBar({
                 ))}
             </nav>
 
-            <div className="appbar-spacer" />
+            <div className="appbar-spacer" data-tauri-drag-region />
 
             <div className="appbar-status">
                 <ExtensionSlot slotId="AppBar.status" />
@@ -130,7 +130,7 @@ export function AppBar({
     );
 }
 
-/** 창 최소화·최대화·닫기 (프레임 없는 창). 로딩 화면에서도 쓴다. */
+/** 창 최소화·최대화·닫기 (프레임 없는 창). 로딩 화면에서도 쓴다. 맥은 신호등을 쓰므로 CSS가 숨긴다 */
 export function WindowControls() {
     const { t } = useTranslation('gui');
     return (

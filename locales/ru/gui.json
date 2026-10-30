@@ -55,6 +55,7 @@
     "uninstall_confirm_message": "Вы уверены, что хотите удалить Saba-chan? Сначала запущенные серверы будут корректно остановлены, затем Saba-chan (GUI и демон) закроется.",
     "uninstall_confirm_yes": "Удалить",
     "uninstall_confirm_no": "Отмена",
+    "uninstall_failed": "Не удалось удалить Saba-chan: {{error}}",
     "about_title": "О программе",
     "about_version": "Версия",
     "about_description": "Инструмент для настройки, запуска и управления игровыми серверами.",

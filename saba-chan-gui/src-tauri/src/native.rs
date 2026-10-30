@@ -239,16 +239,30 @@ fn find_installer(install_root: &Path) -> Option<PathBuf> {
     find_in(&dirs).or_else(|| registry_install_location().and_then(|d| find_in(&[d])))
 }
 
-/// 인스톨러를 --uninstall로 분리 실행하고 GUI를 끝낸다 (cleanQuit이 데몬도 끈다)
+/// 지울 프로그램과 인자. 창 제거기(`--uninstall`)가 있으면 그것을, 없는 설치(맥 .dmg 앱 묶음, 리눅스 묶음)는
+/// GUI 옆 CLI(`--yes uninstall`, 같은 제거 라이브러리, 설정·서버는 남긴다)를 쓴다
+fn uninstall_command(install_root: &Path, exe_dir: Option<&Path>) -> Option<(PathBuf, &'static [&'static str])> {
+    if let Some(installer) = find_installer(install_root) {
+        return Some((installer, &["--uninstall"]));
+    }
+    if cfg!(windows) {
+        return None;
+    }
+    let cli = exe_dir?.join("saba-chan-cli");
+    cli.is_file().then_some((cli, &["--yes", "uninstall"]))
+}
+
+/// 제거기를 분리 실행하고 GUI를 끝낸다 (cleanQuit이 데몬도 끈다)
 #[tauri::command]
 pub fn launch_uninstaller(app: AppHandle) -> Value {
     let state = app.state::<AppState>();
-    let Some(installer) = find_installer(&state.install_root) else {
+    let exe_dir = std::env::current_exe().ok().and_then(|p| p.parent().map(Path::to_path_buf));
+    let Some((installer, args)) = uninstall_command(&state.install_root, exe_dir.as_deref()) else {
         return json!({ "success": false, "error": "Installer not found" });
     };
-    tracing::info!("[Uninstall] Launching installer: {}", installer.display());
+    tracing::info!("[Uninstall] Launching installer: {} {:?}", installer.display(), args);
     let mut cmd = std::process::Command::new(&installer);
-    cmd.arg("--uninstall")
+    cmd.args(args)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
@@ -579,6 +593,19 @@ mod tests {
     }
 
     use super::*;
+
+    /// 창 제거기가 없는 설치(맥 .dmg 앱 묶음, 리눅스 묶음)는 옆의 CLI로 지운다. 창 제거기가 있으면 그것을 쓴다
+    #[cfg(unix)]
+    #[test]
+    fn without_the_window_uninstaller_the_cli_next_to_the_app_uninstalls() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path();
+        assert_eq!(uninstall_command(dir, Some(dir)), None);
+        std::fs::write(dir.join("saba-chan-cli"), b"").unwrap();
+        assert_eq!(uninstall_command(dir, Some(dir)), Some((dir.join("saba-chan-cli"), &["--yes", "uninstall"][..])));
+        std::fs::write(dir.join("saba-chan-installer"), b"").unwrap();
+        assert_eq!(uninstall_command(dir, Some(dir)), Some((dir.join("saba-chan-installer"), &["--uninstall"][..])));
+    }
 
     /// `/health` 본문 문자열만으로 데몬 신원을 인정하지 않는다.
     #[test]

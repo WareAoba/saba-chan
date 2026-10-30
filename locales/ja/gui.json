@@ -55,6 +55,7 @@
     "uninstall_confirm_message": "本当にサバちゃんをアンインストールしますか？起動中のサーバーを先に正常終了してから、サバちゃん（GUIとデーモン）を閉じます。",
     "uninstall_confirm_yes": "アンインストール",
     "uninstall_confirm_no": "キャンセル",
+    "uninstall_failed": "サバちゃんを削除できませんでした: {{error}}",
     "about_title": "情報",
     "about_version": "バージョン",
     "about_description": "ゲームサーバーのセットアップ、実行、管理を行うツールです。",

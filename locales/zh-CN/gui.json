@@ -55,6 +55,7 @@
     "uninstall_confirm_message": "确定要卸载 Saba-chan 吗？会先正常关闭正在运行的服务器，然后关闭 Saba-chan（GUI 和守护进程）。",
     "uninstall_confirm_yes": "卸载",
     "uninstall_confirm_no": "取消",
+    "uninstall_failed": "无法卸载 Saba-chan：{{error}}",
     "about_title": "关于",
     "about_version": "版本",
     "about_description": "用于设置、运行和管理游戏服务器的工具。",

@@ -55,6 +55,7 @@
     "uninstall_confirm_message": "Are you sure you want to uninstall Saba-chan? Running servers will be shut down cleanly first, then Saba-chan (GUI and daemon) will close.",
     "uninstall_confirm_yes": "Uninstall",
     "uninstall_confirm_no": "Cancel",
+    "uninstall_failed": "Couldn't uninstall Saba-chan: {{error}}",
     "about_title": "About",
     "about_version": "Version",
     "about_description": "A tool to set up, run, and manage game servers.",

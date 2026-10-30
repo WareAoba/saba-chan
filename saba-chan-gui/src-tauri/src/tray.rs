@@ -214,6 +214,11 @@ pub fn refresh_icon(app: &AppHandle) {
     }
 }
 
+/// 종료 경로는 async 작업자에서 부른다. macOS는 상태 막대 항목을 메인 스레드에서만 지울 수 있어
+/// (다른 스레드면 AppKit이 프로세스를 끊어 "예기치 않게 종료됨"이 뜬다) 메인 스레드로 넘긴다
 pub fn remove(app: &AppHandle) {
-    app.remove_tray_by_id(TRAY_ID);
+    let handle = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        handle.remove_tray_by_id(TRAY_ID);
+    });
 }
