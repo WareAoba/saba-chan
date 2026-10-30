@@ -13,7 +13,7 @@
   },
   "gate": {
     "connecting": "正在連線到你的電腦…",
-    "again": "請在 Discord 中用 /saba web 取得新連結。",
+    "again": "請在 Discord 中用 /mysaba web 取得新連結。",
     "closed": "工作階段已結束。",
     "no_link": "沒有連結。",
     "link_invalid": "此連結已被使用或已過期。",

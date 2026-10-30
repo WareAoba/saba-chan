@@ -13,7 +13,7 @@
   },
   "gate": {
     "connecting": "PC に接続しています…",
-    "again": "Discord の /saba web で新しいリンクを受け取ってください。",
+    "again": "Discord の /mysaba web で新しいリンクを受け取ってください。",
     "closed": "セッションが終了しました。",
     "no_link": "リンクがありません。",
     "link_invalid": "このリンクは使用済みか、期限が切れています。",
