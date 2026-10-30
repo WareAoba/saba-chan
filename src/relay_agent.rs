@@ -25,6 +25,10 @@ use tokio_util::sync::CancellationToken;
 pub const AGENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(60);
+/// 서버가 켜지거나 꺼지면 이만큼 모았다가 다음 하트비트를 기다리지 않고 보낸다 (`kicks_heartbeat`).
+/// 앞당긴 하트비트도 앞의 것과 이만큼은 띄운다 (릴레이 `POST /heartbeat` 한도)
+const HEARTBEAT_KICK_DELAY: Duration = Duration::from_secs(2);
+const HEARTBEAT_MIN_GAP: Duration = Duration::from_secs(15);
 const POLL_TIMEOUT: Duration = Duration::from_secs(40); // 릴레이 롱폴 25초 + 여유
 const RETRY_BASE: Duration = Duration::from_secs(3);
 const RETRY_MAX: Duration = Duration::from_secs(60);
@@ -488,11 +492,37 @@ impl Session {
     }
 
     async fn heartbeat_loop(&self) {
+        use tokio::sync::broadcast::error::RecvError;
+        let mut rx = crate::events::bus().subscribe(None).rx;
         loop {
             self.heartbeat().await;
-            tokio::select! {
-                _ = self.cancel.cancelled() => return,
-                _ = tokio::time::sleep(HEARTBEAT_INTERVAL) => {}
+            let sent_at = tokio::time::Instant::now();
+            let next = tokio::time::sleep(HEARTBEAT_INTERVAL);
+            tokio::pin!(next);
+            loop {
+                tokio::select! {
+                    _ = self.cancel.cancelled() => return,
+                    _ = &mut next => break,
+                    r = rx.recv() => match r {
+                        Ok(e) if kicks_heartbeat(&e.kind) => {
+                            // 같은 때 몰린 시작·준비·정지를 한 번에 싣는다
+                            let at = (tokio::time::Instant::now() + HEARTBEAT_KICK_DELAY).max(sent_at + HEARTBEAT_MIN_GAP);
+                            tokio::select! {
+                                _ = self.cancel.cancelled() => return,
+                                _ = tokio::time::sleep_until(at) => {}
+                            }
+                            while rx.try_recv().is_ok() {}
+                            break;
+                        }
+                        Ok(_) | Err(RecvError::Lagged(_)) => {}
+                        Err(RecvError::Closed) => {
+                            tokio::select! {
+                                _ = self.cancel.cancelled() => return,
+                                _ = &mut next => break,
+                            }
+                        }
+                    },
+                }
             }
         }
     }
@@ -1160,6 +1190,12 @@ fn queue_event(pending: &mut std::collections::VecDeque<Value>, event: &crate::e
 
 /// 알림 채널(I3)에 올릴 모양 `{id, type, data}`. 올리지 않는 종류면 None.
 /// 원격으로 나가므로 경로·콘솔 줄·오류 원문은 싣지 않는다
+/// 이 이벤트가 오면 다음 하트비트를 기다리지 않고 곧 보낸다 — 서버가 켜지고 꺼진 것은 누가 어디서 시켰든
+/// (디스코드·챗봇·GUI·CLI·예약·사바쨩 밖) 데몬이 알아챈 때 릴레이의 서버 목록과 상황판에 닿게 한다
+fn kicks_heartbeat(kind: &str) -> bool {
+    matches!(kind, "instance.started" | "instance.stopped" | "instance.ready" | "instance.exit")
+}
+
 fn relay_event(event: &crate::events::Event) -> Option<Value> {
     let d = &event.data;
     let pick = |keys: &[&str]| -> serde_json::Map<String, Value> {
@@ -2050,6 +2086,17 @@ mod tests {
         assert_eq!(entry["inputs"][0]["titles"]["ko"], "바로 쓰기");
         assert!(entry["titles"].get("en").is_none(), "no text for a language → nothing (the relay shows the plain name)");
         assert!(relay_command_entry(&field, &[], None).get("titles").is_none(), "off → plain names only");
+    }
+
+    /// 서버가 켜지고 꺼진 것만 하트비트를 앞당긴다 (콘솔 줄·백업 같은 잦은 이벤트는 아니다)
+    #[test]
+    fn instance_state_events_kick_the_heartbeat() {
+        for kind in ["instance.started", "instance.stopped", "instance.ready", "instance.exit"] {
+            assert!(kicks_heartbeat(kind), "{kind}");
+        }
+        for kind in ["instance.chat", "backup.done", "plan.done", "update.available"] {
+            assert!(!kicks_heartbeat(kind), "{kind}");
+        }
     }
 
     /// 게임 이름: module.toml `display_name`과 언어마다 모듈 locales의 `display_name` (상황판 채널에 켜진 게임을 보인다)
