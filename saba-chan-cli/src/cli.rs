@@ -579,6 +579,15 @@ pub enum ServerCmd {
         #[arg(long, requires = "server")]
         clear: bool,
     },
+    /// Send a message to the in-game chat as NAME (the module must support it, like Discord game chat)
+    Chat {
+        server: String,
+        /// Sender name shown in the game
+        #[arg(long)]
+        name: String,
+        #[arg(required = true, trailing_var_arg = true, allow_hyphen_values = true, value_name = "TEXT")]
+        text: Vec<String>,
+    },
     /// Send one raw line to the server console
     Send {
         server: String,

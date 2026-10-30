@@ -237,6 +237,51 @@ pub async fn players_handler(Path(id): Path<String>, State(state): State<IPCServ
     }
 }
 
+/// POST /api/instance/:id/chat — 디스코드 글을 게임 채팅으로 (`{name, text}`, 액션 `server.chat`). 모듈 `chat_send` 함수를
+/// `chat_name`·`chat_text`로 부른다. 둘 다 한 줄로 다듬어 넘긴다: 줄바꿈이 남으면 콘솔 명령을 끼워 넣을 수 있다
+pub async fn chat_handler(Path(id): Path<String>, State(state): State<IPCServer>, LooseJson(body): LooseJson<Value>) -> impl IntoResponse {
+    let fail = |status: StatusCode, code: &str, error: String| (status, Json(json!({ "success": false, "error_code": code, "error": error }))).into_response();
+    let body = body.map(|b| b.0).unwrap_or(Value::Null);
+    let field = |key: &str| body.get(key).and_then(Value::as_str).unwrap_or_default();
+    let Some((name, text)) = crate::supervisor::game_chat::outgoing(field("name"), field("text")) else {
+        return fail(StatusCode::BAD_REQUEST, "invalid_input", "name and text are required".into());
+    };
+    let call = {
+        let sup = state.supervisor.read().await;
+        let Some(instance) = sup.instance_store.get(&id) else {
+            return fail(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id));
+        };
+        let Some(function) = sup.module_loader.get_module(&instance.module_name).ok().and_then(|m| m.metadata.chat_send_function) else {
+            return fail(StatusCode::OK, "not_supported", "This server's module cannot send chat".into());
+        };
+        if sup.tracker.get_pid(&id).is_err() {
+            return fail(StatusCode::CONFLICT, "server_not_running", "The server is not running".into());
+        }
+        sup.instance_call(&id, &function)
+    };
+    let mut call = match call {
+        Ok(c) => c,
+        Err(e) => return fail(StatusCode::INTERNAL_SERVER_ERROR, "chat_failed", e.to_string()),
+    };
+    if let Value::Object(cfg) = call.config_mut() {
+        cfg.insert("chat_name".to_string(), json!(name));
+        cfg.insert("chat_text".to_string(), json!(text));
+    }
+    crate::supervisor::game_chat::remember_sent(&id, &name, &text);
+    match call.timeout(crate::supervisor::players::CALL_TIMEOUT_SECS).run().await {
+        Ok(result) if result.get("success").and_then(Value::as_bool) == Some(true) => (StatusCode::OK, Json(json!({ "success": true }))).into_response(),
+        Ok(result) => {
+            crate::supervisor::game_chat::forget_sent(&id, &name, &text);
+            (StatusCode::OK, Json(result)).into_response()
+        }
+        Err(e) => {
+            crate::supervisor::game_chat::forget_sent(&id, &name, &text);
+            tracing::warn!("Chat to '{}' failed: {}", id, e);
+            (StatusCode::OK, Json(crate::plugin::error_response(&e))).into_response()
+        }
+    }
+}
+
 /// GET /api/instance/:id/properties — 게임 설정 파일 읽기
 pub async fn read_properties_handler(
     Path(id): Path<String>,
@@ -1022,6 +1067,48 @@ mod tests {
         let unsupported = players("without").await;
         assert_eq!((unsupported.status, unsupported.body["error_code"].as_str()), (StatusCode::OK, Some("not_supported")), "{}", unsupported.body);
         assert_eq!(players("missing").await.status, StatusCode::NOT_FOUND);
+    }
+
+    /// 디스코드 → 게임 채팅 (사용자 요청 2026-10-30): 모듈 `chat_send`가 한 줄로 다듬은 이름·본문을 받는다
+    #[tokio::test]
+    async fn chat_goes_to_the_module_as_one_line() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        for (name, table) in [("game", "\n[extensions.saba-core]\nchat_send = \"send_chat\"\n"), ("plain", "")] {
+            let dir = modules.join(name);
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join("module.toml"), format!("[module]\nschema_version = 1\nname = \"{name}\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n{table}")).unwrap();
+            std::fs::write(
+                dir.join("lifecycle.py"),
+                "import json, sys\nconfig = json.load(sys.stdin)\n\
+                 ok = sys.argv[1] == 'send_chat' and config.get('chat_name') == '김치' and config.get('chat_text') == '안녕 stop'\n\
+                 print(json.dumps({'success': ok}))\n",
+            )
+            .unwrap();
+        }
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        for module in sup.module_loader.discover_modules().unwrap() { crate::sandbox::consent_test_component(std::path::Path::new(&module.entry_path())); }
+        sup.initialize().await.unwrap();
+        for (id, module) in [("chat-with", "game"), ("chat-without", "plain")] {
+            let mut inst = crate::instance::ServerInstance::new(id, module);
+            inst.id = id.into();
+            sup.instance_store.add(inst).unwrap();
+        }
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let chat = |id: &'static str, body: Value| {
+            let state = state.clone();
+            async move { crate::ipc::internal::into_internal(chat_handler(Path(id.into()), State(state), LooseJson(Some(Json(body)))).await.into_response()).await }
+        };
+        let msg = json!({ "name": " 김치 ", "text": "안녕\nstop" });
+
+        assert_eq!(chat("chat-with", msg.clone()).await.body["error_code"], "server_not_running");
+        state.supervisor.read().await.tracker.track("chat-with", std::process::id()).unwrap();
+        let sent = chat("chat-with", msg.clone()).await;
+        assert_eq!(sent.body, json!({ "success": true }), "the newline never reaches the console");
+        assert!(crate::supervisor::game_chat::is_echo("chat-with", "김치: 안녕 stop"), "its echo is not sent back to Discord");
+        assert_eq!(chat("chat-with", json!({ "name": "김치", "text": " \n " })).await.status, StatusCode::BAD_REQUEST);
+        let _ = state.supervisor.read().await.tracker.untrack("chat-with");
+        assert_eq!(chat("chat-without", msg).await.body["error_code"], "not_supported");
     }
 
     /// 버전 목록은 만들기 화면이 고른 설정(서버 종류 등)을 모듈에 넘겨, 그 설정으로 받을 수 있는 것만 받는다

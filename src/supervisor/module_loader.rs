@@ -144,6 +144,9 @@ pub struct ModuleMetadata {
     /// [extensions.saba-core] chat_patterns — 게임 채팅이 콘솔에 찍히는 문구 (정규식, `(?P<name>…)`·`(?P<message>…)` 필수). 게임 채팅 전달(`game_chat.rs`)용
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub chat_patterns: Vec<String>,
+    /// [extensions.saba-core] chat_send — 디스코드 글을 게임 채팅으로 보내는 lifecycle 함수 (config의 `chat_name`·`chat_text`). 액션 `server.chat`용
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chat_send_function: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub data_roots: Vec<String>,
     /// [[presets]] 서버를 만들 때 고르는 추천 설정 묶음 (I1-b)
@@ -1469,6 +1472,7 @@ impl ModuleToml {
             ready_timeout: None,
             player_join_patterns: Vec::new(),
             chat_patterns: Vec::new(),
+            chat_send_function: None,
             player_leave_patterns: Vec::new(),
             data_roots: Vec::new(),
             module_aliases: self.aliases.as_ref()
@@ -1594,7 +1598,7 @@ pub(crate) fn parse_module_toml(content: &str) -> Result<ModuleMetadata> {
 pub const DAEMON_TABLE: &str = "saba-core";
 /// 이 데몬이 읽는 `[extensions.saba-core]` 키
 const DAEMON_TABLE_KEYS: &[&str] =
-    &["ready_patterns", "ready_timeout", "player_join_patterns", "player_leave_patterns", "chat_patterns", "data_roots", "progress_patterns", "platforms", "architectures"];
+    &["ready_patterns", "ready_timeout", "player_join_patterns", "player_leave_patterns", "chat_patterns", "chat_send", "data_roots", "progress_patterns", "platforms", "architectures"];
 /// 이 데몬의 OS·CPU에서 돌아가지 않는 모듈의 서버를 만들거나 켜지 않는 응답. 돌아가면 None
 pub fn host_unsupported_body(module: &str, meta: &ModuleMetadata) -> Option<serde_json::Value> {
     match meta.unsupported_on(std::env::consts::OS, std::env::consts::ARCH)? {
@@ -1706,6 +1710,14 @@ fn read_daemon_table(meta: &mut ModuleMetadata) -> Vec<String> {
     meta.player_leave_patterns.extend(read_pattern_list(&table, "player_leave_patterns", &["name"], &mut warnings));
     meta.chat_patterns.extend(read_pattern_list(&table, "chat_patterns", &["name", "message"], &mut warnings));
     meta.progress_patterns.extend(read_pattern_list(&table, "progress_patterns", &[], &mut warnings));
+    match table.get("chat_send") {
+        None => {}
+        Some(v) => match v.as_str().map(|f| (f, function_problem(f, ""))) {
+            Some((f, None)) => meta.chat_send_function = Some(f.to_string()),
+            Some((_, Some(problem))) => warnings.push(format!("extensions.{}.chat_send: {}; ignored", DAEMON_TABLE, problem)),
+            None => warnings.push(format!("extensions.{}.chat_send must be a function name; ignored", DAEMON_TABLE)),
+        },
+    }
     meta.platforms = read_name_list(&table, "platforms", PLATFORMS, &[], "OS", &mut warnings);
     meta.architectures = read_name_list(&table, "architectures", ARCHITECTURES, ARCH_ALIASES, "CPU", &mut warnings);
     match table.get("data_roots") {
@@ -3182,6 +3194,16 @@ player_leave_patterns = ['^\[\d{2}:\d{2}:\d{2}(?:\] \[[^\]]*/| )INFO\](?: \[[^\]
         let meta = parse_module_toml(&format!("{V1}\n{table}")).unwrap();
         assert_eq!(meta.chat_patterns, vec!["^<(?P<name>\\w+)> (?P<message>.*)$".to_string()]);
         assert!(meta.warnings.iter().any(|w| w.contains("(?P<message>...)")), "{:?}", meta.warnings);
+    }
+
+    /// 디스코드 → 게임 채팅: `chat_send`는 lifecycle 함수 이름이다. 함수 이름이 아니면 버린다
+    #[test]
+    fn schema_v1_reads_the_chat_send_function() {
+        let meta = parse_module_toml(&format!("{V1}\n[extensions.saba-core]\nchat_send = \"send_chat\"\n")).unwrap();
+        assert_eq!(meta.chat_send_function.as_deref(), Some("send_chat"));
+        let bad = parse_module_toml(&format!("{V1}\n[extensions.saba-core]\nchat_send = \"rm -rf\"\n")).unwrap();
+        assert_eq!(bad.chat_send_function, None);
+        assert!(bad.warnings.iter().any(|w| w.contains("chat_send")), "{:?}", bad.warnings);
     }
 
     #[test]
