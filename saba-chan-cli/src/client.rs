@@ -404,6 +404,10 @@ impl Api {
         }
         self.post(&format!("/api/instance/{}/rest", seg(id)), req).await
     }
+    /// POST /api/instance/:id/chat — 게임 채팅으로 (`{name, text}`, 데몬이 한 줄로 다듬어 모듈 chat_send로)
+    pub async fn game_chat(&self, id: &str, name: &str, text: &str) -> Result<Value> {
+        self.post(&format!("/api/instance/{}/chat", seg(id)), json!({ "name": name, "text": text })).await
+    }
     /// POST /api/instance/:id/stdin — 콘솔 한 줄 그대로
     pub async fn stdin(&self, id: &str, line: &str) -> Result<Value> {
         self.post(&format!("/api/instance/{}/stdin", seg(id)), json!({ "command": line }))
