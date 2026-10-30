@@ -424,12 +424,20 @@ fn resolve_data_dir() -> Result<PathBuf> {
         return Ok(PathBuf::from(dir));
     }
 
-    // 2) exe 옆 (포터블 배포 모드)
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(exe_dir) = exe.parent() {
-            if is_dir_writable(exe_dir) {
-                return Ok(exe_dir.to_path_buf());
-            }
+    let exe = std::env::current_exe().ok();
+    runtime_root(exe.as_deref().and_then(Path::parent))
+}
+
+fn runtime_root(exe_dir: Option<&Path>) -> Result<PathBuf> {
+    if let Some(exe_dir) = exe_dir {
+        // 맥 앱 묶음(`*.app/Contents/MacOS`) 안은 쓰지 않는다: 묶음에 파일을 더하면 서명이 깨진다.
+        // 데이터 폴더에 두면 제거기가 런타임 항목으로 지운다
+        if saba_chan_updater_lib::app_bundle::bundle_of(exe_dir).is_some() {
+            return Ok(saba_chan_updater_lib::constants::resolve_data_dir());
+        }
+        // 2) exe 옆 (포터블 배포 모드)
+        if is_dir_writable(exe_dir) {
+            return Ok(exe_dir.to_path_buf());
         }
     }
 
@@ -658,6 +666,21 @@ mod tests {
     #[test]
     fn test_resolve_data_dir_no_panic() {
         let _ = resolve_data_dir();
+    }
+
+    /// 맥 앱 묶음 안은 쓰기가 되어도 런타임을 두지 않는다 (묶음에 파일을 더하면 서명이 깨진다)
+    #[test]
+    fn the_runtime_is_not_placed_inside_an_app_bundle() {
+        let tmp = tempfile::tempdir().unwrap();
+        let exe_dir = tmp.path().join("Saba-chan.app").join("Contents").join("MacOS");
+        std::fs::create_dir_all(&exe_dir).unwrap();
+        let root = runtime_root(Some(&exe_dir)).unwrap();
+        assert_eq!(root, saba_chan_updater_lib::constants::resolve_data_dir());
+        assert!(!root.starts_with(tmp.path()), "{}", root.display());
+
+        let plain = tmp.path().join("portable");
+        std::fs::create_dir_all(&plain).unwrap();
+        assert_eq!(runtime_root(Some(&plain)).unwrap(), plain);
     }
 
     #[tokio::test]
