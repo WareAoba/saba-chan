@@ -36,6 +36,8 @@ pub struct ModuleView {
     pub module_aliases: Vec<String>,
     /// 게임명: module.toml `display_name`과 모듈 locales마다의 `display_name` (`game_names`). 모듈 별명처럼 서버를 부른다
     pub game_names: Vec<String>,
+    /// module.toml `display_name` 그대로 (heartbeat 모듈 `display_name`, 상황판 채널의 게임 이름)
+    pub display_name: Option<String>,
     /// 명령어 이름 → 별명 목록 (module.toml [aliases.commands])
     pub command_aliases: Vec<(String, Vec<String>)>,
     pub commands: Vec<CommandField>,
@@ -135,6 +137,7 @@ impl DaemonApi for IPCServer {
                 command_aliases.sort_by(|a, b| a.0.cmp(&b.0));
                 ModuleView {
                     game_names: game_names(meta.display_name.as_deref(), locale_dir.as_deref()),
+                    display_name: meta.display_name,
                     name: meta.name,
                     module_aliases: meta.module_aliases,
                     command_aliases,
