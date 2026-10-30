@@ -41,11 +41,13 @@ pub fn place_files(install_dir: &Path) -> std::io::Result<Vec<(PathBuf, PathBuf)
     Ok(moved)
 }
 
-/// 실행 파일 폴더를 지운 뒤 남은 묶음 껍데기를 지운다: 묶음 정보·아이콘, 빈 `Contents`와 묶음 폴더.
-/// 그 밖의 파일이 남아 있으면 폴더는 둔다
+/// 실행 파일 폴더를 지운 뒤 남은 묶음 껍데기를 지운다: 묶음 정보·아이콘, .dmg 묶음의 임시 서명(`_CodeSignature`),
+/// 빈 `Contents`와 묶음 폴더. 그 밖의 파일이 남아 있으면 폴더는 둔다
 pub fn remove_shell(install_dir: &Path) {
     let Some(bundle) = bundle_of(install_dir) else { return };
     let contents = bundle.join("Contents");
+    let _ = std::fs::remove_file(contents.join("_CodeSignature").join("CodeResources"));
+    let _ = std::fs::remove_dir(contents.join("_CodeSignature"));
     let _ = std::fs::remove_file(contents.join(PLIST_FILE));
     let _ = std::fs::remove_file(contents.join("Resources").join(ICON_FILE));
     let _ = std::fs::remove_dir(contents.join("Resources"));
@@ -81,6 +83,19 @@ mod tests {
 
         std::fs::remove_dir_all(&macos).unwrap();
         remove_shell(&macos);
+        assert!(!bundle.exists());
+    }
+
+    // .dmg 앱 묶음은 임시 서명(`Contents/_CodeSignature`)을 지닌다: 제거가 빈 껍데기 앱을 남기지 않는다
+    #[test]
+    fn the_signature_of_a_dmg_bundle_goes_with_the_shell() {
+        let tmp = tempfile::tempdir().unwrap();
+        let bundle = tmp.path().join(BUNDLE_NAME);
+        let signature = bundle.join("Contents").join("_CodeSignature");
+        std::fs::create_dir_all(&signature).unwrap();
+        std::fs::write(signature.join("CodeResources"), b"seal").unwrap();
+        std::fs::write(bundle.join("Contents").join(PLIST_FILE), b"plist").unwrap();
+        remove_shell(&bundle.join("Contents").join("MacOS"));
         assert!(!bundle.exists());
     }
 
