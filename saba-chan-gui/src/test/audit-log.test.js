@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AuditLog } from '../components/servers/AuditTab';
 import i18n from '../i18n';
+import { pickDate } from './picker';
 
 const entry = (over) => ({
     ts: 1760000000,
@@ -139,8 +140,8 @@ describe('AuditLog', () => {
             expect(window.api.auditList).toHaveBeenLastCalledWith({ limit: 100, instance: 'mc-1', since: day(20) }),
         );
         fireEvent.click(screen.getByRole('tab', { name: 'Custom' }));
-        fireEvent.change(screen.getByLabelText('From'), { target: { value: '2026-10-01' } });
-        fireEvent.change(screen.getByLabelText('To'), { target: { value: '2026-10-03' } });
+        pickDate(screen.getByLabelText('From'), '2026-10-01');
+        pickDate(screen.getByLabelText('To'), '2026-10-03');
         await waitFor(() =>
             expect(window.api.auditList).toHaveBeenLastCalledWith({
                 limit: 100,

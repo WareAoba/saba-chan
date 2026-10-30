@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { safeShowToast } from '../../utils/helpers';
 import { Icon } from '../Icon';
+import { DateField } from '../ui/DateTimePicker';
 import { SabaSpinner } from '../ui/SabaUI';
 import { Segmented, StatusChip } from '../ui/StatusChip';
 
@@ -176,26 +177,24 @@ export function AuditLog({ instanceId }) {
                 />
                 {period === 'custom' && (
                     <span className="audit-dates">
-                        <input
-                            type="date"
-                            className="input"
-                            aria-label={t('audit.from')}
+                        <DateField
+                            clearable
+                            ariaLabel={t('audit.from')}
                             value={from}
                             max={to || undefined}
-                            onChange={(e) => {
-                                setFrom(e.target.value);
+                            onChange={(v) => {
+                                setFrom(v);
                                 setLimit(PAGE);
                             }}
                         />
                         <span aria-hidden="true">~</span>
-                        <input
-                            type="date"
-                            className="input"
-                            aria-label={t('audit.to')}
+                        <DateField
+                            clearable
+                            ariaLabel={t('audit.to')}
                             value={to}
                             min={from || undefined}
-                            onChange={(e) => {
-                                setTo(e.target.value);
+                            onChange={(v) => {
+                                setTo(v);
                                 setLimit(PAGE);
                             }}
                         />

@@ -1,0 +1,184 @@
+/* ===== 날짜·시간 칸 (OS 기본 달력·시계 대체) ===== */
+.dtp-trigger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--sp-2);
+    font: inherit;
+    font-size: var(--fs-md);
+    font-variant-numeric: tabular-nums;
+    text-align: left;
+    color: var(--text-1);
+    cursor: pointer;
+}
+.dtp-trigger > svg {
+    flex: none;
+    color: var(--text-3);
+}
+.dtp-trigger:focus-visible,
+.dtp-trigger.open {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: var(--shadow-inset), var(--accent-ring);
+}
+.dtp-trigger:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+.dtp-value {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.dtp-placeholder {
+    color: var(--text-3);
+}
+
+/* --- 팝업 (Portal로 body에 그린다) --- */
+.dtp-panel {
+    padding: var(--sp-3);
+    background: var(--bg-3);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--r-md);
+    box-shadow: var(--shadow-float);
+    color: var(--text-1);
+    font-size: var(--fs-sm);
+    transform-origin: top center;
+    animation: dropdownPopIn var(--dur) var(--ease);
+}
+.dtp-panel.placement-top {
+    transform-origin: bottom center;
+}
+.dtp-panel.placement-top:not(.closing) {
+    animation-name: dropdownPopInUp;
+}
+.dtp-panel.closing {
+    animation: dropdownPopOut 120ms ease-in forwards;
+    pointer-events: none;
+}
+.dtp-panel button:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+}
+
+/* 달력 */
+.dtp-head {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-1);
+    margin-bottom: var(--sp-2);
+}
+.dtp-title {
+    flex: 1;
+    padding-left: var(--sp-1);
+    font-size: var(--fs-md);
+    font-weight: 600;
+}
+.dtp-weekdays,
+.dtp-days {
+    display: grid;
+    grid-template-columns: repeat(7, 36px);
+    gap: var(--sp-0-5);
+}
+.dtp-weekdays span {
+    height: 24px;
+    display: grid;
+    place-items: center;
+    font-size: var(--fs-xs);
+    color: var(--text-3);
+}
+.dtp-day {
+    height: 36px;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: var(--r-xs);
+    background: transparent;
+    color: var(--text-1);
+    font: inherit;
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+    transition: background-color var(--dur-fast) var(--ease);
+}
+.dtp-weekdays .sun,
+.dtp-day.sun {
+    color: var(--stop);
+}
+.dtp-weekdays .sat,
+.dtp-day.sat {
+    color: var(--info);
+}
+.dtp-day.other {
+    opacity: 0.4;
+}
+.dtp-day:hover:not(:disabled) {
+    background: var(--bg-4);
+}
+.dtp-day.today {
+    border-color: var(--line-strong);
+    font-weight: 600;
+}
+.dtp-day.selected,
+.dtp-day.selected:hover {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--text-on-primary);
+    font-weight: 600;
+    opacity: 1;
+}
+.dtp-day:disabled {
+    opacity: 0.2;
+    cursor: not-allowed;
+}
+.dtp-foot {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--sp-1);
+    margin-top: var(--sp-2);
+}
+.dtp-today {
+    color: var(--accent);
+}
+
+/* 시계: 시·분 두 칸 */
+.dtp-panel.dtp-time {
+    padding: var(--sp-1);
+}
+.dtp-cols {
+    display: flex;
+    gap: var(--sp-1);
+}
+.dtp-col {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-0-5);
+    width: 56px;
+    height: 224px;
+    padding: var(--sp-1);
+    overflow-y: auto;
+    scrollbar-width: thin;
+}
+.dtp-col + .dtp-col {
+    border-left: 1px solid var(--line);
+}
+.dtp-cell {
+    flex: none;
+    height: 32px;
+    border: none;
+    border-radius: var(--r-xs);
+    background: transparent;
+    color: var(--text-1);
+    font: inherit;
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+    transition: background-color var(--dur-fast) var(--ease);
+}
+.dtp-cell:hover {
+    background: var(--bg-4);
+}
+.dtp-cell.selected,
+.dtp-cell.selected:hover {
+    background: var(--accent);
+    color: var(--text-on-primary);
+    font-weight: 600;
+}

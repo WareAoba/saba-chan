@@ -6,6 +6,7 @@ import { safeShowToast } from '../../utils/helpers';
 import { commandText } from '../../utils/serverView';
 import CustomDropdown from '../CustomDropdown/CustomDropdown';
 import { Icon } from '../Icon';
+import { DateField, TimeField } from '../ui/DateTimePicker';
 import { SabaFail } from '../ui/SabaArt';
 import { SabaSpinner, SabaToggle } from '../ui/SabaUI';
 import { Segmented, StatusChip } from '../ui/StatusChip';
@@ -709,21 +710,19 @@ function ScheduleCard({ server, info, onSaved, moduleCommands }) {
                                                 </span>
                                             )}
                                             {d.mode === 'date' && (
-                                                <input
-                                                    className="input mt-date"
-                                                    type="date"
+                                                <DateField
+                                                    className="mt-date"
                                                     value={d.date}
-                                                    aria-label={t('maintenance.on_date')}
-                                                    onChange={(e) => patch(d.key, { date: e.target.value })}
+                                                    ariaLabel={t('maintenance.on_date')}
+                                                    onChange={(v) => patch(d.key, { date: v })}
                                                 />
                                             )}
                                             {d.mode !== 'every' && (
-                                                <input
-                                                    className="input mt-time"
-                                                    type="time"
+                                                <TimeField
+                                                    className="mt-time"
                                                     value={d.at}
-                                                    aria-label={t('maintenance.at_time')}
-                                                    onChange={(e) => patch(d.key, { at: e.target.value })}
+                                                    ariaLabel={t('maintenance.at_time')}
+                                                    onChange={(v) => patch(d.key, { at: v })}
                                                 />
                                             )}
                                         </span>
@@ -731,12 +730,12 @@ function ScheduleCard({ server, info, onSaved, moduleCommands }) {
                                     {d.mode === 'days' && (
                                         <label className="mt-field">
                                             <span>{t('maintenance.start_date')}</span>
-                                            <input
-                                                className="input mt-date"
-                                                type="date"
+                                            <DateField
+                                                className="mt-date"
                                                 value={d.startDate}
+                                                ariaLabel={t('maintenance.start_date')}
                                                 title={t('maintenance.start_date_hint')}
-                                                onChange={(e) => patch(d.key, { startDate: e.target.value })}
+                                                onChange={(v) => patch(d.key, { startDate: v })}
                                             />
                                         </label>
                                     )}

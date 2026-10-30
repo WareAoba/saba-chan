@@ -1840,5 +1840,15 @@
       "relay_unreachable": "Could not reach Server-chan. Check your internet connection.",
       "failed": "The check failed."
     }
+  },
+  "picker": {
+    "today": "Today",
+    "clear": "Clear",
+    "prev_month": "Previous month",
+    "next_month": "Next month",
+    "hour": "Hour",
+    "minute": "Minute",
+    "pick_date": "Pick a date",
+    "pick_time": "Pick a time"
   }
 }

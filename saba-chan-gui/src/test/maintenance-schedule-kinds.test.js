@@ -6,6 +6,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import i18n from 'i18next';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { draftProblems, fromDraft, MaintenanceTab, toDraft } from '../components/servers/MaintenanceTab';
+import { pickTime } from './picker';
 
 const t = (k) => i18n.t(`gui:${k}`);
 const server = { id: 'srv1', status: 'running' };
@@ -137,13 +138,13 @@ describe('예약 작업 화면', () => {
             const prefix = t('maintenance.next_run').split('{{')[0];
             expect(screen.getAllByText((text) => text.startsWith(prefix))).toHaveLength(2);
             // 작업 바로 뒤 시각을 지나면 다음 실행만 다시 읽는다 (고치던 내용은 그대로)
-            fireEvent.change(screen.getAllByLabelText(t('maintenance.at_time'))[1], { target: { value: '06:00' } });
+            pickTime(screen.getAllByLabelText(t('maintenance.at_time'))[1], '06:00');
             await act(async () => {
                 await vi.advanceTimersByTimeAsync(2 * 60 * 1000);
             });
             expect(window.api.instanceScheduleGet).toHaveBeenCalledTimes(2);
             expect(screen.getByText(t('maintenance.date_done'))).toBeTruthy();
-            expect(screen.getAllByLabelText(t('maintenance.at_time'))[1].value).toBe('06:00');
+            expect(screen.getAllByLabelText(t('maintenance.at_time'))[1].textContent).toBe('06:00');
         } finally {
             vi.useRealTimers();
         }
