@@ -1390,7 +1390,7 @@ mod tests {
     /// 트레이만 든 GUI는 데몬이 사라지면 따라 끝나므로 예전처럼 끄고 트레이로 다시 띄운다
     #[test]
     fn only_a_changed_gui_is_closed_and_relaunched() {
-        let gui = std::path::PathBuf::from("/opt/saba/saba-chan-gui");
+        let gui = std::path::PathBuf::from(format!("/opt/saba/{}", saba_chan_updater_lib::GUI_EXE_NAMES[0]));
         let guis = vec![(42, gui.clone())];
         let daemon = vec!["/opt/saba/saba-core".to_string(), "--spawned".to_string()];
         let from_gui = vec![gui.to_string_lossy().into_owned()];
