@@ -688,6 +688,7 @@
     "tab_console": "콘솔",
     "tab_commands": "명령",
     "tab_settings": "설정",
+    "tab_saba": "사바쨩",
     "tab_info": "정보",
     "console_offline": "서버가 꺼져 있어요. 켜면 여기에 로그가 보여요.",
     "console_offline_input": "서버를 켜면 명령을 보낼 수 있어요",

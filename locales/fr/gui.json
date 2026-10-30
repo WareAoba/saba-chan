@@ -688,6 +688,7 @@
     "tab_console": "Console",
     "tab_commands": "Commandes",
     "tab_settings": "Paramètres",
+    "tab_saba": "Saba-chan",
     "tab_info": "Infos",
     "console_offline": "Le serveur est arrêté. Démarrez-le pour voir son journal ici.",
     "console_offline_input": "Démarrez le serveur pour envoyer des commandes",
