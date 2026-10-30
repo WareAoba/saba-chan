@@ -41,7 +41,7 @@ import { useUIStore } from './stores/useUIStore';
 import { eventsAvailable } from './utils/daemonEvents';
 import { consoleQuickCommands, interactionOf, isManaged } from './utils/serverView';
 import { openWithNotice } from './utils/helpers';
-import { syncUpdateNotice } from './utils/updateNotice';
+import { announceUpdateCompleted, syncUpdateNotice } from './utils/updateNotice';
 // 새 레이아웃 스타일은 화면별 옛 CSS(App.css, Modals.css)보다 뒤에 와야 이긴다
 import { announceLastUpdateResult, PatchNotesModal } from './components/Modals/PatchNotesModal';
 import './styles/shell.css';
@@ -353,21 +353,7 @@ function App() {
         if (window.api && window.api.onUpdateCompleted) {
             window.api.onUpdateCompleted((data) => {
                 console.log('[Updater] Update completed notification:', data);
-                setTimeout(() => {
-                    if (typeof window.showToast === 'function') {
-                        window.showToast(data.message || t('updates.completed'), 'success', 5000, {
-                            isNotice: true,
-                            source: 'saba-chan',
-                        });
-                    }
-                    if (window.__sabaNotice) {
-                        window.__sabaNotice.addNotice({
-                            message: data.message || t('updates.completed'),
-                            type: 'success',
-                            source: 'Updater',
-                        });
-                    }
-                }, 1500);
+                setTimeout(() => announceUpdateCompleted(data, t), 1500);
             });
         }
 

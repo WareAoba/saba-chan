@@ -1490,3 +1490,19 @@ fn the_retired_updater_is_removed_once_the_installer_is_there() {
     let left: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&records).unwrap()).unwrap();
     assert!(left.get("updater").is_none() && left.get("cli").is_some(), "{left}");
 }
+
+// 업데이터를 띄우기 전에 데몬이 무엇이 바뀌는지 본다: 남긴 적용 대상 목록을 지우지 않고 읽고, 목록이 없으면 받아 둔 것 전부
+#[test]
+fn the_updater_targets_are_read_without_consuming_them() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.staging_dir = tmp.path().join("staging");
+    let zip = tmp.path().join("core.zip");
+    std::fs::write(&zip, b"").unwrap();
+    manager.status.components = vec![staged(Component::CoreDaemon, &zip), staged(Component::Gui, &zip)];
+
+    assert_eq!(manager.updater_targets(), vec!["saba-core".to_string(), "gui".to_string()]);
+    manager.save_updater_apply_targets(&["saba-core".to_string()]).unwrap();
+    assert_eq!(manager.updater_targets(), vec!["saba-core".to_string()]);
+    assert_eq!(manager.load_updater_apply_targets().unwrap(), vec!["saba-core".to_string()], "the updater still finds the list");
+}

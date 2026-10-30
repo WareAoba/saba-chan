@@ -5,7 +5,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createApi } from '../api/createApi';
 import '../components/Modals/NoticeModal';
-import { syncUpdateNotice } from '../utils/updateNotice';
+import { announceUpdateCompleted, syncUpdateNotice } from '../utils/updateNotice';
 
 const t = (key, opts) => `${key}:${opts?.count ?? ''}`;
 const updateNotices = () => window.__sabaNotice.loadNotices().filter((n) => n.action === 'openUpdateModal');
@@ -24,6 +24,25 @@ describe('업데이트 알림 정리', () => {
 
         expect(updateNotices()).toHaveLength(0);
         expect(window.__sabaNotice.loadNotices().map((n) => n.message)).toEqual(['other']);
+    });
+
+    it('업데이트를 마치면 업데이트 알림을 지우고, 여러 번 마쳐도 완료 알림은 하나만 남는다', async () => {
+        window.api.updaterLastResult = vi.fn().mockResolvedValue({
+            ok: true,
+            version: '0.3.0',
+            result: { success: true, updated_components: ['saba-core'], failed: [] },
+        });
+        syncUpdateNotice({ count: 1, names: ['Saba-Core'] }, t);
+
+        await announceUpdateCompleted({ message: 'done' }, t);
+        await announceUpdateCompleted({ count: 1, names: ['Saba-Core'] }, t);
+        await announceUpdateCompleted({ message: 'done' }, t);
+
+        expect(updateNotices()).toHaveLength(0);
+        expect(window.__sabaNotice.loadNotices()).toHaveLength(1);
+        expect(window.showToast).toHaveBeenCalledTimes(3);
+        expect(window.showToast.mock.calls.every(([, , , opts]) => !opts?.isNotice)).toBe(true);
+        delete window.api.updaterLastResult;
     });
 
     it('수동 확인 결과 받을 것이 없으면(Locales만 있어도) 없음을 알린다', async () => {

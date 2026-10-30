@@ -32,6 +32,8 @@ pub struct Lifecycle {
     /// 초기화를 아직 마치지 않았는가. 데몬 단계에서 실패하거나 끊기면 daemon_restart가 성공한 뒤 나머지를 마친다
     init_pending_daemon: AtomicBool,
     ready_sent: AtomicBool,
+    /// 이 GUI는 그대로 두고 데몬만 업데이트하러 내려갔다: 다시 뜬 데몬에 붙으면 한 번 완료를 알린다
+    daemon_updating: AtomicBool,
     quitting: AtomicBool,
     client_id: Mutex<Option<String>>,
     last_status: Mutex<Option<Value>>,
@@ -181,6 +183,16 @@ fn daemon_path(install_root: &Path) -> PathBuf {
 }
 
 impl Lifecycle {
+    /// 데몬만 업데이트한다 (GUI는 남는다)
+    pub fn expect_daemon_update(&self) {
+        self.daemon_updating.store(true, Ordering::SeqCst);
+    }
+
+    /// 다시 뜬 데몬에 붙었다: 데몬만 업데이트하던 중이었으면 한 번만 true
+    fn daemon_update_done(&self) -> bool {
+        self.daemon_updating.swap(false, Ordering::SeqCst)
+    }
+
     /// 서버를 열라는 요청. 렌더러가 이미 준비됐으면 지금 보낼 id를, 아니면 맡아 두고 None
     fn want_server(&self, id: String) -> Option<String> {
         let mut pending = self.open_server.lock().unwrap();
@@ -653,7 +665,9 @@ fn start_heartbeat(app: &AppHandle) {
             let state = app2.state::<AppState>();
             let Some(id) = state.life.client_id.lock().unwrap().clone() else {
                 // 처음 등록이 실패했으면(데몬이 늦게 뜸 등) 주기마다 다시 시도한다
-                register_with_daemon(&app2).await;
+                if register_with_daemon(&app2).await {
+                    notify_daemon_updated(&app2);
+                }
                 continue;
             };
             let resident = crate::window::tray_only_now(&app2);
@@ -696,12 +710,27 @@ fn start_heartbeat(app: &AppHandle) {
                 // 데몬이 재시작되었을 수 있으므로 재등록
                 if e.status == Some(404) || e.code == "ECONNREFUSED" {
                     tracing::warn!("[Heartbeat] Lost registration, re-registering...");
-                    register_with_daemon(&app2).await;
+                    if register_with_daemon(&app2).await {
+                        notify_daemon_updated(&app2);
+                    }
                 }
             }
         }
     });
     replace_task(&app.state::<AppState>().life.heartbeat_task, Some(task));
+}
+
+/// 데몬만 업데이트하고 다시 붙었으면 GUI를 다시 띄운 업데이트(`--after-update`)처럼 완료를 알린다
+fn notify_daemon_updated(app: &AppHandle) {
+    let state = app.state::<AppState>();
+    if state.life.daemon_update_done() {
+        tracing::info!("[Updater] The updated daemon is back; notifying renderer");
+        emit_main(
+            app,
+            "updates:completed",
+            json!({ "message": state.t("updates.completed", &[]), "timestamp": chrono::Utc::now().to_rfc3339() }),
+        );
+    }
 }
 
 /// 클라이언트 해제. shutdown이면 데몬에 종료도 요청한다
@@ -1018,6 +1047,16 @@ pub fn on_exit(app: &AppHandle) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 데몬만 업데이트하고 다시 붙으면 완료를 한 번만 알린다 (재등록마다 쌓이지 않게)
+    #[test]
+    fn a_daemon_only_update_is_announced_once_after_reattaching() {
+        let life = Lifecycle::default();
+        assert!(!life.daemon_update_done(), "no update, nothing to announce");
+        life.expect_daemon_update();
+        assert!(life.daemon_update_done());
+        assert!(!life.daemon_update_done());
+    }
 
     #[test]
     fn a_tray_stop_clears_only_when_the_daemon_comes_back_after_it_was_gone() {

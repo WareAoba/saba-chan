@@ -762,17 +762,23 @@ describe('업데이트 알림 이벤트', () => {
         );
     });
 
-    it('onUpdateCompleted → 토스트 + notice 발생', async () => {
+    it('onUpdateCompleted → 업데이트 알림을 지우고 결과 알림 하나만 남긴다', async () => {
         let updateHandler = null;
         window.api = createApiMock({
             onUpdateCompleted: vi.fn((handler) => {
                 updateHandler = handler;
+            }),
+            updaterLastResult: vi.fn().mockResolvedValue({
+                ok: true,
+                version: '0.3.0',
+                result: { success: true, updated_components: ['saba-core'], failed: [] },
             }),
         });
 
         // notice 시스템 mock
         window.__sabaNotice = {
             addNotice: vi.fn(),
+            removeNoticesByAction: vi.fn(),
             getUnreadCount: vi.fn().mockReturnValue(0),
         };
 
@@ -797,15 +803,13 @@ describe('업데이트 알림 이벤트', () => {
         // 1.5초 지연 후 토스트 + notice
         await waitFor(
             () => {
-                // showToast가 Toast 컴포넌트에 의해 덮어쓰여지므로 DOM 확인
-                const _toasts = document.querySelectorAll('.toast');
-                // notice system 호출 확인
-                expect(window.__sabaNotice.addNotice).toHaveBeenCalledWith(
-                    expect.objectContaining({
-                        type: 'success',
-                        source: 'Updater',
-                    }),
-                );
+                expect(window.__sabaNotice.removeNoticesByAction).toHaveBeenCalledWith('Updater', 'openUpdateModal');
+                // 완료 문구는 토스트로만, 알림함에는 같은 액션끼리 합쳐지는 결과 알림만 (앱이 뜰 때 한 번 더 물어도 하나로 합쳐진다)
+                const calls = window.__sabaNotice.addNotice.mock.calls.map(([n]) => n);
+                expect(calls.length).toBeGreaterThan(0);
+                for (const n of calls) {
+                    expect(n).toMatchObject({ type: 'success', source: 'Updater', action: 'openPatchNotes', dedup: true });
+                }
             },
             { timeout: 5000 },
         );
