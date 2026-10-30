@@ -132,28 +132,32 @@ pub fn outgoing(name: &str, text: &str) -> Option<(String, String)> {
     (!name.is_empty() && !text.is_empty()).then_some((name, text))
 }
 
-/// 인스턴스별로 게임에 보낸 본문과 보낸 때
-type Sent = Mutex<HashMap<String, Vec<(String, std::time::Instant)>>>;
+/// 인스턴스별로 게임에 보낸 이름·본문과 보낸 때
+type Sent = Mutex<HashMap<String, Vec<(String, String, std::time::Instant)>>>;
 
 fn sent() -> &'static Sent {
     static SENT: OnceLock<Sent> = OnceLock::new();
     SENT.get_or_init(Default::default)
 }
 
-/// 게임으로 보낸 본문을 기억한다 (`is_echo`가 그 메아리를 거른다)
-pub fn remember_sent(instance_id: &str, text: &str) {
+/// 게임으로 보낸 이름·본문을 기억한다 (`is_echo`가 그 메아리를 거른다)
+pub fn remember_sent(instance_id: &str, name: &str, text: &str) {
     let mut sent = sent().lock().unwrap_or_else(|e| e.into_inner());
     let list = sent.entry(instance_id.to_string()).or_default();
-    list.retain(|(_, at)| at.elapsed().as_secs() < ECHO_SECS);
-    list.push((text.to_string(), std::time::Instant::now()));
+    list.retain(|(_, _, at)| at.elapsed().as_secs() < ECHO_SECS);
+    list.push((name.to_string(), text.to_string(), std::time::Instant::now()));
 }
 
-/// 콘솔 채팅이 방금 게임으로 보낸 글의 메아리인가 (본문에 그 글이 들어 있다). 맞으면 그 기억은 지운다
+/// 콘솔 채팅이 방금 게임으로 보낸 글의 메아리인가: 채팅 본문이 보낸 본문이나 `이름: 본문`과 똑같다
+/// (마인크래프트처럼 이름을 따로 찍는 게임, 테라리아 `say`처럼 서버 이름으로 `이름: 본문`을 찍는 게임).
+/// 본문 일부만 같은 남의 채팅은 거르지 않는다. 맞으면 그 기억은 지운다
 pub fn is_echo(instance_id: &str, message: &str) -> bool {
     let mut sent = sent().lock().unwrap_or_else(|e| e.into_inner());
     let Some(list) = sent.get_mut(instance_id) else { return false };
-    list.retain(|(_, at)| at.elapsed().as_secs() < ECHO_SECS);
-    match list.iter().position(|(text, _)| message.contains(text.as_str())) {
+    list.retain(|(_, _, at)| at.elapsed().as_secs() < ECHO_SECS);
+    let message = message.trim();
+    let same = |name: &str, text: &str| message == text || message.strip_prefix(name).and_then(|m| m.strip_prefix(": ")) == Some(text);
+    match list.iter().position(|(name, text, _)| same(name, text)) {
         Some(i) => {
             list.remove(i);
             true
@@ -237,11 +241,14 @@ mod tests {
 
     #[test]
     fn a_sent_chat_coming_back_from_the_console_is_not_forwarded_again() {
-        remember_sent("echo-a", "김치: 안녕");
-        assert!(!is_echo("echo-b", "김치: 안녕"), "other servers are not affected");
-        assert!(is_echo("echo-a", "[디코] 김치: 안녕"));
-        assert!(!is_echo("echo-a", "[디코] 김치: 안녕"), "only once");
-        assert!(!is_echo("echo-a", "something else"));
+        remember_sent("echo-a", "김치", "hi");
+        assert!(!is_echo("echo-b", "김치: hi"), "other servers are not affected");
+        assert!(!is_echo("echo-a", "this is a different message"), "someone else's chat that only contains it is kept");
+        assert!(is_echo("echo-a", "김치: hi"));
+        assert!(!is_echo("echo-a", "김치: hi"), "only once");
+        remember_sent("echo-a", "김치", "hi");
+        assert!(is_echo("echo-a", "hi"), "games that print the name apart");
+        assert!(!is_echo("echo-a", "김치: hi"), "one echo per sent chat");
     }
 
     #[test]
