@@ -572,7 +572,7 @@ mod tests {
         .unwrap();
         assert!(wait_for(&proc, "[LOG] shutdown OK").await);
         assert!(wait_for(&proc, "[LOG] save OK").await);
-        let _ = proc.force_kill();
+        let _ = proc.force_kill().await;
     }
 
     /// [extensions.saba-core] progress_patterns: 숫자만 바뀌며 이어지는 진행 줄은 첫 줄과 마지막 줄만 보인다
@@ -596,7 +596,7 @@ mod tests {
         assert!(wait_for(&proc, "saved").await);
         let lines: Vec<String> = proc.get_console_since(0).await.into_iter().filter(|l| l.source != LogSource::System).map(|l| l.content).collect();
         assert_eq!(lines, ["Saving 1%", "Saving 5%", "saved"]);
-        let _ = proc.force_kill();
+        let _ = proc.force_kill().await;
     }
 
     /// [launch] console = "pty": 파이프면 출력을 모아 두는 서버도 줄마다 나오고, stdin도 의사 콘솔로 간다
@@ -621,7 +621,7 @@ mod tests {
         assert!(wait_for(&proc, "early line").await, "output arrives while the server runs");
         proc.send_command("ping").await.unwrap();
         assert!(wait_for(&proc, "got ping").await);
-        let _ = proc.force_kill();
+        let _ = proc.force_kill().await;
     }
 
     #[test]

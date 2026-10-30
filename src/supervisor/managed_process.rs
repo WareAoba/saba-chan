@@ -292,11 +292,16 @@ impl std::error::Error for StdinFull {}
 
 impl ManagedProcess {
     /// 강제 종료. 러너가 있으면 러너도 죽여, 런처가 띄운 손자 프로세스까지 Job Object로 끝낸다.
-    /// 종료 요청이 거부되면 오류 (끝났는지는 `is_running`으로 확인한다)
-    pub fn force_kill(&self) -> Result<()> {
-        let server = super::process::force_kill_tree(self.pid);
-        let runner = self.runner_pid.map_or(Ok(()), super::process::force_kill_pid);
-        server.and(runner)
+    /// 종료 요청이 거부되면 오류 (끝났는지는 `is_running`으로 확인한다).
+    /// Windows는 taskkill을 띄워 끝나기를 기다리므로 async 작업자 밖에서 한다
+    pub async fn force_kill(&self) -> Result<()> {
+        let (pid, runner_pid) = (self.pid, self.runner_pid);
+        tokio::task::spawn_blocking(move || {
+            let server = super::process::force_kill_tree(pid);
+            let runner = runner_pid.map_or(Ok(()), super::process::force_kill_pid);
+            server.and(runner)
+        })
+        .await?
     }
 
     /// Spawn a new managed process.
@@ -954,14 +959,14 @@ fn spawn_disk_writer(log_path: PathBuf) -> mpsc::UnboundedSender<String> {
 
     tokio::spawn(async move {
         use tokio::fs::{self, OpenOptions};
-        use tokio::io::AsyncWriteExt as _;
+        use tokio::io::{AsyncWriteExt as _, BufWriter};
 
         // Ensure parent directory exists
         if let Some(parent) = log_path.parent() {
             let _ = fs::create_dir_all(parent).await;
         }
 
-        let mut file = match OpenOptions::new()
+        let file = match OpenOptions::new()
             .create(true)
             .append(true)
             .open(&log_path)
@@ -975,11 +980,17 @@ fn spawn_disk_writer(log_path: PathBuf) -> mpsc::UnboundedSender<String> {
         };
 
         let mut bytes_written: u64 = file.metadata().await.map(|m| m.len()).unwrap_or(0);
+        // 줄마다 쓰기 호출을 하지 않게 모았다가, 큐가 비면 내려 쓴다 (출력이 몰려도 파일에는 곧 남는다)
+        let mut file = BufWriter::new(file);
 
         while let Some(line) = rx.recv().await {
             let data = format!("{}\n", line);
             let data_len = data.len() as u64;
-            if let Err(e) = file.write_all(data.as_bytes()).await {
+            let written = match file.write_all(data.as_bytes()).await {
+                Ok(()) if rx.is_empty() => file.flush().await,
+                other => other,
+            };
+            if let Err(e) = written {
                 tracing::warn!("Disk writer for '{}' I/O error: {} — stopping log persistence", log_path.display(), e);
                 break;
             }
@@ -996,7 +1007,7 @@ fn spawn_disk_writer(log_path: PathBuf) -> mpsc::UnboundedSender<String> {
                     .await
                 {
                     Ok(f) => {
-                        file = f;
+                        file = BufWriter::new(f);
                         bytes_written = 0;
                     }
                     Err(e) => {
@@ -1144,6 +1155,27 @@ pub(crate) async fn next_line<R: tokio::io::AsyncBufRead + Unpin>(reader: &mut R
 mod tests {
     use super::*;
 
+    /// 기록기는 몰려온 줄을 모아 쓰되, 큐가 비면 바로 내려 써서 서버가 도는 동안에도 파일에 다 남는다
+    #[tokio::test]
+    async fn the_disk_writer_flushes_a_burst_while_the_server_still_runs() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("console.log");
+        let tx = spawn_disk_writer(path.clone());
+        for i in 0..2000 {
+            tx.send(format!("line {i}")).unwrap();
+        }
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        loop {
+            let lines = std::fs::read_to_string(&path).map(|t| t.lines().count()).unwrap_or(0);
+            if lines == 2000 {
+                break;
+            }
+            assert!(std::time::Instant::now() < deadline, "only {lines} lines reached the disk");
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+        drop(tx);
+    }
+
     /// UTF-8이 아닌 줄 하나로 콘솔 읽기가 끝나지 않는다: 끝나면 파이프가 차서 서버가 멈춘다 (D-S7)
     #[cfg(unix)]
     #[tokio::test]
@@ -1160,7 +1192,7 @@ mod tests {
         }
         assert!(seen.iter().any(|l| l == "after") && seen.iter().any(|l| l == "err-after"), "{seen:?}");
         assert!(seen.iter().any(|l| l.starts_with("bad ") && l.contains('\u{fffd}')), "{seen:?}");
-        let _ = proc.force_kill();
+        let _ = proc.force_kill().await;
     }
 
     /// 입력을 되풀이해 찍는 서버(리눅스 테라리아 등)의 그 줄은 콘솔에 남기지 않는다: 클라이언트가 보낸 명령을 이미 보인다.
@@ -1180,7 +1212,7 @@ mod tests {
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         }
         assert_eq!(seen, ["booted", "help", "reply"]);
-        let _ = proc.force_kill();
+        let _ = proc.force_kill().await;
     }
 
     /// UTF-16LE로 쓰는 서버의 줄은 0A·00이 낀 글자(上 = 0A 4E, 一 = 00 4E)에서 끊기지 않는다. 읽기가 조각나도 같다 (D-S13)
@@ -1215,7 +1247,7 @@ mod tests {
             false
         })
         .await;
-        let _ = proc.force_kill();
+        let _ = proc.force_kill().await;
         assert_eq!(sent, Ok(true), "a full console input must be reported, not waited on");
     }
 

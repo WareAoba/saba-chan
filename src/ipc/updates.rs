@@ -879,7 +879,8 @@ async fn close_guis(guis: &[(u32, std::path::PathBuf)]) {
     let left = running_guis_among(&alive(guis));
     for (pid, exe) in &left {
         tracing::info!("[Updates] Closing GUI (PID {}, {}) so the updater can replace it", pid, exe.display());
-        if let Err(e) = force_kill_pid(*pid) {
+        let pid = *pid;
+        if let Err(e) = tokio::task::spawn_blocking(move || force_kill_pid(pid)).await.unwrap_or_else(|e| Err(e.into())) {
             tracing::warn!("[Updates] Could not close GUI PID {}: {}", pid, e);
         }
     }
