@@ -667,7 +667,7 @@ Relay 서명 방식(`relay.rs:115-161`):
 - 다운로드 방식: Windows는 PowerShell `Invoke-WebRequest`, 그 외는 `curl`이다. 압축 해제는 `tar`를 쓴다. 풀기 전에 triple별로 고정한 SHA-256과 비교하고 다르면 지운다(`python_env/mod.rs:257-261`, `python_pin.rs:11-17, 53-61`). 미러를 쓰면 `SABA_PYTHON_SHA256`이 있을 때만 검사한다.
 - **`<pyroot>`는 `constants::resolve_data_dir()`와 다르다**(`python_env/mod.rs:395-432`). 순서는 다음과 같다.
   1. `SABA_DATA_DIR`
-  2. **exe 디렉토리에 쓰기 권한이 있으면 exe 디렉토리**
+  2. **exe 디렉토리에 쓰기 권한이 있으면 exe 디렉토리**. 단 맥 앱 묶음 안(`*.app/Contents/MacOS`, `app_bundle::bundle_of`)이면 묶음에 파일을 더하면 서명이 깨지므로 쓰지 않고 `constants::resolve_data_dir()`(`~/.config/saba-chan`)를 쓴다. 제거기가 그 폴더의 런타임 항목으로 지운다(`runtime_root`)
   3. Windows `%APPDATA%/saba-chan`, Linux `~/.local/share/saba-chan`, macOS `~/Library/Application Support/saba-chan`
 - 결과적으로 Linux에서 데이터는 `~/.config/saba-chan`에, 런타임은 `~/.local/share/saba-chan` 또는 exe 옆에 흩어진다.
 - 예전 `status()`와 `/api/python-env/*` 핸들러는 지워졌다.
