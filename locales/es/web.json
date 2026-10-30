@@ -13,7 +13,7 @@
   },
   "gate": {
     "connecting": "Conectando con tu PC…",
-    "again": "Pide un enlace nuevo con /saba web en Discord.",
+    "again": "Pide un enlace nuevo con /mysaba web en Discord.",
     "closed": "La sesión ha terminado.",
     "no_link": "No hay enlace.",
     "link_invalid": "Este enlace ya se usó o ha caducado.",

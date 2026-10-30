@@ -958,6 +958,25 @@ pub enum BotCmd {
         #[arg(long)]
         off: bool,
     },
+    /// How slash commands look on a Discord server. No options: show
+    Slash {
+        guild: Option<String>,
+        /// Put Saba-chan commands under /saba (like /saba status)
+        #[arg(long, conflicts_with = "no_prefix")]
+        prefix: bool,
+        /// Show Saba-chan commands directly (like /status)
+        #[arg(long)]
+        no_prefix: bool,
+        /// Server command names: name (instance name) or word (the server's first call word)
+        #[arg(long, value_parser = ["name", "word"])]
+        root_name: Option<String>,
+        /// Show query results only to the person who asked
+        #[arg(long, conflicts_with = "public")]
+        private: bool,
+        /// Show query results to everyone in the channel
+        #[arg(long)]
+        public: bool,
+    },
     /// Discord servers paired with this PC
     Nodes,
     /// Members of a paired Discord server (name or id; without it: the only paired server)

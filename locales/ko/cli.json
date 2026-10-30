@@ -150,6 +150,11 @@
     "no_paired_servers": "이 PC와 페어링된 디스코드 서버가 아직 없어요. 실행: saba-chan-cli bot pair",
     "pick_server": "페어링된 디스코드 서버가 여럿이에요. 바꿀 서버의 id를 적어 주세요: {{servers}}",
     "translate_commands": "명령 이름 번역",
+    "slash_prefix": "명령 앞에 사바쨩",
+    "slash_root_name": "서버 명령 이름",
+    "slash_root_name_name": "인스턴스 이름",
+    "slash_root_name_word": "서버 호출어",
+    "private_queries": "조회 결과 나만 보기",
     "notice_none": "아직 켜짐 알림을 켠 서버가 없어요. 사바쨩이 서버를 켜도 알리지 않아요.",
     "notice_is_on": "{{server}}: 켜짐 알림 켜짐",
     "notice_is_off": "{{server}}: 켜짐 알림 꺼짐",
@@ -920,7 +925,8 @@
       "config.browse": "데몬 PC의 폴더와 파일 보기 (--daemon이면 그 원격 PC). 경로가 없으면 드라이브나 /",
       "bot.notice": "사바쨩이 서버를 켜면 디스코드 서버의 알림 채널에 알리기 (기본 꺼짐). 서버 없이: 보기, 서버와 `--on`·`--off`: 바꾸기",
       "bot.confirm": "봇이 실행 전에 디스코드 버튼으로 되물을 단계 (all·caution·danger·none). 옵션이 없으면 보기",
-      "bot.translate": "디스코드 서버 하나의 슬래시 명령에 번역한 명령 이름을 보일지. 옵션이 없으면 보기"
+      "bot.translate": "디스코드 서버 하나의 슬래시 명령에 번역한 명령 이름을 보일지. 옵션이 없으면 보기",
+      "bot.slash": "디스코드 서버 하나의 슬래시 명령 모양. 옵션이 없으면 보기"
     },
     "arg": {
       "module.maker.game": "첫 부탁에 넣을 게임 이름",
@@ -1100,7 +1106,12 @@
       "unmanaged": "직접 관리: 사바쨩은 띄우고 켜짐 여부만 봐요 (사바쨩 콘솔 없음)",
       "bot.prefix.guild": "디스코드 서버 (이름이나 id, 없으면 페어링한 서버 하나)",
       "bot.translate.on": "번역한 명령 이름 보이기",
-      "bot.translate.off": "모듈에 있는 이름만 보이기"
+      "bot.translate.off": "모듈에 있는 이름만 보이기",
+      "bot.slash.prefix": "사바쨩 명령을 /사바쨩 아래에 두기 (/사바쨩 상태)",
+      "bot.slash.no_prefix": "사바쨩 명령을 바로 쓰기 (/상태). 서버 관리 명령은 서버 관리 권한이 있는 사람에게만 보여요",
+      "bot.slash.root_name": "서버 명령 이름: name(인스턴스 이름) 또는 word(그 서버의 첫 호출어)",
+      "bot.slash.private": "조회 결과를 부른 사람에게만 보이기",
+      "bot.slash.public": "조회 결과를 채널의 모두에게 보이기"
     },
     "after": "이름은 일부만 적어도 돼요 (예: start pal). 인자 없이 터미널에서 실행하면 전체 화면 메뉴가 열려요(SABA_NO_TUI=1이면 대화형 셸).\n스크립트에서는 --json과 --yes를 쓰세요. 종료 코드: 0 성공 · 1 실패 · 2 사용법 · 3 데몬 연결 안 됨 · 4 없음 · 130 취소"
   },

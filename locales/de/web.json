@@ -13,7 +13,7 @@
   },
   "gate": {
     "connecting": "Verbindung mit deinem PC wird hergestellt…",
-    "again": "Hol dir mit /saba web in Discord einen neuen Link.",
+    "again": "Hol dir mit /mysaba web in Discord einen neuen Link.",
     "closed": "Die Sitzung ist beendet.",
     "no_link": "Es gibt keinen Link.",
     "link_invalid": "Dieser Link wurde schon benutzt oder ist abgelaufen.",

@@ -129,6 +129,25 @@ describe('디스코드 봇 설정 탭', () => {
         expect(window.api.discordSettingsSet).toHaveBeenCalledWith('g1', { translateCommands: false });
     });
 
+    it('슬래시 명령 모양(사바쨩 접두어·서버 명령 이름·조회 결과 나만 보기)은 이 서버 값으로 저장한다', async () => {
+        window.api.discordSettingsGet = vi.fn().mockResolvedValue({ ...base });
+        window.api.discordSettingsSet = vi.fn().mockResolvedValue({ success: true, settings: base, sync: { ok: true } });
+        render(<BotSettingsTab node={node} />);
+        await flush();
+        // 값이 없으면(옛 데몬) 접두어 켜짐·인스턴스 이름·모두에게 보임
+        expect(screen.getByRole('checkbox', { name: 'Saba-chan prefix on commands' }).checked).toBe(true);
+        expect(screen.getByRole('checkbox', { name: 'Show query results only to the caller' }).checked).toBe(false);
+        fireEvent.click(screen.getByRole('checkbox', { name: 'Saba-chan prefix on commands' }));
+        await flush();
+        expect(window.api.discordSettingsSet).toHaveBeenCalledWith('g1', { slashPrefix: false });
+        pickOption(screen.getByLabelText('Server command names'), 'Server call word');
+        await flush();
+        expect(window.api.discordSettingsSet).toHaveBeenCalledWith('g1', { slashRootName: 'word' });
+        fireEvent.click(screen.getByRole('checkbox', { name: 'Show query results only to the caller' }));
+        await flush();
+        expect(window.api.discordSettingsSet).toHaveBeenCalledWith('g1', { privateQueries: true });
+    });
+
     it('호출어를 빠르게 여러 개 넣어도 앞 저장의 답이 화면의 칩을 지우지 않고, 설정을 못 읽었으면 바꾸지 않는다', async () => {
         const answers = [];
         window.api.discordSettingsGet = vi.fn().mockResolvedValue({ ...base, prefixes: [] });
