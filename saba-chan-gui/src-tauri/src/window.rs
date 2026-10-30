@@ -198,11 +198,12 @@ fn frame<'a>(
 ) -> WebviewWindowBuilder<'a, tauri::Wry, AppHandle> {
     #[cfg(target_os = "macos")]
     {
-        // y는 신호등(높이 14) 위쪽 여백이다: 상단바 가운데에 놓는다
+        // 상단바 세로 가운데에 놓는다. tao는 제목 막대 높이를 (버튼 높이 14 + y)로 잡고 버튼을 그 아래쪽에 두어,
+        // 버튼 위쪽 끝이 y보다 약 11 위에 온다 (macOS 26 실측: y 17이면 가운데가 13)
         builder
             .title_bar_style(tauri::TitleBarStyle::Overlay)
             .hidden_title(true)
-            .traffic_light_position(tauri::LogicalPosition::new(16.0, (bar_height - 14.0) / 2.0))
+            .traffic_light_position(tauri::LogicalPosition::new(16.0, (bar_height - 14.0) / 2.0 + 11.0))
     }
     #[cfg(not(target_os = "macos"))]
     {

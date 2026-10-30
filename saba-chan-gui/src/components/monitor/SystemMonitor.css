@@ -166,6 +166,9 @@
     background: var(--bg-0);
 }
 .monitor-top-slot {
+    /* 세로 flex 안의 margin auto는 내용 폭으로 줄인다. 그 폭(auto-fit 그리드의 내용 폭)을 WebKit은 더 좁게 잡아
+       링이 두 줄로 접혔다(맥). 폭을 정해 상세 카드와 같은 폭으로 둔다 */
+    width: 100%;
     max-width: 1080px;
     margin: 0 auto;
     padding: var(--sp-6) var(--sp-6) 0;

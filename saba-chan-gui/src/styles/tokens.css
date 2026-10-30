@@ -293,7 +293,7 @@
     --scrim-blur: blur(6px);
 
     --appbar-h: 48px;
-    --mac-traffic-lights-w: 80px; /* 맥 신호등 자리: window.rs `frame`의 x 16 + 버튼 셋 */
+    --mac-traffic-lights-w: 88px; /* 맥 신호등 자리: window.rs `frame`의 x 16 + 버튼 셋(끝이 약 76) + 여백 */
     --list-w: 300px;
 }
 
