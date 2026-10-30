@@ -55,6 +55,7 @@
     "uninstall_confirm_message": "確定要解除安裝 Saba-chan 嗎？會先正常關閉執行中的伺服器，然後關閉 Saba-chan（GUI 和守護程序）。",
     "uninstall_confirm_yes": "解除安裝",
     "uninstall_confirm_no": "取消",
+    "uninstall_failed": "無法解除安裝 Saba-chan：{{error}}",
     "about_title": "關於",
     "about_version": "版本",
     "about_description": "用於設定、執行和管理遊戲伺服器的工具。",

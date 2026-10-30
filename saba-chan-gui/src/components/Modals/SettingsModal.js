@@ -225,10 +225,20 @@ function SettingsModal({
                 cancelText: t('gui:settings_modal.uninstall_confirm_no'),
                 onConfirm: async () => {
                     onTestModal(null);
+                    let result;
                     try {
-                        await window.api.launchUninstaller();
+                        result = await window.api.launchUninstaller();
                     } catch (err) {
                         console.error('Failed to launch uninstaller:', err);
+                        result = { error: String(err?.message || err) };
+                    }
+                    // 성공하면 GUI가 곧 닫힌다. 못 띄웠으면 말없이 끝나지 않게 알린다
+                    if (!result?.success) {
+                        window.showToast?.(
+                            t('gui:settings_modal.uninstall_failed', { error: result?.error || '' }),
+                            'error',
+                            6000,
+                        );
                     }
                 },
                 onCancel: () => onTestModal(null),

@@ -55,6 +55,7 @@
     "uninstall_confirm_message": "정말로 사바쨩을 삭제하시겠습니까? 켜져 있는 서버를 먼저 정상 종료한 뒤 사바쨩(GUI와 데몬)을 닫습니다.",
     "uninstall_confirm_yes": "삭제",
     "uninstall_confirm_no": "취소",
+    "uninstall_failed": "사바쨩을 삭제하지 못했어요: {{error}}",
     "about_title": "정보",
     "about_version": "버전",
     "about_description": "게임 서버를 설정하고 실행하고 관리하는 도구입니다.",
