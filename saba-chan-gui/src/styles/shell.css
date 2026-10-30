@@ -730,6 +730,10 @@
     font-family: var(--font-mono);
     font-size: calc(13px * var(--console-font-scale));
 }
+.term-field:focus-visible {
+    /* 포커스는 바깥 칸의 링으로 보인다 */
+    outline: none;
+}
 .term-field::placeholder {
     color: color-mix(in srgb, var(--console-custom-text) 45%, transparent);
 }
