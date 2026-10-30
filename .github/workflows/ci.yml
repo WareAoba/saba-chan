@@ -71,7 +71,7 @@ jobs:
           else
             echo "rust=false" >> "$GITHUB_OUTPUT"
           fi
-          if echo "$files" | grep -qE '^(saba-chan-gui/|updater/gui/src/|installer/gui/src/|locales/)'; then
+          if echo "$files" | grep -qE '^(saba-chan-gui/|installer/gui/src/|locales/)'; then
             echo "frontend=true" >> "$GITHUB_OUTPUT"
           else
             echo "frontend=false" >> "$GITHUB_OUTPUT"
@@ -190,7 +190,7 @@ jobs:
 
       # 번들러 없이 그대로 실리는 스크립트는 문법만 확인한다
       - name: Syntax check — updater, installer
-        run: node --check updater/gui/src/updater.js && node --check installer/gui/src/installer.js
+        run: node --check installer/gui/src/updater.js && node --check installer/gui/src/installer.js
 
   # ─────────────────────────────────────────
   # E2E — 실제 데몬·CLI·러너를 띄우는 Python 시험 (전체만)
@@ -287,13 +287,13 @@ jobs:
 
       - name: Build
         run: |
-          cargo build --release --locked -p saba-core -p saba-runner -p saba-chan-cli -p saba-chan-gui --bins
-          cargo build --release --locked -p saba-chan-updater --no-default-features
+          cargo build --release --locked -p saba-core -p saba-runner -p saba-chan-cli -p saba-chan-gui -p saba-chan-installer --bins
+          cargo build --release --locked -p saba-chan-installer --no-default-features --target-dir target/headless
 
       - name: Package
         run: |
           version=$(python3 -c "import tomllib;print(tomllib.load(open('versions.toml','rb'))['release']['version'])")
-          python3 .github/scripts/package-linux.py --bin target/release --out macos --platform macos-arm64 --version "$version"
+          python3 .github/scripts/package-linux.py --bin target/release --headless-bin target/headless/release --out macos --platform macos-arm64 --version "$version"
           python3 .github/scripts/package-macos.py --bin target/release --out macos --version "$version" --platform macos-arm64
           ls -la macos
           # .dmg 안: 앱 묶음, 응용 프로그램 바로가기, 첫 실행 안내
@@ -308,10 +308,11 @@ jobs:
       - name: Install, update and uninstall from a mock relay
         run: |
           cargo build --release --locked -p saba-core -p saba-runner -p saba-chan-cli --features saba-core/mock-relay,saba-chan-cli/mock-relay --target-dir target/mock
-          cargo build --release --locked -p saba-chan-updater --no-default-features --target-dir target/mock
+          # 적용은 창 없이 (러너에 창을 볼 사람이 없다): 창 없는 설치기를 두 구성 zip에 모두 싣는다
+          cargo build --release --locked -p saba-chan-installer --no-default-features --features mock-relay --target-dir target/mock
           cp target/release/saba-chan-gui target/mock/release/
-          python3 .github/scripts/package-linux.py --bin target/mock/release --out mock-a --platform macos-arm64 --version 0.2.0
-          python3 .github/scripts/package-linux.py --bin target/mock/release --out mock-b --platform macos-arm64 --version 0.3.0
+          python3 .github/scripts/package-linux.py --bin target/mock/release --headless-bin target/mock/release --out mock-a --platform macos-arm64 --version 0.2.0
+          python3 .github/scripts/package-linux.py --bin target/mock/release --headless-bin target/mock/release --out mock-b --platform macos-arm64 --version 0.3.0
           serve() {
             node scripts/mock-release-server.js --port 9877 --version "$1" --zips "$2" >> mock.log 2>&1 &
             echo $! > mock.pid

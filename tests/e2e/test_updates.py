@@ -1,8 +1,8 @@
 """L4 업데이트 확인·내려받기: 서명 검증, 변조·다운그레이드·해시 불일치 거부.
 
 `--features mock-relay`로 빌드한 데몬이 필요하다 (공개 시험 키를 믿는 빌드). 위치: SABA_E2E_MOCK_CORE,
-기본 target/e2e-mock/debug/saba-core. 적용은 같은 키를 믿는 업데이터(SABA_E2E_MOCK_UPDATER, 기본 target/e2e-mock/debug/saba-chan-updater,
-`cargo build -p saba-chan-updater --features saba-chan-updater-lib/mock-relay`)와 GUI(SABA_E2E_GUI_EXE)가 있어야 본다.
+기본 target/e2e-mock/debug/saba-core. 적용은 같은 키를 믿는 설치기(SABA_E2E_MOCK_UPDATER, 기본 target/e2e-mock/debug/saba-chan-installer,
+`cargo build -p saba-chan-installer --no-default-features --features mock-relay`)와 GUI(SABA_E2E_GUI_EXE)가 있어야 본다.
 릴리스 업데이터는 시험 키 서명을 거부하므로 쓰지 않는다.
 """
 
@@ -24,7 +24,7 @@ from harness.paths import EXE, REPO
 pytestmark = pytest.mark.mock_relay
 
 MOCK_CORE = Path(os.environ.get("SABA_E2E_MOCK_CORE", REPO / "target" / "e2e-mock" / "debug" / f"saba-core{EXE}"))
-MOCK_UPDATER = Path(os.environ.get("SABA_E2E_MOCK_UPDATER", MOCK_CORE.parent / f"saba-chan-updater{EXE}"))
+MOCK_UPDATER = Path(os.environ.get("SABA_E2E_MOCK_UPDATER", MOCK_CORE.parent / f"saba-chan-installer{EXE}"))
 GUI_EXE = Path(os.environ.get("SABA_E2E_GUI_EXE", REPO / "target" / "debug" / f"saba-chan-gui{EXE}"))
 
 

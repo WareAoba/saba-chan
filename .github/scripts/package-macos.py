@@ -20,7 +20,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 
 APP_NAME = "Saba-chan.app"
-EXES = ["saba-chan-gui", "saba-core", "saba-runner", "saba-chan-cli", "saba-chan-updater"]
+EXES = ["saba-chan-gui", "saba-core", "saba-runner", "saba-chan-cli", "saba-chan-installer"]
 # 설치기도 같은 두 파일로 묶음을 만든다 (Info.plist의 @VERSION@·@BUILD@를 바꿔 쓴다)
 PLIST_TEMPLATE = ROOT / "saba-chan-gui/src-tauri/macos/Info.plist"
 ICON_SOURCE = ROOT / "saba-chan-gui/src-tauri/icons/icon.icns"

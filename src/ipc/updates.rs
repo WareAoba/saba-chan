@@ -727,7 +727,7 @@ async fn launch_updater(
     let Some(updater) = updater_binary() else {
         return (
             axum::http::StatusCode::NOT_FOUND,
-            Json(json!({ "ok": false, "error": "saba-chan-updater not found next to the daemon" })),
+            Json(json!({ "ok": false, "error": "saba-chan-installer not found next to the daemon" })),
         )
             .into_response();
     };
@@ -902,14 +902,19 @@ fn running_guis_among(guis: &[(u32, std::path::PathBuf)]) -> Vec<(u32, std::path
         .collect()
 }
 
-/// 업데이터 실행 파일. `SABA_UPDATER_PATH`가 있으면 그것, 없으면 데몬 실행 파일 옆(또는 한 단계 위).
+/// 업데이트를 적용할 실행 파일. `SABA_UPDATER_PATH`가 있으면 그것, 없으면 데몬 실행 파일 옆(또는 한 단계 위).
 fn updater_binary() -> Option<std::path::PathBuf> {
     if let Some(path) = std::env::var_os("SABA_UPDATER_PATH").map(std::path::PathBuf::from) {
         return path.is_file().then_some(path);
     }
-    let exe = std::env::current_exe().ok()?;
-    let name = format!("saba-chan-updater{}", std::env::consts::EXE_SUFFIX);
-    exe.ancestors().skip(1).take(2).map(|dir| dir.join(&name)).find(|p| p.is_file())
+    updater_binary_near(&std::env::current_exe().ok()?)
+}
+
+/// 설치기(`--apply`로 적용한다)를 먼저 찾고, 없으면 0.1.12 전 설치에 남은 옛 업데이터를 쓴다 (같은 인자를 받는다)
+fn updater_binary_near(daemon_exe: &std::path::Path) -> Option<std::path::PathBuf> {
+    [saba_chan_updater_lib::INSTALLER_EXE, saba_chan_updater_lib::LEGACY_UPDATER_EXE].iter().find_map(|name| {
+        daemon_exe.ancestors().skip(1).take(2).map(|dir| dir.join(name)).find(|p| p.is_file())
+    })
 }
 
 /// 데몬이 끝나도 살아남게 띄운다
@@ -1282,6 +1287,24 @@ mod tests {
         let body: Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(body["error_code"], "updater_already_launched");
         assert_eq!(std::fs::read_to_string(staging.join("apply-ticket")).unwrap(), ticket, "the first ticket stays valid");
+    }
+
+    /// 업데이트는 설치기(`saba-chan-installer --apply`)가 적용한다. 설치기가 아직 없는 옛 설치(0.1.12 전)는
+    /// 남아 있는 옛 업데이터로 적용해 그 업데이트로 설치기를 받는다
+    #[test]
+    fn the_installer_applies_updates_and_the_old_updater_is_the_fallback() {
+        let tmp = tempfile::tempdir().unwrap();
+        let bin = tmp.path().join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        let exe = |name: &str| format!("{name}{}", std::env::consts::EXE_SUFFIX);
+        let daemon = bin.join(exe("saba-core"));
+        assert_eq!(super::updater_binary_near(&daemon), None);
+        std::fs::write(bin.join(exe("saba-chan-updater")), b"").unwrap();
+        assert_eq!(super::updater_binary_near(&daemon), Some(bin.join(exe("saba-chan-updater"))));
+        std::fs::write(tmp.path().join(exe("saba-chan-installer")), b"").unwrap();
+        assert_eq!(super::updater_binary_near(&daemon), Some(tmp.path().join(exe("saba-chan-installer"))), "one folder up");
+        std::fs::write(bin.join(exe("saba-chan-installer")), b"").unwrap();
+        assert_eq!(super::updater_binary_near(&daemon), Some(bin.join(exe("saba-chan-installer"))));
     }
 
     /// CLI가 데몬을 다시 띄우라고 해도 GUI가 떠 있었으면 GUI를 띄운다. GUI가 부른 요청은 그대로

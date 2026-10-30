@@ -252,7 +252,8 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
             Ok(m) => m,
             Err(e) => return fail("fetch_failed", &e),
         },
-    };
+    }
+    .for_profile(config.profile);
 
     // 설치기 자체가 이 릴리즈를 설치할 수 있는 버전인지
     if let Some(required_version) = release::required_installer_version(&manifest) {
@@ -271,7 +272,7 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
     // Step 3: R2에서 받고 SHA-256 확인 후 압축 해제 (10-45%)
     // 하나라도 실패하면 설치를 멈춘다. 반쯤 설치된 앱은 업데이터도 고치기 어렵다.
     // 필수 컴포넌트가 빠진 릴리즈는 기존 설치를 건드리기 전에 멈춘다
-    let components = match release::installable(&manifest, config.profile) {
+    let components = match release::installable(&manifest, config.profile, config.uninstaller_exe.is_none()) {
         Ok(c) => c,
         Err(missing) => {
             let msg = format!("The release is missing required components: {}", missing.join(", "));
@@ -336,7 +337,7 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
             &format!("Extracting {}...", key),
             40 + (i * 5 / total) as i32,
         );
-        if let Err(e) = extract_zip(zip, &release::target_dir(&install_dir, info)) {
+        if let Err(e) = place_component(zip, &release::target_dir(&install_dir, info)) {
             return fail("extract_failed", &format!("Failed to extract {}: {}", key, e));
         }
         let _ = std::fs::remove_file(zip);
@@ -524,6 +525,12 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
     if let Err(e) = UpdateManager::save_installed_manifest(&installed_versions) {
         warn(format!("Failed to write installed manifest: {}", e));
     }
+    // 0.1.12 전 설치 위에 덮었으면 이제 설치기가 업데이트를 맡는다: 남은 옛 업데이터와 그 기록을 걷는다
+    saba_chan_updater_lib::retire_legacy_updater_at(
+        &install_dir,
+        &saba_chan_updater_lib::constants::resolve_installed_manifest_path(),
+        &saba_chan_updater_lib::integrity::records_path(),
+    );
 
     // 완료. 레지스트리·바로가기 등 실패한 단계는 숨기지 않고 완료 화면에 함께 보여 준다
     let warnings = warnings.into_inner().unwrap_or_default();
@@ -796,12 +803,28 @@ where
             .await
             .map_err(|e| ("download_failed", format!("Failed to download {}: {}", key, e)))?;
         let probe = temp_dir.join(format!(".check-{}", i));
-        let checked = saba_chan_updater_lib::extract_zip(&zip, &probe, |_| Ok(()));
+        let checked = if is_zip(&zip) { saba_chan_updater_lib::extract_zip(&zip, &probe, |_| Ok(())).map(|_| ()) } else { Ok(()) };
         let _ = std::fs::remove_dir_all(&probe);
         checked.map_err(|e| ("extract_failed", format!("Failed to extract {}: {}", key, e)))?;
         zips.push(zip);
     }
     Ok(zips)
+}
+
+fn is_zip(path: &Path) -> bool {
+    path.extension().is_some_and(|e| e.eq_ignore_ascii_case("zip"))
+}
+
+/// 받은 컴포넌트를 둔다: zip은 풀고, zip이 아닌 것은 Windows 릴리즈의 설치기(`saba-chan-installer.exe` 그대로)라 그 이름으로 복사한다
+fn place_component(file: &Path, target_dir: &Path) -> anyhow::Result<()> {
+    if is_zip(file) {
+        return extract_zip(file, target_dir);
+    }
+    std::fs::create_dir_all(target_dir)?;
+    let target = target_dir.join(saba_chan_updater_lib::INSTALLER_EXE);
+    saba_chan_updater_lib::move_aside_binary(&target)?;
+    std::fs::copy(file, &target)?;
+    Ok(())
 }
 
 fn extract_zip(zip_path: &Path, target_dir: &Path) -> anyhow::Result<()> {

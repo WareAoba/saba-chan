@@ -3,19 +3,27 @@ name = "saba-chan-installer"
 version = "0.1.12-beta.1"
 edition = "2021"
 authors = ["WareAoba"]
-description = "Standalone installer/uninstaller GUI for Saba-chan (Tauri)"
+description = "Saba-chan installer, uninstaller and update applier (Tauri)"
 
 [lib]
 name = "saba_chan_installer_app"
 crate-type = ["lib", "cdylib", "staticlib"]
 
+# `window`(기본)를 빼고 빌드하면 창 없이 업데이트 적용(`--apply --headless`)과 명령창 제거(`--uninstall --silent`)만 하는
+# 설치기가 된다: 화면 없는 리눅스 서버에 GTK·WebKit 없이 들어간다 (`cargo build -p saba-chan-installer --no-default-features`)
+[features]
+default = ["window"]
+window = ["dep:tauri", "dep:tauri-plugin-shell", "dep:tauri-plugin-dialog", "dep:tauri-build"]
+# 개발용: 모의 릴레이의 고정 키를 믿는다 (scripts/mock-release-server.js). 릴리즈 빌드에는 켜지 않는다
+mock-relay = ["saba-chan-installer-core/mock-relay"]
+
 [build-dependencies]
-tauri-build = { version = "2", features = [] }
+tauri-build = { version = "2", features = [], optional = true }
 
 [dependencies]
-tauri = { version = "2", features = [] }
-tauri-plugin-shell = "2"
-tauri-plugin-dialog = "2"
+tauri = { version = "2", features = [], optional = true }
+tauri-plugin-shell = { version = "2", optional = true }
+tauri-plugin-dialog = { version = "2", optional = true }
 serde_json = "1"
 tokio = { version = "1", features = ["full"] }
 tracing = "0.1"

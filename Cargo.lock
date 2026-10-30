@@ -4486,25 +4486,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "saba-chan-updater"
-version = "0.1.12-beta.1"
-dependencies = [
- "anyhow",
- "saba-chan-updater-lib",
- "serde",
- "serde_json",
- "sys-locale",
- "tauri",
- "tauri-build",
- "tauri-plugin-shell",
- "tokio",
- "toml 0.9.12+spec-1.1.0",
- "tracing",
- "tracing-subscriber",
- "windows-sys 0.59.0",
-]
-
-[[package]]
 name = "saba-chan-updater-lib"
 version = "0.1.12-beta.1"
 dependencies = [

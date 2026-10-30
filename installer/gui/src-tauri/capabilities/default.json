@@ -1,6 +1,6 @@
 {
   "identifier": "default",
-  "description": "Default capability for the installer window",
+  "description": "Default capability for the installer, uninstaller and update windows",
   "windows": ["*"],
   "permissions": [
     "core:default",

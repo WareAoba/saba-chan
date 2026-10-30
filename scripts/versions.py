@@ -459,18 +459,22 @@ def cmd_signing(data: dict, args: argparse.Namespace) -> int:
     return 0
 
 
+def asset_entries(data: dict, platform: str):
+    """이 플랫폼에서 찾을 (manifest 키, 컴포넌트, asset 이름). `{platform}`이 든 asset은 모든 플랫폼에서, 없는 asset은
+    `platforms`(없으면 모든 플랫폼)에 들 때만 찾는다. `profile_assets`는 구성마다 빌드한 같은 컴포넌트를 `<키>.<구성>`으로 찾는다"""
+    for key, comp in data["components"].items():
+        if "asset" in comp and ("{platform}" in comp["asset"] or platform in comp.get("platforms", [platform])):
+            yield key, comp, comp["asset"].format(platform=platform)
+        for profile, asset in comp.get("profile_assets", {}).items():
+            yield f"{key}.{profile}", comp, asset.format(platform=platform)
+
+
 def platform_components(data: dict, args: argparse.Namespace, assets: Path, platform: str, packaged: dict) -> dict:
-    """이 플랫폼의 앱 컴포넌트. `{platform}`이 든 asset은 그 플랫폼 파일이 있을 때만, 없는 asset은
-    `platforms`(없으면 모든 플랫폼)에 들 때만 싣는다"""
+    """이 플랫폼의 앱 컴포넌트 (`asset_entries`). 파일이 있는 것만 싣는다"""
     base = args.base_url.rstrip("/")
     release = data["release"]["version"]
     components = {}
-    for key, comp in data["components"].items():
-        if "asset" not in comp:
-            continue
-        if "{platform}" not in comp["asset"] and platform not in comp.get("platforms", [platform]):
-            continue
-        name = comp["asset"].format(platform=platform)
+    for key, comp, name in asset_entries(data, platform):
         path = assets / name
         if not path.is_file():
             print(f"skip {key} ({platform}): {path} not found", file=sys.stderr)

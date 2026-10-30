@@ -1,11 +1,10 @@
-//! Saba-chan Updater — 업데이트 적용 전용 Tauri 앱
+//! 업데이트 적용 (`--apply`)
 //!
 //! 데몬이 다운로드해둔 업데이트 파일을 적용하고 GUI를 재실행합니다.
-//! CLI 모드, 독립 GUI 모드 없이 **apply 전용**으로 설계되었습니다.
 //!
 //! ## 실행
 //! ```text
-//! saba-chan-updater --apply [--wait-pid <pid>] --launch-token <t> [--headless] [--relaunch <exe> [extra...]]
+//! saba-chan-installer --apply [--wait-pid <pid>] --launch-token <t> [--headless] [--relaunch <exe> [extra...]]
 //! ```
 //!
 //! `--headless`(헤드리스 설치에서 데몬이 붙인다)면 창을 띄우지 않고 바로 적용한 뒤 `--relaunch`만 다시 띄운다.
@@ -14,6 +13,7 @@
 //! 보통 데몬이 띄운다(`POST /api/updates/launch-updater`, U7). `--wait-pid`는 데몬 PID로,
 //! 데몬이 끝날 때까지(최대 30초) 기다린 뒤 적용한다. 결과는 성공·실패 모두
 //! 완료 마커(`update-complete.json`)에 남고, 다음 데몬이 `/api/updates/last-result`로 보여준다.
+//! 0.1.12 전에는 이 일을 따로 있던 `saba-chan-updater`가 했다. 적용하고 나면 남은 그 파일을 걷는다
 //!
 //! ## 데이터 소스
 //! - `%APPDATA%/saba-chan/updates/apply-targets.json` — 적용 대상 컴포넌트
@@ -30,12 +30,10 @@ use std::path::{Path, PathBuf};
 #[cfg(feature = "window")]
 use std::sync::Arc;
 #[cfg(feature = "window")]
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter};
 #[cfg(feature = "window")]
 use tokio::sync::RwLock;
 use saba_chan_updater_lib::constants;
-
-pub mod config;
 
 // ═══════════════════════════════════════════════════════
 // 타입
@@ -89,6 +87,7 @@ async fn start_apply(
             Err(msg)
         }
         Ok((applied, failed)) => {
+            saba_chan_updater_lib::retire_legacy_updater();
             // GUI 재실행 → 업데이터 종료 (하나라도 실패했으면 완료 알림 없이 띄우고 오류 화면을 남긴다)
             relaunch(&app, &apply_config, failed.is_empty());
             Ok(applied)
@@ -116,23 +115,6 @@ fn relaunch(app: &AppHandle, apply_config: &ApplyConfig, applied: bool) {
             app_handle.exit(0);
         }
     });
-}
-
-#[cfg(feature = "window")]
-/// 언어 설정 조회 — settings.json → 시스템 로케일 → "en"
-#[tauri::command]
-async fn get_preferred_language() -> Result<String, String> {
-    if let Some(lang) = load_setting("language") {
-        if let Some(normalized) = normalize_tag(&lang) {
-            return Ok(normalized);
-        }
-    }
-    if let Some(locale) = sys_locale::get_locale() {
-        if let Some(normalized) = normalize_tag(&locale) {
-            return Ok(normalized);
-        }
-    }
-    Ok("en".to_string())
 }
 
 #[cfg(feature = "window")]
@@ -192,12 +174,6 @@ fn load_setting(key: &str) -> Option<String> {
         .get(key)
         .and_then(|v| v.as_str())
         .map(|s| s.to_string())
-}
-
-#[cfg(feature = "window")]
-fn normalize_tag(input: &str) -> Option<String> {
-    if input.trim().is_empty() { return None; }
-    Some(constants::resolve_locale(input))
 }
 
 /// install_root를 exe 자신의 경로에서 추론
@@ -309,20 +285,8 @@ fn spawn_detached(cmd: &str, extra_args: &[String], after_update: bool) -> Resul
 // 엔트리
 // ═══════════════════════════════════════════════════════
 
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
-pub fn run() {
-    let args: Vec<String> = std::env::args().collect();
-
-    // --apply 필수 — 이 바이너리는 apply 전용
-    if !args.iter().any(|a| a == "--apply") {
-        eprintln!("사바쨩 업데이터 — 업데이트 적용 전용");
-        eprintln!();
-        eprintln!("사용법: saba-chan-updater --apply [--headless] [--relaunch <exe> [extra...]]");
-        eprintln!();
-        eprintln!("이 프로그램은 메인 GUI에서 자동으로 실행됩니다.");
-        eprintln!("직접 실행할 필요가 없습니다.");
-        std::process::exit(1);
-    }
+/// `--apply ...`로 띄운 실행. 창 없이 적용했으면 그 종료 코드로 끝난다
+pub(crate) fn run(args: &[String]) {
 
     tracing_subscriber::fmt()
         .with_writer({
@@ -345,7 +309,7 @@ pub fn run() {
         .init();
 
     // 인자 파싱: --apply [--relaunch <exe> [extra...]]
-    let apply_pos = args.iter().position(|a| a == "--apply").unwrap();
+    let apply_pos = args.iter().position(|a| a == "--apply").unwrap_or(0);
     let after_apply = &args[apply_pos + 1..];
 
     let relaunch_pos = after_apply.iter().position(|a| a == "--relaunch");
@@ -410,7 +374,7 @@ pub fn run() {
         || after_apply.iter().take(relaunch_pos.unwrap_or(after_apply.len())).any(|a| a == "--headless");
 
     // install_root: exe 위치에서 자동 추론
-    let mut cfg = config::load_config_for_gui();
+    let mut cfg = saba_chan_updater_lib::UpdateConfig::default();
     if let Some(root) = resolve_install_root_from_exe() {
         let root_str = root.to_string_lossy().to_string();
         tracing::info!("[Apply] Install root (from exe): {}", root_str);
@@ -433,57 +397,47 @@ pub fn run() {
             .manage(manager)
             .manage(apply_config)
             .setup(|app| {
-                if let Some(win) = app.get_webview_window("main") {
-                    // 작업 표시줄·제목 표시줄 아이콘을 창 DPI에 맞는 크기로. 배율이 바뀌면 다시 건다
-                    #[cfg(windows)]
-                    {
-                        if let Ok(hwnd) = win.hwnd() {
-                            saba_chan_updater_lib::window_icon::apply_exe_icon(hwnd.0 as isize);
-                        }
-                        let w = win.clone();
-                        win.on_window_event(move |event| {
-                            if let (tauri::WindowEvent::ScaleFactorChanged { .. }, Ok(hwnd)) = (event, w.hwnd()) {
-                                saba_chan_updater_lib::window_icon::apply_exe_icon(hwnd.0 as isize);
-                            }
-                        });
-                    }
-                    // 사용자 언어에 맞는 타이틀
-                    let title = match load_setting("language").as_deref() {
-                        Some("ko") => "사바쨩 — 업데이트중!",
-                        Some("ja") => "Saba-chan — 更新中...",
-                        Some("zh-CN") | Some("zh-TW") => "Saba-chan — 更新中...",
-                        Some("es") => "Saba-chan — Actualizando...",
-                        Some("pt-BR") => "Saba-chan — Atualizando...",
-                        Some("ru") => "Saba-chan — Обновление...",
-                        Some("de") => "Saba-chan — Aktualisierung...",
-                        Some("fr") => "Saba-chan — Mise à jour...",
-                        _ => "Saba-chan — Updating...",
-                    };
-                    win.set_title(title).ok();
-                    // JS의 appWindow.show()가 블로킹되는 문제를 회피:
-                    // Rust setup에서 직접 윈도우를 표시하고 포커스 강제 획득
-                    win.show().ok();
-                    win.set_always_on_top(true).ok();
-                    win.set_focus().ok();
-                    win.request_user_attention(Some(tauri::UserAttentionType::Critical)).ok();
-                    // always-on-top 해제는 별도 스레드에서 딜레이 후 수행
-                    let win_clone = win.clone();
-                    std::thread::spawn(move || {
-                        std::thread::sleep(std::time::Duration::from_millis(800));
-                        win_clone.set_always_on_top(false).ok();
-                    });
-                }
+                let win = crate::main_window(app.handle(), crate::Page::Update, update_title(load_setting("language").as_deref()))?;
+                // JS의 appWindow.show()가 블로킹되는 문제를 회피:
+                // Rust setup에서 직접 윈도우를 표시하고 포커스 강제 획득
+                win.show().ok();
+                win.set_always_on_top(true).ok();
+                win.set_focus().ok();
+                win.request_user_attention(Some(tauri::UserAttentionType::Critical)).ok();
+                // always-on-top 해제는 별도 스레드에서 딜레이 후 수행
+                let win_clone = win.clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_millis(800));
+                    win_clone.set_always_on_top(false).ok();
+                });
                 Ok(())
             })
             .invoke_handler(tauri::generate_handler![
                 get_apply_mode,
                 start_apply,
-                get_preferred_language,
+                crate::get_preferred_language,
                 get_theme,
                 check_after_update,
             ])
             .run(tauri::generate_context!())
             .expect("error while running tauri application");
+    }
+}
+
+
+#[cfg(feature = "window")]
+/// 사용자 언어에 맞는 업데이트 창 제목
+fn update_title(language: Option<&str>) -> &'static str {
+    match language {
+        Some("ko") => "사바쨩 — 업데이트중!",
+        Some("ja") => "Saba-chan — 更新中...",
+        Some("zh-CN") | Some("zh-TW") => "Saba-chan — 更新中...",
+        Some("es") => "Saba-chan — Actualizando...",
+        Some("pt-BR") => "Saba-chan — Atualizando...",
+        Some("ru") => "Saba-chan — Обновление...",
+        Some("de") => "Saba-chan — Aktualisierung...",
+        Some("fr") => "Saba-chan — Mise à jour...",
+        _ => "Saba-chan — Updating...",
     }
 }
 
@@ -500,6 +454,9 @@ fn run_headless(mut manager: UpdateManager, relaunch_exe: Option<String>, relaun
     rt.block_on(async {
         let result = manager.apply_staged(|p| tracing::info!("[Apply] {} {}% {}", p.step, p.percent, p.message)).await;
         let applied = matches!(&result, Ok((_, failed)) if failed.is_empty());
+        if result.is_ok() {
+            saba_chan_updater_lib::retire_legacy_updater();
+        }
         // 다시 띄울 것은 데몬이 넘긴 것뿐이다 (헤드리스에는 GUI가 없다)
         if relaunch_exe.is_none() {
             tracing::warn!("[Apply] --headless without --relaunch: nothing is restarted");

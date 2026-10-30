@@ -1464,3 +1464,29 @@ async fn a_gui_update_inside_an_app_bundle_moves_the_bundle_files_into_place() {
     assert!(files.iter().all(|f| f.exists()), "recorded files are where they ended up: {files:?}");
     assert!(files.contains(&contents.join(PLIST_FILE)));
 }
+
+/// 설치기가 업데이트를 적용하게 된 뒤(0.1.12) 설치 폴더에 남은 옛 업데이터와 그 기록을 걷는다.
+/// 설치기가 없으면 옛 업데이터가 유일한 적용 프로그램이라 남긴다
+#[test]
+fn the_retired_updater_is_removed_once_the_installer_is_there() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join("install");
+    std::fs::create_dir_all(&root).unwrap();
+    let legacy = root.join(crate::LEGACY_UPDATER_EXE);
+    std::fs::write(&legacy, b"old updater").unwrap();
+    let versions = tmp.path().join("installed-manifest.json");
+    std::fs::write(&versions, r#"{"saba-core":"0.1.11","updater":"0.1.11"}"#).unwrap();
+    let records = tmp.path().join("installed-files.json");
+    std::fs::write(&records, r#"{"updater":{"/x/saba-chan-updater":"ab"},"cli":{}}"#).unwrap();
+
+    crate::retire_legacy_updater_at(&root, &versions, &records);
+    assert!(legacy.exists(), "without the installer the old updater is the only one");
+
+    std::fs::write(root.join(crate::INSTALLER_EXE), b"installer").unwrap();
+    crate::retire_legacy_updater_at(&root, &versions, &records);
+    assert!(!legacy.exists());
+    let left: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&versions).unwrap()).unwrap();
+    assert_eq!(left, serde_json::json!({"saba-core": "0.1.11"}));
+    let left: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&records).unwrap()).unwrap();
+    assert!(left.get("updater").is_none() && left.get("cli").is_some(), "{left}");
+}

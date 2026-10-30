@@ -13,6 +13,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+use crate::profile::Profile;
 use crate::signature::{self, SignedManifest};
 use crate::version::SemVer;
 
@@ -124,6 +125,27 @@ impl ReleaseManifest {
         }
         self.platforms.clear();
         Ok(self)
+    }
+
+    /// 이 설치 구성의 manifest: 구성마다 따로 빌드한 컴포넌트(`<키>.<구성>`, 예: GTK·WebKit 없는 리눅스 서버가 받는
+    /// 창 없는 `installer.headless`)는 이 구성의 것이 `<키>`를 대신하고, 다른 구성의 것은 빠진다.
+    /// 모듈·익스텐션 이름의 `.`은 구성 표시가 아니다. 0.1.11까지의 클라이언트는 이 키를 모르는 키로 건너뛴다
+    pub fn for_profile(mut self, profile: Profile) -> Self {
+        let variants: Vec<String> = self
+            .components
+            .keys()
+            .filter(|k| !k.starts_with(MODULE_PREFIX) && !k.starts_with(EXTENSION_PREFIX) && k.contains('.'))
+            .cloned()
+            .collect();
+        for key in variants {
+            let Some(entry) = self.components.remove(&key) else { continue };
+            if let Some((base, p)) = key.split_once('.') {
+                if p == profile.as_str() {
+                    self.components.insert(base.to_string(), entry);
+                }
+            }
+        }
+        self
     }
 
     /// 키가 `prefix`로 시작하는 컴포넌트를 `(접두사 뗀 이름, 항목)`으로, 이름 순으로
@@ -607,6 +629,33 @@ mod tests {
         let windows = m.clone().for_platform("windows-x64").unwrap();
         assert_eq!(windows.components["saba-core"].filename, "saba-core.zip");
         assert!(matches!(m.for_platform("macos-arm64"), Err(RelayError::WrongTarget { .. })));
+    }
+
+    /// 구성마다 따로 빌드한 같은 컴포넌트(`<키>.<구성>`, 리눅스 서버용 창 없는 설치기)는 이 구성의 것만 `<키>`로 남는다.
+    /// 다른 구성의 몫은 빠지고, 모듈·익스텐션 이름의 `.`은 구성 표시가 아니다
+    #[test]
+    fn a_profile_build_stands_in_for_its_component() {
+        let entry = |asset: &str| json!({
+            "version": "1.0.0",
+            "asset": asset,
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "url": format!("https://cdn.example/{asset}")
+        });
+        let mut v = manifest("1.0.0", "linux-x64");
+        v["components"]["installer.desktop"] = entry("saba-chan-installer-desktop-linux-x64.zip");
+        v["components"]["installer.headless"] = entry("saba-chan-installer-headless-linux-x64.zip");
+        v["components"]["module-a.b"] = entry("module-a.b.zip");
+        let m: ReleaseManifest = serde_json::from_value(v).unwrap();
+
+        let headless = m.clone().for_profile(Profile::Headless);
+        assert_eq!(headless.components["installer"].filename, "saba-chan-installer-headless-linux-x64.zip");
+        assert!(!headless.components.keys().any(|k| k.starts_with("installer.")));
+        assert!(headless.components.contains_key("module-a.b"));
+        assert!(headless.components.contains_key("saba-core"));
+
+        let desktop = m.for_profile(Profile::Desktop);
+        assert_eq!(desktop.components["installer"].filename, "saba-chan-installer-desktop-linux-x64.zip");
+        assert_eq!(desktop.components.len(), 3);
     }
 
     #[test]

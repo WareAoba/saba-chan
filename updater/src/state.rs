@@ -186,7 +186,7 @@ impl UpdateManager {
         Self::save_installed_manifest_at(&Self::installed_manifest_path(), versions)
     }
 
-    fn save_installed_manifest_at(path: &Path, versions: &HashMap<String, String>) -> Result<()> {
+    pub(crate) fn save_installed_manifest_at(path: &Path, versions: &HashMap<String, String>) -> Result<()> {
         let json = serde_json::to_string_pretty(versions)?;
         crate::write_atomic(path, json.as_bytes())?;
         tracing::info!("[UpdateManager] Saved installed manifest: {} components -> {:?}", versions.len(), path);

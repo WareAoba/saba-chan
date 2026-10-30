@@ -9,7 +9,7 @@ license = "MIT"
 keywords = ["game-server", "palworld", "minecraft", "management"]
 
 [workspace]
-members = [".", "atomic-file", "runner", "updater", "updater/gui/src-tauri", "installer/gui/src-tauri", "installer/core", "saba-chan-cli", "saba-chan-gui/src-tauri"]
+members = [".", "atomic-file", "runner", "updater", "installer/gui/src-tauri", "installer/core", "saba-chan-cli", "saba-chan-gui/src-tauri"]
 
 [[bin]]
 name = "saba-core"

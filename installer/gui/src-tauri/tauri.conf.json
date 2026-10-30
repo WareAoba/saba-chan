@@ -7,18 +7,7 @@
   },
   "app": {
     "withGlobalTauri": true,
-    "windows": [
-      {
-        "title": "Saba-chan Installer",
-        "width": 750,
-        "height": 520,
-        "resizable": false,
-        "decorations": false,
-        "center": true,
-        "visible": false,
-        "backgroundColor": "#f5f6fa"
-      }
-    ],
+    "windows": [],
     "security": {
       "csp": null
     }

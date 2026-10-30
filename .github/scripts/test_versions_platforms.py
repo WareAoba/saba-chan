@@ -26,7 +26,9 @@ class PlatformManifest(unittest.TestCase):
             "components": {
                 "saba-core": {"version": "0.1.9", "asset": "saba-core-{platform}.zip"},
                 "gui": {"version": "0.1.9", "asset": "saba-chan-gui-{platform}.zip"},
-                "installer": {"version": "0.1.9", "asset": "saba-chan-installer.exe", "platforms": ["windows-x64"]},
+                "installer": {"version": "0.1.9", "asset": "saba-chan-installer.exe", "platforms": ["windows-x64"],
+                              "profile_assets": {"desktop": "saba-chan-installer-desktop-{platform}.zip",
+                                                 "headless": "saba-chan-installer-headless-{platform}.zip"}},
                 "locales": {"version": "0.1.9", "asset": "locales.zip", "install_dir": "locales"},
             },
         }
@@ -39,6 +41,8 @@ class PlatformManifest(unittest.TestCase):
         with zipfile.ZipFile(d / "locales.zip", "w") as zf:
             zf.writestr("ko/gui.json", "{}")
         (d / "saba-chan-installer.exe").write_bytes(fake_exe("0.1.9"))
+        with zipfile.ZipFile(d / "saba-chan-installer-headless-linux-x64.zip", "w") as zf:
+            zf.writestr("saba-chan-installer", b"\x7fELF")
         out = d / "out.json"
         args = versions.argparse.Namespace(
             assets=str(d), base_url="https://r2.example", platform="windows-x64", also_platform=["linux-x64"],
@@ -52,8 +56,11 @@ class PlatformManifest(unittest.TestCase):
         self.assertEqual(m["platform"], "windows-x64")
         self.assertEqual(set(m["components"]), {"saba-core", "gui", "installer", "locales"})
         linux = m["platforms"]["linux-x64"]["components"]
-        # 리눅스 파일이 없는 GUI와 Windows 전용 설치기는 빠지고, 플랫폼과 무관한 locales는 같은 파일이다
-        self.assertEqual(set(linux), {"saba-core", "locales"})
+        # 리눅스 파일이 없는 GUI와 Windows 전용 설치기는 빠지고, 플랫폼과 무관한 locales는 같은 파일이다.
+        # 설치기는 구성마다 빌드한 파일이 있는 것만 `installer.<구성>`으로 싣는다
+        self.assertEqual(set(linux), {"saba-core", "locales", "installer.headless"})
+        self.assertEqual(linux["installer.headless"]["asset"], "saba-chan-installer-headless-linux-x64.zip")
+        self.assertEqual(linux["installer.headless"]["version"], "0.1.9")
         self.assertEqual(linux["saba-core"]["asset"], "saba-core-linux-x64.zip")
         self.assertEqual(linux["locales"], m["components"]["locales"])
 

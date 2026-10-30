@@ -7,8 +7,7 @@ Saba-chan Windows Release Build (Parallel)
   saba-core.exe              - Rust IPC 데몬
   saba-chan-cli.exe           - Rust TUI 클라이언트
   saba-chan-gui.exe           - GUI (Tauri)
-  saba-chan-updater.exe       - 업데이터 (GUI + CLI 모드)
-  saba-chan-installer.exe     - 인스톨러/언인스톨러 (Tauri)
+  saba-chan-installer.exe     - 설치·제거·업데이트 적용 (Tauri)
   locales/                   - 다국어 리소스
 
 .EXAMPLE
@@ -140,7 +139,6 @@ $jobRust = Start-Job -Name "Rust" -ScriptBlock {
         @{ Name = "saba-core.exe";       Path = (Join-Path $root "target\release\saba-core.exe") },
         @{ Name = "saba-runner.exe";     Path = (Join-Path $root "target\release\saba-runner.exe") },
         @{ Name = "saba-chan-cli.exe";      Path = (Join-Path $root "target\release\saba-chan-cli.exe") },
-        @{ Name = "saba-chan-updater.exe";  Path = (Join-Path $root "target\release\saba-chan-updater.exe") },
         @{ Name = "saba-chan-installer.exe"; Path = (Join-Path $root "target\release\saba-chan-installer.exe") },
         @{ Name = "saba-chan-gui.exe";      Path = (Join-Path $root "target\release\saba-chan-gui.exe") }
     )

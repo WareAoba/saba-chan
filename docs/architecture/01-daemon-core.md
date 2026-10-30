@@ -163,7 +163,7 @@ PC 주인이 디스코드에서 받은 일회용 링크로 브라우저(사바�
     .saba-state/<uuid>/managed.pid, run/ (데몬만 쓰는 서버 실행 기록), .saba-state/legacy-adopted (예전 배치를 옮겨 받은 표시, 02 PID 영속화)
 <exe_dir>/
   saba-chan-gui[.exe], saba-chan-cli[.exe]   부트 선택기가 스폰
-  saba-chan-updater[.exe]   /api/updates/launch-updater가 스폰
+  saba-chan-installer[.exe] /api/updates/launch-updater가 `--apply`로 스폰 (0.1.12 전 설치는 남은 saba-chan-updater[.exe])
 ```
 
 - 모듈·익스텐션 폴더(`updater/src/component_dirs.rs` `resolve`)는 `SABA_MODULES_PATH`/`SABA_EXTENSIONS_DIR` → `config.json`의 `paths.modules`/`paths.extensions`(절대 경로만, 아니면 기본값) → `<data_dir>/modules`·`<data_dir>/extensions` 순이다. 기본 폴더 이름과 기본 설치 폴더(`default_install_dir`: Windows `%ProgramW6432%`(없으면 `%ProgramFiles%`, `C:\Program Files`)`\Saba-chan`, Unix `~/.local/share/saba-chan`)는 `constants.rs`에 한 번만 둔다.

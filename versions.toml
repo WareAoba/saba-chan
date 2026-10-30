@@ -8,7 +8,7 @@
 #                                       # 릴레이 POST /admin/releases 본문을 만든다
 #
 # 컴포넌트 키는 업데이터·릴레이 manifest 키와 같다
-# (saba-core, cli, gui, updater, installer, locales, module-<이름>, ext-<이름>).
+# (saba-core, cli, gui, installer, locales, module-<이름>, ext-<이름>).
 # 새 컴포넌트는 [components.<키>] 하나만 추가하면 된다. files 가 없으면 버전만 기록한다.
 # asset 은 릴리즈 zip 이름({platform} 치환), install_dir 은 설치 루트 기준 폴더.
 # exes 는 이 컴포넌트로 빌드·서명하는 Windows 실행 파일 (build-windows.yml, versions.py signing).
@@ -50,29 +50,24 @@ files = [
     "saba-chan-gui/src-tauri/tauri.conf.json",
 ]
 
-[components.updater]
-version = "0.1.12-beta.1"
-exes = ["saba-chan-updater.exe"]
-asset = "saba-chan-updater-{platform}.zip"
-install_dir = "."
-required = true
-files = [
-    "updater/Cargo.toml",
-    "updater/gui/src-tauri/Cargo.toml",
-    "updater/gui/src-tauri/tauri.conf.json",
-]
-
 [components.installer]
+# 설치·제거·업데이트 적용을 모두 하는 한 프로그램 (0.1.12 전에는 업데이터 `saba-chan-updater`가 따로 있었다)
 version = "0.1.12-beta.1"
 exes = ["saba-chan-installer.exe"]
 asset = "saba-chan-installer.exe"
 install_dir = "."
+# 업데이트를 적용하고 앱을 지운다: 빠지면 설치를 고칠 수 없다
+required = true
 # asset 이름에 {platform}이 없는 것 중 이 플랫폼에만 싣는 것 (없으면 모든 플랫폼의 manifest에 싣는다)
 platforms = ["windows-x64"]
+# 다른 플랫폼은 구성마다 따로 빌드한 같은 프로그램을 `installer.<구성>` 키로 싣는다 (그 파일이 있을 때만).
+# 클라이언트가 자기 구성의 것을 `installer`로 읽는다 (화면 없는 리눅스 서버에는 GTK·WebKit이 없어 창 빌드가 뜨지 않는다)
+profile_assets = { desktop = "saba-chan-installer-desktop-{platform}.zip", headless = "saba-chan-installer-headless-{platform}.zip" }
 files = [
     "installer/gui/src-tauri/Cargo.toml",
     "installer/core/Cargo.toml",
     "installer/gui/src-tauri/tauri.conf.json",
+    "updater/Cargo.toml",
 ]
 
 [components.locales]

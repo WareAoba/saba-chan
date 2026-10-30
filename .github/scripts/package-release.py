@@ -73,13 +73,6 @@ COMPONENTS = [
         "exe_name": "saba-chan-gui.exe",
     },
     {
-        "key": "updater",
-        "raw_patterns": [r"saba-chan-updater\.exe$", r"saba-chan-updater.*\.zip$"],
-        "output_name": "saba-chan-updater-windows-x64.zip",
-        "install_dir": ".",
-        "exe_name": "saba-chan-updater.exe",
-    },
-    {
         "key": "locales",
         "raw_patterns": [],  # 소스에서 직접 생성
         "output_name": "locales.zip",
@@ -89,7 +82,8 @@ COMPONENTS = [
     {
         "key": "installer",
         "raw_patterns": [r"saba-chan-installer\.exe$", r"saba-chan-installer.*\.zip$"],
-        # zip이 아닌 exe 그대로 싣는다: 소개 페이지 다운로드가 이 에셋을 가리키고, 업데이터는 설치 폴더의 제거기 사본을 이것으로 바꾼다
+        # zip이 아닌 exe 그대로 싣는다: 소개 페이지 다운로드가 이 에셋을 가리키고, 업데이트는 설치 폴더의 사본을 이것으로 바꾼다.
+        # 설치·제거·업데이트 적용을 모두 한다 (0.1.12 전의 saba-chan-updater는 더 싣지 않는다)
         "output_name": "saba-chan-installer.exe",
         "install_dir": ".",
         "exe_name": "saba-chan-installer.exe",
@@ -162,7 +156,7 @@ def create_exe_zip(exe_path: Path, output_zip: Path, inner_name: str,
 
 
 # 다른 컴포넌트가 따로 배포하는 실행 파일: GUI zip 등에 섞여 있으면 뺀다 (GUI만 업데이트해도 데몬이 옛 판으로 덮이지 않게)
-OTHER_COMPONENT_EXES = {"saba-core.exe", "saba-runner.exe", "saba-chan-updater.exe", "saba-chan-cli.exe"}
+OTHER_COMPONENT_EXES = {"saba-core.exe", "saba-runner.exe", "saba-chan-updater.exe", "saba-chan-installer.exe", "saba-chan-cli.exe"}
 
 
 def repack_zip(raw_file: Path, output_zip: Path, exe_name: str | None,
