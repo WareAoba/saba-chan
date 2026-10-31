@@ -343,6 +343,8 @@ Tauri 커맨드(`installer/gui/src-tauri/src/lib.rs`): `get_installer_state`, `s
 | POST | `/api/privacy/erasures/:id/preview` | —(20/min) | `{secret}` | `{username, pcs, servers}` / 404 `NOT_FOUND` / 410 `EXPIRED`·`DONE`. 웹사이트가 동의 화면에 보인다 | `privacy.ts` |
 | POST | `/api/privacy/erasures/:id/confirm` | —(10/min) | `{secret}` | `{ok:true}` / 404 / 410. 그 디스코드 계정의 PC(`removeOwnHost`, 데몬은 `TOKEN_REPLACED`를 받는다)·남은 노드(`unbindGuild`)·권한(0 이상)·명령·페어링 코드·감사 기록·챗봇 도구 기록과 그 사람이 든 채널 기억을 지운다. 운영자 차단과 서버 안 금지(-1)는 남기고, 그것이 가리키는 사용자 행은 이름만 지운다. 지운 뒤에 끝난 것으로 표시하고 삭제표의 디스코드 ID도 지운다(`services/privacyErasure.ts`) | `privacy.ts` |
 | POST | `/api/privacy/erasures/:id/status` | —(60/min) | `{pollSecret}` | `{status: pending\|done\|expired}` / 404. 앱이 끝났는지 묻는다(지운 뒤에는 노드 토큰이 없다) | `privacy.ts` |
+| POST | `/api/registrations/:id/preview` | —(20/min) | `{secret}` | `{username, guildName, registersGuild, kind}` / 404 `NOT_FOUND` / 410 `EXPIRED`·`DONE`. 처음 쓰는 사람의 등록표(10분, 한 번). 디스코드 답장의 등록하기 버튼이 웹사이트 `https://saba-chan.online[/<locale>]/welcome#<id>.<secret>`을 연다. `kind`: `link` 코드 없는 연결 · `code` 페어링 코드 연결 · `other` | `registration.ts` |
+| POST | `/api/registrations/:id/confirm` | —(10/min) | `{secret}` | `{ok:true, guildRegistered, kind}` / 404 / 410. `users.terms_version`·`terms_accepted_at`을 남기고, 길드에서 서버 관리 권한으로 쳤으면 그 길드를 PC 없는 서버로 등록한다(`ensureGuildNode`). 그다음 디스코드 원래 답장을 하려던 일로 고친다(릴레이 메모리, 다시 켜면 사라진다) | `registration.ts` |
 | PUT / DELETE | `/api/remote/endpoint` | 노드(PUT 10/min) | PUT `{address, port, certSha256}`(호스트 이름 또는 IP, 공인 주소가 없으면 `null`, 1~65535, 소문자 hex 64자) | 204. 이 PC의 직접 연결 주소와 TLS 인증서 지문. §4.4 (j) | `routes/remote.ts` |
 | GET (WS) | `/node/tunnel?to=<hostId>` · `?accept=<tunnelId>` | 노드 | 바이너리 프레임만 | 공인 주소 없는 PC 터널. `to`: 같은 주인의 원격 포트를 켠 PC 앞으로 연다(남의 PC·없는 PC 404, 원격 포트 꺼짐 409 `REMOTE_OFF`, 한도 429 `TOO_MANY_TUNNELS`). `accept`: 그 PC 앞으로 기다리는 터널만(그 밖 404). §4.4 (k) | `routes/remoteTunnel.ts` |
 | GET | `/api/remote/peers` | 노드(20/min) | — | `{peers:[{hostId, name, ownerName, status, endpoint:{address, port, certSha256}\|null}]}`. 같은 주인의 다른 PC(만든 순서). `ownerName`은 주인의 디스코드 표시 이름, 없으면 사용자명(앱이 `디스코드 이름(PC 이름)`으로 보인다) | `routes/remote.ts` |
@@ -365,11 +367,12 @@ Tauri 커맨드(`installer/gui/src-tauri/src/lib.rs`): `get_installer_state`, `s
 
 데몬이 명령을 넣는 HTTP 라우트는 없다. 큐 INSERT는 봇이 같은 프로세스에서 `services/commandSubmission.ts` `submitCommand`로 한다. 페어링 클레임도 봇의 `/사바쨩 연결`이 `services/pairing.ts` `claimPairingCode`를 직접 부른다.
 
-### 4.3 DB 스키마 (`relay-server/src/db/schema.ts`, migration 0000–0034)
+### 4.3 DB 스키마 (`relay-server/src/db/schema.ts`, migration 0000–0046)
 
 | 테이블 | 주요 컬럼 |
 |---|---|
-| `users` | `discord_id` PK, username, display_name, is_banned, created_at, last_seen |
+| `users` | `discord_id` PK, username, display_name, is_banned, created_at, last_seen, terms_version·terms_accepted_at(등록: 동의한 약관 버전과 시각. `TERMS_VERSION`보다 낮거나 없으면 등록하지 않은 계정, 0046) |
+| `registration_tickets` | id PK(nanoid21), secret_hash(SHA-256 hex), discord_id, username, guild_id·guild_name(길드에서 쳤을 때), manage_guild, kind(`link`·`code`·`other`), expires_at(+10분), used_at, created_at (0046). 개인정보 모두 지우기가 함께 지운다 |
 | `hosts` | `id` PK(nanoid12), `owner_discord_id` → users(고유하지 않다: 계정 하나에 PC 여러 대, 0028), name(64자, `/내사바쨩 내pc`로 바꾼다), `token_hash`(`sha256:<hex>`, 예전 행은 argon2id), status(online/offline), last_heartbeat, agent_version, `metadata` jsonb(heartbeat 캐시와 botConfig, 서버 목록과 `permissionsAt`은 빼고), `servers` jsonb(heartbeat 서버 목록, `{id, name, module, status, usage?, players?, startedAt?, statusLine?}`만. 0025. null이면 읽는 쪽이 `metadata.servers`를 쓴다, `catalog.ts` `hostMetadata`), timestamps |
 | `guild_hosts` | (`guild_id` → nodes cascade, `host_id` → hosts cascade) PK, created_at. 주인은 따로 적지 않고 `hosts.owner_discord_id`를 쓴다. 대표 PC 뒤에 붙은 PC(길드 하나에 여러 PC, 0029, §4.4 (i)) |
 | `remote_endpoints` | `host_id` PK → hosts cascade, address(NULL이면 공인 주소 없음, 0032), port, cert_sha256, updated_at. 원격 PC의 직접 연결 주소(0030, §4.4 (j)) |
@@ -454,6 +457,7 @@ Tauri 커맨드(`installer/gui/src-tauri/src/lib.rs`): `get_installer_state`, `s
 
 **(i) 길드 하나에 여러 PC** (원격 데몬 R2, `services/guildHosts.ts`, `bot/commands/guildRouting.ts`, 사용자 결정 2026-10-25): 한 디스코드 서버에 여러 사람의 PC(같은 사람의 집 PC와 원격 PC 포함)가 함께 붙는다. PC를 여러 사람이 함께 소유하지는 않는다.
 - PC 없는 서버(2026-10-31 사용자 결정): 디스코드 설정의 원본은 릴레이다. PC와 연결하지 않은 길드에서도 서버 주인이나 디스코드 "서버 관리" 권한이 있는 사람(요청한 사람의 권한을 본다, `commandAccess.ts` `mayManagePcLessGuild`)이 언어·배정(말하는·노래하는 사바쨩 채널만. 알림·게임 채팅·상황판은 PC가 보내는 것이라 `assign_needs_pc`)·큰 이모지·말하는 사바쨩 설정(토글·확인 단계·도구)·읽어주는 사바쨩 설정을 바꾼다. 처음 설정을 저장할 때 `host_id`·`owner_discord_id`가 NULL인 `nodes` 행을 만들고(`guildHosts.ts` `ensureGuildNode`, 설정하지 않은 서버는 저장하지 않는다) 데몬을 거치지 않고 바로 쓴다. 권한이 없으면 `pcless_not_manager`. 사바쨩 레벨(권한 사다리)은 없고 서버 명령도 없다. 데몬 경로(`/api/nodes/:g/*`)와 명령 큐에는 없는 노드(`NODE_NOT_FOUND`)다. 나중에 PC를 연결하면(코드든 코드 없는 연결이든) 그 행에 PC와 주인을 채워 대표로 만들고(`bindGuild`가 `created`) 설정은 이어진다. 데몬은 자기에게 없는 길드 설정을 릴레이에서 받아 간다(01 디스코드 설정 동기화).
+- 등록(2026-10-31 사용자 결정, `services/registration.ts`, `bot/commands/registration.ts` `passRegistration`): `/사바쨩 연결`(코드가 있든 없든), `/내사바쨩 웹`, PC 없는 서버의 설정 바꾸기는 등록한 계정만 한다. 등록하지 않았으면 등록표를 내고 웹사이트 링크로 답한다. 동의하기 전에는 PC를 연결하지도, 서버를 등록하지도 않는다. 동의하면 원래 답장을 고친다: 코드 없는 연결은 PC가 있으면 묶고 없으면 등록 완료, 코드 연결은 연결 확인 버튼, 그 밖은 다시 실행해 달라는 안내. 약관을 크게 바꾸면 `TERMS_VERSION`을 올려 다음에 다시 동의받는다. 노래 듣기·대화 같은 일반 멤버 사용에는 필요 없다.
 - 처음 연결한 PC가 대표(`nodes.host_id`)이고, 그 뒤에 연결한 PC는 `guild_hosts`에 붙는다. 길드 공통 설정(언어·접두사·잠자기·음악·챗봇·채널 배정)의 원본은 대표 PC 데몬이다. 붙은 PC는 그 길드의 설정·채널·디스코드 멤버를 읽기만 한다. 각 PC의 서버와 권한 사다리는 그 PC 주인의 것이고 판정은 그 PC 데몬이 한다(poll의 `ownerDiscordId`는 그 PC 주인). 릴레이의 미리 거르기(금지 멤버)는 대표 PC 사다리 캐시로 한다.
 - 서버 목록은 PC들의 카탈로그를 대표 먼저 합친다(`catalog.ts` `mergeCatalogs`, `loadCatalog`·길드 슬래시 맞추기·도움말·챗봇이 같은 목록을 쓴다). 서버마다 `hostId`가 붙고, 이름이 겹치면(대소문자 무시) 나중 PC의 서버 이름 뒤에 `-<PC 이름>`(공백·기호를 뺀 16자, 없으면 PC id 앞 6자)을 붙인다. 같은 서버 id를 뒤 PC가 또 내면 먼저 든 PC 것만 남는다. 꺼진 PC의 서버 상태는 `unknown`이다. `/사바쨩 상태`는 길드의 PC마다 한 덩어리로 보인다.
 - 명령은 `sendToDaemon` 한 곳에서 보낼 PC를 고른다: 문장 계획(`plan {text}`)은 첫 낱말의 서버가 있는 PC(서버 이름으로 불렀으면 첫 낱말을 서버 id로 바꾼다), 액션은 `instance`(계획이면 첫 단계의 `instance`)가 있는 PC, `run_plan`은 그 계획을 만든 PC(릴레이 메모리 10분)다. 서버를 가리키지 않는 길드 단위 명령(설정·권한·목록 등)은 대표 PC로 간다. PC가 하나인 길드는 payload를 바꾸지 않는다. 그래서 `목록`·`도움말`은 대표 PC의 서버만 답하고, 모듈 이름·별명으로 부르면 합친 목록에서 먼저 나오는 서버(대표 PC 쪽)로 간다. 한 PC가 돌려준 결과의 `planId`·`undoPlanId`(단계마다 포함)·`runId`도 그 PC로 기억한다(`rememberResultIds`).
