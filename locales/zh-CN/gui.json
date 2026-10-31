@@ -834,6 +834,8 @@
     "sleep_failed": "有 {{count}} 个服务器无法切换睡眠状态。",
     "add_server_title": "添加其他 Discord 服务器",
     "add_server_desc": "获取新代码并在其他 Discord 服务器中输入，即可将该服务器也连接到这台电脑。",
+    "new_guild_instances_title": "Open my servers in new Discord servers",
+    "new_guild_instances_desc": "Discord servers connected with a pairing code get every server on this PC right away. Turn off to pick the servers for each Discord server yourself. Discord servers connected with /saba connect and no code always start with none.",
     "connection_info": "连接信息",
     "host_id": "主机 ID",
     "relay_url": "中继服务器",

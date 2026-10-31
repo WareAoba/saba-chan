@@ -834,6 +834,8 @@
     "sleep_failed": "Не удалось изменить режим сна на серверах: {{count}}.",
     "add_server_title": "Добавить ещё сервер Discord",
     "add_server_desc": "Получите новый код и введите его на другом сервере Discord, чтобы подключить и его к этому ПК.",
+    "new_guild_instances_title": "Open my servers in new Discord servers",
+    "new_guild_instances_desc": "Discord servers connected with a pairing code get every server on this PC right away. Turn off to pick the servers for each Discord server yourself. Discord servers connected with /saba connect and no code always start with none.",
     "connection_info": "Сведения о подключении",
     "host_id": "ID хоста",
     "relay_url": "Сервер-ретранслятор",

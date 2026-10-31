@@ -1,12 +1,13 @@
 import clsx from 'clsx';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useDiscordStore } from '../../stores/useDiscordStore';
 import { useUIStore } from '../../stores/useUIStore';
 import { safeShowToast } from '../../utils/helpers';
 import { CliText } from '../CliLine';
 import { Icon } from '../Icon';
 import '../ui/SabaArt.css';
-import { SabaSpinner } from '../ui/SabaUI';
+import { SabaSpinner, SabaToggle } from '../ui/SabaUI';
 import { StatusChip } from '../ui/StatusChip';
 import { AgentLink, agentLinkAvailable } from './AgentLink';
 import { PrivacyErase, privacyEraseAvailable } from './PrivacyErase';
@@ -242,6 +243,7 @@ export function ConnectionView({
 }) {
     const { t } = useTranslation('gui');
     const [confirmDisconnect, setConfirmDisconnect] = useState(false);
+    const newGuildInstances = useDiscordStore((s) => s.discordNewGuildInstances);
     // SleepAllButton이 알려 주는 "모든 서버를 재웠는지"
     const [asleep, setAsleep] = useState(false);
 
@@ -413,6 +415,19 @@ export function ConnectionView({
                     <h2>{t('discord.add_server_title')}</h2>
                 </div>
                 <p className="dc-card-desc">{t('discord.add_server_desc')}</p>
+                <div className="cb-toggle-row">
+                    <span className="dc-list-text">
+                        <span className="dc-list-name">{t('discord.new_guild_instances_title')}</span>
+                        <span className="cb-hint">{t('discord.new_guild_instances_desc')}</span>
+                    </span>
+                    <SabaToggle
+                        checked={newGuildInstances !== 'manual'}
+                        aria-label={t('discord.new_guild_instances_title')}
+                        onChange={(on) =>
+                            useDiscordStore.getState().update({ discordNewGuildInstances: on ? 'auto' : 'manual' })
+                        }
+                    />
+                </div>
                 {pairing.active ? (
                     <PairingCard pairing={pairing} onCancel={onCancelPairing} />
                 ) : (

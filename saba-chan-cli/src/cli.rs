@@ -967,6 +967,13 @@ pub enum BotCmd {
         #[arg(long)]
         off: bool,
     },
+    /// New Discord servers connected with a pairing code: open every server on this PC (--auto) or none until you pick them (--manual). Servers connected with /saba connect and no code always start with none. No options: show
+    NewGuild {
+        #[arg(long, conflicts_with = "manual")]
+        auto: bool,
+        #[arg(long)]
+        manual: bool,
+    },
     /// How slash commands look on a Discord server. No options: show
     Slash {
         guild: Option<String>,

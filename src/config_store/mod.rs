@@ -231,6 +231,20 @@ pub struct BotConfig {
     pub cloud_members: HashMap<String, Value>,
     /// 디스코드 슬래시 명령에 모듈 명령의 번역한 이름·설명을 단다 (모듈 locales). 끄면 module.toml 이름 그대로
     pub translate_commands: bool,
+    /// 페어링 코드로 새로 묶인 디스코드 서버에 이 PC의 서버를 바로 열지(`auto`), 나중에 고를지(`manual`).
+    /// 코드 없이 `/사바쨩 연결`로 묶인 서버는 늘 나중에 고른다 (`relay_agent::close_linked_guild`)
+    pub new_guild_instances: NewGuildInstances,
+}
+
+/// 새로 묶인 디스코드 서버에 서버를 여는 방식 (`BotConfig::new_guild_instances`)
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum NewGuildInstances {
+    /// 모든 서버를 연다 (`allowedInstances`를 두지 않는다)
+    #[default]
+    Auto,
+    /// 아무 서버도 열지 않고 나중에 고른다 (`allowedInstances: []`)
+    Manual,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -256,6 +270,7 @@ impl Default for BotConfig {
             cloud_nodes: Vec::new(),
             cloud_members: HashMap::new(),
             translate_commands: true,
+            new_guild_instances: NewGuildInstances::Auto,
         }
     }
 }

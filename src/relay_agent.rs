@@ -36,7 +36,8 @@ const RETRY_MAX: Duration = Duration::from_secs(60);
 /// 하트비트 `metadata.features`: 릴레이가 기능마다 이 PC를 가르는 이름 (전역 최소 버전 `MIN_AGENT_VERSION`과 따로).
 /// 옛 PC와 다르게 다뤄야 하는 변화를 넣을 때만 이름을 더하고, 릴레이 하한이 그 기능을 넘으면 이름과 릴레이 분기를 함께 지운다.
 /// - `confirm_by_daemon`: 되묻기를 데몬이 계획마다 정한다 (`actions::needs_confirm`). 릴레이는 스스로 위험을 판정하지 않고 `needsConfirm`을 따른다
-const FEATURES: &[&str] = &["confirm_by_daemon"];
+/// - `linked_guilds`: 하트비트 응답의 `linkedGuilds`(새로 묶인 길드)로 그 길드에 열 서버를 정한다 (`close_linked_guild`)
+const FEATURES: &[&str] = &["confirm_by_daemon", "linked_guilds"];
 
 /// 알림 이벤트(I3): 처음 한 건이 오면 이만큼 모아서, 한 번에 이만큼까지 보낸다
 const EVENT_GATHER: Duration = Duration::from_secs(2);
@@ -534,7 +535,7 @@ impl Session {
         }
     }
 
-    /// 하트비트 한 번. 릴레이가 메타데이터 전체를 달라고 했으면(`needMetadata`) true
+    /// 하트비트 한 번. 릴레이가 메타데이터 전체를 달라고 했거나(`needMetadata`) 새로 묶인 길드에 열 서버를 정했으면 true
     async fn heartbeat_once(&self) -> bool {
         let sent = self.metadata_sent.lock().unwrap_or_else(|e| e.into_inner()).clone();
         let (metadata, hash, unchanged) = heartbeat_metadata(self.metadata().await, sent.as_deref());
@@ -571,6 +572,7 @@ impl Session {
         let need_full = result.as_ref().is_ok_and(|data| data.get("needMetadata").and_then(Value::as_bool) == Some(true));
         let kept = result.as_ref().is_ok_and(|data| data.get("metadataHash").and_then(Value::as_str) == Some(hash.as_str()));
         *self.metadata_sent.lock().unwrap_or_else(|e| e.into_inner()) = kept.then_some(hash);
+        let mut send_again = false;
         match result {
             Ok(data) => {
                 if data.get("warning").and_then(|v| v.as_str()) == Some("UPDATE_REQUIRED") {
@@ -582,6 +584,10 @@ impl Session {
                     s.last_error_code = None;
                     s.min_version = None;
                 });
+                // 새로 묶인 길드에 열 서버를 정했으면 곧바로 한 번 더 보내 릴레이가 그 목록으로 명령을 만들게 한다
+                if self.apply_linked_guilds(&data).await {
+                    send_again = true;
+                }
                 // 연결이 끊긴 사이 릴레이에 못 보낸 디스코드 길드 설정을 다시 보낸다
                 if crate::ipc::handlers::discord::take_pending_sync() {
                     let (server, cancel) = (self.server.clone(), self.cancel.clone());
@@ -601,7 +607,7 @@ impl Session {
                 self.report_error(e);
             }
         }
-        need_full && unchanged
+        (need_full && unchanged) || send_again
     }
 
     /// 하트비트 메타데이터: 릴레이 봇이 자동완성·접두사 표시에 쓴다
@@ -942,6 +948,25 @@ impl Session {
         }
     }
 
+    /// 하트비트 응답의 `linkedGuilds`를 적용한다 (`close_linked_guild`). 한 길드라도 바꿨으면 true
+    async fn apply_linked_guilds(&self, data: &Value) -> bool {
+        let Some(list) = data.get("linkedGuilds").and_then(Value::as_array) else { return false };
+        let store = &self.server.config_store;
+        let policy = store.get_bot_config().await.new_guild_instances;
+        let mut changed = false;
+        for g in list {
+            let (Some(guild), Some(via)) = (g.get("guildId").and_then(Value::as_str), g.get("via").and_then(Value::as_str)) else { continue };
+            match store.update_node_settings(guild, |node| {
+                let c = close_linked_guild(node, via, policy);
+                (c, c)
+            }).await {
+                Ok(c) => changed |= c,
+                Err(e) => tracing::warn!("[RelayAgent] could not set servers for new guild {}: {}", guild, e),
+            }
+        }
+        changed
+    }
+
     /// 릴레이 명령의 요청자. 노드 주인은 처음 받은 값으로 고정하고(`nodeSettings[guild].ownerDiscordId`),
     /// 다른 값이 오면 무시하고 경고를 남긴다
     async fn requester(&self, cmd: &Value, payload: &Value, guild_id: Option<String>, user_id: Option<String>) -> crate::chat::permissions::Requester {
@@ -1230,6 +1255,22 @@ fn relay_event(event: &crate::events::Event) -> Option<Value> {
         _ => return None,
     };
     Some(json!({ "id": event.id, "type": event.kind, "data": data }))
+}
+
+/// 하트비트 응답의 새로 묶인 길드 하나(`linkedGuilds[]`, `via` `link`|`code`)에 열 서버를 정한다. 바꿨으면 true.
+/// 코드 없이 묶였거나(`link`) PC 설정이 `manual`이면 아무 서버도 열지 않는다(`allowedInstances: []`, 나중에 고른다).
+/// 이미 목록을 정해 둔 길드(다시 묶인 길드)는 그대로 둔다
+fn close_linked_guild(node: &mut serde_json::Map<String, Value>, via: &str, policy: crate::config_store::NewGuildInstances) -> bool {
+    let manual = match via {
+        "link" => true,
+        "code" => policy == crate::config_store::NewGuildInstances::Manual,
+        _ => false,
+    };
+    if !manual || node.contains_key("allowedInstances") {
+        return false;
+    }
+    node.insert("allowedInstances".into(), json!([]));
+    true
 }
 
 /// `link_request` → 데몬 이벤트 `relay.link_request` 본문. 요청 id와 길드가 없으면 None
@@ -2303,6 +2344,27 @@ mod tests {
     fn heartbeat_features_name_what_the_relay_branches_on() {
         assert!(FEATURES.contains(&"confirm_by_daemon"));
         assert!(FEATURES.iter().all(|f| !f.is_empty() && f.chars().all(|c| c.is_ascii_lowercase() || c == '_')));
+    }
+
+    /// 코드 없이 묶인 길드는 서버를 나중에 허용하고, 코드로 묶인 길드는 PC 설정을 따른다. 이미 정한 길드는 건드리지 않는다
+    #[test]
+    fn linked_guilds_open_servers_by_how_they_were_linked() {
+        use crate::config_store::NewGuildInstances::{Auto, Manual};
+        let node = |v: Value| v.as_object().unwrap().clone();
+        let mut n = node(json!({}));
+        assert!(close_linked_guild(&mut n, "link", Auto));
+        assert_eq!(n["allowedInstances"], json!([]));
+        let mut n = node(json!({}));
+        assert!(!close_linked_guild(&mut n, "code", Auto), "auto opens every server");
+        assert!(n.get("allowedInstances").is_none());
+        let mut n = node(json!({}));
+        assert!(close_linked_guild(&mut n, "code", Manual));
+        assert_eq!(n["allowedInstances"], json!([]));
+        let mut n = node(json!({ "allowedInstances": ["i-mc"] }));
+        assert!(!close_linked_guild(&mut n, "link", Manual), "a list chosen before stays");
+        assert_eq!(n["allowedInstances"], json!(["i-mc"]));
+        let mut n = node(json!({}));
+        assert!(!close_linked_guild(&mut n, "other", Manual), "unknown ways are ignored");
     }
 
     #[test]

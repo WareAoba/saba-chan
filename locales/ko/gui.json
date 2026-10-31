@@ -834,6 +834,8 @@
     "sleep_failed": "{{count}}개 서버의 잠자기를 바꾸지 못했어요.",
     "add_server_title": "다른 디스코드 서버 추가",
     "add_server_desc": "새 코드를 받아 다른 디스코드 서버에 입력하면 그 서버도 이 PC에 연결돼요.",
+    "new_guild_instances_title": "새 디스코드 서버에 내 서버 바로 열기",
+    "new_guild_instances_desc": "페어링 코드로 연결한 디스코드 서버에 이 PC의 서버를 모두 바로 열어요. 끄면 서버마다 쓸 서버를 직접 골라요. 코드 없이 /사바쨩 연결로 연결한 서버는 늘 직접 골라요.",
     "connection_info": "연결 정보",
     "host_id": "호스트 ID",
     "relay_url": "중계 서버",

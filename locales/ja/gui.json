@@ -834,6 +834,8 @@
     "sleep_failed": "{{count}}個のサーバーでスリープを切り替えられませんでした。",
     "add_server_title": "別のDiscordサーバーを追加",
     "add_server_desc": "新しいコードを受け取って別のDiscordサーバーで入力すると、そのサーバーもこのPCに接続されます。",
+    "new_guild_instances_title": "Open my servers in new Discord servers",
+    "new_guild_instances_desc": "Discord servers connected with a pairing code get every server on this PC right away. Turn off to pick the servers for each Discord server yourself. Discord servers connected with /saba connect and no code always start with none.",
     "connection_info": "接続情報",
     "host_id": "ホストID",
     "relay_url": "リレーサーバー",

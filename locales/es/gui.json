@@ -834,6 +834,8 @@
     "sleep_failed": "No se pudo cambiar el modo de suspensión en {{count}} servidor(es).",
     "add_server_title": "Añadir otro servidor de Discord",
     "add_server_desc": "Obtén un código nuevo y escríbelo en otro servidor de Discord para conectarlo también a este PC.",
+    "new_guild_instances_title": "Open my servers in new Discord servers",
+    "new_guild_instances_desc": "Discord servers connected with a pairing code get every server on this PC right away. Turn off to pick the servers for each Discord server yourself. Discord servers connected with /saba connect and no code always start with none.",
     "connection_info": "Detalles de conexión",
     "host_id": "ID del host",
     "relay_url": "Servidor de retransmisión",

@@ -81,6 +81,17 @@ pub async fn run(ctx: &Ctx, cmd: BotCmd) -> Result<()> {
             let patch = (on || off).then(|| json!({ "translateCommands": on }));
             discord_settings(ctx, &resolve::guild(ctx, guild.as_deref()).await?, patch).await
         }
+        BotCmd::NewGuild { auto, manual } => {
+            if auto || manual {
+                let mode = if auto { "auto" } else { "manual" };
+                let r = ctx.api.patch_bot_config(json!({ "newGuildInstances": mode })).await?;
+                ctx.out.done(&t!("bot.new_guild_set", mode = new_guild_text(mode)), &r);
+                return Ok(());
+            }
+            let mode = new_guild_mode(&ctx.api.bot_config().await?);
+            ctx.out.data(&json!({ "newGuildInstances": mode }), |_| say!("{}", t!("bot.new_guild_show", mode = new_guild_text(mode))));
+            Ok(())
+        }
         BotCmd::Slash { guild, prefix, no_prefix, root_name, private, public } => {
             let mut patch = serde_json::Map::new();
             if prefix || no_prefix {
@@ -642,6 +653,15 @@ fn target_guilds(nodes: &Value, changing: bool) -> Result<Vec<(String, String)>>
 }
 
 /// 길드 설정 보기·바꾸기 (I2). 원본은 데몬이고 데몬이 릴레이에 맞춘다
+/// 봇 설정의 `newGuildInstances` (없거나 모르는 값이면 데몬 기본 `auto`)
+fn new_guild_mode(cfg: &Value) -> &'static str {
+    if cfg.get("newGuildInstances").and_then(Value::as_str) == Some("manual") { "manual" } else { "auto" }
+}
+
+fn new_guild_text(mode: &str) -> String {
+    if mode == "manual" { t!("bot.new_guild_manual") } else { t!("bot.new_guild_auto") }
+}
+
 async fn discord_settings(ctx: &Ctx, guild: &str, patch: Option<Value>) -> Result<()> {
     let r = match patch {
         None => ctx.api.discord_settings(guild).await?,
@@ -963,6 +983,14 @@ fn bot_value(cfg: &Value, defaults: &Value, key: &str, raw: &str) -> Result<Valu
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn new_guild_mode_falls_back_to_auto() {
+        use serde_json::json;
+        assert_eq!(super::new_guild_mode(&json!({ "newGuildInstances": "manual" })), "manual");
+        assert_eq!(super::new_guild_mode(&json!({ "newGuildInstances": "auto" })), "auto");
+        assert_eq!(super::new_guild_mode(&json!({})), "auto");
+    }
+
     use super::*;
 
     /// 서버 설정에 그 서버의 호출어와 명령 이름 번역이 보인다 (비면 기본 호출어, 값이 없으면 번역 켜짐)
