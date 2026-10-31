@@ -16,13 +16,15 @@ export function mergeCommands(catalog, own) {
     );
 }
 
-/** 입력 칸 값 → 명령 인자. 빈 칸은 빼고, 숫자 칸은 숫자로, 켜고 끄는 칸은 참거짓으로 */
+/** 입력 칸 값 → 명령 인자. 빈 칸은 빼고, 숫자 칸은 숫자로, 켜고 끄는 칸은 참거짓으로 (손대지 않은 필수 칸은 false) */
 export function commandArgs(inputs = [], values = {}) {
     const args = {};
     for (const input of inputs) {
         const raw = values[input.name];
         if (input.type === 'boolean') {
+            // 손대지 않은 칸은 꺼진 칸이다: 필수면 false 로 보낸다 (빼면 데몬이 missing_argument 로 거절한다)
             if (raw !== undefined && raw !== '') args[input.name] = raw === true || raw === 'true';
+            else if (input.required) args[input.name] = false;
             continue;
         }
         const value = String(raw ?? '').trim();

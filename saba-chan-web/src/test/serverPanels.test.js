@@ -69,6 +69,17 @@ describe('게임 명령', () => {
             minutes: 5,
             silent: true,
         });
+        expect(
+            commandArgs(
+                [
+                    { name: 'on', type: 'boolean', required: true },
+                    { name: 'opt', type: 'boolean' },
+                ],
+                {},
+            ),
+        ).toEqual({
+            on: false,
+        });
     });
 });
 
