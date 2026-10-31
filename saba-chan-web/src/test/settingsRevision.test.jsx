@@ -74,7 +74,9 @@ describe('웹 서버 설정 저장의 revision', () => {
 
     it('지금 값을 읽지 못하면 고친 값을 그대로 두고 알린다', async () => {
         const api = {
-            instanceUpdateSettings: vi.fn().mockResolvedValue({ success: false, error_code: 'settings_changed', revision: 'r3' }),
+            instanceUpdateSettings: vi
+                .fn()
+                .mockResolvedValue({ success: false, error_code: 'settings_changed', revision: 'r3' }),
             instanceGet: vi.fn().mockResolvedValue({ ok: false, error: 'offline' }),
         };
         mount(api, at('r1', 'old'));

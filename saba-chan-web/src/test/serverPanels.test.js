@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { resultText } from '../components/CommandsPanel';
 import { commandArgs, mergeCommands } from '../components/commands';
 import { sabaPatch, sabaValues } from '../components/SabaSettings';
 import { uptimeText } from '../components/ServerDetail';
@@ -25,11 +26,18 @@ describe('사바쨩 설정', () => {
 
     it('바꾼 칸만 보내고, 비운 숫자 칸은 null 로 보낸다', () => {
         const values = { ...sabaValues(server), memory_limit_mb: '', auto_restart: true, game_chat_keyword: ' ! ' };
-        expect(sabaPatch(server, values)).toEqual({ memory_limit_mb: null, auto_restart: true });
+        expect(sabaPatch(sabaValues(server), values)).toEqual({ memory_limit_mb: null, auto_restart: true });
     });
 
     it('바뀐 것이 없으면 빈 객체', () => {
-        expect(sabaPatch(server, sabaValues(server))).toEqual({});
+        expect(sabaPatch(sabaValues(server), sabaValues(server))).toEqual({});
+    });
+
+    it('다른 곳에서 바뀐 값은 고친 것으로 보지 않는다 (기준값과만 비교)', () => {
+        const opened = sabaValues(server);
+        const changedElsewhere = { ...server, memory_limit_mb: 8192 };
+        expect(sabaPatch(opened, opened)).toEqual({});
+        expect(sabaPatch(sabaValues(changedElsewhere), opened)).toEqual({ memory_limit_mb: '4096' });
     });
 });
 
@@ -61,6 +69,16 @@ describe('게임 명령', () => {
             minutes: 5,
             silent: true,
         });
+    });
+});
+
+describe('명령 결과', () => {
+    it('전송 안내보다 게임의 실제 응답을 보인다', () => {
+        expect(resultText({ message: 'Sent over RCON: list', data: { response: 'There are 2 players online' } })).toBe(
+            'There are 2 players online',
+        );
+        expect(resultText({ message: 'ok', data: { players: 2 } })).toBe('{"players":2}');
+        expect(resultText({ message: 'Sent' })).toBe('Sent');
     });
 });
 

@@ -57,10 +57,11 @@ export function CommandInput({ input, value, onChange }) {
 const defaultsOf = (cmd) =>
     Object.fromEntries((cmd.inputs || []).filter((i) => i.default != null).map((i) => [i.name, i.default]));
 
-/** 결과 글자 (모듈마다 message·text·output 중 하나로 준다) */
-const resultText = (res) => {
-    const v = res?.message ?? res?.text ?? res?.output ?? res?.result;
-    if (v == null) return '';
+/** 결과 글자: 게임의 실제 응답(`data.response`, REST는 `data`)을 전송 안내(`message`)보다 먼저 보인다 */
+export const resultText = (res) => {
+    const data = res?.data;
+    const v = data?.response ?? data ?? res?.message ?? res?.text ?? res?.output ?? res?.result;
+    if (v == null || v === '') return '';
     return typeof v === 'string' ? v : JSON.stringify(v);
 };
 

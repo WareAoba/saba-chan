@@ -21,9 +21,9 @@ export function sabaValues(server) {
     };
 }
 
-/** 보낼 값: 바꾼 칸만. 비운 숫자 칸은 null(제한 없음·모듈 값), 형식과 범위 검사는 데몬이 한다 */
-export function sabaPatch(server, values) {
-    const opened = sabaValues(server);
+/** 보낼 값: 폼을 연(또는 마지막으로 맞춘) 때의 값 `opened`에서 바꾼 칸만.
+ * 비운 숫자 칸은 null(제한 없음·모듈 값), 형식과 범위 검사는 데몬이 한다 */
+export function sabaPatch(opened, values) {
     const patch = {};
     for (const key of ['memory_limit_mb', 'stop_timeout']) {
         const v = String(values[key] ?? '').trim();
@@ -75,18 +75,23 @@ export function SabaSettings({ api, server, running }) {
     const { t: tg } = useTranslation('gui');
     const toast = useApp((s) => s.toast);
     const ask = useApp((s) => s.ask);
-    const [values, setValues] = useState(() => sabaValues(server));
+    // 기준값: 폼을 연 때(또는 다른 곳의 변경을 따라간 때·저장한 때)의 값. 고쳤는지는 이것과 비교한다
+    // (폴링으로 온 최신 값과 비교하면 다른 곳에서 바꾼 값을 사용자가 고친 것으로 본다)
+    const [opened, setOpened] = useState(() => sabaValues(server));
+    const [values, setValues] = useState(opened);
     const [saving, setSaving] = useState(false);
     // 고치기 시작한 때의 revision 을 싣는다 (폴링의 최신 값을 실으면 다른 곳의 변경을 덮는다)
     const revision = useRef(server.revision || null);
-    const patch = sabaPatch(server, values);
+    const patch = sabaPatch(opened, values);
     const dirty = Object.keys(patch).length > 0;
 
     // 고치는 칸이 없으면 다른 곳에서 바뀐 값을 따라간다
     // biome-ignore lint/correctness/useExhaustiveDependencies: revision 이 바뀔 때만 본다
     useEffect(() => {
         if (dirty) return;
-        setValues(sabaValues(server));
+        const fresh = sabaValues(server);
+        setOpened(fresh);
+        setValues(fresh);
         revision.current = server.revision || null;
     }, [server.revision]);
 
@@ -109,13 +114,16 @@ export function SabaSettings({ api, server, running }) {
             if (ok) {
                 const fresh = await api.instanceGet(server.id);
                 if (!fresh?.id || failed(fresh)) return toast(errorText(t, fresh), 'error');
-                setValues(sabaValues(fresh));
+                const next = sabaValues(fresh);
+                setOpened(next);
+                setValues(next);
                 revision.current = fresh.revision || res.revision || null;
             }
             return;
         }
         if (failed(res)) return toast(errorText(t, res), 'error');
         if (res?.revision) revision.current = res.revision;
+        setOpened(values);
         toast(running ? t('settings.saved_restart') : t('settings.saved'), 'ok');
     };
 
@@ -200,7 +208,7 @@ export function SabaSettings({ api, server, running }) {
             )}
             <div className="savebar">
                 {dirty && (
-                    <Button onClick={() => setValues(sabaValues(server))} disabled={saving}>
+                    <Button onClick={() => setValues(opened)} disabled={saving}>
                         {tg('discord.revert')}
                     </Button>
                 )}
