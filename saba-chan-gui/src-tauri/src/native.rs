@@ -178,13 +178,18 @@ pub async fn updater_launch_apply(app: AppHandle) -> Value {
         .unwrap_or_default();
     let client = app.state::<AppState>().client.clone();
     match client
-        .post("/api/updates/launch-updater", &json!({ "relaunch": relaunch }), 10000)
+        .post("/api/updates/launch-updater", &json!({ "relaunch": relaunch, "gui_stays": true }), 10000)
         .await
     {
         Ok(data) if data["ok"].as_bool() == Some(true) => {
+            if !quits_for_update(&data) {
+                tracing::info!("[Updater] Daemon launched the updater; the GUI is unchanged and stays open");
+                app.state::<AppState>().life.expect_daemon_update();
+                return json!({ "ok": true, "gui_restart": false });
+            }
             tracing::info!("[Updater] Daemon launched the updater; quitting GUI");
             lifecycle::spawn_clean_quit(&app, 500);
-            json!({ "ok": true })
+            json!({ "ok": true, "gui_restart": true })
         }
         Ok(data) => {
             let error = data.get("error").filter(|e| e.as_str().is_some_and(|s| !s.is_empty()));
@@ -192,6 +197,11 @@ pub async fn updater_launch_apply(app: AppHandle) -> Value {
         }
         Err(e) => e.error_body(json!({ "ok": false })),
     }
+}
+
+/// GUI가 업데이트 대상이 아니면 데몬이 데몬만 다시 띄우고 GUI는 남는다. 이 값을 모르는 옛 데몬이면 예전처럼 끝난다
+fn quits_for_update(launch: &Value) -> bool {
+    launch["gui_restart"].as_bool() != Some(false)
 }
 
 // ── 제거 ──
@@ -605,6 +615,14 @@ mod tests {
         assert_eq!(uninstall_command(dir, Some(dir)), Some((dir.join("saba-chan-cli"), &["--yes", "uninstall"][..])));
         std::fs::write(dir.join("saba-chan-installer"), b"").unwrap();
         assert_eq!(uninstall_command(dir, Some(dir)), Some((dir.join("saba-chan-installer"), &["--uninstall"][..])));
+    }
+
+    /// 데몬만 바뀌었으면 GUI는 끝나지 않는다. gui_restart를 보내지 않는 옛 데몬이면 예전처럼 끝난다
+    #[test]
+    fn the_gui_quits_for_an_update_only_when_it_is_replaced() {
+        assert!(!quits_for_update(&json!({"ok": true, "gui_restart": false})));
+        assert!(quits_for_update(&json!({"ok": true, "gui_restart": true})));
+        assert!(quits_for_update(&json!({"ok": true, "updater_launched": true})));
     }
 
     /// `/health` 본문 문자열만으로 데몬 신원을 인정하지 않는다.

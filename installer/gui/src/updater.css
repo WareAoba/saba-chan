@@ -1,3 +1,22 @@
+/* 업데이트 화면은 설치 화면과 같은 theme.css를 쓰고, 바탕 그라데이션과 알림 그림자만 여기서 정한다 */
+:root,
+[data-theme="light"] {
+    --bg-app: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    --toast-shadow: rgba(0, 0, 0, 0.15);
+}
+
+[data-theme="dark"] {
+    --bg-app: linear-gradient(135deg, #1a1a1f 0%, #141418 100%);
+    --toast-shadow: rgba(10, 10, 14, 0.42);
+}
+
+@media (prefers-color-scheme: dark) {
+    [data-theme="auto"] {
+        --bg-app: linear-gradient(135deg, #1a1a1f 0%, #141418 100%);
+        --toast-shadow: rgba(10, 10, 14, 0.42);
+    }
+}
+
 /* ═══════════════════════════════════════════════════════
    Saba-chan Updater GUI — 기존 GUI 컴포넌트 재사용 CSS
    ═══════════════════════════════════════════════════════

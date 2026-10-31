@@ -3,7 +3,8 @@
 //! relay가 주는 Ed25519 서명 manifest를 검증하고, 각 컴포넌트를 R2에서 받으며
 //! SHA-256을 확인한다. 어떤 컴포넌트를 설치할지도 업데이터의 규칙
 //! (`Component::try_from_manifest_key`)을 따르므로 업데이터가 모르는 키는 설치하지 않는다.
-//! `installer`는 받지 않는다. 호출자가 넘긴 제거기 exe(`InstallOptions.uninstaller_exe`)를 설치 폴더에 복사한다(`registry.rs`).
+//! 창 설치기는 `installer`를 받지 않고 자기 exe(`InstallOptions.uninstaller_exe`)를 설치 폴더에 복사한다(`registry.rs`).
+//! 자기 사본이 없는 CLI 설치는 릴리즈의 `installer`(업데이트 적용·제거를 맡는 같은 프로그램)를 받는다.
 
 use saba_chan_updater_lib::download::download_verified;
 use saba_chan_updater_lib::relay::{self, ManifestComponent, ReleaseManifest, RelayClient};
@@ -17,6 +18,13 @@ use std::time::Duration;
 /// (받은 모듈·익스텐션은 공식으로 기록된다)
 #[derive(Debug, Clone)]
 pub struct VerifiedRelease(ReleaseManifest);
+
+impl VerifiedRelease {
+    /// 이 설치 구성의 몫만 남긴다 (`ReleaseManifest::for_profile`: 리눅스 서버는 창 없는 설치기를 받는다)
+    pub fn for_profile(self, profile: Profile) -> Self {
+        VerifiedRelease(self.0.for_profile(profile))
+    }
+}
 
 impl std::ops::Deref for VerifiedRelease {
     type Target = ReleaseManifest;
@@ -38,8 +46,10 @@ fn relay_url() -> String {
 pub async fn fetch_latest() -> Result<VerifiedRelease, String> {
     let client = RelayClient::new(&relay_url());
     let platform = relay::current_platform();
+    let bundled = saba_chan_updater_lib::versions::bundled();
     match client
-        .fetch_verified_catalog(relay::DEFAULT_CHANNEL, &platform, &saba_chan_updater_lib::versions::bundled().release, &relay::anon_client_id())
+        // 설치기 자신의 채널(`versions.toml` `[release] channel`)에서 받는다: 베타 설치기가 정식 채널의 옛 판을 내림 설치로 거절하지 않게
+        .fetch_verified_catalog(&bundled.channel, &platform, &bundled.release, &relay::anon_client_id())
         .await
     {
         Ok(Some(release)) => Ok(VerifiedRelease(release.manifest)),
@@ -48,9 +58,10 @@ pub async fn fetch_latest() -> Result<VerifiedRelease, String> {
     }
 }
 
-/// manifest가 요구하는 최소 설치기 버전
-pub fn required_installer_version(manifest: &ReleaseManifest) -> Option<&str> {
-    manifest.components.get("installer").map(|c| c.version.as_str())
+/// manifest가 요구하는 최소 설치기 버전. 창 설치기(`running_installer`)만 따진다:
+/// `saba-chan-cli install`은 설치기를 릴리즈에서 받아 깔므로 자기 판이 낮아도 막지 않는다
+pub fn required_installer_version(manifest: &ReleaseManifest, running_installer: bool) -> Option<&str> {
+    manifest.components.get("installer").filter(|_| running_installer).map(|c| c.version.as_str())
 }
 
 /// 하나라도 빠지면 앱이 돌지 않는 컴포넌트: versions.toml의 `required = true` (패키징 스크립트도 이 값을 읽는다).
@@ -69,8 +80,14 @@ fn required_components(profile: Profile) -> Vec<String> {
 }
 
 /// 설치 폴더에 풀 컴포넌트 (키 순서로 정렬). 모듈·익스텐션은 고른 것만 데이터 폴더에 따로 설치한다.
-/// 필수 컴포넌트가 빠진 릴리즈는 반쪽 설치가 되므로 빠진 키 목록을 오류로 돌려준다. 이 구성에 들지 않는 것은 받지 않는다
-pub fn installable(manifest: &ReleaseManifest, profile: Profile) -> Result<Vec<(&String, &ManifestComponent)>, Vec<String>> {
+/// 필수 컴포넌트가 빠진 릴리즈는 반쪽 설치가 되므로 빠진 키 목록을 오류로 돌려준다. 이 구성에 들지 않는 것은 받지 않는다.
+/// 설치기(업데이트 적용·제거를 맡는다)는 자기 사본을 남기는 창 설치기면 받지 않고, `with_installer`(CLI 설치)면 받는다.
+/// 0.1.12 전의 업데이터(`updater`)는 받지 않는다
+pub fn installable(
+    manifest: &ReleaseManifest,
+    profile: Profile,
+    with_installer: bool,
+) -> Result<Vec<(&String, &ManifestComponent)>, Vec<String>> {
     let missing: Vec<String> =
         required_components(profile).into_iter().filter(|k| !manifest.components.contains_key(k)).collect();
     if !missing.is_empty() {
@@ -81,7 +98,8 @@ pub fn installable(manifest: &ReleaseManifest, profile: Profile) -> Result<Vec<(
         .iter()
         .filter(|(key, _)| !key.starts_with(relay::MODULE_PREFIX) && !key.starts_with(relay::EXTENSION_PREFIX))
         .filter(|(key, _)| {
-            Component::try_from_manifest_key(key).is_some_and(|c| c != Component::Installer)
+            Component::try_from_manifest_key(key)
+                .is_some_and(|c| c != Component::Updater && (with_installer || c != Component::Installer))
         })
         .filter(|(key, _)| profile.includes(key))
         .collect();
@@ -229,11 +247,11 @@ mod tests {
     fn the_bundled_versions_file_names_the_required_components() {
         let mut required = super::required_components(super::Profile::Desktop);
         required.sort();
-        assert_eq!(required, ["gui", "saba-core", "updater"]);
+        assert_eq!(required, ["gui", "installer", "saba-core"]);
         // 헤드리스 설치는 GUI 없이 돈다
         let mut required = super::required_components(super::Profile::Headless);
         required.sort();
-        assert_eq!(required, ["saba-core", "updater"]);
+        assert_eq!(required, ["installer", "saba-core"]);
     }
 
     use super::*;
@@ -267,11 +285,15 @@ mod tests {
             components,
             platforms: Default::default(),
         };
-        let keys: Vec<_> = installable(&manifest, Profile::Desktop).unwrap().into_iter().map(|(k, _)| k.as_str()).collect();
-        assert_eq!(keys, ["cli", "gui", "locales", "saba-core", "updater"], "installer, the legacy bot and add-ons are skipped");
-        let keys: Vec<_> = installable(&manifest, Profile::Headless).unwrap().into_iter().map(|(k, _)| k.as_str()).collect();
-        assert_eq!(keys, ["cli", "locales", "saba-core", "updater"], "a headless install skips the GUI");
-        assert_eq!(required_installer_version(&manifest), Some("0.2.0"));
+        let keys: Vec<_> = installable(&manifest, Profile::Desktop, false).unwrap().into_iter().map(|(k, _)| k.as_str()).collect();
+        assert_eq!(keys, ["cli", "gui", "locales", "saba-core"], "the window installer copies itself; the retired updater, the legacy bot and add-ons are skipped");
+        let keys: Vec<_> = installable(&manifest, Profile::Headless, false).unwrap().into_iter().map(|(k, _)| k.as_str()).collect();
+        assert_eq!(keys, ["cli", "locales", "saba-core"], "a headless install skips the GUI");
+        // `saba-chan-cli install`은 자기 사본이 없다: 업데이트·제거를 맡을 설치기를 릴리즈에서 받는다
+        let keys: Vec<_> = installable(&manifest, Profile::Headless, true).unwrap().into_iter().map(|(k, _)| k.as_str()).collect();
+        assert_eq!(keys, ["cli", "installer", "locales", "saba-core"]);
+        assert_eq!(required_installer_version(&manifest, true), Some("0.2.0"));
+        assert_eq!(required_installer_version(&manifest, false), None, "the CLI installs the release's installer");
 
         let root = Path::new("/opt/saba");
         assert_eq!(target_dir(root, &component("1", Some("."))), root);
@@ -294,7 +316,7 @@ mod tests {
         assert_eq!(left, ["palworld"], "no staging folder is left behind");
     }
 
-    /// 데몬·GUI·업데이터가 빠진 릴리즈는 반쪽 설치가 된다. 설치하지 않고 실패한다
+    /// 데몬·GUI·설치기가 빠진 릴리즈는 반쪽 설치가 된다. 설치하지 않고 실패한다
     #[test]
     fn a_release_missing_a_required_component_is_refused() {
         let mut components = HashMap::new();
@@ -310,8 +332,8 @@ mod tests {
             components,
             platforms: Default::default(),
         };
-        assert_eq!(installable(&manifest, Profile::Desktop).unwrap_err(), ["gui", "updater"]);
-        assert_eq!(installable(&manifest, Profile::Headless).unwrap_err(), ["updater"]);
+        assert_eq!(installable(&manifest, Profile::Desktop, false).unwrap_err(), ["gui", "installer"]);
+        assert_eq!(installable(&manifest, Profile::Headless, true).unwrap_err(), ["installer"]);
     }
 
     /// 깨끗한 설치로 받은 공식 모듈이 데몬에서 "verified"로 보여야 격리·검사 없이 돈다

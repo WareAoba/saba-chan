@@ -158,7 +158,9 @@ function componentSpecs(platform) {
     return {
         'saba-core': { asset: `saba-core-${platform}.zip`, inner: `saba-core${exe}`, install_dir: '.', bin: `saba-core${exe}` },
         cli: { asset: `saba-chan-cli-${platform}.zip`, inner: `saba-chan-cli${exe}`, install_dir: '.', bin: `saba-chan-cli${exe}` },
-        updater: { asset: `saba-chan-updater-${platform}.zip`, inner: `saba-chan-updater${exe}`, install_dir: '.', bin: `saba-chan-updater${exe}` },
+        // 설치기(업데이트 적용·제거): 구성마다 빌드한 같은 프로그램. 클라이언트가 자기 구성의 것을 `installer`로 읽는다
+        'installer.desktop': { asset: `saba-chan-installer-desktop-${platform}.zip`, inner: `saba-chan-installer${exe}`, install_dir: '.', bin: `saba-chan-installer${exe}` },
+        'installer.headless': { asset: `saba-chan-installer-headless-${platform}.zip`, inner: `saba-chan-installer${exe}`, install_dir: '.', bin: `saba-chan-installer${exe}` },
         gui: { asset: `saba-chan-gui-${platform}.zip`, inner: `saba-chan-gui${exe}`, install_dir: '.', bin: `saba-chan-gui${exe}` },
         'module-minecraft': { asset: 'module-minecraft.zip', inner: 'module.toml', install_dir: 'modules/minecraft' },
     };

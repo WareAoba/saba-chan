@@ -17,6 +17,8 @@ use tauri_plugin_notification::NotificationExt;
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
 /// 데몬의 종료 hook 한도(30초, src/main.rs)보다 길게 기다린다: hook이 끝나기 전에 강제 종료하지 않는다 (CLI와 같다)
 const STOP_TIMEOUT: Duration = Duration::from_secs(40);
+/// 데몬만 업데이트할 때 다시 뜬 데몬을 기다리는 상한 (데몬 종료 대기 30초 + 적용 + 다시 띄움에 넉넉히)
+const DAEMON_UPDATE_LIMIT: Duration = Duration::from_secs(300);
 
 #[derive(Default)]
 pub struct Lifecycle {
@@ -32,6 +34,11 @@ pub struct Lifecycle {
     /// 초기화를 아직 마치지 않았는가. 데몬 단계에서 실패하거나 끊기면 daemon_restart가 성공한 뒤 나머지를 마친다
     init_pending_daemon: AtomicBool,
     ready_sent: AtomicBool,
+    /// 이 GUI는 그대로 두고 데몬만 업데이트하러 내려간 때: 다시 뜬 데몬에 붙으면 한 번 완료를 알린다.
+    /// 그동안 이 GUI는 데몬을 띄우지 않고 트레이만 든 채로도 끝나지 않는다. `DAEMON_UPDATE_LIMIT`가 지나면 없는 것으로 본다
+    daemon_updating: Mutex<Option<std::time::Instant>>,
+    /// 트레이만 든 채 데몬이 없다고 본 heartbeat 수 (닿으면 0)
+    daemon_missed_beats: AtomicU8,
     quitting: AtomicBool,
     client_id: Mutex<Option<String>>,
     last_status: Mutex<Option<Value>>,
@@ -181,6 +188,31 @@ fn daemon_path(install_root: &Path) -> PathBuf {
 }
 
 impl Lifecycle {
+    /// 데몬만 업데이트한다 (GUI는 남는다)
+    pub fn expect_daemon_update(&self) {
+        *self.daemon_updating.lock().unwrap() = Some(std::time::Instant::now());
+    }
+
+    /// 설치기가 데몬을 바꾸는 중인가 (상한이 지났으면 아니다: 다시 뜨지 않은 데몬을 사용자가 띄울 수 있게)
+    fn daemon_updating(&self) -> bool {
+        self.daemon_updating.lock().unwrap().is_some_and(|at| at.elapsed() < DAEMON_UPDATE_LIMIT)
+    }
+
+    /// 다시 뜬 데몬에 붙었다: 데몬만 업데이트하던 중이었으면 한 번만 true. 상한이 지난 뒤 붙은 것은 업데이트가 아니다
+    fn daemon_update_done(&self) -> bool {
+        self.daemon_updating.lock().unwrap().take().is_some_and(|at| at.elapsed() < DAEMON_UPDATE_LIMIT)
+    }
+
+    /// 트레이만 든 GUI가 데몬을 따라 끝날 때가 됐나: 이번 heartbeat에도 없으면(`gone`) 센다. 연달아 두 번 없어야 끝난다.
+    /// 설치기가 데몬만 바꾸는 동안 이 GUI가 그 사실을 모를 수 있다(CLI가 시작한 업데이트 등): 한 번 기다리면 다시 뜬 데몬에 붙는다
+    fn daemon_gone_long_enough(&self, gone: bool) -> bool {
+        if !gone {
+            self.daemon_missed_beats.store(0, Ordering::SeqCst);
+            return false;
+        }
+        self.daemon_missed_beats.fetch_add(1, Ordering::SeqCst).saturating_add(1) >= 2
+    }
+
     /// 서버를 열라는 요청. 렌더러가 이미 준비됐으면 지금 보낼 id를, 아니면 맡아 두고 None
     fn want_server(&self, id: String) -> Option<String> {
         let mut pending = self.open_server.lock().unwrap();
@@ -305,6 +337,11 @@ pub fn own_daemon_alive(app: &AppHandle) -> bool {
 
 pub fn start_daemon(app: &AppHandle) {
     let state = app.state::<AppState>();
+    // 설치기가 데몬 파일을 바꾸는 중이다: 옛 파일로 띄우면 교체가 막히거나 다시 뜰 데몬과 포트를 다툰다. 설치기가 다시 띄운다
+    if state.life.daemon_updating() {
+        tracing::info!("[Daemon] An update is replacing the daemon; not starting it now");
+        return;
+    }
     let root = state.install_root.clone();
     let path = daemon_path(&root);
     tracing::info!(
@@ -653,7 +690,9 @@ fn start_heartbeat(app: &AppHandle) {
             let state = app2.state::<AppState>();
             let Some(id) = state.life.client_id.lock().unwrap().clone() else {
                 // 처음 등록이 실패했으면(데몬이 늦게 뜸 등) 주기마다 다시 시도한다
-                register_with_daemon(&app2).await;
+                if register_with_daemon(&app2).await {
+                    notify_daemon_updated(&app2);
+                }
                 continue;
             };
             let resident = crate::window::tray_only_now(&app2);
@@ -684,7 +723,12 @@ fn start_heartbeat(app: &AppHandle) {
             // 창 없이 트레이만 든 GUI는 데몬이 밖에서 꺼지면(CLI의 완전히 종료 등) 함께 끝난다.
             // 트레이에서 직접 끈 것이면 다시 켤 수 있게 남는다
             let tray_stopped = state.life.stopped_from_tray.load(Ordering::SeqCst) != TRAY_STOP_NONE;
-            if should_follow_daemon_out(reached, resident, tray_stopped) && !own_daemon_alive(&app2) {
+            // 데몬만 업데이트하는 동안 창을 닫아 트레이만 남았어도 끝나지 않는다: 설치기는 데몬만 다시 띄운다
+            // 밖에서 시작한 데몬만 업데이트는 이 GUI가 모르므로 한 heartbeat 더 기다린다
+            let gone = should_follow_daemon_out(reached, resident, tray_stopped)
+                && !own_daemon_alive(&app2)
+                && !state.life.daemon_updating();
+            if state.life.daemon_gone_long_enough(gone) {
                 tracing::info!("[Tray] The daemon is gone and no window is open; quitting");
                 state.life.quitting.store(true, Ordering::SeqCst);
                 stop_background(&state);
@@ -696,12 +740,27 @@ fn start_heartbeat(app: &AppHandle) {
                 // 데몬이 재시작되었을 수 있으므로 재등록
                 if e.status == Some(404) || e.code == "ECONNREFUSED" {
                     tracing::warn!("[Heartbeat] Lost registration, re-registering...");
-                    register_with_daemon(&app2).await;
+                    if register_with_daemon(&app2).await {
+                        notify_daemon_updated(&app2);
+                    }
                 }
             }
         }
     });
     replace_task(&app.state::<AppState>().life.heartbeat_task, Some(task));
+}
+
+/// 데몬만 업데이트하고 다시 붙었으면 GUI를 다시 띄운 업데이트(`--after-update`)처럼 완료를 알린다
+fn notify_daemon_updated(app: &AppHandle) {
+    let state = app.state::<AppState>();
+    if state.life.daemon_update_done() {
+        tracing::info!("[Updater] The updated daemon is back; notifying renderer");
+        emit_main(
+            app,
+            "updates:completed",
+            json!({ "message": state.t("updates.completed", &[]), "timestamp": chrono::Utc::now().to_rfc3339() }),
+        );
+    }
 }
 
 /// 클라이언트 해제. shutdown이면 데몬에 종료도 요청한다
@@ -1019,6 +1078,23 @@ pub fn on_exit(app: &AppHandle) {
 mod tests {
     use super::*;
 
+    /// 데몬만 업데이트하고 다시 붙으면 완료를 한 번만 알린다 (재등록마다 쌓이지 않게)
+    #[test]
+    fn a_daemon_only_update_is_announced_once_after_reattaching() {
+        let life = Lifecycle::default();
+        assert!(!life.daemon_update_done(), "no update, nothing to announce");
+        assert!(!life.daemon_updating());
+        life.expect_daemon_update();
+        assert!(life.daemon_updating(), "the GUI neither starts the daemon nor quits while it is replaced");
+        assert!(life.daemon_update_done());
+        assert!(!life.daemon_update_done());
+        assert!(!life.daemon_updating());
+        // 다시 뜨지 않은 채 상한이 지나면 업데이트 중이 아니고, 나중에 붙어도 완료로 알리지 않는다
+        *life.daemon_updating.lock().unwrap() = std::time::Instant::now().checked_sub(DAEMON_UPDATE_LIMIT);
+        assert!(!life.daemon_updating());
+        assert!(!life.daemon_update_done());
+    }
+
     #[test]
     fn a_tray_stop_clears_only_when_the_daemon_comes_back_after_it_was_gone() {
         // 끄는 중인 데몬은 잠시 heartbeat에 답한다: 그것은 다시 뜬 것이 아니다 (Codex 리뷰)
@@ -1064,6 +1140,16 @@ mod tests {
             !should_follow_daemon_out(false, true, true),
             "stopped from the tray: stay to start it again"
         );
+    }
+
+    // 데몬이 잠깐 내려간 것(밖에서 시작한 데몬만 업데이트 등)으로는 끝나지 않는다: 연달아 두 번 없을 때 끝난다
+    #[test]
+    fn a_tray_only_gui_waits_one_more_heartbeat_before_following_the_daemon_out() {
+        let life = Lifecycle::default();
+        assert!(!life.daemon_gone_long_enough(true), "gone once: the installer may be bringing it back");
+        assert!(!life.daemon_gone_long_enough(false), "back again");
+        assert!(!life.daemon_gone_long_enough(true));
+        assert!(life.daemon_gone_long_enough(true), "still gone a heartbeat later");
     }
 
     #[test]

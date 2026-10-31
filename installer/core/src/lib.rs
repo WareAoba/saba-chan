@@ -252,10 +252,11 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
             Ok(m) => m,
             Err(e) => return fail("fetch_failed", &e),
         },
-    };
+    }
+    .for_profile(config.profile);
 
     // 설치기 자체가 이 릴리즈를 설치할 수 있는 버전인지
-    if let Some(required_version) = release::required_installer_version(&manifest) {
+    if let Some(required_version) = release::required_installer_version(&manifest, config.uninstaller_exe.is_some()) {
         if version_compare(INSTALLER_VERSION, required_version) == std::cmp::Ordering::Less {
             return fail(
                 "installer_outdated",
@@ -271,7 +272,7 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
     // Step 3: R2에서 받고 SHA-256 확인 후 압축 해제 (10-45%)
     // 하나라도 실패하면 설치를 멈춘다. 반쯤 설치된 앱은 업데이터도 고치기 어렵다.
     // 필수 컴포넌트가 빠진 릴리즈는 기존 설치를 건드리기 전에 멈춘다
-    let components = match release::installable(&manifest, config.profile) {
+    let components = match release::installable(&manifest, config.profile, installer_from_release(config.uninstaller_exe.is_some())) {
         Ok(c) => c,
         Err(missing) => {
             let msg = format!("The release is missing required components: {}", missing.join(", "));
@@ -336,7 +337,7 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
             &format!("Extracting {}...", key),
             40 + (i * 5 / total) as i32,
         );
-        if let Err(e) = extract_zip(zip, &release::target_dir(&install_dir, info)) {
+        if let Err(e) = place_component(key, zip, &release::target_dir(&install_dir, info)) {
             return fail("extract_failed", &format!("Failed to extract {}: {}", key, e));
         }
         let _ = std::fs::remove_file(zip);
@@ -524,6 +525,12 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
     if let Err(e) = UpdateManager::save_installed_manifest(&installed_versions) {
         warn(format!("Failed to write installed manifest: {}", e));
     }
+    // 0.1.12 전 설치 위에 덮었으면 이제 설치기가 업데이트를 맡는다: 남은 옛 업데이터와 그 기록을 걷는다
+    saba_chan_updater_lib::retire_legacy_updater_at(
+        &install_dir,
+        &saba_chan_updater_lib::constants::resolve_installed_manifest_path(),
+        &saba_chan_updater_lib::integrity::records_path(),
+    );
 
     // 완료. 레지스트리·바로가기 등 실패한 단계는 숨기지 않고 완료 화면에 함께 보여 준다
     let warnings = warnings.into_inner().unwrap_or_default();
@@ -660,6 +667,8 @@ pub fn dedicated_install_dir(chosen: &Path) -> PathBuf {
         || !chosen.is_dir()
         || is_empty_dir(chosen)
         || uninstall::looks_like_install_dir(chosen)
+        // 이 설치기가 만든 전용 폴더(설치가 도중에 실패해 표시만 남았어도)
+        || chosen.join(uninstall::INSTALL_MARKER).is_file()
     {
         chosen.to_path_buf()
     } else {
@@ -796,12 +805,32 @@ where
             .await
             .map_err(|e| ("download_failed", format!("Failed to download {}: {}", key, e)))?;
         let probe = temp_dir.join(format!(".check-{}", i));
-        let checked = saba_chan_updater_lib::extract_zip(&zip, &probe, |_| Ok(()));
+        let checked = if is_bare_installer(key, &zip) { Ok(()) } else { saba_chan_updater_lib::extract_zip(&zip, &probe, |_| Ok(())).map(|_| ()) };
         let _ = std::fs::remove_dir_all(&probe);
         checked.map_err(|e| ("extract_failed", format!("Failed to extract {}: {}", key, e)))?;
         zips.push(zip);
     }
     Ok(zips)
+}
+
+/// Windows 릴리즈의 설치기는 zip이 아니라 `saba-chan-installer.exe` 그대로다. 다른 컴포넌트는 모두 zip으로 받는다
+fn is_bare_installer(key: &str, path: &Path) -> bool {
+    key == "installer" && !path.extension().is_some_and(|e| e.eq_ignore_ascii_case("zip"))
+}
+
+/// 받은 컴포넌트를 둔다: zip은 풀고, zip이 아닌 설치기는 그 이름으로 복사한다 (실패하면 이전 사본을 되돌린다)
+fn place_component(key: &str, file: &Path, target_dir: &Path) -> anyhow::Result<()> {
+    if !is_bare_installer(key, file) {
+        return extract_zip(file, target_dir);
+    }
+    std::fs::create_dir_all(target_dir)?;
+    saba_chan_updater_lib::replace_bare_installer(file, &target_dir.join(saba_chan_updater_lib::INSTALLER_EXE))
+}
+
+/// 업데이트·제거를 맡을 설치기를 릴리즈에서 받는가. 창 설치기는 Windows에서만 자기 사본을 설치 폴더에 남기므로
+/// (`registry::register_uninstall_entry`) 다른 OS의 창 설치와 CLI 설치는 릴리즈의 것을 받는다
+fn installer_from_release(running_installer: bool) -> bool {
+    !running_installer || !cfg!(windows)
 }
 
 fn extract_zip(zip_path: &Path, target_dir: &Path) -> anyhow::Result<()> {
@@ -989,6 +1018,28 @@ fn is_copy_of(copy: &Path, original: &Path) -> bool {
 mod tests {
     use super::*;
 
+    /// 실행 파일 그대로 받는 것은 설치기뿐이다: 다른 컴포넌트의 zip 아닌 파일은 설치기 자리에 복사하지 않고 풀다 실패한다
+    #[test]
+    fn only_the_installer_is_placed_as_a_bare_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let file = tmp.path().join("saba-core-linux-x64.tar.gz");
+        std::fs::write(&file, b"not a zip").unwrap();
+        let dir = tmp.path().join("install");
+        assert!(place_component("saba-core", &file, &dir).is_err());
+        assert!(!dir.join(saba_chan_updater_lib::INSTALLER_EXE).exists());
+        let exe = tmp.path().join("saba-chan-installer.exe");
+        std::fs::write(&exe, b"exe").unwrap();
+        place_component("installer", &exe, &dir).unwrap();
+        assert_eq!(std::fs::read(dir.join(saba_chan_updater_lib::INSTALLER_EXE)).unwrap(), b"exe");
+    }
+
+    /// 설치 폴더에 설치기가 꼭 남는다: Windows 창 설치는 자기 사본을 남기고, 그 밖에는 릴리즈의 것을 받는다
+    #[test]
+    fn every_install_leaves_an_installer_to_apply_updates() {
+        assert!(installer_from_release(false), "the CLI has no copy of the installer");
+        assert_eq!(installer_from_release(true), !cfg!(windows));
+    }
+
     #[test]
     fn installed_extensions_are_enabled_next_to_the_ones_already_on() {
         let dir = tempfile::tempdir().unwrap();
@@ -1093,6 +1144,11 @@ mod tests {
             root.join("new"),
             "a new folder is used as is"
         );
+
+        // 지난 설치가 표시만 남기고 실패한 폴더는 이 설치기가 만든 폴더다: 그 안에 또 만들지 않는다
+        std::fs::write(root.join(uninstall::INSTALL_MARKER), b"").unwrap();
+        assert_eq!(dedicated_install_dir(&root), root, "a folder a failed install marked is reused");
+        std::fs::remove_file(root.join(uninstall::INSTALL_MARKER)).unwrap();
 
         std::fs::write(root.join("notes.txt"), b"").unwrap();
         assert_eq!(dedicated_install_dir(&root), root.join("Saba-chan"));

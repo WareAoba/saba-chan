@@ -76,13 +76,14 @@ mod tests {
     fn bundled_table_parses_and_has_core_components() {
         let v = bundled();
         assert!(crate::version::SemVer::parse(&v.release).is_some());
-        for key in ["saba-core", "cli", "gui", "updater"] {
+        for key in ["saba-core", "cli", "gui", "installer"] {
             assert!(component(key).is_some(), "{} missing from versions.toml", key);
         }
     }
 
     #[test]
-    fn this_crate_matches_bundled_updater_version() {
-        assert_eq!(component("updater"), Some(env!("CARGO_PKG_VERSION")));
+    // 이 라이브러리는 설치기(업데이트 적용)와 같이 버전을 올린다
+    fn this_crate_matches_bundled_installer_version() {
+        assert_eq!(component("installer"), Some(env!("CARGO_PKG_VERSION")));
     }
 }

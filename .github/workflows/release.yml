@@ -13,7 +13,6 @@ name: Release — Package & Manifest
 #      - saba-core.exe / saba-core-*.zip
 #      - saba-chan-cli.exe / saba-chan-cli-*.zip
 #      - saba-chan-gui.exe / saba-chan-gui-*.zip
-#      - saba-chan-updater.exe / saba-chan-updater-*.zip
 #      - saba-chan-installer.exe / saba-chan-installer-*.zip
 #      (전부 올릴 필요 없음 — 빠진 것은 이전 릴리즈에서 가져옴)
 #   3. Release 발행 → 이 액션이 자동 수행:
@@ -27,12 +26,13 @@ name: Release — Package & Manifest
 #   saba-core-windows-x64.zip
 #   saba-chan-cli-windows-x64.zip
 #   saba-chan-gui-windows-x64.zip
-#   saba-chan-updater-windows-x64.zip
-#   saba-chan-installer.exe  (zip 아님: 소개 페이지 다운로드와 업데이터의 제거기 사본 교체용)
-#   saba-core-linux-x64.zip, saba-chan-cli-linux-x64.zip, saba-chan-updater-linux-x64.zip, saba-chan-gui-linux-x64.zip
+#   saba-chan-installer.exe  (zip 아님: 소개 페이지 다운로드와 업데이트로 설치 폴더 사본 교체. 설치·제거·업데이트 적용을 모두 한다)
+#   saba-core-linux-x64.zip, saba-chan-cli-linux-x64.zip, saba-chan-gui-linux-x64.zip,
+#   saba-chan-installer-desktop-linux-x64.zip (창 빌드), saba-chan-installer-headless-linux-x64.zip (창 없는 빌드)
 #     (리눅스용. GUI zip은 데스크톱 구성만 받는다. 올릴 필요 없이 이 액션이 main 소스로 빌드한다)
-#   saba-core-linux-arm64.zip, saba-chan-cli-linux-arm64.zip, saba-chan-updater-linux-arm64.zip
-#     (ARM 리눅스, 헤드리스만. linux-arm64 작업이 ARM 러너에서 빌드한다)
+#   saba-core-linux-arm64.zip, saba-chan-cli-linux-arm64.zip, saba-chan-gui-linux-arm64.zip,
+#   saba-chan-installer-desktop-linux-arm64.zip, saba-chan-installer-headless-linux-arm64.zip
+#     (ARM 리눅스. linux-arm64 작업이 ARM 러너에서 빌드한다)
 #   locales.zip
 #   manifest.json
 #
@@ -116,16 +116,17 @@ jobs:
 
       - name: Build
         run: |
-          cargo build --release --locked -p saba-core -p saba-runner -p saba-chan-cli -p saba-chan-gui --bins
-          cargo build --release --locked -p saba-chan-updater --no-default-features
-          for b in saba-core saba-runner saba-chan-cli saba-chan-updater saba-chan-gui; do
-            need=$(objdump -T "target/release/$b" | grep -o 'GLIBC_[0-9.]*' | sed 's/GLIBC_//' | sort -V | tail -1)
+          cargo build --release --locked -p saba-core -p saba-runner -p saba-chan-cli -p saba-chan-gui -p saba-chan-installer --bins
+          # 설치기는 한 번 더 창 없이 빌드한다: 화면 없는 서버(헤드리스 구성)에는 GTK·WebKit이 없다
+          cargo build --release --locked -p saba-chan-installer --no-default-features --target-dir target/headless
+          for b in target/release/saba-core target/release/saba-runner target/release/saba-chan-cli target/release/saba-chan-installer target/release/saba-chan-gui target/headless/release/saba-chan-installer; do
+            need=$(objdump -T "$b" | grep -o 'GLIBC_[0-9.]*' | sed 's/GLIBC_//' | sort -V | tail -1)
             echo "$b needs glibc $need"
             if [ "$(printf '%s\n' "$need" 2.35 | sort -V | tail -1)" != "2.35" ]; then
               echo "::error::$b requires glibc $need (> 2.35)"; exit 1
             fi
           done
-          python3 .github/scripts/package-linux.py --bin target/release --out arm64 --platform linux-arm64
+          python3 .github/scripts/package-linux.py --bin target/release --headless-bin target/headless/release --out arm64 --platform linux-arm64
 
       - name: Upload
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -322,23 +323,23 @@ jobs:
           npm ci
           npm run build
 
-      # 리눅스 설치 (D3c): 이 소스(main)로 데몬·러너·CLI·창 없는 업데이터·GUI를 빌드해
+      # 리눅스 설치 (D3c): 이 소스(main)로 데몬·러너·CLI·GUI·설치기를 빌드해
       # linux-x64 zip으로 싣는다. manifest의 platforms.linux-x64가 이 파일들을 가리킨다.
-      # 업데이터는 창 없이 빌드한다: 화면 없는 서버에도 같은 파일이 가고, 데스크톱에서는 적용한 뒤 GUI를 다시 띄운다
+      # 설치기는 창 빌드(데스크톱 구성)와 창 없는 빌드(화면 없는 서버, GTK·WebKit 없이 돈다)를 둘 다 싣는다
       - name: Build Linux assets
         if: steps.guard.outputs.publish != 'false'
         run: |
-          cargo build --release --locked -p saba-core -p saba-runner -p saba-chan-cli -p saba-chan-gui --bins
-          cargo build --release --locked -p saba-chan-updater --no-default-features
+          cargo build --release --locked -p saba-core -p saba-runner -p saba-chan-cli -p saba-chan-gui -p saba-chan-installer --bins
+          cargo build --release --locked -p saba-chan-installer --no-default-features --target-dir target/headless
           # Debian 12(glibc 2.36)보다 새 glibc 기호를 요구하면 멈춘다
-          for b in saba-core saba-runner saba-chan-cli saba-chan-updater saba-chan-gui; do
-            need=$(objdump -T "target/release/$b" | grep -o 'GLIBC_[0-9.]*' | sed 's/GLIBC_//' | sort -V | tail -1)
+          for b in target/release/saba-core target/release/saba-runner target/release/saba-chan-cli target/release/saba-chan-installer target/release/saba-chan-gui target/headless/release/saba-chan-installer; do
+            need=$(objdump -T "$b" | grep -o 'GLIBC_[0-9.]*' | sed 's/GLIBC_//' | sort -V | tail -1)
             echo "$b needs glibc $need"
             if [ "$(printf '%s\n' "$need" 2.35 | sort -V | tail -1)" != "2.35" ]; then
               echo "::error::$b requires glibc $need (> 2.35)"; exit 1
             fi
           done
-          python .github/scripts/package-linux.py --bin target/release --out output
+          python .github/scripts/package-linux.py --bin target/release --headless-bin target/headless/release --out output
 
       - name: Add linux-arm64 assets
         if: steps.guard.outputs.publish != 'false'

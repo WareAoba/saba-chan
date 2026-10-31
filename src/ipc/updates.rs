@@ -712,11 +712,14 @@ async fn install_updates(State(state): State<UpdateState>) -> axum::response::Re
 ///
 /// `apply`가 `requires_updater: true`를 돌려준 뒤 부른다. 어느 클라이언트가 떠 있든
 /// 적용 경로가 하나가 되도록 업데이터 실행은 데몬만 한다.
-/// Body: `{ "relaunch": ["<exe>", "추가 인자"...] }` — 적용 후 다시 띄울 프로그램(생략하면 업데이터가 GUI를 찾는다)
+/// Body: `{ "relaunch": ["<exe>", "추가 인자"...], "gui_stays": bool }` — 적용 후 다시 띄울 프로그램(생략하면 업데이터가 GUI를 찾는다).
+/// `gui_stays`: 부른 GUI가 `gui_restart:false`를 보고 남을 줄 안다 (모르는 옛 GUI는 성공 응답에 늘 끝난다)
 #[derive(Deserialize, Default)]
 struct LaunchUpdaterRequest {
     #[serde(default)]
     relaunch: Vec<String>,
+    #[serde(default)]
+    gui_stays: bool,
 }
 
 async fn launch_updater(
@@ -727,11 +730,12 @@ async fn launch_updater(
     let Some(updater) = updater_binary() else {
         return (
             axum::http::StatusCode::NOT_FOUND,
-            Json(json!({ "ok": false, "error": "saba-chan-updater not found next to the daemon" })),
+            Json(json!({ "ok": false, "error": "saba-chan-installer not found next to the daemon" })),
         )
             .into_response();
     };
-    if state.manager.read().await.get_pending_components().is_empty() {
+    let targets = state.manager.read().await.updater_targets();
+    if targets.is_empty() {
         return (
             axum::http::StatusCode::CONFLICT,
             Json(json!({ "ok": false, "error": "No downloaded updates to apply" })),
@@ -759,8 +763,9 @@ async fn launch_updater(
                 .into_response()
         }
     };
-    // 떠 있는 GUI는 실행 파일을 쥐고 있어 바꿀 수 없다. GUI가 부른 게 아니면(CLI·자동 업데이트) 데몬이 끄고
-    // 업데이터가 같은 GUI를 다시 띄우게 한다(GUI가 뜨면서 데몬도 띄운다). GUI가 불렀으면 그 GUI는 스스로 끝난다
+    // 떠 있는 GUI는 실행 파일을 쥐고 있어 바꿀 수 없다. GUI가 바뀌면 GUI가 부른 게 아니어도(CLI·자동 업데이트) 데몬이 끄고
+    // 업데이터가 같은 GUI를 다시 띄우게 한다(GUI가 뜨면서 데몬도 띄운다). GUI가 불렀으면 그 GUI는 스스로 끝난다.
+    // GUI가 그대로면 GUI는 두고 데몬만 다시 띄운다: 떠 있는 GUI가 다시 뜬 데몬에 붙는다
     let (guis, resident) = match &state.clients {
         Some(clients) => {
             let list = clients.list().await;
@@ -768,7 +773,12 @@ async fn launch_updater(
         }
         None => (Vec::new(), false),
     };
-    let relaunch = relaunch_target(body.relaunch, &guis, resident);
+    let daemon_line = std::env::current_exe()
+        .map(|me| vec![me.to_string_lossy().into_owned(), "--spawned".to_string()])
+        .unwrap_or_default();
+    let restart = gui_must_restart(&targets, &body.relaunch, body.gui_stays);
+    let (guis, relaunch) = restart_plan(restart, body.relaunch, &guis, resident, daemon_line);
+    let gui_restart = !guis.is_empty() || relaunch.first().is_some_and(|exe| is_gui_exe(exe));
     let args = updater_args(ticket, saba_chan_updater_lib::profile::Profile::load(), relaunch, saba_chan_updater_lib::autostart::service_relaunch());
     if let Err(e) = spawn_detached(&updater, &args) {
         state.updater_launched.store(false, Ordering::SeqCst);
@@ -787,7 +797,7 @@ async fn launch_updater(
             stop.cancel();
         });
     }
-    Json(json!({ "ok": true, "updater_launched": true, "daemon_stopping": true })).into_response()
+    Json(json!({ "ok": true, "updater_launched": true, "daemon_stopping": true, "gui_restart": gui_restart })).into_response()
 }
 
 /// 업데이터 실행 인자. 헤드리스 설치는 창 없이 적용하게 `--headless`를 붙이고,
@@ -847,15 +857,40 @@ fn only_resident_guis(clients: &[(String, crate::ipc::RegisteredClient)]) -> boo
     guis.peek().is_some() && guis.all(|(_, c)| c.resident)
 }
 
+/// 업데이터를 띄우기 전에 끌 GUI와 적용 뒤 다시 띄울 것. GUI가 바뀌지 않으면 GUI는 끄지 않고 데몬(`daemon`)만 다시 띄운다
+/// (요청이 GUI가 아닌 것을 골랐으면 그것). 트레이만 든 GUI는 데몬이 사라지면 따라 끝나므로 바뀌지 않아도 끄고 트레이로 다시 띄운다
+fn restart_plan(
+    gui_updated: bool,
+    requested: Vec<String>,
+    guis: &[(u32, std::path::PathBuf)],
+    resident: bool,
+    daemon: Vec<String>,
+) -> (Vec<(u32, std::path::PathBuf)>, Vec<String>) {
+    if gui_updated || resident {
+        return (guis.to_vec(), relaunch_target(requested, guis, resident));
+    }
+    let relaunch = match requested.first() {
+        Some(exe) if !is_gui_exe(exe) => requested,
+        _ => daemon,
+    };
+    (Vec::new(), relaunch)
+}
+
+/// GUI를 끄고 다시 띄워야 하는가: GUI가 적용 대상이거나, 부른 GUI가 남을 줄 모른다(옛 GUI는 성공 응답에 끝나므로 다시 띄워 준다)
+fn gui_must_restart(targets: &[String], requested: &[String], gui_stays: bool) -> bool {
+    targets.iter().any(|k| k == "gui") || (!gui_stays && requested.first().is_some_and(|exe| is_gui_exe(exe)))
+}
+
+fn is_gui_exe(exe: &str) -> bool {
+    let name = std::path::Path::new(exe).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    saba_chan_updater_lib::GUI_EXE_NAMES.iter().any(|g| g.eq_ignore_ascii_case(&name))
+}
+
 /// 업데이터가 다시 띄울 것: 떠 있던 GUI가 있으면 그 GUI(요청이 이미 GUI면 그대로), 없으면 요청대로.
 /// 떠 있던 GUI가 트레이만 들고 있었으면(`resident`) 트레이 모드로 다시 띄운다
 fn relaunch_target(requested: Vec<String>, guis: &[(u32, std::path::PathBuf)], resident: bool) -> Vec<String> {
-    let is_gui = |exe: &str| {
-        let name = std::path::Path::new(exe).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-        saba_chan_updater_lib::GUI_EXE_NAMES.iter().any(|g| g.eq_ignore_ascii_case(&name))
-    };
     match guis.first() {
-        Some((_, exe)) if !requested.first().is_some_and(|r| is_gui(r)) => {
+        Some((_, exe)) if !requested.first().is_some_and(|r| is_gui_exe(r)) => {
             let mut line = vec![exe.to_string_lossy().into_owned()];
             if resident {
                 line.push(crate::tray_host::TRAY_ARG.to_string());
@@ -902,14 +937,32 @@ fn running_guis_among(guis: &[(u32, std::path::PathBuf)]) -> Vec<(u32, std::path
         .collect()
 }
 
-/// 업데이터 실행 파일. `SABA_UPDATER_PATH`가 있으면 그것, 없으면 데몬 실행 파일 옆(또는 한 단계 위).
+/// 업데이트를 적용할 실행 파일. `SABA_UPDATER_PATH`가 있으면 그것, 없으면 데몬 실행 파일 옆(또는 한 단계 위).
 fn updater_binary() -> Option<std::path::PathBuf> {
     if let Some(path) = std::env::var_os("SABA_UPDATER_PATH").map(std::path::PathBuf::from) {
         return path.is_file().then_some(path);
     }
-    let exe = std::env::current_exe().ok()?;
-    let name = format!("saba-chan-updater{}", std::env::consts::EXE_SUFFIX);
-    exe.ancestors().skip(1).take(2).map(|dir| dir.join(&name)).find(|p| p.is_file())
+    let installed = saba_chan_updater_lib::UpdateManager::load_installed_manifest();
+    updater_binary_near(&std::env::current_exe().ok()?, installer_applies(&installed, saba_chan_updater_lib::INSTALLER_APPLIES_SINCE))
+}
+
+/// 설치된 설치기가 업데이트 적용(`--apply`)을 아는가: 설치 기록의 판이 `since`(적용을 맡은 첫 판) 이상이다.
+/// 0.1.12 전 Windows 설치기는 `--apply`를 모르고 설치 창을 연다. 데몬만 먼저 새로 받으면 그 설치기가 남는다.
+/// 데몬 판과 견주지 않는다: 구성요소 판은 따로 오르므로 데몬만 오른 릴리즈에서 멀쩡한 설치기를 옛것으로 보게 된다
+fn installer_applies(installed: &std::collections::HashMap<String, String>, since: &str) -> bool {
+    use saba_chan_updater_lib::version::SemVer;
+    match (installed.get("installer").and_then(|v| SemVer::parse(v)), SemVer::parse(since)) {
+        (Some(installer), Some(since)) => installer >= since,
+        _ => false,
+    }
+}
+
+/// 적용을 아는 설치기(`applies`)를 먼저 찾고, 없으면 0.1.12 전 설치에 남은 옛 업데이터를 쓴다 (같은 인자를 받는다).
+/// 설치기가 적용을 모르면 옛 업데이터를 먼저 쓰고, 그것도 없을 때만 설치기를 쓴다
+fn updater_binary_near(daemon_exe: &std::path::Path, applies: bool) -> Option<std::path::PathBuf> {
+    use saba_chan_updater_lib::{INSTALLER_EXE, LEGACY_UPDATER_EXE};
+    let order = if applies { [INSTALLER_EXE, LEGACY_UPDATER_EXE] } else { [LEGACY_UPDATER_EXE, INSTALLER_EXE] };
+    order.iter().find_map(|name| daemon_exe.ancestors().skip(1).take(2).map(|dir| dir.join(name)).find(|p| p.is_file()))
 }
 
 /// 데몬이 끝나도 살아남게 띄운다
@@ -1284,6 +1337,45 @@ mod tests {
         assert_eq!(std::fs::read_to_string(staging.join("apply-ticket")).unwrap(), ticket, "the first ticket stays valid");
     }
 
+    /// 업데이트는 설치기(`saba-chan-installer --apply`)가 적용한다. 설치기가 아직 없는 옛 설치(0.1.12 전)는
+    /// 남아 있는 옛 업데이터로 적용해 그 업데이트로 설치기를 받는다. 옛 설치기(`--apply`를 모르고 설치 창을 연다)만
+    /// 있는 동안에도 옛 업데이터를 쓴다: 데몬만 먼저 새로 받았거나 설치기 업데이트가 실패한 Windows 설치
+    #[test]
+    fn the_installer_applies_updates_and_the_old_updater_is_the_fallback() {
+        let tmp = tempfile::tempdir().unwrap();
+        let bin = tmp.path().join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        let exe = |name: &str| format!("{name}{}", std::env::consts::EXE_SUFFIX);
+        let daemon = bin.join(exe("saba-core"));
+        assert_eq!(super::updater_binary_near(&daemon, true), None);
+        std::fs::write(bin.join(exe("saba-chan-updater")), b"").unwrap();
+        assert_eq!(super::updater_binary_near(&daemon, true), Some(bin.join(exe("saba-chan-updater"))));
+        std::fs::write(tmp.path().join(exe("saba-chan-installer")), b"").unwrap();
+        assert_eq!(super::updater_binary_near(&daemon, true), Some(tmp.path().join(exe("saba-chan-installer"))), "one folder up");
+        std::fs::write(bin.join(exe("saba-chan-installer")), b"").unwrap();
+        assert_eq!(super::updater_binary_near(&daemon, true), Some(bin.join(exe("saba-chan-installer"))));
+        assert_eq!(
+            super::updater_binary_near(&daemon, false),
+            Some(bin.join(exe("saba-chan-updater"))),
+            "an old installer cannot apply; the old updater still can"
+        );
+        std::fs::remove_file(bin.join(exe("saba-chan-updater"))).unwrap();
+        assert_eq!(super::updater_binary_near(&daemon, false), Some(bin.join(exe("saba-chan-installer"))), "nothing else to use");
+    }
+
+    /// 설치기가 적용을 맡은 첫 판 이상으로 기록돼 있어야 `--apply`를 안다고 본다. 데몬만 오른 릴리즈 뒤에도 그대로다
+    #[test]
+    fn only_an_installer_since_the_merge_counts_as_applying() {
+        let manifest = |v: Option<&str>| v.map(|v| [("installer".to_string(), v.to_string())].into_iter().collect()).unwrap_or_default();
+        let since = saba_chan_updater_lib::INSTALLER_APPLIES_SINCE;
+        assert!(super::installer_applies(&manifest(Some(since)), since));
+        assert!(super::installer_applies(&manifest(Some("0.1.12")), since));
+        assert!(super::installer_applies(&manifest(Some("0.1.12-beta.3")), since));
+        assert!(!super::installer_applies(&manifest(Some("0.1.12-beta.1")), since), "the last installer without --apply");
+        assert!(!super::installer_applies(&manifest(Some("0.1.11")), since));
+        assert!(!super::installer_applies(&manifest(None), since));
+    }
+
     /// CLI가 데몬을 다시 띄우라고 해도 GUI가 떠 있었으면 GUI를 띄운다. GUI가 부른 요청은 그대로
     #[test]
     fn the_updater_relaunches_the_gui_that_was_open() {
@@ -1295,6 +1387,46 @@ mod tests {
         assert_eq!(super::relaunch_target(daemon.clone(), &[], false), daemon);
         let own = vec![format!("/other/{}", saba_chan_updater_lib::GUI_EXE_NAMES[0])];
         assert_eq!(super::relaunch_target(own.clone(), &guis, false), own);
+    }
+
+    /// GUI가 바뀌지 않으면 GUI는 끄지도 다시 띄우지도 않는다: 데몬만 다시 뜨고 떠 있는 GUI가 다시 붙는다.
+    /// 트레이만 든 GUI는 데몬이 사라지면 따라 끝나므로 예전처럼 끄고 트레이로 다시 띄운다
+    #[test]
+    fn only_a_changed_gui_is_closed_and_relaunched() {
+        let gui = std::path::PathBuf::from(format!("/opt/saba/{}", saba_chan_updater_lib::GUI_EXE_NAMES[0]));
+        let guis = vec![(42, gui.clone())];
+        let daemon = vec!["/opt/saba/saba-core".to_string(), "--spawned".to_string()];
+        let from_gui = vec![gui.to_string_lossy().into_owned()];
+
+        let (close, relaunch) = super::restart_plan(false, from_gui.clone(), &guis, false, daemon.clone());
+        assert!(close.is_empty(), "an unchanged GUI stays open");
+        assert_eq!(relaunch, daemon, "only the daemon comes back");
+        let (close, relaunch) = super::restart_plan(false, Vec::new(), &guis, false, daemon.clone());
+        assert!(close.is_empty());
+        assert_eq!(relaunch, daemon);
+        let cli = vec!["/opt/saba/saba-core".to_string(), "--spawned".to_string(), "--from-cli".to_string()];
+        assert_eq!(super::restart_plan(false, cli.clone(), &[], false, daemon.clone()).1, cli, "a non-GUI request stands");
+
+        let (close, relaunch) = super::restart_plan(true, daemon.clone(), &guis, false, daemon.clone());
+        assert_eq!(close, guis, "a changed GUI is closed so its files can be replaced");
+        assert_eq!(relaunch, from_gui);
+        let (close, relaunch) = super::restart_plan(false, daemon.clone(), &guis, true, daemon.clone());
+        assert_eq!(close, guis, "a tray-only GUI would quit with the daemon");
+        assert_eq!(relaunch, vec![gui.to_string_lossy().into_owned(), "--tray".to_string()]);
+    }
+
+    /// GUI가 적용 대상일 때만 GUI를 다시 띄운다. 남을 줄 모르는 옛 GUI가 부른 적용은 예전처럼 그 GUI를 다시 띄운다
+    #[test]
+    fn an_old_gui_that_always_quits_is_relaunched() {
+        let core = vec!["saba-core".to_string()];
+        let with_gui = vec!["saba-core".to_string(), "gui".to_string()];
+        let gui = vec![format!("/opt/saba/{}", saba_chan_updater_lib::GUI_EXE_NAMES[0])];
+        let cli = vec!["/opt/saba/saba-core".to_string(), "--spawned".to_string()];
+        assert!(!super::gui_must_restart(&core, &gui, true));
+        assert!(super::gui_must_restart(&core, &gui, false), "an old GUI quits on success");
+        assert!(!super::gui_must_restart(&core, &cli, false), "the CLI does not quit a GUI");
+        assert!(super::gui_must_restart(&with_gui, &gui, true));
+        assert!(super::gui_must_restart(&with_gui, &cli, false));
     }
 
     /// 트레이만 든 GUI는 업데이트 뒤에도 창 없이 트레이로 다시 뜬다 (자동 업데이트마다 창이 튀어나오지 않게)

@@ -91,7 +91,7 @@ mod tests {
     fn the_gui_belongs_only_to_the_desktop() {
         assert!(Profile::Desktop.includes("gui"));
         assert!(!Profile::Headless.includes("gui"));
-        for key in ["saba-core", "cli", "updater", "locales", "module-minecraft"] {
+        for key in ["saba-core", "cli", "installer", "locales", "module-minecraft"] {
             assert!(Profile::Headless.includes(key), "{key}");
             assert!(Profile::Desktop.includes(key), "{key}");
         }

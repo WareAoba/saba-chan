@@ -404,10 +404,12 @@ function ComponentsTab({ devMode }) {
                     hadError = true;
                     setError((prev) => (prev ? prev + '\n' : '') + (launchRes?.error || t('saba_storage.updater_launch_failed')));
                 } else {
-                    // 업데이터 실행 → GUI가 곧 종료되므로 더 이상 진행하지 않음
-                    // (데몬도 자식 프로세스로 함께 종료됨 — 이후 API 호출 불가)
+                    // 업데이터 실행 → 데몬이 내려가므로 더 이상 진행하지 않음 (이후 API 호출 불가).
+                    // GUI가 바뀌면 GUI도 곧 종료되고, 아니면 GUI는 남아 다시 뜬 데몬에 붙는다
                     for (const key of allKeys) clearBusy(key);
                     setBusyAll(false);
+                    if (launchRes?.gui_restart === false)
+                        setMessage(t('saba_storage.updater_background', { key: res.needs_updater.join(', ') }));
                     return;
                 }
             }

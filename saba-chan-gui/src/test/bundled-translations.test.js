@@ -19,7 +19,7 @@ function bundle(file, name) {
 
 describe.each([
     ['installer/gui/src/installer.js', 'T'],
-    ['updater/gui/src/updater.js', 'TRANSLATIONS'],
+    ['installer/gui/src/updater.js', 'TRANSLATIONS'],
 ])('%s', (file, name) => {
     it('지원 언어마다 en 과 같은 키를 가진다', () => {
         const t = bundle(file, name);

@@ -115,6 +115,7 @@ pub enum Component {
     CoreDaemon,
     Cli,
     Gui,
+    /// 0.1.12 전의 업데이터(`saba-chan-updater`). 지금 릴리즈에는 없고, 옛 상태 파일·manifest를 읽을 때만 나온다
     Updater,
     /// 설치 폴더의 `saba-chan-installer.exe` (제거기로 쓰인다)
     Installer,
@@ -340,8 +341,51 @@ fn read_extension_version(manifest: &Path) -> Option<(String, String)> {
 /// GUI 실행 파일 이름들: 표준 이름과, 0.1.1 GUI zip처럼 Electron 폴더를 그대로 담은 경우의 productName
 pub const GUI_EXE_NAMES: &[&str] = if cfg!(windows) { &["saba-chan-gui.exe", "Saba-chan.exe"] } else { &["saba-chan-gui"] };
 
+/// 설치기가 업데이트 적용(`--apply`)을 맡은 첫 판. 이보다 옛 설치기(Windows 0.1.12-beta.1까지)는 `--apply`를 모르고 설치 창을 연다
+pub const INSTALLER_APPLIES_SINCE: &str = "0.1.12-beta.2";
+
 /// 설치기가 설치 폴더에 남기는 자기 사본 (제거에 쓴다)
 pub const INSTALLER_EXE: &str = if cfg!(windows) { "saba-chan-installer.exe" } else { "saba-chan-installer" };
+
+/// 0.1.12 전에 업데이트를 적용하던 옛 업데이터. 지금은 설치기(`INSTALLER_EXE --apply`)가 적용한다
+pub const LEGACY_UPDATER_EXE: &str = if cfg!(windows) { "saba-chan-updater.exe" } else { "saba-chan-updater" };
+
+/// 설치기가 있으면 설치 폴더에 남은 옛 업데이터와 그 버전·파일 기록을 지운다. 실패해도 다음에 다시 한다
+pub fn retire_legacy_updater() {
+    let Some(root) = std::env::current_exe().ok().and_then(|p| p.parent().map(Path::to_path_buf)) else { return };
+    retire_legacy_updater_at(&root, &constants::resolve_installed_manifest_path(), &integrity::records_path());
+}
+
+pub fn retire_legacy_updater_at(install_root: &Path, installed_manifest: &Path, records: &Path) {
+    let legacy = install_root.join(LEGACY_UPDATER_EXE);
+    // 설치 폴더의 설치기가 적용을 아는 판으로 기록돼 있을 때만: 새 사본 복사가 실패해 옛 설치기가 남았으면 옛 업데이터가 유일한 적용 수단이다
+    let applies = UpdateManager::load_installed_manifest_at(installed_manifest)
+        .get("installer")
+        .and_then(|v| version::SemVer::parse(v))
+        .zip(version::SemVer::parse(INSTALLER_APPLIES_SINCE))
+        .is_some_and(|(installed, since)| installed >= since);
+    if !install_root.join(INSTALLER_EXE).is_file() || !applies {
+        return;
+    }
+    // 파일이 이미 없어도(지워졌거나 격리됨) 남은 기록은 걷는다
+    if legacy.exists() {
+        if let Err(e) = std::fs::remove_file(&legacy) {
+            tracing::warn!("[Updater] Cannot remove the retired updater {}: {}", legacy.display(), e);
+            return;
+        }
+        tracing::info!("[Updater] Removed the retired updater {}", legacy.display());
+    }
+    let key = Component::Updater.manifest_key();
+    let mut versions = UpdateManager::load_installed_manifest_at(installed_manifest);
+    if versions.remove(&key).is_some() {
+        if let Err(e) = UpdateManager::save_installed_manifest_at(installed_manifest, &versions) {
+            tracing::warn!("[Updater] Cannot update {}: {}", installed_manifest.display(), e);
+        }
+    }
+    if let Err(e) = integrity::retain_at(records, |k| k != key) {
+        tracing::warn!("[Updater] Cannot update {}: {}", records.display(), e);
+    }
+}
 
 /// 설치 폴더 바로 안의 GUI 실행 파일
 pub fn find_gui_exe(install_root: &Path) -> Option<PathBuf> {
@@ -371,6 +415,11 @@ fn path_parts(p: &Path) -> Vec<String> {
 }
 
 /// 덮어쓸 실행 파일이 떠 있으면 `.old`로 비켜 둔다 (`extract_zip`의 `before_write`로 쓴다)
+/// zip이 아닌 설치기(실행 파일 그대로)를 `target`에 둔다. 실패하면 이전 사본을 되돌린다
+pub fn replace_bare_installer(staged: &Path, target: &Path) -> Result<()> {
+    UpdateManager::replace_bare_installer(staged, target)
+}
+
 pub fn move_aside_binary(path: &Path) -> Result<()> {
     UpdateManager::move_aside_binary(path)
 }
@@ -659,7 +708,8 @@ impl UpdateManager {
         let mut components = Vec::new();
         // 헤드리스 설치는 GUI처럼 그 구성에 들지 않는 컴포넌트를 받지 않는다
         let profile = profile::Profile::load();
-        if let Some(release) = release {
+        if let Some(mut release) = release {
+            release.manifest = release.manifest.for_profile(profile);
             let notes = Self::release_notes_in(&release.latest, &Self::user_language());
             for (key, info) in &release.manifest.components {
                 let Some(component) = Component::try_from_manifest_key(key) else {

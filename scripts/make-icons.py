@@ -23,7 +23,6 @@ FISH_ICON = ROOT / "saba-chan-gui/public/favicon-light.png"
 
 TARGETS = {
     "saba-chan-gui/src-tauri/icons/icon.ico": APP_ICON,
-    "updater/gui/src-tauri/icons/icon.ico": APP_ICON,
     "installer/gui/src-tauri/icons/icon.ico": APP_ICON,
     "saba-chan-cli/icon.ico": APP_ICON,
     "icons/saba-core.ico": CORE_ICON,

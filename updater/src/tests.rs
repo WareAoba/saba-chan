@@ -1464,3 +1464,63 @@ async fn a_gui_update_inside_an_app_bundle_moves_the_bundle_files_into_place() {
     assert!(files.iter().all(|f| f.exists()), "recorded files are where they ended up: {files:?}");
     assert!(files.contains(&contents.join(PLIST_FILE)));
 }
+
+/// 설치기가 업데이트를 적용하게 된 뒤(0.1.12) 설치 폴더에 남은 옛 업데이터와 그 기록을 걷는다.
+/// 설치기가 없으면 옛 업데이터가 유일한 적용 프로그램이라 남긴다
+#[test]
+fn the_retired_updater_is_removed_once_the_installer_is_there() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join("install");
+    std::fs::create_dir_all(&root).unwrap();
+    let legacy = root.join(crate::LEGACY_UPDATER_EXE);
+    std::fs::write(&legacy, b"old updater").unwrap();
+    let versions = tmp.path().join("installed-manifest.json");
+    std::fs::write(&versions, r#"{"saba-core":"0.1.11","updater":"0.1.11"}"#).unwrap();
+    let records = tmp.path().join("installed-files.json");
+    std::fs::write(&records, r#"{"updater":{"/x/saba-chan-updater":"ab"},"cli":{}}"#).unwrap();
+
+    crate::retire_legacy_updater_at(&root, &versions, &records);
+    assert!(legacy.exists(), "without the installer the old updater is the only one");
+
+    std::fs::write(root.join(crate::INSTALLER_EXE), b"installer").unwrap();
+    crate::retire_legacy_updater_at(&root, &versions, &records);
+    assert!(legacy.exists(), "an installer not recorded as able to apply may be the old one");
+    std::fs::write(&versions, r#"{"saba-core":"0.1.11","updater":"0.1.11","installer":"0.1.12-beta.1"}"#).unwrap();
+    crate::retire_legacy_updater_at(&root, &versions, &records);
+    assert!(legacy.exists(), "the old installer copy stayed (its replacement failed)");
+
+    std::fs::write(&versions, format!(r#"{{"saba-core":"0.1.11","updater":"0.1.11","installer":"{}"}}"#, crate::INSTALLER_APPLIES_SINCE)).unwrap();
+    crate::retire_legacy_updater_at(&root, &versions, &records);
+    assert!(!legacy.exists());
+    let left: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&versions).unwrap()).unwrap();
+    assert_eq!(left, serde_json::json!({"saba-core": "0.1.11", "installer": crate::INSTALLER_APPLIES_SINCE}));
+    let left: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&records).unwrap()).unwrap();
+    assert!(left.get("updater").is_none() && left.get("cli").is_some(), "{left}");
+
+    // 파일이 이미 없어진 설치도 남은 기록을 걷는다
+    std::fs::write(&versions, format!(r#"{{"updater":"0.1.11","installer":"{}"}}"#, crate::INSTALLER_APPLIES_SINCE)).unwrap();
+    crate::retire_legacy_updater_at(&root, &versions, &records);
+    let left: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&versions).unwrap()).unwrap();
+    assert_eq!(left, serde_json::json!({"installer": crate::INSTALLER_APPLIES_SINCE}));
+}
+
+// 업데이터를 띄우기 전에 데몬이 무엇이 바뀌는지 본다: 남긴 적용 대상 목록을 지우지 않고 읽고, 목록이 없으면 받아 둔 것 전부
+#[test]
+fn the_updater_targets_are_read_without_consuming_them() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.staging_dir = tmp.path().join("staging");
+    let zip = tmp.path().join("core.zip");
+    std::fs::write(&zip, b"").unwrap();
+    manager.status.components = vec![staged(Component::CoreDaemon, &zip), staged(Component::Gui, &zip)];
+
+    assert_eq!(manager.updater_targets(), vec!["saba-core".to_string(), "gui".to_string()]);
+    manager.save_updater_apply_targets(&["saba-core".to_string()]).unwrap();
+    assert_eq!(manager.updater_targets(), vec!["saba-core".to_string()]);
+    assert_eq!(manager.load_updater_apply_targets().unwrap(), vec!["saba-core".to_string()], "the updater still finds the list");
+    manager.save_updater_apply_targets(&["gui".to_string()]).unwrap();
+    manager.status.components = vec![staged(Component::CoreDaemon, &zip)];
+    assert_eq!(manager.updater_targets(), vec!["saba-core".to_string()], "a stale list does not name what is not downloaded");
+    manager.status.components.clear();
+    assert!(manager.updater_targets().is_empty());
+}

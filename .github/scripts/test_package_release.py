@@ -58,11 +58,11 @@ class CoreZipRunner(unittest.TestCase):
 
 
 class RequiredComponents(unittest.TestCase):
-    def test_a_release_without_gui_or_updater_is_refused(self):
-        self.assertEqual(pr.missing_required({"saba-core": {}, "cli": {}, "locales": {}}), ["gui", "updater"])
+    def test_a_release_without_gui_or_installer_is_refused(self):
+        self.assertEqual(pr.missing_required({"saba-core": {}, "cli": {}, "locales": {}}), ["gui", "installer"])
 
     def test_a_complete_release_passes(self):
-        self.assertEqual(pr.missing_required({"saba-core": {}, "gui": {}, "updater": {}}), [])
+        self.assertEqual(pr.missing_required({"saba-core": {}, "gui": {}, "installer": {}}), [])
 
     def test_versions_file_is_found_from_any_working_folder(self):
         import os
@@ -71,7 +71,7 @@ class RequiredComponents(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             os.chdir(tmp)
             try:
-                self.assertEqual(pr.missing_required({"saba-core": {}}), ["gui", "updater"])
+                self.assertEqual(pr.missing_required({"saba-core": {}}), ["gui", "installer"])
                 self.assertIsNotNone(pr.read_bundled_version("saba-core"))
             finally:
                 os.chdir(here)
