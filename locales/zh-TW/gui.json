@@ -658,7 +658,16 @@
   },
   "context_menu": {
     "settings": "伺服器設定",
-    "delete": "刪除伺服器"
+    "delete": "刪除伺服器",
+    "undo": "Undo",
+    "cut": "Cut",
+    "copy": "Copy",
+    "paste": "Paste",
+    "select_all": "Select all",
+    "clear_console": "Clear screen",
+    "open_console": "Open console",
+    "enable": "Enable",
+    "disable": "Disable"
   },
   "shell": {
     "nav_label": "主要頁面",

@@ -658,7 +658,16 @@
   },
   "context_menu": {
     "settings": "서버 설정",
-    "delete": "서버 삭제"
+    "delete": "서버 삭제",
+    "undo": "실행 취소",
+    "cut": "잘라내기",
+    "copy": "복사",
+    "paste": "붙여넣기",
+    "select_all": "모두 선택",
+    "clear_console": "화면 지우기",
+    "open_console": "콘솔 열기",
+    "enable": "켜기",
+    "disable": "끄기"
   },
   "shell": {
     "nav_label": "주요 화면",

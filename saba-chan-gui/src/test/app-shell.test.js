@@ -7,10 +7,11 @@
  * - 서버가 없으면 빈 화면 안내와 "서버 추가" 버튼
  */
 
-import { act, fireEvent, render, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../App';
 import { SINGLE_COLUMN_MAX_WIDTH } from '../components/servers/ServersPage';
+import { ContextMenuProvider } from '../components/ui/ContextMenu';
 import { useDiscordStore } from '../stores/useDiscordStore';
 import { useServerStore } from '../stores/useServerStore';
 import { useSettingsStore } from '../stores/useSettingsStore';
@@ -99,7 +100,11 @@ async function boot(overrides = {}, width = 1280) {
     Object.defineProperty(window, 'innerWidth', { value: width, writable: true, configurable: true });
     window.api = createApiMock(overrides);
     await act(async () => {
-        render(<App />);
+        render(
+            <ContextMenuProvider allowNative={false}>
+                <App />
+            </ContextMenuProvider>,
+        );
     });
     await waitFor(() => expect(document.querySelector('.appbar')).not.toBeNull(), { timeout: 8000 });
 }
@@ -240,6 +245,27 @@ describe('서버 페이지', () => {
         await boot();
         await new Promise((r) => setTimeout(r, 300));
         expect(document.querySelector('.appbar-parent-job')).toBeNull();
+    }, 20000);
+
+    it('목록 줄을 우클릭하면 그 서버의 켜기/끄기·설정·삭제 메뉴가 뜨고, 켜기는 데몬 시작 API를 부른다', async () => {
+        const instanceStart = vi.fn().mockResolvedValue({ success: true });
+        await boot({
+            serverList: vi.fn().mockResolvedValue(twoServers),
+            moduleList: vi.fn().mockResolvedValue(palworld),
+            instanceStart,
+        });
+        await waitFor(() => expect(document.querySelectorAll('.server-row')).toHaveLength(2), { timeout: 8000 });
+        const labels = () => [...document.querySelectorAll('[role="menuitem"] .context-menu-label')].map((x) => x.textContent);
+
+        fireEvent.contextMenu(document.querySelectorAll('.server-row')[0], { clientX: 10, clientY: 10 });
+        expect(labels()).toEqual(expect.arrayContaining(['Stop', 'Restart', 'Settings', 'Delete']));
+        fireEvent.keyDown(document, { key: 'Escape' });
+
+        fireEvent.contextMenu(document.querySelectorAll('.server-row')[1], { clientX: 10, clientY: 10 });
+        expect(labels()).toEqual(expect.arrayContaining(['Start', 'Settings', 'Delete']));
+        expect(labels()).not.toContain('Restart');
+        await act(async () => fireEvent.click(screen.getByRole('menuitem', { name: 'Start' })));
+        await waitFor(() => expect(instanceStart).toHaveBeenCalledWith('srv-2'));
     }, 20000);
 
     it('우클릭 메뉴의 설정은 그 서버 상세의 설정 탭을 연다', async () => {

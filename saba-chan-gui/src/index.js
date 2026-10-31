@@ -6,6 +6,7 @@ import { ErrorBoundary } from 'react-error-boundary';
 import App from './App';
 import { ErrorFallback } from './components/ErrorFallback';
 import { TrayPopup } from './components/shell/TrayPopup';
+import { ContextMenuProvider } from './components/ui/ContextMenu';
 import { installMockApi } from './dev/mockApi';
 import { i18nReady } from './i18n'; // Initialize i18n
 import './styles/tokens.css'; // 디자인 토큰 (다른 CSS보다 먼저)
@@ -40,8 +41,11 @@ const handleGlobalError = (error, info) => {
 i18nReady.finally(() => {
     const root = ReactDOM.createRoot(document.getElementById('root'));
     root.render(
-        <ErrorBoundary FallbackComponent={ErrorFallback} onError={handleGlobalError}>
-            {trayPopup ? <TrayPopup /> : <App />}
-        </ErrorBoundary>,
+        // 우클릭은 크래시 화면·트레이 창까지 앱 전체가 같은 규칙을 따른다
+        <ContextMenuProvider>
+            <ErrorBoundary FallbackComponent={ErrorFallback} onError={handleGlobalError}>
+                {trayPopup ? <TrayPopup /> : <App />}
+            </ErrorBoundary>
+        </ContextMenuProvider>,
     );
 });

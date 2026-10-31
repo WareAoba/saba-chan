@@ -658,7 +658,16 @@
   },
   "context_menu": {
     "settings": "Settings",
-    "delete": "Delete"
+    "delete": "Delete",
+    "undo": "Undo",
+    "cut": "Cut",
+    "copy": "Copy",
+    "paste": "Paste",
+    "select_all": "Select all",
+    "clear_console": "Clear screen",
+    "open_console": "Open console",
+    "enable": "Enable",
+    "disable": "Disable"
   },
   "shell": {
     "nav_label": "Main sections",

@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ChatbotGuildTab } from '../components/discord/ChatbotGuildTab';
 import { ChatbotView, guildDraft, guildPatch, relayErrorLines } from '../components/discord/ChatbotView';
 import { draftProblems, formatBytes, fromDraft, MaintenanceTab, toDraft } from '../components/servers/MaintenanceTab';
+import { ContextMenuProvider } from '../components/ui/ContextMenu';
 import { pickOption } from './dropdown';
 
 const t = (k) => k;
@@ -174,6 +175,26 @@ describe('MaintenanceTab', () => {
         expect(restores[0].disabled).toBe(true);
         expect(restores[0].getAttribute('data-tooltip')).toMatch(/delete/i);
         expect(restores[1].disabled).toBe(false);
+    });
+
+    it('백업 줄을 우클릭해 복원·삭제를 고르면 그 버튼이 확인 상태가 된다 (바로 실행하지 않는다)', async () => {
+        window.api.instanceScheduleGet = vi
+            .fn()
+            .mockResolvedValue({ success: true, schedule: [], backup_supported: true });
+        window.api.instanceBackups = vi.fn().mockResolvedValue({
+            success: true,
+            backups: [{ name: 'a-manual.zip', kind: 'manual', created: 1, size: 2048, stored: 2048 }],
+        });
+        render(
+            <ContextMenuProvider allowNative={false}>
+                <MaintenanceTab server={stopped} />
+            </ContextMenuProvider>,
+        );
+        const row = (await screen.findByText(/a-manual\.zip/)).closest('li');
+        fireEvent.contextMenu(row, { clientX: 5, clientY: 5 });
+        fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
+        expect(window.api.instanceBackupDelete).not.toHaveBeenCalled();
+        expect(row.querySelector('.btn-danger')).not.toBeNull();
     });
 
     it('복원·백업 거절은 데몬의 영어 원문 대신 이유를 알린다', async () => {

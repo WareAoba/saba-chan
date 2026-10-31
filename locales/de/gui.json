@@ -658,7 +658,16 @@
   },
   "context_menu": {
     "settings": "Server-Einstellungen",
-    "delete": "Server löschen"
+    "delete": "Server löschen",
+    "undo": "Undo",
+    "cut": "Cut",
+    "copy": "Copy",
+    "paste": "Paste",
+    "select_all": "Select all",
+    "clear_console": "Clear screen",
+    "open_console": "Open console",
+    "enable": "Enable",
+    "disable": "Disable"
   },
   "shell": {
     "nav_label": "Hauptbereiche",

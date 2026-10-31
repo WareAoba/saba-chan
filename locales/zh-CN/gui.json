@@ -658,7 +658,16 @@
   },
   "context_menu": {
     "settings": "服务器设置",
-    "delete": "删除服务器"
+    "delete": "删除服务器",
+    "undo": "Undo",
+    "cut": "Cut",
+    "copy": "Copy",
+    "paste": "Paste",
+    "select_all": "Select all",
+    "clear_console": "Clear screen",
+    "open_console": "Open console",
+    "enable": "Enable",
+    "disable": "Disable"
   },
   "shell": {
     "nav_label": "主要页面",
