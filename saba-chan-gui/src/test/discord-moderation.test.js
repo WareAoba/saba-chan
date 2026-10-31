@@ -155,6 +155,47 @@ describe('ModerationTab', () => {
         await waitFor(() => expect(window.api.relayModMute).toHaveBeenCalledWith('g1', 'u1', { duration: 'off' }));
     });
 
+    it('배정 저장이 끝나기 전에는 다른 채널로 옮겨도 배정을 바꿀 수 없고, 다음 배정은 저장 결과에서 계산한다', async () => {
+        let finish;
+        window.api.relayNodeChannelsSave = vi.fn(
+            () =>
+                new Promise((r) => {
+                    finish = r;
+                }),
+        );
+        render(<ModerationTab node={node} members={members} />);
+        const list = await screen.findByRole('listbox');
+        fireEvent.click(within(list).getByRole('option', { name: /#news/ }));
+        fireEvent.click(screen.getByRole('button', { name: /^Talking Saba-chan chat/ }));
+        fireEvent.click(within(list).getByRole('option', { name: /#music/ }));
+        expect(screen.getByRole('button', { name: /^Talking Saba-chan chat/ }).disabled).toBe(true);
+        finish({ ...assigned, chatbot: ['111', '333'] });
+        await waitFor(() =>
+            expect(screen.getByRole('button', { name: /^Talking Saba-chan chat/ }).disabled).toBe(false),
+        );
+        fireEvent.click(screen.getByRole('button', { name: /^Talking Saba-chan chat/ }));
+        await waitFor(() =>
+            expect(window.api.relayNodeChannelsSave).toHaveBeenLastCalledWith('g1', {
+                chatbot: ['111', '333', '222'],
+                music: null,
+            }),
+        );
+    });
+
+    it('새로 고침으로 받은 이름·주제를 입력에 반영해, 주제만 고쳐도 이름을 되돌리지 않는다', async () => {
+        render(<ModerationTab node={node} members={members} />);
+        expect((await screen.findByLabelText('Name')).value).toBe('chat');
+        window.api.relayNodeModeration = vi.fn().mockResolvedValue({
+            ...moderation,
+            channels: [channel('111', 'renamed'), ...moderation.channels.slice(1)],
+        });
+        fireEvent.click(screen.getByRole('button', { name: /Refresh/ }));
+        await waitFor(() => expect(screen.getByLabelText('Name').value).toBe('renamed'));
+        fireEvent.change(screen.getByLabelText('Topic'), { target: { value: 'hi' } });
+        fireEvent.click(screen.getByRole('button', { name: /^Save$/ }));
+        await waitFor(() => expect(window.api.relayModChannel).toHaveBeenCalledWith('g1', '111', { topic: 'hi' }));
+    });
+
     it('목록에 없는 채널(삭제·권한 없음)에 남은 배정도 해제할 수 있다', async () => {
         window.api.relayNodeChannels = vi.fn().mockResolvedValue({ ...assigned, chatbot: ['111', '999'] });
         render(<ModerationTab node={node} members={members} />);

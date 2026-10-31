@@ -105,6 +105,21 @@ export function ModerationTab({ node, members = [], membersLoading, onRefreshMem
     const [view, setView] = useState('channels');
     const [mod, setMod] = useState(null);
     const [assign, setAssign] = useState(null);
+    // 배정은 서버 전체 값이라 한 번에 하나만 저장한다 (다음 변경은 직전 저장 결과에서 계산)
+    const [assignSaving, setAssignSaving] = useState(false);
+    const saveAssign = useCallback(
+        async (body) => {
+            setAssignSaving(true);
+            try {
+                const res = await window.api.relayNodeChannelsSave(guildId, body);
+                if (!isError(res)) setAssign(res);
+                return res;
+            } finally {
+                setAssignSaving(false);
+            }
+        },
+        [guildId],
+    );
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
@@ -166,10 +181,10 @@ export function ModerationTab({ node, members = [], membersLoading, onRefreshMem
             )}
             {view === 'channels' && assign && (
                 <StaleAssignments
-                    guildId={guildId}
                     known={mod?.channels || []}
                     assignRes={assign}
-                    setAssignRes={setAssign}
+                    saveAssign={saveAssign}
+                    assignSaving={assignSaving}
                 />
             )}
             {mod?.botAvailable && view === 'channels' && (
@@ -178,7 +193,8 @@ export function ModerationTab({ node, members = [], membersLoading, onRefreshMem
                     mod={mod}
                     setMod={setMod}
                     assignRes={assign}
-                    setAssignRes={setAssign}
+                    saveAssign={saveAssign}
+                    assignSaving={assignSaving}
                     members={members}
                 />
             )}
@@ -199,7 +215,7 @@ export function ModerationTab({ node, members = [], membersLoading, onRefreshMem
 // ── 채널 ──
 
 /** 지워졌거나 사바쨩이 볼 수 없는 채널에 남은 배정 — 채널 목록에서 고를 수 없으니 여기서 뺀다 */
-function StaleAssignments({ guildId, known, assignRes, setAssignRes }) {
+function StaleAssignments({ known, assignRes, saveAssign, assignSaving }) {
     const { t } = useTranslation('gui');
     const action = useAction();
     const assign = assignOf(assignRes);
@@ -218,11 +234,8 @@ function StaleAssignments({ guildId, known, assignRes, setAssignRes }) {
         const body = assignPatch(assign, id, null);
         if (Object.keys(body).length === 0) return;
         action.run(
-            () => window.api.relayNodeChannelsSave(guildId, body),
-            (res) => {
-                setAssignRes(res);
-                return { tone: 'ok', text: t('discord.mod.saved') };
-            },
+            () => saveAssign(body),
+            () => ({ tone: 'ok', text: t('discord.mod.saved') }),
         );
     };
     return (
@@ -237,7 +250,7 @@ function StaleAssignments({ guildId, known, assignRes, setAssignRes }) {
                             <button
                                 type="button"
                                 className="btn btn-ghost btn-sm"
-                                disabled={action.busy}
+                                disabled={assignSaving}
                                 onClick={() => remove(id)}
                             >
                                 {t('discord.mod.stale_remove')}
@@ -251,7 +264,7 @@ function StaleAssignments({ guildId, known, assignRes, setAssignRes }) {
     );
 }
 
-function ChannelsView({ guildId, mod, setMod, assignRes, setAssignRes, members }) {
+function ChannelsView({ guildId, mod, setMod, assignRes, saveAssign, assignSaving, members }) {
     const { t } = useTranslation('gui');
     const channels = mod.channels || [];
     const [selected, setSelected] = useState(channels[0]?.id || null);
@@ -327,7 +340,8 @@ function ChannelsView({ guildId, mod, setMod, assignRes, setAssignRes, members }
                         assign={assign}
                         assignRes={assignRes}
                         assignable={assignable.has(current.id)}
-                        setAssignRes={setAssignRes}
+                        saveAssign={saveAssign}
+                        assignSaving={assignSaving}
                         nameOf={nameOf}
                         members={members}
                     />
@@ -435,7 +449,8 @@ function ChannelPanel({
     assign,
     assignRes,
     assignable,
-    setAssignRes,
+    saveAssign,
+    assignSaving,
     nameOf,
     members,
 }) {
@@ -450,6 +465,9 @@ function ChannelPanel({
     // ── 채널 정보 ──
     const [name, setName] = useState(channel.name);
     const [topic, setTopic] = useState(channel.topic || '');
+    // 새로 고침이나 저장으로 바뀐 이름·주제를 입력에 반영 (오래된 값으로 되돌리지 않게)
+    useEffect(() => setName(channel.name), [channel.name]);
+    useEffect(() => setTopic(channel.topic || ''), [channel.topic]);
     const info = useAction();
     const infoDirty = name.trim() !== channel.name || topic !== (channel.topic || '');
     const saveInfo = () => {
@@ -478,11 +496,8 @@ function ChannelPanel({
         const body = assignPatch(assign, channel.id, target);
         if (Object.keys(body).length === 0) return;
         assigning.run(
-            () => window.api.relayNodeChannelsSave(guildId, body),
-            (res) => {
-                setAssignRes(res);
-                return { tone: 'ok', text: t('discord.mod.saved') };
-            },
+            () => saveAssign(body),
+            () => ({ tone: 'ok', text: t('discord.mod.saved') }),
         );
     };
     const assignError = (res) =>
@@ -549,7 +564,7 @@ function ChannelPanel({
                                     type="button"
                                     className={clsx('dc-chip-toggle', { active: kind === k })}
                                     aria-pressed={kind === k}
-                                    disabled={assigning.busy || (!assignable && kind !== k)}
+                                    disabled={assignSaving || (!assignable && kind !== k)}
                                     onClick={() => pick(k)}
                                 >
                                     {t(`discord.mod.assign_${k}`)}
