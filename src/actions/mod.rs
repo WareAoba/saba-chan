@@ -111,6 +111,9 @@ pub struct Def {
     pub remote_menu: bool,
     /// 디스코드 서버 주인도 `discord_level` 주인으로 본다 (길드 공통 설정, 원격 데몬 R2b). 챗봇 경로는 아니다
     pub guild_owner: bool,
+    /// 부른 사람만 보면 되는 조회 (진단·관리용). 길드 설정 "조회 결과 나만 보기"가 켜지면 디스코드 답을 부른 사람에게만 보인다.
+    /// 서버 상태·접속자처럼 다 같이 보는 조회는 false
+    pub private: bool,
 }
 
 use Surface::{Chatbot, Cli, Discord, Gui};
@@ -120,7 +123,7 @@ const LOCAL_AND_CHATBOT: &[Surface] = &[Gui, Cli, Chatbot];
 const LOCAL_AND_DISCORD: &[Surface] = &[Gui, Cli, Discord];
 
 const fn def(id: &'static str, kind: Kind, risk: &'static str, surfaces: &'static [Surface], instance: bool, method: &'static str, path: &'static str) -> Def {
-    Def { id, kind, risk, surfaces, instance, method, path, fields: &[], open_input: false, discord_level: None, remote_menu: true, guild_owner: false }
+    Def { id, kind, risk, surfaces, instance, method, path, fields: &[], open_input: false, discord_level: None, remote_menu: true, guild_owner: false, private: false }
 }
 
 /// 첫 판 액션. 새 기능은 여기 한 줄을 더하면 모든 표면에 퍼진다.
@@ -141,7 +144,7 @@ pub static ACTIONS: &[Def] = &[
         ..def("server.chat", Kind::Command, "safe", LOCAL_AND_DISCORD, true, "POST", "/api/instance/:id/chat")
     },
     // 포트포워딩 확인: 릴레이가 밖에서 게임 포트에 접속해 본다. 공인 주소가 결과에 있어 챗봇에는 열지 않는다 (디스코드는 요약만 보인다)
-    def("server.port_check", Kind::Query, "safe", LOCAL_AND_DISCORD, true, "POST", "/api/instance/:id/port-check"),
+    Def { private: true, ..def("server.port_check", Kind::Query, "safe", LOCAL_AND_DISCORD, true, "POST", "/api/instance/:id/port-check") },
     // 시작·정지 기록은 디스코드에서 쓰지 않는다 (사용자 디스코드 검수 3번)
     def("instance.events", Kind::Query, "safe", LOCAL_AND_CHATBOT, true, "GET", "/api/instance/:id/events"),
     // 로그 전체 읽기·내보내기 (검수 9번). 디스코드 메뉴에는 없고 내보내기는 파일로 첨부된다
@@ -153,9 +156,9 @@ pub static ACTIONS: &[Def] = &[
         fields: &[field("source", "string", false), field("since", "integer", false), field("until", "integer", false)],
         ..def("server.logs.export", Kind::Query, "safe", LOCAL_AND_CHATBOT, true, "GET", "/api/instance/:id/logs/export")
     },
-    def("monitor.summary", Kind::Query, "safe", ALL, false, "GET", "/api/system/metrics?sizes=false"),
+    Def { private: true, ..def("monitor.summary", Kind::Query, "safe", ALL, false, "GET", "/api/system/metrics?sizes=false") },
     // 디스코드 메뉴에서만 뺀다 (검수 4번). 챗봇 복원이 목록을 보고, 디스코드에서 부르는 것은 계속 받는다
-    Def { remote_menu: false, ..def("backup.list", Kind::Query, "safe", ALL, true, "GET", "/api/instance/:id/backups") },
+    Def { remote_menu: false, private: true, ..def("backup.list", Kind::Query, "safe", ALL, true, "GET", "/api/instance/:id/backups") },
     // from_snapshot: 지금 상태 대신 게임이 만든 가장 새 자동 백업을 보관한다 (`[backup] snapshots` 모듈)
     Def { fields: &[field("from_snapshot", "boolean", false)], ..def("backup.create", Kind::Command, "caution", ALL, true, "POST", "/api/instance/:id/backups") },
     // 디스코드에서도 복원한다 (검수 14번). 백업은 목록에서 고른다
@@ -752,6 +755,9 @@ pub fn heartbeat_actions(locales: &[&str], modules: &[LoadedModule]) -> (Vec<Val
         if let Some(level) = d.discord_level {
             item["level"] = json!(level);
         }
+        if d.private {
+            item["private"] = json!(true);
+        }
         // 모듈이 지원해야 하는 액션: 그 모듈 이름들 (릴레이는 이 모듈의 서버에만 하위 명령을 만든다)
         if let Some(supports) = module_support(d.id) {
             let mut names: Vec<&str> = modules.iter().filter(|m| supports(m)).map(|m| m.metadata.name.as_str()).collect();
@@ -796,6 +802,9 @@ pub fn heartbeat_actions(locales: &[&str], modules: &[LoadedModule]) -> (Vec<Val
             let description = text("description");
             if !description.is_empty() {
                 item["description"] = Value::Object(description);
+            }
+            if q.private {
+                item["private"] = json!(true);
             }
             items.push(item);
         }
