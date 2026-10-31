@@ -61,7 +61,7 @@
 }
 
 .remote-picker-entry.selected {
-    background: color-mix(in srgb, var(--accent) 22%, transparent);
+    background: color-mix(in oklch, var(--accent) 22%, transparent);
 }
 
 .remote-picker-empty {

@@ -623,7 +623,7 @@ function SettingsModal({
                                                 active: customTheme.accentColor === preset.primary,
                                             })}
                                             style={{
-                                                background: `linear-gradient(135deg, ${preset.primary} 0%, ${preset.secondary} 100%)`,
+                                                background: `linear-gradient(in oklch 135deg, ${preset.primary} 0%, ${preset.secondary} 100%)`,
                                             }}
                                             onClick={() =>
                                                 handleCustomThemeChange({

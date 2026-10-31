@@ -27,7 +27,7 @@
     --surface-gradient-hover: #1f2025;
     --panel-gradient: #141518;
     --appbar-gradient: #111214;
-    --sheen: linear-gradient(transparent, transparent);
+    --sheen: linear-gradient(in oklch, transparent, transparent);
 
     /* 선 (A2) */
     --line: rgba(255, 255, 255, 0.07);
@@ -101,7 +101,7 @@
     --surface-gradient-hover: #fafbfc;
     --panel-gradient: #f3f4f7;
     --appbar-gradient: #eef0f3;
-    --sheen: linear-gradient(transparent, transparent);
+    --sheen: linear-gradient(in oklch, transparent, transparent);
 
     --line: rgba(20, 24, 36, 0.08);
     --line-strong: rgba(20, 24, 36, 0.16);
@@ -167,7 +167,7 @@
         --surface-gradient-hover: #fafbfc;
         --panel-gradient: #f3f4f7;
         --appbar-gradient: #eef0f3;
-        --sheen: linear-gradient(transparent, transparent);
+        --sheen: linear-gradient(in oklch, transparent, transparent);
         --line: rgba(20, 24, 36, 0.08);
         --line-strong: rgba(20, 24, 36, 0.16);
         --text-1: #1b1d23;

@@ -71,7 +71,7 @@ export function tokenOf(name) {
 function resolveBackground(bg) {
     if (!bg) return undefined;
     const token = tokenOf(bg);
-    return token ? `color-mix(in srgb, var(--tok-${token}) 20%, transparent)` : bg;
+    return token ? `color-mix(in oklch, var(--tok-${token}) 20%, transparent)` : bg;
 }
 
 /** 맨 앞의 단독 플래그 `(?i)`, `(?is)` → JS 플래그 (지원하는 i·s·m만) */
