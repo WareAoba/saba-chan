@@ -834,6 +834,8 @@
     "sleep_failed": "Couldn't change sleep on {{count}} server(s).",
     "add_server_title": "Add another Discord server",
     "add_server_desc": "Get a new code and type it in another Discord server to connect it to this PC as well.",
+    "new_guild_instances_title": "Open my servers in new Discord servers",
+    "new_guild_instances_desc": "Discord servers connected with a pairing code get every server on this PC right away. Turn off to pick the servers for each Discord server yourself. Discord servers connected with /saba connect and no code always start with none.",
     "connection_info": "Connection details",
     "host_id": "Host ID",
     "relay_url": "Server-chan",

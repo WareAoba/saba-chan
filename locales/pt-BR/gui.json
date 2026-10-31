@@ -834,6 +834,8 @@
     "sleep_failed": "Não foi possível alterar o modo de sono em {{count}} servidor(es).",
     "add_server_title": "Adicionar outro servidor do Discord",
     "add_server_desc": "Gere um novo código e digite-o em outro servidor do Discord para conectá-lo também a este PC.",
+    "new_guild_instances_title": "Open my servers in new Discord servers",
+    "new_guild_instances_desc": "Discord servers connected with a pairing code get every server on this PC right away. Turn off to pick the servers for each Discord server yourself. Discord servers connected with /saba connect and no code always start with none.",
     "connection_info": "Detalhes da conexão",
     "host_id": "ID do host",
     "relay_url": "Servidor de retransmissão",

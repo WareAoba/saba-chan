@@ -834,6 +834,8 @@
     "sleep_failed": "Schlafmodus konnte auf {{count}} Server(n) nicht geändert werden.",
     "add_server_title": "Weiteren Discord-Server hinzufügen",
     "add_server_desc": "Hol dir einen neuen Code und gib ihn auf einem anderen Discord-Server ein, um auch diesen mit diesem PC zu verbinden.",
+    "new_guild_instances_title": "Open my servers in new Discord servers",
+    "new_guild_instances_desc": "Discord servers connected with a pairing code get every server on this PC right away. Turn off to pick the servers for each Discord server yourself. Discord servers connected with /saba connect and no code always start with none.",
     "connection_info": "Verbindungsdetails",
     "host_id": "Host-ID",
     "relay_url": "Relay-Server",
