@@ -1000,6 +1000,47 @@ impl Api {
         )
         .await
     }
+    /// GET /api/relay/node/:guild/moderation — `{botAvailable, can, channels: [{id, name, topic, slowmode, locked, autoClear}], mutes}`
+    pub async fn node_moderation(&self, guild_id: &str, relay_url: Option<&str>) -> Result<Value> {
+        self.get_slow(&with_query(
+            &format!("/api/relay/node/{}/moderation", seg(guild_id)),
+            &[("relayUrl", relay_url.map(str::to_string))],
+        ))
+        .await
+    }
+    /// PATCH /api/relay/node/:guild/moderation/channels/:channel — `{name?, topic?, slowmode?, lock?, autoClear?}`. 응답은 바뀐 채널
+    pub async fn moderate_channel(&self, guild_id: &str, channel_id: &str, body: Value, relay_url: Option<&str>) -> Result<Value> {
+        self.patch(
+            &with_query(
+                &format!("/api/relay/node/{}/moderation/channels/{}", seg(guild_id), seg(channel_id)),
+                &[("relayUrl", relay_url.map(str::to_string))],
+            ),
+            body,
+        )
+        .await
+    }
+    /// POST /api/relay/node/:guild/moderation/channels/:channel/clear — `{count?, authorId?, sinceMinutes?}` → `{deleted, kept, olderLeft}`
+    pub async fn clear_channel(&self, guild_id: &str, channel_id: &str, body: Value, relay_url: Option<&str>) -> Result<Value> {
+        self.post(
+            &with_query(
+                &format!("/api/relay/node/{}/moderation/channels/{}/clear", seg(guild_id), seg(channel_id)),
+                &[("relayUrl", relay_url.map(str::to_string))],
+            ),
+            body,
+        )
+        .await
+    }
+    /// PUT /api/relay/node/:guild/moderation/mutes/:user — `{duration: 분|"forever"|"off", reason?}` → `{result}`
+    pub async fn mute_member(&self, guild_id: &str, user_id: &str, body: Value, relay_url: Option<&str>) -> Result<Value> {
+        self.put_slow(
+            &with_query(
+                &format!("/api/relay/node/{}/moderation/mutes/{}", seg(guild_id), seg(user_id)),
+                &[("relayUrl", relay_url.map(str::to_string))],
+            ),
+            body,
+        )
+        .await
+    }
     /// GET /api/discord/:guild/settings — `{guildId, locale, sleeping, music}` (I2)
     pub async fn discord_settings(&self, guild_id: &str) -> Result<Value> {
         self.get(&format!("/api/discord/{}/settings", seg(guild_id))).await
@@ -1214,7 +1255,13 @@ pub fn check(status: u16, body: Value) -> Result<Value> {
     };
     // 데몬이 그대로 넘긴 릴레이 본문은 `error`가 코드(`NODE_NOT_FOUND`)이고 error_code가 없다
     let relay_code = pick("error").filter(|e| e.len() > 2 && e.bytes().all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_'));
-    let relay_code = if status == 429 && pick("error_code").is_none() { Some("RATE_LIMITED".to_string()) } else { relay_code };
+    // 429 는 릴레이가 따로 알리는 코드(채널 이름 바꾸기 한도 RENAME_LIMIT 등)가 아니면 모두 RATE_LIMITED
+    let known = |c: &str| crate::i18n::try_t(&format!("err.relay.{}", c.to_ascii_lowercase())).is_some();
+    let relay_code = if status == 429 && pick("error_code").is_none() && !relay_code.as_deref().is_some_and(known) {
+        Some("RATE_LIMITED".to_string())
+    } else {
+        relay_code
+    };
     if let (None, Some(rc)) = (pick("error_code"), relay_code) {
         let code = rc.to_ascii_lowercase();
         // 같은 뜻의 릴레이 코드는 한 문장으로 묶는다

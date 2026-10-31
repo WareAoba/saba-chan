@@ -443,6 +443,7 @@ export function DiscordPage({
                                 node={currentNode}
                                 nodes={cloudNodes}
                                 servers={servers}
+                                modules={modules}
                                 settings={settings}
                                 updateAllowed={updateAllowed}
                                 updateStartNotice={updateStartNotice}

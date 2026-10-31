@@ -134,6 +134,38 @@ pub async fn run(ctx: &Ctx, cmd: BotCmd) -> Result<()> {
                 None => channels_of_paired(ctx, change).await,
             }
         }
+        BotCmd::Moderation { guild } => moderation(ctx, &resolve::guild(ctx, guild.as_deref()).await?).await,
+        BotCmd::Channel { channel, guild, name, topic, no_topic, slowmode, lock, auto_clear } => {
+            let guild = resolve::guild(ctx, guild.as_deref()).await?;
+            let mut body = Map::new();
+            if let Some(n) = name {
+                body.insert("name".into(), json!(n));
+            }
+            if no_topic {
+                body.insert("topic".into(), Value::Null);
+            } else if let Some(t) = topic {
+                body.insert("topic".into(), json!(t));
+            }
+            if let Some(sec) = slowmode {
+                body.insert("slowmode".into(), json!(sec));
+            }
+            if let Some(l) = lock {
+                body.insert("lock".into(), mod_duration(&l, true)?);
+            }
+            if let Some(a) = auto_clear {
+                let v = mod_duration(&a, false)?;
+                body.insert("autoClear".into(), if v == "off" { Value::Null } else { v });
+            }
+            moderate_channel(ctx, &guild, &channel, body).await
+        }
+        BotCmd::Clear { channel, guild, count, member, since } => {
+            let guild = resolve::guild(ctx, guild.as_deref()).await?;
+            clear(ctx, &guild, &channel, count, member.as_deref(), since.as_deref()).await
+        }
+        BotCmd::Mute { member, duration, guild, reason } => {
+            let guild = resolve::guild(ctx, guild.as_deref()).await?;
+            mute(ctx, &guild, &member, &duration, reason).await
+        }
         BotCmd::Lang { guild, value } => {
             let patch = value.map(|v| json!({ "locale": v }));
             discord_settings(ctx, &resolve::guild(ctx, Some(&guild)).await?, patch).await
@@ -808,6 +840,138 @@ fn print_channels(r: &Value) {
     }
 }
 
+// ── 서버 관리 (2026-10-31): 앱의 서버 관리 탭과 같은 데몬 API ──
+
+/// "30m"·"6h"·"7d"·"90"(분) → 분. `forever`(잠금·음소거만)·`off`는 그 글자 그대로
+fn mod_duration(text: &str, forever_ok: bool) -> Result<Value> {
+    let t = text.trim().to_lowercase();
+    match t.as_str() {
+        "off" | "해제" | "끄기" => return Ok(json!("off")),
+        "forever" | "무기한" if forever_ok => return Ok(json!("forever")),
+        _ => {}
+    }
+    let (num, unit) = t.split_at(t.find(|c: char| !c.is_ascii_digit()).unwrap_or(t.len()));
+    let n: u64 = num.parse().map_err(|_| usage(t!("bot.bad_duration", value = text)))?;
+    let minutes = match unit.trim() {
+        "" | "m" | "분" => n,
+        "h" | "시간" => n * 60,
+        "d" | "일" => n * 1440,
+        _ => return Err(usage(t!("bot.bad_duration", value = text))),
+    };
+    if minutes == 0 || minutes > 28 * 1440 {
+        return Err(usage(t!("bot.bad_duration", value = text)));
+    }
+    Ok(json!(minutes))
+}
+
+/// 서버 관리 화면의 채널(봇이 보는 텍스트 채널) 이름이나 id → id
+async fn mod_channel_id(ctx: &Ctx, guild: &str, query: &str) -> Result<(String, String)> {
+    let cfg = ctx.api.bot_config().await?;
+    let r = ctx.api.node_moderation(guild, relay_of(&cfg)).await?;
+    let list = r.get("channels").and_then(Value::as_array).cloned().unwrap_or_default();
+    let id = channel_id(&list, query)?;
+    let name = list.iter().find(|c| s(c, "id") == id).map_or(id.clone(), |c| s(c, "name").to_string());
+    Ok((id, name))
+}
+
+fn mod_minutes(m: u64) -> String {
+    output::duration(m * 60)
+}
+
+fn print_moderation(r: &Value) {
+    if r.get("botAvailable").and_then(Value::as_bool) == Some(false) {
+        tell!("{} {}", console::style("!").yellow().bold(), t!("bot.channels_bot_missing"));
+        return;
+    }
+    let mut t = output::table(&[t!("bot.channel"), t!("bot.mod_slowmode"), t!("bot.mod_lock"), t!("bot.mod_auto_clear")]);
+    for c in r.get("channels").and_then(Value::as_array).into_iter().flatten() {
+        let dash = || output::dim("-");
+        let slow = c.get("slowmode").and_then(Value::as_u64).filter(|n| *n > 0).map_or_else(dash, output::duration);
+        let lock = match c.get("locked") {
+            Some(Value::Object(l)) => match l.get("until").and_then(Value::as_str) {
+                Some(until) => t!("bot.mod_locked_until", time = until),
+                None => t!("bot.mod_locked"),
+            },
+            _ => dash(),
+        };
+        let auto = c.get("autoClear").and_then(Value::as_u64).map_or_else(dash, mod_minutes);
+        t.add_row(vec![format!("#{}", s(c, "name")), slow, lock, auto]);
+    }
+    output::print_table(t);
+    let mutes = r.get("mutes").and_then(Value::as_array).cloned().unwrap_or_default();
+    say!();
+    output::heading(&t!("bot.mod_muted", count = mutes.len()));
+    if mutes.is_empty() {
+        say!("{}", output::dim(&t!("bot.list_empty")));
+        return;
+    }
+    let mut t = output::table(&[t!("col.name"), t!("col.id"), t!("bot.mod_until")]);
+    for m in &mutes {
+        let until = if m.get("forever").and_then(Value::as_bool) == Some(true) {
+            t!("bot.mod_forever")
+        } else {
+            s(m, "until").to_string()
+        };
+        t.add_row(vec![s(m, "name").to_string(), s(m, "userId").to_string(), until]);
+    }
+    output::print_table(t);
+}
+
+async fn moderation(ctx: &Ctx, guild: &str) -> Result<()> {
+    let cfg = ctx.api.bot_config().await?;
+    let r = ctx.api.node_moderation(guild, relay_of(&cfg)).await?;
+    ctx.out.data(&r, print_moderation);
+    Ok(())
+}
+
+async fn moderate_channel(ctx: &Ctx, guild: &str, channel: &str, body: Map<String, Value>) -> Result<()> {
+    if body.is_empty() {
+        return Err(usage(t!("bot.mod_nothing")));
+    }
+    let (id, _) = mod_channel_id(ctx, guild, channel).await?;
+    let cfg = ctx.api.bot_config().await?;
+    let r = ctx.api.moderate_channel(guild, &id, Value::Object(body), relay_of(&cfg)).await?;
+    ctx.out.done(&t!("bot.mod_channel_saved", name = s(&r, "name")), &r);
+    Ok(())
+}
+
+async fn clear(ctx: &Ctx, guild: &str, channel: &str, count: u32, member: Option<&str>, since: Option<&str>) -> Result<()> {
+    let (id, name) = mod_channel_id(ctx, guild, channel).await?;
+    let mut body = json!({ "count": count });
+    if let Some(m) = member {
+        body["authorId"] = json!(resolve::member(ctx, guild, m).await?);
+    }
+    if let Some(p) = since {
+        body["sinceMinutes"] = mod_duration(p, false)?;
+        if body["sinceMinutes"] == "off" {
+            return Err(usage(t!("bot.bad_duration", value = p)));
+        }
+    }
+    ctx.ask.ensure(&t!("bot.confirm_clear", name = name, count = count))?;
+    let cfg = ctx.api.bot_config().await?;
+    let r = ctx.api.clear_channel(guild, &id, body, relay_of(&cfg)).await?;
+    let n = |k: &str| r.get(k).and_then(Value::as_u64).unwrap_or(0);
+    let mut msg = t!("bot.cleared", deleted = n("deleted"), kept = n("kept"));
+    if r.get("olderLeft").and_then(Value::as_bool) == Some(true) {
+        msg = format!("{} {}", msg, t!("bot.cleared_older_left"));
+    }
+    ctx.out.done(&msg, &r);
+    Ok(())
+}
+
+async fn mute(ctx: &Ctx, guild: &str, member: &str, duration: &str, reason: Option<String>) -> Result<()> {
+    let user = resolve::member(ctx, guild, member).await?;
+    let mut body = json!({ "duration": mod_duration(duration, true)? });
+    if let Some(r) = reason.filter(|r| !r.trim().is_empty()) {
+        body["reason"] = json!(r.trim());
+    }
+    let cfg = ctx.api.bot_config().await?;
+    let r = ctx.api.mute_member(guild, &user, body, relay_of(&cfg)).await?;
+    let key = if s(&r, "result") == "unmuted" { "bot.unmuted" } else { "bot.muted" };
+    ctx.out.done(&t!(key, member = member), &r);
+    Ok(())
+}
+
 /// 디스코드에서 코드 없이 `/사바쨩 연결`한 요청 (J1-b). 수락하면 릴레이가 그 길드를 이 PC에 묶는다
 async fn link(ctx: &Ctx, id: Option<&str>, decline: bool) -> Result<()> {
     let cfg = ctx.api.bot_config().await?;
@@ -1135,6 +1299,18 @@ mod tests {
     }
 
     /// 멤버 표는 이름·사용자 이름·id만 이름순으로 (C7)
+    #[test]
+    fn moderation_durations_read_units_and_words() {
+        assert_eq!(mod_duration("90", false).unwrap(), json!(90));
+        assert_eq!(mod_duration("6h", true).unwrap(), json!(360));
+        assert_eq!(mod_duration("7d", false).unwrap(), json!(10080));
+        assert_eq!(mod_duration("forever", true).unwrap(), json!("forever"));
+        assert_eq!(mod_duration("off", false).unwrap(), json!("off"));
+        assert!(mod_duration("forever", false).is_err(), "auto clear has no forever");
+        assert!(mod_duration("29d", true).is_err(), "Discord timeouts end at 28 days");
+        assert!(mod_duration("soon", true).is_err());
+    }
+
     #[test]
     fn member_rows_show_names_and_ids_only() {
         let r = json!({ "members": [

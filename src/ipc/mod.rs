@@ -1,6 +1,6 @@
 ﻿use anyhow::Result;
 use axum::{
-    routing::{delete, get, post, put},
+    routing::{delete, get, patch, post, put},
     Router,
 };
 use serde::{Deserialize, Serialize};
@@ -960,6 +960,16 @@ impl IPCServer {
                 "/api/relay/node/{guild_id}/channels",
                 get(handlers::relay::get_node_channels).put(handlers::relay::put_node_channels),
             )
+            .route("/api/relay/node/{guild_id}/moderation", get(handlers::relay::get_node_moderation))
+            .route(
+                "/api/relay/node/{guild_id}/moderation/channels/{channel_id}",
+                patch(handlers::relay::patch_node_moderation_channel),
+            )
+            .route(
+                "/api/relay/node/{guild_id}/moderation/channels/{channel_id}/clear",
+                post(handlers::relay::clear_node_moderation_channel),
+            )
+            .route("/api/relay/node/{guild_id}/moderation/mutes/{user_id}", put(handlers::relay::put_node_moderation_mute))
             .route("/api/relay/node/{guild_id}/chatbot/models", get(handlers::relay::get_node_chatbot_models))
             .route("/api/relay/node/{guild_id}/chatbot/credit", get(handlers::relay::get_node_chatbot_credit))
             .route("/api/relay/node/{guild_id}/chatbot/tools", get(handlers::relay::get_node_chatbot_tools))

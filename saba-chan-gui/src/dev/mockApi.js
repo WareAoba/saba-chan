@@ -14,6 +14,25 @@ const mockChannels = {
         { id: '222', name: '공지', category: '' },
     ],
 };
+const mockModeration = {
+    botAvailable: true,
+    can: { manageMessages: true, manageChannels: true, manageRoles: true, moderateMembers: true },
+    channels: [
+        {
+            id: '111',
+            name: '잡담',
+            category: '채팅',
+            topic: '아무 얘기나',
+            slowmode: 10,
+            locked: null,
+            autoClear: 1440,
+        },
+        { id: '112', name: '질문', category: '채팅', topic: null, slowmode: 0, locked: null, autoClear: null },
+        { id: '221', name: '음악', category: '놀이', topic: null, slowmode: 0, locked: null, autoClear: null },
+        { id: '222', name: '공지', category: '', topic: null, slowmode: 0, locked: { until: null }, autoClear: null },
+    ],
+    mutes: [],
+};
 const now = () => Math.floor(Date.now() / 1000);
 
 const modules = [
@@ -579,6 +598,40 @@ const impl = {
     relayNodeChannelsSave: (guildId, patch) => {
         Object.assign(mockChannels, patch);
         return ok({ guildId, ...mockChannels });
+    },
+    relayNodeModeration: (guildId) => ok({ guildId, ...mockModeration }),
+    relayModChannel: (_guildId, channelId, patch) => {
+        const c = mockModeration.channels.find((x) => x.id === channelId);
+        if (patch.name) c.name = patch.name;
+        if ('topic' in patch) c.topic = patch.topic;
+        if ('slowmode' in patch) c.slowmode = patch.slowmode;
+        if ('autoClear' in patch) c.autoClear = patch.autoClear;
+        if ('lock' in patch) {
+            c.locked =
+                patch.lock === 'off'
+                    ? null
+                    : {
+                          until:
+                              patch.lock === 'forever' ? null : new Date(Date.now() + patch.lock * 60000).toISOString(),
+                      };
+        }
+        return ok({ ...c });
+    },
+    relayModClear: () => ok({ deleted: 87, kept: 2, olderLeft: false }),
+    relayModMute: (_guildId, userId, body) => {
+        mockModeration.mutes = mockModeration.mutes.filter((m) => m.userId !== userId);
+        if (body.duration !== 'off') {
+            mockModeration.mutes.push({
+                userId,
+                name: userId,
+                avatarUrl: null,
+                forever: body.duration === 'forever',
+                until: new Date(
+                    Date.now() + (body.duration === 'forever' ? 40319 : body.duration) * 60000,
+                ).toISOString(),
+            });
+        }
+        return ok({ result: body.duration === 'off' ? 'unmuted' : 'muted' });
     },
     // GUI ⇄ CLI 전환 (GET·POST /api/clients/launch)
     clientsLaunchable: () => ok({ cli: true, gui: true }),
