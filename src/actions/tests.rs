@@ -305,6 +305,18 @@ fn remote_menu_items_carry_their_fixed_level() {
     assert!(item("server.start").get("level").is_none());
 }
 
+// 조회 나만 보기는 부른 사람만 볼 진단·관리 조회만 숨긴다 — 서버 상태·접속자는 다 같이 본다 (2026-10-31 사용자 결정)
+#[test]
+fn only_diagnostic_queries_are_marked_private() {
+    let (actions, _) = heartbeat_actions(&crate::chat::i18n::languages(), &[]);
+    let private = |id: &str| actions.iter().find(|a| a["id"] == id).unwrap().get("private").cloned();
+    assert_eq!(private("server.port_check"), Some(json!(true)));
+    assert_eq!(private("monitor.summary"), Some(json!(true)));
+    assert_eq!(private("server.status"), None);
+    assert_eq!(private("server.players"), None);
+    assert!(find("backup.list").unwrap().private);
+}
+
 // 원격 업데이트(디스코드 `/사바쨩 업데이트`)는 한 번에 받고·적용하고·필요하면 업데이터까지 띄운다. 주인만, 말하는 사바쨩은 못 부른다
 #[test]
 fn remote_update_installs_in_one_step_for_the_owner_only() {

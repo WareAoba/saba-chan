@@ -203,6 +203,9 @@ pub struct ModuleQuery {
     /// 명령 입력과 같은 모양·검사 (`crate::commands::bind`)
     #[serde(default)]
     pub inputs: Vec<CommandInput>,
+    /// 부른 사람만 보면 되는 결과 (길드 설정 "조회 결과 나만 보기"가 켜지면 디스코드 답을 부른 사람에게만)
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub private: bool,
 }
 
 /// `[[agreements]]` — 사용자가 원문을 읽고 동의해야 서버를 켤 수 있는 약관.
@@ -883,6 +886,9 @@ struct QueryToml {
     /// 입력 (명령 입력과 같은 모양). type은 text·number·select만
     #[serde(default)]
     inputs: Vec<CommandInputToml>,
+    /// 부른 사람만 보면 되는 결과 (진단·관리용). 길드 설정 "조회 결과 나만 보기"가 켜지면 디스코드 답을 부른 사람에게만 보인다
+    #[serde(default)]
+    private: bool,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -1494,6 +1500,7 @@ impl ModuleToml {
                 description: q.description,
                 function: q.function,
                 inputs: q.inputs.into_iter().map(CommandInput::from).collect(),
+                private: q.private,
             }).collect(),
             agreements: self.agreements,
             players_function: self.status.and_then(|s| s.players),
@@ -3285,6 +3292,10 @@ player_leave_patterns = ['^\[\d{2}:\d{2}:\d{2}(?:\] \[[^\]]*/| )INFO\](?: \[[^\]
         // 조회에는 위험도가 없다: 모르는 키로 경고만 남긴다
         let meta = parse_module_toml(&format!("{V1}\n[[queries]]\nname = \"p\"\nfunction = \"f\"\nrisk = \"safe\"\n")).unwrap();
         assert!(meta.warnings.iter().any(|w| w.contains("risk")), "{:?}", meta.warnings);
+        // 부른 사람만 볼 조회는 `private = true` (안 쓰면 다 같이 본다)
+        assert!(!meta.queries[0].private);
+        let meta = parse_module_toml(&format!("{V1}\n[[queries]]\nname = \"p\"\nfunction = \"f\"\nprivate = true\n")).unwrap();
+        assert!(meta.queries[0].private && meta.warnings.is_empty(), "{:?}", meta.warnings);
         let legacy = toml.replacen("schema_version = 1\n", "", 1).replacen("function = \"list_players\"", "function = \"reset_server\"", 1);
         assert_ne!(legacy, toml);
         let meta = parse_module_toml(&legacy).unwrap();

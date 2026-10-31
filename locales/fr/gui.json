@@ -1027,7 +1027,7 @@
     "slash_root_name_word": "Server call word",
     "slash_root_name_desc": "With the server call word, each server shows as its first call word (like /pal). Servers without one use the instance name.",
     "private_queries_title": "Show query results only to the caller",
-    "private_queries_desc": "Answers to query commands such as server status show only to the person who asked, keeping the channel tidy.",
+    "private_queries_desc": "Answers that only the asker needs, such as port forwarding checks, backup lists and resource usage, show only to them, keeping the channel tidy. Shared answers such as server status and players stay visible.",
     "start_notice": "Alerte de démarrage de {{name}}",
     "start_notice_hint": "Les serveurs avec la cloche activée sont annoncés dans le canal d’alertes de ce serveur Discord quand Saba-chan les démarre. Les démarrages depuis Discord ou hors de Saba-chan ne sont pas annoncés. Choisissez le canal d’alertes dans l’onglet Canaux.",
     "start_notice_save_failed": "Impossible d’enregistrer l’alerte de démarrage : {{error}}",
