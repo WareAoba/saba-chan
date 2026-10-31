@@ -13,7 +13,7 @@ done
 cd "$REPO"
 cargo build -p saba-core -p saba-chan-cli -p saba-runner
 CARGO_TARGET_DIR="$REPO/target/e2e-mock" cargo build -p saba-core --features mock-relay
-CARGO_TARGET_DIR="$REPO/target/e2e-mock" cargo build -p saba-chan-updater --features saba-chan-updater-lib/mock-relay
+CARGO_TARGET_DIR="$REPO/target/e2e-mock" cargo build -p saba-chan-installer --no-default-features --features mock-relay
 # GUI: 화면(build/)이 실행 파일에 들어가므로 vite build 다음 Tauri 빌드. tauri-driver·WebKitWebDriver가 없으면 GUI 시험은 건너뛴다
 if [[ -d saba-chan-gui/node_modules/.bin ]] && command -v tauri-driver >/dev/null; then
   (cd saba-chan-gui && npx vite build >/dev/null) && cargo build -p saba-chan-gui

@@ -37,6 +37,8 @@ pub struct Lifecycle {
     /// 이 GUI는 그대로 두고 데몬만 업데이트하러 내려간 때: 다시 뜬 데몬에 붙으면 한 번 완료를 알린다.
     /// 그동안 이 GUI는 데몬을 띄우지 않고 트레이만 든 채로도 끝나지 않는다. `DAEMON_UPDATE_LIMIT`가 지나면 없는 것으로 본다
     daemon_updating: Mutex<Option<std::time::Instant>>,
+    /// 트레이만 든 채 데몬이 없다고 본 heartbeat 수 (닿으면 0)
+    daemon_missed_beats: AtomicU8,
     quitting: AtomicBool,
     client_id: Mutex<Option<String>>,
     last_status: Mutex<Option<Value>>,
@@ -199,6 +201,16 @@ impl Lifecycle {
     /// 다시 뜬 데몬에 붙었다: 데몬만 업데이트하던 중이었으면 한 번만 true. 상한이 지난 뒤 붙은 것은 업데이트가 아니다
     fn daemon_update_done(&self) -> bool {
         self.daemon_updating.lock().unwrap().take().is_some_and(|at| at.elapsed() < DAEMON_UPDATE_LIMIT)
+    }
+
+    /// 트레이만 든 GUI가 데몬을 따라 끝날 때가 됐나: 이번 heartbeat에도 없으면(`gone`) 센다. 연달아 두 번 없어야 끝난다.
+    /// 설치기가 데몬만 바꾸는 동안 이 GUI가 그 사실을 모를 수 있다(CLI가 시작한 업데이트 등): 한 번 기다리면 다시 뜬 데몬에 붙는다
+    fn daemon_gone_long_enough(&self, gone: bool) -> bool {
+        if !gone {
+            self.daemon_missed_beats.store(0, Ordering::SeqCst);
+            return false;
+        }
+        self.daemon_missed_beats.fetch_add(1, Ordering::SeqCst).saturating_add(1) >= 2
     }
 
     /// 서버를 열라는 요청. 렌더러가 이미 준비됐으면 지금 보낼 id를, 아니면 맡아 두고 None
@@ -712,10 +724,11 @@ fn start_heartbeat(app: &AppHandle) {
             // 트레이에서 직접 끈 것이면 다시 켤 수 있게 남는다
             let tray_stopped = state.life.stopped_from_tray.load(Ordering::SeqCst) != TRAY_STOP_NONE;
             // 데몬만 업데이트하는 동안 창을 닫아 트레이만 남았어도 끝나지 않는다: 설치기는 데몬만 다시 띄운다
-            if should_follow_daemon_out(reached, resident, tray_stopped)
+            // 밖에서 시작한 데몬만 업데이트는 이 GUI가 모르므로 한 heartbeat 더 기다린다
+            let gone = should_follow_daemon_out(reached, resident, tray_stopped)
                 && !own_daemon_alive(&app2)
-                && !state.life.daemon_updating()
-            {
+                && !state.life.daemon_updating();
+            if state.life.daemon_gone_long_enough(gone) {
                 tracing::info!("[Tray] The daemon is gone and no window is open; quitting");
                 state.life.quitting.store(true, Ordering::SeqCst);
                 stop_background(&state);
@@ -1127,6 +1140,16 @@ mod tests {
             !should_follow_daemon_out(false, true, true),
             "stopped from the tray: stay to start it again"
         );
+    }
+
+    // 데몬이 잠깐 내려간 것(밖에서 시작한 데몬만 업데이트 등)으로는 끝나지 않는다: 연달아 두 번 없을 때 끝난다
+    #[test]
+    fn a_tray_only_gui_waits_one_more_heartbeat_before_following_the_daemon_out() {
+        let life = Lifecycle::default();
+        assert!(!life.daemon_gone_long_enough(true), "gone once: the installer may be bringing it back");
+        assert!(!life.daemon_gone_long_enough(false), "back again");
+        assert!(!life.daemon_gone_long_enough(true));
+        assert!(life.daemon_gone_long_enough(true), "still gone a heartbeat later");
     }
 
     #[test]
