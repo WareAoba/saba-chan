@@ -164,6 +164,14 @@ export function ModerationTab({ node, members = [], membersLoading, onRefreshMem
                     <span>{t('discord.mod.no_bot')}</span>
                 </div>
             )}
+            {view === 'channels' && assign && (
+                <StaleAssignments
+                    guildId={guildId}
+                    known={mod?.channels || []}
+                    assignRes={assign}
+                    setAssignRes={setAssign}
+                />
+            )}
             {mod?.botAvailable && view === 'channels' && (
                 <ChannelsView
                     guildId={guildId}
@@ -189,6 +197,59 @@ export function ModerationTab({ node, members = [], membersLoading, onRefreshMem
 }
 
 // ── 채널 ──
+
+/** 지워졌거나 사바쨩이 볼 수 없는 채널에 남은 배정 — 채널 목록에서 고를 수 없으니 여기서 뺀다 */
+function StaleAssignments({ guildId, known, assignRes, setAssignRes }) {
+    const { t } = useTranslation('gui');
+    const action = useAction();
+    const assign = assignOf(assignRes);
+    const seen = new Set(known.map((c) => String(c.id)));
+    const stale = [];
+    for (const k of ASSIGN_KINDS) {
+        const ids = k === 'chatbot' ? assign.chatbot : assign[k] ? [assign[k]] : [];
+        for (const id of ids) if (!seen.has(id)) stale.push({ kind: k, id });
+    }
+    if (stale.length === 0) return null;
+    const label = (id) => {
+        const c = (assignRes.channels || []).find((ch) => String(ch.id) === id);
+        return c ? `#${c.name}` : id;
+    };
+    const remove = (id) => {
+        const body = assignPatch(assign, id, null);
+        if (Object.keys(body).length === 0) return;
+        action.run(
+            () => window.api.relayNodeChannelsSave(guildId, body),
+            (res) => {
+                setAssignRes(res);
+                return { tone: 'ok', text: t('discord.mod.saved') };
+            },
+        );
+    };
+    return (
+        <div className="notice tone-warn dc-mod-stale">
+            <Icon name="alertTriangle" size="sm" />
+            <div>
+                <p>{t('discord.mod.stale_hint')}</p>
+                <ul aria-label={t('discord.mod.stale_title')}>
+                    {stale.map(({ kind, id }) => (
+                        <li key={`${kind}:${id}`}>
+                            <span className="muted">{t(`discord.mod.kind_${kind}`)}</span> {label(id)}{' '}
+                            <button
+                                type="button"
+                                className="btn btn-ghost btn-sm"
+                                disabled={action.busy}
+                                onClick={() => remove(id)}
+                            >
+                                {t('discord.mod.stale_remove')}
+                            </button>
+                        </li>
+                    ))}
+                </ul>
+                <ActionNote note={action.note} errorText={(res) => channelsErrorText(res, t, label)} />
+            </div>
+        </div>
+    );
+}
 
 function ChannelsView({ guildId, mod, setMod, assignRes, setAssignRes, members }) {
     const { t } = useTranslation('gui');

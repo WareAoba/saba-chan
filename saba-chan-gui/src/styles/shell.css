@@ -4225,3 +4225,10 @@ button.appbar-preflight {
     user-select: text;
 }
 /* ── 명령 탭 끝 ── */
+.dc-mod-stale ul {
+    margin: var(--sp-2) 0 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: var(--sp-1);
+}

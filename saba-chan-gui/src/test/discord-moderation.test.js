@@ -155,6 +155,24 @@ describe('ModerationTab', () => {
         await waitFor(() => expect(window.api.relayModMute).toHaveBeenCalledWith('g1', 'u1', { duration: 'off' }));
     });
 
+    it('목록에 없는 채널(삭제·권한 없음)에 남은 배정도 해제할 수 있다', async () => {
+        window.api.relayNodeChannels = vi.fn().mockResolvedValue({ ...assigned, chatbot: ['111', '999'] });
+        render(<ModerationTab node={node} members={members} />);
+        const stale = await screen.findByRole('list', { name: 'Assignments to missing channels' });
+        expect(stale.textContent).toMatch(/Chat.*999/);
+        fireEvent.click(within(stale).getByRole('button', { name: 'Unassign' }));
+        await waitFor(() => expect(window.api.relayNodeChannelsSave).toHaveBeenCalledWith('g1', { chatbot: ['111'] }));
+    });
+
+    it('사바쨩이 서버에 없어도 남은 배정은 해제할 수 있다', async () => {
+        window.api.relayNodeModeration = vi
+            .fn()
+            .mockResolvedValue({ ...moderation, botAvailable: false, channels: [] });
+        render(<ModerationTab node={node} />);
+        const stale = await screen.findByRole('list', { name: 'Assignments to missing channels' });
+        expect(within(stale).getAllByRole('button', { name: 'Unassign' })).toHaveLength(2);
+    });
+
     it('사바쨩이 서버에 없으면 알린다', async () => {
         window.api.relayNodeModeration = vi
             .fn()
