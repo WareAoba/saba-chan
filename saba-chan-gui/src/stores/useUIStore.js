@@ -24,7 +24,6 @@ export const useUIStore = create((set, _get) => ({
     showDiscordSection: false,
     showBackgroundSection: false,
     showNoticeSection: false,
-    contextMenu: null,
 
     // ── Notice ──
     unreadNoticeCount: 0,
@@ -89,8 +88,6 @@ export const useUIStore = create((set, _get) => ({
     setShowBackgroundSection: (val) => set({ showBackgroundSection: val }),
     setShowNoticeSection: (val) => set({ showNoticeSection: val }),
 
-    setContextMenu: (menu) => set({ contextMenu: menu }),
-
     setUnreadNoticeCount: (count) => set({ unreadNoticeCount: count }),
 
     setBackgroundDaemonStatus: (status) => set({ backgroundDaemonStatus: status }),
@@ -105,6 +102,7 @@ export const useUIStore = create((set, _get) => ({
         set({
             activeTab: 'servers',
             activeServerId: null,
+            revealServerCount: 0,
             requestedServerTab: null,
             modal: null,
             progressBar: null,
@@ -117,7 +115,6 @@ export const useUIStore = create((set, _get) => ({
             showDiscordSection: false,
             showBackgroundSection: false,
             showNoticeSection: false,
-            contextMenu: null,
             unreadNoticeCount: 0,
             backgroundDaemonStatus: 'checking',
         }),

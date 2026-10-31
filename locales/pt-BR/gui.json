@@ -658,7 +658,16 @@
   },
   "context_menu": {
     "settings": "Configurações do servidor",
-    "delete": "Excluir servidor"
+    "delete": "Excluir servidor",
+    "undo": "Undo",
+    "cut": "Cut",
+    "copy": "Copy",
+    "paste": "Paste",
+    "select_all": "Select all",
+    "clear_console": "Clear screen",
+    "open_console": "Open console",
+    "enable": "Enable",
+    "disable": "Disable"
   },
   "shell": {
     "nav_label": "Seções principais",

@@ -40,7 +40,6 @@ import { setSettingsI18n, useSettingsStore } from './stores/useSettingsStore';
 import { useUIStore } from './stores/useUIStore';
 import { eventsAvailable } from './utils/daemonEvents';
 import { consoleQuickCommands, interactionOf, isManaged } from './utils/serverView';
-import { openWithNotice } from './utils/helpers';
 import { announceUpdateCompleted, syncUpdateNotice } from './utils/updateNotice';
 // 새 레이아웃 스타일은 화면별 옛 CSS(App.css, Modals.css)보다 뒤에 와야 이긴다
 import { announceLastUpdateResult, PatchNotesModal } from './components/Modals/PatchNotesModal';
@@ -97,8 +96,6 @@ function App() {
     const page = useUIStore((s) => s.activeTab);
     const setPage = useUIStore((s) => s.setActiveTab);
     const settingsInitialView = useUIStore((s) => s.settingsInitialView);
-    const contextMenu = useUIStore((s) => s.contextMenu);
-    const setContextMenu = useUIStore((s) => s.setContextMenu);
     const showBackgroundSection = useUIStore((s) => s.showBackgroundSection);
     const setShowBackgroundSection = useUIStore((s) => s.setShowBackgroundSection);
     const showNoticeSection = useUIStore((s) => s.showNoticeSection);
@@ -883,57 +880,6 @@ function App() {
                     {paletteAvailable() && <CommandPalette />}
                     {eventsAvailable() && <DaemonEvents onServersChanged={fetchServers} />}
                     {linkRequestsAvailable() && <LinkRequests />}
-
-                    {/* Context Menu */}
-                    {contextMenu && (
-                        <>
-                            <div
-                                className="context-menu-overlay"
-                                onClick={() => setContextMenu(null)}
-                                onContextMenu={(e) => {
-                                    e.preventDefault();
-                                    setContextMenu(null);
-                                }}
-                            />
-                            <div className="context-menu" style={{ top: contextMenu.y, left: contextMenu.x }}>
-                                <div
-                                    className="context-menu-item"
-                                    onClick={() => {
-                                        useUIStore.getState().showServerTab(contextMenu.server.id, 'settings');
-                                        setContextMenu(null);
-                                    }}
-                                >
-                                    <Icon name="settings" size="sm" />
-                                    {t('context_menu.settings', { defaultValue: 'Settings' })}
-                                </div>
-                                <div
-                                    className="context-menu-item"
-                                    onClick={() => {
-                                        const srv = contextMenu.server;
-                                        const dir = srv?.module_settings?.working_dir || srv?.working_dir || null;
-                                        if (dir) {
-                                            openWithNotice(() => window.api.shellOpenPath(dir));
-                                        }
-                                        setContextMenu(null);
-                                    }}
-                                >
-                                    <Icon name="folder" size="sm" />
-                                    {t('shell.open_folder')}
-                                </div>
-                                <div className="context-menu-separator" />
-                                <div
-                                    className="context-menu-item danger"
-                                    onClick={() => {
-                                        handleDeleteServer(contextMenu.server);
-                                        setContextMenu(null);
-                                    }}
-                                >
-                                    <Icon name="trash" size="sm" />
-                                    {t('context_menu.delete', { defaultValue: 'Delete' })}
-                                </div>
-                            </div>
-                        </>
-                    )}
 
                     {/* 모달 렌더링 */}
                     {patchNotes && <PatchNotesModal data={patchNotes} onClose={() => setPatchNotes(null)} />}

@@ -1,12 +1,14 @@
 import clsx from 'clsx';
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useConsoleStore } from '../../stores/useConsoleStore';
 import { useSettingsStore } from '../../stores/useSettingsStore';
 import { needsConfirm } from '../../utils/commandRisk';
 import { commandText } from '../../utils/serverView';
 import { getCachedRules } from '../../utils/syntaxHighlight';
 import { HighlightedContent } from '../ConsoleView';
 import { Icon } from '../Icon';
+import { useContextMenu } from '../ui/ContextMenu';
 
 // 서버별 보낸 명령 기록 (탭을 오가도 남도록 모듈 범위). 앱을 다시 켜면 비운다.
 const HISTORY_MAX = 50;
@@ -114,6 +116,46 @@ export function ServerConsole({
 
     const lines = state?.lines || [];
 
+    const openMenu = useContextMenu();
+    const outputMenu = (e) => {
+        const sel = window.getSelection();
+        const text = String(sel || '');
+        const inside = !!text && !!outputRef.current?.contains(sel.anchorNode);
+        openMenu(e, [
+            {
+                id: 'copy',
+                label: t('context_menu.copy'),
+                icon: 'copy',
+                
+                disabled: !inside,
+                onSelect: () => navigator.clipboard?.writeText(text),
+            },
+            {
+                id: 'select_all',
+                label: t('context_menu.select_all'),
+                icon: 'selectAll',
+                onSelect: () => {
+                    const range = document.createRange();
+                    range.selectNodeContents(outputRef.current);
+                    sel.removeAllRanges();
+                    sel.addRange(range);
+                },
+            },
+            'separator',
+            {
+                // 화면에서만 지운다: 데몬은 이어서 새 줄만 보내므로 지운 줄이 다시 붙지 않는다
+                id: 'clear',
+                label: t('context_menu.clear_console'),
+                icon: 'eraser',
+                disabled: lines.length === 0,
+                onSelect: () =>
+                    useConsoleStore
+                        .getState()
+                        .setConsoles((all) => (all[server.id] ? { ...all, [server.id]: { ...all[server.id], lines: [] } } : all)),
+            },
+        ]);
+    };
+
     // 따로 띄운 창은 명령을 치려고 여는 창이라 열리자마자 입력칸에 커서를 둔다
     useEffect(() => {
         if (autoFocus) inputRef.current?.focus();
@@ -149,6 +191,7 @@ export function ServerConsole({
                     const el = e.currentTarget;
                     stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
                 }}
+                onContextMenu={outputMenu}
                 role="log"
                 aria-live="polite"
             >

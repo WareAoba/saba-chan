@@ -6,6 +6,7 @@ import { ExtensionConfigForm } from '../ExtensionConfigForm';
 import CustomDropdown from '../CustomDropdown/CustomDropdown';
 import { Icon } from '../Icon';
 import { ModuleMakerCard } from '../ModuleMakerCard';
+import { useContextMenu } from '../ui/ContextMenu';
 import { SabaSpinner, SabaToggle } from '../ui/SabaUI';
 import { QuestionModal } from './Modals';
 import { localizedDescription } from '../../utils/localizedText';
@@ -775,6 +776,7 @@ function ModuleCardIcon({ icon }) {
 // ─────────────────────────────────────────────────────────────
 function ModulesTab() {
     const { t } = useTranslation('gui');
+    const openMenu = useContextMenu();
     const { refreshExtensions } = useExtensions();
     const [installedModules, setInstalledModules] = useState(null); // null = 받는 중
     const [manifestModules, setManifestModules] = useState(null); // null = 미로드, [] = 로드됨
@@ -971,7 +973,22 @@ function ModulesTab() {
                         const moduleId = getModuleId(m);
                         const isRemoving = removingIds.has(moduleId);
                         return (
-                            <div className="ss-card" key={m.name || idx}>
+                            <div
+                                className="ss-card"
+                                key={m.name || idx}
+                                onContextMenu={(e) =>
+                                    openMenu(e, [
+                                        {
+                                            id: 'remove',
+                                            label: t('saba_storage.remove', '제거'),
+                                            icon: 'trash',
+                                            danger: true,
+                                            disabled: isRemoving,
+                                            onSelect: () => setConfirmRemoveId(moduleId),
+                                        },
+                                    ])
+                                }
+                            >
                                 <ModuleCardIcon icon={m.icon} />
                                 <div className="ss-card-body">
                                     <span className="ss-card-name">
@@ -1106,6 +1123,7 @@ function ModulesTab() {
 // ─────────────────────────────────────────────────────────────
 function ExtensionsTab() {
     const { t, i18n } = useTranslation('gui');
+    const openMenu = useContextMenu();
     const {
         extensions,
         refreshExtensions,
@@ -1233,7 +1251,41 @@ function ExtensionsTab() {
                         const isRemoving = removingIds.has(ext.id);
                         const isBusy = isRemoving || installingIds.has(ext.id);
                         return (
-                            <div className="ss-card" key={ext.id}>
+                            <div
+                                className="ss-card"
+                                key={ext.id}
+                                onContextMenu={(e) =>
+                                    openMenu(e, [
+                                        updateInfo && {
+                                            id: 'update',
+                                            label: t('extensions.update_to', {
+                                                version: updateInfo.latest_version,
+                                                defaultValue: `v${updateInfo.latest_version}으로 업데이트`,
+                                            }),
+                                            icon: 'download',
+                                            disabled: isBusy,
+                                            onSelect: () =>
+                                                installExtension(ext.id, { download_url: updateInfo.download_url }),
+                                        },
+                                        {
+                                            id: 'toggle',
+                                            label: ext.enabled ? t('context_menu.disable') : t('context_menu.enable'),
+                                            icon: 'power',
+                                            disabled: isBusy || togglingIds.has(ext.id),
+                                            onSelect: () => handleToggle(ext.id, !ext.enabled),
+                                        },
+                                        'separator',
+                                        {
+                                            id: 'remove',
+                                            label: t('saba_storage.remove', '제거'),
+                                            icon: 'trash',
+                                            danger: true,
+                                            disabled: isBusy,
+                                            onSelect: () => setConfirmRemoveId(ext.id),
+                                        },
+                                    ])
+                                }
+                            >
                                 <div className="ss-card-icon">
                                     {iconUrls[ext.id] ? (
                                         <img src={iconUrls[ext.id]} alt="" />

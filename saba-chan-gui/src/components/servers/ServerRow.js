@@ -2,10 +2,21 @@ import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
 import { useInstanceMaintenance, useMaintenanceOf } from '../../hooks/useInstanceMaintenance';
 import { useServerStore } from '../../stores/useServerStore';
-import { STATUS_TONE, gameNameOf, initials, playersText, primaryAction, viewStatus } from '../../utils/serverView';
+import { useUIStore } from '../../stores/useUIStore';
+import { openWithNotice } from '../../utils/helpers';
+import {
+    STATUS_TONE,
+    gameNameOf,
+    initials,
+    interactionOf,
+    playersText,
+    primaryAction,
+    viewStatus,
+} from '../../utils/serverView';
 import { DataBadges } from '../DataSlots';
 import ExtensionSlot from '../ExtensionSlot';
 import { Icon } from '../Icon';
+import { useContextMenu } from '../ui/ContextMenu';
 import { StatusChip } from '../ui/StatusChip';
 
 /**
@@ -23,7 +34,8 @@ export function ServerRow({
     dragging,
     onPointerDown,
     skipNextClick,
-    onContextMenu,
+    onRestart,
+    onDelete,
 }) {
     const { t } = useTranslation('gui');
     useInstanceMaintenance(server, moduleData);
@@ -34,6 +46,53 @@ export function ServerRow({
     const gameName = gameNameOf(t, server.module, moduleData);
     const statusLabel = t(`shell.status_${status}`);
     const players = playersText(server);
+    const openMenu = useContextMenu();
+    // 좁은 창에서는 목록만 보이므로 상세도 드러낸다 (바깥에서 서버를 여는 길과 같다)
+    const showTab = (tab) => {
+        const ui = useUIStore.getState();
+        ui.showServerTab(server.id, tab);
+        ui.revealServer(server.id);
+    };
+    const dir = server.module_settings?.working_dir || server.working_dir || null;
+    const menuItems = () => [
+        action === 'stop' && { id: 'stop', label: t('shell.stop'), icon: 'stop', onSelect: () => onStop(server.name) },
+        action === 'start' && {
+            id: 'start',
+            label: t('shell.start'),
+            icon: 'play',
+            onSelect: () => onStart(server.name, server.module),
+        },
+        status === 'running' &&
+            onRestart &&
+            window.api?.instanceRestart && {
+                id: 'restart',
+                label: t('shell.restart'),
+                icon: 'refresh',
+                onSelect: () => onRestart(server.name),
+            },
+        interactionOf(server, moduleData).console && {
+            id: 'console',
+            label: t('context_menu.open_console'),
+            icon: 'terminal',
+            onSelect: () => showTab('console'),
+        },
+        'separator',
+        { id: 'settings', label: t('context_menu.settings'), icon: 'settings', onSelect: () => showTab('settings') },
+        dir && {
+            id: 'folder',
+            label: t('shell.open_folder'),
+            icon: 'folder',
+            onSelect: () => openWithNotice(() => window.api.shellOpenPath(dir)),
+        },
+        onDelete && 'separator',
+        onDelete && {
+            id: 'delete',
+            label: t('context_menu.delete'),
+            icon: 'trash',
+            danger: true,
+            onSelect: () => onDelete(server),
+        },
+    ];
 
     return (
         <div
@@ -44,7 +103,7 @@ export function ServerRow({
                 if (skipNextClick.current) return;
                 onSelect(server.id);
             }}
-            onContextMenu={onContextMenu}
+            onContextMenu={(e) => openMenu(e, menuItems())}
             onKeyDown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();

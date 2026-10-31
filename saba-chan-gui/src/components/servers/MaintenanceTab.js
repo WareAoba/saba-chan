@@ -20,6 +20,7 @@ import {
 import { commandText } from '../../utils/serverView';
 import CustomDropdown from '../CustomDropdown/CustomDropdown';
 import { Icon } from '../Icon';
+import { useContextMenu } from '../ui/ContextMenu';
 import { DateField, TimeField } from '../ui/DateTimePicker';
 import { SabaFail } from '../ui/SabaArt';
 import { SabaSpinner, SabaToggle } from '../ui/SabaUI';
@@ -123,6 +124,7 @@ export function MaintenanceTab({ server, moduleCommands = [] }) {
 
 function BackupsCard({ server }) {
     const { t, i18n } = useTranslation('gui');
+    const openMenu = useContextMenu();
     const [backups, setBackups] = useState(null);
     // 모듈이 게임 자동 백업을 알려 주는가 (`[backup] snapshots`)
     const [snapshots, setSnapshots] = useState(false);
@@ -240,8 +242,27 @@ function BackupsCard({ server }) {
                         // zip으로 열리지 않는 백업: 복원할 수 없고 지울 때까지 데몬이 쓰지 않는 내용을 정리하지 못한다
                         const unreadable = b.readable === false;
                         const game = b.kind === GAME_SNAPSHOT;
+                        // 우클릭도 버튼과 같이 한 번 누르면 확인 상태로 바꿀 뿐이다 (실제 실행은 버튼을 한 번 더)
+                        const menu = (e) =>
+                            openMenu(e, [
+                                {
+                                    id: 'restore',
+                                    label: t('maintenance.restore'),
+                                    icon: 'refresh',
+                                    disabled: !stopped || !!busy || unreadable,
+                                    onSelect: () => setArmed(restoreKey),
+                                },
+                                !game && {
+                                    id: 'delete',
+                                    label: t('maintenance.delete'),
+                                    icon: 'trash',
+                                    danger: true,
+                                    disabled: !!busy,
+                                    onSelect: () => setArmed(deleteKey),
+                                },
+                            ]);
                         return (
-                            <li key={b.name} className="dc-list-row">
+                            <li key={b.name} className="dc-list-row" onContextMenu={menu}>
                                 <span className="dc-list-text">
                                     <span className="dc-list-name">{fmt(b.created)}</span>
                                     <span

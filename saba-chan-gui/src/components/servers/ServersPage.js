@@ -52,7 +52,6 @@ export function ServersPage({
     const daemonTarget = useDaemonTarget();
     const selectedId = useUIStore((s) => s.activeServerId);
     const setSelectedId = useUIStore((s) => s.setActiveServerId);
-    const setContextMenu = useUIStore((s) => s.setContextMenu);
     const isDaemonDown = useUIStore((s) => daemonDown(s.backgroundDaemonStatus));
     const [query, setQuery] = useState('');
     const [showDetailNarrow, setShowDetailNarrow] = useState(false);
@@ -162,10 +161,8 @@ export function ServersPage({
                                 dragging={drag.draggedName === server.name}
                                 onPointerDown={query ? () => {} : drag.handleCardPointerDown}
                                 skipNextClick={drag.skipNextClick}
-                                onContextMenu={(e) => {
-                                    e.preventDefault();
-                                    setContextMenu({ x: e.clientX, y: e.clientY, server });
-                                }}
+                                onRestart={onRestart}
+                                onDelete={onDelete}
                             />
                         ))}
                     </div>
