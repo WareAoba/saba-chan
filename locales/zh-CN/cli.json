@@ -174,7 +174,11 @@
     "tts_speed": "Reading Saba-chan speed",
     "tts_speed_value": "{{value}}x",
     "tts_pitch": "Reading Saba-chan pitch",
-    "tts_pitch_value": "{{value}} semitones"
+    "tts_pitch_value": "{{value}} semitones",
+    "tts_names": "Reading Saba-chan name call",
+    "tts_names_always": "Always",
+    "tts_names_multi": "With several people",
+    "tts_names_never": "Never"
   },
   "col": {
     "players": "在线玩家",
