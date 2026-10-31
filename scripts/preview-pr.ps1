@@ -139,18 +139,24 @@ $hasLabel = @($info.labels | Where-Object { $_.name -eq 'preview' }).Count -gt 0
 
 # ── 빌드 찾기 ──
 
-$runs = @(Invoke-GhJson @('run', 'list', '--repo', $Repo, '--workflow', 'preview.yml', '--branch', $info.headRefName,
-        '--limit', '20', '--json', 'databaseId,headSha,status,conclusion,url'))
-$current = @($runs | Where-Object { $_.headSha -eq $info.headRefOid })
-$run = $current | Where-Object { $_.conclusion -eq 'success' } | Select-Object -First 1
+# 실행 결과가 아니라 받을 수 있는 아티팩트로 고른다: 다른 라벨을 붙여 빌드를 건너뛴 실행도 success로 남는다
+$found = Invoke-GhJson @('api', "repos/$Repo/actions/artifacts?name=preview-pr-$Pr&per_page=50")
+$builds = @($found.artifacts | Where-Object { -not $_.expired -and $_.workflow_run } |
+        Sort-Object -Property created_at -Descending |
+        ForEach-Object { [pscustomobject]@{ databaseId = $_.workflow_run.id; headSha = $_.workflow_run.head_sha } })
+$run = $builds | Where-Object { $_.headSha -eq $info.headRefOid } | Select-Object -First 1
 if (-not $run) {
+    # 왜 최신 커밋 빌드가 없는지 실행 목록으로 알려 준다
+    $runs = @(Invoke-GhJson @('run', 'list', '--repo', $Repo, '--workflow', 'preview.yml', '--branch', $info.headRefName,
+            '--limit', '20', '--json', 'headSha,status,conclusion,url'))
+    $current = @($runs | Where-Object { $_.headSha -eq $info.headRefOid })
     $pending = $current | Where-Object { $_.status -ne 'completed' } | Select-Object -First 1
-    $failed = $current | Where-Object { $_.status -eq 'completed' -and $_.conclusion -ne 'success' } | Select-Object -First 1
-    $older = $runs | Where-Object { $_.conclusion -eq 'success' } | Select-Object -First 1
+    $failed = $current | Where-Object { $_.conclusion -eq 'failure' } | Select-Object -First 1
+    $older = $builds | Select-Object -First 1
     if ($pending) { $why = "최신 커밋은 아직 빌드 중입니다: $($pending.url)" }
     elseif ($failed) { $why = "최신 커밋 빌드가 실패했습니다: $($failed.url)" }
     elseif (-not $hasLabel) { $why = "PR #$Pr 에 preview 라벨이 없습니다. 라벨을 붙이면 빌드가 시작됩니다." }
-    else { $why = '최신 커밋의 빌드가 아직 없습니다.' }
+    else { $why = '최신 커밋의 빌드가 없습니다(3일이 지나 지워졌을 수 있습니다). 커밋을 더하거나 라벨을 다시 붙이면 새로 빌드합니다.' }
     if (-not $older) { Fail $why }
     Write-Host "$why 이전 커밋 빌드($($older.headSha.Substring(0, 7)))로 띄웁니다." -ForegroundColor Yellow
     $run = $older
