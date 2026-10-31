@@ -3,7 +3,7 @@ import { gameNameOf } from '@gui/utils/serverView';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useApp, useData } from '../store';
-import { moduleIdOf, moduleUpdates } from './modules';
+import { moduleIdOf, moduleUpdates, undeclaredPermissions } from './modules';
 import { ServerIcon } from './ServerIcon';
 import { Button, Empty, errorText, failed, Loading, Section, Segments } from './ui';
 
@@ -41,7 +41,9 @@ function ModuleCheck({ api, name }) {
     if (res === null) return <Loading />;
     if (!Array.isArray(res.undeclared)) return <p className="hint">{t('modules.check_failed')}</p>;
     if (res.undeclared.length === 0) return <p className="hint">{t('modules.check_ok')}</p>;
-    const perms = res.undeclared.map((p) => tg(`module_audit.perm_${p}`, { defaultValue: p })).join(', ');
+    const perms = undeclaredPermissions(res.undeclared)
+        .map((p) => tg(`module_audit.perm_${p}`, { defaultValue: p }))
+        .join(', ');
     return <p className="hint hint-warn">{t('modules.check_undeclared', { perms })}</p>;
 }
 

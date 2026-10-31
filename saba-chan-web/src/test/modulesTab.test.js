@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isNewerVersion, moduleUpdates } from '../components/modules';
+import { isNewerVersion, moduleUpdates, undeclaredPermissions } from '../components/modules';
 import { resolveTheme } from '../prefs';
 
 describe('모듈 업데이트', () => {
@@ -38,5 +38,17 @@ describe('이 화면 설정', () => {
         expect(resolveTheme('system', true)).toBe('light');
         expect(resolveTheme('system', false)).toBe('dark');
         expect(resolveTheme('bogus', false)).toBe('dark');
+    });
+});
+
+describe('모듈 검사', () => {
+    it('검사 결과(권한·파일·줄)에서 권한 이름만 겹치지 않게 꺼낸다', () => {
+        const findings = [
+            { permission: 'network', file: 'lifecycle.py', line: 3, detail: 'urllib' },
+            { permission: 'process', file: 'lifecycle.py', line: 9, detail: 'subprocess' },
+            { permission: 'network', file: 'util.py', line: 1, detail: 'socket' },
+        ];
+        expect(undeclaredPermissions(findings)).toEqual(['network', 'process']);
+        expect(undeclaredPermissions([{ file: 'x.py' }])).toEqual([]);
     });
 });

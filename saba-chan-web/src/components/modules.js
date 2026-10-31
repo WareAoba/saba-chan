@@ -45,3 +45,8 @@ export function moduleUpdates(modules, catalog) {
         .map((m) => ({ id: moduleIdOf(m), name: m.name, current: m.version, latest: latest.get(moduleIdOf(m)) }))
         .filter((u) => isNewerVersion(u.latest, u.current));
 }
+
+/** 모듈 검사 결과(`{permission, file, line, detail}` 목록)에서 선언하지 않은 권한 이름만 겹치지 않게 꺼낸다 */
+export function undeclaredPermissions(findings) {
+    return [...new Set((findings || []).map((f) => f?.permission).filter((p) => typeof p === 'string' && p))];
+}
