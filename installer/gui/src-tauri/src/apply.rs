@@ -30,7 +30,7 @@ use std::path::{Path, PathBuf};
 #[cfg(feature = "window")]
 use std::sync::Arc;
 #[cfg(feature = "window")]
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 #[cfg(feature = "window")]
 use tokio::sync::RwLock;
 use saba_chan_updater_lib::constants;
@@ -99,7 +99,7 @@ async fn start_apply(
 /// 업데이트를 띄운 프로그램(없으면 GUI)을 다시 띄운다. 적용이 실패해도 띄운다:
 /// 업데이터가 뜰 때 데몬·GUI는 이미 끝났으니 그대로 두면 아무것도 남지 않는다.
 /// `applied`면 `--after-update`를 붙이고(받는 쪽이 완료 알림을 띄운다) 띄운 뒤 업데이터를 닫는다.
-/// 실패면 플래그 없이 띄우고 오류 화면을 남겨 둔다
+/// 실패면 플래그 없이 띄우고, 오류 화면을 닫을 때까지 맨 앞에 남겨 둔다
 fn relaunch(app: &AppHandle, apply_config: &ApplyConfig, applied: bool) {
     let relaunch_exe = apply_config.relaunch_exe.clone();
     let relaunch_extra = apply_config.relaunch_extra.clone();
@@ -113,6 +113,10 @@ fn relaunch(app: &AppHandle, apply_config: &ApplyConfig, applied: bool) {
         if applied {
             tokio::time::sleep(std::time::Duration::from_millis(500)).await;
             app_handle.exit(0);
+        } else if let Some(win) = app_handle.get_webview_window("main") {
+            // 다시 띄운 GUI 창이 오류 화면을 덮지 않게, 사용자가 닫을 때까지 맨 앞에 둔다
+            win.set_always_on_top(true).ok();
+            win.set_focus().ok();
         }
     });
 }
