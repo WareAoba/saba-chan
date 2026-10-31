@@ -205,22 +205,27 @@ if (Test-Path $shared) {
 
 # ── 띄우기 ──
 
-$env:SABA_DATA_DIR = $data
-$env:SABA_IPC_PORT = "$Port"
-$env:IPC_BASE = "http://127.0.0.1:$Port"
-
 $running = @(Get-PreviewProcess $box)
 if ($running.Count -eq 0) {
     $others = @(Get-PreviewProcess $Root)
     if ($others.Count -gt 0) { Fail "다른 PR 프리뷰가 떠 있습니다. scripts\preview-pr.ps1 -Stop 으로 끈 뒤 다시 실행해 주세요." }
     if (-not (Test-PortFree $Port)) { Fail "포트 $Port 를 다른 프로그램이 쓰고 있습니다. -Port 로 다른 포트를 주세요." }
 }
-# 이미 떠 있으면 GUI가 단일 실행 잠금으로 그 창을 앞으로 가져온다
-Start-Process -FilePath (Join-Path $app 'saba-chan-gui.exe') -WorkingDirectory $app
 
-if ($Cli) {
-    $cmd = "Set-Location -LiteralPath '$app'; Write-Host 'PR #$Pr 프리뷰 CLI (데몬 포트 $Port). 예: .\saba-chan-cli.exe --help' -ForegroundColor Cyan"
-    Start-Process -FilePath 'powershell.exe' -ArgumentList @('-NoExit', '-NoProfile', '-Command', $cmd) -WorkingDirectory $app
+# 자식 프로세스에만 물려주고 되돌린다: 이 창에 남으면 뒤에 실행한 설치본 CLI가 프리뷰 데몬·데이터를 가리킨다
+$previewEnv = @{ SABA_DATA_DIR = $data; SABA_IPC_PORT = "$Port"; IPC_BASE = "http://127.0.0.1:$Port" }
+$savedEnv = @{}
+foreach ($k in $previewEnv.Keys) { $savedEnv[$k] = [Environment]::GetEnvironmentVariable($k, 'Process') }
+try {
+    foreach ($k in $previewEnv.Keys) { [Environment]::SetEnvironmentVariable($k, $previewEnv[$k], 'Process') }
+    # 이미 떠 있으면 GUI가 단일 실행 잠금으로 그 창을 앞으로 가져온다
+    Start-Process -FilePath (Join-Path $app 'saba-chan-gui.exe') -WorkingDirectory $app
+    if ($Cli) {
+        $cmd = "Set-Location -LiteralPath '$app'; Write-Host 'PR #$Pr 프리뷰 CLI (데몬 포트 $Port). 예: .\saba-chan-cli.exe --help' -ForegroundColor Cyan"
+        Start-Process -FilePath 'powershell.exe' -ArgumentList @('-NoExit', '-NoProfile', '-Command', $cmd) -WorkingDirectory $app
+    }
+} finally {
+    foreach ($k in $savedEnv.Keys) { [Environment]::SetEnvironmentVariable($k, $savedEnv[$k], 'Process') }
 }
 
 Write-Host ''

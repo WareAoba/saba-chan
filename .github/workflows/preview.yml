@@ -19,8 +19,11 @@ on:
 permissions:
   contents: read
 
+# 빌드하지 않는 이벤트(다른 라벨)는 실행마다 다른 그룹에 넣어, 진행 중인 프리뷰 빌드를 취소하지 않게 한다
 concurrency:
-  group: preview-${{ github.event.pull_request.number }}
+  group: >-
+    preview-${{ github.event.pull_request.number }}-${{
+    (github.event.action != 'labeled' || github.event.label.name == 'preview') && 'build' || github.run_id }}
   cancel-in-progress: true
 
 jobs:
