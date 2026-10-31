@@ -97,8 +97,16 @@ export function SchedulePanel({ api, server, moduleData }) {
     const keepBad = info.backupSupported && (!Number.isInteger(keepNum) || keepNum < 1);
     const problems = drafts.map((d) => draftProblems(d, tg, findCommand(commands, d.command)));
     const blocked = keepBad || problems.some((p) => p.length > 0);
-    const toTask = (d) =>
-        fromDraft(d, { announce: info.announceSupported, inputs: findCommand(commands, d.command)?.inputs });
+    const toTask = (d) => {
+        const inputs = findCommand(commands, d.command)?.inputs;
+        const task = fromDraft(d, { announce: info.announceSupported, inputs });
+        // 체크박스 값은 글자('true'·'false')로 들고 있다: 참거짓으로 보낸다
+        for (const i of inputs || []) {
+            if (i.type === 'boolean' && typeof task.args?.[i.name] === 'string')
+                task.args[i.name] = task.args[i.name] === 'true';
+        }
+        return task;
+    };
     const saved = info.schedule.map(sameKey);
     const newDanger = drafts.some(
         (d) =>
@@ -134,10 +142,11 @@ export function SchedulePanel({ api, server, moduleData }) {
         const name = value.slice(4);
         const cmd = findCommand(commands, name);
         const keepArgs = name === d.command ? d.args : {};
+        // 기본값을 채우고, 기본값 없는 필수 체크박스는 꺼진 값(false)으로 둔다 (손대지 않아도 저장된다)
         const defaults = Object.fromEntries(
             (cmd?.inputs || [])
-                .filter((i) => i.default != null && keepArgs[i.name] == null)
-                .map((i) => [i.name, String(i.default)]),
+                .filter((i) => keepArgs[i.name] == null && (i.default != null || (i.type === 'boolean' && i.required)))
+                .map((i) => [i.name, String(i.default ?? false)]),
         );
         patch(d.key, { action: COMMAND, command: name, args: { ...defaults, ...keepArgs } });
     };
