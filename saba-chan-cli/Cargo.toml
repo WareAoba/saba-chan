@@ -13,8 +13,8 @@ name = "saba-chan-cli"
 path = "src/main.rs"
 
 [dependencies]
-hmac = "0.12"
-sha2 = "0.10"
+hmac = "0.13"
+sha2 = "0.11"
 hex = "0.4"
 uuid = { version = "1", features = ["v4"] }
 tokio = { version = "1", features = ["full"] }
@@ -27,9 +27,9 @@ clap_complete = "4.5"
 console = "0.16"
 dialoguer = { version = "0.12", default-features = false, features = ["password"] }
 indicatif = "0.18"
-comfy-table = { version = "7", features = ["custom_styling"] }
-rustyline = "18"
-shlex = "1.3"
+comfy-table = { version = "8", features = ["custom_styling"] }
+rustyline = "19"
+shlex = "2.0"
 sys-locale = "0.3"
 saba-chan-updater-lib = { path = "../updater" }
 ratatui = { version = "0.30", default-features = false, features = ["crossterm"] }
@@ -43,8 +43,8 @@ tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 libc = "0.2"
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_System_Console"] }
-winreg = "0.52"
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Console"] }
+winreg = "0.55"
 
 [features]
 # 개발용: `install`이 모의 릴레이(`SABA_RELAY_URL`, scripts/mock-release-server.js)에서 받는다. 릴리즈 빌드에는 켜지 않는다
