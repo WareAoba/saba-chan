@@ -138,4 +138,18 @@ describe('PC 없는 사람의 웹', () => {
         await flush();
         expect(screen.getByRole('heading', { name: 'Basics' })).toBeTruthy();
     });
+
+    it('기억 지우기는 서버 관리 권한이 없어도 서버 관리를 다시 읽지 않는다', async () => {
+        const session = fakeSession({ manage: true, channels: false, messages: false, members: false });
+        render(<App api={{}} session={session} />);
+        await flush();
+        // 마지막 지우기 = 기억 지우기 (앞은 API 키)
+        fireEvent.click(screen.getAllByRole('button', { name: 'Remove' }).at(-1));
+        await flush();
+        act(() => useApp.getState().confirm.done(true));
+        await flush();
+        expect(session.request).toHaveBeenCalledWith('DELETE', `/relay/guilds/${G}/chatbot/memory`, undefined);
+        expect(session.request.mock.calls.map((c) => c[1])).not.toContain(`/relay/guilds/${G}/moderation`);
+        expect(screen.getByRole('heading', { name: 'Basics' })).toBeTruthy();
+    });
 });

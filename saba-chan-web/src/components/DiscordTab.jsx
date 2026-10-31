@@ -129,7 +129,7 @@ function useRelayGuild(relay, guild) {
         };
     }, [relay, g, manage, mod, round]);
 
-    /** call: 릴레이 요청, key: 답을 넣을 칸 (없으면 서버 관리를 다시 읽는다) */
+    /** call: 릴레이 요청, key: 답을 넣을 칸. 'moderation' 이면 서버 관리를 다시 읽고, null 이면 아무것도 바꾸지 않는다 */
     const write = async (call, key) => {
         if (busy) return false;
         setBusy(true);
@@ -139,8 +139,8 @@ function useRelayGuild(relay, guild) {
                 toast(relayError(t, res), 'error');
                 return false;
             }
-            if (key) setData((d) => ({ ...d, [key]: res.data }));
-            else await loadModeration();
+            if (key === 'moderation') await loadModeration();
+            else if (key) setData((d) => ({ ...d, [key]: res.data }));
             toast(t('relay.saved'));
             return true;
         } finally {
@@ -498,7 +498,7 @@ function ModerationSection({ relay, g, can, moderation, busy, write }) {
                                         disabled={busy}
                                         aria-label={t('relay.mod.unmute_named', { name: m.name })}
                                         onClick={() =>
-                                            write(() => relay.modMute(g, m.userId, { duration: 'off' }), null)
+                                            write(() => relay.modMute(g, m.userId, { duration: 'off' }), 'moderation')
                                         }
                                     >
                                         {t('relay.mod.unmute')}
@@ -515,7 +515,7 @@ function ModerationSection({ relay, g, can, moderation, busy, write }) {
                     can={can}
                     busy={busy}
                     onClose={() => setOpen(null)}
-                    onEdit={(edit) => write(() => relay.modChannel(g, channel.id, edit), null)}
+                    onEdit={(edit) => write(() => relay.modChannel(g, channel.id, edit), 'moderation')}
                 />
             )}
         </Section>
