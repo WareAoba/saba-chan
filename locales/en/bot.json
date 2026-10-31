@@ -203,6 +203,10 @@
       "port_check": {
         "title": "Port forwarding check",
         "description": "Server-chan checks whether this server is reachable from the internet"
+      },
+      "chat": {
+        "title": "Send game chat",
+        "description": "Sends a Discord message to the game chat"
       }
     },
     "monitor": {
@@ -303,7 +307,8 @@
       "memory": "Memory",
       "tools": "Enabled tools",
       "step": "Step",
-      "from_snapshot": "From game auto-backup"
+      "from_snapshot": "From game auto-backup",
+      "text": "Message"
     },
     "summary": {
       "server_item": "• **{{name}}** ({{module}}) · {{status}}",

@@ -1027,7 +1027,7 @@
     "slash_root_name_word": "Server call word",
     "slash_root_name_desc": "With the server call word, each server shows as its first call word (like /pal). Servers without one use the instance name.",
     "private_queries_title": "Show query results only to the caller",
-    "private_queries_desc": "Answers to query commands such as server status show only to the person who asked, keeping the channel tidy.",
+    "private_queries_desc": "Answers that only the asker needs, such as port forwarding checks, backup lists and resource usage, show only to them, keeping the channel tidy. Shared answers such as server status and players stay visible.",
     "start_notice": "{{name}} 啟動通知",
     "start_notice_hint": "開啟鈴鐺的伺服器在 Saba-chan 啟動時會在此 Discord 伺服器的通知頻道告知。從 Discord 啟動的和在 Saba-chan 之外啟動的除外。通知頻道在「頻道」分頁中設定。",
     "start_notice_save_failed": "無法儲存啟動通知：{{error}}",

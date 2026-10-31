@@ -203,6 +203,10 @@
       "port_check": {
         "title": "連接埠轉發檢查",
         "description": "中繼檢查能否從外部連線到此伺服器"
+      },
+      "chat": {
+        "title": "傳送遊戲聊天",
+        "description": "把 Discord 訊息傳送到遊戲聊天"
       }
     },
     "monitor": {
@@ -303,7 +307,8 @@
       "memory": "記憶",
       "tools": "啟用的工具",
       "step": "步驟",
-      "from_snapshot": "來自遊戲自動備份"
+      "from_snapshot": "來自遊戲自動備份",
+      "text": "內容"
     },
     "summary": {
       "server_item": "• **{{name}}** ({{module}}) · {{status}}",

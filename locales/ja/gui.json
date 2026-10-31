@@ -1027,7 +1027,7 @@
     "slash_root_name_word": "Server call word",
     "slash_root_name_desc": "With the server call word, each server shows as its first call word (like /pal). Servers without one use the instance name.",
     "private_queries_title": "Show query results only to the caller",
-    "private_queries_desc": "Answers to query commands such as server status show only to the person who asked, keeping the channel tidy.",
+    "private_queries_desc": "Answers that only the asker needs, such as port forwarding checks, backup lists and resource usage, show only to them, keeping the channel tidy. Shared answers such as server status and players stay visible.",
     "start_notice": "{{name}} の起動通知",
     "start_notice_hint": "ベルをオンにしたサーバーは、サバちゃんが起動したときにこのDiscordサーバーの通知チャンネルで知らせます。Discordから起動したものと、サバちゃんの外で起動したものは除きます。通知チャンネルはチャンネルタブで選びます。",
     "start_notice_save_failed": "起動通知を保存できませんでした: {{error}}",

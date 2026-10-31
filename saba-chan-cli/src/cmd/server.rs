@@ -28,6 +28,7 @@ pub async fn run(ctx: &Ctx, cmd: ServerCmd) -> Result<()> {
             crate::cmd::discord_words::run(ctx, server.as_deref(), change).await
         }
         ServerCmd::Send { server, line } => send(ctx, &server, &line.join(" ")).await,
+        ServerCmd::Chat { server, name, text } => chat(ctx, &server, &name, &text.join(" ")).await,
         ServerCmd::Players { server } => players(ctx, server.as_deref()).await,
         ServerCmd::PortCheck { server } => port_check(ctx, server.as_deref()).await,
         ServerCmd::Rcon { server, line } => rcon(ctx, &server, &line.join(" ")).await,
@@ -1392,6 +1393,13 @@ pub fn print_commands(ctx: &Ctx, module: &str, cat: &Catalog) -> Result<()> {
 async fn send(ctx: &Ctx, query: &str, line: &str) -> Result<()> {
     let sv = resolve::server(ctx, Some(query)).await?;
     let r = ctx.api.stdin(&sv.id, line).await?;
+    print_result(ctx, &r);
+    Ok(())
+}
+
+async fn chat(ctx: &Ctx, query: &str, name: &str, text: &str) -> Result<()> {
+    let sv = resolve::server(ctx, Some(query)).await?;
+    let r = ctx.api.game_chat(&sv.id, name, text).await?;
     print_result(ctx, &r);
     Ok(())
 }
