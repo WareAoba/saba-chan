@@ -5,6 +5,7 @@ import { App } from './App';
 import { createWebApi } from './api';
 import { art } from './art';
 import { initI18n } from './i18n';
+import { applyTheme } from './prefs';
 import { createSession } from './session';
 import { useApp } from './store';
 
@@ -19,8 +20,7 @@ function takeLink() {
     }
 }
 
-const theme = window.matchMedia?.('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
-document.documentElement.dataset.theme = theme;
+applyTheme();
 
 const link = takeLink();
 

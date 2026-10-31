@@ -253,7 +253,15 @@
     "installed": "模块已安装。",
     "busy": "此模块的其他操作尚未完成。请稍后再试。",
     "official_only": "在网页上只能安装官方发布的版本。",
-    "catalog_failed": "无法获取已发布的列表。请稍后再打开。"
+    "catalog_failed": "无法获取已发布的列表。请稍后再打开。",
+    "updates_count": "{{count}} updates",
+    "update_all": "Update all",
+    "update": "Update",
+    "update_to": "v{{version}} available",
+    "updated": "Updated.",
+    "check_ok": "Check: uses only declared features.",
+    "check_failed": "Could not get the check result.",
+    "check_undeclared": "Check: uses features not declared by the module ({{perms}}). Make sure you trust this module."
   },
   "plugins": {
     "installed_title": "已安装的插件",
@@ -263,7 +271,11 @@
     "installed": "插件已安装。",
     "enabled": "插件已开启。",
     "disabled": "插件已关闭。",
-    "toggle": "开/关"
+    "toggle": "开/关",
+    "updated": "Plugin updated.",
+    "in_use": "A running server uses this plugin. Stop the server and try again.",
+    "needs_app_update": "App update needed",
+    "settings_pc_only": "Plugin settings may hold secrets, so change them in the saba-chan app on the PC."
   },
   "more": {
     "metrics": "电脑状态",
@@ -272,7 +284,16 @@
     "memory": "内存",
     "servers_usage": "各服务器使用量",
     "none_running": "没有正在运行的服务器。",
-    "pc_only_note": "更新、路径、Discord 连接和会说话的 Saba-chan 设置请在电脑上的 Saba-chan 应用中进行。"
+    "pc_only_note": "更新、路径、Discord 连接和会说话的 Saba-chan 设置请在电脑上的 Saba-chan 应用中进行。",
+    "activity": "Activity",
+    "activity_desc": "Shows who did what to your servers, when and from where. PC paths are hidden.",
+    "screen": "This screen",
+    "language": "Language",
+    "theme": "Theme",
+    "theme_system": "Match device",
+    "theme_light": "Light",
+    "theme_dark": "Dark",
+    "screen_note": "Saved only in this browser. The app settings on the PC don't change."
   },
   "errors": {
     "generic": "无法完成请求。",

@@ -253,7 +253,15 @@
     "installed": "モジュールをインストールしました。",
     "busy": "このモジュールの別の作業が終わっていません。しばらくしてからもう一度お試しください。",
     "official_only": "ウェブでは公式に公開されたものだけをインストールできます。",
-    "catalog_failed": "公開リストを取得できませんでした。しばらくしてからもう一度開いてください。"
+    "catalog_failed": "公開リストを取得できませんでした。しばらくしてからもう一度開いてください。",
+    "updates_count": "{{count}} updates",
+    "update_all": "Update all",
+    "update": "Update",
+    "update_to": "v{{version}} available",
+    "updated": "Updated.",
+    "check_ok": "Check: uses only declared features.",
+    "check_failed": "Could not get the check result.",
+    "check_undeclared": "Check: uses features not declared by the module ({{perms}}). Make sure you trust this module."
   },
   "plugins": {
     "installed_title": "インストール済みのプラグイン",
@@ -263,7 +271,11 @@
     "installed": "プラグインをインストールしました。",
     "enabled": "プラグインをオンにしました。",
     "disabled": "プラグインをオフにしました。",
-    "toggle": "オン/オフ"
+    "toggle": "オン/オフ",
+    "updated": "Plugin updated.",
+    "in_use": "A running server uses this plugin. Stop the server and try again.",
+    "needs_app_update": "App update needed",
+    "settings_pc_only": "Plugin settings may hold secrets, so change them in the saba-chan app on the PC."
   },
   "more": {
     "metrics": "PC の状態",
@@ -272,7 +284,16 @@
     "memory": "メモリ",
     "servers_usage": "サーバーごとの使用量",
     "none_running": "実行中のサーバーはありません。",
-    "pc_only_note": "更新、パス、Discord 接続、おしゃべりサバちゃんの設定は PC のサバちゃんアプリで行います。"
+    "pc_only_note": "更新、パス、Discord 接続、おしゃべりサバちゃんの設定は PC のサバちゃんアプリで行います。",
+    "activity": "Activity",
+    "activity_desc": "Shows who did what to your servers, when and from where. PC paths are hidden.",
+    "screen": "This screen",
+    "language": "Language",
+    "theme": "Theme",
+    "theme_system": "Match device",
+    "theme_light": "Light",
+    "theme_dark": "Dark",
+    "screen_note": "Saved only in this browser. The app settings on the PC don't change."
   },
   "errors": {
     "generic": "リクエストを完了できませんでした。",
