@@ -374,7 +374,8 @@ function SettingsModal({
                                 className="settings-about-btn"
                                 ref={aboutBtnRef}
                                 onClick={handleAboutOpen}
-                                title={t('gui:settings_modal.about_title')}
+                                data-tooltip={t('gui:settings_modal.about_title')}
+                                aria-label={t('gui:settings_modal.about_title')}
                             >
                                 <Icon name="info" size="sm" />
                             </button>
@@ -631,7 +632,8 @@ function SettingsModal({
                                                     accentSecondary: preset.secondary,
                                                 })
                                             }
-                                            title={t(`gui:settings_modal.accent_${preset.name}`, preset.name)}
+                                            data-tooltip={t(`gui:settings_modal.accent_${preset.name}`, preset.name)}
+                                            aria-label={t(`gui:settings_modal.accent_${preset.name}`, preset.name)}
                                         />
                                     ))}
                                     <OklchPicker

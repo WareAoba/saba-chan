@@ -231,7 +231,8 @@ export function AddInstanceMigration({ extensions, servers, onAddServer, onStepC
                                     className="as-btn-icon"
                                     onClick={handleBrowse}
                                     disabled={scanning}
-                                    title={t('migration_modal.browse')}
+                                    data-tooltip={t('migration_modal.browse')}
+                                    aria-label={t('migration_modal.browse')}
                                 >
                                     <Icon name="folder" size="sm" />
                                 </button>

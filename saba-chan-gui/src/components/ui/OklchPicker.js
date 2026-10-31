@@ -290,7 +290,7 @@ export function OklchPicker({ value, onChange, variant = 'field', label, classNa
                 ref={triggerRef}
                 className={clsx('oklch-trigger', `oklch-trigger-${variant}`, className, { open: shown })}
                 aria-label={label}
-                title={label}
+                data-tooltip={label}
                 aria-haspopup="dialog"
                 aria-expanded={shown}
                 onClick={() => {

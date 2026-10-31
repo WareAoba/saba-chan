@@ -275,7 +275,7 @@ export function ActivityBar() {
                     className="activity-line"
                     onClick={toggle}
                     aria-expanded={shown}
-                    title={shown ? t('activity.collapse') : t('activity.expand')}
+                    data-tooltip={shown ? t('activity.collapse') : t('activity.expand')}
                 >
                     <Icon name="terminal" size="xs" />
                     {summary}

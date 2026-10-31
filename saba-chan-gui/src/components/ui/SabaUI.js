@@ -24,7 +24,7 @@ export function SabaToggle({ checked, onChange, disabled, size, className, title
         .filter(Boolean)
         .join(' ');
     return (
-        <label className={cls} title={title}>
+        <label className={cls} data-tooltip={title}>
             <input
                 type="checkbox"
                 checked={checked}
@@ -53,7 +53,7 @@ export function SabaCheckbox({ checked, onChange, disabled, size, className, tit
         .filter(Boolean)
         .join(' ');
     return (
-        <label className={cls} title={title}>
+        <label className={cls} data-tooltip={title}>
             <input
                 type="checkbox"
                 checked={checked}

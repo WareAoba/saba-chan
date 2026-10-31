@@ -13,7 +13,7 @@ export function DataBadges({ server }) {
     const items = slotItems(server, 'ServerCard.badge');
     if (items.length === 0) return null;
     return items.map((b, i) => (
-        <span className="data-slot-badge" key={`${b.extension}-${i}`} title={b.extension}>
+        <span className="data-slot-badge" key={`${b.extension}-${i}`} data-tooltip={b.extension}>
             {b.text}
         </span>
     ));

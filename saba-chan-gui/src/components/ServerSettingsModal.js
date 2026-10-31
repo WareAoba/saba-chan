@@ -458,7 +458,7 @@ function GeneralTab({
                                                                   versionInstalling ||
                                                                   serverRunning
                                                               }
-                                                              title={
+                                                              data-tooltip={
                                                                   serverRunning
                                                                       ? t('server_settings.install_server_running')
                                                                       : t('server_settings.install_version_tooltip', {
@@ -577,7 +577,7 @@ function GeneralTab({
                                                   className="danger-zone-btn"
                                                   onClick={handleResetServer}
                                                   disabled={resettingServer || serverRunning}
-                                                  title={
+                                                  data-tooltip={
                                                       serverRunning
                                                           ? t('server_settings.reset_server_running')
                                                           : undefined

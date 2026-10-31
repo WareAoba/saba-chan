@@ -55,7 +55,7 @@ function SabaStorage({ onBack, isExiting, devMode, initialTab = 'components' }) 
         <div className={clsx('update-panel', { exiting: isExiting })}>
             {/* 헤더 */}
             <div className="update-panel-header">
-                <button className="update-panel-back" onClick={onBack} title={t('saba_storage.back')} disabled={isExiting}>
+                <button className="update-panel-back" onClick={onBack} data-tooltip={t('saba_storage.back')} aria-label={t('saba_storage.back')} disabled={isExiting}>
                     <Icon name="chevronLeft" size="sm" />
                 </button>
                 <h2 className="update-panel-title">{t('saba_storage.title', '사바 스토리지')}</h2>
@@ -152,7 +152,7 @@ function DownloadRing({ percent }) {
     const indeterminate = percent < 0;
     const offset = indeterminate ? circumference * 0.75 : circumference * (1 - percent / 100);
     return (
-        <div className="download-ring-wrapper" title={indeterminate ? '...' : `${percent}%`}>
+        <div className="download-ring-wrapper" data-tooltip={indeterminate ? '...' : `${percent}%`}>
             <svg className="download-ring-svg" viewBox="0 0 32 32" width="28" height="28">
                 <circle className="download-ring-bg" cx="16" cy="16" r={r}
                     fill="none" strokeWidth="3" />
@@ -558,7 +558,7 @@ function ComponentsTab({ devMode }) {
                     <div className="update-panel-header" style={{ paddingTop: 0, paddingBottom: '8px' }}>
                         <label
                             className="update-mock-toggle"
-                            title={mockMode ? t('saba_storage.mock_server_label') : t('saba_storage.real_api_label')}
+                            data-tooltip={mockMode ? t('saba_storage.mock_server_label') : t('saba_storage.real_api_label')}
                         >
                             <span className={clsx('update-mock-label', mockMode ? 'mock' : 'real')}>
                                 {mockMode ? 'MOCK' : 'REAL'}
@@ -599,7 +599,8 @@ function ComponentsTab({ devMode }) {
                                 className="ss-icon-btn accent"
                                 disabled={anyBusy}
                                 onClick={handleUpdateAll}
-                                data-tooltip={t('saba_storage.update_all', '모두 업데이트')} aria-label={t('saba_storage.update_all', '모두 업데이트')}
+                                data-tooltip={t('saba_storage.update_all', '모두 업데이트')}
+                                aria-label={t('saba_storage.update_all', '모두 업데이트')}
                             >
                                 <Icon name="download" size="sm" />
                             </button>
@@ -608,7 +609,8 @@ function ComponentsTab({ devMode }) {
                             className="ss-icon-btn"
                             disabled={anyBusy}
                             onClick={handleCheck}
-                            data-tooltip={t('saba_storage.refresh', '새로고침')} aria-label={t('saba_storage.refresh', '새로고침')}
+                            data-tooltip={t('saba_storage.refresh', '새로고침')}
+                            aria-label={t('saba_storage.refresh', '새로고침')}
                         >
                             <Icon name={checking ? 'loader' : 'refresh'} size="sm" />
                         </button>
@@ -644,7 +646,8 @@ function ComponentsTab({ devMode }) {
                                                     className="ss-icon-btn accent"
                                                     disabled={isBusy}
                                                     onClick={() => handleDownloadOne(c.key)}
-                                                    data-tooltip={t('saba_storage.download')} aria-label={t('saba_storage.download')}
+                                                    data-tooltip={t('saba_storage.download')}
+                                                    aria-label={t('saba_storage.download')}
                                                 >
                                                     {isBusy ? <SabaSpinner size="xs" /> : <Icon name="download" size="sm" />}
                                                 </button>
@@ -656,7 +659,8 @@ function ComponentsTab({ devMode }) {
                                             className={clsx('ss-icon-btn', c.needsUpdater ? 'warning' : 'accent')}
                                             disabled={isBusy}
                                             onClick={() => handleApplyOne(c.key)}
-                                            data-tooltip={t(c.needsUpdater ? 'saba_storage.apply_needs_restart' : 'saba_storage.apply')} aria-label={t(c.needsUpdater ? 'saba_storage.apply_needs_restart' : 'saba_storage.apply')}
+                                            data-tooltip={t(c.needsUpdater ? 'saba_storage.apply_needs_restart' : 'saba_storage.apply')}
+                                            aria-label={t(c.needsUpdater ? 'saba_storage.apply_needs_restart' : 'saba_storage.apply')}
                                         >
                                             {isBusy ? (
                                                 <SabaSpinner size="xs" />
@@ -953,7 +957,8 @@ function ModulesTab() {
                     className="ss-icon-btn"
                     disabled={refreshingModules}
                     onClick={handleRefreshModules}
-                    data-tooltip={t('saba_storage.refresh_modules', '모듈 새로고침')} aria-label={t('saba_storage.refresh_modules', '모듈 새로고침')}
+                    data-tooltip={t('saba_storage.refresh_modules', '모듈 새로고침')}
+                    aria-label={t('saba_storage.refresh_modules', '모듈 새로고침')}
                 >
                     <Icon name={refreshingModules ? 'loader' : 'refresh'} size="sm" />
                 </button>
@@ -981,7 +986,8 @@ function ModulesTab() {
                                         className="ss-icon-btn danger"
                                         disabled={isRemoving}
                                         onClick={() => setConfirmRemoveId(moduleId)}
-                                        data-tooltip={t('saba_storage.remove', '제거')} aria-label={t('saba_storage.remove', '제거')}
+                                        data-tooltip={t('saba_storage.remove', '제거')}
+                                        aria-label={t('saba_storage.remove', '제거')}
                                     >
                                         {isRemoving ? <SabaSpinner size="xs" /> : <Icon name="trash" size="sm" />}
                                     </button>
@@ -1002,7 +1008,8 @@ function ModulesTab() {
                         className="ss-icon-btn"
                         disabled={manifestLoading}
                         onClick={handleRefreshManifest}
-                        data-tooltip={t('saba_storage.refresh_manifest', '매니페스트 새로고침')} aria-label={t('saba_storage.refresh_manifest', '매니페스트 새로고침')}
+                        data-tooltip={t('saba_storage.refresh_manifest', '매니페스트 새로고침')}
+                        aria-label={t('saba_storage.refresh_manifest', '매니페스트 새로고침')}
                     >
                         <Icon name={manifestLoading ? 'loader' : 'refresh'} size="sm" />
                     </button>
@@ -1010,7 +1017,8 @@ function ModulesTab() {
                     <button
                         className="ss-icon-btn"
                         onClick={handleShowManifest}
-                        data-tooltip={t('saba_storage.show_more_modules', '더 많은 모듈 표시')} aria-label={t('saba_storage.show_more_modules', '더 많은 모듈 표시')}
+                        data-tooltip={t('saba_storage.show_more_modules', '더 많은 모듈 표시')}
+                        aria-label={t('saba_storage.show_more_modules', '더 많은 모듈 표시')}
                     >
                         <Icon name="chevronDown" size="sm" />
                     </button>
@@ -1058,7 +1066,8 @@ function ModulesTab() {
                                                 className="ss-icon-btn accent"
                                                 disabled={isInstalling}
                                                 onClick={() => handleInstallModule(m.id)}
-                                                data-tooltip={t('saba_storage.install_btn', '설치')} aria-label={t('saba_storage.install_btn', '설치')}
+                                                data-tooltip={t('saba_storage.install_btn', '설치')}
+                                                aria-label={t('saba_storage.install_btn', '설치')}
                                             >
                                                 {isInstalling ? (
                                                     <SabaSpinner size="xs" />
@@ -1208,7 +1217,8 @@ function ExtensionsTab() {
                     className="ss-icon-btn"
                     disabled={rescanning}
                     onClick={handleRescan}
-                    data-tooltip={t('extensions.rescan', '익스텐션 재스캔')} aria-label={t('extensions.rescan', '익스텐션 재스캔')}
+                    data-tooltip={t('extensions.rescan', '익스텐션 재스캔')}
+                    aria-label={t('extensions.rescan', '익스텐션 재스캔')}
                 >
                     <Icon name={rescanning ? 'loader' : 'refresh'} size="sm" />
                 </button>
@@ -1254,7 +1264,7 @@ function ExtensionsTab() {
                                             onClick={() =>
                                                 installExtension(ext.id, { download_url: updateInfo.download_url })
                                             }
-                                            title={t('extensions.update_to', {
+                                            data-tooltip={t('extensions.update_to', {
                                                 version: updateInfo.latest_version,
                                                 defaultValue: `v${updateInfo.latest_version}으로 업데이트`,
                                             })}
@@ -1277,7 +1287,8 @@ function ExtensionsTab() {
                                         className="ss-icon-btn danger"
                                         disabled={isBusy}
                                         onClick={() => setConfirmRemoveId(ext.id)}
-                                        data-tooltip={t('saba_storage.remove', '제거')} aria-label={t('saba_storage.remove', '제거')}
+                                        data-tooltip={t('saba_storage.remove', '제거')}
+                                        aria-label={t('saba_storage.remove', '제거')}
                                     >
                                         {isRemoving ? <SabaSpinner size="xs" /> : <Icon name="trash" size="sm" />}
                                     </button>
@@ -1298,7 +1309,8 @@ function ExtensionsTab() {
                         className="ss-icon-btn"
                         disabled={manifestLoading}
                         onClick={fetchManifest}
-                        data-tooltip={t('extensions.refresh_manifest', '매니페스트 새로고침')} aria-label={t('extensions.refresh_manifest', '매니페스트 새로고침')}
+                        data-tooltip={t('extensions.refresh_manifest', '매니페스트 새로고침')}
+                        aria-label={t('extensions.refresh_manifest', '매니페스트 새로고침')}
                     >
                         <Icon name={manifestLoading ? 'loader' : 'refresh'} size="sm" />
                     </button>
@@ -1306,7 +1318,8 @@ function ExtensionsTab() {
                     <button
                         className="ss-icon-btn"
                         onClick={handleShowStore}
-                        data-tooltip={t('saba_storage.show_more_extensions')} aria-label={t('saba_storage.show_more_extensions')}
+                        data-tooltip={t('saba_storage.show_more_extensions')}
+                        aria-label={t('saba_storage.show_more_extensions')}
                     >
                         <Icon name="chevronDown" size="sm" />
                     </button>
@@ -1345,7 +1358,8 @@ function ExtensionsTab() {
                                     className="ss-icon-btn accent"
                                     disabled={installingIds.has(ext.id)}
                                     onClick={() => installExtension(ext.id, { download_url: ext.download_url })}
-                                    data-tooltip={t('extensions.install_btn', '설치')} aria-label={t('extensions.install_btn', '설치')}
+                                    data-tooltip={t('extensions.install_btn', '설치')}
+                                    aria-label={t('extensions.install_btn', '설치')}
                                 >
                                     {installingIds.has(ext.id) ? (
                                         <SabaSpinner size="xs" />

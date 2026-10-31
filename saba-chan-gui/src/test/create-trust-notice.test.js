@@ -45,7 +45,7 @@ describe('서버 만들 때 신뢰 안내', () => {
                 onStepChange={vi.fn()}
             />,
         );
-        await act(async () => fireEvent.click(screen.getByTitle('Browse')));
+        await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Browse' })));
         await act(async () => fireEvent.click(await screen.findByRole('button', { name: /Next/i })));
         expect(screen.getByRole('note').textContent).toMatch(/game server .*is not isolated/);
         delete window.api.openFolderDialog;

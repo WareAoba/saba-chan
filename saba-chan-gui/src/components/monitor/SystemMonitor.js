@@ -58,7 +58,7 @@ const CIRC = 2 * Math.PI * RADIUS;
 /** 조각 사이 틈 (원주 길이) */
 const GAP = 2;
 
-/** 원형 그래프 하나. 조각마다 <title>로 이름과 값을 보여 준다 */
+/** 원형 그래프 하나. 조각마다 말풍선으로 이름과 값을 보여 준다 */
 export function MetricRing({ ring, t, size = 112, inlineNote = true }) {
     const total = ring.total > 0 ? ring.total : 1;
     const visible = ring.segments.filter((s) => s.value > 0);
@@ -74,7 +74,7 @@ export function MetricRing({ ring, t, size = 112, inlineNote = true }) {
     const sub = ring.sub?.key ? t(ring.sub.key, ring.sub.vars) : ring.sub?.text;
 
     return (
-        <figure className="monitor-ring" data-metric={ring.key} title={ring.noteKey && !inlineNote ? t(ring.noteKey) : undefined}>
+        <figure className="monitor-ring" data-metric={ring.key} data-tooltip={ring.noteKey && !inlineNote ? t(ring.noteKey) : undefined}>
             <figcaption className="monitor-ring-title">{t(ring.titleKey)}</figcaption>
             <div className="monitor-ring-chart" style={{ width: size, height: size }}>
                 <svg viewBox="0 0 100 100" role="img" aria-label={`${t(ring.titleKey)} ${ring.center}`}>
@@ -93,9 +93,8 @@ export function MetricRing({ ring, t, size = 112, inlineNote = true }) {
                                 strokeDasharray={`${dash} ${CIRC - dash}`}
                                 strokeDashoffset={-off}
                                 transform="rotate(-90 50 50)"
-                            >
-                                <title>{`${label(seg)}: ${ring.format(seg.value)}`}</title>
-                            </circle>
+                                data-tooltip={`${label(seg)}: ${ring.format(seg.value)}`}
+                            />
                         ),
                     )}
                 </svg>
@@ -142,7 +141,7 @@ export function SystemMonitor({ layout = 'top', servers = [] }) {
             onClick={() => update({ systemMonitorOpen: !open })}
             aria-expanded={open}
             aria-label={open ? t('monitor.collapse') : t('monitor.expand')}
-            title={open ? t('monitor.collapse') : t('monitor.expand')}
+            data-tooltip={open ? t('monitor.collapse') : t('monitor.expand')}
         >
             <Icon name={open ? (layout === 'side' ? 'chevronRight' : 'chevronUp') : 'chevronDown'} size="sm" />
         </button>

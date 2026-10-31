@@ -978,7 +978,12 @@ function App() {
 /** 따로 띄운 콘솔 창: 콘솔 줄은 여기서만 구독해 App 전체가 줄마다 다시 그려지지 않게 한다 */
 function PopoutConsoleView(props) {
     const state = useConsoleStore((s) => s.consoles[props.popoutParams.instanceId]);
-    return <PopoutConsole {...props} state={state} />;
+    // 메인 화면과 따로 그려지므로 말풍선도 따로 단다
+    return (
+        <TooltipProvider>
+            <PopoutConsole {...props} state={state} />
+        </TooltipProvider>
+    );
 }
 
 export default App;

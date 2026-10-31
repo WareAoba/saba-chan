@@ -214,17 +214,17 @@ function CommandModal({ server, modules }) {
                                         setCommandInput(cmd.name + ' ');
                                         inputRef.current?.focus();
                                     }}
-                                    title={cmd.name}
+                                    data-tooltip={cmd.name}
                                 >
                                     <span className="cmd-item-name">{text.label}</span>
                                     {text.description && <span className="cmd-item-desc">{text.description}</span>}
                                     {cmd.group && (
-                                        <span className="cmd-source" title={cmd.group}>
+                                        <span className="cmd-source" data-tooltip={cmd.group}>
                                             <Icon name="extension" size="xs" /> {cmd.group}
                                         </span>
                                     )}
                                     {cmd.source === 'extension' && (
-                                        <span className="cmd-source" title={cmd.extension}>
+                                        <span className="cmd-source" data-tooltip={cmd.extension}>
                                             <Icon name="extension" size="xs" /> {cmd.extension}
                                         </span>
                                     )}
@@ -282,7 +282,7 @@ function CommandModal({ server, modules }) {
                             className="term-send"
                             onClick={handleExecuteCommand}
                             disabled={!commandInput.trim() || loading}
-                            title={t('command_modal.execute')}
+                            data-tooltip={t('command_modal.execute')}
                             aria-label={t('command_modal.execute')}
                         >
                             <Icon name={loading ? 'loader' : 'arrowUp'} size="sm" />
@@ -310,7 +310,7 @@ function CommandModal({ server, modules }) {
                                     className="cmd-entry-head"
                                     aria-expanded={expanded}
                                     onClick={() => setExpandedId((prev) => (prev === entry.id ? null : entry.id))}
-                                    title={t('command_modal.click_to_expand')}
+                                    data-tooltip={t('command_modal.click_to_expand')}
                                 >
                                     <span className={clsx('status-chip-dot', `tone-${tone}`)} aria-hidden="true" />
                                     <code className="cmd-entry-cmd">{entry.command}</code>

@@ -73,7 +73,7 @@ export function ServerRow({
                     {players ? (
                         <span
                             className="server-row-players"
-                            title={`${statusLabel} · ${t('shell.players')} ${players}`}
+                            data-tooltip={`${statusLabel} · ${t('shell.players')} ${players}`}
                             role="img"
                             aria-label={`${statusLabel}, ${t('shell.players')} ${players}`}
                         >
@@ -89,13 +89,20 @@ export function ServerRow({
             {server.unresponsive && status === 'running' && (
                 <span
                     className="server-row-flag tone-warn"
-                    title={t('server_status.unresponsive', { reason: server.unresponsive })}
+                    data-tooltip={t('server_status.unresponsive', { reason: server.unresponsive })}
+                    role="img"
+                    aria-label={t('server_status.unresponsive', { reason: server.unresponsive })}
                 >
                     <Icon name="alertTriangle" size={14} />
                 </span>
             )}
             {updateInfo && status === 'stopped' && (
-                <span className="server-row-flag" title={t('shell.update_available')}>
+                <span
+                    className="server-row-flag"
+                    data-tooltip={t('shell.update_available')}
+                    role="img"
+                    aria-label={t('shell.update_available')}
+                >
                     <Icon name="arrowUp" size={14} />
                 </span>
             )}

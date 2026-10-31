@@ -52,7 +52,7 @@ export function PopoutConsole({
                         type="button"
                         className="console-popout-titlebar-btn"
                         onClick={handlePopin}
-                        title={t('console.popin')}
+                        data-tooltip={t('console.popin')}
                         aria-label={t('console.popin')}
                     >
                         <Icon name="externalLinkIn" size="sm" />
@@ -61,7 +61,7 @@ export function PopoutConsole({
                         type="button"
                         className={`console-popout-titlebar-btn${pinned ? ' console-popout-titlebar-pinned' : ''}`}
                         onClick={handleTogglePin}
-                        title={pinned ? t('console.unpin') : t('console.pin')}
+                        data-tooltip={pinned ? t('console.unpin') : t('console.pin')}
                         aria-label={pinned ? t('console.unpin') : t('console.pin')}
                         aria-pressed={pinned}
                     >
@@ -71,7 +71,7 @@ export function PopoutConsole({
                         type="button"
                         className="console-popout-titlebar-btn console-popout-window-btn"
                         onClick={() => window.electron?.minimizeWindow()}
-                        title={t('title_bar.minimize')}
+                        data-tooltip={t('title_bar.minimize')}
                         aria-label={t('title_bar.minimize')}
                     >
                         <Icon name="minus" size="sm" />
@@ -80,7 +80,7 @@ export function PopoutConsole({
                         type="button"
                         className="console-popout-titlebar-btn console-popout-titlebar-close console-popout-window-btn"
                         onClick={() => window.electron?.closeWindow()}
-                        title={t('title_bar.close')}
+                        data-tooltip={t('title_bar.close')}
                         aria-label={t('title_bar.close')}
                     >
                         <Icon name="close" size="sm" />

@@ -12,7 +12,7 @@ describe('크래시 화면', () => {
         render(<ErrorFallback error={new Error('boom')} resetErrorBoundary={vi.fn()} />);
 
         expect(screen.getByText('Something went wrong')).toBeTruthy();
-        expect(screen.getByTitle(/close/i)).toBeTruthy();
+        expect(screen.getByRole('button', { name: /close/i })).toBeTruthy();
         onClose();
         expect(window.api.closeResponse).toHaveBeenCalledWith('exit-interface');
     });

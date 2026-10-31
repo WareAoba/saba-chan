@@ -53,7 +53,7 @@ describe('실행 중이지만 응답이 없는 서버', () => {
         row({ ...base, unresponsive: 'connection refused' });
         const flag = document.querySelector('.server-row-flag.tone-warn');
         expect(flag).not.toBeNull();
-        expect(flag.getAttribute('title')).toMatch(/connection refused/);
+        expect(flag.getAttribute('data-tooltip')).toMatch(/connection refused/);
     });
 
     it('필드가 없으면(옛 데몬이거나 답하는 중) 아무것도 보이지 않는다', () => {
