@@ -590,34 +590,52 @@ export function DiscordTab({ api, relay }) {
     const hostId = useApp((s) => s.session.hostId);
     const [guilds, setGuilds] = useState(null);
     const [guildId, setGuildId] = useState(null);
+    // 릴레이가 서버 목록을 주지 못했다 (끊김·5xx). 404·405 는 /relay 를 모르는 옛 릴레이라 실패가 아니다
+    const [relayFailed, setRelayFailed] = useState(false);
+    const [round, setRound] = useState(0);
 
+    // biome-ignore lint/correctness/useExhaustiveDependencies: round 는 다시 읽기 신호다
     useEffect(() => {
         let alive = true;
         // 아직 /relay 를 모르는 릴레이도 있다 — 그때는 이 PC 의 서버만 보인다
         Promise.all([
             hostId ? api.relayListHostNodes(hostId).catch(() => []) : [],
-            relay ? relay.guilds() : { ok: false },
+            relay ? relay.guilds() : { ok: false, status: 404 },
         ]).then(([nodes, res]) => {
             if (!alive) return;
             const list = mergeGuilds(
                 Array.isArray(nodes) ? nodes : [],
                 res.ok && Array.isArray(res.data) ? res.data : [],
             );
+            setRelayFailed(!res.ok && res.status !== 404 && res.status !== 405);
             setGuilds(list);
-            setGuildId((g) => g ?? list[0]?.id ?? null);
+            setGuildId((g) => (list.some((x) => x.id === g) ? g : (list[0]?.id ?? null)));
         });
         return () => {
             alive = false;
         };
-    }, [api, relay, hostId]);
+    }, [api, relay, hostId, round]);
 
     const guild = guilds?.find((g) => g.id === guildId);
     return (
         <Section title={t('tabs.discord')}>
+            {relayFailed && (
+                <div className="empty">
+                    <p>{t('relay.guilds_failed')}</p>
+                    <Button
+                        onClick={() => {
+                            setGuilds(null);
+                            setRound((r) => r + 1);
+                        }}
+                    >
+                        {t('relay.retry')}
+                    </Button>
+                </div>
+            )}
             {guilds === null ? (
                 <Loading />
             ) : guilds.length === 0 ? (
-                <Empty>{t('relay.no_guilds')}</Empty>
+                !relayFailed && <Empty>{t('relay.no_guilds')}</Empty>
             ) : (
                 <>
                     {guilds.length > 1 && <GuildChips guilds={guilds} value={guildId} onChange={setGuildId} />}

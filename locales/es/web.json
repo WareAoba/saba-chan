@@ -448,6 +448,7 @@
       "unmute_named": "Unmute {{name}}"
     },
     "load_failed": "Couldn't load the settings. Check the connection and try again.",
-    "retry": "Try again"
+    "retry": "Try again",
+    "guilds_failed": "Couldn't load your Discord servers. Check the connection and try again."
   }
 }

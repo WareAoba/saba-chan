@@ -152,4 +152,22 @@ describe('PC 없는 사람의 웹', () => {
         expect(session.request.mock.calls.map((c) => c[1])).not.toContain(`/relay/guilds/${G}/moderation`);
         expect(screen.getByRole('heading', { name: 'Basics' })).toBeTruthy();
     });
+
+    it('서버 목록을 못 읽으면 빈 목록 대신 알리고, 다시 읽으면 고른다', async () => {
+        const session = fakeSession();
+        const ok = session.request.getMockImplementation();
+        let down = true;
+        session.request.mockImplementation((method, path, body) =>
+            down && path === '/relay/guilds'
+                ? Promise.resolve({ status: 0, code: 'ECONNRESET' })
+                : ok(method, path, body),
+        );
+        render(<App api={{}} session={session} />);
+        await flush();
+        expect(screen.queryByText('There are no Discord servers you can manage.')).toBeNull();
+        down = false;
+        fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+        await flush();
+        expect(screen.getByRole('heading', { name: 'Basics' })).toBeTruthy();
+    });
 });
