@@ -250,18 +250,32 @@ async fn hide_secrets(server: &IPCServer, body: &mut Value) {
     }
 }
 
-/// 응답의 모든 문자열에서 PC 경로(드라이브 `C:\\`·`C:/`, 공유 폴더 `\\\\host\\`, 두 조각 이상의 `/a/b`)를 `…`로 바꾼다.
-/// JSON을 담은 문자열(감사 기록의 `args`)의 이스케이프된 `\\`도 잡는다. 드라이브·공유 경로는 따옴표나 줄 끝까지 가린다(띄어쓰기가 든 경로)
+/// 응답의 모든 문자열에서 PC 경로(드라이브 `C:\\`·`C:/`, 공유 폴더 `\\\\host\\`, `~/`, 두 조각 이상의 `/a/b`)를 `…`로 바꾼다.
+/// JSON을 담은 문자열(감사 기록의 `args`)은 풀어서 값마다 가린다. 경로로 시작하는 값은 통째로 가린다(띄어쓰기·따옴표가 든 경로)
 fn hide_paths(body: &mut Value) {
-    // 드라이브·공유 폴더 경로: 따옴표나 줄 끝까지
+    // 값 전체가 경로: 드라이브·공유 폴더·홈·절대 경로로 시작한다
+    static WHOLE: std::sync::LazyLock<regex::Regex> =
+        std::sync::LazyLock::new(|| regex::Regex::new(r#"^\s*(?:[A-Za-z]:[\\/]|\\{2}|~[\\/]|/[^\s/]+/)"#).unwrap());
+    // 글 속 드라이브·공유 폴더 경로: 큰따옴표나 줄 끝까지 (작은따옴표는 경로 이름에 쓸 수 있다)
     static WINDOWS: std::sync::LazyLock<regex::Regex> =
-        std::sync::LazyLock::new(|| regex::Regex::new(r#"(?:\b[A-Za-z]:[\\/]|\\{2,}[^\s"'\\]+\\)[^"'\n]*"#).unwrap());
-    // 두 조각 이상의 절대 경로: 앞이 글자 경계일 때만 (`https://a/b`의 `//`는 조각이 비어 맞지 않는다)
-    static UNIX: std::sync::LazyLock<regex::Regex> =
-        std::sync::LazyLock::new(|| regex::Regex::new(r#"(^|[\s"'=(:,\[])(?:/[^\s/"'\\]+){2,}"#).unwrap());
+        std::sync::LazyLock::new(|| regex::Regex::new(r#"(?:\b[A-Za-z]:[\\/]|\\{2,}[^\s"'\\]+\\)[^"\n]*"#).unwrap());
+    // 글 속 `~/`·두 조각 이상의 절대 경로: 앞이 글자 경계일 때만 (`https://a/b`의 `//`는 조각이 비어 맞지 않는다)
+    static UNIX: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+        regex::Regex::new(r#"(^|[\s"'=(:,\[])(?:~(?:/[^\s/"'\\]+)+|(?:/[^\s/"'\\]+){2,})"#).unwrap()
+    });
     match body {
         Value::String(s) => {
-            if WINDOWS.is_match(s) || UNIX.is_match(s) {
+            let trimmed = s.trim_start();
+            if trimmed.starts_with('{') || trimmed.starts_with('[') {
+                if let Ok(mut inner) = serde_json::from_str::<Value>(s) {
+                    hide_paths(&mut inner);
+                    *s = inner.to_string();
+                    return;
+                }
+            }
+            if WHOLE.is_match(s) {
+                *s = "…".to_string();
+            } else if WINDOWS.is_match(s) || UNIX.is_match(s) {
                 let hidden = WINDOWS.replace_all(s, "…");
                 *s = UNIX.replace_all(&hidden, "${1}…").into_owned();
             }
@@ -296,6 +310,23 @@ mod tests {
             path: path.into(),
             body,
         }
+    }
+
+    /// 공백·작은따옴표가 든 경로, JSON에 담긴 경로, `~/` 경로도 끝까지 가린다 (Codex #775)
+    #[test]
+    fn activity_log_hides_paths_with_spaces_and_quotes() {
+        let args = json!({ "path": "/home/My Games/private/world", "win": "C:\\Users\\O'Brien\\srv", "home": "~/games/mc" }).to_string();
+        let mut body = json!({ "entries": [
+            { "action": "instance.settings.set", "args": args },
+            { "action": "x", "dir": "/home/My Games/private/world" },
+            { "action": "x", "dir": "~/games/mc" },
+        ] });
+        hide_paths(&mut body);
+        let text = body.to_string();
+        for leaked in ["Games", "private", "world", "Brien", "srv", "games/mc"] {
+            assert!(!text.contains(leaked), "{leaked} leaked: {text}");
+        }
+        assert!(body["entries"][0]["args"].as_str().unwrap().contains("\"path\""));
     }
 
     /// 웹에 주는 활동 기록에서 PC 경로를 가린다. 경로가 아닌 게임 명령은 그대로 둔다
