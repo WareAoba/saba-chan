@@ -2,19 +2,19 @@
  * 다크·라이트는 그림자만 다르다. 상태를 알리는 그림(자는·청소·갸웃)은 채도를 낮춰 차분하게 둔다. */
 :root,
 [data-theme="dark"] {
-    --art-shadow: drop-shadow(0 6px 16px color-mix(in srgb, var(--shadow-ink) 55%, transparent));
+    --art-shadow: drop-shadow(0 6px 16px color-mix(in oklch, var(--shadow-ink) 55%, transparent));
     /* 상태 그림(자는·청소·갸웃)을 어두운 바탕에 녹이는 정도 */
     --art-tone: saturate(0.4) brightness(0.68);
     --art-blend: 0.6;
 }
 [data-theme="light"] {
-    --art-shadow: drop-shadow(0 6px 14px color-mix(in srgb, var(--shadow-ink) 16%, transparent));
+    --art-shadow: drop-shadow(0 6px 14px color-mix(in oklch, var(--shadow-ink) 16%, transparent));
     --art-tone: saturate(0.45) brightness(0.92);
     --art-blend: 0.62;
 }
 @media (prefers-color-scheme: light) {
     [data-theme="auto"] {
-        --art-shadow: drop-shadow(0 6px 14px color-mix(in srgb, var(--shadow-ink) 16%, transparent));
+        --art-shadow: drop-shadow(0 6px 14px color-mix(in oklch, var(--shadow-ink) 16%, transparent));
         --art-tone: saturate(0.45) brightness(0.92);
         --art-blend: 0.62;
     }
@@ -169,11 +169,11 @@
 }
 .dc-chain-node.on {
     color: var(--text-1);
-    border-color: color-mix(in srgb, var(--ok) 45%, var(--line-strong));
+    border-color: color-mix(in oklch, var(--ok) 45%, var(--line-strong));
 }
 .dc-chain-node.fail {
     color: var(--text-1);
-    border-color: color-mix(in srgb, var(--stop) 60%, var(--line-strong));
+    border-color: color-mix(in oklch, var(--stop) 60%, var(--line-strong));
 }
 .dc-chain-node.fail > :first-child {
     color: var(--stop);

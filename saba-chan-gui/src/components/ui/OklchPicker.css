@@ -91,8 +91,8 @@
     border-radius: 50%;
     border: 2px solid var(--knob);
     box-shadow:
-        0 0 0 1px color-mix(in srgb, var(--shadow-ink) 45%, transparent),
-        0 1px 3px color-mix(in srgb, var(--shadow-ink) 40%, transparent);
+        0 0 0 1px color-mix(in oklch, var(--shadow-ink) 45%, transparent),
+        0 1px 3px color-mix(in oklch, var(--shadow-ink) 40%, transparent);
     transform: translate(-50%, -50%);
     pointer-events: none;
     transition:

@@ -287,7 +287,7 @@ export function applyCustomTheme(config) {
 
     // Gradient vs flat
     if (useGradient) {
-        root.style.setProperty('--brand-gradient', `linear-gradient(135deg, ${accentColor} 0%, ${accentSecondary} 100%)`);
+        root.style.setProperty('--brand-gradient', `linear-gradient(in oklch 135deg, ${accentColor} 0%, ${accentSecondary} 100%)`);
     } else {
         root.style.setProperty('--brand-gradient', accentColor);
     }
@@ -326,7 +326,7 @@ export function applyCustomTheme(config) {
         root.style.setProperty('--input-focus-shadow', `rgba(${dr}, ${dg}, ${db}, 0.12)`);
         if (useGradient) {
             const darkSecondary = lightenHex(accentSecondary, 0.12);
-            root.style.setProperty('--brand-gradient', `linear-gradient(135deg, ${darkAccent} 0%, ${darkSecondary} 100%)`);
+            root.style.setProperty('--brand-gradient', `linear-gradient(in oklch 135deg, ${darkAccent} 0%, ${darkSecondary} 100%)`);
         } else {
             root.style.setProperty('--brand-gradient', darkAccent);
         }

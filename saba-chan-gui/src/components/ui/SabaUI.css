@@ -43,7 +43,7 @@
     height: 16px;
     border-radius: 50%;
     background: var(--knob);
-    box-shadow: 0 1px 4px color-mix(in srgb, var(--shadow-ink) 18%, transparent);
+    box-shadow: 0 1px 4px color-mix(in oklch, var(--shadow-ink) 18%, transparent);
     transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 

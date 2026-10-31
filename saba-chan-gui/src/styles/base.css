@@ -311,7 +311,7 @@ button:disabled {
     height: 8px;
     border-radius: 50%;
     background: var(--chip-color, var(--text-3));
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--chip-color, transparent) 18%, transparent);
+    box-shadow: 0 0 0 3px color-mix(in oklch, var(--chip-color, transparent) 18%, transparent);
     flex: none;
 }
 .status-chip-detail {
@@ -381,8 +381,8 @@ button:disabled {
     gap: var(--sp-2-5);
     padding: var(--sp-2-5) var(--sp-4);
     border-radius: var(--r-sm);
-    border: 1px solid color-mix(in srgb, var(--chip-color) 35%, transparent);
-    background: color-mix(in srgb, var(--chip-color) 10%, transparent);
+    border: 1px solid color-mix(in oklch, var(--chip-color) 35%, transparent);
+    background: color-mix(in oklch, var(--chip-color) 10%, transparent);
     color: var(--text-1);
     font-size: var(--fs-sm);
 }

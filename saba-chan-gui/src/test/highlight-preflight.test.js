@@ -31,7 +31,7 @@ describe('콘솔 하이라이트 규칙 (C12)', () => {
         const segs = highlightLine('warn hex', rules);
         expect(tokenAt(segs, 'warn')).toBe('warn');
         expect(styleAt(segs, 'warn')).toMatchObject({
-            backgroundColor: 'color-mix(in srgb, var(--tok-warn) 20%, transparent)',
+            backgroundColor: 'color-mix(in oklch, var(--tok-warn) 20%, transparent)',
             textDecoration: 'underline',
         });
         // 옛 모듈의 #hex는 그대로 칠한다
