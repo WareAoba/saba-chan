@@ -379,7 +379,7 @@ Tauri 커맨드(`installer/gui/src-tauri/src/lib.rs`): `get_installer_state`, `s
 | `mcp_clients` | `id` PK(CIMD 주소 그대로 또는 `dcr_<nanoid>`), kind(`cimd`·`dcr`), name, redirect_uris jsonb, fetched_at(CIMD 하루 캐시), created_at (0034, §4.4 (l)) |
 | `mcp_grants` | `id` PK, `discord_id` → users(고유: 계정마다 에이전트 연결 하나), `client_id` → mcp_clients, created_at, last_used_at (0034) |
 | `mcp_tokens` | `hash` PK(`sha256:<hex>`, 원문은 두지 않는다), `grant_id` → mcp_grants cascade, kind(`access` 1시간·`refresh` 30일), expires_at, rotated_at(갱신 토큰을 쓴 때), created_at (0034) |
-| `relay_stats` | `at` PK, hosts_total, hosts_online, guilds, bot_guilds, pollers, web_sessions, commands(지난 기록 뒤 큐에 들어온 수), chatbot_turns, chatbot_input_tokens·chatbot_cached_tokens·chatbot_cache_write_tokens·chatbot_output_tokens(bigint, 0031), music_voice, cpu_pct, rss_mb, load_pct, mem_used_pct, db_mb. 5분마다 한 줄, 사람·IP·길드 id 없음. §4.4 (h) |
+| `relay_stats` | `at` PK, hosts_total, hosts_online, guilds, bot_guilds, pollers, web_sessions, commands(지난 기록 뒤 큐에 들어온 수), chatbot_turns, chatbot_input_tokens·chatbot_cached_tokens·chatbot_cache_write_tokens·chatbot_output_tokens(bigint, 0031), music_voice, cpu_pct, rss_mb, load_pct, mem_used_pct, db_mb, loop_p99_ms·loop_max_ms(지난 기록 뒤 이벤트 루프 지연, 0041). 5분마다 한 줄, 사람·IP·길드 id 없음. §4.4 (h) |
 
 정리 스케줄러(`services/cleanup.ts`): 감사 30일, 운영 통계 365일, 끝난 큐 7일, 업데이트 이벤트 90일, 페어링 코드 24시간 뒤 삭제, 만료된 챗봇 도구 기록(`chatbot_records.expires_at`)과 기한 없이 180일 안 바뀐 기록 삭제, 90일 안 바뀐 챗봇 장기 기억 삭제, 기한이 지난 운영자 차단(`blocked_users`) 삭제, 끝났거나 기한이 지나고 하루 지난 개인정보 삭제표 삭제, 만료한 MCP 토큰과 90일 안 쓴 에이전트 연결 삭제, 연결이 없고 하루 넘게 쓰이지 않은 MCP 등록 클라이언트 삭제. 사용자(`users`)는 30일 넘게 안 보였고 호스트·노드·권한·페어링 코드·에이전트 연결이 가리키지 않고 `isBanned`가 아닐 때만 지운다(서버 안 금지 -1도 권한 행이라 남는다). 봇이 길드에서 빠지면(`guildDelete`, 기동 때 봇이 없는 길드도) 그 길드를 `unbindGuild`로 푼다(`nodeOwner.ts` `forgetRemovedGuild`·`forgetGuildsBotLeft`). 수령 기한이 지난 페어링 토큰은 바로 지운다. 만료 큐는 timeout으로, heartbeat가 3분 넘게 없는 host는 offline으로 바꾼다.
 
@@ -443,7 +443,7 @@ Tauri 커맨드(`installer/gui/src-tauri/src/lib.rs`): `get_installer_state`, `s
 - 쓰기(POST·DELETE)는 세션의 `x-csrf-token`(상수 시간 비교)과 `Origin == <proto>://<Host>`가 모두 맞아야 한다. `/admin/console/*`에는 CORS 헤더를 내지 않는다. `x-admin-key`는 이 경로에서, 쿠키는 `/admin/api`에서 받지 않는다.
 - 감사: 로그인·로그아웃은 `action='admin'` `detail.op` `login`·`logout`, 차단·해제는 (g)와 같고, 공지는 발송이 끝날 때 `announce_broadcast`(보낸 운영자 ID). 페이지의 기록 탭은 이 두 action 의 최근 50줄이다.
 - 문구는 `src/admin/text.ts`(10개 언어, 없는 언어는 en)를 페이지에 데이터 블록으로 넣는다.
-- 운영 통계: 5분마다 `relay_stats` 한 줄(365일 보관). 접속·자원은 그 순간 값, 명령 수는 지난 기록 뒤 큐에 들어온 수(기록이 15분보다 오래됐으면 5분), 챗봇 판단 수와 챗봇 모델 호출 토큰(입력은 캐시 읽기·쓰기 포함, 출력은 추론 포함)은 기록에 성공한 뒤에만 0으로 되돌린다. 조회는 하루 5분·일주일 1시간·한 달 6시간·일 년 1일 칸으로 묶고, 칸마다 명령·챗봇(판단·토큰)은 합계, 나머지는 최댓값이다.
+- 운영 통계: 5분마다 `relay_stats` 한 줄(365일 보관). 접속·자원은 그 순간 값, 명령 수는 지난 기록 뒤 큐에 들어온 수(기록이 15분보다 오래됐으면 5분), 챗봇 판단 수와 챗봇 모델 호출 토큰(입력은 캐시 읽기·쓰기 포함, 출력은 추론 포함)은 기록에 성공한 뒤에만 0으로 되돌린다. 이벤트 루프 지연(10ms 타이머가 늦은 시간)은 지난 기록 뒤 메인 스레드가 막힌 시간의 p99·최댓값(ms)이고, 모을 때마다 새 구간을 시작하고, 기록에 실패한 구간은 다음 줄에 합친다. 조회는 하루 5분·일주일 1시간·한 달 6시간·일 년 1일 칸으로 묶고, 칸마다 명령·챗봇(판단·토큰)은 합계, 나머지는 최댓값이다.
 
 **(i) 길드 하나에 여러 PC** (원격 데몬 R2, `services/guildHosts.ts`, `bot/commands/guildRouting.ts`, 사용자 결정 2026-10-25): 한 디스코드 서버에 여러 사람의 PC(같은 사람의 집 PC와 원격 PC 포함)가 함께 붙는다. PC를 여러 사람이 함께 소유하지는 않는다.
 - 처음 연결한 PC가 대표(`nodes.host_id`)이고, 그 뒤에 연결한 PC는 `guild_hosts`에 붙는다. 길드 공통 설정(언어·접두사·잠자기·음악·챗봇·채널 배정)의 원본은 대표 PC 데몬이다. 붙은 PC는 그 길드의 설정·채널·디스코드 멤버를 읽기만 한다. 각 PC의 서버와 권한 사다리는 그 PC 주인의 것이고 판정은 그 PC 데몬이 한다(poll의 `ownerDiscordId`는 그 PC 주인). 릴레이의 미리 거르기(금지 멤버)는 대표 PC 사다리 캐시로 한다.
