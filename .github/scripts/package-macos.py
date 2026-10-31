@@ -10,7 +10,6 @@ Apple 서명·공증 없이 임시(ad-hoc) 서명만 한다. 서명과 .dmg는 �
 
 import argparse
 import importlib.util
-import json
 import shutil
 import subprocess
 import sys
@@ -28,15 +27,11 @@ PLIST_TEMPLATE = ROOT / "saba-chan-gui/src-tauri/macos/Info.plist"
 ICON_SOURCE = ROOT / "saba-chan-gui/src-tauri/icons/AppIcon.icon"
 ICON_FILE = "saba-chan.icns"
 ASSETS_FILE = "Assets.car"
-# .dmg에 함께 넣는 첫 실행 안내 (서명이 없어 macOS가 처음 한 번 막는다). 문구는 locales/*/common.json `macos_first_open`
-FIRST_OPEN_NOTE = "처음 열 때 (First launch).txt"
 # .dmg Finder 창 (pt): 배경의 화살표를 따라 왼쪽 앱을 오른쪽 응용 프로그램 폴더로 끌어 넣는다.
 # 배경은 660×400 그림과 레티나용 @2x 한 쌍이다
 DMG_BACKGROUND = ROOT / "saba-chan-gui/src-tauri/macos/dmg-background.png"
 DMG_WINDOW = (660, 400)
 DMG_ICON_SIZE = 112
-# 안내의 언어 순서: 한국어, 영어, 나머지는 이름순
-FIRST_LANGUAGES = ["ko", "en"]
 
 
 def shared_files() -> dict[Path, str]:
@@ -45,18 +40,6 @@ def shared_files() -> dict[Path, str]:
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return {ROOT / rel: name for rel, name in module.LINUX_ASSETS["saba-core"][2].items()}
-
-
-def first_open_note() -> str:
-    """모든 언어의 첫 실행 안내를 한 파일로 (한국어 먼저)"""
-    root = ROOT / "locales"
-    langs = sorted(p.name for p in root.iterdir() if (p / "common.json").is_file())
-    langs = [l for l in FIRST_LANGUAGES if l in langs] + [l for l in langs if l not in FIRST_LANGUAGES]
-    parts = []
-    for lang in langs:
-        text = json.loads((root / lang / "common.json").read_text(encoding="utf-8"))["macos_first_open"]
-        parts.append(f"{text['title']}\n\n{text['steps']}\n")
-    return "\n----------------------------------------\n\n".join(parts)
 
 
 def app_icons() -> dict[str, bytes]:
@@ -104,14 +87,12 @@ def finish_app(app: Path) -> None:
     subprocess.run(["codesign", "--verify", "--deep", "--strict", str(app)], check=True)
 
 
-def dmg_settings(app: Path, work: Path) -> dict:
-    """dmgbuild 설정: 앱 묶음, 응용 프로그램 폴더 바로가기, 첫 실행 안내(`work`에 쓴다)와 꾸민 Finder 창"""
-    note = work / FIRST_OPEN_NOTE
-    note.write_text(first_open_note(), encoding="utf-8")
+def dmg_settings(app: Path) -> dict:
+    """dmgbuild 설정: 앱 묶음, 응용 프로그램 폴더 바로가기와 꾸민 Finder 창"""
     width, height = DMG_WINDOW
     return {
         "format": "UDZO",
-        "files": [str(app), str(note)],
+        "files": [str(app)],
         "symlinks": {"Applications": "/Applications"},
         # 마운트한 디스크도 앱 아이콘으로 보인다
         "icon": str(app / "Contents" / "Resources" / ICON_FILE),
@@ -122,7 +103,7 @@ def dmg_settings(app: Path, work: Path) -> dict:
         "show_pathbar": False, "show_icon_preview": False,
         "icon_size": DMG_ICON_SIZE,
         "text_size": 12,
-        "icon_locations": {app.name: (150, 185), "Applications": (510, 185), FIRST_OPEN_NOTE: (330, 330)},
+        "icon_locations": {app.name: (150, 185), "Applications": (510, 185)},
     }
 
 
@@ -130,10 +111,9 @@ def make_dmg(app: Path, dest: Path) -> None:
     """[`dmg_settings`]로 압축 .dmg를 만든다 (dmgbuild: Finder를 띄우지 않고 창 배치를 기록한다)"""
     import dmgbuild
 
-    with tempfile.TemporaryDirectory() as d:
-        if dest.exists():
-            dest.unlink()
-        dmgbuild.build_dmg(str(dest), "Saba-chan", settings=dmg_settings(app, Path(d)))
+    if dest.exists():
+        dest.unlink()
+    dmgbuild.build_dmg(str(dest), "Saba-chan", settings=dmg_settings(app))
 
 
 def main() -> int:

@@ -133,9 +133,5 @@
     "external_start": "{{name}} se inició fuera de Saba-chan. Saba-chan no inició este proceso.",
     "backup_failed": "Falló la copia de seguridad automática de {{name}}.",
     "on_daemon": "En {{daemon}}: {{body}}"
-  },
-  "macos_first_open": {
-    "title": "Abrir Saba-chan por primera vez",
-    "steps": "1. Arrastra Saba-chan a la carpeta Aplicaciones y ábrelo.\n2. Si aparece una ventana que dice que Apple no puede verificarlo, haz clic en [Listo]. Saba-chan aún no tiene firma de desarrollador de Apple, por eso aparece esta ventana.\n3. Abre Ajustes del Sistema > Privacidad y seguridad, haz clic en [Abrir igualmente] junto a Saba-chan, abajo, e introduce tu contraseña.\n4. En macOS 14 o anterior, haz Control-clic en Saba-chan y elige [Abrir].\nDespués de la primera vez, macOS no vuelve a preguntar."
   }
 }

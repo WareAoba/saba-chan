@@ -311,11 +311,10 @@ jobs:
           python3 .github/scripts/package-linux.py --bin target/release --headless-bin target/headless/release --out macos --platform macos-arm64 --version "$version"
           python3 .github/scripts/package-macos.py --bin target/release --out macos --version "$version" --platform macos-arm64
           ls -la macos
-          # .dmg 안: 앱 묶음, 응용 프로그램 바로가기, 첫 실행 안내
+          # .dmg 안: 앱 묶음, 응용 프로그램 바로가기
           hdiutil attach -nobrowse -readonly -mountpoint "$RUNNER_TEMP/dmg" macos/Saba-chan-macos-arm64.dmg
           ls -la "$RUNNER_TEMP/dmg"
           test -d "$RUNNER_TEMP/dmg/Saba-chan.app" && test -L "$RUNNER_TEMP/dmg/Applications"
-          grep -q "그래도 열기" "$RUNNER_TEMP/dmg/처음 열 때 (First launch).txt"
           # 꾸민 창: 레티나 배경(.background.tiff), 창 배치(.DS_Store), 디스크 아이콘
           test -f "$RUNNER_TEMP/dmg/.background.tiff" && test -f "$RUNNER_TEMP/dmg/.DS_Store" && test -f "$RUNNER_TEMP/dmg/.VolumeIcon.icns"
           hdiutil detach "$RUNNER_TEMP/dmg"

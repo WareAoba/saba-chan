@@ -49,28 +49,15 @@ class MacApp(unittest.TestCase):
         plist = plistlib.loads(package_macos.info_plist("0.1.12"))
         self.assertEqual(conf["identifier"], plist["CFBundleIdentifier"])
 
-    def test_first_open_note_has_every_language_korean_first(self):
-        import json
-        note = package_macos.first_open_note()
-        locales = sorted(p.name for p in (package_macos.ROOT / "locales").iterdir() if (p / "common.json").is_file())
-        titles = {l: json.loads((package_macos.ROOT / "locales" / l / "common.json").read_text(encoding="utf-8"))["macos_first_open"]["title"] for l in locales}
-        self.assertEqual(len(titles), 10)
-        self.assertTrue(note.startswith(titles["ko"]), note[:80])
-        for title in titles.values():
-            self.assertIn(title, note)
-
     def test_dmg_window_puts_the_app_left_of_applications_on_the_background(self):
-        # Finder 창: 배경 화살표를 따라 왼쪽 앱 → 오른쪽 응용 프로그램, 첫 실행 안내는 아래 가운데
-        with tempfile.TemporaryDirectory() as d:
-            app = Path(d) / "Saba-chan.app"
-            settings = package_macos.dmg_settings(app, Path(d))
-            note = Path(d) / package_macos.FIRST_OPEN_NOTE
-            self.assertTrue(note.read_text(encoding="utf-8").startswith(package_macos.first_open_note()[:20]))
+        # Finder 창: 배경 화살표를 따라 왼쪽 앱 → 오른쪽 응용 프로그램. 둘 말고는 두지 않는다 (창 밖으로 나가면 스크롤이 생긴다)
+        app = Path("/tmp/Saba-chan.app")
+        settings = package_macos.dmg_settings(app)
         locations = settings["icon_locations"]
-        self.assertEqual(settings["files"], [str(app), str(note)])
+        self.assertEqual(settings["files"], [str(app)])
         self.assertEqual(settings["icon"], str(app / "Contents" / "Resources" / package_macos.ICON_FILE))
         self.assertEqual(settings["symlinks"], {"Applications": "/Applications"})
-        self.assertEqual(set(locations), {"Saba-chan.app", "Applications", package_macos.FIRST_OPEN_NOTE})
+        self.assertEqual(set(locations), {"Saba-chan.app", "Applications"})
         (ax, ay), (bx, by) = locations["Saba-chan.app"], locations["Applications"]
         self.assertTrue(ax < bx and ay == by)
         self.assertTrue(Path(settings["background"]).is_file())
