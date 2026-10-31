@@ -47,7 +47,12 @@ export function ServerRow({
     const statusLabel = t(`shell.status_${status}`);
     const players = playersText(server);
     const openMenu = useContextMenu();
-    const showTab = (tab) => useUIStore.getState().showServerTab(server.id, tab);
+    // 좁은 창에서는 목록만 보이므로 상세도 드러낸다 (바깥에서 서버를 여는 길과 같다)
+    const showTab = (tab) => {
+        const ui = useUIStore.getState();
+        ui.showServerTab(server.id, tab);
+        ui.revealServer(server.id);
+    };
     const dir = server.module_settings?.working_dir || server.working_dir || null;
     const menuItems = () => [
         action === 'stop' && { id: 'stop', label: t('shell.stop'), icon: 'stop', onSelect: () => onStop(server.name) },

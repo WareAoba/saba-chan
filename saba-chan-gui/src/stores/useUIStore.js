@@ -102,6 +102,7 @@ export const useUIStore = create((set, _get) => ({
         set({
             activeTab: 'servers',
             activeServerId: null,
+            revealServerCount: 0,
             requestedServerTab: null,
             modal: null,
             progressBar: null,

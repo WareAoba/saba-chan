@@ -225,6 +225,18 @@ describe('서버 페이지', () => {
         expect(document.querySelector('.server-list-pane')).toBeNull();
     }, 20000);
 
+    it('좁은 창에서 목록 우클릭 메뉴의 설정을 고르면 상세로 넘어간다', async () => {
+        await boot(
+            { serverList: vi.fn().mockResolvedValue(twoServers), moduleList: vi.fn().mockResolvedValue(palworld) },
+            SINGLE_COLUMN_MAX_WIDTH - 100,
+        );
+        await waitFor(() => expect(document.querySelectorAll('.server-row')).toHaveLength(2), { timeout: 8000 });
+        fireEvent.contextMenu(document.querySelectorAll('.server-row')[1], { clientX: 10, clientY: 10 });
+        await act(async () => fireEvent.click(screen.getByRole('menuitem', { name: 'Settings' })));
+        await waitFor(() => expect(document.querySelector('.server-detail h1')?.textContent).toBe('Beta'));
+        expect(document.querySelector('.server-list-pane')).toBeNull();
+    }, 20000);
+
     it('서버가 없으면 빈 화면 안내와 서버 추가 버튼을 보여준다', async () => {
         await boot();
         await waitFor(() => expect(document.querySelector('.empty-state')).not.toBeNull(), { timeout: 8000 });
