@@ -12,6 +12,8 @@
 	<string>saba-chan-gui</string>
 	<key>CFBundleIconFile</key>
 	<string>saba-chan.icns</string>
+	<key>CFBundleIconName</key>
+	<string>AppIcon</string>
 	<key>CFBundleIdentifier</key>
 	<string>com.saba-chan.app</string>
 	<key>CFBundleInfoDictionaryVersion</key>

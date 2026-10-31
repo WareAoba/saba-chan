@@ -76,7 +76,7 @@ jobs:
           else
             echo "frontend=false" >> "$GITHUB_OUTPUT"
           fi
-          if echo "$files" | grep -qE '^(\.github/(scripts/(test_)?package-(macos|linux)\.py|workflows/)|saba-chan-gui/src-tauri/(macos/|icons/icon\.icns|tauri\.conf\.json|Cargo\.toml)|installer/core/|updater/|install\.sh)'; then
+          if echo "$files" | grep -qE '^(\.github/(scripts/(test_)?package-(macos|linux)\.py|workflows/)|saba-chan-gui/src-tauri/(macos/|icons/AppIcon\.icon/|tauri\.conf\.json|Cargo\.toml)|installer/core/|updater/|install\.sh)'; then
             echo "macpkg=true" >> "$GITHUB_OUTPUT"
           else
             echo "macpkg=false" >> "$GITHUB_OUTPUT"
@@ -290,6 +290,14 @@ jobs:
           cargo build --release --locked -p saba-core -p saba-runner -p saba-chan-cli -p saba-chan-gui -p saba-chan-installer --bins
           cargo build --release --locked -p saba-chan-installer --no-default-features --target-dir target/headless
 
+      # 아이콘 원본(Icon Composer .icon)은 Xcode 26 이상의 actool만 컴파일한다
+      - name: Select Xcode 26+
+        run: |
+          xcode=$(ls -d /Applications/Xcode_2[6-9]*.app 2>/dev/null | sort -V | tail -1)
+          test -n "$xcode" || { ls -d /Applications/Xcode*.app; exit 1; }
+          sudo xcode-select -s "$xcode"
+          xcodebuild -version
+
       - name: Package
         run: |
           version=$(python3 -c "import tomllib;print(tomllib.load(open('versions.toml','rb'))['release']['version'])")
@@ -331,7 +339,8 @@ jobs:
           test "$(plutil -extract CFBundleExecutable raw "$app/Contents/Info.plist")" = saba-chan-gui
           test "$(plist_version)" = 0.2.0
           test -x "$app/Contents/MacOS/saba-core" && test -x "$app/Contents/MacOS/saba-chan-gui"
-          test -f "$app/Contents/Resources/saba-chan.icns"
+          test -f "$app/Contents/Resources/saba-chan.icns" && test -f "$app/Contents/Resources/Assets.car"
+          test "$(plutil -extract CFBundleIconName raw "$app/Contents/Info.plist")" = AppIcon
           test ! -e "$app/Contents/MacOS/Info.plist"
 
           # 업데이트: 데몬이 받고, 업데이터가 이름 바꾸기로 갈아 끼운 뒤 데몬을 다시 띄운다

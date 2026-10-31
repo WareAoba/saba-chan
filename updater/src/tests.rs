@@ -1435,7 +1435,7 @@ fn a_restored_same_version_reinstall_without_a_record_is_kept() {
 #[tokio::test]
 async fn a_gui_update_inside_an_app_bundle_moves_the_bundle_files_into_place() {
     use std::io::Write;
-    use crate::app_bundle::{BUNDLE_NAME, ICON_FILE, PLIST_FILE};
+    use crate::app_bundle::{ASSETS_FILE, BUNDLE_NAME, ICON_FILE, PLIST_FILE};
     let tmp = tempfile::tempdir().unwrap();
     let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
     let contents = tmp.path().join(BUNDLE_NAME).join("Contents");
@@ -1449,7 +1449,7 @@ async fn a_gui_update_inside_an_app_bundle_moves_the_bundle_files_into_place() {
     {
         let mut zw = zip::ZipWriter::new(std::fs::File::create(&zip_path).unwrap());
         let opts = zip::write::SimpleFileOptions::default();
-        for (name, data) in [(crate::GUI_EXE_NAMES[0], &b"new gui"[..]), (PLIST_FILE, b"new plist"), (ICON_FILE, b"new icns")] {
+        for (name, data) in [(crate::GUI_EXE_NAMES[0], &b"new gui"[..]), (PLIST_FILE, b"new plist"), (ICON_FILE, b"new icns"), (ASSETS_FILE, b"new car")] {
             zw.start_file(name, opts).unwrap();
             zw.write_all(data).unwrap();
         }
@@ -1460,7 +1460,8 @@ async fn a_gui_update_inside_an_app_bundle_moves_the_bundle_files_into_place() {
 
     assert_eq!(std::fs::read(contents.join(PLIST_FILE)).unwrap(), b"new plist");
     assert_eq!(std::fs::read(contents.join("Resources").join(ICON_FILE)).unwrap(), b"new icns");
-    assert!(!manager.install_root.join(PLIST_FILE).exists() && !manager.install_root.join(ICON_FILE).exists());
+    assert_eq!(std::fs::read(contents.join("Resources").join(ASSETS_FILE)).unwrap(), b"new car");
+    assert!([PLIST_FILE, ICON_FILE, ASSETS_FILE].iter().all(|f| !manager.install_root.join(f).exists()));
     assert!(files.iter().all(|f| f.exists()), "recorded files are where they ended up: {files:?}");
     assert!(files.contains(&contents.join(PLIST_FILE)));
 }

@@ -23,8 +23,11 @@ APP_NAME = "Saba-chan.app"
 EXES = ["saba-chan-gui", "saba-core", "saba-runner", "saba-chan-cli", "saba-chan-installer"]
 # 설치기도 같은 두 파일로 묶음을 만든다 (Info.plist의 @VERSION@·@BUILD@를 바꿔 쓴다)
 PLIST_TEMPLATE = ROOT / "saba-chan-gui/src-tauri/macos/Info.plist"
-ICON_SOURCE = ROOT / "saba-chan-gui/src-tauri/icons/icon.icns"
+# 아이콘 원본은 Icon Composer 묶음 하나다. actool(Xcode 26 이상)이 macOS 26의 Assets.car(라이트·다크·틴트)와
+# 옛 macOS용 icns로 컴파일한다. Info.plist의 CFBundleIconName(AppIcon)·CFBundleIconFile이 두 파일을 가리킨다
+ICON_SOURCE = ROOT / "saba-chan-gui/src-tauri/icons/AppIcon.icon"
 ICON_FILE = "saba-chan.icns"
+ASSETS_FILE = "Assets.car"
 # .dmg에 함께 넣는 첫 실행 안내 (서명이 없어 macOS가 처음 한 번 막는다). 문구는 locales/*/common.json `macos_first_open`
 FIRST_OPEN_NOTE = "처음 열 때 (First launch).txt"
 # 안내의 언어 순서: 한국어, 영어, 나머지는 이름순
@@ -51,14 +54,24 @@ def first_open_note() -> str:
     return "\n----------------------------------------\n\n".join(parts)
 
 
+def app_icons() -> dict[str, bytes]:
+    """아이콘 원본을 컴파일한 `Contents/Resources` 파일 (이름 → 내용). 맥에서만 된다"""
+    with tempfile.TemporaryDirectory() as d:
+        out = Path(d)
+        subprocess.run(["xcrun", "actool", str(ICON_SOURCE), "--compile", str(out), "--platform", "macosx",
+                        "--minimum-deployment-target", "11.0", "--app-icon", "AppIcon",
+                        "--output-partial-info-plist", str(out / "partial.plist")], check=True, stdout=subprocess.DEVNULL)
+        return {ICON_FILE: (out / "AppIcon.icns").read_bytes(), ASSETS_FILE: (out / ASSETS_FILE).read_bytes()}
+
+
 def info_plist(version: str) -> bytes:
     # CFBundleVersion은 숫자와 점만 받는다: 미리보기 꼬리(-beta.1)는 짧은 버전 문자열에만 둔다
     text = PLIST_TEMPLATE.read_text(encoding="utf-8")
     return text.replace("@VERSION@", version).replace("@BUILD@", version.split("-", 1)[0]).encode("utf-8")
 
 
-def build_app(bin_dir: Path, out_dir: Path, version: str) -> Path:
-    """실행 파일과 공유 모듈 파일을 `Contents/MacOS`에, Info.plist와 아이콘을 넣는다 (서명은 [`finish_app`])"""
+def build_app(bin_dir: Path, out_dir: Path, version: str, icons: dict[str, bytes]) -> Path:
+    """실행 파일과 공유 모듈 파일을 `Contents/MacOS`에, Info.plist와 아이콘([`app_icons`])을 넣는다 (서명은 [`finish_app`])"""
     missing = [e for e in EXES if not (bin_dir / e).is_file()]
     if missing:
         sys.exit(f"{APP_NAME}: {', '.join(missing)} not built in {bin_dir}")
@@ -75,7 +88,8 @@ def build_app(bin_dir: Path, out_dir: Path, version: str) -> Path:
         shutil.copy2(src, macos / name)
         (macos / name).chmod(0o644)
     (app / "Contents" / "Info.plist").write_bytes(info_plist(version))
-    shutil.copy2(ICON_SOURCE, app / "Contents" / "Resources" / ICON_FILE)
+    for name, data in icons.items():
+        (app / "Contents" / "Resources" / name).write_bytes(data)
     return app
 
 
@@ -109,7 +123,7 @@ def main() -> int:
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory() as d:
-        app = build_app(Path(args.bin), Path(d), args.version)
+        app = build_app(Path(args.bin), Path(d), args.version, app_icons())
         finish_app(app)
         dmg = out / f"Saba-chan-{args.platform}.dmg"
         make_dmg(app, dmg)

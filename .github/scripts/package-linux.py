@@ -47,14 +47,15 @@ def add(zf: zipfile.ZipFile, src: Path | bytes, name: str, mode: int) -> None:
     zf.writestr(info, src if isinstance(src, bytes) else src.read_bytes())
 
 
-def mac_gui_files(version: str) -> dict[str, bytes]:
-    """맥 GUI zip에 더하는 앱 묶음 파일: 설치기·업데이터가 `Contents/Info.plist`·`Contents/Resources`에 놓는다"""
+def mac_gui_files(version: str, icons: dict[str, bytes] | None) -> dict[str, bytes]:
+    """맥 GUI zip에 더하는 앱 묶음 파일: 설치기·업데이터가 `Contents/Info.plist`·`Contents/Resources`에 놓는다.
+    아이콘은 package-macos.py가 컴파일한다 (`icons`가 없으면 여기서 컴파일: 맥에서만 된다)"""
     mac = _mac()
-    return {"Info.plist": mac.info_plist(version), mac.ICON_FILE: mac.ICON_SOURCE.read_bytes()}
+    return {"Info.plist": mac.info_plist(version), **(icons if icons is not None else mac.app_icons())}
 
 
 def package(bin_dir: Path, out_dir: Path, platform: str, only: list[str] | None = None, version: str | None = None,
-            headless_bin: Path | None = None) -> list[Path]:
+            headless_bin: Path | None = None, mac_icons: dict[str, bytes] | None = None) -> list[Path]:
     out_dir.mkdir(parents=True, exist_ok=True)
     mac = platform.startswith("macos")
     if mac and (only is None or "gui" in only) and not version:
@@ -75,7 +76,7 @@ def package(bin_dir: Path, out_dir: Path, platform: str, only: list[str] | None 
                 add(zf, src / exe, exe, 0o755)
             # 리눅스 앱 메뉴 아이콘(png)은 맥에서 쓰지 않는다: 맥은 앱 묶음 파일을 싣는다
             if mac and key == "gui":
-                for name, data in mac_gui_files(version).items():
+                for name, data in mac_gui_files(version, mac_icons).items():
                     add(zf, data, name, 0o644)
             else:
                 for rel, name in extras.items():

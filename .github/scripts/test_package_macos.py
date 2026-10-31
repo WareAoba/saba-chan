@@ -20,7 +20,8 @@ class MacApp(unittest.TestCase):
             d = Path(d)
             for exe in package_macos.EXES:
                 (d / exe).write_bytes(b"\xcf\xfa\xed\xfe")
-            app = package_macos.build_app(d, d / "out", "0.1.12-beta.1")
+            app = package_macos.build_app(d, d / "out", "0.1.12-beta.1", {"saba-chan.icns": b"icns", "Assets.car": b"car"})
+            resources = sorted(p.name for p in (app / "Contents" / "Resources").iterdir())
             macos = sorted(p.name for p in (app / "Contents" / "MacOS").iterdir())
             modes = {p.name: p.stat().st_mode & 0o777 for p in (app / "Contents" / "MacOS").iterdir()}
             with open(app / "Contents" / "Info.plist", "rb") as f:
@@ -39,6 +40,8 @@ class MacApp(unittest.TestCase):
         self.assertEqual(plist["CFBundleShortVersionString"], "0.1.12-beta.1")
         self.assertEqual(plist["CFBundleVersion"], "0.1.12")
         self.assertEqual(icon, b"icns")
+        self.assertEqual(resources, ["Assets.car", "saba-chan.icns"])
+        self.assertEqual(plist["CFBundleIconName"], "AppIcon")
 
     def test_bundle_id_matches_the_gui(self):
         import json
@@ -59,7 +62,7 @@ class MacApp(unittest.TestCase):
     def test_missing_binary_stops(self):
         with tempfile.TemporaryDirectory() as d:
             with self.assertRaises(SystemExit):
-                package_macos.build_app(Path(d), Path(d) / "out", "0.1.12")
+                package_macos.build_app(Path(d), Path(d) / "out", "0.1.12", {})
 
 
 if __name__ == "__main__":

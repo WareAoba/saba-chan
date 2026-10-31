@@ -63,12 +63,16 @@ class LinuxZips(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             d = Path(d)
             d = self.built(d, ("saba-core", "saba-runner", "saba-chan-cli", "saba-chan-installer", "saba-chan-gui"), b"\xcf\xfa\xed\xfe")
-            package_linux.package(d, d / "out", "macos-arm64", version="0.1.12-beta.1", headless_bin=d / "headless")
+            icons = {"saba-chan.icns": b"icns", "Assets.car": b"car"}
+            package_linux.package(d, d / "out", "macos-arm64", version="0.1.12-beta.1", headless_bin=d / "headless",
+                                  mac_icons=icons)
             with zipfile.ZipFile(d / "out" / "saba-chan-gui-macos-arm64.zip") as zf:
                 names = sorted(zf.namelist())
                 plist = plistlib.loads(zf.read("Info.plist"))
                 icon = zf.read("saba-chan.icns")[:4]
-        self.assertEqual(names, ["Info.plist", "saba-chan-gui", "saba-chan.icns"])
+        # Assets.car: macOS 26 아이콘(라이트·다크·틴트), saba-chan.icns: 옛 macOS
+        self.assertEqual(names, ["Assets.car", "Info.plist", "saba-chan-gui", "saba-chan.icns"])
+        self.assertEqual(plist["CFBundleIconName"], "AppIcon")
         self.assertEqual(plist["CFBundleShortVersionString"], "0.1.12-beta.1")
         self.assertEqual(plist["CFBundleIconFile"], "saba-chan.icns")
         self.assertEqual(icon, b"icns")
