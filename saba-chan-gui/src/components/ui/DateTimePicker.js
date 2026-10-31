@@ -130,7 +130,7 @@ function Trigger({ id, controls, popover, ariaLabel, title, disabled, className,
             className={clsx('input dtp-trigger', className, { open: popover.shown })}
             onClick={() => (popover.shown ? popover.close() : popover.open())}
             aria-label={ariaLabel}
-            title={title}
+            data-tooltip={title}
             aria-haspopup="dialog"
             aria-expanded={popover.shown}
             aria-controls={controls}

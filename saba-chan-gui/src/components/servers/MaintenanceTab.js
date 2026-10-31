@@ -194,7 +194,7 @@ function BackupsCard({ server }) {
                         type="button"
                         className="btn btn-ghost btn-sm"
                         disabled={!!busy}
-                        title={t('maintenance.backup_keep_snapshot_hint')}
+                        data-tooltip={t('maintenance.backup_keep_snapshot_hint')}
                         onClick={() =>
                             run(
                                 'keep',
@@ -246,7 +246,7 @@ function BackupsCard({ server }) {
                                     <span className="dc-list-name">{fmt(b.created)}</span>
                                     <span
                                         className={clsx('dc-list-sub', unreadable && 'warn')}
-                                        title={unreadable ? t('maintenance.backup_unreadable_hint') : b.name}
+                                        data-tooltip={unreadable ? t('maintenance.backup_unreadable_hint') : b.name}
                                     >
                                         {unreadable
                                             ? t('maintenance.backup_unreadable')
@@ -269,7 +269,7 @@ function BackupsCard({ server }) {
                                     type="button"
                                     className={clsx('btn btn-sm', armed === restoreKey ? 'btn-primary' : 'btn-ghost')}
                                     disabled={!stopped || !!busy || unreadable}
-                                    title={
+                                    data-tooltip={
                                         unreadable
                                             ? t('maintenance.backup_unreadable_hint')
                                             : stopped

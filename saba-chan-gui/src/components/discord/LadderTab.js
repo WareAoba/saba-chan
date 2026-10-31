@@ -115,7 +115,7 @@ export function LadderTab({ node, permissions, onClose }) {
                                                 className="btn btn-ghost btn-sm"
                                                 disabled={!movable(i - 1)}
                                                 aria-label={t('discord.perm_ladder_up', { name })}
-                                                title={t('discord.perm_ladder_up', { name })}
+                                                data-tooltip={t('discord.perm_ladder_up', { name })}
                                                 onClick={() => setDraft((d) => L.moveLevel(d, i, i - 1))}
                                             >
                                                 <Icon name="chevronUp" size="sm" />
@@ -125,7 +125,7 @@ export function LadderTab({ node, permissions, onClose }) {
                                                 className="btn btn-ghost btn-sm"
                                                 disabled={!movable(i + 1)}
                                                 aria-label={t('discord.perm_ladder_down', { name })}
-                                                title={t('discord.perm_ladder_down', { name })}
+                                                data-tooltip={t('discord.perm_ladder_down', { name })}
                                                 onClick={() => setDraft((d) => L.moveLevel(d, i, i + 1))}
                                             >
                                                 <Icon name="chevronDown" size="sm" />
@@ -135,7 +135,7 @@ export function LadderTab({ node, permissions, onClose }) {
                                                 className="btn btn-ghost btn-sm"
                                                 disabled={draft.length <= 3}
                                                 aria-label={t('discord.perm_ladder_delete', { name })}
-                                                title={t('discord.perm_ladder_delete', { name })}
+                                                data-tooltip={t('discord.perm_ladder_delete', { name })}
                                                 onClick={() => setDraft((d) => L.removeLevel(d, i))}
                                             >
                                                 <Icon name="trash" size="sm" />

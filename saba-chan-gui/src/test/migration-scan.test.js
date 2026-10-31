@@ -23,7 +23,7 @@ describe('AddInstanceMigration 폴더 스캔', () => {
                 onClose={vi.fn()}
             />,
         );
-        fireEvent.click(screen.getByTitle('Browse'));
+        fireEvent.click(screen.getByRole('button', { name: 'Browse' }));
         expect(await screen.findByText(/Minecraft Java/)).toBeTruthy();
         expect(window.api.migrationScanDir).toHaveBeenCalledWith('/srv/old');
         expect(window.api.moduleDetect).not.toHaveBeenCalled();
@@ -42,7 +42,7 @@ describe('AddInstanceMigration 폴더 스캔', () => {
                 onClose={vi.fn()}
             />,
         );
-        fireEvent.click(screen.getByTitle('Browse'));
+        fireEvent.click(screen.getByRole('button', { name: 'Browse' }));
         expect(await screen.findByText(/Minecraft Java/)).toBeTruthy();
         fireEvent.change(screen.getByDisplayValue('/srv/old'), { target: { value: '/srv/other' } });
         expect(screen.queryByText(/Minecraft Java/)).toBeNull();
@@ -62,7 +62,7 @@ describe('AddInstanceMigration 폴더 스캔', () => {
                 onClose={vi.fn()}
             />,
         );
-        fireEvent.click(screen.getByTitle('Browse'));
+        fireEvent.click(screen.getByRole('button', { name: 'Browse' }));
         fireEvent.click(await screen.findByText('Next'));
         // 기본은 그 자리에 연결
         expect(screen.getByRole('tab', { name: 'Keep it where it is' }).getAttribute('aria-selected')).toBe('true');

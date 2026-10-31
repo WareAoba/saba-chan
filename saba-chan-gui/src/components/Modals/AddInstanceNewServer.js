@@ -459,7 +459,7 @@ export function AddInstanceNewServer({
                             className="as-btn-icon"
                             type="button"
                             onClick={browseFolder}
-                            title={t('add_server_modal.location_browse')}
+                            data-tooltip={t('add_server_modal.location_browse')}
                             aria-label={t('add_server_modal.location_browse')}
                         >
                             <Icon name="folder" size="sm" />

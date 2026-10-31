@@ -61,7 +61,7 @@ describe('약관 동의: 기존 서버 가져오기', () => {
                 onStepChange={vi.fn()}
             />,
         );
-        await act(async () => fireEvent.click(screen.getByTitle('Browse')));
+        await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Browse' })));
         await act(async () => fireEvent.click(await screen.findByRole('button', { name: /Next/i })));
         fireEvent.change(screen.getByRole('textbox'), { target: { value: 'old' } });
         const submit = document.querySelector('.modal-footer .btn-confirm');

@@ -136,7 +136,7 @@ export function CliText({ line }) {
     return (
         <div className="cli-line">
             <Icon name="terminal" size="sm" />
-            <code title={line}>{line}</code>
+            <code data-tooltip={line}>{line}</code>
             <button
                 type="button"
                 className="btn btn-ghost btn-sm"
@@ -146,7 +146,7 @@ export function CliText({ line }) {
                     setTimeout(() => setCopied(false), 1500);
                 }}
                 aria-label={t('cli_line.copy')}
-                title={copied ? t('cli_line.copied') : t('cli_line.copy')}
+                data-tooltip={copied ? t('cli_line.copied') : t('cli_line.copy')}
             >
                 <Icon name={copied ? 'check' : 'copy'} size="sm" />
             </button>

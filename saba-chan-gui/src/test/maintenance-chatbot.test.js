@@ -172,7 +172,7 @@ describe('MaintenanceTab', () => {
         expect(bad.closest('li').textContent).toMatch(/b-manual\.zip/);
         const restores = screen.getAllByRole('button', { name: 'Restore' });
         expect(restores[0].disabled).toBe(true);
-        expect(restores[0].title).toMatch(/delete/i);
+        expect(restores[0].getAttribute('data-tooltip')).toMatch(/delete/i);
         expect(restores[1].disabled).toBe(false);
     });
 

@@ -55,7 +55,7 @@ describe('구성요소를 따로 내려받을 때', () => {
         // cli가 끝나고 데몬은 이제 discord_bot을 받는다
         progress = { ok: true, component: 'discord_bot', active: true, bytes_received: 40, total_bytes: 100 };
         await act(async () => finish.cli({ ok: true }));
-        await waitFor(() => expect(document.querySelector('.download-ring-wrapper')?.title).toBe('40%'));
+        await waitFor(() => expect(document.querySelector('.download-ring-wrapper')?.dataset.tooltip).toBe('40%'));
 
         await act(async () => finish.discord_bot({ ok: true }));
         await waitFor(() => expect(document.querySelector('.download-ring-wrapper')).toBeNull());

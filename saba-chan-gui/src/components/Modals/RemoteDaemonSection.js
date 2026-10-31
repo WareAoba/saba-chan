@@ -332,7 +332,7 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
                     <li key={d.hostId} className="remote-daemon-row">
                         <Icon name="cloud" size="sm" />
                         {mainDaemon === d.hostId && (
-                            <span className="remote-daemon-star" role="img" aria-label={t('remote_daemon.main_badge')} title={t('remote_daemon.main_badge')}>
+                            <span className="remote-daemon-star" role="img" aria-label={t('remote_daemon.main_badge')} data-tooltip={t('remote_daemon.main_badge')}>
                                 <Icon name="star" size="sm" color="var(--star)" />
                             </span>
                         )}

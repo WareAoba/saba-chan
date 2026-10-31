@@ -25,7 +25,7 @@ describe('서버 목록 한 줄', () => {
         useServerStore.setState({ modulesLoaded: true });
         row({ id: 'a', name: 'A', module: 'mc', status: 'running', players: { online: 3, max: 20 } });
         const players = screen.getByText('3/20').closest('.server-row-players');
-        expect(players.getAttribute('title')).toContain('3/20');
+        expect(players.getAttribute('data-tooltip')).toContain('3/20');
         expect(document.querySelector('.server-row-sub .status-chip')).toBeNull();
     });
 

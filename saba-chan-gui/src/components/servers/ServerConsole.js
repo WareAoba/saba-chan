@@ -171,7 +171,7 @@ export function ServerConsole({
                             key={c.name}
                             type="button"
                             className={clsx('term-chip', c.risk && `risk-${c.risk}`)}
-                            title={commandText(t, server.module, c).description || c.name}
+                            data-tooltip={commandText(t, server.module, c).description || c.name}
                             onClick={() => {
                                 // 바로 보내지 않고 채워만 둔다: 인자가 필요하거나 위험한 명령도 있으니까
                                 setConsoleInput(server.id, c.inputs?.length ? `${c.name} ` : c.name);
@@ -271,7 +271,7 @@ export function ServerConsole({
                     type="submit"
                     className="term-send"
                     disabled={stdinDisabled || !state?.input?.trim()}
-                    title={t('console.send')}
+                    data-tooltip={t('console.send')}
                     aria-label={t('console.send')}
                 >
                     <Icon name="arrowUp" size="sm" />

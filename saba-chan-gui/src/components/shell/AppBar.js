@@ -93,7 +93,7 @@ export function AppBar({
                 <RuntimePreflight daemonStatus={daemonStatus} />
                 {daemonInParentJob && <ParentJobNotice />}
                 {extInitializing && (
-                    <span className="appbar-ext-init" title={extInitLabel}>
+                    <span className="appbar-ext-init" data-tooltip={extInitLabel}>
                         <span className="spinner" aria-hidden="true" />
                     </span>
                 )}
@@ -139,7 +139,8 @@ export function WindowControls() {
                 type="button"
                 className="win-btn"
                 onClick={() => window.electron?.minimizeWindow()}
-                title={t('title_bar.minimize')}
+                data-tooltip={t('title_bar.minimize')}
+                aria-label={t('title_bar.minimize')}
             >
                 <Icon name="minimize" size={12} />
             </button>
@@ -147,7 +148,8 @@ export function WindowControls() {
                 type="button"
                 className="win-btn"
                 onClick={() => window.electron?.maximizeWindow()}
-                title={t('title_bar.maximize')}
+                data-tooltip={t('title_bar.maximize')}
+                aria-label={t('title_bar.maximize')}
             >
                 <Icon name="maximize" size={12} />
             </button>
@@ -155,7 +157,8 @@ export function WindowControls() {
                 type="button"
                 className="win-btn win-close"
                 onClick={() => window.electron?.closeWindow()}
-                title={t('title_bar.close')}
+                data-tooltip={t('title_bar.close')}
+                aria-label={t('title_bar.close')}
             >
                 <Icon name="close" size={12} />
             </button>

@@ -185,7 +185,8 @@ function NoticeCard({ notice, onDismiss, onAction, t }) {
                     e.stopPropagation();
                     onDismiss(notice.id);
                 }}
-                title={t('notice_modal.dismiss')}
+                data-tooltip={t('notice_modal.dismiss')}
+                aria-label={t('notice_modal.dismiss')}
             >
                 <Icon name="close" size="xs" />
             </button>
@@ -280,7 +281,7 @@ function NoticeModal({ isOpen, onClose, isClosing, onOpenUpdateModal, onOpenPatc
                         <button
                             className="notice-clear-all-btn"
                             onClick={handleClearAll}
-                            title={t('notice_modal.clear_all')}
+                            data-tooltip={t('notice_modal.clear_all')}
                         >
                             <Icon name="trash" size="xs" />
                             <span>{t('notice_modal.clear_all')}</span>

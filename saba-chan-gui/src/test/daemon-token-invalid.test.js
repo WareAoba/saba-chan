@@ -23,7 +23,7 @@ describe('데몬이 이 앱의 토큰을 받지 않을 때', () => {
         const node = document.querySelector('.conn-node');
         expect(node.classList.contains('tone-stop')).toBe(true);
         expect(node.textContent).not.toMatch(/Daemon stopped/);
-        expect(node.getAttribute('title')).toMatch(TOKEN_TEXT);
+        expect(node.getAttribute('data-tooltip')).toMatch(TOKEN_TEXT);
     });
 
     it('서버 화면은 깨우기 버튼 없이 이유를 알린다', () => {

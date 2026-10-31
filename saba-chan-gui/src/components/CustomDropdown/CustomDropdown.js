@@ -16,7 +16,7 @@ const CLOSE_MS = 120;
  */
 const Mark = ({ mark }) =>
     mark ? (
-        <span className="custom-dropdown-mark" role="img" aria-label={mark.label} title={mark.label}>
+        <span className="custom-dropdown-mark" role="img" aria-label={mark.label} data-tooltip={mark.label}>
             <Icon name={mark.icon} size="sm" color={mark.color} />
         </span>
     ) : null;

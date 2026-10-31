@@ -132,7 +132,7 @@ export function ServerDetail({
                     className="btn btn-info"
                     disabled={updatingServer}
                     onClick={() => applyInstanceUpdate(server, setServers)}
-                    title={`${updateInfo.local_buildid} → ${updateInfo.remote_buildid}`}
+                    data-tooltip={`${updateInfo.local_buildid} → ${updateInfo.remote_buildid}`}
                 >
                     <Icon name="arrowUp" size="sm" /> {updatingServer ? t('shell.updating') : t('shell.update')}
                 </button>
@@ -530,7 +530,7 @@ function InfoTab({ server, moduleData, gameName, uptime, onDelete }) {
                     className="btn btn-ghost btn-danger-text"
                     onClick={() => onDelete(server)}
                     disabled={busy}
-                    title={busy ? t('shell.delete_stop_first') : undefined}
+                    data-tooltip={busy ? t('shell.delete_stop_first') : undefined}
                 >
                     <Icon name="trash" size="sm" /> {t('shell.delete')}
                 </button>

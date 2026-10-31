@@ -24,7 +24,7 @@ export function ConnectionRail({ daemonStatus, botStatus, onDaemonClick, onBotCl
                 className={clsx('conn-node', `tone-${daemonTone}`, { pulse: daemonKey === 'checking' })}
                 onClick={onDaemonClick}
                 aria-expanded={daemonExpanded}
-                title={t(`shell.daemon_tip_${daemonKey}`)}
+                data-tooltip={t(`shell.daemon_tip_${daemonKey}`)}
             >
                 <span className="conn-dot" aria-hidden="true" />
                 <span>{daemonUp ? t('shell.daemon_short') : t(`shell.daemon_${daemonKey}`)}</span>
@@ -36,7 +36,7 @@ export function ConnectionRail({ daemonStatus, botStatus, onDaemonClick, onBotCl
                         type="button"
                         className={clsx('conn-node', `tone-${botTone}`, { pulse: botKey === 'connecting' })}
                         onClick={onBotClick}
-                        title={t(`shell.bot_tip_${botKey}`)}
+                        data-tooltip={t(`shell.bot_tip_${botKey}`)}
                     >
                         <span className="conn-dot" aria-hidden="true" />
                         <span>{t(`shell.bot_${botKey}`)}</span>

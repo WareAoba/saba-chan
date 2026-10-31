@@ -79,7 +79,7 @@ export function ExitHistory({ server }) {
                                     </span>
                                 )}
                                 {(e.note || e.note_code || e.evidence) && (
-                                    <span className="muted" title={e.evidence || undefined}>
+                                    <span className="muted" data-tooltip={e.evidence || undefined}>
                                         {e.note || e.note_code ? exitNote(e, t) : e.evidence}
                                     </span>
                                 )}

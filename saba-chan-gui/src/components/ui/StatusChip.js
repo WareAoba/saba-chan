@@ -6,7 +6,7 @@ import clsx from 'clsx';
  */
 export function StatusChip({ tone = 'idle', label, detail, pulse = false, className, title }) {
     return (
-        <span className={clsx('status-chip', `tone-${tone}`, { pulse }, className)} title={title}>
+        <span className={clsx('status-chip', `tone-${tone}`, { pulse }, className)} data-tooltip={title}>
             <span className="status-chip-dot" aria-hidden="true" />
             <span className="status-chip-label">{label}</span>
             {detail && <span className="status-chip-detail">{detail}</span>}
