@@ -46,8 +46,10 @@ fn relay_url() -> String {
 pub async fn fetch_latest() -> Result<VerifiedRelease, String> {
     let client = RelayClient::new(&relay_url());
     let platform = relay::current_platform();
+    let bundled = saba_chan_updater_lib::versions::bundled();
     match client
-        .fetch_verified_catalog(relay::DEFAULT_CHANNEL, &platform, &saba_chan_updater_lib::versions::bundled().release, &relay::anon_client_id())
+        // 설치기 자신의 채널(`versions.toml` `[release] channel`)에서 받는다: 베타 설치기가 정식 채널의 옛 판을 내림 설치로 거절하지 않게
+        .fetch_verified_catalog(&bundled.channel, &platform, &bundled.release, &relay::anon_client_id())
         .await
     {
         Ok(Some(release)) => Ok(VerifiedRelease(release.manifest)),

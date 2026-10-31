@@ -667,6 +667,8 @@ pub fn dedicated_install_dir(chosen: &Path) -> PathBuf {
         || !chosen.is_dir()
         || is_empty_dir(chosen)
         || uninstall::looks_like_install_dir(chosen)
+        // 이 설치기가 만든 전용 폴더(설치가 도중에 실패해 표시만 남았어도)
+        || chosen.join(uninstall::INSTALL_MARKER).is_file()
     {
         chosen.to_path_buf()
     } else {
@@ -1142,6 +1144,11 @@ mod tests {
             root.join("new"),
             "a new folder is used as is"
         );
+
+        // 지난 설치가 표시만 남기고 실패한 폴더는 이 설치기가 만든 폴더다: 그 안에 또 만들지 않는다
+        std::fs::write(root.join(uninstall::INSTALL_MARKER), b"").unwrap();
+        assert_eq!(dedicated_install_dir(&root), root, "a folder a failed install marked is reused");
+        std::fs::remove_file(root.join(uninstall::INSTALL_MARKER)).unwrap();
 
         std::fs::write(root.join("notes.txt"), b"").unwrap();
         assert_eq!(dedicated_install_dir(&root), root.join("Saba-chan"));
