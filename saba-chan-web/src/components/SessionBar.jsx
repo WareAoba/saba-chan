@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { art } from '../art';
 import { useApp } from '../store';
 import { Icon } from './icons';
+import { InstallBand } from './NoPc';
 import { Wordmark } from './ui';
 
 /** 남은 시간 "14:05" */
@@ -36,6 +37,8 @@ export function SessionBar({ session }) {
                 </button>
             </div>
             {warning && <p className="banner banner-warn">{t('session.ending_soon')}</p>}
+            {/* 머리 안에 둔다: 넓은 화면에서도 메뉴·내용 칸을 밀지 않고 두 칸을 다 쓴다 */}
+            {!hostId && <InstallBand />}
             {phase === 'reconnecting' && (
                 <p className="banner banner-info">
                     <span className="spinner" aria-hidden="true" /> {t('session.reconnecting')}

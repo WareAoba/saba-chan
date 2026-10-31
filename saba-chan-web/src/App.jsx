@@ -6,7 +6,7 @@ import { DiscordTab } from './components/DiscordTab';
 import { Icon } from './components/icons';
 import { ModulesTab } from './components/ModulesTab';
 import { MoreTab } from './components/MoreTab';
-import { InstallBand, NeedsPc } from './components/NoPc';
+import { NeedsPc } from './components/NoPc';
 import { startPoll } from './components/poll';
 import { ServersTab } from './components/ServersTab';
 import { SessionBar } from './components/SessionBar';
@@ -116,7 +116,6 @@ export function App({ api, session }) {
     return (
         <div className="shell">
             <SessionBar session={session} />
-            {noPc && <InstallBand />}
             <nav className="tabs" aria-label={t('tabs.label')}>
                 {TABS.map((x) => {
                     const locked = noPc && x.id !== 'discord';
