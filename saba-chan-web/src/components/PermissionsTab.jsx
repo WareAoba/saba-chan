@@ -5,7 +5,7 @@ import { useApp, useData } from '../store';
 import { Dropdown } from './Dropdown';
 import { Icon } from './icons';
 import { PermissionStairs } from './PermissionStairs';
-import { Button, Empty, errorText, failed, Loading, Section, Segments } from './ui';
+import { Button, Empty, errorText, failed, Loading, Segments } from './ui';
 
 /** 레벨 이름: 길드에 더한 단계는 그 이름, 기본 단계는 웹 문구 */
 const levelName = (t, perm, id) => L.ladderOf(perm).find((l) => l.id === id)?.name || t(`perm.level.${id}`);
@@ -408,7 +408,7 @@ function InstanceMenu({ api, guildId, data, instance, onBack }) {
 }
 
 /** 디스코드 서버 하나: 인스턴스 목록 → 인스턴스 메뉴. 켜짐 알림은 목록 아래 */
-function GuildPermissions({ api, guildId }) {
+export function GuildPermissions({ api, guildId }) {
     const { t } = useTranslation();
     const data = useGuildPermissions(api, guildId);
     const [instance, setInstance] = useState(null);
@@ -446,46 +446,5 @@ function GuildPermissions({ api, guildId }) {
             </div>
             <StartNotice api={api} guildId={guildId} />
         </>
-    );
-}
-
-export function PermissionsTab({ api }) {
-    const { t } = useTranslation();
-    const hostId = useApp((s) => s.session.hostId);
-    const [guilds, setGuilds] = useState(null);
-    const [guildId, setGuildId] = useState(null);
-
-    useEffect(() => {
-        if (!hostId) return setGuilds([]);
-        api.relayListHostNodes(hostId).then((res) => {
-            const list = Array.isArray(res) ? res : [];
-            setGuilds(list);
-            setGuildId((g) => g ?? list[0]?.guildId ?? null);
-        });
-    }, [api, hostId]);
-
-    return (
-        <Section title={t('tabs.discord')}>
-            {guilds === null ? (
-                <Loading />
-            ) : guilds.length === 0 ? (
-                <Empty>{t('perm.no_guilds')}</Empty>
-            ) : (
-                <>
-                    {guilds.length > 1 && (
-                        <div className="field">
-                            <span>{t('perm.guild')}</span>
-                            <Dropdown
-                                value={guildId ?? ''}
-                                onChange={setGuildId}
-                                ariaLabel={t('perm.guild')}
-                                options={guilds.map((g) => ({ value: g.guildId, label: g.guildName || g.guildId }))}
-                            />
-                        </div>
-                    )}
-                    {guildId && <GuildPermissions key={guildId} api={api} guildId={guildId} />}
-                </>
-            )}
-        </Section>
     );
 }

@@ -1851,3 +1851,95 @@ textarea {
         width: 100%;
     }
 }
+
+/* ── PC 없는 세션 (디스코드 탭만 열린다) ── */
+.tab-icon {
+    position: relative;
+}
+.tab-lock {
+    position: absolute;
+    right: 8px;
+    bottom: 0;
+    display: grid;
+    place-items: center;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--bg-3);
+    border: 1px solid var(--line);
+    color: var(--text-3);
+}
+.install-band {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 8px 16px 0;
+    padding: 8px 8px 8px 12px;
+    border-radius: 12px;
+    background: var(--accent-soft);
+    color: var(--text-1);
+    font-size: 13px;
+}
+.install-band p {
+    flex: 1;
+    margin: 0;
+}
+.install-band a,
+.needs-pc a {
+    color: var(--accent);
+    font-weight: 600;
+}
+.needs-pc {
+    display: grid;
+    justify-items: center;
+    gap: 8px;
+    padding: 24px 16px;
+    text-align: center;
+}
+.needs-pc h2 {
+    margin: 0;
+    font-size: 18px;
+}
+.needs-pc-steps {
+    display: grid;
+    gap: 8px;
+    margin: 8px 0 0;
+    padding-left: 20px;
+    text-align: left;
+    color: var(--text-2);
+    font-size: 14px;
+}
+.guild-chips .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding-left: 4px;
+}
+.guild-chips .chip .pill {
+    margin-left: 0;
+}
+.guild-initial {
+    display: grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: var(--bg-3);
+    color: var(--text-2);
+    font-size: 12px;
+    font-weight: 800;
+}
+.choice {
+    width: auto;
+    min-width: 140px;
+}
+/* 버튼 안 줄: 이름 아래에 설명 */
+.row-open .row-main {
+    display: grid;
+}
+.field-row .row-actions {
+    flex-wrap: nowrap;
+}
+.install-band a {
+    white-space: nowrap;
+}

@@ -7,10 +7,13 @@ export const useApp = create((set, get) => ({
     serverId: null,
     toasts: [],
     confirm: null,
+    /** PC 없는 세션의 설치 안내 띠 — 닫으면 이 세션 동안 다시 나오지 않는다 */
+    installBandClosed: false,
 
     setSession: (session) => set({ session }),
     setTab: (tab) => set({ tab, serverId: null }),
     openServer: (serverId) => set({ serverId }),
+    closeInstallBand: () => set({ installBandClosed: true }),
 
     toast: (message, tone = 'info') => {
         const id = Math.random().toString(36).slice(2);

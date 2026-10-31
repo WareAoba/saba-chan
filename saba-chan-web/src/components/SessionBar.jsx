@@ -13,7 +13,7 @@ export function remainingText(expiresAt, now) {
 
 export function SessionBar({ session }) {
     const { t } = useTranslation();
-    const { expiresAt, warning, phase } = useApp((s) => s.session);
+    const { expiresAt, warning, phase, hostId } = useApp((s) => s.session);
     const [now, setNow] = useState(Date.now());
     useEffect(() => {
         const timer = setInterval(() => setNow(Date.now()), 1000);
@@ -26,6 +26,7 @@ export function SessionBar({ session }) {
                 <h1 className="topbar-title">
                     <img className="topbar-logo" src={art.icon} alt="" />
                     <Wordmark className="topbar-wordmark" />
+                    {!hostId && <span className="pill">{t('no_pc.badge')}</span>}
                 </h1>
                 <div className={`timer${warning ? ' timer-warn' : ''}`} title={t('session.remaining')}>
                     <Icon name="clock" size={14} /> {remainingText(expiresAt, now)}
