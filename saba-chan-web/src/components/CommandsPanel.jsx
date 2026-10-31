@@ -84,6 +84,7 @@ export function CommandsPanel({ api, server, moduleData, running }) {
     );
 
     const run = async (cmd, given) => {
+        if (busy) return; // 응답을 기다리는 동안 같은 명령을 다시 보내지 않는다
         if (cmd.risk === 'danger') {
             const ok = await ask({
                 title: t('console.danger_title'),

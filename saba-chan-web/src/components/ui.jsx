@@ -17,9 +17,10 @@ export function errorText(t, res) {
     return res?.error || res?.message || t('errors.generic');
 }
 
-export function Button({ tone = 'plain', busy = false, children, ...rest }) {
+/** 기다리는 동안(`busy`)은 `disabled`를 무엇으로 넘겨도 누를 수 없다 (같은 요청을 두 번 보내지 않게) */
+export function Button({ tone = 'plain', busy = false, disabled = false, children, ...rest }) {
     return (
-        <button type="button" className={`btn btn-${tone}`} disabled={busy || rest.disabled} {...rest}>
+        <button type="button" className={`btn btn-${tone}`} {...rest} disabled={busy || disabled}>
             {busy ? <span className="spinner" aria-hidden="true" /> : null}
             <span>{children}</span>
         </button>

@@ -99,3 +99,12 @@ describe('켜진 시간', () => {
         expect(uptimeText(null, 0)).toBeNull();
     });
 });
+
+describe('버튼', () => {
+    it('기다리는 동안은 disabled={false} 를 넘겨도 누를 수 없다', async () => {
+        const { renderToStaticMarkup } = await import('react-dom/server');
+        const { createElement } = await import('react');
+        const { Button } = await import('../components/ui');
+        expect(renderToStaticMarkup(createElement(Button, { busy: true, disabled: false }, 'x'))).toContain('disabled');
+    });
+});
