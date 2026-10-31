@@ -999,7 +999,16 @@
       "confirm_direct": "Запросы к боту",
       "confirm_direct_hint": "Команды с префиксом и слэш-команды.",
       "confirm_chatbot": "Говорящая Saba-chan",
-      "confirm_chatbot_hint": "Задачи администрирования, выбранные говорящей Saba-chan, и запросы от нескольких людей всегда спрашивают, независимо от этой настройки."
+      "confirm_chatbot_hint": "Задачи администрирования, выбранные говорящей Saba-chan, и запросы от нескольких людей всегда спрашивают, независимо от этой настройки.",
+      "tts_title": "Reading Saba-chan",
+      "tts_volume": "Volume",
+      "tts_volume_hint": "How loud reading is. Separate from the music volume.",
+      "tts_speed": "Speed",
+      "tts_speed_unit": "x",
+      "tts_pitch": "Pitch",
+      "tts_pitch_unit": "semitones",
+      "tts_limits": "Fixed limits: {{chars}} characters per message, {{perMinute}} characters per minute per person",
+      "range_decimal": "Enter a number from {{min}} to {{max}}."
     },
     "channels_notify": "Канал оповещений",
     "channels_notify_hint": "Сюда приходят сбои, автоперезапуски, обновления, готовые резервные копии и предупреждения о плановом перезапуске.",

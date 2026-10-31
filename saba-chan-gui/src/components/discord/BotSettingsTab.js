@@ -13,6 +13,12 @@ export const botSettingsAvailable = () => Boolean(window.api?.discordSettingsGet
 /** relay nodeSettingsSchema와 같은 범위 (I2 계약) */
 export const QUEUE_LINES = { min: 1, max: 20 };
 export const REFRESH_SECONDS = { min: 2, max: 10 };
+/** 읽어주는 사바쨩 (데몬 `TTS_*`). 속도는 화면에서 배, 저장은 % */
+export const TTS_VOLUME = { min: 10, max: 150 };
+export const TTS_SPEED = { min: 0.8, max: 1.5 };
+export const TTS_PITCH = { min: -6, max: 6 };
+/** 고정 제한 — 릴레이 bot/tts/speechText.ts MAX_SPEECH_CHARS, speakerRate.ts SPEAKER_RATE_CHARS 를 보여 주기만 한다 */
+export const TTS_LIMITS = { chars: 40, perMinute: 400 };
 
 /** 되묻기 단계 (데몬 `CONFIRM_LEVELS`): 모두 / 주의 이상 / 위험만 / 묻지 않음 */
 export const CONFIRM_LEVELS = ['all', 'caution', 'danger', 'none'];
@@ -26,15 +32,21 @@ export function botSettingsErrorText(res, t) {
     return res?.error || res?.message || t('discord.bot_settings.err_generic');
 }
 
-/** 숫자 칸: 범위 안의 정수만 저장하고, 벗어나면 그 자리에 알린다 */
-function NumberField({ label, unit, value, range, disabled, onCommit }) {
+/**
+ * 숫자 칸: 범위 안의 정수만 저장하고, 벗어나면 그 자리에 알린다.
+ * scale 이 있으면 화면 값 × scale 이 정수인 값만 받는다 (속도 1.25배 → 125). value·onCommit 은 저장 값이다
+ */
+function NumberField({ label, unit, hint, value, range, scale = 1, disabled, onCommit }) {
     const { t } = useTranslation('gui');
-    const [draft, setDraft] = useState(String(value));
-    useEffect(() => setDraft(String(value)), [value]);
+    const shown = String(value / scale);
+    const [draft, setDraft] = useState(shown);
+    useEffect(() => setDraft(shown), [shown]);
     const n = Number(draft);
-    const valid = draft !== '' && Number.isInteger(n) && n >= range.min && n <= range.max;
+    const stored = Math.round(n * scale);
+    const valid =
+        draft !== '' && Number.isFinite(n) && Math.abs(n * scale - stored) < 1e-9 && n >= range.min && n <= range.max;
     const commit = () => {
-        if (valid && n !== value) onCommit(n);
+        if (valid && stored !== value) onCommit(stored);
     };
     return (
         <label className="mt-field">
@@ -45,6 +57,7 @@ function NumberField({ label, unit, value, range, disabled, onCommit }) {
                     type="number"
                     min={range.min}
                     max={range.max}
+                    step={1 / scale}
                     value={draft}
                     disabled={disabled}
                     onChange={(e) => setDraft(e.target.value)}
@@ -53,9 +66,13 @@ function NumberField({ label, unit, value, range, disabled, onCommit }) {
                 />
                 <span className="muted">{unit}</span>
             </span>
+            {hint && <span className="cb-hint">{hint}</span>}
             {!valid && (
                 <span className="dc-field-error">
-                    {t('discord.bot_settings.range', { min: range.min, max: range.max })}
+                    {t(scale === 1 ? 'discord.bot_settings.range' : 'discord.bot_settings.range_decimal', {
+                        min: range.min,
+                        max: range.max,
+                    })}
                 </span>
             )}
         </label>
@@ -107,6 +124,7 @@ function PrefixField({ value, fallback, disabled, onSave }) {
  * 데몬이 relay로 보낸다. 바꾸는 즉시 저장한다.
  * - section 'bot': 언어·접두사·명령 이름 번역·되묻기·사용법
  * - section 'music': 노래하는 사바쨩
+ * - section 'tts': 읽어주는 사바쨩 볼륨·속도·피치 (2026-10-31 사용자 지정: 바꿀 수 있는 값은 이 셋뿐, 글자 제한은 고정)
  * 말하는 사바쨩의 되묻기 단계는 챗봇 설정의 이 서버 값(`guilds[guild].confirmLevel`)이다
  */
 export function BotSettingsTab({ node, section = 'bot', sampleModuleWord = '' }) {
@@ -199,6 +217,7 @@ export function BotSettingsTab({ node, section = 'bot', sampleModuleWord = '' })
     }
 
     const music = settings.music || {};
+    const tts = settings.tts || {};
     const prefixes = Array.isArray(settings.prefixes) ? settings.prefixes : [];
     // 릴레이가 알려 준 이 서버의 기본 접두사 (모르면 앱 언어의 기본값)
     const fallbackPrefix = defaultPrefix(t, [node]);
@@ -400,6 +419,39 @@ export function BotSettingsTab({ node, section = 'bot', sampleModuleWord = '' })
                             onCommit={(s) => save({ music: { refreshInterval: s * 1000 } })}
                         />
                     </div>
+                </section>
+            )}
+            {section === 'tts' && (
+                <section className="dc-card">
+                    <div className="cb-fields">
+                        <NumberField
+                            label={t('discord.bot_settings.tts_volume')}
+                            hint={t('discord.bot_settings.tts_volume_hint')}
+                            unit="%"
+                            value={tts.volume ?? 100}
+                            range={TTS_VOLUME}
+                            disabled={locked}
+                            onCommit={(volume) => save({ tts: { volume } })}
+                        />
+                        <NumberField
+                            label={t('discord.bot_settings.tts_speed')}
+                            unit={t('discord.bot_settings.tts_speed_unit')}
+                            value={tts.speed ?? 100}
+                            range={TTS_SPEED}
+                            scale={100}
+                            disabled={locked}
+                            onCommit={(speed) => save({ tts: { speed } })}
+                        />
+                        <NumberField
+                            label={t('discord.bot_settings.tts_pitch')}
+                            unit={t('discord.bot_settings.tts_pitch_unit')}
+                            value={tts.pitch ?? 0}
+                            range={TTS_PITCH}
+                            disabled={locked}
+                            onCommit={(pitch) => save({ tts: { pitch } })}
+                        />
+                    </div>
+                    <p className="cb-hint">{t('discord.bot_settings.tts_limits', TTS_LIMITS)}</p>
                 </section>
             )}
         </div>

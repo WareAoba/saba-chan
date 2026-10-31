@@ -1053,6 +1053,19 @@ pub enum BotCmd {
         #[arg(long, value_name = "on|off", value_parser = on_off)]
         normalize: Option<bool>,
     },
+    /// Reading Saba-chan voice of a Discord server (volume, speed, pitch). No options: show
+    Tts {
+        guild: Option<String>,
+        /// Volume in percent (10-150)
+        #[arg(long, value_name = "PERCENT", value_parser = clap::value_parser!(i64).range(10..=150))]
+        volume: Option<i64>,
+        /// Speaking speed (0.8-1.5, e.g. 1.2)
+        #[arg(long, value_name = "X")]
+        speed: Option<f64>,
+        /// Pitch in semitones (-6 to 6)
+        #[arg(long, value_name = "SEMITONES", allow_negative_numbers = true, value_parser = clap::value_parser!(i64).range(-6..=6))]
+        pitch: Option<i64>,
+    },
     /// When the bot asks with a Discord button before running (all, caution, danger, none). No options: show
     Confirm {
         guild: Option<String>,

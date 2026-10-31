@@ -514,6 +514,8 @@ async fn discord_settings_stay_in_the_guild_that_asked_and_need_its_owner() {
     // GUI·CLI는 길드를 직접 고른다
     assert_eq!(plan(&state, "discord.settings.set", None, &input, &gui()).await.unwrap_err().code, "invalid_input");
     assert!(plan(&state, "discord.settings.set", None, &other, &gui()).await.is_ok());
+    // 읽어주는 사바쨩 볼륨·속도·피치도 같은 액션으로 (/사바쨩 읽어주기)
+    assert!(plan(&state, "discord.settings.set", None, &json!({ "tts": { "volume": 80 } }), &owner).await.is_ok());
 }
 
 /// 원격 데몬 R2b: 디스코드 서버 주인(릴레이 `guildOwnerDiscordId`)도 길드 공통 설정은 주인으로 본다. 다른 주인 액션은 아니다

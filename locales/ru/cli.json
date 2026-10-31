@@ -165,7 +165,12 @@
     "confirm_all": "Все команды",
     "confirm_caution": "Осторожные и выше",
     "confirm_danger": "Только опасные",
-    "confirm_none": "Не спрашивать"
+    "confirm_none": "Не спрашивать",
+    "tts_volume": "Reading Saba-chan volume",
+    "tts_speed": "Reading Saba-chan speed",
+    "tts_speed_value": "{{value}}x",
+    "tts_pitch": "Reading Saba-chan pitch",
+    "tts_pitch_value": "{{value}} semitones"
   },
   "col": {
     "players": "Игроки",
@@ -792,7 +797,8 @@
       "config.autostart": "Что запускать при входе в этот ПК: off, daemon (только демон и значок в трее) или full (с окном GUI). Без режима показывает текущее значение",
       "config.browse": "Папки и файлы на ПК демона (с --daemon — на удалённом ПК). Без пути — диски или /",
       "bot.notice": "Сообщать в канал оповещений Discord-сервера, когда Saba-chan запускает сервер (по умолчанию выключено). Без сервера: показать. Сервер с `--on`/`--off`: изменить",
-      "bot.confirm": "Когда бот спрашивает кнопкой Discord перед запуском (all, caution, danger, none). Без параметров: показать"
+      "bot.confirm": "Когда бот спрашивает кнопкой Discord перед запуском (all, caution, danger, none). Без параметров: показать",
+      "bot.tts": "Reading Saba-chan voice of a Discord server (volume, speed, pitch). No options: show"
     },
     "arg": {
       "module.maker.game": "Игра для первого запроса",
@@ -892,7 +898,10 @@
       "unmanaged": "Самостоятельно: saba-chan запускает его и лишь следит, работает ли он (без консоли)",
       "bot.prefix.guild": "The Discord server, by name or id (without it: the only paired server)",
       "bot.translate.on": "Show translated command names",
-      "bot.translate.off": "Show only the names in the module"
+      "bot.translate.off": "Show only the names in the module",
+      "bot.tts.volume": "Volume in percent (10-150)",
+      "bot.tts.speed": "Speaking speed (0.8-1.5, e.g. 1.2)",
+      "bot.tts.pitch": "Pitch in semitones (-6 to 6)"
     },
     "after": "Имена можно сокращать (напр. start pal). Без аргументов в терминале открывается полноэкранное меню (SABA_NO_TUI=1: интерактивная оболочка).\nВ скриптах используйте --json и --yes. Коды выхода: 0 успех · 1 ошибка · 2 неверное использование · 3 демон недоступен · 4 не найдено · 130 отменено"
   },

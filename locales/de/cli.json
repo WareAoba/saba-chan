@@ -165,7 +165,12 @@
     "confirm_all": "Alle Befehle",
     "confirm_caution": "Ab Vorsicht",
     "confirm_danger": "Nur gefährliche",
-    "confirm_none": "Nicht fragen"
+    "confirm_none": "Nicht fragen",
+    "tts_volume": "Reading Saba-chan volume",
+    "tts_speed": "Reading Saba-chan speed",
+    "tts_speed_value": "{{value}}x",
+    "tts_pitch": "Reading Saba-chan pitch",
+    "tts_pitch_value": "{{value}} semitones"
   },
   "col": {
     "players": "Spieler",
@@ -792,7 +797,8 @@
       "config.autostart": "Was beim Anmelden an diesem PC startet: off, daemon (nur Daemon und Tray) oder full (mit GUI-Fenster). Ohne Modus wird der aktuelle Wert gezeigt",
       "config.browse": "Ordner und Dateien auf dem PC des Daemons (mit --daemon der entfernte PC). Ohne Pfad Laufwerke oder /",
       "bot.notice": "Im Hinweiskanal des Discord-Servers melden, wenn Saba-chan einen Server startet (standardmäßig aus). Ohne Server: anzeigen. Server mit `--on`/`--off`: ändern",
-      "bot.confirm": "Wann der Bot vor dem Ausführen per Discord-Button fragt (all, caution, danger, none). Ohne Optionen: anzeigen"
+      "bot.confirm": "Wann der Bot vor dem Ausführen per Discord-Button fragt (all, caution, danger, none). Ohne Optionen: anzeigen",
+      "bot.tts": "Reading Saba-chan voice of a Discord server (volume, speed, pitch). No options: show"
     },
     "arg": {
       "module.maker.game": "Spiel für die erste Anfrage",
@@ -892,7 +898,10 @@
       "unmanaged": "Eigenständig: saba-chan startet ihn und prüft nur, ob er läuft (keine Konsole)",
       "bot.prefix.guild": "The Discord server, by name or id (without it: the only paired server)",
       "bot.translate.on": "Show translated command names",
-      "bot.translate.off": "Show only the names in the module"
+      "bot.translate.off": "Show only the names in the module",
+      "bot.tts.volume": "Volume in percent (10-150)",
+      "bot.tts.speed": "Speaking speed (0.8-1.5, e.g. 1.2)",
+      "bot.tts.pitch": "Pitch in semitones (-6 to 6)"
     },
     "after": "Namen können abgekürzt werden (z. B. start pal). Ohne Argumente öffnet sich im Terminal das Vollbildmenü (SABA_NO_TUI=1: die interaktive Shell).\nIn Skripten --json und --yes verwenden. Exit-Codes: 0 ok · 1 fehlgeschlagen · 2 Verwendung · 3 Daemon nicht erreichbar · 4 nicht gefunden · 130 abgebrochen"
   },

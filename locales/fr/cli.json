@@ -165,7 +165,12 @@
     "confirm_all": "Toutes les commandes",
     "confirm_caution": "Sensibles et plus",
     "confirm_danger": "Dangereuses seulement",
-    "confirm_none": "Ne pas demander"
+    "confirm_none": "Ne pas demander",
+    "tts_volume": "Reading Saba-chan volume",
+    "tts_speed": "Reading Saba-chan speed",
+    "tts_speed_value": "{{value}}x",
+    "tts_pitch": "Reading Saba-chan pitch",
+    "tts_pitch_value": "{{value}} semitones"
   },
   "col": {
     "players": "Joueurs",
@@ -792,7 +797,8 @@
       "config.autostart": "Ce qui démarre quand vous vous connectez à ce PC : off, daemon (démon et zone de notification seulement) ou full (avec la fenêtre de la GUI). Sans mode, affiche la valeur actuelle",
       "config.browse": "Dossiers et fichiers sur le PC du démon (avec --daemon, le PC distant). Sans chemin, les lecteurs ou /",
       "bot.notice": "Prévenir dans le canal d’alertes du serveur Discord quand Saba-chan démarre un serveur (désactivé par défaut). Sans serveur : voir. Serveur avec `--on`/`--off` : changer",
-      "bot.confirm": "Quand le bot demande avec un bouton Discord avant d'exécuter (all, caution, danger, none). Sans option : afficher"
+      "bot.confirm": "Quand le bot demande avec un bouton Discord avant d'exécuter (all, caution, danger, none). Sans option : afficher",
+      "bot.tts": "Reading Saba-chan voice of a Discord server (volume, speed, pitch). No options: show"
     },
     "arg": {
       "module.maker.game": "Jeu à mettre dans la première demande",
@@ -892,7 +898,10 @@
       "unmanaged": "De lui-même : saba-chan le lance et vérifie seulement qu'il tourne (sans console)",
       "bot.prefix.guild": "The Discord server, by name or id (without it: the only paired server)",
       "bot.translate.on": "Show translated command names",
-      "bot.translate.off": "Show only the names in the module"
+      "bot.translate.off": "Show only the names in the module",
+      "bot.tts.volume": "Volume in percent (10-150)",
+      "bot.tts.speed": "Speaking speed (0.8-1.5, e.g. 1.2)",
+      "bot.tts.pitch": "Pitch in semitones (-6 to 6)"
     },
     "after": "Les noms peuvent être partiels (ex. start pal). Sans argument dans un terminal, le menu plein écran s'ouvre (SABA_NO_TUI=1 : le shell interactif).\nDans les scripts, utilisez --json et --yes. Codes de sortie : 0 ok · 1 échec · 2 utilisation · 3 daemon injoignable · 4 introuvable · 130 annulé"
   },

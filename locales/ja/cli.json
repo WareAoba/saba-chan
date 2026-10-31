@@ -165,7 +165,12 @@
     "confirm_all": "すべてのコマンド",
     "confirm_caution": "注意以上",
     "confirm_danger": "危険なコマンドのみ",
-    "confirm_none": "確認しない"
+    "confirm_none": "確認しない",
+    "tts_volume": "Reading Saba-chan volume",
+    "tts_speed": "Reading Saba-chan speed",
+    "tts_speed_value": "{{value}}x",
+    "tts_pitch": "Reading Saba-chan pitch",
+    "tts_pitch_value": "{{value}} semitones"
   },
   "col": {
     "players": "接続者",
@@ -924,7 +929,8 @@
       "config.autostart": "PCにサインインしたときに起動するもの: off(オフ)、daemon(デーモンとトレイのみ)、full(GUIウィンドウまで)。モードなしで今の値を表示",
       "config.browse": "デーモンのPCのフォルダーとファイルを表示 (--daemonならそのリモートPC)。パスがなければドライブか /",
       "bot.notice": "サバちゃんがサーバーを起動したらDiscordサーバーの通知チャンネルに知らせる（既定はオフ）。サーバーなし: 表示、サーバーと`--on`・`--off`: 変更",
-      "bot.confirm": "実行前にボットがDiscordのボタンで確認する段階 (all・caution・danger・none)。オプションなし: 表示"
+      "bot.confirm": "実行前にボットがDiscordのボタンで確認する段階 (all・caution・danger・none)。オプションなし: 表示",
+      "bot.tts": "Reading Saba-chan voice of a Discord server (volume, speed, pitch). No options: show"
     },
     "arg": {
       "module.maker.game": "最初の依頼に入れるゲーム名",
@@ -1105,7 +1111,10 @@
       "unmanaged": "自分で管理: サバちゃんは起動して動いているかだけ見ます (コンソールなし)",
       "bot.prefix.guild": "The Discord server, by name or id (without it: the only paired server)",
       "bot.translate.on": "Show translated command names",
-      "bot.translate.off": "Show only the names in the module"
+      "bot.translate.off": "Show only the names in the module",
+      "bot.tts.volume": "Volume in percent (10-150)",
+      "bot.tts.speed": "Speaking speed (0.8-1.5, e.g. 1.2)",
+      "bot.tts.pitch": "Pitch in semitones (-6 to 6)"
     },
     "after": "名前は一部だけでも指定できます（例: start pal）。端末で引数なしで実行すると全画面メニューが開きます(SABA_NO_TUI=1 なら対話シェル)。\nスクリプトでは --json と --yes を使ってください。終了コード: 0 成功 · 1 失敗 · 2 使い方の誤り · 3 デーモンに接続不可 · 4 見つからない · 130 キャンセル"
   },

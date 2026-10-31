@@ -10,6 +10,7 @@ const base = {
     locale: 'auto',
     sleeping: false,
     music: { enabled: true, ui: true, queueLines: 10, refreshInterval: 5000, normalize: true },
+    tts: { volume: 100, speed: 100, pitch: 0 },
     sync: { ok: true },
 };
 
@@ -61,6 +62,35 @@ describe('디스코드 봇 설정 탭', () => {
         fireEvent.blur(refresh);
         await flush();
         expect(window.api.discordSettingsSet).toHaveBeenCalledWith('g1', { music: { refreshInterval: 3000 } });
+    });
+
+    it('읽어주는 사바쨩: 볼륨·피치는 정수로, 속도는 배로 받아 %로 보내고, 범위 밖은 보내지 않는다', async () => {
+        window.api.discordSettingsGet = vi.fn().mockResolvedValue(base);
+        window.api.discordSettingsSet = vi
+            .fn()
+            .mockResolvedValue({ success: true, settings: base, sync: { ok: true } });
+        render(<BotSettingsTab node={node} section="tts" />);
+        await flush();
+        const [volume, speed, pitch] = screen.getAllByRole('spinbutton');
+        expect(speed).toHaveValue(1);
+        fireEvent.change(speed, { target: { value: '1.25' } });
+        fireEvent.blur(speed);
+        await flush();
+        expect(window.api.discordSettingsSet).toHaveBeenLastCalledWith('g1', { tts: { speed: 125 } });
+
+        fireEvent.change(pitch, { target: { value: '7' } });
+        fireEvent.blur(pitch);
+        fireEvent.change(volume, { target: { value: '9' } });
+        fireEvent.blur(volume);
+        await flush();
+        expect(window.api.discordSettingsSet).toHaveBeenCalledTimes(1);
+
+        fireEvent.change(pitch, { target: { value: '-3' } });
+        fireEvent.blur(pitch);
+        await flush();
+        expect(window.api.discordSettingsSet).toHaveBeenLastCalledWith('g1', { tts: { pitch: -3 } });
+        // 고정 제한은 보여 주기만
+        expect(screen.getByText(/400/)).toBeInTheDocument();
     });
 
     it('relay에 못 보냈으면 알리고, 거부되면 토스트로 알린다', async () => {

@@ -165,7 +165,12 @@
     "confirm_all": "所有命令",
     "confirm_caution": "注意及以上",
     "confirm_danger": "仅危险命令",
-    "confirm_none": "不询问"
+    "confirm_none": "不询问",
+    "tts_volume": "Reading Saba-chan volume",
+    "tts_speed": "Reading Saba-chan speed",
+    "tts_speed_value": "{{value}}x",
+    "tts_pitch": "Reading Saba-chan pitch",
+    "tts_pitch_value": "{{value}} semitones"
   },
   "col": {
     "players": "在线玩家",
@@ -924,7 +929,8 @@
       "config.autostart": "登录此电脑时启动的内容：off（关闭）、daemon（仅守护进程和托盘）、full（包括 GUI 窗口）。不带模式时显示当前值",
       "config.browse": "查看守护进程所在电脑的文件夹和文件（加 --daemon 时为那台远程电脑）。不给路径则显示驱动器或 /",
       "bot.notice": "Saba-chan 启动服务器时在 Discord 服务器的通知频道告知（默认关闭）。不带服务器：查看；服务器加 `--on`/`--off`：更改",
-      "bot.confirm": "机器人在执行前用 Discord 按钮询问的级别 (all、caution、danger、none)。不加选项: 查看"
+      "bot.confirm": "机器人在执行前用 Discord 按钮询问的级别 (all、caution、danger、none)。不加选项: 查看",
+      "bot.tts": "Reading Saba-chan voice of a Discord server (volume, speed, pitch). No options: show"
     },
     "arg": {
       "module.maker.game": "第一个请求中的游戏名",
@@ -1105,7 +1111,10 @@
       "unmanaged": "自行管理：saba-chan 只启动并查看是否在运行（无控制台）",
       "bot.prefix.guild": "The Discord server, by name or id (without it: the only paired server)",
       "bot.translate.on": "Show translated command names",
-      "bot.translate.off": "Show only the names in the module"
+      "bot.translate.off": "Show only the names in the module",
+      "bot.tts.volume": "Volume in percent (10-150)",
+      "bot.tts.speed": "Speaking speed (0.8-1.5, e.g. 1.2)",
+      "bot.tts.pitch": "Pitch in semitones (-6 to 6)"
     },
     "after": "名称可以只写一部分（例如 start pal）。在终端中不带参数运行会打开全屏菜单(SABA_NO_TUI=1 时为交互式 shell)。\n在脚本中请使用 --json 和 --yes。退出码：0 成功 · 1 失败 · 2 用法错误 · 3 无法连接守护进程 · 4 未找到 · 130 已取消"
   },

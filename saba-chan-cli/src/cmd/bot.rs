@@ -142,6 +142,10 @@ pub async fn run(ctx: &Ctx, cmd: BotCmd) -> Result<()> {
             let patch = (!music.is_empty()).then(|| json!({ "music": music }));
             discord_settings(ctx, &resolve::guild(ctx, guild.as_deref()).await?, patch).await
         }
+        BotCmd::Tts { guild, volume, speed, pitch } => {
+            let patch = tts_patch(volume, speed, pitch);
+            discord_settings(ctx, &resolve::guild(ctx, guild.as_deref()).await?, patch).await
+        }
         BotCmd::Confirm { guild, direct, chatbot } => confirm(ctx, &resolve::guild(ctx, guild.as_deref()).await?, direct, chatbot).await,
         BotCmd::Invite => {
             let cfg = ctx.api.bot_config().await?;
@@ -686,6 +690,21 @@ async fn confirm(ctx: &Ctx, guild: &str, direct: Option<String>, chatbot: Option
     Ok(())
 }
 
+/// `bot tts` 옵션 → 디스코드 설정 `tts` 부분 (속도는 배 → %, 범위는 데몬이 본다). 값이 없으면 `None`(보기만)
+fn tts_patch(volume: Option<i64>, speed: Option<f64>, pitch: Option<i64>) -> Option<Value> {
+    let mut tts = Map::new();
+    if let Some(v) = volume {
+        tts.insert("volume".into(), json!(v));
+    }
+    if let Some(v) = speed {
+        tts.insert("speed".into(), json!((v * 100.0).round() as i64));
+    }
+    if let Some(v) = pitch {
+        tts.insert("pitch".into(), json!(v));
+    }
+    (!tts.is_empty()).then(|| json!({ "tts": tts }))
+}
+
 fn print_discord_settings(r: &Value) {
     output::print_kv(&discord_rows(r));
 }
@@ -695,6 +714,7 @@ fn discord_rows(r: &Value) -> Vec<(String, String)> {
     let on_off = |v: Option<bool>| if v == Some(true) { t!("bot.on") } else { t!("bot.off") };
     let locale = s(r, "locale");
     let music = |k: &str| r.get("music").and_then(|m| m.get(k));
+    let tts = |k: &str, default: i64| r.pointer(&format!("/tts/{}", k)).and_then(Value::as_i64).unwrap_or(default);
     vec![
         (t!("bot.locale"), if locale == "auto" { t!("bot.locale_auto") } else { locale.to_string() }),
         (t!("bot.prefix"), prefixes_line(r.get("prefixes").unwrap_or(&Value::Null))),
@@ -713,6 +733,10 @@ fn discord_rows(r: &Value) -> Vec<(String, String)> {
         (t!("bot.music_queue_lines"), music("queueLines").map(|v| v.to_string()).unwrap_or_default()),
         (t!("bot.music_refresh"), music("refreshInterval").map(|v| format!("{} ms", v)).unwrap_or_default()),
         (t!("bot.music_normalize"), on_off(music("normalize").and_then(Value::as_bool))),
+        // 읽어주는 사바쨩: 값이 없으면(옛 데몬) 기본값
+        (t!("bot.tts_volume"), format!("{}%", tts("volume", 100))),
+        (t!("bot.tts_speed"), t!("bot.tts_speed_value", value = format!("{}", tts("speed", 100) as f64 / 100.0))),
+        (t!("bot.tts_pitch"), t!("bot.tts_pitch_value", value = tts("pitch", 0).to_string())),
     ]
 }
 
@@ -960,6 +984,24 @@ mod tests {
         assert_eq!(row(&r, "bot.slash_prefix"), Some(t!("bot.off")));
         assert_eq!(row(&r, "bot.slash_root_name"), Some(t!("bot.slash_root_name_word")));
         assert_eq!(row(&r, "bot.private_queries"), Some(t!("bot.on")));
+    }
+
+    /// 읽어주는 사바쨩 (GUI 탭과 같다): 볼륨 %, 속도는 배로 받아 %로 보내고, 피치 반음. 아무 값도 없으면 보기만
+    #[test]
+    fn tts_options_become_a_partial_tts_patch_and_show_in_server_settings() {
+        crate::i18n::init("ko");
+        assert_eq!(tts_patch(None, None, None), None);
+        assert_eq!(tts_patch(Some(80), Some(1.25), Some(-3)), Some(json!({ "tts": { "volume": 80, "speed": 125, "pitch": -3 } })));
+        assert_eq!(tts_patch(None, Some(1.2), None), Some(json!({ "tts": { "speed": 120 } })));
+        let row = |r: &Value, k: &str| discord_rows(r).into_iter().find(|(name, _)| *name == t!(k)).map(|(_, v)| v);
+        let r = json!({ "music": {}, "tts": { "volume": 80, "speed": 125, "pitch": -3 } });
+        assert_eq!(row(&r, "bot.tts_volume").as_deref(), Some("80%"));
+        assert_eq!(row(&r, "bot.tts_speed"), Some(t!("bot.tts_speed_value", value = "1.25")));
+        assert_eq!(row(&r, "bot.tts_pitch"), Some(t!("bot.tts_pitch_value", value = "-3")));
+        // 옛 데몬(tts 없음)이면 기본값
+        let old = json!({ "music": {} });
+        assert_eq!(row(&old, "bot.tts_volume").as_deref(), Some("100%"));
+        assert_eq!(row(&old, "bot.tts_speed"), Some(t!("bot.tts_speed_value", value = "1")));
     }
 
     /// 권한 키는 봇 설정 저장으로 바뀌지 않는다(L61, 데몬 #469). 데몬이 `ignored`로 알린 키는 저장했다고 말하지 않고

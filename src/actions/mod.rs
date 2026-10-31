@@ -202,7 +202,7 @@ pub static ACTIONS: &[Def] = &[
     },
     // 디스코드 길드 설정 (I2). 원격에서는 요청이 온 길드만 (`guild`를 그 길드로 고정한다)
     Def {
-        fields: &[path_field("guild"), field("locale", "string", false), field("sleeping", "boolean", false), field("music", "object", false), field("confirmLevel", "string", false), field("commandRisks", "object", false)],
+        fields: &[path_field("guild"), field("locale", "string", false), field("sleeping", "boolean", false), field("music", "object", false), field("tts", "object", false), field("confirmLevel", "string", false), field("commandRisks", "object", false)],
         discord_level: Some(crate::chat::permissions::OWNER),
         remote_menu: false,
         guild_owner: true,
