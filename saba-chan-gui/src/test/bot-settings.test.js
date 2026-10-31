@@ -93,6 +93,17 @@ describe('디스코드 봇 설정 탭', () => {
         expect(screen.getByText(/400/)).toBeInTheDocument();
     });
 
+    it('읽어주는 사바쨩 이름 부르기: 기본은 여러 명일 때, 고르면 tts.names 만 보낸다', async () => {
+        window.api.discordSettingsGet = vi.fn().mockResolvedValue(base);
+        window.api.discordSettingsSet = vi.fn().mockResolvedValue({ success: true, settings: base, sync: { ok: true } });
+        render(<BotSettingsTab node={node} section="tts" />);
+        await flush();
+        expect(screen.getByRole('tab', { name: 'With several people' })).toHaveAttribute('aria-selected', 'true');
+        fireEvent.click(screen.getByRole('tab', { name: 'Never' }));
+        await flush();
+        expect(window.api.discordSettingsSet).toHaveBeenLastCalledWith('g1', { tts: { names: 'never' } });
+    });
+
     it('relay에 못 보냈으면 알리고, 거부되면 토스트로 알린다', async () => {
         window.showToast = vi.fn();
         window.api.discordSettingsGet = vi.fn().mockResolvedValue({ ...base, sync: { ok: false } });

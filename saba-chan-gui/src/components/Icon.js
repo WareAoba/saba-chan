@@ -393,6 +393,13 @@ export const Icon = ({ name, size = 'md', color = 'currentColor' }) => {
                 <circle cx="15" cy="12" r="1" fill="currentColor" stroke="none" />
             </svg>
         ),
+        // 읽어주는 사바쨩: 말하는 물고기가 소리를 낸다 (2026-10-31 사용자 선택 B)
+        sabaReading: (
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M8.5 12c2-3.5 4.7-5.2 7.8-5.2 2.2 0 3.7.9 4.6 2.2l1.6-1.7v9.4l-1.6-1.7c-.9 1.3-2.4 2.2-4.6 2.2-3.1 0-5.8-1.7-7.8-5.2zM6 9.5a3.6 3.6 0 0 0 0 5M3 7a7.2 7.2 0 0 0 0 10" />
+                <circle cx="13" cy="11.4" r="1.1" fill="currentColor" stroke="none" />
+            </svg>
+        ),
         musicNote: (
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <ellipse cx="8.6" cy="17.4" rx="3.4" ry="2.7" transform="rotate(-22 8.6 17.4)" fill="currentColor" stroke="none" />

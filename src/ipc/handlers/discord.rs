@@ -83,7 +83,7 @@ pub struct Music {
     pub normalize: bool,
 }
 
-/// 읽어주는 사바쨩 (2026-10-31 사용자 지정): 바꿀 수 있는 값은 볼륨·속도·피치뿐이다.
+/// 읽어주는 사바쨩 (2026-10-31 사용자 지정): 바꿀 수 있는 값은 볼륨·속도·피치와 이름 부르기다.
 /// 한 문장 30자·1분 10문장 제한은 릴레이의 고정값이다. 범위는 릴레이 `nodeSettingsSchema`와 같다
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -94,17 +94,20 @@ pub struct Tts {
     pub speed: i64,
     /// 반음
     pub pitch: i64,
+    /// 글 앞에 "이름님,"을 붙일지 (`TTS_NAMES`): `always` 항상, `multi` 읽는 사람이 여럿일 때, `never` 안 함
+    pub names: String,
 }
 
 impl Default for Tts {
     fn default() -> Self {
-        Self { volume: 100, speed: 100, pitch: 0 }
+        Self { volume: 100, speed: 100, pitch: 0, names: "multi".into() }
     }
 }
 
 pub const TTS_VOLUME: (i64, i64) = (10, 150);
 pub const TTS_SPEED: (i64, i64) = (80, 150);
 pub const TTS_PITCH: (i64, i64) = (-6, 6);
+pub const TTS_NAMES: &[&str] = &["always", "multi", "never"];
 
 impl Default for GuildSettings {
     fn default() -> Self {
@@ -170,7 +173,7 @@ impl GuildSettings {
                 "refreshInterval": self.music.refresh_interval,
                 "normalize": self.music.normalize,
             },
-            "ttsSettings": { "volume": self.tts.volume, "speed": self.tts.speed, "pitch": self.tts.pitch },
+            "ttsSettings": { "volume": self.tts.volume, "speed": self.tts.speed, "pitch": self.tts.pitch, "names": self.tts.names },
             "prefixes": self.prefixes,
             "translateCommands": self.translate_commands,
             "slashPrefix": self.slash_prefix,
@@ -326,6 +329,10 @@ impl GuildSettings {
                             "volume" => next.tts.volume = ranged(TTS_VOLUME)?,
                             "speed" => next.tts.speed = ranged(TTS_SPEED)?,
                             "pitch" => next.tts.pitch = ranged(TTS_PITCH)?,
+                            "names" => match tv.as_str() {
+                                Some(n) if TTS_NAMES.contains(&n) => next.tts.names = n.to_string(),
+                                _ => return Err((field, "must be always, multi or never")),
+                            },
                             _ => return Err((field, "unknown field")),
                         }
                     }
@@ -715,7 +722,7 @@ mod tests {
         let old_relay = json!({ "musicEnabled": true, "musicUIEnabled": true, "musicSettings": { "queueLines": 9, "refreshInterval": 4000, "normalize": true } });
         assert_eq!(
             Value::Object(changed(&old_relay, &s.relay_body())),
-            json!({ "locale": "auto", "sleeping": false, "ttsSettings": { "volume": 100, "speed": 100, "pitch": 0 }, "prefixes": [], "translateCommands": true, "slashPrefix": true, "slashRootName": "name", "privateQueries": false })
+            json!({ "locale": "auto", "sleeping": false, "ttsSettings": { "volume": 100, "speed": 100, "pitch": 0, "names": "multi" }, "prefixes": [], "translateCommands": true, "slashPrefix": true, "slashRootName": "name", "privateQueries": false })
         );
     }
 
@@ -726,7 +733,11 @@ mod tests {
         assert_eq!((s.tts.volume, s.tts.speed, s.tts.pitch), (100, 100, 0));
         s.apply(&patch(json!({ "tts": { "volume": 80, "pitch": -3 } }))).unwrap();
         assert_eq!((s.tts.volume, s.tts.speed, s.tts.pitch), (80, 100, -3));
-        assert_eq!(s.relay_body()["ttsSettings"], json!({ "volume": 80, "speed": 100, "pitch": -3 }));
+        assert_eq!(s.relay_body()["ttsSettings"], json!({ "volume": 80, "speed": 100, "pitch": -3, "names": "multi" }));
+        // 이름 부르기: 항상 · 여러 명일 때(기본) · 안 함
+        s.apply(&patch(json!({ "tts": { "names": "never" } }))).unwrap();
+        assert_eq!(s.tts.names, "never");
+        assert_eq!(s.relay_body()["ttsSettings"]["names"], "never");
         for (bad, field) in [
             (json!({ "tts": { "volume": 9 } }), "tts.volume"),
             (json!({ "tts": { "volume": 151 } }), "tts.volume"),
@@ -734,6 +745,8 @@ mod tests {
             (json!({ "tts": { "speed": 1.2 } }), "tts.speed"),
             (json!({ "tts": { "pitch": 7 } }), "tts.pitch"),
             (json!({ "tts": { "voice": "a" } }), "tts.voice"),
+            (json!({ "tts": { "names": "sometimes" } }), "tts.names"),
+            (json!({ "tts": { "names": 1 } }), "tts.names"),
             (json!({ "tts": 1 }), "tts"),
         ] {
             let before = s.clone();

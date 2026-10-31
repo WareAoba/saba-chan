@@ -174,7 +174,11 @@
     "tts_speed": "읽어주는 사바쨩 속도",
     "tts_speed_value": "{{value}}배",
     "tts_pitch": "읽어주는 사바쨩 피치",
-    "tts_pitch_value": "{{value}}반음"
+    "tts_pitch_value": "{{value}}반음",
+    "tts_names": "읽어주는 사바쨩 이름 부르기",
+    "tts_names_always": "항상",
+    "tts_names_multi": "여러 명일 때",
+    "tts_names_never": "안 함"
   },
   "col": {
     "players": "접속자",
