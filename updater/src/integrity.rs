@@ -90,6 +90,9 @@ pub enum OverallIntegrity {
 // 기록과 검증
 // ══════════════════════════════════════════════════════
 
+/// 기록 파일은 읽고-고치고-쓴다. 같은 프로세스에서 동시에 고치면 한쪽 기록이 사라지므로 차례로 한다
+static RECORDS_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 pub fn records_path() -> PathBuf {
     crate::constants::resolve_data_dir().join("installed-files.json")
 }
@@ -108,6 +111,7 @@ fn record_install_at(path: &Path, component_key: &str, files: &[PathBuf]) -> Res
     for file in files {
         hashes.insert(file.to_string_lossy().to_string(), compute_sha256(file)?);
     }
+    let _guard = RECORDS_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     // 읽을 수 없는 기록을 이 키 하나로 덮어쓰면 다른 컴포넌트의 기록이 사라진다.
     // 내용이 깨진 기록(UTF-8이 아닌 것 포함)은 옆으로 옮겨 두고 새로 쓴다. 그대로 두면 기록이 영영 안 되어 모든 모듈·익스텐션이 다시 받기 대상으로 남는다
     let mut records: InstalledFiles = crate::read_json_for_update(path)?.unwrap_or_default();
@@ -118,6 +122,7 @@ fn record_install_at(path: &Path, component_key: &str, files: &[PathBuf]) -> Res
 
 /// `keep`이 아닌 컴포넌트의 파일 기록을 뺀다 (지운 컴포넌트를 남기면 무결성 검사가 지운 파일을 "없음"으로 보인다). 뺄 것이 없으면 그대로 둔다
 pub fn retain_at(path: &Path, keep: impl Fn(&str) -> bool) -> Result<(), String> {
+    let _guard = RECORDS_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut records: InstalledFiles = crate::read_json(path)?.unwrap_or_default();
     let before = records.len();
     records.retain(|key, _| keep(key));
