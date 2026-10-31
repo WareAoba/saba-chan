@@ -100,9 +100,16 @@ impl std::fmt::Display for AutostartError {
     }
 }
 
-/// 이 OS에서 자동 실행을 등록할 수 있는지
+/// 이 OS에서 자동 실행을 등록할 수 있는지.
+/// 데이터 폴더를 `SABA_DATA_DIR`로 바꾼 실행(PR 프리뷰·개발)은 등록하지 않는다: 항목은 OS에 하나(`Saba-chan`)뿐이라
+/// 설치본 것을 덮고, 다음 로그인에는 그 환경 변수가 없어 설치본 데이터 폴더로 뜬다 (설치기·제거기도 이 실행을 설치본으로 보지 않는다)
 pub fn supported() -> bool {
-    cfg!(any(target_os = "windows", target_os = "linux", target_os = "macos"))
+    supported_with(std::env::var_os("SABA_DATA_DIR"))
+}
+
+fn supported_with(data_dir_env: Option<std::ffi::OsString>) -> bool {
+    let overridden = data_dir_env.is_some_and(|d| !d.is_empty());
+    cfg!(any(target_os = "windows", target_os = "linux", target_os = "macos")) && !overridden
 }
 
 /// `install_dir`의 실행 파일로 `mode`를 켜는 항목. 끔은 None
@@ -685,6 +692,14 @@ mod tests {
             std::fs::write(dir.path().join(f), b"").unwrap();
         }
         dir
+    }
+
+    #[test]
+    fn a_run_with_its_own_data_folder_cannot_register() {
+        let os = cfg!(any(target_os = "windows", target_os = "linux", target_os = "macos"));
+        assert_eq!(supported_with(None), os);
+        assert_eq!(supported_with(Some("".into())), os, "an empty value is no override");
+        assert!(!supported_with(Some("D:/SabaPreview/pr-1/data".into())));
     }
 
     #[test]

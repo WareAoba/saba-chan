@@ -7,6 +7,7 @@
     SABA_DATA_DIR·IPC_BASE·SABA_IPC_PORT로 데이터 폴더와 포트를 갈라서, 설치된 사바쨩과
     %APPDATA%\saba-chan\config.json·인스턴스·노드 토큰을 건드리지 않는다.
     처음 만들 때 설치본의 모듈·익스텐션 폴더만 복사한다(인스턴스·토큰은 복사하지 않아 릴레이에 붙지 않는다).
+    데이터 폴더를 바꾼 실행은 로그인 자동 실행을 등록할 수 없다(설정에서 그 항목이 숨는다).
     gh CLI 로그인이 필요하다(gh auth login).
 
 .EXAMPLE
@@ -36,6 +37,8 @@ $ErrorActionPreference = 'Stop'
 if (-not $Root) {
     $Root = if (Test-Path 'D:\') { 'D:\SabaPreview' } else { Join-Path $env:LOCALAPPDATA 'SabaPreview' }
 }
+# 상대 경로를 주면 GUI(작업 폴더가 다르다)와 프로세스 경로 비교가 다른 곳을 본다
+$Root = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Root)
 $Interactive = -not $PSBoundParameters.ContainsKey('Pr')
 
 function Fail([string]$Message) {
