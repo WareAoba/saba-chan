@@ -341,6 +341,9 @@ fn read_extension_version(manifest: &Path) -> Option<(String, String)> {
 /// GUI 실행 파일 이름들: 표준 이름과, 0.1.1 GUI zip처럼 Electron 폴더를 그대로 담은 경우의 productName
 pub const GUI_EXE_NAMES: &[&str] = if cfg!(windows) { &["saba-chan-gui.exe", "Saba-chan.exe"] } else { &["saba-chan-gui"] };
 
+/// 설치기가 업데이트 적용(`--apply`)을 맡은 첫 판. 이보다 옛 설치기(Windows 0.1.12-beta.1까지)는 `--apply`를 모르고 설치 창을 연다
+pub const INSTALLER_APPLIES_SINCE: &str = "0.1.12-beta.2";
+
 /// 설치기가 설치 폴더에 남기는 자기 사본 (제거에 쓴다)
 pub const INSTALLER_EXE: &str = if cfg!(windows) { "saba-chan-installer.exe" } else { "saba-chan-installer" };
 
@@ -355,14 +358,17 @@ pub fn retire_legacy_updater() {
 
 pub fn retire_legacy_updater_at(install_root: &Path, installed_manifest: &Path, records: &Path) {
     let legacy = install_root.join(LEGACY_UPDATER_EXE);
-    if !install_root.join(INSTALLER_EXE).is_file() || !legacy.exists() {
+    if !install_root.join(INSTALLER_EXE).is_file() {
         return;
     }
-    if let Err(e) = std::fs::remove_file(&legacy) {
-        tracing::warn!("[Updater] Cannot remove the retired updater {}: {}", legacy.display(), e);
-        return;
+    // 파일이 이미 없어도(지워졌거나 격리됨) 남은 기록은 걷는다
+    if legacy.exists() {
+        if let Err(e) = std::fs::remove_file(&legacy) {
+            tracing::warn!("[Updater] Cannot remove the retired updater {}: {}", legacy.display(), e);
+            return;
+        }
+        tracing::info!("[Updater] Removed the retired updater {}", legacy.display());
     }
-    tracing::info!("[Updater] Removed the retired updater {}", legacy.display());
     let key = Component::Updater.manifest_key();
     let mut versions = UpdateManager::load_installed_manifest_at(installed_manifest);
     if versions.remove(&key).is_some() {
@@ -403,6 +409,11 @@ fn path_parts(p: &Path) -> Vec<String> {
 }
 
 /// 덮어쓸 실행 파일이 떠 있으면 `.old`로 비켜 둔다 (`extract_zip`의 `before_write`로 쓴다)
+/// zip이 아닌 설치기(실행 파일 그대로)를 `target`에 둔다. 실패하면 이전 사본을 되돌린다
+pub fn replace_bare_installer(staged: &Path, target: &Path) -> Result<()> {
+    UpdateManager::replace_bare_installer(staged, target)
+}
+
 pub fn move_aside_binary(path: &Path) -> Result<()> {
     UpdateManager::move_aside_binary(path)
 }

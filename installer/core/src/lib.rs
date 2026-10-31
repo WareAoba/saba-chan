@@ -337,7 +337,7 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
             &format!("Extracting {}...", key),
             40 + (i * 5 / total) as i32,
         );
-        if let Err(e) = place_component(zip, &release::target_dir(&install_dir, info)) {
+        if let Err(e) = place_component(key, zip, &release::target_dir(&install_dir, info)) {
             return fail("extract_failed", &format!("Failed to extract {}: {}", key, e));
         }
         let _ = std::fs::remove_file(zip);
@@ -803,7 +803,7 @@ where
             .await
             .map_err(|e| ("download_failed", format!("Failed to download {}: {}", key, e)))?;
         let probe = temp_dir.join(format!(".check-{}", i));
-        let checked = if is_zip(&zip) { saba_chan_updater_lib::extract_zip(&zip, &probe, |_| Ok(())).map(|_| ()) } else { Ok(()) };
+        let checked = if is_bare_installer(key, &zip) { Ok(()) } else { saba_chan_updater_lib::extract_zip(&zip, &probe, |_| Ok(())).map(|_| ()) };
         let _ = std::fs::remove_dir_all(&probe);
         checked.map_err(|e| ("extract_failed", format!("Failed to extract {}: {}", key, e)))?;
         zips.push(zip);
@@ -811,20 +811,18 @@ where
     Ok(zips)
 }
 
-fn is_zip(path: &Path) -> bool {
-    path.extension().is_some_and(|e| e.eq_ignore_ascii_case("zip"))
+/// Windows 릴리즈의 설치기는 zip이 아니라 `saba-chan-installer.exe` 그대로다. 다른 컴포넌트는 모두 zip으로 받는다
+fn is_bare_installer(key: &str, path: &Path) -> bool {
+    key == "installer" && !path.extension().is_some_and(|e| e.eq_ignore_ascii_case("zip"))
 }
 
-/// 받은 컴포넌트를 둔다: zip은 풀고, zip이 아닌 것은 Windows 릴리즈의 설치기(`saba-chan-installer.exe` 그대로)라 그 이름으로 복사한다
-fn place_component(file: &Path, target_dir: &Path) -> anyhow::Result<()> {
-    if is_zip(file) {
+/// 받은 컴포넌트를 둔다: zip은 풀고, zip이 아닌 설치기는 그 이름으로 복사한다 (실패하면 이전 사본을 되돌린다)
+fn place_component(key: &str, file: &Path, target_dir: &Path) -> anyhow::Result<()> {
+    if !is_bare_installer(key, file) {
         return extract_zip(file, target_dir);
     }
     std::fs::create_dir_all(target_dir)?;
-    let target = target_dir.join(saba_chan_updater_lib::INSTALLER_EXE);
-    saba_chan_updater_lib::move_aside_binary(&target)?;
-    std::fs::copy(file, &target)?;
-    Ok(())
+    saba_chan_updater_lib::replace_bare_installer(file, &target_dir.join(saba_chan_updater_lib::INSTALLER_EXE))
 }
 
 /// 업데이트·제거를 맡을 설치기를 릴리즈에서 받는가. 창 설치기는 Windows에서만 자기 사본을 설치 폴더에 남기므로
@@ -1017,6 +1015,21 @@ fn is_copy_of(copy: &Path, original: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 실행 파일 그대로 받는 것은 설치기뿐이다: 다른 컴포넌트의 zip 아닌 파일은 설치기 자리에 복사하지 않고 풀다 실패한다
+    #[test]
+    fn only_the_installer_is_placed_as_a_bare_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let file = tmp.path().join("saba-core-linux-x64.tar.gz");
+        std::fs::write(&file, b"not a zip").unwrap();
+        let dir = tmp.path().join("install");
+        assert!(place_component("saba-core", &file, &dir).is_err());
+        assert!(!dir.join(saba_chan_updater_lib::INSTALLER_EXE).exists());
+        let exe = tmp.path().join("saba-chan-installer.exe");
+        std::fs::write(&exe, b"exe").unwrap();
+        place_component("installer", &exe, &dir).unwrap();
+        assert_eq!(std::fs::read(dir.join(saba_chan_updater_lib::INSTALLER_EXE)).unwrap(), b"exe");
+    }
 
     /// 설치 폴더에 설치기가 꼭 남는다: Windows 창 설치는 자기 사본을 남기고, 그 밖에는 릴리즈의 것을 받는다
     #[test]

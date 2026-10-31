@@ -943,15 +943,16 @@ fn updater_binary() -> Option<std::path::PathBuf> {
         return path.is_file().then_some(path);
     }
     let installed = saba_chan_updater_lib::UpdateManager::load_installed_manifest();
-    updater_binary_near(&std::env::current_exe().ok()?, installer_applies(&installed, env!("CARGO_PKG_VERSION")))
+    updater_binary_near(&std::env::current_exe().ok()?, installer_applies(&installed, saba_chan_updater_lib::INSTALLER_APPLIES_SINCE))
 }
 
-/// 설치된 설치기가 업데이트 적용(`--apply`)을 아는가: 이 데몬과 같은 판 이상으로 기록돼 있다.
-/// 0.1.12 전 Windows 설치기는 `--apply`를 모르고 설치 창을 연다. 데몬만 먼저 새로 받으면 그 설치기가 남는다
-fn installer_applies(installed: &std::collections::HashMap<String, String>, daemon_version: &str) -> bool {
+/// 설치된 설치기가 업데이트 적용(`--apply`)을 아는가: 설치 기록의 판이 `since`(적용을 맡은 첫 판) 이상이다.
+/// 0.1.12 전 Windows 설치기는 `--apply`를 모르고 설치 창을 연다. 데몬만 먼저 새로 받으면 그 설치기가 남는다.
+/// 데몬 판과 견주지 않는다: 구성요소 판은 따로 오르므로 데몬만 오른 릴리즈에서 멀쩡한 설치기를 옛것으로 보게 된다
+fn installer_applies(installed: &std::collections::HashMap<String, String>, since: &str) -> bool {
     use saba_chan_updater_lib::version::SemVer;
-    match (installed.get("installer").and_then(|v| SemVer::parse(v)), SemVer::parse(daemon_version)) {
-        (Some(installer), Some(daemon)) => installer >= daemon,
+    match (installed.get("installer").and_then(|v| SemVer::parse(v)), SemVer::parse(since)) {
+        (Some(installer), Some(since)) => installer >= since,
         _ => false,
     }
 }
@@ -1362,15 +1363,17 @@ mod tests {
         assert_eq!(super::updater_binary_near(&daemon, false), Some(bin.join(exe("saba-chan-installer"))), "nothing else to use");
     }
 
-    /// 설치기가 이 데몬과 같은 판 이상으로 기록돼 있어야 `--apply`를 안다고 본다 (구성요소는 한 판으로 같이 나간다)
+    /// 설치기가 적용을 맡은 첫 판 이상으로 기록돼 있어야 `--apply`를 안다고 본다. 데몬만 오른 릴리즈 뒤에도 그대로다
     #[test]
-    fn only_an_installer_as_new_as_the_daemon_counts_as_applying() {
+    fn only_an_installer_since_the_merge_counts_as_applying() {
         let manifest = |v: Option<&str>| v.map(|v| [("installer".to_string(), v.to_string())].into_iter().collect()).unwrap_or_default();
-        assert!(super::installer_applies(&manifest(Some("0.1.12")), "0.1.12"));
-        assert!(super::installer_applies(&manifest(Some("0.1.13")), "0.1.12"));
-        assert!(!super::installer_applies(&manifest(Some("0.1.12-beta.1")), "0.1.12-beta.3"));
-        assert!(!super::installer_applies(&manifest(Some("0.1.11")), "0.1.12"));
-        assert!(!super::installer_applies(&manifest(None), "0.1.12"));
+        let since = saba_chan_updater_lib::INSTALLER_APPLIES_SINCE;
+        assert!(super::installer_applies(&manifest(Some(since)), since));
+        assert!(super::installer_applies(&manifest(Some("0.1.12")), since));
+        assert!(super::installer_applies(&manifest(Some("0.1.12-beta.3")), since));
+        assert!(!super::installer_applies(&manifest(Some("0.1.12-beta.1")), since), "the last installer without --apply");
+        assert!(!super::installer_applies(&manifest(Some("0.1.11")), since));
+        assert!(!super::installer_applies(&manifest(None), since));
     }
 
     /// CLI가 데몬을 다시 띄우라고 해도 GUI가 떠 있었으면 GUI를 띄운다. GUI가 부른 요청은 그대로

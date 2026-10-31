@@ -139,12 +139,15 @@ impl UpdateManager {
 
     /// 업데이터가 적용할 키: 남긴 적용 대상 목록(지우지 않는다), 없으면 받아 둔 것 전부.
     /// 데몬은 이것으로 다시 띄울 것을 고른다 (GUI가 바뀌지 않으면 GUI는 그대로 둔다)
+    /// 목록에 있어도 지금 받아 둔 것이 아니면 빼고 본다 (적용하지 못하고 남은 옛 목록)
     pub fn updater_targets(&self) -> Vec<String> {
+        let pending: Vec<String> = self.get_pending_components().iter().map(|c| c.component.manifest_key()).collect();
         std::fs::read_to_string(self.staging_dir.join("apply-targets.json"))
             .ok()
             .and_then(|s| serde_json::from_str::<Vec<String>>(&s).ok())
+            .map(|keys| keys.into_iter().filter(|k| pending.contains(k)).collect::<Vec<_>>())
             .filter(|keys| !keys.is_empty())
-            .unwrap_or_else(|| self.get_pending_components().iter().map(|c| c.component.manifest_key()).collect())
+            .unwrap_or(pending)
     }
 
     /// 데몬이 저장한 업데이터 적용 대상 목록을 읽습니다.

@@ -17,6 +17,8 @@ use tauri_plugin_notification::NotificationExt;
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
 /// 데몬의 종료 hook 한도(30초, src/main.rs)보다 길게 기다린다: hook이 끝나기 전에 강제 종료하지 않는다 (CLI와 같다)
 const STOP_TIMEOUT: Duration = Duration::from_secs(40);
+/// 데몬만 업데이트할 때 다시 뜬 데몬을 기다리는 상한 (데몬 종료 대기 30초 + 적용 + 다시 띄움에 넉넉히)
+const DAEMON_UPDATE_LIMIT: Duration = Duration::from_secs(300);
 
 #[derive(Default)]
 pub struct Lifecycle {
@@ -32,8 +34,9 @@ pub struct Lifecycle {
     /// 초기화를 아직 마치지 않았는가. 데몬 단계에서 실패하거나 끊기면 daemon_restart가 성공한 뒤 나머지를 마친다
     init_pending_daemon: AtomicBool,
     ready_sent: AtomicBool,
-    /// 이 GUI는 그대로 두고 데몬만 업데이트하러 내려갔다: 다시 뜬 데몬에 붙으면 한 번 완료를 알린다
-    daemon_updating: AtomicBool,
+    /// 이 GUI는 그대로 두고 데몬만 업데이트하러 내려간 때: 다시 뜬 데몬에 붙으면 한 번 완료를 알린다.
+    /// 그동안 이 GUI는 데몬을 띄우지 않고 트레이만 든 채로도 끝나지 않는다. `DAEMON_UPDATE_LIMIT`가 지나면 없는 것으로 본다
+    daemon_updating: Mutex<Option<std::time::Instant>>,
     quitting: AtomicBool,
     client_id: Mutex<Option<String>>,
     last_status: Mutex<Option<Value>>,
@@ -185,12 +188,17 @@ fn daemon_path(install_root: &Path) -> PathBuf {
 impl Lifecycle {
     /// 데몬만 업데이트한다 (GUI는 남는다)
     pub fn expect_daemon_update(&self) {
-        self.daemon_updating.store(true, Ordering::SeqCst);
+        *self.daemon_updating.lock().unwrap() = Some(std::time::Instant::now());
     }
 
-    /// 다시 뜬 데몬에 붙었다: 데몬만 업데이트하던 중이었으면 한 번만 true
+    /// 설치기가 데몬을 바꾸는 중인가 (상한이 지났으면 아니다: 다시 뜨지 않은 데몬을 사용자가 띄울 수 있게)
+    fn daemon_updating(&self) -> bool {
+        self.daemon_updating.lock().unwrap().is_some_and(|at| at.elapsed() < DAEMON_UPDATE_LIMIT)
+    }
+
+    /// 다시 뜬 데몬에 붙었다: 데몬만 업데이트하던 중이었으면 한 번만 true. 상한이 지난 뒤 붙은 것은 업데이트가 아니다
     fn daemon_update_done(&self) -> bool {
-        self.daemon_updating.swap(false, Ordering::SeqCst)
+        self.daemon_updating.lock().unwrap().take().is_some_and(|at| at.elapsed() < DAEMON_UPDATE_LIMIT)
     }
 
     /// 서버를 열라는 요청. 렌더러가 이미 준비됐으면 지금 보낼 id를, 아니면 맡아 두고 None
@@ -317,6 +325,11 @@ pub fn own_daemon_alive(app: &AppHandle) -> bool {
 
 pub fn start_daemon(app: &AppHandle) {
     let state = app.state::<AppState>();
+    // 설치기가 데몬 파일을 바꾸는 중이다: 옛 파일로 띄우면 교체가 막히거나 다시 뜰 데몬과 포트를 다툰다. 설치기가 다시 띄운다
+    if state.life.daemon_updating() {
+        tracing::info!("[Daemon] An update is replacing the daemon; not starting it now");
+        return;
+    }
     let root = state.install_root.clone();
     let path = daemon_path(&root);
     tracing::info!(
@@ -698,7 +711,11 @@ fn start_heartbeat(app: &AppHandle) {
             // 창 없이 트레이만 든 GUI는 데몬이 밖에서 꺼지면(CLI의 완전히 종료 등) 함께 끝난다.
             // 트레이에서 직접 끈 것이면 다시 켤 수 있게 남는다
             let tray_stopped = state.life.stopped_from_tray.load(Ordering::SeqCst) != TRAY_STOP_NONE;
-            if should_follow_daemon_out(reached, resident, tray_stopped) && !own_daemon_alive(&app2) {
+            // 데몬만 업데이트하는 동안 창을 닫아 트레이만 남았어도 끝나지 않는다: 설치기는 데몬만 다시 띄운다
+            if should_follow_daemon_out(reached, resident, tray_stopped)
+                && !own_daemon_alive(&app2)
+                && !state.life.daemon_updating()
+            {
                 tracing::info!("[Tray] The daemon is gone and no window is open; quitting");
                 state.life.quitting.store(true, Ordering::SeqCst);
                 stop_background(&state);
@@ -1053,8 +1070,15 @@ mod tests {
     fn a_daemon_only_update_is_announced_once_after_reattaching() {
         let life = Lifecycle::default();
         assert!(!life.daemon_update_done(), "no update, nothing to announce");
+        assert!(!life.daemon_updating());
         life.expect_daemon_update();
+        assert!(life.daemon_updating(), "the GUI neither starts the daemon nor quits while it is replaced");
         assert!(life.daemon_update_done());
+        assert!(!life.daemon_update_done());
+        assert!(!life.daemon_updating());
+        // 다시 뜨지 않은 채 상한이 지나면 업데이트 중이 아니고, 나중에 붙어도 완료로 알리지 않는다
+        *life.daemon_updating.lock().unwrap() = std::time::Instant::now().checked_sub(DAEMON_UPDATE_LIMIT);
+        assert!(!life.daemon_updating());
         assert!(!life.daemon_update_done());
     }
 

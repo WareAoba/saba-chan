@@ -151,6 +151,23 @@ impl UpdateManager {
 
     /// 설치 폴더의 설치기 사본을 바꾼다. 릴리스의 설치기는 zip이 아닌 exe 그대로다.
     /// 복사가 실패하면 비켜 둔 원래 사본을 되돌린다 (제거기가 사라지면 안 된다)
+    /// zip이 아닌 설치기(실행 파일 그대로)를 `target`에 둔다. 복사가 실패하면 비켜 둔 이전 사본을 되돌린다
+    pub(crate) fn replace_bare_installer(staged: &Path, target: &Path) -> Result<()> {
+        let backup = Self::move_aside(target)?;
+        if let Err(e) = std::fs::copy(staged, target) {
+            tracing::error!("[Updater] Replacing {} failed, restoring previous copy: {}", target.display(), e);
+            // 비켜 두지 못했으면(Unix의 덮어쓰기) 지우지 않는다: 원래 사본이 그대로 남아 있을 수 있다
+            if let Some(backup) = &backup {
+                let _ = std::fs::remove_file(target);
+                if let Err(re) = std::fs::rename(backup, target) {
+                    tracing::error!("[Updater] Restore of {} failed: {}", target.display(), re);
+                }
+            }
+            anyhow::bail!("Cannot replace {}: {}", target.display(), e);
+        }
+        Ok(())
+    }
+
     pub(crate) fn apply_installer_update(&self, staged_path: &str) -> Result<Vec<PathBuf>> {
         let staged = Path::new(staged_path);
         if staged.extension().is_some_and(|e| e == "zip") {
@@ -159,18 +176,7 @@ impl UpdateManager {
             return Ok(files);
         }
         let target = self.install_root.join(INSTALLER_EXE);
-        let backup = Self::move_aside(&target)?;
-        if let Err(e) = std::fs::copy(staged, &target) {
-            tracing::error!("[Updater] Replacing {} failed, restoring previous copy: {}", target.display(), e);
-            // 비켜 두지 못했으면(Unix의 덮어쓰기) 지우지 않는다: 원래 사본이 그대로 남아 있을 수 있다
-            if let Some(backup) = &backup {
-                let _ = std::fs::remove_file(&target);
-                if let Err(re) = std::fs::rename(backup, &target) {
-                    tracing::error!("[Updater] Restore of {} failed: {}", target.display(), re);
-                }
-            }
-            anyhow::bail!("Cannot replace {}: {}", target.display(), e);
-        }
+        Self::replace_bare_installer(staged, &target)?;
         std::fs::remove_file(staged).ok();
         tracing::info!("[Updater] Installer updated");
         Ok(vec![target])

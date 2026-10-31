@@ -1489,6 +1489,12 @@ fn the_retired_updater_is_removed_once_the_installer_is_there() {
     assert_eq!(left, serde_json::json!({"saba-core": "0.1.11"}));
     let left: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&records).unwrap()).unwrap();
     assert!(left.get("updater").is_none() && left.get("cli").is_some(), "{left}");
+
+    // 파일이 이미 없어진 설치도 남은 기록을 걷는다
+    std::fs::write(&versions, r#"{"saba-core":"0.1.11","updater":"0.1.11"}"#).unwrap();
+    crate::retire_legacy_updater_at(&root, &versions, &records);
+    let left: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&versions).unwrap()).unwrap();
+    assert_eq!(left, serde_json::json!({"saba-core": "0.1.11"}));
 }
 
 // 업데이터를 띄우기 전에 데몬이 무엇이 바뀌는지 본다: 남긴 적용 대상 목록을 지우지 않고 읽고, 목록이 없으면 받아 둔 것 전부
@@ -1505,4 +1511,9 @@ fn the_updater_targets_are_read_without_consuming_them() {
     manager.save_updater_apply_targets(&["saba-core".to_string()]).unwrap();
     assert_eq!(manager.updater_targets(), vec!["saba-core".to_string()]);
     assert_eq!(manager.load_updater_apply_targets().unwrap(), vec!["saba-core".to_string()], "the updater still finds the list");
+    manager.save_updater_apply_targets(&["gui".to_string()]).unwrap();
+    manager.status.components = vec![staged(Component::CoreDaemon, &zip)];
+    assert_eq!(manager.updater_targets(), vec!["saba-core".to_string()], "a stale list does not name what is not downloaded");
+    manager.status.components.clear();
+    assert!(manager.updater_targets().is_empty());
 }
