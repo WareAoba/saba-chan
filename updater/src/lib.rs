@@ -358,7 +358,13 @@ pub fn retire_legacy_updater() {
 
 pub fn retire_legacy_updater_at(install_root: &Path, installed_manifest: &Path, records: &Path) {
     let legacy = install_root.join(LEGACY_UPDATER_EXE);
-    if !install_root.join(INSTALLER_EXE).is_file() {
+    // 설치 폴더의 설치기가 적용을 아는 판으로 기록돼 있을 때만: 새 사본 복사가 실패해 옛 설치기가 남았으면 옛 업데이터가 유일한 적용 수단이다
+    let applies = UpdateManager::load_installed_manifest_at(installed_manifest)
+        .get("installer")
+        .and_then(|v| version::SemVer::parse(v))
+        .zip(version::SemVer::parse(INSTALLER_APPLIES_SINCE))
+        .is_some_and(|(installed, since)| installed >= since);
+    if !install_root.join(INSTALLER_EXE).is_file() || !applies {
         return;
     }
     // 파일이 이미 없어도(지워졌거나 격리됨) 남은 기록은 걷는다
