@@ -372,7 +372,7 @@ Tauri 커맨드(`installer/gui/src-tauri/src/lib.rs`): `get_installer_state`, `s
 | 테이블 | 주요 컬럼 |
 |---|---|
 | `users` | `discord_id` PK, username, display_name, is_banned, created_at, last_seen, terms_version·terms_accepted_at(등록: 동의한 약관 버전과 시각. `TERMS_VERSION`보다 낮거나 없으면 등록하지 않은 계정, 0046) |
-| `registration_tickets` | id PK(nanoid21), secret_hash(SHA-256 hex), discord_id, username, guild_id·guild_name(길드에서 쳤을 때), manage_guild, kind(`link`·`code`·`other`), expires_at(+10분), used_at, created_at (0046). 개인정보 모두 지우기가 함께 지운다 |
+| `registration_tickets` | id PK(nanoid21), secret_hash(SHA-256 hex), discord_id, username, guild_id·guild_name·guild_locale(길드에서 쳤을 때, 길드를 그 언어로 등록), manage_guild, kind(`link`·`code`·`other`), expires_at(+10분), used_at, created_at (0046). 개인정보 모두 지우기가 함께 지운다 |
 | `hosts` | `id` PK(nanoid12), `owner_discord_id` → users(고유하지 않다: 계정 하나에 PC 여러 대, 0028), name(64자, `/내사바쨩 내pc`로 바꾼다), `token_hash`(`sha256:<hex>`, 예전 행은 argon2id), status(online/offline), last_heartbeat, agent_version, `metadata` jsonb(heartbeat 캐시와 botConfig, 서버 목록과 `permissionsAt`은 빼고), `servers` jsonb(heartbeat 서버 목록, `{id, name, module, status, usage?, players?, startedAt?, statusLine?}`만. 0025. null이면 읽는 쪽이 `metadata.servers`를 쓴다, `catalog.ts` `hostMetadata`), timestamps |
 | `guild_hosts` | (`guild_id` → nodes cascade, `host_id` → hosts cascade) PK, created_at. 주인은 따로 적지 않고 `hosts.owner_discord_id`를 쓴다. 대표 PC 뒤에 붙은 PC(길드 하나에 여러 PC, 0029, §4.4 (i)) |
 | `remote_endpoints` | `host_id` PK → hosts cascade, address(NULL이면 공인 주소 없음, 0032), port, cert_sha256, updated_at. 원격 PC의 직접 연결 주소(0030, §4.4 (j)) |
