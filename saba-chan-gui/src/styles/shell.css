@@ -2142,6 +2142,14 @@ button.activity-line:hover {
 .dc-level-row:last-child {
     border-bottom: 0;
 }
+.dc-level-row.is-over {
+    /* 줄 위치는 그대로 두고 강조만 양옆으로 넓힌다 */
+    margin-inline: calc(-1 * var(--sp-2));
+    padding-inline: var(--sp-2);
+    border-radius: var(--r-md);
+    box-shadow: inset 0 0 0 2px var(--accent);
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
 .dc-level-head {
     display: flex;
     flex-direction: column;
@@ -2204,6 +2212,10 @@ button.activity-line:hover {
     color: var(--text-1);
     font-size: var(--fs-sm);
     cursor: pointer;
+}
+.dc-chip.is-dragging {
+    opacity: 0.4;
+    cursor: grabbing;
 }
 .dc-chip.is-open {
     border-color: var(--accent);
