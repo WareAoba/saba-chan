@@ -1,18 +1,22 @@
-import { useEffect, useRef } from 'react';
+import clsx from 'clsx';
+import { useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { art } from './art';
+import { DiscordTab } from './components/DiscordTab';
 import { Icon } from './components/icons';
 import { ModulesTab } from './components/ModulesTab';
 import { MoreTab } from './components/MoreTab';
-import { PermissionsTab } from './components/PermissionsTab';
+import { NeedsPc } from './components/NoPc';
 import { startPoll } from './components/poll';
 import { ServersTab } from './components/ServersTab';
 import { SessionBar } from './components/SessionBar';
 import { ConfirmHost, ToastHost, Wordmark } from './components/ui';
 import { registerModuleLocales } from './i18n';
+import { createRelay } from './relay';
 import { useApp, useData } from './store';
 
 // 휴대폰은 아래 탭, 넓은 화면은 왼쪽 메뉴 (styles.css .tabs)
+// PC 없는 세션(hostId null)은 디스코드 탭만 열린다 — 나머지는 자물쇠를 달고 앱 설치를 안내한다
 const TABS = [
     { id: 'servers', icon: 'servers' },
     { id: 'discord', icon: 'discord' },
@@ -99,36 +103,52 @@ export function App({ api, session }) {
     const { phase, reason } = useApp((s) => s.session);
     const tab = useApp((s) => s.tab);
     const setTab = useApp((s) => s.setTab);
+    const hostId = useApp((s) => s.session.hostId);
     const live = phase === 'ready' || phase === 'reconnecting';
-    useLiveData(api, live);
+    const noPc = live && !hostId;
+    const relay = useMemo(() => (session ? createRelay(session) : null), [session]);
+    useLiveData(api, live && !noPc);
+    useEffect(() => {
+        if (noPc) setTab('discord');
+    }, [noPc, setTab]);
 
     if (!live) return <Gate phase={phase} reason={reason} />;
     return (
         <div className="shell">
             <SessionBar session={session} />
             <nav className="tabs" aria-label={t('tabs.label')}>
-                {TABS.map((x) => (
-                    <button
-                        key={x.id}
-                        type="button"
-                        className={tab === x.id ? 'on' : ''}
-                        aria-current={tab === x.id ? 'page' : undefined}
-                        onClick={() => setTab(x.id)}
-                    >
-                        <span className="tab-icon">
-                            <Icon name={x.icon} />
-                        </span>
-                        <span>{t(`tabs.${x.id}`)}</span>
-                    </button>
-                ))}
+                {TABS.map((x) => {
+                    const locked = noPc && x.id !== 'discord';
+                    return (
+                        <button
+                            key={x.id}
+                            type="button"
+                            className={clsx(tab === x.id && 'on', locked && 'tab-locked')}
+                            aria-current={tab === x.id ? 'page' : undefined}
+                            aria-label={locked ? t('tabs.locked', { name: t(`tabs.${x.id}`) }) : undefined}
+                            onClick={() => setTab(x.id)}
+                        >
+                            <span className="tab-icon">
+                                <Icon name={x.icon} />
+                                {locked && (
+                                    <span className="tab-lock">
+                                        <Icon name="lock" size={10} />
+                                    </span>
+                                )}
+                            </span>
+                            <span>{t(`tabs.${x.id}`)}</span>
+                        </button>
+                    );
+                })}
             </nav>
             <main className="content">
                 {/* key: 탭을 바꿀 때마다 새로 그려서 들어오는 움직임을 다시 낸다 */}
                 <div className="view" key={tab}>
-                    {tab === 'servers' && <ServersTab api={api} />}
-                    {tab === 'discord' && <PermissionsTab api={api} />}
-                    {tab === 'modules' && <ModulesTab api={api} />}
-                    {tab === 'pc' && <MoreTab api={api} />}
+                    {noPc && tab !== 'discord' && <NeedsPc />}
+                    {!noPc && tab === 'servers' && <ServersTab api={api} />}
+                    {tab === 'discord' && <DiscordTab api={api} relay={relay} />}
+                    {!noPc && tab === 'modules' && <ModulesTab api={api} />}
+                    {!noPc && tab === 'pc' && <MoreTab api={api} />}
                 </div>
             </main>
             <ConfirmHost />

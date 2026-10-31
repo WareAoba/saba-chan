@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { art } from '../art';
 import { useApp } from '../store';
 import { Icon } from './icons';
+import { InstallBand } from './NoPc';
 import { Wordmark } from './ui';
 
 /** 남은 시간 "14:05" */
@@ -13,7 +14,7 @@ export function remainingText(expiresAt, now) {
 
 export function SessionBar({ session }) {
     const { t } = useTranslation();
-    const { expiresAt, warning, phase } = useApp((s) => s.session);
+    const { expiresAt, warning, phase, hostId } = useApp((s) => s.session);
     const [now, setNow] = useState(Date.now());
     useEffect(() => {
         const timer = setInterval(() => setNow(Date.now()), 1000);
@@ -26,6 +27,7 @@ export function SessionBar({ session }) {
                 <h1 className="topbar-title">
                     <img className="topbar-logo" src={art.icon} alt="" />
                     <Wordmark className="topbar-wordmark" />
+                    {!hostId && <span className="pill">{t('no_pc.badge')}</span>}
                 </h1>
                 <div className={`timer${warning ? ' timer-warn' : ''}`} title={t('session.remaining')}>
                     <Icon name="clock" size={14} /> {remainingText(expiresAt, now)}
@@ -35,6 +37,8 @@ export function SessionBar({ session }) {
                 </button>
             </div>
             {warning && <p className="banner banner-warn">{t('session.ending_soon')}</p>}
+            {/* 머리 안에 둔다: 넓은 화면에서도 메뉴·내용 칸을 밀지 않고 두 칸을 다 쓴다 */}
+            {!hostId && <InstallBand />}
             {phase === 'reconnecting' && (
                 <p className="banner banner-info">
                     <span className="spinner" aria-hidden="true" /> {t('session.reconnecting')}
