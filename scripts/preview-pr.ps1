@@ -80,7 +80,10 @@ function Test-PortFree([int]$P) {
 function Invoke-GhJson([string[]]$GhArgs) {
     $out = & gh @GhArgs
     if ($LASTEXITCODE -ne 0) { Fail "gh $($GhArgs[0]) $($GhArgs[1]) 실패 (종료 코드 $LASTEXITCODE)" }
-    return ($out -join "`n") | ConvertFrom-Json
+    # Windows PowerShell 5.1의 ConvertFrom-Json은 JSON 배열을 Object[] 하나로 내보낸다.
+    # 변수에 받은 뒤 돌려주면 원소로 펼쳐져서, 부르는 쪽의 @(...)가 7과 같게 원소 목록이 된다
+    $parsed = ($out -join "`n") | ConvertFrom-Json
+    return $parsed
 }
 
 # ── 바로가기·끄기·정리 ──
@@ -163,13 +166,20 @@ $stamp = Join-Path $app 'preview.json'
 $haveSha = $null
 if (Test-Path $stamp) { try { $haveSha = (Get-Content -Raw -LiteralPath $stamp | ConvertFrom-Json).sha } catch {} }
 if ($haveSha -ne $run.headSha) {
+    # 새 폴더에 다 받은 뒤에 바꾼다: 받기가 실패해도 지금 프리뷰는 남는다
+    $incoming = Join-Path $box 'app-new'
+    if (Test-Path $incoming) { Remove-Item -LiteralPath $incoming -Recurse -Force }
+    New-Item -ItemType Directory -Force -Path $incoming | Out-Null
+    Write-Host "PR #$Pr 빌드($($run.headSha.Substring(0, 7)))를 받는 중..." -ForegroundColor Cyan
+    & gh run download "$($run.databaseId)" --repo $Repo --name "preview-pr-$Pr" --dir $incoming
+    if ($LASTEXITCODE -ne 0) {
+        Remove-Item -LiteralPath $incoming -Recurse -Force -ErrorAction SilentlyContinue
+        Fail '빌드를 받지 못했습니다. 아티팩트는 3일 뒤 지워집니다. PR에 커밋을 더하거나 라벨을 다시 붙이면 새로 빌드합니다.'
+    }
     # 실행 중인 exe는 덮어쓸 수 없다
     [void](Stop-Preview $box)
     if (Test-Path $app) { Remove-Item -LiteralPath $app -Recurse -Force }
-    New-Item -ItemType Directory -Force -Path $app | Out-Null
-    Write-Host "PR #$Pr 빌드($($run.headSha.Substring(0, 7)))를 받는 중..." -ForegroundColor Cyan
-    & gh run download $run.databaseId --repo $Repo --name "preview-pr-$Pr" --dir $app
-    if ($LASTEXITCODE -ne 0) { Fail '빌드를 받지 못했습니다. 아티팩트는 3일 뒤 지워집니다. PR에 커밋을 더하거나 라벨을 다시 붙이면 새로 빌드합니다.' }
+    Rename-Item -LiteralPath $incoming -NewName 'app'
 }
 
 # ── 데이터 폴더 (처음 한 번) ──
@@ -182,7 +192,7 @@ if (-not (Test-Path $data)) {
     if (Test-Path $installedConfig) { try { $installed = Get-Content -Raw -Encoding UTF8 -LiteralPath $installedConfig | ConvertFrom-Json } catch {} }
     $lang = 'ko'
     if ($installed -and $installed.gui -and $installed.gui.language) { $lang = [string]$installed.gui.language }
-    $config = @{ gui = @{ ipcPort = $Port; language = $lang } } | ConvertTo-Json -Depth 5
+    $config = @{ gui = @{ language = $lang } } | ConvertTo-Json -Depth 5
     Write-Utf8 (Join-Path $data 'config.json') $config
 
     # 설치본의 모듈·익스텐션만 복사한다 (paths 칸으로 옮겼으면 그 폴더)
@@ -210,6 +220,21 @@ if ($running.Count -eq 0) {
     $others = @(Get-PreviewProcess $Root)
     if ($others.Count -gt 0) { Fail "다른 PR 프리뷰가 떠 있습니다. scripts\preview-pr.ps1 -Stop 으로 끈 뒤 다시 실행해 주세요." }
     if (-not (Test-PortFree $Port)) { Fail "포트 $Port 를 다른 프로그램이 쓰고 있습니다. -Port 로 다른 포트를 주세요." }
+}
+
+# 띄우기 전에 프리뷰 설정을 맞춘다: IPC 포트를 설치본과 가르고, 원격 데몬 리스너(기본 57480)는 끈다.
+# 원격 데몬은 기본으로 켜져 있어 설치본과 같은 포트를 잡으려 한다
+if ($running.Count -eq 0) {
+    $cfgPath = Join-Path $data 'config.json'
+    $cfg = $null
+    if (Test-Path $cfgPath) { try { $cfg = Get-Content -Raw -Encoding UTF8 -LiteralPath $cfgPath | ConvertFrom-Json } catch {} }
+    if (-not $cfg) { $cfg = New-Object PSObject }
+    foreach ($sec in @('gui', 'remote')) {
+        if (-not $cfg.PSObject.Properties[$sec]) { $cfg | Add-Member -NotePropertyName $sec -NotePropertyValue (New-Object PSObject) }
+    }
+    $cfg.gui | Add-Member -NotePropertyName ipcPort -NotePropertyValue $Port -Force
+    $cfg.remote | Add-Member -NotePropertyName enabled -NotePropertyValue $false -Force
+    Write-Utf8 $cfgPath ($cfg | ConvertTo-Json -Depth 20)
 }
 
 # 자식 프로세스에만 물려주고 되돌린다: 이 창에 남으면 뒤에 실행한 설치본 CLI가 프리뷰 데몬·데이터를 가리킨다
