@@ -5,7 +5,7 @@
 
 구성요소 zip은 리눅스와 같은 package-linux.py로 만든다(`--platform macos-arm64`). 이 스크립트는 그 실행 파일을 한 묶음에 넣는다:
 .dmg를 받아 응용 프로그램 폴더에 끌어 넣는 설치용이다. 설치기도 같은 모양(`Contents/MacOS`에 모든 실행 파일)으로 묶음을 만든다.
-Apple 서명·공증 없이 임시(ad-hoc) 서명만 한다. 서명과 .dmg는 맥 도구(codesign, hdiutil)가 있어야 만든다.
+Apple 서명·공증 없이 임시(ad-hoc) 서명만 한다. 서명과 .dmg는 맥 도구(codesign, actool, dmgbuild)가 있어야 만든다.
 """
 
 import argparse
@@ -30,6 +30,11 @@ ICON_FILE = "saba-chan.icns"
 ASSETS_FILE = "Assets.car"
 # .dmg에 함께 넣는 첫 실행 안내 (서명이 없어 macOS가 처음 한 번 막는다). 문구는 locales/*/common.json `macos_first_open`
 FIRST_OPEN_NOTE = "처음 열 때 (First launch).txt"
+# .dmg Finder 창 (pt): 배경의 화살표를 따라 왼쪽 앱을 오른쪽 응용 프로그램 폴더로 끌어 넣는다.
+# 배경은 660×400 그림과 레티나용 @2x 한 쌍이다
+DMG_BACKGROUND = ROOT / "saba-chan-gui/src-tauri/macos/dmg-background.png"
+DMG_WINDOW = (660, 400)
+DMG_ICON_SIZE = 112
 # 안내의 언어 순서: 한국어, 영어, 나머지는 이름순
 FIRST_LANGUAGES = ["ko", "en"]
 
@@ -99,18 +104,36 @@ def finish_app(app: Path) -> None:
     subprocess.run(["codesign", "--verify", "--deep", "--strict", str(app)], check=True)
 
 
+def dmg_settings(app: Path, work: Path) -> dict:
+    """dmgbuild 설정: 앱 묶음, 응용 프로그램 폴더 바로가기, 첫 실행 안내(`work`에 쓴다)와 꾸민 Finder 창"""
+    note = work / FIRST_OPEN_NOTE
+    note.write_text(first_open_note(), encoding="utf-8")
+    width, height = DMG_WINDOW
+    return {
+        "format": "UDZO",
+        "files": [str(app), str(note)],
+        "symlinks": {"Applications": "/Applications"},
+        # 마운트한 디스크도 앱 아이콘으로 보인다
+        "icon": str(app / "Contents" / "Resources" / ICON_FILE),
+        "background": str(DMG_BACKGROUND),
+        "window_rect": ((200, 160), (width, height)),
+        "default_view": "icon-view",
+        "show_toolbar": False, "show_sidebar": False, "show_status_bar": False, "show_tab_view": False,
+        "show_pathbar": False, "show_icon_preview": False,
+        "icon_size": DMG_ICON_SIZE,
+        "text_size": 12,
+        "icon_locations": {app.name: (150, 185), "Applications": (510, 185), FIRST_OPEN_NOTE: (330, 330)},
+    }
+
+
 def make_dmg(app: Path, dest: Path) -> None:
-    """앱 묶음, 응용 프로그램 폴더 바로가기, 첫 실행 안내를 담은 압축 .dmg"""
+    """[`dmg_settings`]로 압축 .dmg를 만든다 (dmgbuild: Finder를 띄우지 않고 창 배치를 기록한다)"""
+    import dmgbuild
+
     with tempfile.TemporaryDirectory() as d:
-        stage = Path(d) / "Saba-chan"
-        stage.mkdir()
-        subprocess.run(["cp", "-R", str(app), str(stage)], check=True)
-        (stage / "Applications").symlink_to("/Applications")
-        (stage / FIRST_OPEN_NOTE).write_text(first_open_note(), encoding="utf-8")
         if dest.exists():
             dest.unlink()
-        subprocess.run(["hdiutil", "create", "-volname", "Saba-chan", "-srcfolder", str(stage),
-                        "-ov", "-format", "UDZO", str(dest)], check=True)
+        dmgbuild.build_dmg(str(dest), "Saba-chan", settings=dmg_settings(app, Path(d)))
 
 
 def main() -> int:

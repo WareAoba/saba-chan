@@ -59,6 +59,24 @@ class MacApp(unittest.TestCase):
         for title in titles.values():
             self.assertIn(title, note)
 
+    def test_dmg_window_puts_the_app_left_of_applications_on_the_background(self):
+        # Finder 창: 배경 화살표를 따라 왼쪽 앱 → 오른쪽 응용 프로그램, 첫 실행 안내는 아래 가운데
+        with tempfile.TemporaryDirectory() as d:
+            app = Path(d) / "Saba-chan.app"
+            settings = package_macos.dmg_settings(app, Path(d))
+            note = Path(d) / package_macos.FIRST_OPEN_NOTE
+            self.assertTrue(note.read_text(encoding="utf-8").startswith(package_macos.first_open_note()[:20]))
+        locations = settings["icon_locations"]
+        self.assertEqual(settings["files"], [str(app), str(note)])
+        self.assertEqual(settings["icon"], str(app / "Contents" / "Resources" / package_macos.ICON_FILE))
+        self.assertEqual(settings["symlinks"], {"Applications": "/Applications"})
+        self.assertEqual(set(locations), {"Saba-chan.app", "Applications", package_macos.FIRST_OPEN_NOTE})
+        (ax, ay), (bx, by) = locations["Saba-chan.app"], locations["Applications"]
+        self.assertTrue(ax < bx and ay == by)
+        self.assertTrue(Path(settings["background"]).is_file())
+        self.assertTrue(Path(settings["background"]).with_name("dmg-background@2x.png").is_file())
+        self.assertFalse(settings["show_toolbar"] or settings["show_sidebar"] or settings["show_status_bar"])
+
     def test_missing_binary_stops(self):
         with tempfile.TemporaryDirectory() as d:
             with self.assertRaises(SystemExit):
