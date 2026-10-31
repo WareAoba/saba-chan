@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSettingsStore } from '../../stores/useSettingsStore';
 import CustomDropdown from '../CustomDropdown/CustomDropdown';
 
 const LOCAL = '';
@@ -34,6 +35,8 @@ export function DaemonSwitcher({ onSwitched = reloadWindow }) {
     const [daemons, setDaemons] = useState(null);
     const [target, setTarget] = useState(LOCAL);
     const [busy, setBusy] = useState(false);
+    const settingsReady = useSettingsStore((st) => st.settingsReady);
+    const mainDaemon = useSettingsStore((st) => st.mainDaemon);
 
     const load = useCallback(async () => {
         const [list, current] = await Promise.all([
@@ -89,6 +92,11 @@ export function DaemonSwitcher({ onSwitched = reloadWindow }) {
 
     if (!daemons || (daemons.length === 0 && target === LOCAL)) return null;
 
+    // 메인 데몬(설정 `gui.mainDaemon`)에 노란 별. 고르지 않았거나 잊은 데몬이면 앱이 이 PC로 열리니 이 PC가 메인이다
+    const main = daemons.some((d) => d.hostId === mainDaemon) ? mainDaemon : LOCAL;
+    const star = { icon: 'star', label: t('remote_daemon.main_badge'), color: 'var(--star)' };
+    const markOf = (value) => (settingsReady && value === main ? star : undefined);
+
     const change = async (value) => {
         if (value === target) return;
         setBusy(true);
@@ -110,8 +118,13 @@ export function DaemonSwitcher({ onSwitched = reloadWindow }) {
             disabled={busy}
             onChange={change}
             options={[
-                { value: LOCAL, label: t('daemon_switcher.local'), icon: 'desktop' },
-                ...daemons.map((d) => ({ value: d.hostId, label: d.label || d.name || d.hostId, icon: 'cloud' })),
+                { value: LOCAL, label: t('daemon_switcher.local'), icon: 'desktop', mark: markOf(LOCAL) },
+                ...daemons.map((d) => ({
+                    value: d.hostId,
+                    label: d.label || d.name || d.hostId,
+                    icon: 'cloud',
+                    mark: markOf(d.hostId),
+                })),
             ]}
         />
     );

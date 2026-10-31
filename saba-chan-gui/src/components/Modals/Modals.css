@@ -3310,13 +3310,9 @@
 .remote-daemon-meta:last-child {
     padding-right: var(--sp-2);
 }
-.remote-daemon-badge {
+.remote-daemon-star {
+    display: inline-flex;
     flex-shrink: 0;
-    padding: 0 var(--sp-2);
-    border-radius: var(--r-sm);
-    background: color-mix(in srgb, var(--accent) 22%, transparent);
-    font-size: var(--fs-sm);
-    line-height: 20px;
 }
 .remote-daemon-name {
     flex: 1;

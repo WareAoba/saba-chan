@@ -47,6 +47,8 @@
     --ok-soft: rgba(62, 207, 142, 0.12);
     --stop-soft: rgba(242, 85, 90, 0.12);
     --warn-soft: rgba(245, 165, 36, 0.12);
+    /* 메인 데몬 별 */
+    --star: #ffc531;
     --info-soft: rgba(78, 161, 255, 0.12);
 
     /* 입체 (N1·N2) */
@@ -116,6 +118,7 @@
     --ok-soft: rgba(18, 162, 106, 0.12);
     --stop-soft: rgba(217, 59, 65, 0.1);
     --warn-soft: rgba(184, 110, 0, 0.12);
+    --star: #e8a800;
     --info-soft: rgba(31, 111, 214, 0.1);
 
     --shadow-raised: 0 1px 2px rgba(20, 24, 36, 0.06);
@@ -178,6 +181,7 @@
         --ok-soft: rgba(18, 162, 106, 0.12);
         --stop-soft: rgba(217, 59, 65, 0.1);
         --warn-soft: rgba(184, 110, 0, 0.12);
+        --star: #e8a800;
         --info-soft: rgba(31, 111, 214, 0.1);
         --shadow-raised: 0 1px 2px rgba(20, 24, 36, 0.06);
         --shadow-raised-hover: 0 2px 6px rgba(20, 24, 36, 0.09);

@@ -173,7 +173,9 @@ describe('설정 > 고급: 원격 데몬 (/api/remote/*)', () => {
         await act(async () => {});
         expect(useSettingsStore.getState().mainDaemon).toBe('host-b');
         const daemons = screen.getByRole('list', { name: 'Remote daemons this PC uses' });
-        expect(within(daemons).getByText('Main')).toBeInTheDocument();
+        // 메인 데몬은 이름 앞의 노란 별로 보인다 (글자 배지는 없다)
+        expect(within(daemons).getByRole('img', { name: 'Main' })).toBeInTheDocument();
+        expect(within(daemons).queryByText('Main')).toBeNull();
         await act(async () => fireEvent.click(within(daemons).getByRole('button', { name: 'Forget' })));
         expect(useSettingsStore.getState().mainDaemon).toBeNull();
     });

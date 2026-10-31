@@ -784,6 +784,11 @@ export const Icon = ({ name, size = 'md', color = 'currentColor' }) => {
                 <circle cx="12" cy="7" r="4" />
             </svg>
         ),
+        star: (
+            <svg viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 2.5l2.94 5.96 6.56.95-4.75 4.63 1.12 6.54L12 17.5l-5.87 3.08 1.12-6.54L2.5 9.41l6.56-.95z" />
+            </svg>
+        ),
         home: (
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M3 10.5 12 3l9 7.5" />

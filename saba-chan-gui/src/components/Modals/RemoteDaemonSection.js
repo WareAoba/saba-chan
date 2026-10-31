@@ -331,10 +331,12 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
                 {daemons.map((d) => (
                     <li key={d.hostId} className="remote-daemon-row">
                         <Icon name="cloud" size="sm" />
-                        <span className="remote-daemon-name">{pcName(d)}</span>
                         {mainDaemon === d.hostId && (
-                            <span className="remote-daemon-badge">{t('remote_daemon.main_badge')}</span>
+                            <span className="remote-daemon-star" role="img" aria-label={t('remote_daemon.main_badge')} title={t('remote_daemon.main_badge')}>
+                                <Icon name="star" size="sm" color="var(--star)" />
+                            </span>
                         )}
+                        <span className="remote-daemon-name">{pcName(d)}</span>
                         {d.address ? (
                             <code className="remote-daemon-meta">{`${d.address}:${d.port}`}</code>
                         ) : (
