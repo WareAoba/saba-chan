@@ -11,8 +11,16 @@ const CLOSE_MS = 120;
 /**
  * 커스텀 드롭다운 (OS 기본 select 대체)
  * 메뉴는 Portal 팝업으로 띄운다. 아래 자리가 모자라면 위로 연다.
- * options: [{ value, label, icon?, disabled? }]
+ * options: [{ value, label, icon?, mark?, disabled? }]
+ * mark: 이름 뒤에 붙는 표시 { icon, label(읽어 주는 이름), color? } (예: 메인 데몬 별)
  */
+const Mark = ({ mark }) =>
+    mark ? (
+        <span className="custom-dropdown-mark" role="img" aria-label={mark.label} title={mark.label}>
+            <Icon name={mark.icon} size="sm" color={mark.color} />
+        </span>
+    ) : null;
+
 function CustomDropdown({ value, onChange, options = [], placeholder, className, disabled, id, ariaLabel }) {
     const [isOpen, setIsOpen] = useState(false);
     const [isClosing, setIsClosing] = useState(false);
@@ -166,6 +174,7 @@ function CustomDropdown({ value, onChange, options = [], placeholder, className,
                                   <span className="custom-dropdown-item-content">
                                       {option.icon && <Icon name={option.icon} size="sm" />}
                                       <span>{option.label}</span>
+                                      <Mark mark={option.mark} />
                                   </span>
                                   {isSelected && (
                                       <span className="custom-dropdown-check">
@@ -202,6 +211,7 @@ function CustomDropdown({ value, onChange, options = [], placeholder, className,
                         <>
                             {selectedOption.icon && <Icon name={selectedOption.icon} size="sm" />}
                             <span className="custom-dropdown-label">{selectedOption.label}</span>
+                            <Mark mark={selectedOption.mark} />
                         </>
                     ) : (
                         <span className="custom-dropdown-placeholder">{placeholder || 'Select...'}</span>

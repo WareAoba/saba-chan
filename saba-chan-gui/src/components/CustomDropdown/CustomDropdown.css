@@ -59,6 +59,11 @@
     text-overflow: ellipsis;
 }
 
+.custom-dropdown-mark {
+    display: inline-flex;
+    flex-shrink: 0;
+}
+
 .custom-dropdown-placeholder {
     color: var(--text-muted);
 }

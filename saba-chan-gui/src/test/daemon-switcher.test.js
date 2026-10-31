@@ -1,17 +1,35 @@
-import { act, render, screen } from '@testing-library/react';
+import { act, cleanup, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DaemonSwitcher, REMOTE_DAEMONS_CHANGED } from '../components/shell/DaemonSwitcher';
-import { pickOption } from './dropdown';
+import { useSettingsStore } from '../stores/useSettingsStore';
+import { openDropdown, pickOption } from './dropdown';
 
 describe('상단 바: 다룰 데몬 고르기 (이 PC / 연결한 원격 데몬)', () => {
     let reload;
     beforeEach(() => {
         reload = vi.fn();
+        useSettingsStore.setState({ settingsReady: false, mainDaemon: null });
         window.api = {
             remoteDaemons: vi.fn().mockResolvedValue({ daemons: [{ hostId: 'host-b', name: '게임 PC', address: 'g.example', port: 57480 }] }),
             daemonTarget: vi.fn().mockResolvedValue({ target: null }),
             daemonTargetSet: vi.fn().mockResolvedValue({ success: true, target: 'host-b' }),
         };
+    });
+
+    it('메인 데몬에 별을 붙인다 (메인을 고르지 않았거나 잊었으면 이 PC가 메인이다)', async () => {
+        useSettingsStore.setState({ settingsReady: true, mainDaemon: 'host-b' });
+        window.api.daemonTarget.mockResolvedValue({ target: 'host-b' });
+        await act(async () => render(<DaemonSwitcher onSwitched={reload} />));
+        const select = screen.getByRole('combobox', { name: 'Daemon' });
+        expect(within(select).getByRole('img', { name: 'Main' })).toBeInTheDocument();
+        const list = openDropdown(select);
+        expect(within(within(list).getByRole('option', { name: /게임 PC/ })).getByRole('img', { name: 'Main' })).toBeInTheDocument();
+        expect(within(within(list).getByRole('option', { name: /This PC/ })).queryByRole('img', { name: 'Main' })).toBeNull();
+        cleanup();
+        useSettingsStore.setState({ mainDaemon: 'host-gone' });
+        await act(async () => render(<DaemonSwitcher onSwitched={reload} />));
+        const again = openDropdown(screen.getByRole('combobox', { name: 'Daemon' }));
+        expect(within(within(again).getByRole('option', { name: /This PC/ })).getByRole('img', { name: 'Main' })).toBeInTheDocument();
     });
 
     it('연결한 원격 데몬이 없으면 보이지 않는다', async () => {
