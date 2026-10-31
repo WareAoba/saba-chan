@@ -3,8 +3,11 @@ import { initReactI18next } from 'react-i18next';
 
 export const SUPPORTED_LANGUAGES = ['ko', 'en', 'ja', 'zh-CN', 'zh-TW', 'es', 'pt-BR', 'ru', 'de', 'fr'];
 
-// web: 이 화면의 글, common: GUI 브리지(createApi)가 만드는 오류 문구
-const files = import.meta.glob(['@locales/*/web.json', '@locales/*/common.json'], { import: 'default' });
+// web: 이 화면의 글, common: GUI 브리지(createApi)가 만드는 오류 문구,
+// gui: 앱과 같은 화면(예약·사바쨩 설정·점검 등)은 앱 문구를 그대로 쓴다 (코드에서는 `tg('키')`)
+const files = import.meta.glob(['@locales/*/web.json', '@locales/*/common.json', '@locales/*/gui.json'], {
+    import: 'default',
+});
 
 /** 브라우저 언어 → 지원 언어 (ko-KR → ko, pt → pt-BR, zh-HK → zh-TW) */
 export function pickLanguage(tags = globalThis.navigator?.languages ?? []) {
@@ -25,7 +28,7 @@ export async function initI18n(language = pickLanguage()) {
     const resources = {};
     for (const lang of new Set([language, 'en'])) {
         resources[lang] = {};
-        for (const ns of ['web', 'common']) {
+        for (const ns of ['web', 'common', 'gui']) {
             const load = Object.entries(files).find(([k]) => k.endsWith(`/${lang}/${ns}.json`))?.[1];
             resources[lang][ns] = load ? await load() : {};
         }
@@ -34,7 +37,7 @@ export async function initI18n(language = pickLanguage()) {
         lng: language,
         fallbackLng: 'en',
         resources,
-        ns: ['web', 'common'],
+        ns: ['web', 'common', 'gui'],
         defaultNS: 'web',
         interpolation: { escapeValue: false },
         // 모듈 locales를 나중에 붙여도 번역된 이름으로 다시 그린다 (registerModuleLocales)

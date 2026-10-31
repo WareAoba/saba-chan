@@ -85,9 +85,10 @@ export function Section({ title, action, children }) {
     );
 }
 
-export function Segments({ value, options, onChange }) {
+/** 고르기 줄. `scroll`이면 칸이 많아도 줄이지 않고 옆으로 민다 (서버 상세 탭) */
+export function Segments({ value, options, onChange, scroll = false, ariaLabel }) {
     return (
-        <div className="segments" role="tablist">
+        <div className={scroll ? 'segments segments-scroll' : 'segments'} role="tablist" aria-label={ariaLabel}>
             {options.map((o) => (
                 <button
                     key={o.value}

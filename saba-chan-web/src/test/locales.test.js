@@ -1,8 +1,8 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { initI18n, SUPPORTED_LANGUAGES } from '../i18n';
 import { hangulOutsideT } from '../../../saba-chan-gui/src/test/hangulScan';
+import { initI18n, SUPPORTED_LANGUAGES } from '../i18n';
 
 const LOCALES = join(__dirname, '../../../locales');
 const SRC = join(__dirname, '..');
@@ -16,7 +16,7 @@ function flatten(obj, prefix = '', out = {}) {
     return out;
 }
 
-const catalog = (lang) => flatten(JSON.parse(readFileSync(join(LOCALES, lang, 'web.json'), 'utf8')));
+const catalog = (lang, file = 'web.json') => flatten(JSON.parse(readFileSync(join(LOCALES, lang, file), 'utf8')));
 const placeholders = (s) => (s.match(/\{\{\w+\}\}/g) ?? []).sort();
 
 function sources(dir) {
@@ -53,6 +53,17 @@ describe('web.json', () => {
         }
         expect(missing).toEqual([]);
     });
+
+    it('앱 문구를 빌려 쓰는 고정 키(tg)는 gui.json en 에 있다', () => {
+        const gui = catalog('en', 'gui.json');
+        const missing = [];
+        for (const file of sources(SRC)) {
+            for (const m of readFileSync(file, 'utf8').matchAll(/\btg\(\s*'([\w.-]+)'/g)) {
+                if (!(m[1] in gui)) missing.push(`${file.slice(SRC.length + 1)}: ${m[1]}`);
+            }
+        }
+        expect(missing).toEqual([]);
+    });
 });
 
 describe('탭 제목', () => {
@@ -73,7 +84,8 @@ describe('한글 하드코딩', () => {
     it('화면 코드에 번역 키를 거치지 않은 한글이 없다', () => {
         const found = [];
         for (const file of sources(SRC)) {
-            for (const h of hangulOutsideT(readFileSync(file, 'utf8'))) found.push(`${file.slice(SRC.length + 1)}:${h.line}: ${h.text}`);
+            for (const h of hangulOutsideT(readFileSync(file, 'utf8')))
+                found.push(`${file.slice(SRC.length + 1)}:${h.line}: ${h.text}`);
         }
         expect(found).toEqual([]);
     });

@@ -1,0 +1,72 @@
+import { describe, expect, it } from 'vitest';
+import { commandArgs, mergeCommands } from '../components/commands';
+import { sabaPatch, sabaValues } from '../components/SabaSettings';
+import { uptimeText } from '../components/ServerDetail';
+
+describe('사바쨩 설정', () => {
+    const server = {
+        memory_limit_mb: 4096,
+        game_chat: 'keyword',
+        game_chat_keyword: '!',
+        module_settings: { stop_timeout: 30, auto_restart: 'false' },
+    };
+
+    it('저장된 값을 칸 값으로 읽는다 (재시작 기본값은 켜짐·꺼짐)', () => {
+        expect(sabaValues(server)).toEqual({
+            memory_limit_mb: '4096',
+            stop_timeout: '30',
+            game_chat: 'keyword',
+            game_chat_keyword: '!',
+            auto_restart: false,
+            restart_on_unknown_exit: false,
+        });
+        expect(sabaValues({}).auto_restart).toBe(true);
+    });
+
+    it('바꾼 칸만 보내고, 비운 숫자 칸은 null 로 보낸다', () => {
+        const values = { ...sabaValues(server), memory_limit_mb: '', auto_restart: true, game_chat_keyword: ' ! ' };
+        expect(sabaPatch(server, values)).toEqual({ memory_limit_mb: null, auto_restart: true });
+    });
+
+    it('바뀐 것이 없으면 빈 객체', () => {
+        expect(sabaPatch(server, sabaValues(server))).toEqual({});
+    });
+});
+
+describe('게임 명령', () => {
+    it('카탈로그에 모듈 정의를 입히고, 익스텐션 명령은 데몬이 위험하다고 한 것만 믿는다', () => {
+        const catalog = [
+            { name: 'kick', risk: 'caution' },
+            { name: 'wipe', source: 'extension', risk: 'caution' },
+            { name: 'nuke', source: 'extension', risk: 'danger' },
+        ];
+        const own = [{ name: 'kick', risk: 'danger', inputs: [{ name: 'player' }] }];
+        expect(mergeCommands(catalog, own)).toEqual([
+            { name: 'kick', risk: 'danger', inputs: [{ name: 'player' }] },
+            { name: 'wipe', source: 'extension', risk: undefined },
+            { name: 'nuke', source: 'extension', risk: 'danger' },
+        ]);
+        expect(mergeCommands(null, own)).toBe(own);
+    });
+
+    it('빈 칸은 빼고 숫자 칸은 숫자로, 켜고 끄는 칸은 참거짓으로 보낸다', () => {
+        const inputs = [
+            { name: 'player', type: 'text' },
+            { name: 'minutes', type: 'number' },
+            { name: 'silent', type: 'boolean' },
+            { name: 'reason', type: 'text' },
+        ];
+        expect(commandArgs(inputs, { player: ' Steve ', minutes: '5', silent: true, reason: '' })).toEqual({
+            player: 'Steve',
+            minutes: 5,
+            silent: true,
+        });
+    });
+});
+
+describe('켜진 시간', () => {
+    it('시작 시각(초) → 시:분:초', () => {
+        expect(uptimeText(1000, (1000 + 3600 * 2 + 14 * 60 + 5) * 1000)).toBe('2:14:05');
+        expect(uptimeText(null, 0)).toBeNull();
+    });
+});
