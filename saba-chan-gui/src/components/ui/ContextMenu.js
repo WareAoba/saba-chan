@@ -208,13 +208,16 @@ export function ContextMenuProvider({ children, allowNative = import.meta.env.DE
         };
         document.addEventListener('pointerdown', outside, true);
         document.addEventListener('keydown', onKey, true);
-        window.addEventListener('scroll', close, true);
+        // 사용자가 굴릴 때만 닫는다: 콘솔이 새 줄을 따라 내려가는 스크롤에는 닫히지 않게
+        document.addEventListener('wheel', outside, { capture: true, passive: true });
+        document.addEventListener('touchmove', outside, { capture: true, passive: true });
         window.addEventListener('resize', close);
         window.addEventListener('blur', close);
         return () => {
             document.removeEventListener('pointerdown', outside, true);
             document.removeEventListener('keydown', onKey, true);
-            window.removeEventListener('scroll', close, true);
+            document.removeEventListener('wheel', outside, { capture: true });
+            document.removeEventListener('touchmove', outside, { capture: true });
             window.removeEventListener('resize', close);
             window.removeEventListener('blur', close);
         };

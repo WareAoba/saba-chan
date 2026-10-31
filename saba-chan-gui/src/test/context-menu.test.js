@@ -251,3 +251,18 @@ describe('ContextMenuProvider 키보드·숫자칸', () => {
         expect(document.execCommand).toHaveBeenCalledWith('insertText', false, '25565');
     });
 });
+
+describe('ContextMenuProvider 스크롤', () => {
+    it('콘솔 자동 스크롤 같은 프로그램 스크롤로는 닫히지 않고, 사용자가 휠을 굴리면 닫힌다', () => {
+        render(
+            <ContextMenuProvider allowNative={false}>
+                <Row onRemove={vi.fn()} />
+            </ContextMenuProvider>,
+        );
+        rightClick(screen.getByText('row'));
+        fireEvent.scroll(window);
+        expect(menu()).not.toBeNull();
+        fireEvent.wheel(screen.getByText('row'));
+        expect(menu()).toBeNull();
+    });
+});
