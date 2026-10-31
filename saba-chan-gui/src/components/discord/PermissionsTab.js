@@ -161,6 +161,8 @@ export function PeopleView({ node, instance, members, membersLoading, onRefreshM
     const [picked, setPicked] = useState([]);
     const [ownerDraft, setOwnerDraft] = useState(null); // null = 편집 안 함
     const [ownerArmed, setOwnerArmed] = useState(false); // 릴레이 값은 덜 믿으므로 한 번 더 누르게 한다
+    const [dragging, setDragging] = useState(null); // 끄는 사람 { id, level }
+    const [over, setOver] = useState(null);
 
     // 가져오기 후보는 릴레이에 남은 부여값(legacy-members)에서 고른다. 디스코드 멤버 목록에는 레벨이 없다
     // 새로고침 때도 다시 읽는다 (옛 레벨을 가져오지 않게). 늦게 온 옛 응답은 버린다
@@ -221,9 +223,18 @@ export function PeopleView({ node, instance, members, membersLoading, onRefreshM
         <li key={id} className="dc-person">
             <button
                 type="button"
-                className={clsx('dc-chip', { 'is-open': open === id })}
+                className={clsx('dc-chip', { 'is-open': open === id, 'is-dragging': dragging?.id === id })}
                 aria-expanded={open === id}
                 aria-label={nameOf(id)}
+                draggable="true"
+                onDragStart={(e) => {
+                    e.dataTransfer?.setData('text/plain', id);
+                    setDragging({ id, level });
+                }}
+                onDragEnd={() => {
+                    setDragging(null);
+                    setOver(null);
+                }}
                 onClick={() => setOpen(open === id ? null : id)}
             >
                 <Avatar name={nameOf(id)} url={avatarOf(id)} size={20} />
@@ -333,11 +344,28 @@ export function PeopleView({ node, instance, members, membersLoading, onRefreshM
                     const ids = L.sortByName(groups.get(level) || [], nameOf);
                     const summary = levelSummary(t, perm, board, level, instance);
                     const isDefault = level === defaultLevel;
+                    // 소유자는 따로 정하고, 같은 레벨에 놓으면 바꿀 것이 없다
+                    const droppable = !!dragging && level !== L.OWNER && level !== dragging.level;
                     return (
                         <li
                             key={level}
-                            className={clsx('dc-level-row', `level-${L.levelKey(level)}`)}
+                            className={clsx('dc-level-row', `level-${L.levelKey(level)}`, {
+                                'is-over': over === level && droppable,
+                            })}
                             aria-label={L.levelLabel(t, perm, level)}
+                            onDragOver={(e) => {
+                                if (!droppable) return;
+                                e.preventDefault();
+                                setOver(level);
+                            }}
+                            onDragLeave={() => setOver((o) => (o === level ? null : o))}
+                            onDrop={(e) => {
+                                e.preventDefault();
+                                const id = dragging?.id;
+                                setDragging(null);
+                                setOver(null);
+                                if (id && droppable && !busy) setMember(id, level);
+                            }}
                         >
                             <div className="dc-level-head">
                                 <span className="dc-level-num">Lv {L.levelNumber(perm, level)}</span>

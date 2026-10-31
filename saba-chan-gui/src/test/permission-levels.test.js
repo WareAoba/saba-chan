@@ -252,6 +252,27 @@ describe('권한 화면', () => {
         expect(window.api.permissionsSetMember).toHaveBeenCalledWith('g1', '123456789012345678', -1);
     });
 
+    it('사람: 칩을 다른 레벨로 끌어 옮기고, 소유자 레벨에는 놓을 수 없다', async () => {
+        await openPeople();
+        const mint = within(level('Admin')).getByRole('button', { name: 'Mint' });
+        expect(mint).toHaveAttribute('draggable', 'true');
+        fireEvent.dragStart(mint);
+        expect(mint).toHaveClass('is-dragging');
+        fireEvent.dragOver(level('Guest'));
+        expect(level('Guest')).toHaveClass('is-over');
+        fireEvent.drop(level('Guest'));
+        await flush();
+        expect(window.api.permissionsSetMember).toHaveBeenCalledWith('g1', '1002', 0);
+
+        // 소유자 레벨과 원래 레벨에는 놓아도 바꾸지 않는다
+        fireEvent.dragStart(within(level('Admin')).getByRole('button', { name: 'Mint' }));
+        fireEvent.drop(level('Owner'));
+        fireEvent.dragStart(within(level('Admin')).getByRole('button', { name: 'Mint' }));
+        fireEvent.drop(level('Admin'));
+        await flush();
+        expect(window.api.permissionsSetMember).toHaveBeenCalledTimes(1);
+    });
+
     it('디스코드 멤버를 못 받았으면 레벨 목록 아래에 그렇다고 알린다', async () => {
         await openPeople({ members: [] });
         expect(screen.getByText(/Couldn't load members/)).toBeInTheDocument();

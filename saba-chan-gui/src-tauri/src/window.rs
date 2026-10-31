@@ -173,6 +173,9 @@ fn lock_navigation<'a>(
     };
     let (nav_app, new_app) = (app.clone(), app.clone());
     builder
+        // Windows에서는 Tauri가 파일 끌어놓기를 받으려고 웹 화면의 드래그를 가로챈다 (권한 칩·레벨 블록을 끌 수 없게 된다).
+        // 앱은 파일 끌어놓기를 쓰지 않는다. 끌어 놓은 파일로 창이 넘어가는 것은 아래 on_navigation이 막는다
+        .disable_drag_drop_handler()
         .on_navigation(move |url| {
             if is_app_url(url, dev_origin.as_ref()) {
                 return true;
