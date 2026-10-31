@@ -997,6 +997,11 @@
       "tts_speed_unit": "x",
       "tts_pitch": "Pitch",
       "tts_pitch_unit": "semitones",
+      "tts_names": "Name call",
+      "tts_names_always": "Always",
+      "tts_names_multi": "With several people",
+      "tts_names_never": "Never",
+      "tts_names_desc": "Say \"name,\" before each message so listeners know who wrote it.",
       "tts_limits": "Fixed limits: {{chars}} characters per message, {{perMinute}} characters per minute per person",
       "range_decimal": "Enter a number from {{min}} to {{max}}."
     },

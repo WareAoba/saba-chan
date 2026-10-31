@@ -7,9 +7,9 @@
   "tabs": {
     "label": "選單",
     "servers": "伺服器",
-    "permissions": "權限",
     "modules": "模組",
-    "more": "更多"
+    "discord": "Discord",
+    "pc": "PC"
   },
   "gate": {
     "connecting": "正在連線到你的電腦…",
@@ -105,12 +105,23 @@
     "run_unmanaged_hint": "saba-chan 只啟動伺服器並查看是否在執行。無法使用 saba-chan 主控台，在 Windows 上伺服器會在獨立的主控台視窗中開啟。",
     "port_in_use": "{{servers}} 也使用連接埠 {{port}}。同時執行時連接埠會衝突。",
     "location": "檔案位置",
-    "location_pc": "伺服器檔案安裝到 saba-chan 資料夾。要放在其他資料夾，請在電腦上的 saba-chan 應用程式中建立。"
+    "location_pc": "伺服器檔案安裝到 saba-chan 資料夾。要放在其他資料夾，請在電腦上的 saba-chan 應用程式中建立。",
+    "summary_running": "Running",
+    "summary_players": "Players",
+    "summary_cpu": "PC CPU",
+    "start_named": "Start {{name}}",
+    "stop_named": "Stop {{name}}",
+    "pick": "Pick a server on the left."
   },
   "detail": {
-    "console": "主控台",
-    "settings": "設定",
-    "backups": "備份"
+    "backups": "備份",
+    "players": "Players",
+    "check": "Check",
+    "settings_game": "Game",
+    "more": "More",
+    "tabs": "Server menu",
+    "uptime": "Up {{time}}",
+    "port_check": "Port forwarding check"
   },
   "console": {
     "empty": "尚無輸出。",
@@ -120,7 +131,6 @@
     "danger_message": "確定要傳送 {{command}} 嗎？"
   },
   "settings": {
-    "general": "一般",
     "game": "遊戲設定",
     "rename": "重新命名",
     "renamed": "已重新命名。",
@@ -311,5 +321,25 @@
       "relay_unreachable": "無法連線到中繼，請檢查網路連線。",
       "failed": "檢查失敗。"
     }
+  },
+  "commands": {
+    "run": "Send",
+    "results": "Sent commands"
+  },
+  "players": {
+    "title_count": "Players {{count}}",
+    "refresh": "Refresh",
+    "none": "Nobody is online right now.",
+    "stopped": "Start the server to see who is online.",
+    "unsupported": "This game does not report who is online."
+  },
+  "check": {
+    "server": "Server check",
+    "update": "Game server update",
+    "update_check": "Check for updates",
+    "update_none": "Up to date.",
+    "update_unsupported": "This server's install method can't check for updates here.",
+    "update_confirm": "Update the game server '{{name}}'? A backup is made first.",
+    "update_started": "Update started."
   }
 }

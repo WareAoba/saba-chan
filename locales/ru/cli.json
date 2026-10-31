@@ -190,7 +190,11 @@
     "cleared": "Deleted {{deleted}} messages. Kept {{kept}} pins and Saba-chan panels.",
     "cleared_older_left": "More messages older than 14 days remain. Clear again to continue.",
     "muted": "Muted {{member}}.",
-    "unmuted": "Unmuted {{member}}."
+    "unmuted": "Unmuted {{member}}.",
+    "tts_names": "Reading Saba-chan name call",
+    "tts_names_always": "Always",
+    "tts_names_multi": "With several people",
+    "tts_names_never": "Never"
   },
   "col": {
     "players": "Игроки",

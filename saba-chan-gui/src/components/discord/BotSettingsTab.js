@@ -5,6 +5,7 @@ import { LANGUAGE_OPTIONS } from '../../utils/languages';
 import CustomDropdown from '../CustomDropdown/CustomDropdown';
 import { Icon } from '../Icon';
 import { SabaSpinner, SabaToggle } from '../ui/SabaUI';
+import { Segmented } from '../ui/StatusChip';
 import { defaultPrefix, prefixProblems } from './prefixes';
 import { TagInput } from './TagInput';
 
@@ -17,6 +18,9 @@ export const REFRESH_SECONDS = { min: 2, max: 10 };
 export const TTS_VOLUME = { min: 10, max: 150 };
 export const TTS_SPEED = { min: 0.8, max: 1.5 };
 export const TTS_PITCH = { min: -6, max: 6 };
+/** 이름 부르기 — 데몬 discord.rs TTS_NAMES 와 같다 */
+const TTS_NAMES = ['always', 'multi', 'never'];
+
 /** 고정 제한 — 릴레이 bot/tts/speechText.ts MAX_SPEECH_CHARS, speakerRate.ts SPEAKER_RATE_CHARS 를 보여 주기만 한다 */
 export const TTS_LIMITS = { chars: 40, perMinute: 400 };
 
@@ -124,7 +128,7 @@ function PrefixField({ value, fallback, disabled, onSave }) {
  * 데몬이 relay로 보낸다. 바꾸는 즉시 저장한다.
  * - section 'bot': 언어·접두사·명령 이름 번역·되묻기·사용법
  * - section 'music': 노래하는 사바쨩
- * - section 'tts': 읽어주는 사바쨩 볼륨·속도·피치 (2026-10-31 사용자 지정: 바꿀 수 있는 값은 이 셋뿐, 글자 제한은 고정)
+ * - section 'tts': 읽어주는 사바쨩 볼륨·속도·피치와 이름 부르기 (2026-10-31 사용자 지정, 글자 제한은 고정)
  * 말하는 사바쨩의 되묻기 단계는 챗봇 설정의 이 서버 값(`guilds[guild].confirmLevel`)이다
  */
 export function BotSettingsTab({ node, section = 'bot', sampleModuleWord = '' }) {
@@ -450,6 +454,16 @@ export function BotSettingsTab({ node, section = 'bot', sampleModuleWord = '' })
                             disabled={locked}
                             onCommit={(pitch) => save({ tts: { pitch } })}
                         />
+                    </div>
+                    <div className="mt-field">
+                        <span>{t('discord.bot_settings.tts_names')}</span>
+                        <Segmented
+                            items={TTS_NAMES.map((id) => ({ id, label: t(`discord.bot_settings.tts_names_${id}`) }))}
+                            value={TTS_NAMES.includes(tts.names) ? tts.names : 'multi'}
+                            onChange={(names) => !locked && save({ tts: { names } })}
+                            ariaLabel={t('discord.bot_settings.tts_names')}
+                        />
+                        <p className="dc-hint">{t('discord.bot_settings.tts_names_desc')}</p>
                     </div>
                     <p className="cb-hint">{t('discord.bot_settings.tts_limits', TTS_LIMITS)}</p>
                 </section>

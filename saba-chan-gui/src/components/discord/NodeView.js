@@ -249,7 +249,7 @@ export function NodeView({
                               {
                                   id: 'tts',
                                   label: t('discord.bot_settings.tts_title'),
-                                  icon: <Icon name="volume" size="sm" />,
+                                  icon: <Icon name="sabaReading" size="sm" />,
                               },
                           ]
                         : []),

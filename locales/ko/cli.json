@@ -190,7 +190,11 @@
     "cleared": "메시지 {{deleted}}개를 지웠어요. 고정 메시지·사바쨩 패널 {{kept}}개는 남겼어요.",
     "cleared_older_left": "14일이 지난 메시지가 더 남았어요. 한 번 더 청소하면 이어서 지워요.",
     "muted": "{{member}}님을 음소거했어요.",
-    "unmuted": "{{member}}님의 음소거를 풀었어요."
+    "unmuted": "{{member}}님의 음소거를 풀었어요.",
+    "tts_names": "읽어주는 사바쨩 이름 부르기",
+    "tts_names_always": "항상",
+    "tts_names_multi": "여러 명일 때",
+    "tts_names_never": "안 함"
   },
   "col": {
     "players": "접속자",

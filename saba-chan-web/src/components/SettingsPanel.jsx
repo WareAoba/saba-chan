@@ -133,7 +133,7 @@ export function FieldInput({ field, value, onChange, t, modNs }) {
     );
 }
 
-export function SettingsPanel({ api, server, moduleData, running, onDeleted, control }) {
+export function SettingsPanel({ api, server, moduleData, running }) {
     const { t } = useTranslation();
     const toast = useApp((s) => s.toast);
     const ask = useApp((s) => s.ask);
@@ -145,7 +145,6 @@ export function SettingsPanel({ api, server, moduleData, running, onDeleted, con
     const [values, setValues] = useState(initial);
     const [touched, setTouched] = useState(() => new Set());
     const [saving, setSaving] = useState(false);
-    const [name, setName] = useState(server.name);
     const modNs = `mod_${server.module}`;
     // 저장에 실을 revision: 고치기 시작한 때(또는 마지막 저장)의 값. 폴링의 최신 값을 실으면 데몬의 settings_changed 검사를 지난다
     const revision = useRef(server.revision || null);
@@ -198,29 +197,9 @@ export function SettingsPanel({ api, server, moduleData, running, onDeleted, con
         toast(running ? t('settings.saved_restart') : t('settings.saved'), 'ok');
     };
 
-    const rename = async () => {
-        const next = name.trim();
-        if (!next || next === server.name) return;
-        const res = await api.instanceRename(server.id, next);
-        if (failed(res))
-            return toast(res?.error_code === 'name_taken' ? t('settings.name_taken') : errorText(t, res), 'error');
-        toast(t('settings.renamed'), 'ok');
-    };
-
     const shown = fields.filter((f) => visible(f, values, fields));
     return (
         <div className="panel">
-            <Section title={t('settings.general')}>
-                <div className="field">
-                    <span>{t('servers.name')}</span>
-                    <div className="inline">
-                        <input value={name} onChange={(e) => setName(e.target.value)} maxLength={64} />
-                        <Button onClick={rename} disabled={!name.trim() || name.trim() === server.name}>
-                            {t('settings.rename')}
-                        </Button>
-                    </div>
-                </div>
-            </Section>
             <Section title={t('settings.game')}>
                 {shown.length === 0 ? (
                     <Empty>{t('settings.none')}</Empty>
@@ -247,20 +226,6 @@ export function SettingsPanel({ api, server, moduleData, running, onDeleted, con
                         </Button>
                     </form>
                 )}
-            </Section>
-            <Section title={t('settings.danger_zone')}>
-                <p className="hint">{t('settings.delete_hint')}</p>
-                <Button
-                    tone="danger"
-                    disabled={running}
-                    busy={control.busy}
-                    onClick={async () => {
-                        if (await control.remove(server)) onDeleted();
-                    }}
-                >
-                    {t('servers.delete')}
-                </Button>
-                {running && <p className="hint">{t('settings.stop_first')}</p>}
             </Section>
         </div>
     );

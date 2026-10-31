@@ -613,6 +613,8 @@ export function createApi({ invoke, hub }) {
             ),
         instanceRename: (id, name) => daemonCall('post', `/api/instance/${encodeURIComponent(id)}/rename`, { name }),
         instanceCommands: (id) => daemonCall('get', `/api/instance/${encodeURIComponent(id)}/commands`),
+        // 지금 접속한 사람 이름 (모듈 players 함수가 게임에 묻는다). 부를 때만 묻고 주기적으로 부르지 않는다
+        instancePlayers: (id) => daemonCall('get', `/api/instance/${encodeURIComponent(id)}/players`),
         // 서버 점검: 모듈 validate(켜기 전 점검)·diagnose(최근 로그 진단). 모듈 Python을 돌리므로 넉넉히 기다린다
         instanceValidate: (id) => daemonCall('post', `/api/instance/${encodeURIComponent(id)}/validate`, {}, 60000),
         instanceDiagnose: (id) => daemonCall('post', `/api/instance/${encodeURIComponent(id)}/diagnose`, {}, 60000),

@@ -997,6 +997,11 @@
       "tts_speed_unit": "배",
       "tts_pitch": "피치",
       "tts_pitch_unit": "반음",
+      "tts_names": "이름 부르기",
+      "tts_names_always": "항상",
+      "tts_names_multi": "여러 명일 때",
+      "tts_names_never": "안 함",
+      "tts_names_desc": "글 앞에 \"○○님,\"을 붙여 누가 쓴 글인지 알려 드려요.",
       "tts_limits": "고정 제한: 글 하나 {{chars}}자까지, 한 사람당 1분에 모두 {{perMinute}}자까지",
       "range_decimal": "{{min}}에서 {{max}} 사이로 넣어 주세요."
     },

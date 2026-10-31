@@ -7,9 +7,9 @@
   "tabs": {
     "label": "Menu",
     "servers": "Serveurs",
-    "permissions": "Droits",
     "modules": "Modules",
-    "more": "Plus"
+    "discord": "Discord",
+    "pc": "PC"
   },
   "gate": {
     "connecting": "Connexion à votre PC…",
@@ -105,12 +105,23 @@
     "run_unmanaged_hint": "saba-chan lance le serveur et vérifie seulement s’il tourne. La console saba-chan n’est pas disponible et, sous Windows, le serveur s’ouvre dans sa propre fenêtre de console.",
     "port_in_use": "{{servers}} utilise aussi le port {{port}}. Les ports entrent en conflit si les deux tournent en même temps.",
     "location": "Emplacement des fichiers",
-    "location_pc": "Les fichiers du serveur vont dans le dossier de saba-chan. Pour un autre dossier, créez le serveur dans l'app saba-chan du PC."
+    "location_pc": "Les fichiers du serveur vont dans le dossier de saba-chan. Pour un autre dossier, créez le serveur dans l'app saba-chan du PC.",
+    "summary_running": "Running",
+    "summary_players": "Players",
+    "summary_cpu": "PC CPU",
+    "start_named": "Start {{name}}",
+    "stop_named": "Stop {{name}}",
+    "pick": "Pick a server on the left."
   },
   "detail": {
-    "console": "Console",
-    "settings": "Réglages",
-    "backups": "Sauvegardes"
+    "backups": "Sauvegardes",
+    "players": "Players",
+    "check": "Check",
+    "settings_game": "Game",
+    "more": "More",
+    "tabs": "Server menu",
+    "uptime": "Up {{time}}",
+    "port_check": "Port forwarding check"
   },
   "console": {
     "empty": "Aucune sortie pour l'instant.",
@@ -120,7 +131,6 @@
     "danger_message": "Voulez-vous vraiment envoyer {{command}} ?"
   },
   "settings": {
-    "general": "Général",
     "game": "Réglages du jeu",
     "rename": "Renommer",
     "renamed": "Renommé.",
@@ -311,5 +321,25 @@
       "relay_unreachable": "Impossible de joindre le relais. Vérifiez votre connexion Internet.",
       "failed": "La vérification a échoué."
     }
+  },
+  "commands": {
+    "run": "Send",
+    "results": "Sent commands"
+  },
+  "players": {
+    "title_count": "Players {{count}}",
+    "refresh": "Refresh",
+    "none": "Nobody is online right now.",
+    "stopped": "Start the server to see who is online.",
+    "unsupported": "This game does not report who is online."
+  },
+  "check": {
+    "server": "Server check",
+    "update": "Game server update",
+    "update_check": "Check for updates",
+    "update_none": "Up to date.",
+    "update_unsupported": "This server's install method can't check for updates here.",
+    "update_confirm": "Update the game server '{{name}}'? A backup is made first.",
+    "update_started": "Update started."
   }
 }

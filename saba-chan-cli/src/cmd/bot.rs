@@ -185,8 +185,8 @@ pub async fn run(ctx: &Ctx, cmd: BotCmd) -> Result<()> {
             let patch = (!music.is_empty()).then(|| json!({ "music": music }));
             discord_settings(ctx, &resolve::guild(ctx, guild.as_deref()).await?, patch).await
         }
-        BotCmd::Tts { guild, volume, speed, pitch } => {
-            let patch = tts_patch(volume, speed, pitch);
+        BotCmd::Tts { guild, volume, speed, pitch, names } => {
+            let patch = tts_patch(volume, speed, pitch, names.as_deref());
             discord_settings(ctx, &resolve::guild(ctx, guild.as_deref()).await?, patch).await
         }
         BotCmd::Confirm { guild, direct, chatbot } => confirm(ctx, &resolve::guild(ctx, guild.as_deref()).await?, direct, chatbot).await,
@@ -743,7 +743,7 @@ async fn confirm(ctx: &Ctx, guild: &str, direct: Option<String>, chatbot: Option
 }
 
 /// `bot tts` 옵션 → 디스코드 설정 `tts` 부분 (속도는 배 → %, 범위는 데몬이 본다). 값이 없으면 `None`(보기만)
-fn tts_patch(volume: Option<i64>, speed: Option<f64>, pitch: Option<i64>) -> Option<Value> {
+fn tts_patch(volume: Option<i64>, speed: Option<f64>, pitch: Option<i64>, names: Option<&str>) -> Option<Value> {
     let mut tts = Map::new();
     if let Some(v) = volume {
         tts.insert("volume".into(), json!(v));
@@ -753,6 +753,9 @@ fn tts_patch(volume: Option<i64>, speed: Option<f64>, pitch: Option<i64>) -> Opt
     }
     if let Some(v) = pitch {
         tts.insert("pitch".into(), json!(v));
+    }
+    if let Some(v) = names {
+        tts.insert("names".into(), json!(v));
     }
     (!tts.is_empty()).then(|| json!({ "tts": tts }))
 }
@@ -789,6 +792,14 @@ fn discord_rows(r: &Value) -> Vec<(String, String)> {
         (t!("bot.tts_volume"), format!("{}%", tts("volume", 100))),
         (t!("bot.tts_speed"), t!("bot.tts_speed_value", value = format!("{}", tts("speed", 100) as f64 / 100.0))),
         (t!("bot.tts_pitch"), t!("bot.tts_pitch_value", value = tts("pitch", 0).to_string())),
+        (
+            t!("bot.tts_names"),
+            match r.pointer("/tts/names").and_then(Value::as_str) {
+                Some("always") => t!("bot.tts_names_always"),
+                Some("never") => t!("bot.tts_names_never"),
+                _ => t!("bot.tts_names_multi"),
+            },
+        ),
     ]
 }
 
@@ -1178,19 +1189,22 @@ mod tests {
         assert_eq!(row(&r, "bot.private_queries"), Some(t!("bot.on")));
     }
 
-    /// 읽어주는 사바쨩 (GUI 탭과 같다): 볼륨 %, 속도는 배로 받아 %로 보내고, 피치 반음. 아무 값도 없으면 보기만
+    /// 읽어주는 사바쨩 (GUI 탭과 같다): 볼륨 %, 속도는 배로 받아 %로 보내고, 피치 반음, 이름 부르기. 아무 값도 없으면 보기만
     #[test]
     fn tts_options_become_a_partial_tts_patch_and_show_in_server_settings() {
         crate::i18n::init("ko");
-        assert_eq!(tts_patch(None, None, None), None);
-        assert_eq!(tts_patch(Some(80), Some(1.25), Some(-3)), Some(json!({ "tts": { "volume": 80, "speed": 125, "pitch": -3 } })));
-        assert_eq!(tts_patch(None, Some(1.2), None), Some(json!({ "tts": { "speed": 120 } })));
+        assert_eq!(tts_patch(None, None, None, None), None);
+        assert_eq!(tts_patch(Some(80), Some(1.25), Some(-3), None), Some(json!({ "tts": { "volume": 80, "speed": 125, "pitch": -3 } })));
+        assert_eq!(tts_patch(None, Some(1.2), None, None), Some(json!({ "tts": { "speed": 120 } })));
+        assert_eq!(tts_patch(None, None, None, Some("never")), Some(json!({ "tts": { "names": "never" } })));
         let row = |r: &Value, k: &str| discord_rows(r).into_iter().find(|(name, _)| *name == t!(k)).map(|(_, v)| v);
         let r = json!({ "music": {}, "tts": { "volume": 80, "speed": 125, "pitch": -3 } });
         assert_eq!(row(&r, "bot.tts_volume").as_deref(), Some("80%"));
         assert_eq!(row(&r, "bot.tts_speed"), Some(t!("bot.tts_speed_value", value = "1.25")));
         assert_eq!(row(&r, "bot.tts_pitch"), Some(t!("bot.tts_pitch_value", value = "-3")));
+        assert_eq!(row(&json!({ "tts": { "names": "always" } }), "bot.tts_names"), Some(t!("bot.tts_names_always")));
         // 옛 데몬(tts 없음)이면 기본값
+        assert_eq!(row(&json!({}), "bot.tts_names"), Some(t!("bot.tts_names_multi")));
         let old = json!({ "music": {} });
         assert_eq!(row(&old, "bot.tts_volume").as_deref(), Some("100%"));
         assert_eq!(row(&old, "bot.tts_speed"), Some(t!("bot.tts_speed_value", value = "1")));
