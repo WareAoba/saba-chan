@@ -1,0 +1,93 @@
+# ═══════════════════════════════════════════════════════════
+# PR 프리뷰 빌드
+# ═══════════════════════════════════════════════════════════
+#
+# `preview` 라벨이 붙은 PR만 Windows 실행 파일(데몬·러너·GUI·CLI)을 릴리스로 빌드해
+# `preview-pr-<번호>` 아티팩트로 3일 둔다. PC에서는 scripts/preview-pr.ps1이 받아서
+# 설치본과 분리된 폴더·포트로 띄운다. 서명하지 않는다. 배포하지 않는다.
+#
+# GUI는 앱 식별자를 com.saba-chan.preview로 바꿔 빌드한다(TAURI_CONFIG 병합).
+# 식별자가 같으면 단일 실행 잠금 때문에 설치본 GUI가 떠 있을 때 프리뷰 창이 뜨지 않는다.
+# ═══════════════════════════════════════════════════════════
+
+name: PR preview
+
+on:
+  pull_request:
+    types: [labeled, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Windows preview build
+    # 다른 라벨을 붙일 때는 다시 빌드하지 않는다
+    if: >-
+      contains(github.event.pull_request.labels.*.name, 'preview') &&
+      (github.event.action != 'labeled' || github.event.label.name == 'preview')
+    runs-on: windows-latest
+    timeout-minutes: 60
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: saba-chan-gui/package-lock.json
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cargo cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: preview-${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: preview-${{ runner.os }}-cargo-
+
+      # Tauri GUI가 build/를 exe에 넣으므로 cargo보다 먼저 끝나야 한다
+      - name: Build GUI frontend
+        working-directory: saba-chan-gui
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+
+      - name: Build executables
+        env:
+          TAURI_CONFIG: '{"identifier":"com.saba-chan.preview"}'
+        run: cargo build --release --locked -p saba-core -p saba-runner -p saba-chan-gui -p saba-chan-cli
+
+      # 설치본과 같은 배치: exe와 locales/는 앱 폴더, 공유 모듈 파일은 데이터 폴더 modules/에 들어간다
+      - name: Stage
+        env:
+          PR: ${{ github.event.pull_request.number }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          mkdir -p preview/shared-modules
+          for exe in saba-core saba-runner saba-chan-gui saba-chan-cli; do cp "target/release/$exe.exe" preview/; done
+          cp -r locales preview/locales
+          find modules -maxdepth 1 -type f -exec cp {} preview/shared-modules/ \;
+          printf '{"pr":%s,"sha":"%s","built_at":"%s"}\n' "$PR" "$SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > preview/preview.json
+          ls -l preview
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: preview-pr-${{ github.event.pull_request.number }}
+          path: preview/
+          if-no-files-found: error
+          retention-days: 3
