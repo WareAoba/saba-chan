@@ -133,9 +133,5 @@
     "external_start": "{{name}} 在 Saba-chan 之外啟動。這不是 Saba-chan 啟動的程序。",
     "backup_failed": "{{name}} 自動備份失敗。",
     "on_daemon": "在 {{daemon}} 上：{{body}}"
-  },
-  "macos_first_open": {
-    "title": "第一次打開 Saba-chan",
-    "steps": "1. 將 Saba-chan 拖到「應用程式」檔案夾並打開。\n2. 如果出現「Apple 無法驗證」的視窗，按一下[完成]。Saba-chan 還沒有 Apple 開發者簽名，所以會出現這個視窗。\n3. 打開「系統設定」>「隱私權與安全性」，在下方 Saba-chan 旁按一下[強制打開]，然後輸入密碼。\n4. 在 macOS 14 或更早版本中，按住 Control 鍵按一下 Saba-chan，然後選擇[打開]。\n打開一次後，macOS 不會再詢問。"
   }
 }

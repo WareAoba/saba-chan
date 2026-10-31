@@ -20,7 +20,8 @@ class MacApp(unittest.TestCase):
             d = Path(d)
             for exe in package_macos.EXES:
                 (d / exe).write_bytes(b"\xcf\xfa\xed\xfe")
-            app = package_macos.build_app(d, d / "out", "0.1.12-beta.1")
+            app = package_macos.build_app(d, d / "out", "0.1.12-beta.1", {"saba-chan.icns": b"icns", "Assets.car": b"car"})
+            resources = sorted(p.name for p in (app / "Contents" / "Resources").iterdir())
             macos = sorted(p.name for p in (app / "Contents" / "MacOS").iterdir())
             modes = {p.name: p.stat().st_mode & 0o777 for p in (app / "Contents" / "MacOS").iterdir()}
             with open(app / "Contents" / "Info.plist", "rb") as f:
@@ -39,6 +40,8 @@ class MacApp(unittest.TestCase):
         self.assertEqual(plist["CFBundleShortVersionString"], "0.1.12-beta.1")
         self.assertEqual(plist["CFBundleVersion"], "0.1.12")
         self.assertEqual(icon, b"icns")
+        self.assertEqual(resources, ["Assets.car", "saba-chan.icns"])
+        self.assertEqual(plist["CFBundleIconName"], "AppIcon")
 
     def test_bundle_id_matches_the_gui(self):
         import json
@@ -46,20 +49,25 @@ class MacApp(unittest.TestCase):
         plist = plistlib.loads(package_macos.info_plist("0.1.12"))
         self.assertEqual(conf["identifier"], plist["CFBundleIdentifier"])
 
-    def test_first_open_note_has_every_language_korean_first(self):
-        import json
-        note = package_macos.first_open_note()
-        locales = sorted(p.name for p in (package_macos.ROOT / "locales").iterdir() if (p / "common.json").is_file())
-        titles = {l: json.loads((package_macos.ROOT / "locales" / l / "common.json").read_text(encoding="utf-8"))["macos_first_open"]["title"] for l in locales}
-        self.assertEqual(len(titles), 10)
-        self.assertTrue(note.startswith(titles["ko"]), note[:80])
-        for title in titles.values():
-            self.assertIn(title, note)
+    def test_dmg_window_puts_the_app_left_of_applications_on_the_background(self):
+        # Finder 창: 배경 화살표를 따라 왼쪽 앱 → 오른쪽 응용 프로그램. 둘 말고는 두지 않는다 (창 밖으로 나가면 스크롤이 생긴다)
+        app = Path("/tmp/Saba-chan.app")
+        settings = package_macos.dmg_settings(app)
+        locations = settings["icon_locations"]
+        self.assertEqual(settings["files"], [str(app)])
+        self.assertEqual(settings["icon"], str(app / "Contents" / "Resources" / package_macos.ICON_FILE))
+        self.assertEqual(settings["symlinks"], {"Applications": "/Applications"})
+        self.assertEqual(set(locations), {"Saba-chan.app", "Applications"})
+        (ax, ay), (bx, by) = locations["Saba-chan.app"], locations["Applications"]
+        self.assertTrue(ax < bx and ay == by)
+        self.assertTrue(Path(settings["background"]).is_file())
+        self.assertTrue(Path(settings["background"]).with_name("dmg-background@2x.png").is_file())
+        self.assertFalse(settings["show_toolbar"] or settings["show_sidebar"] or settings["show_status_bar"])
 
     def test_missing_binary_stops(self):
         with tempfile.TemporaryDirectory() as d:
             with self.assertRaises(SystemExit):
-                package_macos.build_app(Path(d), Path(d) / "out", "0.1.12")
+                package_macos.build_app(Path(d), Path(d) / "out", "0.1.12", {})
 
 
 if __name__ == "__main__":

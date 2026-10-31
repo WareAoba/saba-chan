@@ -6,9 +6,13 @@ use std::path::{Path, PathBuf};
 /// 앱 묶음 이름 (.dmg와 설치기가 같은 이름으로 만든다)
 pub const BUNDLE_NAME: &str = "Saba-chan.app";
 
-/// GUI zip에 든 묶음 정보와 아이콘 (설치 폴더에 풀린다)
+/// GUI zip에 든 묶음 정보와 아이콘 (설치 폴더에 풀린다). 아이콘은 macOS 26의 Assets.car(라이트·다크·틴트)와
+/// 옛 macOS용 icns 두 파일이다 (package-macos.py가 Icon Composer 원본에서 컴파일한다)
 pub const PLIST_FILE: &str = "Info.plist";
 pub const ICON_FILE: &str = "saba-chan.icns";
+pub const ASSETS_FILE: &str = "Assets.car";
+/// `Contents/Resources`에 놓는 파일
+const RESOURCE_FILES: [&str; 2] = [ICON_FILE, ASSETS_FILE];
 
 /// 설치 폴더가 앱 묶음의 실행 파일 폴더(`<이름>.app/Contents/MacOS`)면 그 묶음
 pub fn bundle_of(install_dir: &Path) -> Option<PathBuf> {
@@ -30,13 +34,15 @@ pub fn place_files(install_dir: &Path) -> std::io::Result<Vec<(PathBuf, PathBuf)
     let placed = contents.join(PLIST_FILE);
     std::fs::rename(&plist, &placed)?;
     moved.push((plist, placed));
-    let icon = install_dir.join(ICON_FILE);
-    if icon.is_file() {
-        let resources = contents.join("Resources");
-        std::fs::create_dir_all(&resources)?;
-        let placed = resources.join(ICON_FILE);
-        std::fs::rename(&icon, &placed)?;
-        moved.push((icon, placed));
+    let resources = contents.join("Resources");
+    for name in RESOURCE_FILES {
+        let file = install_dir.join(name);
+        if file.is_file() {
+            std::fs::create_dir_all(&resources)?;
+            let placed = resources.join(name);
+            std::fs::rename(&file, &placed)?;
+            moved.push((file, placed));
+        }
     }
     Ok(moved)
 }
@@ -49,7 +55,9 @@ pub fn remove_shell(install_dir: &Path) {
     let _ = std::fs::remove_file(contents.join("_CodeSignature").join("CodeResources"));
     let _ = std::fs::remove_dir(contents.join("_CodeSignature"));
     let _ = std::fs::remove_file(contents.join(PLIST_FILE));
-    let _ = std::fs::remove_file(contents.join("Resources").join(ICON_FILE));
+    for name in RESOURCE_FILES {
+        let _ = std::fs::remove_file(contents.join("Resources").join(name));
+    }
     let _ = std::fs::remove_dir(contents.join("Resources"));
     let _ = std::fs::remove_dir(&contents);
     let _ = std::fs::remove_dir(&bundle);
@@ -76,10 +84,14 @@ mod tests {
         std::fs::create_dir_all(&macos).unwrap();
         std::fs::write(macos.join(PLIST_FILE), b"plist").unwrap();
         std::fs::write(macos.join(ICON_FILE), b"icns").unwrap();
-        assert_eq!(place_files(&macos).unwrap().len(), 2);
+        std::fs::write(macos.join(ASSETS_FILE), b"car").unwrap();
+        assert_eq!(place_files(&macos).unwrap().len(), 3);
         assert_eq!(std::fs::read(bundle.join("Contents").join(PLIST_FILE)).unwrap(), b"plist");
         assert_eq!(std::fs::read(bundle.join("Contents/Resources").join(ICON_FILE)).unwrap(), b"icns");
-        assert!(!macos.join(PLIST_FILE).exists() && !macos.join(ICON_FILE).exists(), "MacOS holds executables only");
+        assert_eq!(std::fs::read(bundle.join("Contents/Resources").join(ASSETS_FILE)).unwrap(), b"car");
+        for f in [PLIST_FILE, ICON_FILE, ASSETS_FILE] {
+            assert!(!macos.join(f).exists(), "MacOS holds executables only: {f}");
+        }
 
         std::fs::remove_dir_all(&macos).unwrap();
         remove_shell(&macos);

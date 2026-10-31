@@ -76,7 +76,7 @@ jobs:
           else
             echo "frontend=false" >> "$GITHUB_OUTPUT"
           fi
-          if echo "$files" | grep -qE '^(\.github/(scripts/(test_)?package-(macos|linux)\.py|workflows/)|saba-chan-gui/src-tauri/(macos/|icons/icon\.icns|tauri\.conf\.json|Cargo\.toml)|installer/core/|updater/|install\.sh)'; then
+          if echo "$files" | grep -qE '^(\.github/(scripts/(test_)?package-(macos|linux)\.py|workflows/)|saba-chan-gui/src-tauri/(macos/|icons/AppIcon\.icon/|tauri\.conf\.json|Cargo\.toml)|installer/core/|updater/|install\.sh)'; then
             echo "macpkg=true" >> "$GITHUB_OUTPUT"
           else
             echo "macpkg=false" >> "$GITHUB_OUTPUT"
@@ -290,17 +290,33 @@ jobs:
           cargo build --release --locked -p saba-core -p saba-runner -p saba-chan-cli -p saba-chan-gui -p saba-chan-installer --bins
           cargo build --release --locked -p saba-chan-installer --no-default-features --target-dir target/headless
 
+      # 아이콘 원본(Icon Composer .icon)은 Xcode 26 이상의 actool만 컴파일한다
+      - name: Select Xcode 26+
+        run: |
+          xcode=$(ls -d /Applications/Xcode_2[6-9]*.app 2>/dev/null | sort -V | tail -1)
+          test -n "$xcode" || { ls -d /Applications/Xcode*.app; exit 1; }
+          sudo xcode-select -s "$xcode"
+          xcodebuild -version
+
+      # .dmg Finder 창 배치(배경·아이콘 자리)를 Finder 없이 기록한다
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dmgbuild
+        run: python -m pip install --quiet dmgbuild==1.6.7
+
       - name: Package
         run: |
           version=$(python3 -c "import tomllib;print(tomllib.load(open('versions.toml','rb'))['release']['version'])")
           python3 .github/scripts/package-linux.py --bin target/release --headless-bin target/headless/release --out macos --platform macos-arm64 --version "$version"
           python3 .github/scripts/package-macos.py --bin target/release --out macos --version "$version" --platform macos-arm64
           ls -la macos
-          # .dmg 안: 앱 묶음, 응용 프로그램 바로가기, 첫 실행 안내
+          # .dmg 안: 앱 묶음, 응용 프로그램 바로가기
           hdiutil attach -nobrowse -readonly -mountpoint "$RUNNER_TEMP/dmg" macos/Saba-chan-macos-arm64.dmg
           ls -la "$RUNNER_TEMP/dmg"
           test -d "$RUNNER_TEMP/dmg/Saba-chan.app" && test -L "$RUNNER_TEMP/dmg/Applications"
-          grep -q "그래도 열기" "$RUNNER_TEMP/dmg/처음 열 때 (First launch).txt"
+          # 꾸민 창: 레티나 배경(.background.tiff), 창 배치(.DS_Store), 디스크 아이콘
+          test -f "$RUNNER_TEMP/dmg/.background.tiff" && test -f "$RUNNER_TEMP/dmg/.DS_Store" && test -f "$RUNNER_TEMP/dmg/.VolumeIcon.icns"
           hdiutil detach "$RUNNER_TEMP/dmg"
 
       # 모의 릴레이에서 CLI 설치 → 앱 묶음 확인 → 업데이트 → 제거 (화면 있는 맥 = 데스크톱 구성).
@@ -331,7 +347,8 @@ jobs:
           test "$(plutil -extract CFBundleExecutable raw "$app/Contents/Info.plist")" = saba-chan-gui
           test "$(plist_version)" = 0.2.0
           test -x "$app/Contents/MacOS/saba-core" && test -x "$app/Contents/MacOS/saba-chan-gui"
-          test -f "$app/Contents/Resources/saba-chan.icns"
+          test -f "$app/Contents/Resources/saba-chan.icns" && test -f "$app/Contents/Resources/Assets.car"
+          test "$(plutil -extract CFBundleIconName raw "$app/Contents/Info.plist")" = AppIcon
           test ! -e "$app/Contents/MacOS/Info.plist"
 
           # 업데이트: 데몬이 받고, 업데이터가 이름 바꾸기로 갈아 끼운 뒤 데몬을 다시 띄운다

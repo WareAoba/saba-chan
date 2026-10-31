@@ -133,9 +133,5 @@
     "external_start": "{{name}} was started outside Saba-chan. Saba-chan did not start this process.",
     "backup_failed": "Automatic backup of {{name}} failed.",
     "on_daemon": "On {{daemon}}: {{body}}"
-  },
-  "macos_first_open": {
-    "title": "Opening Saba-chan for the first time",
-    "steps": "1. Drag Saba-chan into the Applications folder and open it.\n2. If a window says Apple cannot verify it, click [Done]. Saba-chan does not have an Apple developer signature yet, so this window appears.\n3. Open System Settings > Privacy & Security, click [Open Anyway] next to Saba-chan near the bottom, and enter your password.\n4. On macOS 14 or earlier, Control-click Saba-chan and choose [Open].\nAfter the first time, macOS does not ask again."
   }
 }
