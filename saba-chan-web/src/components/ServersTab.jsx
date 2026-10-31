@@ -15,7 +15,9 @@ import { art } from '../art';
 import { useApp, useData } from '../store';
 import { Dropdown } from './Dropdown';
 import { Icon } from './icons';
+import { startPoll } from './poll';
 import { ServerDetail } from './ServerDetail';
+import { ServerIcon } from './ServerIcon';
 import { FieldInput, patchOf } from './SettingsPanel';
 import { Button, Empty, errorText, failed, Loading, Section, Sheet, StatusDot } from './ui';
 import { useProvision } from './useProvision';
@@ -291,7 +293,48 @@ export function AddServerSheet({ api, onClose }) {
     );
 }
 
-function ServerCard({ api, server, moduleData, modulesLoaded }) {
+/** 목록 위 요약: 켜진 서버 수, 접속자 합, PC CPU (PC 사용량은 4초마다 읽는다) */
+function Summary({ api, servers }) {
+    const { t } = useTranslation();
+    const [cpu, setCpu] = useState(null);
+    useEffect(() => {
+        if (!api?.systemMetrics) return;
+        let alive = true;
+        const stop = startPoll(async () => {
+            const res = await api.systemMetrics({ sizes: false });
+            const v = res?.cpu?.total_percent;
+            if (alive && Number.isFinite(v)) setCpu(Math.round(v));
+        }, 4000);
+        return () => {
+            alive = false;
+            stop();
+        };
+    }, [api]);
+    const running = servers.filter((s) => s.status === 'running');
+    const players = running.reduce((sum, s) => sum + (Number.isInteger(s.players?.online) ? s.players.online : 0), 0);
+    return (
+        <div className="summary">
+            <div className="stat">
+                <b>
+                    {running.length}
+                    <small>/{servers.length}</small>
+                </b>
+                <span>{t('servers.summary_running')}</span>
+            </div>
+            <div className="stat">
+                <b>{players}</b>
+                <span>{t('servers.summary_players')}</span>
+            </div>
+            <div className="stat">
+                <b>{cpu === null ? '—' : `${cpu}%`}</b>
+                <span>{t('servers.summary_cpu')}</span>
+            </div>
+        </div>
+    );
+}
+
+/** 목록 한 줄: 누르면 상세, 오른쪽 버튼은 바로 켜기·정지 */
+function ServerRow({ api, server, moduleData, modulesLoaded, selected }) {
     const { t } = useTranslation();
     const openServer = useApp((s) => s.openServer);
     const control = useServerControl(api);
@@ -302,33 +345,50 @@ function ServerCard({ api, server, moduleData, modulesLoaded }) {
     const players = playersText(server);
 
     return (
-        <article className="card server-card">
-            <button type="button" className="card-main" onClick={() => openServer(server.id)}>
-                <div className="card-title">{server.name}</div>
-                <div className="card-sub">
-                    {gameNameOf(t, server.module, moduleData)}
-                    {players && (
-                        <span className="pill">
-                            <Icon name="user" size={12} /> {players}
-                        </span>
-                    )}
-                </div>
-                <StatusDot status={status} />
+        <li className={selected ? 'server-row on' : 'server-row'}>
+            <button
+                type="button"
+                className="server-row-main"
+                onClick={() => openServer(server.id)}
+                aria-current={selected ? 'true' : undefined}
+            >
+                <ServerIcon module={server.module} moduleData={moduleData} />
+                <span className="server-row-text">
+                    <span className="server-row-name">{server.name}</span>
+                    <span className="server-row-sub">
+                        <StatusDot status={status} />
+                        {players && (
+                            <span className="pill">
+                                <Icon name="user" size={12} /> {players}
+                            </span>
+                        )}
+                        <span className="server-row-game">{gameNameOf(t, server.module, moduleData)}</span>
+                    </span>
+                </span>
             </button>
-            <div className="card-actions">
-                {action === 'start' && (
-                    <Button tone="accent" busy={control.busy} onClick={() => control.start(server)}>
-                        {t('servers.start')}
-                    </Button>
-                )}
-                {action === 'stop' && (
-                    <Button tone="danger" busy={control.busy} onClick={() => control.stop(server)}>
-                        {t('servers.stop')}
-                    </Button>
-                )}
-                {action === 'busy' && <Button disabled>{t(`status.${status}`)}</Button>}
-            </div>
-        </article>
+            {action === 'start' && (
+                <button
+                    type="button"
+                    className="quick quick-start"
+                    disabled={control.busy}
+                    onClick={() => control.start(server)}
+                    aria-label={t('servers.start_named', { name: server.name })}
+                >
+                    {control.busy ? <span className="spinner" aria-hidden="true" /> : <Icon name="play" size={16} />}
+                </button>
+            )}
+            {action === 'stop' && (
+                <button
+                    type="button"
+                    className="quick quick-stop"
+                    disabled={control.busy}
+                    onClick={() => control.stop(server)}
+                    aria-label={t('servers.stop_named', { name: server.name })}
+                >
+                    {control.busy ? <span className="spinner" aria-hidden="true" /> : <Icon name="stop" size={16} />}
+                </button>
+            )}
+        </li>
     );
 }
 
@@ -339,37 +399,51 @@ export function ServersTab({ api }) {
     const [adding, setAdding] = useState(false);
 
     const selected = servers.find((s) => s.id === serverId);
-    if (selected) return <ServerDetail api={api} server={selected} />;
-
     const moduleOf = (name) => modules.find((m) => m.name === name);
     return (
-        <Section
-            title={t('tabs.servers')}
-            action={
-                <Button tone="accent" onClick={() => setAdding(true)}>
-                    <Icon name="plus" size={16} /> {t('servers.add')}
-                </Button>
-            }
-        >
-            {serversError && <p className="banner banner-error">{serversError}</p>}
-            {!serversLoaded ? (
-                <Loading />
-            ) : servers.length === 0 ? (
-                <Empty art={art.sleep}>{t('servers.empty')}</Empty>
-            ) : (
-                <div className="list">
-                    {servers.map((s) => (
-                        <ServerCard
-                            key={s.id}
-                            api={api}
-                            server={s}
-                            moduleData={moduleOf(s.module)}
-                            modulesLoaded={modulesLoaded}
-                        />
-                    ))}
-                </div>
-            )}
+        // 휴대폰은 목록 또는 상세 하나, 넓은 화면은 목록과 상세를 나란히 (styles.css .servers)
+        <div className={selected ? 'servers has-detail' : 'servers'}>
+            <div className="servers-list">
+                <Section
+                    title={t('tabs.servers')}
+                    action={
+                        <Button tone="accent" onClick={() => setAdding(true)}>
+                            <Icon name="plus" size={16} /> {t('servers.add')}
+                        </Button>
+                    }
+                >
+                    {serversError && <p className="banner banner-error">{serversError}</p>}
+                    {!serversLoaded ? (
+                        <Loading />
+                    ) : servers.length === 0 ? (
+                        <Empty art={art.sleep}>{t('servers.empty')}</Empty>
+                    ) : (
+                        <>
+                            <Summary api={api} servers={servers} />
+                            <ul className="server-rows">
+                                {servers.map((s) => (
+                                    <ServerRow
+                                        key={s.id}
+                                        api={api}
+                                        server={s}
+                                        moduleData={moduleOf(s.module)}
+                                        modulesLoaded={modulesLoaded}
+                                        selected={s.id === serverId}
+                                    />
+                                ))}
+                            </ul>
+                        </>
+                    )}
+                </Section>
+            </div>
+            <div className="servers-detail">
+                {selected ? (
+                    <ServerDetail key={selected.id} api={api} server={selected} />
+                ) : (
+                    serversLoaded && servers.length > 0 && <Empty>{t('servers.pick')}</Empty>
+                )}
+            </div>
             {adding && <AddServerSheet api={api} onClose={() => setAdding(false)} />}
-        </Section>
+        </div>
     );
 }

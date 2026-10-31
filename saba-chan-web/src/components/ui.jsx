@@ -17,9 +17,10 @@ export function errorText(t, res) {
     return res?.error || res?.message || t('errors.generic');
 }
 
-export function Button({ tone = 'plain', busy = false, children, ...rest }) {
+/** 기다리는 동안(`busy`)은 `disabled`를 무엇으로 넘겨도 누를 수 없다 (같은 요청을 두 번 보내지 않게) */
+export function Button({ tone = 'plain', busy = false, disabled = false, children, ...rest }) {
     return (
-        <button type="button" className={`btn btn-${tone}`} disabled={busy || rest.disabled} {...rest}>
+        <button type="button" className={`btn btn-${tone}`} {...rest} disabled={busy || disabled}>
             {busy ? <span className="spinner" aria-hidden="true" /> : null}
             <span>{children}</span>
         </button>
@@ -85,9 +86,10 @@ export function Section({ title, action, children }) {
     );
 }
 
-export function Segments({ value, options, onChange }) {
+/** 고르기 줄. `scroll`이면 칸이 많아도 줄이지 않고 옆으로 민다 (서버 상세 탭) */
+export function Segments({ value, options, onChange, scroll = false, ariaLabel }) {
     return (
-        <div className="segments" role="tablist">
+        <div className={scroll ? 'segments segments-scroll' : 'segments'} role="tablist" aria-label={ariaLabel}>
             {options.map((o) => (
                 <button
                     key={o.value}

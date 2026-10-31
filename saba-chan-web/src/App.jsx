@@ -12,11 +12,12 @@ import { ConfirmHost, ToastHost, Wordmark } from './components/ui';
 import { registerModuleLocales } from './i18n';
 import { useApp, useData } from './store';
 
+// 휴대폰은 아래 탭, 넓은 화면은 왼쪽 메뉴 (styles.css .tabs)
 const TABS = [
     { id: 'servers', icon: 'servers' },
-    { id: 'permissions', icon: 'members' },
+    { id: 'discord', icon: 'discord' },
     { id: 'modules', icon: 'modules' },
-    { id: 'more', icon: 'more' },
+    { id: 'pc', icon: 'monitor' },
 ];
 
 /** 세션이 열린 동안 서버·모듈 목록을 맞춘다 (이벤트가 오면 바로, 아니면 4초마다) */
@@ -125,9 +126,9 @@ export function App({ api, session }) {
                 {/* key: 탭을 바꿀 때마다 새로 그려서 들어오는 움직임을 다시 낸다 */}
                 <div className="view" key={tab}>
                     {tab === 'servers' && <ServersTab api={api} />}
-                    {tab === 'permissions' && <PermissionsTab api={api} />}
+                    {tab === 'discord' && <PermissionsTab api={api} />}
                     {tab === 'modules' && <ModulesTab api={api} />}
-                    {tab === 'more' && <MoreTab api={api} />}
+                    {tab === 'pc' && <MoreTab api={api} />}
                 </div>
             </main>
             <ConfirmHost />

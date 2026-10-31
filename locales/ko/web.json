@@ -7,9 +7,9 @@
   "tabs": {
     "label": "메뉴",
     "servers": "서버",
-    "permissions": "권한",
     "modules": "모듈",
-    "more": "더보기"
+    "discord": "디스코드",
+    "pc": "PC"
   },
   "gate": {
     "connecting": "PC에 연결하는 중이에요…",
@@ -105,12 +105,23 @@
     "run_unmanaged_hint": "사바쨩은 서버를 띄우고 켜짐 여부만 봐요. 사바쨩 콘솔은 쓸 수 없고, Windows에서는 서버가 새 콘솔 창에 떠요.",
     "port_in_use": "{{servers}} 서버도 {{port}} 포트를 써요. 함께 켜면 포트가 겹쳐요.",
     "location": "파일 위치",
-    "location_pc": "서버 파일은 사바쨩 폴더에 설치해요. 다른 폴더에 두려면 PC의 사바쨩 앱에서 만들어 주세요."
+    "location_pc": "서버 파일은 사바쨩 폴더에 설치해요. 다른 폴더에 두려면 PC의 사바쨩 앱에서 만들어 주세요.",
+    "summary_running": "켜짐",
+    "summary_players": "접속",
+    "summary_cpu": "PC CPU",
+    "start_named": "{{name}} 켜기",
+    "stop_named": "{{name}} 끄기",
+    "pick": "왼쪽에서 서버를 고르세요."
   },
   "detail": {
-    "console": "콘솔",
-    "settings": "설정",
-    "backups": "백업"
+    "backups": "백업",
+    "players": "플레이어",
+    "check": "점검",
+    "settings_game": "게임",
+    "more": "더보기",
+    "tabs": "서버 메뉴",
+    "uptime": "켜진 지 {{time}}",
+    "port_check": "포트포워딩 확인"
   },
   "console": {
     "empty": "아직 출력이 없어요.",
@@ -120,7 +131,6 @@
     "danger_message": "{{command}} 명령을 정말 보낼까요?"
   },
   "settings": {
-    "general": "기본",
     "game": "게임 설정",
     "rename": "이름 바꾸기",
     "renamed": "이름을 바꿨어요.",
@@ -311,5 +321,25 @@
       "relay_unreachable": "서버쨩에 연결하지 못했어요. 인터넷 연결을 확인해 주세요.",
       "failed": "확인하지 못했어요."
     }
+  },
+  "commands": {
+    "run": "보내기",
+    "results": "보낸 명령"
+  },
+  "players": {
+    "title_count": "플레이어 {{count}}",
+    "refresh": "새로고침",
+    "none": "지금 접속한 사람이 없습니다.",
+    "stopped": "서버를 켜면 접속한 사람이 보입니다.",
+    "unsupported": "이 게임은 접속자 목록을 알려 주지 않습니다."
+  },
+  "check": {
+    "server": "서버 점검",
+    "update": "게임 서버 업데이트",
+    "update_check": "업데이트 확인",
+    "update_none": "최신 버전입니다.",
+    "update_unsupported": "이 서버는 설치 방식상 여기서 업데이트를 확인할 수 없습니다.",
+    "update_confirm": "'{{name}}' 게임 서버를 업데이트할까요? 업데이트 전에 백업을 만듭니다.",
+    "update_started": "업데이트를 시작했습니다."
   }
 }

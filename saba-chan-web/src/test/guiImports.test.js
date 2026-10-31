@@ -11,6 +11,8 @@ const ALLOWED = new Set([
     '@gui/utils/commandRisk',
     // 포트포워딩 확인 결과 읽기 (화면 없는 순수 함수)
     '@gui/utils/portCheck',
+    // 예약 작업 초안 ↔ 데몬 형식과 검사 (GUI 백업·예약 탭과 같은 규칙)
+    '@gui/utils/schedule',
     // 새 서버 만들기 규칙 (설치할 수 있는 값, 기본 이름, 이름 겹침)
     '@gui/utils/installFields',
     // 권한 단계 계산과 사다리 편집 (화면 없는 순수 함수)

@@ -465,7 +465,7 @@ export function PermissionsTab({ api }) {
     }, [api, hostId]);
 
     return (
-        <Section title={t('tabs.permissions')}>
+        <Section title={t('tabs.discord')}>
             {guilds === null ? (
                 <Loading />
             ) : guilds.length === 0 ? (
