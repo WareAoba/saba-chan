@@ -120,6 +120,25 @@ describe('ContextMenuProvider', () => {
         expect(writeText).toHaveBeenCalledWith('world');
     });
 
+    it('메뉴를 단 대상 안의 입력칸은 대상 메뉴 대신 편집 메뉴를 띄운다', () => {
+        function Card() {
+            const openMenu = useContextMenu();
+            return (
+                <div onContextMenu={(e) => openMenu(e, [{ id: 'remove', label: 'Remove', onSelect: vi.fn() }])}>
+                    <input aria-label="field" defaultValue="x" />
+                </div>
+            );
+        }
+        render(
+            <ContextMenuProvider allowNative={false}>
+                <Card />
+            </ContextMenuProvider>,
+        );
+        rightClick(screen.getByLabelText('field'));
+        expect(items()).toContain('Paste');
+        expect(items()).not.toContain('Remove');
+    });
+
     it('읽기 전용 입력칸은 잘라내기·붙여넣기·실행 취소를 끈다', () => {
         render(
             <ContextMenuProvider allowNative={false}>

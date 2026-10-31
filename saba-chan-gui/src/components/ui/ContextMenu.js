@@ -136,14 +136,19 @@ export function ContextMenuProvider({ children, allowNative = import.meta.env.DE
 
     const close = useCallback(() => setMenu(null), []);
 
-    const open = useCallback((e, items) => {
-        e.preventDefault();
-        e.stopPropagation?.();
-        const list = usable(items);
-        if (!list.some((i) => i !== 'separator')) return;
-        setActive(-1);
-        setMenu({ x: e.clientX, y: e.clientY, items: list });
-    }, []);
+    const open = useCallback(
+        (e, items) => {
+            e.preventDefault();
+            e.stopPropagation?.();
+            // 대상 안의 입력칸(플러그인 설정 칸 등)은 대상 메뉴보다 편집 메뉴가 먼저다
+            const editable = editableOf(e.target);
+            const list = usable(editable ? editItems(t, editable) : items);
+            if (!list.some((i) => i !== 'separator')) return;
+            setActive(-1);
+            setMenu({ x: e.clientX, y: e.clientY, items: list });
+        },
+        [t],
+    );
 
     useEffect(() => {
         // React의 onContextMenu는 루트에서 먼저 돈다: 대상이 메뉴를 열었으면 여기서는 defaultPrevented
