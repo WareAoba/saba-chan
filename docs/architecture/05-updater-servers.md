@@ -351,7 +351,8 @@ Tauri 커맨드(`installer/gui/src-tauri/src/lib.rs`): `get_installer_state`, `s
 | GET/POST | `/admin/api/broadcast` | 관리자 키(POST 5/10min) | POST `{message, deleteAfterSeconds?}` | 202 `{ok, job}` / 409 `BROADCAST_IN_PROGRESS` / 503 `BOT_OFFLINE` | `routes/announcement.ts` |
 | GET/POST | `/admin/api/blocklist` | 관리자 키 | POST `{discordId, reason?, days?}`(days 1~3650, 없으면 무기한) | GET `{blocked:[{discordId, reason, createdBy, createdAt, expiresAt}]}` / POST 201 `{ok, expiresAt}` / 400 `INVALID_DISCORD_ID`·`INVALID_DAYS`·`OPERATOR` | `routes/admin.ts` |
 | DELETE | `/admin/api/blocklist/:discordId` | 관리자 키 | — | `{ok}` / 404 `NOT_BLOCKED` | `routes/admin.ts` |
-| GET | `/admin/login/:link` | 1회용 링크(10/10min, nginx 10r/m, 요청·접근·오류 로그 없음, HEAD 는 없는 주소) | — | 302 `/admin/` + 쿠키 `__Host-saba_admin` / 틀린 링크·운영자 아님은 없는 주소(404 Oops) | `routes/adminConsole.ts` |
+| GET | `/admin/login/:link` | 1회용 링크(10/10min, nginx 10r/m, 요청·접근·오류 로그 없음, HEAD 는 없는 주소). 링크를 쓰지 않는다 | — | 200 로그인 버튼 페이지(같은 주소로 POST 하는 폼) / 틀린 링크·쓴 링크는 없는 주소(404 Oops) | `routes/adminConsole.ts` |
+| POST | `/admin/login/:link` | 로그인 버튼(10/10min, 로그 없음). 링크를 쓴다 | 빈 폼 | 302 `/admin/` + 쿠키 `__Host-saba_admin` / 틀린 링크·운영자 아님은 없는 주소(404 Oops) | `routes/adminConsole.ts` |
 | GET | `/admin`, `/admin/`, `/admin/app.js`, `/admin/app.css` | 관리자 세션(없으면 없는 주소, 404 Oops) | `?lang=` 또는 Accept-Language | 관리자 페이지(문구만, 비밀값 없음). CSP `default-src 'none'; script-src 'self'`, `no-store` | `routes/adminConsole.ts` |
 | GET | `/admin/console/session`·`overview`·`stats?range=day\|week\|month\|year`·`broadcast`·`blocklist`·`audit` | 관리자 세션 | — | 세션 `{userId, expiresAt, csrf}` / 상태 `{service, broadcast}` / 통계 `{range, bucketSeconds, points[]}` / 차단 `{rows}` / 최근 관리 기록 50줄 `{rows}`. 세션 없음 401 `NO_SESSION`, 운영자 아님 403 `NOT_OPERATOR` | `routes/adminConsole.ts` |
 | POST/DELETE | `/admin/console/logout`·`broadcast`(5/10min)·`blocklist`, `/admin/console/blocklist/:discordId` | 관리자 세션 + `x-csrf-token` + 같은 Origin | 공지·차단은 `/admin/api` 와 같은 본문(`days`는 숫자 문자열도 받고 숫자가 아니면 `INVALID_DAYS`) | `/admin/api` 와 같은 응답 / 403 `CSRF` | `routes/adminConsole.ts` |
@@ -438,7 +439,7 @@ Tauri 커맨드(`installer/gui/src-tauri/src/lib.rs`): `get_installer_state`, `s
 
 **(h) 관리자 페이지와 운영 통계** (`routes/adminConsole.ts`, `services/adminSession.ts`, `services/relayStats.ts`, 화면 `assets/admin/`):
 
-- 들어가기: 운영 서버 `/운영 페이지` → `RELAY_OPERATOR_IDS`의 운영자에게만 `https://saba-chan.online/admin/login/<링크>`(5분, 한 번만, 운영자당 하나. 링크 미리보기가 먼저 열지 않게 미리보기를 끄고 보낸다). 이 주소를 열면 세션 쿠키를 받고 `/admin/`으로 간다. 세션이 없으면 페이지·스크립트·세션 API가 모두 없는 주소와 같은 Oops 페이지라 들어오는 방법을 알리지 않는다. 페이지 스크립트는 `X-Saba-Client: 1`을 붙여 오류를 JSON으로 받는다.
+- 들어가기: 운영 서버 `/운영 페이지` → `RELAY_OPERATOR_IDS`의 운영자에게만 `https://saba-chan.online/admin/login/<링크>`(5분, 한 번만, 운영자당 하나. 링크 미리보기가 먼저 열지 않게 미리보기를 끄고 보낸다). 이 주소를 열면 로그인 버튼만 보이고, 버튼을 누르면(같은 주소로 POST) 링크를 쓰고 세션 쿠키를 받아 `/admin/`으로 간다. 디스코드·브라우저·보안 검사기가 링크를 미리 GET 해도 링크는 남는다. 버튼 폼은 `no-referrer` 페이지라 `Origin: null`로 오므로 이 경로는 CORS 를 보지 않는다. 세션이 없으면 페이지·스크립트·세션 API가 모두 없는 주소와 같은 Oops 페이지라 들어오는 방법을 알리지 않는다. 페이지 스크립트는 `X-Saba-Client: 1`을 붙여 오류를 JSON으로 받는다.
 - 세션: 쿠키 `__Host-saba_admin`(HttpOnly·Secure·SameSite=Lax, Path=/. 디스코드에서 연 첫 이동의 리다이렉트에도 실려야 해서 Lax이고, 쓰기는 CSRF 토큰·Origin이 막는다), 30분 고정(늘리지 않음), 운영자당 하나(새로 들어오면 예전 세션이 끝난다). 메모리에 링크·세션 값의 해시만 두고 재시작하면 사라진다. 요청마다 운영자 목록을 다시 보고, 빠졌으면 403 `NOT_OPERATOR`와 함께 세션을 끝낸다.
 - 쓰기(POST·DELETE)는 세션의 `x-csrf-token`(상수 시간 비교)과 `Origin == <proto>://<Host>`가 모두 맞아야 한다. `/admin/console/*`에는 CORS 헤더를 내지 않는다. `x-admin-key`는 이 경로에서, 쿠키는 `/admin/api`에서 받지 않는다.
 - 감사: 로그인·로그아웃은 `action='admin'` `detail.op` `login`·`logout`, 차단·해제는 (g)와 같고, 공지는 발송이 끝날 때 `announce_broadcast`(보낸 운영자 ID). 페이지의 기록 탭은 이 두 action 의 최근 50줄이다.
