@@ -1,4 +1,4 @@
-import { auditWhat } from '../components/servers/AuditTab';
+import { auditWhat } from './audit';
 import { safeShowToast } from './helpers';
 
 /** 데몬 이벤트 스트림 (P4: GET /api/events → Tauri 셸 → window.api.onDaemonEvent) */

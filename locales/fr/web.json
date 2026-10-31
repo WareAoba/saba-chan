@@ -253,7 +253,15 @@
     "installed": "Module installé.",
     "busy": "Une autre tâche de ce module n'est pas terminée. Réessayez dans un instant.",
     "official_only": "Sur le web, vous ne pouvez installer que les versions publiées officiellement.",
-    "catalog_failed": "Impossible d'obtenir la liste publiée. Rouvrez-la dans un instant."
+    "catalog_failed": "Impossible d'obtenir la liste publiée. Rouvrez-la dans un instant.",
+    "updates_count": "{{count}} updates",
+    "update_all": "Update all",
+    "update": "Update",
+    "update_to": "v{{version}} available",
+    "updated": "Updated.",
+    "check_ok": "Check: uses only declared features.",
+    "check_failed": "Could not get the check result.",
+    "check_undeclared": "Check: uses features not declared by the module ({{perms}}). Make sure you trust this module."
   },
   "plugins": {
     "installed_title": "Plugins installés",
@@ -263,7 +271,11 @@
     "installed": "Plugin installé.",
     "enabled": "Plugin activé.",
     "disabled": "Plugin désactivé.",
-    "toggle": "Activer/désactiver"
+    "toggle": "Activer/désactiver",
+    "updated": "Plugin updated.",
+    "in_use": "A running server uses this plugin. Stop the server and try again.",
+    "needs_app_update": "App update needed",
+    "settings_pc_only": "Plugin settings may hold secrets, so change them in the saba-chan app on the PC."
   },
   "more": {
     "metrics": "État du PC",
@@ -272,7 +284,16 @@
     "memory": "Mémoire",
     "servers_usage": "Utilisation par serveur",
     "none_running": "Aucun serveur en marche.",
-    "pc_only_note": "Les mises à jour, chemins, la connexion Discord et les réglages de Saba-chan qui parle se font dans l'app Saba-chan sur le PC."
+    "pc_only_note": "Les mises à jour, chemins, la connexion Discord et les réglages de Saba-chan qui parle se font dans l'app Saba-chan sur le PC.",
+    "activity": "Activity",
+    "activity_desc": "Shows who did what to your servers, when and from where. PC paths are hidden.",
+    "screen": "This screen",
+    "language": "Language",
+    "theme": "Theme",
+    "theme_system": "Match device",
+    "theme_light": "Light",
+    "theme_dark": "Dark",
+    "screen_note": "Saved only in this browser. The app settings on the PC don't change."
   },
   "errors": {
     "generic": "Impossible de terminer la requête.",

@@ -1,5 +1,6 @@
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
+import { readPref, writePref } from './prefs';
 
 export const SUPPORTED_LANGUAGES = ['ko', 'en', 'ja', 'zh-CN', 'zh-TW', 'es', 'pt-BR', 'ru', 'de', 'fr'];
 
@@ -24,15 +25,24 @@ export function pickLanguage(tags = globalThis.navigator?.languages ?? []) {
     return 'en';
 }
 
-export async function initI18n(language = pickLanguage()) {
-    const resources = {};
-    for (const lang of new Set([language, 'en'])) {
-        resources[lang] = {};
-        for (const ns of ['web', 'common', 'gui']) {
-            const load = Object.entries(files).find(([k]) => k.endsWith(`/${lang}/${ns}.json`))?.[1];
-            resources[lang][ns] = load ? await load() : {};
-        }
+async function bundles(lang) {
+    const out = {};
+    for (const ns of ['web', 'common', 'gui']) {
+        const load = Object.entries(files).find(([k]) => k.endsWith(`/${lang}/${ns}.json`))?.[1];
+        out[ns] = load ? await load() : {};
     }
+    return out;
+}
+
+/** 이 브라우저에서 고른 언어, 없으면 브라우저 언어 */
+export const startLanguage = () => {
+    const saved = readPref('language');
+    return SUPPORTED_LANGUAGES.includes(saved) ? saved : pickLanguage();
+};
+
+export async function initI18n(language = startLanguage()) {
+    const resources = {};
+    for (const lang of new Set([language, 'en'])) resources[lang] = await bundles(lang);
     await i18n.use(initReactI18next).init({
         lng: language,
         fallbackLng: 'en',
@@ -46,6 +56,20 @@ export async function initI18n(language = pickLanguage()) {
     document.documentElement.lang = language;
     document.title = i18n.t('app_name');
     return i18n;
+}
+
+/** 이 화면의 언어를 바꾸고 이 브라우저에 기억한다 */
+export async function setLanguage(language) {
+    if (!SUPPORTED_LANGUAGES.includes(language)) return;
+    if (!i18n.hasResourceBundle(language, 'web')) {
+        for (const [ns, data] of Object.entries(await bundles(language))) {
+            i18n.addResourceBundle(language, ns, data, true, true);
+        }
+    }
+    await i18n.changeLanguage(language);
+    writePref('language', language);
+    document.documentElement.lang = language;
+    document.title = i18n.t('app_name');
 }
 
 export default i18n;

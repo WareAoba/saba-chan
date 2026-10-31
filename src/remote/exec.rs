@@ -59,6 +59,9 @@ pub async fn run(server: &IPCServer, req: Request, user: Option<String>) -> Resp
     if gate::shows_instances(&req.method, pattern) {
         hide_secrets(server, &mut body).await;
     }
+    if gate::hides_paths(&req.method, pattern) {
+        hide_paths(&mut body);
+    }
     Response {
         status: res.status.as_u16(),
         body,
@@ -247,6 +250,28 @@ async fn hide_secrets(server: &IPCServer, body: &mut Value) {
     }
 }
 
+/// 응답의 모든 문자열에서 PC 경로(드라이브 `C:\\`·`C:/`, 공유 폴더 `\\\\host\\`, 두 조각 이상의 `/a/b`)를 `…`로 바꾼다.
+/// JSON을 담은 문자열(감사 기록의 `args`)의 이스케이프된 `\\`도 잡는다. 드라이브·공유 경로는 따옴표나 줄 끝까지 가린다(띄어쓰기가 든 경로)
+fn hide_paths(body: &mut Value) {
+    // 드라이브·공유 폴더 경로: 따옴표나 줄 끝까지
+    static WINDOWS: std::sync::LazyLock<regex::Regex> =
+        std::sync::LazyLock::new(|| regex::Regex::new(r#"(?:\b[A-Za-z]:[\\/]|\\{2,}[^\s"'\\]+\\)[^"'\n]*"#).unwrap());
+    // 두 조각 이상의 절대 경로: 앞이 글자 경계일 때만 (`https://a/b`의 `//`는 조각이 비어 맞지 않는다)
+    static UNIX: std::sync::LazyLock<regex::Regex> =
+        std::sync::LazyLock::new(|| regex::Regex::new(r#"(^|[\s"'=(:,\[])(?:/[^\s/"'\\]+){2,}"#).unwrap());
+    match body {
+        Value::String(s) => {
+            if WINDOWS.is_match(s) || UNIX.is_match(s) {
+                let hidden = WINDOWS.replace_all(s, "…");
+                *s = UNIX.replace_all(&hidden, "${1}…").into_owned();
+            }
+        }
+        Value::Array(items) => items.iter_mut().for_each(hide_paths),
+        Value::Object(map) => map.values_mut().for_each(hide_paths),
+        _ => {}
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -271,6 +296,26 @@ mod tests {
             path: path.into(),
             body,
         }
+    }
+
+    /// 웹에 주는 활동 기록에서 PC 경로를 가린다. 경로가 아닌 게임 명령은 그대로 둔다
+    #[test]
+    fn activity_log_hides_pc_paths() {
+        let args = json!({ "working_dir": "C:\\Users\\me\\srv", "dir": "/home/me/srv", "share": "\\\\nas\\games\\mc" }).to_string();
+        let mut body = json!({ "entries": [
+            { "action": "instance.settings.set", "args": args, "command": "say hi" },
+            { "action": "command", "command": "/give @p diamond 1", "instance": "srv" },
+            { "action": "command", "command": "save C:/Program Files/x now" },
+        ] });
+        hide_paths(&mut body);
+        let text = body.to_string();
+        for leaked in ["Users", "me\\\\srv", "home/me", "nas", "games", "Program Files"] {
+            assert!(!text.contains(leaked), "{leaked} leaked: {text}");
+        }
+        assert_eq!(body["entries"][1]["command"], "/give @p diamond 1");
+        assert_eq!(body["entries"][0]["command"], "say hi");
+        assert!(body["entries"][0]["args"].as_str().unwrap().contains("working_dir"));
+        assert!(body["entries"][2]["command"].as_str().unwrap().starts_with("save "));
     }
 
     /// 서버를 만들 때 켜진 익스텐션이 물은 칸의 답: 선언한 종류에 맞는 값만, 경로·파일·비밀번호 칸은 선언한 기본값일 때만

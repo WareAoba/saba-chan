@@ -253,7 +253,15 @@
     "installed": "모듈을 설치했어요.",
     "busy": "같은 모듈의 다른 작업이 끝나지 않았어요. 잠시 뒤 다시 눌러 주세요.",
     "official_only": "웹에서는 공식 경로로 공개된 배포판만 설치할 수 있어요.",
-    "catalog_failed": "공개된 목록을 받지 못했어요. 잠시 뒤 다시 열어 주세요."
+    "catalog_failed": "공개된 목록을 받지 못했어요. 잠시 뒤 다시 열어 주세요.",
+    "updates_count": "업데이트 {{count}}개",
+    "update_all": "모두 업데이트",
+    "update": "업데이트",
+    "update_to": "v{{version}} 있음",
+    "updated": "업데이트했어요.",
+    "check_ok": "검사 결과: 선언한 기능만 써요.",
+    "check_failed": "검사 결과를 받지 못했어요.",
+    "check_undeclared": "검사 결과: 모듈 설명에 없는 기능을 써요 ({{perms}}). 믿을 수 있는 모듈인지 확인해 주세요."
   },
   "plugins": {
     "installed_title": "설치된 플러그인",
@@ -263,7 +271,11 @@
     "installed": "플러그인을 설치했어요.",
     "enabled": "플러그인을 켰어요.",
     "disabled": "플러그인을 껐어요.",
-    "toggle": "켜기/끄기"
+    "toggle": "켜기/끄기",
+    "updated": "플러그인을 업데이트했어요.",
+    "in_use": "켜져 있는 서버가 쓰는 플러그인이에요. 서버를 끈 뒤 다시 해 주세요.",
+    "needs_app_update": "앱 업데이트 필요",
+    "settings_pc_only": "플러그인 설정은 비밀값이 들 수 있어 PC의 사바쨩 앱에서 바꿔요."
   },
   "more": {
     "metrics": "PC 상태",
@@ -272,7 +284,16 @@
     "memory": "메모리",
     "servers_usage": "서버별 사용량",
     "none_running": "실행 중인 서버가 없어요.",
-    "pc_only_note": "업데이트, 경로, 디스코드 연결, 챗봇 설정은 PC의 사바쨩 앱에서 해 주세요."
+    "pc_only_note": "업데이트, 경로, 디스코드 연결, 챗봇 설정은 PC의 사바쨩 앱에서 해 주세요.",
+    "activity": "활동 기록",
+    "activity_desc": "누가 언제 어디서 서버를 조작했는지 보여 줘요. PC 경로는 가려서 보여 줘요.",
+    "screen": "이 화면",
+    "language": "언어",
+    "theme": "테마",
+    "theme_system": "기기 따라",
+    "theme_light": "밝게",
+    "theme_dark": "어둡게",
+    "screen_note": "이 브라우저에만 기억해요. PC의 앱 설정은 바뀌지 않아요."
   },
   "errors": {
     "generic": "요청을 처리하지 못했어요.",

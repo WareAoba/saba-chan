@@ -1768,3 +1768,86 @@ textarea {
     justify-content: flex-start;
     margin-bottom: 8px;
 }
+
+/* ── 모듈·PC 탭 ── */
+.pill-accent {
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-weight: 700;
+}
+.pill-ok {
+    background: var(--ok-soft);
+    color: var(--ok);
+}
+.pill-stop {
+    background: var(--stop-soft);
+    color: var(--stop);
+}
+.hint-warn {
+    color: var(--warn);
+}
+/* 업데이트 N개: 목록 위에 강조 카드 하나 */
+.update-card {
+    border-color: var(--accent-soft);
+    background: var(--accent-soft);
+}
+/* 눌러 펼치는 줄: 윗줄(아이콘·이름·버튼)과 아래 펼친 내용 */
+.row-stack {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+}
+.row-line {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.row-toggle {
+    display: grid;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+.row-detail {
+    padding: 8px 0 0 48px;
+    border-top: 1px solid var(--line);
+}
+.activity-head {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    justify-content: space-between;
+}
+.activity-row {
+    align-items: flex-start;
+}
+.activity-time {
+    flex: none;
+    min-width: 88px;
+    color: var(--text-3);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    padding-top: 2px;
+}
+.activity-row .pill {
+    flex: none;
+}
+/* 서버별 사용량 막대 (PC 메모리 중 그 서버 몫) */
+.meter-mini {
+    flex: none;
+    width: 80px;
+}
+@media (max-width: 420px) {
+    .activity-row {
+        flex-wrap: wrap;
+    }
+    .activity-time {
+        min-width: 0;
+        width: 100%;
+    }
+}

@@ -1,9 +1,9 @@
 import clsx from 'clsx';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { auditWhat } from '../../utils/audit';
 import { auditEntryOf, eventsAvailable, subscribeDaemonEvents } from '../../utils/daemonEvents';
 import { Icon } from '../Icon';
-import { auditWhat } from '../servers/AuditTab';
 
 /** 맨 아래 줄을 띄울 IPC가 있는지 (감사 로그) */
 export const activityAvailable = () => !!window.api?.auditList;

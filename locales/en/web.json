@@ -253,7 +253,15 @@
     "installed": "Module installed.",
     "busy": "Another task for this module isn't finished. Try again in a moment.",
     "official_only": "On the web, you can install only officially published releases.",
-    "catalog_failed": "Couldn't get the published list. Open this again in a moment."
+    "catalog_failed": "Couldn't get the published list. Open this again in a moment.",
+    "updates_count": "{{count}} updates",
+    "update_all": "Update all",
+    "update": "Update",
+    "update_to": "v{{version}} available",
+    "updated": "Updated.",
+    "check_ok": "Check: uses only declared features.",
+    "check_failed": "Could not get the check result.",
+    "check_undeclared": "Check: uses features not declared by the module ({{perms}}). Make sure you trust this module."
   },
   "plugins": {
     "installed_title": "Installed plugins",
@@ -263,7 +271,11 @@
     "installed": "Plugin installed.",
     "enabled": "Plugin turned on.",
     "disabled": "Plugin turned off.",
-    "toggle": "On/off"
+    "toggle": "On/off",
+    "updated": "Plugin updated.",
+    "in_use": "A running server uses this plugin. Stop the server and try again.",
+    "needs_app_update": "App update needed",
+    "settings_pc_only": "Plugin settings may hold secrets, so change them in the saba-chan app on the PC."
   },
   "more": {
     "metrics": "PC status",
@@ -272,7 +284,16 @@
     "memory": "Memory",
     "servers_usage": "Usage by server",
     "none_running": "No servers are running.",
-    "pc_only_note": "Updates, paths, Discord connection and chatbot settings are done in the Saba-chan app on the PC."
+    "pc_only_note": "Updates, paths, Discord connection and chatbot settings are done in the Saba-chan app on the PC.",
+    "activity": "Activity",
+    "activity_desc": "Shows who did what to your servers, when and from where. PC paths are hidden.",
+    "screen": "This screen",
+    "language": "Language",
+    "theme": "Theme",
+    "theme_system": "Match device",
+    "theme_light": "Light",
+    "theme_dark": "Dark",
+    "screen_note": "Saved only in this browser. The app settings on the PC don't change."
   },
   "errors": {
     "generic": "Couldn't complete the request.",

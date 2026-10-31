@@ -1,7 +1,7 @@
 //! 원격 문지기: 사바쨩 웹(릴레이 경유)이 부를 수 있는 데몬 API
 //!
 //! 데몬 라우트마다 허용·거부를 이 표 한 곳에 적는다. 표에 없는 요청은 거부한다.
-//! 짝 맺은 PC(원격 포트)도 이 표의 PC 전용 거부(`deny`)를 따른다. `not_on_web`은 웹에만 없는 것이다 (`pc_only`).
+//! 짝 맺은 PC(원격 포트)도 이 표의 PC 전용 거부(`deny`, 경로를 가려 웹에만 주는 `without_paths` 포함)를 따른다. `not_on_web`은 웹에만 없는 것이다 (`pc_only`).
 //! 범위는 서버·인스턴스 관리와 멤버 권한이고, 공식 목록의 모듈·플러그인 설치와 데몬 콘솔 읽기를 더한다.
 //! 토큰·비밀값·데몬 설정·경로·업데이트·샌드박스·릴레이 연결·챗봇은 PC에서만 한다.
 //! 새 라우트를 만들면 여기 분류를 적는다 (`every_route_is_classified` 테스트가 빠진 것을 잡는다).
@@ -15,6 +15,8 @@ pub enum Access {
     Deny,
     /// 웹 원격에만 없는 것: 웹이 다른 길로 하거나 그리지 않는다. 짝 맺은 PC의 GUI는 쓴다
     NotOnWeb,
+    /// 웹 원격은 응답에서 PC 경로를 가려 받는다 (`exec::hide_paths`). 가리지 않는 짝 맺은 PC는 부르지 못한다
+    AllowWithoutPaths,
 }
 
 pub struct Route {
@@ -39,6 +41,14 @@ const fn deny(method: &'static str, pattern: &'static str) -> Route {
     }
 }
 
+const fn without_paths(method: &'static str, pattern: &'static str) -> Route {
+    Route {
+        method,
+        pattern,
+        access: Access::AllowWithoutPaths,
+    }
+}
+
 const fn not_on_web(method: &'static str, pattern: &'static str) -> Route {
     Route {
         method,
@@ -54,7 +64,8 @@ pub static ROUTES: &[Route] = &[
     deny("GET", "/api/diagnostics"),
     // 다음 할 일 단계만 담는다
     not_on_web("GET", "/api/onboarding"),
-    deny("GET", "/api/audit"),
+    without_paths("GET", "/api/audit"),
+    // PC의 파일에 쓴다
     deny("POST", "/api/audit/export"),
     // 이벤트는 원격 연결이 따로 밀어 준다 (SSE는 요청·응답 한 번으로 끝나지 않는다)
     not_on_web("GET", "/api/events"),
@@ -293,7 +304,7 @@ pub enum Refusal {
 pub fn decide(method: &str, path: &str) -> Result<&'static str, Refusal> {
     let pattern = route_of(path)?;
     match ROUTES.iter().find(|r| r.pattern == pattern && r.method == method) {
-        Some(r) if r.access == Access::Allow => Ok(r.pattern),
+        Some(r) if matches!(r.access, Access::Allow | Access::AllowWithoutPaths) => Ok(r.pattern),
         _ => Err(Refusal::NotAllowed),
     }
 }
@@ -302,7 +313,16 @@ pub fn decide(method: &str, path: &str) -> Result<&'static str, Refusal> {
 /// 표에 없는 메서드는 라우터가 405로 답한다. 라우터는 HEAD를 GET 처리기로 답하므로 HEAD는 GET으로 본다
 pub fn pc_only(method: &str, pattern: &str) -> bool {
     let method = if method == "HEAD" { "GET" } else { method };
-    ROUTES.iter().any(|r| r.pattern == pattern && r.method == method && r.access == Access::Deny)
+    ROUTES
+        .iter()
+        .any(|r| r.pattern == pattern && r.method == method && matches!(r.access, Access::Deny | Access::AllowWithoutPaths))
+}
+
+/// 응답의 PC 경로를 가려 웹에 주는 라우트 (`Access::AllowWithoutPaths`, `exec::hide_paths`)
+pub fn hides_paths(method: &str, pattern: &str) -> bool {
+    ROUTES
+        .iter()
+        .any(|r| r.pattern == pattern && r.method == method && r.access == Access::AllowWithoutPaths)
 }
 
 /// `path`(쿼리 포함 가능)에 맞는 라우트 패턴 (허용·거부와 상관없이)
@@ -555,6 +575,16 @@ mod tests {
         assert!(pc_only("PUT", "/api/config/node-token"));
         assert!(!pc_only("GET", "/api/events"), "the web only lacks it");
         assert!(!pc_only("GET", "/api/servers"));
+    }
+
+    #[test]
+    fn shows_the_activity_log_without_paths() {
+        assert_eq!(decide("GET", "/api/audit?limit=100"), Ok("/api/audit"));
+        assert!(hides_paths("GET", "/api/audit"));
+        assert!(!hides_paths("GET", "/api/servers"));
+        // 짝 맺은 PC는 경로를 가리지 않으므로 전처럼 부르지 못한다. 내보내기는 PC 파일에 쓴다
+        assert!(pc_only("GET", "/api/audit"));
+        assert_eq!(decide("POST", "/api/audit/export"), Err(Refusal::NotAllowed));
     }
 
     #[test]
