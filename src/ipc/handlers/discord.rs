@@ -3,9 +3,9 @@
 //! 원본은 데몬 config.json `relay.nodeSettings[<guild>].discord`다. 바꿀 때마다, 그리고 릴레이 에이전트가 연결될 때
 //! 릴레이 `PATCH /api/nodes/:guild/settings`로 맞춘다. 봇 설정 저장(`PUT /api/config/bot`)은 이 블록을 바꾸지 않는다.
 //!
-//! - `GET /api/discord/:guild/settings` → `{guildId, locale, sleeping, music, confirmLevel, commandRisks, prefixes, translateCommands,
+//! - `GET /api/discord/:guild/settings` → `{guildId, locale, sleeping, music, tts, confirmLevel, commandRisks, prefixes, translateCommands,
 //!   slashPrefix, slashRootName, privateQueries}` (슬래시 모양 세 값은 2026-10-30)
-//! - `PATCH /api/discord/:guild/settings` 바꿀 키만 (`music` 안도 부분) → `{success, settings, sync}`.
+//! - `PATCH /api/discord/:guild/settings` 바꿀 키만 (`music`·`tts` 안도 부분) → `{success, settings, sync}`.
 //!   틀린 값은 400 `invalid_input {field, reason}`, 페어링이 없으면 409 `not_paired`.
 //!   릴레이가 400으로 거절하면 저장하지 않는다. 닿지 않으면 저장하고 `sync.ok:false` (다음 연결 때 맞춘다)
 //!
@@ -41,6 +41,8 @@ pub struct GuildSettings {
     pub locale: String,
     pub sleeping: bool,
     pub music: Music,
+    /// 읽어주는 사바쨩 소리 (릴레이 `ttsSettings`)
+    pub tts: Tts,
     /// 봇에게 직접 요청한 명령을 버튼으로 되묻는 단계 (`CONFIRM_LEVELS`). 데몬만 보고 릴레이에는 보내지 않는다
     pub confirm_level: String,
     /// 이 길드의 디스코드 되묻기에서 명령의 위험 단계를 바꾼다 (`"<서버 id>/<액션 id>"` → `RISKS`, 서버 없는 액션은 액션 id만).
@@ -81,12 +83,36 @@ pub struct Music {
     pub normalize: bool,
 }
 
+/// 읽어주는 사바쨩 (2026-10-31 사용자 지정): 바꿀 수 있는 값은 볼륨·속도·피치뿐이다.
+/// 한 문장 30자·1분 10문장 제한은 릴레이의 고정값이다. 범위는 릴레이 `nodeSettingsSchema`와 같다
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Tts {
+    /// 읽는 소리 크기 % (음악 볼륨과 따로)
+    pub volume: i64,
+    /// 말 빠르기 % (100 = 1.0배)
+    pub speed: i64,
+    /// 반음
+    pub pitch: i64,
+}
+
+impl Default for Tts {
+    fn default() -> Self {
+        Self { volume: 100, speed: 100, pitch: 0 }
+    }
+}
+
+pub const TTS_VOLUME: (i64, i64) = (10, 150);
+pub const TTS_SPEED: (i64, i64) = (80, 150);
+pub const TTS_PITCH: (i64, i64) = (-6, 6);
+
 impl Default for GuildSettings {
     fn default() -> Self {
         Self {
             locale: AUTO_LOCALE.into(),
             sleeping: false,
             music: Music::default(),
+            tts: Tts::default(),
             confirm_level: "danger".into(),
             command_risks: BTreeMap::new(),
             prefixes: Vec::new(),
@@ -144,6 +170,7 @@ impl GuildSettings {
                 "refreshInterval": self.music.refresh_interval,
                 "normalize": self.music.normalize,
             },
+            "ttsSettings": { "volume": self.tts.volume, "speed": self.tts.speed, "pitch": self.tts.pitch },
             "prefixes": self.prefixes,
             "translateCommands": self.translate_commands,
             "slashPrefix": self.slash_prefix,
@@ -178,6 +205,9 @@ impl GuildSettings {
             }
         }
         patch.insert("music".into(), Value::Object(music));
+        if let Some(t) = body.get("ttsSettings").filter(|t| t.is_object()) {
+            patch.insert("tts".into(), t.clone());
+        }
         for key in ["prefixes", "translateCommands", "slashPrefix", "slashRootName", "privateQueries"] {
             if let Some(v) = body.get(key).filter(|v| !v.is_null()) {
                 patch.insert(key.into(), v.clone());
@@ -186,9 +216,9 @@ impl GuildSettings {
         // 하나씩 넣어 틀린 값 하나 때문에 나머지를 잃지 않는다
         for (k, v) in patch {
             match (k.as_str(), v) {
-                ("music", Value::Object(m)) => {
+                (section @ ("music" | "tts"), Value::Object(m)) => {
                     for (mk, mv) in m {
-                        let one = json!({ "music": { mk: mv } });
+                        let one = json!({ section: { mk: mv } });
                         let _ = out.apply(one.as_object().expect("object"));
                     }
                 }
@@ -279,6 +309,23 @@ impl GuildSettings {
                             "normalize" => next.music.normalize = flag()?,
                             "queueLines" => next.music.queue_lines = ranged(QUEUE_LINES)?,
                             "refreshInterval" => next.music.refresh_interval = ranged(REFRESH_INTERVAL)?,
+                            _ => return Err((field, "unknown field")),
+                        }
+                    }
+                }
+                "tts" => {
+                    let m = v.as_object().ok_or(("tts".into(), "must be an object"))?;
+                    for (tk, tv) in m {
+                        let field = format!("tts.{}", tk);
+                        let ranged = |(lo, hi): (i64, i64)| match tv.as_i64() {
+                            Some(n) if (lo..=hi).contains(&n) => Ok(n),
+                            Some(_) => Err((field.clone(), "out of range")),
+                            None => Err((field.clone(), "must be an integer")),
+                        };
+                        match tk.as_str() {
+                            "volume" => next.tts.volume = ranged(TTS_VOLUME)?,
+                            "speed" => next.tts.speed = ranged(TTS_SPEED)?,
+                            "pitch" => next.tts.pitch = ranged(TTS_PITCH)?,
                             _ => return Err((field, "unknown field")),
                         }
                     }
@@ -668,8 +715,37 @@ mod tests {
         let old_relay = json!({ "musicEnabled": true, "musicUIEnabled": true, "musicSettings": { "queueLines": 9, "refreshInterval": 4000, "normalize": true } });
         assert_eq!(
             Value::Object(changed(&old_relay, &s.relay_body())),
-            json!({ "locale": "auto", "sleeping": false, "prefixes": [], "translateCommands": true, "slashPrefix": true, "slashRootName": "name", "privateQueries": false })
+            json!({ "locale": "auto", "sleeping": false, "ttsSettings": { "volume": 100, "speed": 100, "pitch": 0 }, "prefixes": [], "translateCommands": true, "slashPrefix": true, "slashRootName": "name", "privateQueries": false })
         );
+    }
+
+    /// 읽어주는 사바쨩 (2026-10-31 사용자 지정): 서버마다 볼륨(10~150%)·속도(80~150%)·피치(−6~+6반음)만 바꾼다. 릴레이에도 보낸다
+    #[test]
+    fn tts_volume_speed_pitch_are_per_server_and_reach_the_relay() {
+        let mut s = GuildSettings::default();
+        assert_eq!((s.tts.volume, s.tts.speed, s.tts.pitch), (100, 100, 0));
+        s.apply(&patch(json!({ "tts": { "volume": 80, "pitch": -3 } }))).unwrap();
+        assert_eq!((s.tts.volume, s.tts.speed, s.tts.pitch), (80, 100, -3));
+        assert_eq!(s.relay_body()["ttsSettings"], json!({ "volume": 80, "speed": 100, "pitch": -3 }));
+        for (bad, field) in [
+            (json!({ "tts": { "volume": 9 } }), "tts.volume"),
+            (json!({ "tts": { "volume": 151 } }), "tts.volume"),
+            (json!({ "tts": { "speed": 79 } }), "tts.speed"),
+            (json!({ "tts": { "speed": 1.2 } }), "tts.speed"),
+            (json!({ "tts": { "pitch": 7 } }), "tts.pitch"),
+            (json!({ "tts": { "voice": "a" } }), "tts.voice"),
+            (json!({ "tts": 1 }), "tts"),
+        ] {
+            let before = s.clone();
+            assert_eq!(s.apply(&patch(bad.clone())).unwrap_err().0, field, "{bad}");
+            assert_eq!(s, before);
+        }
+        // 처음 한 번 릴레이 값을 가져올 때도 같다 (범위 밖은 버린다)
+        let r = GuildSettings::from_relay(&json!({ "ttsSettings": { "volume": 120, "speed": 999, "pitch": 2 } }));
+        assert_eq!((r.tts.volume, r.tts.speed, r.tts.pitch), (120, 100, 2));
+        // 저장된 블록에 tts 가 없으면(옛 설정) 기본값
+        let old = GuildSettings::from_node(Some(&json!({ "discord": { "locale": "ko" } }))).unwrap();
+        assert_eq!(old.tts, Tts::default());
     }
 
     #[test]

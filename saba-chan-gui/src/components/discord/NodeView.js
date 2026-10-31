@@ -239,6 +239,11 @@ export function NodeView({
                                   label: t('discord.bot_settings.music_title'),
                                   icon: <Icon name="musicNote" size="sm" />,
                               },
+                              {
+                                  id: 'tts',
+                                  label: t('discord.bot_settings.tts_title'),
+                                  icon: <Icon name="volume" size="sm" />,
+                              },
                               { id: 'bot', label: t('discord.tab_bot'), icon: <Icon name="settings" size="sm" /> },
                           ]
                         : []),
@@ -281,6 +286,7 @@ export function NodeView({
             {tab === 'channels' && <ChannelsTab key={node.guildId} node={node} />}
             {tab === 'chatbot' && <ChatbotGuildTab key={node.guildId} node={node} />}
             {tab === 'music' && <BotSettingsTab key={node.guildId} node={node} section="music" />}
+            {tab === 'tts' && <BotSettingsTab key={node.guildId} node={node} section="tts" />}
             {tab === 'bot' && <BotSettingsTab key={node.guildId} node={node} sampleModuleWord={sampleModuleWord} />}
         </div>
     );

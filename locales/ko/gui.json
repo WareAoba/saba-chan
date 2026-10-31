@@ -999,7 +999,16 @@
       "confirm_direct": "봇에게 직접 요청",
       "confirm_direct_hint": "접두사 명령과 슬래시 명령이에요.",
       "confirm_chatbot": "말하는 사바쨩",
-      "confirm_chatbot_hint": "말하는 사바쨩이 고른 관리 작업과 여러 사람이 섞인 부탁은 이 설정과 상관없이 늘 물어요."
+      "confirm_chatbot_hint": "말하는 사바쨩이 고른 관리 작업과 여러 사람이 섞인 부탁은 이 설정과 상관없이 늘 물어요.",
+      "tts_title": "읽어주는 사바쨩",
+      "tts_volume": "볼륨",
+      "tts_volume_hint": "읽는 소리의 크기예요. 음악 볼륨과는 따로예요.",
+      "tts_speed": "속도",
+      "tts_speed_unit": "배",
+      "tts_pitch": "피치",
+      "tts_pitch_unit": "반음",
+      "tts_limits": "고정 제한: 글 하나 {{chars}}자까지, 한 사람당 1분에 모두 {{perMinute}}자까지",
+      "range_decimal": "{{min}}에서 {{max}} 사이로 넣어 주세요."
     },
     "channels_notify": "알림 채널",
     "channels_notify_hint": "크래시, 자동 재시작, 업데이트, 백업 완료, 예약 재시작 예고를 이 채널에 올려요.",

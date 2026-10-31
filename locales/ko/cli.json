@@ -165,7 +165,12 @@
     "confirm_all": "모든 명령",
     "confirm_caution": "주의 이상",
     "confirm_danger": "위험한 명령만",
-    "confirm_none": "묻지 않음"
+    "confirm_none": "묻지 않음",
+    "tts_volume": "읽어주는 사바쨩 볼륨",
+    "tts_speed": "읽어주는 사바쨩 속도",
+    "tts_speed_value": "{{value}}배",
+    "tts_pitch": "읽어주는 사바쨩 피치",
+    "tts_pitch_value": "{{value}}반음"
   },
   "col": {
     "players": "접속자",
@@ -927,7 +932,8 @@
       "bot.notice": "사바쨩이 서버를 켜면 디스코드 서버의 알림 채널에 알리기 (기본 꺼짐). 서버 없이: 보기, 서버와 `--on`·`--off`: 바꾸기",
       "bot.confirm": "봇이 실행 전에 디스코드 버튼으로 되물을 단계 (all·caution·danger·none). 옵션이 없으면 보기",
       "bot.translate": "디스코드 서버 하나의 슬래시 명령에 번역한 명령 이름을 보일지. 옵션이 없으면 보기",
-      "bot.slash": "디스코드 서버 하나의 슬래시 명령 모양. 옵션이 없으면 보기"
+      "bot.slash": "디스코드 서버 하나의 슬래시 명령 모양. 옵션이 없으면 보기",
+      "bot.tts": "디스코드 서버의 읽어주는 사바쨩 소리(볼륨·속도·피치). 옵션 없으면 보기"
     },
     "arg": {
       "module.maker.game": "첫 부탁에 넣을 게임 이름",
@@ -1113,7 +1119,10 @@
       "bot.slash.no_prefix": "사바쨩 명령을 바로 쓰기 (/상태). 서버 관리 명령은 서버 관리 권한이 있는 사람에게만 보여요",
       "bot.slash.root_name": "서버 명령 이름: name(인스턴스 이름) 또는 word(그 서버의 첫 호출어)",
       "bot.slash.private": "조회 결과를 부른 사람에게만 보이기",
-      "bot.slash.public": "조회 결과를 채널의 모두에게 보이기"
+      "bot.slash.public": "조회 결과를 채널의 모두에게 보이기",
+      "bot.tts.volume": "볼륨 % (10~150)",
+      "bot.tts.speed": "말 빠르기 배 (0.8~1.5, 예: 1.2)",
+      "bot.tts.pitch": "피치 반음 (-6~6)"
     },
     "after": "이름은 일부만 적어도 돼요 (예: start pal). 인자 없이 터미널에서 실행하면 전체 화면 메뉴가 열려요(SABA_NO_TUI=1이면 대화형 셸).\n스크립트에서는 --json과 --yes를 쓰세요. 종료 코드: 0 성공 · 1 실패 · 2 사용법 · 3 데몬 연결 안 됨 · 4 없음 · 130 취소"
   },

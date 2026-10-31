@@ -999,7 +999,16 @@
       "confirm_direct": "直接向机器人请求",
       "confirm_direct_hint": "前缀命令和斜杠命令。",
       "confirm_chatbot": "会说话的 Saba-chan",
-      "confirm_chatbot_hint": "会说话的 Saba-chan 选择的管理操作以及多人混合的请求，无论此设置如何都会询问。"
+      "confirm_chatbot_hint": "会说话的 Saba-chan 选择的管理操作以及多人混合的请求，无论此设置如何都会询问。",
+      "tts_title": "Reading Saba-chan",
+      "tts_volume": "Volume",
+      "tts_volume_hint": "How loud reading is. Separate from the music volume.",
+      "tts_speed": "Speed",
+      "tts_speed_unit": "x",
+      "tts_pitch": "Pitch",
+      "tts_pitch_unit": "semitones",
+      "tts_limits": "Fixed limits: {{chars}} characters per message, {{perMinute}} characters per minute per person",
+      "range_decimal": "Enter a number from {{min}} to {{max}}."
     },
     "channels_notify": "通知频道",
     "channels_notify_hint": "崩溃、自动重启、更新、备份完成和计划重启预告会发到这个频道。",

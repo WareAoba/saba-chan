@@ -999,7 +999,16 @@
       "confirm_direct": "Pedidos ao bot",
       "confirm_direct_hint": "Comandos com prefixo e comandos de barra.",
       "confirm_chatbot": "Saba-chan falante",
-      "confirm_chatbot_hint": "Tarefas de administração escolhidas pela Saba-chan falante e pedidos que misturam várias pessoas sempre perguntam, seja qual for este ajuste."
+      "confirm_chatbot_hint": "Tarefas de administração escolhidas pela Saba-chan falante e pedidos que misturam várias pessoas sempre perguntam, seja qual for este ajuste.",
+      "tts_title": "Reading Saba-chan",
+      "tts_volume": "Volume",
+      "tts_volume_hint": "How loud reading is. Separate from the music volume.",
+      "tts_speed": "Speed",
+      "tts_speed_unit": "x",
+      "tts_pitch": "Pitch",
+      "tts_pitch_unit": "semitones",
+      "tts_limits": "Fixed limits: {{chars}} characters per message, {{perMinute}} characters per minute per person",
+      "range_decimal": "Enter a number from {{min}} to {{max}}."
     },
     "channels_notify": "Canal de alertas",
     "channels_notify_hint": "Falhas, reinícios automáticos, atualizações, backups concluídos e avisos de reinício agendado são publicados aqui.",
