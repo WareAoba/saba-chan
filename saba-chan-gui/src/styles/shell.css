@@ -3275,6 +3275,157 @@ button.appbar-preflight {
     opacity: 0.55;
 }
 
+/* 디스코드 서버 › 서버 관리 (2026-10-31): 요약 줄, 채널 목록 | 고른 채널 패널, 멤버 음소거 */
+.dc-srv-icon.has-img {
+    background: transparent;
+    border: none;
+}
+.dc-srv-icon img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+.dc-mod-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--sp-2);
+    flex-wrap: wrap;
+}
+.dc-mod-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-2) var(--sp-4);
+    padding: var(--sp-3) var(--sp-4);
+    border-radius: var(--r-lg);
+    border: 1px solid var(--line);
+    font-size: var(--fs-sm);
+}
+.dc-mod-split {
+    display: grid;
+    grid-template-columns: minmax(200px, 280px) minmax(0, 1fr);
+    gap: var(--sp-4);
+    align-items: start;
+}
+@media (max-width: 720px) {
+    .dc-mod-split {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+.dc-mod-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1);
+}
+.dc-mod-row {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--sp-1);
+    padding: var(--sp-2) var(--sp-3);
+    border-radius: var(--r-md);
+    border: 1px solid transparent;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+.dc-mod-row:hover {
+    background: var(--bg-3);
+}
+.dc-mod-row.active {
+    border-color: color-mix(in oklch, var(--accent) 60%, transparent);
+    background: var(--accent-soft);
+}
+.dc-mod-row-name {
+    font-weight: 600;
+}
+.dc-mod-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-1);
+    font-size: var(--fs-xs);
+}
+.dc-mod-badge {
+    --chip-color: var(--text-2);
+}
+.dc-mod-badge.tone-assign {
+    --chip-color: var(--accent);
+}
+.dc-mod-badge.tone-warn {
+    --chip-color: var(--danger);
+}
+.dc-mod-panel,
+.dc-mod-members {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-3);
+    min-width: 0;
+}
+.dc-mod-panel-title {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    margin: 0;
+}
+.dc-mod-section .dc-card-head {
+    justify-content: space-between;
+    gap: var(--sp-3);
+}
+.dc-mod .dc-field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1);
+    min-width: 0;
+}
+.dc-mod .dc-field .dc-field-label {
+    flex: none;
+    flex-direction: row;
+    align-items: center;
+    gap: var(--sp-1);
+    font-size: var(--fs-sm);
+    color: var(--text-2);
+}
+.dc-mod-fields {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: var(--sp-3);
+}
+.dc-mod-chips {
+    border: 0;
+    margin: 0;
+    padding: 0;
+    min-width: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-2);
+}
+.dc-chip-toggle {
+    padding: var(--sp-1) var(--sp-3);
+    border-radius: var(--r-pill);
+    border: 1px solid var(--line);
+    background: transparent;
+    color: inherit;
+    font-size: var(--fs-sm);
+    cursor: pointer;
+}
+.dc-chip-toggle.active {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-weight: 600;
+}
+.dc-chip-toggle:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+.dc-mod-confirm {
+    flex-wrap: wrap;
+}
+.dc-mod-ok {
+    color: var(--text-2);
+}
+
 /* 감사 로그 (A10): 서버별 기록 탭과 상단 탭의 작업 기록 페이지 */
 .audit-time {
     flex: none;
@@ -4074,3 +4225,10 @@ button.appbar-preflight {
     user-select: text;
 }
 /* ── 명령 탭 끝 ── */
+.dc-mod-stale ul {
+    margin: var(--sp-2) 0 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: var(--sp-1);
+}

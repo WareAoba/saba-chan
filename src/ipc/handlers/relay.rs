@@ -368,6 +368,99 @@ pub async fn get_node_channels(
     signed_get(&base, &format!("/api/nodes/{}/channels", encode_path_segment(&guild_id)), invalid_response).await
 }
 
+// ── /api/relay/node/:guild_id/moderation… ──
+// 앱의 서버 관리 화면: 채널 상태(주제·슬로우·잠금·자동 청소)와 음소거 목록, 채널 정보 수정, 청소, 음소거.
+// 디스코드 서버 상태라 원본은 릴레이다. 본문과 응답은 릴레이 것을 그대로 전달한다 (오류는 `{error: CODE, …}`)
+
+/// 디스코드 쪽 일(청소는 메시지를 쪽마다 읽는다)을 기다리는 시간
+const MODERATION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+
+pub async fn get_node_moderation(
+    Path(guild_id): Path<String>,
+    Query(params): Query<RelayQueryParams>,
+    State(state): State<IPCServer>,
+) -> Response {
+    let base = signed_base(&state, params.relay_url.as_deref()).await;
+    let client = match client() {
+        Ok(c) => c,
+        Err(r) => return r,
+    };
+    // 음소거 목록을 위해 릴레이가 길드 멤버를 디스코드에서 읽을 수 있다(8초까지): 기본 시간보다 길게 기다린다
+    let api_path = format!("/api/nodes/{}/moderation", encode_path_segment(&guild_id));
+    let req = client.get(format!("{}{}", base, api_path)).timeout(DISCORD_MEMBERS_TIMEOUT);
+    match send(apply_signed_headers(req, "GET", &api_path, None)).await {
+        Ok((code, Some(data))) => (code, Json(data)).into_response(),
+        Ok((code, None)) => invalid_response(code),
+        Err(r) => r,
+    }
+}
+
+pub async fn patch_node_moderation_channel(
+    Path((guild_id, channel_id)): Path<(String, String)>,
+    Query(params): Query<RelayQueryParams>,
+    State(state): State<IPCServer>,
+    Json(body): Json<Value>,
+) -> Response {
+    let base = signed_base(&state, params.relay_url.as_deref()).await;
+    let path = format!(
+        "/api/nodes/{}/moderation/channels/{}",
+        encode_path_segment(&guild_id),
+        encode_path_segment(&channel_id)
+    );
+    signed_json(&base, reqwest::Method::PATCH, &path, &body).await
+}
+
+pub async fn clear_node_moderation_channel(
+    Path((guild_id, channel_id)): Path<(String, String)>,
+    Query(params): Query<RelayQueryParams>,
+    State(state): State<IPCServer>,
+    Json(body): Json<Value>,
+) -> Response {
+    let base = signed_base(&state, params.relay_url.as_deref()).await;
+    let path = format!(
+        "/api/nodes/{}/moderation/channels/{}/clear",
+        encode_path_segment(&guild_id),
+        encode_path_segment(&channel_id)
+    );
+    signed_json(&base, reqwest::Method::POST, &path, &body).await
+}
+
+pub async fn put_node_moderation_mute(
+    Path((guild_id, user_id)): Path<(String, String)>,
+    Query(params): Query<RelayQueryParams>,
+    State(state): State<IPCServer>,
+    Json(body): Json<Value>,
+) -> Response {
+    let base = signed_base(&state, params.relay_url.as_deref()).await;
+    let path = format!(
+        "/api/nodes/{}/moderation/mutes/{}",
+        encode_path_segment(&guild_id),
+        encode_path_segment(&user_id)
+    );
+    signed_json(&base, reqwest::Method::PUT, &path, &body).await
+}
+
+/// 서명한 JSON 본문 요청을 보내고 답을 전달한다 (본문은 객체만)
+async fn signed_json(base: &str, method: reqwest::Method, api_path: &str, body: &Value) -> Response {
+    if !body.is_object() {
+        return (StatusCode::BAD_REQUEST, Json(json!({ "error": "INVALID_BODY" }))).into_response();
+    }
+    let client = match client() {
+        Ok(c) => c,
+        Err(r) => return r,
+    };
+    let text = body.to_string();
+    let req = client.request(method.clone(), format!("{}{}", base, api_path)).timeout(MODERATION_TIMEOUT);
+    let req = apply_signed_headers(req, method.as_str(), api_path, Some(&text))
+        .header("Content-Type", "application/json")
+        .body(text);
+    match send(req).await {
+        Ok((code, Some(data))) => (code, Json(data)).into_response(),
+        Ok((code, None)) => invalid_response(code),
+        Err(r) => r,
+    }
+}
+
 // ── GET /api/relay/node/:guild_id/chatbot/models ──
 // 길드에 저장된 사용자 키로 relay가 받은 대화 모델 목록 (`{provider, models, selected, effectiveModel}`, 409 NO_API_KEY 등은 그대로)
 

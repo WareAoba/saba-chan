@@ -1032,6 +1032,64 @@ pub enum BotCmd {
         #[arg(long)]
         no_board: bool,
     },
+    /// Server tools of a Discord server: channels (topic, slow mode, lock, auto clear) and muted members. Without a server: the only paired one
+    Moderation { guild: Option<String> },
+    /// Change a channel of a Discord server (by name or id): name, topic, slow mode, lock, auto clear
+    Channel {
+        /// Channel name or id
+        channel: String,
+        /// Discord server (name or id; without it: the only paired server)
+        #[arg(long)]
+        guild: Option<String>,
+        /// New channel name (Discord allows two name/topic changes per 10 minutes)
+        #[arg(long)]
+        name: Option<String>,
+        /// New channel topic
+        #[arg(long, conflicts_with = "no_topic")]
+        topic: Option<String>,
+        /// Clear the channel topic
+        #[arg(long)]
+        no_topic: bool,
+        /// Slow mode interval in seconds (0 turns it off)
+        #[arg(long, value_parser = clap::value_parser!(u32).range(0..=21600))]
+        slowmode: Option<u32>,
+        /// Lock the channel: a duration (30m, 6h, 7d), `forever`, or `off` to unlock
+        #[arg(long)]
+        lock: Option<String>,
+        /// Auto clear: keep messages for a duration (1h, 1d, 7d), or `off`
+        #[arg(long)]
+        auto_clear: Option<String>,
+    },
+    /// Delete recent messages in a channel, newest first (pins and Saba-chan panels stay). Asks first
+    Clear {
+        /// Channel name or id
+        channel: String,
+        /// Discord server (name or id; without it: the only paired server)
+        #[arg(long)]
+        guild: Option<String>,
+        /// How many messages at most
+        #[arg(long, default_value_t = 100, value_parser = clap::value_parser!(u32).range(1..=1000))]
+        count: u32,
+        /// Only this member's messages (name or id)
+        #[arg(long)]
+        member: Option<String>,
+        /// Only messages from this recent period (10m, 1h, 1d, 7d)
+        #[arg(long)]
+        since: Option<String>,
+    },
+    /// Mute a member (chat, reactions, voice) for a duration (10m, 1h, 7d, up to 28d), `forever`, or `off` to unmute
+    Mute {
+        /// Member name or id
+        member: String,
+        /// 10m, 1h, 1d, 28d, forever, or off
+        duration: String,
+        /// Discord server (name or id; without it: the only paired server)
+        #[arg(long)]
+        guild: Option<String>,
+        /// Reason (kept in the Discord audit log)
+        #[arg(long)]
+        reason: Option<String>,
+    },
     /// The language the bot answers in on a Discord server (`auto` follows this PC's language). No value: show
     Lang { guild: String, value: Option<String> },
     /// Put the bot to sleep on a Discord server (it ignores commands until woken)

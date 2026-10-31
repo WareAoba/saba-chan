@@ -211,6 +211,11 @@ pub static ROUTES: &[Route] = &[
     allow("PUT", "/api/instance/{id}/start-notice/{guild}"),
     allow("GET", "/api/relay/host/{host_id}/nodes"),
     allow("GET", "/api/relay/node/{guild_id}/members"),
+    // 서버 관리(채널 정보·슬로우·잠금·청소·음소거): 디스코드 서버만 바꾸고 이 PC의 파일은 건드리지 않는다
+    allow("GET", "/api/relay/node/{guild_id}/moderation"),
+    allow("PATCH", "/api/relay/node/{guild_id}/moderation/channels/{channel_id}"),
+    allow("POST", "/api/relay/node/{guild_id}/moderation/channels/{channel_id}/clear"),
+    allow("PUT", "/api/relay/node/{guild_id}/moderation/mutes/{user_id}"),
     // ── 디스코드 설정·릴레이 연결: 웹이 타고 있는 연결 자체다 ──
     deny("GET", "/api/discord/{guild_id}/settings"),
     deny("PATCH", "/api/discord/{guild_id}/settings"),
@@ -563,6 +568,14 @@ mod tests {
             decide("DELETE", "/api/instance/abc/backups/2026-10-24_1200"),
             Ok("/api/instance/{id}/backups/{name}")
         );
+    }
+
+    #[test]
+    fn allows_discord_moderation() {
+        assert!(decide("GET", "/api/relay/node/1/moderation").is_ok());
+        assert!(decide("PATCH", "/api/relay/node/1/moderation/channels/2").is_ok());
+        assert!(decide("POST", "/api/relay/node/1/moderation/channels/2/clear").is_ok());
+        assert!(decide("PUT", "/api/relay/node/1/moderation/mutes/3").is_ok());
     }
 
     #[test]
