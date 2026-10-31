@@ -1115,6 +1115,8 @@
       "unmanaged": "自行管理：saba-chan 只启动并查看是否在运行（无控制台）",
       "bot.prefix.guild": "The Discord server, by name or id (without it: the only paired server)",
       "bot.translate.on": "Show translated command names",
+      "bot.new-guild.auto": "Open every server on this PC",
+      "bot.new-guild.manual": "Pick them yourself",
       "bot.translate.off": "Show only the names in the module",
       "bot.tts.volume": "Volume in percent (10-150)",
       "bot.tts.speed": "Speaking speed (0.8-1.5, e.g. 1.2)",
