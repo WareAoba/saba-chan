@@ -37,14 +37,16 @@ function editableOf(target) {
 /** 입력칸 편집 메뉴. 고른 범위는 메뉴를 열 때 잡아 둔다 (메뉴를 누르면 포커스가 바뀔 수 있다) */
 function editItems(t, el) {
     const isField = el.tagName === 'INPUT' || el.tagName === 'TEXTAREA';
-    const start = isField ? (el.selectionStart ?? 0) : 0;
-    const end = isField ? (el.selectionEnd ?? 0) : 0;
-    const selected = isField ? el.value.slice(start, end) : String(window.getSelection() || '');
+    // number·email 칸은 선택 범위를 다룰 수 없다(selectionStart가 null, setSelectionRange는 예외)
+    const hasRange = isField && el.selectionStart !== null;
+    const start = hasRange ? el.selectionStart : 0;
+    const end = hasRange ? el.selectionEnd : 0;
+    const selected = hasRange ? el.value.slice(start, end) : isField ? '' : String(window.getSelection() || '');
     const locked = el.readOnly || el.disabled || el.getAttribute('contenteditable') === 'false';
     const secret = el.type === 'password';
     const restore = () => {
         el.focus();
-        if (isField) el.setSelectionRange(start, end);
+        if (hasRange) el.setSelectionRange(start, end);
     };
     return [
         {
@@ -184,15 +186,23 @@ export function ContextMenuProvider({ children, allowNative = import.meta.env.DE
             if (!menuRef.current?.contains(e.target)) close();
         };
         const onKey = (e) => {
-            if (e.key === 'Escape') return close();
+            // 메뉴가 쓴 키는 포커스를 쥔 입력칸까지 보내지 않는다 (콘솔 기록 넘기기, Enter 제출 등)
+            const consume = () => {
+                e.preventDefault();
+                e.stopPropagation();
+            };
+            if (e.key === 'Escape') {
+                consume();
+                return close();
+            }
             const idx = menu.items.map((item, i) => (selectable(item) ? i : -1)).filter((i) => i >= 0);
             if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-                e.preventDefault();
+                consume();
                 const at = idx.indexOf(active);
                 const next = e.key === 'ArrowDown' ? (at + 1) % idx.length : (at - 1 + idx.length) % idx.length;
                 setActive(idx[at < 0 && e.key === 'ArrowUp' ? idx.length - 1 : next]);
             } else if (e.key === 'Enter' && active >= 0) {
-                e.preventDefault();
+                consume();
                 run(menu.items[active]);
             }
         };

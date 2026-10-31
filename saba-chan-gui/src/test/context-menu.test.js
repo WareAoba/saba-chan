@@ -211,3 +211,42 @@ describe('콘솔 출력 우클릭', () => {
         expect(useConsoleStore.getState().consoles.other.lines).toHaveLength(1);
     });
 });
+
+describe('ContextMenuProvider 키보드·숫자칸', () => {
+    afterEach(() => {
+        delete document.execCommand;
+    });
+
+    it('메뉴가 쓴 방향키·Enter·Esc는 입력칸까지 가지 않는다', () => {
+        const onKeyDown = vi.fn();
+        render(
+            <ContextMenuProvider allowNative={false}>
+                <input aria-label="cmd" defaultValue="say hi" onKeyDown={onKeyDown} />
+            </ContextMenuProvider>,
+        );
+        const input = screen.getByLabelText('cmd');
+        rightClick(input);
+        fireEvent.keyDown(input, { key: 'ArrowDown' });
+        fireEvent.keyDown(input, { key: 'ArrowUp' });
+        fireEvent.keyDown(input, { key: 'Escape' });
+        expect(onKeyDown).not.toHaveBeenCalled();
+        fireEvent.keyDown(input, { key: 'ArrowUp' });
+        expect(onKeyDown).toHaveBeenCalledTimes(1);
+    });
+
+    it('숫자 입력칸도 붙여넣기가 끝까지 간다 (선택 범위를 다룰 수 없는 칸)', async () => {
+        Object.defineProperty(navigator, 'clipboard', {
+            configurable: true,
+            value: { writeText: vi.fn(), readText: vi.fn(() => Promise.resolve('25565')) },
+        });
+        document.execCommand = vi.fn(() => true);
+        render(
+            <ContextMenuProvider allowNative={false}>
+                <input aria-label="port" type="number" defaultValue="" />
+            </ContextMenuProvider>,
+        );
+        rightClick(screen.getByLabelText('port'));
+        await act(async () => fireEvent.click(screen.getByRole('menuitem', { name: 'Paste' })));
+        expect(document.execCommand).toHaveBeenCalledWith('insertText', false, '25565');
+    });
+});
