@@ -441,16 +441,20 @@ Tauri 커맨드(`installer/gui/src-tauri/src/lib.rs`): `get_installer_state`, `s
   | 메서드 | 경로 | 답 |
   | --- | --- | --- |
   | GET | `/relay/me` | `{userId, username, hasPc, pcs:[{id, name, online}]}` |
-  | GET | `/relay/guilds` | 봇과 함께 있고 관리할 수 있는 서버 `[{id, name, icon, hasPc, can:{manage, channels, messages, members}}]` |
+  | GET | `/relay/guilds` | 봇과 함께 있고 관리하거나 서버 관리 일(아래 `can` 중 하나)을 할 수 있는 서버 `[{id, name, icon, hasPc, can:{manage, channels, messages, members}}]`. 웹은 `can`으로 탭을 고른다 |
   | GET·PATCH | `/relay/guilds/:g/settings` | `{locale('auto'|언어), sleeping, prefixes, translateCommands, slashPrefix, slashRootName, privateQueries, bigEmoji, music:{enabled, ui, queueLines, refreshInterval, normalize}, tts:{volume, speed, pitch, names}}`. PATCH는 같은 모양의 일부(모르는 키는 400 `INVALID_BODY`)이고 바뀐 전체를 돌려준다. 행이 없으면 기본값을 보이고, 처음 저장할 때 PC 없는 서버 행을 만든다 |
   | GET·PUT | `/relay/guilds/:g/channels` | `PUT /api/nodes/:g/channels`와 같은 모양(`bot/commands/assignments.ts` `assignChannels`·`channelsView`) |
   | GET·PATCH | `/relay/guilds/:g/chatbot` | `{settings, hasApiKey}`(`channelIds`는 `/channels`가 맡아 빼고, 키는 돌려주지 않는다). PATCH `{settings?, apiKey?: string\|null}` |
   | DELETE | `/relay/guilds/:g/chatbot/memory` | 이 서버의 장기 기억을 지운다 `{success:true}` |
+  | GET | `/relay/guilds/:g/moderation` | 앱의 `GET /api/nodes/:g/moderation`과 같은 모양(`services/guildModeration.ts`). `can` 중 하나가 있어야 한다 |
+  | PATCH | `/relay/guilds/:g/moderation/channels/:c` | `{name?, topic?, slowmode?, lock?, autoClear?}` → 채널 보기. 이름·주제·슬로우 모드·잠금은 채널 관리, 잠금은 역할 관리도, 자동 청소는 메시지 관리 |
+  | POST | `/relay/guilds/:g/moderation/channels/:c/clear` | `{count?, authorId?, sinceMinutes?}` → `{deleted, kept}`. 메시지 관리 |
+  | PUT | `/relay/guilds/:g/moderation/mutes/:u` | `{duration:'off'\|'forever'\|분, reason?}` → `{result}`. 멤버 타임아웃, 그리고 대상보다 역할이 높아야 한다(서버 주인은 늘 된다, 아니면 403 `need:'RoleHierarchy'`). 자기 자신은 400 `MUTE_SELF` |
 
-  - 권한: 요청마다 봇이 그 서버에서 요청한 사람을 본다(멤버·권한은 30초 캐시). 봇이 없거나 멤버가 아니면 404 `GUILD_NOT_FOUND`. "관리"는 디스코드 서버 주인, "서버 관리" 권한, PC 주인, 사바쨩 관리자(Lv2) 중 하나이고, 아니면 403 `{error:'FORBIDDEN', need:'ManageGuild'}`. PC 없는 서버에는 사바쨩 레벨이 없어 디스코드 권한만 본다. `can.channels`·`messages`·`members`는 채널 관리·메시지 관리·멤버 타임아웃 권한이다(서버 관리 API가 쓴다).
+  - 권한: 요청마다 봇이 그 서버에서 요청한 사람을 본다(멤버·권한은 30초 캐시). 봇이 없거나 멤버가 아니면 404 `GUILD_NOT_FOUND`. "관리"는 디스코드 서버 주인, "서버 관리" 권한, PC 주인, 사바쨩 관리자(Lv2) 중 하나이고, 아니면 403 `{error:'FORBIDDEN', need:'ManageGuild'}`. PC 없는 서버에는 사바쨩 레벨이 없어 디스코드 권한만 본다. `can.channels`·`messages`·`members`는 채널 관리·메시지 관리·멤버 타임아웃 권한이다. 서버 관리 경로는 "관리" 대신 일마다 이 권한을 보고(없으면 403 `need`), 봇 권한·채널 이름 바꾸기 한도·오류 코드는 앱 경로와 같다. 디스코드 감사 로그 사유는 `Saba-chan web`, 잠금·자동 청소·음소거 기록의 주체는 요청한 사람이다.
   - PC가 붙은 서버: 데몬이 원본인 값(`bigEmoji` 밖의 설정, 말하는 사바쨩 설정·키)을 쓰면 409 `PC_OWNED`(0.1.12 원본 이사 전까지 웹은 그 값을 데몬 경로로 바꾼다). 배정·`bigEmoji`·기억은 릴레이가 원본이라 PC가 있어도 바꾼다.
   - PC 없는 서버: PC가 보내는 명령에만 쓰는 값(`sleeping`·`prefixes`·`translateCommands`·`slashPrefix`·`slashRootName`·`privateQueries`)과 알림·게임 채팅·상황판 배정(비우기는 된다)은 409 `NEEDS_PC`. 그사이 PC가 붙었으면 409 `PC_OWNED`.
-  - 쓰기(GET 밖)는 사람마다 분당 30회(넘으면 429 `{error:'RATE_LIMITED', retryAfter}` 초, 메모리). 바꿀 때마다 `audit_logs` `action='web.relay'`, `guild_id`, `host_id`(세션의 PC), `detail {route, method, keys}`를 남긴다. `keys`는 바꾼 키 이름(`music.ui`처럼 한 단계 펼친다)뿐이고 값·API 키는 남기지 않는다.
+  - 쓰기(GET 밖)는 사람마다 분당 30회(넘으면 429 `{error:'RATE_LIMITED', retryAfter}` 초, 메모리). 바꿀 때마다(서버 관리는 성공했을 때만) `audit_logs` `action='web.relay'`, `guild_id`, `host_id`(세션의 PC), `detail {route, method, keys, target?}`를 남긴다(`target`은 서버 관리의 채널·멤버 ID). `keys`는 바꾼 키 이름(`music.ui`처럼 한 단계 펼친다)뿐이고 값·API 키는 남기지 않는다.
 - 화면은 nginx `/remote/`(정적, 없는 경로는 `/remote/index.html`, 볼륨 `../remote-web`. `deploy-remote.ps1`이 옆 저장소 `saba-chan/saba-chan-web`을 커밋한 그대로 빌드해 올리고 `release.sh`가 다른 관리 경로와 함께 교체·롤백한다. 이 경로만 CSP가 더 좁다: 스크립트는 `'self'`만, 그림은 `'self'`·`data:`·`https://cdn.discordapp.com`(프로필 사진), `Referrer-Policy: no-referrer`)이고, 두 웹소켓은 업그레이드 헤더와 함께 릴레이로 넘긴다(`test/nginxRoutes.test.ts`).
 
 **(g) 차단 목록** (`services/blocklist.ts`, `bot/commands/operatorCommands.ts`): 악성 사용자를 디스코드 ID 하나로 막는다. 공개 저장소라 공식 바이너리인지는 가릴 수 없어 사람을 막는다.
