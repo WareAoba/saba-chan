@@ -120,4 +120,22 @@ describe('PC 없는 사람의 웹', () => {
         expect(screen.getByRole('heading', { name: 'Server management' })).toBeTruthy();
         expect(session.request.mock.calls.map((c) => c[1])).not.toContain(`/relay/guilds/${G}/settings`);
     });
+
+    it('읽기에 실패하면 숨기지 않고 알리고, 다시 읽으면 화면을 채운다', async () => {
+        const session = fakeSession();
+        const ok = session.request.getMockImplementation();
+        let down = true;
+        session.request.mockImplementation((method, path, body) =>
+            down && path.endsWith('/settings')
+                ? Promise.resolve({ status: 0, code: 'ECONNRESET' })
+                : ok(method, path, body),
+        );
+        render(<App api={{}} session={session} />);
+        await flush();
+        expect(screen.queryByRole('heading', { name: 'Basics' })).toBeNull();
+        down = false;
+        fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+        await flush();
+        expect(screen.getByRole('heading', { name: 'Basics' })).toBeTruthy();
+    });
 });

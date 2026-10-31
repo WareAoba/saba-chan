@@ -102,6 +102,8 @@ function useRelayGuild(relay, guild) {
     const { t } = useTranslation();
     const toast = useApp((s) => s.toast);
     const [data, setData] = useState({});
+    // 읽기 실패 뒤 "다시 읽기"를 누를 때마다 늘린다
+    const [round, setRound] = useState(0);
     const [busy, setBusy] = useState(false);
     const g = guild.id;
     const manage = !!guild.can?.manage;
@@ -112,6 +114,7 @@ function useRelayGuild(relay, guild) {
         setData((d) => ({ ...d, moderation: res.ok ? res.data : { failed: true } }));
     }, [relay, g]);
 
+    // biome-ignore lint/correctness/useExhaustiveDependencies: round 는 다시 읽기 신호다
     useEffect(() => {
         let alive = true;
         const put = (key) => (res) => alive && setData((d) => ({ ...d, [key]: res.ok ? res.data : { failed: true } }));
@@ -124,7 +127,7 @@ function useRelayGuild(relay, guild) {
         return () => {
             alive = false;
         };
-    }, [relay, g, manage, mod]);
+    }, [relay, g, manage, mod, round]);
 
     /** call: 릴레이 요청, key: 답을 넣을 칸 (없으면 서버 관리를 다시 읽는다) */
     const write = async (call, key) => {
@@ -144,7 +147,11 @@ function useRelayGuild(relay, guild) {
             setBusy(false);
         }
     };
-    return { data, busy, write };
+    const reload = () => {
+        setData({});
+        setRound((r) => r + 1);
+    };
+    return { data, busy, write, reload };
 }
 
 function BasicsSection({ relay, g, settings, busy, write }) {
@@ -451,7 +458,6 @@ function ChannelSheet({ channel, can, busy, onEdit, onClose }) {
 function ModerationSection({ relay, g, can, moderation, busy, write }) {
     const { t } = useTranslation();
     const [open, setOpen] = useState(null);
-    if (moderation.failed) return <Empty>{t('relay.err.generic')}</Empty>;
     if (!moderation.botAvailable) return <Empty>{t('relay.err.BOT_UNAVAILABLE')}</Empty>;
     const channel = open && moderation.channels.find((c) => c.id === open);
     return (
@@ -518,11 +524,21 @@ function ModerationSection({ relay, g, can, moderation, busy, write }) {
 
 /** PC 없는 서버 — 릴레이에서 바로 바꾼다 */
 function RelayGuild({ relay, guild }) {
-    const { data, busy, write } = useRelayGuild(relay, guild);
+    const { t } = useTranslation();
+    const { data, busy, write, reload } = useRelayGuild(relay, guild);
     const g = guild.id;
     const props = { relay, g, busy, write };
     const manage = !!guild.can?.manage;
     const ready = (x) => x && !x.failed;
+    // 연결이 끊겼거나 릴레이가 답하지 못했다 — 숨기지 않고 알리고 다시 읽게 한다
+    const broken = [data.settings, data.chatbot, data.channels, data.moderation].some((x) => x?.failed);
+    if (broken)
+        return (
+            <div className="empty">
+                <p>{t('relay.load_failed')}</p>
+                <Button onClick={reload}>{t('relay.retry')}</Button>
+            </div>
+        );
     if (manage && !data.settings) return <Loading />;
     return (
         <>

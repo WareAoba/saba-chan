@@ -446,6 +446,8 @@
       "left": "{{time}} left",
       "unmute": "Unmute",
       "unmute_named": "Unmute {{name}}"
-    }
+    },
+    "load_failed": "Couldn't load the settings. Check the connection and try again.",
+    "retry": "Try again"
   }
 }
