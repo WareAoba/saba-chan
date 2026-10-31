@@ -1130,6 +1130,30 @@ export function createApi({ invoke, hub }) {
             daemonCall('get', `/api/relay/node/${encodeURIComponent(guildId)}/channels`, undefined, 15000),
         relayNodeChannelsSave: (guildId, patch) =>
             daemonCall('put', `/api/relay/node/${encodeURIComponent(guildId)}/channels`, patch, 15000),
+        // 서버 관리: 채널 상태·음소거 목록, 채널 수정(이름·주제·슬로우·잠금·자동 청소), 청소, 음소거
+        relayNodeModeration: (guildId) =>
+            daemonCall('get', `/api/relay/node/${encodeURIComponent(guildId)}/moderation`, undefined, 20000),
+        relayModChannel: (guildId, channelId, patch) =>
+            daemonCall(
+                'patch',
+                `/api/relay/node/${encodeURIComponent(guildId)}/moderation/channels/${encodeURIComponent(channelId)}`,
+                patch,
+                20000,
+            ),
+        relayModClear: (guildId, channelId, body) =>
+            daemonCall(
+                'post',
+                `/api/relay/node/${encodeURIComponent(guildId)}/moderation/channels/${encodeURIComponent(channelId)}/clear`,
+                body,
+                70000,
+            ),
+        relayModMute: (guildId, userId, body) =>
+            daemonCall(
+                'put',
+                `/api/relay/node/${encodeURIComponent(guildId)}/moderation/mutes/${encodeURIComponent(userId)}`,
+                body,
+                20000,
+            ),
 
         // ── 동의·온보딩·백업·예약·챗봇 ──
         instanceAgreements: (id, accept) => daemonJson('post', instancePath(id, '/agreements'), { accept }),

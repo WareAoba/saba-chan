@@ -118,6 +118,7 @@ pub fn page_buttons(page: Page) -> &'static [(&'static str, &'static str, When)]
             ("chatbot", "chatbot show", Always),
             ("bot_status", "bot status", More),
             ("bot_channels", "bot channels", More),
+            ("bot_moderation", "bot moderation", More),
             ("bot_invite", "bot invite", More),
             ("bot_config", "bot config", More),
         ],

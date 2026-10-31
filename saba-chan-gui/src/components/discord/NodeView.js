@@ -6,11 +6,11 @@ import { SabaToggle } from '../ui/SabaUI';
 import { Segmented } from '../ui/StatusChip';
 import { Avatar, initialOf } from './Avatar';
 import { BotSettingsTab, botSettingsAvailable } from './BotSettingsTab';
-import { ChannelsTab, channelsAvailable } from './ChannelsTab';
 import { ChatbotGuildTab } from './ChatbotGuildTab';
 import { chatbotAvailable } from './ChatbotView';
 import * as P from './nodePermissions';
 import { ALL_INSTANCES } from './levels';
+import { ModerationTab, moderationAvailable } from './ModerationTab';
 import { PermissionPanel } from './PermissionsTab';
 
 export { Avatar, initialOf };
@@ -39,13 +39,22 @@ function ChoiceCards({ name, value, onChange, options }) {
     );
 }
 
+/** 인스턴스의 모듈 아이콘 (서버 목록과 같다). 아이콘이 없는 모듈은 이름 첫 글자 */
+function ModuleIcon({ module, name }) {
+    return (
+        <span className={clsx('dc-srv-icon', { 'has-img': !!module?.icon })}>
+            {module?.icon ? <img src={module.icon} alt="" /> : initialOf(name)}
+        </span>
+    );
+}
+
 /** 노드에서 보이는 인스턴스 (제한 없음이면 전부) */
 function visibleServers(settings, guildId, servers) {
     return servers.filter((s) => P.isInstanceAllowed(settings, guildId, s.id));
 }
 
 // ── 인스턴스 탭 ──
-function InstancesTab({ node, nodes, servers, settings, update, updateStartNotice, onOpen }) {
+function InstancesTab({ node, nodes, servers, modules = [], settings, update, updateStartNotice, onOpen }) {
     const { t } = useTranslation('gui');
     const mode = P.instanceMode(settings, node.guildId);
     const nodeIds = nodes.map((n) => n.guildId);
@@ -93,7 +102,7 @@ function InstancesTab({ node, nodes, servers, settings, update, updateStartNotic
                         const notice = Array.isArray(noticed) && noticed.includes(srv.id);
                         return (
                             <li key={srv.id} className={clsx('dc-list-row', { dim: !allowed })}>
-                                <span className="dc-srv-icon">{initialOf(srv.name)}</span>
+                                <ModuleIcon module={modules.find((m) => m.name === srv.module)} name={srv.name} />
                                 <span className="dc-list-text">
                                     <span className="dc-list-name">{srv.name}</span>
                                     <span className="dc-list-sub">
@@ -171,9 +180,10 @@ function InstanceMenu({ node, servers, instance, onBack, members, membersLoading
 }
 
 /**
- * 디스코드 서버(노드) 하나: 인스턴스(→ 인스턴스 메뉴) / 채널 / 말하는 사바쨩 / 노래하는 사바쨩 / 봇 설정.
+ * 디스코드 서버(노드) 하나: 인스턴스(→ 인스턴스 메뉴) / 말하는 사바쨩 / 노래하는 사바쨩 / 읽어주는 사바쨩 / 서버 관리 / 봇 설정.
  */
 export function NodeView({
+    modules = [],
     node,
     nodes,
     servers,
@@ -226,9 +236,6 @@ export function NodeView({
                 }}
                 items={[
                     { id: 'instances', label: t('discord.tab_instances'), icon: <Icon name="server" size="sm" /> },
-                    ...(channelsAvailable()
-                        ? [{ id: 'channels', label: t('discord.tab_channels'), icon: <Icon name="hash" size="sm" /> }]
-                        : []),
                     ...(chatbotAvailable()
                         ? [{ id: 'chatbot', label: t('chatbot.nav'), icon: <Icon name="sabaTalking" size="sm" /> }]
                         : []),
@@ -244,8 +251,19 @@ export function NodeView({
                                   label: t('discord.bot_settings.tts_title'),
                                   icon: <Icon name="volume" size="sm" />,
                               },
-                              { id: 'bot', label: t('discord.tab_bot'), icon: <Icon name="settings" size="sm" /> },
                           ]
+                        : []),
+                    ...(moderationAvailable()
+                        ? [
+                              {
+                                  id: 'moderation',
+                                  label: t('discord.tab_moderation'),
+                                  icon: <Icon name="tool" size="sm" />,
+                              },
+                          ]
+                        : []),
+                    ...(botSettingsAvailable()
+                        ? [{ id: 'bot', label: t('discord.tab_bot'), icon: <Icon name="settings" size="sm" /> }]
                         : []),
                 ]}
             />
@@ -278,12 +296,21 @@ export function NodeView({
                     node={node}
                     nodes={nodes}
                     servers={servers}
+                    modules={modules}
                     settings={settings}
                     update={(fn) => updateAllowed(node.guildId, fn)}
                     updateStartNotice={updateStartNotice}
                 />
             )}
-            {tab === 'channels' && <ChannelsTab key={node.guildId} node={node} />}
+            {tab === 'moderation' && (
+                <ModerationTab
+                    key={node.guildId}
+                    node={node}
+                    members={members}
+                    membersLoading={membersLoading}
+                    onRefreshMembers={onRefreshMembers}
+                />
+            )}
             {tab === 'chatbot' && <ChatbotGuildTab key={node.guildId} node={node} />}
             {tab === 'music' && <BotSettingsTab key={node.guildId} node={node} section="music" />}
             {tab === 'tts' && <BotSettingsTab key={node.guildId} node={node} section="tts" />}
