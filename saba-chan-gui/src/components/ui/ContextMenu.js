@@ -158,8 +158,8 @@ export function ContextMenuProvider({ children, allowNative = import.meta.env.DE
             if (e.defaultPrevented) return;
             const editable = editableOf(e.target);
             if (editable) return open(e, editItems(t, editable));
-            const selected = String(window.getSelection() || '').trim();
-            if (selected) return open(e, copyItems(t, selected));
+            const selected = String(window.getSelection() || '');
+            if (selected.trim()) return open(e, copyItems(t, selected));
             setMenu(null);
             if (!allowNative) e.preventDefault();
         };

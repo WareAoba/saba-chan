@@ -158,13 +158,14 @@ describe('ContextMenuProvider', () => {
             </ContextMenuProvider>,
         );
         const p = screen.getByText('play.example.kr:25565');
+        p.textContent = '  play.example.kr:25565\n';
         const range = document.createRange();
         range.selectNodeContents(p);
         window.getSelection().addRange(range);
         rightClick(p);
         expect(items()).toEqual(['Copy']);
         await act(async () => fireEvent.click(screen.getByRole('menuitem', { name: 'Copy' })));
-        expect(writeText).toHaveBeenCalledWith('play.example.kr:25565');
+        expect(writeText).toHaveBeenCalledWith('  play.example.kr:25565\n');
     });
 
     it('개발 빌드(allowNative)에서는 메뉴 없는 곳의 기본 메뉴를 막지 않는다', () => {
