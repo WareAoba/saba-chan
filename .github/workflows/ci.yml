@@ -49,7 +49,7 @@ jobs:
       frontend: ${{ steps.f.outputs.frontend }}
       macpkg: ${{ steps.f.outputs.macpkg }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - id: f
@@ -90,7 +90,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Versions match versions.toml
         run: python3 scripts/versions.py check
       - name: Release packaging tests
@@ -117,7 +117,7 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -131,7 +131,7 @@ jobs:
           sudo apt-get install -y libglib2.0-dev libgtk-3-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
       - name: Cargo cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/bin/
@@ -168,9 +168,9 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: 'npm'
@@ -204,14 +204,14 @@ jobs:
     timeout-minutes: 45
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # 시험 샌드박스는 모듈·익스텐션 저장소를 복사해 쓴다 (harness/sandbox.py)
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           repository: WareAoba/saba-chan-modules
           path: .e2e-deps/saba-chan-modules
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           repository: WareAoba/saba-chan-extensions
           path: .e2e-deps/saba-chan-extensions
@@ -219,7 +219,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
 
@@ -230,7 +230,7 @@ jobs:
           sudo apt-get install -y libglib2.0-dev libgtk-3-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
       - name: Cargo cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry/index/
@@ -250,7 +250,7 @@ jobs:
 
       - name: Upload E2E report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-report
           path: ${{ runner.temp }}/saba-e2e/*.md
@@ -268,12 +268,12 @@ jobs:
     timeout-minutes: 60
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: 'npm'
@@ -299,7 +299,7 @@ jobs:
           xcodebuild -version
 
       # .dmg Finder 창 배치(배경·아이콘 자리)를 Finder 없이 기록한다
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
       - name: Install dmgbuild
@@ -390,7 +390,7 @@ jobs:
         run: cat mock.log || true
 
       - name: Upload
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: macos-arm64
           path: macos/*
