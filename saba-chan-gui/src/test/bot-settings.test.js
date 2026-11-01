@@ -45,6 +45,24 @@ describe('디스코드 봇 설정 탭', () => {
         expect(window.api.discordSettingsSet).toHaveBeenCalledWith('g1', { music: { normalize: false } });
     });
 
+    it('큰 이모지: 릴레이 값이 있을 때만 보이고, 바꾸면 bigEmoji 만 보낸다. 다른 설정을 저장해도 값이 남는다', async () => {
+        window.api.discordSettingsGet = vi.fn().mockResolvedValue({ ...base, bigEmoji: false });
+        window.api.discordSettingsSet = vi.fn().mockResolvedValue({ success: true, settings: base, sync: { ok: true } });
+        render(<BotSettingsTab node={node} section="bot" />);
+        await flush();
+        fireEvent.click(screen.getByRole('checkbox', { name: 'Big emoji' }));
+        await flush();
+        expect(window.api.discordSettingsSet).toHaveBeenCalledWith('g1', { bigEmoji: true });
+        expect(screen.getByRole('checkbox', { name: 'Big emoji' })).toBeInTheDocument();
+    });
+
+    it('큰 이모지: 릴레이를 못 읽어 값이 없으면 보이지 않는다', async () => {
+        window.api.discordSettingsGet = vi.fn().mockResolvedValue(base);
+        render(<BotSettingsTab node={node} section="bot" />);
+        await flush();
+        expect(screen.queryByRole('checkbox', { name: 'Big emoji' })).toBeNull();
+    });
+
     it('범위 밖 숫자는 보내지 않고, 새로고침 간격은 ms로 보낸다', async () => {
         window.api.discordSettingsGet = vi.fn().mockResolvedValue(base);
         window.api.discordSettingsSet = vi

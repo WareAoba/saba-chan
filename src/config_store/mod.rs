@@ -69,6 +69,9 @@ pub struct GuiSettings {
     pub window_opacity: u32,
     /// 콘솔 글꼴 배율 (%)
     pub console_font_scale: u32,
+    /// 콘솔 구문 강조 색: 토큰 이름 → "#rrggbb". 빈 값이거나 없는 토큰은 테마 기본색
+    /// (부분 저장은 객체를 키별로 합치므로 GUI는 지운 색을 빈 값으로 보낸다)
+    pub console_token_colors: HashMap<String, String>,
     /// 서버 페이지의 시스템 모니터 펼침 여부
     pub system_monitor_open: bool,
 
@@ -163,6 +166,7 @@ impl Default for GuiSettings {
             sidebar_compact: false,
             window_opacity: 100,
             console_font_scale: 100,
+            console_token_colors: HashMap::new(),
             system_monitor_open: true,
             window_bounds: None,
             language: None,
@@ -170,6 +174,13 @@ impl Default for GuiSettings {
             daemon_view: None,
         }
     }
+}
+
+/// 콘솔 구문 강조 색 한 칸: 짧은 토큰 이름과 `#rrggbb` 또는 빈 값(기본색). CSS 변수에 그대로 들어가므로 다른 글자는 받지 않는다
+fn token_color_ok(key: &str, value: &str) -> bool {
+    let key_ok = !key.is_empty() && key.len() <= 32 && key.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_');
+    let value_ok = value.is_empty() || value.len() == 7 && value.starts_with('#') && value[1..].bytes().all(|b| b.is_ascii_hexdigit());
+    key_ok && value_ok
 }
 
 impl GuiSettings {
@@ -183,6 +194,9 @@ impl GuiSettings {
         choice("consoleTimestamps", &self.console_timestamps, &["off", "24h", "12h"])?;
         if self.new_server_backup_keep == 0 {
             return Err("newServerBackupKeep must be 1 or more".into());
+        }
+        if let Some(key) = self.console_token_colors.iter().find(|(k, v)| !token_color_ok(k, v)).map(|(k, _)| k) {
+            return Err(format!("consoleTokenColors.{key} must be #rrggbb"));
         }
         Ok(())
     }
@@ -198,6 +212,7 @@ impl GuiSettings {
         fix(&mut self.close_action, &["ask", "tray", "quit"], &default.close_action);
         fix(&mut self.toast_duration, &["short", "normal", "long"], &default.toast_duration);
         fix(&mut self.console_timestamps, &["off", "24h", "12h"], &default.console_timestamps);
+        self.console_token_colors.retain(|k, v| token_color_ok(k, v));
         if self.new_server_backup_keep == 0 {
             self.new_server_backup_keep = default.new_server_backup_keep;
         }
@@ -1056,6 +1071,20 @@ mod tests {
         assert!(!cfg.settings.contains_key("channelIds") && cfg.settings.contains_key("model"));
         assert!(!cfg.guilds.contains_key("a"));
         assert_eq!(cfg.guilds["b"].len(), 1);
+    }
+
+    /// 콘솔 구문 강조 색은 #rrggbb만 받고, 손으로 넣은 잘못된 값은 읽을 때 버린다
+    #[test]
+    fn console_token_colors_accept_hex_only() {
+        let mut s = GuiSettings::default();
+        s.console_token_colors.insert("error".into(), "#ff0000".into());
+        s.console_token_colors.insert("dim".into(), String::new());
+        assert!(s.validate().is_ok());
+        s.console_token_colors.insert("warn".into(), "red;}".into());
+        assert!(s.validate().is_err());
+        s.sanitize();
+        assert_eq!(s.console_token_colors.len(), 2);
+        assert!(s.validate().is_ok());
     }
 
     #[test]

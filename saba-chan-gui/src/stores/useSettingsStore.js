@@ -68,6 +68,7 @@ export const useSettingsStore = create((set, get) => ({
     consoleTextColor: THEME_DEFAULTS.consoleTextColor,
     sidebarCompact: THEME_DEFAULTS.sidebarCompact,
     consoleFontScale: THEME_DEFAULTS.consoleFontScale,
+    consoleTokenColors: THEME_DEFAULTS.consoleTokenColors,
     // 서버 페이지의 시스템 모니터를 펼쳐 둘지 (접으면 요약 한 줄)
     systemMonitorOpen: true,
     // 서버 목록 보기 (G1c): 'switch' 고른 데몬만 | 'unified' 다른 데몬의 서버도 데몬별로
@@ -107,6 +108,7 @@ export const useSettingsStore = create((set, get) => ({
                 patch.consoleTextColor = settings.consoleTextColor ?? THEME_DEFAULTS.consoleTextColor;
                 patch.sidebarCompact = settings.sidebarCompact ?? THEME_DEFAULTS.sidebarCompact;
                 patch.consoleFontScale = settings.consoleFontScale ?? THEME_DEFAULTS.consoleFontScale;
+                patch.consoleTokenColors = settings.consoleTokenColors ?? THEME_DEFAULTS.consoleTokenColors;
                 patch.systemMonitorOpen = settings.systemMonitorOpen ?? true;
                 patch.daemonView = settings.daemonView === 'unified' ? 'unified' : 'switch';
                 patch.mainDaemon =
@@ -137,6 +139,7 @@ export const useSettingsStore = create((set, get) => ({
                     consoleBgColor: patch.consoleBgColor,
                     consoleTextColor: patch.consoleTextColor,
                     consoleFontScale: patch.consoleFontScale,
+                    consoleTokenColors: patch.consoleTokenColors,
                     sidebarCompact: patch.sidebarCompact,
                 });
                 // 예전 버전은 테마 모드를 브라우저 저장소에만 뒀다 — 한 번 config.json으로 옮긴다
@@ -257,6 +260,7 @@ const _settingsKeys = [
     'consoleTextColor',
     'sidebarCompact',
     'consoleFontScale',
+    'consoleTokenColors',
     'systemMonitorOpen',
     'daemonView',
     'mainDaemon',

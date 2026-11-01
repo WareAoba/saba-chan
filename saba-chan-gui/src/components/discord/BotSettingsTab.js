@@ -184,7 +184,8 @@ export function BotSettingsTab({ node, section = 'bot', sampleModuleWord = '' })
             const res = await window.api.discordSettingsSet(guildId, patch);
             if (failed(res)) safeShowToast(botSettingsErrorText(res, t), 'error', 6000);
             else {
-                if (res.settings) setSettings(res.settings);
+                // 응답에 릴레이 원본 값(큰 이모지)이 빠질 수 있어 지금 값 위에 얹는다
+                if (res.settings) setSettings((prev) => ({ ...prev, ...res.settings }));
                 setSync(res.sync || null);
             }
         } catch (e) {
@@ -291,6 +292,14 @@ export function BotSettingsTab({ node, section = 'bot', sampleModuleWord = '' })
                                 ]}
                             />
                         </div>
+                        {/* 큰 이모지: 원본은 서버쨩(릴레이). 릴레이를 못 읽으면 값이 없어 보이지 않는다 */}
+                        {typeof settings.bigEmoji === 'boolean' &&
+                            toggleRow(
+                                t('discord.bot_settings.big_emoji'),
+                                t('discord.bot_settings.big_emoji_desc'),
+                                settings.bigEmoji,
+                                (bigEmoji) => save({ bigEmoji }),
+                            )}
                     </section>
 
                     <section className="dc-card">

@@ -18,6 +18,7 @@ import {
 } from '../../utils/themeManager';
 import CustomDropdown from '../CustomDropdown/CustomDropdown';
 import { OklchPicker } from '../ui/OklchPicker';
+import { TOKENS } from '../../utils/syntaxHighlight';
 import { Icon } from '../Icon';
 import { safeShowToast } from '../../utils/helpers';
 import { LANGUAGE_OPTIONS } from '../../utils/languages';
@@ -39,6 +40,20 @@ const SOUND_KINDS = [
     ['install', 'gui:settings_modal.sound_install'],
     ['update', 'gui:settings_modal.sound_update'],
 ];
+
+/** 모든 구문 강조 색을 기본색으로 (빈 값) */
+const clearedTokenColors = () => Object.fromEntries(TOKENS.map((token) => [token, '']));
+
+/** 지금 테마가 정한 토큰 기본색 (사용자 색을 걷어낸 값) */
+function tokenDefaultColor(token) {
+    const root = document.documentElement;
+    const name = `--tok-${token}`;
+    const custom = root.style.getPropertyValue(name);
+    if (custom) root.style.removeProperty(name);
+    const value = getComputedStyle(root).getPropertyValue(name).trim();
+    if (custom) root.style.setProperty(name, custom);
+    return value || '#cdd6f4';
+}
 
 function SettingsModal({
     isOpen,
@@ -327,6 +342,8 @@ function SettingsModal({
             consoleBgColor: defaults.consoleBgColor,
             consoleTextColor: defaults.consoleTextColor,
             consoleFontScale: defaults.consoleFontScale,
+            // 부분 저장은 객체를 키별로 합친다: 지운 색은 빈 값으로 보내야 저장된 색이 사라진다
+            consoleTokenColors: clearedTokenColors(),
             sidebarCompact: defaults.sidebarCompact,
         });
     };
@@ -723,6 +740,50 @@ function SettingsModal({
                                     onChange={(checked) => handleCustomThemeChange({ consoleSyntaxHighlight: checked })}
                                 />
                             </div>
+
+                            {/* ── 5-1b. 구문 강조 색 (토큰마다, 빈 값이면 테마 기본색) ── */}
+                            {customTheme.consoleSyntaxHighlight && (
+                                <div className="setting-item setting-item-vertical">
+                                    <div className="setting-label-row">
+                                        <label className="setting-label">
+                                            <span className="setting-title">
+                                                <Icon name="palette" size="sm" /> {t('gui:settings_modal.console_token_colors_label')}
+                                            </span>
+                                            <span className="setting-description">
+                                                {t('gui:settings_modal.console_token_colors_description')}
+                                            </span>
+                                        </label>
+                                        <button
+                                            type="button"
+                                            className="btn btn-ghost btn-sm"
+                                            disabled={!Object.values(customTheme.consoleTokenColors || {}).some(Boolean)}
+                                            onClick={() => handleCustomThemeChange({ consoleTokenColors: clearedTokenColors() })}
+                                        >
+                                            <Icon name="undo" size="sm" /> {t('gui:settings_modal.console_token_colors_reset')}
+                                        </button>
+                                    </div>
+                                    <div className="console-token-grid">
+                                        {TOKENS.map((token) => {
+                                            const custom = customTheme.consoleTokenColors?.[token] || '';
+                                            const label = t(`gui:settings_modal.console_token_${token}`);
+                                            return (
+                                                <div key={token} className={clsx('console-token-row', { custom })}>
+                                                    <span className={`console-token-name tok-${token}`}>{label}</span>
+                                                    <OklchPicker
+                                                        label={label}
+                                                        value={custom || tokenDefaultColor(token)}
+                                                        onChange={(hex) =>
+                                                            handleCustomThemeChange({
+                                                                consoleTokenColors: { ...customTheme.consoleTokenColors, [token]: hex },
+                                                            })
+                                                        }
+                                                    />
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
 
                             {/* 줄 앞 시각 (데몬이 받은 시각) */}
                             <div className="setting-item">

@@ -522,6 +522,43 @@ function ModerationSection({ relay, g, can, moderation, busy, write }) {
     );
 }
 
+/** 이 PC 의 서버에서도 원본이 릴레이인 설정(큰 이모지)은 릴레이에서 바로 바꾼다 */
+function HereRelaySettings({ relay, guild }) {
+    const { t } = useTranslation();
+    const toast = useApp((s) => s.toast);
+    const g = guild.id;
+    const [bigEmoji, setBigEmoji] = useState(null);
+    const [busy, setBusy] = useState(false);
+    useEffect(() => {
+        let alive = true;
+        relay.settings(g).then((res) => alive && res.ok && setBigEmoji(!!res.data?.bigEmoji));
+        return () => {
+            alive = false;
+        };
+    }, [relay, g]);
+    // 릴레이를 못 읽었으면 값을 모른다 — 토글을 두지 않는다
+    if (bigEmoji === null) return null;
+    const save = async (on) => {
+        setBusy(true);
+        const res = await relay.saveSettings(g, { bigEmoji: on });
+        setBusy(false);
+        if (!res.ok) return toast(relayError(t, res), 'error');
+        setBigEmoji(!!res.data?.bigEmoji);
+        toast(t('relay.saved'));
+    };
+    return (
+        <Section title={t('relay.basics')}>
+            <Toggle
+                label={t('relay.big_emoji')}
+                hint={t('relay.big_emoji_hint')}
+                checked={bigEmoji}
+                disabled={busy}
+                onChange={save}
+            />
+        </Section>
+    );
+}
+
 /** PC 없는 서버 — 릴레이에서 바로 바꾼다 */
 function RelayGuild({ relay, guild }) {
     const { t } = useTranslation();
@@ -639,6 +676,9 @@ export function DiscordTab({ api, relay }) {
             ) : (
                 <>
                     {guilds.length > 1 && <GuildChips guilds={guilds} value={guildId} onChange={setGuildId} />}
+                    {guild?.here && relay && guild.can?.manage && (
+                        <HereRelaySettings key={`relay-${guild.id}`} relay={relay} guild={guild} />
+                    )}
                     {guild?.here && <GuildPermissions key={guild.id} api={api} guildId={guild.id} />}
                     {guild && !guild.here && guild.hasPc && <Empty>{t('relay.other_pc')}</Empty>}
                     {guild && !guild.here && !guild.hasPc && <RelayGuild key={guild.id} relay={relay} guild={guild} />}

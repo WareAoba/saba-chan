@@ -5,6 +5,8 @@
  *   console background/text color/syntax highlight toggle
  */
 
+import { TOKENS } from './syntaxHighlight';
+
 // localStorage는 첫 화면 캐시일 뿐이다. 원천은 config.json(gui.theme 등, useSettingsStore).
 const THEME_KEY = 'saba-chan-theme';
 const CUSTOM_THEME_KEY = 'saba-chan-theme-custom';
@@ -24,6 +26,8 @@ export const THEME_DEFAULTS = {
     consoleBgColor: '#1e1e2e',
     consoleTextColor: '#cdd6f4',
     consoleFontScale: 100,
+    /** 콘솔 구문 강조 색: 토큰 → '#rrggbb'. 빈 값·없는 토큰은 테마 기본색(tokens.css --tok-*) */
+    consoleTokenColors: {},
     sidebarCompact: false,
 };
 
@@ -269,6 +273,7 @@ export function applyCustomTheme(config) {
         consoleTextColor,
         consoleSyntaxHighlight,
         consoleFontScale = 100,
+        consoleTokenColors = {},
     } = config;
 
     // ── Accent color derivations ──
@@ -354,4 +359,10 @@ export function applyCustomTheme(config) {
     }
     root.style.setProperty('--console-syntax-highlight', consoleSyntaxHighlight ? '1' : '0');
     root.style.setProperty('--console-font-scale', `${consoleFontScale / 100}`);
+    // 사용자가 고른 구문 강조 색은 테마·밝은 콘솔 기본색보다 앞선다. 빈 값이면 기본색으로 돌아간다
+    for (const token of TOKENS) {
+        const color = consoleTokenColors?.[token];
+        if (color) root.style.setProperty(`--tok-${token}`, color);
+        else root.style.removeProperty(`--tok-${token}`);
+    }
 }

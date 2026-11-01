@@ -176,16 +176,8 @@ export const Icon = ({ name, size = 'md', color = 'currentColor' }) => {
             </svg>
         ),
         loader: (
-            <svg xmlns="http://www.w3.org/2000/svg" className="ionicon" viewBox="0 0 512 512">
-                <path
-                    d="M400 148l-21.12-24.57A191.43 191.43 0 00240 64C134 64 48 150 48 256s86 192 192 192a192.09 192.09 0 00181.07-128"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeLinecap="round"
-                    strokeMiterlimit="10"
-                    strokeWidth="32"
-                />
-                <path d="M464 97.42V208a16 16 0 01-16 16H337.42c-14.26 0-21.4-17.23-11.32-27.31L436.69 86.1C446.77 76 464 83.16 464 97.42z" fill="currentColor" />
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M21 12a9 9 0 1 1-6.2-8.56" />
             </svg>
         ),
         play: (
@@ -251,8 +243,8 @@ export const Icon = ({ name, size = 'md', color = 'currentColor' }) => {
         ),
         copy: (
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                <rect x="8" y="8" width="13" height="13" rx="2" />
+                <path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3" />
             </svg>
         ),
         scissors: (
@@ -272,8 +264,8 @@ export const Icon = ({ name, size = 'md', color = 'currentColor' }) => {
         ),
         undo: (
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <polyline points="1 4 1 10 7 10" />
-                <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+                <path d="M9 14 4 9l5-5" />
+                <path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" />
             </svg>
         ),
         selectAll: (
@@ -354,37 +346,29 @@ export const Icon = ({ name, size = 'md', color = 'currentColor' }) => {
         ),
         server: (
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <rect x="2" y="2" width="20" height="8" rx="2" ry="2" />
-                <rect x="2" y="14" width="20" height="8" rx="2" ry="2" />
-                <line x1="6" y1="6" x2="6.01" y2="6" />
-                <line x1="6" y1="18" x2="6.01" y2="18" />
+                <rect x="3" y="4" width="18" height="7" rx="2" />
+                <rect x="3" y="13" width="18" height="7" rx="2" />
+                <path d="M7 7.5h.01M7 16.5h.01" />
             </svg>
         ),
         gamepad: (
-            <svg width="24" height="24" fill="none" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path
-                    d="M14.998 5a7 7 0 0 1 .24 13.996l-.24.004H9.002a7 7 0 0 1-.24-13.996L9.001 5h5.996Zm0 1.5H9.002a5.5 5.5 0 0 0-.221 10.996l.221.004h5.996a5.5 5.5 0 0 0 .221-10.996l-.221-.004ZM8 9a.75.75 0 0 1 .75.75v1.498h1.5a.75.75 0 0 1 0 1.5h-1.5v1.502a.75.75 0 0 1-1.5 0v-1.502h-1.5a.75.75 0 1 1 0-1.5h1.5V9.75A.75.75 0 0 1 8 9Zm6.75 3.5a1.25 1.25 0 1 1 0 2.5 1.25 1.25 0 0 1 0-2.5Zm2-3.5a1.25 1.25 0 1 1 0 2.5 1.25 1.25 0 0 1 0-2.5Z"
-                    fill="currentColor"
-                />
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M7.5 7h9a4.5 4.5 0 0 1 4.4 3.6l.9 4.6a2.6 2.6 0 0 1-4.6 2.1L15.5 15h-7l-1.7 2.3a2.6 2.6 0 0 1-4.6-2.1l.9-4.6A4.5 4.5 0 0 1 7.5 7Z" />
+                <path d="M8 9.5v3M6.5 11h3" />
+                <path d="M15.5 10.5h.01M17.5 12.5h.01" />
             </svg>
         ),
         folder: (
-            <svg width="24" height="24" fill="none" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path
-                    d="M8.207 4c.46 0 .908.141 1.284.402l.156.12L12.022 6.5h7.728a2.25 2.25 0 0 1 2.229 1.938l.016.158.005.154v9a2.25 2.25 0 0 1-2.096 2.245L19.75 20H4.25a2.25 2.25 0 0 1-2.245-2.096L2 17.75V6.25a2.25 2.25 0 0 1 2.096-2.245L4.25 4h3.957Zm1.44 5.979a2.25 2.25 0 0 1-1.244.512l-.196.009-4.707-.001v7.251c0 .38.282.694.648.743l.102.007h15.5a.75.75 0 0 0 .743-.648l.007-.102v-9a.75.75 0 0 0-.648-.743L19.75 8h-7.729L9.647 9.979ZM8.207 5.5H4.25a.75.75 0 0 0-.743.648L3.5 6.25v2.749L8.207 9a.75.75 0 0 0 .395-.113l.085-.06 1.891-1.578-1.89-1.575a.75.75 0 0 0-.377-.167L8.207 5.5Z"
-                    fill="currentColor"
-                />
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M3 7a2 2 0 0 1 2-2h4l2 2.5h8a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z" />
             </svg>
         ),
         network: (
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="12" cy="5" r="3" />
-                <path d="M12 8v6" />
-                <path d="M8 11l-2.828 2.828" />
-                <path d="M16 11l2.828 2.828" />
-                <path d="M6 18l-2.828 2.828" />
-                <path d="M18 18l2.828 2.828" />
-                <path d="M6 18h12" />
+                <rect x="9" y="2.5" width="6" height="5" rx="1.2" />
+                <rect x="3" y="16.5" width="6" height="5" rx="1.2" />
+                <rect x="15" y="16.5" width="6" height="5" rx="1.2" />
+                <path d="M12 7.5V12M6 16.5V14a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v2.5" />
             </svg>
         ),
         power: (
@@ -395,9 +379,10 @@ export const Icon = ({ name, size = 'md', color = 'currentColor' }) => {
         ),
         refresh: (
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <polyline points="23 4 23 10 17 10" />
-                <polyline points="1 20 1 14 7 14" />
-                <path d="M3.51 9a9 9 0 0 1 14.85-3.36M20.49 15a9 9 0 0 1-14.85 3.36" />
+                <path d="M20 11a8 8 0 0 0-14.3-4.9L4 8" />
+                <path d="M4 4v4h4" />
+                <path d="M4 13a8 8 0 0 0 14.3 4.9L20 16" />
+                <path d="M20 20v-4h-4" />
             </svg>
         ),
         clock: (
@@ -444,11 +429,12 @@ export const Icon = ({ name, size = 'md', color = 'currentColor' }) => {
             </svg>
         ),
         palette: (
-            <svg width="24" height="24" fill="none" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path
-                    d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10Zm0-1.5v-17a8.5 8.5 0 0 1 0 17Z"
-                    fill="currentColor"
-                />
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M12 3a9 9 0 0 0 0 18c1.1 0 1.8-.8 1.8-1.7 0-.5-.2-.9-.5-1.2-.3-.3-.5-.7-.5-1.2 0-.9.8-1.7 1.7-1.7h2A4.5 4.5 0 0 0 21 10.7C21 6.4 17 3 12 3Z" />
+                <circle cx="7.5" cy="11.5" r="1" fill="currentColor" />
+                <circle cx="10" cy="7.5" r="1" fill="currentColor" />
+                <circle cx="14.5" cy="7.5" r="1" fill="currentColor" />
+                <circle cx="17" cy="11" r="1" fill="currentColor" />
             </svg>
         ),
         close: (
@@ -468,11 +454,10 @@ export const Icon = ({ name, size = 'md', color = 'currentColor' }) => {
             </svg>
         ),
         globe: (
-            <svg width="24" height="24" fill="none" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path
-                    d="m10.946 2.047.005.007C11.296 2.018 11.646 2 12 2c5.522 0 10 4.477 10 10s-4.478 10-10 10a9.983 9.983 0 0 1-7.896-3.862h-.003v-.003A9.957 9.957 0 0 1 2 12c0-5.162 3.911-9.41 8.932-9.944l.014-.009ZM12 3.5l-.16.001c.123.245.255.533.374.85.347.923.666 2.282.1 3.487-.522 1.113-1.424 1.4-2.09 1.573l-.084.021c-.657.17-.91.235-1.093.514-.17.257-.144.582.061 1.25l.046.148c.082.258.18.57.23.863.064.364.082.827-.152 1.275a2.187 2.187 0 0 1-.9.945c-.341.185-.694.256-.958.302l-.093.017c-.515.09-.761.134-1 .39-.187.2-.307.553-.377 1.079-.029.214-.046.427-.064.646l-.01.117c-.02.242-.044.521-.099.76v.002a8.478 8.478 0 0 0 6.27 2.76c1.576 0 3.053-.43 4.319-1.178a4.47 4.47 0 0 1-.31-.35c-.34-.428-.786-1.164-.631-2.033.074-.418.298-.768.515-1.036a7.12 7.12 0 0 1 .72-.74l.158-.146c.179-.163.33-.301.46-.437.172-.18.21-.262.212-.267.068-.224-.015-.384-.106-.454a.304.304 0 0 0-.19-.061c-.084 0-.22.024-.401.14a.912.912 0 0 1-.836.085 1.025 1.025 0 0 1-.486-.432c-.144-.237-.225-.546-.278-.772-.04-.174-.08-.372-.115-.553l-.04-.206a4.127 4.127 0 0 0-.134-.54l-.02-.037a1.507 1.507 0 0 0-.064-.105 6.233 6.233 0 0 0-.227-.317l-.11-.143a12.686 12.686 0 0 1-.516-.712c-.196-.298-.417-.688-.487-1.104a1.46 1.46 0 0 1 .055-.734c.094-.264.265-.482.487-.649.483-.362 1.193-1.172 1.823-1.959.288-.359.544-.695.736-.95A8.46 8.46 0 0 0 12 3.5Zm5.727 2.22c-.197.263-.461.608-.757.978-.602.751-1.4 1.685-2.05 2.187.026.1.1.262.255.498.131.2.281.396.44.604l.129.17c.172.229.411.548.52.844.087.234.149.519.198.762l.049.246c.025.13.049.253.075.37.601-.172 1.201-.068 1.67.294.608.47.862 1.286.624 2.074-.11.362-.364.66-.563.869-.17.177-.372.362-.556.53l-.132.12c-.23.212-.423.4-.568.579-.148.184-.195.299-.205.356-.04.219.067.51.328.838a3.138 3.138 0 0 0 .374.392A8.48 8.48 0 0 0 20.5 12a8.478 8.478 0 0 0-2.773-6.28ZM3.5 12c0 1.398.338 2.718.936 3.881.085-.557.262-1.248.748-1.768.6-.642 1.335-.763 1.798-.839l.13-.021c.248-.044.391-.083.502-.143.088-.049.188-.128.288-.321.015-.028.042-.107.004-.325a5.236 5.236 0 0 0-.172-.636c-.02-.06-.04-.125-.06-.192-.185-.604-.48-1.602.12-2.515.522-.792 1.36-.994 1.893-1.123l.162-.04c.563-.145.883-.28 1.108-.758.295-.629.168-1.485-.146-2.32a7.615 7.615 0 0 0-.58-1.196A8.503 8.503 0 0 0 3.502 12Z"
-                    fill="currentColor"
-                />
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="12" cy="12" r="9" />
+                <path d="M3 12h18" />
+                <path d="M12 3a14 14 0 0 1 0 18 14 14 0 0 1 0-18Z" />
             </svg>
         ),
         monitor: (
@@ -502,10 +487,9 @@ export const Icon = ({ name, size = 'md', color = 'currentColor' }) => {
         ),
         plug: (
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M12 22v-5" />
-                <path d="M9 7V2" />
-                <path d="M15 7V2" />
-                <path d="M6 13V8a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4z" />
+                <path d="M9 3v4M15 3v4" />
+                <path d="M7 7h10v4a5 5 0 0 1-10 0V7Z" />
+                <path d="M12 16v5" />
             </svg>
         ),
         hash: (
@@ -527,8 +511,8 @@ export const Icon = ({ name, size = 'md', color = 'currentColor' }) => {
         ),
         pin: (
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <line x1="12" y1="17" x2="12" y2="22" />
-                <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24z" />
+                <path d="M9 3h6l-1 6 3 3v2H7v-2l3-3-1-6Z" />
+                <path d="M12 14v7" />
             </svg>
         ),
         lightbulb: (
@@ -866,7 +850,10 @@ export const Icon = ({ name, size = 'md', color = 'currentColor' }) => {
                 verticalAlign: '-0.125em',
             }}
         >
+            {/* 선 끝·꺾임은 모두 둥글게: 아이콘마다 따로 적지 않아도 같은 선 모양을 따른다 */}
             {cloneElement(svgIcon, {
+                strokeLinecap: svgIcon.props.strokeLinecap ?? 'round',
+                strokeLinejoin: svgIcon.props.strokeLinejoin ?? 'round',
                 width: iconSize,
                 height: iconSize,
                 style: { display: 'block' },
