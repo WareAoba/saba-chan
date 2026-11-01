@@ -4,7 +4,8 @@
 //! - 시스템 줄(`LogSource::System`)은 보지 않는다. 이름 그룹 `name`만 싣고(IP·고유 ID 없음), 64자에서 자르고 제어 문자를 뺀다.
 //! - relay로 올리지 않는다 (0.1.9).
 //! - 같은 줄로 접속자를 센다(`players::roster_*`). 모듈이 접속자 수를 주지 않을 때 서버 목록·하트비트가 이 수를 쓴다.
-//! - 같은 콘솔에서 `chat_patterns`에 맞는 채팅 줄을 찾아 게임 채팅 전달(`game_chat.rs`)에 넘긴다.
+//! - 같은 콘솔에서 `chat_patterns`에 맞는 채팅 줄을 찾아 게임 채팅 전달(`game_chat.rs`)과 채팅 연동(`chat_link.rs`)에 넘긴다.
+//! - 센 접속자가 0명이 되거나 프로세스가 끝나면 채팅 연동을 끈다.
 
 use serde_json::{json, Value};
 use std::sync::Arc;
@@ -108,6 +109,9 @@ async fn watch(id: String, name: String, proc: Arc<ManagedProcess>, patterns: Pa
             if let Some((player, change)) = patterns.parse(&line.content) {
                 if let Some(roster) = roster {
                     super::players::roster_change(&id, roster, &player, change == Change::Join);
+                    if change == Change::Leave && super::players::counted(&id) == Some(0) {
+                        super::chat_link::end(&id, &name, "empty");
+                    }
                 }
                 crate::events::emit("instance.player", json!({ "instanceId": id, "instance": name, "player": player, "change": change.as_str() }));
             } else if let Some((player, message)) = patterns.parse_chat(&line.content) {
@@ -115,8 +119,8 @@ async fn watch(id: String, name: String, proc: Arc<ManagedProcess>, patterns: Pa
                 if super::game_chat::is_echo(&id, &player, message) {
                     continue;
                 }
-                if let Some(text) = super::game_chat::settings(&id).pick(message) {
-                    crate::events::emit("instance.chat", json!({ "instanceId": id, "instance": name, "text": super::game_chat::compose(&name, &player, text) }));
+                if let Some(ev) = super::chat_link::chat_event(&id, &name, &player, message, &super::game_chat::settings(&id), super::chat_link::to_discord(&id)) {
+                    crate::events::emit("instance.chat", ev);
                 }
             }
         }
@@ -124,6 +128,7 @@ async fn watch(id: String, name: String, proc: Arc<ManagedProcess>, patterns: Pa
             if let Some(roster) = roster {
                 super::players::roster_end(&id, roster);
             }
+            super::chat_link::end(&id, &name, "stopped");
             return;
         }
         tokio::time::sleep(POLL).await;
