@@ -539,8 +539,8 @@ function ChannelPanel({
                 <label className="dc-field">
                     <span className="dc-field-label">{t('discord.mod.topic')}</span>
                     <textarea
-                        className="input"
-                        rows={2}
+                        className="input dc-mod-topic"
+                        rows={3}
                         value={topic}
                         maxLength={1024}
                         onChange={(e) => setTopic(e.target.value)}

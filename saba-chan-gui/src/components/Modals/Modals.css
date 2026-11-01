@@ -3209,6 +3209,40 @@
     padding: 1px 0;
 }
 
+/* 구문 강조 색: 이름표는 콘솔 바탕 위에 그 색으로 (실제 콘솔에서 보이는 그대로) */
+.setting-label-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--sp-3);
+    width: 100%;
+}
+.console-token-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: var(--sp-2) var(--sp-3);
+    width: 100%;
+}
+.console-token-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--sp-2);
+    min-width: 0;
+}
+.console-token-name {
+    flex: 1;
+    min-width: 0;
+    padding: var(--sp-1) var(--sp-2);
+    border-radius: var(--r-sm);
+    background: var(--console-custom-bg);
+    font-family: "Cascadia Code", "Consolas", "Monaco", "Courier New", monospace;
+    font-size: var(--fs-sm);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 
 
 /* 신뢰 배지: 확인됨은 조용히, 변경됨·확인 안 됨은 눈에 띄게 */

@@ -236,6 +236,18 @@ export function NodeView({
                 }}
                 items={[
                     { id: 'instances', label: t('discord.tab_instances'), icon: <Icon name="server" size="sm" /> },
+                    ...(moderationAvailable()
+                        ? [
+                              {
+                                  id: 'moderation',
+                                  label: t('discord.tab_moderation'),
+                                  icon: <Icon name="tool" size="sm" />,
+                              },
+                          ]
+                        : []),
+                    ...(botSettingsAvailable()
+                        ? [{ id: 'bot', label: t('discord.tab_bot'), icon: <Icon name="settings" size="sm" /> }]
+                        : []),
                     ...(chatbotAvailable()
                         ? [{ id: 'chatbot', label: t('chatbot.nav'), icon: <Icon name="sabaTalking" size="sm" /> }]
                         : []),
@@ -252,18 +264,6 @@ export function NodeView({
                                   icon: <Icon name="sabaReading" size="sm" />,
                               },
                           ]
-                        : []),
-                    ...(moderationAvailable()
-                        ? [
-                              {
-                                  id: 'moderation',
-                                  label: t('discord.tab_moderation'),
-                                  icon: <Icon name="tool" size="sm" />,
-                              },
-                          ]
-                        : []),
-                    ...(botSettingsAvailable()
-                        ? [{ id: 'bot', label: t('discord.tab_bot'), icon: <Icon name="settings" size="sm" /> }]
                         : []),
                 ]}
             />

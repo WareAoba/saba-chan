@@ -390,7 +390,7 @@ export function ConnectionView({
                         </li>
                         <ChainLink state={relayFailed ? 'fail' : flowing ? 'on' : 'off'} />
                         <li className={clsx('dc-chain-node', { on: connected, fail: relayFailed })}>
-                            <Icon name={relayFailed ? 'cloudOff' : 'cloud'} size={26} />
+                            <img src="./server-chan.webp" alt="" className="dc-chain-icon" />
                             <span className="dc-chain-name">{t('discord.chain_relay')}</span>
                             <span className="dc-chain-sub">{relayHost(relayUrl)}</span>
                         </li>

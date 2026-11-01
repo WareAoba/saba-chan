@@ -42,6 +42,12 @@ describe('연결 카드 흐름', () => {
         expect(container.querySelector('.dc-chain-x')).toBeNull();
     });
 
+    it('가운데 상자는 서버쨩 얼굴로 보인다', () => {
+        const { container } = render(<ConnectionView {...viewProps} />);
+        const relayNode = container.querySelectorAll('.dc-chain-node')[1];
+        expect(relayNode.querySelector('img.dc-chain-icon').getAttribute('src')).toBe('./server-chan.webp');
+    });
+
     it('릴레이에 닿지 못했다는 알림에서 바로 다시 받을 수 있다', () => {
         const onReload = vi.fn();
         const { container } = render(
@@ -55,7 +61,7 @@ describe('연결 카드 흐름', () => {
         window.api.discordSettingsGet = vi.fn().mockResolvedValue({ sleeping: true });
         const { container } = render(<ConnectionView {...viewProps} nodes={[{ guildId: 'g1' }]} />);
         await waitFor(() => expect(links(container)).toEqual(['dc-chain-link off', 'dc-chain-link on']));
-        expect(container.querySelector('.dc-chain-node.on img')).toBeNull();
+        expect(container.querySelectorAll('.dc-chain-node')[0].classList.contains('on')).toBe(false);
         delete window.api.discordSettingsGet;
     });
 });

@@ -3335,7 +3335,7 @@ button.appbar-preflight {
 }
 .dc-mod-split {
     display: grid;
-    grid-template-columns: minmax(200px, 280px) minmax(0, 1fr);
+    grid-template-columns: minmax(160px, 208px) minmax(0, 1fr);
     gap: var(--sp-4);
     align-items: start;
 }
@@ -3350,6 +3350,11 @@ button.appbar-preflight {
     gap: var(--sp-1);
 }
 .dc-mod-row {
+    /* 기본 button은 높이 36px·한 줄이다: 이름과 배지가 줄을 바꿔도 테두리 안에 들도록 높이를 내용에 맡긴다 */
+    height: auto;
+    white-space: normal;
+    justify-content: flex-start;
+    font-size: var(--fs-md);
     display: flex;
     flex-direction: column;
     align-items: flex-start;
@@ -3370,7 +3375,9 @@ button.appbar-preflight {
     background: var(--accent-soft);
 }
 .dc-mod-row-name {
+    max-width: 100%;
     font-weight: 600;
+    overflow-wrap: anywhere;
 }
 .dc-mod-badges {
     display: flex;
@@ -3422,6 +3429,27 @@ button.appbar-preflight {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
     gap: var(--sp-3);
+}
+/* 이름표 줄 높이를 고정해 새로고침 버튼이 있는 칸도 입력칸이 같은 선에서 시작한다 */
+.dc-mod-fields .dc-field-label {
+    height: 20px;
+}
+.dc-mod-fields .dc-field-label .icon-btn {
+    --btn-height: 20px;
+    width: 20px;
+}
+/* 드롭다운과 입력칸의 높이를 36px로 맞춘다 */
+.dc-mod-fields .custom-dropdown-trigger {
+    height: 36px;
+    min-height: 0;
+    padding-block: 0;
+}
+/* 주제: 칸 크기는 레이아웃이 정한다. 넘치는 글은 칸 안에서 스크롤한다 */
+.dc-mod-topic {
+    height: calc(var(--sp-4) * 5);
+    padding: var(--sp-2) var(--sp-3);
+    line-height: 1.5;
+    resize: none;
 }
 .dc-mod-chips {
     border: 0;
