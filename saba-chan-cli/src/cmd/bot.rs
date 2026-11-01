@@ -858,7 +858,7 @@ fn mod_duration(text: &str, forever_ok: bool) -> Result<Value> {
         "d" | "일" => 1440,
         _ => return Err(usage(t!("bot.bad_duration", value = text))),
     };
-    let minutes = n.checked_mul(per).unwrap_or(u64::MAX);
+    let minutes = n.saturating_mul(per);
     if minutes == 0 || minutes > 28 * 1440 {
         return Err(usage(t!("bot.bad_duration", value = text)));
     }
