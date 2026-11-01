@@ -157,15 +157,17 @@ pub fn forget_sent(instance_id: &str, name: &str, text: &str) {
     }
 }
 
-/// 콘솔 채팅이 방금 게임으로 보낸 글의 메아리인가: 채팅 본문이 보낸 본문이나 `이름: 본문`과 똑같다
-/// (마인크래프트처럼 이름을 따로 찍는 게임, 테라리아 `say`처럼 서버 이름으로 `이름: 본문`을 찍는 게임).
-/// 본문 일부만 같은 남의 채팅은 거르지 않는다. 맞으면 그 기억은 지운다
-pub fn is_echo(instance_id: &str, message: &str) -> bool {
+/// 콘솔 채팅(`player`가 쓴 `message`)이 방금 게임으로 보낸 글의 메아리인가: 본문이 `이름: 본문`과 똑같거나
+/// (테라리아 `say`처럼 서버 이름으로 찍는 게임), 쓴 사람이 보낸 이름이고 본문이 같다(이름을 따로 찍는 게임).
+/// 본문 일부만 같거나 다른 사람이 같은 말을 한 채팅은 거르지 않는다. 맞으면 그 기억은 지운다
+pub fn is_echo(instance_id: &str, player: &str, message: &str) -> bool {
     let mut sent = sent().lock().unwrap_or_else(|e| e.into_inner());
     let Some(list) = sent.get_mut(instance_id) else { return false };
     list.retain(|(_, _, at)| at.elapsed().as_secs() < ECHO_SECS);
     let message = message.trim();
-    let same = |name: &str, text: &str| message == text || message.strip_prefix(name).and_then(|m| m.strip_prefix(": ")) == Some(text);
+    let same = |name: &str, text: &str| {
+        (player.trim() == name && message == text) || message.strip_prefix(name).and_then(|m| m.strip_prefix(": ")) == Some(text)
+    };
     match list.iter().position(|(name, text, _)| same(name, text)) {
         Some(i) => {
             list.remove(i);
@@ -251,16 +253,17 @@ mod tests {
     #[test]
     fn a_sent_chat_coming_back_from_the_console_is_not_forwarded_again() {
         remember_sent("echo-a", "김치", "hi");
-        assert!(!is_echo("echo-b", "김치: hi"), "other servers are not affected");
-        assert!(!is_echo("echo-a", "this is a different message"), "someone else's chat that only contains it is kept");
-        assert!(is_echo("echo-a", "김치: hi"));
-        assert!(!is_echo("echo-a", "김치: hi"), "only once");
+        assert!(!is_echo("echo-b", "Server", "김치: hi"), "other servers are not affected");
+        assert!(!is_echo("echo-a", "Server", "this is a different message"), "someone else's chat that only contains it is kept");
+        assert!(!is_echo("echo-a", "Steve", "hi"), "someone else saying the same words is kept");
+        assert!(is_echo("echo-a", "Server", "김치: hi"));
+        assert!(!is_echo("echo-a", "Server", "김치: hi"), "only once");
         remember_sent("echo-a", "김치", "hi");
-        assert!(is_echo("echo-a", "hi"), "games that print the name apart");
-        assert!(!is_echo("echo-a", "김치: hi"), "one echo per sent chat");
+        assert!(is_echo("echo-a", "김치", "hi"), "games that print the name apart");
+        assert!(!is_echo("echo-a", "Server", "김치: hi"), "one echo per sent chat");
         remember_sent("echo-a", "김치", "hi");
         forget_sent("echo-a", "김치", "hi");
-        assert!(!is_echo("echo-a", "hi"), "a chat that never reached the game has no echo");
+        assert!(!is_echo("echo-a", "김치", "hi"), "a chat that never reached the game has no echo");
     }
 
     #[test]

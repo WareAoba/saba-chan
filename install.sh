@@ -131,7 +131,7 @@ if [ -n "$MAC" ]; then
     ditto -x -k "$TMP/cli.zip" "$TMP/cli"
 else
     echo "$CLI_SHA  $TMP/cli.zip" | sha256sum -c --status - || die "받은 CLI가 릴리즈와 달라요." "The CLI download does not match the release."
-    python3 -c 'import sys, zipfile; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])' "$TMP/cli.zip" "$TMP/cli"
+    python3 -I -c 'import sys, zipfile; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])' "$TMP/cli.zip" "$TMP/cli"
 fi
 chmod +x "$TMP/cli/saba-chan-cli"
 

@@ -414,12 +414,12 @@ fn path_parts(p: &Path) -> Vec<String> {
         .collect()
 }
 
-/// 덮어쓸 실행 파일이 떠 있으면 `.old`로 비켜 둔다 (`extract_zip`의 `before_write`로 쓴다)
 /// zip이 아닌 설치기(실행 파일 그대로)를 `target`에 둔다. 실패하면 이전 사본을 되돌린다
 pub fn replace_bare_installer(staged: &Path, target: &Path) -> Result<()> {
     UpdateManager::replace_bare_installer(staged, target)
 }
 
+/// 덮어쓸 실행 파일이 떠 있으면 `.old`로 비켜 둔다 (`extract_zip`의 `before_write`로 쓴다)
 pub fn move_aside_binary(path: &Path) -> Result<()> {
     UpdateManager::move_aside_binary(path)
 }

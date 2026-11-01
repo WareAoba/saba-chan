@@ -112,7 +112,7 @@ async fn watch(id: String, name: String, proc: Arc<ManagedProcess>, patterns: Pa
                 crate::events::emit("instance.player", json!({ "instanceId": id, "instance": name, "player": player, "change": change.as_str() }));
             } else if let Some((player, message)) = patterns.parse_chat(&line.content) {
                 // 설정은 줄마다 읽는다: 켜 둔 채로 설정을 바꾸면 바로 따른다. 디스코드에서 보낸 글의 메아리는 되돌리지 않는다
-                if super::game_chat::is_echo(&id, message) {
+                if super::game_chat::is_echo(&id, &player, message) {
                     continue;
                 }
                 if let Some(text) = super::game_chat::settings(&id).pick(message) {

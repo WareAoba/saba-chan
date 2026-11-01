@@ -877,6 +877,9 @@ async fn chatbot_settings_from_discord_are_the_owners_and_never_the_chatbots() {
     // 키는 액션으로 다루지 않는다
     let key = json!({ "apiKey": "sk-x" });
     assert_eq!(plan(&state, "chatbot.settings.set", None, &key, &relay("owner", false)).await.unwrap_err().code, "invalid_input");
+    // 모델은 PC 전체 설정이라 길드 설정 액션의 칸이 아니다
+    let model = json!({ "model": "m2" });
+    assert_eq!(plan(&state, "chatbot.settings.set", None, &model, &relay("owner", false)).await.unwrap_err().code, "invalid_input");
 
     let local = json!({ "guild": "g", "confirmLevel": "danger" });
     assert_eq!(run(&state, "chatbot.settings.set", None, &local, None, &gui()).await.unwrap()["success"], true);

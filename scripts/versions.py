@@ -501,6 +501,16 @@ def platform_components(data: dict, args: argparse.Namespace, assets: Path, plat
     return components
 
 
+def required_installers(data: dict, own: dict) -> list:
+    """구성마다 빌드하는 설치기(`profile_assets`)가 있으면 다른 플랫폼에 꼭 있어야 할 키: 화면 없는 구성은 늘,
+    창 GUI를 싣는 플랫폼이면 창 구성도 (클라이언트가 자기 구성의 `installer.<구성>`을 읽는다)"""
+    profiles = data["components"].get("installer", {}).get("profile_assets", {})
+    need = [f"installer.{p}" for p in ("headless",) if p in profiles]
+    if "gui" in own and "desktop" in profiles:
+        need.append("installer.desktop")
+    return need
+
+
 def cmd_manifest(data: dict, args: argparse.Namespace) -> int:
     """에셋 폴더에서 각 컴포넌트의 `asset` 파일을 찾아 manifest를 만든다. 없는 컴포넌트는 빠진다.
     `--also-platform`의 플랫폼은 `platforms.<플랫폼>.components`에 그 플랫폼의 목록 전체를 싣는다 (D3c)."""
@@ -541,6 +551,9 @@ def cmd_manifest(data: dict, args: argparse.Namespace) -> int:
         own = platform_components(data, args, assets, other, {})
         if "saba-core" not in own:
             sys.exit(f"{other}: no saba-core asset in {assets}")
+        missing = [k for k in required_installers(data, own) if k not in own]
+        if missing:
+            sys.exit(f"{other}: no {', '.join(missing)} asset in {assets} (clients there could not update the installer)")
         platforms[other] = {"components": {**own, **addon_entries}}
     if platforms:
         manifest["platforms"] = platforms
