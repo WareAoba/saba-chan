@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { useExtensions } from '../contexts/ExtensionContext';
+import { SabaCheckbox } from './ui/SabaUI';
 
 /**
  * 데이터 slot — 익스텐션 manifest가 선언한 값을 그린다 (코드 실행 없음, CLI와 같은 어휘).
@@ -51,16 +52,14 @@ export function AddServerOptions({ values, onChange, disabled }) {
         return (
             <div className="as-section as-section-card" key={id}>
                 {f.type === 'boolean' ? (
-                    <label className="as-label" htmlFor={id}>
-                        <input
-                            id={id}
-                            type="checkbox"
-                            checked={!!value}
-                            onChange={(e) => onChange(f.field, e.target.checked)}
-                            disabled={disabled}
-                        />
+                    <SabaCheckbox
+                        id={id}
+                        checked={!!value}
+                        onChange={(on) => onChange(f.field, on)}
+                        disabled={disabled}
+                    >
                         {label}
-                    </label>
+                    </SabaCheckbox>
                 ) : (
                     <>
                         <label className="as-label" htmlFor={id}>

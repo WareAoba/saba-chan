@@ -1235,6 +1235,7 @@ async function loadModules() {
                 </div>
                 <div class="module-check">
                     <input type="checkbox" class="mod-chk" data-id="${m.id}" />
+                    <span class="check-box" aria-hidden="true"><svg viewBox="0 0 16 16" focusable="false"><path d="M4 8.2 6.8 11 12 5"/></svg></span>
                 </div>`;
             // 아이콘: img를 먼저 만들고 error 핸들러 연결 후 src 설정
             const iconContainer = card.querySelector('.module-icon');

@@ -765,9 +765,11 @@ textarea {
     gap: 8px;
 }
 .agreement {
-    display: flex;
-    align-items: center;
-    gap: 8px;
+    font-size: 13px;
+}
+/* 약관 읽기 링크는 체크박스 글자 시작선(상자 16 + 간격 8)에 맞춘다 */
+.agreements .field-row > a {
+    padding-left: 24px;
     font-size: 13px;
 }
 .field-locked .locked {

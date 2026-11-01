@@ -3689,20 +3689,12 @@ button.appbar-preflight {
 }
 .agreement-item {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: space-between;
     gap: var(--sp-3);
 }
 .agreement-check {
-    display: flex;
-    align-items: center;
-    gap: var(--sp-2);
-    cursor: pointer;
     text-align: left;
-}
-.agreement-check.disabled {
-    cursor: default;
-    opacity: 0.6;
 }
 .agreement-read {
     flex-shrink: 0;

@@ -25,6 +25,8 @@ const ALLOWED = new Set([
     // 아이콘은 GUI 와 같은 것을 쓴다 (화면이 아니라 그림 하나)
     '@gui/components/Icon',
     '@gui/components/CustomDropdown/CustomDropdown',
+    // 체크박스는 GUI 와 같은 것을 쓴다 (화면이 아니라 입력 부품 하나)
+    '@gui/components/ui/SabaUI',
 ]);
 
 function sources(dir) {

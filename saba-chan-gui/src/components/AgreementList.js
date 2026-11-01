@@ -2,6 +2,7 @@ import clsx from 'clsx';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Icon } from './Icon';
+import { SabaCheckbox } from './ui/SabaUI';
 import { useModalClose } from '../hooks/useModalClose';
 
 /** 약관 이름: 모듈 locales의 agreements.<id> → 데몬이 준 label → id */
@@ -21,15 +22,14 @@ export function AgreementList({ module, agreements, checked, onToggle, disabled 
                 const name = agreementName(t, module, a);
                 return (
                     <li key={a.id} className="agreement-item">
-                        <label className={clsx('agreement-check', { disabled })}>
-                            <input
-                                type="checkbox"
-                                checked={!!checked[a.id]}
-                                onChange={(e) => onToggle(a.id, e.target.checked)}
-                                disabled={disabled}
-                            />
-                            <span>{t('agreements.accept', { name })}</span>
-                        </label>
+                        <SabaCheckbox
+                            className="agreement-check"
+                            checked={!!checked[a.id]}
+                            onChange={(on) => onToggle(a.id, on)}
+                            disabled={disabled}
+                        >
+                            {t('agreements.accept', { name })}
+                        </SabaCheckbox>
                         {a.url && (
                             <button
                                 type="button"

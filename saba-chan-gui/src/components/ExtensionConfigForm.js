@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Icon } from './Icon';
+import { SabaCheckbox } from './ui/SabaUI';
 
 const NUMBER_TYPES = new Set(['number', 'integer', 'int', 'float']);
 const BOOL_TYPES = new Set(['boolean', 'bool']);
@@ -84,11 +85,10 @@ export function ExtensionConfigForm({ ext }) {
                             <div key={key} className="extension-config-field">
                                 <label htmlFor={id}>{label(key)}</label>
                                 {BOOL_TYPES.has(def.type) ? (
-                                    <input
+                                    <SabaCheckbox
                                         id={id}
-                                        type="checkbox"
                                         checked={!!values[key]}
-                                        onChange={(e) => setValues((v) => ({ ...v, [key]: e.target.checked }))}
+                                        onChange={(on) => setValues((v) => ({ ...v, [key]: on }))}
                                     />
                                 ) : (
                                     <input

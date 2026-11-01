@@ -586,17 +586,15 @@ html, body {
 /* ─── 체크박스 ─── */
 
 .checkbox-row {
+    position: relative;
     display: flex;
-    align-items: center;
+    align-items: flex-start;
+    line-height: 20px;
     gap: 8px;
     font-size: 13px;
     color: var(--text-primary);
     cursor: pointer;
     padding: 4px 0;
-}
-
-.checkbox-row input[type="checkbox"] {
-    margin: 0;
 }
 
 /* ─── 모듈 카드 ─── */
@@ -678,49 +676,122 @@ html, body {
     letter-spacing: 0.02em;
 }
 
-/* 체크박스 */
+/* 체크박스 — saba-chan-gui SabaCheckbox(SabaUI.css)와 같은 규격: 16px 뉴모피즘, SVG 체크 정중앙 */
 .module-check {
     position: relative;
     flex-shrink: 0;
+    display: flex;
 }
-.module-check input[type="checkbox"] {
-    width: 18px; height: 18px;
-    accent-color: var(--brand-primary);
-    cursor: pointer;
-}
-
-/* 체크박스 — 다크/라이트 테마 커스텀 */
 .checkbox-row input[type="checkbox"],
 .module-check input[type="checkbox"] {
-    appearance: none;
-    -webkit-appearance: none;
-    width: 18px; height: 18px;
-    border: 2px solid var(--border-strong);
-    border-radius: 4px;
-    background: var(--bg-surface);
+    position: absolute;
+    left: 0;
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    opacity: 0;
     cursor: pointer;
+    z-index: 1;
+}
+.checkbox-row input[type="checkbox"] { top: 6px; }
+.module-check input[type="checkbox"] { top: 0; }
+.check-box {
     position: relative;
-    transition: all 0.15s ease;
+    display: grid;
+    place-items: center;
     flex-shrink: 0;
+    width: 16px;
+    height: 16px;
+    border-radius: 5px;
+    background: var(--bg-surface);
+    box-shadow:
+        inset 0 0 0 1px var(--border-strong),
+        inset 1.5px 1.5px 3px var(--neu-dark),
+        inset -1.5px -1.5px 3px var(--neu-light);
+    transition: box-shadow 0.25s ease, transform 0.18s cubic-bezier(0.3, 1.6, 0.5, 1);
 }
-.checkbox-row input[type="checkbox"]:checked,
-.module-check input[type="checkbox"]:checked {
-    background: var(--brand-primary);
-    border-color: var(--brand-primary);
-}
-.checkbox-row input[type="checkbox"]:checked::after,
-.module-check input[type="checkbox"]:checked::after {
+.checkbox-row .check-box { margin-top: 2px; }
+.check-box::before {
     content: '';
     position: absolute;
-    left: 5px; top: 1px;
-    width: 5px; height: 10px;
-    border: solid white;
-    border-width: 0 2px 2px 0;
-    transform: rotate(45deg);
+    inset: 0;
+    border-radius: inherit;
+    background: linear-gradient(in oklch 145deg,
+        color-mix(in oklch, var(--brand-primary), #ffffff 18%),
+        color-mix(in oklch, var(--brand-primary), #000000 14%));
+    opacity: 0;
+    transition: opacity 0.22s ease;
 }
-.checkbox-row input[type="checkbox"]:hover,
-.module-check input[type="checkbox"]:hover {
-    border-color: var(--brand-primary);
+.check-box::after {
+    content: '';
+    position: absolute;
+    inset: -2px;
+    border-radius: 7px;
+    opacity: 0;
+    pointer-events: none;
+}
+.check-box svg {
+    position: relative;
+    display: block;
+    width: 16px;
+    height: 16px;
+    overflow: visible;
+}
+.check-box path {
+    fill: none;
+    stroke: #ffffff;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-dasharray: 12;
+    stroke-dashoffset: 12;
+    transition: stroke-dashoffset 0.14s ease-in;
+}
+.checkbox-row:hover .check-box,
+.module-card:hover .check-box {
+    box-shadow:
+        inset 0 0 0 1px var(--brand-primary),
+        inset 2px 2px 4px var(--neu-dark),
+        inset -2px -2px 4px var(--neu-light);
+}
+.checkbox-row:active .check-box,
+.module-card:active .check-box {
+    transform: scale(0.88);
+}
+input[type="checkbox"]:checked + .check-box {
+    box-shadow:
+        2px 2px 5px var(--neu-dark),
+        -2px -2px 5px var(--neu-light),
+        inset 0 1px 0 rgba(255, 255, 255, 0.35);
+    animation: check-pop 0.42s cubic-bezier(0.3, 1.5, 0.5, 1);
+}
+input[type="checkbox"]:checked + .check-box::before { opacity: 1; }
+input[type="checkbox"]:checked + .check-box::after { animation: check-ring 0.5s ease-out; }
+input[type="checkbox"]:checked + .check-box path {
+    stroke-dashoffset: 0;
+    transition: stroke-dashoffset 0.28s cubic-bezier(0.65, 0, 0.35, 1) 0.08s;
+}
+input[type="checkbox"]:focus-visible + .check-box {
+    box-shadow:
+        inset 0 0 0 1px var(--border-strong),
+        inset 1.5px 1.5px 3px var(--neu-dark),
+        inset -1.5px -1.5px 3px var(--neu-light),
+        0 0 0 3px var(--brand-shadow-light, rgba(125, 142, 232, 0.18));
+}
+@keyframes check-pop {
+    0% { transform: scale(1); }
+    35% { transform: scale(0.84); }
+    70% { transform: scale(1.08); }
+    100% { transform: scale(1); }
+}
+@keyframes check-ring {
+    0% { opacity: 1; box-shadow: 0 0 0 0 var(--brand-shadow-strong, rgba(125, 142, 232, 0.35)); }
+    100% { opacity: 0; box-shadow: 0 0 0 7px transparent; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .check-box, .check-box::before, .check-box path { transition: none !important; }
+    input[type="checkbox"]:checked + .check-box,
+    input[type="checkbox"]:checked + .check-box::after { animation: none; }
 }
 
 /* ─── 설치 버튼 ─── */

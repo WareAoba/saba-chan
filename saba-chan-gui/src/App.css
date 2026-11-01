@@ -3016,13 +3016,6 @@ span[style*="--icon-loader"] svg {
     gap: var(--sp-2) var(--sp-4);
 }
 
-.settings-field .setting-list-option {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--sp-2);
-    color: var(--text-primary);
-}
-
 /* Boolean toggle in settings */
 .settings-field .toggle-row {
     display: flex;
@@ -3119,7 +3112,7 @@ span[style*="--icon-loader"] svg {
     cursor: not-allowed;
 }
 
-/* ===== Radio Group / Checkbox / Form Hint ===== */
+/* ===== Radio Group / Form Hint ===== */
 .radio-group {
     display: flex;
     gap: var(--sp-4);
@@ -3137,22 +3130,6 @@ span[style*="--icon-loader"] svg {
 
 .radio-label input[type="radio"] {
     accent-color: var(--brand-primary);
-}
-
-.checkbox-label {
-    display: flex;
-    align-items: center;
-    gap: var(--sp-2);
-    cursor: pointer;
-    font-size: calc(13px * var(--font-scale));
-    font-weight: 600;
-    color: var(--text-primary);
-}
-
-.checkbox-label input[type="checkbox"] {
-    accent-color: var(--brand-primary);
-    width: 16px;
-    height: 16px;
 }
 
 .form-hint {
@@ -3351,11 +3328,6 @@ span[style*="--icon-loader"] svg {
 
 .migration-item:hover {
     background: var(--bg-surface-hover);
-}
-
-.migration-item input[type="checkbox"] {
-    accent-color: var(--brand-primary);
-    flex-shrink: 0;
 }
 
 .migration-item .item-path {

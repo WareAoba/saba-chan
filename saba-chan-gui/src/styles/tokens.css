@@ -59,6 +59,9 @@
     --scrim: rgba(5, 6, 8, 0.66);
     /* 그림자·어둡게 섞기의 잉크 (color-mix로 투명도를 준다) */
     --shadow-ink: #000000;
+    /* 뉴모피즘: 왼쪽 위 빛, 오른쪽 아래 그림자 (체크박스·버튼) */
+    --neu-dark: rgba(0, 0, 0, 0.55);
+    --neu-light: rgba(255, 255, 255, 0.05);
 
     --console-bg: #0a0b0d;
     --console-text: #d6d8e0;
@@ -127,6 +130,8 @@
     --shadow-float: 0 12px 32px rgba(20, 24, 36, 0.14), 0 1px 3px rgba(20, 24, 36, 0.08);
     --scrim: rgba(30, 34, 44, 0.35);
     --shadow-ink: #141824;
+    --neu-dark: rgba(150, 160, 185, 0.55);
+    --neu-light: #ffffff;
 
     --console-bg: #15161a;
     --console-text: #d6d8e0;
@@ -189,6 +194,8 @@
         --shadow-float: 0 12px 32px rgba(20, 24, 36, 0.14), 0 1px 3px rgba(20, 24, 36, 0.08);
         --scrim: rgba(30, 34, 44, 0.35);
         --shadow-ink: #141824;
+        --neu-dark: rgba(150, 160, 185, 0.55);
+        --neu-light: #ffffff;
         --console-bg: #15161a;
         --console-text: #d6d8e0;
         --glass-bg: rgba(255, 255, 255, 0.7);
@@ -220,6 +227,9 @@
     --brand-hover: #6c7dd8;
     --brand-text: #ffffff;
     --brand-gradient: #7d8ee8;
+    /* 뉴모피즘 볼록면: 강조색에서 밝게→어둡게 (사용자 강조색을 따라간다) */
+    --brand-neu-from: color-mix(in oklch, var(--brand-primary), #ffffff 18%);
+    --brand-neu-to: color-mix(in oklch, var(--brand-primary), #000000 14%);
     --brand-shadow: rgba(125, 142, 232, 0.3);
     --brand-shadow-light: rgba(125, 142, 232, 0.18);
     --brand-shadow-subtle: rgba(125, 142, 232, 0.08);
