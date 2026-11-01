@@ -780,7 +780,8 @@ async fn launch_updater(
     let (guis, relaunch) = restart_plan(restart, body.relaunch, &guis, resident, daemon_line);
     let gui_restart = !guis.is_empty() || relaunch.first().is_some_and(|exe| is_gui_exe(exe));
     let args = updater_args(ticket, saba_chan_updater_lib::profile::Profile::load(), relaunch, saba_chan_updater_lib::autostart::service_relaunch());
-    if let Err(e) = spawn_detached(&updater, &args) {
+    // 바로 끝난 업데이터(라이브러리 없음·백신 차단)는 데몬을 내리기 전에 실패로 돌린다. --wait-pid로 데몬을 기다리므로 살아 있어야 한다
+    if let Err(e) = spawn_and_confirm(&updater, &args, std::time::Duration::from_millis(700)).await {
         state.updater_launched.store(false, Ordering::SeqCst);
         return (
             axum::http::StatusCode::INTERNAL_SERVER_ERROR,
@@ -966,7 +967,20 @@ fn updater_binary_near(daemon_exe: &std::path::Path, applies: bool) -> Option<st
 }
 
 /// 데몬이 끝나도 살아남게 띄운다
-fn spawn_detached(program: &std::path::Path, args: &[String]) -> std::io::Result<()> {
+/// 띄우고 `grace` 동안 지켜본다. 그 사이 끝나면 종료 코드를 담은 오류
+async fn spawn_and_confirm(program: &std::path::Path, args: &[String], grace: std::time::Duration) -> std::io::Result<()> {
+    let mut child = spawn_detached(program, args)?;
+    let deadline = std::time::Instant::now() + grace;
+    while std::time::Instant::now() < deadline {
+        if let Some(status) = child.try_wait()? {
+            return Err(std::io::Error::other(format!("updater exited right away ({status})")));
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    Ok(())
+}
+
+fn spawn_detached(program: &std::path::Path, args: &[String]) -> std::io::Result<std::process::Child> {
     let mut cmd = std::process::Command::new(program);
     cmd.args(args)
         .stdin(std::process::Stdio::null())
@@ -983,16 +997,16 @@ fn spawn_detached(program: &std::path::Path, args: &[String]) -> std::io::Result
         match cmd.spawn() {
             Err(e) if e.raw_os_error() == Some(5) => {
                 cmd.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP);
-                cmd.spawn().map(|_| ())
+                cmd.spawn()
             }
-            other => other.map(|_| ()),
+            other => other,
         }
     }
     #[cfg(unix)]
     {
         use std::os::unix::process::CommandExt;
         cmd.process_group(0);
-        cmd.spawn().map(|_| ())
+        cmd.spawn()
     }
 }
 
@@ -1213,6 +1227,17 @@ fn resolve_modules_dir() -> String {
 
 #[cfg(test)]
 mod tests {
+    /// 띄운 업데이터가 바로 끝나면(라이브러리 없음·백신 차단) 데몬이 내려가기 전에 실패로 알린다
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn updater_that_exits_at_once_is_a_launch_failure() {
+        let sh = std::path::Path::new("/bin/sh");
+        let quick = std::time::Duration::from_millis(400);
+        let err = super::spawn_and_confirm(sh, &["-c".to_string(), "exit 127".to_string()], quick).await.unwrap_err();
+        assert!(err.to_string().contains("127"), "{err}");
+        super::spawn_and_confirm(sh, &["-c".to_string(), "sleep 3".to_string()], quick).await.unwrap();
+    }
+
     /// 실행할 때 적용: 받아 둔 것을 모두 고르되, 서버가 켜져 있으면 다시 시작해야 하는 것(데몬·GUI·업데이터)은 미룬다
     #[test]
     fn applying_on_launch_holds_restarts_while_servers_run() {
@@ -1321,7 +1346,11 @@ mod tests {
             "downloaded_path": staged.to_string_lossy(), "installed": true
         }]);
         std::fs::write(staging.join("pending.json"), pending.to_string()).unwrap();
-        std::env::set_var("SABA_UPDATER_PATH", "/usr/bin/true"); // 맥에는 /bin/true가 없다
+        // 진짜 업데이터처럼 데몬을 기다리며 살아 있다 (바로 끝나면 띄우기 실패로 본다)
+        let fake = staging.join("fake-updater.sh");
+        std::fs::write(&fake, "#!/bin/sh\nsleep 5\n").unwrap();
+        std::fs::set_permissions(&fake, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+        std::env::set_var("SABA_UPDATER_PATH", &fake);
 
         let state = UpdateState::new();
         state.manager.write().await.load_pending_manifest().unwrap();
