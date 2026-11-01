@@ -702,6 +702,12 @@ impl<'a, D: DaemonApi> Ctx<'a, D> {
                 return (self.done_line(server, &i18n::interpolate(&template, &vars)), true);
             }
         }
+        // 값으로 답한 REST 조회는 데몬이 정리한 결과(`commands::output`)를 보인다
+        let lang = self.cat.language();
+        let labels = crate::commands::output::labels(&field.name, &module.settings, &module.locale(lang), &module.locale("en"));
+        if let Some(output) = crate::commands::output::build(&resp.body, &labels) {
+            return (format!("{}\n{}", self.done_line(server, &label), format::format_output(&output)), true);
+        }
         // 모듈·익스텐션 명령은 답을 `message`로 준다 (stdin의 message는 내부 문구)
         let message = match resp.str_field("protocol") {
             Some("module" | "extension") => resp.body.get("message").filter(|m| m.as_str().is_some_and(|t| !t.trim().is_empty())),

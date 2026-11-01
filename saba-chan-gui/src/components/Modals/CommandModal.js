@@ -6,6 +6,7 @@ import { needsConfirm, withCommandAliases } from '../../utils/commandRisk';
 import { createTranslateError } from '../../utils/helpers';
 import { Icon } from '../Icon';
 import { CliText, commandCli } from '../CliLine';
+import { CommandOutput } from './CommandOutput';
 import { useUIStore } from '../../stores/useUIStore';
 import { commandErrorText } from '../../utils/commandReply';
 import { commandText } from '../../utils/serverView';
@@ -161,12 +162,15 @@ function CommandModal({ server, modules }) {
             // 서버가 돌려준 답(명령 뒤 콘솔 줄)은 펼치지 않아도 보인다
             const reply =
                 !isError && displayMsg !== result.message && typeof displayMsg === 'string' ? displayMsg : null;
+            // 값으로 답한 조회는 데몬이 정리한 결과(output: text | fields | table)를 그린다
+            const output = !isError && result?.output && typeof result.output === 'object' ? result.output : null;
             const entry = {
                 id: Date.now(),
                 command: cmdText,
                 status,
                 message: displayMsg,
-                reply,
+                reply: output ? null : reply,
+                output,
                 detail,
                 time: new Date().toLocaleTimeString(),
             };
@@ -321,6 +325,7 @@ function CommandModal({ server, modules }) {
                                     </span>
                                     <span className="cmd-entry-time">{entry.time}</span>
                                 </button>
+                                {entry.output && !expanded && <CommandOutput output={entry.output} />}
                                 {entry.reply && !expanded && <pre className="cmd-entry-out">{entry.reply}</pre>}
                                 {expanded && (entry.message || entry.detail) && (
                                     <pre className="cmd-entry-out">{entry.detail || entry.message}</pre>

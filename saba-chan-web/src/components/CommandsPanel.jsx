@@ -65,6 +65,68 @@ export const resultText = (res) => {
     return typeof v === 'string' ? v : JSON.stringify(v);
 };
 
+/** 처음에 보이는 결과 줄 수. 넘으면 "N개 더 보기" (앱 명령 탭과 같다) */
+const PREVIEW_ROWS = 8;
+
+/** 데몬이 정리한 명령 결과 (`output`: { text } | { fields } | { table }, 데몬 commands::output) */
+export function CommandOutput({ output }) {
+    const { t: tg } = useTranslation('gui');
+    const [all, setAll] = useState(false);
+    if (typeof output.text === 'string') return <pre className="row-sub command-output">{output.text}</pre>;
+    const table = output.table;
+    const rows = output.fields || table?.rows || [];
+    const shown = all ? rows : rows.slice(0, PREVIEW_ROWS);
+    const more = rows.length - shown.length;
+    return (
+        <div className="row-sub command-result">
+            {table?.label && (
+                <div className="command-result-title">
+                    {table.label} ({rows.length})
+                </div>
+            )}
+            {output.fields && (
+                <dl className="command-result-fields">
+                    {shown.map((f) => (
+                        <div key={f.key} className="command-result-field">
+                            <dt>{f.label}</dt>
+                            <dd>{f.value}</dd>
+                        </div>
+                    ))}
+                </dl>
+            )}
+            {table && shown.length > 0 && (
+                <div className="command-result-scroll">
+                    <table className="command-result-table">
+                        <thead>
+                            <tr>
+                                {table.columns.map((c) => (
+                                    <th key={c.key}>{c.label}</th>
+                                ))}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {shown.map((row, i) => (
+                                // biome-ignore lint/suspicious/noArrayIndexKey: 서버가 준 순서 그대로인 결과 줄 (고유 키가 없다)
+                                <tr key={i}>
+                                    {row.map((cell, j) => (
+                                        // biome-ignore lint/suspicious/noArrayIndexKey: 열 순서 고정
+                                        <td key={j}>{cell}</td>
+                                    ))}
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            )}
+            {more > 0 && (
+                <button type="button" className="command-result-more" onClick={() => setAll(true)}>
+                    {tg('command_modal.show_more', { count: more })}
+                </button>
+            )}
+        </div>
+    );
+}
+
 /** 게임 명령: 모듈·익스텐션이 준 명령을 카드로 보이고, 입력이 있으면 창에서 채워 보낸다 */
 export function CommandsPanel({ api, server, moduleData, running }) {
     const { t } = useTranslation();
@@ -98,10 +160,16 @@ export function CommandsPanel({ api, server, moduleData, running }) {
         setBusy(false);
         const ok = !failed(res);
         setResults((prev) =>
-            [{ id: Date.now(), label: cmd.label, ok, text: ok ? resultText(res) : errorText(t, res) }, ...prev].slice(
-                0,
-                20,
-            ),
+            [
+                {
+                    id: Date.now(),
+                    label: cmd.label,
+                    ok,
+                    output: ok && res?.output && typeof res.output === 'object' ? res.output : null,
+                    text: ok ? resultText(res) : errorText(t, res),
+                },
+                ...prev,
+            ].slice(0, 20),
         );
         if (ok) setOpen(null);
         else toast(errorText(t, res), 'error');
@@ -167,7 +235,11 @@ export function CommandsPanel({ api, server, moduleData, running }) {
                                     <div className="row-title">
                                         <Icon name={r.ok ? 'checkCircle' : 'alertCircle'} size={16} /> {r.label}
                                     </div>
-                                    {r.text && <pre className="row-sub command-output">{r.text}</pre>}
+                                    {r.output ? (
+                                        <CommandOutput output={r.output} />
+                                    ) : (
+                                        r.text && <pre className="row-sub command-output">{r.text}</pre>
+                                    )}
                                 </div>
                             </li>
                         ))}

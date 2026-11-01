@@ -1274,6 +1274,11 @@ pub fn print_result(ctx: &Ctx, r: &Value) {
         return;
     }
     ctx.out.data(r, |r| {
+        // 데몬이 정리한 결과(값으로 답한 조회): 앱·디스코드와 같은 내용
+        if let Some(output) = r.get("output").filter(|o| o.is_object()) {
+            print_output(output);
+            return;
+        }
         let data = r.get("data").filter(|d| !d.is_null());
         let text = data
             .and_then(|d| d.get("response").and_then(Value::as_str).or_else(|| d.as_str()))
@@ -1294,6 +1299,42 @@ pub fn print_result(ctx: &Ctx, r: &Value) {
             None => say!("{} {}", console::style("✓").green().bold(), t!("run.sent")),
         }
     });
+}
+
+/// 데몬 `output` (`{text}` | `{fields}` | `{table}`, 데몬 `commands::output`)
+fn print_output(output: &Value) {
+    if let Some(text) = output.get("text").and_then(Value::as_str) {
+        say!("{}", text);
+    } else if let Some(fields) = output.get("fields").and_then(Value::as_array) {
+        field_lines(fields).iter().for_each(|line| say!("{}", line));
+    } else if let Some(table) = output.get("table") {
+        let rows = table["rows"].as_array().cloned().unwrap_or_default();
+        if let Some(label) = table.get("label").and_then(Value::as_str) {
+            say!("{} ({})", console::style(label).bold(), rows.len());
+        }
+        if rows.is_empty() {
+            return;
+        }
+        let cols: Vec<String> = table["columns"].as_array().into_iter().flatten().map(|c| s(c, "label").to_string()).collect();
+        let mut t = output::table(&cols);
+        for row in rows {
+            t.add_row(row.as_array().into_iter().flatten().map(|v| v.as_str().unwrap_or_default().to_string()).collect::<Vec<_>>());
+        }
+        output::print_table(t);
+    }
+}
+
+/// 이름: 값 목록을 이름 폭(화면 칸)에 맞춘 줄로
+fn field_lines(fields: &[Value]) -> Vec<String> {
+    let width = fields.iter().map(|f| console::measure_text_width(&s(f, "label"))).max().unwrap_or(0);
+    fields
+        .iter()
+        .map(|f| {
+            let label = s(f, "label");
+            let pad = width - console::measure_text_width(&label);
+            format!("{}{}  {}", label, " ".repeat(pad), s(f, "value"))
+        })
+        .collect()
 }
 
 /// 모양을 모르는 JSON을 읽기 좋게
@@ -2294,6 +2335,16 @@ async fn reorder(ctx: &Ctx, names: &[String]) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 데몬이 정리한 명령 결과(`output`)의 이름: 값 목록은 이름 폭을 맞춰 한 줄씩 (한글 이름도)
+    #[test]
+    fn output_fields_line_up_their_values() {
+        let fields = json!([
+            { "key": "serverfps", "label": "서버 FPS", "value": "59" },
+            { "key": "uptime", "label": "uptime", "value": "7234" },
+        ]);
+        assert_eq!(field_lines(fields.as_array().unwrap()), vec!["서버 FPS  59", "uptime    7234"]);
+    }
 
     /// 설치 진행 항목이 끝(done)을 보이기 전에 사라지면(데몬 재시작, 다른 곳에서 이름 바꾸기·삭제) 성공이 아니다 (L52)
     #[test]

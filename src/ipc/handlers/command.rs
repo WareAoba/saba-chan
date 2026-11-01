@@ -56,10 +56,13 @@ async fn run_command(id: &str, state: &IPCServer, req: CommandRequest) -> axum::
         let rcon_route = !stdin_route && supervisor.rcon_route(&instance.id).is_some();
         (instance, module, running, stdin_route, rcon_route)
     };
+    let lang = state.config_store.ui_language().await;
     let errors = match &module {
-        Some(module) => module_errors(module, &state.config_store.ui_language().await),
+        Some(module) => module_errors(module, &lang),
         None => Default::default(),
     };
+    // 값으로 답한 결과에 칸 이름을 붙일 때 쓴다 (설정 스키마, 모듈 locales)
+    let output_module = module.clone();
     let metadata = module.map(|m| m.metadata);
     // module.toml에 없는 이름이면 인스턴스별 명령(설치된 플러그인 명령 등)에서도 찾는다
     let metadata = match metadata {
@@ -198,6 +201,20 @@ async fn run_command(id: &str, state: &IPCServer, req: CommandRequest) -> axum::
             _ => run_module_command(&state, &instance, &line, json!({})).await,
         },
     };
+    let mut resp = resp;
+    let rest_answer = resp.status.is_success() && resp.str_field("protocol") == Some("rest");
+    if let Some(m) = output_module.filter(|_| rest_answer) {
+        let settings = m.metadata.settings.as_ref().map(|s| s.fields.as_slice()).unwrap_or_default();
+        let labels = crate::commands::output::labels(
+            &name,
+            settings,
+            &crate::actions::module_locale(&m, &lang),
+            &crate::actions::module_locale(&m, "en"),
+        );
+        if let Some(output) = crate::commands::output::build(&resp.body, &labels) {
+            resp.body["output"] = output;
+        }
+    }
     command_reply(resp, &name, &errors)
 }
 

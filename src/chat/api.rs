@@ -51,6 +51,8 @@ pub struct ModuleView {
     pub locale_dir: Option<std::path::PathBuf>,
     /// `[status] players`를 선언했다 (채팅 `players`가 접속자 조회)
     pub players: bool,
+    /// 설정 스키마 (명령 결과 칸 이름을 설정 이름으로, `commands::output::labels`)
+    pub settings: Vec<crate::supervisor::module_loader::SettingField>,
 }
 
 impl ModuleView {
@@ -71,6 +73,15 @@ impl ModuleView {
             serde_json::from_str::<serde_json::Value>(&raw).ok()?.pointer(pointer)?.as_str().map(str::to_string)
         };
         read(lang).or_else(|| read("en"))
+    }
+
+    /// 모듈 locales 한 언어 전체 (없으면 Null)
+    pub fn locale(&self, lang: &str) -> serde_json::Value {
+        self.locale_dir
+            .as_ref()
+            .and_then(|dir| std::fs::read_to_string(dir.join("locales").join(format!("{}.json", lang))).ok())
+            .and_then(|raw| serde_json::from_str(&raw).ok())
+            .unwrap_or(serde_json::Value::Null)
     }
 }
 
@@ -147,6 +158,7 @@ impl DaemonApi for IPCServer {
                     presets: meta.presets,
                     locale_dir,
                     players: meta.players_function.is_some(),
+                    settings: meta.settings.map(|s| s.fields).unwrap_or_default(),
                 }
             })
             .collect()

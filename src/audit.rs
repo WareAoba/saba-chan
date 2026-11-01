@@ -393,7 +393,7 @@ pub fn record(event: Event<'_>) {
 /// 이름만 보고 비밀로 치는 낱말 (인자·명령 이름)
 const SECRET_WORDS: [&str; 6] = ["pass", "pwd", "token", "secret", "apikey", "api_key"];
 
-fn sensitive(name: &str) -> bool {
+pub(crate) fn sensitive(name: &str) -> bool {
     let name = name.to_ascii_lowercase();
     SECRET_WORDS.iter().any(|w| name.contains(w))
 }

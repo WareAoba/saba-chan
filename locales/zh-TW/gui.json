@@ -267,6 +267,7 @@
     "execution_failed": "命令執行失敗",
     "success": "成功",
     "command_executed": "命令'{{command}}'已執行",
+    "show_more": "Show {{count}} more",
     "click_to_expand": "點擊查看詳情",
     "autocomplete": "自動完成",
     "history": "執行紀錄",

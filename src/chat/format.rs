@@ -37,6 +37,41 @@ pub fn format_response(data: &Value, cat: &Catalog) -> String {
     }
 }
 
+/// 데몬이 정리한 명령 결과(`commands::output`)를 채팅 글로
+pub fn format_output(output: &Value) -> String {
+    let s = |v: &Value| v.as_str().unwrap_or_default().to_string();
+    if let Some(text) = output.get("text").and_then(Value::as_str) {
+        return text.to_string();
+    }
+    if let Some(fields) = output.get("fields").and_then(Value::as_array) {
+        return fields.iter().map(|f| format!("• **{}**: {}", s(&f["label"]), s(&f["value"]))).collect::<Vec<_>>().join("\n");
+    }
+    let Some(table) = output.get("table") else { return String::new() };
+    let columns: Vec<String> = table["columns"].as_array().into_iter().flatten().map(|c| s(&c["label"])).collect();
+    let rows = table["rows"].as_array().cloned().unwrap_or_default();
+    let lines: Vec<String> = rows
+        .iter()
+        .map(|row| {
+            let cells: Vec<String> = row.as_array().into_iter().flatten().map(s).collect();
+            let head = cells.first().cloned().unwrap_or_default();
+            let extras: Vec<String> = columns
+                .iter()
+                .zip(&cells)
+                .skip(1)
+                .filter(|(_, v)| !v.is_empty())
+                .map(|(c, v)| format!("{}: {}", c, v))
+                .collect();
+            if extras.is_empty() { format!("• **{}**", head) } else { format!("• **{}** ({})", head, extras.join(", ")) }
+        })
+        .collect();
+    let title = table.get("label").map(s).unwrap_or_default();
+    match (title.is_empty(), lines.is_empty()) {
+        (true, _) => lines.join("\n"),
+        (false, true) => format!("📋 **{}** (0)", title),
+        (false, false) => format!("📋 **{}** ({}):\n{}", title, lines.len(), lines.join("\n")),
+    }
+}
+
 fn format_array(items: &[Value]) -> String {
     items
         .iter()

@@ -225,6 +225,7 @@
     "execution_failed": "コマンド実行に失敗しました",
     "success": "成功",
     "command_executed": "コマンド '{{command}}' が実行されました",
+    "show_more": "あと{{count}}件を表示",
     "click_to_expand": "クリックして詳細を表示",
     "autocomplete": "自動補完",
     "history": "実行履歴",

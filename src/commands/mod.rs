@@ -420,3 +420,4 @@ pub fn error_code(status: u16, body: &Value) -> String {
 
 #[cfg(test)]
 mod tests;
+pub mod output;
