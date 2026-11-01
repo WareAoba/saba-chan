@@ -103,20 +103,20 @@ export function SettingsField({ field, value, modNs, onChange, validationError }
             {fieldType === 'list' && field.options?.length > 0 && (
                 <fieldset id={inputId} aria-labelledby={labelId} className="setting-list-options">
                     {field.options.map((opt, i) => (
-                        <span key={opt} className="setting-list-option">
-                            <SabaCheckbox
-                                size="sm"
-                                id={`${inputId}-${i}`}
-                                checked={picked.includes(opt)}
-                                onChange={(on) =>
-                                    onChange(
-                                        field.name,
-                                        field.options.filter((o) => (o === opt ? on : picked.includes(o))),
-                                    )
-                                }
-                            />
-                            <label htmlFor={`${inputId}-${i}`}>{optionText(opt)}</label>
-                        </span>
+                        <SabaCheckbox
+                            key={opt}
+                            className="setting-list-option"
+                            id={`${inputId}-${i}`}
+                            checked={picked.includes(opt)}
+                            onChange={(on) =>
+                                onChange(
+                                    field.name,
+                                    field.options.filter((o) => (o === opt ? on : picked.includes(o))),
+                                )
+                            }
+                        >
+                            {optionText(opt)}
+                        </SabaCheckbox>
                     ))}
                 </fieldset>
             )}

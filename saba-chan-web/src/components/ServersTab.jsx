@@ -8,6 +8,7 @@ import {
     suggestName,
     versionSettings,
 } from '@gui/utils/installFields';
+import { SabaCheckbox } from '@gui/components/ui/SabaUI';
 import { gameNameOf, playersText, primaryAction, viewStatus } from '@gui/utils/serverView';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -263,16 +264,13 @@ export function AddServerSheet({ api, onClose }) {
                                 const label = t(`${modNs}:agreements.${a.id}`, { defaultValue: a.label || a.id });
                                 return (
                                     <div key={a.id} className="field-row">
-                                        <label className="agreement">
-                                            <input
-                                                type="checkbox"
-                                                checked={!!agreed[a.id]}
-                                                onChange={(e) =>
-                                                    setAgreed((prev) => ({ ...prev, [a.id]: e.target.checked }))
-                                                }
-                                            />
-                                            <span>{t('servers.agree', { name: label })}</span>
-                                        </label>
+                                        <SabaCheckbox
+                                            className="agreement"
+                                            checked={!!agreed[a.id]}
+                                            onChange={(on) => setAgreed((prev) => ({ ...prev, [a.id]: on }))}
+                                        >
+                                            {t('servers.agree', { name: label })}
+                                        </SabaCheckbox>
                                         {a.url && (
                                             <a href={a.url} target="_blank" rel="noreferrer noopener">
                                                 {t('servers.read_agreement')}

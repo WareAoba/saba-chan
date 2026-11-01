@@ -120,96 +120,195 @@
 }
 
 /* ── Checkbox ─────────────────────────────────────────────── */
+/* 뉴모피즘: 꺼짐 = 파인 홈, 켜짐 = 강조색으로 솟은 면. 16px 한 크기, 체크는 SVG로 정중앙 */
 
 .saba-checkbox {
     position: relative;
     display: inline-flex;
-    align-items: center;
-    flex-shrink: 0;
+    align-items: flex-start;
+    gap: var(--sp-2);
+    /* 글자가 있으면 좁은 자리에서 줄바꿈되도록 줄어들 수 있게 둔다 (상자는 줄지 않음) */
+    min-width: 0;
+    min-height: 24px;
+    padding-block: var(--sp-0-5);
+    line-height: 20px;
+    color: var(--text-primary);
     cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
 }
 
+/* 상자 위에 겹쳐 둔다: 키보드 초점·스크린리더는 그대로 */
 .saba-checkbox input {
     position: absolute;
+    top: 4px;
+    left: 0;
+    width: 16px;
+    height: 16px;
+    margin: 0;
     opacity: 0;
-    width: 0;
-    height: 0;
-    pointer-events: none;
+    cursor: inherit;
 }
 
 .saba-checkbox-box {
     position: relative;
-    width: 18px;
-    height: 18px;
-    border-radius: 5px;
-    border: 2px solid var(--border-medium);
-    background: var(--bg-surface);
-    transition: all 0.2s ease;
+    display: grid;
+    place-items: center;
     flex-shrink: 0;
+    width: 16px;
+    height: 16px;
+    margin-top: var(--sp-0-5);
+    border-radius: 5px;
+    background: var(--bg-surface);
+    box-shadow:
+        inset 0 0 0 1px var(--line-strong),
+        inset 1.5px 1.5px 3px var(--neu-dark),
+        inset -1.5px -1.5px 3px var(--neu-light);
+    transition:
+        box-shadow 0.25s ease,
+        transform 0.18s cubic-bezier(0.3, 1.6, 0.5, 1);
 }
 
-/* checkmark */
+/* 켜진 면 (강조색 그라데이션) — 투명도로 부드럽게 바꾼다 */
+.saba-checkbox-box::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: linear-gradient(in oklch 145deg, var(--brand-neu-from), var(--brand-neu-to));
+    opacity: 0;
+    transition: opacity 0.22s ease;
+}
+
+/* 켤 때 퍼지는 물결 */
 .saba-checkbox-box::after {
     content: "";
     position: absolute;
-    top: 2px;
-    left: 5px;
-    width: 5px;
-    height: 9px;
-    border: solid transparent;
-    border-width: 0 2px 2px 0;
-    transform: rotate(45deg) scale(0);
-    transform-origin: bottom right;
-    transition:
-        transform 0.15s cubic-bezier(0.4, 0, 0.2, 1),
-        border-color 0.15s;
+    inset: -2px;
+    border-radius: 7px;
+    opacity: 0;
+    pointer-events: none;
 }
 
-/* checked */
-.saba-checkbox input:checked + .saba-checkbox-box {
-    background: var(--brand-primary);
-    border-color: var(--brand-primary);
+.saba-checkbox-box svg {
+    position: relative;
+    display: block;
+    width: 16px;
+    height: 16px;
+    overflow: visible;
 }
 
-.saba-checkbox input:checked + .saba-checkbox-box::after {
-    border-color: var(--text-on-primary);
-    transform: rotate(45deg) scale(1);
+.saba-checkbox-box path {
+    fill: none;
+    stroke: var(--text-on-primary);
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-dasharray: 12;
+    stroke-dashoffset: 12;
+    transition: stroke-dashoffset 0.14s ease-in;
 }
 
-/* focus ring */
-.saba-checkbox input:focus-visible + .saba-checkbox-box {
-    box-shadow: 0 0 0 3px var(--brand-shadow-light);
+.saba-checkbox-label {
+    min-width: 0;
 }
 
 /* hover */
 .saba-checkbox:hover .saba-checkbox-box {
-    border-color: var(--brand-primary);
+    box-shadow:
+        inset 0 0 0 1px var(--brand-shadow-strong),
+        inset 2px 2px 4px var(--neu-dark),
+        inset -2px -2px 4px var(--neu-light);
+}
+
+/* 누르는 동안 */
+.saba-checkbox:active .saba-checkbox-box {
+    transform: scale(0.88);
+}
+
+/* checked */
+.saba-checkbox input:checked + .saba-checkbox-box {
+    box-shadow:
+        2px 2px 5px var(--neu-dark),
+        -2px -2px 5px var(--neu-light),
+        inset 0 1px 0 rgba(255, 255, 255, 0.35);
+    animation: saba-check-pop 0.42s cubic-bezier(0.3, 1.5, 0.5, 1);
+}
+
+.saba-checkbox input:checked + .saba-checkbox-box::before {
+    opacity: 1;
+}
+
+.saba-checkbox input:checked + .saba-checkbox-box::after {
+    animation: saba-check-ring 0.5s ease-out;
+}
+
+.saba-checkbox input:checked + .saba-checkbox-box path {
+    stroke-dashoffset: 0;
+    transition: stroke-dashoffset 0.28s cubic-bezier(0.65, 0, 0.35, 1) 0.08s;
+}
+
+/* focus ring */
+.saba-checkbox input:focus-visible + .saba-checkbox-box {
+    box-shadow:
+        inset 0 0 0 1px var(--line-strong),
+        inset 1.5px 1.5px 3px var(--neu-dark),
+        inset -1.5px -1.5px 3px var(--neu-light),
+        0 0 0 3px var(--brand-shadow-light);
+}
+
+.saba-checkbox input:checked:focus-visible + .saba-checkbox-box {
+    box-shadow:
+        2px 2px 5px var(--neu-dark),
+        -2px -2px 5px var(--neu-light),
+        0 0 0 3px var(--brand-shadow-light);
 }
 
 /* disabled */
-.saba-checkbox input:disabled + .saba-checkbox-box {
-    opacity: 0.4;
-    cursor: not-allowed;
-}
-
 .saba-checkbox.disabled {
+    opacity: 0.45;
     cursor: not-allowed;
 }
 
-/* sm checkbox (14px) — inline compact */
-.saba-checkbox.sm .saba-checkbox-box {
-    width: 14px;
-    height: 14px;
-    border-radius: 3px;
-    border-width: 1.5px;
+.saba-checkbox.disabled .saba-checkbox-box {
+    transform: none;
 }
 
-.saba-checkbox.sm .saba-checkbox-box::after {
-    top: 1px;
-    left: 4px;
-    width: 4px;
-    height: 7px;
-    border-width: 0 1.5px 1.5px 0;
+@keyframes saba-check-pop {
+    0% {
+        transform: scale(1);
+    }
+    35% {
+        transform: scale(0.84);
+    }
+    70% {
+        transform: scale(1.08);
+    }
+    100% {
+        transform: scale(1);
+    }
+}
+
+@keyframes saba-check-ring {
+    0% {
+        opacity: 1;
+        box-shadow: 0 0 0 0 var(--brand-shadow-strong);
+    }
+    100% {
+        opacity: 0;
+        box-shadow: 0 0 0 7px transparent;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .saba-checkbox-box,
+    .saba-checkbox-box::before,
+    .saba-checkbox-box path {
+        transition: none !important;
+    }
+    .saba-checkbox input:checked + .saba-checkbox-box,
+    .saba-checkbox input:checked + .saba-checkbox-box::after {
+        animation: none;
+    }
 }
 
 /* ── Spinner ──────────────────────────────────────────────── */

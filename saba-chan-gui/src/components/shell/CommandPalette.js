@@ -6,7 +6,7 @@ import { useUIStore } from '../../stores/useUIStore';
 import { safeShowToast } from '../../utils/helpers';
 import CustomDropdown from '../CustomDropdown/CustomDropdown';
 import { Icon } from '../Icon';
-import { SabaSpinner } from '../ui/SabaUI';
+import { SabaCheckbox, SabaSpinner } from '../ui/SabaUI';
 
 /**
  * 명령 팔레트 (Ctrl+K): 데몬 액션 카탈로그(GET /api/actions?surface=gui)만 검색한다. 자연어는 받지 않는다.
@@ -82,6 +82,14 @@ function errorText(res, t) {
 
 function Field({ field, value, onChange }) {
     const id = `palette-field-${field.name}`;
+    if (field.type === 'boolean' && !field.enum) {
+        return (
+            <SabaCheckbox id={id} className="palette-field-check" checked={!!value} onChange={onChange}>
+                {field.title}
+                {field.required && <span className="palette-required"> *</span>}
+            </SabaCheckbox>
+        );
+    }
     let input;
     if (field.enum) {
         input = (
@@ -96,8 +104,6 @@ function Field({ field, value, onChange }) {
                 ]}
             />
         );
-    } else if (field.type === 'boolean') {
-        input = <input id={id} type="checkbox" checked={!!value} onChange={(e) => onChange(e.target.checked)} />;
     } else {
         input = (
             <input

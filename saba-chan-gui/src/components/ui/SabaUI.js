@@ -40,18 +40,18 @@ export function SabaToggle({ checked, onChange, disabled, size, className, title
 /* ── Checkbox ─────────────────────────────────────────────── */
 
 /**
+ * 뉴모피즘 체크박스 (16px 한 크기). children을 주면 글자까지 누르는 범위가 되고,
+ * 글자가 여러 줄이어도 상자는 첫 줄에 맞춘다.
  * @param {Object}   props
  * @param {boolean}  props.checked
  * @param {Function} props.onChange
  * @param {boolean}  [props.disabled]
- * @param {'sm'|'md'} [props.size='md']
  * @param {string}   [props.className]
  * @param {string}   [props.title]
+ * @param {import('react').ReactNode} [props.children] — 상자 옆 글자
  */
-export function SabaCheckbox({ checked, onChange, disabled, size, className, title, ...rest }) {
-    const cls = ['saba-checkbox', size === 'sm' ? 'sm' : '', disabled ? 'disabled' : '', className || '']
-        .filter(Boolean)
-        .join(' ');
+export function SabaCheckbox({ checked, onChange, disabled, size: _size, className, title, children, ...rest }) {
+    const cls = ['saba-checkbox', disabled ? 'disabled' : '', className || ''].filter(Boolean).join(' ');
     return (
         <label className={cls} data-tooltip={title}>
             <input
@@ -61,7 +61,12 @@ export function SabaCheckbox({ checked, onChange, disabled, size, className, tit
                 disabled={disabled}
                 {...rest}
             />
-            <span className="saba-checkbox-box" />
+            <span className="saba-checkbox-box" aria-hidden="true">
+                <svg viewBox="0 0 16 16" focusable="false">
+                    <path d="M4 8.2 6.8 11 12 5" />
+                </svg>
+            </span>
+            {children != null && <span className="saba-checkbox-label">{children}</span>}
         </label>
     );
 }

@@ -31,6 +31,8 @@
     --border-default: #dddddd;
     --border-medium: #d0d0d0;
     --border-strong: #cccccc;
+    --neu-dark: rgba(150, 160, 185, 0.55);
+    --neu-light: #ffffff;
     --border-hover: #bbbbbb;
     --border-input: #dddddd;
     --border-separator: #e0e0e0;
@@ -205,6 +207,8 @@
     --border-default: #404044;
     --border-medium: #4a4a4f;
     --border-strong: #555559;
+    --neu-dark: rgba(0, 0, 0, 0.55);
+    --neu-light: rgba(255, 255, 255, 0.05);
     --border-hover: #636368;
     --border-input: #404044;
     --border-separator: #363639;
@@ -381,6 +385,8 @@
         --border-default: #404044;
         --border-medium: #4a4a4f;
         --border-strong: #555559;
+        --neu-dark: rgba(0, 0, 0, 0.55);
+        --neu-light: rgba(255, 255, 255, 0.05);
         --border-hover: #636368;
         --border-input: #404044;
         --border-separator: #363639;
