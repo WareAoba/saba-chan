@@ -6,6 +6,7 @@ pub mod highlight;
 pub mod players;
 pub mod ready;
 pub mod player_events;
+pub mod chat_link;
 pub mod game_chat;
 
 use anyhow::Result;
