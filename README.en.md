@@ -39,13 +39,15 @@ The name is a pun: in Japanese, "server" (サーバー) sounds a lot like "macke
 - Invite the Saba-chan bot to your Discord server and link it to your PC, then start, stop, and check servers with chat or `/saba` commands (`/사바쨩` on a Korean Discord client). You don't need to open router ports for remote control, because your PC makes the outgoing connection.
 - Each Discord server has its own ladder of levels (owner, admin, user, guest, banned), and you choose which commands each level can use. Higher levels can always do everything the levels below them can.
 - Dangerous commands ask once more with a button before they run. By default only danger-level commands ask; each Discord server can widen that to caution-level commands like stop and restart, or to every command.
-- The bot also plays music and has "Talking Saba-chan", an AI chat feature. Talking Saba-chan runs on an AI API key you provide and has to be turned on per Discord server.
+- The bot also plays music, has "Talking Saba-chan", an AI chat feature, and "Reading Saba-chan", which reads your chat aloud in a voice channel. Talking Saba-chan runs on an AI API key you provide and has to be turned on per Discord server.
+- It also has Discord server moderation commands (chat cleanup and auto cleanup, mute, channel lock and slow mode) and `/stats` (game stat cards for LoL, PUBG, MapleStory, Eternal Return, and more).
+- These bot features also work in Discord servers with no PC linked. First-time users read the terms on the website and register once.
 
 **When you're away**
 
-- Phone: get a link with `/saba web` in Discord (only the PC's owner can get one, and it works once within 5 minutes) and manage servers, console, and settings from your phone's browser. Nothing to install, no login.
+- Phone: get a link with `/saba web` in Discord (tied to the Discord account that received it, and it works once within 5 minutes) and manage servers, console, and settings from your phone's browser. Even without a PC, you can change Saba-chan's settings for Discord servers you manage. Nothing to install, no login.
 - Another PC: control Saba-chan running on a Linux box or another PC from your own app and CLI (remote daemon). Only PCs paired with the same Discord account can connect.
-- AI agents: link an MCP-capable agent such as Claude to your Discord account and it can manage your servers. Dangerous commands are confirmed in the agent's own screen first. Check or unlink the agent with `/saba agent` or from the Discord screen in the app.
+- AI agents: link an MCP-capable agent such as Claude to your Discord account and it can manage your servers. Dangerous commands are confirmed in the agent's own screen first. Check or unlink the agent with `/mysaba agent` or from the Discord screen in the app.
 
 **And also**
 
@@ -134,7 +136,7 @@ sequenceDiagram
 | CLI | `saba-chan-cli/` (Rust) | Command-line tool and interactive shell |
 | Web remote | `saba-chan-web/` | Screens for a phone browser |
 | Runner `saba-runner` | `runner/` (Rust) | Watcher process attached to each server |
-| Updater, installer | `updater/`, `installer/` | Installs and updates from signed releases |
+| Installer | `installer/`, `updater/` (shared library) | Install, apply updates, and uninstall in one program (`saba-chan-installer`) |
 | Modules | [saba-chan-modules](https://github.com/WareAoba/saba-chan-modules) | Per-game manuals (`module.toml` + `lifecycle.py`) |
 | Extensions | [saba-chan-extensions](https://github.com/WareAoba/saba-chan-extensions) | Add-ons like SteamCMD or Unreal config editing (Python) |
 
@@ -142,7 +144,7 @@ The deeper material is in [docs/architecture/](docs/architecture/00-overview.md)
 
 ## Security
 
-- The daemon only listens inside your PC (`127.0.0.1`) and checks an access token on every request. A TLS port opens only if you turn on the remote daemon yourself, and only PCs paired with the same Discord account get in.
+- The daemon only listens inside your PC (`127.0.0.1`) and checks an access token on every request. The TLS port for the remote daemon is open from the start (you can turn it off in settings), and only PCs paired with the same Discord account get in.
 - Commands exchanged with the relay are signed with a key issued when you link the PC.
 - App, module, and extension updates come only from releases with a valid official signature, and every downloaded file is checked against its hash.
 - Modules and extensions without an official signature run isolated (AppContainer on Windows, bubblewrap on Linux). Where isolation isn't available, they only run if you agree to it.
