@@ -185,7 +185,6 @@ pub static ACTIONS: &[Def] = &[
         fields: &[
             path_field("guild"),
             field("enabled", "boolean", false),
-            field("model", "string", false),
             field("memo", "string", false),
             field("effort", "string", false),
             field("ambient", "boolean", false),

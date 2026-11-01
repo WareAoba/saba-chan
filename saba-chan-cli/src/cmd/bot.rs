@@ -70,8 +70,7 @@ pub async fn run(ctx: &Ctx, cmd: BotCmd) -> Result<()> {
                 return Ok(());
             }
             let r = ctx.api.set_discord_settings(&guild, json!({ "prefixes": values })).await?;
-            let msg = if default { t!("bot.prefix_reset") } else { t!("bot.prefix_set", prefix = values.join(", ")) };
-            ctx.out.done(&msg, &r);
+            ctx.out.done(&prefix_saved_message(&r, &values, default), &r);
             if r.pointer("/sync/ok").and_then(Value::as_bool) == Some(false) {
                 ctx.out.warn(&t!("bot.discord_not_synced"));
             }
@@ -229,6 +228,18 @@ pub(crate) fn relay_of(cfg: &Value) -> Option<&str> {
 }
 
 /// 빈 목록은 앱 언어의 기본 접두사(릴레이가 고른다)
+/// 접두사 저장 문구: 데몬 응답의 저장된 접두사(`settings.prefixes`), 없으면(옛 데몬) 입력한 값
+fn prefix_saved_message(r: &Value, values: &[String], default: bool) -> String {
+    if default {
+        return t!("bot.prefix_reset");
+    }
+    let prefix = match r.pointer("/settings/prefixes") {
+        Some(p @ Value::Array(_)) => prefixes_line(p),
+        _ => values.join(", "),
+    };
+    t!("bot.prefix_set", prefix = prefix)
+}
+
 fn prefixes_line(p: &Value) -> String {
     let list: Vec<&str> = p.as_array().map(|a| a.iter().filter_map(Value::as_str).collect()).unwrap_or_default();
     if list.is_empty() {
@@ -1170,6 +1181,17 @@ mod tests {
     use super::*;
 
     /// 서버 설정에 그 서버의 호출어와 명령 이름 번역이 보인다 (비면 기본 호출어, 값이 없으면 번역 켜짐)
+    /// 저장 문구는 데몬이 다듬어 저장한 접두사를 보인다 (입력 원문이 아니라)
+    #[test]
+    fn prefix_saved_message_shows_what_the_daemon_kept() {
+        crate::i18n::init("ko");
+        let typed = vec![" 사바 ".to_string(), "사바".to_string()];
+        let r = json!({ "success": true, "settings": { "prefixes": ["사바"] } });
+        assert_eq!(prefix_saved_message(&r, &typed, false), t!("bot.prefix_set", prefix = "사바"));
+        assert_eq!(prefix_saved_message(&json!({ "success": true }), &typed, false), t!("bot.prefix_set", prefix = " 사바 , 사바"));
+        assert_eq!(prefix_saved_message(&r, &[], true), t!("bot.prefix_reset"));
+    }
+
     #[test]
     fn server_settings_show_its_prefixes_and_command_translation() {
         crate::i18n::init("ko");

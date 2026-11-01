@@ -1105,7 +1105,7 @@ mod tests {
         state.supervisor.read().await.tracker.track("chat-with", std::process::id()).unwrap();
         let sent = chat("chat-with", msg.clone()).await;
         assert_eq!(sent.body, json!({ "success": true }), "the newline never reaches the console");
-        assert!(crate::supervisor::game_chat::is_echo("chat-with", "김치: 안녕 stop"), "its echo is not sent back to Discord");
+        assert!(crate::supervisor::game_chat::is_echo("chat-with", "Server", "김치: 안녕 stop"), "its echo is not sent back to Discord");
         assert_eq!(chat("chat-with", json!({ "name": "김치", "text": " \n " })).await.status, StatusCode::BAD_REQUEST);
         let _ = state.supervisor.read().await.tracker.untrack("chat-with");
         assert_eq!(chat("chat-without", msg).await.body["error_code"], "not_supported");

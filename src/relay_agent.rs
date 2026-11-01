@@ -190,6 +190,7 @@ impl RelayAgent {
                 generation,
                 seen: agent.seen.clone(),
                 metadata_sent: Mutex::new(None),
+                linked_acks: Mutex::default(),
                 ack_supported: std::sync::atomic::AtomicBool::new(true),
             };
             if let Err(e) = session.check_version().await {
@@ -334,6 +335,8 @@ struct Session {
     seen: Arc<Mutex<SeenCommands>>,
     /// 릴레이가 메타데이터 전체를 받아 둔 지문 (`heartbeat_metadata`). 없으면 다음 하트비트는 전체를 보낸다
     metadata_sent: Mutex<Option<String>>,
+    /// 적용했지만 릴레이가 아직 확인 응답을 받지 못한 새로 묶인 길드 (`linkedGuildsAck`)
+    linked_acks: Mutex<Vec<String>>,
     /// 릴레이가 `/ack`를 모르면(404, 예전 릴레이) 이 세션에서는 더 보내지 않는다
     ack_supported: std::sync::atomic::AtomicBool,
 }
@@ -539,15 +542,8 @@ impl Session {
     async fn heartbeat_once(&self) -> bool {
         let sent = self.metadata_sent.lock().unwrap_or_else(|e| e.into_inner()).clone();
         let (metadata, hash, unchanged) = heartbeat_metadata(self.metadata().await, sent.as_deref());
-        let mut body = json!({
-            "agentVersion": AGENT_VERSION,
-            "os": format!("{} {}", std::env::consts::OS, std::env::consts::ARCH),
-            "metadata": metadata,
-            "metadataHash": hash,
-        });
-        if unchanged {
-            body["metadataUnchanged"] = Value::Bool(true);
-        }
+        let acks = self.linked_acks.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        let body = heartbeat_body(metadata, &hash, unchanged, &acks);
         let result = async {
             let resp = self.send_signed(reqwest::Method::POST, "/heartbeat", Some(body.to_string())).await?;
             let status = resp.status();
@@ -584,7 +580,10 @@ impl Session {
                     s.last_error_code = None;
                     s.min_version = None;
                 });
-                // 새로 묶인 길드에 열 서버를 정했으면 곧바로 한 번 더 보내 릴레이가 그 목록으로 명령을 만들게 한다
+                // 릴레이가 받은 확인 응답은 지운다. 그 사이 새로 적용한 길드는 남는다
+                self.linked_acks.lock().unwrap_or_else(|e| e.into_inner()).retain(|g| !acks.contains(g));
+                // 새로 묶인 길드에 열 서버를 정했으면 곧바로 한 번 더 보내 확인 응답과 그 목록을 릴레이에 알린다
+                // (릴레이는 확인 응답을 받기 전까지 그 길드의 명령을 막고 목록을 다시 보낸다)
                 if self.apply_linked_guilds(&data).await {
                     send_again = true;
                 }
@@ -948,23 +947,30 @@ impl Session {
         }
     }
 
-    /// 하트비트 응답의 `linkedGuilds`를 적용한다 (`close_linked_guild`). 한 길드라도 바꿨으면 true
+    /// 하트비트 응답의 `linkedGuilds`를 적용한다 (`close_linked_guild`). 적용한 길드는 다음 하트비트의 확인 응답에 싣는다.
+    /// 한 길드라도 적용했으면 true
     async fn apply_linked_guilds(&self, data: &Value) -> bool {
         let Some(list) = data.get("linkedGuilds").and_then(Value::as_array) else { return false };
         let store = &self.server.config_store;
         let policy = store.get_bot_config().await.new_guild_instances;
-        let mut changed = false;
+        let mut applied = false;
         for g in list {
             let (Some(guild), Some(via)) = (g.get("guildId").and_then(Value::as_str), g.get("via").and_then(Value::as_str)) else { continue };
             match store.update_node_settings(guild, |node| {
                 let c = close_linked_guild(node, via, policy);
                 (c, c)
             }).await {
-                Ok(c) => changed |= c,
+                Ok(_) => {
+                    let mut acks = self.linked_acks.lock().unwrap_or_else(|e| e.into_inner());
+                    if !acks.iter().any(|g| g == guild) {
+                        acks.push(guild.to_string());
+                    }
+                    applied = true;
+                }
                 Err(e) => tracing::warn!("[RelayAgent] could not set servers for new guild {}: {}", guild, e),
             }
         }
-        changed
+        applied
     }
 
     /// 릴레이 명령의 요청자. 노드 주인은 처음 받은 값으로 고정하고(`nodeSettings[guild].ownerDiscordId`),
@@ -1651,6 +1657,23 @@ fn relay_command_entry(c: &crate::supervisor::module_loader::CommandField, alias
 /// 하트비트마다 보내는 메타데이터 키: 서버 목록(CPU·RAM·접속자가 매번 바뀐다)과 릴레이가 매번 캐시를 맞추는 권한
 const HEARTBEAT_ALWAYS: [&str; 3] = ["servers", "permissions", "permissionsAt"];
 
+/// 하트비트 본문. 적용한 새 길드가 있으면 확인 응답(`linkedGuildsAck`)을 싣는다
+fn heartbeat_body(metadata: Value, hash: &str, unchanged: bool, acks: &[String]) -> Value {
+    let mut body = json!({
+        "agentVersion": AGENT_VERSION,
+        "os": format!("{} {}", std::env::consts::OS, std::env::consts::ARCH),
+        "metadata": metadata,
+        "metadataHash": hash,
+    });
+    if unchanged {
+        body["metadataUnchanged"] = Value::Bool(true);
+    }
+    if !acks.is_empty() {
+        body["linkedGuildsAck"] = json!(acks);
+    }
+    body
+}
+
 /// 하트비트 메타데이터를 보낼 모양으로: (보낼 메타데이터, 지문, 바뀌지 않아 줄였는가).
 /// 지문은 `servers`·`permissionsAt`을 뺀 나머지(권한 포함)의 SHA-256이다. 릴레이가 받아 둔 지문(`sent`)과 같으면
 /// `HEARTBEAT_ALWAYS`만 보낸다 (모듈 명령·액션·낱말처럼 큰 값은 바뀔 때만)
@@ -1758,6 +1781,7 @@ mod tests {
             generation: 1,
             seen: Arc::default(),
             metadata_sent: Mutex::new(None),
+            linked_acks: Mutex::default(),
             ack_supported: std::sync::atomic::AtomicBool::new(true),
         };
         let reset = || agent.update(1, |s| *s = AgentStatus { running: true, ..Default::default() });
@@ -1818,6 +1842,7 @@ mod tests {
             generation: 1,
             seen: Arc::default(),
             metadata_sent: Mutex::new(None),
+            linked_acks: Mutex::default(),
             ack_supported: std::sync::atomic::AtomicBool::new(true),
         };
         session.post_result("c1", &json!({ "success": true })).await;
@@ -1845,6 +1870,7 @@ mod tests {
             generation: 1,
             seen: Arc::default(),
             metadata_sent: Mutex::new(None),
+            linked_acks: Mutex::default(),
             ack_supported: std::sync::atomic::AtomicBool::new(true),
         }
     }
@@ -2344,6 +2370,18 @@ mod tests {
     fn heartbeat_features_name_what_the_relay_branches_on() {
         assert!(FEATURES.contains(&"confirm_by_daemon"));
         assert!(FEATURES.iter().all(|f| !f.is_empty() && f.chars().all(|c| c.is_ascii_lowercase() || c == '_')));
+    }
+
+    /// 새로 묶인 길드를 적용했으면 다음 하트비트가 그 길드들을 확인 응답(`linkedGuildsAck`)으로 싣는다. 없으면 싣지 않는다
+    #[test]
+    fn heartbeat_acks_the_linked_guilds_it_applied() {
+        let body = heartbeat_body(json!({}), "h", false, &["111".to_string()]);
+        assert_eq!(body["linkedGuildsAck"], json!(["111"]));
+        assert_eq!(body["metadataHash"], "h");
+        assert!(body.get("metadataUnchanged").is_none());
+        let body = heartbeat_body(json!({}), "h", true, &[]);
+        assert!(body.get("linkedGuildsAck").is_none());
+        assert_eq!(body["metadataUnchanged"], true);
     }
 
     /// 코드 없이 묶인 길드는 서버를 나중에 허용하고, 코드로 묶인 길드는 PC 설정을 따른다. 이미 정한 길드는 건드리지 않는다
