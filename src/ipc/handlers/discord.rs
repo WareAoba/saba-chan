@@ -345,6 +345,28 @@ impl GuildSettings {
     }
 }
 
+/// 원본이 릴레이인 길드 설정 (데몬은 저장하지 않고 앱의 값을 릴레이에 그대로 넘긴다). 모두 참·거짓 값
+pub const RELAY_OWNED: [&str; 1] = ["bigEmoji"];
+
+/// 패치에서 릴레이 원본 키를 떼어 낸다 → (데몬이 맡는 키, 릴레이 원본 키)
+fn split_relay_owned(patch: &Map<String, Value>) -> Result<(Map<String, Value>, Map<String, Value>), (String, &'static str)> {
+    let (owned, rest): (Map<String, Value>, Map<String, Value>) = patch.clone().into_iter().partition(|(k, _)| RELAY_OWNED.contains(&k.as_str()));
+    if let Some((k, _)) = owned.iter().find(|(_, v)| !v.is_boolean()) {
+        return Err((k.clone(), "must be a boolean"));
+    }
+    Ok((rest, owned))
+}
+
+/// 릴레이 값에서 원본이 릴레이인 키만 화면 값에 얹는다 (릴레이를 못 읽으면 빠진다: 앱은 그 토글을 잠근다)
+fn with_relay_owned(mut v: Value, relay: &Value) -> Value {
+    for key in RELAY_OWNED {
+        if let Some(x) = relay.get(key).filter(|x| x.is_boolean()) {
+            v[key] = x.clone();
+        }
+    }
+    v
+}
+
 fn view(guild: &str, s: &GuildSettings) -> Value {
     let mut v = serde_json::to_value(s).unwrap_or_default();
     v["guildId"] = json!(guild);
@@ -477,8 +499,12 @@ async fn push(state: &IPCServer, base: &str, guild: &str, before: &Value, s: &Gu
 /// GET /api/discord/:guild/settings
 /// 처음 보는 길드인데 릴레이를 읽지 못하면 기본값에 `loaded: false`를 붙인다 (그 값으로 저장하지 않는다)
 pub async fn get_settings(State(state): State<IPCServer>, Path(guild): Path<String>) -> Response {
+    let relay = match relay_settings(&relay_base(&state).await, &guild).await {
+        RelaySettings::Found(body) => body,
+        _ => Value::Null,
+    };
     match current(&state, &guild).await {
-        Some(s) => Json(view(&guild, &s)).into_response(),
+        Some(s) => Json(with_relay_owned(view(&guild, &s), &relay)).into_response(),
         None => {
             let mut v = view(&guild, &GuildSettings::default());
             v["loaded"] = json!(false);
@@ -490,6 +516,11 @@ pub async fn get_settings(State(state): State<IPCServer>, Path(guild): Path<Stri
 /// PATCH /api/discord/:guild/settings
 pub async fn patch_settings(State(state): State<IPCServer>, Path(guild): Path<String>, Json(body): Json<Value>) -> Response {
     let Some(patch) = body.as_object() else { return invalid("input", "must be an object") };
+    let (patch, owned) = match split_relay_owned(patch) {
+        Ok(split) => split,
+        Err((field, reason)) => return invalid(&field, reason),
+    };
+    let patch = &patch;
     if load_node_token().is_none() {
         return (StatusCode::CONFLICT, Json(json!({ "success": false, "error": "Not paired with the relay", "error_code": "not_paired" }))).into_response();
     }
@@ -506,6 +537,25 @@ pub async fn patch_settings(State(state): State<IPCServer>, Path(guild): Path<St
         return invalid(&field, reason);
     }
     let base = relay_base(&state).await;
+    // 릴레이 원본 키는 저장할 곳이 릴레이뿐이다: 닿지 않거나 거절하면 실패로 돌려준다
+    if !owned.is_empty() {
+        let path = format!("/api/nodes/{}/settings", encode_path_segment(&guild));
+        match call(&base, reqwest::Method::PATCH, &path, Some(Value::Object(owned.clone()).to_string())).await {
+            Ok((c, _)) if c.is_success() => {}
+            Ok((StatusCode::BAD_REQUEST, _)) => return invalid(owned.keys().next().map(String::as_str).unwrap_or("input"), "rejected by the relay"),
+            _ => {
+                return (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    Json(json!({ "success": false, "error": "Could not save this setting to the relay", "error_code": "relay_unavailable" })),
+                )
+                    .into_response()
+            }
+        }
+        if patch.is_empty() {
+            let v = with_relay_owned(view(&guild, &before), &Value::Object(owned));
+            return Json(json!({ "success": true, "settings": v, "sync": { "guildId": guild, "ok": true } })).into_response();
+        }
+    }
     let outcome = push(&state, &base, &guild, &before.relay_body(), &next).await;
     // 릴레이가 값을 거절했으면 저장하지 않는다 (연결 실패는 저장하고 다음 연결 때 맞춘다)
     if matches!(&outcome, Ok((c, _)) if *c == StatusCode::BAD_REQUEST) {
@@ -520,7 +570,8 @@ pub async fn patch_settings(State(state): State<IPCServer>, Path(guild): Path<St
     if retry_later(&outcome) {
         PENDING_SYNC.store(true, std::sync::atomic::Ordering::SeqCst);
     }
-    Json(json!({ "success": true, "settings": view(&guild, &next), "sync": result_row(&guild, &outcome) })).into_response()
+    Json(json!({ "success": true, "settings": with_relay_owned(view(&guild, &next), &Value::Object(owned)), "sync": result_row(&guild, &outcome) }))
+        .into_response()
 }
 
 /// 릴레이 에이전트가 연결된 직후 한 번: 원본이 있는 길드는 보내고, 없는 길드는 릴레이 값을 한 번 가져온다
@@ -583,6 +634,14 @@ mod tests {
 
     fn patch(v: Value) -> Map<String, Value> {
         v.as_object().unwrap().clone()
+    }
+
+    #[test]
+    fn relay_owned_keys_are_split_off_and_checked() {
+        let (rest, owned) = split_relay_owned(&patch(json!({ "locale": "ko", "bigEmoji": true }))).unwrap();
+        assert_eq!(rest, patch(json!({ "locale": "ko" })));
+        assert_eq!(owned, patch(json!({ "bigEmoji": true })));
+        assert_eq!(split_relay_owned(&patch(json!({ "bigEmoji": "yes" }))).unwrap_err().0, "bigEmoji");
     }
 
     #[test]

@@ -995,6 +995,8 @@
     "bot_settings": {
       "loading": "봇 설정을 불러오는 중…",
       "general_title": "일반",
+      "big_emoji": "큰 이모지",
+      "big_emoji_desc": "이모지나 스티커 하나만 보낸 글을 큰 그림으로 바꿔 올려요.",
       "language": "봇 언어",
       "language_auto": "자동 (앱 언어 따름)",
       "music_title": "노래하는 사바쨩",

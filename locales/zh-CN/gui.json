@@ -995,6 +995,8 @@
     "bot_settings": {
       "loading": "正在加载机器人设置…",
       "general_title": "常规",
+      "big_emoji": "Big emoji",
+      "big_emoji_desc": "A message with a single emoji or sticker is reposted as a large image.",
       "language": "机器人语言",
       "language_auto": "自动（跟随应用语言）",
       "music_title": "会唱歌的 Saba-chan",

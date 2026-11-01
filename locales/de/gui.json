@@ -995,6 +995,8 @@
     "bot_settings": {
       "loading": "Bot-Einstellungen werden geladen…",
       "general_title": "Allgemein",
+      "big_emoji": "Big emoji",
+      "big_emoji_desc": "A message with a single emoji or sticker is reposted as a large image.",
       "language": "Bot-Sprache",
       "language_auto": "Automatisch (App-Sprache)",
       "music_title": "Singende Saba-chan",
