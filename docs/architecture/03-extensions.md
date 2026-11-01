@@ -313,7 +313,7 @@ ue4-ini는 hook을 선언하지 않는다. steamcmd의 condition은 `instance.ex
 
 ### 5.4 ue4-ini (v0.1.0, 디렉토리명 `ue4_ini`)
 
-- `parse_option_settings(ini_path)`와 `write_option_settings(ini_path, props, section)`를 제공하는 **순수 Python 라이브러리**다(`ue4_ini.py:23,163`). hook은 선언하지 않는다. 쓰기는 같은 폴더 임시 파일에 쓰고 바꾸되, 격리 실행처럼 권한을 옮기지 못하거나 임시 파일을 만들 수 없으면 원래 파일을 제자리에서 덮어쓴다(데몬 `atomic_write`와 같은 규칙, 02-modules §2.5).
+- `parse_option_settings(ini_path)`와 `write_option_settings(ini_path, props, section, quoted_keys, bare_keys)`를 제공하는 **순수 Python 라이브러리**다(`ue4_ini.py:23,163`). hook은 선언하지 않는다. 쓰기는 같은 폴더 임시 파일에 쓰고 바꾸되, 격리 실행처럼 권한을 옮기지 못하거나 임시 파일을 만들 수 없으면 원래 파일을 제자리에서 덮어쓴다(데몬 `atomic_write`와 같은 규칙, 02-modules §2.5). 값의 따옴표는 기본으로 값 모양(True/False·숫자·괄호 목록은 그대로, 나머지는 따옴표)으로 정하고, 모듈이 형식을 아는 키는 `quoted_keys`(숫자처럼 보여도 문자열)·`bare_keys`(열거형·빈 목록)로 덮어쓴다. 줄바꿈이 든 값은 OptionSettings 줄을 깨므로 쓰지 않고 False를 돌려준다.
 - palworld가 `requires_extensions = ["steamcmd", "ue4-ini"]`로 요구한다(`M:palworld/module.toml:51`). ~~최상위에서 무조건 import해서 ue4-ini가 없으면 lifecycle 전체가 ImportError로 실패하고, disable해도 import가 막히지 않는다.~~ → 해결: palworld는 `try/except ImportError`로 import하고 INI를 건드리는 함수만 `extension_required`를 돌려준다(`M:palworld/lifecycle.py:32-37`). disable하면 import 가드가 import를 막는다(2.1).
 
 ### 5.5 module → extension 참조 방식
