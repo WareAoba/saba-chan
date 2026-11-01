@@ -348,8 +348,11 @@ impl GuildSettings {
 /// 원본이 릴레이인 길드 설정 (데몬은 저장하지 않고 앱의 값을 릴레이에 그대로 넘긴다). 모두 참·거짓 값
 pub const RELAY_OWNED: [&str; 1] = ["bigEmoji"];
 
-/// 패치에서 릴레이 원본 키를 떼어 낸다 → (데몬이 맡는 키, 릴레이 원본 키)
-fn split_relay_owned(patch: &Map<String, Value>) -> Result<(Map<String, Value>, Map<String, Value>), (String, &'static str)> {
+/// (데몬이 맡는 키, 릴레이 원본 키)
+type SplitPatch = (Map<String, Value>, Map<String, Value>);
+
+/// 패치에서 릴레이 원본 키를 떼어 낸다
+fn split_relay_owned(patch: &Map<String, Value>) -> Result<SplitPatch, (String, &'static str)> {
     let (owned, rest): (Map<String, Value>, Map<String, Value>) = patch.clone().into_iter().partition(|(k, _)| RELAY_OWNED.contains(&k.as_str()));
     if let Some((k, _)) = owned.iter().find(|(_, v)| !v.is_boolean()) {
         return Err((k.clone(), "must be a boolean"));
