@@ -62,6 +62,7 @@
     /* 뉴모피즘: 왼쪽 위 빛, 오른쪽 아래 그림자 (체크박스·버튼) */
     --neu-dark: rgba(0, 0, 0, 0.55);
     --neu-light: rgba(255, 255, 255, 0.05);
+    --neu-hl: rgba(255, 255, 255, 0.06);
 
     --console-bg: #0a0b0d;
     --console-text: #d6d8e0;
@@ -132,6 +133,7 @@
     --shadow-ink: #141824;
     --neu-dark: rgba(150, 160, 185, 0.55);
     --neu-light: #ffffff;
+    --neu-hl: rgba(255, 255, 255, 0.7);
 
     --console-bg: #15161a;
     --console-text: #d6d8e0;
@@ -196,6 +198,7 @@
         --shadow-ink: #141824;
         --neu-dark: rgba(150, 160, 185, 0.55);
         --neu-light: #ffffff;
+        --neu-hl: rgba(255, 255, 255, 0.7);
         --console-bg: #15161a;
         --console-text: #d6d8e0;
         --glass-bg: rgba(255, 255, 255, 0.7);
@@ -230,6 +233,14 @@
     /* 뉴모피즘 볼록면: 강조색에서 밝게→어둡게 (사용자 강조색을 따라간다) */
     --brand-neu-from: color-mix(in oklch, var(--brand-primary), #ffffff 18%);
     --brand-neu-to: color-mix(in oklch, var(--brand-primary), #000000 14%);
+    /* 뉴모피즘 그림자: 솟음 / 더 솟음(마우스 올림) / 파임(누름·값 담는 칸) */
+    --neu-up: 3px 3px 7px var(--neu-dark), -3px -3px 7px var(--neu-light), inset 0 1px 0 var(--neu-hl);
+    --neu-up-hi: 5px 5px 12px var(--neu-dark), -4px -4px 10px var(--neu-light), inset 0 1px 0 var(--neu-hl);
+    --neu-in: inset 2px 2px 5px var(--neu-dark), inset -2px -2px 5px var(--neu-light);
+    /* 색 버튼 위에 얹는 빛: 왼쪽 위 밝게, 오른쪽 아래 어둡게 */
+    --neu-sheen: linear-gradient(in oklch 160deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0) 45%, rgba(0, 0, 0, 0.12));
+    --neu-press-color: inset 2.5px 2.5px 5px rgba(0, 0, 0, 0.35), inset -2px -2px 5px rgba(255, 255, 255, 0.15);
+    --ease-spring: cubic-bezier(0.3, 1.5, 0.5, 1);
     --brand-shadow: rgba(125, 142, 232, 0.3);
     --brand-shadow-light: rgba(125, 142, 232, 0.18);
     --brand-shadow-subtle: rgba(125, 142, 232, 0.08);
