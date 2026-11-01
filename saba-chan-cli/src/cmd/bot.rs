@@ -852,12 +852,13 @@ fn mod_duration(text: &str, forever_ok: bool) -> Result<Value> {
     }
     let (num, unit) = t.split_at(t.find(|c: char| !c.is_ascii_digit()).unwrap_or(t.len()));
     let n: u64 = num.parse().map_err(|_| usage(t!("bot.bad_duration", value = text)))?;
-    let minutes = match unit.trim() {
-        "" | "m" | "분" => n,
-        "h" | "시간" => n * 60,
-        "d" | "일" => n * 1440,
+    let per = match unit.trim() {
+        "" | "m" | "분" => 1,
+        "h" | "시간" => 60,
+        "d" | "일" => 1440,
         _ => return Err(usage(t!("bot.bad_duration", value = text))),
     };
+    let minutes = n.checked_mul(per).unwrap_or(u64::MAX);
     if minutes == 0 || minutes > 28 * 1440 {
         return Err(usage(t!("bot.bad_duration", value = text)));
     }
@@ -1309,6 +1310,7 @@ mod tests {
         assert!(mod_duration("forever", false).is_err(), "auto clear has no forever");
         assert!(mod_duration("29d", true).is_err(), "Discord timeouts end at 28 days");
         assert!(mod_duration("soon", true).is_err());
+        assert!(mod_duration("99999999999999999d", true).is_err(), "a huge count must not wrap past the cap");
     }
 
     #[test]
