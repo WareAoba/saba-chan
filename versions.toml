@@ -15,11 +15,11 @@
 # R2 경로는 releases/<release version>/<asset> (운영 0.1.1과 같은 규칙).
 
 [release]
-version = "0.1.12-beta.1"
+version = "0.1.12-beta.2"
 channel = "beta"
 
 [components.saba-core]
-version = "0.1.12-beta.1"
+version = "0.1.12-beta.2"
 exes = ["saba-core.exe", "saba-runner.exe"]
 asset = "saba-core-{platform}.zip"
 install_dir = "."
@@ -29,14 +29,14 @@ required = true
 files = ["Cargo.toml", "runner/Cargo.toml"]
 
 [components.cli]
-version = "0.1.12-beta.1"
+version = "0.1.12-beta.2"
 exes = ["saba-chan-cli.exe"]
 asset = "saba-chan-cli-{platform}.zip"
 install_dir = "."
 files = ["saba-chan-cli/Cargo.toml"]
 
 [components.gui]
-version = "0.1.12-beta.1"
+version = "0.1.12-beta.2"
 exes = ["saba-chan-gui.exe"]
 asset = "saba-chan-gui-{platform}.zip"
 install_dir = "."
@@ -52,7 +52,7 @@ files = [
 
 [components.installer]
 # 설치·제거·업데이트 적용을 모두 하는 한 프로그램 (0.1.12 전에는 업데이터 `saba-chan-updater`가 따로 있었다)
-version = "0.1.12-beta.1"
+version = "0.1.12-beta.2"
 exes = ["saba-chan-installer.exe"]
 asset = "saba-chan-installer.exe"
 install_dir = "."
@@ -71,7 +71,7 @@ files = [
 ]
 
 [components.locales]
-version = "0.1.12-beta.1"
+version = "0.1.12-beta.2"
 asset = "locales.zip"
 install_dir = "locales"
 
