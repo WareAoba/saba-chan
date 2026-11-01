@@ -6,17 +6,14 @@
  * ════════════════════════════════════════════════════════════════ */
 
 /* ── 누를 수 있는 것: 색·테두리·그림자가 부드럽게 바뀐다 ── */
-button,
-.btn,
-.icon-btn,
-.input,
+/* 버튼·아이콘 버튼·입력칸·드롭다운은 base.css·CustomDropdown.css에서 뉴모피즘 움직임을 따로 정한다 */
+button:not([class*="btn"]),
 .setting-item,
 .dc-list-row,
 .dc-nav-row,
 .appbar-tab,
 .settings-tab,
 .saba-storage-tab,
-.custom-dropdown-trigger,
 .status-chip,
 .notice-card {
     transition:
@@ -30,8 +27,6 @@ button,
 }
 
 /* 누르는 순간 살짝 눌린다 */
-.btn:active:not(:disabled),
-.icon-btn:active:not(:disabled),
 .appbar-tab:active,
 .settings-tab:active {
     transform: scale(0.97);

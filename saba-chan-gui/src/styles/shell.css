@@ -79,9 +79,10 @@
 }
 .appbar-tab.active {
     color: var(--text-1);
-    background: var(--surface-gradient);
-    border-color: var(--line);
-    box-shadow: var(--shadow-raised);
+    background: var(--bg-surface);
+    border-color: transparent;
+    box-shadow: var(--neu-up);
+    animation: saba-seg-pop 0.22s var(--ease-spring);
 }
 .appbar-spacer {
     flex: 1;
@@ -393,19 +394,27 @@
     outline: none;
     transition:
         background var(--dur-fast) var(--ease),
-        box-shadow var(--dur-fast) var(--ease),
+        box-shadow 0.22s var(--ease),
+        transform 0.2s var(--ease-spring),
         border-color var(--dur-fast) var(--ease);
 }
+/* 누르는 카드: 올리면 솟고, 누르면 파이고, 고른 줄은 솟은 채로 (뉴모피즘) */
 .server-row:hover {
-    background: var(--bg-2);
+    background: var(--bg-surface);
+    box-shadow: var(--neu-up);
+}
+.server-row:active:not(:has(button:active, input:active, label:active)) {
+    transform: scale(0.99);
+    box-shadow: var(--neu-in);
+    transition-duration: 0.08s;
 }
 .server-row:focus-visible {
     border-color: var(--accent);
 }
 .server-row.selected {
-    background: var(--surface-gradient);
-    border-color: var(--line);
-    box-shadow: var(--shadow-raised);
+    background: var(--bg-surface);
+    border-color: transparent;
+    box-shadow: var(--neu-up-hi);
 }
 .server-row.selected::before {
     content: '';
@@ -1894,25 +1903,48 @@ button.activity-line:hover {
     border-color: var(--accent);
     background: color-mix(in oklch, var(--accent) 8%, var(--bg-1));
 }
+/* 라디오: 체크박스와 같은 파인 홈, 고르면 가운데 볼록한 점이 튀어나온다 */
 .dc-radio {
-    width: 18px;
-    height: 18px;
+    width: 16px;
+    height: 16px;
     flex: none;
     margin-top: var(--sp-0-5);
     border-radius: 50%;
-    border: 2px solid var(--line-strong);
+    background: var(--inset);
+    box-shadow:
+        inset 0 0 0 1px var(--line-strong),
+        inset 1.5px 1.5px 3px var(--neu-dark),
+        inset -1.5px -1.5px 3px var(--neu-light);
     display: grid;
     place-items: center;
+    transition: box-shadow var(--dur-fast) var(--ease);
 }
-.dc-choice-item.active .dc-radio {
-    border-color: var(--accent);
-}
-.dc-choice-item.active .dc-radio::after {
+.dc-radio::after {
     content: '';
     width: 8px;
     height: 8px;
     border-radius: 50%;
-    background: var(--accent);
+    background: var(--neu-sheen), var(--brand-gradient);
+    box-shadow:
+        1px 1px 2px rgba(0, 0, 0, 0.35),
+        inset 0 1px 0 rgba(255, 255, 255, 0.4);
+    transform: scale(0);
+    transition: transform 0.3s var(--ease-spring);
+}
+.dc-choice-item:hover .dc-radio {
+    box-shadow:
+        inset 0 0 0 1px var(--brand-shadow-strong),
+        inset 1.5px 1.5px 3px var(--neu-dark),
+        inset -1.5px -1.5px 3px var(--neu-light);
+}
+.dc-choice-item:active .dc-radio {
+    box-shadow:
+        inset 0 0 0 1px var(--line-strong),
+        inset 3px 3px 6px var(--neu-dark),
+        inset -3px -3px 6px var(--neu-light);
+}
+.dc-choice-item.active .dc-radio::after {
+    transform: scale(1);
 }
 .dc-choice-text {
     display: flex;

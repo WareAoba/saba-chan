@@ -683,6 +683,7 @@ function SettingsModal({
                                         step={5}
                                         value={customTheme.fontScale}
                                         onChange={(e) => handleCustomThemeChange({ fontScale: Number(e.target.value) })}
+                                        style={{ '--fill': `${((customTheme.fontScale - 50) / 150) * 100}%` }}
                                     />
                                     <span className="font-scale-value">{customTheme.fontScale}%</span>
                                 </div>
@@ -811,6 +812,7 @@ function SettingsModal({
                                         step={5}
                                         value={customTheme.consoleFontScale}
                                         onChange={(e) => handleCustomThemeChange({ consoleFontScale: Number(e.target.value) })}
+                                        style={{ '--fill': `${((customTheme.consoleFontScale - 50) / 150) * 100}%` }}
                                     />
                                     <span className="font-scale-value">{customTheme.consoleFontScale}%</span>
                                 </div>

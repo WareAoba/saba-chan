@@ -4,13 +4,20 @@
    ═══════════════════════════════════════════════════════════ */
 
 /* ── Toggle Switch ────────────────────────────────────────── */
+/* 뉴모피즘: 파인 홈에 강조색이 차오르고, 볼록한 손잡이가 튀듯 미끄러진다.
+   누르고 있으면 손잡이가 옆으로 늘어난다. 크기는 --tw·--th·--k 로만 바꾼다 */
 
 .saba-toggle {
+    --tw: 44px;
+    --th: 24px;
+    --k: 18px;
+    --kp: 3px;
     position: relative;
     display: inline-flex;
     align-items: center;
     flex-shrink: 0;
     cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
 }
 
 .saba-toggle input {
@@ -21,102 +28,111 @@
     pointer-events: none;
 }
 
-/* track — default (md) */
+/* 홈 */
 .saba-toggle-track {
     position: relative;
-    width: 40px;
-    height: 22px;
-    border-radius: 11px;
-    background: var(--border-strong);
-    transition:
-        background 0.25s ease,
-        box-shadow 0.25s ease;
+    width: var(--tw);
+    height: var(--th);
+    border-radius: calc(var(--th) / 2);
+    background: var(--inset);
+    box-shadow:
+        inset 0 0 0 1px var(--line-strong),
+        var(--neu-in);
+    transition: box-shadow 0.25s var(--ease);
 }
 
-/* knob */
+/* 차오르는 강조색 */
+.saba-toggle-track::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: var(--neu-sheen), var(--brand-gradient);
+    box-shadow:
+        inset 2px 2px 5px rgba(0, 0, 0, 0.3),
+        inset -1px -1px 3px rgba(255, 255, 255, 0.2);
+    opacity: 0;
+    transition: opacity 0.3s var(--ease);
+}
+
+/* 손잡이 */
 .saba-toggle-track::after {
     content: "";
     position: absolute;
-    top: 3px;
-    left: 3px;
-    width: 16px;
-    height: 16px;
-    border-radius: 50%;
-    background: var(--knob);
-    box-shadow: 0 1px 4px color-mix(in oklch, var(--shadow-ink) 18%, transparent);
-    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    top: var(--kp);
+    left: var(--kp);
+    width: var(--k);
+    height: var(--k);
+    border-radius: calc(var(--k) / 2);
+    background: linear-gradient(in oklch 145deg, var(--knob), color-mix(in oklch, var(--knob), #8a93a8 22%));
+    box-shadow:
+        2px 2px 4px rgba(0, 0, 0, 0.28),
+        -1px -1px 2px rgba(255, 255, 255, 0.4),
+        inset 0 1px 0 rgba(255, 255, 255, 0.9);
+    transition:
+        left 0.32s var(--ease-spring),
+        width 0.18s var(--ease);
 }
 
-/* checked → brand */
-.saba-toggle input:checked + .saba-toggle-track {
-    background: var(--brand-primary);
+.saba-toggle input:checked + .saba-toggle-track::before {
+    opacity: 1;
 }
 
 .saba-toggle input:checked + .saba-toggle-track::after {
-    transform: translateX(18px);
+    left: calc(var(--tw) - var(--k) - var(--kp));
+}
+
+/* 누르고 있는 동안 손잡이가 늘어난다 */
+.saba-toggle:active:not(.disabled) .saba-toggle-track::after {
+    width: calc(var(--k) + 5px);
+}
+
+.saba-toggle:active:not(.disabled) input:checked + .saba-toggle-track::after {
+    left: calc(var(--tw) - var(--k) - 5px - var(--kp));
+}
+
+/* hover */
+.saba-toggle:hover:not(.disabled) .saba-toggle-track {
+    box-shadow:
+        inset 0 0 0 1px var(--brand-shadow-strong),
+        var(--neu-in);
 }
 
 /* focus ring */
 .saba-toggle input:focus-visible + .saba-toggle-track {
-    box-shadow: 0 0 0 3px var(--brand-shadow-light);
-}
-
-/* hover glow */
-.saba-toggle:hover .saba-toggle-track {
-    box-shadow: 0 0 0 3px var(--brand-shadow-subtle);
-}
-
-.saba-toggle input:checked + .saba-toggle-track:hover,
-.saba-toggle:hover input:checked + .saba-toggle-track {
-    box-shadow: 0 0 0 4px var(--brand-shadow-light);
+    box-shadow:
+        inset 0 0 0 1px var(--line-strong),
+        var(--neu-in),
+        0 0 0 3px var(--brand-shadow-light);
 }
 
 /* disabled */
-.saba-toggle input:disabled + .saba-toggle-track {
-    opacity: 0.4;
-    cursor: not-allowed;
-}
-
 .saba-toggle.disabled {
+    opacity: 0.45;
     cursor: not-allowed;
 }
 
 /* ── Size variants ─── */
 
-/* sm — compact (32 × 18) */
-.saba-toggle.sm .saba-toggle-track {
-    width: 32px;
-    height: 18px;
-    border-radius: 9px;
-}
-
-.saba-toggle.sm .saba-toggle-track::after {
-    top: 2px;
-    left: 2px;
-    width: 14px;
-    height: 14px;
-}
-
-.saba-toggle.sm input:checked + .saba-toggle-track::after {
-    transform: translateX(14px);
+/* sm — compact (34 × 20) */
+.saba-toggle.sm {
+    --tw: 34px;
+    --th: 20px;
+    --k: 14px;
 }
 
 /* lg — protocol-style (52 × 28) */
-.saba-toggle.lg .saba-toggle-track {
-    width: 52px;
-    height: 28px;
-    border-radius: 14px;
+.saba-toggle.lg {
+    --tw: 52px;
+    --th: 28px;
+    --k: 22px;
 }
 
-.saba-toggle.lg .saba-toggle-track::after {
-    top: 3px;
-    left: 3px;
-    width: 22px;
-    height: 22px;
-}
-
-.saba-toggle.lg input:checked + .saba-toggle-track::after {
-    transform: translateX(24px);
+@media (prefers-reduced-motion: reduce) {
+    .saba-toggle-track::before,
+    .saba-toggle-track::after {
+        transition: none !important;
+    }
 }
 
 /* ── Checkbox ─────────────────────────────────────────────── */
