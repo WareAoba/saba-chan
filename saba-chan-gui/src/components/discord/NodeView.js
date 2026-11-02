@@ -12,6 +12,7 @@ import * as P from './nodePermissions';
 import { ALL_INSTANCES } from './levels';
 import { ModerationTab, moderationAvailable } from './ModerationTab';
 import { PermissionPanel } from './PermissionsTab';
+import { SleepCorner } from './SleepCorner';
 
 export { Avatar, initialOf };
 
@@ -220,6 +221,7 @@ export function NodeView({
                         </span>
                     </div>
                 </div>
+                <SleepCorner guildId={node.guildId} />
                 {saveState && (
                     <span className={clsx('dc-save-state', saveState)}>
                         {saveState === 'saving' ? t('discord.saving') : t('discord.saved')}

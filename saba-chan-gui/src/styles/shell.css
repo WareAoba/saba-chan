@@ -1638,6 +1638,28 @@ button.activity-line:hover {
     gap: var(--sp-4);
     animation: page-in var(--dur) var(--ease);
 }
+/* 코코낸내 중인 서버: 머리 오른쪽 구석의 작은 사바쨩 (SleepCorner). 눈에 띄지 않게 흐리게 */
+.dc-sleep-corner {
+    margin-left: auto;
+    align-self: flex-end;
+    opacity: 0.72;
+    pointer-events: none;
+    animation: page-in var(--dur) var(--ease);
+}
+.dc-sleep-corner .saba-art {
+    filter: var(--art-shadow) var(--art-tone);
+}
+.dc-sleep-corner.waking {
+    opacity: 0.9;
+}
+.dc-sleep-corner + .dc-save-state {
+    margin-left: var(--sp-2);
+}
+@media (prefers-reduced-motion: reduce) {
+    .dc-sleep-corner {
+        animation: none;
+    }
+}
 .dc-view-head h1 {
     font-size: var(--fs-2xl);
     font-weight: 800;

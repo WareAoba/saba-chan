@@ -1040,7 +1040,24 @@
       "tts_names_never": "Never",
       "tts_names_desc": "Say \"name,\" before each message so listeners know who wrote it.",
       "tts_limits": "Fixed limits: {{chars}} characters per message, {{perMinute}} characters per minute per person",
-      "range_decimal": "Enter a number from {{min}} to {{max}}."
+      "range_decimal": "Enter a number from {{min}} to {{max}}.",
+      "sleep_title": "Sleep mode",
+      "sleep_desc": "While asleep (/saba sleep or Good kid), the features you pick are turned off. Others keep running. Mentions get a short \"I'm sleeping\" reply.",
+      "sleep_commands": "Server control and alerts",
+      "sleep_commands_hint": "Server commands, start and stop alerts, status board, game chat",
+      "sleep_llm": "Talking Saba-chan (AI)",
+      "sleep_llm_hint": "Chat, joining in, reminders, AI moderation. Summarizes the chat into memory when falling asleep",
+      "sleep_music": "Singing Saba-chan",
+      "sleep_music_hint": "Music commands and the music channel",
+      "sleep_tts": "Reading Saba-chan",
+      "sleep_tts_hint": "Reading chat aloud",
+      "sleep_extras": "Other features",
+      "sleep_extras_hint": "Big emoji, cleanup, game stats, server moderation commands and more",
+      "bedtime": "Good kid",
+      "bedtime_hint": "Auto sleep: falls asleep and wakes up at set times. /saba wake during sleep wakes it until the next bedtime",
+      "bedtime_start": "Falls asleep at",
+      "bedtime_end": "Wakes up at",
+      "bedtime_zone": "Times use this server's time zone (if not set, the zone of the server language)."
     },
     "default_prefix": "Saba-chan",
     "prefix_default_label": "по умолчанию ({{prefix}})",
@@ -1210,7 +1227,9 @@
       "err_MUTE_SELF": "You can't mute yourself.",
       "err_MUTE_TOO_LONG": "The longest is 28 days. Use Forever for longer.",
       "err_generic": "Couldn't do that. Please try again shortly."
-    }
+    },
+    "sleep_corner_asleep": "Saba-chan is asleep",
+    "sleep_corner_waking": "Saba-chan woke up"
   },
   "maintenance": {
     "load_failed": "Не удалось загрузить бэкапы и расписание.",

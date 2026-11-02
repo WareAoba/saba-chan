@@ -194,7 +194,11 @@
     "tts_names": "Reading Saba-chan name call",
     "tts_names_always": "Always",
     "tts_names_multi": "With several people",
-    "tts_names_never": "Never"
+    "tts_names_never": "Never",
+    "sleep_blocks": "Off while asleep",
+    "sleep_blocks_none": "None",
+    "bedtime": "Good kid",
+    "bedtime_format": "Write --bedtime as fall-asleep time-wake-up time, like 01:00-08:00."
   },
   "col": {
     "players": "線上玩家",

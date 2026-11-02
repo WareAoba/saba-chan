@@ -1040,7 +1040,24 @@
       "tts_names_never": "안 함",
       "tts_names_desc": "글 앞에 \"○○님,\"을 붙여 누가 쓴 글인지 알려 드려요.",
       "tts_limits": "고정 제한: 글 하나 {{chars}}자까지, 한 사람당 1분에 모두 {{perMinute}}자까지",
-      "range_decimal": "{{min}}에서 {{max}} 사이로 넣어 주세요."
+      "range_decimal": "{{min}}에서 {{max}} 사이로 넣어 주세요.",
+      "sleep_title": "코코낸내",
+      "sleep_desc": "재우면(/사바쨩 코코낸내나 착한 어린이) 고른 기능을 꺼요. 고르지 않은 기능은 자는 동안에도 그대로 돌아요. 멘션하면 자는 중이라고만 답해요.",
+      "sleep_commands": "서버 조작·알림",
+      "sleep_commands_hint": "서버 명령, 시작·종료 알림, 상황판, 게임 채팅",
+      "sleep_llm": "말하는 사바쨩 (AI)",
+      "sleep_llm_hint": "대화, 끼어들기, 예약 알림, AI 모더레이션. 잠들 때 대화를 요약해 기억에 넣어요",
+      "sleep_music": "노래하는 사바쨩",
+      "sleep_music_hint": "음악 명령과 음악 채널",
+      "sleep_tts": "읽어주는 사바쨩",
+      "sleep_tts_hint": "채팅 읽어주기",
+      "sleep_extras": "그 밖의 기능",
+      "sleep_extras_hint": "큰 이모지, 청소, 전적, 서버 관리 명령 등",
+      "bedtime": "착한 어린이",
+      "bedtime_hint": "자동 코코낸내 — 정한 시각에 저절로 잠들고 깨요. 자는 중에 /사바쨩 기상 하면 이번 잠만 깨요",
+      "bedtime_start": "잠드는 시각",
+      "bedtime_end": "일어나는 시각",
+      "bedtime_zone": "이 서버의 시간대 기준이에요 (정하지 않았으면 서버 언어의 시간대, 한국어는 한국 시간)."
     },
     "default_prefix": "사바쨩",
     "prefix_default_label": "기본값 ({{prefix}})",
@@ -1210,7 +1227,9 @@
       "err_MUTE_SELF": "자기 자신은 음소거할 수 없어요.",
       "err_MUTE_TOO_LONG": "기간은 28일까지예요. 더 길게 하려면 무기한으로 해 주세요.",
       "err_generic": "처리하지 못했어요. 잠시 뒤 다시 해 주세요."
-    }
+    },
+    "sleep_corner_asleep": "사바쨩이 자는 중이에요",
+    "sleep_corner_waking": "사바쨩이 일어났어요"
   },
   "maintenance": {
     "load_failed": "백업·예약 정보를 불러오지 못했어요.",
