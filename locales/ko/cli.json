@@ -1184,7 +1184,8 @@
       "bot.mute.member": "멤버 이름이나 id",
       "bot.sleep-mode.block": "잠든 동안 끌 기능, 쉼표로: commands(서버 조작·알림), llm(말하는 사바쨩·AI 모더레이션), music, tts, extras(그 밖의 기능)",
       "bot.sleep-mode.bedtime": "착한 어린이: 이 시각에 저절로 잠들고 깨요 (서버 시간대, 예: 01:00-08:00)",
-      "bot.sleep-mode.no_bedtime": "착한 어린이 끄기 (손으로만 재워요)"
+      "bot.sleep-mode.no_bedtime": "착한 어린이 끄기 (손으로만 재워요)",
+      "bot.sleep-mode.no_block": "자는 동안에도 아무 기능도 끄지 않기"
     },
     "after": "이름은 일부만 적어도 돼요 (예: start pal). 인자 없이 터미널에서 실행하면 전체 화면 메뉴가 열려요(SABA_NO_TUI=1이면 대화형 셸).\n스크립트에서는 --json과 --yes를 쓰세요. 종료 코드: 0 성공 · 1 실패 · 2 사용법 · 3 데몬 연결 안 됨 · 4 없음 · 130 취소"
   },

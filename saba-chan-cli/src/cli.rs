@@ -1100,8 +1100,11 @@ pub enum BotCmd {
     SleepMode {
         guild: Option<String>,
         /// Features to turn off while asleep, comma separated: commands (server control and alerts), llm (Talking Saba-chan, AI moderation), music, tts, extras
-        #[arg(long, value_delimiter = ',', value_parser = ["commands", "llm", "music", "tts", "extras"])]
+        #[arg(long, value_delimiter = ',', value_parser = ["commands", "llm", "music", "tts", "extras"], conflicts_with = "no_block")]
         block: Option<Vec<String>>,
+        /// Turn nothing off while asleep (every feature keeps running)
+        #[arg(long)]
+        no_block: bool,
         /// Good kid: fall asleep and wake up at these times in the server's time zone, like 01:00-08:00
         #[arg(long, conflicts_with = "no_bedtime")]
         bedtime: Option<String>,

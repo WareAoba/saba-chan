@@ -171,8 +171,8 @@ pub async fn run(ctx: &Ctx, cmd: BotCmd) -> Result<()> {
         }
         BotCmd::Sleep { guild } => discord_settings(ctx, &resolve::guild(ctx, guild.as_deref()).await?, Some(json!({ "sleeping": true }))).await,
         BotCmd::Wake { guild } => discord_settings(ctx, &resolve::guild(ctx, guild.as_deref()).await?, Some(json!({ "sleeping": false }))).await,
-        BotCmd::SleepMode { guild, block, bedtime, no_bedtime } => {
-            let patch = sleep_patch(block, bedtime, no_bedtime)?;
+        BotCmd::SleepMode { guild, block, no_block, bedtime, no_bedtime } => {
+            let patch = sleep_patch(if no_block { Some(Vec::new()) } else { block }, bedtime, no_bedtime)?;
             discord_settings(ctx, &resolve::guild(ctx, guild.as_deref()).await?, (!patch.is_null()).then_some(patch)).await
         }
         BotCmd::Music { guild, on, off, ui, queue_lines, refresh, normalize } => {
@@ -1262,6 +1262,7 @@ mod tests {
 
         assert_eq!(sleep_patch(Some(vec!["llm".into()]), Some("23:30-07:00".into()), false).unwrap(), json!({ "sleepBlocks": ["llm"], "bedtime": { "start": "23:30", "end": "07:00" } }));
         assert_eq!(sleep_patch(None, None, true).unwrap(), json!({ "bedtime": null }));
+        assert_eq!(sleep_patch(Some(Vec::new()), None, false).unwrap(), json!({ "sleepBlocks": [] }));
         assert_eq!(sleep_patch(None, None, false).unwrap(), Value::Null);
         assert!(sleep_patch(None, Some("1시-8시".into()), false).is_err());
     }
