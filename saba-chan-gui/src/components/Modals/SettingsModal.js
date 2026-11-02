@@ -22,6 +22,7 @@ import { TOKENS } from '../../utils/syntaxHighlight';
 import { Icon } from '../Icon';
 import { safeShowToast } from '../../utils/helpers';
 import { LANGUAGE_OPTIONS } from '../../utils/languages';
+import { CONSOLE_FONT_CHOICES, CONSOLE_FONT_NAMES, CONSOLE_FONT_SAMPLE, CONSOLE_FONT_SLOTS } from '../../utils/consoleFonts';
 import { SabaToggle } from '../ui/SabaUI';
 import { DataTransferSection, dataTransferAvailable } from './DataTransferSection';
 import { FolderPathsSection, folderPathsAvailable } from './FolderPathsSection';
@@ -141,6 +142,7 @@ function SettingsModal({
     const newServerAutoRestart = useSettingsStore((s) => s.newServerAutoRestart);
     const auditKeepDays = useSettingsStore((s) => s.auditKeepDays);
     const consoleTimestamps = useSettingsStore((s) => s.consoleTimestamps);
+    const consoleFonts = useSettingsStore((s) => s.consoleFonts);
     const consoleTimestampDate = useSettingsStore((s) => s.consoleTimestampDate);
     const setOption = (patch) => useSettingsStore.getState().update(patch);
     const setSound = (key, on) => useSettingsStore.getState().update({ sounds: { ...sounds, [key]: on } });
@@ -854,6 +856,37 @@ function SettingsModal({
                                 />
                             </div>
 
+                            {/* 콘솔 글꼴: 글자마다 하나 (utils/consoleFonts.js) */}
+                            <div className="setting-item setting-item-vertical">
+                                <div className="setting-label">
+                                    <span className="setting-title">
+                                        <Icon name="terminal" size="sm" /> {t('gui:settings_modal.console_fonts_label')}
+                                    </span>
+                                    <span className="setting-description">
+                                        {t('gui:settings_modal.console_fonts_description')}
+                                    </span>
+                                </div>
+                                <div className="console-font-grid">
+                                    {CONSOLE_FONT_SLOTS.map((slot) => (
+                                        <div key={slot} className="console-font-slot">
+                                            <span className="console-font-slot-label">
+                                                {t(`gui:settings_modal.console_fonts_${slot}`)}
+                                            </span>
+                                            <CustomDropdown
+                                                className="setting-select"
+                                                ariaLabel={t(`gui:settings_modal.console_fonts_${slot}`)}
+                                                value={consoleFonts[slot]}
+                                                onChange={(val) => setOption({ consoleFonts: { ...consoleFonts, [slot]: val } })}
+                                                options={CONSOLE_FONT_CHOICES[slot].map((value) => ({
+                                                    value,
+                                                    label: CONSOLE_FONT_NAMES[value],
+                                                }))}
+                                            />
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
                             {/* ── 5-4. 콘솔 텍스트 크기 ── */}
                             <div className="setting-item setting-item-vertical">
                                 <label className="setting-label">
@@ -896,6 +929,10 @@ function SettingsModal({
                                         <>
                                             <div className="console-preview-line">
                                                 {tok('timestamp', '[12:34:56]')} Server started on port {tok('number', '25565')}
+                                            </div>
+                                            {/* 글꼴 미리보기: 영문·한글·일본어·한자 한 줄 (글자마다 고른 글꼴) */}
+                                            <div className="console-preview-line">
+                                                {tok('timestamp', '[12:35:02]')} FPS {tok('number', '59')} {CONSOLE_FONT_SAMPLE}
                                             </div>
                                             <div className="console-preview-line">
                                                 {tok('timestamp', '[12:34:57]')} {tok('player', 'Steve')} joined the game

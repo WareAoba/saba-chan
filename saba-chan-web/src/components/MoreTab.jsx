@@ -1,9 +1,10 @@
 import { auditRange, auditResult, auditWhat, auditWho } from '@gui/utils/audit';
+import { CONSOLE_FONT_CHOICES, CONSOLE_FONT_NAMES, CONSOLE_FONT_SLOTS } from '@gui/utils/consoleFonts';
 import { LANGUAGE_OPTIONS } from '@gui/utils/languages';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { setLanguage } from '../i18n';
-import { applyTheme, readPref, THEMES, writePref } from '../prefs';
+import { applyScreenFonts, applyTheme, readConsoleFonts, readPref, THEMES, writePref } from '../prefs';
 import { sizeText } from './BackupsPanel';
 import { Dropdown } from './Dropdown';
 import { startPoll } from './poll';
@@ -213,14 +214,21 @@ function ActivityLog({ api }) {
     );
 }
 
-/** 이 화면 설정: 언어와 테마는 이 브라우저에만 기억한다 (PC의 앱 설정은 바꾸지 않는다) */
+/** 이 화면 설정: 언어·테마·콘솔 글꼴은 이 브라우저에만 기억한다 (PC의 앱 설정은 바꾸지 않는다) */
 function ScreenSettings() {
     const { t, i18n } = useTranslation();
+    const { t: tg } = useTranslation('gui');
     const [theme, setTheme] = useState(() => readPref('theme') || 'system');
     const pickTheme = (value) => {
         setTheme(value);
         writePref('theme', value);
         applyTheme(value);
+    };
+    const [fonts, setFonts] = useState(readConsoleFonts);
+    const pickFont = (slot, value) => {
+        const next = { ...fonts, [slot]: value };
+        setFonts(next);
+        applyScreenFonts(next, i18n.language);
     };
     return (
         <>
@@ -242,6 +250,25 @@ function ScreenSettings() {
                     ariaLabel={t('more.theme')}
                 />
             </div>
+            {/* 콘솔 글꼴: 글자마다 하나 (앱 설정과 같은 후보) */}
+            <div className="field">
+                <span>{tg('settings_modal.console_fonts_label')}</span>
+                <span className="hint">{tg('settings_modal.console_fonts_description')}</span>
+            </div>
+            {CONSOLE_FONT_SLOTS.map((slot) => (
+                <div className="field" key={slot}>
+                    <span>{tg(`settings_modal.console_fonts_${slot}`)}</span>
+                    <Dropdown
+                        value={fonts[slot]}
+                        onChange={(value) => pickFont(slot, value)}
+                        options={CONSOLE_FONT_CHOICES[slot].map((value) => ({
+                            value,
+                            label: CONSOLE_FONT_NAMES[value],
+                        }))}
+                        ariaLabel={tg(`settings_modal.console_fonts_${slot}`)}
+                    />
+                </div>
+            ))}
             <p className="hint">{t('more.screen_note')}</p>
         </>
     );

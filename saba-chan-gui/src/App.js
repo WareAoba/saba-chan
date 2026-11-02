@@ -37,6 +37,7 @@ import { useConsoleStore } from './stores/useConsoleStore';
 import { setDiscordI18n, useDiscordStore } from './stores/useDiscordStore';
 import { setServerI18n, useServerStore } from './stores/useServerStore';
 import { setSettingsI18n, useSettingsStore } from './stores/useSettingsStore';
+import { applyConsoleFonts } from './utils/consoleFonts';
 import { useUIStore } from './stores/useUIStore';
 import { eventsAvailable } from './utils/daemonEvents';
 import { consoleQuickCommands, interactionOf, isManaged } from './utils/serverView';
@@ -70,6 +71,10 @@ function App() {
         if (lang.startsWith('ja')) return './logo-jp.png';
         return './logo-en.png';
     }, [i18n.language]);
+
+    // 콘솔 글꼴: 글자마다 고른 글꼴 (한자는 화면 언어가 중국어면 중국어 글꼴 먼저)
+    const consoleFonts = useSettingsStore((s) => s.consoleFonts);
+    useEffect(() => applyConsoleFonts(consoleFonts, i18n.language), [consoleFonts, i18n.language]);
 
     // ── Server Store (Zustand) ─────────────────────────────
     const servers = useServerStore((s) => s.servers);
