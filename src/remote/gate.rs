@@ -83,6 +83,8 @@ pub static ROUTES: &[Route] = &[
     allow("GET", "/api/instance/{id}/players"),
     allow("POST", "/api/instance/{id}/command"),
     allow("POST", "/api/instance/{id}/chat"),
+    // 채팅 연동은 디스코드 채널을 잇는 일이라 릴레이 `/채팅연동`(액션 `server.chat_link`)만 부른다. 웹 화면은 그리지 않는다
+    not_on_web("POST", "/api/instance/{id}/chat-link/{guild}"),
     allow("GET", "/api/instance/{id}/commands"),
     allow("POST", "/api/instance/{id}/rcon"),
     allow("POST", "/api/instance/{id}/rest"),

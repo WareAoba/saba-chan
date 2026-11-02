@@ -143,6 +143,12 @@ pub static ACTIONS: &[Def] = &[
         remote_menu: false,
         ..def("server.chat", Kind::Command, "safe", LOCAL_AND_DISCORD, true, "POST", "/api/instance/:id/chat")
     },
+    // 채팅 연동 켜기·끄기 (`/채팅연동`, `supervisor::chat_link`). 디스코드 채널을 잇는 일이라 디스코드에서만 부른다. 릴레이 전용 명령이 부르고 메뉴에는 없다
+    Def {
+        fields: &[path_field("guild"), field("channel", "string", true), field("direction", "string", false)],
+        remote_menu: false,
+        ..def("server.chat_link", Kind::Command, "safe", &[Discord], true, "POST", "/api/instance/:id/chat-link/:guild")
+    },
     // 포트포워딩 확인: 릴레이가 밖에서 게임 포트에 접속해 본다. 공인 주소가 결과에 있어 챗봇에는 열지 않는다 (디스코드는 요약만 보인다)
     Def { private: true, ..def("server.port_check", Kind::Query, "safe", LOCAL_AND_DISCORD, true, "POST", "/api/instance/:id/port-check") },
     // 시작·정지 기록은 디스코드에서 쓰지 않는다 (사용자 디스코드 검수 3번)

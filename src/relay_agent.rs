@@ -1257,7 +1257,10 @@ fn relay_event(event: &crate::events::Event) -> Option<Value> {
         // 디스코드에서 시작해 뒤에서 마친 여러 단계 실행 (I1). 원격 실행의 단계 줄에는 오류 원문이 없다(코드만)
         "plan.done" if d.get("guildId").is_some() => pick(&["at", "runId", "guildId", "ok", "steps", "stoppedAt"]),
         // 게임 채팅 전달: 사용자가 켠 서버의 채팅만 데몬이 다 만든 문장(`text`)으로 낸다 (`supervisor::game_chat`)
-        "instance.chat" => pick(&["at", "instanceId", "instance", "text"]),
+        // 채팅 연동 채널에 보낼 줄(`linkText`)과 그 채널(`links`)도 (`supervisor::chat_link`)
+        "instance.chat" => pick(&["at", "instanceId", "instance", "text", "links", "linkText"]),
+        // 채팅 연동이 저절로 꺼짐 (모두 나감·서버 꺼짐)
+        "instance.chat_link" => pick(&["at", "instanceId", "instance", "guild", "channel", "active", "reason"]),
         _ => return None,
     };
     Some(json!({ "id": event.id, "type": event.kind, "data": data }))
@@ -1731,6 +1734,11 @@ fn relay_server_entry(server: &Value, usage: Option<&crate::system_monitor::Inst
     });
     if let Some(line) = line {
         entry.insert("statusLine".into(), json!(line));
+    }
+    // 채팅 연동 (`supervisor::chat_link`): 릴레이가 디스코드 → 게임 글을 보낼 채널
+    let links = server.get("id").and_then(Value::as_str).map(crate::supervisor::chat_link::list).unwrap_or_default();
+    if !links.is_empty() {
+        entry.insert("chatLinks".into(), json!(links));
     }
     Value::Object(entry)
 }
@@ -2336,6 +2344,10 @@ mod tests {
         assert!(relay_server_entry(&off, None).get("players").is_none(), "a stopped server has no players");
         assert!(relay_server_entry(&off, None).get("startedAt").is_none());
         assert!(entry.get("extension_status").is_none());
+        assert!(entry.get("chatLinks").is_none());
+        let linked = json!({ "id": "hb-linked", "status": "running" });
+        crate::supervisor::chat_link::toggle("hb-linked", "100000000000000001", "200000000000000001", None, |_| Ok::<(), ()>(())).unwrap();
+        assert_eq!(relay_server_entry(&linked, None)["chatLinks"], json!([{ "guild": "100000000000000001", "channel": "200000000000000001", "direction": "both" }]));
         let stopped = crate::system_monitor::InstanceMetrics { running: false, ..usage };
         assert!(relay_server_entry(&server, Some(&stopped)).get("usage").is_none());
     }
@@ -2538,6 +2550,11 @@ mod tests {
         // 게임 채팅은 데몬이 만든 문장만 (채팅 원문·이름 칸은 따로 싣지 않는다)
         let chat = ev("instance.chat", json!({"at": 1, "instanceId": "i", "instance": "mc1", "text": "\\[mc1\\] **Steve**: hi", "player": "Steve", "message": "hi"}));
         assert_eq!(relay_event(&chat).unwrap()["data"], json!({"at": 1, "instanceId": "i", "instance": "mc1", "text": "\\[mc1\\] **Steve**: hi"}));
+        // 채팅 연동: 연동 채널과 그 줄, 저절로 꺼진 연동
+        let linked = ev("instance.chat", json!({"at": 1, "instanceId": "i", "instance": "mc1", "links": [{"guild": "1", "channel": "2"}], "linkText": "l"}));
+        assert_eq!(relay_event(&linked).unwrap()["data"], json!({"at": 1, "instanceId": "i", "instance": "mc1", "links": [{"guild": "1", "channel": "2"}], "linkText": "l"}));
+        let ended = ev("instance.chat_link", json!({"at": 1, "instanceId": "i", "instance": "mc1", "guild": "1", "channel": "2", "active": false, "reason": "empty"}));
+        assert_eq!(relay_event(&ended).unwrap()["data"]["reason"], "empty");
         // 시작·정상 정지는 누가 시켰는지만 (사바쨩 밖의 시작은 unexpected)
         let started = ev("instance.started", json!({"at": 1, "instanceId": "i", "instance": "mc1", "source": "external", "unexpected": true, "path": "C:\\x"}));
         assert_eq!(relay_event(&started).unwrap()["data"], json!({"at": 1, "instanceId": "i", "instance": "mc1", "source": "external", "unexpected": true}));
