@@ -690,3 +690,29 @@ async fn starting_a_running_server_says_it_is_already_on() {
     assert_eq!(done.reply.text, cat.t("server.already_running", &[("name", "survival")]));
     assert_ne!(done.reply.text, "server.already_running");
 }
+
+/// 값으로 답하는 REST 조회(지표·설정 보기·목록)는 "실행됨"이 아니라 그 값을 보인다. 칸 이름은 모듈 locales
+/// `commands.<명령>.output.<키>`, 비밀 칸은 가린다
+#[tokio::test]
+async fn a_rest_query_reply_shows_the_returned_values() {
+    let mut api = fixture();
+    api.servers[1].status = "running".into();
+    let mut metrics = field("metrics", "rest");
+    metrics.endpoint_template = Some("/v1/api/metrics".into());
+    api.modules[1].commands.push(metrics);
+    let texts = module_texts("en", json!({ "commands": { "metrics": { "output": { "players": "Players", "level": "Level" } } } }));
+    api.modules[1].locale_dir = Some(texts.path().to_path_buf());
+    let rest = |response: Value| InternalResponse {
+        status: StatusCode::OK,
+        body: json!({ "success": true, "protocol": "rest", "command": "metrics",
+            "data": { "status": 200, "url": "http://127.0.0.1:8212/v1/api/players", "method": "GET", "response": response, "response_text": "x" } }),
+    };
+    api.reply = Some(rest(json!({ "players": [{ "name": "Kim", "level": 24 }] })));
+    let out = run(&api, &settings(), "팰월드 metrics").await;
+    assert!(out.starts_with('✅') && out.contains("**Players** (1)") && out.contains("Kim") && out.contains("Level: 24"), "{out}");
+    assert!(!out.contains("8212") && !out.contains("response_text"), "{out}");
+
+    api.reply = Some(rest(json!({ "serverfps": 59, "AdminPassword": "hunter2" })));
+    let out = run(&api, &settings(), "팰월드 metrics").await;
+    assert!(out.contains("• **serverfps**: 59") && out.contains("***") && !out.contains("hunter2"), "{out}");
+}

@@ -1655,6 +1655,56 @@ textarea {
     font-family: var(--font-mono, ui-monospace, monospace);
 }
 
+/* 값으로 답한 명령 결과 (이름: 값 · 표, 데몬 output) */
+.command-result {
+    margin: 4px 0 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+    font-family: var(--font-mono, ui-monospace, monospace);
+}
+.command-result-fields {
+    margin: 0;
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    column-gap: 16px;
+    row-gap: 2px;
+}
+.command-result-field {
+    display: contents;
+}
+.command-result-fields dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+    font-variant-numeric: tabular-nums;
+}
+.command-result-scroll {
+    overflow-x: auto;
+}
+.command-result-table {
+    border-collapse: collapse;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+.command-result-table th {
+    text-align: left;
+    font-weight: 600;
+    padding: 0 16px 4px 0;
+}
+.command-result-table td {
+    padding: 1px 16px 1px 0;
+}
+.command-result-more {
+    align-self: flex-start;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--accent);
+    font: inherit;
+    cursor: pointer;
+}
+
 /* 플레이어 */
 .player-list {
     list-style: none;

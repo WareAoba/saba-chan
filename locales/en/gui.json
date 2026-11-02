@@ -267,6 +267,7 @@
     "execution_failed": "Command Execution Failed",
     "success": "Success",
     "command_executed": "Command '{{command}}' has been executed",
+    "show_more": "Show {{count}} more",
     "click_to_expand": "Click to view details",
     "autocomplete": "autocomplete",
     "history": "History",

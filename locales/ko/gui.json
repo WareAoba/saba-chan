@@ -267,6 +267,7 @@
     "execution_failed": "명령어 실행 실패",
     "success": "성공",
     "command_executed": "명령어 '{{command}}'가 실행되었습니다",
+    "show_more": "{{count}}개 더 보기",
     "click_to_expand": "눌러서 자세히 보기",
     "autocomplete": "자동 완성",
     "history": "실행 기록",
