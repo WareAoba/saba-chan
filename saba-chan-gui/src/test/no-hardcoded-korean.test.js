@@ -10,8 +10,8 @@ import { hangulOutsideT } from './hangulScan';
 const SRC = path.resolve(__dirname, '..');
 const LOCALES = path.resolve(__dirname, '../../../locales');
 
-// 언어 고르기 목록은 각 언어를 그 언어 이름으로 보인다
-const ALLOWED = new Set(['utils/languages.js']);
+// 언어 고르기 목록은 각 언어를 그 언어 이름으로 보인다. 콘솔 글꼴은 글꼴 이름(고유 명사)과 여러 글자 견본
+const ALLOWED = new Set(['utils/languages.js', 'utils/consoleFonts.js']);
 
 function sourceFiles(dir) {
     return fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {

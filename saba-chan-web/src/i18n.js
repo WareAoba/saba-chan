@@ -1,6 +1,6 @@
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
-import { readPref, writePref } from './prefs';
+import { applyScreenFonts, readPref, writePref } from './prefs';
 
 export const SUPPORTED_LANGUAGES = ['ko', 'en', 'ja', 'zh-CN', 'zh-TW', 'es', 'pt-BR', 'ru', 'de', 'fr'];
 
@@ -55,6 +55,7 @@ export async function initI18n(language = startLanguage()) {
     });
     document.documentElement.lang = language;
     document.title = i18n.t('app_name');
+    applyScreenFonts(undefined, language);
     return i18n;
 }
 
@@ -70,6 +71,7 @@ export async function setLanguage(language) {
     writePref('language', language);
     document.documentElement.lang = language;
     document.title = i18n.t('app_name');
+    applyScreenFonts(undefined, language);
 }
 
 export default i18n;

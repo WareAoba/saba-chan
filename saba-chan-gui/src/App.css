@@ -2805,7 +2805,7 @@ span[style*="--icon-loader"] svg {
 }
 
 .console-icon {
-    font-family: "Cascadia Code", "Consolas", "Monaco", "Courier New", monospace;
+    font-family: var(--font-mono);
     color: var(--console-ok);
     font-size: calc(14px * var(--font-scale));
     font-weight: 700;
@@ -2832,7 +2832,7 @@ span[style*="--icon-loader"] svg {
     flex: 1;
     overflow-y: auto;
     padding: var(--sp-2-5) var(--sp-4);
-    font-family: "Cascadia Code", "Consolas", "Monaco", "Courier New", monospace;
+    font-family: var(--font-mono);
     font-size: calc(12.5px * var(--console-font-scale));
     line-height: 1.6;
     color: var(--console-custom-text);
@@ -2902,7 +2902,7 @@ span[style*="--icon-loader"] svg {
 
 .console-prompt {
     color: var(--console-ok);
-    font-family: "Cascadia Code", "Consolas", "Monaco", "Courier New", monospace;
+    font-family: var(--font-mono);
     font-weight: 700;
     font-size: calc(14px * var(--font-scale));
     flex-shrink: 0;
@@ -2915,7 +2915,7 @@ span[style*="--icon-loader"] svg {
     border-radius: 6px;
     padding: var(--sp-1-5) var(--sp-2-5);
     color: var(--console-text);
-    font-family: "Cascadia Code", "Consolas", "Monaco", "Courier New", monospace;
+    font-family: var(--font-mono);
     font-size: calc(12.5px * var(--console-font-scale));
     outline: none;
     transition: border-color 0.2s ease;

@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { safeShowToast } from '../utils/helpers';
 import { THEME_DEFAULTS, clearStoredTheme, getTheme, resetCustomTheme, setCustomTheme, setTheme } from '../utils/themeManager';
+import { CONSOLE_FONT_DEFAULTS } from '../utils/consoleFonts';
 
 // i18n translate function — set after store creation
 let _t = (key) => key;
@@ -35,6 +36,7 @@ export const APP_OPTION_DEFAULTS = Object.freeze({
     auditKeepDays: 0, // 작업 기록 보관 일수, 0은 용량 한도만 (데몬이 지운다)
     consoleTimestamps: 'off', // 콘솔 줄 앞 시각: off | 24h | 12h
     consoleTimestampDate: false,
+    consoleFonts: CONSOLE_FONT_DEFAULTS, // 콘솔 글꼴: 글자마다 하나 (utils/consoleFonts.js)
 });
 
 export const useSettingsStore = create((set, get) => ({

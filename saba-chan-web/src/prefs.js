@@ -1,5 +1,7 @@
-/** 이 화면 설정 (언어·테마): 이 브라우저에만 둔다. 저장소를 못 쓰는 브라우저에서는 기본값으로 그린다 */
-const KEY = { theme: 'saba-web.theme', language: 'saba-web.language' };
+import { applyConsoleFonts, normalizeConsoleFonts } from '@gui/utils/consoleFonts';
+
+/** 이 화면 설정 (언어·테마·콘솔 글꼴): 이 브라우저에만 둔다. 저장소를 못 쓰는 브라우저에서는 기본값으로 그린다 */
+const KEY = { theme: 'saba-web.theme', language: 'saba-web.language', consoleFonts: 'saba-web.consoleFonts' };
 export const THEMES = ['system', 'light', 'dark'];
 
 export function readPref(name) {
@@ -38,4 +40,19 @@ export function applyTheme(pref = readPref('theme') || 'system') {
         query.addEventListener('change', paint);
         unwatch = () => query.removeEventListener('change', paint);
     }
+}
+
+/** 콘솔 글꼴 (앱과 같은 후보·기본값, @gui/utils/consoleFonts). 깨졌거나 없는 칸은 기본값 */
+export function readConsoleFonts() {
+    try {
+        return normalizeConsoleFonts(JSON.parse(readPref('consoleFonts') || '{}'));
+    } catch {
+        return normalizeConsoleFonts({});
+    }
+}
+
+/** 콘솔 글꼴을 기억하고 그린다. 한자는 화면 언어에 따라 (중국어면 중국어 글꼴 먼저) */
+export function applyScreenFonts(fonts = readConsoleFonts(), language = document.documentElement.lang) {
+    writePref('consoleFonts', JSON.stringify(fonts));
+    applyConsoleFonts(fonts, language);
 }

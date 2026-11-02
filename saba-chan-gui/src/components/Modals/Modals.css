@@ -3197,7 +3197,7 @@
 .console-preview-box {
     border-radius: 8px;
     padding: var(--sp-2-5) var(--sp-4);
-    font-family: "Cascadia Code", "Consolas", "Monaco", "Courier New", monospace;
+    font-family: var(--font-mono);
     font-size: calc(12px * var(--font-scale));
     line-height: 1.6;
     border: 1px solid color-mix(in oklch, var(--text-1) 6%, transparent);
@@ -3207,6 +3207,26 @@
 .console-preview-line {
     white-space: pre-wrap;
     padding: 1px 0;
+}
+
+/* 콘솔 글꼴: 글자마다 이름 + 드롭다운, 두 칸씩 */
+.console-font-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--sp-2) var(--sp-3);
+    width: 100%;
+}
+
+.console-font-slot {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1);
+    min-width: 0;
+}
+
+.console-font-slot-label {
+    font-size: var(--fs-xs);
+    color: var(--text-secondary);
 }
 
 /* 구문 강조 색: 이름표는 콘솔 바탕 위에 그 색으로 (실제 콘솔에서 보이는 그대로) */
@@ -3236,7 +3256,7 @@
     padding: var(--sp-1) var(--sp-2);
     border-radius: var(--r-sm);
     background: var(--console-custom-bg);
-    font-family: "Cascadia Code", "Consolas", "Monaco", "Courier New", monospace;
+    font-family: var(--font-mono);
     font-size: var(--fs-sm);
     overflow: hidden;
     text-overflow: ellipsis;
