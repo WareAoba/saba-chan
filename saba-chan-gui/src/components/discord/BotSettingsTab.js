@@ -27,6 +27,16 @@ export const TTS_LIMITS = { chars: 40, perMinute: 400 };
 /** 되묻기 단계 (데몬 `CONFIRM_LEVELS`): 모두 / 주의 이상 / 위험만 / 묻지 않음 */
 export const CONFIRM_LEVELS = ['all', 'caution', 'danger', 'none'];
 
+/** 코코낸내 동안 끌 수 있는 기능 묶음 (데몬 discord.rs `SLEEP_FEATURES`) */
+export const SLEEP_FEATURES = ['commands', 'llm', 'music', 'tts', 'extras'];
+/** 자동 코코낸내를 켤 때 처음 시각 */
+const DEFAULT_BEDTIME = { start: '01:00', end: '08:00' };
+/** 고를 수 있는 시각 — 30분 단위 (CLI 로 다른 시각을 저장했으면 그 시각도 보인다) */
+const HALF_HOURS = Array.from(
+    { length: 48 },
+    (_, i) => `${String(Math.floor(i / 2)).padStart(2, '0')}:${i % 2 ? '30' : '00'}`,
+);
+
 const failed = (res) => !res || res.success === false || Boolean(res.error_code);
 
 /** 데몬 오류 → 한 줄 */
@@ -302,6 +312,11 @@ export function BotSettingsTab({ node, section = 'bot', sampleModuleWord = '' })
                             )}
                     </section>
 
+                    {/* 코코낸내: 옛 데몬은 값을 주지 않는다 — 그때는 카드를 두지 않는다 */}
+                    {Array.isArray(settings.sleepBlocks) && (
+                        <SleepCard settings={settings} locked={locked} save={save} toggleRow={toggleRow} />
+                    )}
+
                     <section className="dc-card">
                         <div className="dc-card-head">
                             <h2>{t('discord.prefix_title')}</h2>
@@ -478,5 +493,60 @@ export function BotSettingsTab({ node, section = 'bot', sampleModuleWord = '' })
                 </section>
             )}
         </div>
+    );
+}
+
+/** 코코낸내 — 잠든 동안 끌 기능과 자동 코코낸내 시각 (데몬 discord 설정 sleepBlocks·bedtime, 판정은 릴레이) */
+function SleepCard({ settings, locked, save, toggleRow }) {
+    const { t } = useTranslation('gui');
+    const blocks = settings.sleepBlocks;
+    const bedtime = settings.bedtime || null;
+    const timeField = (key, other) => {
+        const label = t(`discord.bot_settings.bedtime_${key}`);
+        const value = bedtime?.[key] ?? DEFAULT_BEDTIME[key];
+        const avoid = bedtime?.[other] ?? DEFAULT_BEDTIME[other];
+        const times = [...new Set([...HALF_HOURS, value])].sort().filter((h) => h !== avoid);
+        return (
+            <div className="mt-field">
+                <span>{label}</span>
+                <CustomDropdown
+                    className="setting-select"
+                    value={value}
+                    ariaLabel={label}
+                    disabled={locked || !bedtime}
+                    onChange={(v) => v !== value && save({ bedtime: { ...bedtime, [key]: v } })}
+                    options={times.map((h) => ({ value: h, label: h }))}
+                />
+            </div>
+        );
+    };
+    return (
+        <section className="dc-card">
+            <div className="dc-card-head">
+                <h2>{t('discord.bot_settings.sleep_title')}</h2>
+            </div>
+            <p className="dc-card-desc">{t('discord.bot_settings.sleep_desc')}</p>
+            <div className="cb-toggles">
+                {SLEEP_FEATURES.map((f) => (
+                    <div key={f}>
+                        {toggleRow(
+                            t(`discord.bot_settings.sleep_${f}`),
+                            t(`discord.bot_settings.sleep_${f}_hint`),
+                            blocks.includes(f),
+                            (on) =>
+                                save({
+                                    sleepBlocks: SLEEP_FEATURES.filter((x) => (x === f ? on : blocks.includes(x))),
+                                }),
+                        )}
+                    </div>
+                ))}
+            </div>
+            {toggleRow(t('discord.bot_settings.bedtime'), t('discord.bot_settings.bedtime_hint'), !!bedtime, (on) =>
+                save({ bedtime: on ? DEFAULT_BEDTIME : null }),
+            )}
+            {timeField('start', 'end')}
+            {timeField('end', 'start')}
+            <p className="dc-hint">{t('discord.bot_settings.bedtime_zone')}</p>
+        </section>
     );
 }

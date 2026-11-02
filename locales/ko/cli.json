@@ -194,7 +194,11 @@
     "tts_names": "읽어주는 사바쨩 이름 부르기",
     "tts_names_always": "항상",
     "tts_names_multi": "여러 명일 때",
-    "tts_names_never": "안 함"
+    "tts_names_never": "안 함",
+    "sleep_blocks": "잠든 동안 끄는 기능",
+    "sleep_blocks_none": "없음",
+    "bedtime": "착한 어린이",
+    "bedtime_format": "--bedtime 은 01:00-08:00 처럼 잠드는 시각-일어나는 시각으로 써 주세요."
   },
   "col": {
     "players": "접속자",
@@ -932,6 +936,7 @@
       "do": "데몬 액션을 id로 실행 (`saba-chan-cli do`만 치면 목록)",
       "bot.lang": "디스코드 서버에서 봇이 답하는 언어 (`auto`는 이 PC의 언어). 값이 없으면 보기",
       "bot.sleep": "디스코드 서버에서 봇 재우기 (깨울 때까지 명령을 받지 않아요)",
+      "bot.sleep-mode": "코코낸내 설정: 잠든 동안 끌 기능과 착한 어린이(자동 코코낸내) 시각. 옵션 없이 부르면 지금 값만 보여요",
       "bot.wake": "디스코드 서버에서 봇 깨우기",
       "bot.music": "디스코드 서버의 노래하는 사바쨩 설정. 옵션이 없으면 보기",
       "bot.allow": "디스코드 서버가 보고 부를 수 있는 서버. 서버 없이: 보기, `--all`: 모든 서버",
@@ -1176,7 +1181,10 @@
       "bot.clear.member": "이 멤버의 메시지만 (이름이나 id)",
       "bot.mute.duration": "10m, 1h, 1d, 28d, forever, 풀려면 off",
       "bot.mute.reason": "사유 (디스코드 감사 로그에 남아요)",
-      "bot.mute.member": "멤버 이름이나 id"
+      "bot.mute.member": "멤버 이름이나 id",
+      "bot.sleep-mode.block": "잠든 동안 끌 기능, 쉼표로: commands(서버 조작·알림), llm(말하는 사바쨩·AI 모더레이션), music, tts, extras(그 밖의 기능)",
+      "bot.sleep-mode.bedtime": "착한 어린이: 이 시각에 저절로 잠들고 깨요 (서버 시간대, 예: 01:00-08:00)",
+      "bot.sleep-mode.no_bedtime": "착한 어린이 끄기 (손으로만 재워요)"
     },
     "after": "이름은 일부만 적어도 돼요 (예: start pal). 인자 없이 터미널에서 실행하면 전체 화면 메뉴가 열려요(SABA_NO_TUI=1이면 대화형 셸).\n스크립트에서는 --json과 --yes를 쓰세요. 종료 코드: 0 성공 · 1 실패 · 2 사용법 · 3 데몬 연결 안 됨 · 4 없음 · 130 취소"
   },

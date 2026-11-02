@@ -1096,6 +1096,19 @@ pub enum BotCmd {
     Sleep { guild: Option<String> },
     /// Wake the bot on a Discord server
     Wake { guild: Option<String> },
+    /// Sleep mode of a Discord server: what turns off while asleep, and Good kid (falls asleep and wakes at set times). No options: show
+    SleepMode {
+        guild: Option<String>,
+        /// Features to turn off while asleep, comma separated: commands (server control and alerts), llm (Talking Saba-chan, AI moderation), music, tts, extras
+        #[arg(long, value_delimiter = ',', value_parser = ["commands", "llm", "music", "tts", "extras"])]
+        block: Option<Vec<String>>,
+        /// Good kid: fall asleep and wake up at these times in the server's time zone, like 01:00-08:00
+        #[arg(long, conflicts_with = "no_bedtime")]
+        bedtime: Option<String>,
+        /// Turn Good kid off (sleep only by hand)
+        #[arg(long)]
+        no_bedtime: bool,
+    },
     /// Singing Saba-chan settings of a Discord server. No options: show
     Music {
         guild: Option<String>,

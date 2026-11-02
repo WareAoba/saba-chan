@@ -1,10 +1,10 @@
-//! 디스코드 길드 설정 (I2): 응답 언어·잠자기·음악 기능·직접 요청 되묻기 단계·접두사·명령 번역·슬래시 모양
+//! 디스코드 길드 설정 (I2): 응답 언어·잠자기(코코낸내: 끌 기능, 자동 시각)·음악 기능·직접 요청 되묻기 단계·접두사·명령 번역·슬래시 모양
 //!
 //! 원본은 데몬 config.json `relay.nodeSettings[<guild>].discord`다. 바꿀 때마다, 그리고 릴레이 에이전트가 연결될 때
 //! 릴레이 `PATCH /api/nodes/:guild/settings`로 맞춘다. 봇 설정 저장(`PUT /api/config/bot`)은 이 블록을 바꾸지 않는다.
 //!
 //! - `GET /api/discord/:guild/settings` → `{guildId, locale, sleeping, music, tts, confirmLevel, commandRisks, prefixes, translateCommands,
-//!   slashPrefix, slashRootName, privateQueries}` (슬래시 모양 세 값은 2026-10-30)
+//!   slashPrefix, slashRootName, privateQueries, sleepBlocks, bedtime}` (슬래시 모양 세 값은 2026-10-30, 코코낸내 두 값은 2026-11-03)
 //! - `PATCH /api/discord/:guild/settings` 바꿀 키만 (`music`·`tts` 안도 부분) → `{success, settings, sync}`.
 //!   틀린 값은 400 `invalid_input {field, reason}`, 페어링이 없으면 409 `not_paired`.
 //!   릴레이가 400으로 거절하면 저장하지 않는다. 닿지 않으면 저장하고 `sync.ok:false` (다음 연결 때 맞춘다)
@@ -58,6 +58,29 @@ pub struct GuildSettings {
     pub slash_root_name: String,
     /// 조회 결과(서버 상태, 조회 액션)를 부른 사람에게만 보인다
     pub private_queries: bool,
+    /// 코코낸내(손·자동) 동안 끌 기능 (`SLEEP_FEATURES`). 기본은 모두 (예전 코코낸내)
+    pub sleep_blocks: Vec<String>,
+    /// 자동 코코낸내 시각 (그 길드의 시간대, 릴레이가 판정한다). 없으면 손으로만 재운다
+    pub bedtime: Option<Bedtime>,
+}
+
+/// 코코낸내 동안 끌 수 있는 기능 묶음 (릴레이 bot/state/sleep.ts `SLEEP_FEATURES`):
+/// 서버 조작·알림, 말하는 사바쨩·AI 모더레이션, 노래하는 사바쨩, 읽어주는 사바쨩, 그 밖의 부가 기능
+pub const SLEEP_FEATURES: &[&str] = &["commands", "llm", "music", "tts", "extras"];
+
+/// 자동 코코낸내 — 잠드는 시각과 일어나는 시각 (HH:MM, 서로 다르다)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Bedtime {
+    pub start: String,
+    pub end: String,
+}
+
+/// HH:MM (00:00–23:59)
+fn clock_time(v: &Value) -> Option<String> {
+    let t = v.as_str()?;
+    let (h, m) = t.split_once(':')?;
+    let ok = h.len() == 2 && m.len() == 2 && h.parse::<u8>().is_ok_and(|h| h < 24) && m.parse::<u8>().is_ok_and(|m| m < 60);
+    ok.then(|| t.to_string())
 }
 
 /// 서버 슬래시 루트 이름으로 고를 수 있는 값
@@ -123,6 +146,8 @@ impl Default for GuildSettings {
             slash_prefix: true,
             slash_root_name: "name".into(),
             private_queries: false,
+            sleep_blocks: SLEEP_FEATURES.iter().map(|f| f.to_string()).collect(),
+            bedtime: None,
         }
     }
 }
@@ -179,6 +204,8 @@ impl GuildSettings {
             "slashPrefix": self.slash_prefix,
             "slashRootName": self.slash_root_name,
             "privateQueries": self.private_queries,
+            "sleepBlocks": self.sleep_blocks,
+            "bedtime": self.bedtime,
         })
     }
 
@@ -211,7 +238,7 @@ impl GuildSettings {
         if let Some(t) = body.get("ttsSettings").filter(|t| t.is_object()) {
             patch.insert("tts".into(), t.clone());
         }
-        for key in ["prefixes", "translateCommands", "slashPrefix", "slashRootName", "privateQueries"] {
+        for key in ["prefixes", "translateCommands", "slashPrefix", "slashRootName", "privateQueries", "sleepBlocks", "bedtime"] {
             if let Some(v) = body.get(key).filter(|v| !v.is_null()) {
                 patch.insert(key.into(), v.clone());
             }
@@ -270,6 +297,35 @@ impl GuildSettings {
                         }
                     }
                     next.prefixes = out;
+                }
+                "sleepBlocks" => {
+                    let list = v.as_array().ok_or(("sleepBlocks".into(), "must be a list"))?;
+                    let mut out: Vec<String> = Vec::new();
+                    for f in list {
+                        match f.as_str() {
+                            Some(f) if SLEEP_FEATURES.contains(&f) => {
+                                if !out.iter().any(|o| o == f) {
+                                    out.push(f.to_string());
+                                }
+                            }
+                            _ => return Err(("sleepBlocks".into(), "unknown feature")),
+                        }
+                    }
+                    next.sleep_blocks = out;
+                }
+                "bedtime" => {
+                    next.bedtime = match v {
+                        Value::Null => None,
+                        Value::Object(b) => {
+                            let start = b.get("start").and_then(clock_time).ok_or(("bedtime.start".into(), "must be HH:MM"))?;
+                            let end = b.get("end").and_then(clock_time).ok_or(("bedtime.end".into(), "must be HH:MM"))?;
+                            if start == end {
+                                return Err(("bedtime".into(), "start and end must differ"));
+                            }
+                            Some(Bedtime { start, end })
+                        }
+                        _ => return Err(("bedtime".into(), "must be an object or null")),
+                    };
                 }
                 "confirmLevel" => match v.as_str() {
                     Some(l) if CONFIRM_LEVELS.contains(&l) => next.confirm_level = l.to_string(),
@@ -360,9 +416,12 @@ fn split_relay_owned(patch: &Map<String, Value>) -> Result<SplitPatch, (String, 
     Ok((rest, owned))
 }
 
-/// 릴레이 값에서 원본이 릴레이인 키만 화면 값에 얹는다 (릴레이를 못 읽으면 빠진다: 앱은 그 토글을 잠근다)
+/// 릴레이만 아는 지금 상태 (바꿀 수 없다): `asleep` = 손으로든 자동 코코낸내로든 지금 자는 중 (앱의 잠자는 그림)
+pub const RELAY_STATUS: [&str; 1] = ["asleep"];
+
+/// 릴레이 값에서 원본이 릴레이인 키와 지금 상태만 화면 값에 얹는다 (릴레이를 못 읽으면 빠진다: 앱은 그 토글을 잠근다)
 fn with_relay_owned(mut v: Value, relay: &Value) -> Value {
-    for key in RELAY_OWNED {
+    for key in RELAY_OWNED.iter().chain(RELAY_STATUS.iter()) {
         if let Some(x) = relay.get(key).filter(|x| x.is_boolean()) {
             v[key] = x.clone();
         }
@@ -661,6 +720,40 @@ mod tests {
     }
 
     #[test]
+    fn sleep_blocks_and_bedtime_are_checked_and_sent_to_the_relay() {
+        let mut s = GuildSettings::default();
+        // 기본은 모두 끄기 (예전 코코낸내), 자동 코코낸내 없음
+        assert_eq!(s.sleep_blocks, SLEEP_FEATURES.iter().map(|f| f.to_string()).collect::<Vec<_>>());
+        assert_eq!(s.bedtime, None);
+        s.apply(&patch(json!({ "sleepBlocks": ["music", "tts", "music"], "bedtime": { "start": "23:30", "end": "07:00" } }))).unwrap();
+        assert_eq!(s.sleep_blocks, vec!["music", "tts"]);
+        assert_eq!(s.bedtime, Some(Bedtime { start: "23:30".into(), end: "07:00".into() }));
+        let body = s.relay_body();
+        assert_eq!(body["sleepBlocks"], json!(["music", "tts"]));
+        assert_eq!(body["bedtime"], json!({ "start": "23:30", "end": "07:00" }));
+        s.apply(&patch(json!({ "bedtime": null }))).unwrap();
+        assert_eq!(s.relay_body()["bedtime"], Value::Null);
+        for (body, field) in [
+            (json!({ "sleepBlocks": ["web"] }), "sleepBlocks"),
+            (json!({ "sleepBlocks": "music" }), "sleepBlocks"),
+            (json!({ "bedtime": { "start": "24:00", "end": "07:00" } }), "bedtime.start"),
+            (json!({ "bedtime": { "start": "01:00", "end": "7:00" } }), "bedtime.end"),
+            (json!({ "bedtime": { "start": "01:00", "end": "01:00" } }), "bedtime"),
+        ] {
+            let before = s.clone();
+            assert_eq!(s.apply(&patch(body.clone())).unwrap_err().0, field, "{body}");
+            assert_eq!(s, before, "{body}");
+        }
+        // 지금 자는지는 릴레이만 안다 — 화면 값에 얹기만 하고 저장하지 않는다
+        let shown = with_relay_owned(view("g1", &s), &json!({ "asleep": true }));
+        assert_eq!(shown["asleep"], json!(true));
+        assert!(s.apply(&patch(json!({ "asleep": true }))).is_err());
+        let back = GuildSettings::from_relay(&json!({ "sleepBlocks": ["llm"], "bedtime": { "start": "01:00", "end": "08:00" } }));
+        assert_eq!(back.sleep_blocks, vec!["llm"]);
+        assert_eq!(back.bedtime.map(|b| b.end), Some("08:00".to_string()));
+    }
+
+    #[test]
     fn a_wrong_value_changes_nothing_and_names_its_field() {
         let mut s = GuildSettings::default();
         for (body, field) in [
@@ -784,7 +877,7 @@ mod tests {
         let old_relay = json!({ "musicEnabled": true, "musicUIEnabled": true, "musicSettings": { "queueLines": 9, "refreshInterval": 4000, "normalize": true } });
         assert_eq!(
             Value::Object(changed(&old_relay, &s.relay_body())),
-            json!({ "locale": "auto", "sleeping": false, "ttsSettings": { "volume": 100, "speed": 100, "pitch": 0, "names": "multi" }, "prefixes": [], "translateCommands": true, "slashPrefix": true, "slashRootName": "name", "privateQueries": false })
+            json!({ "locale": "auto", "sleeping": false, "ttsSettings": { "volume": 100, "speed": 100, "pitch": 0, "names": "multi" }, "prefixes": [], "translateCommands": true, "slashPrefix": true, "slashRootName": "name", "privateQueries": false, "sleepBlocks": ["commands", "llm", "music", "tts", "extras"], "bedtime": null })
         );
     }
 

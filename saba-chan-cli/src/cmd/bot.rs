@@ -171,6 +171,10 @@ pub async fn run(ctx: &Ctx, cmd: BotCmd) -> Result<()> {
         }
         BotCmd::Sleep { guild } => discord_settings(ctx, &resolve::guild(ctx, guild.as_deref()).await?, Some(json!({ "sleeping": true }))).await,
         BotCmd::Wake { guild } => discord_settings(ctx, &resolve::guild(ctx, guild.as_deref()).await?, Some(json!({ "sleeping": false }))).await,
+        BotCmd::SleepMode { guild, block, bedtime, no_bedtime } => {
+            let patch = sleep_patch(block, bedtime, no_bedtime)?;
+            discord_settings(ctx, &resolve::guild(ctx, guild.as_deref()).await?, (!patch.is_null()).then_some(patch)).await
+        }
         BotCmd::Music { guild, on, off, ui, queue_lines, refresh, normalize } => {
             let mut music = Map::new();
             if on || off {
@@ -776,12 +780,32 @@ fn print_discord_settings(r: &Value) {
 }
 
 /// 서버 하나의 봇 설정 줄 (GUI 서버 › 봇·노래하는 사바쨩 탭과 같은 값)
+/// `bot sleep-mode` 옵션 → 디스코드 설정 패치 (바꿀 것이 없으면 Null). 시각 범위는 데몬이 다시 본다
+fn sleep_patch(block: Option<Vec<String>>, bedtime: Option<String>, no_bedtime: bool) -> Result<Value> {
+    let mut patch = Map::new();
+    if let Some(b) = block {
+        patch.insert("sleepBlocks".into(), json!(b));
+    }
+    if no_bedtime {
+        patch.insert("bedtime".into(), Value::Null);
+    } else if let Some(range) = bedtime {
+        let clock = |t: &str| t.len() == 5 && t.as_bytes()[2] == b':' && t.chars().filter(char::is_ascii_digit).count() == 4;
+        match range.split_once('-').map(|(a, b)| (a.trim(), b.trim())) {
+            Some((start, end)) if clock(start) && clock(end) => {
+                patch.insert("bedtime".into(), json!({ "start": start, "end": end }));
+            }
+            _ => return Err(usage(t!("bot.bedtime_format"))),
+        }
+    }
+    Ok(if patch.is_empty() { Value::Null } else { Value::Object(patch) })
+}
+
 fn discord_rows(r: &Value) -> Vec<(String, String)> {
     let on_off = |v: Option<bool>| if v == Some(true) { t!("bot.on") } else { t!("bot.off") };
     let locale = s(r, "locale");
     let music = |k: &str| r.get("music").and_then(|m| m.get(k));
     let tts = |k: &str, default: i64| r.pointer(&format!("/tts/{}", k)).and_then(Value::as_i64).unwrap_or(default);
-    vec![
+    let mut rows = vec![
         (t!("bot.locale"), if locale == "auto" { t!("bot.locale_auto") } else { locale.to_string() }),
         (t!("bot.prefix"), prefixes_line(r.get("prefixes").unwrap_or(&Value::Null))),
         // 값이 없으면(옛 데몬) 켜짐
@@ -794,6 +818,15 @@ fn discord_rows(r: &Value) -> Vec<(String, String)> {
         ),
         (t!("bot.private_queries"), on_off(r.get("privateQueries").and_then(Value::as_bool))),
         (t!("bot.sleeping"), on_off(r.get("sleeping").and_then(Value::as_bool))),
+    ];
+    // 코코낸내: 옛 데몬은 값이 없다
+    if let Some(blocks) = r.get("sleepBlocks").and_then(Value::as_array) {
+        let names: Vec<&str> = blocks.iter().filter_map(Value::as_str).collect();
+        rows.push((t!("bot.sleep_blocks"), if names.is_empty() { t!("bot.sleep_blocks_none") } else { names.join(", ") }));
+        let bedtime = r.get("bedtime").filter(|b| b.is_object());
+        rows.push((t!("bot.bedtime"), bedtime.map_or_else(|| t!("bot.off"), |b| format!("{} ~ {}", s(b, "start"), s(b, "end")))));
+    }
+    rows.extend([
         (t!("bot.music"), on_off(music("enabled").and_then(Value::as_bool))),
         (t!("bot.music_ui"), on_off(music("ui").and_then(Value::as_bool))),
         (t!("bot.music_queue_lines"), music("queueLines").map(|v| v.to_string()).unwrap_or_default()),
@@ -811,7 +844,8 @@ fn discord_rows(r: &Value) -> Vec<(String, String)> {
                 _ => t!("bot.tts_names_multi"),
             },
         ),
-    ]
+    ]);
+    rows
 }
 
 fn print_channels(r: &Value) {
@@ -1210,6 +1244,26 @@ mod tests {
         assert_eq!(row(&r, "bot.slash_prefix"), Some(t!("bot.off")));
         assert_eq!(row(&r, "bot.slash_root_name"), Some(t!("bot.slash_root_name_word")));
         assert_eq!(row(&r, "bot.private_queries"), Some(t!("bot.on")));
+    }
+
+    /// 코코낸내 (GUI 봇 설정 탭과 같다): 잠든 동안 끄는 기능, 착한 어린이(자동 코코낸내) 시각
+    #[test]
+    fn sleep_mode_reads_blocks_and_good_kid_times() {
+        crate::i18n::init("ko");
+        let row = |r: &Value, k: &str| discord_rows(r).into_iter().find(|(name, _)| *name == t!(k)).map(|(_, v)| v);
+        let r = json!({ "sleepBlocks": ["music", "tts"], "bedtime": { "start": "01:00", "end": "08:00" }, "music": {} });
+        assert_eq!(row(&r, "bot.sleep_blocks").as_deref(), Some("music, tts"));
+        assert_eq!(row(&r, "bot.bedtime").as_deref(), Some("01:00 ~ 08:00"));
+        let off = json!({ "sleepBlocks": [], "bedtime": null, "music": {} });
+        assert_eq!(row(&off, "bot.sleep_blocks"), Some(t!("bot.sleep_blocks_none")));
+        assert_eq!(row(&off, "bot.bedtime"), Some(t!("bot.off")));
+        // 옛 데몬은 값이 없다 — 줄을 두지 않는다
+        assert_eq!(row(&json!({ "music": {} }), "bot.bedtime"), None);
+
+        assert_eq!(sleep_patch(Some(vec!["llm".into()]), Some("23:30-07:00".into()), false).unwrap(), json!({ "sleepBlocks": ["llm"], "bedtime": { "start": "23:30", "end": "07:00" } }));
+        assert_eq!(sleep_patch(None, None, true).unwrap(), json!({ "bedtime": null }));
+        assert_eq!(sleep_patch(None, None, false).unwrap(), Value::Null);
+        assert!(sleep_patch(None, Some("1시-8시".into()), false).is_err());
     }
 
     /// 읽어주는 사바쨩 (GUI 탭과 같다): 볼륨 %, 속도는 배로 받아 %로 보내고, 피치 반음, 이름 부르기. 아무 값도 없으면 보기만
