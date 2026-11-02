@@ -42,8 +42,8 @@ const FEATURES: &[&str] = &["confirm_by_daemon", "linked_guilds"];
 /// 알림 이벤트(I3): 처음 한 건이 오면 같은 순간에 난 것만 이만큼 모아 곧 보내고, 한 번에 이만큼까지 보낸다
 /// (사용자 11-02: 게임 채팅이 디스코드에 늦게 올라간다. 이벤트는 대부분 한 건씩 온다)
 const EVENT_GATHER: Duration = Duration::from_millis(20);
-/// 보내기 사이 최소 간격: relay `/events` 한도(노드당 분당 60건) 안에 머문다. 이어서 오면 이 간격으로 묶여 간다
-const EVENT_MIN_GAP: Duration = Duration::from_millis(1200);
+/// 보내기 사이 최소 간격: relay `/events` 한도(노드당 초당 5건, 분당 300건) 안에 머문다. 이어서 오면 이 간격으로 묶여 간다
+const EVENT_MIN_GAP: Duration = Duration::from_millis(200);
 const EVENT_BATCH: usize = 20;
 /// relay에 닿지 못하는 동안 들고 있는 최근 이벤트 수 (알림은 기록이 아니다)
 const EVENT_PENDING: usize = 50;
@@ -1872,7 +1872,7 @@ mod tests {
     }
 
     /// 사용자 11-02: 게임 채팅이 디스코드에 늦게 올라간다. 이벤트는 모으지 않고 곧 보낸다.
-    /// 이어서 오면 relay 한도(노드당 분당 60건) 안의 간격으로 묶어 보낸다
+    /// 이어서 오면 relay 한도(노드당 초당 5건) 안의 간격으로 묶어 보낸다
     #[tokio::test]
     async fn a_game_chat_line_is_sent_soon_and_following_lines_keep_under_the_relay_limit() {
         use axum::routing::post;
@@ -1913,8 +1913,8 @@ mod tests {
             let (second, _) = arrived(&mut rx, "chat-latency-second").await;
             session.cancel.cancel();
             assert!(first < Duration::from_millis(300), "the first line reached the relay after {first:?}");
-            assert!(second >= Duration::from_millis(1000), "the next send waits for the gap ({second:?})");
-            assert!(second < Duration::from_millis(1800), "but not for the notice gather ({second:?})");
+            assert!(second >= Duration::from_millis(150), "the next send waits for the gap ({second:?})");
+            assert!(second < Duration::from_millis(600), "but only for the gap ({second:?})");
         });
     }
 
