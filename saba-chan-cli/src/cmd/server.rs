@@ -1326,12 +1326,12 @@ fn print_output(output: &Value) {
 
 /// 이름: 값 목록을 이름 폭(화면 칸)에 맞춘 줄로
 fn field_lines(fields: &[Value]) -> Vec<String> {
-    let width = fields.iter().map(|f| console::measure_text_width(&s(f, "label"))).max().unwrap_or(0);
+    let width = fields.iter().map(|f| console::measure_text_width(s(f, "label"))).max().unwrap_or(0);
     fields
         .iter()
         .map(|f| {
             let label = s(f, "label");
-            let pad = width - console::measure_text_width(&label);
+            let pad = width - console::measure_text_width(label);
             format!("{}{}  {}", label, " ".repeat(pad), s(f, "value"))
         })
         .collect()
