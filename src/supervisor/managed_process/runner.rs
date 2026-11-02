@@ -315,7 +315,7 @@ impl ManagedProcess {
                     if stopped {
                         break;
                     }
-                    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
                 }
             })
         };

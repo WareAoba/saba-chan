@@ -39,8 +39,11 @@ const RETRY_MAX: Duration = Duration::from_secs(60);
 /// - `linked_guilds`: 하트비트 응답의 `linkedGuilds`(새로 묶인 길드)로 그 길드에 열 서버를 정한다 (`close_linked_guild`)
 const FEATURES: &[&str] = &["confirm_by_daemon", "linked_guilds"];
 
-/// 알림 이벤트(I3): 처음 한 건이 오면 이만큼 모아서, 한 번에 이만큼까지 보낸다
-const EVENT_GATHER: Duration = Duration::from_secs(2);
+/// 알림 이벤트(I3): 처음 한 건이 오면 같은 순간에 난 것만 이만큼 모아 곧 보내고, 한 번에 이만큼까지 보낸다
+/// (사용자 11-02: 게임 채팅이 디스코드에 늦게 올라간다. 이벤트는 대부분 한 건씩 온다)
+const EVENT_GATHER: Duration = Duration::from_millis(20);
+/// 보내기 사이 최소 간격: relay `/events` 한도(노드당 분당 60건) 안에 머문다. 이어서 오면 이 간격으로 묶여 간다
+const EVENT_MIN_GAP: Duration = Duration::from_millis(1200);
 const EVENT_BATCH: usize = 20;
 /// relay에 닿지 못하는 동안 들고 있는 최근 이벤트 수 (알림은 기록이 아니다)
 const EVENT_PENDING: usize = 50;
@@ -1020,6 +1023,7 @@ impl Session {
         let mut rx = crate::events::bus().subscribe(None).rx;
         let mut pending = std::collections::VecDeque::new();
         let mut failures: u32 = 0;
+        let mut last_sent: Option<tokio::time::Instant> = None;
         loop {
             if pending.is_empty() {
                 // 첫 건을 기다렸다가 잠깐 더 모은다
@@ -1044,6 +1048,12 @@ impl Session {
                     }
                 }
             }
+            if let Some(at) = last_sent.map(|t| t + EVENT_MIN_GAP) {
+                tokio::select! {
+                    _ = self.cancel.cancelled() => return,
+                    _ = tokio::time::sleep_until(at) => {}
+                }
+            }
             // 다시 보내기 전에 그 사이 쌓인 것도 넣는다
             loop {
                 match rx.try_recv() {
@@ -1057,6 +1067,7 @@ impl Session {
                 let body = json!({ "events": batch }).to_string();
                 self.send_signed(reqwest::Method::POST, "/events", Some(body)).await
             };
+            last_sent = Some(tokio::time::Instant::now());
             let resp = tokio::select! {
                 _ = self.cancel.cancelled() => return,
                 r = sent => r,
@@ -1858,6 +1869,53 @@ mod tests {
         session.post_result("gone", &json!({ "success": true })).await;
         assert_eq!(CALLS.load(Ordering::SeqCst), 1, "a command the relay no longer has is not sent again");
         assert!(session.agent.unsent.lock().unwrap().is_empty(), "a refused result is not kept");
+    }
+
+    /// 사용자 11-02: 게임 채팅이 디스코드에 늦게 올라간다. 이벤트는 모으지 않고 곧 보낸다.
+    /// 이어서 오면 relay 한도(노드당 분당 60건) 안의 간격으로 묶어 보낸다
+    #[tokio::test]
+    async fn a_game_chat_line_is_sent_soon_and_following_lines_keep_under_the_relay_limit() {
+        use axum::routing::post;
+        static GOT: std::sync::OnceLock<tokio::sync::mpsc::UnboundedSender<Value>> = std::sync::OnceLock::new();
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        GOT.set(tx).unwrap();
+        async fn events(axum::Json(body): axum::Json<Value>) -> axum::http::StatusCode {
+            let _ = GOT.get().unwrap().send(body);
+            axum::http::StatusCode::OK
+        }
+        let app = axum::Router::new().route("/events", post(events));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let tmp = tempfile::tempdir().unwrap();
+        let session = test_session(&RelayAgent::new(), &base, "sbn_host.secret", tmp.path()).await;
+
+        let chat = |instance: &str| crate::events::emit("instance.chat", json!({ "instanceId": instance, "instance": "s", "text": "\\[s\\] **Steve**: hi" }));
+        // 그 서버의 줄이 relay에 닿을 때까지 걸린 시간 (다른 시험의 이벤트는 건너뛴다)
+        let arrived = |rx: &mut tokio::sync::mpsc::UnboundedReceiver<Value>, instance: &'static str| {
+            let started = tokio::time::Instant::now();
+            let mut rx = std::mem::replace(rx, tokio::sync::mpsc::unbounded_channel().1);
+            async move {
+                loop {
+                    match tokio::time::timeout(Duration::from_secs(5), rx.recv()).await {
+                        Ok(Some(body)) if body["events"].as_array().is_some_and(|a| a.iter().any(|e| e["data"]["instanceId"] == instance)) => return (started.elapsed(), rx),
+                        Ok(Some(_)) => {}
+                        _ => return (Duration::MAX, rx),
+                    }
+                }
+            }
+        };
+        tokio::join!(session.events_loop(), async {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            chat("chat-latency-first");
+            let (first, mut rx) = arrived(&mut rx, "chat-latency-first").await;
+            chat("chat-latency-second");
+            let (second, _) = arrived(&mut rx, "chat-latency-second").await;
+            session.cancel.cancel();
+            assert!(first < Duration::from_millis(300), "the first line reached the relay after {first:?}");
+            assert!(second >= Duration::from_millis(1000), "the next send waits for the gap ({second:?})");
+            assert!(second < Duration::from_millis(1800), "but not for the notice gather ({second:?})");
+        });
     }
 
     /// 시험용 세션: 주어진 에이전트·주소·토큰으로

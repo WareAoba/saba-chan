@@ -13,8 +13,8 @@ use std::time::Duration;
 
 use super::managed_process::{LogSource, ManagedProcess};
 
-/// 콘솔을 다시 보는 간격
-const POLL: Duration = Duration::from_millis(500);
+/// 콘솔을 다시 보는 간격 (메모리 버퍼만 본다. 채팅이 늦게 올라가지 않게 짧게)
+const POLL: Duration = Duration::from_millis(100);
 /// 이벤트에 싣는 이름의 최대 길이 (문자)
 const NAME_MAX: usize = 64;
 
