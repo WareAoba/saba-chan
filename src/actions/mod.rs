@@ -205,6 +205,14 @@ pub static ACTIONS: &[Def] = &[
         remote_menu: false,
         ..def("chatbot.settings.set", Kind::Admin, "caution", LOCAL_AND_DISCORD, false, "PATCH", "/api/chatbot/guilds/:guild")
     },
+    // 내 PC 공통 챗봇 값 (디스코드 /설정 "사바쨩 전체"): 모델과 API 키. 키는 바꾸기·지우기만 하고 요약·결과·감사에서 가린다.
+    // 이 PC의 모든 길드에 닿으므로 디스코드는 소유자(PC 주인)만, 챗봇 표면 없음
+    Def {
+        fields: &[field("model", "string", false), field("apiKey", "string", false)],
+        discord_level: Some(crate::chat::permissions::OWNER),
+        remote_menu: false,
+        ..def("chatbot.common.set", Kind::Admin, "caution", LOCAL_AND_DISCORD, false, "PATCH", "/api/chatbot/common")
+    },
     // 디스코드 길드 설정 (I2). 원격에서는 요청이 온 길드만 (`guild`를 그 길드로 고정한다)
     Def {
         fields: &[path_field("guild"), field("locale", "string", false), field("sleeping", "boolean", false), field("sleepBlocks", "array", false), field("bedtime", "object", false), field("music", "object", false), field("tts", "object", false), field("confirmLevel", "string", false), field("commandRisks", "object", false)],
@@ -235,7 +243,7 @@ pub const COMMAND_PREFIX: &str = "server.command:";
 pub const QUERY_PREFIX: &str = "server.query:";
 
 /// 챗봇에 넣지 않는 설정 키 (비밀값). 모듈 설정의 password 형식 필드도 뺀다
-const SECRET_KEYS: &[&str] = &["rest_password", "rcon_password", "password", "token", "secret"];
+const SECRET_KEYS: &[&str] = &["rest_password", "rcon_password", "password", "token", "secret", "apikey", "api_key"];
 
 pub fn find(id: &str) -> Option<&'static Def> {
     ACTIONS.iter().find(|d| d.id == id)

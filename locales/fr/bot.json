@@ -269,6 +269,12 @@
           "title": "Modifier les réglages de Saba-chan qui parle",
           "description": "Activation, mots d'appel, confirmation, outils"
         }
+      },
+      "common": {
+        "set": {
+          "title": "Modifier les réglages de Saba-chan qui parle communs à mon PC",
+          "description": "Modèle et clé API (tous les serveurs de ce PC)"
+        }
       }
     },
     "field": {
@@ -309,7 +315,8 @@
       "tools": "Outils activés",
       "step": "Étape",
       "from_snapshot": "Depuis la sauvegarde auto du jeu",
-      "text": "Message"
+      "text": "Message",
+      "apiKey": "Clé API"
     },
     "summary": {
       "server_item": "• **{{name}}** ({{module}}) · {{status}}",

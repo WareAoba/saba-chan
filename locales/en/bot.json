@@ -269,6 +269,12 @@
           "title": "Change Talking Saba-chan settings",
           "description": "On/off, wake words, confirmation, tool sets"
         }
+      },
+      "common": {
+        "set": {
+          "title": "Change Talking Saba-chan settings shared by my PC",
+          "description": "Model and API key (every server on this PC)"
+        }
       }
     },
     "field": {
@@ -309,7 +315,8 @@
       "tools": "Enabled tools",
       "step": "Step",
       "from_snapshot": "From game auto-backup",
-      "text": "Message"
+      "text": "Message",
+      "apiKey": "API key"
     },
     "summary": {
       "server_item": "• **{{name}}** ({{module}}) · {{status}}",

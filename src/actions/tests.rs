@@ -866,6 +866,34 @@ async fn remote_admin_runs_are_limited_per_guild_and_hour() {
 }
 
 #[tokio::test]
+async fn the_pc_owner_sets_the_shared_model_and_key_from_discord_without_the_key_showing_up() {
+    let (state, _id, _tmp) = server().await;
+    open_everything(&state).await;
+    let input = json!({ "model": "m2", "apiKey": "sk-NEW-SECRET-1234" });
+    // 내 PC 공통 값이라 PC 주인(소유자)만, 챗봇은 못 바꾼다
+    let planned = plan(&state, "chatbot.common.set", None, &input, &relay("owner", false)).await.unwrap();
+    assert!(!planned.to_string().contains("NEW-SECRET"), "{planned}");
+    assert_eq!(plan(&state, "chatbot.common.set", None, &input, &relay("admin", false)).await.unwrap_err().code, "PERMISSION_DENIED");
+    assert_eq!(plan(&state, "chatbot.common.set", None, &input, &relay("owner", true)).await.unwrap_err().code, "action_not_allowed");
+    // 모델과 키 말고는 받지 않는다
+    let other = json!({ "enabled": true });
+    assert_eq!(plan(&state, "chatbot.common.set", None, &other, &relay("owner", false)).await.unwrap_err().code, "invalid_input");
+
+    let done = run(&state, "chatbot.common.set", None, &input, None, &gui()).await.unwrap();
+    assert_eq!(done["success"], true);
+    assert!(!done.to_string().contains("NEW-SECRET"), "{done}");
+    let cfg = state.config_store.get_chatbot();
+    assert_eq!((cfg.settings["model"].as_str(), cfg.api_key.as_deref()), (Some("m2"), Some("sk-NEW-SECRET-1234")));
+    // 키를 빼면 그대로, 짧은 키·빈 모델은 거절한다
+    run(&state, "chatbot.common.set", None, &json!({ "model": "m3" }), None, &gui()).await.unwrap();
+    assert_eq!(state.config_store.get_chatbot().api_key.as_deref(), Some("sk-NEW-SECRET-1234"));
+    for bad in [json!({ "apiKey": "short" }), json!({ "model": " " })] {
+        assert_eq!(run(&state, "chatbot.common.set", None, &bad, None, &gui()).await.unwrap()["success"], false, "{bad}");
+    }
+    assert_eq!(state.config_store.get_chatbot().settings["model"].as_str(), Some("m3"));
+}
+
+#[tokio::test]
 async fn chatbot_settings_from_discord_are_the_owners_and_never_the_chatbots() {
     let (state, _id, _tmp) = server().await;
     open_everything(&state).await;

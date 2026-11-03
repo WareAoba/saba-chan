@@ -990,6 +990,7 @@ impl IPCServer {
             .route("/api/chat/command", post(handlers::chat::chat_command))
             // AI 챗봇 설정 (원본은 데몬, 릴레이에 맞춘다)
             .route("/api/chatbot", get(handlers::chatbot::get_chatbot).put(handlers::chatbot::put_chatbot).delete(handlers::chatbot::delete_chatbot))
+            .route("/api/chatbot/common", patch(handlers::chatbot::patch_common))
             .route("/api/chatbot/memory", delete(handlers::chatbot::delete_memory))
             .route("/api/chatbot/memo-template", get(handlers::chatbot::get_memo_template))
             // 인스턴스별 디스코드 낱말, 길드가 쓸 서버 (로컬 전용)

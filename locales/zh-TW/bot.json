@@ -269,6 +269,12 @@
           "title": "變更「會說話的 Saba-chan」設定",
           "description": "開關、喚醒詞、確認、工具組"
         }
+      },
+      "common": {
+        "set": {
+          "title": "變更本機共用的「會說話的 Saba-chan」設定",
+          "description": "模型和 API 金鑰（這台電腦的所有伺服器）"
+        }
       }
     },
     "field": {
@@ -309,7 +315,8 @@
       "tools": "啟用的工具",
       "step": "步驟",
       "from_snapshot": "來自遊戲自動備份",
-      "text": "內容"
+      "text": "內容",
+      "apiKey": "API 金鑰"
     },
     "summary": {
       "server_item": "• **{{name}}** ({{module}}) · {{status}}",

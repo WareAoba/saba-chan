@@ -269,6 +269,12 @@
           "title": "Cambiar ajustes de Saba-chan parlante",
           "description": "Activar, palabras de llamada, confirmación, herramientas"
         }
+      },
+      "common": {
+        "set": {
+          "title": "Cambiar ajustes de Saba-chan parlante comunes de mi PC",
+          "description": "Modelo y clave de API (todos los servidores de este PC)"
+        }
       }
     },
     "field": {
@@ -309,7 +315,8 @@
       "tools": "Herramientas activadas",
       "step": "Paso",
       "from_snapshot": "Desde copia automática del juego",
-      "text": "Mensaje"
+      "text": "Mensaje",
+      "apiKey": "Clave de API"
     },
     "summary": {
       "server_item": "• **{{name}}** ({{module}}) · {{status}}",

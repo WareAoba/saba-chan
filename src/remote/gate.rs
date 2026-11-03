@@ -263,6 +263,7 @@ pub static ROUTES: &[Route] = &[
     // 이 PC의 말하는 사바쨩 API 키를 넣거나 지우기만 한다 (`FIELD_RULES`가 다른 칸을 막고, 응답에는 키가 없다. 사용자 결정 2026-11-03)
     allow("PUT", "/api/chatbot"),
     deny("DELETE", "/api/chatbot"),
+    deny("PATCH", "/api/chatbot/common"),
     deny("DELETE", "/api/chatbot/memory"),
     deny("GET", "/api/chatbot/memo-template"),
     // ── 샌드박스 예외 ──

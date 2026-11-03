@@ -16,6 +16,7 @@
 //! 공통(`settings`)에는 모델만 둔다. 켜기(`enabled`)·켠 도구(`tools`)·답변 깊이·끼어들기·기억·되묻기·메모는 서버마다 둔다
 //! (기본: 꺼짐, 도구 없음). 옛 설정(공통 `enabled`·`effort` 같은 서버 값, 전체 허용 도구 `allowedTools`, `disabledTools`,
 //! `webSearch`)은 길드 목록을 받았을 때 서버마다 적어 넣는다 (`settle_legacy`). 그 전까지는 옛 값으로 셈해 보낸다
+//! - `PATCH /api/chatbot/common` `{model?, apiKey?: string|null}` — 내 PC 공통 값만 (액션 `chatbot.common.set`)
 //! - `DELETE /api/chatbot/memory?guildId=` — 장기 기억 지우기 (guildId가 없으면 모든 길드)
 //! - `GET /api/chatbot/memo-template?locale=` — 서버 프롬프트 기본 틀 `{template, locale}` (bot.json `chatbot.memo_template`)
 
@@ -603,6 +604,28 @@ pub async fn patch_guild(State(state): State<IPCServer>, Path(guild): Path<Strin
         return resp;
     }
     Json(guild_view(&state.config_store.get_chatbot(), &guild)).into_response()
+}
+
+/// `PATCH /api/chatbot/common` `{model?, apiKey?: string|null}` (액션 `chatbot.common.set`, 디스코드 /설정 "사바쨩 전체"):
+/// 내 PC 공통 값만 `PUT /api/chatbot`과 같이 저장·동기화한다. 모델은 1~64자, 키는 8~512자(릴레이와 같다), null은 키를 지운다.
+/// 다른 키는 400 `validation_failed`
+pub async fn patch_common(State(state): State<IPCServer>, Json(patch): Json<Map<String, Value>>) -> Response {
+    let bad = |field: &str| {
+        let error = json!({ "success": false, "error": format!("invalid chatbot setting: {}", field), "error_code": "validation_failed", "fields": [{ "field": field }] });
+        (StatusCode::BAD_REQUEST, Json(error)).into_response()
+    };
+    let mut body = ChatbotPatch::default();
+    for (key, value) in patch {
+        match (key.as_str(), value) {
+            ("model", Value::String(m)) if !m.trim().is_empty() && m.trim().chars().count() <= 64 => {
+                body.settings = Some(Map::from_iter([("model".into(), json!(m.trim()))]));
+            }
+            ("apiKey", Value::Null) => body.api_key = Some(None),
+            ("apiKey", Value::String(k)) if (8..=512).contains(&k.trim().chars().count()) => body.api_key = Some(Some(k)),
+            _ => return bad(&key),
+        }
+    }
+    put_chatbot(State(state), Json(body)).await
 }
 
 /// 서버 프롬프트 기본 틀 — 제목과 HTML 주석 안내. 릴레이는 주석과 채우지 않은 제목을 모델에게 보내지 않는다
