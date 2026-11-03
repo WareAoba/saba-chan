@@ -257,6 +257,7 @@ pub static ROUTES: &[Route] = &[
     deny("GET", "/api/chatbot"),
     deny("PUT", "/api/chatbot"),
     deny("DELETE", "/api/chatbot"),
+    deny("PATCH", "/api/chatbot/common"),
     deny("DELETE", "/api/chatbot/memory"),
     deny("GET", "/api/chatbot/memo-template"),
     deny("GET", "/api/chatbot/guilds/{guild}"),

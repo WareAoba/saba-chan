@@ -269,6 +269,12 @@
           "title": "말하는 사바쨩 설정 바꾸기",
           "description": "켜기·호출어·확인·도구 묶음"
         }
+      },
+      "common": {
+        "set": {
+          "title": "내 PC 공통 말하는 사바쨩 설정 바꾸기",
+          "description": "모델·API 키 (이 PC의 모든 서버)"
+        }
       }
     },
     "field": {
@@ -309,7 +315,8 @@
       "tools": "켠 도구",
       "step": "단계",
       "from_snapshot": "게임 자동 백업에서",
-      "text": "본문"
+      "text": "본문",
+      "apiKey": "API 키"
     },
     "summary": {
       "server_item": "• **{{name}}** ({{module}}) · {{status}}",

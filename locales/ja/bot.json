@@ -269,6 +269,12 @@
           "title": "おしゃべりサバちゃんの設定を変更",
           "description": "オン/オフ・呼び出し語・確認・ツール"
         }
+      },
+      "common": {
+        "set": {
+          "title": "このPC共通のおしゃべりサバちゃん設定を変更",
+          "description": "モデル・APIキー（このPCのすべてのサーバー）"
+        }
       }
     },
     "field": {
@@ -309,7 +315,8 @@
       "tools": "使うツール",
       "step": "ステップ",
       "from_snapshot": "ゲーム自動バックアップから",
-      "text": "本文"
+      "text": "本文",
+      "apiKey": "APIキー"
     },
     "summary": {
       "server_item": "• **{{name}}** ({{module}}) · {{status}}",

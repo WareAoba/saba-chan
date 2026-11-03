@@ -269,6 +269,12 @@
           "title": "Alterar configurações da Saba-chan falante",
           "description": "Ligar, palavras de chamada, confirmação, ferramentas"
         }
+      },
+      "common": {
+        "set": {
+          "title": "Alterar configurações da Saba-chan falante comuns ao meu PC",
+          "description": "Modelo e chave de API (todos os servidores deste PC)"
+        }
       }
     },
     "field": {
@@ -309,7 +315,8 @@
       "tools": "Ferramentas ativadas",
       "step": "Etapa",
       "from_snapshot": "Do backup automático do jogo",
-      "text": "Mensagem"
+      "text": "Mensagem",
+      "apiKey": "Chave de API"
     },
     "summary": {
       "server_item": "• **{{name}}** ({{module}}) · {{status}}",

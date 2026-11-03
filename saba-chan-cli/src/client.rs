@@ -1667,6 +1667,7 @@ mod route_coverage {
     /// 데몬 라우트 중 CLI가 부르지 않는 것과 그 까닭. 여기 없는 라우트는 모두 CLI(그래서 TUI)에서 닿아야 한다
     const NOT_FOR_CLI: &[(&str, &str)] = &[
         ("/api/client/register", "GUI 창 수명 (CLI는 한 번 돌고 끝난다)"),
+        ("/api/chatbot/common", "원격(디스코드 `/설정` 사바쨩 전체)용 모델·키만 바꾸기 (CLI는 `PUT /api/chatbot`으로 같은 값을 바꾼다)"),
         ("/api/updates/install", "원격(디스코드 `/사바쨩 업데이트`)용 한 번에 받고 적용 (CLI `update`는 단계마다 진행을 보인다)"),
         ("/api/updates/apply-on-launch", "GUI가 열릴 때 '받고 다음 실행 때 적용' (CLI는 `update apply`로 바로 적용한다)"),
         ("/api/client/{id}/heartbeat", "GUI 창 수명"),

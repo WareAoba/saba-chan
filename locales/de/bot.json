@@ -269,6 +269,12 @@
           "title": "Einstellungen von „Sprechende Saba-chan“ ändern",
           "description": "Ein/Aus, Rufwörter, Bestätigung, Werkzeuge"
         }
+      },
+      "common": {
+        "set": {
+          "title": "Gemeinsame Einstellungen von „Sprechende Saba-chan“ auf meinem PC ändern",
+          "description": "Modell und API-Schlüssel (alle Server dieses PCs)"
+        }
       }
     },
     "field": {
@@ -309,7 +315,8 @@
       "tools": "Aktivierte Werkzeuge",
       "step": "Schritt",
       "from_snapshot": "Aus Spiel-Autobackup",
-      "text": "Nachricht"
+      "text": "Nachricht",
+      "apiKey": "API-Schlüssel"
     },
     "summary": {
       "server_item": "• **{{name}}** ({{module}}) · {{status}}",
