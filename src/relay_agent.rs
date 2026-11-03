@@ -1504,7 +1504,7 @@ fn now_ms() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
 }
 
-/// 디스코드 `/사바쨩 권한 부여·해제·기본`: 노드 주인만 바꿀 수 있다. 챗봇 경로는 받지 않는다
+/// 디스코드 `/사바쨩 권한 부여·해제·기본`과 `/설정` 명령별 레벨: 노드 주인만 바꿀 수 있다. 챗봇 경로는 받지 않는다
 async fn permission_action(server: &crate::ipc::IPCServer, who: &crate::chat::permissions::Requester, payload: &Value) -> Value {
     use crate::chat::permissions::Change;
     let fail = |code: &str| json!({ "success": false, "data": { "code": code } });
@@ -1524,6 +1524,15 @@ async fn permission_action(server: &crate::ipc::IPCServer, who: &crate::chat::pe
             Some(l) => Change::DefaultLevel(l),
             None => return fail("INVALID_LEVEL"),
         },
+        // `/설정` 명령별 레벨: `{key: "<인스턴스>/<명령>", level: 레벨|null}` (null은 덮어쓰기를 지운다)
+        Some("command_level") => {
+            let key = payload.get("key").and_then(Value::as_str).unwrap_or("").to_string();
+            match payload.get("level") {
+                Some(Value::Null) | None => Change::CommandLevel { key, level: None },
+                Some(_) if level.is_none() => return fail("INVALID_LEVEL"),
+                Some(_) => Change::CommandLevel { key, level },
+            }
+        }
         _ => return fail("UNKNOWN_OP"),
     };
     let owner = who.owner_id.clone();
@@ -2172,6 +2181,34 @@ mod tests {
         for key in ["defaultLevel", "members", "chatbotCap", "levels", "commandLevels", "ladder"] {
             assert!(res["data"].get(key).is_some(), "no {key}: {res}");
         }
+    }
+
+    /// `/설정` 명령별 레벨: `command_level {key, level|null}`로 그 명령의 덮어쓰기를 두고 지운다 (주인만)
+    #[tokio::test]
+    async fn the_owner_sets_and_clears_one_command_level() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            tmp.path().join("modules").to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        sup.initialize().await.unwrap();
+        let server = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let who = |user: &str| crate::chat::permissions::Requester {
+            guild_id: Some("r8-command-level".into()),
+            user_id: Some(user.into()),
+            owner_id: Some("owner".into()),
+            via_chatbot: false,
+            confirmed_by: None,
+            guild_owner_id: None,
+        };
+        let set = permission_action(&server, &who("owner"), &json!({ "op": "command_level", "key": "i1/kick", "level": 2 })).await;
+        assert_eq!(set["data"]["commandLevels"]["i1/kick"], 2, "{set}");
+        let cleared = permission_action(&server, &who("owner"), &json!({ "op": "command_level", "key": "i1/kick", "level": null })).await;
+        assert!(cleared["data"]["commandLevels"].get("i1/kick").is_none(), "{cleared}");
+        let bad = permission_action(&server, &who("owner"), &json!({ "op": "command_level", "key": "kick", "level": 1 })).await;
+        assert_eq!(bad["data"]["code"], "INVALID_COMMAND", "{bad}");
+        let other = permission_action(&server, &who("u2"), &json!({ "op": "command_level", "key": "i1/kick", "level": 1 })).await;
+        assert_eq!(other["data"]["code"], "NOT_OWNER", "{other}");
     }
 
     /// 노드 토큰이 평문으로 나가지 않게: 이미 저장된 http 주소(루프백 제외)로는 세션을 열지 않는다
