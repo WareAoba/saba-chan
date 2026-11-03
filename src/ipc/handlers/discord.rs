@@ -119,11 +119,25 @@ pub struct Tts {
     pub pitch: i64,
     /// 글 앞에 "이름님,"을 붙일지 (`TTS_NAMES`): `always` 항상, `multi` 읽는 사람이 여럿일 때, `never` 안 함
     pub names: String,
+    /// 내 글 읽기는 내가 있는 음성 채널의 채팅에서만 (게임 채팅 읽기는 예외, 2026-11-03 사용자 지정)
+    pub voice_chat_only: bool,
+    /// 읽은 글을 지우지 않는다 (2026-11-03 사용자 지정)
+    pub keep_read: bool,
+    /// 늘 읽을 음성 채널 ID — 사람이 2명 이상 들어가면 봇이 들어가 그 채널 채팅을 모두 읽는다 (2026-11-03 사용자 지정, 최대 `TTS_AUTO_CHANNELS_MAX`)
+    pub auto_channels: Vec<String>,
 }
 
 impl Default for Tts {
     fn default() -> Self {
-        Self { volume: 100, speed: 100, pitch: 0, names: "multi".into() }
+        Self {
+            volume: 100,
+            speed: 100,
+            pitch: 0,
+            names: "multi".into(),
+            voice_chat_only: false,
+            keep_read: false,
+            auto_channels: Vec::new(),
+        }
     }
 }
 
@@ -131,6 +145,24 @@ pub const TTS_VOLUME: (i64, i64) = (10, 150);
 pub const TTS_SPEED: (i64, i64) = (80, 150);
 pub const TTS_PITCH: (i64, i64) = (-6, 6);
 pub const TTS_NAMES: &[&str] = &["always", "multi", "never"];
+/// 릴레이 `MAX_AUTO_CHANNELS`와 같다
+pub const TTS_AUTO_CHANNELS_MAX: usize = 10;
+
+/// 디스코드 ID(스노플레이크) 목록 — 겹치면 하나로, 틀린 값이나 한도를 넘으면 `None`
+fn snowflakes(v: &Value, max: usize) -> Option<Vec<String>> {
+    let ids = v.as_array()?;
+    if ids.len() > max * 4 {
+        return None;
+    }
+    let mut out: Vec<String> = Vec::new();
+    for id in ids {
+        let id = id.as_str().filter(|s| (17..=20).contains(&s.len()) && s.bytes().all(|b| b.is_ascii_digit()))?;
+        if !out.iter().any(|o| o == id) {
+            out.push(id.to_string());
+        }
+    }
+    (out.len() <= max).then_some(out)
+}
 
 impl Default for GuildSettings {
     fn default() -> Self {
@@ -198,7 +230,15 @@ impl GuildSettings {
                 "refreshInterval": self.music.refresh_interval,
                 "normalize": self.music.normalize,
             },
-            "ttsSettings": { "volume": self.tts.volume, "speed": self.tts.speed, "pitch": self.tts.pitch, "names": self.tts.names },
+            "ttsSettings": {
+                "volume": self.tts.volume,
+                "speed": self.tts.speed,
+                "pitch": self.tts.pitch,
+                "names": self.tts.names,
+                "voiceChatOnly": self.tts.voice_chat_only,
+                "keepRead": self.tts.keep_read,
+                "autoChannels": self.tts.auto_channels,
+            },
             "prefixes": self.prefixes,
             "translateCommands": self.translate_commands,
             "slashPrefix": self.slash_prefix,
@@ -389,6 +429,12 @@ impl GuildSettings {
                                 Some(n) if TTS_NAMES.contains(&n) => next.tts.names = n.to_string(),
                                 _ => return Err((field, "must be always, multi or never")),
                             },
+                            "voiceChatOnly" => next.tts.voice_chat_only = tv.as_bool().ok_or((field.clone(), "must be a boolean"))?,
+                            "keepRead" => next.tts.keep_read = tv.as_bool().ok_or((field.clone(), "must be a boolean"))?,
+                            "autoChannels" => {
+                                next.tts.auto_channels =
+                                    snowflakes(tv, TTS_AUTO_CHANNELS_MAX).ok_or((field.clone(), "must be up to 10 channel ids"))?
+                            }
                             _ => return Err((field, "unknown field")),
                         }
                     }
@@ -402,7 +448,7 @@ impl GuildSettings {
 }
 
 /// 원본이 릴레이인 길드 설정 (데몬은 저장하지 않고 앱의 값을 릴레이에 그대로 넘긴다). 모두 참·거짓 값
-pub const RELAY_OWNED: [&str; 1] = ["bigEmoji"];
+pub const RELAY_OWNED: [&str; 3] = ["bigEmoji", "gameChatGuard", "gameChatClearOnStop"];
 
 /// (데몬이 맡는 키, 릴레이 원본 키)
 type SplitPatch = (Map<String, Value>, Map<String, Value>);
@@ -704,6 +750,10 @@ mod tests {
         assert_eq!(rest, patch(json!({ "locale": "ko" })));
         assert_eq!(owned, patch(json!({ "bigEmoji": true })));
         assert_eq!(split_relay_owned(&patch(json!({ "bigEmoji": "yes" }))).unwrap_err().0, "bigEmoji");
+        // 게임 채팅 채널 글 막기·꺼지면 채팅 지우기 (사용자 11-03)도 릴레이가 원본이다
+        let (rest, owned) = split_relay_owned(&patch(json!({ "gameChatGuard": true, "gameChatClearOnStop": false }))).unwrap();
+        assert!(rest.is_empty());
+        assert_eq!(owned, patch(json!({ "gameChatGuard": true, "gameChatClearOnStop": false })));
     }
 
     #[test]
@@ -877,8 +927,39 @@ mod tests {
         let old_relay = json!({ "musicEnabled": true, "musicUIEnabled": true, "musicSettings": { "queueLines": 9, "refreshInterval": 4000, "normalize": true } });
         assert_eq!(
             Value::Object(changed(&old_relay, &s.relay_body())),
-            json!({ "locale": "auto", "sleeping": false, "ttsSettings": { "volume": 100, "speed": 100, "pitch": 0, "names": "multi" }, "prefixes": [], "translateCommands": true, "slashPrefix": true, "slashRootName": "name", "privateQueries": false, "sleepBlocks": ["commands", "llm", "music", "tts", "extras"], "bedtime": null })
+            json!({ "locale": "auto", "sleeping": false, "ttsSettings": { "volume": 100, "speed": 100, "pitch": 0, "names": "multi", "voiceChatOnly": false, "keepRead": false, "autoChannels": [] }, "prefixes": [], "translateCommands": true, "slashPrefix": true, "slashRootName": "name", "privateQueries": false, "sleepBlocks": ["commands", "llm", "music", "tts", "extras"], "bedtime": null })
         );
+    }
+
+    /// 읽어주기 동작 (2026-11-03 사용자 지정): 음성 채널 채팅에서만 · 읽은 글 남기기 · 늘 읽을 음성 채널. 릴레이에도 보낸다
+    #[test]
+    fn tts_behavior_switches_and_auto_channels_reach_the_relay() {
+        let mut s = GuildSettings::default();
+        assert_eq!((s.tts.voice_chat_only, s.tts.keep_read, s.tts.auto_channels.len()), (false, false, 0));
+        let a = "123456789012345678";
+        let b = "223456789012345678";
+        s.apply(&patch(json!({ "tts": { "voiceChatOnly": true, "keepRead": true, "autoChannels": [a, b, a] } }))).unwrap();
+        assert_eq!(s.tts.auto_channels, vec![a.to_string(), b.to_string()]);
+        let body = s.relay_body();
+        assert_eq!(body["ttsSettings"]["voiceChatOnly"], true);
+        assert_eq!(body["ttsSettings"]["keepRead"], true);
+        assert_eq!(body["ttsSettings"]["autoChannels"], json!([a, b]));
+        let eleven: Vec<String> = (10..21).map(|i| format!("12345678901234567{i}")).collect();
+        for (bad, field) in [
+            (json!({ "tts": { "voiceChatOnly": "yes" } }), "tts.voiceChatOnly"),
+            (json!({ "tts": { "keepRead": 1 } }), "tts.keepRead"),
+            (json!({ "tts": { "autoChannels": "x" } }), "tts.autoChannels"),
+            (json!({ "tts": { "autoChannels": ["nope"] } }), "tts.autoChannels"),
+            (json!({ "tts": { "autoChannels": eleven } }), "tts.autoChannels"),
+        ] {
+            let before = s.clone();
+            assert_eq!(s.apply(&patch(bad.clone())).unwrap_err().0, field, "{bad}");
+            assert_eq!(s, before);
+        }
+        // 처음 한 번 릴레이 값을 가져올 때도 받는다
+        let r = GuildSettings::from_relay(&json!({ "ttsSettings": { "keepRead": true, "autoChannels": [a] } }));
+        assert!(r.tts.keep_read);
+        assert_eq!(r.tts.auto_channels, vec![a.to_string()]);
     }
 
     /// 읽어주는 사바쨩 (2026-10-31 사용자 지정): 서버마다 볼륨(10~150%)·속도(80~150%)·피치(−6~+6반음)만 바꾼다. 릴레이에도 보낸다
@@ -888,7 +969,7 @@ mod tests {
         assert_eq!((s.tts.volume, s.tts.speed, s.tts.pitch), (100, 100, 0));
         s.apply(&patch(json!({ "tts": { "volume": 80, "pitch": -3 } }))).unwrap();
         assert_eq!((s.tts.volume, s.tts.speed, s.tts.pitch), (80, 100, -3));
-        assert_eq!(s.relay_body()["ttsSettings"], json!({ "volume": 80, "speed": 100, "pitch": -3, "names": "multi" }));
+        assert_eq!(s.relay_body()["ttsSettings"], json!({ "volume": 80, "speed": 100, "pitch": -3, "names": "multi", "voiceChatOnly": false, "keepRead": false, "autoChannels": [] }));
         // 이름 부르기: 항상 · 여러 명일 때(기본) · 안 함
         s.apply(&patch(json!({ "tts": { "names": "never" } }))).unwrap();
         assert_eq!(s.tts.names, "never");

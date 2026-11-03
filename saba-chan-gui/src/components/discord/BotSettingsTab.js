@@ -1,3 +1,4 @@
+import clsx from 'clsx';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { safeShowToast } from '../../utils/helpers';
@@ -20,6 +21,8 @@ export const TTS_SPEED = { min: 0.8, max: 1.5 };
 export const TTS_PITCH = { min: -6, max: 6 };
 /** 이름 부르기 — 데몬 discord.rs TTS_NAMES 와 같다 */
 const TTS_NAMES = ['always', 'multi', 'never'];
+/** 늘 읽을 음성 채널 한도 — 데몬 TTS_AUTO_CHANNELS_MAX·릴레이 MAX_AUTO_CHANNELS 와 같다 */
+const TTS_AUTO_CHANNELS_MAX = 10;
 
 /** 고정 제한 — 릴레이 bot/tts/speechText.ts MAX_SPEECH_CHARS, speakerRate.ts SPEAKER_RATE_CHARS 를 보여 주기만 한다 */
 export const TTS_LIMITS = { chars: 40, perMinute: 400 };
@@ -138,7 +141,8 @@ function PrefixField({ value, fallback, disabled, onSave }) {
  * 데몬이 relay로 보낸다. 바꾸는 즉시 저장한다.
  * - section 'bot': 언어·접두사·명령 이름 번역·되묻기·사용법
  * - section 'music': 노래하는 사바쨩
- * - section 'tts': 읽어주는 사바쨩 볼륨·속도·피치와 이름 부르기 (2026-10-31 사용자 지정, 글자 제한은 고정)
+ * - section 'tts': 읽어주는 사바쨩 볼륨·속도·피치와 이름 부르기 (2026-10-31 사용자 지정, 글자 제한은 고정),
+ *   동작 — 음성 채널 채팅에서만·읽은 글 남기기·늘 읽을 음성 채널 (2026-11-03 사용자 지정, 판정은 릴레이)
  * 말하는 사바쨩의 되묻기 단계는 챗봇 설정의 이 서버 값(`guilds[guild].confirmLevel`)이다
  */
 export function BotSettingsTab({ node, section = 'bot', sampleModuleWord = '' }) {
@@ -311,6 +315,30 @@ export function BotSettingsTab({ node, section = 'bot', sampleModuleWord = '' })
                                 (bigEmoji) => save({ bigEmoji }),
                             )}
                     </section>
+
+                    {/* 게임 채팅 채널 옵션: 원본은 서버쨩(릴레이). 릴레이를 못 읽으면 값이 없어 카드를 두지 않는다 */}
+                    {(typeof settings.gameChatGuard === 'boolean' ||
+                        typeof settings.gameChatClearOnStop === 'boolean') && (
+                        <section className="dc-card">
+                            <div className="dc-card-head">
+                                <h2>{t('discord.bot_settings.game_chat_title')}</h2>
+                            </div>
+                            {typeof settings.gameChatGuard === 'boolean' &&
+                                toggleRow(
+                                    t('discord.bot_settings.game_chat_guard'),
+                                    t('discord.bot_settings.game_chat_guard_desc'),
+                                    settings.gameChatGuard,
+                                    (gameChatGuard) => save({ gameChatGuard }),
+                                )}
+                            {typeof settings.gameChatClearOnStop === 'boolean' &&
+                                toggleRow(
+                                    t('discord.bot_settings.game_chat_clear_on_stop'),
+                                    t('discord.bot_settings.game_chat_clear_on_stop_desc'),
+                                    settings.gameChatClearOnStop,
+                                    (gameChatClearOnStop) => save({ gameChatClearOnStop }),
+                                )}
+                        </section>
+                    )}
 
                     {/* 코코낸내: 옛 데몬은 값을 주지 않는다 — 그때는 카드를 두지 않는다 */}
                     {Array.isArray(settings.sleepBlocks) && (
@@ -489,9 +517,73 @@ export function BotSettingsTab({ node, section = 'bot', sampleModuleWord = '' })
                         />
                         <p className="dc-hint">{t('discord.bot_settings.tts_names_desc')}</p>
                     </div>
+                    {toggleRow(
+                        t('discord.bot_settings.tts_voice_chat_only'),
+                        t('discord.bot_settings.tts_voice_chat_only_hint'),
+                        tts.voiceChatOnly,
+                        (voiceChatOnly) => save({ tts: { voiceChatOnly } }),
+                    )}
+                    {toggleRow(
+                        t('discord.bot_settings.tts_keep_read'),
+                        t('discord.bot_settings.tts_keep_read_hint'),
+                        tts.keepRead,
+                        (keepRead) => save({ tts: { keepRead } }),
+                    )}
+                    <AutoChannelsField
+                        guildId={node.guildId}
+                        value={Array.isArray(tts.autoChannels) ? tts.autoChannels : []}
+                        locked={locked}
+                        onChange={(autoChannels) => save({ tts: { autoChannels } })}
+                    />
                     <p className="cb-hint">{t('discord.bot_settings.tts_limits', TTS_LIMITS)}</p>
                 </section>
             )}
+        </div>
+    );
+}
+
+/** 늘 읽을 음성 채널 — 봇이 들어갈 수 있는 음성 채널 목록은 릴레이 배정 화면(voiceChannels)에서 받는다 */
+function AutoChannelsField({ guildId, value, locked, onChange }) {
+    const { t } = useTranslation('gui');
+    const [channels, setChannels] = useState(null);
+    useEffect(() => {
+        let alive = true;
+        Promise.resolve(window.api.relayNodeChannels?.(guildId))
+            .then((r) => alive && setChannels(Array.isArray(r?.voiceChannels) ? r.voiceChannels : []))
+            .catch(() => alive && setChannels([]));
+        return () => {
+            alive = false;
+        };
+    }, [guildId]);
+    // 목록에 없는(지워졌거나 봇이 못 보는) 채널도 고른 값이면 보여 줘서 뺄 수 있게 한다
+    const shown = [
+        ...(channels || []),
+        ...value.filter((id) => !channels?.some((c) => c.id === id)).map((id) => ({ id, name: id })),
+    ];
+    const toggle = (id) =>
+        onChange(value.includes(id) ? value.filter((v) => v !== id) : [...value, id].slice(0, TTS_AUTO_CHANNELS_MAX));
+    return (
+        <div className="mt-field">
+            <span>{t('discord.bot_settings.tts_auto_channels')}</span>
+            {channels && !shown.length ? (
+                <p className="dc-hint">{t('discord.bot_settings.tts_auto_channels_none')}</p>
+            ) : (
+                <fieldset className="dc-mod-chips" aria-label={t('discord.bot_settings.tts_auto_channels')}>
+                    {shown.map((c) => (
+                        <button
+                            key={c.id}
+                            type="button"
+                            className={clsx('dc-chip-toggle', { active: value.includes(c.id) })}
+                            aria-pressed={value.includes(c.id)}
+                            disabled={locked || (!value.includes(c.id) && value.length >= TTS_AUTO_CHANNELS_MAX)}
+                            onClick={() => toggle(c.id)}
+                        >
+                            {c.category ? `${c.name} · ${c.category}` : c.name}
+                        </button>
+                    ))}
+                </fieldset>
+            )}
+            <p className="dc-hint">{t('discord.bot_settings.tts_auto_channels_desc')}</p>
         </div>
     );
 }

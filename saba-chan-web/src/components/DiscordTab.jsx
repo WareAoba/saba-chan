@@ -522,39 +522,49 @@ function ModerationSection({ relay, g, can, moderation, busy, write }) {
     );
 }
 
-/** 이 PC 의 서버에서도 원본이 릴레이인 설정(큰 이모지)은 릴레이에서 바로 바꾼다 */
+/** 이 PC 의 서버에서도 원본이 릴레이인 설정(큰 이모지·게임 채팅 옵션)은 릴레이에서 바로 바꾼다 */
+const HERE_RELAY_KEYS = ['bigEmoji', 'gameChatGuard', 'gameChatClearOnStop'];
+
 function HereRelaySettings({ relay, guild }) {
     const { t } = useTranslation();
     const toast = useApp((s) => s.toast);
     const g = guild.id;
-    const [bigEmoji, setBigEmoji] = useState(null);
+    const [values, setValues] = useState(null);
     const [busy, setBusy] = useState(false);
+    const pick = (data) =>
+        Object.fromEntries(HERE_RELAY_KEYS.filter((k) => typeof data?.[k] === 'boolean').map((k) => [k, data[k]]));
     useEffect(() => {
         let alive = true;
-        relay.settings(g).then((res) => alive && res.ok && setBigEmoji(!!res.data?.bigEmoji));
+        relay.settings(g).then((res) => alive && res.ok && setValues(pick(res.data)));
         return () => {
             alive = false;
         };
     }, [relay, g]);
     // 릴레이를 못 읽었으면 값을 모른다 — 토글을 두지 않는다
-    if (bigEmoji === null) return null;
-    const save = async (on) => {
+    if (values === null) return null;
+    const save = async (patch) => {
         setBusy(true);
-        const res = await relay.saveSettings(g, { bigEmoji: on });
+        const res = await relay.saveSettings(g, patch);
         setBusy(false);
         if (!res.ok) return toast(relayError(t, res), 'error');
-        setBigEmoji(!!res.data?.bigEmoji);
+        setValues((prev) => ({ ...prev, ...pick(res.data) }));
         toast(t('relay.saved'));
     };
+    const toggle = (key, label, hint) =>
+        typeof values[key] === 'boolean' && (
+            <Toggle
+                label={t(label)}
+                hint={t(hint)}
+                checked={values[key]}
+                disabled={busy}
+                onChange={(on) => save({ [key]: on })}
+            />
+        );
     return (
         <Section title={t('relay.basics')}>
-            <Toggle
-                label={t('relay.big_emoji')}
-                hint={t('relay.big_emoji_hint')}
-                checked={bigEmoji}
-                disabled={busy}
-                onChange={save}
-            />
+            {toggle('bigEmoji', 'relay.big_emoji', 'relay.big_emoji_hint')}
+            {toggle('gameChatGuard', 'relay.game_chat_guard', 'relay.game_chat_guard_hint')}
+            {toggle('gameChatClearOnStop', 'relay.game_chat_clear_on_stop', 'relay.game_chat_clear_on_stop_hint')}
         </Section>
     );
 }
