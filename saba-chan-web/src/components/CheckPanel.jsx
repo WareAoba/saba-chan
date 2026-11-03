@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useApp } from '../store';
 import { Icon } from './icons';
+import { LogsCard } from './LogsCard';
 import { PortCheck } from './PortCheck';
 import { Button, errorText, failed, Section } from './ui';
 
@@ -167,6 +168,7 @@ export function CheckPanel({ api, server, moduleData, running }) {
             <Section title={t('detail.port_check')}>
                 <PortCheck api={api} server={server} />
             </Section>
+            <LogsCard api={api} server={server} />
             <ServerCheck api={api} server={server} moduleData={moduleData} />
             <UpdateCheck api={api} server={server} running={running} />
             <ResetServer api={api} server={server} running={running} />

@@ -112,7 +112,14 @@
     "summary_cpu": "PC CPU",
     "start_named": "Start {{name}}",
     "stop_named": "Stop {{name}}",
-    "pick": "Pick a server on the left."
+    "pick": "Pick a server on the left.",
+    "order": "Ordre",
+    "order_hint": "Faites glisser une poignée ou utilisez ▲▼, puis enregistrez.",
+    "order_drag": "Faire glisser {{name}}",
+    "order_up": "Monter {{name}}",
+    "order_down": "Descendre {{name}}",
+    "order_save": "Enregistrer l'ordre",
+    "order_saved": "Ordre des serveurs enregistré."
   },
   "detail": {
     "backups": "Sauvegardes",
@@ -241,7 +248,10 @@
     "risk_danger": "Dangereuse",
     "confirm_tier": "Confirmation Discord : {{risk}} (à modifier dans l’app PC)",
     "kind_admin": "Gestion",
-    "legend_moved": "Déplacée du préréglage"
+    "legend_moved": "Déplacée du préréglage",
+    "visible": "Serveurs visibles dans ce serveur Discord",
+    "visible_hint": "Les serveurs désactivés disparaissent des commandes slash et à préfixe de ce serveur Discord.",
+    "visible_owned": "Utilisé par un autre serveur Discord"
   },
   "modules": {
     "games": "Modules de jeu",
@@ -453,6 +463,26 @@
     },
     "load_failed": "Couldn't load the settings. Check the connection and try again.",
     "retry": "Try again",
-    "guilds_failed": "Couldn't load your Discord servers. Check the connection and try again."
+    "guilds_failed": "Couldn't load your Discord servers. Check the connection and try again.",
+    "api_key_pc_hint": "C'est la clé de ce PC. Tous les serveurs Discord liés à ce PC la partagent.",
+    "channel_notify": "Salon des alertes",
+    "channel_gameChat": "Salon du chat de jeu",
+    "channel_board": "Salon du tableau d'état",
+    "sleep_now": "Endormir maintenant",
+    "awake": "Éveillée"
+  },
+  "logs": {
+    "title": "Journaux passés",
+    "export": "Exporter",
+    "more": "Charger plus",
+    "count": "{{count}} lignes",
+    "empty": "Aucun journal pour l'instant. Ils apparaissent après un premier lancement du serveur.",
+    "exported": "Fichier journal téléchargé.",
+    "exported_truncated": "Le journal était trop long : seule la partie la plus récente a été téléchargée."
+  },
+  "words": {
+    "title": "Mots d'appel Discord",
+    "save": "Enregistrer les mots",
+    "remove": "Retirer {{word}}"
   }
 }

@@ -112,7 +112,14 @@
     "summary_cpu": "PC CPU",
     "start_named": "{{name}} 켜기",
     "stop_named": "{{name}} 끄기",
-    "pick": "왼쪽에서 서버를 고르세요."
+    "pick": "왼쪽에서 서버를 고르세요.",
+    "order": "순서",
+    "order_hint": "손잡이를 끌거나 ▲▼로 옮긴 뒤 저장해 주세요.",
+    "order_drag": "{{name}} 끌어서 옮기기",
+    "order_up": "{{name}} 위로",
+    "order_down": "{{name}} 아래로",
+    "order_save": "순서 저장",
+    "order_saved": "서버 순서를 바꿨어요."
   },
   "detail": {
     "backups": "백업",
@@ -241,7 +248,10 @@
     "risk_danger": "위험",
     "confirm_tier": "디스코드 되묻기: {{risk}} (PC 앱에서 바꿉니다)",
     "kind_admin": "관리",
-    "legend_moved": "프리셋에서 옮김"
+    "legend_moved": "프리셋에서 옮김",
+    "visible": "이 디스코드 서버에서 보일 서버",
+    "visible_hint": "끈 서버는 이 디스코드 서버의 슬래시·접두사 명령에서 사라져요.",
+    "visible_owned": "다른 디스코드 서버가 쓰고 있어요"
   },
   "modules": {
     "games": "게임 모듈",
@@ -453,6 +463,26 @@
     },
     "load_failed": "설정을 읽지 못했어요. 연결을 확인하고 다시 읽어 주세요.",
     "retry": "다시 읽기",
-    "guilds_failed": "디스코드 서버 목록을 읽지 못했어요. 연결을 확인하고 다시 읽어 주세요."
+    "guilds_failed": "디스코드 서버 목록을 읽지 못했어요. 연결을 확인하고 다시 읽어 주세요.",
+    "api_key_pc_hint": "이 PC의 키예요. 이 PC에 붙은 모든 디스코드 서버가 함께 써요.",
+    "channel_notify": "알림 채널",
+    "channel_gameChat": "게임 채팅 채널",
+    "channel_board": "상황판 채널",
+    "sleep_now": "지금 재우기",
+    "awake": "깨어 있어요"
+  },
+  "logs": {
+    "title": "지난 로그",
+    "export": "내보내기",
+    "more": "더 보기",
+    "count": "{{count}}줄",
+    "empty": "아직 로그가 없어요. 서버를 한 번 켜면 생겨요.",
+    "exported": "로그 파일을 받았어요.",
+    "exported_truncated": "로그가 너무 길어 최근 부분만 받았어요."
+  },
+  "words": {
+    "title": "디스코드 호출어",
+    "save": "호출어 저장",
+    "remove": "{{word}} 빼기"
   }
 }

@@ -34,6 +34,7 @@ import { NativeProvision } from '../NativeProvision';
 import { ServerSettingsModal } from '../ServerSettingsModal';
 import { Segmented, StatusChip } from '../ui/StatusChip';
 import { ExitHistory } from './ExitHistory';
+import { ServerLogs } from './ServerLogs';
 import { InstanceDiscordTab, instanceWordsAvailable } from '../discord/InstanceWordsTab';
 import { AuditLog, auditAvailable } from './AuditTab';
 import { MaintenanceTab, maintenanceAvailable } from './MaintenanceTab';
@@ -511,6 +512,7 @@ function InfoTab({ server, moduleData, gameName, uptime, onDelete }) {
                 ))}
             </dl>
             <ExitHistory server={server} />
+            <ServerLogs server={server} />
             <ExtensionSlot slotId="ServerCard.expandedStats" server={server} t={t} />
             <ExtensionSlot slotId="ServerDetail.section" server={server} t={t} />
             <ServerCheck server={server} />

@@ -2,6 +2,7 @@
 //!
 //! - `GET /api/instance/:id/logs?source=&lines=&before=`: 한 세션의 끝에서부터 줄을 읽는다. `before`는 이전 응답이 준 커서다.
 //! - `GET /api/instance/:id/logs/export?source=&since=&until=`: 한 세션을 파일 하나로 (`{fileName, bytes, truncated, content}`).
+//! - `POST /api/instance/:id/logs/export` `{path, source?, since?, until?}`: 같은 내용을 데몬이 `path`에 쓴다 (GUI의 저장 창, 감사 내보내기와 같은 방식).
 //!
 //! 원격으로 나갈 때의 가리기는 액션 실행이 한다(`actions::strip_local_details`·`mask_console`).
 
@@ -247,6 +248,40 @@ pub async fn export_handler(Path(id): Path<String>, State(state): State<IPCServe
     }
 }
 
+/// POST /api/instance/:id/logs/export `{path, source?, since?, until?}` → `{success, path, fileName, bytes, truncated}`
+pub async fn export_file_handler(Path(id): Path<String>, State(state): State<IPCServer>, Json(body): Json<Value>) -> axum::response::Response {
+    let raw = body.get("path").and_then(Value::as_str).unwrap_or_default().trim().to_string();
+    let target = PathBuf::from(&raw);
+    if raw.is_empty() || !target.is_absolute() {
+        return (StatusCode::BAD_REQUEST, Json(json!({ "success": false, "error": "path must be an absolute file path", "error_code": "invalid_argument", "field": "path" }))).into_response();
+    }
+    let mut params: HashMap<String, String> = HashMap::new();
+    for key in ["source", "since", "until"] {
+        match body.get(key) {
+            Some(Value::String(v)) => drop(params.insert(key.into(), v.clone())),
+            Some(Value::Number(v)) => drop(params.insert(key.into(), v.to_string())),
+            _ => {}
+        }
+    }
+    let resp = export_handler(Path(id), State(state), Query(params)).await;
+    if !resp.status().is_success() {
+        return resp;
+    }
+    let mut out = crate::ipc::internal::into_internal(resp).await.body;
+    let content = out.get("content").and_then(Value::as_str).unwrap_or_default().to_string();
+    let path = target.clone();
+    match tokio::task::spawn_blocking(move || std::fs::write(&path, content)).await {
+        Ok(Ok(())) => {
+            if let Some(o) = out.as_object_mut() {
+                o.remove("content");
+                o.insert("path".into(), json!(target.to_string_lossy()));
+            }
+            Json(out).into_response()
+        }
+        _ => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "error": "Could not write the log file", "error_code": "write_failed" }))).into_response(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -393,5 +428,21 @@ mod tests {
         let (_, cut) = get(&state, &id, &[], true).await;
         assert_eq!(cut["truncated"], true);
         assert!(serde_json::to_string(&cut["content"]).unwrap().len() <= EXPORT_MAX_BYTES);
+    }
+
+    #[tokio::test]
+    async fn exporting_to_a_file_writes_what_the_download_would_hold() {
+        let (state, id, tmp) = server_with_sessions(&[("20261020-110000", &numbered(3))]).await;
+        let (_, download) = get(&state, &id, &[], true).await;
+        let out = tmp.path().join("out.log");
+        let call = |body: Value| export_file_handler(Path(id.clone()), State(state.clone()), Json(body));
+        let r = crate::ipc::internal::into_internal(call(json!({ "path": out.to_string_lossy() })).await).await;
+        assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+        assert_eq!(std::fs::read_to_string(&out).unwrap(), download["content"].as_str().unwrap());
+        assert_eq!((r.body["bytes"].clone(), r.body["truncated"].clone()), (download["bytes"].clone(), json!(false)));
+        let r = crate::ipc::internal::into_internal(call(json!({ "path": "relative.log" })).await).await;
+        assert_eq!((r.status, r.body["error_code"].as_str()), (StatusCode::BAD_REQUEST, Some("invalid_argument")));
+        let r = crate::ipc::internal::into_internal(call(json!({ "path": out.to_string_lossy(), "source": "nope" })).await).await;
+        assert_eq!(r.status, StatusCode::NOT_FOUND);
     }
 }

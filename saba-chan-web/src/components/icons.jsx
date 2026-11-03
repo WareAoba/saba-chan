@@ -9,6 +9,16 @@ const LOCAL = {
             <path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
         </>
     ),
+    grip: (
+        <>
+            <circle cx="9" cy="6" r="1" />
+            <circle cx="15" cy="6" r="1" />
+            <circle cx="9" cy="12" r="1" />
+            <circle cx="15" cy="12" r="1" />
+            <circle cx="9" cy="18" r="1" />
+            <circle cx="15" cy="18" r="1" />
+        </>
+    ),
     more: (
         <>
             <circle cx="5" cy="12" r="1" />

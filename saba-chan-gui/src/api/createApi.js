@@ -299,6 +299,21 @@ export function createApi({ invoke, hub }) {
                 return errorBody(error, { events: [] });
             }
         },
+        // 지난 로그: 한 실행분의 끝에서부터 (`before`로 더 앞을 읽는다)
+        instanceLogs: (id, { source, lines, before } = {}) =>
+            daemonCall('get', instancePath(id, `/logs${queryString({ source, lines, before })}`), undefined, 15000),
+        // 한 실행분 전체를 내용으로 받는다 (웹은 그 기기에 저장한다)
+        instanceLogsExport: (id, { source } = {}) =>
+            daemonCall('get', instancePath(id, `/logs/export${queryString({ source })}`), undefined, 60000),
+        // 저장 창에서 고른 곳에 데몬이 쓴다. 저장 창을 닫으면 {canceled:true}
+        instanceLogsSave: async (id, { source, defaultName } = {}) => {
+            const filePath = await pickLocal('dialog_save_file', {
+                defaultPath: defaultName || `saba-chan-log-${localDate()}.log`,
+                filters: [{ name: 'Log', extensions: ['log', 'txt'] }],
+            });
+            if (!filePath) return { canceled: true };
+            return daemonCall('post', instancePath(id, '/logs/export'), { path: filePath, source }, 60000);
+        },
         moduleGetLocales: async (moduleName) => {
             try {
                 return (await get(`/api/module/${encodeURIComponent(moduleName)}/locales`)).data;
@@ -1229,6 +1244,10 @@ export function createApi({ invoke, hub }) {
         // 남은 크레딧(제공사가 알려 줄 때만)과 이번 달 사용량 — 릴레이 답 그대로
         chatbotCredit: (guildId) =>
             daemonJson('get', `/api/relay/node/${encodeURIComponent(guildId)}/chatbot/credit`, undefined, 20000),
+        // 서버(길드) 하나의 말하는 사바쨩 설정. 키는 오가지 않는다 ({settings, hasApiKey})
+        chatbotGuildGet: (guildId) => daemonJson('get', `/api/chatbot/guilds/${encodeURIComponent(guildId)}`),
+        chatbotGuildSave: (guildId, patch) =>
+            daemonJson('patch', `/api/chatbot/guilds/${encodeURIComponent(guildId)}`, patch || {}),
         chatbotMemoTemplate: (locale) =>
             daemonJson('get', `/api/chatbot/memo-template${locale ? `?locale=${encodeURIComponent(locale)}` : ''}`),
         chatbotClearMemory: (guildId) =>

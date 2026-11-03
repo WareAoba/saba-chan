@@ -4,37 +4,14 @@ import { useTranslation } from 'react-i18next';
 import { safeShowToast } from '../../utils/helpers';
 import { Icon } from '../Icon';
 import { SabaSpinner } from '../ui/SabaUI';
+import { draftOf, errorsByField, isDraftDirty } from './instanceWords';
 import { TagInput } from './TagInput';
+
+export { draftOf, errorsByField, isDraftDirty };
 
 export const instanceWordsAvailable = () => Boolean(window.api?.instanceWords && window.api?.instanceWordsSave);
 
 const failed = (res) => !res || res.success === false || Boolean(res.error_code) || Boolean(res.error);
-const sameList = (a = [], b = []) => a.length === b.length && a.every((w, i) => w === b[i]);
-
-/** 데몬 항목 → 고칠 수 있는 초안 `{words, commands: {명령: [낱말]}}` */
-export function draftOf(inst) {
-    return {
-        words: [...(inst.words || [])],
-        commands: Object.fromEntries((inst.commands || []).map((c) => [c.name, [...(c.aliases || [])]])),
-    };
-}
-
-export function isDraftDirty(draft, inst) {
-    if (!draft || !inst) return false;
-    if (!sameList(draft.words, inst.words || [])) return true;
-    return (inst.commands || []).some((c) => !sameList(draft.commands[c.name], c.aliases || []));
-}
-
-/** 400 `validation_failed`의 details를 칸별로 나눈다: `words`, `commands.<명령>` */
-export function errorsByField(details) {
-    const out = {};
-    for (const d of details || []) {
-        const key = String(d?.field || '').replace(/\[\d+\]$/, '') || 'words';
-        (out[key] ||= []).push(d);
-    }
-    return out;
-}
-
 function ErrorLines({ details }) {
     const { t } = useTranslation('gui');
     if (!details?.length) return null;

@@ -112,7 +112,14 @@
     "summary_cpu": "PC CPU",
     "start_named": "Start {{name}}",
     "stop_named": "Stop {{name}}",
-    "pick": "Pick a server on the left."
+    "pick": "Pick a server on the left.",
+    "order": "並び順",
+    "order_hint": "つまみをドラッグするか ▲▼ で動かしてから保存してください。",
+    "order_drag": "{{name}} をドラッグして移動",
+    "order_up": "{{name}} を上へ",
+    "order_down": "{{name}} を下へ",
+    "order_save": "並び順を保存",
+    "order_saved": "サーバーの並び順を変更しました。"
   },
   "detail": {
     "backups": "バックアップ",
@@ -241,7 +248,10 @@
     "risk_danger": "危険",
     "confirm_tier": "Discordでの確認: {{risk}}(PCアプリで変更します)",
     "kind_admin": "管理",
-    "legend_moved": "プリセットから移動"
+    "legend_moved": "プリセットから移動",
+    "visible": "この Discord サーバーで見せるサーバー",
+    "visible_hint": "オフにしたサーバーは、この Discord サーバーのスラッシュ・プレフィックスコマンドから消えます。",
+    "visible_owned": "別の Discord サーバーが使っています"
   },
   "modules": {
     "games": "ゲームモジュール",
@@ -453,6 +463,26 @@
     },
     "load_failed": "Couldn't load the settings. Check the connection and try again.",
     "retry": "Try again",
-    "guilds_failed": "Couldn't load your Discord servers. Check the connection and try again."
+    "guilds_failed": "Couldn't load your Discord servers. Check the connection and try again.",
+    "api_key_pc_hint": "この PC のキーです。この PC につながったすべての Discord サーバーで共有します。",
+    "channel_notify": "通知チャンネル",
+    "channel_gameChat": "ゲームチャットチャンネル",
+    "channel_board": "状況板チャンネル",
+    "sleep_now": "今すぐ寝かせる",
+    "awake": "起きています"
+  },
+  "logs": {
+    "title": "過去のログ",
+    "export": "書き出し",
+    "more": "さらに表示",
+    "count": "{{count}}行",
+    "empty": "まだログがありません。サーバーを一度起動すると表示されます。",
+    "exported": "ログファイルをダウンロードしました。",
+    "exported_truncated": "ログが長すぎるため、最近の部分だけをダウンロードしました。"
+  },
+  "words": {
+    "title": "Discord の呼び出し語",
+    "save": "呼び出し語を保存",
+    "remove": "{{word}} を外す"
   }
 }
