@@ -312,6 +312,27 @@ export function BotSettingsTab({ node, section = 'bot', sampleModuleWord = '' })
                             )}
                     </section>
 
+                    {/* 게임 채팅 채널 옵션: 원본은 서버쨩(릴레이). 릴레이를 못 읽으면 값이 없어 카드를 두지 않는다 */}
+                    {typeof settings.gameChatGuard === 'boolean' && (
+                        <section className="dc-card">
+                            <div className="dc-card-head">
+                                <h2>{t('discord.bot_settings.game_chat_title')}</h2>
+                            </div>
+                            {toggleRow(
+                                t('discord.bot_settings.game_chat_guard'),
+                                t('discord.bot_settings.game_chat_guard_desc'),
+                                settings.gameChatGuard,
+                                (gameChatGuard) => save({ gameChatGuard }),
+                            )}
+                            {toggleRow(
+                                t('discord.bot_settings.game_chat_clear_on_stop'),
+                                t('discord.bot_settings.game_chat_clear_on_stop_desc'),
+                                settings.gameChatClearOnStop,
+                                (gameChatClearOnStop) => save({ gameChatClearOnStop }),
+                            )}
+                        </section>
+                    )}
+
                     {/* 코코낸내: 옛 데몬은 값을 주지 않는다 — 그때는 카드를 두지 않는다 */}
                     {Array.isArray(settings.sleepBlocks) && (
                         <SleepCard settings={settings} locked={locked} save={save} toggleRow={toggleRow} />

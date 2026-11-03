@@ -56,6 +56,27 @@ describe('디스코드 봇 설정 탭', () => {
         expect(screen.getByRole('checkbox', { name: 'Big emoji' })).toBeInTheDocument();
     });
 
+    // 사용자 11-03: 게임 채팅 채널 옵션 — 큰 이모지처럼 릴레이가 원본, 값이 있을 때만 보인다
+    it('게임 채팅: 글 막기·꺼지면 채팅 지우기는 릴레이 값이 있을 때만 보이고 바꾼 키만 보낸다', async () => {
+        window.api.discordSettingsGet = vi.fn().mockResolvedValue(base);
+        const { unmount } = render(<BotSettingsTab node={node} section="bot" />);
+        await flush();
+        expect(screen.queryByRole('checkbox', { name: 'Block messages while chat link is off' })).toBeNull();
+        unmount();
+        window.api.discordSettingsGet = vi
+            .fn()
+            .mockResolvedValue({ ...base, gameChatGuard: false, gameChatClearOnStop: false });
+        window.api.discordSettingsSet = vi.fn().mockResolvedValue({ success: true, settings: base, sync: { ok: true } });
+        render(<BotSettingsTab node={node} section="bot" />);
+        await flush();
+        fireEvent.click(screen.getByRole('checkbox', { name: 'Block messages while chat link is off' }));
+        await flush();
+        expect(window.api.discordSettingsSet).toHaveBeenLastCalledWith('g1', { gameChatGuard: true });
+        fireEvent.click(screen.getByRole('checkbox', { name: 'Clear chat when the server stops' }));
+        await flush();
+        expect(window.api.discordSettingsSet).toHaveBeenLastCalledWith('g1', { gameChatClearOnStop: true });
+    });
+
     it('코코낸내: 끌 기능 토글은 sleepBlocks 전체를, 자동 코코낸내는 bedtime 을 보낸다', async () => {
         const all = ['commands', 'llm', 'music', 'tts', 'extras'];
         window.api.discordSettingsGet = vi.fn().mockResolvedValue({ ...base, sleepBlocks: all, bedtime: null });
