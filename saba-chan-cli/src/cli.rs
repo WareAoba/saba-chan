@@ -1149,6 +1149,18 @@ pub enum BotCmd {
         /// Say "name," before each message: always, multi (only when several people are reading), never
         #[arg(long, value_name = "WHEN", value_parser = ["always", "multi", "never"])]
         names: Option<String>,
+        /// Read your messages only in the chat of the voice channel you are in (game chat channel excepted)
+        #[arg(long, value_name = "on|off", value_parser = on_off)]
+        voice_chat_only: Option<bool>,
+        /// Keep read messages instead of deleting them
+        #[arg(long, value_name = "on|off", value_parser = on_off)]
+        keep_read: Option<bool>,
+        /// Voice channel IDs to always read (comma-separated, up to 10): with 2+ people inside, the bot joins and reads its chat
+        #[arg(long, value_name = "IDS", value_delimiter = ',', conflicts_with = "no_auto_channels")]
+        auto_channels: Option<Vec<String>>,
+        /// Clear the always-read voice channels
+        #[arg(long)]
+        no_auto_channels: bool,
     },
     /// When the bot asks with a Discord button before running (all, caution, danger, none). No options: show
     Confirm {

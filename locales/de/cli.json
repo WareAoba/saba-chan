@@ -195,6 +195,10 @@
     "tts_names_always": "Always",
     "tts_names_multi": "With several people",
     "tts_names_never": "Never",
+    "tts_voice_chat_only": "Reading Saba-chan only in voice channel chat",
+    "tts_keep_read": "Reading Saba-chan keeps read messages",
+    "tts_auto_channels": "Reading Saba-chan always-read voice channels",
+    "tts_auto_channels_none": "None",
     "sleep_blocks": "Off while asleep",
     "sleep_blocks_none": "None",
     "bedtime": "Good kid",
@@ -940,7 +944,11 @@
       "bot.translate.off": "Show only the names in the module",
       "bot.tts.volume": "Volume in percent (10-150)",
       "bot.tts.speed": "Speaking speed (0.8-1.5, e.g. 1.2)",
-      "bot.tts.pitch": "Pitch in semitones (-6 to 6)"
+      "bot.tts.pitch": "Pitch in semitones (-6 to 6)",
+      "bot.tts.voice_chat_only": "Read your messages only in the chat of the voice channel you are in (on|off, game chat channel excepted)",
+      "bot.tts.keep_read": "Keep read messages instead of deleting them (on|off)",
+      "bot.tts.auto_channels": "Voice channel IDs to always read (comma-separated, up to 10): with 2+ people inside, the bot joins and reads its chat",
+      "bot.tts.no_auto_channels": "Clear the always-read voice channels"
     },
     "after": "Namen können abgekürzt werden (z. B. start pal). Ohne Argumente öffnet sich im Terminal das Vollbildmenü (SABA_NO_TUI=1: die interaktive Shell).\nIn Skripten --json und --yes verwenden. Exit-Codes: 0 ok · 1 fehlgeschlagen · 2 Verwendung · 3 Daemon nicht erreichbar · 4 nicht gefunden · 130 abgebrochen"
   },

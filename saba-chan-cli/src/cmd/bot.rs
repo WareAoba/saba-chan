@@ -188,8 +188,18 @@ pub async fn run(ctx: &Ctx, cmd: BotCmd) -> Result<()> {
             let patch = (!music.is_empty()).then(|| json!({ "music": music }));
             discord_settings(ctx, &resolve::guild(ctx, guild.as_deref()).await?, patch).await
         }
-        BotCmd::Tts { guild, volume, speed, pitch, names } => {
-            let patch = tts_patch(volume, speed, pitch, names.as_deref());
+        BotCmd::Tts { guild, volume, speed, pitch, names, voice_chat_only, keep_read, auto_channels, no_auto_channels } => {
+            let behavior = TtsBehavior {
+                voice_chat_only,
+                keep_read,
+                // "1, 2" 처럼 쉼표 뒤 띄어 쓴 것도 받는다
+                auto_channels: if no_auto_channels {
+                    Some(Vec::new())
+                } else {
+                    auto_channels.map(|ids| ids.iter().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect())
+                },
+            };
+            let patch = tts_patch(volume, speed, pitch, names.as_deref(), &behavior);
             discord_settings(ctx, &resolve::guild(ctx, guild.as_deref()).await?, patch).await
         }
         BotCmd::Confirm { guild, direct, chatbot } => confirm(ctx, &resolve::guild(ctx, guild.as_deref()).await?, direct, chatbot).await,
@@ -757,8 +767,22 @@ async fn confirm(ctx: &Ctx, guild: &str, direct: Option<String>, chatbot: Option
     Ok(())
 }
 
-/// `bot tts` 옵션 → 디스코드 설정 `tts` 부분 (속도는 배 → %, 범위는 데몬이 본다). 값이 없으면 `None`(보기만)
-fn tts_patch(volume: Option<i64>, speed: Option<f64>, pitch: Option<i64>, names: Option<&str>) -> Option<Value> {
+/// `bot tts` 동작 옵션 (2026-11-03): 음성 채널 채팅에서만·읽은 글 남기기·늘 읽을 음성 채널 (빈 목록 = 비우기)
+#[derive(Default)]
+struct TtsBehavior {
+    voice_chat_only: Option<bool>,
+    keep_read: Option<bool>,
+    auto_channels: Option<Vec<String>>,
+}
+
+/// `bot tts` 옵션 → 디스코드 설정 `tts` 부분 (속도는 배 → %, 범위·채널 ID 는 데몬이 본다). 값이 없으면 `None`(보기만)
+fn tts_patch(
+    volume: Option<i64>,
+    speed: Option<f64>,
+    pitch: Option<i64>,
+    names: Option<&str>,
+    behavior: &TtsBehavior,
+) -> Option<Value> {
     let mut tts = Map::new();
     if let Some(v) = volume {
         tts.insert("volume".into(), json!(v));
@@ -771,6 +795,15 @@ fn tts_patch(volume: Option<i64>, speed: Option<f64>, pitch: Option<i64>, names:
     }
     if let Some(v) = names {
         tts.insert("names".into(), json!(v));
+    }
+    if let Some(v) = behavior.voice_chat_only {
+        tts.insert("voiceChatOnly".into(), json!(v));
+    }
+    if let Some(v) = behavior.keep_read {
+        tts.insert("keepRead".into(), json!(v));
+    }
+    if let Some(v) = &behavior.auto_channels {
+        tts.insert("autoChannels".into(), json!(v));
     }
     (!tts.is_empty()).then(|| json!({ "tts": tts }))
 }
@@ -842,6 +875,15 @@ fn discord_rows(r: &Value) -> Vec<(String, String)> {
                 Some("always") => t!("bot.tts_names_always"),
                 Some("never") => t!("bot.tts_names_never"),
                 _ => t!("bot.tts_names_multi"),
+            },
+        ),
+        (t!("bot.tts_voice_chat_only"), on_off(r.pointer("/tts/voiceChatOnly").and_then(Value::as_bool))),
+        (t!("bot.tts_keep_read"), on_off(r.pointer("/tts/keepRead").and_then(Value::as_bool))),
+        (
+            t!("bot.tts_auto_channels"),
+            match r.pointer("/tts/autoChannels").and_then(Value::as_array) {
+                Some(ids) if !ids.is_empty() => ids.iter().filter_map(Value::as_str).collect::<Vec<_>>().join(", "),
+                _ => t!("bot.tts_auto_channels_none"),
             },
         ),
     ]);
@@ -1271,10 +1313,19 @@ mod tests {
     #[test]
     fn tts_options_become_a_partial_tts_patch_and_show_in_server_settings() {
         crate::i18n::init("ko");
-        assert_eq!(tts_patch(None, None, None, None), None);
-        assert_eq!(tts_patch(Some(80), Some(1.25), Some(-3), None), Some(json!({ "tts": { "volume": 80, "speed": 125, "pitch": -3 } })));
-        assert_eq!(tts_patch(None, Some(1.2), None, None), Some(json!({ "tts": { "speed": 120 } })));
-        assert_eq!(tts_patch(None, None, None, Some("never")), Some(json!({ "tts": { "names": "never" } })));
+        let none = TtsBehavior::default();
+        assert_eq!(tts_patch(None, None, None, None, &none), None);
+        assert_eq!(tts_patch(Some(80), Some(1.25), Some(-3), None, &none), Some(json!({ "tts": { "volume": 80, "speed": 125, "pitch": -3 } })));
+        assert_eq!(tts_patch(None, Some(1.2), None, None, &none), Some(json!({ "tts": { "speed": 120 } })));
+        assert_eq!(tts_patch(None, None, None, Some("never"), &none), Some(json!({ "tts": { "names": "never" } })));
+        // 동작 (2026-11-03): 음성 채널 채팅에서만·읽은 글 남기기, 늘 읽을 음성 채널은 목록 통째로 (빈 목록 = 비우기)
+        let b = TtsBehavior { voice_chat_only: Some(true), keep_read: Some(false), auto_channels: Some(vec!["1".into(), "2".into()]) };
+        assert_eq!(
+            tts_patch(None, None, None, None, &b),
+            Some(json!({ "tts": { "voiceChatOnly": true, "keepRead": false, "autoChannels": ["1", "2"] } }))
+        );
+        let clear = TtsBehavior { auto_channels: Some(vec![]), ..Default::default() };
+        assert_eq!(tts_patch(None, None, None, None, &clear), Some(json!({ "tts": { "autoChannels": [] } })));
         let row = |r: &Value, k: &str| discord_rows(r).into_iter().find(|(name, _)| *name == t!(k)).map(|(_, v)| v);
         let r = json!({ "music": {}, "tts": { "volume": 80, "speed": 125, "pitch": -3 } });
         assert_eq!(row(&r, "bot.tts_volume").as_deref(), Some("80%"));
@@ -1283,6 +1334,12 @@ mod tests {
         assert_eq!(row(&json!({ "tts": { "names": "always" } }), "bot.tts_names"), Some(t!("bot.tts_names_always")));
         // 옛 데몬(tts 없음)이면 기본값
         assert_eq!(row(&json!({}), "bot.tts_names"), Some(t!("bot.tts_names_multi")));
+        let on = json!({ "tts": { "voiceChatOnly": true, "keepRead": true, "autoChannels": ["1", "2"] } });
+        assert_eq!(row(&on, "bot.tts_voice_chat_only"), Some(t!("bot.on")));
+        assert_eq!(row(&on, "bot.tts_keep_read"), Some(t!("bot.on")));
+        assert_eq!(row(&on, "bot.tts_auto_channels").as_deref(), Some("1, 2"));
+        assert_eq!(row(&json!({}), "bot.tts_keep_read"), Some(t!("bot.off")));
+        assert_eq!(row(&json!({}), "bot.tts_auto_channels"), Some(t!("bot.tts_auto_channels_none")));
         let old = json!({ "music": {} });
         assert_eq!(row(&old, "bot.tts_volume").as_deref(), Some("100%"));
         assert_eq!(row(&old, "bot.tts_speed"), Some(t!("bot.tts_speed_value", value = "1")));
