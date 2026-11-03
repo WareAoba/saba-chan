@@ -67,6 +67,13 @@ function relayError(t, res) {
         'GUILD_NOT_FOUND',
         'UNKNOWN_CHANNEL',
         'MUTE_CANNOT',
+        'SANCTION_SELF',
+        'SANCTION_BOT',
+        'SANCTION_NOT_MEMBER',
+        'SANCTION_CANNOT',
+        'SANCTION_TOO_LONG',
+        'CLEAR_RUNNING',
+        'NO_CLEAR_JOB',
     ];
     return known.includes(res?.error) ? t(`relay.err.${res.error}`) : t('relay.err.generic');
 }
@@ -127,7 +134,7 @@ const withValue = (values, value) => (values.includes(value) ? values : [...valu
 const range = (from, to, step) => Array.from({ length: Math.floor((to - from) / step) + 1 }, (_, i) => from + i * step);
 
 /** 한 서버의 릴레이 값과 쓰기 — 쓰기는 하나씩, 답으로 받은 값으로 화면을 맞춘다 */
-function useRelayGuild(relay, guild, withModeration = true) {
+function useRelayGuild(relay, guild) {
     const { t } = useTranslation();
     const toast = useApp((s) => s.toast);
     const [data, setData] = useState({});
@@ -136,7 +143,7 @@ function useRelayGuild(relay, guild, withModeration = true) {
     const [busy, setBusy] = useState(false);
     const g = guild.id;
     const manage = !!guild.can?.manage;
-    const mod = withModeration && modAllowed(guild.can);
+    const mod = modAllowed(guild.can);
 
     const loadModeration = useCallback(async () => {
         const res = await relay.moderation(g);
@@ -180,7 +187,7 @@ function useRelayGuild(relay, guild, withModeration = true) {
         setData({});
         setRound((r) => r + 1);
     };
-    return { data, busy, write, reload };
+    return { data, busy, write, reload, refresh: loadModeration };
 }
 
 function BasicsSection({ relay, g, settings, busy, write, here }) {
@@ -451,86 +458,521 @@ function ChannelsSection({ relay, g, channels, busy, write, here }) {
 }
 
 const SLOW_SECONDS = [0, 5, 10, 30, 60, 300, 900, 3600, 21600];
+const SLOW_FOR_MINUTES = [10, 60, 360, 1440];
 const LOCK_MINUTES = [30, 60, 360, 1440, 10080];
 const AUTO_CLEAR_MINUTES = [60, 360, 720, 1440, 4320, 10080];
+const DAILY_CLEAR_AT = '04:00';
+// 릴레이 CLEAR_TARGETS·SANCTION_KINDS 와 같은 값 (server-chan bot/clear/service.ts, bot/guildMod/sanction.ts)
+const CLEAR_TARGETS = ['all', 'humans', 'self', 'other_bots', 'bots'];
+const CLEAR_RECENT_MINUTES = [60, 360, 1440, 10080];
+const SANCTION_KINDS = ['chat', 'voice', 'ban', 'all'];
+const SANCTION_MINUTES = [10, 60, 360, 1440, 4320, 10080, 'forever'];
+const PURGE_SECONDS = [0, 3600, 86400, 604800];
+const UNIT_MINUTES = [1, 60, 1440, 10080];
+
+/** "2w"·"3h"·"30" → 분. words: 언어의 분·시간·일·주 낱말 (relay.mod.duration_units, 쉼표로). 못 읽으면 null */
+export function parseDuration(text, words = '') {
+    const m = /^\s*(\d+)\s*(\S*)\s*$/u.exec(text);
+    if (!m) return null;
+    const unit = m[2].toLowerCase();
+    const at = (list) => list.findIndex((w) => w && w === unit);
+    let i = unit ? at(['m', 'h', 'd', 'w']) : 0;
+    if (i < 0) i = at(words.split(',').map((w) => w.trim().toLowerCase()));
+    if (i < 0 && unit === 'min') i = 0;
+    const minutes = i < 0 ? 0 : Number(m[1]) * UNIT_MINUTES[i];
+    return minutes > 0 ? minutes : null;
+}
+
+const minutesSince = (iso) => Math.max(1, Math.floor((Date.now() - Date.parse(iso)) / 60_000));
 
 function channelLine(t, c) {
+    if (c.clearing)
+        return c.clearing.oldestAt
+            ? t('relay.mod.clearing_back', { time: durationText(t, minutesSince(c.clearing.oldestAt)) })
+            : t('relay.mod.clearing');
     if (c.locked)
         return c.locked.until
             ? t('relay.mod.locked_until', { time: durationText(t, minutesUntil(c.locked.until)) })
             : t('relay.mod.locked');
-    return [
-        c.slowmode ? t('relay.mod.slow', { time: durationText(t, c.slowmode / 60) }) : t('relay.mod.slow_off'),
-        c.autoClear ? t('relay.mod.auto', { time: durationText(t, c.autoClear) }) : t('relay.mod.auto_off'),
-    ].join(' · ');
+    const slow = !c.slowmode
+        ? t('relay.mod.slow_off')
+        : c.slowUntil
+          ? t('relay.mod.slow_until', {
+                time: durationText(t, c.slowmode / 60),
+                left: durationText(t, minutesUntil(c.slowUntil)),
+            })
+          : t('relay.mod.slow', { time: durationText(t, c.slowmode / 60) });
+    const auto = c.autoClearDaily
+        ? t('relay.mod.auto_daily', { time: c.autoClearDaily })
+        : c.autoClear
+          ? t('relay.mod.auto', { time: durationText(t, c.autoClear) })
+          : t('relay.mod.auto_off');
+    const target = (c.autoClearDaily || c.autoClear) && c.autoClearTarget && c.autoClearTarget !== 'all';
+    return [slow, auto, ...(target ? [t(`relay.mod.only_${c.autoClearTarget}`)] : [])].join(' · ');
 }
 
-function ChannelSheet({ channel, can, busy, onEdit, onClose }) {
+/** 칩 하나를 고른다. options: [{ value, label }] */
+function Chips({ label, value, options, disabled, onChange }) {
+    return (
+        <div className="field">
+            <span>{label}</span>
+            <div className="chips">
+                {options.map((o) => (
+                    <button
+                        key={String(o.value)}
+                        type="button"
+                        className={o.value === value ? 'chip on' : 'chip'}
+                        aria-pressed={o.value === value}
+                        disabled={disabled}
+                        onClick={() => onChange(o.value)}
+                    >
+                        {o.label}
+                    </button>
+                ))}
+            </div>
+        </div>
+    );
+}
+
+function Segments({ label, value, options, disabled, onChange }) {
+    return (
+        <div className="field">
+            <span>{label}</span>
+            <div className="segments">
+                {options.map((o) => (
+                    <button
+                        key={o.value}
+                        type="button"
+                        className={o.value === value ? 'on' : ''}
+                        aria-pressed={o.value === value}
+                        disabled={disabled}
+                        onClick={() => onChange(o.value)}
+                    >
+                        {o.label}
+                    </button>
+                ))}
+            </div>
+        </div>
+    );
+}
+
+function ChannelSheet({ channel, can, busy, onEdit, onClearNow, onClose }) {
     const { t } = useTranslation();
+    // 슬로우 기간은 다음에 켤 슬로우에도 쓴다 (null: 계속)
+    const [slowFor, setSlowFor] = useState(null);
     const lock = channel.locked ? 'keep' : 'off';
+    const autoMode = channel.autoClearDaily ? 'daily' : channel.autoClear ? 'keep' : 'off';
+    const slowEdit = (slowmode, minutes) => (slowmode && minutes ? { slowmode, slowFor: minutes } : { slowmode });
     return (
         <Sheet title={`# ${channel.name}`} onClose={onClose}>
             <div className="form">
                 {can.channels && (
-                    <Choice
-                        label={t('relay.mod.slowmode')}
-                        value={channel.slowmode}
-                        disabled={busy}
-                        onChange={(v) => onEdit({ slowmode: Number(v) })}
-                        options={withValue(SLOW_SECONDS, channel.slowmode).map((s) => ({
-                            value: String(s),
-                            label: s ? durationText(t, s / 60) : t('relay.off'),
-                        }))}
-                    />
-                )}
-                {can.channels && (
-                    <Choice
-                        label={t('relay.mod.lock')}
-                        value={lock}
-                        disabled={busy}
-                        onChange={(v) =>
-                            v !== 'keep' && onEdit({ lock: v === 'off' || v === 'forever' ? v : Number(v) })
-                        }
-                        options={[
-                            ...(channel.locked ? [{ value: 'keep', label: channelLine(t, channel) }] : []),
-                            { value: 'off', label: t('relay.off') },
-                            ...LOCK_MINUTES.map((m) => ({ value: String(m), label: durationText(t, m) })),
-                            { value: 'forever', label: t('relay.mod.forever') },
-                        ]}
-                    />
+                    <>
+                        <Choice
+                            label={t('relay.mod.slowmode')}
+                            value={channel.slowmode}
+                            disabled={busy}
+                            onChange={(v) => onEdit(slowEdit(Number(v), slowFor))}
+                            options={withValue(SLOW_SECONDS, channel.slowmode).map((s) => ({
+                                value: String(s),
+                                label: s ? durationText(t, s / 60) : t('relay.off'),
+                            }))}
+                        />
+                        <Chips
+                            label={t('relay.mod.slow_for')}
+                            value={slowFor}
+                            disabled={busy}
+                            onChange={(m) => {
+                                setSlowFor(m);
+                                if (channel.slowmode) onEdit(slowEdit(channel.slowmode, m));
+                            }}
+                            options={[
+                                { value: null, label: t('relay.mod.forever') },
+                                ...SLOW_FOR_MINUTES.map((m) => ({ value: m, label: durationText(t, m) })),
+                            ]}
+                        />
+                        <small className="hint">
+                            {channel.slowmode && channel.slowUntil
+                                ? t('relay.mod.slow_ends', { time: durationText(t, minutesUntil(channel.slowUntil)) })
+                                : t('relay.mod.slow_for_hint')}
+                        </small>
+                        <Choice
+                            label={t('relay.mod.lock')}
+                            value={lock}
+                            disabled={busy}
+                            onChange={(v) =>
+                                v !== 'keep' && onEdit({ lock: v === 'off' || v === 'forever' ? v : Number(v) })
+                            }
+                            options={[
+                                ...(channel.locked ? [{ value: 'keep', label: channelLine(t, channel) }] : []),
+                                { value: 'off', label: t('relay.off') },
+                                ...LOCK_MINUTES.map((m) => ({ value: String(m), label: durationText(t, m) })),
+                                { value: 'forever', label: t('relay.mod.forever') },
+                            ]}
+                        />
+                    </>
                 )}
                 {can.messages && (
-                    <Choice
-                        label={t('relay.mod.auto_clear')}
-                        value={channel.autoClear ?? ''}
-                        disabled={busy}
-                        onChange={(v) => onEdit({ autoClear: v ? Number(v) : null })}
-                        options={[
-                            { value: '', label: t('relay.off') },
-                            ...withValue(AUTO_CLEAR_MINUTES, channel.autoClear ?? 60).map((m) => ({
-                                value: String(m),
-                                label: durationText(t, m),
-                            })),
-                        ]}
-                    />
+                    <>
+                        <Segments
+                            label={t('relay.mod.auto_clear')}
+                            value={autoMode}
+                            disabled={busy}
+                            onChange={(mode) =>
+                                mode !== autoMode &&
+                                onEdit(
+                                    mode === 'off'
+                                        ? { autoClear: null }
+                                        : mode === 'keep'
+                                          ? { autoClear: 1440 }
+                                          : { autoClearDaily: DAILY_CLEAR_AT },
+                                )
+                            }
+                            options={[
+                                { value: 'off', label: t('relay.off') },
+                                { value: 'keep', label: t('relay.mod.auto_keep') },
+                                { value: 'daily', label: t('relay.mod.auto_daily_mode') },
+                            ]}
+                        />
+                        {autoMode === 'keep' && (
+                            <Choice
+                                label={t('relay.mod.auto_keep')}
+                                value={channel.autoClear}
+                                disabled={busy}
+                                onChange={(v) => onEdit({ autoClear: Number(v) })}
+                                options={withValue(AUTO_CLEAR_MINUTES, channel.autoClear).map((m) => ({
+                                    value: String(m),
+                                    label: durationText(t, m),
+                                }))}
+                            />
+                        )}
+                        {autoMode === 'daily' && (
+                            <Choice
+                                label={t('relay.mod.auto_daily_at')}
+                                value={channel.autoClearDaily}
+                                disabled={busy}
+                                onChange={(v) => onEdit({ autoClearDaily: v })}
+                                options={[...new Set([...HALF_HOURS, channel.autoClearDaily])]
+                                    .sort()
+                                    .map((h) => ({ value: h, label: h }))}
+                            />
+                        )}
+                        {autoMode !== 'off' && (
+                            <Choice
+                                label={t('relay.mod.auto_target')}
+                                value={channel.autoClearTarget || 'all'}
+                                disabled={busy}
+                                onChange={(v) => onEdit({ autoClearTarget: v })}
+                                options={CLEAR_TARGETS.map((k) => ({ value: k, label: t(`relay.mod.target_${k}`) }))}
+                            />
+                        )}
+                        {autoMode === 'daily' && (
+                            <small className="hint">
+                                {t('relay.mod.auto_daily_hint', { time: channel.autoClearDaily })}
+                            </small>
+                        )}
+                        <Button onClick={onClearNow}>{t('relay.mod.clear_now')}</Button>
+                    </>
                 )}
             </div>
         </Sheet>
     );
 }
 
-function ModerationSection({ relay, g, can, moderation, busy, write }) {
+/** datetime-local 값 → ms (브라우저 시간대) */
+const localMs = (value) => (value ? Date.parse(value) : undefined);
+
+/** 지금 청소 — /청소 와 같은 칸. 이어 지우는 중이면 진행과 중지를 보인다 */
+function ClearSheet({ channel, members, busy, onClear, onStop, onClose }) {
     const { t } = useTranslation();
+    const [target, setTarget] = useState('all');
+    const [author, setAuthor] = useState('');
+    const [range, setRange] = useState('all');
+    const [recent, setRecent] = useState(60);
+    const [from, setFrom] = useState('');
+    const [to, setTo] = useState('');
+    const [count, setCount] = useState('');
+    const n = Number(count);
+    const countOk = count === '' || (Number.isInteger(n) && n >= 1 && n <= 1000);
+    const submit = () => {
+        const body = {};
+        if (target !== 'all') body.target = target;
+        if (author) body.authorId = author;
+        if (range === 'recent') body.sinceMinutes = recent;
+        if (range === 'custom') {
+            if (localMs(from)) body.from = localMs(from);
+            if (localMs(to)) body.to = localMs(to);
+        }
+        if (count !== '') body.count = n;
+        onClear(body);
+    };
+    const { clearing } = channel;
+    return (
+        <Sheet title={t('relay.mod.clear_title', { name: channel.name })} onClose={onClose}>
+            <div className="form">
+                {clearing && (
+                    <output className="field">
+                        <span>
+                            {clearing.oldestAt
+                                ? t('relay.mod.clearing_back_long', {
+                                      time: durationText(t, minutesSince(clearing.oldestAt)),
+                                  })
+                                : t('relay.mod.clearing')}
+                        </span>
+                        <small className="hint">
+                            {t('relay.mod.clear_deleted', { n: clearing.deleted.toLocaleString() })}
+                        </small>
+                        <Button tone="danger" disabled={busy} onClick={onStop}>
+                            {t('relay.mod.stop')}
+                        </Button>
+                    </output>
+                )}
+                <Chips
+                    label={t('relay.mod.clear_target')}
+                    value={target}
+                    disabled={busy}
+                    onChange={setTarget}
+                    options={CLEAR_TARGETS.map((k) => ({ value: k, label: t(`relay.mod.target_${k}`) }))}
+                />
+                <Choice
+                    label={t('relay.mod.clear_author')}
+                    value={author}
+                    disabled={busy || !members}
+                    onChange={setAuthor}
+                    options={[
+                        { value: '', label: t('relay.none') },
+                        ...(members || []).map((m) => ({ value: m.id, label: m.name })),
+                    ]}
+                />
+                <Segments
+                    label={t('relay.mod.clear_range')}
+                    value={range}
+                    disabled={busy}
+                    onChange={setRange}
+                    options={['all', 'recent', 'custom'].map((k) => ({ value: k, label: t(`relay.mod.range_${k}`) }))}
+                />
+                {range === 'recent' && (
+                    <Choice
+                        label={t('relay.mod.range_recent')}
+                        value={recent}
+                        disabled={busy}
+                        onChange={(v) => setRecent(Number(v))}
+                        options={CLEAR_RECENT_MINUTES.map((m) => ({ value: String(m), label: durationText(t, m) }))}
+                    />
+                )}
+                {range === 'custom' && (
+                    <>
+                        <label className="field">
+                            <span>{t('relay.mod.range_from')}</span>
+                            <input type="datetime-local" value={from} onChange={(e) => setFrom(e.target.value)} />
+                        </label>
+                        <label className="field">
+                            <span>{t('relay.mod.range_to')}</span>
+                            <input type="datetime-local" value={to} onChange={(e) => setTo(e.target.value)} />
+                        </label>
+                    </>
+                )}
+                <label className="field">
+                    <span>{t('relay.mod.clear_count')}</span>
+                    <input
+                        type="number"
+                        inputMode="numeric"
+                        min={1}
+                        max={1000}
+                        value={count}
+                        onChange={(e) => setCount(e.target.value)}
+                    />
+                    <small className="hint">{t('relay.mod.clear_count_hint')}</small>
+                </label>
+                <Button tone="accent" busy={busy} disabled={!!clearing || !countOk} onClick={submit}>
+                    {t('relay.mod.clear_start')}
+                </Button>
+                <small className="hint">{t('relay.mod.clear_hint')}</small>
+            </div>
+        </Sheet>
+    );
+}
+
+/** 제재하기 — /제재 와 같은 칸. 결과는 디스코드에도 알린다 (릴레이가 서버의 시스템 채널에, 멘션 없이) */
+function SanctionSheet({ members, busy, onSanction, onClose }) {
+    const { t } = useTranslation();
+    const [query, setQuery] = useState('');
+    const [picked, setPicked] = useState(null);
+    const [kind, setKind] = useState('chat');
+    const [minutes, setMinutes] = useState(60);
+    const [custom, setCustom] = useState('');
+    const [reason, setReason] = useState('');
+    const [purge, setPurge] = useState(0);
+    const q = query.trim().toLowerCase();
+    const found = q
+        ? (members || [])
+              .filter((m) => m.name.toLowerCase().includes(q) || m.username?.toLowerCase().includes(q))
+              .slice(0, 8)
+        : [];
+    // 밴은 서버에 없는 사람도 ID 로 한다
+    const byId = /^\d{17,20}$/.test(q) && !found.some((m) => m.id === q) ? [{ id: q, name: q, username: '' }] : [];
+    const duration = custom.trim() ? parseDuration(custom, t('relay.mod.duration_units')) : minutes;
+    const submit = async () => {
+        const body = { kind, duration };
+        if (reason.trim()) body.reason = reason.trim();
+        if (kind === 'ban' && purge) body.purgeSeconds = purge;
+        if (await onSanction(picked.id, body)) onClose();
+    };
+    return (
+        <Sheet title={t('relay.mod.sanction_title')} onClose={onClose}>
+            <div className="form">
+                <label className="field">
+                    <span>{t('relay.mod.member')}</span>
+                    <input
+                        type="search"
+                        value={query}
+                        placeholder={t('relay.mod.member_search')}
+                        disabled={!members}
+                        onChange={(e) => setQuery(e.target.value)}
+                    />
+                    <small className="hint">{t('relay.mod.member_hint')}</small>
+                </label>
+                {[...found, ...byId].length > 0 && (
+                    <div className="chips">
+                        {[...found, ...byId].map((m) => (
+                            <button
+                                key={m.id}
+                                type="button"
+                                className={picked?.id === m.id ? 'chip on' : 'chip'}
+                                aria-pressed={picked?.id === m.id}
+                                onClick={() => setPicked(m)}
+                            >
+                                {m.username ? `${m.name} (@${m.username})` : t('relay.mod.member_id', { id: m.id })}
+                            </button>
+                        ))}
+                    </div>
+                )}
+                <Segments
+                    label={t('relay.mod.kind')}
+                    value={kind}
+                    disabled={busy}
+                    onChange={setKind}
+                    options={SANCTION_KINDS.map((k) => ({ value: k, label: t(`relay.mod.kind_${k}`) }))}
+                />
+                <small className="hint">{t(`relay.mod.kind_${kind}_hint`)}</small>
+                <Chips
+                    label={t('relay.mod.duration')}
+                    value={custom.trim() ? null : minutes}
+                    disabled={busy}
+                    onChange={(m) => {
+                        setMinutes(m);
+                        setCustom('');
+                    }}
+                    options={SANCTION_MINUTES.map((m) => ({
+                        value: m,
+                        label: m === 'forever' ? t('relay.mod.forever') : durationText(t, m),
+                    }))}
+                />
+                <label className="field">
+                    <span>{t('relay.mod.duration_custom')}</span>
+                    <input
+                        type="text"
+                        value={custom}
+                        placeholder={t('relay.mod.duration_custom_hint')}
+                        onChange={(e) => setCustom(e.target.value)}
+                    />
+                </label>
+                <label className="field">
+                    <span>{t('relay.mod.reason')}</span>
+                    <input type="text" value={reason} maxLength={200} onChange={(e) => setReason(e.target.value)} />
+                </label>
+                {kind === 'ban' && (
+                    <Choice
+                        label={t('relay.mod.purge')}
+                        value={purge}
+                        disabled={busy}
+                        onChange={(v) => setPurge(Number(v))}
+                        options={PURGE_SECONDS.map((s) => ({
+                            value: String(s),
+                            label: s ? durationText(t, s / 60) : t('relay.none'),
+                        }))}
+                    />
+                )}
+                <small className="hint">{t('relay.mod.announce_hint')}</small>
+                <Button tone="accent" busy={busy} disabled={!picked || !duration} onClick={submit}>
+                    {t('relay.mod.sanction')}
+                </Button>
+            </div>
+        </Sheet>
+    );
+}
+
+function SanctionList({ sanctions, busy, onRelease }) {
+    const { t } = useTranslation();
+    if (sanctions.length === 0) return <small className="hint">{t('relay.mod.no_sanctions')}</small>;
+    return (
+        <ul className="rows" aria-label={t('relay.mod.sanctions')}>
+            {sanctions.map((s) => (
+                <li key={`${s.userId}-${s.kind}`} className="row member-row">
+                    <div className="row-main">
+                        <div className="row-title row-title-one">
+                            {s.name}
+                            <span className="pill">{t(`relay.mod.kind_${s.kind}`)}</span>
+                        </div>
+                        <div className="row-sub">
+                            {[
+                                s.until
+                                    ? t('relay.mod.left', { time: durationText(t, minutesUntil(s.until)) })
+                                    : t('relay.mod.forever'),
+                                ...(s.inGuild ? [] : [t('relay.mod.not_in_guild')]),
+                            ].join(' · ')}
+                        </div>
+                    </div>
+                    <Button
+                        disabled={busy}
+                        aria-label={t('relay.mod.release_named', { name: s.name })}
+                        onClick={() => onRelease(s)}
+                    >
+                        {t('relay.mod.release')}
+                    </Button>
+                </li>
+            ))}
+        </ul>
+    );
+}
+
+// 이어 지우는 동안 진행을 다시 읽는 간격
+const CLEARING_POLL_MS = 5000;
+
+function ModerationSection({ relay, g, can, moderation, busy, write, refresh }) {
+    const { t } = useTranslation();
+    // { id, sheet: 'channel' | 'clear' } | { sheet: 'sanction' }
     const [open, setOpen] = useState(null);
+    const [members, setMembers] = useState(null);
+    const clearing = !!moderation.channels?.some((c) => c.clearing);
+    useEffect(() => {
+        if (!clearing) return;
+        const timer = setInterval(refresh, CLEARING_POLL_MS);
+        return () => clearInterval(timer);
+    }, [clearing, refresh]);
+    const needsMembers = open?.sheet === 'clear' || open?.sheet === 'sanction';
+    useEffect(() => {
+        if (!needsMembers || members) return;
+        let alive = true;
+        relay.modMembers(g).then((res) => alive && setMembers(res.ok && Array.isArray(res.data) ? res.data : []));
+        return () => {
+            alive = false;
+        };
+    }, [needsMembers, members, relay, g]);
     if (!moderation.botAvailable) return <Empty>{t('relay.err.BOT_UNAVAILABLE')}</Empty>;
-    const channel = open && moderation.channels.find((c) => c.id === open);
+    const channel = open?.id && moderation.channels.find((c) => c.id === open.id);
+    const close = () => setOpen(null);
     return (
         <Section title={t('relay.mod.title')}>
             {(can.channels || can.messages) && (
                 <ul className="rows">
                     {moderation.channels.map((c) => (
                         <li key={c.id} className="row">
-                            <button type="button" className="row-open" onClick={() => setOpen(c.id)}>
+                            <button
+                                type="button"
+                                className="row-open"
+                                onClick={() => setOpen({ id: c.id, sheet: 'channel' })}
+                            >
                                 <span className="row-main">
                                     <span className="row-title row-title-one"># {c.name}</span>
                                     <span className="row-sub">{channelLine(t, c)}</span>
@@ -543,43 +985,43 @@ function ModerationSection({ relay, g, can, moderation, busy, write }) {
             )}
             {can.members && (
                 <div className="field">
-                    <span>{t('relay.mod.mutes')}</span>
-                    {moderation.mutes.length === 0 ? (
-                        <small className="hint">{t('relay.mod.no_mutes')}</small>
-                    ) : (
-                        <ul className="rows">
-                            {moderation.mutes.map((m) => (
-                                <li key={m.userId} className="row member-row">
-                                    <div className="row-main">
-                                        <div className="row-title row-title-one">{m.name}</div>
-                                        <div className="row-sub">
-                                            {m.forever || !m.until
-                                                ? t('relay.mod.forever')
-                                                : t('relay.mod.left', { time: durationText(t, minutesUntil(m.until)) })}
-                                        </div>
-                                    </div>
-                                    <Button
-                                        disabled={busy}
-                                        aria-label={t('relay.mod.unmute_named', { name: m.name })}
-                                        onClick={() =>
-                                            write(() => relay.modMute(g, m.userId, { duration: 'off' }), 'moderation')
-                                        }
-                                    >
-                                        {t('relay.mod.unmute')}
-                                    </Button>
-                                </li>
-                            ))}
-                        </ul>
-                    )}
+                    <span>{t('relay.mod.sanctions')}</span>
+                    <SanctionList
+                        sanctions={moderation.sanctions || []}
+                        busy={busy}
+                        onRelease={(s) =>
+                            write(() => relay.modSanction(g, s.userId, { kind: s.kind, duration: 'off' }), 'moderation')
+                        }
+                    />
+                    <Button onClick={() => setOpen({ sheet: 'sanction' })}>{t('relay.mod.sanction_open')}</Button>
                 </div>
             )}
-            {channel && (
+            {channel && open.sheet === 'channel' && (
                 <ChannelSheet
                     channel={channel}
                     can={can}
                     busy={busy}
-                    onClose={() => setOpen(null)}
+                    onClose={close}
+                    onClearNow={() => setOpen({ id: channel.id, sheet: 'clear' })}
                     onEdit={(edit) => write(() => relay.modChannel(g, channel.id, edit), 'moderation')}
+                />
+            )}
+            {channel && open.sheet === 'clear' && (
+                <ClearSheet
+                    channel={channel}
+                    members={members}
+                    busy={busy}
+                    onClose={close}
+                    onClear={(body) => write(() => relay.modClear(g, channel.id, body), 'moderation')}
+                    onStop={() => write(() => relay.modClearStop(g, channel.id), 'moderation')}
+                />
+            )}
+            {open?.sheet === 'sanction' && (
+                <SanctionSheet
+                    members={members}
+                    busy={busy}
+                    onClose={close}
+                    onSanction={(userId, body) => write(() => relay.modSanction(g, userId, body), 'moderation')}
                 />
             )}
         </Section>
@@ -643,10 +1085,10 @@ function SleepSection({ relay, g, settings, busy, write }) {
     );
 }
 
-/** PC 없는 서버 — 릴레이에서 바로 바꾼다. here: 이 PC 의 서버 (relay 는 hereStore, 코코낸내를 더하고 서버 관리는 아직 PC 화면에 없다) */
+/** PC 없는 서버 — 릴레이에서 바로 바꾼다. here: 이 PC 의 서버 (relay 는 hereStore, 코코낸내를 더한다. 서버 관리는 늘 릴레이) */
 function RelayGuild({ relay, guild, here = false }) {
     const { t } = useTranslation();
-    const { data, busy, write, reload } = useRelayGuild(relay, guild, !here);
+    const { data, busy, write, reload, refresh } = useRelayGuild(relay, guild);
     const g = guild.id;
     const props = { relay, g, busy, write, here };
     const manage = !!guild.can?.manage;
@@ -673,10 +1115,9 @@ function RelayGuild({ relay, guild, here = false }) {
             )}
             {manage && ready(data.chatbot) && <TalkingSection {...props} chatbot={data.chatbot} />}
             {manage && ready(data.channels) && <ChannelsSection {...props} channels={data.channels} />}
-            {!here &&
-                modAllowed(guild.can) &&
+            {modAllowed(guild.can) &&
                 (data.moderation ? (
-                    <ModerationSection {...props} can={guild.can} moderation={data.moderation} />
+                    <ModerationSection {...props} can={guild.can} moderation={data.moderation} refresh={refresh} />
                 ) : (
                     <Loading />
                 ))}
@@ -763,7 +1204,7 @@ export function DiscordTab({ api, relay }) {
             ) : (
                 <>
                     {guilds.length > 1 && <GuildChips guilds={guilds} value={guildId} onChange={setGuildId} />}
-                    {guild?.here && relay && guild.can?.manage && (
+                    {guild?.here && relay && (guild.can?.manage || modAllowed(guild.can)) && (
                         <RelayGuild key={`here-${guild.id}`} relay={here} guild={guild} here />
                     )}
                     {guild?.here && (

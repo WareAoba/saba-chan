@@ -20,7 +20,7 @@ const SETTINGS = {
     tts: { volume: 100, speed: 100, pitch: 0, names: 'multi' },
 };
 
-function setup() {
+function setup(can = { manage: true }) {
     useApp.setState((s) => ({ session: { ...s.session, hostId: 'h1' } }));
     const api = new Proxy(
         {
@@ -38,12 +38,14 @@ function setup() {
     const relay = {
         guilds: vi.fn().mockResolvedValue({
             ok: true,
-            data: [{ id: G, name: 'Gather Craft', hasPc: true, can: { manage: true } }],
+            data: [{ id: G, name: 'Gather Craft', hasPc: true, can }],
         }),
         channels: vi.fn().mockResolvedValue({ ok: true, data: { botAvailable: true, channels: [], chatbot: [] } }),
         saveSettings: vi.fn(),
         saveChatbot: vi.fn(),
-        moderation: vi.fn().mockResolvedValue({ ok: true, data: {} }),
+        moderation: vi
+            .fn()
+            .mockResolvedValue({ ok: true, data: { botAvailable: true, channels: [], mutes: [], sanctions: [] } }),
     };
     render(<DiscordTab api={api} relay={relay} />);
     return { api, relay };
@@ -86,5 +88,13 @@ describe('이 PC 의 디스코드 서버 설정', () => {
         await flush();
         await flush();
         expect(api.chatbotSave).toHaveBeenCalledWith({ apiKey: 'sk-123456789' });
+    });
+
+    it('이 PC 의 서버에도 서버 관리를 보인다 (릴레이 경로)', async () => {
+        const { relay } = setup({ manage: false, channels: true, messages: true, members: true });
+        await flush();
+        await flush();
+        expect(relay.moderation).toHaveBeenCalledWith(G);
+        expect(screen.getByRole('heading', { name: 'Server management' })).toBeTruthy();
     });
 });

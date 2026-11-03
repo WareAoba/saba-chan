@@ -27,6 +27,9 @@ export function createRelay(session) {
         moderation: (g) => call('GET', guild(g, '/moderation')),
         modChannel: (g, c, edit) => call('PATCH', guild(g, `/moderation/channels/${id(c)}`), edit),
         modClear: (g, c, body) => call('POST', guild(g, `/moderation/channels/${id(c)}/clear`), body),
+        modClearStop: (g, c) => call('DELETE', guild(g, `/moderation/channels/${id(c)}/clear`)),
         modMute: (g, u, body) => call('PUT', guild(g, `/moderation/mutes/${id(u)}`), body),
+        modSanction: (g, u, body) => call('PUT', guild(g, `/moderation/sanctions/${id(u)}`), body),
+        modMembers: (g) => call('GET', guild(g, '/moderation/members')),
     };
 }

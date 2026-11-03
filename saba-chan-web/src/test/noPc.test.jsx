@@ -38,8 +38,15 @@ function fakeSession(can = ALL) {
             channels: [
                 { id: CH, name: 'chat', category: null, topic: null, slowmode: 10, locked: null, autoClear: null },
             ],
-            mutes: [
-                { userId: U, name: 'Acorn', forever: false, until: new Date(Date.now() + 1_800_000).toISOString() },
+            mutes: [],
+            sanctions: [
+                {
+                    userId: U,
+                    name: 'Acorn',
+                    kind: 'all',
+                    until: new Date(Date.now() + 1_800_000).toISOString(),
+                    inGuild: true,
+                },
             ],
         },
     };
@@ -101,13 +108,14 @@ describe('PC 없는 사람의 웹', () => {
         expect(screen.getByRole('checkbox', { name: /Big emoji/ }).checked).toBe(true);
     });
 
-    it('음소거를 풀면 릴레이 서버 관리 경로로 보낸다', async () => {
+    it('제재(타임아웃)를 풀면 릴레이 서버 관리 경로로 보낸다', async () => {
         const session = fakeSession();
         render(<App api={{}} session={session} />);
         await flush();
-        fireEvent.click(screen.getByRole('button', { name: 'Unmute Acorn' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Lift sanction on Acorn' }));
         await flush();
-        expect(session.request).toHaveBeenCalledWith('PUT', `/relay/guilds/${G}/moderation/mutes/${U}`, {
+        expect(session.request).toHaveBeenCalledWith('PUT', `/relay/guilds/${G}/moderation/sanctions/${U}`, {
+            kind: 'all',
             duration: 'off',
         });
     });
