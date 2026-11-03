@@ -810,7 +810,15 @@
     "exit_note_gave_up": "10분 안에 {{count}}번 다시 켜서 포기함",
     "exit_note_restart_failed": "다시 켜지 못함: {{reason}}",
     "parent_job_short": "코어가 묶여 실행 중",
-    "parent_job": "사바쨩 코어가 코어를 띄운 프로그램에 묶여 실행 중이에요. 그 프로그램이 꺼지면 코어와 서버 관리도 함께 멈출 수 있어요. 사바쨩을 완전히 종료한 뒤 시작 메뉴에서 다시 열어 주세요."
+    "parent_job": "사바쨩 코어가 코어를 띄운 프로그램에 묶여 실행 중이에요. 그 프로그램이 꺼지면 코어와 서버 관리도 함께 멈출 수 있어요. 사바쨩을 완전히 종료한 뒤 시작 메뉴에서 다시 열어 주세요.",
+    "logs_title": "지난 로그",
+    "logs_runs": "실행 기록",
+    "logs_export": "내보내기",
+    "logs_more": "더 보기",
+    "logs_empty": "아직 로그가 없어요. 서버를 한 번 켜면 생겨요.",
+    "logs_failed": "로그를 읽지 못했습니다: {{error}}",
+    "logs_saved": "로그를 저장했습니다: {{path}}",
+    "logs_saved_truncated": "로그가 너무 길어 최근 부분만 저장했습니다: {{path}}"
   },
   "discord": {
     "nav_connection": "연결",

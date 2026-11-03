@@ -1,3 +1,4 @@
+import { SabaCheckbox } from '@gui/components/ui/SabaUI';
 import {
     choosesVersion,
     installChoices,
@@ -8,7 +9,6 @@ import {
     suggestName,
     versionSettings,
 } from '@gui/utils/installFields';
-import { SabaCheckbox } from '@gui/components/ui/SabaUI';
 import { gameNameOf, playersText, primaryAction, viewStatus } from '@gui/utils/serverView';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -19,6 +19,7 @@ import { Icon } from './icons';
 import { startPoll } from './poll';
 import { ServerDetail } from './ServerDetail';
 import { ServerIcon } from './ServerIcon';
+import { ServerOrder } from './ServerOrder';
 import { FieldInput, patchOf } from './SettingsPanel';
 import { Button, Empty, errorText, failed, Loading, Section, Sheet, StatusDot } from './ui';
 import { useProvision } from './useProvision';
@@ -395,6 +396,7 @@ export function ServersTab({ api }) {
     const { servers, serversLoaded, serversError, modules, modulesLoaded } = useData();
     const serverId = useApp((s) => s.serverId);
     const [adding, setAdding] = useState(false);
+    const [ordering, setOrdering] = useState(false);
 
     const selected = servers.find((s) => s.id === serverId);
     const moduleOf = (name) => modules.find((m) => m.name === name);
@@ -405,9 +407,16 @@ export function ServersTab({ api }) {
                 <Section
                     title={t('tabs.servers')}
                     action={
-                        <Button tone="accent" onClick={() => setAdding(true)}>
-                            <Icon name="plus" size={16} /> {t('servers.add')}
-                        </Button>
+                        !ordering && (
+                            <div className="row-actions">
+                                {servers.length > 1 && (
+                                    <Button onClick={() => setOrdering(true)}>{t('servers.order')}</Button>
+                                )}
+                                <Button tone="accent" onClick={() => setAdding(true)}>
+                                    <Icon name="plus" size={16} /> {t('servers.add')}
+                                </Button>
+                            </div>
+                        )
                     }
                 >
                     {serversError && <p className="banner banner-error">{serversError}</p>}
@@ -415,6 +424,8 @@ export function ServersTab({ api }) {
                         <Loading />
                     ) : servers.length === 0 ? (
                         <Empty art={art.sleep}>{t('servers.empty')}</Empty>
+                    ) : ordering ? (
+                        <ServerOrder api={api} servers={servers} onDone={() => setOrdering(false)} />
                     ) : (
                         <>
                             <Summary api={api} servers={servers} />

@@ -112,7 +112,14 @@
     "summary_cpu": "PC CPU",
     "start_named": "Start {{name}}",
     "stop_named": "Stop {{name}}",
-    "pick": "Pick a server on the left."
+    "pick": "Pick a server on the left.",
+    "order": "Reihenfolge",
+    "order_hint": "Ziehe einen Griff oder nutze ▲▼ und speichere dann.",
+    "order_drag": "{{name}} ziehen",
+    "order_up": "{{name}} nach oben",
+    "order_down": "{{name}} nach unten",
+    "order_save": "Reihenfolge speichern",
+    "order_saved": "Server-Reihenfolge gespeichert."
   },
   "detail": {
     "backups": "Backups",
@@ -241,7 +248,10 @@
     "risk_danger": "Gefährlich",
     "confirm_tier": "Discord-Rückfrage: {{risk}} (in der PC-App ändern)",
     "kind_admin": "Verwaltung",
-    "legend_moved": "Von der Vorlage verschoben"
+    "legend_moved": "Von der Vorlage verschoben",
+    "visible": "In diesem Discord-Server sichtbare Server",
+    "visible_hint": "Ausgeschaltete Server verschwinden aus den Slash- und Präfixbefehlen dieses Discord-Servers.",
+    "visible_owned": "Wird von einem anderen Discord-Server genutzt"
   },
   "modules": {
     "games": "Spielmodule",
@@ -453,6 +463,26 @@
     },
     "load_failed": "Couldn't load the settings. Check the connection and try again.",
     "retry": "Try again",
-    "guilds_failed": "Couldn't load your Discord servers. Check the connection and try again."
+    "guilds_failed": "Couldn't load your Discord servers. Check the connection and try again.",
+    "api_key_pc_hint": "Das ist der Schlüssel dieses PCs. Alle mit diesem PC verbundenen Discord-Server nutzen ihn gemeinsam.",
+    "channel_notify": "Benachrichtigungskanal",
+    "channel_gameChat": "Spielchat-Kanal",
+    "channel_board": "Statustafel-Kanal",
+    "sleep_now": "Jetzt schlafen legen",
+    "awake": "Wach"
+  },
+  "logs": {
+    "title": "Frühere Logs",
+    "export": "Exportieren",
+    "more": "Mehr laden",
+    "count": "{{count}} Zeilen",
+    "empty": "Noch keine Logs. Sie erscheinen, sobald der Server einmal lief.",
+    "exported": "Logdatei heruntergeladen.",
+    "exported_truncated": "Das Log war zu lang, daher wurde nur der neueste Teil heruntergeladen."
+  },
+  "words": {
+    "title": "Discord-Rufwörter",
+    "save": "Rufwörter speichern",
+    "remove": "{{word}} entfernen"
   }
 }

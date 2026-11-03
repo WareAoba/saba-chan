@@ -1,4 +1,5 @@
 import * as L from '@gui/components/discord/levels';
+import * as P from '@gui/components/discord/nodePermissions';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useApp, useData } from '../store';
@@ -166,25 +167,101 @@ export function noticeRows(servers, notice) {
         .map((s) => ({ id: s.id, name: s.name, on: on.has(s.id) }));
 }
 
+/**
+ * 이 디스코드 서버에서 보일 서버 (2026-11-03 사용자 지정 시안, GUI 노드의 인스턴스 탭과 같은 규칙):
+ * 모두 보이기(제한 없음, 새 서버도 바로 보인다) 또는 고른 것만. 서버 하나는 디스코드 서버 하나만 고를 수 있다.
+ * `allowed`: 이 길드의 allowedInstances (null 이면 제한 없음), `others`: 이 PC 의 다른 길드 {guildId: allowedInstances}
+ */
+export function VisibleServers({ api, guildId, allowed, others, onSaved }) {
+    const { t } = useTranslation();
+    const { t: tg } = useTranslation('gui');
+    const toast = useApp((s) => s.toast);
+    const servers = useData((s) => s.servers);
+    const [busy, setBusy] = useState(false);
+    const settings = {
+        ...Object.fromEntries(Object.entries(others || {}).map(([g, list]) => [g, { allowedInstances: list }])),
+    };
+    if (Array.isArray(allowed)) settings[guildId] = { allowedInstances: allowed };
+    const nodeIds = [guildId, ...Object.keys(others || {})];
+    const mode = P.instanceMode(settings, guildId);
+    const ownerOf = (id) => P.instanceOwner(settings, nodeIds, id, guildId);
+
+    const save = async (next) => {
+        const list = P.nodeConfig(next, guildId).allowedInstances;
+        setBusy(true);
+        const res = await api.guildAllowedInstancesSave(guildId, Array.isArray(list) ? list : null);
+        setBusy(false);
+        if (failed(res)) return toast(tg('discord.allowed_save_failed', { error: errorText(t, res) }), 'error');
+        onSaved(res.allowedInstances ?? null);
+        toast(t('perm.saved'), 'ok');
+    };
+    const visible = servers.filter((s) => P.isInstanceAllowed(settings, guildId, s.id) && !ownerOf(s.id)).length;
+    return (
+        <div className="field">
+            <span>
+                {t('perm.visible')} <small className="pill">{`${visible}/${servers.length}`}</small>
+            </span>
+            <small className="hint">{t('perm.visible_hint')}</small>
+            <ul className="rows">
+                <li className="row">
+                    <div className="row-main">
+                        <div className="row-title">{tg('discord.instances_all')}</div>
+                        <div className="row-sub">{tg('discord.instances_all_desc')}</div>
+                    </div>
+                    <label className="toggle">
+                        <input
+                            type="checkbox"
+                            className="switch"
+                            aria-label={tg('discord.instances_all')}
+                            checked={mode === 'all'}
+                            disabled={busy}
+                            onChange={(ev) =>
+                                save(
+                                    P.setInstanceMode(
+                                        settings,
+                                        guildId,
+                                        ev.target.checked ? 'all' : 'pick',
+                                        servers.map((x) => x.id),
+                                        nodeIds,
+                                    ),
+                                )
+                            }
+                        />
+                    </label>
+                </li>
+                {servers.map((srv) => {
+                    const owner = ownerOf(srv.id);
+                    return (
+                        <li key={srv.id} className="row">
+                            <div className="row-main">
+                                <div className="row-title row-title-one">{srv.name}</div>
+                                {owner && <div className="row-sub">{t('perm.visible_owned')}</div>}
+                            </div>
+                            <label className="toggle">
+                                <input
+                                    type="checkbox"
+                                    className="switch"
+                                    aria-label={srv.name}
+                                    checked={P.isInstanceAllowed(settings, guildId, srv.id) && !owner}
+                                    disabled={busy || mode === 'all' || !!owner}
+                                    onChange={() => save(P.toggleInstance(settings, guildId, srv.id, nodeIds))}
+                                />
+                            </label>
+                        </li>
+                    );
+                })}
+            </ul>
+        </div>
+    );
+}
+
 /** 켜짐 알림: 사바쨩이 켠 서버를 이 디스코드 서버의 알림 채널에 알린다 (서버마다, 기본 꺼짐) */
-function StartNotice({ api, guildId }) {
+function StartNotice({ api, guildId, notice, setNotice }) {
     const { t } = useTranslation();
     const toast = useApp((s) => s.toast);
     const servers = useData((s) => s.servers);
     const serversLoaded = useData((s) => s.serversLoaded);
-    // null = 읽는 중, false = 읽지 못함
-    const [notice, setNotice] = useState(null);
     const [busy, setBusy] = useState(false);
-
-    useEffect(() => {
-        setNotice(null);
-        api.guildStartNoticeGet(guildId).then((res) => {
-            if (failed(res)) {
-                toast(errorText(t, res), 'error');
-                setNotice(false);
-            } else setNotice(res);
-        });
-    }, [api, guildId, t, toast]);
 
     // 한 번에 하나씩: 응답의 목록이 그때의 전체라 겹치면 늦게 온 것이 앞 변경을 덮는다
     const toggle = async (id, enabled) => {
@@ -408,10 +485,48 @@ function InstanceMenu({ api, guildId, data, instance, onBack }) {
 }
 
 /** 디스코드 서버 하나: 인스턴스 목록 → 인스턴스 메뉴. 켜짐 알림은 목록 아래 */
-export function GuildPermissions({ api, guildId }) {
+export function GuildPermissions({ api, guildId, siblings = [] }) {
     const { t } = useTranslation();
+    const toast = useApp((s) => s.toast);
     const data = useGuildPermissions(api, guildId);
     const [instance, setInstance] = useState(null);
+    // 켜짐 알림과 보일 서버: {guildId, instances, allowedInstances}. null = 읽는 중, false = 읽지 못함
+    const [notice, setNotice] = useState(null);
+    // 이 PC 의 다른 디스코드 서버가 고른 서버 (서버 하나는 디스코드 서버 하나만)
+    const [others, setOthers] = useState(null);
+    const siblingKey = siblings.join(',');
+
+    useEffect(() => {
+        let alive = true;
+        setNotice(null);
+        api.guildStartNoticeGet(guildId).then((res) => {
+            if (!alive) return;
+            if (failed(res)) {
+                toast(errorText(t, res), 'error');
+                setNotice(false);
+            } else setNotice(res);
+        });
+        return () => {
+            alive = false;
+        };
+    }, [api, guildId, t, toast]);
+
+    // biome-ignore lint/correctness/useExhaustiveDependencies: siblingKey 가 siblings 의 값이다
+    useEffect(() => {
+        let alive = true;
+        setOthers(null);
+        Promise.all(siblings.map((g) => api.guildStartNoticeGet(g))).then((list) => {
+            if (!alive) return;
+            const out = {};
+            list.forEach((res, i) => {
+                if (!failed(res) && Array.isArray(res?.allowedInstances)) out[siblings[i]] = res.allowedInstances;
+            });
+            setOthers(out);
+        });
+        return () => {
+            alive = false;
+        };
+    }, [api, siblingKey]);
 
     if (!data.perm || !data.members) return <Loading />;
     if (instance)
@@ -444,7 +559,16 @@ export function GuildPermissions({ api, guildId }) {
                     ))}
                 </ul>
             </div>
-            <StartNotice api={api} guildId={guildId} />
+            {notice && others && (
+                <VisibleServers
+                    api={api}
+                    guildId={guildId}
+                    allowed={notice.allowedInstances ?? null}
+                    others={others}
+                    onSaved={(allowedInstances) => setNotice((n) => ({ ...n, allowedInstances }))}
+                />
+            )}
+            <StartNotice api={api} guildId={guildId} notice={notice} setNotice={setNotice} />
         </>
     );
 }

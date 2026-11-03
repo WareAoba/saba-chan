@@ -2079,3 +2079,84 @@ textarea {
 .install-band a {
     white-space: nowrap;
 }
+
+/* 서버 순서 바꾸기 (ServerOrder.jsx) */
+.server-order {
+    display: grid;
+    gap: 12px;
+}
+.order-row.is-dragging {
+    border-color: var(--accent);
+    box-shadow: 0 8px 24px rgb(0 0 0 / 0.25);
+}
+.order-grip {
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    margin-left: -8px;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--text-2);
+    cursor: grab;
+    touch-action: none;
+}
+.order-actions {
+    justify-content: flex-end;
+}
+
+/* 지난 로그 (LogsCard.jsx) */
+.log-lines {
+    margin: 0;
+    max-height: 360px;
+    overflow: auto;
+    padding: 12px;
+    background: var(--bg-1);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+/* 디스코드 호출어 (InstanceWords.jsx) */
+.words-input {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    padding: 6px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--bg-1);
+}
+.words-input input {
+    flex: 1;
+    min-width: 120px;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    padding: 6px;
+    outline: none;
+}
+.word-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+.word-chip.bad {
+    border-color: var(--danger, #e5484d);
+}
+.word-remove {
+    border: 0;
+    background: none;
+    color: inherit;
+    padding: 0 2px;
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+}

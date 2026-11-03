@@ -1,14 +1,16 @@
+import { DEFAULT_BEDTIME, HALF_HOURS, SLEEP_FEATURES } from '@gui/components/discord/sleep';
 import { LANGUAGE_OPTIONS } from '@gui/utils/languages';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useApp } from '../store';
 import { Dropdown } from './Dropdown';
 import { Icon } from './icons';
 import { GuildPermissions } from './PermissionsTab';
-import { Button, Empty, Loading, Section, Sheet } from './ui';
+import { Button, Empty, errorText, failed, Loading, Section, Sheet } from './ui';
 
 /**
- * 디스코드 탭 (2026-10-31 사용자 지정 시안). 이 PC 에 붙은 서버는 예전처럼 PC 를 거쳐 권한을 바꾸고,
+ * 디스코드 탭 (2026-10-31 사용자 지정 시안). 이 PC 에 붙은 서버는 권한·보일 서버를 PC 를 거쳐 바꾸고, 설정은
+ * 데몬이 원본인 값(언어·코코낸내·노래·읽어주기·말하는 사바쨩·API 키)을 데몬 경로로, 배정·기억은 릴레이로 바꾼다 (`hereStore`, 2026-11-03).
  * PC 없는 서버는 릴레이 API(src/relay.js)로 바로 바꾼다. 다른 PC 에 붙은 서버는 그 PC 의 링크에서 바꾼다.
  * 보이는 칸은 요청한 사람의 디스코드 권한(can)을 따른다: 설정은 manage, 서버 관리는 channels·messages·members.
  */
@@ -26,8 +28,35 @@ export function mergeGuilds(pcNodes, relayGuilds) {
 
 const modAllowed = (can) => !!(can?.channels || can?.messages || can?.members);
 
+/** 데몬 답 → 릴레이 답 모양 ({ok, data} | {ok:false, daemon}) */
+const fromDaemon = (res, pick = (x) => x) => (failed(res) ? { ok: false, daemon: res } : { ok: true, data: pick(res) });
+
+/**
+ * 이 PC 에 붙은 서버의 쓰기 길: 데몬이 원본인 설정과 말하는 사바쨩은 데몬(큰 이모지는 데몬이 릴레이로 넘긴다),
+ * 채널 배정·기억 지우기는 릴레이 (릴레이 API 는 PC 가 붙은 서버의 데몬 값을 409 PC_OWNED 로 거절한다).
+ * API 키는 이 PC 의 키 하나다 (이 PC 에 붙은 모든 디스코드 서버가 같이 쓴다)
+ */
+export function hereStore(api, relay) {
+    const chatbotView = (res) => ({ settings: res.settings || {}, hasApiKey: !!res.hasApiKey });
+    return {
+        ...relay,
+        settings: async (g) => fromDaemon(await api.discordSettingsGet(g)),
+        saveSettings: async (g, patch) => fromDaemon(await api.discordSettingsSet(g, patch), (r) => r.settings),
+        chatbot: async (g) => fromDaemon(await api.chatbotGuildGet(g), chatbotView),
+        saveChatbot: async (g, { settings, apiKey }) => {
+            if (apiKey !== undefined) {
+                const res = await api.chatbotSave({ apiKey });
+                if (failed(res)) return { ok: false, daemon: res };
+            }
+            const res = settings ? await api.chatbotGuildSave(g, settings) : await api.chatbotGuildGet(g);
+            return fromDaemon(res, chatbotView);
+        },
+    };
+}
+
 /** 릴레이 오류 → 한 줄 */
 function relayError(t, res) {
+    if (res?.daemon) return errorText(t, res.daemon);
     const known = [
         'NEEDS_PC',
         'PC_OWNED',
@@ -98,7 +127,7 @@ const withValue = (values, value) => (values.includes(value) ? values : [...valu
 const range = (from, to, step) => Array.from({ length: Math.floor((to - from) / step) + 1 }, (_, i) => from + i * step);
 
 /** 한 서버의 릴레이 값과 쓰기 — 쓰기는 하나씩, 답으로 받은 값으로 화면을 맞춘다 */
-function useRelayGuild(relay, guild) {
+function useRelayGuild(relay, guild, withModeration = true) {
     const { t } = useTranslation();
     const toast = useApp((s) => s.toast);
     const [data, setData] = useState({});
@@ -107,7 +136,7 @@ function useRelayGuild(relay, guild) {
     const [busy, setBusy] = useState(false);
     const g = guild.id;
     const manage = !!guild.can?.manage;
-    const mod = modAllowed(guild.can);
+    const mod = withModeration && modAllowed(guild.can);
 
     const loadModeration = useCallback(async () => {
         const res = await relay.moderation(g);
@@ -154,7 +183,7 @@ function useRelayGuild(relay, guild) {
     return { data, busy, write, reload };
 }
 
-function BasicsSection({ relay, g, settings, busy, write }) {
+function BasicsSection({ relay, g, settings, busy, write, here }) {
     const { t } = useTranslation();
     const save = (patch) => write(() => relay.saveSettings(g, patch), 'settings');
     return (
@@ -173,6 +202,24 @@ function BasicsSection({ relay, g, settings, busy, write }) {
                 disabled={busy}
                 onChange={(bigEmoji) => save({ bigEmoji })}
             />
+            {/* 게임 채팅 채널 옵션 (원본은 릴레이, 데몬이 넘긴다). 게임 채팅은 PC 가 보내는 것이라 이 PC 의 서버만 */}
+            {here &&
+                [
+                    ['gameChatGuard', 'relay.game_chat_guard'],
+                    ['gameChatClearOnStop', 'relay.game_chat_clear_on_stop'],
+                ].map(
+                    ([key, label]) =>
+                        typeof settings[key] === 'boolean' && (
+                            <Toggle
+                                key={key}
+                                label={t(label)}
+                                hint={t(`${label}_hint`)}
+                                checked={settings[key]}
+                                disabled={busy}
+                                onChange={(on) => save({ [key]: on })}
+                            />
+                        ),
+                )}
         </Section>
     );
 }
@@ -262,7 +309,7 @@ function ApiKeySheet({ onSave, onClose, busy }) {
     );
 }
 
-function TalkingSection({ relay, g, chatbot, busy, write }) {
+function TalkingSection({ relay, g, chatbot, busy, write, here }) {
     const { t } = useTranslation();
     const ask = useApp((s) => s.ask);
     const [editing, setEditing] = useState(false);
@@ -282,6 +329,7 @@ function TalkingSection({ relay, g, chatbot, busy, write }) {
                     <small className="hint">
                         {chatbot.hasApiKey ? t('relay.api_key_saved') : t('relay.api_key_none')}
                     </small>
+                    {here && <small className="hint">{t('relay.api_key_pc_hint')}</small>}
                 </span>
                 <div className="row-actions">
                     <Button onClick={() => setEditing(true)}>
@@ -339,7 +387,7 @@ function TalkingSection({ relay, g, chatbot, busy, write }) {
     );
 }
 
-function ChannelsSection({ relay, g, channels, busy, write }) {
+function ChannelsSection({ relay, g, channels, busy, write, here }) {
     const { t } = useTranslation();
     const save = (change) => write(() => relay.saveChannels(g, change), 'channels');
     const list = channels.channels || [];
@@ -376,12 +424,28 @@ function ChannelsSection({ relay, g, channels, busy, write }) {
                     ...list.map((c) => ({ value: c.id, label: `# ${c.name}` })),
                 ]}
             />
-            <div className="field field-locked">
-                <span>{t('relay.pc_channels')}</span>
-                <p className="locked">
-                    <Icon name="lock" size={14} /> {t('relay.pc_channels_hint')}
-                </p>
-            </div>
+            {here ? (
+                ['notify', 'gameChat', 'board'].map((kind) => (
+                    <Choice
+                        key={kind}
+                        label={t(`relay.channel_${kind}`)}
+                        value={channels[kind] ?? ''}
+                        disabled={busy}
+                        onChange={(v) => save({ [kind]: v || null })}
+                        options={[
+                            { value: '', label: t('relay.none') },
+                            ...list.map((c) => ({ value: c.id, label: `# ${c.name}` })),
+                        ]}
+                    />
+                ))
+            ) : (
+                <div className="field field-locked">
+                    <span>{t('relay.pc_channels')}</span>
+                    <p className="locked">
+                        <Icon name="lock" size={14} /> {t('relay.pc_channels_hint')}
+                    </p>
+                </div>
+            )}
         </Section>
     );
 }
@@ -522,59 +586,69 @@ function ModerationSection({ relay, g, can, moderation, busy, write }) {
     );
 }
 
-/** 이 PC 의 서버에서도 원본이 릴레이인 설정(큰 이모지·게임 채팅 옵션)은 릴레이에서 바로 바꾼다 */
-const HERE_RELAY_KEYS = ['bigEmoji', 'gameChatGuard', 'gameChatClearOnStop'];
-
-function HereRelaySettings({ relay, guild }) {
+/** 코코낸내 (이 PC 의 서버만, GUI 봇 설정의 코코낸내 칸과 같은 값): 지금 재우기, 잠든 동안 끌 기능, 착한 어린이 시각 */
+function SleepSection({ relay, g, settings, busy, write }) {
     const { t } = useTranslation();
-    const toast = useApp((s) => s.toast);
-    const g = guild.id;
-    const [values, setValues] = useState(null);
-    const [busy, setBusy] = useState(false);
-    const pick = (data) =>
-        Object.fromEntries(HERE_RELAY_KEYS.filter((k) => typeof data?.[k] === 'boolean').map((k) => [k, data[k]]));
-    useEffect(() => {
-        let alive = true;
-        relay.settings(g).then((res) => alive && res.ok && setValues(pick(res.data)));
-        return () => {
-            alive = false;
-        };
-    }, [relay, g]);
-    // 릴레이를 못 읽었으면 값을 모른다 — 토글을 두지 않는다
-    if (values === null) return null;
-    const save = async (patch) => {
-        setBusy(true);
-        const res = await relay.saveSettings(g, patch);
-        setBusy(false);
-        if (!res.ok) return toast(relayError(t, res), 'error');
-        setValues((prev) => ({ ...prev, ...pick(res.data) }));
-        toast(t('relay.saved'));
-    };
-    const toggle = (key, label, hint) =>
-        typeof values[key] === 'boolean' && (
-            <Toggle
-                label={t(label)}
-                hint={t(hint)}
-                checked={values[key]}
-                disabled={busy}
-                onChange={(on) => save({ [key]: on })}
+    const { t: tg } = useTranslation('gui');
+    const save = (patch) => write(() => relay.saveSettings(g, patch), 'settings');
+    const blocks = Array.isArray(settings.sleepBlocks) ? settings.sleepBlocks : SLEEP_FEATURES;
+    const bedtime = settings.bedtime || null;
+    const time = (key, other) => {
+        const value = bedtime?.[key] ?? DEFAULT_BEDTIME[key];
+        const avoid = bedtime?.[other] ?? DEFAULT_BEDTIME[other];
+        const times = [...new Set([...HALF_HOURS, value])].sort().filter((h) => h !== avoid);
+        return (
+            <Choice
+                label={tg(`discord.bot_settings.bedtime_${key}`)}
+                value={value}
+                disabled={busy || !bedtime}
+                onChange={(v) => v !== value && save({ bedtime: { ...bedtime, [key]: v } })}
+                options={times.map((h) => ({ value: h, label: h }))}
             />
         );
+    };
     return (
-        <Section title={t('relay.basics')}>
-            {toggle('bigEmoji', 'relay.big_emoji', 'relay.big_emoji_hint')}
-            {toggle('gameChatGuard', 'relay.game_chat_guard', 'relay.game_chat_guard_hint')}
-            {toggle('gameChatClearOnStop', 'relay.game_chat_clear_on_stop', 'relay.game_chat_clear_on_stop_hint')}
+        <Section title={tg('discord.bot_settings.sleep_title')}>
+            <Toggle
+                label={t('relay.sleep_now')}
+                hint={settings.asleep ? tg('discord.sleep_corner_asleep') : t('relay.awake')}
+                checked={settings.sleeping}
+                disabled={busy}
+                onChange={(sleeping) => save({ sleeping })}
+            />
+            <p className="hint">{tg('discord.bot_settings.sleep_desc')}</p>
+            {SLEEP_FEATURES.map((f) => (
+                <Toggle
+                    key={f}
+                    label={tg(`discord.bot_settings.sleep_${f}`)}
+                    hint={tg(`discord.bot_settings.sleep_${f}_hint`)}
+                    checked={blocks.includes(f)}
+                    disabled={busy}
+                    onChange={(on) =>
+                        save({ sleepBlocks: SLEEP_FEATURES.filter((x) => (x === f ? on : blocks.includes(x))) })
+                    }
+                />
+            ))}
+            <Toggle
+                label={tg('discord.bot_settings.bedtime')}
+                hint={tg('discord.bot_settings.bedtime_hint')}
+                checked={!!bedtime}
+                disabled={busy}
+                onChange={(on) => save({ bedtime: on ? DEFAULT_BEDTIME : null })}
+            />
+            {time('start', 'end')}
+            {time('end', 'start')}
+            <p className="hint">{tg('discord.bot_settings.bedtime_zone')}</p>
         </Section>
     );
 }
 
-/** PC 없는 서버 — 릴레이에서 바로 바꾼다 */
-function RelayGuild({ relay, guild }) {
+/** PC 없는 서버 — 릴레이에서 바로 바꾼다. here: 이 PC 의 서버 (relay 는 hereStore, 코코낸내를 더하고 서버 관리는 아직 PC 화면에 없다) */
+function RelayGuild({ relay, guild, here = false }) {
     const { t } = useTranslation();
-    const { data, busy, write, reload } = useRelayGuild(relay, guild);
+    const { data, busy, write, reload } = useRelayGuild(relay, guild, !here);
     const g = guild.id;
-    const props = { relay, g, busy, write };
+    const props = { relay, g, busy, write, here };
     const manage = !!guild.can?.manage;
     const ready = (x) => x && !x.failed;
     // 연결이 끊겼거나 릴레이가 답하지 못했다 — 숨기지 않고 알리고 다시 읽게 한다
@@ -592,13 +666,15 @@ function RelayGuild({ relay, guild }) {
             {manage && ready(data.settings) && (
                 <>
                     <BasicsSection {...props} settings={data.settings} />
+                    {here && <SleepSection {...props} settings={data.settings} />}
                     <MusicSection {...props} settings={data.settings} />
                     <ReadingSection {...props} settings={data.settings} />
                 </>
             )}
             {manage && ready(data.chatbot) && <TalkingSection {...props} chatbot={data.chatbot} />}
             {manage && ready(data.channels) && <ChannelsSection {...props} channels={data.channels} />}
-            {modAllowed(guild.can) &&
+            {!here &&
+                modAllowed(guild.can) &&
                 (data.moderation ? (
                     <ModerationSection {...props} can={guild.can} moderation={data.moderation} />
                 ) : (
@@ -664,6 +740,7 @@ export function DiscordTab({ api, relay }) {
     }, [api, relay, hostId, round]);
 
     const guild = guilds?.find((g) => g.id === guildId);
+    const here = useMemo(() => relay && hereStore(api, relay), [api, relay]);
     return (
         <Section title={t('tabs.discord')}>
             {relayFailed && (
@@ -687,9 +764,16 @@ export function DiscordTab({ api, relay }) {
                 <>
                     {guilds.length > 1 && <GuildChips guilds={guilds} value={guildId} onChange={setGuildId} />}
                     {guild?.here && relay && guild.can?.manage && (
-                        <HereRelaySettings key={`relay-${guild.id}`} relay={relay} guild={guild} />
+                        <RelayGuild key={`here-${guild.id}`} relay={here} guild={guild} here />
                     )}
-                    {guild?.here && <GuildPermissions key={guild.id} api={api} guildId={guild.id} />}
+                    {guild?.here && (
+                        <GuildPermissions
+                            key={guild.id}
+                            api={api}
+                            guildId={guild.id}
+                            siblings={guilds.filter((x) => x.here && x.id !== guild.id).map((x) => x.id)}
+                        />
+                    )}
                     {guild && !guild.here && guild.hasPc && <Empty>{t('relay.other_pc')}</Empty>}
                     {guild && !guild.here && !guild.hasPc && <RelayGuild key={guild.id} relay={relay} guild={guild} />}
                 </>

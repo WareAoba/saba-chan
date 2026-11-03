@@ -112,7 +112,14 @@
     "summary_cpu": "PC CPU",
     "start_named": "Start {{name}}",
     "stop_named": "Stop {{name}}",
-    "pick": "Pick a server on the left."
+    "pick": "Pick a server on the left.",
+    "order": "排序",
+    "order_hint": "拖曳把手或使用 ▲▼ 移動，然後儲存。",
+    "order_drag": "拖曳 {{name}}",
+    "order_up": "上移 {{name}}",
+    "order_down": "下移 {{name}}",
+    "order_save": "儲存排序",
+    "order_saved": "已變更伺服器排序。"
   },
   "detail": {
     "backups": "備份",
@@ -241,7 +248,10 @@
     "risk_danger": "危險",
     "confirm_tier": "Discord 確認: {{risk}}（在電腦應用程式中變更）",
     "kind_admin": "管理",
-    "legend_moved": "已偏離預設"
+    "legend_moved": "已偏離預設",
+    "visible": "在此 Discord 伺服器顯示的伺服器",
+    "visible_hint": "關閉的伺服器會從此 Discord 伺服器的斜線與前綴指令中消失。",
+    "visible_owned": "已被另一個 Discord 伺服器使用"
   },
   "modules": {
     "games": "遊戲模組",
@@ -453,6 +463,26 @@
     },
     "load_failed": "Couldn't load the settings. Check the connection and try again.",
     "retry": "Try again",
-    "guilds_failed": "Couldn't load your Discord servers. Check the connection and try again."
+    "guilds_failed": "Couldn't load your Discord servers. Check the connection and try again.",
+    "api_key_pc_hint": "這是此 PC 的金鑰，連接到此 PC 的所有 Discord 伺服器共用。",
+    "channel_notify": "通知頻道",
+    "channel_gameChat": "遊戲聊天頻道",
+    "channel_board": "狀態板頻道",
+    "sleep_now": "現在睡覺",
+    "awake": "醒著"
+  },
+  "logs": {
+    "title": "過去的日誌",
+    "export": "匯出",
+    "more": "載入更多",
+    "count": "{{count}} 行",
+    "empty": "還沒有日誌。伺服器執行一次後就會出現。",
+    "exported": "已下載日誌檔案。",
+    "exported_truncated": "日誌過長，只下載了最近的部分。"
+  },
+  "words": {
+    "title": "Discord 呼叫詞",
+    "save": "儲存呼叫詞",
+    "remove": "移除 {{word}}"
   }
 }

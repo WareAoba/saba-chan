@@ -80,6 +80,8 @@ pub static ROUTES: &[Route] = &[
     allow("POST", "/api/instance/{id}/stdin"),
     allow("GET", "/api/instance/{id}/logs"),
     allow("GET", "/api/instance/{id}/logs/export"),
+    // 데몬이 PC 경로에 쓴다: 웹은 GET 으로 받아 그 기기에 저장한다
+    deny("POST", "/api/instance/{id}/logs/export"),
     allow("GET", "/api/instance/{id}/players"),
     allow("POST", "/api/instance/{id}/command"),
     allow("POST", "/api/instance/{id}/chat"),
@@ -229,9 +231,12 @@ pub static ROUTES: &[Route] = &[
     allow("PATCH", "/api/relay/node/{guild_id}/moderation/channels/{channel_id}"),
     allow("POST", "/api/relay/node/{guild_id}/moderation/channels/{channel_id}/clear"),
     allow("PUT", "/api/relay/node/{guild_id}/moderation/mutes/{user_id}"),
-    // ── 디스코드 설정·릴레이 연결: 웹이 타고 있는 연결 자체다 ──
-    deny("GET", "/api/discord/{guild_id}/settings"),
-    deny("PATCH", "/api/discord/{guild_id}/settings"),
+    // 디스코드 서버 설정(언어·코코낸내·노래·읽어주기·명령 모양)과 서버별 말하는 사바쨩: 릴레이 연결과 API 키는 건드리지 않는다 (사용자 결정 2026-11-03)
+    allow("GET", "/api/discord/{guild_id}/settings"),
+    allow("PATCH", "/api/discord/{guild_id}/settings"),
+    allow("GET", "/api/chatbot/guilds/{guild}"),
+    allow("PATCH", "/api/chatbot/guilds/{guild}"),
+    // ── 릴레이 연결: 웹이 타고 있는 연결 자체다. 채널 배정은 웹이 릴레이 API(/relay/guilds/:g/channels)로 한다 ──
     deny("GET", "/api/relay/host/{host_id}/status"),
     deny("GET", "/api/relay/node/{guild_id}/legacy-members"),
     deny("GET", "/api/relay/node/{guild_id}/channels"),
@@ -255,12 +260,11 @@ pub static ROUTES: &[Route] = &[
     deny("POST", "/api/chat/command"),
     // ── 챗봇: API 키가 오간다 ──
     deny("GET", "/api/chatbot"),
-    deny("PUT", "/api/chatbot"),
+    // 이 PC의 말하는 사바쨩 API 키를 넣거나 지우기만 한다 (`FIELD_RULES`가 다른 칸을 막고, 응답에는 키가 없다. 사용자 결정 2026-11-03)
+    allow("PUT", "/api/chatbot"),
     deny("DELETE", "/api/chatbot"),
     deny("DELETE", "/api/chatbot/memory"),
     deny("GET", "/api/chatbot/memo-template"),
-    deny("GET", "/api/chatbot/guilds/{guild}"),
-    deny("PATCH", "/api/chatbot/guilds/{guild}"),
     // ── 샌드박스 예외 ──
     deny("GET", "/api/sandbox/unisolated"),
     deny("POST", "/api/sandbox/unisolated/{component}"),
@@ -419,6 +423,7 @@ type FieldRule = fn(&serde_json::Map<String, Value>, &[String]) -> Vec<String>;
 
 /// 본문 칸을 보는 라우트와 그 규칙. `checks_fields`와 `blocked_fields`가 이 표 하나를 본다
 static FIELD_RULES: &[(&str, &str, FieldRule)] = &[
+    ("PUT", "/api/chatbot", |body, _| body.keys().filter(|k| k.as_str() != "apiKey").cloned().collect()),
     ("PATCH", "/api/instance/{id}", |body, file_fields| {
         body.keys().filter(|k| SETTINGS_PC_ONLY.contains(&k.as_str()) || file_fields.contains(k)).cloned().collect()
     }),
@@ -608,6 +613,24 @@ mod tests {
         assert!(decide("PATCH", "/api/relay/node/1/moderation/channels/2").is_ok());
         assert!(decide("POST", "/api/relay/node/1/moderation/channels/2/clear").is_ok());
         assert!(decide("PUT", "/api/relay/node/1/moderation/mutes/3").is_ok());
+    }
+
+    #[test]
+    fn allows_discord_guild_settings() {
+        // 이 PC에 붙은 디스코드 서버의 언어·코코낸내·노래·읽어주기·말하는 사바쨩 (사용자 결정 2026-11-03)
+        assert!(decide("GET", "/api/discord/1/settings").is_ok());
+        assert!(decide("PATCH", "/api/discord/1/settings").is_ok());
+        assert!(decide("GET", "/api/chatbot/guilds/1").is_ok());
+        assert!(decide("PATCH", "/api/chatbot/guilds/1").is_ok());
+        // API 키는 넣거나 지우기만 한다 (응답에는 키가 없다, hasApiKey 만). 다른 칸과 읽기는 PC에서만
+        assert_eq!(decide("GET", "/api/chatbot"), Err(Refusal::NotAllowed));
+        assert!(decide("PUT", "/api/chatbot").is_ok());
+        assert!(blocked_fields("PUT", "/api/chatbot", Some(&json!({ "apiKey": "sk-x" })), &[]).is_empty());
+        assert!(blocked_fields("PUT", "/api/chatbot", Some(&json!({ "apiKey": null })), &[]).is_empty());
+        assert_eq!(
+            blocked_fields("PUT", "/api/chatbot", Some(&json!({ "apiKey": "k", "settings": {}, "guilds": {} })), &[]),
+            ["guilds", "settings"]
+        );
     }
 
     #[test]

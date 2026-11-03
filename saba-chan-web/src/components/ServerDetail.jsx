@@ -7,6 +7,7 @@ import { BackupsPanel } from './BackupsPanel';
 import { CheckPanel } from './CheckPanel';
 import { CommandsPanel } from './CommandsPanel';
 import { InfoPanel } from './InfoPanel';
+import { InstanceWords } from './InstanceWords';
 import { Icon } from './icons';
 import { PlayersPanel } from './PlayersPanel';
 import { startPoll } from './poll';
@@ -314,7 +315,10 @@ export function ServerDetail({ api, server }) {
                     {settingsView === 'game' ? (
                         <SettingsPanel api={api} server={server} moduleData={moduleData} running={running} />
                     ) : (
-                        <SabaSettings api={api} server={server} running={running} />
+                        <>
+                            <SabaSettings api={api} server={server} running={running} />
+                            <InstanceWords api={api} server={server} />
+                        </>
                     )}
                 </>
             )}

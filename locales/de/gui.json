@@ -810,7 +810,15 @@
     "exit_note_gave_up": "Nach {{count}} Neustarts in 10 Minuten aufgegeben",
     "exit_note_restart_failed": "Neustart fehlgeschlagen: {{reason}}",
     "parent_job_short": "Kern hängt an anderer App",
-    "parent_job": "Der saba-chan-Kern läuft an das Programm gebunden, das ihn gestartet hat. Wird dieses Programm beendet, können Kern und Serververwaltung mit ihm stoppen. Beende saba-chan vollständig und öffne es erneut über das Startmenü."
+    "parent_job": "Der saba-chan-Kern läuft an das Programm gebunden, das ihn gestartet hat. Wird dieses Programm beendet, können Kern und Serververwaltung mit ihm stoppen. Beende saba-chan vollständig und öffne es erneut über das Startmenü.",
+    "logs_title": "Frühere Logs",
+    "logs_runs": "Läufe",
+    "logs_export": "Exportieren",
+    "logs_more": "Mehr laden",
+    "logs_empty": "Noch keine Logs. Sie erscheinen, sobald der Server einmal lief.",
+    "logs_failed": "Log konnte nicht gelesen werden: {{error}}",
+    "logs_saved": "Log gespeichert: {{path}}",
+    "logs_saved_truncated": "Das Log war zu lang, daher wurde nur der neueste Teil gespeichert: {{path}}"
   },
   "discord": {
     "nav_connection": "Verbindung",

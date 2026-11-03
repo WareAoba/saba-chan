@@ -4364,3 +4364,35 @@ button.appbar-preflight {
     display: grid;
     gap: var(--sp-1);
 }
+
+/* 지난 로그 (ServerLogs.js) */
+.server-logs-head {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    margin: 0 0 var(--sp-2);
+}
+.server-logs-head h3 {
+    margin: 0;
+    flex: 1;
+    font-size: var(--fs-sm);
+    color: var(--text-2);
+    font-weight: 600;
+}
+.server-logs-run {
+    min-width: 160px;
+}
+.server-logs pre {
+    margin: var(--sp-2) 0 0;
+    max-height: 320px;
+    overflow: auto;
+    padding: var(--sp-2) var(--sp-3);
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
+    background: var(--bg-2);
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 12px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}

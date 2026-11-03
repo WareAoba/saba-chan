@@ -112,7 +112,14 @@
     "summary_cpu": "PC CPU",
     "start_named": "Start {{name}}",
     "stop_named": "Stop {{name}}",
-    "pick": "Pick a server on the left."
+    "pick": "Pick a server on the left.",
+    "order": "Orden",
+    "order_hint": "Arrastra un asa o usa ▲▼ y luego guarda.",
+    "order_drag": "Arrastrar {{name}}",
+    "order_up": "Subir {{name}}",
+    "order_down": "Bajar {{name}}",
+    "order_save": "Guardar orden",
+    "order_saved": "Orden de servidores guardado."
   },
   "detail": {
     "backups": "Copias",
@@ -241,7 +248,10 @@
     "risk_danger": "Peligroso",
     "confirm_tier": "Confirmación en Discord: {{risk}} (se cambia en la app del PC)",
     "kind_admin": "Administración",
-    "legend_moved": "Movido del preajuste"
+    "legend_moved": "Movido del preajuste",
+    "visible": "Servidores visibles en este servidor de Discord",
+    "visible_hint": "Los servidores que apagues desaparecen de los comandos de barra y de prefijo de este servidor de Discord.",
+    "visible_owned": "Lo usa otro servidor de Discord"
   },
   "modules": {
     "games": "Módulos de juego",
@@ -453,6 +463,26 @@
     },
     "load_failed": "Couldn't load the settings. Check the connection and try again.",
     "retry": "Try again",
-    "guilds_failed": "Couldn't load your Discord servers. Check the connection and try again."
+    "guilds_failed": "Couldn't load your Discord servers. Check the connection and try again.",
+    "api_key_pc_hint": "Es la clave de este PC. La comparten todos los servidores de Discord conectados a este PC.",
+    "channel_notify": "Canal de avisos",
+    "channel_gameChat": "Canal de chat del juego",
+    "channel_board": "Canal del panel de estado",
+    "sleep_now": "Dormir ahora",
+    "awake": "Despierta"
+  },
+  "logs": {
+    "title": "Registros anteriores",
+    "export": "Exportar",
+    "more": "Cargar más",
+    "count": "{{count}} líneas",
+    "empty": "Aún no hay registros. Aparecen cuando el servidor se ejecuta una vez.",
+    "exported": "Archivo de registro descargado.",
+    "exported_truncated": "El registro era demasiado largo; solo se descargó la parte más reciente."
+  },
+  "words": {
+    "title": "Palabras de llamada en Discord",
+    "save": "Guardar palabras",
+    "remove": "Quitar {{word}}"
   }
 }

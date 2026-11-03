@@ -112,7 +112,14 @@
     "summary_cpu": "PC CPU",
     "start_named": "Start {{name}}",
     "stop_named": "Stop {{name}}",
-    "pick": "Pick a server on the left."
+    "pick": "Pick a server on the left.",
+    "order": "Order",
+    "order_hint": "Drag a handle or use ▲▼, then save.",
+    "order_drag": "Drag {{name}}",
+    "order_up": "Move {{name}} up",
+    "order_down": "Move {{name}} down",
+    "order_save": "Save order",
+    "order_saved": "Server order saved."
   },
   "detail": {
     "backups": "Backups",
@@ -241,7 +248,10 @@
     "risk_danger": "Danger",
     "confirm_tier": "Discord confirm: {{risk}} (change it in the PC app)",
     "kind_admin": "Admin",
-    "legend_moved": "Moved from the preset"
+    "legend_moved": "Moved from the preset",
+    "visible": "Servers shown in this Discord server",
+    "visible_hint": "Servers you turn off disappear from this Discord server's slash and prefix commands.",
+    "visible_owned": "Used by another Discord server"
   },
   "modules": {
     "games": "Game modules",
@@ -453,6 +463,26 @@
     },
     "load_failed": "Couldn't load the settings. Check the connection and try again.",
     "retry": "Try again",
-    "guilds_failed": "Couldn't load your Discord servers. Check the connection and try again."
+    "guilds_failed": "Couldn't load your Discord servers. Check the connection and try again.",
+    "api_key_pc_hint": "This is this PC's key. Every Discord server linked to this PC shares it.",
+    "channel_notify": "Alert channel",
+    "channel_gameChat": "Game chat channel",
+    "channel_board": "Status board channel",
+    "sleep_now": "Put to sleep now",
+    "awake": "Awake"
+  },
+  "logs": {
+    "title": "Past logs",
+    "export": "Export",
+    "more": "Load more",
+    "count": "{{count}} lines",
+    "empty": "No logs yet. They appear after the server runs once.",
+    "exported": "Log file downloaded.",
+    "exported_truncated": "The log was too long, so only the latest part was downloaded."
+  },
+  "words": {
+    "title": "Discord call words",
+    "save": "Save words",
+    "remove": "Remove {{word}}"
   }
 }

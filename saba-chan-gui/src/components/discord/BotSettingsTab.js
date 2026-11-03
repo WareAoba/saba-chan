@@ -8,6 +8,9 @@ import { Icon } from '../Icon';
 import { SabaSpinner, SabaToggle } from '../ui/SabaUI';
 import { Segmented } from '../ui/StatusChip';
 import { defaultPrefix, prefixProblems } from './prefixes';
+import { DEFAULT_BEDTIME, HALF_HOURS, SLEEP_FEATURES } from './sleep';
+
+export { SLEEP_FEATURES };
 import { TagInput } from './TagInput';
 
 export const botSettingsAvailable = () => Boolean(window.api?.discordSettingsGet && window.api?.discordSettingsSet);
@@ -29,16 +32,6 @@ export const TTS_LIMITS = { chars: 40, perMinute: 400 };
 
 /** 되묻기 단계 (데몬 `CONFIRM_LEVELS`): 모두 / 주의 이상 / 위험만 / 묻지 않음 */
 export const CONFIRM_LEVELS = ['all', 'caution', 'danger', 'none'];
-
-/** 코코낸내 동안 끌 수 있는 기능 묶음 (데몬 discord.rs `SLEEP_FEATURES`) */
-export const SLEEP_FEATURES = ['commands', 'llm', 'music', 'tts', 'extras'];
-/** 자동 코코낸내를 켤 때 처음 시각 */
-const DEFAULT_BEDTIME = { start: '01:00', end: '08:00' };
-/** 고를 수 있는 시각 — 30분 단위 (CLI 로 다른 시각을 저장했으면 그 시각도 보인다) */
-const HALF_HOURS = Array.from(
-    { length: 48 },
-    (_, i) => `${String(Math.floor(i / 2)).padStart(2, '0')}:${i % 2 ? '30' : '00'}`,
-);
 
 const failed = (res) => !res || res.success === false || Boolean(res.error_code);
 

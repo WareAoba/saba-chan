@@ -23,6 +23,12 @@ const ALLOWED = new Set([
     '@gui/utils/installFields',
     // 권한 단계 계산과 사다리 편집 (화면 없는 순수 함수)
     '@gui/components/discord/levels',
+    // 인스턴스 낱말 초안과 검사 오류 나누기 (화면 없는 순수 함수)
+    '@gui/components/discord/instanceWords',
+    // 디스코드 서버별 보일 서버 규칙 (GUI 노드 인스턴스 탭과 같은 순수 함수)
+    '@gui/components/discord/nodePermissions',
+    // 코코낸내 기능 묶음·시각 (GUI 봇 설정과 같은 상수)
+    '@gui/components/discord/sleep',
     '@gui/styles/tokens.css',
     // 아이콘은 GUI 와 같은 것을 쓴다 (화면이 아니라 그림 하나)
     '@gui/components/Icon',
