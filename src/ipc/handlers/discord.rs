@@ -150,8 +150,12 @@ pub const TTS_AUTO_CHANNELS_MAX: usize = 10;
 
 /// 디스코드 ID(스노플레이크) 목록 — 겹치면 하나로, 틀린 값이나 한도를 넘으면 `None`
 fn snowflakes(v: &Value, max: usize) -> Option<Vec<String>> {
+    let ids = v.as_array()?;
+    if ids.len() > max * 4 {
+        return None;
+    }
     let mut out: Vec<String> = Vec::new();
-    for id in v.as_array()? {
+    for id in ids {
         let id = id.as_str().filter(|s| (17..=20).contains(&s.len()) && s.bytes().all(|b| b.is_ascii_digit()))?;
         if !out.iter().any(|o| o == id) {
             out.push(id.to_string());

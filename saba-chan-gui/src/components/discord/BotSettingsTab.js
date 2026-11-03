@@ -578,7 +578,7 @@ function AutoChannelsField({ guildId, value, locked, onChange }) {
                             disabled={locked || (!value.includes(c.id) && value.length >= TTS_AUTO_CHANNELS_MAX)}
                             onClick={() => toggle(c.id)}
                         >
-                            {c.name}
+                            {c.category ? `${c.name} · ${c.category}` : c.name}
                         </button>
                     ))}
                 </fieldset>

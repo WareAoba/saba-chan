@@ -192,7 +192,12 @@ pub async fn run(ctx: &Ctx, cmd: BotCmd) -> Result<()> {
             let behavior = TtsBehavior {
                 voice_chat_only,
                 keep_read,
-                auto_channels: if no_auto_channels { Some(Vec::new()) } else { auto_channels },
+                // "1, 2" 처럼 쉼표 뒤 띄어 쓴 것도 받는다
+                auto_channels: if no_auto_channels {
+                    Some(Vec::new())
+                } else {
+                    auto_channels.map(|ids| ids.iter().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect())
+                },
             };
             let patch = tts_patch(volume, speed, pitch, names.as_deref(), &behavior);
             discord_settings(ctx, &resolve::guild(ctx, guild.as_deref()).await?, patch).await
