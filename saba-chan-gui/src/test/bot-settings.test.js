@@ -188,6 +188,39 @@ describe('디스코드 봇 설정 탭', () => {
         expect(window.api.discordSettingsSet).toHaveBeenLastCalledWith('g1', { tts: { names: 'never' } });
     });
 
+    it('읽어주기 동작: 음성 채널 채팅에서만·읽은 글 남기기는 그 키만, 늘 읽을 음성 채널은 목록 통째로 보낸다', async () => {
+        const saved = { ...base, tts: { ...base.tts, autoChannels: ['v1'] } };
+        window.api.discordSettingsGet = vi.fn().mockResolvedValue(saved);
+        window.api.discordSettingsSet = vi
+            .fn()
+            .mockResolvedValue({ success: true, settings: saved, sync: { ok: true } });
+        window.api.relayNodeChannels = vi.fn().mockResolvedValue({
+            voiceChannels: [
+                { id: 'v1', name: 'Lounge', category: null },
+                { id: 'v2', name: 'Games', category: null },
+            ],
+        });
+        try {
+            render(<BotSettingsTab node={node} section="tts" />);
+            await flush();
+            fireEvent.click(screen.getByRole('checkbox', { name: 'Only in voice channel chat' }));
+            await flush();
+            expect(window.api.discordSettingsSet).toHaveBeenLastCalledWith('g1', { tts: { voiceChatOnly: true } });
+            fireEvent.click(screen.getByRole('checkbox', { name: 'Keep read messages' }));
+            await flush();
+            expect(window.api.discordSettingsSet).toHaveBeenLastCalledWith('g1', { tts: { keepRead: true } });
+            expect(window.api.relayNodeChannels).toHaveBeenCalledWith('g1');
+            expect(screen.getByRole('button', { name: 'Lounge' })).toHaveAttribute('aria-pressed', 'true');
+            fireEvent.click(screen.getByRole('button', { name: 'Games' }));
+            await flush();
+            expect(window.api.discordSettingsSet).toHaveBeenLastCalledWith('g1', {
+                tts: { autoChannels: ['v1', 'v2'] },
+            });
+        } finally {
+            delete window.api.relayNodeChannels;
+        }
+    });
+
     it('relay에 못 보냈으면 알리고, 거부되면 토스트로 알린다', async () => {
         window.showToast = vi.fn();
         window.api.discordSettingsGet = vi.fn().mockResolvedValue({ ...base, sync: { ok: false } });
