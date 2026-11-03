@@ -19,9 +19,15 @@ describe('릴레이 API (/relay/*)', () => {
         const relay = createRelay(session);
         await relay.modChannel('1', '2', { slowmode: 10 });
         await relay.modMute('1', '3', { duration: 'off' });
+        await relay.modSanction('1', '3', { kind: 'chat', duration: 60 });
+        await relay.modClearStop('1', '2');
+        await relay.modMembers('1');
         expect(session.request.mock.calls.map((c) => [c[0], c[1]])).toEqual([
             ['PATCH', '/relay/guilds/1/moderation/channels/2'],
             ['PUT', '/relay/guilds/1/moderation/mutes/3'],
+            ['PUT', '/relay/guilds/1/moderation/sanctions/3'],
+            ['DELETE', '/relay/guilds/1/moderation/channels/2/clear'],
+            ['GET', '/relay/guilds/1/moderation/members'],
         ]);
     });
 
