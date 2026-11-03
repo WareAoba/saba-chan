@@ -121,6 +121,15 @@ async fn help_lists_mounted_modules_with_aliases() {
     assert_eq!(run(&api, &settings(), "!saba help").await, out);
 }
 
+/// 문장 명령으로 못 하는 일(권한·언어·코코낸내·웹·업데이트)은 도움말이 슬래시 명령으로 안내한다. 서버가 없어도
+#[tokio::test]
+async fn help_points_to_slash_commands_for_what_sentences_cannot_do() {
+    let hint = Catalog::for_language("en").t("help.slash_hint", &[]);
+    assert_ne!(hint, "help.slash_hint");
+    assert!(run(&fixture(), &settings(), "help").await.ends_with(&hint));
+    assert!(run(&FakeDaemon::default(), &settings(), "help").await.ends_with(&hint));
+}
+
 #[tokio::test]
 async fn list_shows_status() {
     let out = run(&fixture(), &settings(), "list").await;

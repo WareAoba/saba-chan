@@ -202,6 +202,7 @@ pub async fn run(ctx: &Ctx, cmd: BotCmd) -> Result<()> {
             let patch = tts_patch(volume, speed, pitch, names.as_deref(), &behavior);
             discord_settings(ctx, &resolve::guild(ctx, guild.as_deref()).await?, patch).await
         }
+        BotCmd::BigEmoji { guild, on, off } => discord_settings(ctx, &resolve::guild(ctx, guild.as_deref()).await?, big_emoji_patch(on, off)).await,
         BotCmd::Confirm { guild, direct, chatbot } => confirm(ctx, &resolve::guild(ctx, guild.as_deref()).await?, direct, chatbot).await,
         BotCmd::Invite => {
             let cfg = ctx.api.bot_config().await?;
@@ -833,6 +834,11 @@ fn sleep_patch(block: Option<Vec<String>>, bedtime: Option<String>, no_bedtime: 
     Ok(if patch.is_empty() { Value::Null } else { Value::Object(patch) })
 }
 
+/// 큰 이모지 켜기·끄기 (릴레이가 가진 길드 설정, 데몬이 넘긴다). 둘 다 없으면 보기만
+fn big_emoji_patch(on: bool, off: bool) -> Option<Value> {
+    (on || off).then(|| json!({ "bigEmoji": on }))
+}
+
 fn discord_rows(r: &Value) -> Vec<(String, String)> {
     let on_off = |v: Option<bool>| if v == Some(true) { t!("bot.on") } else { t!("bot.off") };
     let locale = s(r, "locale");
@@ -858,6 +864,10 @@ fn discord_rows(r: &Value) -> Vec<(String, String)> {
         rows.push((t!("bot.sleep_blocks"), if names.is_empty() { t!("bot.sleep_blocks_none") } else { names.join(", ") }));
         let bedtime = r.get("bedtime").filter(|b| b.is_object());
         rows.push((t!("bot.bedtime"), bedtime.map_or_else(|| t!("bot.off"), |b| format!("{} ~ {}", s(b, "start"), s(b, "end")))));
+    }
+    // 큰 이모지: 릴레이가 가진 값이라 릴레이가 답하지 못하면 없다
+    if let Some(on) = r.get("bigEmoji").and_then(Value::as_bool) {
+        rows.push((t!("bot.big_emoji"), on_off(Some(on))));
     }
     rows.extend([
         (t!("bot.music"), on_off(music("enabled").and_then(Value::as_bool))),
@@ -1286,6 +1296,19 @@ mod tests {
         assert_eq!(row(&r, "bot.slash_prefix"), Some(t!("bot.off")));
         assert_eq!(row(&r, "bot.slash_root_name"), Some(t!("bot.slash_root_name_word")));
         assert_eq!(row(&r, "bot.private_queries"), Some(t!("bot.on")));
+    }
+
+    /// 큰 이모지 (GUI 봇 설정 탭과 같다): 릴레이가 가진 값이라, 릴레이가 답하지 못해 값이 없으면 줄을 두지 않는다
+    #[test]
+    fn big_emoji_is_shown_and_changed_like_the_gui() {
+        crate::i18n::init("ko");
+        let row = |r: &Value, k: &str| discord_rows(r).into_iter().find(|(name, _)| *name == t!(k)).map(|(_, v)| v);
+        assert_eq!(row(&json!({ "bigEmoji": true, "music": {} }), "bot.big_emoji"), Some(t!("bot.on")));
+        assert_eq!(row(&json!({ "bigEmoji": false, "music": {} }), "bot.big_emoji"), Some(t!("bot.off")));
+        assert_eq!(row(&json!({ "music": {} }), "bot.big_emoji"), None);
+        assert_eq!(big_emoji_patch(true, false), Some(json!({ "bigEmoji": true })));
+        assert_eq!(big_emoji_patch(false, true), Some(json!({ "bigEmoji": false })));
+        assert_eq!(big_emoji_patch(false, false), None);
     }
 
     /// 코코낸내 (GUI 봇 설정 탭과 같다): 잠든 동안 끄는 기능, 착한 어린이(자동 코코낸내) 시각

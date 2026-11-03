@@ -202,7 +202,8 @@
     "sleep_blocks": "Off while asleep",
     "sleep_blocks_none": "None",
     "bedtime": "Good kid",
-    "bedtime_format": "Write --bedtime as fall-asleep time-wake-up time, like 01:00-08:00."
+    "bedtime_format": "Write --bedtime as fall-asleep time-wake-up time, like 01:00-08:00.",
+    "big_emoji": "Big emoji"
   },
   "col": {
     "players": "Players",
@@ -824,7 +825,8 @@
       "server.port-check": "Check whether friends can reach this server from the internet (port forwarding)",
       "bot.notice": "Post in the Discord server's alert channel when Saba-chan starts a server (off by default). No server: show. Server with `--on`/`--off`: change",
       "bot.confirm": "When the bot asks with a Discord button before running (all, caution, danger, none). No options: show",
-      "bot.tts": "Reading Saba-chan voice of a Discord server (volume, speed, pitch). No options: show"
+      "bot.tts": "Reading Saba-chan voice of a Discord server (volume, speed, pitch). No options: show",
+      "bot.big-emoji": "Big emoji (a lone custom emoji is shown large) on a Discord server. No options: show"
     },
     "arg": {
       "module.maker.game": "Game to put in the first prompt",
@@ -914,6 +916,8 @@
       "bot.tts.volume": "Volume in percent (10-150)",
       "bot.tts.speed": "Speaking speed (0.8-1.5, e.g. 1.2)",
       "bot.tts.pitch": "Pitch in semitones (-6 to 6)",
+      "bot.big-emoji.on": "Turn big emoji on",
+      "bot.big-emoji.off": "Turn big emoji off",
       "bot.tts.voice_chat_only": "Read your messages only in the chat of the voice channel you are in (on|off, game chat channel excepted)",
       "bot.tts.keep_read": "Keep read messages instead of deleting them (on|off)",
       "bot.tts.auto_channels": "Voice channel IDs to always read (comma-separated, up to 10): with 2+ people inside, the bot joins and reads its chat",

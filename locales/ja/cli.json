@@ -202,7 +202,8 @@
     "sleep_blocks": "Off while asleep",
     "sleep_blocks_none": "None",
     "bedtime": "Good kid",
-    "bedtime_format": "Write --bedtime as fall-asleep time-wake-up time, like 01:00-08:00."
+    "bedtime_format": "Write --bedtime as fall-asleep time-wake-up time, like 01:00-08:00.",
+    "big_emoji": "大きい絵文字"
   },
   "col": {
     "players": "接続者",
@@ -971,7 +972,8 @@
       "config.browse": "デーモンのPCのフォルダーとファイルを表示 (--daemonならそのリモートPC)。パスがなければドライブか /",
       "bot.notice": "サバちゃんがサーバーを起動したらDiscordサーバーの通知チャンネルに知らせる（既定はオフ）。サーバーなし: 表示、サーバーと`--on`・`--off`: 変更",
       "bot.confirm": "実行前にボットがDiscordのボタンで確認する段階 (all・caution・danger・none)。オプションなし: 表示",
-      "bot.tts": "Reading Saba-chan voice of a Discord server (volume, speed, pitch). No options: show"
+      "bot.tts": "Reading Saba-chan voice of a Discord server (volume, speed, pitch). No options: show",
+      "bot.big-emoji": "Discordサーバーの大きい絵文字(カスタム絵文字だけのメッセージを大きく表示)。オプションなしで表示"
     },
     "arg": {
       "module.maker.game": "最初の依頼に入れるゲーム名",
@@ -1158,6 +1160,8 @@
       "bot.tts.volume": "Volume in percent (10-150)",
       "bot.tts.speed": "Speaking speed (0.8-1.5, e.g. 1.2)",
       "bot.tts.pitch": "Pitch in semitones (-6 to 6)",
+      "bot.big-emoji.on": "大きい絵文字をオン",
+      "bot.big-emoji.off": "大きい絵文字をオフ",
       "bot.tts.voice_chat_only": "Read your messages only in the chat of the voice channel you are in (on|off, game chat channel excepted)",
       "bot.tts.keep_read": "Keep read messages instead of deleting them (on|off)",
       "bot.tts.auto_channels": "Voice channel IDs to always read (comma-separated, up to 10): with 2+ people inside, the bot joins and reads its chat",

@@ -12,7 +12,8 @@
     "module_title": "**{{module}}-Befehle**",
     "available_commands": "{{commands}}",
     "usage_format": "`{{prefix}} <Modul> <Befehl>`",
-    "modules_header": "📦 **Module:**"
+    "modules_header": "📦 **Module:**",
+    "slash_hint": "💡 Neustart, Backups und Portprüfung gehen wie `<Server> Neustart`. Rechte, Sprache, Schlafmodus, Web und Updates sind Slash-Befehle (`/`)."
   },
   "modules": {
     "help_start": "Server starten",

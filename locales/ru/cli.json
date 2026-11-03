@@ -202,7 +202,8 @@
     "sleep_blocks": "Off while asleep",
     "sleep_blocks_none": "None",
     "bedtime": "Good kid",
-    "bedtime_format": "Write --bedtime as fall-asleep time-wake-up time, like 01:00-08:00."
+    "bedtime_format": "Write --bedtime as fall-asleep time-wake-up time, like 01:00-08:00.",
+    "big_emoji": "Большие эмодзи"
   },
   "col": {
     "players": "Игроки",
@@ -839,7 +840,8 @@
       "config.browse": "Папки и файлы на ПК демона (с --daemon — на удалённом ПК). Без пути — диски или /",
       "bot.notice": "Сообщать в канал оповещений Discord-сервера, когда Saba-chan запускает сервер (по умолчанию выключено). Без сервера: показать. Сервер с `--on`/`--off`: изменить",
       "bot.confirm": "Когда бот спрашивает кнопкой Discord перед запуском (all, caution, danger, none). Без параметров: показать",
-      "bot.tts": "Reading Saba-chan voice of a Discord server (volume, speed, pitch). No options: show"
+      "bot.tts": "Reading Saba-chan voice of a Discord server (volume, speed, pitch). No options: show",
+      "bot.big-emoji": "Большие эмодзи (одиночный свой эмодзи показывается крупно) на сервере Discord. Без параметров: показать"
     },
     "arg": {
       "module.maker.game": "Игра для первого запроса",
@@ -945,6 +947,8 @@
       "bot.tts.volume": "Volume in percent (10-150)",
       "bot.tts.speed": "Speaking speed (0.8-1.5, e.g. 1.2)",
       "bot.tts.pitch": "Pitch in semitones (-6 to 6)",
+      "bot.big-emoji.on": "Включить большие эмодзи",
+      "bot.big-emoji.off": "Выключить большие эмодзи",
       "bot.tts.voice_chat_only": "Read your messages only in the chat of the voice channel you are in (on|off, game chat channel excepted)",
       "bot.tts.keep_read": "Keep read messages instead of deleting them (on|off)",
       "bot.tts.auto_channels": "Voice channel IDs to always read (comma-separated, up to 10): with 2+ people inside, the bot joins and reads its chat",

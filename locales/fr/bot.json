@@ -12,7 +12,8 @@
     "module_title": "**Commandes {{module}}**",
     "available_commands": "{{commands}}",
     "usage_format": "`{{prefix}} <module> <commande>`",
-    "modules_header": "📦 **Modules :**"
+    "modules_header": "📦 **Modules :**",
+    "slash_hint": "💡 Redémarrage, sauvegardes et vérification des ports s'utilisent comme `<serveur> redémarrer`. Permissions, langue, sommeil, web et mises à jour passent par les commandes slash (`/`)."
   },
   "modules": {
     "help_start": "Démarrer le serveur",

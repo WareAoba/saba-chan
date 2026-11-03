@@ -202,7 +202,8 @@
     "sleep_blocks": "Off while asleep",
     "sleep_blocks_none": "None",
     "bedtime": "Good kid",
-    "bedtime_format": "Write --bedtime as fall-asleep time-wake-up time, like 01:00-08:00."
+    "bedtime_format": "Write --bedtime as fall-asleep time-wake-up time, like 01:00-08:00.",
+    "big_emoji": "Emojis grandes"
   },
   "col": {
     "players": "Jugadores",
@@ -839,7 +840,8 @@
       "config.browse": "Carpetas y archivos en el PC del daemon (con --daemon, el PC remoto). Sin ruta, unidades o /",
       "bot.notice": "Avisar en el canal de avisos del servidor de Discord cuando Saba-chan inicia un servidor (desactivado por defecto). Sin servidor: ver. Servidor con `--on`/`--off`: cambiar",
       "bot.confirm": "Cuándo pregunta el bot con un botón de Discord antes de ejecutar (all, caution, danger, none). Sin opciones: mostrar",
-      "bot.tts": "Reading Saba-chan voice of a Discord server (volume, speed, pitch). No options: show"
+      "bot.tts": "Reading Saba-chan voice of a Discord server (volume, speed, pitch). No options: show",
+      "bot.big-emoji": "Emojis grandes (un emoji personalizado solo se muestra en grande) en un servidor de Discord. Sin opciones: mostrar"
     },
     "arg": {
       "module.maker.game": "Juego para la primera petición",
@@ -945,6 +947,8 @@
       "bot.tts.volume": "Volume in percent (10-150)",
       "bot.tts.speed": "Speaking speed (0.8-1.5, e.g. 1.2)",
       "bot.tts.pitch": "Pitch in semitones (-6 to 6)",
+      "bot.big-emoji.on": "Activar emojis grandes",
+      "bot.big-emoji.off": "Desactivar emojis grandes",
       "bot.tts.voice_chat_only": "Read your messages only in the chat of the voice channel you are in (on|off, game chat channel excepted)",
       "bot.tts.keep_read": "Keep read messages instead of deleting them (on|off)",
       "bot.tts.auto_channels": "Voice channel IDs to always read (comma-separated, up to 10): with 2+ people inside, the bot joins and reads its chat",

@@ -1112,6 +1112,16 @@ pub enum BotCmd {
         #[arg(long)]
         no_bedtime: bool,
     },
+    /// Big emoji (a lone custom emoji is shown large) on a Discord server. No options: show
+    BigEmoji {
+        guild: Option<String>,
+        /// Turn big emoji on
+        #[arg(long, conflicts_with = "off")]
+        on: bool,
+        /// Turn big emoji off
+        #[arg(long)]
+        off: bool,
+    },
     /// Singing Saba-chan settings of a Discord server. No options: show
     Music {
         guild: Option<String>,
