@@ -198,7 +198,8 @@
     "sleep_blocks": "Off while asleep",
     "sleep_blocks_none": "None",
     "bedtime": "Good kid",
-    "bedtime_format": "Write --bedtime as fall-asleep time-wake-up time, like 01:00-08:00."
+    "bedtime_format": "Write --bedtime as fall-asleep time-wake-up time, like 01:00-08:00.",
+    "big_emoji": "Большие эмодзи"
   },
   "col": {
     "players": "Игроки",
@@ -835,7 +836,8 @@
       "config.browse": "Папки и файлы на ПК демона (с --daemon — на удалённом ПК). Без пути — диски или /",
       "bot.notice": "Сообщать в канал оповещений Discord-сервера, когда Saba-chan запускает сервер (по умолчанию выключено). Без сервера: показать. Сервер с `--on`/`--off`: изменить",
       "bot.confirm": "Когда бот спрашивает кнопкой Discord перед запуском (all, caution, danger, none). Без параметров: показать",
-      "bot.tts": "Reading Saba-chan voice of a Discord server (volume, speed, pitch). No options: show"
+      "bot.tts": "Reading Saba-chan voice of a Discord server (volume, speed, pitch). No options: show",
+      "bot.big-emoji": "Большие эмодзи (одиночный свой эмодзи показывается крупно) на сервере Discord. Без параметров: показать"
     },
     "arg": {
       "module.maker.game": "Игра для первого запроса",
@@ -940,7 +942,9 @@
       "bot.translate.off": "Show only the names in the module",
       "bot.tts.volume": "Volume in percent (10-150)",
       "bot.tts.speed": "Speaking speed (0.8-1.5, e.g. 1.2)",
-      "bot.tts.pitch": "Pitch in semitones (-6 to 6)"
+      "bot.tts.pitch": "Pitch in semitones (-6 to 6)",
+      "bot.big-emoji.on": "Включить большие эмодзи",
+      "bot.big-emoji.off": "Выключить большие эмодзи"
     },
     "after": "Имена можно сокращать (напр. start pal). Без аргументов в терминале открывается полноэкранное меню (SABA_NO_TUI=1: интерактивная оболочка).\nВ скриптах используйте --json и --yes. Коды выхода: 0 успех · 1 ошибка · 2 неверное использование · 3 демон недоступен · 4 не найдено · 130 отменено"
   },

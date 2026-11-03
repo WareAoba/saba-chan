@@ -12,7 +12,8 @@
     "module_title": "**{{module}} Commands**",
     "available_commands": "{{commands}}",
     "usage_format": "`{{prefix}} <module> <command>`",
-    "modules_header": "📦 **Modules:**"
+    "modules_header": "📦 **Modules:**",
+    "slash_hint": "💡 Restart, backups and the port check work like `<server> restart`. Permissions, language, sleep, web and updates are slash commands (`/`)."
   },
   "modules": {
     "help_start": "Start server",

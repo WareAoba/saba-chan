@@ -390,9 +390,13 @@ impl<'a, D: DaemonApi> Ctx<'a, D> {
         }
 
         let mut out = format!("📖 **{}**\n{}\n", prefix, self.t("help.usage_format", &[("prefix", prefix)]));
+        // 문장 명령으로 못 하는 일(권한·언어·웹 등)은 슬래시 명령으로 안내한다
+        let hint = self.t("help.slash_hint", &[]);
         if mounted.is_empty() {
             out.push('\n');
             out.push_str(&self.t("help.no_modules", &[]));
+            out.push_str("\n\n");
+            out.push_str(&hint);
             return out;
         }
         out.push('\n');
@@ -406,6 +410,8 @@ impl<'a, D: DaemonApi> Ctx<'a, D> {
                 out.push_str(&format!("• **{}** ({})\n", m, aliases.join(", ")));
             }
         }
+        out.push('\n');
+        out.push_str(&hint);
         out
     }
 
@@ -557,7 +563,7 @@ impl<'a, D: DaemonApi> Ctx<'a, D> {
                     return Err(Reply::unrecognized(
                         "UNKNOWN_COMMAND",
                         format!("{}\n\n{}", self.t("errors.command_not_found", &[]), help),
-                        json!({ "command": cmd_alias, "name": server.name, "help": help }),
+                        json!({ "command": cmd_alias, "name": server.name, "instance": server.id, "extra": extra, "help": help }),
                     ));
                 }
             },

@@ -198,7 +198,8 @@
     "sleep_blocks": "Off while asleep",
     "sleep_blocks_none": "None",
     "bedtime": "Good kid",
-    "bedtime_format": "Write --bedtime as fall-asleep time-wake-up time, like 01:00-08:00."
+    "bedtime_format": "Write --bedtime as fall-asleep time-wake-up time, like 01:00-08:00.",
+    "big_emoji": "大表情"
   },
   "col": {
     "players": "線上玩家",
@@ -835,7 +836,8 @@
       "config.browse": "查看常駐程式所在電腦的資料夾和檔案（加 --daemon 時為那台遠端電腦）。不給路徑則顯示磁碟機或 /",
       "bot.notice": "Saba-chan 啟動伺服器時在 Discord 伺服器的通知頻道告知（預設關閉）。不帶伺服器：查看；伺服器加 `--on`/`--off`：變更",
       "bot.confirm": "機器人在執行前用 Discord 按鈕詢問的等級 (all、caution、danger、none)。不加選項: 檢視",
-      "bot.tts": "Reading Saba-chan voice of a Discord server (volume, speed, pitch). No options: show"
+      "bot.tts": "Reading Saba-chan voice of a Discord server (volume, speed, pitch). No options: show",
+      "bot.big-emoji": "Discord 伺服器的大表情(只傳一個自訂表情時放大顯示)。不帶選項則查看"
     },
     "arg": {
       "module.maker.game": "第一個請求中的遊戲名稱",
@@ -940,7 +942,9 @@
       "bot.translate.off": "Show only the names in the module",
       "bot.tts.volume": "Volume in percent (10-150)",
       "bot.tts.speed": "Speaking speed (0.8-1.5, e.g. 1.2)",
-      "bot.tts.pitch": "Pitch in semitones (-6 to 6)"
+      "bot.tts.pitch": "Pitch in semitones (-6 to 6)",
+      "bot.big-emoji.on": "開啟大表情",
+      "bot.big-emoji.off": "關閉大表情"
     },
     "after": "名稱可以只寫一部分（例如 start pal）。在終端機中不帶參數執行會開啟全螢幕選單(SABA_NO_TUI=1 時為互動式 shell)。\n在指令碼中請使用 --json 和 --yes。結束代碼：0 成功 · 1 失敗 · 2 用法錯誤 · 3 無法連線常駐程式 · 4 找不到 · 130 已取消"
   },

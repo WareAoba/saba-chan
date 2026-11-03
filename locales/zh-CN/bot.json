@@ -12,7 +12,8 @@
     "module_title": "**{{module}} 命令**",
     "available_commands": "{{commands}}",
     "usage_format": "`{{prefix}} <模块> <命令>`",
-    "modules_header": "📦 **模块:**"
+    "modules_header": "📦 **模块:**",
+    "slash_hint": "💡 重启、备份和端口检查可以像 `<服务器> 重启` 这样使用。权限、语言、睡眠、网页和更新请用斜杠命令(`/`)。"
   },
   "modules": {
     "help_start": "启动服务器",

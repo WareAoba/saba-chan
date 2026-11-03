@@ -198,7 +198,8 @@
     "sleep_blocks": "Off while asleep",
     "sleep_blocks_none": "None",
     "bedtime": "Good kid",
-    "bedtime_format": "Write --bedtime as fall-asleep time-wake-up time, like 01:00-08:00."
+    "bedtime_format": "Write --bedtime as fall-asleep time-wake-up time, like 01:00-08:00.",
+    "big_emoji": "Emojis grandes"
   },
   "col": {
     "players": "Jogadores",
@@ -835,7 +836,8 @@
       "config.browse": "Pastas e arquivos no PC do daemon (com --daemon, o PC remoto). Sem caminho, unidades ou /",
       "bot.notice": "Avisar no canal de alertas do servidor do Discord quando a Saba-chan inicia um servidor (desligado por padrão). Sem servidor: ver. Servidor com `--on`/`--off`: mudar",
       "bot.confirm": "Quando o bot pergunta com um botão do Discord antes de executar (all, caution, danger, none). Sem opções: mostrar",
-      "bot.tts": "Reading Saba-chan voice of a Discord server (volume, speed, pitch). No options: show"
+      "bot.tts": "Reading Saba-chan voice of a Discord server (volume, speed, pitch). No options: show",
+      "bot.big-emoji": "Emojis grandes (um emoji personalizado sozinho aparece grande) em um servidor do Discord. Sem opções: mostrar"
     },
     "arg": {
       "module.maker.game": "Jogo para o primeiro pedido",
@@ -940,7 +942,9 @@
       "bot.translate.off": "Show only the names in the module",
       "bot.tts.volume": "Volume in percent (10-150)",
       "bot.tts.speed": "Speaking speed (0.8-1.5, e.g. 1.2)",
-      "bot.tts.pitch": "Pitch in semitones (-6 to 6)"
+      "bot.tts.pitch": "Pitch in semitones (-6 to 6)",
+      "bot.big-emoji.on": "Ativar emojis grandes",
+      "bot.big-emoji.off": "Desativar emojis grandes"
     },
     "after": "Os nomes podem ser parciais (ex.: start pal). Sem argumentos em um terminal, abre o menu em tela cheia (SABA_NO_TUI=1: o shell interativo).\nEm scripts, use --json e --yes. Códigos de saída: 0 ok · 1 falha · 2 uso · 3 daemon inacessível · 4 não encontrado · 130 cancelado"
   },

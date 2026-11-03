@@ -12,7 +12,8 @@
     "module_title": "**Comandos {{module}}**",
     "available_commands": "{{commands}}",
     "usage_format": "`{{prefix}} <módulo> <comando>`",
-    "modules_header": "📦 **Módulos:**"
+    "modules_header": "📦 **Módulos:**",
+    "slash_hint": "💡 Reiniciar, backups e a verificação de portas funcionam como `<servidor> reiniciar`. Permissões, idioma, modo dormir, web e atualizações são comandos de barra (`/`)."
   },
   "modules": {
     "help_start": "Iniciar servidor",

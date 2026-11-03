@@ -1267,6 +1267,27 @@ async fn a_sentence_with_nothing_to_run_is_answered_without_a_plan() {
     assert!(unknown.get("planId").is_none());
 }
 
+/// 모듈 명령이 아닌 낱말은 그 서버의 디스코드 인스턴스 액션 이름으로 찾는다 (슬래시 서버 루트와 같은 명령)
+#[tokio::test]
+async fn a_sentence_naming_an_instance_action_plans_that_action() {
+    let (state, id, _tmp) = server().await;
+    open_everything(&state).await;
+    let caller = relay("owner", false);
+    for (text, action) in [("srv 재시작", "server.restart"), ("srv restart", "server.restart"), ("srv 백업 목록", "backup.list"), ("srv 백업", "backup.create")] {
+        let planned = plan_text(&state, text, &caller).await.unwrap();
+        assert_eq!((planned["actionId"].clone(), planned["instance"].clone()), (json!(action), json!(id)), "{text}: {planned}");
+    }
+    // 디스코드에 내보내지 않는 액션, 위험 액션, 남는 낱말은 그대로 모르는 명령이다
+    for text in ["srv 콘솔끝부분", "srv 백업복원", "srv 재시작 지금"] {
+        let unknown = plan_text(&state, text, &caller).await.unwrap();
+        assert_eq!(unknown["code"], "UNKNOWN_COMMAND", "{text}: {unknown}");
+    }
+    // 확인 버튼을 눌러 다시 보낸 문장은 묻지 않는다
+    set_confirm(&state, "all", "all").await;
+    assert_eq!(plan_text(&state, "srv 재시작", &caller).await.unwrap()["needsConfirm"], true);
+    assert_eq!(plan_text(&state, "srv 재시작", &pressed("owner")).await.unwrap()["needsConfirm"], false);
+}
+
 /// 길드 되묻기 단계: 직접 요청은 디스코드 설정(`discord.confirmLevel`), 말하는 사바쨩은 챗봇 설정(`confirmLevel`)
 async fn set_confirm(state: &IPCServer, direct: &str, chatbot: &str) {
     set_node(state, json!({ "ownerDiscordId": "owner", "preset": "loose", "chatbotCap": 2, "defaultLevel": 2, "discord": { "confirmLevel": direct } })).await;

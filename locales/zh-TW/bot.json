@@ -12,7 +12,8 @@
     "module_title": "**{{module}} 命令**",
     "available_commands": "{{commands}}",
     "usage_format": "`{{prefix}} <模組> <命令>`",
-    "modules_header": "📦 **模組:**"
+    "modules_header": "📦 **模組:**",
+    "slash_hint": "💡 重新啟動、備份和連接埠檢查可以像 `<伺服器> 重新啟動` 這樣使用。權限、語言、睡眠、網頁和更新請用斜線指令(`/`)。"
   },
   "modules": {
     "help_start": "啟動伺服器",

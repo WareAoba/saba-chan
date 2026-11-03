@@ -12,7 +12,8 @@
     "module_title": "**{{module}} 명령어**",
     "available_commands": "{{commands}}",
     "usage_format": "`{{prefix}} <모듈> <명령어>`",
-    "modules_header": "📦 **모듈:**"
+    "modules_header": "📦 **모듈:**",
+    "slash_hint": "💡 재시작·백업·포트포워딩 확인은 `<서버> 재시작`처럼 쓰고, 권한·언어·코코낸내·웹·업데이트는 슬래시 명령(`/`)으로 하세요."
   },
   "modules": {
     "help_start": "서버 시작",

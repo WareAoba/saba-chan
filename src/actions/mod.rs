@@ -1365,12 +1365,17 @@ fn new_plan_id() -> String {
 
 /// `POST /api/actions/:id/plan`: 검증과 요약만
 pub async fn plan(server: &IPCServer, id: &str, instance: Option<&str>, input: &Value, caller: &Caller) -> Result<Value, ActionError> {
+    plan_one(server, id, instance, input, caller, false).await
+}
+
+/// `confirmed`: 요청자가 확인 버튼을 눌러 다시 보낸 요청이라 묻지 않는다 (문장 명령)
+async fn plan_one(server: &IPCServer, id: &str, instance: Option<&str>, input: &Value, caller: &Caller, confirmed: bool) -> Result<Value, ActionError> {
     let r = resolve(server, id, instance, input, caller).await?;
     authorize(server, &r, caller).await?;
     refuse_restore_while_running(server, &r).await?;
     let summary = summarize(server, &r, &caller.locale).await;
     let plan_id = new_plan_id();
-    let confirm = needs_confirm(server, &r.id, r.instance.as_deref(), r.kind, &r.risk, caller).await;
+    let confirm = !confirmed && needs_confirm(server, &r.id, r.instance.as_deref(), r.kind, &r.risk, caller).await;
     let view = json!({
         "success": true,
         "planId": plan_id,
@@ -1393,11 +1398,17 @@ pub async fn plan_text(server: &IPCServer, text: &str, caller: &Caller) -> Resul
     let (settings, cat) = chat_settings(server, caller).await;
     let target = match crate::chat::interpret(server, &settings, &cat, &req).await {
         crate::chat::Interpreted::Run(target) => target,
-        crate::chat::Interpreted::Reply(reply) => return Ok(chat_json(reply, true, caller)),
+        crate::chat::Interpreted::Reply(reply) => {
+            // 모듈 명령이 아닌 낱말: 그 서버의 인스턴스 액션 이름이면 그 액션의 계획 (슬래시 서버 루트와 같은 명령)
+            if let Some((id, instance)) = named_action(&reply, caller.surface) {
+                return plan_one(server, id, Some(&instance), &json!({}), caller, confirmed_by_requester(caller)).await;
+            }
+            return Ok(chat_json(reply, true, caller));
+        }
     };
     let plan_id = new_plan_id();
     // 요청자가 확인 버튼을 눌러 다시 보낸 문장은 묻지 않는다
-    let confirmed = caller.remote.as_ref().is_some_and(|w| w.confirmed_by_requester());
+    let confirmed = confirmed_by_requester(caller);
     let confirm = !confirmed && {
         let id = target.action_id();
         let kind = ACTIONS.iter().find(|d| d.id == id).map_or(Kind::Command, |d| d.kind);
@@ -1415,6 +1426,35 @@ pub async fn plan_text(server: &IPCServer, text: &str, caller: &Caller) -> Resul
     });
     store_plan(plan_id, StoredPlan::new(PlanBody::Text(Box::new(TextPlan { text: text.to_string(), target: *target })), caller, confirm));
     Ok(view)
+}
+
+fn confirmed_by_requester(caller: &Caller) -> bool {
+    caller.remote.as_ref().is_some_and(|w| w.confirmed_by_requester())
+}
+
+/// 채팅 처리기가 모르는 명령이라고 한 문장(`UNKNOWN_COMMAND`, 서버는 찾음)의 명령 낱말이 인스턴스 액션 이름이면 그 액션과 서버.
+/// 이름은 언어마다 짧은 이름·제목(띄어쓰기 무시)과 액션 id·그 끝 낱말이다. 이 표면에 내보낸 것, 입력이 필요 없는 것,
+/// 위험이 아닌 것만 고른다 (입력이 필요하거나 위험한 액션은 슬래시 서버 루트에서 고른다). 남는 낱말이 있으면 고르지 않는다
+fn named_action(reply: &crate::chat::Reply, surface: Surface) -> Option<(&'static str, String)> {
+    if reply.code != Some("UNKNOWN_COMMAND") {
+        return None;
+    }
+    let instance = reply.args.get("instance")?.as_str()?;
+    let command = reply.args.get("command")?.as_str()?;
+    let extra = reply.args.get("extra").and_then(Value::as_str).unwrap_or_default();
+    let fold = |s: &str| s.split_whitespace().collect::<String>().to_lowercase();
+    let want = fold(&format!("{command} {extra}"));
+    let cats: Vec<_> = crate::chat::i18n::languages().into_iter().map(catalog).collect();
+    let names = |d: &Def| {
+        let tail = d.id.rsplit('.').next().unwrap_or(d.id);
+        let texts = cats.iter().flat_map(|c| ["name", "title"].map(|k| translated(c, &format!("actions.{}.{}", d.id, k)))).flatten();
+        [d.id.to_string(), tail.to_string()].into_iter().chain(texts).collect::<Vec<_>>()
+    };
+    ACTIONS
+        .iter()
+        .filter(|d| d.instance && d.risk != "danger" && d.surfaces.contains(&surface) && d.fields.iter().all(|f| !f.required))
+        .find(|d| names(d).iter().any(|n| fold(n) == want))
+        .map(|d| (d.id, instance.to_string()))
 }
 
 /// 문장 계획 실행: 답은 문장 명령과 같다 (`text`). 시작했는데 이미 켜져 있었으면 `already_running`.
