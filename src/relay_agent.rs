@@ -1004,7 +1004,8 @@ impl Session {
                     }
                 }
             }
-            None => None,
+            // 길드 없는 요청(봇 DM `/설정`)은 릴레이가 확인한 이 PC의 주인(`hostOwnerDiscordId`)을 주인으로 본다
+            None => cmd.get("hostOwnerDiscordId").and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty()).map(str::to_string),
         };
         crate::chat::permissions::Requester {
             guild_id,
@@ -2304,6 +2305,23 @@ mod tests {
         let text = json!({ "action": "plan", "via": "mcp", "text": "srv start" });
         let r = session.handle_payload(&json!({ "id": "c9", "requestedBy": "u1", "hostOwnerDiscordId": "u1", "payload": text })).await;
         assert_eq!((r["success"].as_bool(), r["data"]["code"].as_str()), (Some(false), Some("invalid_input")), "{r:?}");
+    }
+
+    /// 봇 DM `/설정`: 길드 없는 디스코드 직접 요청은 요청자가 이 PC의 주인(`hostOwnerDiscordId`)일 때만 주인이다
+    #[tokio::test]
+    async fn guildless_discord_requests_are_the_owner_only_when_the_relay_says_so() {
+        let tmp = tempfile::tempdir().unwrap();
+        let session = test_session(&RelayAgent::new(), "http://127.0.0.1:9", "sbn_host.secret", tmp.path()).await;
+        let plan = json!({ "action": "plan", "via": "direct", "id": "chatbot.common.set", "input": { "model": "m1" } });
+        let ok = session.handle_payload(&json!({ "id": "c1", "requestedBy": "u1", "hostOwnerDiscordId": "u1", "payload": plan })).await;
+        assert_eq!((ok["success"].as_bool(), ok["data"]["actionId"].as_str()), (Some(true), Some("chatbot.common.set")), "{ok:?}");
+        for cmd in [
+            json!({ "id": "c2", "requestedBy": "u2", "hostOwnerDiscordId": "u1", "payload": plan }),
+            json!({ "id": "c3", "requestedBy": "u1", "payload": plan }),
+        ] {
+            let r = session.handle_payload(&cmd).await;
+            assert_eq!(r["data"]["code"], "PERMISSION_DENIED", "{cmd} → {r:?}");
+        }
     }
 
     /// 계획 뒤 바로 실행 (`autoRun`): 확인이 필요 없으면 실행 결과를, 확인이 필요하거나 `except`에 든 액션이면 계획을 준다
