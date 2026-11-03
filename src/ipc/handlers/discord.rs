@@ -402,7 +402,7 @@ impl GuildSettings {
 }
 
 /// 원본이 릴레이인 길드 설정 (데몬은 저장하지 않고 앱의 값을 릴레이에 그대로 넘긴다). 모두 참·거짓 값
-pub const RELAY_OWNED: [&str; 1] = ["bigEmoji"];
+pub const RELAY_OWNED: [&str; 3] = ["bigEmoji", "gameChatGuard", "gameChatClearOnStop"];
 
 /// (데몬이 맡는 키, 릴레이 원본 키)
 type SplitPatch = (Map<String, Value>, Map<String, Value>);
@@ -704,6 +704,10 @@ mod tests {
         assert_eq!(rest, patch(json!({ "locale": "ko" })));
         assert_eq!(owned, patch(json!({ "bigEmoji": true })));
         assert_eq!(split_relay_owned(&patch(json!({ "bigEmoji": "yes" }))).unwrap_err().0, "bigEmoji");
+        // 게임 채팅 채널 글 막기·꺼지면 채팅 지우기 (사용자 11-03)도 릴레이가 원본이다
+        let (rest, owned) = split_relay_owned(&patch(json!({ "gameChatGuard": true, "gameChatClearOnStop": false }))).unwrap();
+        assert!(rest.is_empty());
+        assert_eq!(owned, patch(json!({ "gameChatGuard": true, "gameChatClearOnStop": false })));
     }
 
     #[test]
