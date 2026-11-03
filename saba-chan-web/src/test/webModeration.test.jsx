@@ -168,6 +168,17 @@ describe('웹 서버 관리', () => {
         ]);
     });
 
+    it('시각 지정을 비워 두면 청소를 시작할 수 없다 (채널 전체가 지워지지 않게)', async () => {
+        await open();
+        fireEvent.click(screen.getByRole('button', { name: /# chat/ }));
+        fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Clear now…' }));
+        const sheet = within(screen.getByRole('dialog'));
+        fireEvent.click(sheet.getByRole('button', { name: 'Pick times' }));
+        expect(sheet.getByRole('button', { name: 'Start clearing' }).disabled).toBe(true);
+        fireEvent.change(sheet.getByLabelText('From'), { target: { value: '2026-11-01T20:00' } });
+        expect(sheet.getByRole('button', { name: 'Start clearing' }).disabled).toBe(false);
+    });
+
     it('지금 청소: 대상·개수로 지우고, 이어 지우는 채널은 진행과 중지를 보인다', async () => {
         const session = await open();
         fireEvent.click(screen.getByRole('button', { name: /# chat/ }));

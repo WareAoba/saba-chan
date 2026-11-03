@@ -525,7 +525,7 @@
       "duration": "Duration",
       "duration_custom": "Custom",
       "duration_custom_hint": "e.g. 30m · 3h · 2w",
-      "duration_units": "min,h,d,w",
+      "duration_units": "分,時間,日,週",
       "reason": "Reason (optional)",
       "purge": "Delete their messages",
       "announce_hint": "The result is also posted in the server's system channel (without pinging anyone)."

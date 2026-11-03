@@ -145,10 +145,15 @@ function useRelayGuild(relay, guild) {
     const manage = !!guild.can?.manage;
     const mod = modAllowed(guild.can);
 
-    const loadModeration = useCallback(async () => {
-        const res = await relay.moderation(g);
-        setData((d) => ({ ...d, moderation: res.ok ? res.data : { failed: true } }));
-    }, [relay, g]);
+    /** quiet: 진행을 다시 읽을 때 — 한 번 실패해도 화면을 그대로 둔다 */
+    const loadModeration = useCallback(
+        async (quiet = false) => {
+            const res = await relay.moderation(g);
+            if (!res.ok && quiet) return;
+            setData((d) => ({ ...d, moderation: res.ok ? res.data : { failed: true } }));
+        },
+        [relay, g],
+    );
 
     // biome-ignore lint/correctness/useExhaustiveDependencies: round 는 다시 읽기 신호다
     useEffect(() => {
@@ -485,15 +490,18 @@ export function parseDuration(text, words = '') {
 
 const minutesSince = (iso) => Math.max(1, Math.floor((Date.now() - Date.parse(iso)) / 60_000));
 
+function lockLine(t, locked) {
+    return locked.until
+        ? t('relay.mod.locked_until', { time: durationText(t, minutesUntil(locked.until)) })
+        : t('relay.mod.locked');
+}
+
 function channelLine(t, c) {
     if (c.clearing)
         return c.clearing.oldestAt
             ? t('relay.mod.clearing_back', { time: durationText(t, minutesSince(c.clearing.oldestAt)) })
             : t('relay.mod.clearing');
-    if (c.locked)
-        return c.locked.until
-            ? t('relay.mod.locked_until', { time: durationText(t, minutesUntil(c.locked.until)) })
-            : t('relay.mod.locked');
+    if (c.locked) return lockLine(t, c.locked);
     const slow = !c.slowmode
         ? t('relay.mod.slow_off')
         : c.slowUntil
@@ -562,7 +570,12 @@ function ChannelSheet({ channel, can, busy, onEdit, onClearNow, onClose }) {
     const [slowFor, setSlowFor] = useState(null);
     const lock = channel.locked ? 'keep' : 'off';
     const autoMode = channel.autoClearDaily ? 'daily' : channel.autoClear ? 'keep' : 'off';
-    const slowEdit = (slowmode, minutes) => (slowmode && minutes ? { slowmode, slowFor: minutes } : { slowmode });
+    // 기간을 고르지 않았으면 지금 걸린 기간(남은 시간)을 지킨다
+    const keepFor = channel.slowUntil ? minutesUntil(channel.slowUntil) : null;
+    const slowEdit = (slowmode, minutes) => {
+        const span = minutes ?? keepFor;
+        return slowmode && span ? { slowmode, slowFor: span } : { slowmode };
+    };
     return (
         <Sheet title={`# ${channel.name}`} onClose={onClose}>
             <div className="form">
@@ -584,7 +597,10 @@ function ChannelSheet({ channel, can, busy, onEdit, onClearNow, onClose }) {
                             disabled={busy}
                             onChange={(m) => {
                                 setSlowFor(m);
-                                if (channel.slowmode) onEdit(slowEdit(channel.slowmode, m));
+                                if (channel.slowmode)
+                                    onEdit(
+                                        m ? { slowmode: channel.slowmode, slowFor: m } : { slowmode: channel.slowmode },
+                                    );
                             }}
                             options={[
                                 { value: null, label: t('relay.mod.forever') },
@@ -604,7 +620,7 @@ function ChannelSheet({ channel, can, busy, onEdit, onClearNow, onClose }) {
                                 v !== 'keep' && onEdit({ lock: v === 'off' || v === 'forever' ? v : Number(v) })
                             }
                             options={[
-                                ...(channel.locked ? [{ value: 'keep', label: channelLine(t, channel) }] : []),
+                                ...(channel.locked ? [{ value: 'keep', label: lockLine(t, channel.locked) }] : []),
                                 { value: 'off', label: t('relay.off') },
                                 ...LOCK_MINUTES.map((m) => ({ value: String(m), label: durationText(t, m) })),
                                 { value: 'forever', label: t('relay.mod.forever') },
@@ -694,6 +710,8 @@ function ClearSheet({ channel, members, busy, onClear, onStop, onClose }) {
     const [count, setCount] = useState('');
     const n = Number(count);
     const countOk = count === '' || (Number.isInteger(n) && n >= 1 && n <= 1000);
+    // 시각 지정은 하나 이상, 부터 < 까지 — 비우면 채널 전체를 지우게 되므로 막는다
+    const rangeOk = range !== 'custom' || ((localMs(from) || localMs(to)) && !(localMs(from) >= localMs(to)));
     const submit = () => {
         const body = {};
         if (target !== 'all') body.target = target;
@@ -784,7 +802,7 @@ function ClearSheet({ channel, members, busy, onClear, onStop, onClose }) {
                     />
                     <small className="hint">{t('relay.mod.clear_count_hint')}</small>
                 </label>
-                <Button tone="accent" busy={busy} disabled={!!clearing || !countOk} onClick={submit}>
+                <Button tone="accent" busy={busy} disabled={!!clearing || !countOk || !rangeOk} onClick={submit}>
                     {t('relay.mod.clear_start')}
                 </Button>
                 <small className="hint">{t('relay.mod.clear_hint')}</small>
@@ -828,7 +846,10 @@ function SanctionSheet({ members, busy, onSanction, onClose }) {
                         value={query}
                         placeholder={t('relay.mod.member_search')}
                         disabled={!members}
-                        onChange={(e) => setQuery(e.target.value)}
+                        onChange={(e) => {
+                            setQuery(e.target.value);
+                            setPicked(null);
+                        }}
                     />
                     <small className="hint">{t('relay.mod.member_hint')}</small>
                 </label>
@@ -947,7 +968,7 @@ function ModerationSection({ relay, g, can, moderation, busy, write, refresh }) 
     const clearing = !!moderation.channels?.some((c) => c.clearing);
     useEffect(() => {
         if (!clearing) return;
-        const timer = setInterval(refresh, CLEARING_POLL_MS);
+        const timer = setInterval(() => refresh(true), CLEARING_POLL_MS);
         return () => clearInterval(timer);
     }, [clearing, refresh]);
     const needsMembers = open?.sheet === 'clear' || open?.sheet === 'sanction';
