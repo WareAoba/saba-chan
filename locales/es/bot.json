@@ -158,7 +158,7 @@
       "start_notice": {
         "set": {
           "title": "Aviso de inicio",
-          "description": "Avisa en el canal de avisos de este servidor de Discord cuando Saba-chan inicia este servidor",
+          "description": "Avisar en el canal de avisos de este servidor de Discord cuando este servidor se inicie o se detenga sin un comando de Discord (incluidos los fallos)",
           "name": "Aviso de inicio"
         }
       }

@@ -158,7 +158,7 @@
       "start_notice": {
         "set": {
           "title": "Start-Hinweis",
-          "description": "Im Hinweiskanal dieses Discord-Servers melden, wenn Saba-chan diesen Server startet",
+          "description": "Im Hinweiskanal dieses Discord-Servers melden, wenn dieser Server ohne Discord-Befehl startet oder stoppt (auch Abstürze)",
           "name": "Start-Hinweis"
         }
       }

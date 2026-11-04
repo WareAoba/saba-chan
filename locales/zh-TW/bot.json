@@ -158,7 +158,7 @@
       "start_notice": {
         "set": {
           "title": "啟動通知",
-          "description": "Saba-chan 啟動此伺服器時，在此 Discord 伺服器的通知頻道告知",
+          "description": "此伺服器不透過 Discord 指令啟動或停止時(包括當機)，在此 Discord 伺服器的通知頻道告知",
           "name": "啟動通知"
         }
       }
