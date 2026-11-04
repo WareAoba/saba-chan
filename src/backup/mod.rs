@@ -340,7 +340,7 @@ fn known_files(dir: &Path) -> std::collections::HashMap<PathBuf, (u64, u64, Stri
 }
 
 /// 파일 내용을 저장소에 넣는다: (해시, 읽은 바이트, 내용 파일 크기, 새로 쓴 파일). 같은 내용이 이미 있으면 새로 쓰지 않는다.
-/// 이미 있는 파일의 크기가 방금 만든 것과 다르면 망가진 것으로 보고 바꿔 넣는다 (망가진 내용을 다음 백업이 물려받지 않게).
+/// 이미 있는 파일이 크기가 다르거나 풀어 본 내용의 해시가 맞지 않으면 망가진 것으로 보고 바꿔 넣는다 (망가진 내용을 다음 백업이 물려받지 않게).
 /// 디스크에 내리는 일(fsync)은 부른 쪽이 백업을 마치기 전에 한꺼번에 한다
 fn put_object(dir: &Path, path: &Path) -> Result<(String, u64, u64, Option<PathBuf>)> {
     use sha2::Digest;
@@ -376,7 +376,7 @@ fn put_object(dir: &Path, path: &Path) -> Result<(String, u64, u64, Option<PathB
     };
     let target = object_path(dir, &hash)?;
     let added = fs::metadata(&tmp).map(|m| m.len()).unwrap_or(0);
-    if fs::metadata(&target).is_ok_and(|m| m.is_file() && m.len() == added) {
+    if fs::metadata(&target).is_ok_and(|m| m.is_file() && m.len() == added) && object_intact(&target, &hash, read) {
         let _ = fs::remove_file(&tmp);
         return Ok((hash, read, added, None));
     }
@@ -389,6 +389,28 @@ fn put_object(dir: &Path, path: &Path) -> Result<(String, u64, u64, Option<PathB
         return Err(e.into());
     }
     Ok((hash, read, added, Some(target)))
+}
+
+/// 저장소의 내용 파일을 풀어 본 크기·해시가 맞는가 (복원이 하는 검사와 같다)
+fn object_intact(object: &Path, hash: &str, size: u64) -> bool {
+    use sha2::Digest;
+    use std::io::Read;
+    let Ok(file) = File::open(object) else { return false };
+    let mut src = flate2::read::DeflateDecoder::new(file);
+    let mut hasher = sha2::Sha256::new();
+    let mut buf = vec![0u8; 64 * 1024];
+    let mut read = 0u64;
+    loop {
+        match src.read(&mut buf) {
+            Ok(0) => break,
+            Ok(n) => {
+                hasher.update(&buf[..n]);
+                read += n as u64;
+            }
+            Err(_) => return false,
+        }
+    }
+    read == size && hex::encode(hasher.finalize()) == hash
 }
 
 /// 판 2 백업 쓰기 중의 상태
@@ -408,10 +430,12 @@ impl V2Writer<'_> {
     fn add_file(&mut self, path: &Path, entry: &str, rel: &str) -> Result<()> {
         let meta = fs::metadata(path).with_context(|| format!("read {}", path.display()))?;
         let mtime = mtime_ns(&meta);
-        // 이어 쓰는 내용 파일은 크기가 적어 둔 그대로일 때만 (망가졌으면 다시 읽어 바꿔 넣는다)
+        // 이어 쓰는 내용 파일은 크기가 적어 둔 그대로이고 풀어 본 내용이 맞을 때만 (망가졌으면 다시 읽어 바꿔 넣는다)
         let reuse = match self.known.get(path) {
-            Some((size, known_mtime, hash, stored_size)) if *size == meta.len() && *known_mtime == mtime && fs::metadata(object_path(self.dir, hash)?).is_ok_and(|m| m.is_file() && m.len() == *stored_size) => {
-                Some((hash.clone(), *size, *stored_size))
+            Some((size, known_mtime, hash, stored_size)) if *size == meta.len() && *known_mtime == mtime => {
+                let object = object_path(self.dir, hash)?;
+                let intact = fs::metadata(&object).is_ok_and(|m| m.is_file() && m.len() == *stored_size) && object_intact(&object, hash, *size);
+                intact.then(|| (hash.clone(), *size, *stored_size))
             }
             _ => None,
         };
@@ -1501,6 +1525,30 @@ mod tests {
             fs::write(w.join("level.dat"), b"broken").unwrap();
             restore(&dir, name).unwrap();
             assert_eq!(fs::read(w.join("level.dat")).unwrap(), b"level", "{name}");
+        }
+    }
+
+    /// 크기는 같고 내용만 망가진 내용 파일도 다음 백업이 이어 쓰지 않고 원본에서 다시 쓴다
+    #[test]
+    fn a_same_size_damaged_content_file_is_replaced_by_the_next_backup() {
+        for unchanged in [true, false] {
+            let tmp = tempfile::tempdir().unwrap();
+            let w = world(tmp.path());
+            if unchanged {
+                // 바뀌지 않은 파일로 다시 읽지 않고 이어 쓰는 경로
+                let old = std::time::SystemTime::now() - std::time::Duration::from_secs(3600);
+                File::options().write(true).open(w.join("level.dat")).unwrap().set_modified(old).unwrap();
+            }
+            let dir = tmp.path().join("backups");
+            let first = create(&dir, BackupKind::Manual, std::slice::from_ref(&w)).unwrap().name;
+            let m = read_v2(&dir.join(&first)).unwrap().unwrap();
+            let object = object_path(&dir, &m.files.iter().find(|f| f.rel == "level.dat").unwrap().hash).unwrap();
+            let damaged: Vec<u8> = fs::read(&object).unwrap().iter().map(|b| b ^ 0xFF).collect();
+            fs::write(&object, damaged).unwrap();
+            let second = create(&dir, BackupKind::Manual, std::slice::from_ref(&w)).unwrap().name;
+            fs::write(w.join("level.dat"), b"broken").unwrap();
+            restore(&dir, &second).unwrap();
+            assert_eq!(fs::read(w.join("level.dat")).unwrap(), b"level", "unchanged={unchanged}");
         }
     }
 

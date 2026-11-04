@@ -205,23 +205,27 @@ export function DiscordPage({
         [t],
     );
 
-    // ── 켜짐 알림: 데몬 API로 서버마다 바로 저장 (bot-config 일괄 저장으로는 바뀌지 않는다) ──
-    const updateStartNotice = useCallback(
-        async (guildId, serverId, enabled) => {
+    // ── 켜짐·꺼짐 알림·자리 꽉 참 알림: 데몬 API로 서버마다 바로 저장 (bot-config 일괄 저장으로는 바뀌지 않는다) ──
+    const saveNotice = useCallback(
+        async (key, guildId, serverId, enabled) => {
             setSaveState('saving');
             try {
-                const res = await window.api.guildStartNoticeSave(serverId, guildId, enabled);
+                const save = key === 'fullNotice' ? window.api.guildFullNoticeSave : window.api.guildStartNoticeSave;
+                const res = await save(serverId, guildId, enabled);
                 if (!res || res.error || res.error_code) throw new Error(res?.error || res?.error_code || '-');
                 const list = Array.isArray(res.instances) ? res.instances : [];
-                useDiscordStore.getState().applySavedNodeValue(guildId, 'startNotice', list.length ? list : null);
+                useDiscordStore.getState().applySavedNodeValue(guildId, key, list.length ? list : null);
                 setSaveState('saved');
             } catch (e) {
                 setSaveState(null);
-                safeShowToast(t('discord.start_notice_save_failed', { error: e.message }), 'error', 5000);
+                const failed = key === 'fullNotice' ? 'discord.full_notice_save_failed' : 'discord.start_notice_save_failed';
+                safeShowToast(t(failed, { error: e.message }), 'error', 5000);
             }
         },
         [t],
     );
+    const updateStartNotice = useCallback((g, s, on) => saveNotice('startNotice', g, s, on), [saveNotice]);
+    const updateFullNotice = useCallback((g, s, on) => saveNotice('fullNotice', g, s, on), [saveNotice]);
 
     // ── 페어링 ──
     const pairing = usePairing({
@@ -447,6 +451,7 @@ export function DiscordPage({
                                 settings={settings}
                                 updateAllowed={updateAllowed}
                                 updateStartNotice={updateStartNotice}
+                                updateFullNotice={updateFullNotice}
                                 members={cloudMembers[currentNode.guildId]}
                                 membersLoading={membersLoading === currentNode.guildId}
                                 membersFailed={!!membersFailed[currentNode.guildId]}

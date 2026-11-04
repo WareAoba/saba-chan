@@ -1200,18 +1200,28 @@ pub enum BotCmd {
         #[arg(long)]
         all: bool,
     },
-    /// Post in the Discord server's alert channel when Saba-chan starts a server (off by default).
-    /// No server: show. Server with `--on`/`--off`: change
+    /// Post in the Discord server's alert channel when a server starts or stops without a Saba-chan command (off by default).
+    /// With `--full`: when a server fills up or a slot opens again. No server: show. Server with `--on`/`--off`: change
     Notice {
         guild: String,
         /// Server by name or id
         server: Option<String>,
-        /// Turn the start alert on
+        /// Turn the alert on
         #[arg(long, requires = "server", conflicts_with = "off")]
         on: bool,
-        /// Turn the start alert off
+        /// Turn the alert off
         #[arg(long, requires = "server")]
         off: bool,
+        /// The full server alert instead of the start/stop alert
+        #[arg(long)]
+        full: bool,
+    },
+    /// Backup results sent to the PC owner as a DM: all (--all) or only failures (--failures). No options: show
+    BackupNotice {
+        #[arg(long, conflicts_with = "failures")]
+        all: bool,
+        #[arg(long)]
+        failures: bool,
     },
     /// Bot settings back to their defaults (all when no key is named)
     Reset { keys: Vec<String> },

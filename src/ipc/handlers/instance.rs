@@ -134,7 +134,8 @@ fn requested_version(payload: &Value) -> Result<Option<String>, Box<axum::respon
 
 /// 폴더에 무엇이든 들어 있는가 (없는 폴더는 비었다)
 fn folder_has_entries(dir: &std::path::Path) -> bool {
-    std::fs::read_dir(dir).is_ok_and(|mut entries| entries.next().is_some())
+    // 중간에 끝난 설치가 남긴 설치 폴더는 다음 설치가 치운다
+    std::fs::read_dir(dir).is_ok_and(|entries| entries.flatten().any(|e| e.file_name() != INSTALL_STAGING))
 }
 
 async fn create_instance_inner(state: IPCServer, payload: Value, dry_run: bool) -> impl IntoResponse {
@@ -671,7 +672,7 @@ async fn create_instance_inner(state: IPCServer, payload: Value, dry_run: bool) 
 
                         tokio::spawn(async move {
                             let mut install_guard = install_guard;
-                            let leftovers: Option<InstallLeftovers>;
+                            let leftovers: Option<InstallStaging>;
                             // ── Phase 1: supervisor lock을 최소 시간만 잡고 모듈 경로 복사 ──
                             let module_path = {
                                 let sup = supervisor_arc.read().await;
@@ -723,9 +724,15 @@ async fn create_instance_inner(state: IPCServer, payload: Value, dry_run: bool) 
                                     None // 익스텐션 방식은 version 불필요
                                 };
 
-                                leftovers = leftovers_dir.as_deref().map(|dir| InstallLeftovers::before(dir, made_folder));
+                                // 만들 수 없으면 고른 폴더에 바로 설치한다 (실패해도 아무것도 지우지 않는다)
+                                leftovers = leftovers_dir.as_deref().and_then(|dir| {
+                                    InstallStaging::new(dir, made_folder)
+                                        .map_err(|e| tracing::warn!("Could not prepare the install folder in {}: {}", dir.display(), e))
+                                        .ok()
+                                });
+                                let target_dir = leftovers.as_ref().map_or_else(|| install_dir_str.clone(), |l| l.staging.to_string_lossy().to_string());
                                 let mut config = serde_json::json!({
-                                    "install_dir": &install_dir_str,
+                                    "install_dir": &target_dir,
                                     "accepted_agreements": &accepted_agreements,
                                     "settings": &install_settings,
                                     crate::sandbox::INSTANCE_DATA_DIRS: &instance_data_dirs,
@@ -758,7 +765,13 @@ async fn create_instance_inner(state: IPCServer, payload: Value, dry_run: bool) 
                             };
 
                             let result = match result {
-                                Ok(mut value) if value.get("success").and_then(Value::as_bool) == Some(true) => {
+                                Ok(mut value) if value.get("success").and_then(Value::as_bool) == Some(true) => 'checked: {
+                                    // 받은 서버를 고른 폴더로 옮긴다 (경로 확인은 옮긴 자리로)
+                                    if let Some(left) = &leftovers {
+                                        if let Err(e) = left.promote(&mut value) {
+                                            break 'checked Err(anyhow::anyhow!("Could not move the installed server into its folder: {}", e));
+                                        }
+                                    }
                                     let sup = supervisor_arc.read().await;
                                     match sup.instance_store.get(&id_done) {
                                         Some(inst) => {
@@ -1200,38 +1213,84 @@ async fn undo_import(state: &IPCServer, instance: &crate::instance::ServerInstan
     false
 }
 
-/// 고른 폴더(`working_dir`)에 새로 설치하다 실패했을 때 그 설치가 만든 것. 설치 직전 폴더에 있던 항목은 남기고
-/// (만들기는 빈 폴더만 받으므로 보통 없다), 데몬이 만든 폴더였으면 비었을 때 그 폴더도 지운다
-struct InstallLeftovers {
+/// 고른 폴더에 처음 설치할 때 모듈이 받는 설치 폴더 (그 폴더 안). 점으로 시작해 탐색이 건너뛴다
+const INSTALL_STAGING: &str = ".saba-installing";
+
+/// 고른 폴더(`working_dir`)에 처음 설치하기. 모듈은 그 안의 `INSTALL_STAGING`에 설치하고, 성공하면 데몬이 내용을 고른 폴더로 옮긴다.
+/// 설치가 실패하면 그 설치가 만든 것(설치 폴더와 옮긴 항목)만 지운다: 설치하는 동안 사용자가 고른 폴더에 넣은 파일은 남는다.
+/// 데몬이 만든 폴더였으면 비었을 때 그 폴더도 지운다
+struct InstallStaging {
     dir: std::path::PathBuf,
-    /// 설치 직전의 항목 이름. 읽지 못했으면 None이고 아무것도 지우지 않는다
-    before: Option<std::collections::HashSet<std::ffi::OsString>>,
+    staging: std::path::PathBuf,
     made_folder: bool,
+    /// 고른 폴더로 옮긴 항목 (옮긴 뒤 저장하지 못했을 때 지운다)
+    moved: std::sync::Mutex<Vec<std::path::PathBuf>>,
 }
 
-impl InstallLeftovers {
-    fn before(dir: &std::path::Path, made_folder: bool) -> Self {
-        let before = std::fs::read_dir(dir).ok().map(|entries| entries.flatten().map(|e| e.file_name()).collect());
-        Self { dir: dir.to_path_buf(), before, made_folder }
+impl InstallStaging {
+    fn new(dir: &std::path::Path, made_folder: bool) -> std::io::Result<Self> {
+        let staging = dir.join(INSTALL_STAGING);
+        // 중간에 끝난 예전 설치가 남긴 것 (이 이름은 데몬 것이다)
+        if std::fs::symlink_metadata(&staging).is_ok() {
+            remove_entry(&staging)?;
+        }
+        std::fs::create_dir(&staging)?;
+        Ok(Self { dir: dir.to_path_buf(), staging, made_folder, moved: Default::default() })
+    }
+
+    /// 설치 폴더의 내용을 고른 폴더로 옮기고, 모듈이 알려 준 경로(`install_path`·`executable_path`)를 옮긴 자리로 바꾼다.
+    /// 고른 폴더에 같은 이름이 생겼으면(사용자가 넣었다) 덮지 않고 실패한다
+    fn promote(&self, result: &mut Value) -> std::io::Result<()> {
+        let canonical = std::fs::canonicalize(&self.staging).ok();
+        for entry in std::fs::read_dir(&self.staging)? {
+            let entry = entry?;
+            let target = self.dir.join(entry.file_name());
+            if std::fs::symlink_metadata(&target).is_ok() {
+                return Err(std::io::Error::new(std::io::ErrorKind::AlreadyExists, format!("{} already exists", target.display())));
+            }
+            // Windows는 방금 쓴 파일을 백신 등이 잠깐 쥐고 있어 옮기기가 실패하기도 한다 (폴더 옮기기와 같이 다시 한다)
+            let mut tries = 0;
+            while let Err(e) = std::fs::rename(entry.path(), &target) {
+                tries += 1;
+                if tries == 3 {
+                    return Err(e);
+                }
+                std::thread::sleep(std::time::Duration::from_millis(500));
+            }
+            self.moved.lock().unwrap_or_else(|e| e.into_inner()).push(target);
+        }
+        std::fs::remove_dir(&self.staging)?;
+        for field in ["install_path", "executable_path"] {
+            let Some(path) = result.get(field).and_then(Value::as_str).map(std::path::PathBuf::from) else { continue };
+            let rel = std::iter::once(&self.staging).chain(canonical.as_ref()).find_map(|base| path.strip_prefix(base).ok());
+            if let Some(rel) = rel {
+                let moved = if rel.as_os_str().is_empty() { self.dir.clone() } else { self.dir.join(rel) };
+                result[field] = json!(moved.to_string_lossy());
+            }
+        }
+        Ok(())
     }
 
     fn clear(&self) {
-        let (Some(before), Ok(entries)) = (&self.before, std::fs::read_dir(&self.dir)) else { return };
-        for entry in entries.flatten().filter(|e| !before.contains(&e.file_name())) {
-            let path = entry.path();
-            // 링크(정션 포함)는 링크만 지운다 (가리키는 곳은 이 설치가 만든 것이 아니다)
-            let removed = match std::fs::symlink_metadata(&path) {
-                Ok(meta) if meta.is_dir() => std::fs::remove_dir_all(&path),
-                Ok(_) => std::fs::remove_file(&path).or_else(|_| std::fs::remove_dir(&path)),
-                Err(e) => Err(e),
-            };
-            if let Err(e) = removed {
-                tracing::warn!("Could not remove {} left by a failed install: {}", path.display(), e);
+        let moved = std::mem::take(&mut *self.moved.lock().unwrap_or_else(|e| e.into_inner()));
+        for path in moved.iter().chain(std::iter::once(&self.staging)) {
+            match remove_entry(path) {
+                Err(e) if e.kind() != std::io::ErrorKind::NotFound => tracing::warn!("Could not remove {} left by a failed install: {}", path.display(), e),
+                _ => {}
             }
         }
         if self.made_folder {
             let _ = std::fs::remove_dir(&self.dir); // 비었을 때만 지워진다
         }
+    }
+}
+
+/// 항목 하나를 지운다. 링크(정션 포함)는 링크만 지운다 (가리키는 곳은 이 설치가 만든 것이 아니다)
+fn remove_entry(path: &std::path::Path) -> std::io::Result<()> {
+    match std::fs::symlink_metadata(path) {
+        Ok(meta) if meta.is_dir() => std::fs::remove_dir_all(path),
+        Ok(_) => std::fs::remove_file(path).or_else(|_| std::fs::remove_dir(path)),
+        Err(e) => Err(e),
     }
 }
 
@@ -2418,6 +2477,8 @@ pub async fn begin_server_update(state: &IPCServer, id: &str) -> Result<tokio::t
                     .unwrap_or(false);
                 if success {
                     tracing::info!("Server update completed for '{}'", name_done);
+                    // 켜짐·꺼짐 알림을 켠 길드의 알림 채널에 "업데이트 끝남" (릴레이)
+                    crate::events::emit("instance.updated", json!({ "instanceId": backup_id, "instance": name_done }));
                     tracker_done.update(
                         &name_done,
                         crate::ipc::ProvisionProgress {
@@ -3197,15 +3258,17 @@ mod tests {
         .unwrap();
         std::fs::write(
             dir.join("lifecycle.py"),
-            "import json, os, sys\nconfig = json.load(sys.stdin)\nif sys.argv[1] == 'list_versions':\n    \
+            "import json, os, sys\nconfig = json.load(sys.stdin)\n\
+             d = config.get('install_dir') or ''\nfolder = os.path.basename(os.path.dirname(d) if os.path.basename(d) == '.saba-installing' else d)\n\
+             if sys.argv[1] == 'list_versions':\n    \
              print(json.dumps({'success': True, 'latest': {'release': '2.0'}}))\n\
-             elif sys.argv[1] == 'install_server' and os.path.basename(config['install_dir']) == 'failing':\n    \
+             elif sys.argv[1] == 'install_server' and folder == 'failing':\n    \
              try:\n        os.makedirs(os.path.join(config['install_dir'], 'libraries'))\n        \
              open(os.path.join(config['install_dir'], 'partial.jar'), 'w').write('x')\n    \
              except OSError:\n        pass\n    \
              print(json.dumps({'success': False, 'message': 'download failed'}))\n\
              elif sys.argv[1] == 'install_server':\n    \
-             want = '1.0' if os.path.basename(config['install_dir']) == 'chosen' else '2.0'\n    \
+             want = '1.0' if folder == 'chosen' else '2.0'\n    \
              ok = config.get('version') == want and (want == '2.0' or os.path.isdir(config['install_dir']))\n    \
              print(json.dumps({'success': ok, 'install_path': config['install_dir'], 'message': 'wrong version or folder'}))\n\
              else:\n    print(json.dumps({'success': True}))\n",
@@ -3343,6 +3406,40 @@ mod tests {
         assert!(provisioned(&state, "b").await.expect("provisioning finished").error.is_some());
         assert!(existing.is_dir(), "원래 있던 폴더는 남긴다");
         assert_eq!(std::fs::read_dir(&existing).unwrap().count(), 0, "그 설치가 만든 것만 지운다");
+    }
+
+    /// 설치하는 동안 사용자가 고른 폴더에 넣은 파일은 설치가 실패해도 남는다 (설치가 만든 것만 지운다)
+    #[test]
+    fn a_failed_install_keeps_files_the_user_added_meanwhile() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("server");
+        std::fs::create_dir_all(&dir).unwrap();
+        let staging = super::InstallStaging::new(&dir, false).unwrap();
+        std::fs::create_dir_all(staging.staging.join("libraries")).unwrap();
+        std::fs::write(staging.staging.join("partial.jar"), "x").unwrap();
+        std::fs::write(dir.join("my-world.zip"), "mine").unwrap();
+        staging.clear();
+        let left: Vec<_> = std::fs::read_dir(&dir).unwrap().map(|e| e.unwrap().file_name()).collect();
+        assert_eq!(left, vec![std::ffi::OsString::from("my-world.zip")]);
+
+        // 옮긴 뒤 저장하지 못해도 옮긴 것만 지운다
+        let staging = super::InstallStaging::new(&dir, false).unwrap();
+        std::fs::write(staging.staging.join("server.jar"), "x").unwrap();
+        let mut result = json!({ "install_path": staging.staging.to_string_lossy(), "executable_path": staging.staging.join("server.jar").to_string_lossy() });
+        staging.promote(&mut result).unwrap();
+        assert_eq!(result["install_path"], json!(dir.to_string_lossy()));
+        assert_eq!(result["executable_path"], json!(dir.join("server.jar").to_string_lossy()));
+        assert!(dir.join("server.jar").is_file() && !staging.staging.exists());
+        staging.clear();
+        let left: Vec<_> = std::fs::read_dir(&dir).unwrap().map(|e| e.unwrap().file_name()).collect();
+        assert_eq!(left, vec![std::ffi::OsString::from("my-world.zip")]);
+
+        // 사용자가 같은 이름을 넣었으면 덮지 않는다
+        let staging = super::InstallStaging::new(&dir, false).unwrap();
+        std::fs::write(staging.staging.join("my-world.zip"), "installer").unwrap();
+        assert!(staging.promote(&mut json!({})).is_err());
+        staging.clear();
+        assert_eq!(std::fs::read_to_string(dir.join("my-world.zip")).unwrap(), "mine");
     }
 
     #[tokio::test]

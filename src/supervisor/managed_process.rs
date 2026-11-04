@@ -213,7 +213,7 @@ impl LogBuffer {
 /// - Running state monitoring via `is_running()`
 pub struct ManagedProcess {
     /// Channel to send commands to stdin
-    stdin_tx: mpsc::Sender<String>,
+    stdin_tx: mpsc::Sender<StdinLine>,
     /// Log buffer for recent console output
     log_buffer: Arc<Mutex<LogBuffer>>,
     /// Process PID
@@ -282,6 +282,12 @@ impl Drop for ManagedProcess {
 #[derive(Debug)]
 pub struct StdinFull;
 
+/// stdin 대기열의 한 줄과, 실제로 썼는지(또는 왜 못 썼는지) 알릴 곳
+pub(crate) type StdinLine = (String, tokio::sync::oneshot::Sender<std::result::Result<(), String>>);
+
+/// 대기열에 넣은 명령을 서버(또는 러너)에 다 쓰기까지 기다리는 가장 긴 시간
+const STDIN_DELIVERY_WAIT: std::time::Duration = std::time::Duration::from_secs(3);
+
 impl std::fmt::Display for StdinFull {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("the server is not reading its console input")
@@ -348,7 +354,7 @@ impl ManagedProcess {
             .ok_or_else(|| anyhow::anyhow!("Failed to get PID of spawned process"))?;
 
         // Channels
-        let (stdin_tx, stdin_rx) = mpsc::channel::<String>(256);
+        let (stdin_tx, stdin_rx) = mpsc::channel::<StdinLine>(256);
         let (running_tx, running_rx) = watch::channel(true);
 
         let mut buf = LogBuffer::new();
@@ -414,12 +420,15 @@ impl ManagedProcess {
         if let Some(mut stdin_handle) = stdin {
             let mut rx = stdin_rx;
             tokio::spawn(async move {
-                while let Some(cmd) = rx.recv().await {
+                while let Some((cmd, delivered)) = rx.recv().await {
                     let data = if cmd.ends_with('\n') { cmd } else { format!("{}\n", cmd) };
-                    if stdin_handle.write_all(data.as_bytes()).await.is_err() {
-                        break;
-                    }
-                    if stdin_handle.flush().await.is_err() {
+                    let written = match stdin_handle.write_all(data.as_bytes()).await {
+                        Ok(()) => stdin_handle.flush().await,
+                        Err(e) => Err(e),
+                    };
+                    let failed = written.is_err();
+                    let _ = delivered.send(written.map_err(|e| e.to_string()));
+                    if failed {
                         break;
                     }
                 }
@@ -482,10 +491,19 @@ impl ManagedProcess {
         }
         // 서버가 읽기 전에 적어 둔다: 되풀이 줄이 보내기보다 먼저 버퍼에 닿을 수 있다
         self.log_buffer.lock().await.expect_echo(command);
-        self.stdin_tx.try_send(command.to_string()).map_err(|e| match e {
+        let (delivered_tx, delivered) = tokio::sync::oneshot::channel();
+        self.stdin_tx.try_send((command.to_string(), delivered_tx)).map_err(|e| match e {
             mpsc::error::TrySendError::Full(_) => anyhow::Error::new(StdinFull),
             mpsc::error::TrySendError::Closed(_) => anyhow::anyhow!("stdin channel closed"),
-        })
+        })?;
+        // 대기열에 넣은 것으로 끝내지 않는다: 서버(또는 러너)에 실제로 썼는지까지 본다.
+        // 서버가 입력을 읽지 않아 쓰기가 막히면 오래 기다리지 않고 실패로 알린다
+        match tokio::time::timeout(STDIN_DELIVERY_WAIT, delivered).await {
+            Ok(Ok(Ok(()))) => Ok(()),
+            Ok(Ok(Err(e))) => anyhow::bail!("command was not delivered: {}", e),
+            Ok(Err(_)) => anyhow::bail!("command was not delivered: stdin closed"),
+            Err(_) => anyhow::bail!("command was not delivered within {}s", STDIN_DELIVERY_WAIT.as_secs()),
+        }
     }
 
     /// Spawn a log follower that streams an extension-provided command's output
@@ -534,7 +552,7 @@ impl ManagedProcess {
 
         // Channels — stdin is not used for container log followers, but we keep the
         // interface compatible with ManagedProcess.
-        let (stdin_tx, _stdin_rx) = mpsc::channel::<String>(1);
+        let (stdin_tx, _stdin_rx) = mpsc::channel::<StdinLine>(1);
         let (running_tx, running_rx) = watch::channel(true);
 
         let mut buf = LogBuffer::new();
@@ -698,7 +716,7 @@ impl ManagedProcess {
         pid: u32,
         instance_dir: &Path,
     ) -> Self {
-        let (stdin_tx, _stdin_rx) = mpsc::channel::<String>(1);
+        let (stdin_tx, _stdin_rx) = mpsc::channel::<StdinLine>(1);
         let (running_tx, running_rx) = watch::channel(true);
         let running_tx = Arc::new(running_tx);
 
@@ -1154,6 +1172,18 @@ pub(crate) async fn next_line<R: tokio::io::AsyncBufRead + Unpin>(reader: &mut R
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 서버가 입력을 닫아 쓰지 못한 명령은 성공으로 알리지 않는다
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_command_that_could_not_be_written_is_reported_as_failed() {
+        let tmp = tempfile::tempdir().unwrap();
+        let proc = ManagedProcess::spawn("sh", &["-c".into(), "exec 0<&-; sleep 5".into()], tmp.path().to_str().unwrap(), Vec::new(), None, None)
+            .await
+            .unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+        assert!(proc.send_command("stop").await.is_err());
+    }
 
     /// 기록기는 몰려온 줄을 모아 쓰되, 큐가 비면 바로 내려 써서 서버가 도는 동안에도 파일에 다 남는다
     #[tokio::test]

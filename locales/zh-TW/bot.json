@@ -158,8 +158,15 @@
       "start_notice": {
         "set": {
           "title": "啟動通知",
-          "description": "Saba-chan 啟動此伺服器時，在此 Discord 伺服器的通知頻道告知",
+          "description": "此伺服器不透過 Discord 指令啟動或停止時(包括當機)，在此 Discord 伺服器的通知頻道告知",
           "name": "啟動通知"
+        }
+      },
+      "full_notice": {
+        "set": {
+          "title": "滿員提醒",
+          "description": "此伺服器滿員或重新有空位時，在此 Discord 伺服器的通知頻道提醒",
+          "name": "滿員提醒"
         }
       }
     },
@@ -397,6 +404,7 @@
     "server_running": "伺服器正在執行。請先關閉",
     "no_command_path": "伺服器是在 Saba-chan 之外啟動的，無法接收指令",
     "autosave_not_resumed": "備份已完成，但無法重新開啟伺服器的自動儲存。請重新啟動伺服器",
+    "backup_failed_autosave_off": "備份失敗，伺服器的自動儲存也未能重新開啟。請重新啟動伺服器",
     "backup_save_rejected": "伺服器拒絕了儲存指令，因此沒有備份。請停止伺服器後重新備份",
     "backup_save_unconfirmed": "伺服器沒有回報儲存完成，因此沒有備份。請稍後再試，或停止伺服器後再備份",
     "snapshot_not_found": "遊戲沒有自動備份",

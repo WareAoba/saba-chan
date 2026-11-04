@@ -158,8 +158,15 @@
       "start_notice": {
         "set": {
           "title": "Alerta de início",
-          "description": "Avisa no canal de alertas deste servidor do Discord quando a Saba-chan inicia este servidor",
+          "description": "Avisar no canal de alertas deste servidor do Discord quando este servidor ligar ou desligar sem um comando do Discord (falhas incluídas)",
           "name": "Alerta de início"
+        }
+      },
+      "full_notice": {
+        "set": {
+          "title": "Aviso de servidor cheio",
+          "description": "Avisar no canal de alertas deste servidor do Discord quando este servidor lotar ou abrir uma vaga",
+          "name": "Aviso cheio"
         }
       }
     },
@@ -397,6 +404,7 @@
     "server_running": "O servidor está ligado. Desligue-o primeiro",
     "no_command_path": "O servidor foi iniciado fora do Saba-chan e não pode receber comandos",
     "autosave_not_resumed": "O backup foi feito, mas não foi possível religar o salvamento automático do servidor. Reinicie o servidor",
+    "backup_failed_autosave_off": "O backup falhou e também não foi possível religar o salvamento automático do servidor. Reinicie o servidor",
     "backup_save_rejected": "O servidor recusou o comando de salvar, então nenhum backup foi feito. Pare o servidor e faça o backup de novo",
     "backup_save_unconfirmed": "O servidor não avisou que terminou de salvar, então nenhum backup foi feito. Tente de novo em instantes ou pare o servidor antes do backup",
     "snapshot_not_found": "O jogo não tem backup automático",

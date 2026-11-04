@@ -26,6 +26,7 @@ const BOT_KEYS = {
     cloudMembers: ['cloudMembers'],
     translateCommands: ['discordTranslateCommands'],
     newGuildInstances: ['discordNewGuildInstances'],
+    backupNotice: ['discordBackupNotice'],
 };
 // 마지막으로 데몬과 맞춘 값 (로드·저장 성공 때 갱신). 여기와 다른 필드만 바뀐 것으로 본다
 let synced = {};
@@ -59,6 +60,8 @@ const initialState = () => ({
     discordTranslateCommands: true,
     // 페어링 코드로 새로 묶인 디스코드 서버에 이 PC의 서버를 바로 열지('auto') 나중에 고를지('manual') (데몬 기본 auto)
     discordNewGuildInstances: 'auto',
+    // 백업 결과 DM: 모두('all') 또는 실패만('failures') (데몬 기본 all)
+    discordBackupNotice: 'all',
 
     // ── Runtime status ──
     // stopped: 에이전트 정지 / connecting: 에이전트 실행 중, 릴레이 미확인 / running: 둘 다 OK
@@ -122,6 +125,7 @@ export const useDiscordStore = create((set, get) => ({
                     discordCloudHostId: botCfg.cloud?.hostId || '',
                     discordTranslateCommands: botCfg.translateCommands !== false,
                     discordNewGuildInstances: botCfg.newGuildInstances === 'manual' ? 'manual' : 'auto',
+                    discordBackupNotice: botCfg.backupNotice === 'failures' ? 'failures' : 'all',
                     _botConfigLoaded: true,
                 };
                 if (botCfg.nodeSettings && typeof botCfg.nodeSettings === 'object') {
@@ -395,6 +399,7 @@ const _discordSaveKeys = [
     'discordCommandAliases',
     'discordTranslateCommands',
     'discordNewGuildInstances',
+    'discordBackupNotice',
 ];
 useDiscordStore.subscribe((state, prevState) => {
     if (!state._settingsReady) return;

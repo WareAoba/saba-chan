@@ -41,4 +41,15 @@ describe('새 디스코드 서버에 서버 열기', () => {
         expect(useDiscordStore.getState().discordNewGuildInstances).toBe('auto');
         await waitFor(() => expect(window.api.botConfigSave).toHaveBeenCalledWith({ newGuildInstances: 'auto' }));
     });
+
+    // 사용자 11-04: 백업은 실패만 알리기 (PC마다, 데몬 봇 설정 backupNotice)
+    it('백업 실패만 알리기를 켜면 backupNotice 만 저장한다', async () => {
+        await act(() => useDiscordStore.getState().loadConfig());
+        useDiscordStore.setState({ _settingsReady: true });
+        render(<ConnectionView {...viewProps} />);
+        const toggle = screen.getByRole('checkbox', { name: 'Only alert failed backups' });
+        expect(toggle).not.toBeChecked();
+        fireEvent.click(toggle);
+        await waitFor(() => expect(window.api.botConfigSave).toHaveBeenCalledWith({ backupNotice: 'failures' }));
+    });
 });

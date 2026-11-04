@@ -22,6 +22,9 @@ export const GUILD_DEFAULTS = {
     ambientMinutes: 3,
     ambientEffort: 'low',
     moderation: false,
+    // 토큰 알림 (릴레이가 PC 주인에게 DM): 이번 달 토큰 한도, 잔액 알림 금액. null 이면 알리지 않는다
+    tokenLimit: null,
+    balanceAlert: null,
 };
 export const EFFORTS = ['low', 'medium', 'high'];
 export const AMBIENT_MINUTES = [1, 3, 5, 10, 30];

@@ -200,6 +200,8 @@ pub static ACTIONS: &[Def] = &[
             field("memory", "boolean", false),
             field("moderation", "boolean", false),
             field("tools", "array", false),
+            field("tokenLimit", "integer", false),
+            field("balanceAlert", "number", false),
         ],
         discord_level: Some(crate::chat::permissions::OWNER),
         remote_menu: false,
@@ -227,6 +229,13 @@ pub static ACTIONS: &[Def] = &[
         discord_level: Some(crate::chat::permissions::ADMIN),
         guild_owner: true,
         ..def("instance.start_notice.set", Kind::Admin, "caution", LOCAL_AND_DISCORD, true, "PUT", "/api/instance/:id/start-notice/:guild")
+    },
+    // 자리 꽉 참 알림 (길드마다 서버마다, 기본 꺼짐). 켜짐 알림과 같은 규칙
+    Def {
+        fields: &[path_field("guild"), field("enabled", "boolean", true)],
+        discord_level: Some(crate::chat::permissions::ADMIN),
+        guild_owner: true,
+        ..def("instance.full_notice.set", Kind::Admin, "caution", LOCAL_AND_DISCORD, true, "PUT", "/api/instance/:id/full-notice/:guild")
     },
     def("update.check", Kind::Query, "safe", LOCAL_AND_DISCORD, false, "POST", "/api/updates/check"),
     // 원격(디스코드)에서도 끝까지 가도록 받기·적용·업데이터 띄우기를 한 번에 한다 (`/api/updates/install`)
@@ -1250,15 +1259,27 @@ async fn scheduled_commands(server: &IPCServer, instance: &str, body: Option<&Va
             TaskAction::Start => Some(("start".to_string(), "caution")),
             TaskAction::Stop => Some(("stop".to_string(), "caution")),
             TaskAction::Restart => Some(("restart".to_string(), "caution")),
-            TaskAction::Command => meta
+            // 공지·저장도 모듈의 게임 명령(`announce_command`·`[backup] save_command`)으로 돈다: 그 명령의 레벨을 본다
+            TaskAction::Command | TaskAction::Announce | TaskAction::Save => meta
                 .as_ref()
-                .and_then(|m| crate::commands::find(m, task.command.as_deref().unwrap_or("")))
+                .and_then(|m| crate::commands::find(m, &scheduled_command_name(m, task)?))
                 .map(|f| (f.name.clone(), crate::commands::risk_of(f.risk.as_deref()))),
             _ => None,
         };
         out.extend(found.map(|(cmd, risk)| (cmd, risk.to_string())));
     }
     out
+}
+
+/// 예약 작업이 돌릴 모듈 게임 명령의 이름 (명령·공지·저장). 그 밖의 작업이나 모듈이 선언하지 않았으면 None
+pub(crate) fn scheduled_command_name(meta: &crate::supervisor::module_loader::ModuleMetadata, task: &crate::scheduler::ScheduledTask) -> Option<String> {
+    use crate::scheduler::TaskAction;
+    match task.action {
+        TaskAction::Command => task.command.clone(),
+        TaskAction::Announce => meta.announce_command.clone(),
+        TaskAction::Save => meta.backup.as_ref().and_then(|b| b.save_command.clone()),
+        _ => None,
+    }
 }
 
 /// 내장 서버 액션에 대응하는 내장 명령 이름 (레벨 키 `<instance>/<명령>`)

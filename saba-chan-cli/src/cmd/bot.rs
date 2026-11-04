@@ -215,7 +215,18 @@ pub async fn run(ctx: &Ctx, cmd: BotCmd) -> Result<()> {
         }
         BotCmd::Link { id, decline } => link(ctx, id.as_deref(), decline).await,
         BotCmd::Allow { guild, servers, all } => allow(ctx, &resolve::guild(ctx, Some(&guild)).await?, &servers, all).await,
-        BotCmd::Notice { guild, server, on, off } => notice(ctx, &resolve::guild(ctx, Some(&guild)).await?, server.as_deref(), (on || off).then_some(on)).await,
+        BotCmd::Notice { guild, server, on, off, full } => notice(ctx, &resolve::guild(ctx, Some(&guild)).await?, server.as_deref(), (on || off).then_some(on), full).await,
+        BotCmd::BackupNotice { all, failures } => {
+            if all || failures {
+                let mode = if failures { "failures" } else { "all" };
+                let r = ctx.api.patch_bot_config(json!({ "backupNotice": mode })).await?;
+                ctx.out.done(&t!("bot.backup_notice_set", mode = backup_notice_text(mode)), &r);
+                return Ok(());
+            }
+            let mode = backup_notice_mode(&ctx.api.bot_config().await?);
+            ctx.out.data(&json!({ "backupNotice": mode }), |_| say!("{}", t!("bot.backup_notice_show", mode = backup_notice_text(mode))));
+            Ok(())
+        }
         BotCmd::Reset { keys } => {
             let q = if keys.is_empty() {
                 t!("config.confirm_reset_all")
@@ -546,8 +557,9 @@ async fn allow(ctx: &Ctx, guild: &str, queries: &[String], all: bool) -> Result<
     Ok(())
 }
 
-/// 켜짐 알림: 사바쨩이 켠 서버를 그 디스코드 서버의 알림 채널에 알린다 (`nodeSettings[guild].startNotice`, 기본 꺼짐)
-async fn notice(ctx: &Ctx, guild: &str, server: Option<&str>, enabled: Option<bool>) -> Result<()> {
+/// 켜짐·꺼짐 알림(`nodeSettings[guild].startNotice`)과 `--full` 자리 꽉 참 알림(`fullNotice`): 그 디스코드 서버의 알림 채널에 알린다 (기본 꺼짐)
+async fn notice(ctx: &Ctx, guild: &str, server: Option<&str>, enabled: Option<bool>, full: bool) -> Result<()> {
+    let text = |key: &str| if full { format!("bot.full_{}", key) } else { format!("bot.{}", key) };
     let servers = crate::resolve::servers(ctx).await.unwrap_or_default();
     let name_of = |id: &str| servers.iter().find(|s| s.id == id).map_or(id.to_string(), |s| s.name.clone());
     let id = match server {
@@ -555,19 +567,19 @@ async fn notice(ctx: &Ctx, guild: &str, server: Option<&str>, enabled: Option<bo
         None => None,
     };
     let (Some(id), Some(enabled)) = (&id, enabled) else {
-        let r = ctx.api.start_notice(guild).await?;
+        let r = if full { ctx.api.full_notice(guild).await? } else { ctx.api.start_notice(guild).await? };
         let on: Vec<String> = r.get("instances").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str).map(str::to_string).collect();
         ctx.out.data(&r, |_| match &id {
-            Some(id) if on.contains(id) => say!("{}", t!("bot.notice_is_on", server = name_of(id))),
-            Some(id) => say!("{}", t!("bot.notice_is_off", server = name_of(id))),
-            None if on.is_empty() => say!("{}", output::dim(&t!("bot.notice_none"))),
+            Some(id) if on.contains(id) => say!("{}", t!(&text("notice_is_on"), server = name_of(id))),
+            Some(id) => say!("{}", t!(&text("notice_is_off"), server = name_of(id))),
+            None if on.is_empty() => say!("{}", output::dim(&t!(&text("notice_none")))),
             None => on.iter().for_each(|id| say!("{}", name_of(id))),
         });
         return Ok(());
     };
-    let r = ctx.api.set_start_notice(id, guild, enabled).await?;
-    let key = if enabled { "bot.notice_on_saved" } else { "bot.notice_off_saved" };
-    ctx.out.done(&t!(key, guild = guild, server = name_of(id)), &r);
+    let r = if full { ctx.api.set_full_notice(id, guild, enabled).await? } else { ctx.api.set_start_notice(id, guild, enabled).await? };
+    let key = text(if enabled { "notice_on_saved" } else { "notice_off_saved" });
+    ctx.out.done(&t!(&key, guild = guild, server = name_of(id)), &r);
     Ok(())
 }
 
@@ -711,6 +723,15 @@ fn target_guilds(nodes: &Value, changing: bool) -> Result<Vec<(String, String)>>
 /// 봇 설정의 `newGuildInstances` (없거나 모르는 값이면 데몬 기본 `auto`)
 fn new_guild_mode(cfg: &Value) -> &'static str {
     if cfg.get("newGuildInstances").and_then(Value::as_str) == Some("manual") { "manual" } else { "auto" }
+}
+
+/// 봇 설정의 `backupNotice` (없거나 모르는 값이면 데몬 기본 `all`)
+fn backup_notice_mode(cfg: &Value) -> &'static str {
+    if cfg.get("backupNotice").and_then(Value::as_str) == Some("failures") { "failures" } else { "all" }
+}
+
+fn backup_notice_text(mode: &str) -> String {
+    if mode == "failures" { t!("bot.backup_notice_failures") } else { t!("bot.backup_notice_all") }
 }
 
 fn new_guild_text(mode: &str) -> String {
@@ -1260,6 +1281,14 @@ mod tests {
         assert_eq!(super::new_guild_mode(&json!({ "newGuildInstances": "manual" })), "manual");
         assert_eq!(super::new_guild_mode(&json!({ "newGuildInstances": "auto" })), "auto");
         assert_eq!(super::new_guild_mode(&json!({})), "auto");
+    }
+
+    #[test]
+    fn backup_notice_mode_falls_back_to_all() {
+        use serde_json::json;
+        assert_eq!(super::backup_notice_mode(&json!({ "backupNotice": "failures" })), "failures");
+        assert_eq!(super::backup_notice_mode(&json!({ "backupNotice": "x" })), "all");
+        assert_eq!(super::backup_notice_mode(&json!({})), "all");
     }
 
     use super::*;

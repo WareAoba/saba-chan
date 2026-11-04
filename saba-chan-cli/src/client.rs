@@ -1069,6 +1069,14 @@ impl Api {
     pub async fn set_start_notice(&self, id: &str, guild_id: &str, enabled: bool) -> Result<Value> {
         self.put(&format!("/api/instance/{}/start-notice/{}", seg(id), seg(guild_id)), json!({ "enabled": enabled })).await
     }
+    /// GET /api/guilds/:guild/full-notice — `{guildId, instances}` (자리 꽉 참 알림을 켠 서버)
+    pub async fn full_notice(&self, guild_id: &str) -> Result<Value> {
+        self.get(&format!("/api/guilds/{}/full-notice", seg(guild_id))).await
+    }
+    /// PUT /api/instance/:id/full-notice/:guild — `{enabled}` → `{success, id, guildId, enabled, instances}`
+    pub async fn set_full_notice(&self, id: &str, guild_id: &str, enabled: bool) -> Result<Value> {
+        self.put(&format!("/api/instance/{}/full-notice/{}", seg(id), seg(guild_id)), json!({ "enabled": enabled })).await
+    }
     // ── 백업·예약 ──
 
     /// GET /api/instance/:id/backups — `{backups: [{name, kind, created, size}]}`

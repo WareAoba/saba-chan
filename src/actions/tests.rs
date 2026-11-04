@@ -917,6 +917,12 @@ async fn chatbot_settings_from_discord_are_the_owners_and_never_the_chatbots() {
     run(&state, "chatbot.settings.set", None, &json!({ "guild": "g", "confirmLevel": null }), None, &gui()).await.unwrap();
     let read = run(&state, "chatbot.settings.get", None, &json!({ "guild": "g" }), None, &gui()).await.unwrap();
     assert_eq!(read["result"]["settings"]["confirmLevel"].as_str(), Some("all"));
+    // 토큰 알림 (릴레이 /설정 칸): 한도·잔액 금액, 처음엔 없음(null)
+    assert!(read["result"]["settings"]["tokenLimit"].is_null());
+    let alerts = json!({ "guild": "g", "tokenLimit": 2_000_000, "balanceAlert": 2.5 });
+    assert_eq!(run(&state, "chatbot.settings.set", None, &alerts, None, &gui()).await.unwrap()["success"], true);
+    let read = run(&state, "chatbot.settings.get", None, &json!({ "guild": "g" }), None, &gui()).await.unwrap();
+    assert_eq!((read["result"]["settings"]["tokenLimit"].as_i64(), read["result"]["settings"]["balanceAlert"].as_f64()), (Some(2_000_000), Some(2.5)));
     // 메모도 소유자만 읽는다
     assert_eq!(plan(&state, "chatbot.settings.get", None, &json!({}), &relay("admin", false)).await.unwrap_err().code, "PERMISSION_DENIED");
 }
@@ -1034,6 +1040,23 @@ async fn scheduling_a_command_needs_the_requesters_permission_for_it() {
     assert!(plan(&state, "instance.schedule.set", Some(&id), &task("start", None), &admin).await.is_ok(), "only the limited commands");
     let off = json!({ "schedule": [{ "action": "command", "at": "04:00", "command": "say", "enabled": false }] });
     assert!(plan(&state, "instance.schedule.set", Some(&id), &off, &admin).await.is_ok(), "a disabled task never runs");
+}
+
+/// 예약 공지·저장도 모듈의 게임 명령을 돌린다: 그 명령의 레벨이 요청자에게 없으면 예약하지 못한다
+#[tokio::test]
+async fn scheduling_an_announcement_or_save_needs_the_permission_for_its_command() {
+    let module = format!(
+        "{MODULE}\n[config]\nannounce_command = \"say\"\n\n[backup]\npaths = [\"world\"]\nsave_command = \"save-all\"\n\n[[commands.fields]]\nname = \"say\"\nrisk = \"safe\"\n\n[[commands.fields]]\nname = \"save-all\"\nrisk = \"safe\"\n"
+    );
+    let (state, id, _tmp) = server_with(&module).await;
+    let levels = json!({ format!("{}/say", id): 3, format!("{}/save-all", id): 3 });
+    set_node(&state, json!({ "ownerDiscordId": "owner", "preset": "loose", "chatbotCap": 2, "defaultLevel": 2, "commandLevels": levels })).await;
+    let admin = relay("admin", true);
+    for task in [json!({ "action": "announce", "at": "04:00", "message": "hi" }), json!({ "action": "save", "at": "04:00" })] {
+        let input = json!({ "schedule": [task] });
+        let err = plan(&state, "instance.schedule.set", Some(&id), &input, &admin).await.unwrap_err();
+        assert_eq!((err.code, &err.data["args"]["need"]), ("PERMISSION_DENIED", &json!(3)), "{}", input);
+    }
 }
 
 #[test]
@@ -1238,6 +1261,23 @@ async fn start_notice_is_set_from_discord_by_admins_for_their_own_guild() {
     let item = actions.iter().find(|a| a["id"] == id_).expect("in the Discord menu");
     assert_eq!(item["title"]["ko"], "켜짐 알림");
     assert_eq!(item["name"]["en"], "Start alert");
+}
+
+// 사용자 11-04: 자리 꽉 참 알림도 서버마다 켠다. 켜짐 알림처럼 관리자 이상, 요청이 온 길드만
+#[tokio::test]
+async fn full_notice_is_set_from_discord_by_admins() {
+    let (state, id, _tmp) = server().await;
+    set_node(&state, json!({ "ownerDiscordId": "owner", "defaultLevel": 1, "members": { "admin": 2 } })).await;
+    let on = json!({ "enabled": true });
+    let id_ = "instance.full_notice.set";
+    assert_eq!(plan(&state, id_, Some(&id), &on, &relay("user", false)).await.unwrap_err().code, "PERMISSION_DENIED");
+    let planned = plan(&state, id_, Some(&id), &on, &relay("admin", false)).await.unwrap();
+    let done = run(&state, "", None, &Value::Null, planned["planId"].as_str(), &relay("admin", false)).await.unwrap();
+    assert_eq!(done["success"], true, "{done}");
+    assert_eq!(state.config_store.get_bot_config().await.node_settings["g"]["fullNotice"], json!([id]));
+    let (actions, _) = heartbeat_actions(&crate::chat::i18n::languages(), &[]);
+    let item = actions.iter().find(|a| a["id"] == id_).expect("in the Discord menu");
+    assert_eq!(item["title"]["ko"], "자리 꽉 참 알림");
 }
 
 /// 디스코드 문장 명령도 계획 → 실행 한 길로: 데몬이 문장을 해석해 액션과 서버를 알려 주고, 실행하면 문장 명령과 같은 답을 쓴다

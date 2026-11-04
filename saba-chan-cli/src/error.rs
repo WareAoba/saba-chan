@@ -243,6 +243,7 @@ pub fn api_hint(code: &str, body: &Value) -> Option<String> {
         // 켜진 서버가 쥐고 있는 파일 (`file`: 그 이름)
         "backup_file_locked" => Some(t!("err.hint.backup_file_locked", file = body.get("file").and_then(Value::as_str).unwrap_or("?"))),
         "autosave_not_resumed" => Some(t!("err.hint.autosave_not_resumed")),
+        "backup_failed_autosave_off" => Some(t!("err.hint.backup_failed_autosave_off")),
         "backup_save_rejected" => Some(t!("err.hint.backup_save_rejected")),
         "backup_save_unconfirmed" => Some(t!("err.hint.backup_save_unconfirmed")),
         "snapshot_not_found" => Some(t!("err.hint.snapshot_not_found")),
