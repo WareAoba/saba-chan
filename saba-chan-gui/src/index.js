@@ -11,6 +11,8 @@ import { installMockApi } from './dev/mockApi';
 import { i18nReady } from './i18n'; // Initialize i18n
 import './styles/tokens.css'; // 디자인 토큰 (다른 CSS보다 먼저)
 import './styles/base.css';
+import './styles/grad-cycle.css';
+import { installGradCycle } from './utils/gradCycle';
 import { installOverlayScrollbars } from './utils/overlayScrollbar';
 import { initTheme } from './utils/themeManager';
 
@@ -31,6 +33,7 @@ if (/Mac/.test(navigator.platform || navigator.userAgent)) document.documentElem
 initTheme();
 // 스크롤바는 내용 위에 겹쳐 그린다 (레이아웃을 밀지 않게)
 installOverlayScrollbars();
+installGradCycle();
 
 const handleGlobalError = (error, info) => {
     console.error('[ErrorBoundary] Uncaught error:', error);

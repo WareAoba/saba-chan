@@ -1,5 +1,7 @@
 import '@gui/styles/tokens.css';
 import './styles.css';
+import '@gui/styles/grad-cycle.css';
+import { installGradCycle } from '@gui/utils/gradCycle';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import { createWebApi } from './api';
@@ -21,6 +23,9 @@ function takeLink() {
 }
 
 applyTheme();
+// 강조 버튼은 앱 기본값처럼 그라데이션이고, 올리면 흐른다 (@gui/styles/grad-cycle.css)
+document.documentElement.dataset.brandGradient = 'on';
+installGradCycle();
 
 const link = takeLink();
 

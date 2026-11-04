@@ -232,6 +232,11 @@
     --brand-hover: #6c7dd8;
     --brand-text: #ffffff;
     --brand-gradient: #7d8ee8;
+    /* 그라데이션 두 끝 색 (themeManager 가 덮어쓴다) — 순환 버튼(grad-cycle.css)이 쓴다 */
+    --brand-from: var(--brand-primary);
+    --brand-to: var(--brand-secondary);
+    /* 첫 색→둘째 색 사이 반씩 섞이는 자리. 기본 둘째 색(보라)이 밝은 첫 색에 묻혀 보여 보라 몫을 66% 로 둔다 */
+    --brand-grad-mid: 34%;
     /* 뉴모피즘 볼록면: 강조색에서 밝게→어둡게 (사용자 강조색을 따라간다) */
     --brand-neu-from: color-mix(in oklch, var(--brand-primary), #ffffff 18%);
     --brand-neu-to: color-mix(in oklch, var(--brand-primary), #000000 14%);

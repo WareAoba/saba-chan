@@ -30,6 +30,9 @@ const ALLOWED = new Set([
     // 코코낸내 기능 묶음·시각 (GUI 봇 설정과 같은 상수)
     '@gui/components/discord/sleep',
     '@gui/styles/tokens.css',
+    // 그라데이션 버튼 호버 순환 (앱과 같은 움직임과 그림)
+    '@gui/utils/gradCycle',
+    '@gui/styles/grad-cycle.css',
     // 아이콘은 GUI 와 같은 것을 쓴다 (화면이 아니라 그림 하나)
     '@gui/components/Icon',
     '@gui/components/CustomDropdown/CustomDropdown',
