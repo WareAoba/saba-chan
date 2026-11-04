@@ -114,11 +114,8 @@ async fn save_for_backup(state: &IPCServer, id: &str, spec: &crate::supervisor::
         };
         let Some(reply) = command_reply(state, id, cmd, json!({})).await else {
             tracing::warn!("Command '{}' failed before backing up '{}'", cmd, id);
-            // 완료 줄로 확인하기로 한 저장을 보내지도 못했다: 저장 안 된 월드를 묶지 않는다
-            if is_save && done.is_some() {
-                return Err(SaveNotDone::Unconfirmed { command: cmd.to_string() });
-            }
-            continue;
+            // 자동 저장 중지나 저장을 보내지도 못했다: 저장 안 된(또는 쓰는 중인) 월드를 묶지 않는다
+            return Err(SaveNotDone::Unconfirmed { command: cmd.to_string() });
         };
         let done_here = done.as_ref().filter(|_| is_save);
         if done_here.is_some_and(|d| reply.lines().any(|l| d.is_match(l))) {
@@ -372,10 +369,14 @@ async fn take_backup_locked(state: &IPCServer, id: &str, kind: BackupKind, prote
     // 켜진 서버: 자동 저장을 멈추고(pause) 저장한 뒤 묶고, 끝나면(실패해도) 자동 저장을 되돌린다(resume)
     let live = (plan.spec.save_command.is_some() || plan.spec.pause_command.is_some()) && is_running(state, id).await;
     let resume = if live { plan.spec.resume_command.clone() } else { None };
-    let saved = if live {
-        let failures = state.supervisor.read().await.module_loader.get_module(&plan.module_name).ok()
+    let failures = if live {
+        state.supervisor.read().await.module_loader.get_module(&plan.module_name).ok()
             .and_then(|m| m.metadata.commands.map(|c| c.failure_patterns))
-            .unwrap_or_default();
+            .unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+    let saved = if live {
         save_for_backup(state, id, &plan.spec, &failures).await
     } else {
         Ok(())
@@ -408,7 +409,13 @@ async fn take_backup_locked(state: &IPCServer, id: &str, kind: BackupKind, prote
     // 백업이 실패했어도 자동 저장을 되돌리지 못했으면 그것도 알린다 (서버가 자동 저장이 꺼진 채 돈다)
     let mut not_resumed = None;
     if let Some(cmd) = resume.as_deref() {
-        if !run_command(state, id, cmd, json!({})).await {
+        // 저장 명령처럼 답의 첫 줄이 모듈의 실패 모양이면 서버가 재개를 거절한 것이다
+        let failures: Vec<regex::Regex> = failures.iter().filter_map(|p| regex::Regex::new(p).ok()).collect();
+        let resumed = command_reply(state, id, cmd, json!({})).await.is_some_and(|reply| {
+            let first = reply.lines().find(|l| !l.trim().is_empty()).unwrap_or_default();
+            rejected(first, &failures).is_none()
+        });
+        if !resumed {
             tracing::warn!("Command '{}' failed after backing up '{}'; the server may not save automatically until it restarts", cmd, id);
             // 백업은 남았어도 서버가 자동 저장을 하지 않는다: 성공으로 알리지 않는다
             match &result {
@@ -2425,6 +2432,30 @@ print(json.dumps({'success': True, 'snapshots': [{'id': 'startup/backup_1', 'cre
         let dir = state.supervisor.read().await.instance_store.instance_dir(&id).join("backups");
         assert!(backup::list(&dir).is_empty());
         assert!(std::fs::read_to_string(tmp.path().join("server/commands.log")).unwrap().ends_with("save-on\n"));
+    }
+
+    /// 저장 완료 줄이 없는 모듈이라도 저장·자동 저장 중지 명령을 보내지 못하면 백업을 만들지 않는다 (오래된 백업도 정리하지 않는다)
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_live_backup_fails_when_a_save_command_cannot_be_sent() {
+        let (state, id, tmp) = server_with(&live_module(None), None).await;
+        run_fake_server(&state, &id, &tmp, "save-off) exit 0;;").await;
+        let err = take_backup(&state, &id, BackupKind::Manual).await.err().expect("a save that was not sent");
+        let body = crate::ipc::internal::into_internal(err).await.body;
+        assert_eq!(body["success"], false, "{body}");
+        let dir = state.supervisor.read().await.instance_store.instance_dir(&id).join("backups");
+        assert!(backup::list(&dir).is_empty(), "no backup of an unsaved world");
+    }
+
+    /// 자동 저장 재개 명령을 서버가 거절하면(모듈의 실패 모양) 백업은 남아도 성공으로 알리지 않는다
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_rejected_autosave_resume_is_reported() {
+        let (state, id, tmp) = server_with(&live_module(None), None).await;
+        run_fake_server(&state, &id, &tmp, "save-on) echo 'Unknown command';;").await;
+        let err = take_backup(&state, &id, BackupKind::Manual).await.err().expect("autosave left off");
+        let body = crate::ipc::internal::into_internal(err).await.body;
+        assert_eq!(body["error_code"], "autosave_not_resumed", "{body}");
     }
 
     /// 하트비트의 예약 목록: 켜 둔 것만, 가까운 순으로, 상한까지

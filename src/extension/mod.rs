@@ -208,6 +208,13 @@ impl ExtensionError {
             related: vec![required.to_string()],
         }
     }
+    fn folder_in_use(ext_id: &str, owner: &str) -> Self {
+        Self {
+            error_code: "folder_in_use".to_string(),
+            message: format!("Cannot install '{}': its folder is used by extension '{}'", ext_id, owner),
+            related: vec![ext_id.to_string(), owner.to_string()],
+        }
+    }
     fn id_mismatch(manifest_id: &str, dir_name: &str) -> Self {
         Self {
             error_code: "id_mismatch".to_string(),
@@ -681,6 +688,16 @@ impl ExtensionManager {
         self.extensions_dir.join(&safe_name)
     }
 
+    /// 설치로 바꿀 폴더가 다른 익스텐션의 것이 아닌가. `a-b`와 `a_b`처럼 다른 id가 같은 폴더 이름이 될 수 있어,
+    /// 폴더의 manifest id가 다르면 바꾸지 않는다 (manifest가 없거나 읽을 수 없는 폴더는 예전처럼 바꾼다)
+    fn ensure_folder_is_free_for(dest: &std::path::Path, ext_id: &str) -> Result<()> {
+        let Ok(content) = std::fs::read_to_string(dest.join("manifest.json")) else { return Ok(()) };
+        match parse_manifest(&content) {
+            Ok((manifest, _)) if manifest.id != ext_id => Err(ExtensionError::folder_in_use(ext_id, &manifest.id).into()),
+            _ => Ok(()),
+        }
+    }
+
     /// extensions/ 디렉토리를 스캔하여 익스텐션 발견.
     ///
     /// 지원 형식:
@@ -745,6 +762,10 @@ impl ExtensionManager {
             }
         };
         let dest = self.extensions_dir.join(Self::python_safe_dir_name(&ext_id));
+        if let Err(e) = Self::ensure_folder_is_free_for(&dest, &ext_id) {
+            let _ = std::fs::remove_dir_all(&staging);
+            return Err(e);
+        }
         crate::utils::swap_dir(&staging, &dest)?;
         Self::record_files(&ext_id, &dest, false);
         if let Err(e) = std::fs::remove_file(zip_path) {
@@ -1623,6 +1644,10 @@ impl ExtensionManager {
             return Err(ExtensionError::in_use(ext_id, &using).into());
         }
         let dest = self.ext_dir_on_disk(ext_id);
+        if let Err(e) = Self::ensure_folder_is_free_for(&dest, ext_id) {
+            let _ = std::fs::remove_dir_all(staged);
+            return Err(e);
+        }
         crate::utils::swap_dir(staged, &dest)?;
         Self::record_files(ext_id, &dest, official);
         self.mount(ext_id)?;
@@ -2258,6 +2283,29 @@ mod tests {
             {"id": "helper", "name": "H", "version": "0.1.0", "download_url": "x"}
         ])).unwrap();
         assert_eq!(mgr.missing_dependencies("box", &remote), ["helper"]);
+    }
+
+    /// `a-b`와 `a_b`는 같은 폴더(`a_b`)를 쓴다: 다른 id가 이미 쓰는 폴더는 설치로 바꾸지 않는다 (일반 설치·폴더에 둔 zip 둘 다)
+    #[test]
+    fn installing_never_replaces_the_folder_of_another_extension() {
+        let tmp = tempfile::tempdir().unwrap();
+        write_ext(tmp.path(), "a_b", json!({"id": "a_b", "name": "A", "version": "0.1.0"}));
+        std::fs::write(tmp.path().join("a_b/data.txt"), "mine").unwrap();
+        let mut mgr = ExtensionManager::new_isolated(tmp.path().to_str().unwrap());
+        mgr.discover().unwrap();
+
+        let pkg = zip_package(json!({"id": "a-b", "name": "B", "version": "0.1.0"}), "other");
+        let staged = ExtensionManager::stage_package(tmp.path(), "a-b", &pkg, None).unwrap();
+        let err = mgr.install_staged("a-b", &staged, &[], false).unwrap_err();
+        assert_eq!(err.downcast_ref::<ExtensionError>().unwrap().error_code, "folder_in_use", "{err:#}");
+        assert!(!staged.exists(), "refused package is cleaned up");
+        assert_eq!(std::fs::read_to_string(tmp.path().join("a_b/data.txt")).unwrap(), "mine");
+
+        std::fs::write(tmp.path().join("a-b.zip"), &pkg).unwrap();
+        mgr.discover().unwrap();
+        assert_eq!(std::fs::read_to_string(tmp.path().join("a_b/data.txt")).unwrap(), "mine");
+        assert_eq!(mgr.discovered["a_b"].manifest.name, "A");
+        assert!(!mgr.discovered.contains_key("a-b"));
     }
 
     /// 더 새 앱을 요구하는 패키지는 켤 때와 같은 app_version_unsatisfied로 거절한다 (클라이언트가 "업데이트가 필요해요"로 보인다)
