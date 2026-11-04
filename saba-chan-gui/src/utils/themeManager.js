@@ -291,6 +291,10 @@ export function applyCustomTheme(config) {
     root.style.setProperty('--brand-text', brandText);
 
     // Gradient vs flat
+    // 순환 버튼(grad-cycle.css)은 켜졌을 때만, 두 끝 색으로 그린다
+    root.dataset.brandGradient = useGradient ? 'on' : 'off';
+    root.style.setProperty('--brand-from', accentColor);
+    root.style.setProperty('--brand-to', accentSecondary);
     if (useGradient) {
         root.style.setProperty('--brand-gradient', `linear-gradient(in oklch 135deg, ${accentColor} 0%, ${accentSecondary} 100%)`);
     } else {
@@ -331,6 +335,8 @@ export function applyCustomTheme(config) {
         root.style.setProperty('--input-focus-shadow', `rgba(${dr}, ${dg}, ${db}, 0.12)`);
         if (useGradient) {
             const darkSecondary = lightenHex(accentSecondary, 0.12);
+            root.style.setProperty('--brand-from', darkAccent);
+            root.style.setProperty('--brand-to', darkSecondary);
             root.style.setProperty('--brand-gradient', `linear-gradient(in oklch 135deg, ${darkAccent} 0%, ${darkSecondary} 100%)`);
         } else {
             root.style.setProperty('--brand-gradient', darkAccent);
