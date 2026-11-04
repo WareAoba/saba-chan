@@ -2,6 +2,7 @@ import type { TFunction } from 'i18next';
 import { create } from 'zustand';
 import type { AgentStatus, Json, JsonObject } from '../types/daemon';
 import { readPrefixes } from '../components/discord/prefixes';
+import type { DiscordNode, MembersByGuild } from '../components/discord/types';
 import { createTranslateError, safeShowToast } from '../utils/helpers';
 import { mergePatchDiff } from '../utils/mergePatch';
 
@@ -59,8 +60,8 @@ export interface DiscordData {
     discordCloudHostId: string;
     /** 길드 id → 그 길드 설정 */
     nodeSettings: JsonObject;
-    cloudNodes: JsonObject[];
-    cloudMembers: Record<string, Json>;
+    cloudNodes: DiscordNode[];
+    cloudMembers: MembersByGuild;
     discordTranslateCommands: boolean;
     discordNewGuildInstances: 'auto' | 'manual';
     discordBackupNotice: 'all' | 'failures';

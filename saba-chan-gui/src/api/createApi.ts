@@ -618,7 +618,7 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
             }
         },
         // 실행 인자 미리보기: extraArgs를 넘기지 않으면 저장된 추가 인자로 본다
-        instanceLaunchPreview: (id: string, settings?: ApiBody | null, extraArgs?: string[] | null) => {
+        instanceLaunchPreview: (id: string, settings?: ApiBody | null, extraArgs?: string | string[] | null) => {
             const body: ApiBody = { settings: settings || {} };
             if (extraArgs !== undefined && extraArgs !== null) body.extra_args = extraArgs;
             return daemonCall('post', `/api/instance/${encodeURIComponent(id)}/launch-preview`, body, 15000);
@@ -1005,7 +1005,7 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
         settingsGetPath: () => invoke('settings_get_path'),
 
         // ── 대화상자 ──
-        openFileDialog: (options?: { filters?: DialogArgs['filters'] }) => pickLocal('dialog_open_file', { filters: options?.filters ?? null }),
+        openFileDialog: (options?: { filters?: DialogArgs['filters']; title?: string }) => pickLocal('dialog_open_file', { filters: options?.filters ?? null }),
         openFolderDialog: () => pickLocal('dialog_open_folder'),
 
         // 고른 폴더가 어느 게임 서버 폴더인지 (데몬의 게임 폴더 판정만 쓴다)
@@ -1102,7 +1102,7 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
         permissionsUpdate: (guildId: string, patch: ApiBody) => daemonCall('patch', permPath(guildId), patch || {}),
         permissionsCommands: (guildId: string, locale: string) =>
             daemonCall('get', `${permPath(guildId)}/commands${queryString({ locale: locale || undefined })}`),
-        permissionsSetMember: (guildId: string, discordId: string, level: string) => daemonCall('put', permPath(guildId, discordId), { level }),
+        permissionsSetMember: (guildId: string, discordId: string, level: string | number) => daemonCall('put', permPath(guildId, discordId), { level }),
         permissionsRemoveMember: (guildId: string, discordId: string) => daemonCall('delete', permPath(guildId, discordId)),
         sandboxListUnisolated: () => daemonCall('get', '/api/sandbox/unisolated'),
         // 동의 기록은 셸이 네이티브 확인 창을 띄운 뒤에 보낸다. 취소하면 {success:false, error_code:'canceled'}
@@ -1123,7 +1123,7 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
         instanceWordsSave: (id: string, body: ApiBody) =>
             daemonCall('put', `/api/instance/${encodeURIComponent(id)}/words`, body || {}),
         // 길드가 쓸 서버 제한 `{instances: [id] | null}` (null = 제한 없음) → `{guildId, allowedInstances}`
-        guildAllowedInstancesSave: (guild: string, instances: string[]) =>
+        guildAllowedInstancesSave: (guild: string, instances: string[] | null) =>
             daemonCall('put', `/api/guilds/${encodeURIComponent(guild)}/allowed-instances`, { instances }),
         // 켜짐 알림을 켠 서버 → `{guildId, instances, allowedInstances}` (allowedInstances null = 모든 서버)
         guildStartNoticeGet: (guild: string) => daemonCall('get', `/api/guilds/${encodeURIComponent(guild)}/start-notice`),
@@ -1263,14 +1263,14 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
             ),
 
         // ── 동의·온보딩·백업·예약·챗봇 ──
-        instanceAgreements: (id: string, accept: boolean) => daemonJson('post', instancePath(id, '/agreements'), { accept }),
+        instanceAgreements: (id: string, accept: boolean | string[]) => daemonJson('post', instancePath(id, '/agreements'), { accept }),
         onboarding: () => daemonJson('get', '/api/onboarding'),
         // 문제를 물어볼 때 붙여 넣는 데몬 진단 (비밀은 데몬이 싣지 않는다)
         daemonDiagnostics: () => daemonJson('get', '/api/diagnostics'),
         // 폴더 위치: 데이터·프로그램·인스턴스·모듈·익스텐션 폴더와 기본값
         systemPaths: () => daemonJson('get', '/api/system/paths'),
         // 고른 데몬 PC의 폴더 보기 (원격 경로 고르기, D2): path가 비면 드라이브·루트. extensions 없으면 폴더만, ['*']면 모든 파일
-        systemBrowse: (path: string, extensions: string[]) =>
+        systemBrowse: (path: string, extensions?: string[] | null) =>
             daemonJson('get', `/api/system/browse${queryString({ path: path || undefined, files: extensions?.length ? extensions.join(',') : undefined })}`),
         // 모듈·익스텐션 폴더 옮기기: 데몬이 복사·검증 뒤 옮긴다 (큰 폴더는 오래 걸린다)
         systemPathsMove: (kind: string, target: string) =>
@@ -1290,7 +1290,7 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
         // 데몬이 원격 데몬 하나를 30초까지 기다린다 (01 §1.4.2 8)
         remoteServers: () => daemonJson('get', '/api/remote/servers', undefined, 40000),
         // 합쳐 보기에서 다른 데몬의 서버 하나를 켜고 끈다. hostId가 없으면 이 PC
-        remoteInstanceAction: async (hostId: string, id: string, action: string): Promise<ApiBody> => {
+        remoteInstanceAction: async (hostId: string | null, id: string, action: string): Promise<ApiBody> => {
             if (!['start', 'stop', 'restart'].includes(action)) return { success: false, error: `unknown action ${action}` };
             const body = action === 'start' ? {} : { force: false };
             try {
@@ -1307,13 +1307,13 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
         },
         // 다룰 데몬 (G1): 셸이 데몬 요청마다 X-Saba-Target을 싣고 설정 gui.daemonTarget에 저장한다
         daemonTarget: () => invoke('daemon_target_get'),
-        daemonTargetSet: (target: string) => invoke('daemon_target_set', { target: target || null }),
+        daemonTargetSet: (target: string | null) => invoke('daemon_target_set', { target: target || null }),
         // 로그인할 때 자동 실행: `{supported, mode: 'off'|'daemon'|'full'}`
         systemAutostart: () => daemonJson('get', '/api/system/autostart'),
         systemAutostartSet: (mode: string) => daemonJson('put', '/api/system/autostart', { mode }),
         instanceBackups: (id: string) => daemonJson('get', instancePath(id, '/backups')),
         // body: 없으면 지금 상태, `{ source: 'snapshot', snapshot? }`이면 게임 자동 백업 보관
-        instanceBackupCreate: (id: string, body: ApiBody) => daemonJson('post', instancePath(id, '/backups'), body, BACKUP_TIMEOUT),
+        instanceBackupCreate: (id: string, body?: ApiBody) => daemonJson('post', instancePath(id, '/backups'), body, BACKUP_TIMEOUT),
         instanceBackupDelete: (id: string, name: string) =>
             daemonJson('delete', instancePath(id, `/backups/${encodeURIComponent(name)}`)),
         instanceBackupRestore: (id: string, name: string) =>

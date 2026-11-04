@@ -209,6 +209,12 @@ export interface UnmetDependency {
     installed: string | null;
 }
 
+/** [[agreements]] (module_loader::ModuleAgreement) */
+export interface ModuleAgreement {
+    id: string;
+    url: string;
+}
+
 /** GET /api/modules 항목 (ipc::ExtensionInfo) */
 export interface ModuleInfo {
     name: string;
@@ -242,7 +248,7 @@ export interface ModuleInfo {
     command_aliases?: Record<string, CommandAliasInfo>;
     presets?: ModulePreset[];
     queries?: JsonObject[];
-    agreements?: JsonObject[];
+    agreements?: ModuleAgreement[];
     /** 모듈이 밝힌 lifecycle 함수. null이면 모른다 (아무 기능도 숨기지 않는다) */
     functions: string[] | null;
 }
@@ -253,6 +259,12 @@ export interface ModuleLoadError {
     error: string;
     module?: string;
     error_code?: string;
+    /** 못 맞춘 의존성 (`"saba-core >=0.3.0 (installed 0.1.1)"` 꼴) */
+    missing_dependencies?: string[];
+    /** module_schema_invalid일 때 무엇이 틀렸는지 */
+    problems?: string[];
+    /** module_schema_unsupported일 때 모듈이 요구한 스키마 버전 */
+    required?: number;
 }
 
 /** GET /api/modules (ipc::ExtensionListResponse) */
