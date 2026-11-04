@@ -1,9 +1,15 @@
 import { gameNameOf, initials } from '@gui/utils/serverView';
 import { useTranslation } from 'react-i18next';
-import type { Loose } from '../types';
+import type { Module } from '../types';
 
 /** 모듈 아이콘 (데몬이 준 data: 그림). 없으면 게임 이름 첫 글자 */
-export function ServerIcon({ module, moduleData, size = 40 }: Loose) {
+interface ServerIconProps {
+    module: string;
+    moduleData?: Partial<Module> | null;
+    size?: number;
+}
+
+export function ServerIcon({ module, moduleData, size = 40 }: ServerIconProps) {
     const { t } = useTranslation();
     const icon =
         typeof moduleData?.icon === 'string' && moduleData.icon.startsWith('data:image/') ? moduleData.icon : null;

@@ -14,7 +14,7 @@ import { ConfirmHost, ToastHost, Wordmark } from './components/ui';
 import { registerModuleLocales } from './i18n';
 import { createRelay } from './relay';
 import { useApp, useData } from './store';
-import type { Loose } from './types';
+import type { PcEvent, SessionState, WebApi, WebSession } from './types';
 
 // 휴대폰은 아래 탭, 넓은 화면은 왼쪽 메뉴 (styles.css .tabs)
 // PC 없는 세션(hostId null)은 디스코드 탭만 열린다 — 나머지는 자물쇠를 달고 앱 설치를 안내한다
@@ -26,7 +26,7 @@ const TABS = [
 ];
 
 /** 세션이 열린 동안 서버·모듈 목록을 맞춘다 (이벤트가 오면 바로, 아니면 4초마다) */
-function useLiveData(api: Loose, ready: Loose) {
+function useLiveData(api: WebApi | undefined, ready: boolean) {
     const busy = useRef(false);
     useEffect(() => {
         if (!api || !ready) return;
@@ -51,7 +51,7 @@ function useLiveData(api: Loose, ready: Loose) {
         };
         loadModules();
         const stopPoll = startPoll(loadServers, 4000);
-        const off = api.onDaemonEvent((e: Loose) => {
+        const off = api.onDaemonEvent((e: PcEvent) => {
             if (['action.run', 'resync'].includes(e?.type) || String(e?.type).startsWith('instance.')) loadServers();
             if (String(e?.type).startsWith('module.')) loadModules();
         });
@@ -62,7 +62,7 @@ function useLiveData(api: Loose, ready: Loose) {
     }, [api, ready]);
 }
 
-function Gate({ phase, reason }: Loose) {
+function Gate({ phase, reason }: Pick<SessionState, 'phase' | 'reason'>) {
     const { t } = useTranslation();
     const closed = phase === 'closed';
     return (
@@ -99,7 +99,12 @@ function Gate({ phase, reason }: Loose) {
     );
 }
 
-export function App({ api, session }: Loose) {
+interface AppProps {
+    api?: WebApi;
+    session: WebSession | null;
+}
+
+export function App({ api, session }: AppProps) {
     const { t } = useTranslation();
     const { phase, reason } = useApp((s) => s.session);
     const tab = useApp((s) => s.tab);
@@ -146,10 +151,10 @@ export function App({ api, session }: Loose) {
                 {/* key: 탭을 바꿀 때마다 새로 그려서 들어오는 움직임을 다시 낸다 */}
                 <div className="view" key={tab}>
                     {noPc && tab !== 'discord' && <NeedsPc />}
-                    {!noPc && tab === 'servers' && <ServersTab api={api} />}
-                    {tab === 'discord' && <DiscordTab api={api} relay={relay} />}
-                    {!noPc && tab === 'modules' && <ModulesTab api={api} />}
-                    {!noPc && tab === 'pc' && <MoreTab api={api} />}
+                    {!noPc && tab === 'servers' && <ServersTab api={api as WebApi} />}
+                    {tab === 'discord' && <DiscordTab api={api as WebApi} relay={relay} />}
+                    {!noPc && tab === 'modules' && <ModulesTab api={api as WebApi} />}
+                    {!noPc && tab === 'pc' && <MoreTab api={api as WebApi} />}
                 </div>
             </main>
             <ConfirmHost />

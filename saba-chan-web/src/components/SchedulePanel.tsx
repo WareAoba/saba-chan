@@ -6,6 +6,8 @@ import {
     MAX_EVERY_DAYS,
     MODES,
     offsetText,
+    type ScheduledTask,
+    type TaskDraft,
     toDraft,
     WARNS,
     WEEKDAYS,
@@ -19,35 +21,62 @@ import { useCommands } from './commands';
 import { Dropdown } from './Dropdown';
 import { Icon } from './icons';
 import { Button, Empty, errorText, failed, Loading, Section } from './ui';
-import type { Loose } from '../types';
+import type { Module, Server, WebApi } from '../types';
 
-const strip = (drafts: Loose, keep: Loose) => JSON.stringify({ d: drafts.map(({ key, ...r }: Loose) => r), k: keep });
-const findCommand = (commands: Loose, name: Loose) => commands.find((c: Loose) => c.name === name);
+/** GET /api/instance/:id/schedule 를 화면이 쓰는 모양으로 */
+interface ScheduleInfo {
+    schedule: ScheduledTask[];
+    backupKeep: number;
+    backupSupported: boolean;
+    announceSupported: boolean;
+    saveSupported: boolean;
+    nextRuns: number[];
+    utcOffset: number | null;
+    revision?: string;
+}
+
+/** 읽지 못했을 때 */
+interface ScheduleFailure {
+    error: string;
+}
+
+const isFailure = (info: ScheduleInfo | ScheduleFailure): info is ScheduleFailure => 'error' in info && !!info.error;
+
+const strip = (drafts: TaskDraft[], keep: string) => JSON.stringify({ d: drafts.map(({ key, ...r }) => r), k: keep });
+const findCommand = (commands: ReturnType<typeof useCommands>, name: string) => commands.find((c) => c.name === name);
 // 저장된 작업과 같은지 (키 순서와 무관하게 비교)
-const sameKey = (v: Loose): string =>
+const sameKey = (v: unknown): string =>
     v && typeof v === 'object'
         ? Array.isArray(v)
             ? `[${v.map(sameKey).join(',')}]`
             : `{${Object.keys(v)
                   .sort()
-                  .map((k) => `${JSON.stringify(k)}:${sameKey(v[k])}`)
+                  .map((k) => `${JSON.stringify(k)}:${sameKey((v as Record<string, unknown>)[k])}`)
                   .join(',')}}`
         : JSON.stringify(v);
 
 /** 예약 작업 (GUI 백업·예약 탭과 같은 규칙: @gui/utils/schedule). 시각은 서버 PC의 시계다 */
-export function SchedulePanel({ api, server, moduleData }: Loose) {
+export function SchedulePanel({
+    api,
+    server,
+    moduleData,
+}: {
+    api: WebApi;
+    server: Pick<Server, 'id' | 'module'>;
+    moduleData?: Partial<Module> | null;
+}) {
     const { t, i18n } = useTranslation();
     const { t: tg } = useTranslation('gui');
     const toast = useApp((s) => s.toast);
     const commands = useCommands(api, server, moduleData, t);
-    const [info, setInfo] = useState<Loose>(null);
-    const [drafts, setDrafts] = useState<Loose[]>([]);
+    const [info, setInfo] = useState<ScheduleInfo | ScheduleFailure | null>(null);
+    const [drafts, setDrafts] = useState<TaskDraft[]>([]);
     const [keep, setKeep] = useState('10');
     const [saving, setSaving] = useState(false);
     const [armed, setArmed] = useState(false);
-    const [errors, setErrors] = useState<Loose[]>([]);
+    const [errors, setErrors] = useState<string[]>([]);
     const [stale, setStale] = useState(false);
-    const base = useRef<Loose>(null);
+    const base = useRef<string | null>(null);
 
     const load = useCallback(async () => {
         const res = await api.instanceScheduleGet(server.id);
@@ -55,7 +84,7 @@ export function SchedulePanel({ api, server, moduleData }: Loose) {
             setInfo({ error: errorText(t, res) });
             return;
         }
-        const next = {
+        const next: ScheduleInfo = {
             schedule: Array.isArray(res.schedule) ? res.schedule : [],
             backupKeep: res.backup_keep ?? 10,
             backupSupported: !!res.backup_supported,
@@ -80,7 +109,7 @@ export function SchedulePanel({ api, server, moduleData }: Loose) {
     }, [load]);
 
     if (!info) return <Loading />;
-    if (info.error)
+    if (isFailure(info))
         return (
             <Section title={tg('maintenance.schedule_title')}>
                 <p className="banner banner-error">{info.error}</p>
@@ -98,7 +127,7 @@ export function SchedulePanel({ api, server, moduleData }: Loose) {
     const keepBad = info.backupSupported && (!Number.isInteger(keepNum) || keepNum < 1);
     const problems = drafts.map((d) => draftProblems(d, tg, findCommand(commands, d.command)));
     const blocked = keepBad || problems.some((p) => p.length > 0);
-    const toTask = (d: Loose) => {
+    const toTask = (d: TaskDraft) => {
         const inputs = findCommand(commands, d.command)?.inputs;
         const task = fromDraft(d, { announce: info.announceSupported, inputs });
         // 체크박스 값은 글자('true'·'false')로 들고 있다: 참거짓으로 보낸다
@@ -117,7 +146,7 @@ export function SchedulePanel({ api, server, moduleData }: Loose) {
             !saved.includes(sameKey(toTask(d))),
     );
     const otherZone = info.utcOffset !== null && info.utcOffset !== -new Date().getTimezoneOffset();
-    const fmtRun = (secs: Loose) =>
+    const fmtRun = (secs: number) =>
         new Date(secs * 1000).toLocaleString(i18n.language, {
             month: 'numeric',
             day: 'numeric',
@@ -125,7 +154,7 @@ export function SchedulePanel({ api, server, moduleData }: Loose) {
             hour: '2-digit',
             minute: '2-digit',
         });
-    const nextRunOf = (d: Loose) => {
+    const nextRunOf = (d: TaskDraft): { at?: number; done?: boolean } | null => {
         const i = saved.indexOf(sameKey(toTask(d)));
         if (i < 0) return null;
         const at = info.nextRuns[i];
@@ -133,21 +162,21 @@ export function SchedulePanel({ api, server, moduleData }: Loose) {
         return d.mode === 'date' ? { done: true } : null;
     };
 
-    const patch = (key: Loose, change: Loose) => {
+    const patch = (key: string, change: Partial<TaskDraft>) => {
         setArmed(false);
         setDrafts((ds) => ds.map((d) => (d.key === key ? { ...d, ...change } : d)));
     };
 
-    const pickAction = (d: Loose, value: Loose) => {
+    const pickAction = (d: TaskDraft, value: string) => {
         if (!value.startsWith('cmd:')) return patch(d.key, { action: value });
         const name = value.slice(4);
         const cmd = findCommand(commands, name);
-        const keepArgs = name === d.command ? d.args : {};
+        const keepArgs: Record<string, string> = name === d.command ? d.args : {};
         // 기본값을 채우고, 기본값 없는 필수 체크박스는 꺼진 값(false)으로 둔다 (손대지 않아도 저장된다)
         const defaults = Object.fromEntries(
             (cmd?.inputs || [])
-                .filter((i: Loose) => keepArgs[i.name] == null && (i.default != null || (i.type === 'boolean' && i.required)))
-                .map((i: Loose) => [i.name, String(i.default ?? false)]),
+                .filter((i) => keepArgs[i.name] == null && (i.default != null || (i.type === 'boolean' && i.required)))
+                .map((i) => [i.name, String(i.default ?? false)]),
         );
         patch(d.key, { action: COMMAND, command: name, args: { ...defaults, ...keepArgs } });
     };
@@ -175,12 +204,12 @@ export function SchedulePanel({ api, server, moduleData }: Loose) {
         load();
     };
 
-    const actionOptions = (d: Loose) => [
+    const actionOptions = (d: TaskDraft) => [
         ...(actions.includes(d.action) || d.action === COMMAND ? actions : [...actions, d.action]).map((a) => ({
             value: a,
             label: tg(`maintenance.action_${a}`, { defaultValue: a }),
         })),
-        ...commands.map((c: Loose) => ({ value: `cmd:${c.name}`, label: `${tg('maintenance.action_command')} ${c.label}` })),
+        ...commands.map((c) => ({ value: `cmd:${c.name}`, label: `${tg('maintenance.action_command')} ${c.label}` })),
     ];
 
     return (
@@ -201,7 +230,7 @@ export function SchedulePanel({ api, server, moduleData }: Loose) {
         >
             <p className="hint">{tg('maintenance.schedule_desc')}</p>
             {otherZone && (
-                <p className="hint">{tg('maintenance.server_clock', { zone: offsetText(info.utcOffset) })}</p>
+                <p className="hint">{tg('maintenance.server_clock', { zone: offsetText(info.utcOffset as number) })}</p>
             )}
             {drafts.length === 0 ? (
                 <Empty>{tg('maintenance.schedule_empty')}</Empty>
@@ -215,7 +244,7 @@ export function SchedulePanel({ api, server, moduleData }: Loose) {
                                 <div className="task-head">
                                     <Dropdown
                                         value={d.action === COMMAND ? `cmd:${d.command}` : d.action}
-                                        onChange={(v: Loose) => pickAction(d, v)}
+                                        onChange={(v) => pickAction(d, v)}
                                         ariaLabel={tg('maintenance.task_aria', { n: i + 1 })}
                                         options={actionOptions(d)}
                                     />
@@ -241,7 +270,7 @@ export function SchedulePanel({ api, server, moduleData }: Loose) {
                                         <Dropdown
                                             value={d.mode}
                                             ariaLabel={tg('maintenance.when')}
-                                            onChange={(v: Loose) => patch(d.key, { mode: v })}
+                                            onChange={(v) => patch(d.key, { mode: v })}
                                             options={MODES.map((m) => ({
                                                 value: m,
                                                 label: tg(`maintenance.mode_${m}`),
@@ -319,7 +348,7 @@ export function SchedulePanel({ api, server, moduleData }: Loose) {
                                                             onClick={() =>
                                                                 patch(d.key, {
                                                                     weekdays: on
-                                                                        ? d.weekdays.filter((x: Loose) => x !== w)
+                                                                        ? d.weekdays.filter((x) => x !== w)
                                                                         : [...d.weekdays, w],
                                                                 })
                                                             }
@@ -351,12 +380,12 @@ export function SchedulePanel({ api, server, moduleData }: Loose) {
                                             />
                                         </label>
                                     )}
-                                    {command?.inputs?.map((input: Loose) => (
+                                    {command?.inputs?.map((input) => (
                                         <CommandInput
                                             key={input.name}
                                             input={input}
                                             value={d.args[input.name] ?? ''}
-                                            onChange={(v: Loose) =>
+                                            onChange={(v) =>
                                                 patch(d.key, { args: { ...d.args, [input.name]: String(v) } })
                                             }
                                         />

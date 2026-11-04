@@ -10,7 +10,7 @@ import { initI18n } from './i18n';
 import { applyTheme } from './prefs';
 import { createSession } from './session';
 import { useApp } from './store';
-import type { Loose } from './types';
+import type { PcEvent, SessionState } from './types';
 
 /** 링크 비밀값은 주소의 # 뒤에 온다. 읽자마자 주소에서 지운다 (새로 고침·공유로 다시 쓰이지 않게) */
 function takeLink() {
@@ -43,8 +43,8 @@ initI18n().then(() => {
         ? createSession({
               url,
               link,
-              onState: (s: Loose) => useApp.getState().setSession(s),
-              onEvent: (e: Loose) => bridge?.emit(e),
+              onState: (s: SessionState) => useApp.getState().setSession(s),
+              onEvent: (e: PcEvent) => bridge?.emit(e),
           })
         : null;
     if (!session) useApp.getState().setSession({ ...useApp.getState().session, phase: 'closed', reason: 'no_link' });

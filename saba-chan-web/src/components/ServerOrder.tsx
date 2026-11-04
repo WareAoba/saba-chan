@@ -3,10 +3,10 @@ import { useTranslation } from 'react-i18next';
 import { useApp, useData } from '../store';
 import { Icon } from './icons';
 import { Button, errorText, failed } from './ui';
-import type { Loose } from '../types';
+import type { Server, WebApi } from '../types';
 
 /** from 자리의 것을 to 자리로 옮긴 새 배열 (범위를 벗어나면 그대로) */
-export function moveItem(list: Loose, from: Loose, to: Loose) {
+export function moveItem<T>(list: T[], from: number, to: number): T[] {
     if (from === to || from < 0 || to < 0 || from >= list.length || to >= list.length) return list;
     const out = [...list];
     const [item] = out.splice(from, 1);
@@ -19,26 +19,26 @@ export function moveItem(list: Loose, from: Loose, to: Loose) {
  * 휴대폰은 HTML 끌어 놓기가 없어 pointer 이벤트로 끌고, 손가락이 지나가는 줄 자리로 바로 옮긴다.
  * 저장은 데몬 PUT /api/instances/reorder (GUI 와 같은 순서)
  */
-export function ServerOrder({ api, servers, onDone }: Loose) {
+export function ServerOrder({ api, servers, onDone }: { api: WebApi; servers: Server[]; onDone: () => void }) {
     const { t } = useTranslation();
     const toast = useApp((s) => s.toast);
-    const [ids, setIds] = useState(() => servers.map((s: Loose) => s.id));
-    const [dragging, setDragging] = useState<Loose>(null);
+    const [ids, setIds] = useState(() => servers.map((s) => s.id));
+    const [dragging, setDragging] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
-    const stop = useRef<Loose>(null);
+    const stop = useRef<(() => void) | null>(null);
     useEffect(() => () => stop.current?.(), []);
-    const nameOf = (id: Loose) => servers.find((s: Loose) => s.id === id)?.name ?? id;
+    const nameOf = (id: string) => servers.find((s) => s.id === id)?.name ?? id;
 
-    const startDrag = (e: Loose, id: Loose) => {
+    const startDrag = (e: React.PointerEvent, id: string) => {
         if (busy || (e.button !== undefined && e.button > 0)) return;
         e.preventDefault();
         stop.current?.();
         setDragging(id);
-        const move = (ev: Loose) => {
+        const move = (ev: PointerEvent) => {
             const row = document.elementFromPoint?.(ev.clientX, ev.clientY)?.closest?.('[data-order-id]');
             const over = (row as HTMLElement | null)?.dataset.orderId;
             if (!over || over === id) return;
-            setIds((list: Loose) => moveItem(list, list.indexOf(id), list.indexOf(over)));
+            setIds((list) => moveItem(list, list.indexOf(id), list.indexOf(over)));
         };
         const end = () => {
             window.removeEventListener('pointermove', move);
@@ -69,7 +69,7 @@ export function ServerOrder({ api, servers, onDone }: Loose) {
         <div className="server-order">
             <p className="hint">{t('servers.order_hint')}</p>
             <ul className="rows">
-                {ids.map((id: Loose, i: Loose) => (
+                {ids.map((id, i) => (
                     <li
                         key={id}
                         data-order-id={id}
@@ -92,7 +92,7 @@ export function ServerOrder({ api, servers, onDone }: Loose) {
                                 className="icon-btn"
                                 aria-label={t('servers.order_up', { name: nameOf(id) })}
                                 disabled={busy || i === 0}
-                                onClick={() => setIds((list: Loose) => moveItem(list, i, i - 1))}
+                                onClick={() => setIds((list) => moveItem(list, i, i - 1))}
                             >
                                 <Icon name="chevronUp" size={16} />
                             </button>
@@ -101,7 +101,7 @@ export function ServerOrder({ api, servers, onDone }: Loose) {
                                 className="icon-btn"
                                 aria-label={t('servers.order_down', { name: nameOf(id) })}
                                 disabled={busy || i === ids.length - 1}
-                                onClick={() => setIds((list: Loose) => moveItem(list, i, i + 1))}
+                                onClick={() => setIds((list) => moveItem(list, i, i + 1))}
                             >
                                 <Icon name="chevronDown" size={16} />
                             </button>

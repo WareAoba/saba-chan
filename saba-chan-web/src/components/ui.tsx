@@ -3,23 +3,28 @@ import { useTranslation } from 'react-i18next';
 import { wordmarkFor } from '../art';
 import { useApp } from '../store';
 import { Icon } from './icons';
-import type { Loose } from '../types';
+import type { ApiBody, TFn } from '../types';
 
 /** 결과가 실패인지 (GUI 브리지는 실패를 {error} 또는 {success:false}·{ok:false}로 돌려준다) */
-export const failed = (res: Loose) => !res || !!res.error || res.success === false || res.ok === false;
+export const failed = (res: ApiBody | null | undefined) => !res || !!res.error || res.success === false || res.ok === false;
 
 /** 실패 결과 → 사람이 읽을 한 줄. 문지기·중계가 막은 것은 이유를 번역해 보인다 */
-export function errorText(t: Loose, res: Loose) {
+export function errorText(t: TFn, res: ApiBody | null | undefined) {
     const code = res?.error_code;
     if (typeof code === 'string' && code.startsWith('remote_')) {
-        const fields = Array.isArray(res.fields) ? res.fields.join(', ') : '';
+        const fields = Array.isArray(res?.fields) ? res.fields.join(', ') : '';
         return t(`errors.${code}`, { fields, defaultValue: t('errors.generic') });
     }
     return res?.error || res?.message || t('errors.generic');
 }
 
 /** 기다리는 동안(`busy`)은 `disabled`를 무엇으로 넘겨도 누를 수 없다 (같은 요청을 두 번 보내지 않게) */
-export function Button({ tone = 'plain', busy = false, disabled = false, children, ...rest }: Loose) {
+interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+    tone?: string;
+    busy?: boolean;
+}
+
+export function Button({ tone = 'plain', busy = false, disabled = false, children, ...rest }: ButtonProps) {
     return (
         <button type="button" className={`btn btn-${tone}`} {...rest} disabled={busy || disabled}>
             {busy ? <span className="spinner" aria-hidden="true" /> : null}
@@ -28,7 +33,7 @@ export function Button({ tone = 'plain', busy = false, disabled = false, childre
     );
 }
 
-export function StatusDot({ status }: Loose) {
+export function StatusDot({ status }: { status: string }) {
     const { t } = useTranslation();
     return (
         <span className={`status status-${status}`}>
@@ -55,7 +60,7 @@ export function Wordmark({ className = '' }) {
     );
 }
 
-export function Empty({ art, children }: Loose) {
+export function Empty({ art, children }: { art?: string; children?: React.ReactNode }) {
     return (
         <div className="empty">
             {art && <img className="empty-art" src={art} alt="" />}
@@ -73,7 +78,13 @@ export function Loading() {
     );
 }
 
-export function Section({ title, action, children }: Loose) {
+interface SectionProps {
+    title?: React.ReactNode;
+    action?: React.ReactNode;
+    children?: React.ReactNode;
+}
+
+export function Section({ title, action, children }: SectionProps) {
     return (
         <section className="section">
             {(title || action) && (
@@ -88,10 +99,18 @@ export function Section({ title, action, children }: Loose) {
 }
 
 /** 고르기 줄. `scroll`이면 칸이 많아도 줄이지 않고 옆으로 민다 (서버 상세 탭) */
-export function Segments({ value, options, onChange, scroll = false, ariaLabel }: Loose) {
+interface SegmentsProps {
+    value: string;
+    options: { value: string; label: React.ReactNode }[];
+    onChange: (value: string) => void;
+    scroll?: boolean;
+    ariaLabel?: string;
+}
+
+export function Segments({ value, options, onChange, scroll = false, ariaLabel }: SegmentsProps) {
     return (
         <div className={scroll ? 'segments segments-scroll' : 'segments'} role="tablist" aria-label={ariaLabel}>
-            {options.map((o: Loose) => (
+            {options.map((o) => (
                 <button
                     key={o.value}
                     type="button"
@@ -108,10 +127,10 @@ export function Segments({ value, options, onChange, scroll = false, ariaLabel }
 }
 
 /** 열린 창을 Esc 로 닫는다 */
-function useEscape(onClose: Loose) {
+function useEscape(onClose: (() => void) | null | undefined) {
     useEffect(() => {
         if (!onClose) return;
-        const onKey = (e: Loose) => e.key === 'Escape' && onClose();
+        const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
         window.addEventListener('keydown', onKey);
         return () => window.removeEventListener('keydown', onKey);
     }, [onClose]);
@@ -143,7 +162,7 @@ export function ToastHost() {
     const toasts = useApp((s) => s.toasts);
     return (
         <div className="toasts" aria-live="polite">
-            {toasts.map((t: Loose) => (
+            {toasts.map((t) => (
                 <div key={t.id} className={`toast toast-${t.tone}`}>
                     {t.message}
                 </div>
@@ -152,7 +171,13 @@ export function ToastHost() {
     );
 }
 
-export function Sheet({ title, onClose, children }: Loose) {
+interface SheetProps {
+    title: React.ReactNode;
+    onClose: () => void;
+    children?: React.ReactNode;
+}
+
+export function Sheet({ title, onClose, children }: SheetProps) {
     const { t } = useTranslation();
     useEscape(onClose);
     return (

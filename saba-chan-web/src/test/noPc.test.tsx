@@ -3,7 +3,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import { App } from '../App';
 import { initI18n } from '../i18n';
 import { useApp } from '../store';
-import type { Loose } from '../types';
+import { mockApi, mockSession } from './mocks';
 
 // PC 없는 계정 세션 (hostId null): 디스코드 탭만 열리고, 디스코드 설정은 릴레이 API(/relay/*)로 바꾼다
 const G = '111111111111111111';
@@ -53,7 +53,7 @@ function fakeSession(can = ALL) {
     };
     return {
         extend: vi.fn(),
-        request: vi.fn(async (method: string, path: string, body?: Loose): Promise<Loose> => {
+        request: vi.fn(async (method: string, path: string, body?: object): Promise<{ status: number; data: unknown }> => {
             if (method === 'GET') return { status: 200, data: (routes as Record<string, unknown>)[`GET ${path}`] };
             if (path.endsWith('/settings')) return { status: 200, data: { ...settings, ...body } };
             return { status: 200, data: {} };
@@ -75,7 +75,7 @@ describe('PC 없는 사람의 웹', () => {
     afterEach(cleanup);
 
     it('디스코드 탭으로 열고, 서버·모듈·PC 탭은 자물쇠를 달고 설치 안내를 보인다', async () => {
-        render(<App api={{}} session={fakeSession()} />);
+        render(<App api={mockApi({})} session={mockSession(fakeSession())} />);
         await flush();
         const tabs = screen.getByRole('navigation');
         expect(
@@ -91,17 +91,17 @@ describe('PC 없는 사람의 웹', () => {
     });
 
     it('설치 안내 띠는 닫으면 이 세션 동안 다시 나오지 않는다', async () => {
-        const view = render(<App api={{}} session={fakeSession()} />);
+        const view = render(<App api={mockApi({})} session={mockSession(fakeSession())} />);
         await flush();
         fireEvent.click(screen.getByRole('button', { name: 'Close install notice' }));
         expect(screen.queryByRole('button', { name: 'Close install notice' })).toBeNull();
-        view.rerender(<App api={{}} session={fakeSession()} />);
+        view.rerender(<App api={mockApi({})} session={mockSession(fakeSession())} />);
         expect(screen.queryByRole('button', { name: 'Close install notice' })).toBeNull();
     });
 
     it('PC 없는 서버의 설정은 릴레이에 바로 저장한다', async () => {
         const session = fakeSession();
-        render(<App api={{}} session={session} />);
+        render(<App api={mockApi({})} session={mockSession(session)} />);
         await flush();
         fireEvent.click(screen.getByRole('checkbox', { name: /Big emoji/ }));
         await flush();
@@ -111,7 +111,7 @@ describe('PC 없는 사람의 웹', () => {
 
     it('제재(타임아웃)를 풀면 릴레이 서버 관리 경로로 보낸다', async () => {
         const session = fakeSession();
-        render(<App api={{}} session={session} />);
+        render(<App api={mockApi({})} session={mockSession(session)} />);
         await flush();
         fireEvent.click(screen.getByRole('button', { name: 'Lift sanction on Acorn' }));
         await flush();
@@ -123,7 +123,7 @@ describe('PC 없는 사람의 웹', () => {
 
     it('서버 관리 권한만 있으면 서버 관리 칸만 보인다', async () => {
         const session = fakeSession({ manage: false, channels: true, messages: true, members: true });
-        render(<App api={{}} session={session} />);
+        render(<App api={mockApi({})} session={mockSession(session)} />);
         await flush();
         expect(screen.queryByRole('heading', { name: 'Basics' })).toBeNull();
         expect(screen.getByRole('heading', { name: 'Server management' })).toBeTruthy();
@@ -134,12 +134,12 @@ describe('PC 없는 사람의 웹', () => {
         const session = fakeSession();
         const ok = session.request.getMockImplementation() as NonNullable<ReturnType<typeof session.request.getMockImplementation>>;
         let down = true;
-        session.request.mockImplementation((method, path, body) =>
+        session.request.mockImplementation((method: string, path: string, body?: object) =>
             down && path.endsWith('/settings')
-                ? Promise.resolve({ status: 0, code: 'ECONNRESET' })
+                ? Promise.resolve({ status: 0, code: 'ECONNRESET' } as unknown as { status: number; data: unknown })
                 : ok(method, path, body),
         );
-        render(<App api={{}} session={session} />);
+        render(<App api={mockApi({})} session={mockSession(session)} />);
         await flush();
         expect(screen.queryByRole('heading', { name: 'Basics' })).toBeNull();
         down = false;
@@ -150,7 +150,7 @@ describe('PC 없는 사람의 웹', () => {
 
     it('기억 지우기는 서버 관리 권한이 없어도 서버 관리를 다시 읽지 않는다', async () => {
         const session = fakeSession({ manage: true, channels: false, messages: false, members: false });
-        render(<App api={{}} session={session} />);
+        render(<App api={mockApi({})} session={mockSession(session)} />);
         await flush();
         // 마지막 지우기 = 기억 지우기 (앞은 API 키)
         fireEvent.click(screen.getAllByRole('button', { name: 'Remove' }).at(-1) as HTMLElement);
@@ -166,12 +166,12 @@ describe('PC 없는 사람의 웹', () => {
         const session = fakeSession();
         const ok = session.request.getMockImplementation() as NonNullable<ReturnType<typeof session.request.getMockImplementation>>;
         let down = true;
-        session.request.mockImplementation((method, path, body) =>
+        session.request.mockImplementation((method: string, path: string, body?: object) =>
             down && path === '/relay/guilds'
-                ? Promise.resolve({ status: 0, code: 'ECONNRESET' })
+                ? Promise.resolve({ status: 0, code: 'ECONNRESET' } as unknown as { status: number; data: unknown })
                 : ok(method, path, body),
         );
-        render(<App api={{}} session={session} />);
+        render(<App api={mockApi({})} session={mockSession(session)} />);
         await flush();
         expect(screen.queryByText('There are no Discord servers you can manage.')).toBeNull();
         down = false;

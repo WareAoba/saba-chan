@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { Field } from '../components/SettingsPanel';
 import { patchOf } from '../components/SettingsPanel';
 
 describe('설정 보내기', () => {
@@ -11,6 +12,6 @@ describe('설정 보내기', () => {
         ];
         const values = { motd: 'hi', rcon_password: 'x', world_dir: 'C:/', rest_password: 'y' };
         const touched = new Set(Object.keys(values));
-        expect(patchOf(fields, values, touched)).toEqual({ motd: 'hi' });
+        expect(patchOf(fields as unknown as Field[], values, touched)).toEqual({ motd: 'hi' });
     });
 });

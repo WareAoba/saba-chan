@@ -3,7 +3,8 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { AddServerSheet } from '../components/ServersTab';
 import { initI18n } from '../i18n';
 import { useApp, useData } from '../store';
-import type { Loose } from '../types';
+import type { Server } from '../types';
+import { asModules, asServers, mockApi } from './mocks';
 
 // 웹 원격의 서버 만들기는 GUI 새 서버 화면과 같은 것을 묻는다 (사용자 지정 2026-10-28: GUI 기준)
 const minecraft = {
@@ -36,10 +37,10 @@ describe('웹 서버 만들기 — GUI와 같은 칸', () => {
         useApp.setState({ toasts: [] });
     });
 
-    const mount = (servers: Loose[] = []) => {
-        useData.setState({ modules: [minecraft, windowsOnly], servers });
+    const mount = (servers: Partial<Server>[] = []) => {
+        useData.setState({ modules: asModules([minecraft, windowsOnly]), servers: asServers(servers) });
         const api = { instanceCreate: vi.fn().mockResolvedValue({ success: true, id: 'x' }) };
-        render(<AddServerSheet api={api} onClose={() => {}} />);
+        render(<AddServerSheet api={mockApi(api)} onClose={() => {}} />);
         return api;
     };
     const create = () => screen.getByRole<HTMLButtonElement>('button', { name: 'Create' });
@@ -80,9 +81,9 @@ describe('웹 서버 만들기 — GUI와 같은 칸', () => {
             agreements: [],
             settings: { fields: [{ name: 'seed', field_type: 'text', label: 'Seed', default: 'abc', install: true }] },
         };
-        useData.setState({ modules: [seeded], servers: [] });
+        useData.setState({ modules: asModules([seeded]), servers: [] });
         const api = { instanceCreate: vi.fn().mockResolvedValue({ success: true }) };
-        render(<AddServerSheet api={api} onClose={() => {}} />);
+        render(<AddServerSheet api={mockApi(api)} onClose={() => {}} />);
         fireEvent.change(screen.getByRole('textbox', { name: 'Seed' }), { target: { value: '' } });
         fireEvent.click(create());
         await flush();
@@ -90,9 +91,11 @@ describe('웹 서버 만들기 — GUI와 같은 칸', () => {
     });
 
     // GUI 마법사와 같은 선택: 버전(서버 파일을 받는 모듈), 실행 방식. 파일 위치는 PC에서만 (CREATE_PC_ONLY)
-    const wizard = (check: Loose = { name: { taken: false }, folder: { custom: false }, ports: [] }) => {
+    const wizard = (
+        check: Record<string, unknown> = { name: { taken: false }, folder: { custom: false }, ports: [] },
+    ) => {
         const downloads = { ...minecraft, agreements: [], install: { method: 'download' } };
-        useData.setState({ modules: [downloads], servers: [] });
+        useData.setState({ modules: asModules([downloads]), servers: [] });
         const api = {
             instanceCreate: vi.fn().mockResolvedValue({ success: true }),
             moduleListVersions: vi.fn().mockResolvedValue({
@@ -100,7 +103,7 @@ describe('웹 서버 만들기 — GUI와 같은 칸', () => {
             }),
             instanceCheck: vi.fn().mockResolvedValue({ success: true, ...check }),
         };
-        render(<AddServerSheet api={api} onClose={() => {}} />);
+        render(<AddServerSheet api={mockApi(api)} onClose={() => {}} />);
         return api;
     };
 
@@ -183,8 +186,8 @@ describe('웹 모듈 locales', () => {
         const { registerModuleLocales } = await import('../i18n');
         const i18n = (await import('i18next')).default;
         const api = { moduleGetLocales: vi.fn().mockResolvedValue({ en: { module: { display_name: 'Terraria!' } } }) };
-        await registerModuleLocales(api, [{ name: 'terraria', version: '0.1.0' }]);
-        await registerModuleLocales(api, [{ name: 'terraria', version: '0.1.0' }]);
+        await registerModuleLocales(mockApi(api), [{ name: 'terraria', version: '0.1.0' }]);
+        await registerModuleLocales(mockApi(api), [{ name: 'terraria', version: '0.1.0' }]);
         expect(api.moduleGetLocales).toHaveBeenCalledTimes(1);
         expect(i18n.t('mod_terraria:module.display_name')).toBe('Terraria!');
         // 받지 못한 모듈은 다음 목록 때 다시 받는다
@@ -194,8 +197,8 @@ describe('웹 모듈 locales', () => {
                 .mockResolvedValueOnce({})
                 .mockResolvedValue({ en: { module: { display_name: 'XNA' } } }),
         };
-        await registerModuleLocales(flaky, [{ name: 'xna', version: '0.1.0' }]);
-        await registerModuleLocales(flaky, [{ name: 'xna', version: '0.1.0' }]);
+        await registerModuleLocales(mockApi(flaky), [{ name: 'xna', version: '0.1.0' }]);
+        await registerModuleLocales(mockApi(flaky), [{ name: 'xna', version: '0.1.0' }]);
         expect(i18n.t('mod_xna:module.display_name')).toBe('XNA');
     });
 });

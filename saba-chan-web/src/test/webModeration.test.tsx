@@ -4,7 +4,7 @@ import { App } from '../App';
 import { parseDuration } from '../components/DiscordTab';
 import { initI18n } from '../i18n';
 import { useApp } from '../store';
-import type { Loose } from '../types';
+import { mockApi, mockSession } from './mocks';
 
 // 웹 서버 관리 — /제재·슬로우 기간·자동 청소 매일·지금 청소 (2026-11-04 사용자 OK 시안)
 const G = '111111111111111111';
@@ -17,7 +17,7 @@ const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
 const ALL = { manage: false, channels: true, messages: true, members: true };
 
-const channel = (id: Loose, name: Loose, more = {}) => ({
+const channel = (id: string, name: string, more = {}) => ({
     id,
     name,
     category: null,
@@ -73,11 +73,12 @@ function fakeSession() {
 }
 
 const flush = () => act(async () => {});
-const sent = (session: Loose, method: Loose) => session.request.mock.calls.filter((c: Loose) => c[0] === method);
+const sent = (session: ReturnType<typeof fakeSession>, method: string) =>
+    session.request.mock.calls.filter((c) => c[0] === method);
 
 async function open() {
     const session = fakeSession();
-    render(<App api={{}} session={session} />);
+    render(<App api={mockApi({})} session={mockSession(session)} />);
     await flush();
     await flush();
     return session;

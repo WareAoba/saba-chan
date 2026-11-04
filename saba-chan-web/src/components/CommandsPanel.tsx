@@ -5,10 +5,44 @@ import { commandArgs, missingInputs, useCommands } from './commands';
 import { Dropdown } from './Dropdown';
 import { Icon } from './icons';
 import { Button, Empty, errorText, failed, Section, Sheet } from './ui';
-import type { Loose } from '../types';
+import type { CommandInput as CommandInputSpec } from '@gui/types/daemon';
+import type { ApiBody, ServerPanelProps } from '../types';
+
+type LocalCommand = ReturnType<typeof useCommands>[number];
+
+/** 데몬이 정리한 결과의 필드 한 칸 */
+interface OutputField {
+    key: string;
+    label: string;
+    value: string;
+}
+
+/** 데몬이 정리한 명령 결과 (데몬 commands::output) */
+interface CommandOutputData {
+    text?: string;
+    fields?: OutputField[];
+    table?: { label?: string; columns: { key: string; label: string }[]; rows: string[][] };
+}
+
+/** 받은 결과 한 건 */
+interface CommandResult {
+    id: number;
+    label: string;
+    ok: boolean;
+    output: CommandOutputData | null;
+    text: string;
+}
 
 /** 명령 입력 하나 (module.toml `[[commands.fields.inputs]]`) */
-export function CommandInput({ input, value, onChange }: Loose) {
+export function CommandInput({
+    input,
+    value,
+    onChange,
+}: {
+    input: CommandInputSpec;
+    value: unknown;
+    onChange: (value: unknown) => void;
+}) {
     const label = `${input.label || input.name}${input.required ? ' *' : ''}`;
     if (input.type === 'boolean') {
         return (
@@ -32,7 +66,7 @@ export function CommandInput({ input, value, onChange }: Loose) {
                     onChange={onChange}
                     options={[
                         ...(input.required ? [] : [{ value: '', label: '—' }]),
-                        ...input.options.map((o: Loose) => ({ value: String(o), label: String(o) })),
+                        ...input.options.map((o) => ({ value: String(o), label: String(o) })),
                     ]}
                 />
             </div>
@@ -55,11 +89,11 @@ export function CommandInput({ input, value, onChange }: Loose) {
     );
 }
 
-const defaultsOf = (cmd: Loose) =>
-    Object.fromEntries((cmd.inputs || []).filter((i: Loose) => i.default != null).map((i: Loose) => [i.name, i.default]));
+const defaultsOf = (cmd: LocalCommand) =>
+    Object.fromEntries((cmd.inputs || []).filter((i) => i.default != null).map((i) => [i.name, i.default]));
 
 /** 결과 글자: 게임의 실제 응답(`data.response`, REST는 `data`)을 전송 안내(`message`)보다 먼저 보인다 */
-export const resultText = (res: Loose) => {
+export const resultText = (res: ApiBody | null | undefined) => {
     const data = res?.data;
     const v = data?.response ?? data ?? res?.message ?? res?.text ?? res?.output ?? res?.result;
     if (v == null || v === '') return '';
@@ -70,7 +104,7 @@ export const resultText = (res: Loose) => {
 const PREVIEW_ROWS = 8;
 
 /** 데몬이 정리한 명령 결과 (`output`: { text } | { fields } | { table }, 데몬 commands::output) */
-export function CommandOutput({ output }: Loose) {
+export function CommandOutput({ output }: { output: CommandOutputData }) {
     const { t: tg } = useTranslation('gui');
     const [all, setAll] = useState(false);
     if (typeof output.text === 'string') return <pre className="row-sub command-output">{output.text}</pre>;
@@ -87,7 +121,7 @@ export function CommandOutput({ output }: Loose) {
             )}
             {output.fields && (
                 <dl className="command-result-fields">
-                    {shown.map((f: Loose) => (
+                    {(shown as OutputField[]).map((f) => (
                         <div key={f.key} className="command-result-field">
                             <dt>{f.label}</dt>
                             <dd>{f.value}</dd>
@@ -100,16 +134,16 @@ export function CommandOutput({ output }: Loose) {
                     <table className="command-result-table">
                         <thead>
                             <tr>
-                                {table.columns.map((c: Loose) => (
+                                {table.columns.map((c) => (
                                     <th key={c.key}>{c.label}</th>
                                 ))}
                             </tr>
                         </thead>
                         <tbody>
-                            {shown.map((row: Loose, i: Loose) => (
+                            {(shown as string[][]).map((row, i) => (
                                 // biome-ignore lint/suspicious/noArrayIndexKey: 서버가 준 순서 그대로인 결과 줄 (고유 키가 없다)
                                 <tr key={i}>
-                                    {row.map((cell: Loose, j: Loose) => (
+                                    {row.map((cell, j) => (
                                         // biome-ignore lint/suspicious/noArrayIndexKey: 열 순서 고정
                                         <td key={j}>{cell}</td>
                                     ))}
@@ -129,24 +163,24 @@ export function CommandOutput({ output }: Loose) {
 }
 
 /** 게임 명령: 모듈·익스텐션이 준 명령을 카드로 보이고, 입력이 있으면 창에서 채워 보낸다 */
-export function CommandsPanel({ api, server, moduleData, running }: Loose) {
+export function CommandsPanel({ api, server, moduleData, running }: ServerPanelProps) {
     const { t } = useTranslation();
     const { t: tg } = useTranslation('gui');
     const toast = useApp((s) => s.toast);
     const ask = useApp((s) => s.ask);
     const commands = useCommands(api, server, moduleData, t);
     const [filter, setFilter] = useState('');
-    const [open, setOpen] = useState<Loose>(null);
-    const [values, setValues] = useState<Loose>({});
+    const [open, setOpen] = useState<LocalCommand | null>(null);
+    const [values, setValues] = useState<Record<string, unknown>>({});
     const [busy, setBusy] = useState(false);
-    const [results, setResults] = useState<Loose[]>([]);
+    const [results, setResults] = useState<CommandResult[]>([]);
 
     const q = filter.trim().toLowerCase();
     const shown = commands.filter(
-        (c: Loose) => !q || c.name.toLowerCase().includes(q) || String(c.label).toLowerCase().includes(q),
+        (c) => !q || c.name.toLowerCase().includes(q) || String(c.label).toLowerCase().includes(q),
     );
 
-    const run = async (cmd: Loose, given: Loose) => {
+    const run = async (cmd: LocalCommand, given: Record<string, unknown>) => {
         if (busy) return; // 응답을 기다리는 동안 같은 명령을 다시 보내지 않는다
         if (cmd.risk === 'danger') {
             const ok = await ask({
@@ -176,7 +210,7 @@ export function CommandsPanel({ api, server, moduleData, running }: Loose) {
         else toast(errorText(t, res), 'error');
     };
 
-    const pick = (cmd: Loose) => {
+    const pick = (cmd: LocalCommand) => {
         if (cmd.inputs?.length) {
             setValues(defaultsOf(cmd));
             setOpen(cmd);
@@ -202,7 +236,7 @@ export function CommandsPanel({ api, server, moduleData, running }: Loose) {
                 <Empty>{tg('maintenance.command_none')}</Empty>
             ) : (
                 <ul className="command-grid">
-                    {shown.map((c: Loose) => (
+                    {shown.map((c) => (
                         <li key={c.name}>
                             <button
                                 type="button"
@@ -217,9 +251,9 @@ export function CommandsPanel({ api, server, moduleData, running }: Loose) {
                                     )}
                                 </span>
                                 {c.description && <span className="command-desc">{c.description}</span>}
-                                {c.inputs?.length > 0 && (
+                                {(c.inputs?.length ?? 0) > 0 && (
                                     <span className="command-inputs">
-                                        {c.inputs.map((i: Loose) => i.label || i.name).join(' · ')}
+                                        {c.inputs?.map((i) => i.label || i.name).join(' · ')}
                                     </span>
                                 )}
                             </button>
@@ -257,12 +291,12 @@ export function CommandsPanel({ api, server, moduleData, running }: Loose) {
                         }}
                     >
                         {open.description && <p className="hint">{open.description}</p>}
-                        {open.inputs.map((input: Loose) => (
+                        {(open.inputs ?? []).map((input) => (
                             <CommandInput
                                 key={input.name}
                                 input={input}
                                 value={values[input.name] ?? ''}
-                                onChange={(v: Loose) => setValues((prev: Loose) => ({ ...prev, [input.name]: v }))}
+                                onChange={(v) => setValues((prev) => ({ ...prev, [input.name]: v }))}
                             />
                         ))}
                         <Button

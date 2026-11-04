@@ -2,12 +2,24 @@ import { gameNameOf } from '@gui/utils/serverView';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Section } from './ui';
-import type { Loose } from '../types';
+import type { Server, ServerPanelProps, TFn, WebApi } from '../types';
+
+/** 서버 종료 기록 한 건 (GET /api/instance/:id/events) */
+interface ExitEvent {
+    at: number | string;
+    kind: string;
+    exit_code?: number | null;
+    signal?: string | null;
+    restart_in_secs?: number | null;
+    note_code?: string;
+    note_args?: { count?: number; reason?: string };
+    note?: string;
+}
 
 const SHOW_MAX = 8;
 
 /** 데몬이 남기는 재시작 안 함 이유 (GUI ExitHistory 와 같은 note_code). 모르는 코드는 그대로 */
-function exitNote(e: Loose, tg: Loose) {
+function exitNote(e: ExitEvent, tg: TFn) {
     const args = e.note_args || {};
     if (e.note_code === 'auto_restart_off') return tg('shell.exit_note_auto_off');
     if (e.note_code === 'gave_up') return tg('shell.exit_note_gave_up', { count: args.count });
@@ -16,15 +28,15 @@ function exitNote(e: Loose, tg: Loose) {
 }
 
 /** 최근 종료 기록: 왜 꺼졌는지와 자동 재시작 여부 */
-function ExitHistory({ api, server }: Loose) {
+function ExitHistory({ api, server }: { api: WebApi; server: Pick<Server, 'id' | 'status'> }) {
     const { i18n } = useTranslation();
     const { t: tg } = useTranslation('gui');
-    const [events, setEvents] = useState<Loose>(null);
+    const [events, setEvents] = useState<ExitEvent[] | null>(null);
 
     // biome-ignore lint/correctness/useExhaustiveDependencies: 상태가 바뀔 때마다 다시 읽는다
     useEffect(() => {
         let alive = true;
-        api.instanceEvents(server.id).then((r: Loose) => {
+        api.instanceEvents(server.id).then((r) => {
             if (alive && Array.isArray(r?.events)) setEvents(r.events);
         });
         return () => {
@@ -33,13 +45,13 @@ function ExitHistory({ api, server }: Loose) {
     }, [api, server.id, server.status]);
 
     if (!events) return null;
-    const fmt = (at: Loose) => {
+    const fmt = (at: number | string) => {
         const d = new Date(typeof at === 'number' && at < 1e12 ? at * 1000 : at);
         return Number.isNaN(d.getTime())
             ? String(at)
             : d.toLocaleString(i18n.language, { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
     };
-    const time = (at: Loose) => new Date(typeof at === 'number' && at < 1e12 ? at * 1000 : at).getTime();
+    const time = (at: number | string) => new Date(typeof at === 'number' && at < 1e12 ? at * 1000 : at).getTime();
     const list = [...events].sort((a, b) => time(b.at) - time(a.at)).slice(0, SHOW_MAX);
 
     return (
@@ -74,14 +86,14 @@ function ExitHistory({ api, server }: Loose) {
 }
 
 /** 정보: 게임, 버전(모듈에 물어 확인), 포트, 인스턴스 id, 최근 종료 */
-export function InfoPanel({ api, server, moduleData }: Loose) {
+export function InfoPanel({ api, server, moduleData }: Omit<ServerPanelProps, 'running'>) {
     const { t } = useTranslation();
     const { t: tg } = useTranslation('gui');
     const [version, setVersion] = useState(server.server_version || null);
 
     useEffect(() => {
         let alive = true;
-        api.instanceGetInstalledVersion(server.id).then((r: Loose) => {
+        api.instanceGetInstalledVersion(server.id).then((r) => {
             if (alive && typeof r?.version === 'string' && r.version) setVersion(r.version);
         });
         return () => {

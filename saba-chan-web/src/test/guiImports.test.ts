@@ -29,6 +29,9 @@ const ALLOWED = new Set([
     '@gui/components/discord/nodePermissions',
     // 코코낸내 기능 묶음·시각 (GUI 봇 설정과 같은 상수)
     '@gui/components/discord/sleep',
+    // 데몬·디스코드 응답 모양 (타입만, 실행 코드 없음)
+    '@gui/types/daemon',
+    '@gui/components/discord/types',
     '@gui/styles/tokens.css',
     // 그라데이션 버튼 호버 순환 (앱과 같은 움직임과 그림)
     '@gui/utils/gradCycle',

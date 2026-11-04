@@ -2,11 +2,11 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { PermissionStairs } from '../components/PermissionStairs';
 import { initI18n } from '../i18n';
-import type { Loose } from '../types';
+import { mockApi } from './mocks';
 
 // 사용자 요청(2026-10-28): 웹도 GUI처럼 칩을 끌어 레벨을 옮기고, 옮길 때 미끄러지는 애니메이션
 const perm = { guildId: 'g1', preset: 'default', commandLevels: {} };
-const item = (instance: Loose, name: Loose, title: Loose, level: Loose, extra = {}) => ({
+const item = (instance: string, name: string, title: string, level: number, extra = {}) => ({
     key: instance ? `${instance}/${name}` : name,
     keys: [instance ? `${instance}/${name}` : name],
     instance,
@@ -25,13 +25,13 @@ const board = (sayLevel = 0) => ({
     instances: [{ id: 'mc-1', name: 'Survival', module: 'minecraft' }],
     items: [item('mc-1', 'say', 'Say', sayLevel, { risk: 'safe', preset: 0 }), item('mc-1', 'stop', 'Stop', 1)],
 });
-const step = (name: Loose) => screen.getByRole('listitem', { name });
+const step = (name: string) => screen.getByRole('listitem', { name });
 
-function mount(api: Loose) {
+function mount(api: object) {
     const write = vi.fn(async (fn) => fn());
-    const props = { api, guildId: 'g1', perm, instance: 'mc-1', busy: false, write };
+    const props = { api: mockApi(api), guildId: 'g1', perm, instance: 'mc-1', busy: false, write };
     const view = render(<PermissionStairs {...props} board={board()} />);
-    return (next: Loose) => view.rerender(<PermissionStairs {...props} board={next} />);
+    return (next: ReturnType<typeof board>) => view.rerender(<PermissionStairs {...props} board={next} />);
 }
 
 describe('웹 레벨별 명령 계단', () => {

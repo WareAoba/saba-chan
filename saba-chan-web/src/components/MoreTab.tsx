@@ -1,4 +1,4 @@
-import { auditRange, auditResult, auditWhat, auditWho } from '@gui/utils/audit';
+import { type AuditEntry, auditRange, auditResult, auditWhat, auditWho } from '@gui/utils/audit';
 import { CONSOLE_FONT_CHOICES, CONSOLE_FONT_NAMES, CONSOLE_FONT_SLOTS } from '@gui/utils/consoleFonts';
 import { LANGUAGE_OPTIONS } from '@gui/utils/languages';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -9,9 +9,28 @@ import { sizeText } from './BackupsPanel';
 import { Dropdown } from './Dropdown';
 import { startPoll } from './poll';
 import { Button, Empty, Loading, Section, Segments } from './ui';
-import type { Loose } from '../types';
+import type { ApiBody, WebApi } from '../types';
 
-function Meter({ label, percent, detail }: Loose) {
+/** 서버 한 대의 자원 사용 (GET /api/system/metrics 의 instances) */
+interface MetricInstance {
+    id: string;
+    name: string;
+    running: boolean;
+    cpu_percent: number;
+    memory_bytes: number;
+}
+
+/** 데몬 콘솔 한 줄 */
+interface DaemonLine {
+    id: number;
+    level?: string;
+    message: string;
+}
+
+/** 활동 기록 한 건 (audit::Event) */
+type ActivityEntry = AuditEntry & { ts: number; instance?: string; instanceId?: string };
+
+function Meter({ label, percent, detail }: { label: string; percent?: number; detail?: string }) {
     const p = Math.max(0, Math.min(100, percent || 0));
     return (
         <div className="meter">
@@ -27,9 +46,9 @@ function Meter({ label, percent, detail }: Loose) {
     );
 }
 
-function Metrics({ api }: Loose) {
+function Metrics({ api }: { api: WebApi }) {
     const { t } = useTranslation();
-    const [snap, setSnap] = useState<Loose>(null);
+    const [snap, setSnap] = useState<ApiBody | null>(null);
     useEffect(() => {
         let stopped = false;
         const load = async () => {
@@ -45,7 +64,7 @@ function Metrics({ api }: Loose) {
 
     if (!snap) return <Loading />;
     const mem = snap.memory || {};
-    const running = (snap.instances || []).filter((i: Loose) => i.running);
+    const running = (snap.instances || []).filter((i: MetricInstance) => i.running);
     return (
         <>
             <Meter label={t('more.cpu')} percent={snap.cpu?.total_percent} />
@@ -59,7 +78,7 @@ function Metrics({ api }: Loose) {
                 <Empty>{t('more.none_running')}</Empty>
             ) : (
                 <ul className="rows">
-                    {running.map((i: Loose) => (
+                    {running.map((i: MetricInstance) => (
                         <li key={i.id} className="row">
                             <div className="row-main">
                                 <div className="row-title">{i.name}</div>
@@ -83,18 +102,18 @@ function Metrics({ api }: Loose) {
     );
 }
 
-function DaemonLog({ api }: Loose) {
+function DaemonLog({ api }: { api: WebApi }) {
     const { t } = useTranslation();
-    const [lines, setLines] = useState<Loose>(null);
-    const next = useRef<Loose>(undefined);
-    const box = useRef<Loose>(null);
+    const [lines, setLines] = useState<DaemonLine[] | null>(null);
+    const next = useRef<number | undefined>(undefined);
+    const box = useRef<HTMLPreElement>(null);
     useEffect(() => {
         let stopped = false;
         const load = async () => {
             const res = await api.daemonConsole(next.current === undefined ? {} : { since: next.current });
             if (stopped || !Array.isArray(res?.lines)) return;
             if (res.lines.length) next.current = res.lines[res.lines.length - 1].id + 1;
-            setLines((prev: Loose) => [...(prev ?? []), ...res.lines].slice(-300));
+            setLines((prev) => [...(prev ?? []), ...res.lines].slice(-300));
         };
         const stop = startPoll(load, 3000);
         return () => {
@@ -113,7 +132,7 @@ function DaemonLog({ api }: Loose) {
             {lines.length === 0 ? (
                 <span className="console-empty">{t('console.empty')}</span>
             ) : (
-                lines.map((l: Loose) => (
+                lines.map((l) => (
                     <div key={l.id} className={`line line-${l.level || 'info'}`}>
                         {l.message}
                     </div>
@@ -129,13 +148,13 @@ const PERIODS = ['all', 'today', '7d', '30d'];
 const TONE: Record<string, string> = { ok: 'pill-ok', idle: '', stop: 'pill-stop' };
 
 /** 활동 기록 (GET /api/audit, 최신이 먼저). 데몬이 웹에는 PC 경로를 가려 준다. 문구는 앱 작업 기록과 같다 */
-function ActivityLog({ api }: Loose) {
+function ActivityLog({ api }: { api: WebApi }) {
     const { t, i18n } = useTranslation();
     const { t: tg } = useTranslation('gui');
     const [period, setPeriod] = useState('all');
     const [limit, setLimit] = useState(PAGE);
-    const [entries, setEntries] = useState<Loose>(null);
-    const [error, setError] = useState<Loose>(null);
+    const [entries, setEntries] = useState<ActivityEntry[] | null>(null);
+    const [error, setError] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const seq = useRef(0); // 늦게 온 이전 응답이 새 응답을 덮지 않게
 
@@ -155,7 +174,7 @@ function ActivityLog({ api }: Loose) {
         load();
     }, [load]);
 
-    const fmt = (s: Loose) =>
+    const fmt = (s: number) =>
         new Date(s * 1000).toLocaleString(i18n.language, {
             month: 'numeric',
             day: 'numeric',
@@ -169,7 +188,7 @@ function ActivityLog({ api }: Loose) {
             <div className="activity-head">
                 <Segments
                     value={period}
-                    onChange={(p: Loose) => {
+                    onChange={(p) => {
                         setPeriod(p);
                         setLimit(PAGE);
                     }}
@@ -188,7 +207,7 @@ function ActivityLog({ api }: Loose) {
                 <Empty>{tg('audit.empty')}</Empty>
             ) : (
                 <ul className="rows">
-                    {entries.map((e: Loose, i: Loose) => {
+                    {entries.map((e, i) => {
                         const result = auditResult(e, tg);
                         return (
                             <li key={`${e.ts}-${i}`} className="row activity-row">
@@ -220,13 +239,13 @@ function ScreenSettings() {
     const { t, i18n } = useTranslation();
     const { t: tg } = useTranslation('gui');
     const [theme, setTheme] = useState(() => readPref('theme') || 'system');
-    const pickTheme = (value: Loose) => {
+    const pickTheme = (value: string) => {
         setTheme(value);
         writePref('theme', value);
         applyTheme(value);
     };
     const [fonts, setFonts] = useState(readConsoleFonts);
-    const pickFont = (slot: Loose, value: Loose) => {
+    const pickFont = (slot: (typeof CONSOLE_FONT_SLOTS)[number], value: string) => {
         const next = { ...fonts, [slot]: value };
         setFonts(next);
         applyScreenFonts(next, i18n.language);
@@ -261,7 +280,7 @@ function ScreenSettings() {
                     <span>{tg(`settings_modal.console_fonts_${slot}`)}</span>
                     <Dropdown
                         value={fonts[slot]}
-                        onChange={(value: Loose) => pickFont(slot, value)}
+                        onChange={(value) => pickFont(slot, value)}
                         options={CONSOLE_FONT_CHOICES[slot].map((value) => ({
                             value,
                             label: CONSOLE_FONT_NAMES[value as keyof typeof CONSOLE_FONT_NAMES],
@@ -275,14 +294,14 @@ function ScreenSettings() {
     );
 }
 
-const VIEWS: Record<string, (props: Loose) => React.JSX.Element> = {
+const VIEWS: Record<string, (props: { api: WebApi }) => React.JSX.Element> = {
     metrics: Metrics,
     activity: ActivityLog,
     log: DaemonLog,
     screen: ScreenSettings,
 };
 
-export function MoreTab({ api }: Loose) {
+export function MoreTab({ api }: { api: WebApi }) {
     const { t } = useTranslation();
     const [view, setView] = useState('metrics');
     const View = VIEWS[view];

@@ -1,9 +1,15 @@
 import { useEffect, useState } from 'react';
 import { startPoll } from './poll';
-import type { Loose } from '../types';
+import type { ApiBody, Server, WebApi } from '../types';
 
 /** 데몬 설치 진행(`/api/provision-progress/:name`) → 화면 상태. 설치 중이 아니면 null */
-export function provisionView(p: Loose) {
+/** 설치 진행 화면 상태 */
+export type ProvisionView =
+    | { state: 'running'; percent: number; message: string }
+    | { state: 'failed'; error: string; pcNeeded: boolean }
+    | { state: 'done' };
+
+export function provisionView(p: ApiBody | null | undefined): ProvisionView | null {
     if (!p?.active) return null;
     if (!p.done) return { state: 'running', percent: p.percent ?? 0, message: p.message ?? '' };
     if (p.success === false || p.error) return { state: 'failed', error: p.error ?? '', pcNeeded: !!p.action_required };
@@ -11,8 +17,8 @@ export function provisionView(p: Loose) {
 }
 
 /** 설치 중인 서버의 진행을 2초마다 읽는다. 성공으로 끝나면 알아서 치운다 */
-export function useProvision(api: Loose, server: Loose) {
-    const [view, setView] = useState<Loose>(null);
+export function useProvision(api: WebApi, server: Pick<Server, 'provisioning' | 'name'>) {
+    const [view, setView] = useState<ProvisionView | null>(null);
     const name = server.provisioning ? server.name : null;
     useEffect(() => {
         if (!name) return setView(null);

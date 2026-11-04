@@ -1,20 +1,24 @@
 import * as L from '@gui/components/discord/levels';
+import type { CommandBoard, GuildPermissions, StairChip } from '@gui/components/discord/levels';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useApp } from '../store';
 import { Button, Segments } from './ui';
-import type { Loose } from '../types';
+import type { ApiBody, WebApi } from '../types';
+
+/** 저장 한 번을 맡기는 함수: 알림·다시 읽기는 부르는 쪽이 한다 */
+export type PermissionWriter = (fn: () => Promise<ApiBody>) => Promise<void>;
 
 const RISK_TONE: Record<string, string> = { safe: 'ok', caution: 'warn', danger: 'stop' };
-const toneOf = (c: Loose) => (c.kind === 'admin' ? 'info' : RISK_TONE[c.confirmRisk] || 'ok');
+const toneOf = (c: StairChip) => (c.kind === 'admin' ? 'info' : RISK_TONE[c.confirmRisk as string] || 'ok');
 
 /**
  * 칩이 다른 계단으로 옮겨지면 옛 자리에서 새 자리로 미끄러지게 한다 (FLIP, GUI 계단과 같다).
  * 자리는 그릴 때마다 다시 재고(스크롤·위 줄이 생겨도 옛 값이 남지 않게), 움직임은 `dep`(계단 값)이 바뀔 때만 준다
  */
-function useChipFlip(ref: Loose, dep: Loose) {
-    const last = useRef(new Map());
-    const pinned = useRef(new Map()); // 놓은 칩: 다음 계단 값까지 놓은 자리를 옛 자리로 쓴다
+function useChipFlip(ref: React.RefObject<HTMLElement | null>, dep: CommandBoard | null | undefined) {
+    const last = useRef(new Map<string, DOMRect>());
+    const pinned = useRef(new Map<string, DOMRect | null>()); // 놓은 칩: 다음 계단 값까지 놓은 자리를 옛 자리로 쓴다
     const prevDep = useRef(dep);
     useLayoutEffect(() => {
         const root = ref.current;
@@ -22,11 +26,11 @@ function useChipFlip(ref: Loose, dep: Loose) {
         const changed = prevDep.current !== dep;
         prevDep.current = dep;
         const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-        const next = new Map();
-        for (const el of root.querySelectorAll('[data-chip]')) {
+        const next = new Map<string, DOMRect>();
+        for (const el of root.querySelectorAll<HTMLElement>('[data-chip]')) {
             const box = el.getBoundingClientRect();
-            next.set(el.dataset.chip, box);
-            const prev = pinned.current.get(el.dataset.chip) || last.current.get(el.dataset.chip);
+            next.set(el.dataset.chip as string, box);
+            const prev = pinned.current.get(el.dataset.chip as string) || last.current.get(el.dataset.chip as string);
             if (!changed || reduce || !prev || !el.animate) continue;
             const dx = prev.left - box.left;
             const dy = prev.top - box.top;
@@ -47,16 +51,22 @@ function useChipFlip(ref: Loose, dep: Loose) {
  * 6px 넘게 움직여야 끌기로 보고, 놓은 자리의 `data-level` 계단으로 옮긴다(`onDrop`이 옮겼으면 true).
  * 끈 뒤 같은 칩에 오는 click 하나만 무시한다. 화면이 닫히면 끌던 것을 버린다
  */
-function useChipDrag({ onDrop, flip }: Loose) {
-    const [drag, setDrag] = useState<Loose>(null); // {id, over}
+function useChipDrag({
+    onDrop,
+    flip,
+}: {
+    onDrop: (chip: StairChip, level: number) => boolean;
+    flip: ReturnType<typeof useChipFlip>;
+}) {
+    const [drag, setDrag] = useState<{ id: string; over: number | null } | null>(null);
     const dragged = useRef(false);
     const latest = useRef(onDrop);
     latest.current = onDrop;
-    const stop = useRef<Loose>(null);
+    const stop = useRef<(() => void) | null>(null);
     useEffect(() => () => stop.current?.(), []);
-    const stepAt = (x: Loose, y: Loose) => document.elementFromPoint?.(x, y)?.closest?.('[data-level]');
+    const stepAt = (x: number, y: number) => document.elementFromPoint?.(x, y)?.closest?.('[data-level]');
 
-    const start = (e: Loose, chip: Loose) => {
+    const start = (e: React.PointerEvent<HTMLElement>, chip: StairChip) => {
         if (chip.fixed || (e.button !== undefined && e.button > 0)) return;
         stop.current?.();
         const el = e.currentTarget;
@@ -64,7 +74,7 @@ function useChipDrag({ onDrop, flip }: Loose) {
         const y0 = e.clientY;
         let moving = false;
         dragged.current = false;
-        const move = (ev: Loose) => {
+        const move = (ev: PointerEvent) => {
             const dx = ev.clientX - x0;
             const dy = ev.clientY - y0;
             if (!moving && Math.hypot(dx, dy) < 6) return;
@@ -73,7 +83,7 @@ function useChipDrag({ onDrop, flip }: Loose) {
             el.style.pointerEvents = 'none';
             const step = stepAt(ev.clientX, ev.clientY);
             const over = step ? Number((step as HTMLElement).dataset.level) : null;
-            setDrag((d: Loose) => (d?.id === chip.id && d.over === over ? d : { id: chip.id, over }));
+            setDrag((d) => (d?.id === chip.id && d.over === over ? d : { id: chip.id, over }));
         };
         const detach = () => {
             window.removeEventListener('pointermove', move);
@@ -83,7 +93,7 @@ function useChipDrag({ onDrop, flip }: Loose) {
             el.style.pointerEvents = '';
             stop.current = null;
         };
-        const end = (ev: Loose) => {
+        const end = (ev: PointerEvent) => {
             const box = moving ? el.getBoundingClientRect() : null;
             detach();
             setDrag(null);
@@ -115,19 +125,29 @@ function useChipDrag({ onDrop, flip }: Loose) {
  * 레벨별 명령 계단 (GUI `CommandStairs`와 같은 규칙). 위가 높은 레벨이고, 위 레벨은 아래 레벨의 명령을 모두 쓴다.
  * `instance`면 그 인스턴스 명령과 서버 전체 명령만 보인다
  */
-export function PermissionStairs({ api, guildId, perm, board, instance, busy, write }: Loose) {
+interface PermissionStairsProps {
+    api: WebApi;
+    guildId: string;
+    perm: GuildPermissions;
+    board: CommandBoard;
+    instance: string;
+    busy: boolean;
+    write: PermissionWriter;
+}
+
+export function PermissionStairs({ api, guildId, perm, board, instance, busy, write }: PermissionStairsProps) {
     const { t } = useTranslation();
     const ask = useApp((s) => s.ask);
-    const [selected, setSelected] = useState<Loose>(null);
-    const ref = useRef<Loose>(null);
+    const [selected, setSelected] = useState<string | null>(null);
+    const ref = useRef<HTMLOListElement>(null);
     const flip = useChipFlip(ref, board);
 
-    const levelName = (id: Loose) => L.ladderOf(perm).find((l) => l.id === id)?.name || t(`perm.level.${id}`);
-    const levelTitle = (id: Loose) => t('perm.level_numbered', { n: L.levelNumber(perm, id), name: levelName(id) });
-    const update = (patch: Loose) => write(() => api.permissionsUpdate(guildId, patch));
-    const move = (chip: Loose, level: Loose) => {
+    const levelName = (id: number) => L.ladderOf(perm).find((l) => l.id === id)?.name || t(`perm.level.${id}`);
+    const levelTitle = (id: number) => t('perm.level_numbered', { n: L.levelNumber(perm, id), name: levelName(id) });
+    const update = (patch: ApiBody) => write(() => api.permissionsUpdate(guildId, patch));
+    const move = (chip: StairChip, level: number) => {
         // 대표 레벨이 같아도 다른 레벨인 인스턴스가 있으면 맞춘다
-        if (busy || chip.fixed || level === L.BANNED || chip.items.every((i: Loose) => i.fixed || i.level === level))
+        if (busy || chip.fixed || level === L.BANNED || chip.items.every((i) => i.fixed || i.level === level))
             return false;
         update({ commandLevels: L.levelPatch(chip.items, level) });
         return true;
@@ -135,15 +155,15 @@ export function PermissionStairs({ api, guildId, perm, board, instance, busy, wr
     const { drag, start, consumeDrag } = useChipDrag({ onDrop: move, flip });
 
     const instances = board?.instances || [];
-    const instanceName = (id: Loose) => instances.find((i: Loose) => i.id === id)?.name || id;
+    const instanceName = (id: string) => instances.find((i) => i.id === id)?.name || id;
     const levels = L.ascending(perm);
     const lowest = levels.find((l) => l !== L.BANNED);
-    const chips: Loose[] = [
-        { id: 'basic', title: t('perm.help_list'), level: lowest, fixed: true, basic: true, items: [] },
+    const chips: StairChip[] = [
+        { id: 'basic', title: t('perm.help_list'), level: lowest as number, fixed: true, basic: true, items: [] },
         ...L.stairChips(board, instance),
     ];
     const current = chips.find((c) => c.id === selected);
-    const label = (c: Loose) => (c.instance ? `${c.title} · ${instanceName(c.instance)}` : c.title);
+    const label = (c: StairChip) => (c.instance ? `${c.title} · ${instanceName(c.instance)}` : c.title);
     const gains: Record<number, number> = {};
     for (const c of chips.filter((c) => !c.instance)) gains[c.level] = (gains[c.level] || 0) + 1;
     const carried: Record<number, number> = {};
@@ -153,10 +173,10 @@ export function PermissionStairs({ api, guildId, perm, board, instance, busy, wr
         total += gains[l] || 0;
     }
 
-    const preset = L.PRESETS.includes(perm.preset) ? perm.preset : 'default';
+    const preset = L.PRESETS.includes(perm.preset as string) ? (perm.preset as string) : 'default';
     const overrides = Object.keys(perm.commandLevels || {}).length;
     // 프리셋은 계단 전체를 한 번 채우는 틀: 옮긴 명령이 있으면 다시 맞춘다고 먼저 묻는다
-    const pickPreset = async (p: Loose) => {
+    const pickPreset = async (p: string) => {
         if (busy || (p === preset && !overrides)) return;
         if (overrides) {
             const ok = await ask({
@@ -277,16 +297,16 @@ export function PermissionStairs({ api, guildId, perm, board, instance, busy, wr
                                         </button>
                                     ))}
                             </fieldset>
-                            {instance !== L.ALL_INSTANCES && current.items.some((i: Loose) => !i.instance) && (
+                            {instance !== L.ALL_INSTANCES && current.items.some((i) => !i.instance) && (
                                 <small className="hint">{t('perm.server_wide')}</small>
                             )}
-                            {current.items.some((i: Loose) => i.overridden) && (
+                            {current.items.some((i) => i.overridden) && (
                                 <Button
                                     disabled={busy}
                                     onClick={() =>
                                         update({
                                             commandLevels: Object.fromEntries(
-                                                current.items.flatMap((i: Loose) => (i.keys || [i.key]).map((k: Loose) => [k, null])),
+                                                current.items.flatMap((i) => (i.keys || [i.key]).map((k) => [k, null])),
                                             ),
                                         })
                                     }

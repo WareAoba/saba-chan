@@ -2,15 +2,22 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useApp } from '../store';
 import { errorText, failed } from './ui';
-import type { Loose } from '../types';
+import type { Server, WebApi } from '../types';
+
+/** 데몬이 동의를 요구한 약관 한 건 */
+interface Agreement {
+    id: string;
+    label?: string;
+    url: string;
+}
 
 /** 켜기·끄기·다시 켜기·지우기. 확인 창과 약관 동의는 GUI 와 같다 */
-export function useServerControl(api: Loose) {
+export function useServerControl(api: WebApi) {
     const { t } = useTranslation();
     const { toast, ask } = useApp.getState();
     const [busy, setBusy] = useState(false);
 
-    const run = async (fn: Loose) => {
+    const run = async <T>(fn: () => Promise<T>) => {
         setBusy(true);
         try {
             return await fn();
@@ -19,7 +26,7 @@ export function useServerControl(api: Loose) {
         }
     };
 
-    const start = (server: Loose) =>
+    const start = (server: Server) =>
         run(async () => {
             let res = await api.instanceStart(server.id);
             // 모듈이 선언한 약관(EULA 등)에 아직 동의하지 않았다: 원문 링크를 보이고 동의하면 다시 켠다
@@ -28,14 +35,14 @@ export function useServerControl(api: Loose) {
                     title: t('agreements.title'),
                     message: t('agreements.message', {
                         name: server.name,
-                        list: res.agreements.map((a: Loose) => `${a.label || a.id}: ${a.url}`).join('\n'),
+                        list: res.agreements.map((a: Agreement) => `${a.label || a.id}: ${a.url}`).join('\n'),
                     }),
                     confirmLabel: t('agreements.accept'),
                 });
                 if (!ok) return;
                 const accepted = await api.instanceAgreements(
                     server.id,
-                    res.agreements.map((a: Loose) => a.id),
+                    res.agreements.map((a: Agreement) => a.id),
                 );
                 if (failed(accepted)) return toast(errorText(t, accepted), 'error');
                 res = await api.instanceStart(server.id);
@@ -44,7 +51,7 @@ export function useServerControl(api: Loose) {
             toast(t('servers.started', { name: server.name }), 'ok');
         });
 
-    const stop = (server: Loose) =>
+    const stop = (server: Server) =>
         run(async () => {
             const ok = await ask({
                 title: t('servers.stop_title', { name: server.name }),
@@ -58,7 +65,7 @@ export function useServerControl(api: Loose) {
             toast(t('servers.stopped', { name: server.name }), 'ok');
         });
 
-    const restart = (server: Loose) =>
+    const restart = (server: Server) =>
         run(async () => {
             const ok = await ask({
                 title: t('servers.restart_title', { name: server.name }),
@@ -72,7 +79,7 @@ export function useServerControl(api: Loose) {
             toast(t('servers.restarted', { name: server.name }), 'ok');
         });
 
-    const remove = (server: Loose) =>
+    const remove = (server: Server) =>
         run(async () => {
             const ok = await ask({
                 title: t('servers.delete_title', { name: server.name }),

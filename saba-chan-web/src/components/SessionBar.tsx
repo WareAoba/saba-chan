@@ -5,15 +5,15 @@ import { useApp } from '../store';
 import { Icon } from './icons';
 import { InstallBand } from './NoPc';
 import { Wordmark } from './ui';
-import type { Loose } from '../types';
+import type { WebSession } from '../types';
 
 /** 남은 시간 "14:05" */
-export function remainingText(expiresAt: Loose, now: Loose) {
+export function remainingText(expiresAt: number | null, now: number) {
     const left = Math.max(0, Math.floor(((expiresAt ?? now) - now) / 1000));
     return `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`;
 }
 
-export function SessionBar({ session }: Loose) {
+export function SessionBar({ session }: { session: WebSession | null }) {
     const { t } = useTranslation();
     const { expiresAt, warning, phase, hostId } = useApp((s) => s.session);
     const [now, setNow] = useState(Date.now());

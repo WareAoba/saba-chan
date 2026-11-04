@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { createWebApi } from '../api';
-import type { Loose } from '../types';
+import type { PcEvent, SessionReply } from '../types';
 
-function fakeSession(reply: Loose) {
-    const calls: Loose[] = [];
+function fakeSession(reply: SessionReply) {
+    const calls: object[] = [];
     return {
         calls,
-        request: async (method: Loose, path: Loose, body: Loose, timeoutMs: Loose) => {
+        request: async (method: string, path: string, body?: unknown, timeoutMs?: number) => {
             calls.push({ method, path, body, timeoutMs });
             return reply;
         },
@@ -34,7 +34,7 @@ describe('웹 브리지', () => {
 
     it('PC 이벤트를 GUI 와 같은 채널로 나눠 준다', () => {
         const { api, emit } = createWebApi(fakeSession({ status: 200, data: {} }));
-        const got: Loose[] = [];
+        const got: PcEvent[] = [];
         api.onDaemonEvent((e) => got.push(e));
         emit({ type: 'instance.exit', data: { id: 'a' } });
         expect(got).toEqual([{ type: 'instance.exit', data: { id: 'a' } }]);

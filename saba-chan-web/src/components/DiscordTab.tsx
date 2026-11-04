@@ -1,13 +1,102 @@
+import type { DropdownOption } from '@gui/components/CustomDropdown/CustomDropdown';
 import { DEFAULT_BEDTIME, HALF_HOURS, SLEEP_FEATURES } from '@gui/components/discord/sleep';
+import type { DiscordNode } from '@gui/components/discord/types';
 import { LANGUAGE_OPTIONS } from '@gui/utils/languages';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import type { createRelay } from '../relay';
 import { useApp } from '../store';
 import { Dropdown } from './Dropdown';
 import { Icon } from './icons';
 import { GuildPermissions } from './PermissionsTab';
 import { Button, Empty, errorText, failed, Loading, Section, Sheet } from './ui';
-import type { Loose } from '../types';
+import type {
+    ApiBody,
+    RelayChannels,
+    RelayChannelsChange,
+    RelayChatbot,
+    RelayChatbotPatch,
+    RelayClearTarget,
+    RelayGuild as RelayGuildInfo,
+    RelayGuildCan,
+    RelayGuildSettings,
+    RelayModChannel,
+    RelayModChannelEdit,
+    RelayModClear,
+    RelayModeration,
+    RelayModMember,
+    RelayModSanction,
+    RelayModSanctionBody,
+    RelayMusicSettings,
+    RelayResult,
+    RelaySanctionKind,
+    RelaySettingsPatch,
+    RelayTtsSettings,
+    TFn,
+    WebApi,
+} from '../types';
+
+type Relay = ReturnType<typeof createRelay>;
+
+/** 설정 화면이 읽는 서버 설정: 릴레이 값에, 이 PC 의 데몬이 더하는 asleep */
+type GuildSettings = Partial<RelayGuildSettings> & { asleep?: boolean };
+
+/** 데몬을 거친 쓰기가 실패했을 때: 릴레이 답과 같은 자리에 데몬 본문을 싣는다 */
+interface DaemonFailure {
+    ok: false;
+    daemon: ApiBody;
+}
+
+/** 릴레이 답 또는 데몬을 거친 답 */
+type StoreResult<T> = RelayResult<T> | DaemonFailure;
+
+/** 서버 설정·말하는 사바쨩은 이 PC 의 서버면 데몬 경로이고 나머지는 릴레이다 (hereStore) */
+export interface GuildStore extends Omit<Relay, 'settings' | 'saveSettings' | 'chatbot' | 'saveChatbot'> {
+    settings(g: string): Promise<StoreResult<GuildSettings>>;
+    saveSettings(g: string, patch: RelaySettingsPatch): Promise<StoreResult<GuildSettings>>;
+    chatbot(g: string): Promise<StoreResult<RelayChatbot>>;
+    saveChatbot(g: string, body: RelayChatbotPatch): Promise<StoreResult<RelayChatbot>>;
+}
+
+type GuildKey = 'settings' | 'channels' | 'chatbot' | 'moderation';
+
+/** 쓰기 하나: key 는 답을 넣을 칸 (null 이면 아무것도 바꾸지 않는다). 성공하면 true */
+type Write = (call: () => Promise<StoreResult<unknown>>, key: GuildKey | null) => Promise<boolean>;
+
+/** 읽지 못한 칸 */
+interface Failed {
+    failed: true;
+}
+
+/** 한 서버의 릴레이 값 (읽는 중이면 칸이 없다) */
+interface GuildData {
+    settings?: GuildSettings | Failed;
+    channels?: RelayChannels | Failed;
+    chatbot?: RelayChatbot | Failed;
+    moderation?: RelayModeration | Failed;
+}
+
+/** 탭에 나오는 디스코드 서버 한 칸: 이 PC 의 서버(here) 또는 릴레이가 알려 준 서버 */
+interface GuildEntry {
+    id: string;
+    name: string;
+    here: boolean;
+    icon?: string | null;
+    hasPc?: boolean;
+    can?: RelayGuildCan;
+}
+
+/** 섹션들이 함께 받는 것 */
+interface SectionProps {
+    relay: GuildStore;
+    g: string;
+    busy: boolean;
+    write: Write;
+    here: boolean;
+}
+
+const isFailed = (x: unknown): x is Failed => !!x && !!(x as Failed).failed;
+const ready = <T,>(x: T | Failed | undefined): x is T => !!x && !isFailed(x);
 
 /**
  * 디스코드 탭 (2026-10-31 사용자 지정 시안). 이 PC 에 붙은 서버는 권한·보일 서버를 PC 를 거쳐 바꾸고, 설정은
@@ -17,34 +106,36 @@ import type { Loose } from '../types';
  */
 
 /** 이 PC 의 서버(PC 경유)와 릴레이가 알려 준 관리할 수 있는 서버를 합친다. 이 PC 의 것이 먼저 */
-export function mergeGuilds(pcNodes: Loose, relayGuilds: Loose) {
-    const out = pcNodes.map((n: Loose) => ({ id: String(n.guildId), name: n.guildName || String(n.guildId), here: true }));
+export function mergeGuilds(pcNodes: DiscordNode[], relayGuilds: RelayGuildInfo[]) {
+    const out: GuildEntry[] = pcNodes.map((n) => ({ id: String(n.guildId), name: n.guildName || String(n.guildId), here: true }));
     for (const g of relayGuilds) {
-        const hit = out.find((x: Loose) => x.id === g.id);
+        const hit = out.find((x) => x.id === g.id);
         if (hit) Object.assign(hit, { icon: g.icon, hasPc: true, can: g.can });
         else out.push({ ...g, here: false });
     }
     return out;
 }
 
-const modAllowed = (can: Loose) => !!(can?.channels || can?.messages || can?.members);
+const modAllowed = (can: RelayGuildCan | undefined) => !!(can?.channels || can?.messages || can?.members);
 
 /** 데몬 답 → 릴레이 답 모양 ({ok, data} | {ok:false, daemon}) */
-const fromDaemon = (res: Loose, pick = (x: Loose) => x) => (failed(res) ? { ok: false, daemon: res } : { ok: true, data: pick(res) });
+const fromDaemon = <T = ApiBody>(res: ApiBody, pick: (x: ApiBody) => T = (x) => x as T): StoreResult<T> =>
+    failed(res) ? { ok: false, daemon: res } : { ok: true, data: pick(res) };
 
 /**
  * 이 PC 에 붙은 서버의 쓰기 길: 데몬이 원본인 설정과 말하는 사바쨩은 데몬(큰 이모지는 데몬이 릴레이로 넘긴다),
  * 채널 배정·기억 지우기는 릴레이 (릴레이 API 는 PC 가 붙은 서버의 데몬 값을 409 PC_OWNED 로 거절한다).
  * API 키는 이 PC 의 키 하나다 (이 PC 에 붙은 모든 디스코드 서버가 같이 쓴다)
  */
-export function hereStore(api: Loose, relay: Loose) {
-    const chatbotView = (res: Loose) => ({ settings: res.settings || {}, hasApiKey: !!res.hasApiKey });
+export function hereStore(api: WebApi, relay: Relay): GuildStore {
+    const chatbotView = (res: ApiBody): RelayChatbot => ({ settings: res.settings || {}, hasApiKey: !!res.hasApiKey });
     return {
         ...relay,
-        settings: async (g: Loose) => fromDaemon(await api.discordSettingsGet(g)),
-        saveSettings: async (g: Loose, patch: Loose) => fromDaemon(await api.discordSettingsSet(g, patch), (r) => r.settings),
-        chatbot: async (g: Loose) => fromDaemon(await api.chatbotGuildGet(g), chatbotView),
-        saveChatbot: async (g: Loose, { settings, apiKey }: Loose) => {
+        settings: async (g: string) => fromDaemon<GuildSettings>(await api.discordSettingsGet(g)),
+        saveSettings: async (g: string, patch: RelaySettingsPatch) =>
+            fromDaemon<GuildSettings>(await api.discordSettingsSet(g, patch), (r) => r.settings),
+        chatbot: async (g: string) => fromDaemon(await api.chatbotGuildGet(g), chatbotView),
+        saveChatbot: async (g: string, { settings, apiKey }: RelayChatbotPatch): Promise<StoreResult<RelayChatbot>> => {
             if (apiKey !== undefined) {
                 const res = await api.chatbotSave({ apiKey });
                 if (failed(res)) return { ok: false, daemon: res };
@@ -56,8 +147,8 @@ export function hereStore(api: Loose, relay: Loose) {
 }
 
 /** 릴레이 오류 → 한 줄 */
-function relayError(t: Loose, res: Loose) {
-    if (res?.daemon) return errorText(t, res.daemon);
+function relayError(t: TFn, res: StoreResult<unknown> & { ok: false }) {
+    if ('daemon' in res) return errorText(t, res.daemon);
     const known = [
         'NEEDS_PC',
         'PC_OWNED',
@@ -76,14 +167,14 @@ function relayError(t: Loose, res: Loose) {
         'CLEAR_RUNNING',
         'NO_CLEAR_JOB',
     ];
-    return known.includes(res?.error) ? t(`relay.err.${res.error}`) : t('relay.err.generic');
+    return known.includes(res.error) ? t(`relay.err.${res.error}`) : t('relay.err.generic');
 }
 
 /** 분·초 → "1시간 30분" */
-export function durationText(t: Loose, minutes: Loose) {
+export function durationText(t: TFn, minutes: number) {
     if (minutes < 1) return t('relay.dur.seconds', { count: Math.round(minutes * 60) });
     const m = Math.round(minutes);
-    const parts = [
+    const parts: [number, string][] = [
         [Math.floor(m / 1440), 'days'],
         [Math.floor((m % 1440) / 60), 'hours'],
         [m % 60, 'minutes'],
@@ -94,9 +185,17 @@ export function durationText(t: Loose, minutes: Loose) {
         .join(' ');
 }
 
-const minutesUntil = (iso: Loose) => Math.max(1, Math.ceil((Date.parse(iso) - Date.now()) / 60_000));
+const minutesUntil = (iso: string) => Math.max(1, Math.ceil((Date.parse(iso) - Date.now()) / 60_000));
 
-function Toggle({ label, hint, checked, disabled, onChange }: Loose) {
+interface ToggleProps {
+    label: React.ReactNode;
+    hint?: React.ReactNode;
+    checked?: boolean;
+    disabled?: boolean;
+    onChange: (checked: boolean) => void;
+}
+
+function Toggle({ label, hint, checked, disabled, onChange }: ToggleProps) {
     return (
         <label className="field field-row">
             <span>
@@ -114,7 +213,15 @@ function Toggle({ label, hint, checked, disabled, onChange }: Loose) {
     );
 }
 
-function Choice({ label, value, options, disabled, onChange }: Loose) {
+interface ChoiceProps {
+    label: string;
+    value: string | number | null | undefined;
+    options: DropdownOption[];
+    disabled?: boolean;
+    onChange: (value: string) => void;
+}
+
+function Choice({ label, value, options, disabled, onChange }: ChoiceProps) {
     return (
         <div className="field field-row">
             <span>{label}</span>
@@ -131,14 +238,14 @@ function Choice({ label, value, options, disabled, onChange }: Loose) {
 }
 
 /** 지금 값이 목록에 없어도 고를 수 있게 넣는다 */
-const withValue = (values: Loose, value: Loose) => (values.includes(value) ? values : [...values, value].sort((a, b) => a - b));
-const range = (from: Loose, to: Loose, step: Loose) => Array.from({ length: Math.floor((to - from) / step) + 1 }, (_, i) => from + i * step);
+const withValue = (values: number[], value: number) => (values.includes(value) ? values : [...values, value].sort((a, b) => a - b));
+const range = (from: number, to: number, step: number) => Array.from({ length: Math.floor((to - from) / step) + 1 }, (_, i) => from + i * step);
 
 /** 한 서버의 릴레이 값과 쓰기 — 쓰기는 하나씩, 답으로 받은 값으로 화면을 맞춘다 */
-function useRelayGuild(relay: Loose, guild: Loose) {
+function useRelayGuild(relay: GuildStore, guild: GuildEntry) {
     const { t } = useTranslation();
     const toast = useApp((s) => s.toast);
-    const [data, setData] = useState<Loose>({});
+    const [data, setData] = useState<GuildData>({});
     // 읽기 실패 뒤 "다시 읽기"를 누를 때마다 늘린다
     const [round, setRound] = useState(0);
     const [busy, setBusy] = useState(false);
@@ -151,7 +258,7 @@ function useRelayGuild(relay: Loose, guild: Loose) {
         async (quiet = false) => {
             const res = await relay.moderation(g);
             if (!res.ok && quiet) return;
-            setData((d: Loose) => ({ ...d, moderation: res.ok ? res.data : { failed: true } }));
+            setData((d) => ({ ...d, moderation: res.ok ? res.data : { failed: true } }));
         },
         [relay, g],
     );
@@ -159,7 +266,10 @@ function useRelayGuild(relay: Loose, guild: Loose) {
     // biome-ignore lint/correctness/useExhaustiveDependencies: round 는 다시 읽기 신호다
     useEffect(() => {
         let alive = true;
-        const put = (key: Loose) => (res: Loose) => alive && setData((d: Loose) => ({ ...d, [key]: res.ok ? res.data : { failed: true } }));
+        const put =
+            <K extends GuildKey>(key: K) =>
+            (res: StoreResult<NonNullable<GuildData[K]>>) =>
+                alive && setData((d) => ({ ...d, [key]: res.ok ? res.data : { failed: true } }));
         if (manage) {
             relay.settings(g).then(put('settings'));
             relay.channels(g).then(put('channels'));
@@ -172,7 +282,7 @@ function useRelayGuild(relay: Loose, guild: Loose) {
     }, [relay, g, manage, mod, round]);
 
     /** call: 릴레이 요청, key: 답을 넣을 칸. 'moderation' 이면 서버 관리를 다시 읽고, null 이면 아무것도 바꾸지 않는다 */
-    const write = async (call: Loose, key: Loose) => {
+    const write: Write = async (call, key) => {
         if (busy) return false;
         setBusy(true);
         try {
@@ -182,7 +292,7 @@ function useRelayGuild(relay: Loose, guild: Loose) {
                 return false;
             }
             if (key === 'moderation') await loadModeration();
-            else if (key) setData((d: Loose) => ({ ...d, [key]: res.data }));
+            else if (key) setData((d) => ({ ...d, [key]: res.data }));
             toast(t('relay.saved'));
             return true;
         } finally {
@@ -196,16 +306,16 @@ function useRelayGuild(relay: Loose, guild: Loose) {
     return { data, busy, write, reload, refresh: loadModeration };
 }
 
-function BasicsSection({ relay, g, settings, busy, write, here }: Loose) {
+function BasicsSection({ relay, g, settings, busy, write, here }: SectionProps & { settings: GuildSettings }) {
     const { t } = useTranslation();
-    const save = (patch: Loose) => write(() => relay.saveSettings(g, patch), 'settings');
+    const save = (patch: RelaySettingsPatch) => write(() => relay.saveSettings(g, patch), 'settings');
     return (
         <Section title={t('relay.basics')}>
             <Choice
                 label={t('relay.locale')}
                 value={settings.locale}
                 disabled={busy}
-                onChange={(locale: Loose) => save({ locale })}
+                onChange={(locale) => save({ locale })}
                 options={[{ value: 'auto', label: t('relay.locale_auto') }, ...LANGUAGE_OPTIONS]}
             />
             <Toggle
@@ -213,14 +323,16 @@ function BasicsSection({ relay, g, settings, busy, write, here }: Loose) {
                 hint={t('relay.big_emoji_hint')}
                 checked={settings.bigEmoji}
                 disabled={busy}
-                onChange={(bigEmoji: Loose) => save({ bigEmoji })}
+                onChange={(bigEmoji) => save({ bigEmoji })}
             />
             {/* 게임 채팅 채널 옵션 (원본은 릴레이, 데몬이 넘긴다). 게임 채팅은 PC 가 보내는 것이라 이 PC 의 서버만 */}
             {here &&
-                [
-                    ['gameChatGuard', 'relay.game_chat_guard'],
-                    ['gameChatClearOnStop', 'relay.game_chat_clear_on_stop'],
-                ].map(
+                (
+                    [
+                        ['gameChatGuard', 'relay.game_chat_guard'],
+                        ['gameChatClearOnStop', 'relay.game_chat_clear_on_stop'],
+                    ] as const
+                ).map(
                     ([key, label]) =>
                         typeof settings[key] === 'boolean' && (
                             <Toggle
@@ -229,7 +341,7 @@ function BasicsSection({ relay, g, settings, busy, write, here }: Loose) {
                                 hint={t(`${label}_hint`)}
                                 checked={settings[key]}
                                 disabled={busy}
-                                onChange={(on: Loose) => save({ [key]: on })}
+                                onChange={(on) => save({ [key]: on })}
                             />
                         ),
                 )}
@@ -237,61 +349,69 @@ function BasicsSection({ relay, g, settings, busy, write, here }: Loose) {
     );
 }
 
-function MusicSection({ relay, g, settings, busy, write }: Loose) {
+function MusicSection({ relay, g, settings, busy, write }: SectionProps & { settings: GuildSettings }) {
     const { t } = useTranslation();
-    const save = (music: Loose) => write(() => relay.saveSettings(g, { music }), 'settings');
+    const save = (music: Partial<RelayMusicSettings>) => write(() => relay.saveSettings(g, { music }), 'settings');
     return (
         <Section title={t('relay.music')}>
             <Toggle
                 label={t('relay.enabled')}
                 checked={settings.music?.enabled}
                 disabled={busy}
-                onChange={(enabled: Loose) => save({ enabled })}
+                onChange={(enabled) => save({ enabled })}
             />
             <Toggle
                 label={t('relay.music_ui')}
                 hint={t('relay.music_ui_hint')}
                 checked={settings.music?.ui}
                 disabled={busy}
-                onChange={(ui: Loose) => save({ ui })}
+                onChange={(ui) => save({ ui })}
             />
         </Section>
     );
 }
 
-function ReadingSection({ relay, g, settings, busy, write }: Loose) {
+function ReadingSection({ relay, g, settings, busy, write }: SectionProps & { settings: GuildSettings }) {
     const { t } = useTranslation();
     const tts = settings.tts || { volume: 100, speed: 100, pitch: 0 };
-    const save = (patch: Loose) => write(() => relay.saveSettings(g, { tts: patch }), 'settings');
-    const speed = (v: Loose) => `${(v / 100).toFixed(2).replace(/0$/, '')}x`;
+    const save = (patch: Partial<RelayTtsSettings>) => write(() => relay.saveSettings(g, { tts: patch }), 'settings');
+    const speed = (v: number) => `${(v / 100).toFixed(2).replace(/0$/, '')}x`;
     return (
         <Section title={t('relay.reading')}>
             <Choice
                 label={t('relay.volume')}
                 value={tts.volume}
                 disabled={busy}
-                onChange={(v: Loose) => save({ volume: Number(v) })}
-                options={withValue(range(10, 150, 10), tts.volume).map((v: Loose) => ({ value: String(v), label: `${v}%` }))}
+                onChange={(v) => save({ volume: Number(v) })}
+                options={withValue(range(10, 150, 10), tts.volume).map((v) => ({ value: String(v), label: `${v}%` }))}
             />
             <Choice
                 label={t('relay.speed')}
                 value={tts.speed}
                 disabled={busy}
-                onChange={(v: Loose) => save({ speed: Number(v) })}
-                options={withValue(range(80, 150, 10), tts.speed).map((v: Loose) => ({ value: String(v), label: speed(v) }))}
+                onChange={(v) => save({ speed: Number(v) })}
+                options={withValue(range(80, 150, 10), tts.speed).map((v) => ({ value: String(v), label: speed(v) }))}
             />
             <Choice
                 label={t('relay.pitch')}
                 value={tts.pitch}
                 disabled={busy}
-                onChange={(v: Loose) => save({ pitch: Number(v) })}
+                onChange={(v) => save({ pitch: Number(v) })}
                 options={range(-6, 6, 1).map((v) => ({ value: String(v), label: v > 0 ? `+${v}` : String(v) }))}
             />
         </Section>
     );
 }
 
-function ApiKeySheet({ onSave, onClose, busy }: Loose) {
+function ApiKeySheet({
+    onSave,
+    onClose,
+    busy,
+}: {
+    onSave: (apiKey: string) => void;
+    onClose: () => void;
+    busy: boolean;
+}) {
     const { t } = useTranslation();
     const [key, setKey] = useState('');
     return (
@@ -322,11 +442,11 @@ function ApiKeySheet({ onSave, onClose, busy }: Loose) {
     );
 }
 
-function TalkingSection({ relay, g, chatbot, busy, write, here }: Loose) {
+function TalkingSection({ relay, g, chatbot, busy, write, here }: SectionProps & { chatbot: RelayChatbot }) {
     const { t } = useTranslation();
     const ask = useApp((s) => s.ask);
     const [editing, setEditing] = useState(false);
-    const save = (body: Loose) => write(() => relay.saveChatbot(g, body), 'chatbot');
+    const save = (body: RelayChatbotPatch) => write(() => relay.saveChatbot(g, body), 'chatbot');
     return (
         <Section title={t('relay.talking')}>
             <Toggle
@@ -334,7 +454,7 @@ function TalkingSection({ relay, g, chatbot, busy, write, here }: Loose) {
                 hint={t('relay.talking_hint')}
                 checked={chatbot.settings?.enabled}
                 disabled={busy}
-                onChange={(enabled: Loose) => save({ settings: { enabled } })}
+                onChange={(enabled) => save({ settings: { enabled } })}
             />
             <div className="field field-row">
                 <span>
@@ -391,7 +511,7 @@ function TalkingSection({ relay, g, chatbot, busy, write, here }: Loose) {
                 <ApiKeySheet
                     busy={busy}
                     onClose={() => setEditing(false)}
-                    onSave={async (apiKey: Loose) => {
+                    onSave={async (apiKey) => {
                         if (await save({ apiKey })) setEditing(false);
                     }}
                 />
@@ -401,22 +521,30 @@ function TalkingSection({ relay, g, chatbot, busy, write, here }: Loose) {
 }
 
 // 예전 릴레이는 게임 채팅·상황판을 채널 하나로 준다
-const listOf = (v: Loose) => (Array.isArray(v) ? v : v ? [v] : []);
+const listOf = (v: string[] | string | null | undefined): string[] => (Array.isArray(v) ? v : v ? [v] : []);
 
 /** 여러 채널을 고르는 일 (말하는 사바쨩·게임 채팅·상황판, 사용자 2026-11-04) — 누른 채널을 더하거나 뺀다 */
-function ChannelChips({ label, list, ids, busy, onChange }: Loose) {
+interface ChannelChipsProps {
+    label: string;
+    list: { id: string; name: string }[];
+    ids: string[];
+    busy: boolean;
+    onChange: (ids: string[]) => void;
+}
+
+function ChannelChips({ label, list, ids, busy, onChange }: ChannelChipsProps) {
     return (
         <fieldset className="field" aria-label={label}>
             <span>{label}</span>
             <div className="chips">
-                {list.map((c: Loose) => (
+                {list.map((c) => (
                     <button
                         key={c.id}
                         type="button"
                         className={ids.includes(c.id) ? 'chip on' : 'chip'}
                         aria-pressed={ids.includes(c.id)}
                         disabled={busy}
-                        onClick={() => onChange(ids.includes(c.id) ? ids.filter((x: Loose) => x !== c.id) : [...ids, c.id])}
+                        onClick={() => onChange(ids.includes(c.id) ? ids.filter((x) => x !== c.id) : [...ids, c.id])}
                     >
                         # {c.name}
                     </button>
@@ -426,9 +554,9 @@ function ChannelChips({ label, list, ids, busy, onChange }: Loose) {
     );
 }
 
-function ChannelsSection({ relay, g, channels, busy, write, here }: Loose) {
+function ChannelsSection({ relay, g, channels, busy, write, here }: SectionProps & { channels: RelayChannels }) {
     const { t } = useTranslation();
-    const save = (change: Loose) => write(() => relay.saveChannels(g, change), 'channels');
+    const save = (change: RelayChannelsChange) => write(() => relay.saveChannels(g, change), 'channels');
     const list = channels.channels || [];
     if (!channels.botAvailable) return <Empty>{t('relay.err.BOT_UNAVAILABLE')}</Empty>;
     return (
@@ -438,16 +566,16 @@ function ChannelsSection({ relay, g, channels, busy, write, here }: Loose) {
                 list={list}
                 ids={channels.chatbot || []}
                 busy={busy}
-                onChange={(chatbot: Loose) => save({ chatbot })}
+                onChange={(chatbot) => save({ chatbot })}
             />
             <Choice
                 label={t('relay.music')}
                 value={channels.music ?? ''}
                 disabled={busy}
-                onChange={(v: Loose) => save({ music: v || null })}
+                onChange={(v) => save({ music: v || null })}
                 options={[
                     { value: '', label: t('relay.none') },
-                    ...list.map((c: Loose) => ({ value: c.id, label: `# ${c.name}` })),
+                    ...list.map((c) => ({ value: c.id, label: `# ${c.name}` })),
                 ]}
             />
             {here ? (
@@ -456,20 +584,20 @@ function ChannelsSection({ relay, g, channels, busy, write, here }: Loose) {
                         label={t('relay.channel_notify')}
                         value={channels.notify ?? ''}
                         disabled={busy}
-                        onChange={(v: Loose) => save({ notify: v || null })}
+                        onChange={(v) => save({ notify: v || null })}
                         options={[
                             { value: '', label: t('relay.none') },
-                            ...list.map((c: Loose) => ({ value: c.id, label: `# ${c.name}` })),
+                            ...list.map((c) => ({ value: c.id, label: `# ${c.name}` })),
                         ]}
                     />
-                    {['gameChat', 'board'].map((kind) => (
+                    {(['gameChat', 'board'] as const).map((kind) => (
                         <ChannelChips
                             key={kind}
                             label={t(`relay.channel_${kind}`)}
                             list={list}
                             ids={listOf(channels[kind])}
                             busy={busy}
-                            onChange={(ids: Loose) => save({ [kind]: ids })}
+                            onChange={(ids) => save({ [kind]: ids })}
                         />
                     ))}
                 </>
@@ -491,19 +619,19 @@ const LOCK_MINUTES = [30, 60, 360, 1440, 10080];
 const AUTO_CLEAR_MINUTES = [60, 360, 720, 1440, 4320, 10080];
 const DAILY_CLEAR_AT = '04:00';
 // 릴레이 CLEAR_TARGETS·SANCTION_KINDS 와 같은 값 (server-chan bot/clear/service.ts, bot/guildMod/sanction.ts)
-const CLEAR_TARGETS = ['all', 'humans', 'self', 'other_bots', 'bots'];
+const CLEAR_TARGETS: RelayClearTarget[] = ['all', 'humans', 'self', 'other_bots', 'bots'];
 const CLEAR_RECENT_MINUTES = [60, 360, 1440, 10080];
-const SANCTION_KINDS = ['chat', 'voice', 'ban', 'all'];
-const SANCTION_MINUTES = [10, 60, 360, 1440, 4320, 10080, 'forever'];
-const PURGE_SECONDS = [0, 3600, 86400, 604800];
+const SANCTION_KINDS: RelaySanctionKind[] = ['chat', 'voice', 'ban', 'all'];
+const SANCTION_MINUTES: (number | 'forever')[] = [10, 60, 360, 1440, 4320, 10080, 'forever'];
+const PURGE_SECONDS: (0 | 3600 | 86400 | 604800)[] = [0, 3600, 86400, 604800];
 const UNIT_MINUTES = [1, 60, 1440, 10080];
 
 /** "2w"·"3h"·"30" → 분. words: 언어의 분·시간·일·주 낱말 (relay.mod.duration_units, 쉼표로). 못 읽으면 null */
-export function parseDuration(text: Loose, words = '') {
+export function parseDuration(text: string, words = '') {
     const m = /^\s*(\d+)\s*(\S*)\s*$/u.exec(text);
     if (!m) return null;
     const unit = m[2].toLowerCase();
-    const at = (list: Loose) => list.findIndex((w: Loose) => w && w === unit);
+    const at = (list: string[]) => list.findIndex((w) => w && w === unit);
     let i = unit ? at(['m', 'h', 'd', 'w']) : 0;
     if (i < 0) i = at(words.split(',').map((w) => w.trim().toLowerCase()));
     if (i < 0 && unit === 'min') i = 0;
@@ -511,15 +639,15 @@ export function parseDuration(text: Loose, words = '') {
     return minutes > 0 ? minutes : null;
 }
 
-const minutesSince = (iso: Loose) => Math.max(1, Math.floor((Date.now() - Date.parse(iso)) / 60_000));
+const minutesSince = (iso: string) => Math.max(1, Math.floor((Date.now() - Date.parse(iso)) / 60_000));
 
-function lockLine(t: Loose, locked: Loose) {
+function lockLine(t: TFn, locked: { until: string | null }) {
     return locked.until
         ? t('relay.mod.locked_until', { time: durationText(t, minutesUntil(locked.until)) })
         : t('relay.mod.locked');
 }
 
-function channelLine(t: Loose, c: Loose) {
+function channelLine(t: TFn, c: RelayModChannel) {
     if (c.clearing)
         return c.clearing.oldestAt
             ? t('relay.mod.clearing_back', { time: durationText(t, minutesSince(c.clearing.oldestAt)) })
@@ -543,12 +671,20 @@ function channelLine(t: Loose, c: Loose) {
 }
 
 /** 칩 하나를 고른다. options: [{ value, label }] */
-function Chips({ label, value, options, disabled, onChange }: Loose) {
+interface ChipsProps<V> {
+    label: string;
+    value: V | null;
+    options: { value: V; label: React.ReactNode }[];
+    disabled?: boolean;
+    onChange: (value: V) => void;
+}
+
+function Chips<V extends string | number | null>({ label, value, options, disabled, onChange }: ChipsProps<V>) {
     return (
         <div className="field">
             <span>{label}</span>
             <div className="chips">
-                {options.map((o: Loose) => (
+                {options.map((o) => (
                     <button
                         key={String(o.value)}
                         type="button"
@@ -565,12 +701,20 @@ function Chips({ label, value, options, disabled, onChange }: Loose) {
     );
 }
 
-function Segments({ label, value, options, disabled, onChange }: Loose) {
+interface SegmentsProps {
+    label: string;
+    value: string;
+    options: { value: string; label: React.ReactNode }[];
+    disabled?: boolean;
+    onChange: (value: string) => void;
+}
+
+function Segments({ label, value, options, disabled, onChange }: SegmentsProps) {
     return (
         <div className="field">
             <span>{label}</span>
             <div className="segments">
-                {options.map((o: Loose) => (
+                {options.map((o) => (
                     <button
                         key={o.value}
                         type="button"
@@ -587,15 +731,24 @@ function Segments({ label, value, options, disabled, onChange }: Loose) {
     );
 }
 
-function ChannelSheet({ channel, can, busy, onEdit, onClearNow, onClose }: Loose) {
+interface ChannelSheetProps {
+    channel: RelayModChannel;
+    can: RelayGuildCan;
+    busy: boolean;
+    onEdit: (edit: RelayModChannelEdit) => void;
+    onClearNow: () => void;
+    onClose: () => void;
+}
+
+function ChannelSheet({ channel, can, busy, onEdit, onClearNow, onClose }: ChannelSheetProps) {
     const { t } = useTranslation();
     // 슬로우 기간은 다음에 켤 슬로우에도 쓴다 (null: 계속)
-    const [slowFor, setSlowFor] = useState<Loose>(null);
+    const [slowFor, setSlowFor] = useState<number | null>(null);
     const lock = channel.locked ? 'keep' : 'off';
     const autoMode = channel.autoClearDaily ? 'daily' : channel.autoClear ? 'keep' : 'off';
     // 기간을 고르지 않았으면 지금 걸린 기간(남은 시간)을 지킨다
     const keepFor = channel.slowUntil ? minutesUntil(channel.slowUntil) : null;
-    const slowEdit = (slowmode: Loose, minutes: Loose) => {
+    const slowEdit = (slowmode: number, minutes: number | null): RelayModChannelEdit => {
         const span = minutes ?? keepFor;
         return slowmode && span ? { slowmode, slowFor: span } : { slowmode };
     };
@@ -608,8 +761,8 @@ function ChannelSheet({ channel, can, busy, onEdit, onClearNow, onClose }: Loose
                             label={t('relay.mod.slowmode')}
                             value={channel.slowmode}
                             disabled={busy}
-                            onChange={(v: Loose) => onEdit(slowEdit(Number(v), slowFor))}
-                            options={withValue(SLOW_SECONDS, channel.slowmode).map((s: Loose) => ({
+                            onChange={(v) => onEdit(slowEdit(Number(v), slowFor))}
+                            options={withValue(SLOW_SECONDS, channel.slowmode).map((s) => ({
                                 value: String(s),
                                 label: s ? durationText(t, s / 60) : t('relay.off'),
                             }))}
@@ -618,7 +771,7 @@ function ChannelSheet({ channel, can, busy, onEdit, onClearNow, onClose }: Loose
                             label={t('relay.mod.slow_for')}
                             value={slowFor}
                             disabled={busy}
-                            onChange={(m: Loose) => {
+                            onChange={(m) => {
                                 setSlowFor(m);
                                 if (channel.slowmode)
                                     onEdit(
@@ -639,7 +792,7 @@ function ChannelSheet({ channel, can, busy, onEdit, onClearNow, onClose }: Loose
                             label={t('relay.mod.lock')}
                             value={lock}
                             disabled={busy}
-                            onChange={(v: Loose) =>
+                            onChange={(v) =>
                                 v !== 'keep' && onEdit({ lock: v === 'off' || v === 'forever' ? v : Number(v) })
                             }
                             options={[
@@ -657,7 +810,7 @@ function ChannelSheet({ channel, can, busy, onEdit, onClearNow, onClose }: Loose
                             label={t('relay.mod.auto_clear')}
                             value={autoMode}
                             disabled={busy}
-                            onChange={(mode: Loose) =>
+                            onChange={(mode) =>
                                 mode !== autoMode &&
                                 onEdit(
                                     mode === 'off'
@@ -678,8 +831,8 @@ function ChannelSheet({ channel, can, busy, onEdit, onClearNow, onClose }: Loose
                                 label={t('relay.mod.auto_keep')}
                                 value={channel.autoClear}
                                 disabled={busy}
-                                onChange={(v: Loose) => onEdit({ autoClear: Number(v) })}
-                                options={withValue(AUTO_CLEAR_MINUTES, channel.autoClear).map((m: Loose) => ({
+                                onChange={(v) => onEdit({ autoClear: Number(v) })}
+                                options={withValue(AUTO_CLEAR_MINUTES, channel.autoClear as number).map((m) => ({
                                     value: String(m),
                                     label: durationText(t, m),
                                 }))}
@@ -690,8 +843,8 @@ function ChannelSheet({ channel, can, busy, onEdit, onClearNow, onClose }: Loose
                                 label={t('relay.mod.auto_daily_at')}
                                 value={channel.autoClearDaily}
                                 disabled={busy}
-                                onChange={(v: Loose) => onEdit({ autoClearDaily: v })}
-                                options={[...new Set([...HALF_HOURS, channel.autoClearDaily])]
+                                onChange={(v) => onEdit({ autoClearDaily: v })}
+                                options={[...new Set([...HALF_HOURS, channel.autoClearDaily as string])]
                                     .sort()
                                     .map((h) => ({ value: h, label: h }))}
                             />
@@ -701,7 +854,7 @@ function ChannelSheet({ channel, can, busy, onEdit, onClearNow, onClose }: Loose
                                 label={t('relay.mod.auto_target')}
                                 value={channel.autoClearTarget || 'all'}
                                 disabled={busy}
-                                onChange={(v: Loose) => onEdit({ autoClearTarget: v })}
+                                onChange={(v) => onEdit({ autoClearTarget: v as RelayClearTarget })}
                                 options={CLEAR_TARGETS.map((k) => ({ value: k, label: t(`relay.mod.target_${k}`) }))}
                             />
                         )}
@@ -719,10 +872,19 @@ function ChannelSheet({ channel, can, busy, onEdit, onClearNow, onClose }: Loose
 }
 
 /** datetime-local 값 → ms (브라우저 시간대) */
-const localMs = (value: Loose) => (value ? Date.parse(value) : undefined);
+const localMs = (value: string) => (value ? Date.parse(value) : undefined);
 
 /** 지금 청소 — /청소 와 같은 칸. 이어 지우는 중이면 진행과 중지를 보인다 */
-function ClearSheet({ channel, members, busy, onClear, onStop, onClose }: Loose) {
+interface ClearSheetProps {
+    channel: RelayModChannel;
+    members: RelayModMember[] | null;
+    busy: boolean;
+    onClear: (body: RelayModClear) => void;
+    onStop: () => void;
+    onClose: () => void;
+}
+
+function ClearSheet({ channel, members, busy, onClear, onStop, onClose }: ClearSheetProps) {
     const { t } = useTranslation();
     const [target, setTarget] = useState('all');
     const [author, setAuthor] = useState('');
@@ -736,8 +898,8 @@ function ClearSheet({ channel, members, busy, onClear, onStop, onClose }: Loose)
     // 시각 지정은 하나 이상, 부터 < 까지 — 비우면 채널 전체를 지우게 되므로 막는다
     const rangeOk = range !== 'custom' || ((localMs(from) || localMs(to)) && !((localMs(from) as number) >= (localMs(to) as number)));
     const submit = () => {
-        const body: Record<string, unknown> = {};
-        if (target !== 'all') body.target = target;
+        const body: RelayModClear = {};
+        if (target !== 'all') body.target = target as RelayClearTarget;
         if (author) body.authorId = author;
         if (range === 'recent') body.sinceMinutes = recent;
         if (range === 'custom') {
@@ -782,7 +944,7 @@ function ClearSheet({ channel, members, busy, onClear, onStop, onClose }: Loose)
                     onChange={setAuthor}
                     options={[
                         { value: '', label: t('relay.none') },
-                        ...(members || []).map((m: Loose) => ({ value: m.id, label: m.name })),
+                        ...(members || []).map((m) => ({ value: m.id, label: m.name })),
                     ]}
                 />
                 <Segments
@@ -797,7 +959,7 @@ function ClearSheet({ channel, members, busy, onClear, onStop, onClose }: Loose)
                         label={t('relay.mod.range_recent')}
                         value={recent}
                         disabled={busy}
-                        onChange={(v: Loose) => setRecent(Number(v))}
+                        onChange={(v) => setRecent(Number(v))}
                         options={CLEAR_RECENT_MINUTES.map((m) => ({ value: String(m), label: durationText(t, m) }))}
                     />
                 )}
@@ -835,29 +997,43 @@ function ClearSheet({ channel, members, busy, onClear, onStop, onClose }: Loose)
 }
 
 /** 제재하기 — /제재 와 같은 칸. 결과는 디스코드에도 알린다 (릴레이가 서버의 시스템 채널에, 멘션 없이) */
-function SanctionSheet({ members, busy, onSanction, onClose }: Loose) {
+interface SanctionSheetProps {
+    members: RelayModMember[] | null;
+    busy: boolean;
+    onSanction: (userId: string, body: RelayModSanctionBody) => Promise<boolean>;
+    onClose: () => void;
+}
+
+/** 제재할 사람으로 고른 한 명 (서버에 없는 사람은 ID 만) */
+interface PickedMember {
+    id: string;
+    name: string;
+    username?: string;
+}
+
+function SanctionSheet({ members, busy, onSanction, onClose }: SanctionSheetProps) {
     const { t } = useTranslation();
     const [query, setQuery] = useState('');
-    const [picked, setPicked] = useState<Loose>(null);
+    const [picked, setPicked] = useState<PickedMember | null>(null);
     const [kind, setKind] = useState('chat');
-    const [minutes, setMinutes] = useState(60);
+    const [minutes, setMinutes] = useState<number | 'forever'>(60);
     const [custom, setCustom] = useState('');
     const [reason, setReason] = useState('');
     const [purge, setPurge] = useState(0);
     const q = query.trim().toLowerCase();
     const found = q
         ? (members || [])
-              .filter((m: Loose) => m.name.toLowerCase().includes(q) || m.username?.toLowerCase().includes(q))
+              .filter((m) => m.name.toLowerCase().includes(q) || m.username?.toLowerCase().includes(q))
               .slice(0, 8)
         : [];
     // 밴은 서버에 없는 사람도 ID 로 한다
-    const byId = /^\d{17,20}$/.test(q) && !found.some((m: Loose) => m.id === q) ? [{ id: q, name: q, username: '' }] : [];
+    const byId: PickedMember[] = /^\d{17,20}$/.test(q) && !found.some((m) => m.id === q) ? [{ id: q, name: q, username: '' }] : [];
     const duration = custom.trim() ? parseDuration(custom, t('relay.mod.duration_units')) : minutes;
     const submit = async () => {
-        const body: Record<string, unknown> = { kind, duration };
+        const body: RelayModSanctionBody = { kind: kind as RelaySanctionKind, duration: duration as number | 'forever' };
         if (reason.trim()) body.reason = reason.trim();
-        if (kind === 'ban' && purge) body.purgeSeconds = purge;
-        if (await onSanction(picked.id, body)) onClose();
+        if (kind === 'ban' && purge) body.purgeSeconds = purge as RelayModSanctionBody['purgeSeconds'];
+        if (await onSanction((picked as PickedMember).id, body)) onClose();
     };
     return (
         <Sheet title={t('relay.mod.sanction_title')} onClose={onClose}>
@@ -903,7 +1079,7 @@ function SanctionSheet({ members, busy, onSanction, onClose }: Loose) {
                     label={t('relay.mod.duration')}
                     value={custom.trim() ? null : minutes}
                     disabled={busy}
-                    onChange={(m: Loose) => {
+                    onChange={(m) => {
                         setMinutes(m);
                         setCustom('');
                     }}
@@ -930,7 +1106,7 @@ function SanctionSheet({ members, busy, onSanction, onClose }: Loose) {
                         label={t('relay.mod.purge')}
                         value={purge}
                         disabled={busy}
-                        onChange={(v: Loose) => setPurge(Number(v))}
+                        onChange={(v) => setPurge(Number(v))}
                         options={PURGE_SECONDS.map((s) => ({
                             value: String(s),
                             label: s ? durationText(t, s / 60) : t('relay.none'),
@@ -946,12 +1122,20 @@ function SanctionSheet({ members, busy, onSanction, onClose }: Loose) {
     );
 }
 
-function SanctionList({ sanctions, busy, onRelease }: Loose) {
+function SanctionList({
+    sanctions,
+    busy,
+    onRelease,
+}: {
+    sanctions: RelayModSanction[];
+    busy: boolean;
+    onRelease: (sanction: RelayModSanction) => void;
+}) {
     const { t } = useTranslation();
     if (sanctions.length === 0) return <small className="hint">{t('relay.mod.no_sanctions')}</small>;
     return (
         <ul className="rows" aria-label={t('relay.mod.sanctions')}>
-            {sanctions.map((s: Loose) => (
+            {sanctions.map((s) => (
                 <li key={`${s.userId}-${s.kind}`} className="row member-row">
                     <div className="row-main">
                         <div className="row-title row-title-one">
@@ -983,12 +1167,18 @@ function SanctionList({ sanctions, busy, onRelease }: Loose) {
 // 이어 지우는 동안 진행을 다시 읽는 간격
 const CLEARING_POLL_MS = 5000;
 
-function ModerationSection({ relay, g, can, moderation, busy, write, refresh }: Loose) {
+interface ModerationSectionProps extends SectionProps {
+    can: RelayGuildCan;
+    moderation: RelayModeration;
+    refresh: (quiet?: boolean) => Promise<void>;
+}
+
+function ModerationSection({ relay, g, can, moderation, busy, write, refresh }: ModerationSectionProps) {
     const { t } = useTranslation();
     // { id, sheet: 'channel' | 'clear' } | { sheet: 'sanction' }
-    const [open, setOpen] = useState<Loose>(null);
-    const [members, setMembers] = useState<Loose>(null);
-    const clearing = !!moderation.channels?.some((c: Loose) => c.clearing);
+    const [open, setOpen] = useState<{ id?: string; sheet: 'channel' | 'clear' | 'sanction' } | null>(null);
+    const [members, setMembers] = useState<RelayModMember[] | null>(null);
+    const clearing = !!moderation.channels?.some((c) => c.clearing);
     useEffect(() => {
         if (!clearing) return;
         const timer = setInterval(() => refresh(true), CLEARING_POLL_MS);
@@ -998,19 +1188,19 @@ function ModerationSection({ relay, g, can, moderation, busy, write, refresh }: 
     useEffect(() => {
         if (!needsMembers || members) return;
         let alive = true;
-        relay.modMembers(g).then((res: Loose) => alive && setMembers(res.ok && Array.isArray(res.data) ? res.data : []));
+        relay.modMembers(g).then((res) => alive && setMembers(res.ok && Array.isArray(res.data) ? res.data : []));
         return () => {
             alive = false;
         };
     }, [needsMembers, members, relay, g]);
     if (!moderation.botAvailable) return <Empty>{t('relay.err.BOT_UNAVAILABLE')}</Empty>;
-    const channel = open?.id && moderation.channels.find((c: Loose) => c.id === open.id);
+    const channel = open?.id && moderation.channels.find((c) => c.id === open.id);
     const close = () => setOpen(null);
     return (
         <Section title={t('relay.mod.title')}>
             {(can.channels || can.messages) && (
                 <ul className="rows">
-                    {moderation.channels.map((c: Loose) => (
+                    {moderation.channels.map((c) => (
                         <li key={c.id} className="row">
                             <button
                                 type="button"
@@ -1033,30 +1223,30 @@ function ModerationSection({ relay, g, can, moderation, busy, write, refresh }: 
                     <SanctionList
                         sanctions={moderation.sanctions || []}
                         busy={busy}
-                        onRelease={(s: Loose) =>
+                        onRelease={(s) =>
                             write(() => relay.modSanction(g, s.userId, { kind: s.kind, duration: 'off' }), 'moderation')
                         }
                     />
                     <Button onClick={() => setOpen({ sheet: 'sanction' })}>{t('relay.mod.sanction_open')}</Button>
                 </div>
             )}
-            {channel && open.sheet === 'channel' && (
+            {channel && open?.sheet === 'channel' && (
                 <ChannelSheet
                     channel={channel}
                     can={can}
                     busy={busy}
                     onClose={close}
                     onClearNow={() => setOpen({ id: channel.id, sheet: 'clear' })}
-                    onEdit={(edit: Loose) => write(() => relay.modChannel(g, channel.id, edit), 'moderation')}
+                    onEdit={(edit) => write(() => relay.modChannel(g, channel.id, edit), 'moderation')}
                 />
             )}
-            {channel && open.sheet === 'clear' && (
+            {channel && open?.sheet === 'clear' && (
                 <ClearSheet
                     channel={channel}
                     members={members}
                     busy={busy}
                     onClose={close}
-                    onClear={(body: Loose) => write(() => relay.modClear(g, channel.id, body), 'moderation')}
+                    onClear={(body) => write(() => relay.modClear(g, channel.id, body), 'moderation')}
                     onStop={() => write(() => relay.modClearStop(g, channel.id), 'moderation')}
                 />
             )}
@@ -1065,7 +1255,7 @@ function ModerationSection({ relay, g, can, moderation, busy, write, refresh }: 
                     members={members}
                     busy={busy}
                     onClose={close}
-                    onSanction={(userId: Loose, body: Loose) => write(() => relay.modSanction(g, userId, body), 'moderation')}
+                    onSanction={(userId, body) => write(() => relay.modSanction(g, userId, body), 'moderation')}
                 />
             )}
         </Section>
@@ -1073,22 +1263,22 @@ function ModerationSection({ relay, g, can, moderation, busy, write, refresh }: 
 }
 
 /** 코코낸내 (이 PC 의 서버만, GUI 봇 설정의 코코낸내 칸과 같은 값): 지금 재우기, 잠든 동안 끌 기능, 착한 어린이 시각 */
-function SleepSection({ relay, g, settings, busy, write }: Loose) {
+function SleepSection({ relay, g, settings, busy, write }: SectionProps & { settings: GuildSettings }) {
     const { t } = useTranslation();
     const { t: tg } = useTranslation('gui');
-    const save = (patch: Loose) => write(() => relay.saveSettings(g, patch), 'settings');
+    const save = (patch: RelaySettingsPatch) => write(() => relay.saveSettings(g, patch), 'settings');
     const blocks = Array.isArray(settings.sleepBlocks) ? settings.sleepBlocks : SLEEP_FEATURES;
     const bedtime = settings.bedtime || null;
-    const time = (key: Loose, other: Loose) => {
-        const value = bedtime?.[key] ?? DEFAULT_BEDTIME[key as keyof typeof DEFAULT_BEDTIME];
-        const avoid = bedtime?.[other] ?? DEFAULT_BEDTIME[other as keyof typeof DEFAULT_BEDTIME];
+    const time = (key: 'start' | 'end', other: 'start' | 'end') => {
+        const value = bedtime?.[key] ?? DEFAULT_BEDTIME[key];
+        const avoid = bedtime?.[other] ?? DEFAULT_BEDTIME[other];
         const times = [...new Set([...HALF_HOURS, value])].sort().filter((h) => h !== avoid);
         return (
             <Choice
                 label={tg(`discord.bot_settings.bedtime_${key}`)}
                 value={value}
                 disabled={busy || !bedtime}
-                onChange={(v: Loose) => v !== value && save({ bedtime: { ...bedtime, [key]: v } })}
+                onChange={(v) => v !== value && save({ bedtime: { ...bedtime, [key]: v } as { start: string; end: string } })}
                 options={times.map((h) => ({ value: h, label: h }))}
             />
         );
@@ -1100,7 +1290,7 @@ function SleepSection({ relay, g, settings, busy, write }: Loose) {
                 hint={settings.asleep ? tg('discord.sleep_corner_asleep') : t('relay.awake')}
                 checked={settings.sleeping}
                 disabled={busy}
-                onChange={(sleeping: Loose) => save({ sleeping })}
+                onChange={(sleeping) => save({ sleeping })}
             />
             <p className="hint">{tg('discord.bot_settings.sleep_desc')}</p>
             {SLEEP_FEATURES.map((f) => (
@@ -1110,7 +1300,7 @@ function SleepSection({ relay, g, settings, busy, write }: Loose) {
                     hint={tg(`discord.bot_settings.sleep_${f}_hint`)}
                     checked={blocks.includes(f)}
                     disabled={busy}
-                    onChange={(on: Loose) =>
+                    onChange={(on) =>
                         save({ sleepBlocks: SLEEP_FEATURES.filter((x) => (x === f ? on : blocks.includes(x))) })
                     }
                 />
@@ -1120,7 +1310,7 @@ function SleepSection({ relay, g, settings, busy, write }: Loose) {
                 hint={tg('discord.bot_settings.bedtime_hint')}
                 checked={!!bedtime}
                 disabled={busy}
-                onChange={(on: Loose) => save({ bedtime: on ? DEFAULT_BEDTIME : null })}
+                onChange={(on) => save({ bedtime: on ? DEFAULT_BEDTIME : null })}
             />
             {time('start', 'end')}
             {time('end', 'start')}
@@ -1130,15 +1320,14 @@ function SleepSection({ relay, g, settings, busy, write }: Loose) {
 }
 
 /** PC 없는 서버 — 릴레이에서 바로 바꾼다. here: 이 PC 의 서버 (relay 는 hereStore, 코코낸내를 더한다. 서버 관리는 늘 릴레이) */
-function RelayGuild({ relay, guild, here = false }: Loose) {
+function RelayGuild({ relay, guild, here = false }: { relay: GuildStore; guild: GuildEntry; here?: boolean }) {
     const { t } = useTranslation();
     const { data, busy, write, reload, refresh } = useRelayGuild(relay, guild);
     const g = guild.id;
     const props = { relay, g, busy, write, here };
     const manage = !!guild.can?.manage;
-    const ready = (x: Loose) => x && !x.failed;
     // 연결이 끊겼거나 릴레이가 답하지 못했다 — 숨기지 않고 알리고 다시 읽게 한다
-    const broken = [data.settings, data.chatbot, data.channels, data.moderation].some((x) => x?.failed);
+    const broken = [data.settings, data.chatbot, data.channels, data.moderation].some((x) => isFailed(x));
     if (broken)
         return (
             <div className="empty">
@@ -1160,8 +1349,8 @@ function RelayGuild({ relay, guild, here = false }: Loose) {
             {manage && ready(data.chatbot) && <TalkingSection {...props} chatbot={data.chatbot} />}
             {manage && ready(data.channels) && <ChannelsSection {...props} channels={data.channels} />}
             {modAllowed(guild.can) &&
-                (data.moderation ? (
-                    <ModerationSection {...props} can={guild.can} moderation={data.moderation} refresh={refresh} />
+                (ready(data.moderation) ? (
+                    <ModerationSection {...props} can={guild.can as RelayGuildCan} moderation={data.moderation} refresh={refresh} />
                 ) : (
                     <Loading />
                 ))}
@@ -1169,11 +1358,19 @@ function RelayGuild({ relay, guild, here = false }: Loose) {
     );
 }
 
-function GuildChips({ guilds, value, onChange }: Loose) {
+function GuildChips({
+    guilds,
+    value,
+    onChange,
+}: {
+    guilds: GuildEntry[];
+    value: string | null;
+    onChange: (id: string) => void;
+}) {
     const { t } = useTranslation();
     return (
         <div className="chips guild-chips" role="tablist" aria-label={t('perm.guild')}>
-            {guilds.map((g: Loose) => (
+            {guilds.map((g) => (
                 <button
                     key={g.id}
                     type="button"
@@ -1193,11 +1390,11 @@ function GuildChips({ guilds, value, onChange }: Loose) {
     );
 }
 
-export function DiscordTab({ api, relay }: Loose) {
+export function DiscordTab({ api, relay }: { api: WebApi; relay: Relay | null }) {
     const { t } = useTranslation();
     const hostId = useApp((s) => s.session.hostId);
-    const [guilds, setGuilds] = useState<Loose>(null);
-    const [guildId, setGuildId] = useState<Loose>(null);
+    const [guilds, setGuilds] = useState<GuildEntry[] | null>(null);
+    const [guildId, setGuildId] = useState<string | null>(null);
     // 릴레이가 서버 목록을 주지 못했다 (끊김·5xx). 404·405 는 /relay 를 모르는 옛 릴레이라 실패가 아니다
     const [relayFailed, setRelayFailed] = useState(false);
     const [round, setRound] = useState(0);
@@ -1207,24 +1404,24 @@ export function DiscordTab({ api, relay }: Loose) {
         let alive = true;
         // 아직 /relay 를 모르는 릴레이도 있다 — 그때는 이 PC 의 서버만 보인다
         Promise.all([
-            hostId ? api.relayListHostNodes(hostId).catch(() => []) : [],
-            relay ? relay.guilds() : { ok: false, status: 404 },
+            hostId ? api.relayListHostNodes(hostId, '').catch(() => []) : [],
+            relay ? relay.guilds() : ({ ok: false, status: 404 } as const),
         ]).then(([nodes, res]) => {
             if (!alive) return;
             const list = mergeGuilds(
-                Array.isArray(nodes) ? nodes : [],
+                Array.isArray(nodes) ? (nodes as DiscordNode[]) : [],
                 res.ok && Array.isArray(res.data) ? res.data : [],
             );
             setRelayFailed(!res.ok && res.status !== 404 && res.status !== 405);
             setGuilds(list);
-            setGuildId((g: Loose) => (list.some((x: Loose) => x.id === g) ? g : (list[0]?.id ?? null)));
+            setGuildId((g) => (list.some((x) => x.id === g) ? g : (list[0]?.id ?? null)));
         });
         return () => {
             alive = false;
         };
     }, [api, relay, hostId, round]);
 
-    const guild = guilds?.find((g: Loose) => g.id === guildId);
+    const guild = guilds?.find((g) => g.id === guildId);
     const here = useMemo(() => relay && hereStore(api, relay), [api, relay]);
     return (
         <Section title={t('tabs.discord')}>
@@ -1249,18 +1446,18 @@ export function DiscordTab({ api, relay }: Loose) {
                 <>
                     {guilds.length > 1 && <GuildChips guilds={guilds} value={guildId} onChange={setGuildId} />}
                     {guild?.here && relay && (guild.can?.manage || modAllowed(guild.can)) && (
-                        <RelayGuild key={`here-${guild.id}`} relay={here} guild={guild} here />
+                        <RelayGuild key={`here-${guild.id}`} relay={here as GuildStore} guild={guild} here />
                     )}
                     {guild?.here && (
                         <GuildPermissions
                             key={guild.id}
                             api={api}
                             guildId={guild.id}
-                            siblings={guilds.filter((x: Loose) => x.here && x.id !== guild.id).map((x: Loose) => x.id)}
+                            siblings={guilds.filter((x) => x.here && x.id !== guild.id).map((x) => x.id)}
                         />
                     )}
                     {guild && !guild.here && guild.hasPc && <Empty>{t('relay.other_pc')}</Empty>}
-                    {guild && !guild.here && !guild.hasPc && <RelayGuild key={guild.id} relay={relay} guild={guild} />}
+                    {guild && !guild.here && !guild.hasPc && <RelayGuild key={guild.id} relay={relay as GuildStore} guild={guild} />}
                 </>
             )}
         </Section>

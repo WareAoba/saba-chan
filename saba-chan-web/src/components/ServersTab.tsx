@@ -24,35 +24,44 @@ import { FieldInput, patchOf } from './SettingsPanel';
 import { Button, Empty, errorText, failed, Loading, Section, Sheet, StatusDot } from './ui';
 import { useProvision } from './useProvision';
 import { useServerControl } from './useServerControl';
-import type { Loose } from '../types';
+import type { ModuleAgreement, PlayerCount } from '@gui/types/daemon';
+import type { Module, Server, WebApi } from '../types';
+
+/** 만들기 전 겹침 확인 (POST /api/instance/check) */
+/** 모듈이 선언한 약관 (label 은 있으면 쓴다) */
+type Agreement = ModuleAgreement & { label?: string };
+
+interface InstanceCheck {
+    ports?: { field?: string; port: number; in_use_by?: string[] }[];
+}
 
 /** 새 서버 만들기: GUI 새 서버 마법사와 같은 것을 묻는다 (게임·이름·만들 때 고르는 설정·추천 설정·버전·실행 방식·약관)
  * 그리고 만들기 전에 다른 서버와 겹치는지 데몬에 묻는다(`instanceCheck`).
  * 익스텐션이 묻는 칸(`extension_data`)과 폴더는 PC에서만 정한다 (src/remote/gate.rs CREATE_PC_ONLY) */
-export function AddServerSheet({ api, onClose }: Loose) {
+export function AddServerSheet({ api, onClose }: { api: WebApi; onClose: () => void }) {
     const { t } = useTranslation();
     const modules = useData((s) => s.modules);
     const servers = useData((s) => s.servers);
     const toast = useApp((s) => s.toast);
-    const firstPlayable = modules.find((m: Loose) => m.platform_supported !== false)?.name || '';
+    const firstPlayable = modules.find((m) => m.platform_supported !== false)?.name || '';
     const [module, setModule] = useState(firstPlayable);
     const [name, setName] = useState(() => (firstPlayable ? suggestName(firstPlayable, servers) : ''));
-    const [installValues, setInstallValues] = useState<Loose>({});
+    const [installValues, setInstallValues] = useState<Record<string, unknown>>({});
     const [preset, setPreset] = useState('');
-    const [agreed, setAgreed] = useState<Loose>({});
-    const [versions, setVersions] = useState<Loose[]>([]);
+    const [agreed, setAgreed] = useState<Record<string, boolean>>({});
+    const [versions, setVersions] = useState<string[]>([]);
     const [version, setVersion] = useState(''); // '' = 최신
     const [managed, setManaged] = useState(true);
-    const [check, setCheck] = useState<Loose>(null);
+    const [check, setCheck] = useState<InstanceCheck | null>(null);
     const [busy, setBusy] = useState(false);
 
-    const chosen = modules.find((m: Loose) => m.name === module);
+    const chosen = modules.find((m) => m.name === module);
     const modNs = `mod_${module}`;
-    const agreements = chosen?.agreements || [];
+    const agreements: Agreement[] = chosen?.agreements || [];
     const duplicate = nameTaken(servers, name);
-    const ready = name.trim() && module && !duplicate && agreements.every((a: Loose) => agreed[a.id]);
+    const ready = name.trim() && module && !duplicate && agreements.every((a) => agreed[a.id]);
 
-    const pickModule = (next: Loose) => {
+    const pickModule = (next: string) => {
         setModule(next);
         setName(suggestName(next, servers));
         setInstallValues({});
@@ -115,7 +124,7 @@ export function AddServerSheet({ api, onClose }: Loose) {
         let alive = true;
         const timer = setTimeout(() => {
             Promise.resolve(api.instanceCheck(JSON.parse(checkKey)))
-                .then((res) => alive && !failed(res) && setCheck(res))
+                .then((res) => alive && !failed(res) && setCheck(res as InstanceCheck))
                 .catch(() => {});
         }, 250);
         return () => {
@@ -123,13 +132,13 @@ export function AddServerSheet({ api, onClose }: Loose) {
             clearTimeout(timer);
         };
     }, [api, checkKey]);
-    const portNotes = (check?.ports || []).filter((p: Loose) => p.in_use_by?.length);
+    const portNotes = (check?.ports || []).filter((p) => p.in_use_by?.length);
 
     const create = async () => {
         if (!ready) return;
         setBusy(true);
         const body = requestBody();
-        if (agreements.length) body.accept_agreements = agreements.map((a: Loose) => a.id);
+        if (agreements.length) body.accept_agreements = agreements.map((a) => a.id);
         const res = await api.instanceCreate(body);
         setBusy(false);
         if (failed(res)) return toast(errorText(t, res), 'error');
@@ -155,7 +164,7 @@ export function AddServerSheet({ api, onClose }: Loose) {
                             value={module}
                             onChange={pickModule}
                             ariaLabel={t('servers.game')}
-                            options={modules.map((m: Loose) => {
+                            options={modules.map((m) => {
                                 const unsupported = m.platform_supported === false;
                                 const game = gameNameOf(t, m.name, m);
                                 return {
@@ -166,9 +175,9 @@ export function AddServerSheet({ api, onClose }: Loose) {
                             })}
                         />
                     </div>
-                    {['unverified', 'modified'].includes(chosen?.trust) && (
+                    {['unverified', 'modified'].includes(chosen?.trust as string) && (
                         <p className="banner banner-warn" role="note">
-                            {t(`servers.trust_${chosen.trust}`)}
+                            {t(`servers.trust_${chosen?.trust}`)}
                         </p>
                     )}
                     <label className="field">
@@ -191,12 +200,12 @@ export function AddServerSheet({ api, onClose }: Loose) {
                             key={f.name}
                             field={{ ...f, options: installChoices(f) }}
                             value={installValues[f.name] ?? f.default ?? ''}
-                            onChange={(v: Loose) => setInstallValues((prev: Loose) => ({ ...prev, [f.name]: v }))}
+                            onChange={(v) => setInstallValues((prev) => ({ ...prev, [f.name]: v }))}
                             t={t}
                             modNs={modNs}
                         />
                     ))}
-                    {chosen?.presets?.length > 0 && (
+                    {(chosen?.presets?.length ?? 0) > 0 && (
                         <div className="field">
                             <span>{t('servers.preset')}</span>
                             <Dropdown
@@ -205,7 +214,7 @@ export function AddServerSheet({ api, onClose }: Loose) {
                                 ariaLabel={t('servers.preset')}
                                 options={[
                                     { value: '', label: t('servers.preset_none') },
-                                    ...chosen.presets.map((p: Loose) => ({
+                                    ...(chosen?.presets ?? []).map((p) => ({
                                         value: p.id,
                                         label: t(`${modNs}:presets.${p.id}.label`, { defaultValue: p.label || p.id }),
                                     })),
@@ -214,7 +223,7 @@ export function AddServerSheet({ api, onClose }: Loose) {
                             <small className="hint">
                                 {preset
                                     ? t(`${modNs}:presets.${preset}.description`, {
-                                          defaultValue: chosen.presets.find((p: Loose) => p.id === preset)?.description || '',
+                                          defaultValue: chosen?.presets?.find((p) => p.id === preset)?.description || '',
                                       })
                                     : t('servers.preset_none_hint')}
                             </small>
@@ -239,7 +248,7 @@ export function AddServerSheet({ api, onClose }: Loose) {
                         <span>{t('servers.run')}</span>
                         <Dropdown
                             value={managed ? 'managed' : 'unmanaged'}
-                            onChange={(v: Loose) => setManaged(v === 'managed')}
+                            onChange={(v) => setManaged(v === 'managed')}
                             ariaLabel={t('servers.run')}
                             options={[
                                 { value: 'managed', label: t('servers.run_managed') },
@@ -254,22 +263,22 @@ export function AddServerSheet({ api, onClose }: Loose) {
                         <span>{t('servers.location')}</span>
                         <small className="hint">{t('servers.location_pc')}</small>
                     </div>
-                    {portNotes.map((p: Loose) => (
+                    {portNotes.map((p) => (
                         <p key={p.field} className="banner banner-warn" role="note">
-                            {t('servers.port_in_use', { servers: p.in_use_by.join(', '), port: p.port })}
+                            {t('servers.port_in_use', { servers: p.in_use_by?.join(', '), port: p.port })}
                         </p>
                     ))}
                     {agreements.length > 0 && (
                         <fieldset className="field agreements">
                             <legend>{t('servers.agreements')}</legend>
-                            {agreements.map((a: Loose) => {
+                            {agreements.map((a) => {
                                 const label = t(`${modNs}:agreements.${a.id}`, { defaultValue: a.label || a.id });
                                 return (
                                     <div key={a.id} className="field-row">
                                         <SabaCheckbox
                                             className="agreement"
                                             checked={!!agreed[a.id]}
-                                            onChange={(on) => setAgreed((prev: Loose) => ({ ...prev, [a.id]: on }))}
+                                            onChange={(on) => setAgreed((prev) => ({ ...prev, [a.id]: on }))}
                                         >
                                             {t('servers.agree', { name: label })}
                                         </SabaCheckbox>
@@ -294,9 +303,9 @@ export function AddServerSheet({ api, onClose }: Loose) {
 }
 
 /** 목록 위 요약: 켜진 서버 수, 접속자 합, PC CPU (PC 사용량은 4초마다 읽는다) */
-function Summary({ api, servers }: Loose) {
+function Summary({ api, servers }: { api: WebApi; servers: Server[] }) {
     const { t } = useTranslation();
-    const [cpu, setCpu] = useState<Loose>(null);
+    const [cpu, setCpu] = useState<number | null>(null);
     useEffect(() => {
         if (!api?.systemMetrics) return;
         let alive = true;
@@ -310,8 +319,8 @@ function Summary({ api, servers }: Loose) {
             stop();
         };
     }, [api]);
-    const running = servers.filter((s: Loose) => s.status === 'running');
-    const players = running.reduce((sum: Loose, s: Loose) => sum + (Number.isInteger(s.players?.online) ? s.players.online : 0), 0);
+    const running = servers.filter((s) => s.status === 'running');
+    const players = running.reduce((sum, s) => sum + (Number.isInteger(s.players?.online) ? (s.players as PlayerCount).online : 0), 0);
     return (
         <div className="summary">
             <div className="stat">
@@ -334,7 +343,15 @@ function Summary({ api, servers }: Loose) {
 }
 
 /** 목록 한 줄: 누르면 상세, 오른쪽 버튼은 바로 켜기·정지 */
-function ServerRow({ api, server, moduleData, modulesLoaded, selected }: Loose) {
+interface ServerRowProps {
+    api: WebApi;
+    server: Server;
+    moduleData?: Module;
+    modulesLoaded: boolean;
+    selected: boolean;
+}
+
+function ServerRow({ api, server, moduleData, modulesLoaded, selected }: ServerRowProps) {
     const { t } = useTranslation();
     const openServer = useApp((s) => s.openServer);
     const control = useServerControl(api);
@@ -392,15 +409,15 @@ function ServerRow({ api, server, moduleData, modulesLoaded, selected }: Loose) 
     );
 }
 
-export function ServersTab({ api }: Loose) {
+export function ServersTab({ api }: { api: WebApi }) {
     const { t } = useTranslation();
     const { servers, serversLoaded, serversError, modules, modulesLoaded } = useData();
     const serverId = useApp((s) => s.serverId);
     const [adding, setAdding] = useState(false);
     const [ordering, setOrdering] = useState(false);
 
-    const selected = servers.find((s: Loose) => s.id === serverId);
-    const moduleOf = (name: Loose) => modules.find((m: Loose) => m.name === name);
+    const selected = servers.find((s) => s.id === serverId);
+    const moduleOf = (name: string) => modules.find((m) => m.name === name);
     return (
         // 휴대폰은 목록 또는 상세 하나, 넓은 화면은 목록과 상세를 나란히 (styles.css .servers)
         <div className={selected ? 'servers has-detail' : 'servers'}>
@@ -431,7 +448,7 @@ export function ServersTab({ api }: Loose) {
                         <>
                             <Summary api={api} servers={servers} />
                             <ul className="server-rows">
-                                {servers.map((s: Loose) => (
+                                {servers.map((s) => (
                                     <ServerRow
                                         key={s.id}
                                         api={api}

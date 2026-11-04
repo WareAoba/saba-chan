@@ -3,14 +3,24 @@ import { useTranslation } from 'react-i18next';
 import { useApp } from '../store';
 import { Dropdown } from './Dropdown';
 import { Button, errorText, failed, Section } from './ui';
-import type { Loose } from '../types';
+import type { ApiBody, Server, ServerPanelProps } from '../types';
+
+/** 사바쨩 칸 값 (폼에서는 글자와 참거짓) */
+export interface SabaValues {
+    memory_limit_mb: string;
+    stop_timeout: string;
+    game_chat: string;
+    game_chat_keyword: string;
+    auto_restart: boolean;
+    restart_on_unknown_exit: boolean;
+}
 
 const GAME_CHAT_MODES = ['off', 'all', 'keyword'];
 /** 'true'·'false' 글자로 저장된 값도 있다. 기본값은 데몬과 같다 (크래시 재시작 켜짐, 원인 모를 종료 꺼짐) */
-const asFlag = (v: Loose, dflt: Loose) => (v === true || v === 'true' ? true : v === false || v === 'false' ? false : dflt);
+const asFlag = (v: unknown, dflt: boolean) => (v === true || v === 'true' ? true : v === false || v === 'false' ? false : dflt);
 
 /** 저장된 사바쨩 칸 값 (GUI useServerSettings 와 같은 자리에서 읽는다) */
-export function sabaValues(server: Loose) {
+export function sabaValues(server: Partial<Server> | ApiBody | null | undefined): SabaValues {
     const ms = server?.module_settings || {};
     return {
         memory_limit_mb: server?.memory_limit_mb == null ? '' : String(server.memory_limit_mb),
@@ -24,23 +34,30 @@ export function sabaValues(server: Loose) {
 
 /** 보낼 값: 폼을 연(또는 마지막으로 맞춘) 때의 값 `opened`에서 바꾼 칸만.
  * 비운 숫자 칸은 null(제한 없음·모듈 값), 형식과 범위 검사는 데몬이 한다 */
-export function sabaPatch(opened: Loose, values: Loose) {
+export function sabaPatch(opened: SabaValues, values: SabaValues) {
     const patch: Record<string, unknown> = {};
-    for (const key of ['memory_limit_mb', 'stop_timeout']) {
+    for (const key of ['memory_limit_mb', 'stop_timeout'] as const) {
         const v = String(values[key] ?? '').trim();
         if (v !== opened[key]) patch[key] = v === '' ? null : v;
     }
-    for (const key of ['game_chat', 'game_chat_keyword']) {
+    for (const key of ['game_chat', 'game_chat_keyword'] as const) {
         const v = String(values[key] ?? '').trim();
         if (v !== opened[key]) patch[key] = v;
     }
-    for (const key of ['auto_restart', 'restart_on_unknown_exit']) {
+    for (const key of ['auto_restart', 'restart_on_unknown_exit'] as const) {
         if (values[key] !== opened[key]) patch[key] = values[key];
     }
     return patch;
 }
 
-function Toggle({ label, hint, checked, onChange }: Loose) {
+interface ToggleProps {
+    label: React.ReactNode;
+    hint?: React.ReactNode;
+    checked: boolean;
+    onChange: (checked: boolean) => void;
+}
+
+function Toggle({ label, hint, checked, onChange }: ToggleProps) {
     return (
         <label className="field field-row">
             <span>
@@ -52,7 +69,16 @@ function Toggle({ label, hint, checked, onChange }: Loose) {
     );
 }
 
-function NumberField({ label, hint, placeholder, value, onChange, note }: Loose) {
+interface NumberFieldProps {
+    label: React.ReactNode;
+    hint?: React.ReactNode;
+    placeholder?: string;
+    value: string;
+    onChange: (value: string) => void;
+    note?: React.ReactNode;
+}
+
+function NumberField({ label, hint, placeholder, value, onChange, note }: NumberFieldProps) {
     return (
         <label className="field">
             <span>{label}</span>
@@ -71,7 +97,7 @@ function NumberField({ label, hint, placeholder, value, onChange, note }: Loose)
 }
 
 /** 사바쨩이 서버를 다루는 방식: 자동 재시작, 램 상한, 게임 채팅 전달, 정지 대기 */
-export function SabaSettings({ api, server, running }: Loose) {
+export function SabaSettings({ api, server, running }: Omit<ServerPanelProps, 'moduleData'>) {
     const { t } = useTranslation();
     const { t: tg } = useTranslation('gui');
     const toast = useApp((s) => s.toast);
@@ -96,7 +122,7 @@ export function SabaSettings({ api, server, running }: Loose) {
         revision.current = server.revision || null;
     }, [server.revision]);
 
-    const set = (key: Loose, v: Loose) => setValues((prev) => ({ ...prev, [key]: v }));
+    const set = (key: keyof SabaValues, v: string | boolean) => setValues((prev) => ({ ...prev, [key]: v }));
 
     const save = async () => {
         if (!dirty) return;
@@ -143,13 +169,13 @@ export function SabaSettings({ api, server, running }: Loose) {
                         label={tg('shell.restart_on_crash')}
                         hint={tg('shell.restart_on_crash_hint')}
                         checked={values.auto_restart}
-                        onChange={(v: Loose) => set('auto_restart', v)}
+                        onChange={(v) => set('auto_restart', v)}
                     />
                     <Toggle
                         label={tg('shell.restart_on_unknown')}
                         hint={tg('shell.restart_on_unknown_hint')}
                         checked={values.restart_on_unknown_exit}
-                        onChange={(v: Loose) => set('restart_on_unknown_exit', v)}
+                        onChange={(v) => set('restart_on_unknown_exit', v)}
                     />
                 </div>
             </Section>
@@ -161,7 +187,7 @@ export function SabaSettings({ api, server, running }: Loose) {
                         hint={tg('memory_limit.hint')}
                         placeholder={tg('memory_limit.placeholder')}
                         value={values.memory_limit_mb}
-                        onChange={(v: Loose) => set('memory_limit_mb', v)}
+                        onChange={(v) => set('memory_limit_mb', v)}
                         note={running ? tg('memory_limit.restart_note') : null}
                     />
                 </div>
@@ -174,7 +200,7 @@ export function SabaSettings({ api, server, running }: Loose) {
                             <span>{tg('game_chat.mode_label')}</span>
                             <Dropdown
                                 value={values.game_chat}
-                                onChange={(v: Loose) => set('game_chat', v)}
+                                onChange={(v) => set('game_chat', v)}
                                 options={GAME_CHAT_MODES.map((m) => ({ value: m, label: tg(`game_chat.mode_${m}`) }))}
                             />
                         </div>
@@ -202,7 +228,7 @@ export function SabaSettings({ api, server, running }: Loose) {
                             hint={tg('stop_timeout.hint')}
                             placeholder={tg('stop_timeout.placeholder')}
                             value={values.stop_timeout}
-                            onChange={(v: Loose) => set('stop_timeout', v)}
+                            onChange={(v) => set('stop_timeout', v)}
                         />
                     </div>
                 </Section>

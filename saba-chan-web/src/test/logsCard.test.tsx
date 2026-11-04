@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { LogsCard } from '../components/LogsCard';
 import { initI18n } from '../i18n';
+import { mockApi } from './mocks';
 
 const flush = () => act(async () => {});
 const SOURCES = [
@@ -25,7 +26,7 @@ describe('지난 로그', () => {
                 })
                 .mockResolvedValueOnce({ success: true, sources: SOURCES, source: SOURCES[0].id, lines: ['a', 'b'] }),
         };
-        render(<LogsCard api={api} server={{ id: 's1', name: 'Mc' }} />);
+        render(<LogsCard api={mockApi(api)} server={{ id: 's1', name: 'Mc' }} />);
         await flush();
         expect(api.instanceLogs).toHaveBeenCalledWith('s1', { source: undefined, lines: 200 });
         expect(screen.getByText(/c\s*d/)).toBeTruthy();
@@ -56,7 +57,7 @@ describe('지난 로그', () => {
         });
         URL.revokeObjectURL = vi.fn();
         const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
-        render(<LogsCard api={api} server={{ id: 's1', name: 'Mc' }} />);
+        render(<LogsCard api={mockApi(api)} server={{ id: 's1', name: 'Mc' }} />);
         await flush();
         fireEvent.click(screen.getByRole('button', { name: /11-02 19:00/ }));
         await flush();
@@ -78,7 +79,7 @@ describe('지난 로그', () => {
         const api = {
             instanceLogs: vi.fn().mockResolvedValue({ success: true, sources: [], source: null, lines: [] }),
         };
-        render(<LogsCard api={api} server={{ id: 's1', name: 'Mc' }} />);
+        render(<LogsCard api={mockApi(api)} server={{ id: 's1', name: 'Mc' }} />);
         await flush();
         expect(screen.getByText('No logs yet. They appear after the server runs once.')).toBeTruthy();
         expect(screen.queryByRole('button', { name: 'Export' })).toBeNull();

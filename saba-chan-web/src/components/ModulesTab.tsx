@@ -1,22 +1,60 @@
+import type { ExtensionListItem } from '@gui/types/daemon';
 import { localizedDescription } from '@gui/utils/localizedText';
 import { gameNameOf } from '@gui/utils/serverView';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useApp, useData } from '../store';
+import type { ApiBody, TFn, WebApi } from '../types';
 import { moduleIdOf, moduleUpdates, undeclaredPermissions } from './modules';
 import { ServerIcon } from './ServerIcon';
 import { Button, Empty, errorText, failed, Loading, Section, Segments } from './ui';
-import type { Loose } from '../types';
+
+/** 공식 모듈 목록(manifest)의 모듈 한 건 */
+interface CatalogModule {
+    id: string;
+    version: string;
+    display_name?: string;
+    description?: string;
+    descriptions?: Record<string, string>;
+}
+
+/** 공식 플러그인 목록의 플러그인 한 건 */
+interface CatalogExtension {
+    id: string;
+    name?: string;
+    description?: string;
+    descriptions?: Record<string, string>;
+}
+
+/** 플러그인 업데이트 한 건 (GET /api/extensions/updates) */
+interface ExtensionUpdate {
+    id: string;
+    latest_version?: string;
+    incompatible?: string;
+}
+
+/** 목록을 받지 못했을 때 */
+interface CatalogFailure {
+    error: string;
+}
 
 /** "업데이트 N개" 카드: 이름들과 모두 업데이트 */
-function UpdatesCard({ items, busy, onUpdateAll }: Loose) {
+function UpdatesCard({
+    items,
+    busy,
+    onUpdateAll,
+}: {
+    items: { label: string }[];
+    busy: string | null;
+    onUpdateAll: () => void;
+}) {
     const { t } = useTranslation();
     if (items.length === 0) return null;
     return (
         <div className="row update-card">
             <div className="row-main">
                 <div className="row-title">{t('modules.updates_count', { count: items.length })}</div>
-                <div className="row-sub">{items.map((u: Loose) => u.label).join(', ')}</div>
+                <div className="row-sub">{items.map((u) => u.label).join(', ')}</div>
             </div>
             <Button tone="accent" busy={busy === '*'} disabled={!!busy} onClick={onUpdateAll}>
                 {t('modules.update_all')}
@@ -26,10 +64,10 @@ function UpdatesCard({ items, busy, onUpdateAll }: Loose) {
 }
 
 /** 모듈 검사 결과: module.toml에 선언하지 않은 기능을 코드에서 쓰는지 (GET /api/module/:name/audit) */
-function ModuleCheck({ api, name }: Loose) {
+function ModuleCheck({ api, name }: { api: WebApi; name: string }) {
     const { t } = useTranslation();
     const { t: tg } = useTranslation('gui');
-    const [res, setRes] = useState<Loose>(null);
+    const [res, setRes] = useState<ApiBody | null>(null);
     useEffect(() => {
         let alive = true;
         Promise.resolve(api.moduleAudit(name))
@@ -48,26 +86,26 @@ function ModuleCheck({ api, name }: Loose) {
     return <p className="hint hint-warn">{t('modules.check_undeclared', { perms })}</p>;
 }
 
-function GameModules({ api }: Loose) {
+function GameModules({ api }: { api: WebApi }) {
     const { t, i18n } = useTranslation();
     const toast = useApp((s) => s.toast);
     const { modules, setModules } = useData();
-    const [catalog, setCatalog] = useState<Loose>(null);
-    const [busy, setBusy] = useState<Loose>(null);
-    const [open, setOpen] = useState<Loose>(null);
+    const [catalog, setCatalog] = useState<CatalogModule[] | CatalogFailure | null>(null);
+    const [busy, setBusy] = useState<string | null>(null);
+    const [open, setOpen] = useState<string | null>(null);
 
     useEffect(() => {
-        api.moduleManifest().then((res: Loose) => {
+        api.moduleManifest().then((res) => {
             const mods = res?.manifest?.modules;
             // 목록을 못 받았으면 "모두 설치했어요"가 아니라 받지 못한 이유를 보인다
             if (failed(res) || !mods || typeof mods !== 'object')
                 return setCatalog({ error: t('modules.catalog_failed') });
-            setCatalog(Object.entries(mods).map(([id, info]) => ({ id, ...(info as object) })));
+            setCatalog(Object.entries(mods).map(([id, info]) => ({ id, ...(info as object) }) as CatalogModule));
         });
     }, [api, t]);
 
     // 설치와 업데이트는 같은 요청이다: 데몬이 공식 목록의 판으로 바꿔 끼운다
-    const fetchOne = async (id: Loose) => {
+    const fetchOne = async (id: string) => {
         const res = await api.moduleInstallFromManifest(id);
         if (!failed(res)) return null;
         return res?.error_code === 'module_busy' ? t('modules.busy') : errorText(t, res);
@@ -76,9 +114,9 @@ function GameModules({ api }: Loose) {
         const list = await api.moduleRefresh();
         if (Array.isArray(list?.modules)) setModules(list.modules);
     };
-    const run = async (key: Loose, ids: Loose, okText: Loose) => {
+    const run = async (key: string, ids: string[], okText: string) => {
         setBusy(key);
-        const errors = [];
+        const errors: string[] = [];
         for (const id of ids) {
             const error = await fetchOne(id);
             if (error) errors.push(error);
@@ -90,19 +128,19 @@ function GameModules({ api }: Loose) {
     };
 
     const installed = new Set(modules.map(moduleIdOf));
-    const available = Array.isArray(catalog) ? catalog.filter((m: Loose) => !installed.has(m.id)) : [];
+    const available = Array.isArray(catalog) ? catalog.filter((m) => !installed.has(m.id)) : [];
     const updates = moduleUpdates(modules, catalog);
-    const latestOf = new Map<string, Loose>(updates.map((u: Loose) => [u.id, u.latest]));
-    const byName = new Map(modules.map((m: Loose) => [m.name, m]));
+    const latestOf = new Map<string, string | undefined>(updates.map((u) => [u.id, u.latest]));
+    const byName = new Map(modules.map((m) => [m.name, m]));
     return (
         <>
             <UpdatesCard
-                items={updates.map((u: Loose) => ({ label: gameNameOf(t, u.name, byName.get(u.name)) }))}
+                items={updates.map((u) => ({ label: gameNameOf(t, u.name, byName.get(u.name)) }))}
                 busy={busy}
                 onUpdateAll={() =>
                     run(
                         '*',
-                        updates.map((u: Loose) => u.id),
+                        updates.map((u) => u.id),
                         t('modules.updated'),
                     )
                 }
@@ -112,7 +150,7 @@ function GameModules({ api }: Loose) {
                     <Empty>{t('modules.none_installed')}</Empty>
                 ) : (
                     <ul className="rows">
-                        {modules.map((m: Loose) => {
+                        {modules.map((m) => {
                             const id = moduleIdOf(m);
                             const latest = latestOf.get(id);
                             const expanded = open === m.name;
@@ -161,13 +199,13 @@ function GameModules({ api }: Loose) {
             <Section title={t('modules.available_title')}>
                 {catalog === null ? (
                     <Loading />
-                ) : catalog.error ? (
+                ) : !Array.isArray(catalog) ? (
                     <Empty>{catalog.error}</Empty>
                 ) : available.length === 0 ? (
                     <Empty>{t('modules.all_installed')}</Empty>
                 ) : (
                     <ul className="rows">
-                        {available.map((m: Loose) => (
+                        {available.map((m) => (
                             <li key={m.id} className="row">
                                 <div className="row-main">
                                     <div className="row-title">{m.display_name || m.id}</div>
@@ -191,15 +229,16 @@ function GameModules({ api }: Loose) {
 }
 
 /** 플러그인 오류: 켜진 서버가 쓰는 플러그인은 바꿔 끼우지 않는다 */
-const pluginError = (t: Loose, res: Loose) => (res?.error_code === 'in_use' ? t('plugins.in_use') : errorText(t, res));
+const pluginError = (t: TFn, res: ApiBody | null | undefined) =>
+    res?.error_code === 'in_use' ? t('plugins.in_use') : errorText(t, res);
 
-function Plugins({ api }: Loose) {
+function Plugins({ api }: { api: WebApi }) {
     const { t, i18n } = useTranslation();
     const toast = useApp((s) => s.toast);
-    const [list, setList] = useState<Loose>(null);
-    const [catalog, setCatalog] = useState<Loose>(null);
-    const [updates, setUpdates] = useState<Loose[]>([]);
-    const [busy, setBusy] = useState<Loose>(null);
+    const [list, setList] = useState<ExtensionListItem[] | null>(null);
+    const [catalog, setCatalog] = useState<CatalogExtension[] | CatalogFailure | null>(null);
+    const [updates, setUpdates] = useState<ExtensionUpdate[]>([]);
+    const [busy, setBusy] = useState<string | null>(null);
 
     const load = useCallback(async () => {
         const [mine, store, news] = await Promise.all([
@@ -216,7 +255,7 @@ function Plugins({ api }: Loose) {
         load();
     }, [load]);
 
-    const act = async (id: Loose, fn: Loose, okText: Loose) => {
+    const act = async (id: string, fn: () => Promise<ApiBody>, okText: string) => {
         setBusy(id);
         const res = await fn();
         setBusy(null);
@@ -224,9 +263,9 @@ function Plugins({ api }: Loose) {
         toast(okText, 'ok');
         load();
     };
-    const updateAll = async (ids: Loose) => {
+    const updateAll = async (ids: string[]) => {
         setBusy('*');
-        let error = null;
+        let error: string | null = null;
         for (const id of ids) {
             const res = await api.extensionInstall(id);
             if (failed(res) && !error) error = pluginError(t, res);
@@ -237,10 +276,10 @@ function Plugins({ api }: Loose) {
     };
 
     if (list === null) return <Loading />;
-    const installed = new Set(list.map((e: Loose) => e.id));
-    const available = Array.isArray(catalog) ? catalog.filter((e: Loose) => !installed.has(e.id)) : [];
+    const installed = new Set(list.map((e) => e.id));
+    const available = Array.isArray(catalog) ? catalog.filter((e) => !installed.has(e.id)) : [];
     const updateOf = new Map(updates.map((u) => [u.id, u]));
-    const nameOf = new Map(list.map((e: Loose) => [e.id, e.name || e.id]));
+    const nameOf = new Map(list.map((e) => [e.id, e.name || e.id]));
     // 더 새 앱이 필요한 판은 웹에서 받을 수 없다 (앱 업데이트는 PC에서)
     const ready = updates.filter((u) => !u.incompatible);
     return (
@@ -255,7 +294,7 @@ function Plugins({ api }: Loose) {
                     <Empty>{t('plugins.none_installed')}</Empty>
                 ) : (
                     <ul className="rows">
-                        {list.map((e: Loose) => {
+                        {list.map((e) => {
                             const update = updateOf.get(e.id);
                             return (
                                 <li key={e.id} className="row">
@@ -311,13 +350,13 @@ function Plugins({ api }: Loose) {
                 )}
             </Section>
             <Section title={t('plugins.available_title')}>
-                {catalog?.error ? (
+                {catalog && !Array.isArray(catalog) ? (
                     <Empty>{catalog.error}</Empty>
                 ) : available.length === 0 ? (
                     <Empty>{t('plugins.all_installed')}</Empty>
                 ) : (
                     <ul className="rows">
-                        {available.map((e: Loose) => (
+                        {available.map((e) => (
                             <li key={e.id} className="row">
                                 <div className="row-main">
                                     <div className="row-title">{e.name || e.id}</div>
@@ -341,7 +380,7 @@ function Plugins({ api }: Loose) {
     );
 }
 
-export function ModulesTab({ api }: Loose) {
+export function ModulesTab({ api }: { api: WebApi }) {
     const { t } = useTranslation();
     const [view, setView] = useState('games');
     return (

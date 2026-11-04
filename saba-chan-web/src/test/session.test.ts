@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createSession, RECONNECT_WINDOW_MS } from '../session';
-import type { Loose } from '../types';
+import type { PcEvent, SessionState } from '../types';
 
 /** 릴레이 /remote/ws 흉내: 보낸 프레임을 쌓고, 테스트가 프레임을 밀어 넣는다 */
 class FakeSocket {
     static all: FakeSocket[] = [];
     url: string;
-    sent: Loose[];
+    sent: Record<string, unknown>[];
     readyState: number;
     onopen?: () => void;
     onmessage?: (msg: { data: string }) => void;
@@ -24,7 +24,7 @@ class FakeSocket {
     send(text: string) {
         this.sent.push(JSON.parse(text));
     }
-    push(frame: Loose) {
+    push(frame: object) {
         this.onmessage?.({ data: JSON.stringify(frame) });
     }
     close(code = 1000) {
@@ -34,7 +34,7 @@ class FakeSocket {
     drop() {
         this.close(1006);
     }
-    last(t: Loose) {
+    last(t: string) {
         return [...this.sent].reverse().find((f) => f.t === t);
     }
 }
@@ -42,20 +42,20 @@ class FakeSocket {
 const latest = () => FakeSocket.all[FakeSocket.all.length - 1];
 
 function open(link = 'L1') {
-    const states: Loose[] = [];
-    const events: Loose[] = [];
+    const states: SessionState[] = [];
+    const events: PcEvent[] = [];
     const session = createSession({
         url: 'wss://example/remote/ws',
         link,
         WebSocketImpl: FakeSocket as unknown as typeof WebSocket,
-        onState: (s: Loose) => states.push(s),
-        onEvent: (e: Loose) => events.push(e),
+        onState: (s) => states.push(s),
+        onEvent: (e) => events.push(e),
     });
     latest().open();
     return { session, states, events, state: () => states[states.length - 1] };
 }
 
-function ready(sock: Loose, extra = {}) {
+function ready(sock: FakeSocket, extra = {}) {
     sock.push({ t: 'ready', sid: 's1', key: 'k1', expiresAt: Date.now() + 900_000, hostId: 'h1', ...extra });
 }
 
@@ -80,7 +80,7 @@ describe('web session', () => {
         const pending = session.request('GET', '/api/servers');
         const req = latest().last('req');
         expect(req).toMatchObject({ method: 'GET', path: '/api/servers' });
-        latest().push({ t: 'res', id: req.id, status: 200, body: { servers: [] } });
+        latest().push({ t: 'res', id: req?.id, status: 200, body: { servers: [] } });
         await expect(pending).resolves.toEqual({ status: 200, data: { servers: [] } });
     });
 

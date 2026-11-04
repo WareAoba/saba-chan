@@ -1,5 +1,4 @@
 import { Icon as GuiIcon } from '@gui/components/Icon';
-import type { Loose } from '../types';
 
 /** GUI 에 없는 것만 여기 둔다 (24 격자, 글자색, GUI 아이콘과 같은 선 굵기) */
 const LOCAL: Record<string, React.JSX.Element> = {
@@ -38,7 +37,7 @@ const GUI_NAMES: Record<string, string> = {
     lock: 'key',
 };
 
-export function Icon({ name, size = 20 }: Loose) {
+export function Icon({ name, size = 20 }: { name: string; size?: number }) {
     if (!LOCAL[name]) return <GuiIcon name={GUI_NAMES[name] || name} size={size} />;
     return (
         <svg
