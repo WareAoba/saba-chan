@@ -579,16 +579,16 @@ struct ChannelChange {
     no_music: bool,
     notify: Option<String>,
     no_notify: bool,
-    game_chat: Option<String>,
+    game_chat: Vec<String>,
     no_game_chat: bool,
-    board: Option<String>,
+    board: Vec<String>,
     no_board: bool,
 }
 
 impl ChannelChange {
     fn is_empty(&self) -> bool {
         self.chatbot.is_empty() && !self.no_chatbot && self.music.is_none() && !self.no_music && self.notify.is_none() && !self.no_notify
-            && self.game_chat.is_none() && !self.no_game_chat && self.board.is_none() && !self.no_board
+            && self.game_chat.is_empty() && !self.no_game_chat && self.board.is_empty() && !self.no_board
     }
 }
 
@@ -622,11 +622,18 @@ async fn channels(ctx: &Ctx, guild: &str, change: ChannelChange) -> Result<()> {
     let current = ctx.api.node_channels(guild, relay).await?;
     let list = current.get("channels").and_then(Value::as_array).cloned().unwrap_or_default();
     let mut patch = Map::new();
-    if change.no_chatbot {
-        patch.insert("chatbot".into(), json!([]));
-    } else if !change.chatbot.is_empty() {
-        let ids = change.chatbot.iter().map(|q| channel_id(&list, q)).collect::<Result<Vec<_>>>()?;
-        patch.insert("chatbot".into(), json!(ids));
+    // 여러 채널 종류(말하는 사바쨩·게임 채팅·상황판)는 준 목록으로 바꾼다
+    for (key, none, queries) in [
+        ("chatbot", change.no_chatbot, &change.chatbot),
+        ("gameChat", change.no_game_chat, &change.game_chat),
+        ("board", change.no_board, &change.board),
+    ] {
+        if none {
+            patch.insert(key.into(), json!([]));
+        } else if !queries.is_empty() {
+            let ids = queries.iter().map(|q| channel_id(&list, q)).collect::<Result<Vec<_>>>()?;
+            patch.insert(key.into(), json!(ids));
+        }
     }
     if change.no_music {
         patch.insert("music".into(), Value::Null);
@@ -642,16 +649,6 @@ async fn channels(ctx: &Ctx, guild: &str, change: ChannelChange) -> Result<()> {
         patch.insert("notify".into(), Value::Null);
     } else if let Some(q) = &change.notify {
         patch.insert("notify".into(), json!(channel_id(&list, q)?));
-    }
-    if change.no_game_chat {
-        patch.insert("gameChat".into(), Value::Null);
-    } else if let Some(q) = &change.game_chat {
-        patch.insert("gameChat".into(), json!(channel_id(&list, q)?));
-    }
-    if change.no_board {
-        patch.insert("board".into(), Value::Null);
-    } else if let Some(q) = &change.board {
-        patch.insert("board".into(), json!(channel_id(&list, q)?));
     }
     let r = if patch.is_empty() {
         current
@@ -907,29 +904,30 @@ fn print_channels(r: &Value) {
             .find(|c| s(c, "id") == id)
             .map_or(id.to_string(), |c| format!("#{}", s(c, "name")))
     };
-    let chatbot: Vec<String> = r
-        .get("chatbot")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(Value::as_str)
-        .map(name)
-        .collect();
     let none = || output::dim(&t!("bot.channel_none"));
+    // 채널 목록 칸 — 옛 릴레이는 게임 채팅·상황판을 채널 하나(문자열)로 준다
+    let names = |key: &str| {
+        let ids: Vec<String> = match r.get(key) {
+            Some(Value::Array(a)) => a.iter().filter_map(Value::as_str).map(name).collect(),
+            Some(Value::String(id)) => vec![name(id)],
+            _ => Vec::new(),
+        };
+        if ids.is_empty() { none() } else { ids.join(", ") }
+    };
     let music = r.get("music").and_then(Value::as_str).map(name);
     let notify = r.get("notify").and_then(Value::as_str).map(name);
     let mut rows = vec![
-        (t!("bot.chatbot_channels"), if chatbot.is_empty() { none() } else { chatbot.join(", ") }),
+        (t!("bot.chatbot_channels"), names("chatbot")),
         (t!("bot.music_channel"), music.unwrap_or_else(none)),
         (t!("bot.notify_channel"), notify.unwrap_or_else(none)),
     ];
     // 옛 릴레이는 게임 채팅 채널을 모른다 (응답에 gameChat 없음)
     if r.get("gameChat").is_some() {
-        rows.push((t!("bot.game_chat_channel"), r.get("gameChat").and_then(Value::as_str).map(name).unwrap_or_else(none)));
+        rows.push((t!("bot.game_chat_channel"), names("gameChat")));
     }
     // 상황판을 모르는 릴레이는 응답에 board 가 없다
     if r.get("board").is_some() {
-        rows.push((t!("bot.board_channel"), r.get("board").and_then(Value::as_str).map(name).unwrap_or_else(none)));
+        rows.push((t!("bot.board_channel"), names("board")));
     }
     output::print_kv(&rows);
     if r.get("botAvailable").and_then(Value::as_bool) == Some(false) {

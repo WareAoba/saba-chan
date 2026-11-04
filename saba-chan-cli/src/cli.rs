@@ -997,7 +997,7 @@ pub enum BotCmd {
     Nodes,
     /// Members of a paired Discord server (name or id; without it: the only paired server)
     Members { guild: Option<String> },
-    /// Talking Saba-chan channels (several), the Singing Saba-chan channel (one), the notification channel and the game chat channel of a paired Discord server. No options: show
+    /// Talking Saba-chan, game chat and status board channels (several each), the Singing Saba-chan and notification channels (one each) of a paired Discord server. No options: show
     Channels {
         /// Without it: every paired Discord server (changing needs exactly one)
         guild: Option<String>,
@@ -1019,16 +1019,16 @@ pub enum BotCmd {
         /// Unassign the notification channel
         #[arg(long)]
         no_notify: bool,
-        /// The game chat channel (in-game chat of servers with game chat relay on), by name or id
-        #[arg(long, conflicts_with = "no_game_chat")]
-        game_chat: Option<String>,
-        /// Unassign the game chat channel
+        /// Game chat channels (in-game chat of servers with game chat relay on), by name or id (comma-separated). Replaces the current list
+        #[arg(long, value_delimiter = ',', conflicts_with = "no_game_chat")]
+        game_chat: Vec<String>,
+        /// Unassign every game chat channel
         #[arg(long)]
         no_game_chat: bool,
-        /// The status board channel (a card per running server: banner, players, uptime), by name or id
-        #[arg(long, conflicts_with = "no_board")]
-        board: Option<String>,
-        /// Unassign the status board channel
+        /// Status board channels (a card per running server: banner, players, uptime), by name or id (comma-separated). Replaces the current list
+        #[arg(long, value_delimiter = ',', conflicts_with = "no_board")]
+        board: Vec<String>,
+        /// Unassign every status board channel
         #[arg(long)]
         no_board: bool,
     },

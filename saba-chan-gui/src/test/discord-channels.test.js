@@ -8,15 +8,12 @@ describe('채널 배정 변환', () => {
         expect(channelsPatch(saved, { chatbot: [], music: null })).toEqual({ chatbot: [], music: null });
     });
 
-    it('게임 채팅·상황판 채널도 바꾼 것만 보낸다', () => {
-        expect(
-            channelsPatch({ chatbot: [], music: null, gameChat: null }, { chatbot: [], music: null, gameChat: '222' }),
-        ).toEqual({ gameChat: '222' });
-        expect(
-            channelsPatch({ chatbot: [], music: null, board: null }, { chatbot: [], music: null, board: '222' }),
-        ).toEqual({
-            board: '222',
-        });
+    it('게임 채팅·상황판은 채널 목록 — 바꾼 것만, 순서만 다르면 보내지 않는다 (사용자 11-04)', () => {
+        const saved = { chatbot: [], music: null, gameChat: ['1'], board: [] };
+        expect(channelsPatch(saved, { ...saved, gameChat: ['1', '2'] })).toEqual({ gameChat: ['1', '2'] });
+        expect(channelsPatch({ ...saved, gameChat: ['1', '2'] }, { ...saved, gameChat: ['2', '1'] })).toEqual({});
+        expect(channelsPatch(saved, { ...saved, board: ['3'] })).toEqual({ board: ['3'] });
+        expect(channelsPatch(saved, { ...saved, gameChat: [] })).toEqual({ gameChat: [] });
     });
 
     it('데몬·릴레이 검증 오류는 코드 대신 일반 문구로 보인다', () => {
