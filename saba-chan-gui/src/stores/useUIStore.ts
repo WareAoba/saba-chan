@@ -1,0 +1,214 @@
+import { create } from 'zustand';
+
+/** 상단 페이지 */
+export type ActiveTab = 'servers' | 'discord' | 'settings';
+
+/**
+ * App이 그리는 모달 하나. type이 모달 종류(success·failure·question·agreements…)이고 나머지 칸은 그 모달의 props다.
+ */
+export interface ModalConfig {
+    type: string;
+    title?: string;
+    message?: string;
+    // biome-ignore lint/suspicious/noExplicitAny: 모달 종류마다 props가 다르다
+    [key: string]: any;
+}
+
+export interface ProgressBarConfig {
+    message?: string;
+    percent?: number;
+    indeterminate?: boolean;
+}
+
+/** 콘솔 명령 기록 한 줄 (CommandModal) */
+// biome-ignore lint/suspicious/noExplicitAny: 기록 모양은 CommandModal이 정한다
+export type CommandHistoryEntry = Record<string, any>;
+
+type Panel = 'showModuleManager' | 'showDiscordSection' | 'showBackgroundSection' | 'showNoticeSection';
+
+interface UIState {
+    activeTab: ActiveTab;
+    activeServerId: string | null;
+    requestedServerTab: string | null;
+    revealServerCount: number;
+    modal: ModalConfig | null;
+    progressBar: ProgressBarConfig | null;
+    showWaitingImage: boolean;
+    showModuleManager: boolean;
+    showGuiSettingsModal: boolean;
+    settingsInitialView: string | null;
+    showCommandModal: boolean;
+    // biome-ignore lint/suspicious/noExplicitAny: 명령 창이 다루는 서버 (서버 목록 항목에 화면 칸을 더한 것)
+    commandServer: any;
+    showDiscordSection: boolean;
+    showBackgroundSection: boolean;
+    showNoticeSection: boolean;
+    unreadNoticeCount: number;
+    commandHistoryMap: Record<string, CommandHistoryEntry[]>;
+    /** checking · running · stopped · … */
+    backgroundDaemonStatus: string;
+
+    openModal: (config: ModalConfig) => void;
+    closeModal: () => void;
+    setProgressBar: (config: ProgressBarConfig | null) => void;
+    clearProgressBar: () => void;
+    setShowWaitingImage: (val: boolean) => void;
+    setShowModuleManager: (val: boolean) => void;
+    openSettings: (initialView?: string | null) => void;
+    closeSettings: () => void;
+    showServerTab: (serverId: string, tab: string) => void;
+    clearRequestedServerTab: () => void;
+    revealServer: (serverId: string) => void;
+    setShowCommandModal: (val: boolean) => void;
+    setCommandServer: (server: UIState['commandServer']) => void;
+    getCommandHistory: (serverId: string) => CommandHistoryEntry[];
+    pushCommandHistory: (serverId: string, entry: CommandHistoryEntry) => void;
+    setActiveTab: (tab: ActiveTab) => void;
+    setActiveServerId: (id: string | null) => void;
+    setShowDiscordSection: (val: boolean) => void;
+    setShowBackgroundSection: (val: boolean) => void;
+    setShowNoticeSection: (val: boolean) => void;
+    setUnreadNoticeCount: (count: number) => void;
+    setBackgroundDaemonStatus: (status: string) => void;
+    togglePanel: (panelName: Panel) => void;
+    _resetForTest: () => void;
+}
+
+export const useUIStore = create<UIState>()((set, _get) => ({
+    // ── Navigation ──
+    // activeTab = 상단 페이지 (servers | discord | settings), activeServerId = 서버 페이지에서 고른 서버
+    activeTab: 'servers',
+    activeServerId: null,
+    // 서버 상세에 "이 탭을 열어 달라"는 요청 (우클릭 메뉴 등). 상세가 읽고 비운다.
+    requestedServerTab: null,
+    // 바깥(CLI의 `gui`)에서 서버를 연 횟수. 좁은 창에서도 목록 대신 그 서버 상세를 보인다
+    revealServerCount: 0,
+
+    // ── Modal ──
+    modal: null,
+    progressBar: null,
+    showWaitingImage: false,
+
+    // ── Panel visibility ──
+    showModuleManager: false,
+    showGuiSettingsModal: false,
+    settingsInitialView: null,
+    showCommandModal: false,
+    commandServer: null,
+    showDiscordSection: false,
+    showBackgroundSection: false,
+    showNoticeSection: false,
+
+    // ── Notice ──
+    unreadNoticeCount: 0,
+
+    // ── Command history (per-server, session only) ──
+    commandHistoryMap: {},  // { [serverId]: [...entries] }
+
+    // ── Background ──
+    backgroundDaemonStatus: 'checking',
+
+    // ── Actions ──
+    openModal: (config) => set({ modal: config }),
+    closeModal: () => set({ modal: null }),
+
+    setProgressBar: (config) => set({ progressBar: config }),
+    clearProgressBar: () => set({ progressBar: null }),
+
+    setShowWaitingImage: (val) => set({ showWaitingImage: val }),
+
+    setShowModuleManager: (val) => set({ showModuleManager: val }),
+
+    // 설정은 이제 페이지다. 이름은 호출부 호환을 위해 그대로 둔다.
+    openSettings: (initialView = null) =>
+        set({
+            activeTab: 'settings',
+            showGuiSettingsModal: true,
+            settingsInitialView: initialView,
+        }),
+    closeSettings: () =>
+        set({
+            activeTab: 'servers',
+            showGuiSettingsModal: false,
+            settingsInitialView: null,
+        }),
+
+    showServerTab: (serverId, tab) =>
+        set({ activeTab: 'servers', activeServerId: serverId, requestedServerTab: tab }),
+    clearRequestedServerTab: () => set({ requestedServerTab: null }),
+    revealServer: (serverId) =>
+        set((state) => ({
+            activeTab: 'servers',
+            activeServerId: serverId,
+            revealServerCount: state.revealServerCount + 1,
+        })),
+
+    setShowCommandModal: (val) => set({ showCommandModal: val }),
+    setCommandServer: (server) => set({ commandServer: server }),
+
+    getCommandHistory: (serverId) => _get().commandHistoryMap[serverId] || [],
+    pushCommandHistory: (serverId, entry) =>
+        set((state) => ({
+            commandHistoryMap: {
+                ...state.commandHistoryMap,
+                [serverId]: [...(state.commandHistoryMap[serverId] || []), entry],
+            },
+        })),
+
+    setActiveTab: (tab) => set({ activeTab: tab }),
+    setActiveServerId: (id) => set({ activeServerId: id }),
+
+    setShowDiscordSection: (val) => set({ showDiscordSection: val }),
+    setShowBackgroundSection: (val) => set({ showBackgroundSection: val }),
+    setShowNoticeSection: (val) => set({ showNoticeSection: val }),
+
+    setUnreadNoticeCount: (count) => set({ unreadNoticeCount: count }),
+
+    setBackgroundDaemonStatus: (status) => set({ backgroundDaemonStatus: status }),
+
+    togglePanel: (panelName) =>
+        set((state) => ({
+            [panelName]: !state[panelName],
+        })),
+
+    // Test-only: reset to initial state
+    _resetForTest: () =>
+        set({
+            activeTab: 'servers',
+            activeServerId: null,
+            revealServerCount: 0,
+            requestedServerTab: null,
+            modal: null,
+            progressBar: null,
+            showWaitingImage: false,
+            showModuleManager: false,
+            showGuiSettingsModal: false,
+            settingsInitialView: null,
+            showCommandModal: false,
+            commandServer: null,
+            showDiscordSection: false,
+            showBackgroundSection: false,
+            showNoticeSection: false,
+            unreadNoticeCount: 0,
+            backgroundDaemonStatus: 'checking',
+        }),
+}));
+
+// ── Vite HMR: preserve store state across hot module replacement ──
+if (import.meta.hot) {
+    import.meta.hot.dispose((data) => {
+        const s = useUIStore.getState();
+        data.prevState = {
+            progressBar: s.progressBar,
+            showModuleManager: s.showModuleManager,
+            showDiscordSection: s.showDiscordSection,
+            showBackgroundSection: s.showBackgroundSection,
+            showNoticeSection: s.showNoticeSection,
+            unreadNoticeCount: s.unreadNoticeCount,
+            backgroundDaemonStatus: s.backgroundDaemonStatus,
+        };
+    });
+    if (import.meta.hot.data?.prevState) {
+        useUIStore.setState(import.meta.hot.data.prevState);
+    }
+}

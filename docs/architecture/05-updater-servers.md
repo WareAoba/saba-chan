@@ -180,7 +180,7 @@ updater-lib 파일 구성(859c3fd에서 나눔): `lib.rs`는 컴포넌트 정의
 | GET / **PUT** | `/api/updates/config` | 설정 `{enabled, check_interval_hours(1-8), auto_download, auto_apply, install_root, relay_url, channel}`(`auto_apply`: 받고 다음 실행 때 적용. 동작이 없던 옛 키는 f498525에서 빠졌다가 이 뜻으로 다시 생겼다). `config.json`의 `updates` 절에 저장한다. GET은 `mock_relay`(모의 릴레이를 믿는 개발 빌드인지)도 준다(`updates.rs:844-942`). 업데이트 출처(`relay_url`)는 앱에서 바꾸지 않는다: 릴리즈 빌드의 PUT은 비우기만 받고 다른 값은 403 `relay_url_not_settable`(D7). 0.1.1이 남긴 예전 키 `relay_base_url`도 `relay_url`로 읽고, 빈 값은 기본 릴레이다(`updater/src/lib.rs` `UpdateConfig`) |
 
 불일치:
-- ~~GUI의 `updater:setConfig`가 POST로 보내 405가 난다~~ → 해결: PUT으로 보낸다(옛 Electron main.js:2505-2507, 지금은 `saba-chan-gui/src/api/createApi.js:781`).
+- ~~GUI의 `updater:setConfig`가 POST로 보내 405가 난다~~ → 해결: PUT으로 보낸다(옛 Electron main.js:2505-2507, 지금은 `saba-chan-gui/src/api/createApi.ts:781`).
 - ~~CLI의 `apply_updates`와 `download_updates`는 body 없이 POST하는데 `Json` extractor가 거부할 수 있다~~ → 해결: PR #6 CLI는 `{components:[...]}` 본문을 늘 보낸다(`saba-chan-cli/src/client.rs:774-784`). 데몬도 본문을 바이트로 받아 비었으면 기본값(전체)으로 읽고, 깨진 JSON만 400으로 거부한다(`src/ipc/updates.rs:348-371, 475-480`).
 - ~~CLI가 daemon에 없는 `/api/install*`을 호출한다~~ → 해결: PR #6 CLI에 그 호출이 없다(grep 0건).
 - ~~CLI `launch-apply`가 넘기는 `--install-root`와 대상 인자를 updater가 무시한다~~ → 해결: PR #6 CLI는 `update apply`에서 데몬이 updater가 필요하다고 답하면 확인 후 `POST /api/updates/launch-updater {relaunch:[saba-core, --spawned]}`만 부른다(`saba-chan-cli/src/cmd/update.rs:237-249`, `client.rs:785-789`).
@@ -592,7 +592,7 @@ Tauri 커맨드(`installer/gui/src-tauri/src/lib.rs`): `get_installer_state`, `s
 
 1. ~~**GUI가 업데이트 주기를 직접 돌린다**~~ → 해결: daemon이 주기 확인을 한다(`src/ipc/updates.rs:256-283`). GUI는 캐시된 상태만 10분마다 읽는다(`saba-chan-gui/src-tauri/src/lifecycle.rs:539-581`).
 2. ~~**GUI와 CLI가 updater exe를 직접 spawn한다**~~ → 해결: 둘 다 `POST /api/updates/launch-updater`만 부르고 updater는 daemon이 띄운다(`updates.rs:609-675`, `saba-chan-gui/src-tauri/src/native.rs:81-102`, `saba-chan-cli/src/cmd/update.rs:249`).
-3. ~~**GUI가 relay를 직접 호출한다**(`PATCH /api/hosts/:id/bot-config`)~~ → 해결: GUI는 bot config를 daemon에 저장하고, relay 동기화는 agent heartbeat가 맡는다(`saba-chan-gui/src/api/createApi.js:865-874`, `relay_agent.rs:381-395`).
+3. ~~**GUI가 relay를 직접 호출한다**(`PATCH /api/hosts/:id/bot-config`)~~ → 해결: GUI는 bot config를 daemon에 저장하고, relay 동기화는 agent heartbeat가 맡는다(`saba-chan-gui/src/api/createApi.ts:865-874`, `relay_agent.rs:381-395`).
 4. ~~**GUI가 Discord bot 실행 명령을 조립한다**, 실행 경로가 두 개~~ → 해결: 로컬 Discord bot이 없어졌다. relay agent는 daemon 안에서 노드 토큰이 있으면 기동 때 자동으로 시작한다(`relay_agent.rs:178-189`, `ipc/mod.rs:860-866`).
 5. GUI가 daemon을 `--spawned`로 spawn하고(Tauri 셸 `saba-chan-gui/src-tauri/src/lifecycle.rs:158-218`) installer를 `--uninstall`로 실행한다(`native.rs:149-184`). 인터페이스가 프로세스 감독 역할을 맡고 있다.
 6. ~~**extensions 용어 충돌**(`discord_bot/extensions/*.js`, `music.js`가 Python 익스텐션을 직접 spawn)~~ → 해결: `discord_bot/`이 저장소에서 없어졌다.
@@ -612,7 +612,7 @@ Tauri 커맨드(`installer/gui/src-tauri/src/lib.rs`): `get_installer_state`, `s
 | U4 | ~~`saba-core` 버전 폴백이 updater-lib 버전이다~~ → 해결: 폴백은 빌드에 묶인 `versions.toml` 버전이다 | `lib.rs:587-590`, `versions.rs` |
 | U5 | ~~`prepare_daemon_update`는 사용되지 않는다. rollback 경로가 없다~~ → 해결: 함수는 지워졌고, 적용 도중 실패하면 백업·`.old`로 되돌린다. 적용이 끝난 뒤 이전 판으로 돌아가는 경로는 여전히 없다 | `apply.rs:24-62, 142-167` |
 | U6 | ~~v2 모듈(worker/foreground/queue/scheduler/ipc)이 죽은 코드다. `cli.rs.removed`, `lib.rs.bak` 잔재~~ → 해결: 지워졌다(e023a75). ~~헤더 주석만 남았다~~ → 해결: 헤더도 현재 파일 구성으로 바뀌었다 | `lib.rs:1-12` |
-| U7 | ~~설정이 저장되지 않는다, GUI가 POST를 쓴다~~ → 해결: `config.json` `updates` 절, GUI도 PUT | `updates.rs:844-942`, `saba-chan-gui/src/api/createApi.js:754` |
+| U7 | ~~설정이 저장되지 않는다, GUI가 POST를 쓴다~~ → 해결: `config.json` `updates` 절, GUI도 PUT | `updates.rs:844-942`, `saba-chan-gui/src/api/createApi.ts:754` |
 | U8 | ~~CLI의 `/api/install/*`은 daemon에 없다~~(호출이 지워졌다). ~~CLI apply·download는 여전히 body 없는 POST다~~ → 해결: PR #6 CLI는 본문을 보내고, 데몬도 본문 없는 apply·download를 전체 대상으로 받는다 | `saba-chan-cli/src/client.rs:774-784`, `src/ipc/updates.rs:348-371` |
 | U9 | ~~CLI `launch-apply`가 넘기는 `--install-root`와 대상 인자를 updater가 무시한다~~ → 해결: PR #6 CLI `update apply`는 daemon의 `launch-updater`만 부른다 | `saba-chan-cli/src/cmd/update.rs:237-249` |
 | U10 | ~~CI가 windows-x64 릴리즈만 만든다~~ → linux-x64(헤드리스, 0.1.12부터 GUI도)와 linux-arm64(헤드리스 0.1.12, GUI는 0.1.12 두 번째 베타부터)는 `release.yml`이 빌드해 manifest `platforms`에 싣는다(D3c). macOS(`macos-arm64`)는 CI(`ci.yml` `macos-package`)가 구성요소 zip·`Saba-chan.app`(실행 파일과 데몬 zip의 공유 모듈 파일)·서명 없는 .dmg(앱 묶음과 응용 프로그램 폴더 바로가기. `dmgbuild`로 Finder 창을 꾸민다: 660×400 창, 화살표 배경 `saba-chan-gui/src-tauri/macos/dmg-background.png`(+@2x), 디스크 아이콘)를 만들고 모의 릴레이로 CLI 설치·업데이트·제거를 시험하지만, `release.yml`에는 아직 없다(설치·업데이트를 맥 실기로 확인한 뒤 싣는다). windows-arm64는 아직 없다. 플랫폼 이름(`<os>-<arch>`, `relay::current_platform`)과 manifest `platforms`는 이미 범용이라, 새 플랫폼은 다음을 더하면 된다: `release.yml` 빌드 작업과 `--also-platform`, 창 앱을 싣으면 CLI `APP_PLATFORMS`, 포터블 파이썬 고정(`python_pin.rs`. `aarch64-pc-windows-msvc`는 지금 고정 판 20250106에 없어 판을 올려야 한다), 이름에 `{platform}`이 없는 asset(`installer`)의 `platforms`. Windows ARM은 설치기 exe와 `package-release.py`(`PLATFORM`)가 windows-x64 전용이라 그 둘도 플랫폼별로 나눠야 한다 | `package-release.py`, `release.yml` |

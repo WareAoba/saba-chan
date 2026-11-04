@@ -1,0 +1,83 @@
+import { useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
+import type { ApiBody } from '../../types/daemon';
+import { useServerStore } from '../../stores/useServerStore';
+import { SERVER_CHANGING, showEventToast, showPortMoved, subscribeDaemonEvents } from '../../utils/daemonEvents';
+
+const REFETCH_DEBOUNCE_MS = 300;
+
+/**
+ * 데몬 이벤트를 받아 토스트·알림을 띄우고, 서버 상태가 바뀌었을 만한 이벤트면 목록을 다시 읽는다.
+ * 그리는 것은 없다. onDaemonEvent가 없으면 마운트하지 않는다 (App.js).
+ */
+export function DaemonEvents({ onServersChanged }: { onServersChanged?: () => void }) {
+    const { t } = useTranslation('gui');
+    const tRef = useRef(t);
+    tRef.current = t;
+    const refetchRef = useRef(onServersChanged);
+    refetchRef.current = onServersChanged;
+
+    useEffect(() => {
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const nameOf = (id: string) => useServerStore.getState().servers.find((s) => s.id === id)?.name || id;
+        const off = subscribeDaemonEvents((ev: { type: string; data: ApiBody }) => {
+            const tr = tRef.current;
+            if (SERVER_CHANGING.includes(ev.type)) {
+                // 한꺼번에 여러 건이 와도 한 번만 다시 읽는다
+                clearTimeout(timer);
+                timer = setTimeout(() => refetchRef.current?.(), REFETCH_DEBOUNCE_MS);
+            }
+            if (ev.type === 'update.available') {
+                // 이름 문자열 또는 {name|id, ...} 객체를 모두 받는다
+                const names = (Array.isArray(ev.data.components) ? ev.data.components : [])
+                    .map((c: string | { name?: string; id?: string } | null) => (typeof c === 'string' ? c : c?.name || c?.id))
+                    .filter(Boolean);
+                if (names.length && window.__sabaNotice) {
+                    window.__sabaNotice.addNotice({
+                        message: `📦 ${tr('updates.found', { count: names.length, names: names.join(', ') })}`,
+                        type: 'info',
+                        source: 'Updater',
+                        action: 'openUpdateModal',
+                        dedup: true,
+                    });
+                }
+                return;
+            }
+            if (ev.type === 'instance.update_notice') {
+                // 켠 서버의 모듈 새 버전(업데이트 화면으로)·게임 서버 새 빌드 — 어디서 켰든 앱에도 남긴다
+                const d = ev.data;
+                const name = d.instance || nameOf(d.instanceId);
+                const module = d.kind === 'module';
+                if (!module && d.kind !== 'server') return;
+                window.__sabaNotice?.addNotice({
+                    message: `🔔 ${
+                        module
+                            ? tr('events.module_update', { name, module: d.module, version: d.latest })
+                            : tr('events.server_update', { name })
+                    }`,
+                    type: 'info',
+                    source: 'Updater',
+                    ...(module ? { action: 'openUpdateModal' } : {}),
+                    dedup: true,
+                });
+                return;
+            }
+            if (ev.type === 'instance.port_moved') {
+                // 자동·예약 재시작처럼 시작 응답을 아무도 보지 않는 경로도 알린다
+                const d = ev.data;
+                showPortMoved(
+                    { instanceId: d.instanceId, name: d.instance || nameOf(d.instanceId), from: d.from, to: d.to },
+                    tr,
+                );
+                return;
+            }
+            showEventToast(ev, tr, nameOf);
+        });
+        return () => {
+            clearTimeout(timer);
+            off();
+        };
+    }, []);
+
+    return null;
+}
