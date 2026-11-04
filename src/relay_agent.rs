@@ -338,8 +338,8 @@ struct Session {
     seen: Arc<Mutex<SeenCommands>>,
     /// 릴레이가 메타데이터 전체를 받아 둔 지문 (`heartbeat_metadata`). 없으면 다음 하트비트는 전체를 보낸다
     metadata_sent: Mutex<Option<String>>,
-    /// 적용했지만 릴레이가 아직 확인 응답을 받지 못한 새로 묶인 길드 (`linkedGuildsAck`)
-    linked_acks: Mutex<Vec<String>>,
+    /// 적용했지만 릴레이가 아직 확인 응답을 받지 못한 새로 묶인 길드 (`linkedGuildsAck`·`linkedGuildsAckIds`)
+    linked_acks: Mutex<Vec<LinkedAck>>,
     /// 릴레이가 `/ack`를 모르면(404, 예전 릴레이) 이 세션에서는 더 보내지 않는다
     ack_supported: std::sync::atomic::AtomicBool,
 }
@@ -977,14 +977,16 @@ impl Session {
         let mut applied = false;
         for g in list {
             let (Some(guild), Some(via)) = (g.get("guildId").and_then(Value::as_str), g.get("via").and_then(Value::as_str)) else { continue };
+            let link_id = g.get("linkId").and_then(Value::as_str).map(str::to_string);
             match store.update_node_settings(guild, |node| {
                 let c = close_linked_guild(node, via, policy);
                 (c, c)
             }).await {
                 Ok(_) => {
                     let mut acks = self.linked_acks.lock().unwrap_or_else(|e| e.into_inner());
-                    if !acks.iter().any(|g| g == guild) {
-                        acks.push(guild.to_string());
+                    let ack = LinkedAck { guild: guild.to_string(), link_id };
+                    if !acks.contains(&ack) {
+                        acks.push(ack);
                     }
                     applied = true;
                 }
@@ -1720,8 +1722,16 @@ fn host_load(snapshot: &crate::system_monitor::MetricsSnapshot) -> Value {
     load
 }
 
-/// 하트비트 본문. 적용한 새 길드가 있으면 확인 응답(`linkedGuildsAck`)을 싣는다
-fn heartbeat_body(metadata: Value, hash: &str, unchanged: bool, acks: &[String]) -> Value {
+/// 적용한 새 길드 하나. 릴레이가 연결마다 준 id(`linkId`)로 답해야, 풀고 다시 묶은 사이 늦게 간 답이 새 연결의 확인이 되지 않는다.
+/// id를 주지 않는 옛 릴레이에서 받은 것은 `None`
+#[derive(Clone, Debug, PartialEq)]
+struct LinkedAck {
+    guild: String,
+    link_id: Option<String>,
+}
+
+/// 하트비트 본문. 적용한 새 길드가 있으면 확인 응답을 싣는다: 길드 id(`linkedGuildsAck`, 옛 릴레이)와 연결 id(`linkedGuildsAckIds`)
+fn heartbeat_body(metadata: Value, hash: &str, unchanged: bool, acks: &[LinkedAck]) -> Value {
     let mut body = json!({
         "agentVersion": AGENT_VERSION,
         "os": format!("{} {}", std::env::consts::OS, std::env::consts::ARCH),
@@ -1732,7 +1742,17 @@ fn heartbeat_body(metadata: Value, hash: &str, unchanged: bool, acks: &[String])
         body["metadataUnchanged"] = Value::Bool(true);
     }
     if !acks.is_empty() {
-        body["linkedGuildsAck"] = json!(acks);
+        let mut guilds: Vec<&str> = Vec::new();
+        for a in acks {
+            if !guilds.contains(&a.guild.as_str()) {
+                guilds.push(&a.guild);
+            }
+        }
+        body["linkedGuildsAck"] = json!(guilds);
+        let ids: Vec<&str> = acks.iter().filter_map(|a| a.link_id.as_deref()).collect();
+        if !ids.is_empty() {
+            body["linkedGuildsAckIds"] = json!(ids);
+        }
     }
     body
 }
@@ -2559,15 +2579,25 @@ mod tests {
         assert!(FEATURES.iter().all(|f| !f.is_empty() && f.chars().all(|c| c.is_ascii_lowercase() || c == '_')));
     }
 
-    /// 새로 묶인 길드를 적용했으면 다음 하트비트가 그 길드들을 확인 응답(`linkedGuildsAck`)으로 싣는다. 없으면 싣지 않는다
+    /// 새로 묶인 길드를 적용했으면 다음 하트비트가 그 길드들을 확인 응답(`linkedGuildsAck`)으로, 릴레이가 준 연결 id는
+    /// `linkedGuildsAckIds`로 싣는다. 없으면 싣지 않는다
     #[test]
     fn heartbeat_acks_the_linked_guilds_it_applied() {
-        let body = heartbeat_body(json!({}), "h", false, &["111".to_string()]);
-        assert_eq!(body["linkedGuildsAck"], json!(["111"]));
+        let acks = [
+            LinkedAck { guild: "111".into(), link_id: Some("a".into()) },
+            LinkedAck { guild: "222".into(), link_id: None },
+        ];
+        let body = heartbeat_body(json!({}), "h", false, &acks);
+        assert_eq!(body["linkedGuildsAck"], json!(["111", "222"]));
+        assert_eq!(body["linkedGuildsAckIds"], json!(["a"]));
         assert_eq!(body["metadataHash"], "h");
         assert!(body.get("metadataUnchanged").is_none());
+        // 연결 id를 모르는 옛 릴레이에서 받은 것만 있으면 길드 id만 싣는다
+        let body = heartbeat_body(json!({}), "h", false, &acks[1..]);
+        assert!(body.get("linkedGuildsAckIds").is_none());
         let body = heartbeat_body(json!({}), "h", true, &[]);
         assert!(body.get("linkedGuildsAck").is_none());
+        assert!(body.get("linkedGuildsAckIds").is_none());
         assert_eq!(body["metadataUnchanged"], true);
     }
 
