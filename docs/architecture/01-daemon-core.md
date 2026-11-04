@@ -852,7 +852,7 @@ REST 자격증명 조회의 `get_credentials` 재진입은 바깥 호출의 자�
 
 ### 9.A 오너 원칙 위반 (인터페이스가 데몬을 우회하는 곳)
 
-1. ~~**GUI가 `settings.json`을 직접 읽고 쓴다.**~~ → 해결: GUI는 `config.json`의 `gui`를 읽기만 직접 하고(Tauri 셸 `saba-chan-gui/src-tauri/src/settings.rs:71-84`), 저장은 데몬 API(`PUT /api/config/gui`)로 하며 데몬이 응답하지 않을 때만 파일에 직접 쓴다(`saba-chan-gui/src/api/createApi.ts:57-74`, `src-tauri/src/native.rs:189-212`, `write_gui_section` `settings.rs:49-51`).
+1. ~~**GUI가 `settings.json`을 직접 읽고 쓴다.**~~ → 해결: GUI는 `config.json`의 `gui`를 읽기만 직접 하고(Tauri 셸 `saba-chan-gui/src-tauri/src/settings.rs:71-84`), 저장은 데몬 API(`PUT /api/config/gui`)로 하며 데몬이 응답하지 않을 때만 파일에 직접 쓴다(`saba-chan-gui/src/api/createApi.ts:108-129`, `src-tauri/src/native.rs:189-212`, `write_gui_section` `settings.rs:49-51`).
 2. ~~**GUI가 relay 서버를 직접 호출한다.**~~ → 해결: GUI(Tauri 셸 `saba-chan-gui/src-tauri/src`, 브리지 `saba-chan-gui/src/api`)에 릴레이 직접 호출이 없다. 봇 설정·초대·페어링은 데몬의 `/api/relay/*`, `/api/config/bot`을 거친다.
 3. ~~**봇 실행 로직이 GUI에 중복돼 있다.**~~ → 해결: 로컬 봇과 범용 `/api/ext-process/*`가 지워졌다(L1). 디스코드 연동은 데몬의 `relay_agent.rs` 하나뿐이다.
 4. **GUI가 데몬의 경로 일부를 정한다.** `saba-chan-gui/src-tauri/src/lifecycle.rs`에서 `SABA_INSTANCES_PATH`, `SABA_IPC_PORT`를 GUI가 정해 주입한다. ~~`SABA_MODULES_PATH`~~ → 해결: 모듈 폴더는 데몬이 `config.json` `paths`로 정한다(§1.5).
