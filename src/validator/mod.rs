@@ -667,10 +667,12 @@ mod held_ports {
 
     /// 표의 행 수와 행들을 읽는다. 표는 `dwNumEntries` 다음에 행 배열이 오는 모양이다
     unsafe fn rows<T, R>(buf: &[u64], table: *const T, first: *const R) -> &[R] {
-        let count = *(table as *const u32) as usize;
-        let start = first as usize - buf.as_ptr() as usize;
-        let fits = (buf.len() * 8).saturating_sub(start) / std::mem::size_of::<R>();
-        std::slice::from_raw_parts(first, count.min(fits))
+        unsafe {
+            let count = *(table as *const u32) as usize;
+            let start = first as usize - buf.as_ptr() as usize;
+            let fits = (buf.len() * 8).saturating_sub(start) / std::mem::size_of::<R>();
+            std::slice::from_raw_parts(first, count.min(fits))
+        }
     }
 
     /// TCP로 그 포트를 듣는 프로세스 (IPv4·IPv6 모두. 루프백 중계가 듣는 쪽이 인스턴스 서버인지 본다)

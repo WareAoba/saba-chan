@@ -140,7 +140,8 @@ entry = "lifecycle.py"
 /// 각 테스트마다 고유한 임시 인스턴스 디렉토리를 사용하여 병렬 실행 시 격리를 보장한다.
 /// 고른 포트를 그사이 다른 테스트의 데몬이 잡으면 그 데몬에 붙지 않고 다른 포트로 다시 띄운다
 async fn boot_ipc() -> (String, Arc<RwLock<Supervisor>>, tokio::task::JoinHandle<()>) {
-    std::env::set_var("SABA_AUTH_DISABLED", "1");
+    // edition 2024: 환경 변수 쓰기는 unsafe다. 테스트 준비에서만 쓴다
+    unsafe { std::env::set_var("SABA_AUTH_DISABLED", "1") };
     ensure_test_module();
 
     // 테스트별 고유 임시 인스턴스 디렉토리 (병렬 격리). 서버 작업이 끝나면(abort) 함께 지운다

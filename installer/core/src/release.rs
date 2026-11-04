@@ -344,7 +344,8 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
         let data = root.join("data");
         std::fs::create_dir_all(&data).unwrap();
-        std::env::set_var("SABA_DATA_DIR", &data);
+        // edition 2024: 환경 변수 쓰기는 unsafe다. 테스트 준비에서만 쓴다
+        unsafe { std::env::set_var("SABA_DATA_DIR", &data) };
 
         let zip_path = root.join("module.zip");
         let mut zip = zip::ZipWriter::new(std::fs::File::create(&zip_path).unwrap());
@@ -362,7 +363,8 @@ mod tests {
             saba_chan_updater_lib::integrity::trust_of("module-palworld", &target),
             saba_chan_updater_lib::integrity::Trust::Verified
         );
-        std::env::remove_var("SABA_DATA_DIR");
+        // edition 2024: 환경 변수 쓰기는 unsafe다. 테스트 준비에서만 쓴다
+        unsafe { std::env::remove_var("SABA_DATA_DIR") };
         let _ = std::fs::remove_dir_all(&root);
     }
 }

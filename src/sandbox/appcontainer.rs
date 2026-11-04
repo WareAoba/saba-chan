@@ -478,35 +478,37 @@ mod imp {
 
     /// DACL에 이미 그 권한을 주는 허용 ACE가 있는가 (프로필 SID나 ALL APPLICATION PACKAGES)
     unsafe fn existing(dacl: PACL, sid: PSID, everyone: PSID, mask: DWORD, inherit: bool) -> super::Existing {
-        use super::{AceView, Who};
-        if dacl.is_null() {
-            return super::Existing::Elsewhere; // DACL이 없으면 누구나 접근할 수 있다
-        }
-        let mut info: ACL_SIZE_INFORMATION = std::mem::zeroed();
-        if GetAclInformation(dacl, &mut info as *mut _ as *mut c_void, std::mem::size_of::<ACL_SIZE_INFORMATION>() as DWORD, AclSizeInformation) == 0 {
-            return super::Existing::None;
-        }
-        let aces = (0..info.AceCount).filter_map(|i| {
-            let mut ace: *mut c_void = null_mut();
-            if GetAce(dacl, i, &mut ace) == 0 || ace.is_null() {
-                return None;
+        unsafe {
+            use super::{AceView, Who};
+            if dacl.is_null() {
+                return super::Existing::Elsewhere; // DACL이 없으면 누구나 접근할 수 있다
             }
-            let header = &*(ace as *const ACE_HEADER);
-            if header.AceType != ACCESS_ALLOWED_ACE_TYPE as u8 {
-                return Some(AceView { allowed: false, mask: 0, flags: header.AceFlags, who: Who::Other });
+            let mut info: ACL_SIZE_INFORMATION = std::mem::zeroed();
+            if GetAclInformation(dacl, &mut info as *mut _ as *mut c_void, std::mem::size_of::<ACL_SIZE_INFORMATION>() as DWORD, AclSizeInformation) == 0 {
+                return super::Existing::None;
             }
-            let allowed = &*(ace as *const ACCESS_ALLOWED_ACE);
-            let ace_sid = &allowed.SidStart as *const DWORD as PSID;
-            let who = if EqualSid(ace_sid, sid) != 0 {
-                Who::Own
-            } else if EqualSid(ace_sid, everyone) != 0 {
-                Who::Packages
-            } else {
-                Who::Other
-            };
-            Some(AceView { allowed: true, mask: allowed.Mask, flags: header.AceFlags, who })
-        });
-        super::existing_grant(aces.collect::<Vec<_>>(), mask, inherit)
+            let aces = (0..info.AceCount).filter_map(|i| {
+                let mut ace: *mut c_void = null_mut();
+                if GetAce(dacl, i, &mut ace) == 0 || ace.is_null() {
+                    return None;
+                }
+                let header = &*(ace as *const ACE_HEADER);
+                if header.AceType != ACCESS_ALLOWED_ACE_TYPE as u8 {
+                    return Some(AceView { allowed: false, mask: 0, flags: header.AceFlags, who: Who::Other });
+                }
+                let allowed = &*(ace as *const ACCESS_ALLOWED_ACE);
+                let ace_sid = &allowed.SidStart as *const DWORD as PSID;
+                let who = if EqualSid(ace_sid, sid) != 0 {
+                    Who::Own
+                } else if EqualSid(ace_sid, everyone) != 0 {
+                    Who::Packages
+                } else {
+                    Who::Other
+                };
+                Some(AceView { allowed: true, mask: allowed.Mask, flags: header.AceFlags, who })
+            });
+            super::existing_grant(aces.collect::<Vec<_>>(), mask, inherit)
+        }
     }
 
     /// ACL을 읽거나 고칠 폴더를 연다. 경로 마지막이 링크면 따라가지 않고, 연 폴더의 실제 경로가 `push`가 정한

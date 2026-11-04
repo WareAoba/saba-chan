@@ -1,12 +1,15 @@
 [package]
 name = "saba-chan-cli"
 version = "0.1.12-beta.3"
-edition = "2021"
+edition = "2024"
 authors = ["WareAoba"]
 description = "Command-line interface for the Saba-chan daemon"
 repository = "https://github.com/WareAoba/saba-chan"
 license = "MIT"
 keywords = ["cli", "server-management", "game-server"]
+
+[lints]
+workspace = true
 
 [[bin]]
 name = "saba-chan-cli"

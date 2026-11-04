@@ -162,7 +162,8 @@ fn concrete(path: &str) -> String {
 
 #[tokio::test]
 async fn every_route_is_registered_and_requires_the_token() {
-    std::env::remove_var("SABA_AUTH_DISABLED");
+    // edition 2024: 환경 변수 쓰기는 unsafe다. 테스트 준비에서만 쓴다
+    unsafe { std::env::remove_var("SABA_AUTH_DISABLED") };
     let token = saba_core::ipc::auth::generate_and_save_token().expect("token");
 
     let instances = tempfile::tempdir().unwrap();

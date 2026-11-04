@@ -1,9 +1,12 @@
 [package]
 name = "saba-chan-installer-core"
 version = "0.1.12-beta.3"
-edition = "2021"
+edition = "2024"
 authors = ["WareAoba"]
 description = "Saba-chan install/uninstall engine shared by the installer GUI and saba-chan-cli install"
+
+[lints]
+workspace = true
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }

@@ -106,7 +106,8 @@ server_not_running = "The test server is off"
     fs::write(test_mod.join("lifecycle.py"), "# minimal\n")
         .expect("write test lifecycle.py");
 
-    std::env::set_var("SABA_MODULES_PATH", tmp.to_str().unwrap());
+    // edition 2024: 환경 변수 쓰기는 unsafe다. 테스트 준비에서만 쓴다
+    unsafe { std::env::set_var("SABA_MODULES_PATH", tmp.to_str().unwrap()) };
     for name in ["e2e-mock", "test-module"] {
         saba_core::sandbox::set_consent(saba_core::sandbox::Consent::Unisolated, &format!("module-{name}"), true)
             .expect("consent to the copied test module");
@@ -123,7 +124,8 @@ async fn boot_e2e_ipc() -> (
     std::path::PathBuf, // instances_dir (cleanup용)
     std::path::PathBuf, // data_dir (cleanup용 — SABA_DATA_DIR 격리)
 ) {
-    std::env::set_var("SABA_AUTH_DISABLED", "1");
+    // edition 2024: 환경 변수 쓰기는 unsafe다. 테스트 준비에서만 쓴다
+    unsafe { std::env::set_var("SABA_AUTH_DISABLED", "1") };
 
     // 테스트용 데이터 디렉토리 격리 — 실제 AppData 오염 방지.
     // SABA_DATA_DIR은 프로세스 전역이라 테스트마다 바꾸면 병렬 테스트끼리 서로의
@@ -134,7 +136,8 @@ async fn boot_e2e_ipc() -> (
             let dir = std::env::temp_dir()
                 .join(format!("saba-e2e-data-{}", std::process::id()));
             fs::create_dir_all(&dir).expect("create data dir");
-            std::env::set_var("SABA_DATA_DIR", dir.to_str().unwrap());
+            // edition 2024: 환경 변수 쓰기는 unsafe다. 테스트 준비에서만 쓴다
+            unsafe { std::env::set_var("SABA_DATA_DIR", dir.to_str().unwrap()) };
             dir
         })
         .clone();

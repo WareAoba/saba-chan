@@ -1,9 +1,12 @@
 [package]
 name = "saba-chan-gui"
 version = "0.1.12-beta.3"
-edition = "2021"
+edition = "2024"
 authors = ["WareAoba"]
 description = "Saba-chan desktop interface (Tauri shell)"
+
+[lints]
+workspace = true
 
 [lib]
 name = "saba_chan_gui_app"
