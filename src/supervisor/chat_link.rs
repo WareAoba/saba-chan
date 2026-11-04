@@ -111,9 +111,17 @@ pub fn to_discord(instance_id: &str) -> Vec<Value> {
     list(instance_id).into_iter().filter(|l| l.direction.to_discord()).map(|l| json!({ "guild": l.guild, "channel": l.channel })).collect()
 }
 
-/// 그 서버의 연동을 모두 끄고 연동마다 `instance.chat_link`를 낸다 (`reason`: `empty` 모두 나감, `stopped` 프로세스 끝남)
-pub fn end(instance_id: &str, instance: &str, reason: &str) {
-    let removed = links().lock().unwrap_or_else(|e| e.into_inner()).remove(instance_id).unwrap_or_default();
+/// 그 서버의 연동을 모두 끄고 연동마다 `instance.chat_link`를 낸다 (`reason`: `empty` 모두 나감, `stopped` 프로세스 끝남).
+/// `generation`은 부른 쪽이 센 접속자 목록(`players::roster_start`)이다. 그 사이 새 프로세스가 세기 시작했으면 새 연동이므로 그대로 둔다.
+/// 연동 락을 쥔 채 확인한다: 켜기(`toggle`)도 같은 락 안에서 접속자 수를 본다
+pub fn end(instance_id: &str, instance: &str, reason: &str, generation: u64) {
+    let removed = {
+        let mut map = links().lock().unwrap_or_else(|e| e.into_inner());
+        if !super::players::is_current(instance_id, generation) {
+            return;
+        }
+        map.remove(instance_id).unwrap_or_default()
+    };
     for link in removed {
         crate::events::emit("instance.chat_link", json!({ "instanceId": instance_id, "instance": instance, "guild": link.guild, "channel": link.channel, "active": false, "reason": reason }));
     }
@@ -196,7 +204,23 @@ mod tests {
         assert!(to_discord(id).is_empty());
         toggle(id, "100000000000000002", C2, None, ok).unwrap();
         assert_eq!(to_discord(id), vec![json!({ "guild": "100000000000000002", "channel": C2 })]);
-        end(id, "s", "empty");
+        end(id, "s", "empty", super::super::players::roster_start(id));
+        assert!(list(id).is_empty());
+    }
+
+    // 끝난 이전 프로세스의 감시가 늦게 끝나도 새 프로세스에서 켠 연동은 남는다
+    #[test]
+    fn an_old_process_ending_leaves_the_new_processes_links() {
+        use super::super::players::{roster_change, roster_end, roster_start};
+        let id = "link-generation";
+        let old = roster_start(id);
+        let new = roster_start(id);
+        roster_change(id, new, "Bob", true);
+        toggle(id, G, C1, None, ok).unwrap();
+        end(id, "s", "stopped", old);
+        roster_end(id, old);
+        assert_eq!(list(id).len(), 1);
+        end(id, "s", "stopped", new);
         assert!(list(id).is_empty());
     }
 

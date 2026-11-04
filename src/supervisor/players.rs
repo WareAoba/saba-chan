@@ -87,6 +87,11 @@ pub fn roster_change(instance_id: &str, generation: u64, name: &str, joined: boo
     }
 }
 
+/// 지금 세는 목록이 `generation`의 것인가 (그 사이 새 프로세스가 세기 시작하지 않았다)
+pub fn is_current(instance_id: &str, generation: u64) -> bool {
+    rosters().lock().unwrap_or_else(|e| e.into_inner()).get(instance_id).is_some_and(|r| r.generation == generation)
+}
+
 /// 프로세스가 끝났다. 그 사이 새 프로세스가 세기 시작했으면 그대로 둔다
 pub fn roster_end(instance_id: &str, generation: u64) {
     let mut map = rosters().lock().unwrap_or_else(|e| e.into_inner());
