@@ -917,7 +917,7 @@ export function useServerActions({
 
     // ── handleAddServer ─────────────────────────────────────
     const handleAddServer = async (payload: AddServerPayload, legacyModuleName?: string) => {
-        // payload = { name, module_name, accept_agreements?, preset?, extension_data?, migration_source?, migration_mode?, module_settings? }
+        // payload = { name, module_name, accept_agreements?, preset?, extension_data?, migration_source?, migration_mode?, module_settings?, version?, working_dir?, managed_start?, port? }
         const serverName = typeof payload === 'string' ? payload : payload?.name;
         const moduleName = typeof payload === 'string' ? legacyModuleName : payload?.module_name;
 
@@ -965,6 +965,11 @@ export function useServerActions({
             // 모듈 추천 프리셋 id (값은 데몬이 푼다)
             if (payload?.preset) {
                 instanceData.preset = payload.preset;
+            }
+
+            // 마법사에서 고른 버전·폴더·실행 방식·포트 (installFields.createBody가 고른 것만 싣는다)
+            for (const key of ['version', 'working_dir', 'managed_start', 'port'] as const) {
+                if (payload?.[key] !== undefined) instanceData[key] = payload[key];
             }
 
             // 마이그레이션: 기존 서버 디렉토리 직접 연결

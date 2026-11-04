@@ -39,3 +39,47 @@ describe('서버 만들기: 같은 이름', () => {
         expect(modal.message).toBe("'A' is already taken");
     });
 });
+
+describe('서버 만들기: 마법사에서 고른 값', () => {
+    beforeEach(() => {
+        window.api = {
+            serverList: vi.fn().mockResolvedValue({ servers: [] }),
+            instanceCreate: vi.fn().mockResolvedValue({ success: true, id: 'new' }),
+        };
+        window.showToast = vi.fn();
+    });
+
+    it('버전·폴더·실행 방식·포트를 데몬 만들기 요청에 그대로 싣는다', async () => {
+        const { result } = renderHook(() =>
+            useServerActions({
+                servers: [],
+                setServers: vi.fn(),
+                modules: [],
+                loading: false,
+                setLoading: vi.fn(),
+                setModal: vi.fn(),
+                setProgressBar: vi.fn(),
+                openConsole: vi.fn(),
+                setShowModuleManager: vi.fn(),
+            }),
+        );
+        await act(async () => {
+            await result.current.handleAddServer({
+                name: 'A',
+                module_name: 'game',
+                version: '1.21.4',
+                working_dir: 'D:\\Servers\\A',
+                managed_start: false,
+                port: 25566,
+            });
+        });
+        expect(window.api.instanceCreate).toHaveBeenCalledWith(
+            expect.objectContaining({
+                version: '1.21.4',
+                working_dir: 'D:\\Servers\\A',
+                managed_start: false,
+                port: 25566,
+            }),
+        );
+    });
+});
