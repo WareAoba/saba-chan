@@ -822,6 +822,22 @@ fn next_runs(id: &str, schedule: &[ScheduledTask]) -> Vec<Option<i64>> {
         .collect()
 }
 
+/// 하트비트의 예약 목록 `[{instanceId, action, next}]` (`next`는 Unix 초): 켜 둔 예약의 다음 실행을 가까운 순으로 `limit`개까지.
+/// 릴레이가 알림 채널 맨 위 글에 보인다
+pub fn upcoming_runs(instances: &[crate::instance::ServerInstance], limit: usize) -> Vec<Value> {
+    let mut runs: Vec<(i64, &str, TaskAction)> = instances
+        .iter()
+        .flat_map(|inst| {
+            next_runs(&inst.id, &inst.schedule)
+                .into_iter()
+                .zip(&inst.schedule)
+                .filter_map(move |(next, task)| Some((next?, inst.id.as_str(), task.action)))
+        })
+        .collect();
+    runs.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(b.1)));
+    runs.into_iter().take(limit).map(|(next, id, action)| json!({ "instanceId": id, "action": action, "next": next })).collect()
+}
+
 pub async fn get_schedule(Path(id): Path<String>, State(state): State<IPCServer>) -> Response {
     let supervisor = state.supervisor.read().await;
     let Some(instance) = supervisor.instance_store.get(&id) else {
@@ -2351,5 +2367,23 @@ print(json.dumps({'success': True, 'snapshots': [{'id': 'startup/backup_1', 'cre
         let dir = state.supervisor.read().await.instance_store.instance_dir(&id).join("backups");
         assert!(backup::list(&dir).is_empty());
         assert!(std::fs::read_to_string(tmp.path().join("server/commands.log")).unwrap().ends_with("save-on\n"));
+    }
+
+    /// 하트비트의 예약 목록: 켜 둔 것만, 가까운 순으로, 상한까지
+    #[test]
+    fn upcoming_runs_list_enabled_tasks_soonest_first() {
+        let task = |v: Value| serde_json::from_value::<ScheduledTask>(v).unwrap();
+        let mut a = crate::instance::ServerInstance::new("a", "plain");
+        a.schedule = vec![
+            task(json!({ "action": "restart", "every_minutes": 120 })),
+            task(json!({ "action": "backup", "every_minutes": 30, "enabled": false })),
+        ];
+        let mut b = crate::instance::ServerInstance::new("b", "plain");
+        b.schedule = vec![task(json!({ "action": "backup", "every_minutes": 60 }))];
+        let runs = upcoming_runs(&[a.clone(), b.clone()], 10);
+        let ids: Vec<_> = runs.iter().map(|r| (r["instanceId"].as_str().unwrap().to_string(), r["action"].clone())).collect();
+        assert_eq!(ids, vec![(b.id.clone(), json!("backup")), (a.id.clone(), json!("restart"))], "{runs:?}");
+        assert!(runs.iter().all(|r| r["next"].as_i64().is_some()));
+        assert_eq!(upcoming_runs(&[a, b], 1).len(), 1);
     }
 }

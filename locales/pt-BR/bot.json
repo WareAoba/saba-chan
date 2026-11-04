@@ -161,6 +161,13 @@
           "description": "Avisar no canal de alertas deste servidor do Discord quando este servidor ligar ou desligar sem um comando do Discord (falhas incluídas)",
           "name": "Alerta de início"
         }
+      },
+      "full_notice": {
+        "set": {
+          "title": "Aviso de servidor cheio",
+          "description": "Avisar no canal de alertas deste servidor do Discord quando este servidor lotar ou abrir uma vaga",
+          "name": "Aviso cheio"
+        }
       }
     },
     "server": {

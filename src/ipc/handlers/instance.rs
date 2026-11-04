@@ -2418,6 +2418,8 @@ pub async fn begin_server_update(state: &IPCServer, id: &str) -> Result<tokio::t
                     .unwrap_or(false);
                 if success {
                     tracing::info!("Server update completed for '{}'", name_done);
+                    // 켜짐·꺼짐 알림을 켠 길드의 알림 채널에 "업데이트 끝남" (릴레이)
+                    crate::events::emit("instance.updated", json!({ "instanceId": backup_id, "instance": name_done }));
                     tracker_done.update(
                         &name_done,
                         crate::ipc::ProvisionProgress {

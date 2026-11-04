@@ -1,8 +1,12 @@
-//! 켜짐 알림: 길드마다 고른 서버가 사바쨩을 거쳐 켜지면 그 길드의 알림 채널에 알린다 (봇 설정 `nodeSettings[guild].startNotice`).
+//! 서버별 알림 목록: 길드마다 고른 서버만 그 길드의 알림 채널에 알린다 (봇 설정 `nodeSettings[guild].<키>`).
 //!
-//! - `GET /api/guilds/:guild/start-notice` → `{guildId, instances, allowedInstances}` (`allowedInstances`가 null이면 모든 서버를 켤 수 있다)
-//! - `PUT /api/instance/:id/start-notice/:guild` `{enabled}` → `{success, id, guildId, enabled, instances}`.
-//!   액션 `instance.start_notice.set`(디스코드 `/<서버> 켜짐-알림`)도 이 라우트를 부른다.
+//! - 켜짐·꺼짐 알림 `startNotice`: 사바쨩 명령으로 하지 않은 켜짐·꺼짐·크래시, 게임 서버 업데이트 끝남
+//!   - `GET /api/guilds/:guild/start-notice` → `{guildId, instances, allowedInstances}` (`allowedInstances`가 null이면 모든 서버를 켤 수 있다)
+//!   - `PUT /api/instance/:id/start-notice/:guild` `{enabled}` → `{success, id, guildId, enabled, instances}`.
+//!     액션 `instance.start_notice.set`(디스코드 `/<서버> 켜짐-알림`)도 이 라우트를 부른다.
+//! - 자리 꽉 참 알림 `fullNotice`: 접속자가 최대 인원에 닿았을 때와 다시 자리가 났을 때
+//!   - `GET /api/guilds/:guild/full-notice`, `PUT /api/instance/:id/full-notice/:guild` (모양은 위와 같다).
+//!     액션 `instance.full_notice.set`도 이 라우트를 부른다.
 //!
 //! 기본은 아무 서버도 알리지 않는다. 길드가 쓸 서버를 정해 두었으면(`allowedInstances`) 그 서버만 켤 수 있다.
 //! 무엇을 알릴지(디스코드·말하는 사바쨩이 켠 것, 사바쨩 밖에서 켜진 것은 빼고)는 릴레이가 이벤트 출처로 정한다.
@@ -18,28 +22,47 @@ use serde_json::{json, Value};
 use super::super::IPCServer;
 
 pub const KEY: &str = "startNotice";
+pub const FULL_KEY: &str = "fullNotice";
 
 fn ids(node: Option<&Value>, key: &str) -> Option<Vec<String>> {
     Some(node?.get(key)?.as_array()?.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
 }
 
 /// `GET /api/guilds/:guild/start-notice`
-pub async fn get(State(state): State<IPCServer>, Path(guild): Path<String>) -> Response {
-    let bot = state.config_store.get_bot_config().await;
-    let node = bot.node_settings.get(&guild);
-    let instances = ids(node, KEY).unwrap_or_default();
-    Json(json!({ "guildId": guild, "instances": instances, "allowedInstances": ids(node, "allowedInstances") })).into_response()
+pub async fn get(state: State<IPCServer>, guild: Path<String>) -> Response {
+    get_list(state, guild, KEY).await
 }
 
 /// `PUT /api/instance/:id/start-notice/:guild` `{enabled}`
-pub async fn put(State(state): State<IPCServer>, Path((id, guild)): Path<(String, String)>, Json(body): Json<Value>) -> Response {
+pub async fn put(state: State<IPCServer>, path: Path<(String, String)>, body: Json<Value>) -> Response {
+    put_list(state, path, body, KEY).await
+}
+
+/// `GET /api/guilds/:guild/full-notice`
+pub async fn full_get(state: State<IPCServer>, guild: Path<String>) -> Response {
+    get_list(state, guild, FULL_KEY).await
+}
+
+/// `PUT /api/instance/:id/full-notice/:guild` `{enabled}`
+pub async fn full_put(state: State<IPCServer>, path: Path<(String, String)>, body: Json<Value>) -> Response {
+    put_list(state, path, body, FULL_KEY).await
+}
+
+async fn get_list(State(state): State<IPCServer>, Path(guild): Path<String>, key: &str) -> Response {
+    let bot = state.config_store.get_bot_config().await;
+    let node = bot.node_settings.get(&guild);
+    let instances = ids(node, key).unwrap_or_default();
+    Json(json!({ "guildId": guild, "instances": instances, "allowedInstances": ids(node, "allowedInstances") })).into_response()
+}
+
+async fn put_list(State(state): State<IPCServer>, Path((id, guild)): Path<(String, String)>, Json(body): Json<Value>, key: &'static str) -> Response {
     let Some(enabled) = body.get("enabled").and_then(Value::as_bool) else {
         return invalid("enabled", "invalid");
     };
     if state.supervisor.read().await.instance_store.get(&id).is_none() {
         return (StatusCode::NOT_FOUND, Json(json!({ "success": false, "error": format!("Instance not found: {}", id), "error_code": "not_found" }))).into_response();
     }
-    // 길드가 쓸 서버를 고르는 것과 켜짐 알림을 켜는 것을 한 잠금 안에서 본다
+    // 길드가 쓸 서버를 고르는 것과 알림을 켜는 것을 한 잠금 안에서 본다
     let saved = state
         .config_store
         .update_node_settings(&guild, |node| {
@@ -47,7 +70,7 @@ pub async fn put(State(state): State<IPCServer>, Path((id, guild)): Path<(String
             if enabled && ids(Some(&node_value), "allowedInstances").is_some_and(|allowed| !allowed.contains(&id)) {
                 return (Err(()), false);
             }
-            let mut list = ids(Some(&node_value), KEY).unwrap_or_default();
+            let mut list = ids(Some(&node_value), key).unwrap_or_default();
             let before = list.clone();
             list.retain(|x| x != &id);
             if enabled {
@@ -57,9 +80,9 @@ pub async fn put(State(state): State<IPCServer>, Path((id, guild)): Path<(String
                 return (Ok(list), false);
             }
             if list.is_empty() {
-                node.remove(KEY);
+                node.remove(key);
             } else {
-                node.insert(KEY.into(), json!(list));
+                node.insert(key.into(), json!(list));
             }
             (Ok(list), true)
         })
@@ -72,7 +95,7 @@ pub async fn put(State(state): State<IPCServer>, Path((id, guild)): Path<(String
 }
 
 fn invalid(field: &str, reason: &str) -> Response {
-    (StatusCode::BAD_REQUEST, Json(json!({ "success": false, "error": "invalid start notice", "error_code": "validation_failed", "details": [{ "field": field, "reason": reason }] }))).into_response()
+    (StatusCode::BAD_REQUEST, Json(json!({ "success": false, "error": "invalid notice list", "error_code": "validation_failed", "details": [{ "field": field, "reason": reason }] }))).into_response()
 }
 
 #[cfg(test)]
@@ -135,7 +158,20 @@ mod tests {
 
         // 봇 설정 일괄 저장은 이 키를 바꾸지 않는다
         set(ia.clone(), g1, json!({ "enabled": true })).await;
-        state.config_store.set_bot_config_from_json(json!({ "nodeSettings": { g1: { "startNotice": [] } } })).await.unwrap();
+        state.config_store.set_bot_config_from_json(json!({ "nodeSettings": { g1: { "startNotice": [], "fullNotice": [] } } })).await.unwrap();
         assert_eq!(shown(g1).await, json!([ia]));
+
+        // 자리 꽉 참 알림은 따로 정한다 (같은 규칙)
+        let full = |id: String, body: Value| {
+            let state = state.clone();
+            async move { crate::ipc::internal::into_internal(full_put(State(state), Path((id, g1.to_string())), Json(body)).await).await }
+        };
+        assert_eq!(full(ib.clone(), json!({ "enabled": true })).await.body["details"][0]["reason"], "not_allowed");
+        assert_eq!(full(ia.clone(), json!({ "enabled": true })).await.body["instances"], json!([ia]));
+        let view = crate::ipc::internal::into_internal(full_get(State(state.clone()), Path(g1.to_string())).await).await.body;
+        assert_eq!(view["instances"], json!([ia]));
+        assert_eq!(shown(g1).await, json!([ia]), "the start notice list is separate");
+        state.config_store.set_bot_config_from_json(json!({ "nodeSettings": { g1: { "fullNotice": [] } } })).await.unwrap();
+        assert_eq!(state.config_store.get_bot_config().await.node_settings[g1][FULL_KEY], json!([ia]), "bulk saves keep it");
     }
 }

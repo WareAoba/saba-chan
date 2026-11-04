@@ -615,6 +615,11 @@ impl Session {
     /// 하트비트 메타데이터: 릴레이 봇이 자동완성·접두사 표시에 쓴다
     async fn metadata(&self) -> Value {
         use crate::chat::api::DaemonApi;
+        // `/사바쨩 상태`의 CPU·RAM과 PC 부하 (폴더 크기는 재지 않는다)
+        let roots = crate::ipc::handlers::system::instance_roots(&self.server).await;
+        let monitor = self.server.system_monitor.clone();
+        let snapshot = tokio::task::spawn_blocking(move || monitor.sample(&roots, &[], false)).await.ok();
+        let usage = snapshot.as_ref().map(|s| s.instances.as_slice()).unwrap_or_default();
         let servers: Vec<Value> = match crate::ipc::internal::into_internal(
             crate::ipc::handlers::server::list_servers_internal(&self.server).await,
         )
@@ -622,16 +627,15 @@ impl Session {
         .body
         .get("servers")
         {
-            Some(Value::Array(list)) => {
-                // `/사바쨩 상태`의 CPU·RAM (폴더 크기는 재지 않는다)
-                let roots = crate::ipc::handlers::system::instance_roots(&self.server).await;
-                let monitor = self.server.system_monitor.clone();
-                let usage = tokio::task::spawn_blocking(move || monitor.sample(&roots, &[], false).instances).await.unwrap_or_default();
-                list.iter()
-                    .map(|s| relay_server_entry(s, usage.iter().find(|u| s.get("id").and_then(|v| v.as_str()) == Some(u.id.as_str()))))
-                    .collect()
-            }
+            Some(Value::Array(list)) => list
+                .iter()
+                .map(|s| relay_server_entry(s, usage.iter().find(|u| s.get("id").and_then(|v| v.as_str()) == Some(u.id.as_str()))))
+                .collect(),
             _ => Vec::new(),
+        };
+        let schedules = {
+            let supervisor = self.server.supervisor.read().await;
+            crate::ipc::handlers::backup::upcoming_runs(supervisor.instance_store.list(), SCHEDULES_MAX)
         };
         // 모듈 locales 파일은 하트비트마다 읽으므로 async 작업자 밖에서 읽는다
         let views = self.server.modules().await;
@@ -686,6 +690,8 @@ impl Session {
 
         let mut meta = json!({
             "servers": servers,
+            // 알림 채널 맨 위 글의 예약 목록
+            "schedules": schedules,
             "modules": modules,
             "moduleDetails": {},
             "botConfig": {
@@ -702,6 +708,18 @@ impl Session {
         // 길드별 허용 인스턴스. 목록이 있는 길드만 싣는다 (없으면 릴레이는 제한 없음으로 본다)
         if let Some(allowed) = allowed_instances_by_guild(&bot.node_settings) {
             meta["allowedInstances"] = allowed;
+        }
+        // PC 과부하·디스크 부족 알림 (릴레이가 주인에게)
+        if let Some(snapshot) = &snapshot {
+            meta["host"] = host_load(snapshot);
+        }
+        // 백업은 실패만 알린다 (봇 설정 `backupNotice`)
+        if bot.backup_notice == crate::config_store::BackupNotice::Failures {
+            meta["backupNotice"] = json!("failures");
+        }
+        // 길드별 자리 꽉 참 알림을 켠 서버 (`/api/instance/:id/full-notice/:guild`). 켠 길드만 싣는다
+        if let Some(on) = ids_by_guild(&bot.node_settings, crate::ipc::handlers::start_notice::FULL_KEY) {
+            meta["fullNotice"] = on;
         }
         // 길드별 켜짐 알림을 켠 서버 (`/api/instance/:id/start-notice/:guild`). 켠 길드만 싣는다
         if let Some(on) = ids_by_guild(&bot.node_settings, crate::ipc::handlers::start_notice::KEY) {
@@ -1266,6 +1284,8 @@ fn relay_event(event: &crate::events::Event) -> Option<Value> {
         "instance.stopped" => pick(&["at", "instanceId", "instance", "source", "userName", "kind"]),
         // 켠 서버의 모듈 새 버전·게임 서버 새 빌드 (시작을 시킨 사람에게만 알린다)
         "instance.update_notice" => pick(&["at", "instanceId", "instance", "kind", "module", "latest"]),
+        // 게임 서버 업데이트가 끝났다 (예약·앱·디스코드 어디서 시켰든)
+        "instance.updated" => pick(&["at", "instanceId", "instance"]),
         // 디스코드에서 시작해 뒤에서 마친 여러 단계 실행 (I1). 원격 실행의 단계 줄에는 오류 원문이 없다(코드만)
         "plan.done" if d.get("guildId").is_some() => pick(&["at", "runId", "guildId", "ok", "steps", "stoppedAt"]),
         // 게임 채팅 전달: 사용자가 켠 서버의 채팅만 데몬이 다 만든 문장(`text`)으로 낸다 (`supervisor::game_chat`)
@@ -1678,8 +1698,27 @@ fn relay_command_entry(c: &crate::supervisor::module_loader::CommandField, alias
     entry
 }
 
-/// 하트비트마다 보내는 메타데이터 키: 서버 목록(CPU·RAM·접속자가 매번 바뀐다)과 릴레이가 매번 캐시를 맞추는 권한
-const HEARTBEAT_ALWAYS: [&str; 3] = ["servers", "permissions", "permissionsAt"];
+/// 하트비트마다 보내는 메타데이터 키: 서버 목록(CPU·RAM·접속자가 매번 바뀐다)과 릴레이가 매번 캐시를 맞추는 권한,
+/// PC 부하와 예약 목록(다음 실행이 지나면 바뀐다)
+const HEARTBEAT_ALWAYS: [&str; 5] = ["servers", "permissions", "permissionsAt", "host", "schedules"];
+/// 그중 지문에 넣지 않는 키 (매번 바뀌어도 큰 값을 다시 보내지 않게)
+const HEARTBEAT_VOLATILE: [&str; 4] = ["servers", "permissionsAt", "host", "schedules"];
+/// 하트비트 예약 목록 상한 (맨 위 글은 가까운 순으로 10개까지 보인다)
+const SCHEDULES_MAX: usize = 10;
+
+/// 하트비트의 PC 부하 `{cpu, mem, diskFree?}` (정수 %). 디스크는 서버·백업 폴더가 있는 드라이브 중 가장 덜 남은 곳.
+/// 드라이브 이름·경로는 싣지 않는다
+fn host_load(snapshot: &crate::system_monitor::MetricsSnapshot) -> Value {
+    let pct = |part: f64, whole: f64| if whole > 0.0 { (part * 100.0 / whole).round().clamp(0.0, 100.0) as u64 } else { 0 };
+    let mut load = json!({
+        "cpu": (snapshot.cpu.total_percent as f64).round().clamp(0.0, 100.0) as u64,
+        "mem": pct(snapshot.memory.used_bytes as f64, snapshot.memory.total_bytes as f64),
+    });
+    if let Some(free) = snapshot.disks.iter().filter(|d| d.total_bytes > 0).map(|d| pct(d.available_bytes as f64, d.total_bytes as f64)).min() {
+        load["diskFree"] = json!(free);
+    }
+    load
+}
 
 /// 하트비트 본문. 적용한 새 길드가 있으면 확인 응답(`linkedGuildsAck`)을 싣는다
 fn heartbeat_body(metadata: Value, hash: &str, unchanged: bool, acks: &[String]) -> Value {
@@ -1699,22 +1738,19 @@ fn heartbeat_body(metadata: Value, hash: &str, unchanged: bool, acks: &[String])
 }
 
 /// 하트비트 메타데이터를 보낼 모양으로: (보낼 메타데이터, 지문, 바뀌지 않아 줄였는가).
-/// 지문은 `servers`·`permissionsAt`을 뺀 나머지(권한 포함)의 SHA-256이다. 릴레이가 받아 둔 지문(`sent`)과 같으면
+/// 지문은 `HEARTBEAT_VOLATILE`을 뺀 나머지(권한 포함)의 SHA-256이다. 릴레이가 받아 둔 지문(`sent`)과 같으면
 /// `HEARTBEAT_ALWAYS`만 보낸다 (모듈 명령·액션·낱말처럼 큰 값은 바뀔 때만)
 fn heartbeat_metadata(mut meta: Value, sent: Option<&str>) -> (Value, String, bool) {
     use sha2::{Digest, Sha256};
     let Value::Object(map) = &mut meta else { return (meta, String::new(), false) };
-    let servers = map.remove("servers");
-    let at = map.remove("permissionsAt");
+    let volatile: Vec<(&str, Value)> = HEARTBEAT_VOLATILE.iter().filter_map(|k| Some((*k, map.remove(*k)?))).collect();
     let hash = hex::encode(Sha256::digest(Value::Object(map.clone()).to_string().as_bytes()));
     let unchanged = sent == Some(hash.as_str());
     if unchanged {
         map.retain(|k, _| HEARTBEAT_ALWAYS.contains(&k.as_str()));
     }
-    for (key, value) in [("servers", servers), ("permissionsAt", at)] {
-        if let Some(value) = value {
-            map.insert(key.to_string(), value);
-        }
+    for (key, value) in volatile {
+        map.insert(key.to_string(), value);
     }
     (meta, hash, unchanged)
 }
@@ -2476,10 +2512,16 @@ mod tests {
         let mut busy = meta.clone();
         busy["servers"] = json!([{ "id": "a", "usage": { "cpu": 3.0, "memMb": 10 } }]);
         busy["permissionsAt"] = json!(2);
+        // PC 부하와 예약 목록도 지문에 들지 않고 늘 간다
+        busy["host"] = json!({ "cpu": 91, "mem": 40, "diskFree": 7 });
+        busy["schedules"] = json!([{ "instanceId": "a", "action": "restart", "next": 1 }]);
         let (light, same, unchanged) = heartbeat_metadata(busy.clone(), Some(&hash));
         assert!(unchanged);
         assert_eq!(same, hash);
-        assert_eq!(light, json!({ "servers": busy["servers"], "permissions": { "g": {} }, "permissionsAt": 2 }));
+        assert_eq!(
+            light,
+            json!({ "servers": busy["servers"], "permissions": { "g": {} }, "permissionsAt": 2, "host": busy["host"], "schedules": busy["schedules"] })
+        );
         // 권한이나 큰 값이 바뀌면 지문이 바뀌어 전체를 보낸다
         for (key, value) in [("permissions", json!({ "g": { "defaultLevel": 2 } })), ("actions", json!([1]))] {
             let mut changed = meta.clone();
@@ -2488,6 +2530,26 @@ mod tests {
             assert!(!unchanged && other != hash, "{key}");
             assert_eq!(whole, changed);
         }
+    }
+
+    /// PC 부하는 정수 %로, 디스크는 가장 덜 남은 드라이브의 남은 비율만 (드라이브 이름은 싣지 않는다)
+    #[test]
+    fn host_load_is_whole_percents_and_the_fullest_disk() {
+        use crate::system_monitor::*;
+        let disk = |total: u64, avail: u64| DiskMetrics { mount: "D:\\".into(), total_bytes: total, available_bytes: avail, others_bytes: 0, instances: vec![], sizes_at_ms: None };
+        let snap = MetricsSnapshot {
+            sampled_at_ms: 0,
+            window_ms: 0,
+            cpu: CpuMetrics { cores: 8, total_percent: 81.6, others_percent: 0.0 },
+            memory: MemoryMetrics { total_bytes: 1000, used_bytes: 795, others_bytes: 0 },
+            disk_io: DiskIoMetrics { read_bps: 0, write_bps: 0, source: "physical", per_instance: false },
+            network: NetworkMetrics { rx_bps: 0, tx_bps: 0, per_instance: false },
+            disks: vec![disk(100, 40), disk(200, 14), disk(0, 0)],
+            instances: vec![],
+        };
+        assert_eq!(host_load(&snap), json!({ "cpu": 82, "mem": 80, "diskFree": 7 }));
+        let none = MetricsSnapshot { disks: vec![], ..snap };
+        assert!(host_load(&none).get("diskFree").is_none());
     }
 
     /// 하트비트는 기능 목록을 싣는다 (릴레이가 기능마다 이 PC를 가른다)
@@ -2658,6 +2720,7 @@ mod tests {
         let ready = ev("instance.ready", json!({"at": 1, "instanceId": "i", "instance": "mc1", "ok": false, "code": "start_failed", "line": "C:\\x"}));
         assert_eq!(relay_event(&ready).unwrap()["data"], json!({"at": 1, "instanceId": "i", "instance": "mc1", "ok": false, "code": "start_failed"}));
         // 켠 서버의 업데이트 알림은 종류·모듈·새 버전만
+        assert_eq!(relay_event(&ev("instance.updated", json!({"at": 1, "instanceId": "i", "instance": "pal"}))).unwrap()["data"], json!({"at": 1, "instanceId": "i", "instance": "pal"}));
         let notice = ev("instance.update_notice", json!({"at": 1, "instanceId": "i", "instance": "pal", "kind": "module", "module": "palworld", "latest": "1.1.0", "path": "C:\\x"}));
         assert_eq!(relay_event(&notice).unwrap()["data"], json!({"at": 1, "instanceId": "i", "instance": "pal", "kind": "module", "module": "palworld", "latest": "1.1.0"}));
         // 게임 채팅은 데몬이 만든 문장만 (채팅 원문·이름 칸은 따로 싣지 않는다)

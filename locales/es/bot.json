@@ -161,6 +161,13 @@
           "description": "Avisar en el canal de avisos de este servidor de Discord cuando este servidor se inicie o se detenga sin un comando de Discord (incluidos los fallos)",
           "name": "Aviso de inicio"
         }
+      },
+      "full_notice": {
+        "set": {
+          "title": "Aviso de servidor lleno",
+          "description": "Avisar en el canal de avisos de este servidor de Discord cuando este servidor se llene o vuelva a haber sitio",
+          "name": "Aviso lleno"
+        }
       }
     },
     "server": {

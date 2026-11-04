@@ -1240,6 +1240,23 @@ async fn start_notice_is_set_from_discord_by_admins_for_their_own_guild() {
     assert_eq!(item["name"]["en"], "Start alert");
 }
 
+// 사용자 11-04: 자리 꽉 참 알림도 서버마다 켠다. 켜짐 알림처럼 관리자 이상, 요청이 온 길드만
+#[tokio::test]
+async fn full_notice_is_set_from_discord_by_admins() {
+    let (state, id, _tmp) = server().await;
+    set_node(&state, json!({ "ownerDiscordId": "owner", "defaultLevel": 1, "members": { "admin": 2 } })).await;
+    let on = json!({ "enabled": true });
+    let id_ = "instance.full_notice.set";
+    assert_eq!(plan(&state, id_, Some(&id), &on, &relay("user", false)).await.unwrap_err().code, "PERMISSION_DENIED");
+    let planned = plan(&state, id_, Some(&id), &on, &relay("admin", false)).await.unwrap();
+    let done = run(&state, "", None, &Value::Null, planned["planId"].as_str(), &relay("admin", false)).await.unwrap();
+    assert_eq!(done["success"], true, "{done}");
+    assert_eq!(state.config_store.get_bot_config().await.node_settings["g"]["fullNotice"], json!([id]));
+    let (actions, _) = heartbeat_actions(&crate::chat::i18n::languages(), &[]);
+    let item = actions.iter().find(|a| a["id"] == id_).expect("in the Discord menu");
+    assert_eq!(item["title"]["ko"], "자리 꽉 참 알림");
+}
+
 /// 디스코드 문장 명령도 계획 → 실행 한 길로: 데몬이 문장을 해석해 액션과 서버를 알려 주고, 실행하면 문장 명령과 같은 답을 쓴다
 #[tokio::test]
 async fn a_sentence_plans_the_action_it_names_and_runs_with_the_same_reply() {
