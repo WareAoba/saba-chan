@@ -461,10 +461,10 @@ Tauri 커맨드(`installer/gui/src-tauri/src/lib.rs`): `get_installer_state`, `s
   | GET·PUT | `/relay/guilds/:g/channels` | `PUT /api/nodes/:g/channels`와 같은 모양(`bot/commands/assignments.ts` `assignChannels`·`channelsView`) |
   | GET·PATCH | `/relay/guilds/:g/chatbot` | `{settings, hasApiKey}`(`channelIds`는 `/channels`가 맡아 빼고, 키는 돌려주지 않는다). PATCH `{settings?, apiKey?: string\|null}` |
   | DELETE | `/relay/guilds/:g/chatbot/memory` | 이 서버의 장기 기억을 지운다 `{success:true}` |
-  | GET | `/relay/guilds/:g/moderation` | 앱의 `GET /api/nodes/:g/moderation`과 같은 모양(`services/guildModeration.ts`). `can` 중 하나가 있어야 한다 |
-  | PATCH | `/relay/guilds/:g/moderation/channels/:c` | 앱 경로와 같은 본문 → 채널 보기. 이름·주제·슬로우 모드(기간 포함)·잠금은 채널 관리, 잠금은 역할 관리도, 자동 청소(보관·매일·대상)는 메시지 관리 |
-  | POST | `/relay/guilds/:g/moderation/channels/:c/clear` | 앱 경로와 같은 본문 → `{deleted, kept, olderLeft, job}`. 메시지 관리 |
-  | DELETE | `/relay/guilds/:g/moderation/channels/:c/clear` | 이어 지우기를 멈춘다(채널의 중지 버튼과 같다) → `{stopping:true}`, 돌고 있지 않으면 404 `NO_CLEAR_JOB`. 메시지 관리 |
+  | GET | `/relay/guilds/:g/moderation` | 앱의 `GET /api/nodes/:g/moderation`과 같은 모양(`services/guildModeration.ts`). `can` 중 하나가 있어야 한다. `channels`에는 요청한 사람이 디스코드에서 볼 수 있는 채널만 담는다(채널 권한 덮어쓰기까지 본다) |
+  | PATCH | `/relay/guilds/:g/moderation/channels/:c` | 앱 경로와 같은 본문 → 채널 보기. 이름·주제·슬로우 모드(기간 포함)·잠금은 채널 관리, 잠금은 역할 관리도, 자동 청소(보관·매일·대상)는 메시지 관리. 권한은 그 채널에서의 권한(채널 권한 덮어쓰기 포함)으로 보고, 볼 수 없는 채널은 404 `UNKNOWN_CHANNEL` |
+  | POST | `/relay/guilds/:g/moderation/channels/:c/clear` | 앱 경로와 같은 본문 → `{deleted, kept, olderLeft, job}`. 그 채널에서의 메시지 관리(볼 수 없는 채널은 404 `UNKNOWN_CHANNEL`) |
+  | DELETE | `/relay/guilds/:g/moderation/channels/:c/clear` | 이어 지우기를 멈춘다(채널의 중지 버튼과 같다) → `{stopping:true}`, 돌고 있지 않으면 404 `NO_CLEAR_JOB`. 그 채널에서의 메시지 관리 |
   | PUT | `/relay/guilds/:g/moderation/mutes/:u` | `{duration:'off'\|'forever'\|분, reason?}` → `{result}`. 멤버 타임아웃, 그리고 대상보다 역할이 높아야 한다(서버 주인은 늘 된다, 아니면 403 `need:'RoleHierarchy'`). 자기 자신은 400 `MUTE_SELF` |
   | PUT | `/relay/guilds/:g/moderation/sanctions/:u` | `{kind:'chat'\|'voice'\|'ban'\|'all', duration:'off'\|'forever'\|분(≤3650일), reason?(≤200), purgeSeconds?(0\|3600\|86400\|604800, 밴만)}` → `{result:'applied'\|'released', until: ISO\|null}`. `/제재`와 같은 `applySanction`. 요청한 사람에게 종류마다 그 권한(채팅·전부: 멤버 타임아웃, 음성: 멤버 음소거, 밴: 멤버 차단)이 있어야 하고 대상보다 역할이 높아야 한다. 자기 자신은 400 `SANCTION_SELF`, 거절은 400 `SANCTION_<NOT_MEMBER\|CANNOT\|BOT\|TOO_LONG>`, 봇 권한이 없으면 403 `BOT_MISSING_PERMISSION`. 결과는 서버의 시스템 채널에 `/제재`와 같은 문구로 알린다(멘션 알림 없음, 시스템 채널이 없거나 글을 못 쓰면 알리지 않는다) |
   | GET | `/relay/guilds/:g/moderation/members` | 제재할 사람·청소할 글쓴이 고르기 `[{id, name, username, avatarUrl}]`(봇 제외, `getDiscordGuildMembers` 캐시). 멤버 타임아웃 또는 메시지 관리 |
