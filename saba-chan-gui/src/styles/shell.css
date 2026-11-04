@@ -693,6 +693,27 @@
     -webkit-user-select: text;
     user-select: text;
 }
+/* 꺼진 서버의 지난 로그: 콘솔 위에 꺼짐 줄을 붙이고 줄 글자를 조금 흐리게 한다 */
+.term-offline {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    padding: var(--sp-2) var(--sp-4);
+    font-size: var(--fs-sm);
+    color: color-mix(in oklch, var(--console-custom-text) 70%, transparent);
+    background: color-mix(in oklch, var(--console-custom-text) 6%, transparent);
+    border-bottom: 1px solid color-mix(in oklch, var(--console-custom-text) 12%, transparent);
+}
+.term-offline-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--danger);
+    flex: none;
+}
+.term.is-offline .term-output {
+    opacity: 0.75;
+}
 .term-empty {
     color: var(--text-3);
     font-family: var(--font-sans);
@@ -2268,7 +2289,7 @@ button.activity-line:hover {
     cursor: pointer;
 }
 .dc-chip.is-dragging {
-    opacity: 0.4;
+    opacity: 0.85;
     cursor: grabbing;
 }
 .dc-chip.is-open {
@@ -2355,7 +2376,7 @@ button.activity-line:hover {
     transform: translateY(-1px);
 }
 .dc-cmd-chip.is-dragging {
-    opacity: 0.4;
+    opacity: 0.85;
     cursor: grabbing;
 }
 .dc-cmd-chip.is-fixed {
@@ -2465,7 +2486,19 @@ button.activity-line:hover {
     opacity: 0.8;
 }
 .dc-ladder-block.is-dragging {
-    opacity: 0.4;
+    opacity: 0.85;
+}
+/* 끌기는 pointer 이벤트로 한다 (Windows 웹뷰의 HTML 끌어 놓기에 기대지 않는다). 끄는 요소는 손을 따라 위에 뜬다 */
+[data-draggable] {
+    touch-action: none;
+    cursor: grab;
+}
+.dc-chip.is-dragging,
+.dc-cmd-chip.is-dragging,
+.dc-ladder-block.is-dragging {
+    position: relative;
+    z-index: 20;
+    box-shadow: 0 6px 18px var(--shadow-md);
 }
 .dc-ladder-block.is-over {
     border-color: var(--accent);
@@ -3466,8 +3499,9 @@ button.appbar-preflight {
     min-height: 0;
     padding-block: 0;
 }
-/* 주제: 칸 크기는 레이아웃이 정한다. 넘치는 글은 칸 안에서 스크롤한다 */
-.dc-mod-topic {
+/* 주제: 칸 크기는 레이아웃이 정한다. 넘치는 글은 칸 안에서 스크롤한다.
+   .input(높이 36px·위아래 여백 0)이 이 파일 뒤에 실리므로 둘을 겹쳐 써야 이긴다 */
+.input.dc-mod-topic {
     height: calc(var(--sp-4) * 5);
     padding: var(--sp-2) var(--sp-3);
     line-height: 1.5;

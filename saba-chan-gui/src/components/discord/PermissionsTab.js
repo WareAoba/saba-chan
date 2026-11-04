@@ -10,6 +10,7 @@ import { Segmented } from '../ui/StatusChip';
 import { Avatar } from './Avatar';
 import { LadderTab } from './LadderTab';
 import * as L from './levels';
+import { usePointerDrag } from './pointerDrag';
 
 export const OWNER_CONFIRM_MS = 5000;
 
@@ -161,8 +162,16 @@ export function PeopleView({ node, instance, members, membersLoading, onRefreshM
     const [picked, setPicked] = useState([]);
     const [ownerDraft, setOwnerDraft] = useState(null); // null = 편집 안 함
     const [ownerArmed, setOwnerArmed] = useState(false); // 릴레이 값은 덜 믿으므로 한 번 더 누르게 한다
-    const [dragging, setDragging] = useState(null); // 끄는 사람 { id, level }
-    const [over, setOver] = useState(null);
+    // 사람 칩 끌기: key는 `id|레벨`. 놓으면 dropRef가 옮긴다 (아래에서 권한 값을 읽은 뒤 채운다)
+    const dropRef = useRef(() => {});
+    const peopleDrag = usePointerDrag((key, to) => {
+        const [id, from] = key.split('|');
+        dropRef.current(id, Number(from), Number(to));
+    });
+    const dragging = peopleDrag.dragging
+        ? { id: peopleDrag.dragging.split('|')[0], level: Number(peopleDrag.dragging.split('|')[1]) }
+        : null;
+    const over = peopleDrag.over === null ? null : Number(peopleDrag.over);
 
     // 가져오기 후보는 릴레이에 남은 부여값(legacy-members)에서 고른다. 디스코드 멤버 목록에는 레벨이 없다
     // 새로고침 때도 다시 읽는다 (옛 레벨을 가져오지 않게). 늦게 온 옛 응답은 버린다
@@ -216,6 +225,10 @@ export function PeopleView({ node, instance, members, membersLoading, onRefreshM
     const saveOwner = async (id) => {
         if (await update({ ownerDiscordId: id })) setOwnerDraft(null);
     };
+    // 소유자 레벨과 원래 레벨에는 놓아도 바꾸지 않는다
+    dropRef.current = (id, from, to) => {
+        if (to !== L.OWNER && to !== from && !busy) setMember(id, to);
+    };
     const groups = new Map(L.membersByLevel(perm).map((g) => [g.level, g.ids]));
     const sortedOthers = L.sortByName(others, (m) => nameOf(String(m.id)));
 
@@ -226,15 +239,7 @@ export function PeopleView({ node, instance, members, membersLoading, onRefreshM
                 className={clsx('dc-chip', { 'is-open': open === id, 'is-dragging': dragging?.id === id })}
                 aria-expanded={open === id}
                 aria-label={nameOf(id)}
-                draggable="true"
-                onDragStart={(e) => {
-                    e.dataTransfer?.setData('text/plain', id);
-                    setDragging({ id, level });
-                }}
-                onDragEnd={() => {
-                    setDragging(null);
-                    setOver(null);
-                }}
+                {...peopleDrag.bind(`${id}|${level}`)}
                 onClick={() => setOpen(open === id ? null : id)}
             >
                 <Avatar name={nameOf(id)} url={avatarOf(id)} size={20} />
@@ -353,19 +358,7 @@ export function PeopleView({ node, instance, members, membersLoading, onRefreshM
                                 'is-over': over === level && droppable,
                             })}
                             aria-label={L.levelLabel(t, perm, level)}
-                            onDragOver={(e) => {
-                                if (!droppable) return;
-                                e.preventDefault();
-                                setOver(level);
-                            }}
-                            onDragLeave={() => setOver((o) => (o === level ? null : o))}
-                            onDrop={(e) => {
-                                e.preventDefault();
-                                const id = dragging?.id;
-                                setDragging(null);
-                                setOver(null);
-                                if (id && droppable && !busy) setMember(id, level);
-                            }}
+                            data-drop={level}
                         >
                             <div className="dc-level-head">
                                 <span className="dc-level-num">Lv {L.levelNumber(perm, level)}</span>
@@ -608,8 +601,11 @@ export function CommandStairs({ node, permissions, instance = L.ALL_INSTANCES })
     const { perm, board, loading, error, busy, load, write } = permissions;
     const [view, setView] = useState(instance);
     const [selected, setSelected] = useState(null); // 칩 id
-    const [dragging, setDragging] = useState(null);
-    const [over, setOver] = useState(null);
+    // 칩 끌기: 놓으면 dropRef가 옮긴다 (아래에서 계단 값을 읽은 뒤 채운다)
+    const dropRef = useRef(() => {});
+    const chipDrag = usePointerDrag((id, to) => dropRef.current(id, Number(to)));
+    const dragging = chipDrag.dragging;
+    const over = chipDrag.over === null ? null : Number(chipDrag.over);
     const [presetDraft, setPresetDraft] = useState(null); // 명령별 레벨을 덮을 프리셋 (확인 전)
     const stairsRef = useRef(null);
     useChipFlip(stairsRef, board);
@@ -642,6 +638,10 @@ export function CommandStairs({ node, permissions, instance = L.ALL_INSTANCES })
         // 대표 레벨이 같아도 다른 레벨인 인스턴스가 있으면 맞춘다
         if (busy || chip.fixed || level === L.BANNED || chip.items.every((i) => i.fixed || i.level === level)) return;
         await update({ commandLevels: L.levelPatch(chip.items, level) });
+    };
+    dropRef.current = (id, level) => {
+        const chip = chips.find((c) => c.id === id);
+        if (chip && level !== L.BANNED) move(chip, level);
     };
     const setRisk = async (chip, risk) => {
         if (busy || chip.items.every((i) => (i.confirmRisk || i.risk) === risk)) return;
@@ -745,19 +745,7 @@ export function CommandStairs({ node, permissions, instance = L.ALL_INSTANCES })
                                 })}
                                 style={{ '--step': i }}
                                 aria-label={L.levelTitle(t, perm, level)}
-                                onDragOver={(e) => {
-                                    if (!droppable) return;
-                                    e.preventDefault();
-                                    setOver(level);
-                                }}
-                                onDragLeave={() => setOver((o) => (o === level ? null : o))}
-                                onDrop={(e) => {
-                                    e.preventDefault();
-                                    const chip = chips.find((c) => c.id === dragging);
-                                    setDragging(null);
-                                    setOver(null);
-                                    if (chip && droppable) move(chip, level);
-                                }}
+                                data-drop={level}
                             >
                                 <div className="dc-step-chips">
                                     {level !== L.BANNED && below > 0 && (
@@ -782,16 +770,8 @@ export function CommandStairs({ node, permissions, instance = L.ALL_INSTANCES })
                                                 'is-selected': selected === c.id,
                                                 'is-dragging': dragging === c.id,
                                             })}
-                                            draggable={c.fixed ? undefined : 'true'}
                                             aria-pressed={selected === c.id}
-                                            onDragStart={(e) => {
-                                                e.dataTransfer?.setData('text/plain', c.id);
-                                                setDragging(c.id);
-                                            }}
-                                            onDragEnd={() => {
-                                                setDragging(null);
-                                                setOver(null);
-                                            }}
+                                            {...chipDrag.bind(c.id, !c.fixed)}
                                             onClick={() => setSelected(selected === c.id ? null : c.id)}
                                         >
                                             <span
@@ -943,11 +923,21 @@ export function CommandStairs({ node, permissions, instance = L.ALL_INSTANCES })
     );
 }
 
-/** 권한 탭: 사람·명령 두 화면과 레벨 편집. 같은 권한 상태를 나눠 쓴다 (화면을 바꿔도 다시 읽지 않는다) */
-export function PermissionPanel({ node, instance = L.ALL_INSTANCES, members, membersLoading, onRefreshMembers }) {
-    const { t } = useTranslation('gui');
+/** 인스턴스 메뉴: 레벨별 명령 계단. 멤버 레벨은 서버 전체 값이라 여기서 고치지 않는다 (멤버 탭) */
+export function PermissionPanel({ node, instance = L.ALL_INSTANCES }) {
     const permissions = usePermissions(node.guildId);
-    const [view, setView] = useState('commands');
+    return (
+        <div className="dc-perm">
+            <CommandStairs node={node} permissions={permissions} instance={instance} />
+        </div>
+    );
+}
+
+/**
+ * 디스코드 서버의 멤버 탭: 멤버마다 레벨과 레벨 편집. 멤버 레벨은 서버에 하나이고 모든 인스턴스가 이것을 따른다
+ */
+export function MembersPanel({ node, members, membersLoading, onRefreshMembers }) {
+    const permissions = usePermissions(node.guildId);
     const [editing, setEditing] = useState(false);
     const { perm, loading, error, load } = permissions;
 
@@ -957,32 +947,15 @@ export function PermissionPanel({ node, instance = L.ALL_INSTANCES, members, mem
     }
     return (
         <div className="dc-perm">
-            <Segmented
-                ariaLabel={t('discord.tab_permissions')}
-                value={view}
-                onChange={setView}
-                items={[
-                    {
-                        id: 'commands',
-                        label: t('discord.perm_view_commands'),
-                        icon: <Icon name="terminal" size="sm" />,
-                    },
-                    { id: 'people', label: t('discord.perm_view_people'), icon: <Icon name="user" size="sm" /> },
-                ]}
+            <PeopleView
+                node={node}
+                instance={L.ALL_INSTANCES}
+                members={members}
+                membersLoading={membersLoading}
+                onRefreshMembers={onRefreshMembers}
+                permissions={permissions}
+                onEditLevels={() => setEditing(true)}
             />
-            {view === 'commands' ? (
-                <CommandStairs node={node} permissions={permissions} instance={instance} />
-            ) : (
-                <PeopleView
-                    node={node}
-                    instance={instance}
-                    members={members}
-                    membersLoading={membersLoading}
-                    onRefreshMembers={onRefreshMembers}
-                    permissions={permissions}
-                    onEditLevels={() => setEditing(true)}
-                />
-            )}
         </div>
     );
 }

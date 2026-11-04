@@ -139,12 +139,15 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
             // 이 루프의 ref. 닫았다 다시 열면 새 ref가 생기므로, 옛 루프는 자기 ref가 아니면 멈춘다(줄 중복 방지)
             const myRef = { active: true, timer: null };
             const isMine = () => pollingRefs.current[instanceId] === myRef && myRef.active;
+            // 처음 한 번은 바로 읽는다: 꺼진 서버도 지난 로그가 5초 늦게 뜨지 않게
+            let first = true;
             const schedulePoll = () => {
                 if (!isMine()) return;
                 const servers = useServerStore.getState().servers;
                 const server = servers.find((s) => s.id === instanceId);
                 const isRunning = server && server.pid > 0;
-                const interval = isRunning ? POLL_ACTIVE_MS : POLL_IDLE_MS;
+                const interval = first ? 0 : isRunning ? POLL_ACTIVE_MS : POLL_IDLE_MS;
+                first = false;
                 myRef.timer = setTimeout(async () => {
                     if (polling) { schedulePoll(); return; }
                     polling = true;

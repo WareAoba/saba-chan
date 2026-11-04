@@ -27,7 +27,6 @@ import { updateRequiredText } from '../utils/updateRequired';
  * @param {Function} params.setModal - Modal state setter
  * @param {Function} params.setProgressBar - Progress bar state setter
  * @param {Function} params.openConsole - Open console for a server
- * @param {Function} params.closeConsole - Close the console panel
  * @param {Function} params.setShowModuleManager - Module manager visibility setter
  * @returns {Object} Server action handlers and fetchServers
  */
@@ -40,7 +39,6 @@ export function useServerActions({
     setModal,
     setProgressBar,
     openConsole,
-    closeConsole,
     setShowModuleManager,
     openSettingsToExtensions,
 }) {
@@ -757,9 +755,7 @@ export function useServerActions({
                     const errorMsg = translateError(result.error);
                     safeShowToast(t('servers.stop_failed_toast', { error: errorMsg }), 'error', 4000);
                 } else {
-                    if (srv) {
-                        closeConsole(srv.id);
-                    }
+                    // 콘솔은 닫지 않는다: 꺼진 뒤에도 지난 로그를 보인다 (폴링이 디스크 꼬리에서 못 본 줄만 잇는다)
                     setProgressBar({ message: t('servers.stopping_toast', { name }), indeterminate: true });
 
                     // 꺼질 때까지 확인 (최대 10초). 이벤트가 있으면 그 서버의 이벤트가 올 때 묻는다

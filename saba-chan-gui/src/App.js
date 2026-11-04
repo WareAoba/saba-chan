@@ -175,7 +175,6 @@ function App() {
             setModal,
             setProgressBar,
             openConsole,
-            closeConsole,
             setShowModuleManager,
             openSettingsToExtensions: () => {
                 useUIStore.getState().openSettings('extensions');

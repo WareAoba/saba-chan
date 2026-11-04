@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Icon } from '../Icon';
 import * as L from './levels';
+import { usePointerDrag } from './pointerDrag';
 
 const keyOf = (level) => (level.id !== undefined ? `id-${level.id}` : level.key);
 const isCustom = L.isCustomLevel;
@@ -13,8 +14,10 @@ export function LadderTab({ node, permissions, onClose }) {
     const { perm, busy, write } = permissions;
     const saved = L.ladderOf(perm);
     const [draft, setDraft] = useState(saved);
-    const [dragging, setDragging] = useState(null);
-    const [over, setOver] = useState(null);
+    // 블록 끌기: key·칸 값은 사다리 자리(위에서부터 0)
+    const blockDrag = usePointerDrag((from, to) => setDraft((d) => L.moveLevel(d, Number(from), Number(to))));
+    const dragging = blockDrag.dragging === null ? null : Number(blockDrag.dragging);
+    const over = blockDrag.over === null ? null : Number(blockDrag.over);
     const [newName, setNewName] = useState('');
 
     // 데몬 값이 바뀌면(저장·다시 읽기) 초안을 그 값으로
@@ -31,11 +34,6 @@ export function LadderTab({ node, permissions, onClose }) {
     const movable = (i) => i > 0 && i < draft.length - 1;
     const name = newName.trim();
 
-    const drop = (to) => {
-        if (dragging !== null) setDraft((d) => L.moveLevel(d, dragging, to));
-        setDragging(null);
-        setOver(null);
-    };
 
     return (
         <div className="dc-tab">
@@ -62,26 +60,8 @@ export function LadderTab({ node, permissions, onClose }) {
                                     'is-dragging': dragging === i,
                                     'is-over': over === i && dragging !== i,
                                 })}
-                                draggable={fixed ? undefined : 'true'}
-                                onDragStart={(e) => {
-                                    if (fixed) return;
-                                    e.dataTransfer?.setData('text/plain', String(i));
-                                    setDragging(i);
-                                }}
-                                onDragOver={(e) => {
-                                    if (dragging === null || fixed) return;
-                                    e.preventDefault();
-                                    setOver(i);
-                                }}
-                                onDragLeave={() => setOver((o) => (o === i ? null : o))}
-                                onDrop={(e) => {
-                                    e.preventDefault();
-                                    drop(i);
-                                }}
-                                onDragEnd={() => {
-                                    setDragging(null);
-                                    setOver(null);
-                                }}
+                                {...(fixed ? {} : { 'data-drop': i })}
+                                {...blockDrag.bind(String(i), !fixed)}
                             >
                                 <span className="dc-ladder-rank">Lv {draft.length - 1 - i}</span>
                                 {isCustom(level) ? (

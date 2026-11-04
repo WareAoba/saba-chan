@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as L from '../components/discord/levels';
 import { NodeView } from '../components/discord/NodeView';
-import { OWNER_CONFIRM_MS, PermissionPanel } from '../components/discord/PermissionsTab';
+import { MembersPanel, OWNER_CONFIRM_MS, PermissionPanel } from '../components/discord/PermissionsTab';
 import { pickOption } from './dropdown';
 
 const API = ['permissionsGet', 'permissionsCommands', 'permissionsUpdate', 'permissionsSetMember', 'permissionsRemoveMember'];
@@ -66,14 +66,27 @@ async function openCommands(props) {
     await flush();
 }
 
-/** 인스턴스 메뉴의 멤버별 레벨 화면으로 */
-async function openPeople(props) {
-    renderPanel(props);
-    await flush();
-    fireEvent.click(screen.getByRole('tab', { name: 'Member levels' }));
+/** 디스코드 서버의 멤버 탭 (멤버 레벨은 서버 하나에 한 번 정한다) */
+async function openPeople(props = {}) {
+    render(<MembersPanel node={node} members={relayMembers} {...props} />);
     await flush();
 }
 
+/**
+ * 마우스로 끌기 (pointer 이벤트). Windows 웹뷰의 HTML 끌어 놓기에 기대지 않는다.
+ * 놓는 자리는 elementFromPoint 가 정한다
+ */
+function pressAndMove(from, to) {
+    // 끄는 요소는 끄는 동안만 손 아래에서 비켜 준다 (그 밖에는 손 아래가 그 요소 자신)
+    document.elementFromPoint = () => (from.style.pointerEvents === 'none' ? to : from);
+    fireEvent.pointerDown(from, { button: 0, clientX: 0, clientY: 0, pointerId: 1 });
+    fireEvent.pointerMove(window, { clientX: 40, clientY: 40, pointerId: 1 });
+}
+const release = () => fireEvent.pointerUp(window, { clientX: 40, clientY: 40, pointerId: 1 });
+function dragTo(from, to) {
+    pressAndMove(from, to);
+    release();
+}
 const step = (name) => screen.getByRole('listitem', { name });
 const level = (name) => screen.getByRole('listitem', { name });
 
@@ -255,20 +268,18 @@ describe('권한 화면', () => {
     it('사람: 칩을 다른 레벨로 끌어 옮기고, 소유자 레벨에는 놓을 수 없다', async () => {
         await openPeople();
         const mint = within(level('Admin')).getByRole('button', { name: 'Mint' });
-        expect(mint).toHaveAttribute('draggable', 'true');
-        fireEvent.dragStart(mint);
+        // HTML 끌어 놓기(draggable)는 Windows 웹뷰에서 막힐 수 있어 쓰지 않는다
+        expect(mint).not.toHaveAttribute('draggable');
+        pressAndMove(mint, level('Guest'));
         expect(mint).toHaveClass('is-dragging');
-        fireEvent.dragOver(level('Guest'));
         expect(level('Guest')).toHaveClass('is-over');
-        fireEvent.drop(level('Guest'));
+        release();
         await flush();
         expect(window.api.permissionsSetMember).toHaveBeenCalledWith('g1', '1002', 0);
 
         // 소유자 레벨과 원래 레벨에는 놓아도 바꾸지 않는다
-        fireEvent.dragStart(within(level('Admin')).getByRole('button', { name: 'Mint' }));
-        fireEvent.drop(level('Owner'));
-        fireEvent.dragStart(within(level('Admin')).getByRole('button', { name: 'Mint' }));
-        fireEvent.drop(level('Admin'));
+        dragTo(within(level('Admin')).getByRole('button', { name: 'Mint' }), level('Owner'));
+        dragTo(within(level('Admin')).getByRole('button', { name: 'Mint' }), level('Admin'));
         await flush();
         expect(window.api.permissionsSetMember).toHaveBeenCalledTimes(1);
     });
@@ -407,14 +418,12 @@ describe('권한 화면', () => {
     it('명령 계단: 칩을 다른 계단으로 끌어 옮기고, 금지 계단에는 놓을 수 없다', async () => {
         await openCommands();
         const say = within(step('Lv 1 · Guest')).getByRole('button', { name: /^Say$/ });
-        fireEvent.dragStart(say);
-        fireEvent.dragOver(step('Lv 3 · Admin'));
-        fireEvent.drop(step('Lv 3 · Admin'));
+        expect(say).not.toHaveAttribute('draggable');
+        dragTo(say, step('Lv 3 · Admin'));
         await flush();
         expect(window.api.permissionsUpdate).toHaveBeenCalledWith('g1', { commandLevels: { 'mc-1/say': 2, 'mc-2/say': 2 } });
 
-        fireEvent.dragStart(within(step('Lv 1 · Guest')).getByRole('button', { name: /^Say$/ }));
-        fireEvent.drop(step('Lv 0 · Banned'));
+        dragTo(within(step('Lv 1 · Guest')).getByRole('button', { name: /^Say$/ }), step('Lv 0 · Banned'));
         await flush();
         expect(window.api.permissionsUpdate).toHaveBeenCalledTimes(1);
     });
@@ -433,10 +442,9 @@ describe('권한 화면', () => {
             moved.items = moved.items.map((i) => (i.name === 'say' ? { ...i, level: 2, overridden: true } : i));
             window.api.permissionsCommands.mockResolvedValue(moved);
             const say = within(step('Lv 1 · Guest')).getByRole('button', { name: /^Say$/ });
-            fireEvent.dragStart(say);
+            pressAndMove(say, step('Lv 3 · Admin'));
             expect(say).toHaveClass('is-dragging');
-            fireEvent.dragOver(step('Lv 3 · Admin'));
-            fireEvent.drop(step('Lv 3 · Admin'));
+            release();
             await flush();
             expect(within(step('Lv 3 · Admin')).getByRole('button', { name: /^Say$/ })).toBeInTheDocument();
             expect(animate).toHaveBeenCalledWith(
@@ -502,11 +510,10 @@ describe('권한 화면', () => {
         fireEvent.click(screen.getByRole('button', { name: /Edit levels/ }));
         const block = (name) => screen.getByRole('listitem', { name });
         expect(within(block('Owner')).queryByRole('button', { name: /Delete/ })).toBeNull();
-        expect(block('Banned')).not.toHaveAttribute('draggable', 'true');
+        expect(block('Banned')).not.toHaveAttribute('data-draggable');
+        expect(block('VIP')).toHaveAttribute('data-draggable', 'true');
 
-        fireEvent.dragStart(block('VIP'));
-        fireEvent.dragOver(block('Admin'));
-        fireEvent.drop(block('Admin'));
+        dragTo(block('VIP'), block('Admin'));
         fireEvent.click(screen.getByRole('button', { name: 'Delete User' }));
         expect(screen.getByText(/People on a deleted level move/)).toBeInTheDocument();
         fireEvent.change(screen.getByRole('textbox', { name: 'New level name' }), { target: { value: 'Mod' } });
@@ -518,10 +525,10 @@ describe('권한 화면', () => {
             ladder: [{ id: 3 }, { id: 10, name: 'VIP' }, { name: 'Mod' }, { id: 2 }, { id: 0 }, { id: -1 }],
         });
         fireEvent.click(screen.getByRole('button', { name: /Back/ }));
-        expect(screen.getByRole('tab', { name: 'Member levels' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /Edit levels/ })).toBeInTheDocument();
     });
 
-    it('디스코드 서버 → 인스턴스 메뉴에서 레벨별 명령과 멤버별 레벨을 따로 본다', async () => {
+    it('멤버 레벨은 디스코드 서버의 멤버 탭에서 정하고, 인스턴스 메뉴는 레벨별 명령만 보인다', async () => {
         render(
             <NodeView
                 node={node}
@@ -532,14 +539,18 @@ describe('권한 화면', () => {
                 members={relayMembers}
             />,
         );
-        expect(screen.queryByRole('tab', { name: 'Members' })).toBeNull();
-        expect(screen.queryByRole('tab', { name: 'Permissions' })).toBeNull();
+        fireEvent.click(screen.getByRole('tab', { name: 'Members' }));
+        await flush();
+        expect(screen.getByText(/apply to every instance on this Discord server/)).toBeInTheDocument();
+        expect(within(level('Admin')).getByRole('button', { name: 'Mint' })).toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole('tab', { name: 'Instances' }));
         fireEvent.click(screen.getByRole('button', { name: 'Survival permissions' }));
         await flush();
         expect(screen.getByRole('heading', { name: /Survival/ })).toBeInTheDocument();
-        expect(screen.getByRole('tab', { name: 'Commands per level', selected: true })).toBeInTheDocument();
-        fireEvent.click(screen.getByRole('tab', { name: 'Member levels' }));
-        expect(screen.getByText(/apply to every instance on this Discord server/)).toBeInTheDocument();
+        expect(screen.queryByRole('tab', { name: 'Member levels' })).toBeNull();
+        expect(screen.queryByRole('button', { name: 'Mint' })).toBeNull();
+        expect(step('Lv 2 · User')).toBeInTheDocument();
         fireEvent.click(screen.getByRole('button', { name: /Instances/ }));
         expect(screen.getByRole('button', { name: 'Survival permissions' })).toBeInTheDocument();
     });
