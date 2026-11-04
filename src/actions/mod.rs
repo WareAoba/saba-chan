@@ -1259,15 +1259,27 @@ async fn scheduled_commands(server: &IPCServer, instance: &str, body: Option<&Va
             TaskAction::Start => Some(("start".to_string(), "caution")),
             TaskAction::Stop => Some(("stop".to_string(), "caution")),
             TaskAction::Restart => Some(("restart".to_string(), "caution")),
-            TaskAction::Command => meta
+            // 공지·저장도 모듈의 게임 명령(`announce_command`·`[backup] save_command`)으로 돈다: 그 명령의 레벨을 본다
+            TaskAction::Command | TaskAction::Announce | TaskAction::Save => meta
                 .as_ref()
-                .and_then(|m| crate::commands::find(m, task.command.as_deref().unwrap_or("")))
+                .and_then(|m| crate::commands::find(m, &scheduled_command_name(m, task)?))
                 .map(|f| (f.name.clone(), crate::commands::risk_of(f.risk.as_deref()))),
             _ => None,
         };
         out.extend(found.map(|(cmd, risk)| (cmd, risk.to_string())));
     }
     out
+}
+
+/// 예약 작업이 돌릴 모듈 게임 명령의 이름 (명령·공지·저장). 그 밖의 작업이나 모듈이 선언하지 않았으면 None
+pub(crate) fn scheduled_command_name(meta: &crate::supervisor::module_loader::ModuleMetadata, task: &crate::scheduler::ScheduledTask) -> Option<String> {
+    use crate::scheduler::TaskAction;
+    match task.action {
+        TaskAction::Command => task.command.clone(),
+        TaskAction::Announce => meta.announce_command.clone(),
+        TaskAction::Save => meta.backup.as_ref().and_then(|b| b.save_command.clone()),
+        _ => None,
+    }
 }
 
 /// 내장 서버 액션에 대응하는 내장 명령 이름 (레벨 키 `<instance>/<명령>`)

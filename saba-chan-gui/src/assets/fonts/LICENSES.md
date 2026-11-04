@@ -1,6 +1,6 @@
-# 콘솔 글꼴 라이선스
+# 글꼴 라이선스
 
-콘솔 글꼴(`styles/consoleFonts.css`)의 파일이다. 모두 SIL Open Font License 1.1이다. `cascadia-code.woff2`는 공식 릴리스의 `woff2/CascadiaCode.woff2`를 고치지 않고 그대로 넣었다(Reserved Font Name이 있어 고친 판을 만들지 않는다). 나머지는 콘솔에 쓰는 글자 범위만 남겨 woff2로 바꾼 것이다(`scripts/subset-console-fonts.py`, 이 글꼴들에는 Reserved Font Name이 없다).
+콘솔 글꼴(`styles/consoleFonts.css`)과 정보 페이지 손글씨(`components/Modals/AboutPage.css`)의 파일이다. 모두 SIL Open Font License 1.1이다. `cascadia-code.woff2`는 공식 릴리스의 `woff2/CascadiaCode.woff2`를 고치지 않고 그대로 넣었다(Reserved Font Name이 있어 고친 판을 만들지 않는다). 나머지는 콘솔에 쓰는 글자 범위만 남겨 woff2로 바꾼 것이다(`scripts/subset-console-fonts.py`, 이 글꼴들에는 Reserved Font Name이 없다).
 
 | 파일 | 글꼴 | 저작권 | 원본 |
 | --- | --- | --- | --- |
@@ -11,6 +11,7 @@
 | sarasa-mono-j.woff2, sarasa-mono-sc.woff2, sarasa-mono-tc.woff2 | Sarasa Mono J / SC / TC 1.0.30 | Copyright (c) 2015-2025, Renzhi Li (aka. Belleve Invis). Portions Copyright (c) 2016 The Inter Project Authors. Portions Copyright (c) 2014-2021 Adobe Systems Incorporated. Portions Copyright (c) 2012 Google Inc. | https://github.com/be5invis/Sarasa-Gothic |
 | udev-gothic.woff2 | UDEV Gothic 2.1.0 | Copyright 2020 The JetBrains Mono Project Authors; Copyright 2022 The BIZ UDGothic Project Authors; Copyright (c) 2014, Ryan L McIntyre (Nerd Fonts); Copyright 2022 Yuko Otawara | https://github.com/yuru7/udev-gothic |
 | hackgen.woff2 | HackGen 2.10.0 | Copyright (c) 2018 Source Foundry Authors (Hack); Copyright (c) 2015 JIKASEI FONT KOUBOU (Gen Jyuu Gothic); Copyright (c) 2014, Ryan L McIntyre (Nerd Fonts); Copyright (c) 2019, Yuko OTAWARA | https://github.com/yuru7/HackGen |
+| gaegu-bold.woff2 | 개구체 (Gaegu) Bold — 한글·라틴 범위만 남겨 woff2로 바꿈 | Copyright 2018 The Gaegu Project Authors | https://github.com/google/fonts/tree/main/ofl/gaegu |
 | m-plus-1-code.woff2 | M PLUS 1 Code (굵기 400) | Copyright 2021 The M+ FONTS Project Authors | https://github.com/coz-m/MPLUS_FONTS |
 
 ```

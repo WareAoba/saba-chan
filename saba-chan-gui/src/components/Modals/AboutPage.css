@@ -1,0 +1,516 @@
+/* ── 설정 › 정보 페이지 (AboutPage.js) ──
+ * 버전 카드(그라데이션 순환 링) → 사바쨩 자기소개(흰 카드, 펜 낙서, 손글씨 제목) → 제작자 카드(별밤·오로라).
+ * 손글씨는 개구체(Gaegu, SIL OFL 1.1, assets/fonts/LICENSES.md) — 자기소개 제목에만 쓴다 */
+
+@font-face {
+    font-family: 'saba-hand';
+    src: url('../../assets/fonts/gaegu-bold.woff2') format('woff2');
+    font-weight: 700;
+    font-display: swap;
+}
+
+/* 자기소개 카드는 테마와 상관없이 흰 종이다. 어두운 테마에서는 밝기만 조금 낮춘다 */
+.about-scroll-area { --about-paper-dim: 1; --about-hand: 'saba-hand', var(--font-sans); }
+[data-theme="dark"] .about-scroll-area,
+[data-theme="auto"] .about-scroll-area { --about-paper-dim: 0.93; }
+@media (prefers-color-scheme: light) {
+    [data-theme="auto"] .about-scroll-area { --about-paper-dim: 1; }
+}
+
+.about-card {
+    flex-shrink: 0; /* 스크롤 영역(세로 flex)에서 눌려 잘리지 않는다 */
+    border-radius: 14px;
+    position: relative;
+    overflow: hidden;
+}
+
+/* ═══ 1. 버전 카드 ═══ */
+.about-app-card {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-5);
+    padding: var(--sp-5);
+    background: var(--settings-item-bg);
+    border: 1px solid var(--line);
+    color: var(--text-primary);
+}
+
+/* 사바쨩 얼굴 링: 강조색 두 색이 쉬지 않고 흐른다 (grad-cycle.css 와 같은 5정지점 그림) */
+@property --about-gs {
+    syntax: '<percentage>';
+    inherits: false;
+    initial-value: 0%;
+}
+.about-app-ring {
+    --about-gs: 0%;
+    position: relative;
+    flex-shrink: 0;
+    width: 116px;
+    height: 116px;
+    padding: var(--sp-1);
+    border-radius: 50%;
+    box-sizing: border-box;
+    background: linear-gradient(in oklch 135deg,
+        var(--brand-from) calc(var(--about-gs) - 200%), calc(var(--about-gs) - 200% + var(--brand-grad-mid)),
+        var(--brand-to) calc(var(--about-gs) - 100%), calc(var(--about-gs) - var(--brand-grad-mid)),
+        var(--brand-from) var(--about-gs), calc(var(--about-gs) + var(--brand-grad-mid)),
+        var(--brand-to) calc(var(--about-gs) + 100%), calc(var(--about-gs) + 200% - var(--brand-grad-mid)),
+        var(--brand-from) calc(var(--about-gs) + 200%));
+    animation: about-ring-cycle 2.4s linear infinite;
+    box-shadow: 0 6px 24px color-mix(in oklch, var(--brand-from) 35%, transparent);
+}
+@keyframes about-ring-cycle {
+    to { --about-gs: 200%; }
+}
+.about-app-logo {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    object-fit: cover;
+    box-sizing: border-box;
+    border: 3px solid var(--settings-item-bg);
+    background: var(--bg-surface);
+}
+.about-version-badge {
+    position: absolute;
+    top: -6px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 2;
+    white-space: nowrap;
+    font-size: calc(11px * var(--font-scale));
+    font-weight: 700;
+    color: var(--brand-text);
+    background: var(--brand-gradient);
+    padding: var(--sp-1) var(--sp-2-5);
+    border-radius: 12px;
+    box-shadow: 0 2px 8px color-mix(in oklch, var(--accent) 40%, transparent);
+}
+
+.about-app-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2-5);
+}
+.about-app-name {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: var(--sp-2);
+}
+.about-app-name strong {
+    font-size: calc(19px * var(--font-scale));
+    font-weight: 800;
+}
+.about-app-name span {
+    font-size: var(--fs-xs);
+    color: var(--text-tertiary);
+}
+.about-component-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--sp-2);
+}
+.about-component-item {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2-5);
+    min-width: 0;
+    padding: var(--sp-2) var(--sp-2-5);
+    border-radius: 11px;
+    background: var(--bg-surface);
+    border: 1px solid var(--line);
+}
+.about-component-icon {
+    flex-shrink: 0;
+    width: 34px;
+    height: 34px;
+    border-radius: 9px;
+    display: grid;
+    place-items: center;
+    color: var(--brand-text);
+    background: linear-gradient(in oklch 135deg, var(--brand-from), var(--brand-to));
+    box-shadow: 0 3px 8px color-mix(in oklch, var(--brand-from) 30%, transparent),
+        inset 0 1px 0 color-mix(in oklch, #ffffff 35%, transparent);
+}
+.about-component-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+.about-component-label {
+    font-size: var(--fs-sm);
+    font-weight: 700;
+}
+.about-component-ver {
+    font-family: var(--font-mono);
+    font-size: calc(11.5px * var(--font-scale));
+    color: var(--text-secondary);
+}
+.about-app-footer {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-3);
+}
+.about-app-meta {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-1);
+    font-size: var(--fs-xs);
+    color: var(--text-tertiary);
+}
+
+/* ═══ 2. 사바쨩 자기소개 ═══ */
+.about-intro-card {
+    --ink: #4a4250;
+    --ink-soft: #9a8fa5;
+    --ink-accent: #a58fb6;
+    padding: var(--sp-6);
+    color: var(--ink);
+    background:
+        radial-gradient(in oklch circle at 100% 0%, #fdeef5 0, transparent 38%),
+        radial-gradient(in oklch circle at 0% 100%, #eef4ff 0, transparent 40%),
+        #ffffff;
+    border: 1px solid #efe6f2;
+    box-shadow: 0 6px 20px rgba(60, 40, 90, 0.1);
+    filter: brightness(var(--about-paper-dim));
+}
+.about-pen-defs { position: absolute; }
+/* 카드 위 아이콘은 모두 펜 질감 */
+.about-pen { filter: url(#about-pen); overflow: visible; }
+.about-intro-sparkles {
+    position: absolute;
+    top: 24px;
+    right: 22px;
+    width: 70px;
+    height: 60px;
+    pointer-events: none;
+}
+.about-twinkle {
+    transform-origin: center;
+    transform-box: fill-box;
+    animation: about-twinkle 2.6s ease-in-out infinite;
+}
+.about-twinkle + .about-twinkle { animation-delay: 0.8s; }
+@keyframes about-twinkle {
+    50% { transform: scale(0.75) rotate(12deg); opacity: 0.6; }
+}
+
+.about-intro-top {
+    display: grid;
+    grid-template-columns: 200px minmax(0, 1fr);
+    gap: var(--sp-5);
+    align-items: center;
+}
+.about-polaroid {
+    position: relative;
+    justify-self: center;
+    margin: var(--sp-1-5) 0 0;
+    padding: var(--sp-2-5) var(--sp-2-5) var(--sp-8);
+    background: #ffffff;
+    transform: rotate(-4deg);
+    box-shadow: 0 1px 2px rgba(60, 40, 80, 0.12), 0 8px 18px rgba(60, 40, 80, 0.16);
+}
+.about-polaroid-pin {
+    position: absolute;
+    top: -9px;
+    left: 50%;
+    transform: translateX(-50%) rotate(3deg);
+    z-index: 1;
+}
+.about-polaroid-shot {
+    width: 172px;
+    height: 172px;
+    overflow: hidden;
+    background: linear-gradient(in oklch 165deg, #e6f0ff 0%, #f6ecff 60%, #ffeef5 100%);
+}
+.about-polaroid-shot img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+.about-polaroid figcaption {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 7px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: var(--sp-1);
+    font-family: var(--about-hand);
+    font-size: calc(19px * var(--font-scale));
+    font-weight: 700;
+    color: #d9649a;
+}
+
+.about-intro-hello {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1-5);
+    min-width: 0;
+}
+.about-intro-hello h3 {
+    margin: 0;
+    font-family: var(--about-hand);
+    font-size: calc(32px * var(--font-scale));
+    font-weight: 700;
+    line-height: 1.15;
+    color: #5b4a68;
+    text-wrap: balance;
+    word-break: keep-all;
+}
+.about-intro-alias {
+    font-size: calc(12.5px * var(--font-scale));
+    color: var(--ink-accent);
+}
+.about-intro-hello p {
+    margin: var(--sp-1) 0 0;
+    font-size: calc(14.5px * var(--font-scale));
+    line-height: 1.65;
+    word-break: keep-all;
+}
+.about-intro-notes {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: var(--sp-1) var(--sp-3);
+    margin: var(--sp-2) 0 0;
+    font-size: calc(13.5px * var(--font-scale));
+}
+.about-intro-notes dt { color: var(--ink-accent); }
+.about-intro-notes dd {
+    margin: 0;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--sp-1-5);
+}
+.about-intro-notes small {
+    font-size: var(--fs-xs);
+    color: var(--ink-soft);
+}
+.about-hl-mint {
+    color: inherit;
+    padding: 0 var(--sp-0-5);
+    background: linear-gradient(in oklch, transparent 55%, #d6f5ec 55%, #d6f5ec 92%, transparent 92%);
+}
+
+.about-intro-notes-row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--sp-4);
+    margin-top: var(--sp-5);
+    align-items: start;
+}
+.about-intro-sticky {
+    padding: var(--sp-3);
+    border-radius: 14px;
+    background: #fff8de;
+    border: 1px solid #f6e7b3;
+    font-size: var(--fs-sm);
+    line-height: 1.5;
+}
+.about-intro-sticky-pink {
+    background: #fff0f6;
+    border-color: #fbd3e3;
+}
+.about-intro-sticky h4,
+.about-intro-day h4 {
+    margin: 0 0 var(--sp-1-5);
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-1-5);
+    font-family: var(--about-hand);
+    font-weight: 700;
+}
+.about-intro-sticky h4 { font-size: calc(19px * var(--font-scale)); color: #8a6a2c; }
+.about-intro-sticky-pink h4 { color: #c85b8b; }
+.about-intro-sister {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2-5);
+}
+.about-intro-sister img {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    padding: var(--sp-0-5);
+    background: #ffffff;
+    border: 2px dashed #f29bbf;
+}
+.about-intro-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-1-5);
+}
+.about-intro-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-1);
+    padding: var(--sp-0-5) var(--sp-2-5);
+    background: #ffffff;
+    border: 1.5px solid #9b8fb0;
+    border-radius: 14px 14px 14px 4px;
+    font-size: var(--fs-xs);
+    font-weight: 700;
+}
+.about-intro-chip-sing { border-color: #e0679a; border-radius: 14px 14px 4px 14px; }
+.about-intro-chip-read { border-color: #5aa891; }
+
+.about-intro-day { margin-top: var(--sp-5); }
+.about-intro-day h4 { font-size: calc(22px * var(--font-scale)); color: #5b4a68; }
+.about-intro-day-cells {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: var(--sp-3);
+}
+.about-intro-day-cell { text-align: center; }
+.about-intro-day-cell span {
+    display: block;
+    margin-top: var(--sp-0-5);
+    font-size: var(--fs-xs);
+    font-weight: 600;
+}
+.about-intro-day-frame {
+    position: relative;
+    aspect-ratio: 1;
+    display: grid;
+    place-items: center;
+}
+.about-intro-day-frame svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+}
+.about-intro-day-frame img {
+    position: relative;
+    width: 82%;
+    aspect-ratio: 1;
+    object-fit: contain;
+}
+
+/* ═══ 3. 제작자 카드 (별밤 + 오로라) ═══ */
+.about-dev-card {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-5);
+    min-height: 170px;
+    padding: var(--sp-6) var(--sp-5);
+    color: #f2f3ff;
+    background: linear-gradient(in oklch 180deg, #050818 0%, #0b1434 50%, #1a1a4a 100%);
+}
+.about-dev-card > canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+}
+.about-sky-aurora { mix-blend-mode: screen; }
+/* 글자·버튼 뒤를 어둡게 눌러 오로라가 밝아도 읽힌다. 아래는 지평선 언덕 */
+.about-dev-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    background:
+        radial-gradient(in oklch 120% 34px at 30% 100%, #070a1c 60%, transparent 61%),
+        linear-gradient(in oklch 90deg, rgba(4, 6, 20, 0.62) 0%, rgba(4, 6, 20, 0.42) 45%, rgba(4, 6, 20, 0.12) 75%, rgba(4, 6, 20, 0.35) 100%);
+}
+.about-dev-avatar,
+.about-dev-info,
+.about-dev-github-btn {
+    position: relative;
+    z-index: 2;
+}
+.about-dev-avatar {
+    flex-shrink: 0;
+    width: 104px;
+    height: 104px;
+    padding: var(--sp-0-5);
+    border-radius: 50%;
+    box-sizing: border-box;
+    background: rgba(255, 255, 255, 0.55);
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.3), 0 4px 16px rgba(0, 0, 0, 0.45);
+}
+.about-dev-img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    object-fit: cover;
+}
+.about-dev-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1);
+}
+.about-made-by {
+    font-size: calc(11px * var(--font-scale));
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    color: rgba(225, 230, 255, 0.82);
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+}
+.about-dev-id {
+    font-size: calc(22px * var(--font-scale));
+    font-weight: 800;
+    color: #ffffff;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7), 0 0 18px rgba(0, 0, 0, 0.45);
+}
+.about-dev-bio {
+    font-size: calc(14.5px * var(--font-scale));
+    color: #f1f2ff;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
+}
+.about-dev-github-btn {
+    align-self: flex-end;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-1-5);
+    white-space: nowrap;
+    padding: var(--sp-1-5) var(--sp-3);
+    border-radius: 16px;
+    font-size: calc(12px * var(--font-scale));
+    font-weight: 700;
+    color: #ffffff;
+    background: rgba(8, 10, 28, 0.62);
+    border: 1px solid rgba(255, 255, 255, 0.45);
+    backdrop-filter: blur(8px);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+    cursor: pointer;
+    transition: background 0.2s ease, transform 0.2s ease;
+}
+.about-dev-github-btn:hover {
+    background: rgba(20, 24, 56, 0.75);
+    transform: translateY(-1px);
+}
+
+/* 좁은 창: 한 줄로 쌓는다 */
+@media (max-width: 640px) {
+    .about-app-card { flex-direction: column; text-align: center; }
+    .about-app-name,
+    .about-app-footer { justify-content: center; }
+    .about-component-list { grid-template-columns: minmax(0, 1fr); }
+    .about-component-item { text-align: left; }
+    .about-intro-card { padding: var(--sp-5) var(--sp-4); }
+    .about-intro-top,
+    .about-intro-notes-row { grid-template-columns: minmax(0, 1fr); }
+    .about-intro-hello h3 { text-align: center; }
+    .about-intro-day-cells { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .about-dev-card { flex-wrap: wrap; }
+    .about-dev-github-btn { align-self: auto; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .about-app-ring,
+    .about-twinkle { animation: none; }
+}

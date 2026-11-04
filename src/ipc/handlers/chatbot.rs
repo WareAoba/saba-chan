@@ -665,17 +665,36 @@ pub async fn delete_memory(State(state): State<IPCServer>, Query(q): Query<Memor
     }
     let cfg = state.config_store.get_chatbot();
     let base = relay_base(&state).await;
-    let guilds = match q.guild_id.filter(|g| !g.is_empty()) {
-        Some(g) => BTreeSet::from([g]),
-        None => guild_ids(&state, &base, &cfg).await.0,
+    let (guilds, listed) = match q.guild_id.filter(|g| !g.is_empty()) {
+        Some(g) => (BTreeSet::from([g]), true),
+        None => guild_ids(&state, &base, &cfg).await,
     };
+    let (ok, rows) = clear_memory(guilds, listed, |guild| {
+        let base = base.clone();
+        async move {
+            let path = format!("/api/nodes/{}/chatbot/memory", encode_path_segment(&guild));
+            call(&base, reqwest::Method::DELETE, &path, None).await
+        }
+    })
+    .await;
+    let mut body = json!({ "success": ok, "sync": rows });
+    if !listed {
+        body["error_code"] = json!("relay_unreachable");
+    }
+    Json(body).into_response()
+}
+
+/// 길드마다 기억을 지운다. 길드 목록을 다 받지 못했으면(`listed` false) 빠진 길드가 있을 수 있으니 성공이 아니다
+async fn clear_memory<F, Fut>(guilds: BTreeSet<String>, listed: bool, delete: F) -> (bool, Vec<Value>)
+where
+    F: Fn(String) -> Fut,
+    Fut: std::future::Future<Output = Result<(StatusCode, Value), String>>,
+{
     let mut rows = Vec::new();
     for guild in guilds {
-        let path = format!("/api/nodes/{}/chatbot/memory", encode_path_segment(&guild));
-        rows.push(result_row(&guild, &call(&base, reqwest::Method::DELETE, &path, None).await));
+        rows.push(result_row(&guild, &delete(guild.clone()).await));
     }
-    let ok = rows.iter().all(|r| r["ok"] == json!(true));
-    Json(json!({ "success": ok, "sync": rows })).into_response()
+    (listed && rows.iter().all(|r| r["ok"] == json!(true)), rows)
 }
 
 #[cfg(test)]
@@ -684,6 +703,15 @@ mod tests {
 
     fn patch(v: Value) -> ChatbotPatch {
         serde_json::from_value(v).unwrap()
+    }
+
+    /// 길드 목록을 받지 못했으면 지울 길드를 몰라도 성공이라 하지 않는다 (아무것도 지우지 않았을 수 있다)
+    #[tokio::test]
+    async fn clearing_all_memory_without_the_guild_list_is_not_a_success() {
+        let ok = |_guild: String| async { Ok((StatusCode::OK, Value::Null)) };
+        assert!(!clear_memory(BTreeSet::new(), false, ok).await.0, "nothing was deleted");
+        assert!(!clear_memory(BTreeSet::from(["g1".to_string()]), false, ok).await.0);
+        assert!(clear_memory(BTreeSet::from(["g1".to_string()]), true, ok).await.0);
     }
 
     /// 읽고-바꾸고-저장하기는 한 번에 하나씩: 키 교체와 설정 저장이 겹치면 나중 것이 옛 값으로 새 키를 지운다
