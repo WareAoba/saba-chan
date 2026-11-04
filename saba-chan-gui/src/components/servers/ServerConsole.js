@@ -181,9 +181,17 @@ export function ServerConsole({
     }
 
     const stdinDisabled = readOnly || state?.stdinDisabled || server.status !== 'running';
+    // 꺼진 서버는 지난 로그를 그대로 보이고, 위에 꺼져 있다는 줄을 붙인다
+    const offline = !['running', 'starting', 'stopping'].includes(server.status);
 
     return (
-        <div className="term">
+        <div className={clsx('term', { 'is-offline': offline })}>
+            {offline && lines.length > 0 && (
+                <div className="term-offline" role="status">
+                    <span className="term-offline-dot" aria-hidden="true" />
+                    {t('shell.console_offline_history')}
+                </div>
+            )}
             <div
                 className="term-output"
                 ref={outputRef}

@@ -943,11 +943,21 @@ export function CommandStairs({ node, permissions, instance = L.ALL_INSTANCES })
     );
 }
 
-/** 권한 탭: 사람·명령 두 화면과 레벨 편집. 같은 권한 상태를 나눠 쓴다 (화면을 바꿔도 다시 읽지 않는다) */
-export function PermissionPanel({ node, instance = L.ALL_INSTANCES, members, membersLoading, onRefreshMembers }) {
-    const { t } = useTranslation('gui');
+/** 인스턴스 메뉴: 레벨별 명령 계단. 멤버 레벨은 서버 전체 값이라 여기서 고치지 않는다 (멤버 탭) */
+export function PermissionPanel({ node, instance = L.ALL_INSTANCES }) {
     const permissions = usePermissions(node.guildId);
-    const [view, setView] = useState('commands');
+    return (
+        <div className="dc-perm">
+            <CommandStairs node={node} permissions={permissions} instance={instance} />
+        </div>
+    );
+}
+
+/**
+ * 디스코드 서버의 멤버 탭: 멤버마다 레벨과 레벨 편집. 멤버 레벨은 서버에 하나이고 모든 인스턴스가 이것을 따른다
+ */
+export function MembersPanel({ node, members, membersLoading, onRefreshMembers }) {
+    const permissions = usePermissions(node.guildId);
     const [editing, setEditing] = useState(false);
     const { perm, loading, error, load } = permissions;
 
@@ -957,32 +967,15 @@ export function PermissionPanel({ node, instance = L.ALL_INSTANCES, members, mem
     }
     return (
         <div className="dc-perm">
-            <Segmented
-                ariaLabel={t('discord.tab_permissions')}
-                value={view}
-                onChange={setView}
-                items={[
-                    {
-                        id: 'commands',
-                        label: t('discord.perm_view_commands'),
-                        icon: <Icon name="terminal" size="sm" />,
-                    },
-                    { id: 'people', label: t('discord.perm_view_people'), icon: <Icon name="user" size="sm" /> },
-                ]}
+            <PeopleView
+                node={node}
+                instance={L.ALL_INSTANCES}
+                members={members}
+                membersLoading={membersLoading}
+                onRefreshMembers={onRefreshMembers}
+                permissions={permissions}
+                onEditLevels={() => setEditing(true)}
             />
-            {view === 'commands' ? (
-                <CommandStairs node={node} permissions={permissions} instance={instance} />
-            ) : (
-                <PeopleView
-                    node={node}
-                    instance={instance}
-                    members={members}
-                    membersLoading={membersLoading}
-                    onRefreshMembers={onRefreshMembers}
-                    permissions={permissions}
-                    onEditLevels={() => setEditing(true)}
-                />
-            )}
         </div>
     );
 }

@@ -11,7 +11,7 @@ import { chatbotAvailable } from './ChatbotView';
 import * as P from './nodePermissions';
 import { ALL_INSTANCES } from './levels';
 import { ModerationTab, moderationAvailable } from './ModerationTab';
-import { PermissionPanel } from './PermissionsTab';
+import { MembersPanel, PermissionPanel } from './PermissionsTab';
 import { SleepCorner } from './SleepCorner';
 
 export { Avatar, initialOf };
@@ -153,10 +153,10 @@ function InstancesTab({ node, nodes, servers, modules = [], settings, update, up
 }
 
 /**
- * 인스턴스 메뉴: 레벨별 명령 계단(이 인스턴스 + 서버 전체 명령)과 멤버별 레벨을 따로 보인다.
+ * 인스턴스 메뉴: 레벨별 명령 계단(이 인스턴스 + 서버 전체 명령). 멤버 레벨은 서버의 멤버 탭에서 정한다.
  * `instance`가 ALL_INSTANCES면 모든 인스턴스를 한 계단에 모아 본다
  */
-function InstanceMenu({ node, servers, instance, onBack, members, membersLoading, onRefreshMembers }) {
+function InstanceMenu({ node, servers, instance, onBack }) {
     const { t } = useTranslation('gui');
     const srv = servers.find((s) => s.id === instance);
     const title = srv ? srv.name : t('discord.perm_view_all');
@@ -169,19 +169,13 @@ function InstanceMenu({ node, servers, instance, onBack, members, membersLoading
                 {title}
                 {srv?.module && <small className="muted"> · {srv.module}</small>}
             </h2>
-            <PermissionPanel
-                node={node}
-                instance={srv ? srv.id : ALL_INSTANCES}
-                members={members}
-                membersLoading={membersLoading}
-                onRefreshMembers={onRefreshMembers}
-            />
+            <PermissionPanel node={node} instance={srv ? srv.id : ALL_INSTANCES} />
         </div>
     );
 }
 
 /**
- * 디스코드 서버(노드) 하나: 인스턴스(→ 인스턴스 메뉴) / 말하는 사바쨩 / 노래하는 사바쨩 / 읽어주는 사바쨩 / 서버 관리 / 봇 설정.
+ * 디스코드 서버(노드) 하나: 인스턴스(→ 인스턴스 메뉴) / 멤버 / 말하는 사바쨩 / 노래하는 사바쨩 / 읽어주는 사바쨩 / 서버 관리 / 봇 설정.
  */
 export function NodeView({
     modules = [],
@@ -238,6 +232,7 @@ export function NodeView({
                 }}
                 items={[
                     { id: 'instances', label: t('discord.tab_instances'), icon: <Icon name="server" size="sm" /> },
+                    { id: 'members', label: t('discord.tab_members'), icon: <Icon name="user" size="sm" /> },
                     ...(moderationAvailable()
                         ? [
                               {
@@ -270,12 +265,12 @@ export function NodeView({
                 ]}
             />
 
-            {membersFailed && !membersLoading && members?.length > 0 && instance && (
+            {membersFailed && !membersLoading && members?.length > 0 && tab === 'members' && (
                 <p className="dc-field-error">
                     <Icon name="info" size="xs" /> {t('discord.members_refresh_failed')}
                 </p>
             )}
-            {membersPartial && !membersFailed && !membersLoading && instance && (
+            {membersPartial && !membersFailed && !membersLoading && tab === 'members' && (
                 <p className="dc-field-error">
                     <Icon name="info" size="xs" /> {t('discord.members_partial')}
                 </p>
@@ -287,6 +282,12 @@ export function NodeView({
                     servers={visibleServers(settings, node.guildId, servers)}
                     instance={instance}
                     onBack={() => setInstance(null)}
+                />
+            )}
+            {tab === 'members' && (
+                <MembersPanel
+                    key={node.guildId}
+                    node={node}
                     members={members}
                     membersLoading={membersLoading}
                     onRefreshMembers={onRefreshMembers}

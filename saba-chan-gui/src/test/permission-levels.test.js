@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as L from '../components/discord/levels';
 import { NodeView } from '../components/discord/NodeView';
-import { OWNER_CONFIRM_MS, PermissionPanel } from '../components/discord/PermissionsTab';
+import { MembersPanel, OWNER_CONFIRM_MS, PermissionPanel } from '../components/discord/PermissionsTab';
 import { pickOption } from './dropdown';
 
 const API = ['permissionsGet', 'permissionsCommands', 'permissionsUpdate', 'permissionsSetMember', 'permissionsRemoveMember'];
@@ -66,11 +66,9 @@ async function openCommands(props) {
     await flush();
 }
 
-/** 인스턴스 메뉴의 멤버별 레벨 화면으로 */
-async function openPeople(props) {
-    renderPanel(props);
-    await flush();
-    fireEvent.click(screen.getByRole('tab', { name: 'Member levels' }));
+/** 디스코드 서버의 멤버 탭 (멤버 레벨은 서버 하나에 한 번 정한다) */
+async function openPeople(props = {}) {
+    render(<MembersPanel node={node} members={relayMembers} {...props} />);
     await flush();
 }
 
@@ -518,10 +516,10 @@ describe('권한 화면', () => {
             ladder: [{ id: 3 }, { id: 10, name: 'VIP' }, { name: 'Mod' }, { id: 2 }, { id: 0 }, { id: -1 }],
         });
         fireEvent.click(screen.getByRole('button', { name: /Back/ }));
-        expect(screen.getByRole('tab', { name: 'Member levels' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /Edit levels/ })).toBeInTheDocument();
     });
 
-    it('디스코드 서버 → 인스턴스 메뉴에서 레벨별 명령과 멤버별 레벨을 따로 본다', async () => {
+    it('멤버 레벨은 디스코드 서버의 멤버 탭에서 정하고, 인스턴스 메뉴는 레벨별 명령만 보인다', async () => {
         render(
             <NodeView
                 node={node}
@@ -532,14 +530,18 @@ describe('권한 화면', () => {
                 members={relayMembers}
             />,
         );
-        expect(screen.queryByRole('tab', { name: 'Members' })).toBeNull();
-        expect(screen.queryByRole('tab', { name: 'Permissions' })).toBeNull();
+        fireEvent.click(screen.getByRole('tab', { name: 'Members' }));
+        await flush();
+        expect(screen.getByText(/apply to every instance on this Discord server/)).toBeInTheDocument();
+        expect(within(level('Admin')).getByRole('button', { name: 'Mint' })).toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole('tab', { name: 'Instances' }));
         fireEvent.click(screen.getByRole('button', { name: 'Survival permissions' }));
         await flush();
         expect(screen.getByRole('heading', { name: /Survival/ })).toBeInTheDocument();
-        expect(screen.getByRole('tab', { name: 'Commands per level', selected: true })).toBeInTheDocument();
-        fireEvent.click(screen.getByRole('tab', { name: 'Member levels' }));
-        expect(screen.getByText(/apply to every instance on this Discord server/)).toBeInTheDocument();
+        expect(screen.queryByRole('tab', { name: 'Member levels' })).toBeNull();
+        expect(screen.queryByRole('button', { name: 'Mint' })).toBeNull();
+        expect(step('Lv 2 · User')).toBeInTheDocument();
         fireEvent.click(screen.getByRole('button', { name: /Instances/ }));
         expect(screen.getByRole('button', { name: 'Survival permissions' })).toBeInTheDocument();
     });

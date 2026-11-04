@@ -90,17 +90,13 @@ function Harness({ save, initialView, botConfigSave, hostId = 'host-1', setHostI
     );
 }
 
-/** 인스턴스 메뉴 → 멤버별 레벨 (디스코드 서버 → 인스턴스 → 멤버별 레벨) */
+/** 디스코드 서버 → 멤버 탭 (멤버 레벨은 서버 하나에 한 번 정한다) */
 async function openMemberLevels() {
     window.api.permissionsGet = vi
         .fn()
         .mockResolvedValue({ guildId: 'g1', ownerDiscordId: 'o1', members: {}, preset: 'default' });
     window.api.permissionsCommands = vi.fn().mockResolvedValue({ guildId: 'g1', instances: [], items: [] });
-    const open = [...document.querySelectorAll('button')].find((b) =>
-        /permissions|권한 메뉴/.test(b.getAttribute('aria-label') || ''),
-    );
-    await act(async () => fireEvent.click(open));
-    await act(async () => fireEvent.click(screen.getByRole('tab', { name: /Member levels|멤버별 레벨/ })));
+    await act(async () => fireEvent.click(screen.getByRole('tab', { name: /^(Members|멤버)$/ })));
     const more = screen.queryByRole('button', { name: /default level|기본 레벨/ });
     if (more) await act(async () => fireEvent.click(more));
     await waitFor(() => expect(screen.getByText('민트')).toBeTruthy());
