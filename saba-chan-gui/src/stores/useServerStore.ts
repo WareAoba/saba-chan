@@ -1,21 +1,83 @@
+import type { i18n as I18n, TFunction } from 'i18next';
 import { create } from 'zustand';
+import type { CommandAliasInfo, ModuleInfo, ModuleLoadError, ServerInfo } from '../types/daemon';
 import { createTranslateError, debugWarn, retryWithBackoff, safeShowToast, waitForDaemon } from '../utils/helpers';
 import { useUIStore } from './useUIStore';
 
 // i18n translate function — set after store creation
-let _t = (key, fallback) => fallback || key;
-let _translateError = (msg) => msg;
-let _i18n = null;
+// biome-ignore lint/suspicious/noExplicitAny: i18next t의 여러 겹친 모양을 그대로 받는다
+type Translate = (key: string, options?: any) => string;
+let _t: Translate = (key, fallback) => (typeof fallback === 'string' && fallback) || key;
+let _translateError = (msg: string): string => msg;
+let _i18n: I18n | null = null;
 
-export const setServerI18n = (t, i18n) => {
-    _t = t;
-    _translateError = createTranslateError(t);
+export const setServerI18n = (t: TFunction | Translate, i18n: I18n) => {
+    _t = t as Translate;
+    _translateError = createTranslateError(t) as (msg: string) => string;
     _i18n = i18n;
 };
 
-let modulesFetch = null;
+let modulesFetch: Promise<void> | null = null;
 
-export const useServerStore = create((set, get) => ({
+/** 화면이 쓰는 서버: 데몬 목록 항목에 펼침 상태를 더한다 (useServerActions) */
+export type Server = ServerInfo & { expanded?: boolean };
+
+/** 모듈 명령 하나의 별명·설명 (모듈 메타데이터 command_aliases + commands.fields) */
+export interface ModuleCommandAliases {
+    aliases: string[];
+    description: string;
+    label: string;
+}
+
+export interface ModuleAliases {
+    module_aliases: string[];
+    commands: Record<string, ModuleCommandAliases>;
+}
+
+/** 화면이 버튼을 눌러 낙관적으로 바꿔 둔 상태 */
+export interface OptimisticStatus {
+    status: string;
+    timestamp: number;
+    pending?: boolean;
+}
+
+type Updater<T> = T | ((prev: T) => T);
+
+interface ServerState {
+    servers: Server[];
+    modules: ModuleInfo[];
+    failedModules: ModuleLoadError[];
+    modulesLoaded: boolean;
+    loading: boolean;
+    moduleAliasesPerModule: Record<string, ModuleAliases>;
+    daemonReady: boolean;
+    initStatus: string;
+    initProgress: number;
+    serversInitializing: boolean;
+    nowEpoch: number;
+    _uptimeInterval: ReturnType<typeof setInterval> | null;
+    _guiInitiatedOps: Set<string>;
+    _optimisticStatus: Map<string, OptimisticStatus>;
+    _lastErrorToast: number;
+    _firstFetchDone: boolean;
+    _openSettingsToExtensions: (() => void) | null;
+
+    _resetForTest: () => void;
+    setServers: (serversOrUpdater: Updater<Server[]>) => void;
+    setModules: (modules: ModuleInfo[]) => void;
+    setDaemonReady: (val: boolean) => void;
+    setInitStatus: (val: string) => void;
+    setInitProgress: (val: Updater<number>) => void;
+    setServersInitializing: (val: boolean) => void;
+    startUptimeClock: () => void;
+    stopUptimeClock: () => void;
+    /** 시작 시각(epoch 초)부터 지금까지 hh:mm:ss */
+    formatUptime: (startTime: number | null | undefined) => string | null;
+    fetchModules: () => Promise<void>;
+    _fetchModulesOnce: () => Promise<void>;
+}
+
+export const useServerStore = create<ServerState>()((set, get) => ({
     // ── State ──
     servers: [],
     modules: [],
@@ -136,7 +198,7 @@ export const useServerStore = create((set, get) => ({
             try {
                 await waitForDaemon(5000);
             } catch (err) {
-                debugWarn('Daemon not ready, but continuing:', err.message);
+                debugWarn('Daemon not ready, but continuing:', (err as Error).message);
             }
 
             const data = await retryWithBackoff(() => window.api.moduleList(), 3, 800);
@@ -166,15 +228,16 @@ export const useServerStore = create((set, get) => ({
                 }
 
                 // Load module metadata (aliases)
-                const aliasesMap = {};
+                const aliasesMap: Record<string, ModuleAliases> = {};
                 for (const mod of data.modules) {
                     try {
                         const metadata = await window.api.moduleGetMetadata(mod.name);
                         // 데몬이 파싱한 메타데이터만 쓴다 (원본 toml은 응답에서 빠질 예정)
                         const meta = metadata?.metadata;
                         if (meta) {
-                            const mergedCommands = {};
-                            for (const [cmdName, cmdData] of Object.entries(meta.command_aliases || {})) {
+                            const mergedCommands: Record<string, ModuleCommandAliases> = {};
+                            const commandAliases = (meta.command_aliases || {}) as Record<string, CommandAliasInfo>;
+                            for (const [cmdName, cmdData] of Object.entries(commandAliases)) {
                                 mergedCommands[cmdName] = {
                                     aliases: cmdData.aliases || [],
                                     description: cmdData.description || '',
@@ -216,12 +279,12 @@ export const useServerStore = create((set, get) => ({
             }
         } catch (error) {
             console.error('Failed to fetch modules:', error);
-            const errMsg = _translateError(error.message);
+            const errMsg = _translateError((error as Error).message);
             if (errMsg) safeShowToast(_t('modules.fetch_failed_toast', { error: errMsg }), 'error', 5000);
             useUIStore.getState().openModal({
                 type: 'failure',
                 title: _t('modules.load_error_title'),
-                message: _translateError(error.message),
+                message: _translateError((error as Error).message),
             });
         }
     },

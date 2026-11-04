@@ -1,22 +1,26 @@
+import type { TFunction } from 'i18next';
 import { create } from 'zustand';
+import type { AgentStatus, Json, JsonObject } from '../types/daemon';
 import { readPrefixes } from '../components/discord/prefixes';
 import { createTranslateError, safeShowToast } from '../utils/helpers';
 import { mergePatchDiff } from '../utils/mergePatch';
 
 // i18n translate function — set after store creation
-let _t = (key, fallback) => fallback || key;
-let _translateError = (msg) => msg;
+// biome-ignore lint/suspicious/noExplicitAny: i18next t의 여러 겹친 모양을 그대로 받는다
+type Translate = (key: string, options?: any) => string;
+let _t: Translate = (key, fallback) => (typeof fallback === 'string' && fallback) || key;
+let _translateError = (msg: string): string => msg;
 
-export const setDiscordI18n = (t) => {
-    _t = t;
-    _translateError = createTranslateError(t);
+export const setDiscordI18n = (t: TFunction | Translate) => {
+    _t = t as Translate;
+    _translateError = createTranslateError(t) as (msg: string) => string;
 };
 
 const RELAY_URL_FALLBACK = 'https://saba-chan.online';
 
 // bot-config 최상위 키 ↔ 스토어 필드. 바뀐 칸만 PATCH(JSON Merge Patch)로 보낸다:
 // 다른 경로(CLI·원격·다른 길드 설정)가 그사이 바꾼 값을 옛 스냅샷으로 되돌리지 않게
-const BOT_KEYS = {
+const BOT_KEYS: Record<string, (keyof DiscordData)[]> = {
     prefixes: ['discordPrefixes'],
     cloud: ['discordCloudRelayUrl', 'discordCloudHostId'],
     moduleAliases: ['discordModuleAliases'],
@@ -29,23 +33,73 @@ const BOT_KEYS = {
     backupNotice: ['discordBackupNotice'],
 };
 // 마지막으로 데몬과 맞춘 값 (로드·저장 성공 때 갱신). 여기와 다른 필드만 바뀐 것으로 본다
-let synced = {};
-const sameValue = (a, b) => a === b || JSON.stringify(a) === JSON.stringify(b);
-const markSynced = (state, fields) => {
-    for (const f of fields) synced[f] = state[f];
+let synced: Partial<DiscordData> = {};
+const sameValue = (a: unknown, b: unknown) => a === b || JSON.stringify(a) === JSON.stringify(b);
+const markSynced = (state: DiscordData, fields: (keyof DiscordData)[]) => {
+    for (const f of fields) (synced as Record<string, unknown>)[f] = state[f];
 };
 const ALL_FIELDS = Object.values(BOT_KEYS).flat();
 // 저장은 한 번에 하나씩: 데몬 값을 읽는 사이 뒤 저장이 먼저 끝나 옛 값이 마지막에 남지 않게
-let saveQueue = Promise.resolve();
+let saveQueue: Promise<unknown> = Promise.resolve();
 // 상태 확인 세대: 연결 대상이 바뀌거나 폴링이 멈추면 올려서, 늦게 온 옛 응답을 버린다
 let statusGeneration = 0;
 // 지금 확인 중인 대상 세대 (겹친 확인은 하나만 돌려 한 번의 실패를 두 번으로 세지 않는다)
-let checkingGeneration = null;
+let checkingGeneration: number | null = null;
 
 // 디스코드 봇 본체는 클라우드(릴레이 서버)에서 돌고, 로컬에서는 데몬 내장
 // 릴레이 에이전트가 명령을 받아 처리한다. 이 스토어는 bot-config와
 // 에이전트/릴레이 상태만 다룬다. 에이전트는 노드 토큰이 있으면 데몬이 자동 시작한다.
-const initialState = () => ({
+/** bot-config.json(config_store::BotConfig)을 화면 칸으로 옮긴 것과 에이전트·릴레이 상태 */
+export interface DiscordData {
+    discordPrefixes: string[];
+    /** 모듈 이름 → 디스코드에서 부르는 별명 */
+    discordModuleAliases: Record<string, string>;
+    discordCommandAliases: Record<string, Json>;
+    discordCloudRelayUrl: string;
+    discordCloudHostId: string;
+    /** 길드 id → 그 길드 설정 */
+    nodeSettings: JsonObject;
+    cloudNodes: JsonObject[];
+    cloudMembers: Record<string, Json>;
+    discordTranslateCommands: boolean;
+    discordNewGuildInstances: 'auto' | 'manual';
+    discordBackupNotice: 'all' | 'failures';
+    /** stopped · connecting · running */
+    discordBotStatus: string;
+    discordAgentReplaced: boolean;
+    discordAgentRelayUrlInvalid: boolean;
+    discordAgentMinVersion: string | null;
+    botStatusReady: boolean;
+    relayConnected: boolean;
+    relayConnecting: boolean;
+    relayError: string;
+    cloudNodesStale: number;
+    _relayFailures: number;
+    _agentFailures: number;
+    _saveErrorCode: string | null;
+    _settingsReady: boolean;
+    _botConfigLoaded: boolean;
+    _statusInterval: ReturnType<typeof setInterval> | null;
+    _statusTimeout: ReturnType<typeof setTimeout> | null;
+}
+
+interface DiscordState extends DiscordData {
+    update: (partial: Partial<DiscordData>) => void;
+    loadConfig: (opts?: { attempts?: number }) => Promise<void>;
+    saveConfig: () => Promise<unknown>;
+    _saveNow: () => Promise<unknown>;
+    applySavedNodeValue: (guildId: string, key: string, value: Json | undefined) => void;
+    markCloudNodesStale: () => void;
+    startBot: () => Promise<unknown>;
+    stopBot: () => Promise<unknown>;
+    checkStatus: () => Promise<void>;
+    _checkStatusNow: (generation: number) => Promise<void>;
+    startStatusPolling: () => void;
+    stopStatusPolling: () => void;
+    _resetForTest: () => void;
+}
+
+const initialState = (): DiscordData => ({
     // ── Bot config (bot-config.json, 데몬이 SSOT) ──
     // 비어 있으면 릴레이가 언어별 기본 접두사를 쓴다
     discordPrefixes: [],
@@ -92,12 +146,12 @@ const initialState = () => ({
     _statusTimeout: null,
 });
 
-export const useDiscordStore = create((set, get) => ({
+export const useDiscordStore = create<DiscordState>()((set, get) => ({
     ...initialState(),
 
     update: (partial) => {
         const state = get();
-        const targetChanged = ['discordCloudHostId', 'discordCloudRelayUrl'].some(
+        const targetChanged = (['discordCloudHostId', 'discordCloudRelayUrl'] as const).some(
             (k) => k in partial && partial[k] !== state[k],
         );
         if (!targetChanged) return set(partial);
@@ -108,7 +162,7 @@ export const useDiscordStore = create((set, get) => ({
     },
 
     loadConfig: async ({ attempts } = {}) => {
-        const isTest = process.env.NODE_ENV === 'test' || typeof jest !== 'undefined';
+        const isTest = process.env.NODE_ENV === 'test' || 'jest' in globalThis;
         const maxAttempts = attempts ?? (isTest ? 1 : 5);
         const retryDelay = 800;
 
@@ -117,7 +171,7 @@ export const useDiscordStore = create((set, get) => ({
                 const botCfg = await window.api.botConfigLoad();
                 if (!botCfg) continue;
 
-                const patch = {
+                const patch: Partial<DiscordData> = {
                     discordPrefixes: readPrefixes(botCfg),
                     discordModuleAliases: botCfg.moduleAliases || {},
                     discordCommandAliases: botCfg.commandAliases || {},
@@ -173,19 +227,19 @@ export const useDiscordStore = create((set, get) => ({
                 throw new Error('bot config unavailable; refusing to overwrite it with defaults');
             }
             const initial = initialState();
-            const base = (f) => (f in synced ? synced[f] : initial[f]);
+            const base = (f: keyof DiscordData) => (f in synced ? synced[f] : initial[f]);
             const changed = Object.keys(BOT_KEYS).filter((k) => BOT_KEYS[k].some((f) => !sameValue(state[f], base(f))));
             set({ _saveErrorCode: null });
             if (changed.length === 0) return true;
 
-            const payload = {};
+            const payload: Record<string, unknown> = {};
             for (const k of changed) {
                 // relayUrl·hostId는 한 키(cloud) 안의 두 칸이다
-                const value = (pick) =>
+                const value = (pick: (f: keyof DiscordData) => unknown) =>
                     k === 'cloud'
                         ? { relayUrl: pick('discordCloudRelayUrl'), hostId: pick('discordCloudHostId') }
                         : pick(BOT_KEYS[k][0]);
-                const patch = mergePatchDiff(value(base), value((f) => state[f]));
+                const patch = mergePatchDiff(value(base), value((f: keyof DiscordData) => state[f]));
                 if (patch !== undefined) payload[k] = patch;
             }
             const res = await window.api.botConfigSave(payload);
@@ -219,8 +273,8 @@ export const useDiscordStore = create((set, get) => ({
      * 데몬 전용 API로 이미 저장한 길드 값을 스토어에 반영한다. 자동 저장이 다시 보내지 않게 동기화 기준도 같이 바꾼다
      */
     applySavedNodeValue: (guildId, key, value) => {
-        const put = (all) => {
-            const node = { ...(all?.[guildId] || {}) };
+        const put = (all: JsonObject | undefined): JsonObject => {
+            const node: JsonObject = { ...((all?.[guildId] as JsonObject | undefined) || {}) };
             if (value == null) delete node[key];
             else node[key] = value;
             return { ...(all || {}), [guildId]: node };
@@ -246,7 +300,7 @@ export const useDiscordStore = create((set, get) => ({
                 get().checkStatus();
             }
         } catch (e) {
-            safeShowToast(_t('discord_bot.start_error_toast', { error: _translateError(e.message) }), 'error', 4000);
+            safeShowToast(_t('discord_bot.start_error_toast', { error: _translateError((e as Error).message) }), 'error', 4000);
         }
     },
 
@@ -264,7 +318,7 @@ export const useDiscordStore = create((set, get) => ({
                 safeShowToast(_t('discord_bot.stopped_toast'), 'discord', 3000);
             }
         } catch (e) {
-            safeShowToast(_t('discord_bot.stop_error_toast', { error: _translateError(e.message) }), 'error', 4000);
+            safeShowToast(_t('discord_bot.stop_error_toast', { error: _translateError((e as Error).message) }), 'error', 4000);
         }
     },
 
@@ -285,7 +339,7 @@ export const useDiscordStore = create((set, get) => ({
         if (!get()._botConfigLoaded) await get().loadConfig({ attempts: 1 });
         if (generation !== statusGeneration) return;
         const state = get();
-        let agent = 'unknown';
+        let agent: AgentStatus = 'unknown';
         try {
             agent = await window.api.discordBotStatus();
         } catch {
@@ -304,7 +358,7 @@ export const useDiscordStore = create((set, get) => ({
                 relayOk = !!result && !result.error;
                 if (!relayOk) relayFailure = String(result?.error || _t('errors.network_error'));
             } catch (e) {
-                relayFailure = e?.message || String(e);
+                relayFailure = (e as Error)?.message || String(e);
             }
         }
         // 그 사이 대상이 바뀌었거나 폴링이 멈췄으면 이 결과는 버린다
@@ -315,13 +369,13 @@ export const useDiscordStore = create((set, get) => ({
         const prev = get();
         const keepAgent = agent === 'unknown' && agentFailures < 2;
         // too_old는 { status, running, minVersion }으로 온다
-        const tooOld = agent?.status === 'too_old';
+        const tooOld = typeof agent === 'object' ? agent : null;
         const agentRunning = keepAgent
             ? prev.discordBotStatus !== 'stopped'
             : tooOld
-              ? agent.running
+              ? tooOld.running
               : agent === 'running';
-        const agentMinVersion = keepAgent ? prev.discordAgentMinVersion : tooOld ? agent.minVersion || '-' : null;
+        const agentMinVersion = keepAgent ? prev.discordAgentMinVersion : tooOld ? tooOld.minVersion || '-' : null;
         const agentReplaced = keepAgent ? prev.discordAgentReplaced : agent === 'replaced';
         const agentRelayUrlInvalid = keepAgent ? prev.discordAgentRelayUrlInvalid : agent === 'invalid_relay_url';
 
@@ -361,8 +415,8 @@ export const useDiscordStore = create((set, get) => ({
 
     stopStatusPolling: () => {
         const state = get();
-        clearInterval(state._statusInterval);
-        clearTimeout(state._statusTimeout);
+        clearInterval(state._statusInterval ?? undefined);
+        clearTimeout(state._statusTimeout ?? undefined);
         statusGeneration += 1;
         set({
             _statusInterval: null,
@@ -377,8 +431,8 @@ export const useDiscordStore = create((set, get) => ({
     // Test-only: reset to initial state
     _resetForTest: () => {
         const state = get();
-        clearInterval(state._statusInterval);
-        clearTimeout(state._statusTimeout);
+        clearInterval(state._statusInterval ?? undefined);
+        clearTimeout(state._statusTimeout ?? undefined);
         statusGeneration += 1;
         synced = {};
         saveQueue = Promise.resolve();
@@ -387,8 +441,8 @@ export const useDiscordStore = create((set, get) => ({
 }));
 
 // ── Auto-save subscription (Zustand v5 single-listener) ──
-let botConfigSaveTimer = null;
-const _discordSaveKeys = [
+let botConfigSaveTimer: ReturnType<typeof setTimeout> | undefined;
+const _discordSaveKeys: (keyof DiscordData)[] = [
     'discordPrefixes',
     'discordCloudRelayUrl',
     'discordCloudHostId',

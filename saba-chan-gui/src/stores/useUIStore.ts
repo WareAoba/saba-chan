@@ -1,6 +1,80 @@
 import { create } from 'zustand';
 
-export const useUIStore = create((set, _get) => ({
+/** 상단 페이지 */
+export type ActiveTab = 'servers' | 'discord' | 'settings';
+
+/**
+ * App이 그리는 모달 하나. type이 모달 종류(success·failure·question·agreements…)이고 나머지 칸은 그 모달의 props다.
+ */
+export interface ModalConfig {
+    type: string;
+    title?: string;
+    message?: string;
+    // biome-ignore lint/suspicious/noExplicitAny: 모달 종류마다 props가 다르다
+    [key: string]: any;
+}
+
+export interface ProgressBarConfig {
+    message?: string;
+    percent?: number;
+    indeterminate?: boolean;
+}
+
+/** 콘솔 명령 기록 한 줄 (CommandModal) */
+// biome-ignore lint/suspicious/noExplicitAny: 기록 모양은 CommandModal이 정한다
+export type CommandHistoryEntry = Record<string, any>;
+
+type Panel = 'showModuleManager' | 'showDiscordSection' | 'showBackgroundSection' | 'showNoticeSection';
+
+interface UIState {
+    activeTab: ActiveTab;
+    activeServerId: string | null;
+    requestedServerTab: string | null;
+    revealServerCount: number;
+    modal: ModalConfig | null;
+    progressBar: ProgressBarConfig | null;
+    showWaitingImage: boolean;
+    showModuleManager: boolean;
+    showGuiSettingsModal: boolean;
+    settingsInitialView: string | null;
+    showCommandModal: boolean;
+    // biome-ignore lint/suspicious/noExplicitAny: 명령 창이 다루는 서버 (서버 목록 항목에 화면 칸을 더한 것)
+    commandServer: any;
+    showDiscordSection: boolean;
+    showBackgroundSection: boolean;
+    showNoticeSection: boolean;
+    unreadNoticeCount: number;
+    commandHistoryMap: Record<string, CommandHistoryEntry[]>;
+    /** checking · running · stopped · … */
+    backgroundDaemonStatus: string;
+
+    openModal: (config: ModalConfig) => void;
+    closeModal: () => void;
+    setProgressBar: (config: ProgressBarConfig | null) => void;
+    clearProgressBar: () => void;
+    setShowWaitingImage: (val: boolean) => void;
+    setShowModuleManager: (val: boolean) => void;
+    openSettings: (initialView?: string | null) => void;
+    closeSettings: () => void;
+    showServerTab: (serverId: string, tab: string) => void;
+    clearRequestedServerTab: () => void;
+    revealServer: (serverId: string) => void;
+    setShowCommandModal: (val: boolean) => void;
+    setCommandServer: (server: UIState['commandServer']) => void;
+    getCommandHistory: (serverId: string) => CommandHistoryEntry[];
+    pushCommandHistory: (serverId: string, entry: CommandHistoryEntry) => void;
+    setActiveTab: (tab: ActiveTab) => void;
+    setActiveServerId: (id: string | null) => void;
+    setShowDiscordSection: (val: boolean) => void;
+    setShowBackgroundSection: (val: boolean) => void;
+    setShowNoticeSection: (val: boolean) => void;
+    setUnreadNoticeCount: (count: number) => void;
+    setBackgroundDaemonStatus: (status: string) => void;
+    togglePanel: (panelName: Panel) => void;
+    _resetForTest: () => void;
+}
+
+export const useUIStore = create<UIState>()((set, _get) => ({
     // ── Navigation ──
     // activeTab = 상단 페이지 (servers | discord | settings), activeServerId = 서버 페이지에서 고른 서버
     activeTab: 'servers',

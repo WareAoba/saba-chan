@@ -1,6 +1,11 @@
 import i18n from 'i18next';
+import type { ApiBody, DaemonError, DaemonResponse, HttpMethod, RequestOptions } from '../types/daemon';
 
-function moduleErrorBody(body) {
+/** Rust 명령 호출 (`invoke(cmd, args)`) */
+// biome-ignore lint/suspicious/noExplicitAny: Rust 명령마다 결과 모양이 다르다
+export type Invoke = (cmd: string, args?: Record<string, unknown>) => Promise<any>;
+
+function moduleErrorBody(body: ApiBody): ApiBody {
     // 고른 원격 데몬에 닿지 못한 것 같은 중계 오류 (01 §1.4.2): 화면마다 따로 번역하지 않게 여기서 문구로
     const relayKey = `remote_daemon.err_${body?.error_code}`;
     if (String(body?.error_code || '').startsWith('remote_') && i18n.exists(relayKey, { ns: 'gui' })) {
@@ -21,48 +26,54 @@ function moduleErrorBody(body) {
  * 2xx면 {status, data}를 돌려주고, 그 밖의 HTTP 상태면 err.response = {status, data}인 오류를,
  * 연결 실패면 err.code(ECONNREFUSED·ETIMEDOUT·…)가 있는 오류를 던진다.
  */
-export function createDaemonClient(invoke) {
+export function createDaemonClient(invoke: Invoke) {
     // target: 이 요청만 그 데몬에 보낸다 (원격 데몬 hostId, 이 PC는 'local'). 없으면 상단 바에서 고른 데몬
-    async function request(method, path, body, { timeout = 5000, responseType, target } = {}) {
-        const args = { method: method.toUpperCase(), path, timeoutMs: timeout };
+    async function request<T = ApiBody>(
+        method: HttpMethod,
+        path: string,
+        body?: unknown,
+        { timeout = 5000, responseType, target }: RequestOptions = {},
+    ): Promise<DaemonResponse<T>> {
+        const args: Record<string, unknown> = { method: method.toUpperCase(), path, timeoutMs: timeout };
         if (body !== undefined) args.body = body;
         if (responseType) args.responseType = responseType;
         if (target) args.target = target;
-        let res;
+        let res: { status?: number; data?: ApiBody; error?: string; code?: string } | undefined;
         try {
             res = await invoke('daemon_request', args);
         } catch (e) {
             // 명령 자체가 실패 (Rust 쪽 오류)
-            const err = new Error(typeof e === 'string' ? e : e?.message || String(e));
+            const err: DaemonError = new Error(typeof e === 'string' ? e : (e as Error)?.message || String(e));
             err.code = 'EOTHER';
             throw err;
         }
         const status = res?.status ?? 0;
         if (status === 0) {
-            const err = new Error(res?.error || 'Network Error');
+            const err: DaemonError = new Error(res?.error || 'Network Error');
             err.code = res?.code || 'EOTHER';
             throw err;
         }
         if (status < 200 || status >= 300) {
-            const err = new Error(`Request failed with status code ${status}`);
-            err.response = { status, data: moduleErrorBody(res.data) };
+            const err: DaemonError = new Error(`Request failed with status code ${status}`);
+            err.response = { status, data: moduleErrorBody(res?.data as ApiBody) };
             throw err;
         }
-        return { status, data: moduleErrorBody(res.data) };
+        return { status, data: moduleErrorBody(res?.data as ApiBody) as T };
     }
 
     /** 데몬이 준 오류 본문(error_code, details 등)을 버리지 않고 렌더러에 넘긴다 (error가 없으면 모듈이 준 message) */
-    function errorBody(err, extra = {}) {
+    function errorBody(err: DaemonError, extra: ApiBody = {}): ApiBody {
         const data = err.response?.data;
-        const body = data && typeof data === 'object' && !Array.isArray(data) ? data : {};
+        const body: ApiBody = data && typeof data === 'object' && !Array.isArray(data) ? data : {};
         return { ...body, ...extra, error: body.error || body.message || err.message };
     }
 
     // 데몬 응답 본문을 그대로 돌려준다. HTTP 오류면 데몬이 준 본문({ok, error, error_code})을 돌려준다.
-    async function daemonCall(method, path, body, timeout = 30000) {
+    async function daemonCall(method: HttpMethod, path: string, body?: unknown, timeout = 30000): Promise<ApiBody> {
         try {
             return (await request(method, path, body, { timeout })).data;
-        } catch (error) {
+        } catch (e) {
+            const error = e as DaemonError;
             if (error.response) {
                 return error.response.data || { ok: false, error: `HTTP ${error.response.status}` };
             }
@@ -71,10 +82,11 @@ export function createDaemonClient(invoke) {
     }
 
     // 데몬 JSON 호출. 4xx·5xx도 데몬이 준 본문을 그대로 돌려준다 (error_code, details)
-    async function daemonJson(method, path, data, timeout = 15000) {
+    async function daemonJson(method: HttpMethod, path: string, data?: unknown, timeout = 15000): Promise<ApiBody> {
         try {
             return (await request(method, path, data, { timeout })).data;
-        } catch (err) {
+        } catch (e) {
+            const err = e as DaemonError;
             return err.response?.data || { success: false, error: err.message };
         }
     }
@@ -83,7 +95,7 @@ export function createDaemonClient(invoke) {
 }
 
 /** axios params처럼 값이 있는 것만 쿼리 문자열로 ('?' 포함, 없으면 빈 문자열) */
-export function queryString(params) {
+export function queryString(params: Record<string, unknown>): string {
     const qs = new URLSearchParams();
     for (const [k, v] of Object.entries(params)) {
         if (v !== undefined && v !== null) qs.set(k, String(v));

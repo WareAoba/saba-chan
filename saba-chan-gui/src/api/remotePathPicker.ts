@@ -3,13 +3,21 @@
  * 그 데몬의 폴더를 보여 주는 창(shell/RemotePathPicker)이 여기에 자기를 건다.
  * picker({kind: 'file'|'folder'|'save', extensions: string[]|null, defaultName: string|null}) → 고른 경로 또는 null
  */
-let picker = null;
+export interface RemotePathRequest {
+    kind: 'file' | 'folder' | 'save';
+    extensions: string[] | null;
+    defaultName: string | null;
+}
 
-export function setRemotePathPicker(fn) {
+export type RemotePathPicker = (request: RemotePathRequest) => Promise<string | null>;
+
+let picker: RemotePathPicker | null = null;
+
+export function setRemotePathPicker(fn: RemotePathPicker | null | undefined) {
     picker = fn || null;
 }
 
-export function pickRemotePath(request) {
+export function pickRemotePath(request: RemotePathRequest): Promise<string | null> {
     return picker ? picker(request) : Promise.resolve(null);
 }
 

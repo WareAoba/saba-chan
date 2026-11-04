@@ -233,9 +233,9 @@ ue4-ini는 hook을 선언하지 않는다. steamcmd의 condition은 `instance.ex
 
 ### 4.1 로딩 경로 (Tauri)
 
-1. Renderer `window.api.extensionList()` → JS 브리지 `saba-chan-gui/src/api/createApi.js:542-549` → Tauri 명령 `daemon_request` → `GET /api/extensions`. 확장 관련 메서드는 `createApi.js:524-646`에 있다. 데몬 요청은 Tauri 셸이 대행한다(토큰 인증 포함, `src-tauri/src/native.rs:17-42`, `daemon.rs:235-254`).
+1. Renderer `window.api.extensionList()` → JS 브리지 `saba-chan-gui/src/api/createApi.ts:542-549` → Tauri 명령 `daemon_request` → `GET /api/extensions`. 확장 관련 메서드는 `createApi.ts:524-646`에 있다. 데몬 요청은 Tauri 셸이 대행한다(토큰 인증 포함, `src-tauri/src/native.rs:17-42`, `daemon.rs:235-254`).
 2. `ExtensionProvider`(`src/contexts/ExtensionContext.js:100-215`)가 enabled 익스텐션마다:
-   - `window.api.extensionGuiBundle(id)` → `GET /api/extensions/:id/gui`(`responseType:'text'`, `createApi.js:584-598`)로 JS 소스 문자열을 받는다. **Blob URL `<script>`**로 실행한다(`:29-64`). `ext.gui`가 없으면 요청하지 않는다(`:38-40`).
+   - `window.api.extensionGuiBundle(id)` → `GET /api/extensions/:id/gui`(`responseType:'text'`, `createApi.ts:584-598`)로 JS 소스 문자열을 받는다. **Blob URL `<script>`**로 실행한다(`:29-64`). `ext.gui`가 없으면 요청하지 않는다(`:38-40`).
    - 확인되지 않았고 이 PC에서 허락하지 않은 익스텐션(목록의 `gui_allowed:false`, 또는 번들 요청이 403 `extension_gui_unapproved`)은 번들·스타일을 요청하지 않고 한 번 묻는다. 허락하면 `POST /api/sandbox/extension-gui/ext-<id>` 뒤 목록을 다시 받아 로드한다. 거절하면 그 실행에서는 다시 묻지 않고, 설정 > 고급 `ExtensionGuiSection`에서 허락하거나 지운다.
    - 전역 이름 규칙: `window["SabaExt" + PascalCase(id)]`. `-`와 `_` 구분자를 제거하고 다음 글자를 대문자로 바꾼다(`:82-84`). steamcmd → `SabaExtSteamcmd`. 번들이 정확히 이 전역을 만들어야 한다.
    - 스타일: `GET …/gui/styles`가 있으면 `<style data-extension=id>`로 넣는다(`:66-73`).
@@ -288,7 +288,7 @@ ue4-ini는 hook을 선언하지 않는다. steamcmd의 condition은 `instance.ex
 
 ### 4.4 GUI에서 노출되지 않는 API
 
-- `GET/PUT /api/extensions/:id/config`(글로벌 설정, `config_fields`)에 대한 `window.api` 메서드(`createApi.js`)가 **없다**. CLI `saba-chan-cli/src/client.rs:470-476`에만 있다(`extension config`, PR #6 기준).
+- `GET/PUT /api/extensions/:id/config`(글로벌 설정, `config_fields`)에 대한 `window.api` 메서드(`createApi.ts`)가 **없다**. CLI `saba-chan-cli/src/client.rs:470-476`에만 있다(`extension config`, PR #6 기준).
 - `extension:icon` → SabaStorage(`SabaStorage.js:995`), `extension:initStatus` → `hooks/useExtensionInitStatus.js`.
 
 ---

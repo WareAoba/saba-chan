@@ -13,13 +13,15 @@ function sourceFiles(dir) {
     return fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
         const p = path.join(dir, e.name);
         if (e.isDirectory()) return e.name === 'test' || e.name === 'dev' ? [] : sourceFiles(p);
-        return /\.jsx?$/.test(e.name) && !e.name.includes('.test.') ? [p] : [];
+        return /\.[jt]sx?$/.test(e.name) && !/\.(test|d)\./.test(e.name) ? [p] : [];
     });
 }
 
 /** 소문자 태그(DOM·SVG 요소)에 붙은 title 속성과 <title> 요소의 줄 번호 */
-function nativeTooltips(code) {
-    const ast = parse(code, { sourceType: 'module', plugins: ['jsx'] });
+function nativeTooltips(code, file = 'x.js') {
+    // .ts는 <T>(x) 꼴이 JSX와 겹쳐서 jsx 없이 읽는다
+    const plugins = file.endsWith('.ts') ? ['typescript'] : file.endsWith('.tsx') ? ['typescript', 'jsx'] : ['jsx'];
+    const ast = parse(code, { sourceType: 'module', plugins });
     const found = [];
     const walk = (node) => {
         if (!node || typeof node.type !== 'string') return;
@@ -52,7 +54,7 @@ describe('OS 기본 툴팁', () => {
     it('GUI 코드에 OS 기본 툴팁이 없다', () => {
         const found = [];
         for (const file of sourceFiles(SRC)) {
-            for (const line of nativeTooltips(fs.readFileSync(file, 'utf8'))) {
+            for (const line of nativeTooltips(fs.readFileSync(file, 'utf8'), file)) {
                 found.push(`${path.relative(SRC, file)}:${line}`);
             }
         }

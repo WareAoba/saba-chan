@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
@@ -68,8 +68,10 @@ describe('TimeField', () => {
 
 describe('작업 예약·감사 기록', () => {
     it('OS 기본 날짜·시간 입력을 쓰지 않는다', () => {
-        for (const f of ['MaintenanceTab.js', 'AuditTab.js']) {
-            const src = readFileSync(join(__dirname, '../components/servers', f), 'utf8');
+        for (const f of ['MaintenanceTab', 'AuditTab']) {
+            const dir = join(__dirname, '../components/servers');
+            const file = readdirSync(dir).find((n) => n.replace(/\.[jt]sx?$/, '') === f);
+            const src = readFileSync(join(dir, file), 'utf8');
             expect(src).not.toMatch(/type="(date|time)"/);
         }
     });

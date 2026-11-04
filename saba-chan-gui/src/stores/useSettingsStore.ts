@@ -1,24 +1,26 @@
+import type { TFunction } from 'i18next';
 import { create } from 'zustand';
+import type { ConsoleFonts, GuiSettings, SoundSettings } from '../types/daemon';
 import { safeShowToast } from '../utils/helpers';
 import { THEME_DEFAULTS, clearStoredTheme, getTheme, resetCustomTheme, setCustomTheme, setTheme } from '../utils/themeManager';
 import { CONSOLE_FONT_DEFAULTS } from '../utils/consoleFonts';
 
 // i18n translate function — set after store creation
-let _t = (key) => key;
+let _t = (key: string): string => key;
 
-export const setSettingsI18n = (t) => {
-    _t = t;
+export const setSettingsI18n = (t: TFunction | ((key: string) => string)) => {
+    _t = t as (key: string) => string;
 };
 
 // 화면에서 바꿨지만 아직 저장하지 않은 칸. 저장은 이 칸만 보낸다 (CLI가 저장한 다른 값을 옛 값으로 덮지 않게)
-const dirtyKeys = new Set();
+const dirtyKeys = new Set<SettingKey>();
 // 데몬에서 읽은 값을 넣는 중: 바꾼 칸으로 치지 않는다
 let applyingLoad = false;
 
 export const DEFAULT_IPC_PORT = 57474; // updater/src/constants.rs DEFAULT_IPC_PORT와 같다
 
 // 효과음 스위치 — 데몬 GuiSettings.sounds와 같은 모양. 전체(enabled)와 종류가 모두 켜져야 울린다
-export const DEFAULT_SOUNDS = Object.freeze({
+export const DEFAULT_SOUNDS: Readonly<SoundSettings> = Object.freeze({
     enabled: true,
     serverStart: true,
     serverStop: true,
@@ -28,7 +30,7 @@ export const DEFAULT_SOUNDS = Object.freeze({
 });
 
 // 앱 동작 옵션 (사용자 10-27). 기본값은 데몬 GuiSettings와 같다: 지금까지의 동작 그대로
-export const APP_OPTION_DEFAULTS = Object.freeze({
+export const APP_OPTION_DEFAULTS: Readonly<AppOptions> = Object.freeze({
     closeAction: 'ask', // 창 닫기: ask | tray | quit
     toastDuration: 'normal', // 알림 표시 시간: short | normal | long
     newServerBackupKeep: 10, // 새 서버의 자동 백업 보관 개수 (데몬이 만들 때 넣는다)
@@ -39,7 +41,62 @@ export const APP_OPTION_DEFAULTS = Object.freeze({
     consoleFonts: CONSOLE_FONT_DEFAULTS, // 콘솔 글꼴: 글자마다 하나 (utils/consoleFonts.js)
 });
 
-export const useSettingsStore = create((set, get) => ({
+/** 앱 동작 옵션 (APP_OPTION_DEFAULTS의 칸) */
+type AppOptionKey =
+    | 'closeAction'
+    | 'toastDuration'
+    | 'newServerBackupKeep'
+    | 'newServerAutoRestart'
+    | 'auditKeepDays'
+    | 'consoleTimestamps'
+    | 'consoleTimestampDate'
+    | 'consoleFonts';
+type AppOptions = Pick<GuiSettings, AppOptionKey> & { consoleFonts: Readonly<ConsoleFonts> };
+
+/** config.json에 저장하는 칸 (_settingsKeys) */
+export interface SettingsValues extends AppOptions {
+    autoRefresh: boolean;
+    refreshInterval: number;
+    ipcPort: number;
+    consoleBufferSize: number;
+    autoGeneratePasswords: boolean;
+    portConflictCheck: boolean;
+    autoPortCheck: boolean;
+    osNotifications: boolean;
+    sounds: Readonly<SoundSettings>;
+    theme: string;
+    accentColor: string;
+    accentSecondary: string;
+    useGradient: boolean;
+    fontScale: number;
+    enableTransitions: boolean;
+    consoleSyntaxHighlight: boolean;
+    consoleBgColor: string;
+    consoleTextColor: string;
+    sidebarCompact: boolean;
+    consoleFontScale: number;
+    consoleTokenColors: Record<string, string>;
+    systemMonitorOpen: boolean;
+    /** switch: 고른 데몬만 · unified: 다른 데몬의 서버도 데몬별로 */
+    daemonView: 'switch' | 'unified';
+    /** 앱을 열면 먼저 볼 원격 데몬 hostId, null이면 이 PC */
+    mainDaemon: string | null;
+}
+type SettingKey = keyof SettingsValues;
+
+interface SettingsState extends SettingsValues {
+    settingsPath: string;
+    settingsReady: boolean;
+    /** 데몬에서 읽어 화면에 넣는다. 읽은 원본을 돌려준다 (실패면 null) */
+    load: () => Promise<Partial<GuiSettings> | null>;
+    resetToDefaults: () => Promise<boolean>;
+    /** 바뀐 칸만 저장한다. 저장할 것이 없거나 성공하면 true, 실패하면 false, 아직 준비 전이면 undefined */
+    save: () => Promise<boolean | undefined>;
+    update: (partial: Partial<SettingsValues>) => void;
+    _resetForTest: () => void;
+}
+
+export const useSettingsStore = create<SettingsState>()((set, get) => ({
     // ── State ──
     autoRefresh: true,
     refreshInterval: 2000,
@@ -81,11 +138,11 @@ export const useSettingsStore = create((set, get) => ({
     // ── Actions ──
     load: async () => {
         try {
-            const isTest = process.env.NODE_ENV === 'test' || typeof jest !== 'undefined';
+            const isTest = process.env.NODE_ENV === 'test' || 'jest' in globalThis;
 
             const settings = await window.api.settingsLoad();
             if (!isTest) console.log('[Settings] Loaded:', settings);
-            const patch = {};
+            const patch: Partial<SettingsState> & Record<string, unknown> = {};
             if (settings) {
                 patch.autoRefresh = settings.autoRefresh ?? true;
                 patch.refreshInterval = settings.refreshInterval ?? 2000;
@@ -96,7 +153,7 @@ export const useSettingsStore = create((set, get) => ({
                 patch.autoPortCheck = settings.autoPortCheck ?? false;
                 patch.osNotifications = settings.osNotifications ?? true;
                 patch.sounds = { ...DEFAULT_SOUNDS, ...settings.sounds };
-                for (const [k, v] of Object.entries(APP_OPTION_DEFAULTS)) patch[k] = settings[k] ?? v;
+                for (const [k, v] of Object.entries(APP_OPTION_DEFAULTS)) patch[k] = settings[k as AppOptionKey] ?? v;
 
                 // Theme customization
                 patch.theme = settings.theme ?? getTheme();
@@ -127,10 +184,10 @@ export const useSettingsStore = create((set, get) => ({
             } finally {
                 applyingLoad = false;
             }
-            for (const k of Object.keys(patch)) dirtyKeys.delete(k);
+            for (const k of Object.keys(patch)) dirtyKeys.delete(k as SettingKey);
             if (settings) {
                 // config.json 값을 화면에 적용하고 캐시도 맞춘다
-                setTheme(patch.theme);
+                setTheme(patch.theme as Parameters<typeof setTheme>[0]);
                 setCustomTheme({
                     accentColor: patch.accentColor,
                     accentSecondary: patch.accentSecondary,
@@ -238,8 +295,8 @@ export const useSettingsStore = create((set, get) => ({
 }));
 
 // ── Auto-save subscription (Zustand v5 single-listener) ──
-let settingsSaveTimer = null;
-const _settingsKeys = [
+let settingsSaveTimer: ReturnType<typeof setTimeout> | undefined;
+const _settingsKeys: SettingKey[] = [
     'autoRefresh',
     'refreshInterval',
     'ipcPort',
@@ -249,7 +306,7 @@ const _settingsKeys = [
     'autoPortCheck',
     'osNotifications',
     'sounds',
-    ...Object.keys(APP_OPTION_DEFAULTS),
+    ...(Object.keys(APP_OPTION_DEFAULTS) as AppOptionKey[]),
     // Theme customization
     'theme',
     'accentColor',

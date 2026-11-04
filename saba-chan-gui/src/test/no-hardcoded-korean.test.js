@@ -11,13 +11,13 @@ const SRC = path.resolve(__dirname, '..');
 const LOCALES = path.resolve(__dirname, '../../../locales');
 
 // 언어 고르기 목록은 각 언어를 그 언어 이름으로 보인다. 콘솔 글꼴은 글꼴 이름(고유 명사)과 여러 글자 견본
-const ALLOWED = new Set(['utils/languages.js', 'utils/consoleFonts.js']);
+const ALLOWED = new Set(['utils/languages', 'utils/consoleFonts']);
 
 function sourceFiles(dir) {
     return fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
         const p = path.join(dir, e.name);
         if (e.isDirectory()) return e.name === 'test' || e.name === 'dev' ? [] : sourceFiles(p);
-        return /\.jsx?$/.test(e.name) && !e.name.includes('.test.') ? [p] : [];
+        return /\.[jt]sx?$/.test(e.name) && !/\.(test|d)\./.test(e.name) ? [p] : [];
     });
 }
 
@@ -39,7 +39,7 @@ describe('한글 하드코딩', () => {
         const found = [];
         for (const file of sourceFiles(SRC)) {
             const rel = path.relative(SRC, file).split(path.sep).join('/');
-            if (ALLOWED.has(rel)) continue;
+            if (ALLOWED.has(rel.replace(/\.[jt]sx?$/, ''))) continue;
             for (const h of hangulOutsideT(fs.readFileSync(file, 'utf8'))) found.push(`${rel}:${h.line}: ${h.text}`);
         }
         expect(found).toEqual([]);

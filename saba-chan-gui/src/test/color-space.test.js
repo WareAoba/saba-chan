@@ -8,7 +8,7 @@ const walk = (dir) =>
     readdirSync(dir).flatMap((name) => {
         const p = join(dir, name);
         if (statSync(p).isDirectory()) return name === 'test' ? [] : walk(p);
-        return /\.(css|js|jsx)$/.test(name) ? [p] : [];
+        return /\.(css|[jt]sx?)$/.test(name) ? [p] : [];
     });
 
 describe('색 보간 공간', () => {

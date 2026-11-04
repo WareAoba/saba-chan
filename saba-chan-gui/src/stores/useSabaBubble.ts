@@ -8,14 +8,37 @@ export const BUBBLE_MAX_HOLD_MS = 120000;
 export const WAKE_WINDOW_MS = 60000;
 
 /** 더 무거운 소식이 떠 있으면 가벼운 말풍선은 그 위를 덮지 않는다 */
-const RANK = { sleepy: 1, recovering: 2, stopped: 3 };
+const RANK: Record<string, number> = { sleepy: 1, recovering: 2, stopped: 3 };
+
+export interface BubbleInput {
+    /** sleepy · recovering · stopped · … (말풍선 그림) */
+    kind: string;
+    text: string;
+    minMs?: number;
+    holdKey?: string;
+}
+
+export interface Bubble extends BubbleInput {
+    id: string;
+    minMs: number;
+    released: boolean;
+}
+
+interface SabaBubbleState {
+    bubble: Bubble | null;
+    wokeAt: number;
+    markWoken: (on?: boolean) => void;
+    show: (b: BubbleInput) => void;
+    release: (holdKey: string) => void;
+    clear: (id: string) => void;
+}
 
 /**
  * 좌상단 사바쨩 아이콘에서 늘어져 나오는 말풍선 (한 번에 하나).
  * show({ kind, text, minMs?, holdKey? }): holdKey가 있으면 release(holdKey) 전까지 닫지 않는다 (최소 minMs).
  * markWoken(on?): 사용자가 데몬을 손으로 깨웠다 (졸린 사바쨩은 이 뒤에만 뜬다). false면 표시를 지운다.
  */
-export const useSabaBubble = create((set, get) => ({
+export const useSabaBubble = create<SabaBubbleState>()((set, get) => ({
     bubble: null,
     wokeAt: 0,
     markWoken: (on = true) => set({ wokeAt: on ? Date.now() : 0 }),
