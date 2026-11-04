@@ -43,6 +43,7 @@ function setup(can = { manage: true }) {
         channels: vi.fn().mockResolvedValue({ ok: true, data: { botAvailable: true, channels: [], chatbot: [] } }),
         saveSettings: vi.fn(),
         saveChatbot: vi.fn(),
+        saveChannels: vi.fn(),
         moderation: vi
             .fn()
             .mockResolvedValue({ ok: true, data: { botAvailable: true, channels: [], mutes: [], sanctions: [] } }),
@@ -70,6 +71,41 @@ describe('이 PC 의 디스코드 서버 설정', () => {
         await flush();
         expect(api.discordSettingsSet).toHaveBeenLastCalledWith(G, { gameChatGuard: true });
         expect(relay.saveSettings).not.toHaveBeenCalled();
+    });
+
+    it('게임 채팅·상황판은 여러 채널을 고른다 — 누른 채널을 더하거나 뺀다 (사용자 11-04)', async () => {
+        const { relay } = setup();
+        const C1 = '222222222222222222';
+        const C2 = '333333333333333333';
+        const view = {
+            botAvailable: true,
+            channels: [
+                { id: C1, name: 'chat', category: null },
+                { id: C2, name: 'mc', category: null },
+            ],
+            chatbot: [],
+            music: null,
+            notify: null,
+            gameChat: [C1],
+            board: [],
+        };
+        relay.channels.mockResolvedValue({ ok: true, data: view });
+        relay.saveChannels.mockImplementation(async (_g, change) => ({ ok: true, data: { ...view, ...change } }));
+        await flush();
+        await flush();
+        const gameChat = within(await screen.findByRole('group', { name: 'Game chat channel' }));
+        expect(gameChat.getByRole('button', { name: '# chat' }).getAttribute('aria-pressed')).toBe('true');
+        fireEvent.click(gameChat.getByRole('button', { name: '# mc' }));
+        await flush();
+        expect(relay.saveChannels).toHaveBeenLastCalledWith(G, { gameChat: [C1, C2] });
+        fireEvent.click(gameChat.getByRole('button', { name: '# chat' }));
+        await flush();
+        expect(relay.saveChannels).toHaveBeenLastCalledWith(G, { gameChat: [C2] });
+        // 상황판도 같은 칸, 알림은 하나 고르기
+        const board = within(screen.getByRole('group', { name: 'Status board channel' }));
+        fireEvent.click(board.getByRole('button', { name: '# mc' }));
+        await flush();
+        expect(relay.saveChannels).toHaveBeenLastCalledWith(G, { board: [C2] });
     });
 
     it('말하는 사바쨩 켜기는 서버별 설정, API 키는 이 PC 의 키로 넣는다', async () => {

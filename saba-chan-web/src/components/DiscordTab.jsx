@@ -399,33 +399,46 @@ function TalkingSection({ relay, g, chatbot, busy, write, here }) {
     );
 }
 
+// 예전 릴레이는 게임 채팅·상황판을 채널 하나로 준다
+const listOf = (v) => (Array.isArray(v) ? v : v ? [v] : []);
+
+/** 여러 채널을 고르는 일 (말하는 사바쨩·게임 채팅·상황판, 사용자 2026-11-04) — 누른 채널을 더하거나 뺀다 */
+function ChannelChips({ label, list, ids, busy, onChange }) {
+    return (
+        <fieldset className="field" aria-label={label}>
+            <span>{label}</span>
+            <div className="chips">
+                {list.map((c) => (
+                    <button
+                        key={c.id}
+                        type="button"
+                        className={ids.includes(c.id) ? 'chip on' : 'chip'}
+                        aria-pressed={ids.includes(c.id)}
+                        disabled={busy}
+                        onClick={() => onChange(ids.includes(c.id) ? ids.filter((x) => x !== c.id) : [...ids, c.id])}
+                    >
+                        # {c.name}
+                    </button>
+                ))}
+            </div>
+        </fieldset>
+    );
+}
+
 function ChannelsSection({ relay, g, channels, busy, write, here }) {
     const { t } = useTranslation();
     const save = (change) => write(() => relay.saveChannels(g, change), 'channels');
     const list = channels.channels || [];
-    const chatbot = channels.chatbot || [];
-    const toggleChatbot = (id) =>
-        save({ chatbot: chatbot.includes(id) ? chatbot.filter((x) => x !== id) : [...chatbot, id] });
     if (!channels.botAvailable) return <Empty>{t('relay.err.BOT_UNAVAILABLE')}</Empty>;
     return (
         <Section title={t('relay.channels')}>
-            <div className="field">
-                <span>{t('relay.talking')}</span>
-                <div className="chips">
-                    {list.map((c) => (
-                        <button
-                            key={c.id}
-                            type="button"
-                            className={chatbot.includes(c.id) ? 'chip on' : 'chip'}
-                            aria-pressed={chatbot.includes(c.id)}
-                            disabled={busy}
-                            onClick={() => toggleChatbot(c.id)}
-                        >
-                            # {c.name}
-                        </button>
-                    ))}
-                </div>
-            </div>
+            <ChannelChips
+                label={t('relay.talking')}
+                list={list}
+                ids={channels.chatbot || []}
+                busy={busy}
+                onChange={(chatbot) => save({ chatbot })}
+            />
             <Choice
                 label={t('relay.music')}
                 value={channels.music ?? ''}
@@ -437,19 +450,28 @@ function ChannelsSection({ relay, g, channels, busy, write, here }) {
                 ]}
             />
             {here ? (
-                ['notify', 'gameChat', 'board'].map((kind) => (
+                <>
                     <Choice
-                        key={kind}
-                        label={t(`relay.channel_${kind}`)}
-                        value={channels[kind] ?? ''}
+                        label={t('relay.channel_notify')}
+                        value={channels.notify ?? ''}
                         disabled={busy}
-                        onChange={(v) => save({ [kind]: v || null })}
+                        onChange={(v) => save({ notify: v || null })}
                         options={[
                             { value: '', label: t('relay.none') },
                             ...list.map((c) => ({ value: c.id, label: `# ${c.name}` })),
                         ]}
                     />
-                ))
+                    {['gameChat', 'board'].map((kind) => (
+                        <ChannelChips
+                            key={kind}
+                            label={t(`relay.channel_${kind}`)}
+                            list={list}
+                            ids={listOf(channels[kind])}
+                            busy={busy}
+                            onChange={(ids) => save({ [kind]: ids })}
+                        />
+                    ))}
+                </>
             ) : (
                 <div className="field field-locked">
                     <span>{t('relay.pc_channels')}</span>

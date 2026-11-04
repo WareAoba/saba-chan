@@ -6,7 +6,7 @@ import { Icon } from '../Icon';
 import { SabaSpinner } from '../ui/SabaUI';
 import { Segmented } from '../ui/StatusChip';
 import { Avatar } from './Avatar';
-import { CHATBOT_MAX, channelsErrorText, channelsPatch } from './ChannelsTab';
+import { CHATBOT_MAX, channelsErrorText, channelsPatch, LIST_KINDS } from './ChannelsTab';
 
 /**
  * 디스코드 서버 화면 › 서버 관리 (2026-10-31): 디스코드 명령 /청소·/자동청소·/슬로우·/잠금·/음소거 와 채널 정보 수정,
@@ -20,27 +20,33 @@ export const moderationAvailable = () =>
 /** 채널 하나가 맡는 일 — 한 채널은 한 가지만 (릴레이 setAssignments) */
 export const ASSIGN_KINDS = ['chatbot', 'music', 'notify', 'gameChat', 'board'];
 
+const isList = (k) => LIST_KINDS.includes(k);
+// 예전 릴레이는 게임 채팅·상황판을 채널 하나로 준다
+const listOf = (v) => (Array.isArray(v) ? v.map(String) : v ? [String(v)] : []);
+
 const assignOf = (res) => ({
-    chatbot: Array.isArray(res?.chatbot) ? res.chatbot.map(String) : [],
+    chatbot: listOf(res?.chatbot),
     music: res?.music ? String(res.music) : null,
     notify: res?.notify ? String(res.notify) : null,
-    gameChat: res?.gameChat ? String(res.gameChat) : null,
-    board: res?.board ? String(res.board) : null,
+    gameChat: listOf(res?.gameChat),
+    board: listOf(res?.board),
 });
 
+/** 그 일을 맡은 채널들 */
+export const idsOf = (assign, k) => (isList(k) ? assign[k] || [] : assign[k] ? [assign[k]] : []);
+
 export function kindOf(assign, id) {
-    if (assign.chatbot.includes(id)) return 'chatbot';
-    return ASSIGN_KINDS.find((k) => k !== 'chatbot' && assign[k] === id) || null;
+    return ASSIGN_KINDS.find((k) => idsOf(assign, k).includes(id)) || null;
 }
 
-/** 이 채널의 일을 kind 로 (null 이면 뺀다). 다른 채널이 맡던 한 채널짜리 일은 이 채널로 옮긴다. 바뀐 키만 */
+/** 이 채널의 일을 kind 로 (null 이면 뺀다). 여러 채널 일은 더하고, 다른 채널이 맡던 한 채널짜리 일은 이 채널로 옮긴다. 바뀐 키만 */
 export function assignPatch(saved, id, kind) {
-    const draft = {
-        ...saved,
-        chatbot: saved.chatbot.filter((x) => x !== id),
-    };
-    for (const k of ASSIGN_KINDS) if (k !== 'chatbot' && draft[k] === id) draft[k] = null;
-    if (kind === 'chatbot') draft.chatbot = [...draft.chatbot, id];
+    const draft = { ...saved };
+    for (const k of ASSIGN_KINDS) {
+        if (isList(k)) draft[k] = idsOf(saved, k).filter((x) => x !== id);
+        else if (draft[k] === id) draft[k] = null;
+    }
+    if (isList(kind)) draft[kind] = [...draft[kind], id];
     else if (kind) draft[kind] = id;
     return channelsPatch(saved, draft);
 }
@@ -222,8 +228,7 @@ function StaleAssignments({ known, assignRes, saveAssign, assignSaving }) {
     const seen = new Set(known.map((c) => String(c.id)));
     const stale = [];
     for (const k of ASSIGN_KINDS) {
-        const ids = k === 'chatbot' ? assign.chatbot : assign[k] ? [assign[k]] : [];
-        for (const id of ids) if (!seen.has(id)) stale.push({ kind: k, id });
+        for (const id of idsOf(assign, k)) if (!seen.has(id)) stale.push({ kind: k, id });
     }
     if (stale.length === 0) return null;
     const label = (id) => {
@@ -300,7 +305,7 @@ function ChannelsView({ guildId, mod, setMod, assignRes, saveAssign, assignSavin
         <>
             <div className="dc-mod-summary">
                 {ASSIGN_KINDS.filter((k) => k === 'chatbot' || (assignRes && k in assignRes)).map((k) => {
-                    const ids = k === 'chatbot' ? assign.chatbot : assign[k] ? [assign[k]] : [];
+                    const ids = idsOf(assign, k);
                     return (
                         <span key={k} className="dc-mod-summary-item">
                             <span className="muted">{t(`discord.mod.kind_${k}`)}</span>{' '}
@@ -483,8 +488,8 @@ function ChannelPanel({
     const kind = kindOf(assign, channel.id);
     const pick = (next) => {
         const target = kind === next ? null : next;
-        if (target === 'chatbot' && assign.chatbot.length >= CHATBOT_MAX) {
-            assigning.setNote({ tone: 'error', res: { error: 'TOO_MANY' } });
+        if (isList(target) && idsOf(assign, target).length >= CHATBOT_MAX) {
+            assigning.setNote({ tone: 'error', res: { error: 'TOO_MANY', kind: target } });
             return;
         }
         // 노래 채널은 사바쨩이 일반 메시지를 지운다: 한 번 더 눌러 확인
@@ -502,7 +507,7 @@ function ChannelPanel({
     };
     const assignError = (res) =>
         res?.error === 'TOO_MANY'
-            ? t('discord.channels_too_many', { max: CHATBOT_MAX })
+            ? t('discord.mod.assign_too_many', { kind: t(`discord.mod.kind_${res.kind}`), max: CHATBOT_MAX })
             : channelsErrorText(res, t, nameOf);
 
     // ── 슬로우·잠금·자동 청소 ──
@@ -556,8 +561,7 @@ function ChannelPanel({
                 ) : (
                     <fieldset className="dc-mod-chips" aria-label={t('discord.mod.assign_title')}>
                         {ASSIGN_KINDS.filter((k) => k === 'chatbot' || (assignRes && k in assignRes)).map((k) => {
-                            const elsewhere =
-                                k !== 'chatbot' && assign[k] && assign[k] !== channel.id ? assign[k] : null;
+                            const elsewhere = !isList(k) && assign[k] && assign[k] !== channel.id ? assign[k] : null;
                             return (
                                 <button
                                     key={k}

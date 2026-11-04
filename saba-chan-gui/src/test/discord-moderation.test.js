@@ -49,7 +49,7 @@ const members = [
 ];
 
 describe('배정 바꾸기', () => {
-    const saved = { chatbot: ['111'], music: '222', notify: null, gameChat: null, board: null };
+    const saved = { chatbot: ['111'], music: '222', notify: null, gameChat: [], board: [] };
 
     it('한 채널은 한 가지 일 — 다른 일을 고르면 원래 일에서 빠지고, 한 채널짜리 일은 이 채널로 옮긴다', () => {
         expect(kindOf(saved, '222')).toBe('music');
@@ -57,6 +57,14 @@ describe('배정 바꾸기', () => {
         expect(assignPatch(saved, '333', 'music')).toEqual({ music: '333' });
         expect(assignPatch(saved, '222', 'chatbot')).toEqual({ chatbot: ['111', '222'], music: null });
         expect(assignPatch(saved, '111', null)).toEqual({ chatbot: [] });
+    });
+
+    it('게임 채팅·상황판은 여러 채널 — 고르면 더하고, 다른 채널의 배정은 그대로 (사용자 11-04)', () => {
+        const two = { ...saved, gameChat: ['444'] };
+        expect(kindOf(two, '444')).toBe('gameChat');
+        expect(assignPatch(two, '333', 'gameChat')).toEqual({ gameChat: ['444', '333'] });
+        expect(assignPatch(two, '444', 'board')).toEqual({ gameChat: [], board: ['444'] });
+        expect(assignPatch(two, '444', null)).toEqual({ gameChat: [] });
     });
 
     it('릴레이 오류는 문구로 — 빠진 봇 권한은 이름으로, 이름 바꾸기 한도는 분으로', () => {
