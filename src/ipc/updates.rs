@@ -305,6 +305,42 @@ pub fn spawn_update_scheduler(state: UpdateState, shutdown: tokio_util::sync::Ca
     });
 }
 
+/// 릴레이의 새 릴리즈 알림(하트비트 응답 `updateHint: { version, channel }`)이 확인할 만한가:
+/// 고른 채널이 그 릴리즈 채널을 받고(`channel_includes`), 지금 버전보다 새 버전이어야 한다.
+/// 베타 채널을 쓰지 않는 데몬은 베타 릴리즈 알림에 아무것도 하지 않는다
+fn hint_wants_check(hint: &Value, channel: &str, current: &str) -> bool {
+    use saba_chan_updater_lib::{relay::{channel_includes, CHANNELS}, version::SemVer};
+    let (Some(version), Some(release)) = (hint.get("version").and_then(Value::as_str), hint.get("channel").and_then(Value::as_str)) else {
+        return false;
+    };
+    if !CHANNELS.contains(&release) || !channel_includes(channel, release) {
+        return false;
+    }
+    matches!((SemVer::parse(version), SemVer::parse(current)), (Some(v), Some(c)) if v > c)
+}
+
+/// 릴레이가 새 릴리즈를 알렸다 (`relay_agent` 하트비트). 대조해서 맞으면 주기 확인과 같은 길(`check_and_follow_up`)로
+/// 한 번 확인한다. 업데이트 확인을 꺼 두었으면 하지 않는다.
+/// 모든 데몬이 한꺼번에 릴레이에 묻지 않게 0~60초 사이에서 늦춰 시작한다
+pub fn on_update_hint(state: &UpdateState, hint: &Value, shutdown: tokio_util::sync::CancellationToken) {
+    let hint = hint.clone();
+    let state = state.clone();
+    tokio::spawn(async move {
+        let cfg = state.manager.read().await.get_config();
+        if !cfg.enabled || !hint_wants_check(&hint, &cfg.channel, crate::relay_agent::AGENT_VERSION) {
+            return;
+        }
+        let jitter = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.subsec_millis()) as u64 * 60;
+        tokio::select! {
+            _ = shutdown.cancelled() => return,
+            _ = tokio::time::sleep(std::time::Duration::from_millis(jitter)) => {}
+        }
+        if let Err(e) = check_and_follow_up(&state).await {
+            tracing::warn!("[Updates] Check after relay release notice failed: {}", e);
+        }
+    });
+}
+
 /// 사용자에게 보이는 업데이트가 지난번 알린 것과 달라졌을 때만 `update.available` (P4)
 fn announce_new_updates(status: &saba_chan_updater_lib::UpdateStatus) {
     // 같은 구성요소라도 더 새 버전이 나오면 다시 알린다
@@ -1227,6 +1263,23 @@ fn resolve_modules_dir() -> String {
 
 #[cfg(test)]
 mod tests {
+    /// 릴레이의 새 릴리즈 알림은 데몬이 고른 채널이 그 채널을 받고 지금보다 새 버전일 때만 확인을 돌린다
+    #[test]
+    fn update_hint_runs_a_check_only_for_a_newer_release_in_the_chosen_channel() {
+        let hint = |version: &str, channel: &str| serde_json::json!({ "version": version, "channel": channel });
+        // 베타 채널을 쓰지 않으면 베타 릴리즈는 알리지 않는다
+        assert!(!super::hint_wants_check(&hint("0.1.13-beta.1", "beta"), "stable", "0.1.12"));
+        assert!(!super::hint_wants_check(&hint("0.1.13-beta.1", "beta"), "rc", "0.1.12"));
+        assert!(super::hint_wants_check(&hint("0.1.13-beta.1", "beta"), "beta", "0.1.12"));
+        // 위 채널은 아래 채널 릴리즈도 받는다
+        assert!(super::hint_wants_check(&hint("0.1.13", "stable"), "beta", "0.1.13-beta.1"));
+        // 같거나 낮은 버전, 읽을 수 없는 알림은 무시한다
+        assert!(!super::hint_wants_check(&hint("0.1.12", "stable"), "stable", "0.1.12"));
+        assert!(!super::hint_wants_check(&hint("0.1.11", "stable"), "stable", "0.1.12"));
+        assert!(!super::hint_wants_check(&serde_json::json!({ "channel": "stable" }), "stable", "0.1.12"));
+        assert!(!super::hint_wants_check(&hint("0.1.13", "nope"), "stable", "0.1.12"));
+    }
+
     /// 띄운 업데이터가 바로 끝나면(라이브러리 없음·백신 차단) 데몬이 내려가기 전에 실패로 알린다
     #[cfg(unix)]
     #[tokio::test]

@@ -590,6 +590,10 @@ impl Session {
                 if self.apply_linked_guilds(&data).await {
                     send_again = true;
                 }
+                // 새 릴리즈가 등록됐다는 알림: 채널·버전을 대조해 맞으면 업데이트를 한 번 확인한다 (ipc/updates.rs)
+                if let Some(hint) = data.get("updateHint") {
+                    crate::ipc::updates::on_update_hint(&self.server.update_state, hint, self.cancel.clone());
+                }
                 // 연결이 끊긴 사이 릴레이에 못 보낸 디스코드 길드 설정을 다시 보낸다
                 if crate::ipc::handlers::discord::take_pending_sync() {
                     let (server, cancel) = (self.server.clone(), self.cancel.clone());
