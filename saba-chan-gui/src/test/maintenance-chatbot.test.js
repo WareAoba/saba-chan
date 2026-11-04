@@ -317,9 +317,16 @@ describe('챗봇 설정 변환', () => {
             ambientMinutes: null,
             ambientEffort: null,
             moderation: null,
+            tokenLimit: null,
+            balanceAlert: null,
         });
         const p = guildPatch({ ...d, effort: 'medium', ambient: false }, { effort: 'high' });
         expect(p).toMatchObject({ effort: 'medium', ambient: false, memory: null });
+        // 토큰 알림: 정한 값은 그대로, 비우면(null) 끔
+        expect(guildPatch({ ...d, tokenLimit: 2000000, balanceAlert: 2.5 })).toMatchObject({
+            tokenLimit: 2000000,
+            balanceAlert: 2.5,
+        });
     });
 
     it('릴레이 400을 읽을 수 있는 줄로', () => {

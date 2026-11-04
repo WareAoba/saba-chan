@@ -917,6 +917,12 @@ async fn chatbot_settings_from_discord_are_the_owners_and_never_the_chatbots() {
     run(&state, "chatbot.settings.set", None, &json!({ "guild": "g", "confirmLevel": null }), None, &gui()).await.unwrap();
     let read = run(&state, "chatbot.settings.get", None, &json!({ "guild": "g" }), None, &gui()).await.unwrap();
     assert_eq!(read["result"]["settings"]["confirmLevel"].as_str(), Some("all"));
+    // 토큰 알림 (릴레이 /설정 칸): 한도·잔액 금액, 처음엔 없음(null)
+    assert!(read["result"]["settings"]["tokenLimit"].is_null());
+    let alerts = json!({ "guild": "g", "tokenLimit": 2_000_000, "balanceAlert": 2.5 });
+    assert_eq!(run(&state, "chatbot.settings.set", None, &alerts, None, &gui()).await.unwrap()["success"], true);
+    let read = run(&state, "chatbot.settings.get", None, &json!({ "guild": "g" }), None, &gui()).await.unwrap();
+    assert_eq!((read["result"]["settings"]["tokenLimit"].as_i64(), read["result"]["settings"]["balanceAlert"].as_f64()), (Some(2_000_000), Some(2.5)));
     // 메모도 소유자만 읽는다
     assert_eq!(plan(&state, "chatbot.settings.get", None, &json!({}), &relay("admin", false)).await.unwrap_err().code, "PERMISSION_DENIED");
 }

@@ -200,6 +200,8 @@ pub static ACTIONS: &[Def] = &[
             field("memory", "boolean", false),
             field("moderation", "boolean", false),
             field("tools", "array", false),
+            field("tokenLimit", "integer", false),
+            field("balanceAlert", "number", false),
         ],
         discord_level: Some(crate::chat::permissions::OWNER),
         remote_menu: false,

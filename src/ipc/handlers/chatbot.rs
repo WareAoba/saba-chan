@@ -51,6 +51,9 @@ fn relay_defaults() -> Map<String, Value> {
         "memory": true,
         "moderation": false,
         "tools": [],
+        // 토큰 알림 (릴레이 usageAlert): 이번 달 토큰 한도·잔액 알림 금액. null 이면 알리지 않는다
+        "tokenLimit": null,
+        "balanceAlert": null,
     }) else {
         unreachable!()
     };
