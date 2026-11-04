@@ -158,7 +158,7 @@
       "start_notice": {
         "set": {
           "title": "Alerte de démarrage",
-          "description": "Prévenir dans le canal d’alertes de ce serveur Discord quand Saba-chan démarre ce serveur",
+          "description": "Annoncer dans le canal d’alertes de ce serveur Discord quand ce serveur démarre ou s’arrête sans commande Discord (plantages compris)",
           "name": "Alerte de démarrage"
         }
       }
