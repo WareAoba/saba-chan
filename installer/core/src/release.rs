@@ -212,7 +212,7 @@ async fn download_with_limit(
     limit: Option<u64>,
     on_progress: impl Fn(u64, Option<u64>),
 ) -> Result<(), String> {
-    let http = reqwest::Client::builder()
+    let http = saba_chan_updater_lib::tls::http_client_builder()
         .user_agent(concat!("saba-chan-installer/", env!("CARGO_PKG_VERSION")))
         .build()
         .map_err(|e| e.to_string())?;

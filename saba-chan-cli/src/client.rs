@@ -62,7 +62,7 @@ impl Api {
         if let Some(v) = lang.as_deref().and_then(|l| reqwest::header::HeaderValue::from_str(l).ok()) {
             headers.insert(reqwest::header::ACCEPT_LANGUAGE, v);
         }
-        let http = reqwest::Client::builder()
+        let http = saba_chan_updater_lib::tls::http_client_builder()
             .connect_timeout(Duration::from_secs(2))
             .no_proxy()
             .default_headers(headers)

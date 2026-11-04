@@ -8,6 +8,7 @@
 //! - `state.rs`: 적용 대기 목록, 설치된 버전 기록
 //! - `apply.rs`: 받은 파일을 설치 폴더에 적용
 //! - `relay.rs`·`signature.rs`·`download.rs`: relay manifest 확인, 서명 검증, R2 다운로드
+//! - `tls.rs`: 모든 HTTPS·WSS 클라이언트의 rustls 설정 (ring + OS 인증서 저장소)
 //! - `window_icon.rs`: Tauri 창(GUI·업데이터·인스톨러)의 Windows 아이콘
 //!
 //! 경로는 모두 `install_root` 기준입니다.
@@ -27,6 +28,7 @@ pub mod process;
 pub mod profile;
 pub mod relay;
 pub mod signature;
+pub mod tls;
 pub mod uninstall_entry;
 pub mod version;
 pub mod versions;
@@ -944,7 +946,7 @@ impl UpdateManager {
             .collect();
 
         // 하나가 실패해도 나머지는 받고, 받은 것은 아래에서 상태에 남긴다
-        let client = reqwest::Client::new();
+        let client = crate::tls::http_client_builder().build().unwrap();
         let mut failed = Vec::new();
         for (key, rc) in &to_download {
             let dest = self.staging_dir.join(&rc.filename);
@@ -1009,7 +1011,7 @@ impl UpdateManager {
         }
 
         // 스트리밍 다운로드 + SHA-256 검증 (불일치면 파일 삭제)
-        let client = reqwest::Client::new();
+        let client = crate::tls::http_client_builder().build().unwrap();
         let result = download::download_verified(
             &client,
             &rc.url,

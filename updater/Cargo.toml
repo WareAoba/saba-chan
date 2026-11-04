@@ -11,7 +11,7 @@ saba-atomic-file = { path = "../atomic-file" }
 chrono = "0.4"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-reqwest = { version = "0.13", default-features = false, features = ["native-tls", "json", "system-proxy", "stream", "query"] }
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "json", "system-proxy", "stream", "query"] }
 tokio = { version = "1", features = ["full"] }
 futures-util = "0.3"
 tracing = "0.1"
@@ -22,6 +22,9 @@ tar = "0.4"
 flate2 = "1"
 sha2 = "0.10"
 ring = "0.17"
+# HTTPS는 rustls 하나 (`tls`): 암호 구현은 ring, 인증서 검증은 OS 인증서 저장소
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+rustls-platform-verifier = "0.6"
 base64 = "0.22"
 thiserror = "2"
 sys-locale = "0.3"

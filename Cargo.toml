@@ -41,13 +41,13 @@ tempfile = "3.8"
 uuid = { version = "1.0", features = ["v4", "serde"] }
 glob = "0.3"
 regex = "1"
-reqwest = { version = "0.13", default-features = false, features = ["native-tls", "json", "system-proxy", "blocking"] }
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "json", "system-proxy", "blocking"] }
 base64 = "0.22"
 sysinfo = "0.38"
 socket2 = "0.5"
 tokio-util = "0.7"
-# 사바쨩 웹: 릴레이 웹소켓 클라이언트 (`crate::remote`). reqwest와 같은 native-tls
-tokio-tungstenite = { version = "0.30", features = ["native-tls"] }
+# 사바쨩 웹: 릴레이 웹소켓 클라이언트 (`crate::remote`). TLS 설정은 reqwest와 같은 것을 넘긴다 (updater `tls`)
+tokio-tungstenite = { version = "0.30", features = ["rustls-tls-native-roots"] }
 futures-util = { version = "0.3", default-features = false }
 hmac = "0.12"
 sha2 = "0.10"

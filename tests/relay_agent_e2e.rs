@@ -138,7 +138,7 @@ async fn agent_round_trips_a_relay_command() {
         let _ = server.start().await;
     });
 
-    let client = reqwest::Client::new();
+    let client = saba_chan_updater_lib::tls::http_client_builder().build().unwrap();
     for _ in 0..50 {
         if client.get(format!("{}/health", base)).send().await.is_ok() {
             break;

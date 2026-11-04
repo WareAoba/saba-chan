@@ -182,7 +182,7 @@ async fn every_route_is_registered_and_requires_the_token() {
         let _ = server.start().await;
     });
 
-    let client = reqwest::Client::new();
+    let client = saba_chan_updater_lib::tls::http_client_builder().build().unwrap();
     let mut ready = false;
     for _ in 0..100 {
         if let Ok(r) = client.get(format!("{}/health", base)).header("X-Saba-Token", token.as_str()).send().await {

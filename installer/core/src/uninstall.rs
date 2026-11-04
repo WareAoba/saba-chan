@@ -567,7 +567,7 @@ impl DaemonApi {
             .and_then(|p| u16::try_from(p).ok())
             .unwrap_or(saba_chan_updater_lib::constants::DEFAULT_IPC_PORT);
         let token = std::fs::read_to_string(saba_chan_updater_lib::constants::token_file_path()).unwrap_or_default();
-        let client = reqwest::Client::builder().timeout(std::time::Duration::from_secs(3)).build().ok()?;
+        let client = saba_chan_updater_lib::tls::http_client_builder().timeout(std::time::Duration::from_secs(3)).build().ok()?;
         Some(Self { client, port, token: token.trim().to_string() })
     }
 
