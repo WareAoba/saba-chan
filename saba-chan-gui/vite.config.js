@@ -1,20 +1,11 @@
-import { defineConfig, transformWithEsbuild } from 'vite';
+import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 
-// TypeScript로 옮기는 동안 남은 .js 파일에도 JSX가 있다. .ts·.tsx는 Vite 기본 변환(esbuild)이 맡는다
-const jsxInJs = {
-    name: 'saba-jsx-in-js',
-    enforce: 'pre',
-    transform(code, id) {
-        if (!/\/src\/.*\.js$/.test(id.split('?')[0])) return null;
-        return transformWithEsbuild(code, id, { loader: 'jsx', jsx: 'automatic' });
-    },
-};
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [jsxInJs, react()],
+  plugins: [react()],
   base: './',
   build: {
     outDir: 'build',
@@ -51,7 +42,7 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: './src/setupTests.ts',
     css: true,
-    include: ['src/test/**/*.test.{js,ts,tsx}'],
+    include: ['src/test/**/*.test.{ts,tsx}'],
     testTimeout: 20000,
   },
 });

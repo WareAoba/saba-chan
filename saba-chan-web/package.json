@@ -12,7 +12,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "check": "biome check ./src"
+    "check": "biome check ./src",
+    "typecheck": "tsc -p ."
   },
   "dependencies": {
     "clsx": "2.1.1",
@@ -25,9 +26,16 @@
   "devDependencies": {
     "@biomejs/biome": "2.4.4",
     "@testing-library/react": "14.3.1",
+    "@types/node": "^22.20.5",
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
     "@vitejs/plugin-react": "4.7.0",
     "jsdom": "25.0.1",
+    "typescript": "7.0.2",
     "vite": "6.4.4",
     "vitest": "5.0.5"
+  },
+  "overrides": {
+    "typescript": "$typescript"
   }
 }

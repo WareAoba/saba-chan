@@ -1,0 +1,73 @@
+import { act, renderHook } from '@testing-library/react';
+import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
+import { createApi } from '../api/createApi';
+import { useServerActions } from '../hooks/useServerActions';
+import type { Server } from '../stores/useServerStore';
+
+// 서버 jar를 찾지 못했을 때의 복구(경로 바꾸기, 새로 설치)는 설정 저장이 실패하면 성공이라고 하지 않는다
+describe('jar 복구의 설정 저장 실패', () => {
+    let setModal: Mock;
+    const setup = () => {
+        setModal = vi.fn();
+        return renderHook(() =>
+            useServerActions({
+                servers: [{ id: 'a', name: 'A', module: 'game', status: 'stopped' }] as unknown as Server[],
+                setServers: vi.fn(),
+                modules: [],
+                loading: false,
+                setLoading: vi.fn(),
+                setModal,
+                setProgressBar: vi.fn(),
+                openConsole: vi.fn(),
+                setShowModuleManager: vi.fn(),
+            }),
+        );
+    };
+    beforeEach(() => {
+        window.api = {
+            serverList: vi.fn().mockResolvedValue({ servers: [] }),
+            instanceStart: vi.fn().mockResolvedValue({ action_required: 'server_jar_not_found' }),
+            instanceUpdateSettings: vi.fn().mockResolvedValue({ error: 'disk full' }),
+            openFileDialog: vi.fn().mockResolvedValue('C:/srv/server.jar'),
+            openFolderDialog: vi.fn().mockResolvedValue('C:/srv'),
+            moduleInstallServer: vi
+                .fn()
+                .mockResolvedValue({ success: true, jar_path: 'C:/srv/server.jar', version: '1.0' }),
+        } as unknown as typeof window.api;
+        window.showToast = vi.fn();
+    });
+    const toastTypes = () => vi.mocked(window.showToast!).mock.calls.map((c) => c[1]);
+
+    it('경로 바꾸기: 저장이 실패하면 오류를 보이고 다시 시작하지 않는다', async () => {
+        const { result } = setup();
+        await act(async () => result.current.handleStart('A', 'game'));
+        await act(async () => setModal.mock.calls.at(-1)![0].buttons[0].action());
+        expect(toastTypes()).toEqual(['error']);
+        expect(window.api.instanceStart).toHaveBeenCalledTimes(1);
+    });
+
+    // 받은 파일의 기록은 데몬이 설치를 마치며 한다: 그 저장이 실패하면 데몬이 save_failed로 실패를 돌려준다
+    it('새로 설치: 저장이 실패하면 설치 완료라고 하지 않는다', async () => {
+        vi.mocked(window.api.moduleInstallServer).mockResolvedValue({
+            success: false,
+            error: 'The server files were installed, but the server details could not be saved: disk full',
+            error_code: 'save_failed',
+        });
+        const { result } = setup();
+        await act(async () => result.current.handleStart('A', 'game'));
+        await act(async () => setModal.mock.calls.at(-1)![0].buttons[1].action());
+        expect(toastTypes()).toEqual(['error']);
+    });
+});
+
+// 모듈 설치 실패(422)는 모듈이 준 메시지를 보인다
+describe('설치 오류 본문', () => {
+    it('본문에 error가 없으면 message를 오류로 넘긴다', async () => {
+        const invoke = vi
+            .fn()
+            .mockResolvedValue({ status: 422, data: { success: false, message: '체크섬이 맞지 않아요' } });
+        const { api } = createApi({ invoke, hub: { dispatch: vi.fn() } as never });
+        const res = await api.moduleInstallServer('game', { version: '1.0' });
+        expect(res.error).toBe('체크섬이 맞지 않아요');
+    });
+});

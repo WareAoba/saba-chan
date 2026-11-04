@@ -187,6 +187,12 @@ jobs:
         working-directory: saba-chan-gui
         run: npm run typecheck
 
+      - name: Typecheck — Web
+        working-directory: saba-chan-web
+        run: |
+          npm ci
+          npm run typecheck
+
       # Vitest는 GUI 작업에서 매번 돌린다. 전체 실행에서만 다시 돌린다
       - name: Test — GUI (full only)
         if: needs.changes.outputs.full == 'true'
