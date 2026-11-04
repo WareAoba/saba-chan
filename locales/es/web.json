@@ -217,7 +217,7 @@
     "notice_on": "Aviso de inicio activado.",
     "notice_off": "Aviso de inicio desactivado.",
     "instances": "Instancias",
-    "instances_hint": "Abre una instancia para ver los comandos por nivel y el nivel de cada miembro.",
+    "instances_hint": "Abre una instancia para ver sus comandos por nivel. Los niveles de miembros se fijan para todo el servidor en la pestaña de niveles de miembros.",
     "all_instances": "Todas las instancias",
     "back_instances": "Instancias",
     "view_commands": "Comandos por nivel",

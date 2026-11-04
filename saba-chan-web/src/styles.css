@@ -670,6 +670,16 @@ textarea {
     object-fit: cover;
     animation: fade-in 240ms var(--ease) both;
 }
+/* 칩 안의 작은 프로필 사진 (제재할 멤버 고르기) */
+.avatar-sm {
+    display: inline-grid;
+    width: 20px;
+    height: 20px;
+    margin: 0 6px 0 -6px;
+    border: 0;
+    font-size: 10px;
+    vertical-align: middle;
+}
 .row-actions {
     display: flex;
     gap: 8px;
@@ -2057,13 +2067,20 @@ textarea {
 .guild-initial {
     display: grid;
     place-items: center;
+    flex: none;
     width: 24px;
     height: 24px;
     border-radius: 50%;
+    overflow: hidden;
     background: var(--bg-3);
     color: var(--text-2);
     font-size: 12px;
     font-weight: 800;
+}
+.guild-initial img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
 }
 .choice {
     width: auto;

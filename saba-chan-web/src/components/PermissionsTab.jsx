@@ -3,6 +3,7 @@ import * as P from '@gui/components/discord/nodePermissions';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useApp, useData } from '../store';
+import { Avatar } from './Avatar';
 import { Dropdown } from './Dropdown';
 import { Icon } from './icons';
 import { PermissionStairs } from './PermissionStairs';
@@ -26,21 +27,6 @@ export function orderMembers(members, perm) {
         return at < 0 ? ladder.length : at;
     };
     return [...members].sort((a, b) => rankOf(a) - rankOf(b) || collator.compare(nameOf(a), nameOf(b)));
-}
-
-/** 디스코드 프로필 사진. 없거나 못 읽으면 이름 첫 글자 */
-function Avatar({ member }) {
-    const [broken, setBroken] = useState(false);
-    const url = member.avatarUrl || member.avatar;
-    return (
-        <span className="avatar" aria-hidden="true">
-            {typeof url === 'string' && url.startsWith('https://') && !broken ? (
-                <img src={url} alt="" loading="lazy" referrerPolicy="no-referrer" onError={() => setBroken(true)} />
-            ) : (
-                nameOf(member).trim().charAt(0).toUpperCase() || '?'
-            )}
-        </span>
-    );
 }
 
 function LevelSelect({ value, perm, onChange, withDefault, t, disabled, label }) {
@@ -401,7 +387,7 @@ function MemberLevels({ api, guildId, perm, members, busy, write }) {
                         const owner = String(m.id) === String(perm.ownerDiscordId);
                         return (
                             <li key={m.id} className="row member-row">
-                                <Avatar member={m} />
+                                <Avatar url={m.avatarUrl || m.avatar} name={nameOf(m)} />
                                 <div className="row-main">
                                     <div className="row-title row-title-one">{nameOf(m)}</div>
                                     {m.username && <div className="row-sub row-title-one">@{m.username}</div>}
@@ -440,11 +426,10 @@ function MemberLevels({ api, guildId, perm, members, busy, write }) {
     );
 }
 
-/** 인스턴스 메뉴: 레벨별 명령과 멤버별 레벨을 따로 보인다 (GUI와 같은 동선) */
+/** 인스턴스 메뉴: 그 인스턴스의 레벨별 명령. 멤버 레벨은 디스코드 서버 단위라 서버의 멤버 탭에 있다 (GUI 와 같다) */
 function InstanceMenu({ api, guildId, data, instance, onBack }) {
     const { t } = useTranslation();
-    const [view, setView] = useState('commands');
-    const { perm, board, members, busy, write } = data;
+    const { perm, board, busy, write } = data;
     const srv = board?.instances?.find((i) => i.id === instance);
     return (
         <div className="instance-menu">
@@ -455,41 +440,30 @@ function InstanceMenu({ api, guildId, data, instance, onBack }) {
                 {srv ? srv.name : t('perm.all_instances')}
                 {srv?.module && <small className="hint"> · {srv.module}</small>}
             </h3>
-            <Segments
-                value={view}
-                onChange={setView}
-                options={[
-                    { value: 'commands', label: t('perm.view_commands') },
-                    { value: 'members', label: t('perm.view_members') },
-                ]}
-            />
-            {view === 'commands' ? (
-                board ? (
-                    <PermissionStairs
-                        api={api}
-                        guildId={guildId}
-                        perm={perm}
-                        board={board}
-                        instance={srv ? srv.id : L.ALL_INSTANCES}
-                        busy={busy}
-                        write={write}
-                    />
-                ) : (
-                    <Empty>{t('perm.stairs_failed')}</Empty>
-                )
+            {board ? (
+                <PermissionStairs
+                    api={api}
+                    guildId={guildId}
+                    perm={perm}
+                    board={board}
+                    instance={srv ? srv.id : L.ALL_INSTANCES}
+                    busy={busy}
+                    write={write}
+                />
             ) : (
-                <MemberLevels api={api} guildId={guildId} perm={perm} members={members} busy={busy} write={write} />
+                <Empty>{t('perm.stairs_failed')}</Empty>
             )}
         </div>
     );
 }
 
-/** 디스코드 서버 하나: 인스턴스 목록 → 인스턴스 메뉴. 켜짐 알림은 목록 아래 */
+/** 디스코드 서버 하나: 인스턴스 탭(목록 → 인스턴스 메뉴, 켜짐 알림은 목록 아래) | 멤버 탭(서버 전체의 멤버 레벨) */
 export function GuildPermissions({ api, guildId, siblings = [] }) {
     const { t } = useTranslation();
     const toast = useApp((s) => s.toast);
     const data = useGuildPermissions(api, guildId);
     const [instance, setInstance] = useState(null);
+    const [tab, setTab] = useState('instances');
     // 켜짐 알림과 보일 서버: {guildId, instances, allowedInstances}. null = 읽는 중, false = 읽지 못함
     const [notice, setNotice] = useState(null);
     // 이 PC 의 다른 디스코드 서버가 고른 서버 (서버 하나는 디스코드 서버 하나만)
@@ -540,8 +514,33 @@ export function GuildPermissions({ api, guildId, siblings = [] }) {
             />
         );
     const instances = data.board?.instances || [];
+    const tabs = (
+        <Segments
+            value={tab}
+            onChange={setTab}
+            options={[
+                { value: 'instances', label: t('perm.instances') },
+                { value: 'members', label: t('perm.view_members') },
+            ]}
+        />
+    );
+    if (tab === 'members')
+        return (
+            <>
+                {tabs}
+                <MemberLevels
+                    api={api}
+                    guildId={guildId}
+                    perm={data.perm}
+                    members={data.members}
+                    busy={data.busy}
+                    write={data.write}
+                />
+            </>
+        );
     return (
         <>
+            {tabs}
             <div className="field">
                 <span>{t('perm.instances')}</span>
                 <small className="hint">{t('perm.instances_hint')}</small>

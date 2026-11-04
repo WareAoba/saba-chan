@@ -54,6 +54,19 @@ pub async fn run(server: &IPCServer, req: Request, user: Option<String>) -> Resp
     }
     let mut origin = crate::audit::Origin::new("web");
     origin.user = user;
+    if gate::base64_body(&req.method, pattern) {
+        use base64::Engine;
+        let (status, bytes) = crate::actions::call_raw_as(server, &req.method, &req.path, Some(origin)).await;
+        let body = if status.is_success() {
+            Value::String(base64::engine::general_purpose::STANDARD.encode(&bytes))
+        } else {
+            serde_json::from_slice(&bytes).unwrap_or(Value::Null)
+        };
+        return Response {
+            status: status.as_u16(),
+            body,
+        };
+    }
     let res = crate::actions::call_as(server, &req.method, &req.path, req.body, Some(origin)).await;
     let mut body = res.body;
     if gate::shows_instances(&req.method, pattern) {
@@ -405,6 +418,30 @@ mod tests {
         let res = run(&server, req("GET", "/api/instances", None), Some("u1".into())).await;
         assert_eq!(res.status, 200, "{:?}", res.body);
         assert!(res.body.is_array(), "{:?}", res.body);
+    }
+
+    /// 플러그인 아이콘은 PNG 라 JSON 프레임에 base64 글자로 싣는다 (GUI 브리지 `responseType: 'base64'`와 같은 값)
+    #[tokio::test]
+    async fn extension_icon_comes_as_base64_text() {
+        use base64::Engine;
+        let tmp = tempfile::tempdir().unwrap();
+        let server = server(tmp.path()).await;
+        let exts = tmp.path().join("extensions");
+        let dir = exts.join("pic");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("manifest.json"), r#"{"id":"pic","name":"Pic","version":"0.1.0"}"#).unwrap();
+        let png = b"\x89PNG\r\n\x1a\nfake";
+        std::fs::write(dir.join("icon.png"), png).unwrap();
+        {
+            let mut mgr = crate::extension::ExtensionManager::new_isolated(exts.to_str().unwrap());
+            mgr.discover().unwrap();
+            *server.extension_manager.write().await = mgr;
+        }
+        let res = run(&server, req("GET", "/api/extensions/pic/icon", None), None).await;
+        assert_eq!(res.status, 200, "{:?}", res.body);
+        assert_eq!(res.body, json!(base64::engine::general_purpose::STANDARD.encode(png)));
+        let missing = run(&server, req("GET", "/api/extensions/none/icon", None), None).await;
+        assert_eq!(missing.status, 404);
     }
 
     #[tokio::test]

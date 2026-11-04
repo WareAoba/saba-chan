@@ -3,6 +3,7 @@ import { LANGUAGE_OPTIONS } from '@gui/utils/languages';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useApp } from '../store';
+import { Avatar } from './Avatar';
 import { Dropdown } from './Dropdown';
 import { Icon } from './icons';
 import { GuildPermissions } from './PermissionsTab';
@@ -863,6 +864,7 @@ function SanctionSheet({ members, busy, onSanction, onClose }) {
                                 aria-pressed={picked?.id === m.id}
                                 onClick={() => setPicked(m)}
                             >
+                                {m.username && <Avatar url={m.avatarUrl} name={m.name} className="avatar avatar-sm" />}
                                 {m.username ? `${m.name} (@${m.username})` : t('relay.mod.member_id', { id: m.id })}
                             </button>
                         ))}
@@ -1159,9 +1161,7 @@ function GuildChips({ guilds, value, onChange }) {
                     className={g.id === value ? 'chip on' : 'chip'}
                     onClick={() => onChange(g.id)}
                 >
-                    <span className="guild-initial" aria-hidden="true">
-                        {g.name.trim().charAt(0).toUpperCase() || '?'}
-                    </span>
+                    <Avatar url={g.icon} name={g.name} className="guild-initial" />
                     {g.name}
                     {(g.here || g.hasPc) && <span className="pill">{t('relay.pc')}</span>}
                 </button>

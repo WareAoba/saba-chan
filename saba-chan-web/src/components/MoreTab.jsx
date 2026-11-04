@@ -9,6 +9,7 @@ import { sizeText } from './BackupsPanel';
 import { Dropdown } from './Dropdown';
 import { startPoll } from './poll';
 import { Button, Empty, Loading, Section, Segments } from './ui';
+import { useStickToBottom } from './useStickToBottom';
 
 function Meter({ label, percent, detail }) {
     const p = Math.max(0, Math.min(100, percent || 0));
@@ -86,14 +87,15 @@ function DaemonLog({ api }) {
     const { t } = useTranslation();
     const [lines, setLines] = useState(null);
     const next = useRef(undefined);
-    const box = useRef(null);
+    const box = useStickToBottom(lines);
     useEffect(() => {
         let stopped = false;
         const load = async () => {
             const res = await api.daemonConsole(next.current === undefined ? {} : { since: next.current });
             if (stopped || !Array.isArray(res?.lines)) return;
             if (res.lines.length) next.current = res.lines[res.lines.length - 1].id + 1;
-            setLines((prev) => [...(prev ?? []), ...res.lines].slice(-300));
+            // 새 줄이 없으면 그대로 둔다
+            setLines((prev) => (prev && !res.lines.length ? prev : [...(prev ?? []), ...res.lines].slice(-300)));
         };
         const stop = startPoll(load, 3000);
         return () => {
@@ -101,14 +103,10 @@ function DaemonLog({ api }) {
             stop();
         };
     }, [api]);
-    // biome-ignore lint/correctness/useExhaustiveDependencies: 새 줄이 올 때마다 맨 아래로 내린다
-    useEffect(() => {
-        if (box.current) box.current.scrollTop = box.current.scrollHeight;
-    }, [lines]);
 
     if (lines === null) return <Loading />;
     return (
-        <pre className="console-lines console-tall" ref={box}>
+        <pre className="console-lines console-tall" ref={box.ref} onScroll={box.onScroll}>
             {lines.length === 0 ? (
                 <span className="console-empty">{t('console.empty')}</span>
             ) : (

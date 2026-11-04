@@ -217,7 +217,7 @@
     "notice_on": "Alerte de démarrage activée.",
     "notice_off": "Alerte de démarrage désactivée.",
     "instances": "Instances",
-    "instances_hint": "Ouvrez une instance pour voir les commandes par niveau et le niveau de chaque membre.",
+    "instances_hint": "Ouvrez une instance pour voir ses commandes par niveau. Les niveaux des membres se règlent pour tout le serveur dans l'onglet des niveaux des membres.",
     "all_instances": "Toutes les instances",
     "back_instances": "Instances",
     "view_commands": "Commandes par niveau",
