@@ -37,4 +37,4 @@ regex = { version = "1", optional = true }
 
 [target.'cfg(windows)'.dependencies]
 # Job Object: 러너가 끝나면(강제 종료 포함) 서버 프로세스 트리도 끝난다. 메모리 상한과 그 알림(완료 포트)
-windows-sys = { version = "0.59", optional = true, features = ["Win32_Foundation", "Win32_Security", "Win32_System_IO", "Win32_System_JobObjects", "Win32_System_Threading"] }
+windows-sys = { version = "0.61", optional = true, features = ["Win32_Foundation", "Win32_Security", "Win32_System_IO", "Win32_System_JobObjects", "Win32_System_Threading"] }
