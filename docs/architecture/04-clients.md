@@ -244,7 +244,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 
 PC 주인이 폰 브라우저로 서버·인스턴스를 관리하는 원격 화면이다. PC 없는 사람도 같은 링크로 디스코드 서버 설정을 관리한다(`hostId` null 세션). 디스코드 `/사바쨩 웹`(길드·DM·`/내사바쨩`)이 준 일회용 링크(`https://<릴레이>/remote/#<토큰>`)로 열고, 릴레이 웹소켓 `/remote/ws`로 데몬에 요청을 보낸다. 릴레이 쪽 계약은 05 §4.4(f), 데몬 쪽 문지기는 01 §1.4.1.
 
-- 배포: server-chan `deploy/deploy-remote.ps1`이 이 디렉터리를 `npx vite build`해 `dist/`를 서버의 `remote-web`으로 올리고, nginx가 `/remote/`로 낸다(`base: '/remote/'`). 이 디렉터리나 함께 빌드되는 `saba-chan-gui/src`·`public`, `locales`에 커밋하지 않은 변경이 있으면 배포를 멈추고, 빌드한 커밋은 배포 복구 자료의 `sha`에 남는다.
+- 배포: server-chan `deploy/deploy-remote.ps1`이 이 디렉터리를 `npx vite build`해 `dist/`를 서버의 `remote-web`으로 올리고, Caddy(server-chan `deploy/caddy/Caddyfile`)가 `/remote/`로 낸다(`base: '/remote/'`). 이 디렉터리나 함께 빌드되는 `saba-chan-gui/src`·`public`, `locales`에 커밋하지 않은 변경이 있으면 배포를 멈추고, 빌드한 커밋은 배포 복구 자료의 `sha`에 남는다.
 - 세션(`src/session.ts`): `hello{link}` → `ready{sid,key,expiresAt,hostId}`. 끊기면 25초 안에 `resume{sid,key}`로 다시 붙고(릴레이 유예 30초), 페이지를 떠나면(`pagehide`) `bye`. 요청은 `req{id,method,path,body}` → `res{id,status,body}`, 130초가 지나면 `remote_timeout`으로 끝낸다. 연장은 `extend`.
 - 브리지(`src/api.ts`): GUI `createApi({invoke, hub}).api`를 그대로 쓰고 `invoke('daemon_request')`만 세션 요청으로 바꾼다. 다른 Tauri 명령(창·파일 대화상자·프로세스)은 `not_supported`로 막는다. 응답 가공과 오류 문구는 GUI와 같다. 릴레이 `event{kind,data}`는 `onDaemonEvent`로 `{type,data}`가 되어 온다.
 - 릴레이 API(`src/relay.ts` `createRelay(session)`): 같은 세션으로 `/relay/*`(05 §4.4(f))를 부른다. 답은 `{ok, data}` 또는 `{ok:false, status, error}`(릴레이 오류 코드, 연결 실패는 `status` 0). PC 없는 서버의 디스코드 설정·배정·말하는 사바쨩·서버 관리에 쓴다.

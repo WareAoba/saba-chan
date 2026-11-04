@@ -43,6 +43,10 @@ async fn open_socket(relay: &Target, query: &str) -> Option<Socket> {
 }
 
 async fn open_socket_via(relay: &Target, query: &str, proxy: Option<Proxy>) -> Option<Socket> {
+    if !relay.sendable() {
+        tracing::warn!("Not opening a relay tunnel to {}: it must be https (http only for localhost)", relay.base);
+        return None;
+    }
     let mut request = url(&relay.base, query).into_client_request().ok()?;
     request
         .headers_mut()
@@ -368,6 +372,17 @@ mod tests {
         let echoed = socket.next().await.unwrap().unwrap();
         assert_eq!(echoed.into_data().as_ref(), b"ping");
         assert_eq!(*seen.lock().unwrap(), format!("CONNECT 127.0.0.1:{relay_port} HTTP/1.1"));
+    }
+
+    #[tokio::test]
+    async fn the_tunnel_does_not_send_the_node_token_to_a_plain_http_relay() {
+        // 시험은 루프백에만 묶는다 (tests/test_binds.rs). 127.0.0.2를 못 묶는 OS(macOS)는 127.0.0.1로 받는다: 그래도 127.0.0.2로 간 요청은 닿지 않는다
+        let listener = std::net::TcpListener::bind("127.0.0.2:0").or_else(|_| std::net::TcpListener::bind("127.0.0.1:0")).unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let target = Target { base: format!("http://127.0.0.2:{port}"), token: "sbn_x.y".into() };
+        assert!(open_socket_via(&target, "accept=t", None).await.is_none());
+        assert!(listener.accept().is_err(), "the plain-http relay was contacted");
     }
 
     #[test]
