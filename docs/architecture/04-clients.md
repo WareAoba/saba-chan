@@ -14,7 +14,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 
 구성은 둘이다.
 - **Tauri 셸** `saba-chan-gui/src-tauri/src`(Rust): 창·트레이·데몬 기동·토큰·이벤트 스트림 같은 네이티브 일만 한다(`lib.rs:1-4`).
-- **브리지** `saba-chan-gui/src/api`: `window.api`·`window.electron`을 예전 preload와 같은 이름·인자·결과로 만든다(`install.ts:11-34`, `createApi.ts:1-3`). `window.__TAURI__`가 있고 `window.api`가 없을 때만 설치하므로 테스트 mock과 브라우저 개발 mock(`src/dev`)은 그대로다(`install.ts:12`). `src/index.tsx`가 가장 먼저 import한다. 데몬 응답 가공(상태별 오류 문구, `errorBody`·`daemonCall`·`daemonJson`)은 브리지가 한다(`daemon.ts:35-62`).
+- **브리지** `saba-chan-gui/src/api`: `window.api`·`window.electron`을 예전 preload와 같은 이름·인자·결과로 만든다(`install.ts:11-34`, `createApi.ts:1-3`). `window.__TAURI__`가 있고 `window.api`가 없을 때만 설치하므로 테스트 mock과 브라우저 개발 mock(`src/dev`)은 그대로다(`install.ts:12`). `src/index.tsx`가 가장 먼저 import한다. 데몬 응답 가공(상태별 오류 문구, `errorBody`·`daemonCall`·`daemonJson`)은 브리지가 한다(`daemon.ts:65-92`).
 - **타입** `saba-chan-gui/src/types`: 데몬 응답 모양(`daemon.ts`, 칸마다 기준인 Rust 구조체 이름을 적었다)과 window 전역(`global.d.ts`). `window.api`·`window.electron`의 타입은 구현에서 뽑은 `SabaApi`·`SabaElectron`(`createApi.ts` 끝)이다. 서버·모듈·익스텐션 목록과 GUI 설정은 칸까지 적었고, 나머지 응답은 공통 오류 칸만 적은 `ApiBody`로 받는다. 타입 검사는 `npm run typecheck`(TypeScript 7 `tsc`, `tsconfig.json` strict)이고 CI GUI 작업이 돌린다. JS에서 옮기는 동안은 `allowJs`로 남은 `.js`를 함께 묶되 검사하지 않고(`checkJs: false`), `.js` 안의 JSX는 `vite.config.js`의 `saba-jsx-in-js` 플러그인이 변환한다.
 
 ### 1.1 Tauri 셸이 맡는 일 (`saba-chan-gui/src-tauri/src`)
@@ -42,7 +42,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 | **동의 기록** | `sandbox_consent_allow` `native.rs` | 렌더러가 `{kind:'unisolated'|'extension-gui', component}`를 넘기면 셸이 네이티브 확인 창(문구 `common.json` `consent.*`)을 띄우고, 허락하면 `POST /api/sandbox/<kind>/<component>`를 보내 데몬 본문을 돌려준다. 취소는 `{success:false, error_code:'canceled'}`. 구성요소 이름은 영숫자·`-`·`_`·`.`만 받는다 |
 | **Installer spawn(언인스톨)** | `launch_uninstaller` `native.rs:151-184` | 설치 루트·`saba-chan-gui` 하위·상위·exe 폴더에서 인스톨러를 찾고, 없으면 Windows 레지스트리 `HKCU\…\Uninstall\Saba-chan` `InstallLocation`을 본다(`winreg`, `:119-126`). `--uninstall`로 분리 실행(`DETACHED_PROCESS`) 뒤 `clean_quit()`. 창 제거기(`saba-chan-installer`)가 없는 설치(0.1.12 전의 맥 .dmg 앱 묶음·리눅스 묶음, 창 없는 리눅스 빌드는 `--uninstall`을 명령창 제거로 한다)는 GUI 옆 `saba-chan-cli --yes uninstall`을 같은 식으로 띄운다(설정·서버는 남긴다, `uninstall_command`). 띄우지 못하면 설정 화면이 `settings_modal.uninstall_failed` 알림을 띄운다 |
 | 모의 릴레이(개발용) | — | GUI는 띄우지 않는다. 개발자가 `node scripts/mock-release-server.js`를 직접 실행하거나 `scripts/build-core.ps1 -MockRelay`(모의 서명 키를 믿는 개발 빌드, 배포 금지)로 쓴다 |
-| 디스코드 연결 | `createApi.ts:809-832` | 셸에 디스코드 코드는 없다. 브리지가 데몬의 릴레이 에이전트를 `/api/relay/agent{,/start,/stop}`로 켜고 끈다(§4) |
+| 디스코드 연결 | `createApi.ts:1024-1058` | 셸에 디스코드 코드는 없다. 브리지가 데몬의 릴레이 에이전트를 `/api/relay/agent{,/start,/stop}`로 켜고 끈다(§4) |
 | 콘솔 팝아웃 창 | `window.rs:192-280` | Tauri 창 라벨 `popout-<hex(instanceId)>`(`popout_label` `:21-24`)에 `index.html?console-popout=<id>&name=`을 붙여 같은 React 번들을 연다. 700×450(최소 400×250), 프레임 없음, 항상 위. 이미 열려 있으면 포커스한다. 열림·닫힘·되돌리기 요청은 메인 창에 `console:popoutOpened/Closed/popinRequest`로 알린다 |
 | 메인 창 | `create_main_window()` `window.rs:100-148` | 라벨 `main`, 프레임 없음, 처음 페이지가 뜨면 표시하며 다른 앱 창들 앞으로 올리고 포커스를 준다(`bring_to_front`: 포커스 요청이 막혀도 맨 앞에 오게 잠깐 항상 위로 두었다 푼다. 다시 실행·트레이로 메인 창을 열 때도 같다), 배경 `#f0f0f2`. 크기는 설정 `windowBounds`(작업 영역보다 크지 않게, 최소 780×min(840, max(560, 작업 영역 높이))). 이동·크기 변경이 멈추면 500ms 디바운스로 저장한다(최대화·최소화 중 제외, `schedule_save_bounds` `:159-188`) |
 | 탐색 잠금 | `lock_navigation()` `window.rs:70-96` | 모든 창에서 앱 주소(`tauri://localhost`, `tauri.localhost`, 개발 서버) 밖으로의 이동과 새 창을 막고, http(s) 링크만 바깥 브라우저로 연다 |
@@ -57,91 +57,91 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 
 ### 1.2 window.api 전수표 (`src/api/createApi.ts` → daemon endpoint)
 
-`window.api.*`는 `createApi.ts:117-1152`, `window.electron.*`는 `:1153-1167`에 있다. 표의 줄 번호는 작성 당시 기준이라 어긋날 수 있다(함수 이름으로 찾는다). 데몬 호출은 모두 `daemon_request` 명령(§1.1)을 거친다. 네이티브 작업은 Rust 명령 이름을 적었다(계약 §2, `native.rs`). "라우트 존재"는 `src/ipc/mod.rs`와 `updates.rs` 기준으로 대조했다(숫자는 줄). `tests/api_contract.rs`가 `createApi.ts`를 읽어 GUI가 부르는 경로가 데몬 라우트에 있는지 검사한다(`:60-69`). "미사용"은 renderer(`src/`, 테스트 제외)가 부르지 않는다는 뜻이다.
+`window.api.*`는 `createApi.ts:170-1418`, `window.electron.*`는 `:1420-1432`에 있다. 표의 줄 번호는 작성 당시 기준이라 어긋날 수 있다(함수 이름으로 찾는다). 데몬 호출은 모두 `daemon_request` 명령(§1.1)을 거친다. 네이티브 작업은 Rust 명령 이름을 적었다(계약 §2, `native.rs`). "라우트 존재"는 `src/ipc/mod.rs`와 `updates.rs` 기준으로 대조했다(숫자는 줄). `tests/api_contract.rs`가 `createApi.ts`를 읽어 GUI가 부르는 경로가 데몬 라우트에 있는지 검사한다(`:60-69`). "미사용"은 renderer(`src/`, 테스트 제외)가 부르지 않는다는 뜻이다.
 
 | window.api 함수 (createApi.ts 줄) | 호출 대상 | 라우트 존재 |
 |---|---|---|
-| serverList (90) | GET /api/servers?notices_after=<본 마지막 알림 id> (port_conflict_stops가 있으면 `notify` 명령으로 OS 알림. 받은 가장 큰 `id`를 기억해 다음 조회에 실어 같은 알림을 두 번 띄우지 않는다, L50). 서버마다 `managed`(runner가 맡는지, `Supervisor::uses_managed_start`)가 실린다(`ipc/mod.rs:185-187`, `handlers/server.rs:87`) | ✓ 643 |
-| instanceStart (119) | POST /api/instance/:id/start (managed 여부와 포트 검사는 데몬이 정한다) | ✓ 646 |
+| serverList (171) | GET /api/servers?notices_after=<본 마지막 알림 id> (port_conflict_stops가 있으면 `notify` 명령으로 OS 알림. 받은 가장 큰 `id`를 기억해 다음 조회에 실어 같은 알림을 두 번 띄우지 않는다, L50). 서버마다 `managed`(runner가 맡는지, `Supervisor::uses_managed_start`)가 실린다(`ipc/mod.rs:185-187`, `handlers/server.rs:87`) | ✓ 643 |
+| instanceStart (212) | POST /api/instance/:id/start (managed 여부와 포트 검사는 데몬이 정한다) | ✓ 646 |
 | instanceStatus | GET /api/instance/:id/status (id가 없으면 이름으로 찾는다). 이 라우트가 없는 옛 데몬(원격 0.1.11, `error_code` 없는 404)이면 GET /api/server/:name/status로 다시 묻는다(0.1.12 데몬에는 그 라우트가 없다. 원격 최소 버전을 0.1.12로 올릴 때 지운다) | ✓ |
-| moduleList (181) | GET /api/modules | ✓ 651 |
-| moduleRefresh (192) | POST /api/modules/refresh | ✓ 652 |
-| moduleGetMetadata (212) | GET /api/module/:name | ✓ 659 |
-| moduleAudit (225) | GET /api/module/:name/audit (위험 능력과 `[permissions]` 선언 비교) | ✓ 660 |
-| instanceEvents (233) | GET /api/instance/:id/events (최근 종료 이력) | ✓ 647 |
+| moduleList (269) | GET /api/modules | ✓ 651 |
+| moduleRefresh (281) | POST /api/modules/refresh | ✓ 652 |
+| moduleGetMetadata (302) | GET /api/module/:name | ✓ 659 |
+| moduleAudit (316) | GET /api/module/:name/audit (위험 능력과 `[permissions]` 선언 비교) | ✓ 660 |
+| instanceEvents (325) | GET /api/instance/:id/events (최근 종료 이력) | ✓ 647 |
 | instanceLogs | GET /api/instance/:id/logs?source=&lines=&before= (지난 로그, 실행분 목록과 끝에서부터의 줄) | ✓ |
 | instanceLogsExport | GET /api/instance/:id/logs/export?source= (한 실행분 내용. 웹이 그 기기에 저장) | ✓ |
 | instanceLogsSave | 저장 창(`dialog_save_file`, 원격 데몬이면 그 PC의 경로) → POST /api/instance/:id/logs/export {path, source} | ✓ |
-| moduleGetLocales (240) | GET /api/module/:name/locales | ✓ 712 |
-| moduleListVersions (248) | GET /api/module/:name/versions?… | ✓ 695 |
-| moduleInstallServer (260) | POST /api/module/:name/install. 설정 창의 버전 설치는 `instance_id`·`background:true`로 시작만 시키고 창을 닫는다(진행은 서버 목록의 설치 표시). 받은 실행 파일·작업 폴더 기록은 데몬이 한다 | ✓ 697 |
-| instanceGetInstalledVersion (268) | GET /api/instance/:id/installed-version | ✓ 698 |
+| moduleGetLocales (351) | GET /api/module/:name/locales | ✓ 712 |
+| moduleListVersions (360) | GET /api/module/:name/versions?… | ✓ 695 |
+| moduleInstallServer (379) | POST /api/module/:name/install. 설정 창의 버전 설치는 `instance_id`·`background:true`로 시작만 시키고 창을 닫는다(진행은 서버 목록의 설치 표시). 받은 실행 파일·작업 폴더 기록은 데몬이 한다 | ✓ 697 |
+| instanceGetInstalledVersion (392) | GET /api/instance/:id/installed-version | ✓ 698 |
 | makerInfo | GET /api/maker | ✓ |
-| moduleManifest (275) | GET /api/modules/manifest | ✓ 656 |
-| moduleInstallFromManifest (282) | POST /api/modules/manifest/:id/install | ✓ 657 |
-| moduleRemove (289) | DELETE /api/modules/:id | ✓ 658 |
-| instanceCreate (296) | POST /api/instances | ✓ 662 |
+| moduleManifest (411) | GET /api/modules/manifest | ✓ 656 |
+| moduleInstallFromManifest (419) | POST /api/modules/manifest/:id/install | ✓ 657 |
+| moduleRemove (429) | DELETE /api/modules/:id | ✓ 658 |
+| instanceCreate (437) | POST /api/instances | ✓ 662 |
 | instanceCheck | POST /api/instances/check (만들기 마법사의 이름·포트 단계와 확인 단계. 이름·서버 폴더·포트 겹침) | ✓ |
-| instanceProvisionProgress (332) | GET /api/provision-progress/:name | ✓ 668 |
-| instanceDismissProvision (339) | DELETE /api/provision-progress/:name | ✓ 668 |
-| instanceCheckUpdate (346) | GET /api/instance/:id/check-update | ✓ 670 |
-| instanceApplyUpdate (355) | POST /api/instance/:id/apply-update | ✓ 671 |
-| instanceDelete (363) | DELETE /api/instance/:id(`{keepSettings}`이면 `?keep_settings=true`). 서버 목록의 `linked_folder`가 있는 서버(가져온 서버)는 폴더가 남는다고 알리고, `restorable_settings`면 "설정 되돌리고 빼기"·"지금 설정 두고 빼기"를 고르게 한다. CLI `server rm --keep-settings`와 같다 | ✓ 665 |
-| instanceReorder (394) | PUT /api/instances/reorder {order} | ✓ 663 |
-| instanceUpdateSettings (408) | PATCH /api/instance/:id. 400이면 `{status, error, error_code, details, fields}`를 그대로 넘긴다(`invalid_format`이면 형식 오류 알림). 설정 창은 연 때의 `ServerInfo.revision`(그 뒤 실제 값 읽기·버전 감지·설치 저장이 준 `revision`이 있으면 그 값)을 싣고, 409 `settings_changed`면 다른 곳에서 바뀌었다고 알린 뒤 목록을 다시 읽는다 | ✓ 665 |
+| instanceProvisionProgress (485) | GET /api/provision-progress/:name | ✓ 668 |
+| instanceDismissProvision (492) | DELETE /api/provision-progress/:name | ✓ 668 |
+| instanceCheckUpdate (499) | GET /api/instance/:id/check-update | ✓ 670 |
+| instanceApplyUpdate (509) | POST /api/instance/:id/apply-update | ✓ 671 |
+| instanceDelete (519) | DELETE /api/instance/:id(`{keepSettings}`이면 `?keep_settings=true`). 서버 목록의 `linked_folder`가 있는 서버(가져온 서버)는 폴더가 남는다고 알리고, `restorable_settings`면 "설정 되돌리고 빼기"·"지금 설정 두고 빼기"를 고르게 한다. CLI `server rm --keep-settings`와 같다 | ✓ 665 |
+| instanceReorder (555) | PUT /api/instances/reorder {order} | ✓ 663 |
+| instanceUpdateSettings (572) | PATCH /api/instance/:id. 400이면 `{status, error, error_code, details, fields}`를 그대로 넘긴다(`invalid_format`이면 형식 오류 알림). 설정 창은 연 때의 `ServerInfo.revision`(그 뒤 실제 값 읽기·버전 감지·설치 저장이 준 `revision`이 있으면 그 값)을 싣고, 409 `settings_changed`면 다른 곳에서 바뀌었다고 알린 뒤 목록을 다시 읽는다 | ✓ 665 |
 | instanceGet | GET /api/instance/:id(`daemonCall`, 실패는 데몬 본문 그대로). 사바쨩 웹 서버 설정(`SettingsPanel.tsx`)이 저장에서 409 `settings_changed`를 받고 "새 값 불러오기"를 고르면 마지막 폴링 대신 이것으로 지금 값과 `revision`을 다시 읽는다(없으면 409 본문의 `revision`). 읽지 못하면 고친 값을 두고 알린다 | ✓ |
-| instanceLaunchPreview (452) | POST /api/instance/:id/launch-preview `{settings, extra_args?}` (extra_args를 안 넘기면 저장된 것) | ✓ 666 |
-| instanceResetServer (457) | POST /api/instance/:id/server/reset | ✓ 686 |
-| executeCommand (465) | POST /api/instance/:id/command {command, args}. 명령 해석과 라우팅(REST·stdin·모듈)은 데몬이 한다(464 주석). GUI는 `…/rcon`, `…/rest`를 직접 부르지 않는다 | ✓ 673 |
+| instanceLaunchPreview (621) | POST /api/instance/:id/launch-preview `{settings, extra_args?}` (extra_args를 안 넘기면 저장된 것) | ✓ 666 |
+| instanceResetServer (626) | POST /api/instance/:id/server/reset | ✓ 686 |
+| executeCommand (637) | POST /api/instance/:id/command {command, args}. 명령 해석과 라우팅(REST·stdin·모듈)은 데몬이 한다(464 주석). GUI는 `…/rcon`, `…/rest`를 직접 부르지 않는다 | ✓ 673 |
 | instanceStop/Restart/Rename/Commands (493-498) | POST …/stop·…/restart {force}(둘 다 70분 timeout: 데몬이 stop_timeout까지 기다린 뒤 답한다, L74), POST …/rename {name}, GET …/commands | ✓ 648, 649, 664, 674 |
 | instanceValidate / instanceDiagnose | POST /api/instance/:id/validate · /diagnose `{}` (60초 timeout). 모듈 결과 `{success, issues:[{code, severity, message, solution}]}`를 그대로 돌려준다(서버 상세 `ServerCheck`) | ✓ 717, 724 |
 | instancePortCheck / instancePortCheckLast | POST /api/instance/:id/port-check `{}` (30초 timeout) · GET 같은 경로. 포트포워딩 확인 결과(01) | ✓ 서버 상세 정보 탭 `PortCheck`(확인 버튼, 결과가 있으면 성공·실패 모두 "다시 확인"·포트별 결과·공유기 도움말 링크), 닫힘·방화벽·공유기·CGNAT면 상단 `PortCheckNotice`(다시 확인 버튼). `instance.port_check` 이벤트에 마지막 결과를 다시 읽는다. 웹은 서버 상세 점검 탭(`CheckPanel.tsx`)에서 같은 브리지로 `PortCheck.tsx` |
 | instancePlayers | GET /api/instance/:id/players(`daemonCall`). 모듈 `players` 결과 `{online, max, players:[{name}]}`, 못 하면 `error_code` `not_supported`·`server_not_running`. 부를 때만 묻는다(주기적으로 부르지 않는다) | 웹 서버 상세 플레이어 탭(`PlayersPanel.tsx`, 열 때와 새로고침) |
-| instanceReadLiveSettings (500) | GET /api/instance/:id/settings/live | ✓ 685 |
-| runtimePreflight (501) | GET /api/runtime/preflight | ✓ 756 |
-| systemMetrics (503) | GET /api/system/metrics[?sizes=false] | ✓ 715 (`SystemMonitor`) |
-| configReset (505-507) | POST /api/config/:kind/reset {keys?} | ✓ 704-705 |
+| instanceReadLiveSettings (694) | GET /api/instance/:id/settings/live | ✓ 685 |
+| runtimePreflight (696) | GET /api/runtime/preflight | ✓ 756 |
+| systemMetrics (698) | GET /api/system/metrics[?sizes=false] | ✓ 715 (`SystemMonitor`) |
+| configReset (701-703) | POST /api/config/:kind/reset {keys?} | ✓ 704-705 |
 | extensionList…extensionInitStatus (510-630) | /api/extensions, /:id/enable, /disable, /audit, /i18n/:locale, /gui, /gui/styles(`responseType:'text'`, 이 웹뷰에서 실행하므로 원격 데몬을 고른 동안에도 `target:'local'`로 이 PC 데몬에서 받는다), /icon(`responseType:'base64'`), /manifest, /:id/install, DELETE /:id, /updates, /rescan, /init-status | ✓ 754-771 (확장 UI 로딩은 03 §4.1). `gui_allowed:false`면 번들·스타일을 요청하지 않고 사용자에게 한 번 묻는다(`ExtensionContext`). `/gui`가 403 `extension_gui_unapproved`면 `extensionGuiBundle`은 `{error_code:'extension_gui_unapproved'}`를 돌려주고 다시 묻는다 |
 | extensionConfigGet / extensionConfigSet | GET /api/extensions/:id/config(`{config}`) · PUT 같은 경로에 값 객체 그대로(키 단위 병합, null이면 삭제). 실패하면 데몬 본문을 그대로 돌려준다(설정 > 익스텐션 `ExtensionConfigForm`) | ✓ 807 |
-| managedConsole (634) | GET /api/instance/:id/console?since&count (4번째 인자 `{spans:true}`면 `&spans=1`) | ✓ 679 |
-| managedStdin (642) | POST /api/instance/:id/stdin | ✓ 680 |
+| managedConsole (860) | GET /api/instance/:id/console?since&count (4번째 인자 `{spans:true}`면 `&spans=1`) | ✓ 679 |
+| managedStdin (869) | POST /api/instance/:id/stdin | ✓ 680 |
 | consolePopout / consolePopoutList (651-652) | Rust `console_popout` / `console_popout_list` (열린 팝아웃 창의 instanceId 배열). daemon 호출 없음 | n/a |
-| daemonConsole (653) | GET /api/daemon/console?since&count. `{lines:[{id, timestamp, level, target, message}], count, epoch}` 그대로. 활동 줄의 데몬 콘솔(`ActivityBar.tsx` `DaemonConsole`)은 `epoch`가 바뀌면 받은 줄을 비우고 처음부터 다시 받는다(L55) | ✓ 752 |
+| daemonConsole (883) | GET /api/daemon/console?since&count. `{lines:[{id, timestamp, level, target, message}], count, epoch}` 그대로. 활동 줄의 데몬 콘솔(`ActivityBar.tsx` `DaemonConsole`)은 `epoch`가 바뀌면 받은 줄을 비우고 처음부터 다시 받는다(L55) | ✓ 752 |
 | consolePopin / ToggleAlwaysOnTop (658-661) | Rust `console_popin` / `console_toggle_always_on_top` | n/a |
 | trayAction / trayPopupFit | Rust `tray_action {action}`(async: 창 열기가 창을 새로 만든다)(`open_window`·`switch_to_cli`·`start_daemon`·`stop_daemon`·`quit_all`·`close`, 팝업을 닫고 `{ok}`) / `tray_popup_fit {height}`(트레이 팝업 크기·자리를 정하고 보인다). daemon 호출 없음 | n/a |
-| updaterCheck (676) | POST /api/updates/check | ✓ updates.rs:109 |
-| updaterStatus (696) | GET /api/updates/status | ✓ 100 |
-| updaterDownload (697) | POST /api/updates/download `{components}` (빈 배열이면 전부) | ✓ 102 |
-| updaterDownloadProgress (705) | GET /api/updates/download/progress | ✓ 103 |
-| updaterApply (707) | POST /api/updates/apply `{components}` (빈 배열이면 전부) | ✓ 104 |
+| updaterCheck (897) | POST /api/updates/check | ✓ updates.rs:109 |
+| updaterStatus (919) | GET /api/updates/status | ✓ 100 |
+| updaterDownload (920) | POST /api/updates/download `{components}` (빈 배열이면 전부) | ✓ 102 |
+| updaterDownloadProgress (928) | GET /api/updates/download/progress | ✓ 103 |
+| updaterApply (930) | POST /api/updates/apply `{components}` (빈 배열이면 전부) | ✓ 104 |
 | updaterApplyOnLaunch | POST /api/updates/apply-on-launch. 앱을 열 때(데몬 준비 뒤) 한 번 부르고, `requires_updater`면 updaterLaunchApply까지 (`App.tsx`) | ✓ |
-| updaterLaunchApply (725) | Rust `updater_launch_apply` → POST /api/updates/launch-updater {relaunch:[current_exe]}. 업데이터는 데몬이 띄운다 | ✓ 105 |
-| updaterLastResult (727) | GET/DELETE /api/updates/last-result (GET은 `?lang=`, 언어는 `language_get`) | ✓ 106 |
-| updaterGetConfig (737) | GET /api/updates/config | ✓ 108 |
-| updaterSetConfig (738) | PUT /api/updates/config | ✓ 109 |
-| settingsLoad (747) | GET /api/config/gui. 데몬이 응답하지 않을 때만 Rust `settings_local_load`(config.json `gui` 직접 읽기) | ✓ 702 |
-| settingsSave (755) | 바꾼 키만 PUT /api/config/gui로 보낸다(데몬이 잠근 채 최상위 키로 합친다). 데몬이 **응답하지 않을 때만** Rust `settings_local_save`로 바꾼 키만 넘기고, 셸이 저장 직전 상태에 합쳐 config.json `gui`에 쓴다. 데몬이 오류 응답을 주면 저장 실패로 끝난다. 여러 번 부르면 차례로 처리한다. 연결 주소는 바꾸지 않는다: 바꾼 `ipcPort`는 셸이 데몬을 띄울 때(`lifecycle::start_daemon`) 적용한다 | ✓ 702 |
-| settingsGetPath (775) | Rust `settings_get_path` (`<dataDir>/config.json`) | n/a |
+| updaterLaunchApply (969) | Rust `updater_launch_apply` → POST /api/updates/launch-updater {relaunch:[current_exe]}. 업데이터는 데몬이 띄운다 | ✓ 105 |
+| updaterLastResult (971) | GET/DELETE /api/updates/last-result (GET은 `?lang=`, 언어는 `language_get`) | ✓ 106 |
+| updaterGetConfig (981) | GET /api/updates/config | ✓ 108 |
+| updaterSetConfig (982) | PUT /api/updates/config | ✓ 109 |
+| settingsLoad (991) | GET /api/config/gui. 데몬이 응답하지 않을 때만 Rust `settings_local_load`(config.json `gui` 직접 읽기) | ✓ 702 |
+| settingsSave (1000) | 바꾼 키만 PUT /api/config/gui로 보낸다(데몬이 잠근 채 최상위 키로 합친다). 데몬이 **응답하지 않을 때만** Rust `settings_local_save`로 바꾼 키만 넘기고, 셸이 저장 직전 상태에 합쳐 config.json `gui`에 쓴다. 데몬이 오류 응답을 주면 저장 실패로 끝난다. 여러 번 부르면 차례로 처리한다. 연결 주소는 바꾸지 않는다: 바꾼 `ipcPort`는 셸이 데몬을 띄울 때(`lifecycle::start_daemon`) 적용한다 | ✓ 702 |
+| settingsGetPath (1005) | Rust `settings_get_path` (`<dataDir>/config.json`) | n/a |
 | openFileDialog / openFolderDialog (778-779) | Rust `dialog_open_file` / `dialog_open_folder`. 원격 데몬을 다루는 중(`daemon_target_get`에 값이 있음)이면 이 PC의 대화상자 대신 그 데몬 PC의 폴더에서 고른다(D2): `api/remotePathPicker.ts`에 걸린 창 `shell/RemotePathPicker.tsx`(App에 하나)가 `systemBrowse`로 그 PC를 보여 주고 고른 경로를 돌려준다(취소 `null`). 고르기 종류는 `file`·`folder`·`save`(이름 칸, 첫 확장자를 붙인다. 폴더 구분자가 든 이름은 받지 않고, 이미 있는 파일이면 한 번 더 눌러야 바꾼다). 늦게 온 앞선 폴더 조회 응답은 버린다, 파일 확장자는 `filters`의 `extensions`. 창이 아직 없으면 `null`과 토스트(`common` `errors.remote_local_path`). `dataExport`(저장)·`dataImport`(파일)의 고르기도 같다 | n/a |
-| migrationScanDir (782) | POST /api/modules/detect (`{ok, matches}`, 파일 목록 없음) | ✓ 655 |
+| migrationScanDir (1012) | POST /api/modules/detect (`{ok, matches}`, 파일 목록 없음) | ✓ 655 |
 | discordBotStatus / Start / Stop (793-816) | GET /api/relay/agent, POST /api/relay/agent/start·stop. Status는 `running`·`stopped`, 다른 PC가 같은 계정으로 페어링해 멈췄으면(`lastErrorCode: token_replaced`) `replaced`(연결 화면에 다시 페어링 안내), 저장된 릴레이 주소가 거절돼 멈췄으면(`lastErrorCode: invalid_relay_url`) `invalid_relay_url`(연결 화면에 주소 형식 안내), 릴레이가 앱 버전을 거절하면(`lastErrorCode: agent_too_old`) `{status: 'too_old', running, minVersion}`(연결 화면에 `update_required.relay` 안내와 업데이트 화면을 여는 버튼, '실행 중'으로 보이지 않음). 노드 토큰이 없으면(`node_token_missing`) `cloud_token_not_found`, Start가 409 `invalid_relay_url`이면 `{error: 'invalid_relay_url'}`(`discord.invalid_relay_url` 문구) | ✓ 787-789 |
-| botConfigLoad (817) | GET /api/config/bot. 못 읽으면 기본값 대신 예외를 던진다(호출한 쪽이 기본값을 저장해 설정을 지우지 않게) | ✓ 700 |
-| botConfigSave (826) | PATCH /api/config/bot. 디스코드 저장은 마지막으로 저장한 값과 비교한 merge patch(`utils/mergePatch.ts` `mergePatchDiff`, 지운 키는 `null`)만 보낸다. 칸마다 자동 저장하므로 `revision`은 싣지 않는다. 데몬 본문을 그대로 돌려준다: 권한 키라 저장하지 않은 경로는 `ignored`로 오고 화면이 알린다(CLI와 같다). 릴레이 동기화는 에이전트 하트비트가 맡는다 | ✓ 700 |
+| botConfigLoad (1060) | GET /api/config/bot. 못 읽으면 기본값 대신 예외를 던진다(호출한 쪽이 기본값을 저장해 설정을 지우지 않게) | ✓ 700 |
+| botConfigSave (1062) | PATCH /api/config/bot. 디스코드 저장은 마지막으로 저장한 값과 비교한 merge patch(`utils/mergePatch.ts` `mergePatchDiff`, 지운 키는 `null`)만 보낸다. 칸마다 자동 저장하므로 `revision`은 싣지 않는다. 데몬 본문을 그대로 돌려준다: 권한 키라 저장하지 않은 경로는 `ignored`로 오고 화면이 알린다(CLI와 같다). 릴레이 동기화는 에이전트 하트비트가 맡는다 | ✓ 700 |
 | saveNodeToken / deleteNodeToken (835-853) | PUT/DELETE /api/config/node-token. DELETE는 데몬이 에이전트를 멈추고 토큰을 지운다 | ✓ 710 |
-| auditList (855) | GET /api/audit?limit&instance&since&until (A10). `{entries}` 최신이 먼저 | ✓ 640 |
+| auditList (1086) | GET /api/audit?limit&instance&since&until (A10). `{entries}` 최신이 먼저 | ✓ 640 |
 | auditExport | 저장 창(`dialog_save_file`, csv)에서 고른 경로로 POST /api/audit/export `{path, instance?, since?, until?}`. 창을 닫으면 `{canceled:true}` | - |
-| permissionsGet (860) | GET /api/permissions/:guildId (P1) | ✓ 723-726 |
-| permissionsUpdate (861) | PATCH /api/permissions/:guildId `{defaultLevel?, preset?, chatbotCap?, ownerDiscordId?, commandLevels?, ladder?}` | ✓ 723-726 |
-| permissionsCommands (1027) | GET /api/permissions/:guildId/commands?locale → `{guildId, instances, items}`. 명령 계단(레벨별 명령) 화면이 칩을 놓는 데 쓴다. 항목마다 `level`(지금 필요한 레벨), `preset`, `overridden`, `fixed`, `keys`(`commandLevels` 키) | ✓ |
-| permissionsSetMember (862) | PUT /api/permissions/:guildId/members/:discordId `{level}` | ✓ 727-730 |
-| permissionsRemoveMember (863) | DELETE /api/permissions/:guildId/members/:discordId | ✓ 727-730 |
-| sandboxListUnisolated (864) | GET /api/sandbox/unisolated `{components:[{component, fingerprint, current}]}` | ✓ 737 |
-| sandboxAllowUnisolated (865) | Rust `sandbox_consent_allow {kind:'unisolated'}` → 확인 창 → POST /api/sandbox/unisolated/:component. `sandbox_unavailable` 응답의 `component`를 넘긴다. 취소는 `error_code:'canceled'` | ✓ 738-741 |
-| sandboxRevokeUnisolated (866) | DELETE /api/sandbox/unisolated/:component | ✓ 738-741 |
+| permissionsGet (1101) | GET /api/permissions/:guildId (P1) | ✓ 723-726 |
+| permissionsUpdate (1102) | PATCH /api/permissions/:guildId `{defaultLevel?, preset?, chatbotCap?, ownerDiscordId?, commandLevels?, ladder?}` | ✓ 723-726 |
+| permissionsCommands (1103) | GET /api/permissions/:guildId/commands?locale → `{guildId, instances, items}`. 명령 계단(레벨별 명령) 화면이 칩을 놓는 데 쓴다. 항목마다 `level`(지금 필요한 레벨), `preset`, `overridden`, `fixed`, `keys`(`commandLevels` 키) | ✓ |
+| permissionsSetMember (1105) | PUT /api/permissions/:guildId/members/:discordId `{level}` | ✓ 727-730 |
+| permissionsRemoveMember (1106) | DELETE /api/permissions/:guildId/members/:discordId | ✓ 727-730 |
+| sandboxListUnisolated (1107) | GET /api/sandbox/unisolated `{components:[{component, fingerprint, current}]}` | ✓ 737 |
+| sandboxAllowUnisolated (1109) | Rust `sandbox_consent_allow {kind:'unisolated'}` → 확인 창 → POST /api/sandbox/unisolated/:component. `sandbox_unavailable` 응답의 `component`를 넘긴다. 취소는 `error_code:'canceled'` | ✓ 738-741 |
+| sandboxRevokeUnisolated (1110) | DELETE /api/sandbox/unisolated/:component | ✓ 738-741 |
 | sandboxListExtensionGui / sandboxAllowExtensionGui / sandboxRevokeExtensionGui | GET /api/sandbox/extension-gui, POST(Rust `sandbox_consent_allow {kind:'extension-gui'}` → 확인 창)·DELETE /api/sandbox/extension-gui/ext-<id>. 확인되지 않은 익스텐션의 GUI 번들 허락(묻는 창은 `ExtensionContext`, 목록·철회는 설정 > 고급 `ExtensionGuiSection`) | 데몬 #148 |
-| actionsList (867) | GET /api/actions?surface=gui&instance?&locale? (P2) | ✓ 743 |
-| actionsPlan (872) | POST /api/actions/:id/plan `{input, instance?}` | ✓ 746 |
-| actionsRun (873) | POST /api/actions/:id/run `{input, instance?}` 또는 `{planId}` | ✓ 747 |
+| actionsList (1114) | GET /api/actions?surface=gui&instance?&locale? (P2) | ✓ 743 |
+| actionsPlan (1119) | POST /api/actions/:id/plan `{input, instance?}` | ✓ 746 |
+| actionsRun (1120) | POST /api/actions/:id/run `{input, instance?}` 또는 `{planId}` | ✓ 747 |
 | instanceWords | GET /api/instance/:id/words (인스턴스별 부르는 말, 서버 상세의 디스코드 탭 `InstanceDiscordTab`이 부른다). `{id, name, module, words, commands:[…]}`를 그대로 돌려준다 | ✓ |
 | instanceWordsSave | PUT /api/instance/:id/words `{words, commands}`. 400 `validation_failed {details:[{field, reason, word?, conflictWith?}]}`를 그대로 넘긴다. 성공하면 `{success, id, words, commands:{<명령>:[..]}}` | ✓ |
 | guildAllowedInstancesSave | PUT /api/guilds/:guild/allowed-instances `{instances: [id] \| null}`(null = 제한 없음) → `{guildId, allowedInstances}`. 디스코드 화면의 인스턴스 탭이 바로 부른다(bot-config 일괄 저장으로는 바뀌지 않는다) | ✓ |
@@ -149,17 +149,17 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 | guildStartNoticeSave | PUT /api/instance/:id/start-notice/:guild `{enabled}` → `{success, id, guildId, enabled, instances}`. GUI 디스코드 인스턴스 탭의 종 버튼과 웹 권한 탭의 켜짐 알림 스위치가 바로 부른다 | ✓ |
 | guildFullNoticeGet | GET /api/guilds/:guild/full-notice → `{guildId, instances, allowedInstances}`. 웹 권한 탭의 자리 꽉 참 알림 목록 | ✓ |
 | guildFullNoticeSave | PUT /api/instance/:id/full-notice/:guild `{enabled}` → `{success, id, guildId, enabled, instances}`. GUI 디스코드 인스턴스 탭의 사람 버튼과 웹 권한 탭 | ✓ |
-| discordSettingsGet (874) | GET /api/discord/:guild/settings (I2). `loaded:false`면 릴레이 값을 못 읽은 기본값이라 GUI는 편집을 막는다 | ✓ 732-735 |
-| discordSettingsSet (875) | PATCH /api/discord/:guild/settings `{locale?, sleeping?, sleepBlocks?, bedtime?, music?, tts?, confirmLevel?, prefixes?, translateCommands?, slashPrefix?, slashRootName?, privateQueries?, bigEmoji?, gameChatGuard?, gameChatClearOnStop?}`. 서버 화면 › 봇 탭(언어·큰 이모지(릴레이 값이 있을 때만)·게임 채팅 카드(글 막기·꺼지면 채팅 지우기, 릴레이 값이 있을 때만)·호출어·명령 이름 번역·슬래시 명령 모양·되묻기·사용법)과 노래하는 사바쨩 탭, 읽어주는 사바쨩 탭(볼륨 %·속도 배·피치 반음, 속도는 %로 저장. 이름 부르기 항상·여러 명일 때·안 함. 음성 채널 채팅에서만·읽은 글 남기기 토글과 늘 읽을 음성 채널 칩(목록은 `relayNodeChannels`의 `voiceChannels`, 고른 목록을 통째로 `tts.autoChannels`로 보낸다, 10개까지, 2026-11-03). 고정 제한은 보여 주기만)(`BotSettingsTab` `section`)이 쓴다. 봇 탭의 코코낸내 카드는 끌 기능 다섯 토글과 착한 어린이 토글·잠드는/일어나는 시각(30분 단위)을 둔다(설정에 `sleepBlocks`가 있을 때만). 서버 화면 머리의 `SleepCorner`는 `discordSettingsGet`을 1분마다 읽어 `asleep`이면 구석에 잠자는 사바쨩을, 깨어나면 10초 동안 일어나는 모습을 보인다 | ✓ 732-735 |
+| discordSettingsGet (1142) | GET /api/discord/:guild/settings (I2). `loaded:false`면 릴레이 값을 못 읽은 기본값이라 GUI는 편집을 막는다 | ✓ 732-735 |
+| discordSettingsSet (1143) | PATCH /api/discord/:guild/settings `{locale?, sleeping?, sleepBlocks?, bedtime?, music?, tts?, confirmLevel?, prefixes?, translateCommands?, slashPrefix?, slashRootName?, privateQueries?, bigEmoji?, gameChatGuard?, gameChatClearOnStop?}`. 서버 화면 › 봇 탭(언어·큰 이모지(릴레이 값이 있을 때만)·게임 채팅 카드(글 막기·꺼지면 채팅 지우기, 릴레이 값이 있을 때만)·호출어·명령 이름 번역·슬래시 명령 모양·되묻기·사용법)과 노래하는 사바쨩 탭, 읽어주는 사바쨩 탭(볼륨 %·속도 배·피치 반음, 속도는 %로 저장. 이름 부르기 항상·여러 명일 때·안 함. 음성 채널 채팅에서만·읽은 글 남기기 토글과 늘 읽을 음성 채널 칩(목록은 `relayNodeChannels`의 `voiceChannels`, 고른 목록을 통째로 `tts.autoChannels`로 보낸다, 10개까지, 2026-11-03). 고정 제한은 보여 주기만)(`BotSettingsTab` `section`)이 쓴다. 봇 탭의 코코낸내 카드는 끌 기능 다섯 토글과 착한 어린이 토글·잠드는/일어나는 시각(30분 단위)을 둔다(설정에 `sleepBlocks`가 있을 때만). 서버 화면 머리의 `SleepCorner`는 `discordSettingsGet`을 1분마다 읽어 `asleep`이면 구석에 잠자는 사바쨩을, 깨어나면 10초 동안 일어나는 모습을 보인다 | ✓ 732-735 |
 | clientsLaunchable / clientLaunch | GET /api/clients/launch → `{cli, gui}`, POST /api/clients/launch `{kind, instance?, daemon?}`. 머리줄의 "CLI로 전환"(`shell/SwitchToCli.tsx`)은 `cli`가 true일 때만 보이고, 고른 서버(`activeServerId`)로, 원격 데몬을 고른 채면 그 데몬(`daemon`, CLI `--daemon`)으로 CLI를 띄운 뒤 성공하면 `closeResponse('exit-interface')`로 인터페이스만 끝낸다. 실패하면 알림만 하고 남는다. 예전 서버 머리의 "터미널로 열기"(openInTerminal)는 없앴다 | n/a |
-| onDaemonEvent (882) | 셸의 `events:message`(§1.1 이벤트 스트림)를 받는다. `type: 'resync'`면 목록을 다시 읽는다. 돌려주는 함수로 해제 (P4) | ✓ 641 |
+| onDaemonEvent (1151) | 셸의 `events:message`(§1.1 이벤트 스트림)를 받는다. `type: 'resync'`면 목록을 다시 읽는다. 돌려주는 함수로 해제 (P4) | ✓ 641 |
 | dataExport / dataImport (885-907) | Rust `dialog_save_file` / `dialog_open_file`로 경로를 고른 뒤 POST /api/migration/export `{path, secrets}` · /api/migration/import `{path, dryRun, overwrite}`. 취소하면 `{canceled:true}`. 가져오기 결과에는 `path`를 붙여 미리보기(`dryRun`) 뒤 같은 파일로 다시 부를 수 있다 | ✓ 707-708 (A9) |
 | relayCheckHostStatus… relayBotInvite (910-949) | GET /api/relay/host/:id/status, /nodes, GET /api/relay/node/:guild/members?withStatus=1(`{members, partial, reason?}`, 20초 제한), GET /api/relay/bot-invite | ✓ 774-776, 781 |
 | relayListLegacyMembers | GET /api/relay/node/:guild/legacy-members(릴레이에 남은 부여값 `[{id, username, displayName, level}]`, 권한 가져오기 후보). 실패하면 오류 본문 | ✓ |
 | relayNodeChannels / relayNodeChannelsSave (950-953) | GET/PUT /api/relay/node/:guild/channels(`notify` 알림 채널, `gameChat` 게임 채팅 채널들, `board` 상황판 채널들 포함). 디스코드 서버 화면 › 서버 관리 › 채널(`ModerationTab.tsx`)이 채널마다 칩으로 배정한다(한 채널은 한 가지 일, 챗봇·게임 채팅·상황판은 여러 채널에 더하고 음악·알림은 이 채널로 옮긴다. 예전 릴레이가 주는 채널 하나도 목록으로 읽는다, 응답에 `gameChat`·`board`가 있을 때만 그 칩을 보인다. 노래 채널은 메시지 삭제 경고를 한 번 더 확인받는다). 예전 "채널" 탭은 없앴다(2026-10-31). 실패하면 데몬 본문(`{error, channelId?}`)을 그대로 돌려준다 | ✓ 777-780 |
 | relayNodeModeration / relayModChannel / relayModClear / relayModMute | GET /api/relay/node/:guild/moderation, PATCH …/moderation/channels/:channel(이름·주제·슬로우·잠금·자동 청소), POST …/moderation/channels/:channel/clear(70초), PUT …/moderation/mutes/:user. 실패하면 데몬 본문(`{error, permission?, retryAfter?}`)을 그대로 돌려준다. 디스코드 서버 화면 › 서버 관리 탭(`ModerationTab.tsx`, 2026-10-31): 채널 화면은 배정 요약 줄, 채널 목록(배정·슬로우·잠금·자동 청소 배지), 고른 채널의 채널 정보·사바쨩 배정·슬로우·잠금·자동 청소·지금 청소(확인 창을 거친다), 멤버 화면은 음소거하기(멤버는 relayListNodeMembers 목록)와 남은 시간 순 음소거 목록(해제). 같은 탭에서 인스턴스 목록은 모듈 아이콘(`modules[].icon`, 없으면 첫 글자)을 보인다 | ✓ |
-| instanceAgreements (956) | POST /api/instance/:id/agreements `{accept:[id]}` (모듈 약관 동의) | ✓ 687 |
-| onboarding (957) | GET /api/onboarding (J1-a 다음 할 일) | ✓ 639 |
+| instanceAgreements (1266) | POST /api/instance/:id/agreements `{accept:[id]}` (모듈 약관 동의) | ✓ 687 |
+| onboarding (1267) | GET /api/onboarding (J1-a 다음 할 일) | ✓ 639 |
 | daemonDiagnostics | GET /api/diagnostics(버전·pid·데이터 폴더·토큰 파일 유무·최근 경고). 실패하면 `{success:false, error}`(설정 > 고급 `DiagnosticsPanel`) | ✓ 674 |
 | instanceBackups…instanceScheduleSave (958-970) | GET/POST …/backups(`instanceBackupCreate(id, body?)`: `{source:"snapshot"}`이면 게임 자동 백업 보관), DELETE …/backups/:name, POST …/backups/:name/restore(만들기·복원은 10분 timeout), GET/PUT …/schedule | ✓ 690-693 |
 | chatbotGet/Save/ClearMemory (971-975) | GET/PUT /api/chatbot, DELETE /api/chatbot/memory?guildId | ✓ 793-794. 디스코드 › 사바쨩 설정(`ChatbotView.tsx`, API 키·모델·크레딧)은 `{settings:{model}}`·`{apiKey}`, 디스코드 서버 화면 › 말하는 사바쨩 탭(`ChatbotGuildTab.tsx`)은 `{guilds:{<id>:{enabled, tools, memo, effort, memory, moderation, ambient, ambientMinutes, ambientEffort, tokenLimit, balanceAlert}}}`로 저장한다(동작 값은 기본값과 같으면 null, 아직 옮기지 않은 옛 공통 값이 있으면 그대로 적는다) |
@@ -172,28 +172,28 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 | relayLinkRequests / relayLinkRequestRespond (992-994) | GET /api/relay/link-requests, POST /api/relay/link-requests/:id `{accept}`. 디스코드에서 코드 없이 온 연결 요청(J1-b). 데몬 본문을 그대로 돌려준다(`daemonJson`) | ✓ 784-785 |
 | relayPrivacyErase / relayPrivacyEraseStatus | POST `/api/relay/privacy/erase` `{locale}` → `{url}`, GET → `{status}`. 개인정보 모두 지우기(`daemonJson`) | ✓ 디스코드 연결 화면 `PrivacyErase`: 동의 페이지를 열고 3초마다 묻는다. `done`이면 연결 해제처럼 화면을 비운다(끊기는 데몬이 한다) |
 | relayMcpGrant / relayMcpGrantRevoke | GET `/api/relay/mcp/grant` → `{grant:{clientName, createdAt, lastUsedAt}\|null, url}`(`url`은 에이전트에 넣을 MCP 주소), DELETE → 204. 이 PC 주인 계정의 AI 에이전트 연결(원격 MCP, 05 §4.4 (l))(`daemonJson`) | ✓ 디스코드 연결 화면 `AgentLink`: 연결된 에이전트와 마지막 사용을 보이고 끊는다. 없으면 릴레이가 준 `url`을 에이전트에 넣으라고 안내한다. 받지 못하면 줄을 그리지 않는다 |
-| shellOpenPath (997) | Rust `shell_open_path`. 디렉터리가 아니면 열지 않는다(`errors.path_not_folder`) | n/a |
-| logsOpenFolder (1001-1002) | Rust `logs_open_folder` | n/a |
-| launchUninstaller (1003) | Rust `launch_uninstaller` (installer 직접 spawn) | n/a |
-| getAppVersion (1004) | Rust `app_get_version` (패키지 버전) | n/a |
+| shellOpenPath (1375) | Rust `shell_open_path`. 디렉터리가 아니면 열지 않는다(`errors.path_not_folder`) | n/a |
+| logsOpenFolder (1379) | Rust `logs_open_folder` | n/a |
+| launchUninstaller (1380) | Rust `launch_uninstaller` (installer 직접 spawn) | n/a |
+| getAppVersion (1381) | Rust `app_get_version` (패키지 버전) | n/a |
 | systemPaths / systemPathsMove | GET /api/system/paths · POST /api/system/paths/move `{kind, target}`(시간 제한 30분). 설정 > 고급의 폴더 위치(`FolderPathsSection.tsx`)가 쓴다. 폴더 고르기는 `openFolderDialog`, 실패 문구는 `error_code`(`paths_*`)로 `gui.json` `folder_paths.err_*`에서 고른다 | ✓ (01 §2.2) |
 | systemBrowse | GET /api/system/browse `?path=&files=`(01 §2.2). `extensions` 배열을 쉼표로 잇는다. 원격 경로 고르기 창(`shell/RemotePathPicker.tsx`)만 쓴다. 실패 문구는 `error_code`로 `gui.json` `remote_picker.err_*` | ✓ (01 §2.2) |
 | systemAutostart / systemAutostartSet | GET·PUT /api/system/autostart `{mode}`. 설정 > 일반의 로그인할 때 자동 실행(`AutostartSetting.tsx`, 고르면 바로 저장, `supported:false`면 숨김). 실패 문구는 `error_code`(`autostart_*`)로 `gui.json` `autostart.err_*`에서 고른다 | ✓ (01 §2.2) |
 | remoteSettings / remoteSettingsSet / remoteClients / remoteRevoke / remotePeers / remoteDaemons / remoteConnect / remoteForget | GET·PUT /api/remote/settings, GET /api/remote/clients, DELETE /api/remote/clients/:hostId, GET /api/remote/peers, GET·POST /api/remote/daemons `{hostId}`, DELETE /api/remote/daemons/:hostId (01 §1.4.2). 지우기는 204라 `{ok:true}`로 돌려준다. 설정 > 고급의 원격 데몬(`RemoteDaemonSection.tsx`)이 쓰고, 실패 문구는 `error_code`로 `gui.json` `remote_daemon.err_*`에서 고른다. PC 이름은 데몬이 준 `label`(`디스코드 이름(PC 이름)`)로 보인다(상단 바·합쳐 보기·트레이·백그라운드 창도 같다). 행은 버튼 유무와 상관없이 높이가 같고, 연결한 PC는 "열기"(`daemonTargetSet` 뒤 다시 읽기, 지금 보는 데몬이면 "보는 중"), 원격 데몬이 있으면 메인 데몬(`gui.mainDaemon`, 이 PC 또는 원격 데몬)을 고른다. 메인 데몬은 노란 별(`Icon` `star`, 색 토큰 `--star`)로 보인다: 원격 데몬 목록에서는 이름 앞, 상단 바에서는 항목 이름 뒤(`CustomDropdown` 항목의 `mark`, 고르지 않았거나 잊은 데몬이면 이 PC). 메인을 잊으면 메인은 이 PC로 돌아간다. 잊기는 확인창(`onAsk`, 설정 창의 question 모달)을 거친다. 저장한 원격 데몬마다 못 쓰는 까닭을 보인다: 릴레이 PC 목록에 없으면 "서버쨩에서 지워진 PC", `remoteServers`에서 `remote_unauthorized`면 "그 PC가 연결을 잊음"(그 PC의 데몬을 지우고 다시 설치함, "다시 연결" 버튼이 `remoteConnect`로 짝을 다시 맺는다), 그 밖의 실패는 "닿지 않음". 상단 바(`DaemonSwitcher`)는 고른 원격 데몬이 `remote_unauthorized`면 이 PC로 돌아간다(닿지 않을 뿐이면 꺼진 PC일 수 있어 둔다). 고른 데몬과 상관없이 이 PC의 데몬이 답한다 | ✓ |
 | remoteServers / remoteInstanceAction | GET /api/remote/servers(01 §1.4.2 8), POST /api/instance/:id/start·stop·restart를 `daemon_request` `target`(hostId, 이 PC는 `local`)으로 그 데몬에 보낸다. 서버 페이지 합쳐 보기(`shell/OtherDaemons.tsx`, 설정 `gui.daemonView = unified`)가 쓴다: 목록 아래에 고른 데몬이 아닌 데몬(이 PC 포함)마다 절을 두고 10초마다 다시 읽는다. 켜기·끄기만 그 자리에서 하고, 설정·콘솔은 "이 데몬 열기"(`daemonTargetSet`)로 그 데몬을 고른 뒤 쓴다. 데몬이 다르면 서버 이름이 겹칠 수 있어 이름으로 찾는 서버 목록(`useServerActions`)에는 섞지 않는다. 보기 고르기는 설정 > 고급 원격 데몬 절(연결한 원격 데몬이 있을 때) | ✓ |
 | daemonTarget / daemonTargetSet | 셸 명령 `daemon_target_get`·`daemon_target_set {target}`(§1.1). 상단 바 데몬 고르기(`shell/DaemonSwitcher.tsx`)가 쓴다: 연결한 원격 데몬이 있을 때만 보이고, 고르면 화면을 다시 읽는다(`location.reload`). 잊은 원격 데몬이 남아 있으면 이 PC로 되돌린다 | 셸 |
-| getComponentInfo (1005) | GET /api/system/components (실패하면 `app_get_version`만) | ✓ 714 |
+| getComponentInfo (1382) | GET /api/system/components (실패하면 `app_get_version`만) | ✓ 714 |
 | onOpenServer | 셸의 `app:openServer {instanceId}`(다른 인터페이스가 고른 서버)를 받는다. App은 `revealServer(instanceId)`로 그 서버를 연다(좁은 한 열 화면에서도 목록 대신 상세). 구독자가 없을 때 온 요청은 첫 구독자에게 한 번 넘긴다(`events.ts`) | n/a |
 | onCloseRequest / closeResponse (1021-1025) | 셸의 `app:closeRequest`를 받고, Rust `app_close_response`로 답한다(기다리지 않음). App은 받자마자 `ack`를 보낸다. 앱 설정 `closeAction`이 `tray`면 묻지 않고 `exit-interface`, `quit`이면 모두 끄기(켜진 managed 서버가 있으면 그 경고는 그대로), `ask`(기본)면 종료 모달. 돌려주는 함수로 그 구독만 해제 | n/a |
-| onStatusUpdate (1026) | 셸의 `status:update`. 브리지가 마지막 값을 기억해 늦게 붙은 콜백에도 준다(`events.ts:137-177`). 돌려주는 함수로 그 구독만 해제 (채널 전체를 떼는 `off*`는 없다) | n/a |
-| daemonStatus (1030) | Rust `daemon_status` → GET /health. 응답의 `token`이 `valid`(필드가 없으면 예전 데몬이라 유효로 본다)일 때만 `running: true`. 어긋나면 토큰 파일을 한 번 다시 읽어 재시도하고, 그래도 어긋나면 `running: false, error_code: "token_invalid"`. 실행 중이면 `in_parent_job`(데몬을 띄운 프로그램과 함께 끝날 수 있는가: `/health` `stops_with_launcher`, 키가 없는 옛 데몬이면 이 GUI가 job breakaway 없이 띄운 데몬이 아직 살아 있는가)도 준다 | ✓ 637 |
-| daemonRestart (1031) | Rust `daemon_restart`: `stop_daemon()`(API 종료, 안 되면 자기 PID만 kill) 후 `/health`가 멎을 때까지 기다렸다가 **`start_daemon()`으로 직접 spawn**(`lifecycle.rs:592-618`) | 부분 |
+| onStatusUpdate (1403) | 셸의 `status:update`. 브리지가 마지막 값을 기억해 늦게 붙은 콜백에도 준다(`events.ts:68-76`). 돌려주는 함수로 그 구독만 해제 (채널 전체를 떼는 `off*`는 없다) | n/a |
+| daemonStatus (1404) | Rust `daemon_status` → GET /health. 응답의 `token`이 `valid`(필드가 없으면 예전 데몬이라 유효로 본다)일 때만 `running: true`. 어긋나면 토큰 파일을 한 번 다시 읽어 재시도하고, 그래도 어긋나면 `running: false, error_code: "token_invalid"`. 실행 중이면 `in_parent_job`(데몬을 띄운 프로그램과 함께 끝날 수 있는가: `/health` `stops_with_launcher`, 키가 없는 옛 데몬이면 이 GUI가 job breakaway 없이 띄운 데몬이 아직 살아 있는가)도 준다 | ✓ 637 |
+| daemonRestart (1405) | Rust `daemon_restart`: `stop_daemon()`(API 종료, 안 되면 자기 PID만 kill) 후 `/health`가 멎을 때까지 기다렸다가 **`start_daemon()`으로 직접 spawn**(`lifecycle.rs:592-618`) | 부분 |
 | minimize/maximize/closeWindow (1034-1036, electron 1040-1042) | Rust `window_minimize` / `window_maximize`(토글) / `window_close`. 호출한 창에 적용한다 | n/a |
 | windowSetBackground | Rust `window_set_background`(`#rrggbb`). 호출한 창의 창·웹뷰 바탕을 테마 `--bg-0`으로 칠한다(크기를 바꾸는 중 흰 바탕 방지). 마지막 색을 기억해 새 창도 그 색으로 연다. 트레이 팝업(투명)은 칠하지 않는다. `themeManager`가 테마 적용·시스템 테마 변경 때 부른다 | n/a |
 | electron.getLanguage/setLanguage (1043-1044) | Rust `language_get`(config.json `gui.language`를 직접 읽는다) / `language_set`(`save_settings`로 API 우선 저장, 셸 번역·트레이 갱신. 데몬은 재시작하지 않는다, `native.rs:241-257`) | 부분 |
-| electron.shell.openExternal (1046) | Rust `shell_open_external` (http(s)만) | n/a |
+| electron.shell.openExternal (1427) | Rust `shell_open_external` (http(s)만) | n/a |
 
-셸에서 renderer로 가는 push 이벤트는 Tauri 이벤트로, 메인 창(라벨 `main`)에만 보낸다(`emit_main` `lib.rs:60-64`). 팝아웃·트레이 팝업 창의 브리지는 구독하지 않고 `app_ready`도 부르지 않는다(`install.ts`). 브리지는 모듈을 읽을 때 9개 채널을 한 번 구독한 뒤(`events.ts:5-14, 63-65`) `app_ready`를 부른다(`install.ts:23-32`). 렌더러를 새로고침하면 `app_ready`가 다시 와서 셸이 마지막 `status:update`를 다시 보낸다(`lifecycle.rs:66-71`). 채널: `status:update`(로딩 단계 `{step, message, ts}`. `message`는 `common.json`의 `daemon.*`·`init.*`로 번역된다. 데몬이 10초 안에 응답하지 않으면 `step:'daemon_failed'`를 보내고 `ready`는 보내지 않는다. 그 뒤 `daemon_restart`가 성공하면 멈춘 초기화를 이어서 끝내고 `ready`를 보낸다. 실패하면 `{success:false, error}`), `events:message`, `updates:available`, `updates:completed`, `console:popoutOpened/Closed/popinRequest`, `app:closeRequest`, `app:openServer`(`{instanceId}`).
+셸에서 renderer로 가는 push 이벤트는 Tauri 이벤트로, 메인 창(라벨 `main`)에만 보낸다(`emit_main` `lib.rs:60-64`). 팝아웃·트레이 팝업 창의 브리지는 구독하지 않고 `app_ready`도 부르지 않는다(`install.ts`). 브리지는 모듈을 읽을 때 9개 채널을 한 번 구독한 뒤(`events.ts:10-20, 94-96`) `app_ready`를 부른다(`install.ts:23-32`). 렌더러를 새로고침하면 `app_ready`가 다시 와서 셸이 마지막 `status:update`를 다시 보낸다(`lifecycle.rs:66-71`). 채널: `status:update`(로딩 단계 `{step, message, ts}`. `message`는 `common.json`의 `daemon.*`·`init.*`로 번역된다. 데몬이 10초 안에 응답하지 않으면 `step:'daemon_failed'`를 보내고 `ready`는 보내지 않는다. 그 뒤 `daemon_restart`가 성공하면 멈춘 초기화를 이어서 끝내고 `ready`를 보낸다. 실패하면 `{success:false, error}`), `events:message`, `updates:available`, `updates:completed`, `console:popoutOpened/Closed/popinRequest`, `app:closeRequest`, `app:openServer`(`{instanceId}`).
 
 **표의 window.api는 모두 화면에서 부른다.** 쓰지 않던 `configDefaults`·`chatbotClear`·`logsGetPath`·`loadNodeToken`·`consoleFocusPopout`(와 Tauri `logs_get_path`·`console_focus_popout`)는 지웠다(2026-10-28). 반대로 **GUI가 호출하지 않는 daemon 라우트**: `/api/server/:name/start`, GET `/api/instances`, GET `/api/instance/:id`, `/api/instance/:id/rcon`, `/rest`, `/managed/start`, `/validate`, `/properties`(GET/PUT), `/properties/reset`, `/diagnose`, `/api/module/:name/version/:version`, `/api/version`, `/api/modules/schema`, `/api/config/client/:kind`, `/api/extensions/:id/mount|unmount|config`, `/api/chat/command`, `/api/updates/integrity`. 이 중 일부는 CLI만 사용한다(§3).
 
@@ -203,15 +203,15 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 
 | 파일 | 경로 | 접근 방식 | 스키마 |
 |---|---|---|---|
-| config.json `gui` | `<dataDir>/config.json` (`settings.rs:12-14`) | 셸 `load_settings()`(`settings.rs:71-84`, 명령 `settings_local_load`)는 **항상 파일을 직접 읽는다**(깨졌으면 `.bak`, `gui`가 아직 없으면 예전 `settings.json`, `:28-39`). 저장은 브리지 `saveSettings()`(`createApi.ts:57-74`, `PATCH`)와 셸 `save_settings()`(언어·창 크기, `PUT`)가 바꾼 키만 `/api/config/gui`로 보내고(데몬이 잠근 채 합친다), 데몬이 **응답하지 않을 때만** 지금 로컬 설정에 합쳐 `write_gui_section()`(명령 `settings_local_save`)으로 `gui` 키만 바꾼다. 데몬과 같은 writer(`updater/src/config_file.rs` `ConfigFile::set_section`: tmp→fsync→rename, 직전 정상본은 `.bak`, 깨진 파일은 `.corrupt-<시각>`)를 쓴다 | 기본값(`settings.rs:53-68`): `autoRefresh, refreshInterval(2000), windowBounds{width,height,x,y}, language, ipcPort(57474), consoleBufferSize(2000), autoGeneratePasswords, portConflictCheck`. renderer가 추가로 저장하는 키(useSettingsStore.ts:120-140): `accentColor, accentSecondary, useGradient, fontScale, enableTransitions, consoleSyntaxHighlight, consoleBgColor, consoleTextColor, sidebarCompact, consoleFontScale, consoleTokenColors, consoleFonts` |
+| config.json `gui` | `<dataDir>/config.json` (`settings.rs:12-14`) | 셸 `load_settings()`(`settings.rs:71-84`, 명령 `settings_local_load`)는 **항상 파일을 직접 읽는다**(깨졌으면 `.bak`, `gui`가 아직 없으면 예전 `settings.json`, `:28-39`). 저장은 브리지 `saveSettings()`(`createApi.ts:111-130`, `PATCH`)와 셸 `save_settings()`(언어·창 크기, `PUT`)가 바꾼 키만 `/api/config/gui`로 보내고(데몬이 잠근 채 합친다), 데몬이 **응답하지 않을 때만** 지금 로컬 설정에 합쳐 `write_gui_section()`(명령 `settings_local_save`)으로 `gui` 키만 바꾼다. 데몬과 같은 writer(`updater/src/config_file.rs` `ConfigFile::set_section`: tmp→fsync→rename, 직전 정상본은 `.bak`, 깨진 파일은 `.corrupt-<시각>`)를 쓴다 | 기본값(`settings.rs:53-68`): `autoRefresh, refreshInterval(2000), windowBounds{width,height,x,y}, language, ipcPort(57474), consoleBufferSize(2000), autoGeneratePasswords, portConflictCheck`. renderer가 추가로 저장하는 키(useSettingsStore.ts:299-326): `accentColor, accentSecondary, useGradient, fontScale, enableTransitions, consoleSyntaxHighlight, consoleBgColor, consoleTextColor, sidebarCompact, consoleFontScale, consoleTokenColors, consoleFonts` |
 | config.json `relay` | daemon이 관리(`/api/config/bot`, `src/config_store/mod.rs:293, 393`) | GUI는 API만 사용 | `prefixes[], cloud{relayUrl,hostId}, translateCommands(기본 true, 슬래시 명령에 모듈 명령의 번역한 이름·설명. 0.1.12부터 `prefixes`와 함께 서버별 값 `nodeSettings[guild].discord`가 먼저이고, 이 값은 서버별 값을 저장한 적 없는 서버의 기본으로만 쓴다. GUI는 서버 화면 › 봇 탭, CLI `bot prefix --guild`·`bot translate`), moduleAliases·commandAliases·instanceAliases(예전 전역 별명, 시작할 때 nodeSettings[guild].instances로 옮겨져 빈다), nodeSettings, cloudNodes[], cloudMembers{}`. 로컬 봇 필드(`token`, `autoStart`, `mode`, `music*`)는 없다(01 §4 BotConfig) |
 | config.json `chatbot` | daemon이 관리(`/api/chatbot`) | API | 응답에는 API 키 대신 `hasApiKey`만 온다(`src/ipc/handlers/chatbot.rs:1-15`) |
 | node token | `/api/config/node-token` | API(PUT·DELETE만, 토큰을 읽어 돌려주는 GET은 없다) | `{token: "sbn_<nodeId>.<secret>"}` |
 | .ipc_token | `<dataDir>/.ipc_token` 또는 `SABA_TOKEN_PATH` | 직접 읽기(필수 부트스트랩) | 평문 UUID |
 | logs | `<dataDir>/logs/*.log` | 직접 쓰기 | — |
-| renderer localStorage | WebView 저장소(Windows WebView2) | 직접 | `i18nextLng`(i18n.ts `getInitialLanguage`·`getCachedLanguage`, SettingsModal.tsx:268), 테마 키(themeManager.ts:51-121), 공지 목록(NoticeModal.tsx:18-28) |
+| renderer localStorage | WebView 저장소(Windows WebView2) | 직접 | `i18nextLng`(i18n.ts `getInitialLanguage`·`getCachedLanguage`, SettingsModal.tsx:335), 테마 키(themeManager.ts:72-184), 공지 목록(NoticeModal.tsx:21-42) |
 
-**쓰기 분기(해결됨).** 예전에는 `settings:load/save`와 `saveSettings`가 "이 GUI가 daemon을 spawn했는가"(`daemonProcess !== null`)로 분기해서, 이미 떠 있던 daemon에 붙으면 settings.json을 직접 썼다. 지금은 "daemon이 응답하는가"로 나눈다. 데몬이 응답하면 API로만 쓰고, 오류 응답이면 로컬로 넘어가지 않고 실패로 끝낸다(`createApi.ts:57-74, 763-790`, `native.rs:189-199`). Tauri로 옮기면서도 이 규칙은 그대로다. 남은 직접 접근은 **읽기**다. `load_settings()`는 데몬 상태와 상관없이 파일을 읽고, `language_get`, `create_main_window`, `refresh_ipc_base`, 데몬 기동 env, 창 크기 저장(`window.rs:159-188`, 파일에서 읽어 merge한 뒤 API로 저장)이 이 값을 쓴다.
+**쓰기 분기(해결됨).** 예전에는 `settings:load/save`와 `saveSettings`가 "이 GUI가 daemon을 spawn했는가"(`daemonProcess !== null`)로 분기해서, 이미 떠 있던 daemon에 붙으면 settings.json을 직접 썼다. 지금은 "daemon이 응답하는가"로 나눈다. 데몬이 응답하면 API로만 쓰고, 오류 응답이면 로컬로 넘어가지 않고 실패로 끝낸다(`createApi.ts:111-130, 991-1005`, `native.rs:189-199`). Tauri로 옮기면서도 이 규칙은 그대로다. 남은 직접 접근은 **읽기**다. `load_settings()`는 데몬 상태와 상관없이 파일을 읽고, `language_get`, `create_main_window`, `refresh_ipc_base`, 데몬 기동 env, 창 크기 저장(`window.rs:159-188`, 파일에서 읽어 merge한 뒤 API로 저장)이 이 값을 쓴다.
 
 ### 1.4 화면과 모달별 기능 (`src/`)
 
@@ -270,8 +270,8 @@ Tauri 셸과 CLI는 Rust 쪽 SSOT `saba_chan_updater_lib::constants`(`updater/sr
 | 상수 | 값 | 사용처 |
 |---|---|---|
 | APP_NAME | `saba-chan` | dataDir 이름(`constants.rs:22`) |
-| DEFAULT_IPC_PORT | `57474` | `constants.rs:32`. 셸 `settings.rs:8, 98-105`, CLI. renderer는 사본을 둔다(`useSettingsStore.ts:17`) |
-| SUPPORTED_LANGUAGES | en, ko, ja, zh-CN, zh-TW, es, pt-BR, ru, de, fr | `constants.rs:42`. 셸은 OS 로캘을 이 목록에 맞춘다(`settings.rs:127-150`). **중복 정의 위치**: `saba-chan-gui/src/i18n.ts:9`, `updater/gui/src/updater.js:10` |
+| DEFAULT_IPC_PORT | `57474` | `constants.rs:32`. 셸 `settings.rs:8, 98-105`, CLI. renderer는 사본을 둔다(`useSettingsStore.ts:20`) |
+| SUPPORTED_LANGUAGES | en, ko, ja, zh-CN, zh-TW, es, pt-BR, ru, de, fr | `constants.rs:42`. 셸은 OS 로캘을 이 목록에 맞춘다(`settings.rs:127-150`). **중복 정의 위치**: `saba-chan-gui/src/i18n.ts:10`, `updater/gui/src/updater.js:10` |
 | resolve_data_dir() | `SABA_DATA_DIR`, Windows는 `%APPDATA%/saba-chan`, 그 외는 `$HOME/.config/saba-chan` | `constants.rs:55`. 셸 `lib.rs:79` |
 
 - 그 밖의 포트:
@@ -382,7 +382,7 @@ Discord ─ 릴레이의 사바쨩 봇 ─(롱폴링, HMAC 서명)─ 데몬 rel
 
 | 파일 | 최상위 키(en) | 소비자 |
 |---|---|---|
-| common.json (leaf 80개) | app_name, success/error/…, daemon, modules, server, network, port_conflict, init, tray, updates, errors 등 25개 | GUI renderer(`common` ns, JS 브리지의 오류 문구 `createApi.ts:9`), **Tauri 셸**(트레이·알림·status 메시지, `i18n.rs`. 설치 폴더 파일 우선, 없으면 exe 내장본) |
+| common.json (leaf 80개) | app_name, success/error/…, daemon, modules, server, network, port_conflict, init, tray, updates, errors 등 25개 | GUI renderer(`common` ns, JS 브리지의 오류 문구 `createApi.ts:33`), **Tauri 셸**(트레이·알림·status 메시지, `i18n.rs`. 설치 폴더 파일 우선, 없으면 exe 내장본) |
 | gui.json (en leaf 677개) | title, menu, title_bar, modals, settings_modal, add_instance_modal, migration_modal, command_modal, server_*, discord_bot, discord_modal, notice_modal, updates, extensions, saba_storage, validation, context_menu 등 29개 | GUI renderer(`gui` ns) |
 | bot.json | 채팅 응답 문구 | 데몬 채팅 처리기(`src/chat/i18n.rs`, 빌드 때 포함). GUI renderer도 import한다 |
 | cli.json (PR #6 기준 en leaf 402개) | server, daemon, module, ext, bot, backup, schedule, chatbot, err, prompt 등 39개 | CLI `i18n.rs`. 설치 폴더의 `locales/<lang>/cli.json`을 먼저 읽고, 없으면 내장 en/ko를 쓴다(`i18n.rs:11-12, 36-52`). ko만 도움말 번역 `help`(leaf 183개)가 더 있어 585개다. 나머지 언어의 도움말은 clap 기본 영어다. qcza9f에는 아직 예전 TUI용 cli.json(en 200개, `screen`·`menu` 등 16개)이 있다 |
@@ -393,7 +393,7 @@ Discord ─ 릴레이의 사바쨩 봇 ─(롱폴링, HMAC 서명)─ 데몬 rel
 - **번역 누락**(en 기준 diff):
   - gui.json: de, es, fr, pt-BR, ru, zh-CN, zh-TW는 661개로 **16개가 빠져 있다**(`console.dock_focus/dock_restore/minimize/pin/popin/unpin`, `discord_modal.music_channel_*`, `discord_modal.music_normalize`). ja는 667개로 `discord_modal.music_*` 10개가 빠져 있다.
   - cli.json: qcza9f의 예전 파일은 ko를 제외한 8개 언어가 168개로 33개가 빠져 있다(`screen.bot_*` 등). PR #6의 새 파일은 10개 언어 모두 en 키가 빠짐없이 있다.
-- 하드코딩된 한국어 문자열: 옛 Electron main.js의 트레이·알림·오류 매핑·로딩 문구는 Tauri로 옮기며 모두 `common.json` 키(`tray.*`, `updates.*`, `init.*`, `daemon.*`, `errors.*`, `port_conflict.*`)를 거친다(셸 `AppState::t` `lib.rs:40-42`, 브리지 `t` `createApi.ts:9`). 영어로 남은 문구: `createApi.ts:126`(401 안내), `native.rs:154`(`Installer not found`), `lifecycle.rs:617`·`native.rs:52-53`(데몬 상태 메시지), 팝아웃 창 제목 `Console — <이름>`(`window.rs:207`)
+- 하드코딩된 한국어 문자열: 옛 Electron main.js의 트레이·알림·오류 매핑·로딩 문구는 Tauri로 옮기며 모두 `common.json` 키(`tray.*`, `updates.*`, `init.*`, `daemon.*`, `errors.*`, `port_conflict.*`)를 거친다(셸 `AppState::t` `lib.rs:40-42`, 브리지 `t` `createApi.ts:33`). 영어로 남은 문구: `createApi.ts:204`(401 안내), `native.rs:154`(`Installer not found`), `lifecycle.rs:617`·`native.rs:52-53`(데몬 상태 메시지), 팝아웃 창 제목 `Console — <이름>`(`window.rs:207`)
 
 ---
 
@@ -401,7 +401,7 @@ Discord ─ 릴레이의 사바쨩 봇 ─(롱폴링, HMAC 서명)─ 데몬 rel
 
 ### 6.1 존재하지 않는 endpoint나 잘못된 HTTP 메서드 호출
 (예전 TUI CLI의 항목들은 CLI 리메이크에서 코드째 사라져 뺐다. §3 참조.)
-1. ~~`updater:setConfig`가 POST를 써서 405~~ 해결됨: 이제 PUT이다(옛 Electron main.js:2505, 지금은 `createApi.ts:781`).
+1. ~~`updater:setConfig`가 POST를 써서 405~~ 해결됨: 이제 PUT이다(옛 Electron main.js:2505, 지금은 `createApi.ts:982`).
 2. ~~CLI `update download`/`update apply`가 본문 없이 POST하는데 데몬은 JSON 본문을 요구했다~~ → 해결: PR #6 CLI는 `{components:[...]}`를 보낸다(`saba-chan-cli/src/client.rs:774-784`). 데몬도 본문이 없거나 공백이면 전체로 받고, 깨진 JSON은 400 `invalid_body`로 거부한다(`src/ipc/updates.rs:348-371, 475-480`).
 
 ### 6.2 죽은 코드와 stub
@@ -412,8 +412,8 @@ Discord ─ 릴레이의 사바쨩 봇 ─(롱폴링, HMAC 서명)─ 데몬 rel
 
 ### 6.3 기능 버그
 - ~~**before-quit bot 정지 요청 누락**: (옛 Electron main.js:1536, 1559) `currentPort` 범위 오류로 ReferenceError~~ → 해결: 비정상 종료 경로(`on_exit` `lifecycle.rs:690-712`)는 봇을 건드리지 않고 unregister와 자기 데몬 정리만 한다.
-- ~~**SabaStorage bot 재시작 실패**: SabaStorage.tsx:318, 445가 `settings?.discordToken`을 읽음~~ → 해결: 로컬 봇이 없어져 SabaStorage는 봇을 재시작하지 않고, renderer에 `discordToken`을 읽는 곳이 없다.
-- ~~**settings 경로 분기 기준 오류**: (옛 Electron main.js:483, 2860, 2967) `daemonProcess`로 판단~~ → 해결: 데몬이 응답하는지로 나누고, 응답하면 API로만 쓴다(`createApi.ts:57-74, 789-816`, `native.rs:189-199`). 읽기 직접 접근은 남아 있다(§1.3).
+- ~~**SabaStorage bot 재시작 실패**: SabaStorage.tsx:326, 453가 `settings?.discordToken`을 읽음~~ → 해결: 로컬 봇이 없어져 SabaStorage는 봇을 재시작하지 않고, renderer에 `discordToken`을 읽는 곳이 없다.
+- ~~**settings 경로 분기 기준 오류**: (옛 Electron main.js:483, 2860, 2967) `daemonProcess`로 판단~~ → 해결: 데몬이 응답하는지로 나누고, 응답하면 API로만 쓴다(`createApi.ts:111-130, 991-1005`, `native.rs:189-199`). 읽기 직접 접근은 남아 있다(§1.3).
 - ~~**resolver 주석과 코드 불일치**: resolver.js:57(1분)과 60(5초)~~ → 해결: `resolver.js`는 로컬 봇(`discord_bot/`)과 함께 L1(7b5102f)에서 지워졌다.
 - ~~**updater exe 이름 하드코딩**: (옛 Electron main.js:1113-1148), 예전 TUI `commands.rs:1137-1142`~~ → 해결: GUI와 CLI는 `POST /api/updates/launch-updater`만 보내고, 데몬이 `saba-chan-updater{EXE_SUFFIX}`를 찾아 띄운다(`src/ipc/updates.rs:747-754`).
 
@@ -430,8 +430,8 @@ Discord ─ 릴레이의 사바쨩 봇 ─(롱폴링, HMAC 서명)─ 데몬 rel
 |---|---|---|---|---|
 | G1 | daemon.rs:154-181 | FS-R | `.ipc_token` 읽기 | 불가피(인증 부트스트랩) |
 | G2 | settings.rs:28-39, 71-84 | FS-R/CFG | `load_settings()`는 daemon 상태와 상관없이 **항상** config.json `gui`(깨졌으면 `.bak`, 없으면 예전 settings.json)를 직접 읽는다. 기동 시 포트·언어(`lib.rs:94-96`), `create_main_window`, 데몬 기동 env, `refresh_ipc_base`, 창 크기 저장, `language_get`, `settings_local_load`(브리지의 settings 폴백)가 이 함수를 쓴다 | ipcPort 부트스트랩만 불가피하고, 나머지는 API로 대체할 수 있다 |
-| G3 | settings.rs:47-61, native.rs:189-227 | FS-W/CFG | `write_gui_section()`: 데몬이 **응답하지 않을 때만** config.json `gui`를 직접 쓴다(데몬과 같은 `ConfigFile` writer). 셸 `save_settings()`(windowBounds 저장 `window.rs:186`, `language_set`)와 브리지가 부르는 `settings_local_save`(`createApi.ts:67-73`)가 이 경로를 탄다 | 부트스트랩 전용. 예전 `daemonProcess` 분기 버그는 해결(§6.3) |
-| G4 | createApi.ts:763-770 | FS-R/CFG | `settingsLoad`: API 실패 시 `settings_local_load`로 로컬 폴백 | 위와 같음 |
+| G3 | settings.rs:47-61, native.rs:189-227 | FS-W/CFG | `write_gui_section()`: 데몬이 **응답하지 않을 때만** config.json `gui`를 직접 쓴다(데몬과 같은 `ConfigFile` writer). 셸 `save_settings()`(windowBounds 저장 `window.rs:186`, `language_set`)와 브리지가 부르는 `settings_local_save`(`createApi.ts:123`)가 이 경로를 탄다 | 부트스트랩 전용. 예전 `daemonProcess` 분기 버그는 해결(§6.3) |
+| G4 | createApi.ts:991-999 | FS-R/CFG | `settingsLoad`: API 실패 시 `settings_local_load`로 로컬 폴백 | 위와 같음 |
 | G5 | logging.rs:10-45 | FS-W | 로그 디렉터리 생성과 로그 파일 쓰기 | GUI 자체 로그 |
 | G6 | i18n.rs:50-62 | FS-R | `locales/<lang>/common.json` 직접 읽기(없으면 exe 내장본) | |
 | G7 | lifecycle.rs:158-244, 389-436 | PROC | **saba-core spawn** (`--spawned`, env 주입). 콘솔 창 없이 분리해 띄운다(Windows `CREATE_NO_WINDOW`·`CREATE_NEW_PROCESS_GROUP`·`CREATE_BREAKAWAY_FROM_JOB`, job이 막으면 breakaway 없이 다시, Unix `process_group(0)`). 로그는 GUI가 사는 동안 파이프로 받는다. 인터페이스만 종료하면(`interface_only_quit` `:630-644`) 자식 핸들만 놓아 데몬이 남는다. GUI가 죽거나 강제 종료돼도 데몬은 남고, 다음 GUI 실행 때 `ensure_daemon`이 `/health`로 떠 있는 데몬을 찾아 다시 붙는다. 데몬을 끄는 것은 전체 종료(`clean_quit`, G8)뿐이다 | 불가피(daemon 부재 시 부트스트랩) |
@@ -452,10 +452,10 @@ Discord ─ 릴레이의 사바쨩 봇 ─(롱폴링, HMAC 서명)─ 데몬 rel
 ### 7.2 GUI renderer (`saba-chan-gui/src`)
 | # | 위치 | 분류 | 내용 |
 |---|---|---|---|
-| R1 | i18n.ts:42-81, SettingsModal.tsx:268 | FS-W(localStorage) | 언어 캐시 `i18nextLng` |
-| R2 | utils/themeManager.ts:51-121 | FS-W(localStorage) | 테마와 커스텀 테마. config.json `gui`에도 accent 계열을 저장하므로 저장소가 둘로 갈린다 |
-| R3 | Modals/NoticeModal.tsx:18-28 | FS-W(localStorage) | 공지와 알림 기록 |
-| R4 | i18n.ts:3-30 | 빌드타임 | 로케일 JSON 정적 번들. 런타임 locale 업데이트(daemon의 Locales 컴포넌트 자동 적용. 셸 알림에서는 빼기만 한다, `events.rs:144-147`)가 renderer에는 반영되지 않는다. 셸 문구는 설치 폴더 파일을 먼저 읽어 반영된다(`i18n.rs:50-58`) |
+| R1 | i18n.ts:35-88, SettingsModal.tsx:335 | FS-W(localStorage) | 언어 캐시 `i18nextLng` |
+| R2 | utils/themeManager.ts:72-184 | FS-W(localStorage) | 테마와 커스텀 테마. config.json `gui`에도 accent 계열을 저장하므로 저장소가 둘로 갈린다 |
+| R3 | Modals/NoticeModal.tsx:21-42 | FS-W(localStorage) | 공지와 알림 기록 |
+| R4 | i18n.ts:4-33 | 빌드타임 | 로케일 JSON 정적 번들. 런타임 locale 업데이트(daemon의 Locales 컴포넌트 자동 적용. 셸 알림에서는 빼기만 한다, `events.rs:144-147`)가 renderer에는 반영되지 않는다. 셸 문구는 설치 폴더 파일을 먼저 읽어 반영된다(`i18n.rs:50-58`) |
 | R5 | components/ServerCard.js:419-421, App.tsx:494-501 | 규칙 중복 | managed 여부를 `module_settings.managed_start`와 모듈 `interaction_mode`로 다시 계산한다. 데몬은 `GET /api/servers`의 `managed`로 판정을 주는데(`handlers/server.rs:87`), 규칙이 다르다: 값이 없으면 데몬은 늘 managed(`supervisor/mod.rs:1690-1699`), renderer는 `console` 모드 모듈만 managed로 본다 |
 
 (renderer는 `fetch`, `axios`, 직접 IP 접근을 하지 않는다. 모두 `window.api`(브리지 → `daemon_request` 명령)를 거친다.)

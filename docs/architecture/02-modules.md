@@ -99,7 +99,7 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 |---|---|---|
 | `process_patterns` | Vec<String> | extension hook `server.status` 컨텍스트로만 전달 (`mod.rs:1115-1126`). 네이티브 auto-detect에는 **미사용** |
 | `cmd_patterns` | Vec<String> | auto-detect 때 커맨드라인 필터 (`mod.rs:2515-2524`) |
-| `dir_signatures` | Vec<String> | `/api/modules`로 노출. 데몬도 `POST /api/modules/detect`로 매칭한다(`server.rs:423-443`, 항목은 전부 있어야 함). 한 항목 안의 `|`는 그중 하나, `*`는 그 폴더 바로 아래 파일 이름 패턴이다(`"server.jar|paper-*.jar"`, `module_loader.rs` `signature_present`). `..`가 든 항목은 맞지 않는다. GUI 마이그레이션 화면도 이 결과만 쓴다: `migrationScanDir`가 이 API를 부르고(`saba-chan-gui/src/api/createApi.ts:825-833`), 화면은 돌아온 `matches`로 모듈을 고른다(`AddInstanceMigration.tsx:75-76`) |
+| `dir_signatures` | Vec<String> | `/api/modules`로 노출. 데몬도 `POST /api/modules/detect`로 매칭한다(`server.rs:423-443`, 항목은 전부 있어야 함). 한 항목 안의 `|`는 그중 하나, `*`는 그 폴더 바로 아래 파일 이름 패턴이다(`"server.jar|paper-*.jar"`, `module_loader.rs` `signature_present`). `..`가 든 항목은 맞지 않는다. GUI 마이그레이션 화면도 이 결과만 쓴다: `migrationScanDir`가 이 API를 부르고(`saba-chan-gui/src/api/createApi.ts:1012-1020`), 화면은 돌아온 `matches`로 모듈을 고른다(`AddInstanceMigration.tsx:98-100`) |
 | `graceful_exit_patterns` | Vec<String> | 정상 종료 문구(정규식). 종료 판정에 쓴다 (§3.6) |
 | `crash_artifacts` | Vec<String> | 크래시 때 생기는 파일. 종료 판정에 쓴다 (§3.6) |
 
@@ -506,7 +506,7 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 
 ### 3.1 두 가지 실행 경로
 
-시작 경로는 데몬이 고른다. `POST /api/instance/:id/start`가 `Supervisor::uses_managed_start`(인스턴스 설정 `managed_start`, 없으면 managed)로 경로를 정하고, 시작 전 점검(§2.3 `validate`)을 거쳐 아래 둘 중 하나를 부른다 (`D:src/ipc/handlers/server.rs:649-710`, `D:src/supervisor/mod.rs:1690-1700`). GUI는 이 경로만 부른다 (`D:saba-chan-gui/src/api/createApi.ts:133-136`).
+시작 경로는 데몬이 고른다. `POST /api/instance/:id/start`가 `Supervisor::uses_managed_start`(인스턴스 설정 `managed_start`, 없으면 managed)로 경로를 정하고, 시작 전 점검(§2.3 `validate`)을 거쳐 아래 둘 중 하나를 부른다 (`D:src/ipc/handlers/server.rs:649-710`, `D:src/supervisor/mod.rs:1690-1700`). GUI는 이 경로만 부른다 (`D:saba-chan-gui/src/api/createApi.ts:212-219`).
 
 | | managed (`start_managed_handler`) | non-managed (`start_server_handler`) |
 |---|---|---|
@@ -615,7 +615,7 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 | 설정 | `ServerPropertiesManager`가 공용 `read_key_values`·`update_key_values`(§2.5)로 `server.properties`를 읽고 쓴다(UTF-8로 쓴다). saba 키와 파일 키는 settings 필드의 `file_key`, 변환은 `settings_to_file`·`settings_from_file`이 한다. 값은 Java Properties 이스케이프로 읽고 쓴다(`minecraft\:normal` ↔ `minecraft:normal`, `_unescape_property`·`_escape_property`). 모듈 폴더에 동봉된 `server.properties`를 기본값으로 쓴다 (`_load_default_properties`) |
 | 명령 | `[commands] hook = true`(설치된 플러그인·모드 명령은 위 행). module.toml에는 17개, 전부 `method="console"`(콘솔 stdin): say, give, save-all, list, weather, difficulty, gamemode, time, tp, kick, ban, pardon, op, deop, whitelist, seed, stop |
 | 정지 | managed는 데몬이 stdin으로 `stop`을 보낸다. 모듈 `stop()`은 공용 `graceful_stop`(§2.5)에 요청 함수만 넘긴다. force가 아니면 콘솔 `stop`(`instance_id` 필요) → SIGTERM(POSIX) 순서로 요청하고, non-managed면 `stop_timeout`만큼 기다린 뒤에만 `force_kill`한다. 콘솔 없이 다시 붙은 managed 서버(`managed:true`)면 요청만 보내고 바로 돌려준다(기다림과 강제 종료는 데몬). 둘 다 보낼 수 없으면(콘솔 없는 Windows) 끝내지 않고 `graceful_stop_unavailable`로 답한다(§3.4). ~~RCON `stop` 시도 후 실패하면 바로 강제 종료~~ → 해결. `command()`도 `daemon_stdin_command`로 콘솔에 보낸다 (`:1425-`) |
-| 기타 | `EulaManager`(accept_agreements), diagnose_log(module.toml `[[diagnose]]` 규칙 + 공용 `diagnose_lines`), `MinecraftPing`(SLP 기반 status), `get_installed_version`(jar 내부 `version.json` 파싱), syntax_highlight 규칙 40개(Vanilla·Forge `[시각] [스레드/레벨]`과 Paper 콘솔 `[시각 레벨]`을 모두 받는다). 색은 모두 GUI 팔레트 토큰이다(`saba-chan-gui/src/utils/syntaxHighlight.ts:24-41`). ~~팔레트에 없는 `notice`·`critical`을 써서 색이 안 나왔다~~ → 해결: `info`·`error`로 바꿨다 (zomboid의 `duration`도 `number`로) |
+| 기타 | `EulaManager`(accept_agreements), diagnose_log(module.toml `[[diagnose]]` 규칙 + 공용 `diagnose_lines`), `MinecraftPing`(SLP 기반 status), `get_installed_version`(jar 내부 `version.json` 파싱), syntax_highlight 규칙 40개(Vanilla·Forge `[시각] [스레드/레벨]`과 Paper 콘솔 `[시각 레벨]`을 모두 받는다). 색은 모두 GUI 팔레트 토큰이다(`saba-chan-gui/src/utils/syntaxHighlight.ts:53-70`). ~~팔레트에 없는 `notice`·`critical`을 써서 색이 안 나왔다~~ → 해결: `info`·`error`로 바꿨다 (zomboid의 `duration`도 `number`로) |
 | 미등록 | `get_credentials`만 없다(RCON 값만 돌려주던 것이라 지웠다). `import_settings`, `reset_properties`, `reset_server`는 등록됨 |
 | 동봉 파일 | `_sample_log.txt`, `test_lifecycle.py`가 리포에 있고 zip에도 들어간다. 패키저는 `__pycache__`·`tests` 폴더와 `.pyc`만 뺀다 (`D:scripts/versions.py:196-208`) |
 
@@ -660,7 +660,7 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 - RCON 대신 stdin을 가르친다: `protocols.supported = ["stdin"]`, RCON 설정·자격증명 예시 삭제, 공용 `daemon_stdin_command`·`wait_for_exit`·`force_kill`을 쓰고 대기 후에만 강제 종료한다 (`__example__lifecycle.py:92-97, 236-256`, `__example__module.toml:58-60`). 진입점은 공용 `run_lifecycle()`이고, 주석의 명령 방식도 `method="console"`로 맞췄다(e1d7743). `stop()`의 콘솔 정지는 콘솔이 없을 때 불리므로 보통 실패하고 대기 후 강제 종료로 넘어간다(§6.3 #8).
 - `install_server`는 실제 모듈처럼 `extensions.steamcmd.SteamCMD` 클래스를 쓴다 (`:394-395`).
 - `get_credentials`, `read_properties`가 없다. 명령은 stdin으로 가므로 콘솔 모듈에는 지장이 없지만, REST 모듈을 만들면 `get_credentials`를 직접 추가해야 한다.
-- settings에 `managed_start`와 `graceful_stop`이 있다. `managed_start`는 데몬이 시작 경로를 고르는 데 쓴다(§3.1). `graceful_stop`은 데몬도 예시 `stop()`도 읽지 않고(설정 동기화에서 빼기만 한다, `instance.rs:1293`), GUI만 정지 방식을 고를 때 읽는다 (`saba-chan-gui/src/hooks/useServerActions.ts:618`).
+- settings에 `managed_start`와 `graceful_stop`이 있다. `managed_start`는 데몬이 시작 경로를 고르는 데 쓴다(§3.1). `graceful_stop`은 데몬도 예시 `stop()`도 읽지 않고(설정 동기화에서 빼기만 한다, `instance.rs:1293`), GUI만 정지 방식을 고를 때 읽는다 (`saba-chan-gui/src/hooks/useServerActions.ts:734-735`).
 
 ### 4.6 i18n과 locales
 
@@ -756,14 +756,14 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 
 | # | 위치 | 내용 | 원칙 |
 |---|---|---|---|
-| 1 | ~~GUI·봇의 명령 실행 로직~~ | ~~`method` 분기, 템플릿 치환, 입력 검증을 인터페이스가 중복 구현~~ → 해결: `POST /api/instance/:id/command` 하나로 모이고 데몬 `crate::commands`가 해석한다. GUI는 그 경로만 부른다 (`D:src/commands/mod.rs:1-17`, `saba-chan-gui/src/api/createApi.ts:479-485`). 로컬 Discord 봇은 지워졌다 | — |
-| 2 | ~~GUI·봇의 시작 경로 선택~~ | ~~인터페이스가 `/managed/start`와 `/server/:name/start`를 고른다~~ → 해결: `POST /api/instance/:id/start`에서 데몬이 고른다 (`server.rs:649-710`, `saba-chan-gui/src/api/createApi.ts:133-135`) | — |
-| 3 | — | ~~`dir_signatures` 매칭을 GUI 마이그레이션 화면이 직접 한다~~ → 해결: `migrationScanDir`가 데몬 `POST /api/modules/detect`(`server.rs:423-443`)를 부르고 화면은 그 `matches`만 쓴다(`saba-chan-gui/src/api/createApi.ts:825-833`, `AddInstanceMigration.tsx:75-76`) | |
+| 1 | ~~GUI·봇의 명령 실행 로직~~ | ~~`method` 분기, 템플릿 치환, 입력 검증을 인터페이스가 중복 구현~~ → 해결: `POST /api/instance/:id/command` 하나로 모이고 데몬 `crate::commands`가 해석한다. GUI는 그 경로만 부른다 (`D:src/commands/mod.rs:1-17`, `saba-chan-gui/src/api/createApi.ts:637-644`). 로컬 Discord 봇은 지워졌다 | — |
+| 2 | ~~GUI·봇의 시작 경로 선택~~ | ~~인터페이스가 `/managed/start`와 `/server/:name/start`를 고른다~~ → 해결: `POST /api/instance/:id/start`에서 데몬이 고른다 (`server.rs:649-710`, `saba-chan-gui/src/api/createApi.ts:212-219`) | — |
+| 3 | — | ~~`dir_signatures` 매칭을 GUI 마이그레이션 화면이 직접 한다~~ → 해결: `migrationScanDir`가 데몬 `POST /api/modules/detect`(`server.rs:423-443`)를 부르고 화면은 그 `matches`만 쓴다(`saba-chan-gui/src/api/createApi.ts:1012-1020`, `AddInstanceMigration.tsx:98-100`) | |
 | 4 | ~~`saba-chan-cli/src/module_registry.rs`의 fs 폴백~~ | ~~CLI가 데몬 응답 실패 시 `module.toml`을 파일시스템에서 직접 파싱~~ → 해결: PR #6 CLI는 모듈 목록을 `GET /api/modules`로만 받는다(`saba-chan-cli/src/resolve.rs:185-193`, `cmd/module.rs:108-109`). 실패하면 오류로 끝나고 로컬 폴백이 없다 | — |
 | 5 | ~~raw TOML로 `[errors]` 읽기~~ | ~~봇이 `/api/module/:name`의 raw TOML 덤프를 읽는다~~ → 해결: `[errors]`는 메타데이터 필드이고 `/command`가 `error_message`로 붙인다. `/api/module/:name`은 메타데이터를 돌려준다 (`server.rs:467-487`) | — |
 | 6 | ~~`D:src/ipc/handlers/instance.rs:1276-1303`~~ | ~~설정 동기화 제외 목록에 Minecraft 전용 키가 데몬에 하드코딩~~ → 해결(MK6): 데몬 필드만 데몬이 알고, 나머지는 모듈이 `group = "saba-chan"`으로 선언한 설정을 뺀다 | — |
 | 7 | ~~`D:src/supervisor/mod.rs`~~ | ~~`server_jar` 키 주입, `jar_name="server.jar"` 기본값~~ → 해결(MK7): 모듈에는 `server_executable`·`working_dir`만 넘기고, 설치 요청·config의 실행 파일 이름도 `server_executable`이다. 함수 이름 `manage_properties`·라우트 `/properties`는 남았지만 게임 설정 파일 일반을 뜻한다 | — |
-| 8 | `saba-chan-gui/src/components/ServerSettingsModal.tsx:354,363` (`module === 'palworld'`), `useServerSettings.ts:275` ("Install Minecraft …" 문자열) | GUI가 특정 게임 이름으로 분기 | 인터페이스에 게임 지식 |
+| 8 | `saba-chan-gui/src/components/ServerSettingsModal.tsx:398,407` (`module === 'palworld'`), `useServerSettings.ts:298` ("Install Minecraft …" 문자열) | GUI가 특정 게임 이름으로 분기 | 인터페이스에 게임 지식 |
 | 9 | `M:palworld/lifecycle.py:33-36`, `zomboid`/`palworld` `install_server` | 모듈이 플러그인(`extensions.*`)을 Python import로 직접 사용. 활성 여부도 스스로 `SABA_ENABLED_EXTENSIONS`로 확인. 데몬은 import 가드로 꺼진 익스텐션 import만 막는다 (`D:src/plugin/mod.rs:114-126`) | 플러그인 기능 주입은 데몬이 중개해야 하는데, 모듈과 플러그인이 직접 결합 |
 | 10 | `modules/daemon_rcon.py`, palworld, zomboid 콜백 | 모듈이 데몬 HTTP API를 역호출(rcon/rest/stdin). ~~인증 없이 호출하고 포트도 하드코딩~~ → 토큰과 `SABA_IPC_URL`을 쓴다 | "매뉴얼"인 모듈이 능동 클라이언트로 동작. 경계가 모호함 |
 | 11 | ~~`installer/gui/src-tauri/src/lib.rs`의 하드코딩 모듈 목록~~ | → 해결: 목록은 릴리즈 manifest에서만 만든다 (`lib.rs:169-188`) | — |
