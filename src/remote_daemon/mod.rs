@@ -53,7 +53,7 @@ pub(crate) fn clients() -> server::Clients {
 
 /// 짝을 푼 PC의 열린 스트림도 여기서 끝난다 (`Clients::set`)
 pub(crate) fn reload_clients(file: &ConfigFile) {
-    clients().set(config::clients_in(file));
+    clients().reload(file);
 }
 
 pub async fn status() -> Status {
