@@ -32,6 +32,7 @@ import { AutostartSetting, autostartAvailable } from './AutostartSetting';
 import { ExtensionGuiSection, extensionGuiAvailable } from './ExtensionGuiSection';
 import { UnisolatedSection, unisolatedAvailable } from './UnisolatedSection';
 import SabaStorage from './SabaStorage';
+import { AboutPage } from './AboutPage';
 
 // 효과음 종류별 스위치 (DEFAULT_SOUNDS 키 → 이름)
 const SOUND_KINDS = [
@@ -1417,89 +1418,18 @@ function SettingsModal({
                         </button>
                     </div>
 
-                    <div className="about-scroll-area">
-                        {/* 개발자 프로필 카드 */}
-                        <div className="about-card about-dev-card">
-                            <div className="about-dev-avatar">
-                                <img
-                                    src="https://github.com/WareAoba.png"
-                                    alt="WareAoba"
-                                    className="about-dev-img"
-                                    onError={(e) => { e.target.style.display = 'none'; }}
-                                />
-                            </div>
-                            <div className="about-dev-info">
-                                <span className="about-dev-nickname">{t('gui:settings_modal.dev_nickname')}</span>
-                                <span className="about-dev-id">@WareAoba</span>
-                                <span className="about-dev-bio">{t('gui:settings_modal.dev_bio')}</span>
-                            </div>
-                            <span className="about-made-by">{t('gui:settings_modal.made_by')}</span>
-                            <button
-                                className="about-dev-github-btn"
-                                onClick={() => {
-                                    if (window.electron?.shell?.openExternal) {
-                                        window.electron.shell.openExternal('https://github.com/WareAoba/saba-chan');
-                                    } else {
-                                        window.open('https://github.com/WareAoba/saba-chan', '_blank');
-                                    }
-                                }}
-                            >
-                                <Icon name="github" size="sm" />
-                                <span>{t('gui:settings_modal.github_repo')}</span>
-                            </button>
-                        </div>
-
-                        {/* 사바쨩 정보 카드 */}
-                        <div className="about-card about-app-card">
-                            <div className="about-app-logo-container">
-                                <img
-                                    src="./title.png"
-                                    alt="Saba-chan"
-                                    className="about-app-logo"
-                                    onClick={() => {
-                                        logoClicks.current += 1;
-                                        if (logoClicks.current < 5) return;
-                                        logoClicks.current = 0;
-                                        safeShowToast(t('gui:settings_modal.name_egg'), 'info', 6000);
-                                    }}
-                                />
-                                {appVersion && <span className="about-version-badge">v{appVersion}</span>}
-                            </div>
-                            <div className="about-app-info">
-                                {/* 컴포넌트 버전 */}
-                                <div className="about-component-list">
-                                    <div className="about-component-item">
-                                        <span className="about-component-label"><Icon name="package" size="xs" /> Core</span>
-                                        <span className="about-component-ver">{versionLabel(componentInfo?.components?.['saba-core'] || appVersion)}</span>
-                                    </div>
-                                    <div className="about-component-item">
-                                        <span className="about-component-label"><Icon name="monitor" size="xs" /> GUI</span>
-                                        <span className="about-component-ver">{versionLabel(componentInfo?.components?.gui || appVersion)}</span>
-                                    </div>
-                                    <div className="about-component-item">
-                                        <span className="about-component-label"><Icon name="terminal" size="xs" /> CLI</span>
-                                        <span className="about-component-ver">{versionLabel(componentInfo?.components?.cli || appVersion)}</span>
-                                    </div>
-                                    <div className="about-component-item">
-                                        <span className="about-component-label"><Icon name="refresh" size="xs" /> Updater</span>
-                                        <span className="about-component-ver">{versionLabel(componentInfo?.components?.updater || appVersion)}</span>
-                                    </div>
-                                </div>
-
-                                {/* 마지막 업데이트 & 라이선스 */}
-                                <div className="about-app-footer">
-                                    {formatLastUpdated(componentInfo?.lastUpdated, i18n.language) && (
-                                        <span className="about-app-meta">
-                                            <Icon name="clock" size="xs" /> {formatLastUpdated(componentInfo.lastUpdated, i18n.language)}
-                                        </span>
-                                    )}
-                                    <span className="about-app-meta">
-                                        <Icon name="file" size="xs" /> MIT License
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+                    <AboutPage
+                        active={showAboutPage && !aboutExiting}
+                        appVersion={appVersion}
+                        componentInfo={componentInfo}
+                        lastUpdated={formatLastUpdated(componentInfo?.lastUpdated, i18n.language)}
+                        onLogoClick={() => {
+                            logoClicks.current += 1;
+                            if (logoClicks.current < 5) return;
+                            logoClicks.current = 0;
+                            safeShowToast(t('gui:settings_modal.name_egg'), 'info', 6000);
+                        }}
+                    />
                 </div>
 
                 {!showUpdatePanel && !isPage && (
@@ -1515,9 +1445,6 @@ function SettingsModal({
 }
 
 /** 데몬의 lastUpdated(unix 초, 문자열) → 날짜 글자. 읽을 수 없으면 null */
-/** 컴포넌트 버전 표시. 모르면 대시 */
-const versionLabel = (v) => (v ? `v${v}` : '—');
-
 export function formatLastUpdated(secs, language) {
     const n = Number(secs);
     if (!secs || !Number.isFinite(n)) return null;
