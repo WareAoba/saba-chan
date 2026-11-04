@@ -224,6 +224,8 @@ pub static ROUTES: &[Route] = &[
     allow("PUT", "/api/guilds/{guild}/allowed-instances"),
     allow("GET", "/api/guilds/{guild}/start-notice"),
     allow("PUT", "/api/instance/{id}/start-notice/{guild}"),
+    allow("GET", "/api/guilds/{guild}/full-notice"),
+    allow("PUT", "/api/instance/{id}/full-notice/{guild}"),
     allow("GET", "/api/relay/host/{host_id}/nodes"),
     allow("GET", "/api/relay/node/{guild_id}/members"),
     // 서버 관리(채널 정보·슬로우·잠금·청소·음소거): 디스코드 서버만 바꾸고 이 PC의 파일은 건드리지 않는다

@@ -161,6 +161,13 @@
           "description": "此服务器不通过 Discord 命令启动或停止时(包括崩溃)，在此 Discord 服务器的通知频道告知",
           "name": "启动通知"
         }
+      },
+      "full_notice": {
+        "set": {
+          "title": "满员提醒",
+          "description": "此服务器满员或重新有空位时，在此 Discord 服务器的通知频道提醒",
+          "name": "满员提醒"
+        }
       }
     },
     "server": {

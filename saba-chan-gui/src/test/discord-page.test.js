@@ -185,27 +185,34 @@ describe('DiscordPage', () => {
     });
 
     // 사용자 요청(2026-10-26): 켜짐 알림은 서버마다 켜고(기본 꺼짐) 데몬 길드 API로 바로 저장한다
-    it('켜짐 알림은 서버마다 기본 꺼짐이고, 켜면 데몬 API로 바로 저장한다', async () => {
+    it('켜짐 알림·자리 꽉 참 알림은 서버마다 기본 꺼짐이고, 켜면 데몬 API로 바로 저장한다', async () => {
         const { useDiscordStore } = await import('../stores/useDiscordStore');
-        window.api.guildStartNoticeSave = vi.fn(async (instanceId, guildId, enabled) => ({
+        const saved = async (instanceId, guildId, enabled) => ({
             success: true,
             id: instanceId,
             guildId,
             enabled,
             instances: enabled ? [instanceId] : [],
-        }));
+        });
+        window.api.guildStartNoticeSave = vi.fn(saved);
+        window.api.guildFullNoticeSave = vi.fn(saved);
         const save = vi.fn();
         await act(async () => render(<Harness save={save} />));
         await waitFor(() => expect(document.querySelectorAll('.dc-nav-row')).toHaveLength(2));
         const nodeRow = [...document.querySelectorAll('.dc-nav-row')].find((b) => b.textContent.includes('사바 마을'));
         await act(async () => fireEvent.click(nodeRow));
+        // 서버마다 켜짐·꺼짐 알림(종)과 자리 꽉 참 알림 두 칸
         const bells = document.querySelectorAll('.dc-notice-btn');
-        expect(bells).toHaveLength(2);
-        expect([...bells].map((b) => b.getAttribute('aria-pressed'))).toEqual(['false', 'false']);
+        expect(bells).toHaveLength(4);
+        expect([...bells].map((b) => b.getAttribute('aria-pressed'))).toEqual(['false', 'false', 'false', 'false']);
         await act(async () => fireEvent.click(bells[0]));
         expect(window.api.guildStartNoticeSave).toHaveBeenCalledWith('s1', 'g1', true);
         // 앱은 스토어 값을 그대로 넘긴다 (이 하네스는 자기 상태를 넘겨 다시 그리지 않는다)
         expect(useDiscordStore.getState().nodeSettings.g1.startNotice).toEqual(['s1']);
+        // 사용자 11-04: 자리 꽉 참 알림도 서버마다, 따로 저장한다
+        await act(async () => fireEvent.click(bells[3]));
+        expect(window.api.guildFullNoticeSave).toHaveBeenCalledWith('s2', 'g1', true);
+        expect(useDiscordStore.getState().nodeSettings.g1.fullNotice).toEqual(['s2']);
         expect(save).not.toHaveBeenCalled();
     });
 

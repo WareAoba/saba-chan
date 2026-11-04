@@ -161,6 +161,13 @@
           "description": "Post in this Discord server's alert channel when this server starts or stops without a Discord command (crashes included)",
           "name": "Start alert"
         }
+      },
+      "full_notice": {
+        "set": {
+          "title": "Full server alert",
+          "description": "Post in this Discord server's alert channel when this server fills up or a slot opens again",
+          "name": "Full alert"
+        }
       }
     },
     "server": {

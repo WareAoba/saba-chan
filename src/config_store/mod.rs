@@ -308,6 +308,19 @@ pub struct BotConfig {
     /// 페어링 코드로 새로 묶인 디스코드 서버에 이 PC의 서버를 바로 열지(`auto`), 나중에 고를지(`manual`).
     /// 코드 없이 `/사바쨩 연결`로 묶인 서버는 늘 나중에 고른다 (`relay_agent::close_linked_guild`)
     pub new_guild_instances: NewGuildInstances,
+    /// 백업 결과를 PC 주인에게 DM으로 알리는 범위 (`failures`면 실패만). 릴레이가 하트비트 `backupNotice`로 거른다
+    pub backup_notice: BackupNotice,
+}
+
+/// 백업 결과 알림 (`BotConfig::backup_notice`)
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum BackupNotice {
+    /// 성공·실패 모두
+    #[default]
+    All,
+    /// 실패만
+    Failures,
 }
 
 /// 새로 묶인 디스코드 서버에 서버를 여는 방식 (`BotConfig::new_guild_instances`)
@@ -345,6 +358,7 @@ impl Default for BotConfig {
             cloud_members: HashMap::new(),
             translate_commands: true,
             new_guild_instances: NewGuildInstances::Auto,
+            backup_notice: BackupNotice::All,
         }
     }
 }
@@ -464,11 +478,12 @@ const RESERVED_SECTIONS: &[&str] = &["schemaVersion", "gui", "relay", "updates",
 
 /// `nodeSettings[guild]`에서 전용 API만 바꾸는 키: 권한 API(P1), 디스코드 설정 API(I2, `discord`),
 /// 0.1.10까지의 길드·인스턴스 낱말(`instances`, 시작할 때 `serverWords`로 옮긴다), 길드가 쓸 서버 API(`allowedInstances`),
-/// 켜짐 알림 API(`startNotice`)
+/// 켜짐·꺼짐 알림·자리 꽉 참 알림 API(`startNotice`·`fullNotice`)
 pub const PERMISSION_KEYS: &[&str] = &[
     "instances",
     "allowedInstances",
     "startNotice",
+    "fullNotice",
     "ownerDiscordId",
     "relayOwnerDiscordId",
     "defaultLevel",

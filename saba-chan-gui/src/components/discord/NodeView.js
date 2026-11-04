@@ -55,12 +55,13 @@ function visibleServers(settings, guildId, servers) {
 }
 
 // ── 인스턴스 탭 ──
-function InstancesTab({ node, nodes, servers, modules = [], settings, update, updateStartNotice, onOpen }) {
+function InstancesTab({ node, nodes, servers, modules = [], settings, update, updateStartNotice, updateFullNotice, onOpen }) {
     const { t } = useTranslation('gui');
     const mode = P.instanceMode(settings, node.guildId);
     const nodeIds = nodes.map((n) => n.guildId);
     const nameOf = (id) => nodes.find((n) => n.guildId === id)?.guildName || id;
     const noticed = P.nodeConfig(settings, node.guildId).startNotice;
+    const fullNoticed = P.nodeConfig(settings, node.guildId).fullNotice;
 
     return (
         <div className="dc-tab">
@@ -86,6 +87,7 @@ function InstancesTab({ node, nodes, servers, modules = [], settings, update, up
             />
 
             {servers.length > 0 && <p className="dc-hint">{t('discord.start_notice_hint')}</p>}
+            {servers.length > 0 && <p className="dc-hint">{t('discord.full_notice_hint')}</p>}
             <div className="dc-toolbar">
                 <span className="muted">{t('discord.instance_menu_hint')}</span>
                 <button type="button" className="btn btn-ghost btn-sm" onClick={() => onOpen(ALL_INSTANCES)}>
@@ -101,6 +103,7 @@ function InstancesTab({ node, nodes, servers, modules = [], settings, update, up
                         const allowed = P.isInstanceAllowed(settings, node.guildId, srv.id);
                         const locked = mode === 'all' || !!owner;
                         const notice = Array.isArray(noticed) && noticed.includes(srv.id);
+                        const full = Array.isArray(fullNoticed) && fullNoticed.includes(srv.id);
                         return (
                             <li key={srv.id} className={clsx('dc-list-row', { dim: !allowed })}>
                                 <ModuleIcon module={modules.find((m) => m.name === srv.module)} name={srv.name} />
@@ -126,6 +129,17 @@ function InstancesTab({ node, nodes, servers, modules = [], settings, update, up
                                     onClick={() => updateStartNotice(node.guildId, srv.id, !notice)}
                                 >
                                     <Icon name="bell" size="sm" />
+                                </button>
+                                <button
+                                    type="button"
+                                    className={clsx('icon-btn dc-notice-btn', { active: full })}
+                                    aria-pressed={full}
+                                    aria-label={t('discord.full_notice', { name: srv.name })}
+                                    data-tooltip={t('discord.full_notice', { name: srv.name })}
+                                    disabled={!full && (!allowed || !!owner)}
+                                    onClick={() => updateFullNotice(node.guildId, srv.id, !full)}
+                                >
+                                    <Icon name="user" size="sm" />
                                 </button>
                                 <SabaToggle
                                     checked={allowed && !owner}
@@ -185,6 +199,7 @@ export function NodeView({
     settings,
     updateAllowed,
     updateStartNotice,
+    updateFullNotice,
     members,
     membersLoading,
     membersFailed,
@@ -303,6 +318,7 @@ export function NodeView({
                     settings={settings}
                     update={(fn) => updateAllowed(node.guildId, fn)}
                     updateStartNotice={updateStartNotice}
+                    updateFullNotice={updateFullNotice}
                 />
             )}
             {tab === 'moderation' && (

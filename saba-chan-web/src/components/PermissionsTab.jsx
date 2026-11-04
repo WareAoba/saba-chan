@@ -255,8 +255,11 @@ export function VisibleServers({ api, guildId, allowed, others, onSaved }) {
     );
 }
 
-/** 켜짐 알림: 사바쨩이 켠 서버를 이 디스코드 서버의 알림 채널에 알린다 (서버마다, 기본 꺼짐) */
-function StartNotice({ api, guildId, notice, setNotice }) {
+/**
+ * 서버별 알림 목록 (서버마다, 기본 꺼짐): 켜짐·꺼짐 알림(`start`)과 자리 꽉 참 알림(`full`).
+ * 켠 서버만 이 디스코드 서버의 알림 채널에 알린다
+ */
+function StartNotice({ api, guildId, notice, setNotice, kind = 'start' }) {
     const { t } = useTranslation();
     const toast = useApp((s) => s.toast);
     const servers = useData((s) => s.servers);
@@ -266,18 +269,20 @@ function StartNotice({ api, guildId, notice, setNotice }) {
     // 한 번에 하나씩: 응답의 목록이 그때의 전체라 겹치면 늦게 온 것이 앞 변경을 덮는다
     const toggle = async (id, enabled) => {
         setBusy(true);
-        const res = await api.guildStartNoticeSave(id, guildId, enabled);
+        const save = kind === 'full' ? api.guildFullNoticeSave : api.guildStartNoticeSave;
+        const res = await save(id, guildId, enabled);
         setBusy(false);
         if (failed(res)) return toast(errorText(t, res), 'error');
         setNotice((n) => ({ ...n, instances: res.instances }));
-        toast(enabled ? t('perm.notice_on') : t('perm.notice_off'), 'ok');
+        toast(enabled ? t(`perm.${prefix}_on`) : t(`perm.${prefix}_off`), 'ok');
     };
+    const prefix = kind === 'full' ? 'full_notice' : 'notice';
 
     const rows = noticeRows(servers, notice);
     return (
         <div className="field">
-            <span>{t('perm.notice')}</span>
-            <small className="hint">{t('perm.notice_hint')}</small>
+            <span>{t(`perm.${prefix}`)}</span>
+            <small className="hint">{t(`perm.${prefix}_hint`)}</small>
             {notice === false ? null : !notice || !serversLoaded ? (
                 <Loading />
             ) : rows.length === 0 ? (
@@ -484,7 +489,7 @@ function InstanceMenu({ api, guildId, data, instance, onBack }) {
     );
 }
 
-/** 디스코드 서버 하나: 인스턴스 목록 → 인스턴스 메뉴. 켜짐 알림은 목록 아래 */
+/** 디스코드 서버 하나: 인스턴스 목록 → 인스턴스 메뉴. 켜짐·꺼짐 알림·자리 꽉 참 알림은 목록 아래 */
 export function GuildPermissions({ api, guildId, siblings = [] }) {
     const { t } = useTranslation();
     const toast = useApp((s) => s.toast);
@@ -492,6 +497,8 @@ export function GuildPermissions({ api, guildId, siblings = [] }) {
     const [instance, setInstance] = useState(null);
     // 켜짐 알림과 보일 서버: {guildId, instances, allowedInstances}. null = 읽는 중, false = 읽지 못함
     const [notice, setNotice] = useState(null);
+    // 자리 꽉 참 알림 {guildId, instances, allowedInstances} (모양은 위와 같다)
+    const [full, setFull] = useState(null);
     // 이 PC 의 다른 디스코드 서버가 고른 서버 (서버 하나는 디스코드 서버 하나만)
     const [others, setOthers] = useState(null);
     const siblingKey = siblings.join(',');
@@ -499,12 +506,16 @@ export function GuildPermissions({ api, guildId, siblings = [] }) {
     useEffect(() => {
         let alive = true;
         setNotice(null);
+        setFull(null);
         api.guildStartNoticeGet(guildId).then((res) => {
             if (!alive) return;
             if (failed(res)) {
                 toast(errorText(t, res), 'error');
                 setNotice(false);
             } else setNotice(res);
+        });
+        api.guildFullNoticeGet(guildId).then((res) => {
+            if (alive) setFull(failed(res) ? false : res);
         });
         return () => {
             alive = false;
@@ -569,6 +580,7 @@ export function GuildPermissions({ api, guildId, siblings = [] }) {
                 />
             )}
             <StartNotice api={api} guildId={guildId} notice={notice} setNotice={setNotice} />
+            <StartNotice api={api} guildId={guildId} notice={full} setNotice={setFull} kind="full" />
         </>
     );
 }

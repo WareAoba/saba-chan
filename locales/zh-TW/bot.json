@@ -161,6 +161,13 @@
           "description": "此伺服器不透過 Discord 指令啟動或停止時(包括當機)，在此 Discord 伺服器的通知頻道告知",
           "name": "啟動通知"
         }
+      },
+      "full_notice": {
+        "set": {
+          "title": "滿員提醒",
+          "description": "此伺服器滿員或重新有空位時，在此 Discord 伺服器的通知頻道提醒",
+          "name": "滿員提醒"
+        }
       }
     },
     "server": {

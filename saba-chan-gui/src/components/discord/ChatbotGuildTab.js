@@ -66,6 +66,9 @@ export function ChatbotGuildTab({ node }) {
 
     const set = (change) => setDraft((d) => ({ ...d, ...change }));
     const badMemo = draft.memo.length > MEMO_MAX;
+    // 토큰 한도는 1 이상 정수, 잔액 금액은 0 보다 큰 수 (비우면 끔)
+    const badLimit = draft.tokenLimit != null && !(Number.isInteger(draft.tokenLimit) && draft.tokenLimit >= 1);
+    const badBalance = draft.balanceAlert != null && !(draft.balanceAlert > 0 && draft.balanceAlert <= 1e9);
     const dirty = !same(saved, draft);
 
     const save = async () => {
@@ -141,6 +144,23 @@ export function ChatbotGuildTab({ node }) {
             {hint && <p className="dc-hint">{hint}</p>}
         </div>
     );
+    const numberField = (key, label, hint, step, bad) => (
+        <label className="mt-field">
+            <span>{label}</span>
+            <input
+                className="input mt-num"
+                type="number"
+                min={step}
+                step={step}
+                value={draft[key] ?? ''}
+                aria-label={label}
+                placeholder={t('chatbot.alert_off')}
+                onChange={(e) => set({ [key]: e.target.value === '' ? null : Number(e.target.value) })}
+            />
+            {hint && <span className="cb-hint">{hint}</span>}
+            {bad && <span className="dc-field-error">{t('chatbot.alert_invalid')}</span>}
+        </label>
+    );
     const effortOptions = EFFORTS.map((e) => ({ value: e, label: t(`chatbot.effort_${e}`) }));
 
     const enabledLabel = t('chatbot.guild_enabled');
@@ -182,6 +202,15 @@ export function ChatbotGuildTab({ node }) {
                 </div>
                 <p className="dc-card-desc">{t('chatbot.moderation_desc')}</p>
                 <div className="cb-toggles">{toggleRow('moderation', t('chatbot.moderation'), t('chatbot.moderation_hint'))}</div>
+            </section>
+
+            <section className="dc-card">
+                <div className="dc-card-head">
+                    <h2>{t('chatbot.token_alert_title')}</h2>
+                </div>
+                <p className="dc-card-desc">{t('chatbot.token_alert_desc')}</p>
+                {numberField('tokenLimit', t('chatbot.token_limit'), t('chatbot.token_limit_hint'), 1, badLimit)}
+                {numberField('balanceAlert', t('chatbot.balance_alert'), t('chatbot.balance_alert_hint'), 0.01, badBalance)}
             </section>
 
             <section className="dc-card">
@@ -287,7 +316,7 @@ export function ChatbotGuildTab({ node }) {
             <SaveBar
                 dirty={dirty}
                 saving={saving}
-                blocked={badMemo}
+                blocked={badMemo || badLimit || badBalance}
                 onRevert={() => {
                     setDraft(saved);
                     setErrors([]);

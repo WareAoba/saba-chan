@@ -244,6 +244,7 @@ export function ConnectionView({
     const { t } = useTranslation('gui');
     const [confirmDisconnect, setConfirmDisconnect] = useState(false);
     const newGuildInstances = useDiscordStore((s) => s.discordNewGuildInstances);
+    const backupNotice = useDiscordStore((s) => s.discordBackupNotice);
     // SleepAllButton이 알려 주는 "모든 서버를 재웠는지"
     const [asleep, setAsleep] = useState(false);
 
@@ -442,6 +443,26 @@ export function ConnectionView({
                         </button>
                     </div>
                 )}
+            </section>
+
+            <section className="dc-card">
+                <div className="dc-card-head">
+                    <h2>{t('discord.pc_notice_title')}</h2>
+                </div>
+                <p className="dc-card-desc">{t('discord.pc_notice_desc')}</p>
+                <div className="cb-toggle-row">
+                    <span className="dc-list-text">
+                        <span className="dc-list-name">{t('discord.backup_failures_only_title')}</span>
+                        <span className="cb-hint">{t('discord.backup_failures_only_desc')}</span>
+                    </span>
+                    <SabaToggle
+                        checked={backupNotice === 'failures'}
+                        aria-label={t('discord.backup_failures_only_title')}
+                        onChange={(on) =>
+                            useDiscordStore.getState().update({ discordBackupNotice: on ? 'failures' : 'all' })
+                        }
+                    />
+                </div>
             </section>
 
             <section className="dc-card">

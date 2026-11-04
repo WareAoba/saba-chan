@@ -161,6 +161,13 @@
           "description": "Im Hinweiskanal dieses Discord-Servers melden, wenn dieser Server ohne Discord-Befehl startet oder stoppt (auch Abstürze)",
           "name": "Start-Hinweis"
         }
+      },
+      "full_notice": {
+        "set": {
+          "title": "Voll-Hinweis",
+          "description": "Im Hinweiskanal dieses Discord-Servers melden, wenn dieser Server voll ist oder wieder ein Platz frei wird",
+          "name": "Voll-Hinweis"
+        }
       }
     },
     "server": {
