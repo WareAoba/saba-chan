@@ -376,7 +376,8 @@ mod tests {
 
     #[tokio::test]
     async fn the_tunnel_does_not_send_the_node_token_to_a_plain_http_relay() {
-        let listener = std::net::TcpListener::bind("0.0.0.0:0").unwrap();
+        // 시험은 루프백에만 묶는다 (tests/test_binds.rs). 127.0.0.2를 못 묶는 OS(macOS)는 127.0.0.1로 받는다: 그래도 127.0.0.2로 간 요청은 닿지 않는다
+        let listener = std::net::TcpListener::bind("127.0.0.2:0").or_else(|_| std::net::TcpListener::bind("127.0.0.1:0")).unwrap();
         listener.set_nonblocking(true).unwrap();
         let port = listener.local_addr().unwrap().port();
         let target = Target { base: format!("http://127.0.0.2:{port}"), token: "sbn_x.y".into() };

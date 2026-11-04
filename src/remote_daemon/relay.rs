@@ -172,7 +172,8 @@ mod tests {
     /// 노드 토큰은 https(또는 루프백 http 모의 릴레이)로만 보낸다: 예전에 저장된 평문 http 주소에는 보내지 않는다
     #[tokio::test]
     async fn the_node_token_is_not_sent_to_a_plain_http_relay() {
-        let listener = std::net::TcpListener::bind("0.0.0.0:0").unwrap();
+        // 시험은 루프백에만 묶는다 (tests/test_binds.rs). 127.0.0.2를 못 묶는 OS(macOS)는 127.0.0.1로 받는다: 그래도 127.0.0.2로 간 요청은 닿지 않는다
+        let listener = std::net::TcpListener::bind("127.0.0.2:0").or_else(|_| std::net::TcpListener::bind("127.0.0.1:0")).unwrap();
         listener.set_nonblocking(true).unwrap();
         let port = listener.local_addr().unwrap().port();
         // 127.0.0.2도 이 PC지만 허용한 루프백 이름이 아니다: 바깥 평문 주소와 같게 다룬다
