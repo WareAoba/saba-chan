@@ -2289,7 +2289,7 @@ button.activity-line:hover {
     cursor: pointer;
 }
 .dc-chip.is-dragging {
-    opacity: 0.4;
+    opacity: 0.85;
     cursor: grabbing;
 }
 .dc-chip.is-open {
@@ -2376,7 +2376,7 @@ button.activity-line:hover {
     transform: translateY(-1px);
 }
 .dc-cmd-chip.is-dragging {
-    opacity: 0.4;
+    opacity: 0.85;
     cursor: grabbing;
 }
 .dc-cmd-chip.is-fixed {
@@ -2486,7 +2486,19 @@ button.activity-line:hover {
     opacity: 0.8;
 }
 .dc-ladder-block.is-dragging {
-    opacity: 0.4;
+    opacity: 0.85;
+}
+/* 끌기는 pointer 이벤트로 한다 (Windows 웹뷰의 HTML 끌어 놓기에 기대지 않는다). 끄는 요소는 손을 따라 위에 뜬다 */
+[data-draggable] {
+    touch-action: none;
+    cursor: grab;
+}
+.dc-chip.is-dragging,
+.dc-cmd-chip.is-dragging,
+.dc-ladder-block.is-dragging {
+    position: relative;
+    z-index: 20;
+    box-shadow: 0 6px 18px var(--shadow-md);
 }
 .dc-ladder-block.is-over {
     border-color: var(--accent);
