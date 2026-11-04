@@ -463,7 +463,12 @@ pub fn apply(node: &mut Map<String, Value>, change: &Change, owner_id: Option<&s
                     sub(node, "commandLevels").insert(key.clone(), json!(l));
                 }
                 None => {
-                    sub(node, "commandLevels").remove(key);
+                    let levels = sub(node, "commandLevels");
+                    levels.remove(key);
+                    // 내장 명령은 액션 키(`<instance>/server.<명령>`)도 읽는다 (`required`). 기본값이면 둘 다 지운다
+                    if let Some((instance, command)) = key.split_once('/').filter(|(_, c)| BUILTIN_COMMANDS.contains(c)) {
+                        levels.remove(&format!("{instance}/server.{command}"));
+                    }
                 }
             }
         }
@@ -607,6 +612,17 @@ mod tests {
         apply(&mut node, &Change::CommandLevel { key: "i/kick".into(), level: None }, owner).unwrap();
         assert_eq!(node["members"], json!({}));
         assert_eq!(node["commandLevels"], json!({}));
+    }
+
+    // 내장 명령은 `<instance>/server.<명령>`도 읽으므로 기본값으로 되돌릴 때 두 키를 함께 지운다
+    #[test]
+    fn resetting_a_built_in_command_clears_its_action_key_too() {
+        let mut node = json!({ "commandLevels": { "i/stop": 3, "i/server.stop": 3, "j/server.stop": 3, "i/server.kick": 3 } }).as_object().unwrap().clone();
+        apply(&mut node, &Change::CommandLevel { key: "i/stop".into(), level: None }, Some("own")).unwrap();
+        apply(&mut node, &Change::CommandLevel { key: "i/kick".into(), level: None }, Some("own")).unwrap();
+        assert_eq!(node["commandLevels"], json!({ "j/server.stop": 3, "i/server.kick": 3 }));
+        let p = NodePermissions::from_node(Some(&Value::Object(node)));
+        assert_eq!(p.required("i", "stop", "caution"), p.preset_need("caution"));
     }
 
     fn ladder(ids: &[(i64, Option<&str>)]) -> Change {

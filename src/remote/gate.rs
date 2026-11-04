@@ -475,8 +475,12 @@ pub fn checks_fields(method: &str, pattern: &str) -> bool {
 
 /// 허용된 라우트라도 원격에서 바꾸면 안 되는 본문 키. `file_fields`는 그 인스턴스 모듈의 PC 전용 설정 키(비밀값·경로)다
 pub fn blocked_fields(method: &str, pattern: &str, body: Option<&Value>, file_fields: &[String]) -> Vec<String> {
-    let (Some(rule), Some(body)) = (field_rule(method, pattern), body.and_then(Value::as_object)) else {
+    let (Some(rule), Some(body)) = (field_rule(method, pattern), body) else {
         return Vec::new();
+    };
+    // 칸을 가려 보는 라우트는 객체 본문만 받는다: 다른 모양은 칸을 볼 수 없다
+    let Some(body) = body.as_object() else {
+        return vec!["(body)".to_string()];
     };
     let mut blocked = rule(body, file_fields);
     blocked.sort();
@@ -632,6 +636,16 @@ mod tests {
             blocked_fields("PUT", "/api/chatbot", Some(&json!({ "apiKey": "k", "settings": {}, "guilds": {} })), &[]),
             ["guilds", "settings"]
         );
+    }
+
+    #[test]
+    fn field_checked_routes_take_only_object_bodies() {
+        // 칸을 가려 보는 라우트는 객체 본문만 받는다 (배열 같은 본문은 칸 검사를 거치지 않고 구조체로 풀릴 수 있다)
+        for (method, path) in [("PUT", "/api/chatbot"), ("PATCH", "/api/instance/{id}"), ("PUT", "/api/instance/{id}/properties")] {
+            for body in [json!([{ "model": "changed" }]), json!("x"), json!(1), json!(null)] {
+                assert_eq!(blocked_fields(method, path, Some(&body), &[]), ["(body)"], "{method} {path} {body}");
+            }
+        }
     }
 
     #[test]

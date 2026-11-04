@@ -338,6 +338,8 @@ impl GuildSettings {
                     }
                     next.prefixes = out;
                 }
+                // null은 기본값(모두 끄기)이다: 릴레이는 모두 고른 목록을 null로 보낸다
+                "sleepBlocks" if v.is_null() => next.sleep_blocks = SLEEP_FEATURES.iter().map(|f| f.to_string()).collect(),
                 "sleepBlocks" => {
                     let list = v.as_array().ok_or(("sleepBlocks".into(), "must be a list"))?;
                     let mut out: Vec<String> = Vec::new();
@@ -801,6 +803,10 @@ mod tests {
         let back = GuildSettings::from_relay(&json!({ "sleepBlocks": ["llm"], "bedtime": { "start": "01:00", "end": "08:00" } }));
         assert_eq!(back.sleep_blocks, vec!["llm"]);
         assert_eq!(back.bedtime.map(|b| b.end), Some("08:00".to_string()));
+        // 일부만 골랐다가 다시 모두 고르면 릴레이는 null(기본값)을 보낸다
+        s.apply(&patch(json!({ "sleepBlocks": null }))).unwrap();
+        assert_eq!(s.sleep_blocks, SLEEP_FEATURES.iter().map(|f| f.to_string()).collect::<Vec<_>>());
+        assert_eq!(GuildSettings::from_relay(&json!({ "sleepBlocks": null })).sleep_blocks, s.sleep_blocks);
     }
 
     #[test]
