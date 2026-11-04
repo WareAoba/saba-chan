@@ -78,8 +78,26 @@ struct Paired {
 }
 
 impl Clients {
+    /// 설정 파일의 짝 목록으로 바꾼다. 읽기와 바꾸기를 한 잠금 안에서 한다: 따로 하면 앞서 읽은 예전 목록이
+    /// 그사이 끝난 짝 풀기의 새 목록을 덮어, 푼 PC의 토큰이 다시 통한다
+    pub(crate) fn reload(&self, file: &ConfigFile) {
+        self.reload_from(|| config::clients_in(file));
+    }
+
+    fn reload_from(&self, read: impl FnOnce() -> Vec<Client>) {
+        let mut paired = self.0.write().unwrap_or_else(|e| e.into_inner());
+        let list = read();
+        Self::replace(&mut paired, list);
+    }
+
+    /// 시험용: 목록을 바로 넣는다 (데몬은 `reload`로 파일에서 읽는다)
+    #[cfg(test)]
     pub(crate) fn set(&self, list: Vec<Client>) {
         let mut paired = self.0.write().unwrap_or_else(|e| e.into_inner());
+        Self::replace(&mut paired, list);
+    }
+
+    fn replace(paired: &mut Paired, list: Vec<Client>) {
         paired.open.retain(|hash, cancel| {
             let kept = list.iter().any(|c| &c.token_hash == hash);
             if !kept {
@@ -356,7 +374,7 @@ async fn pair(State(ctx): State<Ctx>, peer: Option<axum::Extension<Peer>>, Json(
             return error(StatusCode::INTERNAL_SERVER_ERROR, "save_failed");
         }
     };
-    ctx.clients.set(config::clients_in(&ctx.file));
+    ctx.clients.reload(&ctx.file);
     tracing::info!("Remote daemon paired with host {}", from.from_host_id);
     Json(json!({ "token": token })).into_response()
 }
@@ -630,6 +648,36 @@ pub(crate) mod tests {
         let (s, _) = call(r.addr, &r.pin, "GET", "/api/instances", Some(&a), None).await.unwrap();
         assert_eq!(s, 401);
         r.cancel.cancel();
+    }
+
+    /// 짝 풀기와 겹친 목록 다시 읽기: 풀기 전 목록을 읽은 다시 읽기가 풀기의 다시 읽기보다 늦게 끝나도 푼 토큰은 통하지 않는다
+    #[test]
+    fn a_reload_that_read_before_a_revoke_does_not_bring_the_token_back() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = ConfigFile::at(dir.path());
+        let token = config::issue_in(&file, "host-a", "집 PC", "").unwrap();
+        let clients = Clients::default();
+        clients.reload(&file);
+        assert!(clients.verify(&token).is_some());
+        clients.reload_from(|| {
+            let stale = config::clients_in(&file);
+            // 이 목록을 읽은 직후 짝 풀기가 파일을 고치고 자기 다시 읽기를 한다
+            config::revoke_in(&file, "host-a").unwrap();
+            let (revoker, file) = (clients.clone(), file.clone());
+            let (done, finished) = std::sync::mpsc::channel();
+            std::thread::spawn(move || {
+                revoker.reload(&file);
+                let _ = done.send(());
+            });
+            // 잠금이 없으면 풀기의 다시 읽기가 여기서 끝나고, 아래에서 예전 목록이 덮는다
+            let _ = finished.recv_timeout(Duration::from_millis(300));
+            stale
+        });
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while clients.verify(&token).is_some() && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(clients.verify(&token).is_none(), "the revoked token works again");
     }
 
     #[tokio::test]

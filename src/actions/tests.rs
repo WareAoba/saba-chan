@@ -1036,6 +1036,23 @@ async fn scheduling_a_command_needs_the_requesters_permission_for_it() {
     assert!(plan(&state, "instance.schedule.set", Some(&id), &off, &admin).await.is_ok(), "a disabled task never runs");
 }
 
+/// 예약 공지·저장도 모듈의 게임 명령을 돌린다: 그 명령의 레벨이 요청자에게 없으면 예약하지 못한다
+#[tokio::test]
+async fn scheduling_an_announcement_or_save_needs_the_permission_for_its_command() {
+    let module = format!(
+        "{MODULE}\n[config]\nannounce_command = \"say\"\n\n[backup]\npaths = [\"world\"]\nsave_command = \"save-all\"\n\n[[commands.fields]]\nname = \"say\"\nrisk = \"safe\"\n\n[[commands.fields]]\nname = \"save-all\"\nrisk = \"safe\"\n"
+    );
+    let (state, id, _tmp) = server_with(&module).await;
+    let levels = json!({ format!("{}/say", id): 3, format!("{}/save-all", id): 3 });
+    set_node(&state, json!({ "ownerDiscordId": "owner", "preset": "loose", "chatbotCap": 2, "defaultLevel": 2, "commandLevels": levels })).await;
+    let admin = relay("admin", true);
+    for task in [json!({ "action": "announce", "at": "04:00", "message": "hi" }), json!({ "action": "save", "at": "04:00" })] {
+        let input = json!({ "schedule": [task] });
+        let err = plan(&state, "instance.schedule.set", Some(&id), &input, &admin).await.unwrap_err();
+        assert_eq!((err.code, &err.data["args"]["need"]), ("PERMISSION_DENIED", &json!(3)), "{}", input);
+    }
+}
+
 #[test]
 fn remote_results_keep_paths_console_lines_and_raw_errors_on_the_pc() {
     let mut v = json!({
