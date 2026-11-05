@@ -8,7 +8,7 @@ import { useApp, useData } from '../store';
 import { Dropdown } from './Dropdown';
 import { Icon } from './icons';
 import { PermissionStairs, type PermissionWriter } from './PermissionStairs';
-import { Button, Empty, errorText, failed, Loading, Segments } from './ui';
+import { Avatar, Button, Empty, errorText, failed, Loading, Segments } from './ui';
 import type { Server, TFn, WebApi } from '../types';
 
 /** 켜짐 알림·보일 서버 한 벌 (GET /api/guilds/:g/start-notice). null = 읽는 중, false = 읽지 못함 */
@@ -41,20 +41,10 @@ export function orderMembers(members: DiscordMember[], perm: PermData | null | u
     return [...members].sort((a, b) => rankOf(a) - rankOf(b) || collator.compare(nameOf(a), nameOf(b)));
 }
 
-/** 디스코드 프로필 사진. 없거나 못 읽으면 이름 첫 글자 */
-function Avatar({ member }: { member: DiscordMember }) {
-    const [broken, setBroken] = useState(false);
-    const url = member.avatarUrl || member.avatar;
-    return (
-        <span className="avatar" aria-hidden="true">
-            {typeof url === 'string' && url.startsWith('https://') && !broken ? (
-                <img src={url} alt="" loading="lazy" referrerPolicy="no-referrer" onError={() => setBroken(true)} />
-            ) : (
-                nameOf(member).trim().charAt(0).toUpperCase() || '?'
-            )}
-        </span>
-    );
-}
+/** 멤버 프로필 사진 (ui.tsx Avatar) */
+const MemberAvatar = ({ member }: { member: DiscordMember }) => (
+    <Avatar url={member.avatarUrl || member.avatar} name={nameOf(member)} />
+);
 
 interface LevelSelectProps {
     value: number | null;
@@ -461,7 +451,7 @@ function MemberLevels({ api, guildId, perm, members, busy, write }: MemberLevels
                         const owner = String(m.id) === String(perm.ownerDiscordId);
                         return (
                             <li key={m.id} className="row member-row">
-                                <Avatar member={m} />
+                                <MemberAvatar member={m} />
                                 <div className="row-main">
                                     <div className="row-title row-title-one">{nameOf(m)}</div>
                                     {m.username && <div className="row-sub row-title-one">@{m.username}</div>}
