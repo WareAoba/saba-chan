@@ -4,7 +4,8 @@ name: Publish release
 # 클라이언트 릴리스 발행: 빌드 → 패키징 → manifest 서명 → R2 업로드 → 릴레이 등록
 #
 # 사용법: Actions 탭에서 이 워크플로를 main으로 실행한다. 버전·채널은 versions.toml [release],
-# 패치노트는 release-notes/<version>.json 에서 읽는다. GitHub 태그·Release는 만들지 않는다.
+# 패치노트는 release-notes/<version>.json 에서 읽는다. 등록이 끝나면 github-release.yml이
+# 같은 파일로 GitHub Release(태그 v<version>, stable이 아니면 사전 릴리스)를 만든다.
 #   dry_run = true 이면 빌드·패키징·서명까지만 하고 R2·릴레이는 건드리지 않는다
 #   (결과물은 실행의 아티팩트로 남는다).
 #
@@ -421,3 +422,15 @@ jobs:
             --data-binary @release-registration.json > /dev/null
           curl -fsS -H 'X-Saba-Client: 1' "${{ vars.RELAY_URL }}/v1/updates/manifest/$VERSION" > /dev/null
           echo "### Registered $VERSION (${{ needs.prepare.outputs.channel }})" >> "$GITHUB_STEP_SUMMARY"
+
+  # 앱은 GitHub를 보지 않는다. 공개 기록용으로 R2와 같은 파일을 올린다
+  github-release:
+    name: GitHub release
+    needs: [prepare, publish]
+    if: ${{ !inputs.dry_run }}
+    permissions:
+      contents: write
+    uses: ./.github/workflows/github-release.yml
+    with:
+      version: ${{ needs.prepare.outputs.version }}
+      sha: ${{ needs.prepare.outputs.sha }}
