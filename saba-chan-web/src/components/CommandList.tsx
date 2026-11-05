@@ -104,9 +104,10 @@ export function CommandList({ api, guildId, perm, board, instance, busy, write }
                     </span>
                 </span>
                 <Dropdown
-                    value={String(c.level)}
+                    value={c.levelMixed ? '' : String(c.level)}
                     ariaLabel={tg('discord.perm_who_for', { command: name })}
                     disabled={busy || c.fixed}
+                    placeholder={tg('discord.perm_confirm_tier_mixed')}
                     onChange={(v: string) => move(c, Number(v))}
                     options={usable.map((l) => ({ value: String(l), label: fromText(l) }))}
                 />

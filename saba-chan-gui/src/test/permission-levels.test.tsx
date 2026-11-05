@@ -131,6 +131,9 @@ describe('권한 레벨 계산', () => {
         const say = L.stairChips(mixed).find((c) => c.name === 'say');
         expect([say!.confirmRisk, say!.confirmMixed]).toEqual([null, true]);
         expect(L.stairChips(baseBoard()).find((c) => c.name === 'say')!.confirmMixed).toBe(false);
+        // 대표 칩의 인스턴스 레벨이 서로 다르면 레벨도 섞여 있다 (꼬리표 칩은 한 인스턴스라 섞이지 않는다)
+        expect(chips.filter((c) => c.name === 'stop').map((c) => c.levelMixed)).toEqual([true, false]);
+        expect(chips.find((c) => c.name === 'say')!.levelMixed).toBe(false);
         // 한 인스턴스 보기: 그 인스턴스와 인스턴스를 받지 않는 것만
         const one = L.stairChips(baseBoard(), 'mc-2');
         expect(one.map((c) => [c.name, c.level])).toEqual([
@@ -376,7 +379,8 @@ describe('권한 화면', () => {
     it('명령 목록: 명령마다 누구부터 쓸 수 있는지 보이고, 요약은 레벨마다 쓸 수 있는 명령 수(아래 레벨을 이어받는다)', async () => {
         await openCommands();
         expect(window.api.permissionsCommands).toHaveBeenCalledWith('g1', 'en');
-        expect(screen.getByLabelText('Stop: who can use it')).toHaveTextContent('User and up');
+        // 인스턴스마다 레벨이 다르면 대표 레벨이 아니라 섞여 있다고 보인다
+        expect(screen.getByLabelText('Stop: who can use it')).toHaveTextContent('Varies by instance');
         expect(screen.getByLabelText('Stop · Creative: who can use it')).toHaveTextContent('Admin and up');
         expect(screen.getByLabelText('Say: who can use it')).toHaveTextContent('Guest and up');
         expect(screen.getByLabelText('Update: who can use it')).toHaveTextContent('Owner only');
@@ -394,6 +398,15 @@ describe('권한 화면', () => {
             commandLevels: { 'mc-1/stop': 3, 'mc-1/server.stop': null, 'mc-2/stop': 3, 'mc-2/server.stop': null },
         });
         expect(window.api.permissionsCommands).toHaveBeenCalledTimes(2);
+    });
+
+    it('명령 목록: 레벨이 섞인 명령은 많은 쪽 레벨을 골라도 모든 인스턴스를 맞춘다', async () => {
+        await openCommands();
+        pickOption(screen.getByLabelText('Stop: who can use it'), 'User and up');
+        await flush();
+        expect(window.api.permissionsUpdate).toHaveBeenCalledWith('g1', {
+            commandLevels: { 'mc-1/stop': null, 'mc-1/server.stop': null, 'mc-2/stop': null, 'mc-2/server.stop': null },
+        });
     });
 
     it('명령 목록: 그 줄에서 디스코드 되묻기 단계를 바꾸고, 원래 단계를 고르면 지운다', async () => {
