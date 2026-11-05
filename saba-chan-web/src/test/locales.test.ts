@@ -107,6 +107,7 @@ const SAME_AS_EN: Record<string, string[]> = {
         'gui.json:daemon_switcher.label',
     ],
     'pt-BR': [
+        'gui.json:settings_modal.tab_console',
         'web.json:app_name',
         'web.json:tabs.label',
         'web.json:detail.backups',
@@ -169,6 +170,7 @@ const SAME_AS_EN: Record<string, string[]> = {
         'gui.json:picker.minute',
     ],
     fr: [
+        'gui.json:settings_modal.tab_console',
         'web.json:app_name',
         'web.json:tabs.label',
         'web.json:tabs.modules',

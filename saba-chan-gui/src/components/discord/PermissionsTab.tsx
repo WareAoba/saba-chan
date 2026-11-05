@@ -1,7 +1,6 @@
 import clsx from 'clsx';
 import type { TFunction } from 'i18next';
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { CSSProperties, RefObject } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ApiBody } from '../../types/daemon';
 import { safeShowToast } from '../../utils/helpers';
@@ -611,58 +610,23 @@ export function PeopleView({
 
 const RISK_TONE: Record<string, string> = { safe: 'ok', caution: 'warn', danger: 'stop' };
 
-// ── 명령: 계단. 칩은 "이 레벨부터 쓸 수 있다"는 자리에 있고, 위 계단은 아래 계단의 명령을 모두 쓴다 ──
-/**
- * 칩이 다른 계단으로 옮겨지면 옛 자리에서 새 자리로 미끄러지게 한다 (FLIP).
- * 칩마다 `data-chip` 으로 찾고, 움직임 줄이기 설정이면 건너뛴다.
- * 자리는 그릴 때마다 다시 재고(보기·스크롤·알림 줄이 바뀌어도 옛 값이 남지 않게), 움직임은 `dep`(계단 값)이 바뀔 때만 준다
- */
-function useChipFlip(ref: RefObject<HTMLElement | null>, dep: unknown) {
-    const last = useRef(new Map<string, DOMRect>());
-    const prevDep = useRef(dep);
-    useLayoutEffect(() => {
-        const root = ref.current;
-        if (!root) return;
-        const changed = prevDep.current !== dep;
-        prevDep.current = dep;
-        const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-        const next = new Map<string, DOMRect>();
-        for (const el of root.querySelectorAll<HTMLElement>('[data-chip]')) {
-            const box = el.getBoundingClientRect();
-            next.set(el.dataset.chip as string, box);
-            const prev = last.current.get(el.dataset.chip as string);
-            if (!changed || reduce || !prev || !el.animate) continue;
-            const dx = prev.left - box.left;
-            const dy = prev.top - box.top;
-            if (Math.abs(dx) < 1 && Math.abs(dy) < 1) continue;
-            el.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }], {
-                duration: 260,
-                easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)',
-            });
-        }
-        last.current = next;
-    });
-}
+// ── 명령: 목록. 명령마다 "누구부터 쓸 수 있나"와 디스코드 되묻기를 그 줄에서 고른다 (위 레벨은 아래 레벨의 명령을 모두 쓴다) ──
+/** 명령 묶음: 조회 · 게임 조작 · 관리 (도움말·목록은 조회) */
+const GROUPS = ['query', 'command', 'admin'] as const;
+const groupOf = (chip: L.StairChip) => (chip.kind === 'admin' ? 'admin' : chip.kind === 'command' ? 'command' : 'query');
 
-interface CommandStairsProps {
+interface CommandListProps {
     node: DiscordNode;
     permissions: PermissionsState;
     instance?: string;
 }
 
-export function CommandStairs({ node, permissions, instance = L.ALL_INSTANCES }: CommandStairsProps) {
+export function CommandList({ node, permissions, instance = L.ALL_INSTANCES }: CommandListProps) {
     const { t } = useTranslation('gui');
     const { perm, board, loading, error, busy, load, write } = permissions;
     const [view, setView] = useState(instance);
-    const [selected, setSelected] = useState<string | null>(null); // 칩 id
-    // 칩 끌기: 놓으면 dropRef가 옮긴다 (아래에서 계단 값을 읽은 뒤 채운다)
-    const dropRef = useRef<(id: string, level: number) => void>(() => {});
-    const chipDrag = usePointerDrag((id: string, to: string) => dropRef.current(id, Number(to)));
-    const dragging = chipDrag.dragging;
-    const over = chipDrag.over === null ? null : Number(chipDrag.over);
+    const [query, setQuery] = useState('');
     const [presetDraft, setPresetDraft] = useState<string | null>(null); // 명령별 레벨을 덮을 프리셋 (확인 전)
-    const stairsRef = useRef<HTMLOListElement>(null);
-    useChipFlip(stairsRef, board);
     if (!perm) return <PermState loading={loading} error={error} onRetry={load} />;
     if (!board)
         return <SabaFail message={t('discord.perm_err_generic')} onRetry={load} retryLabel={t('discord.reload')} />;
@@ -681,39 +645,110 @@ export function CommandStairs({ node, permissions, instance = L.ALL_INSTANCES }:
     const shownView = view === L.ALL_INSTANCES || instances.some((i) => i.id === view) ? view : L.ALL_INSTANCES;
     const instanceName = (id: string) => instances.find((i) => i.id === id)?.name || id;
     const levels = L.ascending(perm);
-    const lowest = levels.find((l) => l !== L.BANNED);
+    const usable = levels.filter((l) => l !== L.BANNED);
+    const lowest = usable[0];
+    const top = usable[usable.length - 1];
     const chips: L.StairChip[] = [
         // help·list는 금지가 아니면 누구나 쓴다 (바꿀 수 없다)
-        {
-            id: 'basic',
-            title: t('discord.perm_help_list'),
-            level: lowest as number,
-            fixed: true,
-            basic: true,
-            items: [],
-        },
+        { id: 'basic', title: t('discord.perm_help_list'), level: lowest, fixed: true, basic: true, items: [] },
         ...L.stairChips(board, shownView),
     ];
-    const current = chips.find((c) => c.id === selected);
     const move = async (chip: L.StairChip, level: number) => {
         // 대표 레벨이 같아도 다른 레벨인 인스턴스가 있으면 맞춘다
         if (busy || chip.fixed || level === L.BANNED || chip.items.every((i) => i.fixed || i.level === level)) return;
         await update({ commandLevels: L.levelPatch(chip.items, level) });
-    };
-    dropRef.current = (id, level) => {
-        const chip = chips.find((c) => c.id === id);
-        if (chip && level !== L.BANNED) move(chip, level);
     };
     const setRisk = async (chip: L.StairChip, risk: string) => {
         if (busy || chip.items.every((i) => (i.confirmRisk || i.risk) === risk)) return;
         await write(() => window.api.discordSettingsSet(guildId, { commandRisks: L.riskPatch(chip.items, risk) }));
     };
     const label = (chip: L.StairChip) =>
-        chip.instance ? `${chip.title} · ${instanceName(chip.instance)}` : chip.title;
-    // 계단 하나에 새로 오는 칩 수 (위 계단은 이것들을 모두 이어받는다)
-    const gains: Record<number, number> = {};
-    for (const c of chips.filter((c) => !c.instance)) gains[c.level] = (gains[c.level] || 0) + 1;
-    let carried = 0;
+        chip.instance ? `${chip.title} · ${instanceName(chip.instance)}` : chip.title || '';
+    const fromText = (l: number) =>
+        t(l === top ? 'discord.perm_only' : 'discord.perm_from', { level: L.levelLabel(t, perm, l) });
+    // 요약: 레벨마다 쓸 수 있는 명령 수 (아래 레벨 것을 이어받는다). 인스턴스 꼬리표 줄은 세지 않는다
+    const counted = chips.filter((c) => !c.instance);
+    const summary = usable
+        .map((l) => `${L.levelLabel(t, perm, l)} ${counted.filter((c) => levels.indexOf(c.level) <= levels.indexOf(l)).length}`)
+        .join(' · ');
+    const q = query.trim().toLowerCase();
+    const shown = q ? chips.filter((c) => label(c).toLowerCase().includes(q)) : chips;
+
+    const row = (c: L.StairChip) => {
+        const name = label(c);
+        const tone = c.kind === 'admin' ? 'info' : RISK_TONE[c.confirmRisk as string] || 'ok';
+        return (
+            <li key={c.id} className={clsx('dc-cmd-row', { 'is-moved': c.overridden })}>
+                <span className="dc-cmd-name">
+                    <span className={clsx('dc-dot', `tone-${tone}`)} aria-hidden="true" />
+                    {c.fixed && <Icon name="pin" size="xs" />}
+                    <span className="dc-cmd-title">
+                        <strong>{name}</strong>
+                        <small className="muted">
+                            {[
+                                c.fixed && (c.basic ? t('discord.perm_commands_help_hint') : t('discord.perm_fixed_hint')),
+                                !c.fixed && c.overridden && t('discord.perm_moved'),
+                                shownView !== L.ALL_INSTANCES &&
+                                    c.items.some((i) => !i.instance) &&
+                                    t('discord.perm_server_wide_tag'),
+                                shownView === L.ALL_INSTANCES &&
+                                    !c.instance &&
+                                    c.items.length > 1 &&
+                                    t('discord.perm_instances_count', { count: c.items.length }),
+                            ]
+                                .filter(Boolean)
+                                .join(' · ')}
+                        </small>
+                    </span>
+                </span>
+                <CustomDropdown
+                    className="dc-level-select"
+                    value={String(c.level)}
+                    ariaLabel={t('discord.perm_who_for', { command: name })}
+                    disabled={busy || c.fixed}
+                    onChange={(v) => move(c, Number(v))}
+                    options={usable.map((l) => ({ value: String(l), label: fromText(l) }))}
+                />
+                {c.basic ? (
+                    <span />
+                ) : (
+                    <CustomDropdown
+                        className="dc-risk-select"
+                        value={c.confirmMixed ? '' : (c.confirmRisk as string)}
+                        ariaLabel={t('discord.perm_risk_for', { command: name })}
+                        disabled={busy}
+                        placeholder={t('discord.perm_confirm_tier_mixed')}
+                        onChange={(r) => setRisk(c, r)}
+                        options={L.RISKS.map((r) => ({
+                            value: r,
+                            label:
+                                r === c.risk || c.kind === 'admin'
+                                    ? t(`discord.risk_${r}`)
+                                    : `${t(`discord.risk_${r}`)} ${t('discord.perm_confirm_tier_default', { risk: t(`discord.risk_${c.risk}`) })}`,
+                        }))}
+                    />
+                )}
+                {c.overridden && !c.fixed ? (
+                    <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        disabled={busy}
+                        onClick={() =>
+                            update({
+                                commandLevels: Object.fromEntries(
+                                    c.items.flatMap((i) => (i.keys || [i.key]).map((k) => [k, null])),
+                                ),
+                            })
+                        }
+                    >
+                        {t('discord.perm_back_to_preset')}
+                    </button>
+                ) : (
+                    <span />
+                )}
+            </li>
+        );
+    };
 
     return (
         <div className="dc-tab">
@@ -767,207 +802,44 @@ export function CommandStairs({ node, permissions, instance = L.ALL_INSTANCES }:
                     </button>
                 </div>
             )}
-            <p className="dc-hint">{t('discord.perm_stairs_hint')}</p>
-            {instance === L.ALL_INSTANCES && instances.length > 1 && (
-                <div className="dc-field-inline">
-                    <span className="muted">{t('discord.perm_view')}</span>
-                    <CustomDropdown
-                        className="dc-level-select"
-                        value={shownView}
-                        ariaLabel={t('discord.perm_view')}
-                        onChange={(v) => {
-                            setView(v);
-                            setSelected(null);
-                        }}
-                        options={[
-                            { value: L.ALL_INSTANCES, label: t('discord.perm_view_all') },
-                            ...instances.map((i) => ({ value: i.id, label: i.name })),
-                        ]}
-                    />
-                </div>
-            )}
-
-            <div className="dc-stairs-scroll">
-                <ol
-                    ref={stairsRef}
-                    className="dc-stairs"
-                    style={{ '--steps': levels.length } as CSSProperties}
-                    aria-label={t('discord.perm_stairs')}
-                >
-                    {levels.map((level, i) => {
-                        const here = chips.filter((c) => c.level === level);
-                        const below = carried;
-                        carried += gains[level] || 0;
-                        const droppable = level !== L.BANNED && dragging !== null;
-                        return (
-                            <li
-                                key={level}
-                                className={clsx('dc-step', `level-${L.levelKey(level)}`, {
-                                    'is-over': over === level && droppable,
-                                })}
-                                style={{ '--step': i } as CSSProperties}
-                                aria-label={L.levelTitle(t, perm, level)}
-                                data-drop={level}
-                            >
-                                <div className="dc-step-chips">
-                                    {level !== L.BANNED && below > 0 && (
-                                        <span className="dc-step-carry">
-                                            {t('discord.perm_carry', {
-                                                below: L.levelTitle(t, perm, levels[i - 1]),
-                                                count: below,
-                                            })}
-                                        </span>
-                                    )}
-                                    {level === L.BANNED && (
-                                        <span className="muted">{t('discord.perm_level_none')}</span>
-                                    )}
-                                    {here.map((c) => (
-                                        <button
-                                            key={c.id}
-                                            type="button"
-                                            data-chip={c.id}
-                                            className={clsx('dc-cmd-chip', `kind-${c.kind || 'basic'}`, {
-                                                'is-moved': c.overridden,
-                                                'is-fixed': c.fixed,
-                                                'is-selected': selected === c.id,
-                                                'is-dragging': dragging === c.id,
-                                            })}
-                                            aria-pressed={selected === c.id}
-                                            {...chipDrag.bind(c.id, !c.fixed)}
-                                            onClick={() => setSelected(selected === c.id ? null : c.id)}
-                                        >
-                                            <span
-                                                className={clsx(
-                                                    'dc-dot',
-                                                    c.kind === 'admin'
-                                                        ? 'tone-info'
-                                                        : `tone-${RISK_TONE[c.confirmRisk as string] || 'ok'}`,
-                                                )}
-                                                aria-hidden="true"
-                                            />
-                                            {c.fixed && <Icon name="pin" size="xs" />}
-                                            <span>{label(c)}</span>
-                                        </button>
-                                    ))}
-                                </div>
-                                <div className="dc-step-label">
-                                    <span className="dc-level-num">Lv {L.levelNumber(perm, level)}</span>
-                                    <strong>{L.levelLabel(t, perm, level)}</strong>
-                                </div>
-                            </li>
-                        );
-                    })}
-                </ol>
+            <p className="dc-hint">{t('discord.perm_list_hint')}</p>
+            <div className="dc-cmd-tools">
+                <input
+                    className="input dc-cmd-search"
+                    type="search"
+                    value={query}
+                    placeholder={t('discord.perm_search')}
+                    aria-label={t('discord.perm_search')}
+                    onChange={(e) => setQuery(e.target.value)}
+                />
+                {instance === L.ALL_INSTANCES && instances.length > 1 && (
+                    <span className="dc-field-inline">
+                        <span className="muted">{t('discord.perm_view')}</span>
+                        <CustomDropdown
+                            className="dc-level-select"
+                            value={shownView}
+                            ariaLabel={t('discord.perm_view')}
+                            onChange={setView}
+                            options={[
+                                { value: L.ALL_INSTANCES, label: t('discord.perm_view_all') },
+                                ...instances.map((i) => ({ value: i.id, label: i.name })),
+                            ]}
+                        />
+                    </span>
+                )}
             </div>
-
-            {current && (
-                <section className="dc-card dc-chip-edit" aria-label={label(current)}>
-                    <div className="dc-card-head">
-                        <strong>{label(current)}</strong>
-                        {current.risk && (
-                            <span
-                                className={clsx('dc-badge', `tone-${RISK_TONE[current.confirmRisk as string] || 'ok'}`)}
-                            >
-                                {current.kind === 'admin'
-                                    ? t('discord.kind_admin')
-                                    : current.confirmMixed
-                                      ? t('discord.perm_confirm_tier_mixed')
-                                      : t(`discord.risk_${current.confirmRisk}`)}
-                            </span>
-                        )}
-                    </div>
-                    {!current.basic && (
-                        <div className="dc-field-row">
-                            <span className="dc-field-label">
-                                <strong>{t('discord.perm_confirm_tier')}</strong>
-                                <small>
-                                    {t('discord.perm_confirm_tier_hint')}
-                                    {current.confirmMixed
-                                        ? ` ${t('discord.perm_confirm_tier_mixed_hint')}`
-                                        : current.confirmRisk !== current.risk &&
-                                          ` ${t('discord.perm_confirm_tier_default', { risk: t(`discord.risk_${current.risk}`) })}`}
-                                </small>
-                            </span>
-                            <Segmented
-                                ariaLabel={t('discord.perm_confirm_tier')}
-                                value={current.confirmRisk as string}
-                                onChange={(r) => setRisk(current, r)}
-                                items={L.RISKS.map((r) => ({ id: r, label: t(`discord.risk_${r}`) }))}
-                            />
-                        </div>
-                    )}
-                    {current.fixed ? (
-                        <p className="dc-hint">
-                            {current.basic ? t('discord.perm_commands_help_hint') : t('discord.perm_fixed_hint')}
-                        </p>
-                    ) : (
-                        <>
-                            <span className="muted">{t('discord.perm_from_level')}</span>
-                            <fieldset className="dc-level-steps" aria-label={t('discord.perm_from_level')}>
-                                {levels
-                                    .filter((l) => l !== L.BANNED)
-                                    .map((l) => (
-                                        <button
-                                            key={l}
-                                            type="button"
-                                            className={clsx('dc-level-step', {
-                                                'is-on': l === current.level,
-                                                'is-up': levels.indexOf(l) > levels.indexOf(current.level),
-                                            })}
-                                            aria-pressed={l === current.level}
-                                            disabled={busy}
-                                            onClick={() => move(current, l)}
-                                        >
-                                            {L.levelTitle(t, perm, l)}
-                                        </button>
-                                    ))}
-                            </fieldset>
-                            {shownView !== L.ALL_INSTANCES && current.items.some((i) => !i.instance) && (
-                                <p className="dc-hint">{t('discord.perm_server_wide')}</p>
-                            )}
-                            {shownView === L.ALL_INSTANCES && !current.instance && current.items.length > 1 && (
-                                <p className="dc-hint">
-                                    {t('discord.perm_applies_to', { count: current.items.length })}
-                                </p>
-                            )}
-                            {current.items.some((i) => i.overridden) && (
-                                <button
-                                    type="button"
-                                    className="btn btn-ghost btn-sm"
-                                    disabled={busy}
-                                    onClick={() =>
-                                        update({
-                                            commandLevels: Object.fromEntries(
-                                                current.items.flatMap((i) => (i.keys || [i.key]).map((k) => [k, null])),
-                                            ),
-                                        })
-                                    }
-                                >
-                                    {t('discord.perm_back_to_preset')}
-                                </button>
-                            )}
-                        </>
-                    )}
-                </section>
-            )}
-
-            <div className="dc-legend">
-                <span>
-                    <span className="dc-dot tone-ok" /> {t('discord.risk_safe')}
-                </span>
-                <span>
-                    <span className="dc-dot tone-warn" /> {t('discord.risk_caution')}
-                </span>
-                <span>
-                    <span className="dc-dot tone-stop" /> {t('discord.risk_danger')}
-                </span>
-                <span>
-                    <span className="dc-dot tone-info" /> {t('discord.kind_admin')}
-                </span>
-                <span>
-                    <span className="dc-cmd-chip is-moved is-legend">{t('discord.perm_legend_moved')}</span>
-                </span>
-            </div>
+            <p className="dc-cmd-summary muted">{summary}</p>
+            {GROUPS.map((g) => {
+                const list = shown.filter((c) => groupOf(c) === g);
+                if (!list.length) return null;
+                return (
+                    <section key={g} className="dc-cmd-group" aria-label={t(`discord.perm_group_${g}`)}>
+                        <h3 className="dc-cmd-group-title">{t(`discord.perm_group_${g}`)}</h3>
+                        <ul className="dc-cmd-list">{list.map(row)}</ul>
+                    </section>
+                );
+            })}
+            {!shown.length && <p className="muted">{t('discord.perm_search_none')}</p>}
 
             <div className="dc-field-row">
                 <span className="dc-field-label">
@@ -992,12 +864,12 @@ interface PermissionPanelProps {
     instance?: string;
 }
 
-/** 인스턴스 메뉴: 레벨별 명령 계단. 멤버 레벨은 서버 전체 값이라 여기서 고치지 않는다 (멤버 탭) */
+/** 인스턴스 메뉴: 명령마다 쓸 수 있는 레벨. 멤버 레벨은 서버 전체 값이라 여기서 고치지 않는다 (멤버 탭) */
 export function PermissionPanel({ node, instance = L.ALL_INSTANCES }: PermissionPanelProps) {
     const permissions = usePermissions(node.guildId);
     return (
         <div className="dc-perm">
-            <CommandStairs node={node} permissions={permissions} instance={instance} />
+            <CommandList node={node} permissions={permissions} instance={instance} />
         </div>
     );
 }
