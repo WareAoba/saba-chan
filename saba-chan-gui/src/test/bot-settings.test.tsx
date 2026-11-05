@@ -45,7 +45,7 @@ describe('디스코드 봇 설정 탭', () => {
         expect(window.api.discordSettingsSet).toHaveBeenCalledWith('g1', { music: { normalize: false } });
     });
 
-    it('큰 이모지: 릴레이 값이 있을 때만 보이고, 바꾸면 bigEmoji 만 보낸다. 다른 설정을 저장해도 값이 남는다', async () => {
+    it('이모지 업스케일: 릴레이 값이 있을 때만 보이고, 바꾸면 bigEmoji 만 보낸다. 다른 설정을 저장해도 값이 남는다', async () => {
         window.api.discordSettingsGet = vi.fn().mockResolvedValue({ ...base, bigEmoji: false }) as never;
         window.api.discordSettingsSet = vi.fn().mockResolvedValue({ success: true, settings: base, sync: { ok: true } }) as never;
         render(<BotSettingsTab node={node} section="bot" />);
@@ -56,7 +56,7 @@ describe('디스코드 봇 설정 탭', () => {
         expect(screen.getByRole('checkbox', { name: 'Big emoji' })).toBeInTheDocument();
     });
 
-    // 사용자 11-03: 게임 채팅 채널 옵션 — 큰 이모지처럼 릴레이가 원본, 값이 있을 때만 보인다
+    // 사용자 11-03: 게임 채팅 채널 옵션 — 이모지 업스케일처럼 릴레이가 원본, 값이 있을 때만 보인다
     it('게임 채팅: 글 막기·꺼지면 채팅 지우기는 릴레이 값이 있을 때만 보이고 바꾼 키만 보낸다', async () => {
         window.api.discordSettingsGet = vi.fn().mockResolvedValue(base) as never;
         const { unmount } = render(<BotSettingsTab node={node} section="bot" />);
@@ -122,7 +122,7 @@ describe('디스코드 봇 설정 탭', () => {
         expect(screen.queryByRole('checkbox', { name: 'Good kid' })).toBeNull();
     });
 
-    it('큰 이모지: 릴레이를 못 읽어 값이 없으면 보이지 않는다', async () => {
+    it('이모지 업스케일: 릴레이를 못 읽어 값이 없으면 보이지 않는다', async () => {
         window.api.discordSettingsGet = vi.fn().mockResolvedValue(base) as never;
         render(<BotSettingsTab node={node} section="bot" />);
         await flush();
