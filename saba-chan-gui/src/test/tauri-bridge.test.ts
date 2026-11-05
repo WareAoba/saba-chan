@@ -100,7 +100,7 @@ describe('데몬 응답 가공', () => {
     });
 
     it('GUI 설정 저장은 부른 순서대로 한다 (앞 저장이 늦게 끝나 뒤 저장을 덮지 않게)', async () => {
-        let releaseFirst;
+        let releaseFirst: (() => void) | undefined;
         const puts: Loose[] = [];
         const { api } = await install({
             daemon_request: daemon({
@@ -142,7 +142,7 @@ describe('데몬 응답 가공', () => {
 
     // 셸이 저장 직전 상태에 합친다. 여기서 미리 읽어 합치면 그 사이 셸이 바꾼 값(창 위치 등)을 되돌린다
     it('데몬이 응답하지 않으면 바꾼 키만 셸 로컬 저장에 넘긴다', async () => {
-        let saved;
+        let saved: unknown;
         const { api } = await install({
             daemon_request: daemon({
                 'PATCH /api/config/gui': { status: 0, error: 'connect refused', code: 'ECONNREFUSED' },

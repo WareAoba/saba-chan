@@ -104,7 +104,7 @@ describe('만료 시각과 화면 이탈 (릴레이 2차 점검 R16·R17)', () =
 
     it('코드 발급을 기다리는 사이 화면을 떠나면 폴링을 시작하지 않는다', async () => {
         vi.useFakeTimers();
-        let resolveInit;
+        let resolveInit: ((v: unknown) => void) | undefined;
         window.api.relayInitiatePairing = vi.fn(
             () =>
                 new Promise((r) => {
@@ -113,7 +113,7 @@ describe('만료 시각과 화면 이탈 (릴레이 2차 점검 R16·R17)', () =
         ) as never;
         window.api.relayPollPairingStatus = vi.fn().mockResolvedValue({ status: 'pending' });
         const { result, unmount } = renderHook(() => usePairing({ relayUrl: 'https://my.relay' }));
-        let started;
+        let started: unknown;
         act(() => {
             started = result.current.start();
         });

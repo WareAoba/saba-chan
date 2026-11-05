@@ -100,6 +100,7 @@ export function QuestionModal({ title, message, detail, onConfirm, onCancel, but
                         // 커스텀 버튼 배열
                         buttons.map((btn, idx) => (
                             <button
+                                // biome-ignore lint/suspicious/noArrayIndexKey: 한 번 띄운 뒤 바뀌지 않는 버튼 목록
                                 key={idx}
                                 className={clsx('modal-button', idx === 0 ? 'question-confirm' : 'question-cancel')}
                                 onClick={btn.action}
