@@ -532,7 +532,8 @@
       "duration_units": "min,h,d,sem",
       "reason": "Motivo (opcional)",
       "purge": "Borrar sus mensajes",
-      "announce_hint": "El resultado también se publica en el canal del sistema del servidor (sin mencionar a nadie)."
+      "announce_hint": "El resultado también se publica en el canal del sistema del servidor (sin mencionar a nadie).",
+      "desc": "Sanciones, bloqueo de canales y limpieza"
     },
     "load_failed": "No se pudieron cargar los ajustes. Revisa la conexión y vuelve a intentarlo.",
     "retry": "Reintentar",
@@ -542,7 +543,11 @@
     "channel_gameChat": "Canal de chat del juego",
     "channel_board": "Canal del panel de estado",
     "sleep_now": "Dormir ahora",
-    "awake": "Despierta"
+    "awake": "Despierta",
+    "basics_desc": "Idioma y emojis de este servidor",
+    "music_desc": "Pone música en los canales de voz",
+    "reading_desc": "Lee el chat en voz alta en los canales de voz",
+    "channels_desc": "Elige un canal para cada función"
   },
   "logs": {
     "title": "Registros anteriores",

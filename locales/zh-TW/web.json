@@ -532,7 +532,8 @@
       "duration_units": "分鐘,小時,天,週",
       "reason": "原因（可選）",
       "purge": "刪除其訊息",
-      "announce_hint": "結果也會發布到伺服器的系統頻道（不會提及任何人）。"
+      "announce_hint": "結果也會發布到伺服器的系統頻道（不會提及任何人）。",
+      "desc": "處罰、頻道鎖定與清理"
     },
     "load_failed": "無法讀取設定。請檢查連線後重試。",
     "retry": "重試",
@@ -542,7 +543,11 @@
     "channel_gameChat": "遊戲聊天頻道",
     "channel_board": "狀態板頻道",
     "sleep_now": "現在睡覺",
-    "awake": "醒著"
+    "awake": "醒著",
+    "basics_desc": "此伺服器使用的語言和表情",
+    "music_desc": "在語音頻道播放音樂",
+    "reading_desc": "用語音朗讀聊天內容",
+    "channels_desc": "為每個功能選擇頻道"
   },
   "logs": {
     "title": "過去的日誌",

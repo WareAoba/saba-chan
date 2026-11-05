@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useApp } from '../store';
 import { Dropdown } from './Dropdown';
-import { Button, errorText, failed, Section } from './ui';
+import { Button, Card, errorText, failed } from './ui';
 import type { ApiBody, Server, ServerPanelProps } from '../types';
 
 /** 사바쨩 칸 값 (폼에서는 글자와 참거짓) */
@@ -162,8 +162,7 @@ export function SabaSettings({ api, server, running }: Omit<ServerPanelProps, 'm
                 save();
             }}
         >
-            <Section title={tg('shell.restart_title')}>
-                <p className="hint">{tg('shell.restart_desc')}</p>
+            <Card icon="refresh" tone="1" title={tg('shell.restart_title')} desc={tg('shell.restart_desc')}>
                 <div className="form">
                     <Toggle
                         label={tg('shell.restart_on_crash')}
@@ -178,9 +177,8 @@ export function SabaSettings({ api, server, running }: Omit<ServerPanelProps, 'm
                         onChange={(v) => set('restart_on_unknown_exit', v)}
                     />
                 </div>
-            </Section>
-            <Section title={tg('memory_limit.title')}>
-                <p className="hint">{tg('memory_limit.desc')}</p>
+            </Card>
+            <Card icon="database" tone="4" title={tg('memory_limit.title')} desc={tg('memory_limit.desc')}>
                 <div className="form">
                     <NumberField
                         label={tg('memory_limit.label')}
@@ -191,10 +189,9 @@ export function SabaSettings({ api, server, running }: Omit<ServerPanelProps, 'm
                         note={running ? tg('memory_limit.restart_note') : null}
                     />
                 </div>
-            </Section>
+            </Card>
             {server.game_chat_supported && (
-                <Section title={tg('game_chat.title')}>
-                    <p className="hint">{tg('game_chat.desc')}</p>
+                <Card icon="messageSquare" tone="3" title={tg('game_chat.title')} desc={tg('game_chat.desc')}>
                     <div className="form">
                         <div className="field">
                             <span>{tg('game_chat.mode_label')}</span>
@@ -217,11 +214,10 @@ export function SabaSettings({ api, server, running }: Omit<ServerPanelProps, 'm
                         )}
                         <small className="hint">{tg('game_chat.channel_note')}</small>
                     </div>
-                </Section>
+                </Card>
             )}
             {server.managed !== false && (
-                <Section title={tg('stop_timeout.title')}>
-                    <p className="hint">{tg('stop_timeout.desc')}</p>
+                <Card icon="clock" tone="7" title={tg('stop_timeout.title')} desc={tg('stop_timeout.desc')}>
                     <div className="form">
                         <NumberField
                             label={tg('stop_timeout.label')}
@@ -231,7 +227,7 @@ export function SabaSettings({ api, server, running }: Omit<ServerPanelProps, 'm
                             onChange={(v) => set('stop_timeout', v)}
                         />
                     </div>
-                </Section>
+                </Card>
             )}
             <div className="savebar">
                 {dirty && (

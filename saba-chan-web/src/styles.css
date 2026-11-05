@@ -403,6 +403,82 @@ textarea {
 .section-head h2 {
     font-size: 18px;
 }
+/* ── 설정 카드 (ui.tsx Card): 앱 설정 화면처럼 색 아이콘·제목·설명, 칸 사이는 선 ── */
+.set-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+    padding: 14px 16px;
+    background: var(--bg-1);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    box-shadow: var(--neu-up);
+    break-inside: avoid;
+}
+.set-card-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.set-card-head h3 {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+    font-size: 15px;
+}
+.set-card-icon {
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: 30px;
+    height: 30px;
+    border-radius: 9px;
+    color: #fff;
+    background: var(--series-7);
+}
+.set-card-icon[data-tone="1"] { background: var(--series-1); }
+.set-card-icon[data-tone="2"] { background: var(--series-2); }
+.set-card-icon[data-tone="3"] { background: var(--series-3); }
+.set-card-icon[data-tone="4"] { background: var(--series-4); }
+.set-card-icon[data-tone="5"] { background: var(--series-5); }
+.set-card-desc {
+    margin: 2px 0 0;
+    font-size: 12.5px;
+    color: var(--text-2);
+}
+.set-card-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+    margin-top: 8px;
+}
+/* 칸마다 위에 선 (첫 칸도 제목과 나눈다) */
+.set-card-body > * {
+    padding-top: 10px;
+    border-top: 1px solid var(--line);
+}
+.set-card-head + .set-card-body > :first-child {
+    border-top: 0;
+    padding-top: 0;
+}
+.set-card-body > :empty {
+    display: none;
+}
+.set-card-body > .hint {
+    border-top: 0;
+    padding-top: 0;
+    margin-top: -4px;
+}
+/* 넓은 화면: 카드를 두 줄로 쌓는다 (읽는 순서는 위에서 아래, 왼쪽 줄 먼저) */
+.set-card-grid > * {
+    margin-bottom: 12px;
+}
+@media (min-width: 1100px) {
+    .set-card-grid {
+        columns: 2;
+        column-gap: 12px;
+    }
+}
 .sub-title {
     font-size: 14px;
     color: var(--text-2);

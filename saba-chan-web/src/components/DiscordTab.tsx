@@ -9,7 +9,7 @@ import { useApp } from '../store';
 import { Dropdown } from './Dropdown';
 import { Icon } from './icons';
 import { GuildPermissions } from './PermissionsTab';
-import { Button, Empty, errorText, failed, Loading, Section, Sheet } from './ui';
+import { Button, Card, Empty, errorText, failed, Loading, Section, Sheet } from './ui';
 import type {
     ApiBody,
     RelayChannels,
@@ -310,7 +310,7 @@ function BasicsSection({ relay, g, settings, busy, write, here }: SectionProps &
     const { t } = useTranslation();
     const save = (patch: RelaySettingsPatch) => write(() => relay.saveSettings(g, patch), 'settings');
     return (
-        <Section title={t('relay.basics')}>
+        <Card icon="settings" tone="7" title={t('relay.basics')} desc={t('relay.basics_desc')}>
             <Choice
                 label={t('relay.locale')}
                 value={settings.locale}
@@ -345,7 +345,7 @@ function BasicsSection({ relay, g, settings, busy, write, here }: SectionProps &
                             />
                         ),
                 )}
-        </Section>
+        </Card>
     );
 }
 
@@ -353,7 +353,7 @@ function MusicSection({ relay, g, settings, busy, write }: SectionProps & { sett
     const { t } = useTranslation();
     const save = (music: Partial<RelayMusicSettings>) => write(() => relay.saveSettings(g, { music }), 'settings');
     return (
-        <Section title={t('relay.music')}>
+        <Card icon="musicNote" tone="5" title={t('relay.music')} desc={t('relay.music_desc')}>
             <Toggle
                 label={t('relay.enabled')}
                 checked={settings.music?.enabled}
@@ -367,7 +367,7 @@ function MusicSection({ relay, g, settings, busy, write }: SectionProps & { sett
                 disabled={busy}
                 onChange={(ui) => save({ ui })}
             />
-        </Section>
+        </Card>
     );
 }
 
@@ -377,7 +377,7 @@ function ReadingSection({ relay, g, settings, busy, write }: SectionProps & { se
     const save = (patch: Partial<RelayTtsSettings>) => write(() => relay.saveSettings(g, { tts: patch }), 'settings');
     const speed = (v: number) => `${(v / 100).toFixed(2).replace(/0$/, '')}x`;
     return (
-        <Section title={t('relay.reading')}>
+        <Card icon="sabaReading" tone="1" title={t('relay.reading')} desc={t('relay.reading_desc')}>
             <Choice
                 label={t('relay.volume')}
                 value={tts.volume}
@@ -399,7 +399,7 @@ function ReadingSection({ relay, g, settings, busy, write }: SectionProps & { se
                 onChange={(v) => save({ pitch: Number(v) })}
                 options={range(-6, 6, 1).map((v) => ({ value: String(v), label: v > 0 ? `+${v}` : String(v) }))}
             />
-        </Section>
+        </Card>
     );
 }
 
@@ -448,10 +448,9 @@ function TalkingSection({ relay, g, chatbot, busy, write, here }: SectionProps &
     const [editing, setEditing] = useState(false);
     const save = (body: RelayChatbotPatch) => write(() => relay.saveChatbot(g, body), 'chatbot');
     return (
-        <Section title={t('relay.talking')}>
+        <Card icon="sabaTalking" tone="3" title={t('relay.talking')} desc={t('relay.talking_hint')}>
             <Toggle
                 label={t('relay.enabled')}
-                hint={t('relay.talking_hint')}
                 checked={chatbot.settings?.enabled}
                 disabled={busy}
                 onChange={(enabled) => save({ settings: { enabled } })}
@@ -516,7 +515,7 @@ function TalkingSection({ relay, g, chatbot, busy, write, here }: SectionProps &
                     }}
                 />
             )}
-        </Section>
+        </Card>
     );
 }
 
@@ -560,7 +559,7 @@ function ChannelsSection({ relay, g, channels, busy, write, here }: SectionProps
     const list = channels.channels || [];
     if (!channels.botAvailable) return <Empty>{t('relay.err.BOT_UNAVAILABLE')}</Empty>;
     return (
-        <Section title={t('relay.channels')}>
+        <Card icon="hash" tone="4" title={t('relay.channels')} desc={t('relay.channels_desc')}>
             <ChannelChips
                 label={t('relay.talking')}
                 list={list}
@@ -609,7 +608,7 @@ function ChannelsSection({ relay, g, channels, busy, write, here }: SectionProps
                     </p>
                 </div>
             )}
-        </Section>
+        </Card>
     );
 }
 
@@ -1197,7 +1196,7 @@ function ModerationSection({ relay, g, can, moderation, busy, write, refresh }: 
     const channel = open?.id && moderation.channels.find((c) => c.id === open.id);
     const close = () => setOpen(null);
     return (
-        <Section title={t('relay.mod.title')}>
+        <Card icon="tool" tone="2" title={t('relay.mod.title')} desc={t('relay.mod.desc')}>
             {(can.channels || can.messages) && (
                 <ul className="rows">
                     {moderation.channels.map((c) => (
@@ -1258,7 +1257,7 @@ function ModerationSection({ relay, g, can, moderation, busy, write, refresh }: 
                     onSanction={(userId, body) => write(() => relay.modSanction(g, userId, body), 'moderation')}
                 />
             )}
-        </Section>
+        </Card>
     );
 }
 
@@ -1284,7 +1283,7 @@ function SleepSection({ relay, g, settings, busy, write }: SectionProps & { sett
         );
     };
     return (
-        <Section title={tg('discord.bot_settings.sleep_title')}>
+        <Card icon="zzz" tone="7" title={tg('discord.bot_settings.sleep_title')}>
             <Toggle
                 label={t('relay.sleep_now')}
                 hint={settings.asleep ? tg('discord.sleep_corner_asleep') : t('relay.awake')}
@@ -1315,7 +1314,7 @@ function SleepSection({ relay, g, settings, busy, write }: SectionProps & { sett
             {time('start', 'end')}
             {time('end', 'start')}
             <p className="hint">{tg('discord.bot_settings.bedtime_zone')}</p>
-        </Section>
+        </Card>
     );
 }
 
@@ -1337,7 +1336,7 @@ function RelayGuild({ relay, guild, here = false }: { relay: GuildStore; guild: 
         );
     if (manage && !data.settings) return <Loading />;
     return (
-        <>
+        <div className="set-card-grid">
             {manage && ready(data.settings) && (
                 <>
                     <BasicsSection {...props} settings={data.settings} />
@@ -1354,7 +1353,7 @@ function RelayGuild({ relay, guild, here = false }: { relay: GuildStore; guild: 
                 ) : (
                     <Loading />
                 ))}
-        </>
+        </div>
     );
 }
 
