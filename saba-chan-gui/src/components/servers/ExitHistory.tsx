@@ -79,7 +79,10 @@ export function ExitHistory({ server }: { server: Server }) {
             ) : (
                 <ul>
                     {list.map((e, i) => (
-                        <li key={`${e.at}-${i}`}>
+                        <li
+                            // biome-ignore lint/suspicious/noArrayIndexKey: 읽기 전용 목록이라 순서가 바뀌지 않는다
+                            key={`${e.at}-${i}`}
+                        >
                             <time>{fmt(e.at)}</time>
                             <StatusChip
                                 tone={KIND_TONE[e.kind] || 'idle'}

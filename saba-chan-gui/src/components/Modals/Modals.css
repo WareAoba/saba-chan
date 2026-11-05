@@ -54,7 +54,6 @@
 .modal-icon {
     font-size: calc(48px * var(--font-scale));
     margin-bottom: var(--sp-4);
-    display: inline-block;
     width: 60px;
     height: 60px;
     border-radius: 50%;

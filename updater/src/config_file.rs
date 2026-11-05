@@ -334,10 +334,16 @@ mod tests {
         let (_d, cfg) = file();
         cfg.set_section("remote", json!({ "port": 1 })).unwrap();
         assert_eq!(cfg.peek_section("remote")["port"], 1);
-        let before = READS.with(|r| r.get());
-        assert_eq!(cfg.peek_section("remote")["port"], 1);
-        assert_eq!(cfg.peek_section("node"), Value::Null);
-        assert_eq!(READS.with(|r| r.get()), before, "an unchanged file is not read again");
+        // 캐시는 프로세스에 하나라 함께 도는 다른 시험이 저장하거나 다른 파일을 엿보면 한 번 다시 읽는다.
+        // 그런 끼어들기는 읽기를 늘리기만 하므로, 다시 읽지 않은 차례가 한 번이라도 있으면 캐시가 듣는다
+        let unread = (0..20).any(|_| {
+            assert_eq!(cfg.peek_section("remote")["port"], 1);
+            let before = READS.with(|r| r.get());
+            assert_eq!(cfg.peek_section("remote")["port"], 1);
+            assert_eq!(cfg.peek_section("node"), Value::Null);
+            READS.with(|r| r.get()) == before
+        });
+        assert!(unread, "an unchanged file is not read again");
 
         cfg.set_section("remote", json!({ "port": 2 })).unwrap();
         assert_eq!(cfg.peek_section("remote")["port"], 2, "a save in this process is seen");

@@ -66,7 +66,7 @@ describe('실패로 정해진 뒤의 확인', () => {
         vi.mocked(window.api.relayCheckHostStatus).mockResolvedValue({ error: 'down' });
         await useDiscordStore.getState().checkStatus();
         await useDiscordStore.getState().checkStatus();
-        let during;
+        let during: unknown;
         vi.mocked(window.api.relayCheckHostStatus).mockImplementation(async () => {
             during = stateOf();
             return { error: 'down' };

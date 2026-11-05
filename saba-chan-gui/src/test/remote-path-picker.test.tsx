@@ -49,7 +49,7 @@ describe('원격 경로 고르기 창', () => {
 
     it('그 PC의 홈에서 시작하고, 폴더를 열어 지금 폴더를 고른다', async () => {
         await act(async () => render(<RemotePathPicker />));
-        let result;
+        let result: Promise<string | null> | undefined;
         await act(async () => {
             result = pickRemotePath({ kind: 'folder', extensions: null, defaultName: null });
         });
@@ -63,7 +63,7 @@ describe('원격 경로 고르기 창', () => {
 
     it('파일은 고른 확장자만 묻고, 고른 파일을 돌려준다. 취소는 null', async () => {
         await act(async () => render(<RemotePathPicker />));
-        let result;
+        let result: Promise<string | null> | undefined;
         await act(async () => {
             result = pickRemotePath({ kind: 'file', extensions: ['zip'], defaultName: null });
         });
@@ -83,7 +83,7 @@ describe('원격 경로 고르기 창', () => {
 
     it('저장은 지금 폴더에 적은 이름을 붙이고, 열 수 없는 폴더는 이유를 보인다', async () => {
         await act(async () => render(<RemotePathPicker />));
-        let result;
+        let result: Promise<string | null> | undefined;
         await act(async () => {
             result = pickRemotePath({ kind: 'save', extensions: ['zip'], defaultName: 'export.zip' });
         });
@@ -108,7 +108,7 @@ describe('원격 경로 고르기 창', () => {
 
     it('이미 있는 파일에 저장하면 한 번 더 눌러야 바꾼다', async () => {
         await act(async () => render(<RemotePathPicker />));
-        let result;
+        let result: Promise<string | null> | undefined;
         let settled = false;
         await act(async () => {
             result = pickRemotePath({ kind: 'save', extensions: ['zip'], defaultName: 'backup.zip' });
@@ -125,7 +125,7 @@ describe('원격 경로 고르기 창', () => {
 
     it('목록에 없는 숨긴 파일도 이미 있으면 한 번 더 묻는다', async () => {
         await act(async () => render(<RemotePathPicker />));
-        let result;
+        let result: Promise<string | null> | undefined;
         let settled = false;
         await act(async () => {
             result = pickRemotePath({ kind: 'save', extensions: ['zip'], defaultName: '.old.zip' });
@@ -151,7 +151,7 @@ describe('원격 경로 고르기 창', () => {
             return browse(path);
         });
         await act(async () => render(<RemotePathPicker />));
-        let result;
+        let result: Promise<string | null> | undefined;
         let settled = false;
         await act(async () => {
             result = pickRemotePath({ kind: 'save', extensions: ['zip'], defaultName: 'a.zip' });
@@ -181,7 +181,7 @@ describe('원격 경로 고르기 창', () => {
             return browse(path);
         });
         await act(async () => render(<RemotePathPicker />));
-        let result;
+        let result: Promise<string | null> | undefined;
         await act(async () => {
             result = pickRemotePath({ kind: 'folder', extensions: null, defaultName: null });
         });
@@ -210,7 +210,7 @@ describe('원격 경로 고르기 창', () => {
             return browse(path);
         });
         await act(async () => render(<RemotePathPicker />));
-        let result;
+        let result: Promise<string | null> | undefined;
         let settled = false;
         await act(async () => {
             result = pickRemotePath({ kind: 'save', extensions: ['zip'], defaultName: 'export.zip' });

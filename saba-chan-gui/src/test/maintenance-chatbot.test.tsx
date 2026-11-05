@@ -368,7 +368,10 @@ describe('ChatbotView', () => {
             .mockResolvedValue({ success: true, settings: {}, guilds: {}, hasApiKey: true });
         window.api.chatbotModels = vi.fn().mockResolvedValue({ models: ['gpt-x', 'gpt-y'], provider: 'openai' });
         render(<ChatbotView nodes={nodes} />);
-        pickOption(await screen.findByLabelText('Model'), 'gpt-y');
+        // 모델 목록을 받는 동안은 닫혀 있다: 열릴 때까지 기다린다
+        const model = (await screen.findByLabelText('Model')) as HTMLButtonElement;
+        await waitFor(() => expect(model.disabled).toBe(false));
+        pickOption(model, 'gpt-y');
         expect(screen.queryByLabelText('Reasoning effort')).toBeNull();
         expect(screen.queryByLabelText('Join in uninvited')).toBeNull();
         expect(screen.queryByLabelText('Image generation')).toBeNull();

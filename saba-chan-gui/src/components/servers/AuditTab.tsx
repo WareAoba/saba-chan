@@ -173,7 +173,11 @@ export function AuditLog({ instanceId }: { instanceId?: string }) {
                 ) : (
                     <ul className="dc-list audit-list">
                         {entries.map((e, i) => (
-                            <li key={`${e.ts}-${i}`} className="dc-list-row">
+                            <li
+                                // biome-ignore lint/suspicious/noArrayIndexKey: 읽기 전용 목록이라 순서가 바뀌지 않는다
+                                key={`${e.ts}-${i}`}
+                                className="dc-list-row"
+                            >
                                 <span className="audit-time">{fmt(e.ts)}</span>
                                 <span className="dc-list-text">
                                     <span className="dc-list-name">

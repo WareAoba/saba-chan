@@ -220,7 +220,9 @@ function DevCard({ active }: { active: boolean }) {
     }, [active]);
     return (
         <section className="about-card about-dev-card">
+            {/* biome-ignore lint/a11y/noAriaHiddenOnFocusable: tabIndex 없는 장식용 캔버스라 포커스되지 않는다 */}
             <canvas ref={stars} className="about-sky-stars" aria-hidden="true" />
+            {/* biome-ignore lint/a11y/noAriaHiddenOnFocusable: tabIndex 없는 장식용 캔버스라 포커스되지 않는다 */}
             <canvas ref={aurora} className="about-sky-aurora" aria-hidden="true" />
             <div className="about-dev-avatar">
                 <img

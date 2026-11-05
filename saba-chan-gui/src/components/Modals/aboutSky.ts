@@ -52,7 +52,7 @@ export function startStars(canvas: HTMLCanvasElement) {
     let shoot: { x: number; y: number; k: number } | null = null;
     let lastShoot = 0;
 
-    const fit = () => {
+    const fitCanvas = () => {
         const r = canvas.getBoundingClientRect();
         const d = window.devicePixelRatio || 1;
         W = r.width;
@@ -115,9 +115,9 @@ export function startStars(canvas: HTMLCanvasElement) {
         }
     };
 
-    fit();
+    fitCanvas();
     const l = loop(canvas, draw);
-    const onResize = () => { fit(); l.redraw(); };
+    const onResize = () => { fitCanvas(); l.redraw(); };
     window.addEventListener('resize', onResize);
     return () => { l.stop(); window.removeEventListener('resize', onResize); };
 }
@@ -178,6 +178,7 @@ export function startAurora(canvas: HTMLCanvasElement) {
     gl.attachShader(prog, fs);
     gl.linkProgram(prog);
     if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) return () => {};
+    // biome-ignore lint/correctness/useHookAtTopLevel: WebGL 메서드이지 React 훅이 아니다
     gl.useProgram(prog);
     const buf = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, buf);
@@ -188,7 +189,7 @@ export function startAurora(canvas: HTMLCanvasElement) {
     const uR = gl.getUniformLocation(prog, 'R');
     const uT = gl.getUniformLocation(prog, 'T');
 
-    const fit = () => {
+    const fitCanvas = () => {
         const r = canvas.getBoundingClientRect();
         canvas.width = Math.max(1, Math.round(r.width * 0.5));
         canvas.height = Math.max(1, Math.round(r.height * 0.5));
@@ -200,9 +201,9 @@ export function startAurora(canvas: HTMLCanvasElement) {
         gl.drawArrays(gl.TRIANGLES, 0, 3);
     };
 
-    fit();
+    fitCanvas();
     const l = loop(canvas, draw);
-    const onResize = () => { fit(); l.redraw(); };
+    const onResize = () => { fitCanvas(); l.redraw(); };
     window.addEventListener('resize', onResize);
     return () => {
         l.stop();

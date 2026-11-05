@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useApp } from '../store';
 import { Dropdown } from './Dropdown';
@@ -86,7 +86,7 @@ export function FieldInput({ field, value, onChange, t, modNs }: Loose) {
             </div>
         );
     }
-    let input;
+    let input: ReactNode;
     if (type === 'boolean') {
         input = (
             <input

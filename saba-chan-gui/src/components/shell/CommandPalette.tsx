@@ -449,7 +449,10 @@ function Palette({ onClose, busyRef }: { onClose: () => void; busyRef: MutableRe
                         <h3>{t('palette.confirm_title', { action: actionTitle(chosen) })}</h3>
                         <dl className="palette-summary">
                             {(plan.summary || []).map((s: PlanSummary, i: number) => (
-                                <div key={`${s.labelKey || s.label}-${i}`}>
+                                <div
+                                    // biome-ignore lint/suspicious/noArrayIndexKey: 읽기 전용 목록이라 순서가 바뀌지 않는다
+                                    key={`${s.labelKey || s.label}-${i}`}
+                                >
                                     <dt>{s.label || s.labelKey}</dt>
                                     <dd>{summaryValue(s, t)}</dd>
                                 </div>

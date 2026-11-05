@@ -1,5 +1,5 @@
 import type { TFunction } from 'i18next';
-import type { ApiBody, ModuleLoadError } from '../types/daemon';
+import type { ModuleLoadError } from '../types/daemon';
 import { updateRequiredText } from './updateRequired';
 
 /** 데몬이 불러오지 못한 모듈 항목 { path, error } 에서 모듈 폴더 이름을 뽑는다. */

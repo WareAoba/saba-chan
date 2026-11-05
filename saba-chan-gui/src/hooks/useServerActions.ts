@@ -1,6 +1,6 @@
 import { useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { type OptimisticStatus, type Server } from '../stores/useServerStore';
+import type { OptimisticStatus, Server } from '../stores/useServerStore';
 import { type ModalConfig, type ProgressBarConfig, useUIStore } from '../stores/useUIStore';
 import type { ApiBody, Json, ModuleInfo } from '../types/daemon';
 import {
@@ -939,8 +939,6 @@ export function useServerActions({
         }
 
         try {
-            const selectedModuleData = modules.find((m) => m.name === moduleName);
-
             const instanceData: ApiBody = {
                 name: serverName.trim(),
                 module_name: moduleName,
