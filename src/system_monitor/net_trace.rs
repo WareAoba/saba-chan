@@ -182,6 +182,8 @@ pub enum Access {
     /// 그룹에 들었지만 지금 로그인 토큰에는 아직 없다
     NeedsRelogin,
     NeedsGrant,
+    /// Windows 밖에서만 만든다
+    #[cfg_attr(windows, allow(dead_code))]
     Unsupported,
 }
 
