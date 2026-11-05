@@ -373,24 +373,22 @@ describe('권한 화면', () => {
         expect(window.api.permissionsUpdate).toHaveBeenCalledWith('g1', { ownerDiscordId: '123456789012345678' });
     });
 
-    it('명령 계단: 칩은 그 레벨 계단에 있고, 위 계단은 아래 계단의 명령 수를 이어받는다', async () => {
+    it('명령 목록: 명령마다 누구부터 쓸 수 있는지 보이고, 요약은 레벨마다 쓸 수 있는 명령 수(아래 레벨을 이어받는다)', async () => {
         await openCommands();
         expect(window.api.permissionsCommands).toHaveBeenCalledWith('g1', 'en');
-        expect(within(step('Lv 1 · Guest')).getByRole('button', { name: /Help · list/ })).toBeInTheDocument();
-        expect(within(step('Lv 1 · Guest')).getByRole('button', { name: /^Say$/ })).toBeInTheDocument();
-        expect(within(step('Lv 2 · User')).getByRole('button', { name: /^Stop$/ })).toBeInTheDocument();
-        expect(within(step('Lv 3 · Admin')).getByRole('button', { name: /Stop · Creative/ })).toBeInTheDocument();
-        expect(within(step('Lv 3 · Admin')).getByText('3 from Lv 2 · User +')).toBeInTheDocument();
-        expect(within(step('Lv 4 · Owner')).getByRole('button', { name: /Update/ })).not.toHaveAttribute('draggable');
+        expect(screen.getByLabelText('Stop: who can use it')).toHaveTextContent('User and up');
+        expect(screen.getByLabelText('Stop · Creative: who can use it')).toHaveTextContent('Admin and up');
+        expect(screen.getByLabelText('Say: who can use it')).toHaveTextContent('Guest and up');
+        expect(screen.getByLabelText('Update: who can use it')).toHaveTextContent('Owner only');
+        expect(screen.getByText('Guest 2 · User 3 · Admin 4 · Owner 5')).toBeInTheDocument();
+        expect(within(screen.getByRole('region', { name: 'Management' })).getByText('Create server')).toBeInTheDocument();
         expect(screen.getByText('1 command(s) moved away from the preset')).toBeInTheDocument();
+        expect(screen.getAllByText(/2 instance\(s\)/).length).toBeGreaterThan(0);
     });
 
-    it('명령 계단: 칩을 누르고 레벨을 고르면 그 명령의 모든 인스턴스를 옮긴다', async () => {
+    it('명령 목록: 레벨을 고르면 그 명령의 모든 인스턴스를 옮긴다', async () => {
         await openCommands();
-        fireEvent.click(within(step('Lv 2 · User')).getByRole('button', { name: /^Stop$/ }));
-        const edit = screen.getByRole('region', { name: 'Stop' });
-        expect(within(edit).getByText('Applies to all 2 instances that have this command.')).toBeInTheDocument();
-        fireEvent.click(within(edit).getByRole('button', { name: 'Lv 4 · Owner' }));
+        pickOption(screen.getByLabelText('Stop: who can use it'), 'Owner only');
         await flush();
         expect(window.api.permissionsUpdate).toHaveBeenCalledWith('g1', {
             commandLevels: { 'mc-1/stop': 3, 'mc-1/server.stop': null, 'mc-2/stop': 3, 'mc-2/server.stop': null },
@@ -398,101 +396,43 @@ describe('권한 화면', () => {
         expect(window.api.permissionsCommands).toHaveBeenCalledTimes(2);
     });
 
-    it('명령 계단: 큰 칩의 지금 레벨을 다시 고르면 다른 레벨인 인스턴스도 그 레벨로 맞춘다', async () => {
+    it('명령 목록: 그 줄에서 디스코드 되묻기 단계를 바꾸고, 원래 단계를 고르면 지운다', async () => {
         await openCommands();
-        fireEvent.click(within(step('Lv 2 · User')).getByRole('button', { name: /^Stop$/ }));
-        fireEvent.click(
-            within(screen.getByRole('region', { name: 'Stop' })).getByRole('button', { name: 'Lv 2 · User' }),
-        );
-        await flush();
-        expect(window.api.permissionsUpdate).toHaveBeenCalledWith('g1', {
-            commandLevels: { 'mc-1/stop': null, 'mc-1/server.stop': null, 'mc-2/stop': null, 'mc-2/server.stop': null },
-        });
-    });
-
-    it('명령 계단: 칩 편집 창에서 디스코드 되묻기 단계를 바꾸고, 원래 단계를 고르면 지운다', async () => {
-        await openCommands();
-        fireEvent.click(within(step('Lv 1 · Guest')).getByRole('button', { name: /^Say$/ }));
         board.items = board.items.map((i) => (i.name === 'say' ? { ...i, confirmRisk: 'danger' } : i));
-        fireEvent.click(within(screen.getByRole('region', { name: 'Say' })).getByRole('tab', { name: 'Danger' }));
+        pickOption(screen.getByLabelText('Say: Discord confirmation'), /^Danger/);
         await flush();
         expect(window.api.discordSettingsSet).toHaveBeenCalledWith('g1', {
             commandRisks: { 'mc-1/say': 'danger', 'mc-2/say': 'danger' },
         });
         expect(window.api.permissionsUpdate).not.toHaveBeenCalled();
-        const edit = screen.getByRole('region', { name: 'Say' });
-        expect(within(edit).getByRole('tab', { name: 'Danger' })).toHaveAttribute('aria-selected', 'true');
-        expect(within(edit).getByText(/Default: Safe/)).toBeInTheDocument();
-        fireEvent.click(within(edit).getByRole('tab', { name: 'Safe' }));
+        expect(screen.getByLabelText('Say: Discord confirmation')).toHaveTextContent('Danger (Default: Safe)');
+        pickOption(screen.getByLabelText('Say: Discord confirmation'), 'Safe');
         await flush();
         expect(window.api.discordSettingsSet).toHaveBeenLastCalledWith('g1', {
             commandRisks: { 'mc-1/say': null, 'mc-2/say': null },
         });
     });
 
-    it('명령 계단: 칩을 다른 계단으로 끌어 옮기고, 금지 계단에는 놓을 수 없다', async () => {
+    it('명령 목록: 찾기는 이름으로 거르고, 한 인스턴스 보기와 고정 레벨 명령', async () => {
         await openCommands();
-        const say = within(step('Lv 1 · Guest')).getByRole('button', { name: /^Say$/ });
-        expect(say).not.toHaveAttribute('draggable');
-        dragTo(say, step('Lv 3 · Admin'));
-        await flush();
-        expect(window.api.permissionsUpdate).toHaveBeenCalledWith('g1', {
-            commandLevels: { 'mc-1/say': 2, 'mc-2/say': 2 },
-        });
-
-        dragTo(within(step('Lv 1 · Guest')).getByRole('button', { name: /^Say$/ }), step('Lv 0 · Banned'));
-        await flush();
-        expect(window.api.permissionsUpdate).toHaveBeenCalledTimes(1);
-    });
-
-    it('명령 계단: 옮긴 칩은 옛 계단 자리에서 새 계단으로 미끄러진다', async () => {
-        const steps = ['Lv 0 · Banned', 'Lv 1 · Guest', 'Lv 2 · User', 'Lv 3 · Admin', 'Lv 4 · Owner'];
-        const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
-            this: HTMLElement,
-        ) {
-            const left = steps.indexOf(this.closest?.('li')?.getAttribute('aria-label') as string) * 100;
-            return { left, top: 0, width: 10, height: 10, right: left + 10, bottom: 10, x: left, y: 0 } as DOMRect;
-        });
-        const animate = vi.fn();
-        HTMLElement.prototype.animate = animate;
-        try {
-            await openCommands();
-            const moved = baseBoard();
-            moved.items = moved.items.map((i) => (i.name === 'say' ? { ...i, level: 2, overridden: true } : i));
-            vi.mocked(window.api.permissionsCommands).mockResolvedValue(moved);
-            const say = within(step('Lv 1 · Guest')).getByRole('button', { name: /^Say$/ });
-            pressAndMove(say, step('Lv 3 · Admin'));
-            expect(say).toHaveClass('is-dragging');
-            release();
-            await flush();
-            expect(within(step('Lv 3 · Admin')).getByRole('button', { name: /^Say$/ })).toBeInTheDocument();
-            expect(animate).toHaveBeenCalledWith(
-                [{ transform: 'translate(-200px, 0px)' }, { transform: 'none' }],
-                expect.objectContaining({ duration: 260 }),
-            );
-        } finally {
-            rect.mockRestore();
-            delete (HTMLElement.prototype as Partial<HTMLElement>).animate;
-        }
-    });
-
-    it('명령 계단: 한 인스턴스 보기와 고정 레벨 명령', async () => {
-        await openCommands();
+        fireEvent.change(screen.getByLabelText('Find a command'), { target: { value: 'sto' } });
+        expect(screen.queryByLabelText('Say: who can use it')).toBeNull();
+        expect(screen.getByLabelText('Stop: who can use it')).toBeInTheDocument();
+        fireEvent.change(screen.getByLabelText('Find a command'), { target: { value: 'zzz' } });
+        expect(screen.getByText('No matching command.')).toBeInTheDocument();
+        fireEvent.change(screen.getByLabelText('Find a command'), { target: { value: '' } });
         pickOption(screen.getByLabelText('View'), 'Creative');
-        expect(within(step('Lv 3 · Admin')).getByRole('button', { name: /^Stop$/ })).toBeInTheDocument();
-        fireEvent.click(within(step('Lv 4 · Owner')).getByRole('button', { name: /Update/ }));
-        const edit = screen.getByRole('region', { name: 'Update' });
-        expect(within(edit).getByText(/fixed and can't be moved/)).toBeInTheDocument();
-        expect(within(edit).queryByRole('button', { name: /^Lv/ })).toBeNull();
+        expect(screen.getByLabelText('Stop: who can use it')).toHaveTextContent('Admin and up');
+        expect(screen.getByLabelText('Update: who can use it')).toBeDisabled();
+        expect(screen.getByText(/affects the whole PC/)).toBeInTheDocument();
     });
 
-    it('인스턴스 메뉴의 계단은 그 인스턴스 명령과 서버 전체 명령만 보이고, 서버 전체 명령은 그렇다고 알린다', async () => {
+    it('인스턴스 메뉴의 목록은 그 인스턴스 명령과 서버 전체 명령만 보이고, 서버 전체 명령은 그렇다고 알린다', async () => {
         await openCommands({ instance: 'mc-2' });
         expect(screen.queryByLabelText('View')).toBeNull();
-        expect(within(step('Lv 3 · Admin')).getByRole('button', { name: /^Stop$/ })).toBeInTheDocument();
-        expect(screen.queryByRole('button', { name: /Stop · / })).toBeNull();
-        fireEvent.click(within(step('Lv 3 · Admin')).getByRole('button', { name: /Create server/ }));
-        expect(screen.getByText(/server-wide command/)).toBeInTheDocument();
+        expect(screen.getByLabelText('Stop: who can use it')).toHaveTextContent('Admin and up');
+        expect(screen.queryByLabelText(/Stop · /)).toBeNull();
+        expect(screen.getAllByText(/Server-wide/).length).toBeGreaterThan(0);
     });
 
     it('명령별 레벨이 있으면 프리셋을 바꾸기 전에 다시 맞춘다고 묻고, 되돌리기도 같은 확인을 거친다', async () => {
@@ -571,7 +511,7 @@ describe('권한 화면', () => {
         expect(screen.getByRole('heading', { name: /Survival/ })).toBeInTheDocument();
         expect(screen.queryByRole('tab', { name: 'Member levels' })).toBeNull();
         expect(screen.queryByRole('button', { name: 'Mint' })).toBeNull();
-        expect(step('Lv 2 · User')).toBeInTheDocument();
+        expect(screen.getByLabelText('Stop: who can use it')).toBeInTheDocument();
         fireEvent.click(screen.getByRole('button', { name: /Instances/ }));
         expect(screen.getByRole('button', { name: 'Survival permissions' })).toBeInTheDocument();
     });

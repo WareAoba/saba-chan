@@ -46,6 +46,32 @@ const SOUND_KINDS: [Exclude<keyof SoundSettings, 'enabled'>, string][] = [
     ['update', 'gui:settings_modal.sound_update'],
 ];
 
+/** 설정 탭 (사용자 요청 2026-11-06: 고급에 몰린 설정을 갈래별로 나눈다). 순서가 화면 순서다 */
+const TABS = ['general', 'notify', 'appearance', 'console', 'servers', 'connection', 'storage', 'security', 'troubleshoot'] as const;
+type SettingsTab = (typeof TABS)[number];
+const TAB_LABELS: Record<SettingsTab, string> = {
+    general: 'gui:settings_modal.general',
+    notify: 'gui:settings_modal.tab_notify',
+    appearance: 'gui:settings_modal.appearance',
+    console: 'gui:settings_modal.tab_console',
+    servers: 'gui:settings_modal.tab_servers',
+    connection: 'gui:settings_modal.tab_connection',
+    storage: 'gui:settings_modal.tab_storage',
+    security: 'gui:settings_modal.tab_security',
+    troubleshoot: 'gui:settings_modal.tab_troubleshoot',
+};
+const TAB_ICONS: Record<SettingsTab, string> = {
+    general: 'settings',
+    notify: 'bell',
+    appearance: 'palette',
+    console: 'terminal',
+    servers: 'server',
+    connection: 'network',
+    storage: 'package',
+    security: 'key',
+    troubleshoot: 'tool',
+};
+
 /** 모든 구문 강조 색을 기본색으로 (빈 값) */
 const clearedTokenColors = () => Object.fromEntries(TOKENS.map((token) => [token, '']));
 
@@ -99,11 +125,11 @@ function SettingsModal({
 }: SettingsModalProps) {
     const { t, i18n } = useTranslation(['gui', 'common']);
     const daemonTarget = useDaemonTarget();
-    const [activeTab, setActiveTab] = useState('general');
+    const [activeTab, setActiveTab] = useState<SettingsTab>('general');
     const [showUpdatePanel, setShowUpdatePanel] = useState(false);
     const [updatePanelExiting, setUpdatePanelExiting] = useState(false);
     // 사바 스토리지에서 돌아갈 탭 (들어온 탭으로 돌아간다)
-    const storageReturnTab = useRef('general');
+    const storageReturnTab = useRef<SettingsTab>('general');
     // 사바 스토리지를 열 때 처음 보일 탭 (설정을 '익스텐션'으로 열면 익스텐션 탭)
     const [storageTab, setStorageTab] = useState('components');
     const [localRefreshInterval, setLocalRefreshInterval] = useState(refreshInterval);
@@ -125,34 +151,8 @@ function SettingsModal({
     // 이스터에그: 정보 페이지 로고를 다섯 번 누르면 이름 해명
     const logoClicks = useRef(0);
     const [aboutRevealOrigin, setAboutRevealOrigin] = useState({ x: '100%', y: '0%' });
-    const tabOrder = ['general', 'appearance', 'advanced'];
     const { isClosing, requestClose } = useModalClose(onClose);
 
-    // ── Dynamic tab indicator ──
-    const tabsRef = useRef<HTMLDivElement>(null);
-    const indicatorRef = useRef<HTMLDivElement>(null);
-
-    const syncIndicator = useCallback(() => {
-        const container = tabsRef.current;
-        const indicator = indicatorRef.current;
-        if (!container || !indicator) return;
-        const activeBtn = container.querySelector('.settings-tab.active');
-        if (!activeBtn) return;
-        const containerRect = container.getBoundingClientRect();
-        const btnRect = activeBtn.getBoundingClientRect();
-        indicator.style.left = `${btnRect.left - containerRect.left}px`;
-        indicator.style.width = `${btnRect.width}px`;
-    }, []);
-
-    // biome-ignore lint/correctness/useExhaustiveDependencies: activeTab/showUpdatePanel/isOpen trigger DOM changes that syncIndicator reads via querySelector
-    useEffect(() => {
-        requestAnimationFrame(syncIndicator);
-    }, [activeTab, showUpdatePanel, isOpen, syncIndicator]);
-
-    useEffect(() => {
-        window.addEventListener('resize', syncIndicator);
-        return () => window.removeEventListener('resize', syncIndicator);
-    }, [syncIndicator]);
     const devMode = useDevMode();
     const autoGeneratePasswords = useSettingsStore((s) => s.autoGeneratePasswords);
     const portConflictCheck = useSettingsStore((s) => s.portConflictCheck);
@@ -200,12 +200,13 @@ function SettingsModal({
     }, [isOpen]);
 
     // 탭 전환 핸들러
-    const handleTabChange = (newTab: string) => {
-        const oldIndex = tabOrder.indexOf(activeTab);
-        const newIndex = tabOrder.indexOf(newTab);
+    const handleTabChange = (newTab: SettingsTab) => {
+        const oldIndex = TABS.indexOf(activeTab as SettingsTab);
+        const newIndex = TABS.indexOf(newTab as SettingsTab);
         if (newTab === activeTab) return;
         setShowUpdatePanel(false); // 탭 전환 시 업데이트 패널 해제
-        setSlideDirection(newIndex > oldIndex ? 'slide-left' : 'slide-right');
+        // 세로 탭: 아래 탭이면 아래에서, 위 탭이면 위에서 들어온다
+        setSlideDirection(newIndex > oldIndex ? 'slide-up' : 'slide-down');
         setActiveTab(newTab);
     };
 
@@ -422,29 +423,28 @@ function SettingsModal({
                                 <Icon name="info" size="sm" />
                             </button>
                         </div>
-
-                        <div className="settings-modal-tabs" ref={tabsRef}>
-                            <div className="settings-tab-indicator" ref={indicatorRef} />
-                            <button
-                                className={clsx('settings-tab', { active: activeTab === 'general' })}
-                                onClick={() => handleTabChange('general')}
-                            >
-                                {t('gui:settings_modal.general')}
-                            </button>
-                            <button
-                                className={clsx('settings-tab', { active: activeTab === 'appearance' })}
-                                onClick={() => handleTabChange('appearance')}
-                            >
-                                {t('gui:settings_modal.appearance')}
-                            </button>
-                            <button
-                                className={clsx('settings-tab', { active: activeTab === 'advanced' })}
-                                onClick={() => handleTabChange('advanced')}
-                            >
-                                {t('gui:settings_modal.advanced_tab')}
-                            </button>
-                        </div>
                     </>
+                )}
+
+                <div className="settings-body">
+                {!showUpdatePanel && (
+                    <div className="settings-modal-tabs" role="tablist" aria-orientation="vertical" aria-label={t('gui:settings_modal.title')}>
+                        {TABS.map((id) => (
+                            <button
+                                key={id}
+                                type="button"
+                                role="tab"
+                                id={`settings-tab-${id}`}
+                                aria-selected={activeTab === id}
+                                aria-controls={`settings-panel-${id}`}
+                                className={clsx('settings-tab', { active: activeTab === id })}
+                                onClick={() => handleTabChange(id)}
+                            >
+                                <Icon name={TAB_ICONS[id]} size="sm" />
+                                <span>{t(TAB_LABELS[id])}</span>
+                            </button>
+                        ))}
+                    </div>
                 )}
 
                 <div className={clsx('settings-modal-content', { 'update-panel-mode': showUpdatePanel })}>
@@ -453,9 +453,12 @@ function SettingsModal({
                         <div
                             className={clsx('settings-tab-content', slideDirection)}
                             key="general"
+                            id="settings-panel-general"
+                            role="tabpanel"
+                            aria-labelledby="settings-tab-general"
                             onAnimationEnd={() => setSlideDirection('')}
                         >
-                            <h3>{t('gui:settings_modal.general')}</h3>
+                            <h3>{t(TAB_LABELS.general)}</h3>
 
                             <div className="setting-item">
                                 <label className="setting-label">
@@ -519,6 +522,21 @@ function SettingsModal({
                                 />
                             </div>
 
+                            {autostartAvailable() && <AutostartSetting />}
+                        </div>
+                    )}
+
+                    {activeTab === 'notify' && !showUpdatePanel && (
+                        <div
+                            className={clsx('settings-tab-content', slideDirection)}
+                            key="notify"
+                            id="settings-panel-notify"
+                            role="tabpanel"
+                            aria-labelledby="settings-tab-notify"
+                            onAnimationEnd={() => setSlideDirection('')}
+                        >
+                            <h3>{t(TAB_LABELS.notify)}</h3>
+
                             <div className="setting-item">
                                 <label className="setting-label">
                                     <span className="setting-title">
@@ -539,8 +557,6 @@ function SettingsModal({
                                     }))}
                                 />
                             </div>
-
-                            {autostartAvailable() && <AutostartSetting />}
 
                             {/* 중대한 알림을 OS 알림으로도 */}
                             <div className="setting-item">
@@ -587,34 +603,6 @@ function SettingsModal({
                                     </div>
                                 )}
                             </div>
-
-                            {/* 사바 스토리지 — 클릭하면 SabaStorage로 전환 */}
-                            <div
-                                className="setting-item setting-item-clickable"
-                                onClick={openStorage}
-                            >
-                                <label className="setting-label">
-                                    <span className="setting-title">
-                                        <Icon name="package" size="sm" /> {t('saba_storage.title', '사바 스토리지')}
-                                    </span>
-                                    <span className="setting-description">
-                                        {t('saba_storage.setting_description', '업데이트, 모듈, 익스텐션 관리')}
-                                    </span>
-                                </label>
-                                <Icon name="chevronRight" size="sm" color="var(--brand-primary)" />
-                            </div>
-                        </div>
-                    )}
-
-                    {showUpdatePanel && (
-                        <div className="settings-tab-content" key="update-panel">
-                            <SabaStorage
-                                key={storageTab}
-                                onBack={handleUpdatePanelBack}
-                                isExiting={updatePanelExiting}
-                                devMode={devMode}
-                                initialTab={storageTab}
-                            />
                         </div>
                     )}
 
@@ -622,9 +610,12 @@ function SettingsModal({
                         <div
                             className={clsx('settings-tab-content', slideDirection)}
                             key="appearance"
+                            id="settings-panel-appearance"
+                            role="tabpanel"
+                            aria-labelledby="settings-tab-appearance"
                             onAnimationEnd={() => setSlideDirection('')}
                         >
-                            <h3>{t('gui:settings_modal.appearance')}</h3>
+                            <h3>{t(TAB_LABELS.appearance)}</h3>
 
                             {/* ── 1. 라이트/다크 테마 ── */}
                             <div className="setting-item">
@@ -747,8 +738,30 @@ function SettingsModal({
                                 />
                             </div>
 
-                            {/* ── 콘솔 커스터마이즈 섹션 ── */}
-                            <h3 style={{ marginTop: 16 }}>{t('gui:settings_modal.console_appearance_title', 'Console Appearance')}</h3>
+                            {/* ── 초기화 버튼 ── */}
+                            <div className="setting-item setting-item-clickable" onClick={handleResetTheme} style={{ marginTop: 8 }}>
+                                <label className="setting-label" style={{ cursor: 'pointer' }}>
+                                    <span className="setting-title">
+                                        <Icon name="refresh" size="sm" /> {t('gui:settings_modal.reset_theme_label', 'Reset to Default')}
+                                    </span>
+                                    <span className="setting-description">
+                                        {t('gui:settings_modal.reset_theme_description', 'Restore all appearance settings to defaults')}
+                                    </span>
+                                </label>
+                            </div>
+                        </div>
+                    )}
+
+                    {activeTab === 'console' && !showUpdatePanel && (
+                        <div
+                            className={clsx('settings-tab-content', slideDirection)}
+                            key="console"
+                            id="settings-panel-console"
+                            role="tabpanel"
+                            aria-labelledby="settings-tab-console"
+                            onAnimationEnd={() => setSlideDirection('')}
+                        >
+                            <h3>{t(TAB_LABELS.console)}</h3>
 
                             {/* ── 5-1. 콘솔 구문강조 토글 ── */}
                             <div className="setting-item">
@@ -971,27 +984,43 @@ function SettingsModal({
                                 })()}
                             </div>
 
-                            {/* ── 초기화 버튼 ── */}
-                            <div className="setting-item setting-item-clickable" onClick={handleResetTheme} style={{ marginTop: 8 }}>
-                                <label className="setting-label" style={{ cursor: 'pointer' }}>
+                            {/* 콘솔 버퍼 크기 설정 */}
+                            <div className="setting-item">
+                                <label className="setting-label">
                                     <span className="setting-title">
-                                        <Icon name="refresh" size="sm" /> {t('gui:settings_modal.reset_theme_label', 'Reset to Default')}
+                                        <Icon name="terminal" size="sm" />{' '}
+                                        {t('gui:settings_modal.console_buffer_label')}
                                     </span>
                                     <span className="setting-description">
-                                        {t('gui:settings_modal.reset_theme_description', 'Restore all appearance settings to defaults')}
+                                        {t('gui:settings_modal.console_buffer_description')}
                                     </span>
                                 </label>
+                                <CustomDropdown
+                                    className="setting-select"
+                                    value={localConsoleBuffer}
+                                    onChange={(val) => handleConsoleBufferChange(Number(val))}
+                                    options={[
+                                        { value: 500, label: '500' },
+                                        { value: 1000, label: '1,000' },
+                                        { value: 2000, label: '2,000' },
+                                        { value: 5000, label: '5,000' },
+                                        { value: 10000, label: '10,000' },
+                                    ]}
+                                />
                             </div>
                         </div>
                     )}
 
-                    {activeTab === 'advanced' && !showUpdatePanel && (
+                    {activeTab === 'servers' && !showUpdatePanel && (
                         <div
                             className={clsx('settings-tab-content', slideDirection)}
-                            key="advanced"
+                            key="servers"
+                            id="settings-panel-servers"
+                            role="tabpanel"
+                            aria-labelledby="settings-tab-servers"
                             onAnimationEnd={() => setSlideDirection('')}
                         >
-                            <h3>{t('gui:settings_modal.advanced_tab')}</h3>
+                            <h3>{t(TAB_LABELS.servers)}</h3>
 
                             {/* 비밀번호 자동 생성 설정 */}
                             <div className="setting-item">
@@ -1109,6 +1138,21 @@ function SettingsModal({
                                         }))}
                                 />
                             </div>
+                        </div>
+                    )}
+
+                    {activeTab === 'connection' && !showUpdatePanel && (
+                        <div
+                            className={clsx('settings-tab-content', slideDirection)}
+                            key="connection"
+                            id="settings-panel-connection"
+                            role="tabpanel"
+                            aria-labelledby="settings-tab-connection"
+                            onAnimationEnd={() => setSlideDirection('')}
+                        >
+                            <h3>{t(TAB_LABELS.connection)}</h3>
+
+                            {remoteDaemonAvailable() && <RemoteDaemonSection onAsk={onTestModal} />}
 
                             {/* IPC 포트 설정 */}
                             <div className="setting-item">
@@ -1165,41 +1209,99 @@ function SettingsModal({
                                     placeholder="https://relay.saba-chan.app"
                                 />
                             </div>
+                        </div>
+                    )}
 
-                            {/* 콘솔 버퍼 크기 설정 */}
-                            <div className="setting-item">
+                    {activeTab === 'storage' && !showUpdatePanel && (
+                        <div
+                            className={clsx('settings-tab-content', slideDirection)}
+                            key="storage"
+                            id="settings-panel-storage"
+                            role="tabpanel"
+                            aria-labelledby="settings-tab-storage"
+                            onAnimationEnd={() => setSlideDirection('')}
+                        >
+                            <h3>{t(TAB_LABELS.storage)}</h3>
+
+                            {/* 사바 스토리지 — 클릭하면 SabaStorage로 전환 */}
+                            <div
+                                className="setting-item setting-item-clickable"
+                                onClick={openStorage}
+                            >
                                 <label className="setting-label">
                                     <span className="setting-title">
-                                        <Icon name="terminal" size="sm" />{' '}
-                                        {t('gui:settings_modal.console_buffer_label')}
+                                        <Icon name="package" size="sm" /> {t('saba_storage.title', '사바 스토리지')}
                                     </span>
                                     <span className="setting-description">
-                                        {t('gui:settings_modal.console_buffer_description')}
+                                        {t('saba_storage.setting_description', '업데이트, 모듈, 익스텐션 관리')}
                                     </span>
                                 </label>
-                                <CustomDropdown
-                                    className="setting-select"
-                                    value={localConsoleBuffer}
-                                    onChange={(val) => handleConsoleBufferChange(Number(val))}
-                                    options={[
-                                        { value: 500, label: '500' },
-                                        { value: 1000, label: '1,000' },
-                                        { value: 2000, label: '2,000' },
-                                        { value: 5000, label: '5,000' },
-                                        { value: 10000, label: '10,000' },
-                                    ]}
-                                />
+                                <Icon name="chevronRight" size="sm" color="var(--brand-primary)" />
                             </div>
 
-                            {remoteDaemonAvailable() && <RemoteDaemonSection onAsk={onTestModal} />}
                             {/* 원격 데몬을 다루는 동안은 경로를 그 PC의 폴더에서 고른다 (RemotePathPicker, D2). 데몬을 바꾸면 다시 읽는다 */}
                             {folderPathsAvailable() && <FolderPathsSection key={daemonTarget || 'local'} />}
 
                             {dataTransferAvailable() && <DataTransferSection key={daemonTarget || 'local'} />}
+                        </div>
+                    )}
+
+                    {activeTab === 'security' && !showUpdatePanel && (
+                        <div
+                            className={clsx('settings-tab-content', slideDirection)}
+                            key="security"
+                            id="settings-panel-security"
+                            role="tabpanel"
+                            aria-labelledby="settings-tab-security"
+                            onAnimationEnd={() => setSlideDirection('')}
+                        >
+                            <h3>{t(TAB_LABELS.security)}</h3>
 
                             {unisolatedAvailable() && <UnisolatedSection />}
 
                             {extensionGuiAvailable() && <ExtensionGuiSection />}
+                        </div>
+                    )}
+
+                    {activeTab === 'troubleshoot' && !showUpdatePanel && (
+                        <div
+                            className={clsx('settings-tab-content', slideDirection)}
+                            key="troubleshoot"
+                            id="settings-panel-troubleshoot"
+                            role="tabpanel"
+                            aria-labelledby="settings-tab-troubleshoot"
+                            onAnimationEnd={() => setSlideDirection('')}
+                        >
+                            <h3>{t(TAB_LABELS.troubleshoot)}</h3>
+
+                            {/* 데몬 진단 정보 (GET /api/diagnostics) */}
+                            {diagnosticsAvailable() && (
+                                <div className="setting-item setting-item-stack">
+                                    <label className="setting-label">
+                                        <span className="setting-title">
+                                            <Icon name="tool" size="sm" /> {t('gui:diagnostics.title')}
+                                        </span>
+                                        <span className="setting-description">{t('gui:diagnostics.description')}</span>
+                                    </label>
+                                    <DiagnosticsPanel />
+                                </div>
+                            )}
+
+                            {/* GUI 설정 기본값으로 (데몬 /api/config/gui/reset) */}
+                            {typeof window.api?.configReset === 'function' && <ResetGuiSettings />}
+
+                            {/* 사바쨩 삭제 */}
+                            <div className="setting-item setting-item-danger" onClick={handleUninstall}>
+                                <label className="setting-label" style={{ cursor: 'pointer' }}>
+                                    <span className="setting-title setting-title-danger">
+                                        <Icon name="trash" size="sm" /> {t('gui:settings_modal.uninstall_label')}
+                                    </span>
+                                    <span className="setting-description">
+                                        {t('gui:settings_modal.uninstall_description')}
+                                    </span>
+                                </label>
+                                <Icon name="chevronRight" size="sm" color="var(--stop)" />
+                            </div>
 
                             {/* GUI 컴포넌트 테스트 섹션 (개발자 모드 전용) */}
                             {devMode && (
@@ -1392,37 +1494,21 @@ function SettingsModal({
                                     </div>
                                 </div>
                             )}
-
-                            {/* 데몬 진단 정보 (GET /api/diagnostics) */}
-                            {diagnosticsAvailable() && (
-                                <div className="setting-item setting-item-stack">
-                                    <label className="setting-label">
-                                        <span className="setting-title">
-                                            <Icon name="tool" size="sm" /> {t('gui:diagnostics.title')}
-                                        </span>
-                                        <span className="setting-description">{t('gui:diagnostics.description')}</span>
-                                    </label>
-                                    <DiagnosticsPanel />
-                                </div>
-                            )}
-
-                            {/* GUI 설정 기본값으로 (데몬 /api/config/gui/reset) */}
-                            {typeof window.api?.configReset === 'function' && <ResetGuiSettings />}
-
-                            {/* 사바쨩 삭제 */}
-                            <div className="setting-item setting-item-danger" onClick={handleUninstall}>
-                                <label className="setting-label" style={{ cursor: 'pointer' }}>
-                                    <span className="setting-title setting-title-danger">
-                                        <Icon name="trash" size="sm" /> {t('gui:settings_modal.uninstall_label')}
-                                    </span>
-                                    <span className="setting-description">
-                                        {t('gui:settings_modal.uninstall_description')}
-                                    </span>
-                                </label>
-                                <Icon name="chevronRight" size="sm" color="var(--stop)" />
-                            </div>
                         </div>
                     )}
+
+                    {showUpdatePanel && (
+                        <div className="settings-tab-content" key="update-panel">
+                            <SabaStorage
+                                key={storageTab}
+                                onBack={handleUpdatePanelBack}
+                                isExiting={updatePanelExiting}
+                                devMode={devMode}
+                                initialTab={storageTab}
+                            />
+                        </div>
+                    )}
+                </div>
                 </div>
 
                 {/* ── 정보 페이지 (원형 확장 오버레이) ── */}

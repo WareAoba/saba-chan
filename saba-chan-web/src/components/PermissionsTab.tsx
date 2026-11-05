@@ -7,7 +7,7 @@ import { useTranslation } from 'react-i18next';
 import { useApp, useData } from '../store';
 import { Dropdown } from './Dropdown';
 import { Icon } from './icons';
-import { PermissionStairs, type PermissionWriter } from './PermissionStairs';
+import { CommandList, type PermissionWriter } from './CommandList';
 import { Avatar, Button, Card, Empty, errorText, failed, Loading, Segments } from './ui';
 import type { Server, TFn, WebApi } from '../types';
 
@@ -531,7 +531,7 @@ function InstanceMenu({ api, guildId, data, instance, onBack }: InstanceMenuProp
             />
             {view === 'commands' ? (
                 board ? (
-                    <PermissionStairs
+                    <CommandList
                         api={api}
                         guildId={guildId}
                         perm={perm}

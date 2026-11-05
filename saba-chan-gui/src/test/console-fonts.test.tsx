@@ -72,7 +72,7 @@ describe('설정 > 화면 > 콘솔 글꼴', () => {
 
     it('글자마다 드롭다운이 있고, 고르면 그 칸만 바뀐다', async () => {
         render(<SettingsModal isOpen onClose={vi.fn()} />);
-        fireEvent.click(screen.getByRole('button', { name: i18n.t('gui:settings_modal.appearance') }));
+        fireEvent.click(screen.getByRole('tab', { name: i18n.t('gui:settings_modal.tab_console') }));
         const box = screen.getByText(i18n.t('gui:settings_modal.console_fonts_label')).closest('.setting-item');
         const ko = within(box as HTMLElement).getByRole('combobox', { name: i18n.t('gui:settings_modal.console_fonts_ko') });
         // 한글 칸은 한글 글꼴만
