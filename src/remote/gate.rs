@@ -362,9 +362,17 @@ pub fn param<'a>(pattern: &str, segments: &'a [String], name: &str) -> Option<&'
     segments.get(at).map(String::as_str)
 }
 
-/// 패턴이 조각들과 맞으면 리터럴이 맞은 자리 (앞쪽 리터럴이 클수록 앞선다)
+/// 패턴이 조각들과 맞으면 리터럴이 맞은 자리 (앞쪽 리터럴이 클수록 앞선다).
+/// 끝의 `{*name}`은 라우터처럼 남은 조각 하나 이상과 맞는다
 fn match_score(pattern: &str, segments: &[&str]) -> Option<Vec<bool>> {
-    let parts: Vec<&str> = pattern.trim_start_matches('/').split('/').collect();
+    let mut parts: Vec<&str> = pattern.trim_start_matches('/').split('/').collect();
+    let segments = match parts.last() {
+        Some(p) if p.starts_with("{*") && segments.len() >= parts.len() => {
+            parts.pop();
+            &segments[..parts.len()]
+        }
+        _ => segments,
+    };
     if parts.len() != segments.len() {
         return None;
     }
