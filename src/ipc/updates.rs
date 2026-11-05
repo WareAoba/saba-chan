@@ -321,19 +321,20 @@ fn hint_wants_check(hint: &Value, channel: &str, current: &str) -> bool {
 
 /// 릴레이가 새 릴리즈를 알렸다 (`relay_agent` 하트비트). 대조해서 맞으면 주기 확인과 같은 길(`check_and_follow_up`)로
 /// 한 번 확인한다. 업데이트 확인을 꺼 두었으면 하지 않는다.
-/// 모든 데몬이 한꺼번에 릴레이에 묻지 않게 0~60초 사이에서 늦춰 시작한다
+/// 모든 데몬이 한꺼번에 릴레이에 묻지 않게 0~60초 사이에서 늦춘 뒤 그때의 설정으로 대조한다
 pub fn on_update_hint(state: &UpdateState, hint: &Value, shutdown: tokio_util::sync::CancellationToken) {
     let hint = hint.clone();
     let state = state.clone();
     tokio::spawn(async move {
-        let cfg = state.manager.read().await.get_config();
-        if !cfg.enabled || !hint_wants_check(&hint, &cfg.channel, crate::relay_agent::AGENT_VERSION) {
-            return;
-        }
         let jitter = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.subsec_millis()) as u64 * 60;
         tokio::select! {
             _ = shutdown.cancelled() => return,
             _ = tokio::time::sleep(std::time::Duration::from_millis(jitter)) => {}
+        }
+        // 기다리는 사이 설정을 바꿨을 수 있다 — 기다린 뒤의 설정으로 대조한다
+        let cfg = state.manager.read().await.get_config();
+        if !cfg.enabled || !hint_wants_check(&hint, &cfg.channel, crate::relay_agent::AGENT_VERSION) {
+            return;
         }
         if let Err(e) = check_and_follow_up(&state).await {
             tracing::warn!("[Updates] Check after relay release notice failed: {}", e);
