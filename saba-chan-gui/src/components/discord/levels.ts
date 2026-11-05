@@ -60,6 +60,8 @@ export interface StairChip {
     risk?: string;
     confirmRisk?: string | null;
     confirmMixed?: boolean;
+    /** 인스턴스마다 레벨이 다르다 (대표 칩만). 드롭다운은 한 레벨 대신 섞여 있다고 보인다 */
+    levelMixed?: boolean;
     kind?: string;
     fixed?: boolean;
     /** 계단 맨 아래의 help·list 칩 (실제 명령이 아니다) */
@@ -207,7 +209,7 @@ export function stairChips(board: CommandBoard | null | undefined, view = ALL_IN
             fixed: head.fixed,
             name: head.name,
         };
-        chips.push({ ...chip, id, level, items: list, overridden: main.some((i) => i.overridden) });
+        chips.push({ ...chip, id, level, levelMixed: byLevel.size > 1, items: list, overridden: main.some((i) => i.overridden) });
         for (const item of list.filter((i) => i.level !== level)) {
             chips.push({
                 ...chip,
@@ -216,6 +218,7 @@ export function stairChips(board: CommandBoard | null | undefined, view = ALL_IN
                 items: [item],
                 confirmRisk: item.confirmRisk || item.risk,
                 confirmMixed: false,
+                levelMixed: false,
                 instance: item.instance,
                 overridden: item.overridden,
             });

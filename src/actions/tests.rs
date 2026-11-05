@@ -995,6 +995,29 @@ async fn the_permission_board_lists_every_remote_command_at_the_level_it_needs()
     assert_eq!(board["instances"], json!([]));
 }
 
+/// 길드 하나에만 닿는 설정 액션은 기본이 주인이지만 길드가 옮길 수 있다. PC 전체에 닿는 것(업데이트, 공통 챗봇 값)은 고정이다
+#[tokio::test]
+async fn guild_scoped_settings_have_a_movable_default_level() {
+    let (state, id, _tmp) = server().await;
+    open_everything(&state).await;
+    let board = permission_board(&state, "g", "ko").await;
+    let item = |board: &Value, key: &str| board["items"].as_array().unwrap().iter().find(|i| i["key"] == key).cloned().unwrap();
+    for key in ["discord.settings.set", "chatbot.settings.set"] {
+        let it = item(&board, key);
+        assert_eq!((&it["level"], &it["preset"], &it["fixed"]), (&json!(3), &json!(3), &json!(false)), "{key}");
+    }
+    let notice = item(&board, &format!("{id}/instance.start_notice.set"));
+    assert_eq!((&notice["level"], &notice["fixed"]), (&json!(2), &json!(false)));
+    assert_eq!(item(&board, "update.apply")["fixed"], true);
+    assert!(crate::actions::overridable("discord.settings.set"));
+    assert!(!crate::actions::overridable("update.apply") && !crate::actions::overridable("chatbot.common.set"));
+    // 관리자(2)에게 내리면 관리자가 쓸 수 있다
+    set_node(&state, json!({ "ownerDiscordId": "owner", "members": { "admin": 2 }, "commandLevels": { "discord.settings.set": 2 } })).await;
+    assert!(plan(&state, "discord.settings.set", None, &json!({ "locale": "ko" }), &relay("admin", false)).await.is_ok());
+    assert_eq!(item(&permission_board(&state, "g", "ko").await, "discord.settings.set")["overridden"], true);
+    assert_eq!(plan(&state, "chatbot.settings.set", None, &json!({ "memo": "x" }), &relay("admin", false)).await.unwrap_err().code, "PERMISSION_DENIED");
+}
+
 /// 계단 항목마다 되묻기 단계 키(`commandRisks`와 같은 `<서버>/<액션 id>`)와 이 길드에서 쓰는 단계를 싣는다
 #[tokio::test]
 async fn the_permission_board_carries_each_commands_confirm_tier() {

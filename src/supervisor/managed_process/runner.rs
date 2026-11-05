@@ -295,9 +295,11 @@ impl ManagedProcess {
                     if let Some(bytes) = chunk {
                         pos += bytes.len() as u64;
                         partial.extend_from_slice(&bytes);
-                        while let Some(nl) = partial.iter().position(|b| *b == b'\n') {
-                            let raw: Vec<u8> = partial.drain(..=nl).collect();
-                            let raw = String::from_utf8_lossy(&raw);
+                        // 줄마다 버퍼를 앞으로 당기지 않는다: 위치만 옮기며 자르고, 남은 꼬리는 끝에서 한 번만 정리한다
+                        let mut start = 0;
+                        while let Some(nl) = partial[start..].iter().position(|b| *b == b'\n') {
+                            let raw = String::from_utf8_lossy(&partial[start..start + nl + 1]);
+                            start += nl + 1;
                             let mut line = parse_disk_log_line(0, raw.trim_end_matches(['\r', '\n']));
                             line.level = match line.source {
                                 LogSource::System => line.level,
@@ -311,6 +313,7 @@ impl ManagedProcess {
                                 buf.push_at(line.timestamp, line.source, line.content, line.level);
                             }
                         }
+                        partial.drain(..start);
                     }
                     if stopped {
                         break;
@@ -449,6 +452,32 @@ mod tests {
         assert!(wait_for(&proc, "old news").await);
         let line = proc.get_recent_console(100).await.into_iter().find(|l| l.content == "old news").unwrap();
         assert_eq!(line.timestamp, written);
+    }
+
+    /// 한 번에 여러 줄과 끝나지 않은 줄이 들어와도 줄마다 한 번씩, 순서대로 콘솔에 붙는다
+    #[tokio::test]
+    async fn followed_runner_lines_split_a_chunk_and_keep_the_unfinished_tail() {
+        let tmp = tempfile::tempdir().unwrap();
+        let inst = tmp.path();
+        let run = run_dir(inst);
+        std::fs::create_dir_all(&run).unwrap();
+        let log = inst.join("session.log");
+        std::fs::write(&log, "").unwrap();
+        std::fs::write(run.join(TOKEN_FILE), "tok").unwrap();
+        let info = RunnerInfo { runner_pid: std::process::id(), pid: std::process::id(), port: 1, log: log.clone(), started_at: saba_runner::now(), cwd: None };
+        saba_runner::write_json(&runner_file(&run), &info).unwrap();
+        let proc = ManagedProcess::attach_runner(inst, None).await.expect("attached");
+
+        let line = |text: &str| saba_runner::format_line(1_700_000_000, saba_runner::Stream::Stdout, text);
+        let last = line("chunk line 3");
+        let (head, tail) = last.split_at(last.len() / 2);
+        let mut f = std::fs::OpenOptions::new().append(true).open(&log).unwrap();
+        std::io::Write::write_all(&mut f, format!("{}\n{}\n{}", line("chunk line 1"), line("chunk line 2"), head).as_bytes()).unwrap();
+        assert!(wait_for(&proc, "chunk line 2").await);
+        std::io::Write::write_all(&mut f, format!("{}\n", tail).as_bytes()).unwrap();
+        assert!(wait_for(&proc, "chunk line 3").await);
+        let got: Vec<String> = proc.get_recent_console(100).await.into_iter().map(|l| l.content).filter(|c| c.starts_with("chunk line")).collect();
+        assert_eq!(got, ["chunk line 1", "chunk line 2", "chunk line 3"]);
     }
 
     /// 러너에 닿지 못한 명령은 성공으로 알리지 않는다 (정지 명령이 버려진 채 기다리다 강제 종료되지 않게)

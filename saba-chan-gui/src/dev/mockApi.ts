@@ -490,8 +490,14 @@ const impl: Record<string, MockFn> = {
         return ok({
             sampled_at_ms: Date.now(),
             window_ms: 2000,
-            cpu: { cores: 16, total_percent: instCpu + jitter(14, 6), others_percent: jitter(14, 6) },
-            memory: { total_bytes: 32 * GB, used_bytes: 19.6 * GB, others_bytes: 19.6 * GB - 6.4 * GB },
+            cpu: {
+                cores: 16,
+                total_percent: instCpu + jitter(14, 6),
+                others_percent: jitter(14, 6),
+                clock_mhz: Math.round(jitter(4800, 400)),
+                temp_c: null,
+            },
+            memory: { total_bytes: 32 * GB, used_bytes: 19.6 * GB, others_bytes: 19.6 * GB - 6.4 * GB, clock_mhz: 6000 },
             disk_io: {
                 read_bps: jitter(0.3 * MB, 0.4 * MB),
                 write_bps: jitter(0.2 * MB, 0.3 * MB),
@@ -514,6 +520,15 @@ const impl: Record<string, MockFn> = {
                     sizes_at_ms: Date.now() - 30000,
                 },
             ],
+            volumes: [
+                { mount: 'C:\\', name: 'Windows', kind: 'ssd', total_bytes: 931 * GB, available_bytes: 312 * GB, rpm: 0 },
+                { mount: 'D:\\', name: 'Data', kind: 'hdd', total_bytes: 3726 * GB, available_bytes: 1229 * GB, rpm: 7200 },
+            ],
+            adapters: [
+                { name: 'Ethernet', rx_bps: jitter(3.2 * MB, 2 * MB), tx_bps: jitter(1.1 * MB, 1 * MB) },
+                { name: 'Wi-Fi', rx_bps: 0, tx_bps: 0 },
+            ],
+            gpus: [{ name: 'NVIDIA GeForce RTX 5090', util_percent: jitter(72, 10), clock_mhz: 2610, temp_c: jitter(64, 4) }],
             instances,
         });
     },

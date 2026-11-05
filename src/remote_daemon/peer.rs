@@ -102,10 +102,84 @@ enum Sent {
     NoAnswer,
 }
 
-async fn send(endpoint: &Endpoint, req: Request<Body>) -> Sent {
+/// 답을 마친 직접 연결을 다음 요청에 다시 쓰는 시간. 원격 데몬은 다음 요청 머리를 15초(`server::HEADER_TIMEOUT`)
+/// 기다린 뒤 연결을 닫으므로, 그보다 넉넉히 짧게 두어 닫히는 연결에 요청을 싣지 않는다 (GUI 폴링 0.5~2초는 이어 쓴다)
+const REUSE_WINDOW: Duration = if cfg!(test) { Duration::from_millis(500) } else { Duration::from_secs(8) };
+/// 원격 데몬마다 남겨 두는 직접 연결 수 (HTTP/1.1은 한 연결에 한 요청씩이라 동시 요청만큼 연다)
+const IDLE_PER_ENDPOINT: usize = 4;
+
+type IdleKey = (String, u16, String);
+/// 원격 데몬에 직접 붙은 연결 중 다시 쓸 수 있는 것: (연결, 마지막 요청의 답을 받은 시각)
+type Idle = std::collections::HashMap<IdleKey, Vec<(Sender, std::time::Instant)>>;
+static IDLE: std::sync::LazyLock<std::sync::Mutex<Idle>> =
+    std::sync::LazyLock::new(Default::default);
+
+fn idle_key(endpoint: &Endpoint) -> IdleKey {
+    (endpoint.address.clone(), endpoint.port, endpoint.cert_sha256.clone())
+}
+
+/// 비어 있고 아직 열려 있는, 최근에 쓴 연결 하나. 답 본문을 아직 받는 연결은 준비되지 않아 건너뛴다
+fn take_idle(endpoint: &Endpoint) -> Option<Sender> {
+    let mut idle = IDLE.lock().unwrap_or_else(|e| e.into_inner());
+    let list = idle.get_mut(&idle_key(endpoint))?;
+    list.retain(|(s, at)| !s.is_closed() && at.elapsed() < REUSE_WINDOW);
+    let i = list.iter().position(|(s, _)| s.is_ready())?;
+    Some(list.swap_remove(i).0)
+}
+
+fn keep_idle(endpoint: &Endpoint, sender: Sender) {
+    let mut idle = IDLE.lock().unwrap_or_else(|e| e.into_inner());
+    let list = idle.entry(idle_key(endpoint)).or_default();
+    list.retain(|(s, at)| !s.is_closed() && at.elapsed() < REUSE_WINDOW);
+    if list.len() < IDLE_PER_ENDPOINT {
+        list.push((sender, std::time::Instant::now()));
+    }
+}
+
+/// 남겨 둔 연결로 보낸 결과
+enum Reused {
+    Sent(Sent),
+    /// 남겨 둔 연결이 없거나 요청이 나가지 않았다: 이 요청을 새 연결로 보낸다
+    Unsent(Request<Body>),
+    /// 보내다 연결이 끊겼다: 요청을 다시 만들어 새 연결로 보낸다
+    Lost,
+}
+
+/// 남겨 둔 연결로 보내 본다. 읽기 요청(GET·HEAD)만: 원격 데몬이 막 다시 켜져 연결이 끊긴 것을 보내고 나서야 알면
+/// 원격 데몬이 받았는지 모르므로, 다시 보내도 되는 요청만 싣는다
+async fn send_reused(endpoint: &Endpoint, req: Request<Body>) -> Reused {
+    if !matches!(*req.method(), Method::GET | Method::HEAD) {
+        return Reused::Unsent(req);
+    }
+    let Some(mut sender) = take_idle(endpoint) else { return Reused::Unsent(req) };
+    match tokio::time::timeout(RESPONSE_TIMEOUT, sender.try_send_request(req)).await {
+        Ok(Ok(res)) => {
+            keep_idle(endpoint, sender);
+            Reused::Sent(Sent::Answered(res))
+        }
+        Ok(Err(mut e)) => e.take_message().map_or(Reused::Lost, Reused::Unsent),
+        Err(_) => Reused::Sent(Sent::NoAnswer),
+    }
+}
+
+/// `request`는 남겨 둔 연결이 끊겨 있었을 때 한 번 더 만든다
+async fn send(endpoint: &Endpoint, request: &(dyn Fn() -> Option<Request<Body>> + Sync)) -> Sent {
+    let Some(req) = request() else { return Sent::NotConnected };
+    // 방금 쓴 연결이 있으면 TCP·TLS를 새로 열지 않는다
+    let req = match send_reused(endpoint, req).await {
+        Reused::Sent(sent) => return sent,
+        Reused::Unsent(unsent) => unsent,
+        Reused::Lost => match request() {
+            Some(req) => req,
+            None => return Sent::NotConnected,
+        },
+    };
     let Some(mut sender) = open(endpoint).await else { return Sent::NotConnected };
     match tokio::time::timeout(RESPONSE_TIMEOUT, sender.send_request(req)).await {
-        Ok(Ok(res)) => Sent::Answered(res),
+        Ok(Ok(res)) => {
+            keep_idle(endpoint, sender);
+            Sent::Answered(res)
+        }
         _ => Sent::NoAnswer,
     }
 }
@@ -135,8 +209,7 @@ async fn through_tunnel(relay: Option<&Target>, host_id: &str, endpoint: &Endpoi
 /// (NAT 뒤 PC에 직접 붙기를 요청마다 기다리지 않게). `request`는 보낼 때마다 새로 만든다
 async fn send_to(relay: Option<&Target>, host_id: &str, endpoint: &Endpoint, request: &(dyn Fn() -> Option<Request<Body>> + Sync)) -> Sent {
     if !endpoint.address.is_empty() && !tunnel::is_open(relay, host_id) {
-        let Some(req) = request() else { return Sent::NotConnected };
-        match send(endpoint, req).await {
+        match send(endpoint, request).await {
             Sent::NotConnected => {}
             sent => return sent,
         }
@@ -518,6 +591,30 @@ mod tests {
 
         let (status, body) = json_of(forward(&file, Some(relay), "host-x", "/api/echo", get_req(&[]), CancellationToken::new()).await).await;
         assert_eq!((status, body["error_code"].as_str()), (404, Some("remote_unknown")));
+    }
+
+    /// 잇달아 보내는 요청(GUI 폴링)은 방금 쓴 직접 연결을 다시 쓴다. 원격 데몬이 닫았을 오래된 연결은 쓰지 않는다
+    #[tokio::test]
+    async fn back_to_back_requests_reuse_the_direct_connection() {
+        let state = Relay::default();
+        let relay = fake_relay(state.clone()).await;
+        let (_b, _stop) = remote_daemon(&relay, &state, None).await;
+        let dir = tempfile::tempdir().unwrap();
+        let file = ConfigFile::at(dir.path());
+        let daemon = connect(&file, Some(relay.clone()), "host-b").await.unwrap();
+        let key = idle_key(&endpoint_of(&daemon));
+        let idle = || IDLE.lock().unwrap().get(&key).map_or(0, Vec::len);
+
+        for _ in 0..3 {
+            let (status, _) = json_of(forward(&file, Some(relay.clone()), "host-b", "/api/echo", get_req(&[]), CancellationToken::new()).await).await;
+            assert_eq!(status, 200);
+            assert_eq!(idle(), 1, "one connection, used again");
+        }
+        // 원격 데몬이 다음 요청을 기다리다 닫을 만큼 지난 뒤에도 요청은 새 연결로 간다
+        tokio::time::sleep(Duration::from_millis(1200)).await;
+        let (status, _) = json_of(forward(&file, Some(relay), "host-b", "/api/echo", get_req(&[]), CancellationToken::new()).await).await;
+        assert_eq!(status, 200);
+        assert_eq!(idle(), 1);
     }
 
     /// 원격 데몬에 보낸 조작(읽기가 아닌 요청)은 이 PC의 감사 로그에도 시킨 쪽·데몬·경로로 남는다. 쿼리와 본문은 남기지 않는다

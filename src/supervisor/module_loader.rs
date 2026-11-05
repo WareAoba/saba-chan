@@ -1,6 +1,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::RwLock;
+use std::sync::{Arc, RwLock};
 use std::io::Read;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
@@ -2134,7 +2134,8 @@ pub fn module_json_schema() -> serde_json::Value {
 
 pub struct ModuleLoader {
     modules_dir: String,
-    cached_modules: RwLock<Option<Vec<LoadedModule>>>,
+    /// 자주 부르는 곳(서버 목록 2초, 콘솔 0.5초, 감시 주기)이 목록을 복제하지 않고 함께 본다
+    cached_modules: RwLock<Option<Arc<Vec<LoadedModule>>>>,
     /// 마지막 탐색에서 로드하지 못한 모듈
     load_errors: RwLock<Vec<ModuleLoadError>>,
 }
@@ -2172,6 +2173,11 @@ impl ModuleLoader {
 
     /// 모듈 디렉터리에서 모든 사용 가능한 모듈 발견 (ZIP 및 폴더 모두 지원)
     pub fn discover_modules(&self) -> Result<Vec<LoadedModule>> {
+        Ok(self.modules()?.as_ref().clone())
+    }
+
+    /// 캐시한 모듈 목록을 복제 없이 돌려준다. 캐시가 비었으면 모듈 폴더를 다시 읽는다
+    pub fn modules(&self) -> Result<Arc<Vec<LoadedModule>>> {
         // 캐시 확인
         if let Some(modules) = self.cached_modules.read().unwrap().as_ref() {
             return Ok(modules.clone());
@@ -2182,6 +2188,7 @@ impl ModuleLoader {
 
         if !Path::new(&self.modules_dir).exists() {
             tracing::warn!("Modules directory does not exist: {}", self.modules_dir);
+            let modules = Arc::new(modules);
             *self.cached_modules.write().unwrap() = Some(modules.clone());
             return Ok(modules);
         }
@@ -2239,6 +2246,7 @@ impl ModuleLoader {
             }
         }
 
+        let modules = Arc::new(modules);
         *self.cached_modules.write().unwrap() = Some(modules.clone());
         *self.load_errors.write().unwrap() = errors;
         Ok(modules)
@@ -2320,7 +2328,7 @@ impl ModuleLoader {
 
     /// 모듈 이름으로 모듈 조회
     pub fn get_module(&self, name: &str) -> Result<LoadedModule> {
-        let modules = self.discover_modules()?;
+        let modules = self.modules()?;
         modules
             .iter()
             .find(|m| m.metadata.name == name)
@@ -2361,6 +2369,27 @@ mod tests {
         let rules = &meta.syntax_highlight.unwrap().rules;
         assert_eq!((rules[0].underline, rules[0].priority, rules[0].background.as_deref()), (false, 0, None));
         assert_eq!((rules[1].underline, rules[1].priority, rules[1].background.as_deref()), (true, 5, Some("dim")));
+    }
+
+    /// 서버 목록·콘솔·감시 주기가 자주 부른다: 캐시한 목록을 복제하지 않고 함께 쓰고, 캐시를 비우면 다시 읽는다
+    #[test]
+    fn cached_modules_are_shared_until_the_cache_is_cleared() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(tmp.path().join("plain")).unwrap();
+        std::fs::write(
+            tmp.path().join("plain").join("module.toml"),
+            "[module]\nschema_version = 1\nname = \"plain\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n",
+        )
+        .unwrap();
+        std::fs::write(tmp.path().join("plain").join("lifecycle.py"), "").unwrap();
+        let loader = ModuleLoader::new(tmp.path().to_str().unwrap());
+        let first = loader.modules().unwrap();
+        assert!(Arc::ptr_eq(&first, &loader.modules().unwrap()));
+        assert_eq!(loader.get_module("plain").unwrap().metadata.name, "plain");
+        loader.invalidate_cache();
+        let reread = loader.modules().unwrap();
+        assert!(!Arc::ptr_eq(&first, &reread));
+        assert_eq!(reread.len(), 1);
     }
 
     #[test]

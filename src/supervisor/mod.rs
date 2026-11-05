@@ -484,10 +484,10 @@ impl Supervisor {
     /// `check_port_conflicts`에 전달하여 미지원 프로토콜 포트를 충돌 검사에서 제외합니다.
     pub(crate) fn build_module_protocols_map(&self) -> HashMap<String, Vec<String>> {
         let mut map = HashMap::new();
-        if let Ok(modules) = self.module_loader.discover_modules() {
-            for m in modules {
-                if let Some(protocols) = m.metadata.protocols_supported {
-                    map.insert(m.metadata.name, protocols);
+        if let Ok(modules) = self.module_loader.modules() {
+            for m in modules.iter() {
+                if let Some(protocols) = &m.metadata.protocols_supported {
+                    map.insert(m.metadata.name.clone(), protocols.clone());
                 }
             }
         }
@@ -618,8 +618,8 @@ impl Supervisor {
 
         // 3. working_dir + module.server_executable 자동 계산
         if let Some(ref work_dir) = instance.working_dir {
-            if let Ok(module) = self.module_loader.get_module(module_name) {
-                if let Some(ref server_exe) = module.metadata.server_executable {
+            if let Ok(modules) = self.module_loader.modules() {
+                if let Some(server_exe) = modules.iter().find(|m| m.metadata.name == module_name).and_then(|m| m.metadata.server_executable.as_ref()) {
                     let resolved = std::path::Path::new(work_dir).join(server_exe);
                     return Some(resolved.to_string_lossy().to_string());
                 }
@@ -2325,10 +2325,11 @@ impl Supervisor {
     /// 인스턴스의 모듈이 콘솔 입력(`protocols.supported`에 "stdin")을 받는가
     pub fn module_accepts_stdin(&self, instance_id: &str) -> bool {
         let Some(instance) = self.instance_store.get(instance_id) else { return false };
-        self.module_loader
-            .get_module(&instance.module_name)
-            .ok()
-            .and_then(|m| m.metadata.protocols_supported)
+        let Ok(modules) = self.module_loader.modules() else { return false };
+        modules
+            .iter()
+            .find(|m| m.metadata.name == instance.module_name)
+            .and_then(|m| m.metadata.protocols_supported.as_ref())
             .is_some_and(|p| p.iter().any(|s| s == "stdin"))
     }
 
@@ -3244,12 +3245,11 @@ impl Supervisor {
             self.stop_cooldowns.insert(dead_id.clone(), Instant::now());
         }
         
-        let instances = self.instance_store.list().to_vec();
-        let all_instances_snapshot = instances.clone();
+        let all_instances_snapshot = self.instance_store.list().to_vec();
         let mut tracked_count = 0;
         let mut auto_detected_count = 0;
         
-        for instance in instances {
+        for instance in &all_instances_snapshot {
             // 이미 추적 중이면 상태만 확인 (snapshot 기반 — 시스템 콜 없음)
             if let Ok(pid) = self.tracker.get_pid(&instance.id) {
                 tracked_count += 1;
@@ -3318,15 +3318,16 @@ impl Supervisor {
                 }
                 if let Some(process_name) = &instance.process_name {
                     // 모듈에서 cmd_patterns 가져오기 — java.exe 같은 범용 프로세스를 구분하기 위한 커맨드라인 패턴
-                    let cmd_patterns = self.module_loader.get_module(&instance.module_name)
-                        .map(|m| m.metadata.cmd_patterns.clone())
+                    let modules = self.module_loader.modules().unwrap_or_default();
+                    let cmd_patterns = modules.iter().find(|m| m.metadata.name == instance.module_name)
+                        .map(|m| m.metadata.cmd_patterns.as_slice())
                         .unwrap_or_default();
 
                     // snapshot 기반 검색 — 시스템 콜 없음
                     let processes = if cmd_patterns.is_empty() {
                         process_monitor::find_by_name_in(process_snapshot, process_name)
                     } else {
-                        process_monitor::find_by_name_and_cmd_in(process_snapshot, process_name, &cmd_patterns)
+                        process_monitor::find_by_name_and_cmd_in(process_snapshot, process_name, cmd_patterns)
                     };
 
                     // 같은 게임 인스턴스가 여럿이면 폴더로 주인을 가리고, 다른 인스턴스가 잡은 PID는 빼고 고른다
@@ -3340,7 +3341,7 @@ impl Supervisor {
                         .filter_map(|i| self.tracker.get_pid(&i.id).ok())
                         .collect();
                     let (own_roots, other_roots) = process_monitor::drop_shared_roots(
-                        self.instance_roots(&instance),
+                        self.instance_roots(instance),
                         siblings.iter().flat_map(|i| self.instance_roots(i)).collect(),
                     );
                     let picked = process_monitor::pick_owned_process(&processes, &taken, &own_roots, &other_roots);
@@ -3369,7 +3370,7 @@ impl Supervisor {
                                     .map(|i| i.id.clone())
                                     .collect();
                                 let module_protocols = self.build_module_protocols_map();
-                                let conflicts = crate::validator::check_port_conflicts(&instance, all_instances, &running_ids, Some(&module_protocols));
+                                let conflicts = crate::validator::check_port_conflicts(instance, all_instances, &running_ids, Some(&module_protocols));
                                 if !conflicts.is_empty() {
                                     let details: Vec<String> = conflicts.iter().map(|c| c.to_string()).collect();
                                     tracing::warn!(

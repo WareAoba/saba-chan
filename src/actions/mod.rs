@@ -104,8 +104,11 @@ pub struct Def {
     pub fields: &'static [Field],
     /// true면 입력 객체를 그대로 본문으로 보낸다 (설정 바꾸기처럼 키가 정해져 있지 않은 것)
     pub open_input: bool,
-    /// 디스코드에서 고정 요구 레벨 (프리셋·덮어쓰기와 상관없이)
+    /// 디스코드에서 고정 요구 레벨 (프리셋·덮어쓰기와 상관없이). `level_movable`이면 고정이 아니라 기본값이다
     pub discord_level: Option<i64>,
+    /// `discord_level`을 길드가 명령별 덮어쓰기로 옮길 수 있는가. 그 길드에만 닿는 설정은 옮길 수 있고,
+    /// PC 전체에 닿는 것(앱 업데이트, 공통 챗봇 값)은 고정이다
+    pub level_movable: bool,
     /// 디스코드 작업 메뉴에 싣는가 (heartbeat `surfaces`에 discord를 넣는가). 전용 명령이 같은 액션을 부르는
     /// 것(길드 설정은 "/사바쨩")과 메뉴에서 뺀 것은 false다. 챗봇 목록에는 그대로 남고, 액션 자체도 디스코드에서 계속 부를 수 있다
     pub remote_menu: bool,
@@ -126,7 +129,7 @@ const LOCAL_AND_CHATBOT: &[Surface] = &[Gui, Cli, Chatbot];
 const LOCAL_AND_DISCORD: &[Surface] = &[Gui, Cli, Discord];
 
 const fn def(id: &'static str, kind: Kind, risk: &'static str, surfaces: &'static [Surface], instance: bool, method: &'static str, path: &'static str) -> Def {
-    Def { id, kind, risk, surfaces, instance, method, path, fields: &[], open_input: false, discord_level: None, remote_menu: true, guild_owner: false, private: false, secret: false }
+    Def { id, kind, risk, surfaces, instance, method, path, fields: &[], open_input: false, discord_level: None, level_movable: false, remote_menu: true, guild_owner: false, private: false, secret: false }
 }
 
 /// 첫 판 액션. 새 기능은 여기 한 줄을 더하면 모든 표면에 퍼진다.
@@ -191,7 +194,7 @@ pub static ACTIONS: &[Def] = &[
     Def { fields: &[path_field("extension")], ..def("extension.enable", Kind::Admin, "caution", LOCAL, false, "POST", "/api/extensions/:extension/enable") },
     Def { fields: &[path_field("extension")], ..def("extension.disable", Kind::Admin, "caution", LOCAL, false, "POST", "/api/extensions/:extension/disable") },
     // 챗봇 설정 (I2-b). 디스코드에서는 소유자만, 그 길드 것만. 키는 받지 않고 챗봇 자신은 못 바꾼다(확인을 끄지 못하게)
-    Def { fields: &[path_field("guild")], discord_level: Some(crate::chat::permissions::OWNER), remote_menu: false, ..def("chatbot.settings.get", Kind::Query, "safe", LOCAL_AND_DISCORD, false, "GET", "/api/chatbot/guilds/:guild") },
+    Def { fields: &[path_field("guild")], discord_level: Some(crate::chat::permissions::OWNER), level_movable: true, remote_menu: false, ..def("chatbot.settings.get", Kind::Query, "safe", LOCAL_AND_DISCORD, false, "GET", "/api/chatbot/guilds/:guild") },
     Def {
         fields: &[
             path_field("guild"),
@@ -209,6 +212,7 @@ pub static ACTIONS: &[Def] = &[
             field("balanceAlert", "number", false),
         ],
         discord_level: Some(crate::chat::permissions::OWNER),
+        level_movable: true,
         remote_menu: false,
         ..def("chatbot.settings.set", Kind::Admin, "caution", LOCAL_AND_DISCORD, false, "PATCH", "/api/chatbot/guilds/:guild")
     },
@@ -224,6 +228,7 @@ pub static ACTIONS: &[Def] = &[
     Def {
         fields: &[path_field("guild"), field("locale", "string", false), field("sleeping", "boolean", false), field("sleepBlocks", "array", false), field("bedtime", "object", false), field("music", "object", false), field("tts", "object", false), field("confirmLevel", "string", false), field("commandRisks", "object", false)],
         discord_level: Some(crate::chat::permissions::OWNER),
+        level_movable: true,
         remote_menu: false,
         guild_owner: true,
         ..def("discord.settings.set", Kind::Admin, "caution", LOCAL_AND_DISCORD, false, "PATCH", "/api/discord/:guild/settings")
@@ -232,6 +237,7 @@ pub static ACTIONS: &[Def] = &[
     Def {
         fields: &[path_field("guild"), field("enabled", "boolean", true)],
         discord_level: Some(crate::chat::permissions::ADMIN),
+        level_movable: true,
         guild_owner: true,
         ..def("instance.start_notice.set", Kind::Admin, "caution", LOCAL_AND_DISCORD, true, "PUT", "/api/instance/:id/start-notice/:guild")
     },
@@ -239,6 +245,7 @@ pub static ACTIONS: &[Def] = &[
     Def {
         fields: &[path_field("guild"), field("enabled", "boolean", true)],
         discord_level: Some(crate::chat::permissions::ADMIN),
+        level_movable: true,
         guild_owner: true,
         ..def("instance.full_notice.set", Kind::Admin, "caution", LOCAL_AND_DISCORD, true, "PUT", "/api/instance/:id/full-notice/:guild")
     },
@@ -399,10 +406,10 @@ pub(crate) fn strip_local_details(v: &mut Value) {
     }
 }
 
-/// 전역 권한 덮어쓰기 키로 쓸 수 있는 액션인가: 원격(디스코드·챗봇)에서 부를 수 있고 레벨이 코드에 고정되지 않은 것.
+/// 전역 권한 덮어쓰기 키로 쓸 수 있는 액션인가: 원격(디스코드·챗봇)에서 부를 수 있고 레벨이 코드에 고정되지 않은 것(기본값만 있는 것은 된다).
 /// 인스턴스 액션은 `<instance>/<action id>`로만 판정하므로(`authorize`) 전역 키를 받지 않는다
 pub fn overridable(id: &str) -> bool {
-    find(id).is_some_and(|d| !d.instance && d.discord_level.is_none() && d.surfaces.iter().any(|s| matches!(s, Surface::Discord | Surface::Chatbot)))
+    find(id).is_some_and(|d| !d.instance && (d.discord_level.is_none() || d.level_movable) && d.surfaces.iter().any(|s| matches!(s, Surface::Discord | Surface::Chatbot)))
 }
 
 /// 문자열의 절대 경로를 `<path>`로 바꾸고, Python traceback은 마지막 줄(예외 문구)만 남긴다. 바뀐 것이 없으면 None
@@ -706,7 +713,8 @@ pub async fn permission_board(server: &IPCServer, guild_id: &str, locale: &str) 
         let level = required_level(&perms, instance, id, None, kind, risk, fixed);
         let preset = fixed.unwrap_or_else(|| preset_need(&perms, kind, risk));
         let name = builtin_command(id).unwrap_or(id);
-        Some(entry(instance, id, name, &a["title"], kind.name(), risk, level, preset, fixed.is_some(), override_keys(instance, id)))
+        let pinned = fixed.is_some() && !movable(id);
+        Some(entry(instance, id, name, &a["title"], kind.name(), risk, level, preset, pinned, override_keys(instance, id)))
     };
     let mut items = Vec::new();
     let globals = list(server, None, None, locale).await;
@@ -801,9 +809,9 @@ pub fn heartbeat_actions(locales: &[&str], modules: &[LoadedModule]) -> (Vec<Val
         if !name.is_empty() {
             item["name"] = Value::Object(name);
         }
-        // 고정 요구 레벨: 명령별 덮어쓰기·프리셋보다 먼저다 (`authorize`)
+        // 고정 요구 레벨: 명령별 덮어쓰기·프리셋보다 먼저다 (`authorize`). 옮길 수 있는 기본값은 덮어쓰기 다음이다
         if let Some(level) = d.discord_level {
-            item["level"] = json!(level);
+            item[if d.level_movable { "defaultLevel" } else { "level" }] = json!(level);
         }
         if d.private {
             item["private"] = json!(true);
@@ -1170,9 +1178,18 @@ async fn allowed_instances(server: &IPCServer, caller: &Caller) -> Option<Vec<St
     Some(list.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
 }
 
+/// `discord_level`이 길드가 옮길 수 있는 기본값인가 (`Def::level_movable`)
+fn movable(id: &str) -> bool {
+    find(id).is_some_and(|d| d.level_movable)
+}
+
 /// 원격 요청 하나의 요구 레벨 (`authorize`와 권한 계단 공통). 고정 레벨 → 명령별 덮어쓰기 → 프리셋 순이다
 fn required_level(perms: &NodePermissions, instance: &str, id: &str, command: Option<&str>, kind: Kind, risk: &str, fixed: Option<i64>) -> i64 {
     if let Some(level) = fixed {
+        // 옮길 수 있는 기본 레벨이면 명령별 덮어쓰기가 먼저다
+        if movable(id) {
+            return override_keys(instance, id).iter().find_map(|k| perms.override_level(k)).unwrap_or(level);
+        }
         return level;
     }
     if let Some(cmd) = command {

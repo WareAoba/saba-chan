@@ -1117,26 +1117,30 @@ textarea {
     cursor: default;
 }
 
-.meter {
-    display: grid;
-    gap: 4px;
-}
-.meter-head {
+/* PC 상태: 앱 시스템 모니터와 같은 원 (@gui/components/monitor/MonitorRing.css) */
+.metrics-head {
     display: flex;
-    justify-content: space-between;
-    font-size: 13px;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-bottom: 12px;
 }
-.meter-track {
-    height: 8px;
-    border-radius: 999px;
-    background: var(--bg-3);
-    overflow: hidden;
+.metrics-picker {
+    margin-bottom: 16px;
+    padding: 12px;
+    border-radius: var(--r-sm);
+    background: var(--inset);
 }
-.meter-fill {
-    height: 100%;
-    background: var(--accent);
-    border-radius: inherit;
-    transition: width 600ms var(--ease);
+.metrics-rings {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 16px 8px;
+    margin-bottom: 8px;
+}
+.metrics-swatch {
+    flex: none;
+    width: 10px;
+    height: 10px;
+    border-radius: 3px;
 }
 
 /* ── 겹치는 창 ── */
@@ -1449,97 +1453,64 @@ textarea {
     cursor: pointer;
 }
 .instance-menu,
-.stairs-view {
+.cmd-list-view {
     display: grid;
     gap: 12px;
 }
-.stairs {
-    list-style: none;
+.cmd-group h4 {
+    margin: 8px 0 4px;
+    font-size: 0.85rem;
+    color: var(--text-2);
+}
+
+.cmd-list {
+    display: grid;
+    gap: 6px;
     margin: 0;
     padding: 0;
+    list-style: none;
+}
+
+/* 명령 한 줄: 이름 · 누구부터 · 되묻기 · 되돌리기. 좁으면 이름이 한 줄을 다 쓴다 */
+.cmd-row {
     display: grid;
-    gap: 8px;
-}
-.stair {
-    display: grid;
-    gap: 8px;
-    /* 높은 레벨일수록 오른쪽으로 한 칸씩 올라선 계단 (GUI 계단처럼 낮은 레벨이 왼쪽) */
-    margin-left: calc(min(var(--step), 6) * 8px);
-    padding: 12px;
-    border-left: 3px solid var(--accent);
-    border-radius: 12px;
-    background: color-mix(in srgb, var(--accent) calc(4% + var(--step) * 4%), var(--bg-1));
-    transition:
-        box-shadow var(--dur-fast) var(--ease),
-        background-color var(--dur-fast) var(--ease);
-}
-.stair.is-banned {
-    border-left-color: var(--line-strong);
-    background: var(--bg-1);
-}
-.stair.is-over {
-    box-shadow: inset 0 0 0 2px var(--accent);
-    background: color-mix(in srgb, var(--accent) calc(12% + var(--step) * 4%), var(--bg-1));
-}
-.stair-label {
-    display: flex;
-    align-items: baseline;
-    gap: 8px;
-}
-.stair-num {
-    color: var(--accent);
-    font-size: 12px;
-    font-weight: 700;
-}
-.stair-chips {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
-}
-.stair-carry {
-    width: 100%;
-    color: var(--text-2);
-    font-size: 12px;
-}
-.cmd-chip {
-    display: inline-flex;
+    grid-template-columns: minmax(0, 1fr) 168px 64px minmax(72px, auto);
     align-items: center;
-    gap: 4px;
-    padding: 4px 12px;
-    border: 1px solid var(--line-strong);
-    border-radius: 999px;
-    background: var(--bg-0);
-    color: var(--text-1);
-    font-size: 13px;
-    cursor: grab;
-    /* 손가락으로 끌 때 화면이 같이 움직이지 않게 */
-    touch-action: none;
-    user-select: none;
-    transition:
-        opacity var(--dur-fast) var(--ease),
-        box-shadow var(--dur-fast) var(--ease);
+    gap: 8px;
+    padding: 8px 10px;
+    border-radius: 12px;
+    border: 1px solid var(--line);
 }
-.cmd-chip.is-fixed {
-    cursor: pointer;
-    touch-action: auto;
+
+.cmd-row.is-moved {
+    border-style: dashed;
 }
-.cmd-chip.is-moved {
-    border-color: var(--warn);
-    box-shadow: 0 0 0 1px var(--warn);
+
+.cmd-name {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
 }
-.cmd-chip.is-selected {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 2px var(--accent);
+
+.cmd-name > span:last-child {
+    display: grid;
+    min-width: 0;
 }
-.cmd-chip.is-dragging {
-    position: relative;
-    z-index: 2;
-    cursor: grabbing;
-    box-shadow: 0 8px 24px rgb(0 0 0 / 0.25);
+
+.cmd-name strong {
+    overflow-wrap: anywhere;
 }
-.cmd-chip.is-legend {
-    cursor: default;
+
+@media (max-width: 560px) {
+    .cmd-row {
+        grid-template-columns: minmax(0, 1fr) auto;
+    }
+    .cmd-name {
+        grid-column: 1 / -1;
+    }
 }
+
 .dot {
     display: inline-block;
     flex: none;
@@ -1560,56 +1531,6 @@ textarea {
 .dot.tone-info {
     background: var(--info);
 }
-.chip-edit {
-    display: grid;
-    gap: 8px;
-    padding: 12px 16px;
-    background: var(--bg-1);
-    border: 1px solid var(--line);
-    border-radius: 12px;
-}
-.level-steps {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
-    margin: 0;
-    padding: 0;
-    border: 0;
-    min-width: 0;
-}
-.level-step {
-    padding: 4px 8px;
-    border: 1px solid var(--line-strong);
-    border-radius: 8px;
-    background: var(--bg-1);
-    font-size: 13px;
-    cursor: pointer;
-}
-.level-step.is-up {
-    border-color: transparent;
-    background: color-mix(in srgb, var(--accent) 16%, var(--bg-1));
-    color: var(--accent);
-}
-.level-step.is-on {
-    border-color: var(--accent);
-    background: var(--accent);
-    color: var(--text-inverse);
-    font-weight: 700;
-}
-.stair-legend {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 12px;
-    color: var(--text-2);
-    font-size: 12px;
-}
-.stair-legend > span {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-}
-
-/* ── 서버: 목록·요약·상세 (휴대폰은 하나씩, 넓은 화면은 나란히) ── */
 .servers-detail:empty {
     display: none;
 }
@@ -2179,11 +2100,6 @@ textarea {
 }
 .activity-row .pill {
     flex: none;
-}
-/* 서버별 사용량 막대 (PC 메모리 중 그 서버 몫) */
-.meter-mini {
-    flex: none;
-    width: 80px;
 }
 @media (max-width: 420px) {
     .activity-row {

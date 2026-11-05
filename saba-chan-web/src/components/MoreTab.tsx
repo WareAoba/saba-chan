@@ -1,10 +1,20 @@
 import { type AuditEntry, auditRange, auditResult, auditWhat, auditWho } from '@gui/utils/audit';
 import { CONSOLE_FONT_CHOICES, CONSOLE_FONT_NAMES, CONSOLE_FONT_SLOTS } from '@gui/utils/consoleFonts';
+import { MetricRing, MonitorPicker } from '@gui/components/monitor/MonitorRing';
+import {
+    buildRings,
+    colorSlots,
+    defaultItems,
+    type MetricsSnapshot,
+    nextPeaks,
+    type Peaks,
+    pickerGroups,
+} from '@gui/components/monitor/systemMetrics';
 import { LANGUAGE_OPTIONS } from '@gui/utils/languages';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { setLanguage } from '../i18n';
-import { applyScreenFonts, applyTheme, readConsoleFonts, readPref, THEMES, writePref } from '../prefs';
+import { applyScreenFonts, applyTheme, readConsoleFonts, readMonitorItems, readPref, THEMES, writeMonitorItems, writePref } from '../prefs';
 import { sizeText } from './BackupsPanel';
 import { Dropdown } from './Dropdown';
 import { startPoll } from './poll';
@@ -30,30 +40,21 @@ interface DaemonLine {
 /** 활동 기록 한 건 (audit::Event) */
 type ActivityEntry = AuditEntry & { ts: number; instance?: string; instanceId?: string };
 
-function Meter({ label, percent, detail }: { label: string; percent?: number; detail?: string }) {
-    const p = Math.max(0, Math.min(100, percent || 0));
-    return (
-        <div className="meter">
-            <div className="meter-head">
-                <span>{label}</span>
-                <strong>{Math.round(p)}%</strong>
-            </div>
-            <div className="meter-track" aria-hidden="true">
-                <div className="meter-fill" style={{ width: `${p}%` }} />
-            </div>
-            {detail && <small className="hint">{detail}</small>}
-        </div>
-    );
-}
-
+/** PC 상태: 앱 시스템 모니터와 같은 원과 항목 고르기. 고른 항목은 이 브라우저에 둔다 (앱 설정은 웹에서 읽지 않는다) */
 function Metrics({ api }: { api: WebApi }) {
     const { t } = useTranslation();
-    const [snap, setSnap] = useState<ApiBody | null>(null);
+    const { t: tg } = useTranslation('gui');
+    const [state, setState] = useState<{ snap: MetricsSnapshot | null; peaks: Peaks }>({
+        snap: null,
+        peaks: { diskIo: 0, network: 0 },
+    });
+    const [picked, setPicked] = useState<string[] | null>(readMonitorItems);
+    const [picking, setPicking] = useState(false);
     useEffect(() => {
         let stopped = false;
         const load = async () => {
-            const res = await api.systemMetrics({ sizes: false });
-            if (!stopped && res?.cpu) setSnap(res);
+            const res = (await api.systemMetrics({ sizes: true })) as MetricsSnapshot | null;
+            if (!stopped && res?.cpu) setState((prev) => ({ snap: res, peaks: nextPeaks(prev.peaks, res) }));
         };
         const stop = startPoll(load, 3000);
         return () => {
@@ -62,38 +63,60 @@ function Metrics({ api }: { api: WebApi }) {
         };
     }, [api]);
 
+    const { snap, peaks } = state;
     if (!snap) return <Loading />;
-    const mem = snap.memory || {};
-    const running = (snap.instances || []).filter((i: MetricInstance) => i.running);
+    const pick = (next: string[] | null) => {
+        setPicked(next);
+        writeMonitorItems(next);
+    };
+    const instances = (snap.instances || []) as MetricInstance[];
+    const slots = colorSlots(instances.map((i) => i.id));
+    const rings = buildRings(snap, slots, peaks, picked ?? defaultItems(snap));
+    const running = instances.filter((i) => i.running);
     return (
         <>
-            <Meter label={t('more.cpu')} percent={snap.cpu?.total_percent} />
-            <Meter
-                label={t('more.memory')}
-                percent={mem.total_bytes ? (mem.used_bytes / mem.total_bytes) * 100 : 0}
-                detail={`${sizeText(mem.used_bytes)} / ${sizeText(mem.total_bytes)}`}
-            />
+            <div className="metrics-head">
+                <Button onClick={() => setPicking((v) => !v)} aria-expanded={picking}>
+                    {tg('monitor.pick')}
+                </Button>
+                {picking && picked && (
+                    <Button onClick={() => pick(null)}>
+                        {tg('monitor.pick_reset')}
+                    </Button>
+                )}
+            </div>
+            {picking && (
+                <div className="metrics-picker">
+                    <MonitorPicker groups={pickerGroups(snap)} items={picked ?? defaultItems(snap)} onChange={pick} t={tg} />
+                </div>
+            )}
+            {rings.length === 0 ? (
+                <Empty>{tg('monitor.nothing_picked')}</Empty>
+            ) : (
+                <div className="metrics-rings">
+                    {rings.map((r) => (
+                        <MetricRing key={r.key} ring={r} t={tg} size={96} />
+                    ))}
+                </div>
+            )}
             <h3 className="sub-title">{t('more.servers_usage')}</h3>
             {running.length === 0 ? (
                 <Empty>{t('more.none_running')}</Empty>
             ) : (
                 <ul className="rows">
-                    {running.map((i: MetricInstance) => (
+                    {running.map((i) => (
                         <li key={i.id} className="row">
+                            <span
+                                className="metrics-swatch"
+                                style={{ background: slots[i.id] ? `var(--series-${slots[i.id]})` : 'var(--text-2)' }}
+                                aria-hidden="true"
+                            />
                             <div className="row-main">
                                 <div className="row-title">{i.name}</div>
                                 <div className="row-sub">
                                     CPU {Math.round(i.cpu_percent)}% · {sizeText(i.memory_bytes)}
                                 </div>
                             </div>
-                            {mem.total_bytes > 0 && (
-                                <div className="meter-track meter-mini" aria-hidden="true">
-                                    <div
-                                        className="meter-fill"
-                                        style={{ width: `${Math.min(100, (i.memory_bytes / mem.total_bytes) * 100)}%` }}
-                                    />
-                                </div>
-                            )}
                         </li>
                     ))}
                 </ul>
