@@ -39,6 +39,10 @@ concurrency:
   group: publish
   cancel-in-progress: false
 
+# Windows 러너의 Python 기본 출력 인코딩(cp1252)이 한글·기호에서 멈추지 않게 한다
+env:
+  PYTHONUTF8: '1'
+
 defaults:
   run:
     shell: bash
