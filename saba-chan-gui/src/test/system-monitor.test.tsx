@@ -169,6 +169,14 @@ describe('포트·서버별 네트워크 (고급 옵션)', () => {
         expect(portRows(snap, colorSlots(['a']))).toEqual([]);
     });
 
+    it('서버별로 셀 때는 가운데 숫자와 받기·보내기도 조각과 같은 ETW 값이다', () => {
+        const snap = traced() as MetricsSnapshot;
+        const loopback = { ...snap, network: { rx_bps: 0, tx_bps: 0, per_instance: false }, net_trace: { ...snap.net_trace!, rx_bps: 6 * MB, tx_bps: 2 * MB } };
+        const net = ring(buildRings(loopback, colorSlots(['a', 'b']), { diskIo: 0, network: 0 }), 'network');
+        expect([net.value, net.unit]).toEqual(['8.0', 'MB/s']);
+        expect(net.pills.map((p) => p.vars?.value)).toEqual(['6.0 MB/s', '2.0 MB/s']);
+    });
+
     it('서버별로 셀 때는 ETW 합도 최고값 눈금에 넣는다 (루프백이 있으면 카드 값보다 크다)', () => {
         const snap = traced() as MetricsSnapshot;
         const loopback = { ...snap, net_trace: { ...snap.net_trace!, rx_bps: 6 * MB } };

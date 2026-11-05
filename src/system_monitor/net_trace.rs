@@ -213,7 +213,38 @@ impl Access {
     }
 }
 
-/// 공급자 보안 설정(SDDL)에서 그 SID에 준 허용 ACE를 뺀다 (되돌리기). 다른 ACE는 그대로 둔다
+/// 공급자 켜기 권한(TRACELOG_GUID_ENABLE). SDDL 권한 글자로는 LO
+const ENABLE_RIGHT: u32 = 0x80;
+
+/// SDDL 허용 ACE(`A;플래그;권한;;;SID`)의 권한 칸이 그 SID의 것일 때 그 칸
+fn allow_rights<'a>(ace: &'a str, sid: &str) -> Option<&'a str> {
+    let parts: Vec<&str> = ace.split(';').collect();
+    (parts.len() == 6 && parts[0] == "A" && parts[5].eq_ignore_ascii_case(sid)).then(|| parts[2])
+}
+
+/// 권한 칸이 켜기 권한을 주는지 (16진 마스크, 또는 LO·GA 글자)
+fn rights_enable(rights: &str) -> bool {
+    match rights.strip_prefix("0x").or_else(|| rights.strip_prefix("0X")) {
+        Some(hex) => u32::from_str_radix(hex, 16).is_ok_and(|m| m & ENABLE_RIGHT != 0),
+        None => rights.as_bytes().chunks(2).any(|c| c == b"LO" || c == b"GA"),
+    }
+}
+
+/// 권한 칸에서 켜기 권한만 뺀다. 남는 권한이 없으면 None (ACE를 지운다)
+fn rights_without_enable(rights: &str) -> Option<String> {
+    match rights.strip_prefix("0x").or_else(|| rights.strip_prefix("0X")) {
+        Some(hex) => match u32::from_str_radix(hex, 16) {
+            Ok(m) => (m & !ENABLE_RIGHT != 0).then(|| format!("0x{:x}", m & !ENABLE_RIGHT)),
+            Err(_) => Some(rights.to_string()),
+        },
+        None => {
+            let kept: String = rights.as_bytes().chunks(2).filter(|c| *c != b"LO").map(|c| String::from_utf8_lossy(c).into_owned()).collect();
+            (!kept.is_empty()).then_some(kept)
+        }
+    }
+}
+
+/// 공급자 보안 설정(SDDL)에서 그 SID의 허용 ACE에서 켜기 권한만 뺀다 (되돌리기). 다른 권한·ACE는 그대로 둔다
 #[cfg_attr(not(windows), allow(dead_code))]
 pub(crate) fn strip_sid_aces(sddl: &str, sid: &str) -> String {
     let mut out = String::with_capacity(sddl.len());
@@ -222,9 +253,18 @@ pub(crate) fn strip_sid_aces(sddl: &str, sid: &str) -> String {
         let Some(len) = rest[start..].find(')') else { break };
         let ace = &rest[start + 1..start + len];
         out.push_str(&rest[..start]);
-        let ours = ace.starts_with("A;") && ace.rsplit(';').next().is_some_and(|s| s.eq_ignore_ascii_case(sid));
-        if !ours {
-            out.push_str(&rest[start..=start + len]);
+        match allow_rights(ace, sid) {
+            // GA는 사바쨩이 준 것이 아니므로 남긴다
+            Some(rights) if rights_enable(rights) && !rights.as_bytes().chunks(2).any(|c| c == b"GA") => {
+                if let Some(kept) = rights_without_enable(rights) {
+                    let mut parts: Vec<&str> = ace.split(';').collect();
+                    parts[2] = &kept;
+                    out.push('(');
+                    out.push_str(&parts.join(";"));
+                    out.push(')');
+                }
+            }
+            _ => out.push_str(&rest[start..=start + len]),
         }
         rest = &rest[start + len + 1..];
     }
@@ -232,13 +272,10 @@ pub(crate) fn strip_sid_aces(sddl: &str, sid: &str) -> String {
     out
 }
 
-/// SDDL에 그 SID의 허용 ACE가 있는지
+/// SDDL에 그 SID의 공급자 켜기 허용이 있는지
 #[cfg_attr(not(windows), allow(dead_code))]
 pub(crate) fn sddl_allows(sddl: &str, sid: &str) -> bool {
-    sddl.split('(').skip(1).filter_map(|a| a.split(')').next()).any(|ace| {
-        let parts: Vec<&str> = ace.split(';').collect();
-        parts.first() == Some(&"A") && parts.last().is_some_and(|s| s.eq_ignore_ascii_case(sid))
-    })
+    sddl.split('(').skip(1).filter_map(|a| a.split(')').next()).any(|ace| allow_rights(ace, sid).is_some_and(rights_enable))
 }
 
 /// 지금 사용자의 권한 상태
@@ -955,6 +992,21 @@ mod tests {
         assert!(sddl_allows(granted, "s-1-5-21-1-2-3-1001"));
         assert!(!sddl_allows(original, "S-1-5-21-1-2-3-1001"));
         assert!(!sddl_allows("D:(D;;LO;;;S-1-5-21-9)", "S-1-5-21-9"), "deny is not allow");
+    }
+
+    #[test]
+    fn only_the_enable_right_counts_and_is_revoked() {
+        let sid = "S-1-5-21-1-2-3-1001";
+        // 켜기(TRACELOG_GUID_ENABLE = 0x80 = LO)가 없는 허용은 권한이 아니다: 받기가 더해야 한다
+        assert!(!sddl_allows("D:(A;;RC;;;S-1-5-21-1-2-3-1001)", sid));
+        assert!(!sddl_allows("D:(A;;0x20000;;;S-1-5-21-1-2-3-1001)", sid));
+        assert!(sddl_allows("D:(A;;0x120fff;;;S-1-5-21-1-2-3-1001)", sid));
+        assert!(sddl_allows("D:(A;;RCLO;;;S-1-5-21-1-2-3-1001)", sid));
+        assert!(sddl_allows("D:(A;;GA;;;S-1-5-21-1-2-3-1001)", sid));
+        // 되돌리기는 켜기 권한만 뺀다. 같은 ACE에 있던 다른 권한은 남는다
+        assert_eq!(strip_sid_aces("D:(A;;0x20080;;;S-1-5-21-1-2-3-1001)", sid), "D:(A;;0x20000;;;S-1-5-21-1-2-3-1001)");
+        assert_eq!(strip_sid_aces("D:(A;;RCLO;;;S-1-5-21-1-2-3-1001)", sid), "D:(A;;RC;;;S-1-5-21-1-2-3-1001)");
+        assert_eq!(strip_sid_aces("D:(A;;RC;;;S-1-5-21-1-2-3-1001)(A;;LO;;;S-1-5-21-1-2-3-1001)", sid), "D:(A;;RC;;;S-1-5-21-1-2-3-1001)");
     }
 
     #[test]

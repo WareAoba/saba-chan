@@ -476,17 +476,19 @@ export function buildRings(
         const net = snap.network || {};
         const trace = snap.net_trace;
         const status = trace?.status || 'off';
+        // 셀 때는 조각과 같은 ETW 값으로 가운데 숫자와 받기·보내기를 보인다 (루프백이 있으면 카드 값과 다르다)
+        const counted = trace && status === 'on';
         const ring = rateRing(
             'network',
             'monitor.network',
             undefined,
-            net.rx_bps || 0,
-            net.tx_bps || 0,
+            (counted ? trace.rx_bps : net.rx_bps) || 0,
+            (counted ? trace.tx_bps : net.tx_bps) || 0,
             peaks.network,
             NET_TRACE_NOTES.has(status) ? `monitor.net_trace_${status}` : 'monitor.network_note',
         );
         // 고급 옵션으로 서버별로 셀 때: 인스턴스 - 나머지 프로세스 - 유휴. 아니면 전체 트래픽 한 조각
-        if (trace && status === 'on') {
+        if (counted) {
             const sum = (rx?: number | null, tx?: number | null) => (rx || 0) + (tx || 0);
             const segs = [
                 ...instanceSegments(insts.map((i) => ({ id: i.id, value: sum(i.net_rx_bps, i.net_tx_bps) })), slots, names),
