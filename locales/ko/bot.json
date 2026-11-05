@@ -228,6 +228,11 @@
         "title": "플레이어",
         "description": "접속한 사람과 이름"
       },
+      "address": {
+        "title": "서버 주소",
+        "name": "주소",
+        "description": "친구가 접속할 주소(IP:포트)를 부른 사람에게만 알려 줍니다"
+      },
       "port_check": {
         "title": "포트포워딩 확인",
         "description": "밖에서 이 서버에 접속할 수 있는지 서버쨩이 확인합니다"
@@ -410,6 +415,13 @@
       "players_max": "👥 접속 {{online}}/{{max}}명",
       "player_item": "• {{name}}",
       "players_more": "…외 {{count}}명",
+      "address": {
+        "item": "• `{{address}}`",
+        "item_named": "• {{label}} `{{address}}`",
+        "stopped": "💤 서버가 꺼져 있어요. 켜야 접속할 수 있어요",
+        "unknown": "❔ 서버쨩이 이 PC의 공인 주소를 알지 못했어요. 잠시 뒤에 다시 해 주세요",
+        "no_ports": "📭 이 게임은 접속 포트를 알려 주지 않았어요"
+      },
       "port_check": {
         "open": "✅ 밖에서 접속할 수 있어요",
         "firewall": "🧱 PC 방화벽이 막고 있어요",

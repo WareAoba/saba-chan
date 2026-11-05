@@ -422,6 +422,10 @@ impl Api {
     pub async fn players(&self, id: &str) -> Result<Value> {
         self.get_slow(&format!("/api/instance/{}/players", seg(id))).await
     }
+    /// GET /api/instance/:id/address — 친구가 접속할 주소 `{address, running, ports:[{label, port, protocols}]}`
+    pub async fn address(&self, id: &str) -> Result<Value> {
+        self.get(&format!("/api/instance/{}/address", seg(id))).await
+    }
     /// POST /api/instance/:id/port-check — 릴레이가 밖에서 그 서버의 포트에 접속해 본다 (몇 초)
     pub async fn port_check(&self, id: &str) -> Result<Value> {
         self.post(&format!("/api/instance/{}/port-check", seg(id)), json!({})).await

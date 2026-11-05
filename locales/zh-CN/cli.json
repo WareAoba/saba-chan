@@ -963,6 +963,7 @@
       "config.paths": "Saba-chan 存放数据、模块和扩展的位置，以及默认文件夹",
       "config.move": "把模块或扩展移到其他文件夹。已安装的文件会一起移动；必须先停止服务器",
       "server.players": "当前在线的人",
+      "server.address": "朋友连接用的地址（IP:端口）",
       "server.port-check": "检查朋友能否从外网连接此服务器（端口转发）",
       "server.rcon": "按服务器接收命令的方式（控制台，没有则用 RCON）发送一行并查看回复",
       "server.log": "保存的历次运行日志（控制台只保留本次）",
@@ -1693,6 +1694,12 @@
     "this_pc": "本机",
     "no_servers": "没有服务器",
     "via_relay": "通过中继"
+  },
+  "address": {
+    "title": "{{server}} 的地址",
+    "unknown": "服务器酱不知道这台电脑的公网地址。请确认已连接服务器酱",
+    "no_ports": "此游戏没有提供连接端口",
+    "stopped": "服务器已关闭。启动后才能连接"
   },
   "port_check": {
     "title": "{{server}} 的端口转发检查",

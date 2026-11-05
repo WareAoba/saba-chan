@@ -831,6 +831,7 @@
       "config.paths": "Onde o Saba-chan guarda dados, módulos e extensões, e as pastas padrão",
       "config.move": "Mover módulos ou extensões para outra pasta. Os arquivos instalados são movidos; os servidores devem estar parados",
       "server.players": "Quem está online",
+      "server.address": "O endereço (IP:porta) que os amigos usam para entrar",
       "server.port-check": "Verifica se os amigos conseguem entrar neste servidor pela internet (redirecionamento de portas)",
       "server.rcon": "Enviar uma linha do jeito que o servidor recebe comandos (console, senão RCON) e ver a resposta",
       "server.log": "Log salvo das execuções anteriores (o console guarda só a atual)",
@@ -1480,6 +1481,12 @@
     "this_pc": "Este PC",
     "no_servers": "Sem servidores",
     "via_relay": "Pelo relay"
+  },
+  "address": {
+    "title": "Endereço de {{server}}",
+    "unknown": "O Server-chan não sabe o endereço público deste PC. Verifique se ele está conectado ao Server-chan",
+    "no_ports": "Este jogo não informa a porta de conexão",
+    "stopped": "O servidor está desligado. Ligue-o para que outros possam entrar"
   },
   "port_check": {
     "title": "Verificação de portas de {{server}}",

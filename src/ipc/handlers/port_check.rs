@@ -2,6 +2,8 @@
 //!
 //!   POST /api/instance/:id/port-check   → 확인 결과 (`port_check::Report`). 릴레이에 연결하지 않았으면 409 `node_token_missing`
 //!   GET  /api/instance/:id/port-check   → 마지막 결과, 확인한 적 없으면 `{instanceId, verdict:"not_checked"}`
+//!   GET  /api/instance/:id/address      → `{instanceId, address, running, ports:[{field, label, port, protocols}]}` 서버 주소.
+//!        `address`는 릴레이가 본 이 PC의 공인 주소(연결돼 있지 않거나 모르면 null), 포트는 확인할 포트와 같다 (같은 포트의 TCP·UDP는 하나로)
 //!
 //! `:id`는 인스턴스 id, 없으면 이름으로 찾는다 (CLI·채팅처럼 이름만 아는 쪽)
 
@@ -49,4 +51,24 @@ pub async fn last(Path(id): Path<String>, State(state): State<IPCServer>) -> axu
         Some(report) => Json(report).into_response(),
         None => Json(json!({ "instanceId": id, "verdict": "not_checked" })).into_response(),
     }
+}
+
+/// GET /api/instance/:id/address
+pub async fn address(Path(id): Path<String>, State(state): State<IPCServer>) -> axum::response::Response {
+    let Some(id) = resolve(&state, &id).await else { return not_found(&id) };
+    let labels: std::collections::HashMap<String, String> = {
+        let sup = state.supervisor.read().await;
+        let module = sup.instance_store.get(&id).and_then(|i| sup.module_loader.get_module(&i.module_name).ok());
+        module.and_then(|m| m.metadata.settings).map(|s| s.fields.into_iter().map(|f| (f.name, f.label)).collect()).unwrap_or_default()
+    };
+    let Some(target) = crate::port_check::targets(&state, std::slice::from_ref(&id)).await.pop() else { return not_found(&id) };
+    let mut ports: Vec<serde_json::Value> = Vec::new();
+    for p in &target.ports {
+        let protocol = json!(p.protocol);
+        match ports.iter_mut().find(|e| e["port"] == p.port) {
+            Some(e) => e["protocols"].as_array_mut().into_iter().for_each(|a| a.push(protocol.clone())),
+            None => ports.push(json!({ "field": p.field, "label": labels.get(&p.field).cloned().unwrap_or_else(|| p.field.clone()), "port": p.port, "protocols": [protocol] })),
+        }
+    }
+    Json(json!({ "instanceId": id, "address": state.relay_agent.seen_address(), "running": target.running, "ports": ports })).into_response()
 }

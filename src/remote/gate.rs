@@ -96,6 +96,8 @@ pub static ROUTES: &[Route] = &[
     // 포트포워딩 확인: 릴레이가 요청한 PC의 공인 주소로만 확인한다
     allow("GET", "/api/instance/{id}/port-check"),
     allow("POST", "/api/instance/{id}/port-check"),
+    // 서버 주소: 릴레이가 본 이 PC의 공인 주소와 밖에 여는 포트 (포트포워딩 확인 결과에도 같은 주소가 있다)
+    allow("GET", "/api/instance/{id}/address"),
     // ── 인스턴스 ──
     allow("GET", "/api/instances"),
     allow("POST", "/api/instances"),

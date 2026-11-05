@@ -831,6 +831,7 @@
       "config.paths": "Saba-chan 存放資料、模組和擴充的位置，以及預設資料夾",
       "config.move": "把模組或擴充移到其他資料夾。已安裝的檔案會一起移動；必須先停止伺服器",
       "server.players": "目前在線的人",
+      "server.address": "朋友連線用的位址（IP:連接埠）",
       "server.port-check": "檢查朋友能否從外部連線到此伺服器（連接埠轉發）",
       "server.rcon": "依伺服器接收指令的方式（主控台，沒有則用 RCON）送出一行並查看回覆",
       "server.log": "儲存的歷次執行記錄（主控台只保留本次）",
@@ -1480,6 +1481,12 @@
     "this_pc": "本機",
     "no_servers": "沒有伺服器",
     "via_relay": "透過中繼"
+  },
+  "address": {
+    "title": "{{server}} 的位址",
+    "unknown": "伺服器醬不知道這台電腦的公網位址。請確認已連線伺服器醬",
+    "no_ports": "這個遊戲沒有提供連線連接埠",
+    "stopped": "伺服器已關閉。啟動後才能連線"
   },
   "port_check": {
     "title": "{{server}} 的連接埠轉發檢查",

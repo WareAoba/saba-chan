@@ -228,6 +228,11 @@
         "title": "Players",
         "description": "Who is online"
       },
+      "address": {
+        "title": "Server address",
+        "name": "Address",
+        "description": "Tells only you the address (IP:port) friends connect to"
+      },
       "port_check": {
         "title": "Port forwarding check",
         "description": "Server-chan checks whether this server is reachable from the internet"
@@ -410,6 +415,13 @@
       "players_max": "👥 {{online}}/{{max}} online",
       "player_item": "• {{name}}",
       "players_more": "…and {{count}} more",
+      "address": {
+        "item": "• `{{address}}`",
+        "item_named": "• {{label}} `{{address}}`",
+        "stopped": "💤 The server is off. Start it so others can connect",
+        "unknown": "❔ Server-chan does not know this PC's public address yet. Try again in a moment",
+        "no_ports": "📭 This game does not say which port to connect to"
+      },
       "port_check": {
         "open": "✅ Reachable from the internet",
         "firewall": "🧱 Blocked by the PC firewall",

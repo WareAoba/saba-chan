@@ -93,6 +93,9 @@ pub struct AgentStatus {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub min_version: Option<String>,
     pub commands_handled: u64,
+    /// 릴레이가 하트비트 답에 실어 준, 이 PC가 접속해 온 공인 주소 (서버 주소 `server.address`). 모르면 없다
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub seen_address: Option<String>,
 }
 
 #[derive(Default)]
@@ -262,6 +265,19 @@ impl RelayAgent {
         self.inner.lock().unwrap_or_else(|e| e.into_inner())
     }
 
+    /// 지금 연결된 세션에서 릴레이가 본 이 PC의 공인 주소 (연결돼 있지 않으면 없다)
+    pub fn seen_address(&self) -> Option<String> {
+        let inner = self.lock();
+        inner.status.seen_address.clone().filter(|_| inner.cancel.is_some())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_seen_address_for_test(&self, address: Option<&str>) {
+        let mut inner = self.lock();
+        inner.cancel.get_or_insert_with(CancellationToken::new);
+        inner.status.seen_address = address.map(str::to_string);
+    }
+
     /// 세션 상태 갱신. 끝난(세대가 지난) 세션의 늦은 응답은 버린다
     fn update(&self, generation: u64, f: impl FnOnce(&mut AgentStatus)) {
         let mut inner = self.lock();
@@ -269,6 +285,11 @@ impl RelayAgent {
             f(&mut inner.status)
         }
     }
+}
+
+/// 하트비트 답의 `address`: 릴레이가 본 이 PC의 공인 주소. IP로 읽히는 값만 받는다
+fn relay_seen_address(data: &Value) -> Option<String> {
+    data.get("address").and_then(Value::as_str).and_then(|a| a.parse::<std::net::IpAddr>().ok()).map(|ip| ip.to_string())
 }
 
 /// 데몬 기동 시: 이 노드가 페어링돼 있으면(노드 토큰 존재) 에이전트를 띄운다
@@ -583,6 +604,8 @@ impl Session {
                     s.last_error = None;
                     s.last_error_code = None;
                     s.min_version = None;
+                    // 옛 릴레이·사설 주소면 없다
+                    s.seen_address = relay_seen_address(&data);
                 });
                 // 릴레이가 받은 확인 응답은 지운다. 그 사이 새로 적용한 길드는 남는다
                 self.linked_acks.lock().unwrap_or_else(|e| e.into_inner()).retain(|g| !acks.contains(g));
@@ -1827,6 +1850,15 @@ fn relay_server_entry(server: &Value, usage: Option<&crate::system_monitor::Inst
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 서버 주소(`server.address`)는 릴레이가 하트비트 답에 실어 준 접속 주소를 쓴다. IP가 아닌 값·없는 값은 모른다로 둔다
+    #[test]
+    fn the_address_the_relay_saw_is_read_from_the_heartbeat_reply() {
+        assert_eq!(relay_seen_address(&json!({ "status": "ok", "address": "203.0.113.5" })).as_deref(), Some("203.0.113.5"));
+        assert_eq!(relay_seen_address(&json!({ "address": "2001:db8::1" })).as_deref(), Some("2001:db8::1"));
+        assert_eq!(relay_seen_address(&json!({ "address": "evil.example:1" })), None);
+        assert_eq!(relay_seen_address(&json!({ "status": "ok" })), None);
+    }
 
     /// 릴레이가 이 PC의 버전을 받지 않으면(최소 버전 미달) 상태에 `agent_too_old`와 요구 버전을 남겨
     /// GUI·CLI가 업데이트를 안내하게 하고, 받기는 업데이트 전에는 같은 답이므로 heartbeat 주기로만 다시 묻는다

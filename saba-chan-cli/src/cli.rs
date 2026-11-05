@@ -532,6 +532,8 @@ pub enum ServerCmd {
     Commands { server: Option<String> },
     /// Who is online
     Players { server: Option<String> },
+    /// The address (IP:port) friends connect to
+    Address { server: Option<String> },
     /// Check from the internet whether friends can reach this server (port forwarding)
     #[command(name = "port-check", visible_alias = "ports")]
     PortCheck { server: Option<String> },

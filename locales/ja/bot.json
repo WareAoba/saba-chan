@@ -228,6 +228,11 @@
         "title": "プレイヤー",
         "description": "接続中のプレイヤーと名前"
       },
+      "address": {
+        "title": "サーバーアドレス",
+        "name": "アドレス",
+        "description": "友だちが接続するアドレス(IP:ポート)を呼んだ人にだけ教えます"
+      },
       "port_check": {
         "title": "ポート開放の確認",
         "description": "外部からこのサーバーに接続できるかリレーが確認します"
@@ -410,6 +415,13 @@
       "players_max": "👥 接続 {{online}}/{{max}}人",
       "player_item": "• {{name}}",
       "players_more": "…ほか {{count}}人",
+      "address": {
+        "item": "• `{{address}}`",
+        "item_named": "• {{label}} `{{address}}`",
+        "stopped": "💤 サーバーが停止しています。起動すると接続できます",
+        "unknown": "❔ サーバーちゃんがこのPCのグローバルアドレスを把握していません。少ししてからもう一度お試しください",
+        "no_ports": "📭 このゲームは接続ポートを示していません"
+      },
       "port_check": {
         "open": "✅ 外部から接続できます",
         "firewall": "🧱 PCのファイアウォールがブロックしています",

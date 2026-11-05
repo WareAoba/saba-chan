@@ -1450,6 +1450,12 @@
     "no_servers": "No servers",
     "via_relay": "Through Server-chan"
   },
+  "address": {
+    "title": "Address of {{server}}",
+    "unknown": "Server-chan does not know this PC's public address. Check that it is connected to Server-chan",
+    "no_ports": "This game does not say which port to connect to",
+    "stopped": "The server is off. Start it so others can connect"
+  },
   "port_check": {
     "title": "Port forwarding check for {{server}}",
     "address": "Public IP {{address}} (friends join with this address and the port)",
