@@ -703,9 +703,10 @@ export function CommandList({ node, permissions, instance = L.ALL_INSTANCES }: C
                 </span>
                 <CustomDropdown
                     className="dc-level-select"
-                    value={String(c.level)}
+                    value={c.levelMixed ? '' : String(c.level)}
                     ariaLabel={t('discord.perm_who_for', { command: name })}
                     disabled={busy || c.fixed}
+                    placeholder={t('discord.perm_confirm_tier_mixed')}
                     onChange={(v) => move(c, Number(v))}
                     options={usable.map((l) => ({ value: String(l), label: fromText(l) }))}
                 />

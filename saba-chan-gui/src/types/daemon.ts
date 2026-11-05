@@ -390,6 +390,7 @@ export interface GuiSettings {
     consoleTokenColors: Record<string, string>;
     consoleFonts: ConsoleFonts;
     systemMonitorOpen: boolean;
+    monitorItems?: string[] | null;
     windowBounds?: { width: number; height: number; x?: number; y?: number };
     language?: string;
     /** 앱을 열면 먼저 볼 원격 데몬 hostId */

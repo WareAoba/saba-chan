@@ -1,0 +1,152 @@
+/* 시스템 모니터 원·항목 고르기 — GUI와 웹 콘솔이 같이 쓴다. 토큰만 쓴다 (styles/tokens.css) */
+
+.monitor-ring {
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--sp-1);
+    min-width: 0;
+    text-align: center;
+}
+.monitor-ring-title {
+    max-width: 100%;
+    font-size: var(--fs-sm);
+    font-weight: 600;
+    color: var(--text-2);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.monitor-ring-chart {
+    position: relative;
+}
+.monitor-ring-chart svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+    overflow: visible;
+}
+.monitor-track,
+.monitor-arc {
+    fill: none;
+    stroke-linecap: round;
+}
+.monitor-cap {
+    pointer-events: none;
+}
+.monitor-track {
+    stroke: var(--chart-idle);
+}
+.monitor-arc {
+    transition: stroke-dasharray var(--dur) cubic-bezier(0.2, 0.8, 0.2, 1),
+        stroke-dashoffset var(--dur) cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.monitor-arc {
+    stroke-linecap: butt;
+}
+.monitor-arc:hover {
+    stroke-width: 12;
+}
+/* 가운데 큰 숫자와 작은 단위. 호가 아래로 트여 있어 숫자를 조금 내린다 */
+.monitor-ring-center {
+    position: absolute;
+    inset: 38% 0 auto;
+    display: flex;
+    align-items: baseline;
+    justify-content: center;
+    gap: var(--sp-0-5);
+    pointer-events: none;
+    line-height: 1;
+}
+.monitor-ring-center strong {
+    font-size: var(--fs-xl);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-1);
+}
+.monitor-ring-center strong.long {
+    font-size: var(--fs-lg);
+}
+.monitor-ring-center small {
+    font-size: var(--fs-xs);
+    font-weight: 600;
+    color: var(--text-2);
+}
+
+/* 보조 값 알약 (클럭·온도·RPM·받기/보내기) */
+.monitor-pills {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: var(--sp-1);
+    max-width: 100%;
+}
+.monitor-pill {
+    font-size: var(--fs-xs);
+    font-variant-numeric: tabular-nums;
+    padding: 1px var(--sp-2);
+    border-radius: 999px;
+    background: var(--inset);
+    color: var(--text-2);
+    white-space: nowrap;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.monitor-pill.unknown {
+    color: var(--text-3);
+    font-style: italic;
+}
+.monitor-ring-note {
+    font-size: var(--fs-xs);
+    color: var(--text-3);
+    overflow-wrap: break-word;
+    word-break: keep-all;
+    text-wrap: balance;
+}
+
+/* 항목 고르기 */
+.monitor-picker {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: var(--sp-3) var(--sp-4);
+}
+.monitor-picker-group {
+    border: 0;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1-5);
+    min-width: 0;
+}
+.monitor-picker-group legend {
+    padding: 0;
+    margin-bottom: var(--sp-1);
+    font-size: var(--fs-sm);
+    font-weight: 700;
+    color: var(--text-1);
+}
+.monitor-picker-group .saba-checkbox-label {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0 var(--sp-2);
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+.monitor-picker-note,
+.monitor-picker-empty {
+    font-size: var(--fs-xs);
+    color: var(--text-3);
+}
+.monitor-picker-empty {
+    margin: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .monitor-arc {
+        transition: none;
+    }
+}

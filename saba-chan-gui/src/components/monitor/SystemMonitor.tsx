@@ -1,20 +1,20 @@
 import clsx from 'clsx';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { TFunction } from 'i18next';
 import { useSettingsStore } from '../../stores/useSettingsStore';
 import type { Server } from '../../stores/useServerStore';
 import { Icon } from '../Icon';
+import { MetricRing, MonitorPicker } from './MonitorRing';
 import {
     buildRings,
     colorSlots,
+    defaultItems,
     IDLE_COLOR,
     type MetricsSnapshot,
     nextPeaks,
     OTHERS_COLOR,
     type Peaks,
-    type Ring,
-    type RingSegment,
+    pickerGroups,
 } from './systemMetrics';
 import './SystemMonitor.css';
 
@@ -25,7 +25,7 @@ const SUMMARY_INTERVAL_MS = 5000;
 export const systemMonitorAvailable = () => !!window.api?.systemMetrics;
 
 /** 앱을 켠 뒤 본 디스크 IO·네트워크 최고값 (화면을 오가도 이어진다) */
-let sessionPeaks = { diskIo: 0, network: 0 };
+let sessionPeaks: Peaks = { diskIo: 0, network: 0 };
 
 /** 데몬 표본을 주기적으로 받는다. 창이 가려져 있으면 쉰다. 요약만 볼 때는 폴더 크기를 재지 않게 한다. */
 export function useSystemMetrics(intervalMs: number, sizes = true) {
@@ -67,79 +67,6 @@ export function useSystemMetrics(intervalMs: number, sizes = true) {
     return { ...state, error };
 }
 
-const RADIUS = 42;
-const STROKE = 12;
-const CIRC = 2 * Math.PI * RADIUS;
-/** 조각 사이 틈 (원주 길이) */
-const GAP = 2;
-
-/** 원형 그래프 하나. 조각마다 말풍선으로 이름과 값을 보여 준다 */
-interface MetricRingProps {
-    ring: Ring;
-    t: TFunction;
-    size?: number;
-    inlineNote?: boolean;
-}
-
-export function MetricRing({ ring, t, size = 112, inlineNote = true }: MetricRingProps) {
-    const total = ring.total > 0 ? ring.total : 1;
-    const visible = ring.segments.filter((s) => s.value > 0);
-    let offset = 0;
-    const arcs = visible.map((seg) => {
-        const len = Math.min(CIRC, (seg.value / total) * CIRC);
-        const gap = visible.length > 1 && len > GAP * 2 ? GAP : 0;
-        const arc = { seg, dash: Math.max(0, len - gap), offset };
-        offset += len;
-        return arc;
-    });
-    const label = (seg: RingSegment) => (seg.labelKey ? t(seg.labelKey) : seg.label);
-    const sub = ring.sub?.key ? t(ring.sub.key, ring.sub.vars) : ring.sub?.text;
-
-    return (
-        <figure className="monitor-ring" data-metric={ring.key} data-tooltip={ring.noteKey && !inlineNote ? t(ring.noteKey) : undefined}>
-            <figcaption className="monitor-ring-title">{t(ring.titleKey)}</figcaption>
-            <div className="monitor-ring-chart" style={{ width: size, height: size }}>
-                <svg viewBox="0 0 100 100" role="img" aria-label={`${t(ring.titleKey)} ${ring.center}`}>
-                    <circle cx="50" cy="50" r={RADIUS} fill="none" stroke={IDLE_COLOR} strokeWidth={STROKE} />
-                    {arcs.map(({ seg, dash, offset: off }) =>
-                        seg.color === IDLE_COLOR ? null : (
-                            <circle
-                                key={seg.key}
-                                className="monitor-arc"
-                                cx="50"
-                                cy="50"
-                                r={RADIUS}
-                                fill="none"
-                                stroke={seg.color}
-                                strokeWidth={STROKE}
-                                strokeDasharray={`${dash} ${CIRC - dash}`}
-                                strokeDashoffset={-off}
-                                transform="rotate(-90 50 50)"
-                                data-tooltip={`${label(seg)}: ${ring.format(seg.value)}`}
-                            />
-                        ),
-                    )}
-                </svg>
-                <div className="monitor-ring-center">
-                    <strong>{ring.center}</strong>
-                </div>
-            </div>
-            {sub && (
-                // 좁을 때는 "·" 뒤에서만 줄을 바꾼다 ("· 쓰기"가 다음 줄 맨 앞에 오지 않게): 조각 안의 띄어쓰기는 붙인다
-                <div className="monitor-ring-sub">
-                    {(() => {
-                        const parts = String(sub).split(' · ');
-                        return parts.length > 1
-                            ? parts.map((part) => part.replaceAll(' ', '\u00a0')).join('\u00a0· ')
-                            : parts[0];
-                    })()}
-                </div>
-            )}
-            {ring.noteKey && inlineNote && <div className="monitor-ring-note">{t(ring.noteKey)}</div>}
-        </figure>
-    );
-}
-
 /**
  * 서버 페이지의 시스템 모니터.
  * - layout="side": 넓은 창의 오른쪽 열 (원형 그래프 세로)
@@ -153,11 +80,14 @@ interface SystemMonitorProps {
 export function SystemMonitor({ layout = 'top', servers = [] }: SystemMonitorProps) {
     const { t } = useTranslation('gui');
     const open = useSettingsStore((s) => s.systemMonitorOpen);
+    const picked = useSettingsStore((s) => s.monitorItems);
     const update = useSettingsStore((s) => s.update);
+    const [picking, setPicking] = useState(false);
     const { snapshot, error, peaks } = useSystemMetrics(open ? OPEN_INTERVAL_MS : SUMMARY_INTERVAL_MS, open);
     const order = useMemo(() => servers.map((s) => s.id), [servers]);
     const slots = useMemo(() => colorSlots(order), [order]);
-    const rings = useMemo(() => buildRings(snapshot, slots, peaks), [snapshot, slots, peaks]);
+    const items = useMemo(() => picked ?? defaultItems(snapshot), [picked, snapshot]);
+    const rings = useMemo(() => buildRings(snapshot, slots, peaks, items), [snapshot, slots, peaks, items]);
 
     if (!systemMonitorAvailable()) return null;
 
@@ -182,7 +112,11 @@ export function SystemMonitor({ layout = 'top', servers = [] }: SystemMonitorPro
                 <div className="monitor-chips">
                     {rings.map((r) => (
                         <span key={r.key} className="monitor-chip">
-                            <span className="muted">{t(r.titleKey)}</span> <strong>{r.center}</strong>
+                            <span className="muted">{t(r.titleKey, r.titleVars)}</span>{' '}
+                            <strong>
+                                {r.value}
+                                {r.unit}
+                            </strong>
                         </span>
                     ))}
                     {!snapshot && <span className="muted">{error ? t('monitor.unavailable') : t('monitor.loading')}</span>}
@@ -202,12 +136,34 @@ export function SystemMonitor({ layout = 'top', servers = [] }: SystemMonitorPro
             <header className="monitor-head">
                 <Icon name="monitor" size="sm" />
                 <h3>{t('monitor.title')}</h3>
+                {snapshot && (
+                    <button
+                        type="button"
+                        className={clsx('icon-btn monitor-pick-toggle', picking && 'active')}
+                        onClick={() => setPicking((v) => !v)}
+                        aria-expanded={picking}
+                        aria-label={t('monitor.pick')}
+                        data-tooltip={t('monitor.pick')}
+                    >
+                        <Icon name="settings" size="sm" />
+                    </button>
+                )}
                 {toggle}
             </header>
             {!snapshot ? (
                 <p className="muted monitor-empty">{error ? t('monitor.unavailable') : t('monitor.loading')}</p>
             ) : (
                 <>
+                    {picking && (
+                        <div className="monitor-pick-panel">
+                            <MonitorPicker groups={pickerGroups(snapshot)} items={items} onChange={(next) => update({ monitorItems: next })} t={t} />
+                            {picked && (
+                                <button type="button" className="btn btn-sm btn-ghost" onClick={() => update({ monitorItems: null })}>
+                                    {t('monitor.pick_reset')}
+                                </button>
+                            )}
+                        </div>
+                    )}
                     <ul className="monitor-legend">
                         {legend.map((s) => (
                             <li key={s.id}>
@@ -230,11 +186,15 @@ export function SystemMonitor({ layout = 'top', servers = [] }: SystemMonitorPro
                             {t('monitor.idle_legend')}
                         </li>
                     </ul>
-                    <div className="monitor-rings">
-                        {rings.map((r) => (
-                            <MetricRing key={r.key} ring={r} t={t} size={layout === 'side' ? 96 : 88} inlineNote={false} />
-                        ))}
-                    </div>
+                    {rings.length === 0 ? (
+                        <p className="muted monitor-empty">{t('monitor.nothing_picked')}</p>
+                    ) : (
+                        <div className="monitor-rings">
+                            {rings.map((r) => (
+                                <MetricRing key={r.key} ring={r} t={t} size={layout === 'side' ? 100 : 92} inlineNote={false} />
+                            ))}
+                        </div>
+                    )}
                     {layout === 'side' && <p className="monitor-footnote">{t('monitor.footnote')}</p>}
                 </>
             )}
