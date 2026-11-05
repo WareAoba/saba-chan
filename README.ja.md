@@ -167,6 +167,15 @@ cd saba-chan-gui; npm install; npm start
 
 配布ファイルは GitHub Actions がこのリポジトリのソースからビルドします。Windows は [build-windows.yml](.github/workflows/build-windows.yml)、Linux x64・ARM64 は [release.yml](.github/workflows/release.yml) です。テストは `cargo test --workspace` と `cd saba-chan-gui && npx vitest run` で回します。
 
+## コード署名ポリシー (Code signing policy)
+
+Free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by [SignPath Foundation](https://signpath.org/).
+
+- 署名するのは、GitHub Actions がこのリポジトリのソースからビルドした Windows 実行ファイルだけで、リリースごとに承認担当者が承認します。SignPath Foundation の承認前に出たリリースは署名されていません。
+- コミッター・レビュアー: [WareAoba](https://github.com/WareAoba) · 承認: [WareAoba](https://github.com/WareAoba)
+- プライバシー: [プライバシーポリシー](https://saba-chan.online/ja/legal/privacy)(アプリが送る情報は上のセキュリティ節の最後の項目)
+- ポリシー全文: [コード署名ポリシー](https://saba-chan.online/ja/legal/code-signing)
+
 ## ライセンス
 
 [MIT](LICENSE)
