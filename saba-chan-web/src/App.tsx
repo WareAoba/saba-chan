@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { art } from './art';
 import { DiscordTab } from './components/DiscordTab';
 import { Icon } from './components/icons';
+import { LanguageMenu } from './components/LanguageMenu';
 import { ModulesTab } from './components/ModulesTab';
 import { MoreTab } from './components/MoreTab';
 import { NeedsPc } from './components/NoPc';
@@ -69,6 +70,7 @@ function Gate({ phase, reason }: Pick<SessionState, 'phase' | 'reason'>) {
         // 사이트의 "잘못된 접근" 화면(server-chan website/public/blocked.html)과 같은 모양.
         // Oops! 는 그 화면 몫이고, 여기서는 끝난 까닭을 한 단어로 크게 보인다
         <main className="gate">
+            <LanguageMenu className="gate-lang" />
             <div className="gate-body">
                 <img
                     className={closed ? 'gate-art' : 'gate-art gate-art-float'}

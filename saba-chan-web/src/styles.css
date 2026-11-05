@@ -207,6 +207,104 @@ textarea {
     color: var(--text-2);
     font-size: 13px;
 }
+/* 화면 언어 버튼 (머리·연결 화면): 남은 시간 알약과 같은 모양, 누르면 그 아래에 목록 */
+.lang-menu {
+    position: relative;
+    flex-shrink: 0;
+}
+.lang-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    border: 0;
+    border-radius: 999px;
+    background: var(--bg-3);
+    color: var(--text-2);
+    font: inherit;
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+    transition:
+        background-color var(--dur-fast) var(--ease),
+        color var(--dur-fast) var(--ease);
+}
+.lang-btn:hover,
+.lang-btn[aria-expanded='true'] {
+    color: var(--text-1);
+    background: color-mix(in srgb, var(--accent) 16%, var(--bg-3));
+}
+.lang-list {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    z-index: 20;
+    min-width: 168px;
+    max-height: min(70vh, 420px);
+    overflow: auto;
+    display: grid;
+    padding: 6px;
+    background: var(--bg-2);
+    border: 1px solid var(--line-strong);
+    border-radius: 12px;
+    box-shadow: var(--shadow-float);
+    animation: toast-in 160ms var(--ease) both;
+}
+.lang-item {
+    text-align: left;
+    padding: 9px 12px;
+    border: 0;
+    border-radius: 8px;
+    background: none;
+    color: var(--text-1);
+    font: inherit;
+    font-size: 14px;
+    cursor: pointer;
+}
+.lang-item:hover {
+    background: var(--bg-3);
+}
+.lang-item.on {
+    color: var(--accent);
+    font-weight: 600;
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.topbar-title .pill {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+/* 휴대폰 머리는 칸이 좁다: 언어 버튼은 지구 그림만, 더 좁으면 글자 로고를 접는다 */
+@media (max-width: 420px) {
+    .topbar .lang-code {
+        display: none;
+    }
+    .topbar .lang-btn {
+        padding: 6px;
+    }
+}
+@media (max-width: 440px) {
+    .topbar-wordmark {
+        display: none;
+    }
+}
+/* 연결 화면은 늘 어두운 바탕이라 반투명 흰 알약 */
+.gate-lang {
+    position: absolute;
+    top: calc(16px + env(safe-area-inset-top));
+    right: 16px;
+    z-index: 2;
+}
+.gate-lang .lang-btn {
+    background: rgb(255 255 255 / 0.1);
+    color: #e2e8f0;
+}
+.gate-lang .lang-btn:hover,
+.gate-lang .lang-btn[aria-expanded='true'] {
+    background: rgb(255 255 255 / 0.18);
+    color: #fff;
+}
 .timer-warn {
     background: var(--warn-soft);
     color: var(--warn);
