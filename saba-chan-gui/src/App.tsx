@@ -5,7 +5,6 @@ import './App.css';
 import {
     AddInstanceModal,
     FailureModal,
-    Icon,
     LoadingScreen,
     NotificationModal,
     PopoutConsole,
@@ -157,7 +156,6 @@ function App() {
     const {
         consolePopoutIds,
         openConsole,
-        closeConsole,
         popinConsole,
         setConsoleInput,
         sendConsoleCommand,

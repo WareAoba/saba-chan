@@ -43,8 +43,8 @@ export interface ExtensionContextValue {
     enabledExtensions: ExtensionListItem[];
     slots: SlotRegistry;
     loading: boolean;
-    toggleExtension: (extId: string, enable: boolean) => Promise<boolean> | void;
-    refreshExtensions: () => Promise<boolean> | void;
+    toggleExtension: (extId: string, enable: boolean) => Promise<boolean> | undefined;
+    refreshExtensions: () => Promise<boolean> | undefined;
     removeExtension: (extId: string) => Promise<boolean>;
     guiPending: ExtensionListItem[];
     approveExtensionGui: (extId: string) => Promise<boolean>;
@@ -52,9 +52,9 @@ export interface ExtensionContextValue {
     availableUpdates: ApiBody[];
     manifestLoading: boolean;
     installingIds: Set<string>;
-    fetchManifest: () => Promise<ApiBody | null | void>;
+    fetchManifest: () => Promise<ApiBody | null | undefined>;
     installExtension: (extId: string, opts?: Record<string, unknown>) => Promise<boolean>;
-    checkUpdates: () => Promise<ApiBody | null | void>;
+    checkUpdates: () => Promise<ApiBody | null | undefined>;
 }
 
 const ExtensionContext = createContext<ExtensionContextValue | null>(null);

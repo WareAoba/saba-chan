@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import i18n from 'i18next';
 import { describe, expect, it, vi } from 'vitest';
 import { AddInstanceNewServer } from '../components/Modals/AddInstanceNewServer';

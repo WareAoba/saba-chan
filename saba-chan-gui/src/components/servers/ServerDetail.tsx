@@ -553,7 +553,6 @@ function InfoTab({
     onDelete: (server: Server) => void;
 }) {
     const { t } = useTranslation('gui');
-    const supported = moduleData?.protocols?.supported || [];
     const workingDir = (server.module_settings?.working_dir || server.working_dir || null) as string | null;
     const rows = [
         [t('shell.info_module'), gameName],
