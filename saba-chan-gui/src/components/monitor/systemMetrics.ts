@@ -1,6 +1,7 @@
 /**
  * 시스템 모니터 표시 계산. 값은 데몬 `/api/system/metrics`가 준 그대로 쓰고,
- * 여기서는 원형 그래프 조각(인스턴스별 - 나머지 프로세스 - 유휴)으로 나누기만 한다.
+ * 여기서는 고른 항목(`monitorItems`)에 맞춰 원형 그래프 조각(인스턴스별 - 나머지 프로세스 - 유휴)과
+ * 보조 값 알약(클럭·온도·RPM 등)을 만들기만 한다.
  */
 
 /** 계열색 개수 (tokens.css --series-1..8). 넘치는 인스턴스는 "기타 인스턴스"로 묶는다 */
@@ -10,8 +11,14 @@ const MIN_RATE_SCALE = 1024 * 1024;
 
 /** GET /api/system/metrics 표본 (값은 데몬이 준 그대로) */
 export interface MetricsSnapshot {
-    cpu?: { total_percent?: number; cores?: number; others_percent?: number };
-    memory?: { total_bytes?: number; used_bytes?: number; others_bytes?: number };
+    cpu?: {
+        total_percent?: number;
+        cores?: number;
+        others_percent?: number;
+        clock_mhz?: number | null;
+        temp_c?: number | null;
+    };
+    memory?: { total_bytes?: number; used_bytes?: number; others_bytes?: number; clock_mhz?: number | null };
     disk_io?: { read_bps?: number; write_bps?: number; source?: string };
     network?: { rx_bps?: number; tx_bps?: number; per_instance?: boolean };
     disks?: {
@@ -22,12 +29,26 @@ export interface MetricsSnapshot {
         sizes_at_ms?: number | null;
         instances: { id: string; bytes: number }[];
     }[];
+    /** 모든 디스크 (마운트 하나에 하나) */
+    volumes?: {
+        mount: string;
+        name?: string;
+        kind?: 'ssd' | 'hdd' | 'unknown' | string;
+        total_bytes: number;
+        available_bytes: number;
+        rpm?: number | null;
+    }[];
+    /** 네트워크 카드별 */
+    adapters?: { name: string; rx_bps: number; tx_bps: number }[];
+    gpus?: { name?: string | null; util_percent?: number | null; clock_mhz?: number | null; temp_c?: number | null }[];
     instances?: { id: string; name: string; cpu_percent: number; memory_bytes: number }[];
 }
 
 export interface Peaks {
     diskIo: number;
     network: number;
+    /** 네트워크 카드 이름 → 최고값 */
+    adapters?: Record<string, number>;
 }
 
 /** 원형 그래프 조각 */
@@ -39,20 +60,36 @@ export interface RingSegment {
     color: string;
 }
 
+/** 원 아래 보조 값 하나. unknown이면 "모름"으로 흐리게 보인다 */
+export interface RingPill {
+    key?: string;
+    vars?: Record<string, unknown>;
+    text?: string;
+    unknown?: boolean;
+}
+
+/** 원 종류: 색 조각이 아닌 전체 몫(`__all`)의 그라데이션 색을 고른다 */
+export type RingTone = 'cpu' | 'memory' | 'gpu' | 'disk' | 'net';
+
 /** 원형 그래프 하나 */
 export interface Ring {
     key: string;
     titleKey: string;
-    center: string;
-    sub: { key?: string; vars?: Record<string, unknown>; text?: string };
+    titleVars?: Record<string, unknown>;
+    /** 가운데 큰 숫자와 작은 단위 */
+    value: string;
+    unit: string;
+    tone: RingTone;
+    pills: RingPill[];
     total: number;
     format: (v: number) => string;
     noteKey?: string | null;
     segments: RingSegment[];
 }
 
-export function formatBytes(n: number) {
-    if (!Number.isFinite(n) || n < 0) return '—';
+/** 바이트 → [숫자, 단위] */
+export function splitBytes(n: number): [string, string] {
+    if (!Number.isFinite(n) || n < 0) return ['—', ''];
     const units = ['B', 'KB', 'MB', 'GB', 'TB'];
     let i = 0;
     let v = n;
@@ -60,11 +97,18 @@ export function formatBytes(n: number) {
         v /= 1024;
         i += 1;
     }
-    return `${i === 0 ? Math.round(v) : v.toFixed(v < 10 ? 1 : 0)} ${units[i]}`;
+    return [i === 0 ? String(Math.round(v)) : v.toFixed(v < 10 ? 1 : 0), units[i]];
+}
+
+export function formatBytes(n: number) {
+    const [v, u] = splitBytes(n);
+    return u ? `${v} ${u}` : v;
 }
 
 export const formatRate = (bps: number) => `${formatBytes(bps)}/s`;
 export const formatPercent = (p: number) => (Number.isFinite(p) ? `${Math.round(p)}%` : '—');
+const percentValue = (p: number | null | undefined) => (typeof p === 'number' && Number.isFinite(p) ? String(Math.round(p)) : '—');
+const formatGhz = (mhz: number) => `${(mhz / 1000).toFixed(2)} GHz`;
 
 /**
  * 인스턴스 id → 계열색 번호. 서버 목록 순서를 따른다: 다른 인스턴스가 꺼져도 색이 바뀌지 않는다.
@@ -81,6 +125,8 @@ export function colorSlots(orderedIds: string[]) {
 const seriesColor = (slot: number | null | undefined) => (slot ? `var(--series-${slot})` : 'var(--text-2)');
 export const OTHERS_COLOR = 'var(--text-3)';
 export const IDLE_COLOR = 'var(--chart-idle)';
+/** 인스턴스로 나누지 않는 전체 몫: 그리는 쪽이 원 종류(tone)의 그라데이션으로 칠한다 */
+export const ALL_COLOR = 'var(--text-2)';
 
 /** 인스턴스 값들을 색 조각으로. 계열색 밖 인스턴스는 한 조각("기타 인스턴스")으로 합친다 */
 function instanceSegments(
@@ -101,114 +147,305 @@ function instanceSegments(
     return segs;
 }
 
-/** 디스크 IO·네트워크 최대값을 새 표본으로 갱신한다 (앱을 켠 뒤 본 최고값이 눈금이 된다) */
+/** 디스크 IO·네트워크·네트워크 카드 최대값을 새 표본으로 갱신한다 (앱을 켠 뒤 본 최고값이 눈금이 된다) */
 export function nextPeaks(prev: Peaks, snap: MetricsSnapshot | null | undefined): Peaks {
+    const adapters = { ...(prev.adapters || {}) };
+    for (const a of snap?.adapters || []) {
+        adapters[a.name] = Math.max(adapters[a.name] || 0, (a.rx_bps || 0) + (a.tx_bps || 0));
+    }
     return {
         diskIo: Math.max(prev.diskIo, (snap?.disk_io?.read_bps || 0) + (snap?.disk_io?.write_bps || 0)),
         network: Math.max(prev.network, (snap?.network?.rx_bps || 0) + (snap?.network?.tx_bps || 0)),
+        adapters,
     };
 }
 
-/** 인스턴스로 나누지 않는 전체 몫의 색: 인스턴스 계열색과 헷갈리지 않는 중립색 */
-export const ALL_COLOR = 'var(--text-2)';
+// ── 고를 수 있는 항목 ──────────────────────────────────────────────
+// 원 하나가 항목 하나다(cpu, memory, gpu, disk_io, volume:<마운트>, network, adapter:<이름>).
+// 점이 붙은 항목(cpu.clock 등)은 그 원 아래 알약 하나다.
+
+export const volumeItem = (mount: string) => `volume:${mount}`;
+export const adapterItem = (name: string) => `adapter:${name}`;
+
+/** 고른 적이 없을 때(`monitorItems` 없음) 보이는 항목. 데이터 폴더가 있는 디스크가 기본 디스크다 */
+export function defaultItems(snap: MetricsSnapshot | null | undefined): string[] {
+    const items = ['cpu', 'cpu.clock', 'cpu.temp', 'memory', 'memory.clock', 'gpu', 'gpu.clock', 'gpu.temp', 'disk_io'];
+    const dataDisk = snap?.disks?.[0]?.mount;
+    if (dataDisk) items.push(volumeItem(dataDisk));
+    items.push('volume.kind', 'network');
+    return items;
+}
+
+/** 항목 고르기 창의 한 줄 */
+export interface PickerRow {
+    id: string;
+    labelKey?: string;
+    labelVars?: Record<string, unknown>;
+    label?: string;
+    /** 이 PC에서 못 재는 값이면 "모름" 안내 */
+    noteKey?: string;
+    /** 이 줄이 붙는 원 항목 (그 원을 끄면 같이 꺼 둔다) */
+    parent?: string;
+}
+
+export interface PickerGroup {
+    key: string;
+    titleKey: string;
+    rows: PickerRow[];
+    /** 고를 것이 없을 때 안내 */
+    emptyKey?: string;
+}
+
+const volumeLabel = (mount: string) => mount.replace(/[\\/]+$/, '') || mount;
+
+/** 표본에 있는 하드웨어로 항목 고르기 창을 만든다 */
+export function pickerGroups(snap: MetricsSnapshot | null | undefined): PickerGroup[] {
+    const gpus = snap?.gpus || [];
+    const dataMounts = new Set((snap?.disks || []).map((d) => d.mount));
+    const unknownIf = (missing: boolean) => (missing ? 'monitor.unknown_here' : undefined);
+    return [
+        {
+            key: 'cpu',
+            titleKey: 'monitor.cpu',
+            rows: [
+                { id: 'cpu', labelKey: 'monitor.pick_usage' },
+                { id: 'cpu.clock', labelKey: 'monitor.pick_clock', parent: 'cpu', noteKey: unknownIf(snap?.cpu?.clock_mhz == null) },
+                { id: 'cpu.temp', labelKey: 'monitor.pick_temp', parent: 'cpu', noteKey: unknownIf(snap?.cpu?.temp_c == null) },
+            ],
+        },
+        {
+            key: 'memory',
+            titleKey: 'monitor.memory',
+            rows: [
+                { id: 'memory', labelKey: 'monitor.pick_usage' },
+                {
+                    id: 'memory.clock',
+                    labelKey: 'monitor.pick_clock',
+                    parent: 'memory',
+                    noteKey: unknownIf(snap?.memory?.clock_mhz == null),
+                },
+            ],
+        },
+        {
+            key: 'gpu',
+            titleKey: 'monitor.gpu_group',
+            emptyKey: 'monitor.no_gpu',
+            rows: gpus.length
+                ? [
+                      { id: 'gpu', labelKey: 'monitor.pick_usage' },
+                      { id: 'gpu.clock', labelKey: 'monitor.pick_clock', parent: 'gpu', noteKey: unknownIf(gpus.every((g) => g.clock_mhz == null)) },
+                      { id: 'gpu.temp', labelKey: 'monitor.pick_temp', parent: 'gpu', noteKey: unknownIf(gpus.every((g) => g.temp_c == null)) },
+                  ]
+                : [],
+        },
+        {
+            key: 'disk',
+            titleKey: 'monitor.disk_group',
+            rows: [
+                ...(snap?.volumes || []).map((v) => ({
+                    id: volumeItem(v.mount),
+                    labelKey: 'monitor.pick_volume',
+                    labelVars: { mount: volumeLabel(v.mount) },
+                    noteKey: dataMounts.has(v.mount) ? 'monitor.data_disk' : undefined,
+                })),
+                { id: 'volume.kind', labelKey: 'monitor.pick_kind' },
+                { id: 'disk_io', labelKey: 'monitor.disk_io' },
+            ],
+        },
+        {
+            key: 'net',
+            titleKey: 'monitor.network',
+            rows: [
+                { id: 'network', labelKey: 'monitor.pick_network_all' },
+                ...(snap?.adapters || []).map((a) => ({ id: adapterItem(a.name), label: a.name })),
+            ],
+        },
+    ];
+}
+
+/** 항목 하나를 켜고 끈 결과 목록 */
+export function toggleItem(items: string[], id: string, on: boolean): string[] {
+    const set = new Set(items);
+    if (on) set.add(id);
+    else set.delete(id);
+    return [...set];
+}
 
 /**
- * 원형 그래프 다섯 개. 각 조각의 value 합은 total 이하이고, 남는 몫이 유휴다.
- * @returns {{key, titleKey, center, sub, total, segments, noteKey?}[]}
+ * 고른 항목의 원형 그래프. 각 조각의 value 합은 total 이하이고, 남는 몫이 유휴다.
+ * 원 순서는 고정이다: CPU - 메모리 - GPU - 디스크 IO - 디스크들 - 네트워크 - 네트워크 카드들
  */
 export function buildRings(
     snap: MetricsSnapshot | null | undefined,
     slots: Record<string, number | null>,
     peaks: Peaks = { diskIo: 0, network: 0 },
+    items: string[] = defaultItems(snap),
 ): Ring[] {
     if (!snap) return [];
+    const on = new Set(items);
     const names = Object.fromEntries((snap.instances || []).map((i) => [i.id, i.name]));
     const insts = snap.instances || [];
     const others = (value: number | undefined) => ({ key: '__others', labelKey: 'monitor.others', value: Math.max(0, value as number), color: OTHERS_COLOR });
     const idle = (value: number, labelKey = 'monitor.idle') => ({ key: '__idle', labelKey, value: Math.max(0, value), color: IDLE_COLOR });
+    const all = (value: number, labelKey: string) => ({ key: '__all', labelKey, value: Math.max(0, value), color: ALL_COLOR });
     const rings: Ring[] = [];
 
-    const cpu = snap.cpu || {};
-    rings.push({
-        key: 'cpu',
-        titleKey: 'monitor.cpu',
-        center: formatPercent(cpu.total_percent as number),
-        sub: { key: 'monitor.cores', vars: { count: cpu.cores } },
-        total: 100,
-        format: (v: number) => `${v.toFixed(1)}%`,
-        segments: [
-            ...instanceSegments(insts.map((i) => ({ id: i.id, value: i.cpu_percent })), slots, names),
-            others(cpu.others_percent),
-            idle(100 - (cpu.total_percent || 0)),
-        ],
-    });
-
-    const mem = snap.memory || ({} as { total_bytes?: number; used_bytes?: number; others_bytes?: number });
-    rings.push({
-        key: 'memory',
-        titleKey: 'monitor.memory',
-        center: formatPercent(mem.total_bytes ? ((mem.used_bytes as number) / mem.total_bytes) * 100 : NaN),
-        sub: { text: `${formatBytes(mem.used_bytes as number)} / ${formatBytes(mem.total_bytes as number)}` },
-        total: mem.total_bytes || 0,
-        format: formatBytes,
-        segments: [
-            ...instanceSegments(insts.map((i) => ({ id: i.id, value: i.memory_bytes })), slots, names),
-            others(mem.others_bytes),
-            idle((mem.total_bytes || 0) - (mem.used_bytes || 0), 'monitor.free'),
-        ],
-    });
-
-    const io = snap.disk_io || {};
-    const ioTotal = (io.read_bps || 0) + (io.write_bps || 0);
-    const ioScale = Math.max(peaks.diskIo, ioTotal, MIN_RATE_SCALE);
-    rings.push({
-        key: 'disk_io',
-        titleKey: 'monitor.disk_io',
-        center: formatRate(ioTotal),
-        sub: { key: 'monitor.read_write', vars: { read: formatRate(io.read_bps || 0), write: formatRate(io.write_bps || 0) } },
-        total: ioScale,
-        format: formatRate,
-        // 실제 디스크 IO는 인스턴스별로 나누지 않는다: 프로세스 IO 카운터는 캐시 읽기까지 세서 몫이 맞지 않는다
-        noteKey: io.source === 'process' ? 'monitor.disk_io_process_note' : 'monitor.disk_io_note',
-        segments: [
-            { key: '__all', labelKey: 'monitor.all_disk_io', value: ioTotal, color: ALL_COLOR },
-            idle(ioScale - ioTotal),
-        ],
-    });
-
-    // 데이터 폴더가 있는 디스크가 첫 번째로 온다
-    const disk = (snap.disks || [])[0];
-    if (disk) {
-        const used = disk.total_bytes - disk.available_bytes;
+    if (on.has('cpu')) {
+        const cpu = snap.cpu || {};
+        const pills: RingPill[] = [{ key: 'monitor.cores', vars: { count: cpu.cores } }];
+        if (on.has('cpu.clock')) pills.push(cpu.clock_mhz ? { text: formatGhz(cpu.clock_mhz) } : { key: 'monitor.clock_unknown', unknown: true });
+        if (on.has('cpu.temp')) pills.push(cpu.temp_c != null ? { text: `${Math.round(cpu.temp_c)} °C` } : { key: 'monitor.temp_unknown', unknown: true });
         rings.push({
-            key: 'disk',
-            titleKey: 'monitor.disk',
-            center: formatPercent(disk.total_bytes ? (used / disk.total_bytes) * 100 : NaN),
-            sub: { key: 'monitor.disk_free', vars: { mount: disk.mount, free: formatBytes(disk.available_bytes) } },
-            total: disk.total_bytes,
-            format: formatBytes,
-            noteKey: disk.sizes_at_ms ? null : 'monitor.sizes_pending',
+            key: 'cpu',
+            titleKey: 'monitor.cpu',
+            value: percentValue(cpu.total_percent),
+            unit: '%',
+            tone: 'cpu',
+            pills,
+            total: 100,
+            format: (v: number) => `${v.toFixed(1)}%`,
             segments: [
-                ...instanceSegments(disk.instances.map((s) => ({ id: s.id, value: s.bytes })), slots, names),
-                others(disk.others_bytes),
-                idle(disk.available_bytes, 'monitor.free'),
+                ...instanceSegments(insts.map((i) => ({ id: i.id, value: i.cpu_percent })), slots, names),
+                others(cpu.others_percent),
+                idle(100 - (cpu.total_percent || 0)),
             ],
         });
     }
 
-    const net = snap.network || {};
-    const netTotal = (net.rx_bps || 0) + (net.tx_bps || 0);
-    const netScale = Math.max(peaks.network, netTotal, MIN_RATE_SCALE);
-    rings.push({
-        key: 'network',
-        titleKey: 'monitor.network',
-        center: formatRate(netTotal),
-        sub: { key: 'monitor.rx_tx', vars: { rx: formatRate(net.rx_bps || 0), tx: formatRate(net.tx_bps || 0) } },
-        total: netScale,
-        format: formatRate,
+    if (on.has('memory')) {
+        const mem = snap.memory || {};
+        const pills: RingPill[] = [{ text: `${formatBytes(mem.used_bytes as number)} / ${formatBytes(mem.total_bytes as number)}` }];
+        if (on.has('memory.clock')) pills.push(mem.clock_mhz ? { text: `${mem.clock_mhz} MT/s` } : { key: 'monitor.clock_unknown', unknown: true });
+        rings.push({
+            key: 'memory',
+            titleKey: 'monitor.memory',
+            value: percentValue(mem.total_bytes ? ((mem.used_bytes as number) / mem.total_bytes) * 100 : NaN),
+            unit: '%',
+            tone: 'memory',
+            pills,
+            total: mem.total_bytes || 0,
+            format: formatBytes,
+            segments: [
+                ...instanceSegments(insts.map((i) => ({ id: i.id, value: i.memory_bytes })), slots, names),
+                others(mem.others_bytes),
+                idle((mem.total_bytes || 0) - (mem.used_bytes || 0), 'monitor.free'),
+            ],
+        });
+    }
+
+    if (on.has('gpu')) {
+        const gpus = snap.gpus || [];
+        gpus.forEach((g, i) => {
+            const pills: RingPill[] = [];
+            if (on.has('gpu.clock')) pills.push(g.clock_mhz ? { text: formatGhz(g.clock_mhz) } : { key: 'monitor.clock_unknown', unknown: true });
+            if (on.has('gpu.temp')) pills.push(g.temp_c != null ? { text: `${Math.round(g.temp_c)} °C` } : { key: 'monitor.temp_unknown', unknown: true });
+            const util = g.util_percent ?? null;
+            rings.push({
+                key: gpus.length > 1 ? `gpu:${i}` : 'gpu',
+                titleKey: g.name ? 'monitor.gpu_named' : 'monitor.gpu',
+                titleVars: { name: g.name },
+                value: percentValue(util),
+                unit: util == null ? '' : '%',
+                tone: 'gpu',
+                pills,
+                total: 100,
+                format: (v: number) => `${v.toFixed(1)}%`,
+                noteKey: util == null ? 'monitor.gpu_util_unknown' : null,
+                segments: util == null ? [] : [all(util, 'monitor.gpu_usage'), idle(100 - util)],
+            });
+        });
+    }
+
+    if (on.has('disk_io')) {
+        const io = snap.disk_io || {};
+        const ioTotal = (io.read_bps || 0) + (io.write_bps || 0);
+        const ioScale = Math.max(peaks.diskIo, ioTotal, MIN_RATE_SCALE);
+        const [value, unit] = splitBytes(ioTotal);
+        rings.push({
+            key: 'disk_io',
+            titleKey: 'monitor.disk_io',
+            value,
+            unit: `${unit}/s`,
+            tone: 'disk',
+            pills: [
+                { key: 'monitor.read', vars: { value: formatRate(io.read_bps || 0) } },
+                { key: 'monitor.write', vars: { value: formatRate(io.write_bps || 0) } },
+            ],
+            total: ioScale,
+            format: formatRate,
+            // 실제 디스크 IO는 인스턴스별로 나누지 않는다: 프로세스 IO 카운터는 캐시 읽기까지 세서 몫이 맞지 않는다
+            noteKey: io.source === 'process' ? 'monitor.disk_io_process_note' : 'monitor.disk_io_note',
+            segments: [all(ioTotal, 'monitor.all_disk_io'), idle(ioScale - ioTotal)],
+        });
+    }
+
+    // 디스크: 데몬이 준 모든 디스크(volumes) 중 고른 것. 데이터·인스턴스 폴더가 있는 디스크면 인스턴스 몫을 나눈다
+    const volumes = snap.volumes?.length
+        ? snap.volumes
+        : (snap.disks || []).map((d) => ({ mount: d.mount, total_bytes: d.total_bytes, available_bytes: d.available_bytes, kind: undefined, rpm: undefined }));
+    for (const vol of volumes) {
+        if (!on.has(volumeItem(vol.mount))) continue;
+        const used = vol.total_bytes - vol.available_bytes;
+        const shares = (snap.disks || []).find((d) => d.mount === vol.mount);
+        const pills: RingPill[] = [{ key: 'monitor.free_pill', vars: { free: formatBytes(vol.available_bytes) } }];
+        if (on.has('volume.kind')) pills.push(kindPill(vol.kind, vol.rpm));
+        rings.push({
+            key: volumeItem(vol.mount),
+            titleKey: 'monitor.volume',
+            titleVars: { mount: volumeLabel(vol.mount) },
+            value: percentValue(vol.total_bytes ? (used / vol.total_bytes) * 100 : NaN),
+            unit: '%',
+            tone: 'disk',
+            pills,
+            total: vol.total_bytes,
+            format: formatBytes,
+            noteKey: shares && !shares.sizes_at_ms ? 'monitor.sizes_pending' : null,
+            segments: shares
+                ? [
+                      ...instanceSegments(shares.instances.map((s) => ({ id: s.id, value: s.bytes })), slots, names),
+                      others(shares.others_bytes),
+                      idle(vol.available_bytes, 'monitor.free'),
+                  ]
+                : [all(used, 'monitor.used'), idle(vol.available_bytes, 'monitor.free')],
+        });
+    }
+
+    const rateRing = (key: string, titleKey: string, titleVars: Record<string, unknown> | undefined, rx: number, tx: number, peak: number, noteKey: string | null): Ring => {
+        const total = rx + tx;
+        const scale = Math.max(peak, total, MIN_RATE_SCALE);
+        const [value, unit] = splitBytes(total);
+        return {
+            key,
+            titleKey,
+            titleVars,
+            value,
+            unit: `${unit}/s`,
+            tone: 'net',
+            pills: [
+                { key: 'monitor.rx', vars: { value: formatRate(rx) } },
+                { key: 'monitor.tx', vars: { value: formatRate(tx) } },
+            ],
+            total: scale,
+            format: formatRate,
+            noteKey,
+            segments: [all(total, 'monitor.all_traffic'), idle(scale - total)],
+        };
+    };
+
+    if (on.has('network')) {
+        const net = snap.network || {};
         // 프로세스별 네트워크는 데몬이 아직 못 잰다: 전체 트래픽 한 조각만
-        noteKey: net.per_instance ? 'monitor.scale_note' : 'monitor.network_note',
-        segments: [{ key: '__all', labelKey: 'monitor.all_traffic', value: netTotal, color: ALL_COLOR }, idle(netScale - netTotal)],
-    });
+        rings.push(rateRing('network', 'monitor.network', undefined, net.rx_bps || 0, net.tx_bps || 0, peaks.network, net.per_instance ? 'monitor.scale_note' : 'monitor.network_note'));
+    }
+    for (const a of snap.adapters || []) {
+        if (!on.has(adapterItem(a.name))) continue;
+        rings.push(rateRing(adapterItem(a.name), 'monitor.adapter', { name: a.name }, a.rx_bps || 0, a.tx_bps || 0, peaks.adapters?.[a.name] || 0, 'monitor.scale_note'));
+    }
     return rings;
+}
+
+function kindPill(kind: string | undefined, rpm: number | null | undefined): RingPill {
+    if (kind === 'ssd') return { text: 'SSD' };
+    if (kind === 'hdd') return rpm ? { text: `HDD ${rpm}rpm` } : { text: 'HDD' };
+    return { key: 'monitor.kind_unknown', unknown: true };
 }

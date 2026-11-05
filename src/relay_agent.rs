@@ -2613,12 +2613,15 @@ mod tests {
         let snap = MetricsSnapshot {
             sampled_at_ms: 0,
             window_ms: 0,
-            cpu: CpuMetrics { cores: 8, total_percent: 81.6, others_percent: 0.0 },
-            memory: MemoryMetrics { total_bytes: 1000, used_bytes: 795, others_bytes: 0 },
+            cpu: CpuMetrics { cores: 8, total_percent: 81.6, others_percent: 0.0, clock_mhz: None, temp_c: None },
+            memory: MemoryMetrics { total_bytes: 1000, used_bytes: 795, others_bytes: 0, clock_mhz: None },
             disk_io: DiskIoMetrics { read_bps: 0, write_bps: 0, source: "physical", per_instance: false },
             network: NetworkMetrics { rx_bps: 0, tx_bps: 0, per_instance: false },
             disks: vec![disk(100, 40), disk(200, 14), disk(0, 0)],
             instances: vec![],
+            volumes: vec![],
+            adapters: vec![],
+            gpus: vec![],
         };
         assert_eq!(host_load(&snap), json!({ "cpu": 82, "mem": 80, "diskFree": 7 }));
         let none = MetricsSnapshot { disks: vec![], ..snap };

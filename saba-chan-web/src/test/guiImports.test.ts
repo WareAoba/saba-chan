@@ -41,6 +41,9 @@ const ALLOWED = new Set([
     '@gui/components/CustomDropdown/CustomDropdown',
     // 체크박스는 GUI 와 같은 것을 쓴다 (화면이 아니라 입력 부품 하나)
     '@gui/components/ui/SabaUI',
+    // PC 상태 원과 항목 고르기: 앱 시스템 모니터를 웹에서 그대로 본다 (스토어 없는 그림 부품과 순수 계산)
+    '@gui/components/monitor/MonitorRing',
+    '@gui/components/monitor/systemMetrics',
 ]);
 
 function sources(dir: string): string[] {

@@ -1117,26 +1117,30 @@ textarea {
     cursor: default;
 }
 
-.meter {
-    display: grid;
-    gap: 4px;
-}
-.meter-head {
+/* PC 상태: 앱 시스템 모니터와 같은 원 (@gui/components/monitor/MonitorRing.css) */
+.metrics-head {
     display: flex;
-    justify-content: space-between;
-    font-size: 13px;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-bottom: 12px;
 }
-.meter-track {
-    height: 8px;
-    border-radius: 999px;
-    background: var(--bg-3);
-    overflow: hidden;
+.metrics-picker {
+    margin-bottom: 16px;
+    padding: 12px;
+    border-radius: var(--r-sm);
+    background: var(--inset);
 }
-.meter-fill {
-    height: 100%;
-    background: var(--accent);
-    border-radius: inherit;
-    transition: width 600ms var(--ease);
+.metrics-rings {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 16px 8px;
+    margin-bottom: 8px;
+}
+.metrics-swatch {
+    flex: none;
+    width: 10px;
+    height: 10px;
+    border-radius: 3px;
 }
 
 /* ── 겹치는 창 ── */
@@ -2096,11 +2100,6 @@ textarea {
 }
 .activity-row .pill {
     flex: none;
-}
-/* 서버별 사용량 막대 (PC 메모리 중 그 서버 몫) */
-.meter-mini {
-    flex: none;
-    width: 80px;
 }
 @media (max-width: 420px) {
     .activity-row {

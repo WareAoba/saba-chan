@@ -76,6 +76,10 @@ pub struct GuiSettings {
     pub console_fonts: ConsoleFonts,
     /// 서버 페이지의 시스템 모니터 펼침 여부
     pub system_monitor_open: bool,
+    /// 시스템 모니터에 띄울 항목 id (`cpu`·`cpu.clock`·`disk:<마운트>`·`net:<어댑터>` 등, GUI `monitorItems.ts`).
+    /// 없으면 GUI 기본 항목
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub monitor_items: Option<Vec<String>>,
 
     // Window state (GUI가 저장하지만 데몬이 중개)
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -220,6 +224,7 @@ impl Default for GuiSettings {
             console_token_colors: HashMap::new(),
             console_fonts: ConsoleFonts::default(),
             system_monitor_open: true,
+            monitor_items: None,
             window_bounds: None,
             language: None,
             main_daemon: None,
@@ -233,6 +238,15 @@ fn token_color_ok(key: &str, value: &str) -> bool {
     let key_ok = !key.is_empty() && key.len() <= 32 && key.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_');
     let value_ok = value.is_empty() || value.len() == 7 && value.starts_with('#') && value[1..].bytes().all(|b| b.is_ascii_hexdigit());
     key_ok && value_ok
+}
+
+const MONITOR_ITEMS_MAX: usize = 64;
+const MONITOR_ITEM_MAX_LEN: usize = 128;
+
+/// 모니터 항목 id 목록: 개수·길이 한도 안이고 제어 문자가 없다 (디스크·어댑터 이름이 들어가 글자는 가리지 않는다)
+fn monitor_items_ok(items: &[String]) -> bool {
+    items.len() <= MONITOR_ITEMS_MAX
+        && items.iter().all(|i| !i.is_empty() && i.chars().count() <= MONITOR_ITEM_MAX_LEN && !i.chars().any(char::is_control))
 }
 
 impl GuiSettings {
@@ -252,6 +266,9 @@ impl GuiSettings {
         }
         for (key, value, allowed) in self.console_fonts.clone().slots() {
             choice(&format!("consoleFonts.{key}"), value, &allowed)?;
+        }
+        if self.monitor_items.as_ref().is_some_and(|items| !monitor_items_ok(items)) {
+            return Err(format!("monitorItems must be at most {MONITOR_ITEMS_MAX} ids of 1..={MONITOR_ITEM_MAX_LEN} characters"));
         }
         Ok(())
     }
@@ -274,6 +291,9 @@ impl GuiSettings {
         }
         if self.new_server_backup_keep == 0 {
             self.new_server_backup_keep = default.new_server_backup_keep;
+        }
+        if self.monitor_items.as_ref().is_some_and(|items| !monitor_items_ok(items)) {
+            self.monitor_items = None;
         }
     }
 }
@@ -1740,6 +1760,23 @@ mod tests {
         store.write_gui(serde_json::json!({ "closeAction": "tray", "consoleTimestamps": "12h", "auditKeepDays": 30 }), Apply::MergePatch, None).await.unwrap();
         let saved = ConfigStore::new(tmp.path()).get_gui_settings().await;
         assert_eq!((saved.close_action.as_str(), saved.console_timestamps.as_str(), saved.audit_keep_days), ("tray", "12h", 30));
+    }
+
+    /// 사용자 11-06: 시스템 모니터에 띄울 항목을 고른다. 없으면 기본, null로 되돌리고, 너무 많거나 긴 id는 거절
+    #[tokio::test]
+    async fn monitor_items_are_saved_and_reset_with_null() {
+        let tmp = TempDir::new().unwrap();
+        let store = ConfigStore::new(tmp.path());
+        assert!(serde_json::to_value(store.get_gui_settings().await).unwrap().get("monitorItems").is_none());
+        store.write_gui(serde_json::json!({ "monitorItems": ["cpu", "cpu.temp", "disk:D:\\", "net:이더넷"] }), Apply::MergePatch, None).await.unwrap();
+        let saved = ConfigStore::new(tmp.path()).get_gui_settings().await;
+        assert_eq!(saved.monitor_items.as_deref(), Some(&["cpu".to_string(), "cpu.temp".into(), "disk:D:\\".into(), "net:이더넷".into()][..]));
+        let many: Vec<String> = (0..65).map(|i| format!("net:{i}")).collect();
+        for bad in [serde_json::json!({ "monitorItems": many }), serde_json::json!({ "monitorItems": ["a\nb"] }), serde_json::json!({ "monitorItems": [""] })] {
+            assert!(store.write_gui(bad.clone(), Apply::MergePatch, None).await.is_err(), "{bad}");
+        }
+        store.write_gui(serde_json::json!({ "monitorItems": null }), Apply::MergePatch, None).await.unwrap();
+        assert!(ConfigStore::new(tmp.path()).get_gui_settings().await.monitor_items.is_none());
     }
 
     /// 사용자 11-02: 콘솔 글꼴을 글자(영문·한글·일본어·중국어)마다 고른다. 기본 Cascadia·D2Coding·HackGen·Sarasa SC, 그 글자의 후보 밖은 거절

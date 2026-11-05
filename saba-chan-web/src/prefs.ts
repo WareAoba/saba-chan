@@ -1,7 +1,12 @@
 import { applyConsoleFonts, normalizeConsoleFonts } from '@gui/utils/consoleFonts';
 
-/** 이 화면 설정 (언어·테마·콘솔 글꼴): 이 브라우저에만 둔다. 저장소를 못 쓰는 브라우저에서는 기본값으로 그린다 */
-const KEY = { theme: 'saba-web.theme', language: 'saba-web.language', consoleFonts: 'saba-web.consoleFonts' };
+/** 이 화면 설정 (언어·테마·콘솔 글꼴·PC 상태 항목): 이 브라우저에만 둔다. 저장소를 못 쓰는 브라우저에서는 기본값으로 그린다 */
+const KEY = {
+    theme: 'saba-web.theme',
+    language: 'saba-web.language',
+    consoleFonts: 'saba-web.consoleFonts',
+    monitorItems: 'saba-web.monitorItems',
+};
 type PrefName = keyof typeof KEY;
 export const THEMES = ['system', 'light', 'dark'];
 
@@ -56,4 +61,22 @@ export function readConsoleFonts() {
 export function applyScreenFonts(fonts: ReturnType<typeof normalizeConsoleFonts> = readConsoleFonts(), language: string = document.documentElement.lang) {
     writePref('consoleFonts', JSON.stringify(fonts));
     applyConsoleFonts(fonts, language);
+}
+
+/** PC 상태에 띄울 항목 (앱 시스템 모니터와 같은 항목 id). 고른 적이 없거나 깨졌으면 null(기본 항목) */
+export function readMonitorItems(): string[] | null {
+    try {
+        const v = JSON.parse(readPref('monitorItems') || 'null');
+        return Array.isArray(v) ? v.filter((i): i is string => typeof i === 'string') : null;
+    } catch {
+        return null;
+    }
+}
+
+export function writeMonitorItems(items: string[] | null) {
+    if (items) writePref('monitorItems', JSON.stringify(items));
+    else
+        try {
+            globalThis.localStorage?.removeItem(KEY.monitorItems);
+        } catch {}
 }
