@@ -486,6 +486,7 @@ Tauri 커맨드(`installer/gui/src-tauri/src/lib.rs`): `get_installer_state`, `s
 - 원본은 `blocked_users`이고 릴레이가 시작할 때 메모리에 올린다(단일 인스턴스). 바꾸기는 아래 두 입구만 쓴다.
 - 차단된 사람: 그 사람의 모든 호스트(계정 하나에 PC 여러 대)가 보내는 노드 요청은 403 `HOST_BLOCKED`(§4.1 노드 토큰). 봇 게이트웨이는 어느 길드·DM에서든 그 사람의 메시지를 무시하고, 슬래시·버튼에는 숨김 답 `blocked_account`만 한다. 페어링(`/사바쨩 연결`)도 같은 게이트웨이에서 막힌다. 다른 사람이 그 PC의 길드로 보내는 명령은 큐에 넣지 않고 `HOST_OFFLINE`이다(`submitCommand`). 차단하는 순간 그 PC들의 웹 원격 연결(`/node/ws`)을 닫고 기다리던 긴 폴링을 깨운다. 기한이 지난 차단은 효력이 없다.
 - 관리: 관리자 API(§4.2 `/admin/api/blocklist`), 관리자 페이지(§4.4 (h)), 운영 서버의 `/운영 차단·해제·목록`. `/운영`은 `RELAY_OPERATOR_GUILD_ID`(선택 env) 서버 한 곳에만 길드 명령으로 등록하고 `default_member_permissions:"0"`이라 그 서버 관리자에게만 보인다(봇 DM·다른 서버에는 없다, 사용자 결정 2026-10-25). 다른 서버에 남은 옛 정의로 부르면 실행하지 않는다. 운영 명령은 `RELAY_OPERATOR_IDS`(쉼표 구분 디스코드 ID, 선택 env)의 사람만 쓰고, 비우면 아무도 못 쓴다. 운영자는 차단할 수 없다(400 `OPERATOR`). 기간은 일 단위(1~3650), 비우면 무기한.
+- 운영 서버 연결(2026-11-05 사용자 요청, `services/operatorGuild.ts`): 운영 서버는 공식 지원·체험 서버라 운영자 PC에만 연결한다. 운영 서버에서 `/사바쨩 연결`·`연결해제`는 받지 않고 `pair_operator_guild`로 답한다. 봇이 켜질 때(`operatorService.onReady`) 운영자(`RELAY_OPERATOR_IDS`) PC를 모두 묶고(`linkGuildToHost`, `link`라 데몬은 서버를 나중에 연다) 그다음 운영자가 아닌 사람의 PC를 뗀다(`unbindGuild`). 먼저 묶으므로 남의 PC가 대표였어도 운영자 PC가 대표를 이어받아 디스코드 설정이 남는다. 운영자가 새 PC를 연결하면 다음 재시작 때 묶인다.
 - 감사: `audit_logs` `action='admin'`, `detail {op:'ban'|'unban', target, days?}`.
 - IP는 차단 기준으로 쓰지 않고 DB에 모으지 않는다. Caddy 접근 로그(`caddy-logs` 볼륨)는 하루마다 새 파일로 넘기고 7일 지난 파일을 지운다. 요청 헤더는 남기지 않는다.
 
