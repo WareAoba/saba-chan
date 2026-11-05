@@ -182,7 +182,7 @@ mod tests {
         let url = serve_once(b"HTTP/1.1 200 OK\r\nContent-Length: 100\r\n\r\nonly ten b").await;
         let tmp = tempfile::tempdir().unwrap();
         let dest = tmp.path().join("asset.zip");
-        let err = download_verified(&reqwest::Client::new(), &url, &dest, None, None, None).await.unwrap_err();
+        let err = download_verified(&crate::tls::http_client_builder().build().unwrap(), &url, &dest, None, None, None).await.unwrap_err();
         assert!(matches!(err, DownloadError::Http(_)), "{:?}", err);
         assert!(!dest.exists());
     }
@@ -203,7 +203,7 @@ mod tests {
     }
 
     async fn fetch_with_idle(url: &str, dest: &Path, idle: Duration) -> Result<String, DownloadError> {
-        let client = reqwest::Client::new();
+        let client = crate::tls::http_client_builder().build().unwrap();
         let fut = download_with(&client, url, dest, None, None, None, idle);
         tokio::time::timeout(Duration::from_secs(10), fut).await.expect("a stalled download must give up")
     }
@@ -233,7 +233,7 @@ mod tests {
         let url = serve_once(b"HTTP/1.1 200 OK\r\nConnection: close\r\n\r\n0123456789abcdefghij").await;
         let tmp = tempfile::tempdir().unwrap();
         let dest = tmp.path().join("asset.zip");
-        let err = download_verified(&reqwest::Client::new(), &url, &dest, None, Some(10), None).await.unwrap_err();
+        let err = download_verified(&crate::tls::http_client_builder().build().unwrap(), &url, &dest, None, Some(10), None).await.unwrap_err();
         assert!(matches!(err, DownloadError::TooLarge { limit: 10 }), "{:?}", err);
         assert!(!dest.exists());
     }
@@ -244,7 +244,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let dest = tmp.path().join("asset.zip");
         std::fs::write(&dest, b"good staged file").unwrap();
-        assert!(download_verified(&reqwest::Client::new(), &url, &dest, None, None, None).await.is_err());
+        assert!(download_verified(&crate::tls::http_client_builder().build().unwrap(), &url, &dest, None, None, None).await.is_err());
         assert_eq!(std::fs::read(&dest).unwrap(), b"good staged file");
         assert!(!tmp.path().join("asset.zip.part").exists());
     }
@@ -254,7 +254,7 @@ mod tests {
         let url = serve_once(b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n").await;
         let tmp = tempfile::tempdir().unwrap();
         let dest = tmp.path().join("asset.zip");
-        assert!(download_verified(&reqwest::Client::new(), &url, &dest, None, None, None).await.is_err());
+        assert!(download_verified(&crate::tls::http_client_builder().build().unwrap(), &url, &dest, None, None, None).await.is_err());
         assert!(!dest.exists());
     }
 }

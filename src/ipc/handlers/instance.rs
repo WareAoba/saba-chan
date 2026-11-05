@@ -915,7 +915,7 @@ async fn create_instance_inner(state: IPCServer, payload: Value, dry_run: bool) 
                     // ── executable_path 자동 계산 ──
                     // migration_source(=working_dir)와 server_executable(바이너리 파일명)을 결합
                     // 프론트엔드가 모듈 기본값을 보낼 수 있으므로, migration에서는 항상 재계산
-                    if let (Some(ref work_dir), Some((_, _, Some(ref exe_name)))) = (&instance.working_dir, &module_install) {
+                    if let (Some(work_dir), Some((_, _, Some(exe_name)))) = (&instance.working_dir, &module_install) {
                         let resolved = std::path::Path::new(work_dir).join(exe_name);
                         if resolved.exists() {
                             instance.executable_path = Some(resolved.to_string_lossy().to_string());

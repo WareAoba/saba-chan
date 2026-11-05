@@ -739,7 +739,7 @@ async fn install_module_locked(state: IPCServer, module_id: String) -> axum::res
     let target_dir = modules_dir.join(&module_id);
 
     let result: anyhow::Result<()> = async {
-        let http = reqwest::Client::new();
+        let http = saba_chan_updater_lib::tls::http_client_builder().build()?;
         const MODULE_DOWNLOAD_LIMIT: u64 = 128 * 1024 * 1024;
         let max_bytes = Some(comp.size_bytes.unwrap_or(MODULE_DOWNLOAD_LIMIT).min(MODULE_DOWNLOAD_LIMIT));
         saba_chan_updater_lib::download::download_verified(&http, &comp.url, &zip_path, Some(&comp.sha256), max_bytes, None).await?;

@@ -95,7 +95,10 @@ impl RestClient {
     fn send_http_request(&self, url: &str, method: &str, body: Option<Value>) -> Result<ServerResponse, ProtocolError> {
         tracing::debug!("REST {} {}", method, url);
 
-        // 게임 서버는 이 PC나 같은 망에 있다: 시스템 프록시를 거치지 않는다. TLS는 OS 것(native-tls)을 쓴다
+        // 게임 서버는 이 PC나 같은 망에 있다: 시스템 프록시를 거치지 않는다.
+        // TLS는 다른 클라이언트와 같은 rustls(ring + OS 인증서 저장소)를 쓴다
+        saba_chan_updater_lib::tls::install_crypto_provider();
+        #[allow(clippy::disallowed_methods)]
         let agent = reqwest::blocking::Client::builder()
             .timeout(Duration::from_secs(10))
             .no_proxy()

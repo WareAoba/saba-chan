@@ -89,7 +89,7 @@ pub(crate) fn relay_client() -> Result<reqwest::Client, reqwest::Error> {
         "X-Saba-Client",
         reqwest::header::HeaderValue::from_static("1"),
     );
-    reqwest::Client::builder()
+    saba_chan_updater_lib::tls::http_client_builder()
         .timeout(std::time::Duration::from_secs(5))
         .default_headers(headers)
         .build()
@@ -922,7 +922,7 @@ mod tests {
     #[test]
     fn signed_headers_are_only_attached_for_an_https_or_loopback_relay() {
         let headers = || Some(vec![("Authorization".to_string(), "Bearer sbn_a.b".to_string())]);
-        let client = reqwest::Client::new();
+        let client = saba_chan_updater_lib::tls::http_client_builder().build().unwrap();
         let auth = |url: &str| with_headers_if_secure(client.get(url), headers()).build().unwrap().headers().contains_key("authorization");
         assert!(!auth("http://old.example/api/x"));
         assert!(!auth("http://127.0.0.2:9/api/x"));

@@ -789,7 +789,7 @@ pub const COMMAND_RISKS: [&str; 3] = ["safe", "caution", "danger"];
 pub const PROTOCOLS: [&str; 3] = ["rcon", "rest", "stdin"];
 
 /// JSON 스키마에서도 로더와 같은 값만 받게 한다 (적합성 검사가 데몬과 어긋나지 않게)
-fn schema_version_schema(_: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
+fn schema_version_schema(_: &mut schemars::r#gen::SchemaGenerator) -> schemars::schema::Schema {
     serde_json::from_value(serde_json::json!({
         "description": "이 파일이 따르는 스키마 버전. 1, 또는 list·multiline 설정과 restart_required·visible_when 등을 쓰면 2(saba-core >=0.1.9)",
         "enum": [BASE_SCHEMA_VERSION, MODULE_SCHEMA_VERSION, null]
@@ -797,7 +797,7 @@ fn schema_version_schema(_: &mut schemars::gen::SchemaGenerator) -> schemars::sc
     .expect("static schema")
 }
 
-fn risk_schema(_: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
+fn risk_schema(_: &mut schemars::r#gen::SchemaGenerator) -> schemars::schema::Schema {
     serde_json::from_value(serde_json::json!({
         "description": "\"safe\" | \"caution\" | \"danger\" (없으면 caution)",
         "enum": [COMMAND_RISKS[0], COMMAND_RISKS[1], COMMAND_RISKS[2], null]

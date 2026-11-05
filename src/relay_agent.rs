@@ -324,7 +324,7 @@ fn poll_retry(error: &str, failures: u32) -> Duration {
 fn http_client() -> Result<reqwest::Client, reqwest::Error> {
     let mut headers = reqwest::header::HeaderMap::new();
     headers.insert("X-Saba-Client", reqwest::header::HeaderValue::from_static("1"));
-    reqwest::Client::builder().timeout(POLL_TIMEOUT).default_headers(headers).build()
+    saba_chan_updater_lib::tls::http_client_builder().timeout(POLL_TIMEOUT).default_headers(headers).build()
 }
 
 struct Session {
