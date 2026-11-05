@@ -2001,7 +2001,7 @@ mod tests {
     // 감사 15: 켜진 서버를 정상 종료하지 못하면(목록 실패·종료 실패) 강제 종료 전에 그 사실을 돌려준다
     #[tokio::test]
     async fn servers_that_did_not_stop_cleanly_are_reported() {
-        let api = |port| DaemonApi { client: reqwest::Client::new(), port, token: String::new() };
+        let api = |port| DaemonApi { client: saba_chan_updater_lib::tls::http_client_builder().build().unwrap(), port, token: String::new() };
         let port = fake_daemon(|req| {
             if req.starts_with("GET /api/servers") {
                 (200, r#"{"servers":[{"id":"a","status":"running"},{"id":"b","status":"running"},{"id":"c","status":"running"},{"id":"d","status":"stopped"}]}"#.into())
