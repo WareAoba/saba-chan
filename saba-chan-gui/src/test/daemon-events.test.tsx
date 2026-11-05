@@ -59,6 +59,10 @@ describe('데몬 이벤트 스트림', () => {
             'Run from Discord: Kimchi · Survival · Stop',
         );
         expect(eventToast({ type: 'action.run', data: { ...discordStop, source: 'gui' } }, t)).toBeNull();
+        // 게임 서버를 대상으로 하지 않은 일(디스코드 설정 바꾸기 등)은 작업 기록에만 남는다
+        const guildSetting = { source: 'discord', ok: true, userName: 'Kimchi', action: 'chatbot.settings.set' };
+        expect(eventToast({ type: 'action.run', data: guildSetting }, t)).toBeNull();
+        expect(eventToast({ type: 'action.run', data: { ...guildSetting, ok: false, status: 403 } }, t)).toBeNull();
         expect(
             eventToast({ type: 'instance.exit', data: { instance: 'Survival', kind: 'crash', restartInSecs: 5 } }, t)
                 ?.message,

@@ -19,6 +19,7 @@ import { withCommandAliases } from '../../utils/commandRisk';
 import {
     STATUS_TONE,
     consoleQuickCommands,
+    defaultServerTab,
     gameNameOf,
     initials,
     interactionOf,
@@ -146,12 +147,7 @@ export function ServerDetail({
         setTab(requestedTab);
         useUIStore.getState().clearRequestedServerTab();
     }, [requestedTab]);
-    // 기본 탭: 입력을 받는 콘솔이면 콘솔, 켜져 있으면 명령, 꺼져 있으면 정보 (쓸 수 있는 것부터)
-    const defaultTab = interaction.input
-        ? 'console'
-        : server.status === 'running' && interaction.commands
-          ? 'commands'
-          : 'info';
+    const defaultTab = defaultServerTab(interaction, server.status);
     const activeTab = tabs.some((x) => x.id === tab) ? (tab as string) : defaultTab;
 
     const conflicts = portConflictCheck ? server.port_conflicts || [] : [];

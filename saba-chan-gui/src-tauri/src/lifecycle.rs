@@ -799,8 +799,9 @@ fn start_events(app: &AppHandle) {
             stop.clone(),
             feed,
             move |ev: SseEvent, from: Option<&str>| {
-                notify_critical(&app2, &ev, feed, from);
-                if let Some(cue) = cues.lock().unwrap().cue_for(&ev).filter(|c| feed.plays(*c)) {
+                let cue = cues.lock().unwrap().cue_for(&ev).filter(|c| feed.plays(*c));
+                notify_critical(&app2, &ev, feed, from, cue);
+                if let Some(cue) = cue {
                     match sounds::remote_requester(&ev).map(str::to_string) {
                         None => sounds::play(&app2, cue),
                         // 원격으로 시킨 일: 이 PC가 누른 것이면 울리지 않는다. 이 PC의 hostId는 이 PC 데몬이 안다
@@ -886,6 +887,7 @@ async fn check_for_updates(app: &AppHandle) {
             app,
             &state.t("updates.notification_title", &[]),
             &state.t("updates.notification_body", &[("count", &count), ("names", &names)]),
+            sounds::toast_silent(&state.settings(), Some(sounds::Cue::UpdateAvailable)),
         );
         sounds::play(app, sounds::Cue::UpdateAvailable);
         sounds::request_attention(app);
@@ -898,8 +900,9 @@ async fn check_for_updates(app: &AppHandle) {
 
 /// 크래시처럼 꼭 알아야 할 일은 OS 알림으로도 (설정 `osNotifications`, 기본 켬).
 /// 앱 창이 앞에 있으면(보이고, 최소화되지 않고, 포커스) 앱 안 알림으로 충분하다. 트레이에만 떠 있어도 이벤트 스트림은 받으므로 알린다.
-/// 원격을 고른 동안 받은 이 PC의 일은 화면에 보이지 않으므로 창이 앞에 있어도 알린다. 원격 데몬(`from`)의 일은 그 이름을 붙인다
-fn notify_critical(app: &AppHandle, ev: &SseEvent, feed: Feed, from: Option<&str>) {
+/// 원격을 고른 동안 받은 이 PC의 일은 화면에 보이지 않으므로 창이 앞에 있어도 알린다. 원격 데몬(`from`)의 일은 그 이름을 붙인다.
+/// 같은 일로 앱 효과음(`cue`)이 울리면 OS 알림은 소리 없이 띄운다
+fn notify_critical(app: &AppHandle, ev: &SseEvent, feed: Feed, from: Option<&str>, cue: Option<sounds::Cue>) {
     let state = app.state::<AppState>();
     let Some(body) = events::critical_notice(ev, &state.i18n.read().unwrap()) else { return };
     if state.settings()["osNotifications"] == json!(false) {
@@ -914,8 +917,9 @@ fn notify_critical(app: &AppHandle, ev: &SseEvent, feed: Feed, from: Option<&str
     if in_front && feed.shown_in_app() {
         return tracing::info!("[Notify] {} — window in front, in-app notice only", ev.kind);
     }
+    let silent = sounds::toast_silent(&state.settings(), cue);
     let Some(host_id) = from.map(str::to_string) else {
-        return show_notification(app, &state.t("notify.title", &[]), &body);
+        return show_notification(app, &state.t("notify.title", &[]), &body, silent);
     };
     // 원격 데몬 이름은 이 PC의 데몬이 안다 (`/api/remote/daemons`는 늘 이 PC가 답한다)
     let app2 = app.clone();
@@ -924,19 +928,23 @@ fn notify_critical(app: &AppHandle, ev: &SseEvent, feed: Feed, from: Option<&str
         let list = state.client.get("/api/remote/daemons", 3000).await.unwrap_or_default();
         let name = events::daemon_name(&list, &host_id);
         let body = events::on_daemon(body, Some(&name), &state.i18n.read().unwrap());
-        show_notification(&app2, &state.t("notify.title", &[]), &body);
+        show_notification(&app2, &state.t("notify.title", &[]), &body, silent);
     });
 }
 
-/// Windows는 토스트를 직접 띄운다: 알림 플러그인은 결과를 버려 실패해도 기록이 남지 않는다
+/// Windows는 토스트를 직접 띄운다: 알림 플러그인은 결과를 버려 실패해도 기록이 남지 않는다.
+/// `silent`: 앱 효과음이 같이 울리는 알림. 토스트는 기본 알림음을 내므로(0.8.1부터) 끈다
 #[cfg(windows)]
-pub fn show_notification(_app: &AppHandle, title: &str, body: &str) {
+pub fn show_notification(_app: &AppHandle, title: &str, body: &str, silent: bool) {
     use saba_chan_updater_lib::notify_app_id;
     use tauri_winrt_notification::{IconCrop, Toast};
     let (title, body) = (title.to_string(), body.to_string());
     // WinRT 호출은 비동기 작업 스레드 밖, 전용 스레드에서 한다
     std::thread::spawn(move || {
         let mut toast = Toast::new(notify_app_id::GUI_APP_ID).title(&title).text1(&body);
+        if silent {
+            toast = toast.sound(None);
+        }
         if let Some(icon) = notify_app_id::icon_path().filter(|p| p.is_file()) {
             toast = toast.icon(&icon, IconCrop::Square, "");
         }
@@ -947,8 +955,9 @@ pub fn show_notification(_app: &AppHandle, title: &str, body: &str) {
     });
 }
 
+/// 다른 OS는 알림 플러그인이 소리를 따로 넣지 않는다 (소리를 주지 않으면 OS 기본 동작)
 #[cfg(not(windows))]
-pub fn show_notification(app: &AppHandle, title: &str, body: &str) {
+pub fn show_notification(app: &AppHandle, title: &str, body: &str, _silent: bool) {
     if let Err(e) = app.notification().builder().title(title).body(body).show() {
         tracing::warn!("[Notify] Failed to show notification: {}", e);
     }
