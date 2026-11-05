@@ -1661,7 +1661,6 @@
     "adapter": "{{name}}",
     "used": "已用",
     "clock_unknown": "時脈未知",
-    "temp_unknown": "溫度未知",
     "kind_unknown": "類型未知",
     "free_pill": "剩餘 {{free}}",
     "read": "讀取 {{value}}",

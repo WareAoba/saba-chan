@@ -100,16 +100,15 @@ describe('시스템 모니터 항목 고르기', () => {
         expect(ring(rings, 'adapter:Ethernet')).toMatchObject({ value: '2.0', unit: 'MB/s' });
     });
 
-    it('못 재는 값은 모름 알약으로 둔다', () => {
+    it('못 재는 클럭은 모름 알약으로 두고, 못 재는 온도는 아예 보이지 않는다', () => {
         const snap = snapshot({
             cpu: { cores: 8, total_percent: 50, others_percent: 20, clock_mhz: null, temp_c: null },
             gpus: [{ name: null, util_percent: null, clock_mhz: null, temp_c: null }],
         });
-        const rings = buildRings(snap, colorSlots([]), undefined, ['cpu', 'cpu.clock', 'cpu.temp', 'gpu', 'gpu.clock']);
-        expect(ring(rings, 'cpu').pills.slice(1)).toEqual([
-            { key: 'monitor.clock_unknown', unknown: true },
-            { key: 'monitor.temp_unknown', unknown: true },
-        ]);
+        const rings = buildRings(snap, colorSlots([]), undefined, ['cpu', 'cpu.clock', 'cpu.temp', 'gpu', 'gpu.clock', 'gpu.temp']);
+        // 사용자 요청(2026-11-06): 온도를 모르면 그냥 표시하지 않는다
+        expect(ring(rings, 'cpu').pills.slice(1)).toEqual([{ key: 'monitor.clock_unknown', unknown: true }]);
+        expect(ring(rings, 'gpu').pills).toEqual([{ key: 'monitor.clock_unknown', unknown: true }]);
         expect(ring(rings, 'gpu')).toMatchObject({ value: '—', titleKey: 'monitor.gpu', segments: [] });
     });
 

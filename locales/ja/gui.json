@@ -1661,7 +1661,6 @@
     "adapter": "{{name}}",
     "used": "使用中",
     "clock_unknown": "クロック不明",
-    "temp_unknown": "温度不明",
     "kind_unknown": "種類不明",
     "free_pill": "空き {{free}}",
     "read": "読み取り {{value}}",

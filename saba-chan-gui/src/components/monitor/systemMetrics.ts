@@ -333,7 +333,8 @@ export function buildRings(
         const cpu = snap.cpu || {};
         const pills: RingPill[] = [{ key: 'monitor.cores', vars: { count: cpu.cores } }];
         if (on.has('cpu.clock')) pills.push(cpu.clock_mhz ? { text: formatGhz(cpu.clock_mhz) } : { key: 'monitor.clock_unknown', unknown: true });
-        if (on.has('cpu.temp')) pills.push(cpu.temp_c != null ? { text: `${Math.round(cpu.temp_c)} °C` } : { key: 'monitor.temp_unknown', unknown: true });
+        // 온도는 모르면 표시하지 않는다 (Windows는 대부분 못 읽는다)
+        if (on.has('cpu.temp') && cpu.temp_c != null) pills.push({ text: `${Math.round(cpu.temp_c)} °C` });
         rings.push({
             key: 'cpu',
             titleKey: 'monitor.cpu',
@@ -377,7 +378,7 @@ export function buildRings(
         gpus.forEach((g, i) => {
             const pills: RingPill[] = [];
             if (on.has('gpu.clock')) pills.push(g.clock_mhz ? { text: formatGhz(g.clock_mhz) } : { key: 'monitor.clock_unknown', unknown: true });
-            if (on.has('gpu.temp')) pills.push(g.temp_c != null ? { text: `${Math.round(g.temp_c)} °C` } : { key: 'monitor.temp_unknown', unknown: true });
+            if (on.has('gpu.temp') && g.temp_c != null) pills.push({ text: `${Math.round(g.temp_c)} °C` });
             const util = g.util_percent ?? null;
             rings.push({
                 key: gpus.length > 1 ? `gpu:${i}` : 'gpu',
