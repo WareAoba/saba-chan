@@ -1612,7 +1612,10 @@
     "kept_instances": "游戏服务器将保留，设置将删除",
     "kept_nothing": "设置和游戏服务器也将删除",
     "done": "已删除 Saba-chan，{{kept}}。",
-    "left": "已删除 Saba-chan，但无法删除以下项目。请关闭正在使用它们的程序后手动删除：\n{{paths}}"
+    "left": "已删除 Saba-chan，但无法删除以下项目。请关闭正在使用它们的程序后手动删除：\n{{paths}}",
+    "servers_unlisted": "无法获取正在运行的服务器列表，未能正常关闭，已强制停止 ({{detail}})。",
+    "server_force_stopped": "服务器 {{server}} 未能正常关闭，已强制停止 ({{detail}})。上次保存之后的内容可能丢失。",
+    "daemon_unanswered": "守护进程没有响应，已强制停止正在运行的服务器。上次保存之后的内容可能丢失。"
   },
   "update_required": {
     "title": "需要更新",

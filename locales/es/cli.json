@@ -1353,7 +1353,10 @@
     "kept_instances": "se conservan los servidores y se eliminan los ajustes",
     "kept_nothing": "también se eliminan los ajustes y los servidores",
     "done": "Se eliminó Saba-chan; {{kept}}.",
-    "left": "Se eliminó Saba-chan, pero no se pudieron borrar estos elementos. Cierre los programas que los usan y bórrelos usted:\n{{paths}}"
+    "left": "Se eliminó Saba-chan, pero no se pudieron borrar estos elementos. Cierre los programas que los usan y bórrelos usted:\n{{paths}}",
+    "servers_unlisted": "No se pudo obtener la lista de servidores en ejecución, así que se detuvieron a la fuerza ({{detail}}).",
+    "server_force_stopped": "El servidor {{server}} no se cerró correctamente y se detuvo a la fuerza ({{detail}}). Puede perderse lo hecho desde el último guardado.",
+    "daemon_unanswered": "El daemon no respondió, así que los servidores en ejecución se detuvieron a la fuerza. Puede perderse lo hecho desde el último guardado."
   },
   "update_required": {
     "title": "Se necesita una actualización",

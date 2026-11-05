@@ -1353,7 +1353,10 @@
     "kept_instances": "les serveurs sont conservés, les paramètres supprimés",
     "kept_nothing": "les paramètres et les serveurs sont aussi supprimés",
     "done": "Saba-chan a été supprimé ; {{kept}}.",
-    "left": "Saba-chan a été supprimé, mais ces éléments n'ont pas pu être effacés. Fermez les programmes qui les utilisent et supprimez-les vous-même :\n{{paths}}"
+    "left": "Saba-chan a été supprimé, mais ces éléments n'ont pas pu être effacés. Fermez les programmes qui les utilisent et supprimez-les vous-même :\n{{paths}}",
+    "servers_unlisted": "Impossible d'obtenir la liste des serveurs en cours, ils ont donc été arrêtés de force ({{detail}}).",
+    "server_force_stopped": "Le serveur {{server}} ne s'est pas arrêté proprement et a été arrêté de force ({{detail}}). Les changements depuis la dernière sauvegarde peuvent être perdus.",
+    "daemon_unanswered": "Le démon n'a pas répondu, les serveurs en cours ont donc été arrêtés de force. Les changements depuis la dernière sauvegarde peuvent être perdus."
   },
   "update_required": {
     "title": "Mise à jour nécessaire",

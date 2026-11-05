@@ -1375,7 +1375,10 @@
     "kept_instances": "game servers are kept, settings are removed",
     "kept_nothing": "settings and game servers are removed too",
     "done": "Saba-chan was removed; {{kept}}.",
-    "left": "Saba-chan was removed, but these could not be deleted. Close any program using them and delete them yourself:\n{{paths}}"
+    "left": "Saba-chan was removed, but these could not be deleted. Close any program using them and delete them yourself:\n{{paths}}",
+    "servers_unlisted": "Could not get the list of running servers, so they were force-stopped instead of shut down cleanly ({{detail}}).",
+    "server_force_stopped": "Server {{server}} did not shut down cleanly and was force-stopped ({{detail}}). Changes since its last save may be lost.",
+    "daemon_unanswered": "The daemon did not answer, so running servers were force-stopped. Changes since their last save may be lost."
   },
   "players": {
     "title": "{{server}}: {{count}} online",

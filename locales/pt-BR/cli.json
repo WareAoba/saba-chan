@@ -1353,7 +1353,10 @@
     "kept_instances": "os servidores são mantidos e as configurações removidas",
     "kept_nothing": "as configurações e os servidores também são removidos",
     "done": "O Saba-chan foi removido; {{kept}}.",
-    "left": "O Saba-chan foi removido, mas não foi possível apagar estes itens. Feche os programas que os usam e apague-os você mesmo:\n{{paths}}"
+    "left": "O Saba-chan foi removido, mas não foi possível apagar estes itens. Feche os programas que os usam e apague-os você mesmo:\n{{paths}}",
+    "servers_unlisted": "Não foi possível obter a lista de servidores em execução, então eles foram forçados a parar ({{detail}}).",
+    "server_force_stopped": "O servidor {{server}} não fechou corretamente e foi forçado a parar ({{detail}}). O que mudou desde o último salvamento pode ter se perdido.",
+    "daemon_unanswered": "O daemon não respondeu, então os servidores em execução foram forçados a parar. O que mudou desde o último salvamento pode ter se perdido."
   },
   "update_required": {
     "title": "Atualização necessária",
