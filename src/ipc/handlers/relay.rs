@@ -435,6 +435,23 @@ pub async fn clear_node_moderation_channel(
     signed_json(&base, reqwest::Method::POST, &path, &body).await
 }
 
+// 확인 창 전의 검사 — 청소와 같은 권한을 보고 지우지 않는다. 경로가 따로인 까닭: 본문의 dryRun 을 모르는 옛 relay 는
+// 그 값을 버리고 실제로 지운다. 이 경로는 옛 relay 에 없어서 404 가 된다
+pub async fn check_clear_node_moderation_channel(
+    Path((guild_id, channel_id)): Path<(String, String)>,
+    Query(params): Query<RelayQueryParams>,
+    State(state): State<IPCServer>,
+    Json(body): Json<Value>,
+) -> Response {
+    let base = signed_base(&state, params.relay_url.as_deref()).await;
+    let path = format!(
+        "/api/nodes/{}/moderation/channels/{}/clear/check",
+        encode_path_segment(&guild_id),
+        encode_path_segment(&channel_id)
+    );
+    signed_json(&base, reqwest::Method::POST, &path, &body).await
+}
+
 pub async fn put_node_moderation_mute(
     Path((guild_id, user_id)): Path<(String, String)>,
     Query(params): Query<RelayQueryParams>,

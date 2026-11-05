@@ -1602,3 +1602,27 @@ async fn an_mcp_owner_reads_raw_game_settings_and_schedules_with_confirmation() 
     let schedule = plan(&state, "instance.schedule.set", Some(&id), &json!({ "schedule": [] }), &owner).await.unwrap();
     assert_eq!(schedule["needsConfirm"], true);
 }
+
+/// 확인 전 권한 검사 (릴레이 `check`): 계획과 같은 판정을 지나되 계획을 남기지 않는다.
+/// 권한이 없으면 확인 버튼을 만들기 전에 거절을 받는다
+#[tokio::test]
+async fn a_check_judges_permission_without_leaving_a_plan() {
+    let (state, id, _tmp) = server().await;
+    set_node(&state, json!({ "ownerDiscordId": "owner", "defaultLevel": 0, "members": { "admin": 2 } })).await;
+
+    let err = check(&state, "backup.restore", Some(&id), &json!({ "name": "b" }), &relay("guest", false)).await.unwrap_err();
+    assert_eq!(err.code, "PERMISSION_DENIED");
+    let ok = check(&state, "backup.restore", Some(&id), &json!({ "name": "b" }), &relay("admin", false)).await.unwrap();
+    assert_eq!((ok["success"].clone(), ok["actionId"].clone(), ok["instance"].clone()), (json!(true), json!("backup.restore"), json!(id)), "{ok}");
+    assert!(ok.get("planId").is_none(), "{ok}");
+
+    // 문장: 실행할 것이면 그 액션을, 권한이 없으면 계획과 같은 거절 답을
+    let denied = check_text(&state, "srv stop", &relay("guest", false)).await.unwrap();
+    assert_eq!((denied["success"].clone(), denied["code"].clone()), (json!(false), json!("PERMISSION_DENIED")), "{denied}");
+    let ok = check_text(&state, "srv stop", &relay("owner", false)).await.unwrap();
+    assert_eq!((ok["success"].clone(), ok["actionId"].clone()), (json!(true), json!("server.stop")), "{ok}");
+    assert!(ok.get("planId").is_none(), "{ok}");
+    // 인스턴스 액션 이름으로 부른 문장도 같은 판정
+    assert_eq!(check_text(&state, "srv 백업", &relay("guest", false)).await.unwrap()["code"], "PERMISSION_DENIED");
+    assert_eq!(check_text(&state, "srv 백업", &relay("admin", false)).await.unwrap()["actionId"], "backup.create");
+}

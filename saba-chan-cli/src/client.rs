@@ -1030,6 +1030,17 @@ impl Api {
         )
         .await
     }
+    /// POST /api/relay/node/:guild/moderation/channels/:channel/clear/check — 청소와 같은 본문, 지우지 않고 권한만 본다 → `{dryRun:true}`
+    pub async fn check_clear_channel(&self, guild_id: &str, channel_id: &str, body: Value, relay_url: Option<&str>) -> Result<Value> {
+        self.post(
+            &with_query(
+                &format!("/api/relay/node/{}/moderation/channels/{}/clear/check", seg(guild_id), seg(channel_id)),
+                &[("relayUrl", relay_url.map(str::to_string))],
+            ),
+            body,
+        )
+        .await
+    }
     /// PUT /api/relay/node/:guild/moderation/mutes/:user — `{duration: 분|"forever"|"off", reason?}` → `{result}`
     pub async fn mute_member(&self, guild_id: &str, user_id: &str, body: Value, relay_url: Option<&str>) -> Result<Value> {
         self.put_slow(
