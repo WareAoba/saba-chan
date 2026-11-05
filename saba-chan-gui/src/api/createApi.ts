@@ -531,7 +531,10 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
                         case 404:
                             return { error: t('errors.instance_not_found') };
                         case 409:
-                            return { error: t('errors.instance_running') };
+                            // 백업·복원·업데이트와 겹치면 instance_busy: 정지해도 풀리지 않는다
+                            return data.error_code === 'instance_busy'
+                                ? { error: t('errors.instance_busy'), error_code: data.error_code }
+                                : { error: t('errors.instance_running'), error_code: data.error_code };
                         case 500:
                             return {
                                 error: t('errors.delete_error', {
@@ -573,7 +576,9 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
             try {
                 // 값에는 비밀번호가 들어갈 수 있어 키 이름만 남긴다
                 console.log(`[Bridge] Updating settings for instance ${id}:`, Object.keys(settings || {}));
-                return (await request('patch', `/api/instance/${encodeURIComponent(id)}`, settings)).data;
+                // 데몬은 잠금을 기다리고 모듈 configure를 돌린 뒤 답한다: CLI(SLOW)처럼 기다린다
+                return (await request('patch', `/api/instance/${encodeURIComponent(id)}`, settings, { timeout: 60000 }))
+                    .data;
             } catch (caught) {
                 const error = caught as DaemonError;
                 console.error('[Bridge] Error updating settings:', error.message);

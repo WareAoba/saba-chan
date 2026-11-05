@@ -93,6 +93,10 @@ const CODE_TEXT: Record<string, string> = {
     server_running: 'maintenance.restore_stop_first',
 };
 
+// 원격 중계 실패는 success 없이 {error, error_code}만 준다 (웹 ui.tsx failed()와 같은 판정)
+const failed = (res: ApiBody | null | undefined) =>
+    !res || typeof res !== 'object' || !!res.error || res.success === false || res.ok === false;
+
 const errorText = (res: ApiBody | null | undefined, fallback: string, t: TFunction) => {
     const details = Array.isArray(res?.details) ? res.details.filter(Boolean) : [];
     const known = CODE_TEXT[res?.error_code as string];
@@ -197,7 +201,7 @@ function BackupsCard({ server }: { server: Server }) {
         setArmed(null);
         try {
             const res = await call();
-            if (res?.success === false) {
+            if (failed(res)) {
                 safeShowToast(errorText(res, t('maintenance.action_failed'), t), 'error', 6000);
             } else if (okMessage) {
                 // 일부만 된 결과(예: 되살리지 못한 링크)는 경고로 알린다
@@ -455,6 +459,8 @@ function ScheduleCard({
         setServerErrors([]);
         setStale(false);
         setArmed(false);
+        // 다시 읽은 작업은 key가 새로 생긴다: 고르던 명령 목록은 닫는다
+        setPicking(null);
         base.current = JSON.stringify({ d: next.map(({ key, ...r }) => r), k: String(info.backupKeep) });
     }, [info]);
 
@@ -521,7 +527,7 @@ function ScheduleCard({
             if (info.backupSupported) body.backup_keep = keepNum;
             if (info.revision) body.revision = info.revision;
             const res = await window.api.instanceScheduleSave(server.id, body);
-            if (res?.success === false) {
+            if (failed(res)) {
                 setStale(res.error_code === 'schedule_changed');
                 setServerErrors(
                     Array.isArray(res.details) && res.details.length ? res.details : [errorText(res, 'error', t)],

@@ -96,6 +96,7 @@
     "create_http": "No se pudo crear el servidor (HTTP {{status}}): {{error}}",
     "instance_not_found": "Servidor no encontrado",
     "instance_running": "No se puede eliminar un servidor en ejecución. Detenlo primero",
+    "instance_busy": "Hay otra tarea (copia de seguridad o restauración) en curso en este servidor. Inténtalo de nuevo cuando termine",
     "delete_error": "No se pudo eliminar el servidor: {{error}}",
     "delete_http": "No se pudo eliminar el servidor (HTTP {{status}}): {{error}}",
     "reorder_failed": "No se pudo reordenar: {{error}}",

@@ -96,6 +96,7 @@
     "create_http": "無法建立伺服器 (HTTP {{status}}): {{error}}",
     "instance_not_found": "找不到伺服器",
     "instance_running": "無法刪除執行中的伺服器,請先停止",
+    "instance_busy": "此伺服器上正在進行其他工作（備份或還原）。完成後請再試一次",
     "delete_error": "無法刪除伺服器: {{error}}",
     "delete_http": "無法刪除伺服器 (HTTP {{status}}): {{error}}",
     "reorder_failed": "無法調整順序: {{error}}",
