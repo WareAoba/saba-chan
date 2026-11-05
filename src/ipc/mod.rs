@@ -970,6 +970,10 @@ impl IPCServer {
                 "/api/relay/node/{guild_id}/moderation/channels/{channel_id}/clear",
                 post(handlers::relay::clear_node_moderation_channel),
             )
+            .route(
+                "/api/relay/node/{guild_id}/moderation/channels/{channel_id}/clear/check",
+                post(handlers::relay::check_clear_node_moderation_channel),
+            )
             .route("/api/relay/node/{guild_id}/moderation/mutes/{user_id}", put(handlers::relay::put_node_moderation_mute))
             .route("/api/relay/node/{guild_id}/chatbot/models", get(handlers::relay::get_node_chatbot_models))
             .route("/api/relay/node/{guild_id}/chatbot/credit", get(handlers::relay::get_node_chatbot_credit))

@@ -1259,6 +1259,13 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
                 body,
                 70000,
             ),
+        relayModClearCheck: (guildId: string, channelId: string, body: ApiBody) =>
+            daemonCall(
+                'post',
+                `/api/relay/node/${encodeURIComponent(guildId)}/moderation/channels/${encodeURIComponent(channelId)}/clear/check`,
+                body,
+                20000,
+            ),
         relayModMute: (guildId: string, userId: string, body: ApiBody) =>
             daemonCall(
                 'put',

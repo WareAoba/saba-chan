@@ -684,6 +684,7 @@ const impl: Record<string, MockFn> = {
         return ok({ ...c });
     },
     relayModClear: () => ok({ deleted: 87, kept: 2, olderLeft: false }),
+    relayModClearCheck: () => ok({ dryRun: true }),
     relayModMute: (_guildId, userId, body) => {
         mockModeration.mutes = mockModeration.mutes.filter((m) => m.userId !== userId);
         if (body.duration !== 'off') {

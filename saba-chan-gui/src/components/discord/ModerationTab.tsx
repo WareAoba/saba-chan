@@ -786,10 +786,13 @@ function ClearSection({ guildId, channel, can, members }: ClearSectionProps) {
         if (Number(period)) body.sinceMinutes = Number(period);
         return body;
     };
-    // 권한을 먼저 본다(dryRun): 지울 수 없으면 확인 창 대신 거절을 보인다
+    // 권한을 먼저 본다: 지울 수 없으면 확인 창 대신 거절을 보인다. 검사 경로가 없는 옛 릴레이(NOT_FOUND)면 확인 창만 띄운다
     const ask = () =>
         action.run(
-            () => window.api.relayModClear(guildId, channel.id, { ...bodyOf(), dryRun: true }),
+            async () => {
+                const res = await window.api.relayModClearCheck(guildId, channel.id, bodyOf());
+                return res?.error === 'NOT_FOUND' ? { dryRun: true } : res;
+            },
             () => {
                 setConfirming(true);
                 return null;

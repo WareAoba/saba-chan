@@ -91,6 +91,7 @@ describe('ModerationTab', () => {
         window.api.relayNodeChannelsSave = vi.fn().mockResolvedValue({ ...assigned, chatbot: [], notify: '111' }) as never;
         window.api.relayModChannel = vi.fn(async (_g, id, patch) => ({ ...channel(id, 'chat'), ...patch })) as never;
         window.api.relayModClear = vi.fn().mockResolvedValue({ deleted: 87, kept: 2, olderLeft: false }) as never;
+        window.api.relayModClearCheck = vi.fn().mockResolvedValue({ dryRun: true }) as never;
         window.api.relayModMute = vi.fn().mockResolvedValue({ result: 'muted' }) as never;
     });
     afterEach(() => {
@@ -100,6 +101,7 @@ describe('ModerationTab', () => {
             'relayNodeChannelsSave',
             'relayModChannel',
             'relayModClear',
+            'relayModClearCheck',
             'relayModMute',
         ]) {
             delete (window.api as Partial<typeof window.api>)[k as keyof typeof window.api];
@@ -143,10 +145,9 @@ describe('ModerationTab', () => {
     it('청소는 권한을 먼저 보고, 확인 창을 거쳐 지우고 결과를 알린다', async () => {
         render(<ModerationTab node={node} members={members} />);
         fireEvent.click(await screen.findByRole('button', { name: /Clear…/ }));
-        await waitFor(() =>
-            expect(window.api.relayModClear).toHaveBeenCalledWith('g1', '111', { count: 100, dryRun: true }),
-        );
+        await waitFor(() => expect(window.api.relayModClearCheck).toHaveBeenCalledWith('g1', '111', { count: 100 }));
         const confirm = await screen.findByRole('alertdialog');
+        expect(window.api.relayModClear).not.toHaveBeenCalled();
         expect(confirm.textContent).toMatch(/Delete up to 100 messages in #chat/);
         fireEvent.click(within(confirm).getByRole('button', { name: 'Delete' }));
         await waitFor(() => expect(window.api.relayModClear).toHaveBeenCalledWith('g1', '111', { count: 100 }));
@@ -154,14 +155,22 @@ describe('ModerationTab', () => {
     });
 
     it('청소할 권한이 없으면 확인 창 없이 거절을 보인다', async () => {
-        window.api.relayModClear = vi
+        window.api.relayModClearCheck = vi
             .fn()
             .mockResolvedValue({ success: false, error: 'FORBIDDEN', need: 'ManageMessages' }) as never;
         render(<ModerationTab node={node} members={members} />);
         fireEvent.click(await screen.findByRole('button', { name: /Clear…/ }));
         expect(await screen.findByRole('alert')).toBeTruthy();
         expect(screen.queryByRole('alertdialog')).toBeNull();
-        expect(window.api.relayModClear).toHaveBeenCalledTimes(1);
+        expect(window.api.relayModClear).not.toHaveBeenCalled();
+    });
+
+    it('검사 경로를 모르는 옛 릴레이면 지우지 않고 확인 창만 띄운다', async () => {
+        window.api.relayModClearCheck = vi.fn().mockResolvedValue({ error: 'NOT_FOUND' }) as never;
+        render(<ModerationTab node={node} members={members} />);
+        fireEvent.click(await screen.findByRole('button', { name: /Clear…/ }));
+        expect(await screen.findByRole('alertdialog')).toBeTruthy();
+        expect(window.api.relayModClear).not.toHaveBeenCalled();
     });
 
     it('멤버 화면은 남은 시간 순으로 음소거된 사람을 보이고, 새로 음소거·해제한다', async () => {

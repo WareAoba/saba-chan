@@ -232,6 +232,7 @@ pub static ROUTES: &[Route] = &[
     allow("GET", "/api/relay/node/{guild_id}/moderation"),
     allow("PATCH", "/api/relay/node/{guild_id}/moderation/channels/{channel_id}"),
     allow("POST", "/api/relay/node/{guild_id}/moderation/channels/{channel_id}/clear"),
+    allow("POST", "/api/relay/node/{guild_id}/moderation/channels/{channel_id}/clear/check"),
     allow("PUT", "/api/relay/node/{guild_id}/moderation/mutes/{user_id}"),
     // 디스코드 서버 설정(언어·코코낸내·노래·읽어주기·명령 모양)과 서버별 말하는 사바쨩: 릴레이 연결과 API 키는 건드리지 않는다 (사용자 결정 2026-11-03)
     allow("GET", "/api/discord/{guild_id}/settings"),
@@ -627,6 +628,7 @@ mod tests {
         assert!(decide("GET", "/api/relay/node/1/moderation").is_ok());
         assert!(decide("PATCH", "/api/relay/node/1/moderation/channels/2").is_ok());
         assert!(decide("POST", "/api/relay/node/1/moderation/channels/2/clear").is_ok());
+        assert!(decide("POST", "/api/relay/node/1/moderation/channels/2/clear/check").is_ok());
         assert!(decide("PUT", "/api/relay/node/1/moderation/mutes/3").is_ok());
     }
 
