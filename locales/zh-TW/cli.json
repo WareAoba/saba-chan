@@ -318,6 +318,16 @@
       "err_browse_denied": "無法開啟該資料夾",
       "err_browse_not_a_folder": "這不是資料夾",
       "err_browse_failed": "無法讀取資料夾，請重試"
+    },
+    "net_trace": {
+      "on": "開",
+      "off": "關",
+      "current": "依伺服器·連接埠統計網路：{{state}} · 權限：{{access}}",
+      "access_ok": "已有",
+      "access_needs_grant": "沒有 (config net-trace grant)",
+      "access_needs_relogin": "已授予，重新登入 Windows 後可用",
+      "access_unsupported": "此系統無法使用（僅 Windows）",
+      "enable_hint": "開啟方法：saba-chan-cli config set systemMonitorNetTrace on"
     }
   },
   "console": {
@@ -474,7 +484,9 @@
       "move_cross_volume": "無法移動其他磁碟機上的資料夾。請改用「保留在原位置」匯入。",
       "move_in_use": "無法移動資料夾。請停止此資料夾中的伺服器，關閉開啟該資料夾的程式後再試一次。",
       "move_failed": "無法移動資料夾。請改用「保留在原位置」匯入。",
-      "port_check_busy": "已經在檢查中，請稍後再試"
+      "port_check_busy": "已經在檢查中，請稍後再試",
+      "net_trace_elevation_failed": "未在常駐程式電腦上取得系統管理員確認。請在那台電腦前再試一次。",
+      "net_trace_failed": "無法變更權限。"
     },
     "not_a_bool": "「{{value}}」不是是/否（請使用 true 或 false）。",
     "not_a_number": "「{{value}}」不是數字。",
@@ -854,7 +866,8 @@
       "bot.backup-notice": "備份結果全部私訊(--all)還是只私訊失敗(--failures)。不帶選項：檢視",
       "bot.confirm": "機器人在執行前用 Discord 按鈕詢問的等級 (all、caution、danger、none)。不加選項: 檢視",
       "bot.tts": "Reading Saba-chan voice of a Discord server (volume, speed, pitch). No options: show",
-      "bot.big-emoji": "Discord 伺服器的表情符號放大(只傳一個自訂表情符號時放大顯示)。不帶選項則查看"
+      "bot.big-emoji": "Discord 伺服器的表情符號放大(只傳一個自訂表情符號時放大顯示)。不帶選項則查看",
+      "config.net-trace": "依伺服器·連接埠統計網路（進階，Windows）的權限：不帶動作時顯示目前狀態，grant 在常駐程式電腦上跳出一次系統管理員確認以授予權限，revoke 撤銷。開啟：config set systemMonitorNetTrace on"
     },
     "arg": {
       "module.maker.game": "第一個請求中的遊戲名稱",
@@ -968,7 +981,8 @@
       "bot.tts.voice_chat_only": "Read your messages only in the chat of the voice channel you are in (on|off, game chat channel excepted)",
       "bot.tts.keep_read": "Keep read messages instead of deleting them (on|off)",
       "bot.tts.auto_channels": "Voice channel IDs to always read (comma-separated, up to 10): with 2+ people inside, the bot joins and reads its chat",
-      "bot.tts.no_auto_channels": "Clear the always-read voice channels"
+      "bot.tts.no_auto_channels": "Clear the always-read voice channels",
+      "config.net-trace.action": "grant（授予）或 revoke（撤銷）。省略時顯示目前狀態"
     },
     "after": "名稱可以只寫一部分（例如 start pal）。在終端機中不帶參數執行會開啟全螢幕選單(SABA_NO_TUI=1 時為互動式 shell)。\n在指令碼中請使用 --json 和 --yes。結束代碼：0 成功 · 1 失敗 · 2 用法錯誤 · 3 無法連線常駐程式 · 4 找不到 · 130 已取消"
   },

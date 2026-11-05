@@ -318,6 +318,16 @@
       "err_browse_denied": "그 폴더는 열 수 없어요",
       "err_browse_not_a_folder": "폴더가 아니에요",
       "err_browse_failed": "폴더를 읽지 못했어요. 다시 해 주세요"
+    },
+    "net_trace": {
+      "on": "켜짐",
+      "off": "꺼짐",
+      "current": "포트·서버별 네트워크: {{state}} · 권한: {{access}}",
+      "access_ok": "있음",
+      "access_needs_grant": "없음 (config net-trace grant)",
+      "access_needs_relogin": "받음, Windows에 다시 로그인하면 쓸 수 있어요",
+      "access_unsupported": "이 OS에서는 쓸 수 없어요 (Windows만)",
+      "enable_hint": "켜려면: saba-chan-cli config set systemMonitorNetTrace on"
     }
   },
   "console": {
@@ -474,7 +484,9 @@
       "move_cross_volume": "다른 드라이브에 있는 폴더는 옮길 수 없어요. '그 자리에 연결'로 가져와 주세요.",
       "move_in_use": "폴더를 옮기지 못했어요. 이 폴더의 서버를 끄고, 폴더를 연 프로그램을 닫은 뒤 다시 시도해 주세요.",
       "move_failed": "폴더를 옮기지 못했어요. '그 자리에 연결'로 가져와 주세요.",
-      "port_check_busy": "이미 확인 중이에요. 잠시 뒤 다시 하세요"
+      "port_check_busy": "이미 확인 중이에요. 잠시 뒤 다시 하세요",
+      "net_trace_elevation_failed": "데몬 PC에서 관리자 확인을 받지 못했어요. 그 PC 앞에서 다시 시도하세요.",
+      "net_trace_failed": "권한을 바꾸지 못했어요."
     },
     "not_a_bool": "\"{{value}}\"는 예/아니오 값이 아니에요 (true 또는 false).",
     "not_a_number": "\"{{value}}\"는 숫자가 아니에요.",
@@ -995,7 +1007,8 @@
       "bot.channel": "디스코드 서버의 채널 하나(이름이나 id)를 바꿔요: 이름·주제·슬로우·잠금·자동 청소",
       "bot.clear": "채널의 최근 메시지를 지워요(고정 메시지·사바쨩 패널은 남아요). 먼저 물어봐요",
       "bot.mute": "멤버의 채팅·반응·음성을 막아요: 기간(10m, 1h, 7d, 28일까지), forever, 풀려면 off",
-      "bot.big-emoji": "디스코드 서버의 이모지 업스케일(커스텀 이모지만 쓴 글을 크게 보이기). 옵션이 없으면 보기"
+      "bot.big-emoji": "디스코드 서버의 이모지 업스케일(커스텀 이모지만 쓴 글을 크게 보이기). 옵션이 없으면 보기",
+      "config.net-trace": "포트·서버별 네트워크(고급, Windows) 권한: 동작 없이 쓰면 지금 상태, grant는 데몬 PC에 관리자 확인 창을 한 번 띄워 권한을 받고, revoke는 되돌려요. 켜기는 config set systemMonitorNetTrace on"
     },
     "arg": {
       "module.maker.game": "첫 부탁에 넣을 게임 이름",
@@ -1213,7 +1226,8 @@
       "bot.sleep-mode.no_bedtime": "착한 어린이 끄기 (손으로만 재워요)",
       "bot.sleep-mode.no_block": "자는 동안에도 아무 기능도 끄지 않기",
       "bot.big-emoji.on": "이모지 업스케일 켜기",
-      "bot.big-emoji.off": "이모지 업스케일 끄기"
+      "bot.big-emoji.off": "이모지 업스케일 끄기",
+      "config.net-trace.action": "grant(권한 받기) 또는 revoke(되돌리기). 없으면 지금 상태"
     },
     "after": "이름은 일부만 적어도 돼요 (예: start pal). 인자 없이 터미널에서 실행하면 전체 화면 메뉴가 열려요(SABA_NO_TUI=1이면 대화형 셸).\n스크립트에서는 --json과 --yes를 쓰세요. 종료 코드: 0 성공 · 1 실패 · 2 사용법 · 3 데몬 연결 안 됨 · 4 없음 · 130 취소"
   },

@@ -318,6 +318,16 @@
       "err_browse_denied": "Impossible d'ouvrir ce dossier",
       "err_browse_not_a_folder": "Ce n'est pas un dossier",
       "err_browse_failed": "Impossible de lire le dossier. Réessayez"
+    },
+    "net_trace": {
+      "on": "activé",
+      "off": "désactivé",
+      "current": "Réseau par serveur et par port : {{state}} · autorisation : {{access}}",
+      "access_ok": "accordée",
+      "access_needs_grant": "manquante (config net-trace grant)",
+      "access_needs_relogin": "accordée, reconnectez-vous à Windows pour l'utiliser",
+      "access_unsupported": "indisponible sur ce système (Windows uniquement)",
+      "enable_hint": "Pour l'activer : saba-chan-cli config set systemMonitorNetTrace on"
     }
   },
   "console": {
@@ -474,7 +484,9 @@
       "move_cross_volume": "Un dossier situé sur un autre lecteur ne peut pas être déplacé. Importez-le plutôt avec « Le laisser en place ».",
       "move_in_use": "Impossible de déplacer le dossier. Arrêtez le serveur de ce dossier, fermez les programmes qui l'ont ouvert, puis réessayez.",
       "move_failed": "Impossible de déplacer le dossier. Importez-le plutôt avec « Le laisser en place ».",
-      "port_check_busy": "Une vérification est déjà en cours. Réessayez dans un instant"
+      "port_check_busy": "Une vérification est déjà en cours. Réessayez dans un instant",
+      "net_trace_elevation_failed": "Confirmation administrateur non obtenue sur le PC du daemon. Réessayez devant ce PC.",
+      "net_trace_failed": "Impossible de modifier l'autorisation."
     },
     "not_a_bool": "« {{value}} » n'est pas oui/non (utilisez true ou false).",
     "not_a_number": "« {{value}} » n'est pas un nombre.",
@@ -854,7 +866,8 @@
       "bot.backup-notice": "Envoyer en MP tous les résultats de sauvegarde (--all) ou seulement les échecs (--failures). Sans option : afficher",
       "bot.confirm": "Quand le bot demande avec un bouton Discord avant d'exécuter (all, caution, danger, none). Sans option : afficher",
       "bot.tts": "Reading Saba-chan voice of a Discord server (volume, speed, pitch). No options: show",
-      "bot.big-emoji": "Agrandissement des émojis (un émoji personnalisé seul s'affiche en grand) sur un serveur Discord. Sans option : afficher"
+      "bot.big-emoji": "Agrandissement des émojis (un émoji personnalisé seul s'affiche en grand) sur un serveur Discord. Sans option : afficher",
+      "config.net-trace": "Autorisation du réseau par serveur et par port (avancé, Windows) : sans action, affiche l'état actuel ; grant affiche une confirmation administrateur sur le PC du daemon, revoke l'annule. Activez-le avec config set systemMonitorNetTrace on"
     },
     "arg": {
       "module.maker.game": "Jeu à mettre dans la première demande",
@@ -968,7 +981,8 @@
       "bot.tts.voice_chat_only": "Read your messages only in the chat of the voice channel you are in (on|off, game chat channel excepted)",
       "bot.tts.keep_read": "Keep read messages instead of deleting them (on|off)",
       "bot.tts.auto_channels": "Voice channel IDs to always read (comma-separated, up to 10): with 2+ people inside, the bot joins and reads its chat",
-      "bot.tts.no_auto_channels": "Clear the always-read voice channels"
+      "bot.tts.no_auto_channels": "Clear the always-read voice channels",
+      "config.net-trace.action": "grant ou revoke. Sans valeur, affiche l'état actuel"
     },
     "after": "Les noms peuvent être partiels (ex. start pal). Sans argument dans un terminal, le menu plein écran s'ouvre (SABA_NO_TUI=1 : le shell interactif).\nDans les scripts, utilisez --json et --yes. Codes de sortie : 0 ok · 1 échec · 2 utilisation · 3 daemon injoignable · 4 introuvable · 130 annulé"
   },

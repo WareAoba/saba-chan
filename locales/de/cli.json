@@ -318,6 +318,16 @@
       "err_browse_denied": "Dieser Ordner kann nicht geöffnet werden",
       "err_browse_not_a_folder": "Das ist kein Ordner",
       "err_browse_failed": "Ordner konnte nicht gelesen werden. Bitte erneut versuchen"
+    },
+    "net_trace": {
+      "on": "an",
+      "off": "aus",
+      "current": "Netzwerk pro Server und Port: {{state}} · Berechtigung: {{access}}",
+      "access_ok": "vorhanden",
+      "access_needs_grant": "fehlt (config net-trace grant)",
+      "access_needs_relogin": "erteilt, nach erneuter Windows-Anmeldung nutzbar",
+      "access_unsupported": "auf diesem Betriebssystem nicht verfügbar (nur Windows)",
+      "enable_hint": "Zum Einschalten: saba-chan-cli config set systemMonitorNetTrace on"
     }
   },
   "console": {
@@ -474,7 +484,9 @@
       "move_cross_volume": "Ein Ordner auf einem anderen Laufwerk kann nicht verschoben werden. Importiere ihn stattdessen mit „Am Ort lassen“.",
       "move_in_use": "Der Ordner konnte nicht verschoben werden. Stoppe den Server in diesem Ordner, schließe Programme, die ihn geöffnet haben, und versuche es erneut.",
       "move_failed": "Der Ordner konnte nicht verschoben werden. Importiere ihn stattdessen mit „Am Ort lassen“.",
-      "port_check_busy": "Es läuft bereits eine Prüfung. Versuch es gleich noch einmal"
+      "port_check_busy": "Es läuft bereits eine Prüfung. Versuch es gleich noch einmal",
+      "net_trace_elevation_failed": "Keine Administratorbestätigung auf dem Daemon-PC erhalten. Versuche es direkt an diesem PC erneut.",
+      "net_trace_failed": "Berechtigung konnte nicht geändert werden."
     },
     "not_a_bool": "„{{value}}“ ist kein Ja/Nein (verwende true oder false).",
     "not_a_number": "„{{value}}“ ist keine Zahl.",
@@ -854,7 +866,8 @@
       "bot.backup-notice": "Backup-Ergebnisse alle per DM (--all) oder nur Fehler (--failures). Ohne Optionen: anzeigen",
       "bot.confirm": "Wann der Bot vor dem Ausführen per Discord-Button fragt (all, caution, danger, none). Ohne Optionen: anzeigen",
       "bot.tts": "Reading Saba-chan voice of a Discord server (volume, speed, pitch). No options: show",
-      "bot.big-emoji": "Emoji-Upscaling (ein einzelnes eigenes Emoji wird groß gezeigt) auf einem Discord-Server. Ohne Optionen: anzeigen"
+      "bot.big-emoji": "Emoji-Upscaling (ein einzelnes eigenes Emoji wird groß gezeigt) auf einem Discord-Server. Ohne Optionen: anzeigen",
+      "config.net-trace": "Berechtigung für Netzwerk pro Server und Port (erweitert, Windows): ohne Aktion der aktuelle Stand; grant zeigt auf dem Daemon-PC einmal eine Administratorbestätigung, revoke macht es rückgängig. Einschalten mit config set systemMonitorNetTrace on"
     },
     "arg": {
       "module.maker.game": "Spiel für die erste Anfrage",
@@ -968,7 +981,8 @@
       "bot.tts.voice_chat_only": "Read your messages only in the chat of the voice channel you are in (on|off, game chat channel excepted)",
       "bot.tts.keep_read": "Keep read messages instead of deleting them (on|off)",
       "bot.tts.auto_channels": "Voice channel IDs to always read (comma-separated, up to 10): with 2+ people inside, the bot joins and reads its chat",
-      "bot.tts.no_auto_channels": "Clear the always-read voice channels"
+      "bot.tts.no_auto_channels": "Clear the always-read voice channels",
+      "config.net-trace.action": "grant oder revoke. Ohne Angabe wird der aktuelle Stand gezeigt"
     },
     "after": "Namen können abgekürzt werden (z. B. start pal). Ohne Argumente öffnet sich im Terminal das Vollbildmenü (SABA_NO_TUI=1: die interaktive Shell).\nIn Skripten --json und --yes verwenden. Exit-Codes: 0 ok · 1 fehlgeschlagen · 2 Verwendung · 3 Daemon nicht erreichbar · 4 nicht gefunden · 130 abgebrochen"
   },
