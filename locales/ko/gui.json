@@ -1037,7 +1037,7 @@
     "bot_settings": {
       "loading": "봇 설정을 불러오는 중…",
       "general_title": "일반",
-      "big_emoji": "큰 이모지",
+      "big_emoji": "이모지 업스케일",
       "big_emoji_desc": "이모지나 스티커 하나만 보낸 글을 큰 그림으로 바꿔 올려요.",
       "game_chat_title": "게임 채팅",
       "game_chat_guard": "채팅 연동이 꺼져 있을 때 글 막기",
@@ -1099,7 +1099,7 @@
       "sleep_tts": "읽어주는 사바쨩",
       "sleep_tts_hint": "채팅 읽어주기",
       "sleep_extras": "그 밖의 기능",
-      "sleep_extras_hint": "큰 이모지, 청소, 전적, 서버 관리 명령 등",
+      "sleep_extras_hint": "이모지 업스케일, 청소, 전적, 서버 관리 명령 등",
       "bedtime": "착한 어린이",
       "bedtime_hint": "자동 코코낸내 — 정한 시각에 저절로 잠들고 깨요. 자는 중에 /사바쨩 기상 하면 이번 잠만 깨요",
       "bedtime_start": "잠드는 시각",

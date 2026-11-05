@@ -852,7 +852,7 @@ fn sleep_patch(block: Option<Vec<String>>, bedtime: Option<String>, no_bedtime: 
     Ok(if patch.is_empty() { Value::Null } else { Value::Object(patch) })
 }
 
-/// 큰 이모지 켜기·끄기 (릴레이가 가진 길드 설정, 데몬이 넘긴다). 둘 다 없으면 보기만
+/// 이모지 업스케일 켜기·끄기 (릴레이가 가진 길드 설정, 데몬이 넘긴다). 둘 다 없으면 보기만
 fn big_emoji_patch(on: bool, off: bool) -> Option<Value> {
     (on || off).then(|| json!({ "bigEmoji": on }))
 }
@@ -883,7 +883,7 @@ fn discord_rows(r: &Value) -> Vec<(String, String)> {
         let bedtime = r.get("bedtime").filter(|b| b.is_object());
         rows.push((t!("bot.bedtime"), bedtime.map_or_else(|| t!("bot.off"), |b| format!("{} ~ {}", s(b, "start"), s(b, "end")))));
     }
-    // 큰 이모지: 릴레이가 가진 값이라 릴레이가 답하지 못하면 없다
+    // 이모지 업스케일: 릴레이가 가진 값이라 릴레이가 답하지 못하면 없다
     if let Some(on) = r.get("bigEmoji").and_then(Value::as_bool) {
         rows.push((t!("bot.big_emoji"), on_off(Some(on))));
     }
@@ -1325,7 +1325,7 @@ mod tests {
         assert_eq!(row(&r, "bot.private_queries"), Some(t!("bot.on")));
     }
 
-    /// 큰 이모지 (GUI 봇 설정 탭과 같다): 릴레이가 가진 값이라, 릴레이가 답하지 못해 값이 없으면 줄을 두지 않는다
+    /// 이모지 업스케일 (GUI 봇 설정 탭과 같다): 릴레이가 가진 값이라, 릴레이가 답하지 못해 값이 없으면 줄을 두지 않는다
     #[test]
     fn big_emoji_is_shown_and_changed_like_the_gui() {
         crate::i18n::init("ko");

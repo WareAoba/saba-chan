@@ -56,7 +56,7 @@ function setup(can: Record<string, boolean> = { manage: true }) {
 describe('이 PC 의 디스코드 서버 설정', () => {
     beforeAll(() => initI18n('en'));
 
-    it('큰 이모지와 코코낸내는 데몬 설정으로 바꾼다 (릴레이에 직접 쓰지 않는다)', async () => {
+    it('이모지 업스케일과 코코낸내는 데몬 설정으로 바꾼다 (릴레이에 직접 쓰지 않는다)', async () => {
         const { api, relay } = setup();
         await flush();
         await flush();
