@@ -167,6 +167,15 @@ cd saba-chan-gui; npm install; npm start
 
 Release files are built from this repository by GitHub Actions: [build-windows.yml](.github/workflows/build-windows.yml) for Windows and [release.yml](.github/workflows/release.yml) for Linux x64 and ARM64. Run tests with `cargo test --workspace` and `cd saba-chan-gui && npx vitest run`.
 
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by [SignPath Foundation](https://signpath.org/).
+
+- Only Windows executables built by GitHub Actions from the source in this repository are signed, and an approver approves every release by hand. Releases published before SignPath Foundation accepted the project are not signed.
+- Committers and reviewers: [WareAoba](https://github.com/WareAoba) · Approvers: [WareAoba](https://github.com/WareAoba)
+- Privacy: [Privacy Policy](https://saba-chan.online/legal/privacy) (what the app sends is the last item of the Security section above)
+- Full policy: [Code signing policy](https://saba-chan.online/legal/code-signing)
+
 ## License
 
 [MIT](LICENSE)
