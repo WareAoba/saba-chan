@@ -712,6 +712,30 @@ fn an_exe_moved_aside_by_an_interrupted_apply_is_put_back() {
     assert!(!tmp.path().join("notepad.exe").exists());
 }
 
+// Unix는 확장자 없는 바이너리를 `<이름>.old`로 비켜 둔다: 끊긴 적용 뒤 되돌리고, 새 판이 있으면 정리 때 지운다
+#[cfg(unix)]
+#[test]
+fn a_unix_binary_moved_aside_by_an_interrupted_apply_is_put_back() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.install_root = tmp.path().to_path_buf();
+    std::fs::write(tmp.path().join("saba-core.old"), b"previous").unwrap();
+    std::fs::write(tmp.path().join("saba-chan-cli"), b"new").unwrap();
+    std::fs::write(tmp.path().join("saba-chan-cli.old"), b"old cli").unwrap();
+    std::fs::write(tmp.path().join("notes.old"), b"not ours").unwrap();
+
+    manager.settle_interrupted_updates();
+
+    assert_eq!(std::fs::read(tmp.path().join("saba-core")).unwrap(), b"previous");
+    assert_eq!(std::fs::read(tmp.path().join("saba-chan-cli")).unwrap(), b"new", "a binary that is there stays");
+    assert!(!tmp.path().join("notes").exists());
+
+    manager.cleanup_old_files();
+
+    assert!(!tmp.path().join("saba-chan-cli.old").exists());
+    assert!(tmp.path().join("notes.old").exists());
+}
+
 // L3(c): 적용 중 꺼져 남은 `.update-bak`은 다음 정리 때 원래 파일이 있으면 지우고, 없으면 되돌린다
 #[test]
 fn leftover_update_backups_are_cleaned_or_restored() {
