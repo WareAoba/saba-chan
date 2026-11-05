@@ -114,6 +114,9 @@ pub struct Def {
     /// 부른 사람만 보면 되는 조회 (진단·관리용). 길드 설정 "조회 결과 나만 보기"가 켜지면 디스코드 답을 부른 사람에게만 보인다.
     /// 서버 상태·접속자처럼 다 같이 보는 조회는 false
     pub private: bool,
+    /// 길드 설정과 상관없이 늘 부른 사람에게만 보이는 조회 (서버 주소처럼 채널에 남으면 안 되는 값). 문장 명령은 답이 채널에
+    /// 그대로 보이므로 이름으로 찾지 않는다 (`named_action`). 옛 릴레이를 위해 `private`도 함께 켠다
+    pub secret: bool,
 }
 
 use Surface::{Chatbot, Cli, Discord, Gui};
@@ -123,7 +126,7 @@ const LOCAL_AND_CHATBOT: &[Surface] = &[Gui, Cli, Chatbot];
 const LOCAL_AND_DISCORD: &[Surface] = &[Gui, Cli, Discord];
 
 const fn def(id: &'static str, kind: Kind, risk: &'static str, surfaces: &'static [Surface], instance: bool, method: &'static str, path: &'static str) -> Def {
-    Def { id, kind, risk, surfaces, instance, method, path, fields: &[], open_input: false, discord_level: None, remote_menu: true, guild_owner: false, private: false }
+    Def { id, kind, risk, surfaces, instance, method, path, fields: &[], open_input: false, discord_level: None, remote_menu: true, guild_owner: false, private: false, secret: false }
 }
 
 /// 첫 판 액션. 새 기능은 여기 한 줄을 더하면 모든 표면에 퍼진다.
@@ -150,6 +153,8 @@ pub static ACTIONS: &[Def] = &[
         ..def("server.chat_link", Kind::Command, "safe", &[Discord], true, "POST", "/api/instance/:id/chat-link/:guild")
     },
     // 포트포워딩 확인: 릴레이가 밖에서 게임 포트에 접속해 본다. 공인 주소가 결과에 있어 챗봇에는 열지 않는다 (디스코드는 요약만 보인다)
+    // 서버 주소 (사용자 요청 2026-11-05): 릴레이가 본 이 PC의 접속 주소 + 밖에 여는 포트. 공인 주소라 부른 사람에게만 보이고 챗봇에는 열지 않는다
+    Def { private: true, secret: true, ..def("server.address", Kind::Query, "safe", LOCAL_AND_DISCORD, true, "GET", "/api/instance/:id/address") },
     Def { private: true, ..def("server.port_check", Kind::Query, "safe", LOCAL_AND_DISCORD, true, "POST", "/api/instance/:id/port-check") },
     // 시작·정지 기록은 디스코드에서 쓰지 않는다 (사용자 디스코드 검수 3번)
     def("instance.events", Kind::Query, "safe", LOCAL_AND_CHATBOT, true, "GET", "/api/instance/:id/events"),
@@ -760,7 +765,7 @@ fn module_support(id: &str) -> Option<fn(&LoadedModule) -> bool> {
         "server.players" => Some(|m| m.metadata.players_function.is_some()),
         "server.chat" => Some(|m| m.metadata.chat_send_function.is_some()),
         // 밖에 여는 포트(`public`)를 선언한 모듈만 확인할 것이 있다
-        "server.port_check" => Some(|m| m.metadata.settings.as_ref().is_some_and(|s| s.fields.iter().any(|f| f.public.is_some()))),
+        "server.port_check" | "server.address" => Some(|m| m.metadata.settings.as_ref().is_some_and(|s| s.fields.iter().any(|f| f.public.is_some()))),
         _ => None,
     }
 }
@@ -802,6 +807,9 @@ pub fn heartbeat_actions(locales: &[&str], modules: &[LoadedModule]) -> (Vec<Val
         }
         if d.private {
             item["private"] = json!(true);
+        }
+        if d.secret {
+            item["secret"] = json!(true);
         }
         // 모듈이 지원해야 하는 액션: 그 모듈 이름들 (릴레이는 이 모듈의 서버에만 하위 명령을 만든다)
         if let Some(supports) = module_support(d.id) {
@@ -1539,7 +1547,7 @@ fn named_action(reply: &crate::chat::Reply, surface: Surface) -> Option<(&'stati
     };
     ACTIONS
         .iter()
-        .filter(|d| d.instance && d.risk != "danger" && d.surfaces.contains(&surface) && d.fields.iter().all(|f| !f.required))
+        .filter(|d| d.instance && d.risk != "danger" && !d.secret && d.surfaces.contains(&surface) && d.fields.iter().all(|f| !f.required))
         .find(|d| names(d).iter().any(|n| fold(n) == want))
         .map(|d| (d.id, instance.to_string()))
 }
@@ -1798,6 +1806,20 @@ async fn admit(server: &IPCServer, caller: &Caller) -> Result<(), ActionError> {
     Ok(())
 }
 
+async fn localize_port_labels(server: &IPCServer, instance: &str, result: &mut Value, lang: &str) {
+    let locale = {
+        let sup = server.supervisor.read().await;
+        let module = sup.instance_store.get(instance).and_then(|i| sup.module_loader.get_module(&i.module_name).ok());
+        module.map(|m| module_locale(&m, lang)).unwrap_or(Value::Null)
+    };
+    for p in result.get_mut("ports").and_then(Value::as_array_mut).into_iter().flatten() {
+        let field = p.get("field").and_then(Value::as_str).unwrap_or_default().to_string();
+        if let Some(label) = locale.pointer(&format!("/settings/{}/label", field)).and_then(Value::as_str) {
+            p["label"] = json!(label);
+        }
+    }
+}
+
 /// 결과를 챗봇에 IP·비밀처럼 보이는 값을 가려 보내는 액션: 콘솔, 모듈 조회(접속자 목록 등), 모듈 명령의 답
 fn chatbot_masked(id: &str) -> bool {
     matches!(id, "server.console.tail" | "server.players" | "server.logs.read" | "server.logs.export") || id.starts_with(QUERY_PREFIX) || id.starts_with(COMMAND_PREFIX)
@@ -1832,6 +1854,10 @@ async fn execute(server: &IPCServer, r: &Resolved, caller: &Caller) -> Value {
     // 원격에서 만든 서버는 그 길드의 허용 목록에 더한다 (목록을 정해 둔 길드만)
     if let (true, "instance.create", Some(new_id)) = (ok, r.id.as_str(), result.get("id").and_then(Value::as_str)) {
         steps::allow_in_guild(server, caller, new_id).await;
+    }
+    // 서버 주소의 포트 이름은 요청 언어의 모듈 문구로 (모듈 locales `settings.<칸>.label`, 없으면 module.toml)
+    if let (true, "server.address", Some(instance)) = (ok, r.id.as_str(), &r.instance) {
+        localize_port_labels(server, instance, &mut result, &caller.locale).await;
     }
     // 백업 목록 항목에 사람이 읽을 이름을 붙인다 (복원 칸에서 고를 때 보인다)
     if ok && r.id == "backup.list" {

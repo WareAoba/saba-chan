@@ -228,6 +228,11 @@
         "title": "Spieler",
         "description": "Wer gerade online ist"
       },
+      "address": {
+        "title": "Serveradresse",
+        "name": "Adresse",
+        "description": "Zeigt nur dir die Adresse (IP:Port), mit der sich Freunde verbinden"
+      },
       "port_check": {
         "title": "Portweiterleitung prüfen",
         "description": "Das Relay prüft, ob dieser Server aus dem Internet erreichbar ist"
@@ -410,6 +415,13 @@
       "players_max": "👥 {{online}}/{{max}} online",
       "player_item": "• {{name}}",
       "players_more": "…und {{count}} weitere",
+      "address": {
+        "item": "• `{{address}}`",
+        "item_named": "• {{label}} `{{address}}`",
+        "stopped": "💤 Der Server ist aus. Starte ihn, damit andere sich verbinden können",
+        "unknown": "❔ Server-chan kennt die öffentliche Adresse dieses PCs noch nicht. Versuche es gleich noch einmal",
+        "no_ports": "📭 Dieses Spiel gibt keinen Verbindungsport an"
+      },
       "port_check": {
         "open": "✅ Aus dem Internet erreichbar",
         "firewall": "🧱 Von der PC-Firewall blockiert",

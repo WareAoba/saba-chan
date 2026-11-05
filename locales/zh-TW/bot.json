@@ -228,6 +228,11 @@
         "title": "玩家",
         "description": "在線玩家及名字"
       },
+      "address": {
+        "title": "伺服器位址",
+        "name": "位址",
+        "description": "只向你顯示朋友連線用的位址（IP:連接埠）"
+      },
       "port_check": {
         "title": "連接埠轉發檢查",
         "description": "中繼檢查能否從外部連線到此伺服器"
@@ -410,6 +415,13 @@
       "players_max": "👥 在線 {{online}}/{{max}} 人",
       "player_item": "• {{name}}",
       "players_more": "…另外 {{count}} 人",
+      "address": {
+        "item": "• `{{address}}`",
+        "item_named": "• {{label}} `{{address}}`",
+        "stopped": "💤 伺服器已關閉。啟動後才能連線",
+        "unknown": "❔ 伺服器醬還不知道這台電腦的公網位址。請稍後再試",
+        "no_ports": "📭 這個遊戲沒有提供連線連接埠"
+      },
       "port_check": {
         "open": "✅ 可以從外部連線",
         "firewall": "🧱 被電腦防火牆封鎖",

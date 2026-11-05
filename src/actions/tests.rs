@@ -1626,3 +1626,73 @@ async fn a_check_judges_permission_without_leaving_a_plan() {
     assert_eq!(check_text(&state, "srv 백업", &relay("guest", false)).await.unwrap()["code"], "PERMISSION_DENIED");
     assert_eq!(check_text(&state, "srv 백업", &relay("admin", false)).await.unwrap()["actionId"], "backup.create");
 }
+
+const MODULE_WITH_PORT: &str = "[module]\nschema_version = 1\nname = \"plain\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[[settings.fields]]\nname = \"port\"\ntype = \"number\"\nlabel = \"Game port\"\nport = true\npublic = \"both\"\ndefault = 8211\n\n[[settings.fields]]\nname = \"query_port\"\ntype = \"number\"\nlabel = \"Query port\"\nport = true\npublic = \"udp\"\ndefault = 27015\n";
+
+/// 서버 주소 (사용자 요청 2026-11-05): `/<서버> 주소`는 데몬이 릴레이에 접속한 주소와 그 서버가 밖에 여는 포트를
+/// 부른 사람에게만 보인다. 길드의 "조회 결과 나만 보기"와 상관없이 늘 숨기고(`secret`), 챗봇과 문장 명령(채널에 그대로 보인다)에는 열지 않는다
+#[tokio::test]
+async fn server_address_is_offered_only_where_the_reply_stays_with_the_caller() {
+    let def = find("server.address").unwrap();
+    assert_eq!(def.surfaces, &[Gui, Cli, Discord]);
+    assert!(def.private && def.secret);
+    assert!(find("server.port_check").is_some_and(|d| !d.secret));
+
+    let (state, _id, _tmp) = server_with(MODULE_WITH_PORT).await;
+    let modules = state.supervisor.read().await.module_loader.discover_modules().unwrap();
+    let (actions, _) = heartbeat_actions(&crate::chat::i18n::languages(), &modules);
+    let item = actions.iter().find(|a| a["id"] == "server.address").unwrap();
+    assert_eq!((item["secret"].clone(), item["private"].clone()), (json!(true), json!(true)));
+    assert_eq!((item["name"]["ko"].clone(), item["name"]["en"].clone()), (json!("주소"), json!("Address")));
+    assert_eq!(item["name"].as_object().unwrap().len(), crate::chat::i18n::languages().len());
+    assert_eq!((item["modules"].clone(), item["surfaces"].clone()), (json!(["plain"]), json!(["discord"])));
+    assert!(actions.iter().filter(|a| a["id"] != "server.address").all(|a| a.get("secret").is_none()));
+
+    // 문장 명령의 답은 채널에 보이므로 이름으로 찾지 않는다
+    open_everything(&state).await;
+    for text in ["srv 주소", "srv address"] {
+        let unknown = plan_text(&state, text, &relay("owner", false)).await.unwrap();
+        assert_eq!(unknown["code"], "UNKNOWN_COMMAND", "{text}: {unknown}");
+    }
+}
+
+/// 결과는 릴레이가 본 주소(연결돼 있을 때만)와 밖에 여는 포트. 같은 포트의 TCP·UDP는 한 줄로 합친다
+#[tokio::test]
+async fn server_address_joins_the_relay_address_with_the_public_ports() {
+    let (state, id, _tmp) = server_with(MODULE_WITH_PORT).await;
+    open_everything(&state).await;
+    let caller = relay("u1", false);
+    let unknown = query(&state, "server.address", Some(&id), &json!({}), &caller).await.unwrap();
+    assert_eq!(unknown["result"]["address"], Value::Null, "{unknown}");
+    assert_eq!(unknown["result"]["running"], false);
+    let ports: Vec<(Value, Value)> = unknown["result"]["ports"].as_array().unwrap().iter().map(|p| (p["port"].clone(), p["label"].clone())).collect();
+    assert_eq!(ports, vec![(json!(8211), json!("Game port")), (json!(27015), json!("Query port"))]);
+
+    state.relay_agent.set_seen_address_for_test(Some("203.0.113.5"));
+    let known = query(&state, "server.address", Some(&id), &json!({}), &caller).await.unwrap();
+    assert_eq!(known["result"]["address"], "203.0.113.5", "{known}");
+    let text = known["text"].as_str().unwrap();
+    assert!(text.contains("`203.0.113.5:8211`") && text.contains("`203.0.113.5:27015`"), "{text}");
+}
+
+#[test]
+fn server_address_reads_as_address_and_port() {
+    let ko = crate::chat::i18n::Catalog::for_language("ko");
+    let one = json!({ "address": "203.0.113.5", "running": true, "ports": [{ "field": "port", "label": "Port", "port": 8211, "protocols": ["tcp", "udp"] }] });
+    assert_eq!(summary::text("server.address", &one, &ko).unwrap(), "• `203.0.113.5:8211`");
+    let v6 = json!({ "address": "2001:db8::1", "running": true, "ports": [{ "field": "port", "label": "Port", "port": 25565, "protocols": ["tcp"] }] });
+    assert_eq!(summary::text("server.address", &v6, &ko).unwrap(), "• `[2001:db8::1]:25565`");
+    let two = json!({ "address": "203.0.113.5", "running": false, "ports": [
+        { "field": "port", "label": "Game port", "port": 8211, "protocols": ["udp"] },
+        { "field": "query_port", "label": "Query port", "port": 27015, "protocols": ["udp"] },
+    ] });
+    let text = summary::text("server.address", &two, &ko).unwrap();
+    let lines: Vec<&str> = text.lines().collect();
+    assert_eq!(lines[0], "• Game port `203.0.113.5:8211`");
+    assert_eq!(lines[1], "• Query port `203.0.113.5:27015`");
+    assert!(lines[2].contains("꺼져"), "{text}");
+    let unknown = summary::text("server.address", &json!({ "address": null, "running": true, "ports": one["ports"] }), &ko).unwrap();
+    assert!(!unknown.contains('`') && unknown.contains("주소"), "{unknown}");
+    let no_ports = summary::text("server.address", &json!({ "address": "203.0.113.5", "running": true, "ports": [] }), &ko).unwrap();
+    assert!(!no_ports.contains("203.0.113.5") && no_ports.contains("포트"), "{no_ports}");
+}

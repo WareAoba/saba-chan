@@ -228,6 +228,11 @@
         "title": "玩家",
         "description": "在线玩家及名字"
       },
+      "address": {
+        "title": "服务器地址",
+        "name": "地址",
+        "description": "仅向你显示朋友连接用的地址（IP:端口）"
+      },
       "port_check": {
         "title": "端口转发检查",
         "description": "中继检查能否从外网连接此服务器"
@@ -410,6 +415,13 @@
       "players_max": "👥 在线 {{online}}/{{max}} 人",
       "player_item": "• {{name}}",
       "players_more": "…另外 {{count}} 人",
+      "address": {
+        "item": "• `{{address}}`",
+        "item_named": "• {{label}} `{{address}}`",
+        "stopped": "💤 服务器已关闭。启动后才能连接",
+        "unknown": "❔ 服务器酱还不知道这台电脑的公网地址。请稍后再试",
+        "no_ports": "📭 此游戏没有提供连接端口"
+      },
       "port_check": {
         "open": "✅ 可以从外网连接",
         "firewall": "🧱 被电脑防火墙阻止",

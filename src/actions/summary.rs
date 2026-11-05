@@ -16,6 +16,7 @@ pub(crate) fn text(id: &str, result: &Value, cat: &Catalog) -> Option<String> {
         "update.check" => updates(result, cat),
         "monitor.summary" => monitor(result, cat),
         "server.port_check" => Some(port_check(result, cat)),
+        "server.address" => Some(address(result, cat)),
         // 모듈 조회(접속자 목록 등)는 모양이 모듈마다 달라 채팅 명령 결과와 같은 범용 포맷으로
         _ if id.starts_with(super::QUERY_PREFIX) => {
             let mut shown = result.clone();
@@ -114,6 +115,34 @@ fn port_check(result: &Value, cat: &Catalog) -> String {
     }
     if matches!(verdict, "firewall" | "router" | "closed" | "cgnat" | "unknown") {
         out.push(cat.t(&format!("actions.summary.port_hint.{}", verdict), &[]));
+    }
+    out.join("\n")
+}
+
+/// 포트마다 `주소:포트` 한 줄 (포트가 여럿이면 칸 이름을 앞에). 서버가 꺼져 있으면 그 말을 덧붙인다.
+/// 릴레이가 주소를 알려 주지 않았거나 밖에 여는 포트가 없으면 그 이유만
+fn address(result: &Value, cat: &Catalog) -> String {
+    let ports = items(result, "ports");
+    if ports.is_empty() {
+        return cat.t("actions.summary.address.no_ports", &[]);
+    }
+    let Some(ip) = result.get("address").and_then(Value::as_str).and_then(|a| a.parse::<std::net::IpAddr>().ok()) else {
+        return cat.t("actions.summary.address.unknown", &[]);
+    };
+    let mut out: Vec<String> = ports
+        .iter()
+        .filter_map(|p| {
+            let port = u16::try_from(p.get("port").and_then(Value::as_u64)?).ok()?;
+            let shown = std::net::SocketAddr::new(ip, port).to_string();
+            Some(if ports.len() == 1 {
+                cat.t("actions.summary.address.item", &[("address", &shown)])
+            } else {
+                cat.t("actions.summary.address.item_named", &[("label", str_of(p, "label")), ("address", &shown)])
+            })
+        })
+        .collect();
+    if result.get("running").and_then(Value::as_bool) == Some(false) {
+        out.push(cat.t("actions.summary.address.stopped", &[]));
     }
     out.join("\n")
 }

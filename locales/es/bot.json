@@ -228,6 +228,11 @@
         "title": "Jugadores",
         "description": "Quién está conectado"
       },
+      "address": {
+        "title": "Dirección del servidor",
+        "name": "Dirección",
+        "description": "Te muestra solo a ti la dirección (IP:puerto) a la que se conectan tus amigos"
+      },
       "port_check": {
         "title": "Comprobar reenvío de puertos",
         "description": "El relé comprueba si este servidor es accesible desde internet"
@@ -410,6 +415,13 @@
       "players_max": "👥 {{online}}/{{max}} conectados",
       "player_item": "• {{name}}",
       "players_more": "…y {{count}} más",
+      "address": {
+        "item": "• `{{address}}`",
+        "item_named": "• {{label}} `{{address}}`",
+        "stopped": "💤 El servidor está apagado. Enciéndelo para que otros puedan conectarse",
+        "unknown": "❔ Server-chan aún no conoce la dirección pública de este PC. Inténtalo de nuevo en un momento",
+        "no_ports": "📭 Este juego no indica el puerto de conexión"
+      },
       "port_check": {
         "open": "✅ Accesible desde internet",
         "firewall": "🧱 Bloqueado por el firewall del PC",
