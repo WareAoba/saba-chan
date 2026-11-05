@@ -4350,7 +4350,7 @@ dependencies = [
 
 [[package]]
 name = "saba-chan-cli"
-version = "0.1.12-beta.3"
+version = "0.1.12-beta.4"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4386,7 +4386,7 @@ dependencies = [
 
 [[package]]
 name = "saba-chan-gui"
-version = "0.1.12-beta.3"
+version = "0.1.12-beta.4"
 dependencies = [
  "base64 0.22.1",
  "chrono",
@@ -4417,7 +4417,7 @@ dependencies = [
 
 [[package]]
 name = "saba-chan-installer"
-version = "0.1.12-beta.3"
+version = "0.1.12-beta.4"
 dependencies = [
  "saba-chan-installer-core",
  "saba-chan-updater-lib",
@@ -4434,7 +4434,7 @@ dependencies = [
 
 [[package]]
 name = "saba-chan-installer-core"
-version = "0.1.12-beta.3"
+version = "0.1.12-beta.4"
 dependencies = [
  "anyhow",
  "dirs",
@@ -4456,7 +4456,7 @@ dependencies = [
 
 [[package]]
 name = "saba-chan-updater-lib"
-version = "0.1.12-beta.3"
+version = "0.1.12-beta.4"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -4488,7 +4488,7 @@ dependencies = [
 
 [[package]]
 name = "saba-core"
-version = "0.1.12-beta.3"
+version = "0.1.12-beta.4"
 dependencies = [
  "anyhow",
  "axum",
@@ -4540,7 +4540,7 @@ dependencies = [
 
 [[package]]
 name = "saba-runner"
-version = "0.1.12-beta.3"
+version = "0.1.12-beta.4"
 dependencies = [
  "embed-resource",
  "portable-pty",
