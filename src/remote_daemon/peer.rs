@@ -136,20 +136,29 @@ fn keep_idle(endpoint: &Endpoint, sender: Sender) {
     }
 }
 
+/// 남겨 둔 연결로 보낸 결과
+enum Reused {
+    Sent(Sent),
+    /// 남겨 둔 연결이 없거나 요청이 나가지 않았다: 이 요청을 새 연결로 보낸다
+    Unsent(Request<Body>),
+    /// 보내다 연결이 끊겼다: 요청을 다시 만들어 새 연결로 보낸다
+    Lost,
+}
+
 /// 남겨 둔 연결로 보내 본다. 읽기 요청(GET·HEAD)만: 원격 데몬이 막 다시 켜져 연결이 끊긴 것을 보내고 나서야 알면
-/// 원격 데몬이 받았는지 모르므로, 다시 보내도 되는 요청만 싣는다. 그때는 `Err(None)`이라 새 연결로 처음부터 보낸다
-async fn send_reused(endpoint: &Endpoint, req: Request<Body>) -> Result<Sent, Option<Request<Body>>> {
+/// 원격 데몬이 받았는지 모르므로, 다시 보내도 되는 요청만 싣는다
+async fn send_reused(endpoint: &Endpoint, req: Request<Body>) -> Reused {
     if !matches!(*req.method(), Method::GET | Method::HEAD) {
-        return Err(Some(req));
+        return Reused::Unsent(req);
     }
-    let Some(mut sender) = take_idle(endpoint) else { return Err(Some(req)) };
+    let Some(mut sender) = take_idle(endpoint) else { return Reused::Unsent(req) };
     match tokio::time::timeout(RESPONSE_TIMEOUT, sender.try_send_request(req)).await {
         Ok(Ok(res)) => {
             keep_idle(endpoint, sender);
-            Ok(Sent::Answered(res))
+            Reused::Sent(Sent::Answered(res))
         }
-        Ok(Err(mut e)) => Err(e.take_message()),
-        Err(_) => Ok(Sent::NoAnswer),
+        Ok(Err(mut e)) => e.take_message().map_or(Reused::Lost, Reused::Unsent),
+        Err(_) => Reused::Sent(Sent::NoAnswer),
     }
 }
 
@@ -158,9 +167,9 @@ async fn send(endpoint: &Endpoint, request: &(dyn Fn() -> Option<Request<Body>> 
     let Some(req) = request() else { return Sent::NotConnected };
     // 방금 쓴 연결이 있으면 TCP·TLS를 새로 열지 않는다
     let req = match send_reused(endpoint, req).await {
-        Ok(sent) => return sent,
-        Err(Some(unsent)) => unsent,
-        Err(None) => match request() {
+        Reused::Sent(sent) => return sent,
+        Reused::Unsent(unsent) => unsent,
+        Reused::Lost => match request() {
             Some(req) => req,
             None => return Sent::NotConnected,
         },
