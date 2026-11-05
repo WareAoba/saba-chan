@@ -578,7 +578,7 @@ Relay 서명 방식(`relay.rs:115-161`):
 
 ### 4.4 config_store와 전역 설정 스키마 (`src/config_store/mod.rs`)
 
-- 모든 사용자 설정은 `<data_dir>/config.json` 하나에 네임스페이스별로 들어간다(`updater/src/config_file.rs:1-27`). 저장은 임시 파일 → fsync → 직전 파일을 `config.json.bak`으로 복사 → rename이고, 깨진 파일은 `.bak`에서 복구한다. 예전 개별 파일(`settings.json`, `bot-config.json`, `cli-settings.json`, `update-config.json`, `boot-config.json`, `extensions_state.json`, `extensionConfig.json`)은 해당 키가 없을 때 한 번 이관하고, 원본은 그대로 두며 `.migrated` 사본을 남긴다(`config_file.rs:37-45, 155-182`).
+- 모든 사용자 설정은 `<data_dir>/config.json` 하나에 네임스페이스별로 들어간다(`updater/src/config_file.rs:1-27`). 저장은 임시 파일 → fsync → 직전 파일을 `config.json.bak`으로 복사 → rename이고, 깨진 파일은 `.corrupt-<초>`로 옮기고 `.bak`에서 복구한다. 파일을 읽지 못하면(권한·공유 위반) 옮기거나 복구하지 않는다: 읽기(`load`·`section`)는 `.bak`을 읽기만 하고, 고쳐 쓰기(`update`·`set_section`)는 오류를 내고 저장하지 않는다. 데몬은 섹션(`gui`·`relay`·`chatbot`)의 필드 하나가 형식이 틀리면 그 필드만 기본값으로 읽는다(`config_store/mod.rs` `section_or_default`): 섹션 전체를 기본값으로 읽으면 다음 저장이 나머지 필드를 지운다. 예전 개별 파일(`settings.json`, `bot-config.json`, `cli-settings.json`, `update-config.json`, `boot-config.json`, `extensions_state.json`, `extensionConfig.json`)은 해당 키가 없을 때 한 번 이관하고, 원본은 그대로 두며 `.migrated` 사본을 남긴다(`config_file.rs:37-45, 155-182`).
 - `ConfigStore`는 그중 `gui`와 `relay`(봇 설정) 네임스페이스를 메모리에 캐시하고 쓸 때 `config.json`에 flush한다(`config_store/mod.rs:232-436`). 기동할 때 한 번 로드한다(`ipc/mod.rs:600-602`). `chatbot`은 캐시 없이 읽고 쓰며, 그 밖의 클라이언트 네임스페이스(`cli` 등)는 JSON 그대로 최상위 키 머지한다(`:576-611`).
 - `sandbox.unisolated{"module-<이름>"·"ext-<이름>": 파일 지문}`: 확인되지 않은 구성요소를 격리 없이 돌리기 동의. `POST·DELETE /api/sandbox/unisolated/:component`만 바꾼다(02 문서 §2.1).
 - `sandbox.extension_gui{"ext-<id>": 파일 지문}`: 확인되지 않은 익스텐션의 GUI 번들 싣기 동의. `POST·DELETE /api/sandbox/extension-gui/:component`만 바꾼다(03 문서 §4.1).
