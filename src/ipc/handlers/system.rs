@@ -90,7 +90,7 @@ pub async fn revoke_net_trace(State(state): State<IPCServer>) -> impl IntoRespon
     change_net_trace_access(state, false).await
 }
 
-/// 관리자 확인 창을 띄우고 끝날 때까지 기다린다 (최대 30초)
+/// 관리자 확인 창을 띄우고 끝날 때까지 기다린다 (확인 뒤 하위 명령은 최대 60초)
 async fn change_net_trace_access(state: IPCServer, grant: bool) -> axum::response::Response {
     let enabled = state.config_store.get_gui_settings().await.system_monitor_net_trace;
     let done = tokio::task::spawn_blocking(move || {
@@ -98,6 +98,10 @@ async fn change_net_trace_access(state: IPCServer, grant: bool) -> axum::respons
     })
     .await;
     state.system_monitor.net_trace_retry();
+    // 거둔 뒤에도 이미 열린 세션은 계속 센다: 닫아서 다음 요청이 바뀐 권한으로 다시 열게 한다
+    if !grant && matches!(done, Ok(Ok(_))) {
+        state.system_monitor.stop_net_trace();
+    }
     match done {
         Ok(Ok(v)) => Json(v).into_response(),
         Ok(Err(e)) => Json(json!({ "ok": false, "error_code": "net_trace_elevation_failed", "error": e })).into_response(),

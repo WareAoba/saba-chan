@@ -396,9 +396,12 @@ impl SystemMonitor {
         self.net.forget_failure();
     }
 
-    /// 데몬을 끌 때: 열린 ETW 세션은 시스템 전체 이름이라 프로세스가 끝나도 남는다
+    /// 데몬을 끌 때·권한을 거둘 때: 열린 ETW 세션은 시스템 전체 이름이라 프로세스가 끝나도 남는다
     pub fn stop_net_trace(&self) {
         self.net.stop();
+        if let Some(sampler) = self.sampler.lock().unwrap_or_else(|e| e.into_inner()).as_mut() {
+            sampler.last = None;
+        }
     }
 
     /// 표본을 뜬다. 동기 시스템 콜이므로 `spawn_blocking` 안에서 부른다.
@@ -840,6 +843,21 @@ mod tests {
         std::fs::write(tmp.path().join("sub/b.bin"), vec![0u8; 23]).unwrap();
         assert_eq!(dir_size(tmp.path()), 123);
         assert_eq!(dir_size(&tmp.path().join("missing")), 0);
+    }
+
+    #[test]
+    #[cfg(not(windows))]
+    fn stopping_net_trace_drops_the_session_and_the_cached_sample() {
+        net_trace::fake_start(true);
+        let monitor = SystemMonitor::new();
+        monitor.set_net_trace(true);
+        assert_eq!(monitor.sample(&[], &[], true).net_trace.status, "starting");
+        std::thread::sleep(MIN_SAMPLE_INTERVAL);
+        assert_eq!(monitor.sample(&[], &[], true).net_trace.status, "on");
+        // 권한을 거두면 세던 세션과 직전 표본을 버린다: 다음 요청은 새로 연다
+        monitor.stop_net_trace();
+        assert_eq!(monitor.sample(&[], &[], true).net_trace.status, "starting");
+        net_trace::fake_start(false);
     }
 
     #[test]

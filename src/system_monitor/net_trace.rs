@@ -381,6 +381,12 @@ impl NetTrace {
     }
 }
 
+/// 시험: 세션이 열린 것처럼 한다 (이 스레드에서만)
+#[cfg(all(test, not(windows)))]
+pub(crate) fn fake_start(on: bool) {
+    platform::FAKE_START.with(|f| f.set(on));
+}
+
 /// 관리자 확인 창을 띄워 지금 사용자를 그룹에 넣거나(`grant`) 뺀다
 pub fn elevate(grant: bool) -> Result<(), String> {
     platform::elevate(grant)
