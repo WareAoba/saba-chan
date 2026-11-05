@@ -22,8 +22,42 @@ export interface MetricsSnapshot {
         sizes_at_ms?: number | null;
         instances: { id: string; bytes: number }[];
     }[];
-    instances?: { id: string; name: string; cpu_percent: number; memory_bytes: number }[];
+    instances?: {
+        id: string;
+        name: string;
+        cpu_percent: number;
+        memory_bytes: number;
+        /** 고급 옵션 포트·서버별 네트워크가 셀 때만 값이 있다 */
+        net_rx_bps?: number | null;
+        net_tx_bps?: number | null;
+    }[];
+    /** 포트·서버별 네트워크 (설정 > 고급, Windows ETW). status가 "on"일 때만 값이 있다 */
+    net_trace?: NetTrace;
 }
+
+/** 데몬 `NetTraceMetrics` */
+export interface NetTrace {
+    /** off | idle | on | unsupported | needs_grant | needs_relogin | error */
+    status: string;
+    rx_bps?: number;
+    tx_bps?: number;
+    others_rx_bps?: number;
+    others_tx_bps?: number;
+    ports?: PortTraffic[];
+}
+
+export interface PortTraffic {
+    instance_id: string;
+    /** 모듈 설정 필드 이름 (예: port, rcon_port) */
+    field: string;
+    port: number;
+    protocol: string;
+    rx_bps: number;
+    tx_bps: number;
+}
+
+/** 옵션은 켰지만 세지 못하는 까닭: 네트워크 그래프 아래 안내로 보인다 */
+const NET_TRACE_NOTES = new Set(['needs_grant', 'needs_relogin', 'error']);
 
 export interface Peaks {
     diskIo: number;
@@ -198,7 +232,19 @@ export function buildRings(
 
     const net = snap.network || {};
     const netTotal = (net.rx_bps || 0) + (net.tx_bps || 0);
-    const netScale = Math.max(peaks.network, netTotal, MIN_RATE_SCALE);
+    const trace = snap.net_trace;
+    const traced = trace?.status === 'on';
+    const sum = (rx?: number | null, tx?: number | null) => (rx || 0) + (tx || 0);
+    // 서버별로 셀 때: 인스턴스 - 나머지 프로세스 - 유휴. 아니면 전체 트래픽 한 조각
+    const netSegments: RingSegment[] = traced
+        ? [
+              ...instanceSegments(insts.map((i) => ({ id: i.id, value: sum(i.net_rx_bps, i.net_tx_bps) })), slots, names),
+              others(sum(trace.others_rx_bps, trace.others_tx_bps)),
+          ]
+        : [{ key: '__all', labelKey: 'monitor.all_traffic', value: netTotal, color: ALL_COLOR }];
+    const netUsed = netSegments.reduce((acc, s) => acc + s.value, 0);
+    const netScale = Math.max(peaks.network, netTotal, netUsed, MIN_RATE_SCALE);
+    const status = trace?.status || 'off';
     rings.push({
         key: 'network',
         titleKey: 'monitor.network',
@@ -206,9 +252,28 @@ export function buildRings(
         sub: { key: 'monitor.rx_tx', vars: { rx: formatRate(net.rx_bps || 0), tx: formatRate(net.tx_bps || 0) } },
         total: netScale,
         format: formatRate,
-        // 프로세스별 네트워크는 데몬이 아직 못 잰다: 전체 트래픽 한 조각만
-        noteKey: net.per_instance ? 'monitor.scale_note' : 'monitor.network_note',
-        segments: [{ key: '__all', labelKey: 'monitor.all_traffic', value: netTotal, color: ALL_COLOR }, idle(netScale - netTotal)],
+        noteKey: traced
+            ? 'monitor.scale_note'
+            : NET_TRACE_NOTES.has(status)
+              ? `monitor.net_trace_${status}`
+              : 'monitor.network_note',
+        segments: [...netSegments, idle(netScale - netUsed)],
     });
     return rings;
+}
+
+/** 포트 표 한 줄 */
+export interface PortRow extends PortTraffic {
+    name: string;
+    color: string;
+}
+
+/** 포트별 트래픽을 서버 목록 순서, 같은 서버 안에서는 포트 번호 순으로. 세지 않을 때는 빈 목록 */
+export function portRows(snap: MetricsSnapshot | null | undefined, slots: Record<string, number | null>): PortRow[] {
+    if (snap?.net_trace?.status !== 'on') return [];
+    const names = Object.fromEntries((snap.instances || []).map((i) => [i.id, i.name]));
+    const order = (id: string) => slots[id] ?? Number.MAX_SAFE_INTEGER;
+    return (snap.net_trace.ports || [])
+        .map((p) => ({ ...p, name: names[p.instance_id] || p.instance_id, color: seriesColor(slots[p.instance_id]) }))
+        .sort((a, b) => order(a.instance_id) - order(b.instance_id) || a.instance_id.localeCompare(b.instance_id) || a.port - b.port);
 }

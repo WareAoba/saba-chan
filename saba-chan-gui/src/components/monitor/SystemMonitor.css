@@ -119,6 +119,43 @@
 .monitor-ring-note {
     color: var(--text-3);
 }
+.monitor-ports {
+    width: calc(100% - 2 * var(--sp-4));
+    margin: 0 var(--sp-4) var(--sp-3);
+    border-collapse: collapse;
+    font-size: var(--fs-xs);
+    font-variant-numeric: tabular-nums;
+}
+.monitor-ports caption {
+    text-align: left;
+    padding-bottom: var(--sp-1);
+    color: var(--text-2);
+}
+.monitor-ports th {
+    text-align: left;
+    font-weight: 500;
+    color: var(--text-3);
+    padding: var(--sp-1) var(--sp-2) var(--sp-1) 0;
+    border-bottom: 1px solid var(--line);
+}
+.monitor-ports td {
+    padding: var(--sp-1) var(--sp-2) var(--sp-1) 0;
+    white-space: nowrap;
+}
+.monitor-ports td:first-child {
+    white-space: normal;
+}
+.monitor-port-server {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-1-5);
+}
+.monitor-ports th:nth-child(n + 3),
+.monitor-ports td:nth-child(n + 3) {
+    text-align: right;
+    padding-right: 0;
+}
+
 .monitor-footnote {
     margin: 0;
     padding: 0 var(--sp-4) var(--sp-4);

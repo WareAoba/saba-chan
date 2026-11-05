@@ -1619,7 +1619,26 @@
     "footnote": "디스크 IO·네트워크는 PC 전체 값이고 서버별로 나누지 않아요. 원은 최근 2분 최대값 기준이에요.",
     "all_disk_io": "전체 디스크 IO",
     "disk_io_note": "실제 디스크 전체 값이에요. 서버별로는 나누지 않아요 · 최근 2분 최대값 기준",
-    "disk_io_process_note": "실제 디스크 값을 읽지 못해 프로세스 IO 합(캐시 포함)을 보여요"
+    "disk_io_process_note": "실제 디스크 값을 읽지 못해 프로세스 IO 합(캐시 포함)을 보여요",
+    "net_trace_needs_grant": "포트·서버별 네트워크를 켰지만 권한이 없어요 · 설정 > 고급에서 받기",
+    "net_trace_needs_relogin": "Windows에 다시 로그인하면 서버별로 셀 수 있어요",
+    "net_trace_error": "네트워크 이벤트를 읽지 못해 전체 트래픽만 보여요",
+    "ports_title": "포트별 트래픽",
+    "ports_server": "서버",
+    "ports_port": "포트",
+    "ports_rx": "받기",
+    "ports_tx": "보내기"
+  },
+  "net_trace": {
+    "label": "포트·서버별 네트워크",
+    "description": "시스템 모니터를 펼쳐 둔 동안 Windows 네트워크 이벤트로 서버별·포트별 트래픽을 셉니다. 처음 한 번 관리자 확인이 필요합니다.",
+    "status_ok": "권한이 있습니다. 모니터를 펼치면 셉니다.",
+    "status_needs_grant": "이 계정에는 네트워크 이벤트를 읽을 권한이 없습니다.",
+    "status_needs_relogin": "권한을 받았습니다. Windows에 다시 로그인하면 셀 수 있습니다.",
+    "grant": "권한 받기",
+    "revoke": "권한 되돌리기",
+    "err_elevation": "관리자 확인을 받지 못했습니다. 다시 시도하세요.",
+    "err_generic": "권한을 바꾸지 못했습니다."
   },
   "audit": {
     "title": "작업 기록",

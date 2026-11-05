@@ -1619,7 +1619,26 @@
     "footnote": "磁盘 IO 和网络是整台电脑的数值，不按实例区分。圆环以最近 2 分钟的峰值为基准。",
     "all_disk_io": "全部磁盘 IO",
     "disk_io_note": "整台电脑的物理磁盘 IO，不按实例区分 · 以最近 2 分钟的峰值为基准",
-    "disk_io_process_note": "无法读取物理磁盘计数器，显示的是进程 IO 总和（含缓存命中）"
+    "disk_io_process_note": "无法读取物理磁盘计数器，显示的是进程 IO 总和（含缓存命中）",
+    "net_trace_needs_grant": "已开启按端口·服务器统计网络，但没有权限 · 请在设置 > 高级中授予",
+    "net_trace_needs_relogin": "重新登录 Windows 后即可按服务器统计",
+    "net_trace_error": "无法读取网络事件，仅显示总流量",
+    "ports_title": "按端口流量",
+    "ports_server": "服务器",
+    "ports_port": "端口",
+    "ports_rx": "接收",
+    "ports_tx": "发送"
+  },
+  "net_trace": {
+    "label": "按服务器·端口统计网络",
+    "description": "系统监视器展开期间，通过 Windows 网络事件按服务器和端口统计流量。首次需要一次管理员确认。",
+    "status_ok": "已有权限。展开监视器即开始统计。",
+    "status_needs_grant": "此账户没有读取网络事件的权限。",
+    "status_needs_relogin": "已授予权限。重新登录 Windows 后即可统计。",
+    "grant": "授予权限",
+    "revoke": "撤销权限",
+    "err_elevation": "未获得管理员确认，请重试。",
+    "err_generic": "无法更改权限。"
   },
   "audit": {
     "title": "操作记录",

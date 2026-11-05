@@ -1619,7 +1619,26 @@
     "footnote": "Disk IO and network are whole-machine values, not split by instance. Rings are relative to the 2-minute peak.",
     "all_disk_io": "All disk IO",
     "disk_io_note": "Whole-machine physical disk IO, not split by instance · relative to the 2-minute peak",
-    "disk_io_process_note": "Physical disk counters unavailable; showing the sum of process IO (includes cache hits)"
+    "disk_io_process_note": "Physical disk counters unavailable; showing the sum of process IO (includes cache hits)",
+    "net_trace_needs_grant": "Per-port network is on but has no permission · grant it in Settings > Advanced",
+    "net_trace_needs_relogin": "Sign in to Windows again to count per server",
+    "net_trace_error": "Couldn't read network events, showing total traffic only",
+    "ports_title": "Traffic by port",
+    "ports_server": "Server",
+    "ports_port": "Port",
+    "ports_rx": "Received",
+    "ports_tx": "Sent"
+  },
+  "net_trace": {
+    "label": "Per-server and per-port network",
+    "description": "While the system monitor is expanded, count traffic per server and port from Windows network events. Needs one administrator confirmation the first time.",
+    "status_ok": "Permission granted. Counting starts when the monitor is expanded.",
+    "status_needs_grant": "This account can't read network events yet.",
+    "status_needs_relogin": "Permission granted. Sign in to Windows again to start counting.",
+    "grant": "Grant permission",
+    "revoke": "Remove permission",
+    "err_elevation": "Couldn't get administrator confirmation. Try again.",
+    "err_generic": "Couldn't change the permission."
   },
   "audit": {
     "title": "Activity log",

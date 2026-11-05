@@ -1619,7 +1619,26 @@
     "footnote": "Les E/S disque et le réseau sont des valeurs de toute la machine, non réparties par instance. Les anneaux sont relatifs au pic des 2 dernières minutes.",
     "all_disk_io": "E/S disque totale",
     "disk_io_note": "E/S disque physique de toute la machine, non répartie par instance · par rapport au pic des 2 dernières minutes",
-    "disk_io_process_note": "Compteurs de disque physique indisponibles ; affichage de la somme des E/S des processus (cache compris)"
+    "disk_io_process_note": "Compteurs de disque physique indisponibles ; affichage de la somme des E/S des processus (cache compris)",
+    "net_trace_needs_grant": "Le réseau par port est activé mais sans autorisation · accordez-la dans Paramètres > Avancé",
+    "net_trace_needs_relogin": "Reconnectez-vous à Windows pour compter par serveur",
+    "net_trace_error": "Impossible de lire les événements réseau, seul le trafic total est affiché",
+    "ports_title": "Trafic par port",
+    "ports_server": "Serveur",
+    "ports_port": "Port",
+    "ports_rx": "Reçu",
+    "ports_tx": "Envoyé"
+  },
+  "net_trace": {
+    "label": "Réseau par serveur et par port",
+    "description": "Tant que le moniteur système est déplié, compte le trafic par serveur et par port à partir des événements réseau de Windows. La première fois, une confirmation administrateur est nécessaire.",
+    "status_ok": "Autorisation accordée. Le comptage démarre quand le moniteur est déplié.",
+    "status_needs_grant": "Ce compte ne peut pas encore lire les événements réseau.",
+    "status_needs_relogin": "Autorisation accordée. Reconnectez-vous à Windows pour commencer à compter.",
+    "grant": "Accorder l'autorisation",
+    "revoke": "Retirer l'autorisation",
+    "err_elevation": "Confirmation administrateur non obtenue. Réessayez.",
+    "err_generic": "Impossible de modifier l'autorisation."
   },
   "audit": {
     "title": "Journal d'activité",

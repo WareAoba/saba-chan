@@ -1619,7 +1619,26 @@
     "footnote": "E/S de disco e rede são valores de toda a máquina, sem divisão por instância. Os anéis são relativos ao pico dos últimos 2 minutos.",
     "all_disk_io": "E/S de disco total",
     "disk_io_note": "E/S física de disco de toda a máquina, sem divisão por instância · relativo ao pico dos últimos 2 minutos",
-    "disk_io_process_note": "Contadores de disco físico indisponíveis; exibindo a soma de E/S dos processos (inclui acertos de cache)"
+    "disk_io_process_note": "Contadores de disco físico indisponíveis; exibindo a soma de E/S dos processos (inclui acertos de cache)",
+    "net_trace_needs_grant": "A rede por porta está ligada, mas sem permissão · conceda em Configurações > Avançado",
+    "net_trace_needs_relogin": "Entre no Windows novamente para contar por servidor",
+    "net_trace_error": "Não foi possível ler os eventos de rede, mostrando só o tráfego total",
+    "ports_title": "Tráfego por porta",
+    "ports_server": "Servidor",
+    "ports_port": "Porta",
+    "ports_rx": "Recebido",
+    "ports_tx": "Enviado"
+  },
+  "net_trace": {
+    "label": "Rede por servidor e porta",
+    "description": "Enquanto o monitor do sistema estiver expandido, conta o tráfego por servidor e porta a partir dos eventos de rede do Windows. Na primeira vez, é preciso uma confirmação de administrador.",
+    "status_ok": "Permissão concedida. A contagem começa quando o monitor é expandido.",
+    "status_needs_grant": "Esta conta ainda não pode ler eventos de rede.",
+    "status_needs_relogin": "Permissão concedida. Entre no Windows novamente para começar a contar.",
+    "grant": "Conceder permissão",
+    "revoke": "Remover permissão",
+    "err_elevation": "Não foi possível obter a confirmação de administrador. Tente novamente.",
+    "err_generic": "Não foi possível alterar a permissão."
   },
   "audit": {
     "title": "Registro de atividades",

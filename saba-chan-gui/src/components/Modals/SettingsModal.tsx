@@ -32,6 +32,7 @@ import { FolderPathsSection, folderPathsAvailable } from './FolderPathsSection';
 import { RemoteDaemonSection, remoteDaemonAvailable } from './RemoteDaemonSection';
 import { useDaemonTarget } from '../shell/DaemonSwitcher';
 import { AutostartSetting, autostartAvailable } from './AutostartSetting';
+import { NetTraceSetting, netTraceAvailable } from './NetTraceSetting';
 import { ExtensionGuiSection, extensionGuiAvailable } from './ExtensionGuiSection';
 import { UnisolatedSection, unisolatedAvailable } from './UnisolatedSection';
 import SabaStorage from './SabaStorage';
@@ -1043,6 +1044,9 @@ function SettingsModal({
                                     onChange={(checked) => useSettingsStore.getState().update({ autoPortCheck: checked })}
                                 />
                             </div>
+
+                            {/* 포트·서버별 네트워크 (기본 꺼짐, Windows만): 시스템 모니터를 펼쳐 둔 동안 데몬이 센다 */}
+                            {netTraceAvailable() && <NetTraceSetting />}
 
                             {/* 새 서버 기본값: 서버를 만들 때 데몬이 채운다. 만든 뒤에는 서버마다 바꾼다 */}
                             <div className="setting-item setting-item-group">

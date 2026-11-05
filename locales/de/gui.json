@@ -1619,7 +1619,26 @@
     "footnote": "Datenträger-IO und Netzwerk sind Werte des ganzen Rechners, nicht nach Instanz aufgeteilt. Die Ringe beziehen sich auf den Höchstwert der letzten 2 Minuten.",
     "all_disk_io": "Gesamte Datenträger-IO",
     "disk_io_note": "Physische Datenträger-IO des ganzen Rechners, nicht nach Instanz aufgeteilt · bezogen auf den Höchstwert der letzten 2 Minuten",
-    "disk_io_process_note": "Physische Datenträgerzähler nicht verfügbar; angezeigt wird die Summe der Prozess-IO (inklusive Cache-Treffer)"
+    "disk_io_process_note": "Physische Datenträgerzähler nicht verfügbar; angezeigt wird die Summe der Prozess-IO (inklusive Cache-Treffer)",
+    "net_trace_needs_grant": "Netzwerk pro Port ist an, aber ohne Berechtigung · unter Einstellungen > Erweitert erteilen",
+    "net_trace_needs_relogin": "Melde dich erneut bei Windows an, um pro Server zu zählen",
+    "net_trace_error": "Netzwerkereignisse nicht lesbar, nur Gesamtverkehr wird gezeigt",
+    "ports_title": "Verkehr pro Port",
+    "ports_server": "Server",
+    "ports_port": "Port",
+    "ports_rx": "Empfangen",
+    "ports_tx": "Gesendet"
+  },
+  "net_trace": {
+    "label": "Netzwerk pro Server und Port",
+    "description": "Zählt den Verkehr pro Server und Port aus Windows-Netzwerkereignissen, solange der Systemmonitor aufgeklappt ist. Beim ersten Mal ist eine Administratorbestätigung nötig.",
+    "status_ok": "Berechtigung vorhanden. Gezählt wird, wenn der Monitor aufgeklappt ist.",
+    "status_needs_grant": "Dieses Konto darf Netzwerkereignisse noch nicht lesen.",
+    "status_needs_relogin": "Berechtigung erteilt. Melde dich erneut bei Windows an, um zu zählen.",
+    "grant": "Berechtigung erteilen",
+    "revoke": "Berechtigung entfernen",
+    "err_elevation": "Keine Administratorbestätigung erhalten. Versuche es erneut.",
+    "err_generic": "Berechtigung konnte nicht geändert werden."
   },
   "audit": {
     "title": "Aktivitätsprotokoll",

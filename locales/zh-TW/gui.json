@@ -1619,7 +1619,26 @@
     "footnote": "磁碟 IO 和網路是整台電腦的數值，不按實例區分。圓環以最近 2 分鐘的峰值為基準。",
     "all_disk_io": "全部磁碟 IO",
     "disk_io_note": "整台電腦的實體磁碟 IO，不按實例區分 · 以最近 2 分鐘的峰值為基準",
-    "disk_io_process_note": "無法讀取實體磁碟計數器，顯示的是處理程序 IO 總和（含快取命中）"
+    "disk_io_process_note": "無法讀取實體磁碟計數器，顯示的是處理程序 IO 總和（含快取命中）",
+    "net_trace_needs_grant": "已開啟依連接埠·伺服器統計網路，但沒有權限 · 請在設定 > 進階中授予",
+    "net_trace_needs_relogin": "重新登入 Windows 後即可依伺服器統計",
+    "net_trace_error": "無法讀取網路事件，僅顯示總流量",
+    "ports_title": "依連接埠流量",
+    "ports_server": "伺服器",
+    "ports_port": "連接埠",
+    "ports_rx": "接收",
+    "ports_tx": "傳送"
+  },
+  "net_trace": {
+    "label": "依伺服器·連接埠統計網路",
+    "description": "系統監視器展開期間，透過 Windows 網路事件依伺服器和連接埠統計流量。首次需要一次系統管理員確認。",
+    "status_ok": "已有權限。展開監視器即開始統計。",
+    "status_needs_grant": "此帳戶沒有讀取網路事件的權限。",
+    "status_needs_relogin": "已授予權限。重新登入 Windows 後即可統計。",
+    "grant": "授予權限",
+    "revoke": "撤銷權限",
+    "err_elevation": "未取得系統管理員確認，請再試一次。",
+    "err_generic": "無法變更權限。"
   },
   "audit": {
     "title": "操作紀錄",

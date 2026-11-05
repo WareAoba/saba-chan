@@ -1619,7 +1619,26 @@
     "footnote": "La E/S de disco y la red son valores de todo el equipo, sin dividir por instancia. Los anillos son relativos al pico de los últimos 2 minutos.",
     "all_disk_io": "E/S de disco total",
     "disk_io_note": "E/S física de disco de todo el equipo, sin dividir por instancia · relativo al pico de los últimos 2 minutos",
-    "disk_io_process_note": "Contadores de disco físico no disponibles; se muestra la suma de E/S de procesos (incluye aciertos de caché)"
+    "disk_io_process_note": "Contadores de disco físico no disponibles; se muestra la suma de E/S de procesos (incluye aciertos de caché)",
+    "net_trace_needs_grant": "La red por puerto está activada pero sin permiso · concédelo en Ajustes > Avanzado",
+    "net_trace_needs_relogin": "Vuelve a iniciar sesión en Windows para contar por servidor",
+    "net_trace_error": "No se pudieron leer los eventos de red, solo se muestra el tráfico total",
+    "ports_title": "Tráfico por puerto",
+    "ports_server": "Servidor",
+    "ports_port": "Puerto",
+    "ports_rx": "Recibido",
+    "ports_tx": "Enviado"
+  },
+  "net_trace": {
+    "label": "Red por servidor y puerto",
+    "description": "Mientras el monitor del sistema está desplegado, cuenta el tráfico por servidor y puerto a partir de los eventos de red de Windows. La primera vez requiere una confirmación de administrador.",
+    "status_ok": "Permiso concedido. Cuenta cuando el monitor está desplegado.",
+    "status_needs_grant": "Esta cuenta todavía no puede leer eventos de red.",
+    "status_needs_relogin": "Permiso concedido. Vuelve a iniciar sesión en Windows para empezar a contar.",
+    "grant": "Conceder permiso",
+    "revoke": "Quitar permiso",
+    "err_elevation": "No se obtuvo la confirmación de administrador. Inténtalo de nuevo.",
+    "err_generic": "No se pudo cambiar el permiso."
   },
   "audit": {
     "title": "Registro de actividad",

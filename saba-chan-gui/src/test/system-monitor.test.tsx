@@ -1,6 +1,6 @@
 import { fireEvent, render, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { buildRings, colorSlots, nextPeaks } from '../components/monitor/systemMetrics';
+import { buildRings, colorSlots, nextPeaks, portRows } from '../components/monitor/systemMetrics';
 import { SystemMonitor } from '../components/monitor/SystemMonitor';
 import { useSettingsStore } from '../stores/useSettingsStore';
 
@@ -75,6 +75,53 @@ describe('시스템 모니터 원형 그래프 계산', () => {
     });
 });
 
+// 고급 옵션 포트·서버별 네트워크가 셀 때의 데몬 값
+const traced = () =>
+    snapshot({
+        network: { rx_bps: 3 * MB, tx_bps: 1 * MB, per_instance: false },
+        net_trace: {
+            status: 'on',
+            window_ms: 2000,
+            rx_bps: 3 * MB,
+            tx_bps: 1 * MB,
+            others_rx_bps: 1 * MB,
+            others_tx_bps: 0,
+            ports: [
+                { instance_id: 'a', field: 'query_port', port: 27016, protocol: 'udp', rx_bps: 0, tx_bps: 0 },
+                { instance_id: 'a', field: 'port', port: 25565, protocol: 'tcp', rx_bps: 2 * MB, tx_bps: 1 * MB },
+            ],
+        },
+        instances: [
+            { id: 'a', name: 'A', cpu_percent: 30, memory_bytes: 4 * GB, net_rx_bps: 2 * MB, net_tx_bps: 1 * MB },
+            { id: 'b', name: 'B', cpu_percent: 0, memory_bytes: 0, net_rx_bps: 0, net_tx_bps: 0 },
+        ],
+    });
+
+describe('포트·서버별 네트워크 (고급 옵션)', () => {
+    it('셀 때는 네트워크 원을 인스턴스 - 나머지 프로세스 - 유휴로 나눈다', () => {
+        const net = ring(buildRings(traced(), colorSlots(['a', 'b']), { diskIo: 0, network: 8 * MB }), 'network');
+        expect(values(net)).toEqual({ a: 3 * MB, __others: 1 * MB, __idle: 4 * MB });
+        expect(net.noteKey).toBe('monitor.scale_note');
+    });
+
+    it('옵션은 켰지만 권한이 없으면 전체 한 조각과 그 까닭을 보인다', () => {
+        const snap = snapshot({ net_trace: { status: 'needs_grant' } });
+        const net = ring(buildRings(snap, colorSlots(['a'])), 'network');
+        expect(Object.keys(values(net))).toEqual(['__all', '__idle']);
+        expect(net.noteKey).toBe('monitor.net_trace_needs_grant');
+        expect(portRows(snap, colorSlots(['a']))).toEqual([]);
+    });
+
+    it('포트 표는 서버 목록 순서, 같은 서버 안에서는 포트 번호 순이다', () => {
+        const rows = portRows(traced(), colorSlots(['a', 'b']));
+        expect(rows.map((r) => [r.name, r.port, r.protocol])).toEqual([
+            ['A', 25565, 'tcp'],
+            ['A', 27016, 'udp'],
+        ]);
+        expect(rows[0].color).toBe('var(--series-1)');
+    });
+});
+
 describe('SystemMonitor', () => {
     beforeEach(() => {
         window.api.systemMetrics = vi.fn().mockResolvedValue(snapshot());
@@ -103,6 +150,22 @@ describe('SystemMonitor', () => {
         expect(document.querySelector('.monitor-summary')!.textContent).toContain('50%');
         // 요약만 볼 때는 데몬이 폴더 크기를 재지 않게 한다
         await waitFor(() => expect(window.api.systemMetrics).toHaveBeenLastCalledWith({ sizes: false }));
+    });
+
+    it('포트·서버별 네트워크를 셀 때만 포트 표를 그린다', async () => {
+        window.api.systemMetrics = vi.fn().mockResolvedValue(traced());
+        render(<SystemMonitor servers={[{ id: 'a', name: 'A' }]} />);
+        await waitFor(() => expect(document.querySelector('.monitor-ports')).not.toBeNull());
+        const rows = document.querySelectorAll('.monitor-ports tbody tr');
+        expect(rows).toHaveLength(2);
+        expect(rows[0].textContent).toContain('25565');
+        expect(rows[0].textContent).toContain('2.0 MB/s');
+    });
+
+    it('세지 않으면 포트 표가 없다', async () => {
+        render(<SystemMonitor servers={[{ id: 'a', name: 'A' }]} />);
+        await waitFor(() => expect(document.querySelector('.monitor-ring')).not.toBeNull());
+        expect(document.querySelector('.monitor-ports')).toBeNull();
     });
 
     it('데몬에 API가 없으면 아무것도 그리지 않는다', () => {
