@@ -8,7 +8,7 @@ import { useApp, useData } from '../store';
 import { Dropdown } from './Dropdown';
 import { Icon } from './icons';
 import { PermissionStairs, type PermissionWriter } from './PermissionStairs';
-import { Avatar, Button, Empty, errorText, failed, Loading, Segments } from './ui';
+import { Avatar, Button, Card, Empty, errorText, failed, Loading, Segments } from './ui';
 import type { Server, TFn, WebApi } from '../types';
 
 /** 켜짐 알림·보일 서버 한 벌 (GET /api/guilds/:g/start-notice). null = 읽는 중, false = 읽지 못함 */
@@ -225,11 +225,13 @@ export function VisibleServers({ api, guildId, allowed, others, onSaved }: Visib
     };
     const visible = servers.filter((s) => P.isInstanceAllowed(settings, guildId, s.id) && !ownerOf(s.id)).length;
     return (
-        <div className="field">
-            <span>
-                {t('perm.visible')} <small className="pill">{`${visible}/${servers.length}`}</small>
-            </span>
-            <small className="hint">{t('perm.visible_hint')}</small>
+        <Card
+            icon="discord"
+            tone="7"
+            title={t('perm.visible')}
+            desc={t('perm.visible_hint')}
+            action={<small className="pill">{`${visible}/${servers.length}`}</small>}
+        >
             <ul className="rows">
                 <li className="row">
                     <div className="row-main">
@@ -279,7 +281,7 @@ export function VisibleServers({ api, guildId, allowed, others, onSaved }: Visib
                     );
                 })}
             </ul>
-        </div>
+        </Card>
     );
 }
 
@@ -316,9 +318,12 @@ function StartNotice({ api, guildId, notice, setNotice, kind = 'start' }: StartN
 
     const rows = noticeRows(servers, notice);
     return (
-        <div className="field">
-            <span>{t(`perm.${prefix}`)}</span>
-            <small className="hint">{t(`perm.${prefix}_hint`)}</small>
+        <Card
+            icon={kind === 'full' ? 'user' : 'bell'}
+            tone={kind === 'full' ? '4' : '3'}
+            title={t(`perm.${prefix}`)}
+            desc={t(`perm.${prefix}_hint`)}
+        >
             {notice === false ? null : !notice || !serversLoaded ? (
                 <Loading />
             ) : rows.length === 0 ? (
@@ -344,7 +349,7 @@ function StartNotice({ api, guildId, notice, setNotice, kind = 'start' }: StartN
                     ))}
                 </ul>
             )}
-        </div>
+        </Card>
     );
 }
 
@@ -616,10 +621,8 @@ export function GuildPermissions({
         );
     const instances: BoardInstance[] = data.board?.instances || [];
     return (
-        <>
-            <div className="field">
-                <span>{t('perm.instances')}</span>
-                <small className="hint">{t('perm.instances_hint')}</small>
+        <div className="set-card-grid">
+            <Card icon="server" tone="1" title={t('perm.instances')} desc={t('perm.instances_hint')}>
                 <ul className="rows">
                     {[{ id: L.ALL_INSTANCES, name: t('perm.all_instances') }, ...instances].map((i) => (
                         <li key={i.id} className="row">
@@ -633,7 +636,7 @@ export function GuildPermissions({
                         </li>
                     ))}
                 </ul>
-            </div>
+            </Card>
             {notice && others && (
                 <VisibleServers
                     api={api}
@@ -645,6 +648,6 @@ export function GuildPermissions({
             )}
             <StartNotice api={api} guildId={guildId} notice={notice} setNotice={setNotice} />
             <StartNotice api={api} guildId={guildId} notice={full} setNotice={setFull} kind="full" />
-        </>
+        </div>
     );
 }

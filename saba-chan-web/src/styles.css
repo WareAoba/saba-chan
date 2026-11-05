@@ -469,6 +469,19 @@ textarea {
     padding-top: 0;
     margin-top: -4px;
 }
+/* 카드 안의 줄 목록은 상자 대신 선으로 나눈다 */
+.set-card .rows {
+    gap: 0;
+}
+.set-card .rows > .row {
+    padding: 10px 0;
+    background: none;
+    border: 0;
+    border-radius: 0;
+}
+.set-card .rows > .row + .row {
+    border-top: 1px solid var(--line);
+}
 /* 넓은 화면: 카드를 두 줄로 쌓는다 (읽는 순서는 위에서 아래, 왼쪽 줄 먼저) */
 .set-card-grid > * {
     margin-bottom: 12px;
