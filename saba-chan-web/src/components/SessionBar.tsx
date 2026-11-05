@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { art } from '../art';
 import { useApp } from '../store';
 import { Icon } from './icons';
+import { LanguageMenu } from './LanguageMenu';
 import { InstallBand } from './NoPc';
 import { Wordmark } from './ui';
 import type { WebSession } from '../types';
@@ -36,6 +37,7 @@ export function SessionBar({ session }: { session: WebSession | null }) {
                 <button type="button" className="btn btn-plain btn-small" onClick={() => session?.extend()}>
                     {t('session.extend')}
                 </button>
+                <LanguageMenu />
             </div>
             {warning && <p className="banner banner-warn">{t('session.ending_soon')}</p>}
             {/* 머리 안에 둔다: 넓은 화면에서도 메뉴·내용 칸을 밀지 않고 두 칸을 다 쓴다 */}
