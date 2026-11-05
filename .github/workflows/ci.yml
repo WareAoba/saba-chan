@@ -15,7 +15,7 @@
 # 전체 (Actions 탭 workflow_dispatch, 또는 v* 태그 push):
 #   위 전부 + linux(Ubuntu clippy + cargo test), gui-tests(Vitest), e2e(Python E2E)
 #
-# release.yml:   릴리즈 패키징 & manifest 생성
+# publish.yml:   릴리스 빌드·manifest 서명·R2 업로드·릴레이 등록 (수동 실행)
 # ═══════════════════════════════════════════════════════════
 
 name: CI

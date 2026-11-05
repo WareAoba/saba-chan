@@ -165,7 +165,7 @@ cargo build --release -p saba-chan-cli
 cd saba-chan-gui; npm install; npm start
 ```
 
-배포 파일은 GitHub Actions가 이 저장소의 소스로 빌드합니다. Windows는 [build-windows.yml](.github/workflows/build-windows.yml), 리눅스 x64·ARM64는 [release.yml](.github/workflows/release.yml)이에요. 테스트는 `cargo test --workspace`와 `cd saba-chan-gui && npx vitest run`으로 돌립니다.
+배포 파일은 GitHub Actions가 이 저장소의 소스로 빌드합니다. Windows·리눅스 x64·ARM64 모두 [publish.yml](.github/workflows/publish.yml) 하나로 빌드하고 발행해요. 테스트는 `cargo test --workspace`와 `cd saba-chan-gui && npx vitest run`으로 돌립니다.
 
 ## 코드 서명 정책 (Code signing policy)
 

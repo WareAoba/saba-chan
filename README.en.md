@@ -165,7 +165,7 @@ cargo build --release -p saba-chan-cli
 cd saba-chan-gui; npm install; npm start
 ```
 
-Release files are built from this repository by GitHub Actions: [build-windows.yml](.github/workflows/build-windows.yml) for Windows and [release.yml](.github/workflows/release.yml) for Linux x64 and ARM64. Run tests with `cargo test --workspace` and `cd saba-chan-gui && npx vitest run`.
+Release files are built from this repository by GitHub Actions: [publish.yml](.github/workflows/publish.yml) builds and publishes Windows, Linux x64 and ARM64 in one run. Run tests with `cargo test --workspace` and `cd saba-chan-gui && npx vitest run`.
 
 ## Code signing policy
 

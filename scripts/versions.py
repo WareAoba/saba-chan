@@ -517,8 +517,7 @@ def cmd_manifest(data: dict, args: argparse.Namespace) -> int:
     assets = Path(args.assets)
     base = args.base_url.rstrip("/")
     release = data["release"]["version"]
-    # 패키저(package-release.py)가 남긴 manifest.json: 이전 릴리즈에서 가져온 에셋은 실제 버전이 적혀 있다.
-    # 패키저는 맨 위 플랫폼(windows-x64)만 다룬다
+    # 에셋 폴더의 manifest.json(있으면): 컴포넌트 버전을 그 값으로 적는다. 맨 위 플랫폼(windows-x64)만 본다
     packaged_path = assets / "manifest.json"
     packaged = json.loads(packaged_path.read_text(encoding="utf-8")).get("components", {}) if packaged_path.is_file() else {}
     components = platform_components(data, args, assets, args.platform, packaged)
