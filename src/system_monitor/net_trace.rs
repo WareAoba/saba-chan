@@ -278,6 +278,20 @@ pub(crate) fn sddl_allows(sddl: &str, sid: &str) -> bool {
     sddl.split('(').skip(1).filter_map(|a| a.split(')').next()).any(|ace| allow_rights(ace, sid).is_some_and(rights_enable))
 }
 
+/// ETW 세션 이름. 데이터 폴더를 바꾼 실행본(`SABA_DATA_DIR`, PR 프리뷰·개발)은 폴더마다 이름을 나눠
+/// 설치본이 연 세션을 지난 실행의 남은 세션으로 알고 닫지 않게 한다. 데이터 폴더마다 데몬은 하나다
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) fn session_name(base: &str, data_dir: Option<&str>) -> String {
+    match data_dir.filter(|d| !d.is_empty()) {
+        None => base.to_string(),
+        Some(dir) => {
+            // FNV-1a: 실행마다·판마다 같은 값이어야 남은 세션을 찾는다
+            let hash = dir.to_lowercase().bytes().fold(0x811c_9dc5_u32, |h, b| (h ^ b as u32).wrapping_mul(0x0100_0193));
+            format!("{}-{:08x}", base, hash)
+        }
+    }
+}
+
 /// 지금 사용자의 권한 상태
 pub fn access() -> Access {
     platform::access()
@@ -527,13 +541,17 @@ mod platform {
         _trace: UserTrace,
     }
 
+    fn data_dir_override() -> Option<String> {
+        std::env::var("SABA_DATA_DIR").ok()
+    }
+
     pub(super) fn start(counters: Arc<Mutex<NetCounters>>) -> Result<Session, StartError> {
-        open(SESSION_NAME, counters)
+        open(&session_name(SESSION_NAME, data_dir_override().as_deref()), counters)
     }
 
     /// 공급자를 정말 켤 수 있는지 잠깐 열어 본다. 보통 권한은 공급자 보안 설정(HKLM)을 읽지 못해(PC 실측) 이것으로 판단한다
     fn can_enable() -> Option<bool> {
-        match open(PROBE_SESSION_NAME, Arc::default()) {
+        match open(&session_name(PROBE_SESSION_NAME, data_dir_override().as_deref()), Arc::default()) {
             Ok(_session) => Some(true),
             Err(StartError::Denied) => Some(false),
             Err(_) => None,
@@ -992,6 +1010,18 @@ mod tests {
         assert!(sddl_allows(granted, "s-1-5-21-1-2-3-1001"));
         assert!(!sddl_allows(original, "S-1-5-21-1-2-3-1001"));
         assert!(!sddl_allows("D:(D;;LO;;;S-1-5-21-9)", "S-1-5-21-9"), "deny is not allow");
+    }
+
+    #[test]
+    fn each_data_folder_gets_its_own_session() {
+        // 설치본은 늘 같은 이름 (지난 실행이 남긴 세션을 닫을 수 있게)
+        assert_eq!(session_name("saba-chan-net", None), "saba-chan-net");
+        assert_eq!(session_name("saba-chan-net", Some("")), "saba-chan-net");
+        // 데이터 폴더를 바꾼 실행본(PR 프리뷰)은 설치본 세션을 닫지 않게 이름을 나눈다
+        let a = session_name("saba-chan-net", Some(r"C:\preview\883\data"));
+        let b = session_name("saba-chan-net", Some(r"C:\preview\884\data"));
+        assert!(a.starts_with("saba-chan-net-") && a != b);
+        assert_eq!(a, session_name("saba-chan-net", Some(r"c:\PREVIEW\883\data")), "Windows paths ignore case");
     }
 
     #[test]
