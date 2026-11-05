@@ -150,6 +150,9 @@
       "schedule": {
         "set": {
           "title": "Geplante Aufgaben ändern"
+        },
+        "get": {
+          "title": "Geplante Aufgaben anzeigen"
         }
       },
       "delete": {
@@ -168,6 +171,12 @@
           "description": "Im Hinweiskanal dieses Discord-Servers melden, wenn dieser Server voll ist oder wieder ein Platz frei wird",
           "name": "Voll-Hinweis"
         }
+      },
+      "get": {
+        "title": "Servereinstellungen anzeigen"
+      },
+      "rename": {
+        "title": "Server umbenennen"
       }
     },
     "server": {
@@ -192,6 +201,9 @@
         "tail": {
           "title": "Konsolenende",
           "description": "Letzte 20 Konsolenzeilen"
+        },
+        "send": {
+          "title": "Konsolenbefehl senden"
         }
       },
       "logs": {
@@ -215,6 +227,17 @@
       "chat": {
         "title": "Spielchat senden",
         "description": "Sendet eine Discord-Nachricht in den Spielchat"
+      },
+      "update": {
+        "check": {
+          "title": "Spielserver-Update prüfen"
+        },
+        "apply": {
+          "title": "Spielserver aktualisieren"
+        }
+      },
+      "diagnose": {
+        "title": "Server diagnostizieren"
       }
     },
     "monitor": {
@@ -233,12 +256,21 @@
       "restore": {
         "title": "Backup wiederherstellen",
         "description": "Überschreibt die aktuellen Serverdateien mit dem Backup"
+      },
+      "delete": {
+        "title": "Backup löschen"
       }
     },
     "module": {
       "install": {
         "title": "Modul installieren",
         "description": "Lädt es aus dem offiziellen Katalog herunter und installiert es"
+      },
+      "list": {
+        "title": "Installierte Module"
+      },
+      "available": {
+        "title": "Verfügbare Module"
       }
     },
     "extension": {
@@ -247,6 +279,15 @@
       },
       "disable": {
         "title": "Erweiterung deaktivieren"
+      },
+      "list": {
+        "title": "Installierte Erweiterungen"
+      },
+      "available": {
+        "title": "Verfügbare Erweiterungen"
+      },
+      "install": {
+        "title": "Erweiterung installieren"
       }
     },
     "update": {
@@ -323,7 +364,8 @@
       "step": "Schritt",
       "from_snapshot": "Aus Spiel-Autobackup",
       "text": "Nachricht",
-      "apiKey": "API-Schlüssel"
+      "apiKey": "API-Schlüssel",
+      "command": "Befehl"
     },
     "summary": {
       "server_item": "• **{{name}}** ({{module}}) · {{status}}",

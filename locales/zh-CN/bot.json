@@ -150,6 +150,9 @@
       "schedule": {
         "set": {
           "title": "更改计划任务"
+        },
+        "get": {
+          "title": "查看计划任务"
         }
       },
       "delete": {
@@ -168,6 +171,12 @@
           "description": "此服务器满员或重新有空位时，在此 Discord 服务器的通知频道提醒",
           "name": "满员提醒"
         }
+      },
+      "get": {
+        "title": "查看服务器设置"
+      },
+      "rename": {
+        "title": "重命名服务器"
       }
     },
     "server": {
@@ -192,6 +201,9 @@
         "tail": {
           "title": "控制台末尾",
           "description": "控制台最后 20 行"
+        },
+        "send": {
+          "title": "发送控制台命令"
         }
       },
       "logs": {
@@ -215,6 +227,17 @@
       "chat": {
         "title": "发送游戏聊天",
         "description": "把 Discord 消息发送到游戏聊天"
+      },
+      "update": {
+        "check": {
+          "title": "检查游戏服务器更新"
+        },
+        "apply": {
+          "title": "更新游戏服务器"
+        }
+      },
+      "diagnose": {
+        "title": "诊断服务器"
       }
     },
     "monitor": {
@@ -233,12 +256,21 @@
       "restore": {
         "title": "恢复备份",
         "description": "用备份覆盖当前的服务器文件"
+      },
+      "delete": {
+        "title": "删除备份"
       }
     },
     "module": {
       "install": {
         "title": "安装模块",
         "description": "从官方目录下载并安装"
+      },
+      "list": {
+        "title": "已安装的模块"
+      },
+      "available": {
+        "title": "可用的模块"
       }
     },
     "extension": {
@@ -247,6 +279,15 @@
       },
       "disable": {
         "title": "停用扩展"
+      },
+      "list": {
+        "title": "已安装的扩展"
+      },
+      "available": {
+        "title": "可用的扩展"
+      },
+      "install": {
+        "title": "安装扩展"
       }
     },
     "update": {
@@ -323,7 +364,8 @@
       "step": "步骤",
       "from_snapshot": "来自游戏自动备份",
       "text": "内容",
-      "apiKey": "API 密钥"
+      "apiKey": "API 密钥",
+      "command": "命令"
     },
     "summary": {
       "server_item": "• **{{name}}** ({{module}}) · {{status}}",

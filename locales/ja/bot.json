@@ -150,6 +150,9 @@
       "schedule": {
         "set": {
           "title": "予約タスクを変更"
+        },
+        "get": {
+          "title": "予約タスクを見る"
         }
       },
       "delete": {
@@ -168,6 +171,12 @@
           "description": "このサーバーが満員になったり、また空きが出たりしたら、このDiscordサーバーの通知チャンネルに知らせます",
           "name": "満員通知"
         }
+      },
+      "get": {
+        "title": "サーバー設定を見る"
+      },
+      "rename": {
+        "title": "サーバー名を変更"
       }
     },
     "server": {
@@ -192,6 +201,9 @@
         "tail": {
           "title": "コンソールの末尾",
           "description": "コンソールの最後の20行"
+        },
+        "send": {
+          "title": "コンソールコマンドを送る"
         }
       },
       "logs": {
@@ -215,6 +227,17 @@
       "chat": {
         "title": "ゲームチャット送信",
         "description": "Discordのメッセージをゲームチャットに送ります"
+      },
+      "update": {
+        "check": {
+          "title": "ゲームサーバーの更新を確認"
+        },
+        "apply": {
+          "title": "ゲームサーバーを更新"
+        }
+      },
+      "diagnose": {
+        "title": "サーバー診断"
       }
     },
     "monitor": {
@@ -233,12 +256,21 @@
       "restore": {
         "title": "バックアップを復元",
         "description": "現在のサーバーファイルをバックアップで上書きします"
+      },
+      "delete": {
+        "title": "バックアップを削除"
       }
     },
     "module": {
       "install": {
         "title": "モジュールをインストール",
         "description": "公式カタログからダウンロードしてインストールします"
+      },
+      "list": {
+        "title": "インストール済みモジュール"
+      },
+      "available": {
+        "title": "入手できるモジュール"
       }
     },
     "extension": {
@@ -247,6 +279,15 @@
       },
       "disable": {
         "title": "拡張機能を無効化"
+      },
+      "list": {
+        "title": "インストール済み拡張機能"
+      },
+      "available": {
+        "title": "入手できる拡張機能"
+      },
+      "install": {
+        "title": "拡張機能をインストール"
       }
     },
     "update": {
@@ -323,7 +364,8 @@
       "step": "ステップ",
       "from_snapshot": "ゲーム自動バックアップから",
       "text": "本文",
-      "apiKey": "APIキー"
+      "apiKey": "APIキー",
+      "command": "コマンド"
     },
     "summary": {
       "server_item": "• **{{name}}** ({{module}}) · {{status}}",

@@ -1515,3 +1515,54 @@ fn command_risks_take_known_tiers_and_null_removes() {
     s.apply(json!({ "commandRisks": { "i/server.start": null } }).as_object().unwrap()).unwrap();
     assert!(s.command_risks.is_empty());
 }
+
+/// 원격 MCP가 앱 화면에서 하던 일(설정·예약 읽기, 모듈·플러그인 목록과 설치, 게임 서버 업데이트, 진단, 콘솔 명령,
+/// 이름 바꾸기, 백업 지우기)도 액션으로 닿는다. 결과의 비밀값은 다른 원격 요청과 같이 빠진다
+#[tokio::test]
+async fn an_mcp_owner_reaches_what_the_app_screens_do() {
+    let (state, id, _tmp) = server().await;
+    let owner = Caller::mcp("owner".into(), "owner".into(), None, None, "en".into());
+    let listed = list(&state, Some(owner.surface), None, "en").await;
+    let ids: Vec<&str> = listed["actions"].as_array().unwrap().iter().filter_map(|a| a["id"].as_str()).collect();
+    for want in [
+        "instance.get",
+        "instance.schedule.get",
+        "instance.rename",
+        "module.list",
+        "module.available",
+        "extension.list",
+        "extension.available",
+        "extension.install",
+        "server.update.check",
+        "server.update.apply",
+        "server.diagnose",
+        "server.console.send",
+        "backup.delete",
+    ] {
+        assert!(ids.contains(&want), "{want} missing from the app catalog");
+        // 디스코드·챗봇 표면은 넓히지 않는다
+        assert!(!find(want).unwrap().surfaces.iter().any(|s| matches!(s, Discord | Chatbot)), "{want}");
+    }
+
+    let got = query(&state, "instance.get", Some(&id), &json!({}), &owner).await.unwrap();
+    let text = got.to_string();
+    assert_eq!(got["result"]["name"], "srv", "{got}");
+    assert!(!text.contains("S3CRET-REST") && !text.contains("S3CRET-MOD"), "{text}");
+    let schedule = query(&state, "instance.schedule.get", Some(&id), &json!({}), &owner).await.unwrap();
+    assert!(schedule["result"]["schedule"].is_array(), "{schedule}");
+    let modules = query(&state, "module.list", None, &json!({}), &owner).await.unwrap();
+    assert!(modules.to_string().contains("plain"), "{modules}");
+
+    // 이름 바꾸기는 묻지 않고, 콘솔 명령·백업 지우기는 늘 묻는다
+    let rename = plan(&state, "instance.rename", Some(&id), &json!({ "name": "renamed" }), &owner).await.unwrap();
+    assert_eq!(rename["needsConfirm"], false);
+    let ran = run(&state, "", None, &Value::Null, rename["planId"].as_str(), &owner).await.unwrap();
+    assert_eq!(ran["success"], true, "{ran}");
+    assert_eq!(state.supervisor.read().await.instance_store.get(&id).unwrap().name, "renamed");
+    for (action, input) in [("server.console.send", json!({ "command": "say hi" })), ("backup.delete", json!({ "name": "b1" }))] {
+        assert_eq!(plan(&state, action, Some(&id), &input, &owner).await.unwrap()["needsConfirm"], true, "{action}");
+    }
+    // 백업 이름은 백업 목록에서 고른다
+    let delete = &listed["actions"].as_array().unwrap().iter().find(|a| a["id"] == "backup.delete").unwrap()["input"];
+    assert_eq!(delete["properties"]["name"]["optionsFrom"]["action"], "backup.list");
+}

@@ -150,6 +150,9 @@
       "schedule": {
         "set": {
           "title": "Cambiar tareas programadas"
+        },
+        "get": {
+          "title": "Ver tareas programadas"
         }
       },
       "delete": {
@@ -168,6 +171,12 @@
           "description": "Avisar en el canal de avisos de este servidor de Discord cuando este servidor se llene o vuelva a haber sitio",
           "name": "Aviso lleno"
         }
+      },
+      "get": {
+        "title": "Ver ajustes del servidor"
+      },
+      "rename": {
+        "title": "Renombrar servidor"
       }
     },
     "server": {
@@ -192,6 +201,9 @@
         "tail": {
           "title": "Final de la consola",
           "description": "Últimas 20 líneas de la consola"
+        },
+        "send": {
+          "title": "Enviar comando de consola"
         }
       },
       "logs": {
@@ -215,6 +227,17 @@
       "chat": {
         "title": "Enviar chat del juego",
         "description": "Envía un mensaje de Discord al chat del juego"
+      },
+      "update": {
+        "check": {
+          "title": "Buscar actualización del servidor de juego"
+        },
+        "apply": {
+          "title": "Actualizar servidor de juego"
+        }
+      },
+      "diagnose": {
+        "title": "Diagnosticar servidor"
       }
     },
     "monitor": {
@@ -233,12 +256,21 @@
       "restore": {
         "title": "Restaurar copia de seguridad",
         "description": "Sobrescribe los archivos actuales del servidor con la copia"
+      },
+      "delete": {
+        "title": "Eliminar copia de seguridad"
       }
     },
     "module": {
       "install": {
         "title": "Instalar módulo",
         "description": "Lo descarga e instala desde el catálogo oficial"
+      },
+      "list": {
+        "title": "Módulos instalados"
+      },
+      "available": {
+        "title": "Módulos disponibles"
       }
     },
     "extension": {
@@ -247,6 +279,15 @@
       },
       "disable": {
         "title": "Desactivar extensión"
+      },
+      "list": {
+        "title": "Extensiones instaladas"
+      },
+      "available": {
+        "title": "Extensiones disponibles"
+      },
+      "install": {
+        "title": "Instalar extensión"
       }
     },
     "update": {
@@ -323,7 +364,8 @@
       "step": "Paso",
       "from_snapshot": "Desde copia automática del juego",
       "text": "Mensaje",
-      "apiKey": "Clave de API"
+      "apiKey": "Clave de API",
+      "command": "Comando"
     },
     "summary": {
       "server_item": "• **{{name}}** ({{module}}) · {{status}}",
