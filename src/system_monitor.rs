@@ -383,7 +383,12 @@ impl SystemMonitor {
 
     /// 포트·서버별 네트워크 옵션을 맞춘다. 끄면 다음 표본 때 세션을 닫는다
     pub fn set_net_trace(&self, enabled: bool) {
-        self.net_enabled.store(enabled, std::sync::atomic::Ordering::Relaxed);
+        // 바뀌면 직전 표본(짧게 재사용한다)을 버린다: 켠 직후 응답이 옛 상태("off")로 오지 않게
+        if self.net_enabled.swap(enabled, std::sync::atomic::Ordering::Relaxed) != enabled
+            && let Some(sampler) = self.sampler.lock().unwrap_or_else(|e| e.into_inner()).as_mut()
+        {
+            sampler.last = None;
+        }
     }
 
     /// 권한을 바꾼 뒤: 다음 펼친 요청에서 바로 세션을 다시 열어 본다
@@ -835,6 +840,15 @@ mod tests {
         std::fs::write(tmp.path().join("sub/b.bin"), vec![0u8; 23]).unwrap();
         assert_eq!(dir_size(tmp.path()), 123);
         assert_eq!(dir_size(&tmp.path().join("missing")), 0);
+    }
+
+    #[test]
+    fn turning_net_trace_on_does_not_reuse_the_off_sample() {
+        let monitor = SystemMonitor::new();
+        assert_eq!(monitor.sample(&[], &[], true).net_trace.status, "off");
+        monitor.set_net_trace(true);
+        // 직전 표본은 900ms 동안 재사용하지만, 옵션이 바뀌면 새로 뜬다
+        assert_ne!(monitor.sample(&[], &[], true).net_trace.status, "off");
     }
 
     #[test]

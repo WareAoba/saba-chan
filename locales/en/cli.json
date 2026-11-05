@@ -327,7 +327,7 @@
       "access_needs_grant": "missing (config net-trace grant)",
       "access_needs_relogin": "granted, sign in to Windows again to use it",
       "access_unsupported": "not available on this OS (Windows only)",
-      "enable_hint": "To turn it on: saba-chan-cli config set systemMonitorNetTrace on"
+      "enable_hint": "To turn it on: saba-chan-cli config set systemMonitorNetTrace=on"
     }
   },
   "console": {
@@ -851,7 +851,7 @@
       "bot.confirm": "When the bot asks with a Discord button before running (all, caution, danger, none). No options: show",
       "bot.tts": "Reading Saba-chan voice of a Discord server (volume, speed, pitch). No options: show",
       "bot.big-emoji": "Emoji upscale (a lone custom emoji is shown large) on a Discord server. No options: show",
-      "config.net-trace": "Per-server and per-port network (advanced, Windows) permission: without an action shows the current state; grant shows one administrator prompt on the daemon PC, revoke undoes it. Turn it on with config set systemMonitorNetTrace on"
+      "config.net-trace": "Per-server and per-port network (advanced, Windows) permission: without an action shows the current state; grant shows one administrator prompt on the daemon PC, revoke undoes it. Turn it on with config set systemMonitorNetTrace=on"
     },
     "arg": {
       "module.maker.game": "Game to put in the first prompt",

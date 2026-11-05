@@ -327,7 +327,7 @@
       "access_needs_grant": "没有 (config net-trace grant)",
       "access_needs_relogin": "已授予，重新登录 Windows 后可用",
       "access_unsupported": "此系统不可用（仅 Windows）",
-      "enable_hint": "开启方法：saba-chan-cli config set systemMonitorNetTrace on"
+      "enable_hint": "开启方法：saba-chan-cli config set systemMonitorNetTrace=on"
     }
   },
   "console": {
@@ -999,7 +999,7 @@
       "bot.confirm": "机器人在执行前用 Discord 按钮询问的级别 (all、caution、danger、none)。不加选项: 查看",
       "bot.tts": "Reading Saba-chan voice of a Discord server (volume, speed, pitch). No options: show",
       "bot.big-emoji": "Discord 服务器的表情符号放大(只发一个自定义表情符号时放大显示)。不带选项则查看",
-      "config.net-trace": "按服务器·端口统计网络（高级，Windows）的权限：不带操作时显示当前状态，grant 在守护进程电脑上弹出一次管理员确认以授予权限，revoke 撤销。开启：config set systemMonitorNetTrace on"
+      "config.net-trace": "按服务器·端口统计网络（高级，Windows）的权限：不带操作时显示当前状态，grant 在守护进程电脑上弹出一次管理员确认以授予权限，revoke 撤销。开启：config set systemMonitorNetTrace=on"
     },
     "arg": {
       "module.maker.game": "第一个请求中的游戏名",

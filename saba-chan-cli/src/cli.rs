@@ -1320,7 +1320,7 @@ pub enum ConfigCmd {
         #[arg(value_enum)]
         mode: Option<AutostartMode>,
     },
-    /// Per-server and per-port network (advanced, Windows): show the permission, or grant/revoke it with one administrator prompt on the daemon PC. Turn it on with `config set systemMonitorNetTrace on`
+    /// Per-server and per-port network (advanced, Windows): show the permission, or grant/revoke it with one administrator prompt on the daemon PC. Turn it on with `config set systemMonitorNetTrace=on`
     NetTrace {
         #[arg(value_enum)]
         action: Option<NetTraceAction>,

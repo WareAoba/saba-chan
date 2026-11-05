@@ -327,7 +327,7 @@
       "access_needs_grant": "없음 (config net-trace grant)",
       "access_needs_relogin": "받음, Windows에 다시 로그인하면 쓸 수 있어요",
       "access_unsupported": "이 OS에서는 쓸 수 없어요 (Windows만)",
-      "enable_hint": "켜려면: saba-chan-cli config set systemMonitorNetTrace on"
+      "enable_hint": "켜려면: saba-chan-cli config set systemMonitorNetTrace=on"
     }
   },
   "console": {
@@ -1008,7 +1008,7 @@
       "bot.clear": "채널의 최근 메시지를 지워요(고정 메시지·사바쨩 패널은 남아요). 먼저 물어봐요",
       "bot.mute": "멤버의 채팅·반응·음성을 막아요: 기간(10m, 1h, 7d, 28일까지), forever, 풀려면 off",
       "bot.big-emoji": "디스코드 서버의 이모지 업스케일(커스텀 이모지만 쓴 글을 크게 보이기). 옵션이 없으면 보기",
-      "config.net-trace": "포트·서버별 네트워크(고급, Windows) 권한: 동작 없이 쓰면 지금 상태, grant는 데몬 PC에 관리자 확인 창을 한 번 띄워 권한을 받고, revoke는 되돌려요. 켜기는 config set systemMonitorNetTrace on"
+      "config.net-trace": "포트·서버별 네트워크(고급, Windows) 권한: 동작 없이 쓰면 지금 상태, grant는 데몬 PC에 관리자 확인 창을 한 번 띄워 권한을 받고, revoke는 되돌려요. 켜기는 config set systemMonitorNetTrace=on"
     },
     "arg": {
       "module.maker.game": "첫 부탁에 넣을 게임 이름",

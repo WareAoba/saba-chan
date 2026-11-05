@@ -327,7 +327,7 @@
       "access_needs_grant": "нет (config net-trace grant)",
       "access_needs_relogin": "выдано, войдите в Windows заново, чтобы использовать",
       "access_unsupported": "недоступно в этой ОС (только Windows)",
-      "enable_hint": "Чтобы включить: saba-chan-cli config set systemMonitorNetTrace on"
+      "enable_hint": "Чтобы включить: saba-chan-cli config set systemMonitorNetTrace=on"
     }
   },
   "console": {
@@ -867,7 +867,7 @@
       "bot.confirm": "Когда бот спрашивает кнопкой Discord перед запуском (all, caution, danger, none). Без параметров: показать",
       "bot.tts": "Reading Saba-chan voice of a Discord server (volume, speed, pitch). No options: show",
       "bot.big-emoji": "Увеличение эмодзи (одиночный свой эмодзи показывается крупно) на сервере Discord. Без параметров: показать",
-      "config.net-trace": "Разрешение для сети по серверам и портам (дополнительно, Windows): без действия показывает текущее состояние; grant один раз показывает подтверждение администратора на ПК демона, revoke отменяет. Включить: config set systemMonitorNetTrace on"
+      "config.net-trace": "Разрешение для сети по серверам и портам (дополнительно, Windows): без действия показывает текущее состояние; grant один раз показывает подтверждение администратора на ПК демона, revoke отменяет. Включить: config set systemMonitorNetTrace=on"
     },
     "arg": {
       "module.maker.game": "Игра для первого запроса",

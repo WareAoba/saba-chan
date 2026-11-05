@@ -466,6 +466,8 @@ mod platform {
     /// 공급자별 ETW 보안 설정이 있는 곳 (값 이름 = 중괄호 없는 GUID, REG_BINARY 자체 상대 보안 서술자)
     const WMI_SECURITY_KEY: &str = r"SYSTEM\CurrentControlSet\Control\WMI\Security";
     const SESSION_NAME: &str = "saba-chan-net";
+    /// 권한 상태를 물을 때 잠깐 여는 세션 (세는 세션과 겹치지 않게 이름을 따로 둔다)
+    const PROBE_SESSION_NAME: &str = "saba-chan-net-probe";
     const PERF_LOG_USERS: &str = "S-1-5-32-559";
     const ADMINISTRATORS: &str = "S-1-5-32-544";
     /// NetLocalGroupAddMembers: 이미 들어 있다 / NetLocalGroupDelMembers: 원래 없다
@@ -483,6 +485,19 @@ mod platform {
     }
 
     pub(super) fn start(counters: Arc<Mutex<NetCounters>>) -> Result<Session, StartError> {
+        open(SESSION_NAME, counters)
+    }
+
+    /// 공급자를 정말 켤 수 있는지 잠깐 열어 본다. 보통 권한은 공급자 보안 설정(HKLM)을 읽지 못해(PC 실측) 이것으로 판단한다
+    fn can_enable() -> Option<bool> {
+        match open(PROBE_SESSION_NAME, Arc::default()) {
+            Ok(_session) => Some(true),
+            Err(StartError::Denied) => Some(false),
+            Err(_) => None,
+        }
+    }
+
+    fn open(name: &str, counters: Arc<Mutex<NetCounters>>) -> Result<Session, StartError> {
         let build = || {
             let counters = counters.clone();
             let cb = move |record: &EventRecord, locator: &SchemaLocator| {
@@ -509,21 +524,21 @@ mod platform {
             };
             let provider = Provider::by_guid(KERNEL_NETWORK).add_callback(cb).build();
             UserTrace::new()
-                .named(SESSION_NAME.to_string())
+                .named(name.to_string())
                 .enable(provider)
                 .start_and_process()
         };
         let trace = match build() {
             // 데몬이 죽어 지난 세션이 남았다: 닫고 한 번 더
             Err(TraceError::EtwNativeError(EvntraceNativeError::AlreadyExist)) => {
-                let _ = ferrisetw::trace::stop_trace_by_name(SESSION_NAME);
+                let _ = ferrisetw::trace::stop_trace_by_name(name);
                 build()
             }
             other => other,
         };
         if trace.is_err() {
             // 공급자를 켜다 거부되면 ferrisetw는 만든 세션을 남긴다 (PC 실측): 다음 시도가 AlreadyExist가 되지 않게 닫는다
-            let _ = ferrisetw::trace::stop_trace_by_name(SESSION_NAME);
+            let _ = ferrisetw::trace::stop_trace_by_name(name);
         }
         match trace {
             Ok(t) => Ok(Session { _trace: t }),
@@ -700,9 +715,10 @@ mod platform {
         let sid = current_user_sid();
         let group_in_token = token_has(PERF_LOG_USERS);
         let member = group_in_token || sid.as_deref().is_some_and(is_member);
-        // 값이 없으면 기본 설정(그룹 허용)을 따른다
+        // 공급자 보안 설정은 관리자만 읽을 수 있다(보통 권한은 거부, PC 실측). 못 읽으면 세션을 만들 수 있을 때 잠깐 켜 본다
         let provider = match (provider_sddl(), sid.as_deref()) {
             (Some(sddl), Some(sid)) => Some(sddl_allows(&sddl, sid)),
+            _ if !admin && group_in_token => can_enable(),
             _ => None,
         };
         Access::from_parts(admin, group_in_token, member, provider)

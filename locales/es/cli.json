@@ -327,7 +327,7 @@
       "access_needs_grant": "falta (config net-trace grant)",
       "access_needs_relogin": "concedido, vuelve a iniciar sesión en Windows para usarlo",
       "access_unsupported": "no disponible en este sistema (solo Windows)",
-      "enable_hint": "Para activarla: saba-chan-cli config set systemMonitorNetTrace on"
+      "enable_hint": "Para activarla: saba-chan-cli config set systemMonitorNetTrace=on"
     }
   },
   "console": {
@@ -867,7 +867,7 @@
       "bot.confirm": "Cuándo pregunta el bot con un botón de Discord antes de ejecutar (all, caution, danger, none). Sin opciones: mostrar",
       "bot.tts": "Reading Saba-chan voice of a Discord server (volume, speed, pitch). No options: show",
       "bot.big-emoji": "Ampliación de emojis (un emoji personalizado solo se muestra en grande) en un servidor de Discord. Sin opciones: mostrar",
-      "config.net-trace": "Permiso de red por servidor y puerto (avanzado, Windows): sin acción muestra el estado actual; grant muestra una confirmación de administrador en el PC del daemon, revoke lo deshace. Actívalo con config set systemMonitorNetTrace on"
+      "config.net-trace": "Permiso de red por servidor y puerto (avanzado, Windows): sin acción muestra el estado actual; grant muestra una confirmación de administrador en el PC del daemon, revoke lo deshace. Actívalo con config set systemMonitorNetTrace=on"
     },
     "arg": {
       "module.maker.game": "Juego para la primera petición",
