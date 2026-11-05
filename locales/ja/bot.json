@@ -177,6 +177,14 @@
       },
       "rename": {
         "title": "サーバー名を変更"
+      },
+      "properties": {
+        "get": {
+          "title": "ゲーム設定ファイルを見る"
+        },
+        "set": {
+          "title": "ゲーム設定ファイルを変更"
+        }
       }
     },
     "server": {
@@ -365,7 +373,8 @@
       "from_snapshot": "ゲーム自動バックアップから",
       "text": "本文",
       "apiKey": "APIキー",
-      "command": "コマンド"
+      "command": "コマンド",
+      "settings": "設定"
     },
     "summary": {
       "server_item": "• **{{name}}** ({{module}}) · {{status}}",

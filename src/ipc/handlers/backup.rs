@@ -937,8 +937,10 @@ pub async fn put_schedule(Path(id): Path<String>, State(state): State<IPCServer>
             problems.push("schedule: the chatbot cannot make backups run so often that older ones are removed sooner".into());
         }
     }
-    // 원격(디스코드·챗봇·원격 MCP)은 새로 넣거나 바꾸는 작업만 제한한다 (이 PC에서 정한 작업은 그대로 다시 보낼 수 있다)
-    if crate::audit::current().is_relay() {
+    // 원격(디스코드·챗봇)은 새로 넣거나 바꾸는 작업만 제한한다 (이 PC에서 정한 작업은 그대로 다시 보낼 수 있다).
+    // 원격 MCP(계정 주인의 개인 에이전트)는 앱과 같다: 액션 계획이 저장 전에 늘 주인에게 묻는다 (사용자 결정 2026-11-05)
+    let origin = crate::audit::current();
+    if origin.is_relay() && origin.source != crate::actions::MCP_VIA {
         for (i, task) in body.schedule.iter().enumerate() {
             if instance.schedule.contains(task) {
                 continue;
@@ -2083,10 +2085,10 @@ print(json.dumps({'success': True, 'snapshots': [{'id': 'startup/backup_1', 'cre
 
         assert_eq!(remote(json!({ "schedule": [update] })).await, StatusCode::BAD_REQUEST);
         assert_eq!(remote(json!({ "schedule": [restart(1)] })).await, StatusCode::BAD_REQUEST);
-        // 원격 MCP(AI 에이전트)도 릴레이로 온 원격이다: 예약으로 되묻기를 건너뛰지 못한다
+        // 원격 MCP(계정 주인의 개인 에이전트)는 앱처럼 무엇이든 예약한다 (액션 계획이 늘 주인에게 묻는다, 사용자 결정 2026-11-05)
         let mcp = |body: Value| crate::audit::with_origin(crate::audit::Origin::new(crate::actions::MCP_VIA), put(body));
-        assert_eq!(mcp(json!({ "schedule": [update] })).await, StatusCode::BAD_REQUEST);
-        assert_eq!(mcp(json!({ "schedule": [restart(1)] })).await, StatusCode::BAD_REQUEST);
+        assert_eq!(mcp(json!({ "schedule": [update, restart(1)], "backup_keep": 1000 })).await, StatusCode::OK);
+        assert_eq!(put(json!({ "schedule": [], "backup_keep": 10 })).await, StatusCode::OK);
         assert_eq!(remote(json!({ "schedule": [restart(60)], "backup_keep": 1000 })).await, StatusCode::BAD_REQUEST);
         assert_eq!(remote(json!({ "schedule": [restart(60)], "backup_keep": 5 })).await, StatusCode::OK);
         // 0개 보관이면 방금 만든 안전 백업까지 지워진다

@@ -177,6 +177,14 @@
       },
       "rename": {
         "title": "Server umbenennen"
+      },
+      "properties": {
+        "get": {
+          "title": "Spieleinstellungsdatei anzeigen"
+        },
+        "set": {
+          "title": "Spieleinstellungsdatei ändern"
+        }
       }
     },
     "server": {
@@ -365,7 +373,8 @@
       "from_snapshot": "Aus Spiel-Autobackup",
       "text": "Nachricht",
       "apiKey": "API-Schlüssel",
-      "command": "Befehl"
+      "command": "Befehl",
+      "settings": "Einstellungen"
     },
     "summary": {
       "server_item": "• **{{name}}** ({{module}}) · {{status}}",

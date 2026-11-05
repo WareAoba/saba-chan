@@ -177,6 +177,14 @@
       },
       "rename": {
         "title": "重新命名伺服器"
+      },
+      "properties": {
+        "get": {
+          "title": "查看遊戲設定檔"
+        },
+        "set": {
+          "title": "變更遊戲設定檔"
+        }
       }
     },
     "server": {
@@ -365,7 +373,8 @@
       "from_snapshot": "來自遊戲自動備份",
       "text": "內容",
       "apiKey": "API 金鑰",
-      "command": "指令"
+      "command": "指令",
+      "settings": "設定"
     },
     "summary": {
       "server_item": "• **{{name}}** ({{module}}) · {{status}}",
