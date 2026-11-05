@@ -151,7 +151,9 @@ export function hereStore(api: WebApi, relay: Relay): GuildStore {
         },
         // 멤버(사진 포함)는 데몬에서 받는다 (GUI 멤버 탭과 같은 목록). 데몬이 못 주면 릴레이
         modMembers: async (g: string) => {
-            const list = await api.relayListNodeMembers(g, '').catch(() => null);
+            // 데몬 답은 {members, partial} (권한 탭과 같은 요청)
+            const res = await api.relayListNodeMembers(g, '').catch(() => null);
+            const list = res?.members;
             if (!Array.isArray(list)) return relay.modMembers(g);
             return {
                 ok: true,

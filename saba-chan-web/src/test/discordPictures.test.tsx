@@ -23,7 +23,10 @@ function setup() {
                 .mockResolvedValue([{ guildId: G, guildName: 'Gather Craft', iconUrl: DAEMON_ICON }]),
             relayListNodeMembers: vi
                 .fn()
-                .mockResolvedValue([{ id: U, username: 'acorn', displayName: 'Acorn', avatarUrl: AVATAR }]),
+                .mockResolvedValue({
+                    members: [{ id: U, username: 'acorn', displayName: 'Acorn', avatarUrl: AVATAR }],
+                    partial: false,
+                }),
             discordSettingsGet: vi.fn().mockResolvedValue({ guildId: G, locale: 'auto', music: {}, tts: {} }),
             chatbotGuildGet: vi.fn().mockResolvedValue({ success: true, settings: {}, hasApiKey: false }),
         },
