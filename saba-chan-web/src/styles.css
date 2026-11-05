@@ -844,6 +844,19 @@ textarea {
     object-fit: cover;
     animation: fade-in 240ms var(--ease) both;
 }
+.avatar-sm {
+    width: 20px;
+    height: 20px;
+    font-size: 10px;
+}
+.guild-initial {
+    overflow: hidden;
+}
+.guild-initial img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
 .row-actions {
     display: flex;
     gap: 8px;

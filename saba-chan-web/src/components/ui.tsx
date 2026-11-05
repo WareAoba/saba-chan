@@ -1,4 +1,4 @@
-import { useEffect, useId } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { wordmarkFor } from '../art';
 import { useApp } from '../store';
@@ -95,6 +95,27 @@ export function Section({ title, action, children }: SectionProps) {
             )}
             {children}
         </section>
+    );
+}
+
+/**
+ * 디스코드 프로필 사진·서버 사진 (cdn.discordapp.com, 데몬·릴레이가 준 주소). 없거나 못 읽으면 이름 첫 글자.
+ * 크기는 className 으로 정한다 (멤버 줄 `avatar`, 서버 칩 `guild-initial`)
+ */
+export function Avatar({ url, name, className = 'avatar' }: { url?: unknown; name?: string; className?: string }) {
+    const [broken, setBroken] = useState<string | null>(null);
+    const ok = typeof url === 'string' && url.startsWith('https://') && broken !== url;
+    return (
+        <span className={className} aria-hidden="true">
+            {ok ? (
+                <img src={url} alt="" loading="lazy" referrerPolicy="no-referrer" onError={() => setBroken(url)} />
+            ) : (
+                String(name ?? '')
+                    .trim()
+                    .charAt(0)
+                    .toUpperCase() || '?'
+            )}
+        </span>
     );
 }
 
