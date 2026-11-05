@@ -83,7 +83,17 @@ async fn signed_base(state: &IPCServer, requested: Option<&str>) -> String {
 
 /// Create an HTTP client with 5s timeout for relay requests.
 /// Automatically includes X-Saba-Client: 1 header required by nginx.
+/// 한 번 만든 클라이언트를 함께 쓴다: 요청마다 TLS 설정을 다시 만들지 않고 릴레이 연결을 이어 쓴다 (상태 확인은 5초마다)
 pub(crate) fn relay_client() -> Result<reqwest::Client, reqwest::Error> {
+    static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+    if let Some(client) = CLIENT.get() {
+        return Ok(client.clone());
+    }
+    let client = build_relay_client()?;
+    Ok(CLIENT.get_or_init(|| client).clone())
+}
+
+fn build_relay_client() -> Result<reqwest::Client, reqwest::Error> {
     let mut headers = reqwest::header::HeaderMap::new();
     headers.insert(
         "X-Saba-Client",
@@ -188,7 +198,7 @@ pub(crate) fn signed_headers(
     url_path: &str,
     body: Option<&str>,
 ) -> Option<Vec<(String, String)>> {
-    signed_headers_with(&load_node_token()?, method, url_path, body)
+    signed_headers_with(&peek_node_token()?, method, url_path, body)
 }
 
 /// 정해 둔 토큰으로 서명한다 (릴레이 에이전트 세션은 시작할 때의 주소·토큰 쌍을 끝까지 쓴다)

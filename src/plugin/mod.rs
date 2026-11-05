@@ -32,8 +32,9 @@ fn daemon_env() -> Vec<(&'static str, String)> {
         ("SABA_IPC_URL", format!("http://127.0.0.1:{}", port)),
     ];
     let lang = crate::audit::current().lang.unwrap_or_else(|| {
+        // 모듈·익스텐션 호출마다 부른다: 잠그지 않고, 바뀌지 않은 설정 파일은 다시 읽지 않는다
         saba_chan_updater_lib::config_file::ConfigFile::default_location()
-            .section("gui")
+            .peek_section("gui")
             .get("language")
             .and_then(|v| v.as_str())
             .filter(|l| !l.trim().is_empty())
@@ -1025,7 +1026,7 @@ async fn spawn_plugin(
     let extensions_dir = resolve_extensions_dir();
     if extensions_dir.is_dir() {
         let enabled = saba_chan_updater_lib::config_file::ConfigFile::default_location()
-            .section("extensions")
+            .peek_section("extensions")
             .get("enabled")
             .and_then(|v| serde_json::from_value::<Vec<String>>(v.clone()).ok());
         // 목록이 없으면 활성 익스텐션도 없다 (ExtensionManager와 같은 규칙)
