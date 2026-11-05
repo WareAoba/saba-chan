@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { wordmarkFor } from '../art';
 import { useApp } from '../store';
@@ -94,6 +94,55 @@ export function Section({ title, action, children }: SectionProps) {
                 </header>
             )}
             {children}
+        </section>
+    );
+}
+
+/**
+ * 디스코드 프로필 사진·서버 사진 (cdn.discordapp.com, 데몬·릴레이가 준 주소). 없거나 못 읽으면 이름 첫 글자.
+ * 크기는 className 으로 정한다 (멤버 줄 `avatar`, 서버 칩 `guild-initial`)
+ */
+export function Avatar({ url, name, className = 'avatar' }: { url?: unknown; name?: string; className?: string }) {
+    const [broken, setBroken] = useState<string | null>(null);
+    const ok = typeof url === 'string' && url.startsWith('https://') && broken !== url;
+    return (
+        <span className={className} aria-hidden="true">
+            {ok ? (
+                <img src={url} alt="" loading="lazy" referrerPolicy="no-referrer" onError={() => setBroken(url)} />
+            ) : (
+                String(name ?? '')
+                    .trim()
+                    .charAt(0)
+                    .toUpperCase() || '?'
+            )}
+        </span>
+    );
+}
+
+interface CardProps {
+    icon: string;
+    /** 아이콘 바탕색 (styles.css .set-card-icon[data-tone]) */
+    tone: string;
+    title: React.ReactNode;
+    desc?: React.ReactNode;
+    action?: React.ReactNode;
+    children?: React.ReactNode;
+}
+
+/** 설정 한 묶음 (앱 설정 화면의 카드와 같은 짜임): 색 아이콘·제목·한 줄 설명, 아래 칸들은 선으로 나눈다 */
+export function Card({ icon, tone, title, desc, action, children }: CardProps) {
+    const id = useId();
+    return (
+        <section className="set-card" aria-labelledby={id}>
+            <header className="set-card-head">
+                <span className="set-card-icon" data-tone={tone}>
+                    <Icon name={icon} size={16} />
+                </span>
+                <h3 id={id}>{title}</h3>
+                {action}
+            </header>
+            {desc && <p className="set-card-desc">{desc}</p>}
+            <div className="set-card-body">{children}</div>
         </section>
     );
 }

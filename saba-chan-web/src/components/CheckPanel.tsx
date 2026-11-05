@@ -4,7 +4,7 @@ import { useApp } from '../store';
 import { Icon } from './icons';
 import { LogsCard } from './LogsCard';
 import { PortCheck } from './PortCheck';
-import { Button, errorText, failed, Section } from './ui';
+import { Button, Card, errorText, failed } from './ui';
 import type { Module, ServerPanelProps } from '../types';
 
 /** 점검 결과 한 건 (모듈 validate·diagnose_log) */
@@ -59,7 +59,7 @@ function ServerCheck({ api, server, moduleData }: Omit<ServerPanelProps, 'runnin
     };
 
     return (
-        <Section title={t('check.server')}>
+        <Card icon="checkCircle" tone="3" title={t('check.server')}>
             <div className="row-actions">
                 {canValidate && (
                     <Button busy={running === 'validate'} disabled={!!running} onClick={() => run('validate')}>
@@ -90,7 +90,7 @@ function ServerCheck({ api, server, moduleData }: Omit<ServerPanelProps, 'runnin
                     ))}
                 </ul>
             )}
-        </Section>
+        </Card>
     );
 }
 
@@ -121,7 +121,7 @@ function UpdateCheck({ api, server, running }: Omit<ServerPanelProps, 'moduleDat
     };
 
     return (
-        <Section title={t('check.update')}>
+        <Card icon="refresh" tone="4" title={t('check.update')}>
             <div className="row-actions">
                 <Button busy={busy === 'check'} disabled={!!busy} onClick={check}>
                     <Icon name="refresh" size={16} /> {t('check.update_check')}
@@ -143,7 +143,7 @@ function UpdateCheck({ api, server, running }: Omit<ServerPanelProps, 'moduleDat
                 </p>
             )}
             {info?.update_available && running && <p className="hint">{t('settings.stop_first')}</p>}
-        </Section>
+        </Card>
     );
 }
 
@@ -174,13 +174,12 @@ function ResetServer({ api, server, running }: Omit<ServerPanelProps, 'moduleDat
         toast(tg('server_settings.reset_success', { name: server.name, count: res?.deleted?.length || 0 }), 'ok');
     };
     return (
-        <Section title={tg('server_settings.reset_server_label')}>
-            <p className="hint">{tg('server_settings.reset_server_desc')}</p>
+        <Card icon="alertTriangle" tone="2" title={tg('server_settings.reset_server_label')} desc={tg('server_settings.reset_server_desc')}>
             <Button tone="ghost-danger" busy={busy} disabled={running} onClick={reset}>
                 {tg('server_settings.reset_button')}
             </Button>
             {running && <p className="hint">{tg('server_settings.reset_server_running')}</p>}
-        </Section>
+        </Card>
     );
 }
 
@@ -188,9 +187,9 @@ export function CheckPanel({ api, server, moduleData, running }: ServerPanelProp
     const { t } = useTranslation();
     return (
         <div className="panel">
-            <Section title={t('detail.port_check')}>
+            <Card icon="network" tone="1" title={t('detail.port_check')}>
                 <PortCheck api={api} server={server} />
-            </Section>
+            </Card>
             <LogsCard api={api} server={server} />
             <ServerCheck api={api} server={server} moduleData={moduleData} />
             <UpdateCheck api={api} server={server} running={running} />

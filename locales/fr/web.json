@@ -532,7 +532,8 @@
       "duration_units": "min,h,j,sem",
       "reason": "Raison (facultatif)",
       "purge": "Supprimer ses messages",
-      "announce_hint": "Le résultat est aussi publié dans le salon système du serveur (sans mentionner personne)."
+      "announce_hint": "Le résultat est aussi publié dans le salon système du serveur (sans mentionner personne).",
+      "desc": "Sanctions, verrouillage des salons et nettoyage"
     },
     "load_failed": "Impossible de charger les paramètres. Vérifiez la connexion et réessayez.",
     "retry": "Réessayer",
@@ -542,7 +543,11 @@
     "channel_gameChat": "Salon du chat de jeu",
     "channel_board": "Salon du tableau d'état",
     "sleep_now": "Endormir maintenant",
-    "awake": "Éveillée"
+    "awake": "Éveillée",
+    "basics_desc": "Langue et emojis de ce serveur",
+    "music_desc": "Joue de la musique dans les salons vocaux",
+    "reading_desc": "Lit le chat à voix haute dans les salons vocaux",
+    "channels_desc": "Choisissez un salon pour chaque fonction"
   },
   "logs": {
     "title": "Journaux passés",

@@ -10,7 +10,7 @@ import {
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useApp } from '../store';
-import { Button, errorText, failed, Loading, Section } from './ui';
+import { Button, Card, errorText, failed, Loading } from './ui';
 import type { Server, WebApi } from '../types';
 
 /** GET /api/instance/:id/words */
@@ -150,8 +150,7 @@ export function InstanceWords({ api, server }: { api: WebApi; server: Pick<Serve
     };
 
     return (
-        <Section title={t('words.title')}>
-            <p className="hint">{tg('discord.iw_desc')}</p>
+        <Card icon="sabaTalking" tone="3" title={t('words.title')} desc={tg('discord.iw_desc')}>
             <div className="form">
                 <div className="field">
                     <span>{tg('discord.iw_server_words')}</span>
@@ -204,6 +203,6 @@ export function InstanceWords({ api, server }: { api: WebApi; server: Pick<Serve
                     </Button>
                 </div>
             )}
-        </Section>
+        </Card>
     );
 }

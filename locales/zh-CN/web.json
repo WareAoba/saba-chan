@@ -532,7 +532,8 @@
       "duration_units": "分钟,小时,天,周",
       "reason": "原因（可选）",
       "purge": "删除其消息",
-      "announce_hint": "结果也会发布到服务器的系统频道（不会提及任何人）。"
+      "announce_hint": "结果也会发布到服务器的系统频道（不会提及任何人）。",
+      "desc": "处罚、频道锁定与清理"
     },
     "load_failed": "无法读取设置。请检查连接后重试。",
     "retry": "重试",
@@ -542,7 +543,11 @@
     "channel_gameChat": "游戏聊天频道",
     "channel_board": "状态板频道",
     "sleep_now": "现在睡觉",
-    "awake": "醒着"
+    "awake": "醒着",
+    "basics_desc": "此服务器使用的语言和表情",
+    "music_desc": "在语音频道播放音乐",
+    "reading_desc": "用语音朗读聊天内容",
+    "channels_desc": "为每个功能选择频道"
   },
   "logs": {
     "title": "历史日志",

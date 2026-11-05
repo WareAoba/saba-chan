@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useApp } from '../store';
 import type { Server, WebApi } from '../types';
 import { Icon } from './icons';
-import { Button, errorText, failed, Loading, Section } from './ui';
+import { Button, Card, errorText, failed, Loading } from './ui';
 
 /** 로그 묶음 한 개 (실행 한 번) */
 interface LogSource {
@@ -89,7 +89,7 @@ export function LogsCard({ api, server }: { api: WebApi; server: Pick<Server, 'i
         </Button>
     );
     return (
-        <Section title={t('logs.title')} action={action}>
+        <Card icon="file" tone="7" title={t('logs.title')} action={action}>
             {view === false ? null : view === null ? (
                 <Loading />
             ) : view.sources.length === 0 ? (
@@ -119,6 +119,6 @@ export function LogsCard({ api, server }: { api: WebApi; server: Pick<Server, 'i
                     <small className="hint">{t('logs.count', { count: view.lines.length })}</small>
                 </>
             )}
-        </Section>
+        </Card>
     );
 }
