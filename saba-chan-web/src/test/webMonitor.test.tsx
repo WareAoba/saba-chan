@@ -34,7 +34,9 @@ describe('웹 PC 상태', () => {
         render(<MoreTab api={api} />);
         await waitFor(() => expect(metric('cpu')).not.toBeNull());
         expect(metric('cpu')!.textContent).toContain('4.80 GHz');
-        expect(metric('cpu')!.textContent).toContain('온도 모름');
+        // 못 재는 온도는 표시하지 않는다
+        expect(metric('cpu')!.textContent).not.toContain('°C');
+        expect(metric('cpu')!.querySelectorAll('.monitor-pill')).toHaveLength(2);
         expect(metric('gpu')!.textContent).toContain('RTX 5090');
         expect(metric('volume:/')).not.toBeNull();
         expect(metric('adapter:eth0')).toBeNull();

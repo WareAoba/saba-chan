@@ -1649,7 +1649,6 @@
     "adapter": "{{name}}",
     "used": "Занято",
     "clock_unknown": "Частота неизвестна",
-    "temp_unknown": "Температура неизвестна",
     "kind_unknown": "Тип неизвестен",
     "free_pill": "Свободно {{free}}",
     "read": "Чтение {{value}}",
