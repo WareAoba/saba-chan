@@ -41,6 +41,23 @@ impl RestClient {
         format!("{}://{}:{}", protocol, self.host, self.port)
     }
 
+    /// 엔드포인트를 붙인 최종 URL. 경로(`/`로 시작)만 받고, 붙인 뒤에도 호스트·포트가 설정한 값 그대로인지 확인한다:
+    /// 관리자 비밀번호가 Basic 인증으로 실리므로 목적지가 바뀌면 안 된다
+    fn url_for(&self, endpoint: &str) -> Result<String, ProtocolError> {
+        let invalid = || ProtocolError::Protocol(format!("Invalid REST endpoint: {endpoint}"));
+        if !endpoint.starts_with('/') || endpoint.starts_with("//") || endpoint.contains('\\') {
+            return Err(invalid());
+        }
+        let base = reqwest::Url::parse(&self.base_url()).map_err(|_| invalid())?;
+        let url_text = format!("{}{}", self.base_url(), endpoint);
+        let url = reqwest::Url::parse(&url_text).map_err(|_| invalid())?;
+        if url.host() != base.host() || url.port_or_known_default() != base.port_or_known_default()
+            || !url.username().is_empty() || url.password().is_some() {
+            return Err(invalid());
+        }
+        Ok(url_text)
+    }
+
     /// 연결 검증
     pub fn verify_connection(&self, _timeout: Duration) -> Result<(), ProtocolError> {
         // 기본적인 유효성 검사만 수행 (실제 HTTP는 비동기에서 처리)
@@ -52,25 +69,25 @@ impl RestClient {
 
     /// GET 요청
     pub fn get(&self, endpoint: &str) -> Result<ServerResponse, ProtocolError> {
-        let url = format!("{}{}", self.base_url(), endpoint);
+        let url = self.url_for(endpoint)?;
         self.send_http_request(&url, "GET", None)
     }
 
     /// POST 요청
     pub fn post(&self, endpoint: &str, body: Option<Value>) -> Result<ServerResponse, ProtocolError> {
-        let url = format!("{}{}", self.base_url(), endpoint);
+        let url = self.url_for(endpoint)?;
         self.send_http_request(&url, "POST", body)
     }
 
     /// PUT 요청
     pub fn put(&self, endpoint: &str, body: Option<Value>) -> Result<ServerResponse, ProtocolError> {
-        let url = format!("{}{}", self.base_url(), endpoint);
+        let url = self.url_for(endpoint)?;
         self.send_http_request(&url, "PUT", body)
     }
 
     /// DELETE 요청
     pub fn delete(&self, endpoint: &str) -> Result<ServerResponse, ProtocolError> {
-        let url = format!("{}{}", self.base_url(), endpoint);
+        let url = self.url_for(endpoint)?;
         self.send_http_request(&url, "DELETE", None)
     }
 
@@ -78,7 +95,10 @@ impl RestClient {
     fn send_http_request(&self, url: &str, method: &str, body: Option<Value>) -> Result<ServerResponse, ProtocolError> {
         tracing::debug!("REST {} {}", method, url);
 
-        // 게임 서버는 이 PC나 같은 망에 있다: 시스템 프록시를 거치지 않는다. TLS는 OS 것(native-tls)을 쓴다
+        // 게임 서버는 이 PC나 같은 망에 있다: 시스템 프록시를 거치지 않는다.
+        // TLS는 다른 클라이언트와 같은 rustls(ring + OS 인증서 저장소)를 쓴다
+        saba_chan_updater_lib::tls::install_crypto_provider();
+        #[allow(clippy::disallowed_methods)]
         let agent = reqwest::blocking::Client::builder()
             .timeout(Duration::from_secs(10))
             .no_proxy()
@@ -272,6 +292,28 @@ mod tests {
         let err = client.get("/v1/api/info").expect_err("a 401 is a failure");
         server.join().unwrap();
         assert!(matches!(err, ProtocolError::HttpStatus(401, _)), "{err:?}");
+    }
+
+    /// 엔드포인트는 설정한 주소 아래의 경로만: 다른 호스트·포트·사용자 정보로 바꾸는 값은 보내기 전에 거절한다
+    #[test]
+    fn an_endpoint_cannot_change_the_destination() {
+        let client = RestClient::new("127.0.0.1".to_string(), 8212, false);
+        for bad in ["@example.com/", "@example.com:80/x", ":9/x", "x", "", "//example.com/x", "/\\example.com", "\\@example.com/"] {
+            assert!(client.url_for(bad).is_err(), "{bad:?} was accepted");
+        }
+        assert_eq!(client.url_for("/v1/api/info").unwrap(), "http://127.0.0.1:8212/v1/api/info");
+        assert_eq!(client.url_for("/v1/api/x?a=b@c").unwrap(), "http://127.0.0.1:8212/v1/api/x?a=b@c");
+    }
+
+    #[test]
+    fn credentials_are_not_sent_to_another_destination() {
+        let other = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        other.set_nonblocking(true).unwrap();
+        let other_port = other.local_addr().unwrap().port();
+        let mut client = RestClient::new("127.0.0.1".to_string(), 1, false);
+        client.set_basic_auth("admin".to_string(), "secret".to_string());
+        assert!(client.get(&format!("@127.0.0.1:{other_port}/")).is_err());
+        assert!(other.accept().is_err(), "the other address was contacted");
     }
 
     /// 게임 서버의 리다이렉트를 따라가지 않는다: 확인한 포트 밖(다른 로컬 서비스)으로 요청이 새지 않게

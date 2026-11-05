@@ -858,6 +858,7 @@ impl IPCServer {
             .route("/api/instance/{id}/agreements", post(handlers::managed::accept_agreements_handler))
             .route("/api/instance/{id}/diagnose", post(handlers::managed::diagnose_handler))
             .route("/api/instance/{id}/port-check", get(handlers::port_check::last).post(handlers::port_check::check))
+            .route("/api/instance/{id}/address", get(handlers::port_check::address))
             // 백업 (A2)·예약 작업 (A3)
             .route("/api/instance/{id}/backups", get(handlers::backup::list_backups).post(handlers::backup::create_backup))
             .route("/api/instance/{id}/backups/{name}", delete(handlers::backup::delete_backup))
@@ -970,6 +971,10 @@ impl IPCServer {
                 "/api/relay/node/{guild_id}/moderation/channels/{channel_id}/clear",
                 post(handlers::relay::clear_node_moderation_channel),
             )
+            .route(
+                "/api/relay/node/{guild_id}/moderation/channels/{channel_id}/clear/check",
+                post(handlers::relay::check_clear_node_moderation_channel),
+            )
             .route("/api/relay/node/{guild_id}/moderation/mutes/{user_id}", put(handlers::relay::put_node_moderation_mute))
             .route("/api/relay/node/{guild_id}/chatbot/models", get(handlers::relay::get_node_chatbot_models))
             .route("/api/relay/node/{guild_id}/chatbot/credit", get(handlers::relay::get_node_chatbot_credit))
@@ -999,6 +1004,9 @@ impl IPCServer {
             // 켜짐 알림: 길드마다 고른 서버 (액션 instance.start_notice.set 도 같은 라우트)
             .route("/api/guilds/{guild}/start-notice", get(handlers::start_notice::get))
             .route("/api/instance/{id}/start-notice/{guild}", put(handlers::start_notice::put))
+            // 자리 꽉 참 알림: 길드마다 고른 서버 (액션 instance.full_notice.set 도 같은 라우트)
+            .route("/api/guilds/{guild}/full-notice", get(handlers::start_notice::full_get))
+            .route("/api/instance/{id}/full-notice/{guild}", put(handlers::start_notice::full_put))
             .route("/api/chatbot/guilds/{guild}", get(handlers::chatbot::get_guild).patch(handlers::chatbot::patch_guild))
             // ── 원격 데몬 (D1): 원격 포트 설정과 짝 맺은 PC (로컬 전용, 원격 포트에서는 막는다) ──
             .route("/api/remote/settings", get(handlers::remote_daemon::get_settings).put(handlers::remote_daemon::put_settings))

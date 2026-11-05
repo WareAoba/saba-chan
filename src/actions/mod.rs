@@ -114,6 +114,9 @@ pub struct Def {
     /// 부른 사람만 보면 되는 조회 (진단·관리용). 길드 설정 "조회 결과 나만 보기"가 켜지면 디스코드 답을 부른 사람에게만 보인다.
     /// 서버 상태·접속자처럼 다 같이 보는 조회는 false
     pub private: bool,
+    /// 길드 설정과 상관없이 늘 부른 사람에게만 보이는 조회 (서버 주소처럼 채널에 남으면 안 되는 값). 문장 명령은 답이 채널에
+    /// 그대로 보이므로 이름으로 찾지 않는다 (`named_action`). 옛 릴레이를 위해 `private`도 함께 켠다
+    pub secret: bool,
 }
 
 use Surface::{Chatbot, Cli, Discord, Gui};
@@ -123,7 +126,7 @@ const LOCAL_AND_CHATBOT: &[Surface] = &[Gui, Cli, Chatbot];
 const LOCAL_AND_DISCORD: &[Surface] = &[Gui, Cli, Discord];
 
 const fn def(id: &'static str, kind: Kind, risk: &'static str, surfaces: &'static [Surface], instance: bool, method: &'static str, path: &'static str) -> Def {
-    Def { id, kind, risk, surfaces, instance, method, path, fields: &[], open_input: false, discord_level: None, remote_menu: true, guild_owner: false, private: false }
+    Def { id, kind, risk, surfaces, instance, method, path, fields: &[], open_input: false, discord_level: None, remote_menu: true, guild_owner: false, private: false, secret: false }
 }
 
 /// 첫 판 액션. 새 기능은 여기 한 줄을 더하면 모든 표면에 퍼진다.
@@ -150,6 +153,8 @@ pub static ACTIONS: &[Def] = &[
         ..def("server.chat_link", Kind::Command, "safe", &[Discord], true, "POST", "/api/instance/:id/chat-link/:guild")
     },
     // 포트포워딩 확인: 릴레이가 밖에서 게임 포트에 접속해 본다. 공인 주소가 결과에 있어 챗봇에는 열지 않는다 (디스코드는 요약만 보인다)
+    // 서버 주소 (사용자 요청 2026-11-05): 릴레이가 본 이 PC의 접속 주소 + 밖에 여는 포트. 공인 주소라 부른 사람에게만 보이고 챗봇에는 열지 않는다
+    Def { private: true, secret: true, ..def("server.address", Kind::Query, "safe", LOCAL_AND_DISCORD, true, "GET", "/api/instance/:id/address") },
     Def { private: true, ..def("server.port_check", Kind::Query, "safe", LOCAL_AND_DISCORD, true, "POST", "/api/instance/:id/port-check") },
     // 시작·정지 기록은 디스코드에서 쓰지 않는다 (사용자 디스코드 검수 3번)
     def("instance.events", Kind::Query, "safe", LOCAL_AND_CHATBOT, true, "GET", "/api/instance/:id/events"),
@@ -200,6 +205,8 @@ pub static ACTIONS: &[Def] = &[
             field("memory", "boolean", false),
             field("moderation", "boolean", false),
             field("tools", "array", false),
+            field("tokenLimit", "integer", false),
+            field("balanceAlert", "number", false),
         ],
         discord_level: Some(crate::chat::permissions::OWNER),
         remote_menu: false,
@@ -227,6 +234,36 @@ pub static ACTIONS: &[Def] = &[
         discord_level: Some(crate::chat::permissions::ADMIN),
         guild_owner: true,
         ..def("instance.start_notice.set", Kind::Admin, "caution", LOCAL_AND_DISCORD, true, "PUT", "/api/instance/:id/start-notice/:guild")
+    },
+    // 자리 꽉 참 알림 (길드마다 서버마다, 기본 꺼짐). 켜짐 알림과 같은 규칙
+    Def {
+        fields: &[path_field("guild"), field("enabled", "boolean", true)],
+        discord_level: Some(crate::chat::permissions::ADMIN),
+        guild_owner: true,
+        ..def("instance.full_notice.set", Kind::Admin, "caution", LOCAL_AND_DISCORD, true, "PUT", "/api/instance/:id/full-notice/:guild")
+    },
+    // 앱 화면에서 하던 일을 액션으로 (원격 MCP가 앱과 같은 표면으로 닿게). 디스코드·챗봇 표면은 넓히지 않는다
+    def("instance.get", Kind::Query, "safe", LOCAL, true, "GET", "/api/instance/:id"),
+    def("instance.schedule.get", Kind::Query, "safe", LOCAL, true, "GET", "/api/instance/:id/schedule"),
+    Def { fields: &[field("name", "string", true)], ..def("instance.rename", Kind::Admin, "caution", LOCAL, true, "POST", "/api/instance/:id/rename") },
+    def("module.list", Kind::Query, "safe", LOCAL, false, "GET", "/api/modules"),
+    def("module.available", Kind::Query, "safe", LOCAL, false, "GET", "/api/modules/manifest"),
+    def("extension.list", Kind::Query, "safe", LOCAL, false, "GET", "/api/extensions"),
+    def("extension.available", Kind::Query, "safe", LOCAL, false, "GET", "/api/extensions/manifest"),
+    // 공식 목록에서만 받는다 (주소·해시를 받지 않는다)
+    Def { fields: &[path_field("extension")], ..def("extension.install", Kind::Admin, "caution", LOCAL, false, "POST", "/api/extensions/:extension/install") },
+    // 게임 서버 업데이트 (사바쨩 앱 업데이트 `update.*`와 다르다)
+    def("server.update.check", Kind::Query, "safe", LOCAL, true, "GET", "/api/instance/:id/check-update"),
+    def("server.update.apply", Kind::Admin, "caution", LOCAL, true, "POST", "/api/instance/:id/apply-update"),
+    // 게임 설정 파일 원문 (관리자 비밀번호가 들어 있다). 원격 MCP에는 비밀값째 준다 (`MCP_UNLOCKED`, `strips_secrets`)
+    def("instance.properties.get", Kind::Query, "safe", LOCAL, true, "GET", "/api/instance/:id/properties"),
+    Def { fields: &[field("settings", "object", true)], ..def("instance.properties.set", Kind::Admin, "caution", LOCAL, true, "PUT", "/api/instance/:id/properties") },
+    def("server.diagnose", Kind::Query, "safe", LOCAL, true, "POST", "/api/instance/:id/diagnose"),
+    // 콘솔 입력 한 줄 (GUI 명령 창과 같은 `POST /command`). 무엇이든 보낼 수 있어 늘 묻는다
+    Def { fields: &[field("command", "string", true)], ..def("server.console.send", Kind::Command, "danger", LOCAL, true, "POST", "/api/instance/:id/command") },
+    Def {
+        fields: &[Field { options_from: Some(OptionsFrom { action: "backup.list", list: "backups", value: "name", label: "label" }), ..path_field("name") }],
+        ..def("backup.delete", Kind::Admin, "danger", LOCAL, true, "DELETE", "/api/instance/:id/backups/:name")
     },
     def("update.check", Kind::Query, "safe", LOCAL_AND_DISCORD, false, "POST", "/api/updates/check"),
     // 원격(디스코드)에서도 끝까지 가도록 받기·적용·업데이터 띄우기를 한 번에 한다 (`/api/updates/install`)
@@ -728,7 +765,7 @@ fn module_support(id: &str) -> Option<fn(&LoadedModule) -> bool> {
         "server.players" => Some(|m| m.metadata.players_function.is_some()),
         "server.chat" => Some(|m| m.metadata.chat_send_function.is_some()),
         // 밖에 여는 포트(`public`)를 선언한 모듈만 확인할 것이 있다
-        "server.port_check" => Some(|m| m.metadata.settings.as_ref().is_some_and(|s| s.fields.iter().any(|f| f.public.is_some()))),
+        "server.port_check" | "server.address" => Some(|m| m.metadata.settings.as_ref().is_some_and(|s| s.fields.iter().any(|f| f.public.is_some()))),
         _ => None,
     }
 }
@@ -770,6 +807,9 @@ pub fn heartbeat_actions(locales: &[&str], modules: &[LoadedModule]) -> (Vec<Val
         }
         if d.private {
             item["private"] = json!(true);
+        }
+        if d.secret {
+            item["secret"] = json!(true);
         }
         // 모듈이 지원해야 하는 액션: 그 모듈 이름들 (릴레이는 이 모듈의 서버에만 하위 명령을 만든다)
         if let Some(supports) = module_support(d.id) {
@@ -1024,8 +1064,8 @@ async fn resolve_in(server: &IPCServer, id: &str, instance: Option<&str>, input:
         (true, Some(i)) => Some(i.to_string()),
         (false, _) => None,
     };
-    // 원격 요청이 다루는 길드는 그 요청이 온 길드뿐이다
-    if let Some(who) = &caller.remote {
+    // 원격 요청이 다루는 길드는 그 요청이 온 길드뿐이다. 길드 없이 오는 원격 MCP(PC 주인)는 앱처럼 길드를 고른다 (사용자 결정 2026-11-05)
+    if let Some(who) = caller.remote.as_ref().filter(|w| !(w.guild_id.is_none() && caller.origin.via.as_deref() == Some(MCP_VIA))) {
         if def.fields.iter().any(|f| f.in_path && f.name == GUILD_FIELD) {
             let Some(own) = who.guild_id.clone() else { return Err(bad_input(GUILD_FIELD, "required")) };
             match input.get(GUILD_FIELD) {
@@ -1176,7 +1216,9 @@ async fn authorize_in(server: &IPCServer, r: &Resolved, caller: &Caller, new_ser
     // 실행이 안에서 부르는 라우터도 같은 규칙 층(`remote_daemon::server::rules`)을 지나지만, 여러 단계 계획이
     // 앞 단계만 돌고 뒤 단계에서 멈추지 않게 계획 때 거절한다
     // 원격 MCP도 웹 원격·짝 맺은 PC와 같이 PC에서만 하는 일과 PC 전용 칸을 막는다
-    let remote_rules = (caller.remote.is_none() && caller.origin.source == "remote") || caller.origin.via.as_deref() == Some(MCP_VIA);
+    // 원격 MCP는 계정 주인의 개인 에이전트라 앱 업데이트와 게임 설정 원문은 연다 (사용자 결정 2026-11-05, `MCP_UNLOCKED`)
+    let mcp = caller.origin.via.as_deref() == Some(MCP_VIA);
+    let remote_rules = (caller.remote.is_none() && caller.origin.source == "remote") || (mcp && !MCP_UNLOCKED.contains(&r.id.as_str()));
     if remote_rules {
         if let Some(refused) = crate::remote_daemon::server::refusal(server, r.method, &r.uri, r.body.as_ref(), new_server_module).await {
             let (status, code) = (refused.status().as_u16(), refused.code());
@@ -1250,15 +1292,27 @@ async fn scheduled_commands(server: &IPCServer, instance: &str, body: Option<&Va
             TaskAction::Start => Some(("start".to_string(), "caution")),
             TaskAction::Stop => Some(("stop".to_string(), "caution")),
             TaskAction::Restart => Some(("restart".to_string(), "caution")),
-            TaskAction::Command => meta
+            // 공지·저장도 모듈의 게임 명령(`announce_command`·`[backup] save_command`)으로 돈다: 그 명령의 레벨을 본다
+            TaskAction::Command | TaskAction::Announce | TaskAction::Save => meta
                 .as_ref()
-                .and_then(|m| crate::commands::find(m, task.command.as_deref().unwrap_or("")))
+                .and_then(|m| crate::commands::find(m, &scheduled_command_name(m, task)?))
                 .map(|f| (f.name.clone(), crate::commands::risk_of(f.risk.as_deref()))),
             _ => None,
         };
         out.extend(found.map(|(cmd, risk)| (cmd, risk.to_string())));
     }
     out
+}
+
+/// 예약 작업이 돌릴 모듈 게임 명령의 이름 (명령·공지·저장). 그 밖의 작업이나 모듈이 선언하지 않았으면 None
+pub(crate) fn scheduled_command_name(meta: &crate::supervisor::module_loader::ModuleMetadata, task: &crate::scheduler::ScheduledTask) -> Option<String> {
+    use crate::scheduler::TaskAction;
+    match task.action {
+        TaskAction::Command => task.command.clone(),
+        TaskAction::Announce => meta.announce_command.clone(),
+        TaskAction::Save => meta.backup.as_ref().and_then(|b| b.save_command.clone()),
+        _ => None,
+    }
 }
 
 /// 내장 서버 액션에 대응하는 내장 명령 이름 (레벨 키 `<instance>/<명령>`)
@@ -1271,6 +1325,14 @@ fn builtin_command(action: &str) -> Option<&'static str> {
         "server.players" => Some("players"),
         _ => None,
     }
+}
+
+/// 원격 MCP가 웹 원격·짝 맺은 PC의 PC 전용 규칙(라우트·칸)을 받지 않는 액션 (사용자 결정 2026-11-05)
+const MCP_UNLOCKED: &[&str] = &["update.check", "update.apply", "instance.properties.get", "instance.properties.set"];
+
+/// 원격 결과에서 비밀값을 지우는가. 원격 MCP의 게임 설정 원문 읽기만 그대로 준다 (사용자 결정 2026-11-05)
+pub(crate) fn strips_secrets(id: &str, caller: &Caller) -> bool {
+    caller.remote.is_some() && !(id == "instance.properties.get" && caller.origin.via.as_deref() == Some(MCP_VIA))
 }
 
 /// 원격 MCP에서 온 요청의 `origin.via`. 디스코드 길드가 아니라 앱과 같은 고정 규칙으로 묻는다
@@ -1297,6 +1359,10 @@ pub async fn needs_confirm(server: &IPCServer, action: &str, instance: Option<&s
         _ => None,
     };
     let Some(who) = guild_risk else {
+        // 원격 MCP의 예약은 나중에 묻지 않고 돌므로(디스코드의 예약 제한을 받지 않는다) 저장할 때 늘 묻는다
+        if action == "instance.schedule.set" && caller.origin.via.as_deref() == Some(MCP_VIA) {
+            return true;
+        }
         // 안전한 조회는 이 규칙 밖이다
         return !(kind == Kind::Query && risk == "safe") && fixed();
     };
@@ -1436,6 +1502,27 @@ pub async fn plan_text(server: &IPCServer, text: &str, caller: &Caller) -> Resul
     Ok(view)
 }
 
+/// 확인을 묻기 전의 권한 검사 (릴레이 `check`): 계획과 같은 해석·권한 판정을 지나되 계획을 남기지 않는다.
+/// 통과하면 `{success, actionId, instance, risk}`. 확인 버튼을 만들기 전에 불러, 권한이 없는 요청자에게 확인부터 묻지 않는다
+pub async fn check(server: &IPCServer, id: &str, instance: Option<&str>, input: &Value, caller: &Caller) -> Result<Value, ActionError> {
+    let r = resolve(server, id, instance, input, caller).await?;
+    authorize(server, &r, caller).await?;
+    Ok(json!({ "success": true, "actionId": r.id, "instance": r.instance, "risk": r.risk }))
+}
+
+/// 문장 명령의 권한 검사 (`check {text}`): `plan_text`와 같은 해석. 실행할 것이 없거나 거절이면 계획과 같은 답
+pub async fn check_text(server: &IPCServer, text: &str, caller: &Caller) -> Result<Value, ActionError> {
+    let req = chat_request(text, caller);
+    let (settings, cat) = chat_settings(server, caller).await;
+    match crate::chat::interpret(server, &settings, &cat, &req).await {
+        crate::chat::Interpreted::Run(target) => Ok(json!({ "success": true, "actionId": target.action_id(), "instance": target.instance(), "risk": target.risk() })),
+        crate::chat::Interpreted::Reply(reply) => match named_action(&reply, caller.surface) {
+            Some((id, instance)) => check(server, id, Some(&instance), &json!({}), caller).await,
+            None => Ok(chat_json(reply, true, caller)),
+        },
+    }
+}
+
 fn confirmed_by_requester(caller: &Caller) -> bool {
     caller.remote.as_ref().is_some_and(|w| w.confirmed_by_requester())
 }
@@ -1460,7 +1547,7 @@ fn named_action(reply: &crate::chat::Reply, surface: Surface) -> Option<(&'stati
     };
     ACTIONS
         .iter()
-        .filter(|d| d.instance && d.risk != "danger" && d.surfaces.contains(&surface) && d.fields.iter().all(|f| !f.required))
+        .filter(|d| d.instance && d.risk != "danger" && !d.secret && d.surfaces.contains(&surface) && d.fields.iter().all(|f| !f.required))
         .find(|d| names(d).iter().any(|n| fold(n) == want))
         .map(|d| (d.id, instance.to_string()))
 }
@@ -1719,6 +1806,20 @@ async fn admit(server: &IPCServer, caller: &Caller) -> Result<(), ActionError> {
     Ok(())
 }
 
+async fn localize_port_labels(server: &IPCServer, instance: &str, result: &mut Value, lang: &str) {
+    let locale = {
+        let sup = server.supervisor.read().await;
+        let module = sup.instance_store.get(instance).and_then(|i| sup.module_loader.get_module(&i.module_name).ok());
+        module.map(|m| module_locale(&m, lang)).unwrap_or(Value::Null)
+    };
+    for p in result.get_mut("ports").and_then(Value::as_array_mut).into_iter().flatten() {
+        let field = p.get("field").and_then(Value::as_str).unwrap_or_default().to_string();
+        if let Some(label) = locale.pointer(&format!("/settings/{}/label", field)).and_then(Value::as_str) {
+            p["label"] = json!(label);
+        }
+    }
+}
+
 /// 결과를 챗봇에 IP·비밀처럼 보이는 값을 가려 보내는 액션: 콘솔, 모듈 조회(접속자 목록 등), 모듈 명령의 답
 fn chatbot_masked(id: &str) -> bool {
     matches!(id, "server.console.tail" | "server.players" | "server.logs.read" | "server.logs.export") || id.starts_with(QUERY_PREFIX) || id.starts_with(COMMAND_PREFIX)
@@ -1737,7 +1838,9 @@ async fn execute(server: &IPCServer, r: &Resolved, caller: &Caller) -> Value {
         mask_console(&mut result);
     }
     if caller.remote.is_some() {
-        strip_secrets(&mut result, &all_password_fields(server).await);
+        if strips_secrets(&r.id, caller) {
+            strip_secrets(&mut result, &all_password_fields(server).await);
+        }
         strip_local_details(&mut result);
         if let Some(allowed) = allowed_instances(server, caller).await {
             retain_allowed(&mut result, &allowed);
@@ -1751,6 +1854,10 @@ async fn execute(server: &IPCServer, r: &Resolved, caller: &Caller) -> Value {
     // 원격에서 만든 서버는 그 길드의 허용 목록에 더한다 (목록을 정해 둔 길드만)
     if let (true, "instance.create", Some(new_id)) = (ok, r.id.as_str(), result.get("id").and_then(Value::as_str)) {
         steps::allow_in_guild(server, caller, new_id).await;
+    }
+    // 서버 주소의 포트 이름은 요청 언어의 모듈 문구로 (모듈 locales `settings.<칸>.label`, 없으면 module.toml)
+    if let (true, "server.address", Some(instance)) = (ok, r.id.as_str(), &r.instance) {
+        localize_port_labels(server, instance, &mut result, &caller.locale).await;
     }
     // 백업 목록 항목에 사람이 읽을 이름을 붙인다 (복원 칸에서 고를 때 보인다)
     if ok && r.id == "backup.list" {

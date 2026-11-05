@@ -95,7 +95,8 @@ pub fn restore(instance_dir: &Path, allowed: impl Fn(&Path) -> bool) -> Restored
             && plain_file(&copy)
             && original.path.parent().is_some_and(Path::is_dir)
             && allowed(&original.path)
-            && std::fs::copy(&copy, &original.path).is_ok();
+            // 그 자리에 바로 덮어쓰지 않고 통째로 바꾼다 (쓰다 실패해도 지금 파일이 잘리지 않는다)
+            && std::fs::read(&copy).and_then(|body| saba_atomic_file::write(&original.path, &body, saba_atomic_file::Mode::Plain)).is_ok();
         if ok {
             out.restored += 1;
         } else {
@@ -104,6 +105,17 @@ pub fn restore(instance_dir: &Path, allowed: impl Fn(&Path) -> bool) -> Restored
         }
     }
     out
+}
+
+/// 인스턴스 기록 루트(`STATE_DIR`) 아래: 되돌리지 못한 원래 설정의 보관 폴더를 옮겨 남기는 곳 (`keep_unrestored`)
+pub const UNRESTORED: &str = "unrestored-settings";
+
+/// 되돌리지 못한 원래 설정이 있을 때, 인스턴스 폴더와 함께 지워지지 않게 보관 폴더를 통째로 `to`로 옮긴다
+pub fn keep_unrestored(instance_dir: &Path, to: &Path) -> std::io::Result<()> {
+    if let Some(parent) = to.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::rename(instance_dir.join(DIR), to)
 }
 
 /// 인스턴스 폴더 밖에 있는 서버 폴더 (가져온 서버 등). 인스턴스를 지워도 남는다
@@ -301,6 +313,43 @@ mod tests {
         std::fs::write(&outside, "PVP=false\n").unwrap();
         assert_eq!(restore(&instance, |_| true), Restored { restored: 1, failed: vec![] });
         assert_eq!(std::fs::read_to_string(&outside).unwrap(), "PVP=true\n");
+    }
+
+    /// 되돌리기는 원래 자리를 통째로 바꾼다 (그 자리에 그대로 덮어쓰면 쓰다 실패할 때 잘린 파일이 남는다):
+    /// 그 자리와 내용을 함께 쓰던 다른 이름(하드 링크)은 바뀌지 않는다
+    #[test]
+    fn restoring_replaces_the_file_instead_of_writing_into_it() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (server, instance) = (tmp.path().join("server"), tmp.path().join("instance"));
+        std::fs::create_dir_all(&server).unwrap();
+        let props = server.join("server.properties");
+        std::fs::write(&props, "motd=mine\n").unwrap();
+        assert_eq!(save(&instance, std::slice::from_ref(&props)).unwrap(), 1);
+        std::fs::write(&props, "motd=changed\n").unwrap();
+        let shared = tmp.path().join("shared.properties");
+        std::fs::hard_link(&props, &shared).unwrap();
+
+        assert_eq!(restore(&instance, |_| true), Restored { restored: 1, failed: vec![] });
+        assert_eq!(std::fs::read_to_string(&props).unwrap(), "motd=mine\n");
+        assert_eq!(std::fs::read_to_string(&shared).unwrap(), "motd=changed\n");
+    }
+
+    /// 되돌리지 못한 사본은 인스턴스 폴더와 함께 지우지 않고 다른 자리로 옮겨 남긴다 (원래 설정의 유일한 사본이다)
+    #[test]
+    fn copies_that_could_not_be_restored_are_moved_out_whole() {
+        let tmp = tempfile::tempdir().unwrap();
+        let file = tmp.path().join("a.ini");
+        std::fs::write(&file, "old").unwrap();
+        let instance = tmp.path().join("i");
+        save(&instance, std::slice::from_ref(&file)).unwrap();
+        assert_eq!(restore(&instance, |_| false).failed, vec![file.clone()]);
+
+        let kept = tmp.path().join("state").join(UNRESTORED).join("i-1");
+        keep_unrestored(&instance, &kept).unwrap();
+
+        assert!(!instance.join(DIR).exists());
+        assert!(kept.join(MANIFEST).is_file());
+        assert_eq!(std::fs::read_to_string(kept.join("0")).unwrap(), "old");
     }
 
     #[test]

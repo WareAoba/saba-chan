@@ -28,7 +28,7 @@
 | `crate::plugin` (`src/plugin/mod.rs`) | **개념이 아니라 실행기**다. "Python 파일 하나를 `python <file> <function>`로 띄우고 stdin JSON → stdout JSON을 주고받는 러너"일 뿐이다. **module의 `lifecycle.py`와 extension hook이 둘 다** 이 러너를 쓴다. | `plg/:168-317`. module 호출 예: `supervisor/mod.rs:791,1077,1178…`. extension 호출: `ext/:1583` |
 | `crate::extension` (`src/extension/mod.rs`) | 오너가 말하는 "plugin". manifest 기반이고, hook, 명령, GUI/CLI 슬롯, instance_fields, config_fields를 가진다. | `ext/:221-271` |
 | `ipc::ExtensionInfo` / `ExtensionListResponse { modules }` | 이름은 extension이지만 **실제로는 module 정보**다(명명 혼동). | `src/ipc/mod.rs:236-295`, `handlers/server.rs:10,334-392` |
-| GUI `selectedExtension` | AddServer 모달에서 **module 이름**을 담는 상태다. | `saba-chan-gui/src/components/Modals/AddInstanceNewServer.js:32,86` |
+| GUI `selectedExtension` | AddServer 모달에서 **module 이름**을 담는 상태다. | `saba-chan-gui/src/components/Modals/AddInstanceNewServer.tsx:59,113` |
 | ~~`discord_bot/extensions/*.js`~~ | → 해결: 로컬 Discord 봇이 저장소에서 빠져 제3의 "extension" 개념도 없다. | — |
 | updater의 extension 업데이트 | 릴리즈 manifest의 `ext-<id>` 항목. 로컬 버전은 `extensions/*/manifest.json`의 id·version으로 읽는다. 데몬의 익스텐션 목록(`fetch_remote`)과 같은 manifest를 본다. | `updater/src/lib.rs:274-277,608-620`, `src/extension/mod.rs:1395` |
 
@@ -209,14 +209,14 @@ ue4-ini는 hook을 선언하지 않는다. steamcmd의 condition은 `instance.ex
 | rescan | `POST /api/extensions/rescan` | 위 3.2 |
 | ~~force_disable~~ | — | → 해결: 함수가 삭제되었다 |
 
-켜기(`POST /api/extensions/:id/enable`) 실패 본문에는 그 익스텐션 id `extension`이 실린다(`naming_extension`). 설치에서 패키지의 `min_app_version`을 못 맞추면 `install_failed` 대신 `app_version_unsatisfied`(`related[0]` = 요구 버전, `extension`)로 답한다(`stage_package`). 에러 코드 → HTTP 매핑: `handlers/extension.rs:26-59`. not_found/not_mounted/manifest_not_found는 404, dependency_*·component_version_unsatisfied·app_version_unsatisfied는 422, has_dependents/in_use는 409, id_mismatch는 400.
+켜기(`POST /api/extensions/:id/enable`) 실패 본문에는 그 익스텐션 id `extension`이 실린다(`naming_extension`). 설치에서 패키지의 `min_app_version`을 못 맞추면 `install_failed` 대신 `app_version_unsatisfied`(`related[0]` = 요구 버전, `extension`)로 답한다(`stage_package`). 에러 코드 → HTTP 매핑: `handlers/extension.rs:26-59`. not_found/not_mounted/manifest_not_found는 404, dependency_*·component_version_unsatisfied·app_version_unsatisfied는 422, has_dependents/in_use/folder_in_use는 409, id_mismatch는 400.
 
 ### 3.4 원격 목록 · 설치 · 업데이트
 
 - **출처**: 최신 릴리즈의 서명된 manifest에 든 `ext-<id>` 컴포넌트다. `ExtensionManager::fetch_remote()`가 `relay::latest_catalog`를 부르고 `from_release`가 `meta`(이름·설명·작성자·`min_app_version`·의존성)와 `version`, `download_url`(R2), `sha256`, `asset`을 목록 항목으로 만든다(`ext/:1283-1324`). `manifest_url`, `set_manifest_url`, raw `main/manifest.json`은 없다. 앱보다 새 버전을 요구하면 `incompatible`로 표시한다.
 - `GET /api/extensions/manifest`: 원격 목록과 `check_updates_against` 결과를 돌려준다(`handlers/extension.rs:361-382`).
 - `GET /api/extensions/updates`: 업데이트 목록만 돌려준다(`handlers/extension.rs:468-487`).
-- `POST /api/extensions/:id/install` (body `{download_url?, sha256?}`): body가 없거나 `{}`이면 원격 목록(서명된 카탈로그)에서 URL과 sha256을 찾는다. `download_url`만 주면 그 id의 카탈로그 URL과 같을 때만 카탈로그 sha256으로 받고, 다르면 해시 확인 없이 받지 않고 `sha256_required`로 거부한다. 둘 다 주면 그대로 받되, 카탈로그의 URL·해시와 같을 때만 공식 설치로 기록한다(`install_source`, `handlers/extension.rs:396-422`). 받기·검사·압축 해제는 락 없이 `stage_package`로 하고(sha256(있으면), manifest 스키마, id, `min_app_version` 확인, `ext/:1376-1415`), 폴더 교체만 write 락 안에서 `install_staged`로 한다. 실행 중인 인스턴스가 쓰는 익스텐션이면 `in_use`로 거부하고, 옛 폴더는 새 폴더가 자리 잡은 뒤에 지우며 실패하면 되돌린다(`ext/:695-721,1419-1440`). 빠진 익스텐션 의존성도 차례로 함께 설치한다(`handlers/extension.rs:400-465`). 원격 목록에서 받을 때 그 버전이 설치된 버전보다 낮으면 `older_than_installed`로 거부한다(예전 서명 manifest 재전송 방지).
+- `POST /api/extensions/:id/install` (body `{download_url?, sha256?}`): body가 없거나 `{}`이면 원격 목록(서명된 카탈로그)에서 URL과 sha256을 찾는다. `download_url`만 주면 그 id의 카탈로그 URL과 같을 때만 카탈로그 sha256으로 받고, 다르면 해시 확인 없이 받지 않고 `sha256_required`로 거부한다. 둘 다 주면 그대로 받되, 카탈로그의 URL·해시와 같을 때만 공식 설치로 기록한다(`install_source`, `handlers/extension.rs:396-422`). 받기·검사·압축 해제는 락 없이 `stage_package`로 하고(sha256(있으면), manifest 스키마, id, `min_app_version` 확인, `ext/:1376-1415`), 폴더 교체만 write 락 안에서 `install_staged`로 한다. 실행 중인 인스턴스가 쓰는 익스텐션이면 `in_use`로 거부하고, 바꿀 폴더의 `manifest.json` id가 설치할 id와 다르면(`a-b`와 `a_b`처럼 같은 폴더 이름이 되는 다른 익스텐션) `folder_in_use`(`related`: 설치할 id, 폴더 주인 id)로 거부한다(extensions/에 둔 zip도 같다, `ensure_folder_is_free_for`). 옛 폴더는 새 폴더가 자리 잡은 뒤에 지우며 실패하면 되돌린다(`ext/:695-721,1419-1440`). 빠진 익스텐션 의존성도 차례로 함께 설치한다(`handlers/extension.rs:400-465`). 원격 목록에서 받을 때 그 버전이 설치된 버전보다 낮으면 `older_than_installed`로 거부한다(예전 서명 manifest 재전송 방지).
 - 업데이터의 일괄 업데이트(`/api/updates/*`)는 설치된 `ext-*`만 비교하고, 적용 뒤 `rescan()`으로 다시 읽는다(`src/ipc/updates.rs:575-577`).
 - 배포: 익스텐션 저장소에는 릴리즈 워크플로도 생성된 `manifest.json`도 없다(CI는 pytest·ruff만, `E:.github/workflows/ci.yml`). 코어 릴리즈 워크플로가 `saba-chan-extensions`의 `main`을 checkout하고 `versions.py manifest --extensions-repo`가 `ext-<id>.zip`을 만들어 같은 릴리즈 manifest에 싣는다(`D:.github/workflows/release.yml:185-215`, `D:scripts/versions.py:246-267`). 지금 저장소에는 `steamcmd`, `ue4_ini`, `xna` 세 개가 있다.
 
@@ -233,16 +233,16 @@ ue4-ini는 hook을 선언하지 않는다. steamcmd의 condition은 `instance.ex
 
 ### 4.1 로딩 경로 (Tauri)
 
-1. Renderer `window.api.extensionList()` → JS 브리지 `saba-chan-gui/src/api/createApi.js:542-549` → Tauri 명령 `daemon_request` → `GET /api/extensions`. 확장 관련 메서드는 `createApi.js:524-646`에 있다. 데몬 요청은 Tauri 셸이 대행한다(토큰 인증 포함, `src-tauri/src/native.rs:17-42`, `daemon.rs:235-254`).
-2. `ExtensionProvider`(`src/contexts/ExtensionContext.js:100-215`)가 enabled 익스텐션마다:
-   - `window.api.extensionGuiBundle(id)` → `GET /api/extensions/:id/gui`(`responseType:'text'`, `createApi.js:584-598`)로 JS 소스 문자열을 받는다. **Blob URL `<script>`**로 실행한다(`:29-64`). `ext.gui`가 없으면 요청하지 않는다(`:38-40`).
+1. Renderer `window.api.extensionList()` → JS 브리지 `saba-chan-gui/src/api/createApi.ts:705-714` → Tauri 명령 `daemon_request` → `GET /api/extensions`. 확장 관련 메서드는 `createApi.ts:704-856`에 있다. 데몬 요청은 Tauri 셸이 대행한다(토큰 인증 포함, `src-tauri/src/native.rs:17-42`, `daemon.rs:235-254`).
+2. `ExtensionProvider`(`src/contexts/ExtensionContext.tsx:192-658`)가 enabled 익스텐션마다:
+   - `window.api.extensionGuiBundle(id)` → `GET /api/extensions/:id/gui`(`responseType:'text'`, `createApi.ts:757-773`)로 JS 소스 문자열을 받는다. **Blob URL `<script>`**로 실행한다(`:105-141`). `ext.gui`가 없으면 요청하지 않는다(`:87-89`).
    - 확인되지 않았고 이 PC에서 허락하지 않은 익스텐션(목록의 `gui_allowed:false`, 또는 번들 요청이 403 `extension_gui_unapproved`)은 번들·스타일을 요청하지 않고 한 번 묻는다. 허락하면 `POST /api/sandbox/extension-gui/ext-<id>` 뒤 목록을 다시 받아 로드한다. 거절하면 그 실행에서는 다시 묻지 않고, 설정 > 고급 `ExtensionGuiSection`에서 허락하거나 지운다.
-   - 전역 이름 규칙: `window["SabaExt" + PascalCase(id)]`. `-`와 `_` 구분자를 제거하고 다음 글자를 대문자로 바꾼다(`:82-84`). steamcmd → `SabaExtSteamcmd`. 번들이 정확히 이 전역을 만들어야 한다.
-   - 스타일: `GET …/gui/styles`가 있으면 `<style data-extension=id>`로 넣는다(`:66-73`).
+   - 전역 이름 규칙: `window["SabaExt" + PascalCase(id)]`. `-`와 `_` 구분자를 제거하고 다음 글자를 대문자로 바꾼다(`:174-176`). steamcmd → `SabaExtSteamcmd`. 번들이 정확히 이 전역을 만들어야 한다.
+   - 스타일: `GET …/gui/styles`가 있으면 `<style data-extension=id>`로 넣는다(`:146-153`).
    - 모듈의 **`registerSlots(): { [slotId]: Component | Component[] }`**를 호출해 슬롯 레지스트리에 병합한다. manifest의 `gui.slots`는 쓰지 않는다.
-   - 버전이 바뀌면 전역을 삭제하고 style 태그를 제거한 뒤 다시 로드한다(핫로드, `:164-171`). 로드됨으로 기억했는데 전역이 없어도 다시 로드한다.
+   - 버전이 바뀌면 전역을 삭제하고 style 태그를 제거한 뒤 다시 로드한다(핫로드, `:289-309`). 로드됨으로 기억했는데 전역이 없어도 다시 로드한다.
    - 실행이 실패한 번들은 자기가 남긴 전역만 되돌린다. 같은 확장을 겹쳐 읽은 다른 로드가 성공해 등록한 전역은 지우지 않는다.
-3. React 공유: 호스트가 `window.React`와 `window.ReactDOM`을 전역으로 노출하고(`src/index.js:16-17`), 번들은 `window.React`를 참조한다(external 처리). 그 밖의 호스트 API(토스트, 데몬 API, 스토어 등)는 노출하지 않는다. 확장 컴포넌트는 props만으로 동작해야 한다.
+3. React 공유: 호스트가 `window.React`와 `window.ReactDOM`을 전역으로 노출하고(`src/index.tsx:20-21`), 번들은 `window.React`를 참조한다(external 처리). 호스트는 React 19다: 번들은 JSX를 `window.React.createElement`(classic 런타임)로 만들거나 React 19의 `jsx-runtime`을 쓴다. React 18의 `jsx-runtime`을 번들에 넣으면 요소 모양이 달라 React 19가 그리지 못한다. 그 밖의 호스트 API(토스트, 데몬 API, 스토어 등)는 노출하지 않는다. 확장 컴포넌트는 props만으로 동작해야 한다.
 4. 보안: 번들은 렌더러 컨텍스트에서 **그대로 eval**되므로 `window.api`·`window.electron`(브리지의 모든 메서드)과 `window.__TAURI__`(`withGlobalTauri`)에 접근할 수 있다. 즉 번들은 AppContainer 밖에서 데몬 API 전체를 부른다. 셸 쪽 경계는 `daemon_request`의 경로 제한(`/api/…`·`/health`만, 셸이 직접 정하는 `/api/updates/launch-updater`·`/api/client/*`·`/api/daemon/shutdown`은 거부, 04 문서 §1.1)과 capability가 연 명령 목록(`src-tauri/capabilities/default.json`)뿐이다.
    - 그래서 데몬은 번들(`/gui`)과 스타일(`/gui/styles`)을 **확인된(`verified`) 익스텐션이거나 사용자가 이 PC에서 허락한 익스텐션에만** 서빙한다(`extension::gui_allowed`, 플랫폼과 무관). 아니면 403 `{error_code:"extension_gui_unapproved", component:"ext-<id>"}`. manifest의 `gui.bundle`·`gui.styles`는 익스텐션 폴더 기준 상대 경로(`..`·절대 경로 없음)이고, 링크를 거치지 않는 일반 파일이어야 한다. 아니면 404(허락은 폴더 안 파일의 지문에 묶이기 때문이다).
    - `GET /api/extensions` 항목에 GUI 번들이 있으면 `gui_allowed: bool`이 실린다. false면 GUI는 번들을 요청하지 말고 사용자에게 물은 뒤 `POST /api/sandbox/extension-gui/ext-<id>`로 기록한다(원격 출처는 403 `consent_local_only`). 동의는 `config.json` `sandbox.extension_gui`에 익스텐션 폴더 전체의 파일 지문으로 남아, 파일이 하나라도 바뀌면 다시 묻는다. 철회는 `DELETE` 같은 경로.
@@ -251,16 +251,16 @@ ue4-ini는 hook을 선언하지 않는다. steamcmd의 condition은 `instance.ex
 
 현재 `gui`를 가진 익스텐션은 없으므로 이 경로는 실제로 쓰이지 않는다.
 
-### 4.2 슬롯과 props (호스트 `<ExtensionSlot slotId … {...props}>`, `components/ExtensionSlot.js`)
+### 4.2 슬롯과 props (호스트 `<ExtensionSlot slotId … {...props}>`, `components/ExtensionSlot.tsx`)
 
 | slotId | 호스트 위치 | 전달 props | 구현 익스텐션 |
 |---|---|---|---|
-| `ServerCard.badge` | `servers/ServerRow.js:64` | `server` | 없음 |
-| `ServerCard.headerGauge` | `servers/ServerDetail.js:201` | `server` | 없음 |
-| `ServerCard.provision` | `servers/ServerDetail.js:247` (`server.provisioning`일 때) | `server, provisionProgress, onDismiss, t` | 없음 |
-| `ServerCard.expandedStats` | `servers/ServerDetail.js:467` | `server, t` | 없음 |
-| `ServerSettings.tab` | `ServerSettingsModal.js` (서버 상세 사바쨩 탭에만) | `server, activeTab, setActiveTab, settings, onSettingsChange, t` | 없음 |
-| `AddServer.options` | `AddInstanceNewServer.js:326` | `t` | 없음 |
+| `ServerCard.badge` | `servers/ServerRow.tsx:139` | `server` | 없음 |
+| `ServerCard.headerGauge` | `servers/ServerDetail.tsx:248` | `server` | 없음 |
+| `ServerCard.provision` | `servers/ServerDetail.tsx:304` (`server.provisioning`일 때) | `server, provisionProgress, onDismiss, t` | 없음 |
+| `ServerCard.expandedStats` | `servers/ServerDetail.tsx:583` | `server, t` | 없음 |
+| `ServerSettings.tab` | `ServerSettingsModal.tsx` (서버 상세 사바쨩 탭에만) | `server, activeTab, setActiveTab, settings, onSettingsChange, t` | 없음 |
+| `AddServer.options` | `AddInstanceNewServer.tsx:627` | `t` | 없음 |
 
 - `server` 객체는 `/api/servers`의 `ServerInfo`다. 여기서 `extension_data`와 `extension_status[<extension_id>]`(list_enrich 결과)를 컴포넌트가 읽는다.
 - 슬롯 이름은 호스트에 하드코딩되어 있고 검증하는 장치는 없다. 번들 없이 데이터만 선언하는 slot은 4.3이다.
@@ -283,13 +283,13 @@ ue4-ini는 hook을 선언하지 않는다. steamcmd의 condition은 `instance.ex
 
 ### 4.3 i18n
 
-- 로더: `window.api.extensionI18n(id, lang)` → `GET /api/extensions/:id/i18n/:locale` → `i18n.addResourceBundle(lang, "ext_<id>", …)`(`ExtensionContext.js:89-98`). 현재 언어와 `en`을 로드한다. **언어가 바뀌어도 다시 로드하지 않는다**(effect 의존성이 `[extensions]`뿐, `:215`).
+- 로더: `window.api.extensionI18n(id, lang)` → `GET /api/extensions/:id/i18n/:locale` → `i18n.addResourceBundle(lang, "ext_<id>", …)`(`ExtensionContext.tsx:181-190`). 현재 언어와 `en`을 로드한다. **언어가 바뀌어도 다시 로드하지 않는다**(effect 의존성이 `[extensions]`뿐, `:370`).
 - ~~docker 컴포넌트가 호스트 `gui` 네임스페이스의 `server_settings.docker_*` 키를 쓰는 위반 사례~~ → 해결: docker 익스텐션이 제거되었고 `locales/*/gui.json`에 docker 키가 없다.
 
 ### 4.4 GUI에서 노출되지 않는 API
 
-- `GET/PUT /api/extensions/:id/config`(글로벌 설정, `config_fields`)에 대한 `window.api` 메서드(`createApi.js`)가 **없다**. CLI `saba-chan-cli/src/client.rs:470-476`에만 있다(`extension config`, PR #6 기준).
-- `extension:icon` → SabaStorage(`SabaStorage.js:995`), `extension:initStatus` → `hooks/useExtensionInitStatus.js`.
+- `GET/PUT /api/extensions/:id/config`(글로벌 설정, `config_fields`)에 대한 `window.api` 메서드(`createApi.ts`)가 **없다**. CLI `saba-chan-cli/src/client.rs:470-476`에만 있다(`extension config`, PR #6 기준).
+- `extension:icon` → SabaStorage(`SabaStorage.tsx:1168`), `extension:initStatus` → `hooks/useExtensionInitStatus.ts`.
 
 ---
 
@@ -362,7 +362,7 @@ ue4-ini는 hook을 선언하지 않는다. steamcmd의 condition은 `instance.ex
 13. ~~`discover()`/`rescan()`이 manifest.id와 디렉토리명의 일치를 검사하지 않고, zip 추출은 기존 폴더가 있으면 새 zip을 버린다.~~ → 해결: 스캔이 이름을 검사하고(`ext/:763-769`), zip은 기존 폴더를 바꿔 끼운다(`ext/:652-683`).
 14. ~~모든 hook context에 전체 `extensions.settings`(타 익스텐션 비밀값 포함)가 주입된다.~~ → 해결: 익스텐션마다 자기 설정만 넣는다(`ext/:1303-1312`).
 15. GUI 번들을 Blob script로 무검증 실행하고, `window.api`에 전체 접근할 수 있다.
-16. GUI i18n이 언어 변경 시 다시 로드되지 않는다(`ExtensionContext.js:215`).
+16. GUI i18n이 언어 변경 시 다시 로드되지 않는다(`ExtensionContext.tsx:370`).
 17. ~~리포에 런타임 산출물(`dockerd.pid`, `.deps-resolved.json`, Go 바이너리)이 커밋되어 있다.~~ → 해결: 해당 익스텐션이 제거되었고, 저장소에는 소스·테스트·`icon.png`만 있다.
 18. ~~릴리즈 워크플로가 기존 릴리즈를 모두 삭제한다.~~ → 해결: 익스텐션 저장소의 릴리즈 워크플로가 없어졌다(extensions 301ff2c). 배포는 코어 릴리즈가 맡는다(3.4).
 19. ~~CLI 도움말은 `extension [...|registry|...]`라고 하지만 실제 서브커맨드는 `manifest`다~~ → 해결: PR #6 CLI의 하위 명령 목록과 도움말은 clap 정의에서 나오므로 어긋나지 않는다. 카탈로그 조회는 `extension available`이다(`saba-chan-cli/src/cli.rs:557-558`, `cmd/extension.rs:30,251`).
@@ -382,7 +382,7 @@ Core(daemon/GUI/CLI)가 특정 익스텐션을 이름으로 아는 곳들이다.
 | ~~`src/instance/mod.rs` steamcmd instance_field 이름~~ | → 해결: `install_method_<방식>`, `<방식>_<이름>` 범용 규칙(`src/instance/mod.rs:142-166`) |
 | ~~`handlers/instance.rs` check_update에서 `steamcmd_app_id` 읽기~~ | → 해결: `<방식>_app_id`(`handlers/instance.rs:1433-1437`) |
 | ~~GUI `DiscordBotModal.js` `e.id==='music'`~~ | → 해결: 삭제 |
-| ~~GUI `AddInstanceNewServer.js` `options.use_container` 계약~~ | → 해결: 슬롯이 `t`만 받는다(`AddInstanceNewServer.js:326`) |
+| ~~GUI `AddInstanceNewServer.tsx` `options.use_container` 계약~~ | → 해결: 슬롯이 `t`만 받는다(`AddInstanceNewServer.tsx:627`) |
 | ~~호스트 `locales/*/gui.json` docker UI 문자열~~ | → 해결: 삭제 |
 | ~~`discord_bot/extensions/music.js`~~ | → 해결: 봇 제거 |
 | ~~익스텐션 → 익스텐션 파일 경로 import (docker → steamcmd)~~ | → 해결: docker 제거 |

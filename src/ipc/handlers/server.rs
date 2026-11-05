@@ -739,7 +739,7 @@ async fn install_module_locked(state: IPCServer, module_id: String) -> axum::res
     let target_dir = modules_dir.join(&module_id);
 
     let result: anyhow::Result<()> = async {
-        let http = reqwest::Client::new();
+        let http = saba_chan_updater_lib::tls::http_client_builder().build()?;
         const MODULE_DOWNLOAD_LIMIT: u64 = 128 * 1024 * 1024;
         let max_bytes = Some(comp.size_bytes.unwrap_or(MODULE_DOWNLOAD_LIMIT).min(MODULE_DOWNLOAD_LIMIT));
         saba_chan_updater_lib::download::download_verified(&http, &comp.url, &zip_path, Some(&comp.sha256), max_bytes, None).await?;
@@ -827,13 +827,32 @@ pub async fn remove_module(
                 return (StatusCode::OK, Json(json!({ "ok": false, "error": error, "error_code": "module_in_use" }))).into_response();
             }
         }
-        std::path::PathBuf::from(supervisor.module_loader.modules_dir())
+        let modules_dir = std::path::PathBuf::from(supervisor.module_loader.modules_dir());
+        // `<modules>/<id>` 폴더가 아니면 찾은 모듈의 원본(modules 폴더에 놓은 ZIP)을 지운다
+        let zip = supervisor.module_loader.discover_modules().ok().and_then(|modules| {
+            modules
+                .into_iter()
+                .find(|m| m.metadata.name.eq_ignore_ascii_case(&module_id))
+                .map(|m| (std::path::PathBuf::from(m.source), std::path::PathBuf::from(m.path)))
+                .filter(|(source, _)| source.is_file() && source.parent() == Some(modules_dir.as_path()))
+        });
+        (modules_dir, zip)
     };
+    let (modules_dir, zip) = modules_dir;
     let module_path = modules_dir.join(&module_id);
-    if !module_path.exists() {
+    let removed = if module_path.is_dir() {
+        std::fs::remove_dir_all(&module_path)
+    } else if let Some((zip, extracted)) = zip {
+        std::fs::remove_file(&zip).map(|()| {
+            // 풀어 둔 사본은 다시 만들 수 있다: 지우지 못해도 제거는 끝났다
+            if extracted.starts_with(modules_dir.join(".extracted")) {
+                let _ = std::fs::remove_dir_all(&extracted);
+            }
+        })
+    } else {
         return (StatusCode::OK, Json(json!({ "ok": false, "error": "Module not found" }))).into_response();
-    }
-    if let Err(e) = std::fs::remove_dir_all(&module_path) {
+    };
+    if let Err(e) = removed {
         return (StatusCode::OK, Json(json!({ "ok": false, "error": e.to_string() }))).into_response();
     }
     let _ = saba_chan_updater_lib::integrity::set_official(&format!("{}{}", saba_chan_updater_lib::relay::MODULE_PREFIX, module_id), false);
@@ -2096,6 +2115,31 @@ mod tests {
         state.supervisor.read().await.tracker.untrack(&id).unwrap();
         let removed = crate::ipc::internal::into_internal(remove_module(Path("plain".into()), State(state)).await.into_response()).await.body;
         assert_eq!(removed["ok"], true, "{removed}");
+    }
+
+    /// modules 폴더에 놓은 ZIP 모듈도 제거 API로 지운다 (찾은 모듈의 실제 원본을 지운다)
+    #[tokio::test]
+    async fn a_zip_module_is_removed_by_the_api() {
+        use std::io::Write;
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        std::fs::create_dir_all(&modules).unwrap();
+        let zip_path = modules.join("plain-1.0.zip");
+        let mut writer = zip::ZipWriter::new(std::fs::File::create(&zip_path).unwrap());
+        let options = zip::write::SimpleFileOptions::default();
+        writer.start_file("module.toml", options).unwrap();
+        writer.write_all(b"[module]\nschema_version = 1\nname = \"plain\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n").unwrap();
+        writer.start_file("lifecycle.py", options).unwrap();
+        writer.finish().unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+
+        let removed = crate::ipc::internal::into_internal(remove_module(Path("plain".into()), State(state.clone())).await.into_response()).await.body;
+        assert_eq!(removed["ok"], true, "{removed}");
+        assert!(!zip_path.exists());
+        assert!(!modules.join(".extracted/plain").exists());
+        assert!(state.supervisor.read().await.module_loader.get_module("plain").is_err());
     }
 
     /// 같은 모듈을 동시에 두 번 설치하지 않고, 설치마다 다른 임시 경로를 쓴다 (D-S2)

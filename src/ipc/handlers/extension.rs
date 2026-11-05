@@ -34,7 +34,7 @@ fn extension_err_response(
             | "app_version_unsatisfied" => {
                 StatusCode::UNPROCESSABLE_ENTITY
             }
-            "has_dependents" | "in_use" => StatusCode::CONFLICT,
+            "has_dependents" | "in_use" | "folder_in_use" => StatusCode::CONFLICT,
             "id_mismatch" => StatusCode::BAD_REQUEST,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         };

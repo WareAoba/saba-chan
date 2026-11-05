@@ -213,7 +213,7 @@ impl RelayClient {
     pub fn new(base_url: &str) -> Self {
         let mut headers = reqwest::header::HeaderMap::new();
         headers.insert(CLIENT_HEADER.0, reqwest::header::HeaderValue::from_static(CLIENT_HEADER.1));
-        let http = reqwest::Client::builder()
+        let http = crate::tls::http_client_builder()
             .user_agent(concat!("saba-chan-updater/", env!("CARGO_PKG_VERSION")))
             .default_headers(headers)
             .timeout(std::time::Duration::from_secs(20))

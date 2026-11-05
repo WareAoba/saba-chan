@@ -9,7 +9,7 @@
 #   guard    — versions.toml 일치, 릴리스 패키징 스크립트 시험 (항상)
 #   windows  — Windows clippy + cargo test (Rust 변경 시). 배포 대상이 Windows뿐이고
 #              Windows 전용 코드는 로컬 클라우드에서 실행되지 않는다
-#   frontend — GUI 번들 빌드, 업데이터/설치기 스크립트 문법 (프런트 변경 시)
+#   frontend — GUI 번들 빌드, GUI·웹 타입 검사·린트, 업데이터/설치기 스크립트 문법 (GUI·웹 변경 시)
 #   macos-package — 맥 구성요소 zip·Saba-chan.app·서명 없는 .dmg (패키징·워크플로 변경 시)
 #
 # 전체 (Actions 탭 workflow_dispatch, 또는 v* 태그 push):
@@ -71,7 +71,7 @@ jobs:
           else
             echo "rust=false" >> "$GITHUB_OUTPUT"
           fi
-          if echo "$files" | grep -qE '^(saba-chan-gui/|installer/gui/src/|locales/)'; then
+          if echo "$files" | grep -qE '^(saba-chan-gui/|saba-chan-web/|installer/gui/src/|locales/)'; then
             echo "frontend=true" >> "$GITHUB_OUTPUT"
           else
             echo "frontend=false" >> "$GITHUB_OUTPUT"
@@ -181,6 +181,26 @@ jobs:
         run: |
           npm ci
           npx vite build
+
+      # 타입 검사 (TypeScript 7 tsc, 빠르다): GUI 작업에서 매번
+      - name: Typecheck — GUI
+        working-directory: saba-chan-gui
+        run: npm run typecheck
+
+      - name: Typecheck — Web
+        working-directory: saba-chan-web
+        run: |
+          npm ci
+          npm run typecheck
+
+      # 린트 (Biome, 오류만 막는다. 경고는 막지 않는다). GUI 접근성 규칙(a11y)은 남은 건을 정리할 때까지 뺀다
+      - name: Lint — GUI
+        working-directory: saba-chan-gui
+        run: npx biome lint ./src --skip=a11y
+
+      - name: Lint — Web
+        working-directory: saba-chan-web
+        run: npx biome lint ./src
 
       # Vitest는 GUI 작업에서 매번 돌린다. 전체 실행에서만 다시 돌린다
       - name: Test — GUI (full only)

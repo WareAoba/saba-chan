@@ -110,7 +110,7 @@ async fn watch(id: String, name: String, proc: Arc<ManagedProcess>, patterns: Pa
                 if let Some(roster) = roster {
                     super::players::roster_change(&id, roster, &player, change == Change::Join);
                     if change == Change::Leave && super::players::counted(&id) == Some(0) {
-                        super::chat_link::end(&id, &name, "empty");
+                        super::chat_link::end(&id, &name, "empty", roster);
                     }
                 }
                 crate::events::emit("instance.player", json!({ "instanceId": id, "instance": name, "player": player, "change": change.as_str() }));
@@ -125,10 +125,11 @@ async fn watch(id: String, name: String, proc: Arc<ManagedProcess>, patterns: Pa
             }
         }
         if !running {
+            // 연동은 접속자를 셀 때만 켜진다. 이 프로세스의 목록일 때만 끈다 (새 프로세스의 연동은 그대로 둔다)
             if let Some(roster) = roster {
+                super::chat_link::end(&id, &name, "stopped", roster);
                 super::players::roster_end(&id, roster);
             }
-            super::chat_link::end(&id, &name, "stopped");
             return;
         }
         tokio::time::sleep(POLL).await;

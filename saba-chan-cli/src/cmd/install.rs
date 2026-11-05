@@ -282,7 +282,7 @@ fn install_target(chosen: &Path) -> Option<PathBuf> {
 }
 
 /// 설치 라이브러리의 기록을 창 인스톨러와 같은 파일에 덧붙인다. 열지 못하면 `None`(실패 때 경로를 안내하지 않는다)
-fn install_log(path: &Path) -> Option<impl tracing::Subscriber + Send + Sync> {
+fn install_log(path: &Path) -> Option<impl tracing::Subscriber + Send + Sync + use<>> {
     use std::io::Write;
     let mut file = std::fs::OpenOptions::new().create(true).append(true).open(path).ok()?;
     writeln!(file, "saba-chan-cli install {} started", env!("CARGO_PKG_VERSION")).ok()?;

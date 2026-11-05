@@ -308,6 +308,19 @@ pub struct BotConfig {
     /// 페어링 코드로 새로 묶인 디스코드 서버에 이 PC의 서버를 바로 열지(`auto`), 나중에 고를지(`manual`).
     /// 코드 없이 `/사바쨩 연결`로 묶인 서버는 늘 나중에 고른다 (`relay_agent::close_linked_guild`)
     pub new_guild_instances: NewGuildInstances,
+    /// 백업 결과를 PC 주인에게 DM으로 알리는 범위 (`failures`면 실패만). 릴레이가 하트비트 `backupNotice`로 거른다
+    pub backup_notice: BackupNotice,
+}
+
+/// 백업 결과 알림 (`BotConfig::backup_notice`)
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum BackupNotice {
+    /// 성공·실패 모두
+    #[default]
+    All,
+    /// 실패만
+    Failures,
 }
 
 /// 새로 묶인 디스코드 서버에 서버를 여는 방식 (`BotConfig::new_guild_instances`)
@@ -345,6 +358,7 @@ impl Default for BotConfig {
             cloud_members: HashMap::new(),
             translate_commands: true,
             new_guild_instances: NewGuildInstances::Auto,
+            backup_notice: BackupNotice::All,
         }
     }
 }
@@ -464,11 +478,12 @@ const RESERVED_SECTIONS: &[&str] = &["schemaVersion", "gui", "relay", "updates",
 
 /// `nodeSettings[guild]`에서 전용 API만 바꾸는 키: 권한 API(P1), 디스코드 설정 API(I2, `discord`),
 /// 0.1.10까지의 길드·인스턴스 낱말(`instances`, 시작할 때 `serverWords`로 옮긴다), 길드가 쓸 서버 API(`allowedInstances`),
-/// 켜짐 알림 API(`startNotice`)
+/// 켜짐·꺼짐 알림·자리 꽉 참 알림 API(`startNotice`·`fullNotice`)
 pub const PERMISSION_KEYS: &[&str] = &[
     "instances",
     "allowedInstances",
     "startNotice",
+    "fullNotice",
     "ownerDiscordId",
     "relayOwnerDiscordId",
     "defaultLevel",
@@ -555,7 +570,7 @@ impl ConfigStore {
     // ── Chatbot ──
 
     pub fn get_chatbot(&self) -> ChatbotConfig {
-        let mut cfg: ChatbotConfig = serde_json::from_value(self.file.section("chatbot")).unwrap_or_default();
+        let mut cfg: ChatbotConfig = section_or_default(&self.file.load(), "chatbot");
         cfg.migrate();
         cfg
     }
@@ -1002,18 +1017,41 @@ fn check_revision(current: &Value, revision: Option<&str>) -> Result<(), ConfigS
 
 // ── File helpers ──
 
-/// 문서의 네임스페이스를 타입 T로. 없거나 형식이 틀리면 Default (틀린 경우 경고).
-fn section_or_default<T: for<'de> Deserialize<'de> + Default>(
+/// 문서의 네임스페이스를 타입 T로. 없으면 Default. 형식이 틀리면 틀린 필드만 기본값으로 두고 경고한다:
+/// 섹션 전체를 기본값으로 읽으면 다음 저장이 나머지 필드(다른 길드 설정·API 키)를 디스크에서 지운다
+fn section_or_default<T: for<'de> Deserialize<'de> + Serialize + Default>(
     doc: &serde_json::Map<String, Value>,
     key: &str,
 ) -> T {
     match doc.get(key) {
         None | Some(Value::Null) => T::default(),
         Some(v) => serde_json::from_value(v.clone()).unwrap_or_else(|e| {
-            tracing::warn!("[Config] Section '{}' is invalid, using defaults: {}", key, e);
-            T::default()
+            tracing::warn!(
+                "[Config] Section '{}' is invalid, keeping only its valid fields: {}",
+                key,
+                e
+            );
+            valid_fields(v)
         }),
     }
+}
+
+/// 기본값 위에 필드를 하나씩 얹어, 얹고도 읽히는 필드만 남긴다
+fn valid_fields<T: for<'de> Deserialize<'de> + Serialize + Default>(raw: &Value) -> T {
+    let (Some(fields), Ok(Value::Object(mut kept))) = (raw.as_object(), serde_json::to_value(T::default())) else {
+        return T::default();
+    };
+    for (name, value) in fields {
+        let previous = kept.insert(name.clone(), value.clone());
+        if serde_json::from_value::<T>(Value::Object(kept.clone())).is_err() {
+            tracing::warn!("[Config] Field '{}' is invalid, using its default", name);
+            match previous {
+                Some(p) => kept.insert(name.clone(), p),
+                None => kept.remove(name),
+            };
+        }
+    }
+    serde_json::from_value(Value::Object(kept)).unwrap_or_default()
 }
 
 /// 두 JSON Value를 머지 (base에 overlay를 덮어씌움)
@@ -1104,6 +1142,43 @@ mod tests {
         assert_eq!(crate::audit::with_origin(origin.clone(), store.ui_language()).await, "ko-KR");
         assert_eq!(crate::audit::with_origin(origin, store.pc_language()).await, "ja", "what this PC sends the relay ignores the request");
         assert_eq!(store.ui_language().await, "ja", "without a request language the GUI language stays");
+    }
+
+    /// 손으로 고친 파일·상위 판에서 내린 파일의 틀린 필드 하나 때문에 섹션 전체가 기본값이 되면, 다음 자동 저장이
+    /// 다른 길드 설정·챗봇 API 키를 지운다: 틀린 필드만 기본값으로 둔다
+    #[tokio::test]
+    async fn one_invalid_field_keeps_the_rest_of_the_section() {
+        let dir = tempfile::tempdir().unwrap();
+        ConfigFile::at(dir.path())
+            .set_section(
+                "relay",
+                serde_json::json!({
+                    "translateCommands": "false",
+                    "nodeSettings": {"g1": {"allowedInstances": ["a"]}},
+                }),
+            )
+            .unwrap();
+        ConfigFile::at(dir.path())
+            .set_section("chatbot", serde_json::json!({"apiKey": "k", "guilds": "oops"}))
+            .unwrap();
+        let store = ConfigStore::new(dir.path());
+        assert!(
+            store.get_bot_config().await.translate_commands,
+            "the invalid field falls back to its default"
+        );
+        store
+            .update_node_settings("g2", |node| {
+                node.insert("x".into(), serde_json::json!(1));
+                ((), true)
+            })
+            .await
+            .unwrap();
+        let saved = store.file.section("relay");
+        assert_eq!(
+            saved["nodeSettings"]["g1"]["allowedInstances"],
+            serde_json::json!(["a"])
+        );
+        assert_eq!(store.get_chatbot().api_key.as_deref(), Some("k"));
     }
 
     #[test]

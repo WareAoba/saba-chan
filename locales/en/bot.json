@@ -150,6 +150,9 @@
       "schedule": {
         "set": {
           "title": "Change scheduled tasks"
+        },
+        "get": {
+          "title": "View scheduled tasks"
         }
       },
       "delete": {
@@ -158,8 +161,29 @@
       "start_notice": {
         "set": {
           "title": "Start alert",
-          "description": "Post in this Discord server's alert channel when Saba-chan starts this server",
+          "description": "Post in this Discord server's alert channel when this server starts or stops without a Discord command (crashes included)",
           "name": "Start alert"
+        }
+      },
+      "full_notice": {
+        "set": {
+          "title": "Full server alert",
+          "description": "Post in this Discord server's alert channel when this server fills up or a slot opens again",
+          "name": "Full alert"
+        }
+      },
+      "get": {
+        "title": "View server settings"
+      },
+      "rename": {
+        "title": "Rename server"
+      },
+      "properties": {
+        "get": {
+          "title": "View game settings file"
+        },
+        "set": {
+          "title": "Change game settings file"
         }
       }
     },
@@ -185,6 +209,9 @@
         "tail": {
           "title": "Console tail",
           "description": "Last 20 console lines"
+        },
+        "send": {
+          "title": "Send console command"
         }
       },
       "logs": {
@@ -201,6 +228,11 @@
         "title": "Players",
         "description": "Who is online"
       },
+      "address": {
+        "title": "Server address",
+        "name": "Address",
+        "description": "Tells only you the address (IP:port) friends connect to"
+      },
       "port_check": {
         "title": "Port forwarding check",
         "description": "Server-chan checks whether this server is reachable from the internet"
@@ -208,6 +240,17 @@
       "chat": {
         "title": "Send game chat",
         "description": "Sends a Discord message to the game chat"
+      },
+      "update": {
+        "check": {
+          "title": "Check game server update"
+        },
+        "apply": {
+          "title": "Update game server"
+        }
+      },
+      "diagnose": {
+        "title": "Diagnose server"
       }
     },
     "monitor": {
@@ -226,12 +269,21 @@
       "restore": {
         "title": "Restore backup",
         "description": "Overwrites the current server files with the backup"
+      },
+      "delete": {
+        "title": "Delete backup"
       }
     },
     "module": {
       "install": {
         "title": "Install module",
         "description": "Downloads and installs it from the official catalog"
+      },
+      "list": {
+        "title": "Installed modules"
+      },
+      "available": {
+        "title": "Available modules"
       }
     },
     "extension": {
@@ -240,6 +292,15 @@
       },
       "disable": {
         "title": "Disable extension"
+      },
+      "list": {
+        "title": "Installed extensions"
+      },
+      "available": {
+        "title": "Available extensions"
+      },
+      "install": {
+        "title": "Install extension"
       }
     },
     "update": {
@@ -316,7 +377,9 @@
       "step": "Step",
       "from_snapshot": "From game auto-backup",
       "text": "Message",
-      "apiKey": "API key"
+      "apiKey": "API key",
+      "command": "Command",
+      "settings": "Settings"
     },
     "summary": {
       "server_item": "• **{{name}}** ({{module}}) · {{status}}",
@@ -352,6 +415,13 @@
       "players_max": "👥 {{online}}/{{max}} online",
       "player_item": "• {{name}}",
       "players_more": "…and {{count}} more",
+      "address": {
+        "item": "• `{{address}}`",
+        "item_named": "• {{label}} `{{address}}`",
+        "stopped": "💤 The server is off. Start it so others can connect",
+        "unknown": "❔ Server-chan does not know this PC's public address yet. Try again in a moment",
+        "no_ports": "📭 This game does not say which port to connect to"
+      },
       "port_check": {
         "open": "✅ Reachable from the internet",
         "firewall": "🧱 Blocked by the PC firewall",
@@ -397,8 +467,10 @@
     "server_running": "The server is on. Stop it first",
     "no_command_path": "The server was started outside Saba-chan, so it cannot take commands",
     "autosave_not_resumed": "The backup was made, but the server’s autosave could not be turned back on. Restart the server",
+    "backup_failed_autosave_off": "The backup failed, and the server’s autosave could not be turned back on either. Restart the server",
     "backup_save_rejected": "The server refused the save command, so no backup was made. Stop the server and back up again",
     "backup_save_unconfirmed": "The server did not report that saving finished, so no backup was made. Try again shortly or stop the server and back up",
+    "backup_server_stopped": "The server stopped while it was being backed up, so that backup was discarded. Check the server and back up again",
     "snapshot_not_found": "The game has no automatic backup",
     "snapshot_not_deletable": "Saba-chan cannot delete the game’s own automatic backups"
   },

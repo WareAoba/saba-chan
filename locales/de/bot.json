@@ -150,6 +150,9 @@
       "schedule": {
         "set": {
           "title": "Geplante Aufgaben ändern"
+        },
+        "get": {
+          "title": "Geplante Aufgaben anzeigen"
         }
       },
       "delete": {
@@ -158,8 +161,29 @@
       "start_notice": {
         "set": {
           "title": "Start-Hinweis",
-          "description": "Im Hinweiskanal dieses Discord-Servers melden, wenn Saba-chan diesen Server startet",
+          "description": "Im Hinweiskanal dieses Discord-Servers melden, wenn dieser Server ohne Discord-Befehl startet oder stoppt (auch Abstürze)",
           "name": "Start-Hinweis"
+        }
+      },
+      "full_notice": {
+        "set": {
+          "title": "Voll-Hinweis",
+          "description": "Im Hinweiskanal dieses Discord-Servers melden, wenn dieser Server voll ist oder wieder ein Platz frei wird",
+          "name": "Voll-Hinweis"
+        }
+      },
+      "get": {
+        "title": "Servereinstellungen anzeigen"
+      },
+      "rename": {
+        "title": "Server umbenennen"
+      },
+      "properties": {
+        "get": {
+          "title": "Spieleinstellungsdatei anzeigen"
+        },
+        "set": {
+          "title": "Spieleinstellungsdatei ändern"
         }
       }
     },
@@ -185,6 +209,9 @@
         "tail": {
           "title": "Konsolenende",
           "description": "Letzte 20 Konsolenzeilen"
+        },
+        "send": {
+          "title": "Konsolenbefehl senden"
         }
       },
       "logs": {
@@ -201,6 +228,11 @@
         "title": "Spieler",
         "description": "Wer gerade online ist"
       },
+      "address": {
+        "title": "Serveradresse",
+        "name": "Adresse",
+        "description": "Zeigt nur dir die Adresse (IP:Port), mit der sich Freunde verbinden"
+      },
       "port_check": {
         "title": "Portweiterleitung prüfen",
         "description": "Das Relay prüft, ob dieser Server aus dem Internet erreichbar ist"
@@ -208,6 +240,17 @@
       "chat": {
         "title": "Spielchat senden",
         "description": "Sendet eine Discord-Nachricht in den Spielchat"
+      },
+      "update": {
+        "check": {
+          "title": "Spielserver-Update prüfen"
+        },
+        "apply": {
+          "title": "Spielserver aktualisieren"
+        }
+      },
+      "diagnose": {
+        "title": "Server diagnostizieren"
       }
     },
     "monitor": {
@@ -226,12 +269,21 @@
       "restore": {
         "title": "Backup wiederherstellen",
         "description": "Überschreibt die aktuellen Serverdateien mit dem Backup"
+      },
+      "delete": {
+        "title": "Backup löschen"
       }
     },
     "module": {
       "install": {
         "title": "Modul installieren",
         "description": "Lädt es aus dem offiziellen Katalog herunter und installiert es"
+      },
+      "list": {
+        "title": "Installierte Module"
+      },
+      "available": {
+        "title": "Verfügbare Module"
       }
     },
     "extension": {
@@ -240,6 +292,15 @@
       },
       "disable": {
         "title": "Erweiterung deaktivieren"
+      },
+      "list": {
+        "title": "Installierte Erweiterungen"
+      },
+      "available": {
+        "title": "Verfügbare Erweiterungen"
+      },
+      "install": {
+        "title": "Erweiterung installieren"
       }
     },
     "update": {
@@ -316,7 +377,9 @@
       "step": "Schritt",
       "from_snapshot": "Aus Spiel-Autobackup",
       "text": "Nachricht",
-      "apiKey": "API-Schlüssel"
+      "apiKey": "API-Schlüssel",
+      "command": "Befehl",
+      "settings": "Einstellungen"
     },
     "summary": {
       "server_item": "• **{{name}}** ({{module}}) · {{status}}",
@@ -352,6 +415,13 @@
       "players_max": "👥 {{online}}/{{max}} online",
       "player_item": "• {{name}}",
       "players_more": "…und {{count}} weitere",
+      "address": {
+        "item": "• `{{address}}`",
+        "item_named": "• {{label}} `{{address}}`",
+        "stopped": "💤 Der Server ist aus. Starte ihn, damit andere sich verbinden können",
+        "unknown": "❔ Server-chan kennt die öffentliche Adresse dieses PCs noch nicht. Versuche es gleich noch einmal",
+        "no_ports": "📭 Dieses Spiel gibt keinen Verbindungsport an"
+      },
       "port_check": {
         "open": "✅ Aus dem Internet erreichbar",
         "firewall": "🧱 Von der PC-Firewall blockiert",
@@ -397,8 +467,10 @@
     "server_running": "Der Server läuft. Zuerst stoppen",
     "no_command_path": "Der Server wurde außerhalb von Saba-chan gestartet und nimmt keine Befehle an",
     "autosave_not_resumed": "Das Backup wurde erstellt, aber das Autospeichern des Servers ließ sich nicht wieder einschalten. Server neu starten",
+    "backup_failed_autosave_off": "Das Backup ist fehlgeschlagen, und das Autospeichern des Servers ließ sich auch nicht wieder einschalten. Server neu starten",
     "backup_save_rejected": "Der Server hat den Speicherbefehl abgelehnt, daher wurde kein Backup erstellt. Halte den Server an und sichere erneut",
     "backup_save_unconfirmed": "Der Server hat nicht gemeldet, dass das Speichern fertig ist, daher wurde kein Backup erstellt. Versuche es gleich noch einmal oder halte den Server vor dem Backup an",
+    "backup_server_stopped": "Der Server wurde während des Backups gestoppt, daher wurde dieses Backup verworfen. Server prüfen und erneut sichern",
     "snapshot_not_found": "Das Spiel hat kein automatisches Backup",
     "snapshot_not_deletable": "Saba-chan kann die eigenen Backups des Spiels nicht löschen"
   },

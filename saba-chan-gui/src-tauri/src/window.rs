@@ -336,11 +336,11 @@ pub fn close_all(app: &AppHandle) {
 
 /// 이동·크기 변경이 멈추면 저장 (최대화·최소화 중에는 저장하지 않는다)
 fn schedule_save_bounds(app: &AppHandle) {
-    let gen = BOUNDS_GEN.fetch_add(1, Ordering::SeqCst) + 1;
+    let bounds_gen = BOUNDS_GEN.fetch_add(1, Ordering::SeqCst) + 1;
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(std::time::Duration::from_millis(BOUNDS_DEBOUNCE_MS)).await;
-        if BOUNDS_GEN.load(Ordering::SeqCst) != gen {
+        if BOUNDS_GEN.load(Ordering::SeqCst) != bounds_gen {
             return;
         }
         let Some(win) = app.get_webview_window(MAIN) else {

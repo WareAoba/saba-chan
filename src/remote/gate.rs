@@ -96,6 +96,8 @@ pub static ROUTES: &[Route] = &[
     // 포트포워딩 확인: 릴레이가 요청한 PC의 공인 주소로만 확인한다
     allow("GET", "/api/instance/{id}/port-check"),
     allow("POST", "/api/instance/{id}/port-check"),
+    // 서버 주소: 릴레이가 본 이 PC의 공인 주소와 밖에 여는 포트 (포트포워딩 확인 결과에도 같은 주소가 있다)
+    allow("GET", "/api/instance/{id}/address"),
     // ── 인스턴스 ──
     allow("GET", "/api/instances"),
     allow("POST", "/api/instances"),
@@ -224,12 +226,15 @@ pub static ROUTES: &[Route] = &[
     allow("PUT", "/api/guilds/{guild}/allowed-instances"),
     allow("GET", "/api/guilds/{guild}/start-notice"),
     allow("PUT", "/api/instance/{id}/start-notice/{guild}"),
+    allow("GET", "/api/guilds/{guild}/full-notice"),
+    allow("PUT", "/api/instance/{id}/full-notice/{guild}"),
     allow("GET", "/api/relay/host/{host_id}/nodes"),
     allow("GET", "/api/relay/node/{guild_id}/members"),
     // 서버 관리(채널 정보·슬로우·잠금·청소·음소거): 디스코드 서버만 바꾸고 이 PC의 파일은 건드리지 않는다
     allow("GET", "/api/relay/node/{guild_id}/moderation"),
     allow("PATCH", "/api/relay/node/{guild_id}/moderation/channels/{channel_id}"),
     allow("POST", "/api/relay/node/{guild_id}/moderation/channels/{channel_id}/clear"),
+    allow("POST", "/api/relay/node/{guild_id}/moderation/channels/{channel_id}/clear/check"),
     allow("PUT", "/api/relay/node/{guild_id}/moderation/mutes/{user_id}"),
     // 디스코드 서버 설정(언어·코코낸내·노래·읽어주기·명령 모양)과 서버별 말하는 사바쨩: 릴레이 연결과 API 키는 건드리지 않는다 (사용자 결정 2026-11-03)
     allow("GET", "/api/discord/{guild_id}/settings"),
@@ -360,9 +365,17 @@ pub fn param<'a>(pattern: &str, segments: &'a [String], name: &str) -> Option<&'
     segments.get(at).map(String::as_str)
 }
 
-/// 패턴이 조각들과 맞으면 리터럴이 맞은 자리 (앞쪽 리터럴이 클수록 앞선다)
+/// 패턴이 조각들과 맞으면 리터럴이 맞은 자리 (앞쪽 리터럴이 클수록 앞선다).
+/// 끝의 `{*name}`은 라우터처럼 남은 조각 하나 이상과 맞는다
 fn match_score(pattern: &str, segments: &[&str]) -> Option<Vec<bool>> {
-    let parts: Vec<&str> = pattern.trim_start_matches('/').split('/').collect();
+    let mut parts: Vec<&str> = pattern.trim_start_matches('/').split('/').collect();
+    let segments = match parts.last() {
+        Some(p) if p.starts_with("{*") && segments.len() >= parts.len() => {
+            parts.pop();
+            &segments[..parts.len()]
+        }
+        _ => segments,
+    };
     if parts.len() != segments.len() {
         return None;
     }
@@ -475,8 +488,12 @@ pub fn checks_fields(method: &str, pattern: &str) -> bool {
 
 /// 허용된 라우트라도 원격에서 바꾸면 안 되는 본문 키. `file_fields`는 그 인스턴스 모듈의 PC 전용 설정 키(비밀값·경로)다
 pub fn blocked_fields(method: &str, pattern: &str, body: Option<&Value>, file_fields: &[String]) -> Vec<String> {
-    let (Some(rule), Some(body)) = (field_rule(method, pattern), body.and_then(Value::as_object)) else {
+    let (Some(rule), Some(body)) = (field_rule(method, pattern), body) else {
         return Vec::new();
+    };
+    // 칸을 가려 보는 라우트는 객체 본문만 받는다: 다른 모양은 칸을 볼 수 없다
+    let Some(body) = body.as_object() else {
+        return vec!["(body)".to_string()];
     };
     let mut blocked = rule(body, file_fields);
     blocked.sort();
@@ -613,6 +630,7 @@ mod tests {
         assert!(decide("GET", "/api/relay/node/1/moderation").is_ok());
         assert!(decide("PATCH", "/api/relay/node/1/moderation/channels/2").is_ok());
         assert!(decide("POST", "/api/relay/node/1/moderation/channels/2/clear").is_ok());
+        assert!(decide("POST", "/api/relay/node/1/moderation/channels/2/clear/check").is_ok());
         assert!(decide("PUT", "/api/relay/node/1/moderation/mutes/3").is_ok());
     }
 
@@ -632,6 +650,16 @@ mod tests {
             blocked_fields("PUT", "/api/chatbot", Some(&json!({ "apiKey": "k", "settings": {}, "guilds": {} })), &[]),
             ["guilds", "settings"]
         );
+    }
+
+    #[test]
+    fn field_checked_routes_take_only_object_bodies() {
+        // 칸을 가려 보는 라우트는 객체 본문만 받는다 (배열 같은 본문은 칸 검사를 거치지 않고 구조체로 풀릴 수 있다)
+        for (method, path) in [("PUT", "/api/chatbot"), ("PATCH", "/api/instance/{id}"), ("PUT", "/api/instance/{id}/properties")] {
+            for body in [json!([{ "model": "changed" }]), json!("x"), json!(1), json!(null)] {
+                assert_eq!(blocked_fields(method, path, Some(&body), &[]), ["(body)"], "{method} {path} {body}");
+            }
+        }
     }
 
     #[test]

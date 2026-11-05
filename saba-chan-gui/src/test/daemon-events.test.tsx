@@ -1,0 +1,185 @@
+import { act, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { ActivityBar } from '../components/shell/ActivityBar';
+import { DaemonEvents } from '../components/shell/DaemonEvents';
+import i18n from '../i18n';
+import { eventToast, normalizeEvent, subscribeDaemonEvents } from '../utils/daemonEvents';
+
+const t = i18n.getFixedT('en', 'gui');
+const flush = () => act(async () => {});
+const discordStop = {
+    at: 1700000000,
+    source: 'discord',
+    userName: 'Kimchi',
+    action: 'stop',
+    instanceId: 'srv-1',
+    instance: 'Survival',
+    ok: true,
+    status: 200,
+};
+
+/** onDaemonEvent 흉내: 넘긴 콜백을 잡아 두고 emit으로 부른다 */
+function fakeStream() {
+    const subs = new Set<(ev: unknown) => void>();
+    window.api.onDaemonEvent = vi.fn((cb) => {
+        subs.add(cb);
+        return () => subs.delete(cb);
+    }) as never;
+    return {
+        emit: (ev: unknown) =>
+            act(async () => {
+                for (const cb of subs) cb(ev);
+            }),
+        subs,
+    };
+}
+
+describe('데몬 이벤트 스트림', () => {
+    afterEach(() => {
+        delete (window.api as Partial<typeof window.api>).onDaemonEvent;
+        delete (window.api as Partial<typeof window.api>).auditList;
+        window.showToast = undefined;
+        vi.useRealTimers();
+    });
+
+    it('채널이 없으면 구독하지 않고, 문자열 data도 읽는다', () => {
+        (window.api as Partial<typeof window.api>).onDaemonEvent = undefined;
+        const off = subscribeDaemonEvents(vi.fn());
+        expect(typeof off).toBe('function');
+        expect(normalizeEvent({ id: 3, event: 'backup.done', data: '{"ok":true}' })).toEqual({
+            id: 3,
+            type: 'backup.done',
+            data: { ok: true },
+        });
+        expect(normalizeEvent({ data: {} })).toBeNull();
+    });
+
+    it('디스코드에서 한 일·크래시·자동 백업만 토스트로 알린다', () => {
+        expect(eventToast({ type: 'action.run', data: discordStop }, t)?.message).toBe(
+            'Run from Discord: Kimchi · Survival · Stop',
+        );
+        expect(eventToast({ type: 'action.run', data: { ...discordStop, source: 'gui' } }, t)).toBeNull();
+        expect(
+            eventToast({ type: 'instance.exit', data: { instance: 'Survival', kind: 'crash', restartInSecs: 5 } }, t)
+                ?.message,
+        ).toBe('Survival stopped (Crash). Restarting in 5s');
+        expect(eventToast({ type: 'instance.exit', data: { instance: 'Survival', kind: 'user_stop' } }, t)).toBeNull();
+        const nameOf = () => 'Survival';
+        expect(eventToast({ type: 'backup.done', data: { kind: 'manual', ok: true } }, t, nameOf)).toBeNull();
+        expect(eventToast({ type: 'backup.done', data: { kind: 'scheduled', ok: true } }, t, nameOf)?.message).toBe(
+            'Backed up Survival (Scheduled).',
+        );
+        expect(
+            eventToast({ type: 'backup.done', data: { kind: 'scheduled', ok: false, error: 'disk full' } }, t, nameOf)
+                ?.type,
+        ).toBe('error');
+        expect(
+            eventToast({ type: 'schedule.warn', data: { instance: 'Survival', action: 'restart', minutesLeft: 5 } }, t)
+                ?.message,
+        ).toBe('Survival will restart as scheduled in 5 min.');
+        expect(eventToast({ type: 'mystery', data: {} }, t)).toBeNull();
+    });
+
+    it('켜고 끈 출처를 문구에 싣고, 사바쨩 밖에서 켠 것만 경고로 알린다', () => {
+        const started = (data: Record<string, unknown>) => eventToast({ type: 'instance.started', data: { instance: 'Survival', ...data } }, t);
+        const stopped = (data: Record<string, unknown>) => eventToast({ type: 'instance.stopped', data: { instance: 'Survival', ...data } }, t);
+        // 앱에서 한 일은 그 자리에서, 디스코드·말하는 사바쨩에서 한 일은 action.run이 이미 알린다
+        for (const source of ['gui', 'discord', 'chatbot']) {
+            expect(started({ source, unexpected: false })).toBeNull();
+            expect(stopped({ source, kind: 'user_stop' })).toBeNull();
+        }
+        const table = [
+            ['cli', 'CLI'],
+            ['web', 'Saba-chan web'],
+            ['remote', 'Remote PC'],
+            ['schedule', 'Schedule'],
+            ['restart', 'Auto restart'],
+            ['daemon', 'Daemon'],
+        ];
+        for (const [source, label] of table) {
+            const on = started({ source, unexpected: false });
+            expect(on).toMatchObject({ message: `Survival started (${label}).`, type: 'info' });
+            expect(stopped({ source, kind: 'user_stop' })).toMatchObject({
+                message: `Survival stopped (${label}).`,
+                type: 'info',
+            });
+        }
+        expect(started({ source: 'remote', userName: 'Home PC', unexpected: false })?.message).toBe(
+            'Survival started (Remote PC · Home PC).',
+        );
+        expect(stopped({ source: 'game', kind: 'in_game_stop' })).toMatchObject({
+            message: 'Survival was stopped from inside the game.',
+            type: 'info',
+        });
+        expect(started({ source: 'external', unexpected: true })).toMatchObject({
+            message: 'Survival was started outside Saba-chan. Saba-chan did not start this process.',
+            type: 'warning',
+        });
+    });
+
+    it('토스트를 띄우고, 서버가 바뀌는 이벤트는 한 번만 목록을 다시 읽는다', async () => {
+        vi.useFakeTimers();
+        window.showToast = vi.fn();
+        const stream = fakeStream();
+        const refetch = vi.fn();
+        const { unmount } = render(<DaemonEvents onServersChanged={refetch} />);
+        await stream.emit({ id: 1, type: 'action.run', data: discordStop });
+        await stream.emit({ id: 2, type: 'instance.exit', data: { instance: 'Survival', kind: 'user_stop' } });
+        await act(async () => vi.advanceTimersByTime(400));
+        expect(refetch).toHaveBeenCalledTimes(1);
+        expect(window.showToast).toHaveBeenCalledTimes(1);
+        expect(window.showToast).toHaveBeenCalledWith('Run from Discord: Kimchi · Survival · Stop', 'info', 5000, {
+            isNotice: true,
+            source: 'saba-chan',
+        });
+        window.__sabaNotice = { addNotice: vi.fn() } as unknown as typeof window.__sabaNotice;
+        await stream.emit({ id: 3, type: 'update.available', data: { components: [{ name: 'saba-core' }, 'gui'] } });
+        expect(window.__sabaNotice?.addNotice).toHaveBeenCalledWith(
+            expect.objectContaining({ message: '📦 2 update(s) found: saba-core, gui' }),
+        );
+        delete window.__sabaNotice;
+        unmount();
+        expect(stream.subs.size).toBe(0);
+    });
+
+    it('켠 서버의 모듈·게임 서버에 새 버전이 있으면 알림을 남긴다 (모듈은 업데이트 화면으로)', async () => {
+        const stream = fakeStream();
+        window.__sabaNotice = { addNotice: vi.fn() } as unknown as typeof window.__sabaNotice;
+        const { unmount } = render(<DaemonEvents onServersChanged={vi.fn()} />);
+        await stream.emit({
+            id: 1,
+            type: 'instance.update_notice',
+            data: { instanceId: 'i', instance: 'Pal', kind: 'module', module: 'palworld', latest: '1.1.0' },
+        });
+        expect(window.__sabaNotice?.addNotice).toHaveBeenLastCalledWith(
+            expect.objectContaining({
+                message: '🔔 Pal: a new version 1.1.0 of the palworld module is out.',
+                action: 'openUpdateModal',
+            }),
+        );
+        await stream.emit({
+            id: 2,
+            type: 'instance.update_notice',
+            data: { instanceId: 'i', instance: 'Pal', kind: 'server' },
+        });
+        expect(window.__sabaNotice?.addNotice).toHaveBeenLastCalledWith(
+            expect.objectContaining({
+                message: "🔔 Pal: a new game server version is out. If players can't join, update the server.",
+            }),
+        );
+        delete window.__sabaNotice;
+        unmount();
+    });
+
+    it('활동 줄은 action.run을 받으면 폴링을 기다리지 않고 바뀐다', async () => {
+        const stream = fakeStream();
+        window.api.auditList = vi.fn().mockResolvedValue({ entries: [] }) as never;
+        render(<ActivityBar />);
+        await flush();
+        // 콘솔을 펼칠 수 있으면 평소엔 안내 문구를 보인다
+        expect(screen.getByText('Click to view the daemon console log')).toBeInTheDocument();
+        await stream.emit({ id: 1, type: 'action.run', data: { ...discordStop, at: Math.floor(Date.now() / 1000) } });
+        expect(screen.getByText('Discord · Kimchi · Survival · Stop')).toBeInTheDocument();
+        expect(window.api.auditList).toHaveBeenCalledTimes(1);
+    });
+});

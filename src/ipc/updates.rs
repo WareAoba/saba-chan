@@ -1403,7 +1403,8 @@ mod tests {
         let fake = staging.join("fake-updater.sh");
         std::fs::write(&fake, "#!/bin/sh\nsleep 5\n").unwrap();
         std::fs::set_permissions(&fake, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
-        std::env::set_var("SABA_UPDATER_PATH", &fake);
+        // edition 2024: 환경 변수 쓰기는 unsafe다. 테스트 준비에서만 쓴다
+        unsafe { std::env::set_var("SABA_UPDATER_PATH", &fake) };
 
         let state = UpdateState::new();
         state.manager.write().await.load_pending_manifest().unwrap();

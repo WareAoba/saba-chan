@@ -140,7 +140,8 @@ entry = "lifecycle.py"
 /// 각 테스트마다 고유한 임시 인스턴스 디렉토리를 사용하여 병렬 실행 시 격리를 보장한다.
 /// 고른 포트를 그사이 다른 테스트의 데몬이 잡으면 그 데몬에 붙지 않고 다른 포트로 다시 띄운다
 async fn boot_ipc() -> (String, Arc<RwLock<Supervisor>>, tokio::task::JoinHandle<()>) {
-    std::env::set_var("SABA_AUTH_DISABLED", "1");
+    // edition 2024: 환경 변수 쓰기는 unsafe다. 테스트 준비에서만 쓴다
+    unsafe { std::env::set_var("SABA_AUTH_DISABLED", "1") };
     ensure_test_module();
 
     // 테스트별 고유 임시 인스턴스 디렉토리 (병렬 격리). 서버 작업이 끝나면(abort) 함께 지운다
@@ -159,7 +160,7 @@ async fn boot_ipc() -> (String, Arc<RwLock<Supervisor>>, tokio::task::JoinHandle
         sup.initialize().await.expect("supervisor init failed");
     }
 
-    let client = reqwest::Client::new();
+    let client = saba_chan_updater_lib::tls::http_client_builder().build().unwrap();
     for attempt in 1..=5 {
         let listen_addr = format!("127.0.0.1:{}", pick_free_port());
         let base_url = format!("http://{}", listen_addr);
@@ -373,7 +374,7 @@ async fn test_monitoring_loop_is_stable_under_idle() {
 #[tokio::test]
 async fn test_ipc_instance_full_lifecycle() {
     let (base_url, _sup, server_task) = boot_ipc().await;
-    let client = reqwest::Client::new();
+    let client = saba_chan_updater_lib::tls::http_client_builder().build().unwrap();
 
     // ── 1) 모듈 목록 조회 — 응답 스키마 검증
     let modules_resp = client
@@ -469,7 +470,7 @@ async fn test_ipc_instance_full_lifecycle() {
 #[tokio::test]
 async fn test_ipc_error_responses_have_consistent_schema() {
     let (base_url, _sup, server_task) = boot_ipc().await;
-    let client = reqwest::Client::new();
+    let client = saba_chan_updater_lib::tls::http_client_builder().build().unwrap();
 
     // 존재하지 않는 인스턴스 → 404 + error 필드
     let r1 = client
@@ -507,7 +508,7 @@ async fn test_ipc_error_responses_have_consistent_schema() {
 #[tokio::test]
 async fn test_ipc_module_metadata_contains_required_fields() {
     let (base_url, _sup, server_task) = boot_ipc().await;
-    let client = reqwest::Client::new();
+    let client = saba_chan_updater_lib::tls::http_client_builder().build().unwrap();
 
     let resp = client
         .get(format!("{}/api/modules", base_url))
@@ -558,7 +559,7 @@ async fn test_ipc_module_metadata_contains_required_fields() {
 #[tokio::test]
 async fn test_ipc_multiple_instances_are_independent() {
     let (base_url, _sup, server_task) = boot_ipc().await;
-    let client = reqwest::Client::new();
+    let client = saba_chan_updater_lib::tls::http_client_builder().build().unwrap();
 
     let modules: Value = client
         .get(format!("{}/api/modules", base_url))
@@ -642,7 +643,7 @@ async fn test_ipc_multiple_instances_are_independent() {
 #[tokio::test]
 async fn test_ipc_create_instance_saves_extension_data() {
     let (base_url, _sup, server_task) = boot_ipc().await;
-    let client = reqwest::Client::new();
+    let client = saba_chan_updater_lib::tls::http_client_builder().build().unwrap();
     let modules: Value = client.get(format!("{}/api/modules", base_url)).send().await.unwrap().json().await.unwrap();
     let module_name = modules["modules"][0]["name"].as_str().unwrap();
 
@@ -681,7 +682,7 @@ async fn test_ipc_create_instance_saves_extension_data() {
 #[tokio::test]
 async fn test_check_update_not_found() {
     let (base_url, _sup, server_task) = boot_ipc().await;
-    let client = reqwest::Client::new();
+    let client = saba_chan_updater_lib::tls::http_client_builder().build().unwrap();
     wait_for_ipc_ready(&base_url, &client).await;
 
     let resp = client
@@ -700,7 +701,7 @@ async fn test_check_update_not_found() {
 #[tokio::test]
 async fn test_check_update_no_extension_data() {
     let (base_url, _sup, server_task) = boot_ipc().await;
-    let client = reqwest::Client::new();
+    let client = saba_chan_updater_lib::tls::http_client_builder().build().unwrap();
     wait_for_ipc_ready(&base_url, &client).await;
 
     // 기존 인스턴스 목록에서 ext_data 없는 인스턴스를 찾거나,

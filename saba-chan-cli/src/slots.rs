@@ -9,7 +9,7 @@
 use serde_json::Value;
 
 /// 서버 하나의 데몬이 판정한 slot 항목들
-fn server_items<'a>(server: &'a Value, slot: &str) -> impl Iterator<Item = &'a Value> + 'a {
+fn server_items<'a>(server: &'a Value, slot: &str) -> impl Iterator<Item = &'a Value> + use<'a> {
     server.get("slots").and_then(|s| s.get(slot)).and_then(Value::as_array).into_iter().flatten()
 }
 

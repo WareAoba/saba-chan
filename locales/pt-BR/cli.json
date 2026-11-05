@@ -164,6 +164,15 @@
     "notice_is_off": "{{server}}: alerta de início desligado",
     "notice_on_saved": "O canal de alertas de {{guild}} será avisado quando {{server}} iniciar.",
     "notice_off_saved": "{{guild}} não será mais avisado quando {{server}} iniciar.",
+    "full_notice_none": "Nenhum servidor tem o aviso de servidor cheio ligado ainda.",
+    "full_notice_is_on": "{{server}}: aviso de servidor cheio ligado",
+    "full_notice_is_off": "{{server}}: aviso de servidor cheio desligado",
+    "full_notice_on_saved": "O canal de alertas de {{guild}} vai saber quando {{server}} lotar ou abrir uma vaga.",
+    "full_notice_off_saved": "{{guild}} não vai mais receber avisos de {{server}} cheio.",
+    "backup_notice_show": "DM de resultados de backup: {{mode}}",
+    "backup_notice_set": "DM de resultados de backup alterada: {{mode}}",
+    "backup_notice_all": "sucessos e falhas",
+    "backup_notice_failures": "só falhas",
     "confirm_direct": "Pedidos ao bot",
     "confirm_chatbot": "Saba-chan falante",
     "confirm_all": "Todos os comandos",
@@ -203,7 +212,7 @@
     "sleep_blocks_none": "None",
     "bedtime": "Good kid",
     "bedtime_format": "Write --bedtime as fall-asleep time-wake-up time, like 01:00-08:00.",
-    "big_emoji": "Emojis grandes"
+    "big_emoji": "Ampliação de emojis"
   },
   "col": {
     "players": "Jogadores",
@@ -417,8 +426,10 @@
       "backup_busy": "Já há um backup ou restauração deste servidor em andamento. Tente de novo quando terminar.",
       "backup_file_locked": "O servidor está usando um arquivo ({{file}}). Desligue o servidor e tente de novo: saba-chan-cli stop <nome>",
       "autosave_not_resumed": "O backup foi feito, mas não foi possível religar o salvamento automático do servidor. Reinicie o servidor: saba-chan-cli restart <name>",
+      "backup_failed_autosave_off": "O backup falhou e também não foi possível religar o salvamento automático do servidor. Reinicie o servidor: saba-chan-cli restart <name>",
       "backup_save_rejected": "O servidor recusou o comando de salvar, então nenhum backup foi feito. Pare o servidor e faça o backup de novo: saba-chan-cli stop <name>",
       "backup_save_unconfirmed": "O servidor não avisou que terminou de salvar, então nenhum backup foi feito. Tente de novo em instantes ou pare o servidor antes do backup: saba-chan-cli stop <name>",
+      "backup_server_stopped": "O servidor parou durante o backup, então esse backup foi descartado. Verifique o servidor e faça o backup de novo: saba-chan-cli backup <nome>",
       "snapshot_not_found": "O jogo não tem backup automático.",
       "invalid_relay_url": "Só são permitidos endereços de relay https:// (http apenas para localhost, 127.0.0.1 ou [::1] ao testar neste PC).",
       "module_busy": "Este módulo já está sendo instalado ou removido. Tente de novo quando terminar.",
@@ -820,6 +831,7 @@
       "config.paths": "Onde o Saba-chan guarda dados, módulos e extensões, e as pastas padrão",
       "config.move": "Mover módulos ou extensões para outra pasta. Os arquivos instalados são movidos; os servidores devem estar parados",
       "server.players": "Quem está online",
+      "server.address": "O endereço (IP:porta) que os amigos usam para entrar",
       "server.port-check": "Verifica se os amigos conseguem entrar neste servidor pela internet (redirecionamento de portas)",
       "server.rcon": "Enviar uma linha do jeito que o servidor recebe comandos (console, senão RCON) e ver a resposta",
       "server.log": "Log salvo das execuções anteriores (o console guarda só a atual)",
@@ -838,10 +850,11 @@
       "remote.forget": "Esquecer um daemon remoto (conecte de novo com `remote connect`)",
       "config.autostart": "O que inicia quando você entra neste PC: off, daemon (só o daemon e a bandeja) ou full (com a janela da GUI). Sem modo mostra o valor atual",
       "config.browse": "Pastas e arquivos no PC do daemon (com --daemon, o PC remoto). Sem caminho, unidades ou /",
-      "bot.notice": "Avisar no canal de alertas do servidor do Discord quando a Saba-chan inicia um servidor (desligado por padrão). Sem servidor: ver. Servidor com `--on`/`--off`: mudar",
+      "bot.notice": "Avisar no canal de alertas do servidor do Discord quando um servidor liga ou desliga sem um comando do Discord (desligado por padrão). `--full`: quando lota ou abre uma vaga. Sem servidor: ver. Com servidor e `--on`/`--off`: mudar",
+      "bot.backup-notice": "Enviar por DM todos os resultados de backup (--all) ou só as falhas (--failures). Sem opções: ver",
       "bot.confirm": "Quando o bot pergunta com um botão do Discord antes de executar (all, caution, danger, none). Sem opções: mostrar",
       "bot.tts": "Reading Saba-chan voice of a Discord server (volume, speed, pitch). No options: show",
-      "bot.big-emoji": "Emojis grandes (um emoji personalizado sozinho aparece grande) em um servidor do Discord. Sem opções: mostrar"
+      "bot.big-emoji": "Ampliação de emojis (um emoji personalizado sozinho aparece grande) em um servidor do Discord. Sem opções: mostrar"
     },
     "arg": {
       "module.maker.game": "Jogo para o primeiro pedido",
@@ -933,8 +946,11 @@
       "move_folder": "Mover a pasta --from para a pasta do saba-chan em vez de vinculá-la no lugar (somente na mesma unidade)",
       "config.browse.path": "Caminho completo da pasta",
       "config.browse.files": "Mostrar também arquivos com estas extensões (separadas por vírgula, * para todos)",
-      "bot.notice.on": "Ligar o alerta de início",
-      "bot.notice.off": "Desligar o alerta de início",
+      "bot.notice.on": "Ligar o alerta",
+      "bot.notice.off": "Desligar o alerta",
+      "bot.notice.full": "O alerta de servidor cheio em vez do de início/parada",
+      "bot.backup-notice.all": "DM de sucessos e falhas",
+      "bot.backup-notice.failures": "DM só de falhas",
       "bot.confirm.direct": "Pedidos ao bot — Comandos com prefixo e comandos de barra.",
       "bot.confirm.chatbot": "Saba-chan falante — Tarefas de administração escolhidas pela Saba-chan falante e pedidos que misturam várias pessoas sempre perguntam, seja qual for este ajuste.",
       "game_version": "Versão do servidor a instalar (jogos que baixam o servidor; padrão: a mais recente)",
@@ -947,8 +963,8 @@
       "bot.tts.volume": "Volume in percent (10-150)",
       "bot.tts.speed": "Speaking speed (0.8-1.5, e.g. 1.2)",
       "bot.tts.pitch": "Pitch in semitones (-6 to 6)",
-      "bot.big-emoji.on": "Ativar emojis grandes",
-      "bot.big-emoji.off": "Desativar emojis grandes",
+      "bot.big-emoji.on": "Ativar a ampliação de emojis",
+      "bot.big-emoji.off": "Desativar a ampliação de emojis",
       "bot.tts.voice_chat_only": "Read your messages only in the chat of the voice channel you are in (on|off, game chat channel excepted)",
       "bot.tts.keep_read": "Keep read messages instead of deleting them (on|off)",
       "bot.tts.auto_channels": "Voice channel IDs to always read (comma-separated, up to 10): with 2+ people inside, the bot joins and reads its chat",
@@ -1338,7 +1354,10 @@
     "kept_instances": "os servidores são mantidos e as configurações removidas",
     "kept_nothing": "as configurações e os servidores também são removidos",
     "done": "O Saba-chan foi removido; {{kept}}.",
-    "left": "O Saba-chan foi removido, mas não foi possível apagar estes itens. Feche os programas que os usam e apague-os você mesmo:\n{{paths}}"
+    "left": "O Saba-chan foi removido, mas não foi possível apagar estes itens. Feche os programas que os usam e apague-os você mesmo:\n{{paths}}",
+    "servers_unlisted": "Não foi possível obter a lista de servidores em execução, então eles foram forçados a parar ({{detail}}).",
+    "server_force_stopped": "O servidor {{server}} não fechou corretamente e foi forçado a parar ({{detail}}). O que mudou desde o último salvamento pode ter se perdido.",
+    "daemon_unanswered": "O daemon não respondeu, então os servidores em execução foram forçados a parar. O que mudou desde o último salvamento pode ter se perdido."
   },
   "update_required": {
     "title": "Atualização necessária",
@@ -1462,6 +1481,12 @@
     "this_pc": "Este PC",
     "no_servers": "Sem servidores",
     "via_relay": "Pelo relay"
+  },
+  "address": {
+    "title": "Endereço de {{server}}",
+    "unknown": "O Server-chan não sabe o endereço público deste PC. Verifique se ele está conectado ao Server-chan",
+    "no_ports": "Este jogo não informa a porta de conexão",
+    "stopped": "O servidor está desligado. Ligue-o para que outros possam entrar"
   },
   "port_check": {
     "title": "Verificação de portas de {{server}}",

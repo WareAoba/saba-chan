@@ -107,7 +107,8 @@ fn manager(relay_url: &str, modules_dir: &std::path::Path) -> UpdateManager {
 #[tokio::test]
 async fn relay_update_cycle_verifies_signature_and_hashes() {
     let (private, public) = signature::generate_key_pair().unwrap();
-    std::env::set_var(signature::TEST_PUBKEY_ENV, &public);
+    // edition 2024: 환경 변수 쓰기는 unsafe다. 테스트 준비에서만 쓴다
+    unsafe { std::env::set_var(signature::TEST_PUBKEY_ENV, &public) };
     let base = start_mock(&private, signature::TEST_KEY_ID).await;
     let modules = tempfile::tempdir().unwrap();
     // 업데이트 대상은 설치된 모듈뿐이다

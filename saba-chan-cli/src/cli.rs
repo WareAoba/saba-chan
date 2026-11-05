@@ -532,6 +532,8 @@ pub enum ServerCmd {
     Commands { server: Option<String> },
     /// Who is online
     Players { server: Option<String> },
+    /// The address (IP:port) friends connect to
+    Address { server: Option<String> },
     /// Check from the internet whether friends can reach this server (port forwarding)
     #[command(name = "port-check", visible_alias = "ports")]
     PortCheck { server: Option<String> },
@@ -1112,13 +1114,13 @@ pub enum BotCmd {
         #[arg(long)]
         no_bedtime: bool,
     },
-    /// Big emoji (a lone custom emoji is shown large) on a Discord server. No options: show
+    /// Emoji upscale (a lone custom emoji is shown large) on a Discord server. No options: show
     BigEmoji {
         guild: Option<String>,
-        /// Turn big emoji on
+        /// Turn emoji upscale on
         #[arg(long, conflicts_with = "off")]
         on: bool,
-        /// Turn big emoji off
+        /// Turn emoji upscale off
         #[arg(long)]
         off: bool,
     },
@@ -1200,18 +1202,28 @@ pub enum BotCmd {
         #[arg(long)]
         all: bool,
     },
-    /// Post in the Discord server's alert channel when Saba-chan starts a server (off by default).
-    /// No server: show. Server with `--on`/`--off`: change
+    /// Post in the Discord server's alert channel when a server starts or stops without a Saba-chan command (off by default).
+    /// With `--full`: when a server fills up or a slot opens again. No server: show. Server with `--on`/`--off`: change
     Notice {
         guild: String,
         /// Server by name or id
         server: Option<String>,
-        /// Turn the start alert on
+        /// Turn the alert on
         #[arg(long, requires = "server", conflicts_with = "off")]
         on: bool,
-        /// Turn the start alert off
+        /// Turn the alert off
         #[arg(long, requires = "server")]
         off: bool,
+        /// The full server alert instead of the start/stop alert
+        #[arg(long)]
+        full: bool,
+    },
+    /// Backup results sent to the PC owner as a DM: all (--all) or only failures (--failures). No options: show
+    BackupNotice {
+        #[arg(long, conflicts_with = "failures")]
+        all: bool,
+        #[arg(long)]
+        failures: bool,
     },
     /// Bot settings back to their defaults (all when no key is named)
     Reset { keys: Vec<String> },

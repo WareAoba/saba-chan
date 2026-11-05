@@ -106,7 +106,8 @@ server_not_running = "The test server is off"
     fs::write(test_mod.join("lifecycle.py"), "# minimal\n")
         .expect("write test lifecycle.py");
 
-    std::env::set_var("SABA_MODULES_PATH", tmp.to_str().unwrap());
+    // edition 2024: 환경 변수 쓰기는 unsafe다. 테스트 준비에서만 쓴다
+    unsafe { std::env::set_var("SABA_MODULES_PATH", tmp.to_str().unwrap()) };
     for name in ["e2e-mock", "test-module"] {
         saba_core::sandbox::set_consent(saba_core::sandbox::Consent::Unisolated, &format!("module-{name}"), true)
             .expect("consent to the copied test module");
@@ -123,7 +124,8 @@ async fn boot_e2e_ipc() -> (
     std::path::PathBuf, // instances_dir (cleanup용)
     std::path::PathBuf, // data_dir (cleanup용 — SABA_DATA_DIR 격리)
 ) {
-    std::env::set_var("SABA_AUTH_DISABLED", "1");
+    // edition 2024: 환경 변수 쓰기는 unsafe다. 테스트 준비에서만 쓴다
+    unsafe { std::env::set_var("SABA_AUTH_DISABLED", "1") };
 
     // 테스트용 데이터 디렉토리 격리 — 실제 AppData 오염 방지.
     // SABA_DATA_DIR은 프로세스 전역이라 테스트마다 바꾸면 병렬 테스트끼리 서로의
@@ -134,7 +136,8 @@ async fn boot_e2e_ipc() -> (
             let dir = std::env::temp_dir()
                 .join(format!("saba-e2e-data-{}", std::process::id()));
             fs::create_dir_all(&dir).expect("create data dir");
-            std::env::set_var("SABA_DATA_DIR", dir.to_str().unwrap());
+            // edition 2024: 환경 변수 쓰기는 unsafe다. 테스트 준비에서만 쓴다
+            unsafe { std::env::set_var("SABA_DATA_DIR", dir.to_str().unwrap()) };
             dir
         })
         .clone();
@@ -165,7 +168,7 @@ async fn boot_e2e_ipc() -> (
         let _ = server.start().await;
     });
 
-    let client = reqwest::Client::new();
+    let client = saba_chan_updater_lib::tls::http_client_builder().build().unwrap();
     wait_for_ipc_ready(&base_url, &client).await;
 
     (base_url, supervisor, server_task, modules_dir, instances_dir, data_dir)
@@ -224,7 +227,7 @@ fn find_python() -> Option<String> {
 #[tokio::test]
 async fn e2e_module_discovery_and_metadata_schema() {
     let (base_url, _sup, task, m_dir, i_dir, d_dir) = boot_e2e_ipc().await;
-    let client = reqwest::Client::new();
+    let client = saba_chan_updater_lib::tls::http_client_builder().build().unwrap();
 
     // 모듈 목록 조회
     let resp = client
@@ -285,7 +288,7 @@ async fn e2e_module_discovery_and_metadata_schema() {
 #[tokio::test]
 async fn e2e_instance_lifecycle_with_python_module() {
     let (base_url, _sup, task, m_dir, i_dir, d_dir) = boot_e2e_ipc().await;
-    let client = reqwest::Client::new();
+    let client = saba_chan_updater_lib::tls::http_client_builder().build().unwrap();
 
     // ── 1) 인스턴스 생성
     let instance_name = format!("test-e2e-{}", pick_free_port());
@@ -400,7 +403,7 @@ async fn e2e_instance_lifecycle_with_python_module() {
 #[tokio::test]
 async fn e2e_config_roundtrip() {
     let (base_url, _sup, task, m_dir, i_dir, d_dir) = boot_e2e_ipc().await;
-    let client = reqwest::Client::new();
+    let client = saba_chan_updater_lib::tls::http_client_builder().build().unwrap();
 
     // ── GUI 설정 저장
     let gui_config = json!({
@@ -463,7 +466,7 @@ async fn e2e_config_roundtrip() {
 #[tokio::test]
 async fn e2e_launch_preview_binds_typed_args_and_saves_extra_args() {
     let (base_url, _sup, task, m_dir, i_dir, d_dir) = boot_e2e_ipc().await;
-    let client = reqwest::Client::new();
+    let client = saba_chan_updater_lib::tls::http_client_builder().build().unwrap();
     let name = format!("preview-{}", pick_free_port());
     let created: Value = client
         .post(format!("{}/api/instances", base_url))
@@ -522,7 +525,7 @@ async fn e2e_launch_preview_binds_typed_args_and_saves_extra_args() {
 #[tokio::test]
 async fn e2e_client_registration_heartbeat() {
     let (base_url, _sup, task, m_dir, i_dir, d_dir) = boot_e2e_ipc().await;
-    let client = reqwest::Client::new();
+    let client = saba_chan_updater_lib::tls::http_client_builder().build().unwrap();
 
     // ── 1) 클라이언트 등록
     let reg_resp = client
@@ -582,7 +585,7 @@ async fn e2e_client_registration_heartbeat() {
 #[tokio::test]
 async fn e2e_cross_component_simultaneous_operation() {
     let (base_url, _sup, task, m_dir, i_dir, d_dir) = boot_e2e_ipc().await;
-    let client = reqwest::Client::new();
+    let client = saba_chan_updater_lib::tls::http_client_builder().build().unwrap();
 
     // ── A) 인스턴스 생성 (모듈 사이드)
     let inst_name = format!("test-cross-{}", pick_free_port());
@@ -808,7 +811,7 @@ async fn e2e_python_lifecycle_direct_call() {
 #[tokio::test]
 async fn e2e_api_error_schema_consistency() {
     let (base_url, _sup, task, m_dir, i_dir, d_dir) = boot_e2e_ipc().await;
-    let client = reqwest::Client::new();
+    let client = saba_chan_updater_lib::tls::http_client_builder().build().unwrap();
 
     // 존재하지 않는 리소스들에 대한 에러 응답 스키마가 일관되는지 검증
 
@@ -844,7 +847,7 @@ async fn e2e_api_error_schema_consistency() {
 #[tokio::test]
 async fn event_stream_reports_who_ran_what_and_replays_after_reconnect() {
     let (base_url, _sup, task, m_dir, i_dir, d_dir) = boot_e2e_ipc().await;
-    let client = reqwest::Client::new();
+    let client = saba_chan_updater_lib::tls::http_client_builder().build().unwrap();
 
     // 다른 테스트도 같은 버스에 내므로 이 테스트의 인스턴스 id로 골라 본다
     async fn find(resp: &mut reqwest::Response, needle: &str) -> String {
@@ -900,7 +903,7 @@ async fn e2e_version_auto_detect_and_persist() {
     }
 
     let (base_url, _sup, task, m_dir, i_dir, d_dir) = boot_e2e_ipc().await;
-    let client = reqwest::Client::new();
+    let client = saba_chan_updater_lib::tls::http_client_builder().build().unwrap();
 
     // 1. 인스턴스 생성
     let create_resp = client
@@ -980,7 +983,7 @@ async fn e2e_install_server_backup_and_restore() {
     }
 
     let (base_url, _sup, task, m_dir, i_dir, d_dir) = boot_e2e_ipc().await;
-    let client = reqwest::Client::new();
+    let client = saba_chan_updater_lib::tls::http_client_builder().build().unwrap();
 
     // install_dir에 기존 server.jar 생성
     let install_dir = std::env::temp_dir().join(format!("saba-e2e-backup-{}", pick_free_port()));
@@ -1025,7 +1028,7 @@ async fn e2e_version_backfill_on_startup() {
     }
 
     let (base_url, sup, task, m_dir, i_dir, d_dir) = boot_e2e_ipc().await;
-    let client = reqwest::Client::new();
+    let client = saba_chan_updater_lib::tls::http_client_builder().build().unwrap();
 
     // 인스턴스 생성 + working_dir 세팅
     let create_resp = client
@@ -1094,7 +1097,7 @@ async fn e2e_version_backfill_on_startup() {
 #[tokio::test]
 async fn command_endpoint_validates_and_maps_module_errors() {
     let (base_url, supervisor, server_task, modules_dir, instances_dir, data_dir) = boot_e2e_ipc().await;
-    let client = reqwest::Client::new();
+    let client = saba_chan_updater_lib::tls::http_client_builder().build().unwrap();
 
     let mut inst = saba_core::instance::ServerInstance::new("cmd-test", "test-module");
     inst.id = "cmd-test-id".to_string();

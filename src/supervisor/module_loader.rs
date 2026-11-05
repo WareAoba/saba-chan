@@ -640,6 +640,8 @@ impl ModuleSettings {
 pub struct LoadedModule {
     pub metadata: ModuleMetadata,
     pub path: String,  // 압축 해제된 디렉토리 또는 원본 디렉토리 절대 경로
+    /// 찾은 원본: 모듈 폴더, 또는 modules 폴더에 놓인 ZIP 파일 (제거 API가 지우는 것)
+    pub source: String,
 }
 
 impl LoadedModule {
@@ -787,7 +789,7 @@ pub const COMMAND_RISKS: [&str; 3] = ["safe", "caution", "danger"];
 pub const PROTOCOLS: [&str; 3] = ["rcon", "rest", "stdin"];
 
 /// JSON 스키마에서도 로더와 같은 값만 받게 한다 (적합성 검사가 데몬과 어긋나지 않게)
-fn schema_version_schema(_: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
+fn schema_version_schema(_: &mut schemars::r#gen::SchemaGenerator) -> schemars::schema::Schema {
     serde_json::from_value(serde_json::json!({
         "description": "이 파일이 따르는 스키마 버전. 1, 또는 list·multiline 설정과 restart_required·visible_when 등을 쓰면 2(saba-core >=0.1.9)",
         "enum": [BASE_SCHEMA_VERSION, MODULE_SCHEMA_VERSION, null]
@@ -795,7 +797,7 @@ fn schema_version_schema(_: &mut schemars::gen::SchemaGenerator) -> schemars::sc
     .expect("static schema")
 }
 
-fn risk_schema(_: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
+fn risk_schema(_: &mut schemars::r#gen::SchemaGenerator) -> schemars::schema::Schema {
     serde_json::from_value(serde_json::json!({
         "description": "\"safe\" | \"caution\" | \"danger\" (없으면 caution)",
         "enum": [COMMAND_RISKS[0], COMMAND_RISKS[1], COMMAND_RISKS[2], null]
@@ -2119,6 +2121,7 @@ pub fn load_module_dir(module_path: &Path) -> Result<LoadedModule> {
     let module = LoadedModule {
         metadata: parse_module_toml(&content)?,
         path: module_path.to_string_lossy().to_string(),
+        source: module_path.to_string_lossy().to_string(),
     };
     module.check_loadable()?;
     Ok(module)
@@ -2257,17 +2260,23 @@ impl ModuleLoader {
 
         // ZIP 내부에서 가장 얕은 위치의 module.toml을 고른다
         // (`ends_with`로 고르면 `foo_module.toml`이나 하위 폴더 것이 먼저 잡힌다)
-        let toml_index = (0..archive.len())
+        let toml_entry = (0..archive.len())
             .filter_map(|i| {
                 let name = archive.by_index(i).ok()?.name().ok()?.into_owned();
                 let depth = name.trim_end_matches('/').matches('/').count();
-                (name.rsplit('/').next() == Some("module.toml")).then_some((depth, i))
+                (name.rsplit('/').next() == Some("module.toml")).then_some((depth, i, name))
             })
-            .min()
-            .map(|(_, i)| i);
+            .min();
         let mut toml_content = String::new();
-        if let Some(i) = toml_index {
-            archive.by_index(i)?.read_to_string(&mut toml_content)?;
+        // 고른 module.toml이 든 폴더가 모듈 폴더다 (`probe/module.toml`처럼 폴더로 감싼 ZIP)
+        let mut root = PathBuf::new();
+        if let Some((_, i, name)) = &toml_entry {
+            archive.by_index(*i)?.read_to_string(&mut toml_content)?;
+            let parent = Path::new(name).parent().unwrap_or(Path::new(""));
+            if !parent.components().all(|c| matches!(c, std::path::Component::Normal(_))) {
+                anyhow::bail!("module.toml in {} is not inside a plain folder", zip_path.display());
+            }
+            root = parent.to_path_buf();
         }
 
         if toml_content.is_empty() {
@@ -2298,11 +2307,12 @@ impl ModuleLoader {
         fs::create_dir_all(&extracted_dir)?;
         
         // temp_dir에서 extracted_dir로 복사
-        copy_dir_all(&extract_path, &extracted_dir)?;
+        copy_dir_all(&extract_path.join(&root), &extracted_dir)?;
 
         let module = LoadedModule {
             metadata,
             path: extracted_dir.to_string_lossy().to_string(),
+            source: zip_path.to_string_lossy().to_string(),
         };
         module.check_loadable()?;
         Ok(module)
@@ -3373,6 +3383,25 @@ player_leave_patterns = ['^\[\d{2}:\d{2}:\d{2}(?:\] \[[^\]]*/| )INFO\](?: \[[^\]
         assert!(!m.matches_dir(&good));
         m.metadata.dir_signatures = vec!["../*".into()];
         assert!(!m.matches_dir(&good), "patterns stay inside the folder");
+    }
+
+    /// 하위 폴더로 감싼 ZIP(`probe/module.toml`)은 고른 module.toml의 폴더를 모듈 폴더로 쓴다
+    #[test]
+    fn a_module_zip_wrapped_in_a_folder_loads() {
+        use std::io::Write;
+        let dir = tempfile::tempdir().unwrap();
+        let mut writer = zip::ZipWriter::new(std::fs::File::create(dir.path().join("probe.zip")).unwrap());
+        let options = zip::write::SimpleFileOptions::default();
+        writer.start_file("probe/module.toml", options).unwrap();
+        writer.write_all(V1.replace("\"g\"", "\"probe\"").as_bytes()).unwrap();
+        writer.start_file("probe/lifecycle.py", options).unwrap();
+        writer.write_all(b"").unwrap();
+        writer.finish().unwrap();
+        let loader = ModuleLoader::new(dir.path().to_str().unwrap());
+        let modules = loader.discover_modules().unwrap();
+        assert_eq!(modules.len(), 1, "{:?}", loader.load_errors());
+        assert!(Path::new(&modules[0].entry_path()).is_file());
+        assert_eq!(Path::new(&modules[0].source), dir.path().join("probe.zip"));
     }
 
     /// 내려받은 모듈 ZIP 안의 링크는 풀지 않고 이유를 남긴다 (폴더 밖 파일을 가리킬 수 있다)

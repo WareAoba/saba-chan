@@ -80,10 +80,12 @@ async fn result(State(s): State<Shared>, Path(id): Path<String>) -> impl IntoRes
 
 #[tokio::test]
 async fn a_reconnect_neither_drops_waiting_commands_nor_the_results_of_running_ones() {
-    std::env::set_var("SABA_AUTH_DISABLED", "1");
+    // edition 2024: 환경 변수 쓰기는 unsafe다. 테스트 준비에서만 쓴다
+    unsafe { std::env::set_var("SABA_AUTH_DISABLED", "1") };
     let data_dir = std::env::temp_dir().join(format!("saba-relay-handover-{}", std::process::id()));
     std::fs::create_dir_all(&data_dir).unwrap();
-    std::env::set_var("SABA_DATA_DIR", &data_dir);
+    // edition 2024: 환경 변수 쓰기는 unsafe다. 테스트 준비에서만 쓴다
+    unsafe { std::env::set_var("SABA_DATA_DIR", &data_dir) };
     std::fs::write(data_dir.join(".node_token"), "sbn_node1.s3cret").unwrap();
 
     let relay: Shared = Arc::default();
@@ -103,7 +105,8 @@ async fn a_reconnect_neither_drops_waiting_commands_nor_the_results_of_running_o
     std::fs::create_dir_all(modules_dir.join("slowq")).unwrap();
     std::fs::write(modules_dir.join("slowq").join("module.toml"), MODULE).unwrap();
     std::fs::write(modules_dir.join("slowq").join("lifecycle.py"), LIFECYCLE).unwrap();
-    std::env::set_var("SABA_MODULES_PATH", &modules_dir);
+    // edition 2024: 환경 변수 쓰기는 unsafe다. 테스트 준비에서만 쓴다
+    unsafe { std::env::set_var("SABA_MODULES_PATH", &modules_dir) };
     saba_core::sandbox::set_consent(saba_core::sandbox::Consent::Unisolated, "module-slowq", true).unwrap();
     let instances_dir = data_dir.join("instances");
     std::fs::create_dir_all(&instances_dir).unwrap();

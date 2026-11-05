@@ -150,6 +150,9 @@
       "schedule": {
         "set": {
           "title": "예약 작업 바꾸기"
+        },
+        "get": {
+          "title": "예약 작업 보기"
         }
       },
       "delete": {
@@ -158,8 +161,29 @@
       "start_notice": {
         "set": {
           "title": "켜짐 알림",
-          "description": "사바쨩이 이 서버를 켜면 이 디스코드 서버의 알림 채널에 알려요",
+          "description": "명령어로 조작하지 않고 이 서버가 켜지거나 꺼지면(크래시 포함) 이 디스코드 서버의 알림 채널에 알려요",
           "name": "켜짐 알림"
+        }
+      },
+      "full_notice": {
+        "set": {
+          "title": "자리 꽉 참 알림",
+          "description": "이 서버 자리가 꽉 차거나 다시 나면 이 디스코드 서버의 알림 채널에 알려요",
+          "name": "자리 꽉 참 알림"
+        }
+      },
+      "get": {
+        "title": "서버 설정 보기"
+      },
+      "rename": {
+        "title": "서버 이름 바꾸기"
+      },
+      "properties": {
+        "get": {
+          "title": "게임 설정 파일 보기"
+        },
+        "set": {
+          "title": "게임 설정 파일 바꾸기"
         }
       }
     },
@@ -185,6 +209,9 @@
         "tail": {
           "title": "콘솔 끝부분",
           "description": "콘솔 마지막 20줄"
+        },
+        "send": {
+          "title": "콘솔 명령 보내기"
         }
       },
       "logs": {
@@ -201,6 +228,11 @@
         "title": "플레이어",
         "description": "접속한 사람과 이름"
       },
+      "address": {
+        "title": "서버 주소",
+        "name": "주소",
+        "description": "친구가 접속할 주소(IP:포트)를 부른 사람에게만 알려 줍니다"
+      },
       "port_check": {
         "title": "포트포워딩 확인",
         "description": "밖에서 이 서버에 접속할 수 있는지 서버쨩이 확인합니다"
@@ -208,6 +240,17 @@
       "chat": {
         "title": "게임 채팅 보내기",
         "description": "디스코드 글을 게임 채팅으로 보냅니다"
+      },
+      "update": {
+        "check": {
+          "title": "게임 서버 업데이트 확인"
+        },
+        "apply": {
+          "title": "게임 서버 업데이트"
+        }
+      },
+      "diagnose": {
+        "title": "서버 진단"
       }
     },
     "monitor": {
@@ -226,12 +269,21 @@
       "restore": {
         "title": "백업 복원",
         "description": "지금 서버 파일을 백업으로 덮어써요"
+      },
+      "delete": {
+        "title": "백업 지우기"
       }
     },
     "module": {
       "install": {
         "title": "모듈 설치",
         "description": "공식 카탈로그에서 받아 설치해요"
+      },
+      "list": {
+        "title": "설치된 모듈"
+      },
+      "available": {
+        "title": "받을 수 있는 모듈"
       }
     },
     "extension": {
@@ -240,6 +292,15 @@
       },
       "disable": {
         "title": "익스텐션 끄기"
+      },
+      "list": {
+        "title": "설치된 익스텐션"
+      },
+      "available": {
+        "title": "받을 수 있는 익스텐션"
+      },
+      "install": {
+        "title": "익스텐션 설치"
       }
     },
     "update": {
@@ -316,7 +377,9 @@
       "step": "단계",
       "from_snapshot": "게임 자동 백업에서",
       "text": "본문",
-      "apiKey": "API 키"
+      "apiKey": "API 키",
+      "command": "명령",
+      "settings": "설정"
     },
     "summary": {
       "server_item": "• **{{name}}** ({{module}}) · {{status}}",
@@ -352,6 +415,13 @@
       "players_max": "👥 접속 {{online}}/{{max}}명",
       "player_item": "• {{name}}",
       "players_more": "…외 {{count}}명",
+      "address": {
+        "item": "• `{{address}}`",
+        "item_named": "• {{label}} `{{address}}`",
+        "stopped": "💤 서버가 꺼져 있어요. 켜야 접속할 수 있어요",
+        "unknown": "❔ 서버쨩이 이 PC의 공인 주소를 알지 못했어요. 잠시 뒤에 다시 해 주세요",
+        "no_ports": "📭 이 게임은 접속 포트를 알려 주지 않았어요"
+      },
       "port_check": {
         "open": "✅ 밖에서 접속할 수 있어요",
         "firewall": "🧱 PC 방화벽이 막고 있어요",
@@ -397,8 +467,10 @@
     "server_running": "서버가 켜져 있어요. 먼저 꺼 주세요",
     "no_command_path": "사바쨩 밖에서 켠 서버라 명령을 보낼 수 없어요",
     "autosave_not_resumed": "백업은 만들었지만 서버의 자동 저장을 다시 켜지 못했어요. 서버를 다시 시작해 주세요",
+    "backup_failed_autosave_off": "백업하지 못했고, 서버의 자동 저장도 다시 켜지 못했어요. 서버를 다시 시작해 주세요",
     "backup_save_rejected": "서버가 저장 명령을 받지 않아 백업하지 않았어요. 서버를 끈 뒤 다시 백업해 주세요",
     "backup_save_unconfirmed": "서버가 저장을 마쳤다고 알리지 않아 백업하지 않았어요. 잠시 뒤 다시 하거나 서버를 끈 뒤 백업해 주세요",
+    "backup_server_stopped": "백업하는 사이 서버가 꺼져서 그 백업은 지웠어요. 서버 상태를 확인한 뒤 다시 백업해 주세요",
     "snapshot_not_found": "게임이 만든 자동 백업이 없어요",
     "snapshot_not_deletable": "게임이 만든 자동 백업은 사바쨩에서 지울 수 없어요"
   },

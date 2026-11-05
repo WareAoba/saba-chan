@@ -948,7 +948,7 @@ mod tests {
             "[module]\nname = \"m\"\nversion = \"1\"\nentry = \"lifecycle.py\"\n[errors]\nserver_not_running = \"Server is off\"\ntimeout = \"Timed out\"\n",
         )
         .unwrap();
-        let module = crate::supervisor::module_loader::LoadedModule { metadata, path: dir.path().to_string_lossy().into() };
+        let module = crate::supervisor::module_loader::LoadedModule { metadata, path: dir.path().to_string_lossy().into(), source: dir.path().to_string_lossy().into() };
 
         let ko = module_errors(&module, "ko");
         assert_eq!(ko["server_not_running"], "서버가 꺼져 있어요");
