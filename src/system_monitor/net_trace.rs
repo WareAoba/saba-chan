@@ -249,6 +249,8 @@ pub fn access() -> Access {
 #[cfg_attr(not(windows), allow(dead_code))]
 pub(crate) enum StartError {
     Denied,
+    /// Windows 밖에서만 만든다
+    #[cfg_attr(windows, allow(dead_code))]
     Unsupported,
     Other(String),
 }
