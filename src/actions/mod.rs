@@ -237,6 +237,26 @@ pub static ACTIONS: &[Def] = &[
         guild_owner: true,
         ..def("instance.full_notice.set", Kind::Admin, "caution", LOCAL_AND_DISCORD, true, "PUT", "/api/instance/:id/full-notice/:guild")
     },
+    // 앱 화면에서 하던 일을 액션으로 (원격 MCP가 앱과 같은 표면으로 닿게). 디스코드·챗봇 표면은 넓히지 않는다
+    def("instance.get", Kind::Query, "safe", LOCAL, true, "GET", "/api/instance/:id"),
+    def("instance.schedule.get", Kind::Query, "safe", LOCAL, true, "GET", "/api/instance/:id/schedule"),
+    Def { fields: &[field("name", "string", true)], ..def("instance.rename", Kind::Admin, "caution", LOCAL, true, "POST", "/api/instance/:id/rename") },
+    def("module.list", Kind::Query, "safe", LOCAL, false, "GET", "/api/modules"),
+    def("module.available", Kind::Query, "safe", LOCAL, false, "GET", "/api/modules/manifest"),
+    def("extension.list", Kind::Query, "safe", LOCAL, false, "GET", "/api/extensions"),
+    def("extension.available", Kind::Query, "safe", LOCAL, false, "GET", "/api/extensions/manifest"),
+    // 공식 목록에서만 받는다 (주소·해시를 받지 않는다)
+    Def { fields: &[path_field("extension")], ..def("extension.install", Kind::Admin, "caution", LOCAL, false, "POST", "/api/extensions/:extension/install") },
+    // 게임 서버 업데이트 (사바쨩 앱 업데이트 `update.*`와 다르다)
+    def("server.update.check", Kind::Query, "safe", LOCAL, true, "GET", "/api/instance/:id/check-update"),
+    def("server.update.apply", Kind::Admin, "caution", LOCAL, true, "POST", "/api/instance/:id/apply-update"),
+    def("server.diagnose", Kind::Query, "safe", LOCAL, true, "POST", "/api/instance/:id/diagnose"),
+    // 콘솔 입력 한 줄 (GUI 명령 창과 같은 `POST /command`). 무엇이든 보낼 수 있어 늘 묻는다
+    Def { fields: &[field("command", "string", true)], ..def("server.console.send", Kind::Command, "danger", LOCAL, true, "POST", "/api/instance/:id/command") },
+    Def {
+        fields: &[Field { options_from: Some(OptionsFrom { action: "backup.list", list: "backups", value: "name", label: "label" }), ..path_field("name") }],
+        ..def("backup.delete", Kind::Admin, "danger", LOCAL, true, "DELETE", "/api/instance/:id/backups/:name")
+    },
     def("update.check", Kind::Query, "safe", LOCAL_AND_DISCORD, false, "POST", "/api/updates/check"),
     // 원격(디스코드)에서도 끝까지 가도록 받기·적용·업데이터 띄우기를 한 번에 한다 (`/api/updates/install`)
     Def { discord_level: Some(crate::chat::permissions::OWNER), ..def("update.apply", Kind::Admin, "danger", LOCAL_AND_DISCORD, false, "POST", "/api/updates/install") },

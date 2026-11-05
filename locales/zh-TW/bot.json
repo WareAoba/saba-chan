@@ -150,6 +150,9 @@
       "schedule": {
         "set": {
           "title": "變更排程工作"
+        },
+        "get": {
+          "title": "查看排程工作"
         }
       },
       "delete": {
@@ -168,6 +171,12 @@
           "description": "此伺服器滿員或重新有空位時，在此 Discord 伺服器的通知頻道提醒",
           "name": "滿員提醒"
         }
+      },
+      "get": {
+        "title": "查看伺服器設定"
+      },
+      "rename": {
+        "title": "重新命名伺服器"
       }
     },
     "server": {
@@ -192,6 +201,9 @@
         "tail": {
           "title": "主控台末尾",
           "description": "主控台最後 20 行"
+        },
+        "send": {
+          "title": "傳送主控台指令"
         }
       },
       "logs": {
@@ -215,6 +227,17 @@
       "chat": {
         "title": "傳送遊戲聊天",
         "description": "把 Discord 訊息傳送到遊戲聊天"
+      },
+      "update": {
+        "check": {
+          "title": "檢查遊戲伺服器更新"
+        },
+        "apply": {
+          "title": "更新遊戲伺服器"
+        }
+      },
+      "diagnose": {
+        "title": "診斷伺服器"
       }
     },
     "monitor": {
@@ -233,12 +256,21 @@
       "restore": {
         "title": "還原備份",
         "description": "以備份覆寫目前的伺服器檔案"
+      },
+      "delete": {
+        "title": "刪除備份"
       }
     },
     "module": {
       "install": {
         "title": "安裝模組",
         "description": "從官方目錄下載並安裝"
+      },
+      "list": {
+        "title": "已安裝的模組"
+      },
+      "available": {
+        "title": "可用的模組"
       }
     },
     "extension": {
@@ -247,6 +279,15 @@
       },
       "disable": {
         "title": "停用擴充功能"
+      },
+      "list": {
+        "title": "已安裝的擴充功能"
+      },
+      "available": {
+        "title": "可用的擴充功能"
+      },
+      "install": {
+        "title": "安裝擴充功能"
       }
     },
     "update": {
@@ -323,7 +364,8 @@
       "step": "步驟",
       "from_snapshot": "來自遊戲自動備份",
       "text": "內容",
-      "apiKey": "API 金鑰"
+      "apiKey": "API 金鑰",
+      "command": "指令"
     },
     "summary": {
       "server_item": "• **{{name}}** ({{module}}) · {{status}}",

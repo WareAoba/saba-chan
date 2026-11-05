@@ -150,6 +150,9 @@
       "schedule": {
         "set": {
           "title": "Change scheduled tasks"
+        },
+        "get": {
+          "title": "View scheduled tasks"
         }
       },
       "delete": {
@@ -168,6 +171,12 @@
           "description": "Post in this Discord server's alert channel when this server fills up or a slot opens again",
           "name": "Full alert"
         }
+      },
+      "get": {
+        "title": "View server settings"
+      },
+      "rename": {
+        "title": "Rename server"
       }
     },
     "server": {
@@ -192,6 +201,9 @@
         "tail": {
           "title": "Console tail",
           "description": "Last 20 console lines"
+        },
+        "send": {
+          "title": "Send console command"
         }
       },
       "logs": {
@@ -215,6 +227,17 @@
       "chat": {
         "title": "Send game chat",
         "description": "Sends a Discord message to the game chat"
+      },
+      "update": {
+        "check": {
+          "title": "Check game server update"
+        },
+        "apply": {
+          "title": "Update game server"
+        }
+      },
+      "diagnose": {
+        "title": "Diagnose server"
       }
     },
     "monitor": {
@@ -233,12 +256,21 @@
       "restore": {
         "title": "Restore backup",
         "description": "Overwrites the current server files with the backup"
+      },
+      "delete": {
+        "title": "Delete backup"
       }
     },
     "module": {
       "install": {
         "title": "Install module",
         "description": "Downloads and installs it from the official catalog"
+      },
+      "list": {
+        "title": "Installed modules"
+      },
+      "available": {
+        "title": "Available modules"
       }
     },
     "extension": {
@@ -247,6 +279,15 @@
       },
       "disable": {
         "title": "Disable extension"
+      },
+      "list": {
+        "title": "Installed extensions"
+      },
+      "available": {
+        "title": "Available extensions"
+      },
+      "install": {
+        "title": "Install extension"
       }
     },
     "update": {
@@ -323,7 +364,8 @@
       "step": "Step",
       "from_snapshot": "From game auto-backup",
       "text": "Message",
-      "apiKey": "API key"
+      "apiKey": "API key",
+      "command": "Command"
     },
     "summary": {
       "server_item": "• **{{name}}** ({{module}}) · {{status}}",
