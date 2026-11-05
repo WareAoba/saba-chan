@@ -21,12 +21,21 @@ pub async fn run(ctx: &Ctx, args: UninstallArgs) -> Result<()> {
     if !ctx.ask.confirm(&t!("uninstall.confirm", dir = dir.display(), kept = kept_text(keep)), false)? {
         return Err(crate::error::CliError::Cancelled.into());
     }
+    let warnings = std::sync::Mutex::new(Vec::new());
     let left = uninstall::do_uninstall(keep, |p| {
-        if !p.complete {
+        if p.complete {
+            if let Ok(mut w) = warnings.lock() {
+                w.clone_from(&p.warnings);
+            }
+        } else {
             ctx.out.note(&p.message);
         }
     })
     .await;
+    // 정상 종료하지 못하고 강제로 끊은 서버는 제거 결과와 따로 알린다
+    for w in warnings.into_inner().unwrap_or_default() {
+        ctx.out.warn(&warning_text(&w));
+    }
     if !left.is_empty() {
         let paths: Vec<String> = left.iter().map(|p| p.display().to_string()).collect();
         return Err(failed(t!("uninstall.left", paths = paths.join("\n"))));
@@ -36,6 +45,14 @@ pub async fn run(ctx: &Ctx, args: UninstallArgs) -> Result<()> {
         &json!({ "ok": true, "dir": dir, "kept_settings": keep.settings, "kept_instances": keep.instances }),
     );
     Ok(())
+}
+
+fn warning_text(w: &uninstall::StopWarning) -> String {
+    match w {
+        uninstall::StopWarning::ServersUnlisted { detail } => t!("uninstall.servers_unlisted", detail = detail),
+        uninstall::StopWarning::ServerForceStopped { server, detail } => t!("uninstall.server_force_stopped", server = server, detail = detail),
+        uninstall::StopWarning::DaemonUnanswered => t!("uninstall.daemon_unanswered"),
+    }
 }
 
 /// 남기는 것을 한 줄로

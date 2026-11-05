@@ -429,6 +429,7 @@
       "backup_failed_autosave_off": "The backup failed, and the server’s autosave could not be turned back on either. Restart the server: saba-chan-cli restart <name>",
       "backup_save_rejected": "The server refused the save command, so no backup was made. Stop the server and back up again: saba-chan-cli stop <name>",
       "backup_save_unconfirmed": "The server did not report that saving finished, so no backup was made. Try again shortly or stop the server and back up: saba-chan-cli stop <name>",
+      "backup_server_stopped": "The server stopped while it was being backed up, so that backup was discarded. Check the server and back up again: saba-chan-cli backup <name>",
       "snapshot_not_found": "The game has no automatic backup.",
       "invalid_relay_url": "Only https:// Server-chan addresses are allowed (http only for localhost, 127.0.0.1 or [::1] when testing on this PC).",
       "module_busy": "This module is already being installed or removed. Try again when it finishes.",
@@ -1374,7 +1375,10 @@
     "kept_instances": "game servers are kept, settings are removed",
     "kept_nothing": "settings and game servers are removed too",
     "done": "Saba-chan was removed; {{kept}}.",
-    "left": "Saba-chan was removed, but these could not be deleted. Close any program using them and delete them yourself:\n{{paths}}"
+    "left": "Saba-chan was removed, but these could not be deleted. Close any program using them and delete them yourself:\n{{paths}}",
+    "servers_unlisted": "Could not get the list of running servers, so they were force-stopped instead of shut down cleanly ({{detail}}).",
+    "server_force_stopped": "Server {{server}} did not shut down cleanly and was force-stopped ({{detail}}). Changes since its last save may be lost.",
+    "daemon_unanswered": "The daemon did not answer, so running servers were force-stopped. Changes since their last save may be lost."
   },
   "players": {
     "title": "{{server}}: {{count}} online",

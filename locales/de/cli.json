@@ -429,6 +429,7 @@
       "backup_failed_autosave_off": "Das Backup ist fehlgeschlagen, und das Autospeichern des Servers ließ sich auch nicht wieder einschalten. Server neu starten: saba-chan-cli restart <name>",
       "backup_save_rejected": "Der Server hat den Speicherbefehl abgelehnt, daher wurde kein Backup erstellt. Halte den Server an und sichere erneut: saba-chan-cli stop <name>",
       "backup_save_unconfirmed": "Der Server hat nicht gemeldet, dass das Speichern fertig ist, daher wurde kein Backup erstellt. Versuche es gleich noch einmal oder halte den Server vor dem Backup an: saba-chan-cli stop <name>",
+      "backup_server_stopped": "Der Server wurde während des Backups gestoppt, daher wurde dieses Backup verworfen. Server prüfen und erneut sichern: saba-chan-cli backup <Name>",
       "snapshot_not_found": "Das Spiel hat kein automatisches Backup.",
       "invalid_relay_url": "Als Relay-Adresse sind nur https://-Adressen erlaubt (http nur für localhost, 127.0.0.1 oder [::1] zum Testen auf diesem PC).",
       "module_busy": "Dieses Modul wird bereits installiert oder entfernt. Versuche es erneut, wenn das abgeschlossen ist.",
@@ -1352,7 +1353,10 @@
     "kept_instances": "Server bleiben, Einstellungen werden entfernt",
     "kept_nothing": "Einstellungen und Server werden ebenfalls entfernt",
     "done": "Saba-chan wurde entfernt; {{kept}}.",
-    "left": "Saba-chan wurde entfernt, aber diese Elemente ließen sich nicht löschen. Schließen Sie Programme, die sie verwenden, und löschen Sie sie selbst:\n{{paths}}"
+    "left": "Saba-chan wurde entfernt, aber diese Elemente ließen sich nicht löschen. Schließen Sie Programme, die sie verwenden, und löschen Sie sie selbst:\n{{paths}}",
+    "servers_unlisted": "Die Liste der laufenden Server konnte nicht abgerufen werden, daher wurden sie zwangsweise beendet ({{detail}}).",
+    "server_force_stopped": "Server {{server}} wurde nicht sauber beendet und zwangsweise gestoppt ({{detail}}). Änderungen seit dem letzten Speichern können verloren sein.",
+    "daemon_unanswered": "Der Daemon hat nicht geantwortet, daher wurden laufende Server zwangsweise gestoppt. Änderungen seit dem letzten Speichern können verloren sein."
   },
   "update_required": {
     "title": "Update erforderlich",

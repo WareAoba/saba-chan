@@ -458,6 +458,7 @@
     "backup_failed_autosave_off": "備份失敗，伺服器的自動儲存也未能重新開啟。請重新啟動伺服器",
     "backup_save_rejected": "伺服器拒絕了儲存指令，因此沒有備份。請停止伺服器後重新備份",
     "backup_save_unconfirmed": "伺服器沒有回報儲存完成，因此沒有備份。請稍後再試，或停止伺服器後再備份",
+    "backup_server_stopped": "備份期間伺服器已停止，因此已捨棄該備份。請檢查伺服器後重新備份",
     "snapshot_not_found": "遊戲沒有自動備份",
     "snapshot_not_deletable": "Saba-chan 不能刪除遊戲自己的自動備份"
   },

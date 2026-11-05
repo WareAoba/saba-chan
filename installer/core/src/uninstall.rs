@@ -31,6 +31,30 @@ pub struct UninstallProgress {
     pub error: Option<String>,
     /// 완료 때 지우지 못하고 남은 항목 (비어 있으면 다 지웠다)
     pub left: Vec<String>,
+    /// 완료 때 알릴 서버 종료 문제 (정상 종료하지 못하고 강제로 끊은 서버 등). 화면 문구는 창·CLI가 `kind`로 번역한다
+    pub warnings: Vec<StopWarning>,
+}
+
+/// 제거 전에 켜진 서버를 정상 종료하지 못한 사정. `detail`은 상태 코드·오류 코드 같은 원문이다
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum StopWarning {
+    /// 켜진 서버 목록을 받지 못했다 (뒤에서 서버는 강제로 끊긴다)
+    ServersUnlisted { detail: String },
+    /// 이 서버가 정상 종료하지 못하고 강제로 끊겼다
+    ServerForceStopped { server: String, detail: String },
+    /// 이 설치의 데몬이 답하지 않아, 떠 있던 서버를 강제로 끊었다
+    DaemonUnanswered,
+}
+
+impl std::fmt::Display for StopWarning {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::ServersUnlisted { detail } => write!(f, "servers: could not be listed to stop them cleanly before removal ({detail})"),
+            Self::ServerForceStopped { server, detail } => write!(f, "server {server}: did not stop cleanly and was force-stopped ({detail})"),
+            Self::DaemonUnanswered => write!(f, "servers: the daemon did not answer, so running servers were force-stopped"),
+        }
+    }
 }
 
 /// 이 설치본이 마지막인지. 제거 항목(레지스트리)과, 항목 없이 설치된 폴더 목록(CLI `install --dir`)을 함께 본다.
@@ -72,11 +96,12 @@ pub async fn do_uninstall(keep: Keep, on_progress: impl Fn(&UninstallProgress)) 
             complete: false,
             error: None,
             left: Vec::new(),
+            warnings: Vec::new(),
         };
         on_progress(&p);
     };
 
-    let emit_complete = |msg: &str, left: &[PathBuf]| {
+    let emit_complete = |msg: &str, left: &[PathBuf], warnings: &[StopWarning]| {
         let p = UninstallProgress {
             step: "complete".to_string(),
             message: msg.to_string(),
@@ -84,6 +109,7 @@ pub async fn do_uninstall(keep: Keep, on_progress: impl Fn(&UninstallProgress)) 
             complete: true,
             error: None,
             left: left.iter().map(|p| p.display().to_string()).collect(),
+            warnings: warnings.to_vec(),
         };
         on_progress(&p);
     };
@@ -96,6 +122,7 @@ pub async fn do_uninstall(keep: Keep, on_progress: impl Fn(&UninstallProgress)) 
             complete: false,
             error: Some(msg.to_string()),
             left: Vec::new(),
+            warnings: Vec::new(),
         };
         on_progress(&p);
     };
@@ -114,13 +141,14 @@ pub async fn do_uninstall(keep: Keep, on_progress: impl Fn(&UninstallProgress)) 
 
     // Step 2: 프로세스 종료
     emit("stop", "Stopping saba-chan processes...", 10);
+    let mut left = Vec::new();
+    let mut warnings = Vec::new();
     if let Some(dir) = &install_dir {
-        stop_saba_processes(dir).await;
+        warnings = stop_saba_processes(dir).await;
     }
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
     // 격리 실행의 프로필과 폴더 권한·표시를 데몬 실행 파일이 거둔다 (설치 폴더를 지우기 전에. 남기는 서버 폴더도)
-    let mut left = Vec::new();
     if let Some(dir) = &install_dir {
         emit("sandbox", "Removing isolation profiles and folder permissions...", 15);
         left.extend(reset_sandbox(dir));
@@ -154,13 +182,14 @@ pub async fn do_uninstall(keep: Keep, on_progress: impl Fn(&UninstallProgress)) 
 
     // Step 4: 설치 디렉토리 삭제
     emit("files", "Removing installation files...", 35);
-    let dedicated = install_dir.as_deref().is_some_and(is_dedicated);
+    let dedicated = install_dir.as_deref().is_some_and(|d| removes_whole_folder(d, &constants::resolve_instances_dir()));
     if let Some(ref dir) = install_dir {
         if dir.exists() {
-            left.extend(remove_install_dir(dir, dedicated));
-            if left.is_empty() {
+            let rest = remove_install_dir(dir, dedicated);
+            if rest.is_empty() {
                 tracing::info!("[Uninstall] Removed install dir: {:?}", dir);
             }
+            left.extend(rest);
         }
         // 맥: 실행 파일 폴더가 앱 묶음 안이면 묶음 껍데기(Info.plist·아이콘, 빈 폴더)까지
         if !dir.exists() {
@@ -217,7 +246,7 @@ pub async fn do_uninstall(keep: Keep, on_progress: impl Fn(&UninstallProgress)) 
         "This Saba-chan install was removed. Your settings and servers were kept because another Saba-chan install still uses them."
     } else {
         kept_message(keep)
-    }, &left);
+    }, &left, &warnings);
     tracing::info!("[Uninstall] Complete");
     left
 }
@@ -265,10 +294,13 @@ pub async fn do_silent_uninstall(keep: Keep) -> i32 {
     eprintln!("Saba-chan Uninstaller (console)");
     let left = do_uninstall(keep, |p| {
         if p.complete {
+            for warning in &p.warnings {
+                eprintln!("  {}", warning);
+            }
             for path in &p.left {
                 eprintln!("  Could not remove {}", path);
             }
-            let tag = if p.left.is_empty() { "[OK]" } else { "[WARN]" };
+            let tag = if p.left.is_empty() && p.warnings.is_empty() { "[OK]" } else { "[WARN]" };
             eprintln!("{} {}", tag, p.message);
         } else {
             eprintln!("  {}", p.message);
@@ -296,19 +328,22 @@ const KILL_EXIT_WAIT: std::time::Duration = std::time::Duration::from_secs(10);
 const COMMAND_LIMIT: std::time::Duration = std::time::Duration::from_secs(10);
 
 /// 이 설치 폴더의 실행 파일로 떠 있는 사바쨩 프로세스만 끝낸다 (다른 설치본의 데몬·서버는 그대로).
-/// 끝까지 끝나지 않은 PID를 돌려준다
-async fn stop_saba_processes(install_dir: &Path) -> Vec<u32> {
+/// 정상 종료하지 못하고 강제로 끊은 서버를 돌려준다 (완료 화면에 따로 보인다)
+async fn stop_saba_processes(install_dir: &Path) -> Vec<StopWarning> {
     // 데몬을 끄기 전에 데몬에 등록된 이 설치의 GUI를 물어 둔다 (임시 폴더에 풀린 포터블 GUI도 여기 있다)
     let dirs = [install_dir.to_path_buf(), comparable_dir(install_dir)];
     let delay = std::time::Duration::from_millis(500);
     let api = DaemonApi::from_config();
     let mut registered = Vec::new();
     let mut orphans: Vec<Found> = Vec::new();
+    let mut not_stopped = Vec::new();
+    let mut asked = false;
     if let Some(api) = &api {
         // 프로세스를 끊기 전에 이 설치의 데몬에게 켜진 서버를 정상 종료시킨다 (강제 종료는 저장 없이 끈다)
         let ours = api.daemon_is_in(&dirs).await;
         if ours.is_some() {
-            api.stop_running_servers().await;
+            asked = true;
+            not_stopped = api.stop_running_servers().await;
         }
         registered = api.registered_guis(&dirs).await;
         // 데몬도 정상 종료시킨다: 강제로 끊으면 끝나는 사이에 설정·토큰 파일을 다시 쓸 수 있다
@@ -353,6 +388,10 @@ async fn stop_saba_processes(install_dir: &Path) -> Vec<u32> {
     // 명령창 제거(`saba-chan-cli uninstall`)는 이 설치의 CLI 자신이 돌린다: 자기는 끄지 않는다
     let me = std::process::id();
     let found: Vec<(u32, String)> = processes_in(install_dir, &TARGETS.map(|(n, _)| n)).into_iter().filter(|(pid, _)| *pid != me).collect();
+    // 이 설치의 데몬에게 서버 종료를 부탁하지 못했는데 러너가 떠 있으면 그 서버는 저장 없이 끊긴다
+    if !asked && found.iter().any(|(_, n)| n.eq_ignore_ascii_case("saba-runner")) {
+        not_stopped.push(StopWarning::DaemonUnanswered);
+    }
     // 포터블 GUI(saba-chan-gui.exe)는 실행기일 뿐이고 실제 GUI는 임시 폴더에 풀려 그 자식으로 돈다.
     // 실행기의 자손을 먼저 찾아 둔다 (실행기를 끝내면 부모 관계로 찾을 수 없다)
     let launchers: Vec<u32> =
@@ -411,7 +450,7 @@ async fn stop_saba_processes(install_dir: &Path) -> Vec<u32> {
     } else {
         tracing::warn!("[Uninstall] Still running after stop: {:?}", left);
     }
-    left
+    not_stopped
 }
 
 /// `procs` 중 `within` 동안 `list`(`list_all` 줄)에 같은 프로세스로 남아 있는 것. 다 끝나면 바로 돌아온다.
@@ -611,11 +650,23 @@ impl DaemonApi {
         }
     }
 
-    /// 꺼져 있지 않은 서버마다 정상 종료를 요청하고 끝날 때까지 기다린다 (서버마다 최대 90초)
-    async fn stop_running_servers(&self) {
+    /// 꺼져 있지 않은 서버마다 정상 종료를 요청하고 끝날 때까지 기다린다 (서버마다 최대 90초).
+    /// 정상 종료하지 못한 것(목록을 못 받음, 요청 실패·거절)을 돌려준다: 그 서버는 뒤에서 강제로 끊긴다
+    async fn stop_running_servers(&self) -> Vec<StopWarning> {
+        let unknown = |why: String| {
+            tracing::warn!("[Uninstall] Cannot list running servers: {}", why);
+            vec![StopWarning::ServersUnlisted { detail: why }]
+        };
         let list = self.client.get(self.url("/api/servers")).header("X-Saba-Token", &self.token).send().await;
-        let Ok(r) = list else { return };
-        let Ok(v) = r.json::<serde_json::Value>().await else { return };
+        let r = match list {
+            Ok(r) if r.status().is_success() => r,
+            Ok(r) => return unknown(r.status().to_string()),
+            Err(e) => return unknown(e.to_string()),
+        };
+        let v = match r.json::<serde_json::Value>().await {
+            Ok(v) => v,
+            Err(e) => return unknown(e.to_string()),
+        };
         let ids: Vec<String> = v
             .get("servers")
             .and_then(|s| s.as_array())
@@ -633,12 +684,30 @@ impl DaemonApi {
                 .json(&serde_json::json!({}))
                 .send()
         });
+        let mut failed = Vec::new();
         for (id, r) in ids.iter().zip(futures_util::future::join_all(stops).await) {
-            match r {
-                Ok(r) => tracing::info!("[Uninstall] Stop {} answered {}", id, r.status()),
-                Err(e) => tracing::warn!("[Uninstall] Stop {} failed: {}", id, e),
-            }
+            // 200이어도 `success:false`(예: graceful_stop_unavailable)면 서버는 그대로 떠 있다
+            let why = match r {
+                Ok(r) => {
+                    let status = r.status();
+                    tracing::info!("[Uninstall] Stop {} answered {}", id, status);
+                    let body = r.json::<serde_json::Value>().await.unwrap_or_default();
+                    let refused = body.get("success").and_then(|s| s.as_bool()) == Some(false);
+                    let code = body.get("error_code").or_else(|| body.get("error")).and_then(|c| c.as_str()).unwrap_or_default();
+                    match (status.is_success() && !refused, code.is_empty()) {
+                        (true, _) => continue,
+                        (false, true) => status.to_string(),
+                        (false, false) => format!("{status} {code}"),
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!("[Uninstall] Stop {} failed: {}", id, e);
+                    e.to_string()
+                }
+            };
+            failed.push(StopWarning::ServerForceStopped { server: id.clone(), detail: why });
         }
+        failed
     }
 
     /// 데몬에 등록된 GUI 중 이 설치 폴더에서 띄운 것의 PID. 데몬이 없거나 옛 버전이면 비어 있다
@@ -1105,11 +1174,35 @@ const INSTALLED_ENTRIES: &[&str] = &[
     "common_locales.json",
     // GUI zip의 리눅스 앱 메뉴 아이콘 (맥 묶음 정보·아이콘은 설치기가 Contents로 옮긴다)
     "saba-chan-gui.png",
+    // 설치 폴더에 Python 런타임을 받을 때 내려받는 묶음 (풀고 나면 지우지만 중간에 끊기면 남는다)
+    "_python_download.tar.gz",
     INSTALL_MARKER,
 ];
 
 fn is_dedicated(dir: &Path) -> bool {
     dir.join(INSTALL_MARKER).is_file()
+}
+
+/// 설치 폴더를 통째로 지울지: 전용 폴더이고, 그 안에 인스턴스의 서버 폴더(`working_dir`)나 인스턴스 폴더가 없을 때만.
+/// 서버 폴더가 들어 있으면 표시 없는 폴더처럼 사바쨩 항목만 지운다 (서버 폴더는 무엇을 남기든 지우지 않는다)
+fn removes_whole_folder(dir: &Path, instances_dir: &Path) -> bool {
+    if !is_dedicated(dir) {
+        return false;
+    }
+    let overlaps = |p: &Path| saba_chan_updater_lib::paths_overlap(p, dir);
+    let server_inside = overlaps(instances_dir)
+        || std::fs::read_dir(instances_dir)
+            .into_iter()
+            .flatten()
+            .flatten()
+            .filter_map(|e| std::fs::read_to_string(e.path().join("instance.json")).ok())
+            .filter_map(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+            .filter_map(|v| v.get("working_dir").and_then(|w| w.as_str()).map(PathBuf::from))
+            .any(|w| overlaps(&w));
+    if server_inside {
+        tracing::warn!("[Uninstall] {:?} holds a server folder: removing Saba-chan files only", dir);
+    }
+    !server_inside
 }
 
 fn is_installed_entry(name: &str) -> bool {
@@ -1150,10 +1243,14 @@ fn remove_install_dir(dir: &PathBuf, dedicated: bool) -> Vec<PathBuf> {
     left
 }
 
-/// 설치 폴더 바로 안의 사바쨩 항목인지. 폴더는 locales만 사바쨩 것이다 (실행 파일 이름과 같은 사용자 폴더는 남긴다)
+/// 표시가 없는 설치 폴더에서 지울 바로 안의 폴더: locales와, 설치 폴더에 쓸 수 있으면 설치기가 두는 Python 런타임
+const INSTALLED_DIRS: &[&str] =
+    &["locales", crate::runtime_bootstrap::PORTABLE_PYTHON_DIR, crate::runtime_bootstrap::VENV_DIR_NAME];
+
+/// 설치 폴더 바로 안의 사바쨩 항목인지. 폴더는 [`INSTALLED_DIRS`]만 사바쨩 것이다 (실행 파일 이름과 같은 사용자 폴더는 남긴다)
 fn is_ours(path: &Path) -> bool {
     let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-    if path.is_dir() { name.eq_ignore_ascii_case("locales") } else { is_installed_entry(&name) }
+    if path.is_dir() { INSTALLED_DIRS.iter().any(|d| d.eq_ignore_ascii_case(&name)) } else { is_installed_entry(&name) }
 }
 
 /// 설치 폴더에 아직 남은 지울 항목: 전용 폴더면 전부, 아니면 사바쨩 항목만. `self_exe`는 뺀다
@@ -1858,6 +1955,121 @@ mod tests {
         assert_eq!(names(install_leftovers(&dir, true, Some(&me))), ["locales", "notes.txt", "saba-core.exe"]);
         std::fs::remove_dir_all(&dir).unwrap();
         assert!(install_leftovers(&dir, true, Some(&me)).is_empty());
+    }
+
+    // 감사 3: 전용 설치 폴더 안에 둔 서버 폴더는 폴더째 지우지 않는다 (사바쨩 항목만 지우고 서버는 남긴다)
+    #[test]
+    fn a_server_folder_inside_a_dedicated_install_folder_is_kept() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (dir, instances) = (tmp.path().join("Saba-chan"), tmp.path().join("instances"));
+        let server = dir.join("servers").join("mc");
+        std::fs::create_dir_all(server.join("world")).unwrap();
+        std::fs::create_dir_all(dir.join("locales")).unwrap();
+        for f in ["saba-core.exe", INSTALL_MARKER] {
+            std::fs::write(dir.join(f), b"").unwrap();
+        }
+        std::fs::create_dir_all(instances.join("1")).unwrap();
+        let meta = serde_json::json!({"id": "1", "name": "mc", "working_dir": server.to_string_lossy()});
+        std::fs::write(instances.join("1").join("instance.json"), meta.to_string()).unwrap();
+
+        assert!(remove_install_dir(&dir, removes_whole_folder(&dir, &instances)).is_empty());
+        assert!(server.join("world").is_dir(), "the server folder must survive the uninstall");
+        assert!(!dir.join("saba-core.exe").exists() && !dir.join("locales").exists());
+
+        // 서버 폴더가 설치 폴더 밖이면 예전처럼 폴더째 지운다
+        std::fs::write(dir.join(INSTALL_MARKER), b"").unwrap();
+        let elsewhere = serde_json::json!({"id": "1", "working_dir": tmp.path().join("mc").to_string_lossy()});
+        std::fs::write(instances.join("1").join("instance.json"), elsewhere.to_string()).unwrap();
+        assert!(removes_whole_folder(&dir, &instances));
+    }
+
+    // 감사 30: 표시 없는 설치 폴더에도 설치기가 둔 Python 런타임은 사바쨩 항목으로 지운다
+    #[test]
+    fn the_python_runtime_in_an_unmarked_install_folder_is_removed() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("Saba");
+        for d in ["python-standalone/python", "python-env/bin", "MyGame"] {
+            std::fs::create_dir_all(dir.join(d)).unwrap();
+        }
+        for f in ["saba-core.exe", "_python_download.tar.gz"] {
+            std::fs::write(dir.join(f), b"").unwrap();
+        }
+        assert!(remove_install_dir(&dir, false).is_empty());
+        let left: Vec<_> = std::fs::read_dir(&dir).unwrap().map(|e| e.unwrap().file_name().into_string().unwrap()).collect();
+        assert_eq!(left, ["MyGame"]);
+    }
+
+    /// 한 번에 한 요청씩 `answer(요청 줄)`로 답하는 가짜 데몬. 포트를 돌려준다
+    fn fake_daemon(answer: fn(&str) -> (u16, String)) -> u16 {
+        use std::io::{BufRead, BufReader, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            for stream in listener.incoming().flatten() {
+                let mut reader = BufReader::new(stream.try_clone().unwrap());
+                let mut first = String::new();
+                let _ = reader.read_line(&mut first);
+                let mut len = 0;
+                loop {
+                    let mut line = String::new();
+                    if reader.read_line(&mut line).unwrap_or(0) == 0 || line == "\r\n" {
+                        break;
+                    }
+                    if let Some(v) = line.to_ascii_lowercase().strip_prefix("content-length:") {
+                        len = v.trim().parse().unwrap_or(0);
+                    }
+                }
+                let mut body = vec![0; len];
+                let _ = std::io::Read::read_exact(&mut reader, &mut body);
+                let (status, body) = answer(&first);
+                let mut s = stream;
+                let _ = write!(s, "HTTP/1.1 {status} X\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}", body.len());
+            }
+        });
+        port
+    }
+
+    // 감사 15: 켜진 서버를 정상 종료하지 못하면(목록 실패·종료 실패) 강제 종료 전에 그 사실을 돌려준다
+    #[tokio::test]
+    async fn servers_that_did_not_stop_cleanly_are_reported() {
+        let api = |port| DaemonApi { client: saba_chan_updater_lib::tls::http_client_builder().build().unwrap(), port, token: String::new() };
+        let port = fake_daemon(|req| {
+            if req.starts_with("GET /api/servers") {
+                (200, r#"{"servers":[{"id":"a","status":"running"},{"id":"b","status":"running"},{"id":"c","status":"running"},{"id":"d","status":"stopped"}]}"#.into())
+            } else if req.contains("/api/instance/a/") {
+                (200, r#"{"success":true}"#.into())
+            } else if req.contains("/api/instance/b/") {
+                (200, r#"{"success":false,"error_code":"graceful_stop_unavailable"}"#.into())
+            } else {
+                (500, r#"{"error":"stop_failed"}"#.into())
+            }
+        });
+        let mut failed: Vec<(String, String)> = api(port)
+            .stop_running_servers()
+            .await
+            .into_iter()
+            .map(|w| match w {
+                StopWarning::ServerForceStopped { server, detail } => (server, detail),
+                other => panic!("{other:?}"),
+            })
+            .collect();
+        failed.sort();
+        assert_eq!(failed.len(), 2, "{failed:?}");
+        assert_eq!(failed[0].0, "b");
+        assert!(failed[0].1.contains("graceful_stop_unavailable"), "{failed:?}");
+        assert_eq!(failed[1].0, "c");
+
+        // 목록을 받지 못하면 무엇이 켜져 있는지 모른다는 것을 알린다
+        let port = fake_daemon(|_| (500, "{}".into()));
+        assert!(matches!(api(port).stop_running_servers().await.as_slice(), [StopWarning::ServersUnlisted { .. }]));
+    }
+
+    /// 창 제거기는 `kind`로 문구를 고른다 (installer.js `uninstallWarning`)
+    #[test]
+    fn stop_warnings_carry_a_kind_the_window_translates() {
+        let w = StopWarning::ServerForceStopped { server: "a".into(), detail: "500".into() };
+        assert_eq!(serde_json::to_value(&w).unwrap(), serde_json::json!({"kind": "server_force_stopped", "server": "a", "detail": "500"}));
+        assert_eq!(serde_json::to_value(StopWarning::DaemonUnanswered).unwrap(), serde_json::json!({"kind": "daemon_unanswered"}));
     }
 
     #[test]

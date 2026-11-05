@@ -429,6 +429,7 @@
       "backup_failed_autosave_off": "備份失敗，伺服器的自動儲存也未能重新開啟。請重新啟動伺服器: saba-chan-cli restart <name>",
       "backup_save_rejected": "伺服器拒絕了儲存指令，因此沒有備份。請停止伺服器後重新備份: saba-chan-cli stop <name>",
       "backup_save_unconfirmed": "伺服器沒有回報儲存完成，因此沒有備份。請稍後再試，或停止伺服器後再備份: saba-chan-cli stop <name>",
+      "backup_server_stopped": "備份期間伺服器已停止，因此已捨棄該備份。請檢查伺服器後重新備份: saba-chan-cli backup <name>",
       "snapshot_not_found": "遊戲沒有自動備份.",
       "invalid_relay_url": "中繼位址只能使用 https://(僅在本機測試時可對 localhost、127.0.0.1 或 [::1] 使用 http)。",
       "module_busy": "此模組正在安裝或刪除中。請在完成後再試一次。",
@@ -1352,7 +1353,10 @@
     "kept_instances": "遊戲伺服器將保留，設定將刪除",
     "kept_nothing": "設定和遊戲伺服器也將刪除",
     "done": "已刪除 Saba-chan，{{kept}}。",
-    "left": "已刪除 Saba-chan，但無法刪除以下項目。請關閉正在使用它們的程式後手動刪除：\n{{paths}}"
+    "left": "已刪除 Saba-chan，但無法刪除以下項目。請關閉正在使用它們的程式後手動刪除：\n{{paths}}",
+    "servers_unlisted": "無法取得執行中的伺服器清單，未能正常關閉，已強制停止 ({{detail}})。",
+    "server_force_stopped": "伺服器 {{server}} 未能正常關閉，已強制停止 ({{detail}})。上次儲存之後的內容可能遺失。",
+    "daemon_unanswered": "常駐程式沒有回應，已強制停止執行中的伺服器。上次儲存之後的內容可能遺失。"
   },
   "update_required": {
     "title": "需要更新",

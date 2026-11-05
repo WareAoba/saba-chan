@@ -1311,13 +1311,18 @@ impl UpdateManager {
         }
     }
 
-    /// 설치 폴더의 사바쨩 실행 파일 백업 `<exe>.old` 또는 그 이름이 잡혀 있을 때 쓴 `<exe>.old.<n>` (`free_backup_path`).
-    /// (경로, 실행 파일 이름 줄기, 번호(`.old`는 0), GUI인가)
+    /// 설치 폴더의 사바쨩 실행 파일 백업 `<exe>.old` 또는 그 이름이 잡혀 있을 때 쓴 `<exe>.old.<n>` (`free_backup_path`),
+    /// Unix는 확장자 없는 바이너리를 비켜 둔 `<이름>.old` (`move_aside`).
+    /// (경로, 실행 파일 이름, 번호(`.old`는 0), GUI인가)
     fn old_exe_backups(&self) -> Vec<(PathBuf, String, u32, bool)> {
         let Ok(entries) = std::fs::read_dir(&self.install_root) else { return Vec::new() };
         let mut found = Vec::new();
         for path in entries.flatten().map(|e| e.path()) {
             let Some(name) = path.file_name().and_then(|n| n.to_str()) else { continue };
+            if let Some(exe) = name.strip_suffix(".old").filter(|_| cfg!(unix)).filter(|exe| Self::is_known_binary(Path::new(exe))) {
+                found.push((path.clone(), exe.to_string(), 0, GUI_EXE_NAMES.contains(&exe)));
+                continue;
+            }
             let Some((stem, tail)) = name.split_once(".exe.old") else { continue };
             let number = match tail.strip_prefix('.') {
                 None if tail.is_empty() => 0,
@@ -1326,7 +1331,7 @@ impl UpdateManager {
             };
             let gui = GUI_EXE_NAMES.iter().any(|g| g.trim_end_matches(".exe") == stem);
             if gui || stem.starts_with("saba-") {
-                found.push((path.clone(), stem.to_string(), number, gui));
+                found.push((path.clone(), format!("{stem}.exe"), number, gui));
             }
         }
         found
@@ -1336,17 +1341,17 @@ impl UpdateManager {
     /// (낮은 번호가 남아 있는 것은 그때 아직 쥐고 있어 지우지 못한 더 옛 사본이다)
     fn restore_moved_aside_exes(&self) {
         let mut latest: HashMap<String, (PathBuf, u32)> = HashMap::new();
-        for (path, stem, number, gui) in self.old_exe_backups() {
-            let present = if gui { find_gui_exe(&self.install_root).is_some() } else { self.install_root.join(format!("{stem}.exe")).exists() };
+        for (path, exe, number, gui) in self.old_exe_backups() {
+            let present = if gui { find_gui_exe(&self.install_root).is_some() } else { self.install_root.join(&exe).exists() };
             if present {
                 continue;
             }
-            if latest.get(&stem).is_none_or(|(_, n)| number > *n) {
-                latest.insert(stem, (path, number));
+            if latest.get(&exe).is_none_or(|(_, n)| number > *n) {
+                latest.insert(exe, (path, number));
             }
         }
-        for (stem, (path, _)) in latest {
-            let exe = self.install_root.join(format!("{stem}.exe"));
+        for (exe, (path, _)) in latest {
+            let exe = self.install_root.join(exe);
             match std::fs::rename(&path, &exe) {
                 Ok(()) => tracing::warn!("[Updater] Restored {} from {} (an earlier apply was interrupted)", exe.display(), path.display()),
                 Err(e) => tracing::warn!("[Updater] Cannot restore {} from {}: {}", exe.display(), path.display(), e),
@@ -1354,14 +1359,14 @@ impl UpdateManager {
         }
     }
 
-    /// 업데이트가 남긴 `<사바쨩 실행 파일>.exe.old`(`.exe.old.<n>` 포함) 백업을 지운다 (설치 폴더 바로 안만).
+    /// 업데이트가 남긴 사바쨩 실행 파일 백업(`old_exe_backups`)을 지운다 (설치 폴더 바로 안만).
     /// Windows는 실행 중인 exe를 이름만 바꿔 두므로, 아직 쥐고 있는 파일은 다음 번에 지운다.
     pub fn cleanup_old_files(&self) {
-        for (path, stem, _, gui) in self.old_exe_backups() {
+        for (path, exe, _, gui) in self.old_exe_backups() {
             // 실행 파일이 없으면 되돌리지 못한 유일한 사본이다. 예전 이름의 GUI는 새 이름의 GUI가 있으면 지운다 (`retire_other_gui_exes`)
-            let replaced = if gui { find_gui_exe(&self.install_root).is_some() } else { self.install_root.join(format!("{stem}.exe")).exists() };
+            let replaced = if gui { find_gui_exe(&self.install_root).is_some() } else { self.install_root.join(&exe).exists() };
             if !replaced {
-                tracing::warn!("[Updater] Keeping {}: {}.exe is missing", path.display(), stem);
+                tracing::warn!("[Updater] Keeping {}: {} is missing", path.display(), exe);
                 continue;
             }
             match std::fs::remove_file(&path) {

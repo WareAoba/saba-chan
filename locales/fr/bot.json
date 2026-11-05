@@ -458,6 +458,7 @@
     "backup_failed_autosave_off": "La sauvegarde a échoué et la sauvegarde automatique du serveur n’a pas pu être réactivée non plus. Redémarrez le serveur",
     "backup_save_rejected": "Le serveur a refusé la commande de sauvegarde, aucune sauvegarde n’a donc été faite. Arrêtez le serveur puis recommencez",
     "backup_save_unconfirmed": "Le serveur n’a pas signalé la fin de l’enregistrement, aucune sauvegarde n’a donc été faite. Réessayez dans un instant ou arrêtez le serveur avant de sauvegarder",
+    "backup_server_stopped": "Le serveur s’est arrêté pendant la sauvegarde, elle a donc été supprimée. Vérifiez le serveur puis sauvegardez à nouveau",
     "snapshot_not_found": "Le jeu n’a pas de sauvegarde automatique",
     "snapshot_not_deletable": "Saba-chan ne peut pas supprimer les sauvegardes automatiques du jeu"
   },

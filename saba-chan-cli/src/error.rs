@@ -246,6 +246,8 @@ pub fn api_hint(code: &str, body: &Value) -> Option<String> {
         "backup_failed_autosave_off" => Some(t!("err.hint.backup_failed_autosave_off")),
         "backup_save_rejected" => Some(t!("err.hint.backup_save_rejected")),
         "backup_save_unconfirmed" => Some(t!("err.hint.backup_save_unconfirmed")),
+        // 켜진 서버를 묶는 사이 서버가 꺼져 그 백업을 지웠다
+        "backup_server_stopped" => Some(t!("err.hint.backup_server_stopped")),
         "snapshot_not_found" => Some(t!("err.hint.snapshot_not_found")),
         // 설치 전 실행 파일 백업을 못 해 모듈을 부르지 않았다 (`file`: 그 파일 이름. 백업 만들기의 backup_failed에는 없다)
         "backup_failed" => body.get("file").and_then(Value::as_str).map(|f| t!("err.hint.install_backup_failed", file = f)),
