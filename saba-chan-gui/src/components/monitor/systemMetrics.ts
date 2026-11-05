@@ -139,7 +139,12 @@ function instanceSegments(
 export function nextPeaks(prev: Peaks, snap: MetricsSnapshot | null | undefined): Peaks {
     return {
         diskIo: Math.max(prev.diskIo, (snap?.disk_io?.read_bps || 0) + (snap?.disk_io?.write_bps || 0)),
-        network: Math.max(prev.network, (snap?.network?.rx_bps || 0) + (snap?.network?.tx_bps || 0)),
+        // 서버별로 셀 때는 ETW 합(루프백 포함)이 네트워크 카드 값보다 클 수 있다: 둘 중 큰 쪽
+        network: Math.max(
+            prev.network,
+            (snap?.network?.rx_bps || 0) + (snap?.network?.tx_bps || 0),
+            snap?.net_trace?.status === 'on' ? (snap.net_trace.rx_bps || 0) + (snap.net_trace.tx_bps || 0) : 0,
+        ),
     };
 }
 

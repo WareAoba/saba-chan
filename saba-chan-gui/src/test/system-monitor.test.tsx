@@ -1,6 +1,6 @@
 import { fireEvent, render, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { buildRings, colorSlots, nextPeaks, portRows } from '../components/monitor/systemMetrics';
+import { buildRings, colorSlots, type MetricsSnapshot, nextPeaks, portRows } from '../components/monitor/systemMetrics';
 import { SystemMonitor } from '../components/monitor/SystemMonitor';
 import { useSettingsStore } from '../stores/useSettingsStore';
 
@@ -102,6 +102,12 @@ describe('포트·서버별 네트워크 (고급 옵션)', () => {
         const net = ring(buildRings(traced(), colorSlots(['a', 'b']), { diskIo: 0, network: 8 * MB }), 'network');
         expect(values(net)).toEqual({ a: 3 * MB, __others: 1 * MB, __idle: 4 * MB });
         expect(net.noteKey).toBe('monitor.scale_note');
+    });
+
+    it('서버별로 셀 때는 ETW 합도 최고값 눈금에 넣는다 (루프백이 있으면 카드 값보다 크다)', () => {
+        const snap = traced() as MetricsSnapshot;
+        const loopback = { ...snap, net_trace: { ...snap.net_trace!, rx_bps: 6 * MB } };
+        expect(nextPeaks({ diskIo: 0, network: 0 }, loopback).network).toBe(7 * MB);
     });
 
     it('옵션은 켰지만 권한이 없으면 전체 한 조각과 그 까닭을 보인다', () => {

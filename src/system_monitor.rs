@@ -346,6 +346,11 @@ impl SystemMonitor {
         self.net.forget_failure();
     }
 
+    /// 데몬을 끌 때: 열린 ETW 세션은 시스템 전체 이름이라 프로세스가 끝나도 남는다
+    pub fn stop_net_trace(&self) {
+        self.net.stop();
+    }
+
     /// 표본을 뜬다. 동기 시스템 콜이므로 `spawn_blocking` 안에서 부른다.
     /// `measure_dirs`가 false면(요약만 보는 화면) 폴더 크기를 새로 재지 않고 마지막 값을 쓴다.
     pub fn sample(&self, roots: &[InstanceRoot], extra_dirs: &[PathBuf], measure_dirs: bool) -> MetricsSnapshot {

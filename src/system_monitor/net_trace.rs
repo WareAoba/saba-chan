@@ -85,7 +85,8 @@ pub struct PortTraffic {
 /// `MetricsSnapshot.net_trace`
 #[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct NetTraceMetrics {
-    /// "off"(옵션 꺼짐) | "idle"(펼친 화면이 아니라 세지 않음) | "on" | "unsupported"(Windows 아님)
+    /// "off"(옵션 꺼짐) | "idle"(펼친 화면이 아니라 세지 않음) | "starting"(방금 열어 잰 구간이 없음)
+    /// | "on" | "unsupported"(Windows 아님)
     /// | "needs_grant"(권한 없음) | "needs_relogin"(그룹에는 들었고 다시 로그인하면 됨) | "error"
     pub status: &'static str,
     /// 아래 값을 잰 구간 (on일 때만 의미가 있다)
@@ -316,6 +317,8 @@ impl NetTrace {
                     st.failed = None;
                     st.last_take = now;
                     self.spawn_idle_stopper();
+                    // 잰 구간이 아직 없다: 모두 0인 표본을 "on"으로 보이지 않는다
+                    return Err("starting");
                 }
                 Err(e) => {
                     let why = match e {
@@ -334,10 +337,21 @@ impl NetTrace {
                 }
             }
         }
+        // 펼친 화면이 아닌 표본(릴레이 하트비트 등)은 센 값을 가져가지 않는다: 다음 펼친 표본이 구간째 받는다
+        if !want {
+            return Err("idle");
+        }
         let window = now.duration_since(st.last_take);
         st.last_take = now;
         let counts = st.counters.lock().unwrap_or_else(|e| e.into_inner()).take();
         Ok((counts, window))
+    }
+
+    /// 세션을 닫는다 (데몬 종료)
+    pub(crate) fn stop(&self) {
+        let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        st.session = None;
+        st.last_want = None;
     }
 
     /// 권한을 바꾼 뒤 바로 다시 시도하게 실패 기록을 지운다
@@ -379,7 +393,17 @@ mod platform {
 
     pub(super) struct Session;
 
+    #[cfg(test)]
+    thread_local! {
+        /// 시험에서 세션이 열린 것처럼 한다
+        pub(super) static FAKE_START: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    }
+
     pub(super) fn start(_counters: Arc<Mutex<NetCounters>>) -> Result<Session, StartError> {
+        #[cfg(test)]
+        if FAKE_START.with(|f| f.get()) {
+            return Ok(Session);
+        }
         Err(StartError::Unsupported)
     }
 
@@ -408,7 +432,7 @@ mod platform {
     use ferrisetw::EventRecord;
     use std::ffi::c_void;
     use std::ptr::{null, null_mut};
-    use windows_sys::Win32::Foundation::{CloseHandle, LocalFree, ERROR_SUCCESS};
+    use windows_sys::Win32::Foundation::{CloseHandle, LocalFree, ERROR_SUCCESS, WAIT_OBJECT_0};
     use windows_sys::Win32::NetworkManagement::NetManagement::{
         NetApiBufferFree, NetLocalGroupAddMembers, NetLocalGroupDelMembers, NetLocalGroupGetMembers,
         LOCALGROUP_MEMBERS_INFO_0, MAX_PREFERRED_LENGTH,
@@ -441,6 +465,10 @@ mod platform {
     const PERF_LOG_USERS: &str = "S-1-5-32-559";
     const ADMINISTRATORS: &str = "S-1-5-32-544";
     /// NetLocalGroupAddMembers: 이미 들어 있다 / NetLocalGroupDelMembers: 원래 없다
+    /// 관리자 확인 뒤 다시 띄운 `net-trace` 하위 명령을 기다리는 시간
+    const ELEVATED_WAIT_MS: u32 = 60_000;
+    /// 사바쨩이 그룹에 넣은 계정의 표시 (되돌릴 때 원래 그룹에 있던 계정은 빼지 않는다)
+    const ADDED_KEY: &str = r"SOFTWARE\saba-chan\net-trace";
     const ERROR_MEMBER_IN_ALIAS: u32 = 1378;
     const ERROR_MEMBER_NOT_IN_ALIAS: u32 = 1377;
     /// StartTraceW가 돌려주는 HRESULT (0x80070005, 접근 거부)
@@ -537,13 +565,14 @@ mod platform {
             }
             let mut size = 0;
             GetTokenInformation(token, TokenUser, null_mut(), 0, &mut size);
-            let mut data = vec![0u8; size as usize];
+            // TOKEN_USER는 포인터를 담아 8바이트 정렬이 필요하다
+            let mut data = vec![0u64; (size as usize).div_ceil(8)];
             let ok = GetTokenInformation(token, TokenUser, data.as_mut_ptr().cast(), size, &mut size) != 0;
             CloseHandle(token);
             if !ok {
                 return None;
             }
-            let user = &*(data.as_ptr() as *const TOKEN_USER);
+            let user = &*data.as_ptr().cast::<TOKEN_USER>();
             let mut text = null_mut();
             if ConvertSidToStringSidW(user.User.Sid, &mut text) == 0 {
                 return None;
@@ -617,12 +646,15 @@ mod platform {
         use winreg::enums::HKEY_LOCAL_MACHINE;
         let key = winreg::RegKey::predef(HKEY_LOCAL_MACHINE).open_subkey(WMI_SECURITY_KEY).ok()?;
         let raw = key.get_raw_value(KERNEL_NETWORK).ok()?;
+        // 보안 설명자는 정렬된 메모리로 옮겨 넘긴다
+        let mut sd = vec![0u64; raw.bytes.len().div_ceil(8)];
+        unsafe { std::ptr::copy_nonoverlapping(raw.bytes.as_ptr(), sd.as_mut_ptr().cast::<u8>(), raw.bytes.len()) };
         let info = OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION | SACL_SECURITY_INFORMATION;
         let mut text = null_mut();
         let mut len = 0u32;
         let ok = unsafe {
             ConvertSecurityDescriptorToStringSecurityDescriptorW(
-                raw.bytes.as_ptr() as PSECURITY_DESCRIPTOR,
+                sd.as_mut_ptr() as PSECURITY_DESCRIPTOR,
                 SDDL_REVISION_1,
                 info,
                 &mut text,
@@ -692,15 +724,40 @@ mod platform {
             return Err("no process".into());
         }
         let mut code = 1u32;
-        unsafe {
-            WaitForSingleObject(sei.hProcess, 30_000);
-            GetExitCodeProcess(sei.hProcess, &mut code);
+        let waited = unsafe {
+            let waited = WaitForSingleObject(sei.hProcess, ELEVATED_WAIT_MS);
+            if waited == WAIT_OBJECT_0 {
+                GetExitCodeProcess(sei.hProcess, &mut code);
+            }
             CloseHandle(sei.hProcess);
+            waited
+        };
+        if waited != WAIT_OBJECT_0 {
+            return Err("timed out".into());
         }
         if code == 0 {
             Ok(())
         } else {
             Err(format!("exit code {}", code))
+        }
+    }
+
+    fn added_by_us(sid: &str) -> bool {
+        use winreg::enums::HKEY_LOCAL_MACHINE;
+        winreg::RegKey::predef(HKEY_LOCAL_MACHINE)
+            .open_subkey(ADDED_KEY)
+            .and_then(|k| k.get_value::<u32, _>(sid))
+            .is_ok()
+    }
+
+    fn mark_added(sid: &str, added: bool) -> std::io::Result<()> {
+        use winreg::enums::{HKEY_LOCAL_MACHINE, KEY_SET_VALUE};
+        let hklm = winreg::RegKey::predef(HKEY_LOCAL_MACHINE);
+        if added {
+            let (key, _) = hklm.create_subkey(ADDED_KEY)?;
+            key.set_value(sid, &1u32)
+        } else {
+            hklm.open_subkey_with_flags(ADDED_KEY, KEY_SET_VALUE)?.delete_value(sid)
         }
     }
 
@@ -723,12 +780,23 @@ mod platform {
         };
         let member = LOCALGROUP_MEMBERS_INFO_0 { lgrmi0_sid: user.0 };
         let buf = &member as *const LOCALGROUP_MEMBERS_INFO_0 as *const u8;
-        let status = unsafe {
-            if grant {
-                NetLocalGroupAddMembers(null(), name.as_ptr(), 0, buf, 1)
-            } else {
-                NetLocalGroupDelMembers(null(), name.as_ptr(), 0, buf, 1)
+        let status = if grant {
+            let status = unsafe { NetLocalGroupAddMembers(null(), name.as_ptr(), 0, buf, 1) };
+            // 이미 그룹에 있었으면(ERROR_MEMBER_IN_ALIAS) 표시하지 않는다: 되돌려도 그 소속은 남긴다
+            if status == ERROR_SUCCESS
+                && let Err(e) = mark_added(sid, true)
+            {
+                eprintln!("net-trace: marker write failed ({})", e);
             }
+            status
+        } else if added_by_us(sid) {
+            let status = unsafe { NetLocalGroupDelMembers(null(), name.as_ptr(), 0, buf, 1) };
+            if matches!(status, ERROR_SUCCESS | ERROR_MEMBER_NOT_IN_ALIAS) {
+                let _ = mark_added(sid, false);
+            }
+            status
+        } else {
+            ERROR_SUCCESS
         };
         if !matches!(status, ERROR_SUCCESS | ERROR_MEMBER_IN_ALIAS | ERROR_MEMBER_NOT_IN_ALIAS) {
             eprintln!("net-trace: group change failed ({})", status);
@@ -867,5 +935,21 @@ mod tests {
         assert_eq!(net.take(true, false).unwrap_err(), "idle");
         #[cfg(not(windows))]
         assert_eq!(net.take(true, true).unwrap_err(), "unsupported");
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn opening_sample_is_not_counted_and_other_callers_do_not_drain() {
+        platform::FAKE_START.with(|f| f.set(true));
+        let net = NetTrace::default();
+        // 방금 연 세션은 잰 구간이 없다: 0으로 보이지 않게 따로 알린다
+        assert_eq!(net.take(true, true).unwrap_err(), "starting");
+        let counters = net.state.lock().unwrap().counters.clone();
+        counters.lock().unwrap().add(1, Protocol::Tcp, 25565, Dir::Rx, 500);
+        // 펼친 화면이 아닌 표본(릴레이 하트비트)은 센 값을 가져가지 않는다
+        assert_eq!(net.take(true, false).unwrap_err(), "idle");
+        let (counts, _) = net.take(true, true).unwrap();
+        assert_eq!(counts.get(&(1, Protocol::Tcp, 25565)), Some(&(500, 0)));
+        platform::FAKE_START.with(|f| f.set(false));
     }
 }

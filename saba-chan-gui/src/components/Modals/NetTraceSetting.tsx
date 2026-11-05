@@ -53,8 +53,8 @@ export function NetTraceSetting() {
                 return;
             }
             setAccess(String(res.access));
-        } catch (e) {
-            setError((e as Error).message);
+        } catch {
+            setError(t('net_trace.err_generic'));
         } finally {
             setBusy(false);
         }
