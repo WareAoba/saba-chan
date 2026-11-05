@@ -1649,7 +1649,6 @@
     "adapter": "{{name}}",
     "used": "사용 중",
     "clock_unknown": "클럭 모름",
-    "temp_unknown": "온도 모름",
     "kind_unknown": "종류 모름",
     "free_pill": "남은 {{free}}",
     "read": "읽기 {{value}}",

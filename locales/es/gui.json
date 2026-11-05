@@ -1649,7 +1649,6 @@
     "adapter": "{{name}}",
     "used": "En uso",
     "clock_unknown": "Frecuencia desconocida",
-    "temp_unknown": "Temperatura desconocida",
     "kind_unknown": "Tipo desconocido",
     "free_pill": "{{free}} libres",
     "read": "Lectura {{value}}",
