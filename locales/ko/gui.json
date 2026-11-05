@@ -1038,7 +1038,7 @@
       "loading": "봇 설정을 불러오는 중…",
       "general_title": "일반",
       "big_emoji": "이모지 업스케일",
-      "big_emoji_desc": "이모지나 스티커 하나만 보낸 글을 큰 그림으로 바꿔 올려요.",
+      "big_emoji_desc": "커스텀 이모지만 보낸 글을 큰 그림으로 바꿔 올려요.",
       "game_chat_title": "게임 채팅",
       "game_chat_guard": "채팅 연동이 꺼져 있을 때 글 막기",
       "game_chat_guard_desc": "게임 채팅 채널에 채팅 연동이 없으면 일반 글을 지워요. 게임 채팅 줄에 단 답장과 호출어로 보낸 글은 남아요.",

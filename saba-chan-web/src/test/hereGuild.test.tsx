@@ -60,7 +60,7 @@ describe('이 PC 의 디스코드 서버 설정', () => {
         const { api, relay } = setup();
         await flush();
         await flush();
-        fireEvent.click(screen.getByRole('checkbox', { name: /^Big emoji/ }));
+        fireEvent.click(screen.getByRole('checkbox', { name: /^Emoji upscale/ }));
         await flush();
         expect(api.discordSettingsSet).toHaveBeenCalledWith(G, { bigEmoji: true });
         fireEvent.click(screen.getByRole('checkbox', { name: /Singing Saba-chan/ }));
