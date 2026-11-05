@@ -2761,25 +2761,50 @@ mod tests {
     async fn an_import_whose_result_cannot_be_saved_is_not_reported_as_created() {
         use axum::{extract::State, Json};
         let tmp = tempfile::tempdir().unwrap();
-        let modules = tmp.path().join("modules");
-        let dir = modules.join("game");
-        std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join("module.toml"), "[module]\nschema_version = 1\nname = 'game'\nversion = '1.0.0'\nentry = 'lifecycle.py'\n").unwrap();
-        // 가져오는 동안 instance.json 자리가 폴더로 바뀐다 (저장이 실패하는 디스크 상태 대신)
+        // 데몬의 모듈 폴더 아래에 둔다: 그 밖의 모듈은 Windows 격리 실행에서 인스턴스 폴더 쓰기를 받지 못한다
+        let modules = crate::plugin::resolve_modules_dir();
+        let fixture = tempfile::Builder::new().prefix("import-save-").tempdir_in(&modules).unwrap();
+        let dir = fixture.path();
+        let name = dir.file_name().unwrap().to_string_lossy().into_owned();
+        std::fs::write(dir.join("module.toml"), format!("[module]\nschema_version = 1\nname = '{name}'\nversion = '1.0.0'\nentry = 'lifecycle.py'\n")).unwrap();
+        // 가져오는 동안 instance.json 자리가 폴더로 바뀐다 (저장이 실패하는 디스크 상태 대신).
+        // 기록은 테스트가 망가뜨린다: Windows 격리 실행은 인스턴스 폴더의 데몬 항목을 바꾸지 못한다
         std::fs::write(dir.join("lifecycle.py"),
-            "import json, os, sys\nc = json.load(sys.stdin)\nf = sys.argv[1]\n\
+            "import json, os, sys, time\nc = json.load(sys.stdin)\nf = sys.argv[1]\n\
              if f == 'functions': print(json.dumps({'success': True, 'functions': ['import_settings']}))\n\
-             else:\n    p = os.path.join(c['instance_dir'], 'instance.json')\n    os.remove(p)\n    os.mkdir(p)\n    print(json.dumps({'success': True, 'settings': {'motd': 'mine'}}))\n",
+             else:\n    d = c['instance_dir']\n    open(os.path.join(d, 'started'), 'w').close()\n    \
+             for _ in range(300):\n        if os.path.exists(os.path.join(d, 'go')): break\n        time.sleep(0.1)\n    \
+             print(json.dumps({'success': True, 'settings': {'motd': 'mine'}}))\n",
         ).unwrap();
         crate::sandbox::consent_test_component(&dir.join("lifecycle.py"));
-        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        let instances = tmp.path().join("instances");
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), instances.to_str().unwrap());
         for module in sup.module_loader.discover_modules().unwrap() { crate::sandbox::consent_test_component(std::path::Path::new(&module.entry_path())); }
         sup.initialize().await.unwrap();
         let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
         let server = tmp.path().join("server");
         std::fs::create_dir_all(&server).unwrap();
 
-        let response = crate::ipc::internal::into_internal(super::create_instance(State(state.clone()), Json(serde_json::json!({"name":"g", "module_name":"game", "migration_source":server}))).await).await;
+        let request = serde_json::json!({"name":"g", "module_name":name, "migration_source":server});
+        let created = tokio::spawn({
+            let state = state.clone();
+            async move { crate::ipc::internal::into_internal(super::create_instance(State(state), Json(request)).await).await }
+        });
+        let mut instance_dir = None;
+        for _ in 0..300 {
+            instance_dir = std::fs::read_dir(&instances).into_iter().flatten().flatten().map(|e| e.path()).find(|p| p.join("started").exists());
+            if instance_dir.is_some() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+        let instance_dir = instance_dir.expect("the import started");
+        let record = instance_dir.join("instance.json");
+        std::fs::remove_file(&record).unwrap();
+        std::fs::create_dir(&record).unwrap();
+        std::fs::write(instance_dir.join("go"), b"").unwrap();
+
+        let response = created.await.unwrap();
         assert_eq!(response.status.as_u16(), 500, "{}", response.body);
         assert_eq!(response.body["error_code"], "save_failed");
         assert!(server.is_dir());

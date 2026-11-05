@@ -1078,11 +1078,14 @@ mod tests {
     #[tokio::test]
     async fn properties_write_and_reset_are_validated_and_keep_the_instance_in_sync() {
         let tmp = tempfile::tempdir().unwrap();
-        let modules = tmp.path().join("modules");
-        let dir = modules.join("game");
+        // 데몬의 모듈 폴더 아래에 둔다: 그 밖의 모듈은 Windows 격리 실행에서 서버 폴더 쓰기를 받지 못한다
+        let modules = crate::plugin::resolve_modules_dir();
+        let fixture = tempfile::Builder::new().prefix("props-").tempdir_in(&modules).unwrap();
+        let dir = fixture.path();
+        let name = dir.file_name().unwrap().to_string_lossy().into_owned();
         let server = tmp.path().join("server");
-        for folder in [&dir, &server] { std::fs::create_dir_all(folder).unwrap(); }
-        std::fs::write(dir.join("module.toml"), "[module]\nschema_version = 1\nname = 'game'\nversion = '1.0.0'\nentry = 'lifecycle.py'\n\n[[settings.fields]]\nname = 'port'\ntype = 'number'\nmin = 1\nmax = 65535\n\n[[settings.fields]]\nname = 'difficulty'\ntype = 'select'\noptions = ['Easy', 'Hard']\n").unwrap();
+        std::fs::create_dir_all(&server).unwrap();
+        std::fs::write(dir.join("module.toml"), format!("[module]\nschema_version = 1\nname = '{name}'\nversion = '1.0.0'\nentry = 'lifecycle.py'\n\n[[settings.fields]]\nname = 'port'\ntype = 'number'\nmin = 1\nmax = 65535\n\n[[settings.fields]]\nname = 'difficulty'\ntype = 'select'\noptions = ['Easy', 'Hard']\n")).unwrap();
         std::fs::write(
             dir.join("lifecycle.py"),
             "import json, os, sys\nc = json.load(sys.stdin)\nf = os.path.join(c.get('working_dir', '.'), 'props.json')\n\
@@ -1095,7 +1098,7 @@ mod tests {
         let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
         for module in sup.module_loader.discover_modules().unwrap() { crate::sandbox::consent_test_component(std::path::Path::new(&module.entry_path())); }
         sup.initialize().await.unwrap();
-        let mut inst = crate::instance::ServerInstance::new("props", "game");
+        let mut inst = crate::instance::ServerInstance::new("props", &name);
         inst.id = "props".into();
         inst.working_dir = Some(server.to_string_lossy().into_owned());
         inst.port = Some(25570);
