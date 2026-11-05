@@ -1469,8 +1469,12 @@ async fn an_mcp_owner_reaches_app_actions_but_not_pc_only_ones() {
     assert_eq!(owner.origin.source, "mcp");
     let enable = plan(&state, "extension.enable", None, &json!({ "extension": "x" }), &owner).await.unwrap();
     assert_eq!(enable["needsConfirm"], false);
-    let err = plan(&state, "update.apply", None, &json!({}), &owner).await.unwrap_err();
-    assert_eq!((err.status, err.code), (403, "remote_local_only"));
+    // 앱 업데이트는 개인 에이전트에 연다 (사용자 결정 2026-11-05). 위험이라 늘 묻는다
+    let update = plan(&state, "update.apply", None, &json!({}), &owner).await.unwrap();
+    assert_eq!(update["needsConfirm"], true);
+    // 디스코드에서 온 원격은 그대로 PC 전용이다
+    let paired = Caller::local(crate::audit::Origin::new("remote"), "en".into());
+    assert_eq!(plan(&state, "update.apply", None, &json!({}), &paired).await.unwrap_err().code, "remote_local_only");
     let err = plan(&state, "instance.settings.set", Some(&id), &json!({ "java_path": "/bin/sh" }), &owner).await.unwrap_err();
     assert_eq!((err.code, err.data["field"].as_str()), ("invalid_input", Some("java_path")), "{err:?}");
     // 주인이 아니면 기본 레벨이다 (관리 액션은 막힌다)
@@ -1565,4 +1569,36 @@ async fn an_mcp_owner_reaches_what_the_app_screens_do() {
     // 백업 이름은 백업 목록에서 고른다
     let delete = &listed["actions"].as_array().unwrap().iter().find(|a| a["id"] == "backup.delete").unwrap()["input"];
     assert_eq!(delete["properties"]["name"]["optionsFrom"]["action"], "backup.list");
+}
+
+/// 원격 MCP는 게임 설정 원문을 비밀값째 읽고 쓰며, 예약은 늘 주인에게 묻고 저장한다 (사용자 결정 2026-11-05)
+#[tokio::test]
+async fn an_mcp_owner_reads_raw_game_settings_and_schedules_with_confirmation() {
+    let (state, id, _tmp) = server().await;
+    let owner = Caller::mcp("owner".into(), "owner".into(), None, None, "en".into());
+    let ids: Vec<String> = list(&state, Some(Gui), None, "en").await["actions"].as_array().unwrap().iter().filter_map(|a| a["id"].as_str().map(str::to_string)).collect();
+    assert!(ids.iter().any(|i| i == "instance.properties.get") && ids.iter().any(|i| i == "instance.properties.set"));
+    for want in ["instance.properties.get", "instance.properties.set"] {
+        assert!(!find(want).unwrap().surfaces.iter().any(|s| matches!(s, Discord | Chatbot)), "{want}");
+    }
+    // 게임 설정 쓰기는 PC 전용 칸 규칙을 받지 않는다 (웹 원격·짝 맺은 PC는 그대로 받는다)
+    let set = plan(&state, "instance.properties.set", Some(&id), &json!({ "settings": { "admin_pass": "x" } }), &owner).await;
+    assert!(set.is_ok(), "{set:?}");
+    let paired = Caller::local(crate::audit::Origin::new("remote"), "en".into());
+    let err = plan(&state, "instance.properties.set", Some(&id), &json!({ "settings": { "admin_pass": "x" } }), &paired).await.unwrap_err();
+    assert_eq!(err.code, "remote_field_blocked", "{err:?}");
+    // 읽기 결과에서 비밀값을 지우지 않는다 (MCP만)
+    assert!(!strips_secrets("instance.properties.get", &owner));
+    assert!(strips_secrets("instance.properties.get", &relay("owner", false)));
+    assert!(strips_secrets("instance.get", &owner));
+    // 길드 설정은 PC 주인이 고른 길드로 (앱과 같다). 디스코드에서 온 요청은 그 길드뿐이다
+    let guild = plan(&state, "discord.settings.set", None, &json!({ "guild": "123456789012345678", "locale": "ko" }), &owner).await;
+    assert!(guild.is_ok(), "{guild:?}");
+    let err = plan(&state, "discord.settings.set", None, &json!({ "locale": "ko" }), &owner).await.unwrap_err();
+    assert_eq!(err.data["field"], "guild");
+    let err = plan(&state, "discord.settings.set", None, &json!({ "guild": "other", "locale": "ko" }), &relay("owner", false)).await.unwrap_err();
+    assert_eq!(err.data["field"], "guild");
+    // 예약 바꾸기는 MCP에서 늘 묻는다
+    let schedule = plan(&state, "instance.schedule.set", Some(&id), &json!({ "schedule": [] }), &owner).await.unwrap();
+    assert_eq!(schedule["needsConfirm"], true);
 }

@@ -177,6 +177,14 @@
       },
       "rename": {
         "title": "重命名服务器"
+      },
+      "properties": {
+        "get": {
+          "title": "查看游戏设置文件"
+        },
+        "set": {
+          "title": "更改游戏设置文件"
+        }
       }
     },
     "server": {
@@ -365,7 +373,8 @@
       "from_snapshot": "来自游戏自动备份",
       "text": "内容",
       "apiKey": "API 密钥",
-      "command": "命令"
+      "command": "命令",
+      "settings": "设置"
     },
     "summary": {
       "server_item": "• **{{name}}** ({{module}}) · {{status}}",

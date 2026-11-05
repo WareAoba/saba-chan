@@ -177,6 +177,14 @@
       },
       "rename": {
         "title": "Renombrar servidor"
+      },
+      "properties": {
+        "get": {
+          "title": "Ver archivo de ajustes del juego"
+        },
+        "set": {
+          "title": "Cambiar archivo de ajustes del juego"
+        }
       }
     },
     "server": {
@@ -365,7 +373,8 @@
       "from_snapshot": "Desde copia automática del juego",
       "text": "Mensaje",
       "apiKey": "Clave de API",
-      "command": "Comando"
+      "command": "Comando",
+      "settings": "Ajustes"
     },
     "summary": {
       "server_item": "• **{{name}}** ({{module}}) · {{status}}",

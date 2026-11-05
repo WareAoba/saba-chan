@@ -250,6 +250,9 @@ pub static ACTIONS: &[Def] = &[
     // 게임 서버 업데이트 (사바쨩 앱 업데이트 `update.*`와 다르다)
     def("server.update.check", Kind::Query, "safe", LOCAL, true, "GET", "/api/instance/:id/check-update"),
     def("server.update.apply", Kind::Admin, "caution", LOCAL, true, "POST", "/api/instance/:id/apply-update"),
+    // 게임 설정 파일 원문 (관리자 비밀번호가 들어 있다). 원격 MCP에는 비밀값째 준다 (`MCP_UNLOCKED`, `strips_secrets`)
+    def("instance.properties.get", Kind::Query, "safe", LOCAL, true, "GET", "/api/instance/:id/properties"),
+    Def { fields: &[field("settings", "object", true)], ..def("instance.properties.set", Kind::Admin, "caution", LOCAL, true, "PUT", "/api/instance/:id/properties") },
     def("server.diagnose", Kind::Query, "safe", LOCAL, true, "POST", "/api/instance/:id/diagnose"),
     // 콘솔 입력 한 줄 (GUI 명령 창과 같은 `POST /command`). 무엇이든 보낼 수 있어 늘 묻는다
     Def { fields: &[field("command", "string", true)], ..def("server.console.send", Kind::Command, "danger", LOCAL, true, "POST", "/api/instance/:id/command") },
@@ -1053,8 +1056,8 @@ async fn resolve_in(server: &IPCServer, id: &str, instance: Option<&str>, input:
         (true, Some(i)) => Some(i.to_string()),
         (false, _) => None,
     };
-    // 원격 요청이 다루는 길드는 그 요청이 온 길드뿐이다
-    if let Some(who) = &caller.remote {
+    // 원격 요청이 다루는 길드는 그 요청이 온 길드뿐이다. 길드 없이 오는 원격 MCP(PC 주인)는 앱처럼 길드를 고른다 (사용자 결정 2026-11-05)
+    if let Some(who) = caller.remote.as_ref().filter(|w| !(w.guild_id.is_none() && caller.origin.via.as_deref() == Some(MCP_VIA))) {
         if def.fields.iter().any(|f| f.in_path && f.name == GUILD_FIELD) {
             let Some(own) = who.guild_id.clone() else { return Err(bad_input(GUILD_FIELD, "required")) };
             match input.get(GUILD_FIELD) {
@@ -1205,7 +1208,9 @@ async fn authorize_in(server: &IPCServer, r: &Resolved, caller: &Caller, new_ser
     // 실행이 안에서 부르는 라우터도 같은 규칙 층(`remote_daemon::server::rules`)을 지나지만, 여러 단계 계획이
     // 앞 단계만 돌고 뒤 단계에서 멈추지 않게 계획 때 거절한다
     // 원격 MCP도 웹 원격·짝 맺은 PC와 같이 PC에서만 하는 일과 PC 전용 칸을 막는다
-    let remote_rules = (caller.remote.is_none() && caller.origin.source == "remote") || caller.origin.via.as_deref() == Some(MCP_VIA);
+    // 원격 MCP는 계정 주인의 개인 에이전트라 앱 업데이트와 게임 설정 원문은 연다 (사용자 결정 2026-11-05, `MCP_UNLOCKED`)
+    let mcp = caller.origin.via.as_deref() == Some(MCP_VIA);
+    let remote_rules = (caller.remote.is_none() && caller.origin.source == "remote") || (mcp && !MCP_UNLOCKED.contains(&r.id.as_str()));
     if remote_rules {
         if let Some(refused) = crate::remote_daemon::server::refusal(server, r.method, &r.uri, r.body.as_ref(), new_server_module).await {
             let (status, code) = (refused.status().as_u16(), refused.code());
@@ -1314,6 +1319,14 @@ fn builtin_command(action: &str) -> Option<&'static str> {
     }
 }
 
+/// 원격 MCP가 웹 원격·짝 맺은 PC의 PC 전용 규칙(라우트·칸)을 받지 않는 액션 (사용자 결정 2026-11-05)
+const MCP_UNLOCKED: &[&str] = &["update.check", "update.apply", "instance.properties.get", "instance.properties.set"];
+
+/// 원격 결과에서 비밀값을 지우는가. 원격 MCP의 게임 설정 원문 읽기만 그대로 준다 (사용자 결정 2026-11-05)
+pub(crate) fn strips_secrets(id: &str, caller: &Caller) -> bool {
+    caller.remote.is_some() && !(id == "instance.properties.get" && caller.origin.via.as_deref() == Some(MCP_VIA))
+}
+
 /// 원격 MCP에서 온 요청의 `origin.via`. 디스코드 길드가 아니라 앱과 같은 고정 규칙으로 묻는다
 pub const MCP_VIA: &str = "mcp";
 
@@ -1338,6 +1351,10 @@ pub async fn needs_confirm(server: &IPCServer, action: &str, instance: Option<&s
         _ => None,
     };
     let Some(who) = guild_risk else {
+        // 원격 MCP의 예약은 나중에 묻지 않고 돌므로(디스코드의 예약 제한을 받지 않는다) 저장할 때 늘 묻는다
+        if action == "instance.schedule.set" && caller.origin.via.as_deref() == Some(MCP_VIA) {
+            return true;
+        }
         // 안전한 조회는 이 규칙 밖이다
         return !(kind == Kind::Query && risk == "safe") && fixed();
     };
@@ -1778,7 +1795,9 @@ async fn execute(server: &IPCServer, r: &Resolved, caller: &Caller) -> Value {
         mask_console(&mut result);
     }
     if caller.remote.is_some() {
-        strip_secrets(&mut result, &all_password_fields(server).await);
+        if strips_secrets(&r.id, caller) {
+            strip_secrets(&mut result, &all_password_fields(server).await);
+        }
         strip_local_details(&mut result);
         if let Some(allowed) = allowed_instances(server, caller).await {
             retain_allowed(&mut result, &allowed);

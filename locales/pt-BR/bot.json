@@ -177,6 +177,14 @@
       },
       "rename": {
         "title": "Renomear servidor"
+      },
+      "properties": {
+        "get": {
+          "title": "Ver arquivo de configurações do jogo"
+        },
+        "set": {
+          "title": "Alterar arquivo de configurações do jogo"
+        }
       }
     },
     "server": {
@@ -365,7 +373,8 @@
       "from_snapshot": "Do backup automático do jogo",
       "text": "Mensagem",
       "apiKey": "Chave de API",
-      "command": "Comando"
+      "command": "Comando",
+      "settings": "Configurações"
     },
     "summary": {
       "server_item": "• **{{name}}** ({{module}}) · {{status}}",

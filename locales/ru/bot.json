@@ -177,6 +177,14 @@
       },
       "rename": {
         "title": "Переименовать сервер"
+      },
+      "properties": {
+        "get": {
+          "title": "Файл настроек игры"
+        },
+        "set": {
+          "title": "Изменить файл настроек игры"
+        }
       }
     },
     "server": {
@@ -365,7 +373,8 @@
       "from_snapshot": "Из автобэкапа игры",
       "text": "Текст",
       "apiKey": "API-ключ",
-      "command": "Команда"
+      "command": "Команда",
+      "settings": "Настройки"
     },
     "summary": {
       "server_item": "• **{{name}}** ({{module}}) · {{status}}",
