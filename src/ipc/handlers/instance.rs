@@ -1695,6 +1695,76 @@ fn port_value(value: &Value) -> Option<u16> {
     .filter(|&p| p > 0)
 }
 
+/// 모듈 설정 변경을 PATCH 규칙으로 본다: 선언한 타입·범위·선택지·형식(400 `validation_failed`·`invalid_format`)과
+/// 모르는 키(400 `unknown_setting`). 통과하면 `None`. 게임 설정 파일 쓰기(`PUT /properties`)도 같은 검사를 지난다
+pub(crate) fn settings_rejection(supervisor: &crate::supervisor::Supervisor, instance: &crate::instance::ServerInstance, id: &str, settings: &Value) -> Option<axum::response::Response> {
+    // ── 설정값 타입/범위 스키마 검증 ──
+    if let Some(settings_obj) = settings.as_object() {
+        if let Ok(module) = supervisor.module_loader.get_module(&instance.module_name) {
+            if let Some(ref settings_meta) = module.metadata.settings {
+                // 부분 변경이므로 보낸 필드만 검증한다
+                // 숨겨진 설정은 required를 보지 않는다 (06 §8.2). 숨김은 저장된 값에 이번 요청을 얹어 계산한다
+                let view = serde_json::to_value(instance).unwrap_or_default();
+                let hidden = crate::validator::hidden_fields(&settings_meta.fields, |k| settings_obj.get(k).cloned().or_else(|| stored_setting(&view, instance, k)));
+                let errors: Vec<_> = crate::validator::validate_settings_patch(
+                    &settings_meta.fields,
+                    settings_obj,
+                )
+                .into_iter()
+                .filter(|e| !(e.error_type == crate::validator::ValidationErrorType::Required && hidden.contains(&e.field)))
+                .collect();
+                if !errors.is_empty() {
+                    let error_details: Vec<String> = errors.iter().map(|e| e.to_string()).collect();
+                    let fields: Vec<Value> = errors
+                        .iter()
+                        .map(|e| json!({ "field": e.field, "type": e.error_type, "message": e.message }))
+                        .collect();
+                    tracing::warn!(
+                        "Settings validation failed for instance {}: {:?}",
+                        id, error_details
+                    );
+                    // 형식(`format`·`pattern`)이 틀렸으면 GUI가 "잘못된 형식입니다"를 띄운다
+                    let code = if errors.iter().any(|e| e.error_type == crate::validator::ValidationErrorType::InvalidFormat) {
+                        "invalid_format"
+                    } else {
+                        "validation_failed"
+                    };
+                    let error = json!({
+                        "error": code,
+                        "error_code": code,
+                        "message": "Settings validation failed",
+                        "details": error_details,
+                        "fields": fields,
+                    });
+                    return Some((StatusCode::BAD_REQUEST, Json(error)).into_response());
+                }
+            }
+        }
+    }
+
+    // ── 모르는 키 거절 (오타가 조용히 module_settings에 쌓이지 않게) ──
+    // 모듈이 설정 목록을 선언했을 때만 본다. 공통 필드와 데몬이 읽는 설정(`constants::DAEMON_SETTINGS`)은 받는다
+    if let (Some(settings_obj), Ok(module)) = (settings.as_object(), supervisor.module_loader.get_module(&instance.module_name)) {
+        if let Some(ref settings_meta) = module.metadata.settings {
+            let unknown: Vec<&String> = settings_obj
+                .keys()
+                .filter(|k| !is_known_field(k) && !is_daemon_setting(k))
+                .filter(|k| !settings_meta.fields.iter().any(|f| &f.name == *k))
+                .collect();
+            if !unknown.is_empty() {
+                let fields: Vec<Value> = unknown.iter().map(|k| json!({ "field": k })).collect();
+                let error = json!({
+                    "error": format!("Unknown setting: {}", unknown.iter().map(|k| k.as_str()).collect::<Vec<_>>().join(", ")),
+                    "error_code": "unknown_setting",
+                    "fields": fields,
+                });
+                return Some((StatusCode::BAD_REQUEST, Json(error)).into_response());
+            }
+        }
+    }
+    None
+}
+
 /// PATCH /api/instance/:id - 인스턴스 설정 업데이트 (보낸 키만). `revision`(GET에서 받은 값)을 주면
 /// 그사이 다른 곳에서 바뀐 인스턴스에는 쓰지 않고 409 `settings_changed`로 거절한다
 pub async fn update_instance_settings(
@@ -1757,69 +1827,8 @@ pub async fn update_instance_settings(
         }
     }
 
-    // ── 설정값 타입/범위 스키마 검증 ──
-    if let Some(settings_obj) = settings.as_object() {
-        if let Ok(module) = supervisor.module_loader.get_module(&instance.module_name) {
-            if let Some(ref settings_meta) = module.metadata.settings {
-                // 부분 변경이므로 보낸 필드만 검증한다
-                // 숨겨진 설정은 required를 보지 않는다 (06 §8.2). 숨김은 저장된 값에 이번 요청을 얹어 계산한다
-                let view = serde_json::to_value(instance).unwrap_or_default();
-                let hidden = crate::validator::hidden_fields(&settings_meta.fields, |k| settings_obj.get(k).cloned().or_else(|| stored_setting(&view, instance, k)));
-                let errors: Vec<_> = crate::validator::validate_settings_patch(
-                    &settings_meta.fields,
-                    settings_obj,
-                )
-                .into_iter()
-                .filter(|e| !(e.error_type == crate::validator::ValidationErrorType::Required && hidden.contains(&e.field)))
-                .collect();
-                if !errors.is_empty() {
-                    let error_details: Vec<String> = errors.iter().map(|e| e.to_string()).collect();
-                    let fields: Vec<Value> = errors
-                        .iter()
-                        .map(|e| json!({ "field": e.field, "type": e.error_type, "message": e.message }))
-                        .collect();
-                    tracing::warn!(
-                        "Settings validation failed for instance {}: {:?}",
-                        id, error_details
-                    );
-                    // 형식(`format`·`pattern`)이 틀렸으면 GUI가 "잘못된 형식입니다"를 띄운다
-                    let code = if errors.iter().any(|e| e.error_type == crate::validator::ValidationErrorType::InvalidFormat) {
-                        "invalid_format"
-                    } else {
-                        "validation_failed"
-                    };
-                    let error = json!({
-                        "error": code,
-                        "error_code": code,
-                        "message": "Settings validation failed",
-                        "details": error_details,
-                        "fields": fields,
-                    });
-                    return (StatusCode::BAD_REQUEST, Json(error)).into_response();
-                }
-            }
-        }
-    }
-
-    // ── 모르는 키 거절 (오타가 조용히 module_settings에 쌓이지 않게) ──
-    // 모듈이 설정 목록을 선언했을 때만 본다. 공통 필드와 데몬이 읽는 설정(`constants::DAEMON_SETTINGS`)은 받는다
-    if let (Some(settings_obj), Ok(module)) = (settings.as_object(), supervisor.module_loader.get_module(&instance.module_name)) {
-        if let Some(ref settings_meta) = module.metadata.settings {
-            let unknown: Vec<&String> = settings_obj
-                .keys()
-                .filter(|k| !is_known_field(k) && !is_daemon_setting(k))
-                .filter(|k| !settings_meta.fields.iter().any(|f| &f.name == *k))
-                .collect();
-            if !unknown.is_empty() {
-                let fields: Vec<Value> = unknown.iter().map(|k| json!({ "field": k })).collect();
-                let error = json!({
-                    "error": format!("Unknown setting: {}", unknown.iter().map(|k| k.as_str()).collect::<Vec<_>>().join(", ")),
-                    "error_code": "unknown_setting",
-                    "fields": fields,
-                });
-                return (StatusCode::BAD_REQUEST, Json(error)).into_response();
-            }
-        }
+    if let Some(rejected) = settings_rejection(&supervisor, instance, &id, &settings) {
+        return rejected;
     }
 
     // 설정값 업데이트
