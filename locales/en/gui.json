@@ -1344,6 +1344,7 @@
     "err_backup_failed_autosave_off": "The backup failed, and the server’s autosave could not be turned back on either. Restart the server.",
     "err_backup_save_rejected": "The server refused the save command, so no backup was made. Stop the server and back up again.",
     "err_backup_save_unconfirmed": "The server did not report that saving finished, so no backup was made. Try again shortly or stop the server and back up.",
+    "err_backup_server_stopped": "The server stopped while it was being backed up, so that backup was discarded. Check the server and back up again.",
     "kind_snapshot": "Kept game backup",
     "kind_game-snapshot": "Game auto-backup",
     "backup_keep_snapshot": "Keep game backup",

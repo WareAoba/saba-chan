@@ -171,6 +171,18 @@ impl std::fmt::Display for AutosaveNotResumed {
 
 impl std::error::Error for AutosaveNotResumed {}
 
+/// 켜진 서버를 묶는 사이 서버가 꺼지거나 다시 켜졌다: 종료 저장과 겹쳐 읽었을 수 있어 그 백업을 지웠다 (`backup_server_stopped`)
+#[derive(Debug)]
+struct ServerStopped;
+
+impl std::fmt::Display for ServerStopped {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "the server stopped while it was being backed up; the backup was discarded, back up again")
+    }
+}
+
+impl std::error::Error for ServerStopped {}
+
 /// 이 인스턴스의 백업 폴더와 백업할 경로
 struct Plan {
     dir: PathBuf,
@@ -376,6 +388,8 @@ async fn take_backup_locked(state: &IPCServer, id: &str, kind: BackupKind, prote
     } else {
         Vec::new()
     };
+    // 정지·재시작은 작업 잠금을 기다리지 않는다: 묶는 사이 꺼지거나 다시 켜졌는지 실행 세대로 가린다
+    let generation = state.supervisor.read().await.run_generation_of(id);
     let saved = if live {
         save_for_backup(state, id, &plan.spec, &failures).await
     } else {
@@ -386,29 +400,54 @@ async fn take_backup_locked(state: &IPCServer, id: &str, kind: BackupKind, prote
     let result = if let Err(e) = saved {
         tracing::warn!("Not backing up '{}': {}", id, e);
         Err(e.into())
-    } else { tokio::task::spawn_blocking(move || {
-        for path in &paths {
-            if boundary.resolve(path).is_none() {
-                return Err(crate::module_paths::outside(&module_name, "backup_paths", path.display()));
+    } else {
+        let dir = dir.clone();
+        tokio::task::spawn_blocking(move || {
+            for path in &paths {
+                if boundary.resolve(path).is_none() {
+                    return Err(crate::module_paths::outside(&module_name, "backup_paths", path.display()));
+                }
             }
+            backup::create_excluding(&dir, kind, &paths, &spec.exclude)
+        })
+        .await
+        .map_err(anyhow::Error::from)
+        .and_then(|r| r)
+    };
+    // 묶는 사이 서버가 꺼졌으면 종료 저장이 쓰는 중인 파일을 읽었을 수 있다: 백업을 남기지 않고, 오래된 백업도 정리하지 않는다
+    let stopped = live && (!is_running(state, id).await || state.supervisor.read().await.run_generation_of(id) != generation);
+    let mut result = match result {
+        Ok(made) if stopped => {
+            tracing::warn!("'{}' stopped while it was being backed up; discarding {}", id, made.name);
+            let (dir, name) = (dir.clone(), made.name.clone());
+            if let Err(e) = tokio::task::spawn_blocking(move || backup::delete(&dir, &name)).await.map_err(anyhow::Error::from).and_then(|r| r) {
+                tracing::warn!("Could not discard backup {} of '{}': {}", made.name, id, e);
+            }
+            Err(ServerStopped.into())
         }
-        let made = backup::create_excluding(&dir, kind, &paths, &spec.exclude)?;
-        // 방금 만든 백업은 보관 개수와 상관없이 남긴다
-        let mut keep_names = vec![made.name.as_str()];
-        keep_names.extend(protect.as_deref());
-        let pruned = if remote { Vec::new() } else { backup::prune(&dir, keep, &keep_names) };
-        anyhow::Ok((made, pruned))
-    })
-    .await
-    .map_err(anyhow::Error::from)
-    .and_then(|r| r) };
-    let mut result = result.map(|(made, pruned)| {
-        tracing::info!("Backed up '{}' as {} ({} bytes, pruned {})", id, made.name, made.size, pruned.len());
-        made
-    });
-    // 백업이 실패했어도 자동 저장을 되돌리지 못했으면 그것도 알린다 (서버가 자동 저장이 꺼진 채 돈다)
+        Ok(made) => {
+            // 방금 만든 백업은 보관 개수와 상관없이 남긴다
+            let (dir, name, protect) = (dir.clone(), made.name.clone(), protect.clone());
+            let pruned = if remote {
+                Vec::new()
+            } else {
+                tokio::task::spawn_blocking(move || {
+                    let mut keep_names = vec![name.as_str()];
+                    keep_names.extend(protect.as_deref());
+                    backup::prune(&dir, keep, &keep_names)
+                })
+                .await
+                .unwrap_or_default()
+            };
+            tracing::info!("Backed up '{}' as {} ({} bytes, pruned {})", id, made.name, made.size, pruned.len());
+            Ok(made)
+        }
+        Err(e) => Err(e),
+    };
+    // 백업이 실패했어도 자동 저장을 되돌리지 못했으면 그것도 알린다 (서버가 자동 저장이 꺼진 채 돈다).
+    // 그사이 꺼진 서버에는 보내지 않는다 (다시 켜진 서버는 자동 저장이 켜진 채 시작한다)
     let mut not_resumed = None;
-    if let Some(cmd) = resume.as_deref() {
+    if let Some(cmd) = resume.as_deref().filter(|_| !stopped) {
         // 저장 명령처럼 답의 첫 줄이 모듈의 실패 모양이면 서버가 재개를 거절한 것이다
         let failures: Vec<regex::Regex> = failures.iter().filter_map(|p| regex::Regex::new(p).ok()).collect();
         let resumed = command_reply(state, id, cmd, json!({})).await.is_some_and(|reply| {
@@ -453,6 +492,8 @@ fn backup_error(e: &anyhow::Error) -> (StatusCode, Value) {
             SaveNotDone::Unconfirmed { command } => json!({ "success": false, "error": e.to_string(), "error_code": "backup_save_unconfirmed", "command": command }),
         };
         (StatusCode::CONFLICT, body)
+    } else if e.downcast_ref::<ServerStopped>().is_some() {
+        (StatusCode::CONFLICT, json!({ "success": false, "error": e.to_string(), "error_code": "backup_server_stopped" }))
     } else if let Some(paused) = e.downcast_ref::<AutosaveNotResumed>() {
         (StatusCode::INTERNAL_SERVER_ERROR, json!({ "success": false, "error": e.to_string(), "error_code": "autosave_not_resumed", "backup": paused.backup }))
     } else if let Some(locked) = e.downcast_ref::<backup::LockedFile>() {
@@ -2460,6 +2501,29 @@ print(json.dumps({'success': True, 'snapshots': [{'id': 'startup/backup_1', 'cre
         assert_eq!(body["error_code"], "autosave_not_resumed", "{body}");
     }
 
+    /// 켜진 서버를 묶는 사이 서버가 꺼지면(정지·재시작은 작업 잠금을 기다리지 않는다) 종료 저장과 겹쳐 읽었을 수 있다:
+    /// 그 백업을 남기지 않고, 꺼진 서버에 자동 저장 되돌리기나 재시작 안내 대신 `backup_server_stopped`로 알린다.
+    /// 오래된 자동 백업도 정리하지 않는다
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_live_backup_is_discarded_when_the_server_stops_during_it() {
+        let (state, id, tmp) = server_with(&live_module(None), None).await;
+        run_fake_server(&state, &id, &tmp, "save-all) echo 'ok save-all'; exit 0;;").await;
+        let dir = state.supervisor.read().await.instance_store.instance_dir(&id).join("backups");
+        let older = backup::create(&dir, BackupKind::Scheduled, &[tmp.path().join("server/world")]).unwrap().name;
+        {
+            let mut sup = state.supervisor.write().await;
+            let mut instance = sup.instance_store.get(&id).unwrap().clone();
+            instance.backup_keep = Some(1);
+            sup.instance_store.update(&id, instance).unwrap();
+        }
+        let err = take_backup(&state, &id, BackupKind::Scheduled).await.err().expect("a backup of a server that stopped");
+        let body = crate::ipc::internal::into_internal(err).await.body;
+        assert_eq!(body["error_code"], "backup_server_stopped", "{body}");
+        let names: Vec<_> = backup::list(&dir).into_iter().map(|b| b.name).collect();
+        assert_eq!(names, vec![older], "only the earlier backup is left");
+    }
+
     /// 하트비트의 예약 목록: 켜 둔 것만, 가까운 순으로, 상한까지
     #[test]
     fn upcoming_runs_list_enabled_tasks_soonest_first() {
@@ -2479,12 +2543,12 @@ print(json.dumps({'success': True, 'snapshots': [{'id': 'startup/backup_1', 'cre
     }
 
     /// 백업이 실패하고 자동 저장 되돌리기도 실패하면 둘 다 알린다 (서버가 자동 저장이 꺼진 채 돈다).
-    /// 시험 서버는 저장 명령을 거절하고 끝나서 되돌리기 명령을 받지 못한다
+    /// 시험 서버는 저장 명령도 되돌리기 명령도 거절한다 (꺼진 서버에는 되돌리기를 보내지 않는다)
     #[cfg(unix)]
     #[tokio::test]
     async fn a_failed_backup_also_reports_autosave_left_off() {
         let (state, id, tmp) = server_with(&live_module(Some("^Saved the game$")), None).await;
-        run_fake_server(&state, &id, &tmp, "save-all) echo 'Unknown command'; exit 0;;").await;
+        run_fake_server(&state, &id, &tmp, "save-all) echo 'Unknown command';; save-on) echo 'Unknown command';;").await;
         let err = take_backup(&state, &id, BackupKind::Manual).await.err().expect("rejected save");
         let body = crate::ipc::internal::into_internal(err).await.body;
         assert_eq!(body["error_code"], "backup_failed_autosave_off", "{body}");

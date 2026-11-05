@@ -429,6 +429,7 @@
       "backup_failed_autosave_off": "백업하지 못했고, 서버의 자동 저장도 다시 켜지 못했어요. 서버를 다시 시작해 주세요: saba-chan-cli restart <name>",
       "backup_save_rejected": "서버가 저장 명령을 받지 않아 백업하지 않았어요. 서버를 끈 뒤 다시 백업해 주세요: saba-chan-cli stop 이름",
       "backup_save_unconfirmed": "서버가 저장을 마쳤다고 알리지 않아 백업하지 않았어요. 잠시 뒤 다시 하거나 서버를 끈 뒤 백업해 주세요: saba-chan-cli stop 이름",
+      "backup_server_stopped": "백업하는 사이 서버가 꺼져서 그 백업은 지웠어요. 서버 상태를 확인한 뒤 다시 백업해 주세요: saba-chan-cli backup 이름",
       "snapshot_not_found": "게임이 만든 자동 백업이 없어요.",
       "invalid_relay_url": "서버쨩 주소는 https:// 주소만 쓸 수 있어요(이 PC에서 시험할 때만 localhost·127.0.0.1·[::1]의 http를 쓸 수 있어요).",
       "module_busy": "이 모듈을 이미 설치하거나 지우는 중이에요. 끝난 뒤 다시 해 주세요.",

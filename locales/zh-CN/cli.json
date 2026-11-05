@@ -429,6 +429,7 @@
       "backup_failed_autosave_off": "备份失败，服务器的自动保存也未能重新开启。请重启服务器: saba-chan-cli restart <name>",
       "backup_save_rejected": "服务器拒绝了保存命令，因此没有进行备份。请停止服务器后重新备份: saba-chan-cli stop <name>",
       "backup_save_unconfirmed": "服务器未报告保存完成，因此没有进行备份。请稍后重试，或停止服务器后再备份: saba-chan-cli stop <name>",
+      "backup_server_stopped": "备份期间服务器已停止，因此已丢弃该备份。请检查服务器后重新备份: saba-chan-cli backup <name>",
       "snapshot_not_found": "游戏没有自动备份.",
       "invalid_relay_url": "中继地址只能使用 https://(仅在本机测试时可对 localhost、127.0.0.1 或 [::1] 使用 http)。",
       "module_busy": "此模块正在安装或删除中。请在完成后重试。",

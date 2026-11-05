@@ -1344,6 +1344,7 @@
     "err_backup_failed_autosave_off": "备份失败，服务器的自动保存也未能重新开启。请重启服务器.",
     "err_backup_save_rejected": "服务器拒绝了保存命令，因此没有进行备份。请停止服务器后重新备份.",
     "err_backup_save_unconfirmed": "服务器未报告保存完成，因此没有进行备份。请稍后重试，或停止服务器后再备份.",
+    "err_backup_server_stopped": "备份期间服务器已停止，因此已丢弃该备份。请检查服务器后重新备份。",
     "kind_snapshot": "保留的游戏备份",
     "kind_game-snapshot": "游戏自动备份",
     "backup_keep_snapshot": "保留游戏备份",

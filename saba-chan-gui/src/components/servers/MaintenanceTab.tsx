@@ -86,6 +86,8 @@ const CODE_TEXT: Record<string, string> = {
     // 켜진 서버가 저장 명령을 거절했거나 저장 완료 줄이 나오지 않아 백업하지 않았다 ([backup] save_done_pattern)
     backup_save_rejected: 'maintenance.err_backup_save_rejected',
     backup_save_unconfirmed: 'maintenance.err_backup_save_unconfirmed',
+    // 켜진 서버를 묶는 사이 서버가 꺼져 그 백업을 지웠다
+    backup_server_stopped: 'maintenance.err_backup_server_stopped',
     snapshot_not_found: 'maintenance.err_snapshot_not_found',
     schedule_changed: 'maintenance.err_schedule_changed',
     server_running: 'maintenance.restore_stop_first',

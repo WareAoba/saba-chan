@@ -429,6 +429,7 @@
       "backup_failed_autosave_off": "La sauvegarde a échoué et la sauvegarde automatique du serveur n’a pas pu être réactivée non plus. Redémarrez le serveur: saba-chan-cli restart <name>",
       "backup_save_rejected": "Le serveur a refusé la commande de sauvegarde, aucune sauvegarde n’a donc été faite. Arrêtez le serveur puis recommencez: saba-chan-cli stop <name>",
       "backup_save_unconfirmed": "Le serveur n’a pas signalé la fin de l’enregistrement, aucune sauvegarde n’a donc été faite. Réessayez dans un instant ou arrêtez le serveur avant de sauvegarder: saba-chan-cli stop <name>",
+      "backup_server_stopped": "Le serveur s’est arrêté pendant la sauvegarde, elle a donc été supprimée. Vérifiez le serveur puis sauvegardez à nouveau : saba-chan-cli backup <nom>",
       "snapshot_not_found": "Le jeu n’a pas de sauvegarde automatique.",
       "invalid_relay_url": "Seules les adresses de relais https:// sont autorisées (http uniquement pour localhost, 127.0.0.1 ou [::1] pour tester sur ce PC).",
       "module_busy": "Ce module est déjà en cours d'installation ou de suppression. Réessayez une fois l'opération terminée.",
