@@ -532,7 +532,8 @@
       "duration_units": "분,시간,일,주",
       "reason": "사유 (선택)",
       "purge": "글 삭제",
-      "announce_hint": "결과는 디스코드 서버의 시스템 채널에도 알려요(멘션 알림 없음)."
+      "announce_hint": "결과는 디스코드 서버의 시스템 채널에도 알려요(멘션 알림 없음).",
+      "desc": "제재, 채널 잠금, 청소"
     },
     "load_failed": "설정을 읽지 못했어요. 연결을 확인하고 다시 읽어 주세요.",
     "retry": "다시 읽기",
@@ -542,7 +543,11 @@
     "channel_gameChat": "게임 채팅 채널",
     "channel_board": "상황판 채널",
     "sleep_now": "지금 재우기",
-    "awake": "깨어 있어요"
+    "awake": "깨어 있어요",
+    "basics_desc": "이 서버에서 쓸 언어와 이모지",
+    "music_desc": "음성 채널에서 노래를 틀어요",
+    "reading_desc": "채팅을 음성으로 읽어 줘요",
+    "channels_desc": "기능마다 쓸 채널을 골라요"
   },
   "logs": {
     "title": "지난 로그",

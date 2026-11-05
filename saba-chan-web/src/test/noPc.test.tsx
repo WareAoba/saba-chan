@@ -121,6 +121,27 @@ describe('PC 없는 사람의 웹', () => {
         });
     });
 
+    it('디스코드 설정은 아이콘과 설명이 달린 카드로 묶인다', async () => {
+        render(<App api={mockApi({})} session={mockSession(fakeSession())} />);
+        await flush();
+        const names = [
+            'Basics',
+            'Singing Saba-chan',
+            'Reading Saba-chan',
+            'Talking Saba-chan',
+            'Channel assignments',
+            'Server management',
+        ];
+        for (const name of names) {
+            const card = screen.getByRole('region', { name });
+            expect(card.classList.contains('set-card')).toBe(true);
+            expect(card.querySelector('.set-card-icon svg')).toBeTruthy();
+            expect(card.querySelector('.set-card-desc')?.textContent).toBeTruthy();
+        }
+        // 넓은 화면에서 두 줄로 쌓는 칸
+        expect(screen.getByRole('region', { name: 'Basics' }).closest('.set-card-grid')).toBeTruthy();
+    });
+
     it('서버 관리 권한만 있으면 서버 관리 칸만 보인다', async () => {
         const session = fakeSession({ manage: false, channels: true, messages: true, members: true });
         render(<App api={mockApi({})} session={mockSession(session)} />);

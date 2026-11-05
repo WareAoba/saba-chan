@@ -532,7 +532,8 @@
       "duration_units": "min,std,t,w",
       "reason": "Grund (optional)",
       "purge": "Ihre Nachrichten löschen",
-      "announce_hint": "Das Ergebnis wird auch im Systemkanal des Servers gepostet (ohne jemanden zu erwähnen)."
+      "announce_hint": "Das Ergebnis wird auch im Systemkanal des Servers gepostet (ohne jemanden zu erwähnen).",
+      "desc": "Sanktionen, Kanalsperren und Aufräumen"
     },
     "load_failed": "Die Einstellungen konnten nicht geladen werden. Prüfe die Verbindung und versuche es erneut.",
     "retry": "Erneut versuchen",
@@ -542,7 +543,11 @@
     "channel_gameChat": "Spielchat-Kanal",
     "channel_board": "Statustafel-Kanal",
     "sleep_now": "Jetzt schlafen legen",
-    "awake": "Wach"
+    "awake": "Wach",
+    "basics_desc": "Sprache und Emojis für diesen Server",
+    "music_desc": "Spielt Musik in Sprachkanälen",
+    "reading_desc": "Liest den Chat in Sprachkanälen vor",
+    "channels_desc": "Wähle für jede Funktion einen Kanal"
   },
   "logs": {
     "title": "Frühere Logs",
