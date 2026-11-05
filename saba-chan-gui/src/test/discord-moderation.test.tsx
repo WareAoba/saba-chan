@@ -140,15 +140,28 @@ describe('ModerationTab', () => {
         await waitFor(() => expect(window.api.relayModChannel).toHaveBeenCalledWith('g1', '111', { slowmode: 30 }));
     });
 
-    it('청소는 확인 창을 거쳐 지우고 결과를 알린다', async () => {
+    it('청소는 권한을 먼저 보고, 확인 창을 거쳐 지우고 결과를 알린다', async () => {
         render(<ModerationTab node={node} members={members} />);
         fireEvent.click(await screen.findByRole('button', { name: /Clear…/ }));
-        expect(window.api.relayModClear).not.toHaveBeenCalled();
-        const confirm = screen.getByRole('alertdialog');
+        await waitFor(() =>
+            expect(window.api.relayModClear).toHaveBeenCalledWith('g1', '111', { count: 100, dryRun: true }),
+        );
+        const confirm = await screen.findByRole('alertdialog');
         expect(confirm.textContent).toMatch(/Delete up to 100 messages in #chat/);
         fireEvent.click(within(confirm).getByRole('button', { name: 'Delete' }));
         await waitFor(() => expect(window.api.relayModClear).toHaveBeenCalledWith('g1', '111', { count: 100 }));
         expect(await screen.findByText(/Deleted 87 messages/)).toBeTruthy();
+    });
+
+    it('청소할 권한이 없으면 확인 창 없이 거절을 보인다', async () => {
+        window.api.relayModClear = vi
+            .fn()
+            .mockResolvedValue({ success: false, error: 'FORBIDDEN', need: 'ManageMessages' }) as never;
+        render(<ModerationTab node={node} members={members} />);
+        fireEvent.click(await screen.findByRole('button', { name: /Clear…/ }));
+        expect(await screen.findByRole('alert')).toBeTruthy();
+        expect(screen.queryByRole('alertdialog')).toBeNull();
+        expect(window.api.relayModClear).toHaveBeenCalledTimes(1);
     });
 
     it('멤버 화면은 남은 시간 순으로 음소거된 사람을 보이고, 새로 음소거·해제한다', async () => {

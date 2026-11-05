@@ -780,13 +780,25 @@ function ClearSection({ guildId, channel, can, members }: ClearSectionProps) {
     const [period, setPeriod] = useState('0');
     const [confirming, setConfirming] = useState(false);
     const action = useAction();
-    const go = () => {
-        setConfirming(false);
+    const bodyOf = () => {
         const body: ApiBody = { count: Math.min(1000, Math.max(1, Number(count) || 1)) };
         if (author) body.authorId = author;
         if (Number(period)) body.sinceMinutes = Number(period);
+        return body;
+    };
+    // 권한을 먼저 본다(dryRun): 지울 수 없으면 확인 창 대신 거절을 보인다
+    const ask = () =>
         action.run(
-            () => window.api.relayModClear(guildId, channel.id, body),
+            () => window.api.relayModClear(guildId, channel.id, { ...bodyOf(), dryRun: true }),
+            () => {
+                setConfirming(true);
+                return null;
+            },
+        );
+    const go = () => {
+        setConfirming(false);
+        action.run(
+            () => window.api.relayModClear(guildId, channel.id, bodyOf()),
             (res) => ({
                 tone: 'ok',
                 text: [
@@ -810,7 +822,7 @@ function ClearSection({ guildId, channel, can, members }: ClearSectionProps) {
                     type="button"
                     className="btn btn-danger btn-sm"
                     disabled={action.busy || !can.manageMessages}
-                    onClick={() => setConfirming(true)}
+                    onClick={ask}
                 >
                     {action.busy ? <SabaSpinner size="xs" /> : <Icon name="trash" size="sm" />}{' '}
                     {t('discord.mod.clear_button')}

@@ -1494,6 +1494,27 @@ pub async fn plan_text(server: &IPCServer, text: &str, caller: &Caller) -> Resul
     Ok(view)
 }
 
+/// 확인을 묻기 전의 권한 검사 (릴레이 `check`): 계획과 같은 해석·권한 판정을 지나되 계획을 남기지 않는다.
+/// 통과하면 `{success, actionId, instance, risk}`. 확인 버튼을 만들기 전에 불러, 권한이 없는 요청자에게 확인부터 묻지 않는다
+pub async fn check(server: &IPCServer, id: &str, instance: Option<&str>, input: &Value, caller: &Caller) -> Result<Value, ActionError> {
+    let r = resolve(server, id, instance, input, caller).await?;
+    authorize(server, &r, caller).await?;
+    Ok(json!({ "success": true, "actionId": r.id, "instance": r.instance, "risk": r.risk }))
+}
+
+/// 문장 명령의 권한 검사 (`check {text}`): `plan_text`와 같은 해석. 실행할 것이 없거나 거절이면 계획과 같은 답
+pub async fn check_text(server: &IPCServer, text: &str, caller: &Caller) -> Result<Value, ActionError> {
+    let req = chat_request(text, caller);
+    let (settings, cat) = chat_settings(server, caller).await;
+    match crate::chat::interpret(server, &settings, &cat, &req).await {
+        crate::chat::Interpreted::Run(target) => Ok(json!({ "success": true, "actionId": target.action_id(), "instance": target.instance(), "risk": target.risk() })),
+        crate::chat::Interpreted::Reply(reply) => match named_action(&reply, caller.surface) {
+            Some((id, instance)) => check(server, id, Some(&instance), &json!({}), caller).await,
+            None => Ok(chat_json(reply, true, caller)),
+        },
+    }
+}
+
 fn confirmed_by_requester(caller: &Caller) -> bool {
     caller.remote.as_ref().is_some_and(|w| w.confirmed_by_requester())
 }
