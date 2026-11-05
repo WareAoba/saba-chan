@@ -388,8 +388,9 @@ async fn take_backup_locked(state: &IPCServer, id: &str, kind: BackupKind, prote
     } else {
         Vec::new()
     };
-    // 정지·재시작은 작업 잠금을 기다리지 않는다: 묶는 사이 꺼지거나 다시 켜졌는지 실행 세대로 가린다
-    let generation = state.supervisor.read().await.run_generation_of(id);
+    // 정지·재시작은 작업 잠금을 기다리지 않는다: 묶는 사이 꺼지거나 다시 켜졌는지 프로세스로 가린다.
+    // 실행 세대는 정지를 요청하는 순간 오르므로(정지가 실패해도) 쓰지 않는다
+    let pid = state.supervisor.read().await.tracker.get_pid(id).ok();
     let saved = if live {
         save_for_backup(state, id, &plan.spec, &failures).await
     } else {
@@ -415,7 +416,7 @@ async fn take_backup_locked(state: &IPCServer, id: &str, kind: BackupKind, prote
         .and_then(|r| r)
     };
     // 묶는 사이 서버가 꺼졌으면 종료 저장이 쓰는 중인 파일을 읽었을 수 있다: 백업을 남기지 않고, 오래된 백업도 정리하지 않는다
-    let stopped = live && (!is_running(state, id).await || state.supervisor.read().await.run_generation_of(id) != generation);
+    let stopped = live && (!is_running(state, id).await || state.supervisor.read().await.tracker.get_pid(id).ok() != pid);
     let mut result = match result {
         Ok(made) if stopped => {
             tracing::warn!("'{}' stopped while it was being backed up; discarding {}", id, made.name);
