@@ -41,7 +41,8 @@ pub struct Reading {
 }
 
 /// GPU 엔진 인스턴스 이름(`pid_1234_luid_0x0_0x1_phys_0_eng_0_engtype_3D`)과 값에서 GPU별 사용률.
-/// 같은 GPU(`luid`)의 같은 엔진 종류는 더하고(프로세스마다 따로 나온다), 그중 가장 바쁜 종류를 그 GPU 값으로 한다.
+/// 같은 엔진(`luid`·`phys`·`eng` 번호가 같은 것)은 프로세스마다 따로 나와서 더하고, 그 GPU에서 가장 바쁜 엔진을 GPU 값으로 한다
+/// (작업 관리자와 같다).
 /// 반환은 luid 순서
 #[cfg_attr(not(windows), allow(dead_code))]
 pub fn gpu_engine_util(items: &[(String, f64)]) -> Vec<(String, f32)> {
@@ -49,8 +50,12 @@ pub fn gpu_engine_util(items: &[(String, f64)]) -> Vec<(String, f32)> {
     for (name, value) in items {
         let lower = name.to_lowercase();
         let Some(luid) = field(&lower, "luid_", "_phys") else { continue };
-        let Some(kind) = lower.split("engtype_").nth(1) else { continue };
-        *by.entry((luid.to_string(), kind.to_string())).or_default() += value.max(0.0);
+        // `pid_N_` 뒤 전체가 엔진 하나다
+        let Some(engine) = lower.find("luid_").map(|i| &lower[i..]) else { continue };
+        if !engine.contains("_eng_") {
+            continue;
+        }
+        *by.entry((luid.to_string(), engine.to_string())).or_default() += value.max(0.0);
     }
     let mut gpus: HashMap<String, f64> = HashMap::new();
     for ((luid, _), v) in by {
@@ -517,6 +522,12 @@ mod tests {
         // 합이 100을 넘으면 100
         let busy = vec![("pid_1_luid_0x1_phys_0_eng_0_engtype_3D".to_string(), 80.0), ("pid_2_luid_0x1_phys_0_eng_0_engtype_3D".to_string(), 60.0)];
         assert_eq!(gpu_engine_util(&busy)[0].1, 100.0);
+        // 같은 종류라도 엔진 번호가 다르면 따로 센다 (작업 관리자와 같다): 40% 엔진 둘은 80%가 아니라 40%
+        let two = vec![
+            ("pid_1_luid_0x1_phys_0_eng_0_engtype_3D".to_string(), 40.0),
+            ("pid_2_luid_0x1_phys_0_eng_1_engtype_3D".to_string(), 40.0),
+        ];
+        assert_eq!(gpu_engine_util(&two)[0].1, 40.0);
     }
 
     #[test]
