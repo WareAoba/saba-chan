@@ -92,6 +92,15 @@ export function interactionOf(server: Partial<ServerInfo>, moduleData?: Partial<
 }
 
 /**
+ * 서버를 처음 열 때의 탭: 콘솔이 있으면 콘솔(입력을 못 받는 REST 전용 서버도 지난 출력을 본다),
+ * 없으면 켜져 있을 때 명령, 꺼져 있을 때 정보
+ */
+export function defaultServerTab(interaction: ReturnType<typeof interactionOf>, status?: string) {
+    if (interaction.console) return 'console';
+    return status === 'running' && interaction.commands ? 'commands' : 'info';
+}
+
+/**
  * 콘솔에 그대로 쳐도 되는 명령만 (콘솔 빠른 명령 칩).
  * 데몬 method "console"(예전 이름 "rcon")이고 console_template이 명령 이름으로 시작할 때만:
  * 칩은 이름을 입력칸에 채울 뿐이라, 템플릿이 다른 말로 바뀌는 명령이나 "module"/"rest" 명령은 콘솔에서 안 통한다.

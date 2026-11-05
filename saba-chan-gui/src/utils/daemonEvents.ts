@@ -69,7 +69,8 @@ export function eventToast(ev: DaemonEvent, t: TFunction, nameOf: (id: string) =
     const d = ev.data;
     switch (ev.type) {
         case 'action.run': {
-            if (d.source !== 'discord') return null;
+            // 게임 서버를 대상으로 한 일만 알린다: 길드 설정 바꾸기 같은 일은 작업 기록에만 남는다
+            if (d.source !== 'discord' || !(d.instanceId || d.instance)) return null;
             // 출처는 문구에 이미 있다 ("디스코드에서 실행")
             const text = [d.userName || d.user, d.instance || d.instanceId, auditWhat(d as AuditEntry, t)]
                 .filter(Boolean)
