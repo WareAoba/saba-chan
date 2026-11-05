@@ -184,6 +184,7 @@ const DAEMON_USAGE: &str = "Usage: saba-core [--spawned]
        saba-core module schema | module validate <dir>... | module audit <dir>...
        saba-core extension validate <dir>... | extension audit <dir>...
        saba-core sandbox reset   (the uninstaller: remove isolation profiles and folder permissions)
+       saba-core net-trace grant|revoke <SID>   (elevated by the daemon: network event permission)
        saba-core --version | --help
 
   --spawned   started by the GUI/CLI (skips the boot selector)";
@@ -223,6 +224,10 @@ async fn main() -> anyhow::Result<()> {
     }
     if args.get(1).map(String::as_str) == Some("sandbox") {
         std::process::exit(sandbox_tool(&args[2..]));
+    }
+    // 데몬이 관리자 확인 창으로 자기 자신을 다시 띄운 것 (`/api/system/net-trace/grant`)
+    if args.get(1).map(String::as_str) == Some("net-trace") {
+        std::process::exit(system_monitor::net_trace::group_tool(&args[2..]));
     }
     // 데이터 폴더를 건드리기 전에 인자를 본다: 모르는 인자로 데몬이 떠서 설정을 이관하면 안 된다
     match daemon_args(&args[1..]) {

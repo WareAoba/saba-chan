@@ -201,6 +201,10 @@ pub static ROUTES: &[Route] = &[
     deny("DELETE", "/api/remote/daemons/{host_id}/proxy/{*rest}"),
     deny("GET", "/api/system/components"),
     allow("GET", "/api/system/metrics"),
+    allow("GET", "/api/system/net-trace"),
+    // 관리자 확인 창은 이 PC 앞에 있는 사람만 누를 수 있다
+    deny("POST", "/api/system/net-trace/grant"),
+    deny("POST", "/api/system/net-trace/revoke"),
     deny("GET", "/api/system/paths"),
     deny("POST", "/api/system/paths/move"),
     // 이 PC에 로그인할 때 무엇을 띄울지는 PC에서만 정한다

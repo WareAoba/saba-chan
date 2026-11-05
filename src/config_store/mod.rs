@@ -76,6 +76,8 @@ pub struct GuiSettings {
     pub console_fonts: ConsoleFonts,
     /// 서버 페이지의 시스템 모니터 펼침 여부
     pub system_monitor_open: bool,
+    /// 고급: 포트·서버별 네트워크 사용량 (Windows ETW, `system_monitor::net_trace`). 펼친 모니터를 보는 동안만 센다
+    pub system_monitor_net_trace: bool,
 
     // Window state (GUI가 저장하지만 데몬이 중개)
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -220,6 +222,7 @@ impl Default for GuiSettings {
             console_token_colors: HashMap::new(),
             console_fonts: ConsoleFonts::default(),
             system_monitor_open: true,
+            system_monitor_net_trace: false,
             window_bounds: None,
             language: None,
             main_daemon: None,

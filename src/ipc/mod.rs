@@ -886,6 +886,9 @@ impl IPCServer {
             // ── System components (release manifest) ──
             .route("/api/system/components", get(handlers::config::get_system_components))
             .route("/api/system/metrics", get(handlers::system::get_metrics))
+            .route("/api/system/net-trace", get(handlers::system::get_net_trace))
+            .route("/api/system/net-trace/grant", post(handlers::system::grant_net_trace))
+            .route("/api/system/net-trace/revoke", post(handlers::system::revoke_net_trace))
             .route("/api/system/paths", get(handlers::paths::get_paths))
             .route("/api/system/paths/move", post(handlers::paths::move_dir))
             .route("/api/system/browse", get(handlers::paths::browse))
