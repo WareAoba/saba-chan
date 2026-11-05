@@ -18,19 +18,27 @@ import { SettingsPanel } from './SettingsPanel';
 import { Button, errorText, failed, Segments, Sheet, StatusDot } from './ui';
 import { useProvision } from './useProvision';
 import { useServerControl } from './useServerControl';
-import type { Loose } from '../types';
+import type { Server, ServerPanelProps, WebApi } from '../types';
+import type { ProvisionView } from './useProvision';
+
+/** 콘솔 한 줄 (managedConsole) */
+interface ConsoleLine {
+    id: number;
+    level?: string;
+    content: string;
+}
 
 const MAX_LINES = 500;
 
-function ConsolePanel({ api, server, moduleData }: Loose) {
+function ConsolePanel({ api, server, moduleData }: Omit<ServerPanelProps, 'running'>) {
     const { t } = useTranslation();
     const { toast, ask } = useApp.getState();
-    const [lines, setLines] = useState<Loose[]>([]);
+    const [lines, setLines] = useState<ConsoleLine[]>([]);
     const [stdin, setStdin] = useState(false);
     const [input, setInput] = useState('');
     const [sending, setSending] = useState(false);
     const since = useRef(0);
-    const box = useRef<Loose>(null);
+    const box = useRef<HTMLPreElement>(null);
 
     useEffect(() => {
         let stopped = false;
@@ -117,7 +125,7 @@ function ConsolePanel({ api, server, moduleData }: Loose) {
 }
 
 /** 켜진 지 얼마나 (시작 시각 epoch 초 → "2:14:05") */
-export function uptimeText(startTime: Loose, nowMs: Loose) {
+export function uptimeText(startTime: number | null, nowMs: number) {
     if (!startTime) return null;
     const left = Math.max(0, Math.floor(nowMs / 1000) - startTime);
     const h = Math.floor(left / 3600);
@@ -126,7 +134,7 @@ export function uptimeText(startTime: Loose, nowMs: Loose) {
     return `${h}:${m}:${sec}`;
 }
 
-function Uptime({ startTime }: Loose) {
+function Uptime({ startTime }: { startTime: number | null }) {
     const { t } = useTranslation();
     const [now, setNow] = useState(Date.now());
     useEffect(() => {
@@ -138,7 +146,15 @@ function Uptime({ startTime }: Loose) {
 }
 
 /** 더보기: 이름 바꾸기, 서버 삭제 (켜져 있으면 삭제는 막는다) */
-function MoreSheet({ api, server, running, control, onClose }: Loose) {
+interface MoreSheetProps {
+    api: WebApi;
+    server: Server;
+    running: boolean;
+    control: ReturnType<typeof useServerControl>;
+    onClose: () => void;
+}
+
+function MoreSheet({ api, server, running, control, onClose }: MoreSheetProps) {
     const { t } = useTranslation();
     const toast = useApp((s) => s.toast);
     const openServer = useApp((s) => s.openServer);
@@ -200,7 +216,7 @@ function MoreSheet({ api, server, running, control, onClose }: Loose) {
 
 const TABS = ['console', 'commands', 'players', 'settings', 'maintenance', 'check', 'info'];
 
-export function ServerDetail({ api, server }: Loose) {
+export function ServerDetail({ api, server }: { api: WebApi; server: Server }) {
     const { t } = useTranslation();
     const { t: tg } = useTranslation('gui');
     const openServer = useApp((s) => s.openServer);
@@ -210,9 +226,11 @@ export function ServerDetail({ api, server }: Loose) {
     const [view, setView] = useState('console');
     const [settingsView, setSettingsView] = useState('game');
     const [more, setMore] = useState(false);
-    const moduleData = modules.find((m: Loose) => m.name === server.module);
+    const moduleData = modules.find((m) => m.name === server.module);
     const provision = useProvision(api, server);
-    const provisionFailed = provision.view?.state === 'failed';
+    const failure: Extract<ProvisionView, { state: 'failed' }> | null =
+        provision.view?.state === 'failed' ? provision.view : null;
+    const provisionFailed = !!failure;
     const status = provisionFailed ? 'provision_failed' : viewStatus(server, moduleData, modulesLoaded);
     const action = provisionFailed ? null : primaryAction(status);
     const players = playersText(server);
@@ -255,11 +273,11 @@ export function ServerDetail({ api, server }: Loose) {
                     {provision.view.message ? ` · ${provision.view.message}` : ''}
                 </div>
             )}
-            {provisionFailed && (
+            {failure && (
                 <div className="banner banner-error">
                     <p>{t('provision.failed')}</p>
-                    {provision.view.error && <p className="hint">{provision.view.error}</p>}
-                    {provision.view.pcNeeded && <p>{t('provision.pc_needed')}</p>}
+                    {failure.error && <p className="hint">{failure.error}</p>}
+                    {failure.pcNeeded && <p>{t('provision.pc_needed')}</p>}
                     <p className="hint">{t('provision.dismiss_hint')}</p>
                     <Button onClick={provision.dismiss}>{t('provision.dismiss')}</Button>
                 </div>

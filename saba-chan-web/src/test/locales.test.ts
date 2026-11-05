@@ -3,12 +3,11 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { hangulOutsideT } from '../../../saba-chan-gui/src/test/hangulScan';
 import { initI18n, SUPPORTED_LANGUAGES } from '../i18n';
-import type { Loose } from '../types';
 
 const LOCALES = join(__dirname, '../../../locales');
 const SRC = join(__dirname, '..');
 
-function flatten(obj: Loose, prefix = '', out: Record<string, string> = {}) {
+function flatten(obj: object, prefix = '', out: Record<string, string> = {}) {
     for (const [k, v] of Object.entries(obj)) {
         const key = prefix ? `${prefix}.${k}` : k;
         if (v && typeof v === 'object') flatten(v, key, out);
@@ -17,9 +16,9 @@ function flatten(obj: Loose, prefix = '', out: Record<string, string> = {}) {
     return out;
 }
 
-const catalog = (lang: Loose, file = 'web.json') =>
+const catalog = (lang: string, file = 'web.json') =>
     flatten(JSON.parse(readFileSync(join(LOCALES, lang, file), 'utf8')));
-const placeholders = (s: Loose) => (s.match(/\{\{\w+\}\}/g) ?? []).sort();
+const placeholders = (s: string) => (s.match(/\{\{\w+\}\}/g) ?? []).sort();
 
 function sources(dir: string): string[] {
     return readdirSync(dir, { withFileTypes: true }).flatMap((e) => {

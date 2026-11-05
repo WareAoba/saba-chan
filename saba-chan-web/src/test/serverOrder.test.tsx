@@ -4,7 +4,7 @@ import { moveItem } from '../components/ServerOrder';
 import { ServersTab } from '../components/ServersTab';
 import { initI18n } from '../i18n';
 import { useApp, useData } from '../store';
-import type { Loose } from '../types';
+import { asServers, mockApi } from './mocks';
 
 const flush = () => act(async () => {});
 
@@ -13,11 +13,11 @@ describe('서버 순서 바꾸기', () => {
     beforeEach(() => {
         useApp.setState({ serverId: null });
         useData.setState({
-            servers: [
+            servers: asServers([
                 { id: 'a', name: 'Alpha', module: 'm', status: 'stopped' },
                 { id: 'b', name: 'Beta', module: 'm', status: 'stopped' },
                 { id: 'c', name: 'Gamma', module: 'm', status: 'stopped' },
-            ],
+            ]),
             serversLoaded: true,
             modules: [],
             modulesLoaded: true,
@@ -36,19 +36,19 @@ describe('서버 순서 바꾸기', () => {
             { instanceReorder: vi.fn().mockResolvedValue({ success: true }) },
             { get: (t, k) => t[k as keyof typeof t] ?? vi.fn().mockResolvedValue({}) },
         );
-        render(<ServersTab api={api} />);
+        render(<ServersTab api={mockApi(api)} />);
         fireEvent.click(screen.getByRole('button', { name: 'Order' }));
         fireEvent.click(screen.getByRole('button', { name: 'Move Alpha down' }));
         fireEvent.click(screen.getByRole('button', { name: 'Save order' }));
         await flush();
         expect(api.instanceReorder).toHaveBeenCalledWith(['b', 'a', 'c']);
-        expect(useData.getState().servers.map((s: Loose) => s.id)).toEqual(['b', 'a', 'c']);
+        expect(useData.getState().servers.map((s) => s.id)).toEqual(['b', 'a', 'c']);
         // 저장하면 편집 화면이 닫힌다
         expect(screen.queryByRole('button', { name: 'Save order' })).toBeNull();
     });
 
     it('맨 위 줄의 ▲ 와 맨 아래 줄의 ▼ 는 누를 수 없다', () => {
-        render(<ServersTab api={{}} />);
+        render(<ServersTab api={mockApi({})} />);
         fireEvent.click(screen.getByRole('button', { name: 'Order' }));
         expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Move Alpha up' }).disabled).toBe(true);
         expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Move Gamma down' }).disabled).toBe(true);

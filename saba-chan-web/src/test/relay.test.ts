@@ -1,8 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createRelay } from '../relay';
-import type { Loose } from '../types';
 
-const sessionReturning = (reply: Loose) => ({ request: vi.fn().mockResolvedValue(reply) });
+const sessionReturning = (reply: object) => ({ request: vi.fn().mockResolvedValue(reply) });
 
 describe('릴레이 API (/relay/*)', () => {
     it('경로와 본문을 세션 요청으로 보낸다', async () => {

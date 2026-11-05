@@ -1,7 +1,7 @@
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
 import { applyScreenFonts, readPref, writePref } from './prefs';
-import type { Loose } from './types';
+import type { Module, WebApi } from './types';
 
 export const SUPPORTED_LANGUAGES = ['ko', 'en', 'ja', 'zh-CN', 'zh-TW', 'es', 'pt-BR', 'ru', 'de', 'fr'];
 
@@ -61,7 +61,7 @@ export async function initI18n(language = startLanguage()) {
 }
 
 /** 이 화면의 언어를 바꾸고 이 브라우저에 기억한다 */
-export async function setLanguage(language: Loose) {
+export async function setLanguage(language: string) {
     if (!SUPPORTED_LANGUAGES.includes(language)) return;
     if (!i18n.hasResourceBundle(language, 'web')) {
         for (const [ns, data] of Object.entries(await bundles(language))) {
@@ -81,10 +81,10 @@ const moduleLocalesLoaded = new Set();
 
 /** 모듈 locales(`mod_<이름>`)를 붙인다: 게임 이름·설정 이름·선택지·약관 (GUI useServerStore와 같다).
  * 모듈 판마다 한 번이고, 받지 못한 모듈은 다음 목록 때 다시 받는다. 붙이면 화면이 다시 그려진다(`bindI18nStore`) */
-export async function registerModuleLocales(api: Loose, modules: Loose) {
-    const pending = (modules || []).filter((m: Loose) => !moduleLocalesLoaded.has(`${m.name}@${m.version || ''}`));
+export async function registerModuleLocales(api: Pick<WebApi, 'moduleGetLocales'>, modules: Pick<Module, 'name' | 'version'>[]) {
+    const pending = (modules || []).filter((m) => !moduleLocalesLoaded.has(`${m.name}@${m.version || ''}`));
     await Promise.all(
-        pending.map(async (m: Loose) => {
+        pending.map(async (m) => {
             const all = await api.moduleGetLocales?.(m.name);
             const entries = Object.entries(all || {}).filter(([, data]) => data && typeof data === 'object');
             if (entries.length === 0) return;

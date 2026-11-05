@@ -1,4 +1,4 @@
-import type { Loose, PcEvent, SessionReply, SessionState, WebSession } from './types';
+import type { JsonObject, PcEvent, SessionReply, SessionState, WebSession } from './types';
 /**
  * 릴레이 /remote/ws 세션 (server-chan relay-server/src/services/webHub.ts, 계약은 docs/architecture/05 §4.4(f)).
  *
@@ -10,6 +10,22 @@ import type { Loose, PcEvent, SessionReply, SessionState, WebSession } from './t
 export const RECONNECT_WINDOW_MS = 25_000;
 /** 릴레이는 2분이 지나면 504로 답한다. 그 답도 오지 않을 때만 여기서 끊는다 */
 const REQUEST_LIMIT_MS = 2 * 60_000 + 10_000;
+
+/** 릴레이가 보내는 프레임: t 마다 쓰는 칸이 다르다 */
+interface Frame {
+    t: string;
+    sid: string;
+    key: string;
+    expiresAt: number;
+    hostId?: string;
+    id: number;
+    status: number;
+    body?: unknown;
+    kind: string;
+    data?: JsonObject;
+    reason?: string;
+    code?: string;
+}
 
 interface SessionOptions {
     url: string;
@@ -69,7 +85,7 @@ export function createSession({
             else sock.send(JSON.stringify({ t: 'hello', link }));
         };
         sock.onmessage = (msg: MessageEvent) => {
-            let frame: Loose;
+            let frame: Frame;
             try {
                 frame = JSON.parse(msg.data);
             } catch {

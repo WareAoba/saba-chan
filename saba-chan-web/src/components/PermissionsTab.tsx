@@ -1,26 +1,38 @@
 import * as L from '@gui/components/discord/levels';
+import type { CommandBoard, GuildPermissions as PermData, LadderLevel } from '@gui/components/discord/levels';
 import * as P from '@gui/components/discord/nodePermissions';
+import type { DiscordMember } from '@gui/components/discord/types';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useApp, useData } from '../store';
 import { Dropdown } from './Dropdown';
 import { Icon } from './icons';
-import { PermissionStairs } from './PermissionStairs';
+import { PermissionStairs, type PermissionWriter } from './PermissionStairs';
 import { Button, Empty, errorText, failed, Loading, Segments } from './ui';
-import type { Loose } from '../types';
+import type { Server, TFn, WebApi } from '../types';
+
+/** 켜짐 알림·보일 서버 한 벌 (GET /api/guilds/:g/start-notice). null = 읽는 중, false = 읽지 못함 */
+type NoticeState = { guildId?: string; instances?: string[]; allowedInstances?: string[] | null } | false | null;
+
+/** 명령 계단이 알려 주는 인스턴스 한 대 */
+interface BoardInstance {
+    id: string;
+    name: string;
+    module?: string;
+}
 
 /** 레벨 이름: 길드에 더한 단계는 그 이름, 기본 단계는 웹 문구 */
-const levelName = (t: Loose, perm: Loose, id: Loose) => L.ladderOf(perm).find((l) => l.id === id)?.name || t(`perm.level.${id}`);
+const levelName = (t: TFn, perm: PermData | null | undefined, id: number | undefined) => L.ladderOf(perm).find((l) => l.id === id)?.name || t(`perm.level.${id}`);
 
-const nameOf = (m: Loose) => m.displayName || m.globalName || m.username || String(m.id);
+const nameOf = (m: DiscordMember) => m.displayName || m.globalName || m.username || String(m.id);
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
 
 /** 실제 레벨 높은 순(길드 사다리 순서, 주인 먼저, 따로 정하지 않았으면 기본 레벨), 같은 레벨은 이름순 */
-export function orderMembers(members: Loose, perm: Loose) {
+export function orderMembers(members: DiscordMember[], perm: PermData | null | undefined) {
     const own = perm?.members || {};
     const fallback = typeof perm?.defaultLevel === 'number' ? perm.defaultLevel : 1;
     const ladder = L.ladderOf(perm || {});
-    const rankOf = (m: Loose) => {
+    const rankOf = (m: DiscordMember) => {
         const id = String(m.id);
         const level = id === String(perm?.ownerDiscordId ?? '') ? 3 : Object.hasOwn(own, id) ? own[id] : fallback;
         const at = ladder.findIndex((l) => l.id === level);
@@ -30,7 +42,7 @@ export function orderMembers(members: Loose, perm: Loose) {
 }
 
 /** 디스코드 프로필 사진. 없거나 못 읽으면 이름 첫 글자 */
-function Avatar({ member }: Loose) {
+function Avatar({ member }: { member: DiscordMember }) {
     const [broken, setBroken] = useState(false);
     const url = member.avatarUrl || member.avatar;
     return (
@@ -44,14 +56,24 @@ function Avatar({ member }: Loose) {
     );
 }
 
-function LevelSelect({ value, perm, onChange, withDefault, t, disabled, label }: Loose) {
+interface LevelSelectProps {
+    value: number | null;
+    perm: PermData;
+    onChange: (level: number | null) => void;
+    withDefault?: boolean;
+    t: TFn;
+    disabled: boolean;
+    label: string;
+}
+
+function LevelSelect({ value, perm, onChange, withDefault, t, disabled, label }: LevelSelectProps) {
     return (
         <Dropdown
             className="level-select"
             value={value === null ? 'default' : String(value)}
             disabled={disabled}
             ariaLabel={label}
-            onChange={(v: Loose) => onChange(v === 'default' ? null : Number(v))}
+            onChange={(v) => onChange(v === 'default' ? null : Number(v))}
             options={[
                 ...(withDefault ? [{ value: 'default', label: t('perm.use_default') }] : []),
                 ...L.grantable(perm).map((l) => ({ value: String(l), label: levelName(t, perm, l) })),
@@ -61,7 +83,14 @@ function LevelSelect({ value, perm, onChange, withDefault, t, disabled, label }:
 }
 
 /** 단계 사다리 (위가 높은 단계). 휴대폰이라 끌기 대신 위·아래 버튼으로 옮긴다. 소유자·차단은 고정 */
-function LadderEditor({ perm, busy, onSave, t }: Loose) {
+interface LadderEditorProps {
+    perm: PermData;
+    busy: boolean;
+    onSave: (patch: ReturnType<typeof L.ladderPatch>) => void;
+    t: TFn;
+}
+
+function LadderEditor({ perm, busy, onSave, t }: LadderEditorProps) {
     const saved = L.ladderOf(perm);
     const [draft, setDraft] = useState(saved);
     const [name, setName] = useState('');
@@ -70,7 +99,7 @@ function LadderEditor({ perm, busy, onSave, t }: Loose) {
     const changed = JSON.stringify(patch) !== JSON.stringify(L.ladderPatch(saved));
     const removed = saved.some((s) => !draft.some((d) => d.id === s.id));
     const valid = L.ladderValid(draft);
-    const label = (l: Loose) => (L.isCustomLevel(l) ? l.name : levelName(t, perm, l.id));
+    const label = (l: LadderLevel) => (L.isCustomLevel(l) ? l.name : levelName(t, perm, l.id));
     const last = draft.length - 1;
     return (
         <div className="field">
@@ -159,13 +188,13 @@ function LadderEditor({ perm, busy, onSave, t }: Loose) {
 }
 
 /** 켜짐 알림 줄: 이 디스코드 서버가 쓰기로 한 서버만 (allowedInstances 가 null 이면 전부), 켠 것은 on */
-export function noticeRows(servers: Loose, notice: Loose) {
+export function noticeRows(servers: Pick<Server, 'id' | 'name'>[], notice: NoticeState) {
     if (!notice) return [];
     const on = new Set(Array.isArray(notice.instances) ? notice.instances : []);
     const allowed = Array.isArray(notice.allowedInstances) ? new Set(notice.allowedInstances) : null;
     return servers
-        .filter((s: Loose) => !allowed || allowed.has(s.id))
-        .map((s: Loose) => ({ id: s.id, name: s.name, on: on.has(s.id) }));
+        .filter((s) => !allowed || allowed.has(s.id))
+        .map((s) => ({ id: s.id, name: s.name, on: on.has(s.id) }));
 }
 
 /**
@@ -173,21 +202,29 @@ export function noticeRows(servers: Loose, notice: Loose) {
  * 모두 보이기(제한 없음, 새 서버도 바로 보인다) 또는 고른 것만. 서버 하나는 디스코드 서버 하나만 고를 수 있다.
  * `allowed`: 이 길드의 allowedInstances (null 이면 제한 없음), `others`: 이 PC 의 다른 길드 {guildId: allowedInstances}
  */
-export function VisibleServers({ api, guildId, allowed, others, onSaved }: Loose) {
+interface VisibleServersProps {
+    api: WebApi;
+    guildId: string;
+    allowed: string[] | null | undefined;
+    others: Record<string, string[]> | null;
+    onSaved: (allowedInstances: string[] | null) => void;
+}
+
+export function VisibleServers({ api, guildId, allowed, others, onSaved }: VisibleServersProps) {
     const { t } = useTranslation();
     const { t: tg } = useTranslation('gui');
     const toast = useApp((s) => s.toast);
     const servers = useData((s) => s.servers);
     const [busy, setBusy] = useState(false);
-    const settings: Record<string, { allowedInstances: Loose }> = {
+    const settings: P.NodeSettings = {
         ...Object.fromEntries(Object.entries(others || {}).map(([g, list]) => [g, { allowedInstances: list }])),
     };
     if (Array.isArray(allowed)) settings[guildId] = { allowedInstances: allowed };
     const nodeIds = [guildId, ...Object.keys(others || {})];
     const mode = P.instanceMode(settings, guildId);
-    const ownerOf = (id: Loose) => P.instanceOwner(settings, nodeIds, id, guildId);
+    const ownerOf = (id: string) => P.instanceOwner(settings, nodeIds, id, guildId);
 
-    const save = async (next: Loose) => {
+    const save = async (next: P.NodeSettings) => {
         const list = P.nodeConfig(next, guildId).allowedInstances;
         setBusy(true);
         const res = await api.guildAllowedInstancesSave(guildId, Array.isArray(list) ? list : null);
@@ -196,7 +233,7 @@ export function VisibleServers({ api, guildId, allowed, others, onSaved }: Loose
         onSaved(res.allowedInstances ?? null);
         toast(t('perm.saved'), 'ok');
     };
-    const visible = servers.filter((s: Loose) => P.isInstanceAllowed(settings, guildId, s.id) && !ownerOf(s.id)).length;
+    const visible = servers.filter((s) => P.isInstanceAllowed(settings, guildId, s.id) && !ownerOf(s.id)).length;
     return (
         <div className="field">
             <span>
@@ -222,7 +259,7 @@ export function VisibleServers({ api, guildId, allowed, others, onSaved }: Loose
                                         settings,
                                         guildId,
                                         ev.target.checked ? 'all' : 'pick',
-                                        servers.map((x: Loose) => x.id),
+                                        servers.map((x) => x.id),
                                         nodeIds,
                                     ),
                                 )
@@ -230,7 +267,7 @@ export function VisibleServers({ api, guildId, allowed, others, onSaved }: Loose
                         />
                     </label>
                 </li>
-                {servers.map((srv: Loose) => {
+                {servers.map((srv) => {
                     const owner = ownerOf(srv.id);
                     return (
                         <li key={srv.id} className="row">
@@ -260,7 +297,15 @@ export function VisibleServers({ api, guildId, allowed, others, onSaved }: Loose
  * 서버별 알림 목록 (서버마다, 기본 꺼짐): 켜짐·꺼짐 알림(`start`)과 자리 꽉 참 알림(`full`).
  * 켠 서버만 이 디스코드 서버의 알림 채널에 알린다
  */
-function StartNotice({ api, guildId, notice, setNotice, kind = 'start' }: Loose) {
+interface StartNoticeProps {
+    api: WebApi;
+    guildId: string;
+    notice: NoticeState;
+    setNotice: React.Dispatch<React.SetStateAction<NoticeState>>;
+    kind?: 'start' | 'full';
+}
+
+function StartNotice({ api, guildId, notice, setNotice, kind = 'start' }: StartNoticeProps) {
     const { t } = useTranslation();
     const toast = useApp((s) => s.toast);
     const servers = useData((s) => s.servers);
@@ -268,13 +313,13 @@ function StartNotice({ api, guildId, notice, setNotice, kind = 'start' }: Loose)
     const [busy, setBusy] = useState(false);
 
     // 한 번에 하나씩: 응답의 목록이 그때의 전체라 겹치면 늦게 온 것이 앞 변경을 덮는다
-    const toggle = async (id: Loose, enabled: Loose) => {
+    const toggle = async (id: string, enabled: boolean) => {
         setBusy(true);
         const save = kind === 'full' ? api.guildFullNoticeSave : api.guildStartNoticeSave;
         const res = await save(id, guildId, enabled);
         setBusy(false);
         if (failed(res)) return toast(errorText(t, res), 'error');
-        setNotice((n: Loose) => ({ ...n, instances: res.instances }));
+        setNotice((n) => (n ? { ...n, instances: res.instances } : n));
         toast(enabled ? t(`perm.${prefix}_on`) : t(`perm.${prefix}_off`), 'ok');
     };
     const prefix = kind === 'full' ? 'full_notice' : 'notice';
@@ -290,7 +335,7 @@ function StartNotice({ api, guildId, notice, setNotice, kind = 'start' }: Loose)
                 <Empty>{t('perm.notice_empty')}</Empty>
             ) : (
                 <ul className="rows">
-                    {rows.map((r: Loose) => (
+                    {rows.map((r) => (
                         <li key={r.id} className="row">
                             <div className="row-main">
                                 <div className="row-title row-title-one">{r.name}</div>
@@ -314,13 +359,13 @@ function StartNotice({ api, guildId, notice, setNotice, kind = 'start' }: Loose)
 }
 
 /** 길드 하나의 권한과 명령 계단. 늦게 온 앞선 읽기는 버린다 */
-function useGuildPermissions(api: Loose, guildId: Loose) {
+function useGuildPermissions(api: WebApi, guildId: string) {
     const { t, i18n } = useTranslation();
     const locale = i18n.language;
     const toast = useApp((s) => s.toast);
-    const [perm, setPerm] = useState<Loose>(null);
-    const [board, setBoard] = useState<Loose>(null);
-    const [members, setMembers] = useState<Loose>(null);
+    const [perm, setPerm] = useState<PermData | null>(null);
+    const [board, setBoard] = useState<CommandBoard | null>(null);
+    const [members, setMembers] = useState<DiscordMember[] | null>(null);
     const [busy, setBusy] = useState(false);
     const seq = useRef(0);
 
@@ -343,13 +388,13 @@ function useGuildPermissions(api: Loose, guildId: Loose) {
     useEffect(() => {
         let live = true;
         setMembers(null);
-        api.relayListNodeMembers(guildId).then((m: Loose) => live && setMembers(Array.isArray(m?.members) ? m.members : []));
+        api.relayListNodeMembers(guildId, '').then((m) => live && setMembers(Array.isArray(m?.members) ? m.members : []));
         return () => {
             live = false;
         };
     }, [api, guildId]);
 
-    const write = async (fn: Loose) => {
+    const write: PermissionWriter = async (fn) => {
         setBusy(true);
         const res = await fn();
         if (failed(res)) toast(errorText(t, res), 'error');
@@ -361,11 +406,20 @@ function useGuildPermissions(api: Loose, guildId: Loose) {
 }
 
 /** 멤버별 레벨: 기본 레벨, 멤버마다 레벨, 레벨 사다리 편집 (길드 전체에 적용) */
-function MemberLevels({ api, guildId, perm, members, busy, write }: Loose) {
+interface MemberLevelsProps {
+    api: WebApi;
+    guildId: string;
+    perm: PermData;
+    members: DiscordMember[];
+    busy: boolean;
+    write: PermissionWriter;
+}
+
+function MemberLevels({ api, guildId, perm, members, busy, write }: MemberLevelsProps) {
     const { t } = useTranslation();
     const [query, setQuery] = useState('');
     const defaultLevel = typeof perm.defaultLevel === 'number' ? perm.defaultLevel : 1;
-    const levelOf = (id: Loose) => (Object.hasOwn(perm.members || {}, id) ? perm.members[id] : null);
+    const levelOf = (id: string) => (Object.hasOwn(perm.members || {}, id) ? (perm.members as Record<string, number>)[id] : null);
     const q = query.trim().toLowerCase();
     const shown = orderMembers(members, perm).filter(
         (m) =>
@@ -388,7 +442,7 @@ function MemberLevels({ api, guildId, perm, members, busy, write }: Loose) {
                     label={t('perm.default')}
                     t={t}
                     disabled={busy}
-                    onChange={(l: Loose) => l !== null && write(() => api.permissionsUpdate(guildId, { defaultLevel: l }))}
+                    onChange={(l) => l !== null && write(() => api.permissionsUpdate(guildId, { defaultLevel: l }))}
                 />
                 <small className="hint">{t('perm.default_hint')}</small>
             </div>
@@ -422,7 +476,7 @@ function MemberLevels({ api, guildId, perm, members, busy, write }: Loose) {
                                         withDefault
                                         t={t}
                                         disabled={busy}
-                                        onChange={(l: Loose) =>
+                                        onChange={(l) =>
                                             write(() =>
                                                 l === null
                                                     ? api.permissionsRemoveMember(guildId, String(m.id))
@@ -440,18 +494,29 @@ function MemberLevels({ api, guildId, perm, members, busy, write }: Loose) {
                 perm={perm}
                 busy={busy}
                 t={t}
-                onSave={(ladder: Loose) => write(() => api.permissionsUpdate(guildId, { ladder }))}
+                onSave={(ladder) => write(() => api.permissionsUpdate(guildId, { ladder }))}
             />
         </>
     );
 }
 
 /** 인스턴스 메뉴: 레벨별 명령과 멤버별 레벨을 따로 보인다 (GUI와 같은 동선) */
-function InstanceMenu({ api, guildId, data, instance, onBack }: Loose) {
+/** 권한과 멤버를 다 읽은 뒤의 길드 권한 */
+type ReadyPermissions = ReturnType<typeof useGuildPermissions> & { perm: PermData; members: DiscordMember[] };
+
+interface InstanceMenuProps {
+    api: WebApi;
+    guildId: string;
+    data: ReadyPermissions;
+    instance: string;
+    onBack: () => void;
+}
+
+function InstanceMenu({ api, guildId, data, instance, onBack }: InstanceMenuProps) {
     const { t } = useTranslation();
     const [view, setView] = useState('commands');
     const { perm, board, members, busy, write } = data;
-    const srv = board?.instances?.find((i: Loose) => i.id === instance);
+    const srv = (board?.instances as BoardInstance[] | undefined)?.find((i) => i.id === instance);
     return (
         <div className="instance-menu">
             <button type="button" className="back" onClick={onBack}>
@@ -491,32 +556,40 @@ function InstanceMenu({ api, guildId, data, instance, onBack }: Loose) {
 }
 
 /** 디스코드 서버 하나: 인스턴스 목록 → 인스턴스 메뉴. 켜짐·꺼짐 알림·자리 꽉 참 알림은 목록 아래 */
-export function GuildPermissions({ api, guildId, siblings = [] }: Loose) {
+export function GuildPermissions({
+    api,
+    guildId,
+    siblings = [],
+}: {
+    api: WebApi;
+    guildId: string;
+    siblings?: string[];
+}) {
     const { t } = useTranslation();
     const toast = useApp((s) => s.toast);
     const data = useGuildPermissions(api, guildId);
-    const [instance, setInstance] = useState<Loose>(null);
+    const [instance, setInstance] = useState<string | null>(null);
     // 켜짐 알림과 보일 서버: {guildId, instances, allowedInstances}. null = 읽는 중, false = 읽지 못함
-    const [notice, setNotice] = useState<Loose>(null);
+    const [notice, setNotice] = useState<NoticeState>(null);
     // 자리 꽉 참 알림 {guildId, instances, allowedInstances} (모양은 위와 같다)
-    const [full, setFull] = useState<Loose>(null);
+    const [full, setFull] = useState<NoticeState>(null);
     // 이 PC 의 다른 디스코드 서버가 고른 서버 (서버 하나는 디스코드 서버 하나만)
-    const [others, setOthers] = useState<Loose>(null);
+    const [others, setOthers] = useState<Record<string, string[]> | null>(null);
     const siblingKey = siblings.join(',');
 
     useEffect(() => {
         let alive = true;
         setNotice(null);
         setFull(null);
-        api.guildStartNoticeGet(guildId).then((res: Loose) => {
+        api.guildStartNoticeGet(guildId).then((res) => {
             if (!alive) return;
             if (failed(res)) {
                 toast(errorText(t, res), 'error');
                 setNotice(false);
-            } else setNotice(res);
+            } else setNotice(res as NoticeState);
         });
-        api.guildFullNoticeGet(guildId).then((res: Loose) => {
-            if (alive) setFull(failed(res) ? false : res);
+        api.guildFullNoticeGet(guildId).then((res) => {
+            if (alive) setFull(failed(res) ? false : (res as NoticeState));
         });
         return () => {
             alive = false;
@@ -527,9 +600,9 @@ export function GuildPermissions({ api, guildId, siblings = [] }: Loose) {
     useEffect(() => {
         let alive = true;
         setOthers(null);
-        Promise.all(siblings.map((g: Loose) => api.guildStartNoticeGet(g))).then((list) => {
+        Promise.all(siblings.map((g) => api.guildStartNoticeGet(g))).then((list) => {
             if (!alive) return;
-            const out: Record<string, Loose> = {};
+            const out: Record<string, string[]> = {};
             list.forEach((res, i) => {
                 if (!failed(res) && Array.isArray(res?.allowedInstances)) out[siblings[i]] = res.allowedInstances;
             });
@@ -546,12 +619,12 @@ export function GuildPermissions({ api, guildId, siblings = [] }: Loose) {
             <InstanceMenu
                 api={api}
                 guildId={guildId}
-                data={data}
+                data={data as ReadyPermissions}
                 instance={instance}
                 onBack={() => setInstance(null)}
             />
         );
-    const instances = data.board?.instances || [];
+    const instances: BoardInstance[] = data.board?.instances || [];
     return (
         <>
             <div className="field">
@@ -577,7 +650,7 @@ export function GuildPermissions({ api, guildId, siblings = [] }: Loose) {
                     guildId={guildId}
                     allowed={notice.allowedInstances ?? null}
                     others={others}
-                    onSaved={(allowedInstances: Loose) => setNotice((n: Loose) => ({ ...n, allowedInstances }))}
+                    onSaved={(allowedInstances) => setNotice((n) => (n ? { ...n, allowedInstances } : n))}
                 />
             )}
             <StartNotice api={api} guildId={guildId} notice={notice} setNotice={setNotice} />

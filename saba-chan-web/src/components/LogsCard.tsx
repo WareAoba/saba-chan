@@ -1,14 +1,28 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useApp } from '../store';
+import type { Server, WebApi } from '../types';
 import { Icon } from './icons';
 import { Button, errorText, failed, Loading, Section } from './ui';
-import type { Loose } from '../types';
+
+/** 로그 묶음 한 개 (실행 한 번) */
+interface LogSource {
+    id: string;
+    label: string;
+}
+
+/** 읽어 온 로그 */
+interface LogsView {
+    sources: LogSource[];
+    source?: string;
+    lines: string[];
+    before?: number;
+}
 
 const PAGE = 200;
 
 /** 받은 내용을 이 기기에 파일로 내려받는다 */
-function download(fileName: Loose, content: Loose) {
+function download(fileName: string, content: string) {
     const url = URL.createObjectURL(new Blob([content], { type: 'text/plain;charset=utf-8' }));
     const a = document.createElement('a');
     a.href = url;
@@ -24,15 +38,15 @@ function download(fileName: Loose, content: Loose) {
  * 고른 묶음의 끝에서 200줄을 보이고 [더 보기]로 앞을 붙인다. 내보내기는 그 묶음을 .log 파일로 받는다.
  * 데몬 GET /api/instance/:id/logs, /logs/export (웹으로 나가며 PC 경로는 가려진다)
  */
-export function LogsCard({ api, server }: Loose) {
+export function LogsCard({ api, server }: { api: WebApi; server: Pick<Server, 'id' | 'name'> }) {
     const { t } = useTranslation();
     const toast = useApp((s) => s.toast);
     // null = 읽는 중, false = 읽지 못함
-    const [view, setView] = useState<Loose>(null);
-    const [busy, setBusy] = useState<Loose>(null);
+    const [view, setView] = useState<LogsView | false | null>(null);
+    const [busy, setBusy] = useState<'load' | 'more' | 'export' | null>(null);
 
     const load = useCallback(
-        async (source: Loose) => {
+        async (source: string | undefined) => {
             setBusy('load');
             const res = await api.instanceLogs(server.id, { source, lines: PAGE });
             setBusy(null);
@@ -51,14 +65,16 @@ export function LogsCard({ api, server }: Loose) {
     }, [load]);
 
     const more = async () => {
+        if (!view) return;
         setBusy('more');
         const res = await api.instanceLogs(server.id, { source: view.source, lines: PAGE, before: view.before });
         setBusy(null);
         if (failed(res)) return toast(errorText(t, res), 'error');
-        setView((v: Loose) => ({ ...v, lines: [...(res.lines || []), ...v.lines], before: res.before }));
+        setView((v) => (v ? { ...v, lines: [...(res.lines || []), ...v.lines], before: res.before } : v));
     };
 
     const exportLog = async () => {
+        if (!view) return;
         setBusy('export');
         const res = await api.instanceLogsExport(server.id, { source: view.source });
         setBusy(null);
@@ -67,7 +83,7 @@ export function LogsCard({ api, server }: Loose) {
         toast(res.truncated ? t('logs.exported_truncated') : t('logs.exported'), 'ok');
     };
 
-    const action = view?.source && (
+    const action = (view || undefined)?.source && (
         <Button busy={busy === 'export'} disabled={!!busy} onClick={exportLog}>
             <Icon name="download" size={16} /> {t('logs.export')}
         </Button>
@@ -81,7 +97,7 @@ export function LogsCard({ api, server }: Loose) {
             ) : (
                 <>
                     <div className="chips">
-                        {view.sources.map((s: Loose) => (
+                        {view.sources.map((s) => (
                             <button
                                 key={s.id}
                                 type="button"

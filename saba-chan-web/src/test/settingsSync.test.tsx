@@ -4,7 +4,8 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { SettingsPanel } from '../components/SettingsPanel';
 import { initI18n } from '../i18n';
 import { useApp } from '../store';
-import type { Loose } from '../types';
+import type { Module } from '../types';
+import { asServer, mockApi } from './mocks';
 
 // 데몬은 설정을 저장했지만 모듈이 게임 설정 파일에 쓰지 못하면 synced:false를 준다 (GUI useServerSettings와 같게 알린다)
 const moduleData = { settings: { fields: [{ name: 'motd', field_type: 'text' }] } };
@@ -27,11 +28,18 @@ describe('웹 서버 설정 저장의 게임 파일 반영', () => {
                 ignored: ['rcon_port'],
             }),
         };
-        render(<SettingsPanel api={api} moduleData={moduleData} running={false} server={server} control={{ busy: false }} />);
+        render(
+            <SettingsPanel
+                api={mockApi(api)}
+                moduleData={moduleData as unknown as Module}
+                running={false}
+                server={asServer(server)}
+            />,
+        );
         fireEvent.change(screen.getByRole('textbox', { name: /motd/ }), { target: { value: 'new' } });
         fireEvent.click(screen.getByRole('button', { name: 'Save' }));
         await act(async () => {});
-        const toasts = useApp.getState().toasts.map((x: Loose) => [x.message, x.tone]);
+        const toasts = useApp.getState().toasts.map((x) => [x.message, x.tone]);
         expect(toasts).toContainEqual([i18n.t('gui:settings.sync_failed', { error: 'read-only file' }), 'error']);
         expect(toasts).toContainEqual([i18n.t('gui:settings.ignored', { keys: 'rcon_port' }), 'info']);
         expect(toasts.some(([, tone]) => tone === 'ok')).toBe(false);

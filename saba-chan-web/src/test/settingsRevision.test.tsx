@@ -3,11 +3,18 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { SettingsPanel } from '../components/SettingsPanel';
 import { initI18n } from '../i18n';
 import { useApp } from '../store';
-import type { Loose } from '../types';
+import type { Module } from '../types';
+import { asServer, mockApi } from './mocks';
 
 // 감사 P2-3: 4초 폴링이 새 revision을 줘도 저장은 고치기 시작한 때의 revision을 싣는다 (GUI useServerSettings와 같다)
 const moduleData = { settings: { fields: [{ name: 'motd', field_type: 'text' }] } };
-const at = (revision: Loose, motd: Loose) => ({ id: 's1', name: 'survival', module: 'mc', revision, module_settings: { motd } });
+const at = (revision: string, motd: string) => ({
+    id: 's1',
+    name: 'survival',
+    module: 'mc',
+    revision,
+    module_settings: { motd },
+});
 const flush = () => act(async () => {});
 
 describe('웹 서버 설정 저장의 revision', () => {
@@ -17,10 +24,10 @@ describe('웹 서버 설정 저장의 revision', () => {
         useApp.setState({ confirm: null, toasts: [] });
     });
 
-    const mount = (api: Loose, server: Loose) => {
-        const props = { api, moduleData, running: false, onDeleted: () => {}, control: { busy: false } };
-        const view = render(<SettingsPanel {...props} server={server} />);
-        return (next: Loose) => view.rerender(<SettingsPanel {...props} server={next} />);
+    const mount = (api: object, server: ReturnType<typeof at>) => {
+        const props = { api: mockApi(api), moduleData: moduleData as unknown as Module, running: false };
+        const view = render(<SettingsPanel {...props} server={asServer(server)} />);
+        return (next: ReturnType<typeof at>) => view.rerender(<SettingsPanel {...props} server={asServer(next)} />);
     };
     const motd = () => screen.getByRole<HTMLInputElement>('textbox', { name: /motd/ });
 

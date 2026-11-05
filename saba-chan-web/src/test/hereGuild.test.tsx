@@ -3,7 +3,7 @@ import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { DiscordTab } from '../components/DiscordTab';
 import { initI18n } from '../i18n';
 import { useApp } from '../store';
-import type { Loose } from '../types';
+import { mockApi, mockRelay } from './mocks';
 
 // 이 PC 에 붙은 서버 (사용자 결정 2026-11-03): 데몬이 원본인 값은 데몬 경로, 배정·기억은 릴레이
 const G = '111111111111111111';
@@ -22,7 +22,7 @@ const SETTINGS = {
 };
 
 function setup(can: Record<string, boolean> = { manage: true }) {
-    useApp.setState((s: Loose) => ({ session: { ...s.session, hostId: 'h1' } }));
+    useApp.setState((s) => ({ session: { ...s.session, hostId: 'h1' } }));
     const api = new Proxy(
         {
             relayListHostNodes: vi.fn().mockResolvedValue([{ guildId: G, guildName: 'Gather Craft' }]),
@@ -49,7 +49,7 @@ function setup(can: Record<string, boolean> = { manage: true }) {
             .fn()
             .mockResolvedValue({ ok: true, data: { botAvailable: true, channels: [], mutes: [], sanctions: [] } }),
     };
-    render(<DiscordTab api={api} relay={relay} />);
+    render(<DiscordTab api={mockApi(api)} relay={mockRelay(relay)} />);
     return { api, relay };
 }
 

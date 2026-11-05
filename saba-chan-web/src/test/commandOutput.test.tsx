@@ -2,13 +2,12 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { CommandOutput } from '../components/CommandsPanel';
 import { initI18n } from '../i18n';
-import type { Loose } from '../types';
 
 // 값으로 답하는 조회(지표·설정 보기·플레이어 목록)는 데몬이 정리한 결과(output)를 앱과 같이 보인다
 beforeAll(() => initI18n('en'));
 afterEach(cleanup);
 
-const field = (key: Loose, label: Loose, value: Loose) => ({ key, label, value });
+const field = (key: string, label: string, value: string) => ({ key, label, value });
 
 describe('명령 결과 표시', () => {
     it('이름: 값과 8줄 넘는 결과의 더 보기', () => {

@@ -1,15 +1,23 @@
+import type { CommandField, CommandInput } from '@gui/types/daemon';
 import { commandText } from '@gui/utils/serverView';
 import { useEffect, useState } from 'react';
-import type { Loose } from '../types';
+import type { Module, Server, TFn, WebApi } from '../types';
+
+/** 데몬 카탈로그와 module.toml 이 합쳐진 명령 한 칸. 카탈로그는 source 를 더한다 */
+export interface Command extends Partial<Omit<CommandField, 'inputs'>> {
+    name: string;
+    source?: string;
+    inputs?: CommandInput[];
+}
 
 /**
  * 데몬 카탈로그(모듈 명령 + 켜진 익스텐션 명령)에 module.toml 정의를 입힌다 (GUI useInstanceCommands 와 같다).
  * 카탈로그는 risk 를 안 적은 명령도 'caution'으로 채우므로 모듈 값을 우선하고,
  * module.toml 에 없는 명령(익스텐션·동적 명령)은 데몬이 보낸 danger 만 믿는다
  */
-export function mergeCommands(catalog: Loose, own: Loose) {
+export function mergeCommands(catalog: Command[] | null, own: CommandField[]): Command[] {
     if (!Array.isArray(catalog)) return own;
-    const byName = Object.fromEntries(own.map((c: Loose) => [c.name, c]));
+    const byName = Object.fromEntries(own.map((c) => [c.name, c]));
     return catalog.map((c) =>
         byName[c.name] && c.source !== 'extension'
             ? { ...c, ...byName[c.name], risk: byName[c.name].risk }
@@ -18,7 +26,7 @@ export function mergeCommands(catalog: Loose, own: Loose) {
 }
 
 /** 입력 칸 값 → 명령 인자. 빈 칸은 빼고, 숫자 칸은 숫자로, 켜고 끄는 칸은 참거짓으로 (손대지 않은 필수 칸은 false) */
-export function commandArgs(inputs: Loose[] = [], values: Record<string, unknown> = {}) {
+export function commandArgs(inputs: CommandInput[] = [], values: Record<string, unknown> = {}) {
     const args: Record<string, unknown> = {};
     for (const input of inputs) {
         const raw = values[input.name];
@@ -36,19 +44,19 @@ export function commandArgs(inputs: Loose[] = [], values: Record<string, unknown
 }
 
 /** 필수 칸이 비었는지 (기본값이 있으면 데몬이 채운다) */
-export const missingInputs = (inputs: Loose[] = [], values: Record<string, unknown> = {}) =>
+export const missingInputs = (inputs: CommandInput[] = [], values: Record<string, unknown> = {}) =>
     inputs.filter(
         (i) => i.required && i.default == null && i.type !== 'boolean' && !String(values[i.name] ?? '').trim(),
     );
 
 /** 명령과 입력에 모듈 locales 문구를 입힌다 (`mod_<모듈>:commands.<이름>`) */
-export function localizeCommands(t: Loose, moduleName: Loose, list: Loose) {
-    return list.map((c: Loose) => {
+export function localizeCommands(t: TFn, moduleName: string, list: Command[]) {
+    return list.map((c) => {
         const ns = `mod_${moduleName}:commands.${c.name}.inputs`;
         return {
             ...c,
             ...commandText(t, moduleName, c),
-            inputs: c.inputs?.map((input: Loose) => ({
+            inputs: c.inputs?.map((input) => ({
                 ...input,
                 label: t(`${ns}.${input.name}.label`, { defaultValue: input.label || input.name }),
                 placeholder: t(`${ns}.${input.name}.placeholder`, { defaultValue: input.placeholder || '' }),
@@ -58,13 +66,18 @@ export function localizeCommands(t: Loose, moduleName: Loose, list: Loose) {
 }
 
 /** 이 서버에서 쓸 수 있는 명령 (현지화까지) */
-export function useCommands(api: Loose, server: Loose, moduleData: Loose, t: Loose) {
-    const [catalog, setCatalog] = useState<Loose>(null);
+export function useCommands(
+    api: WebApi,
+    server: Pick<Server, 'id' | 'module'>,
+    moduleData: Partial<Module> | null | undefined,
+    t: TFn,
+) {
+    const [catalog, setCatalog] = useState<Command[] | null>(null);
     useEffect(() => {
         setCatalog(null);
         let alive = true;
         api.instanceCommands(server.id)
-            .then((r: Loose) => {
+            .then((r) => {
                 if (alive && Array.isArray(r?.commands)) setCatalog(r.commands);
             })
             .catch(() => {});

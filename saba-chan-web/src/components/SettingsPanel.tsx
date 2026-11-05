@@ -4,7 +4,11 @@ import { useApp } from '../store';
 import { Dropdown } from './Dropdown';
 import { Icon } from './icons';
 import { Button, Empty, errorText, failed, Section } from './ui';
-import type { Loose } from '../types';
+import type { SettingField } from '@gui/types/daemon';
+import type { ApiBody, Json, Server, ServerPanelProps, TFn } from '../types';
+
+/** 설정 칸 (module.toml `[[settings.fields]]`). 예전 모듈은 field_type 대신 type 을 쓴다 */
+export type Field = SettingField & { type?: string };
 
 /** 데몬 문지기(src/remote/gate.rs SETTINGS_PC_ONLY)가 원격으로 받지 않는 칸. 모듈의 비밀번호·file·path 칸도 같다 (비밀번호는 읽어 오지도 않는다) */
 const PC_ONLY = new Set([
@@ -33,28 +37,28 @@ const TOP_LEVEL = new Set([
     'extra_args',
 ]);
 
-const typeOf = (f: Loose) => f.field_type || f.type || 'text';
-const pcOnly = (f: Loose) => PC_ONLY.has(f.name) || ['file', 'path', 'password'].includes(typeOf(f)) || f.format === 'path';
+const typeOf = (f: Field) => f.field_type || f.type || 'text';
+const pcOnly = (f: Field) => PC_ONLY.has(f.name) || ['file', 'path', 'password'].includes(typeOf(f)) || f.format === 'path';
 
-export function savedValue(server: Loose, field: Loose) {
-    const top = server[field.name];
+export function savedValue(server: Partial<Server> | ApiBody, field: Pick<Field, 'name' | 'default'>): Json {
+    const top = (server as ApiBody)[field.name];
     const cached = server.module_settings?.[field.name];
     const v = TOP_LEVEL.has(field.name) ? (top ?? cached) : (cached ?? top);
     return v ?? field.default ?? '';
 }
 
 /** 스키마 2 visible_when: {field, equals} | {field, in:[...]} (값 비교는 글자로) */
-export function visible(field: Loose, values: Loose, fields: Loose) {
+export function visible(field: Field, values: Record<string, unknown>, fields: Field[]) {
     const rule = field.visible_when;
     if (!rule?.field) return true;
-    const other = fields.find((f: Loose) => f.name === rule.field);
+    const other = fields.find((f) => f.name === rule.field);
     const v = String(values[rule.field] ?? other?.default ?? '');
     if (Array.isArray(rule.in)) return rule.in.map(String).includes(v);
     return String(rule.equals) === v;
 }
 
 /** 보낼 값: 고친 칸만, 칸 종류에 맞게 */
-export function patchOf(fields: Loose, values: Loose, touched: Loose) {
+export function patchOf(fields: Field[], values: Record<string, unknown>, touched: Set<string>) {
     const patch: Record<string, unknown> = {};
     for (const f of fields) {
         if (!touched.has(f.name) || pcOnly(f)) continue;
@@ -72,7 +76,15 @@ export function patchOf(fields: Loose, values: Loose, touched: Loose) {
     return patch;
 }
 
-export function FieldInput({ field, value, onChange, t, modNs }: Loose) {
+interface FieldInputProps {
+    field: Field;
+    value: unknown;
+    onChange: (value: unknown) => void;
+    t: TFn;
+    modNs: string;
+}
+
+export function FieldInput({ field, value, onChange, t, modNs }: FieldInputProps) {
     const type = typeOf(field);
     const label = t(`${modNs}:settings.${field.name}.label`, { defaultValue: field.label || field.name });
     const desc = t(`${modNs}:settings.${field.name}.description`, { defaultValue: field.description || '' });
@@ -101,7 +113,7 @@ export function FieldInput({ field, value, onChange, t, modNs }: Loose) {
             <Dropdown
                 value={String(value)}
                 onChange={onChange}
-                options={field.options.map((o: Loose) => ({
+                options={field.options.map((o) => ({
                     value: o,
                     label: t(`${modNs}:settings.${field.name}.options.${o}`, { defaultValue: o }),
                 }))}
@@ -134,18 +146,18 @@ export function FieldInput({ field, value, onChange, t, modNs }: Loose) {
     );
 }
 
-export function SettingsPanel({ api, server, moduleData, running }: Loose) {
+export function SettingsPanel({ api, server, moduleData, running }: ServerPanelProps) {
     const { t } = useTranslation();
     const { t: tg } = useTranslation('gui');
     const toast = useApp((s) => s.toast);
     const ask = useApp((s) => s.ask);
-    const fields = useMemo(() => moduleData?.settings?.fields ?? [], [moduleData]);
+    const fields = useMemo((): Field[] => moduleData?.settings?.fields ?? [], [moduleData]);
     const initial = useMemo(
-        () => Object.fromEntries(fields.map((f: Loose) => [f.name, savedValue(server, f)])),
+        () => Object.fromEntries(fields.map((f) => [f.name, savedValue(server, f)])),
         [fields, server],
     );
-    const [values, setValues] = useState(initial);
-    const [touched, setTouched] = useState(() => new Set());
+    const [values, setValues] = useState<Record<string, unknown>>(initial);
+    const [touched, setTouched] = useState<Set<string>>(() => new Set());
     const [saving, setSaving] = useState(false);
     const modNs = `mod_${server.module}`;
     // 저장에 실을 revision: 고치기 시작한 때(또는 마지막 저장)의 값. 폴링의 최신 값을 실으면 데몬의 settings_changed 검사를 지난다
@@ -154,10 +166,10 @@ export function SettingsPanel({ api, server, moduleData, running }: Loose) {
 
     // 다른 곳에서 바뀐 뒤 다시 불러오기: 마지막 폴링이 아니라 데몬의 지금 값과 revision을 읽는다
     // (폴링 값은 그보다 오래됐을 수 있다). 읽지 못하면 고친 값을 그대로 둔다
-    const reload = async (conflictRevision: Loose) => {
+    const reload = async (conflictRevision: string | undefined) => {
         const fresh = await api.instanceGet(server.id);
         if (!fresh?.id || failed(fresh)) return toast(errorText(t, fresh), 'error');
-        setValues(Object.fromEntries(fields.map((f: Loose) => [f.name, savedValue(fresh, f)])));
+        setValues(Object.fromEntries(fields.map((f) => [f.name, savedValue(fresh, f)])));
         setTouched(new Set());
         revision.current = fresh.revision || conflictRevision || null;
     };
@@ -171,7 +183,7 @@ export function SettingsPanel({ api, server, moduleData, running }: Loose) {
         revision.current = server.revision || null;
     }, [server.revision, initial, touched]);
 
-    const change = (key: Loose, v: Loose) => {
+    const change = (key: string, v: unknown) => {
         setValues((prev) => ({ ...prev, [key]: v }));
         setTouched((prev) => new Set(prev).add(key));
     };
@@ -203,7 +215,7 @@ export function SettingsPanel({ api, server, moduleData, running }: Loose) {
         if (res?.ignored?.length) toast(tg('settings.ignored', { keys: res.ignored.join(', ') }), 'info');
     };
 
-    const shown = fields.filter((f: Loose) => visible(f, values, fields));
+    const shown = fields.filter((f) => visible(f, values, fields));
     return (
         <div className="panel">
             <Section title={t('settings.game')}>
@@ -217,12 +229,12 @@ export function SettingsPanel({ api, server, moduleData, running }: Loose) {
                             save();
                         }}
                     >
-                        {shown.map((f: Loose) => (
+                        {shown.map((f) => (
                             <FieldInput
                                 key={f.name}
                                 field={f}
                                 value={values[f.name]}
-                                onChange={(v: Loose) => change(f.name, v)}
+                                onChange={(v) => change(f.name, v)}
                                 t={t}
                                 modNs={modNs}
                             />

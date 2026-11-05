@@ -456,7 +456,7 @@ Discord ─ 릴레이의 사바쨩 봇 ─(롱폴링, HMAC 서명)─ 데몬 rel
 | R2 | utils/themeManager.ts:72-184 | FS-W(localStorage) | 테마와 커스텀 테마. config.json `gui`에도 accent 계열을 저장하므로 저장소가 둘로 갈린다 |
 | R3 | Modals/NoticeModal.tsx:21-42 | FS-W(localStorage) | 공지와 알림 기록 |
 | R4 | i18n.ts:4-33 | 빌드타임 | 로케일 JSON 정적 번들. 런타임 locale 업데이트(daemon의 Locales 컴포넌트 자동 적용. 셸 알림에서는 빼기만 한다, `events.rs:144-147`)가 renderer에는 반영되지 않는다. 셸 문구는 설치 폴더 파일을 먼저 읽어 반영된다(`i18n.rs:50-58`) |
-| R5 | components/ServerCard.js:419-421, App.tsx:494-501 | 규칙 중복 | managed 여부를 `module_settings.managed_start`와 모듈 `interaction_mode`로 다시 계산한다. 데몬은 `GET /api/servers`의 `managed`로 판정을 주는데(`handlers/server.rs:87`), 규칙이 다르다: 값이 없으면 데몬은 늘 managed(`supervisor/mod.rs:1690-1699`), renderer는 `console` 모드 모듈만 managed로 본다 |
+| R5 | ~~components/ServerCard.js:419-421, App.js:494-501~~ | ~~규칙 중복~~ | → 해결: renderer는 `GET /api/servers`의 `managed`를 그대로 쓴다(`utils/serverView.ts:74-79` `isManaged`, 데몬 `handlers/server.rs:966`). 그 값이 없을 때(옛 데몬)만 데몬과 같은 규칙(`managed_start`가 우선, 없으면 managed, `supervisor/mod.rs:2246-2255`)으로 채운다 |
 
 (renderer는 `fetch`, `axios`, 직접 IP 접근을 하지 않는다. 모두 `window.api`(브리지 → `daemon_request` 명령)를 거친다.)
 

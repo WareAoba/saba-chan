@@ -763,7 +763,7 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 | 5 | ~~raw TOML로 `[errors]` 읽기~~ | ~~봇이 `/api/module/:name`의 raw TOML 덤프를 읽는다~~ → 해결: `[errors]`는 메타데이터 필드이고 `/command`가 `error_message`로 붙인다. `/api/module/:name`은 메타데이터를 돌려준다 (`server.rs:467-487`) | — |
 | 6 | ~~`D:src/ipc/handlers/instance.rs:1276-1303`~~ | ~~설정 동기화 제외 목록에 Minecraft 전용 키가 데몬에 하드코딩~~ → 해결(MK6): 데몬 필드만 데몬이 알고, 나머지는 모듈이 `group = "saba-chan"`으로 선언한 설정을 뺀다 | — |
 | 7 | ~~`D:src/supervisor/mod.rs`~~ | ~~`server_jar` 키 주입, `jar_name="server.jar"` 기본값~~ → 해결(MK7): 모듈에는 `server_executable`·`working_dir`만 넘기고, 설치 요청·config의 실행 파일 이름도 `server_executable`이다. 함수 이름 `manage_properties`·라우트 `/properties`는 남았지만 게임 설정 파일 일반을 뜻한다 | — |
-| 8 | `saba-chan-gui/src/components/ServerSettingsModal.tsx:398,407` (`module === 'palworld'`), `useServerSettings.ts:298` ("Install Minecraft …" 문자열) | GUI가 특정 게임 이름으로 분기 | 인터페이스에 게임 지식 |
+| 8 | ~~`ServerSettingsModal`의 `module === 'palworld'`, `useServerSettings`의 "Install Minecraft …" 문자열~~ | ~~GUI가 특정 게임 이름으로 분기~~ → 해결: GUI 제품 코드에 게임 이름 분기가 없다. 게임 이름은 개발용 목업(`saba-chan-gui/src/dev/mockApi.ts`)의 예시 데이터에만 남았다 | — |
 | 9 | `M:palworld/lifecycle.py:33-36`, `zomboid`/`palworld` `install_server` | 모듈이 플러그인(`extensions.*`)을 Python import로 직접 사용. 활성 여부도 스스로 `SABA_ENABLED_EXTENSIONS`로 확인. 데몬은 import 가드로 꺼진 익스텐션 import만 막는다 (`D:src/plugin/mod.rs:114-126`) | 플러그인 기능 주입은 데몬이 중개해야 하는데, 모듈과 플러그인이 직접 결합 |
 | 10 | `modules/daemon_rcon.py`, palworld, zomboid 콜백 | 모듈이 데몬 HTTP API를 역호출(rcon/rest/stdin). ~~인증 없이 호출하고 포트도 하드코딩~~ → 토큰과 `SABA_IPC_URL`을 쓴다 | "매뉴얼"인 모듈이 능동 클라이언트로 동작. 경계가 모호함 |
 | 11 | ~~`installer/gui/src-tauri/src/lib.rs`의 하드코딩 모듈 목록~~ | → 해결: 목록은 릴리즈 manifest에서만 만든다 (`lib.rs:169-188`) | — |

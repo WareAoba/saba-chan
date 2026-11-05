@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Loose, SessionState } from './types';
+import type { Module, Server, SessionState } from './types';
 
 export type Tab = string;
 export type ToastTone = 'info' | 'ok' | 'error';
@@ -27,13 +27,13 @@ interface AppState {
 }
 
 interface DataState {
-    servers: Loose[];
+    servers: Server[];
     serversLoaded: boolean;
-    serversError: Loose;
-    modules: Loose[];
+    serversError: string | null;
+    modules: Module[];
     modulesLoaded: boolean;
-    setServers: (servers: Loose[], error?: Loose) => void;
-    setModules: (modules: Loose[]) => void;
+    setServers: (servers: Server[], error?: string | null) => void;
+    setModules: (modules: Module[]) => void;
 }
 
 /** 화면 상태 하나: 세션, 고른 탭·서버, 알림, 확인 창 */

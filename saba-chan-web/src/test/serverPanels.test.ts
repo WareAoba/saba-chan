@@ -49,12 +49,12 @@ describe('게임 명령', () => {
             { name: 'nuke', source: 'extension', risk: 'danger' },
         ];
         const own = [{ name: 'kick', risk: 'danger', inputs: [{ name: 'player' }] }];
-        expect(mergeCommands(catalog, own)).toEqual([
+        expect(mergeCommands(catalog as never, own as never)).toEqual([
             { name: 'kick', risk: 'danger', inputs: [{ name: 'player' }] },
             { name: 'wipe', source: 'extension', risk: undefined },
             { name: 'nuke', source: 'extension', risk: 'danger' },
         ]);
-        expect(mergeCommands(null, own)).toBe(own);
+        expect(mergeCommands(null, own as never)).toBe(own);
     });
 
     it('빈 칸은 빼고 숫자 칸은 숫자로, 켜고 끄는 칸은 참거짓으로 보낸다', () => {
@@ -64,7 +64,7 @@ describe('게임 명령', () => {
             { name: 'silent', type: 'boolean' },
             { name: 'reason', type: 'text' },
         ];
-        expect(commandArgs(inputs, { player: ' Steve ', minutes: '5', silent: true, reason: '' })).toEqual({
+        expect(commandArgs(inputs as never, { player: ' Steve ', minutes: '5', silent: true, reason: '' })).toEqual({
             player: 'Steve',
             minutes: 5,
             silent: true,
@@ -74,7 +74,7 @@ describe('게임 명령', () => {
                 [
                     { name: 'on', type: 'boolean', required: true },
                     { name: 'opt', type: 'boolean' },
-                ],
+                ] as never,
                 {},
             ),
         ).toEqual({
