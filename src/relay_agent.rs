@@ -2558,6 +2558,7 @@ mod tests {
         let usage = crate::system_monitor::InstanceMetrics {
             id: "i1".into(), name: "마크".into(), running: true, process_count: 1,
             cpu_percent: 12.345, memory_bytes: 3 * 1024 * 1024 * 1024, disk_read_bps: 0, disk_write_bps: 0,
+            net_rx_bps: None, net_tx_bps: None,
         };
         let entry = relay_server_entry(&server, Some(&usage));
         assert_eq!(entry["usage"], json!({ "cpu": 12.3, "memMb": 3072 }));
@@ -2622,6 +2623,7 @@ mod tests {
             network: NetworkMetrics { rx_bps: 0, tx_bps: 0, per_instance: false },
             disks: vec![disk(100, 40), disk(200, 14), disk(0, 0)],
             instances: vec![],
+            net_trace: crate::system_monitor::net_trace::NetTraceMetrics::status("off"),
             volumes: vec![],
             adapters: vec![],
             gpus: vec![],

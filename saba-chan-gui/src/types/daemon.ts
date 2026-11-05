@@ -390,6 +390,8 @@ export interface GuiSettings {
     consoleTokenColors: Record<string, string>;
     consoleFonts: ConsoleFonts;
     systemMonitorOpen: boolean;
+    /** 고급: 포트·서버별 네트워크 (기본 꺼짐, 데몬 `system_monitor_net_trace`) */
+    systemMonitorNetTrace: boolean;
     monitorItems?: string[] | null;
     windowBounds?: { width: number; height: number; x?: number; y?: number };
     language?: string;

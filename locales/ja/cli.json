@@ -318,6 +318,16 @@
       "err_browse_denied": "そのフォルダーは開けません",
       "err_browse_not_a_folder": "フォルダーではありません",
       "err_browse_failed": "フォルダーを読めませんでした。もう一度お試しください"
+    },
+    "net_trace": {
+      "on": "オン",
+      "off": "オフ",
+      "current": "ポート・サーバー別ネットワーク: {{state}} · 権限: {{access}}",
+      "access_ok": "あり",
+      "access_needs_grant": "なし (config net-trace grant)",
+      "access_needs_relogin": "付与済み、Windowsにサインインし直すと使えます",
+      "access_unsupported": "このOSでは使えません (Windowsのみ)",
+      "enable_hint": "オンにするには: saba-chan-cli config set systemMonitorNetTrace=on"
     }
   },
   "console": {
@@ -474,7 +484,9 @@
       "move_cross_volume": "別のドライブにあるフォルダーは移せません。「今の場所のまま」で取り込んでください。",
       "move_in_use": "フォルダーを移せませんでした。このフォルダーのサーバーを停止し、フォルダーを開いているプログラムを閉じてからもう一度試してください。",
       "move_failed": "フォルダーを移せませんでした。「今の場所のまま」で取り込んでください。",
-      "port_check_busy": "すでに確認中です。しばらくしてからもう一度お試しください"
+      "port_check_busy": "すでに確認中です。しばらくしてからもう一度お試しください",
+      "net_trace_elevation_failed": "デーモンPCで管理者の確認を得られませんでした。そのPCの前でもう一度お試しください。",
+      "net_trace_failed": "権限を変更できませんでした。"
     },
     "not_a_bool": "「{{value}}」ははい/いいえではありません（true か false を使ってください）。",
     "not_a_number": "「{{value}}」は数値ではありません。",
@@ -986,7 +998,8 @@
       "bot.backup-notice": "バックアップ結果をすべてDMするか(--all)、失敗だけか(--failures)。オプションなし: 表示",
       "bot.confirm": "実行前にボットがDiscordのボタンで確認する段階 (all・caution・danger・none)。オプションなし: 表示",
       "bot.tts": "Reading Saba-chan voice of a Discord server (volume, speed, pitch). No options: show",
-      "bot.big-emoji": "Discordサーバーの絵文字アップスケール(カスタム絵文字だけのメッセージを大きく表示)。オプションなしで表示"
+      "bot.big-emoji": "Discordサーバーの絵文字アップスケール(カスタム絵文字だけのメッセージを大きく表示)。オプションなしで表示",
+      "config.net-trace": "ポート・サーバー別ネットワーク(詳細、Windows)の権限: 動作なしで現在の状態、grantはデーモンPCで管理者の確認を一度表示して権限を付与、revokeは元に戻します。オンにするには config set systemMonitorNetTrace=on"
     },
     "arg": {
       "module.maker.game": "最初の依頼に入れるゲーム名",
@@ -1181,7 +1194,8 @@
       "bot.tts.voice_chat_only": "Read your messages only in the chat of the voice channel you are in (on|off, game chat channel excepted)",
       "bot.tts.keep_read": "Keep read messages instead of deleting them (on|off)",
       "bot.tts.auto_channels": "Voice channel IDs to always read (comma-separated, up to 10): with 2+ people inside, the bot joins and reads its chat",
-      "bot.tts.no_auto_channels": "Clear the always-read voice channels"
+      "bot.tts.no_auto_channels": "Clear the always-read voice channels",
+      "config.net-trace.action": "grant(付与)またはrevoke(戻す)。なければ現在の状態"
     },
     "after": "名前は一部だけでも指定できます（例: start pal）。端末で引数なしで実行すると全画面メニューが開きます(SABA_NO_TUI=1 なら対話シェル)。\nスクリプトでは --json と --yes を使ってください。終了コード: 0 成功 · 1 失敗 · 2 使い方の誤り · 3 デーモンに接続不可 · 4 見つからない · 130 キャンセル"
   },

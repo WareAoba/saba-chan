@@ -191,7 +191,9 @@
     "tab_connection": "Connexion",
     "tab_storage": "Stockage",
     "tab_security": "Sécurité",
-    "tab_troubleshoot": "Dépannage"
+    "tab_troubleshoot": "Dépannage",
+    "advanced_tab": "Avancé",
+    "console_appearance_title": "Apparence de la console"
   },
   "add_server_modal": {
     "title": "Ajouter un nouveau serveur",
@@ -1290,7 +1292,17 @@
     "perm_risk_for": "{{command}} : confirmation Discord",
     "perm_moved": "Modifié par rapport au préréglage",
     "perm_instances_count": "{{count}} instance(s) concernée(s)",
-    "perm_server_wide_tag": "Tout le serveur"
+    "perm_server_wide_tag": "Tout le serveur",
+    "perm_stairs_hint": "Chaque commande se trouve sur la marche à partir de laquelle on peut l'utiliser. Les marches plus hautes peuvent utiliser toutes les commandes des marches du dessous. Glissez une étiquette vers une autre marche ou cliquez dessus pour la déplacer.",
+    "perm_stairs": "Marches des commandes",
+    "perm_carry": "{{count}} de {{below}} +",
+    "perm_from_level": "Utilisable à partir de ce niveau",
+    "perm_applies_to": "S'applique aux {{count}} instances qui ont cette commande.",
+    "perm_confirm_tier": "Confirmation Discord",
+    "perm_confirm_tier_hint": "Comparé au niveau de confirmation Discord pour décider si un bouton redemande. Les confirmations de l’app et de la CLI ne changent pas.",
+    "perm_confirm_tier_mixed_hint": "Les instances utilisent des niveaux différents. En choisir un les aligne toutes.",
+    "perm_legend_moved": "Déplacée du préréglage",
+    "perm_server_wide": "C'est une commande de tout le serveur : le changement apparaît dans le menu de chaque instance."
   },
   "maintenance": {
     "load_failed": "Impossible de charger les sauvegardes et la planification.",
@@ -1655,7 +1667,30 @@
     "write": "Écriture {{value}}",
     "rx": "Reçu {{value}}",
     "tx": "Envoyé {{value}}",
-    "nothing_picked": "Choisissez quoi afficher"
+    "nothing_picked": "Choisissez quoi afficher",
+    "disk": "Espace disque",
+    "read_write": "Lecture {{read}} · Écriture {{write}}",
+    "disk_free": "{{mount}} · {{free}} libres",
+    "rx_tx": "Entrant {{rx}} · Sortant {{tx}}",
+    "net_trace_needs_grant": "Le réseau par port est activé mais sans autorisation · accordez-la dans Paramètres > Avancé",
+    "net_trace_needs_relogin": "Reconnectez-vous à Windows pour compter par serveur",
+    "net_trace_error": "Impossible de lire les événements réseau, seul le trafic total est affiché",
+    "ports_title": "Trafic par port",
+    "ports_server": "Serveur",
+    "ports_port": "Port",
+    "ports_rx": "Reçu",
+    "ports_tx": "Envoyé"
+  },
+  "net_trace": {
+    "label": "Réseau par serveur et par port",
+    "description": "Tant que le moniteur système est déplié, compte le trafic par serveur et par port à partir des événements réseau de Windows. La première fois, une confirmation administrateur est nécessaire.",
+    "status_ok": "Autorisation accordée. Le comptage démarre quand le moniteur est déplié.",
+    "status_needs_grant": "Ce compte ne peut pas encore lire les événements réseau.",
+    "status_needs_relogin": "Autorisation accordée. Reconnectez-vous à Windows pour commencer à compter.",
+    "grant": "Accorder l'autorisation",
+    "revoke": "Retirer l'autorisation",
+    "err_elevation": "Confirmation administrateur non obtenue. Réessayez.",
+    "err_generic": "Impossible de modifier l'autorisation."
   },
   "audit": {
     "title": "Journal d'activité",

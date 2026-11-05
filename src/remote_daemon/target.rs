@@ -25,7 +25,7 @@ pub fn stays_local(segments: &[String]) -> bool {
     match segments.as_slice() {
         ["api", rest @ ..] => matches!(
             rest,
-            [] | ["remote" | "client" | "clients" | "updates", ..] | ["config", "gui" | "client", ..] | ["system", "autostart"] | ["daemon", "shutdown"]
+            [] | ["remote" | "client" | "clients" | "updates", ..] | ["config", "gui" | "client", ..] | ["system", "autostart" | "net-trace", ..] | ["daemon", "shutdown"]
         ),
         _ => true,
     }
@@ -113,6 +113,8 @@ mod tests {
             "/api/config/client/cli",
             "/api/updates/status",
             "/api/system/autostart",
+            "/api/system/net-trace",
+            "/api/system/net-trace/grant",
             "/api/daemon/shutdown",
             "/health",
             "/remote/pair",

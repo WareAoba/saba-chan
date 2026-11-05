@@ -191,7 +191,9 @@
     "tab_connection": "連線",
     "tab_storage": "儲存空間",
     "tab_security": "安全性",
-    "tab_troubleshoot": "疑難排解"
+    "tab_troubleshoot": "疑難排解",
+    "advanced_tab": "進階",
+    "console_appearance_title": "主控台外觀"
   },
   "add_server_modal": {
     "title": "新增伺服器",
@@ -1290,7 +1292,17 @@
     "perm_risk_for": "{{command}}：Discord 確認",
     "perm_moved": "已改離預設",
     "perm_instances_count": "{{count}} 個實例",
-    "perm_server_wide_tag": "整個伺服器"
+    "perm_server_wide_tag": "整個伺服器",
+    "perm_stairs_hint": "每個命令放在從哪個等級起可以使用的台階上。高台階可以使用下面台階的所有命令。拖曳標籤到其他台階或點擊它來移動。",
+    "perm_stairs": "命令台階",
+    "perm_carry": "{{below}} 的 {{count}} 個 +",
+    "perm_from_level": "從此等級起可用",
+    "perm_applies_to": "會同時套用到擁有此命令的 {{count}} 個實例。",
+    "perm_confirm_tier": "Discord 確認",
+    "perm_confirm_tier_hint": "與 Discord 設定的確認等級比較，決定是否用按鈕再次詢問。應用程式與 CLI 的確認不變。",
+    "perm_confirm_tier_mixed_hint": "各執行個體的層級不同。選擇後會全部統一為該層級。",
+    "perm_legend_moved": "已偏離預設",
+    "perm_server_wide": "這是伺服器層級的命令，修改會同時出現在所有實例選單中。"
   },
   "maintenance": {
     "load_failed": "無法載入備份與排程資訊。",
@@ -1655,7 +1667,30 @@
     "write": "寫入 {{value}}",
     "rx": "接收 {{value}}",
     "tx": "傳送 {{value}}",
-    "nothing_picked": "請選擇要顯示的項目"
+    "nothing_picked": "請選擇要顯示的項目",
+    "disk": "磁碟空間",
+    "read_write": "讀取 {{read}} · 寫入 {{write}}",
+    "disk_free": "{{mount}} · 可用 {{free}}",
+    "rx_tx": "接收 {{rx}} · 傳送 {{tx}}",
+    "net_trace_needs_grant": "已開啟依連接埠·伺服器統計網路，但沒有權限 · 請在設定 > 進階中授予",
+    "net_trace_needs_relogin": "重新登入 Windows 後即可依伺服器統計",
+    "net_trace_error": "無法讀取網路事件，僅顯示總流量",
+    "ports_title": "依連接埠流量",
+    "ports_server": "伺服器",
+    "ports_port": "連接埠",
+    "ports_rx": "接收",
+    "ports_tx": "傳送"
+  },
+  "net_trace": {
+    "label": "依伺服器·連接埠統計網路",
+    "description": "系統監視器展開期間，透過 Windows 網路事件依伺服器和連接埠統計流量。首次需要一次系統管理員確認。",
+    "status_ok": "已有權限。展開監視器即開始統計。",
+    "status_needs_grant": "此帳戶沒有讀取網路事件的權限。",
+    "status_needs_relogin": "已授予權限。重新登入 Windows 後即可統計。",
+    "grant": "授予權限",
+    "revoke": "撤銷權限",
+    "err_elevation": "未取得系統管理員確認，請再試一次。",
+    "err_generic": "無法變更權限。"
   },
   "audit": {
     "title": "操作紀錄",

@@ -191,7 +191,9 @@
     "tab_connection": "Conexão",
     "tab_storage": "Armazenamento",
     "tab_security": "Segurança",
-    "tab_troubleshoot": "Solução de problemas"
+    "tab_troubleshoot": "Solução de problemas",
+    "advanced_tab": "Avançado",
+    "console_appearance_title": "Aparência do console"
   },
   "add_server_modal": {
     "title": "Adicionar Novo Servidor",
@@ -1290,7 +1292,17 @@
     "perm_risk_for": "{{command}}: confirmação no Discord",
     "perm_moved": "Alterado em relação à predefinição",
     "perm_instances_count": "{{count}} instância(s)",
-    "perm_server_wide_tag": "Servidor inteiro"
+    "perm_server_wide_tag": "Servidor inteiro",
+    "perm_stairs_hint": "Cada comando fica no degrau a partir do qual pode ser usado. Degraus mais altos podem usar todos os comandos dos de baixo. Arraste uma etiqueta para outro degrau ou clique para movê-la.",
+    "perm_stairs": "Degraus de comandos",
+    "perm_carry": "{{count}} de {{below}} +",
+    "perm_from_level": "Pode ser usado a partir deste nível",
+    "perm_applies_to": "Vale para as {{count}} instâncias que têm este comando.",
+    "perm_confirm_tier": "Confirmação no Discord",
+    "perm_confirm_tier_hint": "Comparado ao nível de confirmação do Discord para decidir se um botão pergunta de novo. As confirmações do app e da CLI não mudam.",
+    "perm_confirm_tier_mixed_hint": "As instâncias usam níveis diferentes. Escolher um aplica a todas.",
+    "perm_legend_moved": "Movido da predefinição",
+    "perm_server_wide": "É um comando do servidor todo, então a mudança aparece no menu de cada instância."
   },
   "maintenance": {
     "load_failed": "Não foi possível carregar os backups e agendamentos.",
@@ -1655,7 +1667,30 @@
     "write": "Gravação {{value}}",
     "rx": "Recebido {{value}}",
     "tx": "Enviado {{value}}",
-    "nothing_picked": "Escolha o que mostrar"
+    "nothing_picked": "Escolha o que mostrar",
+    "disk": "Espaço em disco",
+    "read_write": "Leitura {{read}} · Escrita {{write}}",
+    "disk_free": "{{mount}} · {{free}} livres",
+    "rx_tx": "Entrada {{rx}} · Saída {{tx}}",
+    "net_trace_needs_grant": "A rede por porta está ligada, mas sem permissão · conceda em Configurações > Avançado",
+    "net_trace_needs_relogin": "Entre no Windows novamente para contar por servidor",
+    "net_trace_error": "Não foi possível ler os eventos de rede, mostrando só o tráfego total",
+    "ports_title": "Tráfego por porta",
+    "ports_server": "Servidor",
+    "ports_port": "Porta",
+    "ports_rx": "Recebido",
+    "ports_tx": "Enviado"
+  },
+  "net_trace": {
+    "label": "Rede por servidor e porta",
+    "description": "Enquanto o monitor do sistema estiver expandido, conta o tráfego por servidor e porta a partir dos eventos de rede do Windows. Na primeira vez, é preciso uma confirmação de administrador.",
+    "status_ok": "Permissão concedida. A contagem começa quando o monitor é expandido.",
+    "status_needs_grant": "Esta conta ainda não pode ler eventos de rede.",
+    "status_needs_relogin": "Permissão concedida. Entre no Windows novamente para começar a contar.",
+    "grant": "Conceder permissão",
+    "revoke": "Remover permissão",
+    "err_elevation": "Não foi possível obter a confirmação de administrador. Tente novamente.",
+    "err_generic": "Não foi possível alterar a permissão."
   },
   "audit": {
     "title": "Registro de atividades",

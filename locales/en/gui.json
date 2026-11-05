@@ -191,7 +191,9 @@
     "tab_connection": "Connection",
     "tab_storage": "Storage",
     "tab_security": "Security",
-    "tab_troubleshoot": "Troubleshooting"
+    "tab_troubleshoot": "Troubleshooting",
+    "advanced_tab": "Advanced",
+    "console_appearance_title": "Console Appearance"
   },
   "add_server_modal": {
     "title": "Add New Server",
@@ -1290,7 +1292,17 @@
     "perm_risk_for": "{{command}}: Discord confirmation",
     "perm_moved": "Changed from the preset",
     "perm_instances_count": "{{count}} instance(s)",
-    "perm_server_wide_tag": "Server-wide"
+    "perm_server_wide_tag": "Server-wide",
+    "perm_stairs_hint": "Each command sits on the step from which it can be used. Higher steps can use every command on the steps below. Drag a chip to another step or click it to move it.",
+    "perm_stairs": "Command steps",
+    "perm_carry": "{{count}} from {{below}} +",
+    "perm_from_level": "Usable from this level",
+    "perm_applies_to": "Applies to all {{count}} instances that have this command.",
+    "perm_confirm_tier": "Discord confirm",
+    "perm_confirm_tier_hint": "Compared with the Discord confirm setting to decide whether a button asks again. App and CLI confirms stay the same.",
+    "perm_confirm_tier_mixed_hint": "Instances use different tiers. Picking one sets them all.",
+    "perm_legend_moved": "Moved from the preset",
+    "perm_server_wide": "This is a server-wide command, so the change shows in every instance menu."
   },
   "maintenance": {
     "load_failed": "Couldn't load backups and schedules.",
@@ -1655,7 +1667,30 @@
     "write": "Write {{value}}",
     "rx": "In {{value}}",
     "tx": "Out {{value}}",
-    "nothing_picked": "Choose what to show"
+    "nothing_picked": "Choose what to show",
+    "disk": "Disk space",
+    "read_write": "Read {{read}} · Write {{write}}",
+    "disk_free": "{{mount}} · {{free}} free",
+    "rx_tx": "In {{rx}} · Out {{tx}}",
+    "net_trace_needs_grant": "Per-port network is on but has no permission · grant it in Settings > Advanced",
+    "net_trace_needs_relogin": "Sign in to Windows again to count per server",
+    "net_trace_error": "Couldn't read network events, showing total traffic only",
+    "ports_title": "Traffic by port",
+    "ports_server": "Server",
+    "ports_port": "Port",
+    "ports_rx": "Received",
+    "ports_tx": "Sent"
+  },
+  "net_trace": {
+    "label": "Per-server and per-port network",
+    "description": "While the system monitor is expanded, count traffic per server and port from Windows network events. Needs one administrator confirmation the first time.",
+    "status_ok": "Permission granted. Counting starts when the monitor is expanded.",
+    "status_needs_grant": "This account can't read network events yet.",
+    "status_needs_relogin": "Permission granted. Sign in to Windows again to start counting.",
+    "grant": "Grant permission",
+    "revoke": "Remove permission",
+    "err_elevation": "Couldn't get administrator confirmation. Try again.",
+    "err_generic": "Couldn't change the permission."
   },
   "audit": {
     "title": "Activity log",

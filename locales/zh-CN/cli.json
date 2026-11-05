@@ -318,6 +318,16 @@
       "err_browse_denied": "无法打开该文件夹",
       "err_browse_not_a_folder": "这不是文件夹",
       "err_browse_failed": "无法读取文件夹，请重试"
+    },
+    "net_trace": {
+      "on": "开",
+      "off": "关",
+      "current": "按服务器·端口统计网络：{{state}} · 权限：{{access}}",
+      "access_ok": "已有",
+      "access_needs_grant": "没有 (config net-trace grant)",
+      "access_needs_relogin": "已授予，重新登录 Windows 后可用",
+      "access_unsupported": "此系统不可用（仅 Windows）",
+      "enable_hint": "开启方法：saba-chan-cli config set systemMonitorNetTrace=on"
     }
   },
   "console": {
@@ -474,7 +484,9 @@
       "move_cross_volume": "无法移动其他驱动器上的文件夹。请改用“保留在原位置”导入。",
       "move_in_use": "无法移动文件夹。请停止此文件夹中的服务器，关闭打开该文件夹的程序后重试。",
       "move_failed": "无法移动文件夹。请改用“保留在原位置”导入。",
-      "port_check_busy": "已经在检查中，请稍后再试"
+      "port_check_busy": "已经在检查中，请稍后再试",
+      "net_trace_elevation_failed": "未在守护进程电脑上获得管理员确认。请在那台电脑前重试。",
+      "net_trace_failed": "无法更改权限。"
     },
     "not_a_bool": "“{{value}}”不是是/否（请使用 true 或 false）。",
     "not_a_number": "“{{value}}”不是数字。",
@@ -986,7 +998,8 @@
       "bot.backup-notice": "备份结果全部私信(--all)还是只私信失败(--failures)。不带选项：查看",
       "bot.confirm": "机器人在执行前用 Discord 按钮询问的级别 (all、caution、danger、none)。不加选项: 查看",
       "bot.tts": "Reading Saba-chan voice of a Discord server (volume, speed, pitch). No options: show",
-      "bot.big-emoji": "Discord 服务器的表情符号放大(只发一个自定义表情符号时放大显示)。不带选项则查看"
+      "bot.big-emoji": "Discord 服务器的表情符号放大(只发一个自定义表情符号时放大显示)。不带选项则查看",
+      "config.net-trace": "按服务器·端口统计网络（高级，Windows）的权限：不带操作时显示当前状态，grant 在守护进程电脑上弹出一次管理员确认以授予权限，revoke 撤销。开启：config set systemMonitorNetTrace=on"
     },
     "arg": {
       "module.maker.game": "第一个请求中的游戏名",
@@ -1181,7 +1194,8 @@
       "bot.tts.voice_chat_only": "Read your messages only in the chat of the voice channel you are in (on|off, game chat channel excepted)",
       "bot.tts.keep_read": "Keep read messages instead of deleting them (on|off)",
       "bot.tts.auto_channels": "Voice channel IDs to always read (comma-separated, up to 10): with 2+ people inside, the bot joins and reads its chat",
-      "bot.tts.no_auto_channels": "Clear the always-read voice channels"
+      "bot.tts.no_auto_channels": "Clear the always-read voice channels",
+      "config.net-trace.action": "grant（授予）或 revoke（撤销）。省略时显示当前状态"
     },
     "after": "名称可以只写一部分（例如 start pal）。在终端中不带参数运行会打开全屏菜单(SABA_NO_TUI=1 时为交互式 shell)。\n在脚本中请使用 --json 和 --yes。退出码：0 成功 · 1 失败 · 2 用法错误 · 3 无法连接守护进程 · 4 未找到 · 130 已取消"
   },

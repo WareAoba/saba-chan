@@ -191,7 +191,9 @@
     "tab_connection": "Verbindung",
     "tab_storage": "Speicher",
     "tab_security": "Sicherheit",
-    "tab_troubleshoot": "Fehlerbehebung"
+    "tab_troubleshoot": "Fehlerbehebung",
+    "advanced_tab": "Erweitert",
+    "console_appearance_title": "Konsolen-Darstellung"
   },
   "add_server_modal": {
     "title": "Neuen Server hinzufügen",
@@ -1290,7 +1292,17 @@
     "perm_risk_for": "{{command}}: Discord-Nachfrage",
     "perm_moved": "Von der Vorlage geändert",
     "perm_instances_count": "{{count}} Instanz(en)",
-    "perm_server_wide_tag": "Serverweit"
+    "perm_server_wide_tag": "Serverweit",
+    "perm_stairs_hint": "Jeder Befehl steht auf der Stufe, ab der er nutzbar ist. Höhere Stufen dürfen alle Befehle der Stufen darunter. Zieh einen Chip auf eine andere Stufe oder klick ihn an, um ihn zu verschieben.",
+    "perm_stairs": "Befehlsstufen",
+    "perm_carry": "{{count}} von {{below}} +",
+    "perm_from_level": "Ab dieser Stufe nutzbar",
+    "perm_applies_to": "Gilt für alle {{count}} Instanzen mit diesem Befehl.",
+    "perm_confirm_tier": "Discord-Rückfrage",
+    "perm_confirm_tier_hint": "Wird mit der Rückfrage-Stufe der Discord-Einstellungen verglichen, um per Button nachzufragen. Bestätigungen in App und CLI bleiben gleich.",
+    "perm_confirm_tier_mixed_hint": "Die Instanzen nutzen verschiedene Stufen. Eine Auswahl gilt für alle.",
+    "perm_legend_moved": "Von der Vorlage verschoben",
+    "perm_server_wide": "Das ist ein serverweiter Befehl, die Änderung gilt in jedem Instanzmenü."
   },
   "maintenance": {
     "load_failed": "Backups und Zeitpläne konnten nicht geladen werden.",
@@ -1655,7 +1667,30 @@
     "write": "Schreiben {{value}}",
     "rx": "Empfangen {{value}}",
     "tx": "Senden {{value}}",
-    "nothing_picked": "Wählen Sie, was angezeigt wird"
+    "nothing_picked": "Wählen Sie, was angezeigt wird",
+    "disk": "Speicherplatz",
+    "read_write": "Lesen {{read}} · Schreiben {{write}}",
+    "disk_free": "{{mount}} · {{free}} frei",
+    "rx_tx": "Ein {{rx}} · Aus {{tx}}",
+    "net_trace_needs_grant": "Netzwerk pro Port ist an, aber ohne Berechtigung · unter Einstellungen > Erweitert erteilen",
+    "net_trace_needs_relogin": "Melde dich erneut bei Windows an, um pro Server zu zählen",
+    "net_trace_error": "Netzwerkereignisse nicht lesbar, nur Gesamtverkehr wird gezeigt",
+    "ports_title": "Verkehr pro Port",
+    "ports_server": "Server",
+    "ports_port": "Port",
+    "ports_rx": "Empfangen",
+    "ports_tx": "Gesendet"
+  },
+  "net_trace": {
+    "label": "Netzwerk pro Server und Port",
+    "description": "Zählt den Verkehr pro Server und Port aus Windows-Netzwerkereignissen, solange der Systemmonitor aufgeklappt ist. Beim ersten Mal ist eine Administratorbestätigung nötig.",
+    "status_ok": "Berechtigung vorhanden. Gezählt wird, wenn der Monitor aufgeklappt ist.",
+    "status_needs_grant": "Dieses Konto darf Netzwerkereignisse noch nicht lesen.",
+    "status_needs_relogin": "Berechtigung erteilt. Melde dich erneut bei Windows an, um zu zählen.",
+    "grant": "Berechtigung erteilen",
+    "revoke": "Berechtigung entfernen",
+    "err_elevation": "Keine Administratorbestätigung erhalten. Versuche es erneut.",
+    "err_generic": "Berechtigung konnte nicht geändert werden."
   },
   "audit": {
     "title": "Aktivitätsprotokoll",

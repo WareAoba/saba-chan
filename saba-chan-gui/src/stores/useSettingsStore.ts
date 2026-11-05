@@ -39,6 +39,7 @@ export const APP_OPTION_DEFAULTS: Readonly<AppOptions> = Object.freeze({
     consoleTimestamps: 'off', // 콘솔 줄 앞 시각: off | 24h | 12h
     consoleTimestampDate: false,
     consoleFonts: CONSOLE_FONT_DEFAULTS, // 콘솔 글꼴: 글자마다 하나 (utils/consoleFonts.js)
+    systemMonitorNetTrace: false, // 고급: 포트·서버별 네트워크 (모니터를 펼쳐 둔 동안 데몬이 센다)
 });
 
 /** 앱 동작 옵션 (APP_OPTION_DEFAULTS의 칸) */
@@ -50,7 +51,8 @@ type AppOptionKey =
     | 'auditKeepDays'
     | 'consoleTimestamps'
     | 'consoleTimestampDate'
-    | 'consoleFonts';
+    | 'consoleFonts'
+    | 'systemMonitorNetTrace';
 type AppOptions = Pick<GuiSettings, AppOptionKey> & { consoleFonts: Readonly<ConsoleFonts> };
 
 /** config.json에 저장하는 칸 (_settingsKeys) */

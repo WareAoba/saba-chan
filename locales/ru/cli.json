@@ -318,6 +318,16 @@
       "err_browse_denied": "Эту папку нельзя открыть",
       "err_browse_not_a_folder": "Это не папка",
       "err_browse_failed": "Не удалось прочитать папку. Попробуйте ещё раз"
+    },
+    "net_trace": {
+      "on": "включено",
+      "off": "выключено",
+      "current": "Сеть по серверам и портам: {{state}} · разрешение: {{access}}",
+      "access_ok": "есть",
+      "access_needs_grant": "нет (config net-trace grant)",
+      "access_needs_relogin": "выдано, войдите в Windows заново, чтобы использовать",
+      "access_unsupported": "недоступно в этой ОС (только Windows)",
+      "enable_hint": "Чтобы включить: saba-chan-cli config set systemMonitorNetTrace=on"
     }
   },
   "console": {
@@ -474,7 +484,9 @@
       "move_cross_volume": "Папку на другом диске перенести нельзя. Импортируйте её с вариантом «Оставить на месте».",
       "move_in_use": "Не удалось перенести папку. Остановите сервер в этой папке, закройте программы, которые её используют, и попробуйте снова.",
       "move_failed": "Не удалось перенести папку. Импортируйте её с вариантом «Оставить на месте».",
-      "port_check_busy": "Проверка уже идёт. Повторите чуть позже"
+      "port_check_busy": "Проверка уже идёт. Повторите чуть позже",
+      "net_trace_elevation_failed": "Не удалось получить подтверждение администратора на ПК демона. Попробуйте ещё раз за этим ПК.",
+      "net_trace_failed": "Не удалось изменить разрешение."
     },
     "not_a_bool": "«{{value}}» — не да/нет (используйте true или false).",
     "not_a_number": "«{{value}}» — не число.",
@@ -854,7 +866,8 @@
       "bot.backup-notice": "Присылать в ЛС все результаты резервного копирования (--all) или только ошибки (--failures). Без параметров: показать",
       "bot.confirm": "Когда бот спрашивает кнопкой Discord перед запуском (all, caution, danger, none). Без параметров: показать",
       "bot.tts": "Reading Saba-chan voice of a Discord server (volume, speed, pitch). No options: show",
-      "bot.big-emoji": "Увеличение эмодзи (одиночный свой эмодзи показывается крупно) на сервере Discord. Без параметров: показать"
+      "bot.big-emoji": "Увеличение эмодзи (одиночный свой эмодзи показывается крупно) на сервере Discord. Без параметров: показать",
+      "config.net-trace": "Разрешение для сети по серверам и портам (дополнительно, Windows): без действия показывает текущее состояние; grant один раз показывает подтверждение администратора на ПК демона, revoke отменяет. Включить: config set systemMonitorNetTrace=on"
     },
     "arg": {
       "module.maker.game": "Игра для первого запроса",
@@ -968,7 +981,8 @@
       "bot.tts.voice_chat_only": "Read your messages only in the chat of the voice channel you are in (on|off, game chat channel excepted)",
       "bot.tts.keep_read": "Keep read messages instead of deleting them (on|off)",
       "bot.tts.auto_channels": "Voice channel IDs to always read (comma-separated, up to 10): with 2+ people inside, the bot joins and reads its chat",
-      "bot.tts.no_auto_channels": "Clear the always-read voice channels"
+      "bot.tts.no_auto_channels": "Clear the always-read voice channels",
+      "config.net-trace.action": "grant или revoke. Без значения показывает текущее состояние"
     },
     "after": "Имена можно сокращать (напр. start pal). Без аргументов в терминале открывается полноэкранное меню (SABA_NO_TUI=1: интерактивная оболочка).\nВ скриптах используйте --json и --yes. Коды выхода: 0 успех · 1 ошибка · 2 неверное использование · 3 демон недоступен · 4 не найдено · 130 отменено"
   },

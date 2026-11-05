@@ -1320,6 +1320,11 @@ pub enum ConfigCmd {
         #[arg(value_enum)]
         mode: Option<AutostartMode>,
     },
+    /// Per-server and per-port network (advanced, Windows): show the permission, or grant/revoke it with one administrator prompt on the daemon PC. Turn it on with `config set systemMonitorNetTrace=on`
+    NetTrace {
+        #[arg(value_enum)]
+        action: Option<NetTraceAction>,
+    },
     /// Bring in settings and servers from an export zip
     Import {
         file: std::path::PathBuf,
@@ -1364,6 +1369,13 @@ impl AutostartMode {
             AutostartMode::Full => "full",
         }
     }
+}
+
+/// `config net-trace`의 동작 (데몬 `/api/system/net-trace/grant`·`/revoke`)
+#[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NetTraceAction {
+    Grant,
+    Revoke,
 }
 
 /// 번역된 도움말을 끼운 clap 명령

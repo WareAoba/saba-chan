@@ -191,7 +191,9 @@
     "tab_connection": "接続",
     "tab_storage": "ストレージ",
     "tab_security": "セキュリティ",
-    "tab_troubleshoot": "トラブルシューティング"
+    "tab_troubleshoot": "トラブルシューティング",
+    "advanced_tab": "詳細",
+    "console_appearance_title": "コンソールの外観"
   },
   "add_server_modal": {
     "title": "新規サーバーを追加",
@@ -1290,7 +1292,17 @@
     "perm_risk_for": "{{command}}: Discordで聞き直す",
     "perm_moved": "プリセットから変更",
     "perm_instances_count": "インスタンス{{count}}個",
-    "perm_server_wide_tag": "サーバー全体"
+    "perm_server_wide_tag": "サーバー全体",
+    "perm_stairs_hint": "コマンドは、そのレベルから使える段に置かれます。上の段は下の段のコマンドをすべて使えます。チップを別の段へドラッグするか、クリックして動かします。",
+    "perm_stairs": "コマンドの段",
+    "perm_carry": "{{below}}の{{count}}個 +",
+    "perm_from_level": "このレベルから使えます",
+    "perm_applies_to": "このコマンドがあるインスタンス {{count}}個にまとめて適用されます。",
+    "perm_confirm_tier": "Discordでの確認",
+    "perm_confirm_tier_hint": "Discord設定の確認段階と比べて、ボタンで聞き直すかを決めます。アプリ・CLIの確認はそのままです。",
+    "perm_confirm_tier_mixed_hint": "インスタンスごとに段階が異なります。選ぶとすべてその段階に揃えます。",
+    "perm_legend_moved": "プリセットから移動",
+    "perm_server_wide": "サーバー全体のコマンドなので、すべてのインスタンスのメニューで一緒に変わります。"
   },
   "maintenance": {
     "load_failed": "バックアップ・予約の情報を読み込めませんでした。",
@@ -1655,7 +1667,30 @@
     "write": "書き込み {{value}}",
     "rx": "受信 {{value}}",
     "tx": "送信 {{value}}",
-    "nothing_picked": "表示する項目を選んでください"
+    "nothing_picked": "表示する項目を選んでください",
+    "disk": "ディスク容量",
+    "read_write": "読み取り {{read}} · 書き込み {{write}}",
+    "disk_free": "{{mount}} · 空き {{free}}",
+    "rx_tx": "受信 {{rx}} · 送信 {{tx}}",
+    "net_trace_needs_grant": "ポート・サーバー別ネットワークがオンですが権限がありません · 設定 > 詳細で付与",
+    "net_trace_needs_relogin": "Windowsにサインインし直すとサーバー別に計測できます",
+    "net_trace_error": "ネットワークイベントを読めないため全体の通信量のみ表示しています",
+    "ports_title": "ポート別の通信量",
+    "ports_server": "サーバー",
+    "ports_port": "ポート",
+    "ports_rx": "受信",
+    "ports_tx": "送信"
+  },
+  "net_trace": {
+    "label": "ポート・サーバー別ネットワーク",
+    "description": "システムモニターを開いている間、Windowsのネットワークイベントからサーバー別・ポート別の通信量を計測します。初回に一度だけ管理者の確認が必要です。",
+    "status_ok": "権限があります。モニターを開くと計測します。",
+    "status_needs_grant": "このアカウントにはネットワークイベントを読む権限がありません。",
+    "status_needs_relogin": "権限を付与しました。Windowsにサインインし直すと計測できます。",
+    "grant": "権限を付与",
+    "revoke": "権限を戻す",
+    "err_elevation": "管理者の確認を得られませんでした。もう一度お試しください。",
+    "err_generic": "権限を変更できませんでした。"
   },
   "audit": {
     "title": "操作履歴",

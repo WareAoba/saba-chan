@@ -7,7 +7,8 @@
 //!   인스턴스의 `disk_*_bps`는 그 프로세스들이 요청한 IO(캐시 포함)다. 요약 요청은 물리 카운터가 있으면
 //!   프로세스 IO 카운터를 읽지 않아 이 값이 0이다.
 //! - 물리 카운터를 한 번 못 읽으면 직전 값을 다시 쓴다(`STALE_AFTER`까지). 프로세스 합으로 바꾸면 그래프가 튄다.
-//! - 네트워크: 프로세스별 값을 싸게 얻을 길이 없어(Windows는 ETW·관리자 권한 필요) 기계 전체와 어댑터별(`adapters`)만 준다.
+//! - 네트워크: 프로세스별 값을 싸게 얻을 길이 없어 `network`는 기계 전체, `adapters`는 어댑터별만 준다. 서버·포트별 값은
+//!   고급 옵션(`net_trace`, Windows ETW)이 켜져 있고 펼친 화면을 볼 때만 `net_trace`와 인스턴스의 `net_*_bps`에 담긴다.
 //! - CPU 클럭·온도, RAM 클럭, GPU, 디스크 회전 속도는 `hardware`가 OS 기본 값으로 읽는다 (못 읽으면 None).
 //! - 디스크 용량의 인스턴스 몫은 폴더 크기를 따로 훑어 10분 동안 재사용한다. 요약만 보는 요청은 훑지 않는다.
 //! - 요청이 `IDLE_DROP_AFTER` 동안 없으면 표본기(프로세스 목록 포함)를 버린다. 다음 요청 때 새로 만든다.
@@ -20,8 +21,10 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use sysinfo::{Disks, Networks, Pid, ProcessRefreshKind, ProcessesToUpdate, System};
 
 mod hardware;
+pub mod net_trace;
 mod physical_io;
 use hardware::Hardware;
+use net_trace::{NetTrace, NetTraceMetrics, PortTraffic};
 use physical_io::PhysicalIo;
 
 /// 이보다 잦은 요청은 직전 표본을 그대로 준다 (여러 클라이언트가 함께 봐도 표본은 하나)
@@ -42,6 +45,8 @@ pub struct InstanceRoot {
     pub name: String,
     pub pid: Option<u32>,
     pub dirs: Vec<PathBuf>,
+    /// 밖에 여는 포트 (`port_check::public_ports`). 포트별 네트워크 표의 줄이 된다
+    pub ports: Vec<crate::port_check::PublicPort>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -55,6 +60,8 @@ pub struct MetricsSnapshot {
     pub network: NetworkMetrics,
     pub disks: Vec<DiskMetrics>,
     pub instances: Vec<InstanceMetrics>,
+    /// 포트·서버별 네트워크 (고급 옵션)
+    pub net_trace: NetTraceMetrics,
     /// 화면에서 고를 수 있는 모든 디스크 (`disks`는 서버·데이터 폴더가 있는 디스크만)
     pub volumes: Vec<VolumeMetrics>,
     /// 네트워크 어댑터마다 (루프백 제외, 이름순)
@@ -160,6 +167,9 @@ pub struct InstanceMetrics {
     /// 프로세스가 요청한 IO (캐시에서 읽은 것 포함). 실제 디스크 IO의 몫이 아니다
     pub disk_read_bps: u64,
     pub disk_write_bps: u64,
+    /// 이 서버 프로세스들이 받고 보낸 양 (`net_trace.status`가 "on"일 때만)
+    pub net_rx_bps: Option<u64>,
+    pub net_tx_bps: Option<u64>,
 }
 
 /// 프로세스 하나의 이번 구간 값 (sysinfo와 분리해 시험할 수 있게)
@@ -193,8 +203,11 @@ impl Usage {
 }
 
 /// 각 프로세스를 조상 중 가장 가까운 인스턴스 PID에 붙인다. 어느 인스턴스에도 안 붙으면 `others`.
-/// 반환: (인스턴스 id → 합계, 나머지 합계)
-fn attribute(procs: &HashMap<u32, ProcSample>, roots: &[(String, u32)]) -> (HashMap<String, Usage>, Usage) {
+/// 반환: (인스턴스 id → 합계, 나머지 합계, 인스턴스에 붙은 PID → 인스턴스 id)
+fn attribute(
+    procs: &HashMap<u32, ProcSample>,
+    roots: &[(String, u32)],
+) -> (HashMap<String, Usage>, Usage, HashMap<u32, String>) {
     let root_of: HashMap<u32, &str> = roots.iter().map(|(id, pid)| (*pid, id.as_str())).collect();
     let mut owner: HashMap<u32, Option<&str>> = HashMap::new();
     let mut by_instance: HashMap<String, Usage> = roots.iter().map(|(id, _)| (id.clone(), Usage::default())).collect();
@@ -227,7 +240,8 @@ fn attribute(procs: &HashMap<u32, ProcSample>, roots: &[(String, u32)]) -> (Hash
             None => others.add(sample),
         }
     }
-    (by_instance, others)
+    let owners = owner.into_iter().filter_map(|(pid, id)| id.map(|id| (pid, id.to_string()))).collect();
+    (by_instance, others, owners)
 }
 
 /// `path`가 들어 있는 마운트 지점 (가장 긴 접두어)
@@ -345,6 +359,9 @@ struct DirSizes {
 pub struct SystemMonitor {
     sampler: Arc<Mutex<Option<Sampler>>>,
     dir_sizes: Arc<Mutex<DirSizes>>,
+    net: NetTrace,
+    /// 포트·서버별 네트워크 옵션 (설정 `systemMonitorNetTrace`)
+    net_enabled: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl Default for SystemMonitor {
@@ -356,7 +373,35 @@ impl Default for SystemMonitor {
 impl SystemMonitor {
     pub fn new() -> Self {
         // sysinfo 초기화는 첫 요청 때 한다: 아무도 안 보면 비용이 없다
-        Self { sampler: Arc::new(Mutex::new(None)), dir_sizes: Arc::new(Mutex::new(DirSizes::default())) }
+        Self {
+            sampler: Arc::new(Mutex::new(None)),
+            dir_sizes: Arc::new(Mutex::new(DirSizes::default())),
+            net: NetTrace::default(),
+            net_enabled: Arc::default(),
+        }
+    }
+
+    /// 포트·서버별 네트워크 옵션을 맞춘다. 끄면 다음 표본 때 세션을 닫는다
+    pub fn set_net_trace(&self, enabled: bool) {
+        // 바뀌면 직전 표본(짧게 재사용한다)을 버린다: 켠 직후 응답이 옛 상태("off")로 오지 않게
+        if self.net_enabled.swap(enabled, std::sync::atomic::Ordering::Relaxed) != enabled
+            && let Some(sampler) = self.sampler.lock().unwrap_or_else(|e| e.into_inner()).as_mut()
+        {
+            sampler.last = None;
+        }
+    }
+
+    /// 권한을 바꾼 뒤: 다음 펼친 요청에서 바로 세션을 다시 열어 본다
+    pub fn net_trace_retry(&self) {
+        self.net.forget_failure();
+    }
+
+    /// 데몬을 끌 때·권한을 거둘 때: 열린 ETW 세션은 시스템 전체 이름이라 프로세스가 끝나도 남는다
+    pub fn stop_net_trace(&self) {
+        self.net.stop();
+        if let Some(sampler) = self.sampler.lock().unwrap_or_else(|e| e.into_inner()).as_mut() {
+            sampler.last = None;
+        }
     }
 
     /// 표본을 뜬다. 동기 시스템 콜이므로 `spawn_blocking` 안에서 부른다.
@@ -410,7 +455,8 @@ impl SystemMonitor {
         }
         sampler.hw = sampler.hardware.read(&sampler.system);
         let sizes = self.dir_sizes.lock().unwrap_or_else(|e| e.into_inner());
-        let snap = build_snapshot(sampler, roots, extra_dirs, &sizes, window);
+        let net = self.net.take(self.net_enabled.load(std::sync::atomic::Ordering::Relaxed), measure_dirs);
+        let snap = build_snapshot(sampler, roots, extra_dirs, &sizes, window, net);
         drop(sizes);
         sampler.last = Some((Instant::now(), snap.clone()));
         snap
@@ -480,6 +526,7 @@ fn build_snapshot(
     extra_dirs: &[PathBuf],
     sizes: &DirSizes,
     window: Duration,
+    net: net_trace::Taken,
 ) -> MetricsSnapshot {
     let sys = &sampler.system;
     let cores = sys.cpus().len().max(1);
@@ -506,7 +553,40 @@ fn build_snapshot(
         .iter()
         .filter_map(|r| r.pid.filter(|p| procs.contains_key(p)).map(|p| (r.id.clone(), p)))
         .collect();
-    let (by_instance, others) = attribute(&procs, &pids);
+    let (by_instance, others, owners) = attribute(&procs, &pids);
+    let (net_trace, net_by_instance) = match net {
+        Ok((counts, net_window)) => {
+            let ports: Vec<(String, Vec<crate::port_check::PublicPort>)> =
+                roots.iter().map(|r| (r.id.clone(), r.ports.clone())).collect();
+            let s = net_trace::split(&counts, &owners, &ports);
+            let rate = |b: u64| per_sec(b, net_window);
+            let (inst_rx, inst_tx) = s.by_instance.values().fold((0, 0), |a, b| (a.0 + b.0, a.1 + b.1));
+            let metrics = NetTraceMetrics {
+                status: "on",
+                window_ms: net_window.as_millis() as u64,
+                rx_bps: rate(inst_rx + s.others.0),
+                tx_bps: rate(inst_tx + s.others.1),
+                others_rx_bps: rate(s.others.0),
+                others_tx_bps: rate(s.others.1),
+                ports: s
+                    .ports
+                    .into_iter()
+                    .map(|p| PortTraffic {
+                        instance_id: p.instance_id,
+                        field: p.field,
+                        port: p.port,
+                        protocol: p.protocol,
+                        rx_bps: rate(p.rx),
+                        tx_bps: rate(p.tx),
+                    })
+                    .collect(),
+            };
+            let by: HashMap<String, (u64, u64)> =
+                s.by_instance.into_iter().map(|(id, (rx, tx))| (id, (rate(rx), rate(tx)))).collect();
+            (metrics, Some(by))
+        }
+        Err(status) => (NetTraceMetrics::status(status), None),
+    };
 
     let instances: Vec<InstanceMetrics> = roots
         .iter()
@@ -521,6 +601,8 @@ fn build_snapshot(
                 memory_bytes: u.memory,
                 disk_read_bps: per_sec(u.read, window),
                 disk_write_bps: per_sec(u.written, window),
+                net_rx_bps: net_by_instance.as_ref().map(|m| m.get(&r.id).map_or(0, |v| v.0)),
+                net_tx_bps: net_by_instance.as_ref().map(|m| m.get(&r.id).map_or(0, |v| v.1)),
             }
         })
         .collect();
@@ -580,6 +662,7 @@ fn build_snapshot(
         network: NetworkMetrics { rx_bps: per_sec(rx, window), tx_bps: per_sec(tx, window), per_instance: false },
         disks: build_disks(&sampler.disks, roots, extra_dirs, sizes),
         instances,
+        net_trace,
         volumes: build_volumes(&sampler.disks, &hw.disk_rpm),
         adapters,
         gpus: hw
@@ -709,19 +792,23 @@ mod tests {
         ]
         .into();
         let roots = vec![("a".to_string(), 11), ("b".to_string(), 20), ("gone".to_string(), 99)];
-        let (by, others) = attribute(&procs, &roots);
+        let (by, others, owners) = attribute(&procs, &roots);
 
         assert_eq!(by["a"], Usage { processes: 2, cpu: 160.0, memory: 2100, read: 350, written: 0 });
         assert_eq!(by["b"].processes, 1);
         assert_eq!(by["gone"], Usage::default());
         // 러너(10)와 init은 인스턴스 몫이 아니다
         assert_eq!(others, Usage { processes: 3, cpu: 21.5, memory: 1515, read: 7, written: 0 });
+        // 네트워크 몫을 나눌 PID 주인: 인스턴스 트리만
+        assert_eq!(owners.get(&12).map(String::as_str), Some("a"));
+        assert_eq!(owners.get(&20).map(String::as_str), Some("b"));
+        assert!(!owners.contains_key(&10) && !owners.contains_key(&30));
     }
 
     #[test]
     fn parent_cycles_do_not_hang() {
         let procs: HashMap<u32, ProcSample> = [(5, p(Some(6), 1.0, 1, 0)), (6, p(Some(5), 1.0, 1, 0))].into();
-        let (_, others) = attribute(&procs, &[]);
+        let (_, others, _) = attribute(&procs, &[]);
         assert_eq!(others.processes, 2);
     }
 
@@ -759,10 +846,34 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(windows))]
+    fn stopping_net_trace_drops_the_session_and_the_cached_sample() {
+        net_trace::fake_start(true);
+        let monitor = SystemMonitor::new();
+        monitor.set_net_trace(true);
+        assert_eq!(monitor.sample(&[], &[], true).net_trace.status, "starting");
+        std::thread::sleep(MIN_SAMPLE_INTERVAL);
+        assert_eq!(monitor.sample(&[], &[], true).net_trace.status, "on");
+        // 권한을 거두면 세던 세션과 직전 표본을 버린다: 다음 요청은 새로 연다
+        monitor.stop_net_trace();
+        assert_eq!(monitor.sample(&[], &[], true).net_trace.status, "starting");
+        net_trace::fake_start(false);
+    }
+
+    #[test]
+    fn turning_net_trace_on_does_not_reuse_the_off_sample() {
+        let monitor = SystemMonitor::new();
+        assert_eq!(monitor.sample(&[], &[], true).net_trace.status, "off");
+        monitor.set_net_trace(true);
+        // 직전 표본은 900ms 동안 재사용하지만, 옵션이 바뀌면 새로 뜬다
+        assert_ne!(monitor.sample(&[], &[], true).net_trace.status, "off");
+    }
+
+    #[test]
     fn sample_reports_live_machine_totals() {
         let monitor = SystemMonitor::new();
         let me = std::process::id();
-        let roots = vec![InstanceRoot { id: "me".into(), name: "test".into(), pid: Some(me), dirs: vec![] }];
+        let roots = vec![InstanceRoot { id: "me".into(), name: "test".into(), pid: Some(me), dirs: vec![], ports: vec![] }];
         let snap = monitor.sample(&roots, &[], false);
         assert!(snap.memory.total_bytes > 0);
         assert!(snap.memory.used_bytes >= snap.memory.others_bytes);
@@ -780,6 +891,9 @@ mod tests {
         assert_eq!(monitor.sample(&roots, &[], false).sampled_at_ms, snap.sampled_at_ms);
         // 요약 요청은 폴더 크기를 재지 않는다
         assert!(monitor.dir_sizes.lock().unwrap().measured_at.is_none() && !monitor.dir_sizes.lock().unwrap().running);
+        // 옵션이 꺼져 있으면 서버별 네트워크를 세지 않는다
+        assert_eq!(snap.net_trace.status, "off");
+        assert_eq!(inst.net_rx_bps, None);
     }
 
     #[test]
@@ -809,7 +923,7 @@ mod tests {
     #[test]
     fn summary_skips_process_io_and_full_view_measures_a_fresh_window() {
         let monitor = SystemMonitor::new();
-        let roots = vec![InstanceRoot { id: "me".into(), name: "test".into(), pid: Some(std::process::id()), dirs: vec![] }];
+        let roots = vec![InstanceRoot { id: "me".into(), name: "test".into(), pid: Some(std::process::id()), dirs: vec![], ports: vec![] }];
         // 첫 표본은 물리 카운터를 아직 못 읽어 프로세스 IO도 읽는다
         monitor.sample(&roots, &[], false);
         std::thread::sleep(MIN_SAMPLE_INTERVAL);

@@ -318,6 +318,16 @@
       "err_browse_denied": "Não é possível abrir essa pasta",
       "err_browse_not_a_folder": "Isso não é uma pasta",
       "err_browse_failed": "Não foi possível ler a pasta. Tente novamente"
+    },
+    "net_trace": {
+      "on": "ligada",
+      "off": "desligada",
+      "current": "Rede por servidor e porta: {{state}} · permissão: {{access}}",
+      "access_ok": "concedida",
+      "access_needs_grant": "ausente (config net-trace grant)",
+      "access_needs_relogin": "concedida, entre no Windows novamente para usar",
+      "access_unsupported": "indisponível neste sistema (só Windows)",
+      "enable_hint": "Para ligar: saba-chan-cli config set systemMonitorNetTrace=on"
     }
   },
   "console": {
@@ -474,7 +484,9 @@
       "move_cross_volume": "Não é possível mover uma pasta de outra unidade. Importe-a com \"Deixar onde está\".",
       "move_in_use": "Não foi possível mover a pasta. Pare o servidor desta pasta, feche os programas que a estão usando e tente de novo.",
       "move_failed": "Não foi possível mover a pasta. Importe-a com \"Deixar onde está\".",
-      "port_check_busy": "Já há uma verificação em andamento. Tente de novo em instantes"
+      "port_check_busy": "Já há uma verificação em andamento. Tente de novo em instantes",
+      "net_trace_elevation_failed": "Não foi possível obter a confirmação de administrador no PC do daemon. Tente novamente diante desse PC.",
+      "net_trace_failed": "Não foi possível alterar a permissão."
     },
     "not_a_bool": "\"{{value}}\" não é sim/não (use true ou false).",
     "not_a_number": "\"{{value}}\" não é um número.",
@@ -854,7 +866,8 @@
       "bot.backup-notice": "Enviar por DM todos os resultados de backup (--all) ou só as falhas (--failures). Sem opções: ver",
       "bot.confirm": "Quando o bot pergunta com um botão do Discord antes de executar (all, caution, danger, none). Sem opções: mostrar",
       "bot.tts": "Reading Saba-chan voice of a Discord server (volume, speed, pitch). No options: show",
-      "bot.big-emoji": "Ampliação de emojis (um emoji personalizado sozinho aparece grande) em um servidor do Discord. Sem opções: mostrar"
+      "bot.big-emoji": "Ampliação de emojis (um emoji personalizado sozinho aparece grande) em um servidor do Discord. Sem opções: mostrar",
+      "config.net-trace": "Permissão de rede por servidor e porta (avançado, Windows): sem ação mostra o estado atual; grant mostra uma confirmação de administrador no PC do daemon, revoke desfaz. Ligue com config set systemMonitorNetTrace=on"
     },
     "arg": {
       "module.maker.game": "Jogo para o primeiro pedido",
@@ -968,7 +981,8 @@
       "bot.tts.voice_chat_only": "Read your messages only in the chat of the voice channel you are in (on|off, game chat channel excepted)",
       "bot.tts.keep_read": "Keep read messages instead of deleting them (on|off)",
       "bot.tts.auto_channels": "Voice channel IDs to always read (comma-separated, up to 10): with 2+ people inside, the bot joins and reads its chat",
-      "bot.tts.no_auto_channels": "Clear the always-read voice channels"
+      "bot.tts.no_auto_channels": "Clear the always-read voice channels",
+      "config.net-trace.action": "grant ou revoke. Sem valor, mostra o estado atual"
     },
     "after": "Os nomes podem ser parciais (ex.: start pal). Sem argumentos em um terminal, abre o menu em tela cheia (SABA_NO_TUI=1: o shell interativo).\nEm scripts, use --json e --yes. Códigos de saída: 0 ok · 1 falha · 2 uso · 3 daemon inacessível · 4 não encontrado · 130 cancelado"
   },

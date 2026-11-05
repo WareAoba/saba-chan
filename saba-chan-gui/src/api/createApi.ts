@@ -157,6 +157,8 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
     const BACKUP_TIMEOUT = 10 * 60 * 1000;
     // 모듈·익스텐션 폴더 옮기기: 다른 드라이브면 복사와 검증까지 한다
     const PATHS_MOVE_TIMEOUT = 30 * 60 * 1000;
+    // 네트워크 권한: 관리자 확인 창을 사용자가 누를 때까지 데몬이 기다린다
+    const NET_TRACE_TIMEOUT = 3 * 60 * 1000;
 
     const minimizeWindow = () => send('window_minimize');
     const maximizeWindow = () => send('window_maximize');
@@ -1323,6 +1325,11 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
         // 로그인할 때 자동 실행: `{supported, mode: 'off'|'daemon'|'full'}`
         systemAutostart: () => daemonJson('get', '/api/system/autostart'),
         systemAutostartSet: (mode: string) => daemonJson('put', '/api/system/autostart', { mode }),
+        // 포트·서버별 네트워크 권한: `{ok, access: 'ok'|'needs_grant'|'needs_relogin'|'unsupported', enabled}`.
+        // grant·revoke는 데몬 PC에 관리자 확인 창을 띄우고 닫힐 때까지 기다린다
+        systemNetTrace: () => daemonJson('get', '/api/system/net-trace'),
+        systemNetTraceGrant: () => daemonJson('post', '/api/system/net-trace/grant', {}, NET_TRACE_TIMEOUT),
+        systemNetTraceRevoke: () => daemonJson('post', '/api/system/net-trace/revoke', {}, NET_TRACE_TIMEOUT),
         instanceBackups: (id: string) => daemonJson('get', instancePath(id, '/backups')),
         // body: 없으면 지금 상태, `{ source: 'snapshot', snapshot? }`이면 게임 자동 백업 보관
         instanceBackupCreate: (id: string, body?: ApiBody) => daemonJson('post', instancePath(id, '/backups'), body, BACKUP_TIMEOUT),

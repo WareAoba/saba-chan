@@ -191,7 +191,9 @@
     "tab_connection": "连接",
     "tab_storage": "存储",
     "tab_security": "安全",
-    "tab_troubleshoot": "故障排除"
+    "tab_troubleshoot": "故障排除",
+    "advanced_tab": "高级",
+    "console_appearance_title": "控制台外观"
   },
   "add_server_modal": {
     "title": "添加新服务器",
@@ -1290,7 +1292,17 @@
     "perm_risk_for": "{{command}}：Discord 确认",
     "perm_moved": "已改离预设",
     "perm_instances_count": "{{count}} 个实例",
-    "perm_server_wide_tag": "整个服务器"
+    "perm_server_wide_tag": "整个服务器",
+    "perm_stairs_hint": "每个命令放在从哪个等级起可以使用的台阶上。高台阶可以使用下面台阶的所有命令。拖动标签到其他台阶或点击它来移动。",
+    "perm_stairs": "命令台阶",
+    "perm_carry": "{{below}} 的 {{count}} 个 +",
+    "perm_from_level": "从此等级起可用",
+    "perm_applies_to": "会同时应用到拥有此命令的 {{count}} 个实例。",
+    "perm_confirm_tier": "Discord 确认",
+    "perm_confirm_tier_hint": "与 Discord 设置的确认级别比较，决定是否用按钮再次询问。应用和 CLI 的确认不变。",
+    "perm_confirm_tier_mixed_hint": "各实例的级别不同。选择后将全部统一为该级别。",
+    "perm_legend_moved": "已偏离预设",
+    "perm_server_wide": "这是服务器级命令，修改会同时出现在所有实例菜单中。"
   },
   "maintenance": {
     "load_failed": "无法加载备份和计划信息。",
@@ -1655,7 +1667,30 @@
     "write": "写入 {{value}}",
     "rx": "接收 {{value}}",
     "tx": "发送 {{value}}",
-    "nothing_picked": "请选择要显示的项目"
+    "nothing_picked": "请选择要显示的项目",
+    "disk": "磁盘空间",
+    "read_write": "读取 {{read}} · 写入 {{write}}",
+    "disk_free": "{{mount}} · 可用 {{free}}",
+    "rx_tx": "接收 {{rx}} · 发送 {{tx}}",
+    "net_trace_needs_grant": "已开启按端口·服务器统计网络，但没有权限 · 请在设置 > 高级中授予",
+    "net_trace_needs_relogin": "重新登录 Windows 后即可按服务器统计",
+    "net_trace_error": "无法读取网络事件，仅显示总流量",
+    "ports_title": "按端口流量",
+    "ports_server": "服务器",
+    "ports_port": "端口",
+    "ports_rx": "接收",
+    "ports_tx": "发送"
+  },
+  "net_trace": {
+    "label": "按服务器·端口统计网络",
+    "description": "系统监视器展开期间，通过 Windows 网络事件按服务器和端口统计流量。首次需要一次管理员确认。",
+    "status_ok": "已有权限。展开监视器即开始统计。",
+    "status_needs_grant": "此账户没有读取网络事件的权限。",
+    "status_needs_relogin": "已授予权限。重新登录 Windows 后即可统计。",
+    "grant": "授予权限",
+    "revoke": "撤销权限",
+    "err_elevation": "未获得管理员确认，请重试。",
+    "err_generic": "无法更改权限。"
   },
   "audit": {
     "title": "操作记录",

@@ -184,6 +184,7 @@ const DAEMON_USAGE: &str = "Usage: saba-core [--spawned]
        saba-core module schema | module validate <dir>... | module audit <dir>...
        saba-core extension validate <dir>... | extension audit <dir>...
        saba-core sandbox reset   (the uninstaller: remove isolation profiles and folder permissions)
+       saba-core net-trace grant|revoke <SID>   (elevated by the daemon: network event permission)
        saba-core --version | --help
 
   --spawned   started by the GUI/CLI (skips the boot selector)";
@@ -223,6 +224,10 @@ async fn main() -> anyhow::Result<()> {
     }
     if args.get(1).map(String::as_str) == Some("sandbox") {
         std::process::exit(sandbox_tool(&args[2..]));
+    }
+    // 데몬이 관리자 확인 창으로 자기 자신을 다시 띄운 것 (`/api/system/net-trace/grant`)
+    if args.get(1).map(String::as_str) == Some("net-trace") {
+        std::process::exit(system_monitor::net_trace::group_tool(&args[2..]));
     }
     // 데이터 폴더를 건드리기 전에 인자를 본다: 모르는 인자로 데몬이 떠서 설정을 이관하면 안 된다
     match daemon_args(&args[1..]) {
@@ -589,6 +594,7 @@ async fn main() -> anyhow::Result<()> {
     let ctrl_c_cancel = shutdown_token.clone();
     let stop_requested = stop_requested_token.clone();
     let relay_shutdown = ipc_server.relay_agent.clone();
+    let monitor_shutdown = ipc_server.system_monitor.clone();
     tokio::spawn(async move {
         // 종료 경로는 하나: Ctrl+C·SIGTERM, API(/api/daemon/shutdown, unregister?shutdown=true, 업데이터) 모두 여기로
         tokio::select! {
@@ -596,6 +602,9 @@ async fn main() -> anyhow::Result<()> {
             _ = sigterm() => tracing::info!("SIGTERM received, cleaning up..."),
             _ = stop_requested.cancelled() => tracing::info!("Shutdown requested, cleaning up..."),
         }
+
+        // 포트·서버별 네트워크 세션(ETW)은 시스템 전체 이름이라 프로세스가 끝나도 남는다: 먼저 닫는다
+        monitor_shutdown.stop_net_trace();
 
         // 0. 보내는 중인 원격 명령 결과(예: 원격 업데이트의 재시작 안내)가 릴레이에 닿도록 잠깐 기다린다
         if !relay_shutdown.settle(std::time::Duration::from_secs(15)).await {

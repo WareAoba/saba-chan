@@ -63,6 +63,7 @@ pub async fn run(ctx: &Ctx, cmd: ConfigCmd) -> Result<()> {
         ConfigCmd::Move { kind, folder } => move_dir(ctx, kind, &folder).await,
         ConfigCmd::Browse { path, files } => browse(ctx, path.as_deref().unwrap_or(""), files.as_deref()).await,
         ConfigCmd::Autostart { mode } => autostart(ctx, mode).await,
+        ConfigCmd::NetTrace { action } => net_trace(ctx, action).await,
     }
 }
 
@@ -134,6 +135,30 @@ async fn move_dir(ctx: &Ctx, kind: crate::cli::DirKind, folder: &std::path::Path
     let left: Vec<&str> = r["left_behind"].as_array().into_iter().flatten().filter_map(Value::as_str).collect();
     if !left.is_empty() {
         ctx.out.warn(&t!("config.move_left_behind", files = left.join(", ")));
+    }
+    Ok(())
+}
+
+/// 포트·서버별 네트워크 권한 (GUI 설정 > 고급과 같은 기능). 켜기·끄기는 `config set systemMonitorNetTrace`
+async fn net_trace(ctx: &Ctx, action: Option<crate::cli::NetTraceAction>) -> Result<()> {
+    use crate::cli::NetTraceAction;
+    let r = match action {
+        Some(a) => ctx.api.net_trace_change(a == NetTraceAction::Grant).await?,
+        None => ctx.api.net_trace().await?,
+    };
+    let access = r["access"].as_str().unwrap_or("unsupported");
+    let line = t!(
+        "config.net_trace.current",
+        state = t!(if r["enabled"] == true { "config.net_trace.on" } else { "config.net_trace.off" }),
+        access = t!(&format!("config.net_trace.access_{}", access))
+    );
+    if action.is_some() {
+        ctx.out.done(&line, &r);
+    } else {
+        ctx.out.data(&r, |_| say!("{}", line));
+    }
+    if access != "unsupported" && r["enabled"] != true {
+        ctx.out.hint(&t!("config.net_trace.enable_hint"));
     }
     Ok(())
 }

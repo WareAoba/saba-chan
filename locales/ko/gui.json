@@ -191,7 +191,9 @@
     "tab_connection": "연결",
     "tab_storage": "저장 공간",
     "tab_security": "보안",
-    "tab_troubleshoot": "문제 해결"
+    "tab_troubleshoot": "문제 해결",
+    "advanced_tab": "고급",
+    "console_appearance_title": "콘솔 외관"
   },
   "add_server_modal": {
     "title": "새 서버 추가",
@@ -1290,7 +1292,17 @@
     "perm_risk_for": "{{command}}: 디스코드 되묻기",
     "perm_moved": "프리셋에서 바꿈",
     "perm_instances_count": "인스턴스 {{count}}개",
-    "perm_server_wide_tag": "서버 전체"
+    "perm_server_wide_tag": "서버 전체",
+    "perm_stairs_hint": "명령은 그 레벨부터 쓸 수 있는 계단에 놓여요. 위 계단은 아래 계단의 명령을 모두 써요. 칩을 다른 계단으로 끌거나 눌러서 옮겨요.",
+    "perm_stairs": "명령 계단",
+    "perm_carry": "{{below}}의 {{count}}개 +",
+    "perm_from_level": "이 레벨부터 쓸 수 있어요",
+    "perm_applies_to": "이 명령이 있는 인스턴스 {{count}}개에 함께 적용돼요.",
+    "perm_confirm_tier": "디스코드 되묻기",
+    "perm_confirm_tier_hint": "디스코드 설정의 되묻기 단계와 비교해 버튼으로 다시 물을지 정합니다. 앱·CLI의 확인은 그대로입니다.",
+    "perm_confirm_tier_mixed_hint": "인스턴스마다 단계가 달라요. 고르면 모두 그 단계로 맞춥니다.",
+    "perm_legend_moved": "프리셋에서 옮김",
+    "perm_server_wide": "서버 전체 명령이라 모든 인스턴스 메뉴에 함께 바뀌어요."
   },
   "maintenance": {
     "load_failed": "백업·예약 정보를 불러오지 못했어요.",
@@ -1655,7 +1667,30 @@
     "write": "쓰기 {{value}}",
     "rx": "받기 {{value}}",
     "tx": "보내기 {{value}}",
-    "nothing_picked": "띄울 항목을 골라 주세요"
+    "nothing_picked": "띄울 항목을 골라 주세요",
+    "disk": "디스크 용량",
+    "read_write": "읽기 {{read}} · 쓰기 {{write}}",
+    "disk_free": "{{mount}} · 남은 공간 {{free}}",
+    "rx_tx": "받기 {{rx}} · 보내기 {{tx}}",
+    "net_trace_needs_grant": "포트·서버별 네트워크를 켰지만 권한이 없어요 · 설정 > 고급에서 받기",
+    "net_trace_needs_relogin": "Windows에 다시 로그인하면 서버별로 셀 수 있어요",
+    "net_trace_error": "네트워크 이벤트를 읽지 못해 전체 트래픽만 보여요",
+    "ports_title": "포트별 트래픽",
+    "ports_server": "서버",
+    "ports_port": "포트",
+    "ports_rx": "받기",
+    "ports_tx": "보내기"
+  },
+  "net_trace": {
+    "label": "포트·서버별 네트워크",
+    "description": "시스템 모니터를 펼쳐 둔 동안 Windows 네트워크 이벤트로 서버별·포트별 트래픽을 셉니다. 처음 한 번 관리자 확인이 필요합니다.",
+    "status_ok": "권한이 있습니다. 모니터를 펼치면 셉니다.",
+    "status_needs_grant": "이 계정에는 네트워크 이벤트를 읽을 권한이 없습니다.",
+    "status_needs_relogin": "권한을 받았습니다. Windows에 다시 로그인하면 셀 수 있습니다.",
+    "grant": "권한 받기",
+    "revoke": "권한 되돌리기",
+    "err_elevation": "관리자 확인을 받지 못했습니다. 다시 시도하세요.",
+    "err_generic": "권한을 바꾸지 못했습니다."
   },
   "audit": {
     "title": "작업 기록",

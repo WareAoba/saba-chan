@@ -1,6 +1,7 @@
 import clsx from 'clsx';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { useSettingsStore } from '../../stores/useSettingsStore';
 import type { Server } from '../../stores/useServerStore';
 import { Icon } from '../Icon';
@@ -9,12 +10,15 @@ import {
     buildRings,
     colorSlots,
     defaultItems,
+    formatRate,
     IDLE_COLOR,
     type MetricsSnapshot,
     nextPeaks,
     OTHERS_COLOR,
     type Peaks,
     pickerGroups,
+    type PortRow,
+    portRows,
 } from './systemMetrics';
 import './SystemMonitor.css';
 
@@ -77,6 +81,40 @@ interface SystemMonitorProps {
     servers?: Pick<Server, 'id' | 'name'>[];
 }
 
+/** 포트별 받기·보내기 (고급 옵션 포트·서버별 네트워크를 셀 때만) */
+function PortTable({ rows, t }: { rows: PortRow[]; t: TFunction }) {
+    return (
+        <table className="monitor-ports">
+            <caption>{t('monitor.ports_title')}</caption>
+            <thead>
+                <tr>
+                    <th scope="col">{t('monitor.ports_server')}</th>
+                    <th scope="col">{t('monitor.ports_port')}</th>
+                    <th scope="col">{t('monitor.ports_rx')}</th>
+                    <th scope="col">{t('monitor.ports_tx')}</th>
+                </tr>
+            </thead>
+            <tbody>
+                {rows.map((r) => (
+                    <tr key={`${r.instance_id}:${r.field}:${r.port}:${r.protocol}`}>
+                        <td>
+                            <span className="monitor-port-server">
+                                <span className="monitor-swatch" style={{ background: r.color }} />
+                                {r.name}
+                            </span>
+                        </td>
+                        <td data-tooltip={r.field}>
+                            {r.port} <span className="muted">{r.protocol.toUpperCase()}</span>
+                        </td>
+                        <td>{formatRate(r.rx_bps)}</td>
+                        <td>{formatRate(r.tx_bps)}</td>
+                    </tr>
+                ))}
+            </tbody>
+        </table>
+    );
+}
+
 export function SystemMonitor({ layout = 'top', servers = [] }: SystemMonitorProps) {
     const { t } = useTranslation('gui');
     const open = useSettingsStore((s) => s.systemMonitorOpen);
@@ -88,6 +126,7 @@ export function SystemMonitor({ layout = 'top', servers = [] }: SystemMonitorPro
     const slots = useMemo(() => colorSlots(order), [order]);
     const items = useMemo(() => picked ?? defaultItems(snapshot), [picked, snapshot]);
     const rings = useMemo(() => buildRings(snapshot, slots, peaks, items), [snapshot, slots, peaks, items]);
+    const ports = useMemo(() => (items.includes('network') ? portRows(snapshot, slots) : []), [items, snapshot, slots]);
 
     if (!systemMonitorAvailable()) return null;
 
@@ -195,6 +234,7 @@ export function SystemMonitor({ layout = 'top', servers = [] }: SystemMonitorPro
                             ))}
                         </div>
                     )}
+                    {ports.length > 0 && <PortTable rows={ports} t={t} />}
                     {layout === 'side' && <p className="monitor-footnote">{t('monitor.footnote')}</p>}
                 </>
             )}
