@@ -768,22 +768,28 @@ mod platform {
         }
     }
 
-    fn added_by_us(sid: &str) -> bool {
+    /// 사바쨩이 더한 것만 되돌리려고 남기는 표시. `what`: "group"(그룹 소속) | "provider"(공급자 허용 ACE)
+    fn added_by_us(what: &str, sid: &str) -> bool {
         use winreg::enums::HKEY_LOCAL_MACHINE;
         winreg::RegKey::predef(HKEY_LOCAL_MACHINE)
             .open_subkey(ADDED_KEY)
-            .and_then(|k| k.get_value::<u32, _>(sid))
+            .and_then(|k| k.get_value::<u32, _>(format!("{what}:{sid}")))
             .is_ok()
     }
 
-    fn mark_added(sid: &str, added: bool) -> std::io::Result<()> {
+    fn mark_added(what: &str, sid: &str, added: bool) {
         use winreg::enums::{HKEY_LOCAL_MACHINE, KEY_SET_VALUE};
         let hklm = winreg::RegKey::predef(HKEY_LOCAL_MACHINE);
-        if added {
-            let (key, _) = hklm.create_subkey(ADDED_KEY)?;
-            key.set_value(sid, &1u32)
+        let name = format!("{what}:{sid}");
+        let done = if added {
+            hklm.create_subkey(ADDED_KEY).and_then(|(key, _)| key.set_value(&name, &1u32))
         } else {
-            hklm.open_subkey_with_flags(ADDED_KEY, KEY_SET_VALUE)?.delete_value(sid)
+            hklm.open_subkey_with_flags(ADDED_KEY, KEY_SET_VALUE).and_then(|k| k.delete_value(&name))
+        };
+        if let Err(e) = done
+            && added
+        {
+            eprintln!("net-trace: marker write failed ({})", e);
         }
     }
 
@@ -809,16 +815,14 @@ mod platform {
         let status = if grant {
             let status = unsafe { NetLocalGroupAddMembers(null(), name.as_ptr(), 0, buf, 1) };
             // 이미 그룹에 있었으면(ERROR_MEMBER_IN_ALIAS) 표시하지 않는다: 되돌려도 그 소속은 남긴다
-            if status == ERROR_SUCCESS
-                && let Err(e) = mark_added(sid, true)
-            {
-                eprintln!("net-trace: marker write failed ({})", e);
+            if status == ERROR_SUCCESS {
+                mark_added("group", sid, true);
             }
             status
-        } else if added_by_us(sid) {
+        } else if added_by_us("group", sid) {
             let status = unsafe { NetLocalGroupDelMembers(null(), name.as_ptr(), 0, buf, 1) };
             if matches!(status, ERROR_SUCCESS | ERROR_MEMBER_NOT_IN_ALIAS) {
-                let _ = mark_added(sid, false);
+                mark_added("group", sid, false);
             }
             status
         } else {
@@ -828,8 +832,12 @@ mod platform {
             eprintln!("net-trace: group change failed ({})", status);
             return 1;
         }
-        // 그룹은 세션을 만들 권한만 준다. Kernel-Network 공급자는 따로 잠겨 있어(시스템·관리자만) 이 계정 허용을 더한다
+        // 그룹은 세션을 만들 권한만 준다. Kernel-Network 공급자는 따로 잠겨 있어(시스템·관리자만) 이 계정 허용을 더한다.
+        // 이미 이 계정의 허용 ACE가 있으면(다른 도구가 준 것) 더하지도 표시하지도 않는다: 되돌릴 때 그 ACE는 남긴다
         if grant {
+            if provider_sddl().is_some_and(|sddl| sddl_allows(&sddl, sid)) {
+                return 0;
+            }
             let code = unsafe {
                 EventAccessControl(&KERNEL_NETWORK_GUID, EventSecurityAddDACL as u32, user.0, TRACELOG_GUID_ENABLE, 1)
             };
@@ -837,7 +845,10 @@ mod platform {
                 eprintln!("net-trace: provider permission failed ({})", code);
                 return 1;
             }
-        } else if let Some(sddl) = provider_sddl() {
+            mark_added("provider", sid, true);
+        } else if added_by_us("provider", sid)
+            && let Some(sddl) = provider_sddl()
+        {
             let stripped = strip_sid_aces(&sddl, sid);
             if stripped != sddl
                 && let Err(e) = write_provider_sddl(&stripped)
@@ -845,6 +856,7 @@ mod platform {
                 eprintln!("net-trace: provider permission revoke failed ({})", e);
                 return 1;
             }
+            mark_added("provider", sid, false);
         }
         0
     }
