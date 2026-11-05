@@ -50,10 +50,10 @@ describe('디스코드 봇 설정 탭', () => {
         window.api.discordSettingsSet = vi.fn().mockResolvedValue({ success: true, settings: base, sync: { ok: true } }) as never;
         render(<BotSettingsTab node={node} section="bot" />);
         await flush();
-        fireEvent.click(screen.getByRole('checkbox', { name: 'Big emoji' }));
+        fireEvent.click(screen.getByRole('checkbox', { name: 'Emoji upscale' }));
         await flush();
         expect(window.api.discordSettingsSet).toHaveBeenCalledWith('g1', { bigEmoji: true });
-        expect(screen.getByRole('checkbox', { name: 'Big emoji' })).toBeInTheDocument();
+        expect(screen.getByRole('checkbox', { name: 'Emoji upscale' })).toBeInTheDocument();
     });
 
     // 사용자 11-03: 게임 채팅 채널 옵션 — 이모지 업스케일처럼 릴레이가 원본, 값이 있을 때만 보인다
@@ -126,7 +126,7 @@ describe('디스코드 봇 설정 탭', () => {
         window.api.discordSettingsGet = vi.fn().mockResolvedValue(base) as never;
         render(<BotSettingsTab node={node} section="bot" />);
         await flush();
-        expect(screen.queryByRole('checkbox', { name: 'Big emoji' })).toBeNull();
+        expect(screen.queryByRole('checkbox', { name: 'Emoji upscale' })).toBeNull();
     });
 
     it('범위 밖 숫자는 보내지 않고, 새로고침 간격은 ms로 보낸다', async () => {

@@ -212,7 +212,7 @@
     "sleep_blocks_none": "None",
     "bedtime": "Good kid",
     "bedtime_format": "Write --bedtime as fall-asleep time-wake-up time, like 01:00-08:00.",
-    "big_emoji": "大表情"
+    "big_emoji": "表情符号放大"
   },
   "col": {
     "players": "在线玩家",
@@ -985,7 +985,7 @@
       "bot.backup-notice": "备份结果全部私信(--all)还是只私信失败(--failures)。不带选项：查看",
       "bot.confirm": "机器人在执行前用 Discord 按钮询问的级别 (all、caution、danger、none)。不加选项: 查看",
       "bot.tts": "Reading Saba-chan voice of a Discord server (volume, speed, pitch). No options: show",
-      "bot.big-emoji": "Discord 服务器的大表情(只发一个自定义表情时放大显示)。不带选项则查看"
+      "bot.big-emoji": "Discord 服务器的表情符号放大(只发一个自定义表情符号时放大显示)。不带选项则查看"
     },
     "arg": {
       "module.maker.game": "第一个请求中的游戏名",
@@ -1175,8 +1175,8 @@
       "bot.tts.volume": "Volume in percent (10-150)",
       "bot.tts.speed": "Speaking speed (0.8-1.5, e.g. 1.2)",
       "bot.tts.pitch": "Pitch in semitones (-6 to 6)",
-      "bot.big-emoji.on": "开启大表情",
-      "bot.big-emoji.off": "关闭大表情",
+      "bot.big-emoji.on": "开启表情符号放大",
+      "bot.big-emoji.off": "关闭表情符号放大",
       "bot.tts.voice_chat_only": "Read your messages only in the chat of the voice channel you are in (on|off, game chat channel excepted)",
       "bot.tts.keep_read": "Keep read messages instead of deleting them (on|off)",
       "bot.tts.auto_channels": "Voice channel IDs to always read (comma-separated, up to 10): with 2+ people inside, the bot joins and reads its chat",
