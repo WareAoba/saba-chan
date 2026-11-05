@@ -68,10 +68,7 @@ impl ModuleView {
     /// 모듈 locales의 문구 (`pointer`는 `/commands/say/done` 꼴). 그 언어에 없으면 영어
     pub fn text(&self, lang: &str, pointer: &str) -> Option<String> {
         let dir = self.locale_dir.as_ref()?;
-        let read = |lang: &str| -> Option<String> {
-            let raw = std::fs::read_to_string(dir.join("locales").join(format!("{}.json", lang))).ok()?;
-            serde_json::from_str::<serde_json::Value>(&raw).ok()?.pointer(pointer)?.as_str().map(str::to_string)
-        };
+        let read = |lang: &str| -> Option<String> { module_locale(dir, lang)?.pointer(pointer)?.as_str().map(str::to_string) };
         read(lang).or_else(|| read("en"))
     }
 
@@ -79,19 +76,36 @@ impl ModuleView {
     pub fn locale(&self, lang: &str) -> serde_json::Value {
         self.locale_dir
             .as_ref()
-            .and_then(|dir| std::fs::read_to_string(dir.join("locales").join(format!("{}.json", lang))).ok())
-            .and_then(|raw| serde_json::from_str(&raw).ok())
+            .and_then(|dir| module_locale(dir, lang))
+            .map(|v| v.as_ref().clone())
             .unwrap_or(serde_json::Value::Null)
     }
+}
+
+/// 모듈 폴더의 `locales/<lang>.json`. 채팅 명령·하트비트마다 부르므로 파일 크기·수정 시각이 그대로면 다시 읽지 않는다
+pub fn module_locale(module_dir: &std::path::Path, lang: &str) -> Option<std::sync::Arc<serde_json::Value>> {
+    type Stamp = (Option<std::time::SystemTime>, u64);
+    type Cache = HashMap<std::path::PathBuf, (Stamp, std::sync::Arc<serde_json::Value>)>;
+    static CACHE: std::sync::LazyLock<std::sync::Mutex<Cache>> = std::sync::LazyLock::new(Default::default);
+    let path = module_dir.join("locales").join(format!("{}.json", lang));
+    let meta = std::fs::metadata(&path).ok()?;
+    let stamp: Stamp = (meta.modified().ok(), meta.len());
+    if let Some((seen, value)) = CACHE.lock().unwrap_or_else(|e| e.into_inner()).get(&path) {
+        if *seen == stamp {
+            return Some(value.clone());
+        }
+    }
+    let value = std::sync::Arc::new(serde_json::from_str::<serde_json::Value>(&std::fs::read_to_string(&path).ok()?).ok()?);
+    CACHE.lock().unwrap_or_else(|e| e.into_inner()).insert(path, (stamp, value.clone()));
+    Some(value)
 }
 
 /// 모듈의 게임명: module.toml `display_name`, 그다음 언어마다 모듈 locales의 `display_name`.
 /// 명령의 첫 낱말로 부르므로 띄어 쓴 이름은 빼고, 대소문자만 다른 이름은 하나로 둔다
 pub fn game_names(display_name: Option<&str>, module_dir: Option<&std::path::Path>) -> Vec<String> {
-    let localized = crate::chat::i18n::languages().into_iter().filter_map(|lang| {
-        let raw = std::fs::read_to_string(module_dir?.join("locales").join(format!("{}.json", lang))).ok()?;
-        serde_json::from_str::<serde_json::Value>(&raw).ok()?.get("display_name")?.as_str().map(str::to_string)
-    });
+    let localized = crate::chat::i18n::languages()
+        .into_iter()
+        .filter_map(|lang| module_locale(module_dir?, lang)?.get("display_name")?.as_str().map(str::to_string));
     let mut out: Vec<String> = Vec::new();
     for name in display_name.map(str::to_string).into_iter().chain(localized) {
         let name = name.trim();
@@ -127,8 +141,9 @@ impl DaemonApi for IPCServer {
     }
 
     async fn modules(&self) -> Vec<ModuleView> {
-        let supervisor = self.supervisor.read().await;
-        let modules = match supervisor.list_modules() {
+        // 목록만 잠금 안에서 얻는다: 아래 locales 읽기 동안 서버 시작·정지를 막지 않게
+        let listed = self.supervisor.read().await.list_modules();
+        let modules = match listed {
             Ok(m) => m,
             Err(e) => {
                 tracing::warn!("[Chat] 모듈 목록 조회 실패: {}", e);
@@ -212,4 +227,20 @@ mod tests {
         assert_eq!(got, vec!["Minecraft", "마인크래프트"]);
         assert_eq!(game_names(Some("Terraria"), None), vec!["Terraria"]);
     }
+
+    /// 채팅 명령·하트비트마다 부르므로 그대로인 locales 파일은 다시 읽지 않고, 바뀌면 새 내용을 읽는다
+    #[test]
+    fn module_locale_is_read_again_only_after_the_file_changes() {
+        let tmp = tempfile::tempdir().unwrap();
+        let locales = tmp.path().join("locales");
+        std::fs::create_dir_all(&locales).unwrap();
+        std::fs::write(locales.join("ko.json"), r#"{"display_name": "테라리아"}"#).unwrap();
+        let first = module_locale(tmp.path(), "ko").unwrap();
+        let again = module_locale(tmp.path(), "ko").unwrap();
+        assert!(std::sync::Arc::ptr_eq(&first, &again), "unchanged file → the same parsed value");
+        std::fs::write(locales.join("ko.json"), r#"{"display_name": "테라리아 서버"}"#).unwrap();
+        assert_eq!(module_locale(tmp.path(), "ko").unwrap()["display_name"], "테라리아 서버");
+        assert!(module_locale(tmp.path(), "fr").is_none());
+    }
 }
+

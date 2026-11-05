@@ -129,6 +129,7 @@ async fn server_list(state: &IPCServer, notices: Notices) -> axum::response::Res
         let instances = supervisor.instance_store.list();
         let all_instances = instances.to_vec();
         let module_protocols = supervisor.build_module_protocols_map();
+        let modules = supervisor.module_loader.modules().unwrap_or_default();
         let snapshots =         instances.iter().map(|instance| {
             let pid = supervisor.tracker.get_pid(&instance.id).ok();
             let start_time = if pid.is_some() {
@@ -136,7 +137,7 @@ async fn server_list(state: &IPCServer, notices: Notices) -> axum::response::Res
             } else {
                 None
             };
-            let module = supervisor.module_loader.get_module(&instance.module_name).ok();
+            let module = modules.iter().find(|m| m.metadata.name == instance.module_name);
             let process_patterns = module.as_ref().map(|m| m.metadata.process_patterns.clone()).unwrap_or_default();
             let chat_patterns = module.as_ref().is_some_and(|m| !m.metadata.chat_patterns.is_empty());
             InstanceSnapshot {

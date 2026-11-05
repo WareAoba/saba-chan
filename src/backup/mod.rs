@@ -388,11 +388,48 @@ fn put_object(dir: &Path, path: &Path) -> Result<(String, u64, u64, Option<PathB
         let _ = fs::remove_file(&tmp);
         return Err(e.into());
     }
+    // 방금 원본에서 해시를 내며 쓴 파일이다
+    remember_intact(&target);
     Ok((hash, read, added, Some(target)))
 }
 
-/// 저장소의 내용 파일을 풀어 본 크기·해시가 맞는가 (복원이 하는 검사와 같다)
+/// 이 데몬이 켜진 뒤 풀어 보아 맞았던(또는 새로 쓴) 내용 파일: 경로 → (파일 크기, 수정 시각).
+/// 백업마다 바뀌지 않은 파일의 내용 파일을 다시 풀지 않는다 (월드가 크면 백업마다 수 초). 내용 파일은 rename으로만
+/// 바뀌므로 크기·수정 시각이 같으면 같은 파일이다. 복원은 이 기록과 상관없이 늘 풀어 본다
+static INTACT_OBJECTS: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<PathBuf, (u64, std::time::SystemTime)>>> =
+    std::sync::LazyLock::new(Default::default);
+/// 기록이 이보다 커지면 비운다 (다음 백업이 한 번 더 풀어 볼 뿐이다)
+const INTACT_OBJECTS_MAX: usize = 200_000;
+
+fn object_stamp(object: &Path) -> Option<(u64, std::time::SystemTime)> {
+    let meta = fs::metadata(object).ok()?;
+    Some((meta.len(), meta.modified().ok()?))
+}
+
+fn remember_intact(object: &Path) {
+    let Some(stamp) = object_stamp(object) else { return };
+    let mut seen = INTACT_OBJECTS.lock().unwrap_or_else(|e| e.into_inner());
+    if seen.len() >= INTACT_OBJECTS_MAX {
+        seen.clear();
+    }
+    seen.insert(object.to_path_buf(), stamp);
+}
+
+/// 저장소의 내용 파일을 풀어 본 크기·해시가 맞는가 (복원이 하는 검사와 같다).
+/// 이 데몬이 이미 풀어 보아 맞았고 그 뒤 바뀌지 않은 내용 파일은 다시 풀지 않는다 (`INTACT_OBJECTS`)
 fn object_intact(object: &Path, hash: &str, size: u64) -> bool {
+    let stamp = object_stamp(object);
+    if stamp.is_some() && INTACT_OBJECTS.lock().unwrap_or_else(|e| e.into_inner()).get(object) == stamp.as_ref() {
+        return true;
+    }
+    let intact = object_unpacks_to(object, hash, size);
+    if intact {
+        remember_intact(object);
+    }
+    intact
+}
+
+fn object_unpacks_to(object: &Path, hash: &str, size: u64) -> bool {
     use sha2::Digest;
     use std::io::Read;
     let Ok(file) = File::open(object) else { return false };
@@ -1545,11 +1582,37 @@ mod tests {
             let object = object_path(&dir, &m.files.iter().find(|f| f.rel == "level.dat").unwrap().hash).unwrap();
             let damaged: Vec<u8> = fs::read(&object).unwrap().iter().map(|b| b ^ 0xFF).collect();
             fs::write(&object, damaged).unwrap();
+            // 덮어쓰면 수정 시각이 바뀐다. 파일 시스템 시각이 거칠어 같은 값이 찍혀도 바뀐 것으로 보이게
+            let later = std::time::SystemTime::now() + std::time::Duration::from_secs(5);
+            File::options().write(true).open(&object).unwrap().set_modified(later).unwrap();
             let second = create(&dir, BackupKind::Manual, std::slice::from_ref(&w)).unwrap().name;
             fs::write(w.join("level.dat"), b"broken").unwrap();
             restore(&dir, &second).unwrap();
             assert_eq!(fs::read(w.join("level.dat")).unwrap(), b"level", "unchanged={unchanged}");
         }
+    }
+
+    /// 이 데몬이 한 번 풀어 본(또는 새로 쓴) 내용 파일은 그 뒤 바뀌지 않았으면 다음 백업이 다시 풀지 않는다.
+    /// 크기·수정 시각을 그대로 둔 채 망가지면 백업은 이어 쓰지만, 복원이 늘 풀어 보아 막고 되돌린다
+    #[test]
+    fn an_unchanged_verified_content_file_is_not_unpacked_again() {
+        let tmp = tempfile::tempdir().unwrap();
+        let w = world(tmp.path());
+        let old = std::time::SystemTime::now() - std::time::Duration::from_secs(3600);
+        File::options().write(true).open(w.join("level.dat")).unwrap().set_modified(old).unwrap();
+        let dir = tmp.path().join("backups");
+        let first = create(&dir, BackupKind::Manual, std::slice::from_ref(&w)).unwrap().name;
+        let m = read_v2(&dir.join(&first)).unwrap().unwrap();
+        let object = object_path(&dir, &m.files.iter().find(|f| f.rel == "level.dat").unwrap().hash).unwrap();
+        let written_at = fs::metadata(&object).unwrap().modified().unwrap();
+        let damaged: Vec<u8> = fs::read(&object).unwrap().iter().map(|b| b ^ 0xFF).collect();
+        fs::write(&object, &damaged).unwrap();
+        File::options().write(true).open(&object).unwrap().set_modified(written_at).unwrap();
+        let second = create(&dir, BackupKind::Manual, std::slice::from_ref(&w)).unwrap().name;
+        assert_eq!(fs::read(&object).unwrap(), damaged, "the second backup took the content file as it was, without unpacking it");
+        fs::write(w.join("level.dat"), b"current").unwrap();
+        assert!(restore(&dir, &second).is_err(), "restore still unpacks and refuses damaged content");
+        assert_eq!(fs::read(w.join("level.dat")).unwrap(), b"current");
     }
 
     /// 리뷰 603: 판 1은 모두 0.1.8까지 만든 것이다. 수정 시각이 새로 찍힌 사본도 이름의 시각보다 새것으로 보지 않는다
