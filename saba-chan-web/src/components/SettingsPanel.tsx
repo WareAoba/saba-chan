@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useApp } from '../store';
 import { Dropdown } from './Dropdown';
@@ -98,7 +98,7 @@ export function FieldInput({ field, value, onChange, t, modNs }: FieldInputProps
             </div>
         );
     }
-    let input: React.ReactNode;
+    let input: ReactNode;
     if (type === 'boolean') {
         input = (
             <input
@@ -148,6 +148,7 @@ export function FieldInput({ field, value, onChange, t, modNs }: FieldInputProps
 
 export function SettingsPanel({ api, server, moduleData, running }: ServerPanelProps) {
     const { t } = useTranslation();
+    const { t: tg } = useTranslation('gui');
     const toast = useApp((s) => s.toast);
     const ask = useApp((s) => s.ask);
     const fields = useMemo((): Field[] => moduleData?.settings?.fields ?? [], [moduleData]);
@@ -207,7 +208,11 @@ export function SettingsPanel({ api, server, moduleData, running }: ServerPanelP
         if (failed(res)) return toast(errorText(t, res), 'error');
         if (res?.revision) revision.current = res.revision;
         setTouched(new Set());
-        toast(running ? t('settings.saved_restart') : t('settings.saved'), 'ok');
+        // 저장은 됐지만 모듈이 게임 설정 파일에 쓰지 못했다 (GUI useServerSettings와 같은 문구)
+        if (res?.synced === false) toast(tg('settings.sync_failed', { error: res.sync_error || '' }), 'error');
+        else toast(running ? t('settings.saved_restart') : t('settings.saved'), 'ok');
+        // 데몬이 받았지만 쓰지 않는 키
+        if (res?.ignored?.length) toast(tg('settings.ignored', { keys: res.ignored.join(', ') }), 'info');
     };
 
     const shown = fields.filter((f) => visible(f, values, fields));

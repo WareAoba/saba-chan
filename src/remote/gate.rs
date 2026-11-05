@@ -96,6 +96,8 @@ pub static ROUTES: &[Route] = &[
     // 포트포워딩 확인: 릴레이가 요청한 PC의 공인 주소로만 확인한다
     allow("GET", "/api/instance/{id}/port-check"),
     allow("POST", "/api/instance/{id}/port-check"),
+    // 서버 주소: 릴레이가 본 이 PC의 공인 주소와 밖에 여는 포트 (포트포워딩 확인 결과에도 같은 주소가 있다)
+    allow("GET", "/api/instance/{id}/address"),
     // ── 인스턴스 ──
     allow("GET", "/api/instances"),
     allow("POST", "/api/instances"),
@@ -232,6 +234,7 @@ pub static ROUTES: &[Route] = &[
     allow("GET", "/api/relay/node/{guild_id}/moderation"),
     allow("PATCH", "/api/relay/node/{guild_id}/moderation/channels/{channel_id}"),
     allow("POST", "/api/relay/node/{guild_id}/moderation/channels/{channel_id}/clear"),
+    allow("POST", "/api/relay/node/{guild_id}/moderation/channels/{channel_id}/clear/check"),
     allow("PUT", "/api/relay/node/{guild_id}/moderation/mutes/{user_id}"),
     // 디스코드 서버 설정(언어·코코낸내·노래·읽어주기·명령 모양)과 서버별 말하는 사바쨩: 릴레이 연결과 API 키는 건드리지 않는다 (사용자 결정 2026-11-03)
     allow("GET", "/api/discord/{guild_id}/settings"),
@@ -362,9 +365,17 @@ pub fn param<'a>(pattern: &str, segments: &'a [String], name: &str) -> Option<&'
     segments.get(at).map(String::as_str)
 }
 
-/// 패턴이 조각들과 맞으면 리터럴이 맞은 자리 (앞쪽 리터럴이 클수록 앞선다)
+/// 패턴이 조각들과 맞으면 리터럴이 맞은 자리 (앞쪽 리터럴이 클수록 앞선다).
+/// 끝의 `{*name}`은 라우터처럼 남은 조각 하나 이상과 맞는다
 fn match_score(pattern: &str, segments: &[&str]) -> Option<Vec<bool>> {
-    let parts: Vec<&str> = pattern.trim_start_matches('/').split('/').collect();
+    let mut parts: Vec<&str> = pattern.trim_start_matches('/').split('/').collect();
+    let segments = match parts.last() {
+        Some(p) if p.starts_with("{*") && segments.len() >= parts.len() => {
+            parts.pop();
+            &segments[..parts.len()]
+        }
+        _ => segments,
+    };
     if parts.len() != segments.len() {
         return None;
     }
@@ -619,6 +630,7 @@ mod tests {
         assert!(decide("GET", "/api/relay/node/1/moderation").is_ok());
         assert!(decide("PATCH", "/api/relay/node/1/moderation/channels/2").is_ok());
         assert!(decide("POST", "/api/relay/node/1/moderation/channels/2/clear").is_ok());
+        assert!(decide("POST", "/api/relay/node/1/moderation/channels/2/clear/check").is_ok());
         assert!(decide("PUT", "/api/relay/node/1/moderation/mutes/3").is_ok());
     }
 

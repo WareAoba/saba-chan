@@ -444,7 +444,11 @@ function GeneralTab({
                                       <div>
                                           <strong>{t('errors.port_conflict')}</strong>
                                           {portConflicts.map((c, i) => (
-                                              <div key={i} className="validation-warning-detail">
+                                              <div
+                                                  // biome-ignore lint/suspicious/noArrayIndexKey: 검사할 때마다 새로 만드는 읽기 전용 목록
+                                                  key={i}
+                                                  className="validation-warning-detail"
+                                              >
                                                   {t('errors.port_conflict_detail', {
                                                       port: c.port,
                                                       name: c.conflictName,

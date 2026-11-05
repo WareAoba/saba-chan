@@ -212,7 +212,7 @@
     "sleep_blocks_none": "None",
     "bedtime": "Good kid",
     "bedtime_format": "Write --bedtime as fall-asleep time-wake-up time, like 01:00-08:00.",
-    "big_emoji": "Grands emojis"
+    "big_emoji": "Agrandissement des émojis"
   },
   "col": {
     "players": "Joueurs",
@@ -429,6 +429,7 @@
       "backup_failed_autosave_off": "La sauvegarde a échoué et la sauvegarde automatique du serveur n’a pas pu être réactivée non plus. Redémarrez le serveur: saba-chan-cli restart <name>",
       "backup_save_rejected": "Le serveur a refusé la commande de sauvegarde, aucune sauvegarde n’a donc été faite. Arrêtez le serveur puis recommencez: saba-chan-cli stop <name>",
       "backup_save_unconfirmed": "Le serveur n’a pas signalé la fin de l’enregistrement, aucune sauvegarde n’a donc été faite. Réessayez dans un instant ou arrêtez le serveur avant de sauvegarder: saba-chan-cli stop <name>",
+      "backup_server_stopped": "Le serveur s’est arrêté pendant la sauvegarde, elle a donc été supprimée. Vérifiez le serveur puis sauvegardez à nouveau : saba-chan-cli backup <nom>",
       "snapshot_not_found": "Le jeu n’a pas de sauvegarde automatique.",
       "invalid_relay_url": "Seules les adresses de relais https:// sont autorisées (http uniquement pour localhost, 127.0.0.1 ou [::1] pour tester sur ce PC).",
       "module_busy": "Ce module est déjà en cours d'installation ou de suppression. Réessayez une fois l'opération terminée.",
@@ -830,6 +831,7 @@
       "config.paths": "Où Saba-chan garde ses données, modules et extensions, et les dossiers par défaut",
       "config.move": "Déplacer les modules ou les extensions vers un autre dossier. Les fichiers installés sont déplacés ; les serveurs doivent être arrêtés",
       "server.players": "Qui est connecté",
+      "server.address": "L'adresse (IP:port) à laquelle vos amis se connectent",
       "server.port-check": "Vérifier si vos amis peuvent joindre ce serveur depuis Internet (redirection de ports)",
       "server.rcon": "Envoyer une ligne comme le serveur reçoit les commandes (console, sinon RCON) et afficher la réponse",
       "server.log": "Journal enregistré des exécutions passées (la console ne garde que l'actuelle)",
@@ -852,7 +854,7 @@
       "bot.backup-notice": "Envoyer en MP tous les résultats de sauvegarde (--all) ou seulement les échecs (--failures). Sans option : afficher",
       "bot.confirm": "Quand le bot demande avec un bouton Discord avant d'exécuter (all, caution, danger, none). Sans option : afficher",
       "bot.tts": "Reading Saba-chan voice of a Discord server (volume, speed, pitch). No options: show",
-      "bot.big-emoji": "Grands emojis (un emoji personnalisé seul s'affiche en grand) sur un serveur Discord. Sans option : afficher"
+      "bot.big-emoji": "Agrandissement des émojis (un émoji personnalisé seul s'affiche en grand) sur un serveur Discord. Sans option : afficher"
     },
     "arg": {
       "module.maker.game": "Jeu à mettre dans la première demande",
@@ -961,8 +963,8 @@
       "bot.tts.volume": "Volume in percent (10-150)",
       "bot.tts.speed": "Speaking speed (0.8-1.5, e.g. 1.2)",
       "bot.tts.pitch": "Pitch in semitones (-6 to 6)",
-      "bot.big-emoji.on": "Activer les grands emojis",
-      "bot.big-emoji.off": "Désactiver les grands emojis",
+      "bot.big-emoji.on": "Activer l'agrandissement des émojis",
+      "bot.big-emoji.off": "Désactiver l'agrandissement des émojis",
       "bot.tts.voice_chat_only": "Read your messages only in the chat of the voice channel you are in (on|off, game chat channel excepted)",
       "bot.tts.keep_read": "Keep read messages instead of deleting them (on|off)",
       "bot.tts.auto_channels": "Voice channel IDs to always read (comma-separated, up to 10): with 2+ people inside, the bot joins and reads its chat",
@@ -1352,7 +1354,10 @@
     "kept_instances": "les serveurs sont conservés, les paramètres supprimés",
     "kept_nothing": "les paramètres et les serveurs sont aussi supprimés",
     "done": "Saba-chan a été supprimé ; {{kept}}.",
-    "left": "Saba-chan a été supprimé, mais ces éléments n'ont pas pu être effacés. Fermez les programmes qui les utilisent et supprimez-les vous-même :\n{{paths}}"
+    "left": "Saba-chan a été supprimé, mais ces éléments n'ont pas pu être effacés. Fermez les programmes qui les utilisent et supprimez-les vous-même :\n{{paths}}",
+    "servers_unlisted": "Impossible d'obtenir la liste des serveurs en cours, ils ont donc été arrêtés de force ({{detail}}).",
+    "server_force_stopped": "Le serveur {{server}} ne s'est pas arrêté proprement et a été arrêté de force ({{detail}}). Les changements depuis la dernière sauvegarde peuvent être perdus.",
+    "daemon_unanswered": "Le démon n'a pas répondu, les serveurs en cours ont donc été arrêtés de force. Les changements depuis la dernière sauvegarde peuvent être perdus."
   },
   "update_required": {
     "title": "Mise à jour nécessaire",
@@ -1476,6 +1481,12 @@
     "this_pc": "Ce PC",
     "no_servers": "Aucun serveur",
     "via_relay": "Via le relais"
+  },
+  "address": {
+    "title": "Adresse de {{server}}",
+    "unknown": "Server-chan ne connaît pas l'adresse publique de ce PC. Vérifiez qu'il est connecté à Server-chan",
+    "no_ports": "Ce jeu n'indique pas de port de connexion",
+    "stopped": "Le serveur est éteint. Démarrez-le pour que d'autres puissent se connecter"
   },
   "port_check": {
     "title": "Vérification des ports de {{server}}",

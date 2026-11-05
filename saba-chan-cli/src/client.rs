@@ -62,7 +62,7 @@ impl Api {
         if let Some(v) = lang.as_deref().and_then(|l| reqwest::header::HeaderValue::from_str(l).ok()) {
             headers.insert(reqwest::header::ACCEPT_LANGUAGE, v);
         }
-        let http = reqwest::Client::builder()
+        let http = saba_chan_updater_lib::tls::http_client_builder()
             .connect_timeout(Duration::from_secs(2))
             .no_proxy()
             .default_headers(headers)
@@ -421,6 +421,10 @@ impl Api {
     /// GET /api/instance/:id/players — `{online, max?, players: [{name}]}`. 꺼져 있으면 409 server_not_running
     pub async fn players(&self, id: &str) -> Result<Value> {
         self.get_slow(&format!("/api/instance/{}/players", seg(id))).await
+    }
+    /// GET /api/instance/:id/address — 친구가 접속할 주소 `{address, running, ports:[{label, port, protocols}]}`
+    pub async fn address(&self, id: &str) -> Result<Value> {
+        self.get(&format!("/api/instance/{}/address", seg(id))).await
     }
     /// POST /api/instance/:id/port-check — 릴레이가 밖에서 그 서버의 포트에 접속해 본다 (몇 초)
     pub async fn port_check(&self, id: &str) -> Result<Value> {
@@ -1024,6 +1028,17 @@ impl Api {
         self.post(
             &with_query(
                 &format!("/api/relay/node/{}/moderation/channels/{}/clear", seg(guild_id), seg(channel_id)),
+                &[("relayUrl", relay_url.map(str::to_string))],
+            ),
+            body,
+        )
+        .await
+    }
+    /// POST /api/relay/node/:guild/moderation/channels/:channel/clear/check — 청소와 같은 본문, 지우지 않고 권한만 본다 → `{dryRun:true}`
+    pub async fn check_clear_channel(&self, guild_id: &str, channel_id: &str, body: Value, relay_url: Option<&str>) -> Result<Value> {
+        self.post(
+            &with_query(
+                &format!("/api/relay/node/{}/moderation/channels/{}/clear/check", seg(guild_id), seg(channel_id)),
                 &[("relayUrl", relay_url.map(str::to_string))],
             ),
             body,

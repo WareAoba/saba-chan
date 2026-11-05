@@ -150,6 +150,9 @@
       "schedule": {
         "set": {
           "title": "Cambiar tareas programadas"
+        },
+        "get": {
+          "title": "Ver tareas programadas"
         }
       },
       "delete": {
@@ -167,6 +170,20 @@
           "title": "Aviso de servidor lleno",
           "description": "Avisar en el canal de avisos de este servidor de Discord cuando este servidor se llene o vuelva a haber sitio",
           "name": "Aviso lleno"
+        }
+      },
+      "get": {
+        "title": "Ver ajustes del servidor"
+      },
+      "rename": {
+        "title": "Renombrar servidor"
+      },
+      "properties": {
+        "get": {
+          "title": "Ver archivo de ajustes del juego"
+        },
+        "set": {
+          "title": "Cambiar archivo de ajustes del juego"
         }
       }
     },
@@ -192,6 +209,9 @@
         "tail": {
           "title": "Final de la consola",
           "description": "Últimas 20 líneas de la consola"
+        },
+        "send": {
+          "title": "Enviar comando de consola"
         }
       },
       "logs": {
@@ -208,6 +228,11 @@
         "title": "Jugadores",
         "description": "Quién está conectado"
       },
+      "address": {
+        "title": "Dirección del servidor",
+        "name": "Dirección",
+        "description": "Te muestra solo a ti la dirección (IP:puerto) a la que se conectan tus amigos"
+      },
       "port_check": {
         "title": "Comprobar reenvío de puertos",
         "description": "El relé comprueba si este servidor es accesible desde internet"
@@ -215,6 +240,17 @@
       "chat": {
         "title": "Enviar chat del juego",
         "description": "Envía un mensaje de Discord al chat del juego"
+      },
+      "update": {
+        "check": {
+          "title": "Buscar actualización del servidor de juego"
+        },
+        "apply": {
+          "title": "Actualizar servidor de juego"
+        }
+      },
+      "diagnose": {
+        "title": "Diagnosticar servidor"
       }
     },
     "monitor": {
@@ -233,12 +269,21 @@
       "restore": {
         "title": "Restaurar copia de seguridad",
         "description": "Sobrescribe los archivos actuales del servidor con la copia"
+      },
+      "delete": {
+        "title": "Eliminar copia de seguridad"
       }
     },
     "module": {
       "install": {
         "title": "Instalar módulo",
         "description": "Lo descarga e instala desde el catálogo oficial"
+      },
+      "list": {
+        "title": "Módulos instalados"
+      },
+      "available": {
+        "title": "Módulos disponibles"
       }
     },
     "extension": {
@@ -247,6 +292,15 @@
       },
       "disable": {
         "title": "Desactivar extensión"
+      },
+      "list": {
+        "title": "Extensiones instaladas"
+      },
+      "available": {
+        "title": "Extensiones disponibles"
+      },
+      "install": {
+        "title": "Instalar extensión"
       }
     },
     "update": {
@@ -323,7 +377,9 @@
       "step": "Paso",
       "from_snapshot": "Desde copia automática del juego",
       "text": "Mensaje",
-      "apiKey": "Clave de API"
+      "apiKey": "Clave de API",
+      "command": "Comando",
+      "settings": "Ajustes"
     },
     "summary": {
       "server_item": "• **{{name}}** ({{module}}) · {{status}}",
@@ -359,6 +415,13 @@
       "players_max": "👥 {{online}}/{{max}} conectados",
       "player_item": "• {{name}}",
       "players_more": "…y {{count}} más",
+      "address": {
+        "item": "• `{{address}}`",
+        "item_named": "• {{label}} `{{address}}`",
+        "stopped": "💤 El servidor está apagado. Enciéndelo para que otros puedan conectarse",
+        "unknown": "❔ Server-chan aún no conoce la dirección pública de este PC. Inténtalo de nuevo en un momento",
+        "no_ports": "📭 Este juego no indica el puerto de conexión"
+      },
       "port_check": {
         "open": "✅ Accesible desde internet",
         "firewall": "🧱 Bloqueado por el firewall del PC",
@@ -407,6 +470,7 @@
     "backup_failed_autosave_off": "La copia falló y tampoco se pudo reactivar el autoguardado del servidor. Reinicia el servidor",
     "backup_save_rejected": "El servidor rechazó el comando de guardado, así que no se hizo la copia. Detén el servidor y vuelve a hacer la copia",
     "backup_save_unconfirmed": "El servidor no avisó de que terminó de guardar, así que no se hizo la copia. Inténtalo de nuevo en un momento o detén el servidor antes de copiar",
+    "backup_server_stopped": "El servidor se detuvo mientras se hacía la copia, así que esa copia se descartó. Revisa el servidor y vuelve a hacer la copia",
     "snapshot_not_found": "El juego no tiene copia automática",
     "snapshot_not_deletable": "Saba-chan no puede borrar las copias automáticas del propio juego"
   },

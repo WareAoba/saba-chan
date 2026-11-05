@@ -96,6 +96,7 @@
     "create_http": "Server konnte nicht erstellt werden (HTTP {{status}}): {{error}}",
     "instance_not_found": "Server nicht gefunden",
     "instance_running": "Ein laufender Server kann nicht gelöscht werden. Bitte zuerst stoppen",
+    "instance_busy": "Auf diesem Server läuft gerade eine andere Aufgabe (Sicherung oder Wiederherstellung). Versuchen Sie es erneut, wenn sie fertig ist",
     "delete_error": "Server konnte nicht gelöscht werden: {{error}}",
     "delete_http": "Server konnte nicht gelöscht werden (HTTP {{status}}): {{error}}",
     "reorder_failed": "Reihenfolge konnte nicht geändert werden: {{error}}",

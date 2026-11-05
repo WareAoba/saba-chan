@@ -212,7 +212,7 @@
     "sleep_blocks_none": "None",
     "bedtime": "Good kid",
     "bedtime_format": "Write --bedtime as fall-asleep time-wake-up time, like 01:00-08:00.",
-    "big_emoji": "Большие эмодзи"
+    "big_emoji": "Увеличение эмодзи"
   },
   "col": {
     "players": "Игроки",
@@ -429,6 +429,7 @@
       "backup_failed_autosave_off": "Резервная копия не создана, и автосохранение сервера тоже не удалось включить обратно. Перезапустите сервер: saba-chan-cli restart <name>",
       "backup_save_rejected": "Сервер отклонил команду сохранения, поэтому резервная копия не создана. Остановите сервер и повторите: saba-chan-cli stop <name>",
       "backup_save_unconfirmed": "Сервер не сообщил о завершении сохранения, поэтому резервная копия не создана. Повторите чуть позже или остановите сервер перед копированием: saba-chan-cli stop <name>",
+      "backup_server_stopped": "Сервер остановился во время резервного копирования, поэтому эта копия удалена. Проверьте сервер и сделайте копию снова: saba-chan-cli backup <name>",
       "snapshot_not_found": "У игры нет автоматического бэкапа.",
       "invalid_relay_url": "Разрешены только адреса ретранслятора https:// (http только для localhost, 127.0.0.1 или [::1] при тестах на этом ПК).",
       "module_busy": "Этот модуль уже устанавливается или удаляется. Повторите, когда это закончится.",
@@ -830,6 +831,7 @@
       "config.paths": "Где Saba-chan хранит данные, модули и расширения, и папки по умолчанию",
       "config.move": "Переместить модули или расширения в другую папку. Установленные файлы переносятся; серверы должны быть остановлены",
       "server.players": "Кто сейчас в игре",
+      "server.address": "Адрес (IP:порт) для подключения друзей",
       "server.port-check": "Проверить, могут ли друзья подключиться к этому серверу из интернета (проброс портов)",
       "server.rcon": "Отправить строку так, как сервер принимает команды (консоль, иначе RCON), и показать ответ",
       "server.log": "Сохранённый журнал прошлых запусков (консоль хранит только текущий)",
@@ -852,7 +854,7 @@
       "bot.backup-notice": "Присылать в ЛС все результаты резервного копирования (--all) или только ошибки (--failures). Без параметров: показать",
       "bot.confirm": "Когда бот спрашивает кнопкой Discord перед запуском (all, caution, danger, none). Без параметров: показать",
       "bot.tts": "Reading Saba-chan voice of a Discord server (volume, speed, pitch). No options: show",
-      "bot.big-emoji": "Большие эмодзи (одиночный свой эмодзи показывается крупно) на сервере Discord. Без параметров: показать"
+      "bot.big-emoji": "Увеличение эмодзи (одиночный свой эмодзи показывается крупно) на сервере Discord. Без параметров: показать"
     },
     "arg": {
       "module.maker.game": "Игра для первого запроса",
@@ -961,8 +963,8 @@
       "bot.tts.volume": "Volume in percent (10-150)",
       "bot.tts.speed": "Speaking speed (0.8-1.5, e.g. 1.2)",
       "bot.tts.pitch": "Pitch in semitones (-6 to 6)",
-      "bot.big-emoji.on": "Включить большие эмодзи",
-      "bot.big-emoji.off": "Выключить большие эмодзи",
+      "bot.big-emoji.on": "Включить увеличение эмодзи",
+      "bot.big-emoji.off": "Выключить увеличение эмодзи",
       "bot.tts.voice_chat_only": "Read your messages only in the chat of the voice channel you are in (on|off, game chat channel excepted)",
       "bot.tts.keep_read": "Keep read messages instead of deleting them (on|off)",
       "bot.tts.auto_channels": "Voice channel IDs to always read (comma-separated, up to 10): with 2+ people inside, the bot joins and reads its chat",
@@ -1352,7 +1354,10 @@
     "kept_instances": "серверы сохраняются, настройки удаляются",
     "kept_nothing": "настройки и серверы тоже удаляются",
     "done": "Saba-chan удалён; {{kept}}.",
-    "left": "Saba-chan удалён, но эти элементы удалить не удалось. Закройте использующие их программы и удалите их вручную:\n{{paths}}"
+    "left": "Saba-chan удалён, но эти элементы удалить не удалось. Закройте использующие их программы и удалите их вручную:\n{{paths}}",
+    "servers_unlisted": "Не удалось получить список запущенных серверов, поэтому они были остановлены принудительно ({{detail}}).",
+    "server_force_stopped": "Сервер {{server}} не завершился корректно и был остановлен принудительно ({{detail}}). Изменения после последнего сохранения могли потеряться.",
+    "daemon_unanswered": "Демон не ответил, поэтому запущенные серверы были остановлены принудительно. Изменения после последнего сохранения могли потеряться."
   },
   "update_required": {
     "title": "Нужно обновление",
@@ -1476,6 +1481,12 @@
     "this_pc": "Этот ПК",
     "no_servers": "Нет серверов",
     "via_relay": "Через ретранслятор"
+  },
+  "address": {
+    "title": "Адрес {{server}}",
+    "unknown": "Server-chan не знает публичный адрес этого ПК. Проверьте подключение к Server-chan",
+    "no_ports": "Эта игра не сообщает порт для подключения",
+    "stopped": "Сервер выключен. Запустите его, чтобы другие могли подключиться"
   },
   "port_check": {
     "title": "Проверка портов {{server}}",

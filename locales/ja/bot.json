@@ -150,6 +150,9 @@
       "schedule": {
         "set": {
           "title": "予約タスクを変更"
+        },
+        "get": {
+          "title": "予約タスクを見る"
         }
       },
       "delete": {
@@ -167,6 +170,20 @@
           "title": "満員通知",
           "description": "このサーバーが満員になったり、また空きが出たりしたら、このDiscordサーバーの通知チャンネルに知らせます",
           "name": "満員通知"
+        }
+      },
+      "get": {
+        "title": "サーバー設定を見る"
+      },
+      "rename": {
+        "title": "サーバー名を変更"
+      },
+      "properties": {
+        "get": {
+          "title": "ゲーム設定ファイルを見る"
+        },
+        "set": {
+          "title": "ゲーム設定ファイルを変更"
         }
       }
     },
@@ -192,6 +209,9 @@
         "tail": {
           "title": "コンソールの末尾",
           "description": "コンソールの最後の20行"
+        },
+        "send": {
+          "title": "コンソールコマンドを送る"
         }
       },
       "logs": {
@@ -208,6 +228,11 @@
         "title": "プレイヤー",
         "description": "接続中のプレイヤーと名前"
       },
+      "address": {
+        "title": "サーバーアドレス",
+        "name": "アドレス",
+        "description": "友だちが接続するアドレス(IP:ポート)を呼んだ人にだけ教えます"
+      },
       "port_check": {
         "title": "ポート開放の確認",
         "description": "外部からこのサーバーに接続できるかリレーが確認します"
@@ -215,6 +240,17 @@
       "chat": {
         "title": "ゲームチャット送信",
         "description": "Discordのメッセージをゲームチャットに送ります"
+      },
+      "update": {
+        "check": {
+          "title": "ゲームサーバーの更新を確認"
+        },
+        "apply": {
+          "title": "ゲームサーバーを更新"
+        }
+      },
+      "diagnose": {
+        "title": "サーバー診断"
       }
     },
     "monitor": {
@@ -233,12 +269,21 @@
       "restore": {
         "title": "バックアップを復元",
         "description": "現在のサーバーファイルをバックアップで上書きします"
+      },
+      "delete": {
+        "title": "バックアップを削除"
       }
     },
     "module": {
       "install": {
         "title": "モジュールをインストール",
         "description": "公式カタログからダウンロードしてインストールします"
+      },
+      "list": {
+        "title": "インストール済みモジュール"
+      },
+      "available": {
+        "title": "入手できるモジュール"
       }
     },
     "extension": {
@@ -247,6 +292,15 @@
       },
       "disable": {
         "title": "拡張機能を無効化"
+      },
+      "list": {
+        "title": "インストール済み拡張機能"
+      },
+      "available": {
+        "title": "入手できる拡張機能"
+      },
+      "install": {
+        "title": "拡張機能をインストール"
       }
     },
     "update": {
@@ -323,7 +377,9 @@
       "step": "ステップ",
       "from_snapshot": "ゲーム自動バックアップから",
       "text": "本文",
-      "apiKey": "APIキー"
+      "apiKey": "APIキー",
+      "command": "コマンド",
+      "settings": "設定"
     },
     "summary": {
       "server_item": "• **{{name}}** ({{module}}) · {{status}}",
@@ -359,6 +415,13 @@
       "players_max": "👥 接続 {{online}}/{{max}}人",
       "player_item": "• {{name}}",
       "players_more": "…ほか {{count}}人",
+      "address": {
+        "item": "• `{{address}}`",
+        "item_named": "• {{label}} `{{address}}`",
+        "stopped": "💤 サーバーが停止しています。起動すると接続できます",
+        "unknown": "❔ サーバーちゃんがこのPCのグローバルアドレスを把握していません。少ししてからもう一度お試しください",
+        "no_ports": "📭 このゲームは接続ポートを示していません"
+      },
       "port_check": {
         "open": "✅ 外部から接続できます",
         "firewall": "🧱 PCのファイアウォールがブロックしています",
@@ -407,6 +470,7 @@
     "backup_failed_autosave_off": "バックアップに失敗し、サーバーの自動保存も再開できませんでした。サーバーを再起動してください",
     "backup_save_rejected": "サーバーが保存コマンドを受け付けなかったため、バックアップしませんでした。サーバーを停止してからもう一度バックアップしてください",
     "backup_save_unconfirmed": "サーバーが保存の完了を知らせなかったため、バックアップしませんでした。しばらくしてからもう一度試すか、サーバーを停止してからバックアップしてください",
+    "backup_server_stopped": "バックアップ中にサーバーが停止したため、そのバックアップは削除しました。サーバーの状態を確認してからもう一度バックアップしてください",
     "snapshot_not_found": "ゲームが作った自動バックアップがありません",
     "snapshot_not_deletable": "ゲームが作った自動バックアップはサバちゃんから削除できません"
   },

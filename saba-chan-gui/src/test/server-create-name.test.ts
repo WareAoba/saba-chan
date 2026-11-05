@@ -28,7 +28,7 @@ describe('서버 만들기: 같은 이름', () => {
                 formatUptime: vi.fn(),
             } as never),
         );
-        let created;
+        let created: unknown;
         await act(async () => {
             created = await result.current.handleAddServer({ name: 'A', module_name: 'game' });
         });

@@ -36,8 +36,9 @@ const RETRY_MAX: Duration = Duration::from_secs(60);
 /// 하트비트 `metadata.features`: 릴레이가 기능마다 이 PC를 가르는 이름 (전역 최소 버전 `MIN_AGENT_VERSION`과 따로).
 /// 옛 PC와 다르게 다뤄야 하는 변화를 넣을 때만 이름을 더하고, 릴레이 하한이 그 기능을 넘으면 이름과 릴레이 분기를 함께 지운다.
 /// - `confirm_by_daemon`: 되묻기를 데몬이 계획마다 정한다 (`actions::needs_confirm`). 릴레이는 스스로 위험을 판정하지 않고 `needsConfirm`을 따른다
+/// - `check_first`: `check` 액션 요청(`{id, instance?, input}` 또는 `{text}`)으로 확인을 묻기 전에 권한만 본다 (`actions::check`). 계획은 남지 않는다
 /// - `linked_guilds`: 하트비트 응답의 `linkedGuilds`(새로 묶인 길드)로 그 길드에 열 서버를 정한다 (`close_linked_guild`)
-const FEATURES: &[&str] = &["confirm_by_daemon", "linked_guilds"];
+const FEATURES: &[&str] = &["confirm_by_daemon", "linked_guilds", "check_first"];
 
 /// 알림 이벤트(I3): 처음 한 건이 오면 같은 순간에 난 것만 이만큼 모아 곧 보내고, 한 번에 이만큼까지 보낸다
 /// (사용자 11-02: 게임 채팅이 디스코드에 늦게 올라간다. 이벤트는 대부분 한 건씩 온다)
@@ -92,6 +93,9 @@ pub struct AgentStatus {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub min_version: Option<String>,
     pub commands_handled: u64,
+    /// 릴레이가 하트비트 답에 실어 준, 이 PC가 접속해 온 공인 주소 (서버 주소 `server.address`). 모르면 없다
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub seen_address: Option<String>,
 }
 
 #[derive(Default)]
@@ -261,6 +265,19 @@ impl RelayAgent {
         self.inner.lock().unwrap_or_else(|e| e.into_inner())
     }
 
+    /// 지금 연결된 세션에서 릴레이가 본 이 PC의 공인 주소 (연결돼 있지 않으면 없다)
+    pub fn seen_address(&self) -> Option<String> {
+        let inner = self.lock();
+        inner.status.seen_address.clone().filter(|_| inner.cancel.is_some())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_seen_address_for_test(&self, address: Option<&str>) {
+        let mut inner = self.lock();
+        inner.cancel.get_or_insert_with(CancellationToken::new);
+        inner.status.seen_address = address.map(str::to_string);
+    }
+
     /// 세션 상태 갱신. 끝난(세대가 지난) 세션의 늦은 응답은 버린다
     fn update(&self, generation: u64, f: impl FnOnce(&mut AgentStatus)) {
         let mut inner = self.lock();
@@ -268,6 +285,11 @@ impl RelayAgent {
             f(&mut inner.status)
         }
     }
+}
+
+/// 하트비트 답의 `address`: 릴레이가 본 이 PC의 공인 주소. IP로 읽히는 값만 받는다
+fn relay_seen_address(data: &Value) -> Option<String> {
+    data.get("address").and_then(Value::as_str).and_then(|a| a.parse::<std::net::IpAddr>().ok()).map(|ip| ip.to_string())
 }
 
 /// 데몬 기동 시: 이 노드가 페어링돼 있으면(노드 토큰 존재) 에이전트를 띄운다
@@ -324,7 +346,7 @@ fn poll_retry(error: &str, failures: u32) -> Duration {
 fn http_client() -> Result<reqwest::Client, reqwest::Error> {
     let mut headers = reqwest::header::HeaderMap::new();
     headers.insert("X-Saba-Client", reqwest::header::HeaderValue::from_static("1"));
-    reqwest::Client::builder().timeout(POLL_TIMEOUT).default_headers(headers).build()
+    saba_chan_updater_lib::tls::http_client_builder().timeout(POLL_TIMEOUT).default_headers(headers).build()
 }
 
 struct Session {
@@ -582,6 +604,8 @@ impl Session {
                     s.last_error = None;
                     s.last_error_code = None;
                     s.min_version = None;
+                    // 옛 릴레이·사설 주소면 없다
+                    s.seen_address = relay_seen_address(&data);
                 });
                 // 릴레이가 받은 확인 응답은 지운다. 그 사이 새로 적용한 길드는 남는다
                 self.linked_acks.lock().unwrap_or_else(|e| e.into_inner()).retain(|g| !acks.contains(g));
@@ -916,8 +940,8 @@ impl Session {
                 };
                 action_result(result, &caller.locale)
             }
-            // 액션 카탈로그 (P2·P3): 계획·확인한 계획 실행·읽기 전용 조회
-            "plan" | "run_plan" | "query" => {
+            // 액션 카탈로그 (P2·P3): 계획·확인한 계획 실행·읽기 전용 조회·확인 전 권한 검사
+            "plan" | "run_plan" | "query" | "check" => {
                 let guild_id = cmd.get("guildId").and_then(|v| v.as_str()).map(str::to_string);
                 let user_id = cmd.get("requestedBy").and_then(|v| v.as_str()).map(str::to_string);
                 let who = self.requester(cmd, &payload, guild_id.clone(), user_id.clone()).await;
@@ -1405,6 +1429,9 @@ async fn action_request(server: &crate::ipc::IPCServer, action: &str, payload: &
             let view = crate::actions::plan(server, id, instance, &input, caller).await?;
             auto_run(server, payload, view, caller).await
         }
+        // 확인을 묻기 전의 권한 검사: 계획을 남기지 않는다 (`check_first`)
+        "check" if payload.get("text").is_some() => crate::actions::check_text(server, payload["text"].as_str().unwrap_or_default(), caller).await,
+        "check" => crate::actions::check(server, id, instance, &input, caller).await,
         "run_plan" => {
             let plan_id = payload.get("planId").and_then(Value::as_str).unwrap_or_default();
             crate::actions::run(server, id, instance, &input, Some(plan_id), caller).await
@@ -1823,6 +1850,15 @@ fn relay_server_entry(server: &Value, usage: Option<&crate::system_monitor::Inst
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 서버 주소(`server.address`)는 릴레이가 하트비트 답에 실어 준 접속 주소를 쓴다. IP가 아닌 값·없는 값은 모른다로 둔다
+    #[test]
+    fn the_address_the_relay_saw_is_read_from_the_heartbeat_reply() {
+        assert_eq!(relay_seen_address(&json!({ "status": "ok", "address": "203.0.113.5" })).as_deref(), Some("203.0.113.5"));
+        assert_eq!(relay_seen_address(&json!({ "address": "2001:db8::1" })).as_deref(), Some("2001:db8::1"));
+        assert_eq!(relay_seen_address(&json!({ "address": "evil.example:1" })), None);
+        assert_eq!(relay_seen_address(&json!({ "status": "ok" })), None);
+    }
 
     /// 릴레이가 이 PC의 버전을 받지 않으면(최소 버전 미달) 상태에 `agent_too_old`와 요구 버전을 남겨
     /// GUI·CLI가 업데이트를 안내하게 하고, 받기는 업데이트 전에는 같은 답이므로 heartbeat 주기로만 다시 묻는다
@@ -2398,6 +2434,19 @@ mod tests {
         let text = json!({ "action": "plan", "via": "mcp", "text": "srv start" });
         let r = session.handle_payload(&json!({ "id": "c9", "requestedBy": "u1", "hostOwnerDiscordId": "u1", "payload": text })).await;
         assert_eq!((r["success"].as_bool(), r["data"]["code"].as_str()), (Some(false), Some("invalid_input")), "{r:?}");
+    }
+
+    /// 확인 전 권한 검사(`check`)는 디스코드 요청으로 받고, 계획처럼 요청자 권한으로 판정한다
+    #[tokio::test]
+    async fn a_check_is_judged_like_a_plan() {
+        let tmp = tempfile::tempdir().unwrap();
+        let session = test_session(&RelayAgent::new(), "http://127.0.0.1:9", "sbn_host.secret", tmp.path()).await;
+        let check = json!({ "action": "check", "via": "direct", "id": "chatbot.common.set", "input": { "model": "m1" } });
+        let ok = session.handle_payload(&json!({ "id": "c1", "requestedBy": "u1", "hostOwnerDiscordId": "u1", "payload": check })).await;
+        assert_eq!((ok["success"].as_bool(), ok["data"]["actionId"].as_str()), (Some(true), Some("chatbot.common.set")), "{ok:?}");
+        assert!(ok["data"].get("planId").is_none(), "{ok:?}");
+        let r = session.handle_payload(&json!({ "id": "c2", "requestedBy": "u2", "hostOwnerDiscordId": "u1", "payload": check })).await;
+        assert_eq!(r["data"]["code"], "PERMISSION_DENIED", "{r:?}");
     }
 
     /// 봇 DM `/설정`: 길드 없는 디스코드 직접 요청은 요청자가 이 PC의 주인(`hostOwnerDiscordId`)일 때만 주인이다

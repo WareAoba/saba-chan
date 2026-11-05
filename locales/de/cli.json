@@ -212,7 +212,7 @@
     "sleep_blocks_none": "None",
     "bedtime": "Good kid",
     "bedtime_format": "Write --bedtime as fall-asleep time-wake-up time, like 01:00-08:00.",
-    "big_emoji": "Große Emojis"
+    "big_emoji": "Emoji-Upscaling"
   },
   "col": {
     "players": "Spieler",
@@ -429,6 +429,7 @@
       "backup_failed_autosave_off": "Das Backup ist fehlgeschlagen, und das Autospeichern des Servers ließ sich auch nicht wieder einschalten. Server neu starten: saba-chan-cli restart <name>",
       "backup_save_rejected": "Der Server hat den Speicherbefehl abgelehnt, daher wurde kein Backup erstellt. Halte den Server an und sichere erneut: saba-chan-cli stop <name>",
       "backup_save_unconfirmed": "Der Server hat nicht gemeldet, dass das Speichern fertig ist, daher wurde kein Backup erstellt. Versuche es gleich noch einmal oder halte den Server vor dem Backup an: saba-chan-cli stop <name>",
+      "backup_server_stopped": "Der Server wurde während des Backups gestoppt, daher wurde dieses Backup verworfen. Server prüfen und erneut sichern: saba-chan-cli backup <Name>",
       "snapshot_not_found": "Das Spiel hat kein automatisches Backup.",
       "invalid_relay_url": "Als Relay-Adresse sind nur https://-Adressen erlaubt (http nur für localhost, 127.0.0.1 oder [::1] zum Testen auf diesem PC).",
       "module_busy": "Dieses Modul wird bereits installiert oder entfernt. Versuche es erneut, wenn das abgeschlossen ist.",
@@ -830,6 +831,7 @@
       "config.paths": "Wo Saba-chan Daten, Module und Erweiterungen ablegt, und die Standardordner",
       "config.move": "Module oder Erweiterungen in einen anderen Ordner verschieben. Installierte Dateien werden verschoben; Server müssen gestoppt sein",
       "server.players": "Wer gerade online ist",
+      "server.address": "Die Adresse (IP:Port), mit der sich Freunde verbinden",
       "server.port-check": "Prüfen, ob Freunde diesen Server aus dem Internet erreichen (Portweiterleitung)",
       "server.rcon": "Eine Zeile so senden, wie der Server Befehle annimmt (Konsole, sonst RCON), und die Antwort zeigen",
       "server.log": "Gespeichertes Protokoll früherer Läufe (die Konsole hält nur den aktuellen)",
@@ -852,7 +854,7 @@
       "bot.backup-notice": "Backup-Ergebnisse alle per DM (--all) oder nur Fehler (--failures). Ohne Optionen: anzeigen",
       "bot.confirm": "Wann der Bot vor dem Ausführen per Discord-Button fragt (all, caution, danger, none). Ohne Optionen: anzeigen",
       "bot.tts": "Reading Saba-chan voice of a Discord server (volume, speed, pitch). No options: show",
-      "bot.big-emoji": "Große Emojis (ein einzelnes eigenes Emoji wird groß gezeigt) auf einem Discord-Server. Ohne Optionen: anzeigen"
+      "bot.big-emoji": "Emoji-Upscaling (ein einzelnes eigenes Emoji wird groß gezeigt) auf einem Discord-Server. Ohne Optionen: anzeigen"
     },
     "arg": {
       "module.maker.game": "Spiel für die erste Anfrage",
@@ -961,8 +963,8 @@
       "bot.tts.volume": "Volume in percent (10-150)",
       "bot.tts.speed": "Speaking speed (0.8-1.5, e.g. 1.2)",
       "bot.tts.pitch": "Pitch in semitones (-6 to 6)",
-      "bot.big-emoji.on": "Große Emojis einschalten",
-      "bot.big-emoji.off": "Große Emojis ausschalten",
+      "bot.big-emoji.on": "Emoji-Upscaling einschalten",
+      "bot.big-emoji.off": "Emoji-Upscaling ausschalten",
       "bot.tts.voice_chat_only": "Read your messages only in the chat of the voice channel you are in (on|off, game chat channel excepted)",
       "bot.tts.keep_read": "Keep read messages instead of deleting them (on|off)",
       "bot.tts.auto_channels": "Voice channel IDs to always read (comma-separated, up to 10): with 2+ people inside, the bot joins and reads its chat",
@@ -1352,7 +1354,10 @@
     "kept_instances": "Server bleiben, Einstellungen werden entfernt",
     "kept_nothing": "Einstellungen und Server werden ebenfalls entfernt",
     "done": "Saba-chan wurde entfernt; {{kept}}.",
-    "left": "Saba-chan wurde entfernt, aber diese Elemente ließen sich nicht löschen. Schließen Sie Programme, die sie verwenden, und löschen Sie sie selbst:\n{{paths}}"
+    "left": "Saba-chan wurde entfernt, aber diese Elemente ließen sich nicht löschen. Schließen Sie Programme, die sie verwenden, und löschen Sie sie selbst:\n{{paths}}",
+    "servers_unlisted": "Die Liste der laufenden Server konnte nicht abgerufen werden, daher wurden sie zwangsweise beendet ({{detail}}).",
+    "server_force_stopped": "Server {{server}} wurde nicht sauber beendet und zwangsweise gestoppt ({{detail}}). Änderungen seit dem letzten Speichern können verloren sein.",
+    "daemon_unanswered": "Der Daemon hat nicht geantwortet, daher wurden laufende Server zwangsweise gestoppt. Änderungen seit dem letzten Speichern können verloren sein."
   },
   "update_required": {
     "title": "Update erforderlich",
@@ -1476,6 +1481,12 @@
     "this_pc": "Dieser PC",
     "no_servers": "Keine Server",
     "via_relay": "Über das Relay"
+  },
+  "address": {
+    "title": "Adresse von {{server}}",
+    "unknown": "Server-chan kennt die öffentliche Adresse dieses PCs nicht. Prüfe, ob er mit Server-chan verbunden ist",
+    "no_ports": "Dieses Spiel gibt keinen Verbindungsport an",
+    "stopped": "Der Server ist aus. Starte ihn, damit andere sich verbinden können"
   },
   "port_check": {
     "title": "Portprüfung für {{server}}",

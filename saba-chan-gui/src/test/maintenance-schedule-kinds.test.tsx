@@ -113,6 +113,9 @@ describe('예약 작업 화면', () => {
 
         // 위험 명령: 첫 누름은 확인만 한다
         await waitFor(() => expect(window.api.instanceScheduleGet).toHaveBeenCalledTimes(2));
+        // 다시 읽은 결과가 작업 목록을 새로 그릴 때까지 기다린다: 그 전에 누른 버튼은 사라진다
+        await act(async () => {});
+        await waitFor(() => expect(screen.queryByText(t('discord.unsaved'))).toBeNull());
         fireEvent.click(await screen.findByRole('button', { name: /^\s*Say$/ }));
         const again = await screen.findByRole('dialog', { name: t('maintenance.command_pick') });
         fireEvent.click(within(again).getByRole('button', { name: /Wipe world/ }));

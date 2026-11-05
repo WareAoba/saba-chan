@@ -915,7 +915,7 @@ async fn create_instance_inner(state: IPCServer, payload: Value, dry_run: bool) 
                     // ── executable_path 자동 계산 ──
                     // migration_source(=working_dir)와 server_executable(바이너리 파일명)을 결합
                     // 프론트엔드가 모듈 기본값을 보낼 수 있으므로, migration에서는 항상 재계산
-                    if let (Some(ref work_dir), Some((_, _, Some(ref exe_name)))) = (&instance.working_dir, &module_install) {
+                    if let (Some(work_dir), Some((_, _, Some(exe_name)))) = (&instance.working_dir, &module_install) {
                         let resolved = std::path::Path::new(work_dir).join(exe_name);
                         if resolved.exists() {
                             instance.executable_path = Some(resolved.to_string_lossy().to_string());
@@ -970,8 +970,17 @@ async fn create_instance_inner(state: IPCServer, payload: Value, dry_run: bool) 
                             }
                         }
                     }
-                    // 마이그레이션 변경사항 저장 (executable_path, import된 설정 등)
-                    let _ = state.supervisor.write().await.instance_store.update(&id, instance.clone());
+                    // 마이그레이션 변경사항 저장 (executable_path, import된 설정 등). 못 하면 저장소에는 가져오기 전
+                    // 인스턴스만 남으므로 거두고 실패로 알린다
+                    let saved = state.supervisor.write().await.instance_store.update(&id, instance.clone());
+                    if let Err(e) = saved {
+                        tracing::warn!("Migration: could not save the imported settings of '{}': {:#}", instance_name, e);
+                        let mut failure = json!({ "success": false, "error": format!("Failed to save the imported settings: {:#}", e), "error_code": "save_failed" });
+                        if !undo_import(&state, &instance, moved_from.as_deref()).await {
+                            failure["id"] = json!(&id);
+                        }
+                        return (StatusCode::INTERNAL_SERVER_ERROR, Json(failure)).into_response();
+                    }
                     // 해제할 때 되돌릴 원래 게임 설정 파일. 약관 반영·첫 시작이 파일을 고치기 전에 보관한다
                     // (옮긴 서버도 서버 폴더 밖 데이터 폴더의 설정은 남으므로 보관한다)
                     save_migration_originals(&state, &instance, &instance_dir, metadata.as_ref()).await;
@@ -1468,14 +1477,30 @@ async fn delete_instance_held(state: IPCServer, id: String, keep_settings: bool)
     // ── 가져온 서버: 서버 폴더는 두고, 사바쨩이 남긴 것을 거둔다 ──
     let unlinked = unlink_server_folder(&state, &instance, keep_settings, detached.as_deref()).await;
 
+    // 되돌리지 못한 원래 설정은 유일한 사본이다: 옮겨 둔 폴더와 함께 지우지 않고 기록 폴더에 남긴다.
+    // 남기지 못하면 옮겨 둔 폴더를 지우지 않는다 (표시가 없으니 다음 시작 때 인스턴스로 되돌아온다)
+    let mut kept_at = None;
+    let mut keep_folder = false;
+    if let (Some(dir), Some(unlinked)) = (&detached, &unlinked) {
+        if !unlinked.restored.failed.is_empty() {
+            let to = state.supervisor.read().await.instance_store.state_root().join(crate::instance::migration::UNRESTORED).join(dir.file_name().unwrap_or_default());
+            match crate::instance::migration::keep_unrestored(dir, &to) {
+                Ok(()) => kept_at = Some(to),
+                Err(e) => {
+                    tracing::error!("Could not keep the settings of '{}' that were not restored: {}", instance.name, e);
+                    keep_folder = true;
+                }
+            }
+        }
+    }
     // 연결 해제를 마쳤다는 표시가 없으면 다음 시작 때 인스턴스를 되돌린다 (그 사이 데몬이 멈춘 경우)
-    if let Some(dir) = &detached {
+    if let Some(dir) = detached.as_ref().filter(|_| !keep_folder) {
         if let Err(e) = crate::instance::InstanceStore::mark_unlinked(dir) {
             tracing::warn!("{:#}", e);
         }
     }
     let removed = state.supervisor.write().await.instance_store.remove(&id);
-    if let Some(dir) = detached {
+    if let Some(dir) = detached.filter(|_| !keep_folder) {
         let name = instance.name.clone();
         let _ = tokio::task::spawn_blocking(move || {
             match std::fs::remove_dir_all(&dir) {
@@ -1499,6 +1524,9 @@ async fn delete_instance_held(state: IPCServer, id: String, keep_settings: bool)
                 }
                 response["settings_restored"] = json!(unlinked.restored.restored);
                 response["settings_restore_failed"] = json!(unlinked.restored.failed.len());
+                if let Some(kept_at) = &kept_at {
+                    response["settings_kept_at"] = json!(kept_at.to_string_lossy());
+                }
             }
             (StatusCode::OK, Json(response)).into_response()
         }
@@ -1667,6 +1695,76 @@ fn port_value(value: &Value) -> Option<u16> {
     .filter(|&p| p > 0)
 }
 
+/// 모듈 설정 변경을 PATCH 규칙으로 본다: 선언한 타입·범위·선택지·형식(400 `validation_failed`·`invalid_format`)과
+/// 모르는 키(400 `unknown_setting`). 통과하면 `None`. 게임 설정 파일 쓰기(`PUT /properties`)도 같은 검사를 지난다
+pub(crate) fn settings_rejection(supervisor: &crate::supervisor::Supervisor, instance: &crate::instance::ServerInstance, id: &str, settings: &Value) -> Option<axum::response::Response> {
+    // ── 설정값 타입/범위 스키마 검증 ──
+    if let Some(settings_obj) = settings.as_object() {
+        if let Ok(module) = supervisor.module_loader.get_module(&instance.module_name) {
+            if let Some(ref settings_meta) = module.metadata.settings {
+                // 부분 변경이므로 보낸 필드만 검증한다
+                // 숨겨진 설정은 required를 보지 않는다 (06 §8.2). 숨김은 저장된 값에 이번 요청을 얹어 계산한다
+                let view = serde_json::to_value(instance).unwrap_or_default();
+                let hidden = crate::validator::hidden_fields(&settings_meta.fields, |k| settings_obj.get(k).cloned().or_else(|| stored_setting(&view, instance, k)));
+                let errors: Vec<_> = crate::validator::validate_settings_patch(
+                    &settings_meta.fields,
+                    settings_obj,
+                )
+                .into_iter()
+                .filter(|e| !(e.error_type == crate::validator::ValidationErrorType::Required && hidden.contains(&e.field)))
+                .collect();
+                if !errors.is_empty() {
+                    let error_details: Vec<String> = errors.iter().map(|e| e.to_string()).collect();
+                    let fields: Vec<Value> = errors
+                        .iter()
+                        .map(|e| json!({ "field": e.field, "type": e.error_type, "message": e.message }))
+                        .collect();
+                    tracing::warn!(
+                        "Settings validation failed for instance {}: {:?}",
+                        id, error_details
+                    );
+                    // 형식(`format`·`pattern`)이 틀렸으면 GUI가 "잘못된 형식입니다"를 띄운다
+                    let code = if errors.iter().any(|e| e.error_type == crate::validator::ValidationErrorType::InvalidFormat) {
+                        "invalid_format"
+                    } else {
+                        "validation_failed"
+                    };
+                    let error = json!({
+                        "error": code,
+                        "error_code": code,
+                        "message": "Settings validation failed",
+                        "details": error_details,
+                        "fields": fields,
+                    });
+                    return Some((StatusCode::BAD_REQUEST, Json(error)).into_response());
+                }
+            }
+        }
+    }
+
+    // ── 모르는 키 거절 (오타가 조용히 module_settings에 쌓이지 않게) ──
+    // 모듈이 설정 목록을 선언했을 때만 본다. 공통 필드와 데몬이 읽는 설정(`constants::DAEMON_SETTINGS`)은 받는다
+    if let (Some(settings_obj), Ok(module)) = (settings.as_object(), supervisor.module_loader.get_module(&instance.module_name)) {
+        if let Some(ref settings_meta) = module.metadata.settings {
+            let unknown: Vec<&String> = settings_obj
+                .keys()
+                .filter(|k| !is_known_field(k) && !is_daemon_setting(k))
+                .filter(|k| !settings_meta.fields.iter().any(|f| &f.name == *k))
+                .collect();
+            if !unknown.is_empty() {
+                let fields: Vec<Value> = unknown.iter().map(|k| json!({ "field": k })).collect();
+                let error = json!({
+                    "error": format!("Unknown setting: {}", unknown.iter().map(|k| k.as_str()).collect::<Vec<_>>().join(", ")),
+                    "error_code": "unknown_setting",
+                    "fields": fields,
+                });
+                return Some((StatusCode::BAD_REQUEST, Json(error)).into_response());
+            }
+        }
+    }
+    None
+}
+
 /// PATCH /api/instance/:id - 인스턴스 설정 업데이트 (보낸 키만). `revision`(GET에서 받은 값)을 주면
 /// 그사이 다른 곳에서 바뀐 인스턴스에는 쓰지 않고 409 `settings_changed`로 거절한다
 pub async fn update_instance_settings(
@@ -1729,69 +1827,8 @@ pub async fn update_instance_settings(
         }
     }
 
-    // ── 설정값 타입/범위 스키마 검증 ──
-    if let Some(settings_obj) = settings.as_object() {
-        if let Ok(module) = supervisor.module_loader.get_module(&instance.module_name) {
-            if let Some(ref settings_meta) = module.metadata.settings {
-                // 부분 변경이므로 보낸 필드만 검증한다
-                // 숨겨진 설정은 required를 보지 않는다 (06 §8.2). 숨김은 저장된 값에 이번 요청을 얹어 계산한다
-                let view = serde_json::to_value(instance).unwrap_or_default();
-                let hidden = crate::validator::hidden_fields(&settings_meta.fields, |k| settings_obj.get(k).cloned().or_else(|| stored_setting(&view, instance, k)));
-                let errors: Vec<_> = crate::validator::validate_settings_patch(
-                    &settings_meta.fields,
-                    settings_obj,
-                )
-                .into_iter()
-                .filter(|e| !(e.error_type == crate::validator::ValidationErrorType::Required && hidden.contains(&e.field)))
-                .collect();
-                if !errors.is_empty() {
-                    let error_details: Vec<String> = errors.iter().map(|e| e.to_string()).collect();
-                    let fields: Vec<Value> = errors
-                        .iter()
-                        .map(|e| json!({ "field": e.field, "type": e.error_type, "message": e.message }))
-                        .collect();
-                    tracing::warn!(
-                        "Settings validation failed for instance {}: {:?}",
-                        id, error_details
-                    );
-                    // 형식(`format`·`pattern`)이 틀렸으면 GUI가 "잘못된 형식입니다"를 띄운다
-                    let code = if errors.iter().any(|e| e.error_type == crate::validator::ValidationErrorType::InvalidFormat) {
-                        "invalid_format"
-                    } else {
-                        "validation_failed"
-                    };
-                    let error = json!({
-                        "error": code,
-                        "error_code": code,
-                        "message": "Settings validation failed",
-                        "details": error_details,
-                        "fields": fields,
-                    });
-                    return (StatusCode::BAD_REQUEST, Json(error)).into_response();
-                }
-            }
-        }
-    }
-
-    // ── 모르는 키 거절 (오타가 조용히 module_settings에 쌓이지 않게) ──
-    // 모듈이 설정 목록을 선언했을 때만 본다. 공통 필드와 데몬이 읽는 설정(`constants::DAEMON_SETTINGS`)은 받는다
-    if let (Some(settings_obj), Ok(module)) = (settings.as_object(), supervisor.module_loader.get_module(&instance.module_name)) {
-        if let Some(ref settings_meta) = module.metadata.settings {
-            let unknown: Vec<&String> = settings_obj
-                .keys()
-                .filter(|k| !is_known_field(k) && !is_daemon_setting(k))
-                .filter(|k| !settings_meta.fields.iter().any(|f| &f.name == *k))
-                .collect();
-            if !unknown.is_empty() {
-                let fields: Vec<Value> = unknown.iter().map(|k| json!({ "field": k })).collect();
-                let error = json!({
-                    "error": format!("Unknown setting: {}", unknown.iter().map(|k| k.as_str()).collect::<Vec<_>>().join(", ")),
-                    "error_code": "unknown_setting",
-                    "fields": fields,
-                });
-                return (StatusCode::BAD_REQUEST, Json(error)).into_response();
-            }
-        }
+    if let Some(rejected) = settings_rejection(&supervisor, instance, &id, &settings) {
+        return rejected;
     }
 
     // 설정값 업데이트
@@ -2679,6 +2716,98 @@ mod tests {
             assert_eq!(std::fs::read_to_string(&ini).unwrap(), expected);
             assert_eq!(std::fs::read_to_string(&outside).unwrap(), "after", "a file outside the server is never kept or restored");
         }
+    }
+
+    /// 되돌리지 못한 원래 설정(그 사이 위 폴더가 사라진 자리 등)의 사본은 인스턴스 폴더와 함께 지우지 않고
+    /// 데몬 기록 폴더에 옮겨 남기고, 그 자리를 응답에 싣는다
+    #[tokio::test]
+    async fn unlinking_keeps_the_copies_it_could_not_restore() {
+        use axum::{extract::{Path, Query, State}, Json};
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("module.toml"), "[module]\nschema_version = 1\nname = 'game'\nversion = '1.0.0'\nentry = 'lifecycle.py'\n").unwrap();
+        std::fs::write(dir.join("lifecycle.py"),
+            "import json, os, sys\nc = json.load(sys.stdin)\nf = sys.argv[1]\n\
+             if f == 'functions': print(json.dumps({'success': True, 'functions': ['import_settings', 'config_files']}))\n\
+             elif f == 'config_files': print(json.dumps({'success': True, 'files': [os.path.join(c['working_dir'], 'cfg', 'game.ini')]}))\n\
+             else: print(json.dumps({'success': True, 'settings': {}}))\n",
+        ).unwrap();
+        crate::sandbox::consent_test_component(&dir.join("lifecycle.py"));
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        for module in sup.module_loader.discover_modules().unwrap() { crate::sandbox::consent_test_component(std::path::Path::new(&module.entry_path())); }
+        sup.initialize().await.unwrap();
+        let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let server = tmp.path().join("server");
+        std::fs::create_dir_all(server.join("cfg")).unwrap();
+        std::fs::write(server.join("cfg").join("game.ini"), "rcon=on\n").unwrap();
+        let created = crate::ipc::internal::into_internal(super::create_instance(State(state.clone()), Json(serde_json::json!({"name": "g", "module_name":"game", "migration_source":server}))).await).await;
+        assert_eq!(created.status.as_u16(), 201, "{}", created.body);
+        let id = created.body["id"].as_str().unwrap().to_string();
+        std::fs::remove_dir_all(server.join("cfg")).unwrap();
+
+        let removed = crate::ipc::internal::into_internal(super::delete_instance(Path(id.clone()), State(state.clone()), Query(super::DeleteQuery { keep_settings: false })).await).await;
+        assert_eq!(removed.status.as_u16(), 200, "{}", removed.body);
+        assert_eq!(removed.body["settings_restore_failed"], 1);
+        let kept = std::path::PathBuf::from(removed.body["settings_kept_at"].as_str().expect("where the copies were kept"));
+        assert!(kept.starts_with(state.supervisor.read().await.instance_store.state_root()));
+        assert!(kept.join("originals.json").is_file());
+        assert_eq!(std::fs::read_to_string(kept.join("0")).unwrap(), "rcon=on\n");
+    }
+
+    /// 가져온 설정을 저장하지 못하면 성공으로 알리지 않는다: 저장소에는 가져오기 전 인스턴스(실행 파일·설정 없음)만 남는다
+    #[tokio::test]
+    async fn an_import_whose_result_cannot_be_saved_is_not_reported_as_created() {
+        use axum::{extract::State, Json};
+        let tmp = tempfile::tempdir().unwrap();
+        // 데몬의 모듈 폴더 아래에 둔다: 그 밖의 모듈은 Windows 격리 실행에서 인스턴스 폴더 쓰기를 받지 못한다
+        let modules = crate::plugin::resolve_modules_dir();
+        let fixture = tempfile::Builder::new().prefix("import-save-").tempdir_in(&modules).unwrap();
+        let dir = fixture.path();
+        let name = dir.file_name().unwrap().to_string_lossy().into_owned();
+        std::fs::write(dir.join("module.toml"), format!("[module]\nschema_version = 1\nname = '{name}'\nversion = '1.0.0'\nentry = 'lifecycle.py'\n")).unwrap();
+        // 가져오는 동안 instance.json 자리가 폴더로 바뀐다 (저장이 실패하는 디스크 상태 대신).
+        // 기록은 테스트가 망가뜨린다: Windows 격리 실행은 인스턴스 폴더의 데몬 항목을 바꾸지 못한다
+        std::fs::write(dir.join("lifecycle.py"),
+            "import json, os, sys, time\nc = json.load(sys.stdin)\nf = sys.argv[1]\n\
+             if f == 'functions': print(json.dumps({'success': True, 'functions': ['import_settings']}))\n\
+             else:\n    d = c['instance_dir']\n    open(os.path.join(d, 'started'), 'w').close()\n    \
+             for _ in range(300):\n        if os.path.exists(os.path.join(d, 'go')): break\n        time.sleep(0.1)\n    \
+             print(json.dumps({'success': True, 'settings': {'motd': 'mine'}}))\n",
+        ).unwrap();
+        crate::sandbox::consent_test_component(&dir.join("lifecycle.py"));
+        let instances = tmp.path().join("instances");
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), instances.to_str().unwrap());
+        for module in sup.module_loader.discover_modules().unwrap() { crate::sandbox::consent_test_component(std::path::Path::new(&module.entry_path())); }
+        sup.initialize().await.unwrap();
+        let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let server = tmp.path().join("server");
+        std::fs::create_dir_all(&server).unwrap();
+
+        let request = serde_json::json!({"name":"g", "module_name":name, "migration_source":server});
+        let created = tokio::spawn({
+            let state = state.clone();
+            async move { crate::ipc::internal::into_internal(super::create_instance(State(state), Json(request)).await).await }
+        });
+        let mut instance_dir = None;
+        for _ in 0..300 {
+            instance_dir = std::fs::read_dir(&instances).into_iter().flatten().flatten().map(|e| e.path()).find(|p| p.join("started").exists());
+            if instance_dir.is_some() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+        let instance_dir = instance_dir.expect("the import started");
+        let record = instance_dir.join("instance.json");
+        std::fs::remove_file(&record).unwrap();
+        std::fs::create_dir(&record).unwrap();
+        std::fs::write(instance_dir.join("go"), b"").unwrap();
+
+        let response = created.await.unwrap();
+        assert_eq!(response.status.as_u16(), 500, "{}", response.body);
+        assert_eq!(response.body["error_code"], "save_failed");
+        assert!(server.is_dir());
     }
 
     /// 지운 서버의 디스코드 낱말은 남기지 않는다: 남으면 heartbeat가 없는 서버의 낱말을 계속 싣는다

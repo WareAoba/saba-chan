@@ -212,7 +212,7 @@
     "sleep_blocks_none": "None",
     "bedtime": "Good kid",
     "bedtime_format": "Write --bedtime as fall-asleep time-wake-up time, like 01:00-08:00.",
-    "big_emoji": "Emojis grandes"
+    "big_emoji": "Ampliação de emojis"
   },
   "col": {
     "players": "Jogadores",
@@ -429,6 +429,7 @@
       "backup_failed_autosave_off": "O backup falhou e também não foi possível religar o salvamento automático do servidor. Reinicie o servidor: saba-chan-cli restart <name>",
       "backup_save_rejected": "O servidor recusou o comando de salvar, então nenhum backup foi feito. Pare o servidor e faça o backup de novo: saba-chan-cli stop <name>",
       "backup_save_unconfirmed": "O servidor não avisou que terminou de salvar, então nenhum backup foi feito. Tente de novo em instantes ou pare o servidor antes do backup: saba-chan-cli stop <name>",
+      "backup_server_stopped": "O servidor parou durante o backup, então esse backup foi descartado. Verifique o servidor e faça o backup de novo: saba-chan-cli backup <nome>",
       "snapshot_not_found": "O jogo não tem backup automático.",
       "invalid_relay_url": "Só são permitidos endereços de relay https:// (http apenas para localhost, 127.0.0.1 ou [::1] ao testar neste PC).",
       "module_busy": "Este módulo já está sendo instalado ou removido. Tente de novo quando terminar.",
@@ -830,6 +831,7 @@
       "config.paths": "Onde o Saba-chan guarda dados, módulos e extensões, e as pastas padrão",
       "config.move": "Mover módulos ou extensões para outra pasta. Os arquivos instalados são movidos; os servidores devem estar parados",
       "server.players": "Quem está online",
+      "server.address": "O endereço (IP:porta) que os amigos usam para entrar",
       "server.port-check": "Verifica se os amigos conseguem entrar neste servidor pela internet (redirecionamento de portas)",
       "server.rcon": "Enviar uma linha do jeito que o servidor recebe comandos (console, senão RCON) e ver a resposta",
       "server.log": "Log salvo das execuções anteriores (o console guarda só a atual)",
@@ -852,7 +854,7 @@
       "bot.backup-notice": "Enviar por DM todos os resultados de backup (--all) ou só as falhas (--failures). Sem opções: ver",
       "bot.confirm": "Quando o bot pergunta com um botão do Discord antes de executar (all, caution, danger, none). Sem opções: mostrar",
       "bot.tts": "Reading Saba-chan voice of a Discord server (volume, speed, pitch). No options: show",
-      "bot.big-emoji": "Emojis grandes (um emoji personalizado sozinho aparece grande) em um servidor do Discord. Sem opções: mostrar"
+      "bot.big-emoji": "Ampliação de emojis (um emoji personalizado sozinho aparece grande) em um servidor do Discord. Sem opções: mostrar"
     },
     "arg": {
       "module.maker.game": "Jogo para o primeiro pedido",
@@ -961,8 +963,8 @@
       "bot.tts.volume": "Volume in percent (10-150)",
       "bot.tts.speed": "Speaking speed (0.8-1.5, e.g. 1.2)",
       "bot.tts.pitch": "Pitch in semitones (-6 to 6)",
-      "bot.big-emoji.on": "Ativar emojis grandes",
-      "bot.big-emoji.off": "Desativar emojis grandes",
+      "bot.big-emoji.on": "Ativar a ampliação de emojis",
+      "bot.big-emoji.off": "Desativar a ampliação de emojis",
       "bot.tts.voice_chat_only": "Read your messages only in the chat of the voice channel you are in (on|off, game chat channel excepted)",
       "bot.tts.keep_read": "Keep read messages instead of deleting them (on|off)",
       "bot.tts.auto_channels": "Voice channel IDs to always read (comma-separated, up to 10): with 2+ people inside, the bot joins and reads its chat",
@@ -1352,7 +1354,10 @@
     "kept_instances": "os servidores são mantidos e as configurações removidas",
     "kept_nothing": "as configurações e os servidores também são removidos",
     "done": "O Saba-chan foi removido; {{kept}}.",
-    "left": "O Saba-chan foi removido, mas não foi possível apagar estes itens. Feche os programas que os usam e apague-os você mesmo:\n{{paths}}"
+    "left": "O Saba-chan foi removido, mas não foi possível apagar estes itens. Feche os programas que os usam e apague-os você mesmo:\n{{paths}}",
+    "servers_unlisted": "Não foi possível obter a lista de servidores em execução, então eles foram forçados a parar ({{detail}}).",
+    "server_force_stopped": "O servidor {{server}} não fechou corretamente e foi forçado a parar ({{detail}}). O que mudou desde o último salvamento pode ter se perdido.",
+    "daemon_unanswered": "O daemon não respondeu, então os servidores em execução foram forçados a parar. O que mudou desde o último salvamento pode ter se perdido."
   },
   "update_required": {
     "title": "Atualização necessária",
@@ -1476,6 +1481,12 @@
     "this_pc": "Este PC",
     "no_servers": "Sem servidores",
     "via_relay": "Pelo relay"
+  },
+  "address": {
+    "title": "Endereço de {{server}}",
+    "unknown": "O Server-chan não sabe o endereço público deste PC. Verifique se ele está conectado ao Server-chan",
+    "no_ports": "Este jogo não informa a porta de conexão",
+    "stopped": "O servidor está desligado. Ligue-o para que outros possam entrar"
   },
   "port_check": {
     "title": "Verificação de portas de {{server}}",

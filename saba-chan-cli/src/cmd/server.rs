@@ -31,6 +31,7 @@ pub async fn run(ctx: &Ctx, cmd: ServerCmd) -> Result<()> {
         ServerCmd::Chat { server, name, text } => chat(ctx, &server, &name, &text.join(" ")).await,
         ServerCmd::Players { server } => players(ctx, server.as_deref()).await,
         ServerCmd::PortCheck { server } => port_check(ctx, server.as_deref()).await,
+        ServerCmd::Address { server } => address(ctx, server.as_deref()).await,
         ServerCmd::Rcon { server, line } => rcon(ctx, &server, &line.join(" ")).await,
         ServerCmd::Log { server, source, lines, runs, all } => log(ctx, server.as_deref(), source.as_deref(), lines, runs, all).await,
         ServerCmd::Query { server, name, args } => query(ctx, &server, name.as_deref(), &args).await,
@@ -1468,6 +1469,31 @@ async fn players(ctx: &Ctx, query: Option<&str>) -> Result<()> {
         }
         for n in names {
             say!("  {}", n);
+        }
+    });
+    Ok(())
+}
+
+/// 서버 주소: 릴레이가 본 이 PC의 공인 주소 + 밖에 여는 포트마다 `주소:포트`
+async fn address(ctx: &Ctx, query: Option<&str>) -> Result<()> {
+    let sv = resolve::server(ctx, query).await?;
+    let r = ctx.api.address(&sv.id).await?;
+    ctx.out.data(&r, |r| {
+        output::heading(&t!("address.title", server = sv.name));
+        let ports: Vec<&Value> = r.get("ports").and_then(Value::as_array).into_iter().flatten().collect();
+        let ip = r.get("address").and_then(Value::as_str).and_then(|a| a.parse::<std::net::IpAddr>().ok());
+        match ip {
+            _ if ports.is_empty() => say!("{}", t!("address.no_ports")),
+            None => say!("{}", t!("address.unknown")),
+            Some(ip) => {
+                for p in ports {
+                    let port = p.get("port").and_then(Value::as_u64).and_then(|v| u16::try_from(v).ok()).unwrap_or(0);
+                    say!("  {}  {}", std::net::SocketAddr::new(ip, port), output::dim(s(p, "label")));
+                }
+            }
+        }
+        if r.get("running").and_then(Value::as_bool) == Some(false) {
+            say!("{}", output::dim(&t!("address.stopped")));
         }
     });
     Ok(())

@@ -150,6 +150,9 @@
       "schedule": {
         "set": {
           "title": "更改计划任务"
+        },
+        "get": {
+          "title": "查看计划任务"
         }
       },
       "delete": {
@@ -167,6 +170,20 @@
           "title": "满员提醒",
           "description": "此服务器满员或重新有空位时，在此 Discord 服务器的通知频道提醒",
           "name": "满员提醒"
+        }
+      },
+      "get": {
+        "title": "查看服务器设置"
+      },
+      "rename": {
+        "title": "重命名服务器"
+      },
+      "properties": {
+        "get": {
+          "title": "查看游戏设置文件"
+        },
+        "set": {
+          "title": "更改游戏设置文件"
         }
       }
     },
@@ -192,6 +209,9 @@
         "tail": {
           "title": "控制台末尾",
           "description": "控制台最后 20 行"
+        },
+        "send": {
+          "title": "发送控制台命令"
         }
       },
       "logs": {
@@ -208,6 +228,11 @@
         "title": "玩家",
         "description": "在线玩家及名字"
       },
+      "address": {
+        "title": "服务器地址",
+        "name": "地址",
+        "description": "仅向你显示朋友连接用的地址（IP:端口）"
+      },
       "port_check": {
         "title": "端口转发检查",
         "description": "中继检查能否从外网连接此服务器"
@@ -215,6 +240,17 @@
       "chat": {
         "title": "发送游戏聊天",
         "description": "把 Discord 消息发送到游戏聊天"
+      },
+      "update": {
+        "check": {
+          "title": "检查游戏服务器更新"
+        },
+        "apply": {
+          "title": "更新游戏服务器"
+        }
+      },
+      "diagnose": {
+        "title": "诊断服务器"
       }
     },
     "monitor": {
@@ -233,12 +269,21 @@
       "restore": {
         "title": "恢复备份",
         "description": "用备份覆盖当前的服务器文件"
+      },
+      "delete": {
+        "title": "删除备份"
       }
     },
     "module": {
       "install": {
         "title": "安装模块",
         "description": "从官方目录下载并安装"
+      },
+      "list": {
+        "title": "已安装的模块"
+      },
+      "available": {
+        "title": "可用的模块"
       }
     },
     "extension": {
@@ -247,6 +292,15 @@
       },
       "disable": {
         "title": "停用扩展"
+      },
+      "list": {
+        "title": "已安装的扩展"
+      },
+      "available": {
+        "title": "可用的扩展"
+      },
+      "install": {
+        "title": "安装扩展"
       }
     },
     "update": {
@@ -323,7 +377,9 @@
       "step": "步骤",
       "from_snapshot": "来自游戏自动备份",
       "text": "内容",
-      "apiKey": "API 密钥"
+      "apiKey": "API 密钥",
+      "command": "命令",
+      "settings": "设置"
     },
     "summary": {
       "server_item": "• **{{name}}** ({{module}}) · {{status}}",
@@ -359,6 +415,13 @@
       "players_max": "👥 在线 {{online}}/{{max}} 人",
       "player_item": "• {{name}}",
       "players_more": "…另外 {{count}} 人",
+      "address": {
+        "item": "• `{{address}}`",
+        "item_named": "• {{label}} `{{address}}`",
+        "stopped": "💤 服务器已关闭。启动后才能连接",
+        "unknown": "❔ 服务器酱还不知道这台电脑的公网地址。请稍后再试",
+        "no_ports": "📭 此游戏没有提供连接端口"
+      },
       "port_check": {
         "open": "✅ 可以从外网连接",
         "firewall": "🧱 被电脑防火墙阻止",
@@ -407,6 +470,7 @@
     "backup_failed_autosave_off": "备份失败，服务器的自动保存也未能重新开启。请重启服务器",
     "backup_save_rejected": "服务器拒绝了保存命令，因此没有进行备份。请停止服务器后重新备份",
     "backup_save_unconfirmed": "服务器未报告保存完成，因此没有进行备份。请稍后重试，或停止服务器后再备份",
+    "backup_server_stopped": "备份期间服务器已停止，因此已丢弃该备份。请检查服务器后重新备份",
     "snapshot_not_found": "游戏没有自动备份",
     "snapshot_not_deletable": "Saba-chan 不能删除游戏自己的自动备份"
   },

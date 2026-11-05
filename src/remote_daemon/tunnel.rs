@@ -54,14 +54,21 @@ async fn open_socket_via(relay: &Target, query: &str, proxy: Option<Proxy>) -> O
     request
         .headers_mut()
         .insert("X-Saba-Client", HeaderValue::from_static("1"));
+    let tls = match saba_chan_updater_lib::tls::client_config() {
+        Ok(tls) => tokio_tungstenite::Connector::Rustls(tls),
+        Err(e) => {
+            tracing::warn!("Relay tunnel TLS setup failed: {}", e);
+            return None;
+        }
+    };
     let opened = match proxy {
-        None => tokio_tungstenite::connect_async(request).await,
+        None => tokio_tungstenite::connect_async_tls_with_config(request, None, false, Some(tls)).await,
         Some(proxy) => {
             let uri = request.uri();
             let host = uri.host()?.to_string();
             let port = uri.port_u16().unwrap_or(if uri.scheme_str() == Some("wss") { 443 } else { 80 });
             let tcp = connect_through(&proxy, &host, port).await?;
-            tokio_tungstenite::client_async_tls(request, tcp).await
+            tokio_tungstenite::client_async_tls_with_config(request, tcp, None, Some(tls)).await
         }
     };
     match opened {

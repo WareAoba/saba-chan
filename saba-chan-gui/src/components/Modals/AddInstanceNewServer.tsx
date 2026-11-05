@@ -48,7 +48,6 @@ export interface AddInstanceNewServerProps {
 export function AddInstanceNewServer({
     extensions,
     servers,
-    onRefreshextensions,
     onAddServer,
     onStepChange,
     onBack,

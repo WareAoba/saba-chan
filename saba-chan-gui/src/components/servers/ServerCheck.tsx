@@ -112,7 +112,11 @@ export function ServerCheck({ server }: { server: Server }) {
             {result?.issues && result.issues.length > 0 && (
                 <ul className="server-check-issues">
                     {result.issues.map((issue, i) => (
-                        <li key={`${issue.code}-${i}`} className={clsx('server-check-issue', `sev-${issue.severity}`)}>
+                        <li
+                            // biome-ignore lint/suspicious/noArrayIndexKey: 읽기 전용 목록이라 순서가 바뀌지 않는다
+                            key={`${issue.code}-${i}`}
+                            className={clsx('server-check-issue', `sev-${issue.severity}`)}
+                        >
                             <Icon name={SEVERITY_ICON[issue.severity] || 'info'} size="sm" />
                             <div>
                                 <p className="server-check-message">{issue.message || issue.code}</p>

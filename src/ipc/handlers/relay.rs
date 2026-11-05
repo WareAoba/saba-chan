@@ -89,7 +89,7 @@ pub(crate) fn relay_client() -> Result<reqwest::Client, reqwest::Error> {
         "X-Saba-Client",
         reqwest::header::HeaderValue::from_static("1"),
     );
-    reqwest::Client::builder()
+    saba_chan_updater_lib::tls::http_client_builder()
         .timeout(std::time::Duration::from_secs(5))
         .default_headers(headers)
         .build()
@@ -429,6 +429,23 @@ pub async fn clear_node_moderation_channel(
     let base = signed_base(&state, params.relay_url.as_deref()).await;
     let path = format!(
         "/api/nodes/{}/moderation/channels/{}/clear",
+        encode_path_segment(&guild_id),
+        encode_path_segment(&channel_id)
+    );
+    signed_json(&base, reqwest::Method::POST, &path, &body).await
+}
+
+// 확인 창 전의 검사 — 청소와 같은 권한을 보고 지우지 않는다. 경로가 따로인 까닭: 본문의 dryRun 을 모르는 옛 relay 는
+// 그 값을 버리고 실제로 지운다. 이 경로는 옛 relay 에 없어서 404 가 된다
+pub async fn check_clear_node_moderation_channel(
+    Path((guild_id, channel_id)): Path<(String, String)>,
+    Query(params): Query<RelayQueryParams>,
+    State(state): State<IPCServer>,
+    Json(body): Json<Value>,
+) -> Response {
+    let base = signed_base(&state, params.relay_url.as_deref()).await;
+    let path = format!(
+        "/api/nodes/{}/moderation/channels/{}/clear/check",
         encode_path_segment(&guild_id),
         encode_path_segment(&channel_id)
     );
@@ -922,7 +939,7 @@ mod tests {
     #[test]
     fn signed_headers_are_only_attached_for_an_https_or_loopback_relay() {
         let headers = || Some(vec![("Authorization".to_string(), "Bearer sbn_a.b".to_string())]);
-        let client = reqwest::Client::new();
+        let client = saba_chan_updater_lib::tls::http_client_builder().build().unwrap();
         let auth = |url: &str| with_headers_if_secure(client.get(url), headers()).build().unwrap().headers().contains_key("authorization");
         assert!(!auth("http://old.example/api/x"));
         assert!(!auth("http://127.0.0.2:9/api/x"));

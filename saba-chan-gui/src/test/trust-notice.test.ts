@@ -45,7 +45,7 @@ describe('신뢰 경고 알림', () => {
             warnings: [{ code: 'extension_unverified', extension: 'music' }],
         });
         const { result } = renderHook(() => useExtensions(), { wrapper: ExtensionProvider });
-        let ok;
+        let ok: unknown;
         await act(async () => {
             ok = await result.current.toggleExtension('music', true);
         });

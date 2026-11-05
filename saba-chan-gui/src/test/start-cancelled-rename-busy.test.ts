@@ -55,7 +55,7 @@ describe('이름 바꾸기: 다른 작업 중 (instance_busy)', () => {
             .fn()
             .mockResolvedValue({ success: false, error: 'busy', error_code: 'instance_busy' });
         const { result } = setup();
-        let ok;
+        let ok: unknown;
         await act(async () => {
             ok = await result.current.handleRename('a', 'B');
         });

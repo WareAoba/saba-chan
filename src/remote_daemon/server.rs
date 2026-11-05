@@ -734,6 +734,10 @@ pub(crate) mod tests {
             ("GET", "/api/extensions/x/config"),
             ("PUT", "/api/extensions/x/config"),
             ("POST", "/api/sandbox/unisolated/x"),
+            // 다른 원격 데몬으로 중계하는 라우트는 뒤 경로가 몇 조각이든 PC 전용이다
+            ("GET", "/api/remote/daemons/h/proxy/health"),
+            ("GET", "/api/remote/daemons/h/proxy/api/servers"),
+            ("POST", "/api/remote/daemons/h/proxy/api/instance/x/stop"),
         ] {
             let (s, body) = call(addr, &pin, method, path, Some(&token), Some(json!({}))).await.unwrap();
             assert_eq!((s, body["error_code"].as_str()), (403, Some("remote_local_only")), "{method} {path}");

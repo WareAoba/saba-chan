@@ -212,7 +212,7 @@
     "sleep_blocks_none": "None",
     "bedtime": "Good kid",
     "bedtime_format": "Write --bedtime as fall-asleep time-wake-up time, like 01:00-08:00.",
-    "big_emoji": "大きい絵文字"
+    "big_emoji": "絵文字アップスケール"
   },
   "col": {
     "players": "接続者",
@@ -429,6 +429,7 @@
       "backup_failed_autosave_off": "バックアップに失敗し、サーバーの自動保存も再開できませんでした。サーバーを再起動してください: saba-chan-cli restart <name>",
       "backup_save_rejected": "サーバーが保存コマンドを受け付けなかったため、バックアップしませんでした。サーバーを停止してからもう一度バックアップしてください: saba-chan-cli stop <name>",
       "backup_save_unconfirmed": "サーバーが保存の完了を知らせなかったため、バックアップしませんでした。しばらくしてからもう一度試すか、サーバーを停止してからバックアップしてください: saba-chan-cli stop <name>",
+      "backup_server_stopped": "バックアップ中にサーバーが停止したため、そのバックアップは削除しました。サーバーの状態を確認してからもう一度バックアップしてください: saba-chan-cli backup <name>",
       "snapshot_not_found": "ゲームが作った自動バックアップがありません.",
       "invalid_relay_url": "リレーのアドレスは https:// のみ使えます(この PC でのテスト用に localhost・127.0.0.1・[::1] の http だけは使えます)。",
       "module_busy": "このモジュールはすでにインストールまたは削除中です。終わってからもう一度試してください。",
@@ -962,6 +963,7 @@
       "config.paths": "データ・モジュール・拡張機能フォルダーの場所と既定のフォルダー",
       "config.move": "モジュールや拡張機能を別のフォルダーへ移す。インストール済みのファイルも移す。サーバーはすべて停止が必要",
       "server.players": "今接続している人",
+      "server.address": "友だちが接続するアドレス（IP:ポート）",
       "server.port-check": "友だちが外部からこのサーバーに接続できるか確認（ポート開放）",
       "server.rcon": "サーバーがコマンドを受け取る経路(コンソール、なければRCON)で1行送って応答を見る",
       "server.log": "過去の実行まで保存されたログ(コンソールは今回の実行分のみ)",
@@ -984,7 +986,7 @@
       "bot.backup-notice": "バックアップ結果をすべてDMするか(--all)、失敗だけか(--failures)。オプションなし: 表示",
       "bot.confirm": "実行前にボットがDiscordのボタンで確認する段階 (all・caution・danger・none)。オプションなし: 表示",
       "bot.tts": "Reading Saba-chan voice of a Discord server (volume, speed, pitch). No options: show",
-      "bot.big-emoji": "Discordサーバーの大きい絵文字(カスタム絵文字だけのメッセージを大きく表示)。オプションなしで表示"
+      "bot.big-emoji": "Discordサーバーの絵文字アップスケール(カスタム絵文字だけのメッセージを大きく表示)。オプションなしで表示"
     },
     "arg": {
       "module.maker.game": "最初の依頼に入れるゲーム名",
@@ -1174,8 +1176,8 @@
       "bot.tts.volume": "Volume in percent (10-150)",
       "bot.tts.speed": "Speaking speed (0.8-1.5, e.g. 1.2)",
       "bot.tts.pitch": "Pitch in semitones (-6 to 6)",
-      "bot.big-emoji.on": "大きい絵文字をオン",
-      "bot.big-emoji.off": "大きい絵文字をオフ",
+      "bot.big-emoji.on": "絵文字アップスケールをオン",
+      "bot.big-emoji.off": "絵文字アップスケールをオフ",
       "bot.tts.voice_chat_only": "Read your messages only in the chat of the voice channel you are in (on|off, game chat channel excepted)",
       "bot.tts.keep_read": "Keep read messages instead of deleting them (on|off)",
       "bot.tts.auto_channels": "Voice channel IDs to always read (comma-separated, up to 10): with 2+ people inside, the bot joins and reads its chat",
@@ -1611,7 +1613,10 @@
     "kept_instances": "ゲームサーバーは残し、設定は削除します",
     "kept_nothing": "設定とゲームサーバーも削除します",
     "done": "サバちゃんを削除しました。{{kept}}。",
-    "left": "サバちゃんを削除しましたが、次の項目を削除できませんでした。使用中のプログラムを閉じて手動で削除してください:\n{{paths}}"
+    "left": "サバちゃんを削除しましたが、次の項目を削除できませんでした。使用中のプログラムを閉じて手動で削除してください:\n{{paths}}",
+    "servers_unlisted": "起動中のサーバー一覧を取得できず、正常に終了できなかったため強制終了しました ({{detail}})。",
+    "server_force_stopped": "サーバー {{server}} を正常に終了できず、強制終了しました ({{detail}})。最後の保存以降の内容が失われている可能性があります。",
+    "daemon_unanswered": "デーモンが応答しなかったため、起動中のサーバーを強制終了しました。最後の保存以降の内容が失われている可能性があります。"
   },
   "update_required": {
     "title": "アップデートが必要です",
@@ -1689,6 +1694,12 @@
     "this_pc": "このPC",
     "no_servers": "サーバーなし",
     "via_relay": "リレー経由"
+  },
+  "address": {
+    "title": "{{server}} のアドレス",
+    "unknown": "サーバーちゃんがこのPCのグローバルアドレスを把握していません。サーバーちゃんに接続しているか確認してください",
+    "no_ports": "このゲームは接続ポートを示していません",
+    "stopped": "サーバーが停止しています。起動すると接続できます"
   },
   "port_check": {
     "title": "{{server}} のポート開放確認",

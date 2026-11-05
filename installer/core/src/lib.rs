@@ -697,7 +697,7 @@ fn install_elsewhere(chosen: &Path, installs: &Path, entries: &[(String, String)
     found_installs(installs, entries).find(|dir| !saba_chan_updater_lib::same_path(dir, chosen))
 }
 
-fn found_installs<'a>(installs: &Path, entries: &'a [(String, String)]) -> impl Iterator<Item = PathBuf> + 'a {
+fn found_installs<'a>(installs: &Path, entries: &'a [(String, String)]) -> impl Iterator<Item = PathBuf> + use<'a> {
     let listed = saba_chan_updater_lib::uninstall_entry::listed_installs(installs);
     listed
         .into_iter()

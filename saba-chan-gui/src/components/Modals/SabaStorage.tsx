@@ -263,7 +263,7 @@ function ComponentsTab({ devMode }: { devMode?: boolean }) {
         } catch (e) {
             setError(t('saba_storage.switch_failed', { error: (e as Error).message }));
         }
-    }, []);
+    }, [t]);
 
     const refreshStatus = useCallback(async () => {
         try {
@@ -359,7 +359,7 @@ function ComponentsTab({ devMode }: { devMode?: boolean }) {
             }
             clearBusy(key);
         },
-        [refreshStatus, markBusy, clearBusy],
+        [refreshStatus, markBusy, clearBusy, t],
     );
 
     const executeUpdateAll = useCallback(async () => {
@@ -431,7 +431,7 @@ function ComponentsTab({ devMode }: { devMode?: boolean }) {
         if (daemonApplied.length > 0) setMessage(t('saba_storage.apply_completed', { names: daemonApplied.join(', ') }));
         else if (!hadError) setMessage(t('saba_storage.update_done'));
         setBusyAll(false);
-    }, [components, refreshStatus, markBusy, clearBusy, startProgressPolling, stopProgressPolling]);
+    }, [components, refreshStatus, markBusy, clearBusy, startProgressPolling, stopProgressPolling, t]);
 
     const handleUpdateAll = useCallback(() => {
         const updatable = components.filter((c) => c.update_available);

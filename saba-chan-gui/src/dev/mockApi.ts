@@ -684,6 +684,7 @@ const impl: Record<string, MockFn> = {
         return ok({ ...c });
     },
     relayModClear: () => ok({ deleted: 87, kept: 2, olderLeft: false }),
+    relayModClearCheck: () => ok({ dryRun: true }),
     relayModMute: (_guildId, userId, body) => {
         mockModeration.mutes = mockModeration.mutes.filter((m) => m.userId !== userId);
         if (body.duration !== 'off') {
@@ -872,7 +873,7 @@ const impl: Record<string, MockFn> = {
                 },
             ],
         }),
-    relayLinkRequestRespond: (id, accept) =>
+    relayLinkRequestRespond: (_id, accept) =>
         ok(accept ? { ok: true, guildId: '900', guildName: '마크 친구들' } : { ok: true, declined: true }),
     relayMcpGrant: () => ok({ grant: { clientName: 'Claude', createdAt: '2026-10-28T00:00:00Z', lastUsedAt: '2026-10-28T01:00:00Z' }, url: 'https://saba-chan.online/mcp' }),
     relayMcpGrantRevoke: () => ok(''),

@@ -103,10 +103,10 @@ describe('PC 없는 사람의 웹', () => {
         const session = fakeSession();
         render(<App api={mockApi({})} session={mockSession(session)} />);
         await flush();
-        fireEvent.click(screen.getByRole('checkbox', { name: /Big emoji/ }));
+        fireEvent.click(screen.getByRole('checkbox', { name: /Emoji upscale/ }));
         await flush();
         expect(session.request).toHaveBeenCalledWith('PATCH', `/relay/guilds/${G}/settings`, { bigEmoji: true });
-        expect(screen.getByRole<HTMLInputElement>('checkbox', { name: /Big emoji/ }).checked).toBe(true);
+        expect(screen.getByRole<HTMLInputElement>('checkbox', { name: /Emoji upscale/ }).checked).toBe(true);
     });
 
     it('제재(타임아웃)를 풀면 릴레이 서버 관리 경로로 보낸다', async () => {

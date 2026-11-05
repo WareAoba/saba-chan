@@ -76,7 +76,7 @@ describe('익스텐션 파일이 바뀌어 확인되지 않았을 때', () => {
     it('서버 만들기: extension_required 안내 대신 확인되지 않았다고 알린다', async () => {
         window.api.instanceCreate = vi.fn().mockResolvedValue(notVerified);
         const { result, setModal } = setup();
-        let returned;
+        let returned: unknown;
         await act(async () => {
             returned = await result.current.handleAddServer({ name: 'B', module_name: 'game' });
         });

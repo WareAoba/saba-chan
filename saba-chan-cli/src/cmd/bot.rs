@@ -852,7 +852,7 @@ fn sleep_patch(block: Option<Vec<String>>, bedtime: Option<String>, no_bedtime: 
     Ok(if patch.is_empty() { Value::Null } else { Value::Object(patch) })
 }
 
-/// 큰 이모지 켜기·끄기 (릴레이가 가진 길드 설정, 데몬이 넘긴다). 둘 다 없으면 보기만
+/// 이모지 업스케일 켜기·끄기 (릴레이가 가진 길드 설정, 데몬이 넘긴다). 둘 다 없으면 보기만
 fn big_emoji_patch(on: bool, off: bool) -> Option<Value> {
     (on || off).then(|| json!({ "bigEmoji": on }))
 }
@@ -883,7 +883,7 @@ fn discord_rows(r: &Value) -> Vec<(String, String)> {
         let bedtime = r.get("bedtime").filter(|b| b.is_object());
         rows.push((t!("bot.bedtime"), bedtime.map_or_else(|| t!("bot.off"), |b| format!("{} ~ {}", s(b, "start"), s(b, "end")))));
     }
-    // 큰 이모지: 릴레이가 가진 값이라 릴레이가 답하지 못하면 없다
+    // 이모지 업스케일: 릴레이가 가진 값이라 릴레이가 답하지 못하면 없다
     if let Some(on) = r.get("bigEmoji").and_then(Value::as_bool) {
         rows.push((t!("bot.big_emoji"), on_off(Some(on))));
     }
@@ -1064,8 +1064,10 @@ async fn clear(ctx: &Ctx, guild: &str, channel: &str, count: u32, member: Option
             return Err(usage(t!("bot.bad_duration", value = p)));
         }
     }
-    ctx.ask.ensure(&t!("bot.confirm_clear", name = name, count = count))?;
     let cfg = ctx.api.bot_config().await?;
+    // 권한을 먼저 본다(지우지 않는 검사): 지울 수 없으면 묻지 않고 거절을 보인다
+    checked_before_asking(ctx.api.check_clear_channel(guild, &id, body.clone(), relay_of(&cfg)).await)?;
+    ctx.ask.ensure(&t!("bot.confirm_clear", name = name, count = count))?;
     let r = ctx.api.clear_channel(guild, &id, body, relay_of(&cfg)).await?;
     let n = |k: &str| r.get(k).and_then(Value::as_u64).unwrap_or(0);
     let mut msg = t!("bot.cleared", deleted = n("deleted"), kept = n("kept"));
@@ -1074,6 +1076,15 @@ async fn clear(ctx: &Ctx, guild: &str, channel: &str, count: u32, member: Option
     }
     ctx.out.done(&msg, &r);
     Ok(())
+}
+
+/// 확인 전 권한 검사의 결과. 검사 경로가 없는 옛 릴레이(`not_found`)면 예전처럼 묻는다
+fn checked_before_asking(res: Result<Value>) -> Result<()> {
+    match res {
+        Ok(_) => Ok(()),
+        Err(e) if matches!(e.downcast_ref::<crate::error::CliError>(), Some(c) if c.code() == "not_found") => Ok(()),
+        Err(e) => Err(e),
+    }
 }
 
 async fn mute(ctx: &Ctx, guild: &str, member: &str, duration: &str, reason: Option<String>) -> Result<()> {
@@ -1293,6 +1304,20 @@ mod tests {
 
     use super::*;
 
+    /// 청소는 묻기 전에 권한을 본다: 거절이면 그 거절, 검사 경로가 없는 옛 릴레이면 묻는 데로 넘어간다
+    #[test]
+    fn clear_checks_permission_before_asking() {
+        use crate::error::CliError;
+        let api = |status: u16, code: &str| -> Result<Value> {
+            Err(CliError::Api { status, code: Some(code.into()), message: String::new(), body: json!({}) }.into())
+        };
+        assert!(checked_before_asking(Ok(json!({ "dryRun": true }))).is_ok());
+        assert!(checked_before_asking(api(404, "not_found")).is_ok());
+        let refused = checked_before_asking(api(403, "forbidden")).unwrap_err();
+        assert_eq!(refused.downcast_ref::<CliError>().map(CliError::code).as_deref(), Some("forbidden"));
+        assert!(checked_before_asking(api(404, "unknown_channel")).is_err());
+    }
+
     /// 서버 설정에 그 서버의 호출어와 명령 이름 번역이 보인다 (비면 기본 호출어, 값이 없으면 번역 켜짐)
     /// 저장 문구는 데몬이 다듬어 저장한 접두사를 보인다 (입력 원문이 아니라)
     #[test]
@@ -1325,7 +1350,7 @@ mod tests {
         assert_eq!(row(&r, "bot.private_queries"), Some(t!("bot.on")));
     }
 
-    /// 큰 이모지 (GUI 봇 설정 탭과 같다): 릴레이가 가진 값이라, 릴레이가 답하지 못해 값이 없으면 줄을 두지 않는다
+    /// 이모지 업스케일 (GUI 봇 설정 탭과 같다): 릴레이가 가진 값이라, 릴레이가 답하지 못해 값이 없으면 줄을 두지 않는다
     #[test]
     fn big_emoji_is_shown_and_changed_like_the_gui() {
         crate::i18n::init("ko");

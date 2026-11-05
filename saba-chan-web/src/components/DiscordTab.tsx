@@ -123,7 +123,7 @@ const fromDaemon = <T = ApiBody>(res: ApiBody, pick: (x: ApiBody) => T = (x) => 
     failed(res) ? { ok: false, daemon: res } : { ok: true, data: pick(res) };
 
 /**
- * 이 PC 에 붙은 서버의 쓰기 길: 데몬이 원본인 설정과 말하는 사바쨩은 데몬(큰 이모지는 데몬이 릴레이로 넘긴다),
+ * 이 PC 에 붙은 서버의 쓰기 길: 데몬이 원본인 설정과 말하는 사바쨩은 데몬(이모지 업스케일은 데몬이 릴레이로 넘긴다),
  * 채널 배정·기억 지우기는 릴레이 (릴레이 API 는 PC 가 붙은 서버의 데몬 값을 409 PC_OWNED 로 거절한다).
  * API 키는 이 PC 의 키 하나다 (이 PC 에 붙은 모든 디스코드 서버가 같이 쓴다)
  */

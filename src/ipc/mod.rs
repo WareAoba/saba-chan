@@ -858,6 +858,7 @@ impl IPCServer {
             .route("/api/instance/{id}/agreements", post(handlers::managed::accept_agreements_handler))
             .route("/api/instance/{id}/diagnose", post(handlers::managed::diagnose_handler))
             .route("/api/instance/{id}/port-check", get(handlers::port_check::last).post(handlers::port_check::check))
+            .route("/api/instance/{id}/address", get(handlers::port_check::address))
             // 백업 (A2)·예약 작업 (A3)
             .route("/api/instance/{id}/backups", get(handlers::backup::list_backups).post(handlers::backup::create_backup))
             .route("/api/instance/{id}/backups/{name}", delete(handlers::backup::delete_backup))
@@ -969,6 +970,10 @@ impl IPCServer {
             .route(
                 "/api/relay/node/{guild_id}/moderation/channels/{channel_id}/clear",
                 post(handlers::relay::clear_node_moderation_channel),
+            )
+            .route(
+                "/api/relay/node/{guild_id}/moderation/channels/{channel_id}/clear/check",
+                post(handlers::relay::check_clear_node_moderation_channel),
             )
             .route("/api/relay/node/{guild_id}/moderation/mutes/{user_id}", put(handlers::relay::put_node_moderation_mute))
             .route("/api/relay/node/{guild_id}/chatbot/models", get(handlers::relay::get_node_chatbot_models))

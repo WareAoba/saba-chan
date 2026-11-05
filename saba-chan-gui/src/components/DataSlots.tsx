@@ -23,7 +23,12 @@ export function DataBadges({ server }: { server: Pick<ServerInfo, 'slots'> | nul
     const items = slotItems(server, 'ServerCard.badge');
     if (items.length === 0) return null;
     return items.map((b, i) => (
-        <span className="data-slot-badge" key={`${b.extension}-${i}`} data-tooltip={b.extension}>
+        <span
+            className="data-slot-badge"
+            // biome-ignore lint/suspicious/noArrayIndexKey: 읽기 전용 목록이라 순서가 바뀌지 않는다
+            key={`${b.extension}-${i}`}
+            data-tooltip={b.extension}
+        >
             {b.text}
         </span>
     ));

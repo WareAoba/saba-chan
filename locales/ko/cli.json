@@ -212,7 +212,7 @@
     "sleep_blocks_none": "없음",
     "bedtime": "착한 어린이",
     "bedtime_format": "--bedtime 은 01:00-08:00 처럼 잠드는 시각-일어나는 시각으로 써 주세요.",
-    "big_emoji": "큰 이모지"
+    "big_emoji": "이모지 업스케일"
   },
   "col": {
     "players": "접속자",
@@ -429,6 +429,7 @@
       "backup_failed_autosave_off": "백업하지 못했고, 서버의 자동 저장도 다시 켜지 못했어요. 서버를 다시 시작해 주세요: saba-chan-cli restart <name>",
       "backup_save_rejected": "서버가 저장 명령을 받지 않아 백업하지 않았어요. 서버를 끈 뒤 다시 백업해 주세요: saba-chan-cli stop 이름",
       "backup_save_unconfirmed": "서버가 저장을 마쳤다고 알리지 않아 백업하지 않았어요. 잠시 뒤 다시 하거나 서버를 끈 뒤 백업해 주세요: saba-chan-cli stop 이름",
+      "backup_server_stopped": "백업하는 사이 서버가 꺼져서 그 백업은 지웠어요. 서버 상태를 확인한 뒤 다시 백업해 주세요: saba-chan-cli backup 이름",
       "snapshot_not_found": "게임이 만든 자동 백업이 없어요.",
       "invalid_relay_url": "서버쨩 주소는 https:// 주소만 쓸 수 있어요(이 PC에서 시험할 때만 localhost·127.0.0.1·[::1]의 http를 쓸 수 있어요).",
       "module_busy": "이 모듈을 이미 설치하거나 지우는 중이에요. 끝난 뒤 다시 해 주세요.",
@@ -964,6 +965,7 @@
       "config.paths": "데이터·모듈·익스텐션 폴더 위치와 기본 폴더",
       "config.move": "모듈이나 익스텐션을 다른 폴더로 옮겨요. 설치된 파일도 옮기며, 서버를 모두 꺼야 해요",
       "server.players": "지금 접속한 사람",
+      "server.address": "친구가 접속할 주소(IP:포트)",
       "server.port-check": "친구가 밖에서 이 서버에 접속할 수 있는지 확인 (포트포워딩)",
       "server.rcon": "서버가 명령을 받는 길(콘솔, 없으면 RCON)로 한 줄 보내고 답 보기",
       "server.log": "지난 실행까지 저장된 로그 (콘솔은 지금 실행분만)",
@@ -993,7 +995,7 @@
       "bot.channel": "디스코드 서버의 채널 하나(이름이나 id)를 바꿔요: 이름·주제·슬로우·잠금·자동 청소",
       "bot.clear": "채널의 최근 메시지를 지워요(고정 메시지·사바쨩 패널은 남아요). 먼저 물어봐요",
       "bot.mute": "멤버의 채팅·반응·음성을 막아요: 기간(10m, 1h, 7d, 28일까지), forever, 풀려면 off",
-      "bot.big-emoji": "디스코드 서버의 큰 이모지(커스텀 이모지 하나만 쓴 글을 크게 보이기). 옵션이 없으면 보기"
+      "bot.big-emoji": "디스코드 서버의 이모지 업스케일(커스텀 이모지만 쓴 글을 크게 보이기). 옵션이 없으면 보기"
     },
     "arg": {
       "module.maker.game": "첫 부탁에 넣을 게임 이름",
@@ -1210,8 +1212,8 @@
       "bot.sleep-mode.bedtime": "착한 어린이: 이 시각에 저절로 잠들고 깨요 (서버 시간대, 예: 01:00-08:00)",
       "bot.sleep-mode.no_bedtime": "착한 어린이 끄기 (손으로만 재워요)",
       "bot.sleep-mode.no_block": "자는 동안에도 아무 기능도 끄지 않기",
-      "bot.big-emoji.on": "큰 이모지 켜기",
-      "bot.big-emoji.off": "큰 이모지 끄기"
+      "bot.big-emoji.on": "이모지 업스케일 켜기",
+      "bot.big-emoji.off": "이모지 업스케일 끄기"
     },
     "after": "이름은 일부만 적어도 돼요 (예: start pal). 인자 없이 터미널에서 실행하면 전체 화면 메뉴가 열려요(SABA_NO_TUI=1이면 대화형 셸).\n스크립트에서는 --json과 --yes를 쓰세요. 종료 코드: 0 성공 · 1 실패 · 2 사용법 · 3 데몬 연결 안 됨 · 4 없음 · 130 취소"
   },
@@ -1643,7 +1645,10 @@
     "kept_instances": "게임 서버는 남기고 설정은 지웁니다",
     "kept_nothing": "설정과 게임 서버도 지웁니다",
     "done": "사바쨩을 제거했습니다. {{kept}}.",
-    "left": "사바쨩을 제거했지만 아래 항목을 지우지 못했습니다. 사용 중인 프로그램을 닫고 직접 지워 주세요:\n{{paths}}"
+    "left": "사바쨩을 제거했지만 아래 항목을 지우지 못했습니다. 사용 중인 프로그램을 닫고 직접 지워 주세요:\n{{paths}}",
+    "servers_unlisted": "켜진 서버 목록을 받지 못해 서버를 정상 종료하지 못하고 강제로 껐습니다 ({{detail}}).",
+    "server_force_stopped": "{{server}} 서버를 정상 종료하지 못해 강제로 껐습니다 ({{detail}}). 마지막 저장 이후 내용이 없을 수 있습니다.",
+    "daemon_unanswered": "데몬이 답하지 않아 켜져 있던 서버를 강제로 껐습니다. 마지막 저장 이후 내용이 없을 수 있습니다."
   },
   "update_required": {
     "title": "업데이트가 필요해요",
@@ -1721,6 +1726,12 @@
     "this_pc": "이 PC",
     "no_servers": "서버 없음",
     "via_relay": "서버쨩 거침"
+  },
+  "address": {
+    "title": "{{server}} 주소",
+    "unknown": "서버쨩이 이 PC의 공인 주소를 알지 못했어요. 서버쨩에 연결돼 있는지 확인해 주세요",
+    "no_ports": "이 게임은 접속 포트를 알려 주지 않았어요",
+    "stopped": "서버가 꺼져 있어요. 켜야 접속할 수 있어요"
   },
   "port_check": {
     "title": "{{server}} 포트포워딩 확인",

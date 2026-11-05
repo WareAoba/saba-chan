@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import Icon from '../Icon';
 import { useModalClose } from '../../hooks/useModalClose';
 import type { Server } from '../../stores/useServerStore';
-import type { ApiBody, ModuleInfo } from '../../types/daemon';
+import type { ModuleInfo } from '../../types/daemon';
 import { AddInstanceNewServer } from './AddInstanceNewServer';
 import { AddInstanceMigration } from './AddInstanceMigration';
 import './Modals.css';

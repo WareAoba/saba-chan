@@ -15,7 +15,6 @@ import {
     setCustomTheme,
     resetCustomTheme,
     ACCENT_PRESETS,
-    THEME_DEFAULTS,
     applyCustomTheme,
     type ThemeConfig,
     type ThemeMode,
@@ -378,7 +377,7 @@ function SettingsModal({
     const handleIpcPortChange = (value: string) => {
         const port = parseInt(value, 10);
         setLocalIpcPort(value);
-        if (isNaN(port) || port < 1024 || port > 65535) {
+        if (Number.isNaN(port) || port < 1024 || port > 65535) {
             setIpcPortError(t('gui:settings_modal.ipc_port_invalid'));
             return;
         }

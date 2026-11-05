@@ -93,11 +93,6 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
 
     // ── Helpers ─────────────────────────────────────────────
 
-    const getNextZ = useCallback(() => {
-        zCounterRef.current += 1;
-        return zCounterRef.current;
-    }, []);
-
     const getDefaultPosition = useCallback((existingCount: number) => {
         const offset = existingCount * 30;
         return {

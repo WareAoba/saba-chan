@@ -532,6 +532,8 @@ pub enum ServerCmd {
     Commands { server: Option<String> },
     /// Who is online
     Players { server: Option<String> },
+    /// The address (IP:port) friends connect to
+    Address { server: Option<String> },
     /// Check from the internet whether friends can reach this server (port forwarding)
     #[command(name = "port-check", visible_alias = "ports")]
     PortCheck { server: Option<String> },
@@ -1112,13 +1114,13 @@ pub enum BotCmd {
         #[arg(long)]
         no_bedtime: bool,
     },
-    /// Big emoji (a lone custom emoji is shown large) on a Discord server. No options: show
+    /// Emoji upscale (a lone custom emoji is shown large) on a Discord server. No options: show
     BigEmoji {
         guild: Option<String>,
-        /// Turn big emoji on
+        /// Turn emoji upscale on
         #[arg(long, conflicts_with = "off")]
         on: bool,
-        /// Turn big emoji off
+        /// Turn emoji upscale off
         #[arg(long)]
         off: bool,
     },

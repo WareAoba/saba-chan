@@ -36,7 +36,7 @@ export const safeShowToast = (message: string | null | undefined, type?: ToastTy
 /**
  * 폴더 열기 같은 셸 호출: 셸은 실패를 {error}(이미 번역된 문구)로 돌려주므로 토스트로 알린다.
  */
-export const openWithNotice = async (call: () => Promise<{ error?: string } | undefined | void>) => {
+export const openWithNotice = async (call: () => Promise<{ error?: string } | undefined | undefined>) => {
     try {
         const res = await call();
         if (res?.error) safeShowToast(res.error, 'error', 4000);
@@ -49,7 +49,7 @@ export const openWithNotice = async (call: () => Promise<{ error?: string } | un
  * Retry an async function with exponential backoff.
  * 브리지는 데몬 실패를 `{ error }`로 돌려준다: 그 답도 실패로 보고 다시 시도하고, 끝까지 실패하면 마지막 답을 돌려준다.
  */
-export const retryWithBackoff = async <T extends { error?: unknown } | undefined | void>(fn: () => Promise<T>, maxRetries = 3, initialDelay = 500): Promise<T | undefined> => {
+export const retryWithBackoff = async <T extends { error?: unknown } | undefined | undefined>(fn: () => Promise<T>, maxRetries = 3, initialDelay = 500): Promise<T | undefined> => {
     for (let i = 0; i < maxRetries; i++) {
         let failure: unknown;
         try {

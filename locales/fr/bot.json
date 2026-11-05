@@ -150,6 +150,9 @@
       "schedule": {
         "set": {
           "title": "Modifier les tâches planifiées"
+        },
+        "get": {
+          "title": "Voir les tâches planifiées"
         }
       },
       "delete": {
@@ -167,6 +170,20 @@
           "title": "Alerte serveur plein",
           "description": "Prévenir dans le canal d’alertes de ce serveur Discord quand ce serveur est plein ou qu'une place se libère",
           "name": "Alerte plein"
+        }
+      },
+      "get": {
+        "title": "Voir les paramètres du serveur"
+      },
+      "rename": {
+        "title": "Renommer le serveur"
+      },
+      "properties": {
+        "get": {
+          "title": "Voir le fichier de paramètres du jeu"
+        },
+        "set": {
+          "title": "Modifier le fichier de paramètres du jeu"
         }
       }
     },
@@ -192,6 +209,9 @@
         "tail": {
           "title": "Fin de la console",
           "description": "20 dernières lignes de la console"
+        },
+        "send": {
+          "title": "Envoyer une commande console"
         }
       },
       "logs": {
@@ -208,6 +228,11 @@
         "title": "Joueurs",
         "description": "Qui est connecté"
       },
+      "address": {
+        "title": "Adresse du serveur",
+        "name": "Adresse",
+        "description": "Affiche uniquement pour vous l'adresse (IP:port) à laquelle vos amis se connectent"
+      },
       "port_check": {
         "title": "Vérifier la redirection de ports",
         "description": "Le relais vérifie si ce serveur est accessible depuis Internet"
@@ -215,6 +240,17 @@
       "chat": {
         "title": "Envoyer au chat du jeu",
         "description": "Envoie un message Discord dans le chat du jeu"
+      },
+      "update": {
+        "check": {
+          "title": "Vérifier la mise à jour du serveur de jeu"
+        },
+        "apply": {
+          "title": "Mettre à jour le serveur de jeu"
+        }
+      },
+      "diagnose": {
+        "title": "Diagnostiquer le serveur"
       }
     },
     "monitor": {
@@ -233,12 +269,21 @@
       "restore": {
         "title": "Restaurer une sauvegarde",
         "description": "Remplace les fichiers actuels du serveur par la sauvegarde"
+      },
+      "delete": {
+        "title": "Supprimer la sauvegarde"
       }
     },
     "module": {
       "install": {
         "title": "Installer un module",
         "description": "Le télécharge et l'installe depuis le catalogue officiel"
+      },
+      "list": {
+        "title": "Modules installés"
+      },
+      "available": {
+        "title": "Modules disponibles"
       }
     },
     "extension": {
@@ -247,6 +292,15 @@
       },
       "disable": {
         "title": "Désactiver l'extension"
+      },
+      "list": {
+        "title": "Extensions installées"
+      },
+      "available": {
+        "title": "Extensions disponibles"
+      },
+      "install": {
+        "title": "Installer l'extension"
       }
     },
     "update": {
@@ -323,7 +377,9 @@
       "step": "Étape",
       "from_snapshot": "Depuis la sauvegarde auto du jeu",
       "text": "Message",
-      "apiKey": "Clé API"
+      "apiKey": "Clé API",
+      "command": "Commande",
+      "settings": "Paramètres"
     },
     "summary": {
       "server_item": "• **{{name}}** ({{module}}) · {{status}}",
@@ -359,6 +415,13 @@
       "players_max": "👥 {{online}}/{{max}} connectés",
       "player_item": "• {{name}}",
       "players_more": "…et {{count}} de plus",
+      "address": {
+        "item": "• `{{address}}`",
+        "item_named": "• {{label}} `{{address}}`",
+        "stopped": "💤 Le serveur est éteint. Démarrez-le pour que d'autres puissent se connecter",
+        "unknown": "❔ Server-chan ne connaît pas encore l'adresse publique de ce PC. Réessayez dans un instant",
+        "no_ports": "📭 Ce jeu n'indique pas de port de connexion"
+      },
       "port_check": {
         "open": "✅ Accessible depuis Internet",
         "firewall": "🧱 Bloqué par le pare-feu du PC",
@@ -407,6 +470,7 @@
     "backup_failed_autosave_off": "La sauvegarde a échoué et la sauvegarde automatique du serveur n’a pas pu être réactivée non plus. Redémarrez le serveur",
     "backup_save_rejected": "Le serveur a refusé la commande de sauvegarde, aucune sauvegarde n’a donc été faite. Arrêtez le serveur puis recommencez",
     "backup_save_unconfirmed": "Le serveur n’a pas signalé la fin de l’enregistrement, aucune sauvegarde n’a donc été faite. Réessayez dans un instant ou arrêtez le serveur avant de sauvegarder",
+    "backup_server_stopped": "Le serveur s’est arrêté pendant la sauvegarde, elle a donc été supprimée. Vérifiez le serveur puis sauvegardez à nouveau",
     "snapshot_not_found": "Le jeu n’a pas de sauvegarde automatique",
     "snapshot_not_deletable": "Saba-chan ne peut pas supprimer les sauvegardes automatiques du jeu"
   },

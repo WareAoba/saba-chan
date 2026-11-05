@@ -212,7 +212,7 @@
     "sleep_blocks_none": "None",
     "bedtime": "Good kid",
     "bedtime_format": "Write --bedtime as fall-asleep time-wake-up time, like 01:00-08:00.",
-    "big_emoji": "大表情"
+    "big_emoji": "表情符号放大"
   },
   "col": {
     "players": "在线玩家",
@@ -429,6 +429,7 @@
       "backup_failed_autosave_off": "备份失败，服务器的自动保存也未能重新开启。请重启服务器: saba-chan-cli restart <name>",
       "backup_save_rejected": "服务器拒绝了保存命令，因此没有进行备份。请停止服务器后重新备份: saba-chan-cli stop <name>",
       "backup_save_unconfirmed": "服务器未报告保存完成，因此没有进行备份。请稍后重试，或停止服务器后再备份: saba-chan-cli stop <name>",
+      "backup_server_stopped": "备份期间服务器已停止，因此已丢弃该备份。请检查服务器后重新备份: saba-chan-cli backup <name>",
       "snapshot_not_found": "游戏没有自动备份.",
       "invalid_relay_url": "中继地址只能使用 https://(仅在本机测试时可对 localhost、127.0.0.1 或 [::1] 使用 http)。",
       "module_busy": "此模块正在安装或删除中。请在完成后重试。",
@@ -962,6 +963,7 @@
       "config.paths": "Saba-chan 存放数据、模块和扩展的位置，以及默认文件夹",
       "config.move": "把模块或扩展移到其他文件夹。已安装的文件会一起移动；必须先停止服务器",
       "server.players": "当前在线的人",
+      "server.address": "朋友连接用的地址（IP:端口）",
       "server.port-check": "检查朋友能否从外网连接此服务器（端口转发）",
       "server.rcon": "按服务器接收命令的方式（控制台，没有则用 RCON）发送一行并查看回复",
       "server.log": "保存的历次运行日志（控制台只保留本次）",
@@ -984,7 +986,7 @@
       "bot.backup-notice": "备份结果全部私信(--all)还是只私信失败(--failures)。不带选项：查看",
       "bot.confirm": "机器人在执行前用 Discord 按钮询问的级别 (all、caution、danger、none)。不加选项: 查看",
       "bot.tts": "Reading Saba-chan voice of a Discord server (volume, speed, pitch). No options: show",
-      "bot.big-emoji": "Discord 服务器的大表情(只发一个自定义表情时放大显示)。不带选项则查看"
+      "bot.big-emoji": "Discord 服务器的表情符号放大(只发一个自定义表情符号时放大显示)。不带选项则查看"
     },
     "arg": {
       "module.maker.game": "第一个请求中的游戏名",
@@ -1174,8 +1176,8 @@
       "bot.tts.volume": "Volume in percent (10-150)",
       "bot.tts.speed": "Speaking speed (0.8-1.5, e.g. 1.2)",
       "bot.tts.pitch": "Pitch in semitones (-6 to 6)",
-      "bot.big-emoji.on": "开启大表情",
-      "bot.big-emoji.off": "关闭大表情",
+      "bot.big-emoji.on": "开启表情符号放大",
+      "bot.big-emoji.off": "关闭表情符号放大",
       "bot.tts.voice_chat_only": "Read your messages only in the chat of the voice channel you are in (on|off, game chat channel excepted)",
       "bot.tts.keep_read": "Keep read messages instead of deleting them (on|off)",
       "bot.tts.auto_channels": "Voice channel IDs to always read (comma-separated, up to 10): with 2+ people inside, the bot joins and reads its chat",
@@ -1611,7 +1613,10 @@
     "kept_instances": "游戏服务器将保留，设置将删除",
     "kept_nothing": "设置和游戏服务器也将删除",
     "done": "已删除 Saba-chan，{{kept}}。",
-    "left": "已删除 Saba-chan，但无法删除以下项目。请关闭正在使用它们的程序后手动删除：\n{{paths}}"
+    "left": "已删除 Saba-chan，但无法删除以下项目。请关闭正在使用它们的程序后手动删除：\n{{paths}}",
+    "servers_unlisted": "无法获取正在运行的服务器列表，未能正常关闭，已强制停止 ({{detail}})。",
+    "server_force_stopped": "服务器 {{server}} 未能正常关闭，已强制停止 ({{detail}})。上次保存之后的内容可能丢失。",
+    "daemon_unanswered": "守护进程没有响应，已强制停止正在运行的服务器。上次保存之后的内容可能丢失。"
   },
   "update_required": {
     "title": "需要更新",
@@ -1689,6 +1694,12 @@
     "this_pc": "本机",
     "no_servers": "没有服务器",
     "via_relay": "通过中继"
+  },
+  "address": {
+    "title": "{{server}} 的地址",
+    "unknown": "服务器酱不知道这台电脑的公网地址。请确认已连接服务器酱",
+    "no_ports": "此游戏没有提供连接端口",
+    "stopped": "服务器已关闭。启动后才能连接"
   },
   "port_check": {
     "title": "{{server}} 的端口转发检查",
