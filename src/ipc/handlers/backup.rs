@@ -142,7 +142,7 @@ async fn save_for_backup(state: &IPCServer, id: &str, spec: &crate::supervisor::
         loop {
             for line in p.get_console_since(next).await {
                 next = line.id + 1;
-                if line.source.from_server() && done.is_match(&line.content) {
+                if line.source.is_server_output() && done.is_match(&line.content) {
                     confirmed = true;
                 }
             }

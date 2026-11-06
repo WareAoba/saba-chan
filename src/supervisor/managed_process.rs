@@ -75,7 +75,7 @@ pub enum LogSource {
 
 impl LogSource {
     /// 서버가 찍은 줄인가. 준비·채팅·접속 패턴과 명령 답은 이 줄만 본다
-    pub fn from_server(self) -> bool {
+    pub fn is_server_output(self) -> bool {
         matches!(self, Self::Stdout | Self::Stderr)
     }
 }
@@ -1305,8 +1305,8 @@ mod tests {
         assert_eq!((by.source.as_str(), by.user_name.as_deref()), ("discord", Some("jace")));
         let json = serde_json::to_value(input[0]).unwrap();
         assert_eq!((json["source"].as_str(), json["by"]["userName"].as_str()), (Some("input"), Some("jace")));
-        let from_server: Vec<&str> = lines.iter().filter(|l| l.source.from_server()).map(|l| l.content.as_str()).collect();
-        assert_eq!(from_server, ["booted", "reply"]);
+        let server_lines: Vec<&str> = lines.iter().filter(|l| l.source.is_server_output()).map(|l| l.content.as_str()).collect();
+        assert_eq!(server_lines, ["booted", "reply"]);
         // 디스크에서 다시 읽어도 입력 줄이다
         assert_eq!(parse_disk_log_line(0, &format_log_line_for_disk(input[0])).source, LogSource::Input);
         let _ = proc.force_kill().await;

@@ -3026,7 +3026,7 @@ impl Supervisor {
             .get_recent_console(crash::CONSOLE_TAIL_LINES)
             .await
             .into_iter()
-            .filter(|l| l.source.from_server())
+            .filter(|l| l.source.is_server_output())
             .map(|l| l.content)
             .collect();
         let working_dir = proc.working_dir.clone().or_else(|| instance.working_dir.as_ref().map(std::path::PathBuf::from));

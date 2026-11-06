@@ -551,7 +551,7 @@ async fn via_stdin_for(supervisor: &tokio::sync::RwLock<crate::supervisor::Super
                 .get_console_since(before)
                 .await
                 .into_iter()
-                .filter(|l| l.source.from_server() && l.content.trim() != command.trim())
+                .filter(|l| l.source.is_server_output() && l.content.trim() != command.trim())
                 .map(|l| l.content)
                 .collect();
             if new.len() > lines.len() {

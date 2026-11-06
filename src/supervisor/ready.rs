@@ -124,7 +124,7 @@ async fn watch(id: String, name: String, token: u64, proc: Arc<ManagedProcess>, 
         }
         for line in proc.get_console_since(next_line).await {
             next_line = line.id + 1;
-            if line.source.from_server() && patterns.iter().any(|p| p.is_match(&line.content)) {
+            if line.source.is_server_output() && patterns.iter().any(|p| p.is_match(&line.content)) {
                 seen().lock().unwrap_or_else(|e| e.into_inner()).insert(id.clone());
                 finish(&id, &name, Some(token), None);
                 return;
