@@ -30,7 +30,14 @@ const modules = [
     {
         name: 'pal',
         commands: {
-            fields: [{ name: 'announce', label: 'Announce', method: 'rest', inputs: [input('message', { label: 'Message' })] }],
+            fields: [
+                {
+                    name: 'announce',
+                    label: 'Announce',
+                    method: 'rest',
+                    inputs: [input('message', { label: 'Message' })],
+                },
+            ],
         },
     },
     { name: 'bare', commands: { fields: [] } },
@@ -84,7 +91,10 @@ describe('명령 입력 안내', () => {
         expect((send as HTMLButtonElement).disabled).toBe(true);
         fireEvent.change(screen.getByLabelText(/Message/), { target: { value: 'hello all' } });
         await act(async () => fireEvent.click(send));
-        expect(window.api.executeCommand).toHaveBeenCalledWith('s1', { command: 'announce', args: { message: 'hello all' } });
+        expect(window.api.executeCommand).toHaveBeenCalledWith('s1', {
+            command: 'announce',
+            args: { message: 'hello all' },
+        });
         expect(useUIStore.getState().commandHistoryMap.s1[0].command).toBe('announce hello all');
     });
 

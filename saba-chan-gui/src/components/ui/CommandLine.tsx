@@ -57,7 +57,8 @@ export function CommandLineField({ state, inputRef, className, onScroll, ...prop
 }
 
 function rangeText(input: CommandInput, t: TFunction) {
-    if (input.min != null && input.max != null) return t('command_syntax.range_both', { min: input.min, max: input.max });
+    if (input.min != null && input.max != null)
+        return t('command_syntax.range_both', { min: input.min, max: input.max });
     if (input.min != null) return t('command_syntax.range_min', { min: input.min });
     return t('command_syntax.range_max', { max: input.max });
 }
@@ -87,7 +88,8 @@ export function CommandLineHelp({ text, state, moduleName, onPick }: HelpProps) 
     const { t } = useTranslation('gui');
     const { command, problem, missing, suggestions } = state;
     if (!text.trim()) return null;
-    const labelOf = (input: CommandInput) => (command ? commandInputLabel(t, moduleName, command.name, input) : input.name);
+    const labelOf = (input: CommandInput) =>
+        command ? commandInputLabel(t, moduleName, command.name, input) : input.name;
 
     let tone = 'neutral';
     let message: string;
@@ -111,9 +113,12 @@ export function CommandLineHelp({ text, state, moduleName, onPick }: HelpProps) 
         <div className="cmdline-help">
             {command && (
                 <div className="cmdline-sig">
-                    {commandText(t, moduleName, command).label} · <span className="cmdline-sig-name">{command.name}</span>
+                    {commandText(t, moduleName, command).label} ·{' '}
+                    <span className="cmdline-sig-name">{command.name}</span>
                     {(command.inputs || []).map((input, k) => {
-                        const inner = input.options?.length ? `${labelOf(input)}: ${input.options.join('|')}` : labelOf(input);
+                        const inner = input.options?.length
+                            ? `${labelOf(input)}: ${input.options.join('|')}`
+                            : labelOf(input);
                         const shape = input.required && input.default == null ? `<${inner}>` : `[${inner}]`;
                         return (
                             <span key={input.name} className={k === state.current ? 'cmdline-sig-cur' : undefined}>
@@ -128,7 +133,7 @@ export function CommandLineHelp({ text, state, moduleName, onPick }: HelpProps) 
                 {message}
             </div>
             {suggestions && (
-                <div className="cmdline-suggest" aria-label={t(`command_syntax.${suggestions.kind === 'command' ? 'more_commands' : 'options'}`)}>
+                <div className="cmdline-suggest">
                     {suggestions.values.slice(0, 12).map((v) => (
                         <button
                             key={v}

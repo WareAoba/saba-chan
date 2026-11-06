@@ -41,7 +41,9 @@ describe('화면 주소', () => {
 describe('주소로 화면 열기', () => {
     beforeEach(() => {
         useUIStore.getState()._resetForTest();
-        useServerStore.setState({ servers: [{ id: 's-1', name: 'MC', module: 'minecraft', status: 'stopped' }] as never });
+        useServerStore.setState({
+            servers: [{ id: 's-1', name: 'MC', module: 'minecraft', status: 'stopped' }] as never,
+        });
         window.showToast = vi.fn() as never;
     });
 

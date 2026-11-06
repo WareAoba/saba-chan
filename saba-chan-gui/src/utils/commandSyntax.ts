@@ -78,7 +78,9 @@ export function readCommandLine(text: string, commands: CommandField[]): LineSta
         state.tokens = pieces.map((p) => ({ text: p, kind: /\S/.test(p) ? 'free' : 'space' }));
         if (words.length === 1 && !typingNext) {
             const head = words[0].toLowerCase();
-            const values = commands.map((c) => c.name).filter((n) => n.toLowerCase().startsWith(head) && !same(n, head));
+            const values = commands
+                .map((c) => c.name)
+                .filter((n) => n.toLowerCase().startsWith(head) && !same(n, head));
             if (values.length) state.suggestions = { kind: 'command', values };
         }
         return state;
@@ -98,7 +100,11 @@ export function readCommandLine(text: string, commands: CommandField[]): LineSta
         if (k >= args.length || state.problem) return;
         const rule = problemOf(input, values[k]);
         const lower = values[k].toLowerCase();
-        if (rule === 'not_option' && k === typingSlot && (input.options || []).some((o) => o.toLowerCase().startsWith(lower))) {
+        if (
+            rule === 'not_option' &&
+            k === typingSlot &&
+            (input.options || []).some((o) => o.toLowerCase().startsWith(lower))
+        ) {
             state.picking = input;
             return;
         }

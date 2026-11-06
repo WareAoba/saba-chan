@@ -85,7 +85,10 @@ describe('명령 줄 읽기', () => {
         expect(state.command).toBeNull();
         expect(state.problem).toBeNull();
         expect(kinds('tp Steve Alex')).toEqual(['tp:free', 'Steve:free', 'Alex:free']);
-        expect(readCommandLine('w', COMMANDS).suggestions).toEqual({ kind: 'command', values: ['weather', 'whitelist'] });
+        expect(readCommandLine('w', COMMANDS).suggestions).toEqual({
+            kind: 'command',
+            values: ['weather', 'whitelist'],
+        });
     });
 
     it('지금 치는 칸을 알려 준다 (빈칸 뒤면 다음 칸)', () => {

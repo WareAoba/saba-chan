@@ -32,7 +32,8 @@ export function parseScreen(address: string): ScreenAddress | null {
             if (!a || parts.length > 3) return null;
             return { page: 'server', id: a, ...opt('tab', b) };
         case 'discord':
-            if (parts.length === 1 || (parts.length === 2 && a === 'connection')) return { page: 'discord', view: 'connection' };
+            if (parts.length === 1 || (parts.length === 2 && a === 'connection'))
+                return { page: 'discord', view: 'connection' };
             if (parts.length === 2 && a === 'saba') return { page: 'discord', view: 'saba' };
             if (parts.length > 4) return null;
             return { page: 'discord', view: 'node', id: a, ...opt('tab', b), ...opt('sub', c) };

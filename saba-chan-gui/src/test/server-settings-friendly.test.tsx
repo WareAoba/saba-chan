@@ -8,7 +8,12 @@ import { RestartNotice, SettingsField } from '../components/ServerSettingsModal'
 import '../i18n';
 import type { SettingField } from '../types/daemon';
 
-const flight = { name: 'allow_flight', label: 'Allow flight', field_type: 'boolean', restart_required: true } as SettingField;
+const flight = {
+    name: 'allow_flight',
+    label: 'Allow flight',
+    field_type: 'boolean',
+    restart_required: true,
+} as SettingField;
 
 describe('서버 설정 칸', () => {
     it('스위치 옆은 On·Off 대신 화면 언어의 켜짐·꺼짐이다', () => {
@@ -37,7 +42,14 @@ describe('다시 시작 안내', () => {
     it('켜진 서버에서 저장한 그대로면 바꾼 설정 수와 이름, 지금 다시 시작·나중에를 보인다', () => {
         const onRestart = vi.fn();
         const onDismiss = vi.fn();
-        render(<RestartNotice pending={pending} server={{ id: 's', status: 'running', start_time: 100 }} onRestart={onRestart} onDismiss={onDismiss} />);
+        render(
+            <RestartNotice
+                pending={pending}
+                server={{ id: 's', status: 'running', start_time: 100 }}
+                onRestart={onRestart}
+                onDismiss={onDismiss}
+            />,
+        );
         expect(screen.getByRole('status').textContent).toContain('1 changed setting');
         expect(screen.getByRole('status').textContent).toContain('Allow flight');
         fireEvent.click(screen.getByRole('button', { name: 'Restart now' }));
@@ -48,7 +60,9 @@ describe('다시 시작 안내', () => {
 
     it('그 뒤 서버를 껐거나 다시 켰으면 보이지 않는다', () => {
         const props = { pending, onRestart: vi.fn(), onDismiss: vi.fn() };
-        const { rerender } = render(<RestartNotice {...props} server={{ id: 's', status: 'stopped', start_time: null }} />);
+        const { rerender } = render(
+            <RestartNotice {...props} server={{ id: 's', status: 'stopped', start_time: null }} />,
+        );
         expect(screen.queryByRole('status')).toBeNull();
         rerender(<RestartNotice {...props} server={{ id: 's', status: 'running', start_time: 200 }} />);
         expect(screen.queryByRole('status')).toBeNull();

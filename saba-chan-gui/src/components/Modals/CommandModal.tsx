@@ -105,7 +105,7 @@ function CommandModal({ server, modules }: CommandModalProps) {
             return;
         }
         setForm(null);
-        setCommandInput(cmd.name + ' ');
+        setCommandInput(`${cmd.name} `);
         inputRef.current?.focus();
     };
 
@@ -333,34 +333,34 @@ function CommandModal({ server, modules }: CommandModalProps) {
                             }}
                         />
                     ) : (
-                    <div className="cmd-input">
-                        <Icon name="chevronRight" size="sm" />
-                        <CommandLineField
-                            state={syntax}
-                            inputRef={inputRef}
-                            type="text"
-                            className="cmd-field"
-                            value={commandInput}
-                            onChange={(e) => setCommandInput(e.target.value)}
-                            onKeyDown={handleKeyDown}
-                            placeholder={t('command_modal.command_placeholder')}
-                            aria-label={t('command_modal.command_label')}
-                            autoComplete="off"
-                            spellCheck={false}
-                            disabled={loading}
-                        />
-                        <kbd className="cmd-tab-hint">Tab {t('command_modal.autocomplete')}</kbd>
-                        <button
-                            type="button"
-                            className="term-send"
-                            onClick={handleExecuteCommand}
-                            disabled={!commandInput.trim() || loading}
-                            data-tooltip={t('command_modal.execute')}
-                            aria-label={t('command_modal.execute')}
-                        >
-                            <Icon name={loading ? 'loader' : 'arrowUp'} size="sm" />
-                        </button>
-                    </div>
+                        <div className="cmd-input">
+                            <Icon name="chevronRight" size="sm" />
+                            <CommandLineField
+                                state={syntax}
+                                inputRef={inputRef}
+                                type="text"
+                                className="cmd-field"
+                                value={commandInput}
+                                onChange={(e) => setCommandInput(e.target.value)}
+                                onKeyDown={handleKeyDown}
+                                placeholder={t('command_modal.command_placeholder')}
+                                aria-label={t('command_modal.command_label')}
+                                autoComplete="off"
+                                spellCheck={false}
+                                disabled={loading}
+                            />
+                            <kbd className="cmd-tab-hint">Tab {t('command_modal.autocomplete')}</kbd>
+                            <button
+                                type="button"
+                                className="term-send"
+                                onClick={handleExecuteCommand}
+                                disabled={!commandInput.trim() || loading}
+                                data-tooltip={t('command_modal.execute')}
+                                aria-label={t('command_modal.execute')}
+                            >
+                                <Icon name={loading ? 'loader' : 'arrowUp'} size="sm" />
+                            </button>
+                        </div>
                     )}
                     {!form && commands.length > 0 && (
                         <CommandLineHelp
@@ -436,7 +436,7 @@ interface CommandFormProps {
 /** API로 요청하는 명령의 입력 창: 모듈이 알려 준 칸(type·options·min·max·required)대로 그린다 */
 function CommandForm({ form, moduleName, missing, loading, onChange, onSubmit, onClose }: CommandFormProps) {
     const { t } = useTranslation('gui');
-    const { cmd, values } = form;
+    const { cmd } = form;
     const title = commandText(t, moduleName, cmd);
     const labelOf = (input: CommandInput) => commandInputLabel(t, moduleName, cmd.name, input);
     return (
