@@ -830,6 +830,10 @@ pub fn heartbeat_actions(locales: &[&str], modules: &[LoadedModule]) -> (Vec<Val
         if d.secret {
             item["secret"] = json!(true);
         }
+        // 조작 가능 명단에 있는 사람도 하는 일: 릴레이는 이 표시로 명단을 적용할 액션을 안다
+        if crate::controllers::CONTROLLED_ACTIONS.contains(&d.id) {
+            item["controllers"] = json!(true);
+        }
         // 모듈이 지원해야 하는 액션: 그 모듈 이름들 (릴레이는 이 모듈의 서버에만 하위 명령을 만든다)
         if let Some(supports) = module_support(d.id) {
             let mut names: Vec<&str> = modules.iter().filter(|m| supports(m)).map(|m| m.metadata.name.as_str()).collect();
