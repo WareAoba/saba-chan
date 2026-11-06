@@ -1,7 +1,7 @@
 //! 접속·퇴장 알림 (MK8 §8.3): 데몬이 콘솔을 읽는 시작(managed)에서 모듈의 `[extensions.saba-core]`
 //! `player_join_patterns`·`player_leave_patterns`가 콘솔 줄에 맞으면 `instance.player {instanceId, instance, player, change}`를 낸다.
 //!
-//! - 시스템 줄(`LogSource::System`)은 보지 않는다. 이름 그룹 `name`만 싣고(IP·고유 ID 없음), 64자에서 자르고 제어 문자를 뺀다.
+//! - 서버가 찍은 줄(`LogSource::is_server_output`)만 본다: 시스템 줄과 보낸 명령 줄은 보지 않는다. 이름 그룹 `name`만 싣고(IP·고유 ID 없음), 64자에서 자르고 제어 문자를 뺀다.
 //! - relay로 올리지 않는다 (0.1.9).
 //! - 같은 줄로 접속자를 센다(`players::roster_*`). 모듈이 접속자 수를 주지 않을 때 서버 목록·하트비트가 이 수를 쓴다.
 //! - 같은 콘솔에서 `chat_patterns`에 맞는 채팅 줄을 찾아 게임 채팅 전달(`game_chat.rs`)과 채팅 연동(`chat_link.rs`)에 넘긴다.
@@ -11,7 +11,7 @@ use serde_json::{json, Value};
 use std::sync::Arc;
 use std::time::Duration;
 
-use super::managed_process::{LogSource, ManagedProcess};
+use super::managed_process::ManagedProcess;
 
 /// 콘솔을 다시 보는 간격 (메모리 버퍼만 본다. 채팅이 늦게 올라가지 않게 짧게)
 const POLL: Duration = Duration::from_millis(100);
@@ -103,14 +103,14 @@ async fn watch(id: String, name: String, proc: Arc<ManagedProcess>, patterns: Pa
         let running = proc.is_running();
         for line in proc.get_console_since(next_line).await {
             next_line = line.id + 1;
-            if line.source == LogSource::System {
+            if !line.source.is_server_output() {
                 continue;
             }
             if let Some((player, change)) = patterns.parse(&line.content) {
                 if let Some(roster) = roster {
                     super::players::roster_change(&id, roster, &player, change == Change::Join);
                     if change == Change::Leave && super::players::counted(&id) == Some(0) {
-                        super::chat_link::end(&id, &name, "empty");
+                        super::chat_link::end(&id, &name, "empty", roster);
                     }
                 }
                 crate::events::emit("instance.player", json!({ "instanceId": id, "instance": name, "player": player, "change": change.as_str() }));
@@ -125,10 +125,11 @@ async fn watch(id: String, name: String, proc: Arc<ManagedProcess>, patterns: Pa
             }
         }
         if !running {
+            // 연동은 접속자를 셀 때만 켜진다. 이 프로세스의 목록일 때만 끈다 (새 프로세스의 연동은 그대로 둔다)
             if let Some(roster) = roster {
+                super::chat_link::end(&id, &name, "stopped", roster);
                 super::players::roster_end(&id, roster);
             }
-            super::chat_link::end(&id, &name, "stopped");
             return;
         }
         tokio::time::sleep(POLL).await;

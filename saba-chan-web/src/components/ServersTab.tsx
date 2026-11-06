@@ -1,0 +1,485 @@
+import { SabaCheckbox } from '@gui/components/ui/SabaUI';
+import {
+    choosesVersion,
+    installChoices,
+    installFields,
+    installSettings,
+    nameHasComma,
+    nameTaken,
+    releaseVersions,
+    suggestName,
+    versionSettings,
+} from '@gui/utils/installFields';
+import { gameNameOf, playersText, primaryAction, viewStatus } from '@gui/utils/serverView';
+import { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { art } from '../art';
+import { useApp, useData } from '../store';
+import { Dropdown } from './Dropdown';
+import { Icon } from './icons';
+import { startPoll } from './poll';
+import { ServerDetail } from './ServerDetail';
+import { ServerIcon } from './ServerIcon';
+import { ServerOrder } from './ServerOrder';
+import { FieldInput, patchOf } from './SettingsPanel';
+import { Button, Empty, errorText, failed, Loading, Section, Sheet, StatusDot } from './ui';
+import { useProvision } from './useProvision';
+import { useServerControl } from './useServerControl';
+import type { ModuleAgreement, PlayerCount } from '@gui/types/daemon';
+import type { Module, Server, WebApi } from '../types';
+
+/** 만들기 전 겹침 확인 (POST /api/instance/check) */
+/** 모듈이 선언한 약관 (label 은 있으면 쓴다) */
+type Agreement = ModuleAgreement & { label?: string };
+
+interface InstanceCheck {
+    ports?: { field?: string; port: number; in_use_by?: string[] }[];
+}
+
+/** 새 서버 만들기: GUI 새 서버 마법사와 같은 것을 묻는다 (게임·이름·만들 때 고르는 설정·추천 설정·버전·실행 방식·약관)
+ * 그리고 만들기 전에 다른 서버와 겹치는지 데몬에 묻는다(`instanceCheck`).
+ * 익스텐션이 묻는 칸(`extension_data`)과 폴더는 PC에서만 정한다 (src/remote/gate.rs CREATE_PC_ONLY) */
+export function AddServerSheet({ api, onClose }: { api: WebApi; onClose: () => void }) {
+    const { t } = useTranslation();
+    const { t: tg } = useTranslation('gui');
+    const modules = useData((s) => s.modules);
+    const servers = useData((s) => s.servers);
+    const toast = useApp((s) => s.toast);
+    const firstPlayable = modules.find((m) => m.platform_supported !== false)?.name || '';
+    const [module, setModule] = useState(firstPlayable);
+    const [name, setName] = useState(() => (firstPlayable ? suggestName(firstPlayable, servers) : ''));
+    const [installValues, setInstallValues] = useState<Record<string, unknown>>({});
+    const [preset, setPreset] = useState('');
+    const [agreed, setAgreed] = useState<Record<string, boolean>>({});
+    const [versions, setVersions] = useState<string[]>([]);
+    const [version, setVersion] = useState(''); // '' = 최신
+    const [managed, setManaged] = useState(true);
+    const [check, setCheck] = useState<InstanceCheck | null>(null);
+    const [busy, setBusy] = useState(false);
+
+    const chosen = modules.find((m) => m.name === module);
+    const modNs = `mod_${module}`;
+    const agreements: Agreement[] = chosen?.agreements || [];
+    const duplicate = nameTaken(servers, name);
+    // 디스코드에서 부르는 말을 쉼표로 나누므로 이름에 쉼표를 받지 않는다 (데몬 400 invalid_name, 앱과 같다)
+    const comma = nameHasComma(name);
+    const ready = name.trim() && module && !duplicate && !comma && agreements.every((a) => agreed[a.id]);
+
+    const pickModule = (next: string) => {
+        setModule(next);
+        setName(suggestName(next, servers));
+        setInstallValues({});
+        setPreset('');
+        setAgreed({});
+        setVersion('');
+        setManaged(true);
+    };
+
+    // 서버 파일을 받는 모듈은 고른 설정(서버 종류 등)으로 받을 수 있는 릴리스를 묻는다 (못 받으면 최신만).
+    // 설정을 바꾸면 다시 묻고, 골라 둔 버전은 바로 비운다 (새 목록이 오기 전에 넘어가도 앞 설정의 버전을 보내지 않게)
+    const downloads = choosesVersion(chosen);
+    const versionKey = downloads ? JSON.stringify(versionSettings(chosen, installValues, preset)) : '';
+    const versionPickedFor = useRef(versionKey);
+    useEffect(() => {
+        if (versionPickedFor.current === versionKey) return;
+        versionPickedFor.current = versionKey;
+        setVersion('');
+    }, [versionKey]);
+    useEffect(() => {
+        // 앞 모듈·설정의 목록은 바로 비운다 (새 목록이 오기 전·못 받으면 최신만 고른다)
+        setVersions([]);
+        if (!versionKey) return;
+        let alive = true;
+        const timer = setTimeout(() => {
+            Promise.resolve(api.moduleListVersions?.(module, { per_page: 50, settings: JSON.parse(versionKey) }))
+                .then((res) => {
+                    if (!alive) return;
+                    const list = releaseVersions(res);
+                    setVersions(list);
+                    setVersion((picked) => (list.includes(picked) ? picked : ''));
+                })
+                .catch(() => alive && setVersion(''));
+        }, 250);
+        return () => {
+            alive = false;
+            clearTimeout(timer);
+        };
+    }, [api, module, versionKey]);
+
+    // 만들기와 그 확인에 보내는 몸체. 고르지 않은 것(최신 버전, 사바쨩이 관리)은 보내지 않는다 (GUI createBody와 같다)
+    const requestBody = () => {
+        const body: Record<string, unknown> = { name: name.trim(), module_name: module };
+        // 비운 칸은 빼서 데몬이 모듈 기본값·추천 설정을 쓰게 한다 (GUI와 같다)
+        const settings = installSettings(
+            patchOf(installFields(chosen), installValues, new Set(Object.keys(installValues))),
+        );
+        if (Object.keys(settings).length) body.module_settings = settings;
+        if (preset) body.preset = preset;
+        if (version) body.version = version;
+        if (!managed) body.managed_start = false;
+        return body;
+    };
+    const checkKey = name.trim() && module ? JSON.stringify(requestBody()) : '';
+
+    // 입력이 멈추면 다른 서버와 겹치는지 묻는다. 확인하지 못해도 만들기가 다시 본다
+    useEffect(() => {
+        setCheck(null);
+        if (!checkKey || !api.instanceCheck) return;
+        let alive = true;
+        const timer = setTimeout(() => {
+            Promise.resolve(api.instanceCheck(JSON.parse(checkKey)))
+                .then((res) => alive && !failed(res) && setCheck(res as InstanceCheck))
+                .catch(() => {});
+        }, 250);
+        return () => {
+            alive = false;
+            clearTimeout(timer);
+        };
+    }, [api, checkKey]);
+    const portNotes = (check?.ports || []).filter((p) => p.in_use_by?.length);
+
+    const create = async () => {
+        if (!ready) return;
+        setBusy(true);
+        const body = requestBody();
+        if (agreements.length) body.accept_agreements = agreements.map((a) => a.id);
+        const res = await api.instanceCreate(body);
+        setBusy(false);
+        if (failed(res)) return toast(res?.error_code === 'invalid_name' ? tg('servers.name_comma') : errorText(t, res), 'error');
+        toast(t('servers.created', { name: name.trim() }), 'ok');
+        onClose();
+    };
+
+    return (
+        <Sheet title={t('servers.add')} onClose={onClose}>
+            {modules.length === 0 ? (
+                <Empty>{t('servers.no_modules')}</Empty>
+            ) : (
+                <form
+                    className="form"
+                    onSubmit={(e) => {
+                        e.preventDefault();
+                        create();
+                    }}
+                >
+                    <div className="field">
+                        <span>{t('servers.game')}</span>
+                        <Dropdown
+                            value={module}
+                            onChange={pickModule}
+                            ariaLabel={t('servers.game')}
+                            options={modules.map((m) => {
+                                const unsupported = m.platform_supported === false;
+                                const game = gameNameOf(t, m.name, m);
+                                return {
+                                    value: m.name,
+                                    label: unsupported ? `${game} · ${t('servers.platform_unsupported')}` : game,
+                                    disabled: unsupported,
+                                };
+                            })}
+                        />
+                    </div>
+                    {['unverified', 'modified'].includes(chosen?.trust as string) && (
+                        <p className="banner banner-warn" role="note">
+                            {t(`servers.trust_${chosen?.trust}`)}
+                        </p>
+                    )}
+                    <label className="field">
+                        <span>{t('servers.name')}</span>
+                        <input
+                            value={name}
+                            onChange={(e) => setName(e.target.value)}
+                            maxLength={64}
+                            required
+                            aria-invalid={duplicate || comma || undefined}
+                        />
+                    </label>
+                    {duplicate && (
+                        <p className="hint hint-error" role="alert">
+                            {t('servers.name_taken', { name: name.trim() })}
+                        </p>
+                    )}
+                    {comma && (
+                        <p className="hint hint-error" role="alert">
+                            {tg('servers.name_comma')}
+                        </p>
+                    )}
+                    {installFields(chosen).map((f) => (
+                        <FieldInput
+                            key={f.name}
+                            field={{ ...f, options: installChoices(f) }}
+                            value={installValues[f.name] ?? f.default ?? ''}
+                            onChange={(v) => setInstallValues((prev) => ({ ...prev, [f.name]: v }))}
+                            t={t}
+                            modNs={modNs}
+                        />
+                    ))}
+                    {(chosen?.presets?.length ?? 0) > 0 && (
+                        <div className="field">
+                            <span>{t('servers.preset')}</span>
+                            <Dropdown
+                                value={preset}
+                                onChange={setPreset}
+                                ariaLabel={t('servers.preset')}
+                                options={[
+                                    { value: '', label: t('servers.preset_none') },
+                                    ...(chosen?.presets ?? []).map((p) => ({
+                                        value: p.id,
+                                        label: t(`${modNs}:presets.${p.id}.label`, { defaultValue: p.label || p.id }),
+                                    })),
+                                ]}
+                            />
+                            <small className="hint">
+                                {preset
+                                    ? t(`${modNs}:presets.${preset}.description`, {
+                                          defaultValue: chosen?.presets?.find((p) => p.id === preset)?.description || '',
+                                      })
+                                    : t('servers.preset_none_hint')}
+                            </small>
+                        </div>
+                    )}
+                    {downloads && versions.length > 0 && (
+                        <div className="field">
+                            <span>{t('servers.version')}</span>
+                            <Dropdown
+                                value={version}
+                                onChange={setVersion}
+                                ariaLabel={t('servers.version')}
+                                options={[
+                                    { value: '', label: t('servers.version_latest') },
+                                    ...versions.map((v) => ({ value: v, label: v })),
+                                ]}
+                            />
+                            {version && <small className="hint">{t('servers.version_hint')}</small>}
+                        </div>
+                    )}
+                    <div className="field">
+                        <span>{t('servers.run')}</span>
+                        <Dropdown
+                            value={managed ? 'managed' : 'unmanaged'}
+                            onChange={(v) => setManaged(v === 'managed')}
+                            ariaLabel={t('servers.run')}
+                            options={[
+                                { value: 'managed', label: t('servers.run_managed') },
+                                { value: 'unmanaged', label: t('servers.run_unmanaged') },
+                            ]}
+                        />
+                        <small className="hint">
+                            {t(managed ? 'servers.run_managed_hint' : 'servers.run_unmanaged_hint')}
+                        </small>
+                    </div>
+                    <div className="field">
+                        <span>{t('servers.location')}</span>
+                        <small className="hint">{t('servers.location_pc')}</small>
+                    </div>
+                    {portNotes.map((p) => (
+                        <p key={p.field} className="banner banner-warn" role="note">
+                            {t('servers.port_in_use', { servers: p.in_use_by?.join(', '), port: p.port })}
+                        </p>
+                    ))}
+                    {agreements.length > 0 && (
+                        <fieldset className="field agreements">
+                            <legend>{t('servers.agreements')}</legend>
+                            {agreements.map((a) => {
+                                const label = t(`${modNs}:agreements.${a.id}`, { defaultValue: a.label || a.id });
+                                return (
+                                    <div key={a.id} className="field-row">
+                                        <SabaCheckbox
+                                            className="agreement"
+                                            checked={!!agreed[a.id]}
+                                            onChange={(on) => setAgreed((prev) => ({ ...prev, [a.id]: on }))}
+                                        >
+                                            {t('servers.agree', { name: label })}
+                                        </SabaCheckbox>
+                                        {a.url && (
+                                            <a href={a.url} target="_blank" rel="noreferrer noopener">
+                                                {t('servers.read_agreement')}
+                                            </a>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </fieldset>
+                    )}
+                    <p className="hint">{t('servers.add_hint')}</p>
+                    <Button tone="accent" type="submit" busy={busy} disabled={!ready}>
+                        {t('servers.create')}
+                    </Button>
+                </form>
+            )}
+        </Sheet>
+    );
+}
+
+/** 목록 위 요약: 켜진 서버 수, 접속자 합, PC CPU (PC 사용량은 4초마다 읽는다) */
+function Summary({ api, servers }: { api: WebApi; servers: Server[] }) {
+    const { t } = useTranslation();
+    const [cpu, setCpu] = useState<number | null>(null);
+    useEffect(() => {
+        if (!api?.systemMetrics) return;
+        let alive = true;
+        const stop = startPoll(async () => {
+            const res = await api.systemMetrics({ sizes: false });
+            const v = res?.cpu?.total_percent;
+            if (alive && Number.isFinite(v)) setCpu(Math.round(v));
+        }, 4000);
+        return () => {
+            alive = false;
+            stop();
+        };
+    }, [api]);
+    const running = servers.filter((s) => s.status === 'running');
+    const players = running.reduce((sum, s) => sum + (Number.isInteger(s.players?.online) ? (s.players as PlayerCount).online : 0), 0);
+    return (
+        <div className="summary">
+            <div className="stat">
+                <b>
+                    {running.length}
+                    <small>/{servers.length}</small>
+                </b>
+                <span>{t('servers.summary_running')}</span>
+            </div>
+            <div className="stat">
+                <b>{players}</b>
+                <span>{t('servers.summary_players')}</span>
+            </div>
+            <div className="stat">
+                <b>{cpu === null ? '—' : `${cpu}%`}</b>
+                <span>{t('servers.summary_cpu')}</span>
+            </div>
+        </div>
+    );
+}
+
+/** 목록 한 줄: 누르면 상세, 오른쪽 버튼은 바로 켜기·정지 */
+interface ServerRowProps {
+    api: WebApi;
+    server: Server;
+    moduleData?: Module;
+    modulesLoaded: boolean;
+    selected: boolean;
+}
+
+function ServerRow({ api, server, moduleData, modulesLoaded, selected }: ServerRowProps) {
+    const { t } = useTranslation();
+    const openServer = useApp((s) => s.openServer);
+    const control = useServerControl(api);
+    const { view: provision } = useProvision(api, server);
+    const provisionFailed = provision?.state === 'failed';
+    const status = provisionFailed ? 'provision_failed' : viewStatus(server, moduleData, modulesLoaded);
+    const action = provisionFailed ? null : primaryAction(status);
+    const players = playersText(server);
+
+    return (
+        <li className={selected ? 'server-row on' : 'server-row'}>
+            <button
+                type="button"
+                className="server-row-main"
+                onClick={() => openServer(server.id)}
+                aria-current={selected ? 'true' : undefined}
+            >
+                <ServerIcon module={server.module} moduleData={moduleData} />
+                <span className="server-row-text">
+                    <span className="server-row-name">{server.name}</span>
+                    <span className="server-row-sub">
+                        <StatusDot status={status} />
+                        {players && (
+                            <span className="pill">
+                                <Icon name="user" size={12} /> {players}
+                            </span>
+                        )}
+                        <span className="server-row-game">{gameNameOf(t, server.module, moduleData)}</span>
+                    </span>
+                </span>
+            </button>
+            {action === 'start' && (
+                <button
+                    type="button"
+                    className="quick quick-start"
+                    disabled={control.busy}
+                    onClick={() => control.start(server)}
+                    aria-label={t('servers.start_named', { name: server.name })}
+                >
+                    {control.busy ? <span className="spinner" aria-hidden="true" /> : <Icon name="play" size={16} />}
+                </button>
+            )}
+            {action === 'stop' && (
+                <button
+                    type="button"
+                    className="quick quick-stop"
+                    disabled={control.busy}
+                    onClick={() => control.stop(server)}
+                    aria-label={t('servers.stop_named', { name: server.name })}
+                >
+                    {control.busy ? <span className="spinner" aria-hidden="true" /> : <Icon name="stop" size={16} />}
+                </button>
+            )}
+        </li>
+    );
+}
+
+export function ServersTab({ api }: { api: WebApi }) {
+    const { t } = useTranslation();
+    const { servers, serversLoaded, serversError, modules, modulesLoaded } = useData();
+    const serverId = useApp((s) => s.serverId);
+    const [adding, setAdding] = useState(false);
+    const [ordering, setOrdering] = useState(false);
+
+    const selected = servers.find((s) => s.id === serverId);
+    const moduleOf = (name: string) => modules.find((m) => m.name === name);
+    return (
+        // 휴대폰은 목록 또는 상세 하나, 넓은 화면은 목록과 상세를 나란히 (styles.css .servers)
+        <div className={selected ? 'servers has-detail' : 'servers'}>
+            <div className="servers-list">
+                <Section
+                    title={t('tabs.servers')}
+                    action={
+                        !ordering && (
+                            <div className="row-actions">
+                                {servers.length > 1 && (
+                                    <Button onClick={() => setOrdering(true)}>{t('servers.order')}</Button>
+                                )}
+                                <Button tone="accent" onClick={() => setAdding(true)}>
+                                    <Icon name="plus" size={16} /> {t('servers.add')}
+                                </Button>
+                            </div>
+                        )
+                    }
+                >
+                    {serversError && <p className="banner banner-error">{serversError}</p>}
+                    {!serversLoaded ? (
+                        <Loading />
+                    ) : servers.length === 0 ? (
+                        <Empty art={art.sleep}>{t('servers.empty')}</Empty>
+                    ) : ordering ? (
+                        <ServerOrder api={api} servers={servers} onDone={() => setOrdering(false)} />
+                    ) : (
+                        <>
+                            <Summary api={api} servers={servers} />
+                            <ul className="server-rows">
+                                {servers.map((s) => (
+                                    <ServerRow
+                                        key={s.id}
+                                        api={api}
+                                        server={s}
+                                        moduleData={moduleOf(s.module)}
+                                        modulesLoaded={modulesLoaded}
+                                        selected={s.id === serverId}
+                                    />
+                                ))}
+                            </ul>
+                        </>
+                    )}
+                </Section>
+            </div>
+            <div className="servers-detail">
+                {selected ? (
+                    <ServerDetail key={selected.id} api={api} server={selected} />
+                ) : (
+                    serversLoaded && servers.length > 0 && <Empty>{t('servers.pick')}</Empty>
+                )}
+            </div>
+            {adding && <AddServerSheet api={api} onClose={() => setAdding(false)} />}
+        </div>
+    );
+}

@@ -78,6 +78,8 @@ pub const PRESETS: [&str; 3] = ["loose", "default", "strict"];
 /// 액션(`server.<명령>`)이 따로 있는 내장 명령
 // `players`는 `[status] players` 모듈의 채팅 접속자 조회 (`server.players`와 같은 키)
 const BUILTIN_COMMANDS: [&str; 5] = ["start", "stop", "restart", "status", "players"];
+/// 위험도가 아니라 조작 가능 명단과 관리자 이상이 하는 내장 명령 (`crate::controllers`, 액션의 고정 기본 레벨과 같다)
+pub const LIFECYCLE_COMMANDS: [&str; 3] = ["start", "stop", "restart"];
 
 /// 프리셋이 risk(safe/caution/danger)에 요구하는 레벨. 모르는 risk는 caution
 pub fn preset_level(preset: &str, risk: &str) -> i64 {
@@ -133,6 +135,9 @@ pub struct Denied {
     pub level: i64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub via: Option<&'static str>,
+    /// 조작 가능 명단에 있으면 했을 명령 (시작·정지). 릴레이가 "조작 가능" 안내를 고른다
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub controllers: bool,
 }
 
 /// 한 길드의 권한 설정. 키가 없으면 기본값 (설정이 없는 길드도 같은 규칙으로 판정한다)
@@ -272,11 +277,11 @@ impl NodePermissions {
             .get(&format!("{}/{}", instance_id, command))
             .or_else(|| action_key().and_then(|k| self.command_levels.get(&k)))
             .copied()
-            .unwrap_or_else(|| self.preset_need(risk))
+            .unwrap_or_else(|| if LIFECYCLE_COMMANDS.contains(&command) { ADMIN } else { self.preset_need(risk) })
     }
 
     fn denied(&self, who: &Requester, need: i64) -> Denied {
-        Denied { need, level: self.effective_level(who), via: who.via_chatbot.then_some("chatbot") }
+        Denied { need, level: self.effective_level(who), via: who.via_chatbot.then_some("chatbot"), controllers: false }
     }
 
     /// help·list처럼 명령이 아닌 요청: 금지만 막는다
@@ -463,7 +468,12 @@ pub fn apply(node: &mut Map<String, Value>, change: &Change, owner_id: Option<&s
                     sub(node, "commandLevels").insert(key.clone(), json!(l));
                 }
                 None => {
-                    sub(node, "commandLevels").remove(key);
+                    let levels = sub(node, "commandLevels");
+                    levels.remove(key);
+                    // 내장 명령은 액션 키(`<instance>/server.<명령>`)도 읽는다 (`required`). 기본값이면 둘 다 지운다
+                    if let Some((instance, command)) = key.split_once('/').filter(|(_, c)| BUILTIN_COMMANDS.contains(c)) {
+                        levels.remove(&format!("{instance}/server.{command}"));
+                    }
                 }
             }
         }
@@ -484,8 +494,10 @@ mod tests {
         let p = NodePermissions::from_node(Some(&json!({ "members": { "a": 2, "b": -1, "bad": 9 } })));
         assert_eq!(p.level_of(&who("x")), USER);
         assert_eq!(p.level_of(&who("bad")), USER);
-        assert!(p.check(&who("x"), "i", "stop", "caution").is_ok());
-        assert_eq!(p.check(&who("x"), "i", "op", "danger"), Err(Denied { need: ADMIN, level: USER, via: None }));
+        assert!(p.check(&who("x"), "i", "kick", "caution").is_ok());
+        // 시작·정지는 위험도와 상관없이 관리자부터다 (조작 가능 명단은 chat이 따로 본다)
+        assert_eq!(p.check(&who("x"), "i", "stop", "safe"), Err(Denied { need: ADMIN, level: USER, via: None, controllers: false }));
+        assert_eq!(p.check(&who("x"), "i", "op", "danger"), Err(Denied { need: ADMIN, level: USER, via: None, controllers: false }));
         assert!(p.check(&who("a"), "i", "op", "danger").is_ok());
         assert!(p.check_basic(&who("b")).is_err());
         assert!(p.check(&who("b"), "i", "status", "safe").is_err());
@@ -517,7 +529,7 @@ mod tests {
         let mut bot = who("own");
         bot.via_chatbot = true;
         assert!(p.check(&bot, "i", "status", "safe").is_ok());
-        assert_eq!(p.check(&bot, "i", "stop", "caution"), Err(Denied { need: USER, level: CHATBOT, via: Some("chatbot") }));
+        assert_eq!(p.check(&bot, "i", "kick", "caution"), Err(Denied { need: USER, level: CHATBOT, via: Some("chatbot"), controllers: false }));
         // 상한보다 낮은 작성자는 그대로 낮다
         let p = NodePermissions::from_node(Some(&json!({ "chatbotCap": 2, "members": { "z": 0 } })));
         let mut low = who("z");
@@ -529,7 +541,7 @@ mod tests {
     #[test]
     fn built_in_commands_also_take_the_level_set_for_their_actions() {
         let p = NodePermissions::from_node(Some(&json!({ "preset": "loose", "defaultLevel": 2, "commandLevels": { "i/server.stop": 3, "i/server.start": 3, "i/start": 1 } })));
-        assert_eq!(p.check(&who("x"), "i", "stop", "caution"), Err(Denied { need: OWNER, level: ADMIN, via: None }));
+        assert_eq!(p.check(&who("x"), "i", "stop", "caution"), Err(Denied { need: OWNER, level: ADMIN, via: None, controllers: false }));
         assert!(p.check(&who("x"), "i", "start", "caution").is_ok(), "the command's own key wins");
         assert!(p.check(&who("x"), "j", "stop", "caution").is_ok(), "only that instance");
         assert_eq!(p.required("i", "kick", "caution"), preset_level("loose", "caution"), "module commands have no action key");
@@ -538,8 +550,8 @@ mod tests {
     #[test]
     fn old_per_member_deny_lists_are_ignored_and_the_owner_is_not_assumed() {
         // 레벨은 누적이다: 예전 사람별 금지 목록은 판정에 쓰지 않는다
-        let p = NodePermissions::from_node(Some(&json!({ "memberPermissions": { "u": { "i": ["stop"] } } })));
-        assert!(p.check(&who("u"), "i", "stop", "caution").is_ok());
+        let p = NodePermissions::from_node(Some(&json!({ "memberPermissions": { "u": { "i": ["kick"] } } })));
+        assert!(p.check(&who("u"), "i", "kick", "caution").is_ok());
         // 릴레이가 주인을 알려 주지 않으면 누구도 소유자가 아니다
         let mut anon = who("own");
         anon.owner_id = None;
@@ -609,6 +621,17 @@ mod tests {
         assert_eq!(node["commandLevels"], json!({}));
     }
 
+    // 내장 명령은 `<instance>/server.<명령>`도 읽으므로 기본값으로 되돌릴 때 두 키를 함께 지운다
+    #[test]
+    fn resetting_a_built_in_command_clears_its_action_key_too() {
+        let mut node = json!({ "commandLevels": { "i/stop": 3, "i/server.stop": 3, "j/server.stop": 3, "i/server.kick": 3 } }).as_object().unwrap().clone();
+        apply(&mut node, &Change::CommandLevel { key: "i/stop".into(), level: None }, Some("own")).unwrap();
+        apply(&mut node, &Change::CommandLevel { key: "i/kick".into(), level: None }, Some("own")).unwrap();
+        assert_eq!(node["commandLevels"], json!({ "j/server.stop": 3, "i/server.kick": 3 }));
+        let p = NodePermissions::from_node(Some(&Value::Object(node)));
+        assert_eq!(p.required("i", "stop", "safe"), ADMIN, "back to the lifecycle default");
+    }
+
     fn ladder(ids: &[(i64, Option<&str>)]) -> Change {
         Change::Ladder(ids.iter().map(|(id, name)| LevelInput { id: Some(*id), name: name.map(str::to_string) }).collect())
     }
@@ -633,8 +656,8 @@ mod tests {
         apply(&mut node, &Change::CommandLevel { key: "i/kick".into(), level: Some(10) }, owner).unwrap();
         let p = NodePermissions::from_node(Some(&Value::Object(node.clone())));
         assert!(p.check(&who("v"), "i", "kick", "danger").is_ok());
-        assert_eq!(p.check(&who("x"), "i", "kick", "danger"), Err(Denied { need: 10, level: USER, via: None }));
-        assert_eq!(p.check(&who("v"), "i", "op", "danger"), Err(Denied { need: ADMIN, level: 10, via: None }));
+        assert_eq!(p.check(&who("x"), "i", "kick", "danger"), Err(Denied { need: 10, level: USER, via: None, controllers: false }));
+        assert_eq!(p.check(&who("v"), "i", "op", "danger"), Err(Denied { need: ADMIN, level: 10, via: None, controllers: false }));
 
         // 관리자를 유저 아래로 내리면 관리자는 유저보다 약하다
         apply(&mut node, &ladder(&[(OWNER, None), (10, Some("VIP")), (USER, None), (ADMIN, None), (CHATBOT, None), (BANNED, None)]), owner).unwrap();

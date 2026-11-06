@@ -1,0 +1,563 @@
+import type React from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { TITLEBAR_HEIGHT } from '../constants/layout';
+import { type Consoles, useConsoleStore } from '../stores/useConsoleStore';
+import { useServerStore } from '../stores/useServerStore';
+import { useSettingsStore } from '../stores/useSettingsStore';
+import { commandErrorText, commandReplyLines } from '../utils/commandReply';
+import { createTranslateError, safeShowToast } from '../utils/helpers';
+
+/** @constant 서버 Running 시 polling 간격 (ms) */
+const POLL_ACTIVE_MS = 500;
+/** @constant 서버 비활성 시 polling 간격 (ms) */
+const POLL_IDLE_MS = 5000;
+
+// Map of instanceId -> console state. 이 훅을 쓰는 App이 줄마다 다시 그려지지 않도록 구독하지 않고 쓰기만 한다
+type ConsolesOrUpdater = Consoles | ((prev: Consoles) => Consoles);
+const setConsoles = (consolesOrUpdater: ConsolesOrUpdater) => useConsoleStore.getState().setConsoles(consolesOrUpdater);
+
+// 줄마다 GUI가 매기는 key. 데몬 id는 프로세스·디스크 읽기마다 0부터 다시 세서 겹친다 (G-C1)
+let lineSeq = 0;
+
+/** 콘솔 한 줄 */
+interface ConsoleLine {
+    id: number;
+    content?: string;
+    source?: string;
+    level?: string;
+    timestamp?: string;
+    /** 보낸 명령 줄(source: input)을 시킨 쪽 */
+    by?: { source?: string; userName?: string };
+}
+
+/** 읽기 루프 하나의 ref (닫을 때 멈춘다) */
+interface PollRef {
+    active: boolean;
+    timer: ReturnType<typeof setTimeout> | null;
+}
+
+const keyed = (lines: ConsoleLine[]) => lines.map((line) => ({ ...line, key: ++lineSeq }));
+
+/** 디스크 줄과 실행 중에 받은 줄을 맞춰 보는 값. 디스크 기록은 내용 앞 공백을 지우고 시각은 초까지 남긴다 */
+const lineMark = (line: ConsoleLine) => `${line.timestamp ?? ''}|${line.source ?? ''}|${String(line.content ?? '').trimStart()}`;
+
+/**
+ * 디스크 꼬리에서 이미 본 줄 뒤의 것만 (G-C3). 마지막으로 본 실행 줄들(seen)과 겹치는 곳을
+ * 앞에서부터 찾는다: 같은 줄이 되풀이된 로그에서 모호하면 못 본 줄을 버리기보다 다시 보이는 쪽을 고른다.
+ * 못 찾으면 다른 기록이라 보고 전부 준다
+ */
+function unseenDiskTail(seen: string[], tail: ConsoleLine[]) {
+    if (seen.length === 0) return tail;
+    const marks = tail.map(lineMark);
+    for (let end = 0; end < tail.length; end++) {
+        const span = Math.min(seen.length, end + 1);
+        let match = true;
+        for (let k = 0; k < span; k++) {
+            if (marks[end - k] !== seen[seen.length - 1 - k]) {
+                match = false;
+                break;
+            }
+        }
+        if (match) return tail.slice(end + 1);
+    }
+    return tail;
+}
+
+/**
+ * Manages multiple simultaneous console instances with individual state.
+ *
+ * Each console instance tracks its own lines, input, polling, window position/size,
+ * minimized state, pinned state, and z-index for focus ordering.
+ *
+ * @param {Object} params
+ * @param {boolean} params.isPopoutMode - Whether the app is in popout console mode
+ * @param {Object|null} params.popoutParams - { instanceId, name } if popout mode
+ * @param {React.MutableRefObject<number>} params.consoleBufferRef - Max console lines ref
+ * @returns {Object} Multi-console state and handlers
+ */
+interface UseMultiConsoleParams {
+    isPopoutMode: boolean;
+    popoutParams: { instanceId: string; name: string } | null;
+    consoleBufferRef: React.MutableRefObject<number>;
+}
+
+export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }: UseMultiConsoleParams) {
+    const { t } = useTranslation('gui');
+    const translateError = createTranslateError(t);
+
+    // Global z-index counter for window stacking
+    const zCounterRef = useRef(100);
+    // Map of instanceId -> polling interval id
+    const pollingRefs = useRef<Record<string, PollRef>>({});
+    // 따로 띄운 창에 가 있는 콘솔들 (여러 서버를 동시에 띄울 수 있다)
+    const [consolePopoutIds, setConsolePopoutIds] = useState<string[]>([]);
+
+    // ── Helpers ─────────────────────────────────────────────
+
+    const getDefaultPosition = useCallback((existingCount: number) => {
+        const offset = existingCount * 30;
+        return {
+            x: 80 + offset,
+            y: TITLEBAR_HEIGHT + 20 + offset,
+        };
+    }, []);
+
+    const getDefaultSize = useCallback(() => ({
+        width: 700,
+        height: 400,
+    }), []);
+
+    // ── Open a console ──────────────────────────────────────
+
+    const openConsole = useCallback((instanceId: string, serverName: string) => {
+        setConsoles((prev) => {
+            // Already open → just restore and focus
+            if (prev[instanceId]) {
+                return {
+                    ...prev,
+                    [instanceId]: {
+                        ...prev[instanceId],
+                        minimized: false,
+                        zIndex: zCounterRef.current += 1,
+                    },
+                };
+            }
+
+            const existingCount = Object.keys(prev).length;
+            return {
+                ...prev,
+                [instanceId]: {
+                    server: { id: instanceId, name: serverName },
+                    lines: [],
+                    input: '',
+                    stdinDisabled: false,
+                    minimized: false,
+                    pinned: false,
+                    position: getDefaultPosition(existingCount),
+                    size: getDefaultSize(),
+                    zIndex: zCounterRef.current += 1,
+                },
+            };
+        });
+
+        // Start polling if not already running
+        // 서버 상태에 따라 polling 간격을 동적으로 조절합니다:
+        //   Running (PID 추적 중) → 500ms (빠른 응답)
+        //   Stopped / 기타          → 5000ms (리소스 절약)
+        if (!pollingRefs.current[instanceId]) {
+            let sinceId = 0;
+            // 마지막으로 본 실행 PID. 바뀌면 새 프로세스라 줄 번호가 0부터 다시 시작한다
+            let seenPid: number | null = null;
+            // 마지막으로 본 콘솔 버퍼 세대(epoch). PID가 같아도 데몬이 다시 붙으면 바뀌고 줄 번호가 0부터 다시 시작한다
+            let seenEpoch: number | null = null;
+            // 세대가 바뀐 뒤 처음 받는 줄은 이어 붙이지 않고 그 버퍼로 바꾼다 (다시 붙은 버퍼는 이미 본 줄을 다시 담는다)
+            let replaceLines = false;
+            let diskLoaded = false;
+            // 실행 중에 받은 마지막 몇 줄의 표시(lineMark). 꺼진 뒤 디스크 꼬리와 겹치는 곳을 찾는 데 쓴다
+            let seenTail: string[] = [];
+            let polling = false;
+            // 이 루프의 ref. 닫았다 다시 열면 새 ref가 생기므로, 옛 루프는 자기 ref가 아니면 멈춘다(줄 중복 방지)
+            const myRef: PollRef = { active: true, timer: null };
+            const isMine = () => pollingRefs.current[instanceId] === myRef && myRef.active;
+            // 처음 한 번은 바로 읽는다: 꺼진 서버도 지난 로그가 5초 늦게 뜨지 않게
+            let first = true;
+            const schedulePoll = () => {
+                if (!isMine()) return;
+                const servers = useServerStore.getState().servers;
+                const server = servers.find((s) => s.id === instanceId);
+                const isRunning = server && server.pid != null && server.pid > 0;
+                const interval = first ? 0 : isRunning ? POLL_ACTIVE_MS : POLL_IDLE_MS;
+                first = false;
+                myRef.timer = setTimeout(async () => {
+                    if (polling) { schedulePoll(); return; }
+                    polling = true;
+                    try {
+                        const pid = useServerStore.getState().servers.find((s) => s.id === instanceId)?.pid;
+                        let pidChanged = false;
+                        if (pid != null && pid > 0) {
+                            if (seenPid !== null && pid !== seenPid) {
+                                pidChanged = true;
+                                // 세대를 주는 데몬이면 아래 세대 비교가 정한다 (PID가 늦게 바뀌어도 줄이 겹치지 않게)
+                                if (seenEpoch === null) sinceId = 0;
+                            }
+                            seenPid = pid;
+                        }
+                        // 하이라이트가 켜져 있으면 데몬에게 조각 토큰(spans)도 달라고 한다
+                        const opts = useSettingsStore.getState().consoleSyntaxHighlight ? { spans: true } : undefined;
+                        const data = await window.api.managedConsole(instanceId, sinceId, 200, opts);
+                        if (!isMine()) return;
+                        // epoch가 없는 응답(디스크 기록, 옛 데몬)은 지금처럼 이어 읽는다
+                        if (typeof data?.epoch === 'number') {
+                            const epochChanged = seenEpoch !== null && data.epoch !== seenEpoch;
+                            seenEpoch = data.epoch;
+                            // 옛 번호로 받은 줄은 버리고 처음부터 다시 받는다. 새 프로세스면 이어 붙이고(지난 실행 기록을 남긴다),
+                            // 같은 프로세스에 다시 붙었으면 그 버퍼로 바꾼다
+                            if (epochChanged) {
+                                sinceId = 0;
+                                replaceLines = !pidChanged;
+                                schedulePoll();
+                                return;
+                            }
+                        }
+                        // disk fallback은 since_id를 무시하고 매번 같은 로그를 반환하므로
+                        // 이미 한 번 로드했으면 다시 append하지 않음
+                        if (data?.source === 'disk') {
+                            if (!diskLoaded && data.lines?.length > 0) {
+                                diskLoaded = true;
+                                const unseen = keyed(unseenDiskTail(seenTail, data.lines));
+                                seenTail = [];
+                                setConsoles((prev) => {
+                                    if (!prev[instanceId]) return prev;
+                                    const maxLines = consoleBufferRef.current || 2000;
+                                    const newLines = [...prev[instanceId].lines, ...unseen];
+                                    return {
+                                        ...prev,
+                                        [instanceId]: {
+                                            ...prev[instanceId],
+                                            lines: newLines.length > maxLines ? newLines.slice(-maxLines) : newLines,
+                                        },
+                                    };
+                                });
+                            }
+                        } else if (data?.lines?.length > 0) {
+                            diskLoaded = false; // managed process가 복구됨 → 리셋
+                            const replace = replaceLines;
+                            replaceLines = false;
+                            const received = keyed(data.lines);
+                            seenTail = [...(replace ? [] : seenTail), ...data.lines.map(lineMark)].slice(-5);
+                            setConsoles((prev) => {
+                                if (!prev[instanceId]) return prev;
+                                const maxLines = consoleBufferRef.current || 2000;
+                                const newLines = replace ? received : [...prev[instanceId].lines, ...received];
+                                return {
+                                    ...prev,
+                                    [instanceId]: {
+                                        ...prev[instanceId],
+                                        lines: newLines.length > maxLines ? newLines.slice(-maxLines) : newLines,
+                                    },
+                                };
+                            });
+                            sinceId = data.lines[data.lines.length - 1].id + 1;
+                        }
+                        // Track stdin availability from backend
+                        if (data && typeof data.stdin_available === 'boolean') {
+                            setConsoles((prev) => {
+                                if (!prev[instanceId]) return prev;
+                                const disabled = !data.stdin_available;
+                                if (prev[instanceId].stdinDisabled === disabled) return prev;
+                                return {
+                                    ...prev,
+                                    [instanceId]: {
+                                        ...prev[instanceId],
+                                        stdinDisabled: disabled,
+                                    },
+                                };
+                            });
+                        }
+                    } catch (_err) {
+                        // silent — server might not be ready yet
+                    } finally {
+                        polling = false;
+                    }
+                    schedulePoll();
+                }, interval);
+            };
+            pollingRefs.current[instanceId] = myRef;
+            schedulePoll();
+        }
+    }, [consoleBufferRef, getDefaultPosition, getDefaultSize]);
+
+    // ── Close a single console ──────────────────────────────
+
+    const closeConsole = useCallback((instanceId?: string) => {
+        // If called without id (legacy compat) close all
+        if (!instanceId) {
+            for (const id of Object.keys(pollingRefs.current)) {
+                const ref = pollingRefs.current[id];
+                if (ref && typeof ref === 'object') {
+                    ref.active = false;
+                    clearTimeout(ref.timer ?? undefined);
+                } else {
+                    clearInterval(ref);
+                }
+            }
+            pollingRefs.current = {};
+            setConsoles({});
+            return;
+        }
+
+        if (pollingRefs.current[instanceId]) {
+            const ref = pollingRefs.current[instanceId];
+            if (ref && typeof ref === 'object') {
+                ref.active = false;
+                clearTimeout(ref.timer ?? undefined);
+            } else {
+                clearInterval(ref);
+            }
+            delete pollingRefs.current[instanceId];
+        }
+        setConsoles((prev) => {
+            const next = { ...prev };
+            delete next[instanceId];
+            return next;
+        });
+    }, []);
+
+    // ── Minimize / Restore ──────────────────────────────────
+
+    const minimizeConsole = useCallback((instanceId: string) => {
+        setConsoles((prev) => {
+            if (!prev[instanceId]) return prev;
+            return {
+                ...prev,
+                [instanceId]: { ...prev[instanceId], minimized: true },
+            };
+        });
+    }, []);
+
+    const restoreConsole = useCallback((instanceId: string) => {
+        setConsoles((prev) => {
+            if (!prev[instanceId]) return prev;
+            const isPinned = prev[instanceId].pinned;
+            return {
+                ...prev,
+                [instanceId]: {
+                    ...prev[instanceId],
+                    minimized: false,
+                    zIndex: (isPinned ? PIN_Z_OFFSET : 0) + (zCounterRef.current += 1),
+                },
+            };
+        });
+    }, []);
+
+    // ── Focus (bring to front) ──────────────────────────────
+
+    const PIN_Z_OFFSET = 50000; // pinned windows sit far above normal ones but below modals
+
+    const focusConsole = useCallback((instanceId: string) => {
+        setConsoles((prev) => {
+            if (!prev[instanceId]) return prev;
+            const isPinned = prev[instanceId].pinned;
+            return {
+                ...prev,
+                [instanceId]: {
+                    ...prev[instanceId],
+                    zIndex: (isPinned ? PIN_Z_OFFSET : 0) + (zCounterRef.current += 1),
+                },
+            };
+        });
+    }, []);
+
+    // ── Pin (always on top) ─────────────────────────────────
+
+    const togglePin = useCallback((instanceId: string) => {
+        setConsoles((prev) => {
+            if (!prev[instanceId]) return prev;
+            const wasPinned = prev[instanceId].pinned;
+            const newPinned = !wasPinned;
+            return {
+                ...prev,
+                [instanceId]: {
+                    ...prev[instanceId],
+                    pinned: newPinned,
+                    zIndex: newPinned
+                        ? PIN_Z_OFFSET + (zCounterRef.current += 1)
+                        : (zCounterRef.current += 1),
+                },
+            };
+        });
+    }, []);
+
+    // ── Popin (bring PiP back into app) ─────────────────────
+
+    const popinConsole = useCallback(async (instanceId: string) => {
+        try {
+            await window.api.consolePopin(instanceId);
+            // the shell sends console:popinRequest → handled in useEffect below
+        } catch (err) {
+            console.error('Popin failed:', err);
+        }
+    }, []);
+
+    // ── Update position / size ──────────────────────────────
+
+    const updatePosition = useCallback((instanceId: string, position: { x: number; y: number }) => {
+        setConsoles((prev) => {
+            if (!prev[instanceId]) return prev;
+            return {
+                ...prev,
+                [instanceId]: { ...prev[instanceId], position },
+            };
+        });
+    }, []);
+
+    const updateSize = useCallback((instanceId: string, size: { width: number; height: number }) => {
+        setConsoles((prev) => {
+            if (!prev[instanceId]) return prev;
+            return {
+                ...prev,
+                [instanceId]: { ...prev[instanceId], size },
+            };
+        });
+    }, []);
+
+    // ── Update input ────────────────────────────────────────
+
+    const setConsoleInput = useCallback((instanceId: string, value: string) => {
+        setConsoles((prev) => {
+            if (!prev[instanceId]) return prev;
+            return {
+                ...prev,
+                [instanceId]: { ...prev[instanceId], input: value },
+            };
+        });
+    }, []);
+
+    // ── Send command ────────────────────────────────────────
+
+    const sendConsoleCommand = useCallback(async (instanceId: string) => {
+        const state = useConsoleStore.getState().consoles[instanceId];
+
+        if (!state || !state.input.trim()) return;
+
+        const cmd = state.input.trim();
+        // 입력을 즉시 클리어하여 중복 전송/후속 입력 삭제 방지
+        setConsoleInput(instanceId, '');
+        try {
+            const result = await window.api.managedStdin(instanceId, cmd);
+            if (result?.error_code === 'ETIMEDOUT' || result?.error_code === 'EOTHER') {
+                // 답을 못 받았다(시간 초과·연결 끊김): 데몬이 이미 보냈을 수 있어 명령 API로 다시 보내면 두 번 실행된다 (G-C4)
+                safeShowToast(t('servers.stdin_unconfirmed'), 'warning', 5000);
+                return;
+            }
+            if (result?.error_code === 'console_input_full') {
+                // 서버가 앞의 입력을 아직 읽지 않았다: 다른 길로 보내도 같은 대기열이다
+                safeShowToast(t('errors.console_input_full'), 'warning', 5000);
+                return;
+            }
+            if (result?.error) {
+                console.log('[Console] stdin failed, trying command API:', result.error);
+                const cmdResult = await window.api.executeCommand(instanceId, {
+                    command: cmd,
+                    args: {},
+                });
+                if (cmdResult?.error) {
+                    safeShowToast(
+                        commandErrorText(cmdResult, t) ?? translateError(cmdResult.error),
+                        'error',
+                        5000,
+                    );
+                } else {
+                    // 콘솔 입력이 아니라 명령 API(RCON 등)로 보냈다: 데몬 콘솔에 보낸 줄이 없으니 여기서 같은 모양으로 남긴다
+                    const lines: ConsoleLine[] = [{ id: Date.now(), content: cmd, source: 'input', level: 'INFO', by: { source: 'gui' } }];
+                    // 데몬이 서버의 답을 data.response로 준다 (여러 줄일 수 있다)
+                    commandReplyLines(cmdResult).forEach((content, i) => {
+                        lines.push({ id: Date.now() + 1 + i, content, source: 'STDOUT', level: 'INFO' });
+                    });
+                    setConsoles((prev) => {
+                        if (!prev[instanceId]) return prev;
+                        return {
+                            ...prev,
+                            [instanceId]: {
+                                ...prev[instanceId],
+                                lines: [...prev[instanceId].lines, ...keyed(lines)],
+                            },
+                        };
+                    });
+                }
+            }
+        } catch (err) {
+            safeShowToast(translateError((err as Error).message), 'error', 3000);
+        }
+    }, [setConsoleInput, translateError, t]);
+
+    // Check if an instance has an open console (for ServerCard active state)
+    const isConsoleOpen = useCallback((instanceId: string) => {
+        return !!useConsoleStore.getState().consoles[instanceId];
+    }, []);
+
+    // ── Cleanup on unmount ──────────────────────────────────
+
+    useEffect(() => {
+        return () => {
+            for (const id of Object.keys(pollingRefs.current)) {
+                const ref = pollingRefs.current[id];
+                if (ref && typeof ref === 'object') {
+                    ref.active = false;
+                    clearTimeout(ref.timer ?? undefined);
+                } else {
+                    clearInterval(ref);
+                }
+            }
+        };
+    }, []);
+
+    // ── Popout mode: auto-start on mount ────────────────────
+
+    useEffect(() => {
+        if (popoutParams) {
+            openConsole(popoutParams.instanceId, popoutParams.name);
+        }
+    }, [popoutParams, openConsole]);
+
+    // ── 메인 창이 새로고침돼도 이미 떠 있는 분리 창을 다시 기억한다 ──
+
+    useEffect(() => {
+        if (isPopoutMode || !window.api?.consolePopoutList) return;
+        let alive = true;
+        window.api.consolePopoutList().then(
+            (ids: string[]) => {
+                if (!alive || !Array.isArray(ids) || !ids.length) return;
+                setConsolePopoutIds((prev) => [...new Set([...prev, ...ids])]);
+                for (const id of ids) closeConsole(id);
+            },
+            () => {},
+        );
+        return () => {
+            alive = false;
+        };
+    }, [isPopoutMode, closeConsole]);
+
+    // ── Popout open/close events ────────────────────────────
+
+    useEffect(() => {
+        if (isPopoutMode) return;
+        const handlePopoutOpened = (instanceId: string) => {
+            setConsolePopoutIds((prev) => (prev.includes(instanceId) ? prev : [...prev, instanceId]));
+            // 띄운 창이 따로 읽으니 이 창은 읽기를 멈춘다. 돌아오면 상세 화면이 다시 연다
+            closeConsole(instanceId);
+        };
+        const handlePopoutClosed = (instanceId: string) => {
+            setConsolePopoutIds((prev) => prev.filter((id) => id !== instanceId));
+        };
+        const handlePopinRequest = (instanceId: string, serverName: string) => {
+            // PiP → 인앱 전환: 인앱 콘솔 창 열기
+            openConsole(instanceId, serverName);
+        };
+        const offs = [
+            window.api.onConsolePopoutOpened?.(handlePopoutOpened),
+            window.api.onConsolePopoutClosed?.(handlePopoutClosed),
+            window.api.onConsolePopinRequest?.(handlePopinRequest),
+        ];
+        return () => {
+            for (const off of offs) if (typeof off === 'function') off();
+        };
+    }, [isPopoutMode, openConsole, closeConsole]);
+
+    return {
+        consolePopoutIds,
+        openConsole,
+        closeConsole,
+        minimizeConsole,
+        restoreConsole,
+        focusConsole,
+        togglePin,
+        popinConsole,
+        updatePosition,
+        updateSize,
+        setConsoleInput,
+        sendConsoleCommand,
+        isConsoleOpen,
+    };
+}

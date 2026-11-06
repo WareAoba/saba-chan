@@ -83,13 +83,23 @@ async fn signed_base(state: &IPCServer, requested: Option<&str>) -> String {
 
 /// Create an HTTP client with 5s timeout for relay requests.
 /// Automatically includes X-Saba-Client: 1 header required by nginx.
+/// 한 번 만든 클라이언트를 함께 쓴다: 요청마다 TLS 설정을 다시 만들지 않고 릴레이 연결을 이어 쓴다 (상태 확인은 5초마다)
 pub(crate) fn relay_client() -> Result<reqwest::Client, reqwest::Error> {
+    static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+    if let Some(client) = CLIENT.get() {
+        return Ok(client.clone());
+    }
+    let client = build_relay_client()?;
+    Ok(CLIENT.get_or_init(|| client).clone())
+}
+
+fn build_relay_client() -> Result<reqwest::Client, reqwest::Error> {
     let mut headers = reqwest::header::HeaderMap::new();
     headers.insert(
         "X-Saba-Client",
         reqwest::header::HeaderValue::from_static("1"),
     );
-    reqwest::Client::builder()
+    saba_chan_updater_lib::tls::http_client_builder()
         .timeout(std::time::Duration::from_secs(5))
         .default_headers(headers)
         .build()
@@ -188,7 +198,7 @@ pub(crate) fn signed_headers(
     url_path: &str,
     body: Option<&str>,
 ) -> Option<Vec<(String, String)>> {
-    signed_headers_with(&load_node_token()?, method, url_path, body)
+    signed_headers_with(&peek_node_token()?, method, url_path, body)
 }
 
 /// 정해 둔 토큰으로 서명한다 (릴레이 에이전트 세션은 시작할 때의 주소·토큰 쌍을 끝까지 쓴다)
@@ -237,16 +247,26 @@ pub(crate) fn apply_signed_headers(
     url_path: &str,
     body: Option<&str>,
 ) -> reqwest::RequestBuilder {
-    match signed_headers(method, url_path, body) {
-        Some(headers) => {
-            let mut b = builder;
-            for (k, v) in headers {
-                b = b.header(&k, &v);
-            }
-            b
-        }
-        None => builder,
+    with_headers_if_secure(builder, signed_headers(method, url_path, body))
+}
+
+/// 서명 머리(노드 토큰 포함)는 https 또는 루프백 http 릴레이에만 붙인다. 예전에 저장된 평문 http 주소면
+/// 서명 없이 보낸다(릴레이가 인증 실패로 답한다). 주소를 읽을 수 없으면 붙이지 않는다
+fn with_headers_if_secure(builder: reqwest::RequestBuilder, headers: Option<Vec<(String, String)>>) -> reqwest::RequestBuilder {
+    let Some(headers) = headers else { return builder };
+    let secure = builder
+        .try_clone()
+        .and_then(|b| b.build().ok())
+        .is_some_and(|req| crate::config_store::relay_url_problem(req.url().as_str()).is_none());
+    if !secure {
+        tracing::warn!("Not signing a relay request to a plain-http relay; it must be https (http only for localhost)");
+        return builder;
     }
+    let mut b = builder;
+    for (k, v) in headers {
+        b = b.header(&k, &v);
+    }
+    b
 }
 
 #[derive(Deserialize)]
@@ -419,6 +439,23 @@ pub async fn clear_node_moderation_channel(
     let base = signed_base(&state, params.relay_url.as_deref()).await;
     let path = format!(
         "/api/nodes/{}/moderation/channels/{}/clear",
+        encode_path_segment(&guild_id),
+        encode_path_segment(&channel_id)
+    );
+    signed_json(&base, reqwest::Method::POST, &path, &body).await
+}
+
+// 확인 창 전의 검사 — 청소와 같은 권한을 보고 지우지 않는다. 경로가 따로인 까닭: 본문의 dryRun 을 모르는 옛 relay 는
+// 그 값을 버리고 실제로 지운다. 이 경로는 옛 relay 에 없어서 404 가 된다
+pub async fn check_clear_node_moderation_channel(
+    Path((guild_id, channel_id)): Path<(String, String)>,
+    Query(params): Query<RelayQueryParams>,
+    State(state): State<IPCServer>,
+    Json(body): Json<Value>,
+) -> Response {
+    let base = signed_base(&state, params.relay_url.as_deref()).await;
+    let path = format!(
+        "/api/nodes/{}/moderation/channels/{}/clear/check",
         encode_path_segment(&guild_id),
         encode_path_segment(&channel_id)
     );
@@ -906,6 +943,18 @@ mod tests {
         let fresh = pairing_body(&json!({}), "https://saba-chan.online", "", None, Some(&"x".repeat(80)));
         assert_eq!(fresh["deviceName"].as_str().unwrap().chars().count(), 64);
         assert!(fresh.get("currentToken").is_none());
+    }
+
+    /// 예전에 저장된 평문 http 릴레이 주소로는 노드 토큰을 싣지 않는다
+    #[test]
+    fn signed_headers_are_only_attached_for_an_https_or_loopback_relay() {
+        let headers = || Some(vec![("Authorization".to_string(), "Bearer sbn_a.b".to_string())]);
+        let client = saba_chan_updater_lib::tls::http_client_builder().build().unwrap();
+        let auth = |url: &str| with_headers_if_secure(client.get(url), headers()).build().unwrap().headers().contains_key("authorization");
+        assert!(!auth("http://old.example/api/x"));
+        assert!(!auth("http://127.0.0.2:9/api/x"));
+        assert!(auth("https://saba-chan.online/api/x"));
+        assert!(auth("http://127.0.0.1:9/api/x"));
     }
 
     /// 페어링은 받은 노드 토큰이 평문으로 오가지 않게 https(또는 루프백 모의 릴레이)에서만 한다

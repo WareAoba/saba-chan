@@ -96,6 +96,7 @@
     "create_http": "Não foi possível criar o servidor (HTTP {{status}}): {{error}}",
     "instance_not_found": "Servidor não encontrado",
     "instance_running": "Não é possível excluir um servidor em execução. Pare-o primeiro",
+    "instance_busy": "Outra tarefa (backup ou restauração) está em andamento neste servidor. Tente novamente quando terminar",
     "delete_error": "Não foi possível excluir o servidor: {{error}}",
     "delete_http": "Não foi possível excluir o servidor (HTTP {{status}}): {{error}}",
     "reorder_failed": "Não foi possível reordenar: {{error}}",

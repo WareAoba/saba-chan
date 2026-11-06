@@ -1,0 +1,126 @@
+/* 명령 줄 입력 부품 (ui/CommandLine.tsx, 사용자 11-06 #4). 앱·웹이 함께 쓴다: tokens.css의 값만 쓴다 */
+.cmdline-field {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+    display: flex;
+    align-items: center;
+}
+/* 색칠한 줄과 입력 칸 글자가 정확히 겹쳐야 한다: 글꼴·크기·줄 높이를 같게 (앱 base.css의 `*` 글꼴도 덮는다) */
+.cmdline-hl,
+.cmdline-hl *,
+.cmdline-field .cmdline-input {
+    margin: 0;
+    padding: 0;
+    font-family: var(--font-mono);
+    font-size: inherit;
+    font-weight: 400;
+    line-height: normal;
+    letter-spacing: 0;
+    white-space: pre;
+}
+.cmdline-hl {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    overflow: hidden;
+    pointer-events: none;
+    color: var(--text-1);
+    background: none;
+    border: 0;
+}
+.cmdline-hl-text {
+    flex: none;
+}
+.cmdline-field .cmdline-input {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    color: transparent;
+    caret-color: var(--text-1);
+    background: transparent;
+}
+.cmdline-field .cmdline-input::selection {
+    color: transparent;
+    background: var(--accent-soft);
+}
+.tok-name {
+    /* 굵게 하지 않는다: 글자 폭이 달라지면 위의 입력 칸 글자·커서와 어긋난다 */
+    color: var(--accent);
+}
+.tok-ok {
+    color: var(--info);
+}
+.tok-bad {
+    color: var(--stop);
+    text-decoration: wavy underline;
+    text-underline-offset: 3px;
+}
+.tok-extra {
+    color: var(--warn);
+    text-decoration: wavy underline;
+    text-underline-offset: 3px;
+}
+.tok-free {
+    color: var(--text-1);
+}
+
+.cmdline-help {
+    display: grid;
+    gap: var(--sp-1-5);
+    min-width: 0;
+}
+.cmdline-sig {
+    font-size: var(--fs-xs);
+    color: var(--text-2);
+    overflow-x: auto;
+    white-space: nowrap;
+}
+.cmdline-sig-name {
+    font-family: var(--font-mono);
+    color: var(--accent);
+    font-weight: 700;
+}
+.cmdline-sig-cur {
+    color: var(--text-1);
+    font-weight: 700;
+    background: var(--accent-soft);
+    border-radius: 4px;
+}
+.cmdline-msg {
+    font-size: var(--fs-xs);
+}
+.cmdline-msg.tone-ok {
+    color: var(--ok);
+}
+.cmdline-msg.tone-bad {
+    color: var(--stop);
+}
+.cmdline-msg.tone-need {
+    color: var(--warn);
+}
+.cmdline-msg.tone-neutral {
+    color: var(--text-3);
+}
+.cmdline-suggest {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-1-5);
+}
+.cmdline-suggest button {
+    padding: var(--sp-0-5) var(--sp-2);
+    border: 1px solid var(--line-strong);
+    border-radius: 7px;
+    background: var(--bg-2);
+    color: var(--text-2);
+    font-family: var(--font-mono);
+    font-size: var(--fs-xs);
+    cursor: pointer;
+}
+.cmdline-suggest button:hover,
+.cmdline-suggest button:focus-visible {
+    border-color: var(--accent);
+    color: var(--accent);
+}

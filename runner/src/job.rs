@@ -96,45 +96,47 @@ impl Job {
     /// 완료 포트를 잡에 잇고, 메모리 상한 알림이 오면 잡을 끝내는 스레드를 띄운다.
     /// 할당이 실패한 서버는 멈춰 있거나 엉뚱하게 돌 수 있으므로 기다리지 않고 끝낸다
     unsafe fn watch_memory(&mut self) -> Result<(), String> {
-        let port = CreateIoCompletionPort(INVALID_HANDLE_VALUE, std::ptr::null_mut(), 0, 1);
-        if port.is_null() {
-            return Err(format!("CreateIoCompletionPort failed ({})", std::io::Error::last_os_error()));
-        }
-        self.port = port;
-        let assoc = JOBOBJECT_ASSOCIATE_COMPLETION_PORT { CompletionKey: std::ptr::null_mut(), CompletionPort: port };
-        if SetInformationJobObject(
-            self.handle,
-            JobObjectAssociateCompletionPortInformation,
-            &assoc as *const _ as *const _,
-            size_of::<JOBOBJECT_ASSOCIATE_COMPLETION_PORT>() as u32,
-        ) == 0
-        {
-            let err = std::io::Error::last_os_error();
-            CloseHandle(port);
-            self.port = std::ptr::null_mut();
-            return Err(format!("associate completion port failed ({})", err));
-        }
-        // 핸들은 스레드로 숫자로 넘긴다. 포트를 닫으면(Drop) 기다림이 실패해 스레드가 끝난다
-        let (job, port, hit, drained) = (self.handle as usize, port as usize, self.memory_hit.clone(), self.drained.clone());
-        std::thread::spawn(move || loop {
-            let (mut msg, mut key, mut overlapped): (u32, usize, *mut OVERLAPPED) = (0, 0, std::ptr::null_mut());
-            if GetQueuedCompletionStatus(port as HANDLE, &mut msg, &mut key, &mut overlapped, INFINITE) == 0 {
-                drained.store(true, Ordering::SeqCst);
-                return;
+        unsafe {
+            let port = CreateIoCompletionPort(INVALID_HANDLE_VALUE, std::ptr::null_mut(), 0, 1);
+            if port.is_null() {
+                return Err(format!("CreateIoCompletionPort failed ({})", std::io::Error::last_os_error()));
             }
-            match msg {
-                JOB_OBJECT_MSG_JOB_MEMORY_LIMIT => {
-                    hit.store(true, Ordering::SeqCst);
-                    TerminateJobObject(job as HANDLE, MEMORY_LIMIT_EXIT_CODE);
-                }
-                JOB_OBJECT_MSG_ACTIVE_PROCESS_ZERO => {
+            self.port = port;
+            let assoc = JOBOBJECT_ASSOCIATE_COMPLETION_PORT { CompletionKey: std::ptr::null_mut(), CompletionPort: port };
+            if SetInformationJobObject(
+                self.handle,
+                JobObjectAssociateCompletionPortInformation,
+                &assoc as *const _ as *const _,
+                size_of::<JOBOBJECT_ASSOCIATE_COMPLETION_PORT>() as u32,
+            ) == 0
+            {
+                let err = std::io::Error::last_os_error();
+                CloseHandle(port);
+                self.port = std::ptr::null_mut();
+                return Err(format!("associate completion port failed ({})", err));
+            }
+            // 핸들은 스레드로 숫자로 넘긴다. 포트를 닫으면(Drop) 기다림이 실패해 스레드가 끝난다
+            let (job, port, hit, drained) = (self.handle as usize, port as usize, self.memory_hit.clone(), self.drained.clone());
+            std::thread::spawn(move || loop {
+                let (mut msg, mut key, mut overlapped): (u32, usize, *mut OVERLAPPED) = (0, 0, std::ptr::null_mut());
+                if GetQueuedCompletionStatus(port as HANDLE, &mut msg, &mut key, &mut overlapped, INFINITE) == 0 {
                     drained.store(true, Ordering::SeqCst);
                     return;
                 }
-                _ => {}
-            }
-        });
-        Ok(())
+                match msg {
+                    JOB_OBJECT_MSG_JOB_MEMORY_LIMIT => {
+                        hit.store(true, Ordering::SeqCst);
+                        TerminateJobObject(job as HANDLE, MEMORY_LIMIT_EXIT_CODE);
+                    }
+                    JOB_OBJECT_MSG_ACTIVE_PROCESS_ZERO => {
+                        drained.store(true, Ordering::SeqCst);
+                        return;
+                    }
+                    _ => {}
+                }
+            });
+            Ok(())
+        }
     }
 
     /// 메모리 상한을 넘어 잡을 끝냈는가. 서버가 끝난 뒤에 부른다: 서버가 상한에 걸려 곧바로 끝나면

@@ -1,6 +1,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::RwLock;
+use std::sync::{Arc, RwLock};
 use std::io::Read;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
@@ -46,6 +46,10 @@ pub struct ModuleMetadata {
     /// [config] announce_command — 게임 안 공지에 쓰는 `[commands.fields]` 이름 (`message` 입력 하나). 예약 재시작 예고·공지(A3)용
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub announce_command: Option<String>,
+    /// [config] kick_command — 플레이어를 내보내는 `[commands.fields]` 이름 (첫 입력 닉네임, 둘째 입력이 있으면 이유).
+    /// 조작 가능한 사람만 접속(`crate::controllers`)이 쓴다
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kick_command: Option<String>,
     /// [backup] 월드·세이브 백업 선언 (A2). 없으면 이 모듈은 백업을 지원하지 않는다
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub backup: Option<ModuleBackup>,
@@ -640,6 +644,8 @@ impl ModuleSettings {
 pub struct LoadedModule {
     pub metadata: ModuleMetadata,
     pub path: String,  // 압축 해제된 디렉토리 또는 원본 디렉토리 절대 경로
+    /// 찾은 원본: 모듈 폴더, 또는 modules 폴더에 놓인 ZIP 파일 (제거 API가 지우는 것)
+    pub source: String,
 }
 
 impl LoadedModule {
@@ -787,7 +793,7 @@ pub const COMMAND_RISKS: [&str; 3] = ["safe", "caution", "danger"];
 pub const PROTOCOLS: [&str; 3] = ["rcon", "rest", "stdin"];
 
 /// JSON 스키마에서도 로더와 같은 값만 받게 한다 (적합성 검사가 데몬과 어긋나지 않게)
-fn schema_version_schema(_: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
+fn schema_version_schema(_: &mut schemars::r#gen::SchemaGenerator) -> schemars::schema::Schema {
     serde_json::from_value(serde_json::json!({
         "description": "이 파일이 따르는 스키마 버전. 1, 또는 list·multiline 설정과 restart_required·visible_when 등을 쓰면 2(saba-core >=0.1.9)",
         "enum": [BASE_SCHEMA_VERSION, MODULE_SCHEMA_VERSION, null]
@@ -795,7 +801,7 @@ fn schema_version_schema(_: &mut schemars::gen::SchemaGenerator) -> schemars::sc
     .expect("static schema")
 }
 
-fn risk_schema(_: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
+fn risk_schema(_: &mut schemars::r#gen::SchemaGenerator) -> schemars::schema::Schema {
     serde_json::from_value(serde_json::json!({
         "description": "\"safe\" | \"caution\" | \"danger\" (없으면 caution)",
         "enum": [COMMAND_RISKS[0], COMMAND_RISKS[1], COMMAND_RISKS[2], null]
@@ -991,6 +997,9 @@ struct ConfigSection {
     /// 게임 안 공지에 쓰는 `[commands.fields]` 이름 (`message` 입력 하나)
     #[serde(default)]
     announce_command: Option<String>,
+    /// 플레이어를 내보내는 `[commands.fields]` 이름 (첫 입력 닉네임, 둘째 입력이 있으면 이유)
+    #[serde(default)]
+    kick_command: Option<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -1430,6 +1439,7 @@ impl ModuleToml {
             stop_command: self.config.as_ref().and_then(|c| c.stop_command.clone()),
             stop_timeout: self.config.as_ref().and_then(|c| c.stop_timeout),
             announce_command: self.config.as_ref().and_then(|c| c.announce_command.clone()),
+            kick_command: self.config.as_ref().and_then(|c| c.kick_command.clone()),
             backup: self.backup,
             permissions: self.permissions,
             interaction_mode: self.protocols.as_ref().and_then(|p| p.interaction_mode.clone()),
@@ -1949,6 +1959,7 @@ impl ModuleToml {
         let named = |name: &str| self.commands.iter().flat_map(|c| &c.fields).any(|f| f.name == name);
         let refs = [
             ("config.announce_command", self.config.as_ref().and_then(|c| c.announce_command.as_deref())),
+            ("config.kick_command", self.config.as_ref().and_then(|c| c.kick_command.as_deref())),
             ("backup.save_command", self.backup.as_ref().and_then(|b| b.save_command.as_deref())),
             ("backup.pause_command", self.backup.as_ref().and_then(|b| b.pause_command.as_deref())),
             ("backup.resume_command", self.backup.as_ref().and_then(|b| b.resume_command.as_deref())),
@@ -2119,6 +2130,7 @@ pub fn load_module_dir(module_path: &Path) -> Result<LoadedModule> {
     let module = LoadedModule {
         metadata: parse_module_toml(&content)?,
         path: module_path.to_string_lossy().to_string(),
+        source: module_path.to_string_lossy().to_string(),
     };
     module.check_loadable()?;
     Ok(module)
@@ -2131,7 +2143,8 @@ pub fn module_json_schema() -> serde_json::Value {
 
 pub struct ModuleLoader {
     modules_dir: String,
-    cached_modules: RwLock<Option<Vec<LoadedModule>>>,
+    /// 자주 부르는 곳(서버 목록 2초, 콘솔 0.5초, 감시 주기)이 목록을 복제하지 않고 함께 본다
+    cached_modules: RwLock<Option<Arc<Vec<LoadedModule>>>>,
     /// 마지막 탐색에서 로드하지 못한 모듈
     load_errors: RwLock<Vec<ModuleLoadError>>,
 }
@@ -2169,6 +2182,11 @@ impl ModuleLoader {
 
     /// 모듈 디렉터리에서 모든 사용 가능한 모듈 발견 (ZIP 및 폴더 모두 지원)
     pub fn discover_modules(&self) -> Result<Vec<LoadedModule>> {
+        Ok(self.modules()?.as_ref().clone())
+    }
+
+    /// 캐시한 모듈 목록을 복제 없이 돌려준다. 캐시가 비었으면 모듈 폴더를 다시 읽는다
+    pub fn modules(&self) -> Result<Arc<Vec<LoadedModule>>> {
         // 캐시 확인
         if let Some(modules) = self.cached_modules.read().unwrap().as_ref() {
             return Ok(modules.clone());
@@ -2179,6 +2197,7 @@ impl ModuleLoader {
 
         if !Path::new(&self.modules_dir).exists() {
             tracing::warn!("Modules directory does not exist: {}", self.modules_dir);
+            let modules = Arc::new(modules);
             *self.cached_modules.write().unwrap() = Some(modules.clone());
             return Ok(modules);
         }
@@ -2236,6 +2255,7 @@ impl ModuleLoader {
             }
         }
 
+        let modules = Arc::new(modules);
         *self.cached_modules.write().unwrap() = Some(modules.clone());
         *self.load_errors.write().unwrap() = errors;
         Ok(modules)
@@ -2257,17 +2277,23 @@ impl ModuleLoader {
 
         // ZIP 내부에서 가장 얕은 위치의 module.toml을 고른다
         // (`ends_with`로 고르면 `foo_module.toml`이나 하위 폴더 것이 먼저 잡힌다)
-        let toml_index = (0..archive.len())
+        let toml_entry = (0..archive.len())
             .filter_map(|i| {
                 let name = archive.by_index(i).ok()?.name().ok()?.into_owned();
                 let depth = name.trim_end_matches('/').matches('/').count();
-                (name.rsplit('/').next() == Some("module.toml")).then_some((depth, i))
+                (name.rsplit('/').next() == Some("module.toml")).then_some((depth, i, name))
             })
-            .min()
-            .map(|(_, i)| i);
+            .min();
         let mut toml_content = String::new();
-        if let Some(i) = toml_index {
-            archive.by_index(i)?.read_to_string(&mut toml_content)?;
+        // 고른 module.toml이 든 폴더가 모듈 폴더다 (`probe/module.toml`처럼 폴더로 감싼 ZIP)
+        let mut root = PathBuf::new();
+        if let Some((_, i, name)) = &toml_entry {
+            archive.by_index(*i)?.read_to_string(&mut toml_content)?;
+            let parent = Path::new(name).parent().unwrap_or(Path::new(""));
+            if !parent.components().all(|c| matches!(c, std::path::Component::Normal(_))) {
+                anyhow::bail!("module.toml in {} is not inside a plain folder", zip_path.display());
+            }
+            root = parent.to_path_buf();
         }
 
         if toml_content.is_empty() {
@@ -2298,11 +2324,12 @@ impl ModuleLoader {
         fs::create_dir_all(&extracted_dir)?;
         
         // temp_dir에서 extracted_dir로 복사
-        copy_dir_all(&extract_path, &extracted_dir)?;
+        copy_dir_all(&extract_path.join(&root), &extracted_dir)?;
 
         let module = LoadedModule {
             metadata,
             path: extracted_dir.to_string_lossy().to_string(),
+            source: zip_path.to_string_lossy().to_string(),
         };
         module.check_loadable()?;
         Ok(module)
@@ -2310,7 +2337,7 @@ impl ModuleLoader {
 
     /// 모듈 이름으로 모듈 조회
     pub fn get_module(&self, name: &str) -> Result<LoadedModule> {
-        let modules = self.discover_modules()?;
+        let modules = self.modules()?;
         modules
             .iter()
             .find(|m| m.metadata.name == name)
@@ -2351,6 +2378,27 @@ mod tests {
         let rules = &meta.syntax_highlight.unwrap().rules;
         assert_eq!((rules[0].underline, rules[0].priority, rules[0].background.as_deref()), (false, 0, None));
         assert_eq!((rules[1].underline, rules[1].priority, rules[1].background.as_deref()), (true, 5, Some("dim")));
+    }
+
+    /// 서버 목록·콘솔·감시 주기가 자주 부른다: 캐시한 목록을 복제하지 않고 함께 쓰고, 캐시를 비우면 다시 읽는다
+    #[test]
+    fn cached_modules_are_shared_until_the_cache_is_cleared() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(tmp.path().join("plain")).unwrap();
+        std::fs::write(
+            tmp.path().join("plain").join("module.toml"),
+            "[module]\nschema_version = 1\nname = \"plain\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n",
+        )
+        .unwrap();
+        std::fs::write(tmp.path().join("plain").join("lifecycle.py"), "").unwrap();
+        let loader = ModuleLoader::new(tmp.path().to_str().unwrap());
+        let first = loader.modules().unwrap();
+        assert!(Arc::ptr_eq(&first, &loader.modules().unwrap()));
+        assert_eq!(loader.get_module("plain").unwrap().metadata.name, "plain");
+        loader.invalidate_cache();
+        let reread = loader.modules().unwrap();
+        assert!(!Arc::ptr_eq(&first, &reread));
+        assert_eq!(reread.len(), 1);
     }
 
     #[test]
@@ -3229,6 +3277,14 @@ player_leave_patterns = ['^\[\d{2}:\d{2}:\d{2}(?:\] \[[^\]]*/| )INFO\](?: \[[^\]
     }
 
     #[test]
+    fn schema_v1_reads_kick_command_and_checks_it_names_a_command() {
+        let toml = format!("{V1}\n[config]\nkick_command = \"kick\"\n\n[[commands.fields]]\nname = \"kick\"\n");
+        assert_eq!(parse_module_toml(&toml).unwrap().kick_command.as_deref(), Some("kick"));
+        let typo = toml.replace("kick_command = \"kick\"", "kick_command = \"kik\"");
+        assert!(parse_module_toml(&typo).unwrap_err().to_string().contains("config.kick_command"));
+    }
+
+    #[test]
     fn schema_v1_reads_live_backup_keys() {
         let toml = format!(
             "{V1}\n[backup]\npaths = [\"world\"]\nexclude = [\"session.lock\"]\npause_command = \"save-off\"\nsave_command = \"save-all\"\nresume_command = \"save-on\"\n\n[[commands.fields]]\nname = \"save-all\"\n\n[[commands.fields]]\nname = \"save-off\"\n\n[[commands.fields]]\nname = \"save-on\"\n"
@@ -3373,6 +3429,25 @@ player_leave_patterns = ['^\[\d{2}:\d{2}:\d{2}(?:\] \[[^\]]*/| )INFO\](?: \[[^\]
         assert!(!m.matches_dir(&good));
         m.metadata.dir_signatures = vec!["../*".into()];
         assert!(!m.matches_dir(&good), "patterns stay inside the folder");
+    }
+
+    /// 하위 폴더로 감싼 ZIP(`probe/module.toml`)은 고른 module.toml의 폴더를 모듈 폴더로 쓴다
+    #[test]
+    fn a_module_zip_wrapped_in_a_folder_loads() {
+        use std::io::Write;
+        let dir = tempfile::tempdir().unwrap();
+        let mut writer = zip::ZipWriter::new(std::fs::File::create(dir.path().join("probe.zip")).unwrap());
+        let options = zip::write::SimpleFileOptions::default();
+        writer.start_file("probe/module.toml", options).unwrap();
+        writer.write_all(V1.replace("\"g\"", "\"probe\"").as_bytes()).unwrap();
+        writer.start_file("probe/lifecycle.py", options).unwrap();
+        writer.write_all(b"").unwrap();
+        writer.finish().unwrap();
+        let loader = ModuleLoader::new(dir.path().to_str().unwrap());
+        let modules = loader.discover_modules().unwrap();
+        assert_eq!(modules.len(), 1, "{:?}", loader.load_errors());
+        assert!(Path::new(&modules[0].entry_path()).is_file());
+        assert_eq!(Path::new(&modules[0].source), dir.path().join("probe.zip"));
     }
 
     /// 내려받은 모듈 ZIP 안의 링크는 풀지 않고 이유를 남긴다 (폴더 밖 파일을 가리킬 수 있다)

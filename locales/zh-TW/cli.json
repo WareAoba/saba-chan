@@ -31,6 +31,7 @@
     "module_required": "請用 --module 選擇遊戲，或用 --from 指定現有的伺服器資料夾。",
     "name_empty": "名稱不能空白。",
     "name_taken": "已有名為 {{name}} 的伺服器。",
+    "name_comma": "伺服器名稱不能包含逗號（Discord 以逗號分隔呼叫伺服器的詞）。可以使用空格。",
     "needs_extensions": "此遊戲需要以下擴充功能：{{ids}}。現在安裝並啟用嗎？",
     "no_installer": "{{game}} 無法自行安裝伺服器檔案。請用 --from 使用現有資料夾。",
     "no_modules": "尚未安裝任何遊戲模組。",
@@ -164,6 +165,15 @@
     "notice_is_off": "{{server}}：啟動通知已關",
     "notice_on_saved": "將在 {{guild}} 的通知頻道告知 {{server}} 已啟動。",
     "notice_off_saved": "不再在 {{guild}} 告知 {{server}} 已啟動。",
+    "full_notice_none": "還沒有伺服器開啟滿員提醒。",
+    "full_notice_is_on": "{{server}}：滿員提醒已開啟",
+    "full_notice_is_off": "{{server}}：滿員提醒已關閉",
+    "full_notice_on_saved": "將在 {{guild}} 的通知頻道提醒 {{server}} 滿員和重新有空位。",
+    "full_notice_off_saved": "{{guild}} 不再提醒 {{server}} 滿員。",
+    "backup_notice_show": "備份結果私訊：{{mode}}",
+    "backup_notice_set": "已變更備份結果私訊：{{mode}}",
+    "backup_notice_all": "成功和失敗",
+    "backup_notice_failures": "只有失敗",
     "confirm_direct": "直接向機器人請求",
     "confirm_chatbot": "會說話的 Saba-chan",
     "confirm_all": "所有命令",
@@ -203,7 +213,7 @@
     "sleep_blocks_none": "無",
     "bedtime": "乖孩子",
     "bedtime_format": "--bedtime 請以入睡時間-醒來時間的格式填寫，例如 01:00-08:00。",
-    "big_emoji": "大表情"
+    "big_emoji": "表情符號放大"
   },
   "col": {
     "players": "線上玩家",
@@ -309,6 +319,16 @@
       "err_browse_denied": "無法開啟該資料夾",
       "err_browse_not_a_folder": "這不是資料夾",
       "err_browse_failed": "無法讀取資料夾，請重試"
+    },
+    "net_trace": {
+      "on": "開",
+      "off": "關",
+      "current": "依伺服器·連接埠統計網路：{{state}} · 權限：{{access}}",
+      "access_ok": "已有",
+      "access_needs_grant": "沒有 (config net-trace grant)",
+      "access_needs_relogin": "已授予，重新登入 Windows 後可用",
+      "access_unsupported": "此系統無法使用（僅 Windows）",
+      "enable_hint": "開啟方法：saba-chan-cli config set systemMonitorNetTrace=on"
     }
   },
   "console": {
@@ -405,6 +425,7 @@
       "node_token_missing": "請先配對這台電腦：saba-chan-cli bot pair",
       "server_not_running": "請先啟動伺服器：saba-chan-cli start NAME",
       "server_running": "請先停止伺服器：saba-chan-cli stop NAME",
+      "invalid_name": "請移除名稱中的逗號後再試一次。可以使用空格。",
       "rcon_unreachable": "無法連線到伺服器的 RCON。請確認伺服器已完全啟動，稍後再試：saba-chan-cli status",
       "rcon_auth_failed": "伺服器拒絕了 RCON 密碼。重新啟動伺服器後 Saba-chan 會重新寫入密碼：saba-chan-cli restart NAME",
       "rcon_timeout": "伺服器未及時透過 RCON 回應。指令可能已經執行，請先查看伺服器主控台再重新傳送：saba-chan-cli console NAME",
@@ -417,8 +438,10 @@
       "backup_busy": "此伺服器已有備份或還原正在進行。請在完成後再試一次。",
       "backup_file_locked": "伺服器正在使用檔案（{{file}}）。請關閉伺服器後重試：saba-chan-cli stop 名稱",
       "autosave_not_resumed": "備份已完成，但無法重新開啟伺服器的自動儲存。請重新啟動伺服器: saba-chan-cli restart <name>",
+      "backup_failed_autosave_off": "備份失敗，伺服器的自動儲存也未能重新開啟。請重新啟動伺服器: saba-chan-cli restart <name>",
       "backup_save_rejected": "伺服器拒絕了儲存指令，因此沒有備份。請停止伺服器後重新備份: saba-chan-cli stop <name>",
       "backup_save_unconfirmed": "伺服器沒有回報儲存完成，因此沒有備份。請稍後再試，或停止伺服器後再備份: saba-chan-cli stop <name>",
+      "backup_server_stopped": "備份期間伺服器已停止，因此已捨棄該備份。請檢查伺服器後重新備份: saba-chan-cli backup <name>",
       "snapshot_not_found": "遊戲沒有自動備份.",
       "invalid_relay_url": "中繼位址只能使用 https://(僅在本機測試時可對 localhost、127.0.0.1 或 [::1] 使用 http)。",
       "module_busy": "此模組正在安裝或刪除中。請在完成後再試一次。",
@@ -428,7 +451,7 @@
       "no_command_path": "此伺服器是在 Saba-chan 之外啟動的，沒有可接收指令的主控台。請透過 Saba-chan 重新啟動：saba-chan-cli restart <server>",
       "conflict_with": "與 {{name}} 衝突",
       "word": {
-        "invalid": "請使用 1-32 個字元，不含空格",
+        "invalid": "請使用 1-32 個字元，不含逗號（可以有空格）",
         "reserved": "是保留詞",
         "conflict": "已用於稱呼其他物件",
         "unknown_command": "該伺服器沒有這個命令",
@@ -463,7 +486,9 @@
       "move_cross_volume": "無法移動其他磁碟機上的資料夾。請改用「保留在原位置」匯入。",
       "move_in_use": "無法移動資料夾。請停止此資料夾中的伺服器，關閉開啟該資料夾的程式後再試一次。",
       "move_failed": "無法移動資料夾。請改用「保留在原位置」匯入。",
-      "port_check_busy": "已經在檢查中，請稍後再試"
+      "port_check_busy": "已經在檢查中，請稍後再試",
+      "net_trace_elevation_failed": "未在常駐程式電腦上取得系統管理員確認。請在那台電腦前再試一次。",
+      "net_trace_failed": "無法變更權限。"
     },
     "not_a_bool": "「{{value}}」不是是/否（請使用 true 或 false）。",
     "not_a_number": "「{{value}}」不是數字。",
@@ -713,7 +738,7 @@
     "preflight_failed": "遊戲模組執行環境準備失敗：{{error}}。將在下次伺服器操作時重試。"
   },
   "stop": {
-    "confirm": "確定要停止 {{name}} 伺服器嗎？",
+    "confirm": "確定要停止 「{{name}}」伺服器嗎？",
     "already": "{{name}} 未執行。",
     "done": "{{name}} 已停止。",
     "not_yet": "{{name}} 尚未停止。強制停止：saba-chan-cli stop --force {{name}}",
@@ -820,6 +845,7 @@
       "config.paths": "Saba-chan 存放資料、模組和擴充的位置，以及預設資料夾",
       "config.move": "把模組或擴充移到其他資料夾。已安裝的檔案會一起移動；必須先停止伺服器",
       "server.players": "目前在線的人",
+      "server.address": "朋友連線用的位址（IP:連接埠）",
       "server.port-check": "檢查朋友能否從外部連線到此伺服器（連接埠轉發）",
       "server.rcon": "依伺服器接收指令的方式（主控台，沒有則用 RCON）送出一行並查看回覆",
       "server.log": "儲存的歷次執行記錄（主控台只保留本次）",
@@ -838,10 +864,12 @@
       "remote.forget": "移除遠端常駐程式（重新連線用 `remote connect`）",
       "config.autostart": "登入此電腦時啟動的內容：off（關閉）、daemon（僅常駐程式和系統匣）、full（包含 GUI 視窗）。不帶模式時顯示目前的值",
       "config.browse": "查看常駐程式所在電腦的資料夾和檔案（加 --daemon 時為那台遠端電腦）。不給路徑則顯示磁碟機或 /",
-      "bot.notice": "Saba-chan 啟動伺服器時在 Discord 伺服器的通知頻道告知（預設關閉）。不帶伺服器：查看；伺服器加 `--on`/`--off`：變更",
+      "bot.notice": "伺服器不透過 Discord 指令啟動或停止時在 Discord 伺服器的通知頻道告知(預設關閉)。`--full`：滿員或重新有空位時。不帶伺服器：檢視，帶伺服器和 `--on`·`--off`：變更",
+      "bot.backup-notice": "備份結果全部私訊(--all)還是只私訊失敗(--failures)。不帶選項：檢視",
       "bot.confirm": "機器人在執行前用 Discord 按鈕詢問的等級 (all、caution、danger、none)。不加選項: 檢視",
       "bot.tts": "Discord 伺服器的會朗讀的 Saba-chan 語音（音量、速度、音調）。不加選項：顯示",
-      "bot.big-emoji": "Discord 伺服器的大表情(只傳一個自訂表情時放大顯示)。不帶選項則查看"
+      "bot.big-emoji": "Discord 伺服器的表情符號放大(只傳一個自訂表情符號時放大顯示)。不帶選項則查看",
+      "config.net-trace": "依伺服器·連接埠統計網路（進階，Windows）的權限：不帶動作時顯示目前狀態，grant 在常駐程式電腦上跳出一次系統管理員確認以授予權限，revoke 撤銷。開啟：config set systemMonitorNetTrace=on"
     },
     "arg": {
       "module.maker.game": "第一個請求中的遊戲名稱",
@@ -933,8 +961,11 @@
       "move_folder": "將 --from 資料夾移到 saba-chan 資料夾，而不是在原處連結（僅限同一磁碟）",
       "config.browse.path": "要顯示的資料夾的完整路徑",
       "config.browse.files": "也顯示這些副檔名的檔案（逗號分隔，* 表示全部）",
-      "bot.notice.on": "開啟啟動通知",
-      "bot.notice.off": "關閉啟動通知",
+      "bot.notice.on": "開啟提醒",
+      "bot.notice.off": "關閉提醒",
+      "bot.notice.full": "用滿員提醒代替啟動/停止通知",
+      "bot.backup-notice.all": "成功和失敗都私訊",
+      "bot.backup-notice.failures": "只私訊失敗",
       "bot.confirm.direct": "直接向機器人請求 — 前綴指令和斜線指令。",
       "bot.confirm.chatbot": "會說話的 Saba-chan — 會說話的 Saba-chan 選擇的管理操作以及多人混合的請求，無論此設定如何都會詢問。",
       "game_version": "要安裝的伺服器版本（下載伺服器的遊戲，預設：最新正式版）",
@@ -947,12 +978,13 @@
       "bot.tts.volume": "音量（百分比，10-150）",
       "bot.tts.speed": "朗讀速度（0.8-1.5，例如 1.2）",
       "bot.tts.pitch": "音調（半音，-6 到 6）",
-      "bot.big-emoji.on": "開啟大表情",
-      "bot.big-emoji.off": "關閉大表情",
+      "bot.big-emoji.on": "開啟表情符號放大",
+      "bot.big-emoji.off": "關閉表情符號放大",
       "bot.tts.voice_chat_only": "只朗讀您所在語音頻道聊天中的訊息（on|off，遊戲聊天頻道除外）",
       "bot.tts.keep_read": "保留已朗讀的訊息而不刪除（on|off）",
       "bot.tts.auto_channels": "總是朗讀的語音頻道 ID（以逗號分隔，最多 10 個）：頻道內有 2 人以上時，機器人會加入並朗讀其聊天",
-      "bot.tts.no_auto_channels": "清除總是朗讀的語音頻道"
+      "bot.tts.no_auto_channels": "清除總是朗讀的語音頻道",
+      "config.net-trace.action": "grant（授予）或 revoke（撤銷）。省略時顯示目前狀態"
     },
     "after": "名稱可以只寫一部分（例如 start pal）。在終端機中不帶參數執行會開啟全螢幕選單(SABA_NO_TUI=1 時為互動式 shell)。\n在指令碼中請使用 --json 和 --yes。結束代碼：0 成功 · 1 失敗 · 2 用法錯誤 · 3 無法連線常駐程式 · 4 找不到 · 130 已取消"
   },
@@ -1338,7 +1370,10 @@
     "kept_instances": "遊戲伺服器將保留，設定將刪除",
     "kept_nothing": "設定和遊戲伺服器也將刪除",
     "done": "已刪除 Saba-chan，{{kept}}。",
-    "left": "已刪除 Saba-chan，但無法刪除以下項目。請關閉正在使用它們的程式後手動刪除：\n{{paths}}"
+    "left": "已刪除 Saba-chan，但無法刪除以下項目。請關閉正在使用它們的程式後手動刪除：\n{{paths}}",
+    "servers_unlisted": "無法取得執行中的伺服器清單，未能正常關閉，已強制停止 ({{detail}})。",
+    "server_force_stopped": "伺服器 {{server}} 未能正常關閉，已強制停止 ({{detail}})。上次儲存之後的內容可能遺失。",
+    "daemon_unanswered": "常駐程式沒有回應，已強制停止執行中的伺服器。上次儲存之後的內容可能遺失。"
   },
   "update_required": {
     "title": "需要更新",
@@ -1462,6 +1497,12 @@
     "this_pc": "本機",
     "no_servers": "沒有伺服器",
     "via_relay": "透過中繼"
+  },
+  "address": {
+    "title": "{{server}} 的位址",
+    "unknown": "伺服器醬不知道這台電腦的公網位址。請確認已連線伺服器醬",
+    "no_ports": "這個遊戲沒有提供連線連接埠",
+    "stopped": "伺服器已關閉。啟動後才能連線"
   },
   "port_check": {
     "title": "{{server}} 的連接埠轉發檢查",

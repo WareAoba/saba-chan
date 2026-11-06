@@ -350,8 +350,18 @@ pub async fn write_properties_handler(
     let Some(_files) = super::backup::InstanceLock::files(&id).await else {
         return super::backup::instance_busy();
     };
+    // PATCH와 같은 검사(타입·범위·선택지·형식, 모르는 키)를 지난 값만 게임 파일에 쓴다
+    if let Some(settings) = &settings {
+        let supervisor = state.supervisor.read().await;
+        if let Some(rejected) = supervisor.instance_store.get(&id).and_then(|inst| super::instance::settings_rejection(&supervisor, inst, &id, settings)) {
+            return rejected;
+        }
+    }
     let resp = match Supervisor::manage_properties(&state.supervisor, &id, "write", settings.clone()).await {
-        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
+        Ok(result) => {
+            sync_after_file_change(&state, &id, &result).await;
+            (StatusCode::OK, Json(result)).into_response()
+        }
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(crate::plugin::error_response(&e)),
@@ -415,13 +425,32 @@ pub async fn reset_properties_handler(
     let Some(_files) = super::backup::InstanceLock::files(&id).await else {
         return super::backup::instance_busy();
     };
-    match Supervisor::manage_properties(&state.supervisor, &id, "reset", None).await {
-        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
+    // 켜진 서버의 파일을 기본값으로 바꾸면 서버가 쓰는 값과 어긋난다
+    if super::backup::is_running(&state, &id).await {
+        return server_running();
+    }
+    let resp = match Supervisor::manage_properties(&state.supervisor, &id, "reset", None).await {
+        Ok(result) => {
+            sync_after_file_change(&state, &id, &result).await;
+            (StatusCode::OK, Json(result)).into_response()
+        }
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(crate::plugin::error_response(&e)),
         )
             .into_response(),
+    };
+    super::audited(&state, "properties_reset", &id, None, None, resp).await
+}
+
+/// 게임 설정 파일을 바꾼 뒤(`PUT /properties`·초기화) 인스턴스 포트·설정 캐시를 파일 값에 맞춘다.
+/// 모듈이 쓰기에 성공했을 때만 하고, 다시 읽기에 실패하면 남기기만 한다. 호출자가 설정 파일 잠금을 쥐고 있어야 한다
+async fn sync_after_file_change(state: &IPCServer, id: &str, result: &Value) {
+    if result.get("success").and_then(Value::as_bool) != Some(true) {
+        return;
+    }
+    if let Err(e) = refresh_settings_from_files(state, id).await {
+        tracing::warn!("Settings refresh after a game file change failed for {}: {}", id, e);
     }
 }
 
@@ -1043,6 +1072,72 @@ mod tests {
     use super::*;
     use std::sync::Arc;
     use tokio::sync::RwLock;
+
+    /// 게임 설정 파일 쓰기·초기화 (출시 전 감사): PATCH와 같은 검증을 지나야 쓰고, 쓴 뒤에는 인스턴스 포트·설정 캐시를 파일 값에 맞춘다.
+    /// 초기화는 켜진 서버에 하지 않는다
+    #[tokio::test]
+    async fn properties_write_and_reset_are_validated_and_keep_the_instance_in_sync() {
+        let tmp = tempfile::tempdir().unwrap();
+        // 데몬의 모듈 폴더 아래에 둔다: 그 밖의 모듈은 Windows 격리 실행에서 서버 폴더 쓰기를 받지 못한다
+        let modules = crate::plugin::resolve_modules_dir();
+        let fixture = tempfile::Builder::new().prefix("props-").tempdir_in(&modules).unwrap();
+        let dir = fixture.path();
+        let name = dir.file_name().unwrap().to_string_lossy().into_owned();
+        let server = tmp.path().join("server");
+        std::fs::create_dir_all(&server).unwrap();
+        std::fs::write(dir.join("module.toml"), format!("[module]\nschema_version = 1\nname = '{name}'\nversion = '1.0.0'\nentry = 'lifecycle.py'\n\n[[settings.fields]]\nname = 'port'\ntype = 'number'\nmin = 1\nmax = 65535\n\n[[settings.fields]]\nname = 'difficulty'\ntype = 'select'\noptions = ['Easy', 'Hard']\n")).unwrap();
+        std::fs::write(
+            dir.join("lifecycle.py"),
+            "import json, os, sys\nc = json.load(sys.stdin)\nf = os.path.join(c.get('working_dir', '.'), 'props.json')\n\
+             props = json.load(open(f)) if os.path.exists(f) else {}\nfn = sys.argv[1]\n\
+             if fn == 'configure':\n    props.update(c['settings'])\n    json.dump(props, open(f, 'w'))\n\
+             elif fn == 'reset_properties':\n    props = {'port': 25565, 'difficulty': 'Easy'}\n    json.dump(props, open(f, 'w'))\n\
+             print(json.dumps({'success': True, 'settings': props, 'properties': props}))\n",
+        )
+        .unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        for module in sup.module_loader.discover_modules().unwrap() { crate::sandbox::consent_test_component(std::path::Path::new(&module.entry_path())); }
+        sup.initialize().await.unwrap();
+        let mut inst = crate::instance::ServerInstance::new("props", &name);
+        inst.id = "props".into();
+        inst.working_dir = Some(server.to_string_lossy().into_owned());
+        inst.port = Some(25570);
+        sup.instance_store.add(inst).unwrap();
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let write = |settings: Value| {
+            let state = state.clone();
+            async move { crate::ipc::internal::into_internal(write_properties_handler(Path("props".into()), State(state), Json(json!({ "settings": settings }))).await.into_response()).await }
+        };
+        let reset = || {
+            let state = state.clone();
+            async move { crate::ipc::internal::into_internal(reset_properties_handler(Path("props".into()), State(state)).await.into_response()).await }
+        };
+        let port = || {
+            let state = state.clone();
+            async move { state.supervisor.read().await.instance_store.get("props").unwrap().port }
+        };
+
+        let injected = write(json!({ "difficulty": "Easy,AdminPassword=\"pwned\"" })).await;
+        assert_eq!((injected.status, injected.body["error_code"].as_str()), (StatusCode::BAD_REQUEST, Some("validation_failed")), "{}", injected.body);
+        assert_eq!(write(json!({ "port": 70000 })).await.status, StatusCode::BAD_REQUEST);
+        assert_eq!(write(json!({ "bogus": "1" })).await.body["error_code"], "unknown_setting");
+        assert!(!server.join("props.json").exists(), "a rejected write never reaches the game file");
+
+        let saved = write(json!({ "port": "25580", "difficulty": "Hard" })).await;
+        assert_eq!(saved.status, StatusCode::OK, "{}", saved.body);
+        assert_eq!(port().await, Some(25580), "the instance port follows the written file");
+
+        state.supervisor.read().await.tracker.track("props", std::process::id()).unwrap();
+        assert_eq!(reset().await.body["error_code"], "server_running");
+        let _ = state.supervisor.read().await.tracker.untrack("props");
+        assert_eq!(port().await, Some(25580));
+
+        let done = reset().await;
+        assert_eq!(done.status, StatusCode::OK, "{}", done.body);
+        assert_eq!(port().await, Some(25565), "the instance port follows the reset file");
+        let cached = state.supervisor.read().await.instance_store.get("props").unwrap().module_settings.get("difficulty").cloned();
+        assert_eq!(cached, Some(json!("Easy")));
+    }
 
     #[tokio::test]
     async fn contract_paths_install_rejects_returned_paths_and_restores_the_old_binary() {

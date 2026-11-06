@@ -484,10 +484,10 @@ impl Supervisor {
     /// `check_port_conflicts`에 전달하여 미지원 프로토콜 포트를 충돌 검사에서 제외합니다.
     pub(crate) fn build_module_protocols_map(&self) -> HashMap<String, Vec<String>> {
         let mut map = HashMap::new();
-        if let Ok(modules) = self.module_loader.discover_modules() {
-            for m in modules {
-                if let Some(protocols) = m.metadata.protocols_supported {
-                    map.insert(m.metadata.name, protocols);
+        if let Ok(modules) = self.module_loader.modules() {
+            for m in modules.iter() {
+                if let Some(protocols) = &m.metadata.protocols_supported {
+                    map.insert(m.metadata.name.clone(), protocols.clone());
                 }
             }
         }
@@ -618,8 +618,8 @@ impl Supervisor {
 
         // 3. working_dir + module.server_executable 자동 계산
         if let Some(ref work_dir) = instance.working_dir {
-            if let Ok(module) = self.module_loader.get_module(module_name) {
-                if let Some(ref server_exe) = module.metadata.server_executable {
+            if let Ok(modules) = self.module_loader.modules() {
+                if let Some(server_exe) = modules.iter().find(|m| m.metadata.name == module_name).and_then(|m| m.metadata.server_executable.as_ref()) {
                     let resolved = std::path::Path::new(work_dir).join(server_exe);
                     return Some(resolved.to_string_lossy().to_string());
                 }
@@ -2325,10 +2325,11 @@ impl Supervisor {
     /// 인스턴스의 모듈이 콘솔 입력(`protocols.supported`에 "stdin")을 받는가
     pub fn module_accepts_stdin(&self, instance_id: &str) -> bool {
         let Some(instance) = self.instance_store.get(instance_id) else { return false };
-        self.module_loader
-            .get_module(&instance.module_name)
-            .ok()
-            .and_then(|m| m.metadata.protocols_supported)
+        let Ok(modules) = self.module_loader.modules() else { return false };
+        modules
+            .iter()
+            .find(|m| m.metadata.name == instance.module_name)
+            .and_then(|m| m.metadata.protocols_supported.as_ref())
             .is_some_and(|p| p.iter().any(|s| s == "stdin"))
     }
 
@@ -2594,7 +2595,7 @@ impl Supervisor {
                 // 이번 실행의 줄만 (재부착 때 디스크에서 읽어 온 지난 실행의 오류를 지금 문제로 보지 않게)
                 let log_lines: Vec<String> = recent
                     .iter()
-                    .filter(|l| l.timestamp >= proc.started_at)
+                    .filter(|l| l.timestamp >= proc.started_at && l.source != managed_process::LogSource::Input)
                     .map(|l| l.content.clone())
                     .collect();
                 cfg.insert("log_lines".to_string(), json!(log_lines));
@@ -3002,7 +3003,7 @@ impl Supervisor {
     /// GUI read 요청에 대한 블로킹을 최소화합니다.
     /// 끝난 managed 프로세스가 왜 끝났는지 가르고, 크래시면 재시작을 예약한다 (A1). `may_restart`가 false면 예약하지 않는다
     async fn judge_exit(&mut self, instance_id: &str, proc: &ManagedProcess, may_restart: bool) {
-        use managed_process::{LogLevel, LogSource};
+        use managed_process::LogLevel;
         if proc.log_follower {
             return;
         }
@@ -3025,7 +3026,7 @@ impl Supervisor {
             .get_recent_console(crash::CONSOLE_TAIL_LINES)
             .await
             .into_iter()
-            .filter(|l| l.source != LogSource::System)
+            .filter(|l| l.source.is_server_output())
             .map(|l| l.content)
             .collect();
         let working_dir = proc.working_dir.clone().or_else(|| instance.working_dir.as_ref().map(std::path::PathBuf::from));
@@ -3096,6 +3097,7 @@ impl Supervisor {
     /// 종료 판정 하나를 알리고(`instance.exit`) 이력에 남긴다.
     /// `attempt`는 다시 띄우기로 했을 때 그 복구 시도의 번호 (끝을 알리는 이벤트와 같은 `restartAttempt`)
     fn record_exit(&mut self, instance_id: &str, instance_name: &str, event: crash::ExitEvent, attempt: Option<u64>) {
+        let (evidence_code, evidence_args) = crash::evidence_code(&event.verdict.evidence);
         crate::events::emit("instance.exit", serde_json::json!({
             "instanceId": instance_id,
             "instance": instance_name,
@@ -3103,6 +3105,8 @@ impl Supervisor {
             "exitCode": event.verdict.exit_code,
             "signal": event.verdict.signal,
             "evidence": event.verdict.evidence,
+            "evidenceCode": evidence_code,
+            "evidenceArgs": evidence_args,
             "restartInSecs": event.restart_in_secs,
             "restartAttempt": attempt,
             "note": event.note,
@@ -3244,12 +3248,11 @@ impl Supervisor {
             self.stop_cooldowns.insert(dead_id.clone(), Instant::now());
         }
         
-        let instances = self.instance_store.list().to_vec();
-        let all_instances_snapshot = instances.clone();
+        let all_instances_snapshot = self.instance_store.list().to_vec();
         let mut tracked_count = 0;
         let mut auto_detected_count = 0;
         
-        for instance in instances {
+        for instance in &all_instances_snapshot {
             // 이미 추적 중이면 상태만 확인 (snapshot 기반 — 시스템 콜 없음)
             if let Ok(pid) = self.tracker.get_pid(&instance.id) {
                 tracked_count += 1;
@@ -3318,15 +3321,16 @@ impl Supervisor {
                 }
                 if let Some(process_name) = &instance.process_name {
                     // 모듈에서 cmd_patterns 가져오기 — java.exe 같은 범용 프로세스를 구분하기 위한 커맨드라인 패턴
-                    let cmd_patterns = self.module_loader.get_module(&instance.module_name)
-                        .map(|m| m.metadata.cmd_patterns.clone())
+                    let modules = self.module_loader.modules().unwrap_or_default();
+                    let cmd_patterns = modules.iter().find(|m| m.metadata.name == instance.module_name)
+                        .map(|m| m.metadata.cmd_patterns.as_slice())
                         .unwrap_or_default();
 
                     // snapshot 기반 검색 — 시스템 콜 없음
                     let processes = if cmd_patterns.is_empty() {
                         process_monitor::find_by_name_in(process_snapshot, process_name)
                     } else {
-                        process_monitor::find_by_name_and_cmd_in(process_snapshot, process_name, &cmd_patterns)
+                        process_monitor::find_by_name_and_cmd_in(process_snapshot, process_name, cmd_patterns)
                     };
 
                     // 같은 게임 인스턴스가 여럿이면 폴더로 주인을 가리고, 다른 인스턴스가 잡은 PID는 빼고 고른다
@@ -3340,7 +3344,7 @@ impl Supervisor {
                         .filter_map(|i| self.tracker.get_pid(&i.id).ok())
                         .collect();
                     let (own_roots, other_roots) = process_monitor::drop_shared_roots(
-                        self.instance_roots(&instance),
+                        self.instance_roots(instance),
                         siblings.iter().flat_map(|i| self.instance_roots(i)).collect(),
                     );
                     let picked = process_monitor::pick_owned_process(&processes, &taken, &own_roots, &other_roots);
@@ -3369,7 +3373,7 @@ impl Supervisor {
                                     .map(|i| i.id.clone())
                                     .collect();
                                 let module_protocols = self.build_module_protocols_map();
-                                let conflicts = crate::validator::check_port_conflicts(&instance, all_instances, &running_ids, Some(&module_protocols));
+                                let conflicts = crate::validator::check_port_conflicts(instance, all_instances, &running_ids, Some(&module_protocols));
                                 if !conflicts.is_empty() {
                                     let details: Vec<String> = conflicts.iter().map(|c| c.to_string()).collect();
                                     tracing::warn!(
@@ -4912,6 +4916,8 @@ mod tests {
             data_roots_backfill_attempted: Default::default(),
             game_chat: Default::default(),
             game_chat_keyword: String::new(),
+            controllers: Vec::new(),
+            controllers_only: false,
         };
         supervisor.instance_store.add(inst).unwrap();
 
@@ -4976,6 +4982,8 @@ mod tests {
             data_roots_backfill_attempted: Default::default(),
             game_chat: Default::default(),
             game_chat_keyword: String::new(),
+            controllers: Vec::new(),
+            controllers_only: false,
         };
         let inst_dir = instances_dir.join("test-tracker-guard");
         let _ = std::fs::create_dir_all(&inst_dir);

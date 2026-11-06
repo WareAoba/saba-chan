@@ -917,6 +917,12 @@ async fn chatbot_settings_from_discord_are_the_owners_and_never_the_chatbots() {
     run(&state, "chatbot.settings.set", None, &json!({ "guild": "g", "confirmLevel": null }), None, &gui()).await.unwrap();
     let read = run(&state, "chatbot.settings.get", None, &json!({ "guild": "g" }), None, &gui()).await.unwrap();
     assert_eq!(read["result"]["settings"]["confirmLevel"].as_str(), Some("all"));
+    // 토큰 알림 (릴레이 /설정 칸): 한도·잔액 금액, 처음엔 없음(null)
+    assert!(read["result"]["settings"]["tokenLimit"].is_null());
+    let alerts = json!({ "guild": "g", "tokenLimit": 2_000_000, "balanceAlert": 2.5 });
+    assert_eq!(run(&state, "chatbot.settings.set", None, &alerts, None, &gui()).await.unwrap()["success"], true);
+    let read = run(&state, "chatbot.settings.get", None, &json!({ "guild": "g" }), None, &gui()).await.unwrap();
+    assert_eq!((read["result"]["settings"]["tokenLimit"].as_i64(), read["result"]["settings"]["balanceAlert"].as_f64()), (Some(2_000_000), Some(2.5)));
     // 메모도 소유자만 읽는다
     assert_eq!(plan(&state, "chatbot.settings.get", None, &json!({}), &relay("admin", false)).await.unwrap_err().code, "PERMISSION_DENIED");
 }
@@ -969,7 +975,8 @@ async fn the_permission_board_lists_every_remote_command_at_the_level_it_needs()
     assert!(item(&format!("{}/wipe", id)).is_none(), "remote = false commands are not reachable from Discord");
     // 내장 명령은 액션 하나로, 명령 경로와 같은 키로
     let stop = item(&format!("{}/stop", id)).unwrap();
-    assert_eq!((&stop["level"], &stop["preset"], &stop["overridden"], &stop["name"]), (&json!(3), &json!(1), &json!(true), &json!("stop")));
+    assert_eq!((&stop["level"], &stop["preset"], &stop["overridden"], &stop["name"]), (&json!(3), &json!(2), &json!(true), &json!("stop")));
+    assert_eq!(stop["controllers"], true, "the board says listed people run it too");
     assert_eq!(stop["keys"], json!([format!("{}/stop", id), format!("{}/server.stop", id)]));
     assert_eq!(board["items"].as_array().unwrap().iter().filter(|i| i["name"] == "stop").count(), 1);
     let restore = item(&format!("{}/backup.restore", id)).unwrap();
@@ -987,6 +994,29 @@ async fn the_permission_board_lists_every_remote_command_at_the_level_it_needs()
     let board = permission_board(&state, "g", "ko").await;
     assert!(board["items"].as_array().unwrap().iter().all(|i| i["instance"].is_null()));
     assert_eq!(board["instances"], json!([]));
+}
+
+/// 길드 하나에만 닿는 설정 액션은 기본이 주인이지만 길드가 옮길 수 있다. PC 전체에 닿는 것(업데이트, 공통 챗봇 값)은 고정이다
+#[tokio::test]
+async fn guild_scoped_settings_have_a_movable_default_level() {
+    let (state, id, _tmp) = server().await;
+    open_everything(&state).await;
+    let board = permission_board(&state, "g", "ko").await;
+    let item = |board: &Value, key: &str| board["items"].as_array().unwrap().iter().find(|i| i["key"] == key).cloned().unwrap();
+    for key in ["discord.settings.set", "chatbot.settings.set"] {
+        let it = item(&board, key);
+        assert_eq!((&it["level"], &it["preset"], &it["fixed"]), (&json!(3), &json!(3), &json!(false)), "{key}");
+    }
+    let notice = item(&board, &format!("{id}/instance.start_notice.set"));
+    assert_eq!((&notice["level"], &notice["fixed"]), (&json!(2), &json!(false)));
+    assert_eq!(item(&board, "update.apply")["fixed"], true);
+    assert!(crate::actions::overridable("discord.settings.set"));
+    assert!(!crate::actions::overridable("update.apply") && !crate::actions::overridable("chatbot.common.set"));
+    // 관리자(2)에게 내리면 관리자가 쓸 수 있다
+    set_node(&state, json!({ "ownerDiscordId": "owner", "members": { "admin": 2 }, "commandLevels": { "discord.settings.set": 2 } })).await;
+    assert!(plan(&state, "discord.settings.set", None, &json!({ "locale": "ko" }), &relay("admin", false)).await.is_ok());
+    assert_eq!(item(&permission_board(&state, "g", "ko").await, "discord.settings.set")["overridden"], true);
+    assert_eq!(plan(&state, "chatbot.settings.set", None, &json!({ "memo": "x" }), &relay("admin", false)).await.unwrap_err().code, "PERMISSION_DENIED");
 }
 
 /// 계단 항목마다 되묻기 단계 키(`commandRisks`와 같은 `<서버>/<액션 id>`)와 이 길드에서 쓰는 단계를 싣는다
@@ -1034,6 +1064,23 @@ async fn scheduling_a_command_needs_the_requesters_permission_for_it() {
     assert!(plan(&state, "instance.schedule.set", Some(&id), &task("start", None), &admin).await.is_ok(), "only the limited commands");
     let off = json!({ "schedule": [{ "action": "command", "at": "04:00", "command": "say", "enabled": false }] });
     assert!(plan(&state, "instance.schedule.set", Some(&id), &off, &admin).await.is_ok(), "a disabled task never runs");
+}
+
+/// 예약 공지·저장도 모듈의 게임 명령을 돌린다: 그 명령의 레벨이 요청자에게 없으면 예약하지 못한다
+#[tokio::test]
+async fn scheduling_an_announcement_or_save_needs_the_permission_for_its_command() {
+    let module = format!(
+        "{MODULE}\n[config]\nannounce_command = \"say\"\n\n[backup]\npaths = [\"world\"]\nsave_command = \"save-all\"\n\n[[commands.fields]]\nname = \"say\"\nrisk = \"safe\"\n\n[[commands.fields]]\nname = \"save-all\"\nrisk = \"safe\"\n"
+    );
+    let (state, id, _tmp) = server_with(&module).await;
+    let levels = json!({ format!("{}/say", id): 3, format!("{}/save-all", id): 3 });
+    set_node(&state, json!({ "ownerDiscordId": "owner", "preset": "loose", "chatbotCap": 2, "defaultLevel": 2, "commandLevels": levels })).await;
+    let admin = relay("admin", true);
+    for task in [json!({ "action": "announce", "at": "04:00", "message": "hi" }), json!({ "action": "save", "at": "04:00" })] {
+        let input = json!({ "schedule": [task] });
+        let err = plan(&state, "instance.schedule.set", Some(&id), &input, &admin).await.unwrap_err();
+        assert_eq!((err.code, &err.data["args"]["need"]), ("PERMISSION_DENIED", &json!(3)), "{}", input);
+    }
 }
 
 #[test]
@@ -1236,8 +1283,25 @@ async fn start_notice_is_set_from_discord_by_admins_for_their_own_guild() {
     // 서버 루트 아래 메뉴에 실린다
     let (actions, _) = heartbeat_actions(&crate::chat::i18n::languages(), &[]);
     let item = actions.iter().find(|a| a["id"] == id_).expect("in the Discord menu");
-    assert_eq!(item["title"]["ko"], "켜짐 알림");
+    assert_eq!(item["title"]["ko"], "시작·정지 알림");
     assert_eq!(item["name"]["en"], "Start alert");
+}
+
+// 사용자 11-04: 자리 꽉 참 알림도 서버마다 켠다. 켜짐 알림처럼 관리자 이상, 요청이 온 길드만
+#[tokio::test]
+async fn full_notice_is_set_from_discord_by_admins() {
+    let (state, id, _tmp) = server().await;
+    set_node(&state, json!({ "ownerDiscordId": "owner", "defaultLevel": 1, "members": { "admin": 2 } })).await;
+    let on = json!({ "enabled": true });
+    let id_ = "instance.full_notice.set";
+    assert_eq!(plan(&state, id_, Some(&id), &on, &relay("user", false)).await.unwrap_err().code, "PERMISSION_DENIED");
+    let planned = plan(&state, id_, Some(&id), &on, &relay("admin", false)).await.unwrap();
+    let done = run(&state, "", None, &Value::Null, planned["planId"].as_str(), &relay("admin", false)).await.unwrap();
+    assert_eq!(done["success"], true, "{done}");
+    assert_eq!(state.config_store.get_bot_config().await.node_settings["g"]["fullNotice"], json!([id]));
+    let (actions, _) = heartbeat_actions(&crate::chat::i18n::languages(), &[]);
+    let item = actions.iter().find(|a| a["id"] == id_).expect("in the Discord menu");
+    assert_eq!(item["title"]["ko"], "자리 꽉 참 알림");
 }
 
 /// 디스코드 문장 명령도 계획 → 실행 한 길로: 데몬이 문장을 해석해 액션과 서버를 알려 주고, 실행하면 문장 명령과 같은 답을 쓴다
@@ -1336,7 +1400,10 @@ async fn direct_discord_requests_ask_from_the_guilds_chosen_level() {
     let restore = || asks(&state, "backup.restore", &id, json!({ "name": "b" }));
     assert_eq!((stop().await, restore().await), (false, true));
 
+    // 시작·정지는 위험·주의 밖이므로 "모두 묻기"에서만 묻는다
     set_confirm(&state, "caution", "all").await;
+    assert!(!stop().await);
+    set_confirm(&state, "all", "all").await;
     assert!(stop().await);
     set_confirm(&state, "none", "all").await;
     assert!(!restore().await);
@@ -1351,7 +1418,7 @@ async fn chatbot_requests_follow_the_chatbot_level_but_admin_actions_always_ask(
     assert_eq!(stop["needsConfirm"], false);
     let settings = plan(&state, "instance.settings.set", Some(&id), &json!({ "players": 4 }), &relay("owner", true)).await.unwrap();
     assert_eq!(settings["needsConfirm"], true);
-    set_confirm(&state, "danger", "caution").await;
+    set_confirm(&state, "danger", "all").await;
     assert_eq!(plan(&state, "server.stop", Some(&id), &json!({}), &relay("owner", true)).await.unwrap()["needsConfirm"], true);
 }
 
@@ -1429,8 +1496,12 @@ async fn an_mcp_owner_reaches_app_actions_but_not_pc_only_ones() {
     assert_eq!(owner.origin.source, "mcp");
     let enable = plan(&state, "extension.enable", None, &json!({ "extension": "x" }), &owner).await.unwrap();
     assert_eq!(enable["needsConfirm"], false);
-    let err = plan(&state, "update.apply", None, &json!({}), &owner).await.unwrap_err();
-    assert_eq!((err.status, err.code), (403, "remote_local_only"));
+    // 앱 업데이트는 개인 에이전트에 연다 (사용자 결정 2026-11-05). 위험이라 늘 묻는다
+    let update = plan(&state, "update.apply", None, &json!({}), &owner).await.unwrap();
+    assert_eq!(update["needsConfirm"], true);
+    // 디스코드에서 온 원격은 그대로 PC 전용이다
+    let paired = Caller::local(crate::audit::Origin::new("remote"), "en".into());
+    assert_eq!(plan(&state, "update.apply", None, &json!({}), &paired).await.unwrap_err().code, "remote_local_only");
     let err = plan(&state, "instance.settings.set", Some(&id), &json!({ "java_path": "/bin/sh" }), &owner).await.unwrap_err();
     assert_eq!((err.code, err.data["field"].as_str()), ("invalid_input", Some("java_path")), "{err:?}");
     // 주인이 아니면 기본 레벨이다 (관리 액션은 막힌다)
@@ -1474,4 +1545,211 @@ fn command_risks_take_known_tiers_and_null_removes() {
     assert_eq!(s.apply(json!({ "commandRisks": { "i/x": "scary" } }).as_object().unwrap()).unwrap_err().0, "commandRisks.i/x");
     s.apply(json!({ "commandRisks": { "i/server.start": null } }).as_object().unwrap()).unwrap();
     assert!(s.command_risks.is_empty());
+}
+
+/// 원격 MCP가 앱 화면에서 하던 일(설정·예약 읽기, 모듈·플러그인 목록과 설치, 게임 서버 업데이트, 진단, 콘솔 명령,
+/// 이름 바꾸기, 백업 지우기)도 액션으로 닿는다. 결과의 비밀값은 다른 원격 요청과 같이 빠진다
+#[tokio::test]
+async fn an_mcp_owner_reaches_what_the_app_screens_do() {
+    let (state, id, _tmp) = server().await;
+    let owner = Caller::mcp("owner".into(), "owner".into(), None, None, "en".into());
+    let listed = list(&state, Some(owner.surface), None, "en").await;
+    let ids: Vec<&str> = listed["actions"].as_array().unwrap().iter().filter_map(|a| a["id"].as_str()).collect();
+    for want in [
+        "instance.get",
+        "instance.schedule.get",
+        "instance.rename",
+        "module.list",
+        "module.available",
+        "extension.list",
+        "extension.available",
+        "extension.install",
+        "server.update.check",
+        "server.update.apply",
+        "server.diagnose",
+        "server.console.send",
+        "backup.delete",
+    ] {
+        assert!(ids.contains(&want), "{want} missing from the app catalog");
+        // 디스코드·챗봇 표면은 넓히지 않는다
+        assert!(!find(want).unwrap().surfaces.iter().any(|s| matches!(s, Discord | Chatbot)), "{want}");
+    }
+
+    let got = query(&state, "instance.get", Some(&id), &json!({}), &owner).await.unwrap();
+    let text = got.to_string();
+    assert_eq!(got["result"]["name"], "srv", "{got}");
+    assert!(!text.contains("S3CRET-REST") && !text.contains("S3CRET-MOD"), "{text}");
+    let schedule = query(&state, "instance.schedule.get", Some(&id), &json!({}), &owner).await.unwrap();
+    assert!(schedule["result"]["schedule"].is_array(), "{schedule}");
+    let modules = query(&state, "module.list", None, &json!({}), &owner).await.unwrap();
+    assert!(modules.to_string().contains("plain"), "{modules}");
+
+    // 이름 바꾸기는 묻지 않고, 콘솔 명령·백업 지우기는 늘 묻는다
+    let rename = plan(&state, "instance.rename", Some(&id), &json!({ "name": "renamed" }), &owner).await.unwrap();
+    assert_eq!(rename["needsConfirm"], false);
+    let ran = run(&state, "", None, &Value::Null, rename["planId"].as_str(), &owner).await.unwrap();
+    assert_eq!(ran["success"], true, "{ran}");
+    assert_eq!(state.supervisor.read().await.instance_store.get(&id).unwrap().name, "renamed");
+    for (action, input) in [("server.console.send", json!({ "command": "say hi" })), ("backup.delete", json!({ "name": "b1" }))] {
+        assert_eq!(plan(&state, action, Some(&id), &input, &owner).await.unwrap()["needsConfirm"], true, "{action}");
+    }
+    // 백업 이름은 백업 목록에서 고른다
+    let delete = &listed["actions"].as_array().unwrap().iter().find(|a| a["id"] == "backup.delete").unwrap()["input"];
+    assert_eq!(delete["properties"]["name"]["optionsFrom"]["action"], "backup.list");
+}
+
+/// 원격 MCP는 게임 설정 원문을 비밀값째 읽고 쓰며, 예약은 늘 주인에게 묻고 저장한다 (사용자 결정 2026-11-05)
+#[tokio::test]
+async fn an_mcp_owner_reads_raw_game_settings_and_schedules_with_confirmation() {
+    let (state, id, _tmp) = server().await;
+    let owner = Caller::mcp("owner".into(), "owner".into(), None, None, "en".into());
+    let ids: Vec<String> = list(&state, Some(Gui), None, "en").await["actions"].as_array().unwrap().iter().filter_map(|a| a["id"].as_str().map(str::to_string)).collect();
+    assert!(ids.iter().any(|i| i == "instance.properties.get") && ids.iter().any(|i| i == "instance.properties.set"));
+    for want in ["instance.properties.get", "instance.properties.set"] {
+        assert!(!find(want).unwrap().surfaces.iter().any(|s| matches!(s, Discord | Chatbot)), "{want}");
+    }
+    // 게임 설정 쓰기는 PC 전용 칸 규칙을 받지 않는다 (웹 원격·짝 맺은 PC는 그대로 받는다)
+    let set = plan(&state, "instance.properties.set", Some(&id), &json!({ "settings": { "admin_pass": "x" } }), &owner).await;
+    assert!(set.is_ok(), "{set:?}");
+    let paired = Caller::local(crate::audit::Origin::new("remote"), "en".into());
+    let err = plan(&state, "instance.properties.set", Some(&id), &json!({ "settings": { "admin_pass": "x" } }), &paired).await.unwrap_err();
+    assert_eq!(err.code, "remote_field_blocked", "{err:?}");
+    // 읽기 결과에서 비밀값을 지우지 않는다 (MCP만)
+    assert!(!strips_secrets("instance.properties.get", &owner));
+    assert!(strips_secrets("instance.properties.get", &relay("owner", false)));
+    assert!(strips_secrets("instance.get", &owner));
+    // 길드 설정은 PC 주인이 고른 길드로 (앱과 같다). 디스코드에서 온 요청은 그 길드뿐이다
+    let guild = plan(&state, "discord.settings.set", None, &json!({ "guild": "123456789012345678", "locale": "ko" }), &owner).await;
+    assert!(guild.is_ok(), "{guild:?}");
+    let err = plan(&state, "discord.settings.set", None, &json!({ "locale": "ko" }), &owner).await.unwrap_err();
+    assert_eq!(err.data["field"], "guild");
+    let err = plan(&state, "discord.settings.set", None, &json!({ "guild": "other", "locale": "ko" }), &relay("owner", false)).await.unwrap_err();
+    assert_eq!(err.data["field"], "guild");
+    // 예약 바꾸기는 MCP에서 늘 묻는다
+    let schedule = plan(&state, "instance.schedule.set", Some(&id), &json!({ "schedule": [] }), &owner).await.unwrap();
+    assert_eq!(schedule["needsConfirm"], true);
+}
+
+/// 확인 전 권한 검사 (릴레이 `check`): 계획과 같은 판정을 지나되 계획을 남기지 않는다.
+/// 권한이 없으면 확인 버튼을 만들기 전에 거절을 받는다
+#[tokio::test]
+async fn a_check_judges_permission_without_leaving_a_plan() {
+    let (state, id, _tmp) = server().await;
+    set_node(&state, json!({ "ownerDiscordId": "owner", "defaultLevel": 0, "members": { "admin": 2 } })).await;
+
+    let err = check(&state, "backup.restore", Some(&id), &json!({ "name": "b" }), &relay("guest", false)).await.unwrap_err();
+    assert_eq!(err.code, "PERMISSION_DENIED");
+    let ok = check(&state, "backup.restore", Some(&id), &json!({ "name": "b" }), &relay("admin", false)).await.unwrap();
+    assert_eq!((ok["success"].clone(), ok["actionId"].clone(), ok["instance"].clone()), (json!(true), json!("backup.restore"), json!(id)), "{ok}");
+    assert!(ok.get("planId").is_none(), "{ok}");
+
+    // 문장: 실행할 것이면 그 액션을, 권한이 없으면 계획과 같은 거절 답을
+    let denied = check_text(&state, "srv stop", &relay("guest", false)).await.unwrap();
+    assert_eq!((denied["success"].clone(), denied["code"].clone()), (json!(false), json!("PERMISSION_DENIED")), "{denied}");
+    let ok = check_text(&state, "srv stop", &relay("owner", false)).await.unwrap();
+    assert_eq!((ok["success"].clone(), ok["actionId"].clone()), (json!(true), json!("server.stop")), "{ok}");
+    assert!(ok.get("planId").is_none(), "{ok}");
+    // 인스턴스 액션 이름으로 부른 문장도 같은 판정
+    assert_eq!(check_text(&state, "srv 백업", &relay("guest", false)).await.unwrap()["code"], "PERMISSION_DENIED");
+    assert_eq!(check_text(&state, "srv 백업", &relay("admin", false)).await.unwrap()["actionId"], "backup.create");
+}
+
+const MODULE_WITH_PORT: &str = "[module]\nschema_version = 1\nname = \"plain\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[[settings.fields]]\nname = \"port\"\ntype = \"number\"\nlabel = \"Game port\"\nport = true\npublic = \"both\"\ndefault = 8211\n\n[[settings.fields]]\nname = \"query_port\"\ntype = \"number\"\nlabel = \"Query port\"\nport = true\npublic = \"udp\"\ndefault = 27015\n";
+
+/// 서버 주소 (사용자 요청 2026-11-05): `/<서버> 주소`는 데몬이 릴레이에 접속한 주소와 그 서버가 밖에 여는 포트를
+/// 부른 사람에게만 보인다. 길드의 "조회 결과 나만 보기"와 상관없이 늘 숨기고(`secret`), 챗봇과 문장 명령(채널에 그대로 보인다)에는 열지 않는다
+#[tokio::test]
+async fn server_address_is_offered_only_where_the_reply_stays_with_the_caller() {
+    let def = find("server.address").unwrap();
+    assert_eq!(def.surfaces, &[Gui, Cli, Discord]);
+    assert!(def.private && def.secret);
+    assert!(find("server.port_check").is_some_and(|d| !d.secret));
+
+    let (state, _id, _tmp) = server_with(MODULE_WITH_PORT).await;
+    let modules = state.supervisor.read().await.module_loader.discover_modules().unwrap();
+    let (actions, _) = heartbeat_actions(&crate::chat::i18n::languages(), &modules);
+    let item = actions.iter().find(|a| a["id"] == "server.address").unwrap();
+    assert_eq!((item["secret"].clone(), item["private"].clone()), (json!(true), json!(true)));
+    assert_eq!((item["name"]["ko"].clone(), item["name"]["en"].clone()), (json!("주소"), json!("Address")));
+    assert_eq!(item["name"].as_object().unwrap().len(), crate::chat::i18n::languages().len());
+    assert_eq!((item["modules"].clone(), item["surfaces"].clone()), (json!(["plain"]), json!(["discord"])));
+    assert!(actions.iter().filter(|a| a["id"] != "server.address").all(|a| a.get("secret").is_none()));
+
+    // 문장 명령의 답은 채널에 보이므로 실행하지 않고, 슬래시 명령으로 다시 부르라고 안내한다 (사용자 지정 2026-11-06)
+    open_everything(&state).await;
+    for text in ["srv 주소", "srv address"] {
+        let hint = plan_text(&state, text, &relay("owner", false)).await.unwrap();
+        assert!(hint.get("planId").is_none() && hint.get("code").is_none(), "{text}: {hint}");
+        assert!(hint["text"].as_str().is_some_and(|t| t.contains("`/`") && t.contains("srv")), "{text}: {hint}");
+        assert_eq!(check_text(&state, text, &relay("owner", false)).await.unwrap()["text"], hint["text"], "{text}");
+    }
+}
+
+/// 결과는 릴레이가 본 주소(연결돼 있을 때만)와 밖에 여는 포트. 같은 포트의 TCP·UDP는 한 줄로 합친다
+#[tokio::test]
+async fn server_address_joins_the_relay_address_with_the_public_ports() {
+    let (state, id, _tmp) = server_with(MODULE_WITH_PORT).await;
+    open_everything(&state).await;
+    let caller = relay("u1", false);
+    let unknown = query(&state, "server.address", Some(&id), &json!({}), &caller).await.unwrap();
+    assert_eq!(unknown["result"]["address"], Value::Null, "{unknown}");
+    assert_eq!(unknown["result"]["running"], false);
+    let ports: Vec<(Value, Value)> = unknown["result"]["ports"].as_array().unwrap().iter().map(|p| (p["port"].clone(), p["label"].clone())).collect();
+    assert_eq!(ports, vec![(json!(8211), json!("Game port")), (json!(27015), json!("Query port"))]);
+
+    state.relay_agent.set_seen_address_for_test(Some("203.0.113.5"));
+    let known = query(&state, "server.address", Some(&id), &json!({}), &caller).await.unwrap();
+    assert_eq!(known["result"]["address"], "203.0.113.5", "{known}");
+    let text = known["text"].as_str().unwrap();
+    assert!(text.contains("`203.0.113.5:8211`") && text.contains("`203.0.113.5:27015`"), "{text}");
+}
+
+#[test]
+fn server_address_reads_as_address_and_port() {
+    let ko = crate::chat::i18n::Catalog::for_language("ko");
+    let one = json!({ "address": "203.0.113.5", "running": true, "ports": [{ "field": "port", "label": "Port", "port": 8211, "protocols": ["tcp", "udp"] }] });
+    assert_eq!(summary::text("server.address", &one, &ko).unwrap(), "• `203.0.113.5:8211`");
+    let v6 = json!({ "address": "2001:db8::1", "running": true, "ports": [{ "field": "port", "label": "Port", "port": 25565, "protocols": ["tcp"] }] });
+    assert_eq!(summary::text("server.address", &v6, &ko).unwrap(), "• `[2001:db8::1]:25565`");
+    let two = json!({ "address": "203.0.113.5", "running": false, "ports": [
+        { "field": "port", "label": "Game port", "port": 8211, "protocols": ["udp"] },
+        { "field": "query_port", "label": "Query port", "port": 27015, "protocols": ["udp"] },
+    ] });
+    let text = summary::text("server.address", &two, &ko).unwrap();
+    let lines: Vec<&str> = text.lines().collect();
+    assert_eq!(lines[0], "• Game port `203.0.113.5:8211`");
+    assert_eq!(lines[1], "• Query port `203.0.113.5:27015`");
+    assert!(lines[2].contains("정지"), "{text}");
+    let unknown = summary::text("server.address", &json!({ "address": null, "running": true, "ports": one["ports"] }), &ko).unwrap();
+    assert!(!unknown.contains('`') && unknown.contains("주소"), "{unknown}");
+    let no_ports = summary::text("server.address", &json!({ "address": "203.0.113.5", "running": true, "ports": [] }), &ko).unwrap();
+    assert!(!no_ports.contains("203.0.113.5") && no_ports.contains("포트"), "{no_ports}");
+}
+
+/// 조작 가능 (사용자 지정 2026-11-06): 시작·정지·재시작·백업 만들기는 위험도와 상관없이 명단에 있는 사람과
+/// 관리자 이상이 한다. 명단 밖 유저는 거절되고, 거절에 `controllers`가 실린다
+#[tokio::test]
+async fn controllers_run_the_server_without_the_admin_level() {
+    let (state, id, _tmp) = server().await;
+    set_node(&state, json!({ "ownerDiscordId": "owner", "preset": "default", "defaultLevel": 1, "members": { "admin": 2 } })).await;
+    {
+        let mut sup = state.supervisor.write().await;
+        let mut inst = sup.instance_store.get(&id).cloned().unwrap();
+        inst.controllers = vec![crate::controllers::Controller { name: "Steve".into(), discord_id: Some("friend".into()) }];
+        sup.instance_store.update(&id, inst).unwrap();
+    }
+    for action in crate::controllers::CONTROLLED_ACTIONS {
+        assert_eq!(find(action).unwrap().risk, "safe", "{action} is not a risk tier");
+        assert!(plan(&state, action, Some(&id), &json!({}), &relay("friend", false)).await.is_ok(), "{action}: a listed user");
+        assert!(plan(&state, action, Some(&id), &json!({}), &relay("admin", false)).await.is_ok(), "{action}: an admin");
+        let refused = plan(&state, action, Some(&id), &json!({}), &relay("stranger", false)).await.unwrap_err();
+        assert_eq!((refused.data["args"]["need"].clone(), refused.data["args"]["controllers"].clone()), (json!(2), json!(true)), "{action}");
+        // 말하는 사바쨩을 거치면 챗봇 상한이 그대로다: 명단이 상한을 넘지 않는다
+        let capped = plan(&state, action, Some(&id), &json!({}), &relay("friend", true)).await.unwrap_err();
+        assert_eq!(capped.data["args"]["controllers"], Value::Null, "{action}: the chatbot cap, not the list");
+    }
+    // 권한 계단은 이 넷을 조작 가능 묶음으로 표시한다
+    let board = permission_board(&state, "g", "ko").await;
+    let start = board["items"].as_array().unwrap().iter().find(|i| i["key"] == format!("{id}/start")).cloned().unwrap();
+    assert_eq!((&start["level"], &start["controllers"]), (&json!(2), &json!(true)));
 }

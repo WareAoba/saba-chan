@@ -31,6 +31,7 @@
     "module_required": "Pick a game with --module, or give an existing server folder with --from.",
     "name_empty": "The name can't be empty.",
     "name_taken": "A server named {{name}} already exists.",
+    "name_comma": "A server name can't contain a comma (Discord splits a server's words at commas). Spaces are fine.",
     "needs_extensions": "This game needs these extensions: {{ids}}. Install and turn them on now?",
     "no_installer": "{{game}} can't install server files by itself. Use an existing folder with --from.",
     "no_modules": "No game modules are installed yet.",
@@ -164,6 +165,15 @@
     "notice_is_off": "{{server}}: start alert off",
     "notice_on_saved": "{{guild}}'s alert channel will hear when {{server}} starts.",
     "notice_off_saved": "{{guild}} will no longer hear when {{server}} starts.",
+    "full_notice_none": "No server has the full server alert on yet.",
+    "full_notice_is_on": "{{server}}: full server alert on",
+    "full_notice_is_off": "{{server}}: full server alert off",
+    "full_notice_on_saved": "{{guild}}'s alert channel will hear when {{server}} fills up or a slot opens again.",
+    "full_notice_off_saved": "{{guild}} won't hear about {{server}} being full anymore.",
+    "backup_notice_show": "Backup result DMs: {{mode}}",
+    "backup_notice_set": "Changed backup result DMs: {{mode}}",
+    "backup_notice_all": "successes and failures",
+    "backup_notice_failures": "failures only",
     "confirm_direct": "Requests to the bot",
     "confirm_chatbot": "Talking Saba-chan",
     "confirm_all": "Every command",
@@ -203,7 +213,7 @@
     "sleep_blocks_none": "None",
     "bedtime": "Good kid",
     "bedtime_format": "Write --bedtime as fall-asleep time-wake-up time, like 01:00-08:00.",
-    "big_emoji": "Big emoji"
+    "big_emoji": "Emoji upscale"
   },
   "col": {
     "players": "Players",
@@ -309,6 +319,16 @@
       "err_browse_denied": "You can't open that folder",
       "err_browse_not_a_folder": "That's not a folder",
       "err_browse_failed": "Couldn't read the folder. Please try again"
+    },
+    "net_trace": {
+      "on": "on",
+      "off": "off",
+      "current": "Per-server and per-port network: {{state}} · permission: {{access}}",
+      "access_ok": "granted",
+      "access_needs_grant": "missing (config net-trace grant)",
+      "access_needs_relogin": "granted, sign in to Windows again to use it",
+      "access_unsupported": "not available on this OS (Windows only)",
+      "enable_hint": "To turn it on: saba-chan-cli config set systemMonitorNetTrace=on"
     }
   },
   "console": {
@@ -405,6 +425,7 @@
       "node_token_missing": "Pair this PC first: saba-chan-cli bot pair",
       "server_not_running": "Start the server first: saba-chan-cli start NAME",
       "server_running": "Stop the server first: saba-chan-cli stop NAME",
+      "invalid_name": "Remove the comma from the name and try again. Spaces are fine.",
       "rcon_unreachable": "Could not connect to the server's RCON. Check that the server has finished starting and try again shortly: saba-chan-cli status",
       "rcon_auth_failed": "The server rejected the RCON password. Restart the server so Saba-chan writes the password again: saba-chan-cli restart NAME",
       "rcon_timeout": "The server did not answer over RCON in time. The command may already have run, so check the server console before sending it again: saba-chan-cli console NAME",
@@ -417,8 +438,10 @@
       "backup_busy": "A backup or restore of this server is already running. Try again when it finishes.",
       "backup_file_locked": "The server is using a file ({{file}}). Stop the server and try again: saba-chan-cli stop <name>",
       "autosave_not_resumed": "The backup was made, but the server’s autosave could not be turned back on. Restart the server: saba-chan-cli restart <name>",
+      "backup_failed_autosave_off": "The backup failed, and the server’s autosave could not be turned back on either. Restart the server: saba-chan-cli restart <name>",
       "backup_save_rejected": "The server refused the save command, so no backup was made. Stop the server and back up again: saba-chan-cli stop <name>",
       "backup_save_unconfirmed": "The server did not report that saving finished, so no backup was made. Try again shortly or stop the server and back up: saba-chan-cli stop <name>",
+      "backup_server_stopped": "The server stopped while it was being backed up, so that backup was discarded. Check the server and back up again: saba-chan-cli backup <name>",
       "snapshot_not_found": "The game has no automatic backup.",
       "invalid_relay_url": "Only https:// Server-chan addresses are allowed (http only for localhost, 127.0.0.1 or [::1] when testing on this PC).",
       "module_busy": "This module is already being installed or removed. Try again when it finishes.",
@@ -428,7 +451,7 @@
       "no_command_path": "This server was started outside saba-chan, so it has no console to take commands. Restart it from saba-chan: saba-chan-cli restart <server>",
       "conflict_with": "clashes with {{name}}",
       "word": {
-        "invalid": "use 1-32 characters with no spaces",
+        "invalid": "use 1-32 characters with no commas (spaces are fine)",
         "reserved": "is a reserved word",
         "conflict": "already calls something else",
         "unknown_command": "this server has no such command",
@@ -463,7 +486,9 @@
       "move_cross_volume": "A folder on another drive can't be moved. Import it with \"Keep it where it is\" instead.",
       "move_in_use": "The folder could not be moved. Stop the server in this folder, close any program that has it open, and try again.",
       "move_failed": "The folder could not be moved. Import it with \"Keep it where it is\" instead.",
-      "port_check_busy": "A check is already running. Try again in a moment"
+      "port_check_busy": "A check is already running. Try again in a moment",
+      "net_trace_elevation_failed": "Couldn't get administrator confirmation on the daemon PC. Try again in front of that PC.",
+      "net_trace_failed": "Couldn't change the permission."
     },
     "not_a_bool": "\"{{value}}\" is not yes/no (use true or false).",
     "not_a_number": "\"{{value}}\" is not a number.",
@@ -713,7 +738,7 @@
     "preflight_failed": "Runtime setup for game modules failed: {{error}}. It is retried on the next server action."
   },
   "stop": {
-    "confirm": "Are you sure you want to stop {{name}} server?",
+    "confirm": "Are you sure you want to stop “{{name}}” server?",
     "already": "{{name}} is not running.",
     "done": "{{name}} stopped.",
     "force_confirm": "Stop without saving?",
@@ -823,10 +848,12 @@
       "config.autostart": "What starts when you sign in to this PC: off, daemon (daemon and tray only) or full (with the GUI window). Shows the current value without a mode",
       "config.browse": "Folders and files on the daemon's PC (with --daemon, the remote PC). Drives or / without a path",
       "server.port-check": "Check whether friends can reach this server from the internet (port forwarding)",
-      "bot.notice": "Post in the Discord server's alert channel when Saba-chan starts a server (off by default). No server: show. Server with `--on`/`--off`: change",
+      "bot.notice": "Post in the Discord server's alert channel when a server starts or stops without a Discord command (off by default). `--full`: when it fills up or a slot opens again. No server: show. Server with `--on`/`--off`: change",
+      "bot.backup-notice": "Send every backup result as a DM (--all) or only failures (--failures). No options: show",
       "bot.confirm": "When the bot asks with a Discord button before running (all, caution, danger, none). No options: show",
       "bot.tts": "Reading Saba-chan voice of a Discord server (volume, speed, pitch). No options: show",
-      "bot.big-emoji": "Big emoji (a lone custom emoji is shown large) on a Discord server. No options: show"
+      "bot.big-emoji": "Emoji upscale (a lone custom emoji is shown large) on a Discord server. No options: show",
+      "config.net-trace": "Per-server and per-port network (advanced, Windows) permission: without an action shows the current state; grant shows one administrator prompt on the daemon PC, revoke undoes it. Turn it on with config set systemMonitorNetTrace=on"
     },
     "arg": {
       "module.maker.game": "Game to put in the first prompt",
@@ -902,8 +929,11 @@
       "move_folder": "Move the --from folder into the saba-chan folder instead of linking it in place (same drive only)",
       "config.browse.path": "Full path of the folder to show",
       "config.browse.files": "Also show files with these extensions (comma separated, * for all)",
-      "bot.notice.on": "Turn the start alert on",
-      "bot.notice.off": "Turn the start alert off",
+      "bot.notice.on": "Turn the alert on",
+      "bot.notice.off": "Turn the alert off",
+      "bot.notice.full": "The full server alert instead of the start/stop alert",
+      "bot.backup-notice.all": "DM successes and failures",
+      "bot.backup-notice.failures": "DM failures only",
       "bot.confirm.direct": "Requests to the bot — Prefix commands and slash commands.",
       "bot.confirm.chatbot": "Talking Saba-chan — Admin tasks picked by Talking Saba-chan and requests mixing several people always ask, whatever this setting says.",
       "game_version": "Server version to install (games that download their server; default: latest release)",
@@ -916,12 +946,13 @@
       "bot.tts.volume": "Volume in percent (10-150)",
       "bot.tts.speed": "Speaking speed (0.8-1.5, e.g. 1.2)",
       "bot.tts.pitch": "Pitch in semitones (-6 to 6)",
-      "bot.big-emoji.on": "Turn big emoji on",
-      "bot.big-emoji.off": "Turn big emoji off",
+      "bot.big-emoji.on": "Turn emoji upscale on",
+      "bot.big-emoji.off": "Turn emoji upscale off",
       "bot.tts.voice_chat_only": "Read your messages only in the chat of the voice channel you are in (on|off, game chat channel excepted)",
       "bot.tts.keep_read": "Keep read messages instead of deleting them (on|off)",
       "bot.tts.auto_channels": "Voice channel IDs to always read (comma-separated, up to 10): with 2+ people inside, the bot joins and reads its chat",
-      "bot.tts.no_auto_channels": "Clear the always-read voice channels"
+      "bot.tts.no_auto_channels": "Clear the always-read voice channels",
+      "config.net-trace.action": "grant or revoke. Shows the current state when left out"
     },
     "after": "Names can be partial (e.g. start pal). Run with no arguments in a terminal to open the full-screen menu (SABA_NO_TUI=1: the interactive shell).\nIn scripts use --json and --yes. Exit codes: 0 ok · 1 failed · 2 usage · 3 daemon unreachable · 4 not found · 130 cancelled"
   },
@@ -1360,7 +1391,10 @@
     "kept_instances": "game servers are kept, settings are removed",
     "kept_nothing": "settings and game servers are removed too",
     "done": "Saba-chan was removed; {{kept}}.",
-    "left": "Saba-chan was removed, but these could not be deleted. Close any program using them and delete them yourself:\n{{paths}}"
+    "left": "Saba-chan was removed, but these could not be deleted. Close any program using them and delete them yourself:\n{{paths}}",
+    "servers_unlisted": "Could not get the list of running servers, so they were force-stopped instead of stopped cleanly ({{detail}}).",
+    "server_force_stopped": "Server {{server}} did not stop cleanly and was force-stopped ({{detail}}). Changes since its last save may be lost.",
+    "daemon_unanswered": "The daemon did not answer, so running servers were force-stopped. Changes since their last save may be lost."
   },
   "players": {
     "title": "{{server}}: {{count}} online",
@@ -1431,6 +1465,12 @@
     "this_pc": "This PC",
     "no_servers": "No servers",
     "via_relay": "Through Server-chan"
+  },
+  "address": {
+    "title": "Address of {{server}}",
+    "unknown": "Server-chan does not know this PC's public address. Check that it is connected to Server-chan",
+    "no_ports": "This game does not say which port to connect to",
+    "stopped": "The server is off. Start it so others can connect"
   },
   "port_check": {
     "title": "Port forwarding check for {{server}}",

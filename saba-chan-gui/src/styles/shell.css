@@ -693,6 +693,27 @@
     -webkit-user-select: text;
     user-select: text;
 }
+/* 꺼진 서버의 지난 로그: 콘솔 위에 꺼짐 줄을 붙이고 줄 글자를 조금 흐리게 한다 */
+.term-offline {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    padding: var(--sp-2) var(--sp-4);
+    font-size: var(--fs-sm);
+    color: color-mix(in oklch, var(--console-custom-text) 70%, transparent);
+    background: color-mix(in oklch, var(--console-custom-text) 6%, transparent);
+    border-bottom: 1px solid color-mix(in oklch, var(--console-custom-text) 12%, transparent);
+}
+.term-offline-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--danger);
+    flex: none;
+}
+.term.is-offline .term-output {
+    opacity: 0.75;
+}
 .term-empty {
     color: var(--text-3);
     font-family: var(--font-sans);
@@ -806,6 +827,15 @@
     color: var(--text-3);
     margin-right: var(--sp-2);
     user-select: none;
+}
+
+/* 보낸 명령 줄 (#18): "› list" 굵게 강조색, 보낸 곳은 흐리게 */
+.console-echo {
+    color: var(--tok-info);
+    font-weight: 700;
+}
+.console-echo-by {
+    color: var(--text-3);
 }
 
 /* ── 콘솔 색 토큰: 줄 전체 색은 데몬이 매긴 level, 조각 색은 spans(또는 모듈 규칙)의 토큰 ── */
@@ -1175,6 +1205,21 @@ button.activity-line:hover {
 .info-cell dd code {
     font-size: var(--fs-sm);
 }
+/* 개발 용어(PID·REST·통신 방식)는 접어 둔다 */
+.info-more > summary {
+    cursor: pointer;
+    width: fit-content;
+    font-size: var(--fs-sm);
+    color: var(--text-3);
+    user-select: none;
+}
+.info-more > summary:hover,
+.info-more > summary:focus-visible {
+    color: var(--text-2);
+}
+.info-more[open] > summary {
+    margin-bottom: var(--sp-2);
+}
 .info-actions {
     display: flex;
     gap: var(--sp-2);
@@ -1287,10 +1332,82 @@ button.activity-line:hover {
     box-shadow: var(--shadow-inset);
     border: 1px solid var(--line);
 }
+/* 설정: 왼쪽 세로 탭 + 오른쪽 내용 (탭이 아홉 개라 가로 줄에 들어가지 않는다) */
+.settings-body {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+}
 .settings-page .settings-modal-tabs {
+    flex-direction: column;
+    flex: none;
+    width: 176px;
     height: auto;
-    margin: 0 var(--sp-6);
+    max-height: 100%;
+    overflow-y: auto;
+    margin: 0 0 var(--sp-6) var(--sp-6);
     align-self: flex-start;
+}
+.settings-page .settings-tab {
+    justify-content: flex-start;
+    gap: var(--sp-2);
+    width: 100%;
+    opacity: 1;
+    text-align: left;
+}
+.settings-page .settings-tab span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.settings-tab-content.slide-up {
+    animation: settingsSlideUp 0.22s cubic-bezier(0.4, 0, 0.2, 1) backwards;
+}
+.settings-tab-content.slide-down {
+    animation: settingsSlideDown 0.22s cubic-bezier(0.4, 0, 0.2, 1) backwards;
+}
+@keyframes settingsSlideUp {
+    from {
+        opacity: 0;
+        transform: translateY(16px);
+    }
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+@keyframes settingsSlideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-16px);
+    }
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+/* 좁은 창: 탭을 위에 가로로 두고 옆으로 넘긴다 */
+@media (max-width: 720px) {
+    .settings-body {
+        flex-direction: column;
+    }
+    .settings-page .settings-modal-tabs {
+        flex-direction: row;
+        width: auto;
+        max-width: calc(100% - 2 * var(--sp-6));
+        overflow-x: auto;
+        overflow-y: hidden;
+        margin: 0 var(--sp-6);
+    }
+    .settings-page .settings-tab {
+        width: auto;
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    .settings-tab-content.slide-up,
+    .settings-tab-content.slide-down {
+        animation: none;
+    }
 }
 .server-settings-embedded .settings-tab-indicator,
 .settings-page .settings-tab-indicator {
@@ -1571,7 +1688,11 @@ button.activity-line:hover {
 .restart-row + .restart-row {
     border-top: 1px solid var(--line);
 }
-.restart-row > span {
+.restart-row > label {
+    cursor: pointer;
+}
+.restart-row > span,
+.restart-row > label {
     display: flex;
     flex-direction: column;
     gap: var(--sp-0-5);
@@ -1583,9 +1704,67 @@ button.activity-line:hover {
 .restart-row.disabled {
     opacity: 0.5;
 }
+/* 다시 시작해야 적용되는 칸 (module.toml restart_required) */
+.setting-restart-chip {
+    margin-left: var(--sp-1-5);
+    padding: 0 var(--sp-1-5);
+    border-radius: var(--r-xs);
+    background: color-mix(in oklch, var(--warn) 16%, transparent);
+    color: var(--warn);
+    font-size: var(--fs-xs);
+    font-weight: 600;
+}
+/* 저장 막대 위의 다시 시작 안내 (저장 줄 안 첫 줄) */
+.modal-footer:has(> .settings-restart-notice) {
+    flex-wrap: wrap;
+}
+.settings-restart-notice {
+    flex: 1 0 100%;
+    align-items: center;
+}
+.settings-restart-notice > span {
+    flex: 1;
+    min-width: 0;
+}
 .memory-limit-input {
     width: 120px;
     text-align: right;
+}
+
+/* 조작 가능 탭: 닉네임 | 디스코드 | 빼기, 아래에 넣기 줄 */
+.controllers-list {
+    list-style: none;
+    margin: 0 0 var(--sp-3);
+    padding: 0;
+}
+.controllers-list .restart-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+}
+.controllers-list .controllers-name strong {
+    overflow-wrap: anywhere;
+}
+.controllers-list .controllers-discord {
+    flex-direction: row;
+    align-items: center;
+    gap: var(--sp-2);
+    min-width: 0;
+}
+.controllers-add {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-2);
+    align-items: center;
+}
+.controllers-add .input {
+    flex: 1 1 160px;
+    min-width: 0;
+}
+.controllers-add .controllers-member {
+    flex: 1 1 200px;
+}
+.controllers-empty {
+    margin: 0 0 var(--sp-3);
 }
 
 /* ════════════════════════════════════════════════════════════════
@@ -2097,6 +2276,36 @@ button.activity-line:hover {
     margin-top: calc(-1 * var(--sp-1));
 }
 
+/* 안내 문구 속 화면 링크 (ui/ScreenLink, 사용자 11-06 #19): 가는 길을 보이고 누르면 그 화면을 연다 */
+.screen-link {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-1);
+    margin: 0 var(--sp-0-5);
+    padding: 0 var(--sp-2);
+    border: 0;
+    border-radius: 7px;
+    background: var(--accent-soft);
+    color: var(--accent);
+    font: inherit;
+    font-weight: 600;
+    line-height: 1.6;
+    white-space: nowrap;
+    cursor: pointer;
+    vertical-align: baseline;
+}
+.screen-link:hover,
+.screen-link:focus-visible {
+    outline: 1px solid var(--accent);
+}
+.screen-link-sep {
+    opacity: 0.6;
+    font-weight: 400;
+}
+.screen-link-arrow {
+    font-size: 0.9em;
+}
+
 /* 멤버 한 명 */
 .dc-member-head {
     display: flex;
@@ -2268,7 +2477,7 @@ button.activity-line:hover {
     cursor: pointer;
 }
 .dc-chip.is-dragging {
-    opacity: 0.4;
+    opacity: 0.85;
     cursor: grabbing;
 }
 .dc-chip.is-open {
@@ -2292,85 +2501,83 @@ button.activity-line:hover {
     cursor: pointer;
 }
 /* 계단: 왼쪽이 낮은 레벨. 계단마다 높이가 한 칸씩 오른다 */
-.dc-stairs-scroll {
-    overflow-x: auto;
+.dc-cmd-tools {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--sp-2) var(--sp-3);
 }
-.dc-stairs {
-    display: grid;
-    grid-template-columns: repeat(var(--steps), minmax(140px, 1fr));
-    align-items: end;
-    min-width: calc(var(--steps) * 140px);
+.dc-cmd-search {
+    flex: 1 1 200px;
+    min-width: 0;
+    max-width: 320px;
+}
+.dc-cmd-summary {
+    margin: 0;
+    font-size: var(--fs-xs);
+    font-variant-numeric: tabular-nums;
+}
+.dc-cmd-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1);
+}
+.dc-cmd-group-title {
+    margin: var(--sp-2) 0 0;
+    font-size: var(--fs-xs);
+    font-weight: 700;
+    color: var(--text-2);
+    letter-spacing: 0.03em;
+}
+.dc-cmd-list {
     margin: 0;
     padding: 0;
     list-style: none;
-}
-.dc-step {
-    display: flex;
-    flex-direction: column;
-    gap: var(--sp-2);
-    min-height: calc(140px + var(--step) * 56px);
-    padding: var(--sp-2-5) var(--sp-2);
-    border-top: 3px solid var(--accent);
-    background: color-mix(in oklch, var(--accent) calc(4% + var(--step) * 4%), var(--bg-1));
-    transition: box-shadow var(--dur-fast) var(--ease), background-color var(--dur-fast) var(--ease);
-}
-.dc-step.level-banned {
-    border-top-color: var(--line-strong);
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
     background: var(--bg-1);
 }
-.dc-step.is-over {
-    box-shadow: inset 0 0 0 2px var(--accent);
-    background: color-mix(in oklch, var(--accent) calc(12% + var(--step) * 4%), var(--bg-1));
+/* 이름 · 누구부터 · 되묻기 · 되돌리기 */
+.dc-cmd-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 150px 150px minmax(84px, auto);
+    align-items: center;
+    gap: var(--sp-2);
+    padding: var(--sp-1-5) var(--sp-2-5);
 }
-.dc-step-chips {
+.dc-cmd-row + .dc-cmd-row {
+    border-top: 1px solid var(--line);
+}
+.dc-cmd-row.is-moved .dc-level-select {
+    box-shadow: 0 0 0 1px var(--warn);
+    border-radius: var(--r-sm);
+}
+.dc-cmd-name {
     display: flex;
-    flex-wrap: wrap;
-    align-content: flex-start;
-    gap: var(--sp-1);
+    align-items: center;
+    gap: var(--sp-1-5);
+    min-width: 0;
 }
-.dc-step-carry {
-    width: 100%;
-    font-size: var(--fs-xs);
-    color: var(--text-2);
-}
-.dc-step-label {
+.dc-cmd-title {
     display: flex;
     flex-direction: column;
-    margin-top: auto;
+    min-width: 0;
+    overflow-wrap: anywhere;
 }
-.dc-cmd-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--sp-1);
-    padding: var(--sp-0-5) var(--sp-2);
-    border: 1px solid var(--line-strong);
-    border-radius: var(--r-pill);
-    background: var(--bg-0);
-    color: var(--text-1);
+.dc-cmd-title strong {
+    font-weight: 600;
+    font-size: var(--fs-sm);
+}
+.dc-cmd-title small {
     font-size: var(--fs-xs);
-    cursor: grab;
-    transition: opacity var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
 }
-.dc-cmd-chip:not(.is-fixed):hover {
-    transform: translateY(-1px);
-}
-.dc-cmd-chip.is-dragging {
-    opacity: 0.4;
-    cursor: grabbing;
-}
-.dc-cmd-chip.is-fixed {
-    cursor: pointer;
-}
-.dc-cmd-chip.is-moved {
-    border-color: var(--warn);
-    box-shadow: 0 0 0 1px var(--warn);
-}
-.dc-cmd-chip.is-selected {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 2px var(--accent);
-}
-.dc-cmd-chip.is-legend {
-    cursor: default;
+@media (max-width: 860px) {
+    .dc-cmd-row {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    }
+    .dc-cmd-name {
+        grid-column: 1 / -1;
+    }
 }
 .dc-dot {
     display: inline-block;
@@ -2391,53 +2598,6 @@ button.activity-line:hover {
 }
 .dc-dot.tone-info {
     background: var(--info);
-}
-.dc-chip-edit {
-    display: flex;
-    flex-direction: column;
-    gap: var(--sp-2);
-}
-.dc-level-steps {
-    margin: 0;
-    padding: 0;
-    border: 0;
-    min-width: 0;
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--sp-1);
-}
-.dc-level-step {
-    padding: var(--sp-1) var(--sp-2);
-    border: 1px solid var(--line-strong);
-    border-radius: var(--r-sm);
-    background: var(--bg-1);
-    color: var(--text-1);
-    font-size: var(--fs-sm);
-    cursor: pointer;
-}
-.dc-level-step.is-up {
-    border-color: transparent;
-    background: color-mix(in oklch, var(--accent) 16%, var(--bg-1));
-    color: var(--accent);
-}
-.dc-level-step.is-on {
-    border-color: var(--accent);
-    background: var(--accent);
-    color: var(--text-inverse);
-    font-weight: 700;
-}
-.dc-legend {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--sp-3);
-    font-size: var(--fs-xs);
-    color: var(--text-2);
-}
-.dc-legend > span {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--sp-1);
 }
 /* 레벨 편집: 위가 높은 레벨. 끌어서 순서를 바꾼다 (LadderTab.js) */
 .dc-ladder {
@@ -2465,7 +2625,18 @@ button.activity-line:hover {
     opacity: 0.8;
 }
 .dc-ladder-block.is-dragging {
-    opacity: 0.4;
+    opacity: 0.85;
+}
+/* 끌기는 pointer 이벤트로 한다 (Windows 웹뷰의 HTML 끌어 놓기에 기대지 않는다). 끄는 요소는 손을 따라 위에 뜬다 */
+[data-draggable] {
+    touch-action: none;
+    cursor: grab;
+}
+.dc-chip.is-dragging,
+.dc-ladder-block.is-dragging {
+    position: relative;
+    z-index: 20;
+    box-shadow: 0 6px 18px var(--shadow-md);
 }
 .dc-ladder-block.is-over {
     border-color: var(--accent);
@@ -3466,8 +3637,9 @@ button.appbar-preflight {
     min-height: 0;
     padding-block: 0;
 }
-/* 주제: 칸 크기는 레이아웃이 정한다. 넘치는 글은 칸 안에서 스크롤한다 */
-.dc-mod-topic {
+/* 주제: 칸 크기는 레이아웃이 정한다. 넘치는 글은 칸 안에서 스크롤한다.
+   .input(높이 36px·위아래 여백 0)이 이 파일 뒤에 실리므로 둘을 겹쳐 써야 이긴다 */
+.input.dc-mod-topic {
     height: calc(var(--sp-4) * 5);
     padding: var(--sp-2) var(--sp-3);
     line-height: 1.5;
@@ -4015,14 +4187,34 @@ button.appbar-preflight {
     color: var(--text-secondary);
 }
 
-/* CLI로 보기 (I4-c): 같은 일을 하는 CLI 한 줄 */
+/* CLI로 보기 (I4-c): 같은 일을 하는 CLI 한 줄. '명령줄로 하기'를 펼치면 보인다 */
 .cli-line {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: var(--sp-1-5);
     min-width: 0;
     margin-right: auto;
     color: var(--text-secondary);
+}
+.cli-line > summary {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-1-5);
+    cursor: pointer;
+    font-size: 12px;
+    list-style: none;
+    user-select: none;
+}
+.cli-line > summary::-webkit-details-marker {
+    display: none;
+}
+.cli-line > summary:hover,
+.cli-line > summary:focus-visible {
+    color: var(--text-primary);
+}
+.cli-line:not([open]) > :not(summary) {
+    display: none;
 }
 .cli-line code {
     overflow: hidden;
@@ -4223,6 +4415,57 @@ button.appbar-preflight {
     padding: 0 var(--sp-1);
     font-size: var(--fs-xs);
 }
+/* 입력 줄 글자와 그 뒤의 색칠한 줄이 같은 크기여야 겹친다 */
+.cmd-input .cmdline-field {
+    font-size: var(--fs-sm);
+}
+.cmd-compose .cmdline-help {
+    padding: 0 var(--sp-1);
+}
+
+/* API로 요청하는 명령의 입력 창 (목록에서 누르면 입력 줄 자리에 뜬다) */
+.cmd-form {
+    display: grid;
+    gap: var(--sp-2-5);
+    padding: var(--sp-3);
+    border-radius: var(--r-md);
+    border: 1px solid var(--accent);
+    background: var(--field);
+}
+.cmd-form-head {
+    display: grid;
+    gap: var(--sp-0-5);
+}
+.cmd-form-head strong {
+    font-size: var(--fs-sm);
+    color: var(--text-1);
+}
+.cmd-form-desc,
+.cmd-form-hint {
+    margin: 0;
+    font-size: var(--fs-xs);
+    color: var(--text-3);
+}
+.cmd-form-hint {
+    color: var(--warn);
+}
+.cmd-form-field {
+    display: grid;
+    gap: var(--sp-1);
+}
+.cmd-form-field > label {
+    font-size: var(--fs-xs);
+    font-weight: 600;
+    color: var(--text-2);
+}
+.cmd-form-req {
+    color: var(--stop);
+}
+.cmd-form-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--sp-2);
+}
 
 /* 실행 기록 */
 .cmd-history-list {
@@ -4274,6 +4517,11 @@ button.appbar-preflight {
     font-size: var(--fs-xs);
     font-weight: 600;
     color: var(--chip-color);
+}
+.cmd-entry-via {
+    flex: none;
+    font-size: var(--fs-xs);
+    color: var(--text-3);
 }
 .cmd-entry-time {
     flex: none;

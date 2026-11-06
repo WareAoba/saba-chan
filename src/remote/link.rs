@@ -127,7 +127,9 @@ async fn connect_once(
         tokio_tungstenite::tungstenite::http::HeaderValue::from_static("1"),
     );
     let config = WebSocketConfig::default().max_message_size(Some(MAX_MESSAGE)).max_frame_size(Some(MAX_MESSAGE));
-    let (socket, _) = tokio_tungstenite::connect_async_with_config(request, Some(config), false)
+    let tls = saba_chan_updater_lib::tls::client_config().map_err(|e| e.to_string())?;
+    let connector = tokio_tungstenite::Connector::Rustls(tls);
+    let (socket, _) = tokio_tungstenite::connect_async_tls_with_config(request, Some(config), false, Some(connector))
         .await
         .map_err(|e| e.to_string())?;
     let (mut sink, mut stream) = socket.split();

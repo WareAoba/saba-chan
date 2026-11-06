@@ -215,7 +215,18 @@ pub async fn run(ctx: &Ctx, cmd: BotCmd) -> Result<()> {
         }
         BotCmd::Link { id, decline } => link(ctx, id.as_deref(), decline).await,
         BotCmd::Allow { guild, servers, all } => allow(ctx, &resolve::guild(ctx, Some(&guild)).await?, &servers, all).await,
-        BotCmd::Notice { guild, server, on, off } => notice(ctx, &resolve::guild(ctx, Some(&guild)).await?, server.as_deref(), (on || off).then_some(on)).await,
+        BotCmd::Notice { guild, server, on, off, full } => notice(ctx, &resolve::guild(ctx, Some(&guild)).await?, server.as_deref(), (on || off).then_some(on), full).await,
+        BotCmd::BackupNotice { all, failures } => {
+            if all || failures {
+                let mode = if failures { "failures" } else { "all" };
+                let r = ctx.api.patch_bot_config(json!({ "backupNotice": mode })).await?;
+                ctx.out.done(&t!("bot.backup_notice_set", mode = backup_notice_text(mode)), &r);
+                return Ok(());
+            }
+            let mode = backup_notice_mode(&ctx.api.bot_config().await?);
+            ctx.out.data(&json!({ "backupNotice": mode }), |_| say!("{}", t!("bot.backup_notice_show", mode = backup_notice_text(mode))));
+            Ok(())
+        }
         BotCmd::Reset { keys } => {
             let q = if keys.is_empty() {
                 t!("config.confirm_reset_all")
@@ -546,8 +557,9 @@ async fn allow(ctx: &Ctx, guild: &str, queries: &[String], all: bool) -> Result<
     Ok(())
 }
 
-/// 켜짐 알림: 사바쨩이 켠 서버를 그 디스코드 서버의 알림 채널에 알린다 (`nodeSettings[guild].startNotice`, 기본 꺼짐)
-async fn notice(ctx: &Ctx, guild: &str, server: Option<&str>, enabled: Option<bool>) -> Result<()> {
+/// 켜짐·꺼짐 알림(`nodeSettings[guild].startNotice`)과 `--full` 자리 꽉 참 알림(`fullNotice`): 그 디스코드 서버의 알림 채널에 알린다 (기본 꺼짐)
+async fn notice(ctx: &Ctx, guild: &str, server: Option<&str>, enabled: Option<bool>, full: bool) -> Result<()> {
+    let text = |key: &str| if full { format!("bot.full_{}", key) } else { format!("bot.{}", key) };
     let servers = crate::resolve::servers(ctx).await.unwrap_or_default();
     let name_of = |id: &str| servers.iter().find(|s| s.id == id).map_or(id.to_string(), |s| s.name.clone());
     let id = match server {
@@ -555,19 +567,19 @@ async fn notice(ctx: &Ctx, guild: &str, server: Option<&str>, enabled: Option<bo
         None => None,
     };
     let (Some(id), Some(enabled)) = (&id, enabled) else {
-        let r = ctx.api.start_notice(guild).await?;
+        let r = if full { ctx.api.full_notice(guild).await? } else { ctx.api.start_notice(guild).await? };
         let on: Vec<String> = r.get("instances").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str).map(str::to_string).collect();
         ctx.out.data(&r, |_| match &id {
-            Some(id) if on.contains(id) => say!("{}", t!("bot.notice_is_on", server = name_of(id))),
-            Some(id) => say!("{}", t!("bot.notice_is_off", server = name_of(id))),
-            None if on.is_empty() => say!("{}", output::dim(&t!("bot.notice_none"))),
+            Some(id) if on.contains(id) => say!("{}", t!(&text("notice_is_on"), server = name_of(id))),
+            Some(id) => say!("{}", t!(&text("notice_is_off"), server = name_of(id))),
+            None if on.is_empty() => say!("{}", output::dim(&t!(&text("notice_none")))),
             None => on.iter().for_each(|id| say!("{}", name_of(id))),
         });
         return Ok(());
     };
-    let r = ctx.api.set_start_notice(id, guild, enabled).await?;
-    let key = if enabled { "bot.notice_on_saved" } else { "bot.notice_off_saved" };
-    ctx.out.done(&t!(key, guild = guild, server = name_of(id)), &r);
+    let r = if full { ctx.api.set_full_notice(id, guild, enabled).await? } else { ctx.api.set_start_notice(id, guild, enabled).await? };
+    let key = text(if enabled { "notice_on_saved" } else { "notice_off_saved" });
+    ctx.out.done(&t!(&key, guild = guild, server = name_of(id)), &r);
     Ok(())
 }
 
@@ -579,16 +591,16 @@ struct ChannelChange {
     no_music: bool,
     notify: Option<String>,
     no_notify: bool,
-    game_chat: Option<String>,
+    game_chat: Vec<String>,
     no_game_chat: bool,
-    board: Option<String>,
+    board: Vec<String>,
     no_board: bool,
 }
 
 impl ChannelChange {
     fn is_empty(&self) -> bool {
         self.chatbot.is_empty() && !self.no_chatbot && self.music.is_none() && !self.no_music && self.notify.is_none() && !self.no_notify
-            && self.game_chat.is_none() && !self.no_game_chat && self.board.is_none() && !self.no_board
+            && self.game_chat.is_empty() && !self.no_game_chat && self.board.is_empty() && !self.no_board
     }
 }
 
@@ -622,11 +634,18 @@ async fn channels(ctx: &Ctx, guild: &str, change: ChannelChange) -> Result<()> {
     let current = ctx.api.node_channels(guild, relay).await?;
     let list = current.get("channels").and_then(Value::as_array).cloned().unwrap_or_default();
     let mut patch = Map::new();
-    if change.no_chatbot {
-        patch.insert("chatbot".into(), json!([]));
-    } else if !change.chatbot.is_empty() {
-        let ids = change.chatbot.iter().map(|q| channel_id(&list, q)).collect::<Result<Vec<_>>>()?;
-        patch.insert("chatbot".into(), json!(ids));
+    // 여러 채널 종류(말하는 사바쨩·게임 채팅·상황판)는 준 목록으로 바꾼다
+    for (key, none, queries) in [
+        ("chatbot", change.no_chatbot, &change.chatbot),
+        ("gameChat", change.no_game_chat, &change.game_chat),
+        ("board", change.no_board, &change.board),
+    ] {
+        if none {
+            patch.insert(key.into(), json!([]));
+        } else if !queries.is_empty() {
+            let ids = queries.iter().map(|q| channel_id(&list, q)).collect::<Result<Vec<_>>>()?;
+            patch.insert(key.into(), json!(ids));
+        }
     }
     if change.no_music {
         patch.insert("music".into(), Value::Null);
@@ -642,16 +661,6 @@ async fn channels(ctx: &Ctx, guild: &str, change: ChannelChange) -> Result<()> {
         patch.insert("notify".into(), Value::Null);
     } else if let Some(q) = &change.notify {
         patch.insert("notify".into(), json!(channel_id(&list, q)?));
-    }
-    if change.no_game_chat {
-        patch.insert("gameChat".into(), Value::Null);
-    } else if let Some(q) = &change.game_chat {
-        patch.insert("gameChat".into(), json!(channel_id(&list, q)?));
-    }
-    if change.no_board {
-        patch.insert("board".into(), Value::Null);
-    } else if let Some(q) = &change.board {
-        patch.insert("board".into(), json!(channel_id(&list, q)?));
     }
     let r = if patch.is_empty() {
         current
@@ -714,6 +723,15 @@ fn target_guilds(nodes: &Value, changing: bool) -> Result<Vec<(String, String)>>
 /// 봇 설정의 `newGuildInstances` (없거나 모르는 값이면 데몬 기본 `auto`)
 fn new_guild_mode(cfg: &Value) -> &'static str {
     if cfg.get("newGuildInstances").and_then(Value::as_str) == Some("manual") { "manual" } else { "auto" }
+}
+
+/// 봇 설정의 `backupNotice` (없거나 모르는 값이면 데몬 기본 `all`)
+fn backup_notice_mode(cfg: &Value) -> &'static str {
+    if cfg.get("backupNotice").and_then(Value::as_str) == Some("failures") { "failures" } else { "all" }
+}
+
+fn backup_notice_text(mode: &str) -> String {
+    if mode == "failures" { t!("bot.backup_notice_failures") } else { t!("bot.backup_notice_all") }
 }
 
 fn new_guild_text(mode: &str) -> String {
@@ -834,7 +852,7 @@ fn sleep_patch(block: Option<Vec<String>>, bedtime: Option<String>, no_bedtime: 
     Ok(if patch.is_empty() { Value::Null } else { Value::Object(patch) })
 }
 
-/// 큰 이모지 켜기·끄기 (릴레이가 가진 길드 설정, 데몬이 넘긴다). 둘 다 없으면 보기만
+/// 이모지 업스케일 켜기·끄기 (릴레이가 가진 길드 설정, 데몬이 넘긴다). 둘 다 없으면 보기만
 fn big_emoji_patch(on: bool, off: bool) -> Option<Value> {
     (on || off).then(|| json!({ "bigEmoji": on }))
 }
@@ -865,7 +883,7 @@ fn discord_rows(r: &Value) -> Vec<(String, String)> {
         let bedtime = r.get("bedtime").filter(|b| b.is_object());
         rows.push((t!("bot.bedtime"), bedtime.map_or_else(|| t!("bot.off"), |b| format!("{} ~ {}", s(b, "start"), s(b, "end")))));
     }
-    // 큰 이모지: 릴레이가 가진 값이라 릴레이가 답하지 못하면 없다
+    // 이모지 업스케일: 릴레이가 가진 값이라 릴레이가 답하지 못하면 없다
     if let Some(on) = r.get("bigEmoji").and_then(Value::as_bool) {
         rows.push((t!("bot.big_emoji"), on_off(Some(on))));
     }
@@ -907,29 +925,30 @@ fn print_channels(r: &Value) {
             .find(|c| s(c, "id") == id)
             .map_or(id.to_string(), |c| format!("#{}", s(c, "name")))
     };
-    let chatbot: Vec<String> = r
-        .get("chatbot")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(Value::as_str)
-        .map(name)
-        .collect();
     let none = || output::dim(&t!("bot.channel_none"));
+    // 채널 목록 칸 — 옛 릴레이는 게임 채팅·상황판을 채널 하나(문자열)로 준다
+    let names = |key: &str| {
+        let ids: Vec<String> = match r.get(key) {
+            Some(Value::Array(a)) => a.iter().filter_map(Value::as_str).map(name).collect(),
+            Some(Value::String(id)) => vec![name(id)],
+            _ => Vec::new(),
+        };
+        if ids.is_empty() { none() } else { ids.join(", ") }
+    };
     let music = r.get("music").and_then(Value::as_str).map(name);
     let notify = r.get("notify").and_then(Value::as_str).map(name);
     let mut rows = vec![
-        (t!("bot.chatbot_channels"), if chatbot.is_empty() { none() } else { chatbot.join(", ") }),
+        (t!("bot.chatbot_channels"), names("chatbot")),
         (t!("bot.music_channel"), music.unwrap_or_else(none)),
         (t!("bot.notify_channel"), notify.unwrap_or_else(none)),
     ];
     // 옛 릴레이는 게임 채팅 채널을 모른다 (응답에 gameChat 없음)
     if r.get("gameChat").is_some() {
-        rows.push((t!("bot.game_chat_channel"), r.get("gameChat").and_then(Value::as_str).map(name).unwrap_or_else(none)));
+        rows.push((t!("bot.game_chat_channel"), names("gameChat")));
     }
     // 상황판을 모르는 릴레이는 응답에 board 가 없다
     if r.get("board").is_some() {
-        rows.push((t!("bot.board_channel"), r.get("board").and_then(Value::as_str).map(name).unwrap_or_else(none)));
+        rows.push((t!("bot.board_channel"), names("board")));
     }
     output::print_kv(&rows);
     if r.get("botAvailable").and_then(Value::as_bool) == Some(false) {
@@ -1045,8 +1064,10 @@ async fn clear(ctx: &Ctx, guild: &str, channel: &str, count: u32, member: Option
             return Err(usage(t!("bot.bad_duration", value = p)));
         }
     }
-    ctx.ask.ensure(&t!("bot.confirm_clear", name = name, count = count))?;
     let cfg = ctx.api.bot_config().await?;
+    // 권한을 먼저 본다(지우지 않는 검사): 지울 수 없으면 묻지 않고 거절을 보인다
+    checked_before_asking(ctx.api.check_clear_channel(guild, &id, body.clone(), relay_of(&cfg)).await)?;
+    ctx.ask.ensure(&t!("bot.confirm_clear", name = name, count = count))?;
     let r = ctx.api.clear_channel(guild, &id, body, relay_of(&cfg)).await?;
     let n = |k: &str| r.get(k).and_then(Value::as_u64).unwrap_or(0);
     let mut msg = t!("bot.cleared", deleted = n("deleted"), kept = n("kept"));
@@ -1055,6 +1076,15 @@ async fn clear(ctx: &Ctx, guild: &str, channel: &str, count: u32, member: Option
     }
     ctx.out.done(&msg, &r);
     Ok(())
+}
+
+/// 확인 전 권한 검사의 결과. 검사 경로가 없는 옛 릴레이(`not_found`)면 예전처럼 묻는다
+fn checked_before_asking(res: Result<Value>) -> Result<()> {
+    match res {
+        Ok(_) => Ok(()),
+        Err(e) if matches!(e.downcast_ref::<crate::error::CliError>(), Some(c) if c.code() == "not_found") => Ok(()),
+        Err(e) => Err(e),
+    }
 }
 
 async fn mute(ctx: &Ctx, guild: &str, member: &str, duration: &str, reason: Option<String>) -> Result<()> {
@@ -1264,7 +1294,29 @@ mod tests {
         assert_eq!(super::new_guild_mode(&json!({})), "auto");
     }
 
+    #[test]
+    fn backup_notice_mode_falls_back_to_all() {
+        use serde_json::json;
+        assert_eq!(super::backup_notice_mode(&json!({ "backupNotice": "failures" })), "failures");
+        assert_eq!(super::backup_notice_mode(&json!({ "backupNotice": "x" })), "all");
+        assert_eq!(super::backup_notice_mode(&json!({})), "all");
+    }
+
     use super::*;
+
+    /// 청소는 묻기 전에 권한을 본다: 거절이면 그 거절, 검사 경로가 없는 옛 릴레이면 묻는 데로 넘어간다
+    #[test]
+    fn clear_checks_permission_before_asking() {
+        use crate::error::CliError;
+        let api = |status: u16, code: &str| -> Result<Value> {
+            Err(CliError::Api { status, code: Some(code.into()), message: String::new(), body: json!({}) }.into())
+        };
+        assert!(checked_before_asking(Ok(json!({ "dryRun": true }))).is_ok());
+        assert!(checked_before_asking(api(404, "not_found")).is_ok());
+        let refused = checked_before_asking(api(403, "forbidden")).unwrap_err();
+        assert_eq!(refused.downcast_ref::<CliError>().map(CliError::code).as_deref(), Some("forbidden"));
+        assert!(checked_before_asking(api(404, "unknown_channel")).is_err());
+    }
 
     /// 서버 설정에 그 서버의 호출어와 명령 이름 번역이 보인다 (비면 기본 호출어, 값이 없으면 번역 켜짐)
     /// 저장 문구는 데몬이 다듬어 저장한 접두사를 보인다 (입력 원문이 아니라)
@@ -1298,7 +1350,7 @@ mod tests {
         assert_eq!(row(&r, "bot.private_queries"), Some(t!("bot.on")));
     }
 
-    /// 큰 이모지 (GUI 봇 설정 탭과 같다): 릴레이가 가진 값이라, 릴레이가 답하지 못해 값이 없으면 줄을 두지 않는다
+    /// 이모지 업스케일 (GUI 봇 설정 탭과 같다): 릴레이가 가진 값이라, 릴레이가 답하지 못해 값이 없으면 줄을 두지 않는다
     #[test]
     fn big_emoji_is_shown_and_changed_like_the_gui() {
         crate::i18n::init("ko");

@@ -532,6 +532,8 @@ pub enum ServerCmd {
     Commands { server: Option<String> },
     /// Who is online
     Players { server: Option<String> },
+    /// The address (IP:port) friends connect to
+    Address { server: Option<String> },
     /// Check from the internet whether friends can reach this server (port forwarding)
     #[command(name = "port-check", visible_alias = "ports")]
     PortCheck { server: Option<String> },
@@ -997,7 +999,7 @@ pub enum BotCmd {
     Nodes,
     /// Members of a paired Discord server (name or id; without it: the only paired server)
     Members { guild: Option<String> },
-    /// Talking Saba-chan channels (several), the Singing Saba-chan channel (one), the notification channel and the game chat channel of a paired Discord server. No options: show
+    /// Talking Saba-chan, game chat and status board channels (several each), the Singing Saba-chan and notification channels (one each) of a paired Discord server. No options: show
     Channels {
         /// Without it: every paired Discord server (changing needs exactly one)
         guild: Option<String>,
@@ -1019,16 +1021,16 @@ pub enum BotCmd {
         /// Unassign the notification channel
         #[arg(long)]
         no_notify: bool,
-        /// The game chat channel (in-game chat of servers with game chat relay on), by name or id
-        #[arg(long, conflicts_with = "no_game_chat")]
-        game_chat: Option<String>,
-        /// Unassign the game chat channel
+        /// Game chat channels (in-game chat of servers with game chat relay on), by name or id (comma-separated). Replaces the current list
+        #[arg(long, value_delimiter = ',', conflicts_with = "no_game_chat")]
+        game_chat: Vec<String>,
+        /// Unassign every game chat channel
         #[arg(long)]
         no_game_chat: bool,
-        /// The status board channel (a card per running server: banner, players, uptime), by name or id
-        #[arg(long, conflicts_with = "no_board")]
-        board: Option<String>,
-        /// Unassign the status board channel
+        /// Status board channels (a card per running server: banner, players, uptime), by name or id (comma-separated). Replaces the current list
+        #[arg(long, value_delimiter = ',', conflicts_with = "no_board")]
+        board: Vec<String>,
+        /// Unassign every status board channel
         #[arg(long)]
         no_board: bool,
     },
@@ -1112,13 +1114,13 @@ pub enum BotCmd {
         #[arg(long)]
         no_bedtime: bool,
     },
-    /// Big emoji (a lone custom emoji is shown large) on a Discord server. No options: show
+    /// Emoji upscale (a lone custom emoji is shown large) on a Discord server. No options: show
     BigEmoji {
         guild: Option<String>,
-        /// Turn big emoji on
+        /// Turn emoji upscale on
         #[arg(long, conflicts_with = "off")]
         on: bool,
-        /// Turn big emoji off
+        /// Turn emoji upscale off
         #[arg(long)]
         off: bool,
     },
@@ -1200,18 +1202,28 @@ pub enum BotCmd {
         #[arg(long)]
         all: bool,
     },
-    /// Post in the Discord server's alert channel when Saba-chan starts a server (off by default).
-    /// No server: show. Server with `--on`/`--off`: change
+    /// Post in the Discord server's alert channel when a server starts or stops without a Saba-chan command (off by default).
+    /// With `--full`: when a server fills up or a slot opens again. No server: show. Server with `--on`/`--off`: change
     Notice {
         guild: String,
         /// Server by name or id
         server: Option<String>,
-        /// Turn the start alert on
+        /// Turn the alert on
         #[arg(long, requires = "server", conflicts_with = "off")]
         on: bool,
-        /// Turn the start alert off
+        /// Turn the alert off
         #[arg(long, requires = "server")]
         off: bool,
+        /// The full server alert instead of the start/stop alert
+        #[arg(long)]
+        full: bool,
+    },
+    /// Backup results sent to the PC owner as a DM: all (--all) or only failures (--failures). No options: show
+    BackupNotice {
+        #[arg(long, conflicts_with = "failures")]
+        all: bool,
+        #[arg(long)]
+        failures: bool,
     },
     /// Bot settings back to their defaults (all when no key is named)
     Reset { keys: Vec<String> },
@@ -1308,6 +1320,11 @@ pub enum ConfigCmd {
         #[arg(value_enum)]
         mode: Option<AutostartMode>,
     },
+    /// Per-server and per-port network (advanced, Windows): show the permission, or grant/revoke it with one administrator prompt on the daemon PC. Turn it on with `config set systemMonitorNetTrace=on`
+    NetTrace {
+        #[arg(value_enum)]
+        action: Option<NetTraceAction>,
+    },
     /// Bring in settings and servers from an export zip
     Import {
         file: std::path::PathBuf,
@@ -1352,6 +1369,13 @@ impl AutostartMode {
             AutostartMode::Full => "full",
         }
     }
+}
+
+/// `config net-trace`의 동작 (데몬 `/api/system/net-trace/grant`·`/revoke`)
+#[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NetTraceAction {
+    Grant,
+    Revoke,
 }
 
 /// 번역된 도움말을 끼운 clap 명령

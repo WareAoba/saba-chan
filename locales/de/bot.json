@@ -11,15 +11,14 @@
     "no_modules": "Keine",
     "module_title": "**{{module}}-Befehle**",
     "available_commands": "{{commands}}",
-    "usage_format": "`{{prefix}} <Modul> <Befehl>`",
-    "modules_header": "📦 **Module:**",
+    "usage_format": "`{{prefix}} <Server> <Befehl>`",
+    "modules_header": "🎮 **Server:**",
     "slash_hint": "💡 Neustart, Backups und Portprüfung gehen wie `<Server> Neustart`. Rechte, Sprache, Schlafmodus, Web und Updates sind Slash-Befehle (`/`)."
   },
   "modules": {
     "help_start": "Server starten",
     "help_stop": "Server stoppen",
     "help_status": "Server-Status überprüfen",
-    "help_rest_title": "**REST-Befehle:**",
     "enter_command": "Gib einen Befehl ein."
   },
   "list": {
@@ -29,16 +28,20 @@
   },
   "status": {
     "running": "🟢 Läuft",
+    "starting": "🟡 Startet",
     "stopped": "⚪ Gestoppt"
   },
   "server": {
     "start_request": "⏳ Starten von **{{name}}**-Server...",
-    "start_complete": "✅ Start-Anfrage für **{{name}}** abgeschlossen!",
+    "start_complete": "✅ **{{name}}** · Starten",
     "already_running": "ℹ️ **{{name}}** läuft bereits.",
     "stop_request": "⏳ Stoppen von **{{name}}**-Server...",
-    "stop_complete": "✅ Stop-Anfrage für **{{name}}** abgeschlossen!",
+    "stop_complete": "✅ **{{name}}** · Stoppen",
     "graceful_stop_unavailable": "⚠️ **{{name}}** wurde nicht gestoppt: Es gibt keinen Weg (Konsole oder REST), zu speichern und zu beenden. Um ihn ohne Speichern zu beenden, wähle in saba-chan auf diesem PC einen erzwungenen Stopp.",
-    "status_check": "📊 Status von **{{name}}**: {{status}} {{pid_info}}",
+    "status_check": "📊 **{{name}}** · {{status}}",
+    "uptime_hm": "läuft seit {{h}} Std. {{m}} Min.",
+    "uptime_m": "läuft seit {{m}} Min.",
+    "still_starting": "⏳ **{{name}}** startet noch. Frag gleich noch einmal.",
     "not_found": "❌ Kein Server gefunden für Modul \"{{alias}}\" ({{resolved}})",
     "not_running": "❌ **{{name}}**: {{error}}",
     "not_running_default": "Der Server läuft nicht. Starten Sie zuerst den Server",
@@ -82,6 +85,7 @@
     "alias_conflict": "❌ Alias '{{alias}}' ist mehrdeutig. Er passt auf mehrere Module: {{modules}}. Verwende einen spezifischeren Alias.",
     "multiple_instances": "⚠️ Mehrere '{{module}}'-Instanzen vorhanden. Verwende den Instanznamen statt des Modul-Alias.",
     "danger_needs_name": "⚠️ Gefährliche Befehle laufen nicht über den Spielnamen. Rufe den Server mit seinem Namen '{{name}}' auf.",
+    "slash_only": "🔒 {{command}} sieht nur, wer fragt – deshalb gibt es das nur als Slash-Befehl. Tippe `/` und wähle **{{name}}** › {{command}}.",
     "auth_failed": "Authentifizierung fehlgeschlagen",
     "player_not_found": "Spieler nicht gefunden",
     "internal_server_error": "Interner Serverfehler",
@@ -95,6 +99,7 @@
     "unknown_input": "❌ Unbekannter Befehl.",
     "command_not_found": "❌ Befehl existiert nicht.",
     "permission_denied": "❌ Du hast keine Berechtigung, diesen Befehl zu verwenden.",
+    "permission_denied_controllers": "❌ Um diesen Server zu starten oder zu stoppen, musst du in der Saba-chan-App auf seiner Liste „Bediener“ stehen oder die für diesen Befehl festgelegte Stufe haben (standardmäßig Admin).",
     "local_single_guild_only": "⚠️ Der lokale Bot kann nur auf einem Server verwendet werden. Dieser Bot ist auf {{count}} Servern. Entferne ihn von den Servern, die du nicht nutzt."
   },
   "messages": {
@@ -150,6 +155,9 @@
       "schedule": {
         "set": {
           "title": "Geplante Aufgaben ändern"
+        },
+        "get": {
+          "title": "Geplante Aufgaben anzeigen"
         }
       },
       "delete": {
@@ -158,8 +166,29 @@
       "start_notice": {
         "set": {
           "title": "Start-Hinweis",
-          "description": "Im Hinweiskanal dieses Discord-Servers melden, wenn Saba-chan diesen Server startet",
+          "description": "Im Hinweiskanal dieses Discord-Servers melden, wenn dieser Server ohne Discord-Befehl startet oder stoppt (auch Abstürze)",
           "name": "Start-Hinweis"
+        }
+      },
+      "full_notice": {
+        "set": {
+          "title": "Voll-Hinweis",
+          "description": "Im Hinweiskanal dieses Discord-Servers melden, wenn dieser Server voll ist oder wieder ein Platz frei wird",
+          "name": "Voll-Hinweis"
+        }
+      },
+      "get": {
+        "title": "Servereinstellungen anzeigen"
+      },
+      "rename": {
+        "title": "Server umbenennen"
+      },
+      "properties": {
+        "get": {
+          "title": "Spieleinstellungsdatei anzeigen"
+        },
+        "set": {
+          "title": "Spieleinstellungsdatei ändern"
         }
       }
     },
@@ -185,6 +214,9 @@
         "tail": {
           "title": "Konsolenende",
           "description": "Letzte 20 Konsolenzeilen"
+        },
+        "send": {
+          "title": "Konsolenbefehl senden"
         }
       },
       "logs": {
@@ -201,6 +233,11 @@
         "title": "Spieler",
         "description": "Wer gerade online ist"
       },
+      "address": {
+        "title": "Serveradresse",
+        "name": "Adresse",
+        "description": "Zeigt nur dir die Adresse (IP:Port), mit der sich Freunde verbinden"
+      },
       "port_check": {
         "title": "Portweiterleitung prüfen",
         "description": "Das Relay prüft, ob dieser Server aus dem Internet erreichbar ist"
@@ -208,6 +245,17 @@
       "chat": {
         "title": "Spielchat senden",
         "description": "Sendet eine Discord-Nachricht in den Spielchat"
+      },
+      "update": {
+        "check": {
+          "title": "Spielserver-Update prüfen"
+        },
+        "apply": {
+          "title": "Spielserver aktualisieren"
+        }
+      },
+      "diagnose": {
+        "title": "Server diagnostizieren"
       }
     },
     "monitor": {
@@ -226,12 +274,21 @@
       "restore": {
         "title": "Backup wiederherstellen",
         "description": "Überschreibt die aktuellen Serverdateien mit dem Backup"
+      },
+      "delete": {
+        "title": "Backup löschen"
       }
     },
     "module": {
       "install": {
         "title": "Modul installieren",
         "description": "Lädt es aus dem offiziellen Katalog herunter und installiert es"
+      },
+      "list": {
+        "title": "Installierte Module"
+      },
+      "available": {
+        "title": "Verfügbare Module"
       }
     },
     "extension": {
@@ -240,6 +297,15 @@
       },
       "disable": {
         "title": "Erweiterung deaktivieren"
+      },
+      "list": {
+        "title": "Installierte Erweiterungen"
+      },
+      "available": {
+        "title": "Verfügbare Erweiterungen"
+      },
+      "install": {
+        "title": "Erweiterung installieren"
       }
     },
     "update": {
@@ -316,7 +382,9 @@
       "step": "Schritt",
       "from_snapshot": "Aus Spiel-Autobackup",
       "text": "Nachricht",
-      "apiKey": "API-Schlüssel"
+      "apiKey": "API-Schlüssel",
+      "command": "Befehl",
+      "settings": "Einstellungen"
     },
     "summary": {
       "server_item": "• **{{name}}** ({{module}}) · {{status}}",
@@ -352,6 +420,13 @@
       "players_max": "👥 {{online}}/{{max}} online",
       "player_item": "• {{name}}",
       "players_more": "…und {{count}} weitere",
+      "address": {
+        "item": "• `{{address}}`",
+        "item_named": "• {{label}} `{{address}}`",
+        "stopped": "💤 Der Server ist aus. Starte ihn, damit andere sich verbinden können",
+        "unknown": "❔ Server-chan kennt die öffentliche Adresse dieses PCs noch nicht. Versuche es gleich noch einmal",
+        "no_ports": "📭 Dieses Spiel gibt keinen Verbindungsport an"
+      },
       "port_check": {
         "open": "✅ Aus dem Internet erreichbar",
         "firewall": "🧱 Von der PC-Firewall blockiert",
@@ -397,12 +472,17 @@
     "server_running": "Der Server läuft. Zuerst stoppen",
     "no_command_path": "Der Server wurde außerhalb von Saba-chan gestartet und nimmt keine Befehle an",
     "autosave_not_resumed": "Das Backup wurde erstellt, aber das Autospeichern des Servers ließ sich nicht wieder einschalten. Server neu starten",
+    "backup_failed_autosave_off": "Das Backup ist fehlgeschlagen, und das Autospeichern des Servers ließ sich auch nicht wieder einschalten. Server neu starten",
     "backup_save_rejected": "Der Server hat den Speicherbefehl abgelehnt, daher wurde kein Backup erstellt. Halte den Server an und sichere erneut",
     "backup_save_unconfirmed": "Der Server hat nicht gemeldet, dass das Speichern fertig ist, daher wurde kein Backup erstellt. Versuche es gleich noch einmal oder halte den Server vor dem Backup an",
+    "backup_server_stopped": "Der Server wurde während des Backups gestoppt, daher wurde dieses Backup verworfen. Server prüfen und erneut sichern",
     "snapshot_not_found": "Das Spiel hat kein automatisches Backup",
     "snapshot_not_deletable": "Saba-chan kann die eigenen Backups des Spiels nicht löschen"
   },
   "chatbot": {
     "memo_template": "<!-- Hinweiszeilen wie diese und leere Überschriften werden nicht an Sprechende Saba-chan geschickt. Fülle nur aus, was du brauchst. -->\n\n## Stimmung\n<!-- Beschreibe, wie hier geredet wird und wie derb Witze sein dürfen. Leer = Standardpersönlichkeit. -->\n\n## Anreden\n<!-- Besondere Anreden, die Saba-chan für jemanden benutzen soll. Beispiel: Die als (Besitzer) markierte Person „Meister“ nennen. -->\n\n## Begriffe dieses Servers\n<!-- Spitznamen, Memes und Abkürzungen, die nur hier verstanden werden, mit Bedeutung. -->\n\n## Infos zum Spielserver\n<!-- Regeln, Öffnungszeiten und anderes, das Saba-chan Fragenden sagen darf. -->\n"
+  },
+  "controllers": {
+    "kick_reason": "Nur registrierte Spieler können diesen Server betreten."
   }
 }

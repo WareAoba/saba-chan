@@ -537,7 +537,7 @@ pub fn app_get_version(app: AppHandle) -> String {
 /// OS 알림 (렌더러의 포트 충돌 알림 등)
 #[tauri::command]
 pub fn notify(app: AppHandle, title: String, body: String) {
-    lifecycle::show_notification(&app, &title, &body);
+    lifecycle::show_notification(&app, &title, &body, false);
 }
 
 // ── 콘솔 팝아웃 ──

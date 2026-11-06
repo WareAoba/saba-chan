@@ -33,6 +33,18 @@
 			}
 		}
 	},
+	"overrides": [
+		{
+			"includes": ["src/test/**"],
+			"linter": {
+				"rules": {
+					"correctness": {
+						"noComponentHookFactories": "off"
+					}
+				}
+			}
+		}
+	],
 	"javascript": {
 		"formatter": {
 			"quoteStyle": "single",

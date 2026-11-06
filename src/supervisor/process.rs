@@ -37,8 +37,26 @@ pub fn is_process_alive(pid: u32) -> bool {
     #[cfg(not(target_os = "windows"))]
     {
         // kill(pid, 0) checks process existence without actually sending a signal
-        unsafe { libc::kill(pid as i32, 0) == 0 }
+        if unsafe { libc::kill(pid as i32, 0) } != 0 {
+            return false;
+        }
+        // 끝났지만 아직 거두지 않은 좀비도 kill 은 성공한다: 거두는 init 이 없는 컨테이너에서는 계속 남는다
+        #[cfg(target_os = "linux")]
+        if is_zombie(pid) {
+            return false;
+        }
+        true
     }
+}
+
+/// /proc/<pid>/stat 의 상태 칸이 Z(좀비)인가. 읽지 못하면 false
+#[cfg(target_os = "linux")]
+fn is_zombie(pid: u32) -> bool {
+    std::fs::read_to_string(format!("/proc/{pid}/stat"))
+        .ok()
+        // 이름 칸(괄호 안)에 공백·괄호가 있을 수 있어 마지막 ')' 뒤를 본다
+        .and_then(|stat| stat.rsplit_once(')').map(|(_, rest)| rest.trim_start().starts_with('Z')))
+        .unwrap_or(false)
 }
 
 /// 기록과 실제 프로세스 시작 시각의 차이로 볼 여유 (시계·기록 시점 차이)

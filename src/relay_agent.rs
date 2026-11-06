@@ -36,8 +36,9 @@ const RETRY_MAX: Duration = Duration::from_secs(60);
 /// 하트비트 `metadata.features`: 릴레이가 기능마다 이 PC를 가르는 이름 (전역 최소 버전 `MIN_AGENT_VERSION`과 따로).
 /// 옛 PC와 다르게 다뤄야 하는 변화를 넣을 때만 이름을 더하고, 릴레이 하한이 그 기능을 넘으면 이름과 릴레이 분기를 함께 지운다.
 /// - `confirm_by_daemon`: 되묻기를 데몬이 계획마다 정한다 (`actions::needs_confirm`). 릴레이는 스스로 위험을 판정하지 않고 `needsConfirm`을 따른다
+/// - `check_first`: `check` 액션 요청(`{id, instance?, input}` 또는 `{text}`)으로 확인을 묻기 전에 권한만 본다 (`actions::check`). 계획은 남지 않는다
 /// - `linked_guilds`: 하트비트 응답의 `linkedGuilds`(새로 묶인 길드)로 그 길드에 열 서버를 정한다 (`close_linked_guild`)
-const FEATURES: &[&str] = &["confirm_by_daemon", "linked_guilds"];
+const FEATURES: &[&str] = &["confirm_by_daemon", "linked_guilds", "check_first"];
 
 /// 알림 이벤트(I3): 처음 한 건이 오면 같은 순간에 난 것만 이만큼 모아 곧 보내고, 한 번에 이만큼까지 보낸다
 /// (사용자 11-02: 게임 채팅이 디스코드에 늦게 올라간다. 이벤트는 대부분 한 건씩 온다)
@@ -92,6 +93,9 @@ pub struct AgentStatus {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub min_version: Option<String>,
     pub commands_handled: u64,
+    /// 릴레이가 하트비트 답에 실어 준, 이 PC가 접속해 온 공인 주소 (서버 주소 `server.address`). 모르면 없다
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub seen_address: Option<String>,
 }
 
 #[derive(Default)]
@@ -140,7 +144,8 @@ impl RelayAgent {
         let inner = self.lock();
         let mut status = inner.status.clone();
         status.agent_version = AGENT_VERSION;
-        status.has_token = load_node_token().as_deref().and_then(parse_node_token).is_some();
+        // GUI가 5초마다 부른다: 설정 파일이 그대로면 다시 읽지 않는다
+        status.has_token = crate::ipc::handlers::relay::peek_node_token().as_deref().and_then(parse_node_token).is_some();
         status
     }
 
@@ -261,6 +266,19 @@ impl RelayAgent {
         self.inner.lock().unwrap_or_else(|e| e.into_inner())
     }
 
+    /// 지금 연결된 세션에서 릴레이가 본 이 PC의 공인 주소 (연결돼 있지 않으면 없다)
+    pub fn seen_address(&self) -> Option<String> {
+        let inner = self.lock();
+        inner.status.seen_address.clone().filter(|_| inner.cancel.is_some())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_seen_address_for_test(&self, address: Option<&str>) {
+        let mut inner = self.lock();
+        inner.cancel.get_or_insert_with(CancellationToken::new);
+        inner.status.seen_address = address.map(str::to_string);
+    }
+
     /// 세션 상태 갱신. 끝난(세대가 지난) 세션의 늦은 응답은 버린다
     fn update(&self, generation: u64, f: impl FnOnce(&mut AgentStatus)) {
         let mut inner = self.lock();
@@ -268,6 +286,11 @@ impl RelayAgent {
             f(&mut inner.status)
         }
     }
+}
+
+/// 하트비트 답의 `address`: 릴레이가 본 이 PC의 공인 주소. IP로 읽히는 값만 받는다
+fn relay_seen_address(data: &Value) -> Option<String> {
+    data.get("address").and_then(Value::as_str).and_then(|a| a.parse::<std::net::IpAddr>().ok()).map(|ip| ip.to_string())
 }
 
 /// 데몬 기동 시: 이 노드가 페어링돼 있으면(노드 토큰 존재) 에이전트를 띄운다
@@ -324,7 +347,7 @@ fn poll_retry(error: &str, failures: u32) -> Duration {
 fn http_client() -> Result<reqwest::Client, reqwest::Error> {
     let mut headers = reqwest::header::HeaderMap::new();
     headers.insert("X-Saba-Client", reqwest::header::HeaderValue::from_static("1"));
-    reqwest::Client::builder().timeout(POLL_TIMEOUT).default_headers(headers).build()
+    saba_chan_updater_lib::tls::http_client_builder().timeout(POLL_TIMEOUT).default_headers(headers).build()
 }
 
 struct Session {
@@ -338,8 +361,8 @@ struct Session {
     seen: Arc<Mutex<SeenCommands>>,
     /// 릴레이가 메타데이터 전체를 받아 둔 지문 (`heartbeat_metadata`). 없으면 다음 하트비트는 전체를 보낸다
     metadata_sent: Mutex<Option<String>>,
-    /// 적용했지만 릴레이가 아직 확인 응답을 받지 못한 새로 묶인 길드 (`linkedGuildsAck`)
-    linked_acks: Mutex<Vec<String>>,
+    /// 적용했지만 릴레이가 아직 확인 응답을 받지 못한 새로 묶인 길드 (`linkedGuildsAck`·`linkedGuildsAckIds`)
+    linked_acks: Mutex<Vec<LinkedAck>>,
     /// 릴레이가 `/ack`를 모르면(404, 예전 릴레이) 이 세션에서는 더 보내지 않는다
     ack_supported: std::sync::atomic::AtomicBool,
 }
@@ -582,6 +605,8 @@ impl Session {
                     s.last_error = None;
                     s.last_error_code = None;
                     s.min_version = None;
+                    // 옛 릴레이·사설 주소면 없다
+                    s.seen_address = relay_seen_address(&data);
                 });
                 // 릴레이가 받은 확인 응답은 지운다. 그 사이 새로 적용한 길드는 남는다
                 self.linked_acks.lock().unwrap_or_else(|e| e.into_inner()).retain(|g| !acks.contains(g));
@@ -589,6 +614,10 @@ impl Session {
                 // (릴레이는 확인 응답을 받기 전까지 그 길드의 명령을 막고 목록을 다시 보낸다)
                 if self.apply_linked_guilds(&data).await {
                     send_again = true;
+                }
+                // 새 릴리즈가 등록됐다는 알림: 채널·버전을 대조해 맞으면 업데이트를 한 번 확인한다 (ipc/updates.rs)
+                if let Some(hint) = data.get("updateHint") {
+                    crate::ipc::updates::on_update_hint(&self.server.update_state, hint, self.cancel.clone());
                 }
                 // 연결이 끊긴 사이 릴레이에 못 보낸 디스코드 길드 설정을 다시 보낸다
                 if crate::ipc::handlers::discord::take_pending_sync() {
@@ -615,6 +644,11 @@ impl Session {
     /// 하트비트 메타데이터: 릴레이 봇이 자동완성·접두사 표시에 쓴다
     async fn metadata(&self) -> Value {
         use crate::chat::api::DaemonApi;
+        // `/사바쨩 상태`의 CPU·RAM과 PC 부하 (폴더 크기는 재지 않는다)
+        let roots = crate::ipc::handlers::system::instance_roots(&self.server).await;
+        let monitor = self.server.system_monitor.clone();
+        let snapshot = tokio::task::spawn_blocking(move || monitor.sample(&roots, &[], false)).await.ok();
+        let usage = snapshot.as_ref().map(|s| s.instances.as_slice()).unwrap_or_default();
         let servers: Vec<Value> = match crate::ipc::internal::into_internal(
             crate::ipc::handlers::server::list_servers_internal(&self.server).await,
         )
@@ -622,16 +656,15 @@ impl Session {
         .body
         .get("servers")
         {
-            Some(Value::Array(list)) => {
-                // `/사바쨩 상태`의 CPU·RAM (폴더 크기는 재지 않는다)
-                let roots = crate::ipc::handlers::system::instance_roots(&self.server).await;
-                let monitor = self.server.system_monitor.clone();
-                let usage = tokio::task::spawn_blocking(move || monitor.sample(&roots, &[], false).instances).await.unwrap_or_default();
-                list.iter()
-                    .map(|s| relay_server_entry(s, usage.iter().find(|u| s.get("id").and_then(|v| v.as_str()) == Some(u.id.as_str()))))
-                    .collect()
-            }
+            Some(Value::Array(list)) => list
+                .iter()
+                .map(|s| relay_server_entry(s, usage.iter().find(|u| s.get("id").and_then(|v| v.as_str()) == Some(u.id.as_str()))))
+                .collect(),
             _ => Vec::new(),
+        };
+        let schedules = {
+            let supervisor = self.server.supervisor.read().await;
+            crate::ipc::handlers::backup::upcoming_runs(supervisor.instance_store.list(), SCHEDULES_MAX)
         };
         // 모듈 locales 파일은 하트비트마다 읽으므로 async 작업자 밖에서 읽는다
         let views = self.server.modules().await;
@@ -639,19 +672,18 @@ impl Session {
             .into_iter()
             .map(|m| {
                 // 번역한 명령 이름: 모듈 locales를 언어마다 한 번 읽는다. 번역을 끈 서버는 릴레이가 빼고 단다 (서버별 `translateCommands`)
-                let locales: std::collections::HashMap<&str, Value> = match &m.locale_dir {
+                let locales: std::collections::HashMap<&str, std::sync::Arc<Value>> = match &m.locale_dir {
                     Some(dir) => crate::chat::i18n::languages()
                         .into_iter()
-                        .filter_map(|l| {
-                            let raw = std::fs::read_to_string(dir.join("locales").join(format!("{}.json", l))).ok()?;
-                            Some((l, serde_json::from_str(&raw).ok()?))
-                        })
+                        .filter_map(|l| Some((l, crate::chat::api::module_locale(dir, l)?)))
                         .collect(),
                     None => Default::default(),
                 };
-                let texts = |l: &str| locales.get(l).cloned().unwrap_or(Value::Null);
+                // 명령마다·언어마다 부르므로 locales를 복제하지 않고 함께 쓴다
+                let null = std::sync::Arc::new(Value::Null);
+                let texts = |l: &str| locales.get(l).unwrap_or(&null).clone();
                 let names = &texts;
-                let texts: Option<&dyn Fn(&str) -> Value> = Some(&texts);
+                let texts: Option<&LocaleTexts<'_>> = Some(&texts);
                 let mut entry = json!({
                     "name": m.name,
                     // 게임명도 별명처럼 서버를 부른다: 릴레이가 위험 명령 확인에서 같은 서버를 찾도록 함께 보낸다
@@ -686,6 +718,8 @@ impl Session {
 
         let mut meta = json!({
             "servers": servers,
+            // 알림 채널 맨 위 글의 예약 목록
+            "schedules": schedules,
             "modules": modules,
             "moduleDetails": {},
             "botConfig": {
@@ -702,6 +736,18 @@ impl Session {
         // 길드별 허용 인스턴스. 목록이 있는 길드만 싣는다 (없으면 릴레이는 제한 없음으로 본다)
         if let Some(allowed) = allowed_instances_by_guild(&bot.node_settings) {
             meta["allowedInstances"] = allowed;
+        }
+        // PC 과부하·디스크 부족 알림 (릴레이가 주인에게)
+        if let Some(snapshot) = &snapshot {
+            meta["host"] = host_load(snapshot);
+        }
+        // 백업은 실패만 알린다 (봇 설정 `backupNotice`)
+        if bot.backup_notice == crate::config_store::BackupNotice::Failures {
+            meta["backupNotice"] = json!("failures");
+        }
+        // 길드별 자리 꽉 참 알림을 켠 서버 (`/api/instance/:id/full-notice/:guild`). 켠 길드만 싣는다
+        if let Some(on) = ids_by_guild(&bot.node_settings, crate::ipc::handlers::start_notice::FULL_KEY) {
+            meta["fullNotice"] = on;
         }
         // 길드별 켜짐 알림을 켠 서버 (`/api/instance/:id/start-notice/:guild`). 켠 길드만 싣는다
         if let Some(on) = ids_by_guild(&bot.node_settings, crate::ipc::handlers::start_notice::KEY) {
@@ -898,8 +944,8 @@ impl Session {
                 };
                 action_result(result, &caller.locale)
             }
-            // 액션 카탈로그 (P2·P3): 계획·확인한 계획 실행·읽기 전용 조회
-            "plan" | "run_plan" | "query" => {
+            // 액션 카탈로그 (P2·P3): 계획·확인한 계획 실행·읽기 전용 조회·확인 전 권한 검사
+            "plan" | "run_plan" | "query" | "check" => {
                 let guild_id = cmd.get("guildId").and_then(|v| v.as_str()).map(str::to_string);
                 let user_id = cmd.get("requestedBy").and_then(|v| v.as_str()).map(str::to_string);
                 let who = self.requester(cmd, &payload, guild_id.clone(), user_id.clone()).await;
@@ -959,14 +1005,16 @@ impl Session {
         let mut applied = false;
         for g in list {
             let (Some(guild), Some(via)) = (g.get("guildId").and_then(Value::as_str), g.get("via").and_then(Value::as_str)) else { continue };
+            let link_id = g.get("linkId").and_then(Value::as_str).map(str::to_string);
             match store.update_node_settings(guild, |node| {
                 let c = close_linked_guild(node, via, policy);
                 (c, c)
             }).await {
                 Ok(_) => {
                     let mut acks = self.linked_acks.lock().unwrap_or_else(|e| e.into_inner());
-                    if !acks.iter().any(|g| g == guild) {
-                        acks.push(guild.to_string());
+                    let ack = LinkedAck { guild: guild.to_string(), link_id };
+                    if !acks.contains(&ack) {
+                        acks.push(ack);
                     }
                     applied = true;
                 }
@@ -1266,6 +1314,8 @@ fn relay_event(event: &crate::events::Event) -> Option<Value> {
         "instance.stopped" => pick(&["at", "instanceId", "instance", "source", "userName", "kind"]),
         // 켠 서버의 모듈 새 버전·게임 서버 새 빌드 (시작을 시킨 사람에게만 알린다)
         "instance.update_notice" => pick(&["at", "instanceId", "instance", "kind", "module", "latest"]),
+        // 게임 서버 업데이트가 끝났다 (예약·앱·디스코드 어디서 시켰든)
+        "instance.updated" => pick(&["at", "instanceId", "instance"]),
         // 디스코드에서 시작해 뒤에서 마친 여러 단계 실행 (I1). 원격 실행의 단계 줄에는 오류 원문이 없다(코드만)
         "plan.done" if d.get("guildId").is_some() => pick(&["at", "runId", "guildId", "ok", "steps", "stoppedAt"]),
         // 게임 채팅 전달: 사용자가 켠 서버의 채팅만 데몬이 다 만든 문장(`text`)으로 낸다 (`supervisor::game_chat`)
@@ -1383,6 +1433,9 @@ async fn action_request(server: &crate::ipc::IPCServer, action: &str, payload: &
             let view = crate::actions::plan(server, id, instance, &input, caller).await?;
             auto_run(server, payload, view, caller).await
         }
+        // 확인을 묻기 전의 권한 검사: 계획을 남기지 않는다 (`check_first`)
+        "check" if payload.get("text").is_some() => crate::actions::check_text(server, payload["text"].as_str().unwrap_or_default(), caller).await,
+        "check" => crate::actions::check(server, id, instance, &input, caller).await,
         "run_plan" => {
             let plan_id = payload.get("planId").and_then(Value::as_str).unwrap_or_default();
             crate::actions::run(server, id, instance, &input, Some(plan_id), caller).await
@@ -1626,7 +1679,10 @@ fn ids_by_guild(node_settings: &Value, key: &str) -> Option<Value> {
 
 /// 모듈의 게임 이름 — `display_name`(module.toml)과 `display_names`(언어 → 모듈 locales `display_name`). 없으면 키를 싣지 않는다.
 /// 릴레이가 상황판 채널에 켜진 게임을 보이는 데 쓴다 (`game_names`와 달리 띄어 쓴 이름도 그대로 싣는다)
-fn relay_module_names(entry: &mut Value, display_name: Option<&str>, texts: &dyn Fn(&str) -> Value) {
+/// 언어 → 모듈 locales 한 언어 전체 (없으면 Null). 명령마다·언어마다 부르므로 복제하지 않고 함께 쓴다
+type LocaleTexts<'a> = dyn Fn(&str) -> std::sync::Arc<Value> + 'a;
+
+fn relay_module_names(entry: &mut Value, display_name: Option<&str>, texts: &LocaleTexts<'_>) {
     if let Some(name) = display_name.map(str::trim).filter(|n| !n.is_empty()) {
         entry["display_name"] = json!(name);
     }
@@ -1646,7 +1702,7 @@ fn relay_module_names(entry: &mut Value, display_name: Option<&str>, texts: &dyn
 /// `aliases`는 module.toml `[aliases.commands]`의 별칭 — 별칭으로 친 명령도 relay가 위험도 확인을 거치게 한다
 /// `texts`: 언어 → 모듈 locales (번역한 명령 이름이 켜져 있을 때). 있으면 `commands.<이름>.label`·`description`과
 /// 칸의 `inputs.<칸>.label`을 언어별 `titles`·`descriptions`로 싣는다 (릴레이 슬래시 명령의 언어별 이름·설명)
-fn relay_command_entry(c: &crate::supervisor::module_loader::CommandField, aliases: &[String], texts: Option<&dyn Fn(&str) -> Value>) -> Value {
+fn relay_command_entry(c: &crate::supervisor::module_loader::CommandField, aliases: &[String], texts: Option<&LocaleTexts<'_>>) -> Value {
     let by_language = |pointer: &str| -> Option<serde_json::Map<String, Value>> {
         let texts = texts?;
         let map: serde_json::Map<String, Value> = crate::chat::i18n::languages()
@@ -1678,11 +1734,38 @@ fn relay_command_entry(c: &crate::supervisor::module_loader::CommandField, alias
     entry
 }
 
-/// 하트비트마다 보내는 메타데이터 키: 서버 목록(CPU·RAM·접속자가 매번 바뀐다)과 릴레이가 매번 캐시를 맞추는 권한
-const HEARTBEAT_ALWAYS: [&str; 3] = ["servers", "permissions", "permissionsAt"];
+/// 하트비트마다 보내는 메타데이터 키: 서버 목록(CPU·RAM·접속자가 매번 바뀐다)과 릴레이가 매번 캐시를 맞추는 권한,
+/// PC 부하와 예약 목록(다음 실행이 지나면 바뀐다)
+const HEARTBEAT_ALWAYS: [&str; 5] = ["servers", "permissions", "permissionsAt", "host", "schedules"];
+/// 그중 지문에 넣지 않는 키 (매번 바뀌어도 큰 값을 다시 보내지 않게)
+const HEARTBEAT_VOLATILE: [&str; 4] = ["servers", "permissionsAt", "host", "schedules"];
+/// 하트비트 예약 목록 상한 (맨 위 글은 가까운 순으로 10개까지 보인다)
+const SCHEDULES_MAX: usize = 10;
 
-/// 하트비트 본문. 적용한 새 길드가 있으면 확인 응답(`linkedGuildsAck`)을 싣는다
-fn heartbeat_body(metadata: Value, hash: &str, unchanged: bool, acks: &[String]) -> Value {
+/// 하트비트의 PC 부하 `{cpu, mem, diskFree?}` (정수 %). 디스크는 서버·백업 폴더가 있는 드라이브 중 가장 덜 남은 곳.
+/// 드라이브 이름·경로는 싣지 않는다
+fn host_load(snapshot: &crate::system_monitor::MetricsSnapshot) -> Value {
+    let pct = |part: f64, whole: f64| if whole > 0.0 { (part * 100.0 / whole).round().clamp(0.0, 100.0) as u64 } else { 0 };
+    let mut load = json!({
+        "cpu": (snapshot.cpu.total_percent as f64).round().clamp(0.0, 100.0) as u64,
+        "mem": pct(snapshot.memory.used_bytes as f64, snapshot.memory.total_bytes as f64),
+    });
+    if let Some(free) = snapshot.disks.iter().filter(|d| d.total_bytes > 0).map(|d| pct(d.available_bytes as f64, d.total_bytes as f64)).min() {
+        load["diskFree"] = json!(free);
+    }
+    load
+}
+
+/// 적용한 새 길드 하나. 릴레이가 연결마다 준 id(`linkId`)로 답해야, 풀고 다시 묶은 사이 늦게 간 답이 새 연결의 확인이 되지 않는다.
+/// id를 주지 않는 옛 릴레이에서 받은 것은 `None`
+#[derive(Clone, Debug, PartialEq)]
+struct LinkedAck {
+    guild: String,
+    link_id: Option<String>,
+}
+
+/// 하트비트 본문. 적용한 새 길드가 있으면 확인 응답을 싣는다: 길드 id(`linkedGuildsAck`, 옛 릴레이)와 연결 id(`linkedGuildsAckIds`)
+fn heartbeat_body(metadata: Value, hash: &str, unchanged: bool, acks: &[LinkedAck]) -> Value {
     let mut body = json!({
         "agentVersion": AGENT_VERSION,
         "os": format!("{} {}", std::env::consts::OS, std::env::consts::ARCH),
@@ -1693,28 +1776,35 @@ fn heartbeat_body(metadata: Value, hash: &str, unchanged: bool, acks: &[String])
         body["metadataUnchanged"] = Value::Bool(true);
     }
     if !acks.is_empty() {
-        body["linkedGuildsAck"] = json!(acks);
+        let mut guilds: Vec<&str> = Vec::new();
+        for a in acks {
+            if !guilds.contains(&a.guild.as_str()) {
+                guilds.push(&a.guild);
+            }
+        }
+        body["linkedGuildsAck"] = json!(guilds);
+        let ids: Vec<&str> = acks.iter().filter_map(|a| a.link_id.as_deref()).collect();
+        if !ids.is_empty() {
+            body["linkedGuildsAckIds"] = json!(ids);
+        }
     }
     body
 }
 
 /// 하트비트 메타데이터를 보낼 모양으로: (보낼 메타데이터, 지문, 바뀌지 않아 줄였는가).
-/// 지문은 `servers`·`permissionsAt`을 뺀 나머지(권한 포함)의 SHA-256이다. 릴레이가 받아 둔 지문(`sent`)과 같으면
+/// 지문은 `HEARTBEAT_VOLATILE`을 뺀 나머지(권한 포함)의 SHA-256이다. 릴레이가 받아 둔 지문(`sent`)과 같으면
 /// `HEARTBEAT_ALWAYS`만 보낸다 (모듈 명령·액션·낱말처럼 큰 값은 바뀔 때만)
 fn heartbeat_metadata(mut meta: Value, sent: Option<&str>) -> (Value, String, bool) {
     use sha2::{Digest, Sha256};
     let Value::Object(map) = &mut meta else { return (meta, String::new(), false) };
-    let servers = map.remove("servers");
-    let at = map.remove("permissionsAt");
+    let volatile: Vec<(&str, Value)> = HEARTBEAT_VOLATILE.iter().filter_map(|k| Some((*k, map.remove(*k)?))).collect();
     let hash = hex::encode(Sha256::digest(Value::Object(map.clone()).to_string().as_bytes()));
     let unchanged = sent == Some(hash.as_str());
     if unchanged {
         map.retain(|k, _| HEARTBEAT_ALWAYS.contains(&k.as_str()));
     }
-    for (key, value) in [("servers", servers), ("permissionsAt", at)] {
-        if let Some(value) = value {
-            map.insert(key.to_string(), value);
-        }
+    for (key, value) in volatile {
+        map.insert(key.to_string(), value);
     }
     (meta, hash, unchanged)
 }
@@ -1738,6 +1828,12 @@ fn relay_server_entry(server: &Value, usage: Option<&crate::system_monitor::Inst
     let players = server.get("players").filter(|_| server.get("status").and_then(Value::as_str) == Some("running"));
     if let Some(count) = players.and_then(crate::supervisor::players::parse) {
         entry.insert("players".into(), json!(count));
+    }
+    // 조작 가능 명단의 디스코드 ID (릴레이가 시작·정지를 그 사람에게도 보인다). 게임 닉네임은 올리지 않는다
+    let controllers: Vec<&str> =
+        server.get("controllers").and_then(Value::as_array).into_iter().flatten().filter_map(|c| c.get("discord_id")?.as_str()).collect();
+    if !controllers.is_empty() {
+        entry.insert("controllers".into(), json!(controllers));
     }
     // 켜진 시각 (Unix 초) — 상황판 가동 시간
     let running = server.get("status").and_then(Value::as_str) == Some("running");
@@ -1767,6 +1863,15 @@ fn relay_server_entry(server: &Value, usage: Option<&crate::system_monitor::Inst
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 서버 주소(`server.address`)는 릴레이가 하트비트 답에 실어 준 접속 주소를 쓴다. IP가 아닌 값·없는 값은 모른다로 둔다
+    #[test]
+    fn the_address_the_relay_saw_is_read_from_the_heartbeat_reply() {
+        assert_eq!(relay_seen_address(&json!({ "status": "ok", "address": "203.0.113.5" })).as_deref(), Some("203.0.113.5"));
+        assert_eq!(relay_seen_address(&json!({ "address": "2001:db8::1" })).as_deref(), Some("2001:db8::1"));
+        assert_eq!(relay_seen_address(&json!({ "address": "evil.example:1" })), None);
+        assert_eq!(relay_seen_address(&json!({ "status": "ok" })), None);
+    }
 
     /// 릴레이가 이 PC의 버전을 받지 않으면(최소 버전 미달) 상태에 `agent_too_old`와 요구 버전을 남겨
     /// GUI·CLI가 업데이트를 안내하게 하고, 받기는 업데이트 전에는 같은 답이므로 heartbeat 주기로만 다시 묻는다
@@ -2245,11 +2350,11 @@ mod tests {
             "inputs": [{ "name": "flush", "type": "text" }]
         }))
         .unwrap();
-        let texts = |lang: &str| -> Value {
-            match lang {
+        let texts = |lang: &str| -> std::sync::Arc<Value> {
+            std::sync::Arc::new(match lang {
                 "ko" => json!({ "commands": { "save-all": { "label": "월드 저장", "description": "게임 월드를 저장합니다", "inputs": { "flush": { "label": "바로 쓰기" } } } } }),
                 _ => Value::Null,
-            }
+            })
         };
         let entry = relay_command_entry(&field, &[], Some(&texts));
         assert_eq!(entry["titles"]["ko"], "월드 저장");
@@ -2273,12 +2378,12 @@ mod tests {
     /// 게임 이름: module.toml `display_name`과 언어마다 모듈 locales의 `display_name` (상황판 채널에 켜진 게임을 보인다)
     #[test]
     fn heartbeat_modules_carry_game_names() {
-        let texts = |lang: &str| -> Value {
-            match lang {
+        let texts = |lang: &str| -> std::sync::Arc<Value> {
+            std::sync::Arc::new(match lang {
                 "ko" => json!({ "display_name": "프로젝트 좀보이드" }),
                 "ja" => json!({ "display_name": " " }),
                 _ => Value::Null,
-            }
+            })
         };
         let mut entry = json!({});
         relay_module_names(&mut entry, Some("Project Zomboid"), &texts);
@@ -2286,7 +2391,7 @@ mod tests {
         assert_eq!(entry["display_names"], json!({ "ko": "프로젝트 좀보이드" }), "blank or missing → left out");
 
         let mut bare = json!({});
-        relay_module_names(&mut bare, None, &|_: &str| Value::Null);
+        relay_module_names(&mut bare, None, &|_: &str| std::sync::Arc::new(Value::Null));
         assert_eq!(bare, json!({}), "no names → no keys (the relay falls back to the module name)");
     }
 
@@ -2342,6 +2447,19 @@ mod tests {
         let text = json!({ "action": "plan", "via": "mcp", "text": "srv start" });
         let r = session.handle_payload(&json!({ "id": "c9", "requestedBy": "u1", "hostOwnerDiscordId": "u1", "payload": text })).await;
         assert_eq!((r["success"].as_bool(), r["data"]["code"].as_str()), (Some(false), Some("invalid_input")), "{r:?}");
+    }
+
+    /// 확인 전 권한 검사(`check`)는 디스코드 요청으로 받고, 계획처럼 요청자 권한으로 판정한다
+    #[tokio::test]
+    async fn a_check_is_judged_like_a_plan() {
+        let tmp = tempfile::tempdir().unwrap();
+        let session = test_session(&RelayAgent::new(), "http://127.0.0.1:9", "sbn_host.secret", tmp.path()).await;
+        let check = json!({ "action": "check", "via": "direct", "id": "chatbot.common.set", "input": { "model": "m1" } });
+        let ok = session.handle_payload(&json!({ "id": "c1", "requestedBy": "u1", "hostOwnerDiscordId": "u1", "payload": check })).await;
+        assert_eq!((ok["success"].as_bool(), ok["data"]["actionId"].as_str()), (Some(true), Some("chatbot.common.set")), "{ok:?}");
+        assert!(ok["data"].get("planId").is_none(), "{ok:?}");
+        let r = session.handle_payload(&json!({ "id": "c2", "requestedBy": "u2", "hostOwnerDiscordId": "u1", "payload": check })).await;
+        assert_eq!(r["data"]["code"], "PERMISSION_DENIED", "{r:?}");
     }
 
     /// 봇 DM `/설정`: 길드 없는 디스코드 직접 요청은 요청자가 이 PC의 주인(`hostOwnerDiscordId`)일 때만 주인이다
@@ -2436,6 +2554,18 @@ mod tests {
         assert_eq!(relay_server_entry(&server, None), json!({ "id": "i1", "name": "마크", "module": "minecraft", "status": "running" }));
     }
 
+    /// 조작 가능 명단은 디스코드 ID만 올린다 (게임 닉네임은 PC에만)
+    #[test]
+    fn heartbeat_servers_carry_only_the_discord_ids_of_controllers() {
+        let server = json!({
+            "id": "i1", "name": "마크", "module": "minecraft", "status": "stopped",
+            "controllers": [{ "name": "Steve", "discord_id": "332007306403250178" }, { "name": "Alex" }]
+        });
+        let entry = relay_server_entry(&server, None);
+        assert_eq!(entry["controllers"], json!(["332007306403250178"]));
+        assert!(!entry.to_string().contains("Steve"));
+    }
+
     #[test]
     fn heartbeat_servers_add_usage_and_an_extension_status_line() {
         let server = json!({
@@ -2446,6 +2576,7 @@ mod tests {
         let usage = crate::system_monitor::InstanceMetrics {
             id: "i1".into(), name: "마크".into(), running: true, process_count: 1,
             cpu_percent: 12.345, memory_bytes: 3 * 1024 * 1024 * 1024, disk_read_bps: 0, disk_write_bps: 0,
+            net_rx_bps: None, net_tx_bps: None,
         };
         let entry = relay_server_entry(&server, Some(&usage));
         assert_eq!(entry["usage"], json!({ "cpu": 12.3, "memMb": 3072 }));
@@ -2476,10 +2607,16 @@ mod tests {
         let mut busy = meta.clone();
         busy["servers"] = json!([{ "id": "a", "usage": { "cpu": 3.0, "memMb": 10 } }]);
         busy["permissionsAt"] = json!(2);
+        // PC 부하와 예약 목록도 지문에 들지 않고 늘 간다
+        busy["host"] = json!({ "cpu": 91, "mem": 40, "diskFree": 7 });
+        busy["schedules"] = json!([{ "instanceId": "a", "action": "restart", "next": 1 }]);
         let (light, same, unchanged) = heartbeat_metadata(busy.clone(), Some(&hash));
         assert!(unchanged);
         assert_eq!(same, hash);
-        assert_eq!(light, json!({ "servers": busy["servers"], "permissions": { "g": {} }, "permissionsAt": 2 }));
+        assert_eq!(
+            light,
+            json!({ "servers": busy["servers"], "permissions": { "g": {} }, "permissionsAt": 2, "host": busy["host"], "schedules": busy["schedules"] })
+        );
         // 권한이나 큰 값이 바뀌면 지문이 바뀌어 전체를 보낸다
         for (key, value) in [("permissions", json!({ "g": { "defaultLevel": 2 } })), ("actions", json!([1]))] {
             let mut changed = meta.clone();
@@ -2490,6 +2627,30 @@ mod tests {
         }
     }
 
+    /// PC 부하는 정수 %로, 디스크는 가장 덜 남은 드라이브의 남은 비율만 (드라이브 이름은 싣지 않는다)
+    #[test]
+    fn host_load_is_whole_percents_and_the_fullest_disk() {
+        use crate::system_monitor::*;
+        let disk = |total: u64, avail: u64| DiskMetrics { mount: "D:\\".into(), total_bytes: total, available_bytes: avail, others_bytes: 0, instances: vec![], sizes_at_ms: None };
+        let snap = MetricsSnapshot {
+            sampled_at_ms: 0,
+            window_ms: 0,
+            cpu: CpuMetrics { cores: 8, total_percent: 81.6, others_percent: 0.0, clock_mhz: None, temp_c: None },
+            memory: MemoryMetrics { total_bytes: 1000, used_bytes: 795, others_bytes: 0, clock_mhz: None },
+            disk_io: DiskIoMetrics { read_bps: 0, write_bps: 0, source: "physical", per_instance: false },
+            network: NetworkMetrics { rx_bps: 0, tx_bps: 0, per_instance: false },
+            disks: vec![disk(100, 40), disk(200, 14), disk(0, 0)],
+            instances: vec![],
+            net_trace: crate::system_monitor::net_trace::NetTraceMetrics::status("off"),
+            volumes: vec![],
+            adapters: vec![],
+            gpus: vec![],
+        };
+        assert_eq!(host_load(&snap), json!({ "cpu": 82, "mem": 80, "diskFree": 7 }));
+        let none = MetricsSnapshot { disks: vec![], ..snap };
+        assert!(host_load(&none).get("diskFree").is_none());
+    }
+
     /// 하트비트는 기능 목록을 싣는다 (릴레이가 기능마다 이 PC를 가른다)
     #[test]
     fn heartbeat_features_name_what_the_relay_branches_on() {
@@ -2497,15 +2658,25 @@ mod tests {
         assert!(FEATURES.iter().all(|f| !f.is_empty() && f.chars().all(|c| c.is_ascii_lowercase() || c == '_')));
     }
 
-    /// 새로 묶인 길드를 적용했으면 다음 하트비트가 그 길드들을 확인 응답(`linkedGuildsAck`)으로 싣는다. 없으면 싣지 않는다
+    /// 새로 묶인 길드를 적용했으면 다음 하트비트가 그 길드들을 확인 응답(`linkedGuildsAck`)으로, 릴레이가 준 연결 id는
+    /// `linkedGuildsAckIds`로 싣는다. 없으면 싣지 않는다
     #[test]
     fn heartbeat_acks_the_linked_guilds_it_applied() {
-        let body = heartbeat_body(json!({}), "h", false, &["111".to_string()]);
-        assert_eq!(body["linkedGuildsAck"], json!(["111"]));
+        let acks = [
+            LinkedAck { guild: "111".into(), link_id: Some("a".into()) },
+            LinkedAck { guild: "222".into(), link_id: None },
+        ];
+        let body = heartbeat_body(json!({}), "h", false, &acks);
+        assert_eq!(body["linkedGuildsAck"], json!(["111", "222"]));
+        assert_eq!(body["linkedGuildsAckIds"], json!(["a"]));
         assert_eq!(body["metadataHash"], "h");
         assert!(body.get("metadataUnchanged").is_none());
+        // 연결 id를 모르는 옛 릴레이에서 받은 것만 있으면 길드 id만 싣는다
+        let body = heartbeat_body(json!({}), "h", false, &acks[1..]);
+        assert!(body.get("linkedGuildsAckIds").is_none());
         let body = heartbeat_body(json!({}), "h", true, &[]);
         assert!(body.get("linkedGuildsAck").is_none());
+        assert!(body.get("linkedGuildsAckIds").is_none());
         assert_eq!(body["metadataUnchanged"], true);
     }
 
@@ -2658,6 +2829,7 @@ mod tests {
         let ready = ev("instance.ready", json!({"at": 1, "instanceId": "i", "instance": "mc1", "ok": false, "code": "start_failed", "line": "C:\\x"}));
         assert_eq!(relay_event(&ready).unwrap()["data"], json!({"at": 1, "instanceId": "i", "instance": "mc1", "ok": false, "code": "start_failed"}));
         // 켠 서버의 업데이트 알림은 종류·모듈·새 버전만
+        assert_eq!(relay_event(&ev("instance.updated", json!({"at": 1, "instanceId": "i", "instance": "pal"}))).unwrap()["data"], json!({"at": 1, "instanceId": "i", "instance": "pal"}));
         let notice = ev("instance.update_notice", json!({"at": 1, "instanceId": "i", "instance": "pal", "kind": "module", "module": "palworld", "latest": "1.1.0", "path": "C:\\x"}));
         assert_eq!(relay_event(&notice).unwrap()["data"], json!({"at": 1, "instanceId": "i", "instance": "pal", "kind": "module", "module": "palworld", "latest": "1.1.0"}));
         // 게임 채팅은 데몬이 만든 문장만 (채팅 원문·이름 칸은 따로 싣지 않는다)
