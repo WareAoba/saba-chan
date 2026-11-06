@@ -56,7 +56,9 @@ export function SettingsField({ field, value, modNs, onChange, validationError }
     const labelId = `${inputId}-label`;
     const picked = listDraft(value);
     // 선택지 표시 이름 (모듈 locales `settings.<칸>.options.<값>`, 없으면 값 그대로)
-    const optionText = (opt: string) => t(`${modNs}:settings.${field.name}.options.${opt}`, { defaultValue: String(opt) });
+    // 값에 `:`가 있어도(`minecraft:normal`) 네임스페이스로 읽지 않게 네임스페이스를 따로 넘긴다
+    const optionText = (opt: string) =>
+        t(`settings.${field.name}.options.${opt}`, { ns: modNs, nsSeparator: false, defaultValue: String(opt) });
 
     return (
         <div className="settings-field">

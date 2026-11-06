@@ -115,7 +115,8 @@ export function FieldInput({ field, value, onChange, t, modNs }: FieldInputProps
                 onChange={onChange}
                 options={field.options.map((o) => ({
                     value: o,
-                    label: t(`${modNs}:settings.${field.name}.options.${o}`, { defaultValue: o }),
+                    // 값에 `:`가 있어도(`minecraft:normal`) 네임스페이스로 읽지 않게 네임스페이스를 따로 넘긴다
+                    label: t(`settings.${field.name}.options.${o}`, { ns: modNs, nsSeparator: false, defaultValue: o }),
                 }))}
             />
         );
