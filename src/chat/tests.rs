@@ -379,7 +379,8 @@ async fn discord_requests_are_judged_by_level_and_local_ones_are_not() {
 /// 시작·정지는 조작 가능 명단에 있는 사람과 관리자 이상이 한다. 명단 밖이면 조작 가능 안내를 받고, 금지된 사람은 명단에 있어도 못 한다
 #[tokio::test]
 async fn only_controllers_and_admins_run_the_server() {
-    let api = fixture();
+    let mut api = fixture();
+    api.servers[0].controllers.push(crate::controllers::Controller { name: "Alex".into(), discord_id: Some("u2".into()) });
     let mut s = settings();
     s.node_settings = json!({ "g1": { "members": { "admin": 2, "u1": -1 } } });
     let reply = |text: &'static str, user: &'static str| {
@@ -390,6 +391,11 @@ async fn only_controllers_and_admins_run_the_server() {
     let r = reply("mc stop", "someone").await;
     assert_eq!((r.code, r.args["need"].clone(), r.args["controllers"].clone()), (Some("PERMISSION_DENIED"), json!(2), json!(true)));
     assert_eq!(reply("mc stop", "u1").await.code, Some("PERMISSION_DENIED"), "banned stays banned on the list");
+    let mut bot = discord("u2");
+    bot.as_mut().unwrap().via_chatbot = true;
+    let req = ChatRequest { text: "mc stop".into(), guild_id: Some("g1".into()), remote: bot, ..Default::default() };
+    let r = process(&api, &s, &Catalog::for_language("en"), &req).await;
+    assert_eq!((r.code, r.args["controllers"].clone()), (Some("PERMISSION_DENIED"), json!(null)), "the chatbot cap holds for the list too");
     assert!(api.calls().is_empty());
     assert_eq!(reply("mc stop", "admin").await.code, None);
     assert_eq!(api.calls(), vec!["stop survival"]);

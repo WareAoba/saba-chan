@@ -1742,6 +1742,9 @@ async fn controllers_run_the_server_without_the_admin_level() {
         assert!(plan(&state, action, Some(&id), &json!({}), &relay("admin", false)).await.is_ok(), "{action}: an admin");
         let refused = plan(&state, action, Some(&id), &json!({}), &relay("stranger", false)).await.unwrap_err();
         assert_eq!((refused.data["args"]["need"].clone(), refused.data["args"]["controllers"].clone()), (json!(2), json!(true)), "{action}");
+        // 말하는 사바쨩을 거치면 챗봇 상한이 그대로다: 명단이 상한을 넘지 않는다
+        let capped = plan(&state, action, Some(&id), &json!({}), &relay("friend", true)).await.unwrap_err();
+        assert_eq!(capped.data["args"]["controllers"], Value::Null, "{action}: the chatbot cap, not the list");
     }
     // 권한 계단은 이 넷을 조작 가능 묶음으로 표시한다
     let board = permission_board(&state, "g", "ko").await;

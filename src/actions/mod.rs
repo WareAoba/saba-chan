@@ -1291,8 +1291,9 @@ async fn authorize_in(server: &IPCServer, r: &Resolved, caller: &Caller, new_ser
     }
     let need = required_level(&perms, instance, &r.id, r.command.as_deref(), r.kind, &r.risk, r.discord_level);
     if !perms.meets(perms.effective_level(who), need) {
-        // 조작 가능 명단에 있는 사람은 레벨과 상관없이 그 서버를 시작·정지·재시작·백업한다
-        if !crate::controllers::CONTROLLED_ACTIONS.contains(&r.id.as_str()) {
+        // 조작 가능 명단에 있는 사람은 레벨과 상관없이 그 서버를 시작·정지·재시작·백업한다.
+        // 말하는 사바쨩을 거친 요청은 챗봇 상한을 그대로 받는다 (명단이 상한을 넘지 않는다)
+        if !crate::controllers::CONTROLLED_ACTIONS.contains(&r.id.as_str()) || who.via_chatbot {
             return Err(denied(need));
         }
         let listed = match who.user_id.as_deref() {

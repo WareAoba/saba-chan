@@ -543,11 +543,12 @@ impl<'a, D: DaemonApi> Ctx<'a, D> {
         };
         if let Err(denied) = self.permit(Some((&server.id, &command, risk))) {
             let lifecycle = permissions::LIFECYCLE_COMMANDS.contains(&command.as_str());
-            let who = self.req.remote.as_ref().and_then(|r| r.user_id.as_deref());
+            // 말하는 사바쨩을 거친 요청은 챗봇 상한을 그대로 받는다
+            let who = self.req.remote.as_ref().filter(|r| !r.via_chatbot).and_then(|r| r.user_id.as_deref());
             let listed = lifecycle && who.is_some_and(|u| crate::controllers::controls(&server.controllers, u));
             // 명단 밖 사람은 금지 레벨이 아니면 조작 가능 안내를 받는다. 금지된 사람은 명단에 있어도 막는다
             if !listed || denied.level == permissions::BANNED {
-                return Err(self.permission_denied(Denied { controllers: lifecycle, ..denied }));
+                return Err(self.permission_denied(Denied { controllers: lifecycle && denied.via.is_none(), ..denied }));
             }
         }
         // 위험 명령은 그 서버만 가리키는 말로 불러야 한다: 게임명·모듈 별명은 서버가 늘면 다른 서버를 가리킬 수 있다
