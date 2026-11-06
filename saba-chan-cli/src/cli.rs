@@ -1738,4 +1738,27 @@ mod tests {
         walk(&Cli::command(), "", &mut missing);
         assert!(missing.is_empty(), "help.arg keys missing: {:?}", missing);
     }
+
+    /// 한국어 도움말 줄은 다른 언어에도 있어야 한다. 없으면 그 언어 사용자는 영어 doc 주석을 본다
+    /// (en 은 doc 주석이 원문이라 뺀다)
+    #[test]
+    fn every_korean_help_line_is_translated() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../locales");
+        let read = |lang: &str| -> serde_json::Value {
+            serde_json::from_str(&std::fs::read_to_string(dir.join(lang).join("cli.json")).unwrap()).unwrap()
+        };
+        let ko = read("ko");
+        let mut problems = Vec::new();
+        for lang in ["ja", "zh-CN", "zh-TW", "de", "es", "fr", "pt-BR", "ru"] {
+            let other = read(lang);
+            for section in ["cmd", "arg"] {
+                for key in ko["help"][section].as_object().unwrap().keys() {
+                    if other["help"][section].get(key).and_then(|v| v.as_str()).is_none() {
+                        problems.push(format!("{lang}: help.{section}.{key}"));
+                    }
+                }
+            }
+        }
+        assert!(problems.is_empty(), "{} help lines not translated: {:?}", problems.len(), problems);
+    }
 }
