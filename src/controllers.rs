@@ -77,23 +77,38 @@ pub fn check(list: &[Controller], only: bool) -> Result<(), &'static str> {
     Ok(())
 }
 
-/// 접속 알림(`instance.player`)을 보고, 명단에 없는 닉네임을 내보낸다. 데몬이 켜질 때 한 번 띄운다
+/// 볼 사람: 접속 알림(`instance.player` join)의 한 명, 또는 다시 붙은 서버에 이미 들어와 있던 사람들
+/// (`instance.players_present`)
+pub fn gate_targets(kind: &str, data: &Value) -> Vec<(String, String)> {
+    let Some(id) = data["instanceId"].as_str() else { return Vec::new() };
+    let players: Vec<&str> = match kind {
+        "instance.player" if data["change"] == "join" => data["player"].as_str().into_iter().collect(),
+        "instance.players_present" => data["players"].as_array().into_iter().flatten().filter_map(Value::as_str).collect(),
+        _ => Vec::new(),
+    };
+    players.into_iter().map(|p| (id.to_string(), p.to_string())).collect()
+}
+
+/// 접속 알림을 보고, 명단에 없는 닉네임을 내보낸다. 데몬이 켜질 때 한 번 띄운다.
+/// 이 데몬이 켜진 뒤 낸 알림부터 본다: 다시 붙은 서버의 알림은 이 감시가 뜨기 전에 나올 수 있다
 pub fn spawn_gate(state: IPCServer) {
     tokio::spawn(async move {
-        let mut sub = crate::events::bus().subscribe(None);
+        let sub = crate::events::bus().subscribe(Some(0));
+        let mut rx = sub.rx;
+        let mut backlog = sub.backlog.into_iter();
         loop {
-            let event = match sub.rx.recv().await {
-                Ok(e) => e,
-                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
-                Err(_) => return,
+            let event = match backlog.next() {
+                Some(e) => e,
+                None => match rx.recv().await {
+                    Ok(e) => e,
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                    Err(_) => return,
+                },
             };
-            if event.kind != "instance.player" || event.data["change"] != "join" {
-                continue;
+            for (id, player) in gate_targets(&event.kind, &event.data) {
+                let state = state.clone();
+                tokio::spawn(async move { gate(&state, &id, &player).await });
             }
-            let (Some(id), Some(player)) = (event.data["instanceId"].as_str(), event.data["player"].as_str()) else { continue };
-            let (id, player) = (id.to_string(), player.to_string());
-            let state = state.clone();
-            tokio::spawn(async move { gate(&state, &id, &player).await });
         }
     });
 }
@@ -138,6 +153,16 @@ async fn gate(state: &IPCServer, id: &str, player: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_gate_looks_at_joins_and_at_players_already_in_after_a_reattach() {
+        let join = json!({ "instanceId": "i", "player": "Steve", "change": "join" });
+        assert_eq!(gate_targets("instance.player", &join), [("i".to_string(), "Steve".to_string())]);
+        assert!(gate_targets("instance.player", &json!({ "instanceId": "i", "player": "Steve", "change": "leave" })).is_empty());
+        let present = json!({ "instanceId": "i", "players": ["Alex", "Bob"] });
+        assert_eq!(gate_targets("instance.players_present", &present).len(), 2);
+        assert!(gate_targets("instance.chat", &join).is_empty());
+    }
 
     #[test]
     fn parse_trims_and_rejects_bad_lists() {
