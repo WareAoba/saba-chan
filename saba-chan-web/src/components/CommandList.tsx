@@ -80,6 +80,7 @@ export function CommandList({ api, guildId, perm, board, instance, busy, write }
         update({ preset: p });
     };
     const moved = L.overriddenCount(board);
+    const line = L.controllerLine(board); // 사다리의 조작 가능 줄 (그 레벨인 명령이 줄을 따른다)
 
     const row = (c: StairChip) => {
         const name = label(c);
@@ -87,6 +88,7 @@ export function CommandList({ api, guildId, perm, board, instance, busy, write }
             c.fixed && (c.basic ? t('perm.help_hint') : t('perm.fixed_hint')),
             !c.fixed && c.overridden && tg('discord.perm_moved'),
             c.controllers && tg('discord.perm_controllers_tag'),
+            c.controllers && line?.level === c.level && tg('discord.perm_line_follow'),
             instance !== L.ALL_INSTANCES && c.items.some((i) => !i.instance) && tg('discord.perm_server_wide_tag'),
             instance === L.ALL_INSTANCES &&
                 !c.instance &&

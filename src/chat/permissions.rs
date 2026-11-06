@@ -1,8 +1,8 @@
 //! 디스코드 명령 권한 판정 (P1). 원본은 `config.json`의 `nodeSettings[guildId]` 하나다
 //!
 //! 레벨: 소유자(3) > 관리자(2) > 유저(1) > 챗봇(0) > 금지(-1). 숫자는 릴레이(server-chan `commandAccess.ts`)와 같다.
-//! 길드마다 단계 사다리(`ladder`)를 바꿀 수 있다: 단계를 더하고(id ≥ 10) 순서를 바꾸고 지운다. 소유자는 늘 맨 위,
-//! 금지는 늘 맨 아래다. 높고 낮음은 숫자가 아니라 사다리 순서로 견준다 (`meets`).
+//! 길드마다 단계 사다리(`ladder`)를 바꿀 수 있다: 단계를 더하고(id ≥ 10) 이름과 순서를 바꾸고 지운다. 소유자는 늘 맨 위,
+//! 금지는 늘 맨 아래고, 게스트와 함께 지울 수 없다. 높고 낮음은 숫자가 아니라 사다리 순서로 견준다 (`meets`).
 //! 명령마다 요구 레벨이 있다 (`commandLevels` 덮어쓰기, 없으면 프리셋표[risk]). 유효 레벨이 모자라면 거부한다.
 //! 챗봇을 거친 요청의 유효 레벨은 min(작성자 레벨, `chatbotCap`)이다.
 //! 레벨은 누적이다: 어떤 레벨에서 쓸 수 있는 명령은 그 위 레벨에서 모두 쓴다. 사람마다 명령을 따로 막는 규칙은 없다
@@ -26,7 +26,7 @@ const CUSTOM_MAX: i64 = 999;
 const MAX_CUSTOM: usize = 20;
 const MAX_NAME: usize = 32;
 
-/// 사다리 한 칸. 기본 단계는 이름이 없다 (로케일 문구). 더한 단계는 이름이 있다
+/// 사다리 한 칸. 더한 단계는 이름이 있다. 기본 단계는 이름이 없으면 로케일 문구다 (바꾼 이름은 그대로 쓴다)
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Level {
     pub id: i64,
@@ -46,7 +46,7 @@ pub fn default_ladder() -> Vec<Level> {
 }
 
 /// 사다리 규칙: 소유자 맨 위, 금지 맨 아래, 그 사이에 하나 이상. id는 겹치지 않고 기본 단계이거나 10 이상.
-/// 더한 단계는 10~999 id와 1~32자 이름이 있다
+/// 더한 단계는 10~999 id와 1~32자 이름이 있다. 기본 단계 이름은 없거나 1~32자다
 fn check_ladder(levels: &[Level]) -> Result<(), &'static str> {
     let ok = levels.len() >= 3
         && levels.first().map(|l| l.id) == Some(OWNER)
@@ -54,7 +54,11 @@ fn check_ladder(levels: &[Level]) -> Result<(), &'static str> {
         && levels.iter().enumerate().all(|(i, l)| levels[..i].iter().all(|o| o.id != l.id))
         && levels.iter().all(|l| match &l.name {
             None => BUILTIN.contains(&l.id),
-            Some(n) => (CUSTOM_MIN..=CUSTOM_MAX).contains(&l.id) && !n.is_empty() && n.chars().count() <= MAX_NAME,
+            Some(n) => {
+                (BUILTIN.contains(&l.id) || (CUSTOM_MIN..=CUSTOM_MAX).contains(&l.id))
+                    && !n.is_empty()
+                    && n.chars().count() <= MAX_NAME
+            }
         })
         && levels.iter().filter(|l| l.id >= CUSTOM_MIN).count() <= MAX_CUSTOM;
     ok.then_some(()).ok_or("invalid_ladder")
@@ -378,12 +382,17 @@ fn apply_ladder(node: &mut Map<String, Value>, input: &[LevelInput]) -> Result<(
                 next_id += 1;
                 next_id
             });
-            // 기본 단계 이름은 로케일이 정한다
-            let name = (id >= CUSTOM_MIN).then(|| l.name.as_deref().unwrap_or("").trim().to_string());
+            let name = l.name.as_deref().unwrap_or("").trim().to_string();
+            // 기본 단계는 이름을 비우면 로케일 이름으로 돌아간다
+            let name = (id >= CUSTOM_MIN || !name.is_empty()).then_some(name);
             Level { id, name }
         })
         .collect();
     check_ladder(&ladder)?;
+    // 게스트는 지울 수 없다 (사용자 지정 2026-11-06). 이미 지운 예전 사다리는 그대로 둔다
+    if old.position(CHATBOT).is_some() && !ladder.iter().any(|l| l.id == CHATBOT) {
+        return Err("invalid_ladder");
+    }
     let kept = |id: i64| ladder.iter().any(|l| l.id == id);
     let pos = |id: i64| old.position(id).unwrap_or(old.ladder.len() - 1);
     let down = |id: i64| old.ladder[pos(id)..].iter().map(|l| l.id).find(|&l| kept(l)).unwrap_or(BANNED);
@@ -687,8 +696,14 @@ mod tests {
         assert_eq!((p.members["v"], p.members["u"], p.members["a"]), (CHATBOT, CHATBOT, ADMIN));
         assert_eq!(p.default_level, CHATBOT);
         assert_eq!((p.command_levels["i/kick"], p.command_levels["i/say"]), (ADMIN, ADMIN));
-        // 지워서 권한이 넓어지지 않는다: 아래에 금지밖에 없으면 금지
-        let mut low = node.clone();
+        // 지워서 권한이 넓어지지 않는다: 아래에 금지밖에 없으면 금지 (게스트를 이미 지운 예전 사다리)
+        let mut low = json!({
+            "ladder": [{ "id": OWNER }, { "id": ADMIN }, { "id": 10, "name": "VIP" }, { "id": BANNED }],
+            "members": { "v": 10, "a": ADMIN }, "defaultLevel": 10, "chatbotCap": 10
+        })
+        .as_object()
+        .unwrap()
+        .clone();
         apply(&mut low, &ladder(&[(OWNER, None), (ADMIN, None), (BANNED, None)]), owner).unwrap();
         let q = NodePermissions::from_node(Some(&Value::Object(low)));
         assert_eq!((q.members["v"], q.members["a"], q.default_level, q.chatbot_cap), (BANNED, ADMIN, BANNED, BANNED));
@@ -715,14 +730,39 @@ mod tests {
         for change in &bad {
             assert_eq!(apply(&mut node, change, None), Err("invalid_ladder"), "{:?}", change);
         }
-        // 이미 있는 id 를 이름만 바꾼다. 기본 단계 이름은 로케일이라 버린다
-        apply(&mut node, &ladder(&[(OWNER, Some("boss")), (10, Some("VIP")), (USER, None), (BANNED, None)]), None).unwrap();
-        apply(&mut node, &ladder(&[(OWNER, None), (10, Some("단골")), (USER, None), (BANNED, None)]), None).unwrap();
+        // 이미 있는 id 를 이름만 바꾼다
+        apply(&mut node, &ladder(&[(OWNER, None), (10, Some("VIP")), (USER, None), (CHATBOT, None), (BANNED, None)]), None).unwrap();
+        apply(&mut node, &ladder(&[(OWNER, None), (10, Some("단골")), (USER, None), (CHATBOT, None), (BANNED, None)]), None).unwrap();
         let p = NodePermissions::from_node(Some(&Value::Object(node)));
         assert_eq!(p.ladder[0], Level { id: OWNER, name: None });
         assert_eq!(p.ladder[1].name.as_deref(), Some("단골"));
         // 저장된 사다리가 틀렸으면 기본 사다리
         assert_eq!(NodePermissions::from_node(Some(&json!({ "ladder": [{ "id": 2 }] }))).ladder, default_ladder());
+    }
+
+    // 사용자 지정 2026-11-06: 기본 단계도 이름을 바꿀 수 있다 (비우면 로케일 이름). 소유자·게스트·금지는 지울 수 없다
+    #[test]
+    fn built_in_levels_take_a_name_and_the_guest_level_stays() {
+        let mut node = Map::new();
+        let named = ladder(&[(OWNER, Some(" 방장 ")), (ADMIN, Some("운영진")), (USER, None), (CHATBOT, Some("손님")), (BANNED, Some("차단"))]);
+        apply(&mut node, &named, None).unwrap();
+        let p = NodePermissions::from_node(Some(&Value::Object(node.clone())));
+        let names: Vec<_> = p.ladder.iter().map(|l| l.name.as_deref()).collect();
+        assert_eq!(names, [Some("방장"), Some("운영진"), None, Some("손님"), Some("차단")]);
+        // 빈 이름은 로케일 이름으로 돌아간다. 33자는 안 된다
+        apply(&mut node, &ladder(&[(OWNER, Some("  ")), (ADMIN, None), (USER, None), (CHATBOT, None), (BANNED, None)]), None).unwrap();
+        assert_eq!(NodePermissions::from_node(Some(&Value::Object(node.clone()))).ladder, default_ladder());
+        let long = "x".repeat(33);
+        assert_eq!(
+            apply(&mut node, &ladder(&[(OWNER, Some(&long)), (USER, None), (CHATBOT, None), (BANNED, None)]), None),
+            Err("invalid_ladder")
+        );
+        // 게스트는 지울 수 없다. 관리자·유저는 지운다
+        assert_eq!(apply(&mut node, &ladder(&[(OWNER, None), (ADMIN, None), (USER, None), (BANNED, None)]), None), Err("invalid_ladder"));
+        apply(&mut node, &ladder(&[(OWNER, None), (CHATBOT, None), (BANNED, None)]), None).unwrap();
+        // 게스트를 이미 지운 예전 사다리는 그대로 고칠 수 있다
+        let mut old = json!({ "ladder": [{ "id": OWNER }, { "id": ADMIN }, { "id": USER }, { "id": BANNED }] }).as_object().unwrap().clone();
+        apply(&mut old, &ladder(&[(OWNER, None), (USER, None), (ADMIN, None), (BANNED, None)]), None).unwrap();
     }
 
     // 사용자 지정 2026-10-25: 프리셋은 한 번 적용하는 틀이다. 고르면 명령별 레벨을 지우고 모두 프리셋 값을 따른다

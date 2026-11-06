@@ -1042,8 +1042,9 @@
     "perm_preset_reset": "{{count}} 個指令的等級將重設為「{{preset}}」預設的值。",
     "perm_preset_apply": "套用",
     "perm_ladder": "權限等級",
-    "perm_ladder_hint": "拖曳方塊來排序。越上面等級越高。擁有者和禁止不能移動。",
+    "perm_ladder_hint": "拖曳方塊來排序，點一下名稱可以改名。越上面等級越高。擁有者和禁止不能移動，擁有者、訪客和禁止不能刪除。",
     "perm_ladder_name": "等級名稱",
+    "perm_ladder_rename": "重新命名{{name}}",
     "perm_ladder_members": "{{count}} 人",
     "perm_ladder_up": "將 {{name}} 上移",
     "perm_ladder_down": "將 {{name}} 下移",
@@ -1314,7 +1315,15 @@
     "perm_confirm_tier_mixed_hint": "各執行個體的層級不同。選擇後會全部統一為該層級。",
     "perm_legend_moved": "已偏離預設",
     "perm_server_wide": "這是伺服器層級的命令，修改會同時出現在所有實例選單中。",
-    "perm_controllers_tag": "可操作的人也可以"
+    "perm_controllers_tag": "可操作的人也可以",
+    "perm_line": "可操作線",
+    "perm_line_from": "可操作 · {{level}}以上",
+    "perm_line_only": "可操作 · 僅{{level}}",
+    "perm_line_hint": "線以上的等級可以啟動、停止、重新啟動和建立備份。在執行個體可操作名單裡的人隨時都可以。",
+    "perm_line_apart": "另外設定的 {{count}} 個指令維持不變",
+    "perm_line_up": "把可操作線上移",
+    "perm_line_down": "把可操作線下移",
+    "perm_line_follow": "跟隨可操作線"
   },
   "maintenance": {
     "load_failed": "無法載入備份與排程資訊。",

@@ -1042,8 +1042,9 @@
     "perm_preset_reset": "{{count}} command level(s) will be reset to the {{preset}} preset.",
     "perm_preset_apply": "Apply",
     "perm_ladder": "Permission levels",
-    "perm_ladder_hint": "Drag the blocks to set the order. Higher blocks are higher levels. Owner and Banned stay in place.",
+    "perm_ladder_hint": "Drag the blocks to set the order, and tap a name to rename it. Higher blocks are higher levels. Owner and Banned stay in place, and Owner, Guest and Banned can't be deleted.",
     "perm_ladder_name": "Level name",
+    "perm_ladder_rename": "Rename {{name}}",
     "perm_ladder_members": "{{count}} members",
     "perm_ladder_up": "Move {{name}} up",
     "perm_ladder_down": "Move {{name}} down",
@@ -1314,7 +1315,15 @@
     "perm_confirm_tier_mixed_hint": "Instances use different tiers. Picking one sets them all.",
     "perm_legend_moved": "Moved from the preset",
     "perm_server_wide": "This is a server-wide command, so the change shows in every instance menu.",
-    "perm_controllers_tag": "operators too"
+    "perm_controllers_tag": "operators too",
+    "perm_line": "Operators line",
+    "perm_line_from": "Operators · {{level}} and up",
+    "perm_line_only": "Operators · {{level}} only",
+    "perm_line_hint": "Levels above the line can start, stop, restart and create backups. People on an instance's operators list always can.",
+    "perm_line_apart": "{{count}} command(s) set separately stay as they are",
+    "perm_line_up": "Move the operators line up",
+    "perm_line_down": "Move the operators line down",
+    "perm_line_follow": "follows the operators line"
   },
   "maintenance": {
     "load_failed": "Couldn't load backups and schedules.",

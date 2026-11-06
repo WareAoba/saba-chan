@@ -1042,8 +1042,9 @@
     "perm_preset_reset": "{{count}}個のコマンドのレベルが{{preset}}プリセットの値に戻ります。",
     "perm_preset_apply": "適用",
     "perm_ladder": "権限の段階",
-    "perm_ladder_hint": "ブロックをドラッグして順番を決めます。上ほど高いレベルです。オーナーと禁止は動かせません。",
+    "perm_ladder_hint": "ブロックをドラッグして順番を決め、名前をタップして変更します。上ほど高いレベルです。オーナーと禁止は動かせず、オーナー・ゲスト・禁止は削除できません。",
     "perm_ladder_name": "レベル名",
+    "perm_ladder_rename": "{{name}}の名前を変更",
     "perm_ladder_members": "{{count}}人",
     "perm_ladder_up": "{{name}}を上へ",
     "perm_ladder_down": "{{name}}を下へ",
@@ -1314,7 +1315,15 @@
     "perm_confirm_tier_mixed_hint": "インスタンスごとに段階が異なります。選ぶとすべてその段階に揃えます。",
     "perm_legend_moved": "プリセットから移動",
     "perm_server_wide": "サーバー全体のコマンドなので、すべてのインスタンスのメニューで一緒に変わります。",
-    "perm_controllers_tag": "操作できる人も"
+    "perm_controllers_tag": "操作できる人も",
+    "perm_line": "操作できる人の線",
+    "perm_line_from": "操作できる人 · {{level}}から",
+    "perm_line_only": "操作できる人 · {{level}}のみ",
+    "perm_line_hint": "線より上のレベルは起動・停止・再起動・バックアップ作成ができます。操作できる人の名簿にいる人はいつでもできます。",
+    "perm_line_apart": "個別に決めたコマンド{{count}}件はそのままです",
+    "perm_line_up": "操作できる人の線を上へ",
+    "perm_line_down": "操作できる人の線を下へ",
+    "perm_line_follow": "操作できる人の線に従う"
   },
   "maintenance": {
     "load_failed": "バックアップ・予約の情報を読み込めませんでした。",

@@ -1042,8 +1042,9 @@
     "perm_preset_reset": "{{count}} Befehlsstufe(n) werden auf die Vorlage {{preset}} zurückgesetzt.",
     "perm_preset_apply": "Anwenden",
     "perm_ladder": "Berechtigungsstufen",
-    "perm_ladder_hint": "Zieh die Blöcke, um die Reihenfolge festzulegen. Weiter oben heißt höhere Stufe. Besitzer und Gesperrt bleiben an ihrem Platz.",
+    "perm_ladder_hint": "Zieh die Blöcke, um die Reihenfolge festzulegen, und tippe auf einen Namen, um ihn zu ändern. Weiter oben heißt höhere Stufe. Besitzer und Gesperrt bleiben an ihrem Platz, Besitzer, Gast und Gesperrt lassen sich nicht löschen.",
     "perm_ladder_name": "Stufenname",
+    "perm_ladder_rename": "{{name}} umbenennen",
     "perm_ladder_members": "{{count}} Mitglieder",
     "perm_ladder_up": "{{name}} nach oben",
     "perm_ladder_down": "{{name}} nach unten",
@@ -1314,7 +1315,15 @@
     "perm_confirm_tier_mixed_hint": "Die Instanzen nutzen verschiedene Stufen. Eine Auswahl gilt für alle.",
     "perm_legend_moved": "Von der Vorlage verschoben",
     "perm_server_wide": "Das ist ein serverweiter Befehl, die Änderung gilt in jedem Instanzmenü.",
-    "perm_controllers_tag": "auch Bediener"
+    "perm_controllers_tag": "auch Bediener",
+    "perm_line": "Bediener-Linie",
+    "perm_line_from": "Bediener · ab {{level}}",
+    "perm_line_only": "Bediener · nur {{level}}",
+    "perm_line_hint": "Stufen über der Linie können starten, stoppen, neu starten und Backups erstellen. Wer auf der Bedienerliste einer Instanz steht, kann es immer.",
+    "perm_line_apart": "{{count}} einzeln festgelegte Befehle bleiben, wie sie sind",
+    "perm_line_up": "Bediener-Linie nach oben",
+    "perm_line_down": "Bediener-Linie nach unten",
+    "perm_line_follow": "folgt der Bediener-Linie"
   },
   "maintenance": {
     "load_failed": "Backups und Zeitpläne konnten nicht geladen werden.",

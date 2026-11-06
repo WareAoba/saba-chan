@@ -1042,8 +1042,9 @@
     "perm_preset_reset": "{{count}} nível(is) de comando voltarão à predefinição {{preset}}.",
     "perm_preset_apply": "Aplicar",
     "perm_ladder": "Níveis de permissão",
-    "perm_ladder_hint": "Arraste os blocos para definir a ordem. Quanto mais alto, maior o nível. Dono e Banido ficam no lugar.",
+    "perm_ladder_hint": "Arraste os blocos para definir a ordem e toque em um nome para mudá-lo. Quanto mais alto, maior o nível. Dono e Banido ficam no lugar, e Dono, Convidado e Banido não podem ser apagados.",
     "perm_ladder_name": "Nome do nível",
+    "perm_ladder_rename": "Renomear {{name}}",
     "perm_ladder_members": "{{count}} membros",
     "perm_ladder_up": "Subir {{name}}",
     "perm_ladder_down": "Descer {{name}}",
@@ -1314,7 +1315,15 @@
     "perm_confirm_tier_mixed_hint": "As instâncias usam níveis diferentes. Escolher um aplica a todas.",
     "perm_legend_moved": "Movido da predefinição",
     "perm_server_wide": "É um comando do servidor todo, então a mudança aparece no menu de cada instância.",
-    "perm_controllers_tag": "operadores também"
+    "perm_controllers_tag": "operadores também",
+    "perm_line": "Linha de operadores",
+    "perm_line_from": "Operadores · a partir de {{level}}",
+    "perm_line_only": "Operadores · só {{level}}",
+    "perm_line_hint": "Os níveis acima da linha podem iniciar, parar, reiniciar e criar backups. Quem está na lista de operadores de uma instância sempre pode.",
+    "perm_line_apart": "{{count}} comando(s) definidos à parte ficam como estão",
+    "perm_line_up": "Subir a linha de operadores",
+    "perm_line_down": "Descer a linha de operadores",
+    "perm_line_follow": "segue a linha de operadores"
   },
   "maintenance": {
     "load_failed": "Não foi possível carregar os backups e agendamentos.",

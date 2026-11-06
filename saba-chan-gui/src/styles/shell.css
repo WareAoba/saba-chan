@@ -2670,6 +2670,55 @@ button.activity-line:hover {
 .dc-ladder-block .dc-mini-actions {
     margin-left: auto;
 }
+/* 이름: 누르면 고칠 칸이 열린다. 끌기는 이름 위에서도 된다 */
+.dc-ladder-rename {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-1);
+    cursor: text;
+}
+.dc-ladder-rename > span {
+    opacity: 0.5;
+}
+/* 조작 가능 줄 (사용자 지정 2026-11-06): 칸이 아니라 칸 사이의 선. 위 레벨이 시작·정지·재시작·백업 만들기를 쓴다 */
+.dc-ladder-line {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    padding: var(--sp-1) var(--sp-2);
+    border: 2px dashed var(--accent);
+    border-radius: var(--r-md);
+    background: color-mix(in oklch, var(--accent) 10%, var(--bg-1));
+    cursor: grab;
+}
+.dc-ladder-line.is-dragging {
+    position: relative;
+    z-index: 20;
+    box-shadow: 0 6px 18px var(--shadow-md);
+}
+.dc-ladder-line .dc-ladder-rank {
+    color: var(--accent);
+}
+.dc-ladder-line-text {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-width: 0;
+}
+.dc-ladder-line-text strong {
+    color: var(--accent);
+}
+.dc-ladder-line-text small {
+    color: var(--text-3);
+    font-size: var(--fs-sm);
+}
+.dc-ladder-line .dc-mini-actions {
+    margin-left: auto;
+}
+.dc-ladder-block.is-line-over {
+    border-color: var(--accent);
+    border-bottom-style: dashed;
+}
 .dc-overridden .dc-level-select .custom-dropdown-trigger {
     border-color: var(--accent);
 }

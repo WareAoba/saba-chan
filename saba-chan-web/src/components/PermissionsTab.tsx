@@ -72,46 +72,93 @@ function LevelSelect({ value, perm, onChange, withDefault, t, disabled, label }:
     );
 }
 
-/** 단계 사다리 (위가 높은 단계). 휴대폰이라 끌기 대신 위·아래 버튼으로 옮긴다. 소유자·차단은 고정 */
+/** 단계 사다리 (위가 높은 단계). 휴대폰이라 끌기 대신 위·아래 버튼으로 옮긴다. 소유자·차단은 고정.
+ * 모든 레벨은 이름을 바꾸고(비우면 원래 이름), 소유자·게스트·차단은 지울 수 없다. 조작 가능 줄도 위·아래 버튼으로 옮긴다
+ * (사용자 지정 2026-11-06, GUI LadderTab 과 같은 규칙) */
 interface LadderEditorProps {
     perm: PermData;
+    board: CommandBoard | null;
     busy: boolean;
-    onSave: (patch: ReturnType<typeof L.ladderPatch>) => void;
-    t: TFn;
+    onSave: (body: {
+        ladder?: ReturnType<typeof L.ladderPatch>;
+        commandLevels?: Record<string, number | null>;
+    }) => void;
 }
 
-function LadderEditor({ perm, busy, onSave, t }: LadderEditorProps) {
+export function LadderEditor({ perm, board, busy, onSave }: LadderEditorProps) {
+    const { t } = useTranslation();
+    const { t: tg } = useTranslation('gui');
     const saved = L.ladderOf(perm);
     const [draft, setDraft] = useState(saved);
     const [name, setName] = useState('');
+    const line = L.controllerLine(board);
+    const [lineLevel, setLineLevel] = useState(line?.level ?? null);
     useEffect(() => setDraft(L.ladderOf(perm)), [perm]);
+    useEffect(() => setLineLevel(line?.level ?? null), [line?.level]);
     const patch = L.ladderPatch(draft);
-    const changed = JSON.stringify(patch) !== JSON.stringify(L.ladderPatch(saved));
+    const ladderChanged = JSON.stringify(patch) !== JSON.stringify(L.ladderPatch(saved));
+    const lineAt = line && lineLevel !== null ? L.lineAt(saved, draft, lineLevel) : null;
+    const lineTarget = lineAt === null ? null : (draft[lineAt].id as number);
+    const lineChanged = !!line && lineTarget !== null && lineTarget !== line.level;
+    const changed = ladderChanged || lineChanged;
     const removed = saved.some((s) => !draft.some((d) => d.id === s.id));
     const valid = L.ladderValid(draft);
-    const label = (l: LadderLevel) => (L.isCustomLevel(l) ? l.name : levelName(t, perm, l.id));
+    const localeName = (l: LadderLevel) => levelName(t, null, l.id);
+    const label = (l: LadderLevel) => l.name?.trim() || (L.isCustomLevel(l) ? '' : localeName(l));
     const last = draft.length - 1;
+    const moveLine = (dir: -1 | 1) => {
+        const to = lineAt === null ? null : L.lineStep(draft, lineAt, dir);
+        if (to !== null) setLineLevel(draft[to].id ?? null);
+    };
+    const save = () =>
+        onSave({
+            ...(ladderChanged ? { ladder: patch } : {}),
+            ...(lineChanged && line ? { commandLevels: L.levelPatch(line.followers, lineTarget as number) } : {}),
+        });
+    const lineRow = (at: number) => (
+        <li key="controllers-line" className="row ladder-line" aria-label={tg('discord.perm_line')}>
+            <div className="row-main">
+                <div className="row-title">
+                    {tg(at === 0 ? 'discord.perm_line_only' : 'discord.perm_line_from', { level: label(draft[at]) })}
+                </div>
+                <div className="row-sub">
+                    {tg('discord.perm_line_hint')}
+                    {line && line.apart > 0 && ` ${tg('discord.perm_line_apart', { count: line.apart })}`}
+                </div>
+            </div>
+            <Button
+                disabled={L.lineStep(draft, at, -1) === null}
+                aria-label={tg('discord.perm_line_up')}
+                onClick={() => moveLine(-1)}
+            >
+                <Icon name="chevronUp" size={16} />
+            </Button>
+            <Button
+                disabled={L.lineStep(draft, at, 1) === null}
+                aria-label={tg('discord.perm_line_down')}
+                onClick={() => moveLine(1)}
+            >
+                <Icon name="chevronDown" size={16} />
+            </Button>
+        </li>
+    );
     return (
         <div className="field">
             <span>{t('perm.ladder')}</span>
             <small className="hint">{t('perm.ladder_hint')}</small>
             <ul className="rows">
-                {draft.map((l, i) => {
+                {draft.flatMap((l, i) => {
                     const fixed = i === 0 || i === last;
-                    const custom = L.isCustomLevel(l);
-                    return (
+                    const row = (
                         <li key={l.id ?? l.key} className="row" aria-label={label(l)}>
                             <div className="row-main">
-                                {custom ? (
-                                    <input
-                                        value={l.name}
-                                        maxLength={L.MAX_NAME}
-                                        aria-label={t('perm.ladder_name')}
-                                        onChange={(e) => setDraft((d) => L.renameLevel(d, i, e.target.value))}
-                                    />
-                                ) : (
-                                    <div className="row-title">{label(l)}</div>
-                                )}
+                                <input
+                                    value={l.name ?? ''}
+                                    placeholder={L.isCustomLevel(l) ? '' : localeName(l)}
+                                    maxLength={L.MAX_NAME}
+                                    aria-label={t('perm.ladder_name')}
+                                    onChange={(e) => setDraft((d) => L.renameLevel(d, i, e.target.value))}
+                                />
                             </div>
                             {fixed ? (
                                 <span className="pill">{t('perm.ladder_fixed')}</span>
@@ -133,7 +180,7 @@ function LadderEditor({ perm, busy, onSave, t }: LadderEditorProps) {
                                     </Button>
                                     <Button
                                         tone="ghost-danger"
-                                        disabled={draft.length <= 3}
+                                        disabled={draft.length <= 3 || !L.removable(draft, i)}
                                         aria-label={t('perm.ladder_delete', { name: label(l) })}
                                         onClick={() => setDraft((d) => L.removeLevel(d, i))}
                                     >
@@ -143,6 +190,7 @@ function LadderEditor({ perm, busy, onSave, t }: LadderEditorProps) {
                             )}
                         </li>
                     );
+                    return lineAt === i ? [row, lineRow(i)] : [row];
                 })}
             </ul>
             <div className="field-row">
@@ -166,10 +214,16 @@ function LadderEditor({ perm, busy, onSave, t }: LadderEditorProps) {
             {removed && <small className="hint">{t('perm.ladder_removed')}</small>}
             {!valid && <small className="hint">{t('perm.ladder_invalid')}</small>}
             <div className="field-row">
-                <Button disabled={busy || !changed} onClick={() => setDraft(saved)}>
+                <Button
+                    disabled={busy || !changed}
+                    onClick={() => {
+                        setDraft(saved);
+                        setLineLevel(line?.level ?? null);
+                    }}
+                >
                     {t('perm.ladder_revert')}
                 </Button>
-                <Button tone="accent" busy={busy} disabled={!changed || !valid} onClick={() => onSave(patch)}>
+                <Button tone="accent" busy={busy} disabled={!changed || !valid} onClick={save}>
                     {t('perm.ladder_save')}
                 </Button>
             </div>
@@ -405,12 +459,13 @@ interface MemberLevelsProps {
     api: WebApi;
     guildId: string;
     perm: PermData;
+    board: CommandBoard | null;
     members: DiscordMember[];
     busy: boolean;
     write: PermissionWriter;
 }
 
-function MemberLevels({ api, guildId, perm, members, busy, write }: MemberLevelsProps) {
+function MemberLevels({ api, guildId, perm, board, members, busy, write }: MemberLevelsProps) {
     const { t } = useTranslation();
     const [query, setQuery] = useState('');
     const defaultLevel = typeof perm.defaultLevel === 'number' ? perm.defaultLevel : 1;
@@ -487,9 +542,9 @@ function MemberLevels({ api, guildId, perm, members, busy, write }: MemberLevels
             )}
             <LadderEditor
                 perm={perm}
+                board={board}
                 busy={busy}
-                t={t}
-                onSave={(ladder) => write(() => api.permissionsUpdate(guildId, { ladder }))}
+                onSave={(body) => write(() => api.permissionsUpdate(guildId, body))}
             />
         </>
     );
@@ -544,7 +599,15 @@ function InstanceMenu({ api, guildId, data, instance, onBack }: InstanceMenuProp
                     <Empty>{t('perm.stairs_failed')}</Empty>
                 )
             ) : (
-                <MemberLevels api={api} guildId={guildId} perm={perm} members={members} busy={busy} write={write} />
+                <MemberLevels
+                    api={api}
+                    guildId={guildId}
+                    perm={perm}
+                    board={board}
+                    members={members}
+                    busy={busy}
+                    write={write}
+                />
             )}
         </div>
     );
