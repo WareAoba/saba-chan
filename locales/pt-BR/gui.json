@@ -1001,7 +1001,7 @@
     "channels_err_moved": "Enquanto isso, este servidor do Discord foi movido para outro PC, então nada foi salvo.",
     "channels_err_generic": "Não foi possível salvar as atribuições de canais.",
     "level_owner": "Dono",
-    "level_admin": "Admin",
+    "level_admin": "Administrador",
     "level_user": "Usuário",
     "level_chatbot": "Convidado",
     "level_banned": "Banido",

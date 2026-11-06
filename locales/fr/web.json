@@ -109,7 +109,7 @@
     "location_pc": "Les fichiers du serveur vont dans le dossier de saba-chan. Pour un autre dossier, créez le serveur dans l'app saba-chan du PC.",
     "summary_running": "En marche",
     "summary_players": "Joueurs",
-    "summary_cpu": "PC CPU",
+    "summary_cpu": "CPU du PC",
     "start_named": "Démarrer {{name}}",
     "stop_named": "Arrêter {{name}}",
     "pick": "Choisissez un serveur à gauche.",

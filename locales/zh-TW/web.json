@@ -109,7 +109,7 @@
     "location_pc": "伺服器檔案安裝到 saba-chan 資料夾。要放在其他資料夾，請在電腦上的 saba-chan 應用程式中建立。",
     "summary_running": "執行中",
     "summary_players": "線上",
-    "summary_cpu": "PC CPU",
+    "summary_cpu": "電腦 CPU",
     "start_named": "啟動 {{name}}",
     "stop_named": "停止 {{name}}",
     "pick": "請從左側選擇伺服器。",

@@ -1196,7 +1196,7 @@
       "stale_hint": "削除されたか、サバちゃんが見られないチャンネルに割り当てが残っています。",
       "stale_remove": "割り当てを解除",
       "summary_none": "なし",
-      "summary_more": "{{first}} +{{count}}",
+      "summary_more": "{{first}} 他 {{count}}",
       "kind_chatbot": "会話",
       "kind_music": "音楽",
       "kind_notify": "通知",

@@ -109,7 +109,7 @@
     "location_pc": "Os arquivos do servidor vão para a pasta do saba-chan. Para usar outra pasta, crie o servidor no app do saba-chan no PC.",
     "summary_running": "Em execução",
     "summary_players": "Jogadores",
-    "summary_cpu": "PC CPU",
+    "summary_cpu": "CPU do PC",
     "start_named": "Iniciar {{name}}",
     "stop_named": "Parar {{name}}",
     "pick": "Escolha um servidor à esquerda.",
@@ -191,7 +191,7 @@
     "saved": "Permissão alterada.",
     "level": {
       "3": "Dono",
-      "2": "Admin",
+      "2": "Administrador",
       "1": "Usuário",
       "0": "Convidado",
       "-1": "Banido"

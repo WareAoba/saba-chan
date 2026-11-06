@@ -109,7 +109,7 @@
     "location_pc": "Файлы сервера устанавливаются в папку saba-chan. Чтобы выбрать другую папку, создайте сервер в приложении saba-chan на ПК.",
     "summary_running": "Запущено",
     "summary_players": "Игроки",
-    "summary_cpu": "PC CPU",
+    "summary_cpu": "ЦП ПК",
     "start_named": "Запустить {{name}}",
     "stop_named": "Остановить {{name}}",
     "pick": "Выберите сервер слева.",

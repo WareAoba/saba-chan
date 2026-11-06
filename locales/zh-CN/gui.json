@@ -1196,7 +1196,7 @@
       "stale_hint": "有些分配指向已删除或 Saba-chan 看不到的频道。",
       "stale_remove": "取消分配",
       "summary_none": "无",
-      "summary_more": "{{first}} +{{count}}",
+      "summary_more": "{{first}} 等 +{{count}}",
       "kind_chatbot": "聊天",
       "kind_music": "音乐",
       "kind_notify": "通知",
