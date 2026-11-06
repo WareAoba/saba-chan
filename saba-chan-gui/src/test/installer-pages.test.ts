@@ -22,7 +22,7 @@ function mount(page: string, invokes: Invoke) {
         runScripts: 'outside-only',
         pretendToBeVisual: true,
         // 캔버스처럼 jsdom에 없는 기능 알림은 빼고, 페이지 오류는 그대로 보인다
-        virtualConsole: new VirtualConsole().sendTo(console, { omitJSDOMErrors: true }),
+        virtualConsole: new VirtualConsole().forwardTo(console, { jsdomErrors: 'none' }),
     });
     const w = dom.window as unknown as Window & { eval: (src: string) => unknown };
     const listeners: Record<string, Listener[]> = {};
