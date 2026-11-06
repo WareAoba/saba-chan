@@ -232,6 +232,19 @@ input { font: inherit; }
 .banner.stop { --c: var(--stop); }
 .banner strong { display: block; font-weight: 700; margin-bottom: 2px; }
 
+/* 완료 화면 전환이 끝난 뒤 링 영역을 살짝 밀어 올리며 나오는 자리 (경고 띠·실패 요약). .in이 붙으면 펼친다 */
+.later {
+    display: grid;
+    grid-template-rows: 0fr;
+    justify-items: center;
+    width: min(540px, 100%);
+    margin-top: -14px;
+    opacity: 0;
+    transition: grid-template-rows 0.5s var(--ease), margin-top 0.5s var(--ease), opacity 0.35s var(--ease) 0.15s;
+}
+.later > * { min-height: 0; }
+.later.in { grid-template-rows: 1fr; margin-top: 0; opacity: 1; }
+
 /* ── 링: 대기(강조색) · 진행(빨/파) · 성공(초/파) · 실패(빨/보) ──
  * 색은 0.8초에 걸쳐 바뀌고, 회전 속도는 common.js가 playbackRate로 부드럽게 바꾼다 */
 @property --c1 { syntax: '<color>'; inherits: true; initial-value: #7ec8e3; }
@@ -294,11 +307,10 @@ input { font: inherit; }
     max-width: none;
     object-fit: cover;
     object-position: 50% 50%;
-    /* 왼쪽 끝을 기준으로 줌아웃하며 펼친다: 시작 칸(430~750px) 안에 사바쨩이 오는 배율 */
+    /* 왼쪽 끝을 기준으로 줌아웃한다: 시작 칸(430~750px) 안에 사바쨩이 오는 배율에서 시작 */
     transform-origin: 0 50%;
     transform: scale(1.74);
-    scale: 1;
-    transition: transform var(--t-open) var(--cut), filter 0.45s var(--ease), scale 0.3s var(--ease);
+    transition: filter var(--t-fold) var(--ease);
 }
 .flow .f-strip { position: absolute; left: 0; right: 0; bottom: 0; z-index: 4; transform: translateY(100%); transition: transform 0.3s var(--ease); }
 .flow .f-foot { position: absolute; left: 0; right: 0; bottom: 0; z-index: 5; transform: translateY(100%); transition: transform 0.35s var(--ease) 0.1s; }
@@ -306,25 +318,32 @@ input { font: inherit; }
 /* [설치]를 누른 때부터 진행 줄 */
 .flow[data-step="expand"] .f-strip, .flow[data-step="install"] .f-strip { transform: none; }
 .flow[data-step="expand"] .f-art { animation: art-open var(--t-open) var(--cut) forwards; }
-/* 펼친 채 머무는 동안 천천히 다가간다 */
-.flow[data-step="expand"] .f-art img {
-    transform: scale(1);
-    scale: 1.06;
-    transition: transform var(--t-open) var(--cut), filter 0.45s var(--ease), scale var(--t-hold) cubic-bezier(0.3, 0.1, 0.4, 1) var(--t-open);
+/* 줌: 펼침·머묾·접힘 내내 한 번의 줌아웃이 같은 빠르기(같은 비율)로 이어진다. 단계가 바뀌어도 같은 애니메이션이라 끊기지 않는다 */
+.flow[data-step="expand"] .f-art img, .flow[data-step="install"] .f-art img, .flow[data-step="done"] .f-art img {
+    animation: art-zoom calc(var(--t-open) + var(--t-hold) + var(--t-fold)) linear forwards;
 }
 .flow[data-step="install"] .f-art, .flow[data-step="done"] .f-art { animation: art-fold var(--t-fold) linear forwards; }
-.flow[data-step="install"] .f-art img, .flow[data-step="done"] .f-art img {
-    transform: translateX(-60px);
-    scale: 1.06;
-    filter: brightness(1.2) saturate(1.15);
-    transition: transform var(--t-fold) var(--cut), filter var(--t-fold) var(--ease);
-}
+.flow[data-step="install"] .f-art img, .flow[data-step="done"] .f-art img { filter: brightness(1.2) saturate(1.15); }
 .flow[data-step="install"] .f-mat .matrix { opacity: var(--loading-matrix-opacity); transform: none; }
 .flow[data-step="install"] .f-run, .flow[data-step="done"] .f-run { opacity: 1; transform: none; }
 /* 완료: 매트릭스만 끄고 링 색만 바꾼다. 진행 줄 자리에 버튼 */
 .flow[data-step="done"] .f-mat .matrix { opacity: 0; transform: none; }
 .flow[data-step="done"] .f-foot { transform: none; }
 
+/* 1.74 → 1 을 같은 비율로 (점마다 곱하는 값이 같다) */
+@keyframes art-zoom {
+    0% { transform: scale(1.7400); }
+    10% { transform: scale(1.6462); }
+    20% { transform: scale(1.5575); }
+    30% { transform: scale(1.4736); }
+    40% { transform: scale(1.3942); }
+    50% { transform: scale(1.3191); }
+    60% { transform: scale(1.2480); }
+    70% { transform: scale(1.1808); }
+    80% { transform: scale(1.1171); }
+    90% { transform: scale(1.0570); }
+    100% { transform: scale(1.0000); }
+}
 @keyframes art-open {
     from { clip-path: polygon(430px 0, 750px 0, 750px 100%, 430px 100%); }
     to { clip-path: polygon(0 0, 750px 0, 750px 100%, 0 100%); }

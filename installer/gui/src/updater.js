@@ -272,6 +272,8 @@ function showFailure(summary) {
         $ringSub.textContent = '';
         $failSummary.textContent = summary;
         $failSummary.hidden = false;
+        // 실패 화면으로 다 넘어간 뒤에 링 영역을 밀어내며 띄운다
+        flow.afterSettled(() => document.getElementById('fail-wrap').classList.add('in'));
         $btnClose.hidden = false;
     });
 }

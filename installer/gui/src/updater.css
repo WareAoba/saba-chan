@@ -7,9 +7,11 @@
 /* 시작부터 그림이 창 전체를 덮는다 (설치기처럼 펼치지 않는다) */
 .flow.u .f-art { clip-path: polygon(0 0, 750px 0, 750px 100%, 0 100%); }
 .flow.u[data-step="expand"] .f-art { animation: none; }
-.flow.u[data-step="start"] .f-art img { transition: none; }
-.flow.u:not([data-step="install"]):not([data-step="done"]) .f-art img { transform: scale(1); }
-.flow.u[data-step="expand"] .f-art img { transform: scale(1); scale: 1.06; transition: scale var(--t-hold) cubic-bezier(0.3, 0.1, 0.4, 1); }
+/* 줌: 처음부터 접힐 때까지 한 번의 줌아웃을 같은 빠르기로 (그림 전체가 보이는 1배에서 끝난다) */
+.flow.u .f-art img { transform: scale(1.1); }
+.flow.u[data-step="expand"] .f-art img, .flow.u[data-step="install"] .f-art img, .flow.u[data-step="done"] .f-art img {
+    animation: art-zoom-u calc(0.1s + var(--t-open) + var(--t-hold) + var(--t-fold)) linear forwards;
+}
 .flow.u[data-step="expand"] .f-shine { animation: shine-open var(--t-open) var(--cut) 0.1s; }
 .flow.u[data-step="install"] .f-edge, .flow.u[data-step="done"] .f-edge { animation-name: edge-fold-u; }
 
@@ -28,4 +30,18 @@
     75% { transform: translateX(21px) skewX(26.97deg); opacity: 1; }
     90% { transform: translateX(-189px) skewX(30.85deg); opacity: 0.6; }
     100% { transform: translateX(-339px) skewX(32.68deg); opacity: 0; }
+}
+
+@keyframes art-zoom-u {
+    0% { transform: scale(1.1000); }
+    10% { transform: scale(1.0896); }
+    20% { transform: scale(1.0792); }
+    30% { transform: scale(1.0690); }
+    40% { transform: scale(1.0589); }
+    50% { transform: scale(1.0488); }
+    60% { transform: scale(1.0389); }
+    70% { transform: scale(1.0290); }
+    80% { transform: scale(1.0192); }
+    90% { transform: scale(1.0096); }
+    100% { transform: scale(1.0000); }
 }

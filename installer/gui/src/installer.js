@@ -1117,6 +1117,7 @@ const $flowEl = document.getElementById('flow');
 const $statusText = document.getElementById('status-text');
 const $statusSub = document.getElementById('status-sub');
 const $warnings = document.getElementById('complete-warnings');
+const $warnWrap = document.getElementById('warn-wrap');
 const $completeLog = document.getElementById('complete-log');
 const $btnLaunch = document.getElementById('btn-launch');
 const $btnRetry = document.getElementById('btn-retry');
@@ -1191,6 +1192,7 @@ function enterInstalling() {
     currentState = 'installing';
     $flowEl.classList.remove('failed');
     $warnings.hidden = true;
+    $warnWrap.classList.remove('in');
     resetProgress();
     $statusText.textContent = tr('installing');
     $statusSub.textContent = tr('installSub');
@@ -1221,6 +1223,9 @@ function showResult(ok, { title, sub, warningTitle, lines = [], logPath, launch 
         $warnings.replaceChildren(text);
         $warnings.classList.toggle('stop', !ok);
         $warnings.hidden = !text.childNodes.length;
+        // 경고는 완료 화면으로 다 넘어간 뒤에 링 영역을 밀어내며 띄운다
+        $warnWrap.classList.remove('in');
+        if (!$warnings.hidden) flow.afterSettled(() => $warnWrap.classList.add('in'));
         $completeLog.textContent = logPath ? tr('completeLog', { path: logPath }) : '';
         $btnLaunch.hidden = !launch;
         $btnRetry.hidden = !retry;
@@ -1475,6 +1480,7 @@ $btnLaunch?.addEventListener('click', async () => {
 $btnRetry?.addEventListener('click', () => {
     $flowEl.classList.remove('failed');
     $warnings.hidden = true;
+    $warnWrap.classList.remove('in');
     enterSettings();
 });
 

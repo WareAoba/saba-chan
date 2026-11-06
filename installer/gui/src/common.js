@@ -8,6 +8,8 @@ window.SabaUI = (() => {
 
     // 그림 펼침 0.8초 · 펼친 채 머묾 1.2초 · 접힘 0.8초 (CSS --t-*는 여기서 넣는다)
     const TIMING = { open: 800, hold: 1200, fold: 800 };
+    // 완료 화면 전환(매트릭스 끄기 0.6초 · 링 색 0.8초)이 끝나는 때
+    const SETTLE_MS = 900;
 
     /** 테마: 'light' | 'dark' | 'auto'. 토큰이 :root에서 다른 토큰을 참조하므로 html에 건다 */
     function setTheme(theme) {
@@ -171,6 +173,8 @@ window.SabaUI = (() => {
         el.style.setProperty('--t-fold', `${TIMING.fold}ms`);
         let timer = 0;
         let waiting = [];
+        let foldAt = -Infinity;
+        let laterTimer = 0;
 
         function go(step) {
             el.dataset.step = step;
@@ -179,6 +183,7 @@ window.SabaUI = (() => {
         function fold() {
             clearTimeout(timer);
             timer = 0;
+            foldAt = performance.now();
             go('install');
             onFold?.();
             const run = waiting;
@@ -199,14 +204,26 @@ window.SabaUI = (() => {
             else fn();
         }
 
+        /**
+         * 완료 화면으로 다 넘어간 뒤에 (매트릭스가 꺼지고 링 색이 바뀐 뒤, 그림이 아직 접히는 중이면 다 접힌 뒤).
+         * 경고처럼 링 영역을 밀어내며 나오는 것을 이때 띄운다
+         */
+        function afterSettled(fn) {
+            clearTimeout(laterTimer);
+            if (REDUCE) { fn(); return; }
+            const folding = TIMING.fold - (performance.now() - foldAt);
+            laterTimer = setTimeout(fn, Math.max(SETTLE_MS, folding + 300));
+        }
+
         function reset(step) {
+            clearTimeout(laterTimer);
             clearTimeout(timer);
             timer = 0;
             waiting = [];
             go(step);
         }
 
-        return { go, reveal, afterReveal, reset, get step() { return el.dataset.step; } };
+        return { go, reveal, afterReveal, afterSettled, reset, get step() { return el.dataset.step; } };
     }
 
     return { REDUCE, TIMING, setTheme, systemTheme, effectiveTheme, setWordmark, ring, matrix, flow };
