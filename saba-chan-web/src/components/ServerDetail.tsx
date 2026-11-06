@@ -169,6 +169,7 @@ interface MoreSheetProps {
 
 function MoreSheet({ api, server, running, control, onClose }: MoreSheetProps) {
     const { t } = useTranslation();
+    const { t: tg } = useTranslation('gui');
     const toast = useApp((s) => s.toast);
     const openServer = useApp((s) => s.openServer);
     const [name, setName] = useState(server.name);
@@ -180,8 +181,11 @@ function MoreSheet({ api, server, running, control, onClose }: MoreSheetProps) {
         setBusy(true);
         const res = await api.instanceRename(server.id, name.trim());
         setBusy(false);
-        if (failed(res))
-            return toast(res?.error_code === 'name_taken' ? t('settings.name_taken') : errorText(t, res), 'error');
+        if (failed(res)) {
+            const code = res?.error_code;
+            const text = code === 'name_taken' ? t('settings.name_taken') : code === 'invalid_name' ? tg('servers.name_comma') : errorText(t, res);
+            return toast(text, 'error');
+        }
         toast(t('settings.renamed'), 'ok');
         onClose();
     };

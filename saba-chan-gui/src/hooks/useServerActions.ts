@@ -922,7 +922,9 @@ export function useServerActions({
             const msg =
                 code === 'name_taken' || code === 'server_running' || code === 'instance_busy'
                     ? t(`servers.rename_${code}`, { name })
-                    : translateError(result?.error || '');
+                    : code === 'invalid_name'
+                      ? t('servers.name_comma')
+                      : translateError(result?.error || '');
             safeShowToast(t('servers.rename_failed_toast', { error: msg }), 'error', 4000);
         } catch (error) {
             safeShowToast(t('servers.rename_failed_toast', { error: translateError((error as Error).message) }), 'error', 4000);
@@ -1045,6 +1047,12 @@ export function useServerActions({
                     title: t('servers.add_failed_title'),
                     message: t('servers.rename_name_taken', { name: serverName }),
                 });
+                return false;
+            }
+
+            // 쉼표가 든 이름 (디스코드에서 부르는 말을 쉼표로 나눈다)
+            if (result.error_code === 'invalid_name') {
+                setModal({ type: 'failure', title: t('servers.add_failed_title'), message: t('servers.name_comma') });
                 return false;
             }
 

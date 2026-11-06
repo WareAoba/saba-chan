@@ -229,6 +229,7 @@ pub fn api_hint(code: &str, body: &Value) -> Option<String> {
         "move_failed" | "source_missing" | "destination_exists" => Some(t!("err.hint.move_failed")),
         "server_not_running" => Some(t!("err.hint.server_not_running")),
         "server_running" => Some(t!("err.hint.server_running")),
+        "invalid_name" => Some(t!("err.hint.invalid_name")),
         "rcon_unreachable" => Some(t!("err.hint.rcon_unreachable")),
         "rcon_auth_failed" => Some(t!("err.hint.rcon_auth_failed")),
         "rcon_timeout" => Some(t!("err.hint.rcon_timeout")),

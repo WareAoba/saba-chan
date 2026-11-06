@@ -11,6 +11,7 @@ import {
     createBody,
     installChoices,
     installFields,
+    nameHasComma,
     nameTaken,
     optionLabel,
     latestRelease,
@@ -253,11 +254,12 @@ export function AddInstanceNewServer({
     const agreements = selectedModule?.agreements || [];
     const duplicateName =
         nameTaken(servers, newServerName) || (check?.name?.value === newServerName.trim() && check?.name?.taken);
+    const nameComma = nameHasComma(newServerName);
     const blockers = check && !check.failed ? checkBlockers(check) : [];
     // 고친 포트는 1~65535의 정수만 (빈 칸은 데몬이 고른 포트)
     const portInvalid =
         port != null && port !== '' && !(Number.isInteger(Number(port)) && Number(port) >= 1 && Number(port) <= 65535);
-    const nameReady = newServerName.trim() && !duplicateName && !blockers.length && !portInvalid;
+    const nameReady = newServerName.trim() && !duplicateName && !nameComma && !blockers.length && !portInvalid;
     const canSubmit = nameReady && selectedExtension && !submitting && allChecked(agreements, agreed);
     const canLeave = {
         location: folderMode === 'default' || !!customFolder,
@@ -538,12 +540,18 @@ export function AddInstanceNewServer({
                         onKeyDown={(e) => {
                             if (e.key === 'Enter' && canLeave.name) goTo(steps[stepIndex + 1]);
                         }}
-                        aria-invalid={duplicateName || undefined}
+                        aria-invalid={duplicateName || nameComma || undefined}
                     />
                     {duplicateName && (
                         <p className="as-name-taken" role="alert">
                             <Icon name="alertCircle" size="sm" />
                             {t('servers.rename_name_taken', { name: newServerName.trim() })}
+                        </p>
+                    )}
+                    {nameComma && (
+                        <p className="as-name-taken" role="alert">
+                            <Icon name="alertCircle" size="sm" />
+                            {t('servers.name_comma')}
                         </p>
                     )}
                 </div>

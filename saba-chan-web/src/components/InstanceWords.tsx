@@ -5,7 +5,9 @@ import {
     type InstanceWordsDraft,
     type InstanceWordsEntry,
     isDraftDirty,
+    splitWords,
     type ValidationDetail,
+    WORD_COMMAS,
     wordsCommandName,
 } from '@gui/components/discord/instanceWords';
 import { useCallback, useEffect, useState } from 'react';
@@ -39,10 +41,8 @@ function WordsInput({ value, onChange, label, placeholder, invalid = [] }: Words
     const { t } = useTranslation();
     const [text, setText] = useState('');
     const add = () => {
-        const words = text
-            .split(',')
-            .map((w) => w.trim())
-            .filter((w) => w && !value.includes(w));
+        // 쉼표로 나누고 사이 공백은 한 칸으로 (앱과 같다, 띄어 쓴 말은 한 낱말)
+        const words = splitWords(text).filter((w) => !value.includes(w));
         if (words.length) onChange([...value, ...words]);
         setText('');
     };
@@ -70,7 +70,7 @@ function WordsInput({ value, onChange, label, placeholder, invalid = [] }: Words
                 onChange={(e) => setText(e.target.value)}
                 onBlur={add}
                 onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ',') {
+                    if (e.key === 'Enter' || WORD_COMMAS.test(e.key)) {
                         e.preventDefault();
                         add();
                     }

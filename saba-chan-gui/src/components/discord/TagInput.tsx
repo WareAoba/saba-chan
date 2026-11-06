@@ -1,6 +1,7 @@
 import clsx from 'clsx';
 import { useState } from 'react';
 import { Icon } from '../Icon';
+import { splitWords, WORD_COMMAS } from './instanceWords';
 
 interface TagInputProps {
     value: string[];
@@ -8,21 +9,25 @@ interface TagInputProps {
     placeholder?: string;
     ariaLabel?: string;
     invalid?: string[];
+    /** 띄어 쓴 말을 한 낱말로 받는다 (쉼표로만 나눈다). 서버를 부르는 말·명령 낱말 */
+    allowSpaces?: boolean;
 }
 
 /**
- * 단어 칩 편집기: Enter·쉼표·스페이스로 추가, ×나 빈 칸에서 Backspace로 지운다.
- * 디스코드 명령어 단어에는 공백이 들어갈 수 없으므로 공백도 구분자로 쓴다.
+ * 단어 칩 편집기: Enter·쉼표(allowSpaces가 아니면 스페이스도)로 추가, ×나 빈 칸에서 Backspace로 지운다.
+ * 호출 접두사처럼 공백이 들어갈 수 없는 칸은 공백도 구분자로 쓴다.
  */
-export function TagInput({ value, onChange, placeholder, ariaLabel, invalid = [] }: TagInputProps) {
+export function TagInput({ value, onChange, placeholder, ariaLabel, invalid = [], allowSpaces = false }: TagInputProps) {
     const [draft, setDraft] = useState('');
     const bad = new Set(invalid.map((w) => w.toLowerCase()));
 
     const commit = (text: string) => {
-        const words = text
-            .split(/[\s,]+/)
-            .map((w) => w.trim())
-            .filter(Boolean);
+        const words = allowSpaces
+            ? splitWords(text)
+            : text
+                  .split(/[\s,，、､]+/)
+                  .map((w) => w.trim())
+                  .filter(Boolean);
         if (words.length === 0) return;
         const have = new Set(value.map((w) => w.toLowerCase()));
         const added = words.filter((w) => {
@@ -60,7 +65,8 @@ export function TagInput({ value, onChange, placeholder, ariaLabel, invalid = []
                 placeholder={value.length === 0 ? placeholder : ''}
                 onChange={(e) => {
                     const v = e.target.value;
-                    if (/[\s,]$/.test(v)) commit(v);
+                    const last = v.slice(-1);
+                    if (WORD_COMMAS.test(last) || (!allowSpaces && /\s/.test(last))) commit(v);
                     else setDraft(v);
                 }}
                 onKeyDown={(e) => {

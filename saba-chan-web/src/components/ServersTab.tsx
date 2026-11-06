@@ -4,6 +4,7 @@ import {
     installChoices,
     installFields,
     installSettings,
+    nameHasComma,
     nameTaken,
     releaseVersions,
     suggestName,
@@ -40,6 +41,7 @@ interface InstanceCheck {
  * 익스텐션이 묻는 칸(`extension_data`)과 폴더는 PC에서만 정한다 (src/remote/gate.rs CREATE_PC_ONLY) */
 export function AddServerSheet({ api, onClose }: { api: WebApi; onClose: () => void }) {
     const { t } = useTranslation();
+    const { t: tg } = useTranslation('gui');
     const modules = useData((s) => s.modules);
     const servers = useData((s) => s.servers);
     const toast = useApp((s) => s.toast);
@@ -59,7 +61,9 @@ export function AddServerSheet({ api, onClose }: { api: WebApi; onClose: () => v
     const modNs = `mod_${module}`;
     const agreements: Agreement[] = chosen?.agreements || [];
     const duplicate = nameTaken(servers, name);
-    const ready = name.trim() && module && !duplicate && agreements.every((a) => agreed[a.id]);
+    // 디스코드에서 부르는 말을 쉼표로 나누므로 이름에 쉼표를 받지 않는다 (데몬 400 invalid_name, 앱과 같다)
+    const comma = nameHasComma(name);
+    const ready = name.trim() && module && !duplicate && !comma && agreements.every((a) => agreed[a.id]);
 
     const pickModule = (next: string) => {
         setModule(next);
@@ -141,7 +145,7 @@ export function AddServerSheet({ api, onClose }: { api: WebApi; onClose: () => v
         if (agreements.length) body.accept_agreements = agreements.map((a) => a.id);
         const res = await api.instanceCreate(body);
         setBusy(false);
-        if (failed(res)) return toast(errorText(t, res), 'error');
+        if (failed(res)) return toast(res?.error_code === 'invalid_name' ? tg('servers.name_comma') : errorText(t, res), 'error');
         toast(t('servers.created', { name: name.trim() }), 'ok');
         onClose();
     };
@@ -187,12 +191,17 @@ export function AddServerSheet({ api, onClose }: { api: WebApi; onClose: () => v
                             onChange={(e) => setName(e.target.value)}
                             maxLength={64}
                             required
-                            aria-invalid={duplicate || undefined}
+                            aria-invalid={duplicate || comma || undefined}
                         />
                     </label>
                     {duplicate && (
                         <p className="hint hint-error" role="alert">
                             {t('servers.name_taken', { name: name.trim() })}
+                        </p>
+                    )}
+                    {comma && (
+                        <p className="hint hint-error" role="alert">
+                            {tg('servers.name_comma')}
                         </p>
                     )}
                     {installFields(chosen).map((f) => (

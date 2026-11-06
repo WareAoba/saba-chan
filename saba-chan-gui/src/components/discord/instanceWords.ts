@@ -40,6 +40,20 @@ export interface ValidationDetail {
     [key: string]: unknown;
 }
 
+/** 낱말을 나누는 쉼표 (데몬 chat::words::is_comma와 같은 글자) */
+export const WORD_COMMAS = /[,，、､]/;
+
+/**
+ * 친 글자를 낱말로 나눈다: 쉼표로 나누고, 앞뒤 공백을 떼고 사이 공백은 한 칸으로 (데몬 `tidy`와 같다).
+ * 서버를 부르는 말은 띄어 써도 되고 쉼표는 못 쓴다 (사용자 11-06 #2)
+ */
+export function splitWords(text: string) {
+    return text
+        .split(/[,，、､]+/)
+        .map((w) => w.split(/\s+/).filter(Boolean).join(' '))
+        .filter(Boolean);
+}
+
 const sameList = (a: string[] = [], b: string[] = []) => a.length === b.length && a.every((w, i) => w === b[i]);
 
 /** 데몬 항목 → 고칠 수 있는 초안 `{words, commands: {명령: [낱말]}}` */

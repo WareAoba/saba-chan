@@ -100,6 +100,7 @@ function InstanceCard({ inst, onSaved }: InstanceCardProps) {
                         </span>
                     </div>
                     <TagInput
+                        allowSpaces
                         value={draft.words}
                         onChange={(v) => setDraft((d) => ({ ...d, words: v }))}
                         placeholder={t('discord.words_add_placeholder')}
@@ -123,6 +124,7 @@ function InstanceCard({ inst, onSaved }: InstanceCardProps) {
                                     <span className="muted">{t('discord.iw_default', { words: defaults })}</span>
                                 </div>
                                 <TagInput
+                                    allowSpaces
                                     value={draft.commands[c.name] || []}
                                     onChange={(v) =>
                                         setDraft((d) => ({ ...d, commands: { ...d.commands, [c.name]: v } }))

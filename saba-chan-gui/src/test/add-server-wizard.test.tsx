@@ -179,6 +179,18 @@ describe('새 서버 만들기 마법사', () => {
         expect(onAddServer.mock.calls[0][0]).not.toHaveProperty('port');
     });
 
+    // 사용자 11-06 #2: 디스코드에서 부르는 말을 쉼표로 나누므로 서버 이름에 쉼표를 받지 않는다 (띄어쓰기는 된다)
+    it('쉼표가 든 이름은 알리고 넘어가지 않는다', async () => {
+        open();
+        await toNameStep();
+        const name = screen.getByLabelText(/Server Name/i);
+        await act(async () => fireEvent.change(name, { target: { value: '우리, 마크' } }));
+        expect(screen.getByRole('alert').textContent).toMatch(/comma/);
+        expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
+        await act(async () => fireEvent.change(name, { target: { value: '우리 마크' } }));
+        expect(screen.queryByText(/comma/)).toBeNull();
+    });
+
     it('확인을 기다리는 중에 이전 단계로 가도 다음 버튼이 막히지 않는다', async () => {
         open();
         await toNameStep();
