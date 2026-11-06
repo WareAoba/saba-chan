@@ -86,6 +86,7 @@
     "stop": "정지",
     "restart": "다시 시작",
     "delete": "서버 지우기",
+    "already_running": "“{{name}}” 서버는 이미 실행 중이에요",
     "started": "“{{name}}” 서버를 시작했어요.",
     "stopped": "“{{name}}” 서버를 정지했어요.",
     "restarted": "“{{name}}” 서버를 다시 시작했어요.",
@@ -301,6 +302,7 @@
     "screen_note": "이 브라우저에만 기억해요. PC의 앱 설정은 바뀌지 않아요."
   },
   "errors": {
+    "start_cancelled": "시작하는 동안 정지 요청이 들어와 서버를 시작하지 않았어요.",
     "generic": "요청을 처리하지 못했어요.",
     "remote_not_allowed": "이 작업은 PC의 사바쨩 앱에서만 할 수 있어요.",
     "remote_field_blocked": "이 설정은 PC에서만 바꿀 수 있어요: {{fields}}",

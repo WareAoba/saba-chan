@@ -86,6 +86,7 @@
     "stop": "Arrêter",
     "restart": "Redémarrer",
     "delete": "Supprimer le serveur",
+    "already_running": "« {{name}} » est déjà en marche",
     "started": "{{name}} a démarré.",
     "stopped": "{{name}} est arrêté.",
     "restarted": "{{name}} a redémarré.",
@@ -301,6 +302,7 @@
     "screen_note": "Enregistré seulement dans ce navigateur. Les paramètres de l'app sur le PC ne changent pas."
   },
   "errors": {
+    "start_cancelled": "Le serveur a été arrêté pendant son démarrage ; il n'a donc pas été lancé.",
     "generic": "Impossible de terminer la requête.",
     "remote_not_allowed": "Ceci n'est possible que dans l'app Saba-chan sur le PC.",
     "remote_field_blocked": "Ces réglages ne se modifient que sur le PC : {{fields}}",

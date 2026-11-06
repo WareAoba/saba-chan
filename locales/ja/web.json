@@ -86,6 +86,7 @@
     "stop": "停止",
     "restart": "再起動",
     "delete": "サーバーを削除",
+    "already_running": "「{{name}}」はすでに起動しています",
     "started": "{{name}} を起動しました。",
     "stopped": "{{name}} を停止しました。",
     "restarted": "{{name}} を再起動しました。",
@@ -301,6 +302,7 @@
     "screen_note": "このブラウザーにだけ保存します。PCのアプリ設定は変わりません。"
   },
   "errors": {
+    "start_cancelled": "起動中に停止が要求されたため、サーバーを起動しませんでした。",
     "generic": "リクエストを完了できませんでした。",
     "remote_not_allowed": "PC のサバちゃんアプリでのみ行えます。",
     "remote_field_blocked": "次の設定は PC でのみ変更できます: {{fields}}",

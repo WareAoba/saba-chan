@@ -122,6 +122,7 @@ export function modErrorText(res: ApiBody | null | undefined, t: TFunction) {
     }
     const known = [
         'NOT_LOCKED',
+        'FORBIDDEN',
         'UNKNOWN_CHANNEL',
         'BOT_UNAVAILABLE',
         'NODE_MOVED',

@@ -86,6 +86,7 @@
     "stop": "Detener",
     "restart": "Reiniciar",
     "delete": "Eliminar servidor",
+    "already_running": "«{{name}}» ya está en marcha",
     "started": "Se inició {{name}}.",
     "stopped": "Se detuvo {{name}}.",
     "restarted": "Se reinició {{name}}.",
@@ -301,6 +302,7 @@
     "screen_note": "Se guarda solo en este navegador. Los ajustes de la app en el PC no cambian."
   },
   "errors": {
+    "start_cancelled": "El servidor se detuvo mientras se iniciaba, así que no se inició.",
     "generic": "No se pudo completar la solicitud.",
     "remote_not_allowed": "Esto solo se puede hacer en la app Saba-chan del PC.",
     "remote_field_blocked": "Estos ajustes solo se pueden cambiar en el PC: {{fields}}",

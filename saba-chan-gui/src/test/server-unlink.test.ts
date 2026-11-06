@@ -73,6 +73,14 @@ describe('가져온 서버 삭제(연결 해제)', () => {
         expect(window.api.instanceDelete).toHaveBeenLastCalledWith('a', { keepSettings: true });
     });
 
+    it('되돌리지 못한 설정 사본은 데몬이 알려준 보관 위치와 함께 알린다', async () => {
+        vi.mocked(window.api.instanceDelete).mockResolvedValue({ success: true, linked_folder: 'D:\\Games\\pal', settings_restore_failed: 2, settings_kept_at: 'D:\\state\\unrestored-settings\\a-1' });
+        const { result, setModal } = setup([linked]);
+        await act(async () => result.current.handleDeleteServer(linked as never));
+        await act(async () => setModal.mock.calls.at(-1)![0].buttons[0].action());
+        expect(setModal.mock.calls.at(-1)![0].message).toContain('D:\\state\\unrestored-settings\\a-1');
+    });
+
     it('일부 설정 파일을 되돌리지 못했으면 성공과 함께 알린다', async () => {
         vi.mocked(window.api.instanceDelete).mockResolvedValue({ success: true, linked_folder: 'D:\\Games\\pal', settings_restored: 1, settings_restore_failed: 1 });
         const { result, setModal } = setup([linked]);

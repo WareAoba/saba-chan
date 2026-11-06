@@ -86,6 +86,7 @@
     "stop": "停止",
     "restart": "重启",
     "delete": "删除服务器",
+    "already_running": "“{{name}}”已在运行",
     "started": "已启动 {{name}}。",
     "stopped": "已停止 {{name}}。",
     "restarted": "已重启 {{name}}。",
@@ -301,6 +302,7 @@
     "screen_note": "只保存在此浏览器中。电脑上的应用设置不会改变。"
   },
   "errors": {
+    "start_cancelled": "服务器在启动过程中被停止，因此未启动。",
     "generic": "无法完成请求。",
     "remote_not_allowed": "只能在电脑上的 Saba-chan 应用中进行。",
     "remote_field_blocked": "以下设置只能在电脑上更改：{{fields}}",

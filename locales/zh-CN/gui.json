@@ -202,7 +202,7 @@
     "server_name": "服务器名称",
     "server_name_placeholder": "例如：my-server-1",
     "provision_hint": "该模块将嵌入到实例中，服务器二进制文件将自动下载。",
-    "no_modules": "未找到模块。请在设置 > 存储中检查模块文件夹。",
+    "no_modules": "未找到模块。请在 <link/> 的 Saba 存储中获取游戏模块。",
     "add_server": "添加服务器",
     "provisioning": "正在安装…",
     "step_compose": "创建配置",
@@ -263,7 +263,7 @@
     "new_server_desc": "选择游戏模块并从头创建新的服务器实例。",
     "migrate_title": "迁移现有服务器",
     "migrate_desc": "将现有游戏服务器目录导入到 saba-chan 实例中。",
-    "no_modules_hint": "请先添加一个模块。"
+    "no_modules_hint": "请先添加一个模块。可在 <link/> 的 Saba 存储中获取。"
   },
   "migration_modal": {
     "title": "服务器迁移",
@@ -341,6 +341,7 @@
     "unlink_restore": "恢复设置并移除",
     "unlink_keep_settings": "保留当前设置并移除",
     "server_unlinked": "已从 saba-chan 中移除“{{name}}”。服务器文件仍在 {{path}}。",
+    "unlink_restore_failed_kept": "有 {{n}} 个游戏设置文件无法还原。它们的副本保存在 {{path}}。",
     "unlink_restore_failed": "有 {{n}} 个游戏设置文件未能恢复。",
     "migrate_notice_folder_not_writable": "无法写入此文件夹。保存设置和启动服务器可能会失败，请将其移到可写入的位置。",
     "migrate_notice_server_running": "此文件夹中的服务器正在 saba-chan 之外运行。请先停止，再从 saba-chan 启动。",
@@ -748,6 +749,7 @@
     "search_placeholder": "查找服务器",
     "no_match": "没有匹配的服务器",
     "empty_title": "还没有服务器",
+    "empty_no_modules": "尚未安装游戏模块。请在 <link/> 的 Saba 存储中获取。",
     "empty_body": "选择一个游戏，Saba-chan 会帮你准备好服务器。",
     "start": "启动",
     "stop": "停止",
@@ -1286,6 +1288,7 @@
       "err_MUTE_NOT_MEMBER": "此人不在此服务器中。",
       "err_MUTE_CANNOT": "无法静音此成员（服务器所有者或身份组高于 Saba-chan）。",
       "err_MUTE_BOT": "不能静音机器人。",
+      "err_FORBIDDEN": "你没有执行此操作的 Discord 权限。",
       "err_MUTE_SELF": "不能静音自己。",
       "err_MUTE_TOO_LONG": "最长 28 天。更长请选择永久。",
       "err_generic": "无法完成操作。请稍后再试。"

@@ -202,7 +202,7 @@
     "server_name": "Server Name",
     "server_name_placeholder": "e.g., my-server-1",
     "provision_hint": "Server files are downloaded automatically when you add it.",
-    "no_modules": "No modules found. Check the modules folder in Settings > Storage.",
+    "no_modules": "No modules found. Get game modules from Saba Storage in <link/>.",
     "add_server": "Add Server",
     "provisioning": "Installing…",
     "step_compose": "Configuration",
@@ -263,7 +263,7 @@
     "new_server_desc": "Pick a game and the server files are downloaded for you.",
     "migrate_title": "Import Existing Server",
     "migrate_desc": "Bring in a game server folder you already use. Link it where it is, or move it into saba-chan.",
-    "no_modules_hint": "Add a module first."
+    "no_modules_hint": "Add a module first. You can get one from Saba Storage in <link/>."
   },
   "migration_modal": {
     "title": "Import Existing Server",
@@ -341,6 +341,7 @@
     "unlink_restore": "Restore settings and remove",
     "unlink_keep_settings": "Keep current settings and remove",
     "server_unlinked": "Removed '{{name}}' from saba-chan. The server files are still in {{path}}.",
+    "unlink_restore_failed_kept": "{{n}} game settings file(s) could not be restored. Their copies are kept in {{path}}.",
     "unlink_restore_failed": "{{n}} game settings file(s) could not be restored.",
     "migrate_notice_folder_not_writable": "saba-chan can't write to this folder. Saving settings and starting the server may fail, so move it somewhere you can write to.",
     "migrate_notice_server_running": "The server in this folder is running outside saba-chan. Stop it and start it again from saba-chan.",
@@ -748,6 +749,7 @@
     "search_placeholder": "Find a server",
     "no_match": "No matching servers",
     "empty_title": "No servers yet",
+    "empty_no_modules": "No game modules are installed. Get them from Saba Storage in <link/>.",
     "empty_body": "Pick a game and Saba-chan will set up the server for you.",
     "start": "Start",
     "stop": "Stop",
@@ -1286,6 +1288,7 @@
       "err_MUTE_NOT_MEMBER": "That person isn't in this server.",
       "err_MUTE_CANNOT": "This member can't be muted (server owner or a role above Saba-chan).",
       "err_MUTE_BOT": "Bots can't be muted.",
+      "err_FORBIDDEN": "You don't have the Discord permission for this.",
       "err_MUTE_SELF": "You can't mute yourself.",
       "err_MUTE_TOO_LONG": "The longest is 28 days. Use Forever for longer.",
       "err_generic": "Couldn't do that. Please try again shortly."

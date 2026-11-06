@@ -86,6 +86,7 @@
     "stop": "Stop",
     "restart": "Restart",
     "delete": "Delete server",
+    "already_running": "“{{name}}” is already running",
     "started": "Started {{name}}.",
     "stopped": "Stopped {{name}}.",
     "restarted": "Restarted {{name}}.",
@@ -301,6 +302,7 @@
     "screen_note": "Saved only in this browser. The app settings on the PC don't change."
   },
   "errors": {
+    "start_cancelled": "The server was stopped while it was starting, so it was not started.",
     "generic": "Couldn't complete the request.",
     "remote_not_allowed": "This can only be done in the Saba-chan app on the PC.",
     "remote_field_blocked": "These settings can only be changed on the PC: {{fields}}",
