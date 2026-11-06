@@ -207,6 +207,7 @@ pub async fn execute<D: DaemonApi>(api: &D, settings: &ChatSettings, cat: &Catal
 }
 
 /// 앞의 낱말 `n`개를 건너뛴 나머지 원문 (따옴표 안의 공백을 그대로 두려고 나누기 전 문자열을 쓴다)
+#[cfg(test)]
 fn skip_words(text: &str, n: usize) -> &str {
     let mut rest = text.trim_start();
     for _ in 0..n {
@@ -214,6 +215,41 @@ fn skip_words(text: &str, n: usize) -> &str {
         rest = rest[end..].trim_start();
     }
     rest
+}
+
+/// 글의 첫 낱말과 그 낱말이 끝난 자리 (바이트)
+fn first_word(text: &str) -> Option<(&str, usize)> {
+    let start = text.find(|c: char| !c.is_whitespace())?;
+    let end = text[start..].find(char::is_whitespace).map_or(text.len(), |i| start + i);
+    Some((&text[start..end], end))
+}
+
+/// 글 앞이 이 말과 낱말 단위로 맞으면 그 말이 끝난 자리 (바이트). 대소문자·공백 칸 수는 보지 않는다
+fn phrase_end(text: &str, phrase: &str) -> Option<usize> {
+    let mut rest_at = 0;
+    let mut matched = false;
+    for want in phrase.split_whitespace() {
+        let (word, end) = first_word(&text[rest_at..])?;
+        if !words::same(word, want) {
+            return None;
+        }
+        rest_at += end;
+        matched = true;
+    }
+    matched.then_some(rest_at)
+}
+
+/// 글 앞에서 가장 길게(낱말 수) 맞는 말과 그 말이 끝난 자리. 길이가 같으면 먼저 온 말 (부르는 쪽이 우선순위대로 넣는다)
+fn longest_phrase<'p, T>(text: &str, phrases: impl IntoIterator<Item = (&'p str, T)>) -> Option<(&'p str, usize, T)> {
+    let mut best: Option<(&str, usize, T, usize)> = None;
+    for (phrase, tag) in phrases {
+        let Some(end) = phrase_end(text, phrase) else { continue };
+        let n = phrase.split_whitespace().count();
+        if best.as_ref().is_none_or(|b| n > b.3) {
+            best = Some((phrase, end, tag, n));
+        }
+    }
+    best.map(|(p, end, tag, _)| (p, end, tag))
 }
 
 /// 릴레이는 접두사 없이 보내지만, 사용자가 붙여 보낸 경우도 받아 준다
@@ -249,14 +285,13 @@ impl<'a, D: DaemonApi> Ctx<'a, D> {
 
     async fn interpret(&self) -> Interpreted {
         let text = strip_prefix(self.req.text.trim(), &self.prefixes());
-        let args: Vec<&str> = text.split_whitespace().collect();
         let reply = |r: Reply| Interpreted::Reply(r);
 
         if let Err(denied) = self.permit(None) {
             return reply(self.permission_denied(denied));
         }
 
-        let Some(first) = args.first().copied() else {
+        let Some((first, first_end)) = first_word(text) else {
             return reply(self.help().await.into());
         };
         match TopLevel::parse(first) {
@@ -273,26 +308,65 @@ impl<'a, D: DaemonApi> Ctx<'a, D> {
             }
         };
 
-        let module_known = self.aliases.is_known(first);
-        let mounted = self.is_mounted(first, &servers);
-        match args.get(1) {
-            None => {
-                // 모듈 별명이나 인스턴스 이름이 실제 서버로 있어야 명령어 안내
-                if !mounted {
-                    let command = text.trim();
-                    return reply(Reply::unrecognized("UNKNOWN_COMMAND", self.t("errors.unknown_input", &[]), json!({ "command": command })));
-                }
-                reply(self.module_help(first, &servers).into())
+        // 서버를 부르는 말은 띄어 쓸 수 있다: 앞에서부터 가장 길게 맞는 말, 없으면 첫 낱말 (사용자 지정 2026-11-06)
+        let (alias, alias_end) = longest_phrase(text, self.server_phrases(&servers).into_iter().map(|p| (p, ())))
+            .map_or((first, first_end), |(p, end, ())| (p, end));
+        let rest = text[alias_end..].trim_start();
+        let module_known = self.aliases.is_known(alias);
+        let mounted = self.is_mounted(alias, &servers);
+        if rest.is_empty() {
+            // 모듈 별명이나 인스턴스 이름이 실제 서버로 있어야 명령어 안내
+            if !mounted {
+                let command = text.trim();
+                return reply(Reply::unrecognized("UNKNOWN_COMMAND", self.t("errors.unknown_input", &[]), json!({ "command": command })));
             }
-            Some(cmd) => {
-                if module_known && !mounted {
-                    return reply(Reply::unrecognized("INSTANCE_NOT_FOUND", self.t("errors.unknown_input", &[]), json!({ "name": first })));
-                }
-                match self.module_command(first, cmd, skip_words(text, 2), &servers) {
-                    Ok(target) => Interpreted::Run(Box::new(target)),
-                    Err(r) => reply(r),
-                }
-            }
+            return reply(self.module_help(alias, &servers).into());
+        }
+        if module_known && !mounted {
+            return reply(Reply::unrecognized("INSTANCE_NOT_FOUND", self.t("errors.unknown_input", &[]), json!({ "name": alias })));
+        }
+        let (cmd, cmd_end) = self.command_phrase(alias, rest, &servers);
+        match self.module_command(alias, cmd, rest[cmd_end..].trim_start(), &servers) {
+            Ok(target) => Interpreted::Run(Box::new(target)),
+            Err(r) => reply(r),
+        }
+    }
+
+    /// 서버를 부르는 말: 인스턴스 이름·id·서버 낱말, 모듈 이름·게임명·모듈 별명 (해석 순서는 `find_server`가 정한다)
+    fn server_phrases<'x>(&'x self, servers: &'x [ServerView]) -> Vec<&'x str> {
+        let mut out: Vec<&str> = Vec::new();
+        for s in servers {
+            out.push(&s.name);
+            out.push(&s.id);
+            out.extend(self.words.get(&s.id).into_iter().flat_map(|w| w.words.iter().map(String::as_str)));
+        }
+        out.extend(self.aliases.all());
+        out
+    }
+
+    /// 나머지 글 앞에서 이 서버의 명령을 부르는 가장 긴 말과 그 말이 끝난 자리. 맞는 말이 없으면 첫 낱말 (모르는 명령 안내로 간다).
+    /// 말은 그 서버 낱말 → 명령 이름·모듈 별명 → 내장 명령의 언어별 이름 → 화면에 보이는 명령 이름(언어별 이름표) 순으로 넣는다
+    fn command_phrase<'x>(&'x self, alias: &str, rest: &'x str, servers: &'x [ServerView]) -> (&'x str, usize) {
+        let fallback = || first_word(rest).unwrap_or((rest, rest.len()));
+        let named = self.named_servers(alias, servers);
+        let module_name = named.first().map(|s| s.module.clone()).unwrap_or_else(|| self.aliases.resolve(alias));
+        let mut phrases: Vec<String> = Vec::new();
+        for s in named.iter().copied().chain(servers.iter().filter(|s| named.is_empty() && s.module == module_name)) {
+            phrases.extend(self.words.get(&s.id).into_iter().flat_map(|w| w.commands.values().flatten().cloned()));
+        }
+        let module = self.module(&module_name);
+        if let Some(m) = module {
+            phrases.extend(m.command_aliases.iter().flat_map(|(_, list)| list.iter().cloned()));
+            phrases.extend(m.commands.iter().map(|c| c.name.clone()));
+        }
+        phrases.extend(aliases::BUILTIN_COMMANDS.iter().map(|b| b.to_string()));
+        phrases.extend(builtin_names().iter().map(|(name, _)| name.clone()));
+        if let Some(m) = module {
+            phrases.extend(m.commands.iter().flat_map(|c| command_labels(m, c).into_iter()));
+        }
+        match longest_phrase(rest, phrases.iter().map(|p| (p.as_str(), ()))) {
+            Some((_, end, ())) => (rest[..end].trim(), end),
+            None => fallback(),
         }
     }
 
@@ -304,7 +378,7 @@ impl<'a, D: DaemonApi> Ctx<'a, D> {
         match &target.exec {
             Exec::Start => self.start(server).await,
             Exec::Stop => self.stop(server).await,
-            Exec::Status => Done::new(self.status(server), true),
+            Exec::Status => Done::new(self.status(server).await, true),
             Exec::Players => self.players(server).await,
             Exec::Defined(field) => self.run_defined(server, module, field, &target.alias, &target.cmd_alias, &target.extra).await,
         }
@@ -378,26 +452,20 @@ impl<'a, D: DaemonApi> Ctx<'a, D> {
 
     // ── 도움말 / 목록 ──
 
+    /// 도움말: 쓰는 법, 이 길드가 쓰는 서버와 그 서버를 부르는 말, 슬래시 명령 안내
     async fn help(&self) -> String {
         let prefix = &self.prefix();
-        let mut mounted: Vec<String> = Vec::new();
-        match self.servers().await {
-            Ok(servers) => {
-                for s in servers {
-                    if !mounted.contains(&s.module) {
-                        mounted.push(s.module);
-                    }
-                }
-            }
-            Err(e) => tracing::warn!("[Chat] 도움말용 서버 목록 실패: {}", e),
-        }
+        let servers = self.servers().await.unwrap_or_else(|e| {
+            tracing::warn!("[Chat] 도움말용 서버 목록 실패: {}", e);
+            Vec::new()
+        });
 
         let mut out = format!("📖 **{}**\n{}\n", prefix, self.t("help.usage_format", &[("prefix", prefix)]));
         // 문장 명령으로 못 하는 일(권한·언어·웹 등)은 슬래시 명령으로 안내한다
         let hint = self.t("help.slash_hint", &[]);
-        if mounted.is_empty() {
+        if servers.is_empty() {
             out.push('\n');
-            out.push_str(&self.t("help.no_modules", &[]));
+            out.push_str(&self.t("list.empty", &[]));
             out.push_str("\n\n");
             out.push_str(&hint);
             return out;
@@ -405,12 +473,17 @@ impl<'a, D: DaemonApi> Ctx<'a, D> {
         out.push('\n');
         out.push_str(&self.t("help.modules_header", &[]));
         out.push('\n');
-        for m in &mounted {
-            let aliases = self.aliases.aliases_of(m);
-            if aliases.is_empty() {
-                out.push_str(&format!("• **{}**\n", m));
-            } else {
-                out.push_str(&format!("• **{}** ({})\n", m, aliases.join(", ")));
+        for s in &servers {
+            // 이 서버를 부르는 말: 기본 호출명(이름 다음) + 사용자가 정한 낱말
+            let mut calls: Vec<String> = words::default_words(s, &servers, &self.modules, self.words).into_iter().skip(1).collect();
+            for w in self.words.get(&s.id).into_iter().flat_map(|w| w.words.iter()) {
+                if !calls.iter().any(|c| words::same(c, w)) {
+                    calls.push(w.clone());
+                }
+            }
+            match calls.is_empty() {
+                true => out.push_str(&format!("• **{}**\n", s.name)),
+                false => out.push_str(&format!("• **{}** ({})\n", s.name, calls.join(", "))),
             }
         }
         out.push('\n');
@@ -487,38 +560,73 @@ impl<'a, D: DaemonApi> Ctx<'a, D> {
         // 인스턴스 이름으로 불렀으면 그 인스턴스의 모듈을 안내한다
         let named = self.named_servers(alias, servers);
         let module_name = named.first().map(|s| s.module.clone()).unwrap_or_else(|| self.aliases.resolve(alias));
+        let module = self.module(&module_name);
+        let same_module: Vec<&ServerView> = servers.iter().filter(|s| s.module == module_name).collect();
+        // 제목은 서버 이름 (한 서버를 가리킬 때), 아니면 게임 이름
+        let title = match (named.as_slice(), same_module.as_slice()) {
+            ([one], _) | ([], [one]) => one.name.clone(),
+            _ => module.and_then(|m| m.text(self.cat.language(), "/display_name").or_else(|| m.display_name.clone())).unwrap_or_else(|| module_name.clone()),
+        };
 
-        let mut out = format!(
-            "{}\n\n{}\n",
-            self.t("modules.enter_command", &[]),
-            self.t("help.module_title", &[("module", &module_name)])
-        );
+        let mut out = format!("{}\n\n{}\n", self.t("modules.enter_command", &[]), self.t("help.module_title", &[("module", &title)]));
         for (cmd, key) in [("start", "modules.help_start"), ("stop", "modules.help_stop"), ("status", "modules.help_status")] {
-            out.push_str(&format!("• `{} {} {}` - {}\n", prefix, alias, cmd, self.t(key, &[])));
+            let word = self.builtin_word(cmd);
+            out.push_str(&format!("• `{} {} {}` - {}\n", prefix, alias, word, self.t(key, &[])));
         }
-        if let Some(module) = self.module(&module_name) {
-            // 디스코드·챗봇에 내보내지 않는 명령은 원격 도움말에도 없다
-            let shown: Vec<&CommandField> = module.commands.iter().filter(|c| c.remote || self.req.remote.is_none()).collect();
-            if !shown.is_empty() {
-                out.push_str(&format!("\n{}\n", self.t("modules.help_rest_title", &[])));
-                for c in shown {
-                    let inputs: Vec<String> = c
-                        .inputs
-                        .iter()
-                        .map(|i| if i.required.unwrap_or(false) { format!("<{}>", i.name) } else { format!("[{}]", i.name) })
-                        .collect();
-                    let usage = if inputs.is_empty() { c.name.clone() } else { format!("{} {}", c.name, inputs.join(" ")) };
-                    let label = if c.label.is_empty() { &c.name } else { &c.label };
-                    out.push_str(&format!("• `{} {} {}` - {}\n", prefix, alias, usage, label));
-                }
+        if let Some(module) = module {
+            // 디스코드·챗봇에 내보내지 않는 명령은 원격 도움말에도 없다. 내장 명령과 같은 이름(stop 등)은 위에서 보였다
+            let shown = module
+                .commands
+                .iter()
+                .filter(|c| c.remote || self.req.remote.is_none())
+                .filter(|c| !aliases::BUILTIN_COMMANDS.iter().any(|b| b.eq_ignore_ascii_case(&c.name)));
+            for c in shown {
+                let lang = self.cat.language();
+                let inputs: Vec<String> = c
+                    .inputs
+                    .iter()
+                    .map(|i| {
+                        let label = module
+                            .text(lang, &format!("/commands/{}/inputs/{}/label", c.name, i.name))
+                            .or_else(|| i.label.clone().filter(|l| !l.is_empty()))
+                            .unwrap_or_else(|| i.name.clone());
+                        if i.required.unwrap_or(false) { format!("<{}>", label) } else { format!("[{}]", label) }
+                    })
+                    .collect();
+                let word = self.command_word(module, c);
+                let usage = if inputs.is_empty() { word.clone() } else { format!("{} {}", word, inputs.join(" ")) };
+                let about = module
+                    .text(lang, &format!("/commands/{}/description", c.name))
+                    .or_else(|| c.description.clone().filter(|d| !d.is_empty()))
+                    .unwrap_or_else(|| self.command_label(module, c));
+                out.push_str(&format!("• `{} {} {}` - {}\n", prefix, alias, usage, about));
             }
         }
-        let same_module = servers.iter().filter(|s| s.module == module_name).count();
-        if same_module > 1 && named.len() != 1 {
+        if same_module.len() > 1 && named.len() != 1 {
             out.push_str("\n\n");
             out.push_str(&self.t("errors.multiple_instances", &[("module", &module_name)]));
         }
         out
+    }
+
+    /// 도움말에 보일 내장 명령의 말: 응답 언어의 이름 (`actions.server.<명령>.name`, 영문이면 소문자)
+    fn builtin_word(&self, cmd: &str) -> String {
+        let key = format!("actions.server.{cmd}.name");
+        match self.t(&key, &[]) {
+            name if name == key => cmd.to_string(),
+            name if name.is_ascii() => name.to_lowercase(),
+            name => name,
+        }
+    }
+
+    /// 도움말에 보일 명령의 말: 응답 언어의 명령 이름표가 그 명령을 부르면 그것, 아니면 명령 이름
+    fn command_word(&self, module: &ModuleView, field: &CommandField) -> String {
+        let label = self.command_label(module, field);
+        let calls_it = aliases::find_command(Some(module), &label).is_none_or(|c| c == field.name);
+        if !label.is_empty() && calls_it && !label.contains(words::is_comma) {
+            return if label.is_ascii() { label.to_lowercase() } else { label };
+        }
+        field.name.clone()
     }
 
     // ── 모듈 + 명령어 ──
@@ -532,9 +640,13 @@ impl<'a, D: DaemonApi> Ctx<'a, D> {
         let Some(module) = self.module(&server.module) else {
             return Err(self.t("server.module_missing", &[("module", &server.module)]).into());
         };
+        // 그 서버 낱말 → 명령 이름·모듈 별명 → 내장 명령의 언어별 이름 → 화면에 보이는 명령 이름 (`command_phrase`와 같은 순서)
         let command = words::command_for(self.words.get(&server.id), cmd_alias)
             .map(str::to_string)
-            .unwrap_or_else(|| aliases::resolve_command(Some(module), cmd_alias));
+            .or_else(|| aliases::find_command(Some(module), cmd_alias))
+            .or_else(|| builtin_names().iter().find(|(n, _)| words::same(n, cmd_alias)).map(|(_, b)| b.to_string()))
+            .or_else(|| module.commands.iter().find(|c| command_labels(module, c).iter().any(|l| words::same(l, cmd_alias))).map(|c| c.name.clone()))
+            .unwrap_or_else(|| cmd_alias.to_string());
 
         // 내장 명령의 위험도: status·players·start·stop은 safe (start·stop은 조작 가능 명단과 관리자 이상이 한다).
         // 모듈 명령은 선언값 (없으면 caution)
@@ -654,6 +766,10 @@ impl<'a, D: DaemonApi> Ctx<'a, D> {
     async fn players(&self, server: &ServerView) -> Done {
         let resp = self.remote_response(self.api.players(server).await);
         let failed = !resp.is_success() || resp.body.get("success").and_then(Value::as_bool) == Some(false);
+        // 켜지는 중이면 게임이 아직 답하지 못한다: 실패가 아니라 기다릴 일이다
+        if failed && server.starting {
+            return Done::new(self.t("server.still_starting", &[("name", &server.name)]), false);
+        }
         if failed {
             let code = crate::commands::error_code(resp.status.as_u16(), &resp.body);
             return Done::new(self.failed_line(server, &self.t("command.players", &[]), &reason(self.cat, &code, &resp.body)), false);
@@ -662,10 +778,42 @@ impl<'a, D: DaemonApi> Ctx<'a, D> {
         Done::new(format!("**{}**\n{}", server.name, summary), true)
     }
 
-    fn status(&self, server: &ServerView) -> String {
-        let status = if server.is_running() { self.t("status.running", &[]) } else { self.t("status.stopped", &[]) };
-        let pid = server.pid.map(|p| format!("PID: {}", p)).unwrap_or_default();
-        self.t("server.status_check", &[("name", &server.name), ("status", &status), ("pid_info", &pid)]).trim_end().to_string()
+    /// 상태 한 줄: 실행 여부, 켜져 있으면 접속자와 켜진 시간 (PID는 보이지 않는다, 사용자 지정 2026-11-06)
+    async fn status(&self, server: &ServerView) -> String {
+        let state = match (server.is_running(), server.starting) {
+            (true, true) => self.t("status.starting", &[]),
+            (true, false) => self.t("status.running", &[]),
+            (false, _) => self.t("status.stopped", &[]),
+        };
+        let mut parts = vec![state];
+        if server.is_running() {
+            let players = self.module(&server.module).is_some_and(|m| m.players) && !server.starting;
+            if players {
+                let resp = self.api.players(server).await;
+                if resp.is_success() && resp.body.get("success").and_then(Value::as_bool) != Some(false) {
+                    let online = resp.body.get("online").and_then(Value::as_u64).unwrap_or(0).to_string();
+                    parts.push(match resp.body.get("max").and_then(Value::as_u64) {
+                        Some(max) => self.t("actions.summary.players_max", &[("online", &online), ("max", &max.to_string())]),
+                        None => self.t("actions.summary.players", &[("online", &online)]),
+                    });
+                }
+            }
+            if let Some(up) = server.start_time.and_then(|t| self.uptime(t)) {
+                parts.push(up);
+            }
+        }
+        self.t("server.status_check", &[("name", &server.name), ("status", &parts.join(" · "))])
+    }
+
+    /// 켜진 시간 ("켜진 지 1시간 2분"). 시작 시각이 앞날이면 None
+    fn uptime(&self, started: u64) -> Option<String> {
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).ok()?.as_secs();
+        let mins = now.checked_sub(started)? / 60;
+        let (h, m) = ((mins / 60).to_string(), (mins % 60).to_string());
+        Some(match mins >= 60 {
+            true => self.t("server.uptime_hm", &[("h", &h), ("m", &m)]),
+            false => self.t("server.uptime_m", &[("m", &m)]),
+        })
     }
 
     /// 정의된 명령 실행 — 해석·검증·라우팅은 데몬 명령 경로(`crate::commands`)가 한다
@@ -816,6 +964,38 @@ impl<'a, D: DaemonApi> Ctx<'a, D> {
             }
         }
     }
+}
+
+/// 내장 명령(start·stop·status)의 언어별 이름 (`actions.server.<명령>.name`). 채팅이 명령 이름처럼 받는다
+fn builtin_names() -> &'static [(String, &'static str)] {
+    static NAMES: std::sync::OnceLock<Vec<(String, &'static str)>> = std::sync::OnceLock::new();
+    NAMES.get_or_init(|| {
+        let mut out: Vec<(String, &'static str)> = Vec::new();
+        for lang in i18n::languages() {
+            let cat = Catalog::for_language(lang);
+            for b in aliases::BUILTIN_COMMANDS {
+                let key = format!("actions.server.{b}.name");
+                let name = cat.t(&key, &[]);
+                if name != key && !out.iter().any(|(n, c)| c == b && words::same(n, &name)) {
+                    out.push((name, b));
+                }
+            }
+        }
+        out
+    })
+}
+
+/// 화면에 보이는 명령 이름: module.toml `label`과 언어마다 모듈 locales `commands.<이름>.label`. 채팅이 명령 이름처럼 받는다
+fn command_labels(module: &ModuleView, field: &CommandField) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let localized = i18n::languages().into_iter().filter_map(|lang| module.text(lang, &format!("/commands/{}/label", field.name)));
+    for label in std::iter::once(field.label.clone()).chain(localized) {
+        let label = words::tidy(&label);
+        if !label.is_empty() && !label.contains(words::is_comma) && !out.iter().any(|l| words::same(l, &label)) {
+            out.push(label);
+        }
+    }
+    out
 }
 
 /// 정의된 명령의 인자를 나눈다. 공백으로 나누되, 큰따옴표로 시작해 큰따옴표로 끝나는 덩어리는 한 칸이다

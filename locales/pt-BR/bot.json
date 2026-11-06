@@ -11,15 +11,14 @@
     "no_modules": "Nenhum",
     "module_title": "**Comandos {{module}}**",
     "available_commands": "{{commands}}",
-    "usage_format": "`{{prefix}} <módulo> <comando>`",
-    "modules_header": "📦 **Módulos:**",
+    "usage_format": "`{{prefix}} <servidor> <comando>`",
+    "modules_header": "🎮 **Servidores:**",
     "slash_hint": "💡 Reiniciar, backups e a verificação de portas funcionam como `<servidor> reiniciar`. Permissões, idioma, modo dormir, web e atualizações são comandos de barra (`/`)."
   },
   "modules": {
     "help_start": "Iniciar servidor",
     "help_stop": "Parar servidor",
     "help_status": "Verificar status do servidor",
-    "help_rest_title": "**Comandos REST:**",
     "enter_command": "Insira um comando."
   },
   "list": {
@@ -29,16 +28,20 @@
   },
   "status": {
     "running": "🟢 Em execução",
+    "starting": "🟡 Iniciando",
     "stopped": "⚪ Parado"
   },
   "server": {
     "start_request": "⏳ Iniciando servidor **{{name}}**...",
-    "start_complete": "✅ Solicitação de início de **{{name}}** concluída!",
+    "start_complete": "✅ **{{name}}** · Iniciar",
     "already_running": "ℹ️ **{{name}}** já está em execução.",
     "stop_request": "⏳ Parando servidor **{{name}}**...",
-    "stop_complete": "✅ Solicitação de parada de **{{name}}** concluída!",
+    "stop_complete": "✅ **{{name}}** · Parar",
     "graceful_stop_unavailable": "⚠️ **{{name}}** não foi parado: não há como (console ou REST) salvar e sair. Para encerrá-lo sem salvar, escolha uma parada forçada no saba-chan neste PC.",
-    "status_check": "📊 Status de **{{name}}**: {{status}} {{pid_info}}",
+    "status_check": "📊 **{{name}}** · {{status}}",
+    "uptime_hm": "ativo há {{h}} h {{m}} min",
+    "uptime_m": "ativo há {{m}} min",
+    "still_starting": "⏳ **{{name}}** ainda está iniciando. Pergunte de novo daqui a pouco.",
     "not_found": "❌ Nenhum servidor encontrado para o módulo \"{{alias}}\" ({{resolved}})",
     "not_running": "❌ **{{name}}**: {{error}}",
     "not_running_default": "O servidor não está em execução. Inicie o servidor primeiro",
@@ -82,6 +85,7 @@
     "alias_conflict": "❌ O alias '{{alias}}' é ambíguo. Ele corresponde a vários módulos: {{modules}}. Use um alias mais específico.",
     "multiple_instances": "⚠️ Existem múltiplas instâncias de '{{module}}'. Use o nome da instância em vez do alias do módulo.",
     "danger_needs_name": "⚠️ Comandos perigosos não rodam pelo nome do jogo. Chame o servidor pelo nome '{{name}}'.",
+    "slash_only": "🔒 {{command}} só aparece para quem pede, por isso é um comando de barra. Digite `/` e escolha **{{name}}** › {{command}}.",
     "auth_failed": "Falha na autenticação",
     "player_not_found": "Jogador não encontrado",
     "internal_server_error": "Erro interno do servidor",

@@ -1675,11 +1675,13 @@ async fn server_address_is_offered_only_where_the_reply_stays_with_the_caller() 
     assert_eq!((item["modules"].clone(), item["surfaces"].clone()), (json!(["plain"]), json!(["discord"])));
     assert!(actions.iter().filter(|a| a["id"] != "server.address").all(|a| a.get("secret").is_none()));
 
-    // 문장 명령의 답은 채널에 보이므로 이름으로 찾지 않는다
+    // 문장 명령의 답은 채널에 보이므로 실행하지 않고, 슬래시 명령으로 다시 부르라고 안내한다 (사용자 지정 2026-11-06)
     open_everything(&state).await;
     for text in ["srv 주소", "srv address"] {
-        let unknown = plan_text(&state, text, &relay("owner", false)).await.unwrap();
-        assert_eq!(unknown["code"], "UNKNOWN_COMMAND", "{text}: {unknown}");
+        let hint = plan_text(&state, text, &relay("owner", false)).await.unwrap();
+        assert!(hint.get("planId").is_none() && hint.get("code").is_none(), "{text}: {hint}");
+        assert!(hint["text"].as_str().is_some_and(|t| t.contains("`/`") && t.contains("srv")), "{text}: {hint}");
+        assert_eq!(check_text(&state, text, &relay("owner", false)).await.unwrap()["text"], hint["text"], "{text}");
     }
 }
 

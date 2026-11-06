@@ -11,15 +11,14 @@
     "no_modules": "なし",
     "module_title": "**{{module}} コマンド**",
     "available_commands": "{{commands}}",
-    "usage_format": "`{{prefix}} <モジュール> <コマンド>`",
-    "modules_header": "📦 **モジュール:**",
+    "usage_format": "`{{prefix}} <サーバー> <コマンド>`",
+    "modules_header": "🎮 **サーバー:**",
     "slash_hint": "💡 再起動・バックアップ・ポート開放チェックは `<サーバー> 再起動` のように使えます。権限・言語・おやすみ・Web・アップデートはスラッシュコマンド(`/`)でどうぞ。"
   },
   "modules": {
     "help_start": "サーバーを起動",
     "help_stop": "サーバーを停止",
     "help_status": "サーバーステータスを確認",
-    "help_rest_title": "**REST コマンド:**",
     "enter_command": "コマンドを入力してください。"
   },
   "list": {
@@ -29,16 +28,20 @@
   },
   "status": {
     "running": "🟢 実行中",
+    "starting": "🟡 起動中",
     "stopped": "⚪ 停止中"
   },
   "server": {
     "start_request": "⏳ **{{name}}** サーバーを起動しています...",
-    "start_complete": "✅ **{{name}}** 起動リクエストが完了しました!",
+    "start_complete": "✅ **{{name}}** · 起動",
     "already_running": "ℹ️ **{{name}}** はすでに起動しています。",
     "stop_request": "⏳ **{{name}}** サーバーを停止しています...",
-    "stop_complete": "✅ **{{name}}** 停止リクエストが完了しました!",
+    "stop_complete": "✅ **{{name}}** · 停止",
     "graceful_stop_unavailable": "⚠️ **{{name}}** は保存して終了する手段（コンソール・REST）がないため停止しませんでした。保存せずに終了するには、このPCのsaba-chanで強制停止を選んでください。",
-    "status_check": "📊 **{{name}}** ステータス: {{status}} {{pid_info}}",
+    "status_check": "📊 **{{name}}** · {{status}}",
+    "uptime_hm": "稼働 {{h}}時間{{m}}分",
+    "uptime_m": "稼働 {{m}}分",
+    "still_starting": "⏳ **{{name}}** はまだ起動中です。少し待ってからもう一度聞いてください。",
     "not_found": "❌ モジュール \"{{alias}}\" のサーバーが見つかりません ({{resolved}})",
     "not_running": "❌ **{{name}}**: {{error}}",
     "not_running_default": "サーバーが実行されていません。最初にサーバーを起動してください",
@@ -96,7 +99,8 @@
     "local_single_guild_only": "⚠️ ローカルボットは1つのサーバーでのみ使用可能です。現在{{count}}個のサーバーに所属しています。使用しないサーバーからボットを削除してください。",
     "alias_conflict": "❌ エイリアス '{{alias}}' は複数のモジュールに一致します: {{modules}}。より具体的なエイリアスを使用してください。",
     "multiple_instances": "⚠️ '{{module}}' モジュールのインスタンスが複数あるため、エイリアスでは区別できません。インスタンス名を使用してください。",
-    "danger_needs_name": "⚠️ 危険なコマンドはゲーム名では実行しません。サーバー名「{{name}}」で呼んでください。"
+    "danger_needs_name": "⚠️ 危険なコマンドはゲーム名では実行しません。サーバー名「{{name}}」で呼んでください。",
+    "slash_only": "🔒 「{{command}}」は呼んだ人にだけ見えるよう、スラッシュコマンドでお知らせします。`/` を入力して **{{name}}** › {{command}} を選んでください。"
   },
   "messages": {
     "command_error": "コマンド実行エラー"

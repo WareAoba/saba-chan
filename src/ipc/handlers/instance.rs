@@ -160,6 +160,11 @@ async fn create_instance_inner(state: IPCServer, payload: Value, dry_run: bool) 
             let error = json!({ "success": false, "error": format!("An instance named '{}' already exists", name), "error_code": "name_taken" });
             return (StatusCode::CONFLICT, Json(error)).into_response();
         }
+        // 문장 명령이 부르는 말을 쉼표로 나누므로 이름에 쉼표를 두지 않는다 (rename과 같은 400)
+        let comma = name.contains(crate::chat::words::is_comma);
+        if comma && !dry_run {
+            return invalid_name().into_response();
+        }
         // 고른 버전(없으면 최신)과 실행 방식(`managed_start`, 없으면 데몬 기본)
         let chosen_version = match requested_version(&payload) {
             Ok(v) => v,
@@ -536,7 +541,7 @@ async fn create_instance_inner(state: IPCServer, payload: Value, dry_run: bool) 
             })).collect();
             return (StatusCode::OK, Json(json!({
                 "success": true,
-                "name": { "value": name, "taken": name_taken(name), "suggested": suggested },
+                "name": { "value": name, "taken": name_taken(name), "suggested": suggested, "invalid": comma.then_some("comma") },
                 "folder": {
                     "custom": custom_folder,
                     "path": instance.working_dir.as_deref().filter(|_| custom_folder),
@@ -1537,8 +1542,14 @@ async fn delete_instance_held(state: IPCServer, id: String, keep_settings: bool)
     }
 }
 
+/// 쉼표가 든 서버 이름 (만들기·이름 바꾸기 공통 400 `invalid_name`)
+fn invalid_name() -> (StatusCode, Json<Value>) {
+    let error = json!({ "success": false, "error": "A server name cannot contain a comma", "error_code": "invalid_name", "fields": [{ "field": "name" }] });
+    (StatusCode::BAD_REQUEST, Json(error))
+}
+
 /// POST /api/instance/:id/rename — 이름 바꾸기 (`{name}`). 실행 중이면 409 `server_running`,
-/// 같은 이름이 있으면 409 `name_taken`. 응답 `{success, id, name, previous}`
+/// 같은 이름이 있으면 409 `name_taken`, 쉼표가 있으면 400 `invalid_name`. 응답 `{success, id, name, previous}`
 pub async fn rename_instance(
     State(state): State<IPCServer>,
     Path(id): Path<String>,
@@ -1550,6 +1561,9 @@ pub async fn rename_instance(
     let Some(new_name) = body.get("name").and_then(|v| v.as_str()).map(str::trim).filter(|n| !n.is_empty()) else {
         return fail(StatusCode::BAD_REQUEST, "Missing 'name'".into(), "invalid_request");
     };
+    if new_name.contains(crate::chat::words::is_comma) {
+        return invalid_name().into_response();
+    }
     // 설치·업데이트·복원 중에는 바꾸지 않는다: 진행 표시와 실패 정리가 이름으로 이어진다
     let Some(_guard) = super::backup::InstanceLock::take_for_writes(&id).await else {
         return super::backup::instance_busy();
@@ -3260,6 +3274,45 @@ mod tests {
         let twin = create(json!({ "name": "a", "module_name": "game" })).await;
         assert_eq!((twin.status.as_u16(), twin.body["error_code"].as_str()), (409, Some("name_taken")));
         assert_eq!(state.supervisor.read().await.instance_store.list().len(), 1, "the second server is not made");
+    }
+
+    /// 서버 이름의 쉼표는 받지 않는다: 문장 명령이 부르는 말을 쉼표로 나눈다 (사용자 지정 2026-11-06)
+    #[tokio::test]
+    async fn a_server_name_with_a_comma_is_refused() {
+        use axum::extract::{Path, State};
+        use axum::Json;
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("module.toml"), "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n").unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "").unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            modules.to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        for module in sup.module_loader.discover_modules().unwrap() { crate::sandbox::consent_test_component(std::path::Path::new(&module.entry_path())); }
+        sup.initialize().await.unwrap();
+        let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let create = |body: serde_json::Value| {
+            let state = state.clone();
+            async move { crate::ipc::internal::into_internal(super::create_instance(State(state), Json(body)).await).await }
+        };
+
+        let check = crate::ipc::internal::into_internal(super::check_new_instance(State(state.clone()), Json(json!({ "name": "우리, 마크", "module_name": "game" }))).await).await;
+        assert_eq!(check.body["name"]["invalid"], "comma", "{}", check.body);
+        for name in ["우리, 마크", "우리，마크", "우리、마크"] {
+            let refused = create(json!({ "name": name, "module_name": "game" })).await;
+            assert_eq!((refused.status.as_u16(), refused.body["error_code"].as_str()), (400, Some("invalid_name")), "{name}");
+        }
+        assert!(state.supervisor.read().await.instance_store.list().is_empty());
+
+        let made = create(json!({ "name": "우리 마크", "module_name": "game" })).await;
+        assert!(made.status.is_success(), "{:?}", made.body);
+        let id = made.body["id"].as_str().unwrap().to_string();
+        let renamed = crate::ipc::internal::into_internal(super::rename_instance(State(state.clone()), Path(id.clone()), Json(json!({ "name": "마크,서버" }))).await).await;
+        assert_eq!((renamed.status.as_u16(), renamed.body["error_code"].as_str()), (400, Some("invalid_name")));
+        assert_eq!(state.supervisor.read().await.instance_store.get(&id).unwrap().name, "우리 마크");
     }
 
     #[tokio::test]

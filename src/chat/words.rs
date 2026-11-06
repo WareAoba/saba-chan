@@ -42,8 +42,25 @@ fn of_guild(node_settings: &Value, guild: &str) -> HashMap<String, InstanceWords
         .unwrap_or_default()
 }
 
+/// 대소문자와 공백 칸 수를 무시하고 같은 말인가 (`우리  마크` = `우리 마크`)
 pub fn same(a: &str, b: &str) -> bool {
-    a.eq_ignore_ascii_case(b) || a.to_lowercase() == b.to_lowercase()
+    a.eq_ignore_ascii_case(b) || fold(a) == fold(b)
+}
+
+/// 비교용 모양: 공백은 한 칸으로, 소문자로
+pub fn fold(word: &str) -> String {
+    word.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase()
+}
+
+/// 저장용 모양: 앞뒤 공백을 떼고 사이 공백은 한 칸으로
+pub fn tidy(word: &str) -> String {
+    word.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// 서버 이름·낱말에 쓸 수 없는 쉼표 (사용자 지정 2026-11-06: 띄어쓰기는 받고 쉼표는 막는다.
+/// 쉼표는 낱말 목록을 나누는 기호이고 접두사 뒤에도 온다 `사바쨩, 마크 상태`)
+pub fn is_comma(c: char) -> bool {
+    matches!(c, ',' | '，' | '、' | '､')
 }
 
 /// 이 낱말로 부를 명령 (그 인스턴스의 `commands`)
@@ -75,7 +92,7 @@ pub fn validate(
 ) -> Vec<Problem> {
     let mut out = Vec::new();
     let shape = |field: String, word: &str, out: &mut Vec<Problem>| {
-        if word.is_empty() || word.chars().count() > WORD_MAX_CHARS || word.chars().any(char::is_whitespace) {
+        if word.is_empty() || word.chars().count() > WORD_MAX_CHARS || word.contains(is_comma) || tidy(word) != *word {
             out.push(Problem { field, reason: "invalid", word: Some(word.to_string()), conflict_with: None });
             return false;
         }
@@ -173,7 +190,8 @@ pub fn migrate(
     let split = |s: &str| -> Vec<String> { s.split(',').map(str::trim).filter(|a| !a.is_empty()).map(str::to_string).collect() };
     let mut table = current.clone();
     let add_word = |list: &mut Vec<String>, w: String| {
-        let shape = !w.is_empty() && w.chars().count() <= WORD_MAX_CHARS && !w.chars().any(char::is_whitespace);
+        let w = tidy(&w);
+        let shape = !w.is_empty() && w.chars().count() <= WORD_MAX_CHARS && !w.contains(is_comma);
         if shape && !list.iter().any(|e| same(e, &w)) && list.len() < WORDS_MAX {
             list.push(w);
         }
@@ -286,7 +304,7 @@ mod tests {
     use serde_json::json;
 
     fn server(id: &str, name: &str, module: &str) -> ServerView {
-        ServerView { id: id.into(), name: name.into(), module: module.into(), status: "stopped".into(), pid: None, controllers: Vec::new() }
+        ServerView { id: id.into(), name: name.into(), module: module.into(), status: "stopped".into(), ..Default::default() }
     }
 
     #[test]
@@ -324,7 +342,7 @@ mod tests {
         let mc = ModuleView { name: "minecraft".into(), module_aliases: vec!["mc".into()], command_aliases: vec![("kick".into(), vec!["추방".into()])], ..Default::default() };
         let others = HashMap::from([("b".to_string(), InstanceWords { words: vec!["크리".into()], ..Default::default() })]);
         let want = InstanceWords {
-            words: vec!["서바".into(), "creative".into(), "크리".into(), "mc".into(), "도움".into(), "두 낱말".into()],
+            words: vec!["서바".into(), "creative".into(), "크리".into(), "mc".into(), "도움".into(), "쉼,표".into(), "두 낱말".into()],
             commands: BTreeMap::from([("start".to_string(), vec!["켜".into(), "추방".into()]), ("nope".to_string(), vec!["x".into()]), ("restart".to_string(), vec!["재시작".into()])]),
         };
         let problems = validate(&servers[0], Some(&mc), &want, &servers, std::slice::from_ref(&mc), &others);
@@ -363,8 +381,8 @@ mod tests {
         let w = &moved.server_words;
         // 길드마다 두었던 낱말을 길드 이름 순으로 합친다. 두 서버가 같은 낱말을 썼으면 id 순으로 먼저 온 서버("a")가 갖는다
         assert_eq!(w["a"].words, vec!["크리", "서바"]);
-        // 다른 서버의 id("p")와 같은 낱말, 규칙에 맞지 않는 낱말도 버린다
-        assert_eq!(w["b"].words, vec!["cr2", "cr"]);
+        // 다른 서버의 id("p")와 같은 낱말은 버린다. 띄어 쓴 낱말은 받는다
+        assert_eq!(w["b"].words, vec!["cr2", "cr", "두 낱말"]);
         assert_eq!(w["b"].commands["kick"], vec!["내보내", "추방", "킥"]);
         assert_eq!(w["a"].commands["kick"], vec!["추방", "킥"]);
         // 인스턴스가 둘인 모듈의 별명은 어느 쪽 것인지 몰라 버린다

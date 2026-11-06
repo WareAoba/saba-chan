@@ -1518,6 +1518,7 @@ pub async fn plan_text(server: &IPCServer, text: &str, caller: &Caller) -> Resul
             if let Some((id, instance)) = named_action(&reply, caller.surface) {
                 return plan_one(server, id, Some(&instance), &json!({}), caller, confirmed_by_requester(caller)).await;
             }
+            let reply = slash_only(&reply, &cat).unwrap_or(reply);
             return Ok(chat_json(reply, true, caller));
         }
     };
@@ -1559,7 +1560,7 @@ pub async fn check_text(server: &IPCServer, text: &str, caller: &Caller) -> Resu
         crate::chat::Interpreted::Run(target) => Ok(json!({ "success": true, "actionId": target.action_id(), "instance": target.instance(), "risk": target.risk() })),
         crate::chat::Interpreted::Reply(reply) => match named_action(&reply, caller.surface) {
             Some((id, instance)) => check(server, id, Some(&instance), &json!({}), caller).await,
-            None => Ok(chat_json(reply, true, caller)),
+            None => Ok(chat_json(slash_only(&reply, &cat).unwrap_or(reply), true, caller)),
         },
     }
 }
@@ -1569,9 +1570,24 @@ fn confirmed_by_requester(caller: &Caller) -> bool {
 }
 
 /// 채팅 처리기가 모르는 명령이라고 한 문장(`UNKNOWN_COMMAND`, 서버는 찾음)의 명령 낱말이 인스턴스 액션 이름이면 그 액션과 서버.
-/// 이름은 언어마다 짧은 이름·제목(띄어쓰기 무시)과 액션 id·그 끝 낱말이다. 이 표면에 내보낸 것, 입력이 필요 없는 것,
-/// 위험이 아닌 것만 고른다 (입력이 필요하거나 위험한 액션은 슬래시 서버 루트에서 고른다). 남는 낱말이 있으면 고르지 않는다
+/// 이 표면에 내보낸 것, 입력이 필요 없는 것, 위험이 아닌 것만 고른다 (입력이 필요하거나 위험한 액션은 슬래시 서버 루트에서 고른다)
 fn named_action(reply: &crate::chat::Reply, surface: Surface) -> Option<(&'static str, String)> {
+    let pick = |d: &Def| d.instance && d.risk != "danger" && !d.secret && d.surfaces.contains(&surface) && d.fields.iter().all(|f| !f.required);
+    action_by_word(reply, pick).map(|(d, instance)| (d.id, instance))
+}
+
+/// 모르는 명령 낱말이 비밀 액션(부른 사람에게만 답하는 것, 서버 주소)의 이름이면 슬래시 명령으로 다시 부르라는 안내.
+/// 문장 명령의 답은 채널 모두가 보므로 비밀 액션은 문장으로 실행하지 않는다 (사용자 지정 2026-11-06)
+fn slash_only(reply: &crate::chat::Reply, cat: &crate::chat::i18n::Catalog) -> Option<crate::chat::Reply> {
+    let (d, _) = action_by_word(reply, |d| d.instance && d.secret && d.surfaces.contains(&Discord))?;
+    let command = ["name", "title"].iter().find_map(|k| translated(cat, &format!("actions.{}.{}", d.id, k))).unwrap_or_else(|| d.id.to_string());
+    let name = reply.args.get("name").and_then(Value::as_str).unwrap_or_default();
+    Some(cat.t("errors.slash_only", &[("command", &command), ("name", name)]).into())
+}
+
+/// 채팅 처리기가 모르는 명령이라고 한 문장(서버는 찾음)의 명령 낱말이 이름인 인스턴스 액션과 그 서버. `pick`에 맞는 것만 고른다.
+/// 이름은 언어마다 짧은 이름·제목(띄어쓰기 무시)과 액션 id·그 끝 낱말이다. 남는 낱말이 있으면 고르지 않는다
+fn action_by_word(reply: &crate::chat::Reply, pick: impl Fn(&Def) -> bool) -> Option<(&'static Def, String)> {
     if reply.code != Some("UNKNOWN_COMMAND") {
         return None;
     }
@@ -1586,11 +1602,7 @@ fn named_action(reply: &crate::chat::Reply, surface: Surface) -> Option<(&'stati
         let texts = cats.iter().flat_map(|c| ["name", "title"].map(|k| translated(c, &format!("actions.{}.{}", d.id, k)))).flatten();
         [d.id.to_string(), tail.to_string()].into_iter().chain(texts).collect::<Vec<_>>()
     };
-    ACTIONS
-        .iter()
-        .filter(|d| d.instance && d.risk != "danger" && !d.secret && d.surfaces.contains(&surface) && d.fields.iter().all(|f| !f.required))
-        .find(|d| names(d).iter().any(|n| fold(n) == want))
-        .map(|d| (d.id, instance.to_string()))
+    ACTIONS.iter().filter(|d| pick(d)).find(|d| names(d).iter().any(|n| fold(n) == want)).map(|d| (d, instance.to_string()))
 }
 
 /// 문장 계획 실행: 답은 문장 명령과 같다 (`text`). 시작했는데 이미 켜져 있었으면 `already_running`.

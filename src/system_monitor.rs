@@ -471,7 +471,8 @@ impl SystemMonitor {
         sampler.physical_rates = carry_physical(sampler.physical_rates, sampler.physical_io.refresh(), Instant::now());
         // 프로세스 IO 카운터는 프로세스마다 따로 읽는다: 쓸 데가 없으면 건너뛴다
         let with_io = want_io || sampler.physical_rates.is_none();
-        let kind = ProcessRefreshKind::nothing().with_cpu().with_memory();
+        // 스레드는 프로세스로 세지 않으므로 목록에 올리지 않는다 (리눅스는 스레드마다 /proc를 더 읽는다)
+        let kind = ProcessRefreshKind::nothing().with_cpu().with_memory().without_tasks();
         sampler.system.refresh_processes_specifics(ProcessesToUpdate::All, true, if with_io { kind.with_disk_usage() } else { kind });
         sampler.proc_io = with_io;
         sampler.networks.refresh(true);
@@ -530,9 +531,11 @@ fn build_snapshot(
 ) -> MetricsSnapshot {
     let sys = &sampler.system;
     let cores = sys.cpus().len().max(1);
+    // 리눅스 스레드(태스크)는 프로세스의 메모리·CPU를 나눠 쓴다: 더하면 스레드 수만큼 부푼다
     let procs: HashMap<u32, ProcSample> = sys
         .processes()
         .iter()
+        .filter(|(_, p)| p.thread_kind().is_none())
         .map(|(pid, p)| {
             // 이번에 IO 카운터를 안 읽었으면 sysinfo는 지난번 차이를 그대로 준다
             let io = p.disk_usage();
@@ -917,6 +920,33 @@ mod tests {
         assert!(monitor.sampler.lock().unwrap().is_none());
         assert!(monitor.sample(&[], &[], false).memory.total_bytes > 0);
         assert!(monitor.sampler.lock().unwrap().is_some());
+    }
+
+    /// 리눅스는 스레드도 /proc 항목이라 sysinfo가 프로세스처럼 준다. 스레드는 프로세스와 메모리를 같이 쓰므로
+    /// 더하면 스레드 수만큼 부풀어 100%를 넘는다: 서버 몫에는 프로세스만 센다
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn threads_are_not_counted_as_processes() {
+        let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let threads: Vec<_> = (0..16)
+            .map(|_| {
+                let stop = stop.clone();
+                std::thread::spawn(move || {
+                    while !stop.load(std::sync::atomic::Ordering::Relaxed) {
+                        std::thread::sleep(Duration::from_millis(20));
+                    }
+                })
+            })
+            .collect();
+        let monitor = SystemMonitor::new();
+        let roots = vec![InstanceRoot { id: "me".into(), name: "test".into(), pid: Some(std::process::id()), dirs: vec![], ports: vec![] }];
+        let me = monitor.sample(&roots, &[], false).instances.remove(0);
+        stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        threads.into_iter().for_each(|t| t.join().unwrap());
+        let status = std::fs::read_to_string("/proc/self/status").unwrap();
+        let rss_kb: u64 = status.lines().find_map(|l| l.strip_prefix("VmRSS:")).and_then(|v| v.split_whitespace().next()?.parse().ok()).unwrap();
+        assert!(me.process_count < 16, "threads counted as processes: {}", me.process_count);
+        assert!(me.memory_bytes < rss_kb * 1024 * 4, "memory summed per thread: {} vs RSS {} kB", me.memory_bytes, rss_kb);
     }
 
     #[cfg(target_os = "linux")]

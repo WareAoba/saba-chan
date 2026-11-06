@@ -37,6 +37,11 @@ pub fn any_match(patterns: &[String], lines: &[String]) -> bool {
     patterns.iter().filter_map(|p| regex::Regex::new(p).ok()).any(|re| lines.iter().any(|l| re.is_match(l)))
 }
 
+/// 시작했지만 아직 준비를 기다리는 중인가 (채팅 상태·접속자 답)
+pub fn is_starting(instance_id: &str) -> bool {
+    pending().lock().unwrap_or_else(|e| e.into_inner()).contains_key(instance_id)
+}
+
 /// 이번 실행에서 준비 문구가 찍혔는가. 한 번 읽으면 지운다 (다음 실행은 새로 센다)
 pub fn take_ready(instance_id: &str) -> bool {
     seen().lock().unwrap_or_else(|e| e.into_inner()).remove(instance_id)
