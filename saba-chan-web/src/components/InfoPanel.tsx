@@ -61,6 +61,7 @@ function ExitHistory({ api, server }: { api: WebApi; server: Pick<Server, 'id' |
             ) : (
                 <ul className="rows">
                     {list.map((e, i) => (
+                        // biome-ignore lint/suspicious/noArrayIndexKey: 같은 시각의 기록이 여러 개일 수 있어 순번을 붙인다
                         <li key={`${e.at}-${i}`} className="row">
                             <div className="row-main">
                                 <div className="row-title">

@@ -69,6 +69,7 @@ export function PlayersPanel({ api, server, running }: { api: WebApi; server: Pi
             ) : (
                 <ul className="player-list">
                     {(state.players ?? []).map((p, i) => (
+                        // biome-ignore lint/suspicious/noArrayIndexKey: 플레이어 이름이 겹칠 수 있어 순번을 붙인다
                         <li key={`${p.name}-${i}`} className="player">
                             <span className="player-avatar" aria-hidden="true">
                                 {Array.from(String(p.name || '?'))[0].toUpperCase()}
