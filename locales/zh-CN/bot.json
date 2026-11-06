@@ -11,14 +11,14 @@
     "no_modules": "无",
     "module_title": "**{{module}} 命令**",
     "available_commands": "{{commands}}",
-    "usage_format": "`{{prefix}} <模块> <命令>`",
-    "modules_header": "📦 **模块:**"
+    "usage_format": "`{{prefix}} <服务器> <命令>`",
+    "modules_header": "🎮 **服务器:**",
+    "slash_hint": "💡 重启、备份和端口检查可以像 `<服务器> 重启` 这样使用。权限、语言、睡眠、网页和更新请用斜杠命令(`/`)。"
   },
   "modules": {
     "help_start": "启动服务器",
     "help_stop": "停止服务器",
     "help_status": "检查服务器状态",
-    "help_rest_title": "**REST 命令：**",
     "enter_command": "请输入命令。"
   },
   "list": {
@@ -28,16 +28,20 @@
   },
   "status": {
     "running": "🟢 运行中",
+    "starting": "🟡 启动中",
     "stopped": "⚪ 已停止"
   },
   "server": {
     "start_request": "⏳ 正在启动 **{{name}}** 服务器...",
-    "start_complete": "✅ **{{name}}** 启动请求已完成！",
+    "start_complete": "✅ **{{name}}** · 启动",
     "already_running": "ℹ️ **{{name}}** 已在运行。",
     "stop_request": "⏳ 正在停止 **{{name}}** 服务器...",
-    "stop_complete": "✅ **{{name}}** 停止请求已完成！",
+    "stop_complete": "✅ **{{name}}** · 停止",
     "graceful_stop_unavailable": "⚠️ **{{name}}** 未停止：它没有可以保存并退出的途径（控制台或 REST）。如需不保存直接结束，请在这台电脑上的 saba-chan 中选择强制停止。",
-    "status_check": "📊 **{{name}}** 状态：{{status}} {{pid_info}}",
+    "status_check": "📊 **{{name}}** · {{status}}",
+    "uptime_hm": "已运行 {{h}} 小时 {{m}} 分钟",
+    "uptime_m": "已运行 {{m}} 分钟",
+    "still_starting": "⏳ **{{name}}** 仍在启动中，请稍后再问。",
     "not_found": "❌ 找不到模块 \"{{alias}}\" 的服务器（{{resolved}}）",
     "not_running": "❌ **{{name}}**：{{error}}",
     "not_running_default": "服务器未运行。请先启动服务器",
@@ -81,6 +85,7 @@
     "alias_conflict": "❌ 别名 '{{alias}}' 不明确。它匹配多个模块：{{modules}}。请使用更具体的别名。",
     "multiple_instances": "⚠️ 存在多个 '{{module}}' 实例。请使用实例名称代替模块别名。",
     "danger_needs_name": "⚠️ 危险命令不能用游戏名执行。请使用服务器名称“{{name}}”。",
+    "slash_only": "🔒 「{{command}}」只让提问的人看到，所以只能用斜杠命令查看。请输入 `/`，然后选择 **{{name}}** › {{command}}。",
     "auth_failed": "身份验证失败",
     "player_not_found": "找不到玩家",
     "internal_server_error": "内部服务器错误",
@@ -94,6 +99,7 @@
     "unknown_input": "❌ 未知命令。",
     "command_not_found": "❌ 命令不存在。",
     "permission_denied": "❌ 您没有使用此命令的权限。",
+    "permission_denied_controllers": "❌ 要启动或停止这个服务器，需要在沙巴酱应用的“可操作的人”名单里，或拥有这个命令设定的等级（默认为管理员）。",
     "local_single_guild_only": "⚠️ 本地机器人只能在一个服务器中使用。当前已加入{{count}}个服务器，请从不使用的服务器中移除机器人。"
   },
   "messages": {
@@ -149,6 +155,9 @@
       "schedule": {
         "set": {
           "title": "更改计划任务"
+        },
+        "get": {
+          "title": "查看计划任务"
         }
       },
       "delete": {
@@ -157,8 +166,29 @@
       "start_notice": {
         "set": {
           "title": "启动通知",
-          "description": "Saba-chan 启动此服务器时，在此 Discord 服务器的通知频道告知",
+          "description": "此服务器不通过 Discord 命令启动或停止时(包括崩溃)，在此 Discord 服务器的通知频道告知",
           "name": "启动通知"
+        }
+      },
+      "full_notice": {
+        "set": {
+          "title": "满员提醒",
+          "description": "此服务器满员或重新有空位时，在此 Discord 服务器的通知频道提醒",
+          "name": "满员提醒"
+        }
+      },
+      "get": {
+        "title": "查看服务器设置"
+      },
+      "rename": {
+        "title": "重命名服务器"
+      },
+      "properties": {
+        "get": {
+          "title": "查看游戏设置文件"
+        },
+        "set": {
+          "title": "更改游戏设置文件"
         }
       }
     },
@@ -184,6 +214,9 @@
         "tail": {
           "title": "控制台末尾",
           "description": "控制台最后 20 行"
+        },
+        "send": {
+          "title": "发送控制台命令"
         }
       },
       "logs": {
@@ -200,6 +233,11 @@
         "title": "玩家",
         "description": "在线玩家及名字"
       },
+      "address": {
+        "title": "服务器地址",
+        "name": "地址",
+        "description": "仅向你显示朋友连接用的地址（IP:端口）"
+      },
       "port_check": {
         "title": "端口转发检查",
         "description": "中继检查能否从外网连接此服务器"
@@ -207,6 +245,17 @@
       "chat": {
         "title": "发送游戏聊天",
         "description": "把 Discord 消息发送到游戏聊天"
+      },
+      "update": {
+        "check": {
+          "title": "检查游戏服务器更新"
+        },
+        "apply": {
+          "title": "更新游戏服务器"
+        }
+      },
+      "diagnose": {
+        "title": "诊断服务器"
       }
     },
     "monitor": {
@@ -225,12 +274,21 @@
       "restore": {
         "title": "恢复备份",
         "description": "用备份覆盖当前的服务器文件"
+      },
+      "delete": {
+        "title": "删除备份"
       }
     },
     "module": {
       "install": {
         "title": "安装模块",
         "description": "从官方目录下载并安装"
+      },
+      "list": {
+        "title": "已安装的模块"
+      },
+      "available": {
+        "title": "可用的模块"
       }
     },
     "extension": {
@@ -239,6 +297,15 @@
       },
       "disable": {
         "title": "停用扩展"
+      },
+      "list": {
+        "title": "已安装的扩展"
+      },
+      "available": {
+        "title": "可用的扩展"
+      },
+      "install": {
+        "title": "安装扩展"
       }
     },
     "update": {
@@ -267,6 +334,12 @@
         "set": {
           "title": "更改“会说话的 Saba-chan”设置",
           "description": "开关、唤醒词、确认、工具组"
+        }
+      },
+      "common": {
+        "set": {
+          "title": "更改本机共用的“会说话的 Saba-chan”设置",
+          "description": "模型和 API 密钥（这台电脑的所有服务器）"
         }
       }
     },
@@ -308,7 +381,10 @@
       "tools": "启用的工具",
       "step": "步骤",
       "from_snapshot": "来自游戏自动备份",
-      "text": "内容"
+      "text": "内容",
+      "apiKey": "API 密钥",
+      "command": "命令",
+      "settings": "设置"
     },
     "summary": {
       "server_item": "• **{{name}}** ({{module}}) · {{status}}",
@@ -344,6 +420,13 @@
       "players_max": "👥 在线 {{online}}/{{max}} 人",
       "player_item": "• {{name}}",
       "players_more": "…另外 {{count}} 人",
+      "address": {
+        "item": "• `{{address}}`",
+        "item_named": "• {{label}} `{{address}}`",
+        "stopped": "💤 服务器已关闭。启动后才能连接",
+        "unknown": "❔ 服务器酱还不知道这台电脑的公网地址。请稍后再试",
+        "no_ports": "📭 此游戏没有提供连接端口"
+      },
       "port_check": {
         "open": "✅ 可以从外网连接",
         "firewall": "🧱 被电脑防火墙阻止",
@@ -389,12 +472,17 @@
     "server_running": "服务器正在运行。请先关闭",
     "no_command_path": "服务器是在 Saba-chan 之外启动的，无法接收命令",
     "autosave_not_resumed": "备份已完成，但无法重新开启服务器的自动保存。请重启服务器",
+    "backup_failed_autosave_off": "备份失败，服务器的自动保存也未能重新开启。请重启服务器",
     "backup_save_rejected": "服务器拒绝了保存命令，因此没有进行备份。请停止服务器后重新备份",
     "backup_save_unconfirmed": "服务器未报告保存完成，因此没有进行备份。请稍后重试，或停止服务器后再备份",
+    "backup_server_stopped": "备份期间服务器已停止，因此已丢弃该备份。请检查服务器后重新备份",
     "snapshot_not_found": "游戏没有自动备份",
     "snapshot_not_deletable": "Saba-chan 不能删除游戏自己的自动备份"
   },
   "chatbot": {
     "memo_template": "<!-- 这样的说明行和没有填写的标题不会发送给会说话的 Saba-chan。只填写需要的项目即可。 -->\n\n## 聊天氛围\n<!-- 写下这个服务器的聊天氛围，以及可以接受的玩笑尺度。留空则按默认性格聊天。 -->\n\n## 称呼\n<!-- 如果 Saba-chan 要用特别的称呼叫某人，请写在这里。例：标有 (所有者) 的人称为“主人”。 -->\n\n## 本服务器的用语\n<!-- 写下只在本服务器通用的昵称、梗、缩写及其含义。 -->\n\n## 游戏服务器说明\n<!-- 写下服务器规则、开放时间等 Saba-chan 可以告诉提问者的内容。 -->\n"
+  },
+  "controllers": {
+    "kick_reason": "此服务器仅限已登记的玩家进入。"
   }
 }

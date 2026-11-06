@@ -96,6 +96,7 @@
     "create_http": "Impossible de créer le serveur (HTTP {{status}}) : {{error}}",
     "instance_not_found": "Serveur introuvable",
     "instance_running": "Impossible de supprimer un serveur en cours d'exécution. Arrêtez-le d'abord",
+    "instance_busy": "Une autre tâche (sauvegarde ou restauration) est en cours sur ce serveur. Réessayez quand elle sera terminée",
     "delete_error": "Impossible de supprimer le serveur : {{error}}",
     "delete_http": "Impossible de supprimer le serveur (HTTP {{status}}) : {{error}}",
     "reorder_failed": "Impossible de réordonner : {{error}}",

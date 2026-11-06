@@ -1,9 +1,12 @@
 [package]
 name = "saba-chan-installer"
-version = "0.1.12-beta.1"
-edition = "2021"
+version = "0.1.12-beta.4"
+edition = "2024"
 authors = ["WareAoba"]
 description = "Saba-chan installer, uninstaller and update applier (Tauri)"
+
+[lints]
+workspace = true
 
 [lib]
 name = "saba_chan_installer_app"

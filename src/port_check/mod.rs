@@ -426,7 +426,7 @@ struct RelayProbe {
 
 /// 공인 IPv4 주소로 나가도록 IPv4에서만 보낸다 (친구는 대개 IPv4로 붙는다). 프록시를 거치면 프록시 주소를 확인하게 되므로 쓰지 않는다
 fn relay_client() -> Result<reqwest::Client, CheckError> {
-    reqwest::Client::builder()
+    saba_chan_updater_lib::tls::http_client_builder()
         .timeout(RELAY_TIMEOUT)
         .no_proxy()
         .local_address(IpAddr::V4(Ipv4Addr::UNSPECIFIED))

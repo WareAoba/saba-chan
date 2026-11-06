@@ -165,7 +165,16 @@ cargo build --release -p saba-chan-cli
 cd saba-chan-gui; npm install; npm start
 ```
 
-배포 파일은 GitHub Actions가 이 저장소의 소스로 빌드합니다. Windows는 [build-windows.yml](.github/workflows/build-windows.yml), 리눅스 x64·ARM64는 [release.yml](.github/workflows/release.yml)이에요. 테스트는 `cargo test --workspace`와 `cd saba-chan-gui && npx vitest run`으로 돌립니다.
+배포 파일은 GitHub Actions가 이 저장소의 소스로 빌드합니다. Windows·리눅스 x64·ARM64 모두 [publish.yml](.github/workflows/publish.yml) 하나로 빌드하고 발행해요. 테스트는 `cargo test --workspace`와 `cd saba-chan-gui && npx vitest run`으로 돌립니다.
+
+## 코드 서명 정책 (Code signing policy)
+
+Free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by [SignPath Foundation](https://signpath.org/).
+
+- Windows 실행 파일은 GitHub Actions가 이 저장소의 소스로 빌드한 것만 서명하고, 릴리스마다 승인 담당자가 직접 승인합니다. SignPath Foundation 승인 전에 나온 릴리스는 서명되어 있지 않아요.
+- 커미터·리뷰어: [WareAoba](https://github.com/WareAoba) · 승인: [WareAoba](https://github.com/WareAoba)
+- 개인정보: [개인정보 처리방침](https://saba-chan.online/ko/legal/privacy) (앱이 보내는 정보는 위 보안 절의 마지막 항목)
+- 전체 정책: [코드 서명 정책](https://saba-chan.online/ko/legal/code-signing)
 
 ## 라이선스
 

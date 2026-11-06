@@ -23,7 +23,8 @@ fn test_root() -> &'static FsPath {
             ("SABA_DATA_DIR", "data"), ("SABA_MODULES_PATH", "modules"), ("SABA_EXTENSIONS_DIR", "extensions"),
             ("APPDATA", "appdata"), ("LOCALAPPDATA", "localappdata"), ("TEMP", "temp"), ("TMP", "temp"),
         ] {
-            std::env::set_var(key, root.join(name));
+            // edition 2024: 환경 변수 쓰기는 unsafe다. 테스트 준비에서만 쓴다
+            unsafe { std::env::set_var(key, root.join(name)) };
         }
         let module = root.join("modules").join(MODULE);
         fs::create_dir_all(&module).unwrap();

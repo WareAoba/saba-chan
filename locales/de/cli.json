@@ -31,6 +31,7 @@
     "module_required": "Wähle ein Spiel mit --module oder gib mit --from einen vorhandenen Serverordner an.",
     "name_empty": "Der Name darf nicht leer sein.",
     "name_taken": "Ein Server namens {{name}} existiert bereits.",
+    "name_comma": "Ein Servername darf kein Komma enthalten (Discord trennt die Rufwörter an Kommas). Leerzeichen sind erlaubt.",
     "needs_extensions": "Dieses Spiel braucht folgende Erweiterungen: {{ids}}. Jetzt installieren und aktivieren?",
     "no_installer": "{{game}} kann Serverdateien nicht selbst installieren. Nutze einen vorhandenen Ordner mit --from.",
     "no_modules": "Es sind noch keine Spielmodule installiert.",
@@ -164,6 +165,15 @@
     "notice_is_off": "{{server}}: Start-Hinweis aus",
     "notice_on_saved": "Der Hinweiskanal von {{guild}} erfährt, wenn {{server}} startet.",
     "notice_off_saved": "{{guild}} erfährt nicht mehr, wenn {{server}} startet.",
+    "full_notice_none": "Noch kein Server hat den Voll-Hinweis an.",
+    "full_notice_is_on": "{{server}}: Voll-Hinweis an",
+    "full_notice_is_off": "{{server}}: Voll-Hinweis aus",
+    "full_notice_on_saved": "Im Hinweiskanal von {{guild}} wird gemeldet, wenn {{server}} voll ist oder wieder ein Platz frei wird.",
+    "full_notice_off_saved": "{{guild}} bekommt keine Voll-Hinweise für {{server}} mehr.",
+    "backup_notice_show": "Backup-Ergebnisse per DM: {{mode}}",
+    "backup_notice_set": "Backup-Ergebnisse per DM geändert: {{mode}}",
+    "backup_notice_all": "Erfolge und Fehler",
+    "backup_notice_failures": "nur Fehler",
     "confirm_direct": "Anfragen an den Bot",
     "confirm_chatbot": "Sprechende Saba-chan",
     "confirm_all": "Alle Befehle",
@@ -194,7 +204,16 @@
     "tts_names": "Reading Saba-chan name call",
     "tts_names_always": "Always",
     "tts_names_multi": "With several people",
-    "tts_names_never": "Never"
+    "tts_names_never": "Never",
+    "tts_voice_chat_only": "Reading Saba-chan only in voice channel chat",
+    "tts_keep_read": "Reading Saba-chan keeps read messages",
+    "tts_auto_channels": "Reading Saba-chan always-read voice channels",
+    "tts_auto_channels_none": "None",
+    "sleep_blocks": "Off while asleep",
+    "sleep_blocks_none": "None",
+    "bedtime": "Good kid",
+    "bedtime_format": "Write --bedtime as fall-asleep time-wake-up time, like 01:00-08:00.",
+    "big_emoji": "Emoji-Upscaling"
   },
   "col": {
     "players": "Spieler",
@@ -300,6 +319,16 @@
       "err_browse_denied": "Dieser Ordner kann nicht geöffnet werden",
       "err_browse_not_a_folder": "Das ist kein Ordner",
       "err_browse_failed": "Ordner konnte nicht gelesen werden. Bitte erneut versuchen"
+    },
+    "net_trace": {
+      "on": "an",
+      "off": "aus",
+      "current": "Netzwerk pro Server und Port: {{state}} · Berechtigung: {{access}}",
+      "access_ok": "vorhanden",
+      "access_needs_grant": "fehlt (config net-trace grant)",
+      "access_needs_relogin": "erteilt, nach erneuter Windows-Anmeldung nutzbar",
+      "access_unsupported": "auf diesem Betriebssystem nicht verfügbar (nur Windows)",
+      "enable_hint": "Zum Einschalten: saba-chan-cli config set systemMonitorNetTrace=on"
     }
   },
   "console": {
@@ -396,6 +425,7 @@
       "node_token_missing": "Kopple diesen PC zuerst: saba-chan-cli bot pair",
       "server_not_running": "Starte zuerst den Server: saba-chan-cli start NAME",
       "server_running": "Stoppe zuerst den Server: saba-chan-cli stop NAME",
+      "invalid_name": "Entferne das Komma aus dem Namen und versuche es erneut. Leerzeichen sind erlaubt.",
       "rcon_unreachable": "Keine Verbindung zum RCON des Servers. Prüfe, ob der Server fertig gestartet ist, und versuche es gleich noch einmal: saba-chan-cli status",
       "rcon_auth_failed": "Der Server hat das RCON-Passwort abgelehnt. Starte den Server neu, damit Saba-chan das Passwort erneut einträgt: saba-chan-cli restart NAME",
       "rcon_timeout": "Der Server hat über RCON nicht rechtzeitig geantwortet. Der Befehl wurde vielleicht schon ausgeführt; sieh vor dem erneuten Senden in die Serverkonsole: saba-chan-cli console NAME",
@@ -408,8 +438,10 @@
       "backup_busy": "Für diesen Server läuft bereits ein Backup oder eine Wiederherstellung. Versuche es erneut, wenn es fertig ist.",
       "backup_file_locked": "Der Server benutzt eine Datei ({{file}}). Server stoppen und erneut versuchen: saba-chan-cli stop <Name>",
       "autosave_not_resumed": "Das Backup wurde erstellt, aber das Autospeichern des Servers ließ sich nicht wieder einschalten. Server neu starten: saba-chan-cli restart <name>",
+      "backup_failed_autosave_off": "Das Backup ist fehlgeschlagen, und das Autospeichern des Servers ließ sich auch nicht wieder einschalten. Server neu starten: saba-chan-cli restart <name>",
       "backup_save_rejected": "Der Server hat den Speicherbefehl abgelehnt, daher wurde kein Backup erstellt. Halte den Server an und sichere erneut: saba-chan-cli stop <name>",
       "backup_save_unconfirmed": "Der Server hat nicht gemeldet, dass das Speichern fertig ist, daher wurde kein Backup erstellt. Versuche es gleich noch einmal oder halte den Server vor dem Backup an: saba-chan-cli stop <name>",
+      "backup_server_stopped": "Der Server wurde während des Backups gestoppt, daher wurde dieses Backup verworfen. Server prüfen und erneut sichern: saba-chan-cli backup <Name>",
       "snapshot_not_found": "Das Spiel hat kein automatisches Backup.",
       "invalid_relay_url": "Als Relay-Adresse sind nur https://-Adressen erlaubt (http nur für localhost, 127.0.0.1 oder [::1] zum Testen auf diesem PC).",
       "module_busy": "Dieses Modul wird bereits installiert oder entfernt. Versuche es erneut, wenn das abgeschlossen ist.",
@@ -419,7 +451,7 @@
       "no_command_path": "Dieser Server wurde außerhalb von Saba-chan gestartet und hat daher keine Konsole für Befehle. Starte ihn über Saba-chan neu: saba-chan-cli restart <server>",
       "conflict_with": "kollidiert mit {{name}}",
       "word": {
-        "invalid": "1–32 Zeichen ohne Leerzeichen verwenden",
+        "invalid": "1–32 Zeichen ohne Kommas verwenden (Leerzeichen sind erlaubt)",
         "reserved": "ist ein reserviertes Wort",
         "conflict": "ruft schon etwas anderes auf",
         "unknown_command": "dieser Server hat keinen solchen Befehl",
@@ -454,7 +486,9 @@
       "move_cross_volume": "Ein Ordner auf einem anderen Laufwerk kann nicht verschoben werden. Importiere ihn stattdessen mit „Am Ort lassen“.",
       "move_in_use": "Der Ordner konnte nicht verschoben werden. Stoppe den Server in diesem Ordner, schließe Programme, die ihn geöffnet haben, und versuche es erneut.",
       "move_failed": "Der Ordner konnte nicht verschoben werden. Importiere ihn stattdessen mit „Am Ort lassen“.",
-      "port_check_busy": "Es läuft bereits eine Prüfung. Versuch es gleich noch einmal"
+      "port_check_busy": "Es läuft bereits eine Prüfung. Versuch es gleich noch einmal",
+      "net_trace_elevation_failed": "Keine Administratorbestätigung auf dem Daemon-PC erhalten. Versuche es direkt an diesem PC erneut.",
+      "net_trace_failed": "Berechtigung konnte nicht geändert werden."
     },
     "not_a_bool": "„{{value}}“ ist kein Ja/Nein (verwende true oder false).",
     "not_a_number": "„{{value}}“ ist keine Zahl.",
@@ -811,6 +845,7 @@
       "config.paths": "Wo Saba-chan Daten, Module und Erweiterungen ablegt, und die Standardordner",
       "config.move": "Module oder Erweiterungen in einen anderen Ordner verschieben. Installierte Dateien werden verschoben; Server müssen gestoppt sein",
       "server.players": "Wer gerade online ist",
+      "server.address": "Die Adresse (IP:Port), mit der sich Freunde verbinden",
       "server.port-check": "Prüfen, ob Freunde diesen Server aus dem Internet erreichen (Portweiterleitung)",
       "server.rcon": "Eine Zeile so senden, wie der Server Befehle annimmt (Konsole, sonst RCON), und die Antwort zeigen",
       "server.log": "Gespeichertes Protokoll früherer Läufe (die Konsole hält nur den aktuellen)",
@@ -829,9 +864,12 @@
       "remote.forget": "Remote-Daemon entfernen (erneut verbinden mit `remote connect`)",
       "config.autostart": "Was beim Anmelden an diesem PC startet: off, daemon (nur Daemon und Tray) oder full (mit GUI-Fenster). Ohne Modus wird der aktuelle Wert gezeigt",
       "config.browse": "Ordner und Dateien auf dem PC des Daemons (mit --daemon der entfernte PC). Ohne Pfad Laufwerke oder /",
-      "bot.notice": "Im Hinweiskanal des Discord-Servers melden, wenn Saba-chan einen Server startet (standardmäßig aus). Ohne Server: anzeigen. Server mit `--on`/`--off`: ändern",
+      "bot.notice": "Im Hinweiskanal des Discord-Servers melden, wenn ein Server ohne Discord-Befehl startet oder stoppt (standardmäßig aus). `--full`: wenn er voll ist oder wieder ein Platz frei wird. Ohne Server: anzeigen. Server mit `--on`/`--off`: ändern",
+      "bot.backup-notice": "Backup-Ergebnisse alle per DM (--all) oder nur Fehler (--failures). Ohne Optionen: anzeigen",
       "bot.confirm": "Wann der Bot vor dem Ausführen per Discord-Button fragt (all, caution, danger, none). Ohne Optionen: anzeigen",
-      "bot.tts": "Reading Saba-chan voice of a Discord server (volume, speed, pitch). No options: show"
+      "bot.tts": "Reading Saba-chan voice of a Discord server (volume, speed, pitch). No options: show",
+      "bot.big-emoji": "Emoji-Upscaling (ein einzelnes eigenes Emoji wird groß gezeigt) auf einem Discord-Server. Ohne Optionen: anzeigen",
+      "config.net-trace": "Berechtigung für Netzwerk pro Server und Port (erweitert, Windows): ohne Aktion der aktuelle Stand; grant zeigt auf dem Daemon-PC einmal eine Administratorbestätigung, revoke macht es rückgängig. Einschalten mit config set systemMonitorNetTrace=on"
     },
     "arg": {
       "module.maker.game": "Spiel für die erste Anfrage",
@@ -923,8 +961,11 @@
       "move_folder": "Den --from-Ordner nicht an Ort und Stelle verknüpfen, sondern in den saba-chan-Ordner verschieben (nur auf demselben Laufwerk)",
       "config.browse.path": "Vollständiger Pfad des Ordners",
       "config.browse.files": "Auch Dateien mit diesen Endungen zeigen (kommagetrennt, * für alle)",
-      "bot.notice.on": "Start-Hinweis einschalten",
-      "bot.notice.off": "Start-Hinweis ausschalten",
+      "bot.notice.on": "Hinweis einschalten",
+      "bot.notice.off": "Hinweis ausschalten",
+      "bot.notice.full": "Voll-Hinweis statt Start-/Stopp-Hinweis",
+      "bot.backup-notice.all": "Erfolge und Fehler per DM",
+      "bot.backup-notice.failures": "Nur Fehler per DM",
       "bot.confirm.direct": "Anfragen an den Bot — Präfix- und Slash-Befehle.",
       "bot.confirm.chatbot": "Sprechende Saba-chan — Von der sprechenden Saba-chan gewählte Verwaltungsaufgaben und Anfragen mehrerer Personen fragen immer, unabhängig von dieser Einstellung.",
       "game_version": "Zu installierende Serverversion (Spiele, deren Server heruntergeladen wird; Standard: neueste Version)",
@@ -936,7 +977,14 @@
       "bot.translate.off": "Show only the names in the module",
       "bot.tts.volume": "Volume in percent (10-150)",
       "bot.tts.speed": "Speaking speed (0.8-1.5, e.g. 1.2)",
-      "bot.tts.pitch": "Pitch in semitones (-6 to 6)"
+      "bot.tts.pitch": "Pitch in semitones (-6 to 6)",
+      "bot.big-emoji.on": "Emoji-Upscaling einschalten",
+      "bot.big-emoji.off": "Emoji-Upscaling ausschalten",
+      "bot.tts.voice_chat_only": "Read your messages only in the chat of the voice channel you are in (on|off, game chat channel excepted)",
+      "bot.tts.keep_read": "Keep read messages instead of deleting them (on|off)",
+      "bot.tts.auto_channels": "Voice channel IDs to always read (comma-separated, up to 10): with 2+ people inside, the bot joins and reads its chat",
+      "bot.tts.no_auto_channels": "Clear the always-read voice channels",
+      "config.net-trace.action": "grant oder revoke. Ohne Angabe wird der aktuelle Stand gezeigt"
     },
     "after": "Namen können abgekürzt werden (z. B. start pal). Ohne Argumente öffnet sich im Terminal das Vollbildmenü (SABA_NO_TUI=1: die interaktive Shell).\nIn Skripten --json und --yes verwenden. Exit-Codes: 0 ok · 1 fehlgeschlagen · 2 Verwendung · 3 Daemon nicht erreichbar · 4 nicht gefunden · 130 abgebrochen"
   },
@@ -1322,7 +1370,10 @@
     "kept_instances": "Server bleiben, Einstellungen werden entfernt",
     "kept_nothing": "Einstellungen und Server werden ebenfalls entfernt",
     "done": "Saba-chan wurde entfernt; {{kept}}.",
-    "left": "Saba-chan wurde entfernt, aber diese Elemente ließen sich nicht löschen. Schließen Sie Programme, die sie verwenden, und löschen Sie sie selbst:\n{{paths}}"
+    "left": "Saba-chan wurde entfernt, aber diese Elemente ließen sich nicht löschen. Schließen Sie Programme, die sie verwenden, und löschen Sie sie selbst:\n{{paths}}",
+    "servers_unlisted": "Die Liste der laufenden Server konnte nicht abgerufen werden, daher wurden sie zwangsweise beendet ({{detail}}).",
+    "server_force_stopped": "Server {{server}} wurde nicht sauber beendet und zwangsweise gestoppt ({{detail}}). Änderungen seit dem letzten Speichern können verloren sein.",
+    "daemon_unanswered": "Der Daemon hat nicht geantwortet, daher wurden laufende Server zwangsweise gestoppt. Änderungen seit dem letzten Speichern können verloren sein."
   },
   "update_required": {
     "title": "Update erforderlich",
@@ -1446,6 +1497,12 @@
     "this_pc": "Dieser PC",
     "no_servers": "Keine Server",
     "via_relay": "Über das Relay"
+  },
+  "address": {
+    "title": "Adresse von {{server}}",
+    "unknown": "Server-chan kennt die öffentliche Adresse dieses PCs nicht. Prüfe, ob er mit Server-chan verbunden ist",
+    "no_ports": "Dieses Spiel gibt keinen Verbindungsport an",
+    "stopped": "Der Server ist aus. Starte ihn, damit andere sich verbinden können"
   },
   "port_check": {
     "title": "Portprüfung für {{server}}",

@@ -1,9 +1,12 @@
 [package]
 name = "saba-chan-gui"
-version = "0.1.12-beta.1"
-edition = "2021"
+version = "0.1.12-beta.4"
+edition = "2024"
 authors = ["WareAoba"]
 description = "Saba-chan desktop interface (Tauri shell)"
+
+[lints]
+workspace = true
 
 [lib]
 name = "saba_chan_gui_app"
@@ -32,7 +35,7 @@ serde_json = "1"
 tokio = { version = "1", features = ["full"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter", "registry"] }
-reqwest = { version = "0.13", default-features = false, features = ["native-tls", "json", "system-proxy", "stream"] }
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "json", "system-proxy", "stream"] }
 futures-util = "0.3"
 base64 = "0.22"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }

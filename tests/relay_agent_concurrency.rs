@@ -54,10 +54,12 @@ async fn result(State(s): State<Shared>, Path(id): Path<String>) -> impl IntoRes
 async fn a_slow_command_does_not_hold_up_the_ones_behind_it() {
     // 실패하면 데몬 로그(격리 준비·검사에 걸린 시간 등)를 함께 보인다
     let _ = tracing_subscriber::fmt().with_test_writer().with_env_filter("saba_core=info").try_init();
-    std::env::set_var("SABA_AUTH_DISABLED", "1");
+    // edition 2024: 환경 변수 쓰기는 unsafe다. 테스트 준비에서만 쓴다
+    unsafe { std::env::set_var("SABA_AUTH_DISABLED", "1") };
     let data_dir = std::env::temp_dir().join(format!("saba-relay-conc-{}", std::process::id()));
     std::fs::create_dir_all(&data_dir).unwrap();
-    std::env::set_var("SABA_DATA_DIR", &data_dir);
+    // edition 2024: 환경 변수 쓰기는 unsafe다. 테스트 준비에서만 쓴다
+    unsafe { std::env::set_var("SABA_DATA_DIR", &data_dir) };
     std::fs::write(data_dir.join(".node_token"), "sbn_node1.s3cret").unwrap();
 
     let relay: Shared = Arc::default();
@@ -76,7 +78,8 @@ async fn a_slow_command_does_not_hold_up_the_ones_behind_it() {
     std::fs::create_dir_all(modules_dir.join("slowq")).unwrap();
     std::fs::write(modules_dir.join("slowq").join("module.toml"), MODULE).unwrap();
     std::fs::write(modules_dir.join("slowq").join("lifecycle.py"), LIFECYCLE).unwrap();
-    std::env::set_var("SABA_MODULES_PATH", &modules_dir);
+    // edition 2024: 환경 변수 쓰기는 unsafe다. 테스트 준비에서만 쓴다
+    unsafe { std::env::set_var("SABA_MODULES_PATH", &modules_dir) };
     saba_core::sandbox::set_consent(saba_core::sandbox::Consent::Unisolated, "module-slowq", true).unwrap();
     let instances_dir = data_dir.join("instances");
     std::fs::create_dir_all(&instances_dir).unwrap();

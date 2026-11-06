@@ -95,7 +95,7 @@ textarea {
     opacity: 0.12;
 }
 .gate-body {
-    animation: pop-in 420ms var(--ease) both;
+    animation: pop-in 420ms var(--ease) backwards;
     position: relative;
     z-index: 1;
     max-width: 640px;
@@ -207,13 +207,111 @@ textarea {
     color: var(--text-2);
     font-size: 13px;
 }
+/* 화면 언어 버튼 (머리·연결 화면): 남은 시간 알약과 같은 모양, 누르면 그 아래에 목록 */
+.lang-menu {
+    position: relative;
+    flex-shrink: 0;
+}
+.lang-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    border: 0;
+    border-radius: 999px;
+    background: var(--bg-3);
+    color: var(--text-2);
+    font: inherit;
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+    transition:
+        background-color var(--dur-fast) var(--ease),
+        color var(--dur-fast) var(--ease);
+}
+.lang-btn:hover,
+.lang-btn[aria-expanded='true'] {
+    color: var(--text-1);
+    background: color-mix(in srgb, var(--accent) 16%, var(--bg-3));
+}
+.lang-list {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    z-index: 20;
+    min-width: 168px;
+    max-height: min(70vh, 420px);
+    overflow: auto;
+    display: grid;
+    padding: 6px;
+    background: var(--bg-2);
+    border: 1px solid var(--line-strong);
+    border-radius: 12px;
+    box-shadow: var(--shadow-float);
+    animation: toast-in 160ms var(--ease) backwards;
+}
+.lang-item {
+    text-align: left;
+    padding: 9px 12px;
+    border: 0;
+    border-radius: 8px;
+    background: none;
+    color: var(--text-1);
+    font: inherit;
+    font-size: 14px;
+    cursor: pointer;
+}
+.lang-item:hover {
+    background: var(--bg-3);
+}
+.lang-item.on {
+    color: var(--accent);
+    font-weight: 600;
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.topbar-title .pill {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+/* 휴대폰 머리는 칸이 좁다: 언어 버튼은 지구 그림만, 더 좁으면 글자 로고를 접는다 */
+@media (max-width: 420px) {
+    .topbar .lang-code {
+        display: none;
+    }
+    .topbar .lang-btn {
+        padding: 6px;
+    }
+}
+@media (max-width: 440px) {
+    .topbar-wordmark {
+        display: none;
+    }
+}
+/* 연결 화면은 늘 어두운 바탕이라 반투명 흰 알약 */
+.gate-lang {
+    position: absolute;
+    top: calc(16px + env(safe-area-inset-top));
+    right: 16px;
+    z-index: 2;
+}
+.gate-lang .lang-btn {
+    background: rgb(255 255 255 / 0.1);
+    color: #e2e8f0;
+}
+.gate-lang .lang-btn:hover,
+.gate-lang .lang-btn[aria-expanded='true'] {
+    background: rgb(255 255 255 / 0.18);
+    color: #fff;
+}
 .timer-warn {
     background: var(--warn-soft);
     color: var(--warn);
     animation: pulse 1.6s ease-in-out infinite;
 }
 .banner {
-    animation: slide-down 240ms var(--ease) both;
+    animation: slide-down 240ms var(--ease) backwards;
     display: flex;
     align-items: center;
     gap: 8px;
@@ -305,6 +403,95 @@ textarea {
 .section-head h2 {
     font-size: 18px;
 }
+/* ── 설정 카드 (ui.tsx Card): 앱 설정 화면처럼 색 아이콘·제목·설명, 칸 사이는 선 ── */
+.set-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+    padding: 14px 16px;
+    background: var(--bg-1);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    box-shadow: var(--neu-up);
+    break-inside: avoid;
+}
+.set-card-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.set-card-head h3 {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+    font-size: 15px;
+}
+.set-card-icon {
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: 30px;
+    height: 30px;
+    border-radius: 9px;
+    color: #fff;
+    background: var(--series-7);
+}
+.set-card-icon[data-tone="1"] { background: var(--series-1); }
+.set-card-icon[data-tone="2"] { background: var(--series-2); }
+.set-card-icon[data-tone="3"] { background: var(--series-3); }
+.set-card-icon[data-tone="4"] { background: var(--series-4); }
+.set-card-icon[data-tone="5"] { background: var(--series-5); }
+.set-card-desc {
+    margin: 2px 0 0;
+    font-size: 12.5px;
+    color: var(--text-2);
+}
+.set-card-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+    margin-top: 8px;
+}
+/* 칸마다 위에 선 (첫 칸도 제목과 나눈다) */
+.set-card-body > * {
+    padding-top: 10px;
+    border-top: 1px solid var(--line);
+}
+.set-card-head + .set-card-body > :first-child {
+    border-top: 0;
+    padding-top: 0;
+}
+.set-card-body > :empty {
+    display: none;
+}
+.set-card-body > .hint {
+    border-top: 0;
+    padding-top: 0;
+    margin-top: -4px;
+}
+/* 카드 안의 줄 목록은 상자 대신 선으로 나눈다 */
+.set-card .rows {
+    gap: 0;
+}
+.set-card .rows > .row {
+    padding: 10px 0;
+    background: none;
+    border: 0;
+    border-radius: 0;
+}
+.set-card .rows > .row + .row {
+    border-top: 1px solid var(--line);
+}
+/* 넓은 화면: 카드를 두 줄로 쌓는다 (읽는 순서는 위에서 아래, 왼쪽 줄 먼저) */
+.set-card-grid > * {
+    margin-bottom: 12px;
+}
+@media (min-width: 1100px) {
+    .set-card-grid {
+        columns: 2;
+        column-gap: 12px;
+    }
+}
 .sub-title {
     font-size: 14px;
     color: var(--text-2);
@@ -327,6 +514,30 @@ textarea {
     color: var(--text-3);
     font-size: 12px;
 }
+/* 안내 문구 속 화면 링크 (ScreenLink, 사용자 11-06 #19). 앱 .screen-link와 같은 모양 */
+.screen-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin: 0 2px;
+    padding: 0 8px;
+    border: 0;
+    border-radius: 7px;
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    color: var(--accent);
+    font: inherit;
+    font-weight: 600;
+    line-height: 1.6;
+    white-space: nowrap;
+    cursor: pointer;
+}
+.screen-link:hover,
+.screen-link:focus-visible {
+    outline: 1px solid var(--accent);
+}
+.screen-link-arrow {
+    font-size: 0.9em;
+}
 .pill {
     display: inline-flex;
     align-items: center;
@@ -337,6 +548,17 @@ textarea {
     background: var(--bg-3);
     color: var(--text-2);
     font-size: 12px;
+}
+/* 누르면 여는 칩 (서버 머리의 접속 칩 → 접속자 목록, 사용자 11-06 #25) */
+.pill-button {
+    border: 0;
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
+}
+.pill-button:hover,
+.pill-button:focus-visible {
+    outline: 1px solid var(--accent);
 }
 .tag {
     margin-left: 8px;
@@ -354,12 +576,13 @@ textarea {
     object-fit: contain;
     opacity: 0.92;
 }
+/* 버튼: GUI와 같은 뉴모피즘 (tokens.css --neu-*). 누르면 어두워지며 파이고, 떼면 튀며 돌아온다 */
 .btn {
     transition:
         background-color var(--dur-fast) var(--ease),
-        border-color var(--dur-fast) var(--ease),
-        transform var(--dur-fast) var(--ease),
-        box-shadow var(--dur-fast) var(--ease),
+        transform 0.18s var(--ease-spring),
+        box-shadow 0.22s var(--ease),
+        filter 0.2s var(--ease),
         opacity var(--dur-fast) var(--ease);
     display: inline-flex;
     align-items: center;
@@ -368,8 +591,9 @@ textarea {
     min-height: 40px;
     padding: 0 16px;
     border-radius: 12px;
-    border: 1px solid var(--line-strong);
-    background: var(--bg-3);
+    border: 0;
+    background: var(--bg-1);
+    box-shadow: var(--neu-up);
     color: var(--text-1);
     font-weight: 600;
     cursor: pointer;
@@ -380,10 +604,23 @@ textarea {
     gap: 6px;
 }
 .btn:not(:disabled):active {
-    transform: scale(0.97);
+    transform: scale(0.96);
+    filter: brightness(0.92);
+    box-shadow: var(--neu-in);
+    transition-duration: 0.08s;
+}
+.btn-accent:not(:disabled):active,
+.btn-danger:not(:disabled):active {
+    box-shadow: var(--neu-press-color);
+}
+.btn:focus-visible {
+    outline: none;
+    box-shadow: var(--neu-up), var(--accent-ring);
 }
 .btn:disabled {
     opacity: 0.5;
+    box-shadow: inset 0 0 0 1px var(--line-strong);
+    filter: saturate(0.5);
     cursor: default;
 }
 .btn-small {
@@ -392,25 +629,28 @@ textarea {
     font-size: 13px;
 }
 .btn-accent {
-    background: var(--accent);
-    border-color: transparent;
+    background: var(--neu-sheen), var(--accent);
     color: var(--text-on-primary, #fff);
 }
 .btn-danger {
-    background: var(--stop);
-    border-color: transparent;
+    background: var(--neu-sheen), var(--stop);
     color: #fff;
 }
 .btn-ghost-danger {
-    background: transparent;
     color: var(--stop);
-    border-color: var(--stop-soft);
+}
+.icon-btn:active {
+    transform: scale(0.92);
+    box-shadow: var(--neu-in);
 }
 .icon-btn {
     display: grid;
     place-items: center;
     border-radius: 999px;
-    transition: background-color var(--dur-fast) var(--ease);
+    transition:
+        background-color var(--dur-fast) var(--ease),
+        box-shadow 0.22s var(--ease),
+        transform 0.18s var(--ease-spring);
     background: none;
     border: 0;
     color: var(--text-2);
@@ -455,9 +695,7 @@ textarea {
 .status-running .status-dot {
     background: var(--ok);
 }
-.status-stopped .status-dot {
-    background: var(--stop);
-}
+/* 정지된 서버는 오류처럼 빨갛지 않고 기본 회색 점이다 (사용자 11-06 #26) */
 .status-starting .status-dot,
 .status-stopping .status-dot,
 .status-missing .status-dot {
@@ -476,15 +714,19 @@ textarea {
     padding: 4px;
     margin-bottom: 16px;
     border-radius: 12px;
-    background: var(--bg-2);
+    background: var(--inset);
+    box-shadow:
+        inset 0 0 0 1px var(--line),
+        var(--neu-in);
     overflow-x: auto;
 }
 .segments button {
     cursor: pointer;
+    /* 누르는 즉시 바뀐다 (글자색 지연 없음), 고른 칸만 솟으며 살짝 튄다 */
     transition:
-        background-color var(--dur-fast) var(--ease),
-        color var(--dur-fast) var(--ease),
-        box-shadow var(--dur-fast) var(--ease);
+        background-color 0.12s var(--ease),
+        box-shadow 0.12s var(--ease),
+        transform 0.18s var(--ease-spring);
     flex: 1;
     min-height: 36px;
     border: 0;
@@ -494,10 +736,19 @@ textarea {
     font-weight: 600;
     white-space: nowrap;
 }
+.segments button:active {
+    transform: scale(0.95);
+}
 .segments button.on {
-    background: var(--bg-4);
+    background: var(--bg-2);
     color: var(--text-1);
-    box-shadow: 0 1px 2px rgb(0 0 0 / 0.16);
+    box-shadow: var(--neu-up);
+    animation: seg-pop 0.22s var(--ease-spring);
+}
+@keyframes seg-pop {
+    from {
+        transform: scale(0.94);
+    }
 }
 
 /* ── 카드·줄 ── */
@@ -510,13 +761,19 @@ textarea {
     background: var(--bg-1);
     border: 1px solid var(--line);
     border-radius: 16px;
+    box-shadow: var(--neu-up);
     transition:
-        transform var(--dur-fast) var(--ease),
-        box-shadow var(--dur-fast) var(--ease),
+        transform 0.22s var(--ease-spring),
+        box-shadow 0.22s var(--ease),
         border-color var(--dur-fast) var(--ease);
 }
+.card:active:not(:has(button:active, a:active, input:active, label:active)) {
+    transform: scale(0.99);
+    box-shadow: var(--neu-in);
+    transition-duration: 0.08s;
+}
 .list > * {
-    animation: rise 320ms var(--ease) both;
+    animation: rise 320ms var(--ease) backwards;
 }
 .list > :nth-child(2) {
     animation-delay: 40ms;
@@ -633,6 +890,19 @@ textarea {
     object-fit: cover;
     animation: fade-in 240ms var(--ease) both;
 }
+.avatar-sm {
+    width: 20px;
+    height: 20px;
+    font-size: 10px;
+}
+.guild-initial {
+    overflow: hidden;
+}
+.guild-initial img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
 .row-actions {
     display: flex;
     gap: 8px;
@@ -705,6 +975,14 @@ textarea {
 .line-error {
     color: var(--stop);
 }
+/* 보낸 명령 (#18) */
+.line-input .echo {
+    color: var(--accent);
+    font-weight: 700;
+}
+.line-input .echo-by {
+    color: var(--text-3);
+}
 .console-input {
     display: flex;
     gap: 8px;
@@ -722,6 +1000,13 @@ textarea {
 .field {
     display: grid;
     gap: 4px;
+}
+/* 여러 채널 고르기 칸 (ChannelChips) — 테두리·여백 없이 .field 처럼 */
+fieldset.field {
+    border: 0;
+    margin: 0;
+    padding: 0;
+    min-inline-size: 0;
 }
 .field > span {
     font-size: 13px;
@@ -765,9 +1050,11 @@ textarea {
     gap: 8px;
 }
 .agreement {
-    display: flex;
-    align-items: center;
-    gap: 8px;
+    font-size: 13px;
+}
+/* 약관 읽기 링크는 체크박스 글자 시작선(상자 16 + 간격 8)에 맞춘다 */
+.agreements .field-row > a {
+    padding-left: 24px;
     font-size: 13px;
 }
 .field-locked .locked {
@@ -786,10 +1073,20 @@ textarea,
     min-height: 40px;
     padding: 8px 12px;
     border-radius: 12px;
-    border: 1px solid var(--line-strong);
+    /* 값을 담는 칸은 파인 홈 (뉴모피즘) */
+    border: 1px solid var(--line);
     background: var(--field);
+    box-shadow: var(--neu-in);
     color: var(--text-1);
     font-size: 16px; /* iOS 가 입력할 때 확대하지 않게 */
+    transition:
+        border-color 0.25s var(--ease),
+        box-shadow 0.25s var(--ease);
+}
+:is(input:not([type="checkbox"]), select, textarea, .search):focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: var(--neu-in), var(--accent-ring);
 }
 textarea {
     resize: vertical;
@@ -798,54 +1095,93 @@ textarea {
     display: flex;
     gap: 8px;
 }
+/* 토글: GUI SabaToggle과 같은 뉴모피즘 (44×24). 파인 홈에 강조색이 차고 손잡이가 튀듯 미끄러진다 */
 .switch {
     appearance: none;
     width: 44px;
     height: 24px;
+    margin: 0;
     border-radius: 999px;
-    background: var(--bg-4);
+    background-color: var(--inset);
+    box-shadow:
+        inset 0 0 0 1px var(--line-strong),
+        var(--neu-in);
     position: relative;
     cursor: pointer;
     flex: none;
+    transition:
+        background-color 0.3s var(--ease),
+        box-shadow 0.25s var(--ease);
 }
 .switch::after {
     content: "";
     position: absolute;
-    top: 2px;
-    left: 2px;
-    width: 20px;
-    height: 20px;
-    border-radius: 50%;
-    background: var(--knob, #fff);
-    transition: transform var(--dur-fast, 0.15s);
+    top: 3px;
+    left: 3px;
+    width: 18px;
+    height: 18px;
+    border-radius: 9px;
+    background: linear-gradient(in oklch 145deg, var(--knob), color-mix(in oklch, var(--knob), #8a93a8 22%));
+    box-shadow:
+        2px 2px 4px rgba(0, 0, 0, 0.28),
+        -1px -1px 2px rgba(255, 255, 255, 0.4),
+        inset 0 1px 0 rgba(255, 255, 255, 0.9);
+    transition:
+        left 0.32s var(--ease-spring),
+        width 0.18s var(--ease);
 }
 .switch:checked {
-    background: var(--accent);
+    background-color: var(--accent);
+    background-image: var(--neu-sheen);
+    box-shadow:
+        inset 2px 2px 5px rgba(0, 0, 0, 0.3),
+        inset -1px -1px 3px rgba(255, 255, 255, 0.2);
 }
 .switch:checked::after {
-    transform: translateX(20px);
+    left: 23px;
+}
+.switch:not(:disabled):active::after {
+    width: 23px;
+}
+.switch:checked:not(:disabled):active::after {
+    left: 18px;
+}
+.switch:focus-visible {
+    outline: none;
+    box-shadow:
+        inset 0 0 0 1px var(--line-strong),
+        var(--neu-in),
+        var(--accent-ring);
+}
+.switch:disabled {
+    opacity: 0.45;
+    cursor: default;
 }
 
-.meter {
-    display: grid;
-    gap: 4px;
-}
-.meter-head {
+/* PC 상태: 앱 시스템 모니터와 같은 원 (@gui/components/monitor/MonitorRing.css) */
+.metrics-head {
     display: flex;
-    justify-content: space-between;
-    font-size: 13px;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-bottom: 12px;
 }
-.meter-track {
-    height: 8px;
-    border-radius: 999px;
-    background: var(--bg-3);
-    overflow: hidden;
+.metrics-picker {
+    margin-bottom: 16px;
+    padding: 12px;
+    border-radius: var(--r-sm);
+    background: var(--inset);
 }
-.meter-fill {
-    height: 100%;
-    background: var(--accent);
-    border-radius: inherit;
-    transition: width 600ms var(--ease);
+.metrics-rings {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 16px 8px;
+    margin-bottom: 8px;
+}
+.metrics-swatch {
+    flex: none;
+    width: 10px;
+    height: 10px;
+    border-radius: 3px;
 }
 
 /* ── 겹치는 창 ── */
@@ -860,7 +1196,7 @@ textarea {
 }
 .dialog,
 .sheet {
-    animation: sheet-up 280ms var(--ease) both;
+    animation: sheet-up 280ms var(--ease) backwards;
     width: 100%;
     max-width: 520px;
     max-height: 88vh;
@@ -903,7 +1239,7 @@ textarea {
     pointer-events: none;
 }
 .toast {
-    animation: toast-in 260ms var(--ease) both;
+    animation: toast-in 260ms var(--ease) backwards;
     padding: 12px 16px;
     border-radius: 12px;
     background: var(--bg-4);
@@ -937,7 +1273,7 @@ textarea {
 
 /* ── 움직임 ── */
 .view {
-    animation: rise 260ms var(--ease) both;
+    animation: rise 260ms var(--ease) backwards;
 }
 @keyframes rise {
     from {
@@ -988,18 +1324,19 @@ textarea {
 /* 마우스가 있는 화면에서만 올려 둘 때 반응한다 (휴대폰은 누른 뒤 남지 않게) */
 @media (hover: hover) {
     .btn:not(:disabled):hover {
-        box-shadow: 0 2px 8px rgb(0 0 0 / 0.14);
-        border-color: var(--text-3);
+        box-shadow: var(--neu-up-hi);
+        transform: translateY(-1px);
+        filter: brightness(1.05);
     }
-    .btn-accent:not(:disabled):hover,
-    .btn-danger:not(:disabled):hover {
-        border-color: transparent;
-        filter: brightness(1.08);
+    .btn:not(:disabled):hover:active {
+        transform: scale(0.96);
+        filter: brightness(0.92);
+        box-shadow: var(--neu-in);
     }
     .card:hover {
         transform: translateY(-2px);
         border-color: var(--line-strong);
-        box-shadow: var(--shadow-float);
+        box-shadow: var(--neu-up-hi);
     }
     .row:hover {
         border-color: var(--line-strong);
@@ -1009,7 +1346,8 @@ textarea {
         color: var(--text-1);
     }
     .icon-btn:hover {
-        background: var(--bg-3);
+        background: var(--bg-1);
+        box-shadow: var(--neu-up);
     }
 }
 
@@ -1156,97 +1494,64 @@ textarea {
     cursor: pointer;
 }
 .instance-menu,
-.stairs-view {
+.cmd-list-view {
     display: grid;
     gap: 12px;
 }
-.stairs {
-    list-style: none;
+.cmd-group h4 {
+    margin: 8px 0 4px;
+    font-size: 0.85rem;
+    color: var(--text-2);
+}
+
+.cmd-list {
+    display: grid;
+    gap: 6px;
     margin: 0;
     padding: 0;
+    list-style: none;
+}
+
+/* 명령 한 줄: 이름 · 누구부터 · 되묻기 · 되돌리기. 좁으면 이름이 한 줄을 다 쓴다 */
+.cmd-row {
     display: grid;
-    gap: 8px;
-}
-.stair {
-    display: grid;
-    gap: 8px;
-    /* 높은 레벨일수록 오른쪽으로 한 칸씩 올라선 계단 (GUI 계단처럼 낮은 레벨이 왼쪽) */
-    margin-left: calc(min(var(--step), 6) * 8px);
-    padding: 12px;
-    border-left: 3px solid var(--accent);
-    border-radius: 12px;
-    background: color-mix(in srgb, var(--accent) calc(4% + var(--step) * 4%), var(--bg-1));
-    transition:
-        box-shadow var(--dur-fast) var(--ease),
-        background-color var(--dur-fast) var(--ease);
-}
-.stair.is-banned {
-    border-left-color: var(--line-strong);
-    background: var(--bg-1);
-}
-.stair.is-over {
-    box-shadow: inset 0 0 0 2px var(--accent);
-    background: color-mix(in srgb, var(--accent) calc(12% + var(--step) * 4%), var(--bg-1));
-}
-.stair-label {
-    display: flex;
-    align-items: baseline;
-    gap: 8px;
-}
-.stair-num {
-    color: var(--accent);
-    font-size: 12px;
-    font-weight: 700;
-}
-.stair-chips {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
-}
-.stair-carry {
-    width: 100%;
-    color: var(--text-2);
-    font-size: 12px;
-}
-.cmd-chip {
-    display: inline-flex;
+    grid-template-columns: minmax(0, 1fr) 168px 64px minmax(72px, auto);
     align-items: center;
-    gap: 4px;
-    padding: 4px 12px;
-    border: 1px solid var(--line-strong);
-    border-radius: 999px;
-    background: var(--bg-0);
-    color: var(--text-1);
-    font-size: 13px;
-    cursor: grab;
-    /* 손가락으로 끌 때 화면이 같이 움직이지 않게 */
-    touch-action: none;
-    user-select: none;
-    transition:
-        opacity var(--dur-fast) var(--ease),
-        box-shadow var(--dur-fast) var(--ease);
+    gap: 8px;
+    padding: 8px 10px;
+    border-radius: 12px;
+    border: 1px solid var(--line);
 }
-.cmd-chip.is-fixed {
-    cursor: pointer;
-    touch-action: auto;
+
+.cmd-row.is-moved {
+    border-style: dashed;
 }
-.cmd-chip.is-moved {
-    border-color: var(--warn);
-    box-shadow: 0 0 0 1px var(--warn);
+
+.cmd-name {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
 }
-.cmd-chip.is-selected {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 2px var(--accent);
+
+.cmd-name > span:last-child {
+    display: grid;
+    min-width: 0;
 }
-.cmd-chip.is-dragging {
-    position: relative;
-    z-index: 2;
-    cursor: grabbing;
-    box-shadow: 0 8px 24px rgb(0 0 0 / 0.25);
+
+.cmd-name strong {
+    overflow-wrap: anywhere;
 }
-.cmd-chip.is-legend {
-    cursor: default;
+
+@media (max-width: 560px) {
+    .cmd-row {
+        grid-template-columns: minmax(0, 1fr) auto;
+    }
+    .cmd-name {
+        grid-column: 1 / -1;
+    }
 }
+
 .dot {
     display: inline-block;
     flex: none;
@@ -1267,56 +1572,6 @@ textarea {
 .dot.tone-info {
     background: var(--info);
 }
-.chip-edit {
-    display: grid;
-    gap: 8px;
-    padding: 12px 16px;
-    background: var(--bg-1);
-    border: 1px solid var(--line);
-    border-radius: 12px;
-}
-.level-steps {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
-    margin: 0;
-    padding: 0;
-    border: 0;
-    min-width: 0;
-}
-.level-step {
-    padding: 4px 8px;
-    border: 1px solid var(--line-strong);
-    border-radius: 8px;
-    background: var(--bg-1);
-    font-size: 13px;
-    cursor: pointer;
-}
-.level-step.is-up {
-    border-color: transparent;
-    background: color-mix(in srgb, var(--accent) 16%, var(--bg-1));
-    color: var(--accent);
-}
-.level-step.is-on {
-    border-color: var(--accent);
-    background: var(--accent);
-    color: var(--text-inverse);
-    font-weight: 700;
-}
-.stair-legend {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 12px;
-    color: var(--text-2);
-    font-size: 12px;
-}
-.stair-legend > span {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-}
-
-/* ── 서버: 목록·요약·상세 (휴대폰은 하나씩, 넓은 화면은 나란히) ── */
 .servers-detail:empty {
     display: none;
 }
@@ -1569,6 +1824,56 @@ textarea {
     font-family: var(--font-mono, ui-monospace, monospace);
 }
 
+/* 값으로 답한 명령 결과 (이름: 값 · 표, 데몬 output) */
+.command-result {
+    margin: 4px 0 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+    font-family: var(--font-mono, ui-monospace, monospace);
+}
+.command-result-fields {
+    margin: 0;
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    column-gap: 16px;
+    row-gap: 2px;
+}
+.command-result-field {
+    display: contents;
+}
+.command-result-fields dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+    font-variant-numeric: tabular-nums;
+}
+.command-result-scroll {
+    overflow-x: auto;
+}
+.command-result-table {
+    border-collapse: collapse;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+.command-result-table th {
+    text-align: left;
+    font-weight: 600;
+    padding: 0 16px 4px 0;
+}
+.command-result-table td {
+    padding: 1px 16px 1px 0;
+}
+.command-result-more {
+    align-self: flex-start;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--accent);
+    font: inherit;
+    cursor: pointer;
+}
+
 /* 플레이어 */
 .player-list {
     list-style: none;
@@ -1716,6 +2021,16 @@ textarea {
 .info-row dt {
     color: var(--text-3);
 }
+/* 개발 용어(통신 방식)는 '자세히' 안에 (사용자 11-06 #24) */
+.info-more {
+    margin-top: 10px;
+}
+.info-more > summary {
+    cursor: pointer;
+    color: var(--text-3);
+    font-size: 13px;
+    margin-bottom: 8px;
+}
 .info-row dd {
     margin: 0;
     text-align: right;
@@ -1837,11 +2152,6 @@ textarea {
 .activity-row .pill {
     flex: none;
 }
-/* 서버별 사용량 막대 (PC 메모리 중 그 서버 몫) */
-.meter-mini {
-    flex: none;
-    width: 80px;
-}
 @media (max-width: 420px) {
     .activity-row {
         flex-wrap: wrap;
@@ -1942,4 +2252,118 @@ textarea {
 }
 .install-band a {
     white-space: nowrap;
+}
+
+/* 서버 순서 바꾸기 (ServerOrder.jsx) */
+.server-order {
+    display: grid;
+    gap: 12px;
+}
+.order-row.is-dragging {
+    border-color: var(--accent);
+    box-shadow: 0 8px 24px rgb(0 0 0 / 0.25);
+}
+.order-grip {
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    margin-left: -8px;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--text-2);
+    cursor: grab;
+    touch-action: none;
+}
+.order-actions {
+    justify-content: flex-end;
+}
+
+/* 지난 로그 (LogsCard.jsx) */
+.log-lines {
+    margin: 0;
+    max-height: 360px;
+    overflow: auto;
+    padding: 12px;
+    background: var(--bg-1);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+/* 디스코드 호출어 (InstanceWords.jsx) */
+.words-input {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    padding: 6px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--bg-1);
+}
+.words-input input {
+    flex: 1;
+    min-width: 120px;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    padding: 6px;
+    outline: none;
+}
+.word-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+.word-chip.bad {
+    border-color: var(--danger, #e5484d);
+}
+.word-remove {
+    border: 0;
+    background: none;
+    color: inherit;
+    padding: 0 2px;
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+}
+
+/* 명령 입력 줄 (사용자 11-06 #4): 칸 모양은 바깥 상자가 맡고, 안의 입력은 색칠한 줄 위에 투명하게 겹친다 */
+.command-line {
+    display: grid;
+    gap: 8px;
+}
+.command-line-box {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    min-height: 40px;
+    padding: 0 12px;
+    border-radius: 12px;
+    border: 1px solid var(--line);
+    background: var(--field);
+    box-shadow: var(--neu-in);
+    font-size: 16px; /* iOS 가 입력할 때 확대하지 않게 */
+    transition:
+        border-color 0.25s var(--ease),
+        box-shadow 0.25s var(--ease);
+}
+.command-line-box:focus-within {
+    border-color: var(--accent);
+    box-shadow: var(--neu-in), var(--accent-ring);
+}
+.command-line-box .cmdline-input,
+.command-line-box .cmdline-input:focus {
+    min-height: 0;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
 }

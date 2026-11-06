@@ -96,6 +96,7 @@
     "create_http": "サーバーを作成できませんでした (HTTP {{status}}): {{error}}",
     "instance_not_found": "サーバーが見つかりません",
     "instance_running": "実行中のサーバーは削除できません。先に停止してください",
+    "instance_busy": "このサーバーで別の作業（バックアップまたは復元）が実行中です。終わってからもう一度お試しください",
     "delete_error": "サーバーを削除できませんでした: {{error}}",
     "delete_http": "サーバーを削除できませんでした (HTTP {{status}}): {{error}}",
     "reorder_failed": "並べ替えできませんでした: {{error}}",

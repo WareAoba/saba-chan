@@ -43,8 +43,13 @@ pub(crate) async fn is_running(state: &IPCServer, id: &str) -> bool {
 }
 
 /// 이름 하나로 게임 명령 실행 (저장·공지). 성공 여부만
-async fn run_command(state: &IPCServer, id: &str, name: &str, args: Value) -> bool {
+pub(crate) async fn run_command(state: &IPCServer, id: &str, name: &str, args: Value) -> bool {
     command_reply(state, id, name, args).await.is_some()
+}
+
+/// 백업이 안에서 보내는 저장 명령: 작업 기록에는 백업 한 줄만 남긴다
+async fn save_reply(state: &IPCServer, id: &str, name: &str) -> Option<String> {
+    crate::audit::quietly(command_reply(state, id, name, json!({}))).await
 }
 
 /// 이름 하나로 게임 명령 실행. 성공하면 서버의 콘솔 답(없으면 빈 글자)
@@ -112,13 +117,10 @@ async fn save_for_backup(state: &IPCServer, id: &str, spec: &crate::supervisor::
             Some(p) => Some(p.console_cursor().await),
             None => None,
         };
-        let Some(reply) = command_reply(state, id, cmd, json!({})).await else {
+        let Some(reply) = save_reply(state, id, cmd).await else {
             tracing::warn!("Command '{}' failed before backing up '{}'", cmd, id);
-            // 완료 줄로 확인하기로 한 저장을 보내지도 못했다: 저장 안 된 월드를 묶지 않는다
-            if is_save && done.is_some() {
-                return Err(SaveNotDone::Unconfirmed { command: cmd.to_string() });
-            }
-            continue;
+            // 자동 저장 중지나 저장을 보내지도 못했다: 저장 안 된(또는 쓰는 중인) 월드를 묶지 않는다
+            return Err(SaveNotDone::Unconfirmed { command: cmd.to_string() });
         };
         let done_here = done.as_ref().filter(|_| is_save);
         if done_here.is_some_and(|d| reply.lines().any(|l| d.is_match(l))) {
@@ -140,7 +142,7 @@ async fn save_for_backup(state: &IPCServer, id: &str, spec: &crate::supervisor::
         loop {
             for line in p.get_console_since(next).await {
                 next = line.id + 1;
-                if line.source != crate::supervisor::managed_process::LogSource::System && done.is_match(&line.content) {
+                if line.source.is_server_output() && done.is_match(&line.content) {
                     confirmed = true;
                 }
             }
@@ -173,6 +175,18 @@ impl std::fmt::Display for AutosaveNotResumed {
 }
 
 impl std::error::Error for AutosaveNotResumed {}
+
+/// 켜진 서버를 묶는 사이 서버가 꺼지거나 다시 켜졌다: 종료 저장과 겹쳐 읽었을 수 있어 그 백업을 지웠다 (`backup_server_stopped`)
+#[derive(Debug)]
+struct ServerStopped;
+
+impl std::fmt::Display for ServerStopped {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "the server stopped while it was being backed up; the backup was discarded, back up again")
+    }
+}
+
+impl std::error::Error for ServerStopped {}
 
 /// 이 인스턴스의 백업 폴더와 백업할 경로
 struct Plan {
@@ -372,10 +386,17 @@ async fn take_backup_locked(state: &IPCServer, id: &str, kind: BackupKind, prote
     // 켜진 서버: 자동 저장을 멈추고(pause) 저장한 뒤 묶고, 끝나면(실패해도) 자동 저장을 되돌린다(resume)
     let live = (plan.spec.save_command.is_some() || plan.spec.pause_command.is_some()) && is_running(state, id).await;
     let resume = if live { plan.spec.resume_command.clone() } else { None };
-    let saved = if live {
-        let failures = state.supervisor.read().await.module_loader.get_module(&plan.module_name).ok()
+    let failures = if live {
+        state.supervisor.read().await.module_loader.get_module(&plan.module_name).ok()
             .and_then(|m| m.metadata.commands.map(|c| c.failure_patterns))
-            .unwrap_or_default();
+            .unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+    // 정지·재시작은 작업 잠금을 기다리지 않는다: 묶는 사이 꺼지거나 다시 켜졌는지 프로세스로 가린다.
+    // 실행 세대는 정지를 요청하는 순간 오르므로(정지가 실패해도) 쓰지 않는다
+    let pid = state.supervisor.read().await.tracker.get_pid(id).ok();
+    let saved = if live {
         save_for_backup(state, id, &plan.spec, &failures).await
     } else {
         Ok(())
@@ -385,32 +406,66 @@ async fn take_backup_locked(state: &IPCServer, id: &str, kind: BackupKind, prote
     let result = if let Err(e) = saved {
         tracing::warn!("Not backing up '{}': {}", id, e);
         Err(e.into())
-    } else { tokio::task::spawn_blocking(move || {
-        for path in &paths {
-            if boundary.resolve(path).is_none() {
-                return Err(crate::module_paths::outside(&module_name, "backup_paths", path.display()));
+    } else {
+        let dir = dir.clone();
+        tokio::task::spawn_blocking(move || {
+            for path in &paths {
+                if boundary.resolve(path).is_none() {
+                    return Err(crate::module_paths::outside(&module_name, "backup_paths", path.display()));
+                }
             }
+            backup::create_excluding(&dir, kind, &paths, &spec.exclude)
+        })
+        .await
+        .map_err(anyhow::Error::from)
+        .and_then(|r| r)
+    };
+    // 묶는 사이 서버가 꺼졌으면 종료 저장이 쓰는 중인 파일을 읽었을 수 있다: 백업을 남기지 않고, 오래된 백업도 정리하지 않는다
+    let stopped = live && (!is_running(state, id).await || state.supervisor.read().await.tracker.get_pid(id).ok() != pid);
+    let mut result = match result {
+        Ok(made) if stopped => {
+            tracing::warn!("'{}' stopped while it was being backed up; discarding {}", id, made.name);
+            let (dir, name) = (dir.clone(), made.name.clone());
+            if let Err(e) = tokio::task::spawn_blocking(move || backup::delete(&dir, &name)).await.map_err(anyhow::Error::from).and_then(|r| r) {
+                tracing::warn!("Could not discard backup {} of '{}': {}", made.name, id, e);
+            }
+            Err(ServerStopped.into())
         }
-        let made = backup::create_excluding(&dir, kind, &paths, &spec.exclude)?;
-        // 방금 만든 백업은 보관 개수와 상관없이 남긴다
-        let mut keep_names = vec![made.name.as_str()];
-        keep_names.extend(protect.as_deref());
-        let pruned = if remote { Vec::new() } else { backup::prune(&dir, keep, &keep_names) };
-        anyhow::Ok((made, pruned))
-    })
-    .await
-    .map_err(anyhow::Error::from)
-    .and_then(|r| r) };
-    let mut result = result.map(|(made, pruned)| {
-        tracing::info!("Backed up '{}' as {} ({} bytes, pruned {})", id, made.name, made.size, pruned.len());
-        made
-    });
-    if let Some(cmd) = resume.as_deref() {
-        if !run_command(state, id, cmd, json!({})).await {
+        Ok(made) => {
+            // 방금 만든 백업은 보관 개수와 상관없이 남긴다
+            let (dir, name, protect) = (dir.clone(), made.name.clone(), protect.clone());
+            let pruned = if remote {
+                Vec::new()
+            } else {
+                tokio::task::spawn_blocking(move || {
+                    let mut keep_names = vec![name.as_str()];
+                    keep_names.extend(protect.as_deref());
+                    backup::prune(&dir, keep, &keep_names)
+                })
+                .await
+                .unwrap_or_default()
+            };
+            tracing::info!("Backed up '{}' as {} ({} bytes, pruned {})", id, made.name, made.size, pruned.len());
+            Ok(made)
+        }
+        Err(e) => Err(e),
+    };
+    // 백업이 실패했어도 자동 저장을 되돌리지 못했으면 그것도 알린다 (서버가 자동 저장이 꺼진 채 돈다).
+    // 그사이 꺼진 서버에는 보내지 않는다 (다시 켜진 서버는 자동 저장이 켜진 채 시작한다)
+    let mut not_resumed = None;
+    if let Some(cmd) = resume.as_deref().filter(|_| !stopped) {
+        // 저장 명령처럼 답의 첫 줄이 모듈의 실패 모양이면 서버가 재개를 거절한 것이다
+        let failures: Vec<regex::Regex> = failures.iter().filter_map(|p| regex::Regex::new(p).ok()).collect();
+        let resumed = save_reply(state, id, cmd).await.is_some_and(|reply| {
+            let first = reply.lines().find(|l| !l.trim().is_empty()).unwrap_or_default();
+            rejected(first, &failures).is_none()
+        });
+        if !resumed {
             tracing::warn!("Command '{}' failed after backing up '{}'; the server may not save automatically until it restarts", cmd, id);
             // 백업은 남았어도 서버가 자동 저장을 하지 않는다: 성공으로 알리지 않는다
-            if let Ok(made) = &result {
-                result = Err(AutosaveNotResumed { backup: made.name.clone() }.into());
+            match &result {
+                Ok(made) => result = Err(AutosaveNotResumed { backup: made.name.clone() }.into()),
+                Err(_) => not_resumed = Some(cmd.to_string()),
             }
         }
     }
@@ -420,25 +475,40 @@ async fn take_backup_locked(state: &IPCServer, id: &str, kind: BackupKind, prote
         Err(e) => json!({ "instanceId": id, "instance": instance, "kind": kind, "ok": false, "error": e.to_string() }),
     });
     result.map(Some).map_err(|e| {
-        if e.downcast_ref::<crate::plugin::ModuleCallError>().is_some() {
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(crate::plugin::error_response(&e))).into_response()
-        } else if let Some(save) = e.downcast_ref::<SaveNotDone>() {
-            // 서버 답 원문은 싣지 않는다: 거절 까닭(모듈 실패 모양의 reason)과 명령 이름만
-            let body = match save {
-                SaveNotDone::Rejected { command, reason } => json!({ "success": false, "error": e.to_string(), "error_code": "backup_save_rejected", "command": command, "reason": reason }),
-                SaveNotDone::Unconfirmed { command } => json!({ "success": false, "error": e.to_string(), "error_code": "backup_save_unconfirmed", "command": command }),
-            };
-            (StatusCode::CONFLICT, Json(body)).into_response()
-        } else if let Some(paused) = e.downcast_ref::<AutosaveNotResumed>() {
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "error": e.to_string(), "error_code": "autosave_not_resumed", "backup": paused.backup }))).into_response()
-        } else if let Some(locked) = e.downcast_ref::<backup::LockedFile>() {
-            // 켜진 서버가 쥐고 있는 파일: 어느 파일인지 이름만 (경로는 PC 밖으로 내지 않는다)
-            let file = locked.path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-            (StatusCode::CONFLICT, Json(json!({ "success": false, "error": e.to_string(), "error_code": "backup_file_locked", "file": file }))).into_response()
-        } else {
-            error(StatusCode::INTERNAL_SERVER_ERROR, "backup_failed", e.to_string())
+        let (status, mut body) = backup_error(&e);
+        // 백업 실패 코드는 `cause`로 옮기고, 자동 저장이 꺼진 채라는 것을 앞세운다
+        if let Some(command) = not_resumed {
+            body["cause"] = body["error_code"].take();
+            body["error_code"] = json!("backup_failed_autosave_off");
+            body["error"] = json!(format!("{}; the server's autosave could not be turned back on", e));
+            body["command"] = json!(command);
         }
+        (status, Json(body)).into_response()
     })
+}
+
+/// 백업 실패의 응답 (상태, 본문)
+fn backup_error(e: &anyhow::Error) -> (StatusCode, Value) {
+    if e.downcast_ref::<crate::plugin::ModuleCallError>().is_some() {
+        (StatusCode::INTERNAL_SERVER_ERROR, crate::plugin::error_response(e))
+    } else if let Some(save) = e.downcast_ref::<SaveNotDone>() {
+        // 서버 답 원문은 싣지 않는다: 거절 까닭(모듈 실패 모양의 reason)과 명령 이름만
+        let body = match save {
+            SaveNotDone::Rejected { command, reason } => json!({ "success": false, "error": e.to_string(), "error_code": "backup_save_rejected", "command": command, "reason": reason }),
+            SaveNotDone::Unconfirmed { command } => json!({ "success": false, "error": e.to_string(), "error_code": "backup_save_unconfirmed", "command": command }),
+        };
+        (StatusCode::CONFLICT, body)
+    } else if e.downcast_ref::<ServerStopped>().is_some() {
+        (StatusCode::CONFLICT, json!({ "success": false, "error": e.to_string(), "error_code": "backup_server_stopped" }))
+    } else if let Some(paused) = e.downcast_ref::<AutosaveNotResumed>() {
+        (StatusCode::INTERNAL_SERVER_ERROR, json!({ "success": false, "error": e.to_string(), "error_code": "autosave_not_resumed", "backup": paused.backup }))
+    } else if let Some(locked) = e.downcast_ref::<backup::LockedFile>() {
+        // 켜진 서버가 쥐고 있는 파일: 어느 파일인지 이름만 (경로는 PC 밖으로 내지 않는다)
+        let file = locked.path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        (StatusCode::CONFLICT, json!({ "success": false, "error": e.to_string(), "error_code": "backup_file_locked", "file": file }))
+    } else {
+        (StatusCode::INTERNAL_SERVER_ERROR, json!({ "success": false, "error": e.to_string(), "error_code": "backup_failed" }))
+    }
 }
 
 async fn backups_dir(state: &IPCServer, id: &str) -> Result<PathBuf, Response> {
@@ -666,10 +736,11 @@ pub async fn create_backup(Path(id): Path<String>, State(state): State<IPCServer
         Some("snapshot") => Source::Snapshot(body.snapshot),
         Some(other) => return error(StatusCode::BAD_REQUEST, "invalid_request", format!("Unknown backup source: {}", other)),
     };
-    match create_from(&state, &id, source).await {
+    let resp = match create_from(&state, &id, source).await {
         Ok(made) => Json(json!({ "success": true, "backup": made })).into_response(),
         Err(r) => r,
-    }
+    };
+    super::audited(&state, "backup", &id, None, None, resp).await
 }
 
 pub async fn delete_backup(Path((id, name)): Path<(String, String)>, State(state): State<IPCServer>) -> Response {
@@ -691,7 +762,14 @@ pub async fn delete_backup(Path((id, name)): Path<(String, String)>, State(state
     }
 }
 
+/// 복원은 작업 기록에 `restore` 한 줄로 남는다 (어디서 시켰든: 앱·웹·CLI·디스코드)
 pub async fn restore_backup(Path((id, name)): Path<(String, String)>, State(state): State<IPCServer>) -> Response {
+    let resp = restore_unaudited(&id, name, state.clone()).await;
+    super::audited(&state, "restore", &id, None, None, resp).await
+}
+
+async fn restore_unaudited(id: &str, name: String, state: IPCServer) -> Response {
+    let id = id.to_string();
     if let Err(r) = backups_dir(&state, &id).await {
         return r;
     }
@@ -822,6 +900,22 @@ fn next_runs(id: &str, schedule: &[ScheduledTask]) -> Vec<Option<i64>> {
         .collect()
 }
 
+/// 하트비트의 예약 목록 `[{instanceId, action, next}]` (`next`는 Unix 초): 켜 둔 예약의 다음 실행을 가까운 순으로 `limit`개까지.
+/// 릴레이가 알림 채널 맨 위 글에 보인다
+pub fn upcoming_runs(instances: &[crate::instance::ServerInstance], limit: usize) -> Vec<Value> {
+    let mut runs: Vec<(i64, &str, TaskAction)> = instances
+        .iter()
+        .flat_map(|inst| {
+            next_runs(&inst.id, &inst.schedule)
+                .into_iter()
+                .zip(&inst.schedule)
+                .filter_map(move |(next, task)| Some((next?, inst.id.as_str(), task.action)))
+        })
+        .collect();
+    runs.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(b.1)));
+    runs.into_iter().take(limit).map(|(next, id, action)| json!({ "instanceId": id, "action": action, "next": next })).collect()
+}
+
 pub async fn get_schedule(Path(id): Path<String>, State(state): State<IPCServer>) -> Response {
     let supervisor = state.supervisor.read().await;
     let Some(instance) = supervisor.instance_store.get(&id) else {
@@ -898,8 +992,10 @@ pub async fn put_schedule(Path(id): Path<String>, State(state): State<IPCServer>
             problems.push("schedule: the chatbot cannot make backups run so often that older ones are removed sooner".into());
         }
     }
-    // 원격(디스코드·챗봇·원격 MCP)은 새로 넣거나 바꾸는 작업만 제한한다 (이 PC에서 정한 작업은 그대로 다시 보낼 수 있다)
-    if crate::audit::current().is_relay() {
+    // 원격(디스코드·챗봇)은 새로 넣거나 바꾸는 작업만 제한한다 (이 PC에서 정한 작업은 그대로 다시 보낼 수 있다).
+    // 원격 MCP(계정 주인의 개인 에이전트)는 앱과 같다: 액션 계획이 저장 전에 늘 주인에게 묻는다 (사용자 결정 2026-11-05)
+    let origin = crate::audit::current();
+    if origin.is_relay() && origin.source != crate::actions::MCP_VIA {
         for (i, task) in body.schedule.iter().enumerate() {
             if instance.schedule.contains(task) {
                 continue;
@@ -910,10 +1006,11 @@ pub async fn put_schedule(Path(id): Path<String>, State(state): State<IPCServer>
             }
             // 위험한 게임 명령과 디스코드에 내보내지 않는 명령(`remote = false`)은 이 PC에서 확인하고 정한다
             // (모르는 명령도 막는다: 인스턴스별 명령은 저장할 때 알 수 없다)
-            if task.action == TaskAction::Command && task.enabled {
+            // 공지·저장도 모듈의 게임 명령을 돌린다: 그 명령에 같은 규칙을 건다
+            if matches!(task.action, TaskAction::Command | TaskAction::Announce | TaskAction::Save) && task.enabled {
                 let risk = meta
                     .as_ref()
-                    .and_then(|m| crate::commands::find(m, task.command.as_deref().unwrap_or("")))
+                    .and_then(|m| crate::commands::find(m, &crate::actions::scheduled_command_name(m, task)?))
                     .filter(|f| f.remote)
                     .map(|f| crate::commands::risk_of(f.risk.as_deref()));
                 if !matches!(risk, Some("safe" | "caution")) {
@@ -1093,17 +1190,17 @@ async fn run_task_now(state: &IPCServer, id: &str, task: &ScheduledTask, fire: c
     match task.action {
         TaskAction::Backup => {
             // 꺼져 있으면 바뀐 게 없으니 건너뛰되, 건너뛴 것도 감사 로그에 남긴다
-            let status = if !running {
+            let (status, code) = if !running {
                 tracing::info!("Scheduled backup of '{}' skipped: the server is not running", id);
-                409
+                (409, None)
             } else {
                 match take_backup(state, id, BackupKind::Scheduled).await {
-                    Ok(Some(_)) => 200,
-                    Ok(None) => 204,
+                    Ok(Some(_)) => (200, None),
+                    Ok(None) => (204, None),
                     Err(r) => {
                         let resp = crate::ipc::internal::into_internal(r).await;
                         tracing::warn!("Scheduled backup of '{}' failed: {}", id, resp.body["error"]);
-                        resp.status.as_u16()
+                        (resp.status.as_u16(), crate::audit::failure_code(&resp.body))
                     }
                 }
             };
@@ -1112,14 +1209,16 @@ async fn run_task_now(state: &IPCServer, id: &str, task: &ScheduledTask, fire: c
                 instance_id: id,
                 ok: status < 300,
                 status,
+                code: code.as_deref(),
                 ..Default::default()
             });
         }
         TaskAction::Announce if running => {
             announce(state, id, task.message.as_deref().unwrap_or_default()).await;
         }
-        TaskAction::Restart if running => {
-            if !count_down(state, id, task, fire, key, "schedule.restart_warning", true).await || !is_running(state, id).await {
+        // 예고 시작 때 꺼져 있었어도 재시작 시각에 켜져 있으면 다시 시작한다 (정지와 같다)
+        TaskAction::Restart => {
+            if !count_down(state, id, task, fire, key, "schedule.restart_warning", running).await || !is_running(state, id).await {
                 return;
             }
             tracing::info!("Scheduled restart of '{}'", id);
@@ -1556,6 +1655,32 @@ else:
         assert_eq!(entry["source"], "schedule");
         assert_eq!(entry["ok"], false);
         assert_eq!(entry["status"], 409);
+    }
+
+    /// 예약 재시작은 예고를 시작할 때 꺼져 있었어도 실행 시각에 켜져 있으면 다시 시작한다 (예약 정지와 같다)
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_scheduled_restart_runs_when_the_server_comes_up_during_the_countdown() {
+        let (state, id, tmp) = server_with(&live_module(None), None).await;
+        let task: ScheduledTask = serde_json::from_value(json!({"action": "restart", "at": "04:00", "warn_minutes": [10]})).unwrap();
+        {
+            let mut sup = state.supervisor.write().await;
+            let mut inst = sup.instance_store.get(&id).cloned().unwrap();
+            inst.schedule = vec![task.clone()];
+            sup.instance_store.update(&id, inst).unwrap();
+        }
+        let key = crate::scheduler::task_key(&id, &task);
+        let fire = chrono::Local::now().naive_local() + chrono::Duration::seconds(2);
+        let run = {
+            let (state, id, task) = (state.clone(), id.clone(), task.clone());
+            tokio::spawn(async move { run_task(&state, &id, &task, fire, &key).await })
+        };
+        // 예고가 시작된 뒤에 서버가 켜진다
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+        run_fake_server(&state, &id, &tmp, "").await;
+        tokio::time::timeout(WORK_DEADLINE, run).await.unwrap().unwrap();
+        let entries = crate::audit::log().recent(10, Some(&id));
+        assert!(entries.iter().any(|e| e["action"] == "restart"), "the restart was skipped: {entries:?}");
     }
 
     #[tokio::test]
@@ -2016,10 +2141,10 @@ print(json.dumps({'success': True, 'snapshots': [{'id': 'startup/backup_1', 'cre
 
         assert_eq!(remote(json!({ "schedule": [update] })).await, StatusCode::BAD_REQUEST);
         assert_eq!(remote(json!({ "schedule": [restart(1)] })).await, StatusCode::BAD_REQUEST);
-        // 원격 MCP(AI 에이전트)도 릴레이로 온 원격이다: 예약으로 되묻기를 건너뛰지 못한다
+        // 원격 MCP(계정 주인의 개인 에이전트)는 앱처럼 무엇이든 예약한다 (액션 계획이 늘 주인에게 묻는다, 사용자 결정 2026-11-05)
         let mcp = |body: Value| crate::audit::with_origin(crate::audit::Origin::new(crate::actions::MCP_VIA), put(body));
-        assert_eq!(mcp(json!({ "schedule": [update] })).await, StatusCode::BAD_REQUEST);
-        assert_eq!(mcp(json!({ "schedule": [restart(1)] })).await, StatusCode::BAD_REQUEST);
+        assert_eq!(mcp(json!({ "schedule": [update, restart(1)], "backup_keep": 1000 })).await, StatusCode::OK);
+        assert_eq!(put(json!({ "schedule": [], "backup_keep": 10 })).await, StatusCode::OK);
         assert_eq!(remote(json!({ "schedule": [restart(60)], "backup_keep": 1000 })).await, StatusCode::BAD_REQUEST);
         assert_eq!(remote(json!({ "schedule": [restart(60)], "backup_keep": 5 })).await, StatusCode::OK);
         // 0개 보관이면 방금 만든 안전 백업까지 지워진다
@@ -2062,6 +2187,20 @@ print(json.dumps({'success': True, 'snapshots': [{'id': 'startup/backup_1', 'cre
         assert_eq!(remote(json!({ "schedule": [cmd("op")] })).await, StatusCode::BAD_REQUEST, "not for Discord");
         assert_eq!(put(json!({ "schedule": [cmd("wipe")] })).await, StatusCode::OK);
         assert_eq!(remote(json!({ "schedule": [cmd("wipe")] })).await, StatusCode::OK, "resending what this PC set");
+
+        // 공지·저장이 돌릴 명령도 같은 규칙이다: 디스코드에 내보내지 않는 명령이면 원격에서 예약하지 못한다
+        let hidden = format!(
+            "{NO_BACKUP}\n[config]\nannounce_command = \"op\"\n\n[backup]\npaths = [\"world\"]\nsave_command = \"op\"\n\n[[commands.fields]]\nname = \"op\"\nrisk = \"safe\"\nremote = false\n"
+        );
+        let (state2, id2, _tmp2) = server_with(&hidden, None).await;
+        let remote2 = |body: Value| {
+            let (state, id) = (state2.clone(), id2.clone());
+            crate::audit::with_origin(crate::audit::Origin::new("discord"), async move {
+                put_schedule(Path(id), State(state), Json(serde_json::from_value::<ScheduleBody>(body).unwrap())).await.status()
+            })
+        };
+        assert_eq!(remote2(json!({ "schedule": [{ "action": "announce", "at": "04:00", "message": "hi" }] })).await, StatusCode::BAD_REQUEST);
+        assert_eq!(remote2(json!({ "schedule": [{ "action": "save", "at": "04:00" }] })).await, StatusCode::BAD_REQUEST);
 
         // N일마다는 세기 시작할 날을 오늘로 채운다
         let every = json!({ "action": "start", "at": "04:00", "every_days": 2 });
@@ -2298,6 +2437,36 @@ print(json.dumps({'success': True, 'snapshots': [{'id': 'startup/backup_1', 'cre
         std::fs::read_to_string(work.join("world/level.dat")).unwrap()
     }
 
+    /// 백업 한 번은 작업 기록에 한 줄이다: 안에서 보내는 저장 명령(save-off·save-all·save-on)은 따로 남기지 않는다
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_live_backup_is_one_audit_record() {
+        let (state, id, tmp) = server_with(&live_module(None), None).await;
+        run_fake_server(&state, &id, &tmp, "").await;
+        let resp = create_backup(Path(id.clone()), State(state.clone()), LooseJson(None)).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        let entries = crate::audit::log().recent(10, Some(&id));
+        let actions: Vec<&str> = entries.iter().filter_map(|e| e["action"].as_str()).collect();
+        assert_eq!(actions, ["backup"], "{entries:?}");
+        assert_eq!(entries[0]["ok"], true);
+    }
+
+    /// 실패한 백업·복원은 이유 코드(`code`)와 함께 한 줄 남는다: 화면이 숫자 대신 이유를 번역해 보인다
+    #[tokio::test]
+    async fn failed_backups_and_restores_are_recorded_with_their_reason() {
+        let (state, id, _tmp) = server_with(NO_BACKUP, None).await;
+        let resp = create_backup(Path(id.clone()), State(state.clone()), LooseJson(None)).await;
+        assert!(!resp.status().is_success());
+        let resp = restore_backup(Path((id.clone(), "missing".into())), State(state.clone())).await;
+        assert!(!resp.status().is_success());
+        let entries = crate::audit::log().recent(10, Some(&id));
+        let restore = &entries[0];
+        assert_eq!((restore["action"].as_str(), restore["ok"].as_bool()), (Some("restore"), Some(false)), "{entries:?}");
+        assert!(restore["code"].as_str().is_some_and(|c| !c.is_empty()), "{restore}");
+        let backup = &entries[1];
+        assert_eq!((backup["action"].as_str(), backup["code"].as_str()), (Some("backup"), Some("backup_unsupported")), "{entries:?}");
+    }
+
     /// 저장 완료 줄(`save_done_pattern`)이 있으면 고정 대기 대신 그 줄이 나올 때까지 기다린 뒤 묶는다.
     /// 실측: Paper 1.20.4는 빈 월드에서도 save-all 답("Saving the game") 뒤 2초 지나서 "Saved the game"을 찍었다
     #[cfg(unix)]
@@ -2351,5 +2520,84 @@ print(json.dumps({'success': True, 'snapshots': [{'id': 'startup/backup_1', 'cre
         let dir = state.supervisor.read().await.instance_store.instance_dir(&id).join("backups");
         assert!(backup::list(&dir).is_empty());
         assert!(std::fs::read_to_string(tmp.path().join("server/commands.log")).unwrap().ends_with("save-on\n"));
+    }
+
+    /// 저장 완료 줄이 없는 모듈이라도 저장·자동 저장 중지 명령을 보내지 못하면 백업을 만들지 않는다 (오래된 백업도 정리하지 않는다)
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_live_backup_fails_when_a_save_command_cannot_be_sent() {
+        let (state, id, tmp) = server_with(&live_module(None), None).await;
+        run_fake_server(&state, &id, &tmp, "save-off) exit 0;;").await;
+        let err = take_backup(&state, &id, BackupKind::Manual).await.err().expect("a save that was not sent");
+        let body = crate::ipc::internal::into_internal(err).await.body;
+        assert_eq!(body["success"], false, "{body}");
+        let dir = state.supervisor.read().await.instance_store.instance_dir(&id).join("backups");
+        assert!(backup::list(&dir).is_empty(), "no backup of an unsaved world");
+    }
+
+    /// 자동 저장 재개 명령을 서버가 거절하면(모듈의 실패 모양) 백업은 남아도 성공으로 알리지 않는다
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_rejected_autosave_resume_is_reported() {
+        let (state, id, tmp) = server_with(&live_module(None), None).await;
+        run_fake_server(&state, &id, &tmp, "save-on) echo 'Unknown command';;").await;
+        let err = take_backup(&state, &id, BackupKind::Manual).await.err().expect("autosave left off");
+        let body = crate::ipc::internal::into_internal(err).await.body;
+        assert_eq!(body["error_code"], "autosave_not_resumed", "{body}");
+    }
+
+    /// 켜진 서버를 묶는 사이 서버가 꺼지면(정지·재시작은 작업 잠금을 기다리지 않는다) 종료 저장과 겹쳐 읽었을 수 있다:
+    /// 그 백업을 남기지 않고, 꺼진 서버에 자동 저장 되돌리기나 재시작 안내 대신 `backup_server_stopped`로 알린다.
+    /// 오래된 자동 백업도 정리하지 않는다
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_live_backup_is_discarded_when_the_server_stops_during_it() {
+        let (state, id, tmp) = server_with(&live_module(None), None).await;
+        run_fake_server(&state, &id, &tmp, "save-all) echo 'ok save-all'; exit 0;;").await;
+        let dir = state.supervisor.read().await.instance_store.instance_dir(&id).join("backups");
+        let older = backup::create(&dir, BackupKind::Scheduled, &[tmp.path().join("server/world")]).unwrap().name;
+        {
+            let mut sup = state.supervisor.write().await;
+            let mut instance = sup.instance_store.get(&id).unwrap().clone();
+            instance.backup_keep = Some(1);
+            sup.instance_store.update(&id, instance).unwrap();
+        }
+        let err = take_backup(&state, &id, BackupKind::Scheduled).await.err().expect("a backup of a server that stopped");
+        let body = crate::ipc::internal::into_internal(err).await.body;
+        assert_eq!(body["error_code"], "backup_server_stopped", "{body}");
+        let names: Vec<_> = backup::list(&dir).into_iter().map(|b| b.name).collect();
+        assert_eq!(names, vec![older], "only the earlier backup is left");
+    }
+
+    /// 하트비트의 예약 목록: 켜 둔 것만, 가까운 순으로, 상한까지
+    #[test]
+    fn upcoming_runs_list_enabled_tasks_soonest_first() {
+        let task = |v: Value| serde_json::from_value::<ScheduledTask>(v).unwrap();
+        let mut a = crate::instance::ServerInstance::new("a", "plain");
+        a.schedule = vec![
+            task(json!({ "action": "restart", "every_minutes": 120 })),
+            task(json!({ "action": "backup", "every_minutes": 30, "enabled": false })),
+        ];
+        let mut b = crate::instance::ServerInstance::new("b", "plain");
+        b.schedule = vec![task(json!({ "action": "backup", "every_minutes": 60 }))];
+        let runs = upcoming_runs(&[a.clone(), b.clone()], 10);
+        let ids: Vec<_> = runs.iter().map(|r| (r["instanceId"].as_str().unwrap().to_string(), r["action"].clone())).collect();
+        assert_eq!(ids, vec![(b.id.clone(), json!("backup")), (a.id.clone(), json!("restart"))], "{runs:?}");
+        assert!(runs.iter().all(|r| r["next"].as_i64().is_some()));
+        assert_eq!(upcoming_runs(&[a, b], 1).len(), 1);
+    }
+
+    /// 백업이 실패하고 자동 저장 되돌리기도 실패하면 둘 다 알린다 (서버가 자동 저장이 꺼진 채 돈다).
+    /// 시험 서버는 저장 명령도 되돌리기 명령도 거절한다 (꺼진 서버에는 되돌리기를 보내지 않는다)
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_failed_backup_also_reports_autosave_left_off() {
+        let (state, id, tmp) = server_with(&live_module(Some("^Saved the game$")), None).await;
+        run_fake_server(&state, &id, &tmp, "save-all) echo 'Unknown command';; save-on) echo 'Unknown command';;").await;
+        let err = take_backup(&state, &id, BackupKind::Manual).await.err().expect("rejected save");
+        let body = crate::ipc::internal::into_internal(err).await.body;
+        assert_eq!(body["error_code"], "backup_failed_autosave_off", "{body}");
+        assert_eq!(body["cause"], "backup_save_rejected", "{body}");
+        assert_eq!(body["command"], "save-on", "{body}");
     }
 }

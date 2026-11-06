@@ -22,6 +22,26 @@
     font-weight: 700;
     color: var(--text-1);
 }
+.monitor-pick-toggle.active {
+    color: var(--accent);
+}
+/* 항목 고르기: 머리 아래에 펼친다 */
+.monitor-pick-panel {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--sp-3);
+    margin: var(--sp-3) var(--sp-4) var(--sp-1);
+    padding: var(--sp-3);
+    border-radius: var(--r-sm);
+    background: var(--inset);
+}
+.monitor-pick-panel .monitor-picker {
+    width: 100%;
+}
+.monitor-side .monitor-picker {
+    grid-template-columns: 1fr;
+}
 .monitor-empty {
     padding: var(--sp-4);
     margin: 0;
@@ -56,8 +76,8 @@
 
 .monitor-rings {
     display: grid;
-    /* 링(88px)이 한 줄에 다 들어가는 가장 좁은 칸: 창이 좁아도 링 하나만 다음 줄로 떨어지지 않게 */
-    grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+    /* 링(92px)과 알약 둘이 들어가는 가장 좁은 칸 */
+    grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
     gap: var(--sp-3);
     padding: var(--sp-2) var(--sp-4) var(--sp-3);
 }
@@ -65,60 +85,43 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: var(--sp-4) var(--sp-2);
 }
-.monitor-ring {
-    margin: 0;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: var(--sp-1);
-    min-width: 0;
-    text-align: center;
-}
-.monitor-ring-title {
-    font-size: var(--fs-sm);
-    font-weight: 600;
-    color: var(--text-2);
-}
-.monitor-ring-chart {
-    position: relative;
-}
-.monitor-ring-chart svg {
-    width: 100%;
-    height: 100%;
-    display: block;
-}
-.monitor-arc {
-    transition: stroke-dasharray var(--dur) cubic-bezier(0.2, 0.8, 0.2, 1),
-        stroke-dashoffset var(--dur) cubic-bezier(0.2, 0.8, 0.2, 1);
-}
-.monitor-arc:hover {
-    stroke-width: 15;
-}
-.monitor-ring-center {
-    position: absolute;
-    inset: 0;
-    display: grid;
-    place-items: center;
-    pointer-events: none;
-}
-.monitor-ring-center strong {
-    font-size: var(--fs-md);
-    font-weight: 700;
-    font-variant-numeric: tabular-nums;
-}
-.monitor-ring-sub,
-.monitor-ring-note {
+.monitor-ports {
+    width: calc(100% - 2 * var(--sp-4));
+    margin: 0 var(--sp-4) var(--sp-3);
+    border-collapse: collapse;
     font-size: var(--fs-xs);
-    color: var(--text-2);
     font-variant-numeric: tabular-nums;
-    overflow-wrap: break-word;
-    word-break: keep-all;
-    /* 좁은 폭에서 "KB/s"만 다음 줄로 떨어지지 않게 두 줄 길이를 맞춘다 */
-    text-wrap: balance;
 }
-.monitor-ring-note {
+.monitor-ports caption {
+    text-align: left;
+    padding-bottom: var(--sp-1);
+    color: var(--text-2);
+}
+.monitor-ports th {
+    text-align: left;
+    font-weight: 500;
     color: var(--text-3);
+    padding: var(--sp-1) var(--sp-2) var(--sp-1) 0;
+    border-bottom: 1px solid var(--line);
 }
+.monitor-ports td {
+    padding: var(--sp-1) var(--sp-2) var(--sp-1) 0;
+    white-space: nowrap;
+}
+.monitor-ports td:first-child {
+    white-space: normal;
+}
+.monitor-port-server {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-1-5);
+}
+.monitor-ports th:nth-child(n + 3),
+.monitor-ports td:nth-child(n + 3) {
+    text-align: right;
+    padding-right: 0;
+}
+
 .monitor-footnote {
     margin: 0;
     padding: 0 var(--sp-4) var(--sp-4);
@@ -180,11 +183,5 @@
 @media (max-width: 899px) {
     .monitor-top-slot {
         padding: var(--sp-4) var(--sp-4) 0;
-    }
-}
-
-@media (prefers-reduced-motion: reduce) {
-    .monitor-arc {
-        transition: none;
     }
 }

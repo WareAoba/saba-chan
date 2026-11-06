@@ -1,13 +1,13 @@
 {
   "module_errors": {
-    "module_timeout": "모듈 호출 시간이 초과되었습니다. 모듈 상태를 확인해 주세요.",
-    "module_execution_failed": "모듈을 실행하지 못했습니다. 실행 환경과 모듈 로그를 확인해 주세요.",
-    "module_crashed": "모듈 프로세스가 오류로 종료되었습니다. 모듈 로그를 확인해 주세요.",
-    "module_bad_output": "모듈이 올바르지 않은 결과를 반환했습니다. 모듈을 업데이트하거나 제작자에게 문의해 주세요.",
-    "module_output_too_large": "모듈 출력이 크기 제한을 넘었습니다. 모듈 로그를 확인해 주세요.",
-    "module_path_outside": "모듈이 허용된 폴더 밖의 경로에 접근하려 했습니다. 모듈 설정을 확인해 주세요.",
-    "module_exception": "모듈에서 예외가 발생했습니다. 모듈 로그를 확인해 주세요.",
-    "isolation_unsupported": "이 운영체제는 필요한 격리 기능을 지원하지 않습니다.",
+    "module_timeout": "모듈 호출 시간이 초과되었어요. 모듈 상태를 확인해 주세요.",
+    "module_execution_failed": "모듈을 실행하지 못했어요. 실행 환경과 모듈 로그를 확인해 주세요.",
+    "module_crashed": "모듈 프로세스가 오류로 종료되었어요. 모듈 로그를 확인해 주세요.",
+    "module_bad_output": "모듈이 올바르지 않은 결과를 반환했어요. 모듈을 업데이트하거나 제작자에게 문의해 주세요.",
+    "module_output_too_large": "모듈 출력이 크기 제한을 넘었어요. 모듈 로그를 확인해 주세요.",
+    "module_path_outside": "모듈이 허용된 폴더 밖의 경로에 접근하려 했어요. 모듈 설정을 확인해 주세요.",
+    "module_exception": "모듈에서 예외가 발생했어요. 모듈 로그를 확인해 주세요.",
+    "isolation_unsupported": "이 운영체제는 필요한 격리 기능을 지원하지 않아요.",
     "module_platform_unsupported": "이 게임 모듈은 이 데몬의 OS에서 돌아가지 않아요",
     "module_arch_unsupported": "이 게임 모듈은 이 데몬의 CPU에서 돌아가지 않아요"
   },
@@ -33,10 +33,10 @@
   "no": "아니오",
   "daemon": {
     "checking": "데몬 확인 중...",
-    "existing_running": "기존 데몬이 실행 중입니다",
-    "starting": "데몬을 시작합니다...",
+    "existing_running": "기존 데몬이 실행 중이에요",
+    "starting": "데몬을 시작해요...",
     "started": "데몬 시작 완료",
-    "failed_to_start": "데몬을 시작하지 못했습니다",
+    "failed_to_start": "데몬을 시작하지 못했어요",
     "check_warning": "데몬 확인 중 경고: {{error}}"
   },
   "modules": {
@@ -48,26 +48,26 @@
     "start_failed": "시작 실패: {{error}}",
     "stop_failed": "정지 실패: {{error}}",
     "status_check_failed": "상태 조회 실패 (HTTP {{status}}): {{error}}",
-    "module_not_found": "모듈 '{{module}}'을(를) 찾을 수 없습니다",
+    "module_not_found": "모듈 '{{module}}'을(를) 찾을 수 없어요",
     "invalid_request": "잘못된 요청: {{error}}",
-    "not_found": "서버 '{{name}}'을(를) 찾을 수 없습니다",
-    "already_running": "서버 '{{name}}'은(는) 이미 실행 중입니다",
-    "missing_required_field": "필수 항목 '{{field}}'이(가) 빠졌습니다",
+    "not_found": "서버 '{{name}}'을(를) 찾을 수 없어요",
+    "already_running": "서버 '{{name}}'은(는) 이미 실행 중이에요",
+    "missing_required_field": "필수 항목 '{{field}}'이(가) 빠졌어요",
     "creation_failed": "인스턴스 생성 실패: {{error}}",
     "delete_failed": "인스턴스 삭제 실패: {{error}}",
     "update_failed": "인스턴스 업데이트 실패: {{error}}",
     "settings_save_failed": "설정 저장 실패: {{error}}"
   },
   "network": {
-    "connection_refused": "데몬에 연결할 수 없습니다. 데몬이 실행 중인지 확인해 주세요",
-    "timeout": "요청 시간 초과: 서버가 응답하지 않습니다"
+    "connection_refused": "데몬에 연결할 수 없어요. 데몬이 실행 중인지 확인해 주세요",
+    "timeout": "요청 시간 초과: 서버가 응답하지 않아요"
   },
   "port_conflict": {
     "force_stop_title": "포트 충돌: {{name}} 정지됨",
-    "force_stop_body": "포트 {{port}}이(가) {{existing}}와(과) 충돌해서 {{stopped}}을(를) 강제로 정지했습니다"
+    "force_stop_body": "포트 {{port}}이(가) {{existing}}와(과) 충돌해서 {{stopped}}을(를) 강제로 정지했어요"
   },
   "init": {
-    "start": "초기화를 시작합니다...",
+    "start": "초기화를 시작해요...",
     "modules": "모듈 목록 준비 중...",
     "instances": "서버 목록 준비 중...",
     "ready": "준비 완료",
@@ -96,6 +96,7 @@
     "create_http": "서버를 만들지 못했어요 (HTTP {{status}}): {{error}}",
     "instance_not_found": "서버를 찾을 수 없어요",
     "instance_running": "실행 중인 서버는 삭제할 수 없어요. 먼저 정지해 주세요",
+    "instance_busy": "이 서버에서 다른 작업(백업이나 복원)이 진행 중이에요. 끝난 뒤에 다시 시도해 주세요",
     "delete_error": "서버를 삭제하지 못했어요: {{error}}",
     "delete_http": "서버를 삭제하지 못했어요 (HTTP {{status}}): {{error}}",
     "reorder_failed": "순서를 바꾸지 못했어요: {{error}}",
@@ -125,12 +126,12 @@
   },
   "notify": {
     "title": "사바쨩",
-    "crash": "{{name}} 서버가 크래시로 꺼졌어요.",
-    "unknown_exit": "{{name}} 서버가 예기치 않게 꺼졌어요.",
-    "restart_in": "{{secs}}초 뒤 다시 켜요.",
+    "crash": "“{{name}}” 서버가 크래시로 종료됐어요.",
+    "unknown_exit": "“{{name}}” 서버가 예기치 않게 종료됐어요.",
+    "restart_in": "{{secs}}초 뒤 다시 시작해요.",
     "gave_up": "자동 재시작을 멈췄어요. 직접 확인해 주세요.",
-    "restart_failed": "{{name}} 서버를 다시 켜지 못했어요.",
-    "external_start": "{{name}} 서버가 사바쨩 밖에서 켜졌어요. 사바쨩이 켜지 않은 프로세스예요.",
+    "restart_failed": "“{{name}}” 서버를 다시 시작하지 못했어요.",
+    "external_start": "“{{name}}” 서버가 사바쨩 밖에서 시작됐어요. 사바쨩이 시작하지 않은 프로세스예요.",
     "backup_failed": "{{name}} 자동 백업에 실패했어요.",
     "on_daemon": "{{daemon}}에서: {{body}}"
   }

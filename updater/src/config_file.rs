@@ -113,9 +113,13 @@ impl ConfigFile {
     }
 
     /// 문서 전체. 실패하지 않는다(최악이면 빈 문서). 이관할 예전 파일이 있으면 저장까지 한다.
+    /// 파일을 읽지 못하면(권한·공유 위반) 건드리지 않고 `.bak`을 읽기만 한다
     pub fn load(&self) -> Map<String, Value> {
         let _guard = WRITE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        self.load_locked()
+        self.load_locked().unwrap_or_else(|e| {
+            tracing::error!("[Config] Cannot read {}: {}", self.path().display(), e);
+            read_object(&self.backup_path()).ok().flatten().unwrap_or_default()
+        })
     }
 
     /// 한 네임스페이스. 없으면 `Value::Null`.
@@ -151,7 +155,7 @@ impl ConfigFile {
         F: FnOnce(&mut Map<String, Value>),
     {
         let _guard = WRITE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let mut doc = self.load_locked();
+        let mut doc = self.load_locked()?;
         edit(&mut doc);
         self.save_locked(&mut doc)?;
         Ok(doc)
@@ -165,12 +169,14 @@ impl ConfigFile {
         .map(|_| ())
     }
 
-    fn load_locked(&self) -> Map<String, Value> {
+    /// 파일을 읽지 못하면(권한·공유 위반) 오류: 깨진 파일로 보고 옮기거나 되돌리면 멀쩡한 설정을 잃는다
+    fn load_locked(&self) -> std::io::Result<Map<String, Value>> {
         let path = self.path();
         let mut doc = match read_object(&path) {
             Ok(Some(doc)) => doc,
             Ok(None) => Map::new(),
             Err(reason) => {
+                std::fs::read(&path)?;
                 let corrupt = self.dir.join(format!(
                     "{}.corrupt-{}",
                     FILE_NAME,
@@ -185,7 +191,7 @@ impl ConfigFile {
                     reason,
                     corrupt.display()
                 );
-                let _ = std::fs::rename(&path, &corrupt);
+                std::fs::rename(&path, &corrupt)?;
                 match read_object(&self.backup_path()) {
                     Ok(Some(doc)) => {
                         let mut restored = doc;
@@ -202,7 +208,7 @@ impl ConfigFile {
         if migrated || token {
             if let Err(e) = self.save_locked(&mut doc) {
                 tracing::error!("[Config] Failed to save migrated settings: {}", e);
-                return doc;
+                return Ok(doc);
             }
             if migrated {
                 for (name, _) in LEGACY_FILES {
@@ -219,7 +225,7 @@ impl ConfigFile {
                 }
             }
         }
-        doc
+        Ok(doc)
     }
 
     /// 예전 노드 토큰 파일을 읽어 `node.token`에 넣는다. 읽었으면 true (저장 뒤 파일을 지운다).
@@ -334,10 +340,16 @@ mod tests {
         let (_d, cfg) = file();
         cfg.set_section("remote", json!({ "port": 1 })).unwrap();
         assert_eq!(cfg.peek_section("remote")["port"], 1);
-        let before = READS.with(|r| r.get());
-        assert_eq!(cfg.peek_section("remote")["port"], 1);
-        assert_eq!(cfg.peek_section("node"), Value::Null);
-        assert_eq!(READS.with(|r| r.get()), before, "an unchanged file is not read again");
+        // 캐시는 프로세스에 하나라 함께 도는 다른 시험이 저장하거나 다른 파일을 엿보면 한 번 다시 읽는다.
+        // 그런 끼어들기는 읽기를 늘리기만 하므로, 다시 읽지 않은 차례가 한 번이라도 있으면 캐시가 듣는다
+        let unread = (0..20).any(|_| {
+            assert_eq!(cfg.peek_section("remote")["port"], 1);
+            let before = READS.with(|r| r.get());
+            assert_eq!(cfg.peek_section("remote")["port"], 1);
+            assert_eq!(cfg.peek_section("node"), Value::Null);
+            READS.with(|r| r.get()) == before
+        });
+        assert!(unread, "an unchanged file is not read again");
 
         cfg.set_section("remote", json!({ "port": 2 })).unwrap();
         assert_eq!(cfg.peek_section("remote")["port"], 2, "a save in this process is seen");
@@ -370,6 +382,33 @@ mod tests {
             .flatten()
             .any(|e| e.file_name().to_string_lossy().starts_with("config.json.corrupt-"));
         assert!(corrupt, "broken file must be kept, not overwritten");
+    }
+
+    /// 잠깐 읽지 못한 파일(공유 위반·권한)은 깨진 파일이 아니다: 옮기거나 되돌리지 않고, 고쳐 쓰기는 저장하지 않는다
+    #[test]
+    fn an_unreadable_file_is_not_treated_as_corrupt() {
+        let (d, cfg) = file();
+        cfg.set_section("gui", json!({ "language": "ko" })).unwrap();
+        cfg.set_section("gui", json!({ "language": "ja" })).unwrap();
+        // 읽기 오류를 내려고 config.json 자리에 폴더를 둔다
+        std::fs::rename(cfg.path(), d.path().join("aside")).unwrap();
+        std::fs::create_dir(cfg.path()).unwrap();
+
+        assert!(
+            cfg.set_section("relay", json!({})).is_err(),
+            "an update must not save over an unreadable file"
+        );
+        assert_eq!(
+            cfg.section("gui")["language"],
+            "ko",
+            "a read falls back to the backup without restoring it"
+        );
+        assert!(cfg.path().is_dir(), "the unreadable file is left where it is");
+        let corrupt = std::fs::read_dir(d.path())
+            .unwrap()
+            .flatten()
+            .any(|e| e.file_name().to_string_lossy().starts_with("config.json.corrupt-"));
+        assert!(!corrupt);
     }
 
     #[test]

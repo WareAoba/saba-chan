@@ -31,6 +31,7 @@
     "module_required": "请用 --module 选择游戏，或用 --from 指定已有的服务器文件夹。",
     "name_empty": "名称不能为空。",
     "name_taken": "已存在名为 {{name}} 的服务器。",
+    "name_comma": "服务器名称不能包含逗号（Discord 用逗号分隔呼叫服务器的词）。可以使用空格。",
     "needs_extensions": "此游戏需要以下扩展：{{ids}}。现在安装并启用吗？",
     "no_installer": "{{game}} 无法自行安装服务器文件。请用 --from 使用已有文件夹。",
     "no_modules": "尚未安装任何游戏模块。",
@@ -164,6 +165,15 @@
     "notice_is_off": "{{server}}：启动通知已关",
     "notice_on_saved": "将在 {{guild}} 的通知频道告知 {{server}} 已启动。",
     "notice_off_saved": "不再在 {{guild}} 告知 {{server}} 已启动。",
+    "full_notice_none": "还没有服务器打开满员提醒。",
+    "full_notice_is_on": "{{server}}：满员提醒已打开",
+    "full_notice_is_off": "{{server}}：满员提醒已关闭",
+    "full_notice_on_saved": "将在 {{guild}} 的通知频道提醒 {{server}} 满员和重新有空位。",
+    "full_notice_off_saved": "{{guild}} 不再提醒 {{server}} 满员。",
+    "backup_notice_show": "备份结果私信：{{mode}}",
+    "backup_notice_set": "已更改备份结果私信：{{mode}}",
+    "backup_notice_all": "成功和失败",
+    "backup_notice_failures": "只有失败",
     "confirm_direct": "直接向机器人请求",
     "confirm_chatbot": "会说话的 Saba-chan",
     "confirm_all": "所有命令",
@@ -194,7 +204,16 @@
     "tts_names": "Reading Saba-chan name call",
     "tts_names_always": "Always",
     "tts_names_multi": "With several people",
-    "tts_names_never": "Never"
+    "tts_names_never": "Never",
+    "tts_voice_chat_only": "Reading Saba-chan only in voice channel chat",
+    "tts_keep_read": "Reading Saba-chan keeps read messages",
+    "tts_auto_channels": "Reading Saba-chan always-read voice channels",
+    "tts_auto_channels_none": "None",
+    "sleep_blocks": "Off while asleep",
+    "sleep_blocks_none": "None",
+    "bedtime": "Good kid",
+    "bedtime_format": "Write --bedtime as fall-asleep time-wake-up time, like 01:00-08:00.",
+    "big_emoji": "表情符号放大"
   },
   "col": {
     "players": "在线玩家",
@@ -300,6 +319,16 @@
       "err_browse_denied": "无法打开该文件夹",
       "err_browse_not_a_folder": "这不是文件夹",
       "err_browse_failed": "无法读取文件夹，请重试"
+    },
+    "net_trace": {
+      "on": "开",
+      "off": "关",
+      "current": "按服务器·端口统计网络：{{state}} · 权限：{{access}}",
+      "access_ok": "已有",
+      "access_needs_grant": "没有 (config net-trace grant)",
+      "access_needs_relogin": "已授予，重新登录 Windows 后可用",
+      "access_unsupported": "此系统不可用（仅 Windows）",
+      "enable_hint": "开启方法：saba-chan-cli config set systemMonitorNetTrace=on"
     }
   },
   "console": {
@@ -396,6 +425,7 @@
       "node_token_missing": "请先配对此电脑：saba-chan-cli bot pair",
       "server_not_running": "请先启动服务器：saba-chan-cli start NAME",
       "server_running": "请先停止服务器：saba-chan-cli stop NAME",
+      "invalid_name": "请去掉名称中的逗号后重试。可以使用空格。",
       "rcon_unreachable": "无法连接服务器的 RCON。请确认服务器已完全启动，稍后再试：saba-chan-cli status",
       "rcon_auth_failed": "服务器拒绝了 RCON 密码。重启服务器后 Saba-chan 会重新写入密码：saba-chan-cli restart NAME",
       "rcon_timeout": "服务器未及时通过 RCON 应答。命令可能已经执行，请先查看服务器控制台再重新发送：saba-chan-cli console NAME",
@@ -408,8 +438,10 @@
       "backup_busy": "此服务器已有备份或恢复正在进行。请在完成后重试。",
       "backup_file_locked": "服务器正在使用文件（{{file}}）。请关闭服务器后重试：saba-chan-cli stop 名称",
       "autosave_not_resumed": "备份已完成，但无法重新开启服务器的自动保存。请重启服务器: saba-chan-cli restart <name>",
+      "backup_failed_autosave_off": "备份失败，服务器的自动保存也未能重新开启。请重启服务器: saba-chan-cli restart <name>",
       "backup_save_rejected": "服务器拒绝了保存命令，因此没有进行备份。请停止服务器后重新备份: saba-chan-cli stop <name>",
       "backup_save_unconfirmed": "服务器未报告保存完成，因此没有进行备份。请稍后重试，或停止服务器后再备份: saba-chan-cli stop <name>",
+      "backup_server_stopped": "备份期间服务器已停止，因此已丢弃该备份。请检查服务器后重新备份: saba-chan-cli backup <name>",
       "snapshot_not_found": "游戏没有自动备份.",
       "invalid_relay_url": "中继地址只能使用 https://(仅在本机测试时可对 localhost、127.0.0.1 或 [::1] 使用 http)。",
       "module_busy": "此模块正在安装或删除中。请在完成后重试。",
@@ -419,7 +451,7 @@
       "no_command_path": "此服务器是在 Saba-chan 之外启动的，没有可接收命令的控制台。请通过 Saba-chan 重新启动：saba-chan-cli restart <server>",
       "conflict_with": "与 {{name}} 冲突",
       "word": {
-        "invalid": "请使用 1-32 个字符，不含空格",
+        "invalid": "请使用 1-32 个字符，不含逗号（可以有空格）",
         "reserved": "是保留词",
         "conflict": "已用于称呼其他对象",
         "unknown_command": "该服务器没有这个命令",
@@ -454,7 +486,9 @@
       "move_cross_volume": "无法移动其他驱动器上的文件夹。请改用“保留在原位置”导入。",
       "move_in_use": "无法移动文件夹。请停止此文件夹中的服务器，关闭打开该文件夹的程序后重试。",
       "move_failed": "无法移动文件夹。请改用“保留在原位置”导入。",
-      "port_check_busy": "已经在检查中，请稍后再试"
+      "port_check_busy": "已经在检查中，请稍后再试",
+      "net_trace_elevation_failed": "未在守护进程电脑上获得管理员确认。请在那台电脑前重试。",
+      "net_trace_failed": "无法更改权限。"
     },
     "not_a_bool": "“{{value}}”不是是/否（请使用 true 或 false）。",
     "not_a_number": "“{{value}}”不是数字。",
@@ -704,7 +738,7 @@
     "preflight_failed": "游戏模块运行环境准备失败：{{error}}。将在下次服务器操作时重试。"
   },
   "stop": {
-    "confirm": "确定要停止 {{name}} 服务器吗？",
+    "confirm": "确定要停止 “{{name}}”服务器吗？",
     "already": "{{name}} 未运行。",
     "done": "{{name}} 已停止。",
     "force_confirm": "不保存就停止吗？",
@@ -943,6 +977,7 @@
       "config.paths": "Saba-chan 存放数据、模块和扩展的位置，以及默认文件夹",
       "config.move": "把模块或扩展移到其他文件夹。已安装的文件会一起移动；必须先停止服务器",
       "server.players": "当前在线的人",
+      "server.address": "朋友连接用的地址（IP:端口）",
       "server.port-check": "检查朋友能否从外网连接此服务器（端口转发）",
       "server.rcon": "按服务器接收命令的方式（控制台，没有则用 RCON）发送一行并查看回复",
       "server.log": "保存的历次运行日志（控制台只保留本次）",
@@ -961,9 +996,12 @@
       "remote.forget": "移除远程守护进程（重新连接用 `remote connect`）",
       "config.autostart": "登录此电脑时启动的内容：off（关闭）、daemon（仅守护进程和托盘）、full（包括 GUI 窗口）。不带模式时显示当前值",
       "config.browse": "查看守护进程所在电脑的文件夹和文件（加 --daemon 时为那台远程电脑）。不给路径则显示驱动器或 /",
-      "bot.notice": "Saba-chan 启动服务器时在 Discord 服务器的通知频道告知（默认关闭）。不带服务器：查看；服务器加 `--on`/`--off`：更改",
+      "bot.notice": "服务器不通过 Discord 命令启动或停止时在 Discord 服务器的通知频道告知(默认关闭)。`--full`：满员或重新有空位时。不带服务器：查看，带服务器和 `--on`·`--off`：更改",
+      "bot.backup-notice": "备份结果全部私信(--all)还是只私信失败(--failures)。不带选项：查看",
       "bot.confirm": "机器人在执行前用 Discord 按钮询问的级别 (all、caution、danger、none)。不加选项: 查看",
-      "bot.tts": "Reading Saba-chan voice of a Discord server (volume, speed, pitch). No options: show"
+      "bot.tts": "Reading Saba-chan voice of a Discord server (volume, speed, pitch). No options: show",
+      "bot.big-emoji": "Discord 服务器的表情符号放大(只发一个自定义表情符号时放大显示)。不带选项则查看",
+      "config.net-trace": "按服务器·端口统计网络（高级，Windows）的权限：不带操作时显示当前状态，grant 在守护进程电脑上弹出一次管理员确认以授予权限，revoke 撤销。开启：config set systemMonitorNetTrace=on"
     },
     "arg": {
       "module.maker.game": "第一个请求中的游戏名",
@@ -1135,8 +1173,11 @@
       "schedule.edit.args": "游戏命令输入 名称=值 (可重复)",
       "schedule.add.command": "要执行的游戏命令 (command 任务，列表：server commands)",
       "schedule.edit.command": "要更改的游戏命令 (command 任务，换成其他命令时除非给出 --arg，否则清除旧输入)",
-      "bot.notice.on": "开启启动通知",
-      "bot.notice.off": "关闭启动通知",
+      "bot.notice.on": "打开提醒",
+      "bot.notice.off": "关闭提醒",
+      "bot.notice.full": "用满员提醒代替启动/停止通知",
+      "bot.backup-notice.all": "成功和失败都私信",
+      "bot.backup-notice.failures": "只私信失败",
       "chatbot.template.locale": "模板语言（默认：应用语言）",
       "bot.confirm.direct": "直接向机器人请求 — 前缀命令和斜杠命令。",
       "bot.confirm.chatbot": "会说话的 Saba-chan — 会说话的 Saba-chan 选择的管理操作以及多人混合的请求，无论此设置如何都会询问。",
@@ -1149,7 +1190,14 @@
       "bot.translate.off": "Show only the names in the module",
       "bot.tts.volume": "Volume in percent (10-150)",
       "bot.tts.speed": "Speaking speed (0.8-1.5, e.g. 1.2)",
-      "bot.tts.pitch": "Pitch in semitones (-6 to 6)"
+      "bot.tts.pitch": "Pitch in semitones (-6 to 6)",
+      "bot.big-emoji.on": "开启表情符号放大",
+      "bot.big-emoji.off": "关闭表情符号放大",
+      "bot.tts.voice_chat_only": "Read your messages only in the chat of the voice channel you are in (on|off, game chat channel excepted)",
+      "bot.tts.keep_read": "Keep read messages instead of deleting them (on|off)",
+      "bot.tts.auto_channels": "Voice channel IDs to always read (comma-separated, up to 10): with 2+ people inside, the bot joins and reads its chat",
+      "bot.tts.no_auto_channels": "Clear the always-read voice channels",
+      "config.net-trace.action": "grant（授予）或 revoke（撤销）。省略时显示当前状态"
     },
     "after": "名称可以只写一部分（例如 start pal）。在终端中不带参数运行会打开全屏菜单(SABA_NO_TUI=1 时为交互式 shell)。\n在脚本中请使用 --json 和 --yes。退出码：0 成功 · 1 失败 · 2 用法错误 · 3 无法连接守护进程 · 4 未找到 · 130 已取消"
   },
@@ -1581,7 +1629,10 @@
     "kept_instances": "游戏服务器将保留，设置将删除",
     "kept_nothing": "设置和游戏服务器也将删除",
     "done": "已删除 Saba-chan，{{kept}}。",
-    "left": "已删除 Saba-chan，但无法删除以下项目。请关闭正在使用它们的程序后手动删除：\n{{paths}}"
+    "left": "已删除 Saba-chan，但无法删除以下项目。请关闭正在使用它们的程序后手动删除：\n{{paths}}",
+    "servers_unlisted": "无法获取正在运行的服务器列表，未能正常关闭，已强制停止 ({{detail}})。",
+    "server_force_stopped": "服务器 {{server}} 未能正常关闭，已强制停止 ({{detail}})。上次保存之后的内容可能丢失。",
+    "daemon_unanswered": "守护进程没有响应，已强制停止正在运行的服务器。上次保存之后的内容可能丢失。"
   },
   "update_required": {
     "title": "需要更新",
@@ -1659,6 +1710,12 @@
     "this_pc": "本机",
     "no_servers": "没有服务器",
     "via_relay": "通过中继"
+  },
+  "address": {
+    "title": "{{server}} 的地址",
+    "unknown": "服务器酱不知道这台电脑的公网地址。请确认已连接服务器酱",
+    "no_ports": "此游戏没有提供连接端口",
+    "stopped": "服务器已关闭。启动后才能连接"
   },
   "port_check": {
     "title": "{{server}} 的端口转发检查",

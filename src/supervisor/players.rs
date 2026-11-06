@@ -44,6 +44,11 @@ pub fn get(instance_id: &str) -> Option<PlayerCount> {
     Some(PlayerCount { online, max })
 }
 
+/// 접속·퇴장 줄로 센 접속자 수만 (모듈 함수가 알려 준 수는 보지 않는다). 세지 않는 서버면 None. 채팅 연동(`chat_link`)이 쓴다
+pub fn counted(instance_id: &str) -> Option<u32> {
+    rosters().lock().unwrap_or_else(|e| e.into_inner()).get(instance_id).map(|r| u32::try_from(r.names.len()).unwrap_or(u32::MAX))
+}
+
 /// 접속·퇴장 문구로 센 접속자 이름. 같은 이름이 다시 들어오면 하나로 본다(퇴장 줄을 놓쳐도 다시 들어오면 바로잡힌다).
 /// `generation`은 그 프로세스를 지켜보는 쪽 표시다
 struct Roster {
@@ -80,6 +85,11 @@ pub fn roster_change(instance_id: &str, generation: u64, name: &str, joined: boo
     } else {
         roster.names.remove(name);
     }
+}
+
+/// 지금 세는 목록이 `generation`의 것인가 (그 사이 새 프로세스가 세기 시작하지 않았다)
+pub fn is_current(instance_id: &str, generation: u64) -> bool {
+    rosters().lock().unwrap_or_else(|e| e.into_inner()).get(instance_id).is_some_and(|r| r.generation == generation)
 }
 
 /// 프로세스가 끝났다. 그 사이 새 프로세스가 세기 시작했으면 그대로 둔다

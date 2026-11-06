@@ -16,32 +16,44 @@
     gap: var(--sp-2);
     width: 100%;
     padding: var(--sp-2) var(--sp-3);
-    border: 1px solid var(--line-strong);
+    border: 0;
     border-radius: var(--r-sm);
-    background: var(--field);
-    box-shadow: var(--shadow-inset);
+    /* 닫혀 있을 땐 누를 수 있는 솟은 면, 열면 눌린 채로 (뉴모피즘) */
+    background: var(--bg-surface);
+    box-shadow: var(--neu-up);
     color: var(--text-primary);
     font: inherit;
     font-size: var(--fs-md);
     cursor: pointer;
     transition:
-        border-color var(--dur-fast) var(--ease),
-        background-color var(--dur-fast) var(--ease),
-        box-shadow var(--dur-fast) var(--ease);
+        box-shadow 0.22s var(--ease),
+        transform 0.18s var(--ease-spring),
+        filter 0.2s var(--ease);
     height: auto;
     min-height: 36px;
     text-align: left;
 }
 
 .custom-dropdown-trigger:hover {
-    border-color: var(--line-strong);
+    box-shadow: var(--neu-up-hi);
+    filter: brightness(1.04);
 }
 
-.custom-dropdown-trigger:focus-visible,
-.custom-dropdown.open .custom-dropdown-trigger {
+.custom-dropdown-trigger:active {
+    transform: scale(0.98);
+    filter: brightness(0.96);
+    box-shadow: var(--neu-in);
+    transition-duration: 0.08s;
+}
+
+.custom-dropdown-trigger:focus-visible {
     outline: none;
-    border-color: var(--accent);
-    box-shadow: var(--shadow-inset), var(--accent-ring);
+    box-shadow: var(--neu-up), var(--accent-ring);
+}
+
+.custom-dropdown.open .custom-dropdown-trigger {
+    box-shadow: var(--neu-in);
+    filter: none;
 }
 
 .custom-dropdown-value {
@@ -72,7 +84,7 @@
     display: flex;
     align-items: center;
     color: var(--text-muted);
-    transition: transform var(--dur) var(--ease);
+    transition: transform 0.3s var(--ease-spring);
     flex-shrink: 0;
 }
 
@@ -82,13 +94,16 @@
 
 /* --- 팝업 메뉴 (Portal로 body에 그린다) --- */
 .custom-dropdown-menu {
-    background: var(--bg-3);
-    border: 1px solid var(--line-strong);
+    background: var(--bg-surface);
+    border: 1px solid var(--line);
     border-radius: var(--r-sm);
-    box-shadow: var(--shadow-float);
+    box-shadow:
+        6px 6px 16px var(--neu-dark),
+        -4px -4px 12px var(--neu-light),
+        var(--shadow-float);
     overflow: hidden;
     transform-origin: top center;
-    animation: dropdownPopIn var(--dur) var(--ease);
+    animation: dropdownPopIn 0.25s var(--ease-spring);
 }
 
 .custom-dropdown-menu.placement-top {
@@ -160,12 +175,15 @@
     color: var(--text-primary);
     transition:
         background-color var(--dur-fast) var(--ease),
+        box-shadow var(--dur-fast) var(--ease),
         color var(--dur-fast) var(--ease);
     gap: var(--sp-2);
 }
 
+/* 가리킨 항목은 살짝 파인다 */
 .custom-dropdown-item.active {
-    background: var(--bg-4);
+    background: var(--inset);
+    box-shadow: var(--neu-in);
 }
 
 .custom-dropdown-item.selected {
@@ -195,4 +213,18 @@
     align-items: center;
     color: var(--brand-primary);
     flex-shrink: 0;
+}
+
+/* 고른 항목의 체크가 왼쪽에서 오른쪽으로 그려진다 */
+.custom-dropdown-check svg {
+    animation: dropdownCheckDraw 0.28s var(--ease) 0.05s backwards;
+}
+
+@keyframes dropdownCheckDraw {
+    from {
+        clip-path: inset(0 100% 0 0);
+    }
+    to {
+        clip-path: inset(0 0 0 0);
+    }
 }

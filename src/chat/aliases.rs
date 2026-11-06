@@ -80,6 +80,11 @@ impl ModuleAliases {
         out
     }
 
+    /// 등록한 모든 별명 (모듈 이름 포함). 채팅이 서버를 부르는 말로 맞춰 본다
+    pub fn all(&self) -> impl Iterator<Item = &str> {
+        self.entries.iter().map(|(a, _)| a.as_str())
+    }
+
     /// 모듈 이름 자신을 뺀 별명 목록 (도움말 표시용)
     pub fn aliases_of(&self, module: &str) -> Vec<&str> {
         self.entries
@@ -90,9 +95,9 @@ impl ModuleAliases {
     }
 }
 
-/// 명령어 별명 → 명령어 이름 (모듈 범위). 우선순위: module.toml → 내장/정의 명령 이름.
+/// 명령어 별명·이름 → 명령어 이름 (모듈 범위). 우선순위: module.toml → 내장/정의 명령 이름. 모르면 None.
 /// 인스턴스별 사용자 낱말은 호출하는 쪽이 먼저 본다 (`words::command_for`)
-pub fn resolve_command(module: Option<&ModuleView>, input: &str) -> String {
+pub fn find_command(module: Option<&ModuleView>, input: &str) -> Option<String> {
     let mut table: Vec<(String, String)> = Vec::new();
     if let Some(m) = module {
         for (cmd, aliases) in &m.command_aliases {
@@ -107,11 +112,7 @@ pub fn resolve_command(module: Option<&ModuleView>, input: &str) -> String {
     for b in BUILTIN_COMMANDS {
         table.push((b.to_string(), b.to_string()));
     }
-    table
-        .into_iter()
-        .find(|(alias, _)| alias.eq_ignore_ascii_case_unicode(input))
-        .map(|(_, cmd)| cmd)
-        .unwrap_or_else(|| input.to_string())
+    table.into_iter().find(|(alias, _)| super::words::same(alias, input)).map(|(_, cmd)| cmd)
 }
 
 /// 대소문자 무시 비교 (ASCII 밖 문자도 소문자화). 한글 별명은 그대로 비교된다.
@@ -121,7 +122,7 @@ trait CaseInsensitive {
 
 impl CaseInsensitive for String {
     fn eq_ignore_ascii_case_unicode(&self, other: &str) -> bool {
-        self.eq_ignore_ascii_case(other) || self.to_lowercase() == other.to_lowercase()
+        super::words::same(self, other)
     }
 }
 
@@ -154,9 +155,9 @@ mod tests {
     fn command_aliases_are_module_scoped() {
         let mut pal = module("palworld", &[]);
         pal.command_aliases = vec![("start".into(), vec!["시작".into()]), ("players".into(), vec!["who".into()])];
-        assert_eq!(resolve_command(Some(&pal), "시작"), "start");
-        assert_eq!(resolve_command(Some(&pal), "WHO"), "players");
-        assert_eq!(resolve_command(None, "who"), "who");
-        assert_eq!(resolve_command(None, "Stop"), "stop");
+        assert_eq!(find_command(Some(&pal), "시작").as_deref(), Some("start"));
+        assert_eq!(find_command(Some(&pal), "WHO").as_deref(), Some("players"));
+        assert_eq!(find_command(None, "who"), None);
+        assert_eq!(find_command(None, "Stop").as_deref(), Some("stop"));
     }
 }

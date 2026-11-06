@@ -2,6 +2,7 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 
+
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
@@ -29,11 +30,6 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
-  esbuild: {
-    loader: 'jsx',
-    include: [/src\/.*\.jsx?$/],
-    exclude: [],
-  },
   optimizeDeps: {
     esbuildOptions: {
       loader: {
@@ -44,9 +40,9 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'jsdom',
-    setupFiles: './src/setupTests.js',
+    setupFiles: './src/setupTests.ts',
     css: true,
-    include: ['src/test/**/*.test.js'],
+    include: ['src/test/**/*.test.{ts,tsx}'],
     testTimeout: 20000,
   },
 });

@@ -69,8 +69,20 @@ pub struct GuiSettings {
     pub window_opacity: u32,
     /// 콘솔 글꼴 배율 (%)
     pub console_font_scale: u32,
-    /// 서버 페이지의 시스템 모니터 펼침 여부
-    pub system_monitor_open: bool,
+    /// 콘솔 구문 강조 색: 토큰 이름 → "#rrggbb". 빈 값이거나 없는 토큰은 테마 기본색
+    /// (부분 저장은 객체를 키별로 합치므로 GUI는 지운 색을 빈 값으로 보낸다)
+    pub console_token_colors: HashMap<String, String>,
+    /// 콘솔 글꼴: 글자마다 하나 (앱·웹에 함께 들어 있는 글꼴 중에서)
+    pub console_fonts: ConsoleFonts,
+    /// 서버 페이지의 시스템 모니터 펼침 여부 (기본은 한 줄 요약, 사용자 11-06.
+    /// 예전 `systemMonitorOpen`은 기본이 펼침이라 모두 한 번 요약으로 시작하도록 키를 바꿨다)
+    pub system_monitor_expanded: bool,
+    /// 고급: 포트·서버별 네트워크 사용량 (Windows ETW, `system_monitor::net_trace`). 펼친 모니터를 보는 동안만 센다
+    pub system_monitor_net_trace: bool,
+    /// 시스템 모니터에 띄울 항목 id (`cpu`·`cpu.clock`·`disk:<마운트>`·`net:<어댑터>` 등, GUI `monitorItems.ts`).
+    /// 없으면 GUI 기본 항목
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub monitor_items: Option<Vec<String>>,
 
     // Window state (GUI가 저장하지만 데몬이 중개)
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -106,6 +118,55 @@ impl Default for SoundSettings {
             crash: true,
             install: true,
             update: true,
+        }
+    }
+}
+
+/// 콘솔 글꼴 한 벌. 글자마다 그 글자를 담은 글꼴만 고른다 (영문은 모든 후보)
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct ConsoleFonts {
+    pub latin: String,
+    pub ko: String,
+    pub ja: String,
+    pub zh: String,
+}
+
+pub const CONSOLE_FONTS_KO: [&str; 3] = ["d2coding", "nanum-gothic-coding", "neodgm-code"];
+pub const CONSOLE_FONTS_JA: [&str; 4] = ["sarasa-mono-j", "udev-gothic", "hackgen", "m-plus-1-code"];
+pub const CONSOLE_FONTS_ZH: [&str; 2] = ["sarasa-mono-sc", "sarasa-mono-tc"];
+
+impl ConsoleFonts {
+    /// 영문 후보: Cascadia Code + 한·일·중 후보 모두
+    pub fn latin_choices() -> Vec<&'static str> {
+        let mut all = vec!["cascadia-code"];
+        all.extend(
+            CONSOLE_FONTS_KO
+                .iter()
+                .chain(&CONSOLE_FONTS_JA)
+                .chain(&CONSOLE_FONTS_ZH),
+        );
+        all
+    }
+
+    /// (키, 값, 후보) 네 칸
+    fn slots(&mut self) -> [(&'static str, &mut String, Vec<&'static str>); 4] {
+        [
+            ("latin", &mut self.latin, Self::latin_choices()),
+            ("ko", &mut self.ko, CONSOLE_FONTS_KO.to_vec()),
+            ("ja", &mut self.ja, CONSOLE_FONTS_JA.to_vec()),
+            ("zh", &mut self.zh, CONSOLE_FONTS_ZH.to_vec()),
+        ]
+    }
+}
+
+impl Default for ConsoleFonts {
+    fn default() -> Self {
+        Self {
+            latin: "cascadia-code".into(),
+            ko: "d2coding".into(),
+            ja: "hackgen".into(),
+            zh: "sarasa-mono-sc".into(),
         }
     }
 }
@@ -163,13 +224,33 @@ impl Default for GuiSettings {
             sidebar_compact: false,
             window_opacity: 100,
             console_font_scale: 100,
-            system_monitor_open: true,
+            console_token_colors: HashMap::new(),
+            console_fonts: ConsoleFonts::default(),
+            system_monitor_expanded: false,
+            system_monitor_net_trace: false,
+            monitor_items: None,
             window_bounds: None,
             language: None,
             main_daemon: None,
             daemon_view: None,
         }
     }
+}
+
+/// 콘솔 구문 강조 색 한 칸: 짧은 토큰 이름과 `#rrggbb` 또는 빈 값(기본색). CSS 변수에 그대로 들어가므로 다른 글자는 받지 않는다
+fn token_color_ok(key: &str, value: &str) -> bool {
+    let key_ok = !key.is_empty() && key.len() <= 32 && key.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_');
+    let value_ok = value.is_empty() || value.len() == 7 && value.starts_with('#') && value[1..].bytes().all(|b| b.is_ascii_hexdigit());
+    key_ok && value_ok
+}
+
+const MONITOR_ITEMS_MAX: usize = 64;
+const MONITOR_ITEM_MAX_LEN: usize = 128;
+
+/// 모니터 항목 id 목록: 개수·길이 한도 안이고 제어 문자가 없다 (디스크·어댑터 이름이 들어가 글자는 가리지 않는다)
+fn monitor_items_ok(items: &[String]) -> bool {
+    items.len() <= MONITOR_ITEMS_MAX
+        && items.iter().all(|i| !i.is_empty() && i.chars().count() <= MONITOR_ITEM_MAX_LEN && !i.chars().any(char::is_control))
 }
 
 impl GuiSettings {
@@ -183,6 +264,15 @@ impl GuiSettings {
         choice("consoleTimestamps", &self.console_timestamps, &["off", "24h", "12h"])?;
         if self.new_server_backup_keep == 0 {
             return Err("newServerBackupKeep must be 1 or more".into());
+        }
+        if let Some(key) = self.console_token_colors.iter().find(|(k, v)| !token_color_ok(k, v)).map(|(k, _)| k) {
+            return Err(format!("consoleTokenColors.{key} must be #rrggbb"));
+        }
+        for (key, value, allowed) in self.console_fonts.clone().slots() {
+            choice(&format!("consoleFonts.{key}"), value, &allowed)?;
+        }
+        if self.monitor_items.as_ref().is_some_and(|items| !monitor_items_ok(items)) {
+            return Err(format!("monitorItems must be at most {MONITOR_ITEMS_MAX} ids of 1..={MONITOR_ITEM_MAX_LEN} characters"));
         }
         Ok(())
     }
@@ -198,8 +288,16 @@ impl GuiSettings {
         fix(&mut self.close_action, &["ask", "tray", "quit"], &default.close_action);
         fix(&mut self.toast_duration, &["short", "normal", "long"], &default.toast_duration);
         fix(&mut self.console_timestamps, &["off", "24h", "12h"], &default.console_timestamps);
+        self.console_token_colors.retain(|k, v| token_color_ok(k, v));
+        let mut fallback = default.console_fonts.clone();
+        for ((_, value, allowed), (_, fallback, _)) in self.console_fonts.slots().into_iter().zip(fallback.slots()) {
+            fix(value, &allowed, fallback);
+        }
         if self.new_server_backup_keep == 0 {
             self.new_server_backup_keep = default.new_server_backup_keep;
+        }
+        if self.monitor_items.as_ref().is_some_and(|items| !monitor_items_ok(items)) {
+            self.monitor_items = None;
         }
     }
 }
@@ -234,6 +332,19 @@ pub struct BotConfig {
     /// 페어링 코드로 새로 묶인 디스코드 서버에 이 PC의 서버를 바로 열지(`auto`), 나중에 고를지(`manual`).
     /// 코드 없이 `/사바쨩 연결`로 묶인 서버는 늘 나중에 고른다 (`relay_agent::close_linked_guild`)
     pub new_guild_instances: NewGuildInstances,
+    /// 백업 결과를 PC 주인에게 DM으로 알리는 범위 (`failures`면 실패만). 릴레이가 하트비트 `backupNotice`로 거른다
+    pub backup_notice: BackupNotice,
+}
+
+/// 백업 결과 알림 (`BotConfig::backup_notice`)
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum BackupNotice {
+    /// 성공·실패 모두
+    #[default]
+    All,
+    /// 실패만
+    Failures,
 }
 
 /// 새로 묶인 디스코드 서버에 서버를 여는 방식 (`BotConfig::new_guild_instances`)
@@ -271,6 +382,7 @@ impl Default for BotConfig {
             cloud_members: HashMap::new(),
             translate_commands: true,
             new_guild_instances: NewGuildInstances::Auto,
+            backup_notice: BackupNotice::All,
         }
     }
 }
@@ -390,11 +502,12 @@ const RESERVED_SECTIONS: &[&str] = &["schemaVersion", "gui", "relay", "updates",
 
 /// `nodeSettings[guild]`에서 전용 API만 바꾸는 키: 권한 API(P1), 디스코드 설정 API(I2, `discord`),
 /// 0.1.10까지의 길드·인스턴스 낱말(`instances`, 시작할 때 `serverWords`로 옮긴다), 길드가 쓸 서버 API(`allowedInstances`),
-/// 켜짐 알림 API(`startNotice`)
+/// 켜짐·꺼짐 알림·자리 꽉 참 알림 API(`startNotice`·`fullNotice`)
 pub const PERMISSION_KEYS: &[&str] = &[
     "instances",
     "allowedInstances",
     "startNotice",
+    "fullNotice",
     "ownerDiscordId",
     "relayOwnerDiscordId",
     "defaultLevel",
@@ -481,7 +594,7 @@ impl ConfigStore {
     // ── Chatbot ──
 
     pub fn get_chatbot(&self) -> ChatbotConfig {
-        let mut cfg: ChatbotConfig = serde_json::from_value(self.file.section("chatbot")).unwrap_or_default();
+        let mut cfg: ChatbotConfig = section_or_default(&self.file.load(), "chatbot");
         cfg.migrate();
         cfg
     }
@@ -928,18 +1041,41 @@ fn check_revision(current: &Value, revision: Option<&str>) -> Result<(), ConfigS
 
 // ── File helpers ──
 
-/// 문서의 네임스페이스를 타입 T로. 없거나 형식이 틀리면 Default (틀린 경우 경고).
-fn section_or_default<T: for<'de> Deserialize<'de> + Default>(
+/// 문서의 네임스페이스를 타입 T로. 없으면 Default. 형식이 틀리면 틀린 필드만 기본값으로 두고 경고한다:
+/// 섹션 전체를 기본값으로 읽으면 다음 저장이 나머지 필드(다른 길드 설정·API 키)를 디스크에서 지운다
+fn section_or_default<T: for<'de> Deserialize<'de> + Serialize + Default>(
     doc: &serde_json::Map<String, Value>,
     key: &str,
 ) -> T {
     match doc.get(key) {
         None | Some(Value::Null) => T::default(),
         Some(v) => serde_json::from_value(v.clone()).unwrap_or_else(|e| {
-            tracing::warn!("[Config] Section '{}' is invalid, using defaults: {}", key, e);
-            T::default()
+            tracing::warn!(
+                "[Config] Section '{}' is invalid, keeping only its valid fields: {}",
+                key,
+                e
+            );
+            valid_fields(v)
         }),
     }
+}
+
+/// 기본값 위에 필드를 하나씩 얹어, 얹고도 읽히는 필드만 남긴다
+fn valid_fields<T: for<'de> Deserialize<'de> + Serialize + Default>(raw: &Value) -> T {
+    let (Some(fields), Ok(Value::Object(mut kept))) = (raw.as_object(), serde_json::to_value(T::default())) else {
+        return T::default();
+    };
+    for (name, value) in fields {
+        let previous = kept.insert(name.clone(), value.clone());
+        if serde_json::from_value::<T>(Value::Object(kept.clone())).is_err() {
+            tracing::warn!("[Config] Field '{}' is invalid, using its default", name);
+            match previous {
+                Some(p) => kept.insert(name.clone(), p),
+                None => kept.remove(name),
+            };
+        }
+    }
+    serde_json::from_value(Value::Object(kept)).unwrap_or_default()
 }
 
 /// 두 JSON Value를 머지 (base에 overlay를 덮어씌움)
@@ -1032,6 +1168,43 @@ mod tests {
         assert_eq!(store.ui_language().await, "ja", "without a request language the GUI language stays");
     }
 
+    /// 손으로 고친 파일·상위 판에서 내린 파일의 틀린 필드 하나 때문에 섹션 전체가 기본값이 되면, 다음 자동 저장이
+    /// 다른 길드 설정·챗봇 API 키를 지운다: 틀린 필드만 기본값으로 둔다
+    #[tokio::test]
+    async fn one_invalid_field_keeps_the_rest_of_the_section() {
+        let dir = tempfile::tempdir().unwrap();
+        ConfigFile::at(dir.path())
+            .set_section(
+                "relay",
+                serde_json::json!({
+                    "translateCommands": "false",
+                    "nodeSettings": {"g1": {"allowedInstances": ["a"]}},
+                }),
+            )
+            .unwrap();
+        ConfigFile::at(dir.path())
+            .set_section("chatbot", serde_json::json!({"apiKey": "k", "guilds": "oops"}))
+            .unwrap();
+        let store = ConfigStore::new(dir.path());
+        assert!(
+            store.get_bot_config().await.translate_commands,
+            "the invalid field falls back to its default"
+        );
+        store
+            .update_node_settings("g2", |node| {
+                node.insert("x".into(), serde_json::json!(1));
+                ((), true)
+            })
+            .await
+            .unwrap();
+        let saved = store.file.section("relay");
+        assert_eq!(
+            saved["nodeSettings"]["g1"]["allowedInstances"],
+            serde_json::json!(["a"])
+        );
+        assert_eq!(store.get_chatbot().api_key.as_deref(), Some("k"));
+    }
+
     #[test]
     fn chatbot_persona_moves_to_memo() {
         let dir = tempfile::tempdir().unwrap();
@@ -1056,6 +1229,31 @@ mod tests {
         assert!(!cfg.settings.contains_key("channelIds") && cfg.settings.contains_key("model"));
         assert!(!cfg.guilds.contains_key("a"));
         assert_eq!(cfg.guilds["b"].len(), 1);
+    }
+
+    /// 콘솔 구문 강조 색은 #rrggbb만 받고, 손으로 넣은 잘못된 값은 읽을 때 버린다
+    #[test]
+    fn console_token_colors_accept_hex_only() {
+        let mut s = GuiSettings::default();
+        s.console_token_colors.insert("error".into(), "#ff0000".into());
+        s.console_token_colors.insert("dim".into(), String::new());
+        assert!(s.validate().is_ok());
+        s.console_token_colors.insert("warn".into(), "red;}".into());
+        assert!(s.validate().is_err());
+        s.sanitize();
+        assert_eq!(s.console_token_colors.len(), 2);
+        assert!(s.validate().is_ok());
+    }
+
+    /// 사용자 11-06 #26: 시스템 모니터는 처음엔 한 줄 요약이다. 예전 `systemMonitorOpen`(기본 펼침)은 읽지 않고,
+    /// 펼침은 새 키 `systemMonitorExpanded`에 기억한다
+    #[test]
+    fn system_monitor_starts_as_summary() {
+        assert!(!GuiSettings::default().system_monitor_expanded);
+        let old: GuiSettings = serde_json::from_value(serde_json::json!({"systemMonitorOpen": true})).unwrap();
+        assert!(!old.system_monitor_expanded);
+        let saved: GuiSettings = serde_json::from_value(serde_json::json!({"systemMonitorExpanded": true})).unwrap();
+        assert!(saved.system_monitor_expanded);
     }
 
     #[test]
@@ -1577,6 +1775,64 @@ mod tests {
         store.write_gui(serde_json::json!({ "closeAction": "tray", "consoleTimestamps": "12h", "auditKeepDays": 30 }), Apply::MergePatch, None).await.unwrap();
         let saved = ConfigStore::new(tmp.path()).get_gui_settings().await;
         assert_eq!((saved.close_action.as_str(), saved.console_timestamps.as_str(), saved.audit_keep_days), ("tray", "12h", 30));
+    }
+
+    /// 사용자 11-06: 시스템 모니터에 띄울 항목을 고른다. 없으면 기본, null로 되돌리고, 너무 많거나 긴 id는 거절
+    #[tokio::test]
+    async fn monitor_items_are_saved_and_reset_with_null() {
+        let tmp = TempDir::new().unwrap();
+        let store = ConfigStore::new(tmp.path());
+        assert!(serde_json::to_value(store.get_gui_settings().await).unwrap().get("monitorItems").is_none());
+        store.write_gui(serde_json::json!({ "monitorItems": ["cpu", "cpu.temp", "disk:D:\\", "net:이더넷"] }), Apply::MergePatch, None).await.unwrap();
+        let saved = ConfigStore::new(tmp.path()).get_gui_settings().await;
+        assert_eq!(saved.monitor_items.as_deref(), Some(&["cpu".to_string(), "cpu.temp".into(), "disk:D:\\".into(), "net:이더넷".into()][..]));
+        let many: Vec<String> = (0..65).map(|i| format!("net:{i}")).collect();
+        for bad in [serde_json::json!({ "monitorItems": many }), serde_json::json!({ "monitorItems": ["a\nb"] }), serde_json::json!({ "monitorItems": [""] })] {
+            assert!(store.write_gui(bad.clone(), Apply::MergePatch, None).await.is_err(), "{bad}");
+        }
+        store.write_gui(serde_json::json!({ "monitorItems": null }), Apply::MergePatch, None).await.unwrap();
+        assert!(ConfigStore::new(tmp.path()).get_gui_settings().await.monitor_items.is_none());
+    }
+
+    /// 사용자 11-02: 콘솔 글꼴을 글자(영문·한글·일본어·중국어)마다 고른다. 기본 Cascadia·D2Coding·HackGen·Sarasa SC, 그 글자의 후보 밖은 거절
+    #[tokio::test]
+    async fn console_fonts_are_chosen_per_script() {
+        let tmp = TempDir::new().unwrap();
+        let store = ConfigStore::new(tmp.path());
+        let v = serde_json::to_value(store.get_gui_settings().await).unwrap();
+        assert_eq!(
+            v["consoleFonts"],
+            serde_json::json!({ "latin": "cascadia-code", "ko": "d2coding", "ja": "hackgen", "zh": "sarasa-mono-sc" })
+        );
+        for bad in [
+            serde_json::json!({ "consoleFonts": { "ko": "hackgen" } }),
+            serde_json::json!({ "consoleFonts": { "ja": "d2coding" } }),
+            serde_json::json!({ "consoleFonts": { "zh": "gulimche" } }),
+            serde_json::json!({ "consoleFonts": { "latin": "comic-sans" } }),
+        ] {
+            assert!(
+                store.write_gui(bad.clone(), Apply::MergePatch, None).await.is_err(),
+                "{bad}"
+            );
+        }
+        // 영문은 모든 후보에서 고른다
+        store
+            .write_gui(
+                serde_json::json!({ "consoleFonts": { "latin": "neodgm-code", "ko": "nanum-gothic-coding" } }),
+                Apply::MergePatch,
+                None,
+            )
+            .await
+            .unwrap();
+        let saved = ConfigStore::new(tmp.path()).get_gui_settings().await;
+        assert_eq!(
+            (
+                saved.console_fonts.latin.as_str(),
+                saved.console_fonts.ko.as_str(),
+                saved.console_fonts.ja.as_str()
+            ),
+            ("neodgm-code", "nanum-gothic-coding", "hackgen")
+        );
     }
 
     /// GUI 셸이 읽는 설정(OS 알림·효과음)도 저장하면 남는다. 모르는 키는 합칠 때 버려진다

@@ -70,8 +70,7 @@ pub async fn run(ctx: &Ctx, cmd: BotCmd) -> Result<()> {
                 return Ok(());
             }
             let r = ctx.api.set_discord_settings(&guild, json!({ "prefixes": values })).await?;
-            let msg = if default { t!("bot.prefix_reset") } else { t!("bot.prefix_set", prefix = values.join(", ")) };
-            ctx.out.done(&msg, &r);
+            ctx.out.done(&prefix_saved_message(&r, &values, default), &r);
             if r.pointer("/sync/ok").and_then(Value::as_bool) == Some(false) {
                 ctx.out.warn(&t!("bot.discord_not_synced"));
             }
@@ -172,6 +171,10 @@ pub async fn run(ctx: &Ctx, cmd: BotCmd) -> Result<()> {
         }
         BotCmd::Sleep { guild } => discord_settings(ctx, &resolve::guild(ctx, guild.as_deref()).await?, Some(json!({ "sleeping": true }))).await,
         BotCmd::Wake { guild } => discord_settings(ctx, &resolve::guild(ctx, guild.as_deref()).await?, Some(json!({ "sleeping": false }))).await,
+        BotCmd::SleepMode { guild, block, no_block, bedtime, no_bedtime } => {
+            let patch = sleep_patch(if no_block { Some(Vec::new()) } else { block }, bedtime, no_bedtime)?;
+            discord_settings(ctx, &resolve::guild(ctx, guild.as_deref()).await?, (!patch.is_null()).then_some(patch)).await
+        }
         BotCmd::Music { guild, on, off, ui, queue_lines, refresh, normalize } => {
             let mut music = Map::new();
             if on || off {
@@ -185,10 +188,21 @@ pub async fn run(ctx: &Ctx, cmd: BotCmd) -> Result<()> {
             let patch = (!music.is_empty()).then(|| json!({ "music": music }));
             discord_settings(ctx, &resolve::guild(ctx, guild.as_deref()).await?, patch).await
         }
-        BotCmd::Tts { guild, volume, speed, pitch, names } => {
-            let patch = tts_patch(volume, speed, pitch, names.as_deref());
+        BotCmd::Tts { guild, volume, speed, pitch, names, voice_chat_only, keep_read, auto_channels, no_auto_channels } => {
+            let behavior = TtsBehavior {
+                voice_chat_only,
+                keep_read,
+                // "1, 2" 처럼 쉼표 뒤 띄어 쓴 것도 받는다
+                auto_channels: if no_auto_channels {
+                    Some(Vec::new())
+                } else {
+                    auto_channels.map(|ids| ids.iter().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect())
+                },
+            };
+            let patch = tts_patch(volume, speed, pitch, names.as_deref(), &behavior);
             discord_settings(ctx, &resolve::guild(ctx, guild.as_deref()).await?, patch).await
         }
+        BotCmd::BigEmoji { guild, on, off } => discord_settings(ctx, &resolve::guild(ctx, guild.as_deref()).await?, big_emoji_patch(on, off)).await,
         BotCmd::Confirm { guild, direct, chatbot } => confirm(ctx, &resolve::guild(ctx, guild.as_deref()).await?, direct, chatbot).await,
         BotCmd::Invite => {
             let cfg = ctx.api.bot_config().await?;
@@ -201,7 +215,18 @@ pub async fn run(ctx: &Ctx, cmd: BotCmd) -> Result<()> {
         }
         BotCmd::Link { id, decline } => link(ctx, id.as_deref(), decline).await,
         BotCmd::Allow { guild, servers, all } => allow(ctx, &resolve::guild(ctx, Some(&guild)).await?, &servers, all).await,
-        BotCmd::Notice { guild, server, on, off } => notice(ctx, &resolve::guild(ctx, Some(&guild)).await?, server.as_deref(), (on || off).then_some(on)).await,
+        BotCmd::Notice { guild, server, on, off, full } => notice(ctx, &resolve::guild(ctx, Some(&guild)).await?, server.as_deref(), (on || off).then_some(on), full).await,
+        BotCmd::BackupNotice { all, failures } => {
+            if all || failures {
+                let mode = if failures { "failures" } else { "all" };
+                let r = ctx.api.patch_bot_config(json!({ "backupNotice": mode })).await?;
+                ctx.out.done(&t!("bot.backup_notice_set", mode = backup_notice_text(mode)), &r);
+                return Ok(());
+            }
+            let mode = backup_notice_mode(&ctx.api.bot_config().await?);
+            ctx.out.data(&json!({ "backupNotice": mode }), |_| say!("{}", t!("bot.backup_notice_show", mode = backup_notice_text(mode))));
+            Ok(())
+        }
         BotCmd::Reset { keys } => {
             let q = if keys.is_empty() {
                 t!("config.confirm_reset_all")
@@ -229,6 +254,18 @@ pub(crate) fn relay_of(cfg: &Value) -> Option<&str> {
 }
 
 /// 빈 목록은 앱 언어의 기본 접두사(릴레이가 고른다)
+/// 접두사 저장 문구: 데몬 응답의 저장된 접두사(`settings.prefixes`), 없으면(옛 데몬) 입력한 값
+fn prefix_saved_message(r: &Value, values: &[String], default: bool) -> String {
+    if default {
+        return t!("bot.prefix_reset");
+    }
+    let prefix = match r.pointer("/settings/prefixes") {
+        Some(p @ Value::Array(_)) => prefixes_line(p),
+        _ => values.join(", "),
+    };
+    t!("bot.prefix_set", prefix = prefix)
+}
+
 fn prefixes_line(p: &Value) -> String {
     let list: Vec<&str> = p.as_array().map(|a| a.iter().filter_map(Value::as_str).collect()).unwrap_or_default();
     if list.is_empty() {
@@ -520,8 +557,9 @@ async fn allow(ctx: &Ctx, guild: &str, queries: &[String], all: bool) -> Result<
     Ok(())
 }
 
-/// 켜짐 알림: 사바쨩이 켠 서버를 그 디스코드 서버의 알림 채널에 알린다 (`nodeSettings[guild].startNotice`, 기본 꺼짐)
-async fn notice(ctx: &Ctx, guild: &str, server: Option<&str>, enabled: Option<bool>) -> Result<()> {
+/// 켜짐·꺼짐 알림(`nodeSettings[guild].startNotice`)과 `--full` 자리 꽉 참 알림(`fullNotice`): 그 디스코드 서버의 알림 채널에 알린다 (기본 꺼짐)
+async fn notice(ctx: &Ctx, guild: &str, server: Option<&str>, enabled: Option<bool>, full: bool) -> Result<()> {
+    let text = |key: &str| if full { format!("bot.full_{}", key) } else { format!("bot.{}", key) };
     let servers = crate::resolve::servers(ctx).await.unwrap_or_default();
     let name_of = |id: &str| servers.iter().find(|s| s.id == id).map_or(id.to_string(), |s| s.name.clone());
     let id = match server {
@@ -529,19 +567,19 @@ async fn notice(ctx: &Ctx, guild: &str, server: Option<&str>, enabled: Option<bo
         None => None,
     };
     let (Some(id), Some(enabled)) = (&id, enabled) else {
-        let r = ctx.api.start_notice(guild).await?;
+        let r = if full { ctx.api.full_notice(guild).await? } else { ctx.api.start_notice(guild).await? };
         let on: Vec<String> = r.get("instances").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str).map(str::to_string).collect();
         ctx.out.data(&r, |_| match &id {
-            Some(id) if on.contains(id) => say!("{}", t!("bot.notice_is_on", server = name_of(id))),
-            Some(id) => say!("{}", t!("bot.notice_is_off", server = name_of(id))),
-            None if on.is_empty() => say!("{}", output::dim(&t!("bot.notice_none"))),
+            Some(id) if on.contains(id) => say!("{}", t!(&text("notice_is_on"), server = name_of(id))),
+            Some(id) => say!("{}", t!(&text("notice_is_off"), server = name_of(id))),
+            None if on.is_empty() => say!("{}", output::dim(&t!(&text("notice_none")))),
             None => on.iter().for_each(|id| say!("{}", name_of(id))),
         });
         return Ok(());
     };
-    let r = ctx.api.set_start_notice(id, guild, enabled).await?;
-    let key = if enabled { "bot.notice_on_saved" } else { "bot.notice_off_saved" };
-    ctx.out.done(&t!(key, guild = guild, server = name_of(id)), &r);
+    let r = if full { ctx.api.set_full_notice(id, guild, enabled).await? } else { ctx.api.set_start_notice(id, guild, enabled).await? };
+    let key = text(if enabled { "notice_on_saved" } else { "notice_off_saved" });
+    ctx.out.done(&t!(&key, guild = guild, server = name_of(id)), &r);
     Ok(())
 }
 
@@ -553,16 +591,16 @@ struct ChannelChange {
     no_music: bool,
     notify: Option<String>,
     no_notify: bool,
-    game_chat: Option<String>,
+    game_chat: Vec<String>,
     no_game_chat: bool,
-    board: Option<String>,
+    board: Vec<String>,
     no_board: bool,
 }
 
 impl ChannelChange {
     fn is_empty(&self) -> bool {
         self.chatbot.is_empty() && !self.no_chatbot && self.music.is_none() && !self.no_music && self.notify.is_none() && !self.no_notify
-            && self.game_chat.is_none() && !self.no_game_chat && self.board.is_none() && !self.no_board
+            && self.game_chat.is_empty() && !self.no_game_chat && self.board.is_empty() && !self.no_board
     }
 }
 
@@ -596,11 +634,18 @@ async fn channels(ctx: &Ctx, guild: &str, change: ChannelChange) -> Result<()> {
     let current = ctx.api.node_channels(guild, relay).await?;
     let list = current.get("channels").and_then(Value::as_array).cloned().unwrap_or_default();
     let mut patch = Map::new();
-    if change.no_chatbot {
-        patch.insert("chatbot".into(), json!([]));
-    } else if !change.chatbot.is_empty() {
-        let ids = change.chatbot.iter().map(|q| channel_id(&list, q)).collect::<Result<Vec<_>>>()?;
-        patch.insert("chatbot".into(), json!(ids));
+    // 여러 채널 종류(말하는 사바쨩·게임 채팅·상황판)는 준 목록으로 바꾼다
+    for (key, none, queries) in [
+        ("chatbot", change.no_chatbot, &change.chatbot),
+        ("gameChat", change.no_game_chat, &change.game_chat),
+        ("board", change.no_board, &change.board),
+    ] {
+        if none {
+            patch.insert(key.into(), json!([]));
+        } else if !queries.is_empty() {
+            let ids = queries.iter().map(|q| channel_id(&list, q)).collect::<Result<Vec<_>>>()?;
+            patch.insert(key.into(), json!(ids));
+        }
     }
     if change.no_music {
         patch.insert("music".into(), Value::Null);
@@ -616,16 +661,6 @@ async fn channels(ctx: &Ctx, guild: &str, change: ChannelChange) -> Result<()> {
         patch.insert("notify".into(), Value::Null);
     } else if let Some(q) = &change.notify {
         patch.insert("notify".into(), json!(channel_id(&list, q)?));
-    }
-    if change.no_game_chat {
-        patch.insert("gameChat".into(), Value::Null);
-    } else if let Some(q) = &change.game_chat {
-        patch.insert("gameChat".into(), json!(channel_id(&list, q)?));
-    }
-    if change.no_board {
-        patch.insert("board".into(), Value::Null);
-    } else if let Some(q) = &change.board {
-        patch.insert("board".into(), json!(channel_id(&list, q)?));
     }
     let r = if patch.is_empty() {
         current
@@ -690,6 +725,15 @@ fn new_guild_mode(cfg: &Value) -> &'static str {
     if cfg.get("newGuildInstances").and_then(Value::as_str) == Some("manual") { "manual" } else { "auto" }
 }
 
+/// 봇 설정의 `backupNotice` (없거나 모르는 값이면 데몬 기본 `all`)
+fn backup_notice_mode(cfg: &Value) -> &'static str {
+    if cfg.get("backupNotice").and_then(Value::as_str) == Some("failures") { "failures" } else { "all" }
+}
+
+fn backup_notice_text(mode: &str) -> String {
+    if mode == "failures" { t!("bot.backup_notice_failures") } else { t!("bot.backup_notice_all") }
+}
+
 fn new_guild_text(mode: &str) -> String {
     if mode == "manual" { t!("bot.new_guild_manual") } else { t!("bot.new_guild_auto") }
 }
@@ -742,8 +786,22 @@ async fn confirm(ctx: &Ctx, guild: &str, direct: Option<String>, chatbot: Option
     Ok(())
 }
 
-/// `bot tts` 옵션 → 디스코드 설정 `tts` 부분 (속도는 배 → %, 범위는 데몬이 본다). 값이 없으면 `None`(보기만)
-fn tts_patch(volume: Option<i64>, speed: Option<f64>, pitch: Option<i64>, names: Option<&str>) -> Option<Value> {
+/// `bot tts` 동작 옵션 (2026-11-03): 음성 채널 채팅에서만·읽은 글 남기기·늘 읽을 음성 채널 (빈 목록 = 비우기)
+#[derive(Default)]
+struct TtsBehavior {
+    voice_chat_only: Option<bool>,
+    keep_read: Option<bool>,
+    auto_channels: Option<Vec<String>>,
+}
+
+/// `bot tts` 옵션 → 디스코드 설정 `tts` 부분 (속도는 배 → %, 범위·채널 ID 는 데몬이 본다). 값이 없으면 `None`(보기만)
+fn tts_patch(
+    volume: Option<i64>,
+    speed: Option<f64>,
+    pitch: Option<i64>,
+    names: Option<&str>,
+    behavior: &TtsBehavior,
+) -> Option<Value> {
     let mut tts = Map::new();
     if let Some(v) = volume {
         tts.insert("volume".into(), json!(v));
@@ -757,6 +815,15 @@ fn tts_patch(volume: Option<i64>, speed: Option<f64>, pitch: Option<i64>, names:
     if let Some(v) = names {
         tts.insert("names".into(), json!(v));
     }
+    if let Some(v) = behavior.voice_chat_only {
+        tts.insert("voiceChatOnly".into(), json!(v));
+    }
+    if let Some(v) = behavior.keep_read {
+        tts.insert("keepRead".into(), json!(v));
+    }
+    if let Some(v) = &behavior.auto_channels {
+        tts.insert("autoChannels".into(), json!(v));
+    }
     (!tts.is_empty()).then(|| json!({ "tts": tts }))
 }
 
@@ -765,12 +832,37 @@ fn print_discord_settings(r: &Value) {
 }
 
 /// 서버 하나의 봇 설정 줄 (GUI 서버 › 봇·노래하는 사바쨩 탭과 같은 값)
+/// `bot sleep-mode` 옵션 → 디스코드 설정 패치 (바꿀 것이 없으면 Null). 시각 범위는 데몬이 다시 본다
+fn sleep_patch(block: Option<Vec<String>>, bedtime: Option<String>, no_bedtime: bool) -> Result<Value> {
+    let mut patch = Map::new();
+    if let Some(b) = block {
+        patch.insert("sleepBlocks".into(), json!(b));
+    }
+    if no_bedtime {
+        patch.insert("bedtime".into(), Value::Null);
+    } else if let Some(range) = bedtime {
+        let clock = |t: &str| t.len() == 5 && t.as_bytes()[2] == b':' && t.chars().filter(char::is_ascii_digit).count() == 4;
+        match range.split_once('-').map(|(a, b)| (a.trim(), b.trim())) {
+            Some((start, end)) if clock(start) && clock(end) => {
+                patch.insert("bedtime".into(), json!({ "start": start, "end": end }));
+            }
+            _ => return Err(usage(t!("bot.bedtime_format"))),
+        }
+    }
+    Ok(if patch.is_empty() { Value::Null } else { Value::Object(patch) })
+}
+
+/// 이모지 업스케일 켜기·끄기 (릴레이가 가진 길드 설정, 데몬이 넘긴다). 둘 다 없으면 보기만
+fn big_emoji_patch(on: bool, off: bool) -> Option<Value> {
+    (on || off).then(|| json!({ "bigEmoji": on }))
+}
+
 fn discord_rows(r: &Value) -> Vec<(String, String)> {
     let on_off = |v: Option<bool>| if v == Some(true) { t!("bot.on") } else { t!("bot.off") };
     let locale = s(r, "locale");
     let music = |k: &str| r.get("music").and_then(|m| m.get(k));
     let tts = |k: &str, default: i64| r.pointer(&format!("/tts/{}", k)).and_then(Value::as_i64).unwrap_or(default);
-    vec![
+    let mut rows = vec![
         (t!("bot.locale"), if locale == "auto" { t!("bot.locale_auto") } else { locale.to_string() }),
         (t!("bot.prefix"), prefixes_line(r.get("prefixes").unwrap_or(&Value::Null))),
         // 값이 없으면(옛 데몬) 켜짐
@@ -783,6 +875,19 @@ fn discord_rows(r: &Value) -> Vec<(String, String)> {
         ),
         (t!("bot.private_queries"), on_off(r.get("privateQueries").and_then(Value::as_bool))),
         (t!("bot.sleeping"), on_off(r.get("sleeping").and_then(Value::as_bool))),
+    ];
+    // 코코낸내: 옛 데몬은 값이 없다
+    if let Some(blocks) = r.get("sleepBlocks").and_then(Value::as_array) {
+        let names: Vec<&str> = blocks.iter().filter_map(Value::as_str).collect();
+        rows.push((t!("bot.sleep_blocks"), if names.is_empty() { t!("bot.sleep_blocks_none") } else { names.join(", ") }));
+        let bedtime = r.get("bedtime").filter(|b| b.is_object());
+        rows.push((t!("bot.bedtime"), bedtime.map_or_else(|| t!("bot.off"), |b| format!("{} ~ {}", s(b, "start"), s(b, "end")))));
+    }
+    // 이모지 업스케일: 릴레이가 가진 값이라 릴레이가 답하지 못하면 없다
+    if let Some(on) = r.get("bigEmoji").and_then(Value::as_bool) {
+        rows.push((t!("bot.big_emoji"), on_off(Some(on))));
+    }
+    rows.extend([
         (t!("bot.music"), on_off(music("enabled").and_then(Value::as_bool))),
         (t!("bot.music_ui"), on_off(music("ui").and_then(Value::as_bool))),
         (t!("bot.music_queue_lines"), music("queueLines").map(|v| v.to_string()).unwrap_or_default()),
@@ -800,7 +905,17 @@ fn discord_rows(r: &Value) -> Vec<(String, String)> {
                 _ => t!("bot.tts_names_multi"),
             },
         ),
-    ]
+        (t!("bot.tts_voice_chat_only"), on_off(r.pointer("/tts/voiceChatOnly").and_then(Value::as_bool))),
+        (t!("bot.tts_keep_read"), on_off(r.pointer("/tts/keepRead").and_then(Value::as_bool))),
+        (
+            t!("bot.tts_auto_channels"),
+            match r.pointer("/tts/autoChannels").and_then(Value::as_array) {
+                Some(ids) if !ids.is_empty() => ids.iter().filter_map(Value::as_str).collect::<Vec<_>>().join(", "),
+                _ => t!("bot.tts_auto_channels_none"),
+            },
+        ),
+    ]);
+    rows
 }
 
 fn print_channels(r: &Value) {
@@ -810,29 +925,30 @@ fn print_channels(r: &Value) {
             .find(|c| s(c, "id") == id)
             .map_or(id.to_string(), |c| format!("#{}", s(c, "name")))
     };
-    let chatbot: Vec<String> = r
-        .get("chatbot")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(Value::as_str)
-        .map(name)
-        .collect();
     let none = || output::dim(&t!("bot.channel_none"));
+    // 채널 목록 칸 — 옛 릴레이는 게임 채팅·상황판을 채널 하나(문자열)로 준다
+    let names = |key: &str| {
+        let ids: Vec<String> = match r.get(key) {
+            Some(Value::Array(a)) => a.iter().filter_map(Value::as_str).map(name).collect(),
+            Some(Value::String(id)) => vec![name(id)],
+            _ => Vec::new(),
+        };
+        if ids.is_empty() { none() } else { ids.join(", ") }
+    };
     let music = r.get("music").and_then(Value::as_str).map(name);
     let notify = r.get("notify").and_then(Value::as_str).map(name);
     let mut rows = vec![
-        (t!("bot.chatbot_channels"), if chatbot.is_empty() { none() } else { chatbot.join(", ") }),
+        (t!("bot.chatbot_channels"), names("chatbot")),
         (t!("bot.music_channel"), music.unwrap_or_else(none)),
         (t!("bot.notify_channel"), notify.unwrap_or_else(none)),
     ];
     // 옛 릴레이는 게임 채팅 채널을 모른다 (응답에 gameChat 없음)
     if r.get("gameChat").is_some() {
-        rows.push((t!("bot.game_chat_channel"), r.get("gameChat").and_then(Value::as_str).map(name).unwrap_or_else(none)));
+        rows.push((t!("bot.game_chat_channel"), names("gameChat")));
     }
     // 상황판을 모르는 릴레이는 응답에 board 가 없다
     if r.get("board").is_some() {
-        rows.push((t!("bot.board_channel"), r.get("board").and_then(Value::as_str).map(name).unwrap_or_else(none)));
+        rows.push((t!("bot.board_channel"), names("board")));
     }
     output::print_kv(&rows);
     if r.get("botAvailable").and_then(Value::as_bool) == Some(false) {
@@ -852,12 +968,13 @@ fn mod_duration(text: &str, forever_ok: bool) -> Result<Value> {
     }
     let (num, unit) = t.split_at(t.find(|c: char| !c.is_ascii_digit()).unwrap_or(t.len()));
     let n: u64 = num.parse().map_err(|_| usage(t!("bot.bad_duration", value = text)))?;
-    let minutes = match unit.trim() {
-        "" | "m" | "분" => n,
-        "h" | "시간" => n * 60,
-        "d" | "일" => n * 1440,
+    let per = match unit.trim() {
+        "" | "m" | "분" => 1,
+        "h" | "시간" => 60,
+        "d" | "일" => 1440,
         _ => return Err(usage(t!("bot.bad_duration", value = text))),
     };
+    let minutes = n.saturating_mul(per);
     if minutes == 0 || minutes > 28 * 1440 {
         return Err(usage(t!("bot.bad_duration", value = text)));
     }
@@ -947,8 +1064,10 @@ async fn clear(ctx: &Ctx, guild: &str, channel: &str, count: u32, member: Option
             return Err(usage(t!("bot.bad_duration", value = p)));
         }
     }
-    ctx.ask.ensure(&t!("bot.confirm_clear", name = name, count = count))?;
     let cfg = ctx.api.bot_config().await?;
+    // 권한을 먼저 본다(지우지 않는 검사): 지울 수 없으면 묻지 않고 거절을 보인다
+    checked_before_asking(ctx.api.check_clear_channel(guild, &id, body.clone(), relay_of(&cfg)).await)?;
+    ctx.ask.ensure(&t!("bot.confirm_clear", name = name, count = count))?;
     let r = ctx.api.clear_channel(guild, &id, body, relay_of(&cfg)).await?;
     let n = |k: &str| r.get(k).and_then(Value::as_u64).unwrap_or(0);
     let mut msg = t!("bot.cleared", deleted = n("deleted"), kept = n("kept"));
@@ -957,6 +1076,15 @@ async fn clear(ctx: &Ctx, guild: &str, channel: &str, count: u32, member: Option
     }
     ctx.out.done(&msg, &r);
     Ok(())
+}
+
+/// 확인 전 권한 검사의 결과. 검사 경로가 없는 옛 릴레이(`not_found`)면 예전처럼 묻는다
+fn checked_before_asking(res: Result<Value>) -> Result<()> {
+    match res {
+        Ok(_) => Ok(()),
+        Err(e) if matches!(e.downcast_ref::<crate::error::CliError>(), Some(c) if c.code() == "not_found") => Ok(()),
+        Err(e) => Err(e),
+    }
 }
 
 async fn mute(ctx: &Ctx, guild: &str, member: &str, duration: &str, reason: Option<String>) -> Result<()> {
@@ -1166,9 +1294,42 @@ mod tests {
         assert_eq!(super::new_guild_mode(&json!({})), "auto");
     }
 
+    #[test]
+    fn backup_notice_mode_falls_back_to_all() {
+        use serde_json::json;
+        assert_eq!(super::backup_notice_mode(&json!({ "backupNotice": "failures" })), "failures");
+        assert_eq!(super::backup_notice_mode(&json!({ "backupNotice": "x" })), "all");
+        assert_eq!(super::backup_notice_mode(&json!({})), "all");
+    }
+
     use super::*;
 
+    /// 청소는 묻기 전에 권한을 본다: 거절이면 그 거절, 검사 경로가 없는 옛 릴레이면 묻는 데로 넘어간다
+    #[test]
+    fn clear_checks_permission_before_asking() {
+        use crate::error::CliError;
+        let api = |status: u16, code: &str| -> Result<Value> {
+            Err(CliError::Api { status, code: Some(code.into()), message: String::new(), body: json!({}) }.into())
+        };
+        assert!(checked_before_asking(Ok(json!({ "dryRun": true }))).is_ok());
+        assert!(checked_before_asking(api(404, "not_found")).is_ok());
+        let refused = checked_before_asking(api(403, "forbidden")).unwrap_err();
+        assert_eq!(refused.downcast_ref::<CliError>().map(CliError::code).as_deref(), Some("forbidden"));
+        assert!(checked_before_asking(api(404, "unknown_channel")).is_err());
+    }
+
     /// 서버 설정에 그 서버의 호출어와 명령 이름 번역이 보인다 (비면 기본 호출어, 값이 없으면 번역 켜짐)
+    /// 저장 문구는 데몬이 다듬어 저장한 접두사를 보인다 (입력 원문이 아니라)
+    #[test]
+    fn prefix_saved_message_shows_what_the_daemon_kept() {
+        crate::i18n::init("ko");
+        let typed = vec![" 사바 ".to_string(), "사바".to_string()];
+        let r = json!({ "success": true, "settings": { "prefixes": ["사바"] } });
+        assert_eq!(prefix_saved_message(&r, &typed, false), t!("bot.prefix_set", prefix = "사바"));
+        assert_eq!(prefix_saved_message(&json!({ "success": true }), &typed, false), t!("bot.prefix_set", prefix = " 사바 , 사바"));
+        assert_eq!(prefix_saved_message(&r, &[], true), t!("bot.prefix_reset"));
+    }
+
     #[test]
     fn server_settings_show_its_prefixes_and_command_translation() {
         crate::i18n::init("ko");
@@ -1189,14 +1350,57 @@ mod tests {
         assert_eq!(row(&r, "bot.private_queries"), Some(t!("bot.on")));
     }
 
+    /// 이모지 업스케일 (GUI 봇 설정 탭과 같다): 릴레이가 가진 값이라, 릴레이가 답하지 못해 값이 없으면 줄을 두지 않는다
+    #[test]
+    fn big_emoji_is_shown_and_changed_like_the_gui() {
+        crate::i18n::init("ko");
+        let row = |r: &Value, k: &str| discord_rows(r).into_iter().find(|(name, _)| *name == t!(k)).map(|(_, v)| v);
+        assert_eq!(row(&json!({ "bigEmoji": true, "music": {} }), "bot.big_emoji"), Some(t!("bot.on")));
+        assert_eq!(row(&json!({ "bigEmoji": false, "music": {} }), "bot.big_emoji"), Some(t!("bot.off")));
+        assert_eq!(row(&json!({ "music": {} }), "bot.big_emoji"), None);
+        assert_eq!(big_emoji_patch(true, false), Some(json!({ "bigEmoji": true })));
+        assert_eq!(big_emoji_patch(false, true), Some(json!({ "bigEmoji": false })));
+        assert_eq!(big_emoji_patch(false, false), None);
+    }
+
+    /// 코코낸내 (GUI 봇 설정 탭과 같다): 잠든 동안 끄는 기능, 착한 어린이(자동 코코낸내) 시각
+    #[test]
+    fn sleep_mode_reads_blocks_and_good_kid_times() {
+        crate::i18n::init("ko");
+        let row = |r: &Value, k: &str| discord_rows(r).into_iter().find(|(name, _)| *name == t!(k)).map(|(_, v)| v);
+        let r = json!({ "sleepBlocks": ["music", "tts"], "bedtime": { "start": "01:00", "end": "08:00" }, "music": {} });
+        assert_eq!(row(&r, "bot.sleep_blocks").as_deref(), Some("music, tts"));
+        assert_eq!(row(&r, "bot.bedtime").as_deref(), Some("01:00 ~ 08:00"));
+        let off = json!({ "sleepBlocks": [], "bedtime": null, "music": {} });
+        assert_eq!(row(&off, "bot.sleep_blocks"), Some(t!("bot.sleep_blocks_none")));
+        assert_eq!(row(&off, "bot.bedtime"), Some(t!("bot.off")));
+        // 옛 데몬은 값이 없다 — 줄을 두지 않는다
+        assert_eq!(row(&json!({ "music": {} }), "bot.bedtime"), None);
+
+        assert_eq!(sleep_patch(Some(vec!["llm".into()]), Some("23:30-07:00".into()), false).unwrap(), json!({ "sleepBlocks": ["llm"], "bedtime": { "start": "23:30", "end": "07:00" } }));
+        assert_eq!(sleep_patch(None, None, true).unwrap(), json!({ "bedtime": null }));
+        assert_eq!(sleep_patch(Some(Vec::new()), None, false).unwrap(), json!({ "sleepBlocks": [] }));
+        assert_eq!(sleep_patch(None, None, false).unwrap(), Value::Null);
+        assert!(sleep_patch(None, Some("1시-8시".into()), false).is_err());
+    }
+
     /// 읽어주는 사바쨩 (GUI 탭과 같다): 볼륨 %, 속도는 배로 받아 %로 보내고, 피치 반음, 이름 부르기. 아무 값도 없으면 보기만
     #[test]
     fn tts_options_become_a_partial_tts_patch_and_show_in_server_settings() {
         crate::i18n::init("ko");
-        assert_eq!(tts_patch(None, None, None, None), None);
-        assert_eq!(tts_patch(Some(80), Some(1.25), Some(-3), None), Some(json!({ "tts": { "volume": 80, "speed": 125, "pitch": -3 } })));
-        assert_eq!(tts_patch(None, Some(1.2), None, None), Some(json!({ "tts": { "speed": 120 } })));
-        assert_eq!(tts_patch(None, None, None, Some("never")), Some(json!({ "tts": { "names": "never" } })));
+        let none = TtsBehavior::default();
+        assert_eq!(tts_patch(None, None, None, None, &none), None);
+        assert_eq!(tts_patch(Some(80), Some(1.25), Some(-3), None, &none), Some(json!({ "tts": { "volume": 80, "speed": 125, "pitch": -3 } })));
+        assert_eq!(tts_patch(None, Some(1.2), None, None, &none), Some(json!({ "tts": { "speed": 120 } })));
+        assert_eq!(tts_patch(None, None, None, Some("never"), &none), Some(json!({ "tts": { "names": "never" } })));
+        // 동작 (2026-11-03): 음성 채널 채팅에서만·읽은 글 남기기, 늘 읽을 음성 채널은 목록 통째로 (빈 목록 = 비우기)
+        let b = TtsBehavior { voice_chat_only: Some(true), keep_read: Some(false), auto_channels: Some(vec!["1".into(), "2".into()]) };
+        assert_eq!(
+            tts_patch(None, None, None, None, &b),
+            Some(json!({ "tts": { "voiceChatOnly": true, "keepRead": false, "autoChannels": ["1", "2"] } }))
+        );
+        let clear = TtsBehavior { auto_channels: Some(vec![]), ..Default::default() };
+        assert_eq!(tts_patch(None, None, None, None, &clear), Some(json!({ "tts": { "autoChannels": [] } })));
         let row = |r: &Value, k: &str| discord_rows(r).into_iter().find(|(name, _)| *name == t!(k)).map(|(_, v)| v);
         let r = json!({ "music": {}, "tts": { "volume": 80, "speed": 125, "pitch": -3 } });
         assert_eq!(row(&r, "bot.tts_volume").as_deref(), Some("80%"));
@@ -1205,6 +1409,12 @@ mod tests {
         assert_eq!(row(&json!({ "tts": { "names": "always" } }), "bot.tts_names"), Some(t!("bot.tts_names_always")));
         // 옛 데몬(tts 없음)이면 기본값
         assert_eq!(row(&json!({}), "bot.tts_names"), Some(t!("bot.tts_names_multi")));
+        let on = json!({ "tts": { "voiceChatOnly": true, "keepRead": true, "autoChannels": ["1", "2"] } });
+        assert_eq!(row(&on, "bot.tts_voice_chat_only"), Some(t!("bot.on")));
+        assert_eq!(row(&on, "bot.tts_keep_read"), Some(t!("bot.on")));
+        assert_eq!(row(&on, "bot.tts_auto_channels").as_deref(), Some("1, 2"));
+        assert_eq!(row(&json!({}), "bot.tts_keep_read"), Some(t!("bot.off")));
+        assert_eq!(row(&json!({}), "bot.tts_auto_channels"), Some(t!("bot.tts_auto_channels_none")));
         let old = json!({ "music": {} });
         assert_eq!(row(&old, "bot.tts_volume").as_deref(), Some("100%"));
         assert_eq!(row(&old, "bot.tts_speed"), Some(t!("bot.tts_speed_value", value = "1")));
@@ -1309,6 +1519,7 @@ mod tests {
         assert!(mod_duration("forever", false).is_err(), "auto clear has no forever");
         assert!(mod_duration("29d", true).is_err(), "Discord timeouts end at 28 days");
         assert!(mod_duration("soon", true).is_err());
+        assert!(mod_duration("99999999999999999d", true).is_err(), "a huge count must not wrap past the cap");
     }
 
     #[test]

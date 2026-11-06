@@ -70,6 +70,9 @@ const T = {
         uninstallCompleteSub: 'Saba-chan has been removed.',
         uninstallCompletePartial: 'Uninstalled, but some files are left',
         uninstallCompletePartialSub: 'These could not be deleted. Close any program using them and delete them yourself:',
+        uninstallWarnServersUnlisted: 'Could not get the list of running servers, so they were force-stopped instead of shut down cleanly ({{detail}}).',
+        uninstallWarnServerForceStopped: 'Server {{server}} did not shut down cleanly and was force-stopped ({{detail}}). Changes since its last save may be lost.',
+        uninstallWarnDaemonUnanswered: 'The daemon did not answer, so running servers were force-stopped. Changes since their last save may be lost.',
         uninstallFailed: 'Uninstall failed',
         labelLanguage: 'Language',
         // Install progress
@@ -161,6 +164,9 @@ const T = {
         uninstallCompleteSub: '사바쨩을 제거했습니다.',
         uninstallCompletePartial: '제거했지만 일부 파일이 남았습니다',
         uninstallCompletePartialSub: '아래 항목을 지우지 못했습니다. 사용 중인 프로그램을 닫고 직접 지워 주세요:',
+        uninstallWarnServersUnlisted: '켜진 서버 목록을 받지 못해 서버를 정상 종료하지 못하고 강제로 껐습니다 ({{detail}}).',
+        uninstallWarnServerForceStopped: '{{server}} 서버를 정상 종료하지 못해 강제로 껐습니다 ({{detail}}). 마지막 저장 이후 내용이 없을 수 있습니다.',
+        uninstallWarnDaemonUnanswered: '데몬이 답하지 않아 켜져 있던 서버를 강제로 껐습니다. 마지막 저장 이후 내용이 없을 수 있습니다.',
         uninstallFailed: '제거 실패',
         labelLanguage: '언어',
         // Install progress
@@ -252,6 +258,9 @@ const T = {
         uninstallCompleteSub: 'サバちゃんは削除されました。',
         uninstallCompletePartial: 'アンインストールしましたが、一部のファイルが残っています',
         uninstallCompletePartialSub: '次の項目を削除できませんでした。使用中のプログラムを閉じてから手動で削除してください:',
+        uninstallWarnServersUnlisted: '起動中のサーバー一覧を取得できず、正常に終了できなかったため強制終了しました ({{detail}})。',
+        uninstallWarnServerForceStopped: 'サーバー {{server}} を正常に終了できず、強制終了しました ({{detail}})。最後の保存以降の内容が失われている可能性があります。',
+        uninstallWarnDaemonUnanswered: 'デーモンが応答しなかったため、起動中のサーバーを強制終了しました。最後の保存以降の内容が失われている可能性があります。',
         uninstallFailed: 'アンインストール失敗',
         labelLanguage: '言語',
         // Install progress
@@ -343,6 +352,9 @@ const T = {
         uninstallCompleteSub: 'Saba-chan 已被移除。',
         uninstallCompletePartial: '已卸载，但仍有部分文件残留',
         uninstallCompletePartialSub: '以下项目无法删除。请关闭正在使用它们的程序后手动删除：',
+        uninstallWarnServersUnlisted: '无法获取正在运行的服务器列表，未能正常关闭，已强制停止 ({{detail}})。',
+        uninstallWarnServerForceStopped: '服务器 {{server}} 未能正常关闭，已强制停止 ({{detail}})。上次保存之后的内容可能丢失。',
+        uninstallWarnDaemonUnanswered: '守护进程没有响应，已强制停止正在运行的服务器。上次保存之后的内容可能丢失。',
         uninstallFailed: '卸载失败',
         labelLanguage: '语言',
         // Install progress
@@ -434,6 +446,9 @@ const T = {
         uninstallCompleteSub: 'Saba-chan 已被移除。',
         uninstallCompletePartial: '已解除安裝，但仍有部分檔案殘留',
         uninstallCompletePartialSub: '無法刪除下列項目。請關閉正在使用它們的程式後手動刪除：',
+        uninstallWarnServersUnlisted: '無法取得執行中的伺服器清單，未能正常關閉，已強制停止 ({{detail}})。',
+        uninstallWarnServerForceStopped: '伺服器 {{server}} 未能正常關閉，已強制停止 ({{detail}})。上次儲存之後的內容可能遺失。',
+        uninstallWarnDaemonUnanswered: '常駐程式沒有回應，已強制停止執行中的伺服器。上次儲存之後的內容可能遺失。',
         uninstallFailed: '解除安裝失敗',
         labelLanguage: '語言',
         // Install progress
@@ -525,6 +540,9 @@ const T = {
         uninstallCompleteSub: 'Saba-chan ha sido eliminado.',
         uninstallCompletePartial: 'Desinstalado, pero quedan algunos archivos',
         uninstallCompletePartialSub: 'No se pudieron eliminar. Cierra los programas que los usan y elimínalos manualmente:',
+        uninstallWarnServersUnlisted: 'No se pudo obtener la lista de servidores en ejecución, así que se detuvieron a la fuerza ({{detail}}).',
+        uninstallWarnServerForceStopped: 'El servidor {{server}} no se cerró correctamente y se detuvo a la fuerza ({{detail}}). Puede perderse lo hecho desde el último guardado.',
+        uninstallWarnDaemonUnanswered: 'El daemon no respondió, así que los servidores en ejecución se detuvieron a la fuerza. Puede perderse lo hecho desde el último guardado.',
         uninstallFailed: 'Error en la desinstalación',
         labelLanguage: 'Idioma',
         // Install progress
@@ -616,6 +634,9 @@ const T = {
         uninstallCompleteSub: 'O Saba-chan foi removido.',
         uninstallCompletePartial: 'Desinstalado, mas alguns arquivos ficaram',
         uninstallCompletePartialSub: 'Não foi possível excluí-los. Feche os programas que os usam e exclua-os manualmente:',
+        uninstallWarnServersUnlisted: 'Não foi possível obter a lista de servidores em execução, então eles foram forçados a parar ({{detail}}).',
+        uninstallWarnServerForceStopped: 'O servidor {{server}} não fechou corretamente e foi forçado a parar ({{detail}}). O que mudou desde o último salvamento pode ter se perdido.',
+        uninstallWarnDaemonUnanswered: 'O daemon não respondeu, então os servidores em execução foram forçados a parar. O que mudou desde o último salvamento pode ter se perdido.',
         uninstallFailed: 'Falha na desinstalação',
         labelLanguage: 'Idioma',
         // Install progress
@@ -707,6 +728,9 @@ const T = {
         uninstallCompleteSub: 'Saba-chan был удалён.',
         uninstallCompletePartial: 'Удаление завершено, но некоторые файлы остались',
         uninstallCompletePartialSub: 'Их не удалось удалить. Закройте программы, которые их используют, и удалите их вручную:',
+        uninstallWarnServersUnlisted: 'Не удалось получить список запущенных серверов, поэтому они были остановлены принудительно ({{detail}}).',
+        uninstallWarnServerForceStopped: 'Сервер {{server}} не завершился корректно и был остановлен принудительно ({{detail}}). Изменения после последнего сохранения могли потеряться.',
+        uninstallWarnDaemonUnanswered: 'Демон не ответил, поэтому запущенные серверы были остановлены принудительно. Изменения после последнего сохранения могли потеряться.',
         uninstallFailed: 'Ошибка удаления',
         labelLanguage: 'Язык',
         // Install progress
@@ -798,6 +822,9 @@ const T = {
         uninstallCompleteSub: 'Saba-chan wurde entfernt.',
         uninstallCompletePartial: 'Deinstalliert, aber einige Dateien sind übrig',
         uninstallCompletePartialSub: 'Diese konnten nicht gelöscht werden. Schließe Programme, die sie verwenden, und lösche sie manuell:',
+        uninstallWarnServersUnlisted: 'Die Liste der laufenden Server konnte nicht abgerufen werden, daher wurden sie zwangsweise beendet ({{detail}}).',
+        uninstallWarnServerForceStopped: 'Server {{server}} wurde nicht sauber beendet und zwangsweise gestoppt ({{detail}}). Änderungen seit dem letzten Speichern können verloren sein.',
+        uninstallWarnDaemonUnanswered: 'Der Daemon hat nicht geantwortet, daher wurden laufende Server zwangsweise gestoppt. Änderungen seit dem letzten Speichern können verloren sein.',
         uninstallFailed: 'Deinstallation fehlgeschlagen',
         labelLanguage: 'Sprache',
         // Install progress
@@ -889,6 +916,9 @@ const T = {
         uninstallCompleteSub: 'Saba-chan a été supprimé.',
         uninstallCompletePartial: 'Désinstallé, mais certains fichiers restent',
         uninstallCompletePartialSub: 'Ils n\'ont pas pu être supprimés. Fermez les programmes qui les utilisent et supprimez-les manuellement :',
+        uninstallWarnServersUnlisted: 'Impossible d\'obtenir la liste des serveurs en cours, ils ont donc été arrêtés de force ({{detail}}).',
+        uninstallWarnServerForceStopped: 'Le serveur {{server}} ne s\'est pas arrêté proprement et a été arrêté de force ({{detail}}). Les changements depuis la dernière sauvegarde peuvent être perdus.',
+        uninstallWarnDaemonUnanswered: 'Le démon n\'a pas répondu, les serveurs en cours ont donc été arrêtés de force. Les changements depuis la dernière sauvegarde peuvent être perdus.',
         uninstallFailed: 'Échec de la désinstallation',
         labelLanguage: 'Langue',
         // Install progress
@@ -967,6 +997,17 @@ const UNINSTALL_STEP_KEYS = {
 };
 
 /** Translate a progress step name, falling back to the raw message */
+/** 제거 전 서버 종료 문제 한 줄 (installer core `StopWarning`의 `kind`) */
+function uninstallWarning(w) {
+    const vars = { server: w.server, detail: w.detail };
+    switch (w.kind) {
+        case 'servers_unlisted': return tr('uninstallWarnServersUnlisted', vars);
+        case 'server_force_stopped': return tr('uninstallWarnServerForceStopped', vars);
+        case 'daemon_unanswered': return tr('uninstallWarnDaemonUnanswered', vars);
+        default: return String(w.kind || '');
+    }
+}
+
 function trStep(stepMap, step, fallback) {
     const key = stepMap[step];
     if (!key) return fallback;
@@ -1235,6 +1276,7 @@ async function loadModules() {
                 </div>
                 <div class="module-check">
                     <input type="checkbox" class="mod-chk" data-id="${m.id}" />
+                    <span class="check-box" aria-hidden="true"><svg viewBox="0 0 16 16" focusable="false"><path d="M4 8.2 6.8 11 12 5"/></svg></span>
                 </div>`;
             // 아이콘: img를 먼저 만들고 error 핸들러 연결 후 src 설정
             const iconContainer = card.querySelector('.module-icon');
@@ -1440,13 +1482,16 @@ listen('uninstall:progress', (ev) => {
         $glowRing.className = 'loading-logo-container complete';
         $logoArea.className = 'logo-area state-complete';
         const left = p.left || [];
+        // 정상 종료하지 못하고 강제로 끊은 서버는 지우지 못한 항목과 따로, 앞에 알린다
+        const warnings = (p.warnings || []).map(uninstallWarning);
         $statusText.textContent = tr(left.length ? 'uninstallCompletePartial' : 'uninstallComplete');
         $statusSub.textContent = tr(left.length ? 'uninstallCompletePartialSub' : 'uninstallCompleteSub');
         $fill.style.width = '100%';
         $fill.classList.add('complete-fill');
-        $msg.textContent = left.length ? left.join('\n') : p.message;
-        $msg.style.whiteSpace = left.length ? 'pre-line' : '';
-        $msg.style.overflowWrap = left.length ? 'anywhere' : '';
+        const lines = warnings.concat(left);
+        $msg.textContent = lines.length ? (left.length ? lines : warnings.concat(p.message)).join('\n') : p.message;
+        $msg.style.whiteSpace = lines.length ? 'pre-line' : '';
+        $msg.style.overflowWrap = lines.length ? 'anywhere' : '';
         $pct.textContent = '100%';
 
         // 종료 버튼 표시

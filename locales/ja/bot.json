@@ -11,14 +11,14 @@
     "no_modules": "なし",
     "module_title": "**{{module}} コマンド**",
     "available_commands": "{{commands}}",
-    "usage_format": "`{{prefix}} <モジュール> <コマンド>`",
-    "modules_header": "📦 **モジュール:**"
+    "usage_format": "`{{prefix}} <サーバー> <コマンド>`",
+    "modules_header": "🎮 **サーバー:**",
+    "slash_hint": "💡 再起動・バックアップ・ポート開放チェックは `<サーバー> 再起動` のように使えます。権限・言語・おやすみ・Web・アップデートはスラッシュコマンド(`/`)でどうぞ。"
   },
   "modules": {
     "help_start": "サーバーを起動",
     "help_stop": "サーバーを停止",
     "help_status": "サーバーステータスを確認",
-    "help_rest_title": "**REST コマンド:**",
     "enter_command": "コマンドを入力してください。"
   },
   "list": {
@@ -28,16 +28,20 @@
   },
   "status": {
     "running": "🟢 実行中",
+    "starting": "🟡 起動中",
     "stopped": "⚪ 停止中"
   },
   "server": {
     "start_request": "⏳ **{{name}}** サーバーを起動しています...",
-    "start_complete": "✅ **{{name}}** 起動リクエストが完了しました!",
+    "start_complete": "✅ **{{name}}** · 起動",
     "already_running": "ℹ️ **{{name}}** はすでに起動しています。",
     "stop_request": "⏳ **{{name}}** サーバーを停止しています...",
-    "stop_complete": "✅ **{{name}}** 停止リクエストが完了しました!",
+    "stop_complete": "✅ **{{name}}** · 停止",
     "graceful_stop_unavailable": "⚠️ **{{name}}** は保存して終了する手段（コンソール・REST）がないため停止しませんでした。保存せずに終了するには、このPCのsaba-chanで強制停止を選んでください。",
-    "status_check": "📊 **{{name}}** ステータス: {{status}} {{pid_info}}",
+    "status_check": "📊 **{{name}}** · {{status}}",
+    "uptime_hm": "稼働 {{h}}時間{{m}}分",
+    "uptime_m": "稼働 {{m}}分",
+    "still_starting": "⏳ **{{name}}** はまだ起動中です。少し待ってからもう一度聞いてください。",
     "not_found": "❌ モジュール \"{{alias}}\" のサーバーが見つかりません ({{resolved}})",
     "not_running": "❌ **{{name}}**: {{error}}",
     "not_running_default": "サーバーが実行されていません。最初にサーバーを起動してください",
@@ -91,10 +95,12 @@
     "unknown_input": "❌ 不明なコマンドです。",
     "command_not_found": "❌ 存在しないコマンドです。",
     "permission_denied": "❌ このコマンドを使用する権限がありません。",
+    "permission_denied_controllers": "❌ このサーバーを起動・停止するには、さばちゃんアプリの「操作できる人」リストに入っているか、このコマンドに決めたレベル（既定は管理者）が必要です。",
     "local_single_guild_only": "⚠️ ローカルボットは1つのサーバーでのみ使用可能です。現在{{count}}個のサーバーに所属しています。使用しないサーバーからボットを削除してください。",
     "alias_conflict": "❌ エイリアス '{{alias}}' は複数のモジュールに一致します: {{modules}}。より具体的なエイリアスを使用してください。",
     "multiple_instances": "⚠️ '{{module}}' モジュールのインスタンスが複数あるため、エイリアスでは区別できません。インスタンス名を使用してください。",
-    "danger_needs_name": "⚠️ 危険なコマンドはゲーム名では実行しません。サーバー名「{{name}}」で呼んでください。"
+    "danger_needs_name": "⚠️ 危険なコマンドはゲーム名では実行しません。サーバー名「{{name}}」で呼んでください。",
+    "slash_only": "🔒 「{{command}}」は呼んだ人にだけ見えるよう、スラッシュコマンドでお知らせします。`/` を入力して **{{name}}** › {{command}} を選んでください。"
   },
   "messages": {
     "command_error": "コマンド実行エラー"
@@ -149,6 +155,9 @@
       "schedule": {
         "set": {
           "title": "予約タスクを変更"
+        },
+        "get": {
+          "title": "予約タスクを見る"
         }
       },
       "delete": {
@@ -157,8 +166,29 @@
       "start_notice": {
         "set": {
           "title": "起動通知",
-          "description": "サバちゃんがこのサーバーを起動したら、このDiscordサーバーの通知チャンネルに知らせます",
+          "description": "コマンド以外でこのサーバーが起動・停止したら(クラッシュを含む)、このDiscordサーバーの通知チャンネルに知らせます",
           "name": "起動通知"
+        }
+      },
+      "full_notice": {
+        "set": {
+          "title": "満員通知",
+          "description": "このサーバーが満員になったり、また空きが出たりしたら、このDiscordサーバーの通知チャンネルに知らせます",
+          "name": "満員通知"
+        }
+      },
+      "get": {
+        "title": "サーバー設定を見る"
+      },
+      "rename": {
+        "title": "サーバー名を変更"
+      },
+      "properties": {
+        "get": {
+          "title": "ゲーム設定ファイルを見る"
+        },
+        "set": {
+          "title": "ゲーム設定ファイルを変更"
         }
       }
     },
@@ -184,6 +214,9 @@
         "tail": {
           "title": "コンソールの末尾",
           "description": "コンソールの最後の20行"
+        },
+        "send": {
+          "title": "コンソールコマンドを送る"
         }
       },
       "logs": {
@@ -200,6 +233,11 @@
         "title": "プレイヤー",
         "description": "接続中のプレイヤーと名前"
       },
+      "address": {
+        "title": "サーバーアドレス",
+        "name": "アドレス",
+        "description": "友だちが接続するアドレス(IP:ポート)を呼んだ人にだけ教えます"
+      },
       "port_check": {
         "title": "ポート開放の確認",
         "description": "外部からこのサーバーに接続できるかリレーが確認します"
@@ -207,6 +245,17 @@
       "chat": {
         "title": "ゲームチャット送信",
         "description": "Discordのメッセージをゲームチャットに送ります"
+      },
+      "update": {
+        "check": {
+          "title": "ゲームサーバーの更新を確認"
+        },
+        "apply": {
+          "title": "ゲームサーバーを更新"
+        }
+      },
+      "diagnose": {
+        "title": "サーバー診断"
       }
     },
     "monitor": {
@@ -225,12 +274,21 @@
       "restore": {
         "title": "バックアップを復元",
         "description": "現在のサーバーファイルをバックアップで上書きします"
+      },
+      "delete": {
+        "title": "バックアップを削除"
       }
     },
     "module": {
       "install": {
         "title": "モジュールをインストール",
         "description": "公式カタログからダウンロードしてインストールします"
+      },
+      "list": {
+        "title": "インストール済みモジュール"
+      },
+      "available": {
+        "title": "入手できるモジュール"
       }
     },
     "extension": {
@@ -239,6 +297,15 @@
       },
       "disable": {
         "title": "拡張機能を無効化"
+      },
+      "list": {
+        "title": "インストール済み拡張機能"
+      },
+      "available": {
+        "title": "入手できる拡張機能"
+      },
+      "install": {
+        "title": "拡張機能をインストール"
       }
     },
     "update": {
@@ -267,6 +334,12 @@
         "set": {
           "title": "おしゃべりサバちゃんの設定を変更",
           "description": "オン/オフ・呼び出し語・確認・ツール"
+        }
+      },
+      "common": {
+        "set": {
+          "title": "このPC共通のおしゃべりサバちゃん設定を変更",
+          "description": "モデル・APIキー（このPCのすべてのサーバー）"
         }
       }
     },
@@ -308,7 +381,10 @@
       "tools": "使うツール",
       "step": "ステップ",
       "from_snapshot": "ゲーム自動バックアップから",
-      "text": "本文"
+      "text": "本文",
+      "apiKey": "APIキー",
+      "command": "コマンド",
+      "settings": "設定"
     },
     "summary": {
       "server_item": "• **{{name}}** ({{module}}) · {{status}}",
@@ -344,6 +420,13 @@
       "players_max": "👥 接続 {{online}}/{{max}}人",
       "player_item": "• {{name}}",
       "players_more": "…ほか {{count}}人",
+      "address": {
+        "item": "• `{{address}}`",
+        "item_named": "• {{label}} `{{address}}`",
+        "stopped": "💤 サーバーが停止しています。起動すると接続できます",
+        "unknown": "❔ サーバーちゃんがこのPCのグローバルアドレスを把握していません。少ししてからもう一度お試しください",
+        "no_ports": "📭 このゲームは接続ポートを示していません"
+      },
       "port_check": {
         "open": "✅ 外部から接続できます",
         "firewall": "🧱 PCのファイアウォールがブロックしています",
@@ -389,12 +472,17 @@
     "server_running": "サーバーが起動中です。先に停止してください",
     "no_command_path": "サバちゃんの外で起動したサーバーのためコマンドを送れません",
     "autosave_not_resumed": "バックアップは作成しましたが、サーバーの自動保存を再開できませんでした。サーバーを再起動してください",
+    "backup_failed_autosave_off": "バックアップに失敗し、サーバーの自動保存も再開できませんでした。サーバーを再起動してください",
     "backup_save_rejected": "サーバーが保存コマンドを受け付けなかったため、バックアップしませんでした。サーバーを停止してからもう一度バックアップしてください",
     "backup_save_unconfirmed": "サーバーが保存の完了を知らせなかったため、バックアップしませんでした。しばらくしてからもう一度試すか、サーバーを停止してからバックアップしてください",
+    "backup_server_stopped": "バックアップ中にサーバーが停止したため、そのバックアップは削除しました。サーバーの状態を確認してからもう一度バックアップしてください",
     "snapshot_not_found": "ゲームが作った自動バックアップがありません",
     "snapshot_not_deletable": "ゲームが作った自動バックアップはサバちゃんから削除できません"
   },
   "chatbot": {
     "memo_template": "<!-- このような案内の行と、書き込んでいない見出しはおしゃべりサバちゃんに送られません。必要な項目だけ書いてください。 -->\n\n## 部屋の雰囲気\n<!-- このサーバーの会話の雰囲気や、どこまでの冗談が許されるかを書いてください。空のままなら基本の性格で話します。 -->\n\n## 呼び方\n<!-- サバちゃんが特定の人を呼ぶ呼び方があれば書いてください。例: (オーナー)と表示された人は「ご主人様」と呼ぶ。 -->\n\n## このサーバーの言葉\n<!-- このサーバーだけで通じるあだ名・ミーム・略語とその意味を書いてください。 -->\n\n## ゲームサーバーの案内\n<!-- サーバーのルールや運営時間など、サバちゃんが聞かれたら教えてよい内容を書いてください。 -->\n"
+  },
+  "controllers": {
+    "kick_reason": "登録されたプレイヤーだけが入れるサーバーです。"
   }
 }

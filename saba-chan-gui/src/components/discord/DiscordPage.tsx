@@ -1,0 +1,552 @@
+import clsx from 'clsx';
+import type { ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { useSwapAnimation } from '../../hooks/useSwapAnimation';
+import { useWindowSize } from '../../hooks/useWindowSize';
+import { useDiscordStore } from '../../stores/useDiscordStore';
+import { useUIStore } from '../../stores/useUIStore';
+import type { ModuleAliases, Server } from '../../stores/useServerStore';
+import type { ApiBody, ModuleInfo } from '../../types/daemon';
+import { safeShowToast } from '../../utils/helpers';
+import { screenFallbackNotice } from '../../utils/openScreen';
+import { Icon } from '../Icon';
+import { SINGLE_COLUMN_MAX_WIDTH } from '../servers/ServersPage';
+import { StatusChip } from '../ui/StatusChip';
+import { ChatbotView, chatbotAvailable } from './ChatbotView';
+import { ConnectionView } from './ConnectionView';
+import { Avatar, NodeView } from './NodeView';
+import * as P from './nodePermissions';
+import type { DiscordNode, MembersByGuild } from './types';
+import { claimSavedToken, usePairing } from './usePairing';
+
+export const DEFAULT_RELAY_URL = 'https://saba-chan.online';
+
+/** 짝짓기 전에 릴레이 주소(설정 화면에서 바꿨을 수 있다)를 config에 저장한다. 실패하면 false */
+const saveRelayUrl = () => useDiscordStore.getState().saveConfig();
+// 페어링 전에 주소를 저장한다. 거절되면 그 이유(error_code)를 페어링 카드에 넘긴다
+const saveRelayUrlForPairing = async () => {
+    if (await saveRelayUrl()) return true;
+    throw Object.assign(new Error('relay url not saved'), { code: useDiscordStore.getState()._saveErrorCode });
+};
+
+interface CloudStateInput {
+    hostId?: string;
+    connected?: boolean;
+    connecting?: boolean;
+    error?: string;
+    loaded?: boolean;
+}
+
+/** 연결 상태 머신: (checking →) no_host → connecting → connected | error */
+export function cloudStateOf({ hostId, connected, connecting, error, loaded }: CloudStateInput) {
+    // 데몬에서 설정을 아직 못 읽었으면 호스트가 비어 있어도 연결 전인지 알 수 없다
+    if (!hostId) return loaded === false ? 'checking' : 'no_host';
+    if (connected) return 'connected';
+    if (error && !connecting) return 'error';
+    return 'connecting';
+}
+
+/** 오른쪽에 보이는 화면: 연결 / 사바쨩 설정 / 디스코드 서버(노드) 하나 */
+interface DiscordView {
+    kind: 'connection' | 'saba' | 'node';
+    id?: string;
+    /** 화면 주소 링크로 열 때 디스코드 서버의 탭·안 화면. seq가 바뀌면 다시 연다 */
+    tab?: string;
+    sub?: string;
+    seq?: number;
+}
+
+
+interface DiscordPageProps {
+    discordBotStatus: string;
+    discordCloudRelayUrl?: string;
+    discordCloudHostId: string;
+    setDiscordCloudHostId: (hostId: string) => void;
+    relayConnected: boolean;
+    relayConnecting: boolean;
+    handleStartDiscordBot: () => unknown;
+    saveCurrentSettings: () => unknown;
+    servers?: Server[];
+    modules?: ModuleInfo[];
+    moduleAliasesPerModule?: Record<string, ModuleAliases>;
+    discordModuleAliases?: Record<string, string>;
+    nodeSettings?: P.NodeSettings | null;
+    cloudNodes?: DiscordNode[];
+    setCloudNodes: (nodes: DiscordNode[]) => void;
+    cloudMembers?: MembersByGuild;
+    setCloudMembers: (valOrFn: MembersByGuild | ((prev: MembersByGuild) => MembersByGuild)) => void;
+    initialView?: DiscordView;
+}
+
+/**
+ * 디스코드 페이지 (V1): 왼쪽 메뉴 | 오른쪽 화면. 서버 페이지와 같은 목록-상세 구조.
+ * 메뉴: 연결 · 사바쨩 설정(모든 서버가 함께 쓰는 키·모델) · 디스코드 서버(노드) 목록.
+ * 기능을 켜고 쓰는 일(말하는·노래하는 사바쨩, 접두사, 권한)은 모두 서버 화면에서 한다.
+ * 노드 권한은 바꾸는 즉시 저장(잠깐 모아서)한다.
+ */
+export function DiscordPage({
+    discordBotStatus,
+    discordCloudRelayUrl,
+    discordCloudHostId,
+    setDiscordCloudHostId,
+    relayConnected,
+    relayConnecting,
+    handleStartDiscordBot,
+    saveCurrentSettings,
+    servers = [],
+    modules = [],
+    moduleAliasesPerModule,
+    discordModuleAliases,
+    nodeSettings,
+    cloudNodes = [],
+    setCloudNodes,
+    cloudMembers = {},
+    setCloudMembers,
+    initialView,
+}: DiscordPageProps) {
+    const { t } = useTranslation('gui');
+    const relayUrl = discordCloudRelayUrl || DEFAULT_RELAY_URL;
+    const { width } = useWindowSize();
+    const singleColumn = width < SINGLE_COLUMN_MAX_WIDTH;
+    const [view, setView] = useState<DiscordView>(initialView || { kind: 'connection' });
+    // 왼쪽에서 다른 화면을 고르면 오른쪽이 살짝 떠오르며 바뀐다
+    const mainRef = useSwapAnimation(`${view.kind}:${view.id ?? ''}`);
+    const [showMainNarrow, setShowMainNarrow] = useState(!!initialView);
+    const [cloudError, setCloudError] = useState('');
+    // 릴레이 확인이 연달아 실패한 이유 (노드 목록은 연결됐을 때만 읽으므로 그 오류만으로는 실패를 알 수 없다)
+    const relayError = useDiscordStore((s) => s.relayError);
+    // 끊긴 동안은 릴레이 실패가 이유다 (연결됐을 때 남은 노드 목록 오류는 지난 일)
+    const connectionError = relayConnected ? cloudError : relayError;
+    const agentReplaced = useDiscordStore((s) => s.discordAgentReplaced);
+    const agentRelayUrlInvalid = useDiscordStore((s) => s.discordAgentRelayUrlInvalid);
+    const agentMinVersion = useDiscordStore((s) => s.discordAgentMinVersion);
+    const botConfigLoaded = useDiscordStore((s) => s._botConfigLoaded);
+    const [membersLoading, setMembersLoading] = useState<string | null>(null);
+    const [membersFailed, setMembersFailed] = useState<Record<string, boolean>>({});
+    // 길드별 일부 목록 사유 (권한을 등록한 멤버만 받았을 때)
+    const [membersPartial, setMembersPartial] = useState<Record<string, string | null>>({});
+    const [saveState, setSaveState] = useState<'saving' | 'saved' | null>(null);
+
+    // 화면을 열 때 데몬 설정을 다시 읽는다: GUI가 켜진 동안 CLI로 짝짓거나 가져온 설정을 보인다
+    // (기동 때 읽기가 끝나기 전이면 그쪽이 읽는다. 화면에서 고친 값은 loadConfig가 덮지 않는다)
+    useEffect(() => {
+        if (useDiscordStore.getState()._botConfigLoaded) useDiscordStore.getState().loadConfig({ attempts: 1 });
+    }, []);
+
+    useEffect(() => {
+        if (initialView) {
+            setView(initialView);
+            setShowMainNarrow(true);
+        }
+    }, [initialView]);
+
+    const cloudState = cloudStateOf({
+        hostId: discordCloudHostId,
+        connected: relayConnected,
+        connecting: relayConnecting,
+        error: connectionError,
+        loaded: botConfigLoaded,
+    });
+
+    const go = (next: DiscordView) => {
+        setView(next);
+        setShowMainNarrow(true);
+    };
+
+    // 화면 주소 링크 (사용자 11-06 #19): 없는 디스코드 서버면 연결 화면을 열고 이유를 알린다
+    const requested = useUIStore((s) => s.requestedDiscordView);
+    // biome-ignore lint/correctness/useExhaustiveDependencies: 요청이 올 때만 그때의 목록으로 판단한다
+    useEffect(() => {
+        if (!requested) return;
+        useUIStore.getState().clearRequestedDiscordView();
+        if (requested.kind !== 'node') {
+            go({ kind: requested.kind });
+            return;
+        }
+        const only = cloudNodes.length === 1 ? cloudNodes[0].guildId : null;
+        const id = requested.id === '*' ? only : requested.id;
+        if (!id || !cloudNodes.some((n) => n.guildId === id)) {
+            go({ kind: 'connection' });
+            screenFallbackNotice(requested.id === '*' && cloudNodes.length > 1 ? 'pick_guild' : 'guild_missing');
+            return;
+        }
+        go({ kind: 'node', id, tab: requested.tab, sub: requested.sub, seq: requested.seq });
+    }, [requested]);
+
+    // App이 넘기는 setter는 렌더마다 새 함수라 effect 의존성에 넣으면 무한 반복된다 → ref로 든다
+    const setters = useRef({ setCloudNodes, setCloudMembers });
+    setters.current = { setCloudNodes, setCloudMembers };
+
+    // 늦게 온 응답이 바뀐 연결(호스트·릴레이·연결 끊김)의 화면을 옛 목록으로 되돌리지 않게 한다
+    const relayKey = `${discordCloudHostId}|${relayUrl}|${relayConnected}`;
+    const relayKeyRef = useRef(relayKey);
+    relayKeyRef.current = relayKey;
+    // 멤버는 길드별로 받으므로 연결 상태가 잠깐 흔들려도 같은 호스트·릴레이의 답이면 쓴다
+    const hostKeyRef = useRef('');
+    hostKeyRef.current = `${discordCloudHostId}|${relayUrl}`;
+
+    // ── 노드 목록 ──
+    const loadNodes = useCallback(async () => {
+        if (!discordCloudHostId) return;
+        const key = relayKeyRef.current;
+        setCloudError('');
+        try {
+            const data = await window.api.relayListHostNodes(discordCloudHostId, relayUrl);
+            if (key !== relayKeyRef.current) return;
+            if (data?.error) throw new Error(data.error);
+            setters.current.setCloudNodes(Array.isArray(data) ? data : data?.nodes || []);
+        } catch (e) {
+            if (key !== relayKeyRef.current) return;
+            setCloudError((e as Error).message || t('errors.network_error'));
+        }
+    }, [discordCloudHostId, relayUrl, t]);
+
+    useEffect(() => {
+        if (discordCloudHostId && relayConnected) loadNodes();
+    }, [discordCloudHostId, relayConnected, loadNodes]);
+    // 연결 요청을 수락하는 등 다른 곳에서 길드가 늘면 다시 읽는다
+    useEffect(
+        () =>
+            useDiscordStore.subscribe((s, prev) => {
+                if (s.cloudNodesStale !== prev.cloudNodesStale) loadNodes();
+            }),
+        [loadNodes],
+    );
+
+    const loadMembers = useCallback(
+        async (guildId: string) => {
+            const key = hostKeyRef.current;
+            setMembersLoading(guildId);
+            try {
+                const data = await window.api.relayListNodeMembers(guildId, relayUrl);
+                if (key !== hostKeyRef.current) return;
+                if (data?.error) throw new Error(data.error);
+                const members = Array.isArray(data) ? data : data?.members || [];
+                setters.current.setCloudMembers((prev: MembersByGuild) => ({ ...prev, [guildId]: members }));
+                setMembersFailed((prev) => ({ ...prev, [guildId]: false }));
+                setMembersPartial((prev) => ({ ...prev, [guildId]: data?.partial ? data.reason || 'partial' : null }));
+            } catch (e) {
+                // 받아 둔 목록은 그대로 둔다 (실패를 빈 목록으로 덮지 않는다)
+                console.warn('[Discord] members fetch failed:', e);
+                if (key === hostKeyRef.current) setMembersFailed((prev) => ({ ...prev, [guildId]: true }));
+            } finally {
+                setMembersLoading((cur) => (cur === guildId ? null : cur));
+            }
+        },
+        [relayUrl],
+    );
+
+    const nodeId = view.kind === 'node' ? view.id : null;
+    // 노드를 열 때 한 번만 부른다 (캐시가 있으면 새로고침 버튼으로)
+    // biome-ignore lint/correctness/useExhaustiveDependencies: cloudMembers가 바뀔 때마다 다시 부르지 않는다
+    useEffect(() => {
+        if (nodeId && !(cloudMembers[nodeId]?.length > 0)) loadMembers(nodeId);
+    }, [nodeId, loadMembers]);
+
+    // ── 길드가 쓸 서버 제한: 데몬 길드 API로 바로 저장 (bot-config 일괄 저장으로는 바뀌지 않는다) ──
+    // 하나씩 저장하고, 다음 목록은 앞 저장이 반영된 스토어 값으로 만든다 (빠르게 두 번 바꿔도 앞 변경이 남는다)
+    const allowedQueue = useRef(Promise.resolve());
+    const updateAllowed = useCallback(
+        (guildId: string, fn: (s: P.NodeSettings) => P.NodeSettings) => {
+            const run = allowedQueue.current.then(async () => {
+                setSaveState('saving');
+                try {
+                    const current = useDiscordStore.getState().nodeSettings as P.NodeSettings;
+                    const next = P.nodeConfig(fn(current || {}), guildId).allowedInstances;
+                    const res = await window.api.guildAllowedInstancesSave(guildId, Array.isArray(next) ? next : null);
+                    if (!res || res.error || res.error_code) throw new Error(res?.error || res?.error_code || '-');
+                    useDiscordStore
+                        .getState()
+                        .applySavedNodeValue(guildId, 'allowedInstances', res.allowedInstances ?? null);
+                    setSaveState('saved');
+                } catch (e) {
+                    setSaveState(null);
+                    safeShowToast(t('discord.allowed_save_failed', { error: (e as Error).message }), 'error', 5000);
+                }
+            });
+            allowedQueue.current = run;
+            return run;
+        },
+        [t],
+    );
+
+    // ── 켜짐·꺼짐 알림·자리 꽉 참 알림: 데몬 API로 서버마다 바로 저장 (bot-config 일괄 저장으로는 바뀌지 않는다) ──
+    const saveNotice = useCallback(
+        async (key: 'startNotice' | 'fullNotice', guildId: string, serverId: string, enabled: boolean) => {
+            setSaveState('saving');
+            try {
+                const save = key === 'fullNotice' ? window.api.guildFullNoticeSave : window.api.guildStartNoticeSave;
+                const res = await save(serverId, guildId, enabled);
+                if (!res || res.error || res.error_code) throw new Error(res?.error || res?.error_code || '-');
+                const list = Array.isArray(res.instances) ? res.instances : [];
+                useDiscordStore.getState().applySavedNodeValue(guildId, key, list.length ? list : null);
+                setSaveState('saved');
+            } catch (e) {
+                setSaveState(null);
+                const failed =
+                    key === 'fullNotice' ? 'discord.full_notice_save_failed' : 'discord.start_notice_save_failed';
+                safeShowToast(t(failed, { error: (e as Error).message }), 'error', 5000);
+            }
+        },
+        [t],
+    );
+    const updateStartNotice = useCallback(
+        (g: string, s: string, on: boolean) => saveNotice('startNotice', g, s, on),
+        [saveNotice],
+    );
+    const updateFullNotice = useCallback(
+        (g: string, s: string, on: boolean) => saveNotice('fullNotice', g, s, on),
+        [saveNotice],
+    );
+
+    // ── 페어링 ──
+    const pairing = usePairing({
+        relayUrl,
+        beforeStart: saveRelayUrlForPairing,
+        onClaimed: async (s: ApiBody) => {
+            // 토큰을 저장하지 못했으면 호스트도 바꾸지 않는다 (토큰 없는 호스트가 저장되지 않게)
+            if (!(await claimSavedToken(s))) return false;
+            if (s.hostId) setDiscordCloudHostId(s.hostId);
+            await saveCurrentSettings();
+            loadNodes();
+        },
+    });
+
+    // 연결 해제: 화면만 비우면 데몬 에이전트가 계속 명령을 받는다 → 에이전트를 멈추고 노드 토큰을 지운다
+    // (토큰이 남아 있으면 데몬이 다음 시작 때 에이전트를 다시 켠다)
+    // 하나라도 실패하면 화면을 비우지 않는다 (비우면 끊긴 줄 알지만 명령은 계속 들어온다)
+    const disconnect = async () => {
+        const failure = (r: ApiBody | null | undefined) =>
+            !r ? 'no response' : r.error || (r.ok === false || r.success === false ? 'failed' : null);
+        for (const call of [window.api.discordBotStop, window.api.deleteNodeToken]) {
+            let err: string | null;
+            try {
+                err = call ? failure(await call()) : 'unavailable';
+            } catch (e) {
+                err = (e as Error).message || String(e);
+            }
+            if (err) {
+                safeShowToast(t('discord.disconnect_failed', { error: err }), 'error', 5000);
+                return;
+            }
+        }
+        clearConnection();
+    };
+
+    // 연결이 끊긴 뒤 화면을 비운다 (연결 해제, 또는 개인정보 지우기를 마친 데몬이 끊었을 때)
+    const clearConnection = () => {
+        pairing.reset();
+        setDiscordCloudHostId('');
+        setCloudError('');
+        setCloudNodes([]);
+        setCloudMembers({});
+        setView({ kind: 'connection' });
+        saveCurrentSettings();
+    };
+
+    // ── 봇 초대: 데몬이 릴레이의 초대 주소를 받아 온다 (GET /api/relay/bot-invite) ──
+    const inviteBot = window.api?.relayBotInvite
+        ? async () => {
+              try {
+                  await saveRelayUrl();
+                  const res = await window.api.relayBotInvite(relayUrl);
+                  const url = res?.url || res?.inviteUrl || res?.invite_url;
+                  if (!url) throw new Error(res?.error || 'no invite url');
+                  // 외부 주소 열기는 셸 브리지(window.electron)에 있다
+                  const openExternal = window.electron?.shell?.openExternal;
+                  if (!openExternal) throw new Error('shell bridge unavailable');
+                  const opened = await openExternal(url);
+                  if (opened?.error) throw new Error(opened.error);
+              } catch (e) {
+                  safeShowToast(t('discord.invite_failed', { error: (e as Error).message }), 'error', 4000);
+              }
+          }
+        : null;
+
+    const settings = nodeSettings || {};
+    const currentNode = cloudNodes.find((n) => n.guildId === nodeId);
+    const sampleModule = modules[0]?.name;
+    const sampleModuleWord =
+        P.parseAliasList(discordModuleAliases?.[sampleModule])[0] ||
+        moduleAliasesPerModule?.[sampleModule]?.module_aliases?.[0] ||
+        sampleModule ||
+        t('discord.usage_module_word');
+
+    // 노드가 사라졌으면 연결 화면으로
+    useEffect(() => {
+        if (view.kind === 'node' && cloudNodes.length > 0 && !cloudNodes.some((n) => n.guildId === view.id)) {
+            setView({ kind: 'connection' });
+        }
+    }, [view, cloudNodes]);
+
+    const connTone = (
+        { connected: 'ok', connecting: 'warn', checking: 'warn', error: 'stop', no_host: 'idle' } as const
+    )[cloudState];
+    const connLabel = t(`discord.state_${cloudState}`);
+
+    const navHidden = singleColumn && showMainNarrow;
+    const mainHidden = singleColumn && !showMainNarrow;
+
+    const navItem = (
+        key: string,
+        active: boolean,
+        onClick: () => void,
+        icon: ReactNode,
+        label: string,
+        sub?: ReactNode,
+        extra?: ReactNode,
+    ) => (
+        <button
+            key={key}
+            type="button"
+            className={clsx('server-row dc-nav-row', { selected: active })}
+            onClick={onClick}
+            aria-current={active ? 'page' : undefined}
+        >
+            <span className="server-row-icon">{icon}</span>
+            <span className="server-row-text">
+                <span className="server-row-name">{label}</span>
+                {sub && <span className="server-row-sub">{sub}</span>}
+            </span>
+            {extra}
+        </button>
+    );
+
+    return (
+        <div className={clsx('page servers-page discord-page', { 'single-column': singleColumn })}>
+            {!navHidden && (
+                <aside className="server-list-pane dc-nav" aria-label={t('shell.nav_discord')}>
+                    <div className="server-list dc-nav-list">
+                        {navItem(
+                            'conn',
+                            view.kind === 'connection',
+                            () => go({ kind: 'connection' }),
+                            <span className={clsx('dc-brand-mark', { on: cloudState === 'connected' })}>
+                                <Icon name={cloudState === 'connected' ? 'discordLogo' : 'discord'} size="sm" />
+                            </span>,
+                            t('discord.nav_connection'),
+                            <StatusChip
+                                tone={connTone}
+                                pulse={cloudState === 'connecting' || cloudState === 'checking'}
+                                label={connLabel}
+                            />,
+                        )}
+
+                        {chatbotAvailable() &&
+                            navItem(
+                                'saba',
+                                view.kind === 'saba',
+                                () => go({ kind: 'saba' }),
+                                <Icon name="sabaFace" size="sm" />,
+                                t('discord.nav_saba'),
+                                <span>{t('discord.nav_saba_sub')}</span>,
+                            )}
+                        <div className="dc-nav-group">
+                            <span>{t('discord.nav_nodes')}</span>
+                            {cloudState === 'connected' && (
+                                <button
+                                    type="button"
+                                    className="icon-btn dc-nav-add"
+                                    data-tooltip={t('discord.pair_start')}
+                                    aria-label={t('discord.pair_start')}
+                                    onClick={() => {
+                                        go({ kind: 'connection' });
+                                        if (!pairing.active) pairing.start();
+                                    }}
+                                >
+                                    <Icon name="plus" size="sm" />
+                                </button>
+                            )}
+                        </div>
+                        {cloudState === 'connected' && cloudError && (
+                            <p className="dc-nav-empty dc-field-error">
+                                {t('discord.nodes_refresh_failed', { error: cloudError })}
+                                <button type="button" className="btn btn-ghost btn-sm" onClick={loadNodes}>
+                                    {t('discord.reload')}
+                                </button>
+                            </p>
+                        )}
+                        {cloudNodes.length === 0 && !(cloudState === 'connected' && cloudError) && (
+                            <p className="dc-nav-empty">
+                                {cloudState === 'connected'
+                                    ? t('discord.nodes_empty')
+                                    : t('discord.nodes_need_connect')}
+                            </p>
+                        )}
+                        {cloudNodes.map((n) => {
+                            const mode = P.instanceMode(settings, n.guildId);
+                            const count = servers.filter((s) => P.isInstanceAllowed(settings, n.guildId, s.id)).length;
+                            return navItem(
+                                n.guildId,
+                                nodeId === n.guildId,
+                                () => go({ kind: 'node', id: n.guildId }),
+                                <Avatar name={n.guildName || n.guildId} url={n.iconUrl} size={40} />,
+                                n.guildName || n.guildId,
+                                <span>
+                                    {mode === 'all' ? t('discord.node_sub_all') : t('discord.node_sub_pick', { count })}
+                                </span>,
+                            );
+                        })}
+                    </div>
+                </aside>
+            )}
+
+            {!mainHidden && (
+                <main className="server-detail-pane">
+                    <div className="server-detail dc-main" ref={mainRef}>
+                        {singleColumn && (
+                            <button type="button" className="dc-crumb" onClick={() => setShowMainNarrow(false)}>
+                                <Icon name="chevronLeft" size="sm" /> {t('discord.back_to_menu')}
+                            </button>
+                        )}
+                        {view.kind === 'connection' && (
+                            <ConnectionView
+                                cloudState={cloudState}
+                                hostId={discordCloudHostId}
+                                relayUrl={relayUrl}
+                                cloudError={connectionError}
+                                nodeCount={cloudNodes.length}
+                                botStatus={discordBotStatus}
+                                agentReplaced={agentReplaced}
+                                agentRelayUrlInvalid={agentRelayUrlInvalid}
+                                agentMinVersion={agentMinVersion}
+                                pairing={pairing}
+                                onStartPairing={pairing.start}
+                                onCancelPairing={pairing.reset}
+                                onReload={relayConnected ? loadNodes : () => useDiscordStore.getState().checkStatus()}
+                                onDisconnect={disconnect}
+                                onErased={clearConnection}
+                                onStartAgent={handleStartDiscordBot}
+                                nodes={cloudNodes}
+                                onInviteBot={inviteBot}
+                            />
+                        )}
+                        {view.kind === 'node' && currentNode && (
+                            <NodeView
+                                key={currentNode.guildId}
+                                node={currentNode}
+                                nodes={cloudNodes}
+                                servers={servers}
+                                modules={modules}
+                                settings={settings}
+                                updateAllowed={updateAllowed}
+                                updateStartNotice={updateStartNotice}
+                                updateFullNotice={updateFullNotice}
+                                members={cloudMembers[currentNode.guildId]}
+                                membersLoading={membersLoading === currentNode.guildId}
+                                membersFailed={!!membersFailed[currentNode.guildId]}
+                                membersPartial={membersPartial[currentNode.guildId] || null}
+                                onRefreshMembers={() => loadMembers(currentNode.guildId)}
+                                saveState={saveState}
+                                sampleModuleWord={sampleModuleWord}
+                                request={view.seq ? { tab: view.tab, sub: view.sub, seq: view.seq } : undefined}
+                            />
+                        )}
+                        {view.kind === 'saba' && chatbotAvailable() && <ChatbotView nodes={cloudNodes} />}
+                    </div>
+                </main>
+            )}
+        </div>
+    );
+}

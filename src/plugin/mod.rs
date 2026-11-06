@@ -32,8 +32,9 @@ fn daemon_env() -> Vec<(&'static str, String)> {
         ("SABA_IPC_URL", format!("http://127.0.0.1:{}", port)),
     ];
     let lang = crate::audit::current().lang.unwrap_or_else(|| {
+        // 모듈·익스텐션 호출마다 부른다: 잠그지 않고, 바뀌지 않은 설정 파일은 다시 읽지 않는다
         saba_chan_updater_lib::config_file::ConfigFile::default_location()
-            .section("gui")
+            .peek_section("gui")
             .get("language")
             .and_then(|v| v.as_str())
             .filter(|l| !l.trim().is_empty())
@@ -1025,7 +1026,7 @@ async fn spawn_plugin(
     let extensions_dir = resolve_extensions_dir();
     if extensions_dir.is_dir() {
         let enabled = saba_chan_updater_lib::config_file::ConfigFile::default_location()
-            .section("extensions")
+            .peek_section("extensions")
             .get("enabled")
             .and_then(|v| serde_json::from_value::<Vec<String>>(v.clone()).ok());
         // 목록이 없으면 활성 익스텐션도 없다 (ExtensionManager와 같은 규칙)
@@ -2254,14 +2255,14 @@ print(json.dumps(codes))
         let entry = dir.path().join("lifecycle.py");
         std::fs::write(
             &entry,
-            "import json, os, sys, time\ntime.sleep(float(open('delay.txt').read()))\n\
-             print(json.dumps({'success': True, 'functions': ['validate', str(os.getpid())]}))\n",
+            "import json, os, sys, time\ntag = open('tag.txt').read()\ntime.sleep(float(open('delay.txt').read()))\n\
+             print(json.dumps({'success': True, 'functions': ['validate', str(os.getpid()), tag]}))\n",
         )
         .unwrap();
         std::fs::write(dir.path().join("delay.txt"), "0.5").unwrap();
+        std::fs::write(dir.path().join("tag.txt"), "first").unwrap();
         crate::sandbox::consent_test_component(&entry);
         let entry = entry.to_string_lossy().into_owned();
-        let first = std::time::Instant::now();
         let asks: Vec<_> = (0..3).map(|_| {
             let entry = entry.clone();
             tokio::spawn(async move { module_functions(&entry).await })
@@ -2270,8 +2271,6 @@ print(json.dumps(codes))
         for ask in asks {
             answers.push(ask.await.unwrap().expect("the shared function query returned a list"));
         }
-        // 이 러너에서 Python 한 번을 띄우는 데 드는 시간 (느린 Windows 러너에서는 수 초)
-        let startup = first.elapsed().saturating_sub(std::time::Duration::from_millis(500));
         assert_eq!(answers[0][0], "validate");
         // 동시에 돈 실행이라면 pid가 서로 다르다
         assert!(answers.iter().all(|a| a == &answers[0]), "one run for concurrent asks: {answers:?}");
@@ -2279,6 +2278,7 @@ print(json.dumps(codes))
         // 모듈이 바뀌었고 느리다: 목록은 기다리지 않고 null, 뒤에서 마친 답은 캐시에 남는다
         let delay = 4.0;
         std::fs::write(dir.path().join("delay.txt"), delay.to_string()).unwrap();
+        std::fs::write(dir.path().join("tag.txt"), "background").unwrap();
         let text = std::fs::read_to_string(&entry).unwrap();
         std::fs::write(&entry, format!("{text}# changed\n")).unwrap();
         // 수정 시각 해상도가 거친 파일 시스템에서도 바뀐 것으로 보이게
@@ -2288,12 +2288,13 @@ print(json.dumps(codes))
         let started = std::time::Instant::now();
         assert_eq!(module_functions_for_list(entry.clone()).await, None);
         assert!(started.elapsed() < std::time::Duration::from_millis(FUNCTIONS_LIST_WAIT_MS + 1500), "{:?}", started.elapsed());
+        // 뒤에서 도는 실행은 시작할 때 tag 를 읽고 지연만큼 잔다. 그사이 tag 를 바꾼다:
+        // 같은 실행을 기다리면 바꾸기 전 값이, 새로 띄웠다면 바꾼 값이 답에 실린다 (걸린 시간으로 가르지 않는다: 부하에 흔들린다)
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        std::fs::write(dir.path().join("tag.txt"), "again").unwrap();
         let shared = module_functions(&entry).await.expect("the background ask finishes");
         assert_ne!(shared, answers[0], "the changed module was asked again");
-        // 새로 실행했다면 목록이 기다린 시간(FUNCTIONS_LIST_WAIT_MS)에 띄우는 시간과 지연 전체가 더해진다.
-        // 기준은 그 차이의 절반이다: 같은 실행이면 띄우는 시간 + 지연, 새 실행이면 그보다 2초 더
-        let limit = startup + std::time::Duration::from_secs_f64(delay) + std::time::Duration::from_millis(FUNCTIONS_LIST_WAIT_MS / 2);
-        assert!(started.elapsed() < limit, "the background ask is shared, not run again: {:?}", started.elapsed());
+        assert_eq!(shared[2], "background", "the background ask is shared, not run again: {shared:?}");
     }
 
     /// 공용 진입점 `run_lifecycle`은 표에 `functions`가 없으면 표의 키(자신 제외)로 답한다.

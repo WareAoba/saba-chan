@@ -44,8 +44,10 @@ impl DaemonApi for FakeDaemon {
     }
 }
 
+/// 시험 요청자 u1은 모든 서버의 조작 가능 명단에 있다 (명단 밖은 `only_controllers_and_admins_run_the_server`)
 fn server(id: &str, name: &str, module: &str, status: &str) -> ServerView {
-    ServerView { id: id.into(), name: name.into(), module: module.into(), status: status.into(), pid: None }
+    let controllers = vec![crate::controllers::Controller { name: "Tester".into(), discord_id: Some("u1".into()) }];
+    ServerView { id: id.into(), name: name.into(), module: module.into(), status: status.into(), controllers, ..Default::default() }
 }
 
 fn input(name: &str, required: bool) -> CommandInput {
@@ -113,12 +115,19 @@ async fn run(api: &FakeDaemon, s: &ChatSettings, text: &str) -> String {
 }
 
 #[tokio::test]
-async fn help_lists_mounted_modules_with_aliases() {
+async fn an_empty_text_is_the_help() {
     let api = fixture();
     let out = run(&api, &settings(), "").await;
-    assert!(out.contains("**minecraft** (마크, mc)"), "{}", out);
-    assert!(out.contains("**palworld** (팰월드)"), "{}", out);
     assert_eq!(run(&api, &settings(), "!saba help").await, out);
+}
+
+/// 문장 명령으로 못 하는 일(권한·언어·코코낸내·웹·업데이트)은 도움말이 슬래시 명령으로 안내한다. 서버가 없어도
+#[tokio::test]
+async fn help_points_to_slash_commands_for_what_sentences_cannot_do() {
+    let hint = Catalog::for_language("en").t("help.slash_hint", &[]);
+    assert_ne!(hint, "help.slash_hint");
+    assert!(run(&fixture(), &settings(), "help").await.ends_with(&hint));
+    assert!(run(&FakeDaemon::default(), &settings(), "help").await.ends_with(&hint));
 }
 
 #[tokio::test]
@@ -363,6 +372,32 @@ async fn discord_requests_are_judged_by_level_and_local_ones_are_not() {
 
     assert_eq!(reply("survival kick steve", None).await.code, None);
     assert_eq!(api.calls().len(), 2);
+}
+
+/// 시작·정지는 조작 가능 명단에 있는 사람과 관리자 이상이 한다. 명단 밖이면 조작 가능 안내를 받고, 금지된 사람은 명단에 있어도 못 한다
+#[tokio::test]
+async fn only_controllers_and_admins_run_the_server() {
+    let mut api = fixture();
+    api.servers[0].controllers.push(crate::controllers::Controller { name: "Alex".into(), discord_id: Some("u2".into()) });
+    let mut s = settings();
+    s.node_settings = json!({ "g1": { "members": { "admin": 2, "u1": -1 } } });
+    let reply = |text: &'static str, user: &'static str| {
+        let req = ChatRequest { text: text.into(), guild_id: Some("g1".into()), remote: discord(user), ..Default::default() };
+        let (api, s) = (&api, &s);
+        async move { process(api, s, &Catalog::for_language("en"), &req).await }
+    };
+    let r = reply("mc stop", "someone").await;
+    assert_eq!((r.code, r.args["need"].clone(), r.args["controllers"].clone()), (Some("PERMISSION_DENIED"), json!(2), json!(true)));
+    assert_eq!(r.text, Catalog::for_language("en").t("errors.permission_denied_controllers", &[]));
+    assert_eq!(reply("mc stop", "u1").await.code, Some("PERMISSION_DENIED"), "banned stays banned on the list");
+    let mut bot = discord("u2");
+    bot.as_mut().unwrap().via_chatbot = true;
+    let req = ChatRequest { text: "mc stop".into(), guild_id: Some("g1".into()), remote: bot, ..Default::default() };
+    let r = process(&api, &s, &Catalog::for_language("en"), &req).await;
+    assert_eq!((r.code, r.args["controllers"].clone()), (Some("PERMISSION_DENIED"), json!(null)), "the chatbot cap holds for the list too");
+    assert!(api.calls().is_empty());
+    assert_eq!(reply("mc stop", "admin").await.code, None);
+    assert_eq!(api.calls(), vec!["stop survival"]);
 }
 
 #[tokio::test]
@@ -689,4 +724,135 @@ async fn starting_a_running_server_says_it_is_already_on() {
     assert!(done.ok && done.already_running);
     assert_eq!(done.reply.text, cat.t("server.already_running", &[("name", "survival")]));
     assert_ne!(done.reply.text, "server.already_running");
+}
+
+/// 값으로 답하는 REST 조회(지표·설정 보기·목록)는 "실행됨"이 아니라 그 값을 보인다. 칸 이름은 모듈 locales
+/// `commands.<명령>.output.<키>`, 비밀 칸은 가린다
+#[tokio::test]
+async fn a_rest_query_reply_shows_the_returned_values() {
+    let mut api = fixture();
+    api.servers[1].status = "running".into();
+    let mut metrics = field("metrics", "rest");
+    metrics.endpoint_template = Some("/v1/api/metrics".into());
+    api.modules[1].commands.push(metrics);
+    let texts = module_texts("en", json!({ "commands": { "metrics": { "output": { "players": "Players", "level": "Level" } } } }));
+    api.modules[1].locale_dir = Some(texts.path().to_path_buf());
+    let rest = |response: Value| InternalResponse {
+        status: StatusCode::OK,
+        body: json!({ "success": true, "protocol": "rest", "command": "metrics",
+            "data": { "status": 200, "url": "http://127.0.0.1:8212/v1/api/players", "method": "GET", "response": response, "response_text": "x" } }),
+    };
+    api.reply = Some(rest(json!({ "players": [{ "name": "Kim", "level": 24 }] })));
+    let out = run(&api, &settings(), "팰월드 metrics").await;
+    assert!(out.starts_with('✅') && out.contains("**Players** (1)") && out.contains("Kim") && out.contains("Level: 24"), "{out}");
+    assert!(!out.contains("8212") && !out.contains("response_text"), "{out}");
+
+    api.reply = Some(rest(json!({ "serverfps": 59, "AdminPassword": "hunter2" })));
+    let out = run(&api, &settings(), "팰월드 metrics").await;
+    assert!(out.contains("• **serverfps**: 59") && out.contains("***") && !out.contains("hunter2"), "{out}");
+}
+
+/// 띄어 쓴 서버 이름·낱말·명령 낱말도 부른다: 앞에서부터 가장 길게 맞는 말을 고른다 (사용자 지정 2026-11-06).
+/// 공백이 여러 칸이어도 한 칸으로 본다
+#[tokio::test]
+async fn spaced_server_names_and_words_are_matched_longest_first() {
+    let mut api = fixture();
+    api.servers.push(server("i-us", "우리 마크 서버", "minecraft", "running"));
+    api.servers.push(server("i-u", "우리", "palworld", "running"));
+    let mut s = settings();
+    s.server_words = serde_json::from_value(json!({ "i-us": { "words": ["우리 마크"], "commands": { "say": ["다들 들어"] } } })).unwrap();
+    run(&api, &s, "우리 마크 서버 say 안녕").await;
+    run(&api, &s, "우리  마크   say 안녕 하세요").await;
+    run(&api, &s, "우리 마크 서버 다들 들어 반가워").await;
+    run(&api, &s, "우리 start").await;
+    assert_eq!(
+        api.calls(),
+        vec![r#"command i-us say ["안녕"]"#, r#"command i-us say ["안녕", "하세요"]"#, r#"command i-us say ["반가워"]"#, "start i-u"]
+    );
+}
+
+/// 위험 명령을 막으며 알려 준 서버 이름(띄어 씀)으로 다시 부르면 된다
+#[tokio::test]
+async fn the_spaced_name_a_danger_refusal_suggests_works() {
+    let mut api = fixture();
+    let mut wipe = field("wipe", "console");
+    wipe.console_template = Some("wipe".into());
+    wipe.risk = Some("danger".into());
+    api.modules[0].commands.push(wipe);
+    api.servers[0].name = "우리 마크 서버".into();
+    let mut s = settings();
+    s.node_settings = json!({ "g1": { "members": { "u1": 2 } } });
+    let cat = Catalog::for_language("en");
+    assert_eq!(run(&api, &s, "mc wipe").await, cat.t("errors.danger_needs_name", &[("name", "우리 마크 서버")]));
+    run(&api, &s, "우리 마크 서버 wipe").await;
+    assert_eq!(api.calls(), vec![r#"command i-mc wipe []"#]);
+}
+
+/// 화면에 보이는 명령 이름(모듈 locales 이름표)과 내장 명령의 언어별 이름으로도 부른다
+#[tokio::test]
+async fn shown_command_names_call_the_command() {
+    let mut api = fixture();
+    let texts = module_texts("ko", json!({ "commands": { "say": { "label": "공지" }, "kick": { "label": "플레이어 추방" } } }));
+    api.modules[0].locale_dir = Some(texts.path().to_path_buf());
+    run(&api, &settings(), "survival 공지 안녕").await;
+    run(&api, &settings(), "survival 플레이어 추방 steve").await;
+    run(&api, &settings(), "survival 정지").await;
+    assert_eq!(api.calls(), vec![r#"command i-mc say ["안녕"]"#, r#"command i-mc kick ["steve"]"#, "stop survival"]);
+}
+
+/// 서버만 부르면 그 서버에서 칠 수 있는 말로 안내한다: 응답 언어의 이름·칸 이름, 내장 명령은 한 번씩, REST 같은 내부 말 없이
+#[tokio::test]
+async fn module_help_uses_the_words_people_can_type() {
+    let mut api = fixture();
+    let texts = module_texts(
+        "ko",
+        json!({ "commands": { "say": { "label": "공지", "description": "모두에게 말해요", "inputs": { "message": { "label": "메시지" } } } } }),
+    );
+    api.modules[0].locale_dir = Some(texts.path().to_path_buf());
+    let mut stop = field("stop", "console");
+    stop.label = "Stop".into();
+    api.modules[0].commands.push(stop);
+    let req = ChatRequest { text: "survival".into(), ..Default::default() };
+    let cat = Catalog::for_language("ko");
+    let out = process(&api, &settings(), &cat, &req).await.text;
+    assert!(out.contains(&cat.t("help.module_title", &[("module", "survival")])), "{out}");
+    assert!(out.contains("`!saba survival 공지 <메시지>` - 모두에게 말해요"), "{out}");
+    assert_eq!(out.matches("`!saba survival 정지`").count(), 1, "{out}");
+    assert!(!out.contains("survival stop") && !out.contains("REST") && !out.contains("minecraft"), "{out}");
+}
+
+/// 도움말은 모듈이 아니라 서버와 그 서버를 부르는 말을 보인다
+#[tokio::test]
+async fn help_lists_servers_and_the_words_that_call_them() {
+    let out = run(&fixture(), &settings(), "help").await;
+    assert!(out.contains("**survival** (마크, mc, minecraft)"), "{out}");
+    assert!(out.contains("**pal1** (팰월드, palworld)"), "{out}");
+}
+
+/// 상태 답에는 PID 대신 접속자와 켜진 시간 (사용자 지정 2026-11-06)
+#[tokio::test]
+async fn status_shows_players_and_uptime_not_the_pid() {
+    let mut api = fixture();
+    api.modules[0].players = true;
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+    api.servers[0].start_time = Some(now - 3_720);
+    api.reply = Some(InternalResponse { status: StatusCode::OK, body: json!({ "success": true, "online": 2, "max": 10, "players": [] }) });
+    let cat = Catalog::for_language("ko");
+    let req = remote_req("survival 상태");
+    let out = process(&api, &settings(), &cat, &req).await.text;
+    assert!(!out.contains("PID"), "{out}");
+    assert!(out.contains(&cat.t("actions.summary.players_max", &[("online", "2"), ("max", "10")])), "{out}");
+    assert!(out.contains(&cat.t("server.uptime_hm", &[("h", "1"), ("m", "2")])), "{out}");
+}
+
+/// 켜지는 중에 접속자를 물으면 실패가 아니라 켜지는 중이라고 답한다
+#[tokio::test]
+async fn players_while_starting_says_it_is_still_starting() {
+    let mut api = fixture();
+    api.modules[0].players = true;
+    api.servers[0].starting = true;
+    api.reply = Some(InternalResponse { status: StatusCode::OK, body: json!({ "success": false, "error_code": "players_failed" }) });
+    let cat = Catalog::for_language("ko");
+    let out = process(&api, &settings(), &cat, &remote_req("survival players")).await.text;
+    assert_eq!(out, cat.t("server.still_starting", &[("name", "survival")]));
 }

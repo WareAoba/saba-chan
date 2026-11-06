@@ -249,9 +249,17 @@ pub struct ServerInfo {
     pub game_chat: crate::supervisor::game_chat::Mode,
     #[serde(default)]
     pub game_chat_keyword: String,
+    /// 조작 가능 (`ServerInstance::controllers`·`controllers_only`)
+    #[serde(default)]
+    pub controllers: Vec<crate::controllers::Controller>,
+    #[serde(default)]
+    pub controllers_only: bool,
     /// 이 서버의 채팅을 읽을 수 있는지: 모듈이 `chat_patterns`를 주고 데몬이 콘솔을 읽는 시작(managed)일 때
     #[serde(default)]
     pub game_chat_supported: bool,
+    /// "조작 가능한 사람만 접속"을 쓸 수 있는지: 모듈이 접속 줄(`player_join_patterns`)과 `kick_command`를 주고 데몬이 콘솔을 읽는 시작일 때
+    #[serde(default)]
+    pub controllers_only_supported: bool,
     /// 익스텐션 데이터 slot (Q-7): 데몬이 조건을 판정하고 값을 찾아 둔 것 (`ExtensionManager::server_slots`)
     #[serde(default, skip_serializing_if = "serde_json::Map::is_empty")]
     pub slots: serde_json::Map<String, serde_json::Value>,
@@ -844,12 +852,13 @@ impl IPCServer {
             // ── Managed-process & module-feature endpoints ──
             .route("/api/instance/{id}/console", get(handlers::managed::get_console_handler))
             .route("/api/instance/{id}/logs", get(handlers::logs::logs_handler))
-            .route("/api/instance/{id}/logs/export", get(handlers::logs::export_handler))
+            .route("/api/instance/{id}/logs/export", get(handlers::logs::export_handler).post(handlers::logs::export_file_handler))
             .route("/api/instance/{id}/stdin", post(handlers::managed::send_stdin_handler))
             .route("/api/instance/{id}/validate", post(handlers::managed::validate_instance_handler))
             .route("/api/instance/{id}/query/{name}", post(handlers::managed::query_instance_handler))
             .route("/api/instance/{id}/players", get(handlers::managed::players_handler))
             .route("/api/instance/{id}/chat", post(handlers::managed::chat_handler))
+            .route("/api/instance/{id}/chat-link/{guild}", post(handlers::managed::chat_link_handler))
             .route("/api/instance/{id}/properties", get(handlers::managed::read_properties_handler).put(handlers::managed::write_properties_handler))
             .route("/api/instance/{id}/properties/reset", post(handlers::managed::reset_properties_handler))
             .route("/api/instance/{id}/settings/live", get(handlers::managed::read_live_settings_handler))
@@ -857,6 +866,7 @@ impl IPCServer {
             .route("/api/instance/{id}/agreements", post(handlers::managed::accept_agreements_handler))
             .route("/api/instance/{id}/diagnose", post(handlers::managed::diagnose_handler))
             .route("/api/instance/{id}/port-check", get(handlers::port_check::last).post(handlers::port_check::check))
+            .route("/api/instance/{id}/address", get(handlers::port_check::address))
             // 백업 (A2)·예약 작업 (A3)
             .route("/api/instance/{id}/backups", get(handlers::backup::list_backups).post(handlers::backup::create_backup))
             .route("/api/instance/{id}/backups/{name}", delete(handlers::backup::delete_backup))
@@ -884,6 +894,9 @@ impl IPCServer {
             // ── System components (release manifest) ──
             .route("/api/system/components", get(handlers::config::get_system_components))
             .route("/api/system/metrics", get(handlers::system::get_metrics))
+            .route("/api/system/net-trace", get(handlers::system::get_net_trace))
+            .route("/api/system/net-trace/grant", post(handlers::system::grant_net_trace))
+            .route("/api/system/net-trace/revoke", post(handlers::system::revoke_net_trace))
             .route("/api/system/paths", get(handlers::paths::get_paths))
             .route("/api/system/paths/move", post(handlers::paths::move_dir))
             .route("/api/system/browse", get(handlers::paths::browse))
@@ -969,6 +982,10 @@ impl IPCServer {
                 "/api/relay/node/{guild_id}/moderation/channels/{channel_id}/clear",
                 post(handlers::relay::clear_node_moderation_channel),
             )
+            .route(
+                "/api/relay/node/{guild_id}/moderation/channels/{channel_id}/clear/check",
+                post(handlers::relay::check_clear_node_moderation_channel),
+            )
             .route("/api/relay/node/{guild_id}/moderation/mutes/{user_id}", put(handlers::relay::put_node_moderation_mute))
             .route("/api/relay/node/{guild_id}/chatbot/models", get(handlers::relay::get_node_chatbot_models))
             .route("/api/relay/node/{guild_id}/chatbot/credit", get(handlers::relay::get_node_chatbot_credit))
@@ -989,6 +1006,7 @@ impl IPCServer {
             .route("/api/chat/command", post(handlers::chat::chat_command))
             // AI 챗봇 설정 (원본은 데몬, 릴레이에 맞춘다)
             .route("/api/chatbot", get(handlers::chatbot::get_chatbot).put(handlers::chatbot::put_chatbot).delete(handlers::chatbot::delete_chatbot))
+            .route("/api/chatbot/common", patch(handlers::chatbot::patch_common))
             .route("/api/chatbot/memory", delete(handlers::chatbot::delete_memory))
             .route("/api/chatbot/memo-template", get(handlers::chatbot::get_memo_template))
             // 인스턴스별 디스코드 낱말, 길드가 쓸 서버 (로컬 전용)
@@ -997,6 +1015,9 @@ impl IPCServer {
             // 켜짐 알림: 길드마다 고른 서버 (액션 instance.start_notice.set 도 같은 라우트)
             .route("/api/guilds/{guild}/start-notice", get(handlers::start_notice::get))
             .route("/api/instance/{id}/start-notice/{guild}", put(handlers::start_notice::put))
+            // 자리 꽉 참 알림: 길드마다 고른 서버 (액션 instance.full_notice.set 도 같은 라우트)
+            .route("/api/guilds/{guild}/full-notice", get(handlers::start_notice::full_get))
+            .route("/api/instance/{id}/full-notice/{guild}", put(handlers::start_notice::full_put))
             .route("/api/chatbot/guilds/{guild}", get(handlers::chatbot::get_guild).patch(handlers::chatbot::patch_guild))
             // ── 원격 데몬 (D1): 원격 포트 설정과 짝 맺은 PC (로컬 전용, 원격 포트에서는 막는다) ──
             .route("/api/remote/settings", get(handlers::remote_daemon::get_settings).put(handlers::remote_daemon::put_settings))

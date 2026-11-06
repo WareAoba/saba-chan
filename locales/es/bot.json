@@ -11,14 +11,14 @@
     "no_modules": "Ninguno",
     "module_title": "**Comandos {{module}}**",
     "available_commands": "{{commands}}",
-    "usage_format": "`{{prefix}} <módulo> <comando>`",
-    "modules_header": "📦 **Módulos:**"
+    "usage_format": "`{{prefix}} <servidor> <comando>`",
+    "modules_header": "🎮 **Servidores:**",
+    "slash_hint": "💡 Reiniciar, copias de seguridad y la comprobación de puertos funcionan como `<servidor> reiniciar`. Permisos, idioma, modo dormir, web y actualizaciones son comandos de barra (`/`)."
   },
   "modules": {
     "help_start": "Iniciar servidor",
     "help_stop": "Detener servidor",
     "help_status": "Verificar estado del servidor",
-    "help_rest_title": "**Comandos REST:**",
     "enter_command": "Ingresa un comando."
   },
   "list": {
@@ -28,16 +28,20 @@
   },
   "status": {
     "running": "🟢 En ejecución",
+    "starting": "🟡 Iniciando",
     "stopped": "⚪ Detenido"
   },
   "server": {
     "start_request": "⏳ Iniciando servidor **{{name}}**...",
-    "start_complete": "✅ ¡Solicitud de inicio de **{{name}}** completada!",
+    "start_complete": "✅ **{{name}}** · Iniciar",
     "already_running": "ℹ️ **{{name}}** ya está en marcha.",
     "stop_request": "⏳ Deteniendo servidor **{{name}}**...",
-    "stop_complete": "✅ ¡Solicitud de detención de **{{name}}** completada!",
+    "stop_complete": "✅ **{{name}}** · Detener",
     "graceful_stop_unavailable": "⚠️ **{{name}}** no se detuvo: no tiene forma (consola o REST) de guardar y salir. Para cerrarlo sin guardar, elige una detención forzada en saba-chan en este PC.",
-    "status_check": "📊 Estado de **{{name}}**: {{status}} {{pid_info}}",
+    "status_check": "📊 **{{name}}** · {{status}}",
+    "uptime_hm": "activo hace {{h}} h {{m}} min",
+    "uptime_m": "activo hace {{m}} min",
+    "still_starting": "⏳ **{{name}}** todavía se está iniciando. Vuelve a preguntar en un momento.",
     "not_found": "❌ No se encontró servidor para el módulo \"{{alias}}\" ({{resolved}})",
     "not_running": "❌ **{{name}}**: {{error}}",
     "not_running_default": "El servidor no se está ejecutando. Inicie primero el servidor",
@@ -81,6 +85,7 @@
     "alias_conflict": "❌ El alias '{{alias}}' es ambiguo. Coincide con varios módulos: {{modules}}. Usa un alias más específico.",
     "multiple_instances": "⚠️ Existen múltiples instancias de '{{module}}'. Usa el nombre de la instancia en lugar del alias del módulo.",
     "danger_needs_name": "⚠️ Los comandos peligrosos no se ejecutan con el nombre del juego. Llama al servidor por su nombre '{{name}}'.",
+    "slash_only": "🔒 {{command}} solo lo ve quien lo pide, por eso es un comando de barra. Escribe `/` y elige **{{name}}** › {{command}}.",
     "auth_failed": "Falló la autenticación",
     "player_not_found": "Jugador no encontrado",
     "internal_server_error": "Error interno del servidor",
@@ -94,6 +99,7 @@
     "unknown_input": "❌ Comando desconocido.",
     "command_not_found": "❌ El comando no existe.",
     "permission_denied": "❌ No tienes permiso para usar este comando.",
+    "permission_denied_controllers": "❌ Para iniciar o detener este servidor tienes que estar en su lista «Operadores» de la app Saba-chan o tener el nivel fijado para este comando (Administrador por defecto).",
     "local_single_guild_only": "⚠️ El bot local solo puede usarse en un servidor. Este bot está en {{count}} servidores. Elimínalo de los servidores que no uses."
   },
   "messages": {
@@ -149,6 +155,9 @@
       "schedule": {
         "set": {
           "title": "Cambiar tareas programadas"
+        },
+        "get": {
+          "title": "Ver tareas programadas"
         }
       },
       "delete": {
@@ -157,8 +166,29 @@
       "start_notice": {
         "set": {
           "title": "Aviso de inicio",
-          "description": "Avisa en el canal de avisos de este servidor de Discord cuando Saba-chan inicia este servidor",
+          "description": "Avisar en el canal de avisos de este servidor de Discord cuando este servidor se inicie o se detenga sin un comando de Discord (incluidos los fallos)",
           "name": "Aviso de inicio"
+        }
+      },
+      "full_notice": {
+        "set": {
+          "title": "Aviso de servidor lleno",
+          "description": "Avisar en el canal de avisos de este servidor de Discord cuando este servidor se llene o vuelva a haber sitio",
+          "name": "Aviso lleno"
+        }
+      },
+      "get": {
+        "title": "Ver ajustes del servidor"
+      },
+      "rename": {
+        "title": "Renombrar servidor"
+      },
+      "properties": {
+        "get": {
+          "title": "Ver archivo de ajustes del juego"
+        },
+        "set": {
+          "title": "Cambiar archivo de ajustes del juego"
         }
       }
     },
@@ -184,6 +214,9 @@
         "tail": {
           "title": "Final de la consola",
           "description": "Últimas 20 líneas de la consola"
+        },
+        "send": {
+          "title": "Enviar comando de consola"
         }
       },
       "logs": {
@@ -200,6 +233,11 @@
         "title": "Jugadores",
         "description": "Quién está conectado"
       },
+      "address": {
+        "title": "Dirección del servidor",
+        "name": "Dirección",
+        "description": "Te muestra solo a ti la dirección (IP:puerto) a la que se conectan tus amigos"
+      },
       "port_check": {
         "title": "Comprobar reenvío de puertos",
         "description": "El relé comprueba si este servidor es accesible desde internet"
@@ -207,6 +245,17 @@
       "chat": {
         "title": "Enviar chat del juego",
         "description": "Envía un mensaje de Discord al chat del juego"
+      },
+      "update": {
+        "check": {
+          "title": "Buscar actualización del servidor de juego"
+        },
+        "apply": {
+          "title": "Actualizar servidor de juego"
+        }
+      },
+      "diagnose": {
+        "title": "Diagnosticar servidor"
       }
     },
     "monitor": {
@@ -225,12 +274,21 @@
       "restore": {
         "title": "Restaurar copia de seguridad",
         "description": "Sobrescribe los archivos actuales del servidor con la copia"
+      },
+      "delete": {
+        "title": "Eliminar copia de seguridad"
       }
     },
     "module": {
       "install": {
         "title": "Instalar módulo",
         "description": "Lo descarga e instala desde el catálogo oficial"
+      },
+      "list": {
+        "title": "Módulos instalados"
+      },
+      "available": {
+        "title": "Módulos disponibles"
       }
     },
     "extension": {
@@ -239,6 +297,15 @@
       },
       "disable": {
         "title": "Desactivar extensión"
+      },
+      "list": {
+        "title": "Extensiones instaladas"
+      },
+      "available": {
+        "title": "Extensiones disponibles"
+      },
+      "install": {
+        "title": "Instalar extensión"
       }
     },
     "update": {
@@ -267,6 +334,12 @@
         "set": {
           "title": "Cambiar ajustes de Saba-chan parlante",
           "description": "Activar, palabras de llamada, confirmación, herramientas"
+        }
+      },
+      "common": {
+        "set": {
+          "title": "Cambiar ajustes de Saba-chan parlante comunes de mi PC",
+          "description": "Modelo y clave de API (todos los servidores de este PC)"
         }
       }
     },
@@ -308,7 +381,10 @@
       "tools": "Herramientas activadas",
       "step": "Paso",
       "from_snapshot": "Desde copia automática del juego",
-      "text": "Mensaje"
+      "text": "Mensaje",
+      "apiKey": "Clave de API",
+      "command": "Comando",
+      "settings": "Ajustes"
     },
     "summary": {
       "server_item": "• **{{name}}** ({{module}}) · {{status}}",
@@ -344,6 +420,13 @@
       "players_max": "👥 {{online}}/{{max}} conectados",
       "player_item": "• {{name}}",
       "players_more": "…y {{count}} más",
+      "address": {
+        "item": "• `{{address}}`",
+        "item_named": "• {{label}} `{{address}}`",
+        "stopped": "💤 El servidor está apagado. Enciéndelo para que otros puedan conectarse",
+        "unknown": "❔ Server-chan aún no conoce la dirección pública de este PC. Inténtalo de nuevo en un momento",
+        "no_ports": "📭 Este juego no indica el puerto de conexión"
+      },
       "port_check": {
         "open": "✅ Accesible desde internet",
         "firewall": "🧱 Bloqueado por el firewall del PC",
@@ -389,12 +472,17 @@
     "server_running": "El servidor está encendido. Detenlo primero",
     "no_command_path": "El servidor se inició fuera de Saba-chan y no puede recibir comandos",
     "autosave_not_resumed": "La copia se hizo, pero no se pudo reactivar el autoguardado del servidor. Reinicia el servidor",
+    "backup_failed_autosave_off": "La copia falló y tampoco se pudo reactivar el autoguardado del servidor. Reinicia el servidor",
     "backup_save_rejected": "El servidor rechazó el comando de guardado, así que no se hizo la copia. Detén el servidor y vuelve a hacer la copia",
     "backup_save_unconfirmed": "El servidor no avisó de que terminó de guardar, así que no se hizo la copia. Inténtalo de nuevo en un momento o detén el servidor antes de copiar",
+    "backup_server_stopped": "El servidor se detuvo mientras se hacía la copia, así que esa copia se descartó. Revisa el servidor y vuelve a hacer la copia",
     "snapshot_not_found": "El juego no tiene copia automática",
     "snapshot_not_deletable": "Saba-chan no puede borrar las copias automáticas del propio juego"
   },
   "chatbot": {
     "memo_template": "<!-- Las líneas de ayuda como esta y los títulos que dejes vacíos no se envían a Saba-chan parlante. Rellena solo lo que necesites. -->\n\n## Ambiente\n<!-- Describe cómo se habla aquí y hasta dónde pueden llegar las bromas. Si lo dejas vacío, usa su personalidad por defecto. -->\n\n## Cómo llamar a la gente\n<!-- Escribe los nombres especiales con los que Saba-chan debe llamar a alguien. Ejemplo: a la persona marcada (propietario) la llama \"amo\". -->\n\n## Palabras de este servidor\n<!-- Apodos, memes y abreviaturas que solo se usan aquí, con su significado. -->\n\n## Información del servidor de juego\n<!-- Reglas, horarios y otras cosas que Saba-chan puede contar a quien pregunte. -->\n"
+  },
+  "controllers": {
+    "kick_reason": "Solo los jugadores registrados pueden entrar en este servidor."
   }
 }

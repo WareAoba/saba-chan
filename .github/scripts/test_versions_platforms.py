@@ -20,7 +20,7 @@ from test_versions_manifest import fake_exe  # noqa: E402
 class PlatformManifest(unittest.TestCase):
     """맨 위는 windows-x64 그대로 두고(0.1.10 업데이터가 읽는다) 다른 플랫폼은 platforms.<플랫폼>에 싣는다"""
 
-    def build(self, d: Path):
+    def build(self, d: Path, linux_files=("saba-chan-installer-headless-linux-x64.zip",)):
         data = {
             "release": {"version": "0.1.9", "channel": "stable"},
             "components": {
@@ -41,8 +41,9 @@ class PlatformManifest(unittest.TestCase):
         with zipfile.ZipFile(d / "locales.zip", "w") as zf:
             zf.writestr("ko/gui.json", "{}")
         (d / "saba-chan-installer.exe").write_bytes(fake_exe("0.1.9"))
-        with zipfile.ZipFile(d / "saba-chan-installer-headless-linux-x64.zip", "w") as zf:
-            zf.writestr("saba-chan-installer", b"\x7fELF")
+        for name in linux_files:
+            with zipfile.ZipFile(d / name, "w") as zf:
+                zf.writestr(name.split("-linux")[0], b"\x7fELF")
         out = d / "out.json"
         args = versions.argparse.Namespace(
             assets=str(d), base_url="https://r2.example", platform="windows-x64", also_platform=["linux-x64"],
@@ -63,6 +64,19 @@ class PlatformManifest(unittest.TestCase):
         self.assertEqual(linux["installer.headless"]["version"], "0.1.9")
         self.assertEqual(linux["saba-core"]["asset"], "saba-core-linux-x64.zip")
         self.assertEqual(linux["locales"], m["components"]["locales"])
+
+    def test_other_platforms_must_carry_the_installer_their_clients_read(self):
+        # 설치기가 없으면 그 플랫폼 클라이언트가 설치기를 받지 못한다. 창 GUI가 있으면 창 구성 설치기도 있어야 한다
+        with tempfile.TemporaryDirectory() as d:
+            with self.assertRaises(SystemExit):
+                self.build(Path(d), linux_files=())
+        with tempfile.TemporaryDirectory() as d:
+            with self.assertRaises(SystemExit):
+                self.build(Path(d), linux_files=("saba-chan-installer-headless-linux-x64.zip", "saba-chan-gui-linux-x64.zip"))
+        with tempfile.TemporaryDirectory() as d:
+            m = self.build(Path(d), linux_files=("saba-chan-installer-headless-linux-x64.zip", "saba-chan-gui-linux-x64.zip",
+                                                 "saba-chan-installer-desktop-linux-x64.zip"))
+        self.assertIn("installer.desktop", m["platforms"]["linux-x64"]["components"])
 
     def test_registration_lists_each_platforms_assets(self):
         with tempfile.TemporaryDirectory() as d:

@@ -282,6 +282,49 @@ pub async fn chat_handler(Path(id): Path<String>, State(state): State<IPCServer>
     }
 }
 
+/// POST /api/instance/:id/chat-link/:guild — 채팅 연동 켜기·끄기 (`{channel, direction?}`, 액션 `server.chat_link`, `supervisor::chat_link`).
+/// 켜거나 방향을 바꿀 때만 따진다: 그 방향을 모듈이 지원하는지, 서버가 켜져 있는지, 접속·퇴장 줄로 센 접속자가 있는지
+pub async fn chat_link_handler(Path((id, guild)): Path<(String, String)>, State(state): State<IPCServer>, LooseJson(body): LooseJson<Value>) -> impl IntoResponse {
+    use crate::supervisor::chat_link;
+    let fail = |status: StatusCode, code: &str, error: &str| (status, Json(json!({ "success": false, "error_code": code, "error": error }))).into_response();
+    let body = body.map(|b| b.0).unwrap_or(Value::Null);
+    let channel = body.get("channel").and_then(Value::as_str).unwrap_or_default();
+    if !chat_link::is_discord_id(&guild) || !chat_link::is_discord_id(channel) {
+        return fail(StatusCode::BAD_REQUEST, "invalid_input", "guild and channel must be Discord IDs");
+    }
+    let direction = match chat_link::Direction::parse(body.get("direction")) {
+        Ok(d) => d,
+        Err(e) => return fail(StatusCode::BAD_REQUEST, "invalid_input", e),
+    };
+    let (reads_chat, sends_chat, running) = {
+        let sup = state.supervisor.read().await;
+        let Some(instance) = sup.instance_store.get(&id) else {
+            return fail(StatusCode::NOT_FOUND, "not_found", "Instance not found");
+        };
+        let module = sup.module_loader.get_module(&instance.module_name).ok();
+        let reads = module.as_ref().is_some_and(|m| !m.metadata.chat_patterns.is_empty());
+        let sends = module.as_ref().is_some_and(|m| m.metadata.chat_send_function.is_some());
+        (reads, sends, sup.tracker.get_pid(&id).is_ok())
+    };
+    let result = chat_link::toggle(&id, &guild, channel, direction, |d| {
+        if (d.to_discord() && !reads_chat) || (d.to_game() && !sends_chat) {
+            return Err(("not_supported", "This server's module cannot link chat in that direction"));
+        }
+        if !running {
+            return Err(("server_not_running", "The server is not running"));
+        }
+        match crate::supervisor::players::counted(&id) {
+            None => Err(("players_unknown", "Players on this server are not counted")),
+            Some(0) => Err(("no_players", "Nobody is on the server")),
+            Some(_) => Ok(()),
+        }
+    });
+    match result {
+        Ok((outcome, direction)) => (StatusCode::OK, Json(json!({ "success": true, "state": outcome, "direction": direction }))).into_response(),
+        Err((code, error)) => fail(StatusCode::OK, code, error),
+    }
+}
+
 /// GET /api/instance/:id/properties — 게임 설정 파일 읽기
 pub async fn read_properties_handler(
     Path(id): Path<String>,
@@ -307,8 +350,18 @@ pub async fn write_properties_handler(
     let Some(_files) = super::backup::InstanceLock::files(&id).await else {
         return super::backup::instance_busy();
     };
+    // PATCH와 같은 검사(타입·범위·선택지·형식, 모르는 키)를 지난 값만 게임 파일에 쓴다
+    if let Some(settings) = &settings {
+        let supervisor = state.supervisor.read().await;
+        if let Some(rejected) = supervisor.instance_store.get(&id).and_then(|inst| super::instance::settings_rejection(&supervisor, inst, &id, settings)) {
+            return rejected;
+        }
+    }
     let resp = match Supervisor::manage_properties(&state.supervisor, &id, "write", settings.clone()).await {
-        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
+        Ok(result) => {
+            sync_after_file_change(&state, &id, &result).await;
+            (StatusCode::OK, Json(result)).into_response()
+        }
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(crate::plugin::error_response(&e)),
@@ -372,13 +425,32 @@ pub async fn reset_properties_handler(
     let Some(_files) = super::backup::InstanceLock::files(&id).await else {
         return super::backup::instance_busy();
     };
-    match Supervisor::manage_properties(&state.supervisor, &id, "reset", None).await {
-        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
+    // 켜진 서버의 파일을 기본값으로 바꾸면 서버가 쓰는 값과 어긋난다
+    if super::backup::is_running(&state, &id).await {
+        return server_running();
+    }
+    let resp = match Supervisor::manage_properties(&state.supervisor, &id, "reset", None).await {
+        Ok(result) => {
+            sync_after_file_change(&state, &id, &result).await;
+            (StatusCode::OK, Json(result)).into_response()
+        }
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(crate::plugin::error_response(&e)),
         )
             .into_response(),
+    };
+    super::audited(&state, "properties_reset", &id, None, None, resp).await
+}
+
+/// 게임 설정 파일을 바꾼 뒤(`PUT /properties`·초기화) 인스턴스 포트·설정 캐시를 파일 값에 맞춘다.
+/// 모듈이 쓰기에 성공했을 때만 하고, 다시 읽기에 실패하면 남기기만 한다. 호출자가 설정 파일 잠금을 쥐고 있어야 한다
+async fn sync_after_file_change(state: &IPCServer, id: &str, result: &Value) {
+    if result.get("success").and_then(Value::as_bool) != Some(true) {
+        return;
+    }
+    if let Err(e) = refresh_settings_from_files(state, id).await {
+        tracing::warn!("Settings refresh after a game file change failed for {}: {}", id, e);
     }
 }
 
@@ -1001,6 +1073,72 @@ mod tests {
     use std::sync::Arc;
     use tokio::sync::RwLock;
 
+    /// 게임 설정 파일 쓰기·초기화 (출시 전 감사): PATCH와 같은 검증을 지나야 쓰고, 쓴 뒤에는 인스턴스 포트·설정 캐시를 파일 값에 맞춘다.
+    /// 초기화는 켜진 서버에 하지 않는다
+    #[tokio::test]
+    async fn properties_write_and_reset_are_validated_and_keep_the_instance_in_sync() {
+        let tmp = tempfile::tempdir().unwrap();
+        // 데몬의 모듈 폴더 아래에 둔다: 그 밖의 모듈은 Windows 격리 실행에서 서버 폴더 쓰기를 받지 못한다
+        let modules = crate::plugin::resolve_modules_dir();
+        let fixture = tempfile::Builder::new().prefix("props-").tempdir_in(&modules).unwrap();
+        let dir = fixture.path();
+        let name = dir.file_name().unwrap().to_string_lossy().into_owned();
+        let server = tmp.path().join("server");
+        std::fs::create_dir_all(&server).unwrap();
+        std::fs::write(dir.join("module.toml"), format!("[module]\nschema_version = 1\nname = '{name}'\nversion = '1.0.0'\nentry = 'lifecycle.py'\n\n[[settings.fields]]\nname = 'port'\ntype = 'number'\nmin = 1\nmax = 65535\n\n[[settings.fields]]\nname = 'difficulty'\ntype = 'select'\noptions = ['Easy', 'Hard']\n")).unwrap();
+        std::fs::write(
+            dir.join("lifecycle.py"),
+            "import json, os, sys\nc = json.load(sys.stdin)\nf = os.path.join(c.get('working_dir', '.'), 'props.json')\n\
+             props = json.load(open(f)) if os.path.exists(f) else {}\nfn = sys.argv[1]\n\
+             if fn == 'configure':\n    props.update(c['settings'])\n    json.dump(props, open(f, 'w'))\n\
+             elif fn == 'reset_properties':\n    props = {'port': 25565, 'difficulty': 'Easy'}\n    json.dump(props, open(f, 'w'))\n\
+             print(json.dumps({'success': True, 'settings': props, 'properties': props}))\n",
+        )
+        .unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        for module in sup.module_loader.discover_modules().unwrap() { crate::sandbox::consent_test_component(std::path::Path::new(&module.entry_path())); }
+        sup.initialize().await.unwrap();
+        let mut inst = crate::instance::ServerInstance::new("props", &name);
+        inst.id = "props".into();
+        inst.working_dir = Some(server.to_string_lossy().into_owned());
+        inst.port = Some(25570);
+        sup.instance_store.add(inst).unwrap();
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let write = |settings: Value| {
+            let state = state.clone();
+            async move { crate::ipc::internal::into_internal(write_properties_handler(Path("props".into()), State(state), Json(json!({ "settings": settings }))).await.into_response()).await }
+        };
+        let reset = || {
+            let state = state.clone();
+            async move { crate::ipc::internal::into_internal(reset_properties_handler(Path("props".into()), State(state)).await.into_response()).await }
+        };
+        let port = || {
+            let state = state.clone();
+            async move { state.supervisor.read().await.instance_store.get("props").unwrap().port }
+        };
+
+        let injected = write(json!({ "difficulty": "Easy,AdminPassword=\"pwned\"" })).await;
+        assert_eq!((injected.status, injected.body["error_code"].as_str()), (StatusCode::BAD_REQUEST, Some("validation_failed")), "{}", injected.body);
+        assert_eq!(write(json!({ "port": 70000 })).await.status, StatusCode::BAD_REQUEST);
+        assert_eq!(write(json!({ "bogus": "1" })).await.body["error_code"], "unknown_setting");
+        assert!(!server.join("props.json").exists(), "a rejected write never reaches the game file");
+
+        let saved = write(json!({ "port": "25580", "difficulty": "Hard" })).await;
+        assert_eq!(saved.status, StatusCode::OK, "{}", saved.body);
+        assert_eq!(port().await, Some(25580), "the instance port follows the written file");
+
+        state.supervisor.read().await.tracker.track("props", std::process::id()).unwrap();
+        assert_eq!(reset().await.body["error_code"], "server_running");
+        let _ = state.supervisor.read().await.tracker.untrack("props");
+        assert_eq!(port().await, Some(25580));
+
+        let done = reset().await;
+        assert_eq!(done.status, StatusCode::OK, "{}", done.body);
+        assert_eq!(port().await, Some(25565), "the instance port follows the reset file");
+        let cached = state.supervisor.read().await.instance_store.get("props").unwrap().module_settings.get("difficulty").cloned();
+        assert_eq!(cached, Some(json!("Easy")));
+    }
+
     #[tokio::test]
     async fn contract_paths_install_rejects_returned_paths_and_restores_the_old_binary() {
         let tmp = tempfile::tempdir().unwrap();
@@ -1105,10 +1243,60 @@ mod tests {
         state.supervisor.read().await.tracker.track("chat-with", std::process::id()).unwrap();
         let sent = chat("chat-with", msg.clone()).await;
         assert_eq!(sent.body, json!({ "success": true }), "the newline never reaches the console");
-        assert!(crate::supervisor::game_chat::is_echo("chat-with", "김치: 안녕 stop"), "its echo is not sent back to Discord");
+        assert!(crate::supervisor::game_chat::is_echo("chat-with", "Server", "김치: 안녕 stop"), "its echo is not sent back to Discord");
         assert_eq!(chat("chat-with", json!({ "name": "김치", "text": " \n " })).await.status, StatusCode::BAD_REQUEST);
         let _ = state.supervisor.read().await.tracker.untrack("chat-with");
         assert_eq!(chat("chat-without", msg).await.body["error_code"], "not_supported");
+    }
+
+    /// 채팅 연동 (사용자 요청 2026-11-01): 접속자가 있을 때만 켜지고, 끄기는 늘 된다. 모듈이 못 하는 방향은 거절한다
+    #[tokio::test]
+    async fn chat_link_turns_on_only_with_players_and_off_always() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        for (name, table) in [
+            ("game", "\n[extensions.saba-core]\nchat_send = \"send_chat\"\nchat_patterns = [\"^<(?P<name>\\\\w+)> (?P<message>.*)$\"]\n"),
+            ("readonly", "\n[extensions.saba-core]\nchat_patterns = [\"^<(?P<name>\\\\w+)> (?P<message>.*)$\"]\n"),
+        ] {
+            let dir = modules.join(name);
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join("module.toml"), format!("[module]\nschema_version = 1\nname = \"{name}\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n{table}")).unwrap();
+            std::fs::write(dir.join("lifecycle.py"), "import json\nprint(json.dumps({'success': True}))\n").unwrap();
+        }
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        for module in sup.module_loader.discover_modules().unwrap() { crate::sandbox::consent_test_component(std::path::Path::new(&module.entry_path())); }
+        sup.initialize().await.unwrap();
+        for (id, module) in [("link-game", "game"), ("link-readonly", "readonly")] {
+            let mut inst = crate::instance::ServerInstance::new(id, module);
+            inst.id = id.into();
+            sup.instance_store.add(inst).unwrap();
+        }
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let guild = "100000000000000001";
+        let link = |id: &'static str, body: Value| {
+            let state = state.clone();
+            async move { crate::ipc::internal::into_internal(chat_link_handler(Path((id.into(), guild.into())), State(state), LooseJson(Some(Json(body)))).await.into_response()).await }
+        };
+        let on = json!({ "channel": "200000000000000001" });
+
+        assert_eq!(link("link-game", on.clone()).await.body["error_code"], "server_not_running");
+        state.supervisor.read().await.tracker.track("link-game", std::process::id()).unwrap();
+        assert_eq!(link("link-game", on.clone()).await.body["error_code"], "players_unknown", "players must be counted from join/leave lines");
+        let roster = crate::supervisor::players::roster_start("link-game");
+        assert_eq!(link("link-game", on.clone()).await.body["error_code"], "no_players");
+        crate::supervisor::players::roster_change("link-game", roster, "Steve", true);
+        assert_eq!(link("link-game", on.clone()).await.body, json!({ "success": true, "state": "on", "direction": "both" }));
+        let changed = link("link-game", json!({ "channel": "200000000000000001", "direction": "to_discord" })).await;
+        assert_eq!(changed.body, json!({ "success": true, "state": "changed", "direction": "to_discord" }));
+        crate::supervisor::players::roster_change("link-game", roster, "Steve", false);
+        assert_eq!(link("link-game", on.clone()).await.body["state"], "off", "turning off needs no players");
+        crate::supervisor::players::roster_end("link-game", roster);
+        let _ = state.supervisor.read().await.tracker.untrack("link-game");
+
+        assert_eq!(link("link-readonly", on.clone()).await.body["error_code"], "not_supported", "both ways needs chat_send");
+        assert_eq!(link("link-game", json!({ "channel": "general" })).await.status, StatusCode::BAD_REQUEST);
+        assert_eq!(link("link-game", json!({ "channel": "200000000000000001", "direction": "up" })).await.status, StatusCode::BAD_REQUEST);
+        assert_eq!(link("link-missing", on).await.status, StatusCode::NOT_FOUND);
     }
 
     /// 버전 목록은 만들기 화면이 고른 설정(서버 종류 등)을 모듈에 넘겨, 그 설정으로 받을 수 있는 것만 받는다

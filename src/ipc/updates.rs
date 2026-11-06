@@ -305,6 +305,43 @@ pub fn spawn_update_scheduler(state: UpdateState, shutdown: tokio_util::sync::Ca
     });
 }
 
+/// 릴레이의 새 릴리즈 알림(하트비트 응답 `updateHint: { version, channel }`)이 확인할 만한가:
+/// 고른 채널이 그 릴리즈 채널을 받고(`channel_includes`), 지금 버전보다 새 버전이어야 한다.
+/// 베타 채널을 쓰지 않는 데몬은 베타 릴리즈 알림에 아무것도 하지 않는다
+fn hint_wants_check(hint: &Value, channel: &str, current: &str) -> bool {
+    use saba_chan_updater_lib::{relay::{channel_includes, CHANNELS}, version::SemVer};
+    let (Some(version), Some(release)) = (hint.get("version").and_then(Value::as_str), hint.get("channel").and_then(Value::as_str)) else {
+        return false;
+    };
+    if !CHANNELS.contains(&release) || !channel_includes(channel, release) {
+        return false;
+    }
+    matches!((SemVer::parse(version), SemVer::parse(current)), (Some(v), Some(c)) if v > c)
+}
+
+/// 릴레이가 새 릴리즈를 알렸다 (`relay_agent` 하트비트). 대조해서 맞으면 주기 확인과 같은 길(`check_and_follow_up`)로
+/// 한 번 확인한다. 업데이트 확인을 꺼 두었으면 하지 않는다.
+/// 모든 데몬이 한꺼번에 릴레이에 묻지 않게 0~60초 사이에서 늦춘 뒤 그때의 설정으로 대조한다
+pub fn on_update_hint(state: &UpdateState, hint: &Value, shutdown: tokio_util::sync::CancellationToken) {
+    let hint = hint.clone();
+    let state = state.clone();
+    tokio::spawn(async move {
+        let jitter = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.subsec_millis()) as u64 * 60;
+        tokio::select! {
+            _ = shutdown.cancelled() => return,
+            _ = tokio::time::sleep(std::time::Duration::from_millis(jitter)) => {}
+        }
+        // 기다리는 사이 설정을 바꿨을 수 있다 — 기다린 뒤의 설정으로 대조한다
+        let cfg = state.manager.read().await.get_config();
+        if !cfg.enabled || !hint_wants_check(&hint, &cfg.channel, crate::relay_agent::AGENT_VERSION) {
+            return;
+        }
+        if let Err(e) = check_and_follow_up(&state).await {
+            tracing::warn!("[Updates] Check after relay release notice failed: {}", e);
+        }
+    });
+}
+
 /// 사용자에게 보이는 업데이트가 지난번 알린 것과 달라졌을 때만 `update.available` (P4)
 fn announce_new_updates(status: &saba_chan_updater_lib::UpdateStatus) {
     // 같은 구성요소라도 더 새 버전이 나오면 다시 알린다
@@ -780,7 +817,8 @@ async fn launch_updater(
     let (guis, relaunch) = restart_plan(restart, body.relaunch, &guis, resident, daemon_line);
     let gui_restart = !guis.is_empty() || relaunch.first().is_some_and(|exe| is_gui_exe(exe));
     let args = updater_args(ticket, saba_chan_updater_lib::profile::Profile::load(), relaunch, saba_chan_updater_lib::autostart::service_relaunch());
-    if let Err(e) = spawn_detached(&updater, &args) {
+    // 바로 끝난 업데이터(라이브러리 없음·백신 차단)는 데몬을 내리기 전에 실패로 돌린다. --wait-pid로 데몬을 기다리므로 살아 있어야 한다
+    if let Err(e) = spawn_and_confirm(&updater, &args, std::time::Duration::from_millis(700)).await {
         state.updater_launched.store(false, Ordering::SeqCst);
         return (
             axum::http::StatusCode::INTERNAL_SERVER_ERROR,
@@ -966,7 +1004,20 @@ fn updater_binary_near(daemon_exe: &std::path::Path, applies: bool) -> Option<st
 }
 
 /// 데몬이 끝나도 살아남게 띄운다
-fn spawn_detached(program: &std::path::Path, args: &[String]) -> std::io::Result<()> {
+/// 띄우고 `grace` 동안 지켜본다. 그 사이 끝나면 종료 코드를 담은 오류
+async fn spawn_and_confirm(program: &std::path::Path, args: &[String], grace: std::time::Duration) -> std::io::Result<()> {
+    let mut child = spawn_detached(program, args)?;
+    let deadline = std::time::Instant::now() + grace;
+    while std::time::Instant::now() < deadline {
+        if let Some(status) = child.try_wait()? {
+            return Err(std::io::Error::other(format!("updater exited right away ({status})")));
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    Ok(())
+}
+
+fn spawn_detached(program: &std::path::Path, args: &[String]) -> std::io::Result<std::process::Child> {
     let mut cmd = std::process::Command::new(program);
     cmd.args(args)
         .stdin(std::process::Stdio::null())
@@ -983,16 +1034,16 @@ fn spawn_detached(program: &std::path::Path, args: &[String]) -> std::io::Result
         match cmd.spawn() {
             Err(e) if e.raw_os_error() == Some(5) => {
                 cmd.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP);
-                cmd.spawn().map(|_| ())
+                cmd.spawn()
             }
-            other => other.map(|_| ()),
+            other => other,
         }
     }
     #[cfg(unix)]
     {
         use std::os::unix::process::CommandExt;
         cmd.process_group(0);
-        cmd.spawn().map(|_| ())
+        cmd.spawn()
     }
 }
 
@@ -1213,6 +1264,34 @@ fn resolve_modules_dir() -> String {
 
 #[cfg(test)]
 mod tests {
+    /// 릴레이의 새 릴리즈 알림은 데몬이 고른 채널이 그 채널을 받고 지금보다 새 버전일 때만 확인을 돌린다
+    #[test]
+    fn update_hint_runs_a_check_only_for_a_newer_release_in_the_chosen_channel() {
+        let hint = |version: &str, channel: &str| serde_json::json!({ "version": version, "channel": channel });
+        // 베타 채널을 쓰지 않으면 베타 릴리즈는 알리지 않는다
+        assert!(!super::hint_wants_check(&hint("0.1.13-beta.1", "beta"), "stable", "0.1.12"));
+        assert!(!super::hint_wants_check(&hint("0.1.13-beta.1", "beta"), "rc", "0.1.12"));
+        assert!(super::hint_wants_check(&hint("0.1.13-beta.1", "beta"), "beta", "0.1.12"));
+        // 위 채널은 아래 채널 릴리즈도 받는다
+        assert!(super::hint_wants_check(&hint("0.1.13", "stable"), "beta", "0.1.13-beta.1"));
+        // 같거나 낮은 버전, 읽을 수 없는 알림은 무시한다
+        assert!(!super::hint_wants_check(&hint("0.1.12", "stable"), "stable", "0.1.12"));
+        assert!(!super::hint_wants_check(&hint("0.1.11", "stable"), "stable", "0.1.12"));
+        assert!(!super::hint_wants_check(&serde_json::json!({ "channel": "stable" }), "stable", "0.1.12"));
+        assert!(!super::hint_wants_check(&hint("0.1.13", "nope"), "stable", "0.1.12"));
+    }
+
+    /// 띄운 업데이터가 바로 끝나면(라이브러리 없음·백신 차단) 데몬이 내려가기 전에 실패로 알린다
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn updater_that_exits_at_once_is_a_launch_failure() {
+        let sh = std::path::Path::new("/bin/sh");
+        let quick = std::time::Duration::from_millis(400);
+        let err = super::spawn_and_confirm(sh, &["-c".to_string(), "exit 127".to_string()], quick).await.unwrap_err();
+        assert!(err.to_string().contains("127"), "{err}");
+        super::spawn_and_confirm(sh, &["-c".to_string(), "sleep 3".to_string()], quick).await.unwrap();
+    }
+
     /// 실행할 때 적용: 받아 둔 것을 모두 고르되, 서버가 켜져 있으면 다시 시작해야 하는 것(데몬·GUI·업데이터)은 미룬다
     #[test]
     fn applying_on_launch_holds_restarts_while_servers_run() {
@@ -1321,7 +1400,12 @@ mod tests {
             "downloaded_path": staged.to_string_lossy(), "installed": true
         }]);
         std::fs::write(staging.join("pending.json"), pending.to_string()).unwrap();
-        std::env::set_var("SABA_UPDATER_PATH", "/usr/bin/true"); // 맥에는 /bin/true가 없다
+        // 진짜 업데이터처럼 데몬을 기다리며 살아 있다 (바로 끝나면 띄우기 실패로 본다)
+        let fake = staging.join("fake-updater.sh");
+        std::fs::write(&fake, "#!/bin/sh\nsleep 5\n").unwrap();
+        std::fs::set_permissions(&fake, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+        // edition 2024: 환경 변수 쓰기는 unsafe다. 테스트 준비에서만 쓴다
+        unsafe { std::env::set_var("SABA_UPDATER_PATH", &fake) };
 
         let state = UpdateState::new();
         state.manager.write().await.load_pending_manifest().unwrap();

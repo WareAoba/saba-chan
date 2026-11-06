@@ -1,10 +1,10 @@
-//! 디스코드 길드 설정 (I2): 응답 언어·잠자기·음악 기능·직접 요청 되묻기 단계·접두사·명령 번역·슬래시 모양
+//! 디스코드 길드 설정 (I2): 응답 언어·잠자기(코코낸내: 끌 기능, 자동 시각)·음악 기능·직접 요청 되묻기 단계·접두사·명령 번역·슬래시 모양
 //!
 //! 원본은 데몬 config.json `relay.nodeSettings[<guild>].discord`다. 바꿀 때마다, 그리고 릴레이 에이전트가 연결될 때
 //! 릴레이 `PATCH /api/nodes/:guild/settings`로 맞춘다. 봇 설정 저장(`PUT /api/config/bot`)은 이 블록을 바꾸지 않는다.
 //!
 //! - `GET /api/discord/:guild/settings` → `{guildId, locale, sleeping, music, tts, confirmLevel, commandRisks, prefixes, translateCommands,
-//!   slashPrefix, slashRootName, privateQueries}` (슬래시 모양 세 값은 2026-10-30)
+//!   slashPrefix, slashRootName, privateQueries, sleepBlocks, bedtime}` (슬래시 모양 세 값은 2026-10-30, 코코낸내 두 값은 2026-11-03)
 //! - `PATCH /api/discord/:guild/settings` 바꿀 키만 (`music`·`tts` 안도 부분) → `{success, settings, sync}`.
 //!   틀린 값은 400 `invalid_input {field, reason}`, 페어링이 없으면 409 `not_paired`.
 //!   릴레이가 400으로 거절하면 저장하지 않는다. 닿지 않으면 저장하고 `sync.ok:false` (다음 연결 때 맞춘다)
@@ -58,6 +58,29 @@ pub struct GuildSettings {
     pub slash_root_name: String,
     /// 조회 결과(서버 상태, 조회 액션)를 부른 사람에게만 보인다
     pub private_queries: bool,
+    /// 코코낸내(손·자동) 동안 끌 기능 (`SLEEP_FEATURES`). 기본은 모두 (예전 코코낸내)
+    pub sleep_blocks: Vec<String>,
+    /// 자동 코코낸내 시각 (그 길드의 시간대, 릴레이가 판정한다). 없으면 손으로만 재운다
+    pub bedtime: Option<Bedtime>,
+}
+
+/// 코코낸내 동안 끌 수 있는 기능 묶음 (릴레이 bot/state/sleep.ts `SLEEP_FEATURES`):
+/// 서버 조작·알림, 말하는 사바쨩·AI 모더레이션, 노래하는 사바쨩, 읽어주는 사바쨩, 그 밖의 부가 기능
+pub const SLEEP_FEATURES: &[&str] = &["commands", "llm", "music", "tts", "extras"];
+
+/// 자동 코코낸내 — 잠드는 시각과 일어나는 시각 (HH:MM, 서로 다르다)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Bedtime {
+    pub start: String,
+    pub end: String,
+}
+
+/// HH:MM (00:00–23:59)
+fn clock_time(v: &Value) -> Option<String> {
+    let t = v.as_str()?;
+    let (h, m) = t.split_once(':')?;
+    let ok = h.len() == 2 && m.len() == 2 && h.parse::<u8>().is_ok_and(|h| h < 24) && m.parse::<u8>().is_ok_and(|m| m < 60);
+    ok.then(|| t.to_string())
 }
 
 /// 서버 슬래시 루트 이름으로 고를 수 있는 값
@@ -96,11 +119,25 @@ pub struct Tts {
     pub pitch: i64,
     /// 글 앞에 "이름님,"을 붙일지 (`TTS_NAMES`): `always` 항상, `multi` 읽는 사람이 여럿일 때, `never` 안 함
     pub names: String,
+    /// 내 글 읽기는 내가 있는 음성 채널의 채팅에서만 (게임 채팅 읽기는 예외, 2026-11-03 사용자 지정)
+    pub voice_chat_only: bool,
+    /// 읽은 글을 지우지 않는다 (2026-11-03 사용자 지정)
+    pub keep_read: bool,
+    /// 늘 읽을 음성 채널 ID — 사람이 2명 이상 들어가면 봇이 들어가 그 채널 채팅을 모두 읽는다 (2026-11-03 사용자 지정, 최대 `TTS_AUTO_CHANNELS_MAX`)
+    pub auto_channels: Vec<String>,
 }
 
 impl Default for Tts {
     fn default() -> Self {
-        Self { volume: 100, speed: 100, pitch: 0, names: "multi".into() }
+        Self {
+            volume: 100,
+            speed: 100,
+            pitch: 0,
+            names: "multi".into(),
+            voice_chat_only: false,
+            keep_read: false,
+            auto_channels: Vec::new(),
+        }
     }
 }
 
@@ -108,6 +145,24 @@ pub const TTS_VOLUME: (i64, i64) = (10, 150);
 pub const TTS_SPEED: (i64, i64) = (80, 150);
 pub const TTS_PITCH: (i64, i64) = (-6, 6);
 pub const TTS_NAMES: &[&str] = &["always", "multi", "never"];
+/// 릴레이 `MAX_AUTO_CHANNELS`와 같다
+pub const TTS_AUTO_CHANNELS_MAX: usize = 10;
+
+/// 디스코드 ID(스노플레이크) 목록 — 겹치면 하나로, 틀린 값이나 한도를 넘으면 `None`
+fn snowflakes(v: &Value, max: usize) -> Option<Vec<String>> {
+    let ids = v.as_array()?;
+    if ids.len() > max * 4 {
+        return None;
+    }
+    let mut out: Vec<String> = Vec::new();
+    for id in ids {
+        let id = id.as_str().filter(|s| (17..=20).contains(&s.len()) && s.bytes().all(|b| b.is_ascii_digit()))?;
+        if !out.iter().any(|o| o == id) {
+            out.push(id.to_string());
+        }
+    }
+    (out.len() <= max).then_some(out)
+}
 
 impl Default for GuildSettings {
     fn default() -> Self {
@@ -123,6 +178,8 @@ impl Default for GuildSettings {
             slash_prefix: true,
             slash_root_name: "name".into(),
             private_queries: false,
+            sleep_blocks: SLEEP_FEATURES.iter().map(|f| f.to_string()).collect(),
+            bedtime: None,
         }
     }
 }
@@ -173,12 +230,22 @@ impl GuildSettings {
                 "refreshInterval": self.music.refresh_interval,
                 "normalize": self.music.normalize,
             },
-            "ttsSettings": { "volume": self.tts.volume, "speed": self.tts.speed, "pitch": self.tts.pitch, "names": self.tts.names },
+            "ttsSettings": {
+                "volume": self.tts.volume,
+                "speed": self.tts.speed,
+                "pitch": self.tts.pitch,
+                "names": self.tts.names,
+                "voiceChatOnly": self.tts.voice_chat_only,
+                "keepRead": self.tts.keep_read,
+                "autoChannels": self.tts.auto_channels,
+            },
             "prefixes": self.prefixes,
             "translateCommands": self.translate_commands,
             "slashPrefix": self.slash_prefix,
             "slashRootName": self.slash_root_name,
             "privateQueries": self.private_queries,
+            "sleepBlocks": self.sleep_blocks,
+            "bedtime": self.bedtime,
         })
     }
 
@@ -211,7 +278,7 @@ impl GuildSettings {
         if let Some(t) = body.get("ttsSettings").filter(|t| t.is_object()) {
             patch.insert("tts".into(), t.clone());
         }
-        for key in ["prefixes", "translateCommands", "slashPrefix", "slashRootName", "privateQueries"] {
+        for key in ["prefixes", "translateCommands", "slashPrefix", "slashRootName", "privateQueries", "sleepBlocks", "bedtime"] {
             if let Some(v) = body.get(key).filter(|v| !v.is_null()) {
                 patch.insert(key.into(), v.clone());
             }
@@ -270,6 +337,37 @@ impl GuildSettings {
                         }
                     }
                     next.prefixes = out;
+                }
+                // null은 기본값(모두 끄기)이다: 릴레이는 모두 고른 목록을 null로 보낸다
+                "sleepBlocks" if v.is_null() => next.sleep_blocks = SLEEP_FEATURES.iter().map(|f| f.to_string()).collect(),
+                "sleepBlocks" => {
+                    let list = v.as_array().ok_or(("sleepBlocks".into(), "must be a list"))?;
+                    let mut out: Vec<String> = Vec::new();
+                    for f in list {
+                        match f.as_str() {
+                            Some(f) if SLEEP_FEATURES.contains(&f) => {
+                                if !out.iter().any(|o| o == f) {
+                                    out.push(f.to_string());
+                                }
+                            }
+                            _ => return Err(("sleepBlocks".into(), "unknown feature")),
+                        }
+                    }
+                    next.sleep_blocks = out;
+                }
+                "bedtime" => {
+                    next.bedtime = match v {
+                        Value::Null => None,
+                        Value::Object(b) => {
+                            let start = b.get("start").and_then(clock_time).ok_or(("bedtime.start".into(), "must be HH:MM"))?;
+                            let end = b.get("end").and_then(clock_time).ok_or(("bedtime.end".into(), "must be HH:MM"))?;
+                            if start == end {
+                                return Err(("bedtime".into(), "start and end must differ"));
+                            }
+                            Some(Bedtime { start, end })
+                        }
+                        _ => return Err(("bedtime".into(), "must be an object or null")),
+                    };
                 }
                 "confirmLevel" => match v.as_str() {
                     Some(l) if CONFIRM_LEVELS.contains(&l) => next.confirm_level = l.to_string(),
@@ -333,6 +431,12 @@ impl GuildSettings {
                                 Some(n) if TTS_NAMES.contains(&n) => next.tts.names = n.to_string(),
                                 _ => return Err((field, "must be always, multi or never")),
                             },
+                            "voiceChatOnly" => next.tts.voice_chat_only = tv.as_bool().ok_or((field.clone(), "must be a boolean"))?,
+                            "keepRead" => next.tts.keep_read = tv.as_bool().ok_or((field.clone(), "must be a boolean"))?,
+                            "autoChannels" => {
+                                next.tts.auto_channels =
+                                    snowflakes(tv, TTS_AUTO_CHANNELS_MAX).ok_or((field.clone(), "must be up to 10 channel ids"))?
+                            }
                             _ => return Err((field, "unknown field")),
                         }
                     }
@@ -343,6 +447,34 @@ impl GuildSettings {
         *self = next;
         Ok(())
     }
+}
+
+/// 원본이 릴레이인 길드 설정 (데몬은 저장하지 않고 앱의 값을 릴레이에 그대로 넘긴다). 모두 참·거짓 값
+pub const RELAY_OWNED: [&str; 3] = ["bigEmoji", "gameChatGuard", "gameChatClearOnStop"];
+
+/// (데몬이 맡는 키, 릴레이 원본 키)
+type SplitPatch = (Map<String, Value>, Map<String, Value>);
+
+/// 패치에서 릴레이 원본 키를 떼어 낸다
+fn split_relay_owned(patch: &Map<String, Value>) -> Result<SplitPatch, (String, &'static str)> {
+    let (owned, rest): (Map<String, Value>, Map<String, Value>) = patch.clone().into_iter().partition(|(k, _)| RELAY_OWNED.contains(&k.as_str()));
+    if let Some((k, _)) = owned.iter().find(|(_, v)| !v.is_boolean()) {
+        return Err((k.clone(), "must be a boolean"));
+    }
+    Ok((rest, owned))
+}
+
+/// 릴레이만 아는 지금 상태 (바꿀 수 없다): `asleep` = 손으로든 자동 코코낸내로든 지금 자는 중 (앱의 잠자는 그림)
+pub const RELAY_STATUS: [&str; 1] = ["asleep"];
+
+/// 릴레이 값에서 원본이 릴레이인 키와 지금 상태만 화면 값에 얹는다 (릴레이를 못 읽으면 빠진다: 앱은 그 토글을 잠근다)
+fn with_relay_owned(mut v: Value, relay: &Value) -> Value {
+    for key in RELAY_OWNED.iter().chain(RELAY_STATUS.iter()) {
+        if let Some(x) = relay.get(key).filter(|x| x.is_boolean()) {
+            v[key] = x.clone();
+        }
+    }
+    v
 }
 
 fn view(guild: &str, s: &GuildSettings) -> Value {
@@ -477,8 +609,12 @@ async fn push(state: &IPCServer, base: &str, guild: &str, before: &Value, s: &Gu
 /// GET /api/discord/:guild/settings
 /// 처음 보는 길드인데 릴레이를 읽지 못하면 기본값에 `loaded: false`를 붙인다 (그 값으로 저장하지 않는다)
 pub async fn get_settings(State(state): State<IPCServer>, Path(guild): Path<String>) -> Response {
+    let relay = match relay_settings(&relay_base(&state).await, &guild).await {
+        RelaySettings::Found(body) => body,
+        _ => Value::Null,
+    };
     match current(&state, &guild).await {
-        Some(s) => Json(view(&guild, &s)).into_response(),
+        Some(s) => Json(with_relay_owned(view(&guild, &s), &relay)).into_response(),
         None => {
             let mut v = view(&guild, &GuildSettings::default());
             v["loaded"] = json!(false);
@@ -490,6 +626,11 @@ pub async fn get_settings(State(state): State<IPCServer>, Path(guild): Path<Stri
 /// PATCH /api/discord/:guild/settings
 pub async fn patch_settings(State(state): State<IPCServer>, Path(guild): Path<String>, Json(body): Json<Value>) -> Response {
     let Some(patch) = body.as_object() else { return invalid("input", "must be an object") };
+    let (patch, owned) = match split_relay_owned(patch) {
+        Ok(split) => split,
+        Err((field, reason)) => return invalid(&field, reason),
+    };
+    let patch = &patch;
     if load_node_token().is_none() {
         return (StatusCode::CONFLICT, Json(json!({ "success": false, "error": "Not paired with the relay", "error_code": "not_paired" }))).into_response();
     }
@@ -506,6 +647,25 @@ pub async fn patch_settings(State(state): State<IPCServer>, Path(guild): Path<St
         return invalid(&field, reason);
     }
     let base = relay_base(&state).await;
+    // 릴레이 원본 키는 저장할 곳이 릴레이뿐이다: 닿지 않거나 거절하면 실패로 돌려준다
+    if !owned.is_empty() {
+        let path = format!("/api/nodes/{}/settings", encode_path_segment(&guild));
+        match call(&base, reqwest::Method::PATCH, &path, Some(Value::Object(owned.clone()).to_string())).await {
+            Ok((c, _)) if c.is_success() => {}
+            Ok((StatusCode::BAD_REQUEST, _)) => return invalid(owned.keys().next().map(String::as_str).unwrap_or("input"), "rejected by the relay"),
+            _ => {
+                return (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    Json(json!({ "success": false, "error": "Could not save this setting to the relay", "error_code": "relay_unavailable" })),
+                )
+                    .into_response()
+            }
+        }
+        if patch.is_empty() {
+            let v = with_relay_owned(view(&guild, &before), &Value::Object(owned));
+            return Json(json!({ "success": true, "settings": v, "sync": { "guildId": guild, "ok": true } })).into_response();
+        }
+    }
     let outcome = push(&state, &base, &guild, &before.relay_body(), &next).await;
     // 릴레이가 값을 거절했으면 저장하지 않는다 (연결 실패는 저장하고 다음 연결 때 맞춘다)
     if matches!(&outcome, Ok((c, _)) if *c == StatusCode::BAD_REQUEST) {
@@ -520,7 +680,8 @@ pub async fn patch_settings(State(state): State<IPCServer>, Path(guild): Path<St
     if retry_later(&outcome) {
         PENDING_SYNC.store(true, std::sync::atomic::Ordering::SeqCst);
     }
-    Json(json!({ "success": true, "settings": view(&guild, &next), "sync": result_row(&guild, &outcome) })).into_response()
+    Json(json!({ "success": true, "settings": with_relay_owned(view(&guild, &next), &Value::Object(owned)), "sync": result_row(&guild, &outcome) }))
+        .into_response()
 }
 
 /// 릴레이 에이전트가 연결된 직후 한 번: 원본이 있는 길드는 보내고, 없는 길드는 릴레이 값을 한 번 가져온다
@@ -586,6 +747,18 @@ mod tests {
     }
 
     #[test]
+    fn relay_owned_keys_are_split_off_and_checked() {
+        let (rest, owned) = split_relay_owned(&patch(json!({ "locale": "ko", "bigEmoji": true }))).unwrap();
+        assert_eq!(rest, patch(json!({ "locale": "ko" })));
+        assert_eq!(owned, patch(json!({ "bigEmoji": true })));
+        assert_eq!(split_relay_owned(&patch(json!({ "bigEmoji": "yes" }))).unwrap_err().0, "bigEmoji");
+        // 게임 채팅 채널 글 막기·꺼지면 채팅 지우기 (사용자 11-03)도 릴레이가 원본이다
+        let (rest, owned) = split_relay_owned(&patch(json!({ "gameChatGuard": true, "gameChatClearOnStop": false }))).unwrap();
+        assert!(rest.is_empty());
+        assert_eq!(owned, patch(json!({ "gameChatGuard": true, "gameChatClearOnStop": false })));
+    }
+
+    #[test]
     fn a_patch_changes_only_the_keys_it_names() {
         let mut s = GuildSettings::default();
         s.apply(&patch(json!({ "locale": "ko", "music": { "queueLines": 12 } }))).unwrap();
@@ -596,6 +769,44 @@ mod tests {
         s.apply(&patch(json!({ "sleeping": true, "locale": "auto" }))).unwrap();
         assert!(s.sleeping);
         assert_eq!(s.locale, AUTO_LOCALE);
+    }
+
+    #[test]
+    fn sleep_blocks_and_bedtime_are_checked_and_sent_to_the_relay() {
+        let mut s = GuildSettings::default();
+        // 기본은 모두 끄기 (예전 코코낸내), 자동 코코낸내 없음
+        assert_eq!(s.sleep_blocks, SLEEP_FEATURES.iter().map(|f| f.to_string()).collect::<Vec<_>>());
+        assert_eq!(s.bedtime, None);
+        s.apply(&patch(json!({ "sleepBlocks": ["music", "tts", "music"], "bedtime": { "start": "23:30", "end": "07:00" } }))).unwrap();
+        assert_eq!(s.sleep_blocks, vec!["music", "tts"]);
+        assert_eq!(s.bedtime, Some(Bedtime { start: "23:30".into(), end: "07:00".into() }));
+        let body = s.relay_body();
+        assert_eq!(body["sleepBlocks"], json!(["music", "tts"]));
+        assert_eq!(body["bedtime"], json!({ "start": "23:30", "end": "07:00" }));
+        s.apply(&patch(json!({ "bedtime": null }))).unwrap();
+        assert_eq!(s.relay_body()["bedtime"], Value::Null);
+        for (body, field) in [
+            (json!({ "sleepBlocks": ["web"] }), "sleepBlocks"),
+            (json!({ "sleepBlocks": "music" }), "sleepBlocks"),
+            (json!({ "bedtime": { "start": "24:00", "end": "07:00" } }), "bedtime.start"),
+            (json!({ "bedtime": { "start": "01:00", "end": "7:00" } }), "bedtime.end"),
+            (json!({ "bedtime": { "start": "01:00", "end": "01:00" } }), "bedtime"),
+        ] {
+            let before = s.clone();
+            assert_eq!(s.apply(&patch(body.clone())).unwrap_err().0, field, "{body}");
+            assert_eq!(s, before, "{body}");
+        }
+        // 지금 자는지는 릴레이만 안다 — 화면 값에 얹기만 하고 저장하지 않는다
+        let shown = with_relay_owned(view("g1", &s), &json!({ "asleep": true }));
+        assert_eq!(shown["asleep"], json!(true));
+        assert!(s.apply(&patch(json!({ "asleep": true }))).is_err());
+        let back = GuildSettings::from_relay(&json!({ "sleepBlocks": ["llm"], "bedtime": { "start": "01:00", "end": "08:00" } }));
+        assert_eq!(back.sleep_blocks, vec!["llm"]);
+        assert_eq!(back.bedtime.map(|b| b.end), Some("08:00".to_string()));
+        // 일부만 골랐다가 다시 모두 고르면 릴레이는 null(기본값)을 보낸다
+        s.apply(&patch(json!({ "sleepBlocks": null }))).unwrap();
+        assert_eq!(s.sleep_blocks, SLEEP_FEATURES.iter().map(|f| f.to_string()).collect::<Vec<_>>());
+        assert_eq!(GuildSettings::from_relay(&json!({ "sleepBlocks": null })).sleep_blocks, s.sleep_blocks);
     }
 
     #[test]
@@ -722,8 +933,39 @@ mod tests {
         let old_relay = json!({ "musicEnabled": true, "musicUIEnabled": true, "musicSettings": { "queueLines": 9, "refreshInterval": 4000, "normalize": true } });
         assert_eq!(
             Value::Object(changed(&old_relay, &s.relay_body())),
-            json!({ "locale": "auto", "sleeping": false, "ttsSettings": { "volume": 100, "speed": 100, "pitch": 0, "names": "multi" }, "prefixes": [], "translateCommands": true, "slashPrefix": true, "slashRootName": "name", "privateQueries": false })
+            json!({ "locale": "auto", "sleeping": false, "ttsSettings": { "volume": 100, "speed": 100, "pitch": 0, "names": "multi", "voiceChatOnly": false, "keepRead": false, "autoChannels": [] }, "prefixes": [], "translateCommands": true, "slashPrefix": true, "slashRootName": "name", "privateQueries": false, "sleepBlocks": ["commands", "llm", "music", "tts", "extras"], "bedtime": null })
         );
+    }
+
+    /// 읽어주기 동작 (2026-11-03 사용자 지정): 음성 채널 채팅에서만 · 읽은 글 남기기 · 늘 읽을 음성 채널. 릴레이에도 보낸다
+    #[test]
+    fn tts_behavior_switches_and_auto_channels_reach_the_relay() {
+        let mut s = GuildSettings::default();
+        assert_eq!((s.tts.voice_chat_only, s.tts.keep_read, s.tts.auto_channels.len()), (false, false, 0));
+        let a = "123456789012345678";
+        let b = "223456789012345678";
+        s.apply(&patch(json!({ "tts": { "voiceChatOnly": true, "keepRead": true, "autoChannels": [a, b, a] } }))).unwrap();
+        assert_eq!(s.tts.auto_channels, vec![a.to_string(), b.to_string()]);
+        let body = s.relay_body();
+        assert_eq!(body["ttsSettings"]["voiceChatOnly"], true);
+        assert_eq!(body["ttsSettings"]["keepRead"], true);
+        assert_eq!(body["ttsSettings"]["autoChannels"], json!([a, b]));
+        let eleven: Vec<String> = (10..21).map(|i| format!("12345678901234567{i}")).collect();
+        for (bad, field) in [
+            (json!({ "tts": { "voiceChatOnly": "yes" } }), "tts.voiceChatOnly"),
+            (json!({ "tts": { "keepRead": 1 } }), "tts.keepRead"),
+            (json!({ "tts": { "autoChannels": "x" } }), "tts.autoChannels"),
+            (json!({ "tts": { "autoChannels": ["nope"] } }), "tts.autoChannels"),
+            (json!({ "tts": { "autoChannels": eleven } }), "tts.autoChannels"),
+        ] {
+            let before = s.clone();
+            assert_eq!(s.apply(&patch(bad.clone())).unwrap_err().0, field, "{bad}");
+            assert_eq!(s, before);
+        }
+        // 처음 한 번 릴레이 값을 가져올 때도 받는다
+        let r = GuildSettings::from_relay(&json!({ "ttsSettings": { "keepRead": true, "autoChannels": [a] } }));
+        assert!(r.tts.keep_read);
+        assert_eq!(r.tts.auto_channels, vec![a.to_string()]);
     }
 
     /// 읽어주는 사바쨩 (2026-10-31 사용자 지정): 서버마다 볼륨(10~150%)·속도(80~150%)·피치(−6~+6반음)만 바꾼다. 릴레이에도 보낸다
@@ -733,7 +975,7 @@ mod tests {
         assert_eq!((s.tts.volume, s.tts.speed, s.tts.pitch), (100, 100, 0));
         s.apply(&patch(json!({ "tts": { "volume": 80, "pitch": -3 } }))).unwrap();
         assert_eq!((s.tts.volume, s.tts.speed, s.tts.pitch), (80, 100, -3));
-        assert_eq!(s.relay_body()["ttsSettings"], json!({ "volume": 80, "speed": 100, "pitch": -3, "names": "multi" }));
+        assert_eq!(s.relay_body()["ttsSettings"], json!({ "volume": 80, "speed": 100, "pitch": -3, "names": "multi", "voiceChatOnly": false, "keepRead": false, "autoChannels": [] }));
         // 이름 부르기: 항상 · 여러 명일 때(기본) · 안 함
         s.apply(&patch(json!({ "tts": { "names": "never" } }))).unwrap();
         assert_eq!(s.tts.names, "never");

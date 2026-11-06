@@ -31,6 +31,7 @@ pub async fn run(ctx: &Ctx, cmd: ServerCmd) -> Result<()> {
         ServerCmd::Chat { server, name, text } => chat(ctx, &server, &name, &text.join(" ")).await,
         ServerCmd::Players { server } => players(ctx, server.as_deref()).await,
         ServerCmd::PortCheck { server } => port_check(ctx, server.as_deref()).await,
+        ServerCmd::Address { server } => address(ctx, server.as_deref()).await,
         ServerCmd::Rcon { server, line } => rcon(ctx, &server, &line.join(" ")).await,
         ServerCmd::Log { server, source, lines, runs, all } => log(ctx, server.as_deref(), source.as_deref(), lines, runs, all).await,
         ServerCmd::Query { server, name, args } => query(ctx, &server, name.as_deref(), &args).await,
@@ -420,6 +421,9 @@ async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
     if taken(&name) {
         return Err(usage(t!("add.name_taken", name = name)));
     }
+    if has_comma(&name) {
+        return Err(usage(t!("add.name_comma")));
+    }
 
     // 4) 필요한 익스텐션
     ensure_extensions(ctx, &module).await?;
@@ -695,12 +699,20 @@ async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
     Ok(())
 }
 
+/// 서버 이름에 쓸 수 없는 쉼표 (데몬 `chat::words::is_comma`와 같은 글자, 400 `invalid_name`). 띄어쓰기는 된다
+fn has_comma(name: &str) -> bool {
+    name.contains([',', '，', '、', '､'])
+}
+
 /// 만들기 전 확인(`/api/instances/check`)에서 만들기를 막는 것(같은 이름, 다른 서버가 쓰는 폴더, 파일이 든 폴더)과
 /// 알리기만 하는 것(다른 서버도 쓰는 포트, Windows가 예약한 포트)
 fn check_problems(check: &Value) -> (Vec<String>, Vec<String>) {
     let mut blockers = Vec::new();
     if check.pointer("/name/taken") == Some(&json!(true)) {
         blockers.push(t!("add.name_taken", name = s(&check["name"], "value")));
+    }
+    if check.pointer("/name/invalid").and_then(Value::as_str).is_some() {
+        blockers.push(t!("add.name_comma"));
     }
     let folder = &check["folder"];
     if let Some(other) = folder.get("in_use_by").and_then(Value::as_str) {
@@ -1092,6 +1104,9 @@ pub async fn rename(ctx: &Ctx, query: Option<&str>, new_name: &str) -> Result<()
     if new_name.is_empty() {
         return Err(usage(t!("add.name_empty")));
     }
+    if has_comma(new_name) {
+        return Err(usage(t!("add.name_comma")));
+    }
     let r = ctx.api.rename(&sv.id, new_name).await?;
     ctx.out.done(&t!("rename.done", old = sv.name, name = new_name), &r);
     Ok(())
@@ -1274,6 +1289,11 @@ pub fn print_result(ctx: &Ctx, r: &Value) {
         return;
     }
     ctx.out.data(r, |r| {
+        // 데몬이 정리한 결과(값으로 답한 조회): 앱·디스코드와 같은 내용
+        if let Some(output) = r.get("output").filter(|o| o.is_object()) {
+            print_output(output);
+            return;
+        }
         let data = r.get("data").filter(|d| !d.is_null());
         let text = data
             .and_then(|d| d.get("response").and_then(Value::as_str).or_else(|| d.as_str()))
@@ -1294,6 +1314,42 @@ pub fn print_result(ctx: &Ctx, r: &Value) {
             None => say!("{} {}", console::style("✓").green().bold(), t!("run.sent")),
         }
     });
+}
+
+/// 데몬 `output` (`{text}` | `{fields}` | `{table}`, 데몬 `commands::output`)
+fn print_output(output: &Value) {
+    if let Some(text) = output.get("text").and_then(Value::as_str) {
+        say!("{}", text);
+    } else if let Some(fields) = output.get("fields").and_then(Value::as_array) {
+        field_lines(fields).iter().for_each(|line| say!("{}", line));
+    } else if let Some(table) = output.get("table") {
+        let rows = table["rows"].as_array().cloned().unwrap_or_default();
+        if let Some(label) = table.get("label").and_then(Value::as_str) {
+            say!("{} ({})", console::style(label).bold(), rows.len());
+        }
+        if rows.is_empty() {
+            return;
+        }
+        let cols: Vec<String> = table["columns"].as_array().into_iter().flatten().map(|c| s(c, "label").to_string()).collect();
+        let mut t = output::table(&cols);
+        for row in rows {
+            t.add_row(row.as_array().into_iter().flatten().map(|v| v.as_str().unwrap_or_default().to_string()).collect::<Vec<_>>());
+        }
+        output::print_table(t);
+    }
+}
+
+/// 이름: 값 목록을 이름 폭(화면 칸)에 맞춘 줄로
+fn field_lines(fields: &[Value]) -> Vec<String> {
+    let width = fields.iter().map(|f| console::measure_text_width(s(f, "label"))).max().unwrap_or(0);
+    fields
+        .iter()
+        .map(|f| {
+            let label = s(f, "label");
+            let pad = width - console::measure_text_width(label);
+            format!("{}{}  {}", label, " ".repeat(pad), s(f, "value"))
+        })
+        .collect()
 }
 
 /// 모양을 모르는 JSON을 읽기 좋게
@@ -1427,6 +1483,31 @@ async fn players(ctx: &Ctx, query: Option<&str>) -> Result<()> {
         }
         for n in names {
             say!("  {}", n);
+        }
+    });
+    Ok(())
+}
+
+/// 서버 주소: 릴레이가 본 이 PC의 공인 주소 + 밖에 여는 포트마다 `주소:포트`
+async fn address(ctx: &Ctx, query: Option<&str>) -> Result<()> {
+    let sv = resolve::server(ctx, query).await?;
+    let r = ctx.api.address(&sv.id).await?;
+    ctx.out.data(&r, |r| {
+        output::heading(&t!("address.title", server = sv.name));
+        let ports: Vec<&Value> = r.get("ports").and_then(Value::as_array).into_iter().flatten().collect();
+        let ip = r.get("address").and_then(Value::as_str).and_then(|a| a.parse::<std::net::IpAddr>().ok());
+        match ip {
+            _ if ports.is_empty() => say!("{}", t!("address.no_ports")),
+            None => say!("{}", t!("address.unknown")),
+            Some(ip) => {
+                for p in ports {
+                    let port = p.get("port").and_then(Value::as_u64).and_then(|v| u16::try_from(v).ok()).unwrap_or(0);
+                    say!("  {}  {}", std::net::SocketAddr::new(ip, port), output::dim(s(p, "label")));
+                }
+            }
+        }
+        if r.get("running").and_then(Value::as_bool) == Some(false) {
+            say!("{}", output::dim(&t!("address.stopped")));
         }
     });
     Ok(())
@@ -2295,6 +2376,16 @@ async fn reorder(ctx: &Ctx, names: &[String]) -> Result<()> {
 mod tests {
     use super::*;
 
+    /// 데몬이 정리한 명령 결과(`output`)의 이름: 값 목록은 이름 폭을 맞춰 한 줄씩 (한글 이름도)
+    #[test]
+    fn output_fields_line_up_their_values() {
+        let fields = json!([
+            { "key": "serverfps", "label": "서버 FPS", "value": "59" },
+            { "key": "uptime", "label": "uptime", "value": "7234" },
+        ]);
+        assert_eq!(field_lines(fields.as_array().unwrap()), vec!["서버 FPS  59", "uptime    7234"]);
+    }
+
     /// 설치 진행 항목이 끝(done)을 보이기 전에 사라지면(데몬 재시작, 다른 곳에서 이름 바꾸기·삭제) 성공이 아니다 (L52)
     #[test]
     fn a_vanished_install_is_not_reported_as_finished() {
@@ -2596,6 +2687,10 @@ mod tests {
         assert_eq!(warnings, vec![t!("add.port_in_use", port = 25565, servers = "lobby"), t!("add.port_reserved", port = 50000)]);
         let clear = json!({ "name": { "taken": false }, "folder": { "custom": false }, "ports": [] });
         assert_eq!(check_problems(&clear), (vec![], vec![]));
+        // 쉼표가 든 이름 (디스코드에서 부르는 말을 쉼표로 나눈다, 사용자 11-06 #2)
+        let comma = json!({ "name": { "value": "a,b", "taken": false, "invalid": "comma" }, "folder": { "custom": false }, "ports": [] });
+        assert_eq!(check_problems(&comma).0, vec![t!("add.name_comma")]);
+        assert!(has_comma("우리，마크") && has_comma("a、b") && !has_comma("우리 마크"));
     }
 
     /// 고를 수 있는 버전은 GUI처럼 정식 릴리스만 (스냅숏·베타는 빼고, 종류가 없는 항목은 둔다)

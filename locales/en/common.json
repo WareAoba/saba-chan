@@ -96,6 +96,7 @@
     "create_http": "Couldn't create the server (HTTP {{status}}): {{error}}",
     "instance_not_found": "Server not found",
     "instance_running": "A running server can't be deleted. Stop it first",
+    "instance_busy": "Another task (backup or restore) is running on this server. Try again when it finishes",
     "delete_error": "Couldn't delete the server: {{error}}",
     "delete_http": "Couldn't delete the server (HTTP {{status}}): {{error}}",
     "reorder_failed": "Couldn't reorder: {{error}}",

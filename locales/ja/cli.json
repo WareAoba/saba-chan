@@ -31,6 +31,7 @@
     "module_required": "--module でゲームを選ぶか、--from で既存のサーバーフォルダーを指定してください。",
     "name_empty": "名前を空にはできません。",
     "name_taken": "{{name}} という名前のサーバーはすでにあります。",
+    "name_comma": "サーバー名には読点・カンマを使えません（Discord で呼ぶ言葉をカンマで区切るため）。空白は使えます。",
     "needs_extensions": "このゲームには次の拡張機能が必要です: {{ids}}。今すぐインストールして有効にしますか？",
     "no_installer": "{{game}} はサーバーファイルを自動でインストールできません。--from で既存のフォルダーを使ってください。",
     "no_modules": "ゲームモジュールがまだインストールされていません。",
@@ -164,6 +165,15 @@
     "notice_is_off": "{{server}}: 起動通知オフ",
     "notice_on_saved": "{{guild}}の通知チャンネルに{{server}}の起動を知らせます。",
     "notice_off_saved": "{{guild}}に{{server}}の起動を知らせないようにしました。",
+    "full_notice_none": "まだ満員通知をオンにしたサーバーはありません。",
+    "full_notice_is_on": "{{server}}: 満員通知オン",
+    "full_notice_is_off": "{{server}}: 満員通知オフ",
+    "full_notice_on_saved": "{{guild}} の通知チャンネルで {{server}} の満員と空きを知らせます。",
+    "full_notice_off_saved": "{{guild}} で {{server}} の満員をもう知らせません。",
+    "backup_notice_show": "バックアップ結果の DM: {{mode}}",
+    "backup_notice_set": "バックアップ結果の DM を変えました: {{mode}}",
+    "backup_notice_all": "成功・失敗どちらも",
+    "backup_notice_failures": "失敗だけ",
     "confirm_direct": "ボットへの直接の依頼",
     "confirm_chatbot": "おしゃべりサバちゃん",
     "confirm_all": "すべてのコマンド",
@@ -194,7 +204,16 @@
     "tts_names": "Reading Saba-chan name call",
     "tts_names_always": "Always",
     "tts_names_multi": "With several people",
-    "tts_names_never": "Never"
+    "tts_names_never": "Never",
+    "tts_voice_chat_only": "Reading Saba-chan only in voice channel chat",
+    "tts_keep_read": "Reading Saba-chan keeps read messages",
+    "tts_auto_channels": "Reading Saba-chan always-read voice channels",
+    "tts_auto_channels_none": "None",
+    "sleep_blocks": "Off while asleep",
+    "sleep_blocks_none": "None",
+    "bedtime": "Good kid",
+    "bedtime_format": "Write --bedtime as fall-asleep time-wake-up time, like 01:00-08:00.",
+    "big_emoji": "絵文字アップスケール"
   },
   "col": {
     "players": "接続者",
@@ -300,6 +319,16 @@
       "err_browse_denied": "そのフォルダーは開けません",
       "err_browse_not_a_folder": "フォルダーではありません",
       "err_browse_failed": "フォルダーを読めませんでした。もう一度お試しください"
+    },
+    "net_trace": {
+      "on": "オン",
+      "off": "オフ",
+      "current": "ポート・サーバー別ネットワーク: {{state}} · 権限: {{access}}",
+      "access_ok": "あり",
+      "access_needs_grant": "なし (config net-trace grant)",
+      "access_needs_relogin": "付与済み、Windowsにサインインし直すと使えます",
+      "access_unsupported": "このOSでは使えません (Windowsのみ)",
+      "enable_hint": "オンにするには: saba-chan-cli config set systemMonitorNetTrace=on"
     }
   },
   "console": {
@@ -396,6 +425,7 @@
       "node_token_missing": "先にこの PC をペアリングしてください: saba-chan-cli bot pair",
       "server_not_running": "先にサーバーを起動してください: saba-chan-cli start NAME",
       "server_running": "先にサーバーを停止してください: saba-chan-cli stop NAME",
+      "invalid_name": "名前からカンマを外してもう一度試してください。空白は使えます。",
       "rcon_unreachable": "サーバーのRCONに接続できませんでした。サーバーの起動が終わったか確認し、少し待ってからもう一度試してください: saba-chan-cli status",
       "rcon_auth_failed": "サーバーがRCONパスワードを受け付けませんでした。サーバーを再起動するとサバちゃんがパスワードを書き直します: saba-chan-cli restart NAME",
       "rcon_timeout": "サーバーがRCONに時間内に応答しませんでした。コマンドはすでに実行された可能性があるため、もう一度送る前にサーバーのコンソールを確認してください: saba-chan-cli console NAME",
@@ -408,8 +438,10 @@
       "backup_busy": "このサーバーのバックアップまたは復元がすでに実行中です。終わってからもう一度試してください。",
       "backup_file_locked": "サーバーが使用中のファイル({{file}})があります。サーバーを停止してからやり直してください: saba-chan-cli stop 名前",
       "autosave_not_resumed": "バックアップは作成しましたが、サーバーの自動保存を再開できませんでした。サーバーを再起動してください: saba-chan-cli restart <name>",
+      "backup_failed_autosave_off": "バックアップに失敗し、サーバーの自動保存も再開できませんでした。サーバーを再起動してください: saba-chan-cli restart <name>",
       "backup_save_rejected": "サーバーが保存コマンドを受け付けなかったため、バックアップしませんでした。サーバーを停止してからもう一度バックアップしてください: saba-chan-cli stop <name>",
       "backup_save_unconfirmed": "サーバーが保存の完了を知らせなかったため、バックアップしませんでした。しばらくしてからもう一度試すか、サーバーを停止してからバックアップしてください: saba-chan-cli stop <name>",
+      "backup_server_stopped": "バックアップ中にサーバーが停止したため、そのバックアップは削除しました。サーバーの状態を確認してからもう一度バックアップしてください: saba-chan-cli backup <name>",
       "snapshot_not_found": "ゲームが作った自動バックアップがありません.",
       "invalid_relay_url": "リレーのアドレスは https:// のみ使えます(この PC でのテスト用に localhost・127.0.0.1・[::1] の http だけは使えます)。",
       "module_busy": "このモジュールはすでにインストールまたは削除中です。終わってからもう一度試してください。",
@@ -419,7 +451,7 @@
       "no_command_path": "このサーバーはサバちゃんの外で起動されたため、コマンドを受け付けるコンソールがありません。サバちゃんから再起動してください: saba-chan-cli restart <server>",
       "conflict_with": "重なる相手: {{name}}",
       "word": {
-        "invalid": "空白なしの 1〜32 文字で書いてください",
+        "invalid": "読点・カンマなしの 1〜32 文字で書いてください（空白は使えます）",
         "reserved": "予約語なので使えません",
         "conflict": "すでに別のものを呼ぶ語です",
         "unknown_command": "このサーバーにないコマンドです",
@@ -454,7 +486,9 @@
       "move_cross_volume": "別のドライブにあるフォルダーは移せません。「今の場所のまま」で取り込んでください。",
       "move_in_use": "フォルダーを移せませんでした。このフォルダーのサーバーを停止し、フォルダーを開いているプログラムを閉じてからもう一度試してください。",
       "move_failed": "フォルダーを移せませんでした。「今の場所のまま」で取り込んでください。",
-      "port_check_busy": "すでに確認中です。しばらくしてからもう一度お試しください"
+      "port_check_busy": "すでに確認中です。しばらくしてからもう一度お試しください",
+      "net_trace_elevation_failed": "デーモンPCで管理者の確認を得られませんでした。そのPCの前でもう一度お試しください。",
+      "net_trace_failed": "権限を変更できませんでした。"
     },
     "not_a_bool": "「{{value}}」ははい/いいえではありません（true か false を使ってください）。",
     "not_a_number": "「{{value}}」は数値ではありません。",
@@ -704,7 +738,7 @@
     "preflight_failed": "ゲームモジュール用の実行環境の準備に失敗しました: {{error}}。次のサーバー操作時に再試行します。"
   },
   "stop": {
-    "confirm": "{{name}} サーバーを停止してもよろしいですか?",
+    "confirm": "「{{name}}」サーバーを停止してもよろしいですか?",
     "already": "{{name}} は動いていません。",
     "done": "{{name}} を停止しました。",
     "force_confirm": "保存せずに停止しますか？",
@@ -943,6 +977,7 @@
       "config.paths": "データ・モジュール・拡張機能フォルダーの場所と既定のフォルダー",
       "config.move": "モジュールや拡張機能を別のフォルダーへ移す。インストール済みのファイルも移す。サーバーはすべて停止が必要",
       "server.players": "今接続している人",
+      "server.address": "友だちが接続するアドレス（IP:ポート）",
       "server.port-check": "友だちが外部からこのサーバーに接続できるか確認（ポート開放）",
       "server.rcon": "サーバーがコマンドを受け取る経路(コンソール、なければRCON)で1行送って応答を見る",
       "server.log": "過去の実行まで保存されたログ(コンソールは今回の実行分のみ)",
@@ -961,9 +996,12 @@
       "remote.forget": "リモートデーモンを削除（再接続は`remote connect`）",
       "config.autostart": "PCにサインインしたときに起動するもの: off(オフ)、daemon(デーモンとトレイのみ)、full(GUIウィンドウまで)。モードなしで今の値を表示",
       "config.browse": "デーモンのPCのフォルダーとファイルを表示 (--daemonならそのリモートPC)。パスがなければドライブか /",
-      "bot.notice": "サバちゃんがサーバーを起動したらDiscordサーバーの通知チャンネルに知らせる（既定はオフ）。サーバーなし: 表示、サーバーと`--on`・`--off`: 変更",
+      "bot.notice": "コマンド以外でサーバーが起動・停止したらDiscordサーバーの通知チャンネルに知らせる（既定はオフ）。`--full`: 満員になったときや空きが出たとき。サーバーなし: 表示、サーバーと`--on`・`--off`: 変更",
+      "bot.backup-notice": "バックアップ結果をすべてDMするか(--all)、失敗だけか(--failures)。オプションなし: 表示",
       "bot.confirm": "実行前にボットがDiscordのボタンで確認する段階 (all・caution・danger・none)。オプションなし: 表示",
-      "bot.tts": "Reading Saba-chan voice of a Discord server (volume, speed, pitch). No options: show"
+      "bot.tts": "Reading Saba-chan voice of a Discord server (volume, speed, pitch). No options: show",
+      "bot.big-emoji": "Discordサーバーの絵文字アップスケール(カスタム絵文字だけのメッセージを大きく表示)。オプションなしで表示",
+      "config.net-trace": "ポート・サーバー別ネットワーク(詳細、Windows)の権限: 動作なしで現在の状態、grantはデーモンPCで管理者の確認を一度表示して権限を付与、revokeは元に戻します。オンにするには config set systemMonitorNetTrace=on"
     },
     "arg": {
       "module.maker.game": "最初の依頼に入れるゲーム名",
@@ -1135,8 +1173,11 @@
       "schedule.edit.args": "ゲームコマンドの入力 名前=値 (複数可)",
       "schedule.add.command": "実行するゲームコマンド (command 作業、一覧: server commands)",
       "schedule.edit.command": "変更するゲームコマンド (command 作業、別のコマンドなら --arg を指定しない限り古い入力は消える)",
-      "bot.notice.on": "起動通知をオン",
-      "bot.notice.off": "起動通知をオフ",
+      "bot.notice.on": "通知をオン",
+      "bot.notice.off": "通知をオフ",
+      "bot.notice.full": "起動・停止通知のかわりに満員通知",
+      "bot.backup-notice.all": "成功・失敗どちらもDM",
+      "bot.backup-notice.failures": "失敗だけDM",
       "chatbot.template.locale": "テンプレートの言語（省略時はアプリの言語）",
       "bot.confirm.direct": "ボットへの直接の依頼 — プレフィックスコマンドとスラッシュコマンドです。",
       "bot.confirm.chatbot": "おしゃべりサバちゃん — おしゃべりサバちゃんが選んだ管理作業と、複数の人が混ざった依頼は、この設定に関係なく必ず確認します。",
@@ -1149,7 +1190,14 @@
       "bot.translate.off": "Show only the names in the module",
       "bot.tts.volume": "Volume in percent (10-150)",
       "bot.tts.speed": "Speaking speed (0.8-1.5, e.g. 1.2)",
-      "bot.tts.pitch": "Pitch in semitones (-6 to 6)"
+      "bot.tts.pitch": "Pitch in semitones (-6 to 6)",
+      "bot.big-emoji.on": "絵文字アップスケールをオン",
+      "bot.big-emoji.off": "絵文字アップスケールをオフ",
+      "bot.tts.voice_chat_only": "Read your messages only in the chat of the voice channel you are in (on|off, game chat channel excepted)",
+      "bot.tts.keep_read": "Keep read messages instead of deleting them (on|off)",
+      "bot.tts.auto_channels": "Voice channel IDs to always read (comma-separated, up to 10): with 2+ people inside, the bot joins and reads its chat",
+      "bot.tts.no_auto_channels": "Clear the always-read voice channels",
+      "config.net-trace.action": "grant(付与)またはrevoke(戻す)。なければ現在の状態"
     },
     "after": "名前は一部だけでも指定できます（例: start pal）。端末で引数なしで実行すると全画面メニューが開きます(SABA_NO_TUI=1 なら対話シェル)。\nスクリプトでは --json と --yes を使ってください。終了コード: 0 成功 · 1 失敗 · 2 使い方の誤り · 3 デーモンに接続不可 · 4 見つからない · 130 キャンセル"
   },
@@ -1581,7 +1629,10 @@
     "kept_instances": "ゲームサーバーは残し、設定は削除します",
     "kept_nothing": "設定とゲームサーバーも削除します",
     "done": "サバちゃんを削除しました。{{kept}}。",
-    "left": "サバちゃんを削除しましたが、次の項目を削除できませんでした。使用中のプログラムを閉じて手動で削除してください:\n{{paths}}"
+    "left": "サバちゃんを削除しましたが、次の項目を削除できませんでした。使用中のプログラムを閉じて手動で削除してください:\n{{paths}}",
+    "servers_unlisted": "起動中のサーバー一覧を取得できず、正常に終了できなかったため強制終了しました ({{detail}})。",
+    "server_force_stopped": "サーバー {{server}} を正常に終了できず、強制終了しました ({{detail}})。最後の保存以降の内容が失われている可能性があります。",
+    "daemon_unanswered": "デーモンが応答しなかったため、起動中のサーバーを強制終了しました。最後の保存以降の内容が失われている可能性があります。"
   },
   "update_required": {
     "title": "アップデートが必要です",
@@ -1659,6 +1710,12 @@
     "this_pc": "このPC",
     "no_servers": "サーバーなし",
     "via_relay": "リレー経由"
+  },
+  "address": {
+    "title": "{{server}} のアドレス",
+    "unknown": "サーバーちゃんがこのPCのグローバルアドレスを把握していません。サーバーちゃんに接続しているか確認してください",
+    "no_ports": "このゲームは接続ポートを示していません",
+    "stopped": "サーバーが停止しています。起動すると接続できます"
   },
   "port_check": {
     "title": "{{server}} のポート開放確認",

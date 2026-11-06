@@ -1,0 +1,125 @@
+/* 콘솔 글꼴 (utils/consoleFonts.js): 글꼴마다 글자 범위를 나눠 싣는다.
+   `saba-<글자>-<글꼴>`은 그 글자 범위에서만 쓰이고, 화면에 그 범위의 글자가 나올 때만 내려받는다.
+   글꼴 파일은 assets/fonts (모두 SIL OFL 1.1, assets/fonts/LICENSES.md) — 각 글꼴을 쓰는 범위만 남겼다 */
+
+/* latin */
+@font-face {
+    font-family: 'saba-latin-cascadia-code';
+    src: url('../assets/fonts/cascadia-code.woff2') format('woff2');
+    font-display: swap;
+    unicode-range: U+0000-024F, U+0370-04FF, U+1E00-1EFF, U+2000-22FF, U+2500-259F;
+}
+@font-face {
+    font-family: 'saba-latin-d2coding';
+    src: url('../assets/fonts/d2coding.woff2') format('woff2');
+    font-display: swap;
+    unicode-range: U+0000-024F, U+0370-04FF, U+1E00-1EFF, U+2000-22FF, U+2500-259F;
+}
+@font-face {
+    font-family: 'saba-latin-nanum-gothic-coding';
+    src: url('../assets/fonts/nanum-gothic-coding.woff2') format('woff2');
+    font-display: swap;
+    unicode-range: U+0000-024F, U+0370-04FF, U+1E00-1EFF, U+2000-22FF, U+2500-259F;
+}
+@font-face {
+    font-family: 'saba-latin-neodgm-code';
+    src: url('../assets/fonts/neodgm-code.woff2') format('woff2');
+    font-display: swap;
+    unicode-range: U+0000-024F, U+0370-04FF, U+1E00-1EFF, U+2000-22FF, U+2500-259F;
+}
+@font-face {
+    font-family: 'saba-latin-sarasa-mono-j';
+    src: url('../assets/fonts/sarasa-mono-j.woff2') format('woff2');
+    font-display: swap;
+    unicode-range: U+0000-024F, U+0370-04FF, U+1E00-1EFF, U+2000-22FF, U+2500-259F;
+}
+@font-face {
+    font-family: 'saba-latin-udev-gothic';
+    src: url('../assets/fonts/udev-gothic.woff2') format('woff2');
+    font-display: swap;
+    unicode-range: U+0000-024F, U+0370-04FF, U+1E00-1EFF, U+2000-22FF, U+2500-259F;
+}
+@font-face {
+    font-family: 'saba-latin-hackgen';
+    src: url('../assets/fonts/hackgen.woff2') format('woff2');
+    font-display: swap;
+    unicode-range: U+0000-024F, U+0370-04FF, U+1E00-1EFF, U+2000-22FF, U+2500-259F;
+}
+@font-face {
+    font-family: 'saba-latin-m-plus-1-code';
+    src: url('../assets/fonts/m-plus-1-code.woff2') format('woff2');
+    font-display: swap;
+    unicode-range: U+0000-024F, U+0370-04FF, U+1E00-1EFF, U+2000-22FF, U+2500-259F;
+}
+@font-face {
+    font-family: 'saba-latin-sarasa-mono-sc';
+    src: url('../assets/fonts/sarasa-mono-sc.woff2') format('woff2');
+    font-display: swap;
+    unicode-range: U+0000-024F, U+0370-04FF, U+1E00-1EFF, U+2000-22FF, U+2500-259F;
+}
+@font-face {
+    font-family: 'saba-latin-sarasa-mono-tc';
+    src: url('../assets/fonts/sarasa-mono-tc.woff2') format('woff2');
+    font-display: swap;
+    unicode-range: U+0000-024F, U+0370-04FF, U+1E00-1EFF, U+2000-22FF, U+2500-259F;
+}
+
+/* ko */
+@font-face {
+    font-family: 'saba-ko-d2coding';
+    src: url('../assets/fonts/d2coding.woff2') format('woff2');
+    font-display: swap;
+    unicode-range: U+1100-11FF, U+3130-318F, U+A960-A97F, U+AC00-D7AF, U+D7B0-D7FF;
+}
+@font-face {
+    font-family: 'saba-ko-nanum-gothic-coding';
+    src: url('../assets/fonts/nanum-gothic-coding.woff2') format('woff2');
+    font-display: swap;
+    unicode-range: U+1100-11FF, U+3130-318F, U+A960-A97F, U+AC00-D7AF, U+D7B0-D7FF;
+}
+@font-face {
+    font-family: 'saba-ko-neodgm-code';
+    src: url('../assets/fonts/neodgm-code.woff2') format('woff2');
+    font-display: swap;
+    unicode-range: U+1100-11FF, U+3130-318F, U+A960-A97F, U+AC00-D7AF, U+D7B0-D7FF;
+}
+
+/* ja */
+@font-face {
+    font-family: 'saba-ja-sarasa-mono-j';
+    src: url('../assets/fonts/sarasa-mono-j.woff2') format('woff2');
+    font-display: swap;
+    unicode-range: U+3000-303F, U+3040-30FF, U+31F0-31FF, U+4E00-9FFF, U+FF00-FFEF;
+}
+@font-face {
+    font-family: 'saba-ja-udev-gothic';
+    src: url('../assets/fonts/udev-gothic.woff2') format('woff2');
+    font-display: swap;
+    unicode-range: U+3000-303F, U+3040-30FF, U+31F0-31FF, U+4E00-9FFF, U+FF00-FFEF;
+}
+@font-face {
+    font-family: 'saba-ja-hackgen';
+    src: url('../assets/fonts/hackgen.woff2') format('woff2');
+    font-display: swap;
+    unicode-range: U+3000-303F, U+3040-30FF, U+31F0-31FF, U+4E00-9FFF, U+FF00-FFEF;
+}
+@font-face {
+    font-family: 'saba-ja-m-plus-1-code';
+    src: url('../assets/fonts/m-plus-1-code.woff2') format('woff2');
+    font-display: swap;
+    unicode-range: U+3000-303F, U+3040-30FF, U+31F0-31FF, U+4E00-9FFF, U+FF00-FFEF;
+}
+
+/* zh */
+@font-face {
+    font-family: 'saba-zh-sarasa-mono-sc';
+    src: url('../assets/fonts/sarasa-mono-sc.woff2') format('woff2');
+    font-display: swap;
+    unicode-range: U+3000-303F, U+3400-4DBF, U+4E00-9FFF, U+FF00-FFEF;
+}
+@font-face {
+    font-family: 'saba-zh-sarasa-mono-tc';
+    src: url('../assets/fonts/sarasa-mono-tc.woff2') format('woff2');
+    font-display: swap;
+    unicode-range: U+3000-303F, U+3400-4DBF, U+4E00-9FFF, U+FF00-FFEF;
+}

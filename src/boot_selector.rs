@@ -130,7 +130,7 @@ mod win32 {
     }
 
     #[link(name = "kernel32")]
-    extern "system" {
+    unsafe extern "system" {
         pub fn GetStdHandle(nStdHandle: DWORD) -> HANDLE;
         pub fn PeekConsoleInputW(
             h: HANDLE,
@@ -151,7 +151,7 @@ mod win32 {
     }
 
     #[link(name = "user32")]
-    extern "system" {
+    unsafe extern "system" {
         pub fn ShowWindow(hWnd: HWND, nCmdShow: i32) -> BOOL;
     }
 

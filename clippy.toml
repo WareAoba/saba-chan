@@ -1,3 +1,18 @@
 # Clippy 린트 설정
 # https://doc.rust-lang.org/stable/clippy/
 too-many-arguments-threshold = 10
+
+# HTTPS 클라이언트는 rustls 설정을 거친다 (saba_chan_updater_lib::tls).
+# 기본 암호 구현을 정하기 전에 reqwest 클라이언트를 만들면 panic한다.
+# allow-invalid: blocking·웹소켓은 데몬 크레이트에만 있다
+disallowed-methods = [
+    { path = "reqwest::Client::new", reason = "saba_chan_updater_lib::tls::http_client_builder()를 쓴다" },
+    { path = "reqwest::Client::builder", reason = "saba_chan_updater_lib::tls::http_client_builder()를 쓴다" },
+    { path = "reqwest::ClientBuilder::new", reason = "saba_chan_updater_lib::tls::http_client_builder()를 쓴다" },
+    { path = "reqwest::blocking::Client::new", reason = "tls::install_crypto_provider()를 먼저 부른다", allow-invalid = true },
+    { path = "reqwest::blocking::Client::builder", reason = "tls::install_crypto_provider()를 먼저 부른다", allow-invalid = true },
+    { path = "reqwest::blocking::ClientBuilder::new", reason = "tls::install_crypto_provider()를 먼저 부른다", allow-invalid = true },
+    { path = "tokio_tungstenite::connect_async", reason = "connect_async_tls_with_config에 tls::client_config()를 넘긴다", allow-invalid = true },
+    { path = "tokio_tungstenite::connect_async_with_config", reason = "connect_async_tls_with_config에 tls::client_config()를 넘긴다", allow-invalid = true },
+    { path = "tokio_tungstenite::client_async_tls", reason = "client_async_tls_with_config에 tls::client_config()를 넘긴다", allow-invalid = true },
+]

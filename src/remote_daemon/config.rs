@@ -107,8 +107,16 @@ fn section(doc: &mut Map<String, Value>) -> &mut Map<String, Value> {
     remote.as_object_mut().expect("just made an object")
 }
 
+/// 원격 구역을 읽지 못하면 기본값(켜짐) 대신 꺼 둔다: 깨진 값 하나로 사용자가 끈 포트가 다시 열리지 않게
 pub fn settings_in(file: &ConfigFile) -> Settings {
-    serde_json::from_value(file.peek_section("remote")).unwrap_or_default()
+    let section = file.peek_section("remote");
+    if section.is_null() {
+        return Settings::default();
+    }
+    serde_json::from_value(section).unwrap_or_else(|e| {
+        tracing::warn!("[Remote] Could not read remote settings, keeping remote opening off: {}", e);
+        Settings { enabled: false, ..Settings::default() }
+    })
 }
 
 /// 설정만 바꾼다 (짝 맺은 PC는 그대로)
@@ -276,6 +284,14 @@ mod tests {
         assert_eq!(settings_in(&f), s);
         assert_eq!(f.section("node")["token"], "sbn_x.y");
         assert_eq!(f.section("remote")["transport"], "direct");
+    }
+
+    /// 원격 구역을 읽지 못하면(값 하나가 깨짐) 기본값(켜짐)으로 포트를 열지 않고 꺼 둔다
+    #[test]
+    fn unreadable_remote_settings_stay_closed() {
+        let (_d, f) = file();
+        f.set_section("remote", json!({"enabled": false, "port": "not a number"})).unwrap();
+        assert!(!settings_in(&f).enabled);
     }
 
     #[test]

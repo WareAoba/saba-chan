@@ -62,7 +62,7 @@ impl Api {
         if let Some(v) = lang.as_deref().and_then(|l| reqwest::header::HeaderValue::from_str(l).ok()) {
             headers.insert(reqwest::header::ACCEPT_LANGUAGE, v);
         }
-        let http = reqwest::Client::builder()
+        let http = saba_chan_updater_lib::tls::http_client_builder()
             .connect_timeout(Duration::from_secs(2))
             .no_proxy()
             .default_headers(headers)
@@ -249,6 +249,15 @@ impl Api {
     pub async fn set_autostart(&self, mode: &str) -> Result<Value> {
         self.put("/api/system/autostart", json!({ "mode": mode })).await
     }
+    /// GET /api/system/net-trace — 포트·서버별 네트워크 권한 `{access, enabled}`
+    pub async fn net_trace(&self) -> Result<Value> {
+        self.get("/api/system/net-trace").await
+    }
+    /// POST /api/system/net-trace/grant|revoke — 데몬 PC에 관리자 확인 창을 띄우고 닫힐 때까지 기다린다
+    pub async fn net_trace_change(&self, grant: bool) -> Result<Value> {
+        let path = if grant { "/api/system/net-trace/grant" } else { "/api/system/net-trace/revoke" };
+        self.call(Method::POST, path, Some(json!({})), Duration::from_secs(180)).await
+    }
     /// GET /api/system/metrics — 시스템 모니터 표본
     pub async fn system_metrics(&self) -> Result<Value> {
         self.get("/api/system/metrics").await
@@ -421,6 +430,10 @@ impl Api {
     /// GET /api/instance/:id/players — `{online, max?, players: [{name}]}`. 꺼져 있으면 409 server_not_running
     pub async fn players(&self, id: &str) -> Result<Value> {
         self.get_slow(&format!("/api/instance/{}/players", seg(id))).await
+    }
+    /// GET /api/instance/:id/address — 친구가 접속할 주소 `{address, running, ports:[{label, port, protocols}]}`
+    pub async fn address(&self, id: &str) -> Result<Value> {
+        self.get(&format!("/api/instance/{}/address", seg(id))).await
     }
     /// POST /api/instance/:id/port-check — 릴레이가 밖에서 그 서버의 포트에 접속해 본다 (몇 초)
     pub async fn port_check(&self, id: &str) -> Result<Value> {
@@ -1030,6 +1043,17 @@ impl Api {
         )
         .await
     }
+    /// POST /api/relay/node/:guild/moderation/channels/:channel/clear/check — 청소와 같은 본문, 지우지 않고 권한만 본다 → `{dryRun:true}`
+    pub async fn check_clear_channel(&self, guild_id: &str, channel_id: &str, body: Value, relay_url: Option<&str>) -> Result<Value> {
+        self.post(
+            &with_query(
+                &format!("/api/relay/node/{}/moderation/channels/{}/clear/check", seg(guild_id), seg(channel_id)),
+                &[("relayUrl", relay_url.map(str::to_string))],
+            ),
+            body,
+        )
+        .await
+    }
     /// PUT /api/relay/node/:guild/moderation/mutes/:user — `{duration: 분|"forever"|"off", reason?}` → `{result}`
     pub async fn mute_member(&self, guild_id: &str, user_id: &str, body: Value, relay_url: Option<&str>) -> Result<Value> {
         self.put_slow(
@@ -1068,6 +1092,14 @@ impl Api {
     /// PUT /api/instance/:id/start-notice/:guild — `{enabled}` → `{success, id, guildId, enabled, instances}`
     pub async fn set_start_notice(&self, id: &str, guild_id: &str, enabled: bool) -> Result<Value> {
         self.put(&format!("/api/instance/{}/start-notice/{}", seg(id), seg(guild_id)), json!({ "enabled": enabled })).await
+    }
+    /// GET /api/guilds/:guild/full-notice — `{guildId, instances}` (자리 꽉 참 알림을 켠 서버)
+    pub async fn full_notice(&self, guild_id: &str) -> Result<Value> {
+        self.get(&format!("/api/guilds/{}/full-notice", seg(guild_id))).await
+    }
+    /// PUT /api/instance/:id/full-notice/:guild — `{enabled}` → `{success, id, guildId, enabled, instances}`
+    pub async fn set_full_notice(&self, id: &str, guild_id: &str, enabled: bool) -> Result<Value> {
+        self.put(&format!("/api/instance/{}/full-notice/{}", seg(id), seg(guild_id)), json!({ "enabled": enabled })).await
     }
     // ── 백업·예약 ──
 
@@ -1667,6 +1699,7 @@ mod route_coverage {
     /// 데몬 라우트 중 CLI가 부르지 않는 것과 그 까닭. 여기 없는 라우트는 모두 CLI(그래서 TUI)에서 닿아야 한다
     const NOT_FOR_CLI: &[(&str, &str)] = &[
         ("/api/client/register", "GUI 창 수명 (CLI는 한 번 돌고 끝난다)"),
+        ("/api/chatbot/common", "원격(디스코드 `/설정` 사바쨩 전체)용 모델·키만 바꾸기 (CLI는 `PUT /api/chatbot`으로 같은 값을 바꾼다)"),
         ("/api/updates/install", "원격(디스코드 `/사바쨩 업데이트`)용 한 번에 받고 적용 (CLI `update`는 단계마다 진행을 보인다)"),
         ("/api/updates/apply-on-launch", "GUI가 열릴 때 '받고 다음 실행 때 적용' (CLI는 `update apply`로 바로 적용한다)"),
         ("/api/client/{id}/heartbeat", "GUI 창 수명"),
@@ -1676,6 +1709,7 @@ mod route_coverage {
         ("/api/extensions/{id}/icon", "GUI 그림"),
         ("/api/extensions/{id}/i18n/{locale}", "GUI 번들 문구"),
         ("/api/instance/{id}/status", "GUI가 시작·정지가 끝났는지 묻는 길 (CLI `server info`·`list`는 /api/servers 상태를 쓴다)"),
+        ("/api/instance/{id}/chat-link/{guild}", "디스코드 채널과 게임 채팅을 잇는 원격(디스코드 `/채팅연동`) 전용 (잇는 채널이 디스코드에만 있다)"),
         ("/api/remote/daemons/{host_id}/proxy/{*rest}", "원격 데몬 중계: 데몬 API 전체를 그 데몬으로 넘기는 길 (원격 데몬 고르기는 G1)"),
     ];
 

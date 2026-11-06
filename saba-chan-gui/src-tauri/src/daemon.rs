@@ -174,7 +174,7 @@ pub struct DaemonClient {
 impl DaemonClient {
     pub fn new(base: String, token_path: PathBuf) -> Self {
         // 리다이렉트를 따라가지 않는다 (토큰이 다른 곳으로 새지 않게). 루프백이라 프록시도 쓰지 않는다
-        let http = reqwest::Client::builder()
+        let http = saba_chan_updater_lib::tls::http_client_builder()
             .redirect(reqwest::redirect::Policy::none())
             .no_proxy()
             .build()

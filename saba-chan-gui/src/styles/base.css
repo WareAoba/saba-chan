@@ -149,59 +149,100 @@ button:disabled {
     cursor: not-allowed;
 }
 
-/* 주 버튼: 강조 그라데이션 + 입체 (A3, N1) */
-.btn-primary {
-    background: var(--brand-gradient);
-    color: var(--brand-text);
-    box-shadow: var(--shadow-raised);
+/* ── 버튼: 뉴모피즘 (빛은 왼쪽 위) ──
+ * 솟은 면 → 올리면 떠오르며 밝아짐 → 누르면 어두워지며 파임 → 떼면 튀며 돌아옴.
+ * 밝기·그림자·크기가 같은 곡선으로 함께 움직인다. */
+.btn-primary,
+.btn-ghost,
+.btn-secondary,
+.btn-danger,
+.btn-success,
+.btn-info {
+    transition:
+        box-shadow 0.22s var(--ease),
+        transform 0.18s var(--ease-spring),
+        filter 0.2s var(--ease),
+        background-color var(--dur-fast) var(--ease),
+        color var(--dur-fast) var(--ease);
 }
-.btn-primary:hover:not(:disabled) {
-    filter: brightness(1.08);
-    box-shadow: var(--shadow-raised-hover);
+.btn-primary:hover:not(:disabled),
+.btn-ghost:hover:not(:disabled),
+.btn-secondary:hover:not(:disabled),
+.btn-danger:hover:not(:disabled),
+.btn-success:hover:not(:disabled),
+.btn-info:hover:not(:disabled) {
+    box-shadow: var(--neu-up-hi);
+    transform: translateY(-1px);
+    filter: brightness(1.05);
 }
-.btn-primary:active:not(:disabled) {
-    transform: translateY(1px);
-    box-shadow: var(--shadow-inset);
+.btn-primary:active:not(:disabled),
+.btn-ghost:active:not(:disabled),
+.btn-secondary:active:not(:disabled),
+.btn-danger:active:not(:disabled),
+.btn-success:active:not(:disabled),
+.btn-info:active:not(:disabled) {
+    transform: scale(0.96);
+    filter: brightness(0.92);
+    box-shadow: var(--neu-in);
+    transition-duration: 0.08s;
+}
+.btn-primary:focus-visible,
+.btn-ghost:focus-visible,
+.btn-secondary:focus-visible,
+.btn-danger:focus-visible,
+.btn-success:focus-visible,
+.btn-info:focus-visible {
+    outline: none;
+    box-shadow: var(--neu-up), var(--accent-ring);
+}
+.btn-primary:disabled,
+.btn-ghost:disabled,
+.btn-secondary:disabled,
+.btn-danger:disabled,
+.btn-success:disabled,
+.btn-info:disabled {
+    box-shadow: inset 0 0 0 1px var(--line-strong);
+    filter: saturate(0.5);
 }
 
-/* 보조 버튼: 투명 + 테두리, 호버 시 면이 생김 (A4) */
+/* 주 버튼: 강조색(그라데이션 설정을 따름) 위에 빛을 얹은 볼록면 */
+.btn-primary {
+    background: var(--neu-sheen), var(--brand-gradient);
+    color: var(--brand-text);
+    box-shadow: var(--neu-up);
+}
+.btn-primary:active:not(:disabled),
+.btn-danger:active:not(:disabled),
+.btn-success:active:not(:disabled),
+.btn-info:active:not(:disabled) {
+    box-shadow: var(--neu-press-color);
+}
+
+/* 보조 버튼: 테두리 없이 바탕색으로 솟은 면 */
 .btn-ghost,
 .btn-secondary {
-    background: transparent;
+    background: var(--bg-surface);
     color: var(--text-1);
-    border: 1px solid var(--line-strong);
-}
-.btn-ghost:hover:not(:disabled),
-.btn-secondary:hover:not(:disabled) {
-    background: var(--surface-gradient-hover);
-    box-shadow: var(--shadow-raised);
-}
-.btn-ghost:active:not(:disabled),
-.btn-secondary:active:not(:disabled) {
-    box-shadow: var(--shadow-inset);
+    border: 0;
+    box-shadow: var(--neu-up);
 }
 
 .btn-danger {
-    background: var(--stop);
+    background: var(--neu-sheen), var(--stop);
     color: var(--text-on-dark);
-    box-shadow: var(--shadow-raised);
-}
-.btn-danger:hover:not(:disabled) {
-    filter: brightness(1.08);
-}
-.btn-danger:active:not(:disabled) {
-    transform: translateY(1px);
+    box-shadow: var(--neu-up);
 }
 
 .btn-success {
-    background: var(--ok);
+    background: var(--neu-sheen), var(--ok);
     color: var(--text-on-dark);
+    box-shadow: var(--neu-up);
 }
 
 .btn-info {
-    background: var(--info);
+    background: var(--neu-sheen), var(--info);
     color: var(--text-on-dark);
-    box-shadow: var(--shadow-raised);
+    box-shadow: var(--neu-up);
 }
 
 .btn-danger-text {
@@ -233,7 +274,7 @@ button:disabled {
     display: var(--saba-face-solid);
 }
 
-/* 아이콘 버튼: 작은 입체 사각 (N1) */
+/* 아이콘 버튼: 평소 납작, 올리면 솟고, 누르면 파임 */
 .icon-btn {
     --btn-height: 32px;
     width: 32px;
@@ -242,15 +283,22 @@ button:disabled {
     color: var(--text-2);
     background: transparent;
     border: 1px solid transparent;
+    transition:
+        box-shadow 0.22s var(--ease),
+        transform 0.18s var(--ease-spring),
+        background-color var(--dur-fast) var(--ease),
+        color var(--dur-fast) var(--ease);
 }
 .icon-btn:hover:not(:disabled) {
     color: var(--text-1);
-    background: var(--surface-gradient-hover);
-    border-color: var(--line);
-    box-shadow: var(--shadow-raised);
+    background: var(--bg-surface);
+    box-shadow: var(--neu-up);
 }
 .icon-btn:active:not(:disabled) {
-    box-shadow: var(--shadow-inset);
+    background: var(--bg-surface);
+    box-shadow: var(--neu-in);
+    transform: scale(0.92);
+    transition-duration: 0.08s;
 }
 
 /* 입력 (N2 + A5 포커스) */
@@ -259,9 +307,12 @@ button:disabled {
     width: 100%;
     padding: 0 var(--sp-3);
     border-radius: var(--r-sm);
-    border: 1px solid var(--line-strong);
+    border: 1px solid var(--line);
     background: var(--field);
-    box-shadow: var(--shadow-inset);
+    box-shadow: var(--neu-in);
+    transition:
+        border-color 0.25s var(--ease),
+        box-shadow 0.25s var(--ease);
     color: var(--text-1);
     font-size: var(--fs-md);
     outline: none;
@@ -269,9 +320,12 @@ button:disabled {
 .input::placeholder {
     color: var(--text-3);
 }
+.input:hover:not(:focus) {
+    border-color: var(--line-strong);
+}
 .input:focus {
     border-color: var(--accent);
-    box-shadow: var(--shadow-inset), var(--accent-ring);
+    box-shadow: var(--neu-in), var(--accent-ring);
 }
 
 /* 카드 (N1 + N3 + A2) */
@@ -347,14 +401,14 @@ button:disabled {
     }
 }
 
-/* 세그먼트 탭: 눌린 홈 안에서 고른 칸만 튀어나옴 (N2 → N1) */
+/* 세그먼트 탭: 파인 홈 안에서 고른 칸만 솟음. 누르는 즉시 바뀐다(글자색 지연 없음) */
 .segmented {
     display: inline-flex;
     gap: var(--sp-1);
     padding: var(--sp-1);
     border-radius: var(--r-md);
     background: var(--inset);
-    box-shadow: var(--shadow-inset);
+    box-shadow: var(--neu-in);
     border: 1px solid var(--line);
 }
 .segmented-item {
@@ -363,15 +417,27 @@ button:disabled {
     --btn-font-size: var(--fs-sm);
     color: var(--text-2);
     border: 1px solid transparent;
+    transition:
+        box-shadow 0.12s var(--ease),
+        background-color 0.12s var(--ease),
+        transform 0.18s var(--ease-spring);
 }
 .segmented-item:hover:not(.active) {
     color: var(--text-1);
 }
+.segmented-item:active {
+    transform: scale(0.95);
+}
 .segmented-item.active {
     color: var(--text-1);
-    background: var(--surface-gradient);
-    border-color: var(--line);
-    box-shadow: var(--shadow-raised);
+    background: var(--bg-surface);
+    box-shadow: var(--neu-up);
+    animation: saba-seg-pop 0.22s var(--ease-spring);
+}
+@keyframes saba-seg-pop {
+    from {
+        transform: scale(0.94);
+    }
 }
 
 /* 알림 띠 */

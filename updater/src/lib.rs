@@ -8,6 +8,7 @@
 //! - `state.rs`: 적용 대기 목록, 설치된 버전 기록
 //! - `apply.rs`: 받은 파일을 설치 폴더에 적용
 //! - `relay.rs`·`signature.rs`·`download.rs`: relay manifest 확인, 서명 검증, R2 다운로드
+//! - `tls.rs`: 모든 HTTPS·WSS 클라이언트의 rustls 설정 (ring + OS 인증서 저장소)
 //! - `window_icon.rs`: Tauri 창(GUI·업데이터·인스톨러)의 Windows 아이콘
 //!
 //! 경로는 모두 `install_root` 기준입니다.
@@ -27,6 +28,7 @@ pub mod process;
 pub mod profile;
 pub mod relay;
 pub mod signature;
+pub mod tls;
 pub mod uninstall_entry;
 pub mod version;
 pub mod versions;
@@ -414,12 +416,12 @@ fn path_parts(p: &Path) -> Vec<String> {
         .collect()
 }
 
-/// 덮어쓸 실행 파일이 떠 있으면 `.old`로 비켜 둔다 (`extract_zip`의 `before_write`로 쓴다)
 /// zip이 아닌 설치기(실행 파일 그대로)를 `target`에 둔다. 실패하면 이전 사본을 되돌린다
 pub fn replace_bare_installer(staged: &Path, target: &Path) -> Result<()> {
     UpdateManager::replace_bare_installer(staged, target)
 }
 
+/// 덮어쓸 실행 파일이 떠 있으면 `.old`로 비켜 둔다 (`extract_zip`의 `before_write`로 쓴다)
 pub fn move_aside_binary(path: &Path) -> Result<()> {
     UpdateManager::move_aside_binary(path)
 }
@@ -944,7 +946,7 @@ impl UpdateManager {
             .collect();
 
         // 하나가 실패해도 나머지는 받고, 받은 것은 아래에서 상태에 남긴다
-        let client = reqwest::Client::new();
+        let client = crate::tls::http_client_builder().build().unwrap();
         let mut failed = Vec::new();
         for (key, rc) in &to_download {
             let dest = self.staging_dir.join(&rc.filename);
@@ -1009,7 +1011,7 @@ impl UpdateManager {
         }
 
         // 스트리밍 다운로드 + SHA-256 검증 (불일치면 파일 삭제)
-        let client = reqwest::Client::new();
+        let client = crate::tls::http_client_builder().build().unwrap();
         let result = download::download_verified(
             &client,
             &rc.url,
@@ -1309,13 +1311,18 @@ impl UpdateManager {
         }
     }
 
-    /// 설치 폴더의 사바쨩 실행 파일 백업 `<exe>.old` 또는 그 이름이 잡혀 있을 때 쓴 `<exe>.old.<n>` (`free_backup_path`).
-    /// (경로, 실행 파일 이름 줄기, 번호(`.old`는 0), GUI인가)
+    /// 설치 폴더의 사바쨩 실행 파일 백업 `<exe>.old` 또는 그 이름이 잡혀 있을 때 쓴 `<exe>.old.<n>` (`free_backup_path`),
+    /// Unix는 확장자 없는 바이너리를 비켜 둔 `<이름>.old` (`move_aside`).
+    /// (경로, 실행 파일 이름, 번호(`.old`는 0), GUI인가)
     fn old_exe_backups(&self) -> Vec<(PathBuf, String, u32, bool)> {
         let Ok(entries) = std::fs::read_dir(&self.install_root) else { return Vec::new() };
         let mut found = Vec::new();
         for path in entries.flatten().map(|e| e.path()) {
             let Some(name) = path.file_name().and_then(|n| n.to_str()) else { continue };
+            if let Some(exe) = name.strip_suffix(".old").filter(|_| cfg!(unix)).filter(|exe| Self::is_known_binary(Path::new(exe))) {
+                found.push((path.clone(), exe.to_string(), 0, GUI_EXE_NAMES.contains(&exe)));
+                continue;
+            }
             let Some((stem, tail)) = name.split_once(".exe.old") else { continue };
             let number = match tail.strip_prefix('.') {
                 None if tail.is_empty() => 0,
@@ -1324,7 +1331,7 @@ impl UpdateManager {
             };
             let gui = GUI_EXE_NAMES.iter().any(|g| g.trim_end_matches(".exe") == stem);
             if gui || stem.starts_with("saba-") {
-                found.push((path.clone(), stem.to_string(), number, gui));
+                found.push((path.clone(), format!("{stem}.exe"), number, gui));
             }
         }
         found
@@ -1334,17 +1341,17 @@ impl UpdateManager {
     /// (낮은 번호가 남아 있는 것은 그때 아직 쥐고 있어 지우지 못한 더 옛 사본이다)
     fn restore_moved_aside_exes(&self) {
         let mut latest: HashMap<String, (PathBuf, u32)> = HashMap::new();
-        for (path, stem, number, gui) in self.old_exe_backups() {
-            let present = if gui { find_gui_exe(&self.install_root).is_some() } else { self.install_root.join(format!("{stem}.exe")).exists() };
+        for (path, exe, number, gui) in self.old_exe_backups() {
+            let present = if gui { find_gui_exe(&self.install_root).is_some() } else { self.install_root.join(&exe).exists() };
             if present {
                 continue;
             }
-            if latest.get(&stem).is_none_or(|(_, n)| number > *n) {
-                latest.insert(stem, (path, number));
+            if latest.get(&exe).is_none_or(|(_, n)| number > *n) {
+                latest.insert(exe, (path, number));
             }
         }
-        for (stem, (path, _)) in latest {
-            let exe = self.install_root.join(format!("{stem}.exe"));
+        for (exe, (path, _)) in latest {
+            let exe = self.install_root.join(exe);
             match std::fs::rename(&path, &exe) {
                 Ok(()) => tracing::warn!("[Updater] Restored {} from {} (an earlier apply was interrupted)", exe.display(), path.display()),
                 Err(e) => tracing::warn!("[Updater] Cannot restore {} from {}: {}", exe.display(), path.display(), e),
@@ -1352,14 +1359,14 @@ impl UpdateManager {
         }
     }
 
-    /// 업데이트가 남긴 `<사바쨩 실행 파일>.exe.old`(`.exe.old.<n>` 포함) 백업을 지운다 (설치 폴더 바로 안만).
+    /// 업데이트가 남긴 사바쨩 실행 파일 백업(`old_exe_backups`)을 지운다 (설치 폴더 바로 안만).
     /// Windows는 실행 중인 exe를 이름만 바꿔 두므로, 아직 쥐고 있는 파일은 다음 번에 지운다.
     pub fn cleanup_old_files(&self) {
-        for (path, stem, _, gui) in self.old_exe_backups() {
+        for (path, exe, _, gui) in self.old_exe_backups() {
             // 실행 파일이 없으면 되돌리지 못한 유일한 사본이다. 예전 이름의 GUI는 새 이름의 GUI가 있으면 지운다 (`retire_other_gui_exes`)
-            let replaced = if gui { find_gui_exe(&self.install_root).is_some() } else { self.install_root.join(format!("{stem}.exe")).exists() };
+            let replaced = if gui { find_gui_exe(&self.install_root).is_some() } else { self.install_root.join(&exe).exists() };
             if !replaced {
-                tracing::warn!("[Updater] Keeping {}: {}.exe is missing", path.display(), stem);
+                tracing::warn!("[Updater] Keeping {}: {} is missing", path.display(), exe);
                 continue;
             }
             match std::fs::remove_file(&path) {

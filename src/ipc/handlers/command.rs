@@ -56,10 +56,13 @@ async fn run_command(id: &str, state: &IPCServer, req: CommandRequest) -> axum::
         let rcon_route = !stdin_route && supervisor.rcon_route(&instance.id).is_some();
         (instance, module, running, stdin_route, rcon_route)
     };
+    let lang = state.config_store.ui_language().await;
     let errors = match &module {
-        Some(module) => module_errors(module, &state.config_store.ui_language().await),
+        Some(module) => module_errors(module, &lang),
         None => Default::default(),
     };
+    // 값으로 답한 결과에 칸 이름을 붙일 때 쓴다 (설정 스키마, 모듈 locales)
+    let output_module = module.clone();
     let metadata = module.map(|m| m.metadata);
     // module.toml에 없는 이름이면 인스턴스별 명령(설치된 플러그인 명령 등)에서도 찾는다
     let metadata = match metadata {
@@ -198,6 +201,20 @@ async fn run_command(id: &str, state: &IPCServer, req: CommandRequest) -> axum::
             _ => run_module_command(&state, &instance, &line, json!({})).await,
         },
     };
+    let mut resp = resp;
+    let rest_answer = resp.status.is_success() && resp.str_field("protocol") == Some("rest");
+    if let Some(m) = output_module.filter(|_| rest_answer) {
+        let settings = m.metadata.settings.as_ref().map(|s| s.fields.as_slice()).unwrap_or_default();
+        let labels = crate::commands::output::labels(
+            &name,
+            settings,
+            &crate::actions::module_locale(&m, &lang),
+            &crate::actions::module_locale(&m, "en"),
+        );
+        if let Some(output) = crate::commands::output::build(&resp.body, &labels) {
+            resp.body["output"] = output;
+        }
+    }
     command_reply(resp, &name, &errors)
 }
 
@@ -497,7 +514,6 @@ pub(crate) async fn stdin_for(supervisor: &tokio::sync::RwLock<crate::supervisor
 /// 관리 프로세스의 stdin으로 보낸다. 서버의 답은 콘솔로만 나오므로, 보낸 뒤 잠깐 새로 찍힌 줄을
 /// 모아 `data.response`로 돌려준다 (채팅·CLI가 결과를 보여 줄 수 있게)
 async fn via_stdin_for(supervisor: &tokio::sync::RwLock<crate::supervisor::Supervisor>, id: &str, payload: &Value) -> axum::response::Response {
-    use crate::supervisor::managed_process::LogSource;
     let Some(command) = payload.get("command").and_then(|v| v.as_str()) else {
         return (StatusCode::BAD_REQUEST, Json(json!({ "error": "Missing 'command' field" }))).into_response();
     };
@@ -535,7 +551,7 @@ async fn via_stdin_for(supervisor: &tokio::sync::RwLock<crate::supervisor::Super
                 .get_console_since(before)
                 .await
                 .into_iter()
-                .filter(|l| l.source != LogSource::System && l.content.trim() != command.trim())
+                .filter(|l| l.source.is_server_output() && l.content.trim() != command.trim())
                 .map(|l| l.content)
                 .collect();
             if new.len() > lines.len() {
@@ -931,7 +947,7 @@ mod tests {
             "[module]\nname = \"m\"\nversion = \"1\"\nentry = \"lifecycle.py\"\n[errors]\nserver_not_running = \"Server is off\"\ntimeout = \"Timed out\"\n",
         )
         .unwrap();
-        let module = crate::supervisor::module_loader::LoadedModule { metadata, path: dir.path().to_string_lossy().into() };
+        let module = crate::supervisor::module_loader::LoadedModule { metadata, path: dir.path().to_string_lossy().into(), source: dir.path().to_string_lossy().into() };
 
         let ko = module_errors(&module, "ko");
         assert_eq!(ko["server_not_running"], "서버가 꺼져 있어요");

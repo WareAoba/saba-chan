@@ -13,8 +13,8 @@ use tokio::process::Command;
 
 // ── Python 버전 (메인 앱과 동일) ────────────────────────────────
 use saba_chan_updater_lib::python_pin::PYTHON_VERSION;
-const PORTABLE_PYTHON_DIR: &str = "python-standalone";
-const VENV_DIR_NAME: &str = "python-env";
+pub(crate) const PORTABLE_PYTHON_DIR: &str = "python-standalone";
+pub(crate) const VENV_DIR_NAME: &str = "python-env";
 
 // ═══════════════════════════════════════════════════════════════
 //  Public API

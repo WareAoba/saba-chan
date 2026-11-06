@@ -208,47 +208,49 @@ mod win {
     }
 
     unsafe fn read_rule(rule: &INetFwRule) -> Option<Rule> {
-        if !rule.Enabled().ok()?.as_bool() || rule.Direction().ok()? != NET_FW_RULE_DIR_IN {
-            return None;
-        }
-        let protocol = rule.Protocol().ok()?;
-        let ports = if protocol == 6 || protocol == 17 { parse_ports(&rule.LocalPorts().map(|b| b.to_string()).unwrap_or_default()) } else { Vec::new() };
-        let text = |b: windows::core::Result<windows::core::BSTR>| b.map(|b| b.to_string()).unwrap_or_default();
-        let package = rule.cast::<INetFwRule3>().ok().map(|r| text(r.LocalAppPackageId())).unwrap_or_default();
-        // 개별 어댑터 목록이 있으면 그 어댑터로 오는 연결에만 맞는다
-        let adapters = match rule.Interfaces() {
-            Ok(mut v) => {
-                let listed = v.Anonymous.Anonymous.vt != VT_EMPTY;
-                let _ = VariantClear(&mut v);
-                listed
+        unsafe {
+            if !rule.Enabled().ok()?.as_bool() || rule.Direction().ok()? != NET_FW_RULE_DIR_IN {
+                return None;
             }
-            Err(_) => true,
-        };
-        let remote = text(rule.RemoteAddresses());
-        // 서비스 이름 `*`도 서비스에만 맞는다
-        let reach = if remote.trim().eq_ignore_ascii_case("LocalSubnet") {
-            Reach::Never
-        } else if any_address(&remote)
-            && any_address(&text(rule.RemotePorts()))
-            && any_address(&text(rule.LocalAddresses()))
-            && !adapters
-            && matches!(text(rule.InterfaceTypes()).trim(), "" | "All")
-            && text(rule.ServiceName()).trim().is_empty()
-            && package.trim().is_empty()
-        {
-            Reach::Anywhere
-        } else {
-            Reach::Maybe
-        };
-        let app = text(rule.ApplicationName());
-        Some(Rule {
-            allow: rule.Action().ok()? == NET_FW_ACTION_ALLOW,
-            profiles: rule.Profiles().ok()?,
-            app: (!app.trim().is_empty()).then_some(app),
-            protocol: (protocol != 256).then_some(protocol),
-            ports,
-            reach,
-        })
+            let protocol = rule.Protocol().ok()?;
+            let ports = if protocol == 6 || protocol == 17 { parse_ports(&rule.LocalPorts().map(|b| b.to_string()).unwrap_or_default()) } else { Vec::new() };
+            let text = |b: windows::core::Result<windows::core::BSTR>| b.map(|b| b.to_string()).unwrap_or_default();
+            let package = rule.cast::<INetFwRule3>().ok().map(|r| text(r.LocalAppPackageId())).unwrap_or_default();
+            // 개별 어댑터 목록이 있으면 그 어댑터로 오는 연결에만 맞는다
+            let adapters = match rule.Interfaces() {
+                Ok(mut v) => {
+                    let listed = v.Anonymous.Anonymous.vt != VT_EMPTY;
+                    let _ = VariantClear(&mut v);
+                    listed
+                }
+                Err(_) => true,
+            };
+            let remote = text(rule.RemoteAddresses());
+            // 서비스 이름 `*`도 서비스에만 맞는다
+            let reach = if remote.trim().eq_ignore_ascii_case("LocalSubnet") {
+                Reach::Never
+            } else if any_address(&remote)
+                && any_address(&text(rule.RemotePorts()))
+                && any_address(&text(rule.LocalAddresses()))
+                && !adapters
+                && matches!(text(rule.InterfaceTypes()).trim(), "" | "All")
+                && text(rule.ServiceName()).trim().is_empty()
+                && package.trim().is_empty()
+            {
+                Reach::Anywhere
+            } else {
+                Reach::Maybe
+            };
+            let app = text(rule.ApplicationName());
+            Some(Rule {
+                allow: rule.Action().ok()? == NET_FW_ACTION_ALLOW,
+                profiles: rule.Profiles().ok()?,
+                app: (!app.trim().is_empty()).then_some(app),
+                protocol: (protocol != 256).then_some(protocol),
+                ports,
+                reach,
+            })
+        }
     }
 
     /// (연결된 프로필, 켜진 들어오는 규칙). 그룹 정책이 로컬 규칙을 덮어쓰면 None

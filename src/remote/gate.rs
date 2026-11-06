@@ -80,9 +80,13 @@ pub static ROUTES: &[Route] = &[
     allow("POST", "/api/instance/{id}/stdin"),
     allow("GET", "/api/instance/{id}/logs"),
     allow("GET", "/api/instance/{id}/logs/export"),
+    // 데몬이 PC 경로에 쓴다: 웹은 GET 으로 받아 그 기기에 저장한다
+    deny("POST", "/api/instance/{id}/logs/export"),
     allow("GET", "/api/instance/{id}/players"),
     allow("POST", "/api/instance/{id}/command"),
     allow("POST", "/api/instance/{id}/chat"),
+    // 채팅 연동은 디스코드 채널을 잇는 일이라 릴레이 `/채팅연동`(액션 `server.chat_link`)만 부른다. 웹 화면은 그리지 않는다
+    not_on_web("POST", "/api/instance/{id}/chat-link/{guild}"),
     allow("GET", "/api/instance/{id}/commands"),
     allow("POST", "/api/instance/{id}/rcon"),
     allow("POST", "/api/instance/{id}/rest"),
@@ -92,6 +96,8 @@ pub static ROUTES: &[Route] = &[
     // 포트포워딩 확인: 릴레이가 요청한 PC의 공인 주소로만 확인한다
     allow("GET", "/api/instance/{id}/port-check"),
     allow("POST", "/api/instance/{id}/port-check"),
+    // 서버 주소: 릴레이가 본 이 PC의 공인 주소와 밖에 여는 포트 (포트포워딩 확인 결과에도 같은 주소가 있다)
+    allow("GET", "/api/instance/{id}/address"),
     // ── 인스턴스 ──
     allow("GET", "/api/instances"),
     allow("POST", "/api/instances"),
@@ -195,6 +201,10 @@ pub static ROUTES: &[Route] = &[
     deny("DELETE", "/api/remote/daemons/{host_id}/proxy/{*rest}"),
     deny("GET", "/api/system/components"),
     allow("GET", "/api/system/metrics"),
+    // 포트·서버별 네트워크는 이 PC의 앱 설정과 권한이다. 관리자 확인 창은 이 PC 앞에 있는 사람만 누를 수 있다
+    deny("GET", "/api/system/net-trace"),
+    deny("POST", "/api/system/net-trace/grant"),
+    deny("POST", "/api/system/net-trace/revoke"),
     deny("GET", "/api/system/paths"),
     deny("POST", "/api/system/paths/move"),
     // 이 PC에 로그인할 때 무엇을 띄울지는 PC에서만 정한다
@@ -220,16 +230,22 @@ pub static ROUTES: &[Route] = &[
     allow("PUT", "/api/guilds/{guild}/allowed-instances"),
     allow("GET", "/api/guilds/{guild}/start-notice"),
     allow("PUT", "/api/instance/{id}/start-notice/{guild}"),
+    allow("GET", "/api/guilds/{guild}/full-notice"),
+    allow("PUT", "/api/instance/{id}/full-notice/{guild}"),
     allow("GET", "/api/relay/host/{host_id}/nodes"),
     allow("GET", "/api/relay/node/{guild_id}/members"),
     // 서버 관리(채널 정보·슬로우·잠금·청소·음소거): 디스코드 서버만 바꾸고 이 PC의 파일은 건드리지 않는다
     allow("GET", "/api/relay/node/{guild_id}/moderation"),
     allow("PATCH", "/api/relay/node/{guild_id}/moderation/channels/{channel_id}"),
     allow("POST", "/api/relay/node/{guild_id}/moderation/channels/{channel_id}/clear"),
+    allow("POST", "/api/relay/node/{guild_id}/moderation/channels/{channel_id}/clear/check"),
     allow("PUT", "/api/relay/node/{guild_id}/moderation/mutes/{user_id}"),
-    // ── 디스코드 설정·릴레이 연결: 웹이 타고 있는 연결 자체다 ──
-    deny("GET", "/api/discord/{guild_id}/settings"),
-    deny("PATCH", "/api/discord/{guild_id}/settings"),
+    // 디스코드 서버 설정(언어·코코낸내·노래·읽어주기·명령 모양)과 서버별 말하는 사바쨩: 릴레이 연결과 API 키는 건드리지 않는다 (사용자 결정 2026-11-03)
+    allow("GET", "/api/discord/{guild_id}/settings"),
+    allow("PATCH", "/api/discord/{guild_id}/settings"),
+    allow("GET", "/api/chatbot/guilds/{guild}"),
+    allow("PATCH", "/api/chatbot/guilds/{guild}"),
+    // ── 릴레이 연결: 웹이 타고 있는 연결 자체다. 채널 배정은 웹이 릴레이 API(/relay/guilds/:g/channels)로 한다 ──
     deny("GET", "/api/relay/host/{host_id}/status"),
     deny("GET", "/api/relay/node/{guild_id}/legacy-members"),
     deny("GET", "/api/relay/node/{guild_id}/channels"),
@@ -253,12 +269,12 @@ pub static ROUTES: &[Route] = &[
     deny("POST", "/api/chat/command"),
     // ── 챗봇: API 키가 오간다 ──
     deny("GET", "/api/chatbot"),
-    deny("PUT", "/api/chatbot"),
+    // 이 PC의 말하는 사바쨩 API 키를 넣거나 지우기만 한다 (`FIELD_RULES`가 다른 칸을 막고, 응답에는 키가 없다. 사용자 결정 2026-11-03)
+    allow("PUT", "/api/chatbot"),
     deny("DELETE", "/api/chatbot"),
+    deny("PATCH", "/api/chatbot/common"),
     deny("DELETE", "/api/chatbot/memory"),
     deny("GET", "/api/chatbot/memo-template"),
-    deny("GET", "/api/chatbot/guilds/{guild}"),
-    deny("PATCH", "/api/chatbot/guilds/{guild}"),
     // ── 샌드박스 예외 ──
     deny("GET", "/api/sandbox/unisolated"),
     deny("POST", "/api/sandbox/unisolated/{component}"),
@@ -353,9 +369,17 @@ pub fn param<'a>(pattern: &str, segments: &'a [String], name: &str) -> Option<&'
     segments.get(at).map(String::as_str)
 }
 
-/// 패턴이 조각들과 맞으면 리터럴이 맞은 자리 (앞쪽 리터럴이 클수록 앞선다)
+/// 패턴이 조각들과 맞으면 리터럴이 맞은 자리 (앞쪽 리터럴이 클수록 앞선다).
+/// 끝의 `{*name}`은 라우터처럼 남은 조각 하나 이상과 맞는다
 fn match_score(pattern: &str, segments: &[&str]) -> Option<Vec<bool>> {
-    let parts: Vec<&str> = pattern.trim_start_matches('/').split('/').collect();
+    let mut parts: Vec<&str> = pattern.trim_start_matches('/').split('/').collect();
+    let segments = match parts.last() {
+        Some(p) if p.starts_with("{*") && segments.len() >= parts.len() => {
+            parts.pop();
+            &segments[..parts.len()]
+        }
+        _ => segments,
+    };
     if parts.len() != segments.len() {
         return None;
     }
@@ -417,6 +441,7 @@ type FieldRule = fn(&serde_json::Map<String, Value>, &[String]) -> Vec<String>;
 
 /// 본문 칸을 보는 라우트와 그 규칙. `checks_fields`와 `blocked_fields`가 이 표 하나를 본다
 static FIELD_RULES: &[(&str, &str, FieldRule)] = &[
+    ("PUT", "/api/chatbot", |body, _| body.keys().filter(|k| k.as_str() != "apiKey").cloned().collect()),
     ("PATCH", "/api/instance/{id}", |body, file_fields| {
         body.keys().filter(|k| SETTINGS_PC_ONLY.contains(&k.as_str()) || file_fields.contains(k)).cloned().collect()
     }),
@@ -467,8 +492,12 @@ pub fn checks_fields(method: &str, pattern: &str) -> bool {
 
 /// 허용된 라우트라도 원격에서 바꾸면 안 되는 본문 키. `file_fields`는 그 인스턴스 모듈의 PC 전용 설정 키(비밀값·경로)다
 pub fn blocked_fields(method: &str, pattern: &str, body: Option<&Value>, file_fields: &[String]) -> Vec<String> {
-    let (Some(rule), Some(body)) = (field_rule(method, pattern), body.and_then(Value::as_object)) else {
+    let (Some(rule), Some(body)) = (field_rule(method, pattern), body) else {
         return Vec::new();
+    };
+    // 칸을 가려 보는 라우트는 객체 본문만 받는다: 다른 모양은 칸을 볼 수 없다
+    let Some(body) = body.as_object() else {
+        return vec!["(body)".to_string()];
     };
     let mut blocked = rule(body, file_fields);
     blocked.sort();
@@ -605,7 +634,36 @@ mod tests {
         assert!(decide("GET", "/api/relay/node/1/moderation").is_ok());
         assert!(decide("PATCH", "/api/relay/node/1/moderation/channels/2").is_ok());
         assert!(decide("POST", "/api/relay/node/1/moderation/channels/2/clear").is_ok());
+        assert!(decide("POST", "/api/relay/node/1/moderation/channels/2/clear/check").is_ok());
         assert!(decide("PUT", "/api/relay/node/1/moderation/mutes/3").is_ok());
+    }
+
+    #[test]
+    fn allows_discord_guild_settings() {
+        // 이 PC에 붙은 디스코드 서버의 언어·코코낸내·노래·읽어주기·말하는 사바쨩 (사용자 결정 2026-11-03)
+        assert!(decide("GET", "/api/discord/1/settings").is_ok());
+        assert!(decide("PATCH", "/api/discord/1/settings").is_ok());
+        assert!(decide("GET", "/api/chatbot/guilds/1").is_ok());
+        assert!(decide("PATCH", "/api/chatbot/guilds/1").is_ok());
+        // API 키는 넣거나 지우기만 한다 (응답에는 키가 없다, hasApiKey 만). 다른 칸과 읽기는 PC에서만
+        assert_eq!(decide("GET", "/api/chatbot"), Err(Refusal::NotAllowed));
+        assert!(decide("PUT", "/api/chatbot").is_ok());
+        assert!(blocked_fields("PUT", "/api/chatbot", Some(&json!({ "apiKey": "sk-x" })), &[]).is_empty());
+        assert!(blocked_fields("PUT", "/api/chatbot", Some(&json!({ "apiKey": null })), &[]).is_empty());
+        assert_eq!(
+            blocked_fields("PUT", "/api/chatbot", Some(&json!({ "apiKey": "k", "settings": {}, "guilds": {} })), &[]),
+            ["guilds", "settings"]
+        );
+    }
+
+    #[test]
+    fn field_checked_routes_take_only_object_bodies() {
+        // 칸을 가려 보는 라우트는 객체 본문만 받는다 (배열 같은 본문은 칸 검사를 거치지 않고 구조체로 풀릴 수 있다)
+        for (method, path) in [("PUT", "/api/chatbot"), ("PATCH", "/api/instance/{id}"), ("PUT", "/api/instance/{id}/properties")] {
+            for body in [json!([{ "model": "changed" }]), json!("x"), json!(1), json!(null)] {
+                assert_eq!(blocked_fields(method, path, Some(&body), &[]), ["(body)"], "{method} {path} {body}");
+            }
+        }
     }
 
     #[test]

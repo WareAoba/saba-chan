@@ -26,8 +26,14 @@ fn str_list(v: Option<&Value>) -> Vec<String> {
     v.and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str).map(str::to_string).collect()
 }
 
+/// 낱말 목록: 쉼표(전각·일본식 포함)로 나누고 사이 공백은 한 칸으로 (데몬 `chat::words::tidy`와 같다).
+/// 띄어 쓴 말은 한 낱말이다 (사용자 11-06 #2)
 fn clean_words<'a>(raw: impl IntoIterator<Item = &'a str>) -> Vec<String> {
-    raw.into_iter().map(str::trim).filter(|w| !w.is_empty()).map(str::to_string).collect()
+    raw.into_iter()
+        .flat_map(|w| w.split([',', '，', '、', '､']))
+        .map(|w| w.split_whitespace().collect::<Vec<_>>().join(" "))
+        .filter(|w| !w.is_empty())
+        .collect()
 }
 
 /// PUT 본문 `{words, commands}`. 지금 값에서 시작해 준 것만 바꾼다. 낱말 규칙·충돌은 데몬이 검사한다
@@ -137,6 +143,13 @@ mod tests {
         assert_eq!(body["words"], json!(["크", "크2"]));
         assert_eq!(body["commands"], json!({ "start": ["켜"], "stop": ["꺼"] }));
         assert_eq!(words_body(&entry(), &change(Some(&[""]), &[], false)).unwrap()["words"], json!([]));
+    }
+
+    #[test]
+    fn a_spaced_word_is_one_word_and_any_comma_splits() {
+        let body = words_body(&entry(), &change(Some(&["우리  마크、서바", " 크리 "]), &["kick=내보내，쫓아 내"], false)).unwrap();
+        assert_eq!(body["words"], json!(["우리 마크", "서바", "크리"]));
+        assert_eq!(body["commands"]["kick"], json!(["내보내", "쫓아 내"]));
     }
 
     #[test]
