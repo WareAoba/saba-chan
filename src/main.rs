@@ -509,10 +509,16 @@ async fn main() -> anyhow::Result<()> {
             
             // Phase 1: write lock 밖에서 프로세스 목록을 한 번 스캔 (비용이 큰 sysinfo 호출)
             let taken_at = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
-            let process_snapshot = crate::process_monitor::get_running_processes_async().await;
+            // 인스턴스가 없으면 맞춰 볼 대상이 없다: 전체 프로세스 조회를 건너뛴다 (죽은 프로세스 정리는 그대로 한다)
+            let has_instances = !supervisor_monitor.read().await.instance_store.list().is_empty();
+            let process_snapshot = if has_instances { crate::process_monitor::get_running_processes_async().await } else { Vec::new() };
             
             // Phase 2: write lock 안에서는 snapshot 기반 매칭만 수행 (시스템 콜 없음)
             let mut sup = supervisor_monitor.write().await;
+            if !has_instances && !sup.instance_store.list().is_empty() {
+                // 그사이 인스턴스가 생겼다: 빈 목록으로 맞춰 보지 않고 다음 주기에 조회한다
+                continue;
+            }
             match sup.monitor_processes_taken_at(&process_snapshot, taken_at).await {
                 Ok(_) => {
                     if error_count > 0 {

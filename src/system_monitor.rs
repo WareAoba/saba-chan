@@ -274,6 +274,20 @@ fn outermost(dirs: &[PathBuf]) -> Vec<PathBuf> {
     out
 }
 
+/// 인스턴스마다 폴더 크기를 잰다. 여러 인스턴스가 같은 폴더를 쓰면 한 번만 재고 값을 나눠 준다
+fn measure_dirs_once(jobs: Vec<(String, Vec<PathBuf>)>, mut size_of: impl FnMut(&Path) -> u64) -> HashMap<String, Vec<(PathBuf, u64)>> {
+    let mut measured: HashMap<PathBuf, u64> = HashMap::new();
+    jobs.into_iter()
+        .map(|(id, dirs)| {
+            let sizes = dirs.into_iter().map(|d| {
+                let size = *measured.entry(d.clone()).or_insert_with(|| size_of(&d));
+                (d, size)
+            });
+            (id, sizes.collect())
+        })
+        .collect()
+}
+
 /// 폴더 크기 (심볼릭 링크는 따라가지 않는다)
 fn dir_size(path: &Path) -> u64 {
     let mut total = 0;
@@ -503,16 +517,7 @@ impl SystemMonitor {
             roots.iter().map(|r| (r.id.clone(), outermost(&r.dirs))).collect();
         let shared = self.dir_sizes.clone();
         std::thread::spawn(move || {
-            let sizes: HashMap<String, Vec<(PathBuf, u64)>> = jobs
-                .into_iter()
-                .map(|(id, dirs)| {
-                    let measured = dirs.into_iter().map(|d| {
-                        let size = dir_size(&d);
-                        (d, size)
-                    });
-                    (id, measured.collect())
-                })
-                .collect();
+            let sizes = measure_dirs_once(jobs, dir_size);
             let mut state = shared.lock().unwrap_or_else(|e| e.into_inner());
             state.sizes = sizes;
             state.measured_at = Some((Instant::now(), now_ms()));
@@ -836,6 +841,26 @@ mod tests {
     fn nested_instance_dirs_are_counted_once() {
         let dirs = vec![PathBuf::from("/s/a/world"), PathBuf::from("/s/a"), PathBuf::from("/t")];
         assert_eq!(outermost(&dirs), vec![PathBuf::from("/s/a"), PathBuf::from("/t")]);
+    }
+
+    #[test]
+    fn a_folder_shared_by_instances_is_measured_once_but_shown_for_each() {
+        let shared = PathBuf::from("/srv/shared");
+        let jobs = vec![
+            ("a".to_string(), vec![shared.clone(), PathBuf::from("/srv/a")]),
+            ("b".to_string(), vec![shared.clone()]),
+            ("c".to_string(), vec![shared.clone()]),
+        ];
+        let mut walked = Vec::new();
+        let sizes = measure_dirs_once(jobs, |d| {
+            walked.push(d.to_path_buf());
+            d.as_os_str().len() as u64
+        });
+        assert_eq!(walked, vec![shared.clone(), PathBuf::from("/srv/a")]);
+        for id in ["a", "b", "c"] {
+            assert!(sizes[id].contains(&(shared.clone(), 11)), "{id}: {:?}", sizes[id]);
+        }
+        assert_eq!(sizes["a"].len(), 2);
     }
 
     #[test]
