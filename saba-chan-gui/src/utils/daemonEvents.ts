@@ -2,9 +2,9 @@ import type { TFunction } from 'i18next';
 import type { ApiBody } from '../types/daemon';
 import type { NoticeInput } from '../types/global';
 import { type AuditEntry, auditReason, auditWhat, sourceText } from './audit';
+import { safeShowToast } from './helpers';
 
 export { sourceText };
-import { safeShowToast } from './helpers';
 
 /** 데몬 이벤트 스트림 (P4: GET /api/events → Tauri 셸 → window.api.onDaemonEvent) */
 /** 정규화한 이벤트 한 건. data의 칸은 이벤트 종류마다 다르다 */
@@ -58,7 +58,6 @@ export function subscribeDaemonEvents(cb: (ev: DaemonEvent) => void) {
 
 /** action.run data(감사 한 줄 모양) → 감사 목록 한 건 모양 */
 export const auditEntryOf = (data: ApiBody) => ({ ...data, ts: data.ts ?? data.at });
-
 
 /**
  * 보낸 명령 한 건(action.run의 stdin·command) → 명령 탭 실행 기록 한 줄. 앱 명령 창이 보낸 것은 그 창이 답과 함께 남기므로 null.
