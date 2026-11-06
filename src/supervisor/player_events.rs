@@ -95,9 +95,9 @@ pub fn after_start(instance_id: &str, instance: &str, result: &anyhow::Result<Va
     tokio::spawn(async move { watch(id, name, proc, patterns).await });
 }
 
-/// 데몬이 다시 켜져 아직 도는 서버(saba-runner)에 다시 붙었다. 붙기 전 줄은 알리지 않고 접속자만 다시 센 뒤
-/// 그 뒤 줄부터 알린다. 이미 들어와 있는 사람은 `instance.players_present {instanceId, instance, players}`로 한 번 알린다
-/// (조작 가능한 사람만 접속이 데몬이 꺼진 동안 들어온 사람도 본다)
+/// 데몬이 다시 켜져 아직 도는 서버(saba-runner)에 다시 붙었다. 붙기 전 줄은 알리지 않고, 그 줄에서 아직 들어와 있는
+/// 것으로 보이는 사람을 `instance.players_present {instanceId, instance, players}`로 한 번 알린 뒤 새 줄부터 알린다
+/// (조작 가능한 사람만 접속이 데몬이 꺼진 동안 들어온 사람도 본다). 접속자는 세지 않는다(모듈이 알려 준 수를 쓴다)
 pub fn after_reattach(instance_id: &str, instance: &str, console: Arc<ManagedProcess>, join: &[String], leave: &[String], chat: &[String]) {
     let Some(patterns) = Patterns::with_chat(join, leave, chat) else { return };
     let (id, name) = (instance_id.to_string(), instance.to_string());
@@ -109,19 +109,25 @@ async fn watch(id: String, name: String, proc: Arc<ManagedProcess>, patterns: Pa
 }
 
 async fn watch_from(id: String, name: String, proc: Arc<ManagedProcess>, patterns: Patterns, reattached: bool) {
-    let roster = patterns.can_count().then(|| super::players::roster_start(&id));
+    // 다시 붙은 서버는 접속자를 세지 않는다: 되살린 콘솔은 끝부분만이라(러너 로그 꼬리) 센 수가 모자랄 수 있고,
+    // 센 수는 모듈이 알려 준 수보다 앞선다 (`players::get`)
+    let roster = (patterns.can_count() && !reattached).then(|| super::players::roster_start(&id));
     let mut next_line = 0;
     if reattached {
+        // 되살린 줄에서 아직 들어와 있는 것으로 보이는 사람 (알 수 있는 만큼만)
+        let mut present = std::collections::BTreeSet::new();
         for line in proc.get_console_since(0).await {
             next_line = line.id + 1;
-            if let (Some(roster), true) = (roster, line.source.is_server_output()) {
-                if let Some((player, change)) = patterns.parse(&line.content) {
-                    super::players::roster_change(&id, roster, &player, change == Change::Join);
-                }
+            if !line.source.is_server_output() || !patterns.can_count() {
+                continue;
             }
+            match patterns.parse(&line.content) {
+                Some((player, Change::Join)) => present.insert(player),
+                Some((player, Change::Leave)) => present.remove(&player),
+                None => false,
+            };
         }
-        let present = super::players::names(&id);
-        if roster.is_some() && !present.is_empty() {
+        if !present.is_empty() {
             crate::events::emit("instance.players_present", json!({ "instanceId": id, "instance": name, "players": present }));
         }
     }
@@ -196,7 +202,8 @@ mod tests {
             }
         }
         assert_eq!(seen, [("instance.players_present".to_string(), json!(["Steve"])), ("instance.player".to_string(), json!("Alex"))]);
-        assert_eq!(super::super::players::names(id), ["Alex", "Steve"]);
+        // 되살린 콘솔은 끝부분만일 수 있어 세지 않는다: 접속자 수는 모듈이 알려 준 수를 쓴다
+        assert_eq!(super::super::players::counted(id), None);
         let _ = proc.force_kill().await;
     }
 
