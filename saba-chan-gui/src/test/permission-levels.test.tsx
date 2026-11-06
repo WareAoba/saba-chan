@@ -265,6 +265,11 @@ describe('권한 레벨 계산', () => {
         // 줄을 따르는 명령은 줄 자리로 (맞바꾸기 뒤에 줄을 옮겨도)
         const line = { followers: [board.items[4]] };
         expect(L.draftLevels(board, ladder, [[1, 2]], line, 3)).toEqual([2, 1, 0, 0, 3, 3]);
+        // 줄 자리는 차례를 따라간다: 맞바꾸기면 명령을 따라, 지운 칸이 걸린 맞바꾸기는 줄도 되돌린다
+        expect(L.draftLine({ level: 1 }, ladder, [[1, 2]])).toBe(2);
+        expect(L.draftLine({ level: 1 }, L.removeLevel(ladder, 1), [[1, 2]])).toBe(1);
+        expect(L.draftLine({ level: 1 }, ladder, [[1, 2], { line: 0 }, [0, 3]])).toBe(3);
+        expect(L.draftLine(null, ladder, [[1, 2]])).toBeNull();
         expect(ladder.map(L.swappable)).toEqual([true, true, true, true, false]);
         expect(L.swappable({ key: 'new-1', name: 'Mod' })).toBe(false);
     });

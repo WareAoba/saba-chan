@@ -30,7 +30,8 @@ export function LadderTab({ node, permissions, onClose }: LadderTabProps) {
     const saved = L.ladderOf(perm);
     const [draft, setDraft] = useState(saved);
     const line = L.controllerLine(board);
-    const [lineLevel, setLineLevel] = useState(line?.level ?? null);
+    // 명령 옮긴 차례 (맞바꾸기·줄 옮기기). 줄 자리는 이 차례에서 나온다
+    const [steps, setSteps] = useState<L.CommandStep[]>([]);
     // 블록 끌기: key·칸 값은 사다리 자리(위에서부터 0)
     const blockDrag = usePointerDrag((from: string, to: string) =>
         setDraft((d) => L.moveLevel(d, Number(from), Number(to))),
@@ -38,14 +39,14 @@ export function LadderTab({ node, permissions, onClose }: LadderTabProps) {
     // 줄 끌기: 놓은 칸 바로 아래로 (금지·새 칸이면 그 위 칸)
     const lineDrag = usePointerDrag((_key: string, to: string) => {
         const at = L.lineDrop(draft, Number(to));
-        setLineLevel(draft[at].id ?? null);
+        const level = draft[at].id;
+        if (level !== undefined) setSteps((s) => [...s, { line: level }]);
     });
     const dragging = blockDrag.dragging === null ? null : Number(blockDrag.dragging);
     const over = blockDrag.over === null ? null : Number(blockDrag.over);
     const lineOver = lineDrag.over === null ? null : L.lineDrop(draft, Number(lineDrag.over));
     const [newName, setNewName] = useState('');
     const [editing, setEditing] = useState<number | null>(null); // 이름을 고치는 칸
-    const [swaps, setSwaps] = useState<[number, number][]>([]);
     const [choosing, setChoosing] = useState(false);
     const [picked, setPicked] = useState<number | null>(null);
     const listRef = useRef<HTMLOListElement>(null);
@@ -53,10 +54,9 @@ export function LadderTab({ node, permissions, onClose }: LadderTabProps) {
 
     // 데몬 값이 바뀌면(저장·다시 읽기) 초안을 그 값으로
     useEffect(() => setDraft(L.ladderOf(perm)), [perm]);
-    useEffect(() => setLineLevel(line?.level ?? null), [line?.level]);
     // 데몬 값을 다시 읽으면(저장 뒤) 맞바꾸기 초안을 비운다
     // biome-ignore lint/correctness/useExhaustiveDependencies: board 가 바뀔 때만 비운다
-    useEffect(() => setSwaps([]), [board]);
+    useEffect(() => setSteps([]), [board]);
 
     const localeName = (level: L.LadderLevel) => t(`discord.level_${L.levelKey(level.id)}`);
     const label = (level: L.LadderLevel) => level.name?.trim() || (isCustom(level) ? '' : localeName(level));
@@ -65,9 +65,10 @@ export function LadderTab({ node, permissions, onClose }: LadderTabProps) {
     if (perm.ownerDiscordId) counts[L.OWNER] = 1;
     const patch = L.ladderPatch(draft);
     const ladderChanged = JSON.stringify(patch) !== JSON.stringify(L.ladderPatch(saved));
+    const lineLevel = L.draftLine(line, draft, steps);
     const lineAt = line && lineLevel !== null ? L.lineAt(saved, draft, lineLevel) : null;
     const lineTarget = lineAt === null ? null : (draft[lineAt].id as number);
-    const levels = L.draftLevels(board, draft, swaps, line, lineTarget);
+    const levels = L.draftLevels(board, draft, steps, line, lineTarget);
     const commandLevels = L.boardPatch(board, levels);
     const commandsChanged = Object.keys(commandLevels).length > 0;
     const changed = ladderChanged || commandsChanged;
@@ -75,8 +76,7 @@ export function LadderTab({ node, permissions, onClose }: LadderTabProps) {
     const instanceName = (id?: string) => board?.instances?.find((i) => i.id === id)?.name || id;
     const chipLabel = (c: L.StairChip) => (c.instance ? `${c.title} · ${instanceName(c.instance)}` : c.title || c.name);
     // 마지막 맞바꾸기 (두 칸이 아직 초안에 있을 때만 알린다)
-    const lastSwap =
-        swaps.filter(([a, b]) => draft.some((l) => l.id === a) && draft.some((l) => l.id === b)).at(-1) ?? null;
+    const lastSwap = L.activeSwaps(steps, draft).at(-1) ?? null;
     const levelName = (id: number) => {
         const l = draft.find((x) => x.id === id);
         return l ? label(l) : '';
@@ -84,8 +84,7 @@ export function LadderTab({ node, permissions, onClose }: LadderTabProps) {
     const pick = (id: number) => {
         if (picked === null || picked === id) return setPicked(picked === id ? null : id);
         flip();
-        setSwaps((s) => [...s, [picked, id]]);
-        setLineLevel((l) => (l === null ? l : L.swapLine(l, picked, id)));
+        setSteps((s) => [...s, [picked, id]]);
         setPicked(null);
         setChoosing(false);
     };
@@ -96,7 +95,7 @@ export function LadderTab({ node, permissions, onClose }: LadderTabProps) {
     const moveLine = (dir: -1 | 1) => {
         if (lineAt === null) return;
         const to = L.lineStep(draft, lineAt, dir);
-        if (to !== null) setLineLevel(draft[to].id ?? null);
+        if (to !== null) setSteps((s) => [...s, { line: draft[to].id as number }]);
     };
     const save = () =>
         write(() =>
@@ -107,8 +106,7 @@ export function LadderTab({ node, permissions, onClose }: LadderTabProps) {
         );
     const revert = () => {
         setDraft(saved);
-        setLineLevel(line?.level ?? null);
-        setSwaps([]);
+        setSteps([]);
         setChoosing(false);
         setPicked(null);
     };

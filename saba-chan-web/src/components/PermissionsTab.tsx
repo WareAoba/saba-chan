@@ -95,23 +95,23 @@ export function LadderEditor({ perm, board, busy, onSave }: LadderEditorProps) {
     const [draft, setDraft] = useState(saved);
     const [name, setName] = useState('');
     const line = L.controllerLine(board);
-    const [lineLevel, setLineLevel] = useState(line?.level ?? null);
     // 권한 맞바꾸기 (사용자 지정 2026-11-07): 아래 버튼을 누르고 칸 두 개를 고르면 두 레벨의 명령이 자리를 바꾼다 (앱과 같은 규칙)
-    const [swaps, setSwaps] = useState<[number, number][]>([]);
+    // 명령 옮긴 차례 (맞바꾸기·줄 옮기기). 줄 자리는 이 차례에서 나온다
+    const [steps, setSteps] = useState<L.CommandStep[]>([]);
     const [choosing, setChoosing] = useState(false);
     const [picked, setPicked] = useState<number | null>(null);
     const listRef = useRef<HTMLUListElement>(null);
     const flip = useFlip(listRef);
     useEffect(() => setDraft(L.ladderOf(perm)), [perm]);
-    useEffect(() => setLineLevel(line?.level ?? null), [line?.level]);
     // 데몬 값을 다시 읽으면(저장 뒤) 맞바꾸기 초안을 비운다
     // biome-ignore lint/correctness/useExhaustiveDependencies: board 가 바뀔 때만 비운다
-    useEffect(() => setSwaps([]), [board]);
+    useEffect(() => setSteps([]), [board]);
     const patch = L.ladderPatch(draft);
     const ladderChanged = JSON.stringify(patch) !== JSON.stringify(L.ladderPatch(saved));
+    const lineLevel = L.draftLine(line, draft, steps);
     const lineAt = line && lineLevel !== null ? L.lineAt(saved, draft, lineLevel) : null;
     const lineTarget = lineAt === null ? null : (draft[lineAt].id as number);
-    const levels = L.draftLevels(board, draft, swaps, line, lineTarget);
+    const levels = L.draftLevels(board, draft, steps, line, lineTarget);
     const commandLevels = L.boardPatch(board, levels);
     const commandsChanged = Object.keys(commandLevels).length > 0;
     const changed = ladderChanged || commandsChanged;
@@ -119,8 +119,7 @@ export function LadderEditor({ perm, board, busy, onSave }: LadderEditorProps) {
     const instanceName = (id?: string) => board?.instances?.find((i) => i.id === id)?.name || id;
     const chipLabel = (c: L.StairChip) => (c.instance ? `${c.title} · ${instanceName(c.instance)}` : c.title || c.name);
     // 마지막 맞바꾸기 (두 칸이 아직 초안에 있을 때만 알린다)
-    const lastSwap =
-        swaps.filter(([a, b]) => draft.some((l) => l.id === a) && draft.some((l) => l.id === b)).at(-1) ?? null;
+    const lastSwap = L.activeSwaps(steps, draft).at(-1) ?? null;
     const removed = saved.some((s) => !draft.some((d) => d.id === s.id));
     const valid = L.ladderValid(draft);
     const localeName = (l: LadderLevel) => levelName(t, null, l.id);
@@ -133,14 +132,13 @@ export function LadderEditor({ perm, board, busy, onSave }: LadderEditorProps) {
     const pick = (id: number) => {
         if (picked === null || picked === id) return setPicked(picked === id ? null : id);
         flip();
-        setSwaps((s) => [...s, [picked, id]]);
-        setLineLevel((l) => (l === null ? l : L.swapLine(l, picked, id)));
+        setSteps((s) => [...s, [picked, id]]);
         setPicked(null);
         setChoosing(false);
     };
     const moveLine = (dir: -1 | 1) => {
         const to = lineAt === null ? null : L.lineStep(draft, lineAt, dir);
-        if (to !== null) setLineLevel(draft[to].id ?? null);
+        if (to !== null) setSteps((s) => [...s, { line: draft[to].id as number }]);
     };
     const save = () =>
         onSave({
@@ -305,8 +303,7 @@ export function LadderEditor({ perm, board, busy, onSave }: LadderEditorProps) {
                     disabled={busy || !changed}
                     onClick={() => {
                         setDraft(saved);
-                        setLineLevel(line?.level ?? null);
-                        setSwaps([]);
+                        setSteps([]);
                         setChoosing(false);
                         setPicked(null);
                     }}

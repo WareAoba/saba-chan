@@ -274,6 +274,29 @@ export const swappable = (l: LadderLevel | undefined) => lineSlot(l);
 /** 맞바꾼 두 레벨 중 하나에 그어진 줄은 명령을 따라 다른 쪽으로 */
 export const swapLine = (level: number, a: number, b: number) => (level === a ? b : level === b ? a : level);
 
+/** 사다리 초안에서 명령을 옮긴 차례: 맞바꾸기 `[a, b]` 또는 조작 가능 줄 옮기기 `{line: 레벨}` */
+export type CommandStep = [number, number] | { line: number };
+const isSwap = (step: CommandStep): step is [number, number] => Array.isArray(step);
+
+/** 초안에 두 칸이 다 남은 맞바꾸기만 (지운 칸이 걸린 맞바꾸기는 없던 일로 한다) */
+export function activeSwaps(steps: CommandStep[], draft: LadderLevel[]) {
+    const kept = new Set(draft.map((l) => l.id));
+    return steps.filter(isSwap).filter(([a, b]) => kept.has(a) && kept.has(b));
+}
+
+/**
+ * 조작 가능 줄의 초안 레벨: 저장된 줄 레벨에서 차례를 따라간다. 줄 옮기기는 그 레벨로, 맞바꾸기는 줄도 명령을 따라 옮긴다.
+ * 지운 칸이 걸린 맞바꾸기는 건너뛰어 줄도 되돌린다
+ */
+export function draftLine(line: { level: number } | null | undefined, draft: LadderLevel[], steps: CommandStep[]) {
+    if (!line) return null;
+    const active = new Set(activeSwaps(steps, draft));
+    return steps.reduce<number>(
+        (level, step) => (!isSwap(step) ? step.line : active.has(step) ? swapLine(level, step[0], step[1]) : level),
+        line.level,
+    );
+}
+
 /**
  * 권한 맞바꾸기 (사용자 지정 2026-11-07): 사람은 그대로 두고, 두 레벨이 "그 레벨부터" 가진 명령을 서로 바꾼다.
  * 보드 항목마다 초안 레벨을 낸다. 맞바꾸기를 차례로 적용하고(고정 항목은 그대로, 초안에서 지운 레벨이 걸린 것은 뺀다),
@@ -282,13 +305,12 @@ export const swapLine = (level: number, a: number, b: number) => (level === a ? 
 export function draftLevels(
     board: CommandBoard | null | undefined,
     draft: LadderLevel[],
-    swaps: [number, number][],
+    steps: CommandStep[],
     line?: { followers: CommandItem[] } | null,
     lineTarget?: number | null,
 ) {
     const items = board?.items || [];
-    const kept = new Set(draft.map((l) => l.id));
-    const active = swaps.filter(([a, b]) => kept.has(a) && kept.has(b));
+    const active = activeSwaps(steps, draft);
     const follows = new Set(line && lineTarget != null ? line.followers : []);
     return items.map((item) => {
         if (item.fixed) return item.level;
