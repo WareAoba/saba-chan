@@ -210,6 +210,9 @@ function App() {
         handleInstallVersion,
         handleResetServer,
         handleSaveSettings,
+        restartPending,
+        restartNow,
+        dismissRestart,
     } = useServerSettings({
         servers,
         modules,
@@ -764,6 +767,9 @@ function App() {
         resettingServer,
         savingSettings,
         isClosing: isSettingsClosing,
+        restartPending,
+        restartNow,
+        dismissRestart,
     };
 
     const anyPopoverOpen = showBackgroundSection || showNoticeSection;

@@ -185,7 +185,8 @@ describe('설정 저장 (list 값, restart_required)', () => {
         expect(vi.mocked(window.api.instanceUpdateSettings).mock.calls[0][1].ops).toEqual(['alice', ' bob ']);
     });
 
-    it('다시 켜야 적용되는 설정을 바꿨으면 그렇다고 알리고 바로 다시 켤 수 있게 한다', async () => {
+    // 사용자 11-06 #5: 저장 완료는 화면을 막는 창 대신 작은 알림, 다시 시작할 설정은 저장 막대 위에 [지금 다시 시작][나중에]
+    it('다시 켜야 적용되는 설정을 바꿨으면 저장 막대 위에 알릴 것을 남기고 바로 다시 켤 수 있게 한다', async () => {
         vi.mocked(window.api.instanceUpdateSettings).mockResolvedValue({
             success: true,
             synced: true,
@@ -196,19 +197,31 @@ describe('설정 저장 (list 값, restart_required)', () => {
         await act(async () => result.current.handleOpenSettings(server));
         act(() => result.current.handleSettingChange('motd', 'hi'));
         await act(async () => result.current.handleSaveSettings());
-        const modal = setModal.mock.calls.at(-1)![0];
-        expect(modal.type).toBe('question');
-        expect(modal.message).toMatch(/restart/i);
-        expect(modal.message).toContain('motd');
-        await act(async () => modal.buttons[0].action());
+        expect(setModal).not.toHaveBeenCalled();
+        expect(window.showToast).toHaveBeenCalledWith(expect.stringContaining('S'), 'success', expect.any(Number), undefined);
+        expect(result.current.restartPending).toMatchObject({ serverId: 's', fields: ['motd'] });
+        await act(async () => result.current.restartNow());
         expect(onRestart).toHaveBeenCalledWith('S', { confirmed: true });
+        expect(result.current.restartPending).toBeNull();
     });
 
-    it('restart_required가 비어 있으면 평소처럼 저장 완료다', async () => {
+    it('나중에를 누르면 알림을 치운다', async () => {
+        vi.mocked(window.api.instanceUpdateSettings).mockResolvedValue({ success: true, restart_required: ['motd'] });
+        const { result } = setup(vi.fn());
+        await act(async () => result.current.handleOpenSettings(server));
+        act(() => result.current.handleSettingChange('motd', 'hi'));
+        await act(async () => result.current.handleSaveSettings());
+        act(() => result.current.dismissRestart());
+        expect(result.current.restartPending).toBeNull();
+    });
+
+    it('restart_required가 비어 있으면 작은 알림만 띄운다', async () => {
         const { result, setModal } = setup(vi.fn());
         await act(async () => result.current.handleOpenSettings(server));
         await act(async () => result.current.handleSaveSettings());
-        expect(setModal.mock.calls.at(-1)![0].type).toBe('success');
+        expect(setModal).not.toHaveBeenCalled();
+        expect(window.showToast).toHaveBeenCalledWith(expect.stringContaining('S'), 'success', expect.any(Number), undefined);
+        expect(result.current.restartPending).toBeNull();
     });
 });
 

@@ -1688,7 +1688,11 @@ button.activity-line:hover {
 .restart-row + .restart-row {
     border-top: 1px solid var(--line);
 }
-.restart-row > span {
+.restart-row > label {
+    cursor: pointer;
+}
+.restart-row > span,
+.restart-row > label {
     display: flex;
     flex-direction: column;
     gap: var(--sp-0-5);
@@ -1699,6 +1703,28 @@ button.activity-line:hover {
 }
 .restart-row.disabled {
     opacity: 0.5;
+}
+/* 다시 시작해야 적용되는 칸 (module.toml restart_required) */
+.setting-restart-chip {
+    margin-left: var(--sp-1-5);
+    padding: 0 var(--sp-1-5);
+    border-radius: var(--r-xs);
+    background: color-mix(in oklch, var(--warn) 16%, transparent);
+    color: var(--warn);
+    font-size: var(--fs-xs);
+    font-weight: 600;
+}
+/* 저장 막대 위의 다시 시작 안내 (저장 줄 안 첫 줄) */
+.modal-footer:has(> .settings-restart-notice) {
+    flex-wrap: wrap;
+}
+.settings-restart-notice {
+    flex: 1 0 100%;
+    align-items: center;
+}
+.settings-restart-notice > span {
+    flex: 1;
+    min-width: 0;
 }
 .memory-limit-input {
     width: 120px;

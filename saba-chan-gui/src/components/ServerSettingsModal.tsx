@@ -1,6 +1,7 @@
 import clsx from 'clsx';
 import React, { useCallback, useEffect, useId, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import type { RestartPending } from '../hooks/useServerSettings';
 import type { Server } from '../stores/useServerStore';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import type { ModuleInfo, SettingField } from '../types/daemon';
@@ -61,6 +62,9 @@ export function SettingsField({ field, value, modNs, onChange, validationError }
         <div className="settings-field">
             <label id={labelId} htmlFor={inputId}>
                 {fieldLabel} {field.required ? '*' : ''}
+                {field.restart_required && (
+                    <span className="setting-restart-chip">{t('server_settings.restart_badge')}</span>
+                )}
             </label>
             {fieldType === 'text' && (
                 <input
@@ -163,7 +167,9 @@ export function SettingsField({ field, value, modNs, onChange, validationError }
                         checked={value === true || value === 'true'}
                         onChange={(checked) => onChange(field.name, checked)}
                     />
-                    <span className="toggle-label-text">{value === true || value === 'true' ? 'ON' : 'OFF'}</span>
+                    <span className="toggle-label-text">
+                        {t(value === true || value === 'true' ? 'server_settings.toggle_on' : 'server_settings.toggle_off')}
+                    </span>
                 </div>
             )}
             {hasError && (
@@ -267,6 +273,7 @@ function GeneralTab({
 }: GeneralTabProps) {
     const { t } = useTranslation('gui');
     const versionId = useId();
+    const rowId = useId();
     // section: 'server' = 게임 서버 설정만, 'saba' = 사바쨩이 서버를 다루는 설정만, 없으면 모두
     const showSaba = section !== 'server';
     const showServer = section !== 'saba';
@@ -300,21 +307,24 @@ function GeneralTab({
                     </div>
                     <p className="protocol-mode-description">{t('shell.restart_desc')}</p>
                     <div className="restart-row">
-                        <span>
+                        {/* 글자를 눌러도 스위치가 바뀐다 */}
+                        <label htmlFor={`${rowId}-crash`}>
                             <strong>{t('shell.restart_on_crash')}</strong>
                             <small>{t('shell.restart_on_crash_hint')}</small>
-                        </span>
+                        </label>
                         <SabaToggle
+                            id={`${rowId}-crash`}
                             checked={String(settingsValues.auto_restart) !== 'false'}
                             onChange={(checked) => handleSettingChange('auto_restart', checked)}
                         />
                     </div>
                     <div className={clsx('restart-row', { disabled: String(settingsValues.auto_restart) === 'false' })}>
-                        <span>
+                        <label htmlFor={`${rowId}-unknown`}>
                             <strong>{t('shell.restart_on_unknown')}</strong>
                             <small>{t('shell.restart_on_unknown_hint')}</small>
-                        </span>
+                        </label>
                         <SabaToggle
+                            id={`${rowId}-unknown`}
                             checked={String(settingsValues.restart_on_unknown_exit) === 'true'}
                             disabled={String(settingsValues.auto_restart) === 'false'}
                             onChange={(checked) => handleSettingChange('restart_on_unknown_exit', checked)}
@@ -688,6 +698,37 @@ function GeneralTab({
     );
 }
 
+/** 저장 막대 위의 다시 시작 안내 (사용자 11-06 #5): [지금 다시 시작] [나중에] */
+export function RestartNotice({
+    pending,
+    server,
+    onRestart,
+    onDismiss,
+}: {
+    pending: RestartPending | null | undefined;
+    server: Pick<Server, 'id' | 'status' | 'start_time'>;
+    onRestart: () => void;
+    onDismiss: () => void;
+}) {
+    const { t } = useTranslation('gui');
+    const live = pending && pending.serverId === server.id && server.status === 'running' && (server.start_time ?? null) === pending.startTime;
+    if (!live) return null;
+    return (
+        <div className="notice tone-warn settings-restart-notice">
+            <Icon name="refresh" size="sm" />
+            <span role="status">
+                {t('server_settings.restart_pending', { count: pending.fields.length, fields: pending.fields.join(', ') })}
+            </span>
+            <button type="button" className="btn btn-primary btn-sm" onClick={onRestart}>
+                {t('server_settings.restart_now')}
+            </button>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={onDismiss}>
+                {t('server_settings.restart_later')}
+            </button>
+        </div>
+    );
+}
+
 /**
  * ServerSettingsModal — Full server settings modal with general tab (+ a link to the Discord words page).
  */
@@ -701,6 +742,9 @@ interface ServerSettingsModalProps extends Omit<GeneralTabProps, 'portConflicts'
     onClose: () => void;
     embedded?: boolean;
     servers?: Server[];
+    restartPending?: RestartPending | null;
+    restartNow?: () => void;
+    dismissRestart?: () => void;
 }
 
 export function ServerSettingsModal({
@@ -725,6 +769,9 @@ export function ServerSettingsModal({
     isClosing,
     onClose,
     embedded = false,
+    restartPending,
+    restartNow,
+    dismissRestart,
     // 서버 상세에 박을 때 나눠 보이기: 'server' | 'saba' (GeneralTab 참고)
     section,
     // validation props
@@ -739,7 +786,8 @@ export function ServerSettingsModal({
     }
 
     // 창을 연 뒤에 켜질 수 있으니 지금 상태는 servers 목록에서 본다 (데몬도 켜진 서버의 설치·초기화를 거절한다)
-    const liveStatus = (servers || []).find((s) => s.id === settingsServer.id)?.status ?? settingsServer.status;
+    const liveServer = (servers || []).find((s) => s.id === settingsServer.id) ?? settingsServer;
+    const liveStatus = liveServer.status;
     const serverRunning = ['running', 'starting', 'stopping'].includes(liveStatus);
 
     // ── Validation: 설정값 타입 검증 ──
@@ -879,6 +927,15 @@ export function ServerSettingsModal({
             </div>
 
             <div className="modal-footer">
+                {/* 저장 막대와 함께 따라온다 */}
+                {restartNow && dismissRestart && (
+                    <RestartNotice
+                        pending={restartPending}
+                        server={liveServer}
+                        onRestart={restartNow}
+                        onDismiss={dismissRestart}
+                    />
+                )}
                 <CliLine actionId="instance.settings.set" server={settingsServer.name} extra={changedSettings} />
                 <button className="btn btn-confirm" onClick={handleSaveSettings} disabled={savingSettings}>
                     <Icon name="save" size="sm" /> {t('server_settings.save_settings')}
