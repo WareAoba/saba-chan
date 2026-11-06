@@ -312,7 +312,8 @@
     "history": "Historique",
     "no_history": "Aucune commande exécutée pour l'instant",
     "no_matching_hints": "Aucune commande correspondante. Elle sera envoyée telle quelle.",
-    "type_to_filter": "Tapez une commande ou choisissez dans la liste"
+    "type_to_filter": "Tapez une commande ou choisissez dans la liste",
+    "via_console": "Console"
   },
   "server_status": {
     "unresponsive": "En cours d'exécution mais ne répond pas : {{reason}}",

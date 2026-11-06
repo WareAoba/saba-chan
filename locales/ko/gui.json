@@ -312,7 +312,8 @@
     "history": "실행 기록",
     "no_history": "아직 실행한 명령이 없어요",
     "no_matching_hints": "맞는 명령이 없어요. 입력한 그대로 보내요",
-    "type_to_filter": "명령을 입력하거나 목록에서 고르세요"
+    "type_to_filter": "명령을 입력하거나 목록에서 고르세요",
+    "via_console": "콘솔"
   },
   "server_status": {
     "unresponsive": "실행 중이지만 응답이 없어요: {{reason}}",

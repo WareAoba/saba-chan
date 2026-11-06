@@ -1,7 +1,9 @@
 import type { TFunction } from 'i18next';
 import type { ApiBody } from '../types/daemon';
 import type { NoticeInput } from '../types/global';
-import { type AuditEntry, auditReason, auditWhat } from './audit';
+import { type AuditEntry, auditReason, auditWhat, sourceText } from './audit';
+
+export { sourceText };
 import { safeShowToast } from './helpers';
 
 /** 데몬 이벤트 스트림 (P4: GET /api/events → Tauri 셸 → window.api.onDaemonEvent) */
@@ -57,10 +59,25 @@ export function subscribeDaemonEvents(cb: (ev: DaemonEvent) => void) {
 /** action.run data(감사 한 줄 모양) → 감사 목록 한 건 모양 */
 export const auditEntryOf = (data: ApiBody) => ({ ...data, ts: data.ts ?? data.at });
 
-/** instance.started·stopped의 출처 → "원격 PC · 집 PC" */
-export function sourceText(d: ApiBody, t: TFunction) {
-    const label = t(`audit.source_${d.source}`, { defaultValue: d.source || '' });
-    return d.userName ? `${label} · ${d.userName}` : label;
+
+/**
+ * 보낸 명령 한 건(action.run의 stdin·command) → 명령 탭 실행 기록 한 줄. 앱 명령 창이 보낸 것은 그 창이 답과 함께 남기므로 null.
+ * via: 콘솔이면 "콘솔", 앱 밖이면 보낸 곳 ("콘솔 · 사바쨩 웹")
+ */
+export function historyEntryOf(d: ApiBody, t: TFunction) {
+    const console = d.action === 'stdin';
+    if (!d.instanceId || !d.command || (!console && d.action !== 'command') || (!console && d.source === 'gui')) return null;
+    const what = auditWhat({ ...(d as AuditEntry), action: '' }, t);
+    const via = [console && t('command_modal.via_console'), d.source !== 'gui' && sourceText(d, t)].filter(Boolean).join(' · ');
+    const reason = d.ok ? '' : auditReason(d as AuditEntry, t);
+    return {
+        id: Date.now() + Math.random(),
+        command: what,
+        status: d.ok ? 'success' : 'failure',
+        via,
+        ...(reason ? { detail: reason } : {}),
+        time: new Date((d.at ? d.at * 1000 : Date.now())).toLocaleTimeString(),
+    };
 }
 
 /** instance.exit의 근거 코드 → 이유 한 줄. 콘솔 줄이 근거인 것·모르는 코드는 빈 글자 */

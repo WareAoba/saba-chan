@@ -2595,7 +2595,7 @@ impl Supervisor {
                 // 이번 실행의 줄만 (재부착 때 디스크에서 읽어 온 지난 실행의 오류를 지금 문제로 보지 않게)
                 let log_lines: Vec<String> = recent
                     .iter()
-                    .filter(|l| l.timestamp >= proc.started_at)
+                    .filter(|l| l.timestamp >= proc.started_at && l.source != managed_process::LogSource::Input)
                     .map(|l| l.content.clone())
                     .collect();
                 cfg.insert("log_lines".to_string(), json!(log_lines));
@@ -3003,7 +3003,7 @@ impl Supervisor {
     /// GUI read 요청에 대한 블로킹을 최소화합니다.
     /// 끝난 managed 프로세스가 왜 끝났는지 가르고, 크래시면 재시작을 예약한다 (A1). `may_restart`가 false면 예약하지 않는다
     async fn judge_exit(&mut self, instance_id: &str, proc: &ManagedProcess, may_restart: bool) {
-        use managed_process::{LogLevel, LogSource};
+        use managed_process::LogLevel;
         if proc.log_follower {
             return;
         }
@@ -3026,7 +3026,7 @@ impl Supervisor {
             .get_recent_console(crash::CONSOLE_TAIL_LINES)
             .await
             .into_iter()
-            .filter(|l| l.source != LogSource::System)
+            .filter(|l| l.source.from_server())
             .map(|l| l.content)
             .collect();
         let working_dir = proc.working_dir.clone().or_else(|| instance.working_dir.as_ref().map(std::path::PathBuf::from));

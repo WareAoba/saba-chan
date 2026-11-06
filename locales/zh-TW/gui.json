@@ -312,7 +312,8 @@
     "history": "執行紀錄",
     "no_history": "尚未執行任何命令",
     "no_matching_hints": "沒有符合的命令。將依原樣送出。",
-    "type_to_filter": "輸入命令或從清單中選擇"
+    "type_to_filter": "輸入命令或從清單中選擇",
+    "via_console": "主控台"
   },
   "server_status": {
     "unresponsive": "正在執行但沒有回應：{{reason}}",

@@ -829,6 +829,15 @@
     user-select: none;
 }
 
+/* 보낸 명령 줄 (#18): "› list" 굵게 강조색, 보낸 곳은 흐리게 */
+.console-echo {
+    color: var(--tok-info);
+    font-weight: 700;
+}
+.console-echo-by {
+    color: var(--text-3);
+}
+
 /* ── 콘솔 색 토큰: 줄 전체 색은 데몬이 매긴 level, 조각 색은 spans(또는 모듈 규칙)의 토큰 ── */
 .console-line.console-level-error {
     color: var(--tok-error);
@@ -4401,6 +4410,11 @@ button.appbar-preflight {
     font-size: var(--fs-xs);
     font-weight: 600;
     color: var(--chip-color);
+}
+.cmd-entry-via {
+    flex: none;
+    font-size: var(--fs-xs);
+    color: var(--text-3);
 }
 .cmd-entry-time {
     flex: none;

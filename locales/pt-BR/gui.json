@@ -312,7 +312,8 @@
     "history": "Histórico",
     "no_history": "Nenhum comando executado ainda",
     "no_matching_hints": "Nenhum comando correspondente. Será enviado como digitado.",
-    "type_to_filter": "Digite um comando ou escolha na lista"
+    "type_to_filter": "Digite um comando ou escolha na lista",
+    "via_console": "Console"
   },
   "server_status": {
     "unresponsive": "Em execução, mas sem resposta: {{reason}}",

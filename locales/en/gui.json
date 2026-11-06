@@ -312,7 +312,8 @@
     "history": "History",
     "no_history": "No commands executed yet",
     "no_matching_hints": "No matching commands. It will be sent as typed.",
-    "type_to_filter": "Type a command or select from the list"
+    "type_to_filter": "Type a command or select from the list",
+    "via_console": "Console"
   },
   "server_status": {
     "unresponsive": "Running but not responding: {{reason}}",

@@ -86,6 +86,12 @@ export function auditReason(e: Pick<AuditEntry, 'ok' | 'code'>, t: TFunction) {
     return '';
 }
 
+/** 시킨 쪽(감사 출처) → "원격 PC · 집 PC" (instance.started·stopped, 콘솔에 보낸 줄) */
+export function sourceText(d: { source?: string; userName?: string; [key: string]: unknown }, t: TFunction) {
+    const label = t(`audit.source_${d.source}`, { defaultValue: d.source || '' });
+    return d.userName ? `${label} · ${d.userName}` : label;
+}
+
 /** 한 건 → "누가·어디서" 한 줄 */
 export function auditWho(e: AuditEntry, t: TFunction) {
     const source = SOURCES.includes(e.source) ? t(`audit.source_${e.source}`) : e.source;

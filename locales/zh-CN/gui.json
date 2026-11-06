@@ -312,7 +312,8 @@
     "history": "执行记录",
     "no_history": "还没有执行过命令",
     "no_matching_hints": "没有匹配的命令。将按原样发送。",
-    "type_to_filter": "输入命令或从列表中选择"
+    "type_to_filter": "输入命令或从列表中选择",
+    "via_console": "控制台"
   },
   "server_status": {
     "unresponsive": "正在运行但没有响应：{{reason}}",

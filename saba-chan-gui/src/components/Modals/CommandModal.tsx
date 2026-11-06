@@ -325,6 +325,7 @@ function CommandModal({ server, modules }: CommandModalProps) {
                                 >
                                     <span className={clsx('status-chip-dot', `tone-${tone}`)} aria-hidden="true" />
                                     <code className="cmd-entry-cmd">{entry.command}</code>
+                                    {entry.via && <span className="cmd-entry-via">{entry.via}</span>}
                                     <span className={clsx('cmd-entry-status', `tone-${tone}`)}>
                                         {entry.status === 'success'
                                             ? t('command_modal.success')

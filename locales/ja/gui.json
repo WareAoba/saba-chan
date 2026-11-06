@@ -270,7 +270,8 @@
     "history": "実行履歴",
     "no_history": "まだ実行したコマンドはありません",
     "no_matching_hints": "一致するコマンドがありません。入力どおりに送信します",
-    "type_to_filter": "コマンドを入力するか、一覧から選んでください"
+    "type_to_filter": "コマンドを入力するか、一覧から選んでください",
+    "via_console": "コンソール"
   },
   "server_status": {
     "unresponsive": "実行中ですが応答がありません: {{reason}}",

@@ -11,7 +11,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
-use super::managed_process::{LogSource, ManagedProcess};
+use super::managed_process::ManagedProcess;
 
 /// 준비 문구를 기다리는 시간의 기본값 (초)
 pub const DEFAULT_READY_TIMEOUT_SECS: u64 = 600;
@@ -124,7 +124,7 @@ async fn watch(id: String, name: String, token: u64, proc: Arc<ManagedProcess>, 
         }
         for line in proc.get_console_since(next_line).await {
             next_line = line.id + 1;
-            if line.source != LogSource::System && patterns.iter().any(|p| p.is_match(&line.content)) {
+            if line.source.from_server() && patterns.iter().any(|p| p.is_match(&line.content)) {
                 seen().lock().unwrap_or_else(|e| e.into_inner()).insert(id.clone());
                 finish(&id, &name, Some(token), None);
                 return;

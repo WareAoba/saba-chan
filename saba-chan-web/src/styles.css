@@ -940,6 +940,14 @@ textarea {
 .line-error {
     color: var(--stop);
 }
+/* 보낸 명령 (#18) */
+.line-input .echo {
+    color: var(--accent);
+    font-weight: 700;
+}
+.line-input .echo-by {
+    color: var(--text-3);
+}
 .console-input {
     display: flex;
     gap: 8px;

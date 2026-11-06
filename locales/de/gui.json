@@ -312,7 +312,8 @@
     "history": "Verlauf",
     "no_history": "Noch keine Befehle ausgeführt",
     "no_matching_hints": "Keine passenden Befehle. Die Eingabe wird unverändert gesendet.",
-    "type_to_filter": "Befehl eingeben oder aus der Liste wählen"
+    "type_to_filter": "Befehl eingeben oder aus der Liste wählen",
+    "via_console": "Konsole"
   },
   "server_status": {
     "unresponsive": "Läuft, reagiert aber nicht: {{reason}}",

@@ -312,7 +312,8 @@
     "history": "Historial",
     "no_history": "Aún no se ha ejecutado ningún comando",
     "no_matching_hints": "No hay comandos coincidentes. Se enviará tal como se escribió.",
-    "type_to_filter": "Escribe un comando o elige uno de la lista"
+    "type_to_filter": "Escribe un comando o elige uno de la lista",
+    "via_console": "Consola"
   },
   "server_status": {
     "unresponsive": "En ejecución pero no responde: {{reason}}",

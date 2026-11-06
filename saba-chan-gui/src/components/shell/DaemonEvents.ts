@@ -2,7 +2,8 @@ import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ApiBody } from '../../types/daemon';
 import { useServerStore } from '../../stores/useServerStore';
-import { SERVER_CHANGING, showEventToast, showPortMoved, subscribeDaemonEvents } from '../../utils/daemonEvents';
+import { useUIStore } from '../../stores/useUIStore';
+import { historyEntryOf, SERVER_CHANGING, showEventToast, showPortMoved, subscribeDaemonEvents } from '../../utils/daemonEvents';
 
 const REFETCH_DEBOUNCE_MS = 300;
 
@@ -26,6 +27,11 @@ export function DaemonEvents({ onServersChanged }: { onServersChanged?: () => vo
                 // 한꺼번에 여러 건이 와도 한 번만 다시 읽는다
                 clearTimeout(timer);
                 timer = setTimeout(() => refetchRef.current?.(), REFETCH_DEBOUNCE_MS);
+            }
+            if (ev.type === 'action.run') {
+                // 콘솔·다른 곳에서 보낸 명령도 명령 탭의 실행 기록에 (#18)
+                const entry = historyEntryOf(ev.data, tr);
+                if (entry) useUIStore.getState().pushCommandHistory(ev.data.instanceId, entry);
             }
             if (ev.type === 'update.available') {
                 // 이름 문자열 또는 {name|id, ...} 객체를 모두 받는다

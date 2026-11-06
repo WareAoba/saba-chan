@@ -1,3 +1,4 @@
+import { sourceText } from '@gui/utils/audit';
 import { riskOf } from '@gui/utils/commandRisk';
 import { gameNameOf, playersText, primaryAction, viewStatus } from '@gui/utils/serverView';
 import { useEffect, useRef, useState } from 'react';
@@ -22,17 +23,20 @@ import { useServerControl } from './useServerControl';
 import type { Server, ServerPanelProps, WebApi } from '../types';
 import type { ProvisionView } from './useProvision';
 
-/** 콘솔 한 줄 (managedConsole) */
+/** 콘솔 한 줄 (managedConsole). source: input은 사바쨩이 보낸 명령, by는 보낸 쪽 */
 interface ConsoleLine {
     id: number;
     level?: string;
+    source?: string;
     content: string;
+    by?: { source?: string; userName?: string };
 }
 
 const MAX_LINES = 500;
 
 function ConsolePanel({ api, server, moduleData }: Omit<ServerPanelProps, 'running'>) {
     const { t } = useTranslation();
+    const { t: tg } = useTranslation('gui');
     const { toast, ask } = useApp.getState();
     const [lines, setLines] = useState<ConsoleLine[]>([]);
     const [stdin, setStdin] = useState(false);
@@ -94,11 +98,19 @@ function ConsolePanel({ api, server, moduleData }: Omit<ServerPanelProps, 'runni
                 {lines.length === 0 ? (
                     <span className="console-empty">{t('console.empty')}</span>
                 ) : (
-                    lines.map((l) => (
-                        <div key={l.id} className={`line line-${l.level || 'info'}`}>
-                            {l.content}
-                        </div>
-                    ))
+                    lines.map((l) =>
+                        l.source === 'input' ? (
+                            // 보낸 명령 (#18): "› list · 디스코드 · jace"
+                            <div key={l.id} className="line line-input">
+                                <span className="echo">› {l.content}</span>
+                                {l.by?.source && <span className="echo-by"> · {sourceText(l.by, tg)}</span>}
+                            </div>
+                        ) : (
+                            <div key={l.id} className={`line line-${l.level || 'info'}`}>
+                                {l.content}
+                            </div>
+                        ),
+                    )
                 )}
             </pre>
             <form
