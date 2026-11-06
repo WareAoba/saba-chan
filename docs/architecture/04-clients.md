@@ -169,7 +169,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 | chatbotTools | GET /api/relay/node/:guildId/chatbot/tools (릴레이 답 그대로: `{categories, categoryLabels, tools}`) | ✓ 서버 화면 › 말하는 사바쨩 탭의 도구 목록(`ChatbotView.tsx` `useChatbotTools`·`ToolGroups`). 카테고리별로 묶고, 도구·카테고리 이름과 설명은 릴레이가 준 `label`·`hint`·`categoryLabels`를 앱 언어로 보이며(번역 파일에 두지 않는다, CLI `chatbot tools`의 카테고리 이름도 같다), 못 쓰는 도구는 이유(운영 키·제공사)를 보인다 |
 | chatbotGuildGet / chatbotGuildSave | GET·PATCH /api/chatbot/guilds/:guild (서버 하나의 말하는 사바쨩 설정, 키 없음. 웹이 이 PC의 디스코드 서버에 쓴다) | ✓ |
 | chatbotMemoTemplate | GET /api/chatbot/memo-template?locale= | ✓ 서버 프롬프트 "기본 틀 넣기". 비어 있을 때만 넣고 쓴 글은 덮지 않는다 |
-| relayInitiatePairing / relayPollPairingStatus (976-990) | POST /api/relay/pair/initiate, GET /api/relay/pair/:code/status | ✓ 782-783 |
+| relayInitiatePairing / relayPollPairingStatus (976-990) | POST /api/relay/pair/initiate, POST /api/relay/pair/status | ✓ 782-783 |
 | relayLinkRequests / relayLinkRequestRespond (992-994) | GET /api/relay/link-requests, POST /api/relay/link-requests/:id `{accept}`. 디스코드에서 코드 없이 온 연결 요청(J1-b). 데몬 본문을 그대로 돌려준다(`daemonJson`) | ✓ 784-785 |
 | relayPrivacyErase / relayPrivacyEraseStatus | POST `/api/relay/privacy/erase` `{locale}` → `{url}`, GET → `{status}`. 개인정보 모두 지우기(`daemonJson`) | ✓ 디스코드 연결 화면 `PrivacyErase`: 동의 페이지를 열고 3초마다 묻는다. `done`이면 연결 해제처럼 화면을 비운다(끊기는 데몬이 한다) |
 | relayMcpGrant / relayMcpGrantRevoke | GET `/api/relay/mcp/grant` → `{grant:{clientName, createdAt, lastUsedAt}\|null, url}`(`url`은 에이전트에 넣을 MCP 주소), DELETE → 204. 이 PC 주인 계정의 AI 에이전트 연결(원격 MCP, 05 §4.4 (l))(`daemonJson`) | ✓ 디스코드 연결 화면 `AgentLink`: 연결된 에이전트와 마지막 사용을 보이고 끊는다. 없으면 릴레이가 준 `url`을 에이전트에 넣으라고 안내한다. 받지 못하면 줄을 그리지 않는다 |
@@ -353,7 +353,7 @@ Discord ─ 릴레이의 사바쨩 봇 ─(롱폴링, HMAC 서명)─ 데몬 rel
 ```
 
 - 데몬이 먼저 릴레이로 나가서 연결한다. 데몬은 들어오는 연결을 받지 않는다.
-- 페어링으로 받은 노드 토큰(`sbn_<id>.<secret>`)이 있어야 에이전트가 뜬다. 페어링은 `/api/relay/pair/initiate`, `/api/relay/pair/:code/status`(01 §4 Relay 프록시)로 하고, 토큰은 `/api/config/node-token`으로 다룬다.
+- 페어링으로 받은 노드 토큰(`sbn_<id>.<secret>`)이 있어야 에이전트가 뜬다. 페어링은 `/api/relay/pair/initiate`, `POST /api/relay/pair/status`(01 §4 Relay 프록시)로 하고, 토큰은 `/api/config/node-token`으로 다룬다.
 - AI 챗봇 설정의 원본은 데몬 config.json `chatbot`이다. `GET/PUT/DELETE /api/chatbot`, `DELETE /api/chatbot/memory?guildId=`로 다루고, 바뀔 때마다와 에이전트가 연결될 때 이 호스트의 길드마다 릴레이에 PUT해서 맞춘다. 릴레이 PUT은 받은 키만 합치므로 데몬은 늘 전체 설정을 보내고, 지운 키는 릴레이 기본값으로 채운다(`handlers/chatbot.rs:31-65`). DELETE가 릴레이에 닿지 못하면 `pendingRelayDelete: true`로 답하고 다음 연결 때 다시 지운다(`:218-238, 240-255, 287-295`). API 키는 데몬과 릴레이만 알고, 클라이언트에는 `hasApiKey`만 준다(`handlers/chatbot.rs:1-15`, `mod.rs:643-644`).
 
 ### 4.2 릴레이 에이전트 (`src/relay_agent.rs`)

@@ -759,8 +759,19 @@ pub async fn delete_backup(Path((id, name)): Path<(String, String)>, State(state
     // 지운 뒤 쓰지 않는 내용을 치우느라 모든 백업을 읽는다: 비동기 작업자를 막지 않게
     match tokio::task::spawn_blocking(move || backup::delete(&dir, &name)).await {
         Ok(Ok(())) => Json(json!({ "success": true })).into_response(),
-        Ok(Err(e)) => error(StatusCode::NOT_FOUND, "backup_not_found", e.to_string()),
+        Ok(Err(e)) => delete_failed(e),
         Err(e) => error(StatusCode::INTERNAL_SERVER_ERROR, "backup_failed", e.to_string()),
+    }
+}
+
+/// 백업 삭제 실패: 잘못된 이름은 400, 없는 백업은 404, 그 밖(권한·입출력)은 500
+fn delete_failed(e: anyhow::Error) -> Response {
+    let gone = e.downcast_ref::<std::io::Error>().is_some_and(|io| io.kind() == std::io::ErrorKind::NotFound);
+    match e.downcast_ref::<backup::BadName>() {
+        Some(backup::BadName::Invalid(_)) => error(StatusCode::BAD_REQUEST, "invalid_backup_name", e.to_string()),
+        Some(backup::BadName::Missing(_)) => error(StatusCode::NOT_FOUND, "backup_not_found", e.to_string()),
+        None if gone => error(StatusCode::NOT_FOUND, "backup_not_found", e.to_string()),
+        None => error(StatusCode::INTERNAL_SERVER_ERROR, "backup_delete_failed", format!("{:#}", e)),
     }
 }
 
@@ -1401,6 +1412,24 @@ mod tests {
 
     async fn code(r: Response) -> String {
         crate::ipc::internal::into_internal(r).await.body["error_code"].as_str().unwrap_or_default().to_string()
+    }
+
+    #[tokio::test]
+    async fn deleting_a_backup_tells_a_missing_one_from_a_bad_name_and_a_failed_delete() {
+        let (state, id, _tmp) = server_with(NO_BACKUP, None).await;
+        let missing = delete_backup(Path((id.clone(), "20260101-000000-manual.zip".into())), State(state.clone())).await;
+        assert_eq!(missing.status(), StatusCode::NOT_FOUND);
+        assert_eq!(code(missing).await, "backup_not_found");
+        let bad = delete_backup(Path((id.clone(), "../x-manual.zip".into())), State(state.clone())).await;
+        assert_eq!(bad.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(code(bad).await, "invalid_backup_name");
+        // 권한·입출력 실패는 없는 백업이 아니다
+        let denied = delete_failed(std::io::Error::from(std::io::ErrorKind::PermissionDenied).into());
+        assert_eq!(denied.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(code(denied).await, "backup_delete_failed");
+        // 확인한 뒤 지우기 전에 사라졌으면 없는 백업이다
+        let gone = delete_failed(std::io::Error::from(std::io::ErrorKind::NotFound).into());
+        assert_eq!(gone.status(), StatusCode::NOT_FOUND);
     }
 
     async fn data_roots_backfill_server(import_result: &str) -> (IPCServer, String, tempfile::TempDir, tempfile::TempDir) {

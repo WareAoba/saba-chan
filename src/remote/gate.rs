@@ -256,6 +256,7 @@ pub static ROUTES: &[Route] = &[
     deny("GET", "/api/relay/node/{guild_id}/chatbot/tools"),
     deny("GET", "/api/relay/bot-invite"),
     deny("POST", "/api/relay/pair/initiate"),
+    deny("POST", "/api/relay/pair/status"),
     deny("GET", "/api/relay/pair/{code}/status"),
     // 계정의 에이전트 연결은 PC에서만 보고 끊는다
     deny("GET", "/api/relay/mcp/grant"),
