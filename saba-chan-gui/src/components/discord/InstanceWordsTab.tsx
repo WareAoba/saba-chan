@@ -6,8 +6,9 @@ import type { ApiBody } from '../../types/daemon';
 import { safeShowToast } from '../../utils/helpers';
 import { Icon } from '../Icon';
 import { SabaSpinner } from '../ui/SabaUI';
-import type { InstanceWordsDraft, InstanceWordsEntry, ValidationDetail } from './instanceWords';
-import { draftOf, errorsByField, isDraftDirty } from './instanceWords';
+import { SaveBar } from './ChatbotView';
+import type { InstanceWordsCommand, InstanceWordsDraft, InstanceWordsEntry, ValidationDetail } from './instanceWords';
+import { draftOf, errorsByField, isDraftDirty, wordsCommandName } from './instanceWords';
 import { TagInput } from './TagInput';
 
 export { draftOf, errorsByField, isDraftDirty };
@@ -19,6 +20,7 @@ export const instanceWordsAvailable = () =>
 interface InstanceWords extends InstanceWordsEntry {
     id: string;
     name: string;
+    module?: string;
     defaultWords?: string[];
 }
 
@@ -59,6 +61,7 @@ function InstanceCard({ inst, onSaved }: InstanceCardProps) {
     }, [inst]);
 
     const dirty = isDraftDirty(draft, inst);
+    const nameOf = (c: InstanceWordsCommand) => wordsCommandName(t, inst.module || '', c);
     const badWords = (field: string) => (errors[field] || []).map((d) => d.word as string).filter(Boolean);
 
     const save = async () => {
@@ -115,7 +118,7 @@ function InstanceCard({ inst, onSaved }: InstanceCardProps) {
                             <div className="dc-word-row">
                                 <div className="dc-word-cmd">
                                     <span className={clsx('dc-list-name', { danger: c.risk === 'danger' })}>
-                                        {c.label || c.name}
+                                        {nameOf(c)}
                                     </span>
                                     <span className="muted">{t('discord.iw_default', { words: defaults })}</span>
                                 </div>
@@ -125,7 +128,7 @@ function InstanceCard({ inst, onSaved }: InstanceCardProps) {
                                         setDraft((d) => ({ ...d, commands: { ...d.commands, [c.name]: v } }))
                                     }
                                     placeholder={t('discord.words_add_placeholder')}
-                                    ariaLabel={c.label || c.name}
+                                    ariaLabel={nameOf(c)}
                                     invalid={badWords(field)}
                                 />
                             </div>
@@ -135,24 +138,17 @@ function InstanceCard({ inst, onSaved }: InstanceCardProps) {
                 })}
             </div>
 
+            {/* 긴 명령 목록 맨 아래가 아니라 화면 아래에 붙는 막대 (사용자 11-06 #9) */}
             {dirty && (
-                <div className="dc-row-actions">
-                    <span className="muted">{t('discord.unsaved')}</span>
-                    <button
-                        type="button"
-                        className="btn btn-ghost"
-                        disabled={busy}
-                        onClick={() => {
-                            setDraft(draftOf(inst));
-                            setErrors({});
-                        }}
-                    >
-                        {t('discord.revert')}
-                    </button>
-                    <button type="button" className="btn btn-primary" disabled={busy} onClick={save}>
-                        <Icon name="save" size="sm" /> {t('discord.save')}
-                    </button>
-                </div>
+                <SaveBar
+                    dirty
+                    saving={busy}
+                    onRevert={() => {
+                        setDraft(draftOf(inst));
+                        setErrors({});
+                    }}
+                    onSave={save}
+                />
             )}
         </section>
     );

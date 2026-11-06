@@ -73,6 +73,20 @@ describe('CLI로 보기 (P2 후속 §5)', () => {
         expect(writeText).toHaveBeenCalledWith('saba do instance.settings.set --server mc port=25566');
     });
 
+    // 사용자 11-06 #27: 내부 키가 보이는 CLI 줄은 '명령줄로 하기'를 펼쳐야 보인다
+    it('CLI 줄은 접힌 "명령줄로 하기" 안에 있다', async () => {
+        window.api.actionsList = vi.fn().mockResolvedValue({
+            actions: [{ id: 'instance.settings.set', cli: 'saba do instance.settings.set --server <server>' }],
+        }) as never;
+        const { container } = render(<CliLine actionId="instance.settings.set" server="mc" />);
+        await act(async () => {});
+        const fold = container.querySelector('details.cli-line') as HTMLDetailsElement;
+        expect(fold).toBeTruthy();
+        expect(fold.open).toBe(false);
+        expect(fold.querySelector('summary')!.textContent).toBe('Use the command line');
+        expect(fold.querySelector('code')!.textContent).toBe('saba do instance.settings.set --server mc');
+    });
+
     // 데몬이 아직 안 떠서 카탈로그를 못 받은 실패는 기억하지 않는다: 다음에 다시 묻는다
     it('카탈로그 요청이 실패로 답하면 다음 화면에서 다시 묻는다', async () => {
         window.api.actionsList = vi.fn().mockResolvedValue({ error: 'daemon not ready' }) as never;

@@ -105,6 +105,12 @@ export function ServerDetail({
         status === 'missing' ? failureForModule(st.failedModules, server.module) : null,
     );
     const action = primaryAction(status);
+    // 설치 완성 카드의 '시작'은 서버가 켜지면 닫는다: 켜진 서버에 다시 시작을 보내지 않게 (사용자 11-06 #10)
+    const live = status === 'running' || status === 'starting';
+    // biome-ignore lint/correctness/useExhaustiveDependencies: 켜짐·완성 표시가 바뀔 때만
+    useEffect(() => {
+        if (cooked && live) closeCookedCard(server);
+    }, [cooked, live]);
     const interaction = interactionOf(server, moduleData);
     const gameName = gameNameOf(t, server.module, moduleData);
 
@@ -295,7 +301,7 @@ export function ServerDetail({
                 </div>
             )}
 
-            {(server.provisioning || cooked) && (
+            {(server.provisioning || (cooked && !live)) && (
                 <div className="detail-provision">
                     {server.provisioning && (
                         <ExtensionSlot
@@ -309,7 +315,7 @@ export function ServerDetail({
                     <NativeProvision
                         server={server}
                         provisionProgress={provisionProgress as ComponentProps<typeof NativeProvision>['provisionProgress']}
-                        cooked={cooked}
+                        cooked={cooked && !live}
                         icon={
                             moduleData?.icon ? <img src={moduleData.icon} alt="" /> : <span>{initials(gameName)}</span>
                         }
@@ -557,12 +563,15 @@ function InfoTab({
         [t('shell.info_module'), gameName],
         server.server_version && [t('shell.info_version'), server.server_version],
         uptime && [t('shell.info_uptime'), uptime],
-        server.status === 'running' && server.pid && ['PID', server.pid],
         server.port && [t('shell.info_port'), server.port],
-        server.rest_port && ['REST', `${server.rest_host || '127.0.0.1'}:${server.rest_port}`],
-        moduleData && [t('shell.info_protocol'), protocolLabel(server, moduleData)],
         server.id && [t('shell.info_id'), <code key="id">{server.id}</code>],
         ...dataStatusRows(server),
+    ].filter(Boolean) as [string, ReactNode][];
+    // 사용자 11-06 #27: 개발 용어(PID·REST·통신 방식)는 '자세히' 안에
+    const moreRows = [
+        server.status === 'running' && server.pid && ['PID', server.pid],
+        server.rest_port && ['REST', `${server.rest_host || '127.0.0.1'}:${server.rest_port}`],
+        moduleData && [t('shell.info_protocol'), protocolLabel(server, moduleData)],
     ].filter(Boolean) as [string, ReactNode][];
     const busy = server.status === 'running' || server.status === 'starting' || server.status === 'stopping';
 
@@ -576,6 +585,19 @@ function InfoTab({
                     </div>
                 ))}
             </dl>
+            {moreRows.length > 0 && (
+                <details className="info-more">
+                    <summary>{t('shell.info_more')}</summary>
+                    <dl className="info-grid">
+                        {moreRows.map(([k, v]) => (
+                            <div className="info-cell" key={k}>
+                                <dt>{k}</dt>
+                                <dd>{v}</dd>
+                            </div>
+                        ))}
+                    </dl>
+                </details>
+            )}
             <ExitHistory server={server} />
             <ServerLogs server={server} />
             <ExtensionSlot slotId="ServerCard.expandedStats" server={server} t={t} />

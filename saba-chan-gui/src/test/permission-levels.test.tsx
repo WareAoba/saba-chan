@@ -491,6 +491,8 @@ describe('권한 화면', () => {
         fireEvent.change(screen.getByRole('textbox', { name: 'New level name' }), { target: { value: 'Mod' } });
         fireEvent.click(screen.getByRole('button', { name: 'Add' }));
         fireEvent.click(screen.getByRole('button', { name: 'Move Mod down' }));
+        // 사용자 11-06 #9: 저장은 화면 아래에 붙는 막대에서
+        expect(document.querySelector('.dc-savebar.dirty')).not.toBeNull();
         fireEvent.click(screen.getByRole('button', { name: 'Save' }));
         await flush();
         expect(window.api.permissionsUpdate).toHaveBeenCalledWith('g1', {

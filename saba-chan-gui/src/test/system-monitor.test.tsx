@@ -100,16 +100,22 @@ describe('시스템 모니터 항목 고르기', () => {
         expect(ring(rings, 'adapter:Ethernet')).toMatchObject({ value: '2.0', unit: 'MB/s' });
     });
 
-    it('못 재는 클럭은 모름 알약으로 두고, 못 재는 온도는 아예 보이지 않는다', () => {
+    // 사용자 요청(2026-11-06 #26): 알 수 없는 값은 "알 수 없음"으로 두지 않고 아예 보이지 않는다
+    it('못 재는 클럭·온도·디스크 종류는 알약을 빼고, 사용률을 모르는 GPU는 원째 뺀다', () => {
         const snap = snapshot({
             cpu: { cores: 8, total_percent: 50, others_percent: 20, clock_mhz: null, temp_c: null },
             gpus: [{ name: null, util_percent: null, clock_mhz: null, temp_c: null }],
         });
         const rings = buildRings(snap, colorSlots([]), undefined, ['cpu', 'cpu.clock', 'cpu.temp', 'gpu', 'gpu.clock', 'gpu.temp']);
-        // 사용자 요청(2026-11-06): 온도를 모르면 그냥 표시하지 않는다
-        expect(ring(rings, 'cpu').pills.slice(1)).toEqual([{ key: 'monitor.clock_unknown', unknown: true }]);
-        expect(ring(rings, 'gpu').pills).toEqual([{ key: 'monitor.clock_unknown', unknown: true }]);
-        expect(ring(rings, 'gpu')).toMatchObject({ value: '—', titleKey: 'monitor.gpu', segments: [] });
+        expect(ring(rings, 'cpu').pills.slice(1)).toEqual([]);
+        expect(rings.find((r) => r.key === 'gpu')).toBeUndefined();
+        const disks = buildRings(
+            snapshot({ volumes: [{ mount: 'C:\\', name: 'OS', kind: 'unknown', total_bytes: 100 * GB, available_bytes: 40 * GB, rpm: 0 }] }),
+            colorSlots([]),
+            undefined,
+            ['volume:C:\\', 'volume.kind'],
+        );
+        expect(JSON.stringify(disks)).not.toContain('unknown');
     });
 
     it('네트워크 카드별 눈금은 그 카드의 최고값이다', () => {
@@ -196,7 +202,7 @@ describe('포트·서버별 네트워크 (고급 옵션)', () => {
 describe('SystemMonitor', () => {
     beforeEach(() => {
         window.api.systemMetrics = vi.fn().mockResolvedValue(snapshot());
-        useSettingsStore.setState({ systemMonitorOpen: true });
+        useSettingsStore.setState({ systemMonitorExpanded: true });
     });
     afterEach(() => {
         delete (window.api as unknown as Record<string, unknown>).systemMetrics;
@@ -216,7 +222,7 @@ describe('SystemMonitor', () => {
         render(<SystemMonitor servers={[{ id: 'a', name: 'A' }]} />);
         await waitFor(() => expect(document.querySelector('.monitor-ring')).not.toBeNull());
         fireEvent.click(document.querySelector('.monitor-toggle')!);
-        expect(useSettingsStore.getState().systemMonitorOpen).toBe(false);
+        expect(useSettingsStore.getState().systemMonitorExpanded).toBe(false);
         expect(document.querySelector('.monitor-ring')).toBeNull();
         expect(document.querySelector('.monitor-summary')!.textContent).toContain('50%');
         // 요약만 볼 때는 데몬이 폴더 크기를 재지 않게 한다

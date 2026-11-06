@@ -74,8 +74,9 @@ pub struct GuiSettings {
     pub console_token_colors: HashMap<String, String>,
     /// 콘솔 글꼴: 글자마다 하나 (앱·웹에 함께 들어 있는 글꼴 중에서)
     pub console_fonts: ConsoleFonts,
-    /// 서버 페이지의 시스템 모니터 펼침 여부
-    pub system_monitor_open: bool,
+    /// 서버 페이지의 시스템 모니터 펼침 여부 (기본은 한 줄 요약, 사용자 11-06.
+    /// 예전 `systemMonitorOpen`은 기본이 펼침이라 모두 한 번 요약으로 시작하도록 키를 바꿨다)
+    pub system_monitor_expanded: bool,
     /// 고급: 포트·서버별 네트워크 사용량 (Windows ETW, `system_monitor::net_trace`). 펼친 모니터를 보는 동안만 센다
     pub system_monitor_net_trace: bool,
     /// 시스템 모니터에 띄울 항목 id (`cpu`·`cpu.clock`·`disk:<마운트>`·`net:<어댑터>` 등, GUI `monitorItems.ts`).
@@ -225,7 +226,7 @@ impl Default for GuiSettings {
             console_font_scale: 100,
             console_token_colors: HashMap::new(),
             console_fonts: ConsoleFonts::default(),
-            system_monitor_open: true,
+            system_monitor_expanded: false,
             system_monitor_net_trace: false,
             monitor_items: None,
             window_bounds: None,
@@ -1242,6 +1243,17 @@ mod tests {
         s.sanitize();
         assert_eq!(s.console_token_colors.len(), 2);
         assert!(s.validate().is_ok());
+    }
+
+    /// 사용자 11-06 #26: 시스템 모니터는 처음엔 한 줄 요약이다. 예전 `systemMonitorOpen`(기본 펼침)은 읽지 않고,
+    /// 펼침은 새 키 `systemMonitorExpanded`에 기억한다
+    #[test]
+    fn system_monitor_starts_as_summary() {
+        assert!(!GuiSettings::default().system_monitor_expanded);
+        let old: GuiSettings = serde_json::from_value(serde_json::json!({"systemMonitorOpen": true})).unwrap();
+        assert!(!old.system_monitor_expanded);
+        let saved: GuiSettings = serde_json::from_value(serde_json::json!({"systemMonitorExpanded": true})).unwrap();
+        assert!(saved.system_monitor_expanded);
     }
 
     #[test]

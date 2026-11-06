@@ -92,7 +92,8 @@ pub async fn create_instance(
 ) -> axum::response::Response {
     // 요청이 끊겨도(클라이언트 시간 초과) 만들기를 끝까지 마친다: 가져오기는 큰 서버 폴더에 권한을 주는 데 수십 초가 들 수 있고,
     // 중간에 멈추면 인스턴스만 남고 설정 가져오기·원래 설정 보관이 빠진다
-    match tokio::spawn(create_instance_to_the_end(state, payload)).await {
+    // 따로 돌려도 요청의 출처·언어는 지닌다 (설치 진행 문구가 요청한 화면 언어로 오게)
+    match crate::audit::spawn(create_instance_to_the_end(state, payload)).await {
         Ok(response) => response,
         Err(e) => {
             tracing::error!("Instance creation task failed: {}", e);
@@ -539,9 +540,14 @@ async fn create_instance_inner(state: IPCServer, payload: Value, dry_run: bool) 
                 "in_use_by": port_users.get(&port).cloned().unwrap_or_default(),
                 "reserved": crate::validator::port_reserved_by_windows(port),
             })).collect();
+            // 이름에 쓸 수 없는 글자가 있을 때만 `invalid`를 싣는다
+            let mut name_check = json!({ "value": name, "taken": name_taken(name), "suggested": suggested });
+            if comma {
+                name_check["invalid"] = json!("comma");
+            }
             return (StatusCode::OK, Json(json!({
                 "success": true,
-                "name": { "value": name, "taken": name_taken(name), "suggested": suggested, "invalid": comma.then_some("comma") },
+                "name": name_check,
                 "folder": {
                     "custom": custom_folder,
                     "path": instance.working_dir.as_deref().filter(|_| custom_folder),
@@ -675,7 +681,7 @@ async fn create_instance_inner(state: IPCServer, payload: Value, dry_run: bool) 
                         // Drop supervisor lock before spawning background task
                         drop(supervisor);
 
-                        tokio::spawn(async move {
+                        crate::audit::spawn(async move {
                             let mut install_guard = install_guard;
                             let leftovers: Option<InstallStaging>;
                             // ── Phase 1: supervisor lock을 최소 시간만 잡고 모듈 경로 복사 ──
@@ -2448,7 +2454,8 @@ pub async fn begin_server_update(state: &IPCServer, id: &str) -> Result<tokio::t
 
     let backup_state = state.clone();
     let backup_id = id.to_string();
-    Ok(tokio::spawn(async move {
+    // 요청의 출처·언어를 지닌 채 돈다 (모듈 진행 문구가 요청한 화면 언어로)
+    Ok(crate::audit::spawn(async move {
         let _guard = guard;
         let _others = others;
         // ── Phase 0: 업데이트 전 백업 (A2). 백업할 것이 없으면 그냥 진행, 실패하면 업데이트하지 않는다 ──
@@ -3100,6 +3107,32 @@ mod tests {
         let progress = provisioned(&state, "g").await.unwrap();
         assert_eq!(progress.details["error_code"], "module_path_outside");
         assert!(progress.error.is_some());
+    }
+
+    /// 설치는 요청이 끝난 뒤에도 따로 돌지만, 모듈 문구는 만들기를 요청한 화면의 언어로 온다 (진행 문구가 영어로 나오던 문제)
+    #[tokio::test]
+    async fn the_install_speaks_the_language_of_the_request() {
+        use axum::{extract::State, Json};
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("module.toml"), "[module]\nschema_version = 1\nname = 'game'\nversion = '1.0.0'\nentry = 'lifecycle.py'\n\n[install]\nmethod = 'manual'\n").unwrap();
+        std::fs::write(
+            dir.join("lifecycle.py"),
+            "import json, os, sys\nif sys.argv[1] == 'functions':\n    print(json.dumps({'success': True, 'functions': ['install_server']}))\nelse:\n    print(json.dumps({'success': False, 'message': 'lang=' + os.environ.get('SABA_LANG', '')}))\n",
+        )
+        .unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        for module in sup.module_loader.discover_modules().unwrap() { crate::sandbox::consent_test_component(std::path::Path::new(&module.entry_path())); }
+        sup.initialize().await.unwrap();
+        let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let origin = crate::audit::Origin { lang: Some("zh-TW".into()), ..crate::audit::Origin::new("gui") };
+        let request = super::create_instance(State(state.clone()), Json(serde_json::json!({"name":"g", "module_name":"game"})));
+        let response = crate::ipc::internal::into_internal(crate::audit::with_origin(origin, request).await).await;
+        assert_eq!(response.status.as_u16(), 201);
+        let progress = provisioned(&state, "g").await.unwrap();
+        assert!(progress.error.as_deref().unwrap_or_default().contains("lang=zh-TW"), "{progress:?}");
     }
 
     use super::{memory_limit_from, stop_timeout_from};

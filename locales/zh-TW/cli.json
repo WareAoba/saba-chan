@@ -736,7 +736,7 @@
     "preflight_failed": "遊戲模組執行環境準備失敗：{{error}}。將在下次伺服器操作時重試。"
   },
   "stop": {
-    "confirm": "確定要停止 {{name}} 伺服器嗎？",
+    "confirm": "確定要停止 「{{name}}」伺服器嗎？",
     "already": "{{name}} 未執行。",
     "done": "{{name}} 已停止。",
     "not_yet": "{{name}} 尚未停止。強制停止：saba-chan-cli stop --force {{name}}",

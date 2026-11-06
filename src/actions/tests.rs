@@ -1283,7 +1283,7 @@ async fn start_notice_is_set_from_discord_by_admins_for_their_own_guild() {
     // 서버 루트 아래 메뉴에 실린다
     let (actions, _) = heartbeat_actions(&crate::chat::i18n::languages(), &[]);
     let item = actions.iter().find(|a| a["id"] == id_).expect("in the Discord menu");
-    assert_eq!(item["title"]["ko"], "켜짐 알림");
+    assert_eq!(item["title"]["ko"], "시작·정지 알림");
     assert_eq!(item["name"]["en"], "Start alert");
 }
 
@@ -1719,7 +1719,7 @@ fn server_address_reads_as_address_and_port() {
     let lines: Vec<&str> = text.lines().collect();
     assert_eq!(lines[0], "• Game port `203.0.113.5:8211`");
     assert_eq!(lines[1], "• Query port `203.0.113.5:27015`");
-    assert!(lines[2].contains("꺼져"), "{text}");
+    assert!(lines[2].contains("정지"), "{text}");
     let unknown = summary::text("server.address", &json!({ "address": null, "running": true, "ports": one["ports"] }), &ko).unwrap();
     assert!(!unknown.contains('`') && unknown.contains("주소"), "{unknown}");
     let no_ports = summary::text("server.address", &json!({ "address": "203.0.113.5", "running": true, "ports": [] }), &ko).unwrap();

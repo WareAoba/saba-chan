@@ -1196,6 +1196,21 @@ button.activity-line:hover {
 .info-cell dd code {
     font-size: var(--fs-sm);
 }
+/* 개발 용어(PID·REST·통신 방식)는 접어 둔다 */
+.info-more > summary {
+    cursor: pointer;
+    width: fit-content;
+    font-size: var(--fs-sm);
+    color: var(--text-3);
+    user-select: none;
+}
+.info-more > summary:hover,
+.info-more > summary:focus-visible {
+    color: var(--text-2);
+}
+.info-more[open] > summary {
+    margin-bottom: var(--sp-2);
+}
 .info-actions {
     display: flex;
     gap: var(--sp-2);
@@ -1337,10 +1352,10 @@ button.activity-line:hover {
     white-space: nowrap;
 }
 .settings-tab-content.slide-up {
-    animation: settingsSlideUp 0.22s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+    animation: settingsSlideUp 0.22s cubic-bezier(0.4, 0, 0.2, 1) backwards;
 }
 .settings-tab-content.slide-down {
-    animation: settingsSlideDown 0.22s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+    animation: settingsSlideDown 0.22s cubic-bezier(0.4, 0, 0.2, 1) backwards;
 }
 @keyframes settingsSlideUp {
     from {
@@ -4107,14 +4122,34 @@ button.appbar-preflight {
     color: var(--text-secondary);
 }
 
-/* CLI로 보기 (I4-c): 같은 일을 하는 CLI 한 줄 */
+/* CLI로 보기 (I4-c): 같은 일을 하는 CLI 한 줄. '명령줄로 하기'를 펼치면 보인다 */
 .cli-line {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: var(--sp-1-5);
     min-width: 0;
     margin-right: auto;
     color: var(--text-secondary);
+}
+.cli-line > summary {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-1-5);
+    cursor: pointer;
+    font-size: 12px;
+    list-style: none;
+    user-select: none;
+}
+.cli-line > summary::-webkit-details-marker {
+    display: none;
+}
+.cli-line > summary:hover,
+.cli-line > summary:focus-visible {
+    color: var(--text-primary);
+}
+.cli-line:not([open]) > :not(summary) {
+    display: none;
 }
 .cli-line code {
     overflow: hidden;

@@ -54,6 +54,12 @@ export const releaseVersions = (res?: ApiBody | null) =>
         .filter((v) => !v?.type || v.type === 'release')
         .map((v) => String(v?.id ?? v));
 
+/** 모듈 list_versions가 알려 준 받을 수 있는 최신 릴리스 (`latest.release`, 예전 모양 `latest_release`). 모르면 '' */
+export const latestRelease = (res?: ApiBody | null): string => {
+    const v = res?.latest?.release ?? res?.latest_release;
+    return typeof v === 'string' ? v : '';
+};
+
 /**
  * 새 서버 만들기 단계. 서버 종류·버전 단계는 고를 것이 있을 때만 (설치 칸, 추천 설정, 버전).
  * 다음 단계: 파일 위치 → 실행 방식 → 이름·포트 확인 → 확인(약관·익스텐션 칸)

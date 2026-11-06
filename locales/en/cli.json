@@ -736,7 +736,7 @@
     "preflight_failed": "Runtime setup for game modules failed: {{error}}. It is retried on the next server action."
   },
   "stop": {
-    "confirm": "Are you sure you want to stop {{name}} server?",
+    "confirm": "Are you sure you want to stop “{{name}}” server?",
     "already": "{{name}} is not running.",
     "done": "{{name}} stopped.",
     "force_confirm": "Stop without saving?",

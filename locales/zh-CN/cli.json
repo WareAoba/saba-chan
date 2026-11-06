@@ -736,7 +736,7 @@
     "preflight_failed": "游戏模块运行环境准备失败：{{error}}。将在下次服务器操作时重试。"
   },
   "stop": {
-    "confirm": "确定要停止 {{name}} 服务器吗？",
+    "confirm": "确定要停止 “{{name}}”服务器吗？",
     "already": "{{name}} 未运行。",
     "done": "{{name}} 已停止。",
     "force_confirm": "不保存就停止吗？",

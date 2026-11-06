@@ -108,6 +108,7 @@ const SAME_AS_EN: Record<string, string[]> = {
         'gui.json:daemon_switcher.label',
     ],
     'pt-BR': [
+        'gui.json:discord.iw_cmd_status',
         'gui.json:settings_modal.tab_console',
         'gui.json:monitor.pick_clock',
         'gui.json:monitor.pick_network_all',
@@ -141,6 +142,8 @@ const SAME_AS_EN: Record<string, string[]> = {
         'gui.json:daemon_switcher.label',
     ],
     de: [
+        'gui.json:discord.iw_cmd_status',
+        'gui.json:shell.info_more',
         'gui.json:monitor.ports_server',
         'gui.json:monitor.ports_port',
         'web.json:app_name',

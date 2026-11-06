@@ -13,6 +13,7 @@ import {
     installFields,
     nameTaken,
     optionLabel,
+    latestRelease,
     releaseVersions,
     suggestName,
     versionSettings,
@@ -62,6 +63,7 @@ export function AddInstanceNewServer({
     const [preset, setPreset] = useState('');
     const [version, setVersion] = useState(''); // '' = 최신
     const [versions, setVersions] = useState<string[] | null>(null); // 고를 수 있는 릴리스 (null = 아직 모름)
+    const [latest, setLatest] = useState(''); // 모듈이 알려 준 최신 릴리스 숫자 (모르면 '')
     const [folderMode, setFolderMode] = useState('default'); // 'default' | 'custom'
     const [folder, setFolder] = useState('');
     const [managed, setManaged] = useState(true);
@@ -95,6 +97,7 @@ export function AddInstanceNewServer({
         setPreset('');
         setVersion('');
         setVersions(null);
+        setLatest('');
         setFolderMode('default');
         setFolder('');
         setManaged(true);
@@ -129,6 +132,7 @@ export function AddInstanceNewServer({
         versionPickedFor.current = versionKey;
         setVersion('');
         setVersions(null);
+        setLatest('');
     }, [versionKey]);
     useEffect(() => {
         if (step !== 'server' || !versionKey) return;
@@ -141,11 +145,13 @@ export function AddInstanceNewServer({
                     if (!alive) return;
                     const list = releaseVersions(res);
                     setVersions(list);
+                    setLatest(latestRelease(res));
                     setVersion((chosen) => (list.includes(chosen) ? chosen : ''));
                 })
                 .catch(() => {
                     if (!alive) return;
                     setVersions([]);
+                    setLatest('');
                     setVersion('');
                 });
         }, 250);
@@ -356,6 +362,10 @@ export function AddInstanceNewServer({
         }
         goTo(steps[stepIndex - 1]);
     };
+    // 사용자 11-06: 비워 두면 받을 최신 버전을 숫자로 보인다 ("26.3 (최신)"). 모르면 "최신 버전"
+    const latestLabel = latest
+        ? t('add_server_modal.version_latest_of', { version: latest })
+        : t('add_server_modal.version_latest');
     const ports = check?.ports || [];
     const mainPort = ports.find((p: ApiBody) => p.field === 'port');
 
@@ -386,8 +396,8 @@ export function AddInstanceNewServer({
                             value={version}
                             onChange={setVersion}
                             options={[
-                                { value: '', label: t('add_server_modal.version_latest') },
-                                ...(versions || []).map((v) => ({ value: v, label: v })),
+                                { value: '', label: latestLabel },
+                                ...(versions || []).filter((v) => v !== latest).map((v) => ({ value: v, label: v })),
                             ]}
                             disabled={submitting}
                         />
@@ -580,7 +590,7 @@ export function AddInstanceNewServer({
             [t('add_server_modal.summary_game'), selectedDisplayName],
             ...settingRows,
             ...(choosesVersion(selectedModule)
-                ? [[t('add_server_modal.version'), version || t('add_server_modal.version_latest')]]
+                ? [[t('add_server_modal.version'), version || latestLabel]]
                 : []),
             [t('add_server_modal.location_title'), customFolder || t('add_server_modal.location_default')],
             [

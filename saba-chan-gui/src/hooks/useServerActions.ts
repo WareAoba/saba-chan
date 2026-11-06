@@ -598,6 +598,13 @@ export function useServerActions({
                 return;
             }
 
+            // ── already_running — 이미 켜져 있다: "시작 완료" 대신 그렇다고만 알린다 (사용자 11-06 #10) ──
+            if (result.success !== false && result.already_running === true) {
+                revertOptimistic(name);
+                safeShowToast(t('servers.already_running_toast', { name }), 'info', 3000);
+                return;
+            }
+
             // ── error_code: start_cancelled — 켜는 동안 사용자가 정지했다: 실패가 아니므로 알리지 않는다 ──
             if (result.error_code === 'start_cancelled') {
                 revertOptimistic(name);

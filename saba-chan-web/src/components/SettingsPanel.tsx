@@ -239,9 +239,24 @@ export function SettingsPanel({ api, server, moduleData, running }: ServerPanelP
                                 modNs={modNs}
                             />
                         ))}
-                        <Button tone="accent" type="submit" busy={saving} disabled={touched.size === 0}>
-                            {t('settings.save')}
-                        </Button>
+                        {/* 긴 목록 맨 아래가 아니라 화면 아래에 붙는 저장 막대 (사용자 11-06 #9) */}
+                        {touched.size > 0 && (
+                            <div className="savebar">
+                                <span className="hint">{tg('discord.unsaved')}</span>
+                                <Button
+                                    disabled={saving}
+                                    onClick={() => {
+                                        setValues(initial);
+                                        setTouched(new Set());
+                                    }}
+                                >
+                                    {tg('discord.revert')}
+                                </Button>
+                                <Button tone="accent" type="submit" busy={saving}>
+                                    {t('settings.save')}
+                                </Button>
+                            </div>
+                        )}
                     </form>
                 )}
             </Section>

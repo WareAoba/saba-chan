@@ -45,7 +45,7 @@ export type StatusTone = 'ok' | 'stop' | 'warn' | 'info' | 'idle';
 
 export const STATUS_TONE: Record<string, StatusTone> = {
     running: 'ok',
-    stopped: 'stop',
+    stopped: 'idle',
     starting: 'warn',
     stopping: 'warn',
     provisioning: 'info',
