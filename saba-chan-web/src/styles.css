@@ -514,6 +514,30 @@ textarea {
     color: var(--text-3);
     font-size: 12px;
 }
+/* 안내 문구 속 화면 링크 (ScreenLink, 사용자 11-06 #19). 앱 .screen-link와 같은 모양 */
+.screen-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin: 0 2px;
+    padding: 0 8px;
+    border: 0;
+    border-radius: 7px;
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    color: var(--accent);
+    font: inherit;
+    font-weight: 600;
+    line-height: 1.6;
+    white-space: nowrap;
+    cursor: pointer;
+}
+.screen-link:hover,
+.screen-link:focus-visible {
+    outline: 1px solid var(--accent);
+}
+.screen-link-arrow {
+    font-size: 0.9em;
+}
 .pill {
     display: inline-flex;
     align-items: center;

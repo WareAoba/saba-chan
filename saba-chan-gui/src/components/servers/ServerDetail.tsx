@@ -13,6 +13,7 @@ import { type Server, useServerStore } from '../../stores/useServerStore';
 import { useSettingsStore } from '../../stores/useSettingsStore';
 import { failedModuleReason, failureForModule } from '../../utils/failedModules';
 import { openWithNotice, safeShowToast } from '../../utils/helpers';
+import { screenFallbackNotice } from '../../utils/openScreen';
 import { type ModalConfig, useUIStore } from '../../stores/useUIStore';
 import type { ModuleInfo } from '../../types/daemon';
 import { withCommandAliases } from '../../utils/commandRisk';
@@ -150,9 +151,12 @@ export function ServerDetail({
     }, [server.id]);
     // 우클릭 메뉴 등 바깥에서 특정 탭을 요청하면 그 탭으로
     const requestedTab = useUIStore((s) => s.requestedServerTab);
+    // biome-ignore lint/correctness/useExhaustiveDependencies: 요청이 올 때만 그때의 탭 목록으로 판단한다
     useEffect(() => {
         if (!requestedTab) return;
-        setTab(requestedTab);
+        // 이 서버에 없는 탭(화면 주소 링크)이면 기본 탭에 두고 이유를 알린다
+        if (!tabs.some((x) => x.id === requestedTab)) screenFallbackNotice('tab_missing');
+        else setTab(requestedTab);
         useUIStore.getState().clearRequestedServerTab();
     }, [requestedTab]);
     const defaultTab = defaultServerTab(interaction, server.status);

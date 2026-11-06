@@ -1137,7 +1137,7 @@
     "private_queries_title": "Mostrar consultas só para quem pediu",
     "private_queries_desc": "Respostas de que só quem pergunta precisa, como verificação de portas, listas de backup e uso de recursos, aparecem só para essa pessoa, deixando o canal organizado. Respostas compartilhadas, como status do servidor e jogadores, continuam visíveis.",
     "start_notice": "Alerta de início/parada de {{name}}",
-    "start_notice_hint": "Servidores com o sino ligado são anunciados no canal de alertas deste servidor do Discord quando ligam ou desligam sem um comando do Discord (app, web, CLI, agendamento, reinício automático, no jogo, falha). Inícios e paradas pelo Discord ficam de fora. Alertas do PC, como falhas e backups, vão por DM para o dono do PC. Escolha o canal de alertas na aba Canais.",
+    "start_notice_hint": "Servidores com o sino ligado são anunciados no canal de alertas deste servidor do Discord quando ligam ou desligam sem um comando do Discord (app, web, CLI, agendamento, reinício automático, no jogo, falha). Inícios e paradas pelo Discord ficam de fora. Alertas do PC, como falhas e backups, vão por DM para o dono do PC. Escolha o canal de alertas em <link/>.",
     "start_notice_save_failed": "Não foi possível salvar o alerta de início/parada: {{error}}",
     "full_notice": "Aviso de servidor cheio de {{name}}",
     "full_notice_hint": "Servidores com o botão de pessoa ativado avisam no canal de alertas quando lotam ou abre uma vaga.",
@@ -1171,7 +1171,7 @@
     "perm_confirm_tier_default": "(Original: {{risk}})",
     "perm_confirm_tier_mixed": "Varia por instância",
     "perm_ladder_done": "Voltar",
-    "instance_menu_hint": "Abra uma instância para ver os comandos de cada nível. O nível dos membros é definido na aba Membros.",
+    "instance_menu_hint": "Abra uma instância para ver os comandos de cada nível. O nível dos membros é definido em <link/>.",
     "instance_menu_all": "Permissões de todas as instâncias",
     "instance_menu_open": "Permissões de {{name}}",
     "back_to_instances": "Instâncias",
@@ -1485,7 +1485,7 @@
     "memo_placeholder": "O que a Saba-chan deve saber sobre este servidor: tom, como chamar as pessoas, clima, interesses. Adicionado após as instruções padrão.",
     "err_memo": "O prompt do servidor pode ter até {{max}} caracteres.",
     "relay_delete_pending": "As configurações antigas da Saba-chan falante ainda não foram removidas do relay. Será tentado de novo na próxima conexão.",
-    "channels_moved": "Escolha os canais em que a Saba-chan falante conversa na aba Gerenciamento do servidor da tela do servidor do Discord.",
+    "channels_moved": "Escolha os canais em que a Saba-chan falante conversa em <link/>.",
     "models_need_key": "Salve uma chave de API para carregar os modelos disponíveis.",
     "models_need_guild": "Conecte um servidor do Discord para carregar os modelos disponíveis.",
     "models_err_NO_API_KEY": "A chave de API ainda não chegou ao servidor. Tente de novo em instantes.",
@@ -1507,8 +1507,8 @@
     "saba_desc": "A chave de API, o modelo e o crédito restante compartilhados por todos os servidores do Discord. Os recursos são ligados e desligados em cada servidor do Discord.",
     "model_title": "Modelo",
     "model_desc": "A Saba-chan falante responde com este modelo em todos os servidores do Discord.",
-    "prefix_calls_guild": "Responde quando chamada com um prefixo da aba Bot deste servidor.",
-    "guild_desc": "Escolha se a Saba-chan falante funciona neste servidor, como ela responde e quais ferramentas usa. A chave de API e o modelo ficam em Discord › Configurações da Saba-chan.",
+    "prefix_calls_guild": "Responde quando chamada com um prefixo de <link/>.",
+    "guild_desc": "Escolha se a Saba-chan falante funciona neste servidor, como ela responde e quais ferramentas usa. A chave de API e o modelo ficam em <link/>.",
     "token_limit_unit": "milhões de tokens",
     "token_limit_no_balance": "A {{provider}} não informa o crédito restante. Use este limite para receber alertas.",
     "balance_alert_unsupported": "A {{provider}} não informa o saldo",
@@ -1882,7 +1882,7 @@
     "keyword_label": "Palavra-chave",
     "keyword_hint": "O chat que começa com esta palavra é enviado sem ela. Uma palavra, até 32 caracteres.",
     "keyword_placeholder": "ex.: !dc",
-    "channel_note": "Escolha o canal na designação de canais da aba Discord ou com /saba assign → Chat do jogo."
+    "channel_note": "Designe o canal como Chat do jogo em <link/> ou com /saba assign → Chat do jogo."
   },
   "controllers": {
     "desc": "Quem está nesta lista pode iniciar, parar e reiniciar este servidor e criar backups. Administradores e acima não precisam estar na lista.",
@@ -2215,5 +2215,12 @@
     "minute": "Minuto",
     "pick_date": "Escolher uma data",
     "pick_time": "Escolher um horário"
+  },
+  "links": {
+    "open": "Abrir {{path}}",
+    "server_missing": "Esse servidor não foi encontrado, então a lista de servidores foi aberta.",
+    "guild_missing": "Esse servidor do Discord não está conectado, então a tela de conexão foi aberta.",
+    "pick_guild": "Há vários servidores do Discord conectados. Escolha um à esquerda.",
+    "tab_missing": "Essa aba não está disponível aqui, então esta tela foi aberta."
   }
 }

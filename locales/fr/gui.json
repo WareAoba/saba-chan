@@ -1137,7 +1137,7 @@
     "private_queries_title": "Résultats des requêtes visibles par le demandeur seulement",
     "private_queries_desc": "Les réponses utiles seulement à la personne qui demande, comme la vérification des ports, les listes de sauvegardes et l'utilisation des ressources, ne s'affichent que pour elle, ce qui garde le salon propre. Les réponses communes comme l'état du serveur et les joueurs restent visibles.",
     "start_notice": "Alerte de démarrage/arrêt de {{name}}",
-    "start_notice_hint": "Les serveurs avec la cloche activée sont annoncés dans le canal d’alertes de ce serveur Discord quand ils démarrent ou s’arrêtent sans commande Discord (app, web, CLI, planification, redémarrage auto, en jeu, plantage). Les démarrages et arrêts depuis Discord ne sont pas annoncés. Les alertes du PC, comme les plantages et les sauvegardes, sont envoyées en MP au propriétaire du PC. Choisissez le canal d’alertes dans l’onglet Salons.",
+    "start_notice_hint": "Les serveurs avec la cloche activée sont annoncés dans le canal d’alertes de ce serveur Discord quand ils démarrent ou s’arrêtent sans commande Discord (app, web, CLI, planification, redémarrage auto, en jeu, plantage). Les démarrages et arrêts depuis Discord ne sont pas annoncés. Les alertes du PC, comme les plantages et les sauvegardes, sont envoyées en MP au propriétaire du PC. Choisissez le canal d’alertes dans <link/>.",
     "start_notice_save_failed": "Impossible d’enregistrer l’alerte de démarrage/arrêt : {{error}}",
     "full_notice": "Alerte serveur plein pour {{name}}",
     "full_notice_hint": "Les serveurs avec le bouton personne activé préviennent dans le canal d’alertes quand ils sont pleins ou qu'une place se libère.",
@@ -1171,7 +1171,7 @@
     "perm_confirm_tier_default": "(Par défaut : {{risk}})",
     "perm_confirm_tier_mixed": "Varie selon l'instance",
     "perm_ladder_done": "Retour",
-    "instance_menu_hint": "Ouvrez une instance pour voir les commandes de chaque niveau. Le niveau des membres se règle dans l'onglet Membres.",
+    "instance_menu_hint": "Ouvrez une instance pour voir les commandes de chaque niveau. Le niveau des membres se règle dans <link/>.",
     "instance_menu_all": "Droits de toutes les instances",
     "instance_menu_open": "Droits de {{name}}",
     "back_to_instances": "Instances",
@@ -1485,7 +1485,7 @@
     "memo_placeholder": "Ce que Saba-chan doit savoir de ce serveur : ton, façon d'appeler les gens, ambiance, centres d'intérêt. Ajouté après les instructions par défaut.",
     "err_memo": "Le prompt du serveur peut contenir jusqu'à {{max}} caractères.",
     "relay_delete_pending": "Les anciens réglages de Saba-chan qui parle n'ont pas encore été supprimés du relais. Nouvelle tentative à la prochaine connexion.",
-    "channels_moved": "Choisissez les salons où discute Saba-chan qui parle dans l'onglet Gestion du serveur de l'écran du serveur Discord.",
+    "channels_moved": "Choisissez les salons où discute Saba-chan qui parle dans <link/>.",
     "models_need_key": "Enregistrez une clé API pour charger les modèles disponibles.",
     "models_need_guild": "Connectez un serveur Discord pour charger les modèles disponibles.",
     "models_err_NO_API_KEY": "La clé API n’est pas encore arrivée au serveur. Réessayez dans un instant.",
@@ -1507,8 +1507,8 @@
     "saba_desc": "La clé d'API, le modèle et le crédit restant partagés par tous les serveurs Discord. Les fonctions s'activent et se désactivent pour chaque serveur Discord.",
     "model_title": "Modèle",
     "model_desc": "Saba-chan qui parle répond avec ce modèle sur tous les serveurs Discord.",
-    "prefix_calls_guild": "Elle répond quand on l'appelle avec un préfixe de l'onglet Bot de ce serveur.",
-    "guild_desc": "Choisissez si Saba-chan qui parle fonctionne sur ce serveur, comment elle répond et quels outils elle utilise. La clé d'API et le modèle se règlent dans Discord › Paramètres de Saba-chan.",
+    "prefix_calls_guild": "Elle répond quand on l'appelle avec un préfixe de <link/>.",
+    "guild_desc": "Choisissez si Saba-chan qui parle fonctionne sur ce serveur, comment elle répond et quels outils elle utilise. La clé d'API et le modèle se règlent dans <link/>.",
     "token_limit_unit": "millions de jetons",
     "token_limit_no_balance": "{{provider}} n’indique pas le crédit restant. Utilise cette limite pour recevoir des alertes.",
     "balance_alert_unsupported": "{{provider}} n’indique pas de solde",
@@ -1882,7 +1882,7 @@
     "keyword_label": "Mot-clé",
     "keyword_hint": "Le chat qui commence par ce mot est envoyé sans lui. Un mot, 32 caractères max.",
     "keyword_placeholder": "ex. !dc",
-    "channel_note": "Choisissez le canal dans l'assignation des canaux de l'onglet Discord ou avec /saba assign → Chat du jeu."
+    "channel_note": "Assignez le canal comme Chat du jeu dans <link/> ou avec /saba assign → Chat du jeu."
   },
   "controllers": {
     "desc": "Les personnes de cette liste peuvent démarrer, arrêter et redémarrer ce serveur et créer des sauvegardes. Les admins et plus n'ont pas besoin d'y figurer.",
@@ -2215,5 +2215,12 @@
     "minute": "Minute",
     "pick_date": "Choisir une date",
     "pick_time": "Choisir une heure"
+  },
+  "links": {
+    "open": "Ouvrir {{path}}",
+    "server_missing": "Ce serveur est introuvable, la liste des serveurs est donc ouverte.",
+    "guild_missing": "Ce serveur Discord n'est pas connecté, l'écran de connexion est donc ouvert.",
+    "pick_guild": "Plusieurs serveurs Discord sont connectés. Choisissez-en un à gauche.",
+    "tab_missing": "Cet onglet n'est pas disponible ici, cet écran est donc ouvert."
   }
 }

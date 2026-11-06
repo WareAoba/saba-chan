@@ -1137,7 +1137,7 @@
     "private_queries_title": "조회 결과 나만 보기",
     "private_queries_desc": "포트포워딩 확인·백업 목록·자원 사용량처럼 부른 사람만 보면 되는 조회의 답을 그 사람에게만 보여서 채널을 깔끔하게 둬요. 서버 상태·접속자처럼 다 같이 보는 답은 그대로 보여요.",
     "start_notice": "{{name}} 시작·정지 알림",
-    "start_notice_hint": "종 버튼을 켠 서버가 디스코드 밖(앱·웹·CLI·예약·자동 재시작·게임 안·크래시)에서 시작되거나 정지되면 이 디스코드 서버의 알림 채널에 알려요. 디스코드에서 시작·정지한 것은 빼요. 크래시·백업 같은 PC 알림은 PC 주인 DM으로 가요.",
+    "start_notice_hint": "종 버튼을 켠 서버가 디스코드 밖(앱·웹·CLI·예약·자동 재시작·게임 안·크래시)에서 시작되거나 정지되면 이 디스코드 서버의 알림 채널에 알려요. 디스코드에서 시작·정지한 것은 빼요. 크래시·백업 같은 PC 알림은 PC 주인 DM으로 가요. 알림 채널은 <link/>에서 정해요.",
     "start_notice_save_failed": "시작·정지 알림을 저장하지 못했어요: {{error}}",
     "full_notice": "{{name}} 자리 꽉 참 알림",
     "full_notice_hint": "사람 버튼을 켠 서버는 자리가 꽉 차거나 다시 나면 알림 채널에 알려요.",
@@ -1171,7 +1171,7 @@
     "perm_confirm_tier_default": "(원래: {{risk}})",
     "perm_confirm_tier_mixed": "인스턴스마다 다름",
     "perm_ladder_done": "돌아가기",
-    "instance_menu_hint": "인스턴스를 누르면 레벨별로 쓸 수 있는 명령을 볼 수 있어요. 멤버 레벨은 멤버 탭에서 정해요.",
+    "instance_menu_hint": "인스턴스를 누르면 레벨별로 쓸 수 있는 명령을 볼 수 있어요. 멤버 레벨은 <link/>에서 정해요.",
     "instance_menu_all": "모든 인스턴스 권한",
     "instance_menu_open": "{{name}} 권한 메뉴",
     "back_to_instances": "인스턴스 목록",
@@ -1485,7 +1485,7 @@
     "memo_placeholder": "이 서버에서 사바쨩이 알아 둘 것: 말투, 호칭, 방 분위기, 관심사 등. 사바쨩 기본 지침 뒤에 붙어요.",
     "err_memo": "서버 프롬프트는 {{max}}자까지 쓸 수 있어요.",
     "relay_delete_pending": "예전 말하는 사바쨩 설정을 서버쨩에서 아직 지우지 못했어요. 다음에 연결될 때 다시 지워요.",
-    "channels_moved": "말하는 사바쨩이 대화할 채널은 디스코드 서버 화면의 '서버 관리' 탭에서 골라요.",
+    "channels_moved": "말하는 사바쨩이 대화할 채널은 <link/>에서 골라요.",
     "models_need_key": "API 키를 저장하면 쓸 수 있는 모델을 불러와요.",
     "models_need_guild": "디스코드 서버를 연결하면 쓸 수 있는 모델을 불러와요.",
     "models_err_NO_API_KEY": "서버에 API 키가 아직 전달되지 않았어요. 잠시 뒤 다시 시도해 주세요.",
@@ -1507,8 +1507,8 @@
     "saba_desc": "모든 디스코드 서버가 함께 쓰는 API 키와 모델, 남은 크레딧이에요. 기능을 켜고 끄는 건 디스코드 서버마다 정해요.",
     "model_title": "모델",
     "model_desc": "모든 디스코드 서버에서 말하는 사바쨩이 이 모델로 대답해요.",
-    "prefix_calls_guild": "이 서버의 봇 탭에 있는 호출어로 부르면 답해요.",
-    "guild_desc": "이 서버에서 말하는 사바쨩을 쓸지, 어떻게 대답하고 어떤 도구를 쓸지 정해요. API 키와 모델은 디스코드 › 사바쨩 설정에서 정해요.",
+    "prefix_calls_guild": "<link/>에 있는 호출어로 부르면 답해요.",
+    "guild_desc": "이 서버에서 말하는 사바쨩을 쓸지, 어떻게 대답하고 어떤 도구를 쓸지 정해요. API 키와 모델은 <link/>에서 정해요.",
     "token_limit_unit": "백만 토큰",
     "token_limit_no_balance": "{{provider}}는 남은 크레딧을 알려 주지 않아요. 이 한도로 알림을 받으세요.",
     "balance_alert_unsupported": "{{provider}}는 잔액을 알려 주지 않아요",
@@ -1882,7 +1882,7 @@
     "keyword_label": "감지 단어",
     "keyword_hint": "채팅 맨 앞에 이 단어가 있으면 단어를 빼고 보내요. 띄어쓰기 없이 32자까지.",
     "keyword_placeholder": "예: !디코",
-    "channel_note": "보낼 채널은 디스코드 탭의 채널 배정이나 /사바쨩 배정에서 게임 채팅으로 정해요."
+    "channel_note": "보낼 채널은 <link/>에서 게임 채팅으로 배정하거나 /사바쨩 배정으로 정해요."
   },
   "controllers": {
     "desc": "이 명단에 있는 사람은 이 서버를 시작·정지·재시작하고 백업을 만들 수 있어요. 관리자 이상은 명단에 없어도 돼요.",
@@ -2215,5 +2215,12 @@
     "minute": "분",
     "pick_date": "날짜 선택",
     "pick_time": "시간 선택"
+  },
+  "links": {
+    "open": "{{path}} 열기",
+    "server_missing": "그 서버를 찾을 수 없어 서버 목록을 열었어요.",
+    "guild_missing": "그 디스코드 서버가 연결돼 있지 않아 연결 화면을 열었어요.",
+    "pick_guild": "연결된 디스코드 서버가 여럿이에요. 왼쪽에서 하나를 골라 주세요.",
+    "tab_missing": "그 탭은 지금 쓸 수 없어 이 화면을 열었어요."
   }
 }

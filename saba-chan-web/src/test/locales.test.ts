@@ -110,6 +110,7 @@ const SAME_AS_EN: Record<string, string[]> = {
     'pt-BR': [
         'gui.json:discord.iw_cmd_status',
         'gui.json:settings_modal.tab_console',
+        'gui.json:command_modal.via_console',
         'gui.json:monitor.pick_clock',
         'gui.json:monitor.pick_network_all',
         'web.json:app_name',
@@ -180,6 +181,7 @@ const SAME_AS_EN: Record<string, string[]> = {
     fr: [
         'gui.json:monitor.ports_port',
         'gui.json:settings_modal.tab_console',
+        'gui.json:command_modal.via_console',
         'gui.json:monitor.pick_network_all',
         'web.json:app_name',
         'web.json:tabs.label',

@@ -1137,7 +1137,7 @@
     "private_queries_title": "Show query results only to the caller",
     "private_queries_desc": "Answers that only the asker needs, such as port forwarding checks, backup lists and resource usage, show only to them, keeping the channel tidy. Shared answers such as server status and players stay visible.",
     "start_notice": "{{name}} start/stop alert",
-    "start_notice_hint": "Servers with the bell on are announced in this Discord server's alert channel when they start or stop without a Discord command (app, web, CLI, schedule, auto restart, in game, crash). Starts and stops from Discord are left out. PC alerts such as crashes and backups go to the PC owner by DM. Pick the alert channel in the Channels tab.",
+    "start_notice_hint": "Servers with the bell on are announced in this Discord server's alert channel when they start or stop without a Discord command (app, web, CLI, schedule, auto restart, in game, crash). Starts and stops from Discord are left out. PC alerts such as crashes and backups go to the PC owner by DM. Pick the alert channel in <link/>.",
     "start_notice_save_failed": "Couldn't save the start/stop alert: {{error}}",
     "full_notice": "Full server alert for {{name}}",
     "full_notice_hint": "Servers with the person button on post in the alert channel when they fill up or a slot opens again.",
@@ -1171,7 +1171,7 @@
     "perm_confirm_tier_default": "(Default: {{risk}})",
     "perm_confirm_tier_mixed": "Varies by instance",
     "perm_ladder_done": "Back",
-    "instance_menu_hint": "Open an instance to see the commands each level can use. Set member levels in the Members tab.",
+    "instance_menu_hint": "Open an instance to see the commands each level can use. Set member levels in <link/>.",
     "instance_menu_all": "All instances' permissions",
     "instance_menu_open": "{{name}} permissions",
     "back_to_instances": "Instances",
@@ -1485,7 +1485,7 @@
     "memo_placeholder": "What Saba-chan should know about this server: tone, how to address people, mood, interests. Added after the default instructions.",
     "err_memo": "The server prompt can be up to {{max}} characters.",
     "relay_delete_pending": "The old Talking Saba-chan settings haven't been removed from Server-chan yet. It will retry on the next connection.",
-    "channels_moved": "Pick the channels Talking Saba-chan chats in from the Server tools tab of the Discord server screen.",
+    "channels_moved": "Pick the channels Talking Saba-chan chats in from <link/>.",
     "models_need_key": "Save an API key to load the available models.",
     "models_need_guild": "Connect a Discord server to load the available models.",
     "models_err_NO_API_KEY": "The API key has not reached the server yet. Try again shortly.",
@@ -1507,8 +1507,8 @@
     "saba_desc": "The API key, model and remaining credit shared by every Discord server. Features are turned on and off per Discord server.",
     "model_title": "Model",
     "model_desc": "Talking Saba-chan answers with this model in every Discord server.",
-    "prefix_calls_guild": "It answers when called with a prefix from this server's Bot tab.",
-    "guild_desc": "Choose whether Talking Saba-chan works in this server, how she answers and which tools she uses. The API key and model are set in Discord › Saba-chan settings.",
+    "prefix_calls_guild": "It answers when called with a prefix from <link/>.",
+    "guild_desc": "Choose whether Talking Saba-chan works in this server, how she answers and which tools she uses. The API key and model are set in <link/>.",
     "token_limit_unit": "million tokens",
     "token_limit_no_balance": "{{provider}} does not report the remaining credit. Use this limit to get alerts.",
     "balance_alert_unsupported": "{{provider}} does not report a balance",
@@ -1882,7 +1882,7 @@
     "keyword_label": "Keyword",
     "keyword_hint": "Chat that starts with this word is sent without it. One word, up to 32 characters.",
     "keyword_placeholder": "e.g. !dc",
-    "channel_note": "Pick the channel under channel assignment in the Discord tab, or with /saba assign → Game chat."
+    "channel_note": "Assign the channel as Game chat in <link/>, or with /saba assign → Game chat."
   },
   "controllers": {
     "desc": "People on this list can start, stop and restart this server and make backups. Admins and above don't need to be listed.",
@@ -2215,5 +2215,12 @@
     "minute": "Minute",
     "pick_date": "Pick a date",
     "pick_time": "Pick a time"
+  },
+  "links": {
+    "open": "Open {{path}}",
+    "server_missing": "That server can't be found, so the server list is open instead.",
+    "guild_missing": "That Discord server isn't connected, so the connection screen is open instead.",
+    "pick_guild": "Several Discord servers are connected. Pick one on the left.",
+    "tab_missing": "That tab isn't available here, so this screen is open instead."
   }
 }

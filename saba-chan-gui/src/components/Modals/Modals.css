@@ -1307,7 +1307,7 @@
 .notice-card-detail {
     font-size: calc(12px * var(--font-scale));
     color: var(--text-secondary);
-    margin: 2px 0 0;
+    margin: var(--sp-0-5) 0 0;
     line-height: 1.4;
     word-break: break-word;
 }

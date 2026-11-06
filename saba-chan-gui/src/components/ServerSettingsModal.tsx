@@ -9,6 +9,7 @@ import { checkPortConflicts, hiddenFields, validateAllSettings } from '../utils/
 import { CliLine, changedForCli } from './CliLine';
 import { CustomDropdown, ExtensionSlot, Icon, SabaCheckbox, SabaToggle } from './index';
 import { LaunchPreview, launchPreviewAvailable } from './servers/LaunchPreview';
+import { LinkedText } from './ui/ScreenLink';
 
 // 데몬이 받는 설정 type (module_loader SETTING_TYPES, 스키마 2의 list·multiline). 밖의 값은 글자 칸으로 그린다
 const FIELD_TYPES = ['text', 'password', 'number', 'file', 'select', 'boolean', 'list', 'multiline'];
@@ -393,7 +394,9 @@ function GeneralTab({
                             />
                         </div>
                     )}
-                    <p className="protocol-mode-description">{t('game_chat.channel_note')}</p>
+                    <p className="protocol-mode-description">
+                        <LinkedText i18nKey="game_chat.channel_note" to="discord/*/moderation/channels" />
+                    </p>
                 </div>
             )}
 

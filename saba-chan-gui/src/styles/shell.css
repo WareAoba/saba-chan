@@ -2250,6 +2250,36 @@ button.activity-line:hover {
     margin-top: calc(-1 * var(--sp-1));
 }
 
+/* 안내 문구 속 화면 링크 (ui/ScreenLink, 사용자 11-06 #19): 가는 길을 보이고 누르면 그 화면을 연다 */
+.screen-link {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-1);
+    margin: 0 var(--sp-0-5);
+    padding: 0 var(--sp-2);
+    border: 0;
+    border-radius: 7px;
+    background: var(--accent-soft);
+    color: var(--accent);
+    font: inherit;
+    font-weight: 600;
+    line-height: 1.6;
+    white-space: nowrap;
+    cursor: pointer;
+    vertical-align: baseline;
+}
+.screen-link:hover,
+.screen-link:focus-visible {
+    outline: 1px solid var(--accent);
+}
+.screen-link-sep {
+    opacity: 0.6;
+    font-weight: 400;
+}
+.screen-link-arrow {
+    font-size: 0.9em;
+}
+
 /* 멤버 한 명 */
 .dc-member-head {
     display: flex;

@@ -1137,7 +1137,7 @@
     "private_queries_title": "查询结果仅自己可见",
     "private_queries_desc": "端口转发检查、备份列表、资源使用量等只有提问者需要的回答只对其本人显示，保持频道整洁。服务器状态、在线玩家等大家一起看的回答照常显示。",
     "start_notice": "{{name}} 启动/停止通知",
-    "start_notice_hint": "开启铃铛的服务器在不通过 Discord 命令启动或停止时(应用、网页、CLI、计划、自动重启、游戏内、崩溃)，会在此 Discord 服务器的通知频道告知。从 Discord 启动和停止的除外。崩溃、备份等 PC 通知会私信发给 PC 主人。通知频道在“频道”标签中设置。",
+    "start_notice_hint": "开启铃铛的服务器在不通过 Discord 命令启动或停止时(应用、网页、CLI、计划、自动重启、游戏内、崩溃)，会在此 Discord 服务器的通知频道告知。从 Discord 启动和停止的除外。崩溃、备份等 PC 通知会私信发给 PC 主人。通知频道在<link/>中设置。",
     "start_notice_save_failed": "无法保存启动/停止通知：{{error}}",
     "full_notice": "{{name}} 满员提醒",
     "full_notice_hint": "打开人形按钮的服务器在满员或重新有空位时会在通知频道提醒。",
@@ -1171,7 +1171,7 @@
     "perm_confirm_tier_default": "(原为: {{risk}})",
     "perm_confirm_tier_mixed": "各实例不同",
     "perm_ladder_done": "返回",
-    "instance_menu_hint": "打开实例即可查看各等级可用的命令。成员等级在“成员”标签页中设置。",
+    "instance_menu_hint": "打开实例即可查看各等级可用的命令。成员等级在<link/>中设置。",
     "instance_menu_all": "所有实例的权限",
     "instance_menu_open": "{{name}} 的权限",
     "back_to_instances": "实例列表",
@@ -1485,7 +1485,7 @@
     "memo_placeholder": "萨巴酱需要了解的这个服务器的情况：语气、称呼、氛围、兴趣等。附加在默认指令之后。",
     "err_memo": "服务器提示词最多 {{max}} 个字符。",
     "relay_delete_pending": "旧的会说话的 Saba-chan 设置尚未从中继删除，下次连接时会再次删除。",
-    "channels_moved": "会说话的 Saba-chan 聊天的频道，请在 Discord 服务器页面的“服务器管理”标签中选择。",
+    "channels_moved": "会说话的 Saba-chan 聊天的频道，请在<link/>中选择。",
     "models_need_key": "保存 API 密钥后会加载可用的模型。",
     "models_need_guild": "连接 Discord 服务器后会加载可用的模型。",
     "models_err_NO_API_KEY": "API 密钥尚未传到服务器。请稍后再试。",
@@ -1507,8 +1507,8 @@
     "saba_desc": "所有 Discord 服务器共用的 API 密钥、模型和剩余额度。功能的开关按每个 Discord 服务器设置。",
     "model_title": "模型",
     "model_desc": "会说话的 Saba-chan 在所有 Discord 服务器中都用此模型回答。",
-    "prefix_calls_guild": "用此服务器机器人标签中的呼叫词呼叫时会回答。",
-    "guild_desc": "选择是否在此服务器中使用会说话的 Saba-chan、如何回答以及使用哪些工具。API 密钥和模型在 Discord › Saba-chan 设置中设置。",
+    "prefix_calls_guild": "用<link/>中的呼叫词呼叫时会回答。",
+    "guild_desc": "选择是否在此服务器中使用会说话的 Saba-chan、如何回答以及使用哪些工具。API 密钥和模型在<link/>中设置。",
     "token_limit_unit": "百万 token",
     "token_limit_no_balance": "{{provider}} 不会告知剩余额度。请用这个上限接收提醒。",
     "balance_alert_unsupported": "{{provider}} 不会告知余额",
@@ -1882,7 +1882,7 @@
     "keyword_label": "关键词",
     "keyword_hint": "聊天开头有此词时，去掉该词后发送。不含空格，最多 32 个字符。",
     "keyword_placeholder": "例如：!dc",
-    "channel_note": "在 Discord 标签页的频道设置中，或用 /saba assign 选择“游戏聊天”来指定频道。"
+    "channel_note": "在<link/>中把频道指定为“游戏聊天”，或用 /saba assign 选择“游戏聊天”。"
   },
   "controllers": {
     "desc": "名单里的人可以启动、停止、重启这个服务器并创建备份。管理员及以上不在名单里也可以。",
@@ -2215,5 +2215,12 @@
     "minute": "分",
     "pick_date": "选择日期",
     "pick_time": "选择时间"
+  },
+  "links": {
+    "open": "打开 {{path}}",
+    "server_missing": "找不到该服务器，已打开服务器列表。",
+    "guild_missing": "该 Discord 服务器未连接，已打开连接页面。",
+    "pick_guild": "已连接多个 Discord 服务器，请在左侧选择一个。",
+    "tab_missing": "该标签页现在不可用，已打开当前页面。"
   }
 }

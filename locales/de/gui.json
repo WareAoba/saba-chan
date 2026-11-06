@@ -1137,7 +1137,7 @@
     "private_queries_title": "Abfrageergebnisse nur dem Fragenden zeigen",
     "private_queries_desc": "Antworten, die nur der Fragende braucht, etwa Portprüfungen, Backup-Listen und Ressourcennutzung, sieht nur diese Person, sodass der Kanal aufgeräumt bleibt. Gemeinsame Antworten wie Serverstatus und Spieler bleiben sichtbar.",
     "start_notice": "Start-/Stopp-Hinweis für {{name}}",
-    "start_notice_hint": "Server mit aktivierter Glocke werden im Hinweiskanal dieses Discord-Servers gemeldet, wenn sie ohne Discord-Befehl starten oder stoppen (App, Web, CLI, Zeitplan, automatischer Neustart, im Spiel, Absturz). Starts und Stopps aus Discord werden nicht gemeldet. PC-Hinweise wie Abstürze und Backups gehen per DM an den PC-Besitzer. Den Hinweiskanal wählst du im Tab Kanäle.",
+    "start_notice_hint": "Server mit aktivierter Glocke werden im Hinweiskanal dieses Discord-Servers gemeldet, wenn sie ohne Discord-Befehl starten oder stoppen (App, Web, CLI, Zeitplan, automatischer Neustart, im Spiel, Absturz). Starts und Stopps aus Discord werden nicht gemeldet. PC-Hinweise wie Abstürze und Backups gehen per DM an den PC-Besitzer. Den Hinweiskanal wählst du unter <link/>.",
     "start_notice_save_failed": "Start-/Stopp-Hinweis konnte nicht gespeichert werden: {{error}}",
     "full_notice": "Voll-Hinweis für {{name}}",
     "full_notice_hint": "Server mit eingeschalteter Personen-Schaltfläche melden im Hinweiskanal, wenn sie voll sind oder wieder ein Platz frei wird.",
@@ -1171,7 +1171,7 @@
     "perm_confirm_tier_default": "(Standard: {{risk}})",
     "perm_confirm_tier_mixed": "Je nach Instanz",
     "perm_ladder_done": "Zurück",
-    "instance_menu_hint": "Öffne eine Instanz, um die Befehle je Stufe zu sehen. Die Stufen der Mitglieder legst du im Tab Mitglieder fest.",
+    "instance_menu_hint": "Öffne eine Instanz, um die Befehle je Stufe zu sehen. Die Stufen der Mitglieder legst du unter <link/> fest.",
     "instance_menu_all": "Rechte aller Instanzen",
     "instance_menu_open": "Rechte von {{name}}",
     "back_to_instances": "Instanzen",
@@ -1485,7 +1485,7 @@
     "memo_placeholder": "Was Saba-chan über diesen Server wissen soll: Tonfall, Anrede, Stimmung, Interessen. Wird nach den Standardanweisungen angehängt.",
     "err_memo": "Der Server-Prompt darf höchstens {{max}} Zeichen lang sein.",
     "relay_delete_pending": "Die alten Einstellungen für Sprechende Saba-chan wurden noch nicht vom Relay entfernt. Beim nächsten Verbinden wird es erneut versucht.",
-    "channels_moved": "Die Kanäle, in denen die sprechende Saba-chan chattet, wählst du im Tab Serververwaltung der Discord-Server-Ansicht.",
+    "channels_moved": "Die Kanäle, in denen die sprechende Saba-chan chattet, wählst du unter <link/>.",
     "models_need_key": "Speichere einen API-Schlüssel, um die verfügbaren Modelle zu laden.",
     "models_need_guild": "Verbinde einen Discord-Server, um die verfügbaren Modelle zu laden.",
     "models_err_NO_API_KEY": "Der API-Schlüssel ist noch nicht beim Server angekommen. Versuche es gleich noch einmal.",
@@ -1507,8 +1507,8 @@
     "saba_desc": "Der API-Schlüssel, das Modell und das restliche Guthaben, die alle Discord-Server teilen. Funktionen werden pro Discord-Server ein- und ausgeschaltet.",
     "model_title": "Modell",
     "model_desc": "Die sprechende Saba-chan antwortet auf allen Discord-Servern mit diesem Modell.",
-    "prefix_calls_guild": "Sie antwortet, wenn sie mit einem Präfix aus dem Bot-Tab dieses Servers gerufen wird.",
-    "guild_desc": "Lege fest, ob die sprechende Saba-chan auf diesem Server arbeitet, wie sie antwortet und welche Werkzeuge sie nutzt. API-Schlüssel und Modell legst du unter Discord › Saba-chan-Einstellungen fest.",
+    "prefix_calls_guild": "Sie antwortet, wenn sie mit einem Präfix aus <link/> gerufen wird.",
+    "guild_desc": "Lege fest, ob die sprechende Saba-chan auf diesem Server arbeitet, wie sie antwortet und welche Werkzeuge sie nutzt. API-Schlüssel und Modell legst du unter <link/> fest.",
     "token_limit_unit": "Mio. Tokens",
     "token_limit_no_balance": "{{provider}} meldet das verbleibende Guthaben nicht. Nutze dieses Limit für Benachrichtigungen.",
     "balance_alert_unsupported": "{{provider}} meldet kein Guthaben",
@@ -1882,7 +1882,7 @@
     "keyword_label": "Stichwort",
     "keyword_hint": "Chat, der mit diesem Wort beginnt, wird ohne das Wort gesendet. Ein Wort, bis zu 32 Zeichen.",
     "keyword_placeholder": "z. B. !dc",
-    "channel_note": "Den Kanal wählst du in der Kanalzuweisung im Discord-Tab oder mit /saba assign → Spielchat."
+    "channel_note": "Den Kanal weist du unter <link/> als Spielchat zu oder mit /saba assign → Spielchat."
   },
   "controllers": {
     "desc": "Personen auf dieser Liste können diesen Server starten, stoppen und neu starten und Backups erstellen. Admins und höher müssen nicht auf der Liste stehen.",
@@ -2215,5 +2215,12 @@
     "minute": "Minute",
     "pick_date": "Datum wählen",
     "pick_time": "Uhrzeit wählen"
+  },
+  "links": {
+    "open": "{{path}} öffnen",
+    "server_missing": "Dieser Server wurde nicht gefunden, daher ist die Serverliste geöffnet.",
+    "guild_missing": "Dieser Discord-Server ist nicht verbunden, daher ist die Verbindungsansicht geöffnet.",
+    "pick_guild": "Mehrere Discord-Server sind verbunden. Wähle links einen aus.",
+    "tab_missing": "Dieser Tab ist hier nicht verfügbar, daher ist diese Ansicht geöffnet."
   }
 }

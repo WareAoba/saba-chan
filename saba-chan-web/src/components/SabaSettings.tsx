@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useApp } from '../store';
 import { Dropdown } from './Dropdown';
+import { LinkedText } from './ScreenLink';
 import { Button, Card, errorText, failed } from './ui';
 import type { ApiBody, Server, ServerPanelProps } from '../types';
 
@@ -221,7 +222,9 @@ export function SabaSettings({ api, server, running }: Omit<ServerPanelProps, 'm
                                 <small className="hint">{tg('game_chat.keyword_hint')}</small>
                             </label>
                         )}
-                        <small className="hint">{tg('game_chat.channel_note')}</small>
+                        <small className="hint">
+                            <LinkedText ns="gui" i18nKey="game_chat.channel_note" to="discord/*/moderation/channels" />
+                        </small>
                     </div>
                 </Card>
             )}
