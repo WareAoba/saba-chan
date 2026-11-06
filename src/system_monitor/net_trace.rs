@@ -894,7 +894,7 @@ mod platform {
                 return 0;
             }
             let code = unsafe {
-                EventAccessControl(&KERNEL_NETWORK_GUID, EventSecurityAddDACL as u32, user.0, TRACELOG_GUID_ENABLE, 1)
+                EventAccessControl(&KERNEL_NETWORK_GUID, EventSecurityAddDACL as u32, user.0, TRACELOG_GUID_ENABLE, true)
             };
             if code != ERROR_SUCCESS {
                 eprintln!("net-trace: provider permission failed ({})", code);
