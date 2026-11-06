@@ -1044,7 +1044,7 @@
     "perm_preset_reset": "명령 {{count}}개의 레벨이 {{preset}} 프리셋 값으로 다시 맞춰져요.",
     "perm_preset_apply": "적용",
     "perm_ladder": "권한 단계",
-    "perm_ladder_hint": "블록을 끌어 순서를 정하고, 이름을 눌러 바꿔요. 위에 있을수록 높은 레벨이에요. 소유자와 금지는 움직일 수 없고, 소유자·게스트·금지는 지울 수 없어요.",
+    "perm_ladder_hint": "블록을 끌어 순서를 정하고, 이름을 눌러 바꿔요. 위에 있을수록 높은 레벨이에요. 소유자와 금지는 움직일 수 없고, 소유자·게스트·금지는 지울 수 없어요. 명령을 맞바꾸려면 아래 \"권한 맞바꾸기\"를 누르고 레벨 두 개를 골라요.",
     "perm_ladder_name": "레벨 이름",
     "perm_ladder_rename": "{{name}} 이름 바꾸기",
     "perm_ladder_members": "{{count}}명",
@@ -1326,7 +1326,15 @@
     "perm_line_apart": "따로 정한 명령 {{count}}개는 그대로 둬요",
     "perm_line_up": "조작 가능 줄 위로",
     "perm_line_down": "조작 가능 줄 아래로",
-    "perm_line_follow": "조작 가능 줄을 따름"
+    "perm_line_follow": "조작 가능 줄을 따름",
+    "perm_swap": "권한 맞바꾸기",
+    "perm_swap_cancel": "그만두기",
+    "perm_swap_pick": "바꿀 레벨 두 개를 골라요 (0/2)",
+    "perm_swap_pick_more": "{{name}} ⇄ ? · 레벨을 하나 더 골라요 (1/2)",
+    "perm_swap_choose": "{{name}} 고르기",
+    "perm_swap_done": "{{a}} ⇄ {{b}} · 사람은 그대로예요. 저장하기 전까지는 바뀌지 않아요.",
+    "perm_swap_none": "이 레벨부터 쓰는 명령 없음",
+    "perm_swap_more": "+{{count}}개"
   },
   "maintenance": {
     "load_failed": "백업·예약 정보를 불러오지 못했어요.",

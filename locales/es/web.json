@@ -198,7 +198,7 @@
       "-1": "Bloqueado"
     },
     "ladder": "Niveles de permiso",
-    "ladder_hint": "Cuanto más arriba, más alto el nivel. Propietario y Bloqueado no se mueven. Cambia un nombre en su casilla. Propietario, Invitado y Bloqueado no se pueden borrar.",
+    "ladder_hint": "Cuanto más arriba, más alto el nivel. Propietario y Bloqueado no se mueven. Cambia un nombre en su casilla. Propietario, Invitado y Bloqueado no se pueden borrar. Para intercambiar comandos, pulsa «Intercambiar permisos» abajo y elige dos niveles.",
     "ladder_name": "Nombre del nivel",
     "ladder_fixed": "Fijo",
     "ladder_up": "Subir {{name}}",

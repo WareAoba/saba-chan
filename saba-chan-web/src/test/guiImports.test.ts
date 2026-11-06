@@ -27,6 +27,8 @@ const ALLOWED = new Set([
     '@gui/utils/installFields',
     // 권한 단계 계산과 사다리 편집 (화면 없는 순수 함수)
     '@gui/components/discord/levels',
+    // 칩이 자리를 바꾸는 움직임 (권한 맞바꾸기, 앱 사다리와 같은 움직임)
+    '@gui/components/discord/flip',
     // 인스턴스 낱말 초안과 검사 오류 나누기 (화면 없는 순수 함수)
     '@gui/components/discord/instanceWords',
     // 조작 가능 명단 넣기·빼기·멤버 고르기 (GUI 조작 가능 탭과 같은 순수 함수)

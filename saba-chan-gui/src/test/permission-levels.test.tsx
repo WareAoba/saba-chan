@@ -237,6 +237,43 @@ describe('권한 레벨 계산', () => {
         expect(L.lineAt(saved, saved, 1)).toBe(2);
     });
 
+    // 사용자 지정 2026-11-07: 사람은 두고 두 레벨이 그 레벨부터 가진 명령만 바꾼다
+    it('권한 맞바꾸기: 두 레벨의 명령만 바꾸고, 고정 명령·지운 레벨은 그대로, 줄은 명령을 따라간다', () => {
+        const board = baseBoard();
+        const ladder = L.ladderOf(base());
+        // 항목 순서: mc-1 stop(1) · mc-2 stop(2) · say(0) · say(0) · instance.create(2) · update.apply(3, 고정)
+        expect(L.draftLevels(board, ladder, [[1, 2]])).toEqual([2, 1, 0, 0, 1, 3]);
+        expect(
+            L.draftLevels(board, ladder, [
+                [1, 2],
+                [2, 1],
+            ]),
+        ).toEqual([1, 2, 0, 0, 2, 3]);
+        expect(L.draftLevels(board, ladder, [[3, 0]])).toEqual([1, 2, 3, 3, 2, 3]);
+        // 초안에서 지운 레벨이 걸린 맞바꾸기는 뺀다 (데몬이 지운 레벨의 명령을 위로 옮긴다)
+        expect(L.draftLevels(board, L.removeLevel(ladder, 2), [[1, 2]])).toEqual([1, 2, 0, 0, 2, 3]);
+        expect(L.boardPatch(board, L.draftLevels(board, ladder, [[1, 2]]))).toEqual({
+            'mc-1/stop': 2,
+            'mc-1/server.stop': null,
+            'mc-2/stop': null,
+            'mc-2/server.stop': null,
+            'instance.create': 1,
+        });
+        expect(L.boardPatch(board, L.draftLevels(board, ladder, []))).toEqual({});
+        expect(L.swapLine(2, 1, 2)).toBe(1);
+        expect(L.swapLine(0, 1, 2)).toBe(0);
+        // 줄을 따르는 명령은 줄 자리로 (맞바꾸기 뒤에 줄을 옮겨도)
+        const line = { followers: [board.items[4]] };
+        expect(L.draftLevels(board, ladder, [[1, 2]], line, 3)).toEqual([2, 1, 0, 0, 3, 3]);
+        // 줄 자리는 차례를 따라간다: 맞바꾸기면 명령을 따라, 지운 칸이 걸린 맞바꾸기는 줄도 되돌린다
+        expect(L.draftLine({ level: 1 }, ladder, [[1, 2]])).toBe(2);
+        expect(L.draftLine({ level: 1 }, L.removeLevel(ladder, 1), [[1, 2]])).toBe(1);
+        expect(L.draftLine({ level: 1 }, ladder, [[1, 2], { line: 0 }, [0, 3]])).toBe(3);
+        expect(L.draftLine(null, ladder, [[1, 2]])).toBeNull();
+        expect(ladder.map(L.swappable)).toEqual([true, true, true, true, false]);
+        expect(L.swappable({ key: 'new-1', name: 'Mod' })).toBe(false);
+    });
+
     it('기본 레벨 멤버는 디스코드 멤버 중 소유자도 아니고 레벨도 없는 사람', () => {
         expect(L.defaultMembers(base(), relayMembers).map((m) => m.id)).toEqual(['1003']);
         expect(L.defaultMembers(base(), undefined)).toEqual([]);
@@ -587,6 +624,39 @@ describe('권한 화면', () => {
         await flush();
         expect(window.api.permissionsUpdate).toHaveBeenCalledWith('g1', {
             commandLevels: { 'mc-1/start': 3, 'mc-2/start': 3 },
+        });
+    });
+
+    it('레벨 편집: 권한 맞바꾸기를 누르고 두 레벨을 고르면 사람은 두고 명령만 바꿔 저장한다', async () => {
+        await openPeople();
+        fireEvent.click(screen.getByRole('button', { name: /Edit levels/ }));
+        // 칸마다 그 레벨부터 쓰는 명령 칩
+        expect(within(level('User')).getByText('Stop')).toBeInTheDocument();
+        expect(within(level('Admin')).getByText('Create server')).toBeInTheDocument();
+        expect(within(level('Owner')).getByText('Update')).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Pick User' })).toBeNull();
+
+        fireEvent.click(screen.getByRole('button', { name: 'Swap permissions' }));
+        expect(screen.getByText('Pick two levels to swap (0/2)')).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Pick Banned' })).toBeNull();
+        fireEvent.click(screen.getByRole('button', { name: 'Pick User' }));
+        expect(screen.getByText(/User ⇄ \? · pick one more level \(1\/2\)/)).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Pick Admin' }));
+        expect(within(level('Admin')).getByText('Stop')).toBeInTheDocument();
+        expect(within(level('User')).getByText('Create server')).toBeInTheDocument();
+        expect(screen.getByText(/User ⇄ Admin · People stay where they are/)).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Pick User' })).toBeNull();
+
+        fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+        await flush();
+        expect(window.api.permissionsUpdate).toHaveBeenCalledWith('g1', {
+            commandLevels: {
+                'mc-1/stop': 2,
+                'mc-1/server.stop': null,
+                'mc-2/stop': null,
+                'mc-2/server.stop': null,
+                'instance.create': 1,
+            },
         });
     });
 

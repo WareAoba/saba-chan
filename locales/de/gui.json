@@ -1044,7 +1044,7 @@
     "perm_preset_reset": "{{count}} Befehlsstufe(n) werden auf die Vorlage {{preset}} zurückgesetzt.",
     "perm_preset_apply": "Anwenden",
     "perm_ladder": "Berechtigungsstufen",
-    "perm_ladder_hint": "Zieh die Blöcke, um die Reihenfolge festzulegen, und tippe auf einen Namen, um ihn zu ändern. Weiter oben heißt höhere Stufe. Besitzer und Gesperrt bleiben an ihrem Platz, Besitzer, Gast und Gesperrt lassen sich nicht löschen.",
+    "perm_ladder_hint": "Zieh die Blöcke, um die Reihenfolge festzulegen, und tippe auf einen Namen, um ihn zu ändern. Weiter oben heißt höhere Stufe. Besitzer und Gesperrt bleiben an ihrem Platz, Besitzer, Gast und Gesperrt lassen sich nicht löschen. Um Befehle zu tauschen, tippe unten auf „Rechte tauschen“ und wähle zwei Stufen.",
     "perm_ladder_name": "Stufenname",
     "perm_ladder_rename": "{{name}} umbenennen",
     "perm_ladder_members": "{{count}} Mitglieder",
@@ -1326,7 +1326,15 @@
     "perm_line_apart": "{{count}} einzeln festgelegte Befehle bleiben, wie sie sind",
     "perm_line_up": "Bediener-Linie nach oben",
     "perm_line_down": "Bediener-Linie nach unten",
-    "perm_line_follow": "folgt der Bediener-Linie"
+    "perm_line_follow": "folgt der Bediener-Linie",
+    "perm_swap": "Rechte tauschen",
+    "perm_swap_cancel": "Abbrechen",
+    "perm_swap_pick": "Wähle zwei Stufen zum Tauschen (0/2)",
+    "perm_swap_pick_more": "{{name}} ⇄ ? · wähle noch eine Stufe (1/2)",
+    "perm_swap_choose": "{{name}} wählen",
+    "perm_swap_done": "{{a}} ⇄ {{b}} · Die Personen bleiben, wo sie sind. Erst beim Speichern ändert sich etwas.",
+    "perm_swap_none": "Keine Befehle ab dieser Stufe",
+    "perm_swap_more": "+{{count}} weitere"
   },
   "maintenance": {
     "load_failed": "Backups und Zeitpläne konnten nicht geladen werden.",

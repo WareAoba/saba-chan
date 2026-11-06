@@ -1044,7 +1044,7 @@
     "perm_preset_reset": "Se restablecerán {{count}} nivel(es) de comando al preajuste {{preset}}.",
     "perm_preset_apply": "Aplicar",
     "perm_ladder": "Niveles de permiso",
-    "perm_ladder_hint": "Arrastra los bloques para ordenarlos y toca un nombre para cambiarlo. Cuanto más arriba, más alto el nivel. Propietario y Bloqueado no se mueven, y Propietario, Invitado y Bloqueado no se pueden borrar.",
+    "perm_ladder_hint": "Arrastra los bloques para ordenarlos y toca un nombre para cambiarlo. Cuanto más arriba, más alto el nivel. Propietario y Bloqueado no se mueven, y Propietario, Invitado y Bloqueado no se pueden borrar. Para intercambiar comandos, pulsa «Intercambiar permisos» abajo y elige dos niveles.",
     "perm_ladder_name": "Nombre del nivel",
     "perm_ladder_rename": "Cambiar el nombre de {{name}}",
     "perm_ladder_members": "{{count}} miembros",
@@ -1326,7 +1326,15 @@
     "perm_line_apart": "{{count}} comando(s) fijados aparte se quedan como están",
     "perm_line_up": "Subir la línea de operadores",
     "perm_line_down": "Bajar la línea de operadores",
-    "perm_line_follow": "sigue la línea de operadores"
+    "perm_line_follow": "sigue la línea de operadores",
+    "perm_swap": "Intercambiar permisos",
+    "perm_swap_cancel": "Cancelar",
+    "perm_swap_pick": "Elige dos niveles para intercambiar (0/2)",
+    "perm_swap_pick_more": "{{name}} ⇄ ? · elige un nivel más (1/2)",
+    "perm_swap_choose": "Elegir {{name}}",
+    "perm_swap_done": "{{a}} ⇄ {{b}} · Las personas se quedan donde están. Nada cambia hasta que guardes.",
+    "perm_swap_none": "Ningún comando empieza en este nivel",
+    "perm_swap_more": "+{{count}} más"
   },
   "maintenance": {
     "load_failed": "No se pudieron cargar las copias de seguridad ni las programaciones.",

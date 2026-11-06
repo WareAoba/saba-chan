@@ -1,5 +1,6 @@
 import * as L from '@gui/components/discord/levels';
 import type { CommandBoard, GuildPermissions as PermData, LadderLevel } from '@gui/components/discord/levels';
+import { useFlip } from '@gui/components/discord/flip';
 import * as P from '@gui/components/discord/nodePermissions';
 import type { DiscordMember } from '@gui/components/discord/types';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -85,6 +86,8 @@ interface LadderEditorProps {
     }) => void;
 }
 
+const MAX_CHIPS = 12; // 칸마다 보이는 칩 수 (넘치면 +N, 앱과 같다)
+
 export function LadderEditor({ perm, board, busy, onSave }: LadderEditorProps) {
     const { t } = useTranslation();
     const { t: tg } = useTranslation('gui');
@@ -92,28 +95,55 @@ export function LadderEditor({ perm, board, busy, onSave }: LadderEditorProps) {
     const [draft, setDraft] = useState(saved);
     const [name, setName] = useState('');
     const line = L.controllerLine(board);
-    const [lineLevel, setLineLevel] = useState(line?.level ?? null);
+    // 권한 맞바꾸기 (사용자 지정 2026-11-07): 아래 버튼을 누르고 칸 두 개를 고르면 두 레벨의 명령이 자리를 바꾼다 (앱과 같은 규칙)
+    // 명령 옮긴 차례 (맞바꾸기·줄 옮기기). 줄 자리는 이 차례에서 나온다
+    const [steps, setSteps] = useState<L.CommandStep[]>([]);
+    const [choosing, setChoosing] = useState(false);
+    const [picked, setPicked] = useState<number | null>(null);
+    const listRef = useRef<HTMLUListElement>(null);
+    const flip = useFlip(listRef);
     useEffect(() => setDraft(L.ladderOf(perm)), [perm]);
-    useEffect(() => setLineLevel(line?.level ?? null), [line?.level]);
+    // 데몬 값을 다시 읽으면(저장 뒤) 맞바꾸기 초안을 비운다
+    // biome-ignore lint/correctness/useExhaustiveDependencies: board 가 바뀔 때만 비운다
+    useEffect(() => setSteps([]), [board]);
     const patch = L.ladderPatch(draft);
     const ladderChanged = JSON.stringify(patch) !== JSON.stringify(L.ladderPatch(saved));
+    const lineLevel = L.draftLine(line, draft, steps);
     const lineAt = line && lineLevel !== null ? L.lineAt(saved, draft, lineLevel) : null;
     const lineTarget = lineAt === null ? null : (draft[lineAt].id as number);
-    const lineChanged = !!line && lineTarget !== null && lineTarget !== line.level;
-    const changed = ladderChanged || lineChanged;
+    const levels = L.draftLevels(board, draft, steps, line, lineTarget);
+    const commandLevels = L.boardPatch(board, levels);
+    const commandsChanged = Object.keys(commandLevels).length > 0;
+    const changed = ladderChanged || commandsChanged;
+    const chips = L.stairChips(L.draftBoard(board, levels));
+    const instanceName = (id?: string) => board?.instances?.find((i) => i.id === id)?.name || id;
+    const chipLabel = (c: L.StairChip) => (c.instance ? `${c.title} · ${instanceName(c.instance)}` : c.title || c.name);
+    // 마지막 맞바꾸기 (두 칸이 아직 초안에 있을 때만 알린다)
+    const lastSwap = L.activeSwaps(steps, draft).at(-1) ?? null;
     const removed = saved.some((s) => !draft.some((d) => d.id === s.id));
     const valid = L.ladderValid(draft);
     const localeName = (l: LadderLevel) => levelName(t, null, l.id);
     const label = (l: LadderLevel) => l.name?.trim() || (L.isCustomLevel(l) ? '' : localeName(l));
     const last = draft.length - 1;
+    const nameById = (id: number) => {
+        const l = draft.find((x) => x.id === id);
+        return l ? label(l) : '';
+    };
+    const pick = (id: number) => {
+        if (picked === null || picked === id) return setPicked(picked === id ? null : id);
+        flip();
+        setSteps((s) => [...s, [picked, id]]);
+        setPicked(null);
+        setChoosing(false);
+    };
     const moveLine = (dir: -1 | 1) => {
         const to = lineAt === null ? null : L.lineStep(draft, lineAt, dir);
-        if (to !== null) setLineLevel(draft[to].id ?? null);
+        if (to !== null) setSteps((s) => [...s, { line: draft[to].id as number }]);
     };
     const save = () =>
         onSave({
             ...(ladderChanged ? { ladder: patch } : {}),
-            ...(lineChanged && line ? { commandLevels: L.levelPatch(line.followers, lineTarget as number) } : {}),
+            ...(commandsChanged ? { commandLevels } : {}),
         });
     const lineRow = (at: number) => (
         <li key="controllers-line" className="row ladder-line" aria-label={tg('discord.perm_line')}>
@@ -146,11 +176,26 @@ export function LadderEditor({ perm, board, busy, onSave }: LadderEditorProps) {
         <div className="field">
             <span>{t('perm.ladder')}</span>
             <small className="hint">{t('perm.ladder_hint')}</small>
-            <ul className="rows">
+            <ul ref={listRef} className="rows">
                 {draft.flatMap((l, i) => {
                     const fixed = i === 0 || i === last;
+                    const pickable = choosing && L.swappable(l);
+                    const own = L.swappable(l) ? chips.filter((c) => c.level === l.id) : [];
                     const row = (
-                        <li key={l.id ?? l.key} className="row" aria-label={label(l)}>
+                        <li
+                            key={l.id ?? l.key}
+                            className={`row ladder-row${pickable ? ' is-pickable' : ''}${picked !== null && picked === l.id ? ' is-picked' : ''}`}
+                            aria-label={label(l)}
+                        >
+                            {pickable && (
+                                <button
+                                    type="button"
+                                    className="ladder-pick"
+                                    aria-pressed={picked === l.id}
+                                    aria-label={tg('discord.perm_swap_choose', { name: label(l) })}
+                                    onClick={() => pick(l.id as number)}
+                                />
+                            )}
                             <div className="row-main">
                                 <input
                                     value={l.name ?? ''}
@@ -159,6 +204,27 @@ export function LadderEditor({ perm, board, busy, onSave }: LadderEditorProps) {
                                     aria-label={t('perm.ladder_name')}
                                     onChange={(e) => setDraft((d) => L.renameLevel(d, i, e.target.value))}
                                 />
+                                {L.swappable(l) && (
+                                    <div className="ladder-chips">
+                                        {own.slice(0, MAX_CHIPS).map((c) => (
+                                            <span
+                                                key={c.id}
+                                                data-flip={c.id}
+                                                className={`pill${c.fixed ? ' is-fixed' : ''}`}
+                                            >
+                                                {chipLabel(c)}
+                                            </span>
+                                        ))}
+                                        {own.length > MAX_CHIPS && (
+                                            <span className="pill is-fixed">
+                                                {tg('discord.perm_swap_more', { count: own.length - MAX_CHIPS })}
+                                            </span>
+                                        )}
+                                        {own.length === 0 && (
+                                            <span className="row-sub">{tg('discord.perm_swap_none')}</span>
+                                        )}
+                                    </div>
+                                )}
                             </div>
                             {fixed ? (
                                 <span className="pill">{t('perm.ladder_fixed')}</span>
@@ -194,6 +260,25 @@ export function LadderEditor({ perm, board, busy, onSave }: LadderEditorProps) {
                 })}
             </ul>
             <div className="field-row">
+                <Button
+                    aria-pressed={choosing}
+                    onClick={() => {
+                        setChoosing((c) => !c);
+                        setPicked(null);
+                    }}
+                >
+                    {choosing ? tg('discord.perm_swap_cancel') : tg('discord.perm_swap')}
+                </Button>
+                <small className="hint" aria-live="polite">
+                    {choosing
+                        ? picked === null
+                            ? tg('discord.perm_swap_pick')
+                            : tg('discord.perm_swap_pick_more', { name: nameById(picked) })
+                        : lastSwap &&
+                          tg('discord.perm_swap_done', { a: nameById(lastSwap[0]), b: nameById(lastSwap[1]) })}
+                </small>
+            </div>
+            <div className="field-row">
                 <input
                     value={name}
                     maxLength={L.MAX_NAME}
@@ -218,7 +303,9 @@ export function LadderEditor({ perm, board, busy, onSave }: LadderEditorProps) {
                     disabled={busy || !changed}
                     onClick={() => {
                         setDraft(saved);
-                        setLineLevel(line?.level ?? null);
+                        setSteps([]);
+                        setChoosing(false);
+                        setPicked(null);
                     }}
                 >
                     {t('perm.ladder_revert')}

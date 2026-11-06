@@ -198,7 +198,7 @@
       "-1": "Banned"
     },
     "ladder": "Permission levels",
-    "ladder_hint": "Higher rows are stronger levels. Owner and Blocked stay in place. Edit a name in its box. Owner, Guest and Blocked can't be deleted.",
+    "ladder_hint": "Higher rows are stronger levels. Owner and Blocked stay in place. Edit a name in its box. Owner, Guest and Blocked can't be deleted. To swap commands, press \"Swap permissions\" below and pick two levels.",
     "ladder_name": "Level name",
     "ladder_fixed": "Fixed",
     "ladder_up": "Move {{name}} up",
