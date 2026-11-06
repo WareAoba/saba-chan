@@ -46,7 +46,7 @@ impl Identity {
             tracing::warn!("Remote daemon certificate is unusable; creating a new one");
         }
         let made = rcgen::generate_simple_self_signed(vec![SERVER_NAME.to_string()])?;
-        let (cert, key) = (made.cert.der().to_vec(), made.key_pair.serialize_der());
+        let (cert, key) = (made.cert.der().to_vec(), made.signing_key.serialize_der());
         saba_atomic_file::write(&key_path, &key, saba_atomic_file::Mode::Secret)?;
         saba_atomic_file::write(&cert_path, &cert, saba_atomic_file::Mode::Plain)?;
         Ok(Self::from_der(cert, key))

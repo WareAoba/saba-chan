@@ -209,8 +209,11 @@ impl Hardware {
     }
 
     fn component_temp(&mut self) -> Option<f32> {
-        let comps = self.components.get_or_insert_with(sysinfo::Components::new_with_refreshed_list);
-        if comps.list().is_empty() {
+        if self.components.is_none() {
+            self.components = Some(sysinfo::Components::new_with_refreshed_list().ok()?);
+        }
+        let comps = self.components.as_mut()?;
+        if comps.is_empty() {
             return None;
         }
         comps.refresh(false);

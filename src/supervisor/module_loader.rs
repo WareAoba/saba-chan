@@ -793,7 +793,7 @@ pub const COMMAND_RISKS: [&str; 3] = ["safe", "caution", "danger"];
 pub const PROTOCOLS: [&str; 3] = ["rcon", "rest", "stdin"];
 
 /// JSON 스키마에서도 로더와 같은 값만 받게 한다 (적합성 검사가 데몬과 어긋나지 않게)
-fn schema_version_schema(_: &mut schemars::r#gen::SchemaGenerator) -> schemars::schema::Schema {
+fn schema_version_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
     serde_json::from_value(serde_json::json!({
         "description": "이 파일이 따르는 스키마 버전. 1, 또는 list·multiline 설정과 restart_required·visible_when 등을 쓰면 2(saba-core >=0.1.9)",
         "enum": [BASE_SCHEMA_VERSION, MODULE_SCHEMA_VERSION, null]
@@ -801,7 +801,7 @@ fn schema_version_schema(_: &mut schemars::r#gen::SchemaGenerator) -> schemars::
     .expect("static schema")
 }
 
-fn risk_schema(_: &mut schemars::r#gen::SchemaGenerator) -> schemars::schema::Schema {
+fn risk_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
     serde_json::from_value(serde_json::json!({
         "description": "\"safe\" | \"caution\" | \"danger\" (없으면 caution)",
         "enum": [COMMAND_RISKS[0], COMMAND_RISKS[1], COMMAND_RISKS[2], null]
@@ -2138,7 +2138,9 @@ pub fn load_module_dir(module_path: &Path) -> Result<LoadedModule> {
 
 /// module.toml 스키마 v1의 JSON Schema (편집기 자동완성·모듈 저장소 CI 검증용)
 pub fn module_json_schema() -> serde_json::Value {
-    serde_json::to_value(schemars::schema_for!(ModuleToml)).unwrap_or_default()
+    // 모듈 저장소가 받는 draft-07(`definitions`)로 낸다. schemars 1.x의 기본은 2020-12(`$defs`)다
+    let schema = schemars::generate::SchemaSettings::draft07().into_generator().into_root_schema_for::<ModuleToml>();
+    serde_json::to_value(schema).unwrap_or_default()
 }
 
 pub struct ModuleLoader {

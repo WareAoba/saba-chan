@@ -26,7 +26,7 @@ pub fn merge_patch(target: &mut Value, patch: &Value) {
 /// 내용에 비밀번호가 들 수 있고 지문은 원격에도 보이므로, 데몬이 켤 때마다 새로 정하는 키로 서명한다
 /// (지문만으로 내용을 맞혀 볼 수 없게. 데몬이 다시 뜨면 지문이 바뀌어 한 번 다시 읽게 된다)
 pub fn revision(value: &Value) -> String {
-    use hmac::{Hmac, Mac};
+    use hmac::{Hmac, KeyInit, Mac};
     static KEY: std::sync::OnceLock<[u8; 32]> = std::sync::OnceLock::new();
     let key = KEY.get_or_init(|| {
         let mut key = [0u8; 32];

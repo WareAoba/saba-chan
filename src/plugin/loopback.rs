@@ -151,7 +151,9 @@ pub(super) fn served_by(port: u16, server: Option<u32>) -> bool {
     let Some(owners) = listener_pids(port) else {
         return false;
     };
-    let mut system = sysinfo::System::new();
+    let Ok(mut system) = sysinfo::System::new() else {
+        return false;
+    };
     system.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
     let parent = |pid: u32| system.process(sysinfo::Pid::from_u32(pid)).and_then(|p| p.parent()).map(|p| p.as_u32());
     owned_by(&owners, root, parent)

@@ -20,8 +20,10 @@ pub fn get_running_processes() -> Vec<RunningProcess> {
     // 감시 루프가 2초마다 부른다. Windows는 목록을 들고 있어 `OnlyIfNotSet`이 새로 뜬 프로세스의 경로·커맨드라인만 읽는다
     // (매번 모든 프로세스를 열어 읽는 비용이 크다). 끝난 프로세스는 refresh가 빼고, PID 재사용은 시작 시각으로 가린다.
     // Unix는 런처가 같은 PID로 서버를 exec하면 실행 정보가 바뀌므로 매번 읽는다 (/proc 읽기라 싸다)
-    static SYSTEM: std::sync::LazyLock<std::sync::Mutex<System>> = std::sync::LazyLock::new(|| std::sync::Mutex::new(System::new()));
-    let mut sys = SYSTEM.lock().unwrap_or_else(|e| e.into_inner());
+    // sysinfo가 지원하지 않는 OS면 System을 만들지 못한다: 목록을 비워 둔다
+    static SYSTEM: std::sync::LazyLock<std::sync::Mutex<Option<System>>> = std::sync::LazyLock::new(|| std::sync::Mutex::new(System::new().ok()));
+    let mut guard = SYSTEM.lock().unwrap_or_else(|e| e.into_inner());
+    let Some(sys) = guard.as_mut() else { return Vec::new() };
     let update = if cfg!(windows) { UpdateKind::OnlyIfNotSet } else { UpdateKind::Always };
     // 기본 refresh_processes()는 커맨드라인·작업 폴더를 읽지 않는다: 자동 감지(cmd_patterns, 주인 가리기)에 필요하다
     sys.refresh_processes_specifics(

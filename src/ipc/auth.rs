@@ -74,7 +74,7 @@ pub(crate) fn identity_proof(challenge: &str) -> Option<String> {
 }
 
 fn proof_for_token(token: &str, challenge: &str) -> String {
-    use hmac::{Hmac, Mac};
+    use hmac::{Hmac, KeyInit, Mac};
     use sha2::Sha256;
     let mut mac = Hmac::<Sha256>::new_from_slice(token.as_bytes()).expect("HMAC accepts any key length");
     mac.update(challenge.as_bytes());

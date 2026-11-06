@@ -6,7 +6,7 @@
 use std::sync::{Arc, OnceLock};
 
 use futures_util::StreamExt;
-use rcgen::{BasicConstraints, Certificate, CertificateParams, IsCa, KeyPair};
+use rcgen::{BasicConstraints, Certificate, CertificateParams, IsCa, Issuer, KeyPair};
 use rustls::pki_types::{PrivateKeyDer, PrivatePkcs8KeyDer};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
@@ -14,7 +14,7 @@ use tokio_tungstenite::Connector;
 
 struct Ca {
     cert: Certificate,
-    key: KeyPair,
+    issuer: Issuer<'static, KeyPair>,
 }
 
 fn make_ca() -> Ca {
@@ -22,7 +22,7 @@ fn make_ca() -> Ca {
     let mut params = CertificateParams::new(Vec::<String>::new()).unwrap();
     params.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
     let cert = params.self_signed(&key).unwrap();
-    Ca { cert, key }
+    Ca { cert, issuer: Issuer::new(params, key) }
 }
 
 /// OS 저장소에 넣은 사설 CA. 테스트 프로세스에서 한 번만 정한다
@@ -49,7 +49,7 @@ where
     Fut: std::future::Future<Output = ()> + Send,
 {
     let key = KeyPair::generate().unwrap();
-    let cert = CertificateParams::new(vec!["localhost".to_string()]).unwrap().signed_by(&key, &ca.cert, &ca.key).unwrap();
+    let cert = CertificateParams::new(vec!["localhost".to_string()]).unwrap().signed_by(&key, &ca.issuer).unwrap();
     let config = rustls::ServerConfig::builder_with_provider(Arc::new(rustls::crypto::ring::default_provider()))
         .with_safe_default_protocol_versions()
         .unwrap()
