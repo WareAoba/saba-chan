@@ -117,11 +117,12 @@ describe('설치기 창', () => {
         get_available_modules: [],
         set_install_path: ({ path: p }: { path: string }) => p,
         set_components_dir: ({ path: p }: { path: string }) => p,
+        prepare_install: undefined,
         fetch_latest_release: never,
     };
 
-    async function toInstall() {
-        const page = mount('index.html', invokes);
+    async function toInstall(extra: Invoke = {}) {
+        const page = mount('index.html', { ...invokes, ...extra });
         await wait();
         const flow = byId(page.doc, 'flow');
         expect(flow.dataset.step).toBe('start');
@@ -135,6 +136,22 @@ describe('설치기 창', () => {
     it('[설치]를 누르면 바로 진행 줄이 있는 단계로 넘어간다', async () => {
         const { flow } = await toInstall();
         expect(['expand', 'install']).toContain(flow.dataset.step);
+    });
+
+    it('관리자 권한 확인(설치 폴더 준비)이 끝나기 전에는 그림·설치를 시작하지 않는다', async () => {
+        const { flow } = await toInstall({ prepare_install: never });
+        expect(flow.dataset.step).toBe('sheet');
+    });
+
+    it('권한 확인에 실패하면 시트에 남아 이유를 보인다', async () => {
+        const { doc, flow } = await toInstall({
+            prepare_install: () => Promise.reject({ error_code: 'elevation_failed', message: 'cancelled' }),
+        });
+        expect(flow.dataset.step).toBe('sheet');
+        const err = byId(doc, 'install-error');
+        expect(err.hidden).toBe(false);
+        expect(err.textContent).not.toBe('');
+        expect((byId(doc, 'btn-install') as HTMLButtonElement).disabled).toBe(false);
     });
 
     it('완료하면 같은 링이 성공 색이 되고 실행 버튼이 나온다', async () => {

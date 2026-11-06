@@ -131,7 +131,8 @@
                 <p class="hint privacy" id="privacy-notice">Saba-chan sends an anonymous ID and version numbers to the Saba-chan server to check for updates and to show the module and extension lists. You can turn off automatic update checks in the app settings. Discord features send data only after you connect them. Privacy policy: saba-chan.online/legal/privacy</p>
             </div>
             <div class="sfoot">
-                <span class="sp"></span>
+                <!-- 설치 폴더 준비(권한 확인) 실패: 시트에 남아 이유를 보인다 -->
+                <span class="sp"><span class="hint error" id="install-error" role="alert" hidden></span></span>
                 <button class="btn primary" id="btn-install" type="button">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                     <span id="btn-install-text">Install</span>

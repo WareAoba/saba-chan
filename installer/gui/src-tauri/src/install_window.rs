@@ -197,6 +197,34 @@ impl Drop for WorkGuard {
     }
 }
 
+/// 설치 화면으로 넘어가기 전에 설치 폴더를 준비한다: 쓸 수 없으면 여기서 UAC를 띄운다.
+/// 권한 확인이 끝난 뒤에 화면이 그림·설치를 시작하므로, 실패하면 설정 시트에 남아 이유를 보인다
+#[tauri::command]
+async fn prepare_install(app: AppHandle, state: State<'_, SharedState>) -> Result<(), serde_json::Value> {
+    let busy = || serde_json::json!({ "error_code": "busy", "message": "busy" });
+    let guard = WorkGuard::try_begin().ok_or_else(busy)?;
+    let install_path = std::path::PathBuf::from(state.read().await.install_path.clone());
+    // UAC 창을 기다리는 동안 막히므로 블로킹 스레드에서
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let _guard = guard;
+        saba_chan_installer_core::prepare_install_dir(&install_path, &WindowHooks(app))
+    })
+    .await
+    .map_err(|e| serde_json::json!({ "error_code": "unknown", "message": e.to_string() }))?;
+    match result {
+        Ok(Some(w)) => {
+            // 표시 실패는 설치가 다시 준비하며 완료 화면 경고로 알린다
+            tracing::warn!("{}", w);
+            Ok(())
+        }
+        Ok(None) => Ok(()),
+        Err((code, message)) => {
+            tracing::error!("[{}] {}", code, message);
+            Err(serde_json::json!({ "error_code": code, "message": message }))
+        }
+    }
+}
+
 #[tauri::command]
 async fn start_install(
     app: AppHandle,
@@ -342,6 +370,7 @@ pub(crate) fn run(uninstall: bool, keep: Option<uninstall::Keep>) {
             set_selected_modules,
             get_available_modules,
             fetch_latest_release,
+            prepare_install,
             start_install,
             start_uninstall,
             get_app_mode,

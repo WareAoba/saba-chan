@@ -1178,6 +1178,7 @@ function enterWelcome() {
 
 function enterSettings() {
     currentState = 'settings';
+    document.getElementById('install-error').hidden = true;
     flow.reset('sheet');
     ring.set('idle');
     markSteps(1);
@@ -1390,6 +1391,28 @@ function toggleMod(id, on) {
     });
 }
 
+const $installError = document.getElementById('install-error');
+const $btnInstall = document.getElementById('btn-install');
+
+/** 설치 폴더를 만들고 쓸 수 있는지 확인한다 (필요하면 UAC). 실패하면 시트에 남아 이유를 보인다 */
+async function prepareInstall() {
+    currentState = 'preparing';
+    $installError.hidden = true;
+    $btnInstall.disabled = true;
+    try {
+        await invoke('prepare_install');
+        return true;
+    } catch (e) {
+        currentState = 'settings';
+        const key = ERROR_KEYS[e?.error_code];
+        $installError.textContent = key ? tr(key) : (e?.message ?? String(e));
+        $installError.hidden = false;
+        return false;
+    } finally {
+        $btnInstall.disabled = false;
+    }
+}
+
 // 설치 버튼
 document.getElementById('btn-install')?.addEventListener('click', async () => {
     if (currentState !== 'settings') return;
@@ -1402,6 +1425,9 @@ document.getElementById('btn-install')?.addEventListener('click', async () => {
         startMenu: document.getElementById('chk-startmenu').checked,
     });
     await invoke('set_selected_modules', { modules: Array.from(selectedModules) });
+
+    // 설치 폴더 준비: 관리자 권한(UAC)이 필요하면 여기서 끝낸 뒤에 그림과 설치를 시작한다
+    if (!(await prepareInstall())) return;
 
     // 설치 모드 진입
     enterInstalling();
