@@ -7,8 +7,8 @@
 /* 시작부터 그림이 창 전체를 덮는다 (설치기처럼 펼치지 않는다) */
 .flow.u .f-art { clip-path: polygon(0 0, 750px 0, 750px 100%, 0 100%); }
 .flow.u[data-step="expand"] .f-art { animation: none; }
-/* 줌: 처음부터 접힐 때까지 한 번의 줌아웃을 같은 빠르기로 (그림 전체가 보이는 1배에서 끝난다) */
-.flow.u .f-art img { transform: scale(1.1); }
+/* 그림 움직임: 설치기와 같은 결. 빛이 훑을 때와 접힐 때만 빠르게 왼쪽으로, 머무는 동안은 천천히 */
+.flow.u .f-art img { transform: scale(1.16); }
 .flow.u[data-step="expand"] .f-art img, .flow.u[data-step="install"] .f-art img, .flow.u[data-step="done"] .f-art img {
     animation: art-zoom-u calc(0.1s + var(--t-open) + var(--t-hold) + var(--t-fold)) linear forwards;
 }
@@ -33,15 +33,9 @@
 }
 
 @keyframes art-zoom-u {
-    0% { transform: scale(1.1000); }
-    10% { transform: scale(1.0896); }
-    20% { transform: scale(1.0792); }
-    30% { transform: scale(1.0690); }
-    40% { transform: scale(1.0589); }
-    50% { transform: scale(1.0488); }
-    60% { transform: scale(1.0389); }
-    70% { transform: scale(1.0290); }
-    80% { transform: scale(1.0192); }
-    90% { transform: scale(1.0096); }
-    100% { transform: scale(1.0000); }
+    0% { transform: translateX(0px) scale(1.16); animation-timing-function: linear; }
+    3.45% { transform: translateX(0px) scale(1.16); animation-timing-function: cubic-bezier(0.76, 0, 0.24, 1); }
+    31.03% { transform: translateX(-45px) scale(1.13); animation-timing-function: linear; }
+    72.41% { transform: translateX(-70px) scale(1.12); animation-timing-function: cubic-bezier(0.55, 0, 0.85, 0.35); }
+    100% { transform: translateX(-230px) scale(1.1); }
 }

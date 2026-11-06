@@ -307,9 +307,9 @@ input { font: inherit; }
     max-width: none;
     object-fit: cover;
     object-position: 50% 50%;
-    /* 왼쪽 끝을 기준으로 줌아웃한다: 시작 칸(430~750px) 안에 사바쨩이 오는 배율에서 시작 */
+    /* 시작 칸(430~750px) 안에 사바쨩이 오도록 오른쪽으로 밀고 조금 키운 자리에서 시작한다 */
     transform-origin: 0 50%;
-    transform: scale(1.74);
+    transform: translateX(167px) scale(1.25);
     transition: filter var(--t-fold) var(--ease);
 }
 .flow .f-strip { position: absolute; left: 0; right: 0; bottom: 0; z-index: 4; transform: translateY(100%); transition: transform 0.3s var(--ease); }
@@ -318,7 +318,8 @@ input { font: inherit; }
 /* [설치]를 누른 때부터 진행 줄 */
 .flow[data-step="expand"] .f-strip, .flow[data-step="install"] .f-strip { transform: none; }
 .flow[data-step="expand"] .f-art { animation: art-open var(--t-open) var(--cut) forwards; }
-/* 줌: 펼침·머묾·접힘 내내 한 번의 줌아웃이 같은 빠르기(같은 비율)로 이어진다. 단계가 바뀌어도 같은 애니메이션이라 끊기지 않는다 */
+/* 그림 움직임: 펼침·머묾·접힘 내내 조금씩 줌아웃하며 왼쪽으로 흐른다. 펼칠 때와 접힐 때만 빠르고 머무는 동안은 천천히.
+ * 단계가 바뀌어도 같은 애니메이션이라 끊기지 않는다. 그림 왼쪽 끝은 여는 경계보다 늘 왼쪽(같은 곡선), 오른쪽 끝은 접히는 경계보다 늘 오른쪽이다 */
 .flow[data-step="expand"] .f-art img, .flow[data-step="install"] .f-art img, .flow[data-step="done"] .f-art img {
     animation: art-zoom calc(var(--t-open) + var(--t-hold) + var(--t-fold)) linear forwards;
 }
@@ -330,19 +331,11 @@ input { font: inherit; }
 .flow[data-step="done"] .f-mat .matrix { opacity: 0; transform: none; }
 .flow[data-step="done"] .f-foot { transform: none; }
 
-/* 1.74 → 1 을 같은 비율로 (점마다 곱하는 값이 같다) */
 @keyframes art-zoom {
-    0% { transform: scale(1.7400); }
-    10% { transform: scale(1.6462); }
-    20% { transform: scale(1.5575); }
-    30% { transform: scale(1.4736); }
-    40% { transform: scale(1.3942); }
-    50% { transform: scale(1.3191); }
-    60% { transform: scale(1.2480); }
-    70% { transform: scale(1.1808); }
-    80% { transform: scale(1.1171); }
-    90% { transform: scale(1.0570); }
-    100% { transform: scale(1.0000); }
+    0% { transform: translateX(167px) scale(1.25); animation-timing-function: cubic-bezier(0.76, 0, 0.24, 1); }
+    28.57% { transform: translateX(-10px) scale(1.18); animation-timing-function: linear; }
+    71.43% { transform: translateX(-30px) scale(1.14); animation-timing-function: cubic-bezier(0.55, 0, 0.85, 0.35); }
+    100% { transform: translateX(-200px) scale(1.12); }
 }
 @keyframes art-open {
     from { clip-path: polygon(430px 0, 750px 0, 750px 100%, 430px 100%); }
