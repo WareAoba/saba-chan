@@ -24,7 +24,7 @@ function mount(page: string, invokes: Invoke) {
         // 캔버스처럼 jsdom에 없는 기능 알림은 빼고, 페이지 오류는 그대로 보인다
         virtualConsole: new VirtualConsole().sendTo(console, { omitJSDOMErrors: true }),
     });
-    const w = dom.window as unknown as Window & { eval: (src: string) => unknown; __TAURI__: unknown };
+    const w = dom.window as unknown as Window & { eval: (src: string) => unknown };
     const listeners: Record<string, Listener[]> = {};
     const appWindow = {
         show: async () => {},
@@ -39,7 +39,7 @@ function mount(page: string, invokes: Invoke) {
         addEventListener() {},
         removeEventListener() {},
     })) as unknown as typeof window.matchMedia;
-    w.__TAURI__ = {
+    (w as unknown as { __TAURI__: unknown }).__TAURI__ = {
         core: {
             invoke: async (cmd: string, args: unknown) => {
                 const v = invokes[cmd];
@@ -61,6 +61,13 @@ function mount(page: string, invokes: Invoke) {
     return { doc: w.document, emit, listening: (name: string) => (listeners[name] || []).length > 0 };
 }
 
+/** 없으면 시험을 바로 실패시킨다 */
+function byId(doc: Document, id: string) {
+    const el = doc.getElementById(id);
+    if (!el) throw new Error(`#${id} 없음`);
+    return el;
+}
+
 const wait = (ms = 0) => new Promise((r) => setTimeout(r, ms));
 const never = () => new Promise(() => {});
 
@@ -76,13 +83,13 @@ describe('업데이터 창', () => {
         const { doc, emit, listening } = mount('update.html', invokes);
         await wait();
         expect(listening('apply:progress')).toBe(true);
-        const flow = doc.getElementById('flow')!;
+        const flow = byId(doc, 'flow');
         emit('apply:progress', { step: 'applying', message: '', percent: 40 });
         emit('apply:progress', { step: 'complete', message: '', percent: 100, applied: ['saba-core', 'saba-chan-gui'] });
         await wait();
         expect(flow.dataset.step).toBe('done');
         expect(flow.classList.contains('failed')).toBe(false);
-        expect(doc.getElementById('progress-ring')!.classList.contains('ok')).toBe(true);
+        expect(byId(doc, 'progress-ring').classList.contains('ok')).toBe(true);
         expect(doc.body.textContent).not.toContain('saba-core');
         expect(doc.querySelector('.toast, .toast-container, .update-complete-banner')).toBeNull();
     });
@@ -92,12 +99,12 @@ describe('업데이터 창', () => {
         await wait();
         emit('apply:progress', { step: 'error', message: 'disk full', percent: -1, applied: ['a'], failed: 2 });
         await wait();
-        const flow = doc.getElementById('flow')!;
+        const flow = byId(doc, 'flow');
         expect(flow.dataset.step).toBe('done');
         expect(flow.classList.contains('failed')).toBe(true);
-        expect(doc.getElementById('progress-ring')!.classList.contains('bad')).toBe(true);
-        expect(doc.getElementById('fail-summary')!.hidden).toBe(false);
-        expect(doc.getElementById('fail-summary')!.textContent).toContain('1 applied, 2 failed');
+        expect(byId(doc, 'progress-ring').classList.contains('bad')).toBe(true);
+        expect(byId(doc, 'fail-summary').hidden).toBe(false);
+        expect(byId(doc, 'fail-summary').textContent).toContain('1 applied, 2 failed');
         expect(doc.body.textContent).not.toContain('disk full');
     });
 });
@@ -116,11 +123,11 @@ describe('설치기 창', () => {
     async function toInstall() {
         const page = mount('index.html', invokes);
         await wait();
-        const flow = page.doc.getElementById('flow')!;
+        const flow = byId(page.doc, 'flow');
         expect(flow.dataset.step).toBe('start');
-        page.doc.getElementById('btn-next')!.click();
+        byId(page.doc, 'btn-next').click();
         expect(flow.dataset.step).toBe('sheet');
-        page.doc.getElementById('btn-install')!.click();
+        byId(page.doc, 'btn-install').click();
         await wait();
         return { ...page, flow };
     }
@@ -136,9 +143,9 @@ describe('설치기 창', () => {
         await wait(700);
         expect(flow.dataset.step).toBe('done');
         expect(flow.classList.contains('failed')).toBe(false);
-        expect(doc.getElementById('glow-ring')!.classList.contains('ok')).toBe(true);
-        expect(doc.getElementById('btn-launch')!.hidden).toBe(false);
-        expect(doc.getElementById('btn-retry')!.hidden).toBe(true);
+        expect(byId(doc, 'glow-ring').classList.contains('ok')).toBe(true);
+        expect(byId(doc, 'btn-launch').hidden).toBe(false);
+        expect(byId(doc, 'btn-retry').hidden).toBe(true);
     });
 
     it('실패하면 링이 실패 색이 되고 다시 시도를 보인다', async () => {
@@ -147,8 +154,8 @@ describe('설치기 창', () => {
         await wait();
         expect(flow.dataset.step).toBe('done');
         expect(flow.classList.contains('failed')).toBe(true);
-        expect(doc.getElementById('glow-ring')!.classList.contains('bad')).toBe(true);
-        expect(doc.getElementById('btn-launch')!.hidden).toBe(true);
-        expect(doc.getElementById('btn-retry')!.hidden).toBe(false);
+        expect(byId(doc, 'glow-ring').classList.contains('bad')).toBe(true);
+        expect(byId(doc, 'btn-launch').hidden).toBe(true);
+        expect(byId(doc, 'btn-retry').hidden).toBe(false);
     });
 });
