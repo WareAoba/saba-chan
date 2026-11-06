@@ -25,6 +25,7 @@ use crate::supervisor::module_loader::CommandField;
 use aliases::ModuleAliases;
 use api::{DaemonApi, ModuleView, ServerView};
 use i18n::Catalog;
+use permissions::Denied;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 
@@ -351,9 +352,11 @@ impl<'a, D: DaemonApi> Ctx<'a, D> {
         }
     }
 
-    fn permission_denied(&self, denied: permissions::Denied) -> Reply {
+    fn permission_denied(&self, denied: Denied) -> Reply {
         tracing::info!("[Chat] 권한 거부: user={:?} need={} level={}", self.req.user_id, denied.need, denied.level);
-        Reply::unrecognized("PERMISSION_DENIED", self.t("errors.permission_denied", &[]), json!(denied))
+        // 명단 밖이라 시작·정지를 못 하면 조작 가능 명단을 안내한다
+        let key = if denied.controllers { "errors.permission_denied_controllers" } else { "errors.permission_denied" };
+        Reply::unrecognized("PERMISSION_DENIED", self.t(key, &[]), json!(denied))
     }
 
     async fn servers(&self) -> Result<Vec<ServerView>, String> {
@@ -533,15 +536,22 @@ impl<'a, D: DaemonApi> Ctx<'a, D> {
             .map(str::to_string)
             .unwrap_or_else(|| aliases::resolve_command(Some(module), cmd_alias));
 
-        // 내장 명령의 위험도: status·players는 safe, start·stop은 caution. 모듈 명령은 선언값 (없으면 caution)
+        // 내장 명령의 위험도: status·players·start·stop은 safe (start·stop은 조작 가능 명단과 관리자 이상이 한다).
+        // 모듈 명령은 선언값 (없으면 caution)
         let risk = match command.as_str() {
-            "status" => "safe",
+            "status" | "start" | "stop" => "safe",
             "players" if module.players => "safe",
-            "start" | "stop" => "caution",
             _ => crate::commands::risk_of(module.command(&command).and_then(|f| f.risk.as_deref())),
         };
         if let Err(denied) = self.permit(Some((&server.id, &command, risk))) {
-            return Err(self.permission_denied(denied));
+            let lifecycle = permissions::LIFECYCLE_COMMANDS.contains(&command.as_str());
+            // 말하는 사바쨩을 거친 요청은 챗봇 상한을 그대로 받는다
+            let who = self.req.remote.as_ref().filter(|r| !r.via_chatbot).and_then(|r| r.user_id.as_deref());
+            let listed = lifecycle && who.is_some_and(|u| crate::controllers::controls(&server.controllers, u));
+            // 명단 밖 사람은 금지 레벨이 아니면 조작 가능 안내를 받는다. 금지된 사람은 명단에 있어도 막는다
+            if !listed || denied.level == permissions::BANNED {
+                return Err(self.permission_denied(Denied { controllers: lifecycle && denied.via.is_none(), ..denied }));
+            }
         }
         // 위험 명령은 그 서버만 가리키는 말로 불러야 한다: 게임명·모듈 별명은 서버가 늘면 다른 서버를 가리킬 수 있다
         if risk == "danger" && !by_name {

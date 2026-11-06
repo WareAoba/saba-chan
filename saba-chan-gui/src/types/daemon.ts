@@ -28,6 +28,12 @@ export type ApiResult<T> = Partial<T> & ApiErrorFields;
 
 // ── 서버 (ipc::ServerInfo) ──
 
+/** 조작 가능 명단 한 줄 (데몬 controllers::Controller): 게임 닉네임과 이은 디스코드 사용자 ID */
+export interface Controller {
+    name: string;
+    discord_id?: string;
+}
+
 /** 게임 채팅 전달 (supervisor::game_chat::Mode) */
 export type GameChatMode = 'off' | 'all' | 'keyword';
 
@@ -78,6 +84,12 @@ export interface ServerInfo {
     game_chat: GameChatMode;
     game_chat_keyword: string;
     game_chat_supported: boolean;
+    /** 조작 가능 명단 (시작·정지·재시작·백업 만들기를 할 수 있는 사람) */
+    controllers?: Controller[];
+    /** 조작 가능한 사람만 접속: 명단에 없는 닉네임은 접속하면 내보낸다 */
+    controllers_only?: boolean;
+    /** 모듈이 접속 줄과 내보내기 명령을 알려 주고 데몬이 콘솔을 읽을 때만 참 */
+    controllers_only_supported?: boolean;
     slots?: JsonObject;
     players?: PlayerCount;
     unresponsive?: string;

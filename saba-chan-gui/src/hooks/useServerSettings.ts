@@ -37,6 +37,8 @@ const memoryLimitOf = (server: Server | null | undefined) => (server?.memory_lim
 const gameChatOf = (server: Server | null | undefined) => ({
     game_chat: server?.game_chat || 'off',
     game_chat_keyword: server?.game_chat_keyword || '',
+    // 조작 가능한 사람만 접속 (데몬 인스턴스 최상위 controllers_only). 사바쨩 탭에서 함께 고친다
+    controllers_only: server?.controllers_only === true,
 });
 
 /** 정지 대기 칸 값 (초, 비면 모듈 값): 데몬 MK14 module_settings.stop_timeout */
@@ -625,6 +627,11 @@ export function useServerSettings({
                 const value = String(settingsValues[key] ?? '').trim();
                 if (settingsValues[key] !== undefined && value !== openedChat[key]) convertedSettings[key] = value;
             }
+
+            // 조작 가능한 사람만 접속: 바꿨을 때만 보낸다. 명단이 비었는데 켜면 데몬이 거절한다 (invalid_format)
+            const controllersOnly = asFlag(settingsValues.controllers_only, null);
+            if (controllersOnly !== null && controllersOnly !== openedChat.controllers_only)
+                convertedSettings.controllers_only = controllersOnly;
 
             // 크래시 자동 재시작 (데몬이 module_settings 에서 읽는다)
             // 토글은 handleSettingChange를 거쳐 'true'·'false' 글자로 올 수 있다

@@ -851,7 +851,8 @@
     "logs_empty": "Aucun journal pour l'instant. Ils apparaissent après un premier lancement du serveur.",
     "logs_failed": "Impossible de lire le journal : {{error}}",
     "logs_saved": "Journal enregistré : {{path}}",
-    "logs_saved_truncated": "Le journal était trop long : seule la partie la plus récente a été enregistrée : {{path}}"
+    "logs_saved_truncated": "Le journal était trop long : seule la partie la plus récente a été enregistrée : {{path}}",
+    "tab_controllers": "Opérateurs"
   },
   "discord": {
     "nav_connection": "Connexion",
@@ -1302,7 +1303,8 @@
     "perm_confirm_tier_hint": "Comparé au niveau de confirmation Discord pour décider si un bouton redemande. Les confirmations de l’app et de la CLI ne changent pas.",
     "perm_confirm_tier_mixed_hint": "Les instances utilisent des niveaux différents. En choisir un les aligne toutes.",
     "perm_legend_moved": "Déplacée du préréglage",
-    "perm_server_wide": "C'est une commande de tout le serveur : le changement apparaît dans le menu de chaque instance."
+    "perm_server_wide": "C'est une commande de tout le serveur : le changement apparaît dans le menu de chaque instance.",
+    "perm_controllers_tag": "aussi les opérateurs"
   },
   "maintenance": {
     "load_failed": "Impossible de charger les sauvegardes et la planification.",
@@ -1847,6 +1849,31 @@
     "keyword_hint": "Le chat qui commence par ce mot est envoyé sans lui. Un mot, 32 caractères max.",
     "keyword_placeholder": "ex. !dc",
     "channel_note": "Choisissez le canal dans l'assignation des canaux de l'onglet Discord ou avec /saba assign → Chat du jeu."
+  },
+  "controllers": {
+    "desc": "Les personnes de cette liste peuvent démarrer, arrêter et redémarrer ce serveur et créer des sauvegardes. Les admins et plus n'ont pas besoin d'y figurer.",
+    "empty": "Personne pour l'instant.",
+    "not_linked": "Non lié",
+    "remove": "Retirer",
+    "remove_named": "Retirer {{name}}",
+    "name_placeholder": "Pseudo en jeu",
+    "member_none": "Membre Discord (facultatif)",
+    "add": "Ajouter à la liste",
+    "members_hint": "Si aucun membre Discord n'apparaît, ouvrez une fois le serveur dans l'écran Discord.",
+    "note": "Seules les personnes liées à Discord peuvent démarrer ou arrêter depuis Discord. Les personnes avec seulement un pseudo sont celles qui peuvent entrer quand vous activez le blocage d'accès dans l'onglet Saba-chan.",
+    "err_empty": "Saisissez un pseudo en jeu.",
+    "err_duplicate": "Ce pseudo est déjà dans la liste.",
+    "err_too_long": "Un pseudo fait au plus 64 caractères.",
+    "err_too_many": "La liste peut contenir au plus 200 personnes.",
+    "err_gate_on": "Pour vider la liste, désactivez d'abord « Seuls les opérateurs peuvent entrer » dans l'onglet Saba-chan.",
+    "save_failed": "Impossible d'enregistrer la liste : {{error}}"
+  },
+  "controllers_only": {
+    "title": "Seuls les opérateurs peuvent entrer",
+    "desc": "Tout pseudo absent de la liste « Opérateurs » est expulsé dès son arrivée. Il n'est pas banni.",
+    "label": "Expulser les personnes hors liste",
+    "hint": "Seul le pseudo est vérifié : sur un serveur sans vérification de compte, quelqu'un peut entrer sous le nom d'un autre.",
+    "empty": "Ajoutez au moins une personne dans l'onglet « Opérateurs » pour l'activer."
   },
   "stop_timeout": {
     "title": "Délai d'arrêt",

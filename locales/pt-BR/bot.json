@@ -95,6 +95,7 @@
     "unknown_input": "❌ Comando desconhecido.",
     "command_not_found": "❌ O comando não existe.",
     "permission_denied": "❌ Você não tem permissão para usar este comando.",
+    "permission_denied_controllers": "❌ Para iniciar ou parar este servidor, você precisa estar na lista \"Operadores\" dele no app Saba-chan ou ter o nível definido para este comando (Administrador por padrão).",
     "local_single_guild_only": "⚠️ O bot local só pode ser usado em um servidor. Este bot está em {{count}} servidores. Remova-o dos servidores que você não usa."
   },
   "messages": {
@@ -476,5 +477,8 @@
   },
   "chatbot": {
     "memo_template": "<!-- Linhas de ajuda como esta e títulos vazios não são enviados à Saba-chan falante. Preencha só o que precisar. -->\n\n## Clima do servidor\n<!-- Descreva como as pessoas conversam aqui e até onde as piadas podem ir. Vazio = personalidade padrão. -->\n\n## Como chamar as pessoas\n<!-- Escreva nomes especiais que a Saba-chan deve usar para alguém. Exemplo: chama a pessoa marcada (dono) de \"mestre\". -->\n\n## Palavras deste servidor\n<!-- Apelidos, memes e abreviações que só este servidor usa, com o significado. -->\n\n## Informações do servidor de jogo\n<!-- Regras, horários e outras coisas que a Saba-chan pode contar a quem perguntar. -->\n"
+  },
+  "controllers": {
+    "kick_reason": "Somente jogadores registrados podem entrar neste servidor."
   }
 }

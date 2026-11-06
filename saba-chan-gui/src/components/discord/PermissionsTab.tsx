@@ -688,6 +688,7 @@ export function CommandList({ node, permissions, instance = L.ALL_INSTANCES }: C
                             {[
                                 c.fixed && (c.basic ? t('discord.perm_commands_help_hint') : t('discord.perm_fixed_hint')),
                                 !c.fixed && c.overridden && t('discord.perm_moved'),
+                                c.controllers && t('discord.perm_controllers_tag'),
                                 shownView !== L.ALL_INSTANCES &&
                                     c.items.some((i) => !i.instance) &&
                                     t('discord.perm_server_wide_tag'),

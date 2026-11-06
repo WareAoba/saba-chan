@@ -851,7 +851,8 @@
     "logs_empty": "Ainda não há logs. Eles aparecem depois que o servidor roda uma vez.",
     "logs_failed": "Não foi possível ler o log: {{error}}",
     "logs_saved": "Log salvo: {{path}}",
-    "logs_saved_truncated": "O log era longo demais; só a parte mais recente foi salva: {{path}}"
+    "logs_saved_truncated": "O log era longo demais; só a parte mais recente foi salva: {{path}}",
+    "tab_controllers": "Operadores"
   },
   "discord": {
     "nav_connection": "Conexão",
@@ -1302,7 +1303,8 @@
     "perm_confirm_tier_hint": "Comparado ao nível de confirmação do Discord para decidir se um botão pergunta de novo. As confirmações do app e da CLI não mudam.",
     "perm_confirm_tier_mixed_hint": "As instâncias usam níveis diferentes. Escolher um aplica a todas.",
     "perm_legend_moved": "Movido da predefinição",
-    "perm_server_wide": "É um comando do servidor todo, então a mudança aparece no menu de cada instância."
+    "perm_server_wide": "É um comando do servidor todo, então a mudança aparece no menu de cada instância.",
+    "perm_controllers_tag": "operadores também"
   },
   "maintenance": {
     "load_failed": "Não foi possível carregar os backups e agendamentos.",
@@ -1847,6 +1849,31 @@
     "keyword_hint": "O chat que começa com esta palavra é enviado sem ela. Uma palavra, até 32 caracteres.",
     "keyword_placeholder": "ex.: !dc",
     "channel_note": "Escolha o canal na designação de canais da aba Discord ou com /saba assign → Chat do jogo."
+  },
+  "controllers": {
+    "desc": "Quem está nesta lista pode iniciar, parar e reiniciar este servidor e criar backups. Administradores e acima não precisam estar na lista.",
+    "empty": "Ninguém ainda.",
+    "not_linked": "Não vinculado",
+    "remove": "Remover",
+    "remove_named": "Remover {{name}}",
+    "name_placeholder": "Apelido no jogo",
+    "member_none": "Membro do Discord (opcional)",
+    "add": "Adicionar à lista",
+    "members_hint": "Se nenhum membro do Discord aparecer, abra o servidor uma vez na tela do Discord.",
+    "note": "Só quem tem o Discord vinculado pode iniciar ou parar pelo Discord. Quem tem só o apelido é quem pode entrar quando você liga o bloqueio de entrada na aba Saba-chan.",
+    "err_empty": "Digite um apelido do jogo.",
+    "err_duplicate": "Esse apelido já está na lista.",
+    "err_too_long": "O apelido pode ter até 64 caracteres.",
+    "err_too_many": "A lista comporta até 200 pessoas.",
+    "err_gate_on": "Para esvaziar a lista, primeiro desligue \"Só operadores podem entrar\" na aba Saba-chan.",
+    "save_failed": "Não foi possível salvar a lista: {{error}}"
+  },
+  "controllers_only": {
+    "title": "Só operadores podem entrar",
+    "desc": "Quem não estiver na lista \"Operadores\" é expulso assim que entra. Não é banido.",
+    "label": "Expulsar quem não está na lista",
+    "hint": "Só o apelido é verificado, então em servidores sem verificação de conta alguém pode entrar com o nome de outra pessoa.",
+    "empty": "Adicione pelo menos uma pessoa na aba \"Operadores\" para ligar."
   },
   "stop_timeout": {
     "title": "Tempo de espera ao parar",

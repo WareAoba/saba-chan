@@ -975,7 +975,8 @@ async fn the_permission_board_lists_every_remote_command_at_the_level_it_needs()
     assert!(item(&format!("{}/wipe", id)).is_none(), "remote = false commands are not reachable from Discord");
     // 내장 명령은 액션 하나로, 명령 경로와 같은 키로
     let stop = item(&format!("{}/stop", id)).unwrap();
-    assert_eq!((&stop["level"], &stop["preset"], &stop["overridden"], &stop["name"]), (&json!(3), &json!(1), &json!(true), &json!("stop")));
+    assert_eq!((&stop["level"], &stop["preset"], &stop["overridden"], &stop["name"]), (&json!(3), &json!(2), &json!(true), &json!("stop")));
+    assert_eq!(stop["controllers"], true, "the board says listed people run it too");
     assert_eq!(stop["keys"], json!([format!("{}/stop", id), format!("{}/server.stop", id)]));
     assert_eq!(board["items"].as_array().unwrap().iter().filter(|i| i["name"] == "stop").count(), 1);
     let restore = item(&format!("{}/backup.restore", id)).unwrap();
@@ -1399,7 +1400,10 @@ async fn direct_discord_requests_ask_from_the_guilds_chosen_level() {
     let restore = || asks(&state, "backup.restore", &id, json!({ "name": "b" }));
     assert_eq!((stop().await, restore().await), (false, true));
 
+    // 시작·정지는 위험·주의 밖이므로 "모두 묻기"에서만 묻는다
     set_confirm(&state, "caution", "all").await;
+    assert!(!stop().await);
+    set_confirm(&state, "all", "all").await;
     assert!(stop().await);
     set_confirm(&state, "none", "all").await;
     assert!(!restore().await);
@@ -1414,7 +1418,7 @@ async fn chatbot_requests_follow_the_chatbot_level_but_admin_actions_always_ask(
     assert_eq!(stop["needsConfirm"], false);
     let settings = plan(&state, "instance.settings.set", Some(&id), &json!({ "players": 4 }), &relay("owner", true)).await.unwrap();
     assert_eq!(settings["needsConfirm"], true);
-    set_confirm(&state, "danger", "caution").await;
+    set_confirm(&state, "danger", "all").await;
     assert_eq!(plan(&state, "server.stop", Some(&id), &json!({}), &relay("owner", true)).await.unwrap()["needsConfirm"], true);
 }
 
@@ -1718,4 +1722,32 @@ fn server_address_reads_as_address_and_port() {
     assert!(!unknown.contains('`') && unknown.contains("주소"), "{unknown}");
     let no_ports = summary::text("server.address", &json!({ "address": "203.0.113.5", "running": true, "ports": [] }), &ko).unwrap();
     assert!(!no_ports.contains("203.0.113.5") && no_ports.contains("포트"), "{no_ports}");
+}
+
+/// 조작 가능 (사용자 지정 2026-11-06): 시작·정지·재시작·백업 만들기는 위험도와 상관없이 명단에 있는 사람과
+/// 관리자 이상이 한다. 명단 밖 유저는 거절되고, 거절에 `controllers`가 실린다
+#[tokio::test]
+async fn controllers_run_the_server_without_the_admin_level() {
+    let (state, id, _tmp) = server().await;
+    set_node(&state, json!({ "ownerDiscordId": "owner", "preset": "default", "defaultLevel": 1, "members": { "admin": 2 } })).await;
+    {
+        let mut sup = state.supervisor.write().await;
+        let mut inst = sup.instance_store.get(&id).cloned().unwrap();
+        inst.controllers = vec![crate::controllers::Controller { name: "Steve".into(), discord_id: Some("friend".into()) }];
+        sup.instance_store.update(&id, inst).unwrap();
+    }
+    for action in crate::controllers::CONTROLLED_ACTIONS {
+        assert_eq!(find(action).unwrap().risk, "safe", "{action} is not a risk tier");
+        assert!(plan(&state, action, Some(&id), &json!({}), &relay("friend", false)).await.is_ok(), "{action}: a listed user");
+        assert!(plan(&state, action, Some(&id), &json!({}), &relay("admin", false)).await.is_ok(), "{action}: an admin");
+        let refused = plan(&state, action, Some(&id), &json!({}), &relay("stranger", false)).await.unwrap_err();
+        assert_eq!((refused.data["args"]["need"].clone(), refused.data["args"]["controllers"].clone()), (json!(2), json!(true)), "{action}");
+        // 말하는 사바쨩을 거치면 챗봇 상한이 그대로다: 명단이 상한을 넘지 않는다
+        let capped = plan(&state, action, Some(&id), &json!({}), &relay("friend", true)).await.unwrap_err();
+        assert_eq!(capped.data["args"]["controllers"], Value::Null, "{action}: the chatbot cap, not the list");
+    }
+    // 권한 계단은 이 넷을 조작 가능 묶음으로 표시한다
+    let board = permission_board(&state, "g", "ko").await;
+    let start = board["items"].as_array().unwrap().iter().find(|i| i["key"] == format!("{id}/start")).cloned().unwrap();
+    assert_eq!((&start["level"], &start["controllers"]), (&json!(2), &json!(true)));
 }

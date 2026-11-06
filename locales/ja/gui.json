@@ -851,7 +851,8 @@
     "logs_empty": "まだログがありません。サーバーを一度起動すると表示されます。",
     "logs_failed": "ログを読み込めませんでした: {{error}}",
     "logs_saved": "ログを保存しました: {{path}}",
-    "logs_saved_truncated": "ログが長すぎるため、最近の部分だけを保存しました: {{path}}"
+    "logs_saved_truncated": "ログが長すぎるため、最近の部分だけを保存しました: {{path}}",
+    "tab_controllers": "操作できる人"
   },
   "discord": {
     "nav_connection": "接続",
@@ -1302,7 +1303,8 @@
     "perm_confirm_tier_hint": "Discord設定の確認段階と比べて、ボタンで聞き直すかを決めます。アプリ・CLIの確認はそのままです。",
     "perm_confirm_tier_mixed_hint": "インスタンスごとに段階が異なります。選ぶとすべてその段階に揃えます。",
     "perm_legend_moved": "プリセットから移動",
-    "perm_server_wide": "サーバー全体のコマンドなので、すべてのインスタンスのメニューで一緒に変わります。"
+    "perm_server_wide": "サーバー全体のコマンドなので、すべてのインスタンスのメニューで一緒に変わります。",
+    "perm_controllers_tag": "操作できる人も"
   },
   "maintenance": {
     "load_failed": "バックアップ・予約の情報を読み込めませんでした。",
@@ -1847,6 +1849,31 @@
     "keyword_hint": "チャットの先頭にこの単語があれば、単語を除いて送ります。空白なし、32文字まで。",
     "keyword_placeholder": "例: !dc",
     "channel_note": "送り先はDiscordタブのチャンネル設定、または /saba assign で「ゲームチャット」を選んで決めます。"
+  },
+  "controllers": {
+    "desc": "このリストにいる人は、このサーバーの起動・停止・再起動とバックアップ作成ができます。管理者以上はリストになくても大丈夫です。",
+    "empty": "まだ誰もいません。",
+    "not_linked": "未連携",
+    "remove": "外す",
+    "remove_named": "{{name}}を外す",
+    "name_placeholder": "ゲーム内ニックネーム",
+    "member_none": "Discordメンバー（選ばなくてもOK）",
+    "add": "リストに追加",
+    "members_hint": "Discordメンバーが表示されない場合は、Discord画面でサーバーを一度開いてください。",
+    "note": "Discordを連携した人だけがDiscordから起動・停止できます。ニックネームだけの人は、さばちゃんタブで参加制限をオンにしたときに入れる人になります。",
+    "err_empty": "ゲーム内ニックネームを入力してください。",
+    "err_duplicate": "そのニックネームはもうリストにあります。",
+    "err_too_long": "ニックネームは64文字までです。",
+    "err_too_many": "リストには200人まで入れられます。",
+    "err_gate_on": "リストを空にするには、先にさばちゃんタブの「操作できる人だけ参加」をオフにしてください。",
+    "save_failed": "リストを保存できませんでした: {{error}}"
+  },
+  "controllers_only": {
+    "title": "操作できる人だけ参加",
+    "desc": "「操作できる人」にないニックネームが入ると、すぐにキックします。BANはしません。",
+    "label": "リストにない人をキック",
+    "hint": "ニックネームだけを見るため、正規認証をオフにしたサーバーでは他人の名前で入れることがあります。",
+    "empty": "「操作できる人」タブで1人以上追加するとオンにできます。"
   },
   "stop_timeout": {
     "title": "停止の待ち時間",

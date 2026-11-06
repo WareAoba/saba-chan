@@ -91,6 +91,7 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 | `stop_command` | String | managed stop 때 stdin으로 전송. 기본값 `"stop"` (`mod.rs:961`) |
 | `stop_timeout` | u64(초) | managed graceful stop 대기 시간. 기본값 30. 인스턴스 설정 `stop_timeout`이 있으면 그 값이 앞선다(§ 데몬이 읽는 setting) |
 | `announce_command` | String | 게임 안 공지에 쓰는 `[[commands.fields]]` 이름 (예약 재시작 예고 등) |
+| `kick_command` | String | 내보내기에 쓰는 `[[commands.fields]]` 이름. "조작 가능한 사람만 접속"(01 문서 §조작 가능)이 명단에 없는 닉네임을 내보낼 때 쓴다. 그 명령의 첫 입력에 닉네임, 둘째 입력이 있으면 이유를 넣는다. 없는 명령 이름이면 `config.kick_command` 참조 오류다 |
 
 `java_path`·`ram` 같은 게임 설정은 `[config]`가 아니라 `[[settings.fields]]`에 있다. `[config]`의 모르는 키는 경고 뒤 무시한다.
 

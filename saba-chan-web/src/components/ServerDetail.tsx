@@ -12,6 +12,7 @@ import { Icon } from './icons';
 import { PlayersPanel } from './PlayersPanel';
 import { startPoll } from './poll';
 import { SabaSettings } from './SabaSettings';
+import { ControllersPanel } from './ControllersPanel';
 import { SchedulePanel } from './SchedulePanel';
 import { ServerIcon } from './ServerIcon';
 import { SettingsPanel } from './SettingsPanel';
@@ -214,7 +215,7 @@ function MoreSheet({ api, server, running, control, onClose }: MoreSheetProps) {
     );
 }
 
-const TABS = ['console', 'commands', 'players', 'settings', 'maintenance', 'check', 'info'];
+const TABS = ['console', 'commands', 'players', 'settings', 'maintenance', 'controllers', 'check', 'info'];
 
 export function ServerDetail({ api, server }: { api: WebApi; server: Server }) {
     const { t } = useTranslation();
@@ -241,6 +242,7 @@ export function ServerDetail({ api, server }: { api: WebApi; server: Server }) {
         players: t('detail.players'),
         settings: tg('shell.tab_settings'),
         maintenance: tg('shell.tab_maintenance'),
+        controllers: tg('shell.tab_controllers'),
         check: t('detail.check'),
         info: tg('shell.tab_info'),
     };
@@ -347,6 +349,7 @@ export function ServerDetail({ api, server }: { api: WebApi; server: Server }) {
                     <SchedulePanel api={api} server={server} moduleData={moduleData} />
                 </>
             )}
+            {view === 'controllers' && <ControllersPanel api={api} server={server} />}
             {view === 'check' && <CheckPanel api={api} server={server} moduleData={moduleData} running={running} />}
             {view === 'info' && <InfoPanel api={api} server={server} moduleData={moduleData} />}
             {more && (

@@ -95,6 +95,7 @@
     "unknown_input": "❌ Unbekannter Befehl.",
     "command_not_found": "❌ Befehl existiert nicht.",
     "permission_denied": "❌ Du hast keine Berechtigung, diesen Befehl zu verwenden.",
+    "permission_denied_controllers": "❌ Um diesen Server zu starten oder zu stoppen, musst du in der Saba-chan-App auf seiner Liste „Bediener“ stehen oder die für diesen Befehl festgelegte Stufe haben (standardmäßig Admin).",
     "local_single_guild_only": "⚠️ Der lokale Bot kann nur auf einem Server verwendet werden. Dieser Bot ist auf {{count}} Servern. Entferne ihn von den Servern, die du nicht nutzt."
   },
   "messages": {
@@ -476,5 +477,8 @@
   },
   "chatbot": {
     "memo_template": "<!-- Hinweiszeilen wie diese und leere Überschriften werden nicht an Sprechende Saba-chan geschickt. Fülle nur aus, was du brauchst. -->\n\n## Stimmung\n<!-- Beschreibe, wie hier geredet wird und wie derb Witze sein dürfen. Leer = Standardpersönlichkeit. -->\n\n## Anreden\n<!-- Besondere Anreden, die Saba-chan für jemanden benutzen soll. Beispiel: Die als (Besitzer) markierte Person „Meister“ nennen. -->\n\n## Begriffe dieses Servers\n<!-- Spitznamen, Memes und Abkürzungen, die nur hier verstanden werden, mit Bedeutung. -->\n\n## Infos zum Spielserver\n<!-- Regeln, Öffnungszeiten und anderes, das Saba-chan Fragenden sagen darf. -->\n"
+  },
+  "controllers": {
+    "kick_reason": "Nur registrierte Spieler können diesen Server betreten."
   }
 }

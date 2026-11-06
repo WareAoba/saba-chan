@@ -851,7 +851,8 @@
     "logs_empty": "Noch keine Logs. Sie erscheinen, sobald der Server einmal lief.",
     "logs_failed": "Log konnte nicht gelesen werden: {{error}}",
     "logs_saved": "Log gespeichert: {{path}}",
-    "logs_saved_truncated": "Das Log war zu lang, daher wurde nur der neueste Teil gespeichert: {{path}}"
+    "logs_saved_truncated": "Das Log war zu lang, daher wurde nur der neueste Teil gespeichert: {{path}}",
+    "tab_controllers": "Bediener"
   },
   "discord": {
     "nav_connection": "Verbindung",
@@ -1302,7 +1303,8 @@
     "perm_confirm_tier_hint": "Wird mit der Rückfrage-Stufe der Discord-Einstellungen verglichen, um per Button nachzufragen. Bestätigungen in App und CLI bleiben gleich.",
     "perm_confirm_tier_mixed_hint": "Die Instanzen nutzen verschiedene Stufen. Eine Auswahl gilt für alle.",
     "perm_legend_moved": "Von der Vorlage verschoben",
-    "perm_server_wide": "Das ist ein serverweiter Befehl, die Änderung gilt in jedem Instanzmenü."
+    "perm_server_wide": "Das ist ein serverweiter Befehl, die Änderung gilt in jedem Instanzmenü.",
+    "perm_controllers_tag": "auch Bediener"
   },
   "maintenance": {
     "load_failed": "Backups und Zeitpläne konnten nicht geladen werden.",
@@ -1847,6 +1849,31 @@
     "keyword_hint": "Chat, der mit diesem Wort beginnt, wird ohne das Wort gesendet. Ein Wort, bis zu 32 Zeichen.",
     "keyword_placeholder": "z. B. !dc",
     "channel_note": "Den Kanal wählst du in der Kanalzuweisung im Discord-Tab oder mit /saba assign → Spielchat."
+  },
+  "controllers": {
+    "desc": "Personen auf dieser Liste können diesen Server starten, stoppen und neu starten und Backups erstellen. Admins und höher müssen nicht auf der Liste stehen.",
+    "empty": "Noch niemand.",
+    "not_linked": "Nicht verknüpft",
+    "remove": "Entfernen",
+    "remove_named": "{{name}} entfernen",
+    "name_placeholder": "Spielname",
+    "member_none": "Discord-Mitglied (optional)",
+    "add": "Zur Liste hinzufügen",
+    "members_hint": "Wenn keine Discord-Mitglieder erscheinen, öffne den Server einmal in der Discord-Ansicht.",
+    "note": "Nur mit Discord verknüpfte Personen können über Discord starten oder stoppen. Personen nur mit Spielname dürfen beitreten, wenn du im Saba-chan-Tab die Beitrittssperre einschaltest.",
+    "err_empty": "Gib einen Spielnamen ein.",
+    "err_duplicate": "Dieser Spielname steht schon auf der Liste.",
+    "err_too_long": "Spielnamen dürfen höchstens 64 Zeichen haben.",
+    "err_too_many": "Die Liste fasst höchstens 200 Personen.",
+    "err_gate_on": "Um die Liste zu leeren, schalte zuerst „Nur Bediener dürfen beitreten“ im Saba-chan-Tab aus.",
+    "save_failed": "Liste konnte nicht gespeichert werden: {{error}}"
+  },
+  "controllers_only": {
+    "title": "Nur Bediener dürfen beitreten",
+    "desc": "Wer nicht auf der Liste „Bediener“ steht, wird beim Beitreten sofort gekickt. Es wird nicht gebannt.",
+    "label": "Personen ohne Listeneintrag kicken",
+    "hint": "Es wird nur der Spielname geprüft. Auf Servern ohne Kontoprüfung kann jemand unter fremdem Namen beitreten.",
+    "empty": "Füge im Tab „Bediener“ mindestens eine Person hinzu, um das einzuschalten."
   },
   "stop_timeout": {
     "title": "Wartezeit beim Stoppen",

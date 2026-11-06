@@ -95,6 +95,7 @@
     "unknown_input": "❌ Unknown command.",
     "command_not_found": "❌ Command does not exist.",
     "permission_denied": "❌ You don't have permission to use this command.",
+    "permission_denied_controllers": "❌ To start or stop this server you need to be on its \"Operators\" list in the Saba-chan app, or have the level set for this command (Admin by default).",
     "local_single_guild_only": "⚠️ Local bots can only be used in one server. This bot is in {{count}} servers. Remove it from the servers you do not use."
   },
   "messages": {
@@ -476,5 +477,8 @@
   },
   "chatbot": {
     "memo_template": "<!-- Guide lines like this one and headings you leave empty are not sent to Talking Saba-chan. Fill in only what you need. -->\n\n## Room vibe\n<!-- Describe how people talk here and how edgy jokes can get. Leave empty to use the default personality. -->\n\n## How to address people\n<!-- Write down special names Saba-chan should call people. Example: Call the person marked (owner) \"Master\". -->\n\n## Words used on this server\n<!-- List nicknames, memes and abbreviations only this server uses, with their meaning. -->\n\n## Game server info\n<!-- Rules, opening hours and other things Saba-chan may tell anyone who asks. -->\n"
+  },
+  "controllers": {
+    "kick_reason": "Only registered players can join this server."
   }
 }
