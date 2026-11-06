@@ -851,7 +851,8 @@
     "logs_empty": "아직 로그가 없어요. 서버를 한 번 켜면 생겨요.",
     "logs_failed": "로그를 읽지 못했습니다: {{error}}",
     "logs_saved": "로그를 저장했습니다: {{path}}",
-    "logs_saved_truncated": "로그가 너무 길어 최근 부분만 저장했습니다: {{path}}"
+    "logs_saved_truncated": "로그가 너무 길어 최근 부분만 저장했습니다: {{path}}",
+    "tab_controllers": "조작 가능"
   },
   "discord": {
     "nav_connection": "연결",
@@ -1302,7 +1303,8 @@
     "perm_confirm_tier_hint": "디스코드 설정의 되묻기 단계와 비교해 버튼으로 다시 물을지 정합니다. 앱·CLI의 확인은 그대로입니다.",
     "perm_confirm_tier_mixed_hint": "인스턴스마다 단계가 달라요. 고르면 모두 그 단계로 맞춥니다.",
     "perm_legend_moved": "프리셋에서 옮김",
-    "perm_server_wide": "서버 전체 명령이라 모든 인스턴스 메뉴에 함께 바뀌어요."
+    "perm_server_wide": "서버 전체 명령이라 모든 인스턴스 메뉴에 함께 바뀌어요.",
+    "perm_controllers_tag": "조작 가능한 사람도"
   },
   "maintenance": {
     "load_failed": "백업·예약 정보를 불러오지 못했어요.",
@@ -1847,6 +1849,31 @@
     "keyword_hint": "채팅 맨 앞에 이 단어가 있으면 단어를 빼고 보내요. 띄어쓰기 없이 32자까지.",
     "keyword_placeholder": "예: !디코",
     "channel_note": "보낼 채널은 디스코드 탭의 채널 배정이나 /사바쨩 배정에서 게임 채팅으로 정해요."
+  },
+  "controllers": {
+    "desc": "이 명단에 있는 사람은 이 서버를 시작·정지·재시작하고 백업을 만들 수 있어요. 관리자 이상은 명단에 없어도 돼요.",
+    "empty": "아직 아무도 없어요.",
+    "not_linked": "이어지지 않음",
+    "remove": "빼기",
+    "remove_named": "{{name}} 빼기",
+    "name_placeholder": "게임 닉네임",
+    "member_none": "디스코드 멤버 (고르지 않아도 됨)",
+    "add": "명단에 넣기",
+    "members_hint": "디스코드 멤버가 보이지 않으면 디스코드 화면에서 서버를 한 번 열어 주세요.",
+    "note": "디스코드를 이은 사람만 디스코드에서 시작·정지를 할 수 있어요. 닉네임만 넣은 사람은 사바쨩 탭에서 접속 막기를 켰을 때 들어올 수 있는 사람이 됩니다.",
+    "err_empty": "게임 닉네임을 넣어 주세요.",
+    "err_duplicate": "이미 명단에 있는 닉네임이에요.",
+    "err_too_long": "닉네임은 64자까지예요.",
+    "err_too_many": "명단에는 200명까지 넣을 수 있어요.",
+    "err_gate_on": "명단을 비우려면 사바쨩 탭에서 \"조작 가능한 사람만 접속\"을 먼저 꺼 주세요.",
+    "save_failed": "명단을 저장하지 못했어요: {{error}}"
+  },
+  "controllers_only": {
+    "title": "조작 가능한 사람만 접속",
+    "desc": "\"조작 가능\"에 없는 닉네임이 들어오면 바로 내보냅니다. 차단은 하지 않아요.",
+    "label": "명단에 없는 사람 내보내기",
+    "hint": "닉네임만 보므로 정품 인증을 끈 서버에서는 남의 이름으로 들어올 수 있어요.",
+    "empty": "\"조작 가능\" 탭에서 한 명 이상 넣어야 켤 수 있어요."
   },
   "stop_timeout": {
     "title": "정지 대기 시간",

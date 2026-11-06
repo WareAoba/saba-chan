@@ -41,6 +41,7 @@ import { ExitHistory } from './ExitHistory';
 import { ServerLogs } from './ServerLogs';
 import { InstanceDiscordTab, instanceWordsAvailable } from '../discord/InstanceWordsTab';
 import { AuditLog, auditAvailable } from './AuditTab';
+import { ControllersTab } from './ControllersTab';
 import { MaintenanceTab, maintenanceAvailable } from './MaintenanceTab';
 import { ModuleAuditNotice } from './ModuleAuditNotice';
 import { ServerConsole } from './ServerConsole';
@@ -125,6 +126,7 @@ export function ServerDetail({
             label: t('shell.tab_maintenance'),
             icon: <Icon name="clock" size="sm" />,
         },
+        { id: 'controllers', label: t('shell.tab_controllers'), icon: <Icon name="user" size="sm" /> },
         instanceWordsAvailable() && {
             id: 'discord',
             label: t('shell.tab_discord'),
@@ -376,6 +378,7 @@ export function ServerDetail({
                                 )}
                             />
                         )}
+                        {activeTab === 'controllers' && <ControllersTab server={server} />}
                         {activeTab === 'discord' && <InstanceDiscordTab server={server} />}
                         {activeTab === 'audit' && <AuditLog instanceId={server.id} />}
                         {activeTab === 'info' && (

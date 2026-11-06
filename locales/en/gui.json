@@ -851,7 +851,8 @@
     "logs_empty": "No logs yet. They appear after the server runs once.",
     "logs_failed": "Could not read the log: {{error}}",
     "logs_saved": "Log saved: {{path}}",
-    "logs_saved_truncated": "The log was too long, so only the latest part was saved: {{path}}"
+    "logs_saved_truncated": "The log was too long, so only the latest part was saved: {{path}}",
+    "tab_controllers": "Operators"
   },
   "discord": {
     "nav_connection": "Connection",
@@ -1302,7 +1303,8 @@
     "perm_confirm_tier_hint": "Compared with the Discord confirm setting to decide whether a button asks again. App and CLI confirms stay the same.",
     "perm_confirm_tier_mixed_hint": "Instances use different tiers. Picking one sets them all.",
     "perm_legend_moved": "Moved from the preset",
-    "perm_server_wide": "This is a server-wide command, so the change shows in every instance menu."
+    "perm_server_wide": "This is a server-wide command, so the change shows in every instance menu.",
+    "perm_controllers_tag": "operators too"
   },
   "maintenance": {
     "load_failed": "Couldn't load backups and schedules.",
@@ -1847,6 +1849,31 @@
     "keyword_hint": "Chat that starts with this word is sent without it. One word, up to 32 characters.",
     "keyword_placeholder": "e.g. !dc",
     "channel_note": "Pick the channel under channel assignment in the Discord tab, or with /saba assign → Game chat."
+  },
+  "controllers": {
+    "desc": "People on this list can start, stop and restart this server and make backups. Admins and above don't need to be listed.",
+    "empty": "No one yet.",
+    "not_linked": "Not linked",
+    "remove": "Remove",
+    "remove_named": "Remove {{name}}",
+    "name_placeholder": "In-game nickname",
+    "member_none": "Discord member (optional)",
+    "add": "Add to list",
+    "members_hint": "If no Discord members show up, open the server once on the Discord screen.",
+    "note": "Only people linked to Discord can start or stop from Discord. People with only a nickname are who may join when you turn on join blocking in the Saba-chan tab.",
+    "err_empty": "Enter an in-game nickname.",
+    "err_duplicate": "That nickname is already on the list.",
+    "err_too_long": "Nicknames can be up to 64 characters.",
+    "err_too_many": "The list can hold up to 200 people.",
+    "err_gate_on": "To empty the list, first turn off \"Only operators may join\" in the Saba-chan tab.",
+    "save_failed": "Couldn't save the list: {{error}}"
+  },
+  "controllers_only": {
+    "title": "Only operators may join",
+    "desc": "Anyone whose nickname isn't on the \"Operators\" list is kicked as soon as they join. They are not banned.",
+    "label": "Kick people not on the list",
+    "hint": "Only the nickname is checked, so on servers without account verification someone could join under another person's name.",
+    "empty": "Add at least one person in the \"Operators\" tab to turn this on."
   },
   "stop_timeout": {
     "title": "Stop wait time",

@@ -397,6 +397,37 @@ function GeneralTab({
                 </div>
             )}
 
+            {/* 조작 가능한 사람만 접속 (데몬 인스턴스 controllers_only, 사용자 지정 2026-11-06). 명단은 "조작 가능" 탭.
+                모듈이 접속 줄과 내보내기 명령을 알려 주고 데몬이 콘솔을 읽을 때만. 명단이 비면 켤 수 없다 */}
+            {showSaba && settingsServer.controllers_only_supported && (
+                <div className="protocol-mode-section controllers-only-section">
+                    <div className="protocol-mode-header">
+                        <span className="protocol-mode-title">
+                            <Icon name="user" size="sm" /> {t('controllers_only.title')}
+                        </span>
+                    </div>
+                    <p className="protocol-mode-description">{t('controllers_only.desc')}</p>
+                    <div className="restart-row">
+                        <span>
+                            <strong>{t('controllers_only.label')}</strong>
+                            <small>
+                                {(settingsServer.controllers || []).length === 0
+                                    ? t('controllers_only.empty')
+                                    : t('controllers_only.hint')}
+                            </small>
+                        </span>
+                        <SabaToggle
+                            checked={String(settingsValues.controllers_only) === 'true'}
+                            disabled={
+                                (settingsServer.controllers || []).length === 0 &&
+                                String(settingsValues.controllers_only) !== 'true'
+                            }
+                            onChange={(checked) => handleSettingChange('controllers_only', checked)}
+                        />
+                    </div>
+                </div>
+            )}
+
             {/* 정지 대기 시간 (데몬 MK14 module_settings.stop_timeout, 초). 비우면 모듈 값, 지나면 강제로 끈다.
                 데몬이 띄우지 않는 서버(managed:false)는 모듈 stop()이 정지를 맡아 이 값을 쓰지 않는다 */}
             {showSaba && settingsServer.managed !== false && (

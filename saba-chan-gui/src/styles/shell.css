@@ -1681,6 +1681,42 @@ button.activity-line:hover {
     text-align: right;
 }
 
+/* 조작 가능 탭: 닉네임 | 디스코드 | 빼기, 아래에 넣기 줄 */
+.controllers-list {
+    list-style: none;
+    margin: 0 0 var(--sp-3);
+    padding: 0;
+}
+.controllers-list .restart-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+}
+.controllers-list .controllers-name strong {
+    overflow-wrap: anywhere;
+}
+.controllers-list .controllers-discord {
+    flex-direction: row;
+    align-items: center;
+    gap: var(--sp-2);
+    min-width: 0;
+}
+.controllers-add {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-2);
+    align-items: center;
+}
+.controllers-add .input {
+    flex: 1 1 160px;
+    min-width: 0;
+}
+.controllers-add .controllers-member {
+    flex: 1 1 200px;
+}
+.controllers-empty {
+    margin: 0 0 var(--sp-3);
+}
+
 /* ════════════════════════════════════════════════════════════════
    디스코드 페이지: 왼쪽 메뉴(연결 · 디스코드 서버 · 봇) | 오른쪽 화면
    서버 페이지의 목록-상세 틀(.server-list-pane / .server-detail-pane)을 그대로 쓴다

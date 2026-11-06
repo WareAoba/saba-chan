@@ -44,6 +44,8 @@ export interface CommandItem {
     key?: string;
     keys?: string[];
     overridden?: boolean;
+    /** 시작·정지·재시작·백업 만들기: 레벨이 모자라도 그 인스턴스의 조작 가능 명단에 있으면 쓴다 */
+    controllers?: boolean;
     [key: string]: unknown;
 }
 
@@ -71,6 +73,8 @@ export interface StairChip {
     items: CommandItem[];
     overridden?: boolean;
     instance?: string;
+    /** 조작 가능 명단에 있는 사람도 쓴다 */
+    controllers?: boolean;
 }
 
 export const OWNER = 3;
@@ -208,6 +212,7 @@ export function stairChips(board: CommandBoard | null | undefined, view = ALL_IN
             kind: head.kind,
             fixed: head.fixed,
             name: head.name,
+            controllers: head.controllers === true,
         };
         chips.push({ ...chip, id, level, levelMixed: byLevel.size > 1, items: list, overridden: main.some((i) => i.overridden) });
         for (const item of list.filter((i) => i.level !== level)) {

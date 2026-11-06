@@ -851,7 +851,8 @@
     "logs_empty": "Aún no hay registros. Aparecen cuando el servidor se ejecuta una vez.",
     "logs_failed": "No se pudo leer el registro: {{error}}",
     "logs_saved": "Registro guardado: {{path}}",
-    "logs_saved_truncated": "El registro era demasiado largo; solo se guardó la parte más reciente: {{path}}"
+    "logs_saved_truncated": "El registro era demasiado largo; solo se guardó la parte más reciente: {{path}}",
+    "tab_controllers": "Operadores"
   },
   "discord": {
     "nav_connection": "Conexión",
@@ -1302,7 +1303,8 @@
     "perm_confirm_tier_hint": "Se compara con el nivel de confirmación de Discord para decidir si se vuelve a preguntar con un botón. Las confirmaciones de la app y la CLI no cambian.",
     "perm_confirm_tier_mixed_hint": "Las instancias usan niveles distintos. Al elegir uno, se aplica a todas.",
     "perm_legend_moved": "Movido del preajuste",
-    "perm_server_wide": "Es un comando de todo el servidor, así que el cambio se ve en el menú de cada instancia."
+    "perm_server_wide": "Es un comando de todo el servidor, así que el cambio se ve en el menú de cada instancia.",
+    "perm_controllers_tag": "también operadores"
   },
   "maintenance": {
     "load_failed": "No se pudieron cargar las copias de seguridad ni las programaciones.",
@@ -1847,6 +1849,31 @@
     "keyword_hint": "El chat que empieza con esta palabra se envía sin ella. Una palabra, hasta 32 caracteres.",
     "keyword_placeholder": "p. ej. !dc",
     "channel_note": "Elige el canal en la asignación de canales de la pestaña Discord o con /saba assign → Chat del juego."
+  },
+  "controllers": {
+    "desc": "Las personas de esta lista pueden iniciar, detener y reiniciar este servidor y crear copias de seguridad. Los administradores y superiores no necesitan estar en la lista.",
+    "empty": "Todavía no hay nadie.",
+    "not_linked": "Sin vincular",
+    "remove": "Quitar",
+    "remove_named": "Quitar a {{name}}",
+    "name_placeholder": "Apodo en el juego",
+    "member_none": "Miembro de Discord (opcional)",
+    "add": "Añadir a la lista",
+    "members_hint": "Si no aparecen miembros de Discord, abre el servidor una vez en la pantalla de Discord.",
+    "note": "Solo quienes tengan Discord vinculado pueden iniciar o detener desde Discord. Quienes solo tienen apodo son los que pueden entrar cuando activas el bloqueo de entrada en la pestaña Saba-chan.",
+    "err_empty": "Escribe un apodo del juego.",
+    "err_duplicate": "Ese apodo ya está en la lista.",
+    "err_too_long": "El apodo puede tener hasta 64 caracteres.",
+    "err_too_many": "La lista admite hasta 200 personas.",
+    "err_gate_on": "Para vaciar la lista, primero desactiva «Solo pueden entrar los operadores» en la pestaña Saba-chan.",
+    "save_failed": "No se pudo guardar la lista: {{error}}"
+  },
+  "controllers_only": {
+    "title": "Solo pueden entrar los operadores",
+    "desc": "Quien no esté en la lista «Operadores» es expulsado en cuanto entra. No se le banea.",
+    "label": "Expulsar a quien no esté en la lista",
+    "hint": "Solo se comprueba el apodo, así que en servidores sin verificación de cuenta alguien podría entrar con el nombre de otro.",
+    "empty": "Añade al menos una persona en la pestaña «Operadores» para activarlo."
   },
   "stop_timeout": {
     "title": "Tiempo de espera al detener",

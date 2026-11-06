@@ -115,6 +115,7 @@ async fn server_list(state: &IPCServer, notices: Notices) -> axum::response::Res
         controllers: Vec<crate::controllers::Controller>,
         controllers_only: bool,
         chat_patterns: bool,
+        kick_on_join: bool,
         revision: String,
         instance_dir: String,
         linked_folder: Option<String>,
@@ -142,6 +143,7 @@ async fn server_list(state: &IPCServer, notices: Notices) -> axum::response::Res
             let module = modules.iter().find(|m| m.metadata.name == instance.module_name);
             let process_patterns = module.as_ref().map(|m| m.metadata.process_patterns.clone()).unwrap_or_default();
             let chat_patterns = module.as_ref().is_some_and(|m| !m.metadata.chat_patterns.is_empty());
+            let kick_on_join = module.as_ref().is_some_and(|m| m.metadata.kick_command.is_some() && !m.metadata.player_join_patterns.is_empty());
             InstanceSnapshot {
                 id: instance.id.clone(),
                 name: instance.name.clone(),
@@ -164,6 +166,7 @@ async fn server_list(state: &IPCServer, notices: Notices) -> axum::response::Res
                 controllers: instance.controllers.clone(),
                 controllers_only: instance.controllers_only,
                 chat_patterns,
+                kick_on_join,
                 revision: instance.settings_revision(),
                 instance_dir: supervisor.instance_store.instance_dir(&instance.id).to_string_lossy().to_string(),
                 // 폴더 판정은 아래 락 밖에서
@@ -285,6 +288,7 @@ async fn server_list(state: &IPCServer, notices: Notices) -> axum::response::Res
                     controllers: instance.controllers.clone(),
                     controllers_only: instance.controllers_only,
                     game_chat_supported: instance.chat_patterns && instance.managed,
+                    controllers_only_supported: instance.kick_on_join && instance.managed,
                     revision: instance.revision.clone(),
                     port_conflicts: vec![],
                     slots: Default::default(),
@@ -348,6 +352,7 @@ async fn server_list(state: &IPCServer, notices: Notices) -> axum::response::Res
             controllers: instance.controllers.clone(),
             controllers_only: instance.controllers_only,
             game_chat_supported: instance.chat_patterns && instance.managed,
+                    controllers_only_supported: instance.kick_on_join && instance.managed,
             revision: instance.revision.clone(),
             port_conflicts: vec![],
             slots: Default::default(),

@@ -56,3 +56,19 @@ describe('게임 채팅 전달 칸', () => {
         expect(vi.mocked(window.api.instanceUpdateSettings).mock.calls[0][1]).not.toHaveProperty('game_chat_keyword');
     });
 });
+
+// 사용자 지정(2026-11-06): 사바쨩 탭의 "조작 가능한 사람만 접속" (데몬 controllers_only)
+describe('조작 가능한 사람만 접속 칸', () => {
+    it('저장된 값으로 채우고, 바꿨을 때만 보낸다', async () => {
+        const { result } = setup();
+        const server = { id: 's', name: 'S', module: 'game', controllers: [{ name: 'Steve' }] } as unknown as Server;
+        await act(async () => result.current.handleOpenSettings(server));
+        expect(result.current.settingsValues).toMatchObject({ controllers_only: false });
+        await act(async () => result.current.handleSaveSettings());
+        expect(vi.mocked(window.api.instanceUpdateSettings).mock.calls[0][1]).not.toHaveProperty('controllers_only');
+
+        act(() => result.current.handleSettingChange('controllers_only', true));
+        await act(async () => result.current.handleSaveSettings());
+        expect(vi.mocked(window.api.instanceUpdateSettings).mock.calls[1][1]).toMatchObject({ controllers_only: true });
+    });
+});

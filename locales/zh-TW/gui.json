@@ -851,7 +851,8 @@
     "logs_empty": "還沒有日誌。伺服器執行一次後就會出現。",
     "logs_failed": "無法讀取日誌：{{error}}",
     "logs_saved": "已儲存日誌：{{path}}",
-    "logs_saved_truncated": "日誌過長，只儲存了最近的部分：{{path}}"
+    "logs_saved_truncated": "日誌過長，只儲存了最近的部分：{{path}}",
+    "tab_controllers": "可操作的人"
   },
   "discord": {
     "nav_connection": "連線",
@@ -1302,7 +1303,8 @@
     "perm_confirm_tier_hint": "與 Discord 設定的確認等級比較，決定是否用按鈕再次詢問。應用程式與 CLI 的確認不變。",
     "perm_confirm_tier_mixed_hint": "各執行個體的層級不同。選擇後會全部統一為該層級。",
     "perm_legend_moved": "已偏離預設",
-    "perm_server_wide": "這是伺服器層級的命令，修改會同時出現在所有實例選單中。"
+    "perm_server_wide": "這是伺服器層級的命令，修改會同時出現在所有實例選單中。",
+    "perm_controllers_tag": "可操作的人也可以"
   },
   "maintenance": {
     "load_failed": "無法載入備份與排程資訊。",
@@ -1847,6 +1849,31 @@
     "keyword_hint": "聊天開頭有此字時，去掉該字後傳送。不含空格，最多 32 個字元。",
     "keyword_placeholder": "例如：!dc",
     "channel_note": "在 Discord 分頁的頻道設定中，或用 /saba assign 選擇「遊戲聊天」來指定頻道。"
+  },
+  "controllers": {
+    "desc": "名單裡的人可以啟動、停止、重新啟動這個伺服器並建立備份。管理員以上不在名單裡也可以。",
+    "empty": "還沒有人。",
+    "not_linked": "未連結",
+    "remove": "移除",
+    "remove_named": "移除 {{name}}",
+    "name_placeholder": "遊戲暱稱",
+    "member_none": "Discord 成員（可不選）",
+    "add": "加入名單",
+    "members_hint": "如果看不到 Discord 成員，請先在 Discord 頁面開啟一次伺服器。",
+    "note": "只有連結了 Discord 的人才能在 Discord 裡啟動或停止。只填暱稱的人，是在「沙巴醬」頁開啟進入限制後可以進入的人。",
+    "err_empty": "請輸入遊戲暱稱。",
+    "err_duplicate": "這個暱稱已經在名單裡了。",
+    "err_too_long": "暱稱最多 64 個字元。",
+    "err_too_many": "名單最多 200 人。",
+    "err_gate_on": "要清空名單，請先在「沙巴醬」頁關閉「只允許可操作的人進入」。",
+    "save_failed": "無法儲存名單：{{error}}"
+  },
+  "controllers_only": {
+    "title": "只允許可操作的人進入",
+    "desc": "不在「可操作的人」名單裡的暱稱一進入就會被踢出。不會封鎖。",
+    "label": "踢出不在名單裡的人",
+    "hint": "只檢查暱稱，所以在關閉正版驗證的伺服器上，別人可能用他人的名字進入。",
+    "empty": "在「可操作的人」頁至少加入一人後才能開啟。"
   },
   "stop_timeout": {
     "title": "停止等待時間",

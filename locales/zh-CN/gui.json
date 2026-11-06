@@ -851,7 +851,8 @@
     "logs_empty": "还没有日志。服务器运行一次后就会出现。",
     "logs_failed": "无法读取日志：{{error}}",
     "logs_saved": "已保存日志：{{path}}",
-    "logs_saved_truncated": "日志过长，只保存了最近的部分：{{path}}"
+    "logs_saved_truncated": "日志过长，只保存了最近的部分：{{path}}",
+    "tab_controllers": "可操作的人"
   },
   "discord": {
     "nav_connection": "连接",
@@ -1302,7 +1303,8 @@
     "perm_confirm_tier_hint": "与 Discord 设置的确认级别比较，决定是否用按钮再次询问。应用和 CLI 的确认不变。",
     "perm_confirm_tier_mixed_hint": "各实例的级别不同。选择后将全部统一为该级别。",
     "perm_legend_moved": "已偏离预设",
-    "perm_server_wide": "这是服务器级命令，修改会同时出现在所有实例菜单中。"
+    "perm_server_wide": "这是服务器级命令，修改会同时出现在所有实例菜单中。",
+    "perm_controllers_tag": "可操作的人也可以"
   },
   "maintenance": {
     "load_failed": "无法加载备份和计划信息。",
@@ -1847,6 +1849,31 @@
     "keyword_hint": "聊天开头有此词时，去掉该词后发送。不含空格，最多 32 个字符。",
     "keyword_placeholder": "例如：!dc",
     "channel_note": "在 Discord 标签页的频道设置中，或用 /saba assign 选择“游戏聊天”来指定频道。"
+  },
+  "controllers": {
+    "desc": "名单里的人可以启动、停止、重启这个服务器并创建备份。管理员及以上不在名单里也可以。",
+    "empty": "还没有人。",
+    "not_linked": "未关联",
+    "remove": "移除",
+    "remove_named": "移除 {{name}}",
+    "name_placeholder": "游戏昵称",
+    "member_none": "Discord 成员（可不选）",
+    "add": "加入名单",
+    "members_hint": "如果看不到 Discord 成员，请先在 Discord 页面打开一次服务器。",
+    "note": "只有关联了 Discord 的人才能在 Discord 里启动或停止。只填昵称的人，是在“沙巴酱”页开启进入限制后可以进入的人。",
+    "err_empty": "请输入游戏昵称。",
+    "err_duplicate": "这个昵称已经在名单里了。",
+    "err_too_long": "昵称最多 64 个字符。",
+    "err_too_many": "名单最多 200 人。",
+    "err_gate_on": "要清空名单，请先在“沙巴酱”页关闭“只允许可操作的人进入”。",
+    "save_failed": "无法保存名单：{{error}}"
+  },
+  "controllers_only": {
+    "title": "只允许可操作的人进入",
+    "desc": "不在“可操作的人”名单里的昵称一进入就会被踢出。不会封禁。",
+    "label": "踢出不在名单里的人",
+    "hint": "只检查昵称，所以在关闭正版验证的服务器上，别人可能用他人的名字进入。",
+    "empty": "在“可操作的人”页至少加入一人后才能开启。"
   },
   "stop_timeout": {
     "title": "停止等待时间",
