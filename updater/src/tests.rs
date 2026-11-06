@@ -351,6 +351,49 @@ fn replace_dir_restores_backup_when_extract_fails() {
     assert_eq!(std::fs::read_to_string(target.join("module.toml")).unwrap(), "old");
 }
 
+// 교체 도중 꺼졌으면 남은 백업이 원래 내용이다: 다음 시도가 반쯤 바뀐 폴더로 백업을 덮지 않는다
+#[test]
+fn replace_dir_keeps_the_backup_left_by_an_interrupted_replace() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.staging_dir = tmp.path().join("staging");
+    std::fs::create_dir_all(&manager.staging_dir).unwrap();
+    let target = tmp.path().join("modules").join("game");
+    std::fs::create_dir_all(&target).unwrap();
+    // 지난 시도: 백업은 끝냈고, 원래 파일을 지운 뒤 새 파일 하나만 풀고 꺼졌다
+    let backup = manager.staging_dir.join("game_backup");
+    std::fs::create_dir_all(&backup).unwrap();
+    std::fs::write(backup.join("module.toml"), "old").unwrap();
+    std::fs::write(target.join("half.py"), "new").unwrap();
+    let bad = manager.staging_dir.join("module-game.zip");
+    std::fs::write(&bad, b"not a zip").unwrap();
+
+    assert!(manager.replace_dir(&target, &bad, "game_backup").is_err());
+    assert_eq!(std::fs::read_to_string(target.join("module.toml")).unwrap(), "old");
+    assert!(!target.join("half.py").exists());
+}
+
+// 백업을 만들다 꺼졌으면 그 반쪽 백업은 쓰지 않는다 (폴더는 아직 그대로다)
+#[test]
+fn replace_dir_ignores_a_backup_that_was_cut_off_while_copying() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.staging_dir = tmp.path().join("staging");
+    std::fs::create_dir_all(&manager.staging_dir).unwrap();
+    let target = tmp.path().join("modules").join("game");
+    std::fs::create_dir_all(&target).unwrap();
+    std::fs::write(target.join("module.toml"), "old").unwrap();
+    std::fs::write(target.join("lifecycle.py"), "old").unwrap();
+    let partial = manager.staging_dir.join("game_backup.partial");
+    std::fs::create_dir_all(&partial).unwrap();
+    std::fs::write(partial.join("module.toml"), "old").unwrap();
+    let bad = manager.staging_dir.join("module-game.zip");
+    std::fs::write(&bad, b"not a zip").unwrap();
+
+    assert!(manager.replace_dir(&target, &bad, "game_backup").is_err());
+    assert_eq!(std::fs::read_to_string(target.join("lifecycle.py")).unwrap(), "old");
+}
+
 // C13: 받은 뒤 바뀐 파일은 적용하지 않는다
 #[test]
 fn staged_file_is_rechecked_before_apply() {
@@ -1431,6 +1474,39 @@ async fn an_apply_target_already_installed_is_skipped_and_the_rest_are_applied()
 
     assert_eq!(applied, vec![ext.manifest_key()]);
     assert!(failed.is_empty(), "{:?}", failed);
+    let _ = std::fs::remove_dir_all(manager.resolve_ext_dir(&name));
+}
+
+// 일부만 적용하면 고르지 않은 것은 받아 둔 채 다음 적용을 기다린다 (다시 확인·다운로드하지 않게)
+#[tokio::test]
+async fn applying_some_targets_keeps_the_rest_pending() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.install_root = tmp.path().join("install");
+    manager.staging_dir = tmp.path().join("staging");
+    manager.installed_manifest_file = tmp.path().join("installed-manifest.json");
+    std::fs::create_dir_all(&manager.install_root).unwrap();
+    std::fs::create_dir_all(&manager.staging_dir).unwrap();
+    let name = format!("partial-{}", std::process::id());
+    let ext = Component::Extension(name.clone());
+    let left = manager.staging_dir.join("locales.zip");
+    std::fs::write(&left, b"zip").unwrap();
+    manager.status.components = vec![staged(ext.clone(), &extension_zip(tmp.path())), staged(Component::Locales, &left)];
+    manager.save_pending_manifest().unwrap();
+    manager.save_updater_apply_targets(&[ext.manifest_key()]).unwrap();
+    manager.status.components.clear();
+
+    let (applied, failed) = manager.apply_staged(|_| {}).await.unwrap();
+
+    assert_eq!(applied, vec![ext.manifest_key()]);
+    assert!(failed.is_empty(), "{:?}", failed);
+    assert!(left.exists(), "the download that was not chosen stays");
+    assert!(!manager.staging_dir.join("apply-targets.json").exists());
+    let mut next = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    next.staging_dir = manager.staging_dir.clone();
+    next.installed_manifest_file = manager.installed_manifest_file.clone();
+    assert_eq!(next.load_pending_manifest().unwrap(), 1);
+    assert_eq!(next.status.components[0].component, Component::Locales);
     let _ = std::fs::remove_dir_all(manager.resolve_ext_dir(&name));
 }
 

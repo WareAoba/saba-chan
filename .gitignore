@@ -88,3 +88,6 @@ saba-chan-gui/coverage/
 vitest-result.txt
 test_config.json
 scripts/.mock-assets/
+
+# 설치기 창이 빌드 때 GUI에서 복사하는 디자인 토큰 (installer/gui/src-tauri/build.rs)
+installer/gui/src/tokens.css

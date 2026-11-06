@@ -66,8 +66,9 @@ enum Page {
 fn main_window(app: &tauri::AppHandle, page: Page, title: &str) -> tauri::Result<tauri::WebviewWindow> {
     use tauri::window::Color;
     let (url, height, background) = match page {
-        Page::Install => ("index.html", 520.0, Color(0xf5, 0xf6, 0xfa, 0xff)),
-        Page::Update => ("update.html", 500.0, Color(0x66, 0x7e, 0xea, 0xff)),
+        // 첫 그림이 뜨기 전 바탕: 설치기는 라이트 테마 바탕(GUI 토큰 `--bg-0`), 업데이터는 처음 덮는 그림의 평균색
+        Page::Install => ("index.html", 520.0, Color(0xe6, 0xe8, 0xed, 0xff)),
+        Page::Update => ("update.html", 500.0, Color(0x73, 0xa5, 0xe2, 0xff)),
     };
     let win = tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::App(url.into()))
         .title(title)

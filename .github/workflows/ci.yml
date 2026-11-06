@@ -210,7 +210,7 @@ jobs:
 
       # 번들러 없이 그대로 실리는 스크립트는 문법만 확인한다
       - name: Syntax check — updater, installer
-        run: node --check installer/gui/src/updater.js && node --check installer/gui/src/installer.js
+        run: node --check installer/gui/src/common.js && node --check installer/gui/src/updater.js && node --check installer/gui/src/installer.js
 
   # ─────────────────────────────────────────
   # E2E — 실제 데몬·CLI·러너를 띄우는 Python 시험 (전체만)

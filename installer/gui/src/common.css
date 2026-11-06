@@ -1,0 +1,408 @@
+/* ═══════════════════════════════════════════════════════
+ * 설치기·업데이터 창 공용 스타일 — 미니 GUI
+ * 색·입체·간격·글자는 GUI 토큰(tokens.css, 빌드 때 saba-chan-gui에서 복사)만 쓴다.
+ * 창은 750 × 520(설치기)·750 × 500(업데이터) 고정 크기다 (src-tauri/src/lib.rs `main_window`).
+ * ═══════════════════════════════════════════════════════ */
+
+* { box-sizing: border-box; }
+html, body {
+    margin: 0;
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg-0);
+    color: var(--text-1);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.5;
+    user-select: none;
+    -webkit-user-select: none;
+}
+[hidden] { display: none !important; }
+button { font: inherit; color: inherit; }
+input { font: inherit; }
+
+.win { position: relative; height: 100%; display: flex; flex-direction: column; overflow: hidden; }
+
+/* ── 상단 바: 모드 · 단계 · 언어/테마 · 창 버튼 ── */
+.appbar {
+    height: 48px;
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    padding-left: var(--sp-4);
+    background: var(--appbar-gradient);
+    border-bottom: 1px solid var(--line);
+    position: relative;
+    z-index: 10;
+}
+.mode {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-2);
+    padding: 2px 10px;
+    height: 24px;
+    display: inline-flex;
+    align-items: center;
+    border-radius: var(--r-pill);
+    background: var(--inset);
+    box-shadow: var(--shadow-inset);
+    border: 1px solid var(--line);
+}
+.steps { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-3); font-weight: 600; margin-left: 4px; }
+.steps i { width: 18px; height: 2px; border-radius: 2px; background: var(--line-strong); }
+.steps b { font-weight: 600; display: inline-flex; align-items: center; gap: 5px; transition: color var(--dur) var(--ease); }
+.steps b::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--line-strong); transition: background var(--dur) var(--ease), box-shadow var(--dur) var(--ease); }
+.steps b.done::before { background: var(--ok); }
+.steps b.cur { color: var(--text-1); }
+.steps b.cur::before { background: var(--brand-primary); box-shadow: 0 0 0 3px var(--brand-shadow-light); }
+.sp { flex: 1; align-self: stretch; }
+.ibtn {
+    width: 32px;
+    height: 32px;
+    border-radius: var(--r-sm);
+    display: grid;
+    place-items: center;
+    color: var(--text-2);
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+    transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
+}
+.ibtn:hover { color: var(--text-1); background: var(--bg-2); box-shadow: var(--neu-up); }
+.ibtn svg { width: 16px; height: 16px; }
+.winbtns { display: flex; align-self: stretch; margin-left: 4px; }
+.win-btn {
+    width: 46px;
+    border: 0;
+    padding: 0;
+    background: transparent;
+    color: var(--text-2);
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.win-btn svg { width: 12px; height: 12px; }
+.win-btn:hover { background: var(--bg-3); color: var(--text-1); }
+.win-btn.win-close:hover { background: var(--stop); color: #fff; }
+.win-btn:disabled { opacity: 0.35; cursor: default; pointer-events: none; }
+.ibtn:focus-visible, .win-btn:focus-visible, .btn:focus-visible { outline: 2px solid var(--brand-primary); outline-offset: 2px; }
+
+/* ── 본문 ── */
+.body { flex: 1; min-height: 0; position: relative; display: flex; flex-direction: column; }
+.center { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; position: relative; z-index: 1; padding: 0 var(--sp-6); text-align: center; }
+.h-title { font-size: 20px; font-weight: 800; letter-spacing: -0.01em; margin-top: -4px; }
+.h-sub { font-size: 14px; color: var(--text-2); margin-top: -8px; max-width: 560px; }
+.h-sub:empty { display: none; }
+
+/* 전용 글자 로고: 그림을 마스크로 써서 테마 글자색으로 칠한다 (주소는 common.js `setWordmark`) */
+.wordmark {
+    width: 220px;
+    height: 40px;
+    flex: none;
+    background: var(--text-1);
+    -webkit-mask: var(--wordmark) center / contain no-repeat;
+    mask: var(--wordmark) center / contain no-repeat;
+}
+.wordmark.left { -webkit-mask-position: left center; mask-position: left center; }
+
+/* ── 버튼 ── */
+.btn {
+    font-size: 14px;
+    font-weight: 600;
+    height: 36px;
+    padding: 0 16px;
+    border: 0;
+    border-radius: var(--r-sm);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: box-shadow 0.22s var(--ease), transform 0.18s var(--ease-spring), filter 0.2s var(--ease);
+}
+.btn svg { width: 14px; height: 14px; flex: none; }
+.btn.lg { height: 40px; padding: 0 22px; min-width: 180px; }
+.btn.primary { background: var(--neu-sheen), var(--brand-primary); color: var(--brand-text); box-shadow: var(--neu-up); }
+.btn.ghost { background: var(--bg-2); color: var(--text-1); box-shadow: var(--neu-up); }
+.btn.danger { background: var(--neu-sheen), var(--stop); color: #fff; box-shadow: var(--neu-up); }
+.btn:hover { box-shadow: var(--neu-up-hi); transform: translateY(-1px); filter: brightness(1.05); }
+.btn:active { transform: scale(0.96); filter: brightness(0.92); box-shadow: var(--neu-in); transition-duration: 0.08s; }
+.btn.primary:active, .btn.danger:active { box-shadow: var(--neu-press-color); }
+.btn:disabled { opacity: 0.55; cursor: default; transform: none; filter: none; }
+
+/* ── 진행 줄: GUI 로딩 화면 아래 명령 줄과 같은 자리·글자 ── */
+.strip {
+    flex: none;
+    padding: 10px 16px 12px;
+    background: var(--bg-1);
+    border-top: 1px solid var(--line);
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+}
+.strip .l { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-2); min-width: 0; }
+.strip .l svg { width: 14px; height: 14px; color: var(--text-3); flex: none; }
+.strip .msg { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.strip .pct { margin-left: auto; font-weight: 700; color: var(--text-1); font-variant-numeric: tabular-nums; }
+.track { height: 6px; border-radius: var(--r-pill); background: var(--inset); box-shadow: var(--neu-in); overflow: hidden; }
+.fill {
+    height: 100%;
+    width: 0;
+    border-radius: inherit;
+    background: linear-gradient(90deg, var(--brand-from), var(--brand-to));
+    position: relative;
+    overflow: hidden;
+    transition: width 0.3s var(--ease);
+}
+.fill::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.35), transparent);
+    animation: sheen 1.6s linear infinite;
+    transform: translateX(-100%);
+}
+.fill.ok { background: var(--ok); }
+.fill.ok::after { display: none; }
+@keyframes sheen { to { transform: translateX(100%); } }
+
+/* ── 아래 버튼 줄 (진행 줄 자리에 올라온다) ── */
+.footer {
+    height: 60px;
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 16px;
+    background: var(--bg-1);
+    border-top: 1px solid var(--line);
+}
+.footer .meta { font-size: 12px; color: var(--text-3); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: text; -webkit-user-select: text; }
+
+/* ── 칩·알림 띠 ── */
+.chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 22px;
+    padding: 0 9px;
+    border-radius: var(--r-pill);
+    background: var(--inset);
+    box-shadow: var(--shadow-inset);
+    border: 1px solid var(--line);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--c, var(--text-2));
+    font-variant-numeric: tabular-nums;
+}
+.chip::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--c, var(--text-3)); box-shadow: 0 0 0 3px color-mix(in oklch, var(--c, transparent) 18%, transparent); }
+.chip.stop { --c: var(--stop); }
+.banner {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    width: min(540px, 100%);
+    max-height: 96px;
+    overflow: auto;
+    padding: 10px 12px;
+    border-radius: var(--r-sm);
+    border: 1px solid color-mix(in oklch, var(--c) 40%, transparent);
+    background: color-mix(in oklch, var(--c) 10%, transparent);
+    font-size: 12.5px;
+    color: var(--text-1);
+    text-align: left;
+    white-space: pre-line;
+    overflow-wrap: anywhere;
+    user-select: text;
+    -webkit-user-select: text;
+}
+.banner::before {
+    content: "";
+    flex: none;
+    width: 16px;
+    height: 16px;
+    margin-top: 1px;
+    background: var(--c);
+    -webkit-mask: var(--icon-warn) center / contain no-repeat;
+    mask: var(--icon-warn) center / contain no-repeat;
+}
+.banner { --c: var(--warn); --icon-warn: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z'/%3E%3Cline x1='12' y1='9' x2='12' y2='13'/%3E%3Cline x1='12' y1='17' x2='12.01' y2='17'/%3E%3C/svg%3E"); }
+.banner.stop { --c: var(--stop); }
+.banner strong { display: block; font-weight: 700; margin-bottom: 2px; }
+
+/* 완료 화면 전환이 끝난 뒤 링 영역을 살짝 밀어 올리며 나오는 자리 (경고 띠·실패 요약). .in이 붙으면 펼친다 */
+.later {
+    display: grid;
+    grid-template-rows: 0fr;
+    justify-items: center;
+    width: min(540px, 100%);
+    margin-top: -14px;
+    opacity: 0;
+    transition: grid-template-rows 0.5s var(--ease), margin-top 0.5s var(--ease), opacity 0.35s var(--ease) 0.15s;
+}
+.later > * { min-height: 0; }
+.later.in { grid-template-rows: 1fr; margin-top: 0; opacity: 1; }
+
+/* ── 링: 대기(강조색) · 진행(빨/파) · 성공(초/파) · 실패(빨/보) ──
+ * 색은 0.8초에 걸쳐 바뀌고, 회전 속도는 common.js가 playbackRate로 부드럽게 바꾼다 */
+@property --c1 { syntax: '<color>'; inherits: true; initial-value: #7ec8e3; }
+@property --c2 { syntax: '<color>'; inherits: true; initial-value: #7d8ee8; }
+@property --c3 { syntax: '<color>'; inherits: true; initial-value: #906abf; }
+@property --c4 { syntax: '<color>'; inherits: true; initial-value: #a07ad8; }
+.ring {
+    position: relative;
+    width: 148px;
+    height: 148px;
+    display: grid;
+    place-items: center;
+    flex: none;
+    --c1: #7ec8e3; --c2: var(--brand-primary); --c3: var(--brand-secondary); --c4: #a07ad8; --glow: 0.32;
+    transition: --c1 0.8s var(--ease), --c2 0.8s var(--ease), --c3 0.8s var(--ease), --c4 0.8s var(--ease), transform 0.5s var(--ease-spring);
+}
+.ring .g1, .ring .g2 { position: absolute; border-radius: 50%; background: conic-gradient(in oklch from 0deg, var(--c1), var(--c2), var(--c3), var(--c4), var(--c3), var(--c2), var(--c1)); }
+.ring .g1 { inset: 0; }
+.ring .g2 { inset: -14px; filter: blur(26px); opacity: var(--glow); transition: opacity 0.8s var(--ease); }
+.ring .m { position: absolute; inset: 3px; border-radius: 50%; background: var(--bg-0); }
+.ring img { position: relative; width: 140px; height: 140px; border-radius: 50%; object-fit: cover; }
+.ring.spin { --c1: #3ba5da; --c2: #6a72ec; --c3: #b45ee0; --c4: #f0609a; --glow: 0.62; }
+.ring.ok { --c1: #4ade80; --c2: #2fd4a6; --c3: #22c4e0; --c4: #3aa8f5; --glow: 0.5; }
+.ring.bad { --c1: #f87171; --c2: #ef4466; --c3: #c03ad0; --c4: #8b5cf6; --glow: 0.55; }
+
+/* ── 매트릭스: 뒤에서 흐르는 콘솔 조각, 가운데는 비네트로 비운다 (GUI 로딩 화면과 같음) ── */
+.matrix { position: absolute; inset: 0; pointer-events: none; }
+.matrix canvas { display: block; width: 100%; height: 100%; }
+.vign {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: radial-gradient(in oklch ellipse 46% 56% at 50% 46%, var(--bg-0) 36%, color-mix(in oklch, var(--bg-0) 70%, transparent) 62%, transparent 100%);
+}
+
+/* ═══════════════════════════════════════════════════════
+ * 흐름: start(시작) → sheet(설정) → expand(그림 펼침) → install(접히며 매트릭스) → done(완료·실패)
+ * 그림은 창 전체 크기로 두고 clip-path로 보이는 곳만 연다. 시간은 common.js `TIMING`이 --t-*로 넣는다
+ * ═══════════════════════════════════════════════════════ */
+.flow {
+    /* clip: 시트 안의 눌린 버튼이 아래로 내려갈 때 본문이 따라 스크롤되지 않게 */
+    overflow: clip;
+    --cut: cubic-bezier(0.76, 0, 0.24, 1);
+    --t-open: 0.8s;
+    --t-hold: 1.2s;
+    --t-fold: 0.8s;
+    --matrix-ink: color-mix(in oklch, var(--brand-primary) 45%, transparent);
+    --matrix-head: color-mix(in oklch, var(--brand-primary) 70%, var(--text-1));
+    --matrix-fade: color-mix(in oklch, var(--bg-0) 14%, transparent);
+}
+.flow .f-mat { position: absolute; top: 0; right: 0; bottom: 62px; left: 0; display: flex; flex-direction: column; }
+.flow .f-mat .matrix { opacity: 0; transform: scale(1.04); transition: opacity 0.6s var(--ease), transform 0.9s var(--ease); }
+.flow .f-run { opacity: 0; transform: scale(0.92); transition: opacity 0.4s var(--ease), transform 0.5s var(--ease-spring); }
+.flow .f-art { position: absolute; inset: 0; z-index: 2; overflow: hidden; clip-path: polygon(430px 0, 750px 0, 750px 100%, 430px 100%); }
+.flow .f-art img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    max-width: none;
+    object-fit: cover;
+    object-position: 50% 50%;
+    /* 시작 칸(430~750px) 안에 사바쨩이 오도록 오른쪽으로 밀고 조금 키운 자리에서 시작한다 */
+    transform-origin: 0 50%;
+    transform: translateX(167px) scale(1.25);
+    transition: filter var(--t-fold) var(--ease);
+}
+.flow .f-strip { position: absolute; left: 0; right: 0; bottom: 0; z-index: 4; transform: translateY(100%); transition: transform 0.3s var(--ease); }
+.flow .f-foot { position: absolute; left: 0; right: 0; bottom: 0; z-index: 5; transform: translateY(100%); transition: transform 0.35s var(--ease) 0.1s; }
+
+/* [설치]를 누른 때부터 진행 줄 */
+.flow[data-step="expand"] .f-strip, .flow[data-step="install"] .f-strip { transform: none; }
+.flow[data-step="expand"] .f-art { animation: art-open var(--t-open) var(--cut) forwards; }
+/* 그림 움직임: 펼침·머묾·접힘 내내 조금씩 줌아웃하며 왼쪽으로 흐른다. 펼칠 때와 접힐 때만 빠르고 머무는 동안은 천천히.
+ * 단계가 바뀌어도 같은 애니메이션이라 끊기지 않는다. 그림 왼쪽 끝은 여는 경계보다 늘 왼쪽(같은 곡선), 오른쪽 끝은 접히는 경계보다 늘 오른쪽이다 */
+.flow[data-step="expand"] .f-art img, .flow[data-step="install"] .f-art img, .flow[data-step="done"] .f-art img {
+    animation: art-zoom calc(var(--t-open) + var(--t-hold) + var(--t-fold)) linear forwards;
+}
+.flow[data-step="install"] .f-art, .flow[data-step="done"] .f-art { animation: art-fold var(--t-fold) linear forwards; }
+.flow[data-step="install"] .f-art img, .flow[data-step="done"] .f-art img { filter: brightness(1.2) saturate(1.15); }
+.flow[data-step="install"] .f-mat .matrix { opacity: var(--loading-matrix-opacity); transform: none; }
+.flow[data-step="install"] .f-run, .flow[data-step="done"] .f-run { opacity: 1; transform: none; }
+/* 완료: 매트릭스만 끄고 링 색만 바꾼다. 진행 줄 자리에 버튼 */
+.flow[data-step="done"] .f-mat .matrix { opacity: 0; transform: none; }
+.flow[data-step="done"] .f-foot { transform: none; }
+
+@keyframes art-zoom {
+    0% { transform: translateX(167px) scale(1.25); animation-timing-function: cubic-bezier(0.76, 0, 0.24, 1); }
+    28.57% { transform: translateX(-10px) scale(1.18); animation-timing-function: linear; }
+    71.43% { transform: translateX(-30px) scale(1.14); animation-timing-function: cubic-bezier(0.55, 0, 0.85, 0.35); }
+    100% { transform: translateX(-200px) scale(1.12); }
+}
+@keyframes art-open {
+    from { clip-path: polygon(430px 0, 750px 0, 750px 100%, 430px 100%); }
+    to { clip-path: polygon(0 0, 750px 0, 750px 100%, 0 100%); }
+}
+/* 접히는 경계: 위·아래 끝이 다른 빠르기로 움직여 기울기가 계속 바뀐다 (곡선은 점에 구워 넣고 linear로 돈다) */
+@keyframes art-fold {
+    0% { clip-path: polygon(0 0, 750px 0, 750px 100%, 0 100%); }
+    15% { clip-path: polygon(0 0, 735px 0, 748px 100%, 0 100%); }
+    30% { clip-path: polygon(0 0, 640px 0, 712px 100%, 0 100%); }
+    45% { clip-path: polygon(0 0, 470px 0, 610px 100%, 0 100%); }
+    60% { clip-path: polygon(0 0, 250px 0, 450px 100%, 0 100%); }
+    75% { clip-path: polygon(0 0, 30px 0, 260px 100%, 0 100%); }
+    90% { clip-path: polygon(0 0, -180px 0, 90px 100%, 0 100%); }
+    100% { clip-path: polygon(0 0, -330px 0, -40px 100%, 0 100%); }
+}
+
+/* 훑는 빛: 그림 위를 대각선으로 지나간다. 흰 중심 양옆에 햇빛이 갈라진 듯한 옅은 색 테(보라·하늘 / 노랑·주황)만 더했다 */
+.f-shine {
+    position: absolute;
+    inset: -20% auto -20% 0;
+    width: 40%;
+    pointer-events: none;
+    opacity: 0;
+    transform: translateX(-120%) skewX(-18deg);
+    background: linear-gradient(100deg, transparent 8%, rgba(170, 140, 255, 0.1) 26%, rgba(130, 205, 255, 0.2) 38%,
+        rgba(255, 255, 255, 0.55) 50%, rgba(255, 244, 190, 0.24) 61%, rgba(255, 186, 130, 0.12) 72%, transparent 90%);
+}
+.flow[data-step="expand"] .f-shine { animation: shine-open var(--t-open) var(--cut); }
+@keyframes shine-open {
+    0% { opacity: 1; transform: translateX(400px) skewX(-18deg); }
+    80% { opacity: 1; }
+    100% { opacity: 0; transform: translateX(-340px) skewX(-18deg); }
+}
+/* 접히는 경계의 하늘색 빛: 경계 기울기를 따라 같이 기운다 */
+.f-edge {
+    position: absolute;
+    top: -2px;
+    bottom: -2px;
+    left: 0;
+    width: 18px;
+    z-index: 3;
+    pointer-events: none;
+    opacity: 0;
+    transform-origin: 0 0;
+    background: linear-gradient(90deg, transparent, rgba(190, 170, 255, 0.5) 25%, color-mix(in oklch, #9fd8ff 80%, #fff) 50%, rgba(255, 236, 180, 0.55) 75%, transparent);
+    filter: blur(2px);
+    box-shadow: 0 0 24px 6px rgba(120, 200, 255, 0.55);
+}
+.flow[data-step="install"] .f-edge, .flow[data-step="done"] .f-edge { animation: edge-fold var(--t-fold) linear forwards; }
+/* 기울기 = atan((아래 x − 위 x) / 본문 높이 472px) */
+@keyframes edge-fold {
+    0% { transform: translateX(741px) skewX(0.00deg); opacity: 1; }
+    15% { transform: translateX(726px) skewX(1.58deg); opacity: 1; }
+    30% { transform: translateX(631px) skewX(8.67deg); opacity: 1; }
+    45% { transform: translateX(461px) skewX(16.52deg); opacity: 1; }
+    60% { transform: translateX(241px) skewX(22.96deg); opacity: 1; }
+    75% { transform: translateX(21px) skewX(25.98deg); opacity: 1; }
+    90% { transform: translateX(-189px) skewX(29.77deg); opacity: 0.6; }
+    100% { transform: translateX(-339px) skewX(31.57deg); opacity: 0; }
+}
+
+/* ── 움직임 줄이기: 그림 펼침 없이 바로 넘어가고, 링도 돌지 않는다 ── */
+@media (prefers-reduced-motion: reduce) {
+    .flow .f-art, .f-shine, .f-edge { animation: none !important; }
+    .flow:not([data-step="start"]):not([data-step="sheet"]) .f-art { display: none; }
+    *, *::before, *::after { transition-duration: 0.01ms !important; }
+    .fill::after { animation: none; }
+}
