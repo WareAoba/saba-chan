@@ -124,8 +124,6 @@
   "detail": {
     "backups": "備份",
     "players": "玩家",
-    "check": "檢查",
-    "settings_game": "遊戲",
     "more": "更多",
     "tabs": "伺服器選單",
     "uptime": "已執行 {{time}}",

@@ -2,6 +2,7 @@ import clsx from 'clsx';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Icon } from '../Icon';
+import { SaveBar } from './ChatbotView';
 import * as L from './levels';
 import type { PermissionsState } from './PermissionsTab';
 import { usePointerDrag } from './pointerDrag';
@@ -160,24 +161,14 @@ export function LadderTab({ node, permissions, onClose }: LadderTabProps) {
                 </div>
                 {removed && <p className="dc-hint">{t('discord.perm_ladder_removed')}</p>}
                 {!valid && <p className="dc-field-error">{t('discord.perm_err_invalid_ladder')}</p>}
-                <div className="dc-row-actions">
-                    <button
-                        type="button"
-                        className="btn btn-ghost"
-                        disabled={busy || !changed}
-                        onClick={() => setDraft(saved)}
-                    >
-                        {t('discord.perm_ladder_revert')}
-                    </button>
-                    <button
-                        type="button"
-                        className="btn btn-primary"
-                        disabled={busy || !changed || !valid}
-                        onClick={() => write(() => window.api.permissionsUpdate(node.guildId, { ladder: patch }))}
-                    >
-                        {t('discord.perm_ladder_save')}
-                    </button>
-                </div>
+                {/* 다른 설정 화면과 같은 화면 아래 저장 막대 (사용자 11-06 #9) */}
+                <SaveBar
+                    dirty={changed}
+                    saving={busy}
+                    blocked={!valid}
+                    onRevert={() => setDraft(saved)}
+                    onSave={() => write(() => window.api.permissionsUpdate(node.guildId, { ladder: patch }))}
+                />
             </section>
         </div>
     );

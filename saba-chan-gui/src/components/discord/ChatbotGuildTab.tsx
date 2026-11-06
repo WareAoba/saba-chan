@@ -8,6 +8,7 @@ import { safeShowToast } from '../../utils/helpers';
 import { Icon } from '../Icon';
 import { SabaFail } from '../ui/SabaArt';
 import { SabaSpinner, SabaToggle } from '../ui/SabaUI';
+import { LinkedText } from '../ui/ScreenLink';
 import CustomDropdown from '../CustomDropdown/CustomDropdown';
 import {
     AMBIENT_MINUTES,
@@ -203,7 +204,9 @@ export function ChatbotGuildTab({ node }: ChatbotGuildTabProps) {
     const enabledLabel = t('chatbot.guild_enabled');
     return (
         <div className="dc-tab">
-            <p className="dc-card-desc">{t('chatbot.guild_desc')}</p>
+            <p className="dc-card-desc">
+                <LinkedText i18nKey="chatbot.guild_desc" to="discord/saba" />
+            </p>
             {!data.hasApiKey && (
                 <p className="dc-field-error">
                     <Icon name="info" size="xs" /> {t('chatbot.key_needed')}
@@ -221,7 +224,9 @@ export function ChatbotGuildTab({ node }: ChatbotGuildTabProps) {
                         onChange={(v) => set({ enabled: v })}
                     />
                 </div>
-                <p className="dc-hint">{t('chatbot.channels_moved')}</p>
+                <p className="dc-hint">
+                    <LinkedText i18nKey="chatbot.channels_moved" to={`discord/${node.guildId}/moderation/channels`} />
+                </p>
             </section>
 
             <section className="dc-card">
@@ -229,7 +234,9 @@ export function ChatbotGuildTab({ node }: ChatbotGuildTabProps) {
                     <h2>{t('chatbot.basic_title')}</h2>
                 </div>
                 {selectField('effort', t('chatbot.effort'), t('chatbot.effort_hint'), effortOptions)}
-                <p className="dc-hint">{t('chatbot.prefix_calls_guild')}</p>
+                <p className="dc-hint">
+                    <LinkedText i18nKey="chatbot.prefix_calls_guild" to={`discord/${node.guildId}/bot`} />
+                </p>
                 <div className="cb-toggles">{toggleRow('memory', t('chatbot.memory'), t('chatbot.memory_hint'))}</div>
             </section>
 

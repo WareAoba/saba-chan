@@ -7,6 +7,7 @@ import { useSettingsStore } from '../../stores/useSettingsStore';
 import { type CommandField, needsConfirm } from '../../utils/commandRisk';
 import { commandText } from '../../utils/serverView';
 import type { HighlightRule } from '../../types/daemon';
+import { sourceText } from '../../utils/audit';
 import { type CompiledRule, getCachedRules } from '../../utils/syntaxHighlight';
 import { HighlightedContent } from '../ConsoleView';
 import { Icon } from '../Icon';
@@ -29,6 +30,8 @@ interface ConsoleLineData {
     timestamp?: number | null;
     content: string;
     spans?: unknown[];
+    /** 보낸 명령 줄(source: input)을 시킨 쪽 */
+    by?: { source?: string; userName?: string };
 }
 
 type Stamp = ((ts: number) => string) | null;
@@ -45,6 +48,7 @@ interface ConsoleLineProps {
  * 이미 그린 줄(최대 수천 개)을 다시 그리지 않는다.
  */
 const ConsoleLine = memo(function ConsoleLine({ line, syntaxEnabled, compiledRules, stamp }: ConsoleLineProps) {
+    const input = line.source?.toLowerCase() === 'input';
     return (
         <div
             className={clsx(
@@ -54,14 +58,30 @@ const ConsoleLine = memo(function ConsoleLine({ line, syntaxEnabled, compiledRul
             )}
         >
             {stamp && line.timestamp != null && <span className="console-time">{stamp(line.timestamp)}</span>}
-            <HighlightedContent
-                text={line.content}
-                spans={syntaxEnabled ? line.spans : undefined}
-                compiledRules={compiledRules}
-            />
+            {input ? (
+                <InputEcho line={line} />
+            ) : (
+                <HighlightedContent
+                    text={line.content}
+                    spans={syntaxEnabled ? line.spans : undefined}
+                    compiledRules={compiledRules}
+                />
+            )}
         </div>
     );
 });
+
+/** 보낸 명령 한 줄: "› list · 디스코드 · jace" (#18) */
+function InputEcho({ line }: { line: ConsoleLineData }) {
+    const { t } = useTranslation('gui');
+    const by = line.by?.source ? sourceText({ source: line.by.source, userName: line.by.userName }, t) : '';
+    return (
+        <>
+            <span className="console-echo">› {line.content}</span>
+            {by && <span className="console-echo-by"> · {by}</span>}
+        </>
+    );
+}
 
 /** 줄 목록. 입력칸을 칠 때는 줄 배열이 그대로라 통째로 건너뛴다 */
 const ConsoleLines = memo(function ConsoleLines({

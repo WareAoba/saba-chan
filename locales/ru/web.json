@@ -124,8 +124,6 @@
   "detail": {
     "backups": "Резервные копии",
     "players": "Игроки",
-    "check": "Проверка",
-    "settings_game": "Игра",
     "more": "Ещё",
     "tabs": "Меню сервера",
     "uptime": "Работает {{time}}",

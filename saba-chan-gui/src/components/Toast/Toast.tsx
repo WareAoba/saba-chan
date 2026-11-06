@@ -88,6 +88,7 @@ function Toast() {
                     message,
                     type: noticeType,
                     source: options.source || 'saba-chan',
+                    ...options.notice,
                 });
             }
 

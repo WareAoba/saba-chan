@@ -89,7 +89,13 @@ export function ExitHistory({ server }: { server: Server }) {
                                 label={t(`shell.exit_${e.kind}`, { defaultValue: e.kind })}
                             />
                             <span className="exit-detail">
-                                {e.exit_code != null && <code>exit {e.exit_code}</code>}
+                                {e.exit_code != null && (
+                                    <span>
+                                        {e.exit_code === 0
+                                            ? t('shell.exit_code_ok')
+                                            : t('shell.exit_code', { code: e.exit_code })}
+                                    </span>
+                                )}
                                 {e.signal && <code>{e.signal}</code>}
                                 {e.restart_in_secs != null && (
                                     <span className="exit-restart">

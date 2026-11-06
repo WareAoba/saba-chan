@@ -128,14 +128,20 @@ fn row(e: &Value) -> Vec<String> {
     };
     // 원격 데몬에 중계한 조작(`remote`)은 서버 대신 그 데몬
     let server = [s(e, "instance"), s(e, "instanceId"), s(e, "daemon")].into_iter().find(|v| !v.is_empty()).unwrap_or("");
+    // 인자가 없는 명령(백업 안의 저장 명령 등)은 빈 `{}`·`[]`를 붙이지 않는다
+    let args = match s(e, "args") {
+        "{}" | "[]" | "null" => "",
+        args => args,
+    };
     let what = match (s(e, "action"), s(e, "command")) {
         (action, "") => action.to_string(),
-        (action, cmd) => format!("{} {} {}", action, cmd, s(e, "args")).trim_end().to_string(),
+        (action, cmd) => format!("{} {} {}", action, cmd, args).trim_end().to_string(),
     };
     let ok = if e.get("ok").and_then(Value::as_bool) == Some(true) {
         console::style("✓").green().to_string()
     } else {
-        console::style(format!("✗ {}", e.get("status").and_then(Value::as_u64).unwrap_or(0))).red().to_string()
+        let status = e.get("status").and_then(Value::as_u64).unwrap_or(0);
+        console::style(format!("✗ {} {}", status, s(e, "code")).trim_end().to_string()).red().to_string()
     };
     let when = e.get("ts").or_else(|| e.get("at")).and_then(Value::as_u64).map(output::ago).unwrap_or_default();
     vec![when, from, server.to_string(), what, ok]
@@ -194,6 +200,15 @@ mod tests {
         for bad in ["", "2026-13-01", "yesterday", "0d", "26-10-01"] {
             assert!(day(bad, false).is_err(), "{bad}");
         }
+    }
+
+    /// 백업 안의 저장 명령처럼 인자가 없는 명령은 `{}`를 붙이지 않고, 실패는 이유 코드를 함께 적는다 (#14)
+    #[test]
+    fn empty_args_are_hidden_and_failures_name_their_reason() {
+        let line = row(&serde_json::json!({ "ts": 1, "source": "discord", "action": "command", "command": "save-on", "args": "{}", "ok": true }));
+        assert_eq!(line[3], "command save-on");
+        let failed = row(&serde_json::json!({ "ts": 1, "source": "gui", "action": "backup", "ok": false, "status": 409, "code": "backup_busy" }));
+        assert!(console::strip_ansi_codes(&failed[4]).ends_with("409 backup_busy"), "{}", failed[4]);
     }
 
     #[test]

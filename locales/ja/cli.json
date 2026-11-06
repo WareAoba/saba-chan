@@ -31,6 +31,7 @@
     "module_required": "--module でゲームを選ぶか、--from で既存のサーバーフォルダーを指定してください。",
     "name_empty": "名前を空にはできません。",
     "name_taken": "{{name}} という名前のサーバーはすでにあります。",
+    "name_comma": "サーバー名には読点・カンマを使えません（Discord で呼ぶ言葉をカンマで区切るため）。空白は使えます。",
     "needs_extensions": "このゲームには次の拡張機能が必要です: {{ids}}。今すぐインストールして有効にしますか？",
     "no_installer": "{{game}} はサーバーファイルを自動でインストールできません。--from で既存のフォルダーを使ってください。",
     "no_modules": "ゲームモジュールがまだインストールされていません。",
@@ -424,6 +425,7 @@
       "node_token_missing": "先にこの PC をペアリングしてください: saba-chan-cli bot pair",
       "server_not_running": "先にサーバーを起動してください: saba-chan-cli start NAME",
       "server_running": "先にサーバーを停止してください: saba-chan-cli stop NAME",
+      "invalid_name": "名前からカンマを外してもう一度試してください。空白は使えます。",
       "rcon_unreachable": "サーバーのRCONに接続できませんでした。サーバーの起動が終わったか確認し、少し待ってからもう一度試してください: saba-chan-cli status",
       "rcon_auth_failed": "サーバーがRCONパスワードを受け付けませんでした。サーバーを再起動するとサバちゃんがパスワードを書き直します: saba-chan-cli restart NAME",
       "rcon_timeout": "サーバーがRCONに時間内に応答しませんでした。コマンドはすでに実行された可能性があるため、もう一度送る前にサーバーのコンソールを確認してください: saba-chan-cli console NAME",
@@ -449,7 +451,7 @@
       "no_command_path": "このサーバーはサバちゃんの外で起動されたため、コマンドを受け付けるコンソールがありません。サバちゃんから再起動してください: saba-chan-cli restart <server>",
       "conflict_with": "重なる相手: {{name}}",
       "word": {
-        "invalid": "空白なしの 1〜32 文字で書いてください",
+        "invalid": "読点・カンマなしの 1〜32 文字で書いてください（空白は使えます）",
         "reserved": "予約語なので使えません",
         "conflict": "すでに別のものを呼ぶ語です",
         "unknown_command": "このサーバーにないコマンドです",
@@ -736,7 +738,7 @@
     "preflight_failed": "ゲームモジュール用の実行環境の準備に失敗しました: {{error}}。次のサーバー操作時に再試行します。"
   },
   "stop": {
-    "confirm": "{{name}} サーバーを停止してもよろしいですか?",
+    "confirm": "「{{name}}」サーバーを停止してもよろしいですか?",
     "already": "{{name}} は動いていません。",
     "done": "{{name}} を停止しました。",
     "force_confirm": "保存せずに停止しますか？",

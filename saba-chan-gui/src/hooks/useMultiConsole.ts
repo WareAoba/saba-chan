@@ -27,6 +27,8 @@ interface ConsoleLine {
     source?: string;
     level?: string;
     timestamp?: string;
+    /** 보낸 명령 줄(source: input)을 시킨 쪽 */
+    by?: { source?: string; userName?: string };
 }
 
 /** 읽기 루프 하나의 ref (닫을 때 멈춘다) */
@@ -447,7 +449,8 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
                         5000,
                     );
                 } else {
-                    const lines: ConsoleLine[] = [{ id: Date.now(), content: `> ${cmd}`, source: 'STDIN', level: 'INFO' }];
+                    // 콘솔 입력이 아니라 명령 API(RCON 등)로 보냈다: 데몬 콘솔에 보낸 줄이 없으니 여기서 같은 모양으로 남긴다
+                    const lines: ConsoleLine[] = [{ id: Date.now(), content: cmd, source: 'input', level: 'INFO', by: { source: 'gui' } }];
                     // 데몬이 서버의 답을 data.response로 준다 (여러 줄일 수 있다)
                     commandReplyLines(cmdResult).forEach((content, i) => {
                         lines.push({ id: Date.now() + 1 + i, content, source: 'STDOUT', level: 'INFO' });

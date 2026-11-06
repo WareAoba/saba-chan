@@ -72,6 +72,15 @@ pub fn painted(text: &str, spans: Option<&Value>, base: Style) -> Vec<Span<'stat
 pub fn console_line(l: &Value) -> Vec<Span<'static>> {
     let raw = s(l, "content");
     let text = crate::cmd::console::strip_terminal_controls(raw);
+    // 사바쨩이 보낸 명령 (#18): "› 명령 · 보낸 곳"
+    if s(l, "source") == "input" {
+        let mut out = vec![Span::styled(format!("› {text}"), Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))];
+        let by = crate::cmd::console::input_by(l);
+        if !by.is_empty() {
+            out.push(Span::styled(format!(" · {by}"), Style::default().fg(Color::DarkGray)));
+        }
+        return out;
+    }
     let base = match (s(l, "source"), s(l, "level")) {
         ("system", _) => Style::default().fg(Color::Cyan),
         (_, "error") => Style::default().fg(Color::Red),
@@ -183,6 +192,9 @@ mod tests {
         let err = console_line(&json!({ "content": "Steve left", "source": "stdout", "level": "error", "spans": [[0, 5, "player"]] }));
         assert_eq!(err[0].style, Style::default().fg(Color::Red).patch(token_style("player")));
         assert_eq!(err[1].style.fg, Some(Color::Red));
+        let input = console_line(&json!({ "content": "list", "source": "input", "level": "info", "by": { "source": "gui" } }));
+        let text: String = input.iter().map(|s| s.content.to_string()).collect();
+        assert_eq!(text, "› list · gui");
         let colored = console_line(&json!({ "content": "\u{1b}[32mSteve\u{1b}[0m left", "spans": [[0, 5, "player"]] }));
         assert_eq!(styles(&colored), vec![("Steve left".to_string(), Style::default())]);
     }

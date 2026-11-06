@@ -1,4 +1,4 @@
-import { type AuditEntry, auditRange, auditResult, auditWhat, auditWho } from '@gui/utils/audit';
+import { type AuditEntry, auditRange, auditReason, auditResult, auditWhat, auditWho } from '@gui/utils/audit';
 import { CONSOLE_FONT_CHOICES, CONSOLE_FONT_NAMES, CONSOLE_FONT_SLOTS } from '@gui/utils/consoleFonts';
 import { MetricRing, MonitorPicker } from '@gui/components/monitor/MonitorRing';
 import {
@@ -232,6 +232,7 @@ function ActivityLog({ api }: { api: WebApi }) {
                 <ul className="rows">
                     {entries.map((e, i) => {
                         const result = auditResult(e, tg);
+                        const reason = auditReason(e, tg);
                         return (
                             <li key={`${e.ts}-${i}`} className="row activity-row">
                                 <span className="activity-time">{fmt(e.ts)}</span>
@@ -241,6 +242,7 @@ function ActivityLog({ api }: { api: WebApi }) {
                                         {auditWhat(e, tg)}
                                     </div>
                                     <div className="row-sub">{auditWho(e, tg)}</div>
+                                    {reason && <div className="row-sub">{reason}</div>}
                                 </div>
                                 <span className={`pill ${TONE[result.tone] || ''}`}>{result.label}</span>
                             </li>

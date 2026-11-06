@@ -1283,7 +1283,7 @@ async fn start_notice_is_set_from_discord_by_admins_for_their_own_guild() {
     // 서버 루트 아래 메뉴에 실린다
     let (actions, _) = heartbeat_actions(&crate::chat::i18n::languages(), &[]);
     let item = actions.iter().find(|a| a["id"] == id_).expect("in the Discord menu");
-    assert_eq!(item["title"]["ko"], "켜짐 알림");
+    assert_eq!(item["title"]["ko"], "시작·정지 알림");
     assert_eq!(item["name"]["en"], "Start alert");
 }
 
@@ -1675,11 +1675,13 @@ async fn server_address_is_offered_only_where_the_reply_stays_with_the_caller() 
     assert_eq!((item["modules"].clone(), item["surfaces"].clone()), (json!(["plain"]), json!(["discord"])));
     assert!(actions.iter().filter(|a| a["id"] != "server.address").all(|a| a.get("secret").is_none()));
 
-    // 문장 명령의 답은 채널에 보이므로 이름으로 찾지 않는다
+    // 문장 명령의 답은 채널에 보이므로 실행하지 않고, 슬래시 명령으로 다시 부르라고 안내한다 (사용자 지정 2026-11-06)
     open_everything(&state).await;
     for text in ["srv 주소", "srv address"] {
-        let unknown = plan_text(&state, text, &relay("owner", false)).await.unwrap();
-        assert_eq!(unknown["code"], "UNKNOWN_COMMAND", "{text}: {unknown}");
+        let hint = plan_text(&state, text, &relay("owner", false)).await.unwrap();
+        assert!(hint.get("planId").is_none() && hint.get("code").is_none(), "{text}: {hint}");
+        assert!(hint["text"].as_str().is_some_and(|t| t.contains("`/`") && t.contains("srv")), "{text}: {hint}");
+        assert_eq!(check_text(&state, text, &relay("owner", false)).await.unwrap()["text"], hint["text"], "{text}");
     }
 }
 
@@ -1717,7 +1719,7 @@ fn server_address_reads_as_address_and_port() {
     let lines: Vec<&str> = text.lines().collect();
     assert_eq!(lines[0], "• Game port `203.0.113.5:8211`");
     assert_eq!(lines[1], "• Query port `203.0.113.5:27015`");
-    assert!(lines[2].contains("꺼져"), "{text}");
+    assert!(lines[2].contains("정지"), "{text}");
     let unknown = summary::text("server.address", &json!({ "address": null, "running": true, "ports": one["ports"] }), &ko).unwrap();
     assert!(!unknown.contains('`') && unknown.contains("주소"), "{unknown}");
     let no_ports = summary::text("server.address", &json!({ "address": "203.0.113.5", "running": true, "ports": [] }), &ko).unwrap();

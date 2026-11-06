@@ -117,7 +117,7 @@ function PortTable({ rows, t }: { rows: PortRow[]; t: TFunction }) {
 
 export function SystemMonitor({ layout = 'top', servers = [] }: SystemMonitorProps) {
     const { t } = useTranslation('gui');
-    const open = useSettingsStore((s) => s.systemMonitorOpen);
+    const open = useSettingsStore((s) => s.systemMonitorExpanded);
     const picked = useSettingsStore((s) => s.monitorItems);
     const update = useSettingsStore((s) => s.update);
     const [picking, setPicking] = useState(false);
@@ -134,7 +134,7 @@ export function SystemMonitor({ layout = 'top', servers = [] }: SystemMonitorPro
         <button
             type="button"
             className="icon-btn monitor-toggle"
-            onClick={() => update({ systemMonitorOpen: !open })}
+            onClick={() => update({ systemMonitorExpanded: !open })}
             aria-expanded={open}
             aria-label={open ? t('monitor.collapse') : t('monitor.expand')}
             data-tooltip={open ? t('monitor.collapse') : t('monitor.expand')}

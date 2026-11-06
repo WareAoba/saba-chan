@@ -829,6 +829,15 @@
     user-select: none;
 }
 
+/* 보낸 명령 줄 (#18): "› list" 굵게 강조색, 보낸 곳은 흐리게 */
+.console-echo {
+    color: var(--tok-info);
+    font-weight: 700;
+}
+.console-echo-by {
+    color: var(--text-3);
+}
+
 /* ── 콘솔 색 토큰: 줄 전체 색은 데몬이 매긴 level, 조각 색은 spans(또는 모듈 규칙)의 토큰 ── */
 .console-line.console-level-error {
     color: var(--tok-error);
@@ -1196,6 +1205,21 @@ button.activity-line:hover {
 .info-cell dd code {
     font-size: var(--fs-sm);
 }
+/* 개발 용어(PID·REST·통신 방식)는 접어 둔다 */
+.info-more > summary {
+    cursor: pointer;
+    width: fit-content;
+    font-size: var(--fs-sm);
+    color: var(--text-3);
+    user-select: none;
+}
+.info-more > summary:hover,
+.info-more > summary:focus-visible {
+    color: var(--text-2);
+}
+.info-more[open] > summary {
+    margin-bottom: var(--sp-2);
+}
 .info-actions {
     display: flex;
     gap: var(--sp-2);
@@ -1337,10 +1361,10 @@ button.activity-line:hover {
     white-space: nowrap;
 }
 .settings-tab-content.slide-up {
-    animation: settingsSlideUp 0.22s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+    animation: settingsSlideUp 0.22s cubic-bezier(0.4, 0, 0.2, 1) backwards;
 }
 .settings-tab-content.slide-down {
-    animation: settingsSlideDown 0.22s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+    animation: settingsSlideDown 0.22s cubic-bezier(0.4, 0, 0.2, 1) backwards;
 }
 @keyframes settingsSlideUp {
     from {
@@ -1664,7 +1688,11 @@ button.activity-line:hover {
 .restart-row + .restart-row {
     border-top: 1px solid var(--line);
 }
-.restart-row > span {
+.restart-row > label {
+    cursor: pointer;
+}
+.restart-row > span,
+.restart-row > label {
     display: flex;
     flex-direction: column;
     gap: var(--sp-0-5);
@@ -1675,6 +1703,28 @@ button.activity-line:hover {
 }
 .restart-row.disabled {
     opacity: 0.5;
+}
+/* 다시 시작해야 적용되는 칸 (module.toml restart_required) */
+.setting-restart-chip {
+    margin-left: var(--sp-1-5);
+    padding: 0 var(--sp-1-5);
+    border-radius: var(--r-xs);
+    background: color-mix(in oklch, var(--warn) 16%, transparent);
+    color: var(--warn);
+    font-size: var(--fs-xs);
+    font-weight: 600;
+}
+/* 저장 막대 위의 다시 시작 안내 (저장 줄 안 첫 줄) */
+.modal-footer:has(> .settings-restart-notice) {
+    flex-wrap: wrap;
+}
+.settings-restart-notice {
+    flex: 1 0 100%;
+    align-items: center;
+}
+.settings-restart-notice > span {
+    flex: 1;
+    min-width: 0;
 }
 .memory-limit-input {
     width: 120px;
@@ -2224,6 +2274,36 @@ button.activity-line:hover {
     font-size: var(--fs-xs);
     color: var(--text-3);
     margin-top: calc(-1 * var(--sp-1));
+}
+
+/* 안내 문구 속 화면 링크 (ui/ScreenLink, 사용자 11-06 #19): 가는 길을 보이고 누르면 그 화면을 연다 */
+.screen-link {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-1);
+    margin: 0 var(--sp-0-5);
+    padding: 0 var(--sp-2);
+    border: 0;
+    border-radius: 7px;
+    background: var(--accent-soft);
+    color: var(--accent);
+    font: inherit;
+    font-weight: 600;
+    line-height: 1.6;
+    white-space: nowrap;
+    cursor: pointer;
+    vertical-align: baseline;
+}
+.screen-link:hover,
+.screen-link:focus-visible {
+    outline: 1px solid var(--accent);
+}
+.screen-link-sep {
+    opacity: 0.6;
+    font-weight: 400;
+}
+.screen-link-arrow {
+    font-size: 0.9em;
 }
 
 /* 멤버 한 명 */
@@ -4107,14 +4187,34 @@ button.appbar-preflight {
     color: var(--text-secondary);
 }
 
-/* CLI로 보기 (I4-c): 같은 일을 하는 CLI 한 줄 */
+/* CLI로 보기 (I4-c): 같은 일을 하는 CLI 한 줄. '명령줄로 하기'를 펼치면 보인다 */
 .cli-line {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: var(--sp-1-5);
     min-width: 0;
     margin-right: auto;
     color: var(--text-secondary);
+}
+.cli-line > summary {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-1-5);
+    cursor: pointer;
+    font-size: 12px;
+    list-style: none;
+    user-select: none;
+}
+.cli-line > summary::-webkit-details-marker {
+    display: none;
+}
+.cli-line > summary:hover,
+.cli-line > summary:focus-visible {
+    color: var(--text-primary);
+}
+.cli-line:not([open]) > :not(summary) {
+    display: none;
 }
 .cli-line code {
     overflow: hidden;
@@ -4315,6 +4415,57 @@ button.appbar-preflight {
     padding: 0 var(--sp-1);
     font-size: var(--fs-xs);
 }
+/* 입력 줄 글자와 그 뒤의 색칠한 줄이 같은 크기여야 겹친다 */
+.cmd-input .cmdline-field {
+    font-size: var(--fs-sm);
+}
+.cmd-compose .cmdline-help {
+    padding: 0 var(--sp-1);
+}
+
+/* API로 요청하는 명령의 입력 창 (목록에서 누르면 입력 줄 자리에 뜬다) */
+.cmd-form {
+    display: grid;
+    gap: var(--sp-2-5);
+    padding: var(--sp-3);
+    border-radius: var(--r-md);
+    border: 1px solid var(--accent);
+    background: var(--field);
+}
+.cmd-form-head {
+    display: grid;
+    gap: var(--sp-0-5);
+}
+.cmd-form-head strong {
+    font-size: var(--fs-sm);
+    color: var(--text-1);
+}
+.cmd-form-desc,
+.cmd-form-hint {
+    margin: 0;
+    font-size: var(--fs-xs);
+    color: var(--text-3);
+}
+.cmd-form-hint {
+    color: var(--warn);
+}
+.cmd-form-field {
+    display: grid;
+    gap: var(--sp-1);
+}
+.cmd-form-field > label {
+    font-size: var(--fs-xs);
+    font-weight: 600;
+    color: var(--text-2);
+}
+.cmd-form-req {
+    color: var(--stop);
+}
+.cmd-form-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--sp-2);
+}
 
 /* 실행 기록 */
 .cmd-history-list {
@@ -4366,6 +4517,11 @@ button.appbar-preflight {
     font-size: var(--fs-xs);
     font-weight: 600;
     color: var(--chip-color);
+}
+.cmd-entry-via {
+    flex: none;
+    font-size: var(--fs-xs);
+    color: var(--text-3);
 }
 .cmd-entry-time {
     flex: none;

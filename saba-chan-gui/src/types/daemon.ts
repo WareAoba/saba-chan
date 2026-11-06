@@ -101,6 +101,7 @@ export interface ServerInfo {
 export interface PortConflictStopEvent {
     id?: number;
     stopped_name: string;
+    stopped_id?: string;
     existing_name: string;
     port: number;
     [key: string]: Json | undefined;
@@ -401,7 +402,7 @@ export interface GuiSettings {
     consoleFontScale: number;
     consoleTokenColors: Record<string, string>;
     consoleFonts: ConsoleFonts;
-    systemMonitorOpen: boolean;
+    systemMonitorExpanded: boolean;
     /** 고급: 포트·서버별 네트워크 (기본 꺼짐, 데몬 `system_monitor_net_trace`) */
     systemMonitorNetTrace: boolean;
     monitorItems?: string[] | null;

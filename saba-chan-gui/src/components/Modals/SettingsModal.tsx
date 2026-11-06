@@ -37,6 +37,7 @@ import { ExtensionGuiSection, extensionGuiAvailable } from './ExtensionGuiSectio
 import { UnisolatedSection, unisolatedAvailable } from './UnisolatedSection';
 import SabaStorage from './SabaStorage';
 import { AboutPage } from './AboutPage';
+import { type SettingsTab, SETTINGS_TAB_LABELS as TAB_LABELS, SETTINGS_TABS as TABS } from './settingsTabs';
 
 // 효과음 종류별 스위치 (DEFAULT_SOUNDS 키 → 이름)
 const SOUND_KINDS: [Exclude<keyof SoundSettings, 'enabled'>, string][] = [
@@ -47,20 +48,6 @@ const SOUND_KINDS: [Exclude<keyof SoundSettings, 'enabled'>, string][] = [
     ['update', 'gui:settings_modal.sound_update'],
 ];
 
-/** 설정 탭 (사용자 요청 2026-11-06: 고급에 몰린 설정을 갈래별로 나눈다). 순서가 화면 순서다 */
-const TABS = ['general', 'notify', 'appearance', 'console', 'servers', 'connection', 'storage', 'security', 'troubleshoot'] as const;
-type SettingsTab = (typeof TABS)[number];
-const TAB_LABELS: Record<SettingsTab, string> = {
-    general: 'gui:settings_modal.general',
-    notify: 'gui:settings_modal.tab_notify',
-    appearance: 'gui:settings_modal.appearance',
-    console: 'gui:settings_modal.tab_console',
-    servers: 'gui:settings_modal.tab_servers',
-    connection: 'gui:settings_modal.tab_connection',
-    storage: 'gui:settings_modal.tab_storage',
-    security: 'gui:settings_modal.tab_security',
-    troubleshoot: 'gui:settings_modal.tab_troubleshoot',
-};
 const TAB_ICONS: Record<SettingsTab, string> = {
     general: 'settings',
     notify: 'bell',
@@ -171,12 +158,15 @@ function SettingsModal({
     const setOption = (patch: Parameters<ReturnType<typeof useSettingsStore.getState>['update']>[0]) => useSettingsStore.getState().update(patch);
     const setSound = (key: keyof SoundSettings, on: boolean) => useSettingsStore.getState().update({ sounds: { ...sounds, [key]: on } });
 
-    // 외부에서 initialView 지정으로 열렸을 때 해당 탭 자동 진입
+    // 외부에서 initialView 지정으로 열렸을 때 해당 탭 자동 진입 (설정 탭 이름이면 그 탭: 화면 주소 settings/<탭>)
     useEffect(() => {
         if (isOpen && (initialView === 'update' || initialView === 'extensions')) {
             setActiveTab('general');
             setStorageTab(initialView === 'extensions' ? 'extensions' : 'components');
             setShowUpdatePanel(true);
+        } else if (isOpen && (TABS as readonly string[]).includes(initialView ?? '')) {
+            setShowUpdatePanel(false);
+            setActiveTab(initialView as SettingsTab);
         }
     }, [isOpen, initialView]);
 

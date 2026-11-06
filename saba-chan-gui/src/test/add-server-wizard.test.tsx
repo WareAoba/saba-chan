@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AddInstanceNewServer as AddInstanceNewServerImpl } from '../components/Modals/AddInstanceNewServer';
-import { next, submitWizard, toNameStep } from './addServerWizard';
+import { next, submitWizard, toConfirmStep, toNameStep } from './addServerWizard';
 import type { ComponentType } from 'react';
 
 /** 시험에 필요한 props만 넘기려고 느슨하게 받는다 */
@@ -65,7 +65,7 @@ describe('새 서버 만들기 마법사', () => {
 
         // 서버 종류·버전: 릴리스만 고른다 (기본은 최신)
         expect(screen.getByRole('heading', { name: 'Server type and version' })).toBeTruthy();
-        fireEvent.click(screen.getByText('Latest version (recommended)'));
+        fireEvent.click(screen.getByText('Latest version'));
         await waitFor(() => expect(screen.getByText('1.21.1')).toBeTruthy());
         expect(screen.queryByText('24w01a')).toBeNull();
         fireEvent.click(screen.getByText('1.21.1'));
@@ -107,7 +107,7 @@ describe('새 서버 만들기 마법사', () => {
     it('버전 목록은 고른 서버 종류로 다시 묻고, 그 종류에 없는 버전은 고른 것을 푼다', async () => {
         open();
         await waitFor(() => expect(window.api.moduleListVersions).toHaveBeenCalledWith('minecraft', { per_page: 50, settings: {} }));
-        fireEvent.click(screen.getByText('Latest version (recommended)'));
+        fireEvent.click(screen.getByText('Latest version'));
         await waitFor(() => expect(screen.getByText('1.21.1')).toBeTruthy());
         fireEvent.click(screen.getByText('1.21.1'));
         vi.mocked(window.api.moduleListVersions).mockResolvedValue({ versions: [{ id: '1.20.6', type: 'release' }] });
@@ -119,22 +119,22 @@ describe('새 서버 만들기 마법사', () => {
                 settings: { server_type: 'paper' },
             }),
         );
-        await waitFor(() => expect(screen.getByText('Latest version (recommended)')).toBeTruthy());
-        fireEvent.click(screen.getByText('Latest version (recommended)'));
+        await waitFor(() => expect(screen.getByText('Latest version')).toBeTruthy());
+        fireEvent.click(screen.getByText('Latest version'));
         expect(screen.getByText('1.20.6')).toBeTruthy();
         expect(screen.queryByText('1.21.1')).toBeNull();
     });
 
     it('서버 종류를 바꾸고 새 목록이 오기 전에 넘어가도 앞 종류의 버전은 보내지 않는다', async () => {
         const onAddServer = open();
-        fireEvent.click(screen.getByText('Latest version (recommended)'));
+        fireEvent.click(screen.getByText('Latest version'));
         await waitFor(() => expect(screen.getByText('1.21.1')).toBeTruthy());
         fireEvent.click(screen.getByText('1.21.1'));
         vi.mocked(window.api.moduleListVersions).mockReturnValue(new Promise(() => {}));
         fireEvent.click(screen.getByText('vanilla'));
         fireEvent.click(screen.getByText('paper'));
         // 앞 종류의 목록에서 다시 고를 수도 없다
-        fireEvent.click(screen.getByText('Latest version (recommended)', { selector: '.custom-dropdown-label' }));
+        fireEvent.click(screen.getByText('Latest version', { selector: '.custom-dropdown-label' }));
         expect(screen.queryByText('1.21.1')).toBeNull();
         await submitWizard();
         expect(onAddServer.mock.calls[0][0]).toEqual({
@@ -179,6 +179,18 @@ describe('새 서버 만들기 마법사', () => {
         expect(onAddServer.mock.calls[0][0]).not.toHaveProperty('port');
     });
 
+    // 사용자 11-06 #2: 디스코드에서 부르는 말을 쉼표로 나누므로 서버 이름에 쉼표를 받지 않는다 (띄어쓰기는 된다)
+    it('쉼표가 든 이름은 알리고 넘어가지 않는다', async () => {
+        open();
+        await toNameStep();
+        const name = screen.getByLabelText(/Server Name/i);
+        await act(async () => fireEvent.change(name, { target: { value: '우리, 마크' } }));
+        expect(screen.getByRole('alert').textContent).toMatch(/comma/);
+        expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
+        await act(async () => fireEvent.change(name, { target: { value: '우리 마크' } }));
+        expect(screen.queryByText(/comma/)).toBeNull();
+    });
+
     it('확인을 기다리는 중에 이전 단계로 가도 다음 버튼이 막히지 않는다', async () => {
         open();
         await toNameStep();
@@ -210,6 +222,30 @@ describe('새 서버 만들기 마법사', () => {
         await act(async () => fireEvent.click(screen.getAllByRole('button', { name: 'Back' })[0]));
         await act(async () => answer());
         expect(screen.getByRole('heading', { name: 'Server type and version' })).toBeTruthy();
+    });
+
+    // 사용자 11-06 #13: 버전은 "숫자 (최신)"으로 보이고, 이름 칸에 별표를 붙이지 않는다
+    it('모듈이 알려 준 최신 버전 숫자를 "(latest)"와 함께 보이고, 확인 단계에도 그 숫자를 쓴다', async () => {
+        window.api.instanceCheck = check;
+        window.api.moduleListVersions = vi.fn().mockResolvedValue({
+            versions: [
+                { id: '26.3', type: 'release' },
+                { id: '26.2', type: 'release' },
+            ],
+            latest: { release: '26.3' },
+        }) as never;
+        render(<AddInstanceNewServer extensions={[minecraft]} servers={[]} onAddServer={vi.fn()} />);
+        fireEvent.click(screen.getByText('Minecraft'));
+        await waitFor(() => expect(screen.getByText('26.3 (latest)', { selector: '.custom-dropdown-label' })).toBeTruthy());
+        // 목록에 같은 버전이 두 번 나오지 않는다
+        fireEvent.click(screen.getByText('26.3 (latest)', { selector: '.custom-dropdown-label' }));
+        expect(screen.queryByText('26.3')).toBeNull();
+        expect(screen.getByText('26.2')).toBeTruthy();
+        await toNameStep();
+        expect(screen.getByLabelText('Server Name')).toBeTruthy();
+        await toConfirmStep();
+        expect(screen.getByText('26.3 (latest)', { selector: 'dd' })).toBeTruthy();
+        expect(screen.getByText('Server Name', { selector: 'dt' })).toBeTruthy();
     });
 
     it('이전 단계로 돌아가도 고른 값이 남는다', async () => {

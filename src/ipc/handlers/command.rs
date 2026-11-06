@@ -514,7 +514,6 @@ pub(crate) async fn stdin_for(supervisor: &tokio::sync::RwLock<crate::supervisor
 /// 관리 프로세스의 stdin으로 보낸다. 서버의 답은 콘솔로만 나오므로, 보낸 뒤 잠깐 새로 찍힌 줄을
 /// 모아 `data.response`로 돌려준다 (채팅·CLI가 결과를 보여 줄 수 있게)
 async fn via_stdin_for(supervisor: &tokio::sync::RwLock<crate::supervisor::Supervisor>, id: &str, payload: &Value) -> axum::response::Response {
-    use crate::supervisor::managed_process::LogSource;
     let Some(command) = payload.get("command").and_then(|v| v.as_str()) else {
         return (StatusCode::BAD_REQUEST, Json(json!({ "error": "Missing 'command' field" }))).into_response();
     };
@@ -552,7 +551,7 @@ async fn via_stdin_for(supervisor: &tokio::sync::RwLock<crate::supervisor::Super
                 .get_console_since(before)
                 .await
                 .into_iter()
-                .filter(|l| l.source != LogSource::System && l.content.trim() != command.trim())
+                .filter(|l| l.source.is_server_output() && l.content.trim() != command.trim())
                 .map(|l| l.content)
                 .collect();
             if new.len() > lines.len() {

@@ -32,6 +32,12 @@ export const nameTaken = (servers?: { name?: string }[] | null, name?: string | 
 };
 
 /** 기본 이름: 모듈 이름 그대로, 겹치면 `-2`부터 붙인다 */
+/**
+ * 쉼표가 든 서버 이름: 데몬이 만들기·이름 바꾸기를 400 `invalid_name`으로 막는다 (디스코드에서 부르는 말을 쉼표로 나눈다,
+ * 사용자 11-06 #2. 띄어쓰기는 된다). 데몬 `chat::words::is_comma`와 같은 글자
+ */
+export const nameHasComma = (name?: string | null) => /[,，、､]/.test(String(name || ''));
+
 export const suggestName = (moduleName: string, servers?: { name?: string }[] | null) => {
     for (let i = 1; ; i++) {
         const name = i === 1 ? moduleName : `${moduleName}-${i}`;
@@ -53,6 +59,12 @@ export const releaseVersions = (res?: ApiBody | null) =>
     (Array.isArray(res?.versions) ? res.versions : [])
         .filter((v) => !v?.type || v.type === 'release')
         .map((v) => String(v?.id ?? v));
+
+/** 모듈 list_versions가 알려 준 받을 수 있는 최신 릴리스 (`latest.release`, 예전 모양 `latest_release`). 모르면 '' */
+export const latestRelease = (res?: ApiBody | null): string => {
+    const v = res?.latest?.release ?? res?.latest_release;
+    return typeof v === 'string' ? v : '';
+};
 
 /**
  * 새 서버 만들기 단계. 서버 종류·버전 단계는 고를 것이 있을 때만 (설치 칸, 추천 설정, 버전).
@@ -97,6 +109,7 @@ export const createBody = ({ name, module, installValues, preset, version, folde
 export const checkBlockers = (check?: ApiBody | null) =>
     [
         check?.name?.taken && 'name_taken',
+        check?.name?.invalid && 'name_invalid',
         check?.folder?.in_use_by && 'folder_in_use',
         check?.folder?.not_empty && 'folder_not_empty',
     ].filter(Boolean);

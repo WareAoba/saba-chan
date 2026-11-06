@@ -46,6 +46,6 @@ describe('데몬이 꺼져 있을 때 서버 화면', () => {
     it('데몬이 살아 있으면 원래 빈 화면이다', () => {
         useUIStore.setState({ backgroundDaemonStatus: 'running' });
         render(page([]));
-        expect(screen.getByText('Nothing added yet')).toBeTruthy();
+        expect(screen.getByText('No servers yet')).toBeTruthy();
     });
 });

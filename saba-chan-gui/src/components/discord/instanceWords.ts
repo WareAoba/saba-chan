@@ -1,4 +1,6 @@
 /** 인스턴스 낱말 초안 (화면 없는 순수 함수, GUI 서버 상세 디스코드 탭과 웹 디스코드 호출어가 같이 쓴다) */
+import type { TFunction } from 'i18next';
+import { commandText } from '../../utils/serverView';
 
 /** GET /api/instance/:id/words 의 명령 하나 */
 export interface InstanceWordsCommand {
@@ -7,6 +9,20 @@ export interface InstanceWordsCommand {
     moduleAliases?: string[];
     label?: string;
     risk?: string;
+    builtin?: boolean;
+}
+
+/** 데몬 내장 명령(이름표가 없다)의 화면 이름 (gui 네임스페이스 키) */
+const BUILTIN_LABEL: Record<string, string> = {
+    start: 'gui:shell.start',
+    stop: 'gui:shell.stop',
+    status: 'gui:discord.iw_cmd_status',
+};
+
+/** 명령의 화면 이름: 내장 명령은 앱 문구, 모듈 명령은 모듈 번역 (다른 화면과 같다, 사용자 11-06 #9) */
+export function wordsCommandName(t: TFunction, moduleName: string, c: InstanceWordsCommand) {
+    if (c.builtin && !c.label && BUILTIN_LABEL[c.name]) return t(BUILTIN_LABEL[c.name]);
+    return commandText(t, moduleName, c).label;
 }
 
 export interface InstanceWordsEntry {
@@ -22,6 +38,20 @@ export interface InstanceWordsDraft {
 export interface ValidationDetail {
     field?: string;
     [key: string]: unknown;
+}
+
+/** 낱말을 나누는 쉼표 (데몬 chat::words::is_comma와 같은 글자) */
+export const WORD_COMMAS = /[,，、､]/;
+
+/**
+ * 친 글자를 낱말로 나눈다: 쉼표로 나누고, 앞뒤 공백을 떼고 사이 공백은 한 칸으로 (데몬 `tidy`와 같다).
+ * 서버를 부르는 말은 띄어 써도 되고 쉼표는 못 쓴다 (사용자 11-06 #2)
+ */
+export function splitWords(text: string) {
+    return text
+        .split(/[,，、､]+/)
+        .map((w) => w.split(/\s+/).filter(Boolean).join(' '))
+        .filter(Boolean);
 }
 
 const sameList = (a: string[] = [], b: string[] = []) => a.length === b.length && a.every((w, i) => w === b[i]);

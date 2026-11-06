@@ -1,11 +1,13 @@
 import clsx from 'clsx';
 import type { ReactNode } from 'react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { Server } from '../../stores/useServerStore';
 import type { ModuleInfo } from '../../types/daemon';
+import { screenFallbackNotice } from '../../utils/openScreen';
 import { Icon } from '../Icon';
 import { SabaToggle } from '../ui/SabaUI';
+import { LinkedText } from '../ui/ScreenLink';
 import { Segmented } from '../ui/StatusChip';
 import { Avatar, initialOf } from './Avatar';
 import { BotSettingsTab, botSettingsAvailable } from './BotSettingsTab';
@@ -122,10 +124,16 @@ function InstancesTab({
                 }))}
             />
 
-            {servers.length > 0 && <p className="dc-hint">{t('discord.start_notice_hint')}</p>}
+            {servers.length > 0 && (
+                <p className="dc-hint">
+                    <LinkedText i18nKey="discord.start_notice_hint" to={`discord/${node.guildId}/moderation/channels`} />
+                </p>
+            )}
             {servers.length > 0 && <p className="dc-hint">{t('discord.full_notice_hint')}</p>}
             <div className="dc-toolbar">
-                <span className="muted">{t('discord.instance_menu_hint')}</span>
+                <span className="muted">
+                    <LinkedText i18nKey="discord.instance_menu_hint" to={`discord/${node.guildId}/members`} />
+                </span>
                 <button type="button" className="btn btn-ghost btn-sm" onClick={() => onOpen(ALL_INSTANCES)}>
                     <Icon name="key" size="sm" /> {t('discord.instance_menu_all')}
                 </button>
@@ -247,6 +255,8 @@ interface NodeViewProps {
     onRefreshMembers?: () => void;
     saveState?: 'saving' | 'saved' | null;
     sampleModuleWord?: string;
+    /** 화면 주소 링크로 연 탭·안 화면 (seq가 바뀌면 다시 연다) */
+    request?: { tab?: string; sub?: string; seq: number };
 }
 
 /**
@@ -268,12 +278,52 @@ export function NodeView({
     onRefreshMembers,
     saveState,
     sampleModuleWord,
+    request,
 }: NodeViewProps) {
     const { t } = useTranslation('gui');
     const [tab, setTab] = useState('instances');
     const [instance, setInstance] = useState<string | null>(null); // 연 인스턴스 메뉴 (없으면 목록)
     const mode = P.instanceMode(settings, node.guildId);
     const visibleCount = visibleServers(settings, node.guildId, servers).length;
+    const tabs = [
+        { id: 'instances', label: t('discord.tab_instances'), icon: <Icon name="server" size="sm" /> },
+        { id: 'members', label: t('discord.tab_members'), icon: <Icon name="user" size="sm" /> },
+        ...(moderationAvailable()
+            ? [{ id: 'moderation', label: t('discord.tab_moderation'), icon: <Icon name="tool" size="sm" /> }]
+            : []),
+        ...(botSettingsAvailable()
+            ? [{ id: 'bot', label: t('discord.tab_bot'), icon: <Icon name="settings" size="sm" /> }]
+            : []),
+        ...(chatbotAvailable()
+            ? [{ id: 'chatbot', label: t('chatbot.nav'), icon: <Icon name="sabaTalking" size="sm" /> }]
+            : []),
+        ...(botSettingsAvailable()
+            ? [
+                  {
+                      id: 'music',
+                      label: t('discord.bot_settings.music_title'),
+                      icon: <Icon name="musicNote" size="sm" />,
+                  },
+                  {
+                      id: 'tts',
+                      label: t('discord.bot_settings.tts_title'),
+                      icon: <Icon name="sabaReading" size="sm" />,
+                  },
+              ]
+            : []),
+    ];
+
+    // 화면 주소 링크로 연 탭. 이 디스코드 서버에서 쓸 수 없는 탭이면 지금 탭에 두고 이유를 알린다
+    // biome-ignore lint/correctness/useExhaustiveDependencies: 링크를 누를 때(seq)만
+    useEffect(() => {
+        if (!request?.tab) return;
+        if (!tabs.some((x) => x.id === request.tab)) {
+            screenFallbackNotice('tab_missing');
+            return;
+        }
+        setTab(request.tab);
+        setInstance(null);
+    }, [request?.seq]);
 
     return (
         <div className="dc-view">
@@ -306,39 +356,7 @@ export function NodeView({
                     setTab(v);
                     setInstance(null);
                 }}
-                items={[
-                    { id: 'instances', label: t('discord.tab_instances'), icon: <Icon name="server" size="sm" /> },
-                    { id: 'members', label: t('discord.tab_members'), icon: <Icon name="user" size="sm" /> },
-                    ...(moderationAvailable()
-                        ? [
-                              {
-                                  id: 'moderation',
-                                  label: t('discord.tab_moderation'),
-                                  icon: <Icon name="tool" size="sm" />,
-                              },
-                          ]
-                        : []),
-                    ...(botSettingsAvailable()
-                        ? [{ id: 'bot', label: t('discord.tab_bot'), icon: <Icon name="settings" size="sm" /> }]
-                        : []),
-                    ...(chatbotAvailable()
-                        ? [{ id: 'chatbot', label: t('chatbot.nav'), icon: <Icon name="sabaTalking" size="sm" /> }]
-                        : []),
-                    ...(botSettingsAvailable()
-                        ? [
-                              {
-                                  id: 'music',
-                                  label: t('discord.bot_settings.music_title'),
-                                  icon: <Icon name="musicNote" size="sm" />,
-                              },
-                              {
-                                  id: 'tts',
-                                  label: t('discord.bot_settings.tts_title'),
-                                  icon: <Icon name="sabaReading" size="sm" />,
-                              },
-                          ]
-                        : []),
-                ]}
+                items={tabs}
             />
 
             {membersFailed && !membersLoading && (members?.length ?? 0) > 0 && tab === 'members' && (
@@ -385,6 +403,8 @@ export function NodeView({
             {tab === 'moderation' && (
                 <ModerationTab
                     key={node.guildId}
+                    initialView={request?.tab === 'moderation' ? request.sub : undefined}
+                    viewSeq={request?.seq}
                     node={node}
                     members={members}
                     membersLoading={membersLoading}

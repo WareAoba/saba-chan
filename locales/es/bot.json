@@ -11,15 +11,14 @@
     "no_modules": "Ninguno",
     "module_title": "**Comandos {{module}}**",
     "available_commands": "{{commands}}",
-    "usage_format": "`{{prefix}} <módulo> <comando>`",
-    "modules_header": "📦 **Módulos:**",
+    "usage_format": "`{{prefix}} <servidor> <comando>`",
+    "modules_header": "🎮 **Servidores:**",
     "slash_hint": "💡 Reiniciar, copias de seguridad y la comprobación de puertos funcionan como `<servidor> reiniciar`. Permisos, idioma, modo dormir, web y actualizaciones son comandos de barra (`/`)."
   },
   "modules": {
     "help_start": "Iniciar servidor",
     "help_stop": "Detener servidor",
     "help_status": "Verificar estado del servidor",
-    "help_rest_title": "**Comandos REST:**",
     "enter_command": "Ingresa un comando."
   },
   "list": {
@@ -29,16 +28,20 @@
   },
   "status": {
     "running": "🟢 En ejecución",
+    "starting": "🟡 Iniciando",
     "stopped": "⚪ Detenido"
   },
   "server": {
     "start_request": "⏳ Iniciando servidor **{{name}}**...",
-    "start_complete": "✅ ¡Solicitud de inicio de **{{name}}** completada!",
+    "start_complete": "✅ **{{name}}** · Iniciar",
     "already_running": "ℹ️ **{{name}}** ya está en marcha.",
     "stop_request": "⏳ Deteniendo servidor **{{name}}**...",
-    "stop_complete": "✅ ¡Solicitud de detención de **{{name}}** completada!",
+    "stop_complete": "✅ **{{name}}** · Detener",
     "graceful_stop_unavailable": "⚠️ **{{name}}** no se detuvo: no tiene forma (consola o REST) de guardar y salir. Para cerrarlo sin guardar, elige una detención forzada en saba-chan en este PC.",
-    "status_check": "📊 Estado de **{{name}}**: {{status}} {{pid_info}}",
+    "status_check": "📊 **{{name}}** · {{status}}",
+    "uptime_hm": "activo hace {{h}} h {{m}} min",
+    "uptime_m": "activo hace {{m}} min",
+    "still_starting": "⏳ **{{name}}** todavía se está iniciando. Vuelve a preguntar en un momento.",
     "not_found": "❌ No se encontró servidor para el módulo \"{{alias}}\" ({{resolved}})",
     "not_running": "❌ **{{name}}**: {{error}}",
     "not_running_default": "El servidor no se está ejecutando. Inicie primero el servidor",
@@ -82,6 +85,7 @@
     "alias_conflict": "❌ El alias '{{alias}}' es ambiguo. Coincide con varios módulos: {{modules}}. Usa un alias más específico.",
     "multiple_instances": "⚠️ Existen múltiples instancias de '{{module}}'. Usa el nombre de la instancia en lugar del alias del módulo.",
     "danger_needs_name": "⚠️ Los comandos peligrosos no se ejecutan con el nombre del juego. Llama al servidor por su nombre '{{name}}'.",
+    "slash_only": "🔒 {{command}} solo lo ve quien lo pide, por eso es un comando de barra. Escribe `/` y elige **{{name}}** › {{command}}.",
     "auth_failed": "Falló la autenticación",
     "player_not_found": "Jugador no encontrado",
     "internal_server_error": "Error interno del servidor",

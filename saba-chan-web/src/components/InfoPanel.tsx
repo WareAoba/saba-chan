@@ -1,4 +1,4 @@
-import { gameNameOf } from '@gui/utils/serverView';
+import { gameNameOf, protocolLabel } from '@gui/utils/serverView';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Section } from './ui';
@@ -70,7 +70,10 @@ function ExitHistory({ api, server }: { api: WebApi; server: Pick<Server, 'id' |
                                     <time>{fmt(e.at)}</time>
                                 </div>
                                 <div className="row-sub">
-                                    {e.exit_code != null && <code>exit {e.exit_code}</code>}{' '}
+                                    {e.exit_code != null &&
+                                        (e.exit_code === 0
+                                            ? tg('shell.exit_code_ok')
+                                            : tg('shell.exit_code', { code: e.exit_code }))}{' '}
                                     {e.signal && <code>{e.signal}</code>}{' '}
                                     {e.restart_in_secs != null &&
                                         tg('shell.exit_restart_in', { secs: e.restart_in_secs })}{' '}
@@ -101,25 +104,37 @@ export function InfoPanel({ api, server, moduleData }: Omit<ServerPanelProps, 'r
         };
     }, [api, server.id]);
 
+    // 사용자 11-06 #24·#26: 모르는 값은 줄째 숨기고, 개발 용어(통신 방식)는 '자세히' 안에 (앱 정보 탭과 같다)
     const rows = [
         [tg('shell.info_module'), gameNameOf(t, server.module, moduleData)],
-        [tg('shell.info_version'), version || '—'],
-        [tg('shell.info_port'), server.port ? String(server.port) : '—'],
-        [tg('shell.info_protocol'), server.protocol_mode || '—'],
+        version && [tg('shell.info_version'), version],
+        server.port && [tg('shell.info_port'), String(server.port)],
         [tg('shell.info_id'), server.id],
-    ];
+    ].filter(Boolean) as [string, string][];
+    const moreRows = [moduleData && [tg('shell.info_protocol'), protocolLabel(server, moduleData)]].filter(
+        Boolean,
+    ) as [string, string][];
+    const list = (items: [string, string][]) => (
+        <dl className="info-list">
+            {items.map(([k, v]) => (
+                <div key={k} className="info-row">
+                    <dt>{k}</dt>
+                    <dd>{v}</dd>
+                </div>
+            ))}
+        </dl>
+    );
 
     return (
         <div className="panel">
             <Section title={tg('shell.tab_info')}>
-                <dl className="info-list">
-                    {rows.map(([k, v]) => (
-                        <div key={k} className="info-row">
-                            <dt>{k}</dt>
-                            <dd>{v}</dd>
-                        </div>
-                    ))}
-                </dl>
+                {list(rows)}
+                {moreRows.length > 0 && (
+                    <details className="info-more">
+                        <summary>{tg('shell.info_more')}</summary>
+                        {list(moreRows)}
+                    </details>
+                )}
             </Section>
             <ExitHistory api={api} server={server} />
         </div>
