@@ -60,4 +60,21 @@ describe('웹 레벨 사다리', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Save levels' }));
         expect(onSave).toHaveBeenCalledWith({ commandLevels: { 'mc-1/start': 0, 'mc-1/stop': 0 } });
     });
+
+    // 사용자 지정 2026-11-07: 아래 버튼 하나로 두 레벨을 골라 명령을 맞바꾼다 (사람은 그대로)
+    it('권한 맞바꾸기: 두 레벨을 고르면 칩이 바뀌고, 바뀐 명령만 저장한다', () => {
+        const onSave = mount();
+        fireEvent.click(screen.getByRole('button', { name: 'Swap permissions' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Pick Owner' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Pick Admin' }));
+        expect(screen.getByRole('listitem', { name: 'Owner' }).textContent).toContain('stop');
+        expect(screen.getByRole('listitem', { name: 'Admin' }).textContent).not.toContain('stop');
+        expect(screen.getByRole('listitem', { name: 'Admin' }).textContent).toContain('restart');
+        // 줄은 명령을 따라 소유자 아래로
+        expect(screen.getByRole('listitem', { name: 'Operators line' }).textContent).toContain('Owner only');
+        fireEvent.click(screen.getByRole('button', { name: 'Save levels' }));
+        expect(onSave).toHaveBeenCalledWith({
+            commandLevels: { 'mc-1/start': 3, 'mc-1/stop': 3, 'mc-1/restart': null },
+        });
+    });
 });

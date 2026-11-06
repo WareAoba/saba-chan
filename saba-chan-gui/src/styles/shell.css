@@ -2719,6 +2719,69 @@ button.activity-line:hover {
     border-color: var(--accent);
     border-bottom-style: dashed;
 }
+/* 권한 맞바꾸기 (사용자 지정 2026-11-07): 칸마다 그 레벨부터 쓰는 명령 칩. 버튼을 누르고 칸 두 개를 고르면 칩이 자리를 바꾼다 */
+.dc-ladder-block {
+    position: relative;
+    flex-wrap: wrap;
+}
+.dc-ladder-chips {
+    display: flex;
+    flex-basis: 100%;
+    flex-wrap: wrap;
+    gap: var(--sp-1);
+    padding-left: calc(var(--sp-8) + var(--sp-4));
+    font-size: var(--fs-sm);
+}
+.dc-ladder-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-1);
+    padding: 0 var(--sp-2);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--bg-2);
+    white-space: nowrap;
+}
+.dc-ladder-chip.is-fixed,
+.dc-ladder-chip.is-more {
+    border-style: dashed;
+    color: var(--text-3);
+}
+.dc-ladder-block.is-pickable {
+    outline: 2px dashed var(--warn);
+    outline-offset: 2px;
+    cursor: pointer;
+}
+.dc-ladder-block.is-picked {
+    border-color: var(--warn);
+    background: var(--warn-soft);
+    outline-style: solid;
+}
+/* 고르기 중에는 칸 전체가 버튼이다 (이름·버튼 위를 덮는다) */
+.dc-ladder-pick {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    border: 0;
+    border-radius: inherit;
+    background: transparent;
+    cursor: pointer;
+}
+.dc-ladder-pick:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+.dc-ladder-swapbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--sp-2);
+}
+.dc-ladder-swapbar .dc-hint {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+}
 .dc-overridden .dc-level-select .custom-dropdown-trigger {
     border-color: var(--accent);
 }

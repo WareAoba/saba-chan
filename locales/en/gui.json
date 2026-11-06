@@ -1042,7 +1042,7 @@
     "perm_preset_reset": "{{count}} command level(s) will be reset to the {{preset}} preset.",
     "perm_preset_apply": "Apply",
     "perm_ladder": "Permission levels",
-    "perm_ladder_hint": "Drag the blocks to set the order, and tap a name to rename it. Higher blocks are higher levels. Owner and Banned stay in place, and Owner, Guest and Banned can't be deleted.",
+    "perm_ladder_hint": "Drag the blocks to set the order, and tap a name to rename it. Higher blocks are higher levels. Owner and Banned stay in place, and Owner, Guest and Banned can't be deleted. To swap commands, press \"Swap permissions\" below and pick two levels.",
     "perm_ladder_name": "Level name",
     "perm_ladder_rename": "Rename {{name}}",
     "perm_ladder_members": "{{count}} members",
@@ -1323,7 +1323,15 @@
     "perm_line_apart": "{{count}} command(s) set separately stay as they are",
     "perm_line_up": "Move the operators line up",
     "perm_line_down": "Move the operators line down",
-    "perm_line_follow": "follows the operators line"
+    "perm_line_follow": "follows the operators line",
+    "perm_swap": "Swap permissions",
+    "perm_swap_cancel": "Cancel",
+    "perm_swap_pick": "Pick two levels to swap (0/2)",
+    "perm_swap_pick_more": "{{name}} ⇄ ? · pick one more level (1/2)",
+    "perm_swap_choose": "Pick {{name}}",
+    "perm_swap_done": "{{a}} ⇄ {{b}} · People stay where they are. Nothing changes until you save.",
+    "perm_swap_none": "No commands start at this level",
+    "perm_swap_more": "+{{count}} more"
   },
   "maintenance": {
     "load_failed": "Couldn't load backups and schedules.",

@@ -1042,7 +1042,7 @@
     "perm_preset_reset": "{{count}} 个命令的等级将重置为“{{preset}}”预设的值。",
     "perm_preset_apply": "应用",
     "perm_ladder": "权限等级",
-    "perm_ladder_hint": "拖动方块来排序，点按名称可以改名。越靠上等级越高。所有者和禁止不能移动，所有者、访客和禁止不能删除。",
+    "perm_ladder_hint": "拖动方块来排序，点按名称可以改名。越靠上等级越高。所有者和禁止不能移动，所有者、访客和禁止不能删除。 要互换命令，请按下方的“互换权限”并选择两个等级。",
     "perm_ladder_name": "等级名称",
     "perm_ladder_rename": "重命名{{name}}",
     "perm_ladder_members": "{{count}} 人",
@@ -1323,7 +1323,15 @@
     "perm_line_apart": "单独设定的 {{count}} 个命令保持不变",
     "perm_line_up": "把可操作线上移",
     "perm_line_down": "把可操作线下移",
-    "perm_line_follow": "跟随可操作线"
+    "perm_line_follow": "跟随可操作线",
+    "perm_swap": "互换权限",
+    "perm_swap_cancel": "取消",
+    "perm_swap_pick": "选择要互换的两个等级 (0/2)",
+    "perm_swap_pick_more": "{{name}} ⇄ ? · 再选一个等级 (1/2)",
+    "perm_swap_choose": "选择{{name}}",
+    "perm_swap_done": "{{a}} ⇄ {{b}} · 成员保持不变。保存前不会生效。",
+    "perm_swap_none": "没有从此等级开始的命令",
+    "perm_swap_more": "还有 {{count}} 个"
   },
   "maintenance": {
     "load_failed": "无法加载备份和计划信息。",

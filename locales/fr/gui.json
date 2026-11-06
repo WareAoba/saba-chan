@@ -1042,7 +1042,7 @@
     "perm_preset_reset": "{{count}} niveau(x) de commande seront remis au préréglage {{preset}}.",
     "perm_preset_apply": "Appliquer",
     "perm_ladder": "Niveaux de permission",
-    "perm_ladder_hint": "Glissez les blocs pour définir l'ordre et touchez un nom pour le modifier. Plus haut veut dire niveau plus élevé. Propriétaire et Banni restent en place, et Propriétaire, Invité et Banni ne peuvent pas être supprimés.",
+    "perm_ladder_hint": "Glissez les blocs pour définir l'ordre et touchez un nom pour le modifier. Plus haut veut dire niveau plus élevé. Propriétaire et Banni restent en place, et Propriétaire, Invité et Banni ne peuvent pas être supprimés. Pour échanger des commandes, touchez « Échanger les droits » en bas et choisissez deux niveaux.",
     "perm_ladder_name": "Nom du niveau",
     "perm_ladder_rename": "Renommer {{name}}",
     "perm_ladder_members": "{{count}} membres",
@@ -1323,7 +1323,15 @@
     "perm_line_apart": "{{count}} commande(s) réglée(s) à part restent telles quelles",
     "perm_line_up": "Monter la ligne des opérateurs",
     "perm_line_down": "Descendre la ligne des opérateurs",
-    "perm_line_follow": "suit la ligne des opérateurs"
+    "perm_line_follow": "suit la ligne des opérateurs",
+    "perm_swap": "Échanger les droits",
+    "perm_swap_cancel": "Annuler",
+    "perm_swap_pick": "Choisissez deux niveaux à échanger (0/2)",
+    "perm_swap_pick_more": "{{name}} ⇄ ? · choisissez encore un niveau (1/2)",
+    "perm_swap_choose": "Choisir {{name}}",
+    "perm_swap_done": "{{a}} ⇄ {{b}} · Les personnes restent où elles sont. Rien ne change avant l'enregistrement.",
+    "perm_swap_none": "Aucune commande ne commence à ce niveau",
+    "perm_swap_more": "+{{count}} de plus"
   },
   "maintenance": {
     "load_failed": "Impossible de charger les sauvegardes et la planification.",
