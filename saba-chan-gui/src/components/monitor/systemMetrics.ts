@@ -94,7 +94,7 @@ export interface RingSegment {
     color: string;
 }
 
-/** 원 아래 보조 값 하나. unknown이면 "모름"으로 흐리게 보인다 */
+/** 원 아래 보조 값 하나. unknown이면 "알 수 없음"으로 흐리게 보인다 */
 export interface RingPill {
     key?: string;
     vars?: Record<string, unknown>;
@@ -221,7 +221,7 @@ export interface PickerRow {
     labelKey?: string;
     labelVars?: Record<string, unknown>;
     label?: string;
-    /** 이 PC에서 못 재는 값이면 "모름" 안내 */
+    /** 이 PC에서 못 재는 값이면 "알 수 없음" 안내 */
     noteKey?: string;
     /** 이 줄이 붙는 원 항목 (그 원을 끄면 같이 꺼 둔다) */
     parent?: string;
