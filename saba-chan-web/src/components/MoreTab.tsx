@@ -234,6 +234,7 @@ function ActivityLog({ api }: { api: WebApi }) {
                         const result = auditResult(e, tg);
                         const reason = auditReason(e, tg);
                         return (
+                            // biome-ignore lint/suspicious/noArrayIndexKey: 같은 시각의 기록이 여러 개일 수 있어 순번을 붙인다
                             <li key={`${e.ts}-${i}`} className="row activity-row">
                                 <span className="activity-time">{fmt(e.ts)}</span>
                                 <div className="row-main">

@@ -83,6 +83,7 @@ function ServerCheck({ api, server, moduleData }: Omit<ServerPanelProps, 'runnin
             {(result?.issues?.length ?? 0) > 0 && (
                 <ul className="issues">
                     {result?.issues?.map((issue, i) => (
+                        // biome-ignore lint/suspicious/noArrayIndexKey: 같은 코드의 문제가 여러 번 올 수 있어 순번을 붙인다
                         <li key={`${issue.code}-${i}`} className={`issue sev-${issue.severity}`}>
                             <p>{issue.message || issue.code}</p>
                             {issue.solution && <p className="hint">{issue.solution}</p>}
