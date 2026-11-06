@@ -1042,7 +1042,7 @@
     "perm_preset_reset": "{{count}} 個指令的等級將重設為「{{preset}}」預設的值。",
     "perm_preset_apply": "套用",
     "perm_ladder": "權限等級",
-    "perm_ladder_hint": "拖曳方塊來排序，點一下名稱可以改名。越上面等級越高。擁有者和禁止不能移動，擁有者、訪客和禁止不能刪除。",
+    "perm_ladder_hint": "拖曳方塊來排序，點一下名稱可以改名。越上面等級越高。擁有者和禁止不能移動，擁有者、訪客和禁止不能刪除。 要互換指令，請按下方的「互換權限」並選擇兩個等級。",
     "perm_ladder_name": "等級名稱",
     "perm_ladder_rename": "重新命名{{name}}",
     "perm_ladder_members": "{{count}} 人",
@@ -1323,7 +1323,15 @@
     "perm_line_apart": "另外設定的 {{count}} 個指令維持不變",
     "perm_line_up": "把可操作線上移",
     "perm_line_down": "把可操作線下移",
-    "perm_line_follow": "跟隨可操作線"
+    "perm_line_follow": "跟隨可操作線",
+    "perm_swap": "互換權限",
+    "perm_swap_cancel": "取消",
+    "perm_swap_pick": "選擇要互換的兩個等級 (0/2)",
+    "perm_swap_pick_more": "{{name}} ⇄ ? · 再選一個等級 (1/2)",
+    "perm_swap_choose": "選擇{{name}}",
+    "perm_swap_done": "{{a}} ⇄ {{b}} · 成員維持不變。儲存前不會生效。",
+    "perm_swap_none": "沒有從此等級開始的指令",
+    "perm_swap_more": "還有 {{count}} 個"
   },
   "maintenance": {
     "load_failed": "無法載入備份與排程資訊。",

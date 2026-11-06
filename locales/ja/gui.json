@@ -1042,7 +1042,7 @@
     "perm_preset_reset": "{{count}}個のコマンドのレベルが{{preset}}プリセットの値に戻ります。",
     "perm_preset_apply": "適用",
     "perm_ladder": "権限の段階",
-    "perm_ladder_hint": "ブロックをドラッグして順番を決め、名前をタップして変更します。上ほど高いレベルです。オーナーと禁止は動かせず、オーナー・ゲスト・禁止は削除できません。",
+    "perm_ladder_hint": "ブロックをドラッグして順番を決め、名前をタップして変更します。上ほど高いレベルです。オーナーと禁止は動かせず、オーナー・ゲスト・禁止は削除できません。 コマンドを入れ替えるには、下の「権限を入れ替える」を押してレベルを2つ選びます。",
     "perm_ladder_name": "レベル名",
     "perm_ladder_rename": "{{name}}の名前を変更",
     "perm_ladder_members": "{{count}}人",
@@ -1323,7 +1323,15 @@
     "perm_line_apart": "個別に決めたコマンド{{count}}件はそのままです",
     "perm_line_up": "操作できる人の線を上へ",
     "perm_line_down": "操作できる人の線を下へ",
-    "perm_line_follow": "操作できる人の線に従う"
+    "perm_line_follow": "操作できる人の線に従う",
+    "perm_swap": "権限を入れ替える",
+    "perm_swap_cancel": "やめる",
+    "perm_swap_pick": "入れ替えるレベルを2つ選んでください (0/2)",
+    "perm_swap_pick_more": "{{name}} ⇄ ? · もう1つ選んでください (1/2)",
+    "perm_swap_choose": "{{name}}を選ぶ",
+    "perm_swap_done": "{{a}} ⇄ {{b}} · 人はそのままです。保存するまで変わりません。",
+    "perm_swap_none": "このレベルから使えるコマンドはありません",
+    "perm_swap_more": "+{{count}}件"
   },
   "maintenance": {
     "load_failed": "バックアップ・予約の情報を読み込めませんでした。",

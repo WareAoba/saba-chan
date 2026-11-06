@@ -268,6 +268,72 @@ export function controllerLine(board: CommandBoard | null | undefined) {
 /** 줄을 놓을 수 있는 칸: 저장된 레벨(새 칸은 저장한 뒤)이고 금지가 아닌 칸 */
 const lineSlot = (l: LadderLevel | undefined) => l?.id !== undefined && l.id !== BANNED;
 
+/** 권한 맞바꾸기로 고를 수 있는 칸 (줄을 놓는 칸과 같다) */
+export const swappable = (l: LadderLevel | undefined) => lineSlot(l);
+
+/** 맞바꾼 두 레벨 중 하나에 그어진 줄은 명령을 따라 다른 쪽으로 */
+export const swapLine = (level: number, a: number, b: number) => (level === a ? b : level === b ? a : level);
+
+/** 사다리 초안에서 명령을 옮긴 차례: 맞바꾸기 `[a, b]` 또는 조작 가능 줄 옮기기 `{line: 레벨}` */
+export type CommandStep = [number, number] | { line: number };
+const isSwap = (step: CommandStep): step is [number, number] => Array.isArray(step);
+
+/** 초안에 두 칸이 다 남은 맞바꾸기만 (지운 칸이 걸린 맞바꾸기는 없던 일로 한다) */
+export function activeSwaps(steps: CommandStep[], draft: LadderLevel[]) {
+    const kept = new Set(draft.map((l) => l.id));
+    return steps.filter(isSwap).filter(([a, b]) => kept.has(a) && kept.has(b));
+}
+
+/**
+ * 조작 가능 줄의 초안 레벨: 저장된 줄 레벨에서 차례를 따라간다. 줄 옮기기는 그 레벨로, 맞바꾸기는 줄도 명령을 따라 옮긴다.
+ * 지운 칸이 걸린 맞바꾸기는 건너뛰어 줄도 되돌린다
+ */
+export function draftLine(line: { level: number } | null | undefined, draft: LadderLevel[], steps: CommandStep[]) {
+    if (!line) return null;
+    const active = new Set(activeSwaps(steps, draft));
+    return steps.reduce<number>(
+        (level, step) => (!isSwap(step) ? step.line : active.has(step) ? swapLine(level, step[0], step[1]) : level),
+        line.level,
+    );
+}
+
+/**
+ * 권한 맞바꾸기 (사용자 지정 2026-11-07): 사람은 그대로 두고, 두 레벨이 "그 레벨부터" 가진 명령을 서로 바꾼다.
+ * 보드 항목마다 초안 레벨을 낸다. 맞바꾸기를 차례로 적용하고(고정 항목은 그대로, 초안에서 지운 레벨이 걸린 것은 뺀다),
+ * 줄을 따르는 명령은 줄 자리(`lineTarget`)에 둔다
+ */
+export function draftLevels(
+    board: CommandBoard | null | undefined,
+    draft: LadderLevel[],
+    steps: CommandStep[],
+    line?: { followers: CommandItem[] } | null,
+    lineTarget?: number | null,
+) {
+    const items = board?.items || [];
+    const active = activeSwaps(steps, draft);
+    const follows = new Set(line && lineTarget != null ? line.followers : []);
+    return items.map((item) => {
+        if (item.fixed) return item.level;
+        if (follows.has(item)) return lineTarget as number;
+        return active.reduce((level, [a, b]) => swapLine(level, a, b), item.level);
+    });
+}
+
+/** 초안 레벨(`draftLevels`)이 저장된 레벨과 다른 항목만 모은 `commandLevels` 바꾸기 */
+export function boardPatch(board: CommandBoard | null | undefined, levels: number[]) {
+    const out: Record<string, number | null> = {};
+    (board?.items || []).forEach((item, i) => {
+        if (levels[i] !== item.level) Object.assign(out, levelPatch([item], levels[i]));
+    });
+    return out;
+}
+
+/** 초안 레벨을 입힌 보드 (사다리 칸의 칩을 그린다) */
+export const draftBoard = (board: CommandBoard | null | undefined, levels: number[]): CommandBoard => ({
+    ...board,
+    items: (board?.items || []).map((item, i) => ({ ...item, level: levels[i] })),
+});
+
 /**
  * 줄이 그어진 칸의 자리 (사다리 초안). 초안에서 지운 칸이면 저장된 사다리에서 그 위로 처음 남은 칸
  * (데몬은 지운 레벨의 명령 요구 레벨을 바로 위로 옮긴다)

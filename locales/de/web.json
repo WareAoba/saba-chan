@@ -197,7 +197,7 @@
       "-1": "Gesperrt"
     },
     "ladder": "Berechtigungsstufen",
-    "ladder_hint": "Weiter oben bedeutet eine höhere Stufe. Besitzer und Gesperrt bleiben fest. Ändere einen Namen in seinem Feld. Besitzer, Gast und Gesperrt lassen sich nicht löschen.",
+    "ladder_hint": "Weiter oben bedeutet eine höhere Stufe. Besitzer und Gesperrt bleiben fest. Ändere einen Namen in seinem Feld. Besitzer, Gast und Gesperrt lassen sich nicht löschen. Um Befehle zu tauschen, tippe unten auf „Rechte tauschen“ und wähle zwei Stufen.",
     "ladder_name": "Stufenname",
     "ladder_fixed": "Fest",
     "ladder_up": "{{name}} nach oben",

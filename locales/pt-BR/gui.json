@@ -1042,7 +1042,7 @@
     "perm_preset_reset": "{{count}} nível(is) de comando voltarão à predefinição {{preset}}.",
     "perm_preset_apply": "Aplicar",
     "perm_ladder": "Níveis de permissão",
-    "perm_ladder_hint": "Arraste os blocos para definir a ordem e toque em um nome para mudá-lo. Quanto mais alto, maior o nível. Dono e Banido ficam no lugar, e Dono, Convidado e Banido não podem ser apagados.",
+    "perm_ladder_hint": "Arraste os blocos para definir a ordem e toque em um nome para mudá-lo. Quanto mais alto, maior o nível. Dono e Banido ficam no lugar, e Dono, Convidado e Banido não podem ser apagados. Para trocar comandos, toque em \"Trocar permissões\" abaixo e escolha dois níveis.",
     "perm_ladder_name": "Nome do nível",
     "perm_ladder_rename": "Renomear {{name}}",
     "perm_ladder_members": "{{count}} membros",
@@ -1323,7 +1323,15 @@
     "perm_line_apart": "{{count}} comando(s) definidos à parte ficam como estão",
     "perm_line_up": "Subir a linha de operadores",
     "perm_line_down": "Descer a linha de operadores",
-    "perm_line_follow": "segue a linha de operadores"
+    "perm_line_follow": "segue a linha de operadores",
+    "perm_swap": "Trocar permissões",
+    "perm_swap_cancel": "Cancelar",
+    "perm_swap_pick": "Escolha dois níveis para trocar (0/2)",
+    "perm_swap_pick_more": "{{name}} ⇄ ? · escolha mais um nível (1/2)",
+    "perm_swap_choose": "Escolher {{name}}",
+    "perm_swap_done": "{{a}} ⇄ {{b}} · As pessoas ficam onde estão. Nada muda até você salvar.",
+    "perm_swap_none": "Nenhum comando começa neste nível",
+    "perm_swap_more": "+{{count}} a mais"
   },
   "maintenance": {
     "load_failed": "Não foi possível carregar os backups e agendamentos.",
