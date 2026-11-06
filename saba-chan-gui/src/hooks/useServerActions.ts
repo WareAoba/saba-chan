@@ -76,7 +76,7 @@ export function useServerActions({
     const { t } = useTranslation('gui');
     const translateError = createTranslateError(t);
     // 되돌리지 못한 설정 사본: 개수와 함께 데몬이 알려준 보관 위치를 보인다
-    const unrestoredNote = (r: { settings_restore_failed?: number; settings_kept_at?: string }) =>
+    const unrestoredNote = (r: ApiBody) =>
         r.settings_kept_at
             ? t('server_actions.unlink_restore_failed_kept', { n: r.settings_restore_failed, path: r.settings_kept_at })
             : t('server_actions.unlink_restore_failed', { n: r.settings_restore_failed });
