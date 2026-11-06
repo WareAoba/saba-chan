@@ -2334,3 +2334,36 @@ textarea {
     font-size: 14px;
     line-height: 1;
 }
+
+/* 명령 입력 줄 (사용자 11-06 #4): 칸 모양은 바깥 상자가 맡고, 안의 입력은 색칠한 줄 위에 투명하게 겹친다 */
+.command-line {
+    display: grid;
+    gap: 8px;
+}
+.command-line-box {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    min-height: 40px;
+    padding: 0 12px;
+    border-radius: 12px;
+    border: 1px solid var(--line);
+    background: var(--field);
+    box-shadow: var(--neu-in);
+    font-size: 16px; /* iOS 가 입력할 때 확대하지 않게 */
+    transition:
+        border-color 0.25s var(--ease),
+        box-shadow 0.25s var(--ease);
+}
+.command-line-box:focus-within {
+    border-color: var(--accent);
+    box-shadow: var(--neu-in), var(--accent-ring);
+}
+.command-line-box .cmdline-input,
+.command-line-box .cmdline-input:focus {
+    min-height: 0;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+}

@@ -9,6 +9,8 @@ const ALLOWED = new Set([
     '@gui/utils/serverView',
     '@gui/utils/localizedText',
     '@gui/utils/commandRisk',
+    // 명령 줄 읽기와 입력 칸 값 → 인자 (데몬이 읽는 방식 그대로, 앱 명령 탭과 같은 규칙)
+    '@gui/utils/commandSyntax',
     // 포트포워딩 확인 결과 읽기 (화면 없는 순수 함수)
     '@gui/utils/portCheck',
     // 예약 작업 초안 ↔ 데몬 형식과 검사 (GUI 백업·예약 탭과 같은 규칙)
@@ -45,6 +47,8 @@ const ALLOWED = new Set([
     '@gui/components/CustomDropdown/CustomDropdown',
     // 체크박스는 GUI 와 같은 것을 쓴다 (화면이 아니라 입력 부품 하나)
     '@gui/components/ui/SabaUI',
+    // 명령 입력 줄 (친 글자 색칠·안내 부품, 스토어·API 없이 받은 상태만 그린다)
+    '@gui/components/ui/CommandLine',
     // PC 상태 원과 항목 고르기: 앱 시스템 모니터를 웹에서 그대로 본다 (스토어 없는 그림 부품과 순수 계산)
     '@gui/components/monitor/MonitorRing',
     '@gui/components/monitor/systemMetrics',

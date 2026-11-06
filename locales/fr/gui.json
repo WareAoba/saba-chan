@@ -2224,5 +2224,21 @@
     "guild_missing": "Ce serveur Discord n'est pas connecté, l'écran de connexion est donc ouvert.",
     "pick_guild": "Plusieurs serveurs Discord sont connectés. Choisissez-en un à gauche.",
     "tab_missing": "Cet onglet n'est pas disponible ici, cet écran est donc ouvert."
+  },
+  "command_syntax": {
+    "ready": "Prêt. Appuyez sur Entrée pour envoyer.",
+    "missing": "Ajoutez aussi {{label}}.",
+    "fill": "Renseignez {{label}}.",
+    "unknown": "Cette commande n'est pas dans la liste du module. Elle est envoyée au serveur telle quelle.",
+    "more_commands": "Commandes pour continuer",
+    "options": "Valeurs possibles",
+    "not_number": "{{label}} demande un nombre. Reçu : {{value}}",
+    "out_of_range": "{{label}} accepte {{range}}. Reçu : {{value}}",
+    "range_both": "{{min}}–{{max}}",
+    "range_min": "{{min}} ou plus",
+    "range_max": "{{max}} ou moins",
+    "not_option": "{{label}} doit être l'une de ces valeurs : {{options}}. Reçu : {{value}}",
+    "not_boolean": "{{label}} doit être true ou false. Reçu : {{value}}",
+    "too_many": "Cette commande n'accepte rien après. En trop : {{value}}"
   }
 }

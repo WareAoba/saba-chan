@@ -2224,5 +2224,21 @@
     "guild_missing": "そのDiscordサーバーは接続されていないため、接続画面を開きました。",
     "pick_guild": "接続中のDiscordサーバーが複数あります。左から一つ選んでください。",
     "tab_missing": "そのタブは今は使えないため、この画面を開きました。"
+  },
+  "command_syntax": {
+    "ready": "送信できます。Enterで送ります。",
+    "missing": "{{label}}も入れてください。",
+    "fill": "{{label}}を入力してください。",
+    "unknown": "モジュールのコマンド一覧にないコマンドです。止めずに入力どおりサーバーへ送ります。",
+    "more_commands": "続けて入力できるコマンド",
+    "options": "選べる値",
+    "not_number": "{{label}}には数字を入れてください。受け取った値: {{value}}",
+    "out_of_range": "{{label}}は{{range}}だけ受け付けます。受け取った値: {{value}}",
+    "range_both": "{{min}}〜{{max}}",
+    "range_min": "{{min}}以上",
+    "range_max": "{{max}}以下",
+    "not_option": "{{label}}は{{options}}のどれかを入れてください。受け取った値: {{value}}",
+    "not_boolean": "{{label}}にはtrueかfalseを入れてください。受け取った値: {{value}}",
+    "too_many": "このコマンドは後ろに何も受け付けません。余った言葉: {{value}}"
   }
 }

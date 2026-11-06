@@ -1,4 +1,7 @@
-import { useState } from 'react';
+import { CommandLineField, CommandLineHelp } from '@gui/components/ui/CommandLine';
+import { needsConfirm } from '@gui/utils/commandRisk';
+import { applySuggestion, isLineCommand, readCommandLine } from '@gui/utils/commandSyntax';
+import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useApp } from '../store';
 import { commandArgs, missingInputs, useCommands } from './commands';
@@ -162,7 +165,11 @@ export function CommandOutput({ output }: { output: CommandOutputData }) {
     );
 }
 
-/** 게임 명령: 모듈·익스텐션이 준 명령을 카드로 보이고, 입력이 있으면 창에서 채워 보낸다 */
+/**
+ * 게임 명령: 모듈·익스텐션이 준 명령을 카드로 보인다 (사용자 11-06 #4, 앱 명령 탭과 같은 규칙).
+ * 콘솔로 가는 명령이 있으면 위에 입력 줄을 두고 친 줄을 색으로 나눠 안내하며, 그런 카드는 누르면 입력 줄에 이름을 넣는다.
+ * API로 요청하는 명령(rest·module)은 입력이 있으면 창에서 칸을 채워 보낸다
+ */
 export function CommandsPanel({ api, server, moduleData, running }: ServerPanelProps) {
     const { t } = useTranslation();
     const { t: tg } = useTranslation('gui');
@@ -174,31 +181,38 @@ export function CommandsPanel({ api, server, moduleData, running }: ServerPanelP
     const [values, setValues] = useState<Record<string, unknown>>({});
     const [busy, setBusy] = useState(false);
     const [results, setResults] = useState<CommandResult[]>([]);
+    const [line, setLine] = useState('');
+    const lineRef = useRef<HTMLInputElement>(null);
+    // 콘솔로 가는 명령이 하나라도 있으면 입력 줄을 둔다 (칸 정보가 없으면 평범한 줄이다)
+    const hasLine = commands.some(isLineCommand);
+    const lineCommands = commands as Parameters<typeof readCommandLine>[1];
+    const syntax = readCommandLine(line, lineCommands);
 
     const q = filter.trim().toLowerCase();
     const shown = commands.filter(
         (c) => !q || c.name.toLowerCase().includes(q) || String(c.label).toLowerCase().includes(q),
     );
 
-    const run = async (cmd: LocalCommand, given: Record<string, unknown>) => {
-        if (busy) return; // 응답을 기다리는 동안 같은 명령을 다시 보내지 않는다
-        if (cmd.risk === 'danger') {
+    /** 보내고 결과를 남긴다. 위험한 명령은 한 번 더 묻는다. 보냈으면 true */
+    const send = async (body: { command: string; args?: Record<string, unknown> }, label: string, danger: boolean) => {
+        if (busy) return false; // 응답을 기다리는 동안 같은 명령을 다시 보내지 않는다
+        if (danger) {
             const ok = await ask({
                 title: t('console.danger_title'),
-                message: t('console.danger_message', { command: cmd.label }),
+                message: t('console.danger_message', { command: label }),
                 danger: true,
             });
-            if (!ok) return;
+            if (!ok) return false;
         }
         setBusy(true);
-        const res = await api.executeCommand(server.id, { command: cmd.name, args: commandArgs(cmd.inputs, given) });
+        const res = await api.executeCommand(server.id, body);
         setBusy(false);
         const ok = !failed(res);
         setResults((prev) =>
             [
                 {
                     id: Date.now(),
-                    label: cmd.label,
+                    label,
                     ok,
                     output: ok && res?.output && typeof res.output === 'object' ? res.output : null,
                     text: ok ? resultText(res) : errorText(t, res),
@@ -206,11 +220,28 @@ export function CommandsPanel({ api, server, moduleData, running }: ServerPanelP
                 ...prev,
             ].slice(0, 20),
         );
-        if (ok) setOpen(null);
-        else toast(errorText(t, res), 'error');
+        if (!ok) toast(errorText(t, res), 'error');
+        return ok;
+    };
+
+    const run = async (cmd: LocalCommand, given: Record<string, unknown>) => {
+        const body = { command: cmd.name, args: commandArgs(cmd.inputs, given) };
+        if (await send(body, String(cmd.label), cmd.risk === 'danger')) setOpen(null);
+    };
+
+    // 입력 줄: 친 줄 그대로 보낸다 (명령 찾기·인자 나누기·검사는 데몬이 한다. 목록에 없는 명령도 콘솔로 간다)
+    const sendLine = async () => {
+        const text = line.trim();
+        if (!text) return;
+        if (await send({ command: text }, text, needsConfirm(lineCommands, text))) setLine('');
     };
 
     const pick = (cmd: LocalCommand) => {
+        if (hasLine && isLineCommand(cmd) && cmd.inputs?.length) {
+            setLine(`${cmd.name} `);
+            lineRef.current?.focus();
+            return;
+        }
         if (cmd.inputs?.length) {
             setValues(defaultsOf(cmd));
             setOpen(cmd);
@@ -222,6 +253,53 @@ export function CommandsPanel({ api, server, moduleData, running }: ServerPanelP
     return (
         <div className="panel">
             {!running && <p className="banner banner-info">{tg('shell.commands_offline')}</p>}
+            {hasLine && (
+                <form
+                    className="command-line"
+                    onSubmit={(e) => {
+                        e.preventDefault();
+                        sendLine();
+                    }}
+                >
+                    <div className="console-input">
+                        <span className="command-line-box">
+                            <CommandLineField
+                                state={syntax}
+                                inputRef={lineRef}
+                                value={line}
+                                onChange={(e) => setLine(e.target.value)}
+                                onKeyDown={(e) => {
+                                    // Tab: 이어 칠 이름이나 고를 값의 첫째로 채운다
+                                    if (e.key === 'Tab' && syntax.suggestions) {
+                                        e.preventDefault();
+                                        setLine(applySuggestion(line, syntax, syntax.suggestions.values[0]));
+                                    }
+                                }}
+                                placeholder={tg('command_modal.command_placeholder')}
+                                aria-label={tg('command_modal.command_label')}
+                                autoCapitalize="off"
+                                autoCorrect="off"
+                                autoComplete="off"
+                                spellCheck={false}
+                                enterKeyHint="send"
+                                disabled={!running}
+                            />
+                        </span>
+                        <Button tone="accent" type="submit" busy={busy} disabled={!running || !line.trim()}>
+                            {t('console.send')}
+                        </Button>
+                    </div>
+                    <CommandLineHelp
+                        text={line}
+                        state={syntax}
+                        moduleName={server.module}
+                        onPick={(v) => {
+                            setLine(v);
+                            lineRef.current?.focus();
+                        }}
+                    />
+                </form>
+            )}
             {commands.length > 6 && (
                 <input
                     className="search"

@@ -2224,5 +2224,21 @@
     "guild_missing": "그 디스코드 서버가 연결돼 있지 않아 연결 화면을 열었어요.",
     "pick_guild": "연결된 디스코드 서버가 여럿이에요. 왼쪽에서 하나를 골라 주세요.",
     "tab_missing": "그 탭은 지금 쓸 수 없어 이 화면을 열었어요."
+  },
+  "command_syntax": {
+    "ready": "보낼 수 있어요. Enter로 보내요.",
+    "missing": "{{label}}도 넣어 주세요.",
+    "fill": "{{label}} 칸을 채워 주세요.",
+    "unknown": "모듈 명령 목록에 없는 명령이에요. 막지 않고 친 그대로 서버에 보내요.",
+    "more_commands": "이어서 칠 수 있는 명령",
+    "options": "고를 수 있는 값",
+    "not_number": "{{label}}에는 숫자를 넣어 주세요. 받은 값: {{value}}",
+    "out_of_range": "{{label}}: {{range}}만 받아요. 받은 값: {{value}}",
+    "range_both": "{{min}}~{{max}}",
+    "range_min": "{{min}} 이상",
+    "range_max": "{{max}} 이하",
+    "not_option": "{{label}}: {{options}} 중 하나를 넣어 주세요. 받은 값: {{value}}",
+    "not_boolean": "{{label}}: true나 false를 넣어 주세요. 받은 값: {{value}}",
+    "too_many": "이 명령은 뒤에 아무것도 받지 않아요. 남는 말: {{value}}"
   }
 }

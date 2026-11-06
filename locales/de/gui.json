@@ -2224,5 +2224,21 @@
     "guild_missing": "Dieser Discord-Server ist nicht verbunden, daher ist die Verbindungsansicht geöffnet.",
     "pick_guild": "Mehrere Discord-Server sind verbunden. Wähle links einen aus.",
     "tab_missing": "Dieser Tab ist hier nicht verfügbar, daher ist diese Ansicht geöffnet."
+  },
+  "command_syntax": {
+    "ready": "Bereit. Mit Enter senden.",
+    "missing": "Gib auch {{label}} an.",
+    "fill": "Bitte {{label}} ausfüllen.",
+    "unknown": "Dieser Befehl steht nicht in der Befehlsliste des Moduls. Er wird genau so an den Server geschickt.",
+    "more_commands": "Befehle zum Weiterschreiben",
+    "options": "Wählbare Werte",
+    "not_number": "{{label}} braucht eine Zahl. Erhalten: {{value}}",
+    "out_of_range": "{{label}} nimmt {{range}}. Erhalten: {{value}}",
+    "range_both": "{{min}}–{{max}}",
+    "range_min": "{{min}} oder mehr",
+    "range_max": "{{max}} oder weniger",
+    "not_option": "{{label}} muss eins von {{options}} sein. Erhalten: {{value}}",
+    "not_boolean": "{{label}} muss true oder false sein. Erhalten: {{value}}",
+    "too_many": "Dieser Befehl nimmt danach nichts an. Übrig: {{value}}"
   }
 }

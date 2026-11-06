@@ -2224,5 +2224,21 @@
     "guild_missing": "該 Discord 伺服器未連接，已開啟連接頁面。",
     "pick_guild": "已連接多個 Discord 伺服器，請在左側選擇一個。",
     "tab_missing": "該分頁現在無法使用，已開啟目前頁面。"
+  },
+  "command_syntax": {
+    "ready": "可以送出了。按 Enter 送出。",
+    "missing": "還需要填寫{{label}}。",
+    "fill": "請填寫{{label}}。",
+    "unknown": "這不在模組的指令清單中。會照輸入原樣送到伺服器。",
+    "more_commands": "可以接著輸入的指令",
+    "options": "可選的值",
+    "not_number": "{{label}}需要數字。收到的值：{{value}}",
+    "out_of_range": "{{label}}只接受 {{range}}。收到的值：{{value}}",
+    "range_both": "{{min}}~{{max}}",
+    "range_min": "{{min}} 以上",
+    "range_max": "{{max}} 以下",
+    "not_option": "{{label}}必須是 {{options}} 之一。收到的值：{{value}}",
+    "not_boolean": "{{label}}必須是 true 或 false。收到的值：{{value}}",
+    "too_many": "此指令後面不接受任何內容。多餘的部分：{{value}}"
   }
 }

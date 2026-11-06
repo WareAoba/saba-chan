@@ -4389,6 +4389,57 @@ button.appbar-preflight {
     padding: 0 var(--sp-1);
     font-size: var(--fs-xs);
 }
+/* 입력 줄 글자와 그 뒤의 색칠한 줄이 같은 크기여야 겹친다 */
+.cmd-input .cmdline-field {
+    font-size: var(--fs-sm);
+}
+.cmd-compose .cmdline-help {
+    padding: 0 var(--sp-1);
+}
+
+/* API로 요청하는 명령의 입력 창 (목록에서 누르면 입력 줄 자리에 뜬다) */
+.cmd-form {
+    display: grid;
+    gap: var(--sp-2-5);
+    padding: var(--sp-3);
+    border-radius: var(--r-md);
+    border: 1px solid var(--accent);
+    background: var(--field);
+}
+.cmd-form-head {
+    display: grid;
+    gap: var(--sp-0-5);
+}
+.cmd-form-head strong {
+    font-size: var(--fs-sm);
+    color: var(--text-1);
+}
+.cmd-form-desc,
+.cmd-form-hint {
+    margin: 0;
+    font-size: var(--fs-xs);
+    color: var(--text-3);
+}
+.cmd-form-hint {
+    color: var(--warn);
+}
+.cmd-form-field {
+    display: grid;
+    gap: var(--sp-1);
+}
+.cmd-form-field > label {
+    font-size: var(--fs-xs);
+    font-weight: 600;
+    color: var(--text-2);
+}
+.cmd-form-req {
+    color: var(--stop);
+}
+.cmd-form-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--sp-2);
+}
 
 /* 실행 기록 */
 .cmd-history-list {

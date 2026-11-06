@@ -2224,5 +2224,21 @@
     "guild_missing": "该 Discord 服务器未连接，已打开连接页面。",
     "pick_guild": "已连接多个 Discord 服务器，请在左侧选择一个。",
     "tab_missing": "该标签页现在不可用，已打开当前页面。"
+  },
+  "command_syntax": {
+    "ready": "可以发送了。按 Enter 发送。",
+    "missing": "还需要填写{{label}}。",
+    "fill": "请填写{{label}}。",
+    "unknown": "这不在模块的命令列表中。会按输入原样发送到服务器。",
+    "more_commands": "可以接着输入的命令",
+    "options": "可选的值",
+    "not_number": "{{label}}需要数字。收到的值：{{value}}",
+    "out_of_range": "{{label}}只接受 {{range}}。收到的值：{{value}}",
+    "range_both": "{{min}}~{{max}}",
+    "range_min": "{{min}} 及以上",
+    "range_max": "{{max}} 及以下",
+    "not_option": "{{label}}必须是 {{options}} 之一。收到的值：{{value}}",
+    "not_boolean": "{{label}}必须是 true 或 false。收到的值：{{value}}",
+    "too_many": "此命令后面不接受任何内容。多余的部分：{{value}}"
   }
 }

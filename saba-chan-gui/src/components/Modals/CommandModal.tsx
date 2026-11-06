@@ -2,18 +2,23 @@ import clsx from 'clsx';
 import { type KeyboardEvent, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useInstanceCommands } from '../../hooks/useInstanceCommands';
-import { needsConfirm, withCommandAliases } from '../../utils/commandRisk';
+import { type CommandField, needsConfirm, withCommandAliases } from '../../utils/commandRisk';
+import { commandArgs, isLineCommand, missingInputs, readCommandLine } from '../../utils/commandSyntax';
 import { createTranslateError } from '../../utils/helpers';
 import { Icon } from '../Icon';
 import { CliText, commandCli } from '../CliLine';
+import CustomDropdown from '../CustomDropdown/CustomDropdown';
+import { CommandLineField, CommandLineHelp } from '../ui/CommandLine';
+import { SabaToggle } from '../ui/SabaUI';
 import { CommandOutput } from './CommandOutput';
 import type { Server } from '../../stores/useServerStore';
 import { useUIStore } from '../../stores/useUIStore';
-import type { ModuleInfo } from '../../types/daemon';
+import type { CommandInput, ModuleInfo } from '../../types/daemon';
 import { commandErrorText } from '../../utils/commandReply';
-import { commandText } from '../../utils/serverView';
+import { commandInputLabel, commandText } from '../../utils/serverView';
 
-// 서버 상세의 "명령" 탭 (이름은 옛 모달에서 왔다)
+// 서버 상세의 "명령" 탭 (이름은 옛 모달에서 왔다).
+// 콘솔로 가는 명령은 입력 줄에서 치고(문법 강조·안내), API로 요청하는 명령(rest·module)은 눌러서 칸이 있는 입력 창으로 보낸다 (사용자 11-06 #4)
 interface CommandModalProps {
     server: Server;
     modules: ModuleInfo[];
@@ -29,6 +34,8 @@ function CommandModal({ server, modules }: CommandModalProps) {
     const [highlightIdx, setHighlightIdx] = useState(-1);
     const [expandedId, setExpandedId] = useState<number | null>(null);
     const [confirmText, setConfirmText] = useState<string | null>(null); // 위험 명령 확인 대기 중인 입력
+    // 칸이 있는 입력 창으로 보내는 명령과 칸 값
+    const [form, setForm] = useState<{ cmd: CommandField; values: Record<string, unknown> } | null>(null);
     const inputRef = useRef<HTMLInputElement>(null);
     const historyEndRef = useRef<HTMLDivElement>(null);
 
@@ -40,11 +47,17 @@ function CommandModal({ server, modules }: CommandModalProps) {
     );
 
     const cliLine = commandCli(server.name, commandInput, commands);
+    const syntax = readCommandLine(commandInput, commands as CommandField[]);
 
-    // 입력값 기준 필터링된 힌트
-    const filteredHints = commandInput.trim()
-        ? commands.filter((cmd) => cmd.name.toLowerCase().startsWith(commandInput.trim().toLowerCase()))
+    // 첫 낱말(이름이나 별명)의 앞부분으로 목록을 거른다
+    const head = commandInput.trim().split(/\s+/)[0].toLowerCase();
+    const filteredHints = head
+        ? commands.filter((cmd) =>
+              [cmd.name, ...(cmd.aliases || [])].some((n: unknown) => String(n).toLowerCase().startsWith(head)),
+          )
         : commands;
+    // 첫 낱말을 치는 중인지 (뒤에 빈칸이 없다)
+    const typingName = !!head && !/\s/.test(commandInput.trimStart());
 
     // 히스토리 추가 시 자동 스크롤
     useEffect(() => {
@@ -55,10 +68,16 @@ function CommandModal({ server, modules }: CommandModalProps) {
     const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
         if (e.key === 'Tab') {
             e.preventDefault();
-            if (filteredHints.length > 0) {
-                const idx = highlightIdx >= 0 && highlightIdx < filteredHints.length ? highlightIdx : 0;
-                setCommandInput(filteredHints[idx].name + ' ');
-                setHighlightIdx(-1);
+            if (!head || typingName) {
+                if (filteredHints.length > 0) {
+                    const idx = highlightIdx >= 0 && highlightIdx < filteredHints.length ? highlightIdx : 0;
+                    pickCommand(filteredHints[idx]);
+                    setHighlightIdx(-1);
+                }
+            } else if (syntax.suggestions?.kind === 'option') {
+                // 칸을 치는 중이면 고를 값의 첫째로 채운다
+                const v = syntax.suggestions.values[0];
+                setCommandInput(/\s$/.test(commandInput) ? `${commandInput}${v} ` : `${commandInput.replace(/\S+$/, '')}${v} `);
             }
         } else if (e.key === 'ArrowDown') {
             e.preventDefault();
@@ -76,10 +95,35 @@ function CommandModal({ server, modules }: CommandModalProps) {
         setHighlightIdx(commandInput.trim() && filteredHints.length > 0 ? 0 : -1);
     }, [commandInput, filteredHints.length]);
 
-    // 명령어 실행
+    // 목록에서 고른 명령: API로 요청하는 명령은 칸이 있는 입력 창을, 나머지는 입력 줄에 이름을 넣는다
+    const pickCommand = (cmd: CommandField) => {
+        if (!isLineCommand(cmd) && cmd.inputs?.length) {
+            const values: Record<string, unknown> = {};
+            for (const input of cmd.inputs) if (input.default != null) values[input.name] = input.default;
+            setForm({ cmd, values });
+            setConfirmText(null);
+            return;
+        }
+        setForm(null);
+        setCommandInput(cmd.name + ' ');
+        inputRef.current?.focus();
+    };
+
+    // 입력 창 → 기록에 남길 한 줄 (이름 + 채운 값)
+    const formText = form
+        ? [form.cmd.name, ...(form.cmd.inputs || []).map((i) => String(form.values[i.name] ?? '').trim())]
+              .filter(Boolean)
+              .join(' ')
+        : '';
+    const formMissing = form ? missingInputs(form.cmd.inputs || [], form.values) : [];
+
+    // 명령어 실행: 입력 줄은 한 줄 그대로, 입력 창은 이름 붙인 칸 값으로 보낸다
     const handleExecuteCommand = async () => {
-        const cmdText = commandInput.trim();
-        if (!cmdText || loading) return;
+        const cmdText = form ? formText : commandInput.trim();
+        if (!cmdText || loading || (form && formMissing.length)) return;
+        const body = form
+            ? { command: form.cmd.name, args: commandArgs(form.cmd.inputs || [], form.values) }
+            : { command: cmdText };
 
         if (server.status !== 'running') {
             const entry = {
@@ -102,8 +146,8 @@ function CommandModal({ server, modules }: CommandModalProps) {
 
         setLoading(true);
         try {
-            // 한 줄 그대로 보낸다 — 명령 찾기·인자 나누기·검증·라우팅은 데몬이 한다
-            const result = await window.api.executeCommand(server.id, { command: cmdText });
+            // 명령 찾기·인자 나누기·검증·라우팅은 데몬이 한다
+            const result = await window.api.executeCommand(server.id, body);
 
             // 응답 메시지 추출 — REST API는 data.response에 {"raw":""} 같은
             // 빈 객체를 반환할 수 있으므로 이를 감지하여 깔끔한 성공/실패 표시로 변환
@@ -182,6 +226,7 @@ function CommandModal({ server, modules }: CommandModalProps) {
                 time: new Date().toLocaleTimeString(),
             };
             pushHistory(server.id, entry);
+            if (!isError) setForm(null);
         } catch (error) {
             const entry = {
                 id: Date.now(),
@@ -194,8 +239,10 @@ function CommandModal({ server, modules }: CommandModalProps) {
             pushHistory(server.id, entry);
         } finally {
             setLoading(false);
-            setCommandInput('');
-            inputRef.current?.focus();
+            if (!form) {
+                setCommandInput('');
+                inputRef.current?.focus();
+            }
         }
     };
 
@@ -221,10 +268,7 @@ function CommandModal({ server, modules }: CommandModalProps) {
                                     aria-selected={idx === highlightIdx}
                                     className={clsx('cmd-item', { active: idx === highlightIdx })}
                                     onMouseDown={(e) => e.preventDefault()}
-                                    onClick={() => {
-                                        setCommandInput(cmd.name + ' ');
-                                        inputRef.current?.focus();
-                                    }}
+                                    onClick={() => pickCommand(cmd)}
                                     data-tooltip={cmd.name}
                                 >
                                     <span className="cmd-item-name">{text.label}</span>
@@ -256,9 +300,9 @@ function CommandModal({ server, modules }: CommandModalProps) {
                     )}
                 </div>
 
-                {/* 입력줄 (항상 아래 고정) */}
+                {/* 입력줄 (항상 아래 고정). 칸이 있는 입력 창이 열리면 그 자리에 뜬다 */}
                 <div className="cmd-compose">
-                    {confirmText && confirmText === commandInput.trim() && (
+                    {confirmText && confirmText === (form ? formText : commandInput.trim()) && (
                         <div className="notice tone-stop risk-confirm" role="alert">
                             <Icon name="alertTriangle" size="sm" />
                             <span className="risk-confirm-text">
@@ -272,10 +316,28 @@ function CommandModal({ server, modules }: CommandModalProps) {
                             </button>
                         </div>
                     )}
+                    {form ? (
+                        <CommandForm
+                            form={form}
+                            moduleName={server.module}
+                            missing={formMissing}
+                            loading={loading}
+                            onChange={(name, value) =>
+                                setForm((f) => (f ? { ...f, values: { ...f.values, [name]: value } } : f))
+                            }
+                            onSubmit={handleExecuteCommand}
+                            onClose={() => {
+                                setForm(null);
+                                setConfirmText(null);
+                                inputRef.current?.focus();
+                            }}
+                        />
+                    ) : (
                     <div className="cmd-input">
                         <Icon name="chevronRight" size="sm" />
-                        <input
-                            ref={inputRef}
+                        <CommandLineField
+                            state={syntax}
+                            inputRef={inputRef}
                             type="text"
                             className="cmd-field"
                             value={commandInput}
@@ -299,7 +361,19 @@ function CommandModal({ server, modules }: CommandModalProps) {
                             <Icon name={loading ? 'loader' : 'arrowUp'} size="sm" />
                         </button>
                     </div>
-                    {cliLine && <CliText line={cliLine} />}
+                    )}
+                    {!form && commands.length > 0 && (
+                        <CommandLineHelp
+                            text={commandInput}
+                            state={syntax}
+                            moduleName={server.module}
+                            onPick={(v) => {
+                                setCommandInput(v);
+                                inputRef.current?.focus();
+                            }}
+                        />
+                    )}
+                    {!form && cliLine && <CliText line={cliLine} />}
                 </div>
             </section>
 
@@ -345,6 +419,98 @@ function CommandModal({ server, modules }: CommandModalProps) {
                 </div>
             </section>
         </div>
+    );
+}
+
+interface CommandFormProps {
+    form: { cmd: CommandField; values: Record<string, unknown> };
+    moduleName: string;
+    /** 비어 있는 필수 칸 */
+    missing: CommandInput[];
+    loading: boolean;
+    onChange: (name: string, value: unknown) => void;
+    onSubmit: () => void;
+    onClose: () => void;
+}
+
+/** API로 요청하는 명령의 입력 창: 모듈이 알려 준 칸(type·options·min·max·required)대로 그린다 */
+function CommandForm({ form, moduleName, missing, loading, onChange, onSubmit, onClose }: CommandFormProps) {
+    const { t } = useTranslation('gui');
+    const { cmd, values } = form;
+    const title = commandText(t, moduleName, cmd);
+    const labelOf = (input: CommandInput) => commandInputLabel(t, moduleName, cmd.name, input);
+    return (
+        <form
+            className="cmd-form"
+            aria-label={title.label}
+            onSubmit={(e) => {
+                e.preventDefault();
+                onSubmit();
+            }}
+        >
+            <header className="cmd-form-head">
+                <strong>{title.label}</strong>
+                {title.description && <span className="cmd-form-desc">{title.description}</span>}
+            </header>
+            {(cmd.inputs || []).map((input) => {
+                const id = `cmd-form-${input.name}`;
+                const label = labelOf(input);
+                const value = form.values[input.name];
+                const placeholder = t(`mod_${moduleName}:commands.${cmd.name}.inputs.${input.name}.placeholder`, {
+                    defaultValue: input.placeholder || '',
+                });
+                return (
+                    <div className="cmd-form-field" key={input.name}>
+                        <label htmlFor={id}>
+                            {label}
+                            {input.required && input.default == null && (
+                                <span className="cmd-form-req" aria-hidden="true">
+                                    {' '}
+                                    *
+                                </span>
+                            )}
+                        </label>
+                        {input.type === 'boolean' ? (
+                            <SabaToggle
+                                id={id}
+                                checked={value === true || value === 'true'}
+                                onChange={(on) => onChange(input.name, on)}
+                            />
+                        ) : input.options?.length ? (
+                            <CustomDropdown
+                                id={id}
+                                ariaLabel={label}
+                                value={value == null ? '' : String(value)}
+                                placeholder={placeholder || undefined}
+                                options={input.options.map((o) => ({ value: o, label: o }))}
+                                onChange={(v) => onChange(input.name, v)}
+                            />
+                        ) : (
+                            <input
+                                id={id}
+                                className="input"
+                                type={input.type === 'number' ? 'number' : 'text'}
+                                min={input.min}
+                                max={input.max}
+                                value={value == null ? '' : String(value)}
+                                placeholder={placeholder || undefined}
+                                autoComplete="off"
+                                onChange={(e) => onChange(input.name, e.target.value)}
+                            />
+                        )}
+                    </div>
+                );
+            })}
+            {missing.length > 0 && <p className="cmd-form-hint">{t('command_syntax.fill', { label: labelOf(missing[0]) })}</p>}
+            <div className="cmd-form-actions">
+                <button type="button" className="btn btn-ghost btn-sm" onClick={onClose}>
+                    {t('common:close')}
+                </button>
+                <button type="submit" className="btn btn-primary btn-sm" disabled={loading || missing.length > 0}>
+                    {t('command_modal.execute')}
+                </button>
+            </div>
+        </form>
     );
 }
 

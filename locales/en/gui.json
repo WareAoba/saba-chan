@@ -2224,5 +2224,21 @@
     "guild_missing": "That Discord server isn't connected, so the connection screen is open instead.",
     "pick_guild": "Several Discord servers are connected. Pick one on the left.",
     "tab_missing": "That tab isn't available here, so this screen is open instead."
+  },
+  "command_syntax": {
+    "ready": "Ready. Press Enter to send.",
+    "missing": "Add {{label}} too.",
+    "fill": "Fill in {{label}}.",
+    "unknown": "This isn't in the module's command list. It's sent to the server exactly as typed.",
+    "more_commands": "Commands you can continue with",
+    "options": "Values you can pick",
+    "not_number": "{{label}} needs a number. Got: {{value}}",
+    "out_of_range": "{{label}} takes {{range}}. Got: {{value}}",
+    "range_both": "{{min}}–{{max}}",
+    "range_min": "{{min}} or more",
+    "range_max": "{{max}} or less",
+    "not_option": "{{label}} must be one of {{options}}. Got: {{value}}",
+    "not_boolean": "{{label}} must be true or false. Got: {{value}}",
+    "too_many": "This command takes nothing after it. Extra: {{value}}"
   }
 }

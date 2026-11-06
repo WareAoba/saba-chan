@@ -2224,5 +2224,21 @@
     "guild_missing": "Esse servidor do Discord não está conectado, então a tela de conexão foi aberta.",
     "pick_guild": "Há vários servidores do Discord conectados. Escolha um à esquerda.",
     "tab_missing": "Essa aba não está disponível aqui, então esta tela foi aberta."
+  },
+  "command_syntax": {
+    "ready": "Pronto. Pressione Enter para enviar.",
+    "missing": "Adicione também {{label}}.",
+    "fill": "Preencha {{label}}.",
+    "unknown": "Não está na lista de comandos do módulo. É enviado ao servidor exatamente como digitado.",
+    "more_commands": "Comandos com que você pode continuar",
+    "options": "Valores que você pode escolher",
+    "not_number": "{{label}} precisa de um número. Recebido: {{value}}",
+    "out_of_range": "{{label}} aceita {{range}}. Recebido: {{value}}",
+    "range_both": "{{min}}–{{max}}",
+    "range_min": "{{min}} ou mais",
+    "range_max": "{{max}} ou menos",
+    "not_option": "{{label}} deve ser um de {{options}}. Recebido: {{value}}",
+    "not_boolean": "{{label}} deve ser true ou false. Recebido: {{value}}",
+    "too_many": "Este comando não aceita nada depois. Sobrou: {{value}}"
   }
 }
