@@ -823,6 +823,8 @@
     "exit_start_failed": "Не удалось запустить",
     "exit_unknown_exit": "Неизвестно",
     "exit_restart_in": "Перезапуск через {{secs}} с",
+    "exit_code_ok": "Обычное завершение",
+    "exit_code": "Код завершения {{code}}",
     "restart": "Перезапустить",
     "rename": "Переименовать",
     "preflight_short": "Подготовка Python",

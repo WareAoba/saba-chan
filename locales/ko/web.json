@@ -124,8 +124,6 @@
   "detail": {
     "backups": "백업",
     "players": "플레이어",
-    "check": "점검",
-    "settings_game": "게임",
     "more": "더보기",
     "tabs": "서버 메뉴",
     "uptime": "시작한 지 {{time}}",

@@ -17,7 +17,7 @@ function webScreen(to: string, t: TFunction) {
             path: [t('tabs.servers')],
             open: () => {
                 useApp.getState().setTab('servers');
-                useApp.getState().openServer(screen.id);
+                useApp.getState().openServer(screen.id, screen.tab ?? null);
             },
         };
     }

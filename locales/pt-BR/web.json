@@ -124,8 +124,6 @@
   "detail": {
     "backups": "Backups",
     "players": "Jogadores",
-    "check": "Verificação",
-    "settings_game": "Jogo",
     "more": "Mais",
     "tabs": "Menu do servidor",
     "uptime": "Ativo há {{time}}",

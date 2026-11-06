@@ -124,8 +124,6 @@
   "detail": {
     "backups": "バックアップ",
     "players": "プレイヤー",
-    "check": "点検",
-    "settings_game": "ゲーム",
     "more": "その他",
     "tabs": "サーバーメニュー",
     "uptime": "稼働 {{time}}",

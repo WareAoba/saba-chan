@@ -823,6 +823,8 @@
     "exit_start_failed": "Falha ao iniciar",
     "exit_unknown_exit": "Desconhecido",
     "exit_restart_in": "Reiniciando em {{secs}}s",
+    "exit_code_ok": "Saída normal",
+    "exit_code": "Código de saída {{code}}",
     "restart": "Reiniciar",
     "rename": "Renomear",
     "preflight_short": "Preparando o Python",

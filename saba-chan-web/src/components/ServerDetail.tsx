@@ -1,6 +1,6 @@
 import { sourceText } from '@gui/utils/audit';
 import { riskOf } from '@gui/utils/commandRisk';
-import { gameNameOf, playersText, primaryAction, viewStatus } from '@gui/utils/serverView';
+import { defaultServerTab, gameNameOf, interactionOf, playersText, primaryAction, viewStatus } from '@gui/utils/serverView';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useApp, useData } from '../store';
@@ -20,7 +20,7 @@ import { SettingsPanel } from './SettingsPanel';
 import { Button, errorText, failed, Segments, Sheet, StatusDot } from './ui';
 import { useProvision } from './useProvision';
 import { useServerControl } from './useServerControl';
-import type { Server, ServerPanelProps, WebApi } from '../types';
+import type { Module, Server, ServerPanelProps, WebApi } from '../types';
 import type { ProvisionView } from './useProvision';
 
 /** 콘솔 한 줄 (managedConsole). source: input은 사바쨩이 보낸 명령, by는 보낸 쪽 */
@@ -227,7 +227,23 @@ function MoreSheet({ api, server, running, control, onClose }: MoreSheetProps) {
     );
 }
 
-const TABS = ['console', 'commands', 'players', 'settings', 'maintenance', 'controllers', 'check', 'info'];
+/**
+ * 서버 탭 (사용자 11-06 #25): 앱과 같은 이름·순서. 콘솔·명령은 모듈과 실행 방식이 지원할 때만(@gui interactionOf).
+ * 작업 기록은 PC에만 남아 기록 탭은 없다. 접속자는 탭 대신 머리의 접속 칩이 연다
+ */
+function serverTabs(server: Server, moduleData: Module | undefined) {
+    const interaction = interactionOf(server, moduleData);
+    return [
+        interaction.console && 'console',
+        interaction.commands && 'commands',
+        'settings',
+        'saba',
+        'maintenance',
+        'controllers',
+        'discord',
+        'info',
+    ].filter((x): x is string => !!x);
+}
 
 export function ServerDetail({ api, server }: { api: WebApi; server: Server }) {
     const { t } = useTranslation();
@@ -236,9 +252,14 @@ export function ServerDetail({ api, server }: { api: WebApi; server: Server }) {
     const modules = useData((s) => s.modules);
     const modulesLoaded = useData((s) => s.modulesLoaded);
     const control = useServerControl(api);
-    const [view, setView] = useState('console');
-    const [settingsView, setSettingsView] = useState('game');
+    // 화면 주소 링크(server/<id>/<탭>)로 연 탭. 고르지 않았으면(null) 기본 탭
+    const requestedTab = useApp((s) => s.serverTab);
+    const [view, setView] = useState<string | null>(requestedTab);
+    useEffect(() => {
+        if (requestedTab) setView(requestedTab);
+    }, [requestedTab]);
     const [more, setMore] = useState(false);
+    const [playersOpen, setPlayersOpen] = useState(false);
     const moduleData = modules.find((m) => m.name === server.module);
     const provision = useProvision(api, server);
     const failure: Extract<ProvisionView, { state: 'failed' }> | null =
@@ -248,16 +269,8 @@ export function ServerDetail({ api, server }: { api: WebApi; server: Server }) {
     const action = provisionFailed ? null : primaryAction(status);
     const players = playersText(server);
     const running = status !== 'stopped';
-    const label: Record<string, string> = {
-        console: tg('shell.tab_console'),
-        commands: tg('shell.tab_commands'),
-        players: t('detail.players'),
-        settings: tg('shell.tab_settings'),
-        maintenance: tg('shell.tab_maintenance'),
-        controllers: tg('shell.tab_controllers'),
-        check: t('detail.check'),
-        info: tg('shell.tab_info'),
-    };
+    const tabs = serverTabs(server, moduleData);
+    const tab = view && tabs.includes(view) ? view : defaultServerTab(interactionOf(server, moduleData), server.status);
 
     return (
         <div className="detail">
@@ -271,9 +284,14 @@ export function ServerDetail({ api, server }: { api: WebApi; server: Server }) {
                     <p className="card-sub">
                         <StatusDot status={status} />
                         {players && (
-                            <span className="pill">
+                            <button
+                                type="button"
+                                className="pill pill-button"
+                                aria-label={`${t('detail.players')} ${players}`}
+                                onClick={() => setPlayersOpen(true)}
+                            >
                                 <Icon name="user" size={12} /> {players}
-                            </span>
+                            </button>
                         )}
                         {status === 'running' && <Uptime startTime={server.start_time} />}
                         <span>{gameNameOf(t, server.module, moduleData)}</span>
@@ -323,47 +341,38 @@ export function ServerDetail({ api, server }: { api: WebApi; server: Server }) {
                 </button>
             </div>
             <Segments
-                value={view}
+                value={tab}
                 onChange={setView}
                 scroll
                 ariaLabel={t('detail.tabs')}
-                options={TABS.map((id) => ({ value: id, label: label[id] }))}
+                options={tabs.map((id) => ({ value: id, label: tg(`shell.tab_${id}`) }))}
             />
-            {view === 'console' && <ConsolePanel api={api} server={server} moduleData={moduleData} />}
-            {view === 'commands' && (
+            {tab === 'console' && <ConsolePanel api={api} server={server} moduleData={moduleData} />}
+            {tab === 'commands' && (
                 <CommandsPanel api={api} server={server} moduleData={moduleData} running={status === 'running'} />
             )}
-            {view === 'players' && <PlayersPanel api={api} server={server} running={status === 'running'} />}
-            {view === 'settings' && (
-                <>
-                    <Segments
-                        value={settingsView}
-                        onChange={setSettingsView}
-                        ariaLabel={tg('shell.tab_settings')}
-                        options={[
-                            { value: 'game', label: t('detail.settings_game') },
-                            { value: 'saba', label: tg('shell.tab_saba') },
-                        ]}
-                    />
-                    {settingsView === 'game' ? (
-                        <SettingsPanel api={api} server={server} moduleData={moduleData} running={running} />
-                    ) : (
-                        <>
-                            <SabaSettings api={api} server={server} running={running} />
-                            <InstanceWords api={api} server={server} />
-                        </>
-                    )}
-                </>
-            )}
-            {view === 'maintenance' && (
+            {tab === 'settings' && <SettingsPanel api={api} server={server} moduleData={moduleData} running={running} />}
+            {tab === 'saba' && <SabaSettings api={api} server={server} running={running} />}
+            {tab === 'maintenance' && (
                 <>
                     <BackupsPanel api={api} server={server} running={running} />
                     <SchedulePanel api={api} server={server} moduleData={moduleData} />
                 </>
             )}
-            {view === 'controllers' && <ControllersPanel api={api} server={server} />}
-            {view === 'check' && <CheckPanel api={api} server={server} moduleData={moduleData} running={running} />}
-            {view === 'info' && <InfoPanel api={api} server={server} moduleData={moduleData} />}
+            {tab === 'controllers' && <ControllersPanel api={api} server={server} />}
+            {tab === 'discord' && <InstanceWords api={api} server={server} />}
+            {tab === 'info' && (
+                <>
+                    <InfoPanel api={api} server={server} moduleData={moduleData} />
+                    {/* 서버 점검·포트포워딩 확인은 앱과 같이 정보 탭에 (예전 점검 탭) */}
+                    <CheckPanel api={api} server={server} moduleData={moduleData} running={running} />
+                </>
+            )}
+            {playersOpen && (
+                <Sheet title={t('detail.players')} onClose={() => setPlayersOpen(false)}>
+                    <PlayersPanel api={api} server={server} running={status === 'running'} />
+                </Sheet>
+            )}
             {more && (
                 <MoreSheet
                     api={api}

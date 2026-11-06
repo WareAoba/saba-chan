@@ -823,6 +823,8 @@
     "exit_start_failed": "Start fehlgeschlagen",
     "exit_unknown_exit": "Unbekannt",
     "exit_restart_in": "Neustart in {{secs}} s",
+    "exit_code_ok": "Normal beendet",
+    "exit_code": "Exit-Code {{code}}",
     "restart": "Neu starten",
     "rename": "Umbenennen",
     "preflight_short": "Python wird vorbereitet",

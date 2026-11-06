@@ -823,6 +823,8 @@
     "exit_start_failed": "起動に失敗",
     "exit_unknown_exit": "原因不明",
     "exit_restart_in": "{{secs}}秒後に再起動",
+    "exit_code_ok": "正常終了",
+    "exit_code": "終了コード {{code}}",
     "restart": "再起動",
     "rename": "名前を変更",
     "preflight_short": "Python準備中",

@@ -549,6 +549,17 @@ textarea {
     color: var(--text-2);
     font-size: 12px;
 }
+/* 누르면 여는 칩 (서버 머리의 접속 칩 → 접속자 목록, 사용자 11-06 #25) */
+.pill-button {
+    border: 0;
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
+}
+.pill-button:hover,
+.pill-button:focus-visible {
+    outline: 1px solid var(--accent);
+}
 .tag {
     margin-left: 8px;
     font-style: normal;
@@ -2009,6 +2020,16 @@ textarea {
 }
 .info-row dt {
     color: var(--text-3);
+}
+/* 개발 용어(통신 방식)는 '자세히' 안에 (사용자 11-06 #24) */
+.info-more {
+    margin-top: 10px;
+}
+.info-more > summary {
+    cursor: pointer;
+    color: var(--text-3);
+    font-size: 13px;
+    margin-bottom: 8px;
 }
 .info-row dd {
     margin: 0;

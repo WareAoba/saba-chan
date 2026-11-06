@@ -15,12 +15,14 @@ interface AppState {
     session: SessionState;
     tab: Tab;
     serverId: string | null;
+    /** 화면 주소 링크로 연 서버 탭 (서버 상세가 처음 열 때 읽는다) */
+    serverTab: string | null;
     toasts: { id: string; message: string; tone: ToastTone }[];
     confirm: (ConfirmRequest & { done: (ok: boolean) => void }) | null;
     installBandClosed: boolean;
     setSession: (session: SessionState) => void;
     setTab: (tab: Tab) => void;
-    openServer: (serverId: string | null) => void;
+    openServer: (serverId: string | null, tab?: string | null) => void;
     closeInstallBand: () => void;
     toast: (message: string, tone?: ToastTone) => void;
     ask: (request: ConfirmRequest) => Promise<boolean>;
@@ -41,14 +43,15 @@ export const useApp = create<AppState>()((set, get) => ({
     session: { phase: 'connecting', reason: null, expiresAt: null, hostId: null, warning: false },
     tab: 'servers',
     serverId: null,
+    serverTab: null,
     toasts: [],
     confirm: null,
     /** PC 없는 세션의 설치 안내 띠 — 닫으면 이 세션 동안 다시 나오지 않는다 */
     installBandClosed: false,
 
     setSession: (session) => set({ session }),
-    setTab: (tab) => set({ tab, serverId: null }),
-    openServer: (serverId) => set({ serverId }),
+    setTab: (tab) => set({ tab, serverId: null, serverTab: null }),
+    openServer: (serverId, tab = null) => set({ serverId, serverTab: tab }),
     closeInstallBand: () => set({ installBandClosed: true }),
 
     toast: (message, tone = 'info') => {

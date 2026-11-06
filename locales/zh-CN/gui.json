@@ -823,6 +823,8 @@
     "exit_start_failed": "启动失败",
     "exit_unknown_exit": "原因不明",
     "exit_restart_in": "{{secs}} 秒后重启",
+    "exit_code_ok": "正常退出",
+    "exit_code": "退出代码 {{code}}",
     "restart": "重启",
     "rename": "重命名",
     "preflight_short": "正在准备 Python",
