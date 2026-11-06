@@ -220,7 +220,7 @@
     "full_notice_on": "자리 꽉 참 알림을 켰어요.",
     "full_notice_off": "자리 꽉 참 알림을 껐어요.",
     "instances": "인스턴스",
-    "instances_hint": "인스턴스를 누르면 레벨별 명령과 멤버별 레벨을 볼 수 있어요.",
+    "instances_hint": "인스턴스를 누르면 그 인스턴스의 레벨별 명령을 볼 수 있어요. 멤버 레벨은 멤버별 레벨 탭에서 서버 전체로 정해요.",
     "all_instances": "모든 인스턴스",
     "back_instances": "인스턴스 목록",
     "view_commands": "레벨별 명령",

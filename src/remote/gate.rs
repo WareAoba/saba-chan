@@ -163,7 +163,8 @@ pub static ROUTES: &[Route] = &[
     // 웹은 플러그인 화면을 그리지 않는다. GUI는 slot에 넣는다 (확인되지 않은 번들은 그 PC의 동의가 있어야 준다)
     not_on_web("GET", "/api/extensions/{id}/gui"),
     not_on_web("GET", "/api/extensions/{id}/gui/styles"),
-    not_on_web("GET", "/api/extensions/{id}/icon"),
+    // 웹은 프레임이 JSON 이라 그림을 base64 글자로 받는다 (`base64_body`)
+    allow("GET", "/api/extensions/{id}/icon"),
     allow("GET", "/api/extensions/{id}/audit"),
     allow("GET", "/api/extensions/{id}/i18n/{locale}"),
     // ── 데몬·앱 설정, 토큰, 경로 ──
@@ -429,6 +430,11 @@ pub(crate) fn percent_decode(s: &str) -> Option<String> {
         }
     }
     String::from_utf8(out).ok()
+}
+
+/// 본문이 JSON이 아닌 그림이라 웹 원격에 base64 글자로 싣는 라우트 (GUI 브리지의 `responseType: 'base64'`와 같은 값)
+pub fn base64_body(method: &str, pattern: &str) -> bool {
+    method == "GET" && pattern == "/api/extensions/{id}/icon"
 }
 
 /// 응답에 인스턴스 설정을 담는 라우트 (비밀값을 빼고 돌려준다, `exec::hide_secrets`)

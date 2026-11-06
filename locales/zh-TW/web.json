@@ -220,7 +220,7 @@
     "full_notice_on": "已開啟滿員提醒。",
     "full_notice_off": "已關閉滿員提醒。",
     "instances": "實例",
-    "instances_hint": "開啟實例即可檢視各等級的命令和每位成員的等級。",
+    "instances_hint": "開啟實例即可檢視該實例各等級的命令。成員等級在「成員等級」分頁中為整個伺服器設定。",
     "all_instances": "所有實例",
     "back_instances": "實例清單",
     "view_commands": "各等級命令",

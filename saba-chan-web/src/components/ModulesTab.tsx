@@ -232,6 +232,29 @@ function GameModules({ api }: { api: WebApi }) {
 const pluginError = (t: TFn, res: ApiBody | null | undefined) =>
     res?.error_code === 'in_use' ? t('plugins.in_use') : errorText(t, res);
 
+/** 플러그인 아이콘 (icon.png 를 데몬이 base64 로 준다). 없거나 못 받으면 이름 첫 글자 */
+function PluginIcon({ api, ext }: { api: WebApi; ext: ExtensionListItem }) {
+    const [src, setSrc] = useState<string | null>(null);
+    useEffect(() => {
+        setSrc(null);
+        if (!ext.has_icon) return;
+        let alive = true;
+        Promise.resolve(api.extensionIcon(ext.id))
+            .catch(() => null)
+            .then((url) => {
+                if (alive && typeof url === 'string' && url.startsWith('data:image/')) setSrc(url);
+            });
+        return () => {
+            alive = false;
+        };
+    }, [api, ext.id, ext.has_icon]);
+    return (
+        <span className="server-icon" style={{ width: 36, height: 36 }} aria-hidden="true">
+            {src ? <img src={src} alt="" /> : (ext.name || ext.id).trim().charAt(0).toUpperCase()}
+        </span>
+    );
+}
+
 function Plugins({ api }: { api: WebApi }) {
     const { t, i18n } = useTranslation();
     const toast = useApp((s) => s.toast);
@@ -298,6 +321,7 @@ function Plugins({ api }: { api: WebApi }) {
                             const update = updateOf.get(e.id);
                             return (
                                 <li key={e.id} className="row">
+                                    <PluginIcon api={api} ext={e} />
                                     <div className="row-main">
                                         <div className="row-title">{e.name || e.id}</div>
                                         <div className="row-sub">

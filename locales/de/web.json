@@ -220,7 +220,7 @@
     "full_notice_on": "Voll-Hinweis an.",
     "full_notice_off": "Voll-Hinweis aus.",
     "instances": "Instanzen",
-    "instances_hint": "Öffne eine Instanz, um die Befehle je Stufe und die Stufe jedes Mitglieds zu sehen.",
+    "instances_hint": "Öffne eine Instanz, um ihre Befehle je Stufe zu sehen. Mitgliederstufen legst du im Tab Mitgliederstufen für den ganzen Server fest.",
     "all_instances": "Alle Instanzen",
     "back_instances": "Instanzen",
     "view_commands": "Befehle je Stufe",

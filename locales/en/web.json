@@ -220,7 +220,7 @@
     "full_notice_on": "Full server alert on.",
     "full_notice_off": "Full server alert off.",
     "instances": "Instances",
-    "instances_hint": "Open an instance to see commands per level and each member's level.",
+    "instances_hint": "Open an instance to see its commands per level. Member levels are set for the whole server in the Member levels tab.",
     "all_instances": "All instances",
     "back_instances": "Instances",
     "view_commands": "Commands per level",

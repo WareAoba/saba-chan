@@ -220,7 +220,7 @@
     "full_notice_on": "Alerta de servidor cheio ligado.",
     "full_notice_off": "Alerta de servidor cheio desligado.",
     "instances": "Instâncias",
-    "instances_hint": "Abra uma instância para ver os comandos por nível e o nível de cada membro.",
+    "instances_hint": "Abra uma instância para ver os comandos dela por nível. Os níveis de membros valem para o servidor inteiro e ficam na aba de níveis de membros.",
     "all_instances": "Todas as instâncias",
     "back_instances": "Instâncias",
     "view_commands": "Comandos por nível",
