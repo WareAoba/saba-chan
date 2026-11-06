@@ -197,7 +197,7 @@
       "-1": "Banido"
     },
     "ladder": "Níveis de permissão",
-    "ladder_hint": "Quanto mais alto, mais forte o nível. Dono e Bloqueado ficam fixos.",
+    "ladder_hint": "Quanto mais alto, mais forte o nível. Dono e Bloqueado ficam fixos. Mude um nome na sua caixa. Dono, Convidado e Bloqueado não podem ser apagados.",
     "ladder_name": "Nome do nível",
     "ladder_fixed": "Fixo",
     "ladder_up": "Subir {{name}}",

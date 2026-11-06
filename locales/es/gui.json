@@ -1042,8 +1042,9 @@
     "perm_preset_reset": "Se restablecerán {{count}} nivel(es) de comando al preajuste {{preset}}.",
     "perm_preset_apply": "Aplicar",
     "perm_ladder": "Niveles de permiso",
-    "perm_ladder_hint": "Arrastra los bloques para ordenarlos. Cuanto más arriba, más alto el nivel. Propietario y Bloqueado no se mueven.",
+    "perm_ladder_hint": "Arrastra los bloques para ordenarlos y toca un nombre para cambiarlo. Cuanto más arriba, más alto el nivel. Propietario y Bloqueado no se mueven, y Propietario, Invitado y Bloqueado no se pueden borrar.",
     "perm_ladder_name": "Nombre del nivel",
+    "perm_ladder_rename": "Cambiar el nombre de {{name}}",
     "perm_ladder_members": "{{count}} miembros",
     "perm_ladder_up": "Subir {{name}}",
     "perm_ladder_down": "Bajar {{name}}",
@@ -1314,7 +1315,15 @@
     "perm_confirm_tier_mixed_hint": "Las instancias usan niveles distintos. Al elegir uno, se aplica a todas.",
     "perm_legend_moved": "Movido del preajuste",
     "perm_server_wide": "Es un comando de todo el servidor, así que el cambio se ve en el menú de cada instancia.",
-    "perm_controllers_tag": "también operadores"
+    "perm_controllers_tag": "también operadores",
+    "perm_line": "Línea de operadores",
+    "perm_line_from": "Operadores · desde {{level}}",
+    "perm_line_only": "Operadores · solo {{level}}",
+    "perm_line_hint": "Los niveles sobre la línea pueden iniciar, detener, reiniciar y crear copias de seguridad. Quien esté en la lista de operadores de una instancia siempre puede.",
+    "perm_line_apart": "{{count}} comando(s) fijados aparte se quedan como están",
+    "perm_line_up": "Subir la línea de operadores",
+    "perm_line_down": "Bajar la línea de operadores",
+    "perm_line_follow": "sigue la línea de operadores"
   },
   "maintenance": {
     "load_failed": "No se pudieron cargar las copias de seguridad ni las programaciones.",

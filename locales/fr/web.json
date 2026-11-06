@@ -197,7 +197,7 @@
       "-1": "Banni"
     },
     "ladder": "Niveaux de permission",
-    "ladder_hint": "Plus une ligne est haute, plus le niveau est élevé. Propriétaire et Bloqué restent en place.",
+    "ladder_hint": "Plus une ligne est haute, plus le niveau est élevé. Propriétaire et Bloqué restent en place. Modifiez un nom dans sa case. Propriétaire, Invité et Bloqué ne peuvent pas être supprimés.",
     "ladder_name": "Nom du niveau",
     "ladder_fixed": "Fixe",
     "ladder_up": "Monter {{name}}",

@@ -382,6 +382,15 @@ impl Supervisor {
                 self.managed_store.insert(&instance.id, proc).await;
                 reattached += 1;
                 tracing::info!("Reattached '{}' through saba-runner (PID {})", instance.name, pid);
+                // 접속·퇴장 알림, 게임 채팅, 조작 가능한 사람만 접속도 다시 콘솔을 본다 (시작 때 `announce_ready`와 같다)
+                if let Some(console) = self.managed_store.get(&instance.id).await {
+                    let meta = self.module_loader.get_module(&instance.module_name).ok().map(|m| m.metadata);
+                    let (join, leave, chat) = meta
+                        .map(|m| (m.player_join_patterns, m.player_leave_patterns, m.chat_patterns))
+                        .unwrap_or_default();
+                    game_chat::remember(&instance.id, &instance.game_chat());
+                    player_events::after_reattach(&instance.id, &instance.name, console, &join, &leave, &chat);
+                }
                 continue;
             }
 

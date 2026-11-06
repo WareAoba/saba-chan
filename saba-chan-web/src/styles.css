@@ -837,6 +837,14 @@ textarea {
     flex: 1;
     min-width: 0;
 }
+/* 레벨 사다리의 조작 가능 줄: 칸이 아니라 칸 사이의 선 (사용자 지정 2026-11-06) */
+.row.ladder-line {
+    border: 2px dashed var(--accent);
+    background: color-mix(in srgb, var(--accent) 10%, var(--bg-1));
+}
+.row.ladder-line .row-title {
+    color: var(--accent);
+}
 .row-title {
     font-weight: 600;
     overflow-wrap: anywhere;

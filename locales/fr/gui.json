@@ -1042,8 +1042,9 @@
     "perm_preset_reset": "{{count}} niveau(x) de commande seront remis au préréglage {{preset}}.",
     "perm_preset_apply": "Appliquer",
     "perm_ladder": "Niveaux de permission",
-    "perm_ladder_hint": "Glissez les blocs pour définir l'ordre. Plus haut veut dire niveau plus élevé. Propriétaire et Banni restent en place.",
+    "perm_ladder_hint": "Glissez les blocs pour définir l'ordre et touchez un nom pour le modifier. Plus haut veut dire niveau plus élevé. Propriétaire et Banni restent en place, et Propriétaire, Invité et Banni ne peuvent pas être supprimés.",
     "perm_ladder_name": "Nom du niveau",
+    "perm_ladder_rename": "Renommer {{name}}",
     "perm_ladder_members": "{{count}} membres",
     "perm_ladder_up": "Monter {{name}}",
     "perm_ladder_down": "Descendre {{name}}",
@@ -1314,7 +1315,15 @@
     "perm_confirm_tier_mixed_hint": "Les instances utilisent des niveaux différents. En choisir un les aligne toutes.",
     "perm_legend_moved": "Déplacée du préréglage",
     "perm_server_wide": "C'est une commande de tout le serveur : le changement apparaît dans le menu de chaque instance.",
-    "perm_controllers_tag": "aussi les opérateurs"
+    "perm_controllers_tag": "aussi les opérateurs",
+    "perm_line": "Ligne des opérateurs",
+    "perm_line_from": "Opérateurs · à partir de {{level}}",
+    "perm_line_only": "Opérateurs · {{level}} seulement",
+    "perm_line_hint": "Les niveaux au-dessus de la ligne peuvent démarrer, arrêter, redémarrer et créer des sauvegardes. Les personnes de la liste des opérateurs d'une instance le peuvent toujours.",
+    "perm_line_apart": "{{count}} commande(s) réglée(s) à part restent telles quelles",
+    "perm_line_up": "Monter la ligne des opérateurs",
+    "perm_line_down": "Descendre la ligne des opérateurs",
+    "perm_line_follow": "suit la ligne des opérateurs"
   },
   "maintenance": {
     "load_failed": "Impossible de charger les sauvegardes et la planification.",

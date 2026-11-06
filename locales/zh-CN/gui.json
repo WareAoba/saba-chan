@@ -1042,8 +1042,9 @@
     "perm_preset_reset": "{{count}} 个命令的等级将重置为“{{preset}}”预设的值。",
     "perm_preset_apply": "应用",
     "perm_ladder": "权限等级",
-    "perm_ladder_hint": "拖动方块来排序。越靠上等级越高。所有者和禁止不能移动。",
+    "perm_ladder_hint": "拖动方块来排序，点按名称可以改名。越靠上等级越高。所有者和禁止不能移动，所有者、访客和禁止不能删除。",
     "perm_ladder_name": "等级名称",
+    "perm_ladder_rename": "重命名{{name}}",
     "perm_ladder_members": "{{count}} 人",
     "perm_ladder_up": "将 {{name}} 上移",
     "perm_ladder_down": "将 {{name}} 下移",
@@ -1314,7 +1315,15 @@
     "perm_confirm_tier_mixed_hint": "各实例的级别不同。选择后将全部统一为该级别。",
     "perm_legend_moved": "已偏离预设",
     "perm_server_wide": "这是服务器级命令，修改会同时出现在所有实例菜单中。",
-    "perm_controllers_tag": "可操作的人也可以"
+    "perm_controllers_tag": "可操作的人也可以",
+    "perm_line": "可操作线",
+    "perm_line_from": "可操作 · {{level}}及以上",
+    "perm_line_only": "可操作 · 仅{{level}}",
+    "perm_line_hint": "线以上的等级可以启动、停止、重启和创建备份。在实例可操作名单里的人随时都可以。",
+    "perm_line_apart": "单独设定的 {{count}} 个命令保持不变",
+    "perm_line_up": "把可操作线上移",
+    "perm_line_down": "把可操作线下移",
+    "perm_line_follow": "跟随可操作线"
   },
   "maintenance": {
     "load_failed": "无法加载备份和计划信息。",
