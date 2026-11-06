@@ -288,10 +288,20 @@ impl ManagedProcess {
             tokio::spawn(async move {
                 let mut pos = offset;
                 let mut partial: Vec<u8> = Vec::new();
+                // 연 파일을 계속 쓴다: 서버마다 100ms마다 파일을 다시 열지 않게 (러너는 한 세션에 파일 하나만 쓴다)
+                let mut file: Option<std::fs::File> = None;
                 loop {
                     let stopped = *ended.borrow();
                     let path = path.clone();
-                    let chunk = tokio::task::spawn_blocking(move || read_from(&path, pos)).await.ok().flatten();
+                    let opened = file.take();
+                    let (kept, chunk) = tokio::task::spawn_blocking(move || {
+                        let mut file = opened.or_else(|| std::fs::File::open(&path).ok());
+                        let bytes = file.as_mut().and_then(|f| read_from(f, pos));
+                        (file, bytes)
+                    })
+                    .await
+                    .unwrap_or((None, None));
+                    file = kept;
                     if let Some(bytes) = chunk {
                         pos += bytes.len() as u64;
                         partial.extend_from_slice(&bytes);
@@ -404,8 +414,7 @@ async fn connect_stdin(port: u16, token: &str) -> Option<tokio::net::TcpStream> 
 }
 
 /// `pos`부터 파일 끝까지. 새 내용이 없으면 None.
-fn read_from(path: &Path, pos: u64) -> Option<Vec<u8>> {
-    let mut file = std::fs::File::open(path).ok()?;
+fn read_from(file: &mut std::fs::File, pos: u64) -> Option<Vec<u8>> {
     if file.metadata().ok()?.len() <= pos {
         return None;
     }
