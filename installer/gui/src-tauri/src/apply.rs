@@ -108,11 +108,21 @@ fn relaunch(app: &AppHandle, apply_config: &ApplyConfig, applied: bool) {
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(std::time::Duration::from_millis(2000)).await;
 
-        relaunch_now(relaunch_exe, relaunch_extra, resolve_gui_exe(), applied).await;
+        let gui = resolve_gui_exe();
+        let has_target = relaunch_exe.is_some() || gui.is_some();
+        let relaunched = relaunch_now(relaunch_exe, relaunch_extra, gui, applied).await;
 
-        if applied {
+        if applied && (relaunched || !has_target) {
             tokio::time::sleep(std::time::Duration::from_millis(500)).await;
             app_handle.exit(0);
+        } else if applied {
+            // 파일은 바꿨지만 앱(데몬·GUI)이 꺼진 채 남는다: 창을 닫지 않고 직접 실행하라고 알린다
+            tracing::error!("[Apply] Update applied but the app could not be relaunched");
+            app_handle.emit("apply:relaunch-failed", ()).ok();
+            if let Some(win) = app_handle.get_webview_window("main") {
+                win.set_always_on_top(true).ok();
+                win.set_focus().ok();
+            }
         } else if let Some(win) = app_handle.get_webview_window("main") {
             // 다시 띄운 GUI 창이 오류 화면을 덮지 않게, 사용자가 닫을 때까지 맨 앞에 둔다
             win.set_always_on_top(true).ok();

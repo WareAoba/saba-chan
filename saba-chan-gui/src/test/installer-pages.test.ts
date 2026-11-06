@@ -94,6 +94,20 @@ describe('업데이터 창', () => {
         expect(doc.querySelector('.toast, .toast-container, .update-complete-banner')).toBeNull();
     });
 
+    it('적용 뒤 앱을 다시 띄우지 못하면 성공으로 닫지 않고 알린다', async () => {
+        const { doc, emit, listening } = mount('update.html', invokes);
+        await wait();
+        expect(listening('apply:relaunch-failed')).toBe(true);
+        emit('apply:progress', { step: 'complete', message: '', percent: 100, applied: ['gui'] });
+        emit('apply:relaunch-failed', null);
+        await wait();
+        const flow = byId(doc, 'flow');
+        expect(flow.classList.contains('failed')).toBe(true);
+        expect(byId(doc, 'progress-ring').classList.contains('bad')).toBe(true);
+        expect(byId(doc, 'fail-summary').hidden).toBe(false);
+        expect(byId(doc, 'fail-summary').textContent).not.toBe('');
+    });
+
     it('실패하면 요약을 보이고 닫기 버튼을 띄운다', async () => {
         const { doc, emit } = mount('update.html', invokes);
         await wait();
@@ -174,5 +188,45 @@ describe('설치기 창', () => {
         expect(byId(doc, 'glow-ring').classList.contains('bad')).toBe(true);
         expect(byId(doc, 'btn-launch').hidden).toBe(true);
         expect(byId(doc, 'btn-retry').hidden).toBe(false);
+    });
+
+    it('설치하는 동안 제목 표시줄의 닫기를 막고, 끝나면 푼다', async () => {
+        const { doc, emit } = await toInstall({ prepare_install: undefined });
+        expect((byId(doc, 'btn-close') as HTMLButtonElement).disabled).toBe(true);
+        emit('install:progress', { step: 'error', error_code: 'download_failed', message: 'HTTP 500' });
+        await wait();
+        expect((byId(doc, 'btn-close') as HTMLButtonElement).disabled).toBe(false);
+    });
+});
+
+describe('제거 창', () => {
+    const invokes = {
+        get_preferred_language: 'en',
+        get_app_mode: { uninstall: true },
+        get_installer_state: { install_path: 'C:\\Saba-chan' },
+        start_uninstall: never,
+    };
+
+    it('지우지 못한 경로와 강제 종료 경고를 완료 화면에 남긴다', async () => {
+        const { doc, emit } = mount('index.html', invokes);
+        await wait();
+        byId(doc, 'btn-uninstall').click();
+        await wait();
+        expect((byId(doc, 'btn-close') as HTMLButtonElement).disabled).toBe(true);
+        emit('uninstall:progress', {
+            step: 'complete',
+            message: 'done',
+            percent: 100,
+            left: ['C:\\Saba-chan\\locked.dll'],
+            warnings: [{ kind: 'server_force_stopped', server: 'Palworld' }],
+        });
+        await wait();
+        expect(byId(doc, 'flow').dataset.step).toBe('done');
+        const box = byId(doc, 'complete-warnings');
+        expect(box.hidden).toBe(false);
+        expect(box.textContent).toContain('locked.dll');
+        expect(box.textContent).toContain('Palworld');
+        expect(byId(doc, 'warn-wrap').classList.contains('in')).toBe(true);
+        expect((byId(doc, 'btn-close') as HTMLButtonElement).disabled).toBe(false);
     });
 });

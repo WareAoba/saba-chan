@@ -919,24 +919,12 @@ fn save_language_setting(language: &str) {
 
 /// semver 문자열 비교 (major.minor.patch)
 fn version_compare(a: &str, b: &str) -> std::cmp::Ordering {
-    let parse = |s: &str| -> Vec<u64> {
-        s.trim_start_matches('v')
-            .split('.')
-            .filter_map(|p| p.parse::<u64>().ok())
-            .collect()
-    };
-    let va = parse(a);
-    let vb = parse(b);
-    let max_len = va.len().max(vb.len());
-    for i in 0..max_len {
-        let a_part = va.get(i).copied().unwrap_or(0);
-        let b_part = vb.get(i).copied().unwrap_or(0);
-        match a_part.cmp(&b_part) {
-            std::cmp::Ordering::Equal => continue,
-            other => return other,
-        }
+    use saba_chan_updater_lib::version::SemVer;
+    match (SemVer::parse(a), SemVer::parse(b)) {
+        (Some(a), Some(b)) => a.cmp(&b),
+        // 읽을 수 없는 버전은 막지 않는다 (서명된 manifest가 주는 값이다)
+        _ => std::cmp::Ordering::Equal,
     }
-    std::cmp::Ordering::Equal
 }
 
 // ═══════════════════════════════════════════════════════
@@ -1177,6 +1165,16 @@ mod tests {
         prepare_install_dir(&existing, &NoHooks).unwrap();
         assert!(!existing.join(uninstall::INSTALL_MARKER).is_file());
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// 설치기 버전 검사는 프리릴리스 꼬리까지 SemVer로 비교한다 (숫자 조각만 모으면 0.1.12-beta.4가 0.1.13-beta.1보다 높아 보인다)
+    #[test]
+    fn installer_version_check_compares_prereleases_as_semver() {
+        use std::cmp::Ordering::*;
+        assert_eq!(version_compare("0.1.12-beta.4", "0.1.13-beta.1"), Less);
+        assert_eq!(version_compare("0.1.13-beta.1", "0.1.13"), Less);
+        assert_eq!(version_compare("0.1.13-beta.2", "0.1.13-beta.1"), Greater);
+        assert_eq!(version_compare("v0.1.13", "0.1.13"), Equal);
     }
 
     #[test]

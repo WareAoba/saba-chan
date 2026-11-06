@@ -355,6 +355,14 @@ pub(crate) fn run(uninstall: bool, keep: Option<uninstall::Keep>) {
         .plugin(tauri_plugin_dialog::init())
         .manage(installer_state)
         .manage(app_mode)
+        // 설치·제거가 도는 동안은 닫지 않는다: 같은 프로세스의 작업이라 창을 닫으면 반쯤 된 채 끊긴다
+        .on_window_event(|_, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if WORK_BUSY.load(std::sync::atomic::Ordering::Acquire) {
+                    api.prevent_close();
+                }
+            }
+        })
         .setup(move |app| {
             // 페이지가 창을 보인다 (installer.js `show()`)
             let title = if uninstall { "Saba-chan — Uninstaller" } else { "Saba-chan Installer" };

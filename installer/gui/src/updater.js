@@ -24,6 +24,8 @@ const TRANSLATIONS = {
         applyRestartingGui: 'Restarting GUI...',
         applyFailed: 'Update failed',
         applyFailedCount: '{{applied}} applied, {{failed}} failed or skipped',
+        relaunchFailedTitle: 'Could not restart',
+        relaunchFailedSub: 'The update is applied. Please start Saba-chan yourself.',
     },
     ko: {
         modeUpdate: '업데이트',
@@ -38,6 +40,8 @@ const TRANSLATIONS = {
         applyRestartingGui: 'GUI를 재시작합니다…',
         applyFailed: '업데이트 실패',
         applyFailedCount: '{{applied}}개 적용, {{failed}}개 실패하거나 건너뜀',
+        relaunchFailedTitle: '재시작 실패',
+        relaunchFailedSub: '업데이트는 적용했어요. 사바쨩을 직접 실행해 주세요.',
     },
     ja: {
         modeUpdate: 'アップデート',
@@ -52,6 +56,8 @@ const TRANSLATIONS = {
         applyRestartingGui: 'GUIを再起動しています...',
         applyFailed: '更新失敗',
         applyFailedCount: '{{applied}} 件適用、{{failed}} 件失敗またはスキップ',
+        relaunchFailedTitle: '再起動できませんでした',
+        relaunchFailedSub: 'アップデートは適用されました。サバちゃんを手動で起動してください。',
     },
     'zh-CN': {
         modeUpdate: '更新',
@@ -66,6 +72,8 @@ const TRANSLATIONS = {
         applyRestartingGui: '正在重启 GUI...',
         applyFailed: '更新失败',
         applyFailedCount: '已应用 {{applied}} 个,{{failed}} 个失败或已跳过',
+        relaunchFailedTitle: '无法重新启动',
+        relaunchFailedSub: '更新已应用。请手动启动 Saba-chan。',
     },
     'zh-TW': {
         modeUpdate: '更新',
@@ -80,6 +88,8 @@ const TRANSLATIONS = {
         applyRestartingGui: '正在重新啟動 GUI...',
         applyFailed: '更新失敗',
         applyFailedCount: '已套用 {{applied}} 個,{{failed}} 個失敗或已略過',
+        relaunchFailedTitle: '無法重新啟動',
+        relaunchFailedSub: '更新已套用。請手動啟動 Saba-chan。',
     },
     es: {
         modeUpdate: 'Actualización',
@@ -94,6 +104,8 @@ const TRANSLATIONS = {
         applyRestartingGui: 'Reiniciando la GUI...',
         applyFailed: 'La actualización falló',
         applyFailedCount: '{{applied}} aplicados, {{failed}} fallidos u omitidos',
+        relaunchFailedTitle: 'No se pudo reiniciar',
+        relaunchFailedSub: 'La actualización se aplicó. Inicia Saba-chan manualmente.',
     },
     'pt-BR': {
         modeUpdate: 'Atualização',
@@ -108,6 +120,8 @@ const TRANSLATIONS = {
         applyRestartingGui: 'Reiniciando a GUI...',
         applyFailed: 'Falha na atualização',
         applyFailedCount: '{{applied}} aplicados, {{failed}} com falha ou ignorados',
+        relaunchFailedTitle: 'Não foi possível reiniciar',
+        relaunchFailedSub: 'A atualização foi aplicada. Abra o Saba-chan manualmente.',
     },
     ru: {
         modeUpdate: 'Обновление',
@@ -122,6 +136,8 @@ const TRANSLATIONS = {
         applyRestartingGui: 'Перезапуск GUI...',
         applyFailed: 'Не удалось обновить',
         applyFailedCount: 'Применено: {{applied}}, с ошибкой или пропущено: {{failed}}',
+        relaunchFailedTitle: 'Не удалось перезапустить',
+        relaunchFailedSub: 'Обновление применено. Запустите Saba-chan вручную.',
     },
     de: {
         modeUpdate: 'Update',
@@ -136,6 +152,8 @@ const TRANSLATIONS = {
         applyRestartingGui: 'GUI wird neu gestartet...',
         applyFailed: 'Update fehlgeschlagen',
         applyFailedCount: '{{applied}} angewendet, {{failed}} fehlgeschlagen oder übersprungen',
+        relaunchFailedTitle: 'Neustart fehlgeschlagen',
+        relaunchFailedSub: 'Das Update wurde angewendet. Bitte starte Saba-chan selbst.',
     },
     fr: {
         modeUpdate: 'Mise à jour',
@@ -150,6 +168,8 @@ const TRANSLATIONS = {
         applyRestartingGui: 'Redémarrage de la GUI...',
         applyFailed: 'Échec de la mise à jour',
         applyFailedCount: '{{applied}} appliqués, {{failed}} en échec ou ignorés',
+        relaunchFailedTitle: 'Redémarrage impossible',
+        relaunchFailedSub: 'La mise à jour est appliquée. Lancez Saba-chan vous-même.',
     },
 };
 
@@ -262,13 +282,13 @@ function showSuccess(relaunch) {
     });
 }
 
-function showFailure(summary) {
+function showFailure(summary, titleKey = 'applyFailed') {
     flow.afterReveal(() => {
         flow.go('done');
         matrix.stop();
         $flow.classList.add('failed');
         ring.set('bad');
-        $ringTitle.textContent = tr('applyFailed');
+        $ringTitle.textContent = tr(titleKey);
         $ringSub.textContent = '';
         $failSummary.textContent = summary;
         $failSummary.hidden = false;
@@ -335,6 +355,9 @@ async function enterApplyMode(mode) {
             showFailure(tr('applyFailedCount', { applied: applied ? applied.length : 0, failed: failed || 0 }));
         }
     });
+
+    // 적용은 됐지만 앱을 다시 띄우지 못했다: 창을 닫지 않고 직접 실행하라고 알린다
+    await listen('apply:relaunch-failed', () => showFailure(tr('relaunchFailedSub'), 'relaunchFailedTitle'));
 
     // 거부 사유는 진단용 원문이라 화면에는 번역한 요약만 보인다
     invoke('start_apply').catch(err => {

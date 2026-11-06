@@ -1139,7 +1139,13 @@ let uninstallMode = false;
 
 const appWindow = getCurrentWindow();
 document.getElementById('btn-minimize')?.addEventListener('click', () => appWindow.minimize());
-document.getElementById('btn-close')?.addEventListener('click', () => appWindow.close());
+const $btnCloseWin = document.getElementById('btn-close');
+$btnCloseWin?.addEventListener('click', () => appWindow.close());
+
+/** 설치·제거가 도는 동안 닫기를 막는다 (중간에 끊기면 반쯤 설치·제거된 채 남는다). 창 쪽(Rust)도 닫기 요청을 막는다 */
+function setWorking(on) {
+    if ($btnCloseWin) $btnCloseWin.disabled = on;
+}
 
 function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 
@@ -1194,6 +1200,7 @@ function enterInstalling() {
     $flowEl.classList.remove('failed');
     $warnings.hidden = true;
     $warnWrap.classList.remove('in');
+    setWorking(true);
     resetProgress();
     $statusText.textContent = tr('installing');
     $statusSub.textContent = tr('installSub');
@@ -1205,6 +1212,7 @@ function enterInstalling() {
 
 /** 완료·실패 화면: 매트릭스만 끄고 링 색을 바꾼다. 진행 줄 자리에 버튼 */
 function showResult(ok, { title, sub, warningTitle, lines = [], logPath, launch = false, retry = false }) {
+    setWorking(false);
     flow.afterReveal(() => {
         flow.go('done');
         matrix.stop();
@@ -1397,6 +1405,7 @@ const $btnInstall = document.getElementById('btn-install');
 /** 설치 폴더를 만들고 쓸 수 있는지 확인한다 (필요하면 UAC). 실패하면 시트에 남아 이유를 보인다 */
 async function prepareInstall() {
     currentState = 'preparing';
+    setWorking(true);
     $installError.hidden = true;
     $btnInstall.disabled = true;
     try {
@@ -1404,6 +1413,7 @@ async function prepareInstall() {
         return true;
     } catch (e) {
         currentState = 'settings';
+        setWorking(false);
         const key = ERROR_KEYS[e?.error_code];
         $installError.textContent = key ? tr(key) : (e?.message ?? String(e));
         $installError.hidden = false;
@@ -1537,6 +1547,7 @@ document.getElementById('btn-cancel')?.addEventListener('click', () => appWindow
 document.getElementById('btn-uninstall')?.addEventListener('click', async () => {
     if (currentState !== 'uninstall') return;
     currentState = 'uninstalling';
+    setWorking(true);
     resetProgress();
     $statusText.textContent = tr('uninstalling');
     $statusSub.textContent = tr('uninstallSub');
