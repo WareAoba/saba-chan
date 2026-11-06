@@ -202,7 +202,7 @@
     "server_name": "Servername",
     "server_name_placeholder": "z.B.: mein-server-1",
     "provision_hint": "Das Modul wird in die Instanz eingebettet und die Serverbinärdateien werden automatisch heruntergeladen.",
-    "no_modules": "Keine Module gefunden. Überprüfen Sie den Modulordner unter Einstellungen > Speicher.",
+    "no_modules": "Keine Module gefunden. Holen Sie Spielmodule im Saba-Speicher unter <link/>.",
     "add_server": "Server hinzufügen",
     "provisioning": "Wird installiert…",
     "step_compose": "Konfiguration erstellen",
@@ -263,7 +263,7 @@
     "new_server_desc": "Wähle ein Spielmodul aus und erstelle eine neue Serverinstanz von Grund auf.",
     "migrate_title": "Vorhandenen Server migrieren",
     "migrate_desc": "Importiere ein vorhandenes Spielserver-Verzeichnis in eine saba-chan-Instanz.",
-    "no_modules_hint": "Fügen Sie zuerst ein Modul hinzu."
+    "no_modules_hint": "Fügen Sie zuerst ein Modul hinzu. Im Saba-Speicher unter <link/> können Sie eines holen."
   },
   "migration_modal": {
     "title": "Servermigrierung",
@@ -341,6 +341,7 @@
     "unlink_restore": "Einstellungen zurücksetzen und entfernen",
     "unlink_keep_settings": "Aktuelle Einstellungen behalten und entfernen",
     "server_unlinked": "'{{name}}' wurde aus saba-chan entfernt. Die Serverdateien liegen weiterhin in {{path}}.",
+    "unlink_restore_failed_kept": "{{n}} Spieleinstellungsdatei(en) konnten nicht wiederhergestellt werden. Die Kopien liegen in {{path}}.",
     "unlink_restore_failed": "{{n}} Spieleinstellungsdatei(en) konnten nicht zurückgesetzt werden.",
     "migrate_notice_folder_not_writable": "saba-chan kann in diesen Ordner nicht schreiben. Das Speichern von Einstellungen und der Serverstart können fehlschlagen. Verschiebe ihn an einen beschreibbaren Ort.",
     "migrate_notice_server_running": "Der Server in diesem Ordner läuft außerhalb von saba-chan. Beende ihn und starte ihn in saba-chan neu.",
@@ -748,6 +749,7 @@
     "search_placeholder": "Server suchen",
     "no_match": "Keine passenden Server",
     "empty_title": "Noch keine Server",
+    "empty_no_modules": "Es sind keine Spielmodule installiert. Holen Sie sie im Saba-Speicher unter <link/>.",
     "empty_body": "Wähle ein Spiel und Saba-chan richtet den Server für dich ein.",
     "start": "Starten",
     "stop": "Stoppen",
@@ -1286,6 +1288,7 @@
       "err_MUTE_NOT_MEMBER": "Diese Person ist nicht auf diesem Server.",
       "err_MUTE_CANNOT": "Dieses Mitglied kann nicht stummgeschaltet werden (Servereigentümer oder Rolle über Saba-chan).",
       "err_MUTE_BOT": "Bots können nicht stummgeschaltet werden.",
+      "err_FORBIDDEN": "Dir fehlt die Discord-Berechtigung dafür.",
       "err_MUTE_SELF": "Du kannst dich nicht selbst stummschalten.",
       "err_MUTE_TOO_LONG": "Höchstens 28 Tage. Für länger nimm „Für immer“.",
       "err_generic": "Das hat nicht geklappt. Versuch es gleich noch einmal."

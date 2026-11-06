@@ -202,7 +202,7 @@
     "server_name": "Nom du serveur",
     "server_name_placeholder": "ex: mon-serveur-1",
     "provision_hint": "Le module sera intégré dans l'instance et les binaires du serveur seront téléchargés automatiquement.",
-    "no_modules": "Aucun module trouvé. Vérifiez le dossier des modules dans Paramètres > Stockage.",
+    "no_modules": "Aucun module trouvé. Obtenez des modules de jeu depuis le stockage Saba, dans <link/>.",
     "add_server": "Ajouter un serveur",
     "provisioning": "Installation en cours…",
     "step_compose": "Créer la configuration",
@@ -263,7 +263,7 @@
     "new_server_desc": "Sélectionnez un module de jeu et créez une nouvelle instance de serveur à partir de zéro.",
     "migrate_title": "Migration d'un serveur existant",
     "migrate_desc": "Importe un répertoire de serveur de jeu existant en tant qu'instance saba-chan.",
-    "no_modules_hint": "Ajoutez d'abord un module."
+    "no_modules_hint": "Ajoutez d'abord un module. Vous pouvez en obtenir un depuis le stockage Saba, dans <link/>."
   },
   "migration_modal": {
     "title": "Migration du serveur",
@@ -341,6 +341,7 @@
     "unlink_restore": "Restaurer les paramètres et retirer",
     "unlink_keep_settings": "Garder les paramètres actuels et retirer",
     "server_unlinked": "« {{name}} » a été retiré de saba-chan. Les fichiers du serveur sont toujours dans {{path}}.",
+    "unlink_restore_failed_kept": "{{n}} fichier(s) de paramètres du jeu n'ont pas pu être restaurés. Leurs copies sont conservées dans {{path}}.",
     "unlink_restore_failed": "{{n}} fichier(s) de paramètres du jeu n'ont pas pu être restaurés.",
     "migrate_notice_folder_not_writable": "saba-chan ne peut pas écrire dans ce dossier. L'enregistrement des paramètres et le démarrage du serveur peuvent échouer ; déplacez-le vers un emplacement accessible en écriture.",
     "migrate_notice_server_running": "Le serveur de ce dossier tourne en dehors de saba-chan. Arrêtez-le puis redémarrez-le depuis saba-chan.",
@@ -748,6 +749,7 @@
     "search_placeholder": "Rechercher un serveur",
     "no_match": "Aucun serveur correspondant",
     "empty_title": "Aucun serveur pour l'instant",
+    "empty_no_modules": "Aucun module de jeu n'est installé. Obtenez-en depuis le stockage Saba, dans <link/>.",
     "empty_body": "Choisissez un jeu et Saba-chan configurera le serveur pour vous.",
     "start": "Démarrer",
     "stop": "Arrêter",
@@ -1286,6 +1288,7 @@
       "err_MUTE_NOT_MEMBER": "Cette personne n'est pas sur ce serveur.",
       "err_MUTE_CANNOT": "Ce membre ne peut pas être rendu muet (propriétaire du serveur ou rôle au-dessus de Saba-chan).",
       "err_MUTE_BOT": "Les bots ne peuvent pas être rendus muets.",
+      "err_FORBIDDEN": "Vous n'avez pas la permission Discord pour cela.",
       "err_MUTE_SELF": "Vous ne pouvez pas vous rendre muet vous-même.",
       "err_MUTE_TOO_LONG": "28 jours au maximum. Pour plus longtemps, choisissez Pour toujours.",
       "err_generic": "Impossible de le faire. Réessayez dans un instant."

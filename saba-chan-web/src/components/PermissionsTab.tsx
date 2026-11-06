@@ -637,7 +637,6 @@ function MemberLevels({ api, guildId, perm, board, members, busy, write }: Membe
     );
 }
 
-/** 인스턴스 메뉴: 레벨별 명령과 멤버별 레벨을 따로 보인다 (GUI와 같은 동선) */
 /** 권한과 멤버를 다 읽은 뒤의 길드 권한 */
 type ReadyPermissions = ReturnType<typeof useGuildPermissions> & { perm: PermData; members: DiscordMember[] };
 
@@ -649,10 +648,10 @@ interface InstanceMenuProps {
     onBack: () => void;
 }
 
+/** 인스턴스 메뉴: 그 인스턴스의 레벨별 명령. 멤버 레벨은 디스코드 서버 단위라 서버의 멤버 탭에 있다 (GUI 와 같다) */
 function InstanceMenu({ api, guildId, data, instance, onBack }: InstanceMenuProps) {
     const { t } = useTranslation();
-    const [view, setView] = useState('commands');
-    const { perm, board, members, busy, write } = data;
+    const { perm, board, busy, write } = data;
     const srv = (board?.instances as BoardInstance[] | undefined)?.find((i) => i.id === instance);
     return (
         <div className="instance-menu">
@@ -663,44 +662,24 @@ function InstanceMenu({ api, guildId, data, instance, onBack }: InstanceMenuProp
                 {srv ? srv.name : t('perm.all_instances')}
                 {srv?.module && <small className="hint"> · {srv.module}</small>}
             </h3>
-            <Segments
-                value={view}
-                onChange={setView}
-                options={[
-                    { value: 'commands', label: t('perm.view_commands') },
-                    { value: 'members', label: t('perm.view_members') },
-                ]}
-            />
-            {view === 'commands' ? (
-                board ? (
-                    <CommandList
-                        api={api}
-                        guildId={guildId}
-                        perm={perm}
-                        board={board}
-                        instance={srv ? srv.id : L.ALL_INSTANCES}
-                        busy={busy}
-                        write={write}
-                    />
-                ) : (
-                    <Empty>{t('perm.stairs_failed')}</Empty>
-                )
-            ) : (
-                <MemberLevels
+            {board ? (
+                <CommandList
                     api={api}
                     guildId={guildId}
                     perm={perm}
                     board={board}
-                    members={members}
+                    instance={srv ? srv.id : L.ALL_INSTANCES}
                     busy={busy}
                     write={write}
                 />
+            ) : (
+                <Empty>{t('perm.stairs_failed')}</Empty>
             )}
         </div>
     );
 }
 
-/** 디스코드 서버 하나: 인스턴스 목록 → 인스턴스 메뉴. 켜짐·꺼짐 알림·자리 꽉 참 알림은 목록 아래 */
+/** 디스코드 서버 하나: 인스턴스 탭(목록 → 인스턴스 메뉴, 켜짐·꺼짐 알림·자리 꽉 참 알림은 목록 아래) | 멤버 탭(서버 전체의 멤버 레벨) */
 export function GuildPermissions({
     api,
     guildId,
@@ -714,6 +693,7 @@ export function GuildPermissions({
     const toast = useApp((s) => s.toast);
     const data = useGuildPermissions(api, guildId);
     const [instance, setInstance] = useState<string | null>(null);
+    const [tab, setTab] = useState('instances');
     // 켜짐 알림과 보일 서버: {guildId, instances, allowedInstances}. null = 읽는 중, false = 읽지 못함
     const [notice, setNotice] = useState<NoticeState>(null);
     // 자리 꽉 참 알림 {guildId, instances, allowedInstances} (모양은 위와 같다)
@@ -770,34 +750,62 @@ export function GuildPermissions({
             />
         );
     const instances: BoardInstance[] = data.board?.instances || [];
-    return (
-        <div className="set-card-grid">
-            <Card icon="server" tone="1" title={t('perm.instances')} desc={t('perm.instances_hint')}>
-                <ul className="rows">
-                    {[{ id: L.ALL_INSTANCES, name: t('perm.all_instances') }, ...instances].map((i) => (
-                        <li key={i.id} className="row">
-                            <button type="button" className="row-open" onClick={() => setInstance(i.id)}>
-                                <span className="row-main">
-                                    <span className="row-title row-title-one">{i.name}</span>
-                                    {i.module && <span className="row-sub">{i.module}</span>}
-                                </span>
-                                <Icon name="chevronRight" size={16} />
-                            </button>
-                        </li>
-                    ))}
-                </ul>
-            </Card>
-            {notice && others && (
-                <VisibleServers
+    const tabs = (
+        <Segments
+            value={tab}
+            onChange={setTab}
+            options={[
+                { value: 'instances', label: t('perm.instances') },
+                { value: 'members', label: t('perm.view_members') },
+            ]}
+        />
+    );
+    if (tab === 'members')
+        return (
+            <>
+                {tabs}
+                <MemberLevels
                     api={api}
                     guildId={guildId}
-                    allowed={notice.allowedInstances ?? null}
-                    others={others}
-                    onSaved={(allowedInstances) => setNotice((n) => (n ? { ...n, allowedInstances } : n))}
+                    perm={data.perm}
+                    board={data.board}
+                    members={data.members}
+                    busy={data.busy}
+                    write={data.write}
                 />
-            )}
-            <StartNotice api={api} guildId={guildId} notice={notice} setNotice={setNotice} />
-            <StartNotice api={api} guildId={guildId} notice={full} setNotice={setFull} kind="full" />
-        </div>
+            </>
+        );
+    return (
+        <>
+            {tabs}
+            <div className="set-card-grid">
+                <Card icon="server" tone="1" title={t('perm.instances')} desc={t('perm.instances_hint')}>
+                    <ul className="rows">
+                        {[{ id: L.ALL_INSTANCES, name: t('perm.all_instances') }, ...instances].map((i) => (
+                            <li key={i.id} className="row">
+                                <button type="button" className="row-open" onClick={() => setInstance(i.id)}>
+                                    <span className="row-main">
+                                        <span className="row-title row-title-one">{i.name}</span>
+                                        {i.module && <span className="row-sub">{i.module}</span>}
+                                    </span>
+                                    <Icon name="chevronRight" size={16} />
+                                </button>
+                            </li>
+                        ))}
+                    </ul>
+                </Card>
+                {notice && others && (
+                    <VisibleServers
+                        api={api}
+                        guildId={guildId}
+                        allowed={notice.allowedInstances ?? null}
+                        others={others}
+                        onSaved={(allowedInstances) => setNotice((n) => (n ? { ...n, allowedInstances } : n))}
+                    />
+                )}
+                <StartNotice api={api} guildId={guildId} notice={notice} setNotice={setNotice} />
+                <StartNotice api={api} guildId={guildId} notice={full} setNotice={setFull} kind="full" />
+            </div>
+        </>
     );
 }

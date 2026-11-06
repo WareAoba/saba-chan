@@ -992,6 +992,8 @@ impl IPCServer {
             .route("/api/relay/node/{guild_id}/chatbot/tools", get(handlers::relay::get_node_chatbot_tools))
             .route("/api/relay/bot-invite", get(handlers::relay::get_bot_invite))
             .route("/api/relay/pair/initiate", post(handlers::relay::initiate_pairing))
+            .route("/api/relay/pair/status", post(handlers::relay::pairing_status))
+            // 옛 경로 (코드가 경로에 실린다): 다음 판에서 뺀다
             .route("/api/relay/pair/{code}/status", get(handlers::relay::poll_pairing_status))
             .route("/api/relay/mcp/grant", get(handlers::relay::get_mcp_grant).delete(handlers::relay::revoke_mcp_grant))
             .route("/api/relay/link-requests", get(handlers::relay::list_link_requests))

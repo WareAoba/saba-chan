@@ -830,6 +830,10 @@ pub fn heartbeat_actions(locales: &[&str], modules: &[LoadedModule]) -> (Vec<Val
         if d.secret {
             item["secret"] = json!(true);
         }
+        // 조작 가능 명단에 있는 사람도 하는 일: 릴레이는 이 표시로 명단을 적용할 액션을 안다
+        if crate::controllers::CONTROLLED_ACTIONS.contains(&d.id) {
+            item["controllers"] = json!(true);
+        }
         // 모듈이 지원해야 하는 액션: 그 모듈 이름들 (릴레이는 이 모듈의 서버에만 하위 명령을 만든다)
         if let Some(supports) = module_support(d.id) {
             let mut names: Vec<&str> = modules.iter().filter(|m| supports(m)).map(|m| m.metadata.name.as_str()).collect();
@@ -2054,6 +2058,29 @@ async fn call(server: &IPCServer, method: &str, uri: &str, body: Option<Value>) 
 
 /// 데몬 라우터를 안에서 부른다 (인증·감사 미들웨어를 그대로 거친다). `origin`이 있으면 감사 출처로 쓴다
 pub(crate) async fn call_as(server: &IPCServer, method: &str, uri: &str, body: Option<Value>, origin: Option<crate::audit::Origin>) -> InternalResponse {
+    match route_once(server, method, uri, body, origin).await {
+        Ok(resp) => into_internal(resp).await,
+        Err(e) => InternalResponse { status: axum::http::StatusCode::INTERNAL_SERVER_ERROR, body: json!({ "error": e }) },
+    }
+}
+
+/// `call_raw_as`가 읽는 본문 상한. 원격 중계 한 메시지(16 MiB)에 base64로 넉넉히 들어간다
+const RAW_BODY_LIMIT: usize = 4 * 1024 * 1024;
+
+/// `call_as`와 같되 본문을 JSON으로 풀지 않고 그대로 돌려준다 (그림 같은 JSON이 아닌 응답)
+pub(crate) async fn call_raw_as(server: &IPCServer, method: &str, uri: &str, origin: Option<crate::audit::Origin>) -> (axum::http::StatusCode, axum::body::Bytes) {
+    let resp = match route_once(server, method, uri, None, origin).await {
+        Ok(resp) => resp,
+        Err(e) => return (axum::http::StatusCode::INTERNAL_SERVER_ERROR, json!({ "error": e }).to_string().into()),
+    };
+    let status = resp.status();
+    match axum::body::to_bytes(resp.into_body(), RAW_BODY_LIMIT).await {
+        Ok(bytes) => (status, bytes),
+        Err(e) => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, json!({ "error": e.to_string() }).to_string().into()),
+    }
+}
+
+async fn route_once(server: &IPCServer, method: &str, uri: &str, body: Option<Value>, origin: Option<crate::audit::Origin>) -> Result<axum::response::Response, String> {
     use tower::ServiceExt;
     let mut req = axum::http::Request::builder()
         .method(method)
@@ -2065,15 +2092,12 @@ pub(crate) async fn call_as(server: &IPCServer, method: &str, uri: &str, body: O
     }
     let body = body.map(|b| b.to_string()).unwrap_or_default();
     let Ok(mut req) = req.body(axum::body::Body::from(body)) else {
-        return InternalResponse { status: axum::http::StatusCode::INTERNAL_SERVER_ERROR, body: json!({ "error": "bad request" }) };
+        return Err("bad request".into());
     };
     if let Some(origin) = origin.or_else(|| Some(crate::audit::current())) {
         req.extensions_mut().insert(origin);
     }
-    match server.router().oneshot(req).await {
-        Ok(resp) => into_internal(resp).await,
-        Err(e) => InternalResponse { status: axum::http::StatusCode::INTERNAL_SERVER_ERROR, body: json!({ "error": e.to_string() }) },
-    }
+    server.router().oneshot(req).await.map_err(|e| e.to_string())
 }
 
 mod steps;

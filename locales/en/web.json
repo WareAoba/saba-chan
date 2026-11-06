@@ -86,6 +86,7 @@
     "stop": "Stop",
     "restart": "Restart",
     "delete": "Delete server",
+    "already_running": "“{{name}}” is already running",
     "started": "Started {{name}}.",
     "stopped": "Stopped {{name}}.",
     "restarted": "Restarted {{name}}.",
@@ -219,7 +220,7 @@
     "full_notice_on": "Full server alert on.",
     "full_notice_off": "Full server alert off.",
     "instances": "Instances",
-    "instances_hint": "Open an instance to see commands per level and each member's level.",
+    "instances_hint": "Open an instance to see its commands per level. Member levels are set for the whole server in the Member levels tab.",
     "all_instances": "All instances",
     "back_instances": "Instances",
     "view_commands": "Commands per level",
@@ -301,6 +302,7 @@
     "screen_note": "Saved only in this browser. The app settings on the PC don't change."
   },
   "errors": {
+    "start_cancelled": "The server was stopped while it was starting, so it was not started.",
     "generic": "Couldn't complete the request.",
     "remote_not_allowed": "This can only be done in the Saba-chan app on the PC.",
     "remote_field_blocked": "These settings can only be changed on the PC: {{fields}}",

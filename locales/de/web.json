@@ -86,6 +86,7 @@
     "stop": "Stoppen",
     "restart": "Neu starten",
     "delete": "Server löschen",
+    "already_running": "„{{name}}“ läuft bereits",
     "started": "{{name}} wurde gestartet.",
     "stopped": "{{name}} wurde gestoppt.",
     "restarted": "{{name}} wurde neu gestartet.",
@@ -219,7 +220,7 @@
     "full_notice_on": "Voll-Hinweis an.",
     "full_notice_off": "Voll-Hinweis aus.",
     "instances": "Instanzen",
-    "instances_hint": "Öffne eine Instanz, um die Befehle je Stufe und die Stufe jedes Mitglieds zu sehen.",
+    "instances_hint": "Öffne eine Instanz, um ihre Befehle je Stufe zu sehen. Mitgliederstufen legst du im Tab Mitgliederstufen für den ganzen Server fest.",
     "all_instances": "Alle Instanzen",
     "back_instances": "Instanzen",
     "view_commands": "Befehle je Stufe",
@@ -301,6 +302,7 @@
     "screen_note": "Wird nur in diesem Browser gespeichert. Die App-Einstellungen auf dem PC ändern sich nicht."
   },
   "errors": {
+    "start_cancelled": "Der Server wurde während des Startens gestoppt und daher nicht gestartet.",
     "generic": "Die Anfrage konnte nicht abgeschlossen werden.",
     "remote_not_allowed": "Das geht nur in der Saba-chan-App auf dem PC.",
     "remote_field_blocked": "Diese Einstellungen lassen sich nur am PC ändern: {{fields}}",

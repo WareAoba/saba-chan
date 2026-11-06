@@ -86,6 +86,7 @@
     "stop": "정지",
     "restart": "다시 시작",
     "delete": "서버 지우기",
+    "already_running": "“{{name}}” 서버는 이미 실행 중이에요",
     "started": "“{{name}}” 서버를 시작했어요.",
     "stopped": "“{{name}}” 서버를 정지했어요.",
     "restarted": "“{{name}}” 서버를 다시 시작했어요.",
@@ -219,7 +220,7 @@
     "full_notice_on": "자리 꽉 참 알림을 켰어요.",
     "full_notice_off": "자리 꽉 참 알림을 껐어요.",
     "instances": "인스턴스",
-    "instances_hint": "인스턴스를 누르면 레벨별 명령과 멤버별 레벨을 볼 수 있어요.",
+    "instances_hint": "인스턴스를 누르면 그 인스턴스의 레벨별 명령을 볼 수 있어요. 멤버 레벨은 멤버별 레벨 탭에서 서버 전체로 정해요.",
     "all_instances": "모든 인스턴스",
     "back_instances": "인스턴스 목록",
     "view_commands": "레벨별 명령",
@@ -301,6 +302,7 @@
     "screen_note": "이 브라우저에만 기억해요. PC의 앱 설정은 바뀌지 않아요."
   },
   "errors": {
+    "start_cancelled": "시작하는 동안 정지 요청이 들어와 서버를 시작하지 않았어요.",
     "generic": "요청을 처리하지 못했어요.",
     "remote_not_allowed": "이 작업은 PC의 사바쨩 앱에서만 할 수 있어요.",
     "remote_field_blocked": "이 설정은 PC에서만 바꿀 수 있어요: {{fields}}",

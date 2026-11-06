@@ -86,6 +86,7 @@
     "stop": "Parar",
     "restart": "Reiniciar",
     "delete": "Excluir servidor",
+    "already_running": "“{{name}}” já está em execução",
     "started": "{{name}} iniciado.",
     "stopped": "{{name}} parado.",
     "restarted": "{{name}} reiniciado.",
@@ -219,7 +220,7 @@
     "full_notice_on": "Alerta de servidor cheio ligado.",
     "full_notice_off": "Alerta de servidor cheio desligado.",
     "instances": "Instâncias",
-    "instances_hint": "Abra uma instância para ver os comandos por nível e o nível de cada membro.",
+    "instances_hint": "Abra uma instância para ver os comandos dela por nível. Os níveis de membros valem para o servidor inteiro e ficam na aba de níveis de membros.",
     "all_instances": "Todas as instâncias",
     "back_instances": "Instâncias",
     "view_commands": "Comandos por nível",
@@ -301,6 +302,7 @@
     "screen_note": "Salvo só neste navegador. As configurações do app no PC não mudam."
   },
   "errors": {
+    "start_cancelled": "O servidor foi parado enquanto iniciava, então não foi iniciado.",
     "generic": "Não foi possível concluir a solicitação.",
     "remote_not_allowed": "Isso só pode ser feito no app Saba-chan no PC.",
     "remote_field_blocked": "Estas configurações só podem ser alteradas no PC: {{fields}}",

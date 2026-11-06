@@ -634,7 +634,26 @@ impl InstanceStore {
         let content = fs::read_to_string(&instance_path)
             .with_context(|| format!("instance.json 읽기 실패: {}", instance_path.display()))?;
 
-        let mut instance: ServerInstance = serde_json::from_str(&content)?;
+        let mut instance: ServerInstance = match serde_json::from_str(&content) {
+            Ok(i) => i,
+            Err(e) => {
+                // 틀린 필드 하나로 서버가 목록에서 사라지지 않게 틀린 필드만 기본값으로 읽는다.
+                // 다음 저장이 그 필드를 기본값으로 덮기 전에 원본을 남긴다. 남기지 못하면 이 인스턴스를 올리지 않는다
+                let Some(instance) = valid_instance_fields(&content) else {
+                    return Err(e.into());
+                };
+                let Some(kept) = keep_corrupt_copy(&instance_path, &content) else {
+                    anyhow::bail!("instance.json has invalid fields ({}) and could not be copied aside; fix or move it", e);
+                };
+                tracing::warn!(
+                    "instance.json of instance '{}' has invalid fields ({}); using defaults for them, original kept as {}",
+                    instance.name,
+                    e,
+                    kept.display()
+                );
+                instance
+            }
+        };
         let mut stale = serde_json::from_str::<serde_json::Value>(&content)
             .ok()
             .and_then(|v| v.as_object().map(|o| LEGACY_RCON_KEYS.iter().any(|k| o.contains_key(*k))))
@@ -698,6 +717,47 @@ const LEGACY_RCON_KEYS: &[&str] = &[
     "enable-rcon",
     "broadcast-rcon-to-ops",
 ];
+
+/// 형식이 틀린 instance.json에서 읽히는 필드만 얹는다 (config 섹션의 `valid_fields`와 같은 방식).
+/// 배열 필드는 틀린 항목만 뺀다. id·name·module_name이 문자열이 아니면 None
+fn valid_instance_fields(content: &str) -> Option<ServerInstance> {
+    let serde_json::Value::Object(fields) = serde_json::from_str::<serde_json::Value>(content).ok()? else {
+        return None;
+    };
+    let text = |key: &str| fields.get(key).and_then(|v| v.as_str());
+    let mut base = ServerInstance::new(text("name")?, text("module_name")?);
+    base.id = text("id")?.to_string();
+    let serde_json::Value::Object(mut kept) = serde_json::to_value(&base).ok()? else {
+        return None;
+    };
+    let reads = |kept: &serde_json::Map<String, serde_json::Value>| serde_json::from_value::<ServerInstance>(serde_json::Value::Object(kept.clone())).is_ok();
+    for (name, value) in &fields {
+        let previous = kept.insert(name.clone(), value.clone());
+        if reads(&kept) {
+            continue;
+        }
+        let mut valid = Vec::new();
+        if let serde_json::Value::Array(items) = value {
+            for item in items {
+                valid.push(item.clone());
+                kept.insert(name.clone(), serde_json::Value::Array(valid.clone()));
+                if !reads(&kept) {
+                    tracing::warn!("instance.json field '{}' has an invalid entry, dropping it", name);
+                    valid.pop();
+                }
+            }
+        }
+        kept.insert(name.clone(), serde_json::Value::Array(valid.clone()));
+        if valid.is_empty() || !reads(&kept) {
+            tracing::warn!("instance.json field '{}' is invalid, using its default", name);
+            match previous {
+                Some(p) => kept.insert(name.clone(), p),
+                None => kept.remove(name),
+            };
+        }
+    }
+    serde_json::from_value(serde_json::Value::Object(kept)).ok()
+}
 
 /// 깨진 설정 파일의 사본 `<이름>.corrupt`(이미 있으면 `<이름>.corrupt-<초>`). 같은 내용의 사본이 이미 있으면 그 경로
 fn keep_corrupt_copy(path: &Path, content: &str) -> Option<PathBuf> {
@@ -1080,6 +1140,38 @@ mod tests {
         fs::write(dir.join("settings.json"), other).unwrap();
         InstanceStore::new(instances_dir.to_str().unwrap()).load().unwrap();
         assert_eq!(copies(), 2);
+    }
+
+    /// instance.json 필드 하나가 틀려도 서버는 목록에 남는다. 틀린 필드만 기본값으로 읽고(배열은 틀린 항목만 뺀다),
+    /// 다음 저장이 덮기 전에 원본을 사본으로 남긴다
+    #[test]
+    fn one_invalid_instance_field_keeps_the_server_and_the_original() {
+        let tmp = TempDir::new().unwrap();
+        let instances_dir = tmp.path().join("instances");
+        let mut store = InstanceStore::new(instances_dir.to_str().unwrap());
+        store.load().unwrap();
+        let mut inst = make_test_instance("hand-edited", "minecraft");
+        inst.port = Some(25565);
+        inst.extra_args = vec!["-Xmx2G".into()];
+        let id = inst.id.clone();
+        store.add(inst).unwrap();
+        let dir = store.instance_dir(&id);
+        let mut raw: serde_json::Value = serde_json::from_str(&fs::read_to_string(dir.join("instance.json")).unwrap()).unwrap();
+        raw["port"] = serde_json::json!("25565");
+        raw["controllers"] = serde_json::json!([{ "name": "steve" }, { "discord_id": "1" }, { "name": "alex", "discord_id": "2" }]);
+        let broken = serde_json::to_string_pretty(&raw).unwrap();
+        fs::write(dir.join("instance.json"), &broken).unwrap();
+
+        let mut store = InstanceStore::new(instances_dir.to_str().unwrap());
+        store.load().unwrap();
+        let loaded = store.get(&id).cloned().expect("the server stays listed");
+        assert_eq!(loaded.name, "hand-edited");
+        assert_eq!(loaded.port, None, "the invalid field falls back to its default");
+        assert_eq!(loaded.extra_args, vec!["-Xmx2G".to_string()], "valid fields are kept");
+        let names: Vec<_> = loaded.controllers.iter().map(|c| c.name.as_str()).collect();
+        assert_eq!(names, ["steve", "alex"], "only the invalid entry is dropped");
+        store.update(&id, loaded).unwrap();
+        assert_eq!(fs::read_to_string(dir.join("instance.json.corrupt")).unwrap(), broken);
     }
 
     /// 사본을 남기지 못하면 빈 설정으로 올리지 않는다: 다음 저장이 원본을 덮는다

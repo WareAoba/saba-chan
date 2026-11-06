@@ -249,6 +249,19 @@ fn heartbeat_actions_stay_within_the_limits_and_titles_are_localized() {
     assert!(actions.iter().all(|a| a["id"] != "instance.delete" && a["id"] != "extension.enable"));
 }
 
+// 릴레이는 heartbeat 액션 표의 `controllers`로 조작 가능 명단이 통과시키는 액션을 안다 (권한 계단과 같은 넷)
+#[test]
+fn heartbeat_actions_mark_the_controlled_actions() {
+    let (actions, _) = heartbeat_actions(&crate::chat::i18n::languages(), &[]);
+    for a in &actions {
+        let controlled = crate::controllers::CONTROLLED_ACTIONS.contains(&a["id"].as_str().unwrap_or_default());
+        assert_eq!(a.get("controllers") == Some(&json!(true)), controlled, "{}", a["id"]);
+    }
+    for id in crate::controllers::CONTROLLED_ACTIONS {
+        assert!(actions.iter().any(|a| a["id"] == id), "{id} is in the heartbeat");
+    }
+}
+
 // 사용자 요청(2026-10-24): 서버 슬래시 루트 아래 이름은 "서버-상태"가 아니라 "상태"처럼 짧게. 제목은 그대로 두고
 // 짧은 이름(`actions.<id>.name`)을 따로 싣는다. 이름이 없는 액션은 `name` 키가 없다
 #[test]

@@ -745,15 +745,33 @@ pub fn list(dir: &Path) -> Vec<BackupInfo> {
     out
 }
 
+/// API로 받은 백업 이름이 잘못됐거나(`Invalid`) 그 백업이 없다(`Missing`). 호출자는 400·404로 알린다
+#[derive(Debug)]
+pub enum BadName {
+    Invalid(String),
+    Missing(String),
+}
+
+impl std::fmt::Display for BadName {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BadName::Invalid(name) => write!(f, "invalid backup name: {}", name),
+            BadName::Missing(name) => write!(f, "backup not found: {}", name),
+        }
+    }
+}
+
+impl std::error::Error for BadName {}
+
 /// API로 받은 이름이 백업 폴더 안의 백업 파일만 가리키게
 fn checked(dir: &Path, name: &str) -> Result<PathBuf> {
     if name.contains(['/', '\\']) || name.starts_with('.') || BackupKind::from_name(name).is_none() {
-        bail!("invalid backup name: {}", name);
+        return Err(BadName::Invalid(name.to_string()).into());
     }
     let path = dir.join(name);
     // 대상이 없는 링크도 목록에 보이므로 받는다 (지우면 링크만 지운다)
     if !path.is_file() && !path.symlink_metadata().is_ok_and(|m| m.file_type().is_symlink()) {
-        bail!("backup not found: {}", name);
+        return Err(BadName::Missing(name.to_string()).into());
     }
     Ok(path)
 }

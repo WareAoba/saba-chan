@@ -86,6 +86,7 @@
     "stop": "停止",
     "restart": "重启",
     "delete": "删除服务器",
+    "already_running": "“{{name}}”已在运行",
     "started": "已启动 {{name}}。",
     "stopped": "已停止 {{name}}。",
     "restarted": "已重启 {{name}}。",
@@ -219,7 +220,7 @@
     "full_notice_on": "已开启满员提醒。",
     "full_notice_off": "已关闭满员提醒。",
     "instances": "实例",
-    "instances_hint": "打开实例即可查看各等级的命令和每个成员的等级。",
+    "instances_hint": "打开实例即可查看该实例各等级的命令。成员等级在“成员等级”标签中为整个服务器设置。",
     "all_instances": "所有实例",
     "back_instances": "实例列表",
     "view_commands": "各等级命令",
@@ -301,6 +302,7 @@
     "screen_note": "只保存在此浏览器中。电脑上的应用设置不会改变。"
   },
   "errors": {
+    "start_cancelled": "服务器在启动过程中被停止，因此未启动。",
     "generic": "无法完成请求。",
     "remote_not_allowed": "只能在电脑上的 Saba-chan 应用中进行。",
     "remote_field_blocked": "以下设置只能在电脑上更改：{{fields}}",

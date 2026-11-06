@@ -75,6 +75,11 @@ export function useServerActions({
 }: UseServerActionsParams) {
     const { t } = useTranslation('gui');
     const translateError = createTranslateError(t);
+    // 되돌리지 못한 설정 사본: 개수와 함께 데몬이 알려준 보관 위치를 보인다
+    const unrestoredNote = (r: ApiBody) =>
+        r.settings_kept_at
+            ? t('server_actions.unlink_restore_failed_kept', { n: r.settings_restore_failed, path: r.settings_kept_at })
+            : t('server_actions.unlink_restore_failed', { n: r.settings_restore_failed });
 
     // -- Internal refs for change detection --
     const guiInitiatedOpsRef = useRef(new Set<string>());
@@ -1231,13 +1236,9 @@ export function useServerActions({
                 console.log(`Instance "${server.name}" (ID: ${server.id}) deleted`);
                 const message = result.linked_folder
                     ? t('server_actions.server_unlinked', { name: server.name, path: result.linked_folder }) +
-                      (result.settings_restore_failed
-                          ? '\n' + t('server_actions.unlink_restore_failed', { n: result.settings_restore_failed })
-                          : '')
+                      (result.settings_restore_failed ? '\n' + unrestoredNote(result) : '')
                     : t('server_actions.server_deleted', { name: server.name }) +
-                      (result.settings_restore_failed
-                          ? '\n' + t('server_actions.unlink_restore_failed', { n: result.settings_restore_failed })
-                          : '');
+                      (result.settings_restore_failed ? '\n' + unrestoredNote(result) : '');
                 setModal({ type: 'success', title: t('command_modal.success'), message });
                 fetchServers();
             }
