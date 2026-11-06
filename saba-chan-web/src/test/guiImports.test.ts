@@ -25,6 +25,8 @@ const ALLOWED = new Set([
     '@gui/components/discord/levels',
     // 인스턴스 낱말 초안과 검사 오류 나누기 (화면 없는 순수 함수)
     '@gui/components/discord/instanceWords',
+    // 조작 가능 명단 넣기·빼기·멤버 고르기 (GUI 조작 가능 탭과 같은 순수 함수)
+    '@gui/components/servers/controllers',
     // 디스코드 서버별 보일 서버 규칙 (GUI 노드 인스턴스 탭과 같은 순수 함수)
     '@gui/components/discord/nodePermissions',
     // 코코낸내 기능 묶음·시각 (GUI 봇 설정과 같은 상수)

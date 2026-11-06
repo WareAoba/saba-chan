@@ -86,6 +86,7 @@ export function CommandList({ api, guildId, perm, board, instance, busy, write }
         const note = [
             c.fixed && (c.basic ? t('perm.help_hint') : t('perm.fixed_hint')),
             !c.fixed && c.overridden && tg('discord.perm_moved'),
+            c.controllers && tg('discord.perm_controllers_tag'),
             instance !== L.ALL_INSTANCES && c.items.some((i) => !i.instance) && tg('discord.perm_server_wide_tag'),
             instance === L.ALL_INSTANCES &&
                 !c.instance &&
