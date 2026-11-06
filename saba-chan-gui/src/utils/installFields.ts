@@ -19,9 +19,10 @@ export const installSettings = (values?: Record<string, unknown> | null) =>
 /** 만들 때 고를 수 있는 값: 사바쨩이 설치할 수 있는 값(`install_options`), 없으면 `options` 전부 */
 export const installChoices = (field?: Pick<SettingField, 'install_options' | 'options'> | null) => field?.install_options || field?.options || [];
 
-/** 선택지 표시 이름: 모듈 locales `settings.<칸>.options.<값>`, 없으면 값 그대로 */
+/** 선택지 표시 이름: 모듈 locales `settings.<칸>.options.<값>`, 없으면 값 그대로.
+ *  값에 `:`가 있어도(`minecraft:normal`) 네임스페이스로 읽지 않게 네임스페이스를 따로 넘긴다 */
 export const optionLabel = (t: TFunction, moduleName: string, field: { name: string }, value: unknown) =>
-    t(`mod_${moduleName}:settings.${field.name}.options.${value}`, { defaultValue: String(value) });
+    t(`settings.${field.name}.options.${value}`, { ns: `mod_${moduleName}`, nsSeparator: false, defaultValue: String(value) });
 
 /** 같은 이름의 서버가 있는가 (대소문자·앞뒤 공백 무시, CLI `server add`와 같다) */
 export const nameTaken = (servers?: { name?: string }[] | null, name?: string | null) => {

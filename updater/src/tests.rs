@@ -1549,3 +1549,12 @@ fn the_updater_targets_are_read_without_consuming_them() {
     manager.status.components.clear();
     assert!(manager.updater_targets().is_empty());
 }
+
+/// 베타 빌드를 깐 사람이 채널을 고르지 않았으면 그 빌드의 채널에서 받는다.
+/// 정식 채널이 기본이면 베타 빌드가 정식의 옛 판을 내림 업데이트로 거절해 업데이트·카탈로그를 받지 못한다.
+#[test]
+fn test_default_update_channel_is_the_build_channel() {
+    assert_eq!(UpdateConfig::default().channel, crate::versions::bundled().channel);
+    let saved: UpdateConfig = serde_json::from_str(r#"{"enabled": true}"#).unwrap();
+    assert_eq!(saved.channel, crate::versions::bundled().channel);
+}
