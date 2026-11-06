@@ -145,6 +145,72 @@ pub trait InstallHooks: Send + Sync {
 // 설치
 // ═══════════════════════════════════════════════════════
 
+/// 설치 폴더 준비: 받을 수 있는 곳인지 확인하고, 만들고, 쓸 수 없으면 권한을 올려 만든다.
+/// 창 인스톨러는 설치 화면(애니메이션)으로 넘어가기 전에 이것만 먼저 불러 권한 확인을 끝낸다.
+/// 실패하면 (오류 코드, 메시지), 설치는 이어가되 알릴 일이 있으면 `Ok(Some(경고))`
+pub fn prepare_install_dir(
+    install_dir: &Path,
+    hooks: &dyn InstallHooks,
+) -> Result<Option<String>, (&'static str, String)> {
+    // 설치 폴더는 제거기가 통째로 지울 수 있다: 상대 경로나 사용자 데이터·모듈·익스텐션 폴더와 겹치는 곳은 받지 않는다
+    if let Err(reason) = check_install_dir(install_dir, &component_dirs::Layout::current()) {
+        return Err((
+            "invalid_install_dir",
+            format!("Cannot install into {} ({})", install_dir.display(), reason),
+        ));
+    }
+    // 한 PC에는 설치본 하나만 둔다: 설치본들이 사용자 데이터 폴더(설정·인스턴스·기록)를 함께 쓴다
+    if let Some(other) = other_install(install_dir) {
+        return Err((
+            "installed_elsewhere",
+            format!(
+                "Saba-chan is already installed in {}. Update or remove that install first.",
+                other.display()
+            ),
+        ));
+    }
+    // 설치기가 새로 만든 폴더만 전용 폴더로 표시한다 (제거기가 폴더째 지워도 되는 곳).
+    // 원래 있던 빈 폴더(드라이브 루트, 문서 폴더 등)는 나중에 다른 파일이 생길 수 있어 표시하지 않는다
+    let dedicated = !install_dir.is_dir() || install_dir.join(uninstall::INSTALL_MARKER).is_file();
+    let _ = std::fs::create_dir_all(install_dir); // 이미 있어도 OK
+
+    // 실제 쓰기 가능 여부 테스트
+    let needs_elevation = {
+        let probe = install_dir.join(".saba-write-test");
+        match std::fs::write(&probe, b"test") {
+            Ok(_) => {
+                let _ = std::fs::remove_file(&probe);
+                false
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => true,
+            Err(_) => {
+                // 디렉토리 자체가 없는 경우 (create_dir_all도 실패)
+                !install_dir.exists()
+            }
+        }
+    };
+
+    if needs_elevation {
+        hooks.progress(&InstallProgress {
+            step: "elevate".into(),
+            message: "Requesting administrator privileges...".into(),
+            percent: 1,
+            ..Default::default()
+        });
+        if let Err(elev_err) = hooks.elevate_create_dir(install_dir) {
+            return Err(("elevation_failed", format!("Failed to create directory: {}", elev_err)));
+        }
+    }
+
+    // 폴더를 만든 바로 뒤에 표시한다: 미리 준비한 뒤 설치하거나, 내려받다 실패한 뒤 다시 시도해도 전용 폴더로 남는다
+    if dedicated {
+        if let Err(e) = std::fs::write(install_dir.join(uninstall::INSTALL_MARKER), b"") {
+            return Ok(Some(format!("Failed to mark the install folder: {}", e)));
+        }
+    }
+    Ok(None)
+}
+
 /// 설치 실행. 마지막 진행(완료 또는 실패)을 알리고 돌려준다
 pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> InstallProgress {
     let emit = |step: &str, msg: &str, pct: i32| {
@@ -182,49 +248,10 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
     // Step 1: 설치 디렉토리 생성 + 쓰기 권한 확인 (0-5%)
     emit("prepare", "Creating install directory...", 2);
     let install_dir = config.install_path.clone();
-    // 설치 폴더는 제거기가 통째로 지울 수 있다: 상대 경로나 사용자 데이터·모듈·익스텐션 폴더와 겹치는 곳은 받지 않는다
-    if let Err(reason) = check_install_dir(&install_dir, &component_dirs::Layout::current()) {
-        return fail(
-            "invalid_install_dir",
-            &format!("Cannot install into {} ({})", install_dir.display(), reason),
-        );
-    }
-    // 한 PC에는 설치본 하나만 둔다: 설치본들이 사용자 데이터 폴더(설정·인스턴스·기록)를 함께 쓴다
-    if let Some(other) = other_install(&install_dir) {
-        return fail(
-            "installed_elsewhere",
-            &format!(
-                "Saba-chan is already installed in {}. Update or remove that install first.",
-                other.display()
-            ),
-        );
-    }
-    // 설치기가 새로 만든 폴더만 전용 폴더로 표시한다 (제거기가 폴더째 지워도 되는 곳).
-    // 원래 있던 빈 폴더(드라이브 루트, 문서 폴더 등)는 나중에 다른 파일이 생길 수 있어 표시하지 않는다
-    let dedicated = !install_dir.is_dir() || install_dir.join(uninstall::INSTALL_MARKER).is_file();
-    let _ = std::fs::create_dir_all(&install_dir); // 이미 있어도 OK
-
-    // 실제 쓰기 가능 여부 테스트
-    let needs_elevation = {
-        let probe = install_dir.join(".saba-write-test");
-        match std::fs::write(&probe, b"test") {
-            Ok(_) => {
-                let _ = std::fs::remove_file(&probe);
-                false
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => true,
-            Err(_) => {
-                // 디렉토리 자체가 없는 경우 (create_dir_all도 실패)
-                !install_dir.exists()
-            }
-        }
-    };
-
-    if needs_elevation {
-        emit("elevate", "Requesting administrator privileges...", 1);
-        if let Err(elev_err) = hooks.elevate_create_dir(&install_dir) {
-            return fail("elevation_failed", &format!("Failed to create directory: {}", elev_err));
-        }
+    match prepare_install_dir(&install_dir, hooks) {
+        Ok(Some(w)) => warn(w),
+        Ok(None) => {}
+        Err((code, msg)) => return fail(code, &msg),
     }
 
     // 모듈·익스텐션 위치는 받기 전에 확인한다 (옮기기는 데몬을 끈 뒤)
@@ -234,13 +261,6 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
                 "components_dir_invalid",
                 &format!("Cannot use {} for modules and extensions ({})", chosen.display(), e),
             );
-        }
-    }
-
-    // 폴더를 만든 바로 뒤에 표시한다: 내려받다 실패한 뒤 다시 시도해도 전용 폴더로 남는다
-    if dedicated {
-        if let Err(e) = std::fs::write(install_dir.join(uninstall::INSTALL_MARKER), b"") {
-            warn(format!("Failed to mark the install folder: {}", e));
         }
     }
 
@@ -899,24 +919,12 @@ fn save_language_setting(language: &str) {
 
 /// semver 문자열 비교 (major.minor.patch)
 fn version_compare(a: &str, b: &str) -> std::cmp::Ordering {
-    let parse = |s: &str| -> Vec<u64> {
-        s.trim_start_matches('v')
-            .split('.')
-            .filter_map(|p| p.parse::<u64>().ok())
-            .collect()
-    };
-    let va = parse(a);
-    let vb = parse(b);
-    let max_len = va.len().max(vb.len());
-    for i in 0..max_len {
-        let a_part = va.get(i).copied().unwrap_or(0);
-        let b_part = vb.get(i).copied().unwrap_or(0);
-        match a_part.cmp(&b_part) {
-            std::cmp::Ordering::Equal => continue,
-            other => return other,
-        }
+    use saba_chan_updater_lib::version::SemVer;
+    match (SemVer::parse(a), SemVer::parse(b)) {
+        (Some(a), Some(b)) => a.cmp(&b),
+        // 읽을 수 없는 버전은 막지 않는다 (서명된 manifest가 주는 값이다)
+        _ => std::cmp::Ordering::Equal,
     }
-    std::cmp::Ordering::Equal
 }
 
 // ═══════════════════════════════════════════════════════
@@ -1131,6 +1139,42 @@ mod tests {
         assert!(is_copy_of(&me, &me));
         assert!(!is_copy_of(&root.join("missing.exe"), &me));
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// 창 인스톨러는 그림 애니메이션 전에 설치 폴더를 먼저 준비한다 (쓸 수 없으면 그때 권한을 올린다).
+    /// 미리 만든 새 폴더도 설치가 만든 전용 폴더로 남아야 한다: 나중의 설치·제거가 폴더째 다룬다
+    #[test]
+    fn preparing_the_install_folder_first_keeps_it_dedicated() {
+        struct NoHooks;
+        impl InstallHooks for NoHooks {
+            fn progress(&self, _: &InstallProgress) {}
+        }
+        let root = std::env::temp_dir().join(format!("saba-prepare-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let dir = root.join("Saba-chan");
+        prepare_install_dir(&dir, &NoHooks).unwrap();
+        assert!(dir.is_dir());
+        assert!(dir.join(uninstall::INSTALL_MARKER).is_file(), "a folder the installer made is marked");
+        // 설치가 다시 준비해도 (이미 있는 폴더) 표시는 그대로다
+        prepare_install_dir(&dir, &NoHooks).unwrap();
+        assert!(dir.join(uninstall::INSTALL_MARKER).is_file());
+
+        // 원래 있던 폴더는 표시하지 않는다
+        let existing = root.join("existing");
+        std::fs::create_dir_all(&existing).unwrap();
+        prepare_install_dir(&existing, &NoHooks).unwrap();
+        assert!(!existing.join(uninstall::INSTALL_MARKER).is_file());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// 설치기 버전 검사는 프리릴리스 꼬리까지 SemVer로 비교한다 (숫자 조각만 모으면 0.1.12-beta.4가 0.1.13-beta.1보다 높아 보인다)
+    #[test]
+    fn installer_version_check_compares_prereleases_as_semver() {
+        use std::cmp::Ordering::*;
+        assert_eq!(version_compare("0.1.12-beta.4", "0.1.13-beta.1"), Less);
+        assert_eq!(version_compare("0.1.13-beta.1", "0.1.13"), Less);
+        assert_eq!(version_compare("0.1.13-beta.2", "0.1.13-beta.1"), Greater);
+        assert_eq!(version_compare("v0.1.13", "0.1.13"), Equal);
     }
 
     #[test]

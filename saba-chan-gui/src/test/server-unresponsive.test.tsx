@@ -41,7 +41,7 @@ const detail = (server: Record<string, unknown>) =>
             onStart={() => {}}
             onStop={() => {}}
             setModal={() => {}}
-            consoleProps={{ consoles: {}, popoutOpen: {} } as never}
+            consoleProps={{ consoles: {}, popoutOpen: {}, consolePopoutIds: [] } as never}
             settingsProps={{} as never}
         />,
     );

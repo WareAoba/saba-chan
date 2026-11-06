@@ -141,16 +141,30 @@ interface ModerationTabProps {
     members?: DiscordMember[];
     membersLoading?: boolean;
     onRefreshMembers?: () => void;
+    /** 화면 주소 링크로 연 안 화면 (channels·members). viewSeq가 바뀌면 다시 연다 */
+    initialView?: string;
+    viewSeq?: number;
 }
 
 /**
  * 서버 관리 탭 — 채널 / 멤버 두 화면.
  * members: 권한 화면과 같은 멤버 목록 (음소거할 사람을 고른다)
  */
-export function ModerationTab({ node, members = [], membersLoading, onRefreshMembers }: ModerationTabProps) {
+export function ModerationTab({
+    node,
+    members = [],
+    membersLoading,
+    onRefreshMembers,
+    initialView,
+    viewSeq,
+}: ModerationTabProps) {
     const { t } = useTranslation('gui');
     const guildId = node.guildId;
-    const [view, setView] = useState('channels');
+    const [view, setView] = useState(initialView === 'members' ? 'members' : 'channels');
+    // biome-ignore lint/correctness/useExhaustiveDependencies: 링크를 누를 때(viewSeq)만
+    useEffect(() => {
+        if (initialView === 'channels' || initialView === 'members') setView(initialView);
+    }, [viewSeq]);
     const [mod, setMod] = useState<ModState | null>(null);
     const [assign, setAssign] = useState<ApiBody | null>(null);
     // 배정은 서버 전체 값이라 한 번에 하나만 저장한다 (다음 변경은 직전 저장 결과에서 계산)

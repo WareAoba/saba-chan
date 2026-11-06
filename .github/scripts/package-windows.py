@@ -59,7 +59,7 @@ def package(bin_dir: Path, out_dir: Path) -> list[Path]:
                 zf.write(f, f.relative_to(ROOT / "locales").as_posix())
     made.append(locales)
     for p in made:
-        print(f"    → {p.name} ({p.stat().st_size / 1024 / 1024:.2f} MB)")
+        print(f"    -> {p.name} ({p.stat().st_size / 1024 / 1024:.2f} MB)")
     return made
 
 

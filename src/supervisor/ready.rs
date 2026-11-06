@@ -11,7 +11,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
-use super::managed_process::{LogSource, ManagedProcess};
+use super::managed_process::ManagedProcess;
 
 /// 준비 문구를 기다리는 시간의 기본값 (초)
 pub const DEFAULT_READY_TIMEOUT_SECS: u64 = 600;
@@ -35,6 +35,11 @@ fn seen() -> &'static Mutex<std::collections::HashSet<String>> {
 /// 콘솔 줄 중에 준비 문구에 맞는 것이 있는가 (틀린 정규식은 건너뛴다)
 pub fn any_match(patterns: &[String], lines: &[String]) -> bool {
     patterns.iter().filter_map(|p| regex::Regex::new(p).ok()).any(|re| lines.iter().any(|l| re.is_match(l)))
+}
+
+/// 시작했지만 아직 준비를 기다리는 중인가 (채팅 상태·접속자 답)
+pub fn is_starting(instance_id: &str) -> bool {
+    pending().lock().unwrap_or_else(|e| e.into_inner()).contains_key(instance_id)
 }
 
 /// 이번 실행에서 준비 문구가 찍혔는가. 한 번 읽으면 지운다 (다음 실행은 새로 센다)
@@ -119,7 +124,7 @@ async fn watch(id: String, name: String, token: u64, proc: Arc<ManagedProcess>, 
         }
         for line in proc.get_console_since(next_line).await {
             next_line = line.id + 1;
-            if line.source != LogSource::System && patterns.iter().any(|p| p.is_match(&line.content)) {
+            if line.source.is_server_output() && patterns.iter().any(|p| p.is_match(&line.content)) {
                 seen().lock().unwrap_or_else(|e| e.into_inner()).insert(id.clone());
                 finish(&id, &name, Some(token), None);
                 return;

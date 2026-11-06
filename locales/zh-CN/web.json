@@ -124,8 +124,6 @@
   "detail": {
     "backups": "备份",
     "players": "玩家",
-    "check": "检查",
-    "settings_game": "游戏",
     "more": "更多",
     "tabs": "服务器菜单",
     "uptime": "已运行 {{time}}",
@@ -199,7 +197,7 @@
       "-1": "禁止"
     },
     "ladder": "权限等级",
-    "ladder_hint": "越靠上等级越高。所有者和屏蔽不能移动。",
+    "ladder_hint": "越靠上等级越高。所有者和屏蔽不能移动。名称可在输入框中修改。所有者、访客和屏蔽不能删除。",
     "ladder_name": "等级名称",
     "ladder_fixed": "固定",
     "ladder_up": "将 {{name}} 上移",
@@ -237,22 +235,14 @@
     "preset_apply": "应用",
     "moved_count": "有 {{count}} 个命令与预设不同",
     "reset_to_preset": "恢复为预设",
-    "stairs_hint": "每个命令放在从哪个等级起可以使用的台阶上。高台阶可以使用下面台阶的所有命令。拖动标签到其他台阶或点击它来移动。",
-    "stairs": "命令台阶",
-    "carry": "{{below}} 的 {{count}} 个 +",
-    "level_none": "什么都不能用",
     "help_list": "帮助 · 列表",
     "help_hint": "help 和 list 对除禁止外的所有级别开放，且无法更改。",
-    "fixed_hint": "此命令的等级是固定的，无法移动。",
-    "from_level": "从此等级起可用",
-    "server_wide": "这是服务器级命令，修改会同时出现在所有实例菜单中。",
+    "fixed_hint": "此命令会影响整台电脑，因此无法更改等级。",
+    "risk_pc_hint": "右侧文字是 Discord 的确认级别，请在电脑应用中更改。",
     "back_to_preset": "按预设",
     "risk_safe": "安全",
     "risk_caution": "注意",
     "risk_danger": "危险",
-    "confirm_tier": "Discord 确认: {{risk}}（在电脑应用中更改）",
-    "kind_admin": "管理",
-    "legend_moved": "已偏离预设",
     "visible": "在此 Discord 服务器中显示的服务器",
     "visible_hint": "关闭的服务器会从此 Discord 服务器的斜杠和前缀命令中消失。",
     "visible_owned": "已被另一个 Discord 服务器使用"
@@ -532,7 +522,8 @@
       "duration_units": "分钟,小时,天,周",
       "reason": "原因（可选）",
       "purge": "删除其消息",
-      "announce_hint": "结果也会发布到服务器的系统频道（不会提及任何人）。"
+      "announce_hint": "结果也会发布到服务器的系统频道（不会提及任何人）。",
+      "desc": "处罚、频道锁定与清理"
     },
     "load_failed": "无法读取设置。请检查连接后重试。",
     "retry": "重试",
@@ -542,7 +533,11 @@
     "channel_gameChat": "游戏聊天频道",
     "channel_board": "状态板频道",
     "sleep_now": "现在睡觉",
-    "awake": "醒着"
+    "awake": "醒着",
+    "basics_desc": "此服务器使用的语言和表情",
+    "music_desc": "在语音频道播放音乐",
+    "reading_desc": "用语音朗读聊天内容",
+    "channels_desc": "为每个功能选择频道"
   },
   "logs": {
     "title": "历史日志",

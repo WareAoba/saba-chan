@@ -261,8 +261,23 @@ fn format_line_with(l: &Value, stamp: Option<&Stamp>) -> String {
     }
 }
 
+/// 사바쨩이 보낸 명령 줄(`source: input`)을 시킨 쪽: "discord (jace)" (작업 기록 줄과 같은 모양)
+pub fn input_by(l: &Value) -> String {
+    let by = l.get("by").unwrap_or(&Value::Null);
+    match (s(by, "source"), s(by, "userName")) {
+        ("", _) => String::new(),
+        (source, "") => source.to_string(),
+        (source, user) => format!("{} ({})", source, user),
+    }
+}
+
 fn format_body(l: &Value) -> String {
     let text = strip_terminal_controls(s(l, "content"));
+    if s(l, "source") == "input" {
+        let by = input_by(l);
+        let tail = if by.is_empty() { String::new() } else { style(format!(" · {by}")).dim().to_string() };
+        return format!("{}{}", style(format!("› {text}")).bold(), tail);
+    }
     let base = |t: &str| match (s(l, "source"), s(l, "level")) {
         ("system", _) => style(t).cyan().to_string(),
         (_, "error") => style(t).red().to_string(),
@@ -621,6 +636,11 @@ mod tests {
         assert_eq!(console::strip_ansi_codes(&format_line(&plain)), "» x");
         let controlled = json!({"content": "safe\u{1b}]8;;https://example.invalid\u{7}label\u{1b}]8;;\u{7}", "source": "stdout", "level": "info"});
         assert_eq!(format_line(&controlled), "safelabel");
+        // 사바쨩이 보낸 명령 (#18): "› 명령 · 보낸 곳"
+        let input = json!({"content": "say hi", "source": "input", "level": "info", "by": {"source": "discord", "userName": "jace"}});
+        assert_eq!(console::strip_ansi_codes(&format_line(&input)), "› say hi · discord (jace)");
+        let mine = json!({"content": "list", "source": "input", "level": "info", "by": {"source": "cli"}});
+        assert_eq!(console::strip_ansi_codes(&format_line(&mine)), "› list · cli");
     }
 
     /// 콘솔 시각은 GUI와 같은 앱 설정(`consoleTimestamps`·`consoleTimestampDate`)을 따른다. 끔이면 붙이지 않는다

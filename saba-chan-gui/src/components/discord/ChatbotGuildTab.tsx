@@ -1,12 +1,14 @@
 import clsx from 'clsx';
 import type { ReactNode } from 'react';
 import { useCallback, useEffect, useState } from 'react';
+import { PROVIDER_BRANDS } from './providerBrands';
 import { useTranslation } from 'react-i18next';
 import type { ApiBody } from '../../types/daemon';
 import { safeShowToast } from '../../utils/helpers';
 import { Icon } from '../Icon';
 import { SabaFail } from '../ui/SabaArt';
 import { SabaSpinner, SabaToggle } from '../ui/SabaUI';
+import { LinkedText } from '../ui/ScreenLink';
 import CustomDropdown from '../CustomDropdown/CustomDropdown';
 import {
     AMBIENT_MINUTES,
@@ -54,6 +56,23 @@ export function ChatbotGuildTab({ node }: ChatbotGuildTabProps) {
     useEffect(() => {
         load();
     }, [load]);
+    // 잔액을 알려 주는 제공사인지 (OpenAI 등은 모른다: 그때는 내가 정한 토큰 한도로 알린다)
+    const hasKey = !!data?.hasApiKey;
+    const [credit, setCredit] = useState<{ provider: string; balanceSupported: boolean } | null>(null);
+    useEffect(() => {
+        if (!hasKey || !window.api?.chatbotCredit) return;
+        let alive = true;
+        window.api
+            .chatbotCredit(guildId)
+            .then((r) => {
+                if (alive && r?.provider && typeof r.balanceSupported === 'boolean')
+                    setCredit({ provider: r.provider, balanceSupported: r.balanceSupported });
+            })
+            .catch(() => {});
+        return () => {
+            alive = false;
+        };
+    }, [guildId, hasKey]);
 
     // 아직 서버마다 옮기지 않은 옛 공통 값 (데몬이 서버 목록을 받으면 옮긴다)
     const legacy = data?.settings || {};
@@ -76,6 +95,11 @@ export function ChatbotGuildTab({ node }: ChatbotGuildTabProps) {
     const badMemo = draft.memo.length > MEMO_MAX;
     // 토큰 한도는 1 이상 정수, 잔액 금액은 0 보다 큰 수 (비우면 끔)
     const badLimit = draft.tokenLimit != null && !(Number.isInteger(draft.tokenLimit) && draft.tokenLimit >= 1);
+    const noBalance = credit?.balanceSupported === false;
+    const providerName = credit
+        ? ((PROVIDER_BRANDS[credit.provider] ?? PROVIDER_BRANDS[credit.provider.replace(/-cn$/, '')])?.name ??
+          credit.provider)
+        : '';
     const badBalance = draft.balanceAlert != null && !(draft.balanceAlert > 0 && draft.balanceAlert <= 1e9);
     const dirty = !same(saved, draft);
 
@@ -180,7 +204,9 @@ export function ChatbotGuildTab({ node }: ChatbotGuildTabProps) {
     const enabledLabel = t('chatbot.guild_enabled');
     return (
         <div className="dc-tab">
-            <p className="dc-card-desc">{t('chatbot.guild_desc')}</p>
+            <p className="dc-card-desc">
+                <LinkedText i18nKey="chatbot.guild_desc" to="discord/saba" />
+            </p>
             {!data.hasApiKey && (
                 <p className="dc-field-error">
                     <Icon name="info" size="xs" /> {t('chatbot.key_needed')}
@@ -198,7 +224,9 @@ export function ChatbotGuildTab({ node }: ChatbotGuildTabProps) {
                         onChange={(v) => set({ enabled: v })}
                     />
                 </div>
-                <p className="dc-hint">{t('chatbot.channels_moved')}</p>
+                <p className="dc-hint">
+                    <LinkedText i18nKey="chatbot.channels_moved" to={`discord/${node.guildId}/moderation/channels`} />
+                </p>
             </section>
 
             <section className="dc-card">
@@ -206,7 +234,9 @@ export function ChatbotGuildTab({ node }: ChatbotGuildTabProps) {
                     <h2>{t('chatbot.basic_title')}</h2>
                 </div>
                 {selectField('effort', t('chatbot.effort'), t('chatbot.effort_hint'), effortOptions)}
-                <p className="dc-hint">{t('chatbot.prefix_calls_guild')}</p>
+                <p className="dc-hint">
+                    <LinkedText i18nKey="chatbot.prefix_calls_guild" to={`discord/${node.guildId}/bot`} />
+                </p>
                 <div className="cb-toggles">{toggleRow('memory', t('chatbot.memory'), t('chatbot.memory_hint'))}</div>
             </section>
 
@@ -225,11 +255,25 @@ export function ChatbotGuildTab({ node }: ChatbotGuildTabProps) {
                     <h2>{t('chatbot.token_alert_title')}</h2>
                 </div>
                 <p className="dc-card-desc">{t('chatbot.token_alert_desc')}</p>
-                {numberField('tokenLimit', t('chatbot.token_limit'), t('chatbot.token_limit_hint'), 1, badLimit)}
+                <MillionTokensField
+                    label={t('chatbot.token_limit')}
+                    unit={t('chatbot.token_limit_unit')}
+                    hint={
+                        noBalance
+                            ? `${t('chatbot.token_limit_hint')} ${t('chatbot.token_limit_no_balance', { provider: providerName })}`
+                            : t('chatbot.token_limit_hint')
+                    }
+                    placeholder={t('chatbot.alert_off')}
+                    error={badLimit ? t('chatbot.token_limit_invalid') : null}
+                    tokens={draft.tokenLimit}
+                    onChange={(tokenLimit) => set({ tokenLimit })}
+                />
                 {numberField(
                     'balanceAlert',
                     t('chatbot.balance_alert'),
-                    t('chatbot.balance_alert_hint'),
+                    noBalance
+                        ? t('chatbot.balance_alert_unsupported', { provider: providerName })
+                        : t('chatbot.balance_alert_hint'),
                     0.01,
                     badBalance,
                 )}
@@ -346,5 +390,52 @@ export function ChatbotGuildTab({ node }: ChatbotGuildTabProps) {
                 onSave={save}
             />
         </div>
+    );
+}
+
+interface MillionTokensFieldProps {
+    label: string;
+    unit: string;
+    hint: ReactNode;
+    placeholder: string;
+    error: string | null;
+    tokens: number | null;
+    onChange: (tokens: number | null) => void;
+}
+
+const MILLION = 1_000_000;
+
+/** 토큰 한도는 백만 단위로 적는다 (저장은 토큰 수 정수 `tokenLimit`). 쓰는 동안의 글자는 그대로 둔다 ("1." 등) */
+function MillionTokensField({ label, unit, hint, placeholder, error, tokens, onChange }: MillionTokensFieldProps) {
+    const shown = tokens == null ? '' : String(tokens / MILLION);
+    const [text, setText] = useState(shown);
+    // 저장된 값이 밖에서 바뀌면(불러오기·저장 뒤) 따라간다
+    useEffect(() => {
+        setText((cur) => (cur !== '' && Math.round(Number(cur) * MILLION) === tokens ? cur : shown));
+    }, [shown, tokens]);
+    return (
+        <label className="mt-field">
+            <span>{label}</span>
+            <span className="mt-inline">
+                <input
+                    className="input mt-num"
+                    type="number"
+                    min={0.1}
+                    step={0.1}
+                    value={text}
+                    aria-label={label}
+                    placeholder={placeholder}
+                    onChange={(e) => {
+                        const v = e.target.value;
+                        setText(v);
+                        // 0 이하·숫자 아님은 0으로 두어 검사가 잡게 한다
+                        onChange(v === '' ? null : Math.max(0, Math.round(Number(v) * MILLION) || 0));
+                    }}
+                />
+                <span className="muted">{unit}</span>
+            </span>
+            {hint && <span className="cb-hint">{hint}</span>}
+            {error && <span className="dc-field-error">{error}</span>}
+        </label>
     );
 }

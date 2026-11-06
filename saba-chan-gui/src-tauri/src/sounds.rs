@@ -107,6 +107,11 @@ fn enabled(settings: &Value, cue: Cue) -> bool {
     sounds["enabled"] != json!(false) && sounds[cue.setting_key()] != json!(false)
 }
 
+/// 같은 일로 앱 효과음이 울리면 OS 알림은 소리 없이 띄운다 (두 소리가 겹치지 않게)
+pub fn toast_silent(settings: &Value, cue: Option<Cue>) -> bool {
+    cue.is_some_and(|cue| enabled(settings, cue))
+}
+
 pub fn play(app: &AppHandle, cue: Cue) {
     if !enabled(&app.state::<AppState>().settings(), cue) {
         return tracing::info!("[Sound] {:?} — turned off in settings", cue);
@@ -283,6 +288,15 @@ mod tests {
         assert!(!enabled(&install_off, Cue::InstallFailed));
         let all_off = json!({"sounds": {"enabled": false, "update": true}});
         assert!(!enabled(&all_off, Cue::UpdateAvailable));
+    }
+
+    #[test]
+    fn os_notification_is_silent_only_when_our_sound_plays_with_it() {
+        let on = json!({});
+        assert!(toast_silent(&on, Some(Cue::Crashed)), "앱 효과음과 겹치면 OS 알림음은 끈다");
+        assert!(!toast_silent(&on, None), "효과음이 없는 알림은 OS 알림음을 낸다");
+        let crash_off = json!({"sounds": {"crash": false}});
+        assert!(!toast_silent(&crash_off, Some(Cue::Crashed)), "효과음을 껐으면 OS 알림음은 남긴다");
     }
 
     #[test]

@@ -1,6 +1,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::RwLock;
+use std::sync::{Arc, RwLock};
 use std::io::Read;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
@@ -46,6 +46,10 @@ pub struct ModuleMetadata {
     /// [config] announce_command — 게임 안 공지에 쓰는 `[commands.fields]` 이름 (`message` 입력 하나). 예약 재시작 예고·공지(A3)용
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub announce_command: Option<String>,
+    /// [config] kick_command — 플레이어를 내보내는 `[commands.fields]` 이름 (첫 입력 닉네임, 둘째 입력이 있으면 이유).
+    /// 조작 가능한 사람만 접속(`crate::controllers`)이 쓴다
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kick_command: Option<String>,
     /// [backup] 월드·세이브 백업 선언 (A2). 없으면 이 모듈은 백업을 지원하지 않는다
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub backup: Option<ModuleBackup>,
@@ -993,6 +997,9 @@ struct ConfigSection {
     /// 게임 안 공지에 쓰는 `[commands.fields]` 이름 (`message` 입력 하나)
     #[serde(default)]
     announce_command: Option<String>,
+    /// 플레이어를 내보내는 `[commands.fields]` 이름 (첫 입력 닉네임, 둘째 입력이 있으면 이유)
+    #[serde(default)]
+    kick_command: Option<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -1432,6 +1439,7 @@ impl ModuleToml {
             stop_command: self.config.as_ref().and_then(|c| c.stop_command.clone()),
             stop_timeout: self.config.as_ref().and_then(|c| c.stop_timeout),
             announce_command: self.config.as_ref().and_then(|c| c.announce_command.clone()),
+            kick_command: self.config.as_ref().and_then(|c| c.kick_command.clone()),
             backup: self.backup,
             permissions: self.permissions,
             interaction_mode: self.protocols.as_ref().and_then(|p| p.interaction_mode.clone()),
@@ -1951,6 +1959,7 @@ impl ModuleToml {
         let named = |name: &str| self.commands.iter().flat_map(|c| &c.fields).any(|f| f.name == name);
         let refs = [
             ("config.announce_command", self.config.as_ref().and_then(|c| c.announce_command.as_deref())),
+            ("config.kick_command", self.config.as_ref().and_then(|c| c.kick_command.as_deref())),
             ("backup.save_command", self.backup.as_ref().and_then(|b| b.save_command.as_deref())),
             ("backup.pause_command", self.backup.as_ref().and_then(|b| b.pause_command.as_deref())),
             ("backup.resume_command", self.backup.as_ref().and_then(|b| b.resume_command.as_deref())),
@@ -2134,7 +2143,8 @@ pub fn module_json_schema() -> serde_json::Value {
 
 pub struct ModuleLoader {
     modules_dir: String,
-    cached_modules: RwLock<Option<Vec<LoadedModule>>>,
+    /// 자주 부르는 곳(서버 목록 2초, 콘솔 0.5초, 감시 주기)이 목록을 복제하지 않고 함께 본다
+    cached_modules: RwLock<Option<Arc<Vec<LoadedModule>>>>,
     /// 마지막 탐색에서 로드하지 못한 모듈
     load_errors: RwLock<Vec<ModuleLoadError>>,
 }
@@ -2172,6 +2182,11 @@ impl ModuleLoader {
 
     /// 모듈 디렉터리에서 모든 사용 가능한 모듈 발견 (ZIP 및 폴더 모두 지원)
     pub fn discover_modules(&self) -> Result<Vec<LoadedModule>> {
+        Ok(self.modules()?.as_ref().clone())
+    }
+
+    /// 캐시한 모듈 목록을 복제 없이 돌려준다. 캐시가 비었으면 모듈 폴더를 다시 읽는다
+    pub fn modules(&self) -> Result<Arc<Vec<LoadedModule>>> {
         // 캐시 확인
         if let Some(modules) = self.cached_modules.read().unwrap().as_ref() {
             return Ok(modules.clone());
@@ -2182,6 +2197,7 @@ impl ModuleLoader {
 
         if !Path::new(&self.modules_dir).exists() {
             tracing::warn!("Modules directory does not exist: {}", self.modules_dir);
+            let modules = Arc::new(modules);
             *self.cached_modules.write().unwrap() = Some(modules.clone());
             return Ok(modules);
         }
@@ -2239,6 +2255,7 @@ impl ModuleLoader {
             }
         }
 
+        let modules = Arc::new(modules);
         *self.cached_modules.write().unwrap() = Some(modules.clone());
         *self.load_errors.write().unwrap() = errors;
         Ok(modules)
@@ -2320,7 +2337,7 @@ impl ModuleLoader {
 
     /// 모듈 이름으로 모듈 조회
     pub fn get_module(&self, name: &str) -> Result<LoadedModule> {
-        let modules = self.discover_modules()?;
+        let modules = self.modules()?;
         modules
             .iter()
             .find(|m| m.metadata.name == name)
@@ -2361,6 +2378,27 @@ mod tests {
         let rules = &meta.syntax_highlight.unwrap().rules;
         assert_eq!((rules[0].underline, rules[0].priority, rules[0].background.as_deref()), (false, 0, None));
         assert_eq!((rules[1].underline, rules[1].priority, rules[1].background.as_deref()), (true, 5, Some("dim")));
+    }
+
+    /// 서버 목록·콘솔·감시 주기가 자주 부른다: 캐시한 목록을 복제하지 않고 함께 쓰고, 캐시를 비우면 다시 읽는다
+    #[test]
+    fn cached_modules_are_shared_until_the_cache_is_cleared() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(tmp.path().join("plain")).unwrap();
+        std::fs::write(
+            tmp.path().join("plain").join("module.toml"),
+            "[module]\nschema_version = 1\nname = \"plain\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n",
+        )
+        .unwrap();
+        std::fs::write(tmp.path().join("plain").join("lifecycle.py"), "").unwrap();
+        let loader = ModuleLoader::new(tmp.path().to_str().unwrap());
+        let first = loader.modules().unwrap();
+        assert!(Arc::ptr_eq(&first, &loader.modules().unwrap()));
+        assert_eq!(loader.get_module("plain").unwrap().metadata.name, "plain");
+        loader.invalidate_cache();
+        let reread = loader.modules().unwrap();
+        assert!(!Arc::ptr_eq(&first, &reread));
+        assert_eq!(reread.len(), 1);
     }
 
     #[test]
@@ -3236,6 +3274,14 @@ player_leave_patterns = ['^\[\d{2}:\d{2}:\d{2}(?:\] \[[^\]]*/| )INFO\](?: \[[^\]
         assert_eq!(meta.announce_command.as_deref(), Some("say"));
         let typo = toml.replace("save_command = \"save-all\"", "save_command = \"save_all\"");
         assert!(parse_module_toml(&typo).unwrap_err().to_string().contains("backup.save_command"));
+    }
+
+    #[test]
+    fn schema_v1_reads_kick_command_and_checks_it_names_a_command() {
+        let toml = format!("{V1}\n[config]\nkick_command = \"kick\"\n\n[[commands.fields]]\nname = \"kick\"\n");
+        assert_eq!(parse_module_toml(&toml).unwrap().kick_command.as_deref(), Some("kick"));
+        let typo = toml.replace("kick_command = \"kick\"", "kick_command = \"kik\"");
+        assert!(parse_module_toml(&typo).unwrap_err().to_string().contains("config.kick_command"));
     }
 
     #[test]

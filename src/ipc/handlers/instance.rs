@@ -92,7 +92,8 @@ pub async fn create_instance(
 ) -> axum::response::Response {
     // 요청이 끊겨도(클라이언트 시간 초과) 만들기를 끝까지 마친다: 가져오기는 큰 서버 폴더에 권한을 주는 데 수십 초가 들 수 있고,
     // 중간에 멈추면 인스턴스만 남고 설정 가져오기·원래 설정 보관이 빠진다
-    match tokio::spawn(create_instance_to_the_end(state, payload)).await {
+    // 따로 돌려도 요청의 출처·언어는 지닌다 (설치 진행 문구가 요청한 화면 언어로 오게)
+    match crate::audit::spawn(create_instance_to_the_end(state, payload)).await {
         Ok(response) => response,
         Err(e) => {
             tracing::error!("Instance creation task failed: {}", e);
@@ -159,6 +160,11 @@ async fn create_instance_inner(state: IPCServer, payload: Value, dry_run: bool) 
         if name_taken(name) && !dry_run {
             let error = json!({ "success": false, "error": format!("An instance named '{}' already exists", name), "error_code": "name_taken" });
             return (StatusCode::CONFLICT, Json(error)).into_response();
+        }
+        // 문장 명령이 부르는 말을 쉼표로 나누므로 이름에 쉼표를 두지 않는다 (rename과 같은 400)
+        let comma = name.contains(crate::chat::words::is_comma);
+        if comma && !dry_run {
+            return invalid_name().into_response();
         }
         // 고른 버전(없으면 최신)과 실행 방식(`managed_start`, 없으면 데몬 기본)
         let chosen_version = match requested_version(&payload) {
@@ -534,9 +540,14 @@ async fn create_instance_inner(state: IPCServer, payload: Value, dry_run: bool) 
                 "in_use_by": port_users.get(&port).cloned().unwrap_or_default(),
                 "reserved": crate::validator::port_reserved_by_windows(port),
             })).collect();
+            // 이름에 쓸 수 없는 글자가 있을 때만 `invalid`를 싣는다
+            let mut name_check = json!({ "value": name, "taken": name_taken(name), "suggested": suggested });
+            if comma {
+                name_check["invalid"] = json!("comma");
+            }
             return (StatusCode::OK, Json(json!({
                 "success": true,
-                "name": { "value": name, "taken": name_taken(name), "suggested": suggested },
+                "name": name_check,
                 "folder": {
                     "custom": custom_folder,
                     "path": instance.working_dir.as_deref().filter(|_| custom_folder),
@@ -670,7 +681,7 @@ async fn create_instance_inner(state: IPCServer, payload: Value, dry_run: bool) 
                         // Drop supervisor lock before spawning background task
                         drop(supervisor);
 
-                        tokio::spawn(async move {
+                        crate::audit::spawn(async move {
                             let mut install_guard = install_guard;
                             let leftovers: Option<InstallStaging>;
                             // ── Phase 1: supervisor lock을 최소 시간만 잡고 모듈 경로 복사 ──
@@ -1537,8 +1548,14 @@ async fn delete_instance_held(state: IPCServer, id: String, keep_settings: bool)
     }
 }
 
+/// 쉼표가 든 서버 이름 (만들기·이름 바꾸기 공통 400 `invalid_name`)
+fn invalid_name() -> (StatusCode, Json<Value>) {
+    let error = json!({ "success": false, "error": "A server name cannot contain a comma", "error_code": "invalid_name", "fields": [{ "field": "name" }] });
+    (StatusCode::BAD_REQUEST, Json(error))
+}
+
 /// POST /api/instance/:id/rename — 이름 바꾸기 (`{name}`). 실행 중이면 409 `server_running`,
-/// 같은 이름이 있으면 409 `name_taken`. 응답 `{success, id, name, previous}`
+/// 같은 이름이 있으면 409 `name_taken`, 쉼표가 있으면 400 `invalid_name`. 응답 `{success, id, name, previous}`
 pub async fn rename_instance(
     State(state): State<IPCServer>,
     Path(id): Path<String>,
@@ -1550,6 +1567,9 @@ pub async fn rename_instance(
     let Some(new_name) = body.get("name").and_then(|v| v.as_str()).map(str::trim).filter(|n| !n.is_empty()) else {
         return fail(StatusCode::BAD_REQUEST, "Missing 'name'".into(), "invalid_request");
     };
+    if new_name.contains(crate::chat::words::is_comma) {
+        return invalid_name().into_response();
+    }
     // 설치·업데이트·복원 중에는 바꾸지 않는다: 진행 표시와 실패 정리가 이름으로 이어진다
     let Some(_guard) = super::backup::InstanceLock::take_for_writes(&id).await else {
         return super::backup::instance_busy();
@@ -1670,9 +1690,9 @@ pub(crate) fn stored_setting(view: &Value, instance: &crate::instance::ServerIns
 }
 
 /// PATCH가 모듈 설정이 아니라 인스턴스 필드로 받는 이름 (그 밖의 이름은 `module_settings`로):
-/// 공통 칸(`constants::INSTANCE_FIELDS`)과 익스텐션 값, 받지만 쓰지 않는 이름
+/// 공통 칸(`constants::INSTANCE_FIELDS`)과 익스텐션 값·조작 가능 명단, 받지만 쓰지 않는 이름
 fn is_known_field(key: &str) -> bool {
-    saba_chan_updater_lib::constants::INSTANCE_FIELDS.iter().any(|(k, _)| *k == key) || key == "extension_data" || IGNORED_FIELDS.contains(&key)
+    saba_chan_updater_lib::constants::INSTANCE_FIELDS.iter().any(|(k, _)| *k == key) || matches!(key, "extension_data" | "controllers") || IGNORED_FIELDS.contains(&key)
 }
 
 /// 받지만 쓰지 않는 이름 (응답 `ignored`).
@@ -1930,6 +1950,22 @@ pub async fn update_instance_settings(
     if let Err(e) = updated.game_chat().check() {
         return game_chat_error(e, "game_chat_keyword");
     }
+    // 조작 가능: 명단과 "조작 가능한 사람만 접속" (명단이 비면 켤 수 없다)
+    if let Some(list) = settings.get("controllers") {
+        match crate::controllers::parse(list) {
+            Ok(list) => updated.controllers = list,
+            Err(e) => return game_chat_error(e, "controllers"),
+        }
+    }
+    if let Some(only) = settings.get("controllers_only") {
+        match only.as_bool() {
+            Some(only) => updated.controllers_only = only,
+            None => return game_chat_error("controllers_only must be true or false", "controllers_only"),
+        }
+    }
+    if let Err(e) = crate::controllers::check(&updated.controllers, updated.controllers_only) {
+        return game_chat_error(e, "controllers_only");
+    }
     // 정지 대기 시간(초): 비우거나(null·"") 0이면 모듈 값을 쓴다
     let stop_timeout = match settings.get("stop_timeout").map(stop_timeout_from) {
         Some(Err(())) => {
@@ -2087,7 +2123,7 @@ pub async fn update_instance_settings(
     // 모듈이 사바쨩 설정으로 선언한 값은 뺀다
     const DAEMON_FIELDS: &[&str] = &[
         "protocol_mode", "executable_path", "working_dir", "server_version", "extension_data", "extra_args", "memory_limit_mb",
-        "game_chat", "game_chat_keyword", "rest_host", "rest_port", "rest_username", "rest_password", "rcon_port", "rcon_password", "enable_rcon",
+        "game_chat", "game_chat_keyword", "controllers", "controllers_only", "rest_host", "rest_port", "rest_username", "rest_password", "rcon_port", "rcon_password", "enable_rcon",
     ];
     let saba_fields: Vec<String> = supervisor.module_loader.get_module(&updated.module_name).ok()
         .and_then(|m| m.metadata.settings.as_ref().map(|s| s.saba_fields().into_iter().map(str::to_string).collect()))
@@ -2418,7 +2454,8 @@ pub async fn begin_server_update(state: &IPCServer, id: &str) -> Result<tokio::t
 
     let backup_state = state.clone();
     let backup_id = id.to_string();
-    Ok(tokio::spawn(async move {
+    // 요청의 출처·언어를 지닌 채 돈다 (모듈 진행 문구가 요청한 화면 언어로)
+    Ok(crate::audit::spawn(async move {
         let _guard = guard;
         let _others = others;
         // ── Phase 0: 업데이트 전 백업 (A2). 백업할 것이 없으면 그냥 진행, 실패하면 업데이트하지 않는다 ──
@@ -3072,6 +3109,32 @@ mod tests {
         assert!(progress.error.is_some());
     }
 
+    /// 설치는 요청이 끝난 뒤에도 따로 돌지만, 모듈 문구는 만들기를 요청한 화면의 언어로 온다 (진행 문구가 영어로 나오던 문제)
+    #[tokio::test]
+    async fn the_install_speaks_the_language_of_the_request() {
+        use axum::{extract::State, Json};
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("module.toml"), "[module]\nschema_version = 1\nname = 'game'\nversion = '1.0.0'\nentry = 'lifecycle.py'\n\n[install]\nmethod = 'manual'\n").unwrap();
+        std::fs::write(
+            dir.join("lifecycle.py"),
+            "import json, os, sys\nif sys.argv[1] == 'functions':\n    print(json.dumps({'success': True, 'functions': ['install_server']}))\nelse:\n    print(json.dumps({'success': False, 'message': 'lang=' + os.environ.get('SABA_LANG', '')}))\n",
+        )
+        .unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        for module in sup.module_loader.discover_modules().unwrap() { crate::sandbox::consent_test_component(std::path::Path::new(&module.entry_path())); }
+        sup.initialize().await.unwrap();
+        let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let origin = crate::audit::Origin { lang: Some("zh-TW".into()), ..crate::audit::Origin::new("gui") };
+        let request = super::create_instance(State(state.clone()), Json(serde_json::json!({"name":"g", "module_name":"game"})));
+        let response = crate::ipc::internal::into_internal(crate::audit::with_origin(origin, request).await).await;
+        assert_eq!(response.status.as_u16(), 201);
+        let progress = provisioned(&state, "g").await.unwrap();
+        assert!(progress.error.as_deref().unwrap_or_default().contains("lang=zh-TW"), "{progress:?}");
+    }
+
     use super::{memory_limit_from, stop_timeout_from};
     use serde_json::json;
 
@@ -3244,6 +3307,45 @@ mod tests {
         let twin = create(json!({ "name": "a", "module_name": "game" })).await;
         assert_eq!((twin.status.as_u16(), twin.body["error_code"].as_str()), (409, Some("name_taken")));
         assert_eq!(state.supervisor.read().await.instance_store.list().len(), 1, "the second server is not made");
+    }
+
+    /// 서버 이름의 쉼표는 받지 않는다: 문장 명령이 부르는 말을 쉼표로 나눈다 (사용자 지정 2026-11-06)
+    #[tokio::test]
+    async fn a_server_name_with_a_comma_is_refused() {
+        use axum::extract::{Path, State};
+        use axum::Json;
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("module.toml"), "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n").unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "").unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            modules.to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        for module in sup.module_loader.discover_modules().unwrap() { crate::sandbox::consent_test_component(std::path::Path::new(&module.entry_path())); }
+        sup.initialize().await.unwrap();
+        let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let create = |body: serde_json::Value| {
+            let state = state.clone();
+            async move { crate::ipc::internal::into_internal(super::create_instance(State(state), Json(body)).await).await }
+        };
+
+        let check = crate::ipc::internal::into_internal(super::check_new_instance(State(state.clone()), Json(json!({ "name": "우리, 마크", "module_name": "game" }))).await).await;
+        assert_eq!(check.body["name"]["invalid"], "comma", "{}", check.body);
+        for name in ["우리, 마크", "우리，마크", "우리、마크"] {
+            let refused = create(json!({ "name": name, "module_name": "game" })).await;
+            assert_eq!((refused.status.as_u16(), refused.body["error_code"].as_str()), (400, Some("invalid_name")), "{name}");
+        }
+        assert!(state.supervisor.read().await.instance_store.list().is_empty());
+
+        let made = create(json!({ "name": "우리 마크", "module_name": "game" })).await;
+        assert!(made.status.is_success(), "{:?}", made.body);
+        let id = made.body["id"].as_str().unwrap().to_string();
+        let renamed = crate::ipc::internal::into_internal(super::rename_instance(State(state.clone()), Path(id.clone()), Json(json!({ "name": "마크,서버" }))).await).await;
+        assert_eq!((renamed.status.as_u16(), renamed.body["error_code"].as_str()), (400, Some("invalid_name")));
+        assert_eq!(state.supervisor.read().await.instance_store.get(&id).unwrap().name, "우리 마크");
     }
 
     #[tokio::test]
@@ -4046,6 +4148,15 @@ mod tests {
         patch(json!({ "game_chat": "keyword", "game_chat_keyword": " !d " })).await;
         let stored = state.supervisor.read().await.instance_store.get(&id).cloned().unwrap();
         assert_eq!((stored.game_chat, stored.game_chat_keyword.as_str()), (crate::supervisor::game_chat::Mode::Keyword, "!d"));
+
+        // 조작 가능: 빈 명단으로는 "조작 가능한 사람만 접속"을 켤 수 없고, 겹친 닉네임은 거절한다
+        assert_eq!(patch(json!({ "controllers_only": true })).await.status, axum::http::StatusCode::BAD_REQUEST);
+        assert_eq!(patch(json!({ "controllers": [{ "name": "a" }, { "name": "A" }] })).await.status, axum::http::StatusCode::BAD_REQUEST);
+        let saved = patch(json!({ "controllers": [{ "name": " Steve ", "discord_id": "332007306403250178" }], "controllers_only": true })).await;
+        assert!(saved.status.is_success(), "{:?}", saved.body);
+        let stored = state.supervisor.read().await.instance_store.get(&id).cloned().unwrap();
+        assert_eq!((stored.controllers[0].name.as_str(), stored.controllers_only), ("Steve", true));
+        assert_eq!(patch(json!({ "controllers": [] })).await.status, axum::http::StatusCode::BAD_REQUEST, "emptying the list keeps the gate on");
     }
 
     /// 처음 설치(30분까지 걸린다)하는 동안 업데이트·삭제·복원이 같은 폴더에 끼어들지 못한다

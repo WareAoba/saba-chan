@@ -45,6 +45,14 @@ impl UpdateManager {
         }
         // 목록을 남긴 뒤 설치기로 같거나 더 새 판을 깐 키는 적용할 것이 없다 (실패로 남은 것까지 막지 않게)
         target_keys.retain(|k| !self.already_installed.contains(k));
+        // 적용 대상 목록이 일부만 고른 것이면 나머지는 받아 둔 채 다음 적용을 기다린다
+        let rest: Vec<String> = self
+            .status
+            .components
+            .iter()
+            .map(|c| c.component.manifest_key())
+            .filter(|k| !target_keys.contains(k))
+            .collect();
         let total = target_keys.len();
         let (applied, failed) = self
             .apply_target_keys(&target_keys, |i, key, done| {
@@ -67,7 +75,7 @@ impl UpdateManager {
             ..UpdateCompletionMarker::success(applied.clone())
         };
         marker.save().ok();
-        self.clear_pending_manifest();
+        self.finish_pending_manifest(&rest);
 
         if failed.is_empty() {
             let msg = if applied.is_empty() { "No updates to apply.".to_string() } else { format!("{} updates applied!", applied.len()) };

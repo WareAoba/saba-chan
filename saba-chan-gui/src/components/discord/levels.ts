@@ -1,8 +1,8 @@
 /**
  * 디스코드 권한 레벨 (데몬 P1 계약, integration/p1-permissions-contract.md).
  * 원본은 데몬 config.json의 nodeSettings[guildId]이고, GUI는 /api/permissions로만 읽고 쓴다.
- * 길드마다 단계 사다리(`ladder`, 높은 것부터)가 있다: 단계를 더하고(id ≥ 10, 이름) 순서를 바꾸고 지울 수 있다.
- * 소유자는 늘 맨 위, 금지는 늘 맨 아래다. 높고 낮음은 숫자가 아니라 사다리 순서다.
+ * 길드마다 단계 사다리(`ladder`, 높은 것부터)가 있다: 단계를 더하고(id ≥ 10, 이름) 이름·순서를 바꾸고 지울 수 있다.
+ * 소유자는 늘 맨 위, 금지는 늘 맨 아래고, 게스트와 함께 지울 수 없다. 높고 낮음은 숫자가 아니라 사다리 순서다.
  * 모든 함수는 새 객체를 돌려주고 인자를 바꾸지 않는다.
  */
 
@@ -44,6 +44,8 @@ export interface CommandItem {
     key?: string;
     keys?: string[];
     overridden?: boolean;
+    /** 시작·정지·재시작·백업 만들기: 레벨이 모자라도 그 인스턴스의 조작 가능 명단에 있으면 쓴다 */
+    controllers?: boolean;
     [key: string]: unknown;
 }
 
@@ -60,6 +62,8 @@ export interface StairChip {
     risk?: string;
     confirmRisk?: string | null;
     confirmMixed?: boolean;
+    /** 인스턴스마다 레벨이 다르다 (대표 칩만). 드롭다운은 한 레벨 대신 섞여 있다고 보인다 */
+    levelMixed?: boolean;
     kind?: string;
     fixed?: boolean;
     /** 계단 맨 아래의 help·list 칩 (실제 명령이 아니다) */
@@ -69,9 +73,12 @@ export interface StairChip {
     items: CommandItem[];
     overridden?: boolean;
     instance?: string;
+    /** 조작 가능 명단에 있는 사람도 쓴다 */
+    controllers?: boolean;
 }
 
 export const OWNER = 3;
+export const GUEST = 0;
 export const BANNED = -1;
 /** 기본 단계 (높은 것부터). 지운 기본 단계는 이 순서로 가까운 단계를 찾는다 */
 const BUILTIN = [3, 2, 1, 0, -1];
@@ -99,7 +106,7 @@ export const requirable = (perm: GuildPermissions | null | undefined) =>
         .map((l) => l.id as number)
         .filter((id) => id !== BANNED);
 
-/** 레벨 이름: 더한 단계는 그 이름, 기본 단계는 로케일 */
+/** 레벨 이름: 길드가 붙인 이름, 없으면(기본 단계) 로케일 */
 export function levelLabel(t: TFunction, perm: GuildPermissions | null | undefined, id: number | undefined) {
     const custom = ladderOf(perm).find((l) => l.id === id)?.name;
     return custom || t(`discord.level_${levelKey(id)}`);
@@ -124,8 +131,12 @@ export function addLevel(ladder: LadderLevel[], name: string) {
     return [ladder[0], { key: `new-${newKey}`, name: name.trim() }, ...ladder.slice(1)];
 }
 
+/** 지울 수 있는 칸: 소유자·금지·게스트가 아닌 칸 (사용자 지정 2026-11-06) */
+export const removable = (ladder: LadderLevel[], index: number) =>
+    movable(ladder, index) && ladder[index]?.id !== GUEST;
+
 export const removeLevel = (ladder: LadderLevel[], index: number) =>
-    movable(ladder, index) ? ladder.filter((_, i) => i !== index) : ladder;
+    removable(ladder, index) ? ladder.filter((_, i) => i !== index) : ladder;
 
 export const renameLevel = (ladder: LadderLevel[], index: number, name: string) =>
     ladder.map((l, i) => (i === index ? { ...l, name } : l));
@@ -135,23 +146,23 @@ export const MAX_CUSTOM = 20;
 export const isCustomLevel = (l: LadderLevel) => l.id === undefined || !BUILTIN.includes(l.id);
 export const canAddLevel = (ladder: LadderLevel[]) => ladder.filter(isCustomLevel).length < MAX_CUSTOM;
 
-/** 데몬 check_ladder 와 같은 규칙: 더한 단계 이름 1~32자, 20개까지 */
+/** 데몬 check_ladder 와 같은 규칙: 더한 단계 이름 1~32자, 20개까지. 기본 단계 이름은 비워도 된다 (로케일 이름) */
 export function ladderValid(ladder: LadderLevel[]) {
     const customs = ladder.filter(isCustomLevel);
     return (
         customs.length <= MAX_CUSTOM &&
-        customs.every((l) => {
-            const name = String(l.name ?? '').trim();
-            return name.length > 0 && name.length <= MAX_NAME;
+        ladder.every((l) => {
+            const name = [...String(l.name ?? '').trim()];
+            return (name.length > 0 || !isCustomLevel(l)) && name.length <= MAX_NAME;
         })
     );
 }
 
-/** 데몬에 보낼 모양: 기본 단계는 {id}, 더한 단계는 {id?, name} */
+/** 데몬에 보낼 모양: 기본 단계는 {id, name?}(이름을 비우면 로케일 이름), 더한 단계는 {id?, name} */
 export function ladderPatch(ladder: LadderLevel[]) {
     return ladder.map((l) => {
-        if (l.id !== undefined && BUILTIN.includes(l.id)) return { id: l.id };
         const name = String(l.name ?? '').trim();
+        if (l.id !== undefined && BUILTIN.includes(l.id)) return name ? { id: l.id, name } : { id: l.id };
         return l.id === undefined ? { name } : { id: l.id, name };
     });
 }
@@ -206,8 +217,9 @@ export function stairChips(board: CommandBoard | null | undefined, view = ALL_IN
             kind: head.kind,
             fixed: head.fixed,
             name: head.name,
+            controllers: head.controllers === true,
         };
-        chips.push({ ...chip, id, level, items: list, overridden: main.some((i) => i.overridden) });
+        chips.push({ ...chip, id, level, levelMixed: byLevel.size > 1, items: list, overridden: main.some((i) => i.overridden) });
         for (const item of list.filter((i) => i.level !== level)) {
             chips.push({
                 ...chip,
@@ -216,6 +228,7 @@ export function stairChips(board: CommandBoard | null | undefined, view = ALL_IN
                 items: [item],
                 confirmRisk: item.confirmRisk || item.risk,
                 confirmMixed: false,
+                levelMixed: false,
                 instance: item.instance,
                 overridden: item.overridden,
             });
@@ -239,6 +252,45 @@ export function levelPatch(items: CommandItem[], level: number) {
     }
     return out;
 }
+
+/** 조작 가능 줄 (사용자 지정 2026-11-06): 조작 가능 명단이 쓰는 명령(시작·정지·재시작·백업 만들기)의 대표 레벨.
+ * 사다리에서 이 레벨 칸 바로 아래에 줄을 긋는다. 줄을 따르는 명령은 대표 레벨인 것이고, 나머지(`apart`)는 따로 정한 것이다 */
+export function controllerLine(board: CommandBoard | null | undefined) {
+    const items = (board?.items || []).filter((i) => i.controllers === true && !i.fixed);
+    if (items.length === 0) return null;
+    const counts = new Map<number, number>();
+    for (const item of items) counts.set(item.level, (counts.get(item.level) || 0) + 1);
+    const [[level]] = [...counts].sort((a, b) => b[1] - a[1]);
+    const followers = items.filter((i) => i.level === level);
+    return { level, followers, apart: items.length - followers.length };
+}
+
+/** 줄을 놓을 수 있는 칸: 저장된 레벨(새 칸은 저장한 뒤)이고 금지가 아닌 칸 */
+const lineSlot = (l: LadderLevel | undefined) => l?.id !== undefined && l.id !== BANNED;
+
+/**
+ * 줄이 그어진 칸의 자리 (사다리 초안). 초안에서 지운 칸이면 저장된 사다리에서 그 위로 처음 남은 칸
+ * (데몬은 지운 레벨의 명령 요구 레벨을 바로 위로 옮긴다)
+ */
+export function lineAt(saved: LadderLevel[], draft: LadderLevel[], level: number) {
+    const at = draft.findIndex((l) => l.id === level);
+    if (at >= 0) return at;
+    for (let i = saved.findIndex((l) => l.id === level); i >= 0; i--) {
+        const kept = draft.findIndex((l) => l.id !== undefined && l.id === saved[i].id);
+        if (kept >= 0) return kept;
+    }
+    return 0;
+}
+
+/** 줄을 `at` 칸에서 위(-1)·아래(1)로 한 칸 옮긴 자리. 더 못 가면 null */
+export function lineStep(draft: LadderLevel[], at: number, dir: -1 | 1) {
+    for (let i = at + dir; i >= 0 && i < draft.length; i += dir) if (lineSlot(draft[i])) return i;
+    return null;
+}
+
+/** 줄을 `index` 칸에 놓을 때의 자리: 놓을 수 없는 칸(금지·새 칸)이면 그 위로 처음 놓을 수 있는 칸 */
+export const lineDrop = (draft: LadderLevel[], index: number) =>
+    lineSlot(draft[index]) ? index : (lineStep(draft, index, -1) ?? 0);
 
 /** 디스코드 되묻기 단계 */
 export const RISKS = ['safe', 'caution', 'danger'];

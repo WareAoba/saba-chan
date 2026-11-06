@@ -103,6 +103,38 @@ impl UpdateManager {
         Ok(count)
     }
 
+    /// 적용이 끝난 뒤: `keep`(이번에 고르지 않은 키)만 받아 둔 목록에 남기고 나머지는 지운다.
+    /// `keep`이 비면 목록과 받아 둔 압축 파일을 모두 지운다
+    pub fn finish_pending_manifest(&mut self, keep: &[String]) {
+        if keep.is_empty() {
+            self.clear_pending_manifest();
+            return;
+        }
+        self.status.components.retain(|c| keep.contains(&c.component.manifest_key()));
+        if let Err(e) = self.save_pending_manifest() {
+            tracing::warn!("[UpdateManager] Could not keep the pending list ({}); clearing it", e);
+            self.clear_pending_manifest();
+            return;
+        }
+        let _ = std::fs::remove_file(self.staging_dir.join("apply-targets.json"));
+        // 남긴 항목의 압축 파일은 두고, 적용했거나 실패한 것의 파일만 지운다
+        let kept: Vec<PathBuf> = self
+            .status
+            .components
+            .iter()
+            .filter_map(|c| c.downloaded_path.as_ref().map(PathBuf::from))
+            .collect();
+        if let Ok(entries) = std::fs::read_dir(&self.staging_dir) {
+            for path in entries.flatten().map(|e| e.path()).filter(|p| p.is_file()) {
+                let name = path.file_name().map(|n| n.to_string_lossy().to_lowercase()).unwrap_or_default();
+                let archive = name.ends_with(".zip") || name.ends_with(".tar.gz") || name.ends_with(".part") || name.ends_with(".partial");
+                if archive && !kept.contains(&path) {
+                    let _ = std::fs::remove_file(&path);
+                }
+            }
+        }
+    }
+
     /// pending 매니페스트와 받아 둔 압축 파일 삭제 (적용이 끝난 뒤, 성공·실패 모두)
     pub fn clear_pending_manifest(&self) {
         let manifest_path = self.staging_dir.join("pending.json");

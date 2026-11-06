@@ -11,15 +11,14 @@
     "no_modules": "Keine",
     "module_title": "**{{module}}-Befehle**",
     "available_commands": "{{commands}}",
-    "usage_format": "`{{prefix}} <Modul> <Befehl>`",
-    "modules_header": "📦 **Module:**",
+    "usage_format": "`{{prefix}} <Server> <Befehl>`",
+    "modules_header": "🎮 **Server:**",
     "slash_hint": "💡 Neustart, Backups und Portprüfung gehen wie `<Server> Neustart`. Rechte, Sprache, Schlafmodus, Web und Updates sind Slash-Befehle (`/`)."
   },
   "modules": {
     "help_start": "Server starten",
     "help_stop": "Server stoppen",
     "help_status": "Server-Status überprüfen",
-    "help_rest_title": "**REST-Befehle:**",
     "enter_command": "Gib einen Befehl ein."
   },
   "list": {
@@ -29,22 +28,26 @@
   },
   "status": {
     "running": "🟢 Läuft",
+    "starting": "🟡 Startet",
     "stopped": "⚪ Gestoppt"
   },
   "server": {
     "start_request": "⏳ Starten von **{{name}}**-Server...",
-    "start_complete": "✅ Start-Anfrage für **{{name}}** abgeschlossen!",
+    "start_complete": "✅ **{{name}}** · Starten",
     "already_running": "ℹ️ **{{name}}** läuft bereits.",
     "stop_request": "⏳ Stoppen von **{{name}}**-Server...",
-    "stop_complete": "✅ Stop-Anfrage für **{{name}}** abgeschlossen!",
+    "stop_complete": "✅ **{{name}}** · Stoppen",
     "graceful_stop_unavailable": "⚠️ **{{name}}** wurde nicht gestoppt: Es gibt keinen Weg (Konsole oder REST), zu speichern und zu beenden. Um ihn ohne Speichern zu beenden, wähle in saba-chan auf diesem PC einen erzwungenen Stopp.",
-    "status_check": "📊 Status von **{{name}}**: {{status}} {{pid_info}}",
+    "status_check": "📊 **{{name}}** · {{status}}",
+    "uptime_hm": "läuft seit {{h}} Std. {{m}} Min.",
+    "uptime_m": "läuft seit {{m}} Min.",
+    "still_starting": "⏳ **{{name}}** startet noch. Frag gleich noch einmal.",
     "not_found": "❌ Kein Server gefunden für Modul \"{{alias}}\" ({{resolved}})",
     "not_running": "❌ **{{name}}**: {{error}}",
     "not_running_default": "Der Server läuft nicht. Starten Sie zuerst den Server",
     "module_missing": "❌ Das Modul '{{module}}' ist nicht installiert. Dieser Server kann nicht gesteuert werden.",
     "port_moved": "🔀 Windows hat den REST-Port {{from}} reserviert, daher wurde er auf {{to}} geändert.",
-    "rest_port_closed": "REST port {{port}} is not accepting connections"
+    "rest_port_closed": "REST-Port {{port}} nimmt keine Verbindungen an"
   },
   "command": {
     "executing": "⏳ **{{name}}** - `{{command}}` wird ausgeführt...",
@@ -82,6 +85,7 @@
     "alias_conflict": "❌ Alias '{{alias}}' ist mehrdeutig. Er passt auf mehrere Module: {{modules}}. Verwende einen spezifischeren Alias.",
     "multiple_instances": "⚠️ Mehrere '{{module}}'-Instanzen vorhanden. Verwende den Instanznamen statt des Modul-Alias.",
     "danger_needs_name": "⚠️ Gefährliche Befehle laufen nicht über den Spielnamen. Rufe den Server mit seinem Namen '{{name}}' auf.",
+    "slash_only": "🔒 {{command}} sieht nur, wer fragt – deshalb gibt es das nur als Slash-Befehl. Tippe `/` und wähle **{{name}}** › {{command}}.",
     "auth_failed": "Authentifizierung fehlgeschlagen",
     "player_not_found": "Spieler nicht gefunden",
     "internal_server_error": "Interner Serverfehler",
@@ -95,6 +99,7 @@
     "unknown_input": "❌ Unbekannter Befehl.",
     "command_not_found": "❌ Befehl existiert nicht.",
     "permission_denied": "❌ Du hast keine Berechtigung, diesen Befehl zu verwenden.",
+    "permission_denied_controllers": "❌ Um diesen Server zu starten oder zu stoppen, musst du in der Saba-chan-App auf seiner Liste „Bediener“ stehen oder die für diesen Befehl festgelegte Stufe haben (standardmäßig Admin).",
     "local_single_guild_only": "⚠️ Der lokale Bot kann nur auf einem Server verwendet werden. Dieser Bot ist auf {{count}} Servern. Entferne ihn von den Servern, die du nicht nutzt."
   },
   "messages": {
@@ -476,5 +481,8 @@
   },
   "chatbot": {
     "memo_template": "<!-- Hinweiszeilen wie diese und leere Überschriften werden nicht an Sprechende Saba-chan geschickt. Fülle nur aus, was du brauchst. -->\n\n## Stimmung\n<!-- Beschreibe, wie hier geredet wird und wie derb Witze sein dürfen. Leer = Standardpersönlichkeit. -->\n\n## Anreden\n<!-- Besondere Anreden, die Saba-chan für jemanden benutzen soll. Beispiel: Die als (Besitzer) markierte Person „Meister“ nennen. -->\n\n## Begriffe dieses Servers\n<!-- Spitznamen, Memes und Abkürzungen, die nur hier verstanden werden, mit Bedeutung. -->\n\n## Infos zum Spielserver\n<!-- Regeln, Öffnungszeiten und anderes, das Saba-chan Fragenden sagen darf. -->\n"
+  },
+  "controllers": {
+    "kick_reason": "Nur registrierte Spieler können diesen Server betreten."
   }
 }

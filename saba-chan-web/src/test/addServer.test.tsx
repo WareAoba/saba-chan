@@ -57,6 +57,17 @@ describe('웹 서버 만들기 — GUI와 같은 칸', () => {
         expect(create().disabled).toBe(true);
     });
 
+    // 사용자 11-06 #2: 디스코드에서 부르는 말을 쉼표로 나누므로 서버 이름에 쉼표를 받지 않는다 (띄어쓰기는 된다)
+    it('쉼표가 든 이름은 바로 알리고 만들기를 막는다', () => {
+        mount();
+        const name = screen.getByRole('textbox', { name: 'Name' });
+        fireEvent.change(name, { target: { value: '우리, 마크' } });
+        expect(screen.getByRole('alert').textContent).toMatch(/comma/);
+        expect(create().disabled).toBe(true);
+        fireEvent.change(name, { target: { value: '우리 마크' } });
+        expect(screen.queryByRole('alert')).toBeNull();
+    });
+
     it('설치할 수 있는 서버 종류만 보이고, 약관에 동의해야 만들며, 고른 것을 보낸다', async () => {
         const api = mount();
         expect(screen.queryByText('MOTD')).toBeNull();

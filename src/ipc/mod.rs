@@ -249,9 +249,17 @@ pub struct ServerInfo {
     pub game_chat: crate::supervisor::game_chat::Mode,
     #[serde(default)]
     pub game_chat_keyword: String,
+    /// 조작 가능 (`ServerInstance::controllers`·`controllers_only`)
+    #[serde(default)]
+    pub controllers: Vec<crate::controllers::Controller>,
+    #[serde(default)]
+    pub controllers_only: bool,
     /// 이 서버의 채팅을 읽을 수 있는지: 모듈이 `chat_patterns`를 주고 데몬이 콘솔을 읽는 시작(managed)일 때
     #[serde(default)]
     pub game_chat_supported: bool,
+    /// "조작 가능한 사람만 접속"을 쓸 수 있는지: 모듈이 접속 줄(`player_join_patterns`)과 `kick_command`를 주고 데몬이 콘솔을 읽는 시작일 때
+    #[serde(default)]
+    pub controllers_only_supported: bool,
     /// 익스텐션 데이터 slot (Q-7): 데몬이 조건을 판정하고 값을 찾아 둔 것 (`ExtensionManager::server_slots`)
     #[serde(default, skip_serializing_if = "serde_json::Map::is_empty")]
     pub slots: serde_json::Map<String, serde_json::Value>,
@@ -886,6 +894,9 @@ impl IPCServer {
             // ── System components (release manifest) ──
             .route("/api/system/components", get(handlers::config::get_system_components))
             .route("/api/system/metrics", get(handlers::system::get_metrics))
+            .route("/api/system/net-trace", get(handlers::system::get_net_trace))
+            .route("/api/system/net-trace/grant", post(handlers::system::grant_net_trace))
+            .route("/api/system/net-trace/revoke", post(handlers::system::revoke_net_trace))
             .route("/api/system/paths", get(handlers::paths::get_paths))
             .route("/api/system/paths/move", post(handlers::paths::move_dir))
             .route("/api/system/browse", get(handlers::paths::browse))

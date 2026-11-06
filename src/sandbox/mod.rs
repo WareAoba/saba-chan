@@ -896,9 +896,32 @@ pub struct JavaRuntime {
     pub arch: String,
 }
 
-/// 데몬 환경(`JAVA_HOME`, PATH)과 알려진 설치 위치의 Java 런타임. 순서는 `JAVA_HOME`, PATH, 설치 위치다
+/// 데몬 환경(`JAVA_HOME`, PATH)과 알려진 설치 위치의 Java 런타임. 순서는 `JAVA_HOME`, PATH, 설치 위치다.
+/// Python 실행마다 부르므로 같은 환경이면 [`JAVA_RUNTIMES_TTL`] 동안 앞서 찾은 결과를 쓴다 (새로 설치한 Java는 그 뒤에 보인다)
 pub fn java_runtimes() -> Vec<JavaRuntime> {
-    java_runtimes_in(std::env::var_os("JAVA_HOME").as_deref(), std::env::var_os("PATH").as_deref(), &install_roots())
+    static CACHE: std::sync::Mutex<Option<RuntimeCache>> = std::sync::Mutex::new(None);
+    let (java_home, path, roots) = (std::env::var_os("JAVA_HOME"), std::env::var_os("PATH"), install_roots());
+    let key = (java_home.clone(), path.clone(), roots.clone());
+    let mut cache = CACHE.lock().unwrap_or_else(|e| e.into_inner());
+    cached_runtimes(&mut cache, key, std::time::Instant::now(), || java_runtimes_in(java_home.as_deref(), path.as_deref(), &roots))
+}
+
+/// 런타임 탐색 결과를 다시 쓰는 시간
+const JAVA_RUNTIMES_TTL: std::time::Duration = std::time::Duration::from_secs(10);
+
+type RuntimeKey = (Option<std::ffi::OsString>, Option<std::ffi::OsString>, Vec<PathBuf>);
+type RuntimeCache = (std::time::Instant, RuntimeKey, Vec<JavaRuntime>);
+
+/// 같은 환경에서 [`JAVA_RUNTIMES_TTL`] 안이면 저장한 결과, 아니면 새로 찾아 저장한다
+fn cached_runtimes(cache: &mut Option<RuntimeCache>, key: RuntimeKey, now: std::time::Instant, find: impl FnOnce() -> Vec<JavaRuntime>) -> Vec<JavaRuntime> {
+    if let Some((at, k, runtimes)) = cache.as_ref() {
+        if *k == key && now.saturating_duration_since(*at) < JAVA_RUNTIMES_TTL {
+            return runtimes.clone();
+        }
+    }
+    let runtimes = find();
+    *cache = Some((now, key, runtimes.clone()));
+    runtimes
 }
 
 fn java_runtimes_in(java_home: Option<&OsStr>, path: Option<&OsStr>, roots: &[PathBuf]) -> Vec<JavaRuntime> {
@@ -1469,6 +1492,27 @@ mod tests {
         let roots = LaunchRoots { dirs: vec![], runtimes: runtime_executables(vec![env_home.clone()]) };
         assert_eq!(check_launch(&env_home.join("bin").join("java").to_string_lossy(), &roots), Ok(()));
         assert_eq!(check_launch(&tools.join("bin").join("java").to_string_lossy(), &roots), Err("launch_outside_instance"));
+    }
+
+    #[test]
+    fn java_runtimes_are_reused_briefly_for_the_same_environment() {
+        let rt = |v: &str| JavaRuntime { java: PathBuf::from("/j/bin/java"), home: PathBuf::from("/j"), version: v.into(), major: 21, arch: String::new() };
+        let key = |p: &str| (None, Some(std::ffi::OsString::from(p)), vec![PathBuf::from("/usr/lib")]);
+        let t0 = std::time::Instant::now();
+        let mut cache = None;
+        let mut finds = 0;
+        let mut find = |v: &'static str| {
+            finds += 1;
+            move || vec![rt(v)]
+        };
+        assert_eq!(cached_runtimes(&mut cache, key("a"), t0, find("1"))[0].version, "1");
+        // 같은 환경, 짧은 시간 안: 다시 찾지 않는다
+        assert_eq!(cached_runtimes(&mut cache, key("a"), t0 + std::time::Duration::from_secs(5), find("2"))[0].version, "1");
+        // PATH가 바뀌면 바로 다시 찾는다
+        assert_eq!(cached_runtimes(&mut cache, key("b"), t0 + std::time::Duration::from_secs(6), find("3"))[0].version, "3");
+        // 시간이 지나면 다시 찾는다 (그사이 설치한 Java가 보인다)
+        assert_eq!(cached_runtimes(&mut cache, key("b"), t0 + std::time::Duration::from_secs(6) + JAVA_RUNTIMES_TTL, find("4"))[0].version, "4");
+        assert_eq!(finds, 4);
     }
 
     #[test]

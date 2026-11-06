@@ -39,6 +39,7 @@ export const APP_OPTION_DEFAULTS: Readonly<AppOptions> = Object.freeze({
     consoleTimestamps: 'off', // 콘솔 줄 앞 시각: off | 24h | 12h
     consoleTimestampDate: false,
     consoleFonts: CONSOLE_FONT_DEFAULTS, // 콘솔 글꼴: 글자마다 하나 (utils/consoleFonts.js)
+    systemMonitorNetTrace: false, // 고급: 포트·서버별 네트워크 (모니터를 펼쳐 둔 동안 데몬이 센다)
 });
 
 /** 앱 동작 옵션 (APP_OPTION_DEFAULTS의 칸) */
@@ -50,7 +51,8 @@ type AppOptionKey =
     | 'auditKeepDays'
     | 'consoleTimestamps'
     | 'consoleTimestampDate'
-    | 'consoleFonts';
+    | 'consoleFonts'
+    | 'systemMonitorNetTrace';
 type AppOptions = Pick<GuiSettings, AppOptionKey> & { consoleFonts: Readonly<ConsoleFonts> };
 
 /** config.json에 저장하는 칸 (_settingsKeys) */
@@ -76,7 +78,9 @@ export interface SettingsValues extends AppOptions {
     sidebarCompact: boolean;
     consoleFontScale: number;
     consoleTokenColors: Record<string, string>;
-    systemMonitorOpen: boolean;
+    systemMonitorExpanded: boolean;
+    /** 시스템 모니터에 띄울 항목 id (monitor/systemMetrics.ts). null이면 기본 항목 */
+    monitorItems: string[] | null;
     /** switch: 고른 데몬만 · unified: 다른 데몬의 서버도 데몬별로 */
     daemonView: 'switch' | 'unified';
     /** 앱을 열면 먼저 볼 원격 데몬 hostId, null이면 이 PC */
@@ -129,7 +133,9 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
     consoleFontScale: THEME_DEFAULTS.consoleFontScale,
     consoleTokenColors: THEME_DEFAULTS.consoleTokenColors,
     // 서버 페이지의 시스템 모니터를 펼쳐 둘지 (접으면 요약 한 줄)
-    systemMonitorOpen: true,
+    systemMonitorExpanded: false,
+    // 시스템 모니터에 띄울 항목 (null이면 기본)
+    monitorItems: null,
     // 서버 목록 보기 (G1c): 'switch' 고른 데몬만 | 'unified' 다른 데몬의 서버도 데몬별로
     daemonView: 'switch',
     // 앱을 열면 먼저 볼 데몬: 원격 데몬 hostId, null이면 이 PC
@@ -168,7 +174,10 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
                 patch.sidebarCompact = settings.sidebarCompact ?? THEME_DEFAULTS.sidebarCompact;
                 patch.consoleFontScale = settings.consoleFontScale ?? THEME_DEFAULTS.consoleFontScale;
                 patch.consoleTokenColors = settings.consoleTokenColors ?? THEME_DEFAULTS.consoleTokenColors;
-                patch.systemMonitorOpen = settings.systemMonitorOpen ?? true;
+                patch.systemMonitorExpanded = settings.systemMonitorExpanded ?? false;
+                patch.monitorItems = Array.isArray(settings.monitorItems)
+                    ? settings.monitorItems.filter((i): i is string => typeof i === 'string')
+                    : null;
                 patch.daemonView = settings.daemonView === 'unified' ? 'unified' : 'switch';
                 patch.mainDaemon =
                     typeof settings.mainDaemon === 'string' && settings.mainDaemon ? settings.mainDaemon : null;
@@ -286,7 +295,8 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
             consoleTextColor: THEME_DEFAULTS.consoleTextColor,
             sidebarCompact: THEME_DEFAULTS.sidebarCompact,
             consoleFontScale: THEME_DEFAULTS.consoleFontScale,
-            systemMonitorOpen: true,
+            systemMonitorExpanded: false,
+            monitorItems: null,
             daemonView: 'switch',
             mainDaemon: null,
         });
@@ -320,7 +330,8 @@ const _settingsKeys: SettingKey[] = [
     'sidebarCompact',
     'consoleFontScale',
     'consoleTokenColors',
-    'systemMonitorOpen',
+    'systemMonitorExpanded',
+    'monitorItems',
     'daemonView',
     'mainDaemon',
 ];

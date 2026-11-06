@@ -5,9 +5,11 @@ import { useTranslation } from 'react-i18next';
 import { useSwapAnimation } from '../../hooks/useSwapAnimation';
 import { useWindowSize } from '../../hooks/useWindowSize';
 import { useDiscordStore } from '../../stores/useDiscordStore';
+import { useUIStore } from '../../stores/useUIStore';
 import type { ModuleAliases, Server } from '../../stores/useServerStore';
 import type { ApiBody, ModuleInfo } from '../../types/daemon';
 import { safeShowToast } from '../../utils/helpers';
+import { screenFallbackNotice } from '../../utils/openScreen';
 import { Icon } from '../Icon';
 import { SINGLE_COLUMN_MAX_WIDTH } from '../servers/ServersPage';
 import { StatusChip } from '../ui/StatusChip';
@@ -49,6 +51,10 @@ export function cloudStateOf({ hostId, connected, connecting, error, loaded }: C
 interface DiscordView {
     kind: 'connection' | 'saba' | 'node';
     id?: string;
+    /** 화면 주소 링크로 열 때 디스코드 서버의 탭·안 화면. seq가 바뀌면 다시 연다 */
+    tab?: string;
+    sub?: string;
+    seq?: number;
 }
 
 
@@ -147,6 +153,26 @@ export function DiscordPage({
         setView(next);
         setShowMainNarrow(true);
     };
+
+    // 화면 주소 링크 (사용자 11-06 #19): 없는 디스코드 서버면 연결 화면을 열고 이유를 알린다
+    const requested = useUIStore((s) => s.requestedDiscordView);
+    // biome-ignore lint/correctness/useExhaustiveDependencies: 요청이 올 때만 그때의 목록으로 판단한다
+    useEffect(() => {
+        if (!requested) return;
+        useUIStore.getState().clearRequestedDiscordView();
+        if (requested.kind !== 'node') {
+            go({ kind: requested.kind });
+            return;
+        }
+        const only = cloudNodes.length === 1 ? cloudNodes[0].guildId : null;
+        const id = requested.id === '*' ? only : requested.id;
+        if (!id || !cloudNodes.some((n) => n.guildId === id)) {
+            go({ kind: 'connection' });
+            screenFallbackNotice(requested.id === '*' && cloudNodes.length > 1 ? 'pick_guild' : 'guild_missing');
+            return;
+        }
+        go({ kind: 'node', id, tab: requested.tab, sub: requested.sub, seq: requested.seq });
+    }, [requested]);
 
     // App이 넘기는 setter는 렌더마다 새 함수라 effect 의존성에 넣으면 무한 반복된다 → ref로 든다
     const setters = useRef({ setCloudNodes, setCloudMembers });
@@ -514,6 +540,7 @@ export function DiscordPage({
                                 onRefreshMembers={() => loadMembers(currentNode.guildId)}
                                 saveState={saveState}
                                 sampleModuleWord={sampleModuleWord}
+                                request={view.seq ? { tab: view.tab, sub: view.sub, seq: view.seq } : undefined}
                             />
                         )}
                         {view.kind === 'saba' && chatbotAvailable() && <ChatbotView nodes={cloudNodes} />}

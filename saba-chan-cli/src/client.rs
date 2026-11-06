@@ -249,6 +249,15 @@ impl Api {
     pub async fn set_autostart(&self, mode: &str) -> Result<Value> {
         self.put("/api/system/autostart", json!({ "mode": mode })).await
     }
+    /// GET /api/system/net-trace — 포트·서버별 네트워크 권한 `{access, enabled}`
+    pub async fn net_trace(&self) -> Result<Value> {
+        self.get("/api/system/net-trace").await
+    }
+    /// POST /api/system/net-trace/grant|revoke — 데몬 PC에 관리자 확인 창을 띄우고 닫힐 때까지 기다린다
+    pub async fn net_trace_change(&self, grant: bool) -> Result<Value> {
+        let path = if grant { "/api/system/net-trace/grant" } else { "/api/system/net-trace/revoke" };
+        self.call(Method::POST, path, Some(json!({})), Duration::from_secs(180)).await
+    }
     /// GET /api/system/metrics — 시스템 모니터 표본
     pub async fn system_metrics(&self) -> Result<Value> {
         self.get("/api/system/metrics").await

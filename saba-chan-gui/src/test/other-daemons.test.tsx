@@ -96,7 +96,7 @@ describe('합쳐 보기: 다른 데몬의 서버 (G1c)', () => {
                 />,
             ),
         );
-        expect(screen.getByText('Nothing added yet')).toBeTruthy();
+        expect(screen.getByText('No servers yet')).toBeTruthy();
         expect(screen.getByRole('region', { name: '게임 PC' })).toHaveTextContent('test-pal');
         useSettingsStore.setState({ daemonView: 'switch' });
     });

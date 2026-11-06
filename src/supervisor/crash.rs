@@ -150,6 +150,35 @@ pub fn shareable_evidence(evidence: &str) -> bool {
     ["exit code", "signal", "memory limit"].iter().any(|p| evidence.starts_with(p))
 }
 
+/// 판정 근거 한 줄 → 화면이 번역할 이유 코드와 값 (`instance.exit`의 `evidenceCode`·`evidenceArgs`).
+/// 근거는 `classify`가 만든 문장이다. 콘솔 줄과 크래시 파일 경로는 코드에 싣지 않는다 (I3)
+pub fn evidence_code(evidence: &str) -> (&'static str, serde_json::Value) {
+    use serde_json::json;
+    let number = |s: &str| s.split_whitespace().next().and_then(|n| n.trim_end_matches('s').parse::<u64>().ok());
+    if let Some(mb) = evidence.strip_prefix("memory limit ").and_then(number) {
+        return ("memory_limit", json!({ "mb": mb }));
+    }
+    if let Some(code) = evidence.strip_prefix("exit code ").filter(|c| !c.is_empty()) {
+        return ("exit_code", json!({ "code": code }));
+    }
+    if let Some(signal) = evidence.strip_prefix("signal ").and_then(number) {
+        return ("signal", json!({ "signal": signal }));
+    }
+    if evidence.starts_with("crash file ") {
+        return ("crash_file", json!({}));
+    }
+    if evidence.starts_with("console: ") {
+        return ("console", json!({}));
+    }
+    if let Some(secs) = evidence.strip_prefix("ended ").and_then(number) {
+        return ("ended_early", json!({ "secs": secs }));
+    }
+    if evidence == "stop requested through saba-chan" {
+        return ("stop_requested", json!({}));
+    }
+    ("unknown", json!({}))
+}
+
 /// GET /api/instance/:id/events 한 줄. 인스턴스 폴더 `exit-events.json`에 남아 데몬을 다시 켜도 보인다
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExitEvent {
@@ -229,6 +258,27 @@ mod tests {
         assert_eq!(k(started(code(1))), ExitKind::UnknownExit, "a kill right after the ready line");
         let waiting = |exit| ExitFacts { ready: Some(false), ..early(exit, &none) };
         assert_eq!(k(waiting(code(0))), ExitKind::StartFailed, "ended before the ready line");
+    }
+
+    /// 화면은 근거 문장 대신 코드로 이유를 번역한다. 콘솔 줄·크래시 파일 경로는 코드에 싣지 않는다 (I3)
+    #[test]
+    fn evidence_becomes_a_reason_code_without_console_lines_or_paths() {
+        let cases = [
+            ("memory limit 4096 MiB reached", "memory_limit", serde_json::json!({ "mb": 4096 })),
+            ("exit code 0xC0000005", "exit_code", serde_json::json!({ "code": "0xC0000005" })),
+            ("exit code 1", "exit_code", serde_json::json!({ "code": "1" })),
+            ("signal 11", "signal", serde_json::json!({ "signal": 11 })),
+            ("crash file C:/srv/crash-reports/crash.txt", "crash_file", serde_json::json!({})),
+            ("console: [Server thread/INFO]: Stopping the server", "console", serde_json::json!({})),
+            ("ended 4s after start: **** FAILED TO BIND TO PORT!", "ended_early", serde_json::json!({ "secs": 4 })),
+            ("ended 7s after start", "ended_early", serde_json::json!({ "secs": 7 })),
+            ("stop requested through saba-chan", "stop_requested", serde_json::json!({})),
+            ("exit status unknown", "unknown", serde_json::json!({})),
+            ("something new", "unknown", serde_json::json!({})),
+        ];
+        for (evidence, code, args) in cases {
+            assert_eq!(evidence_code(evidence), (code, args), "{evidence}");
+        }
     }
 
     #[test]

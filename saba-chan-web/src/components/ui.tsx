@@ -1,4 +1,5 @@
-import { useEffect } from 'react';
+import { useEffect, useId, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { wordmarkFor } from '../art';
 import { useApp } from '../store';
@@ -98,6 +99,55 @@ export function Section({ title, action, children }: SectionProps) {
     );
 }
 
+/**
+ * 디스코드 프로필 사진·서버 사진 (cdn.discordapp.com, 데몬·릴레이가 준 주소). 없거나 못 읽으면 이름 첫 글자.
+ * 크기는 className 으로 정한다 (멤버 줄 `avatar`, 서버 칩 `guild-initial`)
+ */
+export function Avatar({ url, name, className = 'avatar' }: { url?: unknown; name?: string; className?: string }) {
+    const [broken, setBroken] = useState<string | null>(null);
+    const ok = typeof url === 'string' && url.startsWith('https://') && broken !== url;
+    return (
+        <span className={className} aria-hidden="true">
+            {ok ? (
+                <img src={url} alt="" loading="lazy" referrerPolicy="no-referrer" onError={() => setBroken(url)} />
+            ) : (
+                String(name ?? '')
+                    .trim()
+                    .charAt(0)
+                    .toUpperCase() || '?'
+            )}
+        </span>
+    );
+}
+
+interface CardProps {
+    icon: string;
+    /** 아이콘 바탕색 (styles.css .set-card-icon[data-tone]) */
+    tone: string;
+    title: React.ReactNode;
+    desc?: React.ReactNode;
+    action?: React.ReactNode;
+    children?: React.ReactNode;
+}
+
+/** 설정 한 묶음 (앱 설정 화면의 카드와 같은 짜임): 색 아이콘·제목·한 줄 설명, 아래 칸들은 선으로 나눈다 */
+export function Card({ icon, tone, title, desc, action, children }: CardProps) {
+    const id = useId();
+    return (
+        <section className="set-card" aria-labelledby={id}>
+            <header className="set-card-head">
+                <span className="set-card-icon" data-tone={tone}>
+                    <Icon name={icon} size={16} />
+                </span>
+                <h3 id={id}>{title}</h3>
+                {action}
+            </header>
+            {desc && <p className="set-card-desc">{desc}</p>}
+            <div className="set-card-body">{children}</div>
+        </section>
+    );
+}
+
 /** 고르기 줄. `scroll`이면 칸이 많아도 줄이지 않고 옆으로 민다 (서버 상세 탭) */
 interface SegmentsProps {
     value: string;
@@ -141,7 +191,8 @@ export function ConfirmHost() {
     const confirm = useApp((s) => s.confirm);
     useEscape(confirm ? () => confirm.done(false) : null);
     if (!confirm) return null;
-    return (
+    // 겹치는 창은 body 바로 아래에 그린다: 움직이는 화면 상자 안이면 fixed가 그 상자를 기준으로 놓인다 (사용자 11-06 #1)
+    return createPortal(
         // biome-ignore lint/a11y/noStaticElementInteractions: 바깥을 눌러 닫는 보조 동작 (키보드는 Esc)
         <div className="scrim" role="presentation" onClick={(e) => e.target === e.currentTarget && confirm.done(false)}>
             <div className="dialog" role="dialog" aria-modal="true">
@@ -154,7 +205,8 @@ export function ConfirmHost() {
                     </Button>
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body,
     );
 }
 
@@ -180,7 +232,7 @@ interface SheetProps {
 export function Sheet({ title, onClose, children }: SheetProps) {
     const { t } = useTranslation();
     useEscape(onClose);
-    return (
+    return createPortal(
         // biome-ignore lint/a11y/noStaticElementInteractions: 바깥을 눌러 닫는 보조 동작 (키보드는 Esc)
         <div className="scrim" role="presentation" onClick={(e) => e.target === e.currentTarget && onClose()}>
             <div className="sheet" role="dialog" aria-modal="true">
@@ -192,6 +244,7 @@ export function Sheet({ title, onClose, children }: SheetProps) {
                 </header>
                 <div className="sheet-body">{children}</div>
             </div>
-        </div>
+        </div>,
+        document.body,
     );
 }

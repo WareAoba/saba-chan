@@ -229,6 +229,7 @@ pub fn api_hint(code: &str, body: &Value) -> Option<String> {
         "move_failed" | "source_missing" | "destination_exists" => Some(t!("err.hint.move_failed")),
         "server_not_running" => Some(t!("err.hint.server_not_running")),
         "server_running" => Some(t!("err.hint.server_running")),
+        "invalid_name" => Some(t!("err.hint.invalid_name")),
         "rcon_unreachable" => Some(t!("err.hint.rcon_unreachable")),
         "rcon_auth_failed" => Some(t!("err.hint.rcon_auth_failed")),
         "rcon_timeout" => Some(t!("err.hint.rcon_timeout")),
@@ -262,6 +263,8 @@ pub fn api_hint(code: &str, body: &Value) -> Option<String> {
         c if c.starts_with("paths_") => crate::i18n::try_t(&format!("err.hint.{}", c)),
         // 로그인할 때 자동 실행 (`/api/system/autostart`)
         c if c.starts_with("autostart_") => crate::i18n::try_t(&format!("err.hint.{}", c)),
+        // 포트·서버별 네트워크 권한 (`/api/system/net-trace/grant`·`/revoke`)
+        c if c.starts_with("net_trace_") => crate::i18n::try_t(&format!("err.hint.{}", c)),
         "schedule_changed" => Some(t!("err.hint.schedule_changed")),
         "not_supported" => Some(t!("err.hint.not_supported")),
         "invalid_command" => Some(t!("err.hint.invalid_command")),

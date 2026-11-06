@@ -13,12 +13,14 @@ import { type Server, useServerStore } from '../../stores/useServerStore';
 import { useSettingsStore } from '../../stores/useSettingsStore';
 import { failedModuleReason, failureForModule } from '../../utils/failedModules';
 import { openWithNotice, safeShowToast } from '../../utils/helpers';
+import { screenFallbackNotice } from '../../utils/openScreen';
 import { type ModalConfig, useUIStore } from '../../stores/useUIStore';
 import type { ModuleInfo } from '../../types/daemon';
 import { withCommandAliases } from '../../utils/commandRisk';
 import {
     STATUS_TONE,
     consoleQuickCommands,
+    defaultServerTab,
     gameNameOf,
     initials,
     interactionOf,
@@ -40,6 +42,7 @@ import { ExitHistory } from './ExitHistory';
 import { ServerLogs } from './ServerLogs';
 import { InstanceDiscordTab, instanceWordsAvailable } from '../discord/InstanceWordsTab';
 import { AuditLog, auditAvailable } from './AuditTab';
+import { ControllersTab } from './ControllersTab';
 import { MaintenanceTab, maintenanceAvailable } from './MaintenanceTab';
 import { ModuleAuditNotice } from './ModuleAuditNotice';
 import { ServerConsole } from './ServerConsole';
@@ -103,6 +106,12 @@ export function ServerDetail({
         status === 'missing' ? failureForModule(st.failedModules, server.module) : null,
     );
     const action = primaryAction(status);
+    // 설치 완성 카드의 '시작'은 서버가 켜지면 닫는다: 켜진 서버에 다시 시작을 보내지 않게 (사용자 11-06 #10)
+    const live = status === 'running' || status === 'starting';
+    // biome-ignore lint/correctness/useExhaustiveDependencies: 켜짐·완성 표시가 바뀔 때만
+    useEffect(() => {
+        if (cooked && live) closeCookedCard(server);
+    }, [cooked, live]);
     const interaction = interactionOf(server, moduleData);
     const gameName = gameNameOf(t, server.module, moduleData);
 
@@ -124,6 +133,7 @@ export function ServerDetail({
             label: t('shell.tab_maintenance'),
             icon: <Icon name="clock" size="sm" />,
         },
+        { id: 'controllers', label: t('shell.tab_controllers'), icon: <Icon name="user" size="sm" /> },
         instanceWordsAvailable() && {
             id: 'discord',
             label: t('shell.tab_discord'),
@@ -141,17 +151,15 @@ export function ServerDetail({
     }, [server.id]);
     // 우클릭 메뉴 등 바깥에서 특정 탭을 요청하면 그 탭으로
     const requestedTab = useUIStore((s) => s.requestedServerTab);
+    // biome-ignore lint/correctness/useExhaustiveDependencies: 요청이 올 때만 그때의 탭 목록으로 판단한다
     useEffect(() => {
         if (!requestedTab) return;
-        setTab(requestedTab);
+        // 이 서버에 없는 탭(화면 주소 링크)이면 기본 탭에 두고 이유를 알린다
+        if (!tabs.some((x) => x.id === requestedTab)) screenFallbackNotice('tab_missing');
+        else setTab(requestedTab);
         useUIStore.getState().clearRequestedServerTab();
     }, [requestedTab]);
-    // 기본 탭: 입력을 받는 콘솔이면 콘솔, 켜져 있으면 명령, 꺼져 있으면 정보 (쓸 수 있는 것부터)
-    const defaultTab = interaction.input
-        ? 'console'
-        : server.status === 'running' && interaction.commands
-          ? 'commands'
-          : 'info';
+    const defaultTab = defaultServerTab(interaction, server.status);
     const activeTab = tabs.some((x) => x.id === tab) ? (tab as string) : defaultTab;
 
     const conflicts = portConflictCheck ? server.port_conflicts || [] : [];
@@ -297,7 +305,7 @@ export function ServerDetail({
                 </div>
             )}
 
-            {(server.provisioning || cooked) && (
+            {(server.provisioning || (cooked && !live)) && (
                 <div className="detail-provision">
                     {server.provisioning && (
                         <ExtensionSlot
@@ -311,7 +319,7 @@ export function ServerDetail({
                     <NativeProvision
                         server={server}
                         provisionProgress={provisionProgress as ComponentProps<typeof NativeProvision>['provisionProgress']}
-                        cooked={cooked}
+                        cooked={cooked && !live}
                         icon={
                             moduleData?.icon ? <img src={moduleData.icon} alt="" /> : <span>{initials(gameName)}</span>
                         }
@@ -380,6 +388,7 @@ export function ServerDetail({
                                 )}
                             />
                         )}
+                        {activeTab === 'controllers' && <ControllersTab server={server} />}
                         {activeTab === 'discord' && <InstanceDiscordTab server={server} />}
                         {activeTab === 'audit' && <AuditLog instanceId={server.id} />}
                         {activeTab === 'info' && (
@@ -558,12 +567,15 @@ function InfoTab({
         [t('shell.info_module'), gameName],
         server.server_version && [t('shell.info_version'), server.server_version],
         uptime && [t('shell.info_uptime'), uptime],
-        server.status === 'running' && server.pid && ['PID', server.pid],
         server.port && [t('shell.info_port'), server.port],
-        server.rest_port && ['REST', `${server.rest_host || '127.0.0.1'}:${server.rest_port}`],
-        moduleData && [t('shell.info_protocol'), protocolLabel(server, moduleData)],
         server.id && [t('shell.info_id'), <code key="id">{server.id}</code>],
         ...dataStatusRows(server),
+    ].filter(Boolean) as [string, ReactNode][];
+    // 사용자 11-06 #27: 개발 용어(PID·REST·통신 방식)는 '자세히' 안에
+    const moreRows = [
+        server.status === 'running' && server.pid && ['PID', server.pid],
+        server.rest_port && ['REST', `${server.rest_host || '127.0.0.1'}:${server.rest_port}`],
+        moduleData && [t('shell.info_protocol'), protocolLabel(server, moduleData)],
     ].filter(Boolean) as [string, ReactNode][];
     const busy = server.status === 'running' || server.status === 'starting' || server.status === 'stopping';
 
@@ -577,6 +589,19 @@ function InfoTab({
                     </div>
                 ))}
             </dl>
+            {moreRows.length > 0 && (
+                <details className="info-more">
+                    <summary>{t('shell.info_more')}</summary>
+                    <dl className="info-grid">
+                        {moreRows.map(([k, v]) => (
+                            <div className="info-cell" key={k}>
+                                <dt>{k}</dt>
+                                <dd>{v}</dd>
+                            </div>
+                        ))}
+                    </dl>
+                </details>
+            )}
             <ExitHistory server={server} />
             <ServerLogs server={server} />
             <ExtensionSlot slotId="ServerCard.expandedStats" server={server} t={t} />

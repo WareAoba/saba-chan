@@ -421,6 +421,9 @@ async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
     if taken(&name) {
         return Err(usage(t!("add.name_taken", name = name)));
     }
+    if has_comma(&name) {
+        return Err(usage(t!("add.name_comma")));
+    }
 
     // 4) 필요한 익스텐션
     ensure_extensions(ctx, &module).await?;
@@ -696,12 +699,20 @@ async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
     Ok(())
 }
 
+/// 서버 이름에 쓸 수 없는 쉼표 (데몬 `chat::words::is_comma`와 같은 글자, 400 `invalid_name`). 띄어쓰기는 된다
+fn has_comma(name: &str) -> bool {
+    name.contains([',', '，', '、', '､'])
+}
+
 /// 만들기 전 확인(`/api/instances/check`)에서 만들기를 막는 것(같은 이름, 다른 서버가 쓰는 폴더, 파일이 든 폴더)과
 /// 알리기만 하는 것(다른 서버도 쓰는 포트, Windows가 예약한 포트)
 fn check_problems(check: &Value) -> (Vec<String>, Vec<String>) {
     let mut blockers = Vec::new();
     if check.pointer("/name/taken") == Some(&json!(true)) {
         blockers.push(t!("add.name_taken", name = s(&check["name"], "value")));
+    }
+    if check.pointer("/name/invalid").and_then(Value::as_str).is_some() {
+        blockers.push(t!("add.name_comma"));
     }
     let folder = &check["folder"];
     if let Some(other) = folder.get("in_use_by").and_then(Value::as_str) {
@@ -1092,6 +1103,9 @@ pub async fn rename(ctx: &Ctx, query: Option<&str>, new_name: &str) -> Result<()
     let new_name = new_name.trim();
     if new_name.is_empty() {
         return Err(usage(t!("add.name_empty")));
+    }
+    if has_comma(new_name) {
+        return Err(usage(t!("add.name_comma")));
     }
     let r = ctx.api.rename(&sv.id, new_name).await?;
     ctx.out.done(&t!("rename.done", old = sv.name, name = new_name), &r);
@@ -2673,6 +2687,10 @@ mod tests {
         assert_eq!(warnings, vec![t!("add.port_in_use", port = 25565, servers = "lobby"), t!("add.port_reserved", port = 50000)]);
         let clear = json!({ "name": { "taken": false }, "folder": { "custom": false }, "ports": [] });
         assert_eq!(check_problems(&clear), (vec![], vec![]));
+        // 쉼표가 든 이름 (디스코드에서 부르는 말을 쉼표로 나눈다, 사용자 11-06 #2)
+        let comma = json!({ "name": { "value": "a,b", "taken": false, "invalid": "comma" }, "folder": { "custom": false }, "ports": [] });
+        assert_eq!(check_problems(&comma).0, vec![t!("add.name_comma")]);
+        assert!(has_comma("우리，마크") && has_comma("a、b") && !has_comma("우리 마크"));
     }
 
     /// 고를 수 있는 버전은 GUI처럼 정식 릴리스만 (스냅숏·베타는 빼고, 종류가 없는 항목은 둔다)

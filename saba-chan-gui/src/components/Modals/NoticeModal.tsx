@@ -2,8 +2,10 @@ import clsx from 'clsx';
 import { useCallback, useEffect, useState } from 'react';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
+import { useServerStore } from '../../stores/useServerStore';
 import type { ApiBody } from '../../types/daemon';
 import type { Notice, NoticeInput } from '../../types/global';
+import { initials } from '../../utils/serverView';
 import './Modals.css';
 import { Icon } from '../Icon';
 
@@ -47,9 +49,12 @@ function addNotice({
     message,
     type = 'info',
     source = 'saba-chan',
+    instanceId,
+    detail,
     action = null,
     dedup = false,
     data = null,
+    read = false,
 }: NoticeInput): Notice {
     const notices = loadNotices();
 
@@ -77,11 +82,13 @@ function addNotice({
         id: Date.now() + Math.random(),
         message,
         type, // 'info' | 'success' | 'error'
-        source, // 'saba-chan' 또는 서버 모듈 이름
+        source, // 'saba-chan', 'Updater' 또는 서버 이름
+        ...(instanceId ? { instanceId } : {}),
+        ...(detail ? { detail } : {}),
         action, // 'openUpdateModal' 등 클릭 시 실행할 액션
         data, // 액션에 넘길 값 (예: 패치노트)
         timestamp: new Date().toISOString(),
-        read: false,
+        read,
     };
     notices.unshift(notice);
     saveNotices(notices);
@@ -191,6 +198,7 @@ function NoticeCard({ notice, onDismiss, onAction, t }: NoticeCardProps) {
                         ? updateResultMessage(notice.data as ApiBody, t)
                         : notice.message}
                 </p>
+                {notice.detail && <p className="notice-card-detail">{notice.detail}</p>}
                 <span className="notice-card-time">
                     {timeStr}
                     {clickable && <span className="notice-action-hint"> {t('notice_modal.click_to_open')}</span>}
@@ -251,6 +259,8 @@ interface NoticeModalProps {
 function NoticeModal({ isOpen, onClose, isClosing, onOpenUpdateModal, onOpenPatchNotes }: NoticeModalProps) {
     const { t } = useTranslation('gui');
     const [notices, setNotices] = useState<Notice[]>(loadNotices);
+    const servers = useServerStore((s) => s.servers);
+    const modules = useServerStore((s) => s.modules);
 
     // 알림 변경 이벤트 구독
     useEffect(() => {
@@ -274,24 +284,30 @@ function NoticeModal({ isOpen, onClose, isClosing, onOpenUpdateModal, onOpenPatc
 
     if (!isOpen) return null;
 
-    // source별 그룹핑
-    const groups: Record<string, Notice[]> = {};
+    // 서버 알림은 서버 id로, 나머지는 출처로 묶는다. 최근 알림이 있는 묶음이 먼저 (알림은 최신이 먼저다)
+    const groupKey = (n: Notice) => (n.instanceId ? `server:${n.instanceId}` : n.source || 'saba-chan');
+    const groups = new Map<string, Notice[]>();
     for (const n of notices) {
-        const key = n.source || 'saba-chan';
-        if (!groups[key]) groups[key] = [];
-        groups[key].push(n);
+        const key = groupKey(n);
+        groups.set(key, [...(groups.get(key) || []), n]);
     }
 
-    // saba-chan 그룹을 먼저 표시
-    const sortedKeys = Object.keys(groups).sort((a, b) => {
-        if (a === 'saba-chan') return -1;
-        if (b === 'saba-chan') return 1;
-        return a.localeCompare(b);
-    });
-
-    const sourceLabel = (key: string) => {
+    // 서버 묶음은 지금 이름(이름을 바꿨을 수 있다), 없어진 서버면 알릴 때의 이름
+    const serverOf = (list: Notice[]) => servers.find((s) => s.id === list[0].instanceId);
+    const groupLabel = (key: string, list: Notice[]) => {
+        if (list[0].instanceId) return serverOf(list)?.name || list[0].source;
         if (key === 'saba-chan') return t('notice_modal.source_main');
         return key;
+    };
+    const groupIcon = (list: Notice[]) => {
+        if (!list[0].instanceId) return null;
+        const server = serverOf(list);
+        const module = server && modules.find((m) => m.name === server.module);
+        return (
+            <span className="notice-group-icon" aria-hidden="true">
+                {module?.icon ? <img src={module.icon} alt="" /> : initials(server?.name || list[0].source)}
+            </span>
+        );
     };
 
     return (
@@ -325,13 +341,14 @@ function NoticeModal({ isOpen, onClose, isClosing, onOpenUpdateModal, onOpenPatc
                         <p>{t('notice_modal.empty')}</p>
                     </div>
                 ) : (
-                    sortedKeys.map((key) => (
+                    [...groups].map(([key, list]) => (
                         <div key={key} className="notice-group">
                             <div className="notice-group-header">
-                                <span className="notice-group-label">{sourceLabel(key)}</span>
-                                <span className="notice-group-count">{groups[key].length}</span>
+                                {groupIcon(list)}
+                                <span className="notice-group-label">{groupLabel(key, list)}</span>
+                                <span className="notice-group-count">{list.length}</span>
                             </div>
-                            {groups[key].map((notice) => (
+                            {list.map((notice) => (
                                 <NoticeCard
                                     key={notice.id}
                                     notice={notice}

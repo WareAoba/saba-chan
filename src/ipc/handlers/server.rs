@@ -112,7 +112,10 @@ async fn server_list(state: &IPCServer, notices: Notices) -> axum::response::Res
         memory_limit_mb: Option<u64>,
         game_chat: crate::supervisor::game_chat::Mode,
         game_chat_keyword: String,
+        controllers: Vec<crate::controllers::Controller>,
+        controllers_only: bool,
         chat_patterns: bool,
+        kick_on_join: bool,
         revision: String,
         instance_dir: String,
         linked_folder: Option<String>,
@@ -129,6 +132,7 @@ async fn server_list(state: &IPCServer, notices: Notices) -> axum::response::Res
         let instances = supervisor.instance_store.list();
         let all_instances = instances.to_vec();
         let module_protocols = supervisor.build_module_protocols_map();
+        let modules = supervisor.module_loader.modules().unwrap_or_default();
         let snapshots =         instances.iter().map(|instance| {
             let pid = supervisor.tracker.get_pid(&instance.id).ok();
             let start_time = if pid.is_some() {
@@ -136,9 +140,10 @@ async fn server_list(state: &IPCServer, notices: Notices) -> axum::response::Res
             } else {
                 None
             };
-            let module = supervisor.module_loader.get_module(&instance.module_name).ok();
+            let module = modules.iter().find(|m| m.metadata.name == instance.module_name);
             let process_patterns = module.as_ref().map(|m| m.metadata.process_patterns.clone()).unwrap_or_default();
             let chat_patterns = module.as_ref().is_some_and(|m| !m.metadata.chat_patterns.is_empty());
+            let kick_on_join = module.as_ref().is_some_and(|m| m.metadata.kick_command.is_some() && !m.metadata.player_join_patterns.is_empty());
             InstanceSnapshot {
                 id: instance.id.clone(),
                 name: instance.name.clone(),
@@ -158,7 +163,10 @@ async fn server_list(state: &IPCServer, notices: Notices) -> axum::response::Res
                 memory_limit_mb: instance.memory_limit_mb,
                 game_chat: instance.game_chat,
                 game_chat_keyword: instance.game_chat_keyword.clone(),
+                controllers: instance.controllers.clone(),
+                controllers_only: instance.controllers_only,
                 chat_patterns,
+                kick_on_join,
                 revision: instance.settings_revision(),
                 instance_dir: supervisor.instance_store.instance_dir(&instance.id).to_string_lossy().to_string(),
                 // 폴더 판정은 아래 락 밖에서
@@ -277,7 +285,10 @@ async fn server_list(state: &IPCServer, notices: Notices) -> axum::response::Res
                     memory_limit_mb: instance.memory_limit_mb,
                     game_chat: instance.game_chat,
                     game_chat_keyword: instance.game_chat_keyword.clone(),
+                    controllers: instance.controllers.clone(),
+                    controllers_only: instance.controllers_only,
                     game_chat_supported: instance.chat_patterns && instance.managed,
+                    controllers_only_supported: instance.kick_on_join && instance.managed,
                     revision: instance.revision.clone(),
                     port_conflicts: vec![],
                     slots: Default::default(),
@@ -338,7 +349,10 @@ async fn server_list(state: &IPCServer, notices: Notices) -> axum::response::Res
             memory_limit_mb: instance.memory_limit_mb,
             game_chat: instance.game_chat,
             game_chat_keyword: instance.game_chat_keyword.clone(),
+            controllers: instance.controllers.clone(),
+            controllers_only: instance.controllers_only,
             game_chat_supported: instance.chat_patterns && instance.managed,
+                    controllers_only_supported: instance.kick_on_join && instance.managed,
             revision: instance.revision.clone(),
             port_conflicts: vec![],
             slots: Default::default(),

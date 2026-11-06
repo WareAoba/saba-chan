@@ -164,6 +164,7 @@ export function useServerActions({
                                     {
                                         isNotice: true,
                                         source: newServer.name,
+                                        notice: { message: t('events.n_exit_unknown_exit'), instanceId: newServer.id },
                                     },
                                 );
                         } else if (pollNotices && wasStopped && nowRunning) {
@@ -216,7 +217,14 @@ export function useServerActions({
                             }),
                             'error',
                             8000,
-                            { isNotice: true, source: evt.stopped_name },
+                            {
+                                isNotice: true,
+                                source: evt.stopped_name,
+                                notice: {
+                                    message: t('events.n_port_conflict', { port: evt.port, existing: evt.existing_name }),
+                                    ...(evt.stopped_id ? { instanceId: evt.stopped_id } : {}),
+                                },
+                            },
                         );
                     }
                 }
@@ -598,6 +606,13 @@ export function useServerActions({
                 return;
             }
 
+            // ── already_running — 이미 켜져 있다: "시작 완료" 대신 그렇다고만 알린다 (사용자 11-06 #10) ──
+            if (result.success !== false && result.already_running === true) {
+                revertOptimistic(name);
+                safeShowToast(t('servers.already_running_toast', { name }), 'info', 3000);
+                return;
+            }
+
             // ── error_code: start_cancelled — 켜는 동안 사용자가 정지했다: 실패가 아니므로 알리지 않는다 ──
             if (result.error_code === 'start_cancelled') {
                 revertOptimistic(name);
@@ -907,7 +922,9 @@ export function useServerActions({
             const msg =
                 code === 'name_taken' || code === 'server_running' || code === 'instance_busy'
                     ? t(`servers.rename_${code}`, { name })
-                    : translateError(result?.error || '');
+                    : code === 'invalid_name'
+                      ? t('servers.name_comma')
+                      : translateError(result?.error || '');
             safeShowToast(t('servers.rename_failed_toast', { error: msg }), 'error', 4000);
         } catch (error) {
             safeShowToast(t('servers.rename_failed_toast', { error: translateError((error as Error).message) }), 'error', 4000);
@@ -1030,6 +1047,12 @@ export function useServerActions({
                     title: t('servers.add_failed_title'),
                     message: t('servers.rename_name_taken', { name: serverName }),
                 });
+                return false;
+            }
+
+            // 쉼표가 든 이름 (디스코드에서 부르는 말을 쉼표로 나눈다)
+            if (result.error_code === 'invalid_name') {
+                setModal({ type: 'failure', title: t('servers.add_failed_title'), message: t('servers.name_comma') });
                 return false;
             }
 

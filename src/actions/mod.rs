@@ -104,8 +104,11 @@ pub struct Def {
     pub fields: &'static [Field],
     /// true면 입력 객체를 그대로 본문으로 보낸다 (설정 바꾸기처럼 키가 정해져 있지 않은 것)
     pub open_input: bool,
-    /// 디스코드에서 고정 요구 레벨 (프리셋·덮어쓰기와 상관없이)
+    /// 디스코드에서 고정 요구 레벨 (프리셋·덮어쓰기와 상관없이). `level_movable`이면 고정이 아니라 기본값이다
     pub discord_level: Option<i64>,
+    /// `discord_level`을 길드가 명령별 덮어쓰기로 옮길 수 있는가. 그 길드에만 닿는 설정은 옮길 수 있고,
+    /// PC 전체에 닿는 것(앱 업데이트, 공통 챗봇 값)은 고정이다
+    pub level_movable: bool,
     /// 디스코드 작업 메뉴에 싣는가 (heartbeat `surfaces`에 discord를 넣는가). 전용 명령이 같은 액션을 부르는
     /// 것(길드 설정은 "/사바쨩")과 메뉴에서 뺀 것은 false다. 챗봇 목록에는 그대로 남고, 액션 자체도 디스코드에서 계속 부를 수 있다
     pub remote_menu: bool,
@@ -126,7 +129,7 @@ const LOCAL_AND_CHATBOT: &[Surface] = &[Gui, Cli, Chatbot];
 const LOCAL_AND_DISCORD: &[Surface] = &[Gui, Cli, Discord];
 
 const fn def(id: &'static str, kind: Kind, risk: &'static str, surfaces: &'static [Surface], instance: bool, method: &'static str, path: &'static str) -> Def {
-    Def { id, kind, risk, surfaces, instance, method, path, fields: &[], open_input: false, discord_level: None, remote_menu: true, guild_owner: false, private: false, secret: false }
+    Def { id, kind, risk, surfaces, instance, method, path, fields: &[], open_input: false, discord_level: None, level_movable: false, remote_menu: true, guild_owner: false, private: false, secret: false }
 }
 
 /// 첫 판 액션. 새 기능은 여기 한 줄을 더하면 모든 표면에 퍼진다.
@@ -134,9 +137,10 @@ const fn def(id: &'static str, kind: Kind, risk: &'static str, surfaces: &'stati
 pub static ACTIONS: &[Def] = &[
     def("instance.list", Kind::Query, "safe", ALL, false, "GET", "/api/servers"),
     def("server.status", Kind::Query, "safe", ALL, true, "GET", "/api/instance/:id/status"),
-    def("server.start", Kind::Command, "caution", ALL, true, "POST", "/api/instance/:id/start"),
-    def("server.stop", Kind::Command, "caution", ALL, true, "POST", "/api/instance/:id/stop"),
-    def("server.restart", Kind::Command, "caution", ALL, true, "POST", "/api/instance/:id/restart"),
+    // 시작·정지·재시작·백업 만들기는 위험도가 아니라 조작 가능 명단(`crate::controllers`)과 관리자 이상이 한다 (사용자 지정 2026-11-06)
+    Def { discord_level: Some(crate::chat::permissions::ADMIN), level_movable: true, ..def("server.start", Kind::Command, "safe", ALL, true, "POST", "/api/instance/:id/start") },
+    Def { discord_level: Some(crate::chat::permissions::ADMIN), level_movable: true, ..def("server.stop", Kind::Command, "safe", ALL, true, "POST", "/api/instance/:id/stop") },
+    Def { discord_level: Some(crate::chat::permissions::ADMIN), level_movable: true, ..def("server.restart", Kind::Command, "safe", ALL, true, "POST", "/api/instance/:id/restart") },
     def("server.console.tail", Kind::Query, "safe", LOCAL_AND_CHATBOT, true, "GET", "/api/instance/:id/console?count=20"),
     // 접속자 이름까지 (검수 13번). 모듈이 `[status] players`를 선언한 서버만 (heartbeat `modules`, 인스턴스 목록)
     def("server.players", Kind::Query, "safe", ALL, true, "GET", "/api/instance/:id/players"),
@@ -171,7 +175,12 @@ pub static ACTIONS: &[Def] = &[
     // 디스코드 메뉴에서만 뺀다 (검수 4번). 챗봇 복원이 목록을 보고, 디스코드에서 부르는 것은 계속 받는다
     Def { remote_menu: false, private: true, ..def("backup.list", Kind::Query, "safe", ALL, true, "GET", "/api/instance/:id/backups") },
     // from_snapshot: 지금 상태 대신 게임이 만든 가장 새 자동 백업을 보관한다 (`[backup] snapshots` 모듈)
-    Def { fields: &[field("from_snapshot", "boolean", false)], ..def("backup.create", Kind::Command, "caution", ALL, true, "POST", "/api/instance/:id/backups") },
+    Def {
+        fields: &[field("from_snapshot", "boolean", false)],
+        discord_level: Some(crate::chat::permissions::ADMIN),
+        level_movable: true,
+        ..def("backup.create", Kind::Command, "safe", ALL, true, "POST", "/api/instance/:id/backups")
+    },
     // 디스코드에서도 복원한다 (검수 14번). 백업은 목록에서 고른다
     Def {
         fields: &[Field { options_from: Some(OptionsFrom { action: "backup.list", list: "backups", value: "name", label: "label" }), ..path_field("name") }],
@@ -191,7 +200,7 @@ pub static ACTIONS: &[Def] = &[
     Def { fields: &[path_field("extension")], ..def("extension.enable", Kind::Admin, "caution", LOCAL, false, "POST", "/api/extensions/:extension/enable") },
     Def { fields: &[path_field("extension")], ..def("extension.disable", Kind::Admin, "caution", LOCAL, false, "POST", "/api/extensions/:extension/disable") },
     // 챗봇 설정 (I2-b). 디스코드에서는 소유자만, 그 길드 것만. 키는 받지 않고 챗봇 자신은 못 바꾼다(확인을 끄지 못하게)
-    Def { fields: &[path_field("guild")], discord_level: Some(crate::chat::permissions::OWNER), remote_menu: false, ..def("chatbot.settings.get", Kind::Query, "safe", LOCAL_AND_DISCORD, false, "GET", "/api/chatbot/guilds/:guild") },
+    Def { fields: &[path_field("guild")], discord_level: Some(crate::chat::permissions::OWNER), level_movable: true, remote_menu: false, ..def("chatbot.settings.get", Kind::Query, "safe", LOCAL_AND_DISCORD, false, "GET", "/api/chatbot/guilds/:guild") },
     Def {
         fields: &[
             path_field("guild"),
@@ -209,6 +218,7 @@ pub static ACTIONS: &[Def] = &[
             field("balanceAlert", "number", false),
         ],
         discord_level: Some(crate::chat::permissions::OWNER),
+        level_movable: true,
         remote_menu: false,
         ..def("chatbot.settings.set", Kind::Admin, "caution", LOCAL_AND_DISCORD, false, "PATCH", "/api/chatbot/guilds/:guild")
     },
@@ -224,6 +234,7 @@ pub static ACTIONS: &[Def] = &[
     Def {
         fields: &[path_field("guild"), field("locale", "string", false), field("sleeping", "boolean", false), field("sleepBlocks", "array", false), field("bedtime", "object", false), field("music", "object", false), field("tts", "object", false), field("confirmLevel", "string", false), field("commandRisks", "object", false)],
         discord_level: Some(crate::chat::permissions::OWNER),
+        level_movable: true,
         remote_menu: false,
         guild_owner: true,
         ..def("discord.settings.set", Kind::Admin, "caution", LOCAL_AND_DISCORD, false, "PATCH", "/api/discord/:guild/settings")
@@ -232,6 +243,7 @@ pub static ACTIONS: &[Def] = &[
     Def {
         fields: &[path_field("guild"), field("enabled", "boolean", true)],
         discord_level: Some(crate::chat::permissions::ADMIN),
+        level_movable: true,
         guild_owner: true,
         ..def("instance.start_notice.set", Kind::Admin, "caution", LOCAL_AND_DISCORD, true, "PUT", "/api/instance/:id/start-notice/:guild")
     },
@@ -239,6 +251,7 @@ pub static ACTIONS: &[Def] = &[
     Def {
         fields: &[path_field("guild"), field("enabled", "boolean", true)],
         discord_level: Some(crate::chat::permissions::ADMIN),
+        level_movable: true,
         guild_owner: true,
         ..def("instance.full_notice.set", Kind::Admin, "caution", LOCAL_AND_DISCORD, true, "PUT", "/api/instance/:id/full-notice/:guild")
     },
@@ -399,10 +412,10 @@ pub(crate) fn strip_local_details(v: &mut Value) {
     }
 }
 
-/// 전역 권한 덮어쓰기 키로 쓸 수 있는 액션인가: 원격(디스코드·챗봇)에서 부를 수 있고 레벨이 코드에 고정되지 않은 것.
+/// 전역 권한 덮어쓰기 키로 쓸 수 있는 액션인가: 원격(디스코드·챗봇)에서 부를 수 있고 레벨이 코드에 고정되지 않은 것(기본값만 있는 것은 된다).
 /// 인스턴스 액션은 `<instance>/<action id>`로만 판정하므로(`authorize`) 전역 키를 받지 않는다
 pub fn overridable(id: &str) -> bool {
-    find(id).is_some_and(|d| !d.instance && d.discord_level.is_none() && d.surfaces.iter().any(|s| matches!(s, Surface::Discord | Surface::Chatbot)))
+    find(id).is_some_and(|d| !d.instance && (d.discord_level.is_none() || d.level_movable) && d.surfaces.iter().any(|s| matches!(s, Surface::Discord | Surface::Chatbot)))
 }
 
 /// 문자열의 절대 경로를 `<path>`로 바꾸고, Python traceback은 마지막 줄(예외 문구)만 남긴다. 바뀐 것이 없으면 None
@@ -706,7 +719,13 @@ pub async fn permission_board(server: &IPCServer, guild_id: &str, locale: &str) 
         let level = required_level(&perms, instance, id, None, kind, risk, fixed);
         let preset = fixed.unwrap_or_else(|| preset_need(&perms, kind, risk));
         let name = builtin_command(id).unwrap_or(id);
-        Some(entry(instance, id, name, &a["title"], kind.name(), risk, level, preset, fixed.is_some(), override_keys(instance, id)))
+        let pinned = fixed.is_some() && !movable(id);
+        let mut item = entry(instance, id, name, &a["title"], kind.name(), risk, level, preset, pinned, override_keys(instance, id));
+        // 조작 가능 명단에 있는 사람도 하는 일 (권한 계단의 "조작 가능" 묶음)
+        if crate::controllers::CONTROLLED_ACTIONS.contains(&id) {
+            item["controllers"] = json!(true);
+        }
+        Some(item)
     };
     let mut items = Vec::new();
     let globals = list(server, None, None, locale).await;
@@ -801,9 +820,9 @@ pub fn heartbeat_actions(locales: &[&str], modules: &[LoadedModule]) -> (Vec<Val
         if !name.is_empty() {
             item["name"] = Value::Object(name);
         }
-        // 고정 요구 레벨: 명령별 덮어쓰기·프리셋보다 먼저다 (`authorize`)
+        // 고정 요구 레벨: 명령별 덮어쓰기·프리셋보다 먼저다 (`authorize`). 옮길 수 있는 기본값은 덮어쓰기 다음이다
         if let Some(level) = d.discord_level {
-            item["level"] = json!(level);
+            item[if d.level_movable { "defaultLevel" } else { "level" }] = json!(level);
         }
         if d.private {
             item["private"] = json!(true);
@@ -1170,9 +1189,18 @@ async fn allowed_instances(server: &IPCServer, caller: &Caller) -> Option<Vec<St
     Some(list.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
 }
 
+/// `discord_level`이 길드가 옮길 수 있는 기본값인가 (`Def::level_movable`)
+fn movable(id: &str) -> bool {
+    find(id).is_some_and(|d| d.level_movable)
+}
+
 /// 원격 요청 하나의 요구 레벨 (`authorize`와 권한 계단 공통). 고정 레벨 → 명령별 덮어쓰기 → 프리셋 순이다
 fn required_level(perms: &NodePermissions, instance: &str, id: &str, command: Option<&str>, kind: Kind, risk: &str, fixed: Option<i64>) -> i64 {
     if let Some(level) = fixed {
+        // 옮길 수 있는 기본 레벨이면 명령별 덮어쓰기가 먼저다
+        if movable(id) {
+            return override_keys(instance, id).iter().find_map(|k| perms.override_level(k)).unwrap_or(level);
+        }
         return level;
     }
     if let Some(cmd) = command {
@@ -1263,7 +1291,20 @@ async fn authorize_in(server: &IPCServer, r: &Resolved, caller: &Caller, new_ser
     }
     let need = required_level(&perms, instance, &r.id, r.command.as_deref(), r.kind, &r.risk, r.discord_level);
     if !perms.meets(perms.effective_level(who), need) {
-        return Err(denied(need));
+        // 조작 가능 명단에 있는 사람은 레벨과 상관없이 그 서버를 시작·정지·재시작·백업한다.
+        // 말하는 사바쨩을 거친 요청은 챗봇 상한을 그대로 받는다 (명단이 상한을 넘지 않는다)
+        if !crate::controllers::CONTROLLED_ACTIONS.contains(&r.id.as_str()) || who.via_chatbot {
+            return Err(denied(need));
+        }
+        let listed = match who.user_id.as_deref() {
+            Some(user) => server.supervisor.read().await.instance_store.get(instance).is_some_and(|i| crate::controllers::controls(&i.controllers, user)),
+            None => false,
+        };
+        if !listed {
+            let mut refused = denied(need);
+            refused.data["args"]["controllers"] = json!(true);
+            return Err(refused);
+        }
     }
     // 예약 작업은 나중에 요청자 없이 돈다: 새로 넣거나 켜는 서버 명령은 요청자가 지금 그 명령을 쓸 수 있어야 한다
     if r.id == "instance.schedule.set" && !instance.is_empty() {
@@ -1477,6 +1518,7 @@ pub async fn plan_text(server: &IPCServer, text: &str, caller: &Caller) -> Resul
             if let Some((id, instance)) = named_action(&reply, caller.surface) {
                 return plan_one(server, id, Some(&instance), &json!({}), caller, confirmed_by_requester(caller)).await;
             }
+            let reply = slash_only(&reply, &cat).unwrap_or(reply);
             return Ok(chat_json(reply, true, caller));
         }
     };
@@ -1518,7 +1560,7 @@ pub async fn check_text(server: &IPCServer, text: &str, caller: &Caller) -> Resu
         crate::chat::Interpreted::Run(target) => Ok(json!({ "success": true, "actionId": target.action_id(), "instance": target.instance(), "risk": target.risk() })),
         crate::chat::Interpreted::Reply(reply) => match named_action(&reply, caller.surface) {
             Some((id, instance)) => check(server, id, Some(&instance), &json!({}), caller).await,
-            None => Ok(chat_json(reply, true, caller)),
+            None => Ok(chat_json(slash_only(&reply, &cat).unwrap_or(reply), true, caller)),
         },
     }
 }
@@ -1528,9 +1570,24 @@ fn confirmed_by_requester(caller: &Caller) -> bool {
 }
 
 /// 채팅 처리기가 모르는 명령이라고 한 문장(`UNKNOWN_COMMAND`, 서버는 찾음)의 명령 낱말이 인스턴스 액션 이름이면 그 액션과 서버.
-/// 이름은 언어마다 짧은 이름·제목(띄어쓰기 무시)과 액션 id·그 끝 낱말이다. 이 표면에 내보낸 것, 입력이 필요 없는 것,
-/// 위험이 아닌 것만 고른다 (입력이 필요하거나 위험한 액션은 슬래시 서버 루트에서 고른다). 남는 낱말이 있으면 고르지 않는다
+/// 이 표면에 내보낸 것, 입력이 필요 없는 것, 위험이 아닌 것만 고른다 (입력이 필요하거나 위험한 액션은 슬래시 서버 루트에서 고른다)
 fn named_action(reply: &crate::chat::Reply, surface: Surface) -> Option<(&'static str, String)> {
+    let pick = |d: &Def| d.instance && d.risk != "danger" && !d.secret && d.surfaces.contains(&surface) && d.fields.iter().all(|f| !f.required);
+    action_by_word(reply, pick).map(|(d, instance)| (d.id, instance))
+}
+
+/// 모르는 명령 낱말이 비밀 액션(부른 사람에게만 답하는 것, 서버 주소)의 이름이면 슬래시 명령으로 다시 부르라는 안내.
+/// 문장 명령의 답은 채널 모두가 보므로 비밀 액션은 문장으로 실행하지 않는다 (사용자 지정 2026-11-06)
+fn slash_only(reply: &crate::chat::Reply, cat: &crate::chat::i18n::Catalog) -> Option<crate::chat::Reply> {
+    let (d, _) = action_by_word(reply, |d| d.instance && d.secret && d.surfaces.contains(&Discord))?;
+    let command = ["name", "title"].iter().find_map(|k| translated(cat, &format!("actions.{}.{}", d.id, k))).unwrap_or_else(|| d.id.to_string());
+    let name = reply.args.get("name").and_then(Value::as_str).unwrap_or_default();
+    Some(cat.t("errors.slash_only", &[("command", &command), ("name", name)]).into())
+}
+
+/// 채팅 처리기가 모르는 명령이라고 한 문장(서버는 찾음)의 명령 낱말이 이름인 인스턴스 액션과 그 서버. `pick`에 맞는 것만 고른다.
+/// 이름은 언어마다 짧은 이름·제목(띄어쓰기 무시)과 액션 id·그 끝 낱말이다. 남는 낱말이 있으면 고르지 않는다
+fn action_by_word(reply: &crate::chat::Reply, pick: impl Fn(&Def) -> bool) -> Option<(&'static Def, String)> {
     if reply.code != Some("UNKNOWN_COMMAND") {
         return None;
     }
@@ -1545,11 +1602,7 @@ fn named_action(reply: &crate::chat::Reply, surface: Surface) -> Option<(&'stati
         let texts = cats.iter().flat_map(|c| ["name", "title"].map(|k| translated(c, &format!("actions.{}.{}", d.id, k)))).flatten();
         [d.id.to_string(), tail.to_string()].into_iter().chain(texts).collect::<Vec<_>>()
     };
-    ACTIONS
-        .iter()
-        .filter(|d| d.instance && d.risk != "danger" && !d.secret && d.surfaces.contains(&surface) && d.fields.iter().all(|f| !f.required))
-        .find(|d| names(d).iter().any(|n| fold(n) == want))
-        .map(|d| (d.id, instance.to_string()))
+    ACTIONS.iter().filter(|d| pick(d)).find(|d| names(d).iter().any(|n| fold(n) == want)).map(|d| (d, instance.to_string()))
 }
 
 /// 문장 계획 실행: 답은 문장 명령과 같다 (`text`). 시작했는데 이미 켜져 있었으면 `already_running`.
@@ -1847,9 +1900,10 @@ async fn execute(server: &IPCServer, r: &Resolved, caller: &Caller) -> Value {
         }
     }
     let ok = resp.status.is_success() && result.get("success").and_then(Value::as_bool) != Some(false) && result.get("ok").and_then(Value::as_bool) != Some(false);
-    // 관리 액션은 밑 라우트가 감사에 남기지 않으므로 액션 id로 한 줄 남긴다 (시작·명령은 라우트가 남긴다)
-    if r.kind == Kind::Admin {
-        record_admin(server, r, caller, ok, resp.status.as_u16()).await;
+    // 관리 액션은 밑 라우트가 감사에 남기지 않으므로 액션 id로 한 줄 남긴다 (시작·명령·복원은 라우트가 남긴다)
+    if r.kind == Kind::Admin && !ROUTE_AUDITED.contains(&r.id.as_str()) {
+        let code = if ok { None } else { crate::audit::failure_code(&result) };
+        record_admin(server, r, caller, ok, resp.status.as_u16(), code.as_deref()).await;
     }
     // 원격에서 만든 서버는 그 길드의 허용 목록에 더한다 (목록을 정해 둔 길드만)
     if let (true, "instance.create", Some(new_id)) = (ok, r.id.as_str(), result.get("id").and_then(Value::as_str)) {
@@ -1896,8 +1950,11 @@ async fn undo_plan(server: &IPCServer, instance: &str, before: Map<String, Value
     Some(plan_id)
 }
 
+/// 밑 라우트가 스스로 감사에 남기는 관리 액션 (`backup.restore` → `restore`)
+const ROUTE_AUDITED: [&str; 1] = ["backup.restore"];
+
 /// 관리 액션 감사 한 줄: `action`은 액션 id, 입력은 비밀을 가려 남긴다
-async fn record_admin(server: &IPCServer, r: &Resolved, caller: &Caller, ok: bool, status: u16) {
+async fn record_admin(server: &IPCServer, r: &Resolved, caller: &Caller, ok: bool, status: u16, code: Option<&str>) {
     let (name, args) = {
         let sup = server.supervisor.read().await;
         let instance = r.instance.as_deref().and_then(|i| sup.instance_store.get(i));
@@ -1916,6 +1973,7 @@ async fn record_admin(server: &IPCServer, r: &Resolved, caller: &Caller, ok: boo
         daemon: None,
         ok,
         status,
+        code,
     };
     crate::audit::log().record(&caller.origin, &event);
 }

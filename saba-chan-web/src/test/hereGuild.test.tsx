@@ -134,4 +134,16 @@ describe('이 PC 의 디스코드 서버 설정', () => {
         expect(relay.moderation).toHaveBeenCalledWith(G);
         expect(screen.getByRole('heading', { name: 'Server management' })).toBeTruthy();
     });
+
+    it('인스턴스·알림도 설정 카드로 묶고 두 줄 격자에 놓는다 (사용자 11-06)', async () => {
+        setup();
+        await flush();
+        await flush();
+        for (const name of ['Instances', 'Start/stop alerts', 'Full server alerts']) {
+            const card = screen.getByRole('region', { name });
+            expect(card.classList.contains('set-card')).toBe(true);
+            expect(card.querySelector('.set-card-icon svg')).toBeTruthy();
+            expect(card.closest('.set-card-grid')).toBeTruthy();
+        }
+    });
 });

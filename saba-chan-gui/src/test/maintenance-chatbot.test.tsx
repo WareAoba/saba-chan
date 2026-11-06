@@ -533,6 +533,29 @@ describe('ChatbotView', () => {
         );
     });
 
+    it('서버 탭: 토큰 한도는 백만 단위로 적고 토큰 수로 저장한다; 잔액을 모르는 제공사면 한도를 쓰라고 한다', async () => {
+        window.api.chatbotGet = vi.fn().mockResolvedValue({
+            success: true,
+            settings: {},
+            guilds: { g1: { tokenLimit: 2000000 } },
+            hasApiKey: true,
+        });
+        window.api.chatbotSave = vi.fn().mockResolvedValue({ success: true, settings: {}, guilds: {}, hasApiKey: true });
+        window.api.chatbotTools = vi.fn().mockResolvedValue(CATALOG);
+        window.api.chatbotCredit = vi.fn().mockResolvedValue({ provider: 'openai', balanceSupported: false, usage: {} });
+        render(<ChatbotGuildTab node={nodes[0]} />);
+        const limit = await screen.findByLabelText<HTMLInputElement>('Monthly token limit');
+        expect(limit.value).toBe('2');
+        expect(await screen.findByText(/OpenAI does not report the remaining credit/)).toBeTruthy();
+        fireEvent.change(limit, { target: { value: '3.5' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+        await waitFor(() =>
+            expect(window.api.chatbotSave).toHaveBeenCalledWith({
+                guilds: { g1: expect.objectContaining({ tokenLimit: 3500000 }) },
+            }),
+        );
+    });
+
     it('서버 탭: 저장은 됐지만 릴레이에 못 보냈으면 그렇다고 알린다', async () => {
         window.api.chatbotGet = vi.fn().mockResolvedValue({
             success: true,

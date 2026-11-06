@@ -37,6 +37,8 @@ const memoryLimitOf = (server: Server | null | undefined) => (server?.memory_lim
 const gameChatOf = (server: Server | null | undefined) => ({
     game_chat: server?.game_chat || 'off',
     game_chat_keyword: server?.game_chat_keyword || '',
+    // 조작 가능한 사람만 접속 (데몬 인스턴스 최상위 controllers_only). 사바쨩 탭에서 함께 고친다
+    controllers_only: server?.controllers_only === true,
 });
 
 /** 정지 대기 칸 값 (초, 비면 모듈 값): 데몬 MK14 module_settings.stop_timeout */
@@ -79,6 +81,15 @@ const liveFieldValue = (field: SettingField, v: unknown, saved: string | string[
 /** 설정 창 칸 값 (칸 이름 → 값). _extension_data·_launch_extra_args 같은 내부 칸도 여기 담는다 */
 type SettingsValues = Record<string, Json>;
 
+/** 켜진 서버에서 다시 시작해야 적용되는 설정을 저장했다 (저장 막대 위 안내, ServerSettingsModal `RestartNotice`) */
+export interface RestartPending {
+    serverId: string;
+    /** 바꾼 설정의 화면 이름 */
+    fields: string[];
+    /** 저장할 때의 서버 시작 시각: 그 뒤 껐거나 다시 켰으면 이미 적용됐다 */
+    startTime: number | null;
+}
+
 interface UseServerSettingsParams {
     servers: Server[];
     modules: ModuleInfo[];
@@ -111,6 +122,9 @@ export function useServerSettings({
     const [versionInstalling, setVersionInstalling] = useState(false);
     const [resettingServer, setResettingServer] = useState(false);
     const [savingSettings, setSavingSettings] = useState(false);
+    // 켜진 서버에서 다시 시작해야 적용되는 설정을 저장했다: 저장 막대 위에 [지금 다시 시작][나중에] (사용자 11-06 #5).
+    // 저장한 뒤 탭을 다시 열어도 남도록 열린 창 상태와 따로 둔다
+    const [restartPending, setRestartPending] = useState<RestartPending | null>(null);
     // 저장 응답을 기다리는 동안 다시 누른 저장은 버린다 (G-U5)
     const savingRef = useRef(false);
     // 실제 설정으로 확인하지 못한 칸 (저장된 캐시나 module.toml 기본값). 사용자가 고치지 않으면 저장하지 않는다
@@ -626,6 +640,11 @@ export function useServerSettings({
                 if (settingsValues[key] !== undefined && value !== openedChat[key]) convertedSettings[key] = value;
             }
 
+            // 조작 가능한 사람만 접속: 바꿨을 때만 보낸다. 명단이 비었는데 켜면 데몬이 거절한다 (invalid_format)
+            const controllersOnly = asFlag(settingsValues.controllers_only, null);
+            if (controllersOnly !== null && controllersOnly !== openedChat.controllers_only)
+                convertedSettings.controllers_only = controllersOnly;
+
             // 크래시 자동 재시작 (데몬이 module_settings 에서 읽는다)
             // 토글은 handleSettingChange를 거쳐 'true'·'false' 글자로 올 수 있다
             // 바꿨을 때만 보낸다
@@ -709,31 +728,16 @@ export function useServerSettings({
                     });
                 });
                 const serverName = settingsServer.name;
-                setModal(
+                // 저장 완료는 화면을 막는 창 대신 작은 알림으로
+                safeShowToast(t('server_actions.settings_saved', { name: serverName }), 'success', 3000);
+                setRestartPending(
                     pending.length && onRestart
                         ? {
-                              type: 'question',
-                              title: t('command_modal.success'),
-                              message: t('server_settings.restart_required', {
-                                  name: serverName,
-                                  fields: pending.join(', '),
-                              }),
-                              buttons: [
-                                  {
-                                      label: t('server_settings.restart_now'),
-                                      action: () => {
-                                          setModal(null);
-                                          return onRestart(serverName, { confirmed: true });
-                                      },
-                                  },
-                                  { label: t('server_settings.restart_later'), action: () => setModal(null) },
-                              ],
+                              serverId: settingsServer.id,
+                              fields: pending,
+                              startTime: servers.find((s) => s.id === settingsServer.id)?.start_time ?? settingsServer.start_time ?? null,
                           }
-                        : {
-                              type: 'success',
-                              title: t('command_modal.success'),
-                              message: t('server_actions.settings_saved', { name: serverName }),
-                          },
+                        : null,
                 );
                 // 저장은 됐지만 모듈이 게임 설정 파일에 쓰지 못했다
                 if (result.synced === false) {
@@ -759,9 +763,19 @@ export function useServerSettings({
         }
     };
 
+    const restartNow = () => {
+        const target = restartPending && servers.find((s) => s.id === restartPending.serverId);
+        setRestartPending(null);
+        if (target && onRestart) return onRestart(target.name, { confirmed: true });
+    };
+    const dismissRestart = () => setRestartPending(null);
+
     return {
         // Settings modal state
         showSettingsModal,
+        restartPending,
+        restartNow,
+        dismissRestart,
         settingsServer,
         settingsValues,
         unsetSettings: unsetFields.current,

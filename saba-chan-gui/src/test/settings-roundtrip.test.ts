@@ -84,7 +84,7 @@ describe('settings.json 라운드트립 (settingsLoad ↔ settingsSave)', () => 
         { field: 'autoRefresh', saved: false, defaultVal: true },
         { field: 'refreshInterval', saved: 7777, defaultVal: 2000 },
         { field: 'ipcPort', saved: 33333, defaultVal: 57474 },
-        { field: 'systemMonitorOpen', saved: false, defaultVal: true },
+        { field: 'systemMonitorExpanded', saved: true, defaultVal: false },
         { field: 'consoleBufferSize', saved: 100, defaultVal: 2000 },
         // 테마 모드도 config.json이 원천 (예전엔 브라우저 저장소에만 있었다)
         { field: 'theme', saved: 'dark', defaultVal: 'auto' },

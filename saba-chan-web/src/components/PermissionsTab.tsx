@@ -7,8 +7,8 @@ import { useTranslation } from 'react-i18next';
 import { useApp, useData } from '../store';
 import { Dropdown } from './Dropdown';
 import { Icon } from './icons';
-import { PermissionStairs, type PermissionWriter } from './PermissionStairs';
-import { Button, Empty, errorText, failed, Loading, Segments } from './ui';
+import { CommandList, type PermissionWriter } from './CommandList';
+import { Avatar, Button, Card, Empty, errorText, failed, Loading, Segments } from './ui';
 import type { Server, TFn, WebApi } from '../types';
 
 /** 켜짐 알림·보일 서버 한 벌 (GET /api/guilds/:g/start-notice). null = 읽는 중, false = 읽지 못함 */
@@ -41,20 +41,10 @@ export function orderMembers(members: DiscordMember[], perm: PermData | null | u
     return [...members].sort((a, b) => rankOf(a) - rankOf(b) || collator.compare(nameOf(a), nameOf(b)));
 }
 
-/** 디스코드 프로필 사진. 없거나 못 읽으면 이름 첫 글자 */
-function Avatar({ member }: { member: DiscordMember }) {
-    const [broken, setBroken] = useState(false);
-    const url = member.avatarUrl || member.avatar;
-    return (
-        <span className="avatar" aria-hidden="true">
-            {typeof url === 'string' && url.startsWith('https://') && !broken ? (
-                <img src={url} alt="" loading="lazy" referrerPolicy="no-referrer" onError={() => setBroken(true)} />
-            ) : (
-                nameOf(member).trim().charAt(0).toUpperCase() || '?'
-            )}
-        </span>
-    );
-}
+/** 멤버 프로필 사진 (ui.tsx Avatar) */
+const MemberAvatar = ({ member }: { member: DiscordMember }) => (
+    <Avatar url={member.avatarUrl || member.avatar} name={nameOf(member)} />
+);
 
 interface LevelSelectProps {
     value: number | null;
@@ -82,46 +72,93 @@ function LevelSelect({ value, perm, onChange, withDefault, t, disabled, label }:
     );
 }
 
-/** 단계 사다리 (위가 높은 단계). 휴대폰이라 끌기 대신 위·아래 버튼으로 옮긴다. 소유자·차단은 고정 */
+/** 단계 사다리 (위가 높은 단계). 휴대폰이라 끌기 대신 위·아래 버튼으로 옮긴다. 소유자·차단은 고정.
+ * 모든 레벨은 이름을 바꾸고(비우면 원래 이름), 소유자·게스트·차단은 지울 수 없다. 조작 가능 줄도 위·아래 버튼으로 옮긴다
+ * (사용자 지정 2026-11-06, GUI LadderTab 과 같은 규칙) */
 interface LadderEditorProps {
     perm: PermData;
+    board: CommandBoard | null;
     busy: boolean;
-    onSave: (patch: ReturnType<typeof L.ladderPatch>) => void;
-    t: TFn;
+    onSave: (body: {
+        ladder?: ReturnType<typeof L.ladderPatch>;
+        commandLevels?: Record<string, number | null>;
+    }) => void;
 }
 
-function LadderEditor({ perm, busy, onSave, t }: LadderEditorProps) {
+export function LadderEditor({ perm, board, busy, onSave }: LadderEditorProps) {
+    const { t } = useTranslation();
+    const { t: tg } = useTranslation('gui');
     const saved = L.ladderOf(perm);
     const [draft, setDraft] = useState(saved);
     const [name, setName] = useState('');
+    const line = L.controllerLine(board);
+    const [lineLevel, setLineLevel] = useState(line?.level ?? null);
     useEffect(() => setDraft(L.ladderOf(perm)), [perm]);
+    useEffect(() => setLineLevel(line?.level ?? null), [line?.level]);
     const patch = L.ladderPatch(draft);
-    const changed = JSON.stringify(patch) !== JSON.stringify(L.ladderPatch(saved));
+    const ladderChanged = JSON.stringify(patch) !== JSON.stringify(L.ladderPatch(saved));
+    const lineAt = line && lineLevel !== null ? L.lineAt(saved, draft, lineLevel) : null;
+    const lineTarget = lineAt === null ? null : (draft[lineAt].id as number);
+    const lineChanged = !!line && lineTarget !== null && lineTarget !== line.level;
+    const changed = ladderChanged || lineChanged;
     const removed = saved.some((s) => !draft.some((d) => d.id === s.id));
     const valid = L.ladderValid(draft);
-    const label = (l: LadderLevel) => (L.isCustomLevel(l) ? l.name : levelName(t, perm, l.id));
+    const localeName = (l: LadderLevel) => levelName(t, null, l.id);
+    const label = (l: LadderLevel) => l.name?.trim() || (L.isCustomLevel(l) ? '' : localeName(l));
     const last = draft.length - 1;
+    const moveLine = (dir: -1 | 1) => {
+        const to = lineAt === null ? null : L.lineStep(draft, lineAt, dir);
+        if (to !== null) setLineLevel(draft[to].id ?? null);
+    };
+    const save = () =>
+        onSave({
+            ...(ladderChanged ? { ladder: patch } : {}),
+            ...(lineChanged && line ? { commandLevels: L.levelPatch(line.followers, lineTarget as number) } : {}),
+        });
+    const lineRow = (at: number) => (
+        <li key="controllers-line" className="row ladder-line" aria-label={tg('discord.perm_line')}>
+            <div className="row-main">
+                <div className="row-title">
+                    {tg(at === 0 ? 'discord.perm_line_only' : 'discord.perm_line_from', { level: label(draft[at]) })}
+                </div>
+                <div className="row-sub">
+                    {tg('discord.perm_line_hint')}
+                    {line && line.apart > 0 && ` ${tg('discord.perm_line_apart', { count: line.apart })}`}
+                </div>
+            </div>
+            <Button
+                disabled={L.lineStep(draft, at, -1) === null}
+                aria-label={tg('discord.perm_line_up')}
+                onClick={() => moveLine(-1)}
+            >
+                <Icon name="chevronUp" size={16} />
+            </Button>
+            <Button
+                disabled={L.lineStep(draft, at, 1) === null}
+                aria-label={tg('discord.perm_line_down')}
+                onClick={() => moveLine(1)}
+            >
+                <Icon name="chevronDown" size={16} />
+            </Button>
+        </li>
+    );
     return (
         <div className="field">
             <span>{t('perm.ladder')}</span>
             <small className="hint">{t('perm.ladder_hint')}</small>
             <ul className="rows">
-                {draft.map((l, i) => {
+                {draft.flatMap((l, i) => {
                     const fixed = i === 0 || i === last;
-                    const custom = L.isCustomLevel(l);
-                    return (
+                    const row = (
                         <li key={l.id ?? l.key} className="row" aria-label={label(l)}>
                             <div className="row-main">
-                                {custom ? (
-                                    <input
-                                        value={l.name}
-                                        maxLength={L.MAX_NAME}
-                                        aria-label={t('perm.ladder_name')}
-                                        onChange={(e) => setDraft((d) => L.renameLevel(d, i, e.target.value))}
-                                    />
-                                ) : (
-                                    <div className="row-title">{label(l)}</div>
-                                )}
+                                <input
+                                    value={l.name ?? ''}
+                                    placeholder={L.isCustomLevel(l) ? '' : localeName(l)}
+                                    maxLength={L.MAX_NAME}
+                                    aria-label={t('perm.ladder_name')}
+                                    onChange={(e) => setDraft((d) => L.renameLevel(d, i, e.target.value))}
+                                />
                             </div>
                             {fixed ? (
                                 <span className="pill">{t('perm.ladder_fixed')}</span>
@@ -143,7 +180,7 @@ function LadderEditor({ perm, busy, onSave, t }: LadderEditorProps) {
                                     </Button>
                                     <Button
                                         tone="ghost-danger"
-                                        disabled={draft.length <= 3}
+                                        disabled={draft.length <= 3 || !L.removable(draft, i)}
                                         aria-label={t('perm.ladder_delete', { name: label(l) })}
                                         onClick={() => setDraft((d) => L.removeLevel(d, i))}
                                     >
@@ -153,6 +190,7 @@ function LadderEditor({ perm, busy, onSave, t }: LadderEditorProps) {
                             )}
                         </li>
                     );
+                    return lineAt === i ? [row, lineRow(i)] : [row];
                 })}
             </ul>
             <div className="field-row">
@@ -176,10 +214,16 @@ function LadderEditor({ perm, busy, onSave, t }: LadderEditorProps) {
             {removed && <small className="hint">{t('perm.ladder_removed')}</small>}
             {!valid && <small className="hint">{t('perm.ladder_invalid')}</small>}
             <div className="field-row">
-                <Button disabled={busy || !changed} onClick={() => setDraft(saved)}>
+                <Button
+                    disabled={busy || !changed}
+                    onClick={() => {
+                        setDraft(saved);
+                        setLineLevel(line?.level ?? null);
+                    }}
+                >
                     {t('perm.ladder_revert')}
                 </Button>
-                <Button tone="accent" busy={busy} disabled={!changed || !valid} onClick={() => onSave(patch)}>
+                <Button tone="accent" busy={busy} disabled={!changed || !valid} onClick={save}>
                     {t('perm.ladder_save')}
                 </Button>
             </div>
@@ -235,11 +279,13 @@ export function VisibleServers({ api, guildId, allowed, others, onSaved }: Visib
     };
     const visible = servers.filter((s) => P.isInstanceAllowed(settings, guildId, s.id) && !ownerOf(s.id)).length;
     return (
-        <div className="field">
-            <span>
-                {t('perm.visible')} <small className="pill">{`${visible}/${servers.length}`}</small>
-            </span>
-            <small className="hint">{t('perm.visible_hint')}</small>
+        <Card
+            icon="discord"
+            tone="7"
+            title={t('perm.visible')}
+            desc={t('perm.visible_hint')}
+            action={<small className="pill">{`${visible}/${servers.length}`}</small>}
+        >
             <ul className="rows">
                 <li className="row">
                     <div className="row-main">
@@ -289,7 +335,7 @@ export function VisibleServers({ api, guildId, allowed, others, onSaved }: Visib
                     );
                 })}
             </ul>
-        </div>
+        </Card>
     );
 }
 
@@ -326,9 +372,12 @@ function StartNotice({ api, guildId, notice, setNotice, kind = 'start' }: StartN
 
     const rows = noticeRows(servers, notice);
     return (
-        <div className="field">
-            <span>{t(`perm.${prefix}`)}</span>
-            <small className="hint">{t(`perm.${prefix}_hint`)}</small>
+        <Card
+            icon={kind === 'full' ? 'user' : 'bell'}
+            tone={kind === 'full' ? '4' : '3'}
+            title={t(`perm.${prefix}`)}
+            desc={t(`perm.${prefix}_hint`)}
+        >
             {notice === false ? null : !notice || !serversLoaded ? (
                 <Loading />
             ) : rows.length === 0 ? (
@@ -354,7 +403,7 @@ function StartNotice({ api, guildId, notice, setNotice, kind = 'start' }: StartN
                     ))}
                 </ul>
             )}
-        </div>
+        </Card>
     );
 }
 
@@ -410,12 +459,13 @@ interface MemberLevelsProps {
     api: WebApi;
     guildId: string;
     perm: PermData;
+    board: CommandBoard | null;
     members: DiscordMember[];
     busy: boolean;
     write: PermissionWriter;
 }
 
-function MemberLevels({ api, guildId, perm, members, busy, write }: MemberLevelsProps) {
+function MemberLevels({ api, guildId, perm, board, members, busy, write }: MemberLevelsProps) {
     const { t } = useTranslation();
     const [query, setQuery] = useState('');
     const defaultLevel = typeof perm.defaultLevel === 'number' ? perm.defaultLevel : 1;
@@ -461,7 +511,7 @@ function MemberLevels({ api, guildId, perm, members, busy, write }: MemberLevels
                         const owner = String(m.id) === String(perm.ownerDiscordId);
                         return (
                             <li key={m.id} className="row member-row">
-                                <Avatar member={m} />
+                                <MemberAvatar member={m} />
                                 <div className="row-main">
                                     <div className="row-title row-title-one">{nameOf(m)}</div>
                                     {m.username && <div className="row-sub row-title-one">@{m.username}</div>}
@@ -492,9 +542,9 @@ function MemberLevels({ api, guildId, perm, members, busy, write }: MemberLevels
             )}
             <LadderEditor
                 perm={perm}
+                board={board}
                 busy={busy}
-                t={t}
-                onSave={(ladder) => write(() => api.permissionsUpdate(guildId, { ladder }))}
+                onSave={(body) => write(() => api.permissionsUpdate(guildId, body))}
             />
         </>
     );
@@ -536,7 +586,7 @@ function InstanceMenu({ api, guildId, data, instance, onBack }: InstanceMenuProp
             />
             {view === 'commands' ? (
                 board ? (
-                    <PermissionStairs
+                    <CommandList
                         api={api}
                         guildId={guildId}
                         perm={perm}
@@ -549,7 +599,15 @@ function InstanceMenu({ api, guildId, data, instance, onBack }: InstanceMenuProp
                     <Empty>{t('perm.stairs_failed')}</Empty>
                 )
             ) : (
-                <MemberLevels api={api} guildId={guildId} perm={perm} members={members} busy={busy} write={write} />
+                <MemberLevels
+                    api={api}
+                    guildId={guildId}
+                    perm={perm}
+                    board={board}
+                    members={members}
+                    busy={busy}
+                    write={write}
+                />
             )}
         </div>
     );
@@ -626,10 +684,8 @@ export function GuildPermissions({
         );
     const instances: BoardInstance[] = data.board?.instances || [];
     return (
-        <>
-            <div className="field">
-                <span>{t('perm.instances')}</span>
-                <small className="hint">{t('perm.instances_hint')}</small>
+        <div className="set-card-grid">
+            <Card icon="server" tone="1" title={t('perm.instances')} desc={t('perm.instances_hint')}>
                 <ul className="rows">
                     {[{ id: L.ALL_INSTANCES, name: t('perm.all_instances') }, ...instances].map((i) => (
                         <li key={i.id} className="row">
@@ -643,7 +699,7 @@ export function GuildPermissions({
                         </li>
                     ))}
                 </ul>
-            </div>
+            </Card>
             {notice && others && (
                 <VisibleServers
                     api={api}
@@ -655,6 +711,6 @@ export function GuildPermissions({
             )}
             <StartNotice api={api} guildId={guildId} notice={notice} setNotice={setNotice} />
             <StartNotice api={api} guildId={guildId} notice={full} setNotice={setFull} kind="full" />
-        </>
+        </div>
     );
 }

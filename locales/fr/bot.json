@@ -11,15 +11,14 @@
     "no_modules": "Aucun",
     "module_title": "**Commandes {{module}}**",
     "available_commands": "{{commands}}",
-    "usage_format": "`{{prefix}} <module> <commande>`",
-    "modules_header": "📦 **Modules :**",
+    "usage_format": "`{{prefix}} <serveur> <commande>`",
+    "modules_header": "🎮 **Serveurs :**",
     "slash_hint": "💡 Redémarrage, sauvegardes et vérification des ports s'utilisent comme `<serveur> redémarrer`. Permissions, langue, sommeil, web et mises à jour passent par les commandes slash (`/`)."
   },
   "modules": {
     "help_start": "Démarrer le serveur",
     "help_stop": "Arrêter le serveur",
     "help_status": "Vérifier l'état du serveur",
-    "help_rest_title": "**Commandes REST:**",
     "enter_command": "Saisissez une commande."
   },
   "list": {
@@ -29,22 +28,26 @@
   },
   "status": {
     "running": "🟢 En cours d'exécution",
+    "starting": "🟡 Démarrage",
     "stopped": "⚪ Arrêté"
   },
   "server": {
     "start_request": "⏳ Démarrage du serveur **{{name}}**...",
-    "start_complete": "✅ Demande de démarrage de **{{name}}** terminée!",
+    "start_complete": "✅ **{{name}}** · Démarrer",
     "already_running": "ℹ️ **{{name}}** est déjà en marche.",
     "stop_request": "⏳ Arrêt du serveur **{{name}}**...",
-    "stop_complete": "✅ Demande d'arrêt de **{{name}}** terminée!",
+    "stop_complete": "✅ **{{name}}** · Arrêter",
     "graceful_stop_unavailable": "⚠️ **{{name}}** n'a pas été arrêté : il n'a aucun moyen (console ou REST) de sauvegarder et de quitter. Pour l'arrêter sans sauvegarder, choisissez un arrêt forcé dans saba-chan sur ce PC.",
-    "status_check": "📊 Statut de **{{name}}**: {{status}} {{pid_info}}",
+    "status_check": "📊 **{{name}}** · {{status}}",
+    "uptime_hm": "en ligne depuis {{h}} h {{m}} min",
+    "uptime_m": "en ligne depuis {{m}} min",
+    "still_starting": "⏳ **{{name}}** est encore en train de démarrer. Redemande dans un instant.",
     "not_found": "❌ Aucun serveur trouvé pour le module \"{{alias}}\" ({{resolved}})",
-    "not_running": "❌ **{{name}}**: {{error}}",
+    "not_running": "❌ **{{name}}** : {{error}}",
     "not_running_default": "Le serveur n'est pas en cours d'exécution. Démarrez d'abord le serveur",
     "module_missing": "❌ Le module '{{module}}' n'est pas installé. Ce serveur ne peut pas être contrôlé.",
     "port_moved": "🔀 Windows a réservé le port REST {{from}}, il a donc été changé en {{to}}.",
-    "rest_port_closed": "REST port {{port}} is not accepting connections"
+    "rest_port_closed": "Le port REST {{port}} n’accepte pas les connexions"
   },
   "command": {
     "executing": "⏳ **{{name}}** - `{{command}}` en cours d'exécution...",
@@ -82,6 +85,7 @@
     "alias_conflict": "❌ L'alias '{{alias}}' est ambigu. Il correspond à plusieurs modules : {{modules}}. Utilisez un alias plus spécifique.",
     "multiple_instances": "⚠️ Plusieurs instances de '{{module}}' existent. Utilisez le nom de l'instance au lieu de l'alias du module.",
     "danger_needs_name": "⚠️ Les commandes dangereuses ne s'exécutent pas via le nom du jeu. Appelez le serveur par son nom '{{name}}'.",
+    "slash_only": "🔒 {{command}} n'est visible que par la personne qui le demande, c'est donc une commande slash. Tape `/` et choisis **{{name}}** › {{command}}.",
     "auth_failed": "Échec de l'authentification",
     "player_not_found": "Joueur introuvable",
     "internal_server_error": "Erreur interne du serveur",
@@ -95,6 +99,7 @@
     "unknown_input": "❌ Commande inconnue.",
     "command_not_found": "❌ La commande n'existe pas.",
     "permission_denied": "❌ Vous n'avez pas la permission d'utiliser cette commande.",
+    "permission_denied_controllers": "❌ Pour démarrer ou arrêter ce serveur, il faut être dans sa liste « Opérateurs » de l'app Saba-chan ou avoir le niveau fixé pour cette commande (Admin par défaut).",
     "local_single_guild_only": "⚠️ Le bot local ne peut être utilisé que sur un seul serveur. Ce bot est sur {{count}} serveurs. Retirez-le des serveurs que vous n'utilisez pas."
   },
   "messages": {
@@ -476,5 +481,8 @@
   },
   "chatbot": {
     "memo_template": "<!-- Les lignes d’aide comme celle-ci et les titres laissés vides ne sont pas envoyés à Saba-chan qui parle. Remplis seulement ce qu’il faut. -->\n\n## Ambiance\n<!-- Décris comment on parle ici et jusqu’où les blagues peuvent aller. Vide = personnalité par défaut. -->\n\n## Comment appeler les gens\n<!-- Les surnoms que Saba-chan doit utiliser. Exemple : appeler la personne marquée (propriétaire) « maître ». -->\n\n## Mots de ce serveur\n<!-- Surnoms, mèmes et abréviations propres à ce serveur, avec leur sens. -->\n\n## Infos du serveur de jeu\n<!-- Règles, horaires et autres infos que Saba-chan peut donner à qui demande. -->\n"
+  },
+  "controllers": {
+    "kick_reason": "Seuls les joueurs enregistrés peuvent rejoindre ce serveur."
   }
 }

@@ -124,8 +124,6 @@
   "detail": {
     "backups": "バックアップ",
     "players": "プレイヤー",
-    "check": "点検",
-    "settings_game": "ゲーム",
     "more": "その他",
     "tabs": "サーバーメニュー",
     "uptime": "稼働 {{time}}",
@@ -199,7 +197,7 @@
       "-1": "禁止"
     },
     "ladder": "権限の段階",
-    "ladder_hint": "上にあるほど高い段階です。オーナーとブロックは動かせません。",
+    "ladder_hint": "上にあるほど高い段階です。オーナーとブロックは動かせません。名前は欄で変更できます。オーナー・ゲスト・ブロックは削除できません。",
     "ladder_name": "段階名",
     "ladder_fixed": "固定",
     "ladder_up": "{{name}}を上へ",
@@ -237,22 +235,14 @@
     "preset_apply": "適用",
     "moved_count": "プリセットから動かしたコマンド {{count}}個",
     "reset_to_preset": "プリセットに戻す",
-    "stairs_hint": "コマンドは、そのレベルから使える段に置かれます。上の段は下の段のコマンドをすべて使えます。チップを別の段へドラッグするか、クリックして動かします。",
-    "stairs": "コマンドの段",
-    "carry": "{{below}}の{{count}}個 +",
-    "level_none": "何も使えません",
     "help_list": "ヘルプ・一覧",
     "help_hint": "help と list は禁止以外のすべてのレベルで使え、変更できません。",
-    "fixed_hint": "このコマンドのレベルは決まっていて動かせません。",
-    "from_level": "このレベルから使えます",
-    "server_wide": "サーバー全体のコマンドなので、すべてのインスタンスのメニューで一緒に変わります。",
+    "fixed_hint": "PC全体に影響するコマンドなので、レベルは変えられません。",
+    "risk_pc_hint": "右の文字はDiscordで聞き返す段階です。変更はPCアプリで行います。",
     "back_to_preset": "プリセットどおり",
     "risk_safe": "安全",
     "risk_caution": "注意",
     "risk_danger": "危険",
-    "confirm_tier": "Discordでの確認: {{risk}}(PCアプリで変更します)",
-    "kind_admin": "管理",
-    "legend_moved": "プリセットから移動",
     "visible": "この Discord サーバーで見せるサーバー",
     "visible_hint": "オフにしたサーバーは、この Discord サーバーのスラッシュ・プレフィックスコマンドから消えます。",
     "visible_owned": "別の Discord サーバーが使っています"
@@ -532,7 +522,8 @@
       "duration_units": "分,時間,日,週",
       "reason": "理由（任意）",
       "purge": "書き込みを削除",
-      "announce_hint": "結果はDiscordサーバーのシステムチャンネルにも知らせます（メンション通知なし）。"
+      "announce_hint": "結果はDiscordサーバーのシステムチャンネルにも知らせます（メンション通知なし）。",
+      "desc": "制裁・チャンネルのロック・掃除"
     },
     "load_failed": "設定を読み込めませんでした。接続を確認してもう一度お試しください。",
     "retry": "再読み込み",
@@ -542,7 +533,11 @@
     "channel_gameChat": "ゲームチャットチャンネル",
     "channel_board": "状況板チャンネル",
     "sleep_now": "今すぐ寝かせる",
-    "awake": "起きています"
+    "awake": "起きています",
+    "basics_desc": "このサーバーで使う言語と絵文字",
+    "music_desc": "ボイスチャンネルで音楽を流します",
+    "reading_desc": "チャットを音声で読み上げます",
+    "channels_desc": "機能ごとに使うチャンネルを選びます"
   },
   "logs": {
     "title": "過去のログ",

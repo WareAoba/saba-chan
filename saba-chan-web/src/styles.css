@@ -95,7 +95,7 @@ textarea {
     opacity: 0.12;
 }
 .gate-body {
-    animation: pop-in 420ms var(--ease) both;
+    animation: pop-in 420ms var(--ease) backwards;
     position: relative;
     z-index: 1;
     max-width: 640px;
@@ -207,13 +207,111 @@ textarea {
     color: var(--text-2);
     font-size: 13px;
 }
+/* 화면 언어 버튼 (머리·연결 화면): 남은 시간 알약과 같은 모양, 누르면 그 아래에 목록 */
+.lang-menu {
+    position: relative;
+    flex-shrink: 0;
+}
+.lang-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    border: 0;
+    border-radius: 999px;
+    background: var(--bg-3);
+    color: var(--text-2);
+    font: inherit;
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+    transition:
+        background-color var(--dur-fast) var(--ease),
+        color var(--dur-fast) var(--ease);
+}
+.lang-btn:hover,
+.lang-btn[aria-expanded='true'] {
+    color: var(--text-1);
+    background: color-mix(in srgb, var(--accent) 16%, var(--bg-3));
+}
+.lang-list {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    z-index: 20;
+    min-width: 168px;
+    max-height: min(70vh, 420px);
+    overflow: auto;
+    display: grid;
+    padding: 6px;
+    background: var(--bg-2);
+    border: 1px solid var(--line-strong);
+    border-radius: 12px;
+    box-shadow: var(--shadow-float);
+    animation: toast-in 160ms var(--ease) backwards;
+}
+.lang-item {
+    text-align: left;
+    padding: 9px 12px;
+    border: 0;
+    border-radius: 8px;
+    background: none;
+    color: var(--text-1);
+    font: inherit;
+    font-size: 14px;
+    cursor: pointer;
+}
+.lang-item:hover {
+    background: var(--bg-3);
+}
+.lang-item.on {
+    color: var(--accent);
+    font-weight: 600;
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.topbar-title .pill {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+/* 휴대폰 머리는 칸이 좁다: 언어 버튼은 지구 그림만, 더 좁으면 글자 로고를 접는다 */
+@media (max-width: 420px) {
+    .topbar .lang-code {
+        display: none;
+    }
+    .topbar .lang-btn {
+        padding: 6px;
+    }
+}
+@media (max-width: 440px) {
+    .topbar-wordmark {
+        display: none;
+    }
+}
+/* 연결 화면은 늘 어두운 바탕이라 반투명 흰 알약 */
+.gate-lang {
+    position: absolute;
+    top: calc(16px + env(safe-area-inset-top));
+    right: 16px;
+    z-index: 2;
+}
+.gate-lang .lang-btn {
+    background: rgb(255 255 255 / 0.1);
+    color: #e2e8f0;
+}
+.gate-lang .lang-btn:hover,
+.gate-lang .lang-btn[aria-expanded='true'] {
+    background: rgb(255 255 255 / 0.18);
+    color: #fff;
+}
 .timer-warn {
     background: var(--warn-soft);
     color: var(--warn);
     animation: pulse 1.6s ease-in-out infinite;
 }
 .banner {
-    animation: slide-down 240ms var(--ease) both;
+    animation: slide-down 240ms var(--ease) backwards;
     display: flex;
     align-items: center;
     gap: 8px;
@@ -305,6 +403,95 @@ textarea {
 .section-head h2 {
     font-size: 18px;
 }
+/* ── 설정 카드 (ui.tsx Card): 앱 설정 화면처럼 색 아이콘·제목·설명, 칸 사이는 선 ── */
+.set-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+    padding: 14px 16px;
+    background: var(--bg-1);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    box-shadow: var(--neu-up);
+    break-inside: avoid;
+}
+.set-card-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.set-card-head h3 {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+    font-size: 15px;
+}
+.set-card-icon {
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: 30px;
+    height: 30px;
+    border-radius: 9px;
+    color: #fff;
+    background: var(--series-7);
+}
+.set-card-icon[data-tone="1"] { background: var(--series-1); }
+.set-card-icon[data-tone="2"] { background: var(--series-2); }
+.set-card-icon[data-tone="3"] { background: var(--series-3); }
+.set-card-icon[data-tone="4"] { background: var(--series-4); }
+.set-card-icon[data-tone="5"] { background: var(--series-5); }
+.set-card-desc {
+    margin: 2px 0 0;
+    font-size: 12.5px;
+    color: var(--text-2);
+}
+.set-card-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+    margin-top: 8px;
+}
+/* 칸마다 위에 선 (첫 칸도 제목과 나눈다) */
+.set-card-body > * {
+    padding-top: 10px;
+    border-top: 1px solid var(--line);
+}
+.set-card-head + .set-card-body > :first-child {
+    border-top: 0;
+    padding-top: 0;
+}
+.set-card-body > :empty {
+    display: none;
+}
+.set-card-body > .hint {
+    border-top: 0;
+    padding-top: 0;
+    margin-top: -4px;
+}
+/* 카드 안의 줄 목록은 상자 대신 선으로 나눈다 */
+.set-card .rows {
+    gap: 0;
+}
+.set-card .rows > .row {
+    padding: 10px 0;
+    background: none;
+    border: 0;
+    border-radius: 0;
+}
+.set-card .rows > .row + .row {
+    border-top: 1px solid var(--line);
+}
+/* 넓은 화면: 카드를 두 줄로 쌓는다 (읽는 순서는 위에서 아래, 왼쪽 줄 먼저) */
+.set-card-grid > * {
+    margin-bottom: 12px;
+}
+@media (min-width: 1100px) {
+    .set-card-grid {
+        columns: 2;
+        column-gap: 12px;
+    }
+}
 .sub-title {
     font-size: 14px;
     color: var(--text-2);
@@ -327,6 +514,30 @@ textarea {
     color: var(--text-3);
     font-size: 12px;
 }
+/* 안내 문구 속 화면 링크 (ScreenLink, 사용자 11-06 #19). 앱 .screen-link와 같은 모양 */
+.screen-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin: 0 2px;
+    padding: 0 8px;
+    border: 0;
+    border-radius: 7px;
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    color: var(--accent);
+    font: inherit;
+    font-weight: 600;
+    line-height: 1.6;
+    white-space: nowrap;
+    cursor: pointer;
+}
+.screen-link:hover,
+.screen-link:focus-visible {
+    outline: 1px solid var(--accent);
+}
+.screen-link-arrow {
+    font-size: 0.9em;
+}
 .pill {
     display: inline-flex;
     align-items: center;
@@ -337,6 +548,17 @@ textarea {
     background: var(--bg-3);
     color: var(--text-2);
     font-size: 12px;
+}
+/* 누르면 여는 칩 (서버 머리의 접속 칩 → 접속자 목록, 사용자 11-06 #25) */
+.pill-button {
+    border: 0;
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
+}
+.pill-button:hover,
+.pill-button:focus-visible {
+    outline: 1px solid var(--accent);
 }
 .tag {
     margin-left: 8px;
@@ -473,9 +695,7 @@ textarea {
 .status-running .status-dot {
     background: var(--ok);
 }
-.status-stopped .status-dot {
-    background: var(--stop);
-}
+/* 정지된 서버는 오류처럼 빨갛지 않고 기본 회색 점이다 (사용자 11-06 #26) */
 .status-starting .status-dot,
 .status-stopping .status-dot,
 .status-missing .status-dot {
@@ -553,7 +773,7 @@ textarea {
     transition-duration: 0.08s;
 }
 .list > * {
-    animation: rise 320ms var(--ease) both;
+    animation: rise 320ms var(--ease) backwards;
 }
 .list > :nth-child(2) {
     animation-delay: 40ms;
@@ -617,6 +837,14 @@ textarea {
     flex: 1;
     min-width: 0;
 }
+/* 레벨 사다리의 조작 가능 줄: 칸이 아니라 칸 사이의 선 (사용자 지정 2026-11-06) */
+.row.ladder-line {
+    border: 2px dashed var(--accent);
+    background: color-mix(in srgb, var(--accent) 10%, var(--bg-1));
+}
+.row.ladder-line .row-title {
+    color: var(--accent);
+}
 .row-title {
     font-weight: 600;
     overflow-wrap: anywhere;
@@ -669,6 +897,19 @@ textarea {
     height: 100%;
     object-fit: cover;
     animation: fade-in 240ms var(--ease) both;
+}
+.avatar-sm {
+    width: 20px;
+    height: 20px;
+    font-size: 10px;
+}
+.guild-initial {
+    overflow: hidden;
+}
+.guild-initial img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
 }
 .row-actions {
     display: flex;
@@ -741,6 +982,14 @@ textarea {
 }
 .line-error {
     color: var(--stop);
+}
+/* 보낸 명령 (#18) */
+.line-input .echo {
+    color: var(--accent);
+    font-weight: 700;
+}
+.line-input .echo-by {
+    color: var(--text-3);
 }
 .console-input {
     display: flex;
@@ -917,26 +1166,30 @@ textarea {
     cursor: default;
 }
 
-.meter {
-    display: grid;
-    gap: 4px;
-}
-.meter-head {
+/* PC 상태: 앱 시스템 모니터와 같은 원 (@gui/components/monitor/MonitorRing.css) */
+.metrics-head {
     display: flex;
-    justify-content: space-between;
-    font-size: 13px;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-bottom: 12px;
 }
-.meter-track {
-    height: 8px;
-    border-radius: 999px;
-    background: var(--bg-3);
-    overflow: hidden;
+.metrics-picker {
+    margin-bottom: 16px;
+    padding: 12px;
+    border-radius: var(--r-sm);
+    background: var(--inset);
 }
-.meter-fill {
-    height: 100%;
-    background: var(--accent);
-    border-radius: inherit;
-    transition: width 600ms var(--ease);
+.metrics-rings {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 16px 8px;
+    margin-bottom: 8px;
+}
+.metrics-swatch {
+    flex: none;
+    width: 10px;
+    height: 10px;
+    border-radius: 3px;
 }
 
 /* ── 겹치는 창 ── */
@@ -951,7 +1204,7 @@ textarea {
 }
 .dialog,
 .sheet {
-    animation: sheet-up 280ms var(--ease) both;
+    animation: sheet-up 280ms var(--ease) backwards;
     width: 100%;
     max-width: 520px;
     max-height: 88vh;
@@ -994,7 +1247,7 @@ textarea {
     pointer-events: none;
 }
 .toast {
-    animation: toast-in 260ms var(--ease) both;
+    animation: toast-in 260ms var(--ease) backwards;
     padding: 12px 16px;
     border-radius: 12px;
     background: var(--bg-4);
@@ -1028,7 +1281,7 @@ textarea {
 
 /* ── 움직임 ── */
 .view {
-    animation: rise 260ms var(--ease) both;
+    animation: rise 260ms var(--ease) backwards;
 }
 @keyframes rise {
     from {
@@ -1249,97 +1502,64 @@ textarea {
     cursor: pointer;
 }
 .instance-menu,
-.stairs-view {
+.cmd-list-view {
     display: grid;
     gap: 12px;
 }
-.stairs {
-    list-style: none;
+.cmd-group h4 {
+    margin: 8px 0 4px;
+    font-size: 0.85rem;
+    color: var(--text-2);
+}
+
+.cmd-list {
+    display: grid;
+    gap: 6px;
     margin: 0;
     padding: 0;
+    list-style: none;
+}
+
+/* 명령 한 줄: 이름 · 누구부터 · 되묻기 · 되돌리기. 좁으면 이름이 한 줄을 다 쓴다 */
+.cmd-row {
     display: grid;
-    gap: 8px;
-}
-.stair {
-    display: grid;
-    gap: 8px;
-    /* 높은 레벨일수록 오른쪽으로 한 칸씩 올라선 계단 (GUI 계단처럼 낮은 레벨이 왼쪽) */
-    margin-left: calc(min(var(--step), 6) * 8px);
-    padding: 12px;
-    border-left: 3px solid var(--accent);
-    border-radius: 12px;
-    background: color-mix(in srgb, var(--accent) calc(4% + var(--step) * 4%), var(--bg-1));
-    transition:
-        box-shadow var(--dur-fast) var(--ease),
-        background-color var(--dur-fast) var(--ease);
-}
-.stair.is-banned {
-    border-left-color: var(--line-strong);
-    background: var(--bg-1);
-}
-.stair.is-over {
-    box-shadow: inset 0 0 0 2px var(--accent);
-    background: color-mix(in srgb, var(--accent) calc(12% + var(--step) * 4%), var(--bg-1));
-}
-.stair-label {
-    display: flex;
-    align-items: baseline;
-    gap: 8px;
-}
-.stair-num {
-    color: var(--accent);
-    font-size: 12px;
-    font-weight: 700;
-}
-.stair-chips {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
-}
-.stair-carry {
-    width: 100%;
-    color: var(--text-2);
-    font-size: 12px;
-}
-.cmd-chip {
-    display: inline-flex;
+    grid-template-columns: minmax(0, 1fr) 168px 64px minmax(72px, auto);
     align-items: center;
-    gap: 4px;
-    padding: 4px 12px;
-    border: 1px solid var(--line-strong);
-    border-radius: 999px;
-    background: var(--bg-0);
-    color: var(--text-1);
-    font-size: 13px;
-    cursor: grab;
-    /* 손가락으로 끌 때 화면이 같이 움직이지 않게 */
-    touch-action: none;
-    user-select: none;
-    transition:
-        opacity var(--dur-fast) var(--ease),
-        box-shadow var(--dur-fast) var(--ease);
+    gap: 8px;
+    padding: 8px 10px;
+    border-radius: 12px;
+    border: 1px solid var(--line);
 }
-.cmd-chip.is-fixed {
-    cursor: pointer;
-    touch-action: auto;
+
+.cmd-row.is-moved {
+    border-style: dashed;
 }
-.cmd-chip.is-moved {
-    border-color: var(--warn);
-    box-shadow: 0 0 0 1px var(--warn);
+
+.cmd-name {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
 }
-.cmd-chip.is-selected {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 2px var(--accent);
+
+.cmd-name > span:last-child {
+    display: grid;
+    min-width: 0;
 }
-.cmd-chip.is-dragging {
-    position: relative;
-    z-index: 2;
-    cursor: grabbing;
-    box-shadow: 0 8px 24px rgb(0 0 0 / 0.25);
+
+.cmd-name strong {
+    overflow-wrap: anywhere;
 }
-.cmd-chip.is-legend {
-    cursor: default;
+
+@media (max-width: 560px) {
+    .cmd-row {
+        grid-template-columns: minmax(0, 1fr) auto;
+    }
+    .cmd-name {
+        grid-column: 1 / -1;
+    }
 }
+
 .dot {
     display: inline-block;
     flex: none;
@@ -1360,56 +1580,6 @@ textarea {
 .dot.tone-info {
     background: var(--info);
 }
-.chip-edit {
-    display: grid;
-    gap: 8px;
-    padding: 12px 16px;
-    background: var(--bg-1);
-    border: 1px solid var(--line);
-    border-radius: 12px;
-}
-.level-steps {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
-    margin: 0;
-    padding: 0;
-    border: 0;
-    min-width: 0;
-}
-.level-step {
-    padding: 4px 8px;
-    border: 1px solid var(--line-strong);
-    border-radius: 8px;
-    background: var(--bg-1);
-    font-size: 13px;
-    cursor: pointer;
-}
-.level-step.is-up {
-    border-color: transparent;
-    background: color-mix(in srgb, var(--accent) 16%, var(--bg-1));
-    color: var(--accent);
-}
-.level-step.is-on {
-    border-color: var(--accent);
-    background: var(--accent);
-    color: var(--text-inverse);
-    font-weight: 700;
-}
-.stair-legend {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 12px;
-    color: var(--text-2);
-    font-size: 12px;
-}
-.stair-legend > span {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-}
-
-/* ── 서버: 목록·요약·상세 (휴대폰은 하나씩, 넓은 화면은 나란히) ── */
 .servers-detail:empty {
     display: none;
 }
@@ -1859,6 +2029,16 @@ textarea {
 .info-row dt {
     color: var(--text-3);
 }
+/* 개발 용어(통신 방식)는 '자세히' 안에 (사용자 11-06 #24) */
+.info-more {
+    margin-top: 10px;
+}
+.info-more > summary {
+    cursor: pointer;
+    color: var(--text-3);
+    font-size: 13px;
+    margin-bottom: 8px;
+}
 .info-row dd {
     margin: 0;
     text-align: right;
@@ -1979,11 +2159,6 @@ textarea {
 }
 .activity-row .pill {
     flex: none;
-}
-/* 서버별 사용량 막대 (PC 메모리 중 그 서버 몫) */
-.meter-mini {
-    flex: none;
-    width: 80px;
 }
 @media (max-width: 420px) {
     .activity-row {
@@ -2166,4 +2341,37 @@ textarea {
     cursor: pointer;
     font-size: 14px;
     line-height: 1;
+}
+
+/* 명령 입력 줄 (사용자 11-06 #4): 칸 모양은 바깥 상자가 맡고, 안의 입력은 색칠한 줄 위에 투명하게 겹친다 */
+.command-line {
+    display: grid;
+    gap: 8px;
+}
+.command-line-box {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    min-height: 40px;
+    padding: 0 12px;
+    border-radius: 12px;
+    border: 1px solid var(--line);
+    background: var(--field);
+    box-shadow: var(--neu-in);
+    font-size: 16px; /* iOS 가 입력할 때 확대하지 않게 */
+    transition:
+        border-color 0.25s var(--ease),
+        box-shadow 0.25s var(--ease);
+}
+.command-line-box:focus-within {
+    border-color: var(--accent);
+    box-shadow: var(--neu-in), var(--accent-ring);
+}
+.command-line-box .cmdline-input,
+.command-line-box .cmdline-input:focus {
+    min-height: 0;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
 }

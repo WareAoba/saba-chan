@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useApp } from '../store';
 import { Dropdown } from './Dropdown';
-import { Button, errorText, failed, Section } from './ui';
+import { LinkedText } from './ScreenLink';
+import { Button, Card, errorText, failed } from './ui';
 import type { ApiBody, Server, ServerPanelProps } from '../types';
 
 /** 사바쨩 칸 값 (폼에서는 글자와 참거짓) */
@@ -13,6 +14,7 @@ export interface SabaValues {
     game_chat_keyword: string;
     auto_restart: boolean;
     restart_on_unknown_exit: boolean;
+    controllers_only: boolean;
 }
 
 const GAME_CHAT_MODES = ['off', 'all', 'keyword'];
@@ -29,6 +31,7 @@ export function sabaValues(server: Partial<Server> | ApiBody | null | undefined)
         game_chat_keyword: server?.game_chat_keyword || '',
         auto_restart: asFlag(ms.auto_restart, true),
         restart_on_unknown_exit: asFlag(ms.restart_on_unknown_exit, false),
+        controllers_only: server?.controllers_only === true,
     };
 }
 
@@ -44,7 +47,7 @@ export function sabaPatch(opened: SabaValues, values: SabaValues) {
         const v = String(values[key] ?? '').trim();
         if (v !== opened[key]) patch[key] = v;
     }
-    for (const key of ['auto_restart', 'restart_on_unknown_exit'] as const) {
+    for (const key of ['auto_restart', 'restart_on_unknown_exit', 'controllers_only'] as const) {
         if (values[key] !== opened[key]) patch[key] = values[key];
     }
     return patch;
@@ -54,17 +57,24 @@ interface ToggleProps {
     label: React.ReactNode;
     hint?: React.ReactNode;
     checked: boolean;
+    disabled?: boolean;
     onChange: (checked: boolean) => void;
 }
 
-function Toggle({ label, hint, checked, onChange }: ToggleProps) {
+function Toggle({ label, hint, checked, disabled, onChange }: ToggleProps) {
     return (
         <label className="field field-row">
             <span>
                 {label}
                 {hint && <small className="hint">{hint}</small>}
             </span>
-            <input type="checkbox" className="switch" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+            <input
+                type="checkbox"
+                className="switch"
+                checked={checked}
+                disabled={disabled}
+                onChange={(e) => onChange(e.target.checked)}
+            />
         </label>
     );
 }
@@ -162,8 +172,7 @@ export function SabaSettings({ api, server, running }: Omit<ServerPanelProps, 'm
                 save();
             }}
         >
-            <Section title={tg('shell.restart_title')}>
-                <p className="hint">{tg('shell.restart_desc')}</p>
+            <Card icon="refresh" tone="1" title={tg('shell.restart_title')} desc={tg('shell.restart_desc')}>
                 <div className="form">
                     <Toggle
                         label={tg('shell.restart_on_crash')}
@@ -178,9 +187,8 @@ export function SabaSettings({ api, server, running }: Omit<ServerPanelProps, 'm
                         onChange={(v) => set('restart_on_unknown_exit', v)}
                     />
                 </div>
-            </Section>
-            <Section title={tg('memory_limit.title')}>
-                <p className="hint">{tg('memory_limit.desc')}</p>
+            </Card>
+            <Card icon="database" tone="4" title={tg('memory_limit.title')} desc={tg('memory_limit.desc')}>
                 <div className="form">
                     <NumberField
                         label={tg('memory_limit.label')}
@@ -191,10 +199,9 @@ export function SabaSettings({ api, server, running }: Omit<ServerPanelProps, 'm
                         note={running ? tg('memory_limit.restart_note') : null}
                     />
                 </div>
-            </Section>
+            </Card>
             {server.game_chat_supported && (
-                <Section title={tg('game_chat.title')}>
-                    <p className="hint">{tg('game_chat.desc')}</p>
+                <Card icon="messageSquare" tone="3" title={tg('game_chat.title')} desc={tg('game_chat.desc')}>
                     <div className="form">
                         <div className="field">
                             <span>{tg('game_chat.mode_label')}</span>
@@ -215,13 +222,32 @@ export function SabaSettings({ api, server, running }: Omit<ServerPanelProps, 'm
                                 <small className="hint">{tg('game_chat.keyword_hint')}</small>
                             </label>
                         )}
-                        <small className="hint">{tg('game_chat.channel_note')}</small>
+                        <small className="hint">
+                            <LinkedText ns="gui" i18nKey="game_chat.channel_note" to="discord/*/moderation/channels" />
+                        </small>
                     </div>
-                </Section>
+                </Card>
+            )}
+            {/* 조작 가능한 사람만 접속 (사용자 지정 2026-11-06). 명단은 "조작 가능" 탭, 비면 켤 수 없다 */}
+            {server.controllers_only_supported && (
+                <Card icon="members" tone="2" title={tg('controllers_only.title')} desc={tg('controllers_only.desc')}>
+                    <div className="form">
+                        <Toggle
+                            label={tg('controllers_only.label')}
+                            hint={
+                                (server.controllers || []).length === 0
+                                    ? tg('controllers_only.empty')
+                                    : tg('controllers_only.hint')
+                            }
+                            checked={values.controllers_only}
+                            disabled={(server.controllers || []).length === 0 && !values.controllers_only}
+                            onChange={(v) => set('controllers_only', v)}
+                        />
+                    </div>
+                </Card>
             )}
             {server.managed !== false && (
-                <Section title={tg('stop_timeout.title')}>
-                    <p className="hint">{tg('stop_timeout.desc')}</p>
+                <Card icon="clock" tone="7" title={tg('stop_timeout.title')} desc={tg('stop_timeout.desc')}>
                     <div className="form">
                         <NumberField
                             label={tg('stop_timeout.label')}
@@ -231,7 +257,7 @@ export function SabaSettings({ api, server, running }: Omit<ServerPanelProps, 'm
                             onChange={(v) => set('stop_timeout', v)}
                         />
                     </div>
-                </Section>
+                </Card>
             )}
             <div className="savebar">
                 {dirty && (

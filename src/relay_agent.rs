@@ -144,7 +144,8 @@ impl RelayAgent {
         let inner = self.lock();
         let mut status = inner.status.clone();
         status.agent_version = AGENT_VERSION;
-        status.has_token = load_node_token().as_deref().and_then(parse_node_token).is_some();
+        // GUI가 5초마다 부른다: 설정 파일이 그대로면 다시 읽지 않는다
+        status.has_token = crate::ipc::handlers::relay::peek_node_token().as_deref().and_then(parse_node_token).is_some();
         status
     }
 
@@ -671,19 +672,18 @@ impl Session {
             .into_iter()
             .map(|m| {
                 // 번역한 명령 이름: 모듈 locales를 언어마다 한 번 읽는다. 번역을 끈 서버는 릴레이가 빼고 단다 (서버별 `translateCommands`)
-                let locales: std::collections::HashMap<&str, Value> = match &m.locale_dir {
+                let locales: std::collections::HashMap<&str, std::sync::Arc<Value>> = match &m.locale_dir {
                     Some(dir) => crate::chat::i18n::languages()
                         .into_iter()
-                        .filter_map(|l| {
-                            let raw = std::fs::read_to_string(dir.join("locales").join(format!("{}.json", l))).ok()?;
-                            Some((l, serde_json::from_str(&raw).ok()?))
-                        })
+                        .filter_map(|l| Some((l, crate::chat::api::module_locale(dir, l)?)))
                         .collect(),
                     None => Default::default(),
                 };
-                let texts = |l: &str| locales.get(l).cloned().unwrap_or(Value::Null);
+                // 명령마다·언어마다 부르므로 locales를 복제하지 않고 함께 쓴다
+                let null = std::sync::Arc::new(Value::Null);
+                let texts = |l: &str| locales.get(l).unwrap_or(&null).clone();
                 let names = &texts;
-                let texts: Option<&dyn Fn(&str) -> Value> = Some(&texts);
+                let texts: Option<&LocaleTexts<'_>> = Some(&texts);
                 let mut entry = json!({
                     "name": m.name,
                     // 게임명도 별명처럼 서버를 부른다: 릴레이가 위험 명령 확인에서 같은 서버를 찾도록 함께 보낸다
@@ -1679,7 +1679,10 @@ fn ids_by_guild(node_settings: &Value, key: &str) -> Option<Value> {
 
 /// 모듈의 게임 이름 — `display_name`(module.toml)과 `display_names`(언어 → 모듈 locales `display_name`). 없으면 키를 싣지 않는다.
 /// 릴레이가 상황판 채널에 켜진 게임을 보이는 데 쓴다 (`game_names`와 달리 띄어 쓴 이름도 그대로 싣는다)
-fn relay_module_names(entry: &mut Value, display_name: Option<&str>, texts: &dyn Fn(&str) -> Value) {
+/// 언어 → 모듈 locales 한 언어 전체 (없으면 Null). 명령마다·언어마다 부르므로 복제하지 않고 함께 쓴다
+type LocaleTexts<'a> = dyn Fn(&str) -> std::sync::Arc<Value> + 'a;
+
+fn relay_module_names(entry: &mut Value, display_name: Option<&str>, texts: &LocaleTexts<'_>) {
     if let Some(name) = display_name.map(str::trim).filter(|n| !n.is_empty()) {
         entry["display_name"] = json!(name);
     }
@@ -1699,7 +1702,7 @@ fn relay_module_names(entry: &mut Value, display_name: Option<&str>, texts: &dyn
 /// `aliases`는 module.toml `[aliases.commands]`의 별칭 — 별칭으로 친 명령도 relay가 위험도 확인을 거치게 한다
 /// `texts`: 언어 → 모듈 locales (번역한 명령 이름이 켜져 있을 때). 있으면 `commands.<이름>.label`·`description`과
 /// 칸의 `inputs.<칸>.label`을 언어별 `titles`·`descriptions`로 싣는다 (릴레이 슬래시 명령의 언어별 이름·설명)
-fn relay_command_entry(c: &crate::supervisor::module_loader::CommandField, aliases: &[String], texts: Option<&dyn Fn(&str) -> Value>) -> Value {
+fn relay_command_entry(c: &crate::supervisor::module_loader::CommandField, aliases: &[String], texts: Option<&LocaleTexts<'_>>) -> Value {
     let by_language = |pointer: &str| -> Option<serde_json::Map<String, Value>> {
         let texts = texts?;
         let map: serde_json::Map<String, Value> = crate::chat::i18n::languages()
@@ -1825,6 +1828,12 @@ fn relay_server_entry(server: &Value, usage: Option<&crate::system_monitor::Inst
     let players = server.get("players").filter(|_| server.get("status").and_then(Value::as_str) == Some("running"));
     if let Some(count) = players.and_then(crate::supervisor::players::parse) {
         entry.insert("players".into(), json!(count));
+    }
+    // 조작 가능 명단의 디스코드 ID (릴레이가 시작·정지를 그 사람에게도 보인다). 게임 닉네임은 올리지 않는다
+    let controllers: Vec<&str> =
+        server.get("controllers").and_then(Value::as_array).into_iter().flatten().filter_map(|c| c.get("discord_id")?.as_str()).collect();
+    if !controllers.is_empty() {
+        entry.insert("controllers".into(), json!(controllers));
     }
     // 켜진 시각 (Unix 초) — 상황판 가동 시간
     let running = server.get("status").and_then(Value::as_str) == Some("running");
@@ -2341,11 +2350,11 @@ mod tests {
             "inputs": [{ "name": "flush", "type": "text" }]
         }))
         .unwrap();
-        let texts = |lang: &str| -> Value {
-            match lang {
+        let texts = |lang: &str| -> std::sync::Arc<Value> {
+            std::sync::Arc::new(match lang {
                 "ko" => json!({ "commands": { "save-all": { "label": "월드 저장", "description": "게임 월드를 저장합니다", "inputs": { "flush": { "label": "바로 쓰기" } } } } }),
                 _ => Value::Null,
-            }
+            })
         };
         let entry = relay_command_entry(&field, &[], Some(&texts));
         assert_eq!(entry["titles"]["ko"], "월드 저장");
@@ -2369,12 +2378,12 @@ mod tests {
     /// 게임 이름: module.toml `display_name`과 언어마다 모듈 locales의 `display_name` (상황판 채널에 켜진 게임을 보인다)
     #[test]
     fn heartbeat_modules_carry_game_names() {
-        let texts = |lang: &str| -> Value {
-            match lang {
+        let texts = |lang: &str| -> std::sync::Arc<Value> {
+            std::sync::Arc::new(match lang {
                 "ko" => json!({ "display_name": "프로젝트 좀보이드" }),
                 "ja" => json!({ "display_name": " " }),
                 _ => Value::Null,
-            }
+            })
         };
         let mut entry = json!({});
         relay_module_names(&mut entry, Some("Project Zomboid"), &texts);
@@ -2382,7 +2391,7 @@ mod tests {
         assert_eq!(entry["display_names"], json!({ "ko": "프로젝트 좀보이드" }), "blank or missing → left out");
 
         let mut bare = json!({});
-        relay_module_names(&mut bare, None, &|_: &str| Value::Null);
+        relay_module_names(&mut bare, None, &|_: &str| std::sync::Arc::new(Value::Null));
         assert_eq!(bare, json!({}), "no names → no keys (the relay falls back to the module name)");
     }
 
@@ -2545,6 +2554,18 @@ mod tests {
         assert_eq!(relay_server_entry(&server, None), json!({ "id": "i1", "name": "마크", "module": "minecraft", "status": "running" }));
     }
 
+    /// 조작 가능 명단은 디스코드 ID만 올린다 (게임 닉네임은 PC에만)
+    #[test]
+    fn heartbeat_servers_carry_only_the_discord_ids_of_controllers() {
+        let server = json!({
+            "id": "i1", "name": "마크", "module": "minecraft", "status": "stopped",
+            "controllers": [{ "name": "Steve", "discord_id": "332007306403250178" }, { "name": "Alex" }]
+        });
+        let entry = relay_server_entry(&server, None);
+        assert_eq!(entry["controllers"], json!(["332007306403250178"]));
+        assert!(!entry.to_string().contains("Steve"));
+    }
+
     #[test]
     fn heartbeat_servers_add_usage_and_an_extension_status_line() {
         let server = json!({
@@ -2555,6 +2576,7 @@ mod tests {
         let usage = crate::system_monitor::InstanceMetrics {
             id: "i1".into(), name: "마크".into(), running: true, process_count: 1,
             cpu_percent: 12.345, memory_bytes: 3 * 1024 * 1024 * 1024, disk_read_bps: 0, disk_write_bps: 0,
+            net_rx_bps: None, net_tx_bps: None,
         };
         let entry = relay_server_entry(&server, Some(&usage));
         assert_eq!(entry["usage"], json!({ "cpu": 12.3, "memMb": 3072 }));
@@ -2613,12 +2635,16 @@ mod tests {
         let snap = MetricsSnapshot {
             sampled_at_ms: 0,
             window_ms: 0,
-            cpu: CpuMetrics { cores: 8, total_percent: 81.6, others_percent: 0.0 },
-            memory: MemoryMetrics { total_bytes: 1000, used_bytes: 795, others_bytes: 0 },
+            cpu: CpuMetrics { cores: 8, total_percent: 81.6, others_percent: 0.0, clock_mhz: None, temp_c: None },
+            memory: MemoryMetrics { total_bytes: 1000, used_bytes: 795, others_bytes: 0, clock_mhz: None },
             disk_io: DiskIoMetrics { read_bps: 0, write_bps: 0, source: "physical", per_instance: false },
             network: NetworkMetrics { rx_bps: 0, tx_bps: 0, per_instance: false },
             disks: vec![disk(100, 40), disk(200, 14), disk(0, 0)],
             instances: vec![],
+            net_trace: crate::system_monitor::net_trace::NetTraceMetrics::status("off"),
+            volumes: vec![],
+            adapters: vec![],
+            gpus: vec![],
         };
         assert_eq!(host_load(&snap), json!({ "cpu": 82, "mem": 80, "diskFree": 7 }));
         let none = MetricsSnapshot { disks: vec![], ..snap };

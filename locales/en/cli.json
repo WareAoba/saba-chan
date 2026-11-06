@@ -31,6 +31,7 @@
     "module_required": "Pick a game with --module, or give an existing server folder with --from.",
     "name_empty": "The name can't be empty.",
     "name_taken": "A server named {{name}} already exists.",
+    "name_comma": "A server name can't contain a comma (Discord splits a server's words at commas). Spaces are fine.",
     "needs_extensions": "This game needs these extensions: {{ids}}. Install and turn them on now?",
     "no_installer": "{{game}} can't install server files by itself. Use an existing folder with --from.",
     "no_modules": "No game modules are installed yet.",
@@ -318,6 +319,16 @@
       "err_browse_denied": "You can't open that folder",
       "err_browse_not_a_folder": "That's not a folder",
       "err_browse_failed": "Couldn't read the folder. Please try again"
+    },
+    "net_trace": {
+      "on": "on",
+      "off": "off",
+      "current": "Per-server and per-port network: {{state}} · permission: {{access}}",
+      "access_ok": "granted",
+      "access_needs_grant": "missing (config net-trace grant)",
+      "access_needs_relogin": "granted, sign in to Windows again to use it",
+      "access_unsupported": "not available on this OS (Windows only)",
+      "enable_hint": "To turn it on: saba-chan-cli config set systemMonitorNetTrace=on"
     }
   },
   "console": {
@@ -414,6 +425,7 @@
       "node_token_missing": "Pair this PC first: saba-chan-cli bot pair",
       "server_not_running": "Start the server first: saba-chan-cli start NAME",
       "server_running": "Stop the server first: saba-chan-cli stop NAME",
+      "invalid_name": "Remove the comma from the name and try again. Spaces are fine.",
       "rcon_unreachable": "Could not connect to the server's RCON. Check that the server has finished starting and try again shortly: saba-chan-cli status",
       "rcon_auth_failed": "The server rejected the RCON password. Restart the server so Saba-chan writes the password again: saba-chan-cli restart NAME",
       "rcon_timeout": "The server did not answer over RCON in time. The command may already have run, so check the server console before sending it again: saba-chan-cli console NAME",
@@ -439,7 +451,7 @@
       "no_command_path": "This server was started outside saba-chan, so it has no console to take commands. Restart it from saba-chan: saba-chan-cli restart <server>",
       "conflict_with": "clashes with {{name}}",
       "word": {
-        "invalid": "use 1-32 characters with no spaces",
+        "invalid": "use 1-32 characters with no commas (spaces are fine)",
         "reserved": "is a reserved word",
         "conflict": "already calls something else",
         "unknown_command": "this server has no such command",
@@ -474,7 +486,9 @@
       "move_cross_volume": "A folder on another drive can't be moved. Import it with \"Keep it where it is\" instead.",
       "move_in_use": "The folder could not be moved. Stop the server in this folder, close any program that has it open, and try again.",
       "move_failed": "The folder could not be moved. Import it with \"Keep it where it is\" instead.",
-      "port_check_busy": "A check is already running. Try again in a moment"
+      "port_check_busy": "A check is already running. Try again in a moment",
+      "net_trace_elevation_failed": "Couldn't get administrator confirmation on the daemon PC. Try again in front of that PC.",
+      "net_trace_failed": "Couldn't change the permission."
     },
     "not_a_bool": "\"{{value}}\" is not yes/no (use true or false).",
     "not_a_number": "\"{{value}}\" is not a number.",
@@ -724,7 +738,7 @@
     "preflight_failed": "Runtime setup for game modules failed: {{error}}. It is retried on the next server action."
   },
   "stop": {
-    "confirm": "Are you sure you want to stop {{name}} server?",
+    "confirm": "Are you sure you want to stop “{{name}}” server?",
     "already": "{{name}} is not running.",
     "done": "{{name}} stopped.",
     "force_confirm": "Stop without saving?",
@@ -810,7 +824,7 @@
       "perm.owner": "Change the pinned owner of this Discord server",
       "perm.level": "Add, rename, remove or move a permission level of one Discord server (`perm show` lists them)",
       "perm.level.add": "Add a level (right below the owner, or right above `--above`)",
-      "perm.level.rename": "Rename an added level",
+      "perm.level.rename": "Rename a level (leave it empty for the original name)",
       "perm.level.remove": "Remove a level: its members move one level down, commands that needed it one level up",
       "perm.level.move": "Put a level right above another one (the owner stays on top, banned at the bottom)",
       "sandbox": "Isolated runs of unverified modules and extensions",
@@ -838,7 +852,8 @@
       "bot.backup-notice": "Send every backup result as a DM (--all) or only failures (--failures). No options: show",
       "bot.confirm": "When the bot asks with a Discord button before running (all, caution, danger, none). No options: show",
       "bot.tts": "Reading Saba-chan voice of a Discord server (volume, speed, pitch). No options: show",
-      "bot.big-emoji": "Emoji upscale (a lone custom emoji is shown large) on a Discord server. No options: show"
+      "bot.big-emoji": "Emoji upscale (a lone custom emoji is shown large) on a Discord server. No options: show",
+      "config.net-trace": "Per-server and per-port network (advanced, Windows) permission: without an action shows the current state; grant shows one administrator prompt on the daemon PC, revoke undoes it. Turn it on with config set systemMonitorNetTrace=on"
     },
     "arg": {
       "module.maker.game": "Game to put in the first prompt",
@@ -936,7 +951,8 @@
       "bot.tts.voice_chat_only": "Read your messages only in the chat of the voice channel you are in (on|off, game chat channel excepted)",
       "bot.tts.keep_read": "Keep read messages instead of deleting them (on|off)",
       "bot.tts.auto_channels": "Voice channel IDs to always read (comma-separated, up to 10): with 2+ people inside, the bot joins and reads its chat",
-      "bot.tts.no_auto_channels": "Clear the always-read voice channels"
+      "bot.tts.no_auto_channels": "Clear the always-read voice channels",
+      "config.net-trace.action": "grant or revoke. Shows the current state when left out"
     },
     "after": "Names can be partial (e.g. start pal). Run with no arguments in a terminal to open the full-screen menu (SABA_NO_TUI=1: the interactive shell).\nIn scripts use --json and --yes. Exit codes: 0 ok · 1 failed · 2 usage · 3 daemon unreachable · 4 not found · 130 cancelled"
   },
@@ -1145,7 +1161,7 @@
     "level_col": "Level",
     "ladder": "Levels (highest first)",
     "level_fixed": "{{level}} can't be moved or removed (the owner stays on top, banned at the bottom).",
-    "level_builtin": "{{level}} is a built-in level, so it can't be renamed.",
+    "level_kept": "{{level}} can't be removed (owner, guest and banned always stay).",
     "saved": "Saved permissions for {{guild}}",
     "preset_reset": "Choosing the preset resets {{count}} command level(s) to the {{preset}} preset. Continue?",
     "bad_level": "Unknown level: {{level}} (admin, user, chatbot, banned or a level added to this server)",
@@ -1376,8 +1392,8 @@
     "kept_nothing": "settings and game servers are removed too",
     "done": "Saba-chan was removed; {{kept}}.",
     "left": "Saba-chan was removed, but these could not be deleted. Close any program using them and delete them yourself:\n{{paths}}",
-    "servers_unlisted": "Could not get the list of running servers, so they were force-stopped instead of shut down cleanly ({{detail}}).",
-    "server_force_stopped": "Server {{server}} did not shut down cleanly and was force-stopped ({{detail}}). Changes since its last save may be lost.",
+    "servers_unlisted": "Could not get the list of running servers, so they were force-stopped instead of stopped cleanly ({{detail}}).",
+    "server_force_stopped": "Server {{server}} did not stop cleanly and was force-stopped ({{detail}}). Changes since its last save may be lost.",
     "daemon_unanswered": "The daemon did not answer, so running servers were force-stopped. Changes since their last save may be lost."
   },
   "players": {

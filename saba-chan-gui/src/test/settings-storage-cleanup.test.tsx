@@ -71,8 +71,48 @@ describe('설정에서 익스텐션 탭을 뺀다', () => {
         render(<SettingsModal isOpen onClose={vi.fn()} variant="page" />);
         const labels = [...document.querySelectorAll('.settings-tab')].map((b) => b.textContent);
         expect(labels).toEqual(
-            ['general', 'appearance', 'advanced_tab'].map((k) => i18n.t(`gui:settings_modal.${k}`)),
+            [
+                'general',
+                'tab_notify',
+                'appearance',
+                'tab_console',
+                'tab_servers',
+                'tab_connection',
+                'tab_storage',
+                'tab_security',
+                'tab_troubleshoot',
+            ].map((k) => i18n.t(`gui:settings_modal.${k}`)),
         );
+    });
+
+    // 사용자 요청(2026-11-06): 고급에 몰린 설정을 여러 탭으로 나눈다 (옮기기만, 설정 자체는 그대로)
+    it('설정을 갈래별 탭에 나눠 둔다', async () => {
+        render(<SettingsModal isOpen onClose={vi.fn()} variant="page" />);
+        const open = async (key: string) => {
+            const tab = screen.getByRole('tab', { name: i18n.t(`gui:settings_modal.${key}`) });
+            await act(async () => fireEvent.click(tab));
+            expect(tab.getAttribute('aria-selected')).toBe('true');
+        };
+        const has = (key: string) => expect(screen.queryByText(i18n.t(`gui:settings_modal.${key}`))).not.toBeNull();
+        const lacks = (key: string) => expect(screen.queryByText(i18n.t(`gui:settings_modal.${key}`))).toBeNull();
+        has('language_label');
+        lacks('os_notifications_label');
+        await open('tab_notify');
+        has('os_notifications_label');
+        has('sound_effects_label');
+        await open('tab_console');
+        has('console_fonts_label');
+        has('console_buffer_label');
+        lacks('theme_label');
+        await open('tab_servers');
+        has('auto_generate_passwords_label');
+        has('audit_keep_label');
+        await open('tab_connection');
+        has('ipc_port_label');
+        has('relay_url_label');
+        await open('tab_troubleshoot');
+        has('uninstall_label');
+        lacks('ipc_port_label');
     });
 
     it("'익스텐션'으로 열면 사바 스토리지 익스텐션 탭이 열린다", async () => {
@@ -104,12 +144,12 @@ describe('사바 스토리지 익스텐션 탭에서 켜고 끈다', () => {
 });
 
 describe('작업 기록은 별도 페이지', () => {
-    it('설정 > 고급에 작업 기록을 펼쳐 두지 않는다', async () => {
+    it('설정 > 문제 해결에 작업 기록을 펼쳐 두지 않는다', async () => {
         render(<SettingsModal isOpen onClose={vi.fn()} variant="page" />);
-        const advanced = [...document.querySelectorAll('.settings-tab')].find(
-            (b) => b.textContent === i18n.t('gui:settings_modal.advanced_tab'),
+        const tab = [...document.querySelectorAll('.settings-tab')].find(
+            (b) => b.textContent === i18n.t('gui:settings_modal.tab_troubleshoot'),
         );
-        await act(async () => fireEvent.click(advanced!));
+        await act(async () => fireEvent.click(tab!));
         expect(document.querySelector('.settings-audit')).toBeNull();
         expect(window.api.auditList).not.toHaveBeenCalled();
     });

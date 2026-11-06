@@ -146,6 +146,17 @@ pub struct Event<'a> {
     pub daemon: Option<&'a str>,
     pub ok: bool,
     pub status: u16,
+    /// 실패 이유 코드 (응답의 `error_code`, `failure_code`로 거른 것). 화면이 번역해 보인다
+    pub code: Option<&'a str>,
+}
+
+/// 응답 본문의 `error_code` → 기록할 실패 이유 코드. 영문 소문자·숫자·`_.-`만, 64자까지 (자유 문장은 남기지 않는다)
+pub fn failure_code(body: &Value) -> Option<String> {
+    let code = body.get("error_code")?.as_str()?;
+    let plain = !code.is_empty()
+        && code.len() <= 64
+        && code.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '_' | '.' | '-'));
+    plain.then(|| code.to_string())
 }
 
 fn clip(s: &str) -> String {
@@ -173,8 +184,8 @@ impl Default for Filter<'_> {
 }
 
 /// CSV 열 (기록의 키, 시각은 이 PC 시간대)
-const CSV_COLUMNS: [&str; 13] =
-    ["time", "source", "user", "userName", "guild", "guildName", "instance", "instanceId", "action", "command", "args", "ok", "status"];
+const CSV_COLUMNS: [&str; 14] =
+    ["time", "source", "user", "userName", "guild", "guildName", "instance", "instanceId", "action", "command", "args", "ok", "status", "code"];
 
 /// 기록을 CSV로 (오래된 것이 먼저, 엑셀이 한글을 읽도록 BOM). 수식으로 읽힐 칸은 앞에 '를 붙인다
 pub fn to_csv(newest_first: &[Value]) -> String {
@@ -254,6 +265,7 @@ impl AuditLog {
             ("instance", event.instance),
             ("command", event.command),
             ("daemon", event.daemon),
+            ("code", event.code),
         ];
         for (key, value) in fields {
             if let Some(v) = value {
@@ -502,6 +514,15 @@ mod tests {
     use super::*;
 
     #[test]
+    fn only_plain_error_codes_are_kept_as_the_reason() {
+        assert_eq!(failure_code(&json!({ "error_code": "invalid_argument" })).as_deref(), Some("invalid_argument"));
+        assert_eq!(failure_code(&json!({ "error_code": "module.timeout-2" })).as_deref(), Some("module.timeout-2"));
+        assert_eq!(failure_code(&json!({ "error_code": "C:\\Users\\me failed" })), None, "free text is not a code");
+        assert_eq!(failure_code(&json!({ "error_code": "x".repeat(65) })), None);
+        assert_eq!(failure_code(&json!({ "error": "no code" })), None);
+    }
+
+    #[test]
     fn records_come_back_newest_first_and_survive_rotation() {
         let dir = tempfile::tempdir().unwrap();
         let log = AuditLog::at(dir.path().join("audit.log"));
@@ -509,10 +530,12 @@ mod tests {
         let discord = Origin { user: Some("42".into()), guild: Some("7".into()), user_name: Some("사바".into()), ..Origin::new("discord") };
         log.record(&cli, &Event { action: "start", instance_id: "a", instance: Some("마크"), ok: true, status: 200, ..Default::default() });
         let args = json!(["x".repeat(400)]);
-        log.record(&discord, &Event { action: "command", instance_id: "b", command: Some("say"), args: Some(&args), ok: false, status: 400, ..Default::default() });
+        log.record(&discord, &Event { action: "command", instance_id: "b", command: Some("say"), args: Some(&args), ok: false, status: 400, code: Some("invalid_argument"), ..Default::default() });
 
         let all = log.recent(10, None);
         assert_eq!(all.len(), 2);
+        assert_eq!(all[0]["code"], "invalid_argument", "the failure reason is kept for the screens to translate");
+        assert!(all[1].get("code").is_none());
         assert_eq!(all[0]["source"], "discord");
         assert_eq!(all[0]["user"], "42");
         assert_eq!(all[0]["guild"], "7");
@@ -584,14 +607,15 @@ mod tests {
     #[test]
     fn csv_is_oldest_first_quoted_and_safe_for_spreadsheets() {
         let rows = [
-            json!({ "ts": 200, "source": "discord", "userName": "김치", "action": "command", "command": "=cmd|calc", "args": "[\"a,b\"]", "instanceId": "x", "ok": false, "status": 400 }),
+            json!({ "ts": 200, "source": "discord", "userName": "김치", "action": "command", "command": "=cmd|calc", "args": "[\"a,b\"]", "instanceId": "x", "ok": false, "status": 400, "code": "invalid_argument" }),
             json!({ "ts": 100, "source": "cli", "action": "start", "instanceId": "x", "ok": true, "status": 200 }),
         ];
         let csv = to_csv(&rows);
         assert!(csv.starts_with('\u{feff}'));
         let lines: Vec<&str> = csv.trim_start_matches('\u{feff}').split("\r\n").collect();
         assert_eq!(lines[0], CSV_COLUMNS.join(","));
-        assert!(lines[1].contains(",cli,") && lines[1].ends_with(",start,,,true,200"), "{}", lines[1]);
+        assert!(lines[1].contains(",cli,") && lines[1].ends_with(",start,,,true,200,"), "{}", lines[1]);
+        assert!(lines[2].ends_with(",false,400,invalid_argument"), "{}", lines[2]);
         assert!(lines[2].contains(",김치,"), "{}", lines[2]);
         assert!(lines[2].contains(",'=cmd|calc,"), "formula cell must be defused: {}", lines[2]);
         assert!(lines[2].contains(r#","[""a,b""]","#), "comma cell must be quoted: {}", lines[2]);

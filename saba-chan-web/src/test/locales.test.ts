@@ -69,7 +69,7 @@ describe('web.json', () => {
 
 /** 언어마다 그대로 쓰는 이름·기술 낱말 (지우고 나서 남은 영어 낱말만 본다) */
 const PROPER =
-    /Saba-chan|Server-chan|saba-chan|Discord|GitHub|WareAoba|Zomboid|localhost|HTTP|UUID|CPU|API|URL|CLI|PC|IP|AI|ID|OK|Lv|\/saba(?: \w+)?(?: code:)?/g;
+    /Saba-chan|Server-chan|saba-chan|Discord|GitHub|WareAoba|Zomboid|localhost|HTTP|UUID|CPU|GPU|API|URL|CLI|PC|IP|AI|ID|OK|Lv|\/saba(?: \w+)?(?: code:)?/g;
 
 /** 봇이 알아듣는 명령 낱말이라 모든 언어가 영어 그대로 쓰는 키 (릴레이 DAEMON_TOP_LEVEL_WORDS) */
 const COMMAND_WORDS = [
@@ -81,6 +81,7 @@ const COMMAND_WORDS = [
 /** 영어와 글자가 같아도 그 언어에서 맞는 문구 (언어: 파일:키) */
 const SAME_AS_EN: Record<string, string[]> = {
     es: [
+        'gui.json:monitor.pick_network_all',
         'web.json:app_name',
         'web.json:backups.kind.manual',
         'web.json:perm.level.2',
@@ -107,6 +108,11 @@ const SAME_AS_EN: Record<string, string[]> = {
         'gui.json:daemon_switcher.label',
     ],
     'pt-BR': [
+        'gui.json:discord.iw_cmd_status',
+        'gui.json:settings_modal.tab_console',
+        'gui.json:command_modal.via_console',
+        'gui.json:monitor.pick_clock',
+        'gui.json:monitor.pick_network_all',
         'web.json:app_name',
         'web.json:tabs.label',
         'web.json:detail.backups',
@@ -137,6 +143,10 @@ const SAME_AS_EN: Record<string, string[]> = {
         'gui.json:daemon_switcher.label',
     ],
     de: [
+        'gui.json:discord.iw_cmd_status',
+        'gui.json:shell.info_more',
+        'gui.json:monitor.ports_server',
+        'gui.json:monitor.ports_port',
         'web.json:app_name',
         'web.json:servers.name',
         'web.json:detail.backups',
@@ -169,6 +179,10 @@ const SAME_AS_EN: Record<string, string[]> = {
         'gui.json:picker.minute',
     ],
     fr: [
+        'gui.json:monitor.ports_port',
+        'gui.json:settings_modal.tab_console',
+        'gui.json:command_modal.via_console',
+        'gui.json:monitor.pick_network_all',
         'web.json:app_name',
         'web.json:tabs.label',
         'web.json:tabs.modules',

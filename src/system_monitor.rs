@@ -7,7 +7,9 @@
 //!   인스턴스의 `disk_*_bps`는 그 프로세스들이 요청한 IO(캐시 포함)다. 요약 요청은 물리 카운터가 있으면
 //!   프로세스 IO 카운터를 읽지 않아 이 값이 0이다.
 //! - 물리 카운터를 한 번 못 읽으면 직전 값을 다시 쓴다(`STALE_AFTER`까지). 프로세스 합으로 바꾸면 그래프가 튄다.
-//! - 네트워크: 프로세스별 값을 싸게 얻을 길이 없어(Windows는 ETW·관리자 권한 필요) 기계 전체만 준다.
+//! - 네트워크: 프로세스별 값을 싸게 얻을 길이 없어 `network`는 기계 전체, `adapters`는 어댑터별만 준다. 서버·포트별 값은
+//!   고급 옵션(`net_trace`, Windows ETW)이 켜져 있고 펼친 화면을 볼 때만 `net_trace`와 인스턴스의 `net_*_bps`에 담긴다.
+//! - CPU 클럭·온도, RAM 클럭, GPU, 디스크 회전 속도는 `hardware`가 OS 기본 값으로 읽는다 (못 읽으면 None).
 //! - 디스크 용량의 인스턴스 몫은 폴더 크기를 따로 훑어 10분 동안 재사용한다. 요약만 보는 요청은 훑지 않는다.
 //! - 요청이 `IDLE_DROP_AFTER` 동안 없으면 표본기(프로세스 목록 포함)를 버린다. 다음 요청 때 새로 만든다.
 
@@ -18,7 +20,11 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use sysinfo::{Disks, Networks, Pid, ProcessRefreshKind, ProcessesToUpdate, System};
 
+mod hardware;
+pub mod net_trace;
 mod physical_io;
+use hardware::Hardware;
+use net_trace::{NetTrace, NetTraceMetrics, PortTraffic};
 use physical_io::PhysicalIo;
 
 /// 이보다 잦은 요청은 직전 표본을 그대로 준다 (여러 클라이언트가 함께 봐도 표본은 하나)
@@ -39,6 +45,8 @@ pub struct InstanceRoot {
     pub name: String,
     pub pid: Option<u32>,
     pub dirs: Vec<PathBuf>,
+    /// 밖에 여는 포트 (`port_check::public_ports`). 포트별 네트워크 표의 줄이 된다
+    pub ports: Vec<crate::port_check::PublicPort>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -52,6 +60,14 @@ pub struct MetricsSnapshot {
     pub network: NetworkMetrics,
     pub disks: Vec<DiskMetrics>,
     pub instances: Vec<InstanceMetrics>,
+    /// 포트·서버별 네트워크 (고급 옵션)
+    pub net_trace: NetTraceMetrics,
+    /// 화면에서 고를 수 있는 모든 디스크 (`disks`는 서버·데이터 폴더가 있는 디스크만)
+    pub volumes: Vec<VolumeMetrics>,
+    /// 네트워크 어댑터마다 (루프백 제외, 이름순)
+    pub adapters: Vec<AdapterMetrics>,
+    /// 잴 수 있는 GPU (없으면 빈 목록)
+    pub gpus: Vec<GpuMetrics>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -61,6 +77,10 @@ pub struct CpuMetrics {
     pub total_percent: f32,
     /// 인스턴스가 아닌 프로세스 몫
     pub others_percent: f32,
+    /// 지금 클럭 (못 재면 None)
+    pub clock_mhz: Option<u32>,
+    /// CPU 온도 (OS가 기본으로 주는 값, 못 재면 None)
+    pub temp_c: Option<f32>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -68,6 +88,8 @@ pub struct MemoryMetrics {
     pub total_bytes: u64,
     pub used_bytes: u64,
     pub others_bytes: u64,
+    /// RAM 설정 속도 (MT/s, 못 재면 None)
+    pub clock_mhz: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -101,6 +123,33 @@ pub struct DiskMetrics {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct VolumeMetrics {
+    pub mount: String,
+    pub name: String,
+    /// "ssd" | "hdd" | "unknown"
+    pub kind: &'static str,
+    pub total_bytes: u64,
+    pub available_bytes: u64,
+    /// 회전 속도 (SSD는 0, 모르면 None)
+    pub rpm: Option<u32>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct AdapterMetrics {
+    pub name: String,
+    pub rx_bps: u64,
+    pub tx_bps: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct GpuMetrics {
+    pub name: Option<String>,
+    pub util_percent: Option<f32>,
+    pub clock_mhz: Option<u32>,
+    pub temp_c: Option<f32>,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct DiskShare {
     pub id: String,
     pub bytes: u64,
@@ -118,6 +167,9 @@ pub struct InstanceMetrics {
     /// 프로세스가 요청한 IO (캐시에서 읽은 것 포함). 실제 디스크 IO의 몫이 아니다
     pub disk_read_bps: u64,
     pub disk_write_bps: u64,
+    /// 이 서버 프로세스들이 받고 보낸 양 (`net_trace.status`가 "on"일 때만)
+    pub net_rx_bps: Option<u64>,
+    pub net_tx_bps: Option<u64>,
 }
 
 /// 프로세스 하나의 이번 구간 값 (sysinfo와 분리해 시험할 수 있게)
@@ -151,8 +203,11 @@ impl Usage {
 }
 
 /// 각 프로세스를 조상 중 가장 가까운 인스턴스 PID에 붙인다. 어느 인스턴스에도 안 붙으면 `others`.
-/// 반환: (인스턴스 id → 합계, 나머지 합계)
-fn attribute(procs: &HashMap<u32, ProcSample>, roots: &[(String, u32)]) -> (HashMap<String, Usage>, Usage) {
+/// 반환: (인스턴스 id → 합계, 나머지 합계, 인스턴스에 붙은 PID → 인스턴스 id)
+fn attribute(
+    procs: &HashMap<u32, ProcSample>,
+    roots: &[(String, u32)],
+) -> (HashMap<String, Usage>, Usage, HashMap<u32, String>) {
     let root_of: HashMap<u32, &str> = roots.iter().map(|(id, pid)| (*pid, id.as_str())).collect();
     let mut owner: HashMap<u32, Option<&str>> = HashMap::new();
     let mut by_instance: HashMap<String, Usage> = roots.iter().map(|(id, _)| (id.clone(), Usage::default())).collect();
@@ -185,7 +240,8 @@ fn attribute(procs: &HashMap<u32, ProcSample>, roots: &[(String, u32)]) -> (Hash
             None => others.add(sample),
         }
     }
-    (by_instance, others)
+    let owners = owner.into_iter().filter_map(|(pid, id)| id.map(|id| (pid, id.to_string()))).collect();
+    (by_instance, others, owners)
 }
 
 /// `path`가 들어 있는 마운트 지점 (가장 긴 접두어)
@@ -216,6 +272,20 @@ fn outermost(dirs: &[PathBuf]) -> Vec<PathBuf> {
         out.push(d.clone());
     }
     out
+}
+
+/// 인스턴스마다 폴더 크기를 잰다. 여러 인스턴스가 같은 폴더를 쓰면 한 번만 재고 값을 나눠 준다
+fn measure_dirs_once(jobs: Vec<(String, Vec<PathBuf>)>, mut size_of: impl FnMut(&Path) -> u64) -> HashMap<String, Vec<(PathBuf, u64)>> {
+    let mut measured: HashMap<PathBuf, u64> = HashMap::new();
+    jobs.into_iter()
+        .map(|(id, dirs)| {
+            let sizes = dirs.into_iter().map(|d| {
+                let size = *measured.entry(d.clone()).or_insert_with(|| size_of(&d));
+                (d, size)
+            });
+            (id, sizes.collect())
+        })
+        .collect()
 }
 
 /// 폴더 크기 (심볼릭 링크는 따라가지 않는다)
@@ -262,6 +332,9 @@ struct Sampler {
     /// 마지막 갱신이 프로세스 IO 카운터를 읽었는지
     proc_io: bool,
     last_request: Instant,
+    hardware: Hardware,
+    /// 마지막으로 읽은 하드웨어 값 (표본마다 새로 읽는다)
+    hw: hardware::Reading,
 }
 
 /// 물리 카운터를 못 읽으면 직전 값을 다시 쓴다. 마지막으로 읽은 지 `STALE_AFTER`가 지났으면 없는 것으로 본다
@@ -300,6 +373,9 @@ struct DirSizes {
 pub struct SystemMonitor {
     sampler: Arc<Mutex<Option<Sampler>>>,
     dir_sizes: Arc<Mutex<DirSizes>>,
+    net: NetTrace,
+    /// 포트·서버별 네트워크 옵션 (설정 `systemMonitorNetTrace`)
+    net_enabled: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl Default for SystemMonitor {
@@ -311,7 +387,35 @@ impl Default for SystemMonitor {
 impl SystemMonitor {
     pub fn new() -> Self {
         // sysinfo 초기화는 첫 요청 때 한다: 아무도 안 보면 비용이 없다
-        Self { sampler: Arc::new(Mutex::new(None)), dir_sizes: Arc::new(Mutex::new(DirSizes::default())) }
+        Self {
+            sampler: Arc::new(Mutex::new(None)),
+            dir_sizes: Arc::new(Mutex::new(DirSizes::default())),
+            net: NetTrace::default(),
+            net_enabled: Arc::default(),
+        }
+    }
+
+    /// 포트·서버별 네트워크 옵션을 맞춘다. 끄면 다음 표본 때 세션을 닫는다
+    pub fn set_net_trace(&self, enabled: bool) {
+        // 바뀌면 직전 표본(짧게 재사용한다)을 버린다: 켠 직후 응답이 옛 상태("off")로 오지 않게
+        if self.net_enabled.swap(enabled, std::sync::atomic::Ordering::Relaxed) != enabled
+            && let Some(sampler) = self.sampler.lock().unwrap_or_else(|e| e.into_inner()).as_mut()
+        {
+            sampler.last = None;
+        }
+    }
+
+    /// 권한을 바꾼 뒤: 다음 펼친 요청에서 바로 세션을 다시 열어 본다
+    pub fn net_trace_retry(&self) {
+        self.net.forget_failure();
+    }
+
+    /// 데몬을 끌 때·권한을 거둘 때: 열린 ETW 세션은 시스템 전체 이름이라 프로세스가 끝나도 남는다
+    pub fn stop_net_trace(&self) {
+        self.net.stop();
+        if let Some(sampler) = self.sampler.lock().unwrap_or_else(|e| e.into_inner()).as_mut() {
+            sampler.last = None;
+        }
     }
 
     /// 표본을 뜬다. 동기 시스템 콜이므로 `spawn_blocking` 안에서 부른다.
@@ -335,6 +439,8 @@ impl SystemMonitor {
             last_request: Instant::now(),
             last_refresh: None,
             last: None,
+            hardware: Hardware::new(),
+            hw: hardware::Reading::default(),
         });
         sampler.last_request = Instant::now();
         // 인스턴스 IO 몫은 펼친 화면에서만, 전체 디스크 IO를 프로세스 합으로 낼 때는 늘 필요하다
@@ -361,8 +467,10 @@ impl SystemMonitor {
                 disk.refresh();
             });
         }
+        sampler.hw = sampler.hardware.read(&sampler.system);
         let sizes = self.dir_sizes.lock().unwrap_or_else(|e| e.into_inner());
-        let snap = build_snapshot(sampler, roots, extra_dirs, &sizes, window);
+        let net = self.net.take(self.net_enabled.load(std::sync::atomic::Ordering::Relaxed), measure_dirs);
+        let snap = build_snapshot(sampler, roots, extra_dirs, &sizes, window, net);
         drop(sizes);
         sampler.last = Some((Instant::now(), snap.clone()));
         snap
@@ -371,10 +479,14 @@ impl SystemMonitor {
     fn refresh(sampler: &mut Sampler, want_io: bool) {
         sampler.system.refresh_cpu_usage();
         sampler.system.refresh_memory();
+        // Windows는 클럭을 PDH로 읽는다 (sysinfo 값은 정격 클럭이다)
+        #[cfg(not(windows))]
+        sampler.system.refresh_cpu_frequency();
         sampler.physical_rates = carry_physical(sampler.physical_rates, sampler.physical_io.refresh(), Instant::now());
         // 프로세스 IO 카운터는 프로세스마다 따로 읽는다: 쓸 데가 없으면 건너뛴다
         let with_io = want_io || sampler.physical_rates.is_none();
-        let kind = ProcessRefreshKind::nothing().with_cpu().with_memory();
+        // 스레드는 프로세스로 세지 않으므로 목록에 올리지 않는다 (리눅스는 스레드마다 /proc를 더 읽는다)
+        let kind = ProcessRefreshKind::nothing().with_cpu().with_memory().without_tasks();
         sampler.system.refresh_processes_specifics(ProcessesToUpdate::All, true, if with_io { kind.with_disk_usage() } else { kind });
         sampler.proc_io = with_io;
         sampler.networks.refresh(true);
@@ -405,16 +517,7 @@ impl SystemMonitor {
             roots.iter().map(|r| (r.id.clone(), outermost(&r.dirs))).collect();
         let shared = self.dir_sizes.clone();
         std::thread::spawn(move || {
-            let sizes: HashMap<String, Vec<(PathBuf, u64)>> = jobs
-                .into_iter()
-                .map(|(id, dirs)| {
-                    let measured = dirs.into_iter().map(|d| {
-                        let size = dir_size(&d);
-                        (d, size)
-                    });
-                    (id, measured.collect())
-                })
-                .collect();
+            let sizes = measure_dirs_once(jobs, dir_size);
             let mut state = shared.lock().unwrap_or_else(|e| e.into_inner());
             state.sizes = sizes;
             state.measured_at = Some((Instant::now(), now_ms()));
@@ -429,12 +532,15 @@ fn build_snapshot(
     extra_dirs: &[PathBuf],
     sizes: &DirSizes,
     window: Duration,
+    net: net_trace::Taken,
 ) -> MetricsSnapshot {
     let sys = &sampler.system;
     let cores = sys.cpus().len().max(1);
+    // 리눅스 스레드(태스크)는 프로세스의 메모리·CPU를 나눠 쓴다: 더하면 스레드 수만큼 부푼다
     let procs: HashMap<u32, ProcSample> = sys
         .processes()
         .iter()
+        .filter(|(_, p)| p.thread_kind().is_none())
         .map(|(pid, p)| {
             // 이번에 IO 카운터를 안 읽었으면 sysinfo는 지난번 차이를 그대로 준다
             let io = p.disk_usage();
@@ -455,7 +561,40 @@ fn build_snapshot(
         .iter()
         .filter_map(|r| r.pid.filter(|p| procs.contains_key(p)).map(|p| (r.id.clone(), p)))
         .collect();
-    let (by_instance, others) = attribute(&procs, &pids);
+    let (by_instance, others, owners) = attribute(&procs, &pids);
+    let (net_trace, net_by_instance) = match net {
+        Ok((counts, net_window)) => {
+            let ports: Vec<(String, Vec<crate::port_check::PublicPort>)> =
+                roots.iter().map(|r| (r.id.clone(), r.ports.clone())).collect();
+            let s = net_trace::split(&counts, &owners, &ports);
+            let rate = |b: u64| per_sec(b, net_window);
+            let (inst_rx, inst_tx) = s.by_instance.values().fold((0, 0), |a, b| (a.0 + b.0, a.1 + b.1));
+            let metrics = NetTraceMetrics {
+                status: "on",
+                window_ms: net_window.as_millis() as u64,
+                rx_bps: rate(inst_rx + s.others.0),
+                tx_bps: rate(inst_tx + s.others.1),
+                others_rx_bps: rate(s.others.0),
+                others_tx_bps: rate(s.others.1),
+                ports: s
+                    .ports
+                    .into_iter()
+                    .map(|p| PortTraffic {
+                        instance_id: p.instance_id,
+                        field: p.field,
+                        port: p.port,
+                        protocol: p.protocol,
+                        rx_bps: rate(p.rx),
+                        tx_bps: rate(p.tx),
+                    })
+                    .collect(),
+            };
+            let by: HashMap<String, (u64, u64)> =
+                s.by_instance.into_iter().map(|(id, (rx, tx))| (id, (rate(rx), rate(tx)))).collect();
+            (metrics, Some(by))
+        }
+        Err(status) => (NetTraceMetrics::status(status), None),
+    };
 
     let instances: Vec<InstanceMetrics> = roots
         .iter()
@@ -470,6 +609,8 @@ fn build_snapshot(
                 memory_bytes: u.memory,
                 disk_read_bps: per_sec(u.read, window),
                 disk_write_bps: per_sec(u.written, window),
+                net_rx_bps: net_by_instance.as_ref().map(|m| m.get(&r.id).map_or(0, |v| v.0)),
+                net_tx_bps: net_by_instance.as_ref().map(|m| m.get(&r.id).map_or(0, |v| v.1)),
             }
         })
         .collect();
@@ -493,25 +634,91 @@ fn build_snapshot(
     };
 
     let (mut rx, mut tx) = (0u64, 0u64);
+    let mut adapters: Vec<AdapterMetrics> = Vec::new();
     for (name, data) in sampler.networks.iter() {
-        let lname = name.to_lowercase();
-        if lname == "lo" || lname.contains("loopback") {
+        if is_loopback(name) {
             continue;
         }
         rx += data.received();
         tx += data.transmitted();
+        adapters.push(AdapterMetrics {
+            name: name.clone(),
+            rx_bps: per_sec(data.received(), window),
+            tx_bps: per_sec(data.transmitted(), window),
+        });
     }
+    adapters.sort_by(|a, b| a.name.cmp(&b.name));
+    let hw = &sampler.hw;
 
     MetricsSnapshot {
         sampled_at_ms: now_ms(),
         window_ms: window.as_millis() as u64,
-        cpu: CpuMetrics { cores, total_percent: total_cpu, others_percent: (total_cpu - inst_cpu).max(0.0) },
-        memory: MemoryMetrics { total_bytes: total_mem, used_bytes: used_mem, others_bytes: used_mem.saturating_sub(inst_mem) },
+        cpu: CpuMetrics {
+            cores,
+            total_percent: total_cpu,
+            others_percent: (total_cpu - inst_cpu).max(0.0),
+            clock_mhz: hw.cpu_clock_mhz,
+            temp_c: hw.cpu_temp_c,
+        },
+        memory: MemoryMetrics {
+            total_bytes: total_mem,
+            used_bytes: used_mem,
+            others_bytes: used_mem.saturating_sub(inst_mem),
+            clock_mhz: hw.memory_clock_mhz,
+        },
         disk_io,
         network: NetworkMetrics { rx_bps: per_sec(rx, window), tx_bps: per_sec(tx, window), per_instance: false },
         disks: build_disks(&sampler.disks, roots, extra_dirs, sizes),
         instances,
+        net_trace,
+        volumes: build_volumes(&sampler.disks, &hw.disk_rpm),
+        adapters,
+        gpus: hw
+            .gpus
+            .iter()
+            .map(|g| GpuMetrics { name: g.name.clone(), util_percent: g.util_percent, clock_mhz: g.clock_mhz, temp_c: g.temp_c })
+            .collect(),
     }
+}
+
+fn is_loopback(name: &str) -> bool {
+    let lname = name.to_lowercase();
+    lname == "lo" || lname.contains("loopback")
+}
+
+/// 드라이브 문자로 시작하는 마운트(`C:\`)의 문자
+fn drive_letter(mount: &str) -> Option<char> {
+    let mut chars = mount.chars();
+    let c = chars.next().filter(char::is_ascii_alphabetic)?;
+    (chars.next() == Some(':')).then(|| c.to_ascii_uppercase())
+}
+
+/// 모든 디스크 (마운트 하나에 하나, 이름순). 크기가 0인 가상 파일 시스템은 뺀다
+fn build_volumes(disks: &Disks, rpm: &HashMap<char, u32>) -> Vec<VolumeMetrics> {
+    let mut out: Vec<VolumeMetrics> = disks
+        .iter()
+        .filter(|d| d.total_space() > 0)
+        .map(|d| {
+            let mount = d.mount_point().to_string_lossy().to_string();
+            let kind = match d.kind() {
+                sysinfo::DiskKind::SSD => "ssd",
+                sysinfo::DiskKind::HDD => "hdd",
+                sysinfo::DiskKind::Unknown(_) => "unknown",
+            };
+            let rpm = drive_letter(&mount).and_then(|c| rpm.get(&c).copied());
+            VolumeMetrics {
+                name: d.name().to_string_lossy().to_string(),
+                kind,
+                total_bytes: d.total_space(),
+                available_bytes: d.available_space(),
+                rpm,
+                mount,
+            }
+        })
+        .collect();
+    out.sort_by(|a, b| a.mount.cmp(&b.mount));
+    out.dedup_by(|a, b| a.mount == b.mount);
+    out
 }
 
 /// 데이터 폴더나 인스턴스 폴더가 있는 디스크만 보여 준다
@@ -593,19 +800,23 @@ mod tests {
         ]
         .into();
         let roots = vec![("a".to_string(), 11), ("b".to_string(), 20), ("gone".to_string(), 99)];
-        let (by, others) = attribute(&procs, &roots);
+        let (by, others, owners) = attribute(&procs, &roots);
 
         assert_eq!(by["a"], Usage { processes: 2, cpu: 160.0, memory: 2100, read: 350, written: 0 });
         assert_eq!(by["b"].processes, 1);
         assert_eq!(by["gone"], Usage::default());
         // 러너(10)와 init은 인스턴스 몫이 아니다
         assert_eq!(others, Usage { processes: 3, cpu: 21.5, memory: 1515, read: 7, written: 0 });
+        // 네트워크 몫을 나눌 PID 주인: 인스턴스 트리만
+        assert_eq!(owners.get(&12).map(String::as_str), Some("a"));
+        assert_eq!(owners.get(&20).map(String::as_str), Some("b"));
+        assert!(!owners.contains_key(&10) && !owners.contains_key(&30));
     }
 
     #[test]
     fn parent_cycles_do_not_hang() {
         let procs: HashMap<u32, ProcSample> = [(5, p(Some(6), 1.0, 1, 0)), (6, p(Some(5), 1.0, 1, 0))].into();
-        let (_, others) = attribute(&procs, &[]);
+        let (_, others, _) = attribute(&procs, &[]);
         assert_eq!(others.processes, 2);
     }
 
@@ -619,9 +830,37 @@ mod tests {
     }
 
     #[test]
+    fn only_drive_mounts_have_a_letter() {
+        assert_eq!(drive_letter(r"c:\"), Some('C'));
+        assert_eq!(drive_letter(r"D:\Games"), Some('D'));
+        assert_eq!(drive_letter("/mnt/c"), None);
+        assert_eq!(drive_letter("C"), None);
+    }
+
+    #[test]
     fn nested_instance_dirs_are_counted_once() {
         let dirs = vec![PathBuf::from("/s/a/world"), PathBuf::from("/s/a"), PathBuf::from("/t")];
         assert_eq!(outermost(&dirs), vec![PathBuf::from("/s/a"), PathBuf::from("/t")]);
+    }
+
+    #[test]
+    fn a_folder_shared_by_instances_is_measured_once_but_shown_for_each() {
+        let shared = PathBuf::from("/srv/shared");
+        let jobs = vec![
+            ("a".to_string(), vec![shared.clone(), PathBuf::from("/srv/a")]),
+            ("b".to_string(), vec![shared.clone()]),
+            ("c".to_string(), vec![shared.clone()]),
+        ];
+        let mut walked = Vec::new();
+        let sizes = measure_dirs_once(jobs, |d| {
+            walked.push(d.to_path_buf());
+            d.as_os_str().len() as u64
+        });
+        assert_eq!(walked, vec![shared.clone(), PathBuf::from("/srv/a")]);
+        for id in ["a", "b", "c"] {
+            assert!(sizes[id].contains(&(shared.clone(), 11)), "{id}: {:?}", sizes[id]);
+        }
+        assert_eq!(sizes["a"].len(), 2);
     }
 
     #[test]
@@ -635,10 +874,34 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(windows))]
+    fn stopping_net_trace_drops_the_session_and_the_cached_sample() {
+        net_trace::fake_start(true);
+        let monitor = SystemMonitor::new();
+        monitor.set_net_trace(true);
+        assert_eq!(monitor.sample(&[], &[], true).net_trace.status, "starting");
+        std::thread::sleep(MIN_SAMPLE_INTERVAL);
+        assert_eq!(monitor.sample(&[], &[], true).net_trace.status, "on");
+        // 권한을 거두면 세던 세션과 직전 표본을 버린다: 다음 요청은 새로 연다
+        monitor.stop_net_trace();
+        assert_eq!(monitor.sample(&[], &[], true).net_trace.status, "starting");
+        net_trace::fake_start(false);
+    }
+
+    #[test]
+    fn turning_net_trace_on_does_not_reuse_the_off_sample() {
+        let monitor = SystemMonitor::new();
+        assert_eq!(monitor.sample(&[], &[], true).net_trace.status, "off");
+        monitor.set_net_trace(true);
+        // 직전 표본은 900ms 동안 재사용하지만, 옵션이 바뀌면 새로 뜬다
+        assert_ne!(monitor.sample(&[], &[], true).net_trace.status, "off");
+    }
+
+    #[test]
     fn sample_reports_live_machine_totals() {
         let monitor = SystemMonitor::new();
         let me = std::process::id();
-        let roots = vec![InstanceRoot { id: "me".into(), name: "test".into(), pid: Some(me), dirs: vec![] }];
+        let roots = vec![InstanceRoot { id: "me".into(), name: "test".into(), pid: Some(me), dirs: vec![], ports: vec![] }];
         let snap = monitor.sample(&roots, &[], false);
         assert!(snap.memory.total_bytes > 0);
         assert!(snap.memory.used_bytes >= snap.memory.others_bytes);
@@ -649,10 +912,16 @@ mod tests {
         assert_eq!(snap.disk_io.source, "physical");
         let inst = &snap.instances[0];
         assert!(inst.running && inst.memory_bytes > 0);
+        // 고를 수 있는 디스크·어댑터 목록 (루프백은 빠진다)
+        assert!(!snap.volumes.is_empty() && snap.volumes.iter().all(|v| v.total_bytes > 0));
+        assert!(snap.adapters.iter().all(|a| !is_loopback(&a.name)));
         // 바로 다시 부르면 같은 표본
         assert_eq!(monitor.sample(&roots, &[], false).sampled_at_ms, snap.sampled_at_ms);
         // 요약 요청은 폴더 크기를 재지 않는다
         assert!(monitor.dir_sizes.lock().unwrap().measured_at.is_none() && !monitor.dir_sizes.lock().unwrap().running);
+        // 옵션이 꺼져 있으면 서버별 네트워크를 세지 않는다
+        assert_eq!(snap.net_trace.status, "off");
+        assert_eq!(inst.net_rx_bps, None);
     }
 
     #[test]
@@ -678,11 +947,38 @@ mod tests {
         assert!(monitor.sampler.lock().unwrap().is_some());
     }
 
+    /// 리눅스는 스레드도 /proc 항목이라 sysinfo가 프로세스처럼 준다. 스레드는 프로세스와 메모리를 같이 쓰므로
+    /// 더하면 스레드 수만큼 부풀어 100%를 넘는다: 서버 몫에는 프로세스만 센다
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn threads_are_not_counted_as_processes() {
+        let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let threads: Vec<_> = (0..16)
+            .map(|_| {
+                let stop = stop.clone();
+                std::thread::spawn(move || {
+                    while !stop.load(std::sync::atomic::Ordering::Relaxed) {
+                        std::thread::sleep(Duration::from_millis(20));
+                    }
+                })
+            })
+            .collect();
+        let monitor = SystemMonitor::new();
+        let roots = vec![InstanceRoot { id: "me".into(), name: "test".into(), pid: Some(std::process::id()), dirs: vec![], ports: vec![] }];
+        let me = monitor.sample(&roots, &[], false).instances.remove(0);
+        stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        threads.into_iter().for_each(|t| t.join().unwrap());
+        let status = std::fs::read_to_string("/proc/self/status").unwrap();
+        let rss_kb: u64 = status.lines().find_map(|l| l.strip_prefix("VmRSS:")).and_then(|v| v.split_whitespace().next()?.parse().ok()).unwrap();
+        assert!(me.process_count < 16, "threads counted as processes: {}", me.process_count);
+        assert!(me.memory_bytes < rss_kb * 1024 * 4, "memory summed per thread: {} vs RSS {} kB", me.memory_bytes, rss_kb);
+    }
+
     #[cfg(target_os = "linux")]
     #[test]
     fn summary_skips_process_io_and_full_view_measures_a_fresh_window() {
         let monitor = SystemMonitor::new();
-        let roots = vec![InstanceRoot { id: "me".into(), name: "test".into(), pid: Some(std::process::id()), dirs: vec![] }];
+        let roots = vec![InstanceRoot { id: "me".into(), name: "test".into(), pid: Some(std::process::id()), dirs: vec![], ports: vec![] }];
         // 첫 표본은 물리 카운터를 아직 못 읽어 프로세스 IO도 읽는다
         monitor.sample(&roots, &[], false);
         std::thread::sleep(MIN_SAMPLE_INTERVAL);

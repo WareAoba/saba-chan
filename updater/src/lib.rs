@@ -310,7 +310,7 @@ pub struct UpdateConfig {
     /// `scripts/mock-release-server.js` 주소를 넣는다. 0.1.1은 `relay_base_url`로 저장했다
     #[serde(alias = "relay_base_url", deserialize_with = "blank_as_none")]
     pub relay_url: Option<String>,
-    /// 릴레이 업데이트 채널 (stable | beta | nightly)
+    /// 릴레이 업데이트 채널 (stable | rc | beta | nightly). 기본은 이 빌드의 채널
     pub channel: String,
 }
 
@@ -329,7 +329,8 @@ impl Default for UpdateConfig {
             auto_apply: false,
             install_root: None,
             relay_url: None,
-            channel: relay::DEFAULT_CHANNEL.to_string(),
+            // 고르지 않았으면 이 빌드의 채널(`versions.toml` `[release] channel`): 베타 빌드가 정식의 옛 판을 내림으로 거절하지 않게
+            channel: crate::versions::bundled().channel.clone(),
         }
     }
 }

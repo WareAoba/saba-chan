@@ -34,7 +34,7 @@ describe('가동 시간 표시', () => {
                 onStart={() => {}}
                 onStop={() => {}}
                 setModal={() => {}}
-                consoleProps={{ consoles: {}, popoutOpen: {} } as never}
+                consoleProps={{ consoles: {}, popoutOpen: {}, consolePopoutIds: [] } as never}
                 settingsProps={{} as never}
             />,
         );
