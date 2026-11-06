@@ -1,7 +1,7 @@
 // ═══════════════════════════════════════════════════════
-// Saba-chan Installer — Bottom-Sheet Wizard
+// Saba-chan Installer — 미니 GUI 설치·제거 창
 // ═══════════════════════════════════════════════════════
-// 흐름: Welcome → (시트 올라옴) Settings → (시트 내려감 + 링 회전) Installing → (초록) Complete
+// 흐름: 시작 → (시트 올라옴) 설정 → [설치]: 그림이 펼쳐졌다 접히며 매트릭스(설치 중) → 완료·실패
 
 const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
@@ -14,6 +14,12 @@ const { getCurrentWindow } = window.__TAURI__.window;
 const T = {
     en: {
         welcome: 'Welcome to Saba-chan Installer',
+        modeInstall: 'Install',
+        modeUninstall: 'Uninstall',
+        stepStart: 'Start',
+        stepSettings: 'Settings',
+        stepInstall: 'Install',
+        stepDone: 'Done',
         btnNext: 'Next',
         labelPath: 'Install Location',
         labelComponents: 'Modules and Extensions Location',
@@ -108,6 +114,12 @@ const T = {
     },
     ko: {
         welcome: '사바쨩 인스톨러에 오신 것을 환영합니다',
+        modeInstall: '설치',
+        modeUninstall: '제거',
+        stepStart: '시작',
+        stepSettings: '설정',
+        stepInstall: '설치',
+        stepDone: '완료',
         btnNext: '다음',
         labelPath: '설치 경로',
         labelComponents: '모듈·익스텐션 위치',
@@ -202,6 +214,12 @@ const T = {
     },
     ja: {
         welcome: 'サバちゃん インストーラーへようこそ',
+        modeInstall: 'インストール',
+        modeUninstall: 'アンインストール',
+        stepStart: '開始',
+        stepSettings: '設定',
+        stepInstall: 'インストール',
+        stepDone: '完了',
         btnNext: '次へ',
         labelPath: 'インストール先',
         labelComponents: 'モジュール・拡張機能の場所',
@@ -296,6 +314,12 @@ const T = {
     },
     'zh-CN': {
         welcome: '欢迎使用 Saba-chan 安装程序',
+        modeInstall: '安装',
+        modeUninstall: '卸载',
+        stepStart: '开始',
+        stepSettings: '设置',
+        stepInstall: '安装',
+        stepDone: '完成',
         btnNext: '下一步',
         labelPath: '安装位置',
         labelComponents: '模块和扩展位置',
@@ -390,6 +414,12 @@ const T = {
     },
     'zh-TW': {
         welcome: '歡迎使用 Saba-chan 安裝程式',
+        modeInstall: '安裝',
+        modeUninstall: '解除安裝',
+        stepStart: '開始',
+        stepSettings: '設定',
+        stepInstall: '安裝',
+        stepDone: '完成',
         btnNext: '下一步',
         labelPath: '安裝位置',
         labelComponents: '模組與擴充功能位置',
@@ -484,6 +514,12 @@ const T = {
     },
     es: {
         welcome: 'Bienvenido al instalador de Saba-chan',
+        modeInstall: 'Instalar',
+        modeUninstall: 'Desinstalar',
+        stepStart: 'Inicio',
+        stepSettings: 'Ajustes',
+        stepInstall: 'Instalar',
+        stepDone: 'Listo',
         btnNext: 'Siguiente',
         labelPath: 'Ubicación de instalación',
         labelComponents: 'Ubicación de módulos y extensiones',
@@ -578,6 +614,12 @@ const T = {
     },
     'pt-BR': {
         welcome: 'Bem-vindo ao instalador do Saba-chan',
+        modeInstall: 'Instalar',
+        modeUninstall: 'Desinstalar',
+        stepStart: 'Início',
+        stepSettings: 'Configurações',
+        stepInstall: 'Instalar',
+        stepDone: 'Concluído',
         btnNext: 'Próximo',
         labelPath: 'Local de instalação',
         labelComponents: 'Local de módulos e extensões',
@@ -672,6 +714,12 @@ const T = {
     },
     ru: {
         welcome: 'Добро пожаловать в установщик Saba-chan',
+        modeInstall: 'Установка',
+        modeUninstall: 'Удаление',
+        stepStart: 'Начало',
+        stepSettings: 'Настройки',
+        stepInstall: 'Установка',
+        stepDone: 'Готово',
         btnNext: 'Далее',
         labelPath: 'Путь установки',
         labelComponents: 'Расположение модулей и расширений',
@@ -766,6 +814,12 @@ const T = {
     },
     de: {
         welcome: 'Willkommen beim Saba-chan Installationsprogramm',
+        modeInstall: 'Installieren',
+        modeUninstall: 'Deinstallieren',
+        stepStart: 'Start',
+        stepSettings: 'Einstellungen',
+        stepInstall: 'Installieren',
+        stepDone: 'Fertig',
         btnNext: 'Weiter',
         labelPath: 'Installationsort',
         labelComponents: 'Speicherort für Module und Erweiterungen',
@@ -860,6 +914,12 @@ const T = {
     },
     fr: {
         welcome: 'Bienvenue dans l\'installateur de Saba-chan',
+        modeInstall: 'Installer',
+        modeUninstall: 'Désinstaller',
+        stepStart: 'Début',
+        stepSettings: 'Paramètres',
+        stepInstall: 'Installer',
+        stepDone: 'Terminé',
         btnNext: 'Suivant',
         labelPath: 'Emplacement d\'installation',
         labelComponents: 'Emplacement des modules et extensions',
@@ -1017,9 +1077,15 @@ function trStep(stepMap, step, fallback) {
 
 function applyTranslations() {
     document.documentElement.lang = lang;
+    SabaUI.setWordmark(lang);
     const s = (id, key) => { const el = document.getElementById(id); if (el) el.textContent = tr(key); };
-    s('status-text', 'welcome');
+    s('welcome-text', 'welcome');
     s('btn-next-text', 'btnNext');
+    s('mode-chip', uninstallMode ? 'modeUninstall' : 'modeInstall');
+    s('step-start', 'stepStart');
+    s('step-settings', 'stepSettings');
+    s('step-install', 'stepInstall');
+    s('step-done', 'stepDone');
     s('label-path', 'labelPath');
     s('label-components', 'labelComponents');
     s('hint-components', 'hintComponents');
@@ -1047,22 +1113,24 @@ function applyTranslations() {
 // DOM refs
 // ═══════════════════════════════════════════════════════
 
-const $glowRing = document.getElementById('glow-ring');
-const $logoArea = document.getElementById('logo-area');
+const $flowEl = document.getElementById('flow');
 const $statusText = document.getElementById('status-text');
 const $statusSub = document.getElementById('status-sub');
-const $mainStage = document.getElementById('main-stage');
-
-const $sheet = document.getElementById('bottom-sheet');
-const $overlay = document.getElementById('sheet-overlay');
-const $uninstallSheet = document.getElementById('uninstall-sheet');
-
-const $btnNext = document.getElementById('btn-next');
-// toolbar-float is now in the title-bar, always visible
-const $completeActions = document.getElementById('complete-actions');
-const $progressBar = document.getElementById('progress-bar');
-
+const $warnings = document.getElementById('complete-warnings');
+const $completeLog = document.getElementById('complete-log');
+const $btnLaunch = document.getElementById('btn-launch');
+const $btnRetry = document.getElementById('btn-retry');
+const $msg = document.getElementById('progress-message');
+const $pct = document.getElementById('progress-percent');
+const $fill = document.getElementById('progress-fill');
 const $installPath = document.getElementById('install-path');
+
+const ring = SabaUI.ring(document.getElementById('glow-ring'));
+const matrix = SabaUI.matrix(document.getElementById('matrix'));
+// 그림이 접히기 시작하면 매트릭스를 돌린다
+const flow = SabaUI.flow($flowEl, { onFold: () => matrix.start() });
+
+let uninstallMode = false;
 
 // ═══════════════════════════════════════════════════════
 // 타이틀바
@@ -1072,92 +1140,104 @@ const appWindow = getCurrentWindow();
 document.getElementById('btn-minimize')?.addEventListener('click', () => appWindow.minimize());
 document.getElementById('btn-close')?.addEventListener('click', () => appWindow.close());
 
-
-
 function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
-
-// ═══════════════════════════════════════════════════════
-// 바텀 시트 제어
-// ═══════════════════════════════════════════════════════
-
-function openSheet(sheet) {
-    $overlay.classList.add('visible');
-    sheet.classList.add('open');
-    $mainStage.classList.add('pushed-up');
-    $btnNext.classList.add('hidden');
-}
-
-function closeSheet(sheet) {
-    $overlay.classList.remove('visible');
-    sheet.classList.remove('open');
-    $mainStage.classList.remove('pushed-up');
-}
-
-// 오버레이 클릭 → 시트 닫기 (설치 중이 아닐 때만)
-$overlay.addEventListener('click', () => {
-    if (currentState === 'settings') {
-        closeSheet($sheet);
-        $btnNext.classList.remove('hidden');
-        currentState = 'welcome';
-    }
-});
 
 // ═══════════════════════════════════════════════════════
 // 상태 기계
 // ═══════════════════════════════════════════════════════
-// welcome → settings (시트 올라옴) → installing (시트 내려감, 링 회전) → complete (초록)
+// 단계는 #flow의 data-step 하나로 보인다 (common.css):
+// start(시작) → sheet(설정 시트) → expand(그림 펼침, 진행 줄) → install(접히며 매트릭스) → done(완료·실패)
+// 제거: uninstall(제거 시트) → install → done
 
 let currentState = 'welcome';
 
+/** 상단 바 단계 표시 (시작·설정·설치·완료) */
+function markSteps(index) {
+    document.querySelectorAll('#steps b').forEach((b, i) => {
+        b.className = i < index ? 'done' : i === index ? 'cur' : '';
+    });
+}
+
+function setProgress(percent, message) {
+    if (message != null) $msg.textContent = message;
+    $pct.textContent = `${percent}%`;
+    $fill.style.width = `${percent}%`;
+}
+
+function resetProgress() {
+    $fill.classList.remove('ok');
+    setProgress(0, tr('preparing'));
+}
+
 function enterWelcome() {
     currentState = 'welcome';
-    $glowRing.className = 'loading-logo-container idle';
-    $logoArea.className = 'logo-area';
-    $statusText.textContent = tr('welcome');
-    $statusSub.textContent = '';
-    $btnNext.classList.remove('hidden');
-    $completeActions.style.display = 'none';
-    $progressBar.style.display = 'none';
-    closeSheet($sheet);
+    flow.reset('start');
+    markSteps(0);
 }
 
 function enterSettings() {
     currentState = 'settings';
-    openSheet($sheet);
+    flow.reset('sheet');
+    ring.set('idle');
+    markSteps(1);
 }
+
+// 시트 바깥(뒤 화면)을 누르면 설정을 닫고 시작으로 (설치 중이 아닐 때만)
+document.getElementById('sheet-overlay').addEventListener('click', () => {
+    if (currentState === 'settings') enterWelcome();
+});
 
 function enterInstalling() {
     currentState = 'installing';
-    closeSheet($sheet);
-    $logoArea.className = 'logo-area state-installing';
-    $glowRing.className = 'loading-logo-container spinning';
+    $flowEl.classList.remove('failed');
+    $warnings.hidden = true;
+    resetProgress();
     $statusText.textContent = tr('installing');
     $statusSub.textContent = tr('installSub');
-    $progressBar.style.display = '';
-    document.getElementById('progress-message').textContent = tr('preparing');
-    document.getElementById('progress-percent').textContent = '0%';
-    document.getElementById('progress-fill').style.width = '0%';
-    $completeActions.style.display = 'none';
+    ring.set('spin');
+    markSteps(2);
+    // [설치]를 누른 때부터 진행 줄이 올라오고, 그림이 펼쳐졌다 접히며 매트릭스가 드러난다
+    flow.reveal();
+}
+
+/** 완료·실패 화면: 매트릭스만 끄고 링 색을 바꾼다. 진행 줄 자리에 버튼 */
+function showResult(ok, { title, sub, warningTitle, lines = [], logPath, launch = false, retry = false }) {
+    flow.afterReveal(() => {
+        flow.go('done');
+        matrix.stop();
+        $flowEl.classList.toggle('failed', !ok);
+        ring.set(ok ? 'ok' : 'bad');
+        markSteps(3);
+        $statusText.textContent = title;
+        $statusSub.textContent = sub || '';
+        // 띠 안: 아이콘 옆에 제목(있으면)과 줄들
+        const text = document.createElement('div');
+        if (warningTitle) {
+            const head = document.createElement('strong');
+            head.textContent = warningTitle;
+            text.append(head);
+        }
+        if (lines.length) text.append(lines.join('\n'));
+        $warnings.replaceChildren(text);
+        $warnings.classList.toggle('stop', !ok);
+        $warnings.hidden = !text.childNodes.length;
+        $completeLog.textContent = logPath ? tr('completeLog', { path: logPath }) : '';
+        $btnLaunch.hidden = !launch;
+        $btnRetry.hidden = !retry;
+    });
 }
 
 function enterComplete(p) {
     currentState = 'complete';
-    const $warn = document.getElementById('complete-warnings');
     const warnings = (p && p.warnings) || [];
-    $warn.replaceChildren();
-    if (warnings.length) {
-        const head = document.createElement('strong');
-        head.textContent = tr('completeWarnings');
-        $warn.append(head, warnings.join('\n'));
-        if (p.log_path) $warn.append('\n' + tr('completeLog').replace('{{path}}', p.log_path));
-    }
-    $warn.style.display = warnings.length ? '' : 'none';
-    $glowRing.className = 'loading-logo-container complete';
-    $logoArea.className = 'logo-area state-complete';
-    $statusText.textContent = tr('completeTitle');
-    $statusSub.textContent = tr('completeSub');
-    $progressBar.style.display = 'none';
-    $completeActions.style.display = '';
+    showResult(true, {
+        title: tr('completeTitle'),
+        sub: tr('completeSub'),
+        warningTitle: warnings.length ? tr('completeWarnings') : '',
+        lines: warnings,
+        logPath: warnings.length ? p.log_path : '',
+        launch: true,
+    });
 }
 
 // 설치기가 알려 주는 실패 종류 → 번역 키 (원문은 아래 상자에 함께 보인다)
@@ -1187,30 +1267,21 @@ const COMPONENT_DIR_KEYS = {
 
 function enterError(p, titleKey = 'installFailed', canRetry = true) {
     currentState = 'error';
-    $glowRing.className = 'loading-logo-container error';
-    $logoArea.className = 'logo-area state-installing';
-    $statusText.textContent = tr(titleKey);
     const key = ERROR_KEYS[p.error_code];
-    $statusSub.textContent = key ? tr(key) : p.message;
-    const $warn = document.getElementById('complete-warnings');
-    $warn.replaceChildren();
-    if (key && p.message) $warn.append(p.message);
-    if (p.log_path) $warn.append('\n' + tr('completeLog').replace('{{path}}', p.log_path));
-    $warn.style.display = $warn.childNodes.length ? '' : 'none';
-    $progressBar.style.display = 'none';
-    $completeActions.style.display = '';
-    document.getElementById('btn-launch').style.display = 'none';
-    document.getElementById('btn-retry').style.display = canRetry ? '' : 'none';
-    document.getElementById('btn-close-text').textContent = tr('btnClose');
+    showResult(false, {
+        title: tr(titleKey),
+        sub: key ? tr(key) : p.message,
+        lines: key && p.message ? [p.message] : [],
+        logPath: p.log_path,
+        retry: canRetry,
+    });
 }
 
 // ═══════════════════════════════════════════════════════
 // 이벤트: Welcome → Settings
 // ═══════════════════════════════════════════════════════
 
-$btnNext.addEventListener('click', () => enterSettings());
-
-// 언어 선택 (lang popup으로 대체됨)
+document.getElementById('btn-next').addEventListener('click', () => enterSettings());
 
 // ═══════════════════════════════════════════════════════
 // 이벤트: Settings 패널 내부
@@ -1263,7 +1334,7 @@ async function loadModules() {
             const card = document.createElement('div');
             card.className = 'module-card';
             card.dataset.id = m.id;
-            // 의존 익스텐션 표시 (Fix 3)
+            // 의존 익스텐션 표시
             const extBadges = (m.required_extensions || []).length > 0
                 ? `<div class="module-extensions">${(m.required_extensions || []).map(e => `<span class="ext-badge">${esc(e)}</span>`).join(' ')}</div>`
                 : '';
@@ -1275,8 +1346,8 @@ async function loadModules() {
                     ${extBadges}
                 </div>
                 <div class="module-check">
-                    <input type="checkbox" class="mod-chk" data-id="${m.id}" />
-                    <span class="check-box" aria-hidden="true"><svg viewBox="0 0 16 16" focusable="false"><path d="M4 8.2 6.8 11 12 5"/></svg></span>
+                    <input type="checkbox" class="mod-chk" data-id="${esc(m.id)}" />
+                    <span class="box" aria-hidden="true"><svg viewBox="0 0 16 16" focusable="false"><path d="M4 8.2 6.8 11 12 5"/></svg></span>
                 </div>`;
             // 아이콘: img를 먼저 만들고 error 핸들러 연결 후 src 설정
             const iconContainer = card.querySelector('.module-icon');
@@ -1316,6 +1387,7 @@ function toggleMod(id, on) {
 
 // 설치 버튼
 document.getElementById('btn-install')?.addEventListener('click', async () => {
+    if (currentState !== 'settings') return;
     // 옵션 저장
     $installPath.value = await invoke('set_install_path', { path: $installPath.value });
     if (!(await setComponentsDir($componentsPath.value))) return;
@@ -1330,8 +1402,7 @@ document.getElementById('btn-install')?.addEventListener('click', async () => {
     enterInstalling();
 
     // 릴리즈 체크
-    $statusText.textContent = tr('fetchingRelease');
-    $statusSub.textContent = '';
+    $msg.textContent = tr('fetchingRelease');
 
     try {
         await invoke('fetch_latest_release');
@@ -1339,9 +1410,6 @@ document.getElementById('btn-install')?.addEventListener('click', async () => {
         enterError({ error_code: 'fetch_failed', message: String(e) });
         return;
     }
-
-    $statusText.textContent = tr('installing');
-    $statusSub.textContent = tr('installSub');
 
     try {
         await invoke('start_install');
@@ -1358,9 +1426,6 @@ document.getElementById('btn-install')?.addEventListener('click', async () => {
 
 listen('install:progress', (ev) => {
     const p = ev.payload;
-    const $msg = document.getElementById('progress-message');
-    const $pct = document.getElementById('progress-percent');
-    const $fill = document.getElementById('progress-fill');
 
     if (p.step === 'error') {
         enterError(p);
@@ -1368,37 +1433,24 @@ listen('install:progress', (ev) => {
     }
 
     if (p.step === 'complete') {
-        $fill.style.width = '100%';
-        $fill.classList.add('complete-fill');
-        $msg.textContent = p.message;
-        $pct.textContent = '100%';
+        $fill.classList.add('ok');
+        setProgress(100, p.message);
         setTimeout(() => enterComplete(p), 600);
         return;
     }
 
-    // Fix 4: 다운로드 바이트 단위 진행률 표시
-    if (p.download_received != null && p.download_total != null && p.download_total > 0) {
+    const stepMsg = trStep(INSTALL_STEP_KEYS, p.step, p.message);
+    // 다운로드는 받은 크기를 함께 보인다
+    if (p.download_received != null && p.download_total > 0) {
         const mbReceived = (p.download_received / 1048576).toFixed(1);
         const mbTotal = (p.download_total / 1048576).toFixed(1);
         const dlPct = Math.round(p.download_received / p.download_total * 100);
-        const stepMsg = trStep(INSTALL_STEP_KEYS, p.step, p.message);
-        const fileName = p.download_file || '';
-        $msg.textContent = `${stepMsg} (${mbReceived}/${mbTotal} MB — ${dlPct}%)`;
-        $pct.textContent = `${p.percent}%`;
-        $fill.style.width = `${p.percent}%`;
-        return;
-    } else if (p.download_received != null && (!p.download_total || p.download_total === 0)) {
-        const mbReceived = (p.download_received / 1048576).toFixed(1);
-        const stepMsg = trStep(INSTALL_STEP_KEYS, p.step, p.message);
-        $msg.textContent = `${stepMsg} (${mbReceived} MB)`;
-        $pct.textContent = `${p.percent}%`;
-        $fill.style.width = `${p.percent}%`;
-        return;
+        setProgress(p.percent, `${stepMsg} (${mbReceived}/${mbTotal} MB — ${dlPct}%)`);
+    } else if (p.download_received != null) {
+        setProgress(p.percent, `${stepMsg} (${(p.download_received / 1048576).toFixed(1)} MB)`);
+    } else {
+        setProgress(p.percent, stepMsg);
     }
-
-    $msg.textContent = trStep(INSTALL_STEP_KEYS, p.step, p.message);
-    $pct.textContent = `${p.percent}%`;
-    $fill.style.width = `${p.percent}%`;
 });
 
 // ═══════════════════════════════════════════════════════
@@ -1407,7 +1459,7 @@ listen('install:progress', (ev) => {
 
 document.getElementById('btn-close-installer')?.addEventListener('click', () => appWindow.close());
 
-document.getElementById('btn-launch')?.addEventListener('click', async () => {
+$btnLaunch?.addEventListener('click', async () => {
     try {
         await invoke('launch_app');
     } catch (e) {
@@ -1420,11 +1472,9 @@ document.getElementById('btn-launch')?.addEventListener('click', async () => {
 });
 
 // 실패 화면: 설정 시트로 돌아가 다시 설치
-document.getElementById('btn-retry')?.addEventListener('click', () => {
-    $completeActions.style.display = 'none';
-    document.getElementById('complete-warnings').style.display = 'none';
-    document.getElementById('btn-launch').style.display = '';
-    document.getElementById('btn-retry').style.display = 'none';
+$btnRetry?.addEventListener('click', () => {
+    $flowEl.classList.remove('failed');
+    $warnings.hidden = true;
     enterSettings();
 });
 
@@ -1433,31 +1483,34 @@ document.getElementById('btn-retry')?.addEventListener('click', () => {
 // ═══════════════════════════════════════════════════════
 
 async function enterUninstallMode() {
-    $btnNext.classList.add('hidden');
-    // toolbar is now in title-bar, always visible
-    $statusText.textContent = tr('uninstallTitle');
+    uninstallMode = true;
+    currentState = 'uninstall';
+    $flowEl.classList.add('no-art');
+    document.getElementById('steps').hidden = true;
+    document.getElementById('mode-chip').textContent = tr('modeUninstall');
+    flow.reset('uninstall');
 
     try {
         const st = await invoke('get_installer_state');
         const info = document.getElementById('uninstall-info');
         if (info && st.install_path) {
-            info.innerHTML = `<p>${esc(tr('uninstallPath', { path: st.install_path }))}</p>`;
+            info.textContent = st.install_path;
+            info.hidden = false;
         }
     } catch (_) {}
-
-    openSheet($uninstallSheet);
 }
 
 document.getElementById('btn-cancel')?.addEventListener('click', () => appWindow.close());
 
 document.getElementById('btn-uninstall')?.addEventListener('click', async () => {
-    closeSheet($uninstallSheet);
-    $glowRing.className = 'loading-logo-container spinning';
-    $logoArea.className = 'logo-area state-installing';
+    if (currentState !== 'uninstall') return;
+    currentState = 'uninstalling';
+    resetProgress();
     $statusText.textContent = tr('uninstalling');
     $statusSub.textContent = tr('uninstallSub');
-    $progressBar.style.display = '';
-    currentState = 'uninstalling';
+    ring.set('spin');
+    flow.go('install');
+    matrix.start();
 
     const keepSettings = document.getElementById('chk-keep-settings')?.checked ?? true;
     const keepInstances = document.getElementById('chk-keep-instances')?.checked ?? true;
@@ -1469,9 +1522,6 @@ document.getElementById('btn-uninstall')?.addEventListener('click', async () => 
 
 listen('uninstall:progress', (ev) => {
     const p = ev.payload;
-    const $msg = document.getElementById('progress-message');
-    const $pct = document.getElementById('progress-percent');
-    const $fill = document.getElementById('progress-fill');
 
     if (p.step === 'error') {
         enterError(p, 'uninstallFailed', false);
@@ -1479,52 +1529,28 @@ listen('uninstall:progress', (ev) => {
     }
 
     if (p.step === 'complete') {
-        $glowRing.className = 'loading-logo-container complete';
-        $logoArea.className = 'logo-area state-complete';
+        currentState = 'complete';
         const left = p.left || [];
         // 정상 종료하지 못하고 강제로 끊은 서버는 지우지 못한 항목과 따로, 앞에 알린다
         const warnings = (p.warnings || []).map(uninstallWarning);
-        $statusText.textContent = tr(left.length ? 'uninstallCompletePartial' : 'uninstallComplete');
-        $statusSub.textContent = tr(left.length ? 'uninstallCompletePartialSub' : 'uninstallCompleteSub');
-        $fill.style.width = '100%';
-        $fill.classList.add('complete-fill');
-        const lines = warnings.concat(left);
-        $msg.textContent = lines.length ? (left.length ? lines : warnings.concat(p.message)).join('\n') : p.message;
-        $msg.style.whiteSpace = lines.length ? 'pre-line' : '';
-        $msg.style.overflowWrap = lines.length ? 'anywhere' : '';
-        $pct.textContent = '100%';
-
-        // 종료 버튼 표시
-        $progressBar.style.display = 'none';
-        $completeActions.style.display = '';
-        document.getElementById('btn-launch').style.display = 'none';
-        document.getElementById('btn-close-installer').textContent = tr('btnClose');
+        setProgress(100, p.message);
+        showResult(true, {
+            title: tr(left.length ? 'uninstallCompletePartial' : 'uninstallComplete'),
+            sub: tr(left.length ? 'uninstallCompletePartialSub' : 'uninstallCompleteSub'),
+            lines: warnings.concat(left),
+        });
         return;
     }
 
-    $msg.textContent = trStep(UNINSTALL_STEP_KEYS, p.step, p.message);
-    $pct.textContent = `${p.percent}%`;
-    $fill.style.width = `${p.percent}%`;
+    setProgress(p.percent, trStep(UNINSTALL_STEP_KEYS, p.step, p.message));
 });
 
 // ═══════════════════════════════════════════════════════
 // 테마 토글
 // ═══════════════════════════════════════════════════════
 
-function getSystemTheme() {
-    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-}
-
-let currentTheme = 'auto'; // 'auto' | 'light' | 'dark'
-
-function applyTheme(theme) {
-    currentTheme = theme;
-    document.body.setAttribute('data-theme', theme);
-}
-
 function toggleTheme() {
-    const effective = currentTheme === 'auto' ? getSystemTheme() : currentTheme;
-    applyTheme(effective === 'dark' ? 'light' : 'dark');
+    SabaUI.setTheme(SabaUI.effectiveTheme() === 'dark' ? 'light' : 'dark');
 }
 
 document.getElementById('btn-theme')?.addEventListener('click', toggleTheme);
@@ -1542,6 +1568,8 @@ function closeContextMenu() {
 }
 
 document.addEventListener('contextmenu', (e) => {
+    // 입력 칸에서는 복사·붙여넣기 메뉴를 그대로 둔다
+    if (e.target.closest('input')) return;
     e.preventDefault();
     $ctxMenu.style.top = `${Math.min(e.clientY, window.innerHeight - 100)}px`;
     $ctxMenu.style.left = `${Math.min(e.clientX, window.innerWidth - 170)}px`;
@@ -1567,16 +1595,19 @@ document.getElementById('ctx-lang')?.addEventListener('click', () => {
 
 const $langPopup = document.getElementById('lang-popup');
 
-function showLangPopup(anchorEl) {
-    // 중앙에 표시
+function markActiveLang() {
+    $langPopup.querySelectorAll('[data-lang]').forEach(el => {
+        el.classList.toggle('active', el.dataset.lang === lang);
+    });
+}
+
+/** 가운데에 띄운다 (오른쪽 클릭 메뉴에서) */
+function showLangPopup() {
     $langPopup.classList.add('visible');
     const rect = $langPopup.getBoundingClientRect();
     $langPopup.style.top = `${(window.innerHeight - rect.height) / 2}px`;
     $langPopup.style.left = `${(window.innerWidth - rect.width) / 2}px`;
-    // 현재 활성 언어 표시
-    $langPopup.querySelectorAll('.lang-popup-item').forEach(el => {
-        el.classList.toggle('active', el.dataset.lang === lang);
-    });
+    markActiveLang();
 }
 
 function closeLangPopup() {
@@ -1584,35 +1615,30 @@ function closeLangPopup() {
 }
 
 document.addEventListener('click', (e) => {
-    if ($langPopup.classList.contains('visible') && !$langPopup.contains(e.target) && e.target.id !== 'btn-lang') {
+    if ($langPopup.classList.contains('visible') && !$langPopup.contains(e.target) && !e.target.closest('#btn-lang')) {
         closeLangPopup();
     }
 });
 
-$langPopup.querySelectorAll('.lang-popup-item').forEach(el => {
+$langPopup.querySelectorAll('[data-lang]').forEach(el => {
     el.addEventListener('click', async () => {
         lang = el.dataset.lang;
         applyTranslations();
-        if (currentState === 'welcome') $statusText.textContent = tr('welcome');
-        // 랑 팝업 내 select 동기화 제거됨
         try { await invoke('set_language', { language: lang }); } catch (_) {}
         closeLangPopup();
     });
 });
 
+// 언어 버튼 아래, 창 오른쪽 끝에 맞춰 띄운다
 document.getElementById('btn-lang')?.addEventListener('click', (e) => {
     e.stopPropagation();
     if ($langPopup.classList.contains('visible')) { closeLangPopup(); return; }
-    // 버튼 위에 팝업 표시
-    const btn = e.currentTarget;
-    const rect = btn.getBoundingClientRect();
+    const rect = e.currentTarget.getBoundingClientRect();
     $langPopup.classList.add('visible');
     const popRect = $langPopup.getBoundingClientRect();
-    $langPopup.style.left = `${rect.left}px`;
+    $langPopup.style.left = `${Math.min(rect.left, window.innerWidth - popRect.width - 8)}px`;
     $langPopup.style.top = `${rect.bottom + 4}px`;
-    $langPopup.querySelectorAll('.lang-popup-item').forEach(el => {
-        el.classList.toggle('active', el.dataset.lang === lang);
-    });
+    markActiveLang();
 });
 
 // ═══════════════════════════════════════════════════════
@@ -1624,7 +1650,7 @@ document.getElementById('btn-lang')?.addEventListener('click', (e) => {
     getCurrentWindow().show();
 
     // 테마 감지 (OS 설정 기본값)
-    applyTheme(getSystemTheme());
+    SabaUI.setTheme(SabaUI.systemTheme());
 
     // 언어 감지
     try {
@@ -1646,9 +1672,6 @@ document.getElementById('btn-lang')?.addEventListener('click', (e) => {
     // 감지된 언어를 Rust 백엔드에 동기화 (기본값 'en'이 아닌 실제 선택 언어를 설치에 반영)
     try { await invoke('set_language', { language: lang }); } catch (_) {}
 
-    // 링 초기 상태
-    $glowRing.className = 'loading-logo-container idle';
-
     // 모드 확인
     try {
         const mode = await invoke('get_app_mode');
@@ -1661,6 +1684,8 @@ document.getElementById('btn-lang')?.addEventListener('click', (e) => {
             return;
         }
     } catch (_) {}
+
+    enterWelcome();
 
     // 설치 경로 로드
     try {
