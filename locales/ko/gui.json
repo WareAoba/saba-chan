@@ -202,7 +202,7 @@
     "server_name": "서버 이름",
     "server_name_placeholder": "예: my-server-1",
     "provision_hint": "추가하면 서버 파일을 자동으로 내려받아요.",
-    "no_modules": "모듈을 찾을 수 없어요. 설정 > 저장 공간에서 모듈 폴더를 확인하세요.",
+    "no_modules": "모듈을 찾을 수 없어요. <link/>에서 사바 스토리지로 게임 모듈을 받으세요.",
     "add_server": "서버 추가",
     "provisioning": "설치 중…",
     "step_compose": "설정 생성",
@@ -263,7 +263,7 @@
     "new_server_desc": "게임을 고르면 서버 파일을 내려받아 새로 만들어요.",
     "migrate_title": "기존 서버 가져오기",
     "migrate_desc": "쓰던 게임 서버 폴더를 가져와요. 그 자리에 연결하거나 사바쨩으로 옮길 수 있어요.",
-    "no_modules_hint": "먼저 모듈을 추가하세요."
+    "no_modules_hint": "먼저 모듈을 추가하세요. <link/>에서 사바 스토리지로 받을 수 있어요."
   },
   "migration_modal": {
     "title": "기존 서버 가져오기",
@@ -341,6 +341,7 @@
     "unlink_restore": "설정 되돌리고 빼기",
     "unlink_keep_settings": "지금 설정 두고 빼기",
     "server_unlinked": "'{{name}}'을(를) 사바쨩에서 뺐어요. 서버 파일은 {{path}}에 남아 있어요.",
+    "unlink_restore_failed_kept": "게임 설정 파일 {{n}}개는 되돌리지 못했어요. 그 사본은 {{path}}에 보관했어요.",
     "unlink_restore_failed": "게임 설정 파일 {{n}}개는 되돌리지 못했어요.",
     "migrate_notice_folder_not_writable": "이 폴더에 쓸 수 없어요. 설정 저장과 서버 실행이 실패할 수 있으니 쓰기 권한이 있는 곳으로 옮겨 주세요.",
     "migrate_notice_server_running": "이 폴더의 서버가 사바쨩 밖에서 실행 중이에요. 정지하고 사바쨩에서 다시 시작해 주세요.",
@@ -748,6 +749,7 @@
     "search_placeholder": "서버 찾기",
     "no_match": "찾는 서버가 없어요",
     "empty_title": "아직 추가한 서버가 없어요",
+    "empty_no_modules": "설치된 게임 모듈이 없어요. <link/>에서 사바 스토리지로 게임 모듈을 받으세요.",
     "empty_body": "게임을 고르면 사바쨩이 서버를 준비해 줄게요.",
     "start": "시작",
     "stop": "정지",
@@ -1042,7 +1044,7 @@
     "perm_preset_reset": "명령 {{count}}개의 레벨이 {{preset}} 프리셋 값으로 다시 맞춰져요.",
     "perm_preset_apply": "적용",
     "perm_ladder": "권한 단계",
-    "perm_ladder_hint": "블록을 끌어 순서를 정하고, 이름을 눌러 바꿔요. 위에 있을수록 높은 레벨이에요. 소유자와 금지는 움직일 수 없고, 소유자·게스트·금지는 지울 수 없어요.",
+    "perm_ladder_hint": "블록을 끌어 순서를 정하고, 이름을 눌러 바꿔요. 위에 있을수록 높은 레벨이에요. 소유자와 금지는 움직일 수 없고, 소유자·게스트·금지는 지울 수 없어요. 명령을 맞바꾸려면 아래 \"권한 맞바꾸기\"를 누르고 레벨 두 개를 골라요.",
     "perm_ladder_name": "레벨 이름",
     "perm_ladder_rename": "{{name}} 이름 바꾸기",
     "perm_ladder_members": "{{count}}명",
@@ -1286,6 +1288,7 @@
       "err_MUTE_NOT_MEMBER": "이 서버에 없는 사람이에요.",
       "err_MUTE_CANNOT": "이 사람은 음소거할 수 없어요 (서버 주인이거나 사바쨩보다 높은 역할이에요).",
       "err_MUTE_BOT": "봇은 음소거하지 않아요.",
+      "err_FORBIDDEN": "디스코드 권한이 없어요.",
       "err_MUTE_SELF": "자기 자신은 음소거할 수 없어요.",
       "err_MUTE_TOO_LONG": "기간은 28일까지예요. 더 길게 하려면 무기한으로 해 주세요.",
       "err_generic": "처리하지 못했어요. 잠시 뒤 다시 해 주세요."
@@ -1323,7 +1326,15 @@
     "perm_line_apart": "따로 정한 명령 {{count}}개는 그대로 둬요",
     "perm_line_up": "조작 가능 줄 위로",
     "perm_line_down": "조작 가능 줄 아래로",
-    "perm_line_follow": "조작 가능 줄을 따름"
+    "perm_line_follow": "조작 가능 줄을 따름",
+    "perm_swap": "권한 맞바꾸기",
+    "perm_swap_cancel": "그만두기",
+    "perm_swap_pick": "바꿀 레벨 두 개를 골라요 (0/2)",
+    "perm_swap_pick_more": "{{name}} ⇄ ? · 레벨을 하나 더 골라요 (1/2)",
+    "perm_swap_choose": "{{name}} 고르기",
+    "perm_swap_done": "{{a}} ⇄ {{b}} · 사람은 그대로예요. 저장하기 전까지는 바뀌지 않아요.",
+    "perm_swap_none": "이 레벨부터 쓰는 명령 없음",
+    "perm_swap_more": "+{{count}}개"
   },
   "maintenance": {
     "load_failed": "백업·예약 정보를 불러오지 못했어요.",

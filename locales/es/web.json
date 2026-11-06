@@ -86,6 +86,7 @@
     "stop": "Detener",
     "restart": "Reiniciar",
     "delete": "Eliminar servidor",
+    "already_running": "«{{name}}» ya está en marcha",
     "started": "Se inició {{name}}.",
     "stopped": "Se detuvo {{name}}.",
     "restarted": "Se reinició {{name}}.",
@@ -197,7 +198,7 @@
       "-1": "Bloqueado"
     },
     "ladder": "Niveles de permiso",
-    "ladder_hint": "Cuanto más arriba, más alto el nivel. Propietario y Bloqueado no se mueven. Cambia un nombre en su casilla. Propietario, Invitado y Bloqueado no se pueden borrar.",
+    "ladder_hint": "Cuanto más arriba, más alto el nivel. Propietario y Bloqueado no se mueven. Cambia un nombre en su casilla. Propietario, Invitado y Bloqueado no se pueden borrar. Para intercambiar comandos, pulsa «Intercambiar permisos» abajo y elige dos niveles.",
     "ladder_name": "Nombre del nivel",
     "ladder_fixed": "Fijo",
     "ladder_up": "Subir {{name}}",
@@ -219,7 +220,7 @@
     "full_notice_on": "Aviso de servidor lleno activado.",
     "full_notice_off": "Aviso de servidor lleno desactivado.",
     "instances": "Instancias",
-    "instances_hint": "Abre una instancia para ver los comandos por nivel y el nivel de cada miembro.",
+    "instances_hint": "Abre una instancia para ver sus comandos por nivel. Los niveles de miembros se fijan para todo el servidor en la pestaña de niveles de miembros.",
     "all_instances": "Todas las instancias",
     "back_instances": "Instancias",
     "view_commands": "Comandos por nivel",
@@ -301,6 +302,7 @@
     "screen_note": "Se guarda solo en este navegador. Los ajustes de la app en el PC no cambian."
   },
   "errors": {
+    "start_cancelled": "El servidor se detuvo mientras se iniciaba, así que no se inició.",
     "generic": "No se pudo completar la solicitud.",
     "remote_not_allowed": "Esto solo se puede hacer en la app Saba-chan del PC.",
     "remote_field_blocked": "Estos ajustes solo se pueden cambiar en el PC: {{fields}}",

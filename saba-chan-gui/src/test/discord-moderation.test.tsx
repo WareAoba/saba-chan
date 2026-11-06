@@ -80,6 +80,7 @@ describe('배정 바꾸기', () => {
         expect(modErrorText({ error: 'RENAME_LIMIT', retryAfter: 125 }, t)).toBe(
             'discord.mod.err_RENAME_LIMIT:{"minutes":3}',
         );
+        expect(modErrorText({ error: 'FORBIDDEN' }, t)).toBe('discord.mod.err_FORBIDDEN');
         expect(modErrorText({ error: 'WHATEVER' }, t)).toBe('discord.mod.err_generic');
     });
 });

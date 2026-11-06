@@ -19,6 +19,7 @@ import { sizeText } from './BackupsPanel';
 import { Dropdown } from './Dropdown';
 import { startPoll } from './poll';
 import { Button, Empty, Loading, Section, Segments } from './ui';
+import { useStickToBottom } from './useStickToBottom';
 import type { ApiBody, WebApi } from '../types';
 
 /** 서버 한 대의 자원 사용 (GET /api/system/metrics 의 instances) */
@@ -129,14 +130,15 @@ function DaemonLog({ api }: { api: WebApi }) {
     const { t } = useTranslation();
     const [lines, setLines] = useState<DaemonLine[] | null>(null);
     const next = useRef<number | undefined>(undefined);
-    const box = useRef<HTMLPreElement>(null);
+    const box = useStickToBottom<HTMLPreElement>(lines);
     useEffect(() => {
         let stopped = false;
         const load = async () => {
             const res = await api.daemonConsole(next.current === undefined ? {} : { since: next.current });
             if (stopped || !Array.isArray(res?.lines)) return;
             if (res.lines.length) next.current = res.lines[res.lines.length - 1].id + 1;
-            setLines((prev) => [...(prev ?? []), ...res.lines].slice(-300));
+            // 새 줄이 없으면 그대로 둔다
+            setLines((prev) => (prev && !res.lines.length ? prev : [...(prev ?? []), ...res.lines].slice(-300)));
         };
         const stop = startPoll(load, 3000);
         return () => {
@@ -144,14 +146,10 @@ function DaemonLog({ api }: { api: WebApi }) {
             stop();
         };
     }, [api]);
-    // biome-ignore lint/correctness/useExhaustiveDependencies: 새 줄이 올 때마다 맨 아래로 내린다
-    useEffect(() => {
-        if (box.current) box.current.scrollTop = box.current.scrollHeight;
-    }, [lines]);
 
     if (lines === null) return <Loading />;
     return (
-        <pre className="console-lines console-tall" ref={box}>
+        <pre className="console-lines console-tall" ref={box.ref} onScroll={box.onScroll}>
             {lines.length === 0 ? (
                 <span className="console-empty">{t('console.empty')}</span>
             ) : (
@@ -234,6 +232,7 @@ function ActivityLog({ api }: { api: WebApi }) {
                         const result = auditResult(e, tg);
                         const reason = auditReason(e, tg);
                         return (
+                            // biome-ignore lint/suspicious/noArrayIndexKey: 같은 시각의 기록이 여러 개일 수 있어 순번을 붙인다
                             <li key={`${e.ts}-${i}`} className="row activity-row">
                                 <span className="activity-time">{fmt(e.ts)}</span>
                                 <div className="row-main">

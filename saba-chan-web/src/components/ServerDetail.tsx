@@ -20,6 +20,7 @@ import { SettingsPanel } from './SettingsPanel';
 import { Button, errorText, failed, Segments, Sheet, StatusDot } from './ui';
 import { useProvision } from './useProvision';
 import { useServerControl } from './useServerControl';
+import { useStickToBottom } from './useStickToBottom';
 import type { Module, Server, ServerPanelProps, WebApi } from '../types';
 import type { ProvisionView } from './useProvision';
 
@@ -43,7 +44,7 @@ function ConsolePanel({ api, server, moduleData }: Omit<ServerPanelProps, 'runni
     const [input, setInput] = useState('');
     const [sending, setSending] = useState(false);
     const since = useRef(0);
-    const box = useRef<HTMLPreElement>(null);
+    const box = useStickToBottom<HTMLPreElement>(lines);
 
     useEffect(() => {
         let stopped = false;
@@ -64,12 +65,6 @@ function ConsolePanel({ api, server, moduleData }: Omit<ServerPanelProps, 'runni
             stop();
         };
     }, [api, server.id]);
-
-    // biome-ignore lint/correctness/useExhaustiveDependencies: 새 줄이 올 때마다 맨 아래로 내린다
-    useEffect(() => {
-        const el = box.current;
-        if (el) el.scrollTop = el.scrollHeight;
-    }, [lines]);
 
     const send = async () => {
         const command = input.trim();
@@ -94,7 +89,7 @@ function ConsolePanel({ api, server, moduleData }: Omit<ServerPanelProps, 'runni
 
     return (
         <div className="console">
-            <pre className="console-lines" ref={box} aria-live="polite">
+            <pre className="console-lines" ref={box.ref} onScroll={box.onScroll} aria-live="polite">
                 {lines.length === 0 ? (
                     <span className="console-empty">{t('console.empty')}</span>
                 ) : (

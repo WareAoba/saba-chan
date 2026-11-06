@@ -10,6 +10,7 @@ import { type ModalConfig, useUIStore } from '../../stores/useUIStore';
 import type { ModuleInfo } from '../../types/daemon';
 import { failedModuleName, failedModuleReason } from '../../utils/failedModules';
 import { Icon } from '../Icon';
+import { LinkedText } from '../ui/ScreenLink';
 import { SabaArt } from '../ui/SabaArt';
 import { SystemMonitor, systemMonitorAvailable } from '../monitor/SystemMonitor';
 import { useDaemonTarget } from '../shell/DaemonSwitcher';
@@ -108,6 +109,12 @@ export function ServersPage({
                     <SabaArt kind="cleaning" size={280} />
                     <h2>{t('shell.empty_title')}</h2>
                     <p>{t('shell.empty_body')}</p>
+                    {modules.length === 0 && (
+                        // 모듈이 하나도 없으면 서버를 만들 수 없다: 모듈을 받는 사바 스토리지로 안내한다
+                        <p className="empty-no-modules">
+                            <LinkedText i18nKey="shell.empty_no_modules" to="settings/storage" />
+                        </p>
+                    )}
                     <button type="button" className="btn btn-primary btn-lg" onClick={onAddServer}>
                         <Icon name="plus" size="sm" /> {t('shell.add_server')}
                     </button>

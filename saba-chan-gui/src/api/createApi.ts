@@ -1372,8 +1372,9 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
         },
         relayPollPairingStatus: async (code: string, secret: string, relayUrl: string) => {
             try {
-                const qs = queryString({ secret: secret || undefined, relayUrl: relayUrl || undefined });
-                return (await get(`/api/relay/pair/${encodeURIComponent(code)}/status${qs}`, { timeout: 8000 })).data;
+                // 코드·secret은 본문으로 보낸다 (경로·쿼리는 로그에 남는다)
+                const body = { code, secret: secret || undefined, relayUrl: relayUrl || undefined };
+                return (await post('/api/relay/pair/status', body, { timeout: 8000 })).data;
             } catch (caught) {
                 const err = caught as DaemonError;
                 return errorBody(err);

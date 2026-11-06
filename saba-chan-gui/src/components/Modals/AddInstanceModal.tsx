@@ -3,6 +3,7 @@ import { useState, useCallback, useRef, useLayoutEffect, useEffect } from 'react
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import Icon from '../Icon';
+import { LinkedText } from '../ui/ScreenLink';
 import { useModalClose } from '../../hooks/useModalClose';
 import type { Server } from '../../stores/useServerStore';
 import type { ModuleInfo } from '../../types/daemon';
@@ -265,7 +266,9 @@ function InstanceChooser({ t, hasModules, onSelectNew, onSelectMigrate, onClose 
                     {!hasModules && (
                         <p className="ai-no-modules-hint">
                             <Icon name="alertCircle" size="sm" />
-                            {t('add_instance_modal.no_modules_hint')}
+                            <span onClickCapture={onClose}>
+                                <LinkedText i18nKey="add_instance_modal.no_modules_hint" to="settings/storage" />
+                            </span>
                         </p>
                     )}
                 </div>

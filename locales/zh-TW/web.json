@@ -86,6 +86,7 @@
     "stop": "停止",
     "restart": "重新啟動",
     "delete": "刪除伺服器",
+    "already_running": "「{{name}}」已在執行",
     "started": "已啟動 {{name}}。",
     "stopped": "已停止 {{name}}。",
     "restarted": "已重新啟動 {{name}}。",
@@ -197,7 +198,7 @@
       "-1": "禁止"
     },
     "ladder": "權限等級",
-    "ladder_hint": "越上面等級越高。擁有者和封鎖無法移動。名稱可在輸入框中修改。擁有者、訪客和封鎖無法刪除。",
+    "ladder_hint": "越上面等級越高。擁有者和封鎖無法移動。名稱可在輸入框中修改。擁有者、訪客和封鎖無法刪除。 要互換指令，請按下方的「互換權限」並選擇兩個等級。",
     "ladder_name": "等級名稱",
     "ladder_fixed": "固定",
     "ladder_up": "將 {{name}} 上移",
@@ -219,7 +220,7 @@
     "full_notice_on": "已開啟滿員提醒。",
     "full_notice_off": "已關閉滿員提醒。",
     "instances": "實例",
-    "instances_hint": "開啟實例即可檢視各等級的命令和每位成員的等級。",
+    "instances_hint": "開啟實例即可檢視該實例各等級的命令。成員等級在「成員等級」分頁中為整個伺服器設定。",
     "all_instances": "所有實例",
     "back_instances": "實例清單",
     "view_commands": "各等級命令",
@@ -301,6 +302,7 @@
     "screen_note": "只儲存在此瀏覽器中。電腦上的應用設定不會改變。"
   },
   "errors": {
+    "start_cancelled": "伺服器在啟動過程中被停止，因此未啟動。",
     "generic": "無法完成請求。",
     "remote_not_allowed": "只能在電腦上的 Saba-chan 應用程式中進行。",
     "remote_field_blocked": "以下設定只能在電腦上變更：{{fields}}",

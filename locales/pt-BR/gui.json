@@ -202,7 +202,7 @@
     "server_name": "Nome do Servidor",
     "server_name_placeholder": "ex: meu-servidor-1",
     "provision_hint": "O módulo será incorporado na instância e os binários do servidor serão baixados automaticamente.",
-    "no_modules": "Nenhum módulo encontrado. Verifique a pasta de módulos em Configurações > Armazenamento.",
+    "no_modules": "Nenhum módulo encontrado. Obtenha módulos de jogo no armazenamento do Saba, em <link/>.",
     "add_server": "Adicionar Servidor",
     "provisioning": "Instalando…",
     "step_compose": "Criar configuração",
@@ -263,7 +263,7 @@
     "new_server_desc": "Selecione um módulo de jogo e crie uma nova instância desde o início.",
     "migrate_title": "Migrar servidor existente",
     "migrate_desc": "Importe um diretório de servidor de jogo existente em uma instância saba-chan.",
-    "no_modules_hint": "Adicione um módulo primeiro."
+    "no_modules_hint": "Adicione um módulo primeiro. Você pode obtê-lo no armazenamento do Saba, em <link/>."
   },
   "migration_modal": {
     "title": "Migração de servidor",
@@ -341,6 +341,7 @@
     "unlink_restore": "Restaurar configurações e remover",
     "unlink_keep_settings": "Manter configurações atuais e remover",
     "server_unlinked": "'{{name}}' foi removido do saba-chan. Os arquivos do servidor continuam em {{path}}.",
+    "unlink_restore_failed_kept": "{{n}} arquivo(s) de configuração do jogo não puderam ser restaurados. As cópias foram mantidas em {{path}}.",
     "unlink_restore_failed": "{{n}} arquivo(s) de configuração do jogo não puderam ser restaurados.",
     "migrate_notice_folder_not_writable": "O saba-chan não consegue gravar nesta pasta. Salvar configurações e iniciar o servidor podem falhar; mova-a para um local com permissão de escrita.",
     "migrate_notice_server_running": "O servidor desta pasta está rodando fora do saba-chan. Pare-o e inicie de novo pelo saba-chan.",
@@ -748,6 +749,7 @@
     "search_placeholder": "Buscar servidor",
     "no_match": "Nenhum servidor encontrado",
     "empty_title": "Ainda não há servidores",
+    "empty_no_modules": "Nenhum módulo de jogo instalado. Obtenha-os no armazenamento do Saba, em <link/>.",
     "empty_body": "Escolha um jogo e o Saba-chan configura o servidor para você.",
     "start": "Iniciar",
     "stop": "Parar",
@@ -1042,7 +1044,7 @@
     "perm_preset_reset": "{{count}} nível(is) de comando voltarão à predefinição {{preset}}.",
     "perm_preset_apply": "Aplicar",
     "perm_ladder": "Níveis de permissão",
-    "perm_ladder_hint": "Arraste os blocos para definir a ordem e toque em um nome para mudá-lo. Quanto mais alto, maior o nível. Dono e Banido ficam no lugar, e Dono, Convidado e Banido não podem ser apagados.",
+    "perm_ladder_hint": "Arraste os blocos para definir a ordem e toque em um nome para mudá-lo. Quanto mais alto, maior o nível. Dono e Banido ficam no lugar, e Dono, Convidado e Banido não podem ser apagados. Para trocar comandos, toque em \"Trocar permissões\" abaixo e escolha dois níveis.",
     "perm_ladder_name": "Nome do nível",
     "perm_ladder_rename": "Renomear {{name}}",
     "perm_ladder_members": "{{count}} membros",
@@ -1286,6 +1288,7 @@
       "err_MUTE_NOT_MEMBER": "Essa pessoa não está neste servidor.",
       "err_MUTE_CANNOT": "Este membro não pode ser silenciado (dono do servidor ou cargo acima da Saba-chan).",
       "err_MUTE_BOT": "Bots não podem ser silenciados.",
+      "err_FORBIDDEN": "Você não tem a permissão do Discord para isto.",
       "err_MUTE_SELF": "Você não pode silenciar a si mesmo.",
       "err_MUTE_TOO_LONG": "O máximo é 28 dias. Para mais tempo, use Para sempre.",
       "err_generic": "Não foi possível fazer isso. Tente de novo daqui a pouco."
@@ -1323,7 +1326,15 @@
     "perm_line_apart": "{{count}} comando(s) definidos à parte ficam como estão",
     "perm_line_up": "Subir a linha de operadores",
     "perm_line_down": "Descer a linha de operadores",
-    "perm_line_follow": "segue a linha de operadores"
+    "perm_line_follow": "segue a linha de operadores",
+    "perm_swap": "Trocar permissões",
+    "perm_swap_cancel": "Cancelar",
+    "perm_swap_pick": "Escolha dois níveis para trocar (0/2)",
+    "perm_swap_pick_more": "{{name}} ⇄ ? · escolha mais um nível (1/2)",
+    "perm_swap_choose": "Escolher {{name}}",
+    "perm_swap_done": "{{a}} ⇄ {{b}} · As pessoas ficam onde estão. Nada muda até você salvar.",
+    "perm_swap_none": "Nenhum comando começa neste nível",
+    "perm_swap_more": "+{{count}} a mais"
   },
   "maintenance": {
     "load_failed": "Não foi possível carregar os backups e agendamentos.",

@@ -799,7 +799,21 @@ fn device_name() -> Option<String> {
     })
 }
 
-// ── GET /api/relay/pair/:code/status ──
+// ── POST /api/relay/pair/status (옛 GET /api/relay/pair/:code/status) ──
+
+/// 페어링 코드와 poll secret은 본문으로 받는다 (경로·쿼리는 접근 로그와 프록시 기록에 남는다)
+#[derive(Deserialize)]
+pub struct PairStatusBody {
+    code: String,
+    #[serde(default)]
+    secret: Option<String>,
+    #[serde(default, rename = "relayUrl")]
+    relay_url: Option<String>,
+}
+
+pub async fn pairing_status(State(state): State<IPCServer>, Json(body): Json<PairStatusBody>) -> Response {
+    pairing_status_of(&state, &body.code, body.secret.as_deref(), body.relay_url.as_deref()).await
+}
 
 #[derive(Deserialize)]
 pub struct PairStatusQuery {
@@ -809,13 +823,18 @@ pub struct PairStatusQuery {
     relay_url: Option<String>,
 }
 
+/// 옛 경로: 다음 판까지 이전 GUI·CLI와 함께 쓰려고 남긴다. 새 호출은 `pairing_status`
 pub async fn poll_pairing_status(
     Path(code): Path<String>,
     Query(params): Query<PairStatusQuery>,
     State(state): State<IPCServer>,
 ) -> Response {
+    pairing_status_of(&state, &code, params.secret.as_deref(), params.relay_url.as_deref()).await
+}
+
+async fn pairing_status_of(state: &IPCServer, code: &str, secret: Option<&str>, relay_url: Option<&str>) -> Response {
     let configured = state.config_store.get_bot_config().await.cloud.relay_url;
-    let base = match pairing_relay_url(&configured, params.relay_url.as_deref()) {
+    let base = match pairing_relay_url(&configured, relay_url) {
         Ok(base) => base,
         Err(problem) => return invalid_relay_url(problem),
     };
@@ -824,10 +843,10 @@ pub async fn poll_pairing_status(
         Err(r) => return r,
     };
 
-    let url = format!("{}/api/pair/{}/status", base, encode_path_segment(&code));
+    let url = format!("{}/api/pair/{}/status", base, encode_path_segment(code));
     // relay는 poll secret을 헤더로 받는다 (쿼리에 두면 접근 로그에도 남는다)
     let mut request = client.get(&url);
-    if let Some(ref secret) = params.secret {
+    if let Some(secret) = secret {
         request = request.header("x-poll-secret", secret);
     }
 
@@ -842,7 +861,7 @@ pub async fn poll_pairing_status(
         let stored = store_node_token(&ConfigFile::default_location(), token.as_deref());
         if let (true, Some(token)) = (stored.changed, token.as_deref()) {
             tracing::info!("Node token saved via pairing completion");
-            adopt_node_token(&state, token, true).await;
+            adopt_node_token(state, token, true).await;
         }
         if let Some(obj) = data.as_object_mut() {
             obj.insert("tokenSaved".into(), json!(stored.saved));
@@ -976,6 +995,12 @@ mod tests {
             .route("/api/bot-invite", get(|| async { Json(json!({ "url": "https://discord.com/x" })) }))
             .route("/api/mcp/grant", axum::routing::delete(|| async { StatusCode::NO_CONTENT }))
             .route("/api/mcp/gone", axum::routing::delete(|| async { (StatusCode::NOT_FOUND, Json(json!({ "error": "HOST_NOT_FOUND" }))) }))
+            .route(
+                "/api/pair/{code}/status",
+                get(|Path(code): Path<String>, headers: axum::http::HeaderMap| async move {
+                    Json(json!({ "status": "pending", "code": code, "secret": headers.get("x-poll-secret").and_then(|v| v.to_str().ok()) }))
+                }),
+            )
             .route("/api/link-requests/{id}", post(|Path(id): Path<String>, Json(b): Json<Value>| async move { Json(json!({ "id": id, "accept": b["accept"] })) }));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
@@ -996,6 +1021,21 @@ mod tests {
         assert_eq!(body(signed_get(&base, "/api/hosts/h1", fallback).await).await, (StatusCode::OK, json!({ "online": true })));
         assert_eq!(body(signed_get(&base, "/api/hosts/h2", fallback).await).await, (StatusCode::NOT_FOUND, json!({ "ok": false })));
         assert_eq!(body(bot_invite(&base).await).await.1["url"], "https://discord.com/x");
+    }
+
+    /// 페어링 상태는 코드·secret을 본문으로 받아 릴레이에는 지금처럼(코드는 경로, secret은 헤더) 묻는다
+    #[tokio::test]
+    async fn pairing_status_takes_the_code_from_the_body() {
+        let base = mock_relay().await;
+        let tmp = tempfile::tempdir().unwrap();
+        let sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            tmp.path().join("modules").to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        let state = IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let request: PairStatusBody = serde_json::from_value(json!({ "code": "AB/12", "secret": "s3", "relayUrl": base })).unwrap();
+        let (code, data) = body(pairing_status(State(state), Json(request)).await).await;
+        assert_eq!((code, data), (StatusCode::OK, json!({ "status": "pending", "code": "AB/12", "secret": "s3" })));
     }
 
     #[tokio::test]

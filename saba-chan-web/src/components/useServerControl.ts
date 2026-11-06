@@ -47,6 +47,11 @@ export function useServerControl(api: WebApi) {
                 if (failed(accepted)) return toast(errorText(t, accepted), 'error');
                 res = await api.instanceStart(server.id);
             }
+            // 이미 켜져 있었다 / 켜는 동안 정지했다: GUI 와 같이 "켰어요"로 알리지 않는다
+            if (!failed(res) && res?.already_running === true) {
+                return toast(t('servers.already_running', { name: server.name }), 'info');
+            }
+            if (res?.error_code === 'start_cancelled') return toast(t('errors.start_cancelled'), 'info');
             if (failed(res)) return toast(errorText(t, res), 'error');
             toast(t('servers.started', { name: server.name }), 'ok');
         });

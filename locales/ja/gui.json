@@ -199,7 +199,7 @@
     "title": "新規サーバーを追加",
     "server_name": "サーバー名",
     "server_name_placeholder": "例: my-server-1",
-    "no_modules": "モジュールが見つかりません。設定 > ストレージでモジュールフォルダを確認してください。",
+    "no_modules": "モジュールが見つかりません。<link/>のサバストレージからゲームモジュールを入手してください。",
     "add_server": "サーバーを追加",
     "provisioning": "インストール中…",
     "step_compose": "設定生成",
@@ -299,6 +299,7 @@
     "unlink_restore": "設定を戻して外す",
     "unlink_keep_settings": "今の設定のまま外す",
     "server_unlinked": "「{{name}}」をサバちゃんから外しました。サーバーファイルは {{path}} に残っています。",
+    "unlink_restore_failed_kept": "ゲーム設定ファイル{{n}}個は元に戻せませんでした。そのコピーは {{path}} に保管しました。",
     "unlink_restore_failed": "ゲーム設定ファイル {{n}} 個を戻せませんでした。",
     "migrate_notice_folder_not_writable": "このフォルダーに書き込めません。設定の保存やサーバーの起動に失敗することがあるため、書き込める場所へ移してください。",
     "migrate_notice_server_running": "このフォルダーのサーバーがサバちゃんの外で起動しています。停止してからサバちゃんで起動し直してください。",
@@ -676,7 +677,7 @@
     "new_server_desc": "ゲームモジュールを選択し、新しいサーバーインスタンスを最初から作成します。",
     "migrate_title": "既存サーバーの移行",
     "migrate_desc": "既存のゲームサーバーディレクトリをsaba-chanインスタンスとして取り込みます。",
-    "no_modules_hint": "先にモジュールを追加してください。"
+    "no_modules_hint": "先にモジュールを追加してください。<link/>のサバストレージから入手できます。"
   },
   "migration_modal": {
     "title": "サーバー移行",
@@ -748,6 +749,7 @@
     "search_placeholder": "サーバーを検索",
     "no_match": "一致するサーバーがありません",
     "empty_title": "まだサーバーがありません",
+    "empty_no_modules": "ゲームモジュールがインストールされていません。<link/>のサバストレージから入手してください。",
     "empty_body": "ゲームを選ぶと、サバちゃんがサーバーを準備します。",
     "start": "起動",
     "stop": "停止",
@@ -1042,7 +1044,7 @@
     "perm_preset_reset": "{{count}}個のコマンドのレベルが{{preset}}プリセットの値に戻ります。",
     "perm_preset_apply": "適用",
     "perm_ladder": "権限の段階",
-    "perm_ladder_hint": "ブロックをドラッグして順番を決め、名前をタップして変更します。上ほど高いレベルです。オーナーと禁止は動かせず、オーナー・ゲスト・禁止は削除できません。",
+    "perm_ladder_hint": "ブロックをドラッグして順番を決め、名前をタップして変更します。上ほど高いレベルです。オーナーと禁止は動かせず、オーナー・ゲスト・禁止は削除できません。 コマンドを入れ替えるには、下の「権限を入れ替える」を押してレベルを2つ選びます。",
     "perm_ladder_name": "レベル名",
     "perm_ladder_rename": "{{name}}の名前を変更",
     "perm_ladder_members": "{{count}}人",
@@ -1286,6 +1288,7 @@
       "err_MUTE_NOT_MEMBER": "このサーバーにいない人です。",
       "err_MUTE_CANNOT": "この人はミュートできません（サーバーオーナーか、サバちゃんより上のロールです）。",
       "err_MUTE_BOT": "ボットはミュートできません。",
+      "err_FORBIDDEN": "このためのDiscord権限がありません。",
       "err_MUTE_SELF": "自分自身はミュートできません。",
       "err_MUTE_TOO_LONG": "期間は28日までです。もっと長くするには無期限にしてください。",
       "err_generic": "処理できませんでした。少し待ってからもう一度お試しください。"
@@ -1323,7 +1326,15 @@
     "perm_line_apart": "個別に決めたコマンド{{count}}件はそのままです",
     "perm_line_up": "操作できる人の線を上へ",
     "perm_line_down": "操作できる人の線を下へ",
-    "perm_line_follow": "操作できる人の線に従う"
+    "perm_line_follow": "操作できる人の線に従う",
+    "perm_swap": "権限を入れ替える",
+    "perm_swap_cancel": "やめる",
+    "perm_swap_pick": "入れ替えるレベルを2つ選んでください (0/2)",
+    "perm_swap_pick_more": "{{name}} ⇄ ? · もう1つ選んでください (1/2)",
+    "perm_swap_choose": "{{name}}を選ぶ",
+    "perm_swap_done": "{{a}} ⇄ {{b}} · 人はそのままです。保存するまで変わりません。",
+    "perm_swap_none": "このレベルから使えるコマンドはありません",
+    "perm_swap_more": "+{{count}}件"
   },
   "maintenance": {
     "load_failed": "バックアップ・予約の情報を読み込めませんでした。",

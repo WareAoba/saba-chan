@@ -373,6 +373,28 @@ fn replace_dir_keeps_the_backup_left_by_an_interrupted_replace() {
     assert!(!target.join("half.py").exists());
 }
 
+// 실패한 교체를 다 되돌렸으면 백업을 지운다: 그 사이 다른 판이 깔려도 다음 교체가 옛 백업으로 되돌리지 않는다
+#[test]
+fn replace_dir_drops_the_backup_after_a_clean_rollback() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.staging_dir = tmp.path().join("staging");
+    std::fs::create_dir_all(&manager.staging_dir).unwrap();
+    let target = tmp.path().join("modules").join("game");
+    std::fs::create_dir_all(&target).unwrap();
+    std::fs::write(target.join("module.toml"), "v1").unwrap();
+    let bad = manager.staging_dir.join("module-game.zip");
+    std::fs::write(&bad, b"not a zip").unwrap();
+    assert!(manager.replace_dir(&target, &bad, "game_backup").is_err());
+    assert!(!manager.staging_dir.join("game_backup").exists());
+
+    // 설치기가 v2를 깔았다. 다음 교체가 또 실패해도 v2로 남아야 한다
+    std::fs::write(target.join("module.toml"), "v2").unwrap();
+    std::fs::write(&bad, b"not a zip").unwrap();
+    assert!(manager.replace_dir(&target, &bad, "game_backup").is_err());
+    assert_eq!(std::fs::read_to_string(target.join("module.toml")).unwrap(), "v2");
+}
+
 // 백업을 만들다 꺼졌으면 그 반쪽 백업은 쓰지 않는다 (폴더는 아직 그대로다)
 #[test]
 fn replace_dir_ignores_a_backup_that_was_cut_off_while_copying() {

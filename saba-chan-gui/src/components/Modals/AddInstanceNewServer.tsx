@@ -26,6 +26,7 @@ import { AddServerOptions, addServerExtensionData } from '../DataSlots';
 import ExtensionSlot from '../ExtensionSlot';
 import Icon from '../Icon';
 import { ModuleMakerCard } from '../ModuleMakerCard';
+import { LinkedText } from '../ui/ScreenLink';
 import { SabaToggle } from '../ui/SabaUI';
 import { Segmented } from '../ui/StatusChip';
 import { TrustCreateNotice } from '../ui/TrustBadge';
@@ -289,7 +290,7 @@ export function AddInstanceNewServer({
                         {extensions.length === 0 ? (
                             <p className="as-empty-hint">
                                 <Icon name="alertCircle" size="sm" />
-                                {t('add_server_modal.no_modules')}
+                                <LinkedText i18nKey="add_server_modal.no_modules" to="settings/storage" />
                             </p>
                         ) : (
                             <div className="as-grid-wrap">

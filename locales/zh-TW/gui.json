@@ -202,7 +202,7 @@
     "server_name": "伺服器名稱",
     "server_name_placeholder": "例如：my-server-1",
     "provision_hint": "該模組將嵌入到實例中，伺服器二進位檔案將自動下載。",
-    "no_modules": "未找到模組。請在設定 > 儲存空間中檢查模組資料夾。",
+    "no_modules": "未找到模組。請在 <link/> 的 Saba 儲存中取得遊戲模組。",
     "add_server": "新增伺服器",
     "provisioning": "正在安裝…",
     "step_compose": "建立設定",
@@ -263,7 +263,7 @@
     "new_server_desc": "選擇遊戲模組並從頭建立新的伺服器實例。",
     "migrate_title": "遷移現有伺服器",
     "migrate_desc": "將現有遊戲伺服器目錄匯入到 saba-chan 實例中。",
-    "no_modules_hint": "請先新增一個模組。"
+    "no_modules_hint": "請先新增一個模組。可在 <link/> 的 Saba 儲存中取得。"
   },
   "migration_modal": {
     "title": "伺服器遷移",
@@ -341,6 +341,7 @@
     "unlink_restore": "還原設定並移除",
     "unlink_keep_settings": "保留目前設定並移除",
     "server_unlinked": "已從 saba-chan 移除「{{name}}」。伺服器檔案仍在 {{path}}。",
+    "unlink_restore_failed_kept": "有 {{n}} 個遊戲設定檔無法還原。它們的副本保存在 {{path}}。",
     "unlink_restore_failed": "有 {{n}} 個遊戲設定檔未能還原。",
     "migrate_notice_folder_not_writable": "無法寫入此資料夾。儲存設定和啟動伺服器可能會失敗，請將它移到可寫入的位置。",
     "migrate_notice_server_running": "此資料夾中的伺服器正在 saba-chan 之外執行。請先停止，再從 saba-chan 啟動。",
@@ -748,6 +749,7 @@
     "search_placeholder": "尋找伺服器",
     "no_match": "沒有符合的伺服器",
     "empty_title": "還沒有伺服器",
+    "empty_no_modules": "尚未安裝遊戲模組。請在 <link/> 的 Saba 儲存中取得。",
     "empty_body": "選擇一款遊戲，Saba-chan 會幫您準備好伺服器。",
     "start": "啟動",
     "stop": "停止",
@@ -1042,7 +1044,7 @@
     "perm_preset_reset": "{{count}} 個指令的等級將重設為「{{preset}}」預設的值。",
     "perm_preset_apply": "套用",
     "perm_ladder": "權限等級",
-    "perm_ladder_hint": "拖曳方塊來排序，點一下名稱可以改名。越上面等級越高。擁有者和禁止不能移動，擁有者、訪客和禁止不能刪除。",
+    "perm_ladder_hint": "拖曳方塊來排序，點一下名稱可以改名。越上面等級越高。擁有者和禁止不能移動，擁有者、訪客和禁止不能刪除。 要互換指令，請按下方的「互換權限」並選擇兩個等級。",
     "perm_ladder_name": "等級名稱",
     "perm_ladder_rename": "重新命名{{name}}",
     "perm_ladder_members": "{{count}} 人",
@@ -1286,6 +1288,7 @@
       "err_MUTE_NOT_MEMBER": "此人不在此伺服器中。",
       "err_MUTE_CANNOT": "無法靜音此成員（伺服器所有者或身分組高於 Saba-chan）。",
       "err_MUTE_BOT": "不能靜音機器人。",
+      "err_FORBIDDEN": "你沒有執行此操作的 Discord 權限。",
       "err_MUTE_SELF": "不能靜音自己。",
       "err_MUTE_TOO_LONG": "最長 28 天。更長請選擇永久。",
       "err_generic": "無法完成操作。請稍後再試。"
@@ -1323,7 +1326,15 @@
     "perm_line_apart": "另外設定的 {{count}} 個指令維持不變",
     "perm_line_up": "把可操作線上移",
     "perm_line_down": "把可操作線下移",
-    "perm_line_follow": "跟隨可操作線"
+    "perm_line_follow": "跟隨可操作線",
+    "perm_swap": "互換權限",
+    "perm_swap_cancel": "取消",
+    "perm_swap_pick": "選擇要互換的兩個等級 (0/2)",
+    "perm_swap_pick_more": "{{name}} ⇄ ? · 再選一個等級 (1/2)",
+    "perm_swap_choose": "選擇{{name}}",
+    "perm_swap_done": "{{a}} ⇄ {{b}} · 成員維持不變。儲存前不會生效。",
+    "perm_swap_none": "沒有從此等級開始的指令",
+    "perm_swap_more": "還有 {{count}} 個"
   },
   "maintenance": {
     "load_failed": "無法載入備份與排程資訊。",
