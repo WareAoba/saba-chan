@@ -70,10 +70,10 @@ pub(crate) async fn audited(
     };
     let (parts, body) = resp.into_parts();
     let bytes = axum::body::to_bytes(body, usize::MAX).await.unwrap_or_default();
-    let declined = serde_json::from_slice::<serde_json::Value>(&bytes)
-        .ok()
-        .and_then(|v| v.get("success").and_then(serde_json::Value::as_bool))
-        == Some(false);
+    let parsed = serde_json::from_slice::<serde_json::Value>(&bytes).ok();
+    let declined = parsed.as_ref().and_then(|v| v.get("success").and_then(serde_json::Value::as_bool)) == Some(false);
+    let ok = parts.status.is_success() && !declined;
+    let code = if ok { None } else { parsed.as_ref().and_then(crate::audit::failure_code) };
     crate::audit::record(crate::audit::Event {
         action,
         instance_id: &id,
@@ -81,8 +81,9 @@ pub(crate) async fn audited(
         command: command.as_deref(),
         args: args.as_ref(),
         daemon: None,
-        ok: parts.status.is_success() && !declined,
+        ok,
         status: parts.status.as_u16(),
+        code: code.as_deref(),
     });
     axum::response::Response::from_parts(parts, axum::body::Body::from(bytes))
 }

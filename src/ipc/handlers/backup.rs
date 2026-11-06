@@ -47,6 +47,11 @@ pub(crate) async fn run_command(state: &IPCServer, id: &str, name: &str, args: V
     command_reply(state, id, name, args).await.is_some()
 }
 
+/// 백업이 안에서 보내는 저장 명령: 작업 기록에는 백업 한 줄만 남긴다
+async fn save_reply(state: &IPCServer, id: &str, name: &str) -> Option<String> {
+    crate::audit::quietly(command_reply(state, id, name, json!({}))).await
+}
+
 /// 이름 하나로 게임 명령 실행. 성공하면 서버의 콘솔 답(없으면 빈 글자)
 async fn command_reply(state: &IPCServer, id: &str, name: &str, args: Value) -> Option<String> {
     let req = CommandRequest { command: name.to_string(), args };
@@ -112,7 +117,7 @@ async fn save_for_backup(state: &IPCServer, id: &str, spec: &crate::supervisor::
             Some(p) => Some(p.console_cursor().await),
             None => None,
         };
-        let Some(reply) = command_reply(state, id, cmd, json!({})).await else {
+        let Some(reply) = save_reply(state, id, cmd).await else {
             tracing::warn!("Command '{}' failed before backing up '{}'", cmd, id);
             // 자동 저장 중지나 저장을 보내지도 못했다: 저장 안 된(또는 쓰는 중인) 월드를 묶지 않는다
             return Err(SaveNotDone::Unconfirmed { command: cmd.to_string() });
@@ -451,7 +456,7 @@ async fn take_backup_locked(state: &IPCServer, id: &str, kind: BackupKind, prote
     if let Some(cmd) = resume.as_deref().filter(|_| !stopped) {
         // 저장 명령처럼 답의 첫 줄이 모듈의 실패 모양이면 서버가 재개를 거절한 것이다
         let failures: Vec<regex::Regex> = failures.iter().filter_map(|p| regex::Regex::new(p).ok()).collect();
-        let resumed = command_reply(state, id, cmd, json!({})).await.is_some_and(|reply| {
+        let resumed = save_reply(state, id, cmd).await.is_some_and(|reply| {
             let first = reply.lines().find(|l| !l.trim().is_empty()).unwrap_or_default();
             rejected(first, &failures).is_none()
         });
@@ -731,10 +736,11 @@ pub async fn create_backup(Path(id): Path<String>, State(state): State<IPCServer
         Some("snapshot") => Source::Snapshot(body.snapshot),
         Some(other) => return error(StatusCode::BAD_REQUEST, "invalid_request", format!("Unknown backup source: {}", other)),
     };
-    match create_from(&state, &id, source).await {
+    let resp = match create_from(&state, &id, source).await {
         Ok(made) => Json(json!({ "success": true, "backup": made })).into_response(),
         Err(r) => r,
-    }
+    };
+    super::audited(&state, "backup", &id, None, None, resp).await
 }
 
 pub async fn delete_backup(Path((id, name)): Path<(String, String)>, State(state): State<IPCServer>) -> Response {
@@ -756,7 +762,14 @@ pub async fn delete_backup(Path((id, name)): Path<(String, String)>, State(state
     }
 }
 
+/// 복원은 작업 기록에 `restore` 한 줄로 남는다 (어디서 시켰든: 앱·웹·CLI·디스코드)
 pub async fn restore_backup(Path((id, name)): Path<(String, String)>, State(state): State<IPCServer>) -> Response {
+    let resp = restore_unaudited(&id, name, state.clone()).await;
+    super::audited(&state, "restore", &id, None, None, resp).await
+}
+
+async fn restore_unaudited(id: &str, name: String, state: IPCServer) -> Response {
+    let id = id.to_string();
     if let Err(r) = backups_dir(&state, &id).await {
         return r;
     }
@@ -1177,17 +1190,17 @@ async fn run_task_now(state: &IPCServer, id: &str, task: &ScheduledTask, fire: c
     match task.action {
         TaskAction::Backup => {
             // 꺼져 있으면 바뀐 게 없으니 건너뛰되, 건너뛴 것도 감사 로그에 남긴다
-            let status = if !running {
+            let (status, code) = if !running {
                 tracing::info!("Scheduled backup of '{}' skipped: the server is not running", id);
-                409
+                (409, None)
             } else {
                 match take_backup(state, id, BackupKind::Scheduled).await {
-                    Ok(Some(_)) => 200,
-                    Ok(None) => 204,
+                    Ok(Some(_)) => (200, None),
+                    Ok(None) => (204, None),
                     Err(r) => {
                         let resp = crate::ipc::internal::into_internal(r).await;
                         tracing::warn!("Scheduled backup of '{}' failed: {}", id, resp.body["error"]);
-                        resp.status.as_u16()
+                        (resp.status.as_u16(), crate::audit::failure_code(&resp.body))
                     }
                 }
             };
@@ -1196,6 +1209,7 @@ async fn run_task_now(state: &IPCServer, id: &str, task: &ScheduledTask, fire: c
                 instance_id: id,
                 ok: status < 300,
                 status,
+                code: code.as_deref(),
                 ..Default::default()
             });
         }
@@ -2421,6 +2435,36 @@ print(json.dumps({'success': True, 'snapshots': [{'id': 'startup/backup_1', 'cre
         std::fs::write(work.join("world/level.dat"), b"after").unwrap();
         backup::restore(state_dir, name).unwrap();
         std::fs::read_to_string(work.join("world/level.dat")).unwrap()
+    }
+
+    /// 백업 한 번은 작업 기록에 한 줄이다: 안에서 보내는 저장 명령(save-off·save-all·save-on)은 따로 남기지 않는다
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_live_backup_is_one_audit_record() {
+        let (state, id, tmp) = server_with(&live_module(None), None).await;
+        run_fake_server(&state, &id, &tmp, "").await;
+        let resp = create_backup(Path(id.clone()), State(state.clone()), LooseJson(None)).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        let entries = crate::audit::log().recent(10, Some(&id));
+        let actions: Vec<&str> = entries.iter().filter_map(|e| e["action"].as_str()).collect();
+        assert_eq!(actions, ["backup"], "{entries:?}");
+        assert_eq!(entries[0]["ok"], true);
+    }
+
+    /// 실패한 백업·복원은 이유 코드(`code`)와 함께 한 줄 남는다: 화면이 숫자 대신 이유를 번역해 보인다
+    #[tokio::test]
+    async fn failed_backups_and_restores_are_recorded_with_their_reason() {
+        let (state, id, _tmp) = server_with(NO_BACKUP, None).await;
+        let resp = create_backup(Path(id.clone()), State(state.clone()), LooseJson(None)).await;
+        assert!(!resp.status().is_success());
+        let resp = restore_backup(Path((id.clone(), "missing".into())), State(state.clone())).await;
+        assert!(!resp.status().is_success());
+        let entries = crate::audit::log().recent(10, Some(&id));
+        let restore = &entries[0];
+        assert_eq!((restore["action"].as_str(), restore["ok"].as_bool()), (Some("restore"), Some(false)), "{entries:?}");
+        assert!(restore["code"].as_str().is_some_and(|c| !c.is_empty()), "{restore}");
+        let backup = &entries[1];
+        assert_eq!((backup["action"].as_str(), backup["code"].as_str()), (Some("backup"), Some("backup_unsupported")), "{entries:?}");
     }
 
     /// 저장 완료 줄(`save_done_pattern`)이 있으면 고정 대기 대신 그 줄이 나올 때까지 기다린 뒤 묶는다.

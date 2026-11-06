@@ -101,6 +101,7 @@ export interface ServerInfo {
 export interface PortConflictStopEvent {
     id?: number;
     stopped_name: string;
+    stopped_id?: string;
     existing_name: string;
     port: number;
     [key: string]: Json | undefined;

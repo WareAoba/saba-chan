@@ -3097,6 +3097,7 @@ impl Supervisor {
     /// 종료 판정 하나를 알리고(`instance.exit`) 이력에 남긴다.
     /// `attempt`는 다시 띄우기로 했을 때 그 복구 시도의 번호 (끝을 알리는 이벤트와 같은 `restartAttempt`)
     fn record_exit(&mut self, instance_id: &str, instance_name: &str, event: crash::ExitEvent, attempt: Option<u64>) {
+        let (evidence_code, evidence_args) = crash::evidence_code(&event.verdict.evidence);
         crate::events::emit("instance.exit", serde_json::json!({
             "instanceId": instance_id,
             "instance": instance_name,
@@ -3104,6 +3105,8 @@ impl Supervisor {
             "exitCode": event.verdict.exit_code,
             "signal": event.verdict.signal,
             "evidence": event.verdict.evidence,
+            "evidenceCode": evidence_code,
+            "evidenceArgs": evidence_args,
             "restartInSecs": event.restart_in_secs,
             "restartAttempt": attempt,
             "note": event.note,

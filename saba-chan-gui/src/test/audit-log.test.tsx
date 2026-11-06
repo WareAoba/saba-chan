@@ -48,7 +48,7 @@ describe('AuditLog', () => {
         render(<AuditLog instanceId="mc-1" />);
         expect(await screen.findByText('Command · say hi')).toBeTruthy();
         expect(screen.getByText('Discord · aoba · Village')).toBeTruthy();
-        expect(screen.getAllByText('Failed (500)').length).toBe(99);
+        expect(screen.getAllByText('Failed').length).toBe(99);
         expect(screen.queryByText('Minecraft')).toBeNull(); // 서버별 화면에는 서버 이름을 적지 않는다
         expect(window.api.auditList).toHaveBeenLastCalledWith({ limit: 100, instance: 'mc-1' });
         fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
@@ -110,7 +110,7 @@ describe('AuditLog', () => {
         render(<AuditLog instanceId="mc-1" />);
         expect(await screen.findByText('Backup')).toBeTruthy();
         expect(screen.getByText('Skipped (server off)')).toBeTruthy();
-        expect(screen.queryByText('Failed (409)')).toBeNull();
+        expect(screen.queryByText('Failed')).toBeNull();
     });
 
     it('스크롤해도 새로고침·기간·더 보기는 목록 밖에 있어 늘 누를 수 있다', async () => {

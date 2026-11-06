@@ -265,7 +265,7 @@ export function ActivityBar() {
         <Ticker id={`cmd:${lastKey}`}>
             <span className="activity-text activity-shine">{activityText(last, t)}</span>
             <span className={clsx('activity-result', last.ok ? 'ok' : 'fail')}>
-                {last.ok ? t('audit.ok') : t('audit.failed', { status: last.status })}
+                {last.ok ? t('audit.ok') : t('audit.failed')}
             </span>
             <span className="activity-time">{ago(last.ts, now, i18n.language)}</span>
         </Ticker>

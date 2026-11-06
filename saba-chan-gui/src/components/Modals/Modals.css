@@ -1183,6 +1183,27 @@
     letter-spacing: 0.5px;
 }
 
+/* 서버 묶음: 게임 아이콘(없으면 머리글자) */
+.notice-group-icon {
+    width: 18px;
+    height: 18px;
+    border-radius: 5px;
+    flex-shrink: 0;
+    display: inline-grid;
+    place-items: center;
+    overflow: hidden;
+    font-size: calc(9px * var(--font-scale));
+    font-weight: 700;
+    color: var(--text-secondary);
+    background: var(--bg-surface-tertiary);
+}
+
+.notice-group-icon img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
 .notice-group-count {
     font-size: calc(10px * var(--font-scale));
     font-weight: 600;
@@ -1279,6 +1300,14 @@
     font-weight: 500;
     color: var(--text-primary);
     margin: 0;
+    line-height: 1.4;
+    word-break: break-word;
+}
+
+.notice-card-detail {
+    font-size: calc(12px * var(--font-scale));
+    color: var(--text-secondary);
+    margin: 2px 0 0;
     line-height: 1.4;
     word-break: break-word;
 }

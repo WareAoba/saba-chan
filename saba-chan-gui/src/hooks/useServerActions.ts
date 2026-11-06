@@ -164,6 +164,7 @@ export function useServerActions({
                                     {
                                         isNotice: true,
                                         source: newServer.name,
+                                        notice: { message: t('events.n_exit_unknown_exit'), instanceId: newServer.id },
                                     },
                                 );
                         } else if (pollNotices && wasStopped && nowRunning) {
@@ -216,7 +217,14 @@ export function useServerActions({
                             }),
                             'error',
                             8000,
-                            { isNotice: true, source: evt.stopped_name },
+                            {
+                                isNotice: true,
+                                source: evt.stopped_name,
+                                notice: {
+                                    message: t('events.n_port_conflict', { port: evt.port, existing: evt.existing_name }),
+                                    ...(evt.stopped_id ? { instanceId: evt.stopped_id } : {}),
+                                },
+                            },
                         );
                     }
                 }

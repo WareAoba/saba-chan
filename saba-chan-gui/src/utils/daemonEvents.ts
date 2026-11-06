@@ -1,6 +1,7 @@
 import type { TFunction } from 'i18next';
 import type { ApiBody } from '../types/daemon';
-import { type AuditEntry, auditWhat } from './audit';
+import type { NoticeInput } from '../types/global';
+import { type AuditEntry, auditReason, auditWhat } from './audit';
 import { safeShowToast } from './helpers';
 
 /** 데몬 이벤트 스트림 (P4: GET /api/events → Tauri 셸 → window.api.onDaemonEvent) */
@@ -15,6 +16,10 @@ export interface EventToast {
     message: string;
     type: 'info' | 'warning' | 'error' | 'success';
     duration: number;
+    /** 알림 모음에 남길 한 줄 (서버별로 묶는다). 시작·정지·복원·크래시만 남긴다 */
+    notice?: NoticeInput;
+    /** 토스트는 띄우지 않는다: 앱에서 한 일은 그 자리에서 이미 알렸다 */
+    silent?: boolean;
 }
 
 export const eventsAvailable = () => typeof window.api?.onDaemonEvent === 'function';
@@ -52,71 +57,132 @@ export function subscribeDaemonEvents(cb: (ev: DaemonEvent) => void) {
 /** action.run data(감사 한 줄 모양) → 감사 목록 한 건 모양 */
 export const auditEntryOf = (data: ApiBody) => ({ ...data, ts: data.ts ?? data.at });
 
-// 켜고 끈 출처 중 이미 다른 곳이 알린 것: 앱(그 자리에서), 디스코드·말하는 사바쨩(action.run)
-const SOURCES_TOLD_ELSEWHERE = ['gui', 'discord', 'chatbot'];
-
 /** instance.started·stopped의 출처 → "원격 PC · 집 PC" */
 export function sourceText(d: ApiBody, t: TFunction) {
     const label = t(`audit.source_${d.source}`, { defaultValue: d.source || '' });
     return d.userName ? `${label} · ${d.userName}` : label;
 }
 
+/** instance.exit의 근거 코드 → 이유 한 줄. 콘솔 줄이 근거인 것·모르는 코드는 빈 글자 */
+function exitReason(d: ApiBody, t: TFunction) {
+    const code = d.evidenceCode;
+    if (!code || ['console', 'stop_requested', 'unknown'].includes(code)) return '';
+    return t(`events.reason_${code}`, { ...(d.evidenceArgs || {}), defaultValue: '' });
+}
+
+/** 다시 켜기 안내: 몇 초 뒤 다시 켬, 자동 재시작 꺼짐, 너무 자주 꺼져 포기함 */
+function restartNote(d: ApiBody, t: TFunction) {
+    if (d.restartInSecs != null) return t('shell.exit_restart_in', { secs: d.restartInSecs });
+    if (d.noteCode === 'auto_restart_off') return t('shell.exit_note_auto_off');
+    if (d.noteCode === 'gave_up') return t('shell.exit_note_gave_up', { count: d.noteArgs?.count });
+    return '';
+}
+
+/** 서버 하나에 묶을 알림 한 줄. 앱에서 한 일은 이미 본 것이라 읽은 것으로 둔다 */
+function serverNotice(d: ApiBody, name: string, message: string, type: NoticeInput['type'], detail?: string): NoticeInput {
+    return {
+        message,
+        ...(detail ? { detail } : {}),
+        type,
+        source: name,
+        ...(d.instanceId ? { instanceId: d.instanceId } : {}),
+        ...(d.source === 'gui' ? { read: true } : {}),
+    };
+}
+
+// 켜고 끄는 일은 instance.started·stopped가 출처와 함께 알린다 (action.run은 실패만)
+const LIFECYCLE_ACTIONS = ['start', 'stop', 'restart'];
+
 /**
- * 이벤트 → 토스트 {message, type, duration} 또는 null.
- * GUI에서 직접 한 일은 이미 그 자리에서 토스트를 띄우므로, 다른 곳에서 일어난 일만 알린다.
+ * 이벤트 → 토스트 {message, type, duration, notice?, silent?} 또는 null.
+ * 토스트: GUI에서 직접 한 일은 이미 그 자리에서 띄우므로 다른 곳에서 일어난 일만.
+ * 알림 모음(notice): 시작·정지·복원·크래시만, 서버별로 묶을 짧은 줄과 이유 (#14)
  */
 export function eventToast(ev: DaemonEvent, t: TFunction, nameOf: (id: string) => string = (id) => id): EventToast | null {
     const d = ev.data;
     switch (ev.type) {
         case 'action.run': {
+            const name = d.instance || nameOf(d.instanceId);
+            if (d.action === 'restore' && (d.instanceId || d.instance)) {
+                const source = sourceText(d, t);
+                const reason = auditReason(d as AuditEntry, t);
+                return d.ok
+                    ? {
+                          message: t('events.instance_restored', { name, source }),
+                          type: 'success',
+                          duration: 5000,
+                          notice: serverNotice(d, name, t('events.n_restored', { source }), 'success'),
+                          ...(d.source === 'gui' ? { silent: true } : {}),
+                      }
+                    : {
+                          message: t('events.instance_restore_failed', { name }),
+                          type: 'error',
+                          duration: 8000,
+                          notice: serverNotice(d, name, t('events.n_restore_failed'), 'error', reason),
+                          ...(d.source === 'gui' ? { silent: true } : {}),
+                      };
+            }
             // 게임 서버를 대상으로 한 일만 알린다: 길드 설정 바꾸기 같은 일은 작업 기록에만 남는다
             if (d.source !== 'discord' || !(d.instanceId || d.instance)) return null;
+            if (d.ok && LIFECYCLE_ACTIONS.includes(d.action)) return null;
             // 출처는 문구에 이미 있다 ("디스코드에서 실행")
-            const text = [d.userName || d.user, d.instance || d.instanceId, auditWhat(d as AuditEntry, t)]
-                .filter(Boolean)
-                .join(' · ');
-            return d.ok
-                ? { message: t('events.remote_action', { text }), type: 'info', duration: 5000 }
-                : {
-                      message: `${t('events.remote_action', { text })} · ${t('audit.failed', { status: d.status })}`,
-                      type: 'warning',
-                      duration: 6000,
-                  };
+            const text = [d.userName || d.user, name, auditWhat(d as AuditEntry, t)].filter(Boolean).join(' · ');
+            if (d.ok) return { message: t('events.remote_action', { text }), type: 'info', duration: 5000 };
+            const failed = [t('events.remote_action', { text }), t('audit.failed'), auditReason(d as AuditEntry, t)];
+            return { message: failed.filter(Boolean).join(' · '), type: 'warning', duration: 6000 };
         }
         case 'instance.exit': {
             if (!['crash', 'start_failed', 'unknown_exit'].includes(d.kind)) return null;
             const name = d.instance || nameOf(d.instanceId);
             const kind = t(`shell.exit_${d.kind}`, { defaultValue: d.kind });
+            const reason = exitReason(d, t);
             const restart = d.restartInSecs != null ? ` ${t('shell.exit_restart_in', { secs: d.restartInSecs })}` : '';
+            const why = reason ? ` ${t('events.reason_sentence', { reason })}` : '';
+            const detail = [reason, restartNote(d, t)].filter(Boolean).join(' · ');
             return {
-                message: `${t('events.instance_exit', { name, kind })}${restart}`,
+                message: `${t('events.instance_exit', { name, kind })}${why}${restart}`,
                 type: 'warning',
                 duration: 8000,
+                notice: serverNotice(d, name, t(`events.n_exit_${d.kind}`), 'error', detail || undefined),
             };
         }
         case 'instance.started': {
             const name = d.instance || nameOf(d.instanceId);
             // 사바쨩이 띄우지 않은 프로세스로 켜졌다: 예기치 않은 시작
             if (d.unexpected) {
-                return { message: t('events.instance_started_external', { name }), type: 'warning', duration: 10000 };
+                return {
+                    message: t('events.instance_started_external', { name }),
+                    type: 'warning',
+                    duration: 10000,
+                    notice: serverNotice(d, name, t('events.n_started_external'), 'info'),
+                };
             }
-            if (SOURCES_TOLD_ELSEWHERE.includes(d.source)) return null;
+            const source = sourceText(d, t);
             return {
-                message: t('events.instance_started', { name, source: sourceText(d, t) }),
+                message: t('events.instance_started', { name, source }),
                 type: 'info',
                 duration: 4000,
+                notice: serverNotice(d, name, t('events.n_started', { source }), 'info'),
+                ...(d.source === 'gui' ? { silent: true } : {}),
             };
         }
         case 'instance.stopped': {
             const name = d.instance || nameOf(d.instanceId);
             if (d.kind === 'in_game_stop') {
-                return { message: t('events.instance_stopped_in_game', { name }), type: 'info', duration: 4000 };
+                return {
+                    message: t('events.instance_stopped_in_game', { name }),
+                    type: 'info',
+                    duration: 4000,
+                    notice: serverNotice(d, name, t('events.n_stopped_in_game'), 'info'),
+                };
             }
-            if (SOURCES_TOLD_ELSEWHERE.includes(d.source)) return null;
+            const source = sourceText(d, t);
             return {
-                message: t('events.instance_stopped', { name, source: sourceText(d, t) }),
+                message: t('events.instance_stopped', { name, source }),
                 type: 'info',
                 duration: 4000,
+                notice: serverNotice(d, name, t('events.n_stopped', { source }), 'info'),
+                ...(d.source === 'gui' ? { silent: true } : {}),
             };
         }
         case 'backup.done': {
@@ -155,10 +221,8 @@ export function showPortMoved({ instanceId, name, from, to }: { instanceId: stri
     const key = `${instanceId}|${from}|${to}`;
     if (shownPortMoves.has(key)) return;
     shownPortMoves.add(key);
-    safeShowToast(t('servers.port_moved', { name: name || instanceId, from, to }), 'warning', 8000, {
-        isNotice: true,
-        source: 'saba-chan',
-    });
+    // 알림 모음에는 시작·정지·복원·크래시만 남긴다 (#14): 포트 이동은 토스트로만
+    safeShowToast(t('servers.port_moved', { name: name || instanceId, from, to }), 'warning', 8000);
 }
 
 // 서버의 예기치 않은 멈춤 하나는 이벤트(instance.exit)와 목록 폴링이 따로 알아챈다.
@@ -179,11 +243,13 @@ export function claimStopNotice(instanceId: string | undefined, source: 'event' 
     return true;
 }
 
-/** 토스트를 띄우고 알림 보기에도 남긴다 */
+/** 토스트를 띄우고, 시작·정지·복원·크래시는 알림 모음에 서버별로 남긴다 */
 export function showEventToast(ev: DaemonEvent, t: TFunction, nameOf?: (id: string) => string) {
     const toast = eventToast(ev, t, nameOf);
-    if (toast && ev.type === 'instance.exit' && !claimStopNotice(ev.data.instanceId, 'event')) return null;
-    if (toast) safeShowToast(toast.message, toast.type, toast.duration, { isNotice: true, source: 'saba-chan' });
+    if (!toast) return null;
+    if (ev.type === 'instance.exit' && !claimStopNotice(ev.data.instanceId, 'event')) return null;
+    if (!toast.silent) safeShowToast(toast.message, toast.type, toast.duration);
+    if (toast.notice) window.__sabaNotice?.addNotice(toast.notice);
     return toast;
 }
 

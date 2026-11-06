@@ -1900,9 +1900,10 @@ async fn execute(server: &IPCServer, r: &Resolved, caller: &Caller) -> Value {
         }
     }
     let ok = resp.status.is_success() && result.get("success").and_then(Value::as_bool) != Some(false) && result.get("ok").and_then(Value::as_bool) != Some(false);
-    // 관리 액션은 밑 라우트가 감사에 남기지 않으므로 액션 id로 한 줄 남긴다 (시작·명령은 라우트가 남긴다)
-    if r.kind == Kind::Admin {
-        record_admin(server, r, caller, ok, resp.status.as_u16()).await;
+    // 관리 액션은 밑 라우트가 감사에 남기지 않으므로 액션 id로 한 줄 남긴다 (시작·명령·복원은 라우트가 남긴다)
+    if r.kind == Kind::Admin && !ROUTE_AUDITED.contains(&r.id.as_str()) {
+        let code = if ok { None } else { crate::audit::failure_code(&result) };
+        record_admin(server, r, caller, ok, resp.status.as_u16(), code.as_deref()).await;
     }
     // 원격에서 만든 서버는 그 길드의 허용 목록에 더한다 (목록을 정해 둔 길드만)
     if let (true, "instance.create", Some(new_id)) = (ok, r.id.as_str(), result.get("id").and_then(Value::as_str)) {
@@ -1949,8 +1950,11 @@ async fn undo_plan(server: &IPCServer, instance: &str, before: Map<String, Value
     Some(plan_id)
 }
 
+/// 밑 라우트가 스스로 감사에 남기는 관리 액션 (`backup.restore` → `restore`)
+const ROUTE_AUDITED: [&str; 1] = ["backup.restore"];
+
 /// 관리 액션 감사 한 줄: `action`은 액션 id, 입력은 비밀을 가려 남긴다
-async fn record_admin(server: &IPCServer, r: &Resolved, caller: &Caller, ok: bool, status: u16) {
+async fn record_admin(server: &IPCServer, r: &Resolved, caller: &Caller, ok: bool, status: u16, code: Option<&str>) {
     let (name, args) = {
         let sup = server.supervisor.read().await;
         let instance = r.instance.as_deref().and_then(|i| sup.instance_store.get(i));
@@ -1969,6 +1973,7 @@ async fn record_admin(server: &IPCServer, r: &Resolved, caller: &Caller, ok: boo
         daemon: None,
         ok,
         status,
+        code,
     };
     crate::audit::log().record(&caller.origin, &event);
 }
