@@ -43,7 +43,7 @@ pub(crate) async fn is_running(state: &IPCServer, id: &str) -> bool {
 }
 
 /// 이름 하나로 게임 명령 실행 (저장·공지). 성공 여부만
-async fn run_command(state: &IPCServer, id: &str, name: &str, args: Value) -> bool {
+pub(crate) async fn run_command(state: &IPCServer, id: &str, name: &str, args: Value) -> bool {
     command_reply(state, id, name, args).await.is_some()
 }
 

@@ -4913,6 +4913,8 @@ mod tests {
             data_roots_backfill_attempted: Default::default(),
             game_chat: Default::default(),
             game_chat_keyword: String::new(),
+            controllers: Vec::new(),
+            controllers_only: false,
         };
         supervisor.instance_store.add(inst).unwrap();
 
@@ -4977,6 +4979,8 @@ mod tests {
             data_roots_backfill_attempted: Default::default(),
             game_chat: Default::default(),
             game_chat_keyword: String::new(),
+            controllers: Vec::new(),
+            controllers_only: false,
         };
         let inst_dir = instances_dir.join("test-tracker-guard");
         let _ = std::fs::create_dir_all(&inst_dir);

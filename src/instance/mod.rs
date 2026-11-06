@@ -112,6 +112,12 @@ pub struct ServerInstance {
     /// `game_chat = keyword`일 때 채팅 첫머리에 있어야 하는 감지 단어
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub game_chat_keyword: String,
+    /// 조작 가능: 이 서버를 시작·정지·재시작·백업할 수 있는 사람 (`crate::controllers`)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub controllers: Vec<crate::controllers::Controller>,
+    /// 조작 가능한 사람만 접속: 명단에 없는 닉네임이 들어오면 내보낸다
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub controllers_only: bool,
 }
 
 fn default_protocol_mode() -> String {
@@ -166,6 +172,8 @@ impl ServerInstance {
             data_roots_backfill_attempted: Default::default(),
             game_chat: Default::default(),
             game_chat_keyword: String::new(),
+            controllers: Vec::new(),
+            controllers_only: false,
         }
     }
 

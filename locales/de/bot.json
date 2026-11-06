@@ -476,5 +476,8 @@
   },
   "chatbot": {
     "memo_template": "<!-- Hinweiszeilen wie diese und leere Überschriften werden nicht an Sprechende Saba-chan geschickt. Fülle nur aus, was du brauchst. -->\n\n## Stimmung\n<!-- Beschreibe, wie hier geredet wird und wie derb Witze sein dürfen. Leer = Standardpersönlichkeit. -->\n\n## Anreden\n<!-- Besondere Anreden, die Saba-chan für jemanden benutzen soll. Beispiel: Die als (Besitzer) markierte Person „Meister“ nennen. -->\n\n## Begriffe dieses Servers\n<!-- Spitznamen, Memes und Abkürzungen, die nur hier verstanden werden, mit Bedeutung. -->\n\n## Infos zum Spielserver\n<!-- Regeln, Öffnungszeiten und anderes, das Saba-chan Fragenden sagen darf. -->\n"
+  },
+  "controllers": {
+    "kick_reason": "Nur registrierte Spieler können diesen Server betreten."
   }
 }

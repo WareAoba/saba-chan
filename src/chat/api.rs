@@ -21,6 +21,9 @@ pub struct ServerView {
     pub status: String,
     #[serde(default)]
     pub pid: Option<u32>,
+    /// 조작 가능 명단 (`crate::controllers`)
+    #[serde(default)]
+    pub controllers: Vec<crate::controllers::Controller>,
 }
 
 impl ServerView {

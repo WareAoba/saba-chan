@@ -249,6 +249,11 @@ pub struct ServerInfo {
     pub game_chat: crate::supervisor::game_chat::Mode,
     #[serde(default)]
     pub game_chat_keyword: String,
+    /// 조작 가능 (`ServerInstance::controllers`·`controllers_only`)
+    #[serde(default)]
+    pub controllers: Vec<crate::controllers::Controller>,
+    #[serde(default)]
+    pub controllers_only: bool,
     /// 이 서버의 채팅을 읽을 수 있는지: 모듈이 `chat_patterns`를 주고 데몬이 콘솔을 읽는 시작(managed)일 때
     #[serde(default)]
     pub game_chat_supported: bool,

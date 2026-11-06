@@ -476,5 +476,8 @@
   },
   "chatbot": {
     "memo_template": "<!-- Guide lines like this one and headings you leave empty are not sent to Talking Saba-chan. Fill in only what you need. -->\n\n## Room vibe\n<!-- Describe how people talk here and how edgy jokes can get. Leave empty to use the default personality. -->\n\n## How to address people\n<!-- Write down special names Saba-chan should call people. Example: Call the person marked (owner) \"Master\". -->\n\n## Words used on this server\n<!-- List nicknames, memes and abbreviations only this server uses, with their meaning. -->\n\n## Game server info\n<!-- Rules, opening hours and other things Saba-chan may tell anyone who asks. -->\n"
+  },
+  "controllers": {
+    "kick_reason": "Only registered players can join this server."
   }
 }

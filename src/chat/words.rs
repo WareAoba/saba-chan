@@ -286,7 +286,7 @@ mod tests {
     use serde_json::json;
 
     fn server(id: &str, name: &str, module: &str) -> ServerView {
-        ServerView { id: id.into(), name: name.into(), module: module.into(), status: "stopped".into(), pid: None }
+        ServerView { id: id.into(), name: name.into(), module: module.into(), status: "stopped".into(), pid: None, controllers: Vec::new() }
     }
 
     #[test]

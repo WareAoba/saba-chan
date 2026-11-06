@@ -1670,9 +1670,9 @@ pub(crate) fn stored_setting(view: &Value, instance: &crate::instance::ServerIns
 }
 
 /// PATCH가 모듈 설정이 아니라 인스턴스 필드로 받는 이름 (그 밖의 이름은 `module_settings`로):
-/// 공통 칸(`constants::INSTANCE_FIELDS`)과 익스텐션 값, 받지만 쓰지 않는 이름
+/// 공통 칸(`constants::INSTANCE_FIELDS`)과 익스텐션 값·조작 가능 명단, 받지만 쓰지 않는 이름
 fn is_known_field(key: &str) -> bool {
-    saba_chan_updater_lib::constants::INSTANCE_FIELDS.iter().any(|(k, _)| *k == key) || key == "extension_data" || IGNORED_FIELDS.contains(&key)
+    saba_chan_updater_lib::constants::INSTANCE_FIELDS.iter().any(|(k, _)| *k == key) || matches!(key, "extension_data" | "controllers") || IGNORED_FIELDS.contains(&key)
 }
 
 /// 받지만 쓰지 않는 이름 (응답 `ignored`).
@@ -1930,6 +1930,22 @@ pub async fn update_instance_settings(
     if let Err(e) = updated.game_chat().check() {
         return game_chat_error(e, "game_chat_keyword");
     }
+    // 조작 가능: 명단과 "조작 가능한 사람만 접속" (명단이 비면 켤 수 없다)
+    if let Some(list) = settings.get("controllers") {
+        match crate::controllers::parse(list) {
+            Ok(list) => updated.controllers = list,
+            Err(e) => return game_chat_error(e, "controllers"),
+        }
+    }
+    if let Some(only) = settings.get("controllers_only") {
+        match only.as_bool() {
+            Some(only) => updated.controllers_only = only,
+            None => return game_chat_error("controllers_only must be true or false", "controllers_only"),
+        }
+    }
+    if let Err(e) = crate::controllers::check(&updated.controllers, updated.controllers_only) {
+        return game_chat_error(e, "controllers_only");
+    }
     // 정지 대기 시간(초): 비우거나(null·"") 0이면 모듈 값을 쓴다
     let stop_timeout = match settings.get("stop_timeout").map(stop_timeout_from) {
         Some(Err(())) => {
@@ -2087,7 +2103,7 @@ pub async fn update_instance_settings(
     // 모듈이 사바쨩 설정으로 선언한 값은 뺀다
     const DAEMON_FIELDS: &[&str] = &[
         "protocol_mode", "executable_path", "working_dir", "server_version", "extension_data", "extra_args", "memory_limit_mb",
-        "game_chat", "game_chat_keyword", "rest_host", "rest_port", "rest_username", "rest_password", "rcon_port", "rcon_password", "enable_rcon",
+        "game_chat", "game_chat_keyword", "controllers", "controllers_only", "rest_host", "rest_port", "rest_username", "rest_password", "rcon_port", "rcon_password", "enable_rcon",
     ];
     let saba_fields: Vec<String> = supervisor.module_loader.get_module(&updated.module_name).ok()
         .and_then(|m| m.metadata.settings.as_ref().map(|s| s.saba_fields().into_iter().map(str::to_string).collect()))
@@ -4046,6 +4062,15 @@ mod tests {
         patch(json!({ "game_chat": "keyword", "game_chat_keyword": " !d " })).await;
         let stored = state.supervisor.read().await.instance_store.get(&id).cloned().unwrap();
         assert_eq!((stored.game_chat, stored.game_chat_keyword.as_str()), (crate::supervisor::game_chat::Mode::Keyword, "!d"));
+
+        // 조작 가능: 빈 명단으로는 "조작 가능한 사람만 접속"을 켤 수 없고, 겹친 닉네임은 거절한다
+        assert_eq!(patch(json!({ "controllers_only": true })).await.status, axum::http::StatusCode::BAD_REQUEST);
+        assert_eq!(patch(json!({ "controllers": [{ "name": "a" }, { "name": "A" }] })).await.status, axum::http::StatusCode::BAD_REQUEST);
+        let saved = patch(json!({ "controllers": [{ "name": " Steve ", "discord_id": "332007306403250178" }], "controllers_only": true })).await;
+        assert!(saved.status.is_success(), "{:?}", saved.body);
+        let stored = state.supervisor.read().await.instance_store.get(&id).cloned().unwrap();
+        assert_eq!((stored.controllers[0].name.as_str(), stored.controllers_only), ("Steve", true));
+        assert_eq!(patch(json!({ "controllers": [] })).await.status, axum::http::StatusCode::BAD_REQUEST, "emptying the list keeps the gate on");
     }
 
     /// 처음 설치(30분까지 걸린다)하는 동안 업데이트·삭제·복원이 같은 폴더에 끼어들지 못한다

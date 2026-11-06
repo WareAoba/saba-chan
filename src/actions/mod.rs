@@ -137,9 +137,10 @@ const fn def(id: &'static str, kind: Kind, risk: &'static str, surfaces: &'stati
 pub static ACTIONS: &[Def] = &[
     def("instance.list", Kind::Query, "safe", ALL, false, "GET", "/api/servers"),
     def("server.status", Kind::Query, "safe", ALL, true, "GET", "/api/instance/:id/status"),
-    def("server.start", Kind::Command, "caution", ALL, true, "POST", "/api/instance/:id/start"),
-    def("server.stop", Kind::Command, "caution", ALL, true, "POST", "/api/instance/:id/stop"),
-    def("server.restart", Kind::Command, "caution", ALL, true, "POST", "/api/instance/:id/restart"),
+    // 시작·정지·재시작·백업 만들기는 위험도가 아니라 조작 가능 명단(`crate::controllers`)과 관리자 이상이 한다 (사용자 지정 2026-11-06)
+    Def { discord_level: Some(crate::chat::permissions::ADMIN), level_movable: true, ..def("server.start", Kind::Command, "safe", ALL, true, "POST", "/api/instance/:id/start") },
+    Def { discord_level: Some(crate::chat::permissions::ADMIN), level_movable: true, ..def("server.stop", Kind::Command, "safe", ALL, true, "POST", "/api/instance/:id/stop") },
+    Def { discord_level: Some(crate::chat::permissions::ADMIN), level_movable: true, ..def("server.restart", Kind::Command, "safe", ALL, true, "POST", "/api/instance/:id/restart") },
     def("server.console.tail", Kind::Query, "safe", LOCAL_AND_CHATBOT, true, "GET", "/api/instance/:id/console?count=20"),
     // 접속자 이름까지 (검수 13번). 모듈이 `[status] players`를 선언한 서버만 (heartbeat `modules`, 인스턴스 목록)
     def("server.players", Kind::Query, "safe", ALL, true, "GET", "/api/instance/:id/players"),
@@ -174,7 +175,12 @@ pub static ACTIONS: &[Def] = &[
     // 디스코드 메뉴에서만 뺀다 (검수 4번). 챗봇 복원이 목록을 보고, 디스코드에서 부르는 것은 계속 받는다
     Def { remote_menu: false, private: true, ..def("backup.list", Kind::Query, "safe", ALL, true, "GET", "/api/instance/:id/backups") },
     // from_snapshot: 지금 상태 대신 게임이 만든 가장 새 자동 백업을 보관한다 (`[backup] snapshots` 모듈)
-    Def { fields: &[field("from_snapshot", "boolean", false)], ..def("backup.create", Kind::Command, "caution", ALL, true, "POST", "/api/instance/:id/backups") },
+    Def {
+        fields: &[field("from_snapshot", "boolean", false)],
+        discord_level: Some(crate::chat::permissions::ADMIN),
+        level_movable: true,
+        ..def("backup.create", Kind::Command, "safe", ALL, true, "POST", "/api/instance/:id/backups")
+    },
     // 디스코드에서도 복원한다 (검수 14번). 백업은 목록에서 고른다
     Def {
         fields: &[Field { options_from: Some(OptionsFrom { action: "backup.list", list: "backups", value: "name", label: "label" }), ..path_field("name") }],
@@ -714,7 +720,12 @@ pub async fn permission_board(server: &IPCServer, guild_id: &str, locale: &str) 
         let preset = fixed.unwrap_or_else(|| preset_need(&perms, kind, risk));
         let name = builtin_command(id).unwrap_or(id);
         let pinned = fixed.is_some() && !movable(id);
-        Some(entry(instance, id, name, &a["title"], kind.name(), risk, level, preset, pinned, override_keys(instance, id)))
+        let mut item = entry(instance, id, name, &a["title"], kind.name(), risk, level, preset, pinned, override_keys(instance, id));
+        // 조작 가능 명단에 있는 사람도 하는 일 (권한 계단의 "조작 가능" 묶음)
+        if crate::controllers::CONTROLLED_ACTIONS.contains(&id) {
+            item["controllers"] = json!(true);
+        }
+        Some(item)
     };
     let mut items = Vec::new();
     let globals = list(server, None, None, locale).await;
@@ -1280,7 +1291,19 @@ async fn authorize_in(server: &IPCServer, r: &Resolved, caller: &Caller, new_ser
     }
     let need = required_level(&perms, instance, &r.id, r.command.as_deref(), r.kind, &r.risk, r.discord_level);
     if !perms.meets(perms.effective_level(who), need) {
-        return Err(denied(need));
+        // 조작 가능 명단에 있는 사람은 레벨과 상관없이 그 서버를 시작·정지·재시작·백업한다
+        if !crate::controllers::CONTROLLED_ACTIONS.contains(&r.id.as_str()) {
+            return Err(denied(need));
+        }
+        let listed = match who.user_id.as_deref() {
+            Some(user) => server.supervisor.read().await.instance_store.get(instance).is_some_and(|i| crate::controllers::controls(&i.controllers, user)),
+            None => false,
+        };
+        if !listed {
+            let mut refused = denied(need);
+            refused.data["args"]["controllers"] = json!(true);
+            return Err(refused);
+        }
     }
     // 예약 작업은 나중에 요청자 없이 돈다: 새로 넣거나 켜는 서버 명령은 요청자가 지금 그 명령을 쓸 수 있어야 한다
     if r.id == "instance.schedule.set" && !instance.is_empty() {
