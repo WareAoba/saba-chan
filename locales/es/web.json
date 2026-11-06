@@ -109,7 +109,7 @@
     "location_pc": "Los archivos del servidor van a la carpeta de saba-chan. Para usar otra carpeta, crea el servidor en la app de saba-chan del PC.",
     "summary_running": "En marcha",
     "summary_players": "Jugadores",
-    "summary_cpu": "PC CPU",
+    "summary_cpu": "CPU del PC",
     "start_named": "Iniciar {{name}}",
     "stop_named": "Detener {{name}}",
     "pick": "Elige un servidor a la izquierda.",
@@ -124,8 +124,6 @@
   "detail": {
     "backups": "Copias",
     "players": "Jugadores",
-    "check": "Revisión",
-    "settings_game": "Juego",
     "more": "Más",
     "tabs": "Menú del servidor",
     "uptime": "Activo {{time}}",
@@ -199,7 +197,7 @@
       "-1": "Bloqueado"
     },
     "ladder": "Niveles de permiso",
-    "ladder_hint": "Cuanto más arriba, más alto el nivel. Propietario y Bloqueado no se mueven.",
+    "ladder_hint": "Cuanto más arriba, más alto el nivel. Propietario y Bloqueado no se mueven. Cambia un nombre en su casilla. Propietario, Invitado y Bloqueado no se pueden borrar.",
     "ladder_name": "Nombre del nivel",
     "ladder_fixed": "Fijo",
     "ladder_up": "Subir {{name}}",

@@ -220,6 +220,17 @@ describe('DiscordPage', () => {
         expect(save).not.toHaveBeenCalled();
     });
 
+    // 사용자 11-06 #19: 안내 문구의 링크로 디스코드 서버의 탭을 바로 연다
+    it('화면 주소 링크(디스코드 서버 › 멤버)로 그 서버의 멤버 탭을 연다', async () => {
+        const { openScreen } = await import('../utils/openScreen');
+        window.api.permissionsGet = vi.fn().mockResolvedValue({ guildId: 'g1', members: {}, preset: 'default' });
+        await act(async () => render(<Harness save={vi.fn()} />));
+        await waitFor(() => expect(document.querySelectorAll('.dc-nav-row')).toHaveLength(2));
+        await act(async () => openScreen('discord/g1/members'));
+        expect(screen.getByRole('tab', { name: /^(Members|멤버)$/ }).getAttribute('aria-selected')).toBe('true');
+        expect(window.showToast).not.toHaveBeenCalled();
+    });
+
     it('멤버 목록을 다시 받다 실패하면 받아 둔 목록을 지우지 않고 알린다', async () => {
         await act(async () => render(<Harness save={vi.fn()} />));
         await waitFor(() => expect(document.querySelectorAll('.dc-nav-row')).toHaveLength(2));

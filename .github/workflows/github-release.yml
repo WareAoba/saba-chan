@@ -61,7 +61,13 @@ jobs:
           echo "::error::Run this workflow on main (got $GITHUB_REF)"; exit 1
 
       - name: Checkout code
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # ubuntu-22.04의 python3는 3.10이라 tomllib이 없다
+      - name: Setup Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.11'
 
       # 태그가 그 버전의 소스를 가리키는지 본다: 커밋의 versions.toml [release].version이 같아야 한다
       - name: Check inputs
@@ -69,7 +75,7 @@ jobs:
           [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] || { echo "::error::bad version $VERSION"; exit 1; }
           [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::sha must be 40 lowercase hex"; exit 1; }
           git fetch --quiet --depth=1 origin "$SHA"
-          got=$(git show "$SHA:versions.toml" | python3 -c "import sys,tomllib;print(tomllib.loads(sys.stdin.read())['release']['version'])")
+          got=$(git show "$SHA:versions.toml" | python -c "import sys,tomllib;print(tomllib.loads(sys.stdin.read())['release']['version'])")
           if [ "$got" != "$VERSION" ]; then
             echo "::error::$SHA builds $got, not $VERSION"; exit 1
           fi
@@ -85,13 +91,13 @@ jobs:
 
       - name: Download from R2 and verify
         run: |
-          python3 .github/scripts/github-release.py --relay "${{ vars.RELAY_URL }}" --version "$VERSION" \
+          python .github/scripts/github-release.py --relay "${{ vars.RELAY_URL }}" --version "$VERSION" \
             --notes "release-notes/$VERSION.json" --out gh-release --notes-out gh-release-notes.md
           ls -l gh-release
 
       - name: Create release
         run: |
-          channel=$(python3 -c "import json;print(json.load(open('gh-release/release-manifest.json'))['manifest'].get('channel','stable'))")
+          channel=$(python -c "import json;print(json.load(open('gh-release/release-manifest.json'))['manifest'].get('channel','stable'))")
           flags=()
           if [ "$channel" != "stable" ]; then flags+=(--prerelease); fi
           gh release create "v$VERSION" gh-release/* \

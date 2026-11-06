@@ -109,7 +109,7 @@
     "location_pc": "伺服器檔案安裝到 saba-chan 資料夾。要放在其他資料夾，請在電腦上的 saba-chan 應用程式中建立。",
     "summary_running": "執行中",
     "summary_players": "線上",
-    "summary_cpu": "PC CPU",
+    "summary_cpu": "電腦 CPU",
     "start_named": "啟動 {{name}}",
     "stop_named": "停止 {{name}}",
     "pick": "請從左側選擇伺服器。",
@@ -124,8 +124,6 @@
   "detail": {
     "backups": "備份",
     "players": "玩家",
-    "check": "檢查",
-    "settings_game": "遊戲",
     "more": "更多",
     "tabs": "伺服器選單",
     "uptime": "已執行 {{time}}",
@@ -199,7 +197,7 @@
       "-1": "禁止"
     },
     "ladder": "權限等級",
-    "ladder_hint": "越上面等級越高。擁有者和封鎖無法移動。",
+    "ladder_hint": "越上面等級越高。擁有者和封鎖無法移動。名稱可在輸入框中修改。擁有者、訪客和封鎖無法刪除。",
     "ladder_name": "等級名稱",
     "ladder_fixed": "固定",
     "ladder_up": "將 {{name}} 上移",

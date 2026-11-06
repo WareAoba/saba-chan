@@ -32,7 +32,11 @@ fn ladder_of(perm: &Value) -> Vec<Rung> {
     [3, 2, 1, 0, -1].into_iter().map(|id| Rung { id: Some(id), name: None }).collect()
 }
 
-/// 데몬에 보낼 사다리: 기본 단계는 `{id}`, 더한 단계는 `{id?, name}`
+/// 기본 단계 id (높은 것부터)와 게스트
+const BUILTIN: [i64; 5] = [3, 2, 1, 0, -1];
+const GUEST: i64 = 0;
+
+/// 데몬에 보낼 사다리: `{id, name?}`(기본 단계는 이름이 없으면 로케일 이름), 새 단계는 `{name}`
 fn ladder_patch(ladder: &[Rung]) -> Value {
     Value::Array(
         ladder
@@ -107,15 +111,19 @@ fn edit_ladder(mut ladder: Vec<Rung>, cmd: &LevelCmd) -> Result<Vec<Rung>> {
             let at = slot_above(&ladder, above.as_deref())?;
             ladder.insert(at, Rung { id: None, name: Some(name.trim().to_string()) });
         }
+        // 모든 단계의 이름을 바꾼다. 기본 단계는 이름을 비우면 원래 이름이다 (사용자 지정 2026-11-06)
         LevelCmd::Rename { level, name, .. } => {
-            let at = movable_at(&ladder, level)?;
-            if ladder[at].name.is_none() {
-                return Err(usage(t!("perm.level_builtin", level = level)));
-            }
-            ladder[at].name = Some(name.trim().to_string());
+            let id = parse_level(level, &ladder)?;
+            let rung = ladder.iter_mut().find(|r| r.id == Some(id)).ok_or_else(|| usage(t!("perm.bad_level", level = level)))?;
+            let name = name.trim().to_string();
+            rung.name = (!name.is_empty() || !BUILTIN.contains(&id)).then_some(name);
         }
+        // 소유자·게스트·금지는 지우지 않는다
         LevelCmd::Remove { level, .. } => {
             let at = movable_at(&ladder, level)?;
+            if ladder[at].id == Some(GUEST) {
+                return Err(usage(t!("perm.level_kept", level = level)));
+            }
             ladder.remove(at);
         }
         LevelCmd::Move { level, above, .. } => {
@@ -475,10 +483,16 @@ mod tests {
             ladder_patch(&renamed),
             json!([{ "id": 3 }, { "id": 10, "name": "단골" }, { "id": 2 }, { "name": "Mod" }, { "id": 1 }, { "id": 0 }, { "id": -1 }])
         );
-        // 소유자·금지는 고정, 기본 단계는 이름을 바꾸지 않는다
+        // 소유자·금지는 고정, 소유자·게스트·금지는 지우지 않는다
         assert!(edit_ladder(ladder.clone(), &LevelCmd::Remove { guild: "g".into(), level: "owner".into() }).is_err());
+        assert!(edit_ladder(ladder.clone(), &LevelCmd::Remove { guild: "g".into(), level: "0".into() }).is_err());
         assert!(edit_ladder(ladder.clone(), &LevelCmd::Move { guild: "g".into(), level: "vip".into(), above: "owner".into() }).is_err());
-        assert!(edit_ladder(ladder, &LevelCmd::Rename { guild: "g".into(), level: "admin".into(), name: "x".into() }).is_err());
+        // 기본 단계도 이름을 바꾸고, 바꾼 이름으로 고른다. 비우면 원래 이름
+        let staff = edit_ladder(ladder, &LevelCmd::Rename { guild: "g".into(), level: "admin".into(), name: " Staff ".into() }).unwrap();
+        assert_eq!(ladder_patch(&staff)[1], json!({ "id": 2, "name": "Staff" }));
+        assert_eq!(parse_level("staff", &staff).unwrap(), 2);
+        let back = edit_ladder(staff, &LevelCmd::Rename { guild: "g".into(), level: "staff".into(), name: " ".into() }).unwrap();
+        assert_eq!(ladder_patch(&back)[1], json!({ "id": 2 }));
     }
 
     /// 권한 표는 디스코드 id 대신 멤버·서버 이름을 보인다 (C8). 모르는 id는 그대로

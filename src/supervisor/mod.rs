@@ -382,6 +382,15 @@ impl Supervisor {
                 self.managed_store.insert(&instance.id, proc).await;
                 reattached += 1;
                 tracing::info!("Reattached '{}' through saba-runner (PID {})", instance.name, pid);
+                // 접속·퇴장 알림, 게임 채팅, 조작 가능한 사람만 접속도 다시 콘솔을 본다 (시작 때 `announce_ready`와 같다)
+                if let Some(console) = self.managed_store.get(&instance.id).await {
+                    let meta = self.module_loader.get_module(&instance.module_name).ok().map(|m| m.metadata);
+                    let (join, leave, chat) = meta
+                        .map(|m| (m.player_join_patterns, m.player_leave_patterns, m.chat_patterns))
+                        .unwrap_or_default();
+                    game_chat::remember(&instance.id, &instance.game_chat());
+                    player_events::after_reattach(&instance.id, &instance.name, console, &join, &leave, &chat);
+                }
                 continue;
             }
 
@@ -2595,7 +2604,7 @@ impl Supervisor {
                 // 이번 실행의 줄만 (재부착 때 디스크에서 읽어 온 지난 실행의 오류를 지금 문제로 보지 않게)
                 let log_lines: Vec<String> = recent
                     .iter()
-                    .filter(|l| l.timestamp >= proc.started_at)
+                    .filter(|l| l.timestamp >= proc.started_at && l.source != managed_process::LogSource::Input)
                     .map(|l| l.content.clone())
                     .collect();
                 cfg.insert("log_lines".to_string(), json!(log_lines));
@@ -3003,7 +3012,7 @@ impl Supervisor {
     /// GUI read 요청에 대한 블로킹을 최소화합니다.
     /// 끝난 managed 프로세스가 왜 끝났는지 가르고, 크래시면 재시작을 예약한다 (A1). `may_restart`가 false면 예약하지 않는다
     async fn judge_exit(&mut self, instance_id: &str, proc: &ManagedProcess, may_restart: bool) {
-        use managed_process::{LogLevel, LogSource};
+        use managed_process::LogLevel;
         if proc.log_follower {
             return;
         }
@@ -3026,7 +3035,7 @@ impl Supervisor {
             .get_recent_console(crash::CONSOLE_TAIL_LINES)
             .await
             .into_iter()
-            .filter(|l| l.source != LogSource::System)
+            .filter(|l| l.source.is_server_output())
             .map(|l| l.content)
             .collect();
         let working_dir = proc.working_dir.clone().or_else(|| instance.working_dir.as_ref().map(std::path::PathBuf::from));
@@ -3097,6 +3106,7 @@ impl Supervisor {
     /// 종료 판정 하나를 알리고(`instance.exit`) 이력에 남긴다.
     /// `attempt`는 다시 띄우기로 했을 때 그 복구 시도의 번호 (끝을 알리는 이벤트와 같은 `restartAttempt`)
     fn record_exit(&mut self, instance_id: &str, instance_name: &str, event: crash::ExitEvent, attempt: Option<u64>) {
+        let (evidence_code, evidence_args) = crash::evidence_code(&event.verdict.evidence);
         crate::events::emit("instance.exit", serde_json::json!({
             "instanceId": instance_id,
             "instance": instance_name,
@@ -3104,6 +3114,8 @@ impl Supervisor {
             "exitCode": event.verdict.exit_code,
             "signal": event.verdict.signal,
             "evidence": event.verdict.evidence,
+            "evidenceCode": evidence_code,
+            "evidenceArgs": evidence_args,
             "restartInSecs": event.restart_in_secs,
             "restartAttempt": attempt,
             "note": event.note,
@@ -4913,6 +4925,8 @@ mod tests {
             data_roots_backfill_attempted: Default::default(),
             game_chat: Default::default(),
             game_chat_keyword: String::new(),
+            controllers: Vec::new(),
+            controllers_only: false,
         };
         supervisor.instance_store.add(inst).unwrap();
 
@@ -4977,6 +4991,8 @@ mod tests {
             data_roots_backfill_attempted: Default::default(),
             game_chat: Default::default(),
             game_chat_keyword: String::new(),
+            controllers: Vec::new(),
+            controllers_only: false,
         };
         let inst_dir = instances_dir.join("test-tracker-guard");
         let _ = std::fs::create_dir_all(&inst_dir);

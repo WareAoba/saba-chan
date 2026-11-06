@@ -45,7 +45,7 @@ export type StatusTone = 'ok' | 'stop' | 'warn' | 'info' | 'idle';
 
 export const STATUS_TONE: Record<string, StatusTone> = {
     running: 'ok',
-    stopped: 'stop',
+    stopped: 'idle',
     starting: 'warn',
     stopping: 'warn',
     provisioning: 'info',
@@ -121,6 +121,11 @@ export function commandText(t: TFunction, moduleName: string, cmd: { name: strin
         label: t(`${ns}.label`, { defaultValue: cmd.label || cmd.name }),
         description: t(`${ns}.description`, { defaultValue: cmd.description || '' }),
     };
+}
+
+/** 명령 입력 칸 이름: 모듈 locales(`mod_<모듈>:commands.<명령>.inputs.<칸>.label`)가 앞서고, 없으면 모듈이 준 이름, 그다음 칸 이름 */
+export function commandInputLabel(t: TFunction, moduleName: string, commandName: string, input: { name: string; label?: string | null }) {
+    return t(`mod_${moduleName}:commands.${commandName}.inputs.${input.name}.label`, { defaultValue: input.label || input.name });
 }
 
 /** 이름 첫 글자로 만든 아이콘 대체 글자 */

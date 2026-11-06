@@ -46,6 +46,10 @@ pub struct ModuleMetadata {
     /// [config] announce_command — 게임 안 공지에 쓰는 `[commands.fields]` 이름 (`message` 입력 하나). 예약 재시작 예고·공지(A3)용
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub announce_command: Option<String>,
+    /// [config] kick_command — 플레이어를 내보내는 `[commands.fields]` 이름 (첫 입력 닉네임, 둘째 입력이 있으면 이유).
+    /// 조작 가능한 사람만 접속(`crate::controllers`)이 쓴다
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kick_command: Option<String>,
     /// [backup] 월드·세이브 백업 선언 (A2). 없으면 이 모듈은 백업을 지원하지 않는다
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub backup: Option<ModuleBackup>,
@@ -993,6 +997,9 @@ struct ConfigSection {
     /// 게임 안 공지에 쓰는 `[commands.fields]` 이름 (`message` 입력 하나)
     #[serde(default)]
     announce_command: Option<String>,
+    /// 플레이어를 내보내는 `[commands.fields]` 이름 (첫 입력 닉네임, 둘째 입력이 있으면 이유)
+    #[serde(default)]
+    kick_command: Option<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -1432,6 +1439,7 @@ impl ModuleToml {
             stop_command: self.config.as_ref().and_then(|c| c.stop_command.clone()),
             stop_timeout: self.config.as_ref().and_then(|c| c.stop_timeout),
             announce_command: self.config.as_ref().and_then(|c| c.announce_command.clone()),
+            kick_command: self.config.as_ref().and_then(|c| c.kick_command.clone()),
             backup: self.backup,
             permissions: self.permissions,
             interaction_mode: self.protocols.as_ref().and_then(|p| p.interaction_mode.clone()),
@@ -1951,6 +1959,7 @@ impl ModuleToml {
         let named = |name: &str| self.commands.iter().flat_map(|c| &c.fields).any(|f| f.name == name);
         let refs = [
             ("config.announce_command", self.config.as_ref().and_then(|c| c.announce_command.as_deref())),
+            ("config.kick_command", self.config.as_ref().and_then(|c| c.kick_command.as_deref())),
             ("backup.save_command", self.backup.as_ref().and_then(|b| b.save_command.as_deref())),
             ("backup.pause_command", self.backup.as_ref().and_then(|b| b.pause_command.as_deref())),
             ("backup.resume_command", self.backup.as_ref().and_then(|b| b.resume_command.as_deref())),
@@ -3265,6 +3274,14 @@ player_leave_patterns = ['^\[\d{2}:\d{2}:\d{2}(?:\] \[[^\]]*/| )INFO\](?: \[[^\]
         assert_eq!(meta.announce_command.as_deref(), Some("say"));
         let typo = toml.replace("save_command = \"save-all\"", "save_command = \"save_all\"");
         assert!(parse_module_toml(&typo).unwrap_err().to_string().contains("backup.save_command"));
+    }
+
+    #[test]
+    fn schema_v1_reads_kick_command_and_checks_it_names_a_command() {
+        let toml = format!("{V1}\n[config]\nkick_command = \"kick\"\n\n[[commands.fields]]\nname = \"kick\"\n");
+        assert_eq!(parse_module_toml(&toml).unwrap().kick_command.as_deref(), Some("kick"));
+        let typo = toml.replace("kick_command = \"kick\"", "kick_command = \"kik\"");
+        assert!(parse_module_toml(&typo).unwrap_err().to_string().contains("config.kick_command"));
     }
 
     #[test]

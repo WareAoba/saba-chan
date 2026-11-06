@@ -109,7 +109,7 @@
     "location_pc": "Die Serverdateien kommen in den Ordner von saba-chan. Für einen anderen Ordner erstelle den Server in der saba-chan-App am PC.",
     "summary_running": "Läuft",
     "summary_players": "Spieler",
-    "summary_cpu": "PC CPU",
+    "summary_cpu": "PC-CPU",
     "start_named": "{{name}} starten",
     "stop_named": "{{name}} stoppen",
     "pick": "Wähle links einen Server.",
@@ -124,8 +124,6 @@
   "detail": {
     "backups": "Backups",
     "players": "Spieler",
-    "check": "Prüfung",
-    "settings_game": "Spiel",
     "more": "Mehr",
     "tabs": "Servermenü",
     "uptime": "Läuft seit {{time}}",
@@ -199,7 +197,7 @@
       "-1": "Gesperrt"
     },
     "ladder": "Berechtigungsstufen",
-    "ladder_hint": "Weiter oben bedeutet eine höhere Stufe. Besitzer und Gesperrt bleiben fest.",
+    "ladder_hint": "Weiter oben bedeutet eine höhere Stufe. Besitzer und Gesperrt bleiben fest. Ändere einen Namen in seinem Feld. Besitzer, Gast und Gesperrt lassen sich nicht löschen.",
     "ladder_name": "Stufenname",
     "ladder_fixed": "Fest",
     "ladder_up": "{{name}} nach oben",

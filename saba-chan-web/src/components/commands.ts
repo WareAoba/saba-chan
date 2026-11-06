@@ -1,4 +1,5 @@
 import type { CommandField, CommandInput } from '@gui/types/daemon';
+import { withCommandAliases } from '@gui/utils/commandRisk';
 import { commandText } from '@gui/utils/serverView';
 import { useEffect, useState } from 'react';
 import type { Module, Server, TFn, WebApi } from '../types';
@@ -25,29 +26,8 @@ export function mergeCommands(catalog: Command[] | null, own: CommandField[]): C
     );
 }
 
-/** 입력 칸 값 → 명령 인자. 빈 칸은 빼고, 숫자 칸은 숫자로, 켜고 끄는 칸은 참거짓으로 (손대지 않은 필수 칸은 false) */
-export function commandArgs(inputs: CommandInput[] = [], values: Record<string, unknown> = {}) {
-    const args: Record<string, unknown> = {};
-    for (const input of inputs) {
-        const raw = values[input.name];
-        if (input.type === 'boolean') {
-            // 손대지 않은 칸은 꺼진 칸이다: 필수면 false 로 보낸다 (빼면 데몬이 missing_argument 로 거절한다)
-            if (raw !== undefined && raw !== '') args[input.name] = raw === true || raw === 'true';
-            else if (input.required) args[input.name] = false;
-            continue;
-        }
-        const value = String(raw ?? '').trim();
-        if (!value) continue;
-        args[input.name] = input.type === 'number' && Number.isFinite(Number(value)) ? Number(value) : value;
-    }
-    return args;
-}
-
-/** 필수 칸이 비었는지 (기본값이 있으면 데몬이 채운다) */
-export const missingInputs = (inputs: CommandInput[] = [], values: Record<string, unknown> = {}) =>
-    inputs.filter(
-        (i) => i.required && i.default == null && i.type !== 'boolean' && !String(values[i.name] ?? '').trim(),
-    );
+// 입력 창 칸 값 → 명령 인자, 빈 필수 칸 (앱 명령 입력 창과 같은 규칙)
+export { commandArgs, missingInputs } from '@gui/utils/commandSyntax';
 
 /** 명령과 입력에 모듈 locales 문구를 입힌다 (`mod_<모듈>:commands.<이름>`) */
 export function localizeCommands(t: TFn, moduleName: string, list: Command[]) {
@@ -85,6 +65,7 @@ export function useCommands(
             alive = false;
         };
     }, [api, server.id]);
-    const own = moduleData?.commands?.fields ?? [];
+    // module.toml 별명(`[aliases.commands]`)을 입혀 둔다: 입력 줄이 별명도 이름으로 읽는다 (앱과 같다)
+    const own = withCommandAliases(moduleData?.commands?.fields, moduleData?.command_aliases);
     return localizeCommands(t, server.module, mergeCommands(catalog, own));
 }

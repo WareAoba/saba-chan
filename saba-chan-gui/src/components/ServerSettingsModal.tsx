@@ -1,6 +1,7 @@
 import clsx from 'clsx';
 import React, { useCallback, useEffect, useId, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import type { RestartPending } from '../hooks/useServerSettings';
 import type { Server } from '../stores/useServerStore';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import type { ModuleInfo, SettingField } from '../types/daemon';
@@ -9,6 +10,7 @@ import { checkPortConflicts, hiddenFields, validateAllSettings } from '../utils/
 import { CliLine, changedForCli } from './CliLine';
 import { CustomDropdown, ExtensionSlot, Icon, SabaCheckbox, SabaToggle } from './index';
 import { LaunchPreview, launchPreviewAvailable } from './servers/LaunchPreview';
+import { LinkedText } from './ui/ScreenLink';
 
 // 데몬이 받는 설정 type (module_loader SETTING_TYPES, 스키마 2의 list·multiline). 밖의 값은 글자 칸으로 그린다
 const FIELD_TYPES = ['text', 'password', 'number', 'file', 'select', 'boolean', 'list', 'multiline'];
@@ -54,12 +56,17 @@ export function SettingsField({ field, value, modNs, onChange, validationError }
     const labelId = `${inputId}-label`;
     const picked = listDraft(value);
     // 선택지 표시 이름 (모듈 locales `settings.<칸>.options.<값>`, 없으면 값 그대로)
-    const optionText = (opt: string) => t(`${modNs}:settings.${field.name}.options.${opt}`, { defaultValue: String(opt) });
+    // 값에 `:`가 있어도(`minecraft:normal`) 네임스페이스로 읽지 않게 네임스페이스를 따로 넘긴다
+    const optionText = (opt: string) =>
+        t(`settings.${field.name}.options.${opt}`, { ns: modNs, nsSeparator: false, defaultValue: String(opt) });
 
     return (
         <div className="settings-field">
             <label id={labelId} htmlFor={inputId}>
                 {fieldLabel} {field.required ? '*' : ''}
+                {field.restart_required && (
+                    <span className="setting-restart-chip">{t('server_settings.restart_badge')}</span>
+                )}
             </label>
             {fieldType === 'text' && (
                 <input
@@ -162,7 +169,9 @@ export function SettingsField({ field, value, modNs, onChange, validationError }
                         checked={value === true || value === 'true'}
                         onChange={(checked) => onChange(field.name, checked)}
                     />
-                    <span className="toggle-label-text">{value === true || value === 'true' ? 'ON' : 'OFF'}</span>
+                    <span className="toggle-label-text">
+                        {t(value === true || value === 'true' ? 'server_settings.toggle_on' : 'server_settings.toggle_off')}
+                    </span>
                 </div>
             )}
             {hasError && (
@@ -266,6 +275,7 @@ function GeneralTab({
 }: GeneralTabProps) {
     const { t } = useTranslation('gui');
     const versionId = useId();
+    const rowId = useId();
     // section: 'server' = 게임 서버 설정만, 'saba' = 사바쨩이 서버를 다루는 설정만, 없으면 모두
     const showSaba = section !== 'server';
     const showServer = section !== 'saba';
@@ -299,21 +309,24 @@ function GeneralTab({
                     </div>
                     <p className="protocol-mode-description">{t('shell.restart_desc')}</p>
                     <div className="restart-row">
-                        <span>
+                        {/* 글자를 눌러도 스위치가 바뀐다 */}
+                        <label htmlFor={`${rowId}-crash`}>
                             <strong>{t('shell.restart_on_crash')}</strong>
                             <small>{t('shell.restart_on_crash_hint')}</small>
-                        </span>
+                        </label>
                         <SabaToggle
+                            id={`${rowId}-crash`}
                             checked={String(settingsValues.auto_restart) !== 'false'}
                             onChange={(checked) => handleSettingChange('auto_restart', checked)}
                         />
                     </div>
                     <div className={clsx('restart-row', { disabled: String(settingsValues.auto_restart) === 'false' })}>
-                        <span>
+                        <label htmlFor={`${rowId}-unknown`}>
                             <strong>{t('shell.restart_on_unknown')}</strong>
                             <small>{t('shell.restart_on_unknown_hint')}</small>
-                        </span>
+                        </label>
                         <SabaToggle
+                            id={`${rowId}-unknown`}
                             checked={String(settingsValues.restart_on_unknown_exit) === 'true'}
                             disabled={String(settingsValues.auto_restart) === 'false'}
                             onChange={(checked) => handleSettingChange('restart_on_unknown_exit', checked)}
@@ -393,7 +406,40 @@ function GeneralTab({
                             />
                         </div>
                     )}
-                    <p className="protocol-mode-description">{t('game_chat.channel_note')}</p>
+                    <p className="protocol-mode-description">
+                        <LinkedText i18nKey="game_chat.channel_note" to="discord/*/moderation/channels" />
+                    </p>
+                </div>
+            )}
+
+            {/* 조작 가능한 사람만 접속 (데몬 인스턴스 controllers_only, 사용자 지정 2026-11-06). 명단은 "조작 가능" 탭.
+                모듈이 접속 줄과 내보내기 명령을 알려 주고 데몬이 콘솔을 읽을 때만. 명단이 비면 켤 수 없다 */}
+            {showSaba && settingsServer.controllers_only_supported && (
+                <div className="protocol-mode-section controllers-only-section">
+                    <div className="protocol-mode-header">
+                        <span className="protocol-mode-title">
+                            <Icon name="user" size="sm" /> {t('controllers_only.title')}
+                        </span>
+                    </div>
+                    <p className="protocol-mode-description">{t('controllers_only.desc')}</p>
+                    <div className="restart-row">
+                        <span>
+                            <strong>{t('controllers_only.label')}</strong>
+                            <small>
+                                {(settingsServer.controllers || []).length === 0
+                                    ? t('controllers_only.empty')
+                                    : t('controllers_only.hint')}
+                            </small>
+                        </span>
+                        <SabaToggle
+                            checked={String(settingsValues.controllers_only) === 'true'}
+                            disabled={
+                                (settingsServer.controllers || []).length === 0 &&
+                                String(settingsValues.controllers_only) !== 'true'
+                            }
+                            onChange={(checked) => handleSettingChange('controllers_only', checked)}
+                        />
+                    </div>
                 </div>
             )}
 
@@ -654,6 +700,37 @@ function GeneralTab({
     );
 }
 
+/** 저장 막대 위의 다시 시작 안내 (사용자 11-06 #5): [지금 다시 시작] [나중에] */
+export function RestartNotice({
+    pending,
+    server,
+    onRestart,
+    onDismiss,
+}: {
+    pending: RestartPending | null | undefined;
+    server: Pick<Server, 'id' | 'status' | 'start_time'>;
+    onRestart: () => void;
+    onDismiss: () => void;
+}) {
+    const { t } = useTranslation('gui');
+    const live = pending && pending.serverId === server.id && server.status === 'running' && (server.start_time ?? null) === pending.startTime;
+    if (!live) return null;
+    return (
+        <div className="notice tone-warn settings-restart-notice">
+            <Icon name="refresh" size="sm" />
+            <span role="status">
+                {t('server_settings.restart_pending', { count: pending.fields.length, fields: pending.fields.join(', ') })}
+            </span>
+            <button type="button" className="btn btn-primary btn-sm" onClick={onRestart}>
+                {t('server_settings.restart_now')}
+            </button>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={onDismiss}>
+                {t('server_settings.restart_later')}
+            </button>
+        </div>
+    );
+}
+
 /**
  * ServerSettingsModal — Full server settings modal with general tab (+ a link to the Discord words page).
  */
@@ -667,6 +744,9 @@ interface ServerSettingsModalProps extends Omit<GeneralTabProps, 'portConflicts'
     onClose: () => void;
     embedded?: boolean;
     servers?: Server[];
+    restartPending?: RestartPending | null;
+    restartNow?: () => void;
+    dismissRestart?: () => void;
 }
 
 export function ServerSettingsModal({
@@ -691,6 +771,9 @@ export function ServerSettingsModal({
     isClosing,
     onClose,
     embedded = false,
+    restartPending,
+    restartNow,
+    dismissRestart,
     // 서버 상세에 박을 때 나눠 보이기: 'server' | 'saba' (GeneralTab 참고)
     section,
     // validation props
@@ -705,7 +788,8 @@ export function ServerSettingsModal({
     }
 
     // 창을 연 뒤에 켜질 수 있으니 지금 상태는 servers 목록에서 본다 (데몬도 켜진 서버의 설치·초기화를 거절한다)
-    const liveStatus = (servers || []).find((s) => s.id === settingsServer.id)?.status ?? settingsServer.status;
+    const liveServer = (servers || []).find((s) => s.id === settingsServer.id) ?? settingsServer;
+    const liveStatus = liveServer.status;
     const serverRunning = ['running', 'starting', 'stopping'].includes(liveStatus);
 
     // ── Validation: 설정값 타입 검증 ──
@@ -845,6 +929,15 @@ export function ServerSettingsModal({
             </div>
 
             <div className="modal-footer">
+                {/* 저장 막대와 함께 따라온다 */}
+                {restartNow && dismissRestart && (
+                    <RestartNotice
+                        pending={restartPending}
+                        server={liveServer}
+                        onRestart={restartNow}
+                        onDismiss={dismissRestart}
+                    />
+                )}
                 <CliLine actionId="instance.settings.set" server={settingsServer.name} extra={changedSettings} />
                 <button className="btn btn-confirm" onClick={handleSaveSettings} disabled={savingSettings}>
                     <Icon name="save" size="sm" /> {t('server_settings.save_settings')}

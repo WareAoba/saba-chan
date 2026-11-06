@@ -100,26 +100,33 @@ fn pick<'a>(list: &'a [Session], source: Option<&str>) -> Option<&'a Session> {
 
 /// `end`(바이트) 앞의 마지막 `n`줄과, 그 첫 줄이 시작하는 바이트(더 앞이 없으면 None)
 fn lines_before(path: &FsPath, end: Option<u64>, n: usize) -> std::io::Result<(Vec<String>, Option<u64>)> {
+    lines_before_in(path, end, n, CHUNK)
+}
+
+fn lines_before_in(path: &FsPath, end: Option<u64>, n: usize, chunk_size: u64) -> std::io::Result<(Vec<String>, Option<u64>)> {
     let mut file = std::fs::File::open(path)?;
     let len = file.metadata()?.len();
     let end = end.unwrap_or(len).min(len);
     // 마지막 줄바꿈은 줄의 끝이지 빈 줄의 시작이 아니다
-    let mut buf: Vec<u8> = Vec::new();
+    // 새로 읽은 조각의 줄바꿈만 세고, 조각은 모았다가 끝에서 한 번만 잇는다 (긴 줄이 많아도 읽은 내용을 거듭 복사하지 않게)
+    let mut chunks: Vec<Vec<u8>> = Vec::new();
+    let mut newlines = 0;
+    let mut trailing = false;
     let mut pos = end;
-    loop {
-        let newlines = buf.iter().filter(|&&b| b == b'\n').count();
-        let trailing = buf.last() == Some(&b'\n');
-        if newlines > n + usize::from(trailing) || pos == 0 {
-            break;
-        }
-        let start = pos.saturating_sub(CHUNK);
+    while newlines <= n + usize::from(trailing) && pos > 0 {
+        let start = pos.saturating_sub(chunk_size);
         let mut chunk = vec![0u8; (pos - start) as usize];
         file.seek(SeekFrom::Start(start))?;
         file.read_exact(&mut chunk)?;
-        chunk.extend_from_slice(&buf);
-        buf = chunk;
+        if chunks.is_empty() {
+            trailing = chunk.last() == Some(&b'\n');
+        }
+        newlines += chunk.iter().filter(|&&b| b == b'\n').count();
+        chunks.push(chunk);
         pos = start;
     }
+    chunks.reverse();
+    let mut buf: Vec<u8> = chunks.concat();
     if buf.last() == Some(&b'\n') {
         buf.pop();
     }
@@ -316,6 +323,44 @@ mod tests {
 
     fn numbered(n: usize) -> String {
         (1..=n).map(|i| format!("[2026-10-20 11:{:02}:00] [STDOUT/INFO] line {i}\n", i % 60)).collect()
+    }
+
+    /// 파일 전체를 한 번에 나눠 본 기준: `end` 앞의 마지막 `n`줄과 그 첫 줄의 시작 바이트
+    fn whole_file_lines(content: &[u8], end: usize, n: usize) -> (Vec<String>, Option<u64>) {
+        let mut text = &content[..end];
+        if text.last() == Some(&b'\n') {
+            text = &text[..text.len() - 1];
+        }
+        if text.is_empty() {
+            return (Vec::new(), None);
+        }
+        let mut starts = vec![0usize];
+        starts.extend(text.iter().enumerate().filter(|(_, b)| **b == b'\n').map(|(i, _)| i + 1));
+        let first = starts.len().saturating_sub(n);
+        let lines = text.split(|&b| b == b'\n').skip(first).map(|p| String::from_utf8_lossy(p).trim_end_matches('\r').to_string()).collect();
+        (lines, (starts[first] > 0).then_some(starts[first] as u64))
+    }
+
+    proptest::proptest! {
+        // 거꾸로 조각 단위로 읽어도 파일 전체를 나눈 것과 같은 줄·커서를 준다 (조각 경계에 걸친 긴 줄 포함)
+        #[test]
+        fn reading_backwards_in_chunks_matches_splitting_the_whole_file(
+            lines in proptest::collection::vec("[a-z\r]{0,40}", 0..30),
+            trailing in proptest::bool::ANY,
+            n in 1usize..8,
+            chunk in 1u64..50,
+            cut in 0usize..2000,
+        ) {
+            let mut content = lines.join("\n").into_bytes();
+            if trailing && !content.is_empty() {
+                content.push(b'\n');
+            }
+            let tmp = tempfile::NamedTempFile::new().unwrap();
+            std::fs::write(tmp.path(), &content).unwrap();
+            let end = cut.min(content.len());
+            let got = lines_before_in(tmp.path(), Some(end as u64), n, chunk).unwrap();
+            proptest::prop_assert_eq!(got, whole_file_lines(&content, end, n));
+        }
     }
 
     #[tokio::test]

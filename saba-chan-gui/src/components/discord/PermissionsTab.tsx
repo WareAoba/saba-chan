@@ -673,6 +673,7 @@ export function CommandList({ node, permissions, instance = L.ALL_INSTANCES }: C
         .join(' · ');
     const q = query.trim().toLowerCase();
     const shown = q ? chips.filter((c) => label(c).toLowerCase().includes(q)) : chips;
+    const line = L.controllerLine(board); // 사다리의 조작 가능 줄 (그 레벨인 명령이 줄을 따른다)
 
     const row = (c: L.StairChip) => {
         const name = label(c);
@@ -688,6 +689,8 @@ export function CommandList({ node, permissions, instance = L.ALL_INSTANCES }: C
                             {[
                                 c.fixed && (c.basic ? t('discord.perm_commands_help_hint') : t('discord.perm_fixed_hint')),
                                 !c.fixed && c.overridden && t('discord.perm_moved'),
+                                c.controllers && t('discord.perm_controllers_tag'),
+                                c.controllers && line?.level === c.level && t('discord.perm_line_follow'),
                                 shownView !== L.ALL_INSTANCES &&
                                     c.items.some((i) => !i.instance) &&
                                     t('discord.perm_server_wide_tag'),

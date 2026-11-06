@@ -31,6 +31,7 @@
     "module_required": "Pick a game with --module, or give an existing server folder with --from.",
     "name_empty": "The name can't be empty.",
     "name_taken": "A server named {{name}} already exists.",
+    "name_comma": "A server name can't contain a comma (Discord splits a server's words at commas). Spaces are fine.",
     "needs_extensions": "This game needs these extensions: {{ids}}. Install and turn them on now?",
     "no_installer": "{{game}} can't install server files by itself. Use an existing folder with --from.",
     "no_modules": "No game modules are installed yet.",
@@ -424,6 +425,7 @@
       "node_token_missing": "Pair this PC first: saba-chan-cli bot pair",
       "server_not_running": "Start the server first: saba-chan-cli start NAME",
       "server_running": "Stop the server first: saba-chan-cli stop NAME",
+      "invalid_name": "Remove the comma from the name and try again. Spaces are fine.",
       "rcon_unreachable": "Could not connect to the server's RCON. Check that the server has finished starting and try again shortly: saba-chan-cli status",
       "rcon_auth_failed": "The server rejected the RCON password. Restart the server so Saba-chan writes the password again: saba-chan-cli restart NAME",
       "rcon_timeout": "The server did not answer over RCON in time. The command may already have run, so check the server console before sending it again: saba-chan-cli console NAME",
@@ -449,7 +451,7 @@
       "no_command_path": "This server was started outside saba-chan, so it has no console to take commands. Restart it from saba-chan: saba-chan-cli restart <server>",
       "conflict_with": "clashes with {{name}}",
       "word": {
-        "invalid": "use 1-32 characters with no spaces",
+        "invalid": "use 1-32 characters with no commas (spaces are fine)",
         "reserved": "is a reserved word",
         "conflict": "already calls something else",
         "unknown_command": "this server has no such command",
@@ -736,7 +738,7 @@
     "preflight_failed": "Runtime setup for game modules failed: {{error}}. It is retried on the next server action."
   },
   "stop": {
-    "confirm": "Are you sure you want to stop {{name}} server?",
+    "confirm": "Are you sure you want to stop “{{name}}” server?",
     "already": "{{name}} is not running.",
     "done": "{{name}} stopped.",
     "force_confirm": "Stop without saving?",
@@ -822,7 +824,7 @@
       "perm.owner": "Change the pinned owner of this Discord server",
       "perm.level": "Add, rename, remove or move a permission level of one Discord server (`perm show` lists them)",
       "perm.level.add": "Add a level (right below the owner, or right above `--above`)",
-      "perm.level.rename": "Rename an added level",
+      "perm.level.rename": "Rename a level (leave it empty for the original name)",
       "perm.level.remove": "Remove a level: its members move one level down, commands that needed it one level up",
       "perm.level.move": "Put a level right above another one (the owner stays on top, banned at the bottom)",
       "sandbox": "Isolated runs of unverified modules and extensions",
@@ -1159,7 +1161,7 @@
     "level_col": "Level",
     "ladder": "Levels (highest first)",
     "level_fixed": "{{level}} can't be moved or removed (the owner stays on top, banned at the bottom).",
-    "level_builtin": "{{level}} is a built-in level, so it can't be renamed.",
+    "level_kept": "{{level}} can't be removed (owner, guest and banned always stay).",
     "saved": "Saved permissions for {{guild}}",
     "preset_reset": "Choosing the preset resets {{count}} command level(s) to the {{preset}} preset. Continue?",
     "bad_level": "Unknown level: {{level}} (admin, user, chatbot, banned or a level added to this server)",
@@ -1390,8 +1392,8 @@
     "kept_nothing": "settings and game servers are removed too",
     "done": "Saba-chan was removed; {{kept}}.",
     "left": "Saba-chan was removed, but these could not be deleted. Close any program using them and delete them yourself:\n{{paths}}",
-    "servers_unlisted": "Could not get the list of running servers, so they were force-stopped instead of shut down cleanly ({{detail}}).",
-    "server_force_stopped": "Server {{server}} did not shut down cleanly and was force-stopped ({{detail}}). Changes since its last save may be lost.",
+    "servers_unlisted": "Could not get the list of running servers, so they were force-stopped instead of stopped cleanly ({{detail}}).",
+    "server_force_stopped": "Server {{server}} did not stop cleanly and was force-stopped ({{detail}}). Changes since its last save may be lost.",
     "daemon_unanswered": "The daemon did not answer, so running servers were force-stopped. Changes since their last save may be lost."
   },
   "players": {

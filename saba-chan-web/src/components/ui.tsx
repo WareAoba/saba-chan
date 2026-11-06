@@ -1,4 +1,5 @@
 import { useEffect, useId, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { wordmarkFor } from '../art';
 import { useApp } from '../store';
@@ -190,7 +191,8 @@ export function ConfirmHost() {
     const confirm = useApp((s) => s.confirm);
     useEscape(confirm ? () => confirm.done(false) : null);
     if (!confirm) return null;
-    return (
+    // 겹치는 창은 body 바로 아래에 그린다: 움직이는 화면 상자 안이면 fixed가 그 상자를 기준으로 놓인다 (사용자 11-06 #1)
+    return createPortal(
         // biome-ignore lint/a11y/noStaticElementInteractions: 바깥을 눌러 닫는 보조 동작 (키보드는 Esc)
         <div className="scrim" role="presentation" onClick={(e) => e.target === e.currentTarget && confirm.done(false)}>
             <div className="dialog" role="dialog" aria-modal="true">
@@ -203,7 +205,8 @@ export function ConfirmHost() {
                     </Button>
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body,
     );
 }
 
@@ -229,7 +232,7 @@ interface SheetProps {
 export function Sheet({ title, onClose, children }: SheetProps) {
     const { t } = useTranslation();
     useEscape(onClose);
-    return (
+    return createPortal(
         // biome-ignore lint/a11y/noStaticElementInteractions: 바깥을 눌러 닫는 보조 동작 (키보드는 Esc)
         <div className="scrim" role="presentation" onClick={(e) => e.target === e.currentTarget && onClose()}>
             <div className="sheet" role="dialog" aria-modal="true">
@@ -241,6 +244,7 @@ export function Sheet({ title, onClose, children }: SheetProps) {
                 </header>
                 <div className="sheet-body">{children}</div>
             </div>
-        </div>
+        </div>,
+        document.body,
     );
 }

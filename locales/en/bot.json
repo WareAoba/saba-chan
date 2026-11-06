@@ -11,15 +11,14 @@
     "no_modules": "None",
     "module_title": "**{{module}} Commands**",
     "available_commands": "{{commands}}",
-    "usage_format": "`{{prefix}} <module> <command>`",
-    "modules_header": "📦 **Modules:**",
+    "usage_format": "`{{prefix}} <server> <command>`",
+    "modules_header": "🎮 **Servers:**",
     "slash_hint": "💡 Restart, backups and the port check work like `<server> restart`. Permissions, language, sleep, web and updates are slash commands (`/`)."
   },
   "modules": {
     "help_start": "Start server",
     "help_stop": "Stop server",
     "help_status": "Check server status",
-    "help_rest_title": "**REST Commands:**",
     "enter_command": "Enter a command."
   },
   "list": {
@@ -29,16 +28,20 @@
   },
   "status": {
     "running": "🟢 Running",
+    "starting": "🟡 Starting",
     "stopped": "⚪ Stopped"
   },
   "server": {
     "start_request": "⏳ Starting **{{name}}** server...",
-    "start_complete": "✅ **{{name}}** start request completed!",
+    "start_complete": "✅ **{{name}}** · Start",
     "already_running": "ℹ️ **{{name}}** is already running.",
     "stop_request": "⏳ Stopping **{{name}}** server...",
-    "stop_complete": "✅ **{{name}}** stop request completed!",
+    "stop_complete": "✅ **{{name}}** · Stop",
     "graceful_stop_unavailable": "⚠️ **{{name}}** was not stopped: it has no way (console or REST) to save and exit. To end it without saving, choose a force stop in saba-chan on this PC.",
-    "status_check": "📊 **{{name}}** status: {{status}} {{pid_info}}",
+    "status_check": "📊 **{{name}}** · {{status}}",
+    "uptime_hm": "up {{h}}h {{m}}m",
+    "uptime_m": "up {{m}}m",
+    "still_starting": "⏳ **{{name}}** is still starting. Ask again in a moment.",
     "not_found": "❌ No server found for module \"{{alias}}\" ({{resolved}})",
     "not_running": "❌ **{{name}}**: {{error}}",
     "not_running_default": "The server is not running. Start the server first",
@@ -82,6 +85,7 @@
     "alias_conflict": "❌ Alias '{{alias}}' is ambiguous. It matches multiple modules: {{modules}}. Use a more specific alias.",
     "multiple_instances": "⚠️ Multiple '{{module}}' instances exist. Use an instance name instead of the module alias.",
     "danger_needs_name": "⚠️ Dangerous commands don't run by game name. Call the server by its name '{{name}}'.",
+    "slash_only": "🔒 {{command}} is shown only to the person who asks, so it is a slash command. Type `/` and pick **{{name}}** › {{command}}.",
     "auth_failed": "Authentication failed",
     "player_not_found": "Player not found",
     "internal_server_error": "Internal server error",
@@ -95,6 +99,7 @@
     "unknown_input": "❌ Unknown command.",
     "command_not_found": "❌ Command does not exist.",
     "permission_denied": "❌ You don't have permission to use this command.",
+    "permission_denied_controllers": "❌ To start or stop this server you need to be on its \"Operators\" list in the Saba-chan app, or have the level set for this command (Admin by default).",
     "local_single_guild_only": "⚠️ Local bots can only be used in one server. This bot is in {{count}} servers. Remove it from the servers you do not use."
   },
   "messages": {
@@ -476,5 +481,8 @@
   },
   "chatbot": {
     "memo_template": "<!-- Guide lines like this one and headings you leave empty are not sent to Talking Saba-chan. Fill in only what you need. -->\n\n## Room vibe\n<!-- Describe how people talk here and how edgy jokes can get. Leave empty to use the default personality. -->\n\n## How to address people\n<!-- Write down special names Saba-chan should call people. Example: Call the person marked (owner) \"Master\". -->\n\n## Words used on this server\n<!-- List nicknames, memes and abbreviations only this server uses, with their meaning. -->\n\n## Game server info\n<!-- Rules, opening hours and other things Saba-chan may tell anyone who asks. -->\n"
+  },
+  "controllers": {
+    "kick_reason": "Only registered players can join this server."
   }
 }

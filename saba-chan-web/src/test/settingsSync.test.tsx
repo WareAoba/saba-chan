@@ -44,4 +44,24 @@ describe('웹 서버 설정 저장의 게임 파일 반영', () => {
         expect(toasts).toContainEqual([i18n.t('gui:settings.ignored', { keys: 'rcon_port' }), 'info']);
         expect(toasts.some(([, tone]) => tone === 'ok')).toBe(false);
     });
+
+    // 사용자 11-06 #9: 저장 단추는 긴 설정 목록 맨 아래가 아니라 화면 아래에 붙는 막대에, 되돌리기와 함께
+    it('고치면 화면 아래 저장 막대에서 저장하거나 되돌린다', () => {
+        render(
+            <SettingsPanel
+                api={mockApi({ instanceUpdateSettings: vi.fn() })}
+                moduleData={moduleData as unknown as Module}
+                running={false}
+                server={asServer(server)}
+            />,
+        );
+        const bar = () => document.querySelector('.savebar');
+        expect(bar()).toBeNull();
+        const motd = screen.getByRole('textbox', { name: /motd/ }) as HTMLInputElement;
+        fireEvent.change(motd, { target: { value: 'new' } });
+        expect(bar()!.querySelector('button[type="submit"]')!.textContent).toBe('Save');
+        fireEvent.click(screen.getByRole('button', { name: 'Revert' }));
+        expect(motd.value).toBe('old');
+        expect(bar()).toBeNull();
+    });
 });

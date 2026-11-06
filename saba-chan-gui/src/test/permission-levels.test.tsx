@@ -198,6 +198,45 @@ describe('권한 레벨 계산', () => {
         expect(L.ladderValid(L.addLevel(many, 'one more'))).toBe(false);
     });
 
+    // 사용자 지정 2026-11-06: 모든 레벨의 이름을 바꾼다 (비우면 로케일 이름). 소유자·게스트·금지는 지울 수 없다
+    it('사다리 편집: 기본 레벨 이름도 보내고, 게스트는 지우지 않는다', () => {
+        const ladder = L.ladderOf(base());
+        const named = L.renameLevel(L.renameLevel(ladder, 0, ' 방장 '), 3, '  ');
+        expect(L.ladderPatch(named)).toEqual([{ id: 3, name: '방장' }, { id: 2 }, { id: 1 }, { id: 0 }, { id: -1 }]);
+        expect(L.ladderValid(named)).toBe(true);
+        expect(L.ladderValid(L.renameLevel(ladder, 1, 'x'.repeat(33)))).toBe(false);
+        expect(ladder.map((_, i) => L.removable(ladder, i))).toEqual([false, true, true, false, false]);
+        expect(L.removeLevel(ladder, 3)).toBe(ladder);
+    });
+
+    it('조작 가능 줄: 시작·정지·재시작·백업 만들기의 대표 레벨 아래에 긋고, 따로 정한 명령은 옮기지 않는다', () => {
+        const board = {
+            items: [
+                stair('mc-1', 'start', 'Start', 2, { controllers: true, preset: 2 }),
+                stair('mc-2', 'start', 'Start', 2, { controllers: true, preset: 2 }),
+                stair('mc-2', 'stop', 'Stop', 1, { controllers: true, preset: 2, overridden: true }),
+                stair('mc-1', 'say', 'Say', 0),
+            ],
+        };
+        const line = L.controllerLine(board);
+        expect(line?.level).toBe(2);
+        expect(line?.apart).toBe(1);
+        expect(L.levelPatch(line?.followers || [], 0)).toEqual({ 'mc-1/start': 0, 'mc-2/start': 0 });
+        expect(L.controllerLine({ items: [stair('mc-1', 'say', 'Say', 0)] })).toBeNull();
+
+        const saved = L.ladderOf(base());
+        // 줄은 금지 칸과 아직 저장하지 않은 새 칸에는 놓지 않는다
+        const draft = L.addLevel(saved, 'Mod');
+        expect(L.lineDrop(draft, 5)).toBe(4);
+        expect(L.lineDrop(draft, 1)).toBe(0);
+        expect(L.lineStep(draft, 0, 1)).toBe(2);
+        expect(L.lineStep(draft, 4, 1)).toBeNull();
+        expect(L.lineStep(draft, 0, -1)).toBeNull();
+        // 줄이 있던 칸을 지우면 그 위로 처음 남은 칸 (데몬이 명령 레벨을 위로 옮긴다)
+        expect(L.lineAt(saved, L.removeLevel(saved, 1), 2)).toBe(0);
+        expect(L.lineAt(saved, saved, 1)).toBe(2);
+    });
+
     it('기본 레벨 멤버는 디스코드 멤버 중 소유자도 아니고 레벨도 없는 사람', () => {
         expect(L.defaultMembers(base(), relayMembers).map((m) => m.id)).toEqual(['1003']);
         expect(L.defaultMembers(base(), undefined)).toEqual([]);
@@ -491,6 +530,8 @@ describe('권한 화면', () => {
         fireEvent.change(screen.getByRole('textbox', { name: 'New level name' }), { target: { value: 'Mod' } });
         fireEvent.click(screen.getByRole('button', { name: 'Add' }));
         fireEvent.click(screen.getByRole('button', { name: 'Move Mod down' }));
+        // 사용자 11-06 #9: 저장은 화면 아래에 붙는 막대에서
+        expect(document.querySelector('.dc-savebar.dirty')).not.toBeNull();
         fireEvent.click(screen.getByRole('button', { name: 'Save' }));
         await flush();
         expect(window.api.permissionsUpdate).toHaveBeenCalledWith('g1', {
@@ -498,6 +539,55 @@ describe('권한 화면', () => {
         });
         fireEvent.click(screen.getByRole('button', { name: /Back/ }));
         expect(screen.getByRole('button', { name: /Edit levels/ })).toBeInTheDocument();
+    });
+
+    it('레벨 편집: 기본 레벨 이름을 바꾸고, 게스트는 지울 수 없다', async () => {
+        await openPeople();
+        fireEvent.click(screen.getByRole('button', { name: /Edit levels/ }));
+        expect(screen.getByRole('button', { name: 'Delete Guest' })).toBeDisabled();
+        expect(screen.getByRole('button', { name: 'Delete User' })).toBeEnabled();
+        // 이름을 누르면 고칠 칸이 열린다 (비우면 원래 이름)
+        fireEvent.click(screen.getByRole('button', { name: 'Rename Admin' }));
+        const name = screen.getByRole('textbox', { name: 'Level name' });
+        expect(name).toHaveAttribute('placeholder', 'Admin');
+        fireEvent.change(name, { target: { value: 'Staff' } });
+        fireEvent.blur(name);
+        expect(screen.getByRole('listitem', { name: 'Staff' })).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+        await flush();
+        expect(window.api.permissionsUpdate).toHaveBeenCalledWith('g1', {
+            ladder: [{ id: 3 }, { id: 2, name: 'Staff' }, { id: 1 }, { id: 0 }, { id: -1 }],
+        });
+    });
+
+    // 사용자 지정 2026-11-06: 사다리에 조작 가능 줄을 긋고 끌어서 네 명령을 한꺼번에 옮긴다
+    it('레벨 편집: 조작 가능 줄을 끌어 옮기면 줄을 따르는 명령만 저장한다', async () => {
+        board.items.push(
+            stair('mc-1', 'start', 'Start', 2, { controllers: true, preset: 2 }),
+            stair('mc-2', 'start', 'Start', 2, { controllers: true, preset: 2 }),
+            stair('mc-2', 'restart', 'Restart', 3, { controllers: true, preset: 2, overridden: true }),
+        );
+        await openPeople();
+        fireEvent.click(screen.getByRole('button', { name: /Edit levels/ }));
+        const line = screen.getByRole('listitem', { name: 'Operators line' });
+        expect(line).toHaveTextContent('Operators · Admin and up');
+        expect(line).toHaveTextContent('1 command(s) set separately stay as they are');
+        // 줄은 관리자 칸 바로 아래
+        const items = screen.getAllByRole('listitem');
+        expect(items.indexOf(line)).toBe(items.indexOf(screen.getByRole('listitem', { name: 'Admin' })) + 1);
+
+        dragTo(line, screen.getByRole('listitem', { name: 'Banned' }));
+        expect(screen.getByRole('listitem', { name: 'Operators line' })).toHaveTextContent('Guest and up');
+        fireEvent.click(screen.getByRole('button', { name: 'Move the operators line up' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Move the operators line up' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Move the operators line up' }));
+        expect(screen.getByRole('listitem', { name: 'Operators line' })).toHaveTextContent('Owner only');
+        expect(screen.getByRole('button', { name: 'Move the operators line up' })).toBeDisabled();
+        fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+        await flush();
+        expect(window.api.permissionsUpdate).toHaveBeenCalledWith('g1', {
+            commandLevels: { 'mc-1/start': 3, 'mc-2/start': 3 },
+        });
     });
 
     it('멤버 레벨은 디스코드 서버의 멤버 탭에서 정하고, 인스턴스 메뉴는 레벨별 명령만 보인다', async () => {

@@ -144,13 +144,16 @@ export function commandCli(
     return known ? `${prefix} ${words.map(arg).join(' ')}` : `${prefix} ${arg(text)}`;
 }
 
-/** 명령 한 줄과 복사 버튼 */
+/** 명령 한 줄과 복사 버튼. 내부 키가 보이므로 '명령줄로 하기'를 펼쳐야 보인다 (사용자 11-06 #27) */
 export function CliText({ line }: { line: string }) {
     const { t } = useTranslation('gui');
     const [copied, setCopied] = useState(false);
     return (
-        <div className="cli-line">
-            <Icon name="terminal" size="sm" />
+        <details className="cli-line">
+            <summary>
+                <Icon name="terminal" size="sm" />
+                {t('cli_line.summary')}
+            </summary>
             <code data-tooltip={line}>{line}</code>
             <button
                 type="button"
@@ -165,7 +168,7 @@ export function CliText({ line }: { line: string }) {
             >
                 <Icon name={copied ? 'check' : 'copy'} size="sm" />
             </button>
-        </div>
+        </details>
     );
 }
 

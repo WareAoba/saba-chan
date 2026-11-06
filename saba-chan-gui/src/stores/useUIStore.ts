@@ -1,7 +1,17 @@
 import { create } from 'zustand';
 
 /** 상단 페이지 */
-export type ActiveTab = 'servers' | 'discord' | 'settings';
+export type ActiveTab = 'servers' | 'discord' | 'activity' | 'settings';
+
+/** 디스코드 페이지에 "이 화면을 열어 달라"는 요청 (화면 주소 링크). seq는 같은 화면을 다시 눌러도 다시 열게 한다 */
+export interface DiscordViewRequest {
+    kind: 'connection' | 'saba' | 'node';
+    /** 디스코드 서버 id. *는 연결된 디스코드 서버가 하나일 때 그 서버 */
+    id?: string;
+    tab?: string;
+    sub?: string;
+    seq: number;
+}
 
 /**
  * App이 그리는 모달 하나. type이 모달 종류(success·failure·question·agreements…)이고 나머지 칸은 그 모달의 props다.
@@ -30,6 +40,7 @@ interface UIState {
     activeTab: ActiveTab;
     activeServerId: string | null;
     requestedServerTab: string | null;
+    requestedDiscordView: DiscordViewRequest | null;
     revealServerCount: number;
     modal: ModalConfig | null;
     progressBar: ProgressBarConfig | null;
@@ -58,6 +69,8 @@ interface UIState {
     closeSettings: () => void;
     showServerTab: (serverId: string, tab: string) => void;
     clearRequestedServerTab: () => void;
+    showDiscordView: (view: Omit<DiscordViewRequest, 'seq'>) => void;
+    clearRequestedDiscordView: () => void;
     revealServer: (serverId: string) => void;
     setShowCommandModal: (val: boolean) => void;
     setCommandServer: (server: UIState['commandServer']) => void;
@@ -74,6 +87,8 @@ interface UIState {
     _resetForTest: () => void;
 }
 
+let discordViewSeq = 0;
+
 export const useUIStore = create<UIState>()((set, _get) => ({
     // ── Navigation ──
     // activeTab = 상단 페이지 (servers | discord | settings), activeServerId = 서버 페이지에서 고른 서버
@@ -81,6 +96,8 @@ export const useUIStore = create<UIState>()((set, _get) => ({
     activeServerId: null,
     // 서버 상세에 "이 탭을 열어 달라"는 요청 (우클릭 메뉴 등). 상세가 읽고 비운다.
     requestedServerTab: null,
+    // 디스코드 페이지에 "이 화면을 열어 달라"는 요청 (화면 주소 링크). 페이지가 읽고 비운다.
+    requestedDiscordView: null,
     // 바깥(CLI의 `gui`)에서 서버를 연 횟수. 좁은 창에서도 목록 대신 그 서버 상세를 보인다
     revealServerCount: 0,
 
@@ -136,6 +153,11 @@ export const useUIStore = create<UIState>()((set, _get) => ({
     showServerTab: (serverId, tab) =>
         set({ activeTab: 'servers', activeServerId: serverId, requestedServerTab: tab }),
     clearRequestedServerTab: () => set({ requestedServerTab: null }),
+    showDiscordView: (view) => {
+        discordViewSeq += 1;
+        set({ activeTab: 'discord', requestedDiscordView: { ...view, seq: discordViewSeq } });
+    },
+    clearRequestedDiscordView: () => set({ requestedDiscordView: null }),
     revealServer: (serverId) =>
         set((state) => ({
             activeTab: 'servers',
@@ -155,7 +177,8 @@ export const useUIStore = create<UIState>()((set, _get) => ({
             },
         })),
 
-    setActiveTab: (tab) => set({ activeTab: tab }),
+    // 설정을 떠나면 "이 탭을 열어 달라"는 요청도 지운다: 다음에 설정을 열 때 따라오지 않게
+    setActiveTab: (tab) => set(tab === 'settings' ? { activeTab: tab } : { activeTab: tab, settingsInitialView: null }),
     setActiveServerId: (id) => set({ activeServerId: id }),
 
     setShowDiscordSection: (val) => set({ showDiscordSection: val }),
@@ -178,6 +201,7 @@ export const useUIStore = create<UIState>()((set, _get) => ({
             activeServerId: null,
             revealServerCount: 0,
             requestedServerTab: null,
+            requestedDiscordView: null,
             modal: null,
             progressBar: null,
             showWaitingImage: false,

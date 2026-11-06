@@ -49,6 +49,17 @@ pub struct LogLine {
     pub content: String,
     /// Parsed severity level
     pub level: LogLevel,
+    /// 입력 줄(`Input`)을 시킨 쪽: 감사 출처와 그 이름 (`audit::Origin`). 디스크에는 남기지 않는다
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub by: Option<InputBy>,
+}
+
+/// 콘솔에 보낸 명령을 시킨 쪽 (`source`는 감사 출처: gui·cli·discord·web·schedule…)
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct InputBy {
+    pub source: String,
+    #[serde(rename = "userName", default, skip_serializing_if = "Option::is_none")]
+    pub user_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -58,6 +69,15 @@ pub enum LogSource {
     Stderr,
     /// System messages from saba-chan itself
     System,
+    /// 사바쨩이 서버에 보낸 명령 한 줄 (`send_command`, 화면이 `› 명령`으로 보인다)
+    Input,
+}
+
+impl LogSource {
+    /// 서버가 찍은 줄인가. 준비·채팅·접속 패턴과 명령 답은 이 줄만 본다
+    pub fn is_server_output(self) -> bool {
+        matches!(self, Self::Stdout | Self::Stderr)
+    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -144,12 +164,22 @@ impl LogBuffer {
 
     /// 시각을 정해서 넣는다 (러너 로그처럼 줄마다 쓴 시각이 이미 있을 때)
     fn push_at(&mut self, timestamp: u64, source: LogSource, content: String, level: LogLevel) -> LogLine {
+        self.push_line(timestamp, source, content, level, None)
+    }
+
+    /// 보낸 명령 한 줄과 시킨 쪽
+    fn push_input(&mut self, command: &str, by: InputBy) -> LogLine {
+        self.push_line(current_timestamp(), LogSource::Input, command.to_string(), LogLevel::Info, Some(by))
+    }
+
+    fn push_line(&mut self, timestamp: u64, source: LogSource, content: String, level: LogLevel, by: Option<InputBy>) -> LogLine {
         let line = LogLine {
             id: self.next_id,
             timestamp,
             source,
             content,
             level,
+            by,
         };
         self.next_id += 1;
 
@@ -172,6 +202,7 @@ impl LogBuffer {
                     source: LogSource::System,
                     content: "⚠ Log file writer stopped — disk logs may be incomplete. Check disk space.".to_string(),
                     level: LogLevel::Warn,
+                    by: None,
                 };
                 self.next_id += 1;
                 if self.lines.len() >= self.max_size {
@@ -496,6 +527,9 @@ impl ManagedProcess {
             mpsc::error::TrySendError::Full(_) => anyhow::Error::new(StdinFull),
             mpsc::error::TrySendError::Closed(_) => anyhow::anyhow!("stdin channel closed"),
         })?;
+        // 대기열에 넣었으면 콘솔에 보낸 줄을 남긴다 (서버의 답보다 먼저 오게 쓰기 전에). 시킨 쪽은 지금 요청의 감사 출처
+        let origin = crate::audit::current();
+        self.log_buffer.lock().await.push_input(command, InputBy { source: origin.source, user_name: origin.user_name });
         // 대기열에 넣은 것으로 끝내지 않는다: 서버(또는 러너)에 실제로 썼는지까지 본다.
         // 서버가 입력을 읽지 않아 쓰기가 막히면 오래 기다리지 않고 실패로 알린다
         match tokio::time::timeout(STDIN_DELIVERY_WAIT, delivered).await {
@@ -888,6 +922,7 @@ fn format_log_line_for_disk(line: &LogLine) -> String {
         LogSource::Stdout => "STDOUT",
         LogSource::Stderr => "STDERR",
         LogSource::System => "SYSTEM",
+        LogSource::Input => "INPUT",
     };
     let level = match line.level {
         LogLevel::Info => "INFO",
@@ -1104,7 +1139,7 @@ fn parse_disk_log_line(id: u64, raw: &str) -> LogLine {
             (current_timestamp(), LogSource::Stdout, LogLevel::Info, raw.to_string())
         };
 
-    LogLine { id, timestamp, source, content, level }
+    LogLine { id, timestamp, source, content, level, by: None }
 }
 
 /// Parse `[datetime] [SOURCE/LEVEL] content`
@@ -1124,6 +1159,7 @@ fn parse_structured_disk_line(raw: &str) -> (u64, LogSource, LogLevel, String) {
                 let src = match &tag[..slash] {
                     "STDERR" => LogSource::Stderr,
                     "SYSTEM" => LogSource::System,
+                    "INPUT" => LogSource::Input,
                     _ => LogSource::Stdout,
                 };
                 let lvl = match &tag[slash + 1..] {
@@ -1242,6 +1278,37 @@ mod tests {
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         }
         assert_eq!(seen, ["booted", "help", "reply"]);
+        let _ = proc.force_kill().await;
+    }
+
+    /// 보낸 명령은 콘솔에 입력 줄(`source: input`)로 남고 시킨 쪽(감사 출처)을 싣는다 (#18).
+    /// 서버 출력만 보는 쪽(준비·채팅·접속 패턴, 명령 답)은 입력 줄을 보지 않는다
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_sent_command_is_shown_as_an_input_line_with_who_sent_it() {
+        let script = r"read l; echo booted; echo $l; echo reply; sleep 5";
+        let proc = ManagedProcess::spawn("/bin/sh", &["-c".into(), script.into()], ".", Vec::new(), None, None).await.unwrap();
+        let origin = crate::audit::Origin { user_name: Some("jace".into()), ..crate::audit::Origin::new("discord") };
+        crate::audit::with_origin(origin, proc.send_command("help")).await.unwrap();
+        let mut lines = Vec::new();
+        for _ in 0..50 {
+            lines = proc.get_recent_console(10).await;
+            if lines.iter().any(|l| l.content == "reply") {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+        let input: Vec<&LogLine> = lines.iter().filter(|l| l.source == LogSource::Input).collect();
+        assert_eq!(input.len(), 1, "{lines:?}");
+        assert_eq!(input[0].content, "help");
+        let by = input[0].by.as_ref().expect("who sent it");
+        assert_eq!((by.source.as_str(), by.user_name.as_deref()), ("discord", Some("jace")));
+        let json = serde_json::to_value(input[0]).unwrap();
+        assert_eq!((json["source"].as_str(), json["by"]["userName"].as_str()), (Some("input"), Some("jace")));
+        let server_lines: Vec<&str> = lines.iter().filter(|l| l.source.is_server_output()).map(|l| l.content.as_str()).collect();
+        assert_eq!(server_lines, ["booted", "reply"]);
+        // 디스크에서 다시 읽어도 입력 줄이다
+        assert_eq!(parse_disk_log_line(0, &format_log_line_for_disk(input[0])).source, LogSource::Input);
         let _ = proc.force_kill().await;
     }
 

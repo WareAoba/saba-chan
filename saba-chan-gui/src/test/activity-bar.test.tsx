@@ -59,7 +59,7 @@ describe('ActivityBar', () => {
         });
         await flush();
         expect(screen.getByText('App · Survival · Start')).toBeInTheDocument();
-        expect(screen.getByText('Failed (500)')).toBeInTheDocument();
+        expect(screen.getByText('Failed')).toBeInTheDocument();
     });
 
     it('누르면 데몬 콘솔을 펼치고, 받은 다음 id부터 이어 받는다', async () => {

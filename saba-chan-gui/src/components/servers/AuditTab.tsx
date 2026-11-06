@@ -1,7 +1,7 @@
 import type { ComponentProps } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { type AuditEntry, auditRange, auditResult, auditWhat, auditWho, PERIODS } from '../../utils/audit';
+import { type AuditEntry, auditRange, auditReason, auditResult, auditWhat, auditWho, PERIODS } from '../../utils/audit';
 import { safeShowToast } from '../../utils/helpers';
 import { Icon } from '../Icon';
 import { DateField } from '../ui/DateTimePicker';
@@ -185,6 +185,7 @@ export function AuditLog({ instanceId }: { instanceId?: string }) {
                                         {auditWhat(e, t)}
                                     </span>
                                     <span className="dc-list-sub">{auditWho(e, t)}</span>
+                                    {auditReason(e, t) && <span className="dc-list-sub audit-reason">{auditReason(e, t)}</span>}
                                 </span>
                                 <StatusChip {...(auditResult(e, t) as ComponentProps<typeof StatusChip>)} />
                             </li>

@@ -20,6 +20,7 @@ describe('사바쨩 설정', () => {
             game_chat_keyword: '!',
             auto_restart: false,
             restart_on_unknown_exit: false,
+            controllers_only: false,
         });
         expect(sabaValues({}).auto_restart).toBe(true);
     });

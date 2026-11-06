@@ -64,7 +64,7 @@ export function ServersPage({
     const failedModules = useServerStore((st) => st.failedModules) || [];
     const { width } = useWindowSize();
     const singleColumn = width < SINGLE_COLUMN_MAX_WIDTH;
-    const monitorOpen = useSettingsStore((s) => s.systemMonitorOpen);
+    const monitorOpen = useSettingsStore((s) => s.systemMonitorExpanded);
     const monitorSide = monitorOpen && width >= MONITOR_SIDE_MIN_WIDTH;
     // 합쳐 보기 (G1c): 다른 데몬의 서버를 목록 아래에 데몬별로
     const unified = useSettingsStore((s) => s.daemonView) === 'unified' && typeof window.api?.remoteServers === 'function';
@@ -106,7 +106,7 @@ export function ServersPage({
             <div className={clsx('page page-empty', { 'with-other-daemons': unified })}>
                 <div className="empty-state">
                     <SabaArt kind="cleaning" size={280} />
-                    <h2>{t('saba.empty_title')}</h2>
+                    <h2>{t('shell.empty_title')}</h2>
                     <p>{t('shell.empty_body')}</p>
                     <button type="button" className="btn btn-primary btn-lg" onClick={onAddServer}>
                         <Icon name="plus" size="sm" /> {t('shell.add_server')}

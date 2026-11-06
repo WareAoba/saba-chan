@@ -39,4 +39,12 @@ describe('서버 목록 한 줄', () => {
         expect(document.querySelector('.server-row-sub .status-chip')).not.toBeNull();
         expect(document.querySelector('.server-row-players')).toBeNull();
     });
+
+    // 사용자 11-06 #26: 정지된 서버는 오류처럼 빨갛지 않고 회색이다
+    it('정지된 서버는 회색(idle)으로 보인다', () => {
+        useServerStore.setState({ modulesLoaded: true });
+        row({ id: 'c', name: 'C', module: 'mc', status: 'stopped' });
+        expect(document.querySelector('.server-row-dot')!.classList.contains('tone-idle')).toBe(true);
+        expect(document.querySelector('.server-row-sub .status-chip')!.classList.contains('tone-idle')).toBe(true);
+    });
 });

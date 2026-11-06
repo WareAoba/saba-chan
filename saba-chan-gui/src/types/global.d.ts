@@ -11,8 +11,10 @@ export type ToastType = 'info' | 'success' | 'warning' | 'error';
 export interface ToastOptions {
     /** 알림 모음에도 남긴다 */
     isNotice?: boolean;
-    /** 'saba-chan' 또는 서버 모듈 이름 */
+    /** 'saba-chan' 또는 서버 이름 */
     source?: string;
+    /** 알림 모음에 남길 때 토스트 문구 대신 쓸 칸 (서버별로 묶을 짧은 줄·이유·서버 id) */
+    notice?: Partial<NoticeInput>;
 }
 
 /** 알림 모음 한 칸 (components/Modals/NoticeModal) */
@@ -20,7 +22,12 @@ export interface Notice {
     id: number;
     message: string;
     type: 'info' | 'success' | 'error';
+    /** 묶음 이름: 'saba-chan', 'Updater', 또는 서버 이름(알릴 때의 이름) */
     source: string;
+    /** 서버 알림이면 그 서버 id: 이것으로 묶고, 묶음 이름은 지금 이름을 쓴다 */
+    instanceId?: string;
+    /** 둘째 줄 (이유 등) */
+    detail?: string;
     /** 누르면 할 일 ('openUpdateModal' 등) */
     action: string | null;
     data: unknown;
@@ -32,10 +39,14 @@ export interface NoticeInput {
     message: string;
     type?: Notice['type'];
     source?: string;
+    instanceId?: string;
+    detail?: string;
     action?: string | null;
     /** 같은 source·action(없으면 같은 문구)이 있으면 새로 만들지 않고 그것을 고친다 */
     dedup?: boolean;
     data?: unknown;
+    /** 이미 본 일 (앱에서 직접 한 일): 읽지 않은 수에 넣지 않는다 */
+    read?: boolean;
 }
 
 export interface SabaNoticeApi {

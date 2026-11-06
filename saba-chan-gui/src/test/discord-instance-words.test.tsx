@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { errorsByField, InstanceDiscordTab as InstanceDiscordTabImpl } from '../components/discord/InstanceWordsTab';
 import type { Server } from '../stores/useServerStore';
 import type { ComponentType } from 'react';
+import i18n from '../i18n';
 
 /** 시험에 필요한 props만 넘기려고 느슨하게 받는다 */
 const InstanceDiscordTab = InstanceDiscordTabImpl as unknown as ComponentType<Record<string, unknown>>;
@@ -59,6 +60,27 @@ describe('InstanceDiscordTab', () => {
         // 저장한 값이 화면의 기준이 되어 더 고칠 것이 없다
         await waitFor(() => expect(screen.queryByRole('button', { name: /Save/ })).toBeNull());
         expect(screen.getByText('킥')).toBeTruthy();
+    });
+
+    // 사용자 11-06 #9: 저장 단추는 긴 목록 맨 아래가 아니라 화면 아래에 붙는 막대로, 명령 이름은 화면에 보이는 이름으로
+    it('바꾸면 화면 아래에 붙는 저장 막대가 뜨고, 명령은 모듈 번역 이름으로 보인다', async () => {
+        i18n.addResourceBundle('en', 'mod_minecraft', { commands: { kick: { label: 'Kick player' } } }, true, true);
+        window.api.instanceWords = vi.fn().mockResolvedValue({
+            ...item(),
+            commands: [
+                { name: 'start', label: '', risk: 'caution', builtin: true, moduleAliases: [], aliases: [] },
+                { name: 'status', label: '', risk: 'safe', builtin: true, moduleAliases: [], aliases: [] },
+                { name: 'kick', label: 'Kick', risk: 'caution', builtin: false, moduleAliases: [], aliases: [] },
+            ],
+        }) as never;
+        await act(async () => render(<InstanceDiscordTab server={server} />));
+        await screen.findByLabelText('Names for 야생');
+        const names = [...document.querySelectorAll('.dc-word-cmd .dc-list-name')].map((n) => n.textContent);
+        expect(names).toEqual(['Names for the server', 'Start', 'Status', 'Kick player']);
+        expect(document.querySelector('.dc-savebar')).toBeNull();
+        await addChip('Names for 야생', '야섭');
+        expect(document.querySelector('.dc-savebar.dirty')).not.toBeNull();
+        i18n.removeResourceBundle('en', 'mod_minecraft');
     });
 
     it('검증 오류는 그 칸 아래에 겹치는 대상과 함께 보인다', async () => {

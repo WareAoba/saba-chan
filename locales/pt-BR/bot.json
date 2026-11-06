@@ -11,15 +11,14 @@
     "no_modules": "Nenhum",
     "module_title": "**Comandos {{module}}**",
     "available_commands": "{{commands}}",
-    "usage_format": "`{{prefix}} <módulo> <comando>`",
-    "modules_header": "📦 **Módulos:**",
+    "usage_format": "`{{prefix}} <servidor> <comando>`",
+    "modules_header": "🎮 **Servidores:**",
     "slash_hint": "💡 Reiniciar, backups e a verificação de portas funcionam como `<servidor> reiniciar`. Permissões, idioma, modo dormir, web e atualizações são comandos de barra (`/`)."
   },
   "modules": {
     "help_start": "Iniciar servidor",
     "help_stop": "Parar servidor",
     "help_status": "Verificar status do servidor",
-    "help_rest_title": "**Comandos REST:**",
     "enter_command": "Insira um comando."
   },
   "list": {
@@ -29,22 +28,26 @@
   },
   "status": {
     "running": "🟢 Em execução",
+    "starting": "🟡 Iniciando",
     "stopped": "⚪ Parado"
   },
   "server": {
     "start_request": "⏳ Iniciando servidor **{{name}}**...",
-    "start_complete": "✅ Solicitação de início de **{{name}}** concluída!",
+    "start_complete": "✅ **{{name}}** · Iniciar",
     "already_running": "ℹ️ **{{name}}** já está em execução.",
     "stop_request": "⏳ Parando servidor **{{name}}**...",
-    "stop_complete": "✅ Solicitação de parada de **{{name}}** concluída!",
+    "stop_complete": "✅ **{{name}}** · Parar",
     "graceful_stop_unavailable": "⚠️ **{{name}}** não foi parado: não há como (console ou REST) salvar e sair. Para encerrá-lo sem salvar, escolha uma parada forçada no saba-chan neste PC.",
-    "status_check": "📊 Status de **{{name}}**: {{status}} {{pid_info}}",
+    "status_check": "📊 **{{name}}** · {{status}}",
+    "uptime_hm": "ativo há {{h}} h {{m}} min",
+    "uptime_m": "ativo há {{m}} min",
+    "still_starting": "⏳ **{{name}}** ainda está iniciando. Pergunte de novo daqui a pouco.",
     "not_found": "❌ Nenhum servidor encontrado para o módulo \"{{alias}}\" ({{resolved}})",
     "not_running": "❌ **{{name}}**: {{error}}",
     "not_running_default": "O servidor não está em execução. Inicie o servidor primeiro",
     "module_missing": "❌ O módulo '{{module}}' não está instalado. Este servidor não pode ser controlado.",
     "port_moved": "🔀 O Windows reservou a porta REST {{from}}, então ela foi alterada para {{to}}.",
-    "rest_port_closed": "REST port {{port}} is not accepting connections"
+    "rest_port_closed": "Porta REST {{port}} não está aceitando conexões"
   },
   "command": {
     "executing": "⏳ **{{name}}** - `{{command}}` executando...",
@@ -82,6 +85,7 @@
     "alias_conflict": "❌ O alias '{{alias}}' é ambíguo. Ele corresponde a vários módulos: {{modules}}. Use um alias mais específico.",
     "multiple_instances": "⚠️ Existem múltiplas instâncias de '{{module}}'. Use o nome da instância em vez do alias do módulo.",
     "danger_needs_name": "⚠️ Comandos perigosos não rodam pelo nome do jogo. Chame o servidor pelo nome '{{name}}'.",
+    "slash_only": "🔒 {{command}} só aparece para quem pede, por isso é um comando de barra. Digite `/` e escolha **{{name}}** › {{command}}.",
     "auth_failed": "Falha na autenticação",
     "player_not_found": "Jogador não encontrado",
     "internal_server_error": "Erro interno do servidor",
@@ -95,6 +99,7 @@
     "unknown_input": "❌ Comando desconhecido.",
     "command_not_found": "❌ O comando não existe.",
     "permission_denied": "❌ Você não tem permissão para usar este comando.",
+    "permission_denied_controllers": "❌ Para iniciar ou parar este servidor, você precisa estar na lista \"Operadores\" dele no app Saba-chan ou ter o nível definido para este comando (Administrador por padrão).",
     "local_single_guild_only": "⚠️ O bot local só pode ser usado em um servidor. Este bot está em {{count}} servidores. Remova-o dos servidores que você não usa."
   },
   "messages": {
@@ -476,5 +481,8 @@
   },
   "chatbot": {
     "memo_template": "<!-- Linhas de ajuda como esta e títulos vazios não são enviados à Saba-chan falante. Preencha só o que precisar. -->\n\n## Clima do servidor\n<!-- Descreva como as pessoas conversam aqui e até onde as piadas podem ir. Vazio = personalidade padrão. -->\n\n## Como chamar as pessoas\n<!-- Escreva nomes especiais que a Saba-chan deve usar para alguém. Exemplo: chama a pessoa marcada (dono) de \"mestre\". -->\n\n## Palavras deste servidor\n<!-- Apelidos, memes e abreviações que só este servidor usa, com o significado. -->\n\n## Informações do servidor de jogo\n<!-- Regras, horários e outras coisas que a Saba-chan pode contar a quem perguntar. -->\n"
+  },
+  "controllers": {
+    "kick_reason": "Somente jogadores registrados podem entrar neste servidor."
   }
 }

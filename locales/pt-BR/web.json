@@ -109,7 +109,7 @@
     "location_pc": "Os arquivos do servidor vão para a pasta do saba-chan. Para usar outra pasta, crie o servidor no app do saba-chan no PC.",
     "summary_running": "Em execução",
     "summary_players": "Jogadores",
-    "summary_cpu": "PC CPU",
+    "summary_cpu": "CPU do PC",
     "start_named": "Iniciar {{name}}",
     "stop_named": "Parar {{name}}",
     "pick": "Escolha um servidor à esquerda.",
@@ -124,8 +124,6 @@
   "detail": {
     "backups": "Backups",
     "players": "Jogadores",
-    "check": "Verificação",
-    "settings_game": "Jogo",
     "more": "Mais",
     "tabs": "Menu do servidor",
     "uptime": "Ativo há {{time}}",
@@ -193,13 +191,13 @@
     "saved": "Permissão alterada.",
     "level": {
       "3": "Dono",
-      "2": "Admin",
+      "2": "Administrador",
       "1": "Usuário",
       "0": "Convidado",
       "-1": "Banido"
     },
     "ladder": "Níveis de permissão",
-    "ladder_hint": "Quanto mais alto, mais forte o nível. Dono e Bloqueado ficam fixos.",
+    "ladder_hint": "Quanto mais alto, mais forte o nível. Dono e Bloqueado ficam fixos. Mude um nome na sua caixa. Dono, Convidado e Bloqueado não podem ser apagados.",
     "ladder_name": "Nome do nível",
     "ladder_fixed": "Fixo",
     "ladder_up": "Subir {{name}}",

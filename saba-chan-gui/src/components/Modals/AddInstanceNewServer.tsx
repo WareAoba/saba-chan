@@ -11,8 +11,10 @@ import {
     createBody,
     installChoices,
     installFields,
+    nameHasComma,
     nameTaken,
     optionLabel,
+    latestRelease,
     releaseVersions,
     suggestName,
     versionSettings,
@@ -62,6 +64,7 @@ export function AddInstanceNewServer({
     const [preset, setPreset] = useState('');
     const [version, setVersion] = useState(''); // '' = 최신
     const [versions, setVersions] = useState<string[] | null>(null); // 고를 수 있는 릴리스 (null = 아직 모름)
+    const [latest, setLatest] = useState(''); // 모듈이 알려 준 최신 릴리스 숫자 (모르면 '')
     const [folderMode, setFolderMode] = useState('default'); // 'default' | 'custom'
     const [folder, setFolder] = useState('');
     const [managed, setManaged] = useState(true);
@@ -95,6 +98,7 @@ export function AddInstanceNewServer({
         setPreset('');
         setVersion('');
         setVersions(null);
+        setLatest('');
         setFolderMode('default');
         setFolder('');
         setManaged(true);
@@ -129,6 +133,7 @@ export function AddInstanceNewServer({
         versionPickedFor.current = versionKey;
         setVersion('');
         setVersions(null);
+        setLatest('');
     }, [versionKey]);
     useEffect(() => {
         if (step !== 'server' || !versionKey) return;
@@ -141,11 +146,13 @@ export function AddInstanceNewServer({
                     if (!alive) return;
                     const list = releaseVersions(res);
                     setVersions(list);
+                    setLatest(latestRelease(res));
                     setVersion((chosen) => (list.includes(chosen) ? chosen : ''));
                 })
                 .catch(() => {
                     if (!alive) return;
                     setVersions([]);
+                    setLatest('');
                     setVersion('');
                 });
         }, 250);
@@ -247,11 +254,12 @@ export function AddInstanceNewServer({
     const agreements = selectedModule?.agreements || [];
     const duplicateName =
         nameTaken(servers, newServerName) || (check?.name?.value === newServerName.trim() && check?.name?.taken);
+    const nameComma = nameHasComma(newServerName);
     const blockers = check && !check.failed ? checkBlockers(check) : [];
     // 고친 포트는 1~65535의 정수만 (빈 칸은 데몬이 고른 포트)
     const portInvalid =
         port != null && port !== '' && !(Number.isInteger(Number(port)) && Number(port) >= 1 && Number(port) <= 65535);
-    const nameReady = newServerName.trim() && !duplicateName && !blockers.length && !portInvalid;
+    const nameReady = newServerName.trim() && !duplicateName && !nameComma && !blockers.length && !portInvalid;
     const canSubmit = nameReady && selectedExtension && !submitting && allChecked(agreements, agreed);
     const canLeave = {
         location: folderMode === 'default' || !!customFolder,
@@ -356,6 +364,10 @@ export function AddInstanceNewServer({
         }
         goTo(steps[stepIndex - 1]);
     };
+    // 사용자 11-06: 비워 두면 받을 최신 버전을 숫자로 보인다 ("26.3 (최신)"). 모르면 "최신 버전"
+    const latestLabel = latest
+        ? t('add_server_modal.version_latest_of', { version: latest })
+        : t('add_server_modal.version_latest');
     const ports = check?.ports || [];
     const mainPort = ports.find((p: ApiBody) => p.field === 'port');
 
@@ -386,8 +398,8 @@ export function AddInstanceNewServer({
                             value={version}
                             onChange={setVersion}
                             options={[
-                                { value: '', label: t('add_server_modal.version_latest') },
-                                ...(versions || []).map((v) => ({ value: v, label: v })),
+                                { value: '', label: latestLabel },
+                                ...(versions || []).filter((v) => v !== latest).map((v) => ({ value: v, label: v })),
                             ]}
                             disabled={submitting}
                         />
@@ -528,12 +540,18 @@ export function AddInstanceNewServer({
                         onKeyDown={(e) => {
                             if (e.key === 'Enter' && canLeave.name) goTo(steps[stepIndex + 1]);
                         }}
-                        aria-invalid={duplicateName || undefined}
+                        aria-invalid={duplicateName || nameComma || undefined}
                     />
                     {duplicateName && (
                         <p className="as-name-taken" role="alert">
                             <Icon name="alertCircle" size="sm" />
                             {t('servers.rename_name_taken', { name: newServerName.trim() })}
+                        </p>
+                    )}
+                    {nameComma && (
+                        <p className="as-name-taken" role="alert">
+                            <Icon name="alertCircle" size="sm" />
+                            {t('servers.name_comma')}
                         </p>
                     )}
                 </div>
@@ -580,7 +598,7 @@ export function AddInstanceNewServer({
             [t('add_server_modal.summary_game'), selectedDisplayName],
             ...settingRows,
             ...(choosesVersion(selectedModule)
-                ? [[t('add_server_modal.version'), version || t('add_server_modal.version_latest')]]
+                ? [[t('add_server_modal.version'), version || latestLabel]]
                 : []),
             [t('add_server_modal.location_title'), customFolder || t('add_server_modal.location_default')],
             [

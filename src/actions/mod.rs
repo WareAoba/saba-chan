@@ -137,9 +137,10 @@ const fn def(id: &'static str, kind: Kind, risk: &'static str, surfaces: &'stati
 pub static ACTIONS: &[Def] = &[
     def("instance.list", Kind::Query, "safe", ALL, false, "GET", "/api/servers"),
     def("server.status", Kind::Query, "safe", ALL, true, "GET", "/api/instance/:id/status"),
-    def("server.start", Kind::Command, "caution", ALL, true, "POST", "/api/instance/:id/start"),
-    def("server.stop", Kind::Command, "caution", ALL, true, "POST", "/api/instance/:id/stop"),
-    def("server.restart", Kind::Command, "caution", ALL, true, "POST", "/api/instance/:id/restart"),
+    // 시작·정지·재시작·백업 만들기는 위험도가 아니라 조작 가능 명단(`crate::controllers`)과 관리자 이상이 한다 (사용자 지정 2026-11-06)
+    Def { discord_level: Some(crate::chat::permissions::ADMIN), level_movable: true, ..def("server.start", Kind::Command, "safe", ALL, true, "POST", "/api/instance/:id/start") },
+    Def { discord_level: Some(crate::chat::permissions::ADMIN), level_movable: true, ..def("server.stop", Kind::Command, "safe", ALL, true, "POST", "/api/instance/:id/stop") },
+    Def { discord_level: Some(crate::chat::permissions::ADMIN), level_movable: true, ..def("server.restart", Kind::Command, "safe", ALL, true, "POST", "/api/instance/:id/restart") },
     def("server.console.tail", Kind::Query, "safe", LOCAL_AND_CHATBOT, true, "GET", "/api/instance/:id/console?count=20"),
     // 접속자 이름까지 (검수 13번). 모듈이 `[status] players`를 선언한 서버만 (heartbeat `modules`, 인스턴스 목록)
     def("server.players", Kind::Query, "safe", ALL, true, "GET", "/api/instance/:id/players"),
@@ -174,7 +175,12 @@ pub static ACTIONS: &[Def] = &[
     // 디스코드 메뉴에서만 뺀다 (검수 4번). 챗봇 복원이 목록을 보고, 디스코드에서 부르는 것은 계속 받는다
     Def { remote_menu: false, private: true, ..def("backup.list", Kind::Query, "safe", ALL, true, "GET", "/api/instance/:id/backups") },
     // from_snapshot: 지금 상태 대신 게임이 만든 가장 새 자동 백업을 보관한다 (`[backup] snapshots` 모듈)
-    Def { fields: &[field("from_snapshot", "boolean", false)], ..def("backup.create", Kind::Command, "caution", ALL, true, "POST", "/api/instance/:id/backups") },
+    Def {
+        fields: &[field("from_snapshot", "boolean", false)],
+        discord_level: Some(crate::chat::permissions::ADMIN),
+        level_movable: true,
+        ..def("backup.create", Kind::Command, "safe", ALL, true, "POST", "/api/instance/:id/backups")
+    },
     // 디스코드에서도 복원한다 (검수 14번). 백업은 목록에서 고른다
     Def {
         fields: &[Field { options_from: Some(OptionsFrom { action: "backup.list", list: "backups", value: "name", label: "label" }), ..path_field("name") }],
@@ -714,7 +720,12 @@ pub async fn permission_board(server: &IPCServer, guild_id: &str, locale: &str) 
         let preset = fixed.unwrap_or_else(|| preset_need(&perms, kind, risk));
         let name = builtin_command(id).unwrap_or(id);
         let pinned = fixed.is_some() && !movable(id);
-        Some(entry(instance, id, name, &a["title"], kind.name(), risk, level, preset, pinned, override_keys(instance, id)))
+        let mut item = entry(instance, id, name, &a["title"], kind.name(), risk, level, preset, pinned, override_keys(instance, id));
+        // 조작 가능 명단에 있는 사람도 하는 일 (권한 계단의 "조작 가능" 묶음)
+        if crate::controllers::CONTROLLED_ACTIONS.contains(&id) {
+            item["controllers"] = json!(true);
+        }
+        Some(item)
     };
     let mut items = Vec::new();
     let globals = list(server, None, None, locale).await;
@@ -1280,7 +1291,20 @@ async fn authorize_in(server: &IPCServer, r: &Resolved, caller: &Caller, new_ser
     }
     let need = required_level(&perms, instance, &r.id, r.command.as_deref(), r.kind, &r.risk, r.discord_level);
     if !perms.meets(perms.effective_level(who), need) {
-        return Err(denied(need));
+        // 조작 가능 명단에 있는 사람은 레벨과 상관없이 그 서버를 시작·정지·재시작·백업한다.
+        // 말하는 사바쨩을 거친 요청은 챗봇 상한을 그대로 받는다 (명단이 상한을 넘지 않는다)
+        if !crate::controllers::CONTROLLED_ACTIONS.contains(&r.id.as_str()) || who.via_chatbot {
+            return Err(denied(need));
+        }
+        let listed = match who.user_id.as_deref() {
+            Some(user) => server.supervisor.read().await.instance_store.get(instance).is_some_and(|i| crate::controllers::controls(&i.controllers, user)),
+            None => false,
+        };
+        if !listed {
+            let mut refused = denied(need);
+            refused.data["args"]["controllers"] = json!(true);
+            return Err(refused);
+        }
     }
     // 예약 작업은 나중에 요청자 없이 돈다: 새로 넣거나 켜는 서버 명령은 요청자가 지금 그 명령을 쓸 수 있어야 한다
     if r.id == "instance.schedule.set" && !instance.is_empty() {
@@ -1494,6 +1518,7 @@ pub async fn plan_text(server: &IPCServer, text: &str, caller: &Caller) -> Resul
             if let Some((id, instance)) = named_action(&reply, caller.surface) {
                 return plan_one(server, id, Some(&instance), &json!({}), caller, confirmed_by_requester(caller)).await;
             }
+            let reply = slash_only(&reply, &cat).unwrap_or(reply);
             return Ok(chat_json(reply, true, caller));
         }
     };
@@ -1535,7 +1560,7 @@ pub async fn check_text(server: &IPCServer, text: &str, caller: &Caller) -> Resu
         crate::chat::Interpreted::Run(target) => Ok(json!({ "success": true, "actionId": target.action_id(), "instance": target.instance(), "risk": target.risk() })),
         crate::chat::Interpreted::Reply(reply) => match named_action(&reply, caller.surface) {
             Some((id, instance)) => check(server, id, Some(&instance), &json!({}), caller).await,
-            None => Ok(chat_json(reply, true, caller)),
+            None => Ok(chat_json(slash_only(&reply, &cat).unwrap_or(reply), true, caller)),
         },
     }
 }
@@ -1545,9 +1570,24 @@ fn confirmed_by_requester(caller: &Caller) -> bool {
 }
 
 /// 채팅 처리기가 모르는 명령이라고 한 문장(`UNKNOWN_COMMAND`, 서버는 찾음)의 명령 낱말이 인스턴스 액션 이름이면 그 액션과 서버.
-/// 이름은 언어마다 짧은 이름·제목(띄어쓰기 무시)과 액션 id·그 끝 낱말이다. 이 표면에 내보낸 것, 입력이 필요 없는 것,
-/// 위험이 아닌 것만 고른다 (입력이 필요하거나 위험한 액션은 슬래시 서버 루트에서 고른다). 남는 낱말이 있으면 고르지 않는다
+/// 이 표면에 내보낸 것, 입력이 필요 없는 것, 위험이 아닌 것만 고른다 (입력이 필요하거나 위험한 액션은 슬래시 서버 루트에서 고른다)
 fn named_action(reply: &crate::chat::Reply, surface: Surface) -> Option<(&'static str, String)> {
+    let pick = |d: &Def| d.instance && d.risk != "danger" && !d.secret && d.surfaces.contains(&surface) && d.fields.iter().all(|f| !f.required);
+    action_by_word(reply, pick).map(|(d, instance)| (d.id, instance))
+}
+
+/// 모르는 명령 낱말이 비밀 액션(부른 사람에게만 답하는 것, 서버 주소)의 이름이면 슬래시 명령으로 다시 부르라는 안내.
+/// 문장 명령의 답은 채널 모두가 보므로 비밀 액션은 문장으로 실행하지 않는다 (사용자 지정 2026-11-06)
+fn slash_only(reply: &crate::chat::Reply, cat: &crate::chat::i18n::Catalog) -> Option<crate::chat::Reply> {
+    let (d, _) = action_by_word(reply, |d| d.instance && d.secret && d.surfaces.contains(&Discord))?;
+    let command = ["name", "title"].iter().find_map(|k| translated(cat, &format!("actions.{}.{}", d.id, k))).unwrap_or_else(|| d.id.to_string());
+    let name = reply.args.get("name").and_then(Value::as_str).unwrap_or_default();
+    Some(cat.t("errors.slash_only", &[("command", &command), ("name", name)]).into())
+}
+
+/// 채팅 처리기가 모르는 명령이라고 한 문장(서버는 찾음)의 명령 낱말이 이름인 인스턴스 액션과 그 서버. `pick`에 맞는 것만 고른다.
+/// 이름은 언어마다 짧은 이름·제목(띄어쓰기 무시)과 액션 id·그 끝 낱말이다. 남는 낱말이 있으면 고르지 않는다
+fn action_by_word(reply: &crate::chat::Reply, pick: impl Fn(&Def) -> bool) -> Option<(&'static Def, String)> {
     if reply.code != Some("UNKNOWN_COMMAND") {
         return None;
     }
@@ -1562,11 +1602,7 @@ fn named_action(reply: &crate::chat::Reply, surface: Surface) -> Option<(&'stati
         let texts = cats.iter().flat_map(|c| ["name", "title"].map(|k| translated(c, &format!("actions.{}.{}", d.id, k)))).flatten();
         [d.id.to_string(), tail.to_string()].into_iter().chain(texts).collect::<Vec<_>>()
     };
-    ACTIONS
-        .iter()
-        .filter(|d| d.instance && d.risk != "danger" && !d.secret && d.surfaces.contains(&surface) && d.fields.iter().all(|f| !f.required))
-        .find(|d| names(d).iter().any(|n| fold(n) == want))
-        .map(|d| (d.id, instance.to_string()))
+    ACTIONS.iter().filter(|d| pick(d)).find(|d| names(d).iter().any(|n| fold(n) == want)).map(|d| (d, instance.to_string()))
 }
 
 /// 문장 계획 실행: 답은 문장 명령과 같다 (`text`). 시작했는데 이미 켜져 있었으면 `already_running`.
@@ -1864,9 +1900,10 @@ async fn execute(server: &IPCServer, r: &Resolved, caller: &Caller) -> Value {
         }
     }
     let ok = resp.status.is_success() && result.get("success").and_then(Value::as_bool) != Some(false) && result.get("ok").and_then(Value::as_bool) != Some(false);
-    // 관리 액션은 밑 라우트가 감사에 남기지 않으므로 액션 id로 한 줄 남긴다 (시작·명령은 라우트가 남긴다)
-    if r.kind == Kind::Admin {
-        record_admin(server, r, caller, ok, resp.status.as_u16()).await;
+    // 관리 액션은 밑 라우트가 감사에 남기지 않으므로 액션 id로 한 줄 남긴다 (시작·명령·복원은 라우트가 남긴다)
+    if r.kind == Kind::Admin && !ROUTE_AUDITED.contains(&r.id.as_str()) {
+        let code = if ok { None } else { crate::audit::failure_code(&result) };
+        record_admin(server, r, caller, ok, resp.status.as_u16(), code.as_deref()).await;
     }
     // 원격에서 만든 서버는 그 길드의 허용 목록에 더한다 (목록을 정해 둔 길드만)
     if let (true, "instance.create", Some(new_id)) = (ok, r.id.as_str(), result.get("id").and_then(Value::as_str)) {
@@ -1913,8 +1950,11 @@ async fn undo_plan(server: &IPCServer, instance: &str, before: Map<String, Value
     Some(plan_id)
 }
 
+/// 밑 라우트가 스스로 감사에 남기는 관리 액션 (`backup.restore` → `restore`)
+const ROUTE_AUDITED: [&str; 1] = ["backup.restore"];
+
 /// 관리 액션 감사 한 줄: `action`은 액션 id, 입력은 비밀을 가려 남긴다
-async fn record_admin(server: &IPCServer, r: &Resolved, caller: &Caller, ok: bool, status: u16) {
+async fn record_admin(server: &IPCServer, r: &Resolved, caller: &Caller, ok: bool, status: u16, code: Option<&str>) {
     let (name, args) = {
         let sup = server.supervisor.read().await;
         let instance = r.instance.as_deref().and_then(|i| sup.instance_store.get(i));
@@ -1933,6 +1973,7 @@ async fn record_admin(server: &IPCServer, r: &Resolved, caller: &Caller, ok: boo
         daemon: None,
         ok,
         status,
+        code,
     };
     crate::audit::log().record(&caller.origin, &event);
 }

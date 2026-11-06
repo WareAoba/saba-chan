@@ -94,7 +94,7 @@ export interface RingSegment {
     color: string;
 }
 
-/** 원 아래 보조 값 하나. unknown이면 "모름"으로 흐리게 보인다 */
+/** 원 아래 보조 값 하나. unknown이면 "알 수 없음"으로 흐리게 보인다 */
 export interface RingPill {
     key?: string;
     vars?: Record<string, unknown>;
@@ -221,7 +221,7 @@ export interface PickerRow {
     labelKey?: string;
     labelVars?: Record<string, unknown>;
     label?: string;
-    /** 이 PC에서 못 재는 값이면 "모름" 안내 */
+    /** 이 PC에서 못 재는 값이면 "알 수 없음" 안내 */
     noteKey?: string;
     /** 이 줄이 붙는 원 항목 (그 원을 끄면 같이 꺼 둔다) */
     parent?: string;
@@ -332,8 +332,8 @@ export function buildRings(
     if (on.has('cpu')) {
         const cpu = snap.cpu || {};
         const pills: RingPill[] = [{ key: 'monitor.cores', vars: { count: cpu.cores } }];
-        if (on.has('cpu.clock')) pills.push(cpu.clock_mhz ? { text: formatGhz(cpu.clock_mhz) } : { key: 'monitor.clock_unknown', unknown: true });
-        // 온도는 모르면 표시하지 않는다 (Windows는 대부분 못 읽는다)
+        // 모르는 값은 알약째 보이지 않는다 (사용자 11-06 #26. 온도는 Windows가 대부분 못 읽는다)
+        if (on.has('cpu.clock') && cpu.clock_mhz) pills.push({ text: formatGhz(cpu.clock_mhz) });
         if (on.has('cpu.temp') && cpu.temp_c != null) pills.push({ text: `${Math.round(cpu.temp_c)} °C` });
         rings.push({
             key: 'cpu',
@@ -355,7 +355,7 @@ export function buildRings(
     if (on.has('memory')) {
         const mem = snap.memory || {};
         const pills: RingPill[] = [{ text: `${formatBytes(mem.used_bytes as number)} / ${formatBytes(mem.total_bytes as number)}` }];
-        if (on.has('memory.clock')) pills.push(mem.clock_mhz ? { text: `${mem.clock_mhz} MT/s` } : { key: 'monitor.clock_unknown', unknown: true });
+        if (on.has('memory.clock') && mem.clock_mhz) pills.push({ text: `${mem.clock_mhz} MT/s` });
         rings.push({
             key: 'memory',
             titleKey: 'monitor.memory',
@@ -376,22 +376,23 @@ export function buildRings(
     if (on.has('gpu')) {
         const gpus = snap.gpus || [];
         gpus.forEach((g, i) => {
+            // 사용률을 모르는 GPU는 원째 뺀다 (모르는 값은 보이지 않는다, 사용자 11-06 #26)
+            if (g.util_percent == null) return;
             const pills: RingPill[] = [];
-            if (on.has('gpu.clock')) pills.push(g.clock_mhz ? { text: formatGhz(g.clock_mhz) } : { key: 'monitor.clock_unknown', unknown: true });
+            if (on.has('gpu.clock') && g.clock_mhz) pills.push({ text: formatGhz(g.clock_mhz) });
             if (on.has('gpu.temp') && g.temp_c != null) pills.push({ text: `${Math.round(g.temp_c)} °C` });
-            const util = g.util_percent ?? null;
+            const util = g.util_percent;
             rings.push({
                 key: gpus.length > 1 ? `gpu:${i}` : 'gpu',
                 titleKey: g.name ? 'monitor.gpu_named' : 'monitor.gpu',
                 titleVars: { name: g.name },
                 value: percentValue(util),
-                unit: util == null ? '' : '%',
+                unit: '%',
                 tone: 'gpu',
                 pills,
                 total: 100,
                 format: (v: number) => `${v.toFixed(1)}%`,
-                noteKey: util == null ? 'monitor.gpu_util_unknown' : null,
-                segments: util == null ? [] : [all(util, 'monitor.gpu_usage'), idle(100 - util)],
+                segments: [all(util, 'monitor.gpu_usage'), idle(100 - util)],
             });
         });
     }
@@ -428,7 +429,8 @@ export function buildRings(
         const used = vol.total_bytes - vol.available_bytes;
         const shares = (snap.disks || []).find((d) => d.mount === vol.mount);
         const pills: RingPill[] = [{ key: 'monitor.free_pill', vars: { free: formatBytes(vol.available_bytes) } }];
-        if (on.has('volume.kind')) pills.push(kindPill(vol.kind, vol.rpm));
+        const kind = on.has('volume.kind') ? kindPill(vol.kind, vol.rpm) : null;
+        if (kind) pills.push(kind);
         rings.push({
             key: volumeItem(vol.mount),
             titleKey: 'monitor.volume',
@@ -508,10 +510,11 @@ export function buildRings(
     return rings;
 }
 
-function kindPill(kind: string | undefined, rpm: number | null | undefined): RingPill {
+/** 디스크 종류 알약. 모르면 없다 (알 수 없는 값은 보이지 않는다, 사용자 11-06 #26) */
+function kindPill(kind: string | undefined, rpm: number | null | undefined): RingPill | null {
     if (kind === 'ssd') return { text: 'SSD' };
     if (kind === 'hdd') return rpm ? { text: `HDD ${rpm}rpm` } : { text: 'HDD' };
-    return { key: 'monitor.kind_unknown', unknown: true };
+    return null;
 }
 
 /** 포트 표 한 줄 */

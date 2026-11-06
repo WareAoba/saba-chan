@@ -25,13 +25,26 @@ impl UpdateManager {
     /// `__pycache__`와 점(.)으로 시작하는 항목은 남긴다
     pub(crate) fn replace_dir(&self, target_dir: &Path, staged: &Path, backup_name: &str) -> Result<Vec<PathBuf>> {
         let backup_dir = self.staging_dir.join(backup_name);
-        let had_target = target_dir.exists();
-        if had_target {
-            if backup_dir.exists() {
-                std::fs::remove_dir_all(&backup_dir)?;
-            }
-            self.copy_dir_recursive(target_dir, &backup_dir)?;
+        // 백업은 다 복사한 뒤 이름을 바꿔 둔다: `backup_dir`이 있으면 언제나 온전한 원래 내용이다
+        let partial = self.staging_dir.join(format!("{}.partial", backup_name));
+        if partial.exists() {
+            std::fs::remove_dir_all(&partial)?;
         }
+        if backup_dir.exists() {
+            // 성공하면 지우는 백업이 남았다: 지난 교체가 도중에 꺼졌다. 폴더를 원래 내용으로 되돌리고 그 백업을 그대로 쓴다
+            tracing::warn!(
+                "[Updater] {} was left half-replaced by an interrupted update; restoring it first",
+                target_dir.display()
+            );
+            if target_dir.exists() {
+                self.clean_module_dir(target_dir)?;
+            }
+            self.copy_dir_recursive(&backup_dir, target_dir)?;
+        } else if target_dir.exists() {
+            self.copy_dir_recursive(target_dir, &partial)?;
+            std::fs::rename(&partial, &backup_dir)?;
+        }
+        let had_target = backup_dir.exists();
         let result = (|| -> Result<Vec<PathBuf>> {
             if staged.extension().is_some_and(|e| e == "zip") {
                 if had_target {
