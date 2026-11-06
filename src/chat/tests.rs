@@ -390,6 +390,7 @@ async fn only_controllers_and_admins_run_the_server() {
     };
     let r = reply("mc stop", "someone").await;
     assert_eq!((r.code, r.args["need"].clone(), r.args["controllers"].clone()), (Some("PERMISSION_DENIED"), json!(2), json!(true)));
+    assert_eq!(r.text, Catalog::for_language("en").t("errors.permission_denied_controllers", &[]));
     assert_eq!(reply("mc stop", "u1").await.code, Some("PERMISSION_DENIED"), "banned stays banned on the list");
     let mut bot = discord("u2");
     bot.as_mut().unwrap().via_chatbot = true;

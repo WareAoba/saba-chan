@@ -95,6 +95,7 @@
     "unknown_input": "❌ Comando desconhecido.",
     "command_not_found": "❌ O comando não existe.",
     "permission_denied": "❌ Você não tem permissão para usar este comando.",
+    "permission_denied_controllers": "❌ Para iniciar ou parar este servidor, você precisa estar na lista \"Operadores\" dele no app Saba-chan ou ter o nível definido para este comando (Administrador por padrão).",
     "local_single_guild_only": "⚠️ O bot local só pode ser usado em um servidor. Este bot está em {{count}} servidores. Remova-o dos servidores que você não usa."
   },
   "messages": {

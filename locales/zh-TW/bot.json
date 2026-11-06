@@ -95,6 +95,7 @@
     "unknown_input": "❌ 未知命令。",
     "command_not_found": "❌ 命令不存在。",
     "permission_denied": "❌ 您沒有使用此命令的權限。",
+    "permission_denied_controllers": "❌ 要啟動或停止這個伺服器，需要在沙巴醬應用程式的「可操作的人」名單裡，或擁有這個命令設定的等級（預設為管理員）。",
     "local_single_guild_only": "⚠️ 本地機器人只能在一個伺服器中使用。目前已加入{{count}}個伺服器，請從不使用的伺服器中移除機器人。"
   },
   "messages": {

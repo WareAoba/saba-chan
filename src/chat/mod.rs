@@ -354,7 +354,9 @@ impl<'a, D: DaemonApi> Ctx<'a, D> {
 
     fn permission_denied(&self, denied: Denied) -> Reply {
         tracing::info!("[Chat] 권한 거부: user={:?} need={} level={}", self.req.user_id, denied.need, denied.level);
-        Reply::unrecognized("PERMISSION_DENIED", self.t("errors.permission_denied", &[]), json!(denied))
+        // 명단 밖이라 시작·정지를 못 하면 조작 가능 명단을 안내한다
+        let key = if denied.controllers { "errors.permission_denied_controllers" } else { "errors.permission_denied" };
+        Reply::unrecognized("PERMISSION_DENIED", self.t(key, &[]), json!(denied))
     }
 
     async fn servers(&self) -> Result<Vec<ServerView>, String> {
