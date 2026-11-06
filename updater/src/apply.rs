@@ -62,8 +62,13 @@ impl UpdateManager {
             tracing::error!("[Updater] Replacing {} failed, restoring backup: {}", target_dir.display(), e);
             if had_target {
                 let _ = self.clean_module_dir(target_dir);
-                if let Err(re) = self.copy_dir_recursive(&backup_dir, target_dir) {
-                    tracing::error!("[Updater] Restore of {} failed: {}", target_dir.display(), re);
+                match self.copy_dir_recursive(&backup_dir, target_dir) {
+                    // 다 되돌렸으면 백업을 지운다: 남겨 두면 다음 교체가 "도중에 꺼진 교체"로 보고 그 사이 깔린 판을 덮는다
+                    Ok(_) => {
+                        let _ = std::fs::remove_dir_all(&backup_dir);
+                    }
+                    // 되돌리지 못했으면 백업을 남긴다: 다음 교체가 먼저 원래 내용으로 되돌린다
+                    Err(re) => tracing::error!("[Updater] Restore of {} failed: {}", target_dir.display(), re),
                 }
             } else {
                 // 새로 설치하던 것: 반쯤 풀린 폴더를 남기지 않는다
