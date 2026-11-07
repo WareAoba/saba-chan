@@ -1779,11 +1779,13 @@ mod tests {
     fn a_process_whose_file_was_replaced_is_still_found() {
         // 다른 시험이 찾는 데몬 이름(saba-core)과 겹치지 않는 이름으로
         let tmp = tempfile::tempdir().unwrap();
+        // sleep은 쓰지 않는다: uutils coreutils(우분투 러너)는 실행 파일 이름이 유틸리티 이름과 다르면 바로 끝난다.
+        // 셸 내장 read로 표준 입력이 닫힐 때까지 기다린다
         let exe = tmp.path().join("saba-replaced-test");
-        std::fs::copy("/bin/sleep", &exe).unwrap();
+        std::fs::copy("/bin/sh", &exe).unwrap();
         // 방금 복사한 파일은 다른 시험이 fork하는 동안 쓰기 핸들이 남아 ETXTBSY가 날 수 있다
         let mut child = (0..50)
-            .find_map(|_| match std::process::Command::new(&exe).arg("30").spawn() {
+            .find_map(|_| match std::process::Command::new(&exe).args(["-c", "read _"]).stdin(std::process::Stdio::piped()).spawn() {
                 Err(e) if e.kind() == std::io::ErrorKind::ExecutableFileBusy => {
                     std::thread::sleep(std::time::Duration::from_millis(20));
                     None
@@ -1792,7 +1794,7 @@ mod tests {
             })
             .expect("executable stayed busy");
         std::fs::remove_file(&exe).unwrap();
-        std::fs::copy("/bin/sleep", &exe).unwrap();
+        std::fs::copy("/bin/sh", &exe).unwrap();
         let named = list_named(&["saba-replaced-test"]).unwrap();
         let all = list_all().unwrap();
         let _ = child.kill();

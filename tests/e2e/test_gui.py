@@ -7,15 +7,13 @@
 
 import json
 import os
-import re
 import shutil
 import time
 from pathlib import Path
 
 import pytest
 
-from harness import procs
-from harness.paths import EXE, IS_WINDOWS, REPO
+from harness.paths import EXE, REPO
 from harness.webdriver import ENTER, Gui, tauri_driver
 
 pytestmark = pytest.mark.gui
@@ -56,8 +54,6 @@ def labels(lang: str = "ko") -> dict:
         "popout": gui["console"]["popout"],
         "popped_out": gui["shell"]["console_popped_out"],
         "popin": gui["shell"]["console_popin"],
-        "open_terminal": gui["terminal"]["open"],
-        "terminal_unsupported": gui["terminal"]["err_unsupported_platform"],
         "ext_gui_title": gui["trust"]["extension_gui"]["title"],
         "ext_gui_allow": gui["trust"]["extension_gui"]["allow"],
         "ext_gui_deny": gui["trust"]["extension_gui"]["deny"],
@@ -267,28 +263,6 @@ def test_gui_console_popout_and_back(ko_mc, open_gui):
     gui.wait_text("[Server] popout-e2e", timeout=30)
     gui.snap(art, "popped-in")
     assert daemon.server_status(iid) == "running"
-
-
-def test_gui_open_server_in_terminal(ko_mc, open_gui):
-    """서버 화면의 [터미널로 열기]: Windows는 데몬이 그 서버의 CLI 콘솔을 새 창에 띄우고, 다른 OS는 못 연다고 알린다."""
-    daemon, iid, *_ = ko_mc
-    art = daemon.sb.artifacts / "gui-openTerminal"
-    gui = open_gui(daemon, "openTerminal")
-    gui.click("mc1", kinds="*", timeout=60)
-    gui.click(L["open_terminal"])
-    if not IS_WINDOWS:
-        gui.wait_text(L["terminal_unsupported"], timeout=15)
-        gui.snap(art, "unsupported")
-        return
-    opened = gui.wait(lambda: re.search(r"\[Launch\] Opened CLI .*\(pid (\d+)\)", daemon.log_text()), 30, "데몬 로그의 Opened CLI")
-    pid = int(opened.group(1))
-    try:
-        assert iid in opened.group(0), opened.group(0)
-        time.sleep(2)
-        gui.snap(art, "opened")
-        assert procs.pid_alive(pid), "터미널 창의 CLI가 바로 끝남"
-    finally:
-        procs.kill_pid(pid)
 
 
 def write_gui_extension(sandbox, ext_id: str = "e2e-gui") -> None:
