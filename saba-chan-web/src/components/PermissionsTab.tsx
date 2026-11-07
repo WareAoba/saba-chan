@@ -8,7 +8,9 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { useTranslation } from 'react-i18next';
 import { useApp, useData } from '../store';
 import { Dropdown } from './Dropdown';
+import { ControllersPanel } from './ControllersPanel';
 import { Icon } from './icons';
+import { AccessBar, accessOf, KickButton, MembersKick } from './InstanceAccess';
 import { MemberSearch } from './MemberSearch';
 import { PermissionStairs, type PermissionWriter } from './PermissionStairs';
 import { Avatar, Button, Card, Empty, errorText, failed, Loading, Segments } from './ui';
@@ -858,27 +860,44 @@ interface InstanceMenuProps {
     onBack: () => void;
 }
 
-/** 인스턴스 메뉴: 그 인스턴스의 레벨별 명령. 멤버 레벨은 디스코드 서버 단위라 서버의 멤버 탭에 있다 (GUI 와 같다) */
+/**
+ * 인스턴스 메뉴 (GUI 와 같다): 맨 위 사용 모드. 서버 공용이면 레벨별 명령과 자동 강퇴 단추, 전용 멤버면 전용 멤버 명단과
+ * 명단 밖 자동 강퇴 스위치. 멤버 레벨은 디스코드 서버 단위라 서버의 멤버 탭에 있다
+ */
 function InstanceMenu({ api, guildId, data, instance, onBack }: InstanceMenuProps) {
     const { t } = useTranslation();
     const { perm, board, busy, write } = data;
     const srv = (board?.instances as BoardInstance[] | undefined)?.find((i) => i.id === instance);
+    const server = useData((s) => s.servers.find((x) => x.id === instance));
+    if (!srv) return null;
+    const members = accessOf(server) === 'members';
     return (
         <div className="instance-menu">
             <button type="button" className="back" onClick={onBack}>
                 <Icon name="back" size={16} /> {t('perm.back_instances')}
             </button>
             <h3>
-                {srv ? srv.name : t('perm.all_instances')}
-                {srv?.module && <small className="hint"> · {srv.module}</small>}
+                {srv.name}
+                {srv.module && <small className="hint"> · {srv.module}</small>}
             </h3>
-            {board ? (
+            {/* 사용 모드와 명단은 인스턴스에 붙어 이은 모든 디스코드 서버에 같이 적용된다 */}
+            {server && (
+                <AccessBar api={api} server={server}>
+                    {!members && <KickButton api={api} server={server} />}
+                </AccessBar>
+            )}
+            {members && server ? (
+                <>
+                    <ControllersPanel api={api} server={server} />
+                    <MembersKick api={api} server={server} />
+                </>
+            ) : board ? (
                 <PermissionStairs
                     api={api}
                     guildId={guildId}
                     perm={perm}
                     board={board}
-                    instance={srv ? srv.id : L.ALL_INSTANCES}
+                    instance={srv.id}
                     busy={busy}
                     write={write}
                 />
@@ -992,7 +1011,7 @@ export function GuildPermissions({
             <div className="set-card-grid">
                 <Card icon="server" tone="1" title={t('perm.instances')} desc={t('perm.instances_hint')}>
                     <ul className="rows">
-                        {[{ id: L.ALL_INSTANCES, name: t('perm.all_instances') }, ...instances].map((i) => (
+                        {instances.map((i) => (
                             <li key={i.id} className="row">
                                 <button type="button" className="row-open" onClick={() => setInstance(i.id)}>
                                     <span className="row-main">

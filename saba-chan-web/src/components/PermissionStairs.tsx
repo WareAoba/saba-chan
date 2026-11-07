@@ -187,26 +187,30 @@ export function PermissionStairs({ api, guildId, perm, board, instance, busy, wr
 
     return (
         <div className="stairs-view">
-            <div className="field">
-                <span>{t('perm.preset')}</span>
+            {/* 사용 모드 줄과 같은 모양: 제목·고르기는 왼쪽, 되돌리기 단추는 오른쪽 끝 (GUI 와 같다) */}
+            <div className="mode-bar">
+                <span className="mode-bar-title">
+                    <Icon name="command" size={16} /> {t('perm.preset')}
+                </span>
                 <Segments
                     value={preset}
                     onChange={pickPreset}
+                    ariaLabel={t('perm.preset')}
                     options={L.PRESETS.map((p) => ({ value: p, label: t(`perm.preset_${p}`) }))}
                 />
-                <div className="field-row">
+                <span className="mode-bar-end">
+                    {moved > 0 && (
+                        <>
+                            <small className="hint">{t('perm.moved_count', { count: moved })}</small>
+                            <Button disabled={busy} onClick={() => pickPreset(preset)}>
+                                {t('perm.reset_to_preset')}
+                            </Button>
+                        </>
+                    )}
                     <Button disabled={busy} onClick={resetToDefault}>
                         <Icon name="undo" size={16} /> {tg('discord.perm_ladder_reset')}
                     </Button>
-                </div>
-                {moved > 0 && (
-                    <div className="field-row">
-                        <small className="hint">{t('perm.moved_count', { count: moved })}</small>
-                        <Button disabled={busy} onClick={() => pickPreset(preset)}>
-                            {t('perm.reset_to_preset')}
-                        </Button>
-                    </div>
-                )}
+                </span>
             </div>
             <small className="hint">{tg('discord.perm_stairs_hint')}</small>
 

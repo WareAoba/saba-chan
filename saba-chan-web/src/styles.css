@@ -2927,3 +2927,40 @@ textarea {
     user-select: none;
     -webkit-user-drag: none;
 }
+
+/* 디스코드 › 인스턴스 메뉴의 한 줄 고르기 (사용 모드·명령 프리셋, GUI access-bar 와 같다) */
+.mode-bar-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 12px;
+}
+.mode-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+}
+.mode-bar-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 600;
+}
+.mode-bar-end {
+    margin-left: auto;
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+.count-pill {
+    min-width: 1.4em;
+    margin-left: 4px;
+    padding: 0 5px;
+    border-radius: 999px;
+    background: var(--accent);
+    color: var(--on-accent, #fff);
+    font-size: 12px;
+    text-align: center;
+}

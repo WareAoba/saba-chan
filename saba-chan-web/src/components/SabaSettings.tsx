@@ -228,24 +228,6 @@ export function SabaSettings({ api, server, running }: Omit<ServerPanelProps, 'm
                     </div>
                 </Card>
             )}
-            {/* 조작 가능한 사람만 접속 (사용자 지정 2026-11-06). 명단은 "조작 가능" 탭, 비면 켤 수 없다 */}
-            {server.controllers_only_supported && (
-                <Card icon="members" tone="2" title={tg('controllers_only.title')} desc={tg('controllers_only.desc')}>
-                    <div className="form">
-                        <Toggle
-                            label={tg('controllers_only.label')}
-                            hint={
-                                (server.controllers || []).length === 0
-                                    ? tg('controllers_only.empty')
-                                    : tg('controllers_only.hint')
-                            }
-                            checked={values.controllers_only}
-                            disabled={(server.controllers || []).length === 0 && !values.controllers_only}
-                            onChange={(v) => set('controllers_only', v)}
-                        />
-                    </div>
-                </Card>
-            )}
             {server.managed !== false && (
                 <Card icon="clock" tone="7" title={tg('stop_timeout.title')} desc={tg('stop_timeout.desc')}>
                     <div className="form">

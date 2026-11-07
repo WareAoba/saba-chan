@@ -81,6 +81,7 @@ const COMMAND_WORDS = [
 /** 영어와 글자가 같아도 그 언어에서 맞는 문구 (언어: 파일:키) */
 const SAME_AS_EN: Record<string, string[]> = {
     es: [
+        'gui.json:audit.http_other',
         'gui.json:monitor.pick_network_all',
         'web.json:app_name',
         'web.json:backups.kind.manual',
@@ -143,6 +144,9 @@ const SAME_AS_EN: Record<string, string[]> = {
         'gui.json:daemon_switcher.label',
     ],
     de: [
+        'gui.json:audit.filter',
+        'gui.json:audit.detail_server',
+        'gui.json:audit.detail_args',
         'gui.json:discord.iw_cmd_status',
         'gui.json:shell.info_more',
         'gui.json:monitor.ports_server',
@@ -179,6 +183,8 @@ const SAME_AS_EN: Record<string, string[]> = {
         'gui.json:picker.minute',
     ],
     fr: [
+        'gui.json:audit.detail_action',
+        'gui.json:audit.detail_args',
         'gui.json:monitor.ports_port',
         'gui.json:settings_modal.tab_console',
         'gui.json:command_modal.via_console',

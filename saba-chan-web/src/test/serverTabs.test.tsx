@@ -37,7 +37,7 @@ describe('웹 서버 탭', () => {
     it('앱과 같은 이름·순서 (기록 탭은 PC에만 있어 빼고, 플레이어·점검 탭은 없다)', async () => {
         const server = asServer({ id: 's1', name: 'MC', module: 'minecraft', status: 'stopped' });
         await act(async () => render(<ServerDetail api={apiWith()} server={server} />));
-        expect(tabNames()).toEqual(['Console', 'Commands', 'Settings', 'Saba-chan', 'Backups', 'Operators', 'Discord', 'Info']);
+        expect(tabNames()).toEqual(['Console', 'Commands', 'Settings', 'Saba-chan', 'Backups', 'Discord', 'Info']);
     });
 
     it('사바쨩이 출력을 쥐지 않는 서버는 콘솔 탭이 없다 (모듈·실행 방식이 지원할 때만)', async () => {

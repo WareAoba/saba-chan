@@ -35,7 +35,7 @@ function useMembers(api: WebApi): MemberChoice[] {
     return members;
 }
 
-/** 인스턴스 "조작 가능": 시작·정지·재시작·백업 만들기를 할 수 있는 사람 명단 (GUI ControllersTab 과 같다) */
+/** 전용 멤버 명단: 전용 멤버 모드에서 이 인스턴스의 모든 조작·명령을 하는 사람 (GUI ControllersTab 과 같다) */
 export function ControllersPanel({ api, server }: { api: WebApi; server: Server }) {
     const { t } = useTranslation();
     const { t: tg } = useTranslation('gui');
@@ -76,7 +76,7 @@ export function ControllersPanel({ api, server }: { api: WebApi; server: Server 
 
     return (
         <div className="panel">
-            <Card icon="members" tone="2" title={tg('shell.tab_controllers')} desc={tg('controllers.desc')}>
+            <Card icon="members" tone="2" title={tg('access.members_list')} desc={tg('controllers.desc')}>
                 {list.length === 0 ? (
                     <small className="hint">{tg('controllers.empty')}</small>
                 ) : (

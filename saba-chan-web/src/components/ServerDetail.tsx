@@ -13,7 +13,6 @@ import { Icon } from './icons';
 import { PlayersPanel } from './PlayersPanel';
 import { startPoll } from './poll';
 import { SabaSettings } from './SabaSettings';
-import { ControllersPanel } from './ControllersPanel';
 import { SchedulePanel } from './SchedulePanel';
 import { ServerIcon } from './ServerIcon';
 import { SettingsPanel } from './SettingsPanel';
@@ -238,7 +237,6 @@ function serverTabs(server: Server, moduleData: Module | undefined) {
         'settings',
         'saba',
         'maintenance',
-        'controllers',
         'discord',
         'info',
     ].filter((x): x is string => !!x);
@@ -358,7 +356,6 @@ export function ServerDetail({ api, server }: { api: WebApi; server: Server }) {
                     <SchedulePanel api={api} server={server} moduleData={moduleData} />
                 </>
             )}
-            {tab === 'controllers' && <ControllersPanel api={api} server={server} />}
             {tab === 'discord' && <InstanceWords api={api} server={server} />}
             {tab === 'info' && (
                 <>
