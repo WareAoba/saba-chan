@@ -370,7 +370,7 @@ export function NodeView({
                         </span>
                     )}
                 </header>
-    
+
                 <Segmented
                     ariaLabel={node.guildName}
                     value={tab}

@@ -254,7 +254,7 @@ fn trust_at(records: &Path, official: &Path, component_key: &str, dir: &Path) ->
 
 /// 설치 기록에 없는 코드 파일이 폴더에 있나 (`__pycache__`는 데몬이 읽지 않으므로 뺀다)
 fn has_unrecorded_code(dir: &Path, recorded: &BTreeMap<String, String>) -> bool {
-    // 기록의 경로와 폴더 경로가 다른 모양(상대 경로, `\\?\` 접두사, `/`, 대소문자)일 수 있다.
+    // 기록의 경로와 폴더 경로가 다른 모양(상대 경로, `\\?\` 접두사, `/`, 드라이브 글자)일 수 있다.
     // 글자로 맞춘 모양과 실제 위치(canonicalize) 둘 다로 비교한다. 실제 위치만 쓰면 파일과 폴더가
     // 다른 곳으로 풀리는 환경(Windows 앱 패키지의 AppData 가상화)에서 모든 코드가 기록에 없는 것으로 보인다
     let mut known: BTreeSet<String> = BTreeSet::new();
@@ -291,7 +291,8 @@ fn has_unrecorded_code(dir: &Path, recorded: &BTreeMap<String, String>) -> bool 
     walk(dir, &known)
 }
 
-/// 경로를 비교용 글자로 (절대 경로, `\\?\` 접두사 제거, Windows는 `\`와 소문자로)
+/// 경로를 비교용 글자로 (절대 경로, `\\?\` 접두사 제거, Windows는 `\`와 드라이브 글자만 대문자로).
+/// 이름의 대소문자는 바꾸지 않는다: 대소문자를 가리는 폴더에서 `a.py`와 `A.py`는 다른 파일이다
 fn path_key(path: &Path) -> Option<String> {
     let abs = std::path::absolute(path).ok()?;
     let text = abs.to_string_lossy();
@@ -300,7 +301,14 @@ fn path_key(path: &Path) -> Option<String> {
     } else {
         text.strip_prefix(r"\\?\").unwrap_or(&text).to_string()
     };
-    Some(if cfg!(windows) { text.replace('/', r"\").to_lowercase() } else { text })
+    if !cfg!(windows) {
+        return Some(text);
+    }
+    let mut text = text.replace('/', r"\");
+    if text.as_bytes().get(1) == Some(&b':') {
+        text[..1].make_ascii_uppercase();
+    }
+    Some(text)
 }
 
 /// 기록된 모든 설치를 검사한다
@@ -605,6 +613,21 @@ mod tests {
             [spelled("lifecycle.py"), spelled("sub/helper.py")].into_iter().map(|p| (p, String::new())).collect();
         assert!(!has_unrecorded_code(&dir, &recorded));
         std::fs::write(dir.join("extra.py"), b"c").unwrap();
+        assert!(has_unrecorded_code(&dir, &recorded));
+    }
+
+    /// Codex #916: 대소문자를 가리는 폴더에서 `a.py`와 `A.py`는 다른 파일이다. 기록에 없는 쪽을 놓치지 않는다
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_file_differing_only_in_case_is_unrecorded() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("m");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("a.py"), b"a").unwrap();
+        let recorded: BTreeMap<String, String> =
+            [(dir.join("a.py").to_string_lossy().to_string(), String::new())].into_iter().collect();
+        assert!(!has_unrecorded_code(&dir, &recorded));
+        std::fs::write(dir.join("A.py"), b"b").unwrap();
         assert!(has_unrecorded_code(&dir, &recorded));
     }
 
