@@ -393,9 +393,10 @@ async fn take_backup_locked(state: &IPCServer, id: &str, kind: BackupKind, prote
     } else {
         Vec::new()
     };
-    // 정지·재시작은 작업 잠금을 기다리지 않는다: 묶는 사이 꺼지거나 다시 켜졌는지 프로세스로 가린다.
-    // 실행 세대는 정지를 요청하는 순간 오르므로(정지가 실패해도) 쓰지 않는다
-    let pid = state.supervisor.read().await.tracker.get_pid(id).ok();
+    // 정지·재시작은 작업 잠금을 기다리지 않는다: 묶는 사이 꺼지거나 다시 켜졌는지 프로세스를 추적하기 시작한 시각으로 가린다.
+    // 실행 세대는 정지를 요청하는 순간 오르므로(정지가 실패해도) 쓰지 않는다. PID는 런처가 끝나고 진짜 서버로 넘어갈 때
+    // 같은 실행에서도 바뀐다(`replace_pid`, 시작 시각은 그대로)
+    let started = state.supervisor.read().await.tracker.get_start_time(id).ok();
     let saved = if live {
         save_for_backup(state, id, &plan.spec, &failures).await
     } else {
@@ -421,7 +422,7 @@ async fn take_backup_locked(state: &IPCServer, id: &str, kind: BackupKind, prote
         .and_then(|r| r)
     };
     // 묶는 사이 서버가 꺼졌으면 종료 저장이 쓰는 중인 파일을 읽었을 수 있다: 백업을 남기지 않고, 오래된 백업도 정리하지 않는다
-    let stopped = live && (!is_running(state, id).await || state.supervisor.read().await.tracker.get_pid(id).ok() != pid);
+    let stopped = live && (!is_running(state, id).await || state.supervisor.read().await.tracker.get_start_time(id).ok() != started);
     let mut result = match result {
         Ok(made) if stopped => {
             tracing::warn!("'{}' stopped while it was being backed up; discarding {}", id, made.name);
@@ -2598,6 +2599,25 @@ print(json.dumps({'success': True, 'snapshots': [{'id': 'startup/backup_1', 'cre
         assert_eq!(body["error_code"], "backup_server_stopped", "{body}");
         let names: Vec<_> = backup::list(&dir).into_iter().map(|b| b.name).collect();
         assert_eq!(names, vec![older], "only the earlier backup is left");
+    }
+
+    /// 감시 주기가 런처 PID를 진짜 서버 PID로 바꿔 달아도(같은 실행) 묶는 사이의 백업은 남긴다
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_live_backup_is_kept_when_only_the_launcher_pid_is_replaced() {
+        let (state, id, tmp) = server_with(&live_module(None), None).await;
+        run_fake_server(&state, &id, &tmp, "save-all) sleep 1; echo 'ok save-all';;").await;
+        state.supervisor.read().await.tracker.track(&id, 4_000_100).unwrap();
+        let swap = {
+            let (state, id) = (state.clone(), id.clone());
+            tokio::spawn(async move {
+                tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+                state.supervisor.read().await.tracker.replace_pid(&id, 4_000_101).unwrap();
+            })
+        };
+        let made = take_backup(&state, &id, BackupKind::Manual).await;
+        swap.await.unwrap();
+        assert!(made.is_ok(), "the same run of the server");
     }
 
     /// 하트비트의 예약 목록: 켜 둔 것만, 가까운 순으로, 상한까지
