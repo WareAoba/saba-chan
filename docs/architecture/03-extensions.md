@@ -42,7 +42,7 @@
 
 | key | Rust 타입 | 필수/기본값 | 코드에서 실제 사용 여부 |
 |---|---|---|---|
-| `schema_version` | `u32` | `0` | `parse_manifest()`(`ext/:374-421`): `1`이면 모르는 키·발화되지 않는 hook·없는 python_modules 참조가 오류, `0`이면 같은 문제를 경고로만 남기고, 더 큰 값은 거부한다. 현재 두 manifest 모두 `1`이다. |
+| `schema_version` | `u32` | `0` | `parse_manifest()`(`ext/:374-421`): `1`이면 모르는 키·발화되지 않는 hook·없는 python_modules 참조가 오류, `0`이면 같은 문제를 경고로만 남기고, 더 큰 값은 거부한다. 현재 세 manifest(steamcmd·ue4_ini·xna) 모두 `1`이다. |
 | `id` | `String` | **필수** | discovered 맵의 키. 영문·숫자·`-`·`_`만 허용한다(`ext/:359-368`). 스캔 시 폴더 이름이 id이거나 하이픈을 밑줄로 바꾼 이름이어야 한다(`ext/:763-769`). `mount()`는 `manifest.id == ext_id`를 검사한다(`ext/:811`). |
 | `name` | `String` | **필수** | 목록과 로그 |
 | `version` | `String` | **필수** | 업데이트 비교(SemVer, 파싱 실패 시 문자열 비교 `ext/:1335-1342`), 익스텐션 간 의존성 버전 검사 |

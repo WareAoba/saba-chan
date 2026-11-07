@@ -1,6 +1,6 @@
 [package]
 name = "saba-chan-installer-core"
-version = "0.1.12-beta.4"
+version = "0.1.13"
 edition = "2024"
 authors = ["WareAoba"]
 description = "Saba-chan install/uninstall engine shared by the installer GUI and saba-chan-cli install"
