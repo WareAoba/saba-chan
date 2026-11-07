@@ -1319,6 +1319,7 @@
     "perm_legend_moved": "Movido del preajuste",
     "perm_server_wide": "Es un comando de todo el servidor, así que el cambio se ve en el menú de cada instancia.",
     "perm_controllers_tag": "también operadores",
+    "perm_server_control": "Control del servidor",
     "perm_line": "Línea de operadores",
     "perm_line_from": "Operadores · desde {{level}}",
     "perm_line_only": "Operadores · solo {{level}}",

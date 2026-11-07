@@ -246,6 +246,9 @@
         "title": "Envoyer au chat du jeu",
         "description": "Envoie un message Discord dans le chat du jeu"
       },
+      "chat_link": {
+        "title": "Liaison du chat"
+      },
       "update": {
         "check": {
           "title": "Vérifier la mise à jour du serveur de jeu"

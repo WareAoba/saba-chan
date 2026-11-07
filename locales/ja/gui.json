@@ -1319,6 +1319,7 @@
     "perm_legend_moved": "プリセットから移動",
     "perm_server_wide": "サーバー全体のコマンドなので、すべてのインスタンスのメニューで一緒に変わります。",
     "perm_controllers_tag": "操作できる人も",
+    "perm_server_control": "サーバー操作",
     "perm_line": "操作できる人の線",
     "perm_line_from": "操作できる人 · {{level}}から",
     "perm_line_only": "操作できる人 · {{level}}のみ",

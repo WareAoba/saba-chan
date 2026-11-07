@@ -148,8 +148,18 @@ function InstancesTab({
                         const locked = mode === 'all' || !!owner;
                         const notice = Array.isArray(noticed) && noticed.includes(srv.id);
                         const full = Array.isArray(fullNoticed) && fullNoticed.includes(srv.id);
+                        const openable = allowed && !owner;
                         return (
-                            <li key={srv.id} className={clsx('dc-list-row', { dim: !allowed })}>
+                            // biome-ignore lint/a11y/useKeyWithClickEvents: 카드 어디를 눌러도 권한 메뉴로 (사용자 지정 2026-11-07). 키보드는 오른쪽 화살표 버튼이 받는다
+                            <li
+                                key={srv.id}
+                                className={clsx('dc-list-row', { dim: !allowed, 'is-openable': openable })}
+                                onClick={(e) => {
+                                    // 줄 안의 버튼·토글을 누른 것은 그 버튼의 일이다
+                                    if (!openable || (e.target as HTMLElement).closest('button, input, label, a')) return;
+                                    onOpen(srv.id);
+                                }}
+                            >
                                 <ModuleIcon module={modules.find((m) => m.name === srv.module)} name={srv.name} />
                                 <span className="dc-list-text">
                                     <span className="dc-list-name">{srv.name}</span>

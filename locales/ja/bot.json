@@ -246,6 +246,9 @@
         "title": "ゲームチャット送信",
         "description": "Discordのメッセージをゲームチャットに送ります"
       },
+      "chat_link": {
+        "title": "チャット連携"
+      },
       "update": {
         "check": {
           "title": "ゲームサーバーの更新を確認"

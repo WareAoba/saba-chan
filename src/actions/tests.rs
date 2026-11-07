@@ -441,7 +441,7 @@ fn chatbot_never_lists_deletion_shutdown_update_or_permissions() {
 /// 결과는 콘솔·조회처럼 IP·비밀처럼 보이는 값을 가려 보낸다
 #[test]
 fn danger_module_commands_reach_the_chatbot_only_through_a_confirmation() {
-    let wipe = command_view(&json!({ "name": "wipe", "risk": "danger" })).unwrap();
+    let wipe = command_view(&json!({ "name": "wipe", "risk": "danger" }), &Value::Null).unwrap();
     assert!(wipe["surfaces"].as_array().unwrap().iter().any(|s| s == "chatbot"));
     assert_eq!(wipe["risk"], "danger", "the plan decides whether to ask (needs_confirm)");
     for id in ["server.console.tail", "server.query:players", "server.command:kick"] {
@@ -984,12 +984,14 @@ async fn the_permission_board_lists_every_remote_command_at_the_level_it_needs()
     let item = |key: &str| board["items"].as_array().unwrap().iter().find(|i| i["key"] == key).cloned();
     let say = item(&format!("{}/say", id)).unwrap();
     assert_eq!((&say["level"], &say["preset"], &say["overridden"], &say["kind"]), (&json!(0), &json!(0), &json!(false), &json!("command")));
+    assert_eq!(say["module"], true, "a game command shows its own name on the chip");
     assert_eq!(item(&format!("{}/ban", id)).unwrap()["level"], 2);
     assert!(item(&format!("{}/wipe", id)).is_none(), "remote = false commands are not reachable from Discord");
     // 내장 명령은 액션 하나로, 명령 경로와 같은 키로
     let stop = item(&format!("{}/stop", id)).unwrap();
-    assert_eq!((&stop["level"], &stop["preset"], &stop["overridden"], &stop["name"]), (&json!(3), &json!(2), &json!(true), &json!("stop")));
+    assert_eq!((&stop["level"], &stop["preset"], &stop["overridden"], &stop["name"]), (&json!(3), &json!(1), &json!(true), &json!("stop")));
     assert_eq!(stop["controllers"], true, "the board says listed people run it too");
+    assert_eq!(stop["module"], Value::Null, "a Saba action keeps its translated name");
     assert_eq!(stop["keys"], json!([format!("{}/stop", id), format!("{}/server.stop", id)]));
     assert_eq!(board["items"].as_array().unwrap().iter().filter(|i| i["name"] == "stop").count(), 1);
     let restore = item(&format!("{}/backup.restore", id)).unwrap();
@@ -1269,10 +1271,22 @@ async fn a_failed_remote_action_carries_a_short_reason() {
 /// `remote = false` 명령은 디스코드·챗봇 액션으로도 부를 수 없다 (GUI·CLI에서만)
 #[test]
 fn a_command_kept_off_remote_surfaces_is_not_a_remote_action() {
-    let hidden = command_view(&json!({ "name": "save-off", "risk": "caution", "inputs": [], "remote": false })).unwrap();
+    let hidden = command_view(&json!({ "name": "save-off", "risk": "caution", "inputs": [], "remote": false }), &Value::Null).unwrap();
     assert_eq!(hidden["surfaces"], json!(["gui", "cli"]));
-    let shown = command_view(&json!({ "name": "say", "risk": "safe", "inputs": [] })).unwrap();
+    let shown = command_view(&json!({ "name": "say", "risk": "safe", "inputs": [] }), &Value::Null).unwrap();
     assert_eq!(shown["surfaces"], json!(["gui", "cli", "discord", "chatbot"]));
+}
+
+/// 모듈 명령 이름·설명은 요청 언어의 모듈 locales가 먼저다 (권한 계단에 module.toml 영어 이름이 뜨던 문제, 2026-11-07)
+#[test]
+fn module_command_titles_come_from_the_module_locales_first() {
+    let cmd = json!({ "name": "say", "risk": "safe", "label": "Send Chat Message", "description": "Broadcast" });
+    let ko = json!({ "commands": { "say": { "label": "채팅 메시지 전송", "description": "서버에 메시지를 알립니다" } } });
+    let v = command_view(&cmd, &ko).unwrap();
+    assert_eq!((v["title"].as_str(), v["description"].as_str()), (Some("채팅 메시지 전송"), Some("서버에 메시지를 알립니다")));
+    let v = command_view(&cmd, &Value::Null).unwrap();
+    assert_eq!((v["title"].as_str(), v["description"].as_str()), (Some("Send Chat Message"), Some("Broadcast")));
+    assert_eq!(command_view(&json!({ "name": "x" }), &ko).unwrap()["title"], "x");
 }
 
 // 사용자 요청(2026-10-26): 켜짐 알림은 디스코드 `/<서버> 켜짐-알림`으로도 바꾼다. 관리자 이상, 요청이 온 길드만, 말하는 사바쨩은 아니다
@@ -1743,11 +1757,11 @@ fn server_address_reads_as_address_and_port() {
 }
 
 /// 조작 가능 (사용자 지정 2026-11-06): 시작·정지·재시작·백업 만들기는 위험도와 상관없이 명단에 있는 사람과
-/// 관리자 이상이 한다. 명단 밖 유저는 거절되고, 거절에 `controllers`가 실린다
+/// 유저 이상이 한다(기본, 사용자 지정 2026-11-07). 명단 밖 게스트는 거절되고, 거절에 `controllers`가 실린다
 #[tokio::test]
 async fn controllers_run_the_server_without_the_admin_level() {
     let (state, id, _tmp) = server().await;
-    set_node(&state, json!({ "ownerDiscordId": "owner", "preset": "default", "defaultLevel": 1, "members": { "admin": 2 } })).await;
+    set_node(&state, json!({ "ownerDiscordId": "owner", "preset": "default", "defaultLevel": 0, "members": { "admin": 2, "user": 1 } })).await;
     {
         let mut sup = state.supervisor.write().await;
         let mut inst = sup.instance_store.get(&id).cloned().unwrap();
@@ -1758,8 +1772,9 @@ async fn controllers_run_the_server_without_the_admin_level() {
         assert_eq!(find(action).unwrap().risk, "safe", "{action} is not a risk tier");
         assert!(plan(&state, action, Some(&id), &json!({}), &relay("friend", false)).await.is_ok(), "{action}: a listed user");
         assert!(plan(&state, action, Some(&id), &json!({}), &relay("admin", false)).await.is_ok(), "{action}: an admin");
+        assert!(plan(&state, action, Some(&id), &json!({}), &relay("user", false)).await.is_ok(), "{action}: a user by default");
         let refused = plan(&state, action, Some(&id), &json!({}), &relay("stranger", false)).await.unwrap_err();
-        assert_eq!((refused.data["args"]["need"].clone(), refused.data["args"]["controllers"].clone()), (json!(2), json!(true)), "{action}");
+        assert_eq!((refused.data["args"]["need"].clone(), refused.data["args"]["controllers"].clone()), (json!(1), json!(true)), "{action}");
         // 말하는 사바쨩을 거치면 챗봇 상한이 그대로다: 명단이 상한을 넘지 않는다
         let capped = plan(&state, action, Some(&id), &json!({}), &relay("friend", true)).await.unwrap_err();
         assert_eq!(capped.data["args"]["controllers"], Value::Null, "{action}: the chatbot cap, not the list");
@@ -1767,5 +1782,5 @@ async fn controllers_run_the_server_without_the_admin_level() {
     // 권한 계단은 이 넷을 조작 가능 묶음으로 표시한다
     let board = permission_board(&state, "g", "ko").await;
     let start = board["items"].as_array().unwrap().iter().find(|i| i["key"] == format!("{id}/start")).cloned().unwrap();
-    assert_eq!((&start["level"], &start["controllers"]), (&json!(2), &json!(true)));
+    assert_eq!((&start["level"], &start["controllers"]), (&json!(1), &json!(true)));
 }

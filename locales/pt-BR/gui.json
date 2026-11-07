@@ -1319,6 +1319,7 @@
     "perm_legend_moved": "Movido da predefinição",
     "perm_server_wide": "É um comando do servidor todo, então a mudança aparece no menu de cada instância.",
     "perm_controllers_tag": "operadores também",
+    "perm_server_control": "Controle do servidor",
     "perm_line": "Linha de operadores",
     "perm_line_from": "Operadores · a partir de {{level}}",
     "perm_line_only": "Operadores · só {{level}}",

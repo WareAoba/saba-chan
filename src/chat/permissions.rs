@@ -82,7 +82,7 @@ pub const PRESETS: [&str; 3] = ["loose", "default", "strict"];
 /// 액션(`server.<명령>`)이 따로 있는 내장 명령
 // `players`는 `[status] players` 모듈의 채팅 접속자 조회 (`server.players`와 같은 키)
 const BUILTIN_COMMANDS: [&str; 5] = ["start", "stop", "restart", "status", "players"];
-/// 위험도가 아니라 조작 가능 명단과 관리자 이상이 하는 내장 명령 (`crate::controllers`, 액션의 고정 기본 레벨과 같다)
+/// 위험도가 아니라 조작 가능 명단과 유저 이상(기본값, 사용자 지정 2026-11-07)이 하는 내장 명령 (`crate::controllers`, 액션의 고정 기본 레벨과 같다)
 pub const LIFECYCLE_COMMANDS: [&str; 3] = ["start", "stop", "restart"];
 
 /// 프리셋이 risk(safe/caution/danger)에 요구하는 레벨. 모르는 risk는 caution
@@ -281,7 +281,7 @@ impl NodePermissions {
             .get(&format!("{}/{}", instance_id, command))
             .or_else(|| action_key().and_then(|k| self.command_levels.get(&k)))
             .copied()
-            .unwrap_or_else(|| if LIFECYCLE_COMMANDS.contains(&command) { ADMIN } else { self.preset_need(risk) })
+            .unwrap_or_else(|| if LIFECYCLE_COMMANDS.contains(&command) { self.nearest_builtin(USER, true) } else { self.preset_need(risk) })
     }
 
     fn denied(&self, who: &Requester, need: i64) -> Denied {
@@ -504,8 +504,10 @@ mod tests {
         assert_eq!(p.level_of(&who("x")), USER);
         assert_eq!(p.level_of(&who("bad")), USER);
         assert!(p.check(&who("x"), "i", "kick", "caution").is_ok());
-        // 시작·정지는 위험도와 상관없이 관리자부터다 (조작 가능 명단은 chat이 따로 본다)
-        assert_eq!(p.check(&who("x"), "i", "stop", "safe"), Err(Denied { need: ADMIN, level: USER, via: None, controllers: false }));
+        // 시작·정지는 위험도와 상관없이 유저부터다 (기본, 사용자 지정 2026-11-07. 조작 가능 명단은 chat이 따로 본다)
+        assert!(p.check(&who("x"), "i", "stop", "safe").is_ok());
+        let guest = NodePermissions::from_node(Some(&json!({ "defaultLevel": CHATBOT })));
+        assert_eq!(guest.check(&who("x"), "i", "stop", "safe"), Err(Denied { need: USER, level: CHATBOT, via: None, controllers: false }));
         assert_eq!(p.check(&who("x"), "i", "op", "danger"), Err(Denied { need: ADMIN, level: USER, via: None, controllers: false }));
         assert!(p.check(&who("a"), "i", "op", "danger").is_ok());
         assert!(p.check_basic(&who("b")).is_err());
@@ -638,7 +640,7 @@ mod tests {
         apply(&mut node, &Change::CommandLevel { key: "i/kick".into(), level: None }, Some("own")).unwrap();
         assert_eq!(node["commandLevels"], json!({ "j/server.stop": 3, "i/server.kick": 3 }));
         let p = NodePermissions::from_node(Some(&Value::Object(node)));
-        assert_eq!(p.required("i", "stop", "safe"), ADMIN, "back to the lifecycle default");
+        assert_eq!(p.required("i", "stop", "safe"), USER, "back to the lifecycle default");
     }
 
     fn ladder(ids: &[(i64, Option<&str>)]) -> Change {

@@ -1319,6 +1319,7 @@
     "perm_legend_moved": "Von der Vorlage verschoben",
     "perm_server_wide": "Das ist ein serverweiter Befehl, die Änderung gilt in jedem Instanzmenü.",
     "perm_controllers_tag": "auch Bediener",
+    "perm_server_control": "Serversteuerung",
     "perm_line": "Bediener-Linie",
     "perm_line_from": "Bediener · ab {{level}}",
     "perm_line_only": "Bediener · nur {{level}}",

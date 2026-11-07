@@ -53,7 +53,7 @@ describe('웹 명령 목록', () => {
         const api = { permissionsUpdate: vi.fn().mockResolvedValue({ ok: true }) };
         mount(api);
         fireEvent.click(screen.getByLabelText('Say: who can use it'));
-        fireEvent.click(screen.getByRole('option', { name: /Lv 3 · Admin/ }));
+        fireEvent.click(screen.getByRole('option', { name: /Lv 2 · Admin/ }));
         await act(async () => {});
         expect(api.permissionsUpdate).toHaveBeenCalledWith('g1', { commandLevels: { 'mc-1/say': 2 } });
     });

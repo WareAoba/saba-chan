@@ -1319,6 +1319,7 @@
     "perm_legend_moved": "已偏離預設",
     "perm_server_wide": "這是伺服器層級的命令，修改會同時出現在所有實例選單中。",
     "perm_controllers_tag": "可操作的人也可以",
+    "perm_server_control": "伺服器操作",
     "perm_line": "可操作線",
     "perm_line_from": "可操作 · {{level}}以上",
     "perm_line_only": "可操作 · 僅{{level}}",

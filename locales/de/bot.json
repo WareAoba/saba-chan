@@ -246,6 +246,9 @@
         "title": "Spielchat senden",
         "description": "Sendet eine Discord-Nachricht in den Spielchat"
       },
+      "chat_link": {
+        "title": "Chat-Verknüpfung"
+      },
       "update": {
         "check": {
           "title": "Spielserver-Update prüfen"

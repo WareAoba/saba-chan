@@ -200,7 +200,7 @@ export function LadderTab({ node, permissions, onClose }: LadderTabProps) {
                                         onClick={() => pick(level.id as number)}
                                     />
                                 )}
-                                <span className="dc-ladder-rank">Lv {draft.length - 1 - i}</span>
+                                <span className="dc-ladder-rank">Lv {draft.length - 2 - i}</span>
                                 {editing === i ? (
                                     <input
                                         className="input dc-ladder-name"

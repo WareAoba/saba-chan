@@ -246,6 +246,9 @@
         "title": "Send game chat",
         "description": "Sends a Discord message to the game chat"
       },
+      "chat_link": {
+        "title": "Chat link"
+      },
       "update": {
         "check": {
           "title": "Check game server update"

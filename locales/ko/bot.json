@@ -246,6 +246,9 @@
         "title": "게임 채팅 보내기",
         "description": "디스코드 글을 게임 채팅으로 보냅니다"
       },
+      "chat_link": {
+        "title": "채팅 연동"
+      },
       "update": {
         "check": {
           "title": "게임 서버 업데이트 확인"

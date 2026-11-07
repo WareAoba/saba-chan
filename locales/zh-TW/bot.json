@@ -246,6 +246,9 @@
         "title": "傳送遊戲聊天",
         "description": "把 Discord 訊息傳送到遊戲聊天"
       },
+      "chat_link": {
+        "title": "聊天聯動"
+      },
       "update": {
         "check": {
           "title": "檢查遊戲伺服器更新"

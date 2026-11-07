@@ -1319,6 +1319,7 @@
     "perm_legend_moved": "Déplacée du préréglage",
     "perm_server_wide": "C'est une commande de tout le serveur : le changement apparaît dans le menu de chaque instance.",
     "perm_controllers_tag": "aussi les opérateurs",
+    "perm_server_control": "Contrôle du serveur",
     "perm_line": "Ligne des opérateurs",
     "perm_line_from": "Opérateurs · à partir de {{level}}",
     "perm_line_only": "Opérateurs · {{level}} seulement",

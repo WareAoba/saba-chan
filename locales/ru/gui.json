@@ -1319,6 +1319,7 @@
     "perm_legend_moved": "Не по пресету",
     "perm_server_wide": "Это команда всего сервера, изменение видно в меню каждого экземпляра.",
     "perm_controllers_tag": "и операторы",
+    "perm_server_control": "Управление сервером",
     "perm_line": "Линия операторов",
     "perm_line_from": "Операторы · от {{level}}",
     "perm_line_only": "Операторы · только {{level}}",

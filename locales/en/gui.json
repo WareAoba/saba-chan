@@ -1319,6 +1319,7 @@
     "perm_legend_moved": "Moved from the preset",
     "perm_server_wide": "This is a server-wide command, so the change shows in every instance menu.",
     "perm_controllers_tag": "operators too",
+    "perm_server_control": "Server control",
     "perm_line": "Operators line",
     "perm_line_from": "Operators · {{level}} and up",
     "perm_line_only": "Operators · {{level}} only",

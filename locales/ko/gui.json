@@ -1319,6 +1319,7 @@
     "perm_legend_moved": "프리셋에서 옮김",
     "perm_server_wide": "서버 전체 명령이라 모든 인스턴스 메뉴에 함께 바뀌어요.",
     "perm_controllers_tag": "조작 가능한 사람도",
+    "perm_server_control": "서버 조작",
     "perm_line": "조작 가능 줄",
     "perm_line_from": "조작 가능 · {{level}}부터",
     "perm_line_only": "조작 가능 · {{level}}만",

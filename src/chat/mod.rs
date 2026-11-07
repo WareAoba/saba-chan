@@ -648,7 +648,7 @@ impl<'a, D: DaemonApi> Ctx<'a, D> {
             .or_else(|| module.commands.iter().find(|c| command_labels(module, c).iter().any(|l| words::same(l, cmd_alias))).map(|c| c.name.clone()))
             .unwrap_or_else(|| cmd_alias.to_string());
 
-        // 내장 명령의 위험도: status·players·start·stop은 safe (start·stop은 조작 가능 명단과 관리자 이상이 한다).
+        // 내장 명령의 위험도: status·players·start·stop은 safe (start·stop은 조작 가능 명단과 유저 이상이 한다).
         // 모듈 명령은 선언값 (없으면 caution)
         let risk = match command.as_str() {
             "status" | "start" | "stop" => "safe",
