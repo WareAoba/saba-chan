@@ -481,7 +481,7 @@ Discord ─ 릴레이의 사바쨩 봇 ─(롱폴링, HMAC 서명)─ 데몬 rel
 | C10 | bootstrap.rs:92, cmd/daemon.rs:102 | PROC | API 종료가 안 될 때 데몬 PID만 강제 종료 | 이름 기반 kill 아님 |
 | C14 | cmd/chatbot.rs:109-114 | FS-R | `chatbot set KEY=@<파일>`이면 사용자가 지정한 파일 내용을 값으로 읽어 API로 보낸다 | 사용자 입력 편의, 데몬 파일 아님 |
 | C15 | cmd/server.rs:297-305 | FS-R | `server add`에서 폴더 중복 검사용 `canonicalize` | 경로 정규화만 |
-| C16 | cmd/agent.rs | FS-RW/PROC | `agent link`가 `~/.codex/config.toml`의 `[mcp_servers.saba-chan-local]`만 고치고 `claude mcp add/remove`를 실행한다 | 데몬 데이터가 아니라 그 PC의 에이전트 설정 |
+| C16 | cmd/agent.rs | FS-RW/PROC | `agent link`가 `~/.codex/config.toml`의 `[mcp_servers.saba-chan-local]`만 고치고 `claude mcp add/remove`를 실행한다 | 데몬 데이터가 아니라 CLI·에이전트가 도는 그 PC의 에이전트 설정. `--daemon`으로 다른 PC의 데몬에 붙어 있어도 등록은 이 PC에 해야 하므로 데몬으로 옮길 수 없다 |
 | C17 | cmd/mcp.rs | PROC | 로컬 MCP가 같은 CLI를 자식으로 실행한다(`--json`) | 명령은 자식 CLI가 데몬 API로 한다 |
 
 ### 7.4 디스코드 봇
