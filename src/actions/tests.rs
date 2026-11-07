@@ -1677,12 +1677,15 @@ async fn server_address_is_offered_only_where_the_reply_stays_with_the_caller() 
     assert_eq!(def.surfaces, &[Gui, Cli, Discord]);
     assert!(def.private && def.secret);
     assert!(find("server.port_check").is_some_and(|d| !d.secret));
+    // 공인 IP가 보이므로 기본은 유저(Lv1) 이상, 길드가 명령별로 옮길 수 있다 (사용자 결정 2026-11-07)
+    assert_eq!((def.discord_level, def.level_movable), (Some(crate::chat::permissions::USER), true));
 
     let (state, _id, _tmp) = server_with(MODULE_WITH_PORT).await;
     let modules = state.supervisor.read().await.module_loader.discover_modules().unwrap();
     let (actions, _) = heartbeat_actions(&crate::chat::i18n::languages(), &modules);
     let item = actions.iter().find(|a| a["id"] == "server.address").unwrap();
     assert_eq!((item["secret"].clone(), item["private"].clone()), (json!(true), json!(true)));
+    assert_eq!((item.get("level"), item["defaultLevel"].clone()), (None, json!(1)));
     assert_eq!((item["name"]["ko"].clone(), item["name"]["en"].clone()), (json!("주소"), json!("Address")));
     assert_eq!(item["name"].as_object().unwrap().len(), crate::chat::i18n::languages().len());
     assert_eq!((item["modules"].clone(), item["surfaces"].clone()), (json!(["plain"]), json!(["discord"])));
