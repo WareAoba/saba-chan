@@ -1435,6 +1435,7 @@ impl Supervisor {
             if managed.is_running() {
                 // 정지 방법
                 // - force: 즉시 PID 강제 종료
+                // - 모듈이 `stop_signal = "interrupt"`: Ctrl+C (보내지 못하면 다음 길로)
                 // - 모듈이 stdin을 받고 stdin이 열려 있음: stop_command를 stdin으로
                 // - 그 밖(REST 전용 게임, stdin 없는 재부착): 모듈 lifecycle.py `stop()`에
                 //   PID와 managed=true를 넘겨 맡긴다. 시간 안에 안 끝나면 아래에서 강제 종료.
@@ -1444,11 +1445,27 @@ impl Supervisor {
                 // 모듈에서 stop_command를 가져옴 (없으면 "stop" 기본값)
                 let stop_cmd = module.metadata.stop_command.clone().unwrap_or_else(|| "stop".to_string());
 
+                // Ctrl+C로 저장하고 끝내는 서버 (`[config] stop_signal = "interrupt"`). 보내지 못하면 아래 길로 넘어간다
+                let interrupted = !force
+                    && module.metadata.stop_signal == Some(module_loader::StopSignal::Interrupt)
+                    && match managed.interrupt().await {
+                        Ok(()) => {
+                            tracing::info!("Sent Ctrl+C to managed server '{}'", server_name);
+                            true
+                        }
+                        Err(e) => {
+                            tracing::warn!("Could not send Ctrl+C to '{}': {}", server_name, e);
+                            false
+                        }
+                    };
+
                 if force {
                     tracing::info!("Force-killing managed server '{}'", server_name);
                     if let Err(e) = managed.force_kill().await {
                         tracing::warn!("Force kill of '{}' failed: {}", server_name, e);
                     }
+                } else if interrupted {
+                    // 서버가 저장하고 스스로 끝나기를 아래에서 기다린다
                 } else if via_stdin {
                     // 준비 문구 전에 받은 명령을 실패하는 서버가 있다 (마인크래프트 26.3은 오류만 찍고 계속 돈다).
                     // 켜지는 중이면 준비될 때까지(정지 대기 시간 안에서) 들고 있다가 보낸다
@@ -4669,6 +4686,57 @@ mod tests {
         let result = Supervisor::stop_server(&supervisor, "srv", "console-game", false).await.unwrap();
         assert_eq!(result["success"], true, "{}", result);
         assert_eq!(std::fs::read_to_string(&got).unwrap(), "quit-now", "the stop command went over stdin");
+        assert!(started.elapsed() < std::time::Duration::from_secs(10), "it exited on its own, not after the kill timeout");
+    }
+
+    /// `[config] stop_signal = "interrupt"`인 모듈의 일반 정지는 콘솔 명령 대신 Ctrl+C(unix는 SIGINT)를 보내고
+    /// 서버가 저장하고 스스로 끝나기를 기다린다 (발헤임처럼 Ctrl+C에만 저장 처리기가 붙은 서버)
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn normal_stop_sends_ctrl_c_when_the_module_asks_for_it() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules_dir = tmp.path().join("modules");
+        let dir = modules_dir.join("ctrlc-game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "").unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nname = \"ctrlc-game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[config]\nstop_signal = \"interrupt\"\n\n[protocols]\nsupported = [\"stdin\"]\n",
+        )
+        .unwrap();
+        let mut supervisor = Supervisor::new_with_instances_dir(
+            modules_dir.to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        let mut inst = crate::instance::ServerInstance::new("srv", "ctrlc-game");
+        inst.id = "srv".into();
+        supervisor.instance_store.add(inst).unwrap();
+        // Ctrl+C를 받으면 "저장"하고 끝나는 서버. 콘솔 줄을 받으면 그 줄을 남긴다(오면 안 된다)
+        let got = tmp.path().join("got");
+        let armed = tmp.path().join("armed");
+        let script = format!(
+            "trap 'printf saved > \"{0}\"; exit 0' INT; : > \"{1}\"; while :; do if read -t 1 line; then printf '%s' \"$line\" > \"{0}\"; fi; done",
+            got.display(),
+            armed.display()
+        );
+        let proc = managed_process::ManagedProcess::spawn("bash", &["-c".into(), script], tmp.path().to_str().unwrap(), Vec::new(), None, None)
+            .await
+            .unwrap();
+        supervisor.managed_store.insert("srv", proc).await;
+        // trap이 걸리기 전에 보낸 SIGINT는 bash를 저장 없이 끝낸다. 걸린 뒤에 정지한다
+        for _ in 0..100 {
+            if armed.exists() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+        assert!(armed.exists(), "the test server never set its Ctrl+C handler");
+
+        let supervisor = tokio::sync::RwLock::new(supervisor);
+        let started = std::time::Instant::now();
+        let result = Supervisor::stop_server(&supervisor, "srv", "ctrlc-game", false).await.unwrap();
+        assert_eq!(result["success"], true, "{}", result);
+        assert_eq!(std::fs::read_to_string(&got).unwrap(), "saved", "Ctrl+C, not a console line");
         assert!(started.elapsed() < std::time::Duration::from_secs(10), "it exited on its own, not after the kill timeout");
     }
 

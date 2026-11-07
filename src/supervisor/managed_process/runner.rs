@@ -358,6 +358,7 @@ impl ManagedProcess {
             });
         }
 
+        let token_for_interrupt = token.clone();
         // stdin: 러너 포트로 한 줄씩. 연결이 끊기면 다음 명령 때 다시 붙는다.
         let (stdin_tx, mut stdin_rx) = mpsc::channel::<super::StdinLine>(256);
         {
@@ -397,6 +398,7 @@ impl ManagedProcess {
             working_dir: info.cwd.clone(),
             log_follower: false,
             runner_pid: Some(info.runner_pid),
+            runner_control: Some((info.port, token_for_interrupt)),
         }
     }
 }
@@ -406,6 +408,32 @@ impl ManagedProcess {
 const RUNNER_START_TICKS: u32 = 100;
 #[cfg(test)]
 const RUNNER_START_TICKS: u32 = 50;
+
+/// 러너가 인터럽트의 답을 주기까지 기다리는 가장 긴 시간 (Windows는 콘솔에 붙었다 떨어지는 데 0.2초쯤 든다)
+const INTERRUPT_ANSWER_WAIT: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// 러너에 서버 인터럽트를 부탁하고 답(`ok` / `error: 까닭`)을 읽는다
+pub(crate) async fn ask_interrupt(port: u16, token: &str) -> anyhow::Result<()> {
+    use tokio::io::AsyncBufReadExt;
+    let asked = async {
+        let mut stream = tokio::net::TcpStream::connect(("127.0.0.1", port)).await?;
+        stream.write_all(format!("{}\n", saba_runner::interrupt_request(token)).as_bytes()).await?;
+        let mut answer = String::new();
+        tokio::io::BufReader::new(stream).read_line(&mut answer).await?;
+        Ok::<_, std::io::Error>(answer)
+    };
+    let answer = tokio::time::timeout(INTERRUPT_ANSWER_WAIT, asked)
+        .await
+        .map_err(|_| anyhow::anyhow!("saba-runner did not answer the interrupt within {}s", INTERRUPT_ANSWER_WAIT.as_secs()))?
+        .map_err(|e| anyhow::anyhow!("saba-runner is not reachable: {}", e))?;
+    let answer = answer.trim_end_matches(['\r', '\n']);
+    if answer == saba_runner::INTERRUPT_OK {
+        return Ok(());
+    }
+    // 빈 답: 이 기능이 없는 옛 러너는 토큰이 다르다며 그냥 닫는다
+    let reason = answer.strip_prefix("error: ").unwrap_or(if answer.is_empty() { "saba-runner closed the connection (too old for Ctrl+C?)" } else { answer });
+    anyhow::bail!("Ctrl+C was not sent: {}", reason)
+}
 
 async fn connect_stdin(port: u16, token: &str) -> Option<tokio::net::TcpStream> {
     let mut stream = tokio::net::TcpStream::connect(("127.0.0.1", port)).await.ok()?;
@@ -505,6 +533,58 @@ mod tests {
         saba_runner::write_json(&runner_file(&run), &info).unwrap();
         let proc = ManagedProcess::attach_runner(inst, None).await.expect("attached");
         assert!(proc.send_command("stop").await.is_err());
+    }
+
+    /// 인터럽트(Ctrl+C)는 러너에 `토큰 interrupt` 연결로 부탁하고, 러너의 답으로 성공·실패를 정한다
+    #[tokio::test]
+    async fn an_interrupt_asks_the_runner_and_reports_its_answer() {
+        use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
+        let tmp = tempfile::tempdir().unwrap();
+        let inst = tmp.path();
+        let run = run_dir(inst);
+        std::fs::create_dir_all(&run).unwrap();
+        let log = inst.join("session.log");
+        std::fs::write(&log, "").unwrap();
+        std::fs::write(run.join(TOKEN_FILE), "tok").unwrap();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let info = RunnerInfo { runner_pid: std::process::id(), pid: std::process::id(), port, log, started_at: saba_runner::now(), cwd: None };
+        saba_runner::write_json(&runner_file(&run), &info).unwrap();
+        let proc = ManagedProcess::attach_runner(inst, None).await.expect("attached");
+
+        let runner = tokio::spawn(async move {
+            let mut asked = Vec::new();
+            for answer in ["ok", "error: cannot attach to the server console"] {
+                let (conn, _) = listener.accept().await.unwrap();
+                let mut conn = tokio::io::BufReader::new(conn);
+                let mut first = String::new();
+                conn.read_line(&mut first).await.unwrap();
+                asked.push(first);
+                conn.get_mut().write_all(format!("{}\n", answer).as_bytes()).await.unwrap();
+            }
+            asked
+        });
+        assert!(proc.interrupt().await.is_ok());
+        let refused = proc.interrupt().await.unwrap_err().to_string();
+        assert!(refused.contains("cannot attach"), "{}", refused);
+        assert_eq!(runner.await.unwrap(), ["tok interrupt\n", "tok interrupt\n"]);
+    }
+
+    /// 러너가 없는(닫힌) 포트면 실패다: 정지가 인터럽트를 보낸 척하고 기다리지 않게
+    #[tokio::test]
+    async fn an_interrupt_the_runner_never_received_fails() {
+        let tmp = tempfile::tempdir().unwrap();
+        let inst = tmp.path();
+        let run = run_dir(inst);
+        std::fs::create_dir_all(&run).unwrap();
+        let log = inst.join("session.log");
+        std::fs::write(&log, "").unwrap();
+        std::fs::write(run.join(TOKEN_FILE), "tok").unwrap();
+        let closed = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
+        let info = RunnerInfo { runner_pid: std::process::id(), pid: std::process::id(), port: closed, log, started_at: saba_runner::now(), cwd: None };
+        saba_runner::write_json(&runner_file(&run), &info).unwrap();
+        let proc = ManagedProcess::attach_runner(inst, None).await.expect("attached");
+        assert!(proc.interrupt().await.is_err());
     }
 
     /// 시간 안에 서버를 띄우지 못한 러너는 그 자식까지 끝낸다: 늦게 뜬 서버 옆에 두 번째 서버가 뜨지 않게 (D-S4)
