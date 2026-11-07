@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { useServerStore } from '../../stores/useServerStore';
 import {
     type AuditEntry,
+    auditDetails,
     auditMatches,
     auditRange,
     auditReason,
@@ -56,6 +57,13 @@ export function AuditLog({ instanceId }: { instanceId?: string }) {
     const [error, setError] = useState<string | null>(null);
     const [period, setPeriod] = useState('all');
     const [filters, setFilters] = useState<string[]>([]);
+    const [open, setOpen] = useState<Set<string>>(() => new Set());
+    const toggleRow = (key: string) =>
+        setOpen((prev) => {
+            const next = new Set(prev);
+            if (!next.delete(key)) next.add(key);
+            return next;
+        });
     const [from, setFrom] = useState('');
     const [to, setTo] = useState('');
     const [exporting, setExporting] = useState(false);
@@ -211,26 +219,45 @@ export function AuditLog({ instanceId }: { instanceId?: string }) {
                     <p className="muted">{t('audit.empty')}</p>
                 ) : (
                     <ul className="dc-list audit-list">
-                        {shown.map((e, i) => (
-                            <li
-                                // biome-ignore lint/suspicious/noArrayIndexKey: 읽기 전용 목록이라 순서가 바뀌지 않는다
-                                key={`${e.ts}-${i}`}
-                                className="dc-list-row"
-                            >
-                                <span className="audit-time">{fmt(e.ts)}</span>
-                                <span className="dc-list-text">
-                                    <span className="dc-list-name">
-                                        {!instanceId && <strong>{e.instance || e.instanceId} </strong>}
-                                        {auditWhat(e, t)}
-                                    </span>
-                                    <span className="dc-list-sub">{auditWho(e, t)}</span>
-                                    {auditReason(e, t) && (
-                                        <span className="dc-list-sub audit-reason">{auditReason(e, t)}</span>
+                        {shown.map((e, i) => {
+                            const key = `${e.ts}-${e.action}-${e.instanceId}-${i}`;
+                            const expanded = open.has(key);
+                            return (
+                                <li key={key} className={clsx('audit-item', { expanded })}>
+                                    <button
+                                        type="button"
+                                        className="dc-list-row audit-row"
+                                        aria-expanded={expanded}
+                                        onClick={() => toggleRow(key)}
+                                    >
+                                        <span className="audit-time">{fmt(e.ts)}</span>
+                                        <span className="dc-list-text">
+                                            <span className="dc-list-name">
+                                                {!instanceId && <strong>{e.instance || e.instanceId} </strong>}
+                                                {auditWhat(e, t)}
+                                            </span>
+                                            <span className="dc-list-sub">{auditWho(e, t)}</span>
+                                            {auditReason(e, t) && (
+                                                <span className="dc-list-sub audit-reason">{auditReason(e, t)}</span>
+                                            )}
+                                        </span>
+                                        <StatusChip {...(auditResult(e, t) as ComponentProps<typeof StatusChip>)} />
+                                        <Icon name={expanded ? 'chevronUp' : 'chevronDown'} size="sm" />
+                                    </button>
+                                    {expanded && (
+                                        <dl className="audit-detail">
+                                            {auditDetails(e, t, i18n.language).map(([label, value], j) => (
+                                                // biome-ignore lint/suspicious/noArrayIndexKey: 같은 이름(인자)이 여러 줄일 수 있다
+                                                <div key={j}>
+                                                    <dt>{label}</dt>
+                                                    <dd>{value}</dd>
+                                                </div>
+                                            ))}
+                                        </dl>
                                     )}
-                                </span>
-                                <StatusChip {...(auditResult(e, t) as ComponentProps<typeof StatusChip>)} />
-                            </li>
-                        ))}
+                                </li>
+                            );
+                        })}
                     </ul>
                 )}
                 {more && (

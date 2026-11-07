@@ -4163,6 +4163,43 @@ button.appbar-preflight {
 .audit-filter-panel > .btn {
     align-self: flex-end;
 }
+/* 한 줄을 누르면 자세한 칸을 펼친다 */
+.audit-row {
+    border: none;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: start;
+    cursor: pointer;
+}
+.audit-row:hover,
+.audit-item.expanded > .audit-row {
+    background: var(--bg-hover, color-mix(in oklch, var(--accent) 6%, transparent));
+}
+.audit-row > .icon,
+.audit-row > svg {
+    flex: none;
+    color: var(--text-3);
+}
+.audit-detail {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: var(--sp-1) var(--sp-4);
+    margin: 0;
+    padding: var(--sp-2) var(--sp-4) var(--sp-3) calc(var(--sp-4) + 9.5em + var(--sp-3));
+    font-size: var(--fs-sm);
+}
+.audit-detail > div {
+    display: contents;
+}
+.audit-detail dt {
+    color: var(--text-3);
+}
+.audit-detail dd {
+    margin: 0;
+    color: var(--text-1);
+    overflow-wrap: anywhere;
+}
 .audit-end {
     display: grid;
     place-items: center;

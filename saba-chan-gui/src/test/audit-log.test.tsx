@@ -254,6 +254,25 @@ describe('AuditLog', () => {
         expect(window.api.auditList).toHaveBeenCalledTimes(1); // 거르기는 다시 부르지 않는다
     });
 
+    it('한 줄을 누르면 자세한 칸을 펼치고 다시 누르면 접는다', async () => {
+        window.api.auditList = vi.fn().mockResolvedValue({
+            entries: [entry({ command: 'give', args: '{"player":"Steve","item":{"id":"diamond"}}', userName: 'Aoba' })],
+        }) as never;
+        render(<AuditLog instanceId="mc-1" />);
+        const row = await screen.findByRole('button', { name: /Command · give/ });
+        expect(row.getAttribute('aria-expanded')).toBe('false');
+        fireEvent.click(row);
+        expect(row.getAttribute('aria-expanded')).toBe('true');
+        const detail = document.querySelector('.audit-detail') as HTMLElement;
+        expect(within(detail).getByText('player: Steve')).toBeTruthy();
+        expect(within(detail).getByText('item: diamond')).toBeTruthy();
+        expect(within(detail).getByText('Minecraft · mc-1')).toBeTruthy();
+        expect(within(detail).getByText('Aoba · aoba')).toBeTruthy();
+        expect(detail.textContent).not.toMatch(/[{}"]/); // JSON 기호 없이
+        fireEvent.click(row);
+        expect(document.querySelector('.audit-detail')).toBeNull();
+    });
+
     it('작업 기록 페이지: 왼쪽 서버를 누르면 그 서버 기록만, 서버 밖 설정 기록은 숨긴다', async () => {
         useServerStore.setState({ servers: [{ id: 'mc-1', name: 'Minecraft', module: 'minecraft' }] as Server[] });
         window.api.auditList = vi.fn().mockResolvedValue({

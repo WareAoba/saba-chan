@@ -160,3 +160,52 @@ export function auditWho(e: AuditEntry, t: TFunction) {
     const source = SOURCES.includes(e.source) ? t(`audit.source_${e.source}`) : e.source;
     return [source, e.userName || e.user, e.guildName || e.guild].filter(Boolean).join(' · ');
 }
+
+// 인자 → 펼친 칸의 줄들: 칸 이름이 붙은 객체는 "이름: 값" 한 줄씩, 그 밖은 한 줄 (JSON 기호 없이)
+const argLines = (args: string | undefined): string[] => {
+    if (!args) return [];
+    let v: unknown;
+    try {
+        v = JSON.parse(args);
+    } catch {
+        const text = argsText(args);
+        return text ? [text] : [];
+    }
+    if (v && typeof v === 'object' && !Array.isArray(v)) {
+        return Object.entries(v as object)
+            .map(([k, x]) => [k, flat(x).join(' ')])
+            .filter(([, x]) => x)
+            .map(([k, x]) => `${k}: ${x}`);
+    }
+    const text = flat(v).join(' ');
+    return text ? [text] : [];
+};
+
+/** 한 건 → 펼쳐 보이는 자세한 칸 [이름, 값]. 빈 칸은 뺀다 */
+export function auditDetails(
+    e: AuditEntry & { ts?: number; instance?: string; instanceId?: string },
+    t: TFunction,
+    locale?: string,
+) {
+    const rows: Array<[string, string]> = [
+        [t('audit.detail_time'), e.ts ? new Date(e.ts * 1000).toLocaleString(locale) : ''],
+        [t('audit.detail_server'), [e.instance, e.instanceId].filter(Boolean).join(' · ')],
+        [t('audit.detail_action'), actionText(e.action, t)],
+        [t('audit.detail_daemon'), e.daemon || ''],
+        [t('audit.detail_command'), e.command || ''],
+        ...argLines(e.args).map((line): [string, string] => [t('audit.detail_args'), line]),
+        [t('audit.detail_source'), SOURCES.includes(e.source) ? t(`audit.source_${e.source}`) : e.source],
+        [
+            t('audit.detail_user'),
+            [e.userName, e.user && e.user !== e.userName ? e.user : ''].filter(Boolean).join(' · '),
+        ],
+        [
+            t('audit.detail_guild'),
+            [e.guildName, e.guild && e.guild !== e.guildName ? e.guild : ''].filter(Boolean).join(' · '),
+        ],
+        [t('audit.detail_result'), auditResult(e, t).label],
+        [t('audit.detail_reason'), [auditReason(e, t), e.code].filter(Boolean).join(' · ')],
+        [t('audit.detail_status'), e.status && e.action !== 'crash' ? String(e.status) : ''],
+    ];
+    return rows.filter(([, v]) => v);
+}
