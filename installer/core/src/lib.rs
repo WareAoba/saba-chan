@@ -462,7 +462,7 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
     #[cfg(target_os = "windows")]
     {
         if let Err(e) =
-            registry::register_uninstall_entry(&install_dir, &manifest.version, config.uninstaller_exe.as_deref())
+            registry::register_uninstall_entry(&install_dir, manifest.display_version(), config.uninstaller_exe.as_deref())
         {
             warn(format!("Failed to register in Installed apps: {}", e));
         }
