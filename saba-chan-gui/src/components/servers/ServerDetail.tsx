@@ -41,7 +41,6 @@ import { Segmented, StatusChip } from '../ui/StatusChip';
 import { ExitHistory } from './ExitHistory';
 import { ServerLogs } from './ServerLogs';
 import { InstanceDiscordTab, instanceWordsAvailable } from '../discord/InstanceWordsTab';
-import { AuditLog, auditAvailable } from './AuditTab';
 import { ControllersTab } from './ControllersTab';
 import { MaintenanceTab, maintenanceAvailable } from './MaintenanceTab';
 import { ModuleAuditNotice } from './ModuleAuditNotice';
@@ -139,7 +138,6 @@ export function ServerDetail({
             label: t('shell.tab_discord'),
             icon: <Icon name="discord" size="sm" />,
         },
-        auditAvailable() && { id: 'audit', label: t('shell.tab_audit'), icon: <Icon name="file" size="sm" /> },
         { id: 'info', label: t('shell.tab_info'), icon: <Icon name="info" size="sm" /> },
     ].filter(Boolean) as { id: string; label: string; icon: ReactNode }[];
 
@@ -218,8 +216,7 @@ export function ServerDetail({
 
     return (
         <section
-            // 기록 탭은 목록만 스크롤하고 머리는 제자리에 둔다: 상세 칸 높이에 맞춘다
-            className={activeTab === 'audit' ? 'server-detail fill-pane' : 'server-detail'}
+            className="server-detail"
             aria-label={server.name}
         >
             <header className="detail-head">
@@ -390,7 +387,6 @@ export function ServerDetail({
                         )}
                         {activeTab === 'controllers' && <ControllersTab server={server} />}
                         {activeTab === 'discord' && <InstanceDiscordTab server={server} />}
-                        {activeTab === 'audit' && <AuditLog instanceId={server.id} />}
                         {activeTab === 'info' && (
                             <InfoTab
                                 server={server}

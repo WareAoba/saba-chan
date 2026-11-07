@@ -839,7 +839,6 @@
     "preflight_failed": "Pythonの準備に失敗しました。次にサーバーを操作するときに再試行します。（{{error}}）",
     "module_needs": "必要なバージョンを満たしていません: {{deps}}",
     "tab_maintenance": "バックアップ・予約",
-    "tab_audit": "履歴",
     "tab_discord": "Discord",
     "daemon_down_title": "コアデーモンに接続していません",
     "daemon_down_body": "サーバーを起動・管理するデーモンが停止しています。再起動するとサーバー一覧を読み込み直します。",

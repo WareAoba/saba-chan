@@ -570,12 +570,6 @@
     flex: 1 0 auto;
     width: 100%;
 }
-.server-detail-host > .server-detail.fill-pane {
-    flex: 1 1 0;
-}
-.server-detail.fill-pane > .detail-body {
-    min-height: auto;
-}
 .detail-head {
     display: flex;
     align-items: center;

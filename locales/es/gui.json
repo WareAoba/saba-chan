@@ -839,7 +839,6 @@
     "preflight_failed": "No se pudo preparar Python. Se reintentará en la próxima acción del servidor. ({{error}})",
     "module_needs": "Requisitos no cumplidos: {{deps}}",
     "tab_maintenance": "Copias",
-    "tab_audit": "Registro",
     "tab_discord": "Discord",
     "daemon_down_title": "Sin conexión con el daemon principal",
     "daemon_down_body": "El daemon que inicia y gestiona tus servidores no está en ejecución. Reinícialo para volver a cargar tus servidores.",

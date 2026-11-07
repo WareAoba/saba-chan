@@ -839,7 +839,6 @@
     "preflight_failed": "Preparing Python failed. It will retry on the next server action. ({{error}})",
     "module_needs": "Requirements not met: {{deps}}",
     "tab_maintenance": "Backups",
-    "tab_audit": "Log",
     "tab_discord": "Discord",
     "daemon_down_title": "Not connected to the core daemon",
     "daemon_down_body": "The daemon that runs and manages your servers is not running. Restart it to load your servers again.",

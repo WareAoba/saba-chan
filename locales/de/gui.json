@@ -839,7 +839,6 @@
     "preflight_failed": "Vorbereitung von Python fehlgeschlagen. Beim nächsten Serveraufruf wird es erneut versucht. ({{error}})",
     "module_needs": "Voraussetzungen nicht erfüllt: {{deps}}",
     "tab_maintenance": "Backups und Zeitpläne",
-    "tab_audit": "Protokoll",
     "tab_discord": "Discord",
     "daemon_down_title": "Keine Verbindung zum Kern-Daemon",
     "daemon_down_body": "Der Daemon, der deine Server startet und verwaltet, läuft nicht. Starte ihn neu, um deine Server wieder zu laden.",

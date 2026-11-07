@@ -839,7 +839,6 @@
     "preflight_failed": "Python 準備失敗，將在下次操作伺服器時重試。（{{error}}）",
     "module_needs": "未符合版本需求：{{deps}}",
     "tab_maintenance": "備份與排程",
-    "tab_audit": "紀錄",
     "tab_discord": "Discord",
     "daemon_down_title": "未連線到核心常駐程式",
     "daemon_down_body": "負責啟動和管理伺服器的常駐程式沒有在執行。重新啟動後會重新載入伺服器列表。",

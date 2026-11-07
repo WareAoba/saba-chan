@@ -839,7 +839,6 @@
     "preflight_failed": "La préparation de Python a échoué. Nouvel essai à la prochaine action sur un serveur. ({{error}})",
     "module_needs": "Prérequis non satisfaits : {{deps}}",
     "tab_maintenance": "Sauvegardes",
-    "tab_audit": "Journal",
     "tab_discord": "Discord",
     "daemon_down_title": "Pas de connexion au démon principal",
     "daemon_down_body": "Le démon qui lance et gère vos serveurs ne tourne pas. Redémarrez-le pour recharger vos serveurs.",
