@@ -382,7 +382,7 @@
     "quit_all_label": "全て終了",
     "managed_warning_title": "⚠️ マネージドサーバーが実行中",
     "managed_warning_message": "{{count}}個のマネージドサーバーが実行中です: {{names}}",
-    "managed_warning_detail": "デーモンが終了すると、これらのサーバーへのコンソール接続が失われ、次回起動時に強制終了のみ可能になります。\n本当に終了しますか？"
+    "managed_warning_detail": "これらのサーバーは動き続けます。サバちゃんを再び起動すると、コンソールに再接続します。終了している間は、コマンド・自動再起動・Discord通知を使えません。\n本当に終了しますか？"
   },
   "modules": {
     "load_failed_toast": "モジュール読み込み失敗: {{error}}",

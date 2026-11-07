@@ -60,6 +60,19 @@ impl std::fmt::Display for MemoryLimitAtStart {
 
 impl std::error::Error for MemoryLimitAtStart {}
 
+/// 관리형 시작인데 saba-runner 실행 파일이 없다. 관리형 시작은 러너가 콘솔을 쥐는 시작이라 데몬이 대신 띄우지 않는다.
+/// 호출 쪽이 `downcast_ref`로 알아본다
+#[derive(Debug)]
+pub struct RunnerMissing;
+
+impl std::fmt::Display for RunnerMissing {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "saba-runner was not found next to saba-core, so managed start is not possible. Turn off managed start for this server or repair the installation")
+    }
+}
+
+impl std::error::Error for RunnerMissing {}
+
 /// runner.json 전에 exit.json이 생겼을 때의 시작 오류. 상한 때문이면 그렇다고, 아니면 로그 마지막 줄
 fn start_failure(run: &Path, log: &Path) -> anyhow::Error {
     if let Some(exit) = read_json::<ExitInfo>(&exit_file(run)) {
